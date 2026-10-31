@@ -20,6 +20,9 @@ then stage and start this branch's Amarchy (the 3.2 kit does not auto-start it; 
   python3 tools/rig/amarchy_gui_rig.py --setup
 Delete ENV:Sys/{palette,wbpattern,font,pointer}.prefs and ENV:Amarchy/prefs between runs for a clean baseline.
 Run: UPTERM_RIG=3 python3 tools/rig/amarchy_desk_rig.py
+FLAT-C9 case (the theme pick reaches the flat_state block of a running amarchy-flat; no flatwin, no desktop-theme needed):
+  make amarchy-flat build/amiga/Amarchy; python3 tools/rig/amarchy_gui_rig.py --setup
+  UPTERM_RIG=<n> python3 tools/rig/amarchy_desk_rig.py --flat
 Exit status 1 on any [FAIL]."""
 import os, re, subprocess, sys, tempfile, time
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -270,7 +273,64 @@ def compare(part, got, want, what, ncol=8):
     return say(not diffs, what, '; '.join(diffs[:12]))
 
 
+def flat_pens():
+    """(STATUS flat word, calls, pens dict) from `amarchy-flat STATUS`: `flat=on calls=N ...` and `pens text=T line=L back=B outline=O`."""
+    out = c.run('RAM:amarchy-flat STATUS')[1]
+    m = re.search(r'flat=(\w+) calls=(\d+)', out)
+    p = re.search(r'pens text=(\d+) line=(\d+) back=(\d+) outline=(\d+)', out)
+    pens = dict(zip(('text', 'line', 'back', 'outline'), map(int, p.groups()))) if p else None
+    return (m.group(1) if m else None), (int(m.group(2)) if m else None), pens, out.strip()
+
+
+def put_flat_prefs(on):
+    with tempfile.NamedTemporaryFile(delete=False) as f:
+        f.write(('; Amarchy preferences.\n[profile default]\nflat-system-look = %s\nflat-window-gadgets = %s\n' % (('on',) * 2 if on else ('off',) * 2)).encode('latin-1'))
+    put_prefs(f.name)
+    os.unlink(f.name)
+
+
+def flat_case():
+    """FLAT-C9 reachability: the theme pick (menu Style > Amarchy theme, desk_dos_apply) writes the flat_state block of the
+    running amarchy-flat from the prefs (desk_flat_state) and redraws the window frames (win_refresh_frames).
+    DK_FG=2, DK_ACCENT=3, DK_BG=0 are the pens desk_flat_glyph_pens / desk_flat_state define (amarchy/desk_core.h)."""
+    if not g.process_running('Amarchy'):
+        print('[FAIL] the Amarchy commodity is not running')
+        return 1
+    g.close_menu()
+    ami.put(os.path.join(ROOT, 'build', 'amiga', 'amarchy-flat'), 'RAM:amarchy-flat')
+    c.run('Protect RAM:amarchy-flat +e')
+    c.run('MakeDir >NIL: ENV:Amarchy')
+    for m in re.finditer(r'Process\s+(\d+):.*amarchy-flat', c.run('Status')[1]):
+        c.run('Break %s C' % m.group(1))      # a leftover instance would answer STATUS with old bytes
+    time.sleep(3)
+    put_flat_prefs(False)
+    c.run('Run >NIL: RAM:amarchy-flat')       # the resident block, started with both flat switches off
+    time.sleep(3)
+    w0, n0, p0, raw = flat_pens()
+    print('[INFO] before: %s' % raw)
+    say(w0 == 'off', 'flat off: the block starts disabled', raw)
+    put_flat_prefs(True)
+    pick()                                    # the real entry point: the drawn theme menu -> gt_dos_select -> desk_dos_apply
+    w1, n1, p1, raw = flat_pens()
+    print('[INFO] after pick, flat on: %s' % raw)
+    say(w1 == 'on', 'flat on: the theme pick set enabled=1', raw)
+    say(p1 is not None and p1['text'] == 2 and p1['line'] == 3 and p1['back'] == 0 and p1['outline'] == 3,
+        'flat on: pens text=2 line=3 back=0 outline=3 (desk_flat_glyph_pens, outline = the accent pen)', str(p1))
+    say(n1 is not None and n0 is not None and n1 > n0, 'flat on: the glyph counter rose (the frame refresh drew flat glyphs)', 'calls %r -> %r' % (n0, n1))
+    put_flat_prefs(False)
+    pick()
+    w2, n2, p2, raw = flat_pens()
+    print('[INFO] after pick, flat off: %s' % raw)
+    say(w2 == 'off', 'flat off: the theme pick set enabled=0', raw)
+    for m in re.finditer(r'Process\s+(\d+):.*amarchy-flat', c.run('Status')[1]):
+        c.run('Break %s C' % m.group(1))
+    print('[%s] %d failed' % ('OK' if not failed else 'FAIL', failed))
+    return 1 if failed else 0
+
+
 def main():
+    if '--flat' in sys.argv:
+        return flat_case()
     if not g.process_running('Amarchy'):
         print('[FAIL] the Amarchy commodity is not running')
         return 1

@@ -4,6 +4,7 @@
 #include <string.h>
 #include "../amarchy/flat_core.h"
 #include "../amarchy/flat_glyph.h"
+#include "../amarchy/desk_core.h"
 #define ROMSPAN_VEC
 #include "../device/romspan.h"
 #include "harness.h"
@@ -737,8 +738,40 @@ static void test_kill_switches(void)
     CHECK_STR(FLAT_MARKER_PATH, "ENVARC:Amarchy/flat-starting");
 }
 
+/* FLAT-C9: the prefs -> flat_state mapping both writers (desk apply, amarchy-flat BOOT) call. The sentinel proves the function ran;
+ * the counter rows (version, size, held, still_chained, calls) belong to the resident program and survive the write. */
+static void test_desk_flat_state(void)
+{
+    flat_state s;
+    unsigned char t, l, b;
+    unsigned long before;
+    int f, g;
+    desk_flat_glyph_pens(&t, &l, &b);
+    for (f = 0; f < 2; f++)
+        for (g = 0; g < 2; g++) {
+            flat_init(&s);
+            s.held = 2; s.still_chained = 1; s.calls = 77;
+            before = desk_flat_state_calls;
+            desk_flat_state(f, g, &s);
+            CHECK_INT(desk_flat_state_calls, before + 1);                      /* sentinel: the mapping ran */
+            CHECK_INT(s.enabled, f || g);                                     /* either switch enables; both off = 0 */
+            CHECK_INT(s.pen_text, t);
+            CHECK_INT(s.pen_line, l);
+            CHECK_INT(s.pen_back, b);
+            CHECK_INT(s.pen_outline, DK_ACCENT);                              /* the theme accent pen, never 0 */
+            CHECK(s.pen_outline != 0);
+            CHECK_INT(s.version, FLAT_VERSION);
+            CHECK_INT(s.size, FLAT_STATE_SIZE);
+            CHECK_INT(s.held, 2);
+            CHECK_INT(s.still_chained, 1);
+            CHECK_INT(s.calls, 77);
+            CHECK_INT(flat_check(&s, sizeof s), FLAT_OK);
+        }
+}
+
 void suite_flat_core(void)
 {
+    test_desk_flat_state();
     test_kill_switches();
     test_which_from_gtype();
     test_layout();

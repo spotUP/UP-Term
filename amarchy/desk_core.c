@@ -156,6 +156,20 @@ void desk_flat_glyph_pens(unsigned char *text, unsigned char *line, unsigned cha
     *back = DK_BG;
 }
 
+unsigned long desk_flat_state_calls;
+
+void desk_flat_state(int flat, int gadgets, flat_state *s)
+{
+    unsigned char t, l, b;
+    desk_flat_state_calls++;
+    desk_flat_glyph_pens(&t, &l, &b);
+    s->enabled = (flat || gadgets) ? 1 : 0;
+    s->pen_text = t;
+    s->pen_line = l;
+    s->pen_back = b;
+    s->pen_outline = DK_ACCENT;
+}
+
 void desk_pens_for(int flat, unsigned char pens[DK_SLOTS])
 {
     if (flat)

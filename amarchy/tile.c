@@ -30,6 +30,7 @@
 #include "tile_core.h"
 #include "amconf_dos.h"
 #include "win_apply.h"
+#include "win_refresh.h"
 #include "poll_timer.h"
 #include "amconf_core.h"
 #include "../handler/frontscr.h"
@@ -171,26 +172,6 @@ static struct Screen *front_scr(void)
     if (s)
         UnlockPubScreen(0, s);
     return s;
-}
-
-/* IBase locked: scr is still a screen of Intuition's. */
-static int screen_alive(const struct Screen *scr)
-{
-    const struct Screen *s;
-    for (s = IntuitionBase->FirstScreen; s; s = s->NextScreen)
-        if (s == scr)
-            return 1;
-    return 0;
-}
-
-/* IBase locked: w is still a window of scr. */
-static int window_alive(const struct Screen *scr, const struct Window *w)
-{
-    const struct Window *x;
-    for (x = scr->FirstWindow; x; x = x->NextWindow)
-        if (x == w)
-            return 1;
-    return 0;
 }
 
 typedef struct snap {

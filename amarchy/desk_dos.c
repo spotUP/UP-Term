@@ -12,6 +12,8 @@
 #include "desk_core.h"
 #include "menu_theme.h"
 #include "amconf_dos.h"
+#include "flat_shared.h"
+#include "win_refresh.h"
 
 #define DK_BUF 1024
 #define DK_REVERT "T:amarchy-revert"
@@ -327,7 +329,7 @@ static long dk_dopus_send(const char *port, const char *line, char *result, int 
     return rexx_send(port, line, result, cap);
 }
 
-int desk_dos_apply(const gtheme *th, char *why, int cap)
+static int dk_apply(const gtheme *th, char *why, int cap)
 {
     static unsigned char buf[DK_BUF], prev[DK_BUF], big[8192];
     am_prefs ap;
@@ -421,4 +423,44 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
     if (reset || old_ws)
         dk_windows_open(was);
     return ok ? (int)mask : -1;
+}
+
+/* FLAT-C9: write the flat_state fields of the running amarchy-flat from the prefs (the one mapping desk_flat_state), then redraw every
+ * window frame so the switch shows at once. The layout is checked (flat_check) before the write; the other fields are the program's.
+ * No record: the program is not running, so start it (BOOT: resident only when a flat switch is on; it writes the same fields itself). */
+unsigned long desk_dos_flat_writes;
+
+static void dk_flat_sync(void)
+{
+    am_prefs ap;
+    flatshared *r;
+    int flat, gad, wrote = 0;
+    amconf_load(&ap);
+    flat = amconf_flat_index(&ap, AM_FLAT);
+    gad = amconf_flat_index(&ap, AM_FLATGAD);
+    Forbid();
+    r = (flatshared *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
+    if (r && flat_check(&r->st, sizeof r->st) == FLAT_OK) {
+        desk_flat_state(flat, gad, &r->st);
+        wrote = 1;
+    }
+    Permit();
+    if (wrote) {
+        desk_dos_flat_writes++;
+        win_refresh_frames();
+    } else if (!r && (flat || gad)) {
+        BPTR in = Open((STRPTR)"NIL:", MODE_OLDFILE), out = Open((STRPTR)"NIL:", MODE_NEWFILE);
+        SystemTags((STRPTR)"Run >NIL: UP-Term:bin/amarchy-flat BOOT", SYS_Input, in, SYS_Output, out, TAG_DONE);
+        if (in)
+            Close(in);
+        if (out)
+            Close(out);
+    }
+}
+
+int desk_dos_apply(const gtheme *th, char *why, int cap)
+{
+    int r = dk_apply(th, why, cap);
+    dk_flat_sync();          /* also when no desk target changed: flipping a flat switch alone must reach the block */
+    return r;
 }

@@ -7,6 +7,7 @@
 #define DESK_CORE_H
 
 #include "gthemes_core.h"
+#include "flat_core.h"
 
 /* the eight palette roles of the flat mapping (OD13): the pen index of a role is its enum value */
 enum { DK_BG, DK_DARKER, DK_FG, DK_ACCENT, DK_SELECTION, DK_MUTED, DK_GREEN, DK_RED, DK_ROLES };
@@ -46,6 +47,13 @@ void desk_pens(unsigned char pens[DK_SLOTS]);
 void desk_pens_flat(unsigned char pens[DK_SLOTS]);
 /* FLAT-SOLID-FILL: pen_text (active glyph), pen_line (inactive glyph), pen_back of the flat_state block under the flat map */
 void desk_flat_glyph_pens(unsigned char *text, unsigned char *line, unsigned char *back);
+
+/* FLAT-C9: the one mapping from the prefs (flat = amarchy flat-system-look, gadgets = flat-window-gadgets, both 0/1) and the theme's
+ * pen map to the flat_state block of "Amarchy.Flat": enabled = either switch, pen_text/pen_line/pen_back = desk_flat_glyph_pens,
+ * pen_outline = the theme accent pen (DK_ACCENT). Only these fields are written; version, size, held, still_chained and calls
+ * belong to the resident program and are left alone. desk_flat_state_calls counts calls (the reachability sentinel). */
+void desk_flat_state(int flat, int gadgets, flat_state *s);
+extern unsigned long desk_flat_state_calls;
 
 /* FLAT-P1-3: the pen map the palette write carries: desk_pens_flat when the amarchy-flat-pens key is on (flat), else desk_pens */
 void desk_pens_for(int flat, unsigned char pens[DK_SLOTS]);

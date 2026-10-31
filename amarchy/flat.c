@@ -50,6 +50,7 @@
 #include "poll_timer.h"
 #include "amconf_core.h"
 #include "amconf_dos.h"
+#include "desk_core.h"
 
 static const char ver[] = "$VER: amarchy-flat 0.1 (30.10.2026) (UP-Term)";
 
@@ -239,6 +240,22 @@ static flatshared *find_record(void)
     return r;
 }
 
+/* Append a pen number (0..255) to out at *n as decimal digits (no libc formatting in this program). */
+static void put_pen(char *out, int *n, unsigned v)
+{
+    if (v >= 100)
+        out[(*n)++] = (char)('0' + v / 100);
+    if (v >= 10)
+        out[(*n)++] = (char)('0' + (v / 10) % 10);
+    out[(*n)++] = (char)('0' + v % 10);
+}
+
+static void put_word(char *out, int *n, const char *w)
+{
+    while (*w)
+        out[(*n)++] = *w++;
+}
+
 /* Print the STATUS line of the record in memory (a copy taken under Forbid; the layout is checked before use). */
 static void print_status(void)
 {
@@ -263,6 +280,16 @@ static void print_status(void)
     }
     Permit();
     if (flat_status_line(&copy, sizeof copy, found, line, sizeof line)) {
+        PutStr((STRPTR)line);
+        PutStr((STRPTR)"\n");
+    }
+    if (found && flat_check(&copy, sizeof copy) == FLAT_OK) {      /* FLAT-C9: the pens the desk apply / BOOT wrote (the rig reads them) */
+        int n = 0;
+        put_word(line, &n, "pens text=");   put_pen(line, &n, copy.pen_text);
+        put_word(line, &n, " line=");       put_pen(line, &n, copy.pen_line);
+        put_word(line, &n, " back=");       put_pen(line, &n, copy.pen_back);
+        put_word(line, &n, " outline=");    put_pen(line, &n, copy.pen_outline);
+        line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
     }
@@ -607,6 +634,11 @@ int main(void)
             r->name[i] = FLAT_SEM_NAME[i];
         r->ss.ss_Link.ln_Name = r->name;
         flat_init(&r->st);
+        {   /* FLAT-C9: the switch and pens from the prefs (the one mapping desk apply uses too) */
+            am_prefs bp;
+            amconf_load(&bp);
+            desk_flat_state(amconf_flat_index(&bp, AM_FLAT), amconf_flat_index(&bp, AM_FLATGAD), &r->st);
+        }
         r->task = me;
         if (me->tc_Node.ln_Name) {
             for (i = 0; me->tc_Node.ln_Name[i] && i < (int)sizeof r->tname - 1; i++)
