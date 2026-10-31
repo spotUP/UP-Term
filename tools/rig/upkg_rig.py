@@ -6,7 +6,8 @@ tests/test_dist_ipk.py).
 FS-UAE's bsdsocket emulation connects from the Mac itself, so 127.0.0.1 on the Amiga is this Mac (wget_rig.py).
 The config is UP-Term:etc/upkg.conf, asserted byte for byte equal to dist/upkg.conf, then copied to
 T:upkg-rig.conf with only its `src/gz` line changed to the Mac's http feed (https is P10.7); every command runs
-`upkg -f T:upkg-rig.conf ...`. Rig up (`rig.py start --max`) with the base installed from the kit of `make dist`.
+`upkg -f T:upkg-rig.conf ...`. Rig up (`rig.py start --max`); the base of the kit of `make dist` is installed first when the rig has none (or an older one)
+and uninstalled again at the end when this run installed it.
 The package is named as the feed names it (up-nvim, up-claude), the way `upkg list` prints it.
 
   version     `upkg --version` prints "based on opkg 0.9.0": the opkg binary ran, not the vsh script   (sentinel)
@@ -22,6 +23,9 @@ The package is named as the feed names it (up-nvim, up-claude), the way `upkg li
   remove      `upkg remove up-nvim`: files, status record and record drawer gone, no T:upkg-stage left
   needsbase   UP-Term:VERSIONS faked older than nvim's needs-base: install refused, nothing written (restored)
   badsum      Packages holds a wrong SHA256sum for up-claude: install refused, nothing written
+  appaddon    an app add-on of tools/mkappaddons.py (up-nano): `upkg install up-nano` lands UP-Term:bin/nano and
+              its record, nano runs (sentinel: "GNU nano" from `nano --version`); `upkg remove up-nano` takes the
+              binary, UP-Term:share/nano, the record drawer and the status record away again
 
 Resumable (RULES section 6a): the verdict of each case goes to build/<rig>/upkg/<case>.json with a
 fingerprint of dist/upkg.conf, build/ipk/Packages and this script.
@@ -31,7 +35,7 @@ fingerprint of dist/upkg.conf, build/ipk/Packages and this script.
   upkg_rig.py --force          every case, from zero
   upkg_rig.py --list           the recorded verdicts
 One script per rig: a second one on the same rig stops with the first one's pid (paths.rig_lock)."""
-import gzip, http.server, os, pathlib, re, shutil, subprocess, sys, tempfile, threading
+import gzip, http.server, os, pathlib, re, shutil, subprocess, sys, tempfile, threading, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 import paths  # before ami: it sets the agent port of UPTERM_RIG
@@ -49,7 +53,7 @@ CONF = 'T:upkg-rig.conf'
 STATUS = 'UP-Term:pkg/upkg/status'
 STAGE = 'T:upkg-stage'
 ADDONS = ['up-claude', 'up-pi', 'up-nvim', 'up-python']
-CASES = ['version', 'updatelist', 'install', 'upgrade', 'migrate', 'remove', 'needsbase', 'badsum', 'listnew']
+CASES = ['version', 'updatelist', 'install', 'upgrade', 'migrate', 'remove', 'needsbase', 'badsum', 'listnew', 'appaddon']
 OLD_NVIM = 'UP-Term-nvim'
 
 
@@ -395,8 +399,31 @@ def case_listnew(ck, rel):
     upkg('lnupd3', 'update')
 
 
+def case_appaddon(ck, rel):
+    pkg = 'up-nano'
+    rel.set()
+    upkg('upkgupd', 'update')
+    if installed_version(pkg):
+        upkg('nanorm0', 'remove %s' % pkg)
+    rc, out = upkg('nanoinst', 'install %s' % pkg)
+    ck(rc == 0, 'appaddon: install exit 0', out[-400:])
+    ck(exists('UP-Term:bin/nano'), 'appaddon: UP-Term:bin/nano landed (Files/install.dos ran)')
+    ck(exists('UP-Term:pkg/%s/VERSIONS' % pkg), 'appaddon: the record UP-Term:pkg/%s/VERSIONS is there' % pkg)
+    ck(installed_version(pkg) == '1.0', 'appaddon: %s names %s 1.0' % (STATUS, pkg), installed_version(pkg))
+    ck(not exists('%s/%s' % (STAGE, pkg)), 'appaddon: %s/%s left behind' % (STAGE, pkg))
+    rc, out = ir.run_slow('nanoverrun', 'UP-Term:bin/nano --version', 200)
+    ck(rc == 0 and 'GNU nano' in out, 'appaddon: nano runs from UP-Term:bin (sentinel)', out[-300:])
+    rc, out = upkg('nanorm', 'remove %s' % pkg)
+    ck(rc == 0, 'appaddon: remove exit 0', out[-400:])
+    ck(not exists('UP-Term:bin/nano'), 'appaddon: remove took UP-Term:bin/nano away')
+    ck(not exists('UP-Term:share/nano'), 'appaddon: remove took UP-Term:share/nano away')
+    ck(not exists('UP-Term:pkg/%s' % pkg), 'appaddon: remove took the record drawer away')
+    ck(installed_version(pkg) is None, 'appaddon: no status record for %s after remove' % pkg, installed_version(pkg))
+
+
 TABLE = {'version': case_version, 'updatelist': case_updatelist, 'install': case_install, 'upgrade': case_upgrade, 'migrate': case_migrate,
-         'remove': case_remove, 'needsbase': case_needsbase, 'badsum': case_badsum, 'listnew': case_listnew}
+         'remove': case_remove, 'needsbase': case_needsbase, 'badsum': case_badsum, 'listnew': case_listnew,
+         'appaddon': case_appaddon}
 
 
 def fingerprint(case=None):
@@ -443,6 +470,136 @@ def run_case(name, rel):
     return not ck.failed, '; '.join(ck.failed) or 'all %d checks' % ck.total
 
 
+def base_stale(installed, kit):
+    """True when the rig's base is not the kit's: no UP-Term:VERSIONS (None or empty) or another first line.
+    The first line names the release, the vtcon commit and the build date, so any rebuilt kit differs."""
+    first = lambda t: (t or '').strip().splitlines()[:1]
+    return not first(installed) or first(installed) != first(kit)
+
+
+BLOCK = 512
+# System: on the rig's image is a 106M partition with about 63 MB free (measured 2026-10-22 on a fresh
+# copy, rig 4: DH0 217222 blocks, 130146 free); the kit alone is 61 MB. Rushhours: has 1 GB: the base
+# goes there, as the image's own old install (a 1.x base in this drawer) already does.
+DEST = 'Rushhours:Tools/UP-Term'
+INFO_ROW = re.compile(r'^(\S+)\s+(\S+)\s+(\d+)\s+(\d+)\s+(\d+)%\s+\d+\s+(\S+)\s+(.+?)\s*$')
+
+
+def info_free_blocks(out, name):
+    """Free 512-byte blocks of the unit (DH1:) or volume (Rushhours:) `name` in AmigaDOS `Info` output, or None.
+    A row reads: Unit Size Used Free Full Errs Status Name ("DH0:  106M  87076  130146  40%  0  Read/Write  System")."""
+    want = name.rstrip(':').lower()
+    for line in out.replace('\r', '').split('\n'):
+        m = INFO_ROW.match(line.strip())
+        if m and want in (m.group(1).rstrip(':').lower(), m.group(7).lower()):
+            return int(m.group(4))
+    return None
+
+
+def tree_bytes(path):
+    """Bytes of the files under `path` (a file: its size)."""
+    path = pathlib.Path(path)
+    if path.is_file():
+        return path.stat().st_size
+    return sum(f.stat().st_size for f in path.rglob('*') if f.is_file() and not f.is_symlink())
+
+
+def free_problem(free_blocks, need_bytes, vol):
+    """None when the volume has `need_bytes` free, else the message the run stops with."""
+    if free_blocks is None:
+        return 'no row for %s in the Info output' % vol
+    have = free_blocks * BLOCK
+    if have < need_bytes:
+        return ('%s has %.1f MB free, the run needs %.1f MB: a full volume opens a DOS requester that eats the '
+                'keys; free space or move DEST' % (vol, have / 1048576.0, need_bytes / 1048576.0))
+    return None
+
+
+def free_check(vol, need_bytes, what, note=print):
+    """Stop the run, with a clear message, when `vol` cannot hold `need_bytes` (Info on the rig)."""
+    rc, out = ir.run('Info')
+    prob = free_problem(info_free_blocks(out, vol), need_bytes, vol)
+    note('free space %s before %s: %s blocks free, need %.1f MB' % (vol, what, info_free_blocks(out, vol), need_bytes / 1048576.0))
+    if prob:
+        raise SystemExit('[ERROR] free-space precheck before %s: %s' % (what, prob))
+
+
+def base_processes(status):
+    """Process numbers in `Status` output whose program is loaded from a UP-Term drawer's bin (the image's User-Startup runs
+    UP-Term:bin/Amarchy, which starts amarchy-gui and amarchy-menu). A running program holds a lock on the bin drawer:
+    "bin Not Deleted: object is in use" on the base's Delete (2026-10-29)."""
+    found = []
+    for l in status.splitlines():
+        m = re.match(r'\s*Process\s+(\d+):\s+Loaded as command:\s+(\S+)', l)
+        if m and re.search(r'(UP-Term:|/UP-Term/)bin/', m.group(2), re.I):
+            found.append(int(m.group(1)))
+    return found
+
+
+def stop_base_programs(rounds=10):
+    """Break the programs running from the old base's bin, re-listing Status each round (Amarchy restarts its children),
+    until none is left; the Delete of the drawer needs no lock on bin."""
+    for _ in range(rounds):
+        procs = base_processes(ir.run('Status')[1])
+        if not procs:
+            return
+        for n in procs:
+            ir.run('Break %d ALL' % n)
+        time.sleep(2)
+    raise SystemExit('[ERROR] programs from the old base bin still run after %d rounds: %s' % (rounds, base_processes(ir.run('Status')[1])))
+
+
+def must(ok, what, seen=''):
+    """install_rig's check() shape for a step the run cannot go on without."""
+    if not ok:
+        raise SystemExit('[ERROR] %s failed:\n%s' % (what, seen[-500:]))
+
+
+def ensure_base(must, note=print, ipk=BUILD / 'ipk'):
+    """The kit's UP-Term base on the rig (installed when absent or stale), upkg's own binary not included. True when this call
+    installed a base on a rig that had none: uninstall_base() then takes it away again. `ipk` is the feed whose size the
+    free-space check adds twice."""
+    ir.put_vsh()
+    had_base = ir.run('Assign >NIL: UP-Term: EXISTS')[0] == 0
+    kit_versions = ir.KIT / 'Files/VERSIONS'
+    if not kit_versions.exists():
+        raise SystemExit('upkg_browse_rig: there is no kit at %s (make dist first)' % ir.KIT)
+    installed = None
+    if had_base:
+        rc, installed = ir.run('Type UP-Term:VERSIONS')
+        installed = installed if rc == 0 else None
+    # an older base on the rig would test the old handler and vtcon, not the kit's
+    if base_stale(installed, kit_versions.read_text()):
+        # a CLEAN install: opkg does not downgrade, so the image's older base must not be under it, and the
+        # delete frees the space; the base goes to DEST (System: is too small for the 61 MB kit)
+        ir.prepare(None)
+        # the image's assigns lock the old drawers ("Python3 Not Deleted: object is in use"); the install makes new ones
+        for a in ('Python3:', 'UP-Term:'):
+            ir.run('Assign %s REMOVE' % a)
+        stop_base_programs()
+        for old in (DEST, 'System:UP-Term'):
+            # a drawer this size takes over 60 s on the 68020: past the agent's limit, so run_slow
+            rc, o = ir.run_slow('browse-del', 'Delete %s ALL QUIET FORCE' % old, 900)
+            if rc >= 20:
+                raise SystemExit('[ERROR] the old base %s could not be deleted (rc %d): %s' % (old, rc, o.strip()[-300:]))
+        free_check(DEST.split(':')[0], tree_bytes(ir.KIT) + 2 * tree_bytes(ipk), 'the base install', note)
+            # upkg's download backend runs curl by name: the kit's userland puts upterm-ports' curl in UP-Term:bin (the CURL option went in 970905e0)
+        (ir.VTC / 'runinstallbrowse').write_text('Execute VTC:distkit/Files/install.dos VTC:distkit/Files DEST=' + DEST + ' '
+                                                 'NOCONSOLE NODEVICE SSH BEBBOGET WASABI CPU060 UNIFONT EMOJI\n')
+        ir.base_install(must, 'runinstallbrowse')
+        # prepare() assigned LIBS: as Install sees it, without the rig's AmiSSL drawer: curl needs
+        # amisslmaster.library even for the http feed
+        for line in ir.rig_libs():
+            ir.run(line)
+        installed_now = not had_base
+        note('the base installed from %s (%s)' % (ir.KIT, 'over an older base' if had_base else 'no base before'))
+    return installed_now
+
+
+def uninstall_base():
+    ir.run_long('rununinstall')
+
+
 def cli(argv):
     only, failed, force, lst = parse_args(argv)
     OUT.mkdir(parents=True, exist_ok=True)
@@ -459,10 +616,14 @@ def cli(argv):
         for need in [BUILD / 'ipk/Packages', BUILD / 'dist/up-nvim/Files/install.dos']:
             if not need.exists():
                 raise SystemExit('upkg_rig: no %s: make dist dist-ipk first' % need)
-        ir.put_vsh()   # the maintainer scripts run under GG:bin/sh: the vsh of this tree, not an older one
     with paths.rig_lock():
         rel = Release()
+        based = False
         try:
+            if todo:
+                # the cases run `upkg` from UP-Term:bin and the maintainer scripts under GG:bin/sh: a base of this kit
+                # (and the vsh of this tree, put by ensure_base) must be on the rig; install_rig's base case uninstalls its own
+                based = ensure_base(must)
             for c, why in todo:
                 print('upkg_rig: case %s (%s)' % (c, why))
                 try:
@@ -472,6 +633,8 @@ def cli(argv):
                     return 2
                 store.record(c, ok, detail, fingerprint())
         finally:
+            if based:
+                uninstall_base()
             rel.close()
             ir.show_close()
     bad = store.failed([c for c, _ in todo])

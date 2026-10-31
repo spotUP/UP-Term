@@ -264,11 +264,11 @@ def ports():
     no AmigaDOS quoting stands between (VTC:ports.sh). xz compresses at -0
     (about 3 MB): its default -6 needs about 94 MB and an 8 MB A1200 answers
     "Cannot allocate memory" (rig 1, 2026-10-10). vsh's command -v names the
-    Amiga path."""
+    Amiga path. nano and zip are add-ons now (dist/packages.txt up-nano,
+    up-zip), not base: upkg_rig.py appaddon proves nano."""
     ports = [('sed', 'echo abc | sed s/b/X/', lambda o: o == 'aXc'),
              ('awk', "echo 3 4 | awk '{print $1+$2}'", lambda o: o == '7'),
              ('less', 'less --version | head -1', lambda o: 'less 710' in o),
-             ('nano', 'nano --version | head -1', lambda o: '9.2' in o),
              ('find', 'find --version | head -1', lambda o: 'findutils' in o and '4.11' in o),
              ('xargs', 'echo a b | xargs echo x', lambda o: o == 'x a b'),
              ('diff', 'diff --version | head -1', lambda o: '3.12' in o),
@@ -279,7 +279,6 @@ def ports():
              ('bzip2', 'echo hi | bzip2 | bzip2 -dc', lambda o: o == 'hi'),
              ('xz', 'echo hi | xz -0 | xz -dc', lambda o: o == 'hi'),
              ('tar', 'tar --version | head -1', lambda o: '3.8.9' in o),
-             ('zip', 'zip -h | grep -c "Zip 3.0"', lambda o: o.isdigit() and int(o) > 0),
              ('path', 'command -v sed', lambda o: o in ('/UP-Term/bin/sed', 'UP-Term:bin/sed'))]
     (VTC / "ports.sh").write_text(''.join('echo "%s:$(%s)"\n' % (t, c) for t, c, _ in ports))
     rc, out = run('Stack 200000\nC:vsh VTC:ports.sh', 120)

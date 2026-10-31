@@ -94,60 +94,6 @@ def wait_for(path, present, secs):
     return upkg_rig.exists(path) == present
 
 
-def base_stale(installed, kit):
-    """True when the rig's base is not the kit's: no UP-Term:VERSIONS (None or empty) or another first line.
-    The first line names the release, the vtcon commit and the build date, so any rebuilt kit differs."""
-    first = lambda t: (t or '').strip().splitlines()[:1]
-    return not first(installed) or first(installed) != first(kit)
-
-
-BLOCK = 512
-# System: on the rig's image is a 106M partition with about 63 MB free (measured 2026-10-22 on a fresh
-# copy, rig 4: DH0 217222 blocks, 130146 free); the kit alone is 61 MB. Rushhours: has 1 GB: the base
-# goes there, as the image's own old install (a 1.x base in this drawer) already does.
-DEST = 'Rushhours:Tools/UP-Term'
-INFO_ROW = re.compile(r'^(\S+)\s+(\S+)\s+(\d+)\s+(\d+)\s+(\d+)%\s+\d+\s+(\S+)\s+(.+?)\s*$')
-
-
-def info_free_blocks(out, name):
-    """Free 512-byte blocks of the unit (DH1:) or volume (Rushhours:) `name` in AmigaDOS `Info` output, or None.
-    A row reads: Unit Size Used Free Full Errs Status Name ("DH0:  106M  87076  130146  40%  0  Read/Write  System")."""
-    want = name.rstrip(':').lower()
-    for line in out.replace('\r', '').split('\n'):
-        m = INFO_ROW.match(line.strip())
-        if m and want in (m.group(1).rstrip(':').lower(), m.group(7).lower()):
-            return int(m.group(4))
-    return None
-
-
-def tree_bytes(path):
-    """Bytes of the files under `path` (a file: its size)."""
-    path = pathlib.Path(path)
-    if path.is_file():
-        return path.stat().st_size
-    return sum(f.stat().st_size for f in path.rglob('*') if f.is_file() and not f.is_symlink())
-
-
-def free_problem(free_blocks, need_bytes, vol):
-    """None when the volume has `need_bytes` free, else the message the run stops with."""
-    if free_blocks is None:
-        return 'no row for %s in the Info output' % vol
-    have = free_blocks * BLOCK
-    if have < need_bytes:
-        return ('%s has %.1f MB free, the run needs %.1f MB: a full volume opens a DOS requester that eats the '
-                'keys; free space or move DEST' % (vol, have / 1048576.0, need_bytes / 1048576.0))
-    return None
-
-
-def free_check(vol, need_bytes, what):
-    """Stop the run, with a clear message, when `vol` cannot hold `need_bytes` (Info on the rig)."""
-    rc, out = ir.run('Info')
-    prob = free_problem(info_free_blocks(out, vol), need_bytes, vol)
-    note('free space %s before %s: %s blocks free, need %.1f MB' % (vol, what, info_free_blocks(out, vol), need_bytes / 1048576.0))
-    if prob:
-        raise SystemExit('[ERROR] free-space precheck before %s: %s' % (what, prob))
-
-
 def requester_stop(what):
     """A DOS or ixemul requester on any screen takes the keys and blocks the writer; the run stops naming its text."""
     rs = ami.requesters()
@@ -155,10 +101,7 @@ def requester_stop(what):
         raise SystemExit('[ERROR] a requester is open after %s: %s' % (what, '; '.join(ami.describe_requester(r) for r in rs)))
 
 
-def must(ok, what, seen=''):
-    """install_rig's check() shape for a step the run cannot go on without."""
-    if not ok:
-        raise SystemExit('[ERROR] %s failed:\n%s' % (what, seen[-500:]))
+must = upkg_rig.must
 
 
 def listed(cmd):
@@ -167,31 +110,6 @@ def listed(cmd):
     if rc != 0:
         raise SystemExit('[ERROR] upkg %s returned %d:\n%s' % (cmd, rc, out[-400:]))
     return [l.split(' - ')[0].strip() for l in out.split('\n') if ' - ' in l]
-
-
-def base_processes(status):
-    """Process numbers in `Status` output whose program is loaded from a UP-Term drawer's bin (the image's User-Startup runs
-    UP-Term:bin/Amarchy, which starts amarchy-gui and amarchy-menu). A running program holds a lock on the bin drawer:
-    "bin Not Deleted: object is in use" on the base's Delete (2026-10-29)."""
-    found = []
-    for l in status.splitlines():
-        m = re.match(r'\s*Process\s+(\d+):\s+Loaded as command:\s+(\S+)', l)
-        if m and re.search(r'(UP-Term:|/UP-Term/)bin/', m.group(2), re.I):
-            found.append(int(m.group(1)))
-    return found
-
-
-def stop_base_programs(rounds=10):
-    """Break the programs running from the old base's bin, re-listing Status each round (Amarchy restarts its children),
-    until none is left; the Delete of the drawer needs no lock on bin."""
-    for _ in range(rounds):
-        procs = base_processes(ir.run('Status')[1])
-        if not procs:
-            return
-        for n in procs:
-            ir.run('Break %d ALL' % n)
-        time.sleep(2)
-    raise SystemExit('[ERROR] programs from the old base bin still run after %d rounds: %s' % (rounds, base_processes(ir.run('Status')[1])))
 
 
 class State:
@@ -203,39 +121,7 @@ def setup(rel, st, must=must):
     """The rig ready for a browse run: the kit's base (installed when stale), upkg in
     UP-Term:bin, the served feed `rel` and its conf as the default config. teardown() undoes it."""
     ir.put_vsh()
-    had_base = ir.run('Assign >NIL: UP-Term: EXISTS')[0] == 0
-    kit_versions = ir.KIT / 'Files/VERSIONS'
-    if not kit_versions.exists():
-        raise SystemExit('upkg_browse_rig: there is no kit at %s (make dist first)' % ir.KIT)
-    installed = None
-    if had_base:
-        rc, installed = ir.run('Type UP-Term:VERSIONS')
-        installed = installed if rc == 0 else None
-    # an older base on the rig would test the old handler and vtcon, not the kit's
-    if base_stale(installed, kit_versions.read_text()):
-        # a CLEAN install: opkg does not downgrade, so the image's older base must not be under it, and the
-        # delete frees the space; the base goes to DEST (System: is too small for the 61 MB kit)
-        ir.prepare(None)
-        # the image's assigns lock the old drawers ("Python3 Not Deleted: object is in use"); the install makes new ones
-        for a in ('Python3:', 'UP-Term:'):
-            ir.run('Assign %s REMOVE' % a)
-        stop_base_programs()
-        for old in (DEST, 'System:UP-Term'):
-            # a drawer this size takes over 60 s on the 68020: past the agent's limit, so run_slow
-            rc, o = ir.run_slow('browse-del', 'Delete %s ALL QUIET FORCE' % old, 900)
-            if rc >= 20:
-                raise SystemExit('[ERROR] the old base %s could not be deleted (rc %d): %s' % (old, rc, o.strip()[-300:]))
-        free_check(DEST.split(':')[0], tree_bytes(ir.KIT) + 2 * tree_bytes(IPK), 'the base install')
-        st.based = not had_base
-        # upkg's download backend runs curl by name: the kit's userland puts upterm-ports' curl in UP-Term:bin (the CURL option went in 970905e0)
-        (ir.VTC / 'runinstallbrowse').write_text('Execute VTC:distkit/Files/install.dos VTC:distkit/Files DEST=' + DEST + ' '
-                                                 'NOCONSOLE NODEVICE SSH BEBBOGET WASABI CPU060 UNIFONT EMOJI\n')
-        ir.base_install(must, 'runinstallbrowse')
-        # prepare() assigned LIBS: as Install sees it, without the rig's AmiSSL drawer: curl needs
-        # amisslmaster.library even for the http feed
-        for line in ir.rig_libs():
-            ir.run(line)
-        note('the base installed from %s (%s)' % (ir.KIT, 'over an older base' if had_base else 'no base before'))
+    st.based = upkg_rig.ensure_base(must, note, IPK)
     for n, src in (('upkg', UPKG),):
         shutil.copy(src, ir.VTC / n)
         rc, o = ir.run('Copy VTC:%s UP-Term:bin/%s CLONE' % (n, n))
@@ -257,7 +143,7 @@ def teardown(rel, st):
         ir.run('Copy %s %s CLONE' % (SAVED, DEFCONF))
         ir.run('Delete >NIL: %s QUIET' % SAVED)
     if st.based:
-        ir.run_long('rununinstall')
+        upkg_rig.uninstall_base()
     rel.close()
     ir.show_close()
     time.sleep(6)   # 5 s quiet before stop: a reset mid-write kills the disk
@@ -316,7 +202,7 @@ def main(argv):
             typewin.key(typewin.RET, wait=4)       # the info box: Install, Back (Install is the first button)
             requester_stop('the info box')
             shot(out, 'step1-info.png')
-            free_check(DEST.split(':')[0], 2 * tree_bytes(IPK), 'the %s install' % PKG)
+            upkg_rig.free_check(upkg_rig.DEST.split(':')[0], 2 * upkg_rig.tree_bytes(IPK), 'the %s install' % PKG, note)
             typewin.key(typewin.RET, wait=1)       # Install
             requester_stop('Install')
             shot(out, 'step1-installing.png')
