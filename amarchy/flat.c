@@ -102,9 +102,16 @@ static int c2_draw(Object *obj, Msg msg)
     struct Image *im = (struct Image *)obj;
     ULONG which = 0xFFFF;
     int frame_pen = -1;
+    struct Window *ow = NULL;
     r->st.calls++;
     if (msg->MethodID != FLAT_IM_DRAW || !r->st.enabled || r->st.held || !d->imp_RPort)
         return 0;
+    /* FLAT-OUTER-EDGE: an image that sits on a window's frame also draws the window's 1 px outer edge in the accent pen,
+     * whether or not its glyph is known; screen bar layers have no window and get none. */
+    if (d->imp_RPort->Layer)
+        ow = (struct Window *)d->imp_RPort->Layer->Window;
+    if (ow)
+        flat_outline_rects(&r->st, ow->Width, ow->Height, c2_fill, d->imp_RPort);
     if (GetAttr(SYSIA_Which, obj, &which) == 0) {
         /* Kickstart 3.1 sysiclass does not answer OM_GET: find the window gadget that renders this image. The layer
          * of the rastport belongs to the window being drawn; reading its gadget list from Intuition's own drawing

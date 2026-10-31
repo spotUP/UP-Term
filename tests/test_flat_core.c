@@ -21,7 +21,7 @@ static void test_layout(void)
     CHECK_INT(offsetof(flat_state, pen_text), 16);
     CHECK_INT(offsetof(flat_state, pen_line), 17);
     CHECK_INT(offsetof(flat_state, pen_back), 18);
-    CHECK_INT(offsetof(flat_state, reserved), 19);
+    CHECK_INT(offsetof(flat_state, pen_outline), 19);
     CHECK_STR(FLAT_SEM_NAME, "Amarchy.Flat");
     CHECK_INT(FLAT_VERSION, 1);
 }
@@ -34,7 +34,7 @@ static void test_init_check(void)
     flat_init(&s);
     CHECK_INT(s.version, FLAT_VERSION);
     CHECK_INT(s.size, FLAT_STATE_SIZE);
-    CHECK_INT(s.enabled | s.style | s.held | s.still_chained | s.calls | s.pen_text | s.pen_line | s.pen_back | s.reserved, 0);
+    CHECK_INT(s.enabled | s.style | s.held | s.still_chained | s.calls | s.pen_text | s.pen_line | s.pen_back | s.pen_outline, 0);
     CHECK_INT(flat_check(&s, sizeof s), FLAT_OK);
     CHECK_INT(flat_check(&s, sizeof s + 20), FLAT_OK);
     CHECK_INT(flat_check(&s, FLAT_STATE_SIZE - 1), FLAT_ERR_SIZE);      /* fewer readable bytes than the layout */
@@ -539,6 +539,19 @@ static void test_glyph_route(void)
 
 /* 3.1 sysiclass answers no OM_GET: the gadget type of the drawn window gadget gives SYSIA_Which */
 
+struct outline_cv_t { unsigned char *cv; int w, h, bad; };
+static void outline_fill(void *ctx, int x0, int y0, int x1, int y1, int pen)
+{
+    struct outline_cv_t *c = ctx;
+    int x, y;
+    if (pen != 5 || x0 < 0 || y0 < 0 || x1 >= c->w || y1 >= c->h)
+        c->bad++;
+    for (y = y0; y <= y1; y++)
+        for (x = x0; x <= x1; x++)
+            if (x >= 0 && y >= 0 && x < c->w && y < c->h && c->cv[y * c->w + x]++)
+                c->bad++;                                                   /* painted twice */
+}
+
 struct frame_rec_t { int n, r[8][5]; };
 static void frame_rec(void *ctx, int x0, int y0, int x1, int y1, int pen)
 {
@@ -607,6 +620,36 @@ static void test_which_from_gtype(void)
         CHECK_INT(f.r[0][4], 1);                                               /* selected: pen_line fill */
         CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 2, 6, 1, frame_rec, &f), 0);   /* too small: stock */
         CHECK_INT(flat_frame_draw(0, 0, 10, 20, 8, 6, 1, frame_rec, &f), 0);
+    }
+    {   /* FLAT-OUTER-EDGE: flat_outline_rects paints exactly the outer 1 px ring of a w x h window, each pixel once, nothing inside */
+        static const int sz[][2] = { { 2, 2 }, { 3, 3 }, { 7, 5 }, { 64, 40 }, { 640, 256 } };
+        int i, x, y;
+        flat_state os;
+        memset(&os, 0, sizeof os);
+        os.pen_outline = 5;
+        for (i = 0; i < 5; i++) {
+            int w = sz[i][0], h = sz[i][1], bad = 0;
+            static unsigned char cv[640 * 256];
+            struct outline_cv_t c;
+            memset(cv, 0, sizeof cv); c.cv = cv; c.w = w; c.h = h; c.bad = 0;
+            CHECK_INT(flat_outline_rects(&os, w, h, outline_fill, &c), 4);
+            for (y = 0; y < h; y++)
+                for (x = 0; x < w; x++) {
+                    int edge = x == 0 || y == 0 || x == w - 1 || y == h - 1;
+                    if (cv[y * w + x] != (edge ? 1 : 0))
+                        bad++;
+                }
+            CHECK_INT(bad + c.bad, 0);                                       /* ring only, each pixel once, in the pen, in bounds */
+        }
+        os.pen_outline = 0;
+        {   unsigned char one[16]; struct outline_cv_t c;
+            memset(one, 0, sizeof one); c.cv = one; c.w = 4; c.h = 4; c.bad = 0;
+            CHECK_INT(flat_outline_rects(&os, 4, 4, outline_fill, &c), 0);   /* unset pen: no rects */
+            CHECK_INT(one[0] | one[5] | one[15], 0);
+            os.pen_outline = 5;
+            CHECK_INT(flat_outline_rects(&os, 1, 9, outline_fill, &c), 0);   /* under 2 x 2: none */
+            CHECK_INT(flat_outline_rects(0, 4, 4, outline_fill, &c), 0);
+        }
     }
     CHECK_INT((int)flat_which_alias(5), FLAT_W_DEPTH);
     CHECK_INT((int)flat_which_alias(3), FLAT_W_CLOSE);

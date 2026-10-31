@@ -26,7 +26,7 @@ typedef struct flat_state {
     uint8_t pen_text;           /* 16 glyph line pen */
     uint8_t pen_line;           /* 17 thin outline pen */
     uint8_t pen_back;           /* 18 background pen */
-    uint8_t reserved;           /* 19 zero */
+    uint8_t pen_outline;        /* 19 theme accent pen of the 1 px window outer edge (FLAT-OUTER-EDGE); 0 = none (pen 0 is the background, never an edge) */
 } flat_state;                   /* 20 bytes */
 
 #define FLAT_STATE_SIZE 20

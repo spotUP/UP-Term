@@ -194,3 +194,18 @@ int flat_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, 
     fn(ctx, x1, oy, x1, y1, s->pen_line);            /* right */
     return 1;
 }
+
+int flat_outline_rects(const flat_state *s, int w, int h, flat_fill_fn fn, void *ctx)
+{
+    int pen;
+    if (!s || !fn || !s->pen_outline || w < 2 || h < 2)
+        return 0;
+    pen = s->pen_outline;
+    fn(ctx, 0, 0, w - 1, 0, pen);                    /* top */
+    fn(ctx, 0, h - 1, w - 1, h - 1, pen);            /* bottom */
+    if (h > 2) {
+        fn(ctx, 0, 1, 0, h - 2, pen);                /* left */
+        fn(ctx, w - 1, 1, w - 1, h - 2, pen);        /* right */
+    }
+    return 4;
+}

@@ -5,7 +5,7 @@
  *               bottom border (ReadPixel). The windows are opened inactive at a fixed place, so the hash depends only
  *               on what sysiclass drew: the same with and without amarchy-flat's pass-through.
  * FLAT-C2 additions (the rig's c2 step):
- *   flatwin N SET <enabled> <reserved, was style> <pen_text> <pen_line> <pen_back>
+ *   flatwin N SET <enabled> <reserved, was style> <pen_text> <pen_line> <pen_back> [pen_outline]
  *               write the switch and glyph pens into the running amarchy-flat's state block first (what
  *               Amarchy does); a close/depth/zoom/size window is then opened, hashed, RefreshWindowFrame'd, hashed.
  *   Every run prints, per system gadget, "gad <name> w=<which> open=<hash> refresh=<hash>": FNV-1a over the pixels
@@ -175,6 +175,7 @@ int main(int argc, char **argv)
             r->st.pen_text = (UBYTE)atol(argv[5]);
             r->st.pen_line = (UBYTE)atol(argv[6]);
             r->st.pen_back = (UBYTE)atol(argv[7]);
+            r->st.pen_outline = (UBYTE)(argc > 8 ? atol(argv[8]) : 0);   /* optional 8th argument: the outer edge accent pen */
         }
         Permit();
         if (!r) {
