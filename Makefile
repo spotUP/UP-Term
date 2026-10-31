@@ -378,7 +378,7 @@ $(SYMBOLS_ARCHIVE):
 	echo "$(NERDFONTS_SHA256)  $@.tmp" | shasum -a 256 -c -
 	mv $@.tmp $@
 $(SYMBOLS_TTF): $(SYMBOLS_ARCHIVE)
-	tar -xJf $(SYMBOLS_ARCHIVE) -C $(BUILD)/symbolsnerd SymbolsNerdFontMono-Regular.ttf
+	tar -xJmf $(SYMBOLS_ARCHIVE) -C $(BUILD)/symbolsnerd SymbolsNerdFontMono-Regular.ttf
 	echo "$(SYMBOLS_TTF_SHA256)  $@" | shasum -a 256 -c -
 symbolsnerd: $(SYMBOLS_TTF)
 
