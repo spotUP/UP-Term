@@ -90,5 +90,37 @@ class ClashRig(unittest.TestCase):
         self.assertEqual(calls, ["stage", "row"])
 
 
+class RequireFresh(unittest.TestCase):
+    def run_q(self, codes):
+        def run(cmd, **kw):
+            return mock.Mock(returncode=codes[cmd[-1]], stdout="", stderr="")
+        return run
+
+    def test_stale_target_is_named(self):
+        run = self.run_q({"build/amiga/Amarchy": 1, "build/amiga/amarchy-gui": 0})
+        with self.assertRaises(stage_rig.StageError) as e:
+            stage_rig.require_fresh(("Amarchy", "amarchy-gui"), run)
+        self.assertIn("[ERROR] stale: build/amiga/Amarchy", str(e.exception))
+        self.assertNotIn("amarchy-gui", str(e.exception))
+
+    def test_current_passes(self):
+        stage_rig.require_fresh(("Amarchy",), self.run_q({"build/amiga/Amarchy": 0}))
+
+    def test_make_error_is_not_stale(self):
+        with self.assertRaises(stage_rig.StageError) as e:
+            stage_rig.require_fresh(("Amarchy",), self.run_q({"build/amiga/Amarchy": 2}))
+        self.assertNotIn("stale", str(e.exception))
+
+    def test_setup_no_build_stops_before_any_copy(self):
+        import amarchy_gui_rig as g
+        with mock.patch.object(sys, "argv", ["x", "--setup", "--no-build"]), \
+                mock.patch.object(g.stage_rig, "require_fresh", side_effect=stage_rig.StageError("[ERROR] stale: f")), \
+                mock.patch.object(g.c, "run") as run, mock.patch.object(g.ami, "put") as put:
+            with self.assertRaises(stage_rig.StageError):
+                g.setup()
+        run.assert_not_called()
+        put.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

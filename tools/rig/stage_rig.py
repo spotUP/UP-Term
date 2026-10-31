@@ -38,6 +38,21 @@ def make(names, run=subprocess.run):
         raise StageError('stage_rig: make failed:\n' + (r.stdout + r.stderr)[-1500:])
 
 
+def require_fresh(names, run=subprocess.run):
+    """No-build guard: `make -q` (runs no recipe) says whether each build/amiga file is older than its sources.
+    Raises StageError '[ERROR] stale: <file>' naming every stale one, so a script never copies an old build."""
+    stale = []
+    for n in names:
+        r = run(['make', '-q', TARGETS[n]], cwd=str(paths.VTCON), capture_output=True, text=True,
+                env={**os.environ, 'UPTERM_ROOT': str(paths.UPTERM_ROOT)})
+        if r.returncode == 1:
+            stale.append(TARGETS[n])
+        elif r.returncode:
+            raise StageError('stage_rig: make -q %s failed:\n%s' % (TARGETS[n], (r.stdout + r.stderr)[-800:]))
+    if stale:
+        raise StageError('\n'.join('[ERROR] stale: %s' % f for f in stale) + '\nrun make for them, or drop --no-build')
+
+
 def stage_build(names=DEFAULT, build=True, dest=None, read=None, put=None, run=subprocess.run):
     """Returns {name: 'restaged' | 'current'}. read/put default to ami.read_file / ami.put (injectable for tests)."""
     if read is None or put is None:

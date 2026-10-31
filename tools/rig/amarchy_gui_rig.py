@@ -1172,7 +1172,13 @@ def case_pkg_notfound():
 
 
 def setup():
-    """--setup: the rig runs the build's Amarchy from VTCX:Apps/bin with UP-Term: assigned to VTCX:Apps, no hand setup."""
+    """--setup: the rig runs the build's Amarchy from VTCX:Apps/bin with UP-Term: assigned to VTCX:Apps, no hand setup.
+    The binaries are made first (stage_rig.make), or with --no-build proven current (stage_rig.require_fresh): a stale
+    build/amiga file stops the setup with `[ERROR] stale: <file>` instead of being copied."""
+    if '--no-build' in sys.argv:
+        stage_rig.require_fresh(SETUP_NAMES)
+    else:
+        stage_rig.make(SETUP_NAMES)
     for l in c.run('Status', 20)[1].splitlines():     # the kit Amarchy (and any earlier copy) must not hold the port
         if 'UP-Term:bin/' in l or SETUP_BIN in l:
             c.run('Break %s' % l.split()[1].rstrip(':'), 20)
@@ -1261,7 +1267,7 @@ def main():
         return 0
     if '--setup' in sys.argv:
         setup()
-        if bad or not set(sys.argv[1:]) - {'--setup', '--no-build'}:   # setup builds nothing: --no-build adds no case
+        if bad or not set(sys.argv[1:]) - {'--setup', '--no-build'}:   # --no-build adds no case
             return 1 if bad else 0
     stage_rig.report(stage_rig.stage_build(NAMES, build='--no-build' not in sys.argv))
     geom = build_geom()
