@@ -52,6 +52,8 @@
 #include "amconf_core.h"
 #include "amconf_dos.h"
 #include "desk_core.h"
+#include "gthemes_core.h"
+#include <graphics/view.h>
 
 static const char ver[] = "$VER: amarchy-flat 0.1 (30.10.2026) (UP-Term)";
 
@@ -218,6 +220,8 @@ static int c8_skip(Object *obj, Msg msg)
         st.pen_button = (UBYTE)flat_button_pen(&r->st, d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0);
         if (!flat_frame_draw_round(&st, (int)d->imp_State, ox, oy, w, h, fill, role_of(d->imp_RPort, obj), c2_fill, c2_read, d->imp_RPort))
             return 0;
+        flat_gh_frame(&r->gh, flat_tx_surface(d->imp_RPort->Layer, d->imp_RPort->BitMap), FindTask(NULL), d->imp_State == 1, fill,
+                      fill && role_of(d->imp_RPort, obj) == FLAT_ROLE_SECONDARY, ox, oy, ox + w - 1, oy + h - 1);
         /* a pressed filled frame arms the Text patch for its label; any other frame draw on this rastport disarms */
         flat_tx_frame(&r->tx, flat_tx_surface(d->imp_RPort->Layer, d->imp_RPort->BitMap), FindTask(NULL),
                       d->imp_State == 1, fill, ox, oy, ox + w - 1, oy + h - 1);
@@ -283,6 +287,7 @@ void flat_tx_c(struct RastPort *rp, CONST_STRPTR str, ULONG count)
     flatshared *r = g_r;
     r->tcalls++;
     int pen;
+    flat_gh_text(&r->gh, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL), rp->cp_x, rp->cp_y, (const char *)str, (int)count);
     if (r->tx.armed && (pen = flat_tx_pen(&r->st, &r->tx, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL),
                                            rp->cp_x, rp->cp_y)) >= 0) {
         UBYTE fg = rp->FgPen;
@@ -373,7 +378,31 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
     r->rcalls++;
     if (r->st.enabled && !r->st.held && rp && rp->Layer && (w = (struct Window *)rp->Layer->Window) != 0 && ret >= r->irom_lo &&
         ret < r->irom_hi) {
-        int sp = scroller_pen(r, rp, w, x0, y0, x1, y1);
+        int sp;
+        const flat_gbox *gb = flat_gh_match(&r->st, &r->gh, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL), rp->AreaPtSz, (int)x0, (int)y0, (int)x1, (int)y1);
+        if (gb) {          /* FLAT-BUTTON-DISABLED-DIM: Intuition's dither over a disabled button: solid dim fill, label again in the dim label pen */
+            int depth = rp->BitMap ? rp->BitMap->Depth : 0;
+            UBYTE fg = rp->FgPen, dm = rp->DrawMode, pt = rp->AreaPtSz;
+            UWORD *pa = (UWORD *)rp->AreaPtrn;
+            WORD cx = rp->cp_x, cy = rp->cp_y;
+            r->ghits++;
+            rp->AreaPtrn = 0; rp->AreaPtSz = 0;
+            SetDrMd(rp, JAM2);
+            SetAPen(rp, (UBYTE)flat_dim_pen(&r->st, depth));
+            ((rectfn)r->rsw.saved)(rp, gb->x0, gb->y0, gb->x1, gb->y1);
+            if (gb->str) {
+                SetDrMd(rp, JAM1);
+                SetAPen(rp, (UBYTE)flat_dimtext_pen(&r->st, depth));
+                Move(rp, gb->lx, gb->ly);
+                ((textfn)r->tsw.saved)(rp, gb->str, gb->count);
+            }
+            Move(rp, cx, cy);
+            SetAPen(rp, fg);
+            SetDrMd(rp, dm);
+            rp->AreaPtrn = pa; rp->AreaPtSz = pt;
+            return;
+        }
+        sp = scroller_pen(r, rp, w, x0, y0, x1, y1);
         if (sp >= 0) {
             UBYTE fg = rp->FgPen, dm = rp->DrawMode, pt = rp->AreaPtSz;
             UWORD *pa = (UWORD *)rp->AreaPtrn;
@@ -826,6 +855,48 @@ static int boot_wanted(void)
     return amconf_flat_index(&p, AM_FLAT) || amconf_flat_index(&p, AM_FLATGAD);
 }
 
+/* FLAT-BUTTON-DISABLED-DIM: the dim fill pen. The colour of the button fill pen on the Workbench screen scaled to DIM_PCT percent,
+ * obtained as a shared pen (ObtainBestPen: an exact or nearest colour, no DrawInfo pen is recoloured) and held until the next refresh or
+ * exit. Runs on the main task only: ObtainBestPen is never called inside the RectFill hook. Screens under 8 colours keep pen_dim 0
+ * (flat_dim_pen then falls back to the plain button pen). */
+#define DIM_PCT 60
+static LONG g_dim_pen = -1;
+
+static void dim_refresh(flatshared *r)
+{
+    struct Screen *scr = LockPubScreen(NULL);
+    if (scr) {
+        struct ColorMap *cm = scr->ViewPort.ColorMap;
+        if (g_dim_pen >= 0) {
+            ReleasePen(cm, (ULONG)g_dim_pen);
+            g_dim_pen = -1;
+            r->st.pen_dim = 0;
+        }
+        if (cm && scr->RastPort.BitMap && scr->RastPort.BitMap->Depth >= 3) {
+            ULONG rgb[3];
+            uc_u32 c;
+            GetRGB32(cm, (ULONG)flat_button_pen(&r->st, scr->RastPort.BitMap->Depth), 1, rgb);
+            c = gt_scale(((rgb[0] >> 24) << 16) | ((rgb[1] >> 24) << 8) | (rgb[2] >> 24), DIM_PCT);
+            g_dim_pen = ObtainBestPen(cm, ((c >> 16) & 0xff) * 0x01010101UL, ((c >> 8) & 0xff) * 0x01010101UL, (c & 0xff) * 0x01010101UL,
+                                      OBP_Precision, PRECISION_GUI, OBP_FailIfBad, FALSE, TAG_DONE);
+            if (g_dim_pen >= 0)
+                r->st.pen_dim = (UBYTE)g_dim_pen;
+        }
+        UnlockPubScreen(NULL, scr);
+    }
+}
+
+static void dim_release(flatshared *r)
+{
+    struct Screen *scr = g_dim_pen >= 0 ? LockPubScreen(NULL) : NULL;
+    r->st.pen_dim = 0;
+    if (scr) {
+        ReleasePen(scr->ViewPort.ColorMap, (ULONG)g_dim_pen);
+        UnlockPubScreen(NULL, scr);
+    }
+    g_dim_pen = -1;
+}
+
 int main(void)
 {
     const char *args = (const char *)GetArgStr();
@@ -924,8 +995,10 @@ int main(void)
         }
     }
     g_r = r;
-    if (!r->st.held)
+    if (!r->st.held) {
         dopus_scan(r);
+        dim_refresh(r);
+    }
     print_status();
     for (;;) {
         ULONG got = Wait(SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D | pt_sigmask(&tm));
@@ -935,6 +1008,7 @@ int main(void)
         }
         if ((got & SIGBREAKF_CTRL_D) && !r->st.held) {
             dopus_scan(r);
+            dim_refresh(r);
             print_status();
         }
         if (!(got & SIGBREAKF_CTRL_C))
@@ -956,6 +1030,7 @@ int main(void)
             PutStr((STRPTR)"amarchy-flat: a hook is still chained on top of ours, not unloading\n");
             continue;
         }
+        dim_release(r);
         if (IntuitionBase) {
             CloseLibrary((struct Library *)IntuitionBase);
             IntuitionBase = 0;

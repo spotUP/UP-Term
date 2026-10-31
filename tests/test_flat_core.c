@@ -26,7 +26,8 @@ static void test_layout(void)
     CHECK_INT(offsetof(flat_state, pen_outline), 19);
     CHECK_INT(offsetof(flat_state, pen_button), 20);
     CHECK_INT(offsetof(flat_state, pen_ptext), 21);
-    CHECK_INT(offsetof(flat_state, reserved), 22);
+    CHECK_INT(offsetof(flat_state, pen_dim), 22);
+    CHECK_INT(offsetof(flat_state, pen_dimtext), 23);
     CHECK_INT(FLAT_STATE_SIZE, 24);
     CHECK_STR(FLAT_SEM_NAME, "Amarchy.Flat");
     CHECK_INT(FLAT_VERSION, 2);
@@ -40,7 +41,7 @@ static void test_init_check(void)
     flat_init(&s);
     CHECK_INT(s.version, FLAT_VERSION);
     CHECK_INT(s.size, FLAT_STATE_SIZE);
-    CHECK_INT(s.enabled | s.style | s.held | s.still_chained | s.calls | s.pen_text | s.pen_line | s.pen_back | s.pen_outline | s.pen_button | s.pen_ptext | s.reserved[0] | s.reserved[1], 0);
+    CHECK_INT(s.enabled | s.style | s.held | s.still_chained | s.calls | s.pen_text | s.pen_line | s.pen_back | s.pen_outline | s.pen_button | s.pen_ptext | s.pen_dim | s.pen_dimtext, 0);
     CHECK_INT(flat_check(&s, sizeof s), FLAT_OK);
     CHECK_INT(flat_check(&s, sizeof s + 20), FLAT_OK);
     CHECK_INT(flat_check(&s, FLAT_STATE_SIZE - 1), FLAT_ERR_SIZE);      /* fewer readable bytes than the layout */
@@ -976,6 +977,49 @@ static void test_scroller(void)
     CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), -1);
 }
 
+/* disabled flat button gets solid dim fill, no dither: a pattern fill over a recorded filled button box takes the dim pen
+ * (and the label is handed back for a dim redraw); the same fill over a non-flat area, a pattern-less fill, an unfilled
+ * or pressed or secondary frame, a held or off block is not matched (stock). */
+static void test_disabled_button_dim_fill(void)
+{
+    flat_state s;
+    flat_gh g;
+    int a, b, c1, c2;
+    const flat_gbox *m;
+    memset(&s, 0, sizeof s); memset(&g, 0, sizeof g);
+    s.enabled = 1; s.pen_back = 0; s.pen_text = 2; s.pen_line = 3; s.pen_button = 4; s.pen_dim = 6; s.pen_dimtext = 5;
+    flat_gh_frame(&g, &a, &c1, 0, 1, 0, 10, 20, 49, 39);
+    flat_gh_text(&g, &a, &c1, 14, 32, "Use", 3);
+    m = flat_gh_match(&s, &g, &a, &c1, 2, 10, 20, 49, 39);
+    CHECK_INT(m != 0, 1);
+    CHECK_INT(flat_dim_pen(&s, 8), 6);
+    CHECK_INT(flat_dim_pen(&s, 8) != s.pen_button, 1);
+    CHECK_INT(flat_dimtext_pen(&s, 8), 5);
+    CHECK_INT(m && m->str && m->count == 3 && m->lx == 14 && m->ly == 32, 1);
+    CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 2, 12, 22, 20, 30) != 0, 1);
+    CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 0, 10, 20, 49, 39) == 0, 1);
+    CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 2, 60, 20, 80, 39) == 0, 1);
+    CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 2, 5, 20, 49, 39) == 0, 1);
+    CHECK_INT(flat_gh_match(&s, &g, &b, &c1, 2, 10, 20, 49, 39) == 0, 1);
+    CHECK_INT(flat_gh_match(&s, &g, &a, &c2, 2, 10, 20, 49, 39) == 0, 1);
+    flat_gh_frame(&g, &a, &c1, 1, 1, 0, 10, 20, 49, 39);
+    CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 2, 10, 20, 49, 39) == 0, 1);
+    flat_gh_frame(&g, &a, &c1, 0, 1, 1, 60, 20, 99, 39);
+    CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 2, 60, 20, 99, 39) == 0, 1);
+    flat_gh_frame(&g, &a, &c1, 0, 0, 0, 60, 20, 99, 39);
+    CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 2, 60, 20, 99, 39) == 0, 1);
+    flat_gh_frame(&g, &a, &c1, 0, 1, 0, 10, 20, 49, 39);
+    s.held = 1;
+    CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 2, 10, 20, 49, 39) == 0, 1);
+    s.held = 0; s.enabled = 0;
+    CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 2, 10, 20, 49, 39) == 0, 1);
+    s.enabled = 1;
+    CHECK_INT(flat_dim_pen(&s, 2), 3);
+    s.pen_dim = 9;
+    CHECK_INT(flat_dim_pen(&s, 3), 4);
+    CHECK_INT(flat_dimtext_pen(&s, 2), 2);
+}
+
 void suite_flat_core(void)
 {
     test_scroller();
@@ -989,6 +1033,7 @@ void suite_flat_core(void)
     test_swap();
     test_tramp();
     test_dopus_gate();
+    test_disabled_button_dim_fill();
     test_dopus_swap();
     test_dopus_decide();
     test_dopus_path();

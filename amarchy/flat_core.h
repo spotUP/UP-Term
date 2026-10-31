@@ -29,7 +29,8 @@ typedef struct flat_state {
     uint8_t pen_outline;        /* 19 theme accent pen of the 1 px window outer edge (FLAT-OUTER-EDGE); 0 = none (pen 0 is the background, never an edge) */
     uint8_t pen_button;         /* 20 raised fill of a GadTools button, cycle and scroller arrow (FLAT-BUTTON-FILL): the theme lighter_background (DK_SELECTION); 0 or a pen the screen lacks = pen_back */
     uint8_t pen_ptext;          /* 21 label pen of a pressed button, dark on the accent fill (DK_BG) */
-    uint8_t reserved[2];        /* 22 zero */
+    uint8_t pen_dim;            /* 22 FLAT-BUTTON-DISABLED-DIM: solid fill of a disabled button, a dim tone of pen_button; obtained by amarchy-flat itself (ObtainBestPen), 0 = none */
+    uint8_t pen_dimtext;        /* 23 label pen of a disabled button (DK_MUTED) */
 } flat_state;                   /* 24 bytes */
 
 #define FLAT_STATE_SIZE 24
@@ -234,6 +235,35 @@ int flat_tx_text(flat_tx *t, const void *surf, const void *task, int cx, int cy)
 /* The pen a patched Text call draws with: pen_ptext when flat is on and not held and flat_tx_text matches, else -1 (stock
  * pen). pen_ptext is DK_BG = pen 0, a real pen: 0 never means "unset" here. */
 int flat_tx_pen(const flat_state *s, flat_tx *t, const void *surf, const void *task, int cx, int cy);
+
+/* ---- FLAT-BUTTON-DISABLED-DIM: the ghost fill of a disabled gadget, as a pure model ---------------------------------
+ * Intuition draws a disabled gadget (frame, label), then ghosts it with one pattern RectFill (rp->AreaPtrn set, AreaPtSz != 0)
+ * over the gadget box, called from Intuition's ROM. The frame hook records every filled primary button box per surface and task, the Text
+ * patch records the label drawn inside it. A pattern fill that lands inside a recorded box is replaced by a solid fill in the
+ * dim pen and the label is redrawn in the dim label pen; any other fill is untouched. */
+#define FLAT_GH_N 8
+typedef struct flat_gbox {
+    const void *surf, *task;
+    int x0, y0, x1, y1;
+    const char *str;            /* the label: pointer, length and pen position of its Text call; str 0 = none seen */
+    int count, lx, ly;
+} flat_gbox;
+typedef struct flat_gh {
+    flat_gbox box[FLAT_GH_N];
+    int next;
+} flat_gh;
+/* A filled frame was drawn: pressed or unfilled or outline-only (role secondary) frames drop a record for the box, a filled
+ * primary non-pressed frame records it (a ring of FLAT_GH_N, the same box replaces its record). */
+void flat_gh_frame(flat_gh *g, const void *surf, const void *task, int pressed, int fill, int secondary, int x0, int y0, int x1, int y1);
+/* A Text call at pen position (cx, cy): stored as the label of the record whose box holds the position. */
+void flat_gh_text(flat_gh *g, const void *surf, const void *task, int cx, int cy, const char *str, int count);
+/* The dim fill pen of a button on a screen of this depth: pen_dim when it is a pen of the depth (depth >= 3 and 0 < pen_dim < 1 << depth),
+ * else (a screen under 8 colours cannot hold a third tone, or no dim pen) the plain button pen flat_button_pen. */
+int flat_dim_pen(const flat_state *s, int depth);
+int flat_dimtext_pen(const flat_state *s, int depth);
+/* A fill (x0,y0)-(x1,y1) on surface surf by task with area pattern size ptsz: the record it ghosts, or 0 (not enabled, held,
+ * no pattern, no record of that surface and task containing the rect). */
+const flat_gbox *flat_gh_match(const flat_state *s, const flat_gh *g, const void *surf, const void *task, int ptsz, int x0, int y0, int x1, int y1);
 
 /* FLAT-BUTTON-FILL: the size of a frame draw. Only IM_DRAWFRAME carries Dimensions (a 0 side falls back to the image's);
  * IM_DRAW has no such field, its message words past the state are junk (3.1: 4096 x -17232). */

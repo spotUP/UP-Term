@@ -376,6 +376,69 @@ int flat_tx_pen(const flat_state *s, flat_tx *t, const void *surf, const void *t
     return s->pen_ptext;
 }
 
+void flat_gh_frame(flat_gh *g, const void *surf, const void *task, int pressed, int fill, int secondary, int x0, int y0, int x1, int y1)
+{
+    int i, slot = -1;
+    for (i = 0; i < FLAT_GH_N; i++) {
+        flat_gbox *b = &g->box[i];
+        if (b->surf == surf && b->task == task && b->x0 == x0 && b->y0 == y0 && b->x1 == x1 && b->y1 == y1) {
+            slot = i;
+            break;
+        }
+    }
+    if (pressed || !fill || secondary) {
+        if (slot >= 0)
+            g->box[slot].surf = 0;
+        return;
+    }
+    if (slot < 0) {
+        slot = g->next;
+        g->next = (g->next + 1) % FLAT_GH_N;
+    }
+    g->box[slot].surf = surf; g->box[slot].task = task;
+    g->box[slot].x0 = x0; g->box[slot].y0 = y0; g->box[slot].x1 = x1; g->box[slot].y1 = y1;
+    g->box[slot].str = 0; g->box[slot].count = 0;
+}
+
+void flat_gh_text(flat_gh *g, const void *surf, const void *task, int cx, int cy, const char *str, int count)
+{
+    int i;
+    for (i = 0; i < FLAT_GH_N; i++) {
+        flat_gbox *b = &g->box[i];
+        if (b->surf && b->surf == surf && b->task == task && cx >= b->x0 && cx <= b->x1 && cy >= b->y0 && cy <= b->y1) {
+            b->str = str; b->count = count; b->lx = cx; b->ly = cy;
+            return;
+        }
+    }
+}
+
+int flat_dim_pen(const flat_state *s, int depth)
+{
+    if (depth >= 3 && depth <= 8 && s->pen_dim && s->pen_dim < (1 << depth))
+        return s->pen_dim;
+    return flat_button_pen(s, depth);
+}
+
+int flat_dimtext_pen(const flat_state *s, int depth)
+{
+    if (depth >= 3 && depth <= 8 && s->pen_dimtext && s->pen_dimtext < (1 << depth))
+        return s->pen_dimtext;
+    return s->pen_text;
+}
+
+const flat_gbox *flat_gh_match(const flat_state *s, const flat_gh *g, const void *surf, const void *task, int ptsz, int x0, int y0, int x1, int y1)
+{
+    int i;
+    if (!s->enabled || s->held || !ptsz || x1 < x0 || y1 < y0)
+        return 0;
+    for (i = 0; i < FLAT_GH_N; i++) {
+        const flat_gbox *b = &g->box[i];
+        if (b->surf && b->surf == surf && b->task == task && x0 >= b->x0 && y0 >= b->y0 && x1 <= b->x1 && y1 <= b->y1)
+            return b;
+    }
+    return 0;
+}
+
 int flat_button_role(const flat_box *self, const flat_box *sib, int n)
 {
     int i, left = 0;

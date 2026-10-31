@@ -170,7 +170,7 @@ void desk_flat_state(int flat, int gadgets, flat_state *s)
     s->pen_outline = DK_ACCENT;
     s->pen_button = DK_SELECTION;       /* FLAT-BUTTON-FILL: the theme lighter_background; flat.c falls back to pen_back on a screen without pen 4 */
     s->pen_ptext = DK_BG;               /* dark label on the accent fill of a pressed button */
-    s->reserved[0] = s->reserved[1] = 0;
+    s->pen_dimtext = DK_MUTED;          /* FLAT-BUTTON-DISABLED-DIM: dim label; pen_dim is amarchy-flat's own (it obtains it) and is left alone */
 }
 
 void desk_pens_for(int flat, unsigned char pens[DK_SLOTS])

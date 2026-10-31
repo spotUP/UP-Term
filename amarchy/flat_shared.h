@@ -40,6 +40,8 @@ typedef struct flatshared {
     flat_swap tsw;
     uintptr_t *tslot;
     flat_tx tx;                 /* the armed pressed frame (flat_core.h) */
+    flat_gh gh;                 /* FLAT-BUTTON-DISABLED-DIM: the recorded filled button boxes and labels (flat_core.h) */
+    ULONG ghits;                /* ghost fills replaced by the solid dim fill (the sentinel) */
     ULONG tcalls, thits;        /* every patched Text call / every pressed label recoloured (the sentinels) */
 } flatshared;
 
