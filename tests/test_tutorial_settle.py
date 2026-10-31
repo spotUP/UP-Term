@@ -39,6 +39,24 @@ class Settled(unittest.TestCase):
         self.assertEqual((sc.task_rows(), n), ([(88, 11)], 7))
 
 
+class FakeP(Fake):
+    def __init__(self, rows, bottom, sig):
+        super().__init__(rows, bottom)
+        self.sig = sig
+    def line_sig(self, bottom, k, c0, c1):
+        return self.sig
+
+
+class PromptBack(unittest.TestCase):
+    def test_waits_for_prompt_and_new_rows(self):
+        before = [(88, 11)]
+        want = t.prompt_back(b"P", before)
+        self.assertFalse(want(FakeP(before, 100, b"P")))               # Return not yet printed anything
+        self.assertFalse(want(FakeP([(88, 30)], 100, b"$ key0=")))     # key0 still running: no prompt at the bottom
+        self.assertFalse(want(FakeP([(88, 30)], None, b"P")))          # blank screen
+        self.assertTrue(want(FakeP([(88, 30)], 100, b"P")))            # step 7 printed, prompt back
+
+
 class Retry(unittest.TestCase):
     def test_changed_screen_rereads_candidate_zero(self):
         tried = set()

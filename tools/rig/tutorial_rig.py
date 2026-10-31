@@ -356,6 +356,17 @@ def up_word_ready(sc):
     return any(last == 11 for _, last in sc.task_rows())
 
 
+def prompt_back(prompt_sig, rows_before):
+    """want() for settled(): the tutorial prompt (its 9 column pixels, read before the Return) is the bottom line again and
+    the task rows differ from those before the Return. Step 7 runs `$ key0=$(UPTerm state menu-picks)`, an external command,
+    before it prints its Press line: a still screen while it runs has no prompt at the bottom, so settled() alone returned
+    early and the K came before the baseline (s35c)."""
+    def want(sc):
+        b = sc.bottom()
+        return b is not None and sc.line_sig(b, 0, 1, 9) == prompt_sig and sc.task_rows() != rows_before
+    return want
+
+
 def settled(secs=20, want=None, snap=None, pause=1.5):
     """The Screen once three snapshots 1.5 s apart find the same text rows and the same prompt baseline, and want(screen)
     (when given) holds: the mirror is still drawing the lesson text, the last Return's prompt and the scroll before
@@ -420,17 +431,19 @@ def case_lesson12():
         time.sleep(2)
 
         def ret(name):
-            """Return in the tutorial tab; repeated only while the prompt row is still the same prompt (the step
-            did not advance: the mirror lagging). Never pressed again once the next task shows."""
-            for n in range(3):
-                ami.key(typewin.RET)
-                time.sleep(3)
-                if not Screen().reprompted():
-                    if n:
-                        retries.append("%s x%d" % (name, n))
-                    return True
-            retries.append("%s gave up" % name)
-            return False
+            """Return in the tutorial tab, once, then wait until the next step's text AND its baseline command
+            (`$ x0=$(UPTerm state ...)`, an external command) are done and the prompt is back (prompt_back): an
+            action done earlier counted before the baseline and the step's check failed forever (s35c: the menu
+            pick at step 3 came before `menu0`, the lesson sat at step 3 and every later action landed there).
+            True when the step advanced (the prompt row is no longer a repeat of the row above)."""
+            pre = Screen()
+            sig, rows = pre.line_sig(pre.bottom(), 0, 1, 9), pre.task_rows()
+            ami.key(typewin.RET)
+            sc = settled(want=prompt_back(sig, rows))
+            if sc.reprompted():
+                retries.append("%s gave up" % name)
+                return False
+            return True
 
         ami.key(0x14, LCMD)                      # 1. Left Amiga T (the keymap's super+t; Right Amiga T is no menu key: dist/keymap super+shift+t takes it)
         time.sleep(4)
@@ -472,25 +485,18 @@ def case_lesson12():
         time.sleep(0.5)
         ami.key(0x34, RCMD)
         time.sleep(1)
+        pre = Screen()
+        pre_sig, pre_rows = pre.line_sig(pre.bottom(), 0, 1, 9), pre.task_rows()
         ami.key(typewin.RET)
         time.sleep(3)
         said = c.run("Type %s.out" % SANDBOX)[1].strip()
         log.append(("paste", bool(re.fullmatch(r"up\d+", said))))
-        settled()                                # step 7's text and baseline must be printed before the K counts
+        settled(want=prompt_back(pre_sig, pre_rows))  # step 7's text and baseline (`$ key0=...` is an external command) must be printed before the K counts
         ami.key(0x27, RCMD)                      # 7. Right Amiga K
         time.sleep(1)
         log.append(("clear", ret("step7")))
         time.sleep(3)
         prog = c.run("Type %s" % PROGRESS)[1].split()
-        for n in range(2):                       # K clears the screen: ret() sees a prompt on a blank screen as advanced. The progress file is the proof, so press Return until "12" is in it
-            if "12" in prog:
-                break
-            retries.append("step7 progress %s, Return again" % prog[-1:])
-            ami.key(0x27, RCMD)                  # the K may have come before the step printed its baseline
-            time.sleep(2)
-            ami.key(typewin.RET)
-            time.sleep(3)
-            prog = c.run("Type %s" % PROGRESS)[1].split()
         done = "12" in prog
         ami.key(0x01, RCMD)
         until(lambda: active_title() == host_title, 8)
