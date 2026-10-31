@@ -20,3 +20,11 @@ Values per theme: read from the theme's darker_bg in the gtheme table (amarchy/g
 
 Binaries (host test desk: 1795 checks, 0 failed; revert to pen 1: 3 failed):
 Amarchy e538214c24e0b39fadc1ebfcc0cdd697, amarchy-flat ee819391e053e356f09a241909dc8ec7, amarchy-gui 3d263a51ed8df0604ba128ffbef25913.
+
+## Integration check on rig 8 (OS 3.2), branch s28-flat-integration, head cd832495 - NOT COMPLETED
+
+Result: no pixel checks ran. Backdrop, round and disabled remain rig-unverified.
+- Host: flat_core 675 checks / 0 failed; desk 1795 checks / 0 failed.
+- Rig md5 equal to build: Amarchy 4a29eafa5fbc2e58ef86133430584416, amarchy-flat 76cfa312752345207b290dae74c0de56, amarchy-gui 562523f3b6f205436702550be813518f.
+- Product route: wbpattern prefs deleted, amarchy-flat started with both flat keys off (STATUS flat=off calls=0, pens text=2 line=3 back=0 outline=3 button=4 ptext=0, rectfill/text patches installed), both keys then put on, pick() opened the menu with a mouse click and the wasabi connection timed out inside the click. After that the rig no longer answered (connect timeout, ping, exec) for several minutes. Host load average was 57 with 4 fs-uae rigs near 90 percent CPU, so host starvation is the likely cause; an Amiga hang caused by the flat patches is not excluded.
+- Probe source (3 buttons, one GA_Disabled; prints corner/cut/row pens, root, window interior, palette) is ready: s28probe.c in the session scratchpad. Re-run when the host is quiet: put_flat_prefs(True), pick(), RAM:s28probe, then flat_pens().
