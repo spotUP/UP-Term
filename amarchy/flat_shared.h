@@ -31,6 +31,11 @@ typedef struct flatshared {
     int dreason, dmask, dfound;
     uint32_t dsum[FLAT_EL_COUNT]; /* flat_sum of each routine at the last scan (printed by STATUS) */
     ULONG dcalls, dflat;        /* every patched call / every call that drew flat (the sentinels) */
+    /* FLAT-OUTER-EDGE: the graphics.library RectFill patch (LVO -306) that paints Intuition's outer border edges in pen_outline */
+    flat_swap rsw;
+    uintptr_t *rslot;
+    uintptr_t irom_lo, irom_hi; /* Intuition's ROM code range (FindResident rt_MatchTag .. rt_EndSkip): the caller gate */
+    ULONG rcalls, rhits;        /* every patched RectFill call / every outer-edge fill recoloured (the sentinels) */
 } flatshared;
 
 #endif

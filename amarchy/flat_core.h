@@ -102,6 +102,7 @@ int flat_conv(unsigned intuition_version);
  * A build is patched only when its version, revision and the checksum of the first FLAT_FUNC_BYTES bytes of each
  * routine match the table; any other build is inert and STATUS says why. */
 enum { FLAT_EL_DRAWBOX = 0, FLAT_EL_FIELDBOX = 1, FLAT_EL_COUNT = 2 };
+#define FLAT_LVO_RECTFILL (-306)    /* graphics.library RectFill (the outer-edge patch) */
 #define FLAT_LVO_DRAWBOX (-696)
 #define FLAT_LVO_FIELDBOX (-702)
 #define FLAT_FUNC_BYTES 64

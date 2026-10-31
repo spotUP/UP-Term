@@ -195,17 +195,37 @@ int flat_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, 
     return 1;
 }
 
+/* The one definition of the four outer-edge strips (window-relative), in the shapes Intuition's own border redraw uses
+ * (measured on 3.1 and 3.2): top (0,0)-(w-1,0), left (0,1)-(0,h-1), right (w-1,1)-(w-1,h-2), bottom (1,h-1)-(w-1,h-1).
+ * Together they cover the ring once per pixel. Returns 0 when strip i does not exist (right strip of a 2 row window). */
+static int outer_strip(int i, int w, int h, int r[4])
+{
+    switch (i) {
+    case 0: r[0] = 0;     r[1] = 0;     r[2] = w - 1; r[3] = 0;     return 1;
+    case 1: r[0] = 0;     r[1] = 1;     r[2] = 0;     r[3] = h - 1; return 1;
+    case 2: r[0] = w - 1; r[1] = 1;     r[2] = w - 1; r[3] = h - 2; return h > 2;
+    default: r[0] = 1;    r[1] = h - 1; r[2] = w - 1; r[3] = h - 1; return 1;
+    }
+}
+
 int flat_outline_rects(const flat_state *s, int w, int h, flat_fill_fn fn, void *ctx)
 {
-    int pen;
+    int i, r[4];
     if (!s || !fn || !s->pen_outline || w < 2 || h < 2)
         return 0;
-    pen = s->pen_outline;
-    fn(ctx, 0, 0, w - 1, 0, pen);                    /* top */
-    fn(ctx, 0, h - 1, w - 1, h - 1, pen);            /* bottom */
-    if (h > 2) {
-        fn(ctx, 0, 1, 0, h - 2, pen);                /* left */
-        fn(ctx, w - 1, 1, w - 1, h - 2, pen);        /* right */
-    }
+    for (i = 0; i < 4; i++)
+        if (outer_strip(i, w, h, r))
+            fn(ctx, r[0], r[1], r[2], r[3], s->pen_outline);
     return 4;
+}
+
+int flat_outer_edge_match(int w, int h, int x0, int y0, int x1, int y1)
+{
+    int i, r[4];
+    if (w < 2 || h < 2)
+        return 0;
+    for (i = 0; i < 4; i++)
+        if (outer_strip(i, w, h, r) && r[0] == x0 && r[1] == y0 && r[2] == x1 && r[3] == y1)
+            return 1;
+    return 0;
 }

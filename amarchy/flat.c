@@ -103,16 +103,12 @@ static int c2_draw(Object *obj, Msg msg)
     struct Image *im = (struct Image *)obj;
     ULONG which = 0xFFFF;
     int frame_pen = -1;
-    struct Window *ow = NULL;
     r->st.calls++;
     if (msg->MethodID != FLAT_IM_DRAW || !r->st.enabled || r->st.held || !d->imp_RPort)
         return 0;
-    /* FLAT-OUTER-EDGE: an image that sits on a window's frame also draws the window's 1 px outer edge in the accent pen,
-     * whether or not its glyph is known; screen bar layers have no window and get none. */
-    if (d->imp_RPort->Layer)
-        ow = (struct Window *)d->imp_RPort->Layer->Window;
-    if (ow)
-        flat_outline_rects(&r->st, ow->Width, ow->Height, c2_fill, d->imp_RPort);
+    /* FLAT-OUTER-EDGE: the window's 1 px outer edge in the accent pen is NOT drawn here. Intuition repaints the four outer
+     * border edges last in every frame redraw, as four 1 px RectFill calls through graphics.library, which erases anything
+     * drawn from this hook. The ring is painted by the RectFill patch (flat_rf_c, below), which recolours exactly those fills. */
     if (GetAttr(SYSIA_Which, obj, &which) == 0) {
         /* Kickstart 3.1 sysiclass does not answer OM_GET: find the window gadget that renders this image. The layer
          * of the rastport belongs to the window being drawn; reading its gadget list from Intuition's own drawing
@@ -231,6 +227,74 @@ static void d4_fieldbox(__reg("a0") struct RastPort *rp, __reg("a1") struct Rect
 
 static const LONG d4_lvo[FLAT_EL_COUNT] = { FLAT_LVO_DRAWBOX, FLAT_LVO_FIELDBOX };
 
+/* ---- FLAT-OUTER-EDGE: graphics.library RectFill (LVO -306, RectFill(rp a1, xMin d0, yMin d1, xMax d2, yMax d3)).
+ * Intuition fills each of a window's four outer border edges with one 1 px RectFill, last in every frame redraw (3.1 and
+ * 3.2), so the ring cannot come from a class hook. The entry stub (flat_rf.s) passes the caller's return address; a fill
+ * is recoloured to pen_outline only when ALL hold: enabled and not held, the rastport is a window's layer, the window
+ * has a border, the rect is exactly one outer strip of the window (flat_outer_edge_match) and the caller lies in
+ * Intuition's ROM code. Anything else runs the stock RectFill untouched. ---- */
+typedef void (*rectfn)(__reg("a1") struct RastPort *, __reg("d0") LONG, __reg("d1") LONG, __reg("d2") LONG, __reg("d3") LONG);
+extern void flat_rf_entry(void);
+
+void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG ret)
+{
+    flatshared *r = g_r;
+    struct Window *w;
+    r->rcalls++;
+    if (r->st.enabled && !r->st.held && r->st.pen_outline && rp && rp->Layer && (w = (struct Window *)rp->Layer->Window) != 0 &&
+        !(w->Flags & WFLG_BORDERLESS) && ret >= r->irom_lo && ret < r->irom_hi &&
+        flat_outer_edge_match(w->Width, w->Height, (int)x0, (int)y0, (int)x1, (int)y1)) {
+        UBYTE fg = rp->FgPen;
+        r->rhits++;
+        SetAPen(rp, r->st.pen_outline);
+        ((rectfn)r->rsw.saved)(rp, x0, y0, x1, y1);
+        SetAPen(rp, fg);
+        return;
+    }
+    ((rectfn)r->rsw.saved)(rp, x0, y0, x1, y1);
+}
+
+static int rf_install(flatshared *r)
+{
+    struct Resident *rt = FindResident((STRPTR)"intuition.library");
+    unsigned char *entry = (unsigned char *)GfxBase + FLAT_LVO_RECTFILL;
+    int rc;
+    if (!rt || !rt->rt_MatchTag || rt->rt_EndSkip <= (APTR)rt->rt_MatchTag || !flat_jmp_target(entry))
+        return -100;
+    r->irom_lo = (uintptr_t)rt->rt_MatchTag;
+    r->irom_hi = (uintptr_t)rt->rt_EndSkip;
+    flat_swap_init(&r->rsw);
+    g_r = r;
+    Forbid();
+    rc = flat_swap_install(&r->rsw, (uintptr_t *)(entry + 2), (uintptr_t)flat_rf_entry);
+    if (rc == FLAT_OK) {
+        r->rslot = (uintptr_t *)(entry + 2);
+        SumLibrary((struct Library *)GfxBase);
+        CacheClearU();
+    }
+    Permit();
+    return rc;
+}
+
+static int rf_remove(flatshared *r)
+{
+    int rc = FLAT_NOT_INSTALLED;
+    if (!r->rsw.installed)
+        return rc;
+    Forbid();
+    rc = flat_swap_remove(&r->rsw, r->rslot, &r->st);
+    if (rc == FLAT_REMOVED) {
+        SumLibrary((struct Library *)GfxBase);
+        CacheClearU();
+    }
+    Permit();
+    if (rc == FLAT_REMOVED) {
+        Delay(5);                       /* a caller that already entered the stub finishes its fill */
+        r->rslot = 0;
+    }
+    return rc;
+}
+
 static flatshared *find_record(void)
 {
     flatshared *r;
@@ -250,6 +314,15 @@ static void put_pen(char *out, int *n, unsigned v)
     out[(*n)++] = (char)('0' + v % 10);
 }
 
+static void put_num(char *out, int *n, unsigned long v)
+{
+    char t[12];
+    int k = 0;
+    do { t[k++] = (char)('0' + v % 10); v /= 10; } while (v && k < 11);
+    while (k)
+        out[(*n)++] = t[--k];
+}
+
 static void put_word(char *out, int *n, const char *w)
 {
     while (*w)
@@ -265,7 +338,8 @@ static void print_status(void)
     int found = 0, dfound = 0, dreason = 0, dmask = 0, dinst = 0;
     unsigned dver = 0, drev = 0;
     unsigned long dcalls = 0, dflat = 0, fcalls = 0, fflat = 0;
-    int finst = 0;
+    int finst = 0, rinst = 0;
+    unsigned long rcalls = 0, rhits = 0;
     uint32_t dsum[FLAT_EL_COUNT] = { 0, 0 };
     memset(&copy, 0, sizeof copy);
     Forbid();
@@ -277,6 +351,7 @@ static void print_status(void)
         dinst = r->dsw[0].installed || r->dsw[1].installed; dcalls = r->dcalls; dflat = r->dflat;
         dsum[0] = r->dsum[0]; dsum[1] = r->dsum[1];
         finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat;
+        rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits;
     }
     Permit();
     if (flat_status_line(&copy, sizeof copy, found, line, sizeof line)) {
@@ -294,6 +369,15 @@ static void print_status(void)
         PutStr((STRPTR)"\n");
     }
     if (found && flat_dopus_status_line(dfound, dver, drev, dreason, dmask, dinst, dcalls, dflat, dsum, line, sizeof line)) {
+        PutStr((STRPTR)line);
+        PutStr((STRPTR)"\n");
+    }
+    if (found) {                                    /* FLAT-OUTER-EDGE sentinels: calls rising = the stub runs, hits rising = ring painted */
+        int n = 0;
+        put_word(line, &n, "rectfill installed=");  put_word(line, &n, rinst ? "yes" : "no");
+        put_word(line, &n, " calls=");              put_num(line, &n, rcalls);
+        put_word(line, &n, " hits=");               put_num(line, &n, rhits);
+        line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
     }
@@ -673,6 +757,8 @@ int main(void)
                 marker_delete();
                 marker_live = 0;
             } else {
+                if (rf_install(r) != FLAT_OK)
+                    PutStr((STRPTR)"amarchy-flat: RectFill patch not installed\n");
                 pt_start(&tm, (unsigned long)FLAT_MARKER_SECS * 1000000UL);
             }
         }
@@ -696,6 +782,10 @@ int main(void)
         dopus_unpatch(r);
         if (r->dsw[0].installed || r->dsw[1].installed) {
             PutStr((STRPTR)"amarchy-flat: a patch is still chained on a DOpus entry, not unloading\n");
+            continue;
+        }
+        if (rf_remove(r) == FLAT_STILL_CHAINED) {
+            PutStr((STRPTR)"amarchy-flat: a patch is still chained on RectFill, not unloading\n");
             continue;
         }
         if (r->sw.installed && hook_remove(r) == FLAT_STILL_CHAINED) {

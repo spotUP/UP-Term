@@ -652,6 +652,26 @@ static void test_which_from_gtype(void)
             CHECK_INT(flat_outline_rects(0, 4, 4, outline_fill, &c), 0);
         }
     }
+    {   /* FLAT-OUTER-EDGE: the RectFill patch's selector accepts exactly Intuition's four outer strips, nothing else */
+        static const int sz[][2] = { { 220, 90 }, { 400, 100 }, { 640, 256 }, { 3, 3 } };
+        int i;
+        for (i = 0; i < 4; i++) {
+            int w = sz[i][0], h = sz[i][1];
+            CHECK_INT(flat_outer_edge_match(w, h, 0, 0, w - 1, 0), 1);            /* top */
+            CHECK_INT(flat_outer_edge_match(w, h, 0, 1, 0, h - 1), 1);            /* left */
+            CHECK_INT(flat_outer_edge_match(w, h, w - 1, 1, w - 1, h - 2), 1);    /* right */
+            CHECK_INT(flat_outer_edge_match(w, h, 1, h - 1, w - 1, h - 1), 1);    /* bottom */
+            CHECK_INT(flat_outer_edge_match(w, h, 0, 0, w - 2, 0), 0);            /* off by one */
+            CHECK_INT(flat_outer_edge_match(w, h, 0, 0, w, 0), 0);
+            CHECK_INT(flat_outer_edge_match(w, h, 0, 1, 0, h - 2), 0);
+            CHECK_INT(flat_outer_edge_match(w, h, 0, h - 1, w - 1, h - 1), 0);    /* bottom starting at the corner */
+            CHECK_INT(flat_outer_edge_match(w, h, 0, 0, w - 1, 1), 0);            /* 2 px thick */
+            CHECK_INT(flat_outer_edge_match(w, h, 1, 1, w - 2, 1), 0);            /* inner bevel rects */
+            CHECK_INT(flat_outer_edge_match(w, h, 1, 2, 1, h - 2), 0);
+            CHECK_INT(flat_outer_edge_match(w, h, 3, 13, w - 18, 13), 0);
+        }
+        CHECK_INT(flat_outer_edge_match(1, 9, 0, 0, 0, 0), 0);                   /* under 2 x 2 */
+    }
     CHECK_INT((int)flat_which_alias(5), FLAT_W_DEPTH);
     CHECK_INT((int)flat_which_alias(3), FLAT_W_CLOSE);
 }
