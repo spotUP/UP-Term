@@ -64,3 +64,32 @@ Rig 4 (060 max), lldb attached to the FS-UAE pid; breakpoints cpu_halt, abort, e
 - Run 3: not done (rig start takes 8-15 min wall).
 - Conclusion: in 2 of 2 runs under lldb the stop is a HOST crash (EXC_BAD_ACCESS, a Mach exception, so `process handle SIGSEGV` did not catch it), not a guest cpu_halt. Two different fault sites (filesys thread notify_check null deref; emulation thread op_0000_0_ff wild address 0x300a00001), which smells like memory corruption of the emulator's own state (host heap/inode data), not one local bug. No halt id: cpu_halt never ran. The earlier HANG (haltloop) was a different outcome, no cpu_halt breakpoint was set then.
 - Next: crash site 1 needs a real bt of thread 11 (callers of notify_check; a_inode / unit pointers), site 2 needs the m68k PC/opcode (regs.pc, opcode arg) to see which guest instruction faulted. Scripts: scratchpad/loop2.py, r2.cmds, run2.py (session 0fbfe951).
+
+## AddressSanitizer run (s39 run 3)
+Build: ~/Code/Emulators/fs-uae-asan/fs-uae (copy of fs-uae-debug, `-fsanitize=address -fno-omit-frame-pointer -O1 -g`;
+libSDL3.dylib symlinks beside the binary and in gen/ stop an sdl2-compat NSAlert hang at start). Rig 4 (060 max) on it
+via `UPTERM_FSUAE=`, `ASAN_OPTIONS=halt_on_error=1:log_path=<scratch>/asan`, nvim a3aa3137 + uhome, HOME=/VTCX/uhome,
+`nvim --headless +q`.
+
+- Outcome: HANG ("the Amiga stopped answering while nvim was running (nothing for 25 s, and a ping got no reply)"),
+  FS-UAE alive at 56% CPU, no asan.* report, none at `rig.py stop` either.
+- Reading: no host heap overflow, use-after-free or double free on this run. ASan does not track guest RAM (one big host
+  mapping), so a host thread writing a stale guest address (bsdsocket recv/WaitSelect worker, clipboard copy) stays
+  invisible to it. The guest heap corruption and the wild-PC host crash of run 2 both still fit that shape.
+- Clipboard lead: the rig runs `clipboard_sharing = 1`; the FS-UAE log shows Mac clipboard text copied into the guest
+  during the run (`clipboard: to_amiga 10023808 220`, `->amiga ...`). src/od-fs/clipboard.cpp:852 amiga_clipboard_want_data
+  copies only after a size match against the guest's own AllocMem'd buffer, so the code reads safe; tested anyway with
+  `rig.py start --no-clipboard` (new flag, s39), see the A/B below.
+
+## Clipboard A/B (s39 run 4)
+
+Rig 4, 060 `--max`, normal nvim config (`HOME` = staged `userconf/home`), `VTC:nvimd/bin/nvim --headless +q` with a 90 s limit, then a check 5 s later that the FS-UAE process still exists. Six fresh rig boots: three with the new `rig.py start --no-clipboard` (config shows `clipboard_sharing = 0`), three with the default (clipboard sharing on).
+
+| clipboard sharing | runs | nvim result | FS-UAE afterwards |
+|---|---|---|---|
+| off | 3 | rc 0, empty output | gone in 3 of 3 |
+| on | 3 | rc 0, empty output | gone in 3 of 3 |
+
+Clipboard sharing does not cause the exit: FS-UAE disappears every time with sharing off as well. The clipboard path (`amiga_clipboard_want_data`) drops off the candidate list. bsdsocket stays the top candidate. It cannot be switched off on a rig, because wasabid needs it.
+
+Caveats: the first attempt ran the condev calls without `UPTERM_RIG=4` and talked to rig 1. Those runs and their logs were discarded. Staging the nvim tree into `vtc/` after the rig booted gave "Unknown command": a filesystem the guest has already mounted does not show new host folders. The staging now happens before the boot.
