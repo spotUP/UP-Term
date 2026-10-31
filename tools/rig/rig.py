@@ -1178,11 +1178,19 @@ def setup_config_only():
     if (RIG / "sys.hdf").exists() or OS or OS32:
         setup()
 
+def require_vsh(vsh):
+    """Exit with one clear message when build/amiga/vsh is missing; a silent skip would hide it (the other
+    programs staged beside it are optional, vsh is not)."""
+    if not pathlib.Path(vsh).is_file():
+        sys.exit("rig: %s not found: run `make build/amiga/vsh` (or `make amiga`) first" % vsh)
+
+
 def stage_upterm(dest, vsh):
     """The kit's UP-Term: drawer as far as the icon needs it (R9): bin/vsh, the tool
     of UP-Term.info, and the icon and its text file, made as `make dist-base` makes them. Amarchy and
     amarchy-menu go to bin beside vsh when they were built, at paths.UPTERM_BIN (the rig drawer; the
     rig scripts start them from there, as UP-Term: moves with a kit install); before this the rig had no Amarchy."""
+    require_vsh(vsh)
     (dest / "bin").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(vsh, dest / "bin/vsh")
     for name in ("Amarchy", "amarchy-menu", "amarchy-gui", "amarchy-index", "AmTile"):
@@ -1488,6 +1496,7 @@ def install():
         _install()
 
 def _install():
+    require_vsh(build_amiga() / "vsh")
     merge_build()
     (RIG / "vtc/kit-restore").unlink(missing_ok=True)
     shutil.copyfile(built_handler(), RIG / "vtc/vtcon-handler")
