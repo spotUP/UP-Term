@@ -1,6 +1,7 @@
 /* The amarchy-flat state block (amarchy/flat_core.c; plan 2026-10-29-amarchy-flat-ui-patch.md FLAT-C0). The block
  * is shared with Amarchy through the public semaphore, so its offsets are a contract: pinned here byte by byte. */
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 #include "../amarchy/flat_core.h"
 #include "../amarchy/flat_glyph.h"
@@ -565,6 +566,18 @@ static void outline_fill(void *ctx, int x0, int y0, int x1, int y1, int pen)
 }
 
 struct frame_rec_t { int n, r[8][5]; };
+
+static void round_fill(void *ctx, int x0, int y0, int x1, int y1, int pen)
+{
+    int (*p)[60] = (int (*)[60])ctx, x, y;
+    for (y = y0; y <= y1; y++) for (x = x0; x <= x1; x++) p[y][x] = pen;
+}
+static int round_read(void *ctx, int x, int y)
+{
+    int (*p)[60] = (int (*)[60])ctx;
+    return x < 0 || y < 0 || x >= 60 || y >= 40 ? -1 : p[y][x];
+}
+
 static void frame_rec(void *ctx, int x0, int y0, int x1, int y1, int pen)
 {
     struct frame_rec_t *f = (struct frame_rec_t *)ctx;
@@ -637,6 +650,38 @@ static void test_which_from_gtype(void)
         CHECK_INT(f.n == 1 && f.r[0][4] == 1, 1);                              /* pressed: accent (pen_line) fill, no outline */
         CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 2, 6, 1, 0, frame_rec, &f), 0);   /* too small: stock */
         CHECK_INT(flat_frame_draw(0, 0, 10, 20, 8, 6, 1, 0, frame_rec, &f), 0);
+    }
+    {   /* FLAT-BUTTON-ROUND: corners take the pen read just outside the button, not a fixed pen */
+        struct round_canvas { int pix[40][60]; } *cv = (struct round_canvas *)calloc(1, sizeof *cv);
+        flat_state fs;
+        int cut[FLAT_ROUND_MAX][4], x, y, n, bg7 = 0, ok = 1;
+        memset(&fs, 0, sizeof fs);
+        fs.enabled = 1; fs.pen_line = 1; fs.pen_back = 0; fs.pen_button = 4;
+        for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 7;       /* group box pen 7, not pen 0 */
+        CHECK_INT(flat_frame_draw_round(&fs, 0, 10, 10, 20, 8, 1, 0, round_fill, round_read, cv), 1);
+        CHECK_INT(cv->pix[10][10] == 7 && cv->pix[10][29] == 7 && cv->pix[17][10] == 7 && cv->pix[17][29] == 7, 1);   /* corners: outside pen */
+        CHECK_INT(cv->pix[10][11] == 4 && cv->pix[11][10] == 4 && cv->pix[12][12] == 4, 1);                          /* small: 1 px cut only */
+        for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = (x + y) & 3;   /* patterned fill: each corner its own neighbour */
+        CHECK_INT(flat_frame_draw_round(&fs, 1, 10, 10, 20, 8, 1, 0, round_fill, round_read, cv), 1);
+        CHECK_INT(cv->pix[10][10] == (9 + 9 & 3) && cv->pix[17][29] == (30 + 18 & 3) && cv->pix[10][29] == (30 + 9 & 3), 1);   /* pressed too */
+        CHECK_INT(cv->pix[12][12] == 1, 1);                                                                          /* pressed body: pen_line */
+        CHECK_INT(flat_button_corners(20, 8, cut), 4);                                                               /* small: 4 cuts */
+        CHECK_INT(cut[0][0] == 0 && cut[0][1] == 0 && cut[0][2] == -1 && cut[0][3] == -1, 1);
+        CHECK_INT(cut[3][0] == 19 && cut[3][1] == 7 && cut[3][2] == 20 && cut[3][3] == 8, 1);
+        CHECK_INT(flat_button_corners(20, 11, cut), 4);
+        n = flat_button_corners(20, 12, cut);
+        CHECK_INT(n, 12);                                                                                            /* large: corner + two beside each */
+        for (x = 0; x < n; x++) {                                                                                   /* inside pixels distinct, all on the box edge ring */
+            int ex = cut[x][0] == 0 || cut[x][0] == 19, ey = cut[x][1] == 0 || cut[x][1] == 11, k;
+            if (!ex && !ey) ok = 0;
+            for (k = 0; k < x; k++) if (cut[k][0] == cut[x][0] && cut[k][1] == cut[x][1]) ok = 0;
+        }
+        CHECK_INT(ok, 1);
+        CHECK_INT(cut[1][0] == 1 && cut[1][1] == 0 && cut[1][2] == 1 && cut[1][3] == -1, 1);                         /* beside the corner, along the top */
+        CHECK_INT(cut[2][0] == 0 && cut[2][1] == 1 && cut[2][2] == -1 && cut[2][3] == 1, 1);                         /* beside the corner, down the left */
+        CHECK_INT(flat_button_corners(2, 12, cut), 0);
+        (void)bg7;
+        free(cv);
     }
     {   /* BUTTON-ROLES: rightmost of a row is outlined, others and a lone button are filled; fill pen per depth; pressed is accent */
         struct frame_rec_t f;

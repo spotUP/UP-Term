@@ -81,6 +81,12 @@ static void c2_fill(void *ctx, int x0, int y0, int x1, int y1, int pen)
     RectFill(rp, x0, y0, x1, y1);
 }
 
+/* FLAT-BUTTON-ROUND: the pen already on the surface at (x, y), -1 off the layer. */
+static int c2_read(void *ctx, int x, int y)
+{
+    return (int)ReadPixel((struct RastPort *)ctx, x, y);
+}
+
 /* FLAT-C7: a layer without a window is a screen's title bar: find the screen whose BarLayer it is and look through
  * Screen->FirstGadget (the depth gadget, type 0xc055) for the gadget that renders this image. */
 static int c7_screen_which(struct Layer *lay, Object *obj)
@@ -210,7 +216,7 @@ static int c8_skip(Object *obj, Msg msg)
         flat_frame_size(msg->MethodID == FLAT_IM_DRAWFRAME, d->imp_Dimensions.Width, d->imp_Dimensions.Height, im->Width, im->Height, &w, &h);
         /* FLAT-BUTTON-FILL: the fill pen must exist on this screen (a 4 colour screen has no pen 4) */
         st.pen_button = (UBYTE)flat_button_pen(&r->st, d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0);
-        if (!flat_frame_draw(&st, (int)d->imp_State, ox, oy, w, h, fill, role_of(d->imp_RPort, obj), c2_fill, d->imp_RPort))
+        if (!flat_frame_draw_round(&st, (int)d->imp_State, ox, oy, w, h, fill, role_of(d->imp_RPort, obj), c2_fill, c2_read, d->imp_RPort))
             return 0;
         /* a pressed filled frame arms the Text patch for its label; any other frame draw on this rastport disarms */
         flat_tx_frame(&r->tx, flat_tx_surface(d->imp_RPort->Layer, d->imp_RPort->BitMap), FindTask(NULL),

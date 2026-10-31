@@ -205,6 +205,42 @@ int flat_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, 
     return 1;
 }
 
+int flat_button_corners(int w, int h, int out[][4])
+{
+    int c, n = 0, tall = h >= FLAT_ROUND_TALL;
+    if (w < 3 || h < 3)
+        return 0;
+    for (c = 0; c < 4; c++) {
+        int x = (c & 1) ? w - 1 : 0, y = (c & 2) ? h - 1 : 0;
+        int ix = (c & 1) ? -1 : 1, iy = (c & 2) ? -1 : 1;           /* direction into the box */
+        out[n][0] = x; out[n][1] = y; out[n][2] = x - ix; out[n][3] = y - iy; n++;
+        if (tall) {
+            out[n][0] = x + ix; out[n][1] = y; out[n][2] = x + ix; out[n][3] = y - iy; n++;     /* beside the corner, along the row */
+            out[n][0] = x; out[n][1] = y + iy; out[n][2] = x - ix; out[n][3] = y + iy; n++;     /* beside the corner, down the column */
+        }
+    }
+    return n;
+}
+
+int flat_frame_draw_round(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn,
+                          flat_read_fn rd, void *ctx)
+{
+    int cut[FLAT_ROUND_MAX][4], pen[FLAT_ROUND_MAX], n = 0, i;
+    if (!s || !fn || w < 3 || h < 3)
+        return 0;
+    if (rd && fill) {
+        n = flat_button_corners(w, h, cut);
+        for (i = 0; i < n; i++)
+            pen[i] = rd(ctx, ox + cut[i][2], oy + cut[i][3]);        /* before the box is painted */
+    }
+    if (!flat_frame_draw(s, ids, ox, oy, w, h, fill, role, fn, ctx))
+        return 0;
+    for (i = 0; i < n; i++)
+        if (pen[i] >= 0)
+            fn(ctx, ox + cut[i][0], oy + cut[i][1], ox + cut[i][0], oy + cut[i][1], pen[i]);
+    return 1;
+}
+
 /* The one definition of the four outer-edge strips (window-relative), in the shapes Intuition's own border redraw uses
  * (measured on 3.1 and 3.2): top (0,0)-(w-1,0), left (0,1)-(0,h-1), right (w-1,1)-(w-1,h-2), bottom (1,h-1)-(w-1,h-1).
  * Together they cover the ring once per pixel. Returns 0 when strip i does not exist (right strip of a 2 row window). */

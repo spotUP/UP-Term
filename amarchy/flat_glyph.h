@@ -64,6 +64,20 @@ int flat_glyph_draw(const flat_state *s, unsigned long which, unsigned long meth
  * when the box is under 3x3 or fill_fn is null (the caller then runs the stock routine). */
 int flat_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn, void *ctx);
 
+/* FLAT-BUTTON-ROUND: rd(ctx, x, y) reads the pen already on the surface (ReadPixel; negative = unreadable). */
+typedef int (*flat_read_fn)(void *ctx, int x, int y);
+/* The rounded corners of a button box of size w x h, window-relative: each cut pixel is {x, y, sx, sy} where (x, y) is inside the box
+ * and (sx, sy) the pixel just outside it, diagonally beyond the corner (the colour the cut takes). A 1 px cut at each corner; a box at
+ * least FLAT_ROUND_TALL (12) px high also cuts the two pixels beside each corner along the edges (their outside pixel is straight
+ * above / below / left / right of them). Returns the number of cuts (4 or 12), 0 when the box is under 3 x 3. out holds 12. */
+#define FLAT_ROUND_TALL 12
+#define FLAT_ROUND_MAX 12
+int flat_button_corners(int w, int h, int out[][4]);
+/* flat_frame_draw plus rounded corners: the outside pens are read with rd BEFORE the box is painted, then each cut pixel takes its
+ * sampled pen (an unreadable pixel is left as drawn). rd null: no rounding, same as flat_frame_draw. */
+int flat_frame_draw_round(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn,
+                          flat_read_fn rd, void *ctx);
+
 /* FLAT-OUTER-EDGE: the four 1 px strips of the outer edge of a window of size w x h, as fill(ctx, x0, y0, x1, y1, pen)
  * calls in pen_outline: top row y = 0, bottom y = h - 1, left x = 0, right x = w - 1 (window-relative; nothing inside).
  * Returns the number of strips drawn: 4, or 0 when pen_outline is 0 (no outline), a window under 2 x 2, or fn is null.
