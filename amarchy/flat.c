@@ -343,7 +343,7 @@ static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, LO
     for (g = w->FirstGadget; g; g = g->NextGadget) {
         struct PropInfo *pi;
         int gx, gy, gw, gh, cx, cy, cw, ch, pen;
-        if ((g->GadgetType & GTYP_GADGETTYPE) != GTYP_PROPGADGET || !(pi = (struct PropInfo *)g->SpecialInfo))
+        if ((g->GadgetType & GTYP_GTYPEMASK) != GTYP_PROPGADGET || !(pi = (struct PropInfo *)g->SpecialInfo))
             continue;
         gx = g->LeftEdge + ((g->Flags & GFLG_RELRIGHT) ? w->Width - 1 : 0);
         gy = g->TopEdge + ((g->Flags & GFLG_RELBOTTOM) ? w->Height - 1 : 0);
@@ -478,7 +478,7 @@ static void print_status(void)
     unsigned dver = 0, drev = 0;
     unsigned long dcalls = 0, dflat = 0, fcalls = 0, fflat = 0;
     int finst = 0, rinst = 0;
-    unsigned long rcalls = 0, rhits = 0, tcalls = 0, thits = 0;
+    unsigned long rcalls = 0, rhits = 0, shits = 0, tcalls = 0, thits = 0;
     int tinst = 0;
     uint32_t dsum[FLAT_EL_COUNT] = { 0, 0 };
     memset(&copy, 0, sizeof copy);
@@ -491,7 +491,7 @@ static void print_status(void)
         dinst = r->dsw[0].installed || r->dsw[1].installed; dcalls = r->dcalls; dflat = r->dflat;
         dsum[0] = r->dsum[0]; dsum[1] = r->dsum[1];
         finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat;
-        rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits;
+        rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits;
         tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits;
     }
     Permit();
@@ -520,6 +520,7 @@ static void print_status(void)
         put_word(line, &n, "rectfill installed=");  put_word(line, &n, rinst ? "yes" : "no");
         put_word(line, &n, " calls=");              put_num(line, &n, rcalls);
         put_word(line, &n, " hits=");               put_num(line, &n, rhits);
+        put_word(line, &n, " shits=");              put_num(line, &n, shits);
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
