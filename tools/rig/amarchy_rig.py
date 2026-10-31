@@ -15,7 +15,7 @@ NOT RUN when written (rig 4 busy, rig 1 never): C6 and C7 stay open until it has
 """
 import argparse, pathlib, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
-import paths
+import paths, verdicts
 import ami, condev_rig as c
 import stage_rig, tabstate
 
@@ -135,18 +135,19 @@ ROWS = [
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--only')
+    ap.add_argument('--only', help='row name, or a comma list of rows')
     ap.add_argument('--failed', action='store_true')
     ap.add_argument('--fresh', action='store_true')
     ap.add_argument('--no-build', action='store_true', help='stage what build/amiga holds, do not run make')
     a = ap.parse_args()
+    a.only = verdicts.parse_only(a.only, [n for n, _ in ROWS])
     OUT.mkdir(parents=True, exist_ok=True)
     # the rows start VTC:Apps/bin/Amarchy: that file must be this build (a stale hand-copied one ran before)
     stage_rig.report(stage_rig.stage_build(build=not a.no_build))
     passed = total = 0
     for name, fn in ROWS:
         f = OUT / (name + '.verdict')
-        if a.only and a.only != name:
+        if a.only and name not in a.only:
             continue
         if f.exists() and not a.fresh and not a.only:
             old = f.read_text()

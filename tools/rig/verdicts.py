@@ -93,3 +93,15 @@ class Checks:
     @property
     def passed(self):
         return self.total - len(self.failed)
+
+
+def parse_only(text, names):
+    """The rows a `--only a,b` selects, as a list in the order given; None for no --only. A name that is
+    not in `names` is a SystemExit naming it and the valid ones (never a run of zero rows)."""
+    if not text:
+        return None
+    want = [w.strip() for w in text.split(",") if w.strip()]
+    bad = [w for w in want if w not in names]
+    if bad or not want:
+        raise SystemExit("[ERROR] --only: unknown row %s; rows: %s" % (", ".join(map(repr, bad)) or repr(text), ", ".join(names)))
+    return want

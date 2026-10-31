@@ -31,7 +31,7 @@ Resumable: --only STEP reruns one step against the state the earlier steps left;
 <RIG>/amarchy-p2/verdict.json as each step completes. Exit code is nonzero when any step fails."""
 import argparse, json, pathlib, re, shutil, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
-import paths
+import paths, verdicts
 import condev_rig as c
 import stage_rig
 import amarchy_tile_rig as t
@@ -671,16 +671,17 @@ STEPS = [('start', s_start), ('tick_rises', s_tick_rises), ('bar_status', s_bar_
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--only', choices=[n for n, _ in STEPS], help='run one step against the state left by earlier runs')
+    ap.add_argument('--only', help='a step, or a comma list of steps, run against the state left by earlier runs')
     ap.add_argument('--no-build', action='store_true', help='do not rebuild/stage Amarchy')
     a = ap.parse_args()
+    a.only = verdicts.parse_only(a.only, [n for n, _ in STEPS])
     OUT.mkdir(parents=True, exist_ok=True)
     verdict = OUT / 'verdict.json'
     done = json.loads(verdict.read_text()) if a.only and verdict.exists() else {}
     stage_rig.report(stage_rig.stage_build(names=('Amarchy', 'amarchy-gui'), build=not a.no_build))
     fails = 0
     for name, fn in STEPS:
-        if a.only and a.only != name:
+        if a.only and name not in a.only:
             continue
         try:
             ok, detail = fn()

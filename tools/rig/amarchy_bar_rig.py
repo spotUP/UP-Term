@@ -13,7 +13,7 @@ right_launch holds with another window active (the bar is not the active window)
 """
 import argparse, pathlib, struct, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
-import paths
+import paths, verdicts
 import ami, condev_rig as c
 import stage_rig, tabstate
 import amarchy_rig as ar
@@ -209,18 +209,19 @@ ROWS = [('start', r_start), ('left_panel', r_left_panel), ('close_panel', r_clos
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--only')
+    ap.add_argument('--only', help='row name, or a comma list of rows')
     ap.add_argument('--failed', action='store_true')
     ap.add_argument('--fresh', action='store_true')
     ap.add_argument('--no-build', action='store_true')
     a = ap.parse_args()
+    a.only = verdicts.parse_only(a.only, [n for n, _ in ROWS])
     OUT.mkdir(parents=True, exist_ok=True)
     stage_rig.report(stage_rig.stage_build(build=not a.no_build))
     tabstate.open_host('barhost')
     passed = total = 0
     for name, fn in ROWS:
         f = OUT / ('bar_' + name + '.verdict')
-        if a.only and a.only != name:
+        if a.only and name not in a.only:
             continue
         if f.exists() and not a.fresh and not a.only:
             old = f.read_text()

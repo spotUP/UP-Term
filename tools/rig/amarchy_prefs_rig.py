@@ -45,12 +45,12 @@ Also watch (plan R1, handoff "Watch"): M8 colour chips on a low-colour screen; l
 """
 import argparse, hashlib, os, pathlib, re, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import paths
+import paths, verdicts
 import ami, condev_rig as c
 import stage_rig, tabstate
 import amarchy_gui_rig as g
 import menus_rig as mr
-from amarchy_theme_save_rig import wait_stable, step, strangers, stage_themes, theme_line, PREFS, OPEN_SECS
+from amarchy_theme_save_rig import wait_stable, step, strangers, shipped_themes, NEED_THEMES, theme_line, PREFS, OPEN_SECS
 from amarchy_menu_rig import screen_text, menu_rows, x9_open_menu, x9_leave, RAW, KEYMAP
 
 OUT = pathlib.Path(paths.RIG) / 'amarchy'
@@ -435,7 +435,8 @@ THEME_PICK = 2        # the third theme of the list; the theme-save rig walks 1-
 def r_theme_name():
     saved = {p: ami.read_file(p) for p in PREFS}
     try:
-        stage_themes()
+        if len(shipped_themes()) < NEED_THEMES:    # the rig boot copies the themes (no staging here since d7d64cf8)
+            return False, 'fewer than %d shipped themes: rebuild the rig kit' % NEED_THEMES
         set_graphical()
         time.sleep(3)                      # Amarchy reloads on the prefs notify
         if not g.process_running('Amarchy'):
@@ -623,11 +624,12 @@ ROWS = [
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    ap.add_argument('--only', choices=[n for n, _ in ROWS])
+    ap.add_argument('--only', help='row name, or a comma list of rows')
     ap.add_argument('--failed', action='store_true', help='re-run the rows that did not pass; keep the passed ones')
     ap.add_argument('--fresh', action='store_true', help='ignore recorded verdicts')
     ap.add_argument('--no-build', action='store_true', help='stage what build/amiga holds, do not run make')
     a = ap.parse_args()
+    a.only = verdicts.parse_only(a.only, [n for n, _ in ROWS])
     OUT.mkdir(parents=True, exist_ok=True)
     stage_rig.report(stage_rig.stage_build(build=not a.no_build))
     if not g.process_running('Amarchy'):      # the hotkey commodity; the rig boots without it (amarchy_gui_rig starts it the same way)
@@ -636,7 +638,7 @@ def main():
     passed = total = 0
     for name, fn in ROWS:
         f = OUT / ('prefs_' + name + '.verdict')
-        if a.only and a.only != name:
+        if a.only and name not in a.only:
             continue
         if f.exists() and not a.fresh and not a.only:
             old = f.read_text()
