@@ -1355,6 +1355,11 @@ $(BUILD)/amiga/patchcon: tests/amiga/patchcon.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/patchcon.c
 
+# WBRESET-EXT step 1: counting probe on every intuition vector (test only)
+$(BUILD)/amiga/lvoprobe: tests/amiga/lvoprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/lvoprobe.c
+
 # D1.3's copy probe (tools/rig/snip_rig.py)
 $(BUILD)/amiga/snipprobe: tests/amiga/snipprobe.c handler/clip.c handler/clip.h handler/clipfmt.c handler/be32.c handler/clipfmt.h
 	@mkdir -p $(BUILD)/amiga

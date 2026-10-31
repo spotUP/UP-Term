@@ -85,3 +85,27 @@ still_chained).
   failed close reopens, open, self skip, timeout, dismiss clients, table full, gate bytes.
 - Rig 8, 3.1 and 3.2: Amarchy with the bar up, `Palette FROM <prefs> USE`: no System
   Request, pens changed, bar back. With the fix reverted the requester returns.
+
+## Step 1 measurement: which intuition vector does a Palette USE reset go through (rig 8, KS 3.1, 2026-10-31)
+
+Probe: `tests/amiga/lvoprobe.c` (`make build/amiga/lvoprobe`) SetFunction-wraps a counting pass-through stub on every
+intuition.library JMP vector (-30 .. -828, 138 vectors; only LockIBase -414 / UnlockIBase -420 left alone), on top of
+the Amarchy hooks, and prints every vector called at least once after Ctrl-C. Amarchy was the commit-293a99d5 build
+(md5 319c5dade578e04dd0a4346a80b5c8a2), started before the probe. The installed kit Amarchy on a fresh rig is an old
+build without the patch (156912 bytes): copy build/amiga/Amarchy over UP-Term:bin/Amarchy first.
+
+- Patch installed: semaphore `Amarchy.WBReset` PRESENT when the probe started (wbr_patch_install did install; its
+  return code is still not printed anywhere).
+- `SYS:Prefs/Palette FROM RAM:pal_red.prefs USE` -> System Request "Intuition is attempting to reset the Workbench
+  screen" (task IPrefs, buttons Retry|Cancel), counts during that run:
+  -78 CloseWorkBench = 0, -210 OpenWorkBench = 0, -324 SetPrefs = 0, -576 / -672 / -720 / -726 (intuitionPrivate1..4) = 0,
+  all other nonzero vectors are the public ones Palette/IPrefs/Amarchy use (-510 LockPubScreen 1, -516 1, -522/-528 11,
+  -600 SysReqHandler 106, -678/-684/-714 MakeClass/AddClass/FreeClass 2 each).
+- After Cancel on the requester a second requester came (screen "Workbench Screen"); in that run -78 = 1,
+  -576 = 3, -84 = 6, -600 = 167.
+
+Verdict: the hypothesis "IPrefs resets the screen through a private vector (SetIPrefs) that we can wrap" is NOT confirmed.
+CloseWorkBench is not called (hook never runs, as suspected), but no private or public vector shows a call that
+carries the reset either: the reset code runs inside IPrefs' call into intuition by a route no vector counter saw.
+The hidden vector is not in the 3.1 NDK FD (intuitionPrivate1..4 only). No fix chosen; next measurement: wasabi snoop
+on IPrefs, or disassemble IPrefs / intuition.library to find the entry it jumps to.
