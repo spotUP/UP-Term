@@ -15,6 +15,7 @@
 #include <intuition/intuitionbase.h>
 #include <proto/exec.h>
 #include <proto/intuition.h>
+#include "wbreset.h"
 #include "serve_sig.h"
 #include "atiming.h"
 #include "menu_core.h"
@@ -635,6 +636,7 @@ static void serve_one(const struct ms_msg *q)
     w = Open((STRPTR)q->spec, MODE_NEWFILE);
     if (!w)
         return;
+    wbr_report(SIGBREAKF_CTRL_C, WBR_DISMISS, 1);  /* WBRESET-EXT: a Workbench reset closes this window like the hotkey */
     oldcon = SetConsoleTask(((struct FileHandle *)BADDR(w))->fh_Type);
     fd = open("/dev/tty", O_RDWR);
     if (fd >= 0) {
@@ -665,6 +667,7 @@ static void serve_one(const struct ms_msg *q)
     }
     SetConsoleTask(oldcon);
     Close(w);
+    wbr_report(SIGBREAKF_CTRL_C, WBR_DISMISS, 0);
 }
 
 static int serve(void)

@@ -39,6 +39,7 @@
 #include "barconf_dos.h"
 #include "status_core.h"
 #include "shot.h"
+#include "wbreset.h"
 #include "keymap_default.inc"
 
 
@@ -162,6 +163,7 @@ static int desk_wb_close(void)
         bar_close();
     g_bs = bar_sigmask();
     g_bts = bar_timer_sigmask();
+    wbr_report(SIGBREAKF_CTRL_F, WBR_HIDE, bar_is_open());   /* WBRESET-EXT: the reset this apply starts waits on no one */
     return was;
 }
 
@@ -172,6 +174,19 @@ static void desk_wb_open(int was)
         bar_open(g_dir);
     g_bs = bar_sigmask();
     g_bts = bar_timer_sigmask();
+    wbr_report(SIGBREAKF_CTRL_F, WBR_HIDE, bar_is_open());
+}
+
+/* WBRESET-EXT: another program closes the Workbench (IPrefs after `Palette ... USE`): the CloseWorkBench patch sends
+ * Ctrl-F, the bar closes (desk_wb_close) and reopens once OpenWorkBench ran (desk_wb_open), as around our own apply. */
+static int g_wbr_was;
+static void wbr_wake(void)
+{
+    int d = wbr_client_wake();
+    if (d == WBR_DO_HIDE)
+        g_wbr_was = desk_wb_close();
+    else if (d == WBR_DO_SHOW)
+        desk_wb_open(g_wbr_was);
 }
 
 /* every window Amarchy opens at start: the status bar (the menu servers and AmTile open theirs on use) */
@@ -487,6 +502,7 @@ int main(void)
      * foreign window is open). Ready now, or no tick to wait on: open at once; else the tick hook opens them. */
     desk_dos_wb_close = desk_wb_close;
     desk_dos_wb_open = desk_wb_open;
+    wbr_patch_install();                        /* WBRESET-EXT: no patch (error) = the old behaviour */
     wbm_begin();
     g_wb_hold = tick_open_ok && wbm_check(0) == WBM_WAIT;
     if (!g_wb_hold)
@@ -494,9 +510,11 @@ int main(void)
     else
         tick_hook(wb_gate);
     while (!g_quit) {
-        sigs = Wait(cxs | rxs | nos | nts | lps | wrs | cws | g_bs | g_bts | tks | shot_region_sigmask() | SIGBREAKF_CTRL_C);
+        sigs = Wait(cxs | rxs | nos | nts | lps | wrs | cws | g_bs | g_bts | tks | shot_region_sigmask() | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F);
         if (sigs & SIGBREAKF_CTRL_C)
             break;
+        if (sigs & SIGBREAKF_CTRL_F)
+            wbr_wake();
         if (sigs & cxs)
             while ((ev = cx_next(&row)) != CXE_NONE) {
                 if (ev == CXE_KEY)
@@ -532,8 +550,11 @@ int main(void)
                 ReplyMsg(m);
             reload();
         }
+        wbr_report(SIGBREAKF_CTRL_F, WBR_HIDE, bar_is_open());   /* BAR ON / OFF, the hold, a reload: all end here */
     }
     bar_close();
+    wbr_client_drop();
+    wbr_patch_remove();
     tick_close();
     act_menu_server_quit();
     cw_stop();

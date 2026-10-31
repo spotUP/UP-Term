@@ -56,6 +56,7 @@
 #include "../tty/qmark.h"
 #include "keymap_default.inc"
 #include "job_dos.h"
+#include "wbreset.h"
 
 /* vbcc's startup runs main on this much, and the cookie is what vsh, the Shell and Workbench read from the
  * file to start it on that much. tests/test_amarchy_stack.py reads both from the built binary. */
@@ -1169,10 +1170,11 @@ static void event_loop(gui *g)
     struct IntuiMessage *im;
     while (!g->stop && !g->quit) {
         ULONG jm = job_on ? jb_sigmask() : 0;       /* every mode: a nested one must not starve the job */
-        ULONG got = Wait((1UL << g->win->UserPort->mp_SigBit) | SIGBREAKF_CTRL_C | jm);
+        ULONG got = Wait((1UL << g->win->UserPort->mp_SigBit) | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | jm);
         if (jm && (got & jm))
             job_tick(g);
-        if (got & SIGBREAKF_CTRL_C) {          /* MENU-TOGGLE: the menu hotkey pressed again */
+        /* MENU-TOGGLE: the menu hotkey pressed again (Ctrl-C); WBRESET-EXT: another program closes the Workbench (Ctrl-F) */
+        if (got & (SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F)) {
             g->quit = g->stop = 1;
             break;
         }
@@ -1460,6 +1462,7 @@ static int gui_hide(void)
         return 0;
     CloseWindow(g->win);
     g->win = 0;
+    wbr_report(SIGBREAKF_CTRL_F, WBR_DISMISS, 0);
     g->rp = 0;
     screen_unbind(g);
     hidden = 1;
@@ -1478,6 +1481,7 @@ static void gui_show(void)
         g->w = mg_width_t(&km, g->node, &g->mf, g->icon_w, g->chev_w, text_len, g->mt, &g->ms, menu_cond);
     mg_layout(&g->g, &g->mf, g->w, g->mode == M_LIST ? g->count : g->nlines, &g->ms);
     g->win = window_open(g);
+    wbr_report(SIGBREAKF_CTRL_F, WBR_DISMISS, g->win != 0);
     if (!g->win)
         return;
     g->rp = g->win->RPort;
@@ -1495,6 +1499,7 @@ static void cleanup(gui *g)
     if (g->win)
         CloseWindow(g->win);
     g->win = 0;
+    wbr_report(SIGBREAKF_CTRL_F, WBR_DISMISS, 0);
     if (g->cm) {
         char cur[GT_NAME], want[GT_NAME];
         gt_dos_current(cur, (int)sizeof cur);
@@ -1653,7 +1658,9 @@ static int gui_open(int viewer, const char *node, int anchored, int ax, int ay)
         g->sel = g->shift;
         mg_layout(&g->g, &g->mf, g->w, g->count, &g->ms);
     }
+    SetSignal(0, SIGBREAKF_CTRL_F);             /* WBRESET-EXT: a stale reset signal must not close this new menu */
     g->win = window_open(g);
+    wbr_report(SIGBREAKF_CTRL_F, WBR_DISMISS, g->win != 0);
     if (!g->win) {
         PutStr((STRPTR) "amarchy-gui: cannot open the window\n");
         rc = 20;
