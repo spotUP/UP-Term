@@ -192,6 +192,9 @@ def box_of(s, w):
 
 
 def open_menu():
+    """The menu at its root level. The hotkey toggles (MENU-TOGGLE, amarchy.c mo_close_open): with a menu still open
+    from an earlier step (Esc in a job view only climbs back to the section list) it would close it instead."""
+    close_menu()
     ami.key(SPACE, LAMIGA)
     return wait_where(TITLE)
 
