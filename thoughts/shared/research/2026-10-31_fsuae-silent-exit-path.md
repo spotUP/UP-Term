@@ -111,3 +111,18 @@ Exact next step
 1. One boot. After `rig.py start --debugger` + `g` (twice if "go not started"): load a hold-nvim, `dbgbreak`, read the bss range with `RAM:ownermap` (slot = bss data start + 0x1fb88), `w 0 <slot> 4 W`, `g`. Let that nvim end WITHOUT `Break` (give it a `+q` script after a delay), then start the normal-config nvim. If the new load lands at the same address the first startup hit has value 10000810 (proves the address); log every hit (PC, value) and `g`.
 2. If the base moves per run, retarget on the exec clear loop: hit PC 00FA6EF4 with D4=0001FBB4, slot = A2 + 0x1fb88, `w 0` then `w 1 <slot> 4 W`. The scratch driver doing this (parse hits, retarget, `g`) is scratchpad/drv2.py of session 0fbfe951; move it to rig.py as a subcommand if it works.
 3. Resolve a hit PC to a module: nvim code base = bss data start - 0x15ed8 - 0x6477b0 (ranges are contiguous in both boots); outside it, `ownermap <PC>` before `g`.
+
+## SysBase watchpoint retarget (s39b)
+
+Question: same as s39 (first guest write to nvim's `_SysBase` slot). Result: NOT answered; about 40 tool calls, 3 rig-4 boots with `UPTERM_FSUAE=~/Code/Emulators/fs-uae-debug/fs-uae rig.py start --max --debugger`.
+
+Facts established
+- Stage by hand first: the rig does not carry nvim. `cp -R build/dist/up-nvim/Files/nvim build/rig4/vtc/nvimd` (binary a3aa3137, v0.12.5) and `cp build/amiga/ownermap build/rig4/vtc/ownermap`; both are then visible as `VTC:nvimd/bin/nvim` and `VTC:ownermap` on the running rig.
+- `dbgbreak` freezes the guest, so `ownermap` cannot run after it. Read the segment ranges WHILE the hold-nvim runs (`nvim -u NONE --headless "+sleep 14" +q` ends by itself, no Break needed; startup about 2 s), then `dbgbreak`, set the watch, `g`.
+- ownermap names nvim's segments "Background CLI" (the process name), not "nvim". Find them by size: CODE 0x6477ac, DATA 0x15ed4, BSS 0x1fbb8 (END-START of the range line).
+- The load addresses are STABLE across runs within one boot (two consecutive hold runs gave identical ranges; also equal to a third run): boot D had CODE next-pointer 10aa2e94, DATA 1033cd5c, BSS 1036ca7c, so bss data = 1036ca80 and the slot = 1036ca80 + 0x1fb88 = 1038c608. Across boots they move (s39: 0x1113xxxx; here 0x1036xxxx), so measure per boot, then watch the slot for the next run in the same boot. No retarget on the exec clear loop is needed.
+- Not obtained: the watch run itself. In boot D, `dbgbreak` + `w 0 1038c608 4 W` + `g` + a normal-config `nvim --headless +q` left the guest unresponsive to wasabi (Echo timed out) and FS-UAE exited a minute later ("UAE: Calling uae_quit") with no Memwatch line in debugger.log; the debugger log is stdio-buffered and lags by minutes, so absence of a hit is not proof. Boot E: FS-UAE was gone right after the two `g` lines (start gave no error). A foreground `rig.py start` inside a tool call is killed when the call returns: start it with run_in_background.
+- The debug build may die on any memwatch hit or while idle after `g`; unresolved.
+
+Next step
+- One boot, `rig.py start` in a background task, `g` twice 3 s apart, wait for `up`, stage nvim + ownermap, h4-style measure (script: scratchpad h4.py of session 0fbfe951) while the hold-nvim runs, then dbgbreak, `w 0 <slot> 4 W`, `g`, run nvim, and poll debugger.log from a second process. If FS-UAE dies on the first hit, try a breakpoint form (`f <PC>` is not available for a data write) or build fs-uae-debug with the memwatch print unbuffered.
