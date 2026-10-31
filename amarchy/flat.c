@@ -45,6 +45,7 @@
 #include "../tty/qmark.h"
 #include "flat_core.h"
 #include "flat_shared.h"
+#include "libpatch.h"
 #include "flat_glyph.h"
 #include "taskalive.h"
 #include "poll_timer.h"
@@ -300,8 +301,7 @@ static int tx_install(flatshared *r)
     rc = flat_swap_install(&r->tsw, (uintptr_t *)(entry + 2), (uintptr_t)flat_tx_entry);
     if (rc == FLAT_OK) {
         r->tslot = (uintptr_t *)(entry + 2);
-        SumLibrary((struct Library *)GfxBase);
-        CacheClearU();
+        libpatch_done((struct Library *)GfxBase);
     }
     Permit();
     return rc;
@@ -315,8 +315,7 @@ static int tx_remove(flatshared *r)
     Forbid();
     rc = flat_swap_remove(&r->tsw, r->tslot, &r->st);
     if (rc == FLAT_REMOVED) {
-        SumLibrary((struct Library *)GfxBase);
-        CacheClearU();
+        libpatch_done((struct Library *)GfxBase);
     }
     Permit();
     if (rc == FLAT_REMOVED) {
@@ -369,8 +368,7 @@ static int rf_install(flatshared *r)
     rc = flat_swap_install(&r->rsw, (uintptr_t *)(entry + 2), (uintptr_t)flat_rf_entry);
     if (rc == FLAT_OK) {
         r->rslot = (uintptr_t *)(entry + 2);
-        SumLibrary((struct Library *)GfxBase);
-        CacheClearU();
+        libpatch_done((struct Library *)GfxBase);
     }
     Permit();
     return rc;
@@ -384,8 +382,7 @@ static int rf_remove(flatshared *r)
     Forbid();
     rc = flat_swap_remove(&r->rsw, r->rslot, &r->st);
     if (rc == FLAT_REMOVED) {
-        SumLibrary((struct Library *)GfxBase);
-        CacheClearU();
+        libpatch_done((struct Library *)GfxBase);
     }
     Permit();
     if (rc == FLAT_REMOVED) {
@@ -617,7 +614,7 @@ static void dopus_unpatch(flatshared *r)
         if (r->dsw[el].installed)
             flat_swap_remove(&r->dsw[el], r->dslot[el], &r->st);
     if (r->dlib)
-        SumLibrary(r->dlib);
+        libpatch_done(r->dlib);
     CacheClearU();
     Permit();
     if (!r->dsw[0].installed && !r->dsw[1].installed && r->dlib) {
@@ -671,8 +668,7 @@ static void dopus_scan(flatshared *r)
         if (flat_swap_install(&r->dsw[el], r->dslot[el], (uintptr_t)(el == FLAT_EL_DRAWBOX ? (void *)d4_drawbox : (void *)d4_fieldbox)) != FLAT_OK)
             mask &= ~(1 << el);
     }
-    SumLibrary(lib);
-    CacheClearU();
+    libpatch_done(lib);
     Permit();
     r->dmask = mask;
     if (mask)

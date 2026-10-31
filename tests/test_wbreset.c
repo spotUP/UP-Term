@@ -1,6 +1,7 @@
 /* WBRESET-EXT (amarchy/wbreset_core.c): an external CloseWorkBench (IPrefs on `Palette ... USE`) must find no
  * Amarchy window on the Workbench screen. Pins the phase machine the patched CloseWorkBench / OpenWorkBench and
  * the bar / amarchy-gui / amarchy-menu clients drive, and the bytes of the gate stub in the library slot. */
+#include <stdio.h>
 #include <string.h>
 #include "../amarchy/wbreset_core.h"
 #include "harness.h"
@@ -125,6 +126,40 @@ static void test_gate(void)
     CHECK_INT(10 + ((g[10] << 8) | g[11]), WBR_GATE_SAVED);
 }
 
+/* Source lint: the host cannot run Intuition, so the two rules that keep the reset working are pinned on the text
+ * of the Amiga-side files (run from the repo root, as `make test` does). */
+static int count_in(const char *path, const char *needle)
+{
+    static char buf[400000];
+    FILE *f = fopen(path, "rb");
+    size_t n;
+    int c = 0;
+    const char *p;
+    if (!f)
+        return -1;
+    n = fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    buf[n] = 0;
+    for (p = buf; (p = strstr(p, needle)) != 0; p += strlen(needle))
+        c++;
+    return c;
+}
+
+/* A hand-written jump-table change finishes with libpatch_done (LIBF_CHANGED + CacheClearU + SumLibrary, the steps
+ * SetFunction takes); a bare SumLibrary leaves the checksum stale: RECOVERABLE ALERT #01000003 at boot. */
+static void test_hand_patch_finish(void)
+{
+    static const char *const files[] = { "amarchy/flat.c", "amarchy/wbreset_patch.c" };
+    unsigned i;
+    CHECK_INT(count_in("amarchy/libpatch.h", "lib_Flags |= LIBF_CHANGED"), 1);
+    CHECK_INT(count_in("amarchy/libpatch.h", "SumLibrary(lib)"), 1);
+    CHECK_INT(count_in("amarchy/libpatch.h", "CacheClearU()") >= 1, 1);
+    for (i = 0; i < sizeof files / sizeof *files; i++) {
+        CHECK_INT(count_in(files[i], "SumLibrary("), 0);
+        CHECK_INT(count_in(files[i], "libpatch_done(") >= 1, 1);
+    }
+}
+
 void suite_wbreset(void)
 {
     test_external_reset();
@@ -132,4 +167,5 @@ void suite_wbreset(void)
     test_self_and_idle();
     test_table();
     test_gate();
+    test_hand_patch_finish();
 }

@@ -13,6 +13,7 @@
 #include <string.h>
 #include "wbreset.h"
 #include "flat_core.h"
+#include "libpatch.h"
 
 extern struct IntuitionBase *IntuitionBase;
 
@@ -127,8 +128,7 @@ int wbr_patch_install(void)
     rc2 = flat_swap_install(&g_swo, (uintptr_t *)(eo + 2), (uintptr_t)g_go);
     g_slc = (uintptr_t *)(ec + 2);
     g_slo = (uintptr_t *)(eo + 2);
-    SumLibrary((struct Library *)IntuitionBase);
-    CacheClearU();
+    libpatch_done((struct Library *)IntuitionBase);
     Permit();
     if (rc1 != FLAT_OK || rc2 != FLAT_OK) {
         wbr_patch_remove();
@@ -150,8 +150,7 @@ void wbr_patch_remove(void)
         rc1 = flat_swap_remove(&g_swc, g_slc, 0);
     if (g_swo.installed)
         rc2 = flat_swap_remove(&g_swo, g_slo, 0);
-    SumLibrary((struct Library *)IntuitionBase);
-    CacheClearU();
+    libpatch_done((struct Library *)IntuitionBase);
     RemSemaphore(&g_pub->ss);
     Permit();
     Delay(5);                               /* a caller past the gate but not yet counted gets in */
