@@ -166,3 +166,29 @@ Change: gui.c window_open and themewin.c tw_open (the bar) open with WA_WBenchWi
 - 3.1 with DOpus: FAIL. After every pen-change USE a System Request from task IPrefs (Retry, Cancel) stays open at 0x10050d24 on the Directory Opus screen. The bar (0x10090884) stays open, so the reset is blocked. BAR OFF did not clear it. Some other non-WBENCHWINDOW window is on that screen, or the flag is not honoured there. Unnamed windows seen at 0x101200e4 and 0x100fc454. Contradicts the earlier claim that DOpus windows carry the flag. Not resolved; no further mechanism tried.
 - 3.2 rig (--os 32): not run (budget).
 - Remaining: XCON: menu window is opened by the handler and is not flagged.
+
+## Window census (s28)
+
+Probe: tests/amiga/wincensus.c (make build/amiga/wincensus): walks every screen under LockIBase, prints address, Flags,
+WFLG_WBENCHWINDOW (0x02000000), owner task of UserPort. Rig 8, KS 3.1, DOpus 5, Amarchy build md5 455179624de95e381468487f476ac523
+(Amarchy/amarchy-gui/amarchy-menu md5-checked against build/amiga after put), bar running, gui and menu not open.
+
+| address | title | Flags | WBENCHWINDOW | owner task |
+|---|---|---|---|---|
+| 0x1004f1f4 | Amarchy bar | 0a010840 | yes | Background CLI (Amarchy) |
+| 0x1062d74c | (null) | 00010800 | NO | dopus_start_menu |
+| 0x1060af34 | (null) | 08203940 | NO | dopus |
+| 0x1004f1f4 (after USE, new addr) | System Request | 08031046 | NO (own, excluded) | IPrefs |
+
+Only one screen exists ("Directory Opus ..."). Three alternating pen-change USEs (pal_pen, pal_red, pal_pen), 6 s apart, bar flagged:
+System Request (Retry|Cancel) from IPrefs present after all 3 -> FAIL. The unnamed windows seen earlier are the two DOpus
+windows above (0x101200e4 / 0x100fc454 in the old run). Amarchy opens no unflagged window on this screen: bar flagged, gui.c
+and themewin.c flagged; amarchy/shot.c g_rw opens on a custom screen (not the Workbench screen); the XCON: menu/act windows are
+opened by the handler (not open at census time).
+
+Contradiction not resolved: the predicate (IPrefs 40.7 at hunk offset 0x108a: pubscreen "Workbench" found via FindName on the
+public screen list, then every window with bit 0x02000000 clear and not the requester sets the result to 0) would count the two
+DOpus windows, yet the reset went through earlier with Amarchy stopped. So either the counted screen is not the DOpus screen
+(is the DOpus screen the public screen named "Workbench"? not checked) or the result is used inverted/combined with another check
+(callers at 0x1168 and 0x2c82, not yet read). Next: read the callers, print screen Flags + public screen names in wincensus.
+Rig note: after the first rig start RAM: reported 109% used and every command failed ("could not start the command"); a rig reboot cured it.

@@ -1203,6 +1203,11 @@ $(BUILD)/amiga/winwatch: tests/amiga/winwatch.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/winwatch.c
 
+# Window census of the Workbench screen with Flags / WFLG_WBENCHWINDOW / owner task (WBRESET-EXT)
+$(BUILD)/amiga/wincensus: tests/amiga/wincensus.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/wincensus.c
+
 # A pen dump of an active and an inactive window with GadTools gadgets (FLAT-M1)
 $(BUILD)/amiga/flatprobe: tests/amiga/flatprobe.c
 	@mkdir -p $(BUILD)/amiga
