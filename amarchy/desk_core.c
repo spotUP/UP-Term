@@ -222,7 +222,8 @@ static unsigned wide(uc_u32 c, int shift)
     return (b << 8) | b;
 }
 
-long desk_palette(const gtheme *t, int ncolors, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap)
+/* the palette.prefs body for ncolors colours (rgb16[i] = 16-bit r, g, b) and the pen map pens */
+static long palette_fill(int ncolors, const unsigned char pens[DK_SLOTS], const unsigned short rgb16[][3], unsigned char *out, long cap)
 {
     unsigned char *body;
     int i;
@@ -240,15 +241,74 @@ long desk_palette(const gtheme *t, int ncolors, const unsigned char pens[DK_SLOT
     put16(body + PAL_4PENS + 2 * DK_SLOTS, 0xffff);
     put16(body + PAL_8PENS + 2 * DK_SLOTS, 0xffff);
     for (i = 0; i < ncolors; i++) {
-        uc_u32 c = desk_role(t, i);
         unsigned char *e = body + PAL_COLORS + 8 * i;
         put16(e, (unsigned)i);
-        put16(e + 2, wide(c, 16));
-        put16(e + 4, wide(c, 8));
-        put16(e + 6, wide(c, 0));
+        put16(e + 2, rgb16[i][0]);
+        put16(e + 4, rgb16[i][1]);
+        put16(e + 6, rgb16[i][2]);
     }
     put16(body + PAL_COLORS + 8 * ncolors, 0xffff);
     return DK_PALETTE_SIZE;
+}
+
+long desk_palette(const gtheme *t, int ncolors, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap)
+{
+    unsigned short rgb16[8][3];
+    int i;
+    if (ncolors != 4 && ncolors != 8)
+        return 0;
+    for (i = 0; i < ncolors; i++) {
+        uc_u32 c = desk_role(t, i);
+        rgb16[i][0] = (unsigned short)wide(c, 16);
+        rgb16[i][1] = (unsigned short)wide(c, 8);
+        rgb16[i][2] = (unsigned short)wide(c, 0);
+    }
+    return palette_fill(ncolors, pens, (const unsigned short (*)[3])rgb16, out, cap);
+}
+
+long desk_palette_live(const unsigned short *rgb4, int ncolors, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap)
+{
+    unsigned short rgb16[8][3];
+    int i;
+    if ((ncolors != 4 && ncolors != 8) || !rgb4)
+        return 0;
+    for (i = 0; i < ncolors; i++) {
+        unsigned r = (rgb4[i] >> 8) & 15, g = (rgb4[i] >> 4) & 15, b = rgb4[i] & 15;
+        rgb16[i][0] = (unsigned short)(r * 0x1111);
+        rgb16[i][1] = (unsigned short)(g * 0x1111);
+        rgb16[i][2] = (unsigned short)(b * 0x1111);
+    }
+    return palette_fill(ncolors, pens, (const unsigned short (*)[3])rgb16, out, cap);
+}
+
+long desk_palette_pens(const unsigned char *cur, long curlen, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap)
+{
+    long pos = DK_HDR, body, size;
+    char id[4];
+    int i;
+    if (!cur || !is_prefs(cur, curlen) || curlen > cap)
+        return 0;
+    while (next_chunk(cur, curlen, &pos, id, &body, &size))
+        if (!memcmp(id, "PALT", 4) && size >= PAL_COLORS) {
+            memcpy(out, cur, (size_t)curlen);
+            for (i = 0; i < DK_SLOTS; i++) {
+                put16(out + body + PAL_4PENS + 2 * i, pens[i]);
+                put16(out + body + PAL_8PENS + 2 * i, pens[i]);
+            }
+            return curlen;
+        }
+    return 0;
+}
+
+int desk_pens_sync(int flat, const unsigned short *live, int nlive, unsigned char pens[DK_SLOTS])
+{
+    desk_pens_for(flat, pens);
+    if (!live || nlive <= 0)
+        return 0;
+    if (flat)
+        return desk_pens_reset(live, nlive, 1);
+    /* off: undo only what the switch wrote (the live map is the flat one); a system never flat keeps its own pens */
+    return !desk_pens_reset(live, nlive, 1);
 }
 
 /* ---- R1.3, R1.20: wbpattern.prefs ---- */

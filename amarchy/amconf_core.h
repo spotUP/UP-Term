@@ -33,7 +33,6 @@ enum {
     AM_FLAT,    /* flat-system-look: the flat window frame glyphs (amarchy-flat, off/on, default off) */
     AM_FLATGAD, /* flat-window-gadgets: the flat window gadgets (off/on, default off) */
     AM_FLATSIZE, /* flat-border-size: stock, thin (the window border and title size) */
-    AM_FLATPENS, /* amarchy-flat-pens: the desktop palette write carries the flat pen map (desk_pens_flat; off/on, default off) */
     AM_NKEYS
 };
 
@@ -73,8 +72,8 @@ const char *amconf_shot_dir(const am_prefs *p);
 /* the desktop targets to write: 0 when desktop-theme is off, else bit t (desk_core target t) for each part switched on; the icontrol
  * bit (4) when flat-border-size is thin */
 unsigned amconf_desk_mask(const am_prefs *p);
-/* FLAT-P1-3: 1 when the desktop palette write carries the flat pen map: amarchy-flat-pens on and the palette target in
- * amconf_desk_mask (desktop-theme and desktop-palette on); else 0, the stock map */
+/* FLAT-PENS-LIVE: 1 when the palette write carries the flat pen map: flat-system-look on (the old amarchy-flat-pens key is folded
+ * into it); else 0, the stock map. Independent of desktop-theme: desk_dos_apply writes the pens itself (desk_pens_sync) */
 int amconf_desk_flat_pens(const am_prefs *p);
 #define AM_TILEGAP_MAX 64
 /* tile-gap as a number: whole digits 0..AM_TILEGAP_MAX, anything else the default of the key */

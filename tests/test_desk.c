@@ -197,16 +197,51 @@ static void test_desk_palette_flat(void)
 }
 
 
-/* FLAT-P1-3: the palette.prefs the desk apply writes follows amarchy-flat-pens. desk_dos_apply builds it as
+/* FLAT-P1-3: the palette.prefs the desk apply writes follows flat-system-look (the folded amarchy-flat-pens). desk_dos_apply builds it as
  * desk_pens_for(amconf_desk_flat_pens(prefs)) -> desk_palette (the same two calls here); the flat key moves only the
  * shine slot, the pen-reset verdict follows the chosen map, and the key alone writes nothing without the palette target. */
+/* FLAT-PENS-LIVE: flat-system-look alone writes the flat pen roles and keeps the user's colours; off restores the stock roles only
+ * when the live roles are the flat ones. The reachability twin is the rig (Palette.prefs after the toggle; STATUS flat= rises). */
+static void test_desk_flat_pens_live(void)
+{
+    static unsigned char cur[BUF_MAX], out[BUF_MAX], got[BUF_MAX];
+    unsigned char pens[DK_SLOTS], flat[DK_SLOTS], stock[DK_SLOTS];
+    unsigned short live[DK_SLOTS], rgb4[8] = {0x000, 0xfff, 0x123, 0xa5c, 0, 0, 0, 0};
+    gtheme t;
+    long n;
+    int i;
+    probe_theme(&t);
+    desk_pens_flat(flat);
+    desk_pens(stock);
+    CHECK_INT(desk_palette(&t, 8, stock, cur, sizeof cur), DK_PALETTE_SIZE);
+    CHECK_INT(desk_palette_pens(cur, DK_PALETTE_SIZE, flat, out, sizeof out), DK_PALETTE_SIZE);
+    CHECK(memcmp(cur, out, DK_PALETTE_SIZE));
+    CHECK_INT(desk_palette(&t, 8, flat, got, sizeof got), DK_PALETTE_SIZE);
+    CHECK(!memcmp(got, out, DK_PALETTE_SIZE));          /* pens = the flat map, every colour byte = the old file */
+    CHECK_INT(desk_palette_pens(cur, 10, flat, out, sizeof out), 0);
+    n = desk_palette_live(rgb4, 4, flat, out, sizeof out);
+    CHECK_INT(n, DK_PALETTE_SIZE);
+    CHECK_INT(out[26 + 8 + 144 + 8 * 2 + 5], 0x22);  /* colour 2 green 0x2 -> 0x2222 */
+    for (i = 0; i < DK_SLOTS; i++)
+        live[i] = stock[i];
+    CHECK_INT(desk_pens_sync(1, live, DK_SLOTS, pens), 1);       /* flat on, stock live: write */
+    CHECK(!memcmp(pens, flat, DK_SLOTS));
+    CHECK_INT(desk_pens_sync(0, live, DK_SLOTS, pens), 0);       /* flat off, never flat: leave the system's pens */
+    for (i = 0; i < DK_SLOTS; i++)
+        live[i] = flat[i];
+    CHECK_INT(desk_pens_sync(1, live, DK_SLOTS, pens), 0);       /* already flat: no reset */
+    CHECK_INT(desk_pens_sync(0, live, DK_SLOTS, pens), 1);       /* flat off, flat live: restore */
+    CHECK(!memcmp(pens, stock, DK_SLOTS));
+    CHECK_INT(desk_pens_sync(1, 0, 0, pens), 0);
+}
+
 static void test_desk_flat_pens_key(void)
 {
     static unsigned char gold[BUF_MAX], out[BUF_MAX];
-    static const char flat_on[] = "[profile default]\ndesktop-theme = on\namarchy-flat-pens = on\n";
+    static const char flat_on[] = "[profile default]\ndesktop-theme = on\nflat-system-look = on\n";
     static const char flat_off[] = "[profile default]\ndesktop-theme = on\n";
-    static const char flat_nopal[] = "[profile default]\ndesktop-theme = on\ndesktop-palette = off\namarchy-flat-pens = on\n";
-    static const char flat_nodesk[] = "[profile default]\namarchy-flat-pens = on\n";
+    static const char flat_nopal[] = "[profile default]\ndesktop-theme = on\ndesktop-palette = off\nflat-system-look = on\n";
+    static const char flat_nodesk[] = "[profile default]\nflat-system-look = on\n";
     static const char *const names[] = {"palette-flat-pen8.prefs", "palette-p1a-pen8.prefs"};
     const char *const txt[] = {flat_on, flat_off};
     gtheme t;
@@ -240,10 +275,10 @@ static void test_desk_flat_pens_key(void)
     {
         am_prefs p;
         amconf_parse(flat_nopal, (long)strlen(flat_nopal), &p);
-        CHECK_INT(amconf_desk_flat_pens(&p), 0);              /* palette target off: no palette write, no flat map */
+        CHECK_INT(amconf_desk_flat_pens(&p), 1);              /* the flat map no longer needs the desktop palette target */
         CHECK(!(amconf_desk_mask(&p) & (1u << DT_PALETTE)));
         amconf_parse(flat_nodesk, (long)strlen(flat_nodesk), &p);
-        CHECK_INT(amconf_desk_flat_pens(&p), 0);              /* master switch off: nothing is written */
+        CHECK_INT(amconf_desk_flat_pens(&p), 1);              /* ... nor the master switch: desk_dos_apply writes the pens itself */
         CHECK_INT(amconf_desk_mask(&p), 0u);
     }
 }
@@ -816,6 +851,7 @@ void suite_desk(void)
     test_desk_palette();
     test_desk_palette_flat();
     test_desk_flat_pens_key();
+    test_desk_flat_pens_live();
     test_desk_pens_reset();
     test_desk_reset_done();
     test_desk_iprefs_idle();

@@ -4,7 +4,10 @@
 #include <dos/dos.h>
 #include <dos/dostags.h>
 #include <intuition/screens.h>
+#include <graphics/gfxbase.h>
+#include <graphics/view.h>
 #include <proto/dos.h>
+#include <proto/graphics.h>
 #include <proto/exec.h>
 #include <proto/intuition.h>
 #include "desk_dos.h"
@@ -454,9 +457,57 @@ static void dk_flat_sync(void)
     }
 }
 
+/* FLAT-PENS-LIVE: flat-system-look writes the flat pen roles itself (dk_apply carries them only on a desktop palette write). The user's
+ * colours stay: ENV:Sys/Palette.prefs (else ENVARC:) with only the pen arrays replaced, else the colours on the screen now. The write
+ * goes through the palette editor like every other part (dk_put); the reset it makes is dk_apply's business (closing windows around it
+ * is not done here), this waits for it to finish. */
+unsigned long desk_dos_flat_pens_writes;
+
+static void dk_flat_pens(void)
+{
+    static unsigned char cur[DK_BUF], buf[DK_BUF];
+    am_prefs ap;
+    unsigned char pens[DK_SLOTS];
+    unsigned short live[DK_SLOTS];
+    struct Screen *before;
+    int nlive = 0, flat;
+    long len;
+    amconf_load(&ap);
+    flat = amconf_desk_flat_pens(&ap);
+    before = dk_wb_screen(live, &nlive);
+    if (!before || !desk_pens_sync(flat, live, nlive, pens) || !dk_palette_editor_ok())
+        return;
+    len = dk_read("ENV:Sys/Palette.prefs", cur, sizeof cur);
+    if (len < 0)
+        len = dk_read("ENVARC:Sys/Palette.prefs", cur, sizeof cur);
+    len = len > 0 ? desk_palette_pens(cur, len, pens, buf, sizeof buf) : 0;
+    if (len <= 0) {
+        unsigned short rgb4[8];
+        int i, n = dk_screen_depth() >= 3 ? 8 : 4;
+        struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
+        struct GfxBase *GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
+        struct Screen *scr = IntuitionBase && GfxBase ? LockPubScreen((STRPTR)"Workbench") : 0;
+        for (i = 0; i < 8; i++)
+            rgb4[i] = scr && i < (1 << scr->RastPort.BitMap->Depth) ? (unsigned short)GetRGB4(scr->ViewPort.ColorMap, i) : 0;
+        if (scr)
+            UnlockPubScreen(0, scr);
+        if (GfxBase)
+            CloseLibrary((struct Library *)GfxBase);
+        if (IntuitionBase)
+            CloseLibrary((struct Library *)IntuitionBase);
+        len = desk_palette_live(rgb4, n, pens, buf, sizeof buf);
+    }
+    UnLock(CreateDir((STRPTR)DK_WORK));
+    desk_dos_flat_pens_writes++;
+    if (len > 0 && dk_put("Palette", DK_WORK "/palette.prefs", buf, len))
+        dk_wait_reset(before, flat);
+}
+
 int desk_dos_apply(const gtheme *th, char *why, int cap)
 {
     int r = dk_apply(th, why, cap);
+    if (!(r > 0 && (r & (1 << DT_PALETTE))))
+        dk_flat_pens();
     dk_flat_sync();          /* also when no desk target changed: flipping a flat switch alone must reach the block */
     return r;
 }

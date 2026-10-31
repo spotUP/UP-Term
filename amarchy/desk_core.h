@@ -55,7 +55,7 @@ void desk_flat_glyph_pens(unsigned char *text, unsigned char *line, unsigned cha
 void desk_flat_state(int flat, int gadgets, flat_state *s);
 extern unsigned long desk_flat_state_calls;
 
-/* FLAT-P1-3: the pen map the palette write carries: desk_pens_flat when the amarchy-flat-pens key is on (flat), else desk_pens */
+/* FLAT-P1-3: the pen map the palette write carries: desk_pens_flat when flat-system-look is on (flat), else desk_pens */
 void desk_pens_for(int flat, unsigned char pens[DK_SLOTS]);
 
 /* R1.17: 1 when a Palette USE of the pens desk_pens_for(flat) gives makes IPrefs reset the Workbench screen. DrawInfo dri_Pens are fixed
@@ -78,6 +78,16 @@ int desk_reset_done(const void *before, const void *now, const unsigned short *l
 /* R1.2: the palette.prefs of the theme with ncolors (4 or 8) colours and the pen map pens (desk_pens or desk_pens_flat);
  * returns DK_PALETTE_SIZE, 0 on a bad argument */
 long desk_palette(const gtheme *t, int ncolors, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap);
+
+/* FLAT-PENS-LIVE: the palette.prefs of the colours now on the screen (rgb4 = ncolors 4-bit 0x0RGB entries) with the pen map pens */
+long desk_palette_live(const unsigned short *rgb4, int ncolors, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap);
+/* FLAT-PENS-LIVE: cur (a palette.prefs of curlen bytes) with only the pen arrays replaced by pens; the colours stay. Returns curlen,
+ * 0 when cur is no palette.prefs or does not fit cap */
+long desk_palette_pens(const unsigned char *cur, long curlen, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap);
+/* FLAT-PENS-LIVE: the pen write flat-system-look (flat 0/1) asks for. pens gets desk_pens_for(flat). Returns 1 to write it: flat on and
+ * the live pens (live/nlive, the Workbench DrawInfo) differ from the flat map; flat off and the live pens ARE the flat map (restore
+ * the stock roles); else 0. */
+int desk_pens_sync(int flat, const unsigned short *live, int nlive, unsigned char pens[DK_SLOTS]);
 
 /* R1.3, R1.20: the wbpattern.prefs (ROOT, DRAWER, SCREEN chunks). depth = the screen depth (capped at 3); the root is
  * one solid darker tone, no dots. prev/prevlen = the file now on disk (or 0): its SCREEN chunk is kept.
