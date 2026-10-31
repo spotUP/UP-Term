@@ -41,7 +41,7 @@ class Bounded(unittest.TestCase):
                           'G 1 8 62 74x16 custom - "Retry"', 'G 0 404 62 84x16 custom - "Cancel"'])
         clicks = []
         fake = types.SimpleNamespace(
-            req=lambda op: bytes([0, 0, 2, 128]) if op == 0x0A else tree.encode(),
+            req=lambda op: bytes([1, 0, 2, 128, 1, 0, 2]) if op == 0x0A else tree.encode(),
             pointer_scale=lambda: (1, 1), script=lambda *a: clicks.append(a))
         saved = (sys.modules.get("ami"), rig.RIG, rig.time.sleep)
         sys.modules["ami"] = fake
@@ -54,6 +54,26 @@ class Bounded(unittest.TestCase):
             sys.modules["ami"], rig.RIG, rig.time.sleep = saved
         self.assertEqual(len(clicks), rig.WB_RESET_RETRIES)
         self.assertIn("System Request", str(cm.exception))
+
+    def test_a_640x360_rtg_workbench_is_not_pal(self):
+        # W43 false alarm: the rtg360 screenmode (640x360 uaegfx) is 640 wide; it must count as RTG, so no Retry hunt
+        # and no "[WARN] the Workbench stayed PAL" line
+        now = [0.0]
+
+        def clock():
+            now[0] += 5
+            return now[0]
+        fake = types.SimpleNamespace(req=lambda op: bytes([1, 0, 2, 128, 1, 104, 24]) if op == 0x0A else b"",
+                                     pointer_scale=lambda: (1, 1), script=lambda *a: self.fail("clicked"))
+        saved = (sys.modules.get("ami"), rig.RIG, rig.time.sleep, rig.time.time)
+        sys.modules["ami"] = fake
+        rig.RIG = tmp = pathlib.Path(tempfile.mkdtemp())
+        rig.time.sleep, rig.time.time = (lambda s: None), clock
+        try:
+            rig.retry_wb_reset()
+        finally:
+            sys.modules["ami"], rig.RIG, rig.time.sleep, rig.time.time = saved
+        self.assertIn("RTG 640x360", (tmp / "retry.log").read_text())
 
 
 if __name__ == "__main__":

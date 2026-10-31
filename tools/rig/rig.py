@@ -1793,6 +1793,10 @@ def guard_shell_startup():
 
 WB_RESET_RETRIES = 3   # Retry clicks before the start fails: Retry never succeeds while windows stay open
 
+# The front screen sizes of a chipset (PAL/NTSC, laced or not) Workbench: retry_wb_reset's sign that IPrefs' RTG switch failed
+NATIVE_WB = {(640, 200), (640, 256), (640, 400), (640, 512)}
+
+
 def retry_wb_reset():
     """--060: the boot comes up on a PAL Workbench with Intuition's "attempting
     to reset the Workbench screen ... close all windows" requester (IPrefs'
@@ -1808,10 +1812,10 @@ def retry_wb_reset():
     clicks = 0
     while time.time() - t0 < 120:
         b = ami.req(0x0A)
-        width = int.from_bytes(b[2:4], "big")
-        if width != 640:
+        width, height = int.from_bytes(b[2:4], "big"), int.from_bytes(b[4:6], "big")
+        if (width, height) not in NATIVE_WB:   # the 640x360 RTG mode is 640 wide too
             if time.time() - t0 > 20:   # RTG, and nothing came for 20 s
-                log.write("%.0fs RTG %d\n" % (time.time() - t0, width))
+                log.write("%.0fs RTG %dx%d\n" % (time.time() - t0, width, height))
                 return
             time.sleep(2)
             continue
