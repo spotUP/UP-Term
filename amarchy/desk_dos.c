@@ -484,21 +484,63 @@ static void dk_flat_sync(void)
  * is not done here), this waits for it to finish. */
 unsigned long desk_dos_flat_pens_writes;
 
-static void dk_flat_pens(void)
+#define DK_FLAT_PAL DK_REVERT "/flat-palette"
+#define DK_FLAT_PAT DK_REVERT "/flat-wbpattern"
+#define DK_FLAT_TAKEN DK_REVERT "/flat-taken"
+
+static int dk_exists(const char *file)
 {
-    static unsigned char cur[DK_BUF], buf[DK_BUF];
+    BPTR l = Lock((STRPTR)file, ACCESS_READ);
+    if (l)
+        UnLock(l);
+    return l != 0;
+}
+
+/* FLAT-BACKDROP-SAME-AS-WINDOW: flat-system-look puts BACKGROUNDPEN on pen 0, the window colour, so a Workbench with no wbpattern.prefs
+ * fills its backdrop with the window colour. Flat on (desktop-theme not writing the pattern itself): the ROOT tile is the solid
+ * backdrop pen (desk_backdrop_pen, not BACKGROUNDPEN) and that pen's palette colour is the theme dark (desk_darker). First turn-on
+ * snapshots the previous palette and pattern (or their absence); flat off puts them back. */
+static void dk_flat_backdrop_take(const unsigned char *pal, long pallen)
+{
+    static unsigned char prev[DK_BUF];
+    long plen;
+    if (dk_exists(DK_FLAT_TAKEN))
+        return;
+    UnLock(CreateDir((STRPTR)DK_REVERT));
+    dk_write(DK_FLAT_PAL, pal, pallen);
+    plen = dk_read("ENV:Sys/wbpattern.prefs", prev, sizeof prev);
+    if (plen < 0)
+        DeleteFile((STRPTR)DK_FLAT_PAT);
+    else
+        dk_write(DK_FLAT_PAT, prev, plen);
+    dk_write(DK_FLAT_TAKEN, (const unsigned char *)"1", 1);
+}
+
+static void dk_flat_pens(const gtheme *th)
+{
+    static unsigned char cur[DK_BUF], buf[DK_BUF], out[DK_BUF], prev[DK_BUF];
     am_prefs ap;
     unsigned char pens[DK_SLOTS];
     unsigned short live[DK_SLOTS];
     struct Screen *before;
-    int nlive = 0, flat;
-    long len;
+    int nlive = 0, flat, own, restore, sync;
+    unsigned long idle = 0;
+    long len, wlen, plen;
     amconf_load(&ap);
     flat = amconf_desk_flat_pens(&ap);
+    own = flat && !((amconf_desk_mask(&ap) >> DT_WBPATTERN) & 1);
+    restore = !flat && dk_exists(DK_FLAT_TAKEN);
     before = dk_wb_screen(live, &nlive);
-    if (!before || !desk_pens_sync(flat, live, nlive, pens) || !dk_palette_editor_ok())
+    if (!before || !dk_palette_editor_ok())
         return;
-    len = dk_read("ENV:Sys/Palette.prefs", cur, sizeof cur);
+    sync = desk_pens_sync(flat, live, nlive, pens);
+    if (!sync && !own && !restore)
+        return;
+    if (!sync)
+        desk_pens_for(flat, pens);
+    len = restore ? dk_read(DK_FLAT_PAL, cur, sizeof cur) : -1;
+    if (len < 0)
+        len = dk_read("ENV:Sys/Palette.prefs", cur, sizeof cur);
     if (len < 0)
         len = dk_read("ENVARC:Sys/Palette.prefs", cur, sizeof cur);
     len = len > 0 ? desk_palette_pens(cur, len, pens, buf, sizeof buf) : 0;
@@ -519,16 +561,51 @@ static void dk_flat_pens(void)
         len = desk_palette_live(rgb4, n, pens, buf, sizeof buf);
     }
     UnLock(CreateDir((STRPTR)DK_WORK));
-    desk_dos_flat_pens_writes++;
-    if (len > 0 && dk_put("Palette", DK_WORK "/palette.prefs", buf, len))
-        dk_wait_reset(before, flat);
+    if (own && len > 0) {
+        uc_u32 want = desk_darker(th);
+        dk_flat_backdrop_take(buf, len);
+        if (desk_palette_rgb(buf, len, desk_backdrop_pen()) != (long)want) {
+            wlen = desk_palette_set_rgb(buf, len, desk_backdrop_pen(), want, out, sizeof out);
+            if (wlen > 0) {
+                memcpy(buf, out, wlen);
+                len = wlen;
+                sync = 1;
+            }
+        }
+    }
+    if (restore)
+        sync = 1;
+    if (sync && len > 0) {
+        idle = dk_iprefs_idle_mask();
+        desk_dos_flat_pens_writes++;
+        if (dk_put("Palette", DK_WORK "/palette.prefs", buf, len)) {
+            dk_wait_reset(before, flat);
+            dk_wait_iprefs(idle);
+        }
+    }
+    if (own) {
+        int depth = dk_screen_depth();
+        plen = dk_read("ENV:Sys/wbpattern.prefs", prev, sizeof prev);
+        wlen = desk_wbpattern(th, depth > 3 ? 3 : depth, plen > 0 ? prev : 0, plen > 0 ? plen : 0, out, sizeof out);
+        if (wlen > 0 && (wlen != plen || memcmp(out, prev, wlen)))
+            dk_put("WBPattern", DK_WORK "/wbpattern.prefs", out, wlen);
+    } else if (restore) {
+        plen = dk_read(DK_FLAT_PAT, prev, sizeof prev);
+        if (plen < 0) {
+            DeleteFile((STRPTR)"ENV:Sys/wbpattern.prefs");
+            DeleteFile((STRPTR)"ENVARC:Sys/wbpattern.prefs");
+        } else {
+            dk_put("WBPattern", DK_WORK "/wbpattern.prefs", prev, plen);
+        }
+        DeleteFile((STRPTR)DK_FLAT_TAKEN);
+    }
 }
 
 int desk_dos_apply(const gtheme *th, char *why, int cap)
 {
     int r = dk_apply(th, why, cap);
     if (!(r > 0 && (r & (1 << DT_PALETTE))))
-        dk_flat_pens();
+        dk_flat_pens(th);
     dk_flat_sync();          /* also when no desk target changed: flipping a flat switch alone must reach the block */
     return r;
 }

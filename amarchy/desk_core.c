@@ -313,6 +313,52 @@ long desk_palette_pens(const unsigned char *cur, long curlen, const unsigned cha
     return 0;
 }
 
+/* FLAT-BACKDROP-SAME-AS-WINDOW: the pen the ROOT tile is drawn in. Never BACKGROUNDPEN (DK_BG): with no pattern the Workbench root fills with
+ * BACKGROUNDPEN, the window interior pen, so the backdrop could not differ from the windows. Its colour is the theme's darker tone. */
+int desk_backdrop_pen(void)
+{
+    return DK_DARKER;
+}
+
+/* the palette entry of a pen in a palette.prefs: its offset in cur, -1 when none */
+static long palette_entry(const unsigned char *cur, long curlen, int pen)
+{
+    long pos = DK_HDR, body, size, e;
+    char id[4];
+    if (!cur || !is_prefs(cur, curlen))
+        return -1;
+    while (next_chunk(cur, curlen, &pos, id, &body, &size))
+        if (!memcmp(id, "PALT", 4) && size >= PAL_COLORS) {
+            for (e = body + PAL_COLORS; e + 8 <= body + size && get16(cur + e) != 0xffff; e += 8)
+                if (get16(cur + e) == (unsigned)pen)
+                    return e;
+            return -1;
+        }
+    return -1;
+}
+
+/* the colour (0xRRGGBB, the high byte of each 16-bit channel) of a pen in a palette.prefs, -1 when it has none */
+long desk_palette_rgb(const unsigned char *cur, long curlen, int pen)
+{
+    long e = palette_entry(cur, curlen, pen);
+    if (e < 0)
+        return -1;
+    return ((long)cur[e + 2] << 16) | ((long)cur[e + 4] << 8) | (long)cur[e + 6];
+}
+
+/* cur with the colour of one pen replaced; the pen map and the other colours stay. 0 when cur has no such entry or does not fit out. */
+long desk_palette_set_rgb(const unsigned char *cur, long curlen, int pen, uc_u32 c, unsigned char *out, long cap)
+{
+    long e = palette_entry(cur, curlen, pen);
+    if (e < 0 || curlen > cap)
+        return 0;
+    memcpy(out, cur, (size_t)curlen);
+    put16(out + e + 2, wide(c, 16));
+    put16(out + e + 4, wide(c, 8));
+    put16(out + e + 6, wide(c, 0));
+    return curlen;
+}
+
 int desk_pens_sync(int flat, const unsigned short *live, int nlive, unsigned char pens[DK_SLOTS])
 {
     desk_pens_for(flat, pens);
@@ -384,7 +430,7 @@ long desk_wbpattern(const gtheme *t, int depth, const unsigned char *prev, long 
         depth = 1;
     at = iff_header(out, DK_WBPATTERN_SIZE);
     /* ROOT: one solid darker tone, no dots (dark_background is no pen under OD13) */
-    pattern_fill(data, depth, DK_DARKER);
+    pattern_fill(data, depth, desk_backdrop_pen());
     pattern_chunk(at, 0, depth, data);
     /* DRAWER: the panel tone MT_BG, which is pen 0 (OD7) */
     pattern_fill(data, depth, DK_BG);

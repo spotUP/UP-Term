@@ -487,6 +487,41 @@ static void test_desk_wbpattern_no_dots(void)
     }
 }
 
+static void test_flat_on_keeps_backdrop_pen_distinct_from_window_background(void)
+{
+    /* FLAT-BACKDROP-SAME-AS-WINDOW: flat pens put BACKGROUNDPEN on pen 0 (the window colour); the backdrop must use another pen,
+     * painted in the theme dark, and follow the theme */
+    static unsigned char pal[BUF_MAX], out[BUF_MAX], pat[BUF_MAX];
+    unsigned char pens[DK_SLOTS];
+    gtheme a, b;
+    long n, m;
+    int p, pen = 0, depth = 3;
+    const unsigned char *data;
+    probe_theme(&a);
+    probe_theme(&b);
+    a.darker_bg = 0x222222UL;
+    b.darker_bg = 0x336699UL;
+    desk_pens_flat(pens);
+    CHECK(desk_backdrop_pen() != pens[DK_BACKGROUND]);
+    n = desk_palette(&a, 8, pens, pal, sizeof pal);
+    CHECK(n > 0);
+    m = desk_palette_set_rgb(pal, n, desk_backdrop_pen(), desk_darker(&a), out, sizeof out);
+    CHECK(m > 0);
+    CHECK_INT(desk_palette_rgb(out, m, desk_backdrop_pen()), desk_darker(&a));
+    CHECK(desk_palette_rgb(out, m, desk_backdrop_pen()) != desk_palette_rgb(out, m, pens[DK_BACKGROUND]));
+    m = desk_palette_set_rgb(pal, n, desk_backdrop_pen(), desk_darker(&b), out, sizeof out);
+    CHECK_INT(desk_palette_rgb(out, m, desk_backdrop_pen()), desk_darker(&b));
+    CHECK(desk_darker(&a) != desk_darker(&b));
+    CHECK_INT(desk_palette_rgb(pal, 0, desk_backdrop_pen()), -1);
+    CHECK_INT(desk_wbpattern(&a, depth, 0, 0, pat, sizeof pat), 410);
+    data = ptrn(pat, 0) + 8 + 24;
+    for (p = 0; p < depth; p++)
+        if (data[p * 32] & 0x80)
+            pen |= 1 << p;
+    CHECK_INT(pen, desk_backdrop_pen());
+    CHECK(pen != pens[DK_BACKGROUND]);
+}
+
 static void test_desk_pointer(void)
 {
     static unsigned char gold[BUF_MAX * 2], out[BUF_MAX * 2];
@@ -859,6 +894,7 @@ void suite_desk(void)
     test_desk_backdrop();
     test_desk_wbpattern();
     test_desk_wbpattern_no_dots();
+    test_flat_on_keeps_backdrop_pen_distinct_from_window_background();
     test_desk_pointer();
     test_desk_pointer_gate();
     test_desk_palette_gate();

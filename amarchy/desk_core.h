@@ -94,6 +94,9 @@ long desk_palette(const gtheme *t, int ncolors, const unsigned char pens[DK_SLOT
 long desk_palette_live(const unsigned short *rgb4, int ncolors, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap);
 /* FLAT-PENS-LIVE: cur (a palette.prefs of curlen bytes) with only the pen arrays replaced by pens; the colours stay. Returns curlen,
  * 0 when cur is no palette.prefs or does not fit cap */
+int desk_backdrop_pen(void);
+long desk_palette_rgb(const unsigned char *cur, long curlen, int pen);
+long desk_palette_set_rgb(const unsigned char *cur, long curlen, int pen, uc_u32 c, unsigned char *out, long cap);
 long desk_palette_pens(const unsigned char *cur, long curlen, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap);
 /* FLAT-PENS-LIVE: the pen write flat-system-look (flat 0/1) asks for. pens gets desk_pens_for(flat). Returns 1 to write it: flat on and
  * the live pens (live/nlive, the Workbench DrawInfo) differ from the flat map; flat off and the live pens ARE the flat map (restore
