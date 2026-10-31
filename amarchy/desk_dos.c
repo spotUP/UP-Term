@@ -14,6 +14,7 @@
 #include "amconf_dos.h"
 #include "flat_shared.h"
 #include "win_refresh.h"
+#include "proclaunch.h"
 
 #define DK_BUF 1024
 #define DK_REVERT "T:amarchy-revert"
@@ -449,12 +450,7 @@ static void dk_flat_sync(void)
         desk_dos_flat_writes++;
         win_refresh_frames();
     } else if (!r && (flat || gad)) {
-        BPTR in = Open((STRPTR)"NIL:", MODE_OLDFILE), out = Open((STRPTR)"NIL:", MODE_NEWFILE);
-        SystemTags((STRPTR)"Run >NIL: UP-Term:bin/amarchy-flat BOOT", SYS_Input, in, SYS_Output, out, TAG_DONE);
-        if (in)
-            Close(in);
-        if (out)
-            Close(out);
+        pl_start(PL_BIN_DIR "/amarchy-flat BOOT", PL_BIN_DIR "/amarchy-flat", 32768, "amarchy-flat");   /* its $STACK cookie (rule 6) */
     }
 }
 
