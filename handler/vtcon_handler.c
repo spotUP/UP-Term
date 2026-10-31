@@ -2955,6 +2955,10 @@ static struct Window *create_window(con *c, struct Screen *scr)
             bw = c->wb_box[2];
             bh = c->wb_box[3];
         }
+        if (wbpark_flag_window(ScreenNotifyBase != 0, (scr->Flags & SCREENTYPE) == WBENCHSCREEN)) {
+            /* IPrefs 3.1 counts windows without this flag and refuses the reset (wbpark.h) */
+            tags[n].ti_Tag = WA_WBenchWindow; tags[n++].ti_Data = TRUE;
+        }
         tags[n].ti_Tag = WA_Left;    tags[n++].ti_Data = bx;
         tags[n].ti_Tag = WA_Top;     tags[n++].ti_Data = by;
         tags[n].ti_Tag = WA_Width;   tags[n++].ti_Data = bw;

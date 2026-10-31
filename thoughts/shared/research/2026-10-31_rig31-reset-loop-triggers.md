@@ -60,3 +60,16 @@ Run: rig 3, `rig.py start --a1200 --os 31 --fresh`, then `ami.py put build/amiga
 Result: NO LOOP on the 68020. First fault line (log line 1189): "Illegal instruction: 1050 at 40083A40 -> 00F80AD2". Reset counts (`grep -c "CPU reset"`): 0 before the crash, 2 after (line 1192 PC=f80dc8, line 1281 PC=f800d0, one reset pair), still 2 at 60 s and at 90 s after the guru. wasabid answered `ami.py ping` after the guru (the machine had rebooted itself and was up). The 060 rig gave 478 reset lines within about 30 s for the same program and fault.
 
 Conclusion: the same guru (illegal instruction 0x1050 in RAM) loops the 3.1 060 rig and does not loop the 3.1 68020 rig, so the loop depends on the 060 configuration (68060.library or emulated 060 CPU state surviving the reset), not on the guru itself. Consistent with rig9-installer-loop.md result 8. Not separated: 68060.library versus the emulated 060 core itself; the 3.1 060 run without 68060.library was not done (rig.py has no flag for it, none added).
+
+## 060 without 68060.library (s40)
+
+Question: does the `crashme illegal` reset loop of the 3.1 060 rig come from 68060.library (and mmu.library, 680x0.library) or from the emulated 060 CPU?
+
+Tool: `rig.py start --max --os 31 --no-060lib` (commit f03ee5eb; test tests/test_rig_no_060lib.py). Same 060 FS-UAE config (cpu = 68060-NOMMU), Libs: holds none of 68060.library, mmu.library, 680x0.library (the 68040.library stub stays). Rig 3, same crashme binary.
+
+| Run | Libs: | Illegal instruction line | CPU reset lines | wasabid after |
+|---|---|---|---|---|
+| `--max --os 31 --fresh --no-060lib` | none of the three | "Illegal instruction: 1050 at 1007E478 -> 00F80AD2" (log line 1206) | 2 at 40 s, still 2 at 70 s | ping answered |
+| `--max --os 31` (control, same tree, libs copied back) | 68060, mmu, 680x0 present | "Illegal instruction: 1050 at 100A4418 -> 00F80AD2" (line 1162) | 334 at 45 s, no wasabid | connection refused |
+
+Conclusion: the loop needs 68060.library (or mmu.library / 680x0.library); the 060 CPU alone gives one reset pair, like the 68020 rig. The boot without the libs works (wasabid up, no Guru). Not separated: which of the three libs loops (68060.library is the suspect: SetPatch loads it; its trap/reset handling survives the guru reset). Next: boot with only 68060.library added back, then only mmu/680x0, to pin one file.

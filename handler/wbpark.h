@@ -40,6 +40,18 @@ static int wbpark_note(wbpark *p, int opened, int eligible)
     return WBPARK_SHOW;
 }
 
+/* IPrefs 3.1 (40.7) counts the windows on the Workbench screen that lack
+ * WFLG_WBENCHWINDOW and shows the "close all windows" requester without ever
+ * calling CloseWorkBench, so the screennotify patch never runs. A console
+ * window on the Workbench screen therefore opens with WA_WBenchWindow: IPrefs
+ * then calls CloseWorkBench, screennotify tells us, and we park. Only when
+ * screennotify is there to park it (a flagged window nobody parks would make
+ * CloseWorkBench fail silently) and only on the Workbench screen. */
+static int wbpark_flag_window(int notify_present, int on_wb_screen)
+{
+    return notify_present && on_wb_screen;
+}
+
 /* The reopen failed: stay parked, so the next "opened" message tries again. */
 static void wbpark_failed(wbpark *p)
 {
