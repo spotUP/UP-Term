@@ -179,14 +179,22 @@ int flat_glyph_draw(const flat_state *s, unsigned long which, unsigned long meth
     return plan_run(&g, which, w, h, flat_glyph_state(ids)) > 0;
 }
 
-int flat_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, flat_fill_fn fn, void *ctx)
+int flat_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn, void *ctx)
 {
     int x1, y1;
     if (!s || !fn || w < 3 || h < 3)
         return 0;
     x1 = ox + w - 1;
     y1 = oy + h - 1;
-    if (fill) {                                      /* FLAT-BUTTON-FILL: raised fill, accent when pressed, no outline */
+    if (fill && ids != 1 && role == FLAT_ROLE_SECONDARY) {   /* BUTTON-ROLES: the secondary button is a 1 px text-pen outline, no fill */
+        fn(ctx, ox, oy, x1, y1, s->pen_back);        /* clears a previous pressed fill */
+        fn(ctx, ox, oy, x1, oy, s->pen_text);
+        fn(ctx, ox, y1, x1, y1, s->pen_text);
+        fn(ctx, ox, oy, ox, y1, s->pen_text);
+        fn(ctx, x1, oy, x1, y1, s->pen_text);
+        return 1;
+    }
+    if (fill) {                                      /* FLAT-BUTTON-FILL: primary fill (flat_button_pen), accent when pressed, no outline */
         fn(ctx, ox, oy, x1, y1, ids == 1 ? s->pen_line : (s->pen_button ? s->pen_button : s->pen_back));
         return 1;
     }

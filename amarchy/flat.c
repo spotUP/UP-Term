@@ -157,6 +157,25 @@ ULONG c2_disp_stk(struct Hook *h, Object *obj, Msg msg)
 /* ---- FLAT-C8: the frameiclass dispatcher. Under flat pens (shine == background) the stock bevel leaves its shadow half
  * as a one-sided right/bottom L; flat_frame_decide says draw flat, flat_frame_draw paints the box fill and a full 1 px outline instead. Every other
  * call goes to the saved routine with the arguments as received. */
+/* BUTTON-ROLES: collect the window's button gadgets (render == select == frame, as flat_button_gadget) in gadget coordinates and let
+ * flat_button_role decide for the one drawn through obj. Gadgets with relative flags keep their raw offsets (unresolved). */
+static int role_of(struct RastPort *rp, Object *obj)
+{
+    flat_box sib[32], self;
+    struct Layer *lay = rp->Layer;
+    struct Window *win = lay ? (struct Window *)lay->Window : NULL;
+    struct Gadget *g;
+    int n = 0, found = 0, i;
+    for (g = win ? win->FirstGadget : NULL, i = 0; g && i < 64 && n < 32; g = g->NextGadget, i++) {
+        if (!g->GadgetRender || g->GadgetRender != g->SelectRender)
+            continue;
+        sib[n].x = g->LeftEdge; sib[n].y = g->TopEdge; sib[n].w = g->Width; sib[n].h = g->Height;
+        if (g->GadgetRender == (APTR)obj) { self = sib[n]; found = 1; }
+        n++;
+    }
+    return found ? flat_button_role(&self, sib, n) : FLAT_ROLE_PRIMARY;
+}
+
 static int c8_skip(Object *obj, Msg msg)
 {
     flatshared *r = g_r;
@@ -190,7 +209,7 @@ static int c8_skip(Object *obj, Msg msg)
         flat_frame_size(msg->MethodID == FLAT_IM_DRAWFRAME, d->imp_Dimensions.Width, d->imp_Dimensions.Height, im->Width, im->Height, &w, &h);
         /* FLAT-BUTTON-FILL: the fill pen must exist on this screen (a 4 colour screen has no pen 4) */
         st.pen_button = (UBYTE)flat_button_pen(&r->st, d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0);
-        if (!flat_frame_draw(&st, (int)d->imp_State, ox, oy, w, h, fill, c2_fill, d->imp_RPort))
+        if (!flat_frame_draw(&st, (int)d->imp_State, ox, oy, w, h, fill, role_of(d->imp_RPort, obj), c2_fill, d->imp_RPort))
             return 0;
         /* a pressed filled frame arms the Text patch for its label; any other frame draw on this rastport disarms */
         flat_tx_frame(&r->tx, flat_tx_surface(d->imp_RPort->Layer, d->imp_RPort->BitMap), FindTask(NULL),

@@ -243,7 +243,16 @@ void flat_frame_size(int draw_frame, int dim_w, int dim_h, int img_w, int img_h,
  * BUTTON and CYCLE have GadgetRender == SelectRender == the frame; STRING, LISTVIEW, SLIDER have no select image. */
 int flat_button_gadget(const void *gadget_render, const void *select_render, const void *image);
 
-/* The button fill pen for a screen of the given depth: pen_button, or pen_back when it is 0 or not a pen of that depth. */
+/* The PRIMARY button fill pen for a screen of the given depth: under 8 colours (depth < 3) the accent pen_line; from 8 colours the
+ * theme lighter background pen_button, or pen_back when it is 0 or not a pen of that depth. */
 int flat_button_pen(const flat_state *s, int depth);
+
+/* BUTTON-ROLES: a button box in gadget coordinates. */
+typedef struct { int x, y, w, h; } flat_box;
+enum { FLAT_ROLE_PRIMARY = 0, FLAT_ROLE_SECONDARY = 1 };
+/* Amiga style guide: in a row of buttons the rightmost is secondary (Cancel, drawn as a text-pen outline), every other button
+ * primary (filled); a lone button is primary. A row = siblings whose vertical span overlaps this box. sib lists every button of
+ * the window, the box itself included (skipped by equal box). */
+int flat_button_role(const flat_box *self, const flat_box *sib, int n);
 
 #endif

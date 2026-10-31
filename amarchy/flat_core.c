@@ -376,8 +376,26 @@ int flat_tx_pen(const flat_state *s, flat_tx *t, const void *surf, const void *t
     return s->pen_ptext;
 }
 
+int flat_button_role(const flat_box *self, const flat_box *sib, int n)
+{
+    int i, left = 0;
+    for (i = 0; self && sib && i < n; i++) {
+        const flat_box *o = &sib[i];
+        if (o->x == self->x && o->y == self->y && o->w == self->w && o->h == self->h)
+            continue;
+        if (o->y < self->y + self->h && self->y < o->y + o->h) {   /* same row */
+            if (o->x > self->x)
+                return FLAT_ROLE_PRIMARY;                          /* a button further right: not rightmost */
+            left = 1;
+        }
+    }
+    return left ? FLAT_ROLE_SECONDARY : FLAT_ROLE_PRIMARY;
+}
+
 int flat_button_pen(const flat_state *s, int depth)
 {
+    if (depth >= 1 && depth < 3 && s->pen_line)
+        return s->pen_line;
     if (!s->pen_button || depth < 1 || depth > 8 || s->pen_button >= (1 << depth))
         return s->pen_back;
     return s->pen_button;

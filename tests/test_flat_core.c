@@ -619,24 +619,48 @@ static void test_which_from_gtype(void)
         memset(&fs, 0, sizeof fs);
         fs.enabled = 1; fs.pen_line = 1; fs.pen_back = 0; fs.pen_button = 4;
         memset(&f, 0, sizeof f);
-        CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 8, 6, 1, frame_rec, &f), 1);
+        CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 8, 6, 1, 0, frame_rec, &f), 1);
         CHECK_INT(f.n, 1);                                                     /* FLAT-BUTTON-FILL: one fill, NO outline */
         CHECK_INT(f.r[0][0] == 10 && f.r[0][1] == 20 && f.r[0][2] == 17 && f.r[0][3] == 25 && f.r[0][4] == 4, 1);   /* pen_button */
         fs.pen_button = 0;
         memset(&f, 0, sizeof f);
-        CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 8, 6, 1, frame_rec, &f), 1);
+        CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 8, 6, 1, 0, frame_rec, &f), 1);
         CHECK_INT(f.n == 1 && f.r[0][4] == 0, 1);                              /* pen_button 0: pen_back */
         fs.pen_button = 4;
         memset(&f, 0, sizeof f);
-        CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 8, 6, 0, frame_rec, &f), 1);
+        CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 8, 6, 0, 0, frame_rec, &f), 1);
         CHECK_INT(f.n, 4);                                                     /* not fill: the outline only, unchanged */
         CHECK_INT(f.r[0][4] == 1 && f.r[1][4] == 1 && f.r[2][4] == 1 && f.r[3][4] == 1, 1);
         CHECK_INT(f.r[0][0] == 10 && f.r[0][1] == 20 && f.r[0][2] == 17 && f.r[0][3] == 20, 1);
         memset(&f, 0, sizeof f);
-        CHECK_INT(flat_frame_draw(&fs, 1, 10, 20, 8, 6, 1, frame_rec, &f), 1);
+        CHECK_INT(flat_frame_draw(&fs, 1, 10, 20, 8, 6, 1, 0, frame_rec, &f), 1);
         CHECK_INT(f.n == 1 && f.r[0][4] == 1, 1);                              /* pressed: accent (pen_line) fill, no outline */
-        CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 2, 6, 1, frame_rec, &f), 0);   /* too small: stock */
-        CHECK_INT(flat_frame_draw(0, 0, 10, 20, 8, 6, 1, frame_rec, &f), 0);
+        CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 2, 6, 1, 0, frame_rec, &f), 0);   /* too small: stock */
+        CHECK_INT(flat_frame_draw(0, 0, 10, 20, 8, 6, 1, 0, frame_rec, &f), 0);
+    }
+    {   /* BUTTON-ROLES: rightmost of a row is outlined, others and a lone button are filled; fill pen per depth; pressed is accent */
+        struct frame_rec_t f;
+        flat_state fs;
+        flat_box row[3] = { {10, 5, 40, 12}, {60, 5, 40, 12}, {110, 5, 40, 12} }, other = {10, 40, 40, 12}, lone = {10, 5, 40, 12};
+        int i;
+        memset(&fs, 0, sizeof fs);
+        fs.enabled = 1; fs.pen_text = 2; fs.pen_line = 3; fs.pen_back = 0; fs.pen_button = 4;
+        CHECK_INT(flat_button_role(&row[2], row, 3), FLAT_ROLE_SECONDARY);   /* rightmost button in a row is outlined */
+        CHECK_INT(flat_button_role(&row[0], row, 3), FLAT_ROLE_PRIMARY);     /* left button is filled */
+        CHECK_INT(flat_button_role(&row[1], row, 3), FLAT_ROLE_PRIMARY);
+        CHECK_INT(flat_button_role(&lone, &lone, 1), FLAT_ROLE_PRIMARY);     /* lone button is filled */
+        { flat_box two[2]; two[0] = row[2]; two[1] = other;
+          CHECK_INT(flat_button_role(&row[2], two, 2), FLAT_ROLE_PRIMARY); } /* a button in another row is no sibling */
+        memset(&f, 0, sizeof f);
+        CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 8, 6, 1, FLAT_ROLE_SECONDARY, frame_rec, &f), 1);
+        CHECK_INT(f.n, 5);                                                   /* background clear + four sides */
+        for (i = 1; i < 5; i++)
+            CHECK_INT(f.r[i][4], 2);                                         /* secondary: text-pen outline */
+        memset(&f, 0, sizeof f);
+        CHECK_INT(flat_frame_draw(&fs, 1, 10, 20, 8, 6, 1, FLAT_ROLE_SECONDARY, frame_rec, &f), 1);
+        CHECK_INT(f.n == 1 && f.r[0][4] == 3, 1);                            /* pressed secondary gets accent fill */
+        CHECK_INT(flat_button_pen(&fs, 2), 3);                               /* 4-colour primary uses accent fill */
+        CHECK_INT(flat_button_pen(&fs, 3), 4);                               /* 8 colours: lighter background */
     }
     {   /* FLAT-BUTTON-FILL: the pressed-label arm and the depth-checked fill pen */
         flat_tx t; flat_state bs; int a, b, c1, c2;
@@ -698,7 +722,7 @@ static void test_which_from_gtype(void)
         memset(&bs, 0, sizeof bs);
         bs.pen_back = 0; bs.pen_button = 4;
         CHECK_INT(flat_button_pen(&bs, 3), 4);                                /* 8 colours: the button pen */
-        CHECK_INT(flat_button_pen(&bs, 2), 0);                                /* 4 colours have no pen 4: pen_back */
+        CHECK_INT(flat_button_pen(&bs, 2), 0);                                /* 4 colours, no accent set: pen_back */
         bs.pen_button = 0;
         CHECK_INT(flat_button_pen(&bs, 3), 0);                                /* unset: pen_back */
     }
