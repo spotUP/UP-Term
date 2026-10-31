@@ -118,6 +118,12 @@ int wbr_client_step(wbr_rec *r, void *task)
     }
     if (c->hidden) {
         c->hidden = 0;
+        /* The client holds the screen from its first LockPubScreen on, long before it reports the window (the bar's
+         * CPU calibration alone is half a second). IPrefs retries a failed CloseWorkBench at once (3.1 with Directory
+         * Opus: the first try fails while DOpus closes its windows): a retry that saw has_win 0 here neither signalled
+         * nor waited, ran the original into the half-open bar's lock and failed every time. Counted as holding now,
+         * the retry signals it and waits; its own report sets the real value when the open is done. */
+        c->has_win = 1;
         return WBR_DO_SHOW;
     }
     return WBR_DO_NONE;

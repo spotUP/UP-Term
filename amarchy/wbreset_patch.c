@@ -10,6 +10,8 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <intuition/intuitionbase.h>
+#include <intuition/screens.h>
+#include <proto/intuition.h>
 #include <string.h>
 #include "wbreset.h"
 #include "flat_core.h"
@@ -35,6 +37,25 @@ static void signal_all(const wbr_sig *s, int n)
         Signal((struct Task *)s[n].task, s[n].sig);
 }
 
+/* Diagnostic (WBRESET-EXT 3.1): the Workbench public screen's visitors and windows just before the original runs. */
+static void diag_census(void)
+{
+    struct List *pl = LockPubScreenList();
+    struct PubScreenNode *n;
+    struct Window *w;
+    int v = -1, k = 0;
+    for (n = (struct PubScreenNode *)pl->lh_Head; n->psn_Node.ln_Succ; n = (struct PubScreenNode *)n->psn_Node.ln_Succ)
+        if (n->psn_Node.ln_Name && !strcmp(n->psn_Node.ln_Name, "Workbench")) {
+            v = n->psn_VisitorCount;
+            if (n->psn_Screen)
+                for (w = n->psn_Screen->FirstWindow; w; w = w->NextWindow)
+                    k++;
+        }
+    UnlockPubScreenList();
+    g_pub->rec.diag_vis = (int16_t)v;
+    g_pub->rec.diag_wins = (int16_t)k;
+}
+
 /* Runs on the caller (IPrefs after a prefs USE, or any program). Never waits inside Forbid, never on its own task. */
 static LONG close_hook(__reg("a6") struct Library *ib)
 {
@@ -58,7 +79,9 @@ static LONG close_hook(__reg("a6") struct Library *ib)
         }
         timed = n != 0;
     }
+    diag_census();
     ok = ((wbfn)gate_long(g_gc, WBR_GATE_SAVED))(ib);
+    g_pub->rec.diag_ok = ok;
     Forbid();
     n = wbr_close_end(&g_pub->rec, ok != 0, timed, s);
     signal_all(s, n);

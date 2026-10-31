@@ -31,6 +31,8 @@ typedef struct wbr_rec {
     uint16_t phase;
     uint16_t busy;                  /* callers inside the patch (Amarchy's exit waits for 0) */
     uint32_t closes, opens, failed, timeouts;
+    int16_t diag_vis, diag_wins;    /* diagnostic: Workbench visitors / windows just before the original CloseWorkBench */
+    int32_t diag_ok;                /* diagnostic: what the original CloseWorkBench returned */
     wbr_client c[WBR_MAX];
 } wbr_rec;
 

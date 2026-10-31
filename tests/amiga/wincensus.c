@@ -11,6 +11,7 @@
 #include <proto/dos.h>
 #include <proto/intuition.h>
 #include <stdio.h>
+#include "../../amarchy/wbreset.h"
 
 struct IntuitionBase *IntuitionBase;
 extern struct ExecBase *SysBase;
@@ -26,6 +27,23 @@ int main(void)
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 36);
     if (!IntuitionBase)
         return 20;
+    {
+        wbr_pub *p;
+        int i;
+        Forbid();
+        p = (wbr_pub *)FindSemaphore((STRPTR)WBR_SEM_NAME);
+        if (p) {
+            printf("WBR phase=%u busy=%u closes=%lu opens=%lu failed=%lu timeouts=%lu diag_vis=%d diag_wins=%d diag_ok=%ld\n",
+                (unsigned)p->rec.phase, (unsigned)p->rec.busy, (unsigned long)p->rec.closes, (unsigned long)p->rec.opens,
+                (unsigned long)p->rec.failed, (unsigned long)p->rec.timeouts, p->rec.diag_vis, p->rec.diag_wins, (long)p->rec.diag_ok);
+            for (i = 0; i < WBR_MAX; i++)
+                if (p->rec.c[i].task)
+                    printf("WBR client %s mode=%u has_win=%u hidden=%u\n", ((struct Node *)p->rec.c[i].task)->ln_Name,
+                        (unsigned)p->rec.c[i].mode, (unsigned)p->rec.c[i].has_win, (unsigned)p->rec.c[i].hidden);
+        } else
+            printf("WBR none\n");
+        Permit();
+    }
     {
         struct List *pl = LockPubScreenList();
         struct PubScreenNode *n;

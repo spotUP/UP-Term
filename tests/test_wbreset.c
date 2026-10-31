@@ -77,6 +77,24 @@ static void test_failed_close(void)
 }
 
 /* The caller is never waited on (it is inside the patch); a client without a window is not signalled. */
+/* 3.1 with Directory Opus: IPrefs' first CloseWorkBench fails while DOpus closes its windows, the bar starts to
+ * reopen, and IPrefs retries at once. The reopening bar already holds the screen lock, so the retry must signal it
+ * and wait, not run the original into the lock ("Intuition is attempting to reset the Workbench screen"). */
+static void test_retry_while_reopening(void)
+{
+    wbr_rec r;
+    wbr_sig s[WBR_MAX];
+    wbr_init(&r);
+    wbr_set(&r, BAR, SIG_F, WBR_HIDE, 1);
+    CHECK_INT(wbr_close_begin(&r, IPREFS, s), 1);
+    CHECK_INT(wbr_client_step(&r, BAR), WBR_DO_HIDE);
+    wbr_set(&r, BAR, SIG_F, WBR_HIDE, 0);                   /* the bar closed and reported */
+    CHECK_INT(wbr_close_end(&r, 0, 0, s), 1);               /* DOpus still had its windows: the bar comes back */
+    CHECK_INT(wbr_client_step(&r, BAR), WBR_DO_SHOW);       /* the bar starts to open: lock taken, no report yet */
+    CHECK_INT(wbr_close_begin(&r, IPREFS, s), 1);           /* IPrefs retries: the opening bar is signalled */
+    CHECK_INT(wbr_pending(&r, IPREFS), 1);                  /* and waited for */
+}
+
 static void test_self_and_idle(void)
 {
     wbr_rec r;
@@ -180,6 +198,7 @@ void suite_wbreset(void)
 {
     test_external_reset();
     test_failed_close();
+    test_retry_while_reopening();
     test_self_and_idle();
     test_table();
     test_gate();
