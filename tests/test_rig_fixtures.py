@@ -474,12 +474,18 @@ class ScriptedAmiga:
     def python_block(self):
         return ';BEGIN Python3' in self.startup
 
+    def exists(self, p):
+        return p in self.files or any(f.startswith(p + '/') for f in self.files)
+
     def run(self, cmd, timeout=60):
         self.log.append(cmd)
         c = cmd.split('\n')[-1]
         if c.startswith('List >NIL: '):
-            p = c[11:].strip('"')
-            return (0 if p in self.files or any(f.startswith(p + '/') for f in self.files) else 5), ''
+            return (0 if self.exists(c[11:].strip('"')) else 5), ''
+        if c.startswith('Echo >T:rig-exists.dos '):   # install_rig.lock_exists: the If EXISTS script, run next
+            self.lock_path = c.split('If EXISTS ', 1)[1].split('*N', 1)[0]
+            return 0, ''
+        if c == 'Execute T:rig-exists.dos': return 0, 'YES' if self.exists(self.lock_path) else 'NO'
         if c == 'Type S:User-Startup': return 0, self.startup
         if c == 'Type S:Startup-Sequence': return 0, 'ss'
         if c == 'Type UP-Term:UP-Term.version': return 0, '$VER: UP-Term 1.0 (13.10.2026)'
@@ -991,7 +997,8 @@ class RigStart(unittest.TestCase):
         master = pathlib.Path(d) / "master.hdf"
         master.write_bytes(b"MASTER")
         saved = (rig.RIG, rig.OS, rig.OS32, rig.mine, rig.SRC_HDF, rig.START_ARGS, rig.subprocess.run,
-                 rig.sys_hdf_cpu_lib, rig.sys_hdf_screenmode, rig.sys_hdf_no_wasabid, rig.sys_hdf_kit)
+                 rig.sys_hdf_cpu_lib, rig.sys_hdf_screenmode, rig.sys_hdf_no_wasabid, rig.sys_hdf_kit, rig.port_listeners,
+                 rig.sys_hdf_monitors, rig.sys_hdf_dopus, rig.sys_hdf_no_dopus)
         class NoWrite:
             def write_text(self, *_): raise RigStart.Stop()
         def run(cmd, *a, **k):
@@ -1002,10 +1009,13 @@ class RigStart(unittest.TestCase):
             rig.RIG.mkdir()
             rig.SRC_HDF, rig.START_ARGS = master, NoWrite()
             rig.subprocess.run = run
+            rig.port_listeners = lambda port: []   # RIG-PORT-CLASH: no other rig holds this rig's wasabi port
             rig.sys_hdf_screenmode = lambda image: steps.append(["screenmode", image.name])
             rig.sys_hdf_cpu_lib = lambda image: steps.append(["cpu_lib", image.name])
             rig.sys_hdf_no_wasabid = lambda image: steps.append(["no_wasabid", image.name])
             rig.sys_hdf_kit = lambda image: steps.append(["kit", image.name])
+            rig.sys_hdf_monitors = lambda image: steps.append(["monitors", image.name])
+            rig.sys_hdf_dopus = rig.sys_hdf_no_dopus = lambda image: steps.append(["dopus", image.name])
             (rig.RIG / "sys.hdf").write_bytes(b"DIRTY from a killed run")
             try:
                 rig.start()
@@ -1014,7 +1024,8 @@ class RigStart(unittest.TestCase):
             return steps, rig.RIG
         finally:
             (rig.RIG, rig.OS, rig.OS32, rig.mine, rig.SRC_HDF, rig.START_ARGS, rig.subprocess.run,
-             rig.sys_hdf_cpu_lib, rig.sys_hdf_screenmode, rig.sys_hdf_no_wasabid, rig.sys_hdf_kit) = saved
+             rig.sys_hdf_cpu_lib, rig.sys_hdf_screenmode, rig.sys_hdf_no_wasabid, rig.sys_hdf_kit, rig.port_listeners,
+             rig.sys_hdf_monitors, rig.sys_hdf_dopus, rig.sys_hdf_no_dopus) = saved
 
     def test_start_replaces_sys_hdf_from_the_master_by_clone_before_the_writes_into_it(self):
         import tempfile
@@ -1026,7 +1037,7 @@ class RigStart(unittest.TestCase):
             steps, rigdir = self.start_with(d, clone)
             self.assertEqual((rigdir / "sys.hdf").read_bytes(), b"MASTER", "the dirty disk was not replaced")
             self.assertFalse((rigdir / "sys.hdf.new").exists())
-            self.assertEqual([s[0] for s in steps], ["cp", "screenmode", "no_wasabid", "kit", "cpu_lib"],
+            self.assertEqual([s[0] for s in steps], ["cp", "screenmode", "monitors", "no_wasabid", "dopus", "kit", "cpu_lib"],
                              "the clone happens once, before every write into the image")
 
     def test_start_without_a_clone_fails_and_never_copies_the_whole_disk(self):
@@ -1041,7 +1052,7 @@ class RigStart(unittest.TestCase):
 
     def test_start_refuses_when_the_master_system_disk_is_missing(self):
         import tempfile, rig
-        saved = (rig.RIG, rig.OS, rig.OS32, rig.mine, rig.SRC_HDF, rig.subprocess.Popen, rig.subprocess.run)
+        saved = (rig.RIG, rig.OS, rig.OS32, rig.mine, rig.SRC_HDF, rig.subprocess.Popen, rig.subprocess.run, rig.port_listeners)
         launched = []
         try:
             with tempfile.TemporaryDirectory() as d:
@@ -1051,11 +1062,12 @@ class RigStart(unittest.TestCase):
                     launched.append(a)
                     raise AssertionError('the emulator was launched')
                 rig.subprocess.Popen = rig.subprocess.run = launch
+                rig.port_listeners = lambda port: []
                 with self.assertRaises(SystemExit):
                     rig.start()
                 self.assertEqual(launched, [])
         finally:
-            rig.RIG, rig.OS, rig.OS32, rig.mine, rig.SRC_HDF, rig.subprocess.Popen, rig.subprocess.run = saved
+            rig.RIG, rig.OS, rig.OS32, rig.mine, rig.SRC_HDF, rig.subprocess.Popen, rig.subprocess.run, rig.port_listeners = saved
 
 class RomCheck(unittest.TestCase):
     """The --a500 default was Amiberry's kick40063.A500.rom, a relocated image whose reset jumps to $2000D2:
