@@ -22,3 +22,17 @@ Setup: the os-31 tree had no RTG driver. rig.py now has os_tree_rtg(): when an -
 | Menu LCOMMAND(0x40)+Space with qualifier 0x40, then Esc, after `Run VTC:Apps/bin/Amarchy` | 3 | menu opened (screen_text has "Filter" and "Apps"), no reset | 0 CPU reset |
 
 Notes: the menu needs the Amarchy commodity running (Run VTC:Apps/bin/Amarchy); without it the key does nothing (the earlier doc's "wrong qualifier" was also the missing commodity: qualifier is LCOMMAND 0x40). Typing `exit` does not close the UP-Term window; the close gadget does. Not tried: ScreenMode USE to the NTSC RTG mode (rtg360) and closing that screen, the exact 29 Oct trigger; the ScreenMode list rows are not clickable through the uitree. Loop seen once rig-side came with 060 libs and a prior crash (see todos RIG31-RESET-LOOP).
+
+## NTSC RTG trigger (s39)
+
+Result: NOT reproduced. 0 "CPU reset" lines in build/rig6/logs/fs-uae.log.txt after every step, no watchdog.log, no reset-loop-*.fs-uae.log, wasabid answered a ping after every step. Rig 6, 3.1 (--os 31 --fresh), 060, uaegfx driver from the master disk.
+
+How the NTSC mode was reached: `rig.py rtg` copies the 800x600 file, not rtg360, so VTC:screenmode.rtg360.prefs was copied to ENVARC:Sys/screenmode.prefs and the rig restarted: the boot came up on a 640x360 depth 24 uaegfx Workbench Screen (start still prints the "stayed PAL (W43)" warning because its check is width == 640; false alarm for 640x360). Switching at run time works without the ScreenMode editor: copy the prefs file to ENV:Sys/screenmode.prefs; the running IPrefs reacts (a second `C:IPrefs` returns rc 20) and the screen changes.
+
+| Trigger | Count | Result | Evidence |
+|---|---|---|---|
+| Boot straight into 640x360 RTG, UP-Term open + close gadget (gclick 0 sys:close) | 3 | no reset | ping after each, screen 640x360x24, 0 CPU reset |
+| Run-time switch 800x600 <-> 640x360 via ENV:Sys + ENVARC:Sys screenmode.prefs, no windows open | 3 round trips (6 switches) | no reset | uitree S line 800x600 / 640x360 each time, ping ok, 0 CPU reset |
+| Switch to 640x360 with UP-Term (vsh) windows open, then close | 3 | no reset, but the switch never completes | IPrefs raises the System Request (Retry/Cancel, "close all windows") on the 800x600 screen; UP-Term windows stay; 0 CPU reset |
+
+The third row is the W43 requester. Once it is up, clicks at the UP-Term close gadget, Retry and Cancel (pointer script at the uitree coordinates, gclick, and `Break 1 C/D` on the vsh process) did not dismiss it in the budget; the rig stayed alive (ping ok, 0 resets). Not tried: the real ScreenMode editor USE (list rows not clickable), the "right after a forced crash/reboot cycle" variant (68060.library state surviving ColdReboot), and the 29 Oct sequence of closing the UP-Term-owned screen after the switch completed. The 29 Oct loops are therefore still unexplained; a stuck System Request with windows open is the nearest state reached.
