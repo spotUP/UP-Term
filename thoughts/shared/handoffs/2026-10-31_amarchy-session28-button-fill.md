@@ -23,7 +23,7 @@ status: handoff
 
 ## Open, in order
 
-1. **AMARCHY-31-PALUSE-REBOOT** (todos.md row). On 3.1, stock `Palette FROM x USE` while the
+1. **AMARCHY-31-PALUSE-REBOOT** (todos.md row; s28 cause hunt did NOT reproduce it in two fresh 3.1 boots, parked; Break C part is by design, see AMARCHY-BREAK-C). On 3.1, stock `Palette FROM x USE` while the
    Amarchy bar, amarchy-gui and amarchy-menu run reboots the Amiga within 2 s (software
    reset into Kickstart ROM). Stopped with `Break <n> ALL`, the same USE works. `Break <n> C`
    alone does not stop the three on a fresh 3.1 boot (second defect). Same family as the
