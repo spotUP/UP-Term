@@ -256,11 +256,11 @@ void flat_tx_c(struct RastPort *rp, CONST_STRPTR str, ULONG count)
 {
     flatshared *r = g_r;
     r->tcalls++;
-    if (r->tx.armed && r->tx.rp == rp && r->st.enabled && !r->st.held && r->st.pen_ptext &&
-        flat_tx_text(&r->tx, rp, FindTask(NULL), rp->cp_x, rp->cp_y)) {
+    int pen;
+    if (r->tx.armed && r->tx.rp == rp && (pen = flat_tx_pen(&r->st, &r->tx, rp, FindTask(NULL), rp->cp_x, rp->cp_y)) >= 0) {
         UBYTE fg = rp->FgPen;
         r->thits++;
-        SetAPen(rp, r->st.pen_ptext);
+        SetAPen(rp, (UBYTE)pen);
         ((textfn)r->tsw.saved)(rp, str, count);
         SetAPen(rp, fg);
         return;

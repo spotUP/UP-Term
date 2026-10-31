@@ -225,6 +225,10 @@ void flat_tx_frame(flat_tx *t, const void *rp, const void *task, int pressed, in
  * outside the box disarms (0). Another rastport or task: 0, state untouched. */
 int flat_tx_text(flat_tx *t, const void *rp, const void *task, int cx, int cy);
 
+/* The pen a patched Text call draws with: pen_ptext when flat is on and not held and flat_tx_text matches, else -1 (stock
+ * pen). pen_ptext is DK_BG = pen 0, a real pen: 0 never means "unset" here. */
+int flat_tx_pen(const flat_state *s, flat_tx *t, const void *rp, const void *task, int cx, int cy);
+
 /* FLAT-BUTTON-FILL: the size of a frame draw. Only IM_DRAWFRAME carries Dimensions (a 0 side falls back to the image's);
  * IM_DRAW has no such field, its message words past the state are junk (3.1: 4096 x -17232). */
 void flat_frame_size(int draw_frame, int dim_w, int dim_h, int img_w, int img_h, int *w, int *h);

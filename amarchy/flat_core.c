@@ -364,6 +364,13 @@ int flat_tx_text(flat_tx *t, const void *rp, const void *task, int cx, int cy)
     return 1;
 }
 
+int flat_tx_pen(const flat_state *s, flat_tx *t, const void *rp, const void *task, int cx, int cy)
+{
+    if (!s->enabled || s->held || !flat_tx_text(t, rp, task, cx, cy))
+        return -1;
+    return s->pen_ptext;
+}
+
 int flat_button_pen(const flat_state *s, int depth)
 {
     if (!s->pen_button || depth < 1 || depth > 8 || s->pen_button >= (1 << depth))

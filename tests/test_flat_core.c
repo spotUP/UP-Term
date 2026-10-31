@@ -658,6 +658,15 @@ static void test_which_from_gtype(void)
         CHECK_INT(flat_tx_text(&t, &a, &c1, 9, 22), 0);                       /* outside the box: disarms */
         CHECK_INT(t.armed, 0);
         CHECK_INT(flat_tx_text(&t, &a, &c1, 12, 22), 0);
+        memset(&bs, 0, sizeof bs);                                           /* pen_ptext = DK_BG = pen 0: a real pen */
+        bs.enabled = 1; bs.pen_ptext = DK_BG;
+        flat_tx_frame(&t, &a, &c1, 1, 1, 10, 20, 17, 25);
+        CHECK_INT(flat_tx_pen(&bs, &t, &a, &c1, 12, 22), 0);                  /* pressed label: pen 0, not "unset" */
+        CHECK_INT(flat_tx_pen(&bs, &t, &a, &c2, 12, 22), -1);                 /* other task: stock */
+        bs.held = 1;
+        CHECK_INT(flat_tx_pen(&bs, &t, &a, &c1, 12, 22), -1);                 /* held: stock */
+        bs.held = 0; bs.enabled = 0;
+        CHECK_INT(flat_tx_pen(&bs, &t, &a, &c1, 12, 22), -1);                 /* off: stock */
         flat_tx_frame(&t, &a, &c1, 1, 1, 10, 20, 17, 25);
         flat_tx_frame(&t, &a, &c1, 0, 1, 30, 20, 37, 25);                     /* another frame draw on the rastport: disarms */
         CHECK_INT(t.armed, 0);
