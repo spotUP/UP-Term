@@ -9,6 +9,7 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   (timing runs only; --stock, --exact and --fast also keep the 020);
                   --060: a 68060 + FPU at the host's speed, 128 MB Z3 (W41);
                   --sound: Paula at volume 100; without it the rig is silent (a rig-mute flag file wins);
+                  --no-clipboard: FS-UAE clipboard sharing off (the Mac clipboard stays out of the guest);
                   --nofpu: the same machine without an FPU: the default 060 becomes a 68LC060, --a1200 a
                   68020 with no fpu key (what the soft-float ixemul.library is for; --mmu is ignored);
                   --a500: a 68000 A500 at 7 MHz, cycle-exact, 8 MB Zorro II fast (68000 speed, W7);
@@ -496,6 +497,9 @@ RIG_MUTE_FLAG = pathlib.Path.home() / ".config" / "upterm" / "rig-mute"
 # twice). start --sound gives Paula volume 100; the rig-mute flag file still
 # wins over --sound, so the owner can silence every session's rigs at once.
 SOUND = "--sound" in sys.argv
+# start --no-clipboard turns FS-UAE clipboard sharing off, so a crash hunt can rule out the
+# host clipboard being copied into guest memory while it runs (NVIM-HEAP-CORRUPT, 2026-10-31)
+CLIPBOARD = "--no-clipboard" not in sys.argv
 
 
 def rig_volume():
@@ -1117,7 +1121,7 @@ def setup():
         "floppy_drive_volume = 0", "floppy_drive_volume_empty = 0",
         # the Amiga's clipboard.device unit 0 and the Mac's clipboard are one: a copy
         # in UP-Term pastes on the Mac and back (off without it, 2026-10-12)
-        "clipboard_sharing = 1",
+        "clipboard_sharing = %d" % CLIPBOARD,
     ] + HOST_KEYS + [title_line(),
     ] + window_lines() + [
         # sharp pixels: nearest-neighbour texture filter instead of the default linear blur
