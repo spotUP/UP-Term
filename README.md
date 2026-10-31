@@ -66,3 +66,7 @@ colours sit close together collapses - Apprentice, for one, pairs colour 2
 with colour 7 at 33 levels apart and runs four greys through an 80-level
 range, landing on about five distinct pens. A scheme built for 256 colours
 shows its true self on 4-bit hardware.
+
+## Credits
+
+The flat Workbench icons are Lucide icons (https://lucide.dev, ISC licence, with Feather icons under MIT), pinned as lucide-static 1.66.0 in the Makefile; the licence text ships in the kit as Files/lucide/LICENSE and dist/LICENSES.txt lists it.

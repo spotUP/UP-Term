@@ -120,6 +120,8 @@ host-tested.
   and the icon range; a host test asserts no overlap with each other or with
   `dk_flat_pens` slots for depths 2..8. L0e reads the landed backdrop commit
   first.
+  L0e done (slice A): the backdrop pen is pen 5 (DK_MUTED), commit 3561616f on branch
+  worktree-agent-a19eb3932992a25c3 (not on main yet when recorded). Pens 4 and 5 are taken.
 - Theme mapping: new `amarchy/iconpen_core.c`:
   `ip_colours(const struct gtheme *, uint8_t rgb[16][3])`, from gtheme `fg`,
   `accent`, `muted`, `selection`, `bg` with linear blends against `bg` for the
