@@ -1,0 +1,9 @@
+WIN 20 20 400 190 bt=11 bl=4 V47
+GAD BUTTON1 id=1 addr=10128624 box=10,20,100,16 render=10128694 select=10128694 flags=8006 text=00000000
+GAD BUTTON2 id=2 addr=101286c4 box=10,44,100,16 render=10128734 select=10128734 flags=8006 text=00000000
+GAD STRING id=3 addr=10128764 box=136,23,108,10 render=10127ec4 select=00000000 flags=8204 text=00000000
+GAD CHECKBOX id=4 addr=10128834 box=130,44,26,11 render=101288ac select=101288ac flags=8006 text=10128888
+GAD CYCLE id=5 addr=101288dc box=260,20,100,16 render=101289cc select=101289cc flags=8006 text=00000000
+GAD MX id=6 addr=101289fc box=228,44,49,19 render=00000000 select=00000000 flags=8003 text=00000000
+GAD LISTVIEW id=7 addr=10128b9c box=10,80,140,44 render=10128c44 select=00000000 flags=8007 text=00000000
+GAD SLIDER id=8 addr=10128f74 box=260,80,100,14 render=1012902c select=00000000 flags=8007 text=00000000
