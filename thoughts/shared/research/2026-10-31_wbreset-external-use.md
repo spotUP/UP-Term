@@ -109,3 +109,51 @@ CloseWorkBench is not called (hook never runs, as suspected), but no private or 
 carries the reset either: the reset code runs inside IPrefs' call into intuition by a route no vector counter saw.
 The hidden vector is not in the 3.1 NDK FD (intuitionPrivate1..4 only). No fix chosen; next measurement: wasabi snoop
 on IPrefs, or disassemble IPrefs / intuition.library to find the entry it jumps to.
+
+## Reset entry (s28 opus hunt)
+
+Rig 8, KS 3.1: intuition.library 40.85, SYS:C/IPrefs 40.7 (06/02/93), workbench.library 40.5. Amarchy = the 293a99d5
+build (248304 bytes, md5 319c5dade578e04dd0a4346a80b5c8a2) copied over UP-Term:bin/Amarchy.
+
+**Requester body (3.1, read from a grab of the window):** "Intuition is attempting to reset the Workbench screen.
+Please close all windows, except drawers." (Retry | Cancel). It names no window. The string is in SYS:C/IPrefs itself
+(`strings`), not in intuition: on 3.1 IPrefs owns this requester. (The 3.2 text that lists "Amarchy bar" is a
+different, intuition-side check.)
+
+**Directory Opus:** the rig's master image replaces the Workbench with DOpus 5 (C/LoadWB starts it, Libs/workbench.library
+replaced; see rig.py `sys_hdf_no_dopus`; tasks `dopus`, `dopus_start_menu`, DO_LAUNCHER; the screen title
+"Directory Opus ..." is DOpus' backdrop window title on the Workbench screen). It is not the blocker.
+
+**Trigger:** only a change of the pens resets the Workbench; a colour-only USE does nothing (no reset, no requester).
+Reproducible pair: RAM:pal_red.prefs and RAM:pal_pen.prefs (pal_red with TEXTPEN 1 -> 2 at file offsets 0x36 and
+0x76), USEd alternately. Matrix:
+
+| DOpus | Amarchy bar | Requester | Reset happened |
+|---|---|---|---|
+| running | open | yes (IPrefs) | no |
+| running | stopped | no | yes (dopus_start_menu window reopened at a new address) |
+| stopped | open | not run (needs a `--no-dopus` rig) | - |
+
+**Call path (IPrefs 40.7 disassembly, m68k-amigaos-objdump, hunk offsets):**
+1. Prefs notify -> IPrefs reads ENV:Sys/palette.prefs, opens workbench.library (snoop).
+2. Window check at 0x48a: `LockIBase` (-414), find the Workbench screen (bsr 0x418), walk `scr->FirstWindow`, count
+   every window whose `Flags` lacks `WFLG_WBENCHWINDOW` (`btst #1,24(a2)` = bit 0x02000000) except its own requester
+   (`cmpa.l a3,a2`), `UnlockIBase` (-420).
+3. Count > 0: `BuildEasyRequestArgs` (-594) and a polling loop on `SysReqHandler` (-600) that re-runs the window
+   check each pass (0x53e..0x56e); when the count reaches 0 it proceeds by itself; Cancel gives up.
+4. Count 0: `FreeSysRequest` (-372), then `CloseWorkBench` (-78) at 0x59c and, on success, `OpenWorkBench` (-210).
+
+This explains step 1: CloseWorkBench is never reached while a non-WBENCHWINDOW window is open, and the probe skipped
+LockIBase/UnlockIBase, which carry the check. DOpus passes because its windows carry WFLG_WBENCHWINDOW.
+
+**Hook point:** keep the CloseWorkBench/OpenWorkBench gate (that is where 3.2's intuition-side check and every other
+reset caller arrive) and make 3.1 IPrefs reach it: Amarchy's own Workbench-screen windows (bar, drawn menu) carry
+WFLG_WBENCHWINDOW, so IPrefs 40.7 counts them as Workbench windows, calls CloseWorkBench, and the gate closes them
+before the original runs and reopens them in OpenWorkBench. The XCON: text menu window cannot be flagged by us (the
+handler opens it); it needs the same flag set by the handler or stays a blocker on 3.1. Not verified on the rig yet.
+
+Open risks: (1) WFLG_WBENCHWINDOW windows may be treated as Workbench's own by workbench.library/DOpus (window list,
+"close all", AppWindow paths); measure before choosing it. (2) The alternative without the flag is a DOS notify on
+ENV:Sys/{palette,font,screenmode,overscan,wbpattern}.prefs, which races IPrefs. (3) wasabi's last guru on this boot:
+RECOVERABLE ALERT #01000003 (exec: library checksum failure) in task UP-Term:bin/Amarchy: the vector swap likely
+writes the jump table without LIBF_CHANGED before SumLibrary; check flat_swap_install / wbr_patch_install.
