@@ -282,6 +282,22 @@ def flat_pens():
     return (m.group(1) if m else None), (int(m.group(2)) if m else None), pens, out.strip()
 
 
+def flat_stop(secs=15):
+    """Break (Ctrl-C) every running amarchy-flat, then wait until `amarchy-flat STATUS` says flat=absent and no such
+    process is left. flat.c refuses to unload while a patch of ours is still chained (it prints and keeps running), so
+    one Break is not proof: the verdict is the program's own STATUS. True when it is gone."""
+    deadline = time.time() + secs
+    while True:
+        pids = [m.group(1) for m in re.finditer(r'Process\s+(\d+):.*amarchy-flat', c.run('Status')[1])]
+        if not pids and 'flat=absent' in c.run('RAM:amarchy-flat STATUS')[1]:
+            return True
+        if time.time() > deadline:
+            return False
+        for pid in pids:
+            c.run('Break %s C' % pid)
+        time.sleep(2)
+
+
 def put_flat_prefs(on):
     with tempfile.NamedTemporaryFile(delete=False) as f:
         f.write(('; Amarchy preferences.\n[profile default]\nflat-system-look = %s\nflat-window-gadgets = %s\n' % (('on',) * 2 if on else ('off',) * 2)).encode('latin-1'))
@@ -300,9 +316,9 @@ def flat_case():
     ami.put(os.path.join(ROOT, 'build', 'amiga', 'amarchy-flat'), 'RAM:amarchy-flat')
     c.run('Protect RAM:amarchy-flat +e')
     c.run('MakeDir >NIL: ENV:Amarchy')
-    for m in re.finditer(r'Process\s+(\d+):.*amarchy-flat', c.run('Status')[1]):
-        c.run('Break %s C' % m.group(1))      # a leftover instance would answer STATUS with old bytes
-    time.sleep(3)
+    if not flat_stop():                       # a leftover instance would answer STATUS with old bytes
+        print('[FAIL] a resident amarchy-flat did not unload before the case (Break refused: patch still chained?)')
+        return 1
     put_flat_prefs(False)
     c.run('Run >NIL: RAM:amarchy-flat')       # the resident block, started with both flat switches off
     time.sleep(3)
@@ -322,8 +338,7 @@ def flat_case():
     w2, n2, p2, raw = flat_pens()
     print('[INFO] after pick, flat off: %s' % raw)
     say(w2 == 'off', 'flat off: the theme pick set enabled=0', raw)
-    for m in re.finditer(r'Process\s+(\d+):.*amarchy-flat', c.run('Status')[1]):
-        c.run('Break %s C' % m.group(1))
+    say(flat_stop(), 'flat restored: the resident amarchy-flat is gone (STATUS flat=absent)', c.run('RAM:amarchy-flat STATUS')[1].strip())
     print('[%s] %d failed' % ('OK' if not failed else 'FAIL', failed))
     return 1 if failed else 0
 
