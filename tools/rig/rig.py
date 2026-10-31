@@ -537,6 +537,22 @@ def unpack_volume(image, dst):
     shutil.rmtree(tmp)
     return vol
 
+# The RTG driver the clean OS images lack (3.1: no uaegfx, no Picasso96): the files FS-UAE's graphics_card = uaegfx
+# needs, taken from the master system disk (paths.SYSTEM_HDF, only read), so `rig.py rtg` has a mode to switch to.
+OS_RTG_FILES = ["Devs/Monitors/uaegfx", "Devs/Monitors/uaegfx.info", "Libs/Picasso96API.library",
+                "Libs/Picasso96/emulation.library", "Libs/Picasso96/rtg.library", "Libs/Picasso96/fastlayers.library"]
+
+def os_tree_rtg(dst):
+    """RTG-RESET-LOOP: put the uaegfx Picasso96 driver into a clean --os tree that has none (once, when the tree is made)."""
+    if (dst / "Devs/Monitors/uaegfx").exists():
+        return
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    paths.require_input(SRC_HDF, "UPTERM_SYSTEM_HDF", "the system disk image (source of the uaegfx RTG driver)")
+    for rel in OS_RTG_FILES:
+        out = dst / rel
+        out.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run([xdf, str(SRC_HDF), "read", rel, str(out)], check=True, capture_output=True)
+
 def os_image_copy():
     """<rig>/os-<name>/ (a host directory, FS-UAE's hard drive) from the owner's
     clean image (once, or anew with --fresh), the two hooks appended to its
@@ -560,6 +576,7 @@ def os_image_copy():
         paths.require_input(sm, "UPTERM_RIG", "the rig's 256-colour ScreenMode prefs (VTC:screenmode.aga256.prefs)")
         (dst / "Prefs/Env-Archive/Sys").mkdir(parents=True, exist_ok=True)
         shutil.copyfile(sm, dst / "Prefs/Env-Archive/Sys/screenmode.prefs")
+        os_tree_rtg(dst)
     if not (dst / "C/Installer").exists():
         # the clean 3.0/3.1 installs have no Installer (it is on the Install disk)
         paths.require_input(paths.INSTALLER, "UPTERM_INSTALLER", "an Installer program")
