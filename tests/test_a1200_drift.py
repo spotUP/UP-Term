@@ -87,3 +87,21 @@ def test_loads_under_python_isolated_mode():
     r = subprocess.run([sys.executable, "-I", "-c", "import runpy, sys; runpy.run_path(sys.argv[1])", str(script)],
                        cwd=str(script.anchor), capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
+
+
+def test_data_the_installer_lays_down_is_checked_and_missing_data_is_drift():
+    # A1200-DRIFT-DATA: programs current but no Amarchy themes, lucide.dat or bar.conf must read as drift.
+    root = pathlib.Path(__file__).resolve().parent.parent
+    text = (root / "dist/install.dos").read_text(errors="replace")
+    entries = [(n, p) for n, p, _ in d.data_entries(text)]
+    got = {p: n for n, p in entries}
+    assert got["UP-Term:Amarchy/Icons/lucide.dat"] == "lucide/lucide.dat"
+    assert got["ENVARC:Amarchy/bar.conf"] == "bar.conf"
+    assert "UP-Term:Amarchy/Themes/nord.theme" in got
+    build = {n: None if n in d.USER_OWNED else "1" for n, _ in entries}
+    assert {s for s, _, _ in d.verdicts(entries, build, {})} == {"missing"}
+    there = {p: "1" for _, p in entries}
+    there["ENVARC:Amarchy/bar.conf"] = "user edited"
+    assert {s for s, _, _ in d.verdicts(entries, build, there)} == {"same"}
+    there["UP-Term:Amarchy/Icons/lucide.dat"] = "old"
+    assert [n for s, n, _ in d.verdicts(entries, build, there) if s == "DIFF"] == ["lucide/lucide.dat"]

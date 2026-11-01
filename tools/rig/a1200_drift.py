@@ -24,6 +24,12 @@ MD5 = "UP-Term:bin/md5sum"
 # Files the kit copies from dist/ rather than build/amiga, checked like built programs. keymap is checked whole:
 # the user's own rows live in ENVARC:up-term/keymap.user, so the installed keymap must equal dist/keymap exactly.
 DIST_SOURCES = ("keymap",)
+# Data the kit lays down, by install.dos source name -> file in dist/. lucide.dat is built into dist/Amarchy
+# (make lucide-dat); bar.conf is the user's once it exists (install.dos copies it only when absent), so it is
+# checked for existence only (USER_OWNED); the theme drawer (`Copy amarchy-themes <dir> ALL`) is DATA_DRAWERS.
+DATA_FILES = {"lucide/lucide.dat": "Amarchy/Icons/lucide.dat", "bar.conf": "bar.conf"}
+DATA_DRAWERS = {"amarchy-themes": "amarchy-themes"}
+USER_OWNED = ("bar.conf",)
 
 
 def lib_entries(nofpu=False):
@@ -55,6 +61,22 @@ def install_map(install_dos_text, built_names):
                 path = dest
             if (s, path) not in out:
                 out.append((s, path))
+    return out
+
+
+def data_entries(install_dos_text, dist=None):
+    """[(name, Amiga path, source file)] for the data install.dos copies: single files in DATA_FILES, and every
+    file of each DATA_DRAWERS drawer (`Copy <drawer> <dest> ALL`) at <dest>/<file>. Paths come from the Copy lines."""
+    dist = pathlib.Path(dist) if dist else ROOT / "dist"
+    base = lambda n: n.rsplit("/", 1)[-1]
+    # `Copy lucide/lucide.dat UP-Term:Amarchy/Icons`: a dest not named like the source is a drawer
+    out = [(n, p if p.lower().endswith(("/" + base(n).lower(), ":" + base(n).lower())) else p + "/" + base(n), dist / DATA_FILES[n])
+           for n, p in install_map(install_dos_text, list(DATA_FILES))]
+    for line in install_dos_text.splitlines():
+        words = line.split()
+        if len(words) > 3 and words[0].lower() == "copy" and words[1] in DATA_DRAWERS and any(w.upper() == "ALL" for w in words):
+            src = dist / DATA_DRAWERS[words[1]]
+            out += [(words[1] + "/" + f.name, words[2].rstrip("/") + "/" + f.name, f) for f in sorted(src.iterdir()) if f.is_file()]
     return out
 
 
@@ -100,9 +122,10 @@ def amiga_md5s(paths):
 
 
 def verdicts(entries, build, amiga):
-    """[(state, build name, amiga path)]; state same / DIFF / missing (path match ignores case: AmigaDOS)."""
+    """[(state, build name, amiga path)]; state same / DIFF / missing (path match ignores case: AmigaDOS).
+    A build md5 of None means the file is the user's: present is `same`, whatever it holds."""
     low = {k.lower(): v for k, v in amiga.items()}
-    return [("missing" if low.get(p.lower()) is None else "same" if low[p.lower()] == build[n] else "DIFF", n, p)
+    return [("missing" if low.get(p.lower()) is None else "same" if build[n] is None or low[p.lower()] == build[n] else "DIFF", n, p)
             for n, p in entries]
 
 
@@ -117,6 +140,13 @@ def main(argv):
     build = {n: md5_file(ROOT / "dist" / n if n in DIST_SOURCES else bdir / n) for n, _ in entries}
     build.update({n: md5_file(src) for n, _, src in have})
     entries = entries + [(n, p) for n, p, _ in have]
+    data = data_entries(install)
+    build.update({n: None if n in USER_OWNED else md5_file(src) for n, _, src in data if src.is_file()})
+    for n, _, src in data:
+        if not src.is_file():
+            print("%-8s %-28s not checked: no %s" % ("unbuilt", n, src))
+            skipped.append(n)
+    entries = entries + [(n, p) for n, p, src in data if src.is_file()]
     res = verdicts(entries, build, amiga_md5s([p for _, p in entries]))
     for state, n, p in res:
         print("%-8s %-28s %s" % (state, n, p))
