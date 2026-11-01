@@ -38,7 +38,7 @@ static void test_amconf_parse_defaults(void)
     CHECK_INT(amconf_icons(&p), UC_ICONS_GENERIC);
     CHECK_INT(amconf_style(&p), UC_MENU_GRAPHICAL);
     /* the table lists twenty-five keys, each named once */
-    CHECK_INT(AM_NKEYS, 25);
+    CHECK_INT(AM_NKEYS, 26);
     CHECK_STR(p.val[AM_ICONSTYLE], "filled");          /* s28: Filled is the default icon set */
     CHECK_INT(amconf_icon_outline(&p), 0);
     strcpy(p.val[AM_ICONSTYLE], "outline");
@@ -588,6 +588,37 @@ static void test_amconf_flat_rows_write_their_keys(void)
     }
 }
 
+/* AM-BORDERBLANK: border-blank is on by default (absent from the file), its Flat Look check row writes "off". */
+static void test_amconf_borderblank_row(void)
+{
+    am_prefs p, q;
+    prefs_fields f;
+    static char txt[UC_MAX_FILE + 1];
+    const sd_setting *sd = sd_find_gadget(PG_AM_BORDERBLANK);
+    CHECK(sd != 0 && pg_find(PG_AM_BORDERBLANK) != 0);
+    if (sd) {
+        CHECK_STR(sd->key, "border-blank");
+        CHECK_INT(sd->page, PG_PAGE_FLAT);
+    }
+    CHECK_STR(am_keys[AM_BORDERBLANK].name, "border-blank");
+    amconf_defaults(&p);
+    CHECK_STR(p.val[AM_BORDERBLANK], "on");
+    memset(&f, 0, sizeof f);
+    amconf_to_fields(&p, &f);
+    CHECK_INT(f.am_borderblank, 1);
+    amconf_from_fields(&p, &f);
+    CHECK(amconf_serialize(&p, txt, UC_MAX_FILE) > 0);
+    CHECK(strstr(txt, "border-blank") == 0);
+    f.am_borderblank = 0;
+    amconf_from_fields(&p, &f);
+    CHECK_STR(p.val[AM_BORDERBLANK], "off");
+    CHECK(amconf_serialize(&p, txt, UC_MAX_FILE) > 0);
+    CHECK(strstr(txt, "border-blank = off") != 0);
+    amconf_parse(txt, (long)strlen(txt), &q);
+    amconf_to_fields(&q, &f);
+    CHECK_INT(f.am_borderblank, 0);
+}
+
 /* FLAT-SOLID-FILL: a prefs file saved before the key went away still holds "flat-glyph-style = line"; it is ignored
  * (no error, no effect on the other keys) and the next save drops it. */
 static void test_amconf_old_flat_glyph_style_ignored(void)
@@ -1028,6 +1059,7 @@ void suite_amconf(void)
     test_prefs_dos_dir_amarchy();
     test_amconf_save_nodir();
     test_amconf_flat_rows_write_their_keys();
+    test_amconf_borderblank_row();
     test_amconf_old_flat_glyph_style_ignored();
     test_lf_setting_check_toggle();
     test_lf_setting_cycle_next_and_choices();
