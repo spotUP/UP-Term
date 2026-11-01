@@ -1301,6 +1301,11 @@ $(BUILD)/amiga/flatprobe: tests/amiga/flatprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/flatprobe.c
 
+# A checker-pattern window with one button, for the round-corner background check (s28 FLAT-BUTTON-ROUND-BG)
+$(BUILD)/amiga/btnbgprobe: tests/amiga/btnbgprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/btnbgprobe.c
+
 # The Hook layout of intuition's sysiclass (FLAT-R3)
 $(BUILD)/amiga/sysiprobe: tests/amiga/sysiprobe.c
 	@mkdir -p $(BUILD)/amiga
