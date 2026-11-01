@@ -55,6 +55,17 @@ void desk_flat_glyph_pens(unsigned char *text, unsigned char *line, unsigned cha
 void desk_flat_state(int flat, int gadgets, flat_state *s);
 extern unsigned long desk_flat_state_calls;
 
+/* Pen plan (lucide icons L6): which screen pens the desktop uses beyond the DrawInfo pens, per screen depth (EHB counts as 5).
+ * button = the flat button fill (DK_SELECTION), backdrop = the Workbench backdrop tone (DK_MUTED; WBPattern tiles are 3 planes,
+ * so both are below 8). The icon pens are the range icon_first .. icon_first + icon_count - 1 that amarchy-flat holds for icon
+ * slots icon_slot ..: depth >= 6 pens 32..47 (slots 0..15), depth 4 and 5 pens 8..15 (slots 8..15), depth 2 and 3 none. The
+ * range never overlaps button, backdrop or the eight role pens 0..7. */
+typedef struct desk_pen_plan {
+    int button, backdrop;
+    int icon_first, icon_count, icon_slot;
+} desk_pen_plan;
+void desk_pen_plan_for(int depth, desk_pen_plan *p);
+
 /* FLAT-P1-3: the pen map the palette write carries: desk_pens_flat when flat-system-look is on (flat), else desk_pens */
 void desk_pens_for(int flat, unsigned char pens[DK_SLOTS]);
 
