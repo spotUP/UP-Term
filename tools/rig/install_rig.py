@@ -429,7 +429,7 @@ def stage_addon(pkg):
     (VTC / ("rununinstall-" + pkg)).write_text("Set upvardelete YES\nCD VTC:kit-%s\nExecute Uninstall\n" % pkg)
 
 
-# the helper programs prepare() copies into VTC:; the Makefile's rig-helpers target builds exactly these
+# the helper programs prepare() copies into VTC:; the Makefile's rig-helpers target builds these (and more probes)
 HELPERS = ("ptytest", "iconprobe", "wbrun", "conwho", "UPConsole")
 
 
