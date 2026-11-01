@@ -1621,6 +1621,89 @@ static void an_outline_glyph_uses_the_shade_pens_a_palette_has_and_the_mask_when
     test_npal = 0;
 }
 
+/* R6.A1/A2, R6.5: over a dithered cell background (a screen of few pens: two pens in a tile) an antialiased glyph's
+ * edge pixels are the pen nearest fg mixed over the pen UNDER the pixel, not over the cell's mean colour. The glyph
+ * is drawn twice: over the dither (blend_dest on, the default: n_aa_tile counts the glyph) and with
+ * vr_set_blend_dest(0), the profile's outline-blend-dest = off (the shades of the mean background: n_aa_tile 0).
+ * Each is judged by its error against the ideal colour ce_mix(fg, the pen the tile has there, coverage). */
+#define AB_DRAW "\x1b[?25l\x1b[H\x1b[38;5;231;48;5;244m\xe2\x98\x83\x1b[m"
+
+static unsigned long ab_rgb(int pen)
+{
+    return wb16[pen];
+}
+
+/* rows 0 and 1 of the cell (the two phases of the tile): the squared RGB distance of what is drawn to the ideal */
+static long ab_err(const int *tile, int *sum)
+{
+    int x, y, k;
+    long e = 0;
+    for (y = 0; y < 2; y++)
+        for (x = 0; x < CW; x++) {
+            unsigned long ideal = ce_mix(0xFFFFFF, ab_rgb(tile[y * CW + x]), aa_level[x]),
+                          got = ab_rgb(gf_pixel(x, y));
+            for (k = 0; k < 3; k++) {
+                long d = (long)((ideal >> (16 - 8 * k)) & 255) - (long)((got >> (16 - 8 * k)) & 255);
+                e += d * d;
+            }
+        }
+    *sum = (int)e;
+    return e;
+}
+
+static void an_antialiased_edge_over_a_dither_is_blended_with_the_pen_under_it_and_the_knob_moves_it(void)
+{
+    int bgp[2 * CW], on[2 * CW], off[2 * CW], x, y, e_on = 0, e_off = 0, n_on = 0, n_off = 0, diff = 0;
+    ULONG t0, a0;
+    planar_depth = 4;
+    planar_left = 0;
+    test_pal = wb16;
+    test_npal = 16;
+    open_term_in(0, VT_XTERM);
+    CHECK_INT(rn.blend_dest, 1); /* the default */
+    aa_glyph();
+    pass("\x1b[?25l\x1b[H\x1b[38;5;231;48;5;244m \x1b[m"); /* the tile alone */
+    for (y = 0; y < 2; y++)
+        for (x = 0; x < CW; x++)
+            bgp[y * CW + x] = gf_pixel(x, y);
+    CHECK(bgp[0] != bgp[3] || bgp[0] != bgp[CW]); /* two pens: a dither */
+    t0 = rn.n_aa_tile;
+    a0 = rn.n_aa;
+    pass(AB_DRAW);
+    n_on = (int)(rn.n_aa_tile - t0);
+    CHECK_INT((int)(rn.n_aa - a0), 1);
+    CHECK_INT(n_on, 1); /* the sentinel: the tile path drew it */
+    for (y = 0; y < 2; y++)
+        for (x = 0; x < CW; x++)
+            on[y * CW + x] = gf_pixel(x, y);
+    ab_err(bgp, &e_on);
+    vr_set_blend_dest(&rn, 0);
+    pass("\x1b[H\x1b[38;5;231;48;5;244m \x1b[m");
+    t0 = rn.n_aa_tile;
+    pass(AB_DRAW);
+    n_off = (int)(rn.n_aa_tile - t0);
+    CHECK_INT(n_off, 0);
+    for (y = 0; y < 2; y++)
+        for (x = 0; x < CW; x++) {
+            off[y * CW + x] = gf_pixel(x, y);
+            diff += off[y * CW + x] != on[y * CW + x];
+        }
+    ab_err(bgp, &e_off);
+    CHECK(diff > 0); /* the knob moves the output */
+    CHECK(e_on < e_off); /* and the blend over the pen underneath is nearer the ideal */
+    /* row 0, x 0..7: the tile pens 3 0 3 3 ... (bgp) with the glyph's coverage levels 0 40 64 100 128 170 192 255 */
+    for (x = 0; x < CW; x++) {
+        static const int want_on[CW] = { 3, 3, 6, 6, 6, 7, 7, 2 };
+        CHECK_INT(on[x], want_on[x]);
+    }
+    /* row 1 has the other tile phase: the same coverage over the other pens gives other shades */
+    CHECK(memcmp(on, on + CW, sizeof(int) * CW) != 0);
+    vr_set_blend_dest(&rn, 1);
+    close_term();
+    planar_depth = 0;
+    test_npal = 0;
+}
+
 /* ---- W-T14: padding colour ---- */
 
 /* The window's inside is 173 x 67 pixels under borders 4, 11, 18, 2: 21 x 8 cells of 8 x 8 and strips 5 pixels
@@ -2271,6 +2354,7 @@ int main(void)
     a_planar_frame_with_lines_or_a_covered_window_is_drawn_in_place();
     a_planar_frame_drawn_in_place_after_all_clears_the_screen_it_replaced();
     light_cube_colours_on_a_16_colour_workbench_are_not_drawn_in_its_grey_pen();
+    an_antialiased_edge_over_a_dither_is_blended_with_the_pen_under_it_and_the_knob_moves_it();
     a_dithered_cell_shows_its_colour_closer_than_the_old_single_pen();
     a_dithered_frame_composed_and_drawn_in_place_has_the_same_pixels();
     screens_of_more_than_16_pens_are_not_dithered();

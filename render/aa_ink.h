@@ -67,6 +67,9 @@ typedef struct aa_ink {
     UBYTE use[AA_INK_MAX_SHADES];   /* 1 when that ink shows its shade closer than fg and bg and no other shade's pen */
     UBYTE *mask;        /* a pass's template, chip RAM */
     ULONG mask_size;
+    UBYTE *tile;        /* the dither tile's pen-b mask for aa_ink_draw_tile, chip RAM */
+    ULONG tile_size;
+    struct aa_ink *alt; /* the shades over the tile's second pen (aa_ink_draw_tile), made at its first use */
 } aa_ink;
 
 void aa_ink_init(aa_ink *a, const aa_ink_ops *ops);
@@ -83,4 +86,19 @@ UBYTE *aa_ink_room(UBYTE **buf, ULONG *size, ULONG n, ULONG flags);
  * the screen shows): the caller draws a mask. */
 int aa_ink_draw(aa_ink *a, struct RastPort *rp, struct Library *cgx, int truecolor, WORD px, WORD py,
                 const UBYTE *cov, WORD w, WORD h, ULONG fg_ink, ULONG fg_rgb, ULONG bg_ink, ULONG bg_rgb);
+
+/* A dithered background (R6.A): two pens a and b in an ordered pattern. bits writes the pattern of the w x h box at
+ * x, y as a template (bpr bytes a row): a set bit where pen b is, a clear one where pen a is. */
+typedef struct aa_ink_tile {
+    void *u;
+    ULONG ink_a, ink_b; /* the two pens' inks */
+    ULONG rgb_a, rgb_b; /* what they show, 0xRRGGBB */
+    void (*bits)(void *u, WORD x, WORD y, WORD h, UBYTE *rows, WORD bpr);
+} aa_ink_tile;
+
+/* aa_ink_draw over a dithered background on a pen screen: each shade is chosen against the pen that is really
+ * under the pixel (the ramp from fg over pen a, and over pen b), not against the pattern's mean, and drawn
+ * through the pattern's mask. bg_ink is the dithered ink the box is filled with first. 0 as aa_ink_draw. */
+int aa_ink_draw_tile(aa_ink *a, struct RastPort *rp, WORD px, WORD py, const UBYTE *cov, WORD w, WORD h,
+                     ULONG fg_ink, ULONG fg_rgb, ULONG bg_ink, const aa_ink_tile *t);
 #endif

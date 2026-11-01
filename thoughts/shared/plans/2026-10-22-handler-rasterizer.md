@@ -478,16 +478,16 @@ and bg), then the 1-bit mask path; no new failure mode. A dither of the shade it
   AGA stencil pass. ce_mix gets exposed once from emoji.h to aa_ink.c (it already is
   shared: aa_ink_build_tab uses it).
 
-### Checklist (R6.x; none done; 0 of 9)
+### Checklist (R6.x; 4 of 9 done, R6.A3 open, R6.B1-B4 dropped by D1)
 
 - [x] R6.0 Record the finding above in the plan and get the owner's decision on D1 below.
   Proven by: owner answers 2026-11-01 (s48) under "Owner decisions" below.
-- [ ] R6.A1 Host test: AGA fake screen, bg = dither ink, glyph edge: the shade pen chosen
+- [x] R6.A1 Host test: AGA fake screen, bg = dither ink, glyph edge: the shade pen chosen
   per pixel is the nearest to ce_mix(fg, actual tile pen pixel, cov); fails before (mean-bg
   shade chosen), passes after. Entry point: vr_draw / draw_rows through
   tests/test_render.c (RENDER_HOST_SRC), sentinel n_aa and a new n_aa_tile counter that
   must be > 0; asserted pixel values from the fake RastPort (gfx_fake.c), exact numbers.
-- [ ] R6.A2 Implement the AGA tile-stencil passes in aa_ink_draw; regression: A1 reverted
+- [x] R6.A2 Implement the AGA tile-stencil passes in aa_ink_draw; regression: A1 reverted
   fails again.
 - [ ] R6.A3 Rig proof on rig 060, AGA 256 screen, dithered bg (tools/rig/outline_rig.py):
   screenshot pixel measurement of 5 edge pixels against the expected pen per pixel
@@ -499,7 +499,7 @@ and bg), then the 1-bit mask path; no new failure mode. A dither of the shade it
   path and stays 0 for a flat cell (fail-before: LUT result differs on gradient).
 - [ ] R6.B3 Flat cell keeps the LUT path: n_aa_blend 0, output identical to today (golden).
 - [ ] R6.B4 Rig proof RTG: only if a busy-bg source exists (D1 option 2); pixel measure.
-- [ ] R6.5 Knob: profile key outline-blend-dest (on/off) moves the output (on: blend, off:
+- [x] R6.5 Knob: profile key outline-blend-dest (on/off) moves the output (on: blend, off:
   today's ramp); the host test toggles it and asserts different pixels.
 
 ### Owner decisions (2026-11-01, s48)
@@ -510,7 +510,17 @@ and bg), then the 1-bit mask path; no new failure mode. A dither of the shade it
 - D4: moot with R6.B dropped.
 - D5: profile key outline-blend-dest, default on, LUT kept for flat cells (stated default).
 
-Open R6 items: R6.A1, R6.A2, R6.A3, R6.5 (4 items).
+Open R6 items: R6.A3 (1 item).
+
+Done on branch s48-r6a (test: an_antialiased_edge_over_a_dither_is_blended_with_the_pen_under_it_and_the_knob_moves_it,
+render suite 611 checks, 0 failures; make amiga rc 0; with the tile branch disabled the test fails 4 checks).
+Premise corrections found while implementing:
+- A glyph cell's st->bg is the solid nearest pen; the dither ink is st->bgf. Before the fix the AA glyph box
+  was filled with the solid pen and lost the cell's dither. The tile path now takes st->bgf.
+- Dither exists only on screens of 16 or fewer pens (test screens_of_more_than_16_pens_are_not_dithered), so
+  "AGA 256 screen with dithered bg" cannot occur. R6.A3 needs a screen with 16 or fewer pens; it is open.
+- The 1-bit mask path (antialias off) still fills the solid st->bg.
+- outline-blend-dest is a profile-file key only; no settings_def row, prefs UI, slash command or menu entry.
 
 ### Decisions as asked
 

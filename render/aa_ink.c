@@ -21,12 +21,17 @@ void aa_ink_init(aa_ink *a, const aa_ink_ops *ops)
     a->nshades = AA_INK_SHADES_DEEP;
     a->mask = 0;
     a->mask_size = 0;
+    a->tile = 0;
+    a->tile_size = 0;
+    a->alt = 0;
 }
 
 void aa_ink_set_depth(aa_ink *a, int depth)
 {
     a->nshades = (UBYTE)aa_ink_shades_for_depth(depth);
     a->shades_ok = 0;
+    if (a->alt)
+        aa_ink_set_depth(a->alt, depth);
 }
 
 void aa_ink_free(aa_ink *a)
@@ -34,6 +39,17 @@ void aa_ink_free(aa_ink *a)
     if (a->mask) {
         WaitBlit(); /* a template blit may still read it */
         FreeVec(a->mask);
+    }
+    if (a->tile) {
+        WaitBlit();
+        FreeVec(a->tile);
+    }
+    a->tile = 0;
+    a->tile_size = 0;
+    if (a->alt) {
+        aa_ink_free(a->alt);
+        FreeVec(a->alt);
+        a->alt = 0;
     }
     FreeVec(a->tab);
     a->tab = 0;
@@ -45,6 +61,8 @@ void aa_ink_free(aa_ink *a)
 void aa_ink_forget(aa_ink *a)
 {
     a->ok = 0;
+    if (a->alt)
+        aa_ink_forget(a->alt);
 }
 
 UBYTE *aa_ink_room(UBYTE **buf, ULONG *size, ULONG n, ULONG flags)
@@ -138,6 +156,56 @@ int aa_ink_draw(aa_ink *a, struct RastPort *rp, struct Library *cgx, int truecol
         BltTemplate((PLANEPTR)a->mask, 0, (WORD)bpr, rp, px, py, w, h);
         lo = i + 1;
     }
+    SetDrMd(rp, JAM2);
+    return 1;
+}
+
+/* The passes of one set of shades (over one background pen) through the tile mask: sel 0 draws where the tile has
+ * pen a (bit clear), 1 where it has pen b. Each pass is the coverage threshold for its step ANDed with the tile. */
+static void tile_passes(aa_ink *s, struct RastPort *rp, WORD px, WORD py, const UBYTE *cov, WORD w, WORD h, int bpr,
+                        ULONG fg_ink, int sel, UBYTE *mask, const UBYTE *tile)
+{
+    int i, lo = 0;
+    ULONG k, n = (ULONG)bpr * h;
+    for (i = 0; i <= s->nshades; i++) {
+        if (i < s->nshades && !s->use[i])
+            continue;
+        WaitBlit(); /* the previous pass may still read the template */
+        ttf_threshold_at(cov, w, h, mask, bpr, aa_ink_threshold(lo, i + 1, s->nshades));
+        for (k = 0; k < n; k++)
+            mask[k] = (UBYTE)(sel ? mask[k] & tile[k] : mask[k] & ~tile[k]);
+        s->ops.set_pen(s->ops.u, i < s->nshades ? s->shade[i] : fg_ink);
+        BltTemplate((PLANEPTR)mask, 0, (WORD)bpr, rp, px, py, w, h);
+        lo = i + 1;
+    }
+}
+
+int aa_ink_draw_tile(aa_ink *a, struct RastPort *rp, WORD px, WORD py, const UBYTE *cov, WORD w, WORD h,
+                     ULONG fg_ink, ULONG fg_rgb, ULONG bg_ink, const aa_ink_tile *t)
+{
+    int i, usable = 0, bpr = ((w + 15) >> 4) << 1;
+    if (!a->alt) {
+        a->alt = (aa_ink *)AllocVec(sizeof(aa_ink), MEMF_ANY);
+        if (!a->alt)
+            return 0;
+        aa_ink_init(a->alt, &a->ops);
+        a->alt->nshades = a->nshades;
+    }
+    if (!colours(a, fg_rgb, t->rgb_a, 0, 0) || !colours(a->alt, fg_rgb, t->rgb_b, 0, 0))
+        return 0;
+    for (i = 0; i < a->nshades; i++)
+        usable |= a->use[i] | a->alt->use[i];
+    if (!usable)
+        return 0;
+    if (!aa_ink_room(&a->mask, &a->mask_size, (ULONG)bpr * h, MEMF_CHIP) ||
+        !aa_ink_room(&a->tile, &a->tile_size, (ULONG)bpr * h, MEMF_CHIP))
+        return 0;
+    a->ops.fill(a->ops.u, px, py, (WORD)(px + w - 1), (WORD)(py + h - 1), bg_ink);
+    WaitBlit();
+    t->bits(t->u, px, py, h, a->tile, (WORD)bpr);
+    SetDrMd(rp, JAM1);
+    tile_passes(a, rp, px, py, cov, w, h, bpr, fg_ink, 0, a->mask, a->tile);
+    tile_passes(a->alt, rp, px, py, cov, w, h, bpr, fg_ink, 1, a->mask, a->tile);
     SetDrMd(rp, JAM2);
     return 1;
 }

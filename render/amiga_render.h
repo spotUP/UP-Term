@@ -209,6 +209,10 @@ typedef struct vr_render {
     aa_ink aa;                    /* the coverage-to-ink path (render/aa_ink.c): table, shades, template */
     UBYTE *aa_buf;                /* a bold glyph's coverage, fast RAM */
     ULONG aa_buf_size;
+    UBYTE blend_dest;             /* outline-blend-dest (1, default; vr_set_blend_dest): AA edges over a dithered bg
+                                   * are shaded against the pen under each pixel (R6.A) */
+    ULONG aa_tile_ink;            /* the dither ink aa_tile_bits draws */
+    ULONG n_aa_tile;              /* glyphs drawn through the tile path: R6.A's sentinel */
     ULONG n_aa;                   /* glyphs drawn antialiased: the reachability sentinel */
     /* GNU Unifont's pages for the BMP the font and the outline font lack
      * (U2), 0 for none; the owner keeps it (vr_set_unifont) */
@@ -307,6 +311,9 @@ void vr_set_dither(vr_render *r, int on);
  * between the text and background colours where the screen has them; or
  * one colour, as a bitmap font (off). The caller redraws. */
 void vr_set_antialias(vr_render *r, int on);
+/* R6.5, the profile's `outline-blend-dest` (1, default): antialiased edges over a dithered background are shaded
+ * against the pen under each pixel; 0: against the pattern's dominant pen as before. */
+void vr_set_blend_dest(vr_render *r, int on);
 
 /* W-T14, the profile's `padding-color`: the strips of the window beside the
  * grid (right of the last whole column, below the last whole row, and the
