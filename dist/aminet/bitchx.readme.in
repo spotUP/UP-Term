@@ -1,0 +1,17 @@
+Short:        BitchX IRC client for UP-Term
+Author:       spotUP
+Uploader:     spotup@gmail.com (spotUP)
+Type:         comm/irc
+Version:      @VERSION@
+Architecture: m68k-amigaos >= 3.0.0; m68k-020
+Requires:     comm/term/up-term.lha >= @NEEDSBASE@ (it brings the patched ixemul.library)
+Distribution: Aminet
+
+BitchX (the BitchX program and its IRCLIB: scripts, help and translation tables) for an UP-Term
+window (TERM=vtcon, the patched ixemul.library of the base archive).
+
+Needs the base archive up-term.lha (version @NEEDSBASE@ or newer) installed first.
+
+Install: unpack, double-click Install. Uninstall removes what this archive installed.
+
+Licence: BSD-3-Clause (BitchX).

@@ -50,28 +50,8 @@ ULONG vr_cp[12]; /* off: Text, RectFill, pen, draw_rows; on: the same (4-7); cur
 ULONG vr_cp_pass;
 #endif
 
-/* cybergraphics.library V41 WriteLUTPixelArray (LVO -198; AROS
- * cybergraphics.conf, the CGX/P96 SDK's fd): 8-bit indices through a
- * table of 0x00RRGGBB, on true-colour screens. No SDK header here, so
- * the call is declared as vbcc's inline. */
-#define VR_CTABFMT_XRGB8 0
-#ifdef VR_HOST_TEST /* the host test (tests/test_render.c) links a fake of it */
-LONG vr_cgx_write_lut(struct Library *, APTR src, UWORD sx, UWORD sy, UWORD smod, struct RastPort *rp,
-                      APTR ctab, UWORD dx, UWORD dy, UWORD w, UWORD h, UBYTE fmt);
-ULONG vr_cgx_fill(struct Library *, struct RastPort *rp, UWORD x, UWORD y, UWORD w, UWORD h, ULONG argb);
-#else
-LONG vr_cgx_write_lut(__reg("a6") struct Library *, __reg("a0") APTR src, __reg("d0") UWORD sx,
-                      __reg("d1") UWORD sy, __reg("d2") UWORD smod, __reg("a1") struct RastPort *rp,
-                      __reg("a2") APTR ctab, __reg("d3") UWORD dx, __reg("d4") UWORD dy,
-                      __reg("d5") UWORD w, __reg("d6") UWORD h, __reg("d7") UBYTE fmt) = "\tjsr\t-198(a6)";
-/* cybergraphics.library V41 FillPixelArray (LVO -150): a rectangle in a
- * 0xAARRGGBB colour, no pen, through the RastPort's layer. */
-ULONG vr_cgx_fill(__reg("a6") struct Library *, __reg("a1") struct RastPort *rp, __reg("d0") UWORD x,
-                  __reg("d1") UWORD y, __reg("d2") UWORD w, __reg("d3") UWORD h,
-                  __reg("d4") ULONG argb) = "\tjsr\t-150(a6)";
-#endif
+/* vr_cgx_fill (FillPixelArray): aa_ink.h, shared with amarchy-gui's menu */
 
-#include "pen_rule.h"
 
 #ifdef VR_CPROF
 #ifdef VR_HOST_TEST /* the fake's functions */
@@ -98,36 +78,20 @@ ULONG vr_cgx_fill(__reg("a6") struct Library *, __reg("a1") struct RastPort *rp,
 #define vr_cgx_fill(lb, rp, x, y, w, h, c) (vr_gc[1]++, vr_cgx_fill(lb, rp, x, y, w, h, c))
 #endif
 #include "pen_match.h"
+#include "glyph_pen.h"
+#include "pens_amiga.h"
+#include "ttf.h"
 
 #define RUN_MAX 256
 
 /* ---- palette ------------------------------------------------------------ */
 
 
-/* the screen's ObtainBestPen for pen_rule.h: exact (a free entry gets the colour) or the nearest */
-static long best_pen(void *u, unsigned long rgb, int exact)
-{
-    static const struct TagItem exact_tags[] = {
-        { OBP_Precision, (ULONG)PRECISION_EXACT },
-        { OBP_FailIfBad, TRUE },
-        { TAG_DONE, 0 }
-    };
-    static const struct TagItem near_tags[] = {
-        { OBP_Precision, PRECISION_IMAGE },
-        { TAG_DONE, 0 }
-    };
-    ULONG cr = (rgb >> 16) & 0xFF, cg = (rgb >> 8) & 0xFF, cb = rgb & 0xFF;
-    return ObtainBestPenA((struct ColorMap *)u, cr * 0x01010101UL, cg * 0x01010101UL, cb * 0x01010101UL,
-                          (struct TagItem *)(exact ? exact_tags : near_tags));
-}
-
 /* A palette colour's pen: exact while the map has room, the nearest when it is full (pen_rule.h). One pen to
  * release either way. */
 static LONG obtain(vr_render *r, ULONG rgb)
 {
-    if (!r->cm)
-        return -1;
-    return (LONG)vr_obtain_rule(best_pen, r->cm, rgb);
+    return (LONG)vr_pen_obtain(r->cm, rgb);
 }
 
 /* An ink is what a cell is drawn with: a screen pen, or on a true-colour
@@ -261,7 +225,7 @@ static ULONG truecolor_ink(vr_render *r, ULONG rgb)
  * it is nobody's to share (an exclusive pen, which may change colour). */
 static LONG hold_pen(vr_render *r, ULONG rgb)
 {
-    return best_pen(r->cm, rgb, 1);
+    return vr_pen_best(r->cm, rgb, 1);
 }
 
 /* pm_match's picks, shared by every window of this program: a pick is a pure
@@ -424,7 +388,7 @@ static ULONG pen_for(vr_render *r, vt_color c, int is_bg)
     if (c == VT_COLOR_DEFAULT_BG)
         return r->pen_default_bg;
     if (vt_personality(r->t) == VT_AMIGA && !(c & VT_COLOR_RGB))
-        return (UBYTE)(c & 0xFF); /* amiga colours are screen pens; a direct colour (SGR 38;2 / 48;2) is a colour */
+        return vr_screen_pen(c & 0xFF, r->depth); /* amiga colours are screen pens; a direct colour (SGR 38;2 / 48;2) is a colour */
     if (c & VT_COLOR_RGB) {
         if (r->truecolor)
             return truecolor_ink(r, VT_RGB_OF(c));
@@ -454,7 +418,7 @@ static ULONG pen_for(vr_render *r, vt_color c, int is_bg)
         LONG p;
         vr_pf_by[vr_pass < 15 ? vr_pass : 15]++;
         ReadEClock(&q0);
-        p = r->few && r->cm ? best_pen(r->cm, rgb, 1) : -1;
+        p = r->few && r->cm ? vr_pen_best(r->cm, rgb, 1) : -1;
         ReadEClock(&q1);
         if (r->few && r->cm) {
             vr_pf_t[0] += q1.ev_lo - q0.ev_lo;
@@ -474,7 +438,7 @@ static ULONG pen_for(vr_render *r, vt_color c, int is_bg)
             vr_pf_n[2]++;
         }
 #else
-        LONG p = r->few && r->cm ? best_pen(r->cm, rgb, 1) : -1;
+        LONG p = r->few && r->cm ? vr_pen_best(r->cm, rgb, 1) : -1;
         if (p < 0 && r->few && r->cm)
             p = few_obtain(r, (int)c, rgb);
         if (p < 0)
@@ -534,6 +498,13 @@ static void emoji_lut(void *u, const vt_u8 *idx, int w, int h, const vt_u32 *cta
 
 /* ---- setup ---------------------------------------------------------------- */
 
+static ULONG aa_truecolor_ink(void *u, ULONG rgb);
+static UBYTE aa_nearest_pen(void *u, ULONG rgb);
+static ULONG aa_pen_rgb(void *u, UBYTE pen);
+static long aa_dist(ULONG want, ULONG c);
+static void aa_set_pen(void *u, ULONG ink);
+static void aa_fill_bg(void *u, WORD x0, WORD y0, WORD x1, WORD y1, ULONG ink);
+
 void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t,
              enum vt_font_enc enc)
 {
@@ -564,9 +535,24 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
                         GetBitMapAttr(win->RPort->BitMap, BMA_DEPTH) <= 8);
     /* 16 pens or fewer: palette colours no pen shows closely are dithered
      * (W-T7); 256-pen and true-colour screens never */
-    r->few = (UBYTE)(win->WScreen && GetBitMapAttr(win->WScreen->RastPort.BitMap, BMA_DEPTH) <= 4);
+    r->depth = (UBYTE)(win->WScreen ? GetBitMapAttr(win->WScreen->RastPort.BitMap, BMA_DEPTH) : 8);
+    r->few = (UBYTE)(win->WScreen && r->depth <= 4);
     r->dith = 0;
     r->dither_on = 1;
+    r->aa_on = 1;
+    {
+        aa_ink_ops ops;
+        ops.u = r;
+        ops.truecolor_ink = aa_truecolor_ink;
+        ops.nearest_pen = aa_nearest_pen;
+        ops.pen_rgb = aa_pen_rgb;
+        ops.dist = aa_dist;
+        ops.set_pen = aa_set_pen;
+        ops.fill = aa_fill_bg;
+        aa_ink_init(&r->aa, &ops);
+    }
+    r->aa_buf = 0;
+    r->aa_buf_size = 0;
     r->pad_extend = r->pad_dirty = 0;
     di = win->WScreen ? GetScreenDrawInfo(win->WScreen) : 0;
     if (di) {
@@ -772,6 +758,7 @@ void vr_palette_changed(vr_render *r)
         r->have[i] = 0;
         r->obtained[i] = -1;
     }
+    aa_ink_forget(&r->aa); /* the shade pens show other colours now */
 }
 
 void vr_set_dither(vr_render *r, int on)
@@ -780,6 +767,11 @@ void vr_set_dither(vr_render *r, int on)
         return;
     r->dither_on = (UBYTE)(on != 0);
     vr_palette_changed(r);
+}
+
+void vr_set_antialias(vr_render *r, int on)
+{
+    r->aa_on = (UBYTE)(on != 0);
 }
 
 void vr_set_pad_extend(vr_render *r, int on)
@@ -795,6 +787,10 @@ void vr_free(vr_render *r)
         for (i = 0; i < 256; i++)
             if (r->obtained[i] >= 0)
                 ReleasePen(r->cm, (ULONG)r->obtained[i]);
+    aa_ink_free(&r->aa);
+    FreeVec(r->aa_buf);
+    r->aa_buf = 0;
+    r->aa_buf_size = 0;
     if (r->dith) {
         for (i = 0; i < 256; i++)
             dither_release(r, i);
@@ -1175,6 +1171,7 @@ static void all_planes(vr_render *r)
 void vr_mask_begin(vr_render *r)
 {
     r->in_pass = 1;   /* one flush: what a default blank looks like is worked out once (draw_rows) */
+    r->whole_frame = 0;
     r->bs_valid = 0;
     /* jump scroll: a pass right after one that scrolled moves twice as far
      * (up to a screenful); a pass that did not scroll resets the step */
@@ -2221,16 +2218,15 @@ static void cell_style(vr_render *r, const vt_cell *c, int selected_cell, vr_sty
         vr_cs_split[2] += t3.ev_lo - t2.ev_lo;
     }
 #endif
-    if (st->fg == st->bg && f != b)
-        /* a screen with few pens (a 4-colour Workbench) gave the text the
-         * background's pen: the text went invisible (rig 3.2, the line
-         * editor's green command word). The plain text pen then, or the
-         * background's opposite. Conceal and the blink's off phase hide
-         * text on purpose below. Only the glyphs: an area of the colour
-         * (a block's, fgf) is that colour's pen -- the default text pen
-         * there drew a half block of two neighbouring colours half in it,
-         * a quarter of UPDemo's plasma in the Workbench's grey (W-T7). */
-        st->fg = st->bg == r->pen_default_fg ? r->pen_default_bg : r->pen_default_fg;
+    /* a screen with few pens (a 4-colour Workbench) gave the text the
+     * background's pen: the text went invisible (rig 3.2, the line
+     * editor's green command word). The plain text pen then, or the
+     * background's opposite. Conceal and the blink's off phase hide
+     * text on purpose below. Only the glyphs: an area of the colour
+     * (a block's, fgf) is that colour's pen -- the default text pen
+     * there drew a half block of two neighbouring colours half in it,
+     * a quarter of UPDemo's plasma in the Workbench's grey (W-T7). */
+    st->fg = vr_glyph_pen(st->fg, st->bg, f != b, r->pen_default_fg, r->pen_default_bg);
     if (selected_cell) {
         /* the profile's selection colours, else the swapped cell */
         if (r->sel_ink[0] != VR_KEEP)
@@ -2408,21 +2404,78 @@ static void draw_marks(vr_render *r, WORD px, WORD py, const vt_u32 *mk, int n, 
     }
 }
 
+/* The pen services render/aa_ink.c asks for: this renderer's exact-pen hash, scratch pens and inks. */
+static ULONG aa_truecolor_ink(void *u, ULONG rgb)
+{
+    return truecolor_ink((vr_render *)u, rgb);
+}
+
+static UBYTE aa_nearest_pen(void *u, ULONG rgb)
+{
+    return nearest_pen((vr_render *)u, rgb);
+}
+
+static long aa_dist(ULONG want, ULONG c)
+{
+    pm_target t;
+    pm_aim(want, &t);
+    return pm_dist(&t, c);
+}
+
+static ULONG aa_pen_rgb(void *u, UBYTE pen)
+{
+    return vr_pen_rgb((vr_render *)u, pen);
+}
+
+static void aa_set_pen(void *u, ULONG ink)
+{
+    ink_a((vr_render *)u, ink);
+}
+
+static void aa_fill_bg(void *u, WORD x0, WORD y0, WORD x1, WORD y1, ULONG ink)
+{
+    vr_render *r = (vr_render *)u;
+    fill(r, x0, y0, x1, y1, ink);
+}
+
+/* The glyph with coverage cov (w x ch bytes) antialiased, over the whole
+ * box (nothing to fill first). 0 when it could not be (no memory, no shade
+ * the screen shows): the caller draws the mask. */
+static int draw_aa(vr_render *r, WORD px, WORD py, const UBYTE *cov, WORD w, const vr_style *st)
+{
+    WORD h = r->ch;
+    if (st->attr & VT_ATTR_BOLD) {
+        if (!aa_ink_room(&r->aa_buf, &r->aa_buf_size, (ULONG)w * h, MEMF_ANY))
+            return 0;
+        ttf_embolden(cov, w, h, r->aa_buf);
+        cov = r->aa_buf;
+    }
+    return aa_ink_draw(&r->aa, r->rp, r->cgx, r->truecolor, px, py, cov, w, h, st->fg, ink_rgb(r, st->fg), st->bg,
+                       ink_rgb(r, st->bg));
+}
+
 /* An outline glyph over `cells` cells: the background, the mask in the
- * text colour (bold: again one pixel right, as Text() bold), the lines. */
+ * text colour (bold: again one pixel right, as Text() bold), the lines.
+ * With its coverage (UP-Term's own engine) and antialias on, the coverage
+ * instead (draw_aa). */
 static void draw_outline(vr_render *r, WORD px, WORD py, const UBYTE *m, WORD bpr, int cells,
                          const vr_style *st)
 {
     WORD w = (WORD)(cells * r->cw);
+    const UBYTE *cov = r->aa_on && r->outline && st->fg != st->bg ? vo_coverage(r->outline, m) : 0;
     if (cpu_refuses(r))
         return;
-    fill(r, px, py, (WORD)(px + w - 1), (WORD)(py + r->ch - 1), st->bg);
-    ink_a(r, st->fg);
-    SetDrMd(r->rp, JAM1);
-    BltTemplate((PLANEPTR)m, 0, bpr, r->rp, px, py, w, r->ch);
-    if (st->attr & VT_ATTR_BOLD)
-        BltTemplate((PLANEPTR)m, 0, bpr, r->rp, (WORD)(px + 1), py, (WORD)(w - 1), r->ch);
-    SetDrMd(r->rp, JAM2);
+    if (cov && draw_aa(r, px, py, cov, w, st)) {
+        r->n_aa++;
+    } else {
+        fill(r, px, py, (WORD)(px + w - 1), (WORD)(py + r->ch - 1), st->bg);
+        ink_a(r, st->fg);
+        SetDrMd(r->rp, JAM1);
+        BltTemplate((PLANEPTR)m, 0, bpr, r->rp, px, py, w, r->ch);
+        if (st->attr & VT_ATTR_BOLD)
+            BltTemplate((PLANEPTR)m, 0, bpr, r->rp, (WORD)(px + 1), py, (WORD)(w - 1), r->ch);
+        SetDrMd(r->rp, JAM2);
+    }
     if ((st->attr & LINE_ATTRS) || (st->deco & VT_DECO_IDEO_MASK))
         decorate(r, cells, px, py, st);
     r->n_outline++;
@@ -2912,6 +2965,12 @@ static void compose_abandon(vr_render *r)
     r->front_rp = 0;
     k->n = 0;
     k->in_rows = 0;
+    /* blank speaks for the window, and the abandoned pass drew only into
+     * the planes: a pass over the whole grid counted the window blank as
+     * it began, while the window still shows what it showed before (the
+     * main screen under a cleared alternate one). The replay must draw
+     * every blank cell. */
+    r->blank = 0;
     replay(r);
     k->nd = 0;
 }
@@ -3006,6 +3065,7 @@ int vr_compose_begin(vr_render *r)
     if (f == r->sync_seen)
         return 0; /* no frame ended: output as it comes, drawn in place */
     r->sync_seen = f;
+    r->whole_frame = 1; /* settled when drawn (vr_compose_end) */
     if (r->hidden || r->off || r->view)
         return 0;
     if (!r->back) {
@@ -3038,10 +3098,19 @@ int vr_compose_begin(vr_render *r)
     return 1;
 }
 
+/* After the flush of every pass, composed or not. A ?2026 frame the program ended is shown as the
+ * grid has it, with no jump scroll ahead of it for vtwin to settle a quarter second later (C1:
+ * scidemo-lite's page-down came in two steps, the second the settle's blit). Settled here, not in
+ * vr_compose_begin: the frame's scrolls reach vr_scroll in vt_flush, after vt_feed moved the grid,
+ * so only now do the grid and r->jump agree. */
 void vr_compose_end(vr_render *r)
 {
     to_front(r);
     pad_flush(r);
+    if (r->whole_frame) {
+        r->whole_frame = 0;
+        vr_settle(r);
+    }
 }
 
 /* Draw screen rows [y0, y1), columns [x0, x1): in a planar composed pass
@@ -3785,8 +3854,8 @@ void vr_set_view(vr_render *r, int lines)
 int vr_selection(const vr_render *r, int *ax, int *ay, int *bx, int *by)
 {
     LONG base;
-    if (!r->sel)
-        return 0; /* none, and none on an inert renderer (after vr_free: no term to ask) */
+    if (!r->win || !r->sel)
+        return 0; /* no window (before vr_init: the engine's damage during vtwin_attach's vt_reset) or none held */
     base = vt_lines_scrolled(r->t);
     *ax = r->sel_ax;
     *bx = r->sel_bx;
@@ -3871,8 +3940,9 @@ void vr_redraw(vr_render *r)
  * move no pixels until the text reaches the bottom again. Each pass that
  * scrolls again doubles the step (vr_mask_begin), up to a screenful. When
  * the output stops, vr_settle moves the text back down: the window looks
- * exactly as without the jump. Only the whole screen of the live grid;
- * anything else settles first. */
+ * exactly as without the jump; a ?2026 frame the program ended settles at
+ * once (vr_compose_end). Only the whole screen of the live grid; anything
+ * else settles first. */
 void vr_settle(vr_render *r)
 {
     int e = r->jump, rows = vis_rows(r);

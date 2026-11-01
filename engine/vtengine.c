@@ -2553,7 +2553,7 @@ static void exec_c0(vt_term *t, vt_u32 c)
         if (t->pers == VT_PCANSI)
             break; /* not a motion for ANSI.SYS art (DOS prints it as a
                       glyph; DCTelnet's term-engine ignores it) */
-        /* fall through: VT is LF elsewhere */
+        /* fall through - VT is LF elsewhere */
     case 0x0A:
         t->wrap_pending = 0;
         index_down(t);
@@ -7461,6 +7461,46 @@ done:
     return len;
 }
 
+long vt_screen_text(const vt_term *t, char *out, long max)
+{
+    long len = 0;
+    int y, rows = vt_rows(t);
+    if (out && max < 1)
+        return 0;
+    for (y = 0; y < rows; y++) {
+        int n, x, end;
+        const vt_cell *c = vt_row(t, y, &n);
+        end = c ? n - 1 : -1;
+        while (end >= 0 && c[end].ch == ' ')
+            end--; /* trailing blanks */
+        for (x = 0; x <= end; x++) {
+            char u[VT_CELL_UTF8_MAX];
+            int k, m;
+            if (c[x].width == 0)
+                continue;
+            m = vt_cell_utf8(t, &c[x], u);
+            if (!out) {
+                len += m;
+                continue;
+            }
+            if (len + m >= max)
+                goto done;
+            for (k = 0; k < m; k++)
+                out[len++] = u[k];
+        }
+        if (out && len + 1 >= max)
+            goto done;
+        if (out)
+            out[len++] = '\n';
+        else
+            len++;
+    }
+done:
+    if (out)
+        out[len] = 0;
+    return len;
+}
+
 /* ASCII case fold: A-Z to a-z, everything else (UTF-8 continuation bytes,
  * PETSCII) as it is. */
 static char fold(char c)
@@ -7556,11 +7596,22 @@ void vt_resolve_colors(const vt_term *t, const vt_cell *c, vt_color *fg, vt_colo
     vt_color f = c->fg, b = c->bg, tmp;
     switch (t->pers) {
     case VT_AMIGA:
-        /* Pens are screen pens; bold is a font style, not a colour. */
-        if (f == VT_COLOR_DEFAULT)
-            f = 1;
+        /* Pens are screen pens; bold is a font style, not a colour. Pen 0
+         * is the window's background and pen 1 its text (the console's
+         * BACKGROUNDPEN and TEXTPEN): they draw with the host's ground, so a
+         * CON: window with the UP-Term ground stays black when a Shell
+         * prompt sends CSI >0m. A host without its own ground keeps the
+         * screen's pens 0 and 1 as its defaults. */
         if (b == VT_COLOR_DEFAULT)
             b = t->amiga_bg;
+        if (f == 0)
+            f = VT_COLOR_DEFAULT_BG;
+        else if (f == 1)
+            f = VT_COLOR_DEFAULT;
+        if (b == 0)
+            b = VT_COLOR_DEFAULT_BG;
+        else if (b == 1)
+            b = VT_COLOR_DEFAULT;
         break;
     case VT_PCANSI:
         if (f == VT_COLOR_DEFAULT)

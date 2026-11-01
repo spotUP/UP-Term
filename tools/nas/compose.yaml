@@ -2,15 +2,20 @@
 # uptelnetd.py beside it (create /volume1/docker/claude-amiga/home first).
 services:
   claude-amiga:
+    # With both image and build, `docker compose up` PULLS the image when it is not on this
+    # machine and only builds when the pull fails or you run `docker compose build` / `up --build`
+    # (the build needs uptelnetd.py beside this file; see README.md). Pull users need no build.
+    image: ghcr.io/spotup/claude-amiga:latest
     build: .
-    image: claude-amiga:11
     container_name: claude-amiga
     restart: unless-stopped
     network_mode: host          # uptelnetd listens on the NAS's own LAN address
     environment:
-      # EDIT BOTH before starting; the container refuses to start on the placeholders.
-      NAS_IP: "EDIT-ME-NAS-LAN-ADDRESS 127.0.0.1"   # your NAS's LAN address (like 192.168.1.20); loopback for Tailscale
-      ALLOW: "EDIT-ME-LAN-NETWORK 127.0.0.0/8"      # your LAN (like 192.168.1.0/24), plus the VPN Server range for use from outside (README "From outside the LAN")
+      # Site settings live in a .env file beside this one (copy env.example to .env and edit it).
+      # Never edit them here: a deploy or image update replaces this file, and .env is never shipped.
+      # The container refuses to start while they are still the EDIT-ME defaults.
+      NAS_IP: "${NAS_IP:-EDIT-ME-NAS-LAN-ADDRESS 127.0.0.1}"
+      ALLOW: "${ALLOW:-EDIT-ME-LAN-NETWORK 127.0.0.0/8}"
       PORT: "2323"
     volumes:
-      - /volume1/docker/claude-amiga/home:/home/claude   # login, settings, password, history
+      - ${CLAUDE_HOME:-/volume1/docker/claude-amiga/home}:/home/claude   # login, settings, password, history

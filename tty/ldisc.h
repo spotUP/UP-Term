@@ -100,6 +100,7 @@ typedef struct ldisc {
     int lines;                         /* complete lines and EOFs in q (ICANON) */
     int lnext;                         /* the next byte is literal (VLNEXT) */
     int stopped;                       /* output stopped by VSTOP (IXON) */
+    int hup;                           /* hung up (ld_hangup): reads find the end */
     /* echo: bytes for the terminal, already output-processed */
     void (*echo)(void *user, const unsigned char *s, int n);
     /* ISIG: a key asked for a signal (LD_SIG*) */
@@ -147,8 +148,17 @@ int ld_read_ready(const ldisc *l);
 #define LD_RD_ZERO 2
 int ld_read_action(const ldisc *l, int timer_fired, int *arm);
 
-/* ACTION_WAIT_CHAR, select(): would a read find input? */
+/* ACTION_WAIT_CHAR, select(): would a read find input? After a hang-up
+ * always: the read finds the end. */
 int ld_input_pending(const ldisc *l);
+
+/* The terminal is gone (XCON: its window closed: the close gadget, or
+ * CLOSEINACTIVE when it lost the focus). As a Unix tty after a hang-up:
+ * what is queued can still be read, then every read returns 0 at once
+ * (LD_RD_ZERO, whatever VMIN and VTIME say) and select says readable, so a
+ * program waiting in read() or select() sees end of file and can leave.
+ * ld_init (entering termios mode again) clears it. */
+void ld_hangup(ldisc *l);
 
 /* FIONREAD (ACTION_VTCON_NREAD): how many bytes a read would get now.
  * ICANON: the first complete line (0 at an EOF or with no line yet);

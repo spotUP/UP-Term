@@ -52,8 +52,17 @@ extern struct DosLibrary *DOSBase;
 #define UPASSIGN_DOS
 #include "../config/upassign.h"
 #include "../tty/qmark.h"
+#define ROMSPAN_VEC
+#include "romspan.h"
 
-static const char vers[] = "$VER: UPConsole 0.1 (30.9.2026)";
+/* the base version and build day (upterm_version.h, written by the Makefile) */
+#include "upterm_version.h"
+static const char vers[] = "$VER: UPConsole " UPTERM_VERSION " (" UPTERM_DATE ") UP-Term";
+
+/* vbcc's startup runs main on a stack of this size whatever the starter gives
+ * it; the cookie says the same to AmigaOS 3.2 and to vsh (RULES.md rule 6). */
+long __stack = 16384;
+const char upconsole_stack_cookie[] = "$STACK: 16384";
 
 #define SEM_NAME "UP-Term console"
 
@@ -300,15 +309,9 @@ static int patched_vector(struct Library *rom)
     int lvo;
     if (!rt)
         return 0; /* not a ROM module (a loaded one): nothing to compare with */
-    for (lvo = 6; lvo <= 72; lvo += 6) {
-        UBYTE *v = (UBYTE *)rom - lvo;
-        ULONG target;
-        if (v[0] != 0x4E || v[1] != 0xF9)
-            return lvo; /* not a jmp: someone rewrote it */
-        target = *(ULONG *)(v + 2);
-        if (target < (ULONG)rt || target >= (ULONG)rt->rt_EndSkip)
+    for (lvo = 6; lvo <= 72; lvo += 6)
+        if (rom_vec_patched((UBYTE *)rom - lvo, (ULONG)rt, (ULONG)rt->rt_EndSkip))
             return lvo;
-    }
     return 0;
 }
 

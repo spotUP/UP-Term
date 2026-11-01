@@ -1,26 +1,27 @@
-"""The slim base (P9): git, perl and vim are upkg packages, not part of UP-Term.lha.
+"""The slim base (P9): git, perl and vim are upkg packages, not part of up-term.lha.
 
 dist/slim.txt names the paths each package owns (the one list: tools/slim.py). Checked here:
-the base kit and UP-Term.lha hold none of them (the fat base v1.0 did: 37 MB of 70), each
+the base kit and up-term.lha hold none of them (the fat base v1.0 did: 37 MB of 70), each
 package's staged tree and .ipk hold exactly its paths and its SOURCES.txt row, and the rows of
-the base's SOURCES.txt name no moved port. The kit of the real build is read (make dist dist-ipk);
+the base's SOURCES.txt name no moved port. The kit of the real build is read (make dist);
 skipped when it was not built, required with SLIM_REQUIRE=1 (make dist-check).
 """
 import io, os, pathlib, subprocess, sys, tarfile, tempfile, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
-import pkgs, slim
+sys.path.insert(0, str(ROOT / 'tools/rig'))
+import pkgs, slim, paths
 
 from test_dist_ipk import split_ar
 
 BUILD = ROOT / 'build'
-PORTS = pathlib.Path(os.environ.get('PORTS_KIT', ROOT.parent / 'upterm-ports/build/kit/userland'))
+PORTS = pathlib.Path(os.environ.get('PORTS_KIT') or paths.repo('upterm-ports') / 'build/kit/userland')
 REQUIRE = os.environ.get('SLIM_REQUIRE') == '1'
 ARCHIVE = {r['id']: r['archive'] for r in pkgs.rows()}
 BASE = BUILD / 'dist/UP-Term/Files/userland'
-MOVED = ('bin/git', 'bin/perl', 'bin/vim', 'share/vim', 'share/git-core', 'share/man/man1/vim.1',
-         'licenses/git', 'licenses/perl', 'licenses/vim')
+# every path a slim package owns by name (dist/slim.txt), read from the table: a new row is covered by this loop
+MOVED = tuple(p for _, p in slim.rows() if not any(c in p for c in '*?['))
 
 
 def tree(root):
@@ -32,24 +33,51 @@ def tree(root):
 def need(case, path):
     if not path.exists():
         if REQUIRE:
-            case.fail('%s missing: make dist dist-ipk' % path)
+            case.fail('%s missing: make dist' % path)
         case.skipTest('%s not built' % path)
 
 
 class Table(unittest.TestCase):
-    def test_the_packages_are_git_perl_vim_and_are_rows_of_packages_txt(self):
-        self.assertEqual(slim.ids(), ['git', 'perl', 'vim'])
+    def test_the_packages_are_the_slim_rows_and_are_rows_of_packages_txt(self):
+        self.assertEqual(slim.ids()[:5], ['git', 'perl', 'vim', 'bitchx', 'vbcc'])
+        self.assertEqual(len(slim.ids()), len(set(slim.ids())))
         for i in slim.ids():
             self.assertIn(i, ARCHIVE)
-            self.assertTrue(ARCHIVE[i].startswith('UP-Term-'), i)      # they need the base: UP-Term:bin
+            self.assertTrue(ARCHIVE[i].startswith('up-'), i)      # they need the base: UP-Term:bin
 
-    def test_git_is_selected_by_pattern_so_the_dashed_binaries_may_change(self):
-        self.assertIn('bin/git-*', slim.patterns('git'))
-        self.assertFalse([p for p in slim.patterns('git') if p.startswith('bin/git-') and '*' not in p])
+    def test_git_rows_list_each_helper_the_recipe_installs(self):
+        # 8a21a1fa: the git rows come from pkg_rows.py emit (the port/git-amissl recipe), not a bin/git-* wildcard
+        for p in ('bin/git', 'bin/git-upload-pack', 'bin/git-remote-https', 'share/git-core/templates'):
+            self.assertIn(p, slim.patterns('git'))
+        self.assertFalse([p for p in slim.patterns('git') if '*' in p])
 
     def test_uninstall_lines_come_from_the_same_list(self):
-        self.assertIn('Delete >NIL: "UP-Term:bin/git-#?" ALL QUIET', slim.uninstall('git'))
-        self.assertIn('Delete >NIL: "UP-Term:share/vim" ALL QUIET', slim.uninstall('vim'))
+        self.assertIn('Delete >NIL: "UPTREAL:bin/git-remote-https" ALL QUIET', slim.uninstall('git'))
+        self.assertIn('Delete >NIL: "UPTREAL:share/vim" ALL QUIET', slim.uninstall('vim'))
+
+    def test_the_ports_kit_is_found_under_upterm_root_from_a_worktree(self):
+        """2026-10-22: make dist-check in a vtcon worktree (UPTERM_ROOT=~/Code/UP-Term) failed with
+        ".claude/worktrees/upterm-ports/... missing": the test took the sibling from the checkout's
+        parent instead of UPTERM_ROOT, which the Makefile and tools/rig/paths.py read."""
+        env = {k: v for k, v in os.environ.items() if k != 'PORTS_KIT'}
+        env['UPTERM_ROOT'] = '/nowhere/ws'
+        got = subprocess.run([sys.executable, '-c', 'import test_dist_slim; print(test_dist_slim.PORTS)'],
+                             cwd=str(ROOT / 'tests'), env=env, capture_output=True, text=True, check=True)
+        self.assertEqual(got.stdout.strip(), '/nowhere/ws/upterm-ports/build/kit/userland')
+
+
+    def test_each_package_stages_into_the_drawer_of_its_archive(self):
+        """2026-10-26: make dist failed at dist-sqlite with FileExistsError on
+        build/dist/up-sqlite/Files/userland/licenses/sqlite. The Makefile named every package's drawer
+        up-<id>, while ADDON_STAGE and mkkit.py use the packages.txt archive, up-sqlite3 for sqlite: the
+        payload went into a drawer no archive packed and a rerun tripped over it. Read through make -n."""
+        got = subprocess.run(['make', '-n', '-C', str(ROOT)] + ['dist-' + i for i in slim.ids()],
+                             capture_output=True, text=True, env=dict(os.environ, UPTERM_ROOT=str(ROOT.parent)))
+        self.assertEqual(got.returncode, 0, got.stderr[-2000:])
+        for i in slim.ids():
+            if ARCHIVE[i] != 'up-' + i:
+                self.assertTrue('build/dist/%s/Files/userland' % ARCHIVE[i] in got.stdout, '%s: not staged into %s' % (i, ARCHIVE[i]))
+                self.assertFalse('build/dist/up-%s/' % i in got.stdout, '%s: staged into up-%s' % (i, i))
 
 
 class SlimBase(unittest.TestCase):
@@ -59,16 +87,23 @@ class SlimBase(unittest.TestCase):
         self.assertEqual(have, [])
         self.assertEqual([p for p in tree(BASE) if p.startswith('bin/git') or p.startswith('bin/perl') or p.startswith('bin/vim')], [])
 
+    def test_no_moved_program_leaves_its_man_page_in_the_base_kit(self):
+        # BitchX's slim rows moved bin/BitchX but left share/man/man1/BitchX.1.bz2 in up-term.lha (2026-10-25)
+        need(self, BASE)
+        need(self, PORTS / 'SOURCES.txt')
+        progs = {pathlib.Path(rel).name for i in slim.ids() for rel in slim.paths(i, PORTS) if rel.startswith('bin/')}
+        left = [p for p in tree(BASE) if p.startswith('share/man/man1/') and p[len('share/man/man1/'):].split('.1')[0] in progs]
+        self.assertEqual(left, [])
+
     def test_the_base_sources_name_no_moved_port(self):
         need(self, BASE)
         ports = {l.split('\t', 1)[0] for l in (BASE / 'SOURCES.txt').read_text().splitlines()}
         self.assertEqual(ports & set(slim.ids()), set())
 
     def test_the_base_archive_lists_none_of_them(self):
-        need(self, BUILD / 'UP-Term.lha')
-        out = subprocess.run(['lha', 'l', str(BUILD / 'UP-Term.lha')], capture_output=True, text=True, check=True).stdout
-        for m in ('Files/userland/bin/git', 'Files/userland/bin/perl', 'Files/userland/bin/vim',
-                  'Files/userland/share/vim/', 'Files/userland/share/git-core/'):
+        need(self, BUILD / 'up-term.lha')
+        out = subprocess.run(['lha', 'l', str(BUILD / 'up-term.lha')], capture_output=True, text=True, check=True).stdout
+        for m in ['Files/userland/' + p for p in MOVED]:
             self.assertNotIn(' UP-Term/' + m, out, m)
 
 

@@ -20,6 +20,7 @@ void suite_brk(void);
 void suite_sh_pipe(void);
 void suite_sh_ixargv(void);
 void suite_sh_own(void);
+void suite_sh_jobgone(void);
 void suite_histfile(void);
 void suite_pens(void);
 void suite_proc(void);
@@ -27,16 +28,48 @@ void suite_pty_name(void);
 void suite_bmsg(void);
 void suite_qmark(void);
 void suite_ttyown(void);
+void suite_closeeof(void);
 void suite_upassign(void);
+void suite_bigvol(void);
+void suite_fssm(void);
+void suite_clips(void);
+void suite_shot_core(void);
 void suite_pi_llm(void);
 void suite_upcon(void);
 void suite_upconf(void);
+void suite_keymap(void);
 void suite_prefs(void);
+void suite_amconf(void);
+void suite_settings_def(void);
+void suite_gthemes(void);
+void suite_desk(void);
+void suite_pkgs(void);
+void suite_job(void);
+void suite_bar(void);
+void suite_tick(void);
+void suite_wbmode(void);
+void suite_status_core(void);
+void suite_barconf(void);
+void suite_note_core(void);
+void suite_flat_core(void);
+void suite_iconfile(void);
+void suite_iconapply(void);
+void suite_iconpen(void);
+void suite_wbreset(void);
+void suite_menusrv(void);
+void suite_menu_text(void);
 void suite_iconspec(void);
 void suite_updiff(void);
 void suite_zmodem(void);
 void suite_otag(void);
+void suite_ttf(void);
 void suite_slash(void);
+void suite_winspec(void);
+void suite_screenreq(void);
+void suite_wbpark(void);
+void suite_cmdline(void);
+void suite_win(void);
+void suite_tile(void);
 void suite_fontpair(void);
 void suite_updemo(void);
 void suite_tabprog(void);
@@ -90,6 +123,7 @@ static const h_suite suites[] = {
     { "sh_pipe", suite_sh_pipe },
     { "sh_ixargv", suite_sh_ixargv },
     { "sh_own", suite_sh_own },
+    { "sh_jobgone", suite_sh_jobgone },
     { "histfile", suite_histfile },
     { "pens", suite_pens },
     { "proc", suite_proc },
@@ -97,15 +131,47 @@ static const h_suite suites[] = {
     { "bmsg", suite_bmsg },
     { "qmark", suite_qmark },
     { "ttyown", suite_ttyown },
+    { "closeeof", suite_closeeof },
     { "upassign", suite_upassign },
+    { "bigvol", suite_bigvol },
+    { "fssm", suite_fssm },
+    { "clips", suite_clips },
+    { "shot_core", suite_shot_core },
     { "upcon", suite_upcon },
     { "upconf", suite_upconf },
+    { "keymap", suite_keymap },
     { "prefs", suite_prefs },
+    { "amconf", suite_amconf },
+    { "settings_def", suite_settings_def },
+    { "gthemes", suite_gthemes },
+    { "desk", suite_desk },
+    { "pkgs", suite_pkgs },
+    { "job", suite_job },
+    { "bar", suite_bar },
+    { "tick", suite_tick },
+    { "wbmode", suite_wbmode },
+    { "status_core", suite_status_core },
+    { "barconf", suite_barconf },
+    { "note_core", suite_note_core },
+    { "flat_core", suite_flat_core },
+    { "iconfile", suite_iconfile },
+    { "iconapply", suite_iconapply },
+    { "iconpen", suite_iconpen },
+    { "wbreset", suite_wbreset },
+    { "menusrv", suite_menusrv },
+    { "menu_text", suite_menu_text },
     { "iconspec", suite_iconspec },
     { "updiff", suite_updiff },
     { "zmodem", suite_zmodem },
     { "otag", suite_otag },
+    { "ttf", suite_ttf },
     { "slash", suite_slash },
+    { "winspec", suite_winspec },
+    { "screenreq", suite_screenreq },
+    { "wbpark", suite_wbpark },
+    { "cmdline", suite_cmdline },
+    { "win", suite_win },
+    { "tile", suite_tile },
     { "fontpair", suite_fontpair },
     { "updemo", suite_updemo },
     { "tabprog", suite_tabprog },

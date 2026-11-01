@@ -44,6 +44,24 @@ def host(cmd, wire, cwd, secs=120):
         return -1
 
 
+# rz's first word: a hex ZRINIT header (ZPAD ZPAD ZDLE 'B', type 01)
+ZRINIT = rb'\*\*\x18B01'
+
+
+def lsz_to_rz(wire, cwd, name, secs=120):
+    """`VTC:rz` at the prompt, then the host's lsz once rz's ZRINIT is on the
+    wire, as a terminal program's zmodem auto-upload starts it. lsz started
+    at once reads vsh's echo of the command line first: the 'C' of "VTC:rz"
+    is a YMODEM receiver's request to it, lsz sends YMODEM blocks that rz
+    never answers, and gives up with rc 128 (zmodem_rig 4 of 5, 2026-10-25).
+    -2: rz never said ZRINIT."""
+    wire.seen = b''
+    wire.send('VTC:rz\r')
+    if not wire.wait_for(ZRINIT, 15):
+        return -2
+    return host(['lsz', '-q', name], wire, cwd, secs)
+
+
 def main():
     if not shutil.which('lrz') or not shutil.which('lsz'):
         print('zmodem_rig: lrzsz is not installed on the host')
@@ -56,14 +74,16 @@ def main():
     (VTC / "zm-send.bin").write_bytes(data)
     wire = g.Wire()
     subprocess.run(g.RIG + ["stop"], capture_output=True)
-    subprocess.run(g.RIG + ["start", "--serial", wire.path], check=True)
+    subprocess.run(g.RIG + ["start", "--serial", wire.path, "--purpose", "zmodem_rig: sz/rz over the serial wire"], check=True)
     import ixpty_rig
     ixpty_rig.use_ixemul()
     if g.run('Assign >NIL: PTY: EXISTS DEVICES')[0] != 0:
         g.run('Mount PTY: FROM VTC:ptymount')
     g.run('Delete RAM:zm-send.bin QUIET')
+    if not g.end_boot_getty(wire):
+        sys.exit('zmodem_rig: the boot upgetty still runs after Break; the serial port is not free')
     g.run('Run >NIL: VTC:upgetty SHELL VTC:vsh')
-    prompt = rb'[%#$>] $'
+    prompt = g.PROMPT
     check(wire.wait_for(prompt, 30), 'vsh\'s prompt arrives over serial', wire.text())
     wire.seen = b''
     wire.send('cd RAM:\r')
@@ -90,10 +110,8 @@ def main():
     # host -> Amiga
     src = got / 'zm-back.bin'
     src.write_bytes(data[::-1])
-    wire.seen = b''
-    wire.send('VTC:rz\r')
     t0 = time.time()
-    rc = host(['lsz', '-q', 'zm-back.bin'], wire, str(got))
+    rc = lsz_to_rz(wire, str(got), 'zm-back.bin')
     secs = time.time() - t0
     wire.seen = b''
     wire.send('\r')

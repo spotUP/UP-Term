@@ -1,0 +1,67 @@
+stop True
+before flat=off calls=0 chained=0
+pens text=2 line=3 back=0 outline=3 button=4 ptext=0
+dopus=absent
+rectfill installed=yes calls=14 hits=0 shits=0
+text installed=yes calls=12 hits=0
+frame=hooked calls=0 flat=0
+Process  1: Loaded as command: BOOTX:wasabid
+Process  2: Loaded as command: VTCX:Apps/bin/amarchy-gui
+Process  3: Loaded as command: Workbench
+Process  4: Loaded as command: VTCX:Apps/bin/amarchy-menu
+Process  5: Loaded as command: VTCX:Apps/bin/Amarchy
+Process  6: Loaded as command: BOOTX:wasabid
+Process  7: Loaded as command: Status
+Process  8: Loaded as command: RAM:amarchy-flat
+
+[INFO] theme list 23 rows, cursor on 20 (tokyo-night (current))
+[INFO] direction Down
+[INFO] picking row 21 (vantablack)
+after flat=on calls=220 chained=0
+pens text=2 line=3 back=0 outline=3 button=4 ptext=0
+dopus=absent
+rectfill installed=yes calls=2073 hits=60 shits=96
+text installed=yes calls=194 hits=0
+frame=hooked calls=0 flat=0
+PROBE rc 0
+SCREEN depth 8
+PEN 0 rgb aaaaaa
+PEN 1 rgb 000000
+PEN 2 rgb ffffff
+PEN 3 rgb 6688bb
+PEN 4 rgb 0000ff
+PEN 5 rgb ff00ff
+PEN 6 rgb 00ffff
+PEN 7 rgb ffffff
+WIN A active A 240x90 BorderTop=11 BorderLeft=4 active=1
+BOX A bandLeftOfText (2,1)-(5,9) pens0-7=36,0,0,0,0,0,0,0 other=0
+BOX A titleText (24,1)-(120,9) pens0-7=164,0,0,709,0,0,0,0 other=0
+BOX A bandRight (130,1)-(180,9) pens0-7=29,0,0,430,0,0,0,0 other=0
+BOX A sideBorder (1,15)-(3,84) pens0-7=0,70,0,140,0,0,0,0 other=0
+BOX A body (8,15)-(230,80) pens0-7=14718,0,0,0,0,0,0,0 other=0
+WIN A active B 240x90 BorderTop=11 BorderLeft=4 active=0
+BOX B bandLeftOfText (2,1)-(5,9) pens0-7=36,0,0,0,0,0,0,0 other=0
+BOX B titleText (24,1)-(120,9) pens0-7=699,0,0,0,0,174,0,0 other=0
+BOX B bandRight (130,1)-(180,9) pens0-7=405,0,0,0,0,54,0,0 other=0
+BOX B sideBorder (1,15)-(3,84) pens0-7=140,70,0,0,0,0,0,0 other=0
+BOX B body (8,15)-(230,80) pens0-7=14718,0,0,0,0,0,0,0 other=0
+WIN B active A 240x90 BorderTop=11 BorderLeft=4 active=0
+BOX A bandLeftOfText (2,1)-(5,9) pens0-7=36,0,0,0,0,0,0,0 other=0
+BOX A titleText (24,1)-(120,9) pens0-7=709,0,0,0,0,164,0,0 other=0
+BOX A bandRight (130,1)-(180,9) pens0-7=430,0,0,0,0,29,0,0 other=0
+BOX A sideBorder (1,15)-(3,84) pens0-7=140,70,0,0,0,0,0,0 other=0
+BOX A body (8,15)-(230,80) pens0-7=14718,0,0,0,0,0,0,0 other=0
+WIN B active B 240x90 BorderTop=11 BorderLeft=4 active=0
+BOX B bandLeftOfText (2,1)-(5,9) pens0-7=36,0,0,0,0,0,0,0 other=0
+BOX B titleText (24,1)-(120,9) pens0-7=699,0,0,0,0,174,0,0 other=0
+BOX B bandRight (130,1)-(180,9) pens0-7=405,0,0,0,0,54,0,0 other=0
+BOX B sideBorder (1,15)-(3,84) pens0-7=140,70,0,0,0,0,0,0 other=0
+BOX B body (8,15)-(230,80) pens0-7=14718,0,0,0,0,0,0,0 other=0
+HOLD
+
+final flat=on calls=349 chained=0
+pens text=2 line=3 back=0 outline=3 button=4 ptext=0
+dopus=absent
+rectfill installed=yes calls=2579 hits=160 shits=144
+text installed=yes calls=272 hits=0
+frame=hooked calls=17 flat=0

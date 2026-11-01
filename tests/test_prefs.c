@@ -8,101 +8,44 @@
 #include "../prefs/prefs_core.h"
 #include "../handler/kcmode.h"
 #include "../prefs/prefs_ui.h"
+#include "../prefs/pick_list.h"
+#include "../prefs/settings_def.h"
+#include "../prefs/prefs_merge.h"
+#include "../amarchy/amconf_core.h"
 #include "harness.h"
-
-/* ---- a file system in memory, with one operation made to fail ---------------- */
-
-#define FS_FILES 6
-typedef struct {
-    char name[FS_FILES][48];
-    char data[FS_FILES][64];
-    int used[FS_FILES];
-    const char *fail_write;   /* writing this path fails */
-    const char *fail_rename;  /* renaming onto this path fails */
-    const char *fail_remove;  /* removing this path fails */
-} memfs;
-
-static int mf_find(memfs *m, const char *path)
-{
-    int i;
-    for (i = 0; i < FS_FILES; i++)
-        if (m->used[i] && !strcmp(m->name[i], path))
-            return i;
-    return -1;
-}
-
-static const char *mf_get(memfs *m, const char *path)
-{
-    int i = mf_find(m, path);
-    return i < 0 ? "<absent>" : m->data[i];
-}
-
-static void mf_put(memfs *m, const char *path, const char *data)
-{
-    int i = mf_find(m, path);
-    if (i < 0)
-        for (i = 0; i < FS_FILES && m->used[i]; i++)
-            ;
-    m->used[i] = 1;
-    strcpy(m->name[i], path);
-    strcpy(m->data[i], data);
-}
-
-static int mf_write(void *ctx, const char *path, const char *buf, long len)
-{
-    memfs *m = (memfs *)ctx;
-    char tmp[64];
-    if (m->fail_write && !strcmp(m->fail_write, path)) {
-        mf_put(m, path, "<partial>"); /* a short write leaves a stub behind */
-        return 0;
-    }
-    memcpy(tmp, buf, (size_t)len);
-    tmp[len] = 0;
-    mf_put(m, path, tmp);
-    return 1;
-}
-
-static int mf_exists(void *ctx, const char *path)
-{
-    return mf_find((memfs *)ctx, path) >= 0;
-}
-
-static int mf_remove(void *ctx, const char *path)
-{
-    memfs *m = (memfs *)ctx;
-    int i = mf_find(m, path);
-    if (m->fail_remove && !strcmp(m->fail_remove, path))
-        return i < 0;
-    if (i >= 0)
-        m->used[i] = 0;
-    return 1;
-}
-
-static int mf_rename(void *ctx, const char *from, const char *to)
-{
-    memfs *m = (memfs *)ctx;
-    int i = mf_find(m, from);
-    if (i < 0 || mf_find(m, to) >= 0)
-        return 0; /* AmigaDOS: no source, or the target exists */
-    if (m->fail_rename && !strcmp(m->fail_rename, to))
-        return 0;
-    strcpy(m->name[i], to);
-    return 1;
-}
-
-static void mf_init(memfs *m, prefs_fs *fs)
-{
-    memset(m, 0, sizeof(*m));
-    fs->ctx = m;
-    fs->write_file = mf_write;
-    fs->exists = mf_exists;
-    fs->remove = mf_remove;
-    fs->rename = mf_rename;
-}
+#include "memfs.h"
 
 #define P "ENV:up-term/up-term"
 #define T "ENV:up-term/up-term.new"
 #define O "ENV:up-term/up-term.orig"
+
+/* Save on the A1200 (OS 3.2, ram-handler 47.57): ENVARC: is written first
+ * and holds up-term.orig, so ENV:'s rename onto up-term.orig finds it
+ * "there" and every Save and Use ended in "no backup possible". */
+static void install_env_fallthrough(void)
+{
+    memfs m;
+    prefs_fs fs;
+    static const char AP[] = "ENVARC:up-term/up-term", AO[] = "ENVARC:up-term/up-term.orig";
+
+    mf_init(&m, &fs);
+    m.envarc_fallthrough = 1;
+    mf_put(&m, P, "old");
+    mf_put(&m, AP, "old");
+    CHECK_INT(prefs_install_target(&fs, PREFS_T_ENVARC, "new", 3), PREFS_INSTALL_OK);
+    CHECK_STR(mf_get(&m, AP), "new");
+    CHECK(mf_find(&m, AO) >= 0);
+    /* the rename dance on ENV: cannot work here: the cause */
+    CHECK_INT(prefs_install(&fs, P, T, O, "new", 3), PREFS_INSTALL_BACKUP);
+    mf_put(&m, P, "old");
+    CHECK_INT(prefs_install_target(&fs, PREFS_T_ENV, "new", 3), PREFS_INSTALL_OK);
+    CHECK_STR(mf_get(&m, P), "new");
+
+    /* a failed RAM write is reported */
+    mf_init(&m, &fs);
+    m.fail_write = P;
+    CHECK_INT(prefs_install_target(&fs, PREFS_T_ENV, "new", 3), PREFS_INSTALL_WRITE);
+}
 
 static void install_cases(void)
 {
@@ -377,6 +320,48 @@ static void stage_cases(void)
  * font-aspect, any hand-typed key and every comment went on each Save,
  * Use and the window's Save settings to profile (which stages the same
  * way: prefs_from_conf, the window's values over it, prefs_stage). */
+/* STYLE-SAVED-DEFAULT: a Theme, Font or Background chosen in the window's
+ * menu is saved to the profile, and only the look's keys change -- the
+ * window's other settings (changed for this window alone) are not saved
+ * with it, and keys the file does not have are not added. */
+static void style_stage_sets_only_the_look(void)
+{
+    static upconf conf, work;
+    static char buf[UC_MAX_FILE + 1];
+    static const char file[] =
+        "# mine\n[default]\nfont = topaz.font 8\nscrollback = 500\nbg = 000000\n"
+        "link-open = run x %s\nhand-typed = kept\n[other]\nbg = 112233\n";
+    prefs_fields f;
+    long len;
+    CHECK_INT(prefs_load(&conf, file, (long)sizeof(file) - 1, UC_MAX_FILE), PREFS_LOAD_OK);
+    prefs_from_conf(&f, &conf, "default");
+    strcpy(f.font, "IBMPlexMono.font 12");
+    strcpy(f.bg, "1E1E2E");
+    strcpy(f.fg, "CDD6F4");
+    strcpy(f.pal[1], "F38BA8");
+    strcpy(f.sb, "9999");      /* the window's own: not saved by a style change */
+    strcpy(f.linkopen, "other %s");
+    f.reflow = 0;
+    len = prefs_stage_style(&work, &conf, "default", &f, buf, sizeof(buf));
+    CHECK(len > 0);
+    CHECK(strstr(buf, "# mine") != 0);
+    CHECK(strstr(buf, "reflow") == 0);    /* absent stays absent */
+    CHECK(strstr(buf, "cursor-blink") == 0);
+    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
+    CHECK_STR(upconf_str(&conf, "default", "font", "?"), "IBMPlexMono.font 12");
+    CHECK_STR(upconf_str(&conf, "default", "bg", "?"), "1E1E2E");
+    CHECK_STR(upconf_str(&conf, "default", "fg", "?"), "CDD6F4");
+    CHECK_STR(upconf_str(&conf, "default", "scrollback", "?"), "500");
+    CHECK_STR(upconf_str(&conf, "default", "link-open", "?"), "run x %s");
+    CHECK_STR(upconf_str(&conf, "default", "hand-typed", "?"), "kept");
+    CHECK_STR(upconf_str(&conf, "other", "bg", "?"), "112233");
+    prefs_from_conf(&f, &conf, "default");
+    CHECK_STR(f.pal[1], "F38BA8");
+    /* a table that did not hold the whole file is not written back */
+    conf.overflow = 1;
+    CHECK_INT(prefs_stage_style(&work, &conf, "default", &f, buf, sizeof(buf)), PREFS_STAGE_LOSSY);
+}
+
 /* the two options default on, are written as on / off, and come back on */
 static void amiga_keys_and_highlight_cat_round_trip(void)
 {
@@ -427,24 +412,67 @@ static void dither_and_padding_color_round_trip(void)
     CHECK_INT(prefs_load(&conf, "[default]\nfont = x\n", 20, UC_MAX_FILE), PREFS_LOAD_OK);
     prefs_from_conf(&f, &conf, "default");
     CHECK_INT(f.dither, 1);
+    CHECK_INT(f.outline_aa, 1);
     CHECK_INT(f.pad_extend, 0);
     len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
     CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
     CHECK_STR(upconf_str(&conf, "default", "dither", "?"), "on");
+    CHECK_STR(upconf_str(&conf, "default", "outline-antialias", "?"), "on");
     CHECK_STR(upconf_str(&conf, "default", "padding-color", "?"), "background");
     f.dither = 0;
+    f.outline_aa = 0;
     f.pad_extend = 1;
     len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
     CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
     CHECK_STR(upconf_str(&conf, "default", "dither", "?"), "off");
+    CHECK_STR(upconf_str(&conf, "default", "outline-antialias", "?"), "off");
     CHECK_STR(upconf_str(&conf, "default", "padding-color", "?"), "extend");
     prefs_from_conf(&g, &conf, "default");
     CHECK_INT(g.dither, 0);
+    CHECK_INT(g.outline_aa, 0);
     CHECK_INT(g.pad_extend, 1);
-    CHECK_INT(prefs_load(&conf, "[default]\ndither = junk\npadding-color = junk\n", 45, UC_MAX_FILE), PREFS_LOAD_OK);
+    CHECK_INT(prefs_load(&conf, "[default]\ndither = junk\noutline-antialias = junk\npadding-color = junk\n", 70, UC_MAX_FILE), PREFS_LOAD_OK);
     prefs_from_conf(&g, &conf, "default"); /* anything but off / extend is the default */
     CHECK_INT(g.dither, 1);
+    CHECK_INT(g.outline_aa, 1);
     CHECK_INT(g.pad_extend, 0);
+}
+
+/* The Amarchy keys have one store (Amarchy/prefs): the UP-Term profile neither reads them into the editor's
+ * fields nor writes them, and a save drops what an older version left there (plan 2026-10-25-amarchy-own-prefs.md M3). */
+static void prefs_stage_leaves_no_amarchy_keys_in_the_upterm_profile(void)
+{
+    static upconf conf, work;
+    static char buf[UC_MAX_FILE + 1];
+    static const char src[] = "[default]\nfont = x\namarchy-music-drawers = Music\nmenu-style = text\n"
+                              "menu-in-terminal = graphical\n[work]\nfont = y\namarchy-app-icons = none\n";
+    prefs_fields f;
+    long len;
+    CHECK_INT(prefs_load(&conf, src, (long)strlen(src), UC_MAX_FILE), PREFS_LOAD_OK);
+    prefs_from_conf(&f, &conf, "default");
+    CHECK_STR(f.am_music, "");
+    CHECK_INT(f.am_mode, UC_MENU_GRAPHICAL);
+    strcpy(f.am_music, "Edited");
+    f.am_termmenu = UC_TERMMENU_GRAPHICAL;
+    len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
+    CHECK(len > 0);
+    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
+    CHECK_STR(upconf_str(&conf, "default", "font", "?"), "x");
+    CHECK_STR(upconf_str(&conf, "default", "amarchy-music-drawers", "?"), "?");
+    CHECK_STR(upconf_str(&conf, "default", "menu-style", "?"), "?");
+    CHECK_STR(upconf_str(&conf, "default", "menu-in-terminal", "?"), "?");
+}
+
+static void the_amarchy_keyword_picks_the_start_page(void)
+{
+    CHECK_INT(PG_NPAGES, 7);
+    CHECK_INT(pg_page_for_args("AMARCHY"), PG_PAGE_AMARCHY);
+    CHECK_INT(pg_page_for_args("amarchy"), PG_PAGE_AMARCHY);
+    CHECK_INT(pg_page_for_args("  Amarchy \n"), PG_PAGE_AMARCHY);
+    CHECK_INT(pg_page_for_args(""), PG_PAGE_GENERAL);
+    CHECK_INT(pg_page_for_args("foo"), PG_PAGE_GENERAL);
+    CHECK_INT(pg_page_for_args("amarchyx"), PG_PAGE_GENERAL);
+    CHECK_INT(pg_page_for_args(0), PG_PAGE_GENERAL);
 }
 
 static void keep_cases(void)
@@ -843,9 +871,10 @@ static void font_requester_results_become_profile_values(void)
     CHECK_INT(prefs_font_compose(".font", 8, out, sizeof(out)), 0);   /* nothing left */
     CHECK_STR(out, "");
     CHECK_INT(prefs_font_compose("", 8, out, sizeof(out)), 0);
-    CHECK_INT(prefs_font_compose("My Font.font", 8, out, sizeof(out)), 0); /* the handler splits at blanks */
-    CHECK_STR(out, "");
     CHECK_INT(prefs_font_compose("a:b.font", 8, out, sizeof(out)), 0);
+    /* both readers split at the last separator: blanks are kept, a colon is not (TERM-FONT-BLANK) */
+    CHECK_INT(prefs_font_compose("Vera Mono.font", 14, out, sizeof(out)), 1);
+    CHECK_STR(out, "Vera Mono:14");
     CHECK_INT(prefs_font_compose("topaz.font", 8, out, 7), 0);        /* "topaz:8" needs 8 */
     CHECK_INT(prefs_font_compose("topaz.font", 8, out, 8), 1);
     /* and back: the requester starts from name with .font and the size */
@@ -970,7 +999,7 @@ static void an_edit_of_any_field_makes_the_profile_differ(void)
         MUT_INT(cursor) MUT_INT(bell) MUT_INT(blink) MUT_INT(bold) MUT_INT(meta_alt)
         MUT_INT(copy_sel) MUT_INT(wheel) MUT_INT(reflow) MUT_INT(scrollbar) MUT_INT(completion)
         MUT_INT(screen) MUT_INT(aspect) MUT_INT(backspace_bs) MUT_INT(clipboard) MUT_INT(kcinfo)
-        MUT_INT(kccache) MUT_INT(amiga_keys) MUT_INT(dither) MUT_INT(pad_extend) MUT_INT(hlcat)
+        MUT_INT(kccache) MUT_INT(amiga_keys) MUT_INT(dither) MUT_INT(outline_aa) MUT_INT(pad_extend) MUT_INT(hlcat)
         MUT_INT(split_restore)
     }
     for (i = 0; i < 16; i++) {
@@ -1025,7 +1054,7 @@ static void check_layout(const pl_result *r, int page, const pl_font *f)
         /* a check box's label to its right fits too */
         if (a->kind == PGK_CHECK) {
             char plain[80];
-            pg_plain_label(a->label, plain, sizeof(plain));
+            pg_plain_label(pg_label(a), plain, sizeof(plain));
             CHECK(ba.x + ba.w + 6 + (r->fallback ? tw_fixed(0, plain) : f->text_w(f->ctx, plain)) <= r->inner_w);
         }
         for (j = i + 1; j < pg_nitems; j++) {
@@ -1046,6 +1075,36 @@ static void check_layout(const pl_result *r, int page, const pl_font *f)
             }
         }
     }
+}
+
+/* GadTools puts a PLACETEXT_LEFT label this far left of its gadget (measured on the A1200) */
+#define GADTOOLS_LABEL_GAP 8
+
+static void every_label_ends_gap_label_before_its_control(void)
+{
+    pl_font f;
+    pl_result *r = (pl_result *)malloc(sizeof(*r));
+    int i, page;
+    f.w = 8; f.h = 8; f.text_w = tw_prop7; f.ctx = 0;
+    pl_layout(&f, 618, 232, r);
+    for (page = 0; page < PG_NPAGES; page++)
+        for (i = 0; i < pg_nitems; i++) {
+            const pg_item *it = &pg_items[i];
+            char plain[80];
+            int gap;
+            if (it->page != page || !r->label_w[it->id])
+                continue;
+            pg_plain_label(pg_label(it), plain, sizeof(plain));
+            gap = r->label_w[it->id] - tw_prop7(0, plain);
+            if (gap < GADTOOLS_LABEL_GAP) {
+                h_checks++;
+                h_failures++;
+                printf("  FAIL label gap: \"%s\" ends %d px before its control, wants %d\n",
+                       plain, gap, GADTOOLS_LABEL_GAP);
+            } else
+                h_checks++;
+        }
+    free(r);
 }
 
 static void the_window_fits_an_ntsc_and_a_pal_workbench(void)
@@ -1096,6 +1155,45 @@ static void the_window_fits_an_ntsc_and_a_pal_workbench(void)
     free(r);
 }
 
+/* PT3: the label, the help and the cycle choices of a setting's main control are the settings table's; pg_items
+ * holds no copy. The layout cases above, run on the table's text, are the proof the window did not change. */
+static void labels_help_and_choices_come_from_the_table(void)
+{
+    int i, n, rows = 0;
+    const char *out[8];
+    for (i = 0; i < sd_nsettings; i++) {
+        const sd_setting *s = &sd_settings[i];
+        const pg_item *it = pg_find(s->gadget);
+        CHECK(it != 0);
+        if (!it)
+            continue;
+        rows++;
+        /* no second copy in pg_items */
+        CHECK(it->help == 0);
+        if (s->kind != SD_PALETTE) {
+            CHECK(it->label == 0);
+            CHECK_STR(pg_label(it), s->label);
+        }
+        CHECK_STR(pg_help(it), s->help);
+        if (s->kind == SD_CYCLE) {
+            CHECK_INT(pg_cycle_texts(s->gadget, out, 8), s->nvalues);
+            for (n = 0; n < s->nvalues; n++)
+                CHECK(out[n] == s->values[n].text);
+            CHECK(out[s->nvalues] == 0);
+            CHECK_INT(pg_cycle_texts(s->gadget, out, s->nvalues), 0);  /* no room for the end mark */
+        } else {
+            CHECK_INT(pg_cycle_texts(s->gadget, out, 8), 0);
+        }
+    }
+    CHECK_INT(rows, sd_nsettings);
+    /* the page switch is no row of the table: its own text stays */
+    CHECK(pg_label(pg_find(PG_PAGE)) != 0);
+    CHECK_INT(pg_cycle_texts(PG_PAGE, out, 8), 0);
+    /* a second control of a row keeps its own help */
+    CHECK_STR(pg_help(pg_find(PG_FG_HEX)), "The text colour as six hex digits, RRGGBB.");
+    CHECK_STR(pg_label(pg_find(PG_SCROLLBACK_NONE)), "N_o scrollback");
+}
+
 /* ---- PX13, PX14: help lines and shortcuts ------------------------------------------ */
 
 static void every_gadget_has_help_and_a_unique_shortcut(void)
@@ -1103,15 +1201,24 @@ static void every_gadget_has_help_and_a_unique_shortcut(void)
     int i, j, page;
     for (i = 0; i < pg_nitems; i++) {
         const pg_item *it = &pg_items[i];
-        CHECK(it->help != 0 && it->help[0] != 0);
+        CHECK(pg_help(it) != 0 && pg_help(it)[0] != 0);
         /* the status row is 618 pixels of topaz 8: 77 letters */
-        CHECK(it->help == 0 || strlen(it->help) <= 76);
+        CHECK(pg_help(it) == 0 || strlen(pg_help(it)) <= 76);
         for (j = i + 1; j < pg_nitems; j++)
             CHECK(pg_items[j].id != it->id);
         CHECK(pg_find(it->id) == it);
-        CHECK(it->kind != PGK_CHECK || it->label != 0);
+        CHECK(it->kind != PGK_CHECK || pg_label(it) != 0);
     }
     CHECK(pg_find(9999) == 0);
+    /* a cycle gadget is as wide as its longest label: a 26 pixel arrow-only
+     * cycle (chars 0) let "Generic", "Drawn" and "Graphical" run over the
+     * label of the row below it (A1200, 2026-10-26) */
+    for (i = 0; i < pg_nitems; i++)
+        if (pg_items[i].kind == PGK_CYCLE)
+            CHECK(pg_items[i].chars > 0);
+    CHECK(pg_find(PG_AM_ICONS)->chars >= 7);    /* Generic */
+    CHECK(pg_find(PG_AM_MODE)->chars >= 7);     /* Minimal */
+    CHECK(pg_find(PG_AM_TERMMENU)->chars >= 9); /* Graphical */
     /* a key reaches one gadget per page, the page's or a common one */
     for (page = 0; page < PG_NPAGES; page++)
         for (i = 0; i < pg_nitems; i++) {
@@ -1237,11 +1344,219 @@ static void a_renamed_profile_keeps_its_keys_and_comments(void)
     (void)w;
 }
 
+/* Alt is Meta unless the file says meta = amiga (Left Amiga is Super) */
+static void meta_defaults_to_alt(void)
+{
+    static upconf conf;
+    prefs_fields f;
+    static const char empty[] = "[profile default]\nfont = TOPAZ 8.8.font\n";
+    static const char amiga[] = "[profile default]\nmeta = amiga\n";
+    static const char alt[] = "[profile default]\nmeta = ALT\n";
+    prefs_defaults(&f);
+    CHECK_INT(f.meta_alt, 1);
+    CHECK_INT(prefs_load(&conf, empty, (long)strlen(empty), UC_MAX_FILE), PREFS_LOAD_OK);
+    prefs_from_conf(&f, &conf, "default");
+    CHECK_INT(f.meta_alt, 1);
+    CHECK_INT(prefs_load(&conf, amiga, (long)strlen(amiga), UC_MAX_FILE), PREFS_LOAD_OK);
+    prefs_from_conf(&f, &conf, "default");
+    CHECK_INT(f.meta_alt, 0);
+    CHECK_INT(prefs_load(&conf, alt, (long)strlen(alt), UC_MAX_FILE), PREFS_LOAD_OK);
+    prefs_from_conf(&f, &conf, "default");
+    CHECK_INT(f.meta_alt, 1);
+}
+
+/* The file text the editor writes is the contract with the handler and with every file already on a disk: the
+ * recorded outputs of prefs_stage / prefs_stage_style (the .staged and .style files in tests/data) were made by the
+ * hand-written per-key code and must not move when parse and serialise walk the settings table instead.
+ * Inputs: the default profile (no file), the owner's A1200 ENVARC:up-term/up-term, and synthetic files that
+ * put every check and cycle, every text key, the colours with a full palette, and values the editor does not
+ * offer through the same path. */
+static long read_data(const char *name, char *buf, long cap)
+{
+    FILE *fp = fopen(name, "rb");
+    long n;
+    if (!fp)
+        return -1;
+    n = (long)fread(buf, 1, (size_t)cap, fp);
+    fclose(fp);
+    return n;
+}
+
+static void staged_text_matches_the_recorded_file(const char *input, const char *base, int style)
+{
+    static upconf conf, work;
+    static char in[UC_MAX_FILE + 1], want[UC_MAX_FILE + 1], got[UC_MAX_FILE + 1], path[160];
+    prefs_fields f;
+    long n, wn, len;
+    if (input) {
+        strcpy(path, "tests/data/");
+        strcat(path, input);
+        strcat(path, ".prefs");
+        n = read_data(path, in, UC_MAX_FILE);
+        CHECK(n > 0);
+        CHECK_INT(prefs_load(&conf, in, n, UC_MAX_FILE), PREFS_LOAD_OK);
+        prefs_from_conf(&f, &conf, "default");
+    } else {
+        CHECK_INT(prefs_load(&conf, 0, 0, UC_MAX_FILE), PREFS_LOAD_NONE);
+        prefs_defaults(&f);
+    }
+    strcpy(path, "tests/data/");
+        strcat(path, base);
+        strcat(path, ".staged");
+    wn = read_data(path, want, UC_MAX_FILE);
+    CHECK(wn > 0);
+    len = prefs_stage(&work, &conf, "default", &f, got, sizeof(got));
+    CHECK_INT(len, wn);
+    CHECK(len == wn && memcmp(got, want, (size_t)wn) == 0);
+    if (!style)
+        return;
+    strcpy(path, "tests/data/");
+        strcat(path, base);
+        strcat(path, ".style");
+    wn = read_data(path, want, UC_MAX_FILE);
+    CHECK(wn > 0);
+    len = prefs_stage_style(&work, &conf, "default", &f, got, sizeof(got));
+    CHECK_INT(len, wn);
+    CHECK(len == wn && memcmp(got, want, (size_t)wn) == 0);
+}
+
+static void file_text_is_byte_identical_for_defaults_the_a1200_file_and_every_key(void)
+{
+    staged_text_matches_the_recorded_file(0, "prefs_default", 0);
+    staged_text_matches_the_recorded_file("a1200_up-term", "a1200_up-term", 1);
+    staged_text_matches_the_recorded_file("prefs_switches", "prefs_switches", 0);
+    staged_text_matches_the_recorded_file("prefs_texts", "prefs_texts", 1);
+    staged_text_matches_the_recorded_file("prefs_colours", "prefs_colours", 1);
+    staged_text_matches_the_recorded_file("prefs_garbage", "prefs_garbage", 0);
+}
+
+/* AM-PREFS-THEME-PICKER: the Menu theme row is a select over the scanned GUI themes (gt_scan), the current one selected,
+ * and choosing one writes AM_GTHEME through amconf. */
+static void fake_theme_dir(void *ctx, const char *dir, gt_emit_fn emit, void *ectx)
+{
+    (void)ctx;
+    if (!strcmp(dir, GT_SHIPPED_DIR)) {
+        emit(ectx, "tokyo-night.theme");
+        emit(ectx, "nord.theme");
+    } else if (!strcmp(dir, GT_USER_DIR)) {
+        emit(ectx, "mine.theme");
+    }
+}
+
+static void the_menu_theme_row_is_a_select_over_the_scanned_themes(void)
+{
+    const pg_item *choose = pg_find(PG_AM_GTHEME_CHOOSE);
+    int cur;
+    const sd_setting *s = &sd_settings[SDI_AM_GTHEME];
+    const pg_item *it = pg_find(s->gadget);
+    gt_list l;
+    pg_themes t;
+    prefs_fields f;
+    am_prefs ap, back;
+    char name[GT_NAME], buf[4096];
+    long n;
+    CHECK_INT(s->kind, SD_DYNLIST);
+    CHECK(it && it->kind == PGK_TEXT);      /* the row shows the name, a button opens the picker list */
+    CHECK(choose && choose->kind == PGK_BUTTON && choose->row == it->row && choose->col == 1);
+    gt_scan(fake_theme_dir, 0, &l);
+    pg_themes_build(&t, &l, "nord");
+    CHECK_INT(t.n, 3);                      /* mine, nord, tokyo-night: sorted */
+    CHECK_INT(t.active, 1);
+    CHECK_STR(t.text[0], "mine");
+    CHECK_STR(t.text[1], "nord (current)"); /* gt_label marks the saved one */
+    CHECK(t.text[3] == NULL);
+    /* a saved name with no file stays selectable, so Save does not silently change it */
+    pg_themes_build(&t, &l, "gone");
+    CHECK_INT(t.n, 4);
+    CHECK_STR(t.text[t.active], "gone (current)");
+    pg_themes_build(&t, &l, "nord");
+    /* the picker list opens with the saved theme selected and in view */
+    cur = pk_initial(t.n, pg_themes_find(&t, "nord"));
+    CHECK_INT(cur, 1);
+    CHECK_INT(pk_initial(t.n, pg_themes_find(&t, "absent")), 0);
+    CHECK_INT(pk_rows(3), 3);
+    CHECK_INT(pk_rows(23), PK_ROWS);
+    CHECK_INT(pk_top(23, PK_ROWS, 22), 23 - PK_ROWS);
+    CHECK_INT(pk_top(23, PK_ROWS, 0), 0);
+    CHECK_INT(pk_top(23, PK_ROWS, 12), 12 - PK_ROWS / 2);
+    /* Cancel or the close gadget keeps the old theme: the file's value is untouched */
+    memset(&f, 0, sizeof f);
+    strcpy(f.am_gtheme, "nord");
+    CHECK_INT(pk_result(t.n, 0, 0), -1);
+    CHECK_INT(pk_result(t.n, 9, 1), -1);
+    CHECK_INT(pk_result(t.n, -1, 1), -1);
+    CHECK_STR(f.am_gtheme, "nord");
+    /* choosing "mine" writes AM_GTHEME */
+    CHECK_INT(pg_themes_pick(&t, pk_result(t.n, 0, 1), name, sizeof name), 1);
+    strcpy(f.am_gtheme, name);
+    amconf_defaults(&ap);
+    amconf_from_fields(&ap, &f);
+    n = amconf_serialize(&ap, buf, sizeof buf);
+    CHECK(n > 0);
+    amconf_parse(buf, n, &back);
+    CHECK_STR(back.val[AM_GTHEME], "mine");
+    CHECK_INT(pg_themes_pick(&t, 9, name, sizeof name), 0);
+}
+
+/* C1: the files change while Prefs is open (the Amarchy menu wrote a setting). An unedited page takes the
+ * file's value, an edited page keeps the user's, and a Save afterwards writes both. */
+static void a_file_change_while_open_reloads_only_the_unedited_pages(void)
+{
+    static upconf conf, work;
+    static char buf[UC_MAX_FILE + 2];
+    prefs_fields open_f, user, file_f, merged, orig2, saved;
+    am_prefs am_file, am_saved;
+    unsigned changed;
+    long len;
+
+    /* open: the file as loaded */
+    upconf_clear(&conf);
+    prefs_defaults(&open_f);
+    CHECK(prefs_stage(&work, &conf, "default", &open_f, buf, sizeof(buf)) > 0);
+    prefs_load(&conf, buf, (long)strlen(buf), UC_MAX_FILE);
+    prefs_from_conf(&open_f, &conf, "default");
+    amconf_defaults(&am_file);
+    amconf_to_fields(&am_file, &open_f);
+
+    /* the user edits the General page (cursor) in the open window */
+    user = open_f;
+    user.cursor = PREFS_CURSOR_BAR;
+    CHECK_INT((int)prefs_pages_edited(&user, &open_f), 1 << PG_PAGE_GENERAL);
+
+    /* the menu writes two settings: the Keyboard page in the UP-Term file, the Amarchy page in its own */
+    file_f = open_f;
+    file_f.meta_alt = !open_f.meta_alt;
+    file_f.cursor = PREFS_CURSOR_UNDERLINE;     /* the menu also touched the page the user edited */
+    strcpy(am_file.val[AM_STYLE], "minimal");
+    amconf_to_fields(&am_file, &file_f);
+
+    changed = prefs_merge_external(&user, &open_f, &file_f, &merged, &orig2);
+    CHECK_INT((int)changed, (1 << PG_PAGE_KEYBOARD) | (1 << PG_PAGE_AMARCHY));
+    CHECK_INT(merged.meta_alt, file_f.meta_alt);            /* unedited page: the file's value */
+    CHECK_INT(merged.am_mode, UC_MENU_MINIMAL);             /* unedited page: the file's value */
+    CHECK_INT(merged.cursor, PREFS_CURSOR_BAR);             /* edited page: the user's value */
+    CHECK_INT((int)prefs_pages_edited(&merged, &orig2), 1 << PG_PAGE_GENERAL);  /* still edited, nothing else is */
+
+    /* Save: both land in the files */
+    len = prefs_stage(&work, &conf, "default", &merged, buf, sizeof(buf));
+    CHECK(len > 0);
+    prefs_load(&conf, buf, len, UC_MAX_FILE);
+    prefs_from_conf(&saved, &conf, "default");
+    CHECK_INT(saved.cursor, PREFS_CURSOR_BAR);              /* the user's edit */
+    CHECK_INT(saved.meta_alt, file_f.meta_alt);             /* the menu's change, not overwritten */
+    amconf_defaults(&am_saved);
+    amconf_from_fields(&am_saved, &merged);
+    CHECK_STR(am_saved.val[AM_STYLE], "minimal");           /* the menu's change in Amarchy's file */
+}
+
 void suite_prefs(void)
 {
+    meta_defaults_to_alt();
     a_renamed_profile_keeps_its_keys_and_comments();
     wheel_colours_round_trip_within_one_step();
     the_window_fits_an_ntsc_and_a_pal_workbench();
+    every_label_ends_gap_label_before_its_control();
+    labels_help_and_choices_come_from_the_table();
     every_gadget_has_help_and_a_unique_shortcut();
     kingcon_style_letters_round_trip_through_the_handlers_function();
     colour_fields_are_validated_strictly_and_named();
@@ -1252,11 +1567,18 @@ void suite_prefs(void)
     theme_list_from_a_drawer();
     theme_cases();
     install_cases();
+    install_env_fallthrough();
     install_restore_case();
     load_cases();
     stage_cases();
     keep_cases();
     amiga_keys_and_highlight_cat_round_trip();
+    style_stage_sets_only_the_look();
     dither_and_padding_color_round_trip();
+    prefs_stage_leaves_no_amarchy_keys_in_the_upterm_profile();
+    the_amarchy_keyword_picks_the_start_page();
     the_brightness_slider_gets_a_uword_pen_list_ended_by_ffff();
+    file_text_is_byte_identical_for_defaults_the_a1200_file_and_every_key();
+    the_menu_theme_row_is_a_select_over_the_scanned_themes();
+    a_file_change_while_open_reloads_only_the_unedited_pages();
 }

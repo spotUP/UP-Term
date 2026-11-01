@@ -4,14 +4,14 @@
 - dist/net/bebbossh-1.46.1 holds the source tarball (GPL), the 21 patches in a gap-free order, SOURCE.txt, the licence and
   no binary; the tarball is the one SHA256SUMS names;
 - `make dist` stages build/bebbossh/out over that drawer (the Makefile line and the build script's patch count);
-- the staged kit (build/dist/UP-Term/Files/net/bebbossh-1.46.1, when `make dist` ran): our six binaries, each with the
+- the staged kit (build/dist/up-term/Files/net/bebbossh-1.46.1, when `make dist` ran): our six binaries, each with the
   checksum its SHA256SUMS lists, the programs and libraries with a $VER of 1.46.1. Skipped when no kit is staged,
   unless BEBBOSSH_REQUIRE=1 (make dist-check)."""
 import hashlib, os, pathlib, re, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DRAWER = ROOT / 'dist/net/bebbossh-1.46.1'
-KIT = ROOT / 'build/dist/UP-Term/Files/net/bebbossh-1.46.1'
+KIT = ROOT / 'build/dist/up-term/Files/net/bebbossh-1.46.1'
 BINARIES = ['bebbossh', 'bebboscp', 'bebbosshd', 'bebbosshkeygen',
             'libcryptossh.library020', 'libcryptossh.library060']
 PLAIN = 'libcryptossh.library'  # the 68000 build: the kit needs a 68020, nothing installs it, so it is not built or shipped
@@ -50,7 +50,8 @@ class RepoDrawer(unittest.TestCase):
 
     def test_the_build_is_wired_into_dist(self):
         mk = (ROOT / 'Makefile').read_text()
-        self.assertRegex(mk, r'(?m)^dist-base: amiga bebbossh ')
+        # a prerequisite of dist-base, wherever it stands among the others
+        self.assertRegex(mk, r'(?m)^dist-base:.* bebbossh ')
         self.assertIn('cp $(BUILD)/bebbossh/out/* $(KIT)/Files/net/bebbossh-1.46.1/', mk)
         self.assertIn('[ "$n" = 22 ]', (ROOT / 'tools/build_bebbossh.sh').read_text())
         self.assertIn('6.5.0b', (DRAWER / 'SOURCE.txt').read_text())
@@ -63,7 +64,9 @@ class InstallScript(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         s = (ROOT / 'dist/install.dos').read_text()
-        cls.block = s[s.index('If "$optssh" EQ "SSH"'):s.index('If "$optbebboget" EQ "BEBBOGET"')]
+        # the part's own block starts at column 0; the room check before it tests the same options indented
+        start = s.index('\nIf "$optssh" EQ "SSH"')
+        cls.block = s[start:s.index('\nIf "$optbebboget" EQ "BEBBOGET"', start)]
 
     def test_an_upgrade_over_an_earlier_install_replaces_the_library(self):
         # the old guard "If NOT EXISTS LIBS:libcryptossh.library" around the Copy kept the 1.45 library on an upgrade

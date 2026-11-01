@@ -54,7 +54,9 @@
 #include "util.h"
 #include "path.h"
 
-static const char vers[] = "$VER: Claude 1.0 (5.10.2026) UP-Term";
+/* the up-claude add-on's version and the build day (upterm_version.h, written by the Makefile) */
+#include "upterm_version.h"
+static const char vers[] = "$VER: Claude " UPCLAUDE_VERSION " (" UPTERM_DATE ") UP-Term";
 const char stack_cookie[] = "$STACK: 32768";
 
 #define MIN_STACK 16000

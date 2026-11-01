@@ -1,0 +1,7 @@
+; uterm-shell -- an UP-Term window (vsh) on the screen in front, in the current directory. What the Directory Opus
+; buttons "UP-Term here" and "Shell" run (tools/gen_dopus_buttons.py): Run >NIL: Execute UP-Term:bin/uterm-shell.
+; Opus has no console, so the window comes from NewShell ... FROM, the same way uterm-edit and uterm-view open theirs.
+; "UP-Term here" has FUNCF_CD_SOURCE: Opus changes into the lister's directory before it runs this script, NewShell
+; starts the new CLI in the launcher's current directory, and vsh takes that directory as its own.
+; FRONT puts the window on the screen in front (handler/winspec.c); uterm-shellstart ends it with EndCLI
+NewShell "XCON:0/20/640/300/UP-Term/CLOSE/FRONT" FROM UP-Term:bin/uterm-shellstart

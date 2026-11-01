@@ -1,0 +1,8 @@
+Directory Opus 5 (Magellan II) 5.104, unmodified upstream release archives.
+Source and releases: https://github.com/BlitterStudio/dopus5 , tag v5.104,
+commit 22d60611466cf9f02dedaf891e02651067b2381c.
+Archives (md5 in archives.txt):
+  DOpus5_104_os3.lha        https://github.com/BlitterStudio/dopus5/releases/download/v5.104/DOpus5_104_os3.lha
+  DOpus5_104_os3-68000.lha  https://github.com/BlitterStudio/dopus5/releases/download/v5.104/DOpus5_104_os3-68000.lha
+Licence: AROS Public License 1.1 (COPYING, the file of the tag). UP-Term changes nothing in the archives;
+the Makefile unpacks them as they are and Install runs upstream's own "Install DOpus5" script.

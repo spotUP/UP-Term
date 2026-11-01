@@ -31,9 +31,28 @@ static void widths_count_cells_as_glibc_does(void)
     CHECK_INT(vt_char_width(0xFF21), 2);  /* fullwidth A */
     CHECK_INT(vt_char_width(0x1F600), 2); /* grinning face */
     CHECK_INT(vt_char_width(0x1F1E6), 1); /* regional indicator: N */
+    /* UP-Term's exception (plan 2026-10-22-handler-rasterizer.md R6.2):
+     * the Nerd Font icons in private use take two cells, the powerline
+     * separators that fill one cell stay one */
+    CHECK_INT(vt_char_width(0xE000), 2);
+    CHECK_INT(vt_char_width(0xE0A0), 2);  /* powerline branch: an icon */
+    CHECK_INT(vt_char_width(0xE0AF), 2);
+    CHECK_INT(vt_char_width(0xE0B0), 1);  /* powerline separator */
+    CHECK_INT(vt_char_width(0xE0D7), 1);
+    CHECK_INT(vt_char_width(0xE0D8), 2);
+    CHECK_INT(vt_char_width(0xF015), 2);  /* nf-fa-home */
+    CHECK_INT(vt_char_width(0xF8FF), 2);
+    CHECK_INT(vt_char_width(0xF900), 2);  /* CJK compatibility: W already */
+    CHECK_INT(vt_char_width(0xDFFF), 1);
+    CHECK_INT(vt_char_width(0xEFFFFUL), 1);
+    CHECK_INT(vt_char_width(0xF0000UL), 2);
+    CHECK_INT(vt_char_width(0xF01C9UL), 2); /* nf-md (Material Design) */
+    CHECK_INT(vt_char_width(0xFFFFDUL), 2);
+    CHECK_INT(vt_char_width(0xFFFFEUL), 1);
+    CHECK_INT(vt_char_width(0x100000UL), 1);
     CHECK_INT(vt_char_width(0x20000), 2); /* CJK Ext B */
     CHECK_INT(vt_char_width(0x1D400), 1); /* math bold A */
-    CHECK_INT(vt_char_width(0xF0001), 1); /* plane 15 private use (Nerd Font icons) */
+    CHECK_INT(vt_char_width(0xF0001), 2); /* plane 15 private use (Nerd Font icons): R6.2 */
     CHECK_INT(vt_char_width(0xE0001), 0); /* language tag: ignorable */
     CHECK_INT(vt_char_width(0x1FAE9), 2); /* Unicode 16: face with bags under eyes */
 }
@@ -107,10 +126,11 @@ static void astral_characters_keep_their_code_point(void)
     CHECK_INT(vt_cell_char(t, h_cell(t, 0, 0)), 0x1F600);
     CHECK_INT(vt_cell_text(t, h_cell(t, 0, 0), cp), 1);
     CHECK_INT(h_cell(t, 2, 0)->ch, 'z');
-    CHECK_INT(h_cell(t, 3, 0)->width, 1); /* the icon: one cell, as wcwidth says */
+    CHECK_INT(h_cell(t, 3, 0)->width, 2); /* the icon: two cells (R6.2; a remote wcwidth says 1) */
+    CHECK_INT(h_cell(t, 4, 0)->width, 0);
     CHECK_INT(vt_cell_char(t, h_cell(t, 3, 0)), 0xF0001);
     vt_cursor(t, &x, &y);
-    CHECK_INT(x, 5);
+    CHECK_INT(x, 6);
     CHECK_STR(copied(t, 0, 0), GRIN "z" NERD "!");
     CHECK_STR(h_row(t, 0), GRIN "z" NERD "!");
     /* REP repeats the character, not a replacement */
@@ -168,7 +188,7 @@ static void cluster_table_full_gives_the_replacement(void)
     int i;
     vt_set_scrollback(t, 100);
     for (i = 0; i < 2049; i++) {
-        vt_u32 c = 0xF0000 + (vt_u32)i; /* plane 15 private use: one cell each */
+        vt_u32 c = 0x100000 + (vt_u32)i; /* plane 16 private use: one cell each */
         s[0] = (char)(0xF0 | (c >> 18));
         s[1] = (char)(0x80 | ((c >> 12) & 0x3F));
         s[2] = (char)(0x80 | ((c >> 6) & 0x3F));
@@ -180,9 +200,9 @@ static void cluster_table_full_gives_the_replacement(void)
         int x, y;
         vt_cursor(t, &x, &y);
         CHECK_INT(vt_cell_char(t, h_cell(t, x - 1, y)), 0xFFFD);
-        CHECK_INT(vt_cell_char(t, h_cell(t, x - 2, y)), 0xF0000 + 2047);
+        CHECK_INT(vt_cell_char(t, h_cell(t, x - 2, y)), 0x100000 + 2047);
     }
-    CHECK_INT(vt_cell_char(t, vt_row(t, -vt_scrollback_lines(t), 0)), 0xF0000);
+    CHECK_INT(vt_cell_char(t, vt_row(t, -vt_scrollback_lines(t), 0)), 0x100000);
     vt_free(t);
 }
 
@@ -250,6 +270,20 @@ static void copy_text_measures_without_a_buffer(void)
     vt_free(t);
 }
 
+/* vt_screen_text: one line per visible row, trailing blanks cut, a wrapped row stays its own line,
+ * blank rows keep their line, wide cells and UTF-8 come out once. */
+static void screen_text_is_one_line_per_row(void)
+{
+    vt_term *t = h_new(5, 4, VT_XTERM);
+    char buf[64];
+    h_put(t, "ab   \r\nabcdefgh\r\n" GRIN);
+    vt_screen_text(t, buf, sizeof(buf));
+    CHECK_STR(buf, "ab\nabcde\nfgh\n" GRIN "\n");
+    CHECK_INT(vt_screen_text(t, 0, 0), (long)strlen(buf));
+    CHECK_INT(vt_screen_text(t, buf, 8), 7);   /* no room: cut before a line end, never past max */
+    vt_free(t);
+}
+
 /* Faint text in any colour is dimmed: halfway to its background, as a
  * direct colour (a palette screen draws it with the nearest pen). Before,
  * only the default and the greys were. */
@@ -295,5 +329,6 @@ void suite_text(void)
     combining_marks_stay_with_their_character();
     emoji_sequences_copy_back_whole();
     copy_text_measures_without_a_buffer();
+    screen_text_is_one_line_per_row();
     faint_dims_every_colour();
 }

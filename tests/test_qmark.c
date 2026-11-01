@@ -13,6 +13,11 @@ void suite_qmark(void)
     char *none[] = { "ps", 0 };
     char *dash[] = { "ps", "-?", 0 };
     char *empty[] = { "ps", "", 0 };
+    char *dashh[] = { "ps", "-h", 0 };
+    char *help[] = { "ps", "--help", 0 };
+    char *helpx[] = { "ps", "--helpx", 0 };
+    char *dashhx[] = { "ps", "-hx", 0 };
+    char *bare[] = { "ps", "help", 0 };
 
     /* the cases AmigaDOS hands over */
     CHECK(qmark_line("?"));
@@ -33,6 +38,15 @@ void suite_qmark(void)
     CHECK(!qmark_line("FILES=?\n"));
     CHECK(!qmark_line(0));
 
+    /* `uptelnet --help` showed nothing: it dialled a host named --help */
+    CHECK(qmark_line("--help\n"));
+    CHECK(qmark_line(" -h \n"));
+    CHECK(!qmark_line("--helpx\n"));
+    CHECK(!qmark_line("-hx\n"));
+    CHECK(!qmark_line("--help x\n"));
+    CHECK(!qmark_line("-\n"));
+    CHECK(!qmark_line("help\n"));              /* can name a file or a host */
+
     CHECK(qmark_argv(2, one));
     CHECK(!qmark_argv(3, two));
     CHECK(!qmark_argv(2, word));
@@ -41,4 +55,9 @@ void suite_qmark(void)
     CHECK(!qmark_argv(1, none));
     CHECK(!qmark_argv(0, none));
     CHECK(!qmark_argv(2, 0));
+    CHECK(qmark_argv(2, dashh));
+    CHECK(qmark_argv(2, help));
+    CHECK(!qmark_argv(2, helpx));
+    CHECK(!qmark_argv(2, dashhx));
+    CHECK(!qmark_argv(2, bare));
 }

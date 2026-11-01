@@ -14,6 +14,10 @@ copy ("object is in use"). 2026-10-18, rig 2.
   5. A program whose main returns -1 (opkg/upkg does on error) is not "not found": sh_os.run uses a negative
      status for that, so vsh masks the runner's negative rc to 0..255. VTC:rcneg gives $? = 255, no
      "not found" (needs `make build/amiga/rcneg`).
+  6. A command's CLI standard input is the shell's own input, as the Shell keeps it: C:Type 47.4 (OS 3.2)
+     takes any other as redirected and fails `Type file` with "wrong number of arguments" (A1200,
+     2026-10-20; vshrc's banner). VTC:clistdin makes Type's test and returns 5 on the redirected path
+     (needs `make build/amiga/clistdin`).
 
 Run with the rig up: python3 tools/rig/vshexec_rig.py
 """
@@ -47,6 +51,7 @@ def script(name, text):
 def main():
     shutil.copyfile(ROOT / 'build/amiga/vsh', paths.RIG / 'vtc/vsh')
     shutil.copyfile(ROOT / 'build/amiga/rcneg', paths.RIG / 'vtc/rcneg')
+    shutil.copyfile(ROOT / 'build/amiga/clistdin', paths.RIG / 'vtc/clistdin')
     c.run('Delete RAM:vx ALL QUIET')
     c.run('MakeDir RAM:vx')
     try:
@@ -65,6 +70,8 @@ def main():
         check('rc=7' in out, "the script's return code comes back (Quit 7)", out)
         rc, out = vsh('VTC:rcneg; echo rc=$?')
         check('not found' not in out and 'rc=255' in out, 'main returning -1 gives $? = 255, not "not found"', out)
+        rc, out = vsh('VTC:clistdin; echo rc=$?')
+        check('redirected=0' in out and 'rc=0' in out, "the command's CLI standard input is the shell's input", out)
     finally:
         c.run('Delete RAM:vx ALL QUIET')
         for n in ('vxa.dos', 'vxk.dos', 'vxq.dos'):

@@ -2,7 +2,7 @@ Python3 - Python 3.14 for AmigaOS
 =================================
 
 Python 3.14 (15 MB), built for AmigaOS 3.x (68020+) on ixemul. It stands alone: it installs
-on a plain Workbench, with the ixemul.library it needs. UP-Term.lha is optional.
+on a plain Workbench, with the ixemul.library it needs. up-term.lha is optional.
 
 WHAT YOU NEED
   AmigaOS 3.0 or newer, a 68020 or better, and room for 15 MB. ixemul.library 47 or newer:
@@ -29,7 +29,7 @@ INSTALL
   It needs no UP-Term and looks for none. Python goes into SYS:Python3 and Python3: is
   assigned to it now and at every boot (a block in S:User-Startup, ;BEGIN Python3 to
   ;END Python3, that assigns only while SYS:Python3 exists). Its record (the list of files,
-  for Update and Uninstall) is ENVARC:upkg/Python3. Install the archive over an earlier one
+  for Update and Uninstall) is ENVARC:upkg/up-python. Install the archive over an earlier one
   and its first page offers Update, which copies only what changed.
   An UP-Term installed from the single kit (before the kit split) keeps its own copy in
   UP-Term:Python3 (it goes with the UP-Term drawer); this archive installs a second one.
@@ -47,4 +47,4 @@ UNINSTALL
   this archive's block in S:User-Startup, and the ixemul.library as THE IXEMUL.LIBRARY RULE
   says. S:User-Startup is put back as Install found it when it is still as long as that plus
   the block; otherwise the block stays (it does nothing without SYS:Python3) and Uninstall
-  says so. Uninstall of UP-Term.lha leaves this program alone.
+  says so. Uninstall of up-term.lha leaves this program alone.

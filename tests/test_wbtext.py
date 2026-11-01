@@ -4,7 +4,7 @@ import os, sys, unittest
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'tools', 'rig'))
 import wbtext
 
-BANNER = "   R O Y A L   K I N G S   O F   T H E   A M I G A   S C E N E\n~ %\n"
+BANNER = "   R O Y A L   K I N G S   O F   T H E   A M I G A   S C E N E\nSYS: %\n"
 
 
 class WbText(unittest.TestCase):

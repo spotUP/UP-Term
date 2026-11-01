@@ -8,12 +8,23 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   with 1 GB Zorro III RAM (what --max was); --a1200: the stock 68020 at real speed
                   (timing runs only; --stock, --exact and --fast also keep the 020);
                   --060: a 68060 + FPU at the host's speed, 128 MB Z3 (W41);
+                  --sound: Paula at volume 100; without it the rig is silent (a rig-mute flag file wins);
+                  --no-clipboard: FS-UAE clipboard sharing off (the Mac clipboard stays out of the guest);
+                  --nofpu: the same machine without an FPU: the default 060 becomes a 68LC060, --a1200 a
+                  68020 with no fpu key (what the soft-float ixemul.library is for; --mmu is ignored);
                   --a500: a 68000 A500 at 7 MHz, cycle-exact, 8 MB Zorro II fast (68000 speed, W7);
                   --fast: the CPU at the host's speed; --os32: AmigaOS 3.2 -- the 3.2.3 ROM
                   and the owner's 3.2 install as DH0:, ledger T3;
                   --ro: DH0: read-only, stalls on writes;
                   --kick <file>: another Kickstart ROM for this boot;
-                  --serial <path>: the serial port to that path, not serial.log)
+                  --serial <path>: the serial port to that path, not serial.log;
+                  --no-060lib: the 060 machine without 68060.library, mmu.library, 680x0.library in Libs: (reset-loop hunt, s40);
+                  --no-dopus: Workbench without Directory Opus (no DOPUS.1; the clone gets the stock
+                  C/LoadWB and no Libs/workbench.library, the ROM's runs);
+                  --idle-minutes <N>: stop the rig after N minutes with no command (default 60, 0 = off, rig 1 never);
+                  --purpose "<who: what>": the window title says which session runs the
+                  rig and for what, e.g. "Amarchy session: menu terminal check")
+                  --overscan: AGA rigs show the whole overscan picture (zoom = full), not the cropped 640x512 area;
                   --os <30|31|314|32|321|322|35|39>: boot the owner's clean installed
                   Workbench of that version (paths.OS_IMAGES; own copy per rig,
                   --fresh copies it anew; the Kickstart goes with it)
@@ -21,28 +32,52 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
   rig.py rtg      Workbench back on the graphics card from next boot
   (The screen mode is the Workbench's ScreenMode prefs, not the config: the
   owner's way, 2026-09-29. aga/rtg need the rig up and reboot it.)
+  rig.py watchdog the idle watchdog `start` launches (--idle-minutes N, default 60, 0 = off): stops the rig after N
+                  minutes with no ami/typewin/wasabi command (paths.LAST_COMMAND); never while a long run holds
+                  paths.LONG_RUN (ami.py long, install) or within 5 s of a command; never rig 1
+                  also cold-restarts (stop + start --keep-sys) a rig whose FS-UAE log gains 10+ "CPU reset"
+                  lines in a minute: the 060 post-Guru Kickstart reset loop (RIG-RESET-LOOP)
   rig.py stop     kill THIS rig only (matched by its config path, at kill time)
+  rig.py reboot   stop and start again with DH0: as the last run left it (a start clones it anew):
+                  an install's writes survive. The last start's machine flags, or the ones given
   rig.py install  copy build/amiga/vtcon-handler to the VTC: drawer; the boot then puts
                   these builds over the copies a kit installed in SYS: (KIT_SHADOWS;
                   reboot the rig after install). The kit's own files are kept in
                   VTC:kit-orig and come back with `rig.py kit-restore` + a reboot.
+  rig.py dopus [--own-screen]   install Directory Opus 5.104 once into this rig's host VTC: drawer (the archive's own Installer,
+                  "Instead of Workbench") and record its S:User-Startup block + stamp there; every later
+                  clone start then boots 5.104 as the Workbench (default; --no-dopus skips it, no stamp: [WARN], 5.82);
+                  --own-screen also writes the saved environment that puts DOpus on its own 1344x1080 screen (DOPUS.1)
+  rig.py clear    remove this rig's build/rig<N> folder; refused while its fs-uae runs (stop it first)
   rig.py status   is it up (wasabid ping)
   rig.py start --mmu   the 68060 with an MMU (slower, no JIT), for MuForce
   rig.py muforce on|off|log   MuForce crash reports on the rig (tools/rig/muforce.py)
+  rig.py start --debugger   FS-UAE's console debugger (console_debugger = 1) on a FIFO: stdout/stderr in
+                  build/rig<N>/debugger.log, input from build/rig<N>/debugger.in
+  rig.py dbg "<line>"   one debugger line to that FIFO, e.g. "w 0 <addr> 4 W" (memwatch on writes), "g"
+  rig.py dbgbreak   SIGUSR1 to this rig's fs-uae: enter the console debugger (needs a debug build, UPTERM_FSUAE=<binary>)
   rig.py wasabi on|off|snoop|debug|guru|ps   call trace, debug output, Guru, tasks (tools/rig/wasabi.py)
 
 Layout under build/rig/ (gitignored): sys.hdf (DH0:), boot/ (BOOTX:, boots
 first: assigns, mounts XCON:, starts wasabid), vtc/ (VTC:, the binaries
 under test), shots/.
 """
-import fcntl, json, os, pathlib, re, shutil, subprocess, sys, time
+import contextlib, fcntl, hashlib, io, json, os, pathlib, re, shutil, signal, subprocess, sys, tempfile, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import a1200_drift
 import paths
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+import libguard
+import kitset
+import kitstamp
+import user_startup
 import wasabi as rigwasabi
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 RIG = paths.RIG      # build/rig, or build/rig2 with UPTERM_RIG=2
 CFG = RIG / "vtcon-rig.fs-uae"
+DBG_IN = RIG / "debugger.in"
+DBG_LOG = RIG / "debugger.log"
 # the last start's arguments (the machine: --a1200, --060, --kick ...). A reboot from another command
 # (`rig.py aga`/`aga256`/`rtg`) boots with them, so the rig comes back as the same machine: the config is
 # rewritten from the arguments on every start, and `rig.py aga` alone once turned an --a1200 rig into the
@@ -54,8 +89,8 @@ START_ARGS = RIG / "start.args"
 SRC_HDF = paths.SYSTEM_HDF        # UPTERM_SYSTEM_HDF
 # wasabid: the pinned build in build/wasabi (`make wasabi`), copied to boot/wasabid on every start; the port per
 # rig and the rig key come from paths.py (wasabi_port, WASABI_KEY)
-# The default ROM's header says 40.63 (the A500/A600/A2000 3.1), whatever
-# its file name says (measured 2026-09-30). --kick <file> boots another ROM
+# The default ROM is the A1200 3.1, rev 40.68 (FS-UAE log: "KS ROM v3.1 (A1200) rev 40.68", 2026-10-29); --a500
+# boots paths.ROM_A500 instead, as the A1200 ROM needs a 68020. --kick <file> boots another ROM
 # (DP6 of the console.device plan); the config is rewritten on every start,
 # so the next start without --kick is back on this one.
 KICK = paths.KICKSTART
@@ -84,9 +119,13 @@ if OS32:
 OS_NAMES = {"30": "3.0", "31": "3.1", "314": "3.1.4", "32": "3.2", "321": "3.2.1", "322": "3.2.2",
             "35": "3.5", "39": "3.9"}
 OS = sys.argv[sys.argv.index("--os") + 1] if "--os" in sys.argv else None
+# --purpose "<who: what>": the session and task the rig serves, shown in the window title (title_line).
+PURPOSE = " ".join(sys.argv[sys.argv.index("--purpose") + 1].split()) if "--purpose" in sys.argv[:-1] else None
 if OS is not None and OS not in OS_NAMES:
     sys.exit("rig: --os %s: one of %s" % (OS, " ".join(OS_NAMES)))
 FRESH = "--fresh" in sys.argv
+# --keep-sys (internal, from `rig.py reboot`): this start boots the sys.hdf the last run left, no new clone
+KEEP_SYS = "--keep-sys" in sys.argv
 if OS in ("32", "321", "322"):
     KICK = OS32_KICK
 elif OS == "314":
@@ -115,12 +154,20 @@ C:Execute DH0:S/Startup-Sequence
 # amisslmaster.library was not found and every https request failed
 # (amiga-pi: "Connection error.", 2026-10-13; tools/test_rig_libs.py). By its
 # volume, not AmiSSL:, which a rig image without AmiSSL would ask for.
+# The system disk's AmiSSL drawer holds amisslmaster.library but its AmiSSL/
+# only as the kit's per-CPU subdrawers (68020-40/, 68060/), so the master found
+# no LIBS:AmiSSL/amissl_v362.library: "Couldn't open AmiSSL!" and curl's rc 20
+# (upkg_browse_rig step 0, 2026-10-21). VTC:amissl/AmiSSL holds the one library
+# for the CPU this boot emulates, flat, as Install-AmiSSL lays it out
+# (stage_amissl). The rig image has no AmiTCP and no usergroup.library: the
+# kit's curl is the upterm-ports build on ixemul sockets (owner, 2026-10-27).
 RIG_LIBS = ["Assign >NIL: LIBS: VTC:ixp6",
             "Assign >NIL: LIBS: DH0:Libs ADD",
             "Assign >NIL: LIBS: DH0:Classes ADD",
             "Assign >NIL: LIBS: DH0:MUI/Libs ADD",
             "Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD",
-            "Assign >NIL: LIBS: DH0:AmiSSL/Libs ADD"]
+            "Assign >NIL: LIBS: DH0:AmiSSL/Libs ADD",
+            "Assign >NIL: LIBS: VTC:amissl ADD"]
 
 # The rig's lines in the system disk's S:Shell-Startup (go adds them once).
 # The bare "Path >NIL: VTC:gg/bin ADD" an earlier go wrote raised "Please
@@ -143,20 +190,39 @@ BARE_SHELL_PATH = "Path >NIL: VTC:gg/bin ADD"
 # copy the system already holds, and the C: commands the kit installs even where no kit put
 # one (W-R4: plain `UPDemo` must run the build on every rig), after keeping the
 # kit's own once in VTC:kit-orig. `kit-restore` makes the boot put those back.
-# (VTC: name, SYS: place, backup name)
-KIT_SHADOWS = [("vtcon-handler", "L:vtcon-handler", "L-vtcon-handler"),
-               ("pty-handler", "L:pty-handler", "L-pty-handler"),
-               ("ixpipe-handler", "L:ixpipe-handler", "L-ixpipe-handler"),
-               ("vsh", "C:vsh", "C-vsh"),
-               ("vsh", "UP-Term:bin/vsh", "UP-Term-bin-vsh"),
-               ("UPConsole", "C:UPConsole", "C-UPConsole"),
-               ("UPDemo", "C:UPDemo", "C-UPDemo"),
-               ("upgetty", "C:upgetty", "C-upgetty"),
-               ("ixkill", "C:ixkill", "C-ixkill"),
-               ("up-console.device", "DEVS:up-console.device", "DEVS-up-console.device"),
-               # the preferences editor: the kit's file keeps the space (install.dos), which
-               # the handler's menu runs as C:"UP-Term Prefs" (launcher)
-               ("upprefs", "C:UP-Term Prefs", "C-UP-Term-Prefs")]
+USERLAND_SRC = ROOT / "build/dist/up-term/Files/userland/bin"
+USERLAND_STAGE = "kit-userland"
+
+
+def userland_names():
+    if not USERLAND_SRC.is_dir():
+        return []
+    return sorted(f.name for f in USERLAND_SRC.iterdir()
+                  if f.is_file() and re.fullmatch(r"[A-Za-z0-9._+-]+", f.name))
+
+
+def kit_entries(nofpu=False, m060=False):
+    """kitset.derive for this tree and CPU: every file the kit installs, from install.dos, the userland and the staged
+    libraries (the CPU only picks the staged ixemul and AmiSSL builds; the boot's shadow rows do not depend on it)."""
+    return kitset.derive(ROOT, USERLAND_SRC, USERLAND_STAGE, paths.VENDOR,
+                         paths.IXEMUL_LIB_SOFT if nofpu else paths.IXEMUL_LIB, paths.IXNET_LIB, m060,
+                         libguard.require_clean_ixnet, paths.UPTERM_ROOT)
+
+
+# (VTC: name, SYS: place, backup name), one row per derived file the boot shadows (kitset): nothing hand-listed,
+# so a file install.dos gains (C:Reboot, C:UPTerm, C:uptelnet, UP-Term:bin/hl mdv ps rz sz top sh) is shadowed at once.
+# The keymap rows are spelled by path, never ENVARC:/ENV: (kitset.SPELL).
+KIT_SHADOWS = [(e.vtc, e.dest, e.bak) for e in kit_entries() if e.shadow]
+
+def kit_shadow_src(name):
+    """The host file the VTC: copy of a KIT_SHADOWS name comes from: dist/ for the files the kit
+    copies from dist/ (a1200_drift.DIST_SOURCES), build/amiga for the programs, the dist userland for the
+    kit-userland/ rows (upkg among them: the dist userland is the ports build the kit packs)."""
+    if name.startswith(USERLAND_STAGE + "/"):
+        return USERLAND_SRC / name.split("/", 1)[1]
+    if kitset.addon_src(ROOT, name, paths.UPTERM_ROOT):    # C:Claude, C:amiga-pi come from their own build (kitset.ADDONS)
+        return kitset.addon_src(ROOT, name, paths.UPTERM_ROOT)
+    return (ROOT / "dist" if name in a1200_drift.DIST_SOURCES else build_amiga()) / name
 
 
 def q(path):
@@ -182,7 +248,10 @@ def kit_shadow_lines(upterm):
            "If EXISTS VTC:kit-restore"]
     for _, dest, bak in shadows:
         out += kit_guard(dest, ["If EXISTS VTC:kit-orig/%s" % bak, "  C:Copy >NIL: VTC:kit-orig/%s %s CLONE" % (bak, q(dest)), "EndIf"])
+    # the kit's own files are back: the next shadowing boot runs the full pass (kitstamp)
+    out.append("  C:Delete >NIL: VTC:%s QUIET" % kitstamp.STAMP)
     out.append("Else")
+    body = []
     for src, dest, bak in shadows:
         copy = ["If EXISTS VTC:%s" % src]
         if dest.startswith("C:"):
@@ -190,14 +259,26 @@ def kit_shadow_lines(upterm):
             copy += ["  If EXISTS %s" % q(dest), "    If NOT EXISTS VTC:kit-orig/%s" % bak,
                      "      C:Copy >NIL: %s VTC:kit-orig/%s CLONE" % (q(dest), bak), "    EndIf", "  EndIf"]
             copy += ["  C:Copy >NIL: VTC:%s %s CLONE" % (src, q(dest)), "EndIf"]
-            out += copy
+            body += copy
             continue
-        out += kit_guard(dest, copy[:1] + ["  If NOT EXISTS VTC:kit-orig/%s" % bak,
+        body += kit_guard(dest, copy[:1] + ["  If NOT EXISTS VTC:kit-orig/%s" % bak,
                                 "    C:Copy >NIL: %s VTC:kit-orig/%s CLONE" % (q(dest), bak),
                                 "  EndIf",
                                 "  C:Copy >NIL: VTC:%s %s CLONE" % (src, q(dest)), "EndIf"])
-    out.append("EndIf")
+    # RIG-SLOW-BOOT: a full pass already put this kit on this DH0: (kitstamp; the host drops the stamp when either changed)
+    out += ["  If EXISTS VTC:%s" % kitstamp.STAMP, '    Echo >>BOOTX:boot.log "kit shadows skipped"', "  Else"]
+    out += ["    " + l for l in body]
+    out += ["  EndIf", "EndIf"]
     return "\n".join(out)
+
+
+# after both shadow passes: the stamp that lets the next boot skip them (kitstamp). No VTC:kit-hash (a host that
+# never ran kitstamp.check): the Copy fails quietly and every boot shadows, as before.
+KIT_STAMP_BOOT = """If NOT EXISTS VTC:kit-restore
+  If NOT EXISTS VTC:%(stamp)s
+    C:Copy >NIL: VTC:%(hash)s VTC:%(stamp)s
+  EndIf
+EndIf""" % {"stamp": kitstamp.STAMP, "hash": kitstamp.HASH}
 
 
 # the boot's own UP-Term: assign (a kit's wins); install_rig.py runs it again when it has put the owner's add-ons back
@@ -206,14 +287,52 @@ If WARN
   C:Assign >NIL: UP-Term: VTC:%s
 EndIf""" % paths.UPTERM_DRAWER
 
+# RIG-NO-THEMES: the kit ships UP-Term:Amarchy/Themes and FONTS:JetBrainsMono.ttf; a rig whose kit is older or
+# absent has neither (empty theme list, bitmap menu font). `install` stages both in VTC: (stage_amarchy_assets),
+# the boot puts them where the kit would, only where they are missing.
+AMARCHY_ASSETS_BOOT = """C:Assign >NIL: UP-Term: EXISTS
+If NOT WARN
+  If EXISTS VTC:amarchy-themes
+    If NOT EXISTS UP-Term:Amarchy
+      C:MakeDir >NIL: UP-Term:Amarchy
+    EndIf
+    If NOT EXISTS UP-Term:Amarchy/Themes
+      C:MakeDir >NIL: UP-Term:Amarchy/Themes
+    EndIf
+    C:Copy >NIL: VTC:amarchy-themes/#? UP-Term:Amarchy/Themes CLONE
+  EndIf
+EndIf
+If NOT EXISTS FONTS:JetBrainsMono.ttf
+  If EXISTS VTC:fonts/JetBrainsMono.ttf
+    C:Copy >NIL: VTC:fonts/JetBrainsMono.ttf FONTS: CLONE
+  EndIf
+EndIf"""
+
 GO = """FailAt 21
 Echo >BOOTX:boot.log "go started"
 %(shadows)s
+Echo >>BOOTX:boot.log "kit shadows done"
 C:Wait 15
+Echo >>BOOTX:boot.log "wait done"
+; BOOTX:s/startup-sequence runs go beside DH0:S/Startup-Sequence, which makes
+; ENV: (Assign ENV: RAM:ENV) only after SetPatch and its own Wait; go's SetEnv
+; lines below would raise "Please insert volume ENV:" when it is late
+; (RIG-ENV-RACE). Assign EXISTS never asks for a volume.
+Lab envwait
+C:Assign >NIL: ENV: EXISTS
+If WARN
+  C:Wait 1
+  Skip envwait BACK
+EndIf
+Echo >>BOOTX:boot.log "env ok"
 %(shadows_up)s
+%(kit_stamp)s
+Echo >>BOOTX:boot.log "UP-Term shadows done"
 C:Mount XCON: FROM BOOTX:Mountlist
-C:Assign >NIL: AmiTCP: VTC:amitcp
+Echo >>BOOTX:boot.log "XCON mounted"
 C:Assign >NIL: ETC: VTC:etc
+; /tmp: the kit puts "Assign TMP: T:" in S:User-Startup; a rig with no kit has it from here
+C:Assign >NIL: TMP: T:
 C:Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD
 ; UP-Term as the owner uses it on the rig: the patched ixemul first in
 ; LIBS: (Classes and MUI stay), PTY: and IXPIPE:, and GG: for /gg/bin/sh
@@ -250,6 +369,7 @@ EndIf
 ; replaces this one. ENVARC:up-term/Dir is no sign of a kit: an installer_rig
 ; run can leave it naming a drawer it deleted (rig 1, 2026-10-13).
 %(upterm_assign)s
+%(amarchy_assets)s
 ; no global TERM: a kit sets none either (vsh sets it in UP-Term windows, and a
 ; ROM CON: window with TERM=vtcon would be sent xterm sequences)
 C:SetEnv TERMINFO /VTC/terminfo
@@ -283,7 +403,7 @@ Run >NIL: SYS:System/RexxMast
 C:SetEnv wasabi.key %(key)s
 C:Run >NIL: <NIL: BOOTX:wasabid %(port)d name rig%(rign)d
 Echo >>BOOTX:boot.log "wasabid started"
-""" % {"port": paths.WASABI_PORT, "key": paths.WASABI_KEY, "rign": paths.RIG_N, "upterm_assign": UPTERM_ASSIGN, "shadows": kit_shadow_lines(False), "shadows_up": kit_shadow_lines(True), "libs": "\n".join("  C:" + l for l in RIG_LIBS),
+""" % {"port": paths.WASABI_PORT, "key": paths.WASABI_KEY, "rign": paths.RIG_N, "upterm_assign": UPTERM_ASSIGN, "amarchy_assets": AMARCHY_ASSETS_BOOT, "shadows": kit_shadow_lines(False), "shadows_up": kit_shadow_lines(True), "kit_stamp": KIT_STAMP_BOOT, "libs": "\n".join("  C:" + l for l in RIG_LIBS),
        "shellpath": "\n".join('    Echo >>S:Shell-Startup "%s"' % l for l in SHELL_STARTUP_PATH)}
 # boot.log in the host drawer BOOTX: tells from the Mac how far a boot got
 # (the rig's screen is not visible from here).
@@ -321,13 +441,34 @@ STOCK = "--stock" in sys.argv
 A1200 = any(f in sys.argv for f in ("--a1200", "--stock", "--exact", "--fast"))
 # --a500: a 68000 at 7 MHz, cycle-exact, for the 68000 speed (vtcon plan W7, T1 pre-check 2): amiga_model A500
 # (OCS, the model's 512 KB chip + 512 KB slow RAM) with 8 MB Zorro II fast RAM as an A590 or a sidecar gives it,
-# no FPU, no graphics card. The default ROM is 40.63, the A500/A600/A2000 3.1, so it boots as is.
+# no FPU, no graphics card, on paths.ROM_A500 (the A500/A600/A2000 3.1, 40.63) unless --kick names another ROM.
 A500 = "--a500" in sys.argv
+if A500 and "--kick" not in sys.argv:
+    KICK = paths.ROM_A500   # the A1200 ROM needs a 68020; FS-UAE stops at once on a 68000
+# --overscan: AGA rigs show the whole overscan picture (FS-UAE zoom = full) instead of the cropped 640x512 area, so a
+# program that fills the Overscan prefs area (Selecta Fill Screen, I566) can be seen edge to edge. Other rigs keep the crop.
+OVERSCAN = "--overscan" in sys.argv
 MAX = "--max" in sys.argv or not (A1200 or A500)
 M060 = "--060" in sys.argv or MAX
+# --ram N: the 060 machines with about N MB of fast RAM (8 MB Zorro II + a Zorro III board) instead of the 1 GB
+# --max gives, so a rig can stand in for a real accelerator card (owner 2026-10-29 for the Selecta rig 2: 256).
+# A Zorro III board comes only in power-of-two sizes: 248 MB (N-8) left AmigaOS with no Zorro III RAM at all
+# (Selecta rig 2, 2026-10-29), so the board is N-8 rounded up to the next power of two (256 -> 256 MB, 264 in total).
+RAM_MB = int(sys.argv[sys.argv.index("--ram") + 1]) if "--ram" in sys.argv else 0
+Z3_MB = 1 << (RAM_MB - 9).bit_length() if RAM_MB > 8 else 0
 # --mmu: the 68060 with its MMU emulated (FS-UAE "68060", no JIT, slower): what MuForce needs
 # (`rig.py muforce`). Only on the 060 machines; the next start without it is back on 68060-NOMMU.
-MMU = "--mmu" in sys.argv and M060
+# --nofpu: a machine with no FPU (the soft-float ixemul.library, (database "fpu") NOFPU). The 060 machines
+# become the 68LC060 (FS-UAE's cpu key; the LC has no FPU and no MMU), the 020 machine drops its fpu key.
+NOFPU = "--nofpu" in sys.argv
+# --no-060lib: the 060 machine (FPU kept) booted with none of paths.libs060() in Libs: (RIG31-RESET-LOOP, s40: is the
+# `crashme illegal` reset loop of the 3.1 060 rig the CPU or 68060.library?). The 68040.library stub stays.
+NO060LIB = "--no-060lib" in sys.argv
+# --keep-060lib=68060.library,mmu.library: with --no-060lib, these Libs: names are put back (which lib loops, s40)
+KEEP060LIB = tuple(sys.argv[[a.startswith("--keep-060lib=") for a in sys.argv].index(True)].split("=", 1)[1].split(",")) \
+    if any(a.startswith("--keep-060lib=") for a in sys.argv) else ()
+MMU = "--mmu" in sys.argv and M060 and not NOFPU
+DEBUGGER = "--debugger" in sys.argv   # FS-UAE's console debugger on a FIFO (debugger_lines, dbg)
 EXACT = "--exact" in sys.argv  # read-only DH0: makes "write protected" requesters that stall the rig
 
 
@@ -357,6 +498,23 @@ def os32_hd_layout():
     print("made SYS:L from Extras3.2.adf:", ", ".join(sorted(p.name for p in sysl.iterdir())))
 
 OS_HOOKS = "Assign >NIL: VTC: VTCX:\nRun >NIL: C:Execute BOOTX:go\n"
+
+RIG_MUTE_FLAG = pathlib.Path.home() / ".config" / "upterm" / "rig-mute"
+
+
+# Rigs start silent (owner 2026-10-30: a rig played a song into a meeting,
+# twice). start --sound gives Paula volume 100; the rig-mute flag file still
+# wins over --sound, so the owner can silence every session's rigs at once.
+SOUND = "--sound" in sys.argv
+# start --no-clipboard turns FS-UAE clipboard sharing off, so a crash hunt can rule out the
+# host clipboard being copied into guest memory while it runs (NVIM-HEAP-CORRUPT, 2026-10-31)
+CLIPBOARD = "--no-clipboard" not in sys.argv
+
+
+def rig_volume():
+    """Paula volume for a new rig: 100 only with --sound and no rig-mute flag file, else 0."""
+    return 100 if SOUND and not RIG_MUTE_FLAG.exists() else 0
+
 
 def unpack_volume(image, dst):
     """The whole file tree of an ADF/HDF volume as a host directory FS-UAE
@@ -388,6 +546,32 @@ def unpack_volume(image, dst):
     shutil.rmtree(tmp)
     return vol
 
+# The RTG driver the clean OS images lack (3.1: no uaegfx, no Picasso96): the files FS-UAE's graphics_card = uaegfx
+# needs, taken from the master system disk (paths.SYSTEM_HDF, only read), so `rig.py rtg` has a mode to switch to.
+OS_RTG_FILES = ["Devs/Monitors/uaegfx", "Devs/Monitors/uaegfx.info", "Libs/Picasso96API.library",
+                "Libs/Picasso96/emulation.library", "Libs/Picasso96/rtg.library", "Libs/Picasso96/fastlayers.library"]
+
+def os_tree_rtg(dst):
+    """RTG-RESET-LOOP: put the uaegfx Picasso96 driver into a clean --os tree that has none (once, when the tree is made)."""
+    if (dst / "Devs/Monitors/uaegfx").exists():
+        return
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    paths.require_input(SRC_HDF, "UPTERM_SYSTEM_HDF", "the system disk image (source of the uaegfx RTG driver)")
+    for rel in OS_RTG_FILES:
+        out = dst / rel
+        out.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run([xdf, str(SRC_HDF), "read", rel, str(out)], check=True, capture_output=True)
+
+def drop_060_libs(libs_dir, keep=()):
+    """--no-060lib on a host-directory system: delete the libs060() names from <tree>/Libs (the tree keeps earlier runs
+    and the clean image may ship its own 68060.library)."""
+    for lib, name, var in paths.libs060():
+        if name in keep:
+            paths.require_input(lib, var, name)
+            shutil.copyfile(lib, pathlib.Path(libs_dir) / name)
+        else:
+            (pathlib.Path(libs_dir) / name).unlink(missing_ok=True)
+
 def os_image_copy():
     """<rig>/os-<name>/ (a host directory, FS-UAE's hard drive) from the owner's
     clean image (once, or anew with --fresh), the two hooks appended to its
@@ -400,6 +584,7 @@ def os_image_copy():
         src = paths.OS_IMAGES / ("Workbench_%s.hdf" % OS_NAMES[OS])
         paths.require_input(src, "UPTERM_OS_IMAGES", "the clean Workbench %s image" % OS_NAMES[OS])
         label.write_text(unpack_volume(src, dst))
+        kitstamp.drop(RIG / "vtc")   # a new DH0: holds none of the shadows
         us = dst / "S/User-Startup"
         prior = us.read_text(errors="replace") if us.exists() else ""
         us.write_text(prior + ("" if prior.endswith("\n") or not prior else "\n") + OS_HOOKS)   # 3.2.2 ends its comment box without a newline: the first hook line was part of it (VTC: never as
@@ -410,29 +595,464 @@ def os_image_copy():
         paths.require_input(sm, "UPTERM_RIG", "the rig's 256-colour ScreenMode prefs (VTC:screenmode.aga256.prefs)")
         (dst / "Prefs/Env-Archive/Sys").mkdir(parents=True, exist_ok=True)
         shutil.copyfile(sm, dst / "Prefs/Env-Archive/Sys/screenmode.prefs")
+        os_tree_rtg(dst)
     if not (dst / "C/Installer").exists():
         # the clean 3.0/3.1 installs have no Installer (it is on the Install disk)
         paths.require_input(paths.INSTALLER, "UPTERM_INSTALLER", "an Installer program")
         shutil.copyfile(paths.INSTALLER, dst / "C/Installer")
     if M060:
-        paths.require_input(paths.LIB68060, "UPTERM_LIB68060", "68060.library")
-        shutil.copyfile(paths.LIB68060, dst / "Libs/68060.library")
+        if NO060LIB:
+            drop_060_libs(dst / "Libs", KEEP060LIB)
+        elif not NOFPU:   # on the FPU-less 68LC060 SetPatch's Phase5 68060.library Gurus 80000006 before ENV: (rig 4, 2026-10-23)
+            for lib, name, var in paths.libs060():
+                paths.require_input(lib, var, name)
+                shutil.copyfile(lib, dst / "Libs" / name)
         paths.require_input(paths.LIB68040, "UPTERM_LIB68040", "the 68040.library stub")
         shutil.copyfile(paths.LIB68040, dst / "Libs/68040.library")
 
+def fresh_sys_hdf():
+    """RIG/sys.hdf as a new APFS clone of the master image: instant, and no disk used until the rig writes into it.
+    Every start does this, so what a killed, crashed or hung run left in DH0: (S:User-Startup blocks, ENVARC:, assigns,
+    a planted file) never reaches the next boot (owner 2026-10-24, RIG-FRESH-SYS). A full 1.5 GB copy is never the
+    fallback: the host disk has no room for one per rig."""
+    paths.require_input(SRC_HDF, "UPTERM_SYSTEM_HDF", "the system disk image")
+    dst = RIG / "sys.hdf"
+    new = RIG / "sys.hdf.new"
+    RIG.mkdir(parents=True, exist_ok=True)   # a rig number that never ran has no dir yet (RIG-CLONE-NEW-NUMBER)
+    new.unlink(missing_ok=True)
+    r = subprocess.run(["cp", "-c", str(SRC_HDF), str(new)], capture_output=True, text=True)
+    if r.returncode != 0:
+        new.unlink(missing_ok=True)
+        sys.exit("rig: cannot clone the system disk %s to %s (cp -c: %s). The rig needs an APFS clone: a full 1.5 GB "
+                 "copy would fill the host disk." % (SRC_HDF, dst, r.stderr.strip() or r.returncode))
+    os.replace(new, dst)
+    kitstamp.drop(RIG / "vtc")   # a new DH0: holds none of the shadows
+
+def sys_hdf_cpu_lib(image):
+    """The rig's own sys.hdf copy follows the machine: no Libs/68060.library on the FPU-less 68LC060 (SetPatch loads it
+    and it Gurus 80000006 before ENV:, rig 4 2026-10-23), the paths.libs060() set on a 060 with FPU; other CPUs untouched.
+    The set is written even where the master image already has a 68060.library: the master's is Phase5's 44.3, whose
+    SetPatch run resets OS 3.1 in a loop (paths.LIB68060)."""
+    if not M060:
+        return
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    have = subprocess.run([xdf, str(image), "list", "Libs"], capture_output=True, text=True).stdout
+    names = {l.split()[0] for l in have.splitlines() if l.split()}
+    if NOFPU or NO060LIB:
+        for _lib, name, _var in paths.libs060():
+            if name in names and (NO060LIB or name == "68060.library"):
+                subprocess.run([xdf, str(image), "delete", "Libs/" + name], check=True, capture_output=True)
+        return
+    for lib, name, var in paths.libs060():
+        paths.require_input(lib, var, name)
+        if name in names:
+            subprocess.run([xdf, str(image), "delete", "Libs/" + name], check=True, capture_output=True)
+        subprocess.run([xdf, str(image), "write", str(lib), "Libs/" + name], check=True, capture_output=True)
+
+def sys_hdf_kit(image):
+    """Every file the kit installs on the system disk equals what the current build would install (RIG-KIT-DERIVE;
+    supersedes sys_hdf_ixnet, RIG-SYSHDF-EARLY). The master image holds older copies of files that load before
+    BOOTX:go (ixnet.library 7a43f99c opened AmiTCP:libs: an 'insert AmiTCP:' requester on every rig; ixemul.library,
+    up-console.device, C:vsh differ; ixnet refuses an ixemul of another revision), and install.dos files it lacks.
+    kit_entries() is the set, derived (kitset.py); the clone gets each entry that has a place on the system disk, every
+    file is read back and compared by md5, and the start is refused on any mismatch or when a source fails its check
+    (ixnet: tools/libguard.py). The master image is never touched. The UP-Term: places live on the partition the
+    kit's User-Startup assigns (sys_hdf_kit_upterm writes them there too); the boot still shadows them and the spelled
+    keymap places from VTC: (KIT_SHADOWS, refresh_kit_shadows)."""
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    def run(*a, check=True):
+        return subprocess.run([xdf, str(image), *a], check=check, capture_output=True, text=True)
+    for e in kit_entries(NOFPU, M060):
+        if not e.clone:
+            continue
+        paths.require_input(e.src, "UPTERM_ROOT", e.src.name)
+        if e.check:
+            e.check(e.src)
+        parts = e.clone.split("/")
+        for i in range(1, len(parts)):
+            d = "/".join(parts[:i])
+            if run("list", d, check=False).returncode != 0:
+                run("makedir", d)
+        parent, leaf = e.clone.rsplit("/", 1)
+        if leaf in {l.split()[0] for l in run("list", parent).stdout.splitlines() if l.split()}:
+            run("delete", e.clone)
+        run("write", str(e.src), e.clone)
+        back = RIG / "kit-check.tmp"
+        back.unlink(missing_ok=True)
+        run("read", e.clone, str(back))
+        try:
+            if e.check:
+                e.check(back)
+            if hashlib.md5(back.read_bytes()).hexdigest() != hashlib.md5(e.src.read_bytes()).hexdigest():
+                sys.exit("rig: the clone's %s differs from %s after the write (RIG-KIT-DERIVE)" % (e.clone, e.src))
+        finally:
+            back.unlink(missing_ok=True)
+    sys_hdf_kit_upterm(image)
+
+def clone_upterm_place(image):
+    """(partition, directory) of UP-Term: in the clone, or None. The kit's ';BEGIN UP-Term assign' block in
+    S:User-Startup names a volume path ("Rushhours:Tools/UP-Term"); the volume is the RDB partition with that disk
+    name (DH1 on the master image). A clone with no such block or no such partition has no UP-Term: of its own."""
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    us = RIG / "user-startup.tmp"
+    us.unlink(missing_ok=True)
+    if subprocess.run([xdf, str(image), "read", "S/User-Startup", str(us)], capture_output=True).returncode != 0:
+        return None
+    text = us.read_text(errors="replace")
+    us.unlink()
+    m = re.search(r'^\s*Assign\s+UP-Term:\s+"?([^:"\s]+):([^"\s]*)"?', text, re.M | re.I)
+    if not m:
+        return None
+    vol, d = m.group(1).lower(), m.group(2).strip("/")
+    rdb = shutil.which("rdbtool") or str(pathlib.Path.home() / ".local/bin/rdbtool")
+    info = subprocess.run([rdb, str(image), "info"], capture_output=True, text=True).stdout
+    for part in re.findall(r"^Partition: #\d+ '([^']+)'", info, re.M):
+        show = subprocess.run([xdf, str(image), "open", "part=" + part, "+", "root", "show"], capture_output=True, text=True).stdout
+        n = re.search(r"disk name:\s*(.+)", show)
+        if n and n.group(1).strip().lower() == vol:
+            return part, d
+    return None
+
+def sys_hdf_kit_upterm(image):
+    """sys_hdf_kit for the UP-Term: places (RIG-WARM-SRV-RACE). The master image's UP-Term:bin holds older Amarchy,
+    amarchy-menu, amarchy-gui and amarchy-index (all four md5s differed from the build, 2026-10-28). On a fresh clone
+    the kit's User-Startup line `Run >NIL: UP-Term:bin/Amarchy` started those while BOOTX:go's shadow Copy wrote the
+    new ones over the same files, and the warm servers AMARCHY.MENUSRV/GUISRV never came up (3 of 3 fresh starts;
+    every `rig.py reboot`, whose clone already held the copies, had them). The clone now gets every UP-Term: file of
+    the kit before it boots, read back and compared by md5 like the system disk's; the boot's shadow then writes the
+    same bytes."""
+    place = clone_upterm_place(image)
+    if not place:
+        return
+    part, base = place
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    def run(*a, check=True):
+        return subprocess.run([xdf, str(image), "open", "part=" + part, "+", *a], check=check, capture_output=True, text=True)
+    def amiga(dest):
+        return "/".join(x for x in (base, dest[len("UP-Term:"):]) if x)
+    entries = [e for e in kit_entries(NOFPU, M060) if e.dest.startswith("UP-Term:")]
+    if not entries:
+        return
+    listed = {}
+    ops = []
+    for e in entries:
+        parent, leaf = amiga(e.dest).rsplit("/", 1)
+        if parent not in listed:
+            parts = parent.split("/")
+            for i in range(1, len(parts) + 1):
+                d = "/".join(parts[:i])
+                if d not in listed:
+                    r = run("list", d, check=False)
+                    if r.returncode != 0:
+                        run("makedir", d)
+                    listed[d] = {l.split()[0] for l in r.stdout.splitlines() if l.split()} if r.returncode == 0 else set()
+        if leaf in listed[parent]:
+            ops += ["+", "delete", amiga(e.dest)]
+        ops += ["+", "write", str(e.src), amiga(e.dest)]
+    run(*ops[1:])
+    back = RIG / "kit-upterm.tmp"
+    shutil.rmtree(back, ignore_errors=True)
+    back.mkdir()
+    try:
+        reads = []
+        for i, e in enumerate(entries):
+            reads += ["+", "read", amiga(e.dest), str(back / str(i))]
+        run(*reads[1:])
+        for i, e in enumerate(entries):
+            if hashlib.md5((back / str(i)).read_bytes()).hexdigest() != hashlib.md5(e.src.read_bytes()).hexdigest():
+                sys.exit("rig: the clone's %s differs from %s after the write (RIG-WARM-SRV-RACE)" % (e.dest, e.src))
+    finally:
+        shutil.rmtree(back, ignore_errors=True)
+
+def strip_user_startup_blocks(image, name):
+    """Remove the ';BEGIN <name>' blocks from the image's S:User-Startup (none: nothing happens)."""
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    us = RIG / "user-startup.tmp"
+    us.unlink(missing_ok=True)
+    if subprocess.run([xdf, str(image), "read", "S/User-Startup", str(us)], capture_output=True).returncode != 0:
+        return   # no S:User-Startup: no block
+    data = us.read_bytes()
+    clean = user_startup.strip_upterm_blocks(data, name)
+    if clean != data:
+        us.write_bytes(clean)
+        subprocess.run([xdf, str(image), "delete", "S/User-Startup"], check=True, capture_output=True)
+        subprocess.run([xdf, str(image), "write", str(us), "S/User-Startup"], check=True, capture_output=True)
+    us.unlink()
+
+def sys_hdf_no_wasabid(image):
+    """The master image's S:User-Startup carries the kit's ';BEGIN UP-Term wasabi' block (Run >NIL: C:wasabid). That
+    wasabid starts before BOOTX:go sets wasabi.key, so it serves an empty key on its default port 1234, and FS-UAE's
+    bsdsocket shares the Mac's ports: rig 1's BOOTX:wasabid (port 1234) lost the port to it and every request got
+    'auth failed: bad key' (2026-10-25). The block goes from the clone; the master is never touched."""
+    strip_user_startup_blocks(image, "UP-Term wasabi")
+
+def sys_hdf_a500(image):
+    """--a500: the clone's S:User-Startup loses every UP-Term block (assign, console, device, Amarchy, Amarchy index ...)
+    before it boots. The master image carries the kit's blocks, and the kit is built for the 68020 (Makefile CPU ?= 68020):
+    on the 68000 the block's `Run >NIL: UP-Term:bin/Amarchy` and amarchy-index put up two Software Failure requesters at
+    boot and installer_rig's D10 case failed on them (RIG-A500-KIT-BOOT, 2026-10-29). install_rig strips the same blocks
+    only after the boot. A real 68000 never has them: the base Installer refuses the 68000. The master is never touched."""
+    strip_user_startup_blocks(image, "UP-Term")
+
+def restore_loadwb(image):
+    """C/LoadWB becomes the master's kept original (C/loadwb_old) again: the master image replaces the Workbench
+    with Directory Opus 5.82 by a LoadWB that starts it. Used by --no-dopus; the 5.104 clone edit writes
+    5.104's LoadDB over C/LoadWB instead."""
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    old = RIG / "loadwb_old.tmp"
+    old.unlink(missing_ok=True)
+    subprocess.run([xdf, str(image), "read", "C/loadwb_old", str(old)], check=True, capture_output=True)
+    subprocess.run([xdf, str(image), "delete", "C/LoadWB"], check=True, capture_output=True)
+    subprocess.run([xdf, str(image), "write", str(old), "C/LoadWB"], check=True, capture_output=True)
+    old.unlink()
+
+def remove_opus5(image):
+    """The master also has Directory Opus 5.82 at DH0:Opus5 with the DOpus5: assign and PATH lines in S:User-Startup
+    (block ';BEGIN DirectoryOpus 5'); with them the add-on's install.dos takes its "already installed" branch
+    (plan D9, owner 2026-10-26). The block goes and so do Opus5 and its icon
+    (xdftool has no rename; the clone is disposable, so removing equals hiding), on the clone only."""
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    strip_user_startup_blocks(image, "DirectoryOpus 5")
+    subprocess.run([xdf, str(image), "delete", "Opus5", "all"], check=True, capture_output=True)
+    subprocess.run([xdf, str(image), "delete", "Opus5.info"], check=True, capture_output=True)
+
+RIG_NO_BOARD_MONITORS = ("REPLAY",)   # the master image's DEVS:Monitors drivers for boards FS-UAE does not have
+
+def rig_monitor_drops(names):
+    """The DEVS:Monitors entries (driver and its .info) the clone drops: those for a board the rig has not got."""
+    return [n for n in names if n.split(".")[0] in RIG_NO_BOARD_MONITORS]
+
+def sys_hdf_monitors(image):
+    """RIG-IPREFS-SYSREQ: the master image is the A1200's and its DEVS:Monitors carries REPLAY, the P96 driver of
+    the FPGA Replay board. FS-UAE has no Replay board, so when S:Startup-Sequence runs the monitors REPLAY prints
+    "Picasso96: Could not create graphics board context for 'REPLAY'" to the boot console. That output opens the
+    initial CLI window ('AmigaDOS', 640x256) on the PAL Workbench screen before C:IPrefs; IPrefs then has a window
+    open when it resets the screen to the RTG mode in ENVARC:Sys/screenmode.prefs and raises "Intuition is attempting
+    to reset the Workbench screen", and DOpus' backdrop and the Amarchy bar keep Retry failing. The clone drops the
+    driver; the master is never touched."""
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    have = subprocess.run([xdf, str(image), "list", "Devs/Monitors"], capture_output=True, text=True).stdout
+    names = [l.split()[0] for l in have.splitlines() if l.split()]
+    for n in rig_monitor_drops(names):
+        subprocess.run([xdf, str(image), "delete", "Devs/Monitors/" + n], check=True, capture_output=True)
+
+def sys_hdf_no_dopus(image):
+    """--no-dopus: a rig without Directory Opus (the not-running notice, plan D5). The master image replaces the
+    Workbench with Directory Opus 5 in two files: Libs/workbench.library (45.130) and C/LoadWB, which starts DOpus
+    when S:Startup-Sequence runs it; the original LoadWB is kept as C/loadwb_old. In the clone C/LoadWB becomes
+    loadwb_old again and Libs/workbench.library goes (the Kickstart 3.1 ROM carries the stock one), so there is no
+    DOPUS.1 port. The master image is never touched."""
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    restore_loadwb(image)
+    subprocess.run([xdf, str(image), "delete", "Libs/workbench.library"], check=True, capture_output=True)
+    remove_opus5(image)
+
+DOPUS_ARCHIVE = "DOpus5_104_os3.lha"
+DOPUS_BLOCK = "dopus5-user-startup.txt"   # the Installer's ';BEGIN DOpus5' block, recorded by `rig.py dopus`
+DOPUS_STAMP = "dopus5.stamp"              # the archive's md5 the install used
+DOPUS_ENVARC = "dopus5-envarc"            # the Installer's ENVARC:DOpus5* files, copied beside the block
+
+def dopus_archive_md5():
+    """The md5 dist/addons/dopus/archives.txt records for the 5.104 archive."""
+    for line in (ROOT / "dist/addons/dopus/archives.txt").read_text().splitlines():
+        f = line.split()
+        if len(f) >= 2 and f[0] == DOPUS_ARCHIVE:
+            return f[1]
+    sys.exit("rig: %s is not in dist/addons/dopus/archives.txt" % DOPUS_ARCHIVE)
+
+def dopus_install():
+    """The rig's VTC: drawer when it holds the current 5.104 install of `rig.py dopus` (block, stamp = the archive's md5,
+    DOpus5/DirectoryOpus), else None after a [WARN]: the one check both the sys.hdf clone (sys_hdf_dopus) and the
+    host-directory systems (--os <name>, --os32: os_tree_dopus) use."""
+    vtc = RIG / "vtc"
+    block, stamp = vtc / DOPUS_BLOCK, vtc / DOPUS_STAMP
+    if not (block.exists() and stamp.exists() and stamp.read_text().strip() == dopus_archive_md5()
+            and (vtc / "DOpus5/DirectoryOpus").exists()):
+        print("[WARN] Directory Opus 5.104 is not installed in this rig's VTC: drawer (no current %s): the Workbench "
+              "stays as the system has it; run `UPTERM_RIG=%d python3 tools/rig/rig.py dopus` once" % (DOPUS_STAMP, paths.RIG_N))
+        return None
+    return vtc
+
+def os_tree_dopus(tree):
+    """Directory Opus 5.104 on a host-directory system (--os <name>, --os32): the Installer's ';BEGIN DOpus5' block
+    replaces any earlier one in <tree>/S/User-Startup (the tree keeps what an earlier run wrote, so the block is
+    stripped first) and its ENVARC:DOpus5* files go into Prefs/Env-Archive. The block's `Resident LoadWB
+    DOpus5:C/LoadDB` makes the Startup-Sequence's by-name `LoadWB` (after User-Startup) start DOpus as the Workbench,
+    so C/LoadWB stays the system's own. Libs/workbench.library stays."""
+    vtc = dopus_install()
+    if vtc is None:
+        return
+    tree = pathlib.Path(tree)
+    os_tree_no_dopus(tree)
+    us = tree / "S/User-Startup"
+    data = us.read_bytes() if us.is_file() else b""
+    if data and not data.endswith(b"\n"):
+        data += b"\n"
+    us.write_bytes(data + (vtc / DOPUS_BLOCK).read_bytes())
+    envarc = vtc / DOPUS_ENVARC
+    dst = tree / "Prefs/Env-Archive"
+    dst.mkdir(parents=True, exist_ok=True)
+    for f in sorted(envarc.glob("DOpus5*")) if envarc.is_dir() else []:
+        shutil.copyfile(f, dst / f.name)
+
+def sys_hdf_dopus(image):
+    """The master image carries Directory Opus 5.82 as the Workbench (block ';BEGIN DirectoryOpus 5' assigning
+    DOpus5: dh0:Opus5, C/LoadWB = LoadDB 62.0). The clone gets 5.104 instead, from the install `rig.py dopus` made
+    once in the rig's host VTC: drawer (VTCX:DOpus5, it survives every clone): the 5.82 block is replaced by the
+    block the 5.104 Installer wrote ("Instead of Workbench"), its ENVARC:DOpus5* files go back, C/LoadWB becomes
+    5.104's LoadDB (S:Startup-Sequence calls C:LoadWB by path) and Opus5 + Opus5.info go.
+    Libs/workbench.library stays. No stamp for the current archive: a [WARN] and 5.82 stays. The master is never touched."""
+    vtc = dopus_install()
+    if vtc is None:
+        return
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    remove_opus5(image)   # strips the 5.82 block, deletes Opus5 and Opus5.info
+    # S:Startup-Sequence ends in `C:LoadWB` by path, which skips the Resident name of the block: C/LoadWB itself is
+    # 5.104's LoadDB (as on rig 8), so the boot starts Directory Opus 5.104 as the Workbench
+    subprocess.run([xdf, str(image), "delete", "C/LoadWB"], check=True, capture_output=True)
+    subprocess.run([xdf, str(image), "write", str(vtc / "DOpus5/C/LoadDB"), "C/LoadWB"], check=True, capture_output=True)
+    us = RIG / "user-startup.tmp"
+    us.unlink(missing_ok=True)
+    subprocess.run([xdf, str(image), "read", "S/User-Startup", str(us)], check=True, capture_output=True)
+    data = us.read_bytes()
+    if data and not data.endswith(b"\n"):
+        data += b"\n"
+    us.write_bytes(data + (vtc / DOPUS_BLOCK).read_bytes())
+    subprocess.run([xdf, str(image), "delete", "S/User-Startup"], check=True, capture_output=True)
+    subprocess.run([xdf, str(image), "write", str(us), "S/User-Startup"], check=True, capture_output=True)
+    us.unlink()
+    envarc = vtc / DOPUS_ENVARC
+    for f in sorted(envarc.glob("DOpus5*")) if envarc.is_dir() else []:
+        dst = "Prefs/Env-Archive/" + f.name
+        subprocess.run([xdf, str(image), "delete", dst], capture_output=True)   # absent in the master: nothing to delete
+        subprocess.run([xdf, str(image), "write", str(f), dst], check=True, capture_output=True)
+
+SCREENMODE_NAME = RIG / "screenmode.name"   # the last `rig.py aga|aga256|rtg`: a start re-applies it to the fresh sys.hdf
+
+def sys_hdf_screenmode(image):
+    """`rig.py aga|aga256|rtg` writes ENVARC:Sys/screenmode.prefs and reboots; the reboot clones sys.hdf anew, so the
+    chosen mode is put into the fresh image from the host here (it persists as RIG/screenmode.name, not in the disk)."""
+    if not SCREENMODE_NAME.exists():
+        return
+    src = RIG / ("vtc/screenmode.%s.prefs" % {"aga": "aga16"}.get(SCREENMODE_NAME.read_text().strip(), SCREENMODE_NAME.read_text().strip()))
+    paths.require_input(src, "UPTERM_RIG", "the ScreenMode prefs of `rig.py %s`" % SCREENMODE_NAME.read_text().strip())
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    dst = "Prefs/Env-Archive/Sys/screenmode.prefs"
+    subprocess.run([xdf, str(image), "delete", dst], capture_output=True)   # absent in the master: nothing to delete
+    subprocess.run([xdf, str(image), "write", str(src), dst], check=True, capture_output=True)
+
+def cpu_lines():
+    """The A1200 machine's cpu and fpu keys: 68060 + 68060 FPU (default), 68020 + 68882 (--a1200); --nofpu: the
+    68LC060 and no fpu key, or the 68020 and no fpu key (FS-UAE: cpu accepts 68LC060, fpu 68881/68882/68040/68060)."""
+    if M060:
+        cpu = "68LC060" if NOFPU else "68060" if MMU else "68060-NOMMU"
+    else:
+        cpu = "68020"
+    return ["cpu = %s" % cpu] + ([] if NOFPU else ["fpu = %s" % ("68060" if M060 else "68882")])
+
+def unimplemented_lines():
+    """The 060 runs the instructions it lacks in the emulator (no 68060.library needed), the FPU's too when there is one."""
+    return (["uae_cpu_no_unimplemented = false"] + ([] if NOFPU else ["uae_fpu_no_unimplemented = false"])) if M060 else []
+
+# The Amiga picture each screen mode puts in the window, in Amiga pixels: the master sys.hdf's
+# ScreenMode prefs is uaegfx mode 0x5004xxxx (800x600, `rig.py rtg`); `rig.py aga|aga256` and the
+# --os images are PAL hires (640x256, line-doubled to 640x512 and cropped there by FS-UAE's zoom).
+SCREEN_SIZES = {"rtg": (800, 600), "aga": (640, 512), "aga256": (640, 512)}
+WINDOW_BUDGET = (1280, 1024)   # the window size the rigs opened at before integer scaling
+
+def window_lines():
+    """The window fits the picture: with scale = integer a fixed 1280x1024 window showed the 800x600 RTG
+    Workbench at x1 inside wide black bands (owner 2026-10-26: "they open windows much bigger than the
+    content"). The window is the picture times the largest whole factor that stays inside WINDOW_BUDGET."""
+    name = SCREENMODE_NAME.read_text().strip() if SCREENMODE_NAME.exists() else "aga256" if OS else "rtg"
+    w, h = SCREEN_SIZES[name]
+    k = max(1, min(WINDOW_BUDGET[0] // w, WINDOW_BUDGET[1] // h))
+    zoom = ["zoom = full"] if OVERSCAN else [] if name == "rtg" else ["zoom = 640x512"]   # --overscan: every mode, rtg included
+    return ["window_width = %d" % (w * k), "window_height = %d" % (h * k)] + zoom   # AGA: crop the overscan border, or x2 no longer fits
+
+def title_line():
+    """The window title names the rig and its machine: with several rigs open the
+    owner saw only identical FS-UAE windows (2026-10-24) and could not tell them apart. It also names the
+    session and task from --purpose: with rigs of several sessions open the owner could not tell what each
+    one did or whose it was (2026-10-25). A start without --purpose says so in the title."""
+    machine = ("A1200 stock" if STOCK else "A500" if A500 else
+               "060 max" if MAX else "060" if M060 else "68020")
+    return "title = vtcon rig %d (%s%s) - %s" % (paths.RIG_N, machine, ", OS %s" % OS if OS else ", OS 3.2" if OS32 else "",
+                                                  PURPOSE or "purpose not given (rig.py start --purpose)")
+
+# The Mac keys the rig's fs-uae maps (setup writes them into the config).
+HOST_KEYS = [
+    # both Cmd keys are Right-Amiga, so Cmd+C/Cmd+V copy and paste from either
+    # side as on the Mac. FS-UAE's own modifier was the left Cmd (its log: "Using
+    # default modifier key LSUPER") and took those keys; it moves to the right
+    # Ctrl. The F12 menu is unchanged.
+    "modifier_key = rctrl",
+    "keyboard_key_lsuper = action_key_amiga_right",
+    "keyboard_key_rsuper = action_key_amiga_right",
+    # so no Cmd key is Left-Amiga, which Amarchy's bindings need (Super is
+    # "rawkey lcommand"), and macOS keeps Cmd+Space for Spotlight anyway: the right
+    # Option key is Left-Amiga (Right Option+Space opens the menu). The left Option
+    # key stays the Amiga's Left Alt.
+    "keyboard_key_ralt = action_key_amiga_left",
+]
+
+
+# The ScreenMode prefs files VTC: holds (IFF PREF/PRHD/SCRM, 62 bytes): rig.py aga|aga256|rtg copy them to
+# ENVARC:Sys/screenmode.prefs and os_image_copy puts aga256 into a clean image. They had no source in the repo;
+# a rig other than rig 1 got them only by a hand copy. (name, DisplayID, width, height, depth) as rig 1 holds them.
+SCREENMODE_PREFS = [("aga16", 0x00029000, 0x280, 0x100, 4), ("aga256", 0x00029000, 0x280, 0x100, 8),
+                    ("rtg", 0x50041303, 0xffff, 0xffff, 24), ("rtg360", 0x50041303, 0x280, 0x168, 24)]
+
+
+def screenmode_prefs_bytes(display_id, width, height, depth):
+    import struct
+    scrm = struct.pack(">16xIHHHH", display_id, width, height, depth, 1)
+    return (b"FORM" + struct.pack(">I", 4 + 8 + 6 + 8 + len(scrm)) + b"PREF" + b"PRHD" + struct.pack(">I", 6)
+            + bytes(6) + b"SCRM" + struct.pack(">I", len(scrm)) + scrm)
+
+
+def stage_rig_vtc(vtc):
+    """What a rig's VTC: drawer needs to start, for build/rig and build/rigN alike (setup calls it): the ScreenMode
+    prefs, and the UP-Term drawer the boot's UP-Term: assign points at, with bin/vsh, the icons and the Prefs launcher
+    (stage_upterm, as `rig.py install` makes it), and the Amarchy themes and font (stage_amarchy_assets: a rig that
+    never ran `install` listed no themes). Files already there are kept."""
+    vtc.mkdir(parents=True, exist_ok=True)
+    for name, did, w, h, depth in SCREENMODE_PREFS:
+        f = vtc / ("screenmode.%s.prefs" % name)
+        if not f.exists():
+            f.write_bytes(screenmode_prefs_bytes(did, w, h, depth))
+    vsh = ROOT / "build/amiga/vsh"
+    if not (vtc / paths.UPTERM_DRAWER / "bin/vsh").is_file():
+        paths.require_input(vsh, "UPTERM_ROOT", "build/amiga/vsh (run make for the Amiga programs)")
+        stage_upterm(vtc / paths.UPTERM_DRAWER, vsh)
+    stage_amarchy_assets(vtc)
+
+
+def seed_rig_vtc(src, dst):
+    """Rig N>1's VTC: starts as a copy of rig 1's (only read there; .uaem files carry the protection bits);
+    `install` and the scripts keep it. A drawer that already exists but was made by something else first
+    (a kit install or a stage into a fresh rig) still gets every file of rig 1's it lacks, e.g. VTC:etc that
+    the boot's ETC: assign needs; files already there are never replaced."""
+    if not dst.exists():
+        print("copying rig 1's VTC: drawer ...")
+        shutil.copytree(src, dst, symlinks=True)
+        return
+    def keep(s, d, **kw):
+        if not os.path.lexists(d):
+            shutil.copy2(s, d, follow_symlinks=False)
+    shutil.copytree(src, dst, symlinks=True, dirs_exist_ok=True, copy_function=keep)
+
 def setup():
     (RIG / "boot").mkdir(parents=True, exist_ok=True)
-    if paths.RIG_N > 1 and not (RIG / "vtc").exists():
-        # rig 2's VTC: starts as a copy of rig 1's (only read there; .uaem
-        # files carry the protection bits); `install` and the scripts keep it
-        print("copying rig 1's VTC: drawer ...")
-        shutil.copytree(paths.RIG_HOME / "rig/vtc", RIG / "vtc", symlinks=True)
-    (RIG / "vtc").mkdir(exist_ok=True)
+    if paths.RIG_N > 1:
+        seed_rig_vtc(paths.RIG_HOME / "rig/vtc", RIG / "vtc")
+    stage_rig_vtc(RIG / "vtc")
     (RIG / "shots").mkdir(exist_ok=True)
     if OS32 and not (RIG / "os32").exists():
         print("copying the 3.2 system (168 MB) ...")
         paths.require_input(OS32_SRC, "UPTERM_OS32_TREE", "the AmigaOS 3.2 tree")
         shutil.copytree(OS32_SRC, RIG / "os32", symlinks=True)
+        kitstamp.drop(RIG / "vtc")   # a new DH0: holds none of the shadows
     if OS32:
         os32_hd_layout()
     if OS:
@@ -441,9 +1061,11 @@ def setup():
         (RIG / "work").mkdir(exist_ok=True)
         os_image_copy()
     elif not OS32 and not (RIG / "sys.hdf").exists():
-        print("copying the system disk (1.5 GB) ...")
-        paths.require_input(SRC_HDF, "UPTERM_SYSTEM_HDF", "the system disk image")
-        shutil.copyfile(SRC_HDF, RIG / "sys.hdf")
+        fresh_sys_hdf()
+    if OS or OS32:
+        tree = RIG / ("os-%s" % OS if OS else "os32")
+        # --no-dopus strips the blocks; otherwise the tree gets 5.104 as the clone does (`rig.py dopus` installed it)
+        os_tree_no_dopus(tree) if "--no-dopus" in sys.argv else os_tree_dopus(tree)
     (RIG / "boot/s").mkdir(exist_ok=True)
     # --060: at host speed the boot shell's window is open (something prints
     # into it) when IPrefs switches the Workbench to the saved RTG mode, and
@@ -466,7 +1088,18 @@ def setup():
         sysconf.unlink()
     # the pinned wasabid (`make wasabi`), every start; one daemon, no other agent in the boot
     shutil.copyfile(rigwasabi.build_dir() / "wasabid", RIG / "boot/wasabid")
+    stage_amissl(RIG / "vtc", M060)
+    stage_ixemul(RIG / "vtc", NOFPU)
+    stage_screennotify(RIG / "vtc")
+    refresh_programs(RIG / "vtc", ROOT / "build/amiga")   # the files build_drift checks, as install copies them
+    refresh_kit_shadows(RIG / "vtc")
+    stale = build_drift(RIG / "vtc")
+    if stale:
+        print("[WARN] %d file(s) in VTC: differ from the build: %s; `rig.py install` puts the build there"
+              % (len(stale), ", ".join(stale)))
     (RIG / "boot/go").write_text(GO)
+    (RIG / "boot" / kitstamp.LIST).write_text("".join(n + "\n" for n in sorted({x[0] for x in KIT_SHADOWS})))
+    kitstamp.check(RIG / "boot", RIG / "vtc")
     (RIG / "boot/Mountlist").write_text(MOUNTLIST)
     machine = [
         "[fs-uae]", "amiga_model = A1200", "accuracy = 1", "chip_memory = 2048",
@@ -477,11 +1110,11 @@ def setup():
         "uae_cpu_speed = real", "uae_cpu_cycle_exact = true", "uae_cpu_compatible = true",
     ] if A500 else [
         "[fs-uae]", "amiga_model = A1200",
-        "cpu = %s" % (("68060" if MMU else "68060-NOMMU") if M060 else "68020"), "fpu = %s" % ("68060" if M060 else "68882"),
+    ] + cpu_lines() + [
         "fast_memory = 8192",
         # 64 MB more, as an accelerator's: GNU screen with four panes (tcsh in
         # each) left 663 KB of the 8 MB (owner 2026-09-30: "you can add more ram")
-        "zorro_iii_memory = %d" % (1048576 if MAX else 131072 if M060 else 65536),
+        "zorro_iii_memory = %d" % (Z3_MB * 1024 if Z3_MB and M060 else 1048576 if MAX else 131072 if M060 else 65536),
         "bsdsocket_library = 1", "graphics_card = uaegfx",
         # the RTG card's pointer as a sprite: Picasso96's software pointer is
         # hidden and drawn again around every blit, so it flickered with the
@@ -494,7 +1127,7 @@ def setup():
         "uae_cpu_speed = %s" % ("max" if FAST or M060 else "real"),
         "uae_cpu_cycle_exact = %s" % ("true" if EXACT else "false"),
         "uae_cpu_compatible = %s" % ("true" if EXACT else "false"),
-    ] + (["uae_cpu_no_unimplemented = false", "uae_fpu_no_unimplemented = false"] if M060 else [])
+    ] + unimplemented_lines()
     paths.require_rom(KICK)
     paths.FSUAE_LOG_DIR.mkdir(parents=True, exist_ok=True)
     CFG.write_text("\n".join(machine + [
@@ -519,47 +1152,128 @@ def setup():
         "hard_drive_2_priority = %d" % (0 if OS else 10), "joystick_port_1 = none",
         "kickstart_file = %s" % KICK,
     ] + (["hard_drive_3 = %s" % (RIG / "work"), "hard_drive_3_label = Work", "hard_drive_3_priority = -128"] if OS else []) + [
-        "uae_sound_output = interrupts", "volume = 0", "initial_input_grab = 0",
+        # audible output on every rig: "interrupts" is emulated with no output and
+        # volume 0 muted it, so no rig made sound (owner, 2026-10-26). The flag file
+        # ~/.config/upterm/rig-mute mutes every rig started while it exists (owner in
+        # a meeting, 2026-10-30); delete it to get sound back
+        "uae_sound_output = exact", "volume = %d" % rig_volume(), "initial_input_grab = 0",
+        # floppy drive clicks and head steps off; Paula audio stays on (owner, 2026-10-27)
+        "floppy_drive_volume = 0", "floppy_drive_volume_empty = 0",
         # the Amiga's clipboard.device unit 0 and the Mac's clipboard are one: a copy
         # in UP-Term pastes on the Mac and back (off without it, 2026-10-12)
-        "clipboard_sharing = 1",
-        # both Cmd keys are Right-Amiga, so Cmd+C/Cmd+V copy and paste from either
-        # side as on the Mac. FS-UAE's own modifier was the left Cmd (its log: "Using
-        # default modifier key LSUPER") and took those keys; it moves to the right
-        # Ctrl. The F12 menu is unchanged.
-        "modifier_key = rctrl",
-        "keyboard_key_lsuper = action_key_amiga_right",
-        "keyboard_key_rsuper = action_key_amiga_right",
-        "window_width = 1280", "window_height = 1024",
+        "clipboard_sharing = %d" % CLIPBOARD,
+    ] + HOST_KEYS + [title_line(),
+    ] + window_lines() + [
+        # sharp pixels: nearest-neighbour texture filter instead of the default linear blur
+        # (the owner found the rigs blurry, 2026-10-26)
+        "texture_filter = nearest",
+        # whole-number zoom only (the Amiga mode shown at x1, x2, never 1.6x), FS-UAE scale = integer
+        # (owner, 2026-10-26)
+        "scale = integer",
         # the serial port into a file: kprintf traces (ixemul's DEBUG_VERSION)
         "serial_port = %s" % SERIAL,
-        "screenshots_output_dir = %s" % (RIG / "shots"), ""]))
+        "screenshots_output_dir = %s" % (RIG / "shots"),
+        ] + debugger_lines() + [""]))
     if "--serial" not in sys.argv:
         # FS-UAE opens serial_port for writing but does not create it: with no file there it writes no trace
         pathlib.Path(SERIAL).touch()
     if "start" not in sys.argv:
         print("rig ready:", CFG)
 
+def debugger_lines():
+    """--debugger: the UAE console debugger reads the FIFO DBG_IN and writes DBG_LOG (see launch_fsuae)."""
+    # use_debugger: the debugger prompt comes up at boot, before the Amiga runs; set breaks there and `g`. The
+    # F12+D hot key cannot be sent to the SDL window as a synthetic key (tried, no effect).
+    return ["console_debugger = 1", "uae_use_debugger = 1"] if DEBUGGER else []
+
+def dbg():
+    """rig.py dbg "<line>": one line into the running debugger's FIFO."""
+    if not DBG_IN.exists():
+        sys.exit("rig: no debugger FIFO %s (start with --debugger)" % DBG_IN)
+    fd = os.open(str(DBG_IN), os.O_RDWR | os.O_NONBLOCK)
+    try:
+        os.write(fd, (" ".join(sys.argv[2:]) + "\n").encode())
+    finally:
+        os.close(fd)
+
+def dbgbreak():
+    """rig.py dbgbreak: SIGUSR1 into this rig's FS-UAE. A build with debuggable() = 1 and a SIGUSR1 handler that
+    calls activate_debugger() (Emulators/fs-uae-debug, UPTERM_FSUAE) drops into the console debugger on the FIFO."""
+    pids = [int(l.split()[0]) for l in mine()]
+    if not pids:
+        sys.exit("rig: no FS-UAE running for %s" % CFG)
+    for pid in pids:
+        os.kill(pid, signal.SIGUSR1)
+    print("rig: SIGUSR1 sent to %s" % pids)
+
+def fsuae_stdio():
+    """stdin, stdout, stderr for the FS-UAE process: the debugger FIFO and log with --debugger, else null."""
+    if not DEBUGGER:
+        return subprocess.DEVNULL, subprocess.DEVNULL, subprocess.DEVNULL
+    if not DBG_IN.exists():
+        os.mkfifo(str(DBG_IN))
+    # read-write so the FIFO never reaches end of file between two dbg lines
+    return os.open(str(DBG_IN), os.O_RDWR), open(DBG_LOG, "wb"), subprocess.STDOUT
+
 def setup_config_only():
     """Rewrite just the config, so --rw on or off takes effect."""
-    if (RIG / "sys.hdf").exists():
+    # a --os / --os32 rig has no sys.hdf: its first start (a fresh build/rigN) stages the drawer here too
+    if (RIG / "sys.hdf").exists() or OS or OS32:
         setup()
+
+def require_vsh(vsh):
+    """Exit with one clear message when build/amiga/vsh is missing; a silent skip would hide it (the other
+    programs staged beside it are optional, vsh is not)."""
+    if not pathlib.Path(vsh).is_file():
+        sys.exit("rig: %s not found: run `make build/amiga/vsh` (or `make amiga`) first" % vsh)
+
 
 def stage_upterm(dest, vsh):
     """The kit's UP-Term: drawer as far as the icon needs it (R9): bin/vsh, the tool
-    of UP-Term.info, and the icon and its text file, made as `make dist-base` makes them."""
+    of UP-Term.info, and the icon and its text file, made as `make dist-base` makes them. Amarchy and
+    amarchy-menu go to bin beside vsh when they were built, at paths.UPTERM_BIN (the rig drawer; the
+    rig scripts start them from there, as UP-Term: moves with a kit install); before this the rig had no Amarchy."""
+    require_vsh(vsh)
     (dest / "bin").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(vsh, dest / "bin/vsh")
+    for name in ("Amarchy", "amarchy-menu", "amarchy-gui", "amarchy-index", "AmTile"):
+        if (vsh.parent / name).is_file():
+            shutil.copyfile(vsh.parent / name, dest / "bin" / name)
     subprocess.run([sys.executable, "-I", str(ROOT / "tools/mkicon.py"), str(dest / "UP-Term.info")], check=True)
     (dest / "UP-Term").write_text("UP-Term: double-click the icon to open a terminal with vsh.\n")
     # the Prefs editor's icon (W-R3), as make dist-base makes it; GO copies it to SYS:Prefs
     subprocess.run([sys.executable, "-I", str(ROOT / "tools/mkicon.py"), str(dest / "UP-Term-Prefs.info"),
-                    "--tool", "C:UP-Term Prefs", "--plain"], check=True)
+                    "--tool", "C:UP-Term-Prefs", "--plain"], check=True)
     (dest / "UP-Term-Prefs").write_text("UP-Term Prefs: edit the profiles in ENVARC:up-term/up-term.\n")
     # the drawer's own icon, beside it (VTC:Apps.info): without it the drawer cannot be opened from the
     # Workbench, and Directory Opus showed only the stale Apps and UP-Term icons (rig 1, 2026-10-14)
     subprocess.run([sys.executable, "-I", str(ROOT / "tools/mkicon.py"),
                     str(dest.with_name(dest.name + ".info")), "--drawer"], check=True)
+
+def stage_amarchy_assets(vtc):
+    """RIG-NO-THEMES: dist/amarchy-themes to VTC:amarchy-themes and the kit's JetBrainsMono.ttf (the
+    Makefile's JBMONO_TTF, installed as Files/fonts/JetBrainsMono.ttf) to VTC:fonts; the boot
+    (AMARCHY_ASSETS_BOOT) puts them at UP-Term:Amarchy/Themes and FONTS:."""
+    themes = sorted((ROOT / "dist/amarchy-themes").glob("*.theme"))
+    if themes:
+        (vtc / "amarchy-themes").mkdir(parents=True, exist_ok=True)
+        for f in themes:
+            shutil.copyfile(f, vtc / "amarchy-themes" / f.name)
+        # Live as well: VTC: is the host drawer of a running rig, and the boot copy above ran before `install`
+        # staged anything, so a rig started first never got the themes (rig 8, 2026-11-01). The drawer is the one
+        # the boot's UP-Term: assign and amarchy_gui_rig --setup (UP-Term: VTCX:Apps) point at.
+        live = vtc / paths.UPTERM_DRAWER / "Amarchy/Themes"
+        live.mkdir(parents=True, exist_ok=True)
+        for f in themes:
+            shutil.copyfile(f, live / f.name)
+    else:
+        print("no themes in %s: the rig's theme list stays empty" % (ROOT / "dist/amarchy-themes"))
+    ttf = ROOT / "build/jbmono/JetBrainsMono-Regular.ttf"
+    if ttf.is_file():
+        (vtc / "fonts").mkdir(exist_ok=True)
+        shutil.copyfile(ttf, vtc / "fonts/JetBrainsMono.ttf")
+    else:
+        print("no %s: run make jbmono, or the menu falls back to a bitmap font" % ttf)
 
 def clean_stale_icons(vtc):
     """Icons at the root of the host drawer that belong to nothing the rig or a kit has: VTC:UP-Term and
@@ -611,30 +1325,253 @@ def stage_terminfo(src, dest):
             (dest / f.parent.name).mkdir(parents=True, exist_ok=True)
             shutil.copyfile(f, dest / f.parent.name / f.name)
 
+def stage_amissl(vtc, m060):
+    """VTC:amissl/AmiSSL/amissl_v362.library (RIG_LIBS): the kit's AmiSSL library for the CPU the rig
+    boots as (68060 with --060/--max, else 68020-40), flat, where amisslmaster.library looks for it."""
+    src = paths.VENDOR / "amissl-5.27/AmiSSL/Libs/AmigaOS3/AmiSSL" / ("68060" if m060 else "68020-40") / "amissl_v362.library"
+    if not src.is_file():
+        sys.exit("rig: the kit's AmiSSL 5.27 library not found: %s (vendor/amissl-5.27, the kit's AmiSSL drawer)" % src)
+    dst = vtc / "amissl/AmiSSL" / src.name
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if not (dst.is_file() and dst.read_bytes() == src.read_bytes()):
+        shutil.copyfile(src, dst)
+
+def stage_ixemul(vtc, nofpu):
+    """VTC:ixp6, first in LIBS: (RIG_LIBS), as the kit's patched ixemul.library and its ixnet.library, every
+    start: the soft-float ixemul with --nofpu, else the FPU one. Before this only ixpty_rig and stackext_rig
+    filled it, and a rig kept what they last put there: rig 7's 19 Oct ixemul (199528 bytes; the build's is
+    200644) made amarchy-menu stop with "Illegal instruction" and draw no menu (2026-10-25). Those scripts
+    still put their own library there after boot, for that boot."""
+    ixemul = paths.IXEMUL_LIB_SOFT if nofpu else paths.IXEMUL_LIB
+    for src, var in ((ixemul, "IXEMUL"), (paths.IXNET_LIB, "IXNET")):
+        paths.require_input(src, var, src.name)
+    libguard.require_clean_ixnet(paths.IXNET_LIB)
+    (vtc / "ixp6").mkdir(parents=True, exist_ok=True)
+    for src, name in ((ixemul, "ixemul.library"), (paths.IXNET_LIB, "ixnet.library")):
+        dst = vtc / "ixp6" / name
+        if not (dst.is_file() and dst.read_bytes() == src.read_bytes()):
+            shutil.copyfile(src, dst)
+            print("refreshed ixp6/%s" % name, dst.stat().st_size, "bytes")
+
+def stage_screennotify(vtc):
+    """VTC:ixp6/screennotify.library (first in LIBS:, RIG_LIBS), every start: the pinned Aminet 1.0 (`make
+    screennotify`, both SHA-256 checked), so the handler's Workbench window leaves the screen while IPrefs resets it
+    and no "Intuition is attempting to reset the Workbench screen" System Request waits on it (WB-RESET-SCREENNOTIFY,
+    handler/wbpark.h). Its licence keeps it out of the repository and the kit: only the rigs carry it."""
+    subprocess.run(["make", "-s", "screennotify"], cwd=ROOT, check=True)
+    src = ROOT / "build/screennotify/ScreenNotify/libs/screennotify.library"
+    dst = vtc / "ixp6/screennotify.library"
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if not (dst.is_file() and dst.read_bytes() == src.read_bytes()):
+        shutil.copyfile(src, dst)
+        print("refreshed ixp6/screennotify.library", dst.stat().st_size, "bytes")
+
+def program_pairs(vtc, built):
+    """The one list of (build file, VTC: copy) pairs for the build/amiga programs: each file of `built`, in VTC: and in
+    the UP-Term drawer's bin, and the dist's userland programs in that bin. build_drift (the start [WARN]) checks these pairs, and refresh_programs (install, the
+    start, the menu rig's stale_guard) copies them; before, install, start and restage each had their own set and
+    the start printed 16 stale programs on every boot (RIG-START-VTC-DRIFT, MENU-STALE-RESTAGE-DRIFT)."""
+    pairs = []
+    for f in sorted(built.iterdir()):
+        if f.is_file():
+            pairs += [(f, vtc / f.name), (f, vtc / paths.UPTERM_DRAWER / "bin" / f.name)]
+    # the dist's userland in the UP-Term drawer's bin too: the boot's shadow copies it only into what UP-Term:
+    # names, so VTC:Apps/bin kept a stale curl that outlived Esc by 22-27 s in the RJ.7 run (rig 7,
+    # RJ7-CURL-SHADOW, 2026-10-29)
+    # one source per VTC: file: a name this tree builds keeps the build's copy, else build_drift listed it twice and
+    # refresh_programs copied the build, then the dist's older userland copy over it
+    built_names = {src.name for src, dst in pairs}
+    # GG:bin/sh is vsh too: the boot assigns GG: to VTC:gg when it holds one, and ixemul programs and the rig tests
+    # run it as /gg/bin/sh. Not in this list before, so the gate saw it drift and refreshed only VTC:vsh and
+    # Apps/bin/vsh: rig 10 ran the old vsh (s22, 2026-10-29)
+    if (built / "vsh").is_file():
+        pairs.append((built / "vsh", vtc / "gg/bin/sh"))
+    for name in userland_names():
+        if name not in built_names:
+            pairs.append((USERLAND_SRC / name, vtc / paths.UPTERM_DRAWER / "bin" / name))
+    return pairs
+
+# VTC: files no current code writes. vtc/bin/sh is the 63032-byte program of 30 Sep, left in every build/rig*/vtc by
+# the staging before 695288d5; vsh goes to VTC:vsh and VTC:gg/bin/sh, and a stale VTC:bin/sh was run for vsh in the
+# VSH-JOB-SIGNALS hunt (STALE-VTC-SH, 2026-10-29). refresh_programs removes them.
+RETIRED_VTC_FILES = ("bin/sh",)
+
+def refresh_programs(vtc, built, required=()):
+    """Copies every program of program_pairs that differs (or, for the `required` names, is absent from VTC: itself).
+    The copy replaces the file whole (temp file, rename), so a running rig never reads half a program."""
+    done = []
+    for name in RETIRED_VTC_FILES:
+        if (vtc / name).is_file():
+            (vtc / name).unlink()
+            print("removed retired", name)
+            done.append(name)
+    for src, dst in program_pairs(vtc, built):
+        absent = src.name in required and dst.parent == vtc and not dst.is_file()
+        if (absent or dst.is_file()) and (absent or dst.read_bytes() != src.read_bytes()):
+            tmp = dst.with_name(dst.name + ".new")
+            shutil.copyfile(src, tmp)
+            os.replace(tmp, dst)
+            print("refreshed", dst.relative_to(vtc), dst.stat().st_size, "bytes")
+            done.append(str(dst.relative_to(vtc)))
+    return done
+
+def build_drift(vtc):
+    """The VTC: files that differ from the host build they come from: build/amiga programs in VTC: and in the
+    UP-Term drawer's bin, GG:bin/sh (vsh), all from program_pairs. install() refreshes them, but a rig not installed since the last build
+    runs old ones and every check there tests old code (2026-10-25: rigs 3 and 4 held 16 and 19 stale programs,
+    rigs 5 and 6 an old pty-handler, while rig 7's stale ixemul was hunted as a menu bug)."""
+    stale = [str(dst.relative_to(vtc)) for src, dst in program_pairs(vtc, ROOT / "build/amiga")
+             if dst.is_file() and dst.read_bytes() != src.read_bytes()]
+    for name in a1200_drift.DIST_SOURCES:
+        src, dst = ROOT / "dist" / name, vtc / name
+        if dst.is_file() and dst.read_bytes() != src.read_bytes():
+            stale.append(name)
+    for name in userland_names():   # staged by install for the boot's UP-Term:bin shadows
+        dst = vtc / USERLAND_STAGE / name
+        if dst.is_file() and dst.read_bytes() != (USERLAND_SRC / name).read_bytes():
+            stale.append("%s/%s" % (USERLAND_STAGE, name))
+    return stale
+
+# A refreshed file the running Amiga holds in memory (a library, device or handler) is not replaced by the copy: the rig
+# runs the old one until it boots again.
+HELD_SUFFIXES = (".library", ".device", ".handler")
+HELD_DRAWERS = ("libs/", "devs/", "l/", "ixp6/")
+GATE_STATE = {"busy": False, "sig": None}
+
+def held_in_memory(name):
+    return name.endswith(HELD_SUFFIXES) or name.startswith(HELD_DRAWERS)
+
+def gate_signature(vtc):
+    """(path, size, mtime) of every program_pairs file: unchanged since the last clean check = nothing to hash again."""
+    sig = []
+    for src, dst in program_pairs(vtc, ROOT / "build/amiga"):
+        for f in (src, dst):
+            try:
+                st = f.stat()
+                sig.append((str(f), st.st_size, st.st_mtime_ns))
+            except OSError:
+                sig.append((str(f), None, None))
+    return tuple(sig)
+
+def ensure_current(vtc=None):
+    """The one gate before every command to a rig: VTC: is hashed against the build (build_drift) and a drifted file is
+    refreshed (refresh_programs) before the command runs, so no check tests a stale binary (owner 2026-10-29: "we have lost a
+    lot of time testing with stale binaries"). Prints `[REFRESH] rig N: <count> file(s): <names>` on drift, nothing without.
+    A held-in-memory file (held_in_memory) needs a boot: a quiet running rig is rebooted (reboot(): stop flushes the
+    volumes), one with a command in flight (paths.long_run_active, or a command within WATCHDOG_QUIET s: the watchdog's own
+    guard) only gets a [WARN]. Returns the refreshed names."""
+    vtc = pathlib.Path(vtc) if vtc else RIG / "vtc"
+    if GATE_STATE["busy"] or not vtc.is_dir() or not (ROOT / "build/amiga").is_dir():
+        return []
+    GATE_STATE["busy"] = True
+    try:
+        sig = gate_signature(vtc)
+        if sig == GATE_STATE["sig"]:
+            return []
+        done = []
+        if build_drift(vtc):
+            with contextlib.redirect_stdout(io.StringIO()):
+                done = refresh_programs(vtc, ROOT / "build/amiga")
+            names = ", ".join(done[:4]) + (", ..." if len(done) > 4 else "")
+            print("[REFRESH] rig %d: %d file(s): %s" % (paths.RIG_N, len(done), names))
+        GATE_STATE["sig"] = gate_signature(vtc)
+        if any(held_in_memory(n) for n in done) and mine():
+            last = paths.last_command()
+            if paths.long_run_active() or (last is not None and time.time() - last < WATCHDOG_QUIET):
+                print("[WARN] rig %d: a library, device or handler changed and a command is running; `rig.py reboot` "
+                      "when it is done" % paths.RIG_N)
+            else:
+                print("[REFRESH] rig %d: LIBS: changed, rebooting" % paths.RIG_N)
+                reboot([])
+        return done
+    finally:
+        GATE_STATE["busy"] = False
+
 def kit_restore():
     """The next boot puts the kit's own files back (KIT_SHADOWS); `install` turns shadowing on again."""
     (RIG / "vtc/kit-restore").write_text("")
+    kitstamp.drop(RIG / "vtc")
     print("kit-restore: reboot the rig (stop, start); the kit's files come back from VTC:kit-orig")
 
+def refresh_kit_shadows(vtc):
+    """Every program the boot puts at a kit name (KIT_SHADOWS) is the current build in VTC:, even
+    when the drawer never held it (W-R3 Prefs editor, W-R4 UPDemo and the other C: commands).
+    A stale VTC: copy is worse than none: each boot puts it over what the kit's install wrote, and
+    a kit check after a reboot runs the old program (rig 3, 2026-10-19: Execute install.dos wrote
+    the 237268-byte C:vsh, the next boot put VTC:'s 236784-byte one of 09:54 back)."""
+    for name in sorted({x[0] for x in KIT_SHADOWS}):
+        src, dst = kit_shadow_src(name), vtc / name
+        if src.is_file() and not (dst.is_file() and dst.read_bytes() == src.read_bytes()):
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, dst)
+            print("refreshed", name, dst.stat().st_size, "bytes")
+
+_MERGED_BUILD = None
+
+
+def build_amiga():
+    """The build/amiga directory `install` reads: this tree's, or after merge_build() one that also holds the main
+    checkout's files this tree has not built."""
+    return _MERGED_BUILD or ROOT / "build/amiga"
+
+
+def merge_build():
+    """A fresh worktree (`make worktree-ready` not run) has no build/amiga/*: every file it has not built is taken
+    from the main checkout's build/amiga, one [WARN] line per file, this tree's own winning. Returns the directory
+    install reads (symlinks, in a temporary directory) and sets it as build_amiga()."""
+    global _MERGED_BUILD
+    mine, main = ROOT / "build/amiga", paths.MAIN_CHECKOUT / "build/amiga"
+    own = {f.name for f in mine.iterdir() if f.is_file()} if mine.is_dir() else set()
+    theirs = [f for f in sorted(main.iterdir()) if f.is_file() and f.name not in own] \
+        if main.is_dir() and main.resolve() != mine.resolve() else []
+    if not theirs:
+        _MERGED_BUILD = None
+        return build_amiga()
+    d = pathlib.Path(tempfile.mkdtemp(prefix="rig-build-amiga-"))
+    for f in sorted(mine.iterdir()) if mine.is_dir() else []:
+        if f.is_file():
+            (d / f.name).symlink_to(f.resolve())
+    for f in theirs:
+        (d / f.name).symlink_to(f.resolve())
+        print("[WARN] %s missing: installing the main checkout's %s (make worktree-ready, then make amiga, for this tree's)"
+              % (mine / f.name, f))
+    _MERGED_BUILD = d
+    return d
+
+
+def built_handler():
+    """The handler every rig run needs, from build_amiga() (this tree's, else the main checkout's)."""
+    f = build_amiga() / "vtcon-handler"
+    if not f.is_file():
+        sys.exit("[ERROR] no %s: run make amiga (make worktree-ready seeds build/ from the main checkout)" % f)
+    return f
+
+
+# Programs the rig scripts run as VTC:<name> that a rig's VTC: may not hold yet: install copies them even when
+# absent (the loop below refreshes only files already there). UPTerm: typewin.quiet_screen_text runs
+# `VTC:UPTerm ACTIVE screen FILE`; a rig whose VTC: predates it answered "Unknown command", and every
+# screen_text() fell back to Select all + Copy (the owner saw the text menu fully selected, 2026-10-28).
+VTC_REQUIRED = ("UPTerm",)
+
+
 def install():
+    with paths.long_run():
+        _install()
+
+def _install():
+    require_vsh(build_amiga() / "vsh")
+    merge_build()
     (RIG / "vtc/kit-restore").unlink(missing_ok=True)
-    shutil.copyfile(ROOT / "build/amiga/vtcon-handler", RIG / "vtc/vtcon-handler")
+    shutil.copyfile(built_handler(), RIG / "vtc/vtcon-handler")
     print("installed", (RIG / "vtc/vtcon-handler").stat().st_size, "bytes")
     # every other build/amiga program the drawer already holds: rig 2's VTC:
     # starts as a copy of old builds, and a script that runs VTC:<name> must
-    # run the current one
-    for f in sorted((ROOT / "build/amiga").iterdir()):
-        dst = RIG / "vtc" / f.name
-        if f.is_file() and dst.is_file() and dst.read_bytes() != f.read_bytes():
-            shutil.copyfile(f, dst)
-            print("refreshed", f.name, dst.stat().st_size, "bytes")
-    # every program the boot puts at a kit name (KIT_SHADOWS) is in VTC: even when the drawer
-    # never held it (W-R3 Prefs editor, W-R4 UPDemo and the other C: commands)
-    for name in sorted({x[0] for x in KIT_SHADOWS}):
-        src, dst = ROOT / "build/amiga" / name, RIG / "vtc" / name
-        if src.is_file() and not dst.is_file():
-            shutil.copyfile(src, dst)
-            print("added", name, dst.stat().st_size, "bytes")
+    # run the current one. The UP-Term drawer's bin too, the places build_drift checks: before, install
+    # refreshed only VTC:, so the start [WARN] kept listing Apps/bin programs (vtcon-a1 P7, 2026-10-27)
+    refresh_programs(RIG / "vtc", build_amiga(), VTC_REQUIRED)
+    refresh_kit_shadows(RIG / "vtc")
+    kitstamp.check(RIG / "boot", RIG / "vtc")   # a changed kit file: the next boot shadows it
+    stage_amarchy_assets(RIG / "vtc")
     # the themes beside the handler: the rig has no kit, so no
     # ENVARC:up-term/themes, and the theme requesters and /theme fall back
     # to VTC:themes (prefs_theme_drawer, W30)
@@ -653,7 +1590,7 @@ def install():
     for vtc in sorted(paths.RIG_HOME.glob("rig*/vtc")):   # every rig drawer, the ones that are off too
         clean_stale_icons(vtc)
         migrate_upterm_drawer(vtc)
-    stage_upterm(RIG / "vtc" / paths.UPTERM_DRAWER, ROOT / "build/amiga/vsh")
+    stage_upterm(RIG / "vtc" / paths.UPTERM_DRAWER, build_amiga() / "vsh")
     if (ROOT / "build/kit-terminfo/stamp").is_file():
         stage_terminfo(ROOT / "build/kit-terminfo", RIG / "vtc/terminfo")
     else:
@@ -674,6 +1611,7 @@ def screenmode(name):
     else:
         cmd = b"Copy VTC:screenmode.rtg.prefs ENVARC:Sys/screenmode.prefs"
     print(ami.req(0x02, (20).to_bytes(2, "big") + cmd)[4:].decode("latin-1"))
+    SCREENMODE_NAME.write_text(name)   # the reboot's fresh sys.hdf gets the mode from here (sys_hdf_screenmode)
     args = reboot_args(sys.argv[2:])
     stop()
     # a new process: the machine flags are read from sys.argv when rig.py is loaded
@@ -687,6 +1625,44 @@ def reboot_args(given):
         return json.loads(START_ARGS.read_text())
     except (OSError, ValueError):
         return []
+
+def reboot(given=None):
+    """Stop safely (stop() flushes the volumes) and start again on the same sys.hdf. A start clones DH0: from the master,
+    which threw away what an install wrote: installer_rig's reboot check failed on the clone and a master build lost its
+    install (2026-10-27, RIG-REBOOT, MASTER-BUILD-NOREBOOT). `given` replaces this command line's arguments (ensure_current
+    passes [], as its caller's argv is not rig.py's)."""
+    args = reboot_args(sys.argv[2:] if given is None else given)
+    stop()
+    # a new process: the machine flags are read from sys.argv when rig.py is loaded
+    subprocess.run([sys.executable, str(pathlib.Path(__file__).resolve()), "start", "--keep-sys"] + args, check=True)
+
+def port_listeners(port):
+    """PIDs listening on TCP `port` on this machine (lsof; none: [])."""
+    out = subprocess.run(["lsof", "-nP", "-iTCP:%d" % port, "-sTCP:LISTEN", "-t"], capture_output=True, text=True).stdout
+    return sorted(set(out.split()))
+
+def refuse_port_clash(port=None):
+    """RIG-PORT-CLASH: this rig's wasabid port (paths.wasabi_port) is held by another process (another rig's
+    emulator, 2026-10-30 rig 2 on 1241 = rig 8's): the two rigs would share one Amiga. Exit non-zero, nothing written."""
+    port = paths.WASABI_PORT if port is None else port
+    pids = port_listeners(port)
+    if pids:
+        sys.exit("[ERROR] rig %d: wasabi port %d is already listened on by pid %s (another rig's emulator or a stale one); "
+                 "not starting. Check UPTERM_RIG, or stop that process." % (paths.RIG_N, port, " ".join(pids)))
+
+def os_tree_no_dopus(tree):
+    """--no-dopus on a host-directory system (--os <name>, --os32): the tree is copied once and keeps what an earlier
+    run installed, so the Directory Opus S:User-Startup blocks (assign, PATH) go from the rig's copy. A clean tree has
+    none (nothing happens). RIG-OS32-NODOPUS: the flag was only read for the sys.hdf clone."""
+    for sub in ("S", "s"):
+        us = pathlib.Path(tree) / sub / "User-Startup"
+        if us.is_file():
+            data = us.read_bytes()
+            clean = data
+            for name in ("DirectoryOpus 5", "DOpus5"):
+                clean = user_startup.strip_upterm_blocks(clean, name)
+            if clean != data:
+                us.write_bytes(clean)
 
 def mine():
     out = subprocess.run(["ps", "-eo", "pid,command"], capture_output=True, text=True).stdout
@@ -709,17 +1685,69 @@ def logwatch():
             paths.cap_fsuae_log(extra=[SERIAL])
             time.sleep(LOGWATCH_EVERY)
 
-def start(retries=2):
-    """Boot; a boot that stops right after "go started" (the emulator froze
-    before anything under test loaded: seen 3 times on 2026-09-29, cause not
-    found) is killed and retried."""
+START_RETRIES = 2
+BOOT_POLL = 2       # seconds between two looks at wasabid and boot.log
+BOOT_STALL = 180    # seconds boot.log may stay unchanged after "go started" before the boot counts as frozen
+BOOT_CAP = 1200     # seconds a boot may take in all, progress or not
+BOOT_NOTE = 60      # a boot older than this prints where it stands, every BOOT_NOTE s
+
+
+def boot_frozen(text, since_change, elapsed):
+    """The boot is dead: BOOTX:go started and boot.log gained nothing for BOOT_STALL s, or BOOT_CAP passed.
+    Slow is not dead (RIG-SLOW-BOOT, 2026-10-28): go's shadow copies are ~1000 UAE-filesystem round trips, and under
+    host load (two other emulators, load 22-40) the kit block ran 36 s instead of 1 s and a whole boot took ~10 minutes;
+    a fixed 120 s wait killed such boots as "frozen", `ami.py reboot` gave them up at 240 s, and the kill + retry looked
+    like a reboot loop. go's progress lines (kit shadows done, wait done, env ok, UP-Term shadows done, XCON mounted,
+    assigns done, wasabid started) show a live boot. Before "go started" nothing writes (KS boot, SetPatch, the 060
+    library's reset), so that phase only has the cap."""
+    if elapsed >= BOOT_CAP:
+        return True
+    return "go started" in text and "wasabid started" not in text and since_change >= BOOT_STALL
+
+
+def start(retries=START_RETRIES):
+    """Boot; a boot whose boot.log stops advancing (boot_frozen: the emulator froze before anything under test
+    loaded, seen 3 times on 2026-09-29, cause not found) is killed and retried. A slow boot is waited for.
+    One start per rig at a time: the mine() check below and the FS-UAE launch are seconds apart (the system disk
+    clone), so two starts begun together both saw no emulator and both launched one on the same sys.hdf, and the
+    Amiga showed a disk checksum error (rig 3, 2026-10-30). A second start waits on start.lock for the first, then
+    finds its emulator in mine() and says "already running"."""
+    RIG.mkdir(parents=True, exist_ok=True)
+    with open(RIG / "start.lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)   # released when the block ends or the process dies
+        return _start(retries)
+
+def _start(retries):
     # before anything is written: a start while the rig runs (or boots, when
     # status still says down) must not rewrite BOOTX:go, BOOTX:s/startup-sequence
     # and BOOTX:Mountlist, or delete BOOTX:boot.log, under the running system
     if mine():
         print("already running")
         return
-    START_ARGS.write_text(json.dumps(sys.argv[2:]))
+    refuse_port_clash()
+    # the system disk is new from the master on every start: nothing a dead run wrote into DH0: survives, and a rig
+    # that never had one gets it here. Only here: no emulator of this rig runs (mine() above).
+    if KEEP_SYS and not OS and not OS32 and (RIG / "sys.hdf").exists():
+        # `rig.py reboot`: DH0: stays as the last run left it. The clone-time edits are in it already; only the
+        # wasabi block goes again (an install may have written it, and its wasabid takes port 1234, sys_hdf_no_wasabid)
+        sys_hdf_no_wasabid(RIG / "sys.hdf")
+        if A500:
+            sys_hdf_a500(RIG / "sys.hdf")
+    elif not OS and not OS32:
+        fresh_sys_hdf()
+        sys_hdf_screenmode(RIG / "sys.hdf")
+        sys_hdf_monitors(RIG / "sys.hdf")
+        sys_hdf_no_wasabid(RIG / "sys.hdf")
+        if "--no-dopus" in sys.argv:
+            sys_hdf_no_dopus(RIG / "sys.hdf")
+        else:
+            sys_hdf_dopus(RIG / "sys.hdf")
+        sys_hdf_kit(RIG / "sys.hdf")
+        if A500:
+            sys_hdf_a500(RIG / "sys.hdf")
+        sys_hdf_cpu_lib(RIG / "sys.hdf")   # the master image is never touched; this and any other write into DH0: runs after the clone
+    RIG.mkdir(parents=True, exist_ok=True)
+    START_ARGS.write_text(json.dumps([a for a in sys.argv[2:] if a != "--keep-sys"]))
     setup_config_only()
     paths.cap_fsuae_log(limit=0)   # a fresh log per start (the tail of the last run stays in <name>.tail)
     log = RIG / "boot/boot.log"
@@ -727,37 +1755,54 @@ def start(retries=2):
         log.unlink()
     if paths.FSUAE.suffix == ".app":
         subprocess.run(["open", "-g", "-n", "-a", str(paths.FSUAE), "--args", str(CFG)], check=True)
-    else:  # a bare binary: detached, so the rig outlives this command
-        subprocess.Popen([str(paths.FSUAE), str(CFG)], stdin=subprocess.DEVNULL,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    else:  # a bare binary: detached, so the rig outlives this command; nice 19 so the
+        # machine-load gates of other sessions do not block on the rig
+        fin, fout, ferr = fsuae_stdio()
+        subprocess.Popen(["nice", "-n", "19", str(paths.FSUAE), str(CFG)], stdin=fin,
+                         stdout=fout, stderr=ferr, start_new_session=True)
     subprocess.Popen([sys.executable, str(pathlib.Path(__file__).resolve()), "logwatch"], stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-    for i in range(90):
-        time.sleep(2)
+    t0 = time.time()
+    seen, changed, noted = "", t0, t0
+    while True:
+        time.sleep(BOOT_POLL)
         if status(quiet=True):
             print("up")
             missing = boot_assigns_missing()
             if missing:
                 sys.exit("rig: the boot lacks the assigns %s (BOOTX:go or the boot hook did not run)" % " ".join(missing))
             guard_shell_startup()
+            start_watchdog()
             if M060:
                 retry_wb_reset()
             return
+        now = time.time()
         text = log.read_text() if log.exists() else ""
-        if i >= 60 and "go started" in text and "assigns done" not in text:
-            break  # frozen early boot
+        if text != seen:
+            seen, changed = text, now
+        if now - t0 >= BOOT_NOTE and now - noted >= BOOT_NOTE:
+            noted = now
+            last = text.strip().splitlines()[-1] if text.strip() else "(go not started)"
+            print("boot %d s: %s" % (now - t0, last), flush=True)
+        if boot_frozen(text, now - changed, now - t0):
+            break
     print("[ERROR] no wasabid answer; boot.log:",
           log.read_text().strip().replace("\n", " | ") if log.exists() else "(none: go never ran)")
     if retries > 0:
         print("retrying the boot")
         stop()
-        start(retries - 1)
+        return _start(retries - 1)
+    # out of retries: stop the last boot's emulator and fail the command. Falling off the end returned rc 0, so
+    # getty_rig (check=True) went on against a rig that never came up and died in wasabi Conn with
+    # ConnectionRefusedError, and the third boot's FS-UAE (with its logwatch) kept running unattended (rig 1, 2026-10-25).
+    stop()
+    sys.exit("rig: the boot failed %d times (no wasabid answer); see the boot.log lines above" % (START_RETRIES + 1))
 
 # the assigns every rig script uses, made by the boot hook and BOOTX:go: a
 # boot that lacks one has a requester waiting ("Please insert volume VTC:"
 # three times on 2026-10-10: ENV:, UP-Term:, VTC:). Read from Assign LIST,
 # which never asks for a volume.
-BOOT_ASSIGNS = ["VTC", "ETC", "AmiTCP", "LIBS"]
+BOOT_ASSIGNS = ["VTC", "ETC", "LIBS", "ENV"]
 
 def boot_assigns_missing():
     """The names of BOOT_ASSIGNS (and GG: when VTC:gg/bin/sh is on the rig) the
@@ -791,6 +1836,12 @@ def guard_shell_startup():
     tmp.unlink()
     print("S:Shell-Startup: the VTC:gg/bin path line is guarded now")
 
+WB_RESET_RETRIES = 3   # Retry clicks before the start fails: Retry never succeeds while windows stay open
+
+# The front screen sizes of a chipset (PAL/NTSC, laced or not) Workbench: retry_wb_reset's sign that IPrefs' RTG switch failed
+NATIVE_WB = {(640, 200), (640, 256), (640, 400), (640, 512)}
+
+
 def retry_wb_reset():
     """--060: the boot comes up on a PAL Workbench with Intuition's "attempting
     to reset the Workbench screen ... close all windows" requester (IPrefs'
@@ -803,12 +1854,13 @@ def retry_wb_reset():
     import ami
     log = open(RIG / "retry.log", "a")
     t0 = time.time()
+    clicks = 0
     while time.time() - t0 < 120:
         b = ami.req(0x0A)
-        width = int.from_bytes(b[2:4], "big")
-        if width != 640:
+        width, height = int.from_bytes(b[2:4], "big"), int.from_bytes(b[4:6], "big")
+        if (width, height) not in NATIVE_WB:   # the 640x360 RTG mode is 640 wide too
             if time.time() - t0 > 20:   # RTG, and nothing came for 20 s
-                log.write("%.0fs RTG %d\n" % (time.time() - t0, width))
+                log.write("%.0fs RTG %dx%d\n" % (time.time() - t0, width, height))
                 return
             time.sleep(2)
             continue
@@ -825,6 +1877,13 @@ def retry_wb_reset():
                 w, h = map(int, f[4].split("x"))
                 gads.append((win[0] + int(f[2]), win[1] + int(f[3]), w, h))
         if gads:
+            if clicks >= WB_RESET_RETRIES:
+                shown = " | ".join(l.strip() for l in tree if l.startswith(("S ", "W ", "G ")) and ("Request" in l or "Retry" in l or "Cancel" in l or l.startswith("S ")))
+                log.write("gave up after %d Retry clicks: %s\n" % (clicks, shown))
+                log.flush()
+                sys.exit("rig: IPrefs' System Request (Workbench screen reset) stayed after %d Retry clicks; windows were open "
+                         "while IPrefs reset the screen (RIG-IPREFS-SYSREQ). Saw: %s" % (clicks, shown))
+            clicks += 1
             x, y, w, h = min(gads)
             kx, ky = ami.pointer_scale()
             cx, cy = x + w // 2, y + h // 2
@@ -867,6 +1926,109 @@ def stop():
         subprocess.run(["pkill", "-9", "-f", str(CFG)])
     print("stopped" if not mine() else "[ERROR] still running")
 
+WATCHDOG_EVERY = 60   # seconds between two idle checks
+WATCHDOG_QUIET = 5    # the last command must be at least this old: a stop never lands on a write in flight
+WATCHDOG_IDLE_MINUTES = 60
+WATCHDOG_RESET_LOOP = 10   # "CPU reset" lines added between two checks: a reset loop (a healthy warm reboot adds 1 or 2)
+
+def idle_minutes():
+    """--idle-minutes N of this command line (default 60; 0 = no watchdog)."""
+    if "--idle-minutes" in sys.argv[:-1]:
+        return int(sys.argv[sys.argv.index("--idle-minutes") + 1])
+    return WATCHDOG_IDLE_MINUTES
+
+def watchdog_step(now, rig_n, idle_min, last_cmd, long_active, stop_fn):
+    """One watchdog check; calls stop_fn() and returns True when the rig has been idle long enough.
+    Never rig 1, never with idle_min 0, never while a long run holds its flag, never within WATCHDOG_QUIET s of
+    a command; a rig nothing ever talked to counts as idle from last_cmd None only when idle_min is exceeded
+    by the caller's start stamp (start touches the stamp)."""
+    if rig_n == 1 or idle_min <= 0 or long_active or last_cmd is None:
+        return False
+    quiet = now - last_cmd
+    if quiet < WATCHDOG_QUIET or quiet < idle_min * 60:
+        return False
+    stop_fn()
+    return True
+
+def reset_loop_step(prev_resets, resets, recover_fn):
+    """One reset-loop check; calls recover_fn() and returns True when the FS-UAE log grew by WATCHDOG_RESET_LOOP or
+    more "CPU reset" lines since the last check (paths.fsuae_reset_count). The first check (prev_resets None) only
+    takes the baseline. A gurued 68060 rig loops in Kickstart's early alert until something cold-starts it
+    (RIG-RESET-LOOP); the recovery is a stop and a start on the same system disk, as `rig.py reboot` does."""
+    if prev_resets is None or resets - prev_resets < WATCHDOG_RESET_LOOP:
+        return False
+    recover_fn()
+    return True
+
+RESET_LOOP_LOGS_KEPT = 3   # reset-loop-*.fs-uae.log copies kept next to watchdog.log
+
+def save_reset_loop_log(log):
+    """Copy the looping run's FS-UAE log next to `log` (watchdog.log) as reset-loop-<stamp>.fs-uae.log and return the
+    first-fault text for the watchdog line. The restart's `start` truncates the live log and keeps only its last
+    1 MB as .tail, which a loop at ~8 resets/s fills with reset lines, and the next start overwrites even that: the
+    guest crash that started the loop was lost every time (RIG31-RESET-LOOP, 2026-10-31). Keeps the newest
+    RESET_LOOP_LOGS_KEPT copies."""
+    src = paths.FSUAE_LOG_DIR / "fs-uae.log.txt"
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    dest = log.parent / ("reset-loop-%s.fs-uae.log" % stamp)
+    try:
+        shutil.copyfile(src, dest)
+    except OSError as e:
+        return "fs-uae log not saved (%s)" % e
+    for old in sorted(log.parent.glob("reset-loop-*.fs-uae.log"))[:-RESET_LOOP_LOGS_KEPT]:
+        old.unlink()
+    crash = paths.fsuae_crash()
+    first = crash[0] if crash else "no CPU exception logged (ROM reset)"
+    return "first fault: %s; log saved as %s" % (first, dest)
+
+def recover_reset_loop(log):
+    """Save the looping run's FS-UAE log (save_reset_loop_log), stop() the looping emulator (nothing answers,
+    nothing writes: the safe stop falls through to TERM), then a detached `start --keep-sys` with the last start's
+    arguments; its own watchdog replaces this one."""
+    saved = save_reset_loop_log(log)
+    with log.open("a") as f:
+        f.write("%s reset loop (%d+ CPU resets in %d s): restarting rig %d; %s\n"
+                % (time.strftime("%F %T"), WATCHDOG_RESET_LOOP, WATCHDOG_EVERY, paths.RIG_N, saved))
+    stop()
+    with log.open("a") as f:
+        subprocess.Popen([sys.executable, str(pathlib.Path(__file__).resolve()), "start", "--keep-sys"] + reboot_args([]),
+                         stdin=subprocess.DEVNULL, stdout=f, stderr=subprocess.STDOUT, start_new_session=True)
+
+def start_watchdog():
+    """Launch the detached watchdog for this rig (not rig 1, not with --idle-minutes 0)."""
+    n = idle_minutes()
+    if paths.RIG_N == 1 or n <= 0:
+        return
+    paths.touch_command()   # the idle clock starts at boot
+    subprocess.Popen([sys.executable, str(pathlib.Path(__file__).resolve()), "watchdog", "--idle-minutes", str(n)],
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    print("watchdog: stops rig %d after %d idle minutes, restarts it from a reset loop (--idle-minutes 0 = off)" % (paths.RIG_N, n))
+
+def watchdog():
+    """The loop `start` detaches: every WATCHDOG_EVERY s one watchdog_step; leaves when the rig is gone (stopped by
+    other means) or after it stopped it, through stop(), the safe stop. A newer watchdog replaces this one (pid file)."""
+    pidf = RIG / "watchdog.pid"
+    pidf.write_text(str(os.getpid()))
+    log = RIG / "watchdog.log"
+    n = idle_minutes()
+    resets = None
+    while pidf.exists() and pidf.read_text() == str(os.getpid()):
+        if not mine():
+            break
+        def do_stop():
+            with log.open("a") as f:
+                f.write("%s idle %d min: stopping rig %d\n" % (time.strftime("%F %T"), n, paths.RIG_N))
+            stop()
+        if watchdog_step(time.time(), paths.RIG_N, n, paths.last_command(), paths.long_run_active(), do_stop):
+            break
+        count = paths.fsuae_reset_count()
+        if reset_loop_step(resets, count, lambda: recover_reset_loop(log)):
+            break
+        resets = count
+        time.sleep(WATCHDOG_EVERY)
+    if pidf.exists() and pidf.read_text() == str(os.getpid()):
+        pidf.unlink()
+
 def status(quiet=False):
     sys.path.insert(0, str(ROOT / "tools/rig"))
     import ami
@@ -877,7 +2039,11 @@ def status(quiet=False):
         return True
     except BaseException:
         if not quiet:
-            print("down")
+            crash = paths.fsuae_crash() if mine() else None
+            if crash:
+                print("crashed: %s, %d CPU reset(s) since (fs-uae log %s)" % (crash[0], crash[1], paths.FSUAE_LOG_DIR))
+            else:
+                print("down")
         return False
 
 def muforce():
@@ -888,7 +2054,49 @@ def wasabi():
     import wasabi as wb
     wb.main(sys.argv[2:])
 
+def dopus():
+    """`rig.py dopus [--force] [--own-screen]`: install Directory Opus 5.104 into this rig's VTC: drawer once (tools/rig/dopus_rig.py);
+    --own-screen also saves the environment that puts DOpus on its own screen (DOPUS.1, 1344x1080)."""
+    import dopus_rig
+    dopus_rig.main()
+
+# the commands that talk to a running rig; start, setup and install bring VTC: to the build themselves, stop, status,
+# reboot, kit-restore, logwatch and watchdog send it nothing. Every other path to a rig (ami.py, the scripts) passes ami.req.
+GATED = ("dbg", "dbgbreak", "wasabi", "muforce", "aga", "aga256", "rtg", "dopus")
+
+def clear():
+    """Free this rig's folder (RULES.md rule 7). Refused while this rig's fs-uae runs: rig 9 ran with build/rig9
+    deleted under it and build/rig4 vanished the same way (RIG-FOLDER-VANISHED), because the documented
+    `mv build/rig<n> build/rig<n>.del && rm -rf` ran with no check. Stop the rig first (`rig.py stop`)."""
+    if mine():
+        sys.exit("rig: %s is running (fs-uae on %s); `rig.py stop` it first, folder not removed" % (paths.RIG_NAME, CFG))
+    if not RIG.exists():
+        print("rig: %s already gone" % RIG)
+        return
+    gone = RIG.with_name(RIG.name + ".del")   # renamed first: a slow rmtree must not race the next start of this number
+    shutil.rmtree(gone, ignore_errors=True)
+    RIG.rename(gone)
+    shutil.rmtree(gone)
+    print("rig: removed", RIG)
+
+def main(argv):
+    """Run the command argv[1]. --help, -h, help and ? (alone or after a command) print this file's usage (rc 0), the command not run; no command or an
+    unknown one prints it to stderr (rc 2)."""
+    cmds = {"setup": setup, "start": start, "stop": stop, "clear": clear, "reboot": reboot, "install": install, "kit-restore": kit_restore,
+            "status": status, "logwatch": logwatch, "muforce": muforce, "dbg": dbg, "dbgbreak": dbgbreak, "watchdog": watchdog, "wasabi": wasabi, "aga": lambda: screenmode("aga"),
+            "aga256": lambda: screenmode("aga256"), "rtg": lambda: screenmode("rtg"), "dopus": dopus}
+    helps = ("--help", "-h", "help", "?")
+    if len(argv) > 1 and (argv[1] in helps or (argv[1] in cmds and any(a in helps for a in argv[2:]))):
+        print(__doc__)   # also `rig.py stop --help`: usage, never the command's side effect
+        return 0
+    if len(argv) < 2 or argv[1] not in cmds:
+        print(__doc__, file=sys.stderr)
+        print("rig.py: %s" % ("no command" if len(argv) < 2 else "unknown command %r" % argv[1]), file=sys.stderr)
+        return 2
+    if argv[1] in GATED:
+        ensure_current()
+    cmds[argv[1]]()
+    return 0
+
 if __name__ == "__main__":
-    {"setup": setup, "start": start, "stop": stop, "install": install, "kit-restore": kit_restore,
-     "status": status, "logwatch": logwatch, "muforce": muforce, "wasabi": wasabi, "aga": lambda: screenmode("aga"), "aga256": lambda: screenmode("aga256"),
-     "rtg": lambda: screenmode("rtg")}[sys.argv[1]]()
+    sys.exit(main(sys.argv))

@@ -60,7 +60,7 @@ class KitModes(unittest.TestCase):
                          str(self.d / "Files/userland/licenses/less/LICENSE")]))
 
     def test_the_built_kit_has_no_file_without_u_w(self):
-        kit = pathlib.Path(os.environ.get("KIT", ROOT / "build/dist/UP-Term"))   # make dist-check: each archive
+        kit = pathlib.Path(os.environ.get("KIT", ROOT / "build/dist/up-term"))   # make dist-check: each archive
         kit = kit if kit.is_absolute() else ROOT / kit
         if not kit.exists():
             self.skipTest("no %s (make dist)" % kit)

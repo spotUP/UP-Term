@@ -55,6 +55,7 @@
 #include "waitset.h"
 #include "pty_name.h"
 #include "../tty/ldisc.h"
+#include "upterm_version.h"
 
 struct ExecBase *SysBase;
 struct DosLibrary *DOSBase;
@@ -102,7 +103,7 @@ static void tr(const char *s, LONG a, LONG b)
 #endif
 #define STR_(x) #x
 #define STR(x) STR_(x)
-static const char vers[] = "$VER: pty-handler 0.1 (UP-Term, build " STR(VTCON_BUILD) ")";
+static const char vers[] = "$VER: pty-handler " UPTERM_VERSION " (" UPTERM_DATE ") UP-Term build " STR(VTCON_BUILD);
 
 #define ID_MAX PN_ID_MAX
 #define OUT_MAX 4096   /* slave output and echo, waiting for the master */

@@ -3,11 +3,15 @@ Delete >NIL: C:amiga-pi QUIET
 ; the quick-launch icon in UP-Term: (only when there is an UP-Term: to look in)
 Assign >NIL: UP-Term: EXISTS
 If NOT WARN
-  Delete >NIL: UP-Term:amiga-pi UP-Term:amiga-pi.info QUIET
+; @include dist/common/resolve-uptreal.dos
+  Delete >NIL: UPTREAL:amiga-pi UPTREAL:amiga-pi.info QUIET
+  Assign >NIL: UPTREAL:
 EndIf
 ; the four skills this archive installed, each drawer by name; any other drawer in skills is the user's and stays
 Delete >NIL: ENVARC:amiga-pi/skills/amigados ENVARC:amiga-pi/skills/arexx ENVARC:amiga-pi/skills/amiga-c-build ENVARC:amiga-pi/skills/amiga-autodocs ALL QUIET
 Assign >NIL: UP-Term: EXISTS
 If NOT WARN
-  Delete >NIL: UP-Term:var/amiga-pi/skills/amigados UP-Term:var/amiga-pi/skills/arexx UP-Term:var/amiga-pi/skills/amiga-c-build UP-Term:var/amiga-pi/skills/amiga-autodocs ALL QUIET
+; @include dist/common/resolve-uptreal.dos
+  Delete >NIL: UPTREAL:var/amiga-pi/skills/amigados UPTREAL:var/amiga-pi/skills/arexx UPTREAL:var/amiga-pi/skills/amiga-c-build UPTREAL:var/amiga-pi/skills/amiga-autodocs ALL QUIET
+  Assign >NIL: UPTREAL:
 EndIf

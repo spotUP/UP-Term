@@ -39,6 +39,14 @@ class Lessons(unittest.TestCase):
             with open(p, 'w') as fh:
                 fh.write('#!/bin/sh\nexit 0\n')
             os.chmod(p, 0o755)
+        # lesson 14 asks Amarchy for its state (rx, the STATUS reply amarchy/amarchy.c builds) and counts the
+        # shipped keymap rows at ENVARC:up-term/keymap, a relative path on the host: the tutorial starts in tmp
+        rx = os.path.join(cls.bin, 'rx')
+        with open(rx, 'w') as fh:
+            fh.write('#!/bin/sh\necho "hits=0 rows=41 enabled=1 active=0"\n')
+        os.chmod(rx, 0o755)
+        os.mkdir(os.path.join(cls.tmp, 'ENVARC:up-term'))
+        shutil.copy(os.path.join(ROOT, 'dist', 'keymap'), os.path.join(cls.tmp, 'ENVARC:up-term', 'keymap'))
 
     @classmethod
     def tearDownClass(cls):
@@ -54,11 +62,13 @@ class Lessons(unittest.TestCase):
                'UPTERM_STATE': self.fake, 'UPTERM_FAKE_DIR': d, 'TMUX_TMPDIR': sock}
         if frozen:
             env['UPTERM_FAKE_FROZEN'] = '1'
+        if HAVE_TMUX:
+            # a cleanup, not a line after the run: a timed-out lesson must not leave its
+            # tmux server running (cleanups run last-in first-out, so before the socket rmtree)
+            self.addCleanup(subprocess.run, ['tmux', 'kill-server'], env=env, capture_output=True)
         r = subprocess.run(shell + [TUTORIAL, '--selftest', os.path.join(LESSONS, f)],
                            stdin=subprocess.DEVNULL, capture_output=True, env=env,
                            cwd=self.tmp, timeout=120)
-        if HAVE_TMUX:
-            subprocess.run(['tmux', 'kill-server'], env=env, capture_output=True)
         self.state_dir = d
         return r.stdout.decode() + r.stderr.decode()
 
@@ -127,10 +137,11 @@ class Lessons(unittest.TestCase):
                 self.assertTrue(dirs, out)
                 self.assertEqual([x for x in dirs if x.startswith(sandbox)], [], out)
 
-    def test_the_shipped_lessons_are_thirteen(self):
-        self.assertEqual(len(FILES), 13)
+    def test_the_shipped_lessons_are_fourteen(self):
+        self.assertEqual(len(FILES), 14)
         self.assertIn('12-the-up-term-window.lesson', FILES)
         self.assertIn('13-split-panes-tmux.lesson', FILES)
+        self.assertIn('14-amarchy-keys.lesson', FILES)
 
     def test_a_check_that_passes_before_the_answer_fails(self):
         lesson = os.path.join(self.tmp, '99-vacuous.lesson')

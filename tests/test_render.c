@@ -10,6 +10,9 @@
 #include "../render/amiga_render.h"
 #include "harness.h"
 #include "../render/pen_match.h"
+#include "../render/emoji.h"
+#include "../render/outline.h"
+#include "../render/vtwin.h"
 
 #define COLS 20
 #define ROWS 8
@@ -39,14 +42,12 @@ static void cb_scroll(void *u, int top, int bot, int n)
  * ?2026 frame ended), cursor on, mask end */
 static void pass(const char *s)
 {
-    int composed;
     vr_mask_begin(&rn);
     vr_cursor_off(&rn);
     vt_feed(term, (const vt_u8 *)s, (long)strlen(s));
-    composed = vr_compose_begin(&rn);
+    vr_compose_begin(&rn);
     vt_flush(term);
-    if (composed)
-        vr_compose_end(&rn);
+    vr_compose_end(&rn);
     vr_cursor_on(&rn);
     vr_mask_end(&rn);
 }
@@ -87,6 +88,114 @@ static void open_term_in(int lines, enum vt_personality pers)
 static void open_term(int lines)
 {
     open_term_in(lines, VT_XTERM);
+}
+
+/* The engine damages the window during vtwin_attach (vt_set_personality resets it) before bind runs vr_init:
+ * sel_drop_if_hit asks a renderer with no terminal yet. Before 2026-10-25 vr_selection read the terminal's
+ * scroll count first, a read of NULL + 0x56 that MuForce reported on every new window. */
+static void selection_of_a_renderer_not_yet_initialised_is_none_and_reads_no_terminal(void)
+{
+    vr_render r;
+    int ax = -1, ay = -1, bx = -1, by = -1;
+    memset(&r, 0, sizeof r);
+    CHECK_INT(vr_selection(&r, &ax, &ay, &bx, &by), 0);
+    CHECK_INT(ax, -1);
+}
+
+
+/* A drag selection exists only while the left button is down and the window is active (render/vtwin.c). The
+ * release of a press that opened the Amarchy text menu's window went to that window: the terminal kept
+ * dragging, and every pointer move extended the selection for good. */
+static vtwin dw;
+static int dh_raw(void *u) { (void)u; return 0; }
+static void dh_input(void *u, const vt_u8 *b, long n) { (void)u; (void)b; (void)n; }
+static const vtwin_host dhost = { 0, dh_input, 0, 0, dh_raw, 0, 0, 0, 0, 0 };
+
+static void drag_open(void)
+{
+    vt_callbacks cb;
+    memset(&dw, 0, sizeof dw);
+    memset(&cb, 0, sizeof(cb));
+    cb.damage = cb_damage;
+    cb.scroll = cb_scroll;
+    gf_open(COLS * CW, ROWS * CH, CW, CH, 6);
+    vtwin_init(&dw, &dhost, 0);
+    term = vt_new(COLS, ROWS, 100, &cb, &dw.r);
+    dw.t = term;
+    dw.win = gf_window();
+    vr_init(&dw.r, gf_window(), gf_font(), term, VT_ENC_LATIN1);
+    vt_feed(term, (const vt_u8 *)"alpha beta gamma delta\r\nline two\r\n", 34);
+    vt_flush(term);
+}
+
+static void drag_close(void)
+{
+    vr_free(&dw.r);
+    vt_free(term);
+    gf_close();
+}
+
+/* the pixel in the middle of cell (cx, cy) */
+#define PX(cx) (dw.r.ox + (cx) * CW + 1)
+#define PY(cy) (dw.r.oy + (cy) * CH + 1)
+
+static int sel_end(int *bx, int *by)
+{
+    int ax, ay;
+    return vr_selection(&dw.r, &ax, &ay, bx, by);
+}
+
+static void a_drag_ends_when_the_left_button_is_up_or_the_window_goes_inactive(void)
+{
+    int bx = -1, by = -1;
+    drag_open();
+
+    /* round trip: the press, then moves WITH the left button, extend */
+    vtwin_mouse(&dw, 0, SELECTDOWN, 0, PX(2), PY(0), 10, 0);
+    CHECK_INT(dw.dragging, 1);
+    vtwin_mouse(&dw, 1, 0, IEQUALIFIER_LEFTBUTTON, PX(6), PY(0), 10, 1);
+    CHECK_INT(sel_end(&bx, &by), 1);
+    CHECK_INT(bx, 6);
+    CHECK_INT(dw.dragging, 1);
+
+    /* the release went elsewhere: a move without the button ends the drag, the selection stays, no extension */
+    vtwin_mouse(&dw, 1, 0, 0, PX(12), PY(0), 10, 2);
+    CHECK_INT(dw.dragging, 0);
+    CHECK_INT(sel_end(&bx, &by), 1);
+    CHECK_INT(bx, 6);
+    vtwin_mouse(&dw, 1, 0, IEQUALIFIER_LEFTBUTTON, PX(15), PY(0), 10, 3);
+    CHECK_INT(sel_end(&bx, &by), 1); /* no drag any more: even a move with the bit set extends nothing */
+    CHECK_INT(bx, 6);
+
+    /* the window goes inactive mid-drag: the drag ends, a tick and a move do not extend */
+    vtwin_mouse(&dw, 0, SELECTDOWN, 0, PX(1), PY(1), 20, 0);
+    vtwin_mouse(&dw, 1, 0, IEQUALIFIER_LEFTBUTTON, PX(4), PY(1), 20, 1);
+    CHECK_INT(dw.dragging, 1);
+    CHECK_INT(sel_end(&bx, &by), 1);
+    CHECK_INT(bx, 4);
+    vtwin_focus(&dw, 0);
+    CHECK_INT(dw.dragging, 0);
+    dw.win->MouseX = PX(9);
+    dw.win->MouseY = PY(1);
+    vtwin_tick(&dw);
+    vtwin_mouse(&dw, 1, 0, IEQUALIFIER_LEFTBUTTON, PX(9), PY(1), 20, 2);
+    CHECK_INT(sel_end(&bx, &by), 1);
+    CHECK_INT(bx, 4);
+
+    /* the tick's poll follows the pointer only while the window is active */
+    vtwin_focus(&dw, 1);
+    dw.dragging = 1;
+    dw.drag_x = 4;
+    dw.drag_y = 1;
+    dw.inactive = 1;
+    vtwin_tick(&dw);
+    CHECK_INT(sel_end(&bx, &by), 1);
+    CHECK_INT(bx, 4);
+    dw.inactive = 0;
+    vtwin_tick(&dw);
+    CHECK_INT(sel_end(&bx, &by), 1);
+    CHECK_INT(bx, 9); /* active and dragging: the poll extends */
+    drag_close();
 }
 
 static void close_term(void)
@@ -225,6 +334,30 @@ static void direct_colour_background_in_the_amiga_personality_is_drawn_in_its_co
     /* and the Amiga personality's own colours stay screen pens */
     CHECK_INT(bg_pen_after(VT_AMIGA, "\x1b[44mhi"), 4);
     CHECK_INT(bg_pen_after(VT_AMIGA, "\x1b[48;5;9mhi"), 9);
+}
+
+/* NewShell in a CON: window on Workbench (owner, 1.6 on a Replay): "still grey". The window ground is
+ * light grey on black, but the Amiga personality drew its default background, and the global background a
+ * Shell prompt sets with CSI >0m, as screen pen 0: the Workbench grey. Pen 0 is the window's background and
+ * pen 1 its text, so both draw with the window's ground; pens 2-7 stay screen pens. */
+static void con_window_draws_pen_zero_with_its_own_ground(void)
+{
+    int pen;
+    open_term_in(0, VT_AMIGA);
+    vr_set_defaults(&rn, 0xC0C0C0UL, 0x000000UL);
+    CHECK(rn.pen_default_bg != 0); /* the ground is a pen of its own, not the Workbench grey */
+    pass("hi");
+    CHECK_INT(gf_bgpen(0, 0), (int)rn.pen_default_bg);
+    pass("\r\n\x9b>00m\x9b" "01;00m1.SYS:> ");
+    CHECK_INT(gf_bgpen(0, 1), (int)rn.pen_default_bg);
+    CHECK_INT(gf_bgpen(COLS - 1, 1), (int)rn.pen_default_bg);
+    pass("\r\n\x9b" "40mA\x9b" "41mB\x9b" "42mC");
+    CHECK_INT(gf_bgpen(0, 2), (int)rn.pen_default_bg);
+    CHECK_INT(gf_bgpen(1, 2), (int)rn.pen_default_fg);
+    CHECK_INT(gf_bgpen(2, 2), 2);
+    pen = gf_bgpen(0, 2);
+    CHECK(pen != 0);
+    close_term();
 }
 
 /* ---- S3: the fill paths (S2's FillPixelArray, and the cells joined into one fill) ---- */
@@ -524,6 +657,33 @@ static void a_synchronized_frame_that_scrolls_shows_what_in_place_drawing_shows(
     }
 }
 
+/* C1 (scidemo-lite on the A1200: a page-down came in two steps, the second a quarter second later): each
+ * ?2026 frame the program ends is shown as the grid has it. Page-downs one after another scrolled ahead of the
+ * grid (jump scroll, its step doubling while passes keep scrolling) and left blank rows at the bottom for vtwin's
+ * settle to blit down later; a jump left by output before the frame is settled in it too. */
+static void a_synchronized_frame_that_scrolls_is_not_left_for_settle(void)
+{
+    int k;
+    open_term(12);
+    pass("\x1b[?25l");         /* no cursor: a pass draws it, vr_redraw does not */
+    for (k = 0; k < 4; k++) {   /* a page-down: the screen scrolls by three rows, then the new rows */
+        pass(synced("\x1b[10;1H\r\n\r\n\r\nPgDn"));
+        CHECK_INT(rn.jump, 0);
+        snapshot();
+        vr_redraw(&rn);          /* the grid, drawn in full */
+        CHECK(same_as_snapshot());
+    }
+    pass("\r\n");               /* plain output that scrolls, pass after pass: jump scroll */
+    pass("\r\n");
+    CHECK(rn.jump > 0);
+    pass(synced("\r\nEnd"));
+    CHECK_INT(rn.jump, 0);
+    snapshot();
+    vr_redraw(&rn);
+    CHECK(same_as_snapshot());
+    close_term();
+}
+
 static int texts_of(char ch)
 {
     int i, n = 0;
@@ -683,6 +843,40 @@ static void a_planar_frame_with_lines_or_a_covered_window_is_drawn_in_place(void
         CHECK(same_as_snapshot());
         close_term();
     }
+    planar_depth = 0;
+}
+
+/* upkg browse on an AGA window (owner, 1.4): the list came up over the banner it replaced -- the banner's pixels
+ * stayed in every blank cell. The list's frame clears the alternate screen and starts with a box corner: the planar
+ * pass, begun over the whole grid, counted the window blank while its cells went to the planes only, gave up at the
+ * corner (graphics.library draws it) and drew the frame again in place -- skipping the blank cells as if the window
+ * were blank already. In place, the screen shows only the new frame. */
+static void a_planar_frame_drawn_in_place_after_all_clears_the_screen_it_replaced(void)
+{
+    static const char frame[] = "\x1b[?1049h\x1b[?2026h\x1b[H\x1b[2J\x1b[36m\xe2\x95\x94\xe2\x95\x90\x1b[m\x1b[5;3Hlist\x1b[?2026l";
+    char full[ROWS * (COLS + 2) + 1];
+    int y;
+    planar_depth = 4;
+    planar_left = 4;
+    open_term_in(0, VT_XTERM);
+    pass("\x1b[?25l");
+    pass(frame);
+    snapshot();
+    close_term();
+    open_term_in(0, VT_XTERM);
+    pass("\x1b[?25l");
+    full[0] = 0;
+    for (y = 0; y < ROWS; y++) {
+        memset(full + strlen(full), 'B', COLS);
+        full[(y + 1) * COLS + y * 2] = 0;
+        strcat(full, y < ROWS - 1 ? "\r\n" : "");
+    }
+    pass(full); /* the banner: every cell drawn */
+    rn.n_copies = 0;
+    pass(frame);
+    CHECK_INT(rn.n_copies, 0); /* drawn in place: the corner needs graphics.library */
+    CHECK(same_as_snapshot());
+    close_term();
     planar_depth = 0;
 }
 
@@ -1318,6 +1512,115 @@ static void dither_off_draws_the_nearest_single_pen_and_on_dithers_again(void)
     test_npal = 0;
 }
 
+/* ---- R4: antialiased outline glyphs ---- */
+
+/* A glyph of UP-Term's own engine (render/ttf.c): coverage rising left to right across the cell, the same on every
+ * row, and the mask the engine makes of it (set where coverage is at least half). */
+static const UBYTE aa_level[CW] = { 0, 40, 64, 100, 128, 170, 192, 255 };
+static UBYTE aa_cov[CW * CH], aa_mask[2 * CH];
+static vo_font *aa_font = (vo_font *)aa_level; /* any pointer: the fake's vo_* never look at it */
+
+static void aa_glyph(void)
+{
+    int x, y;
+    for (y = 0; y < CH; y++) {
+        aa_mask[2 * y] = aa_mask[2 * y + 1] = 0;
+        for (x = 0; x < CW; x++) {
+            aa_cov[y * CW + x] = aa_level[x];
+            if (aa_level[x] >= 128)
+                aa_mask[2 * y] |= (UBYTE)(0x80 >> x);
+        }
+    }
+    gf_outline(aa_mask, 2, aa_cov);
+    vr_set_outline(&rn, aa_font);
+}
+
+/* a snowman (U+2603, not in the Latin-1 font: the outline font's glyph) at the top left, the cursor hidden: in white
+ * on black (direct colours), or in the screen's text pen 1 on its background pen 0 */
+#define AA_SNOWMAN "\x1b[?25l\x1b[H\x1b[38;2;255;255;255;48;2;0;0;0m\xe2\x98\x83\x1b[m"
+#define AA_SNOWMAN_PENS "\x1b[?25l\x1b[H\x1b[m\xe2\x98\x83"
+
+/* the cell's pixels are all one of its first column's and its last column's: 1-bit, no shade */
+static int aa_two_colours(void)
+{
+    int x, y, bad = 0;
+    for (y = 0; y < CH; y++)
+        for (x = 0; x < CW; x++)
+            bad |= gf_pixel(x, y) != gf_pixel(0, 0) && gf_pixel(x, y) != gf_pixel(CW - 1, 0);
+    return !bad && gf_pixel(0, 0) != gf_pixel(CW - 1, 0);
+}
+
+/* R4.2: on a true-colour screen the coverage is written through the text-over-background table (WriteLUTPixelArray):
+ * each pixel its own blend, edge pixels between the two colours; n_aa (the /state sentinel) counts the glyph. With
+ * vr_set_antialias(0), as the profile's outline-antialias = off reaches it, the mask alone. */
+static void an_outline_glyph_is_antialiased_on_a_true_colour_screen_and_not_when_off(void)
+{
+    ULONG aa0, out0;
+    int x;
+    open_term_in(0, VT_XTERM);
+    gf_truecolor(1);
+    vr_free(&rn);
+    vr_init(&rn, gf_window(), gf_font(), term, VT_ENC_LATIN1);
+    vr_redraw(&rn);
+    CHECK(rn.cgx != 0);
+    CHECK_INT(rn.aa_on, 1); /* the default */
+    aa_glyph();
+    aa0 = rn.n_aa;
+    out0 = rn.n_outline;
+    gf_clear_log();
+    pass(AA_SNOWMAN);
+    CHECK_INT((int)(rn.n_aa - aa0), 1);
+    CHECK_INT((int)(rn.n_outline - out0), 1);
+    CHECK(gf_count(GF_CGXLUT) >= 1);
+    for (x = 0; x < CW; x++)
+        CHECK_INT(gf_pixel(x, CH / 2), GF_CGX | (int)ce_mix(0xFFFFFF, 0, aa_level[x]));
+    CHECK_INT(gf_pixel(4, 0), GF_CGX | 0x808080); /* half coverage: half way */
+    vr_set_antialias(&rn, 0);
+    aa0 = rn.n_aa;
+    out0 = rn.n_outline;
+    gf_clear_log();
+    vr_redraw(&rn);
+    CHECK_INT((int)(rn.n_aa - aa0), 0);
+    CHECK_INT((int)(rn.n_outline - out0), 1);
+    CHECK_INT(gf_count(GF_CGXLUT), 0); /* the mask in the text colour: no table of shades */
+    close_term();
+}
+
+/* R4.3: on a palette screen with greys, each pixel takes the nearest of background, the three shade pens and the
+ * text pen; on one without (no pen nearer a shade than black or white), the 1-bit mask as before. */
+static void an_outline_glyph_uses_the_shade_pens_a_palette_has_and_the_mask_when_none(void)
+{
+    static const unsigned long greys[8] = { 0x000000, 0xFFFFFF, 0x404040, 0x808080, 0xC0C0C0, 0xFF0000, 0x00FF00, 0x0000FF };
+    static const unsigned long bright[8] = { 0x000000, 0xFFFFFF, 0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0x00FFFF, 0xFF00FF };
+    static const int want[CW] = { 0, 2, 2, 3, 3, 4, 4, 1 };
+    ULONG aa0;
+    int x;
+    planar_depth = 3;
+    planar_left = 0;
+    test_pal = greys;
+    test_npal = 8;
+    open_term_in(0, VT_XTERM);
+    aa_glyph();
+    aa0 = rn.n_aa;
+    pass(AA_SNOWMAN_PENS);
+    CHECK_INT((int)(rn.n_aa - aa0), 1);
+    for (x = 0; x < CW; x++)
+        CHECK_INT(gf_pixel(x, CH / 2), want[x]);
+    close_term();
+    test_pal = bright;
+    open_term_in(0, VT_XTERM);
+    aa_glyph();
+    aa0 = rn.n_aa;
+    pass(AA_SNOWMAN_PENS);
+    CHECK_INT((int)(rn.n_aa - aa0), 0);
+    CHECK(aa_two_colours());
+    CHECK_INT(gf_pixel(CW - 1, 0), 1);
+    CHECK_INT(gf_pixel(0, 0), 0);
+    close_term();
+    planar_depth = 0;
+    test_npal = 0;
+}
+
 /* ---- W-T14: padding colour ---- */
 
 /* The window's inside is 173 x 67 pixels under borders 4, 11, 18, 2: 21 x 8 cells of 8 x 8 and strips 5 pixels
@@ -1825,6 +2128,30 @@ static void an_inert_renderer_has_no_selection(void)
     gf_close();
 }
 
+/* "sometimes characters are not visible, they draw black on black, maybe in low color screenmodes only?" (owner
+ * 2026-10-24): a CON: window's text in pen 4 (SGR 34) on a 4-colour screen draws as pen 0, the background's pen.
+ * Every pixel of the cell came out pen 0; the glyph must show in another pen. */
+static int cell_pixels_not_in_pen(int col, int row, int pen)
+{
+    int x, y, n = 0;
+    for (y = row * CH; y < row * CH + CH; y++)
+        for (x = col * CW; x < col * CW + CW; x++)
+            n += gf_pixel(x, y) != pen;
+    return n;
+}
+
+static void amiga_text_pen_past_a_4_colour_screen_is_not_drawn_in_the_background(void)
+{
+    planar_depth = 2;
+    planar_left = 0;
+    open_term_in(0, VT_AMIGA);
+    pass("\x1b[34mH\x1b[35mH");
+    CHECK(cell_pixels_not_in_pen(0, 0, 0) > 0); /* pen 4 is pen 0 here: drawn in the text pen instead */
+    CHECK(cell_pixels_not_in_pen(1, 0, 0) > 0); /* pen 5 is pen 1, the text pen: drawn as it is */
+    close_term();
+    planar_depth = 0;
+}
+
 int main(void)
 {
     an_inert_renderer_has_no_selection();
@@ -1844,6 +2171,8 @@ int main(void)
     the_default_cursor_is_the_cell_with_its_colours_swapped_not_its_pens_complemented();
     an_unfocused_pane_draws_a_hollow_cursor_and_the_focused_one_a_solid_block();
     direct_colour_background_in_the_amiga_personality_is_drawn_in_its_colour();
+    con_window_draws_pen_zero_with_its_own_ground();
+    amiga_text_pen_past_a_4_colour_screen_is_not_drawn_in_the_background();
     direct_colours_on_a_true_colour_screen_are_filled_by_fillpixelarray();
     direct_colours_are_exact_on_a_true_colour_screen_whose_colour_map_is_used_up();
     neighbouring_half_blocks_of_one_colour_are_one_fill_with_the_same_pixels();
@@ -1852,9 +2181,11 @@ int main(void)
     a_synchronized_frame_reaches_the_window_in_one_blit_after_it_is_drawn();
     output_without_a_synchronized_frame_is_drawn_in_place();
     a_synchronized_frame_that_scrolls_shows_what_in_place_drawing_shows();
+    a_synchronized_frame_that_scrolls_is_not_left_for_settle();
     a_planar_synchronized_frame_reaches_the_window_in_one_copy_with_the_in_place_pixels();
     a_planar_frame_is_copied_once_the_beam_has_left_its_rows();
     a_planar_frame_with_lines_or_a_covered_window_is_drawn_in_place();
+    a_planar_frame_drawn_in_place_after_all_clears_the_screen_it_replaced();
     light_cube_colours_on_a_16_colour_workbench_are_not_drawn_in_its_grey_pen();
     a_dithered_cell_shows_its_colour_closer_than_the_old_single_pen();
     a_dithered_frame_composed_and_drawn_in_place_has_the_same_pixels();
@@ -1864,6 +2195,10 @@ int main(void)
     the_strips_beside_the_grid_and_blank_cells_show_the_window_background();
     dither_off_draws_the_nearest_single_pen_and_on_dithers_again();
     padding_extend_gives_the_strips_the_colour_of_the_edge_cells();
+    an_outline_glyph_is_antialiased_on_a_true_colour_screen_and_not_when_off();
+    an_outline_glyph_uses_the_shade_pens_a_palette_has_and_the_mask_when_none();
+    selection_of_a_renderer_not_yet_initialised_is_none_and_reads_no_terminal();
+    a_drag_ends_when_the_left_button_is_up_or_the_window_goes_inactive();
     printf("render: %d checks, %d failures\n", h_checks, h_failures);
     return h_failures ? 1 : 0;
 }

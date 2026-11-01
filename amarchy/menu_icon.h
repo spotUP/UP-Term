@@ -1,0 +1,45 @@
+/* menu_icon -- the drawn Amarchy menu's icons (plan 2026-10-23-amarchy-drawn-menu.md, G3).
+ *
+ * dist/menu-icons names a Symbols Nerd Font glyph for a node id; tools/gen_menu_icons.py turns them at
+ * build time into ONE colour-emoji page (the tools/gen_emoji.py converter and its page layout,
+ * render/emoji.h) compiled into the program as build/amiga/menu_icons.inc. The glyph is white, its alpha
+ * the coverage; the program draws the coverage in the row's text colour. No OS calls: a host suite. */
+#ifndef AMARCHY_MENU_ICON_H
+#define AMARCHY_MENU_ICON_H
+
+#include "../render/emoji.h"
+#include "menu_core.h"
+#include "menu_geom.h"
+
+#define MI_SRC 32               /* the source glyph's size, square: the page holds ONE MI_SRC x MI_SRC image
+                                 * per icon (tools/gen_menu_icons.py ICON), so the icon sizes only scale down */
+#define MI_PIXELS (MI_SRC * MI_SRC) /* the pixels of a glyph record of the page */
+#define MI_MAX 32               /* the tallest icon, pixels */
+#define MI_MAX_W 64             /* the widest icon (tall pixels double the width of a 32 high one) */
+
+/* The generated page file (for ce_page_check_px with MI_PIXELS) and its length. */
+const vt_u8 *mi_page(long *len);
+/* The node id whose glyph a list item shows, into id (size bytes), the one resolution of the drawn menu:
+ * an index row (app, game, song) shows the glyph of the level it is listed in (node) when that level has
+ * one, else "apps"; any other item is its own node (mn_child_node), and an index group (a kind group
+ * or a scanned drawer) with no glyph of its own shows "drawer". */
+void mi_item_id(const char *node, const mn_item *it, char *id, int size);
+/* The icons: count, and the node id of the i-th. */
+int mi_count(void);
+const char *mi_id(int i);
+/* The glyph of node id in the page, 0 when the node has no icon. */
+const vt_u8 *mi_find(const char *id);
+/* The icon's height for these metrics: 8/15 of Omarchy's row (mg_metrics unit; topaz 8: 16, TopazPro 16: 32), MI_MAX at most,
+ * 8 at least. */
+int mi_size(const mg_metrics *m);
+/* Its width: as many columns as look as long as that height on the screen's pixels (mg_cols), MI_MAX_W
+ * at most. */
+int mi_width(const mg_metrics *m, const mg_screen *s);
+/* The glyph's source image: MI_SRC x MI_SRC palette indices into the glyph's RGBA palette (CE_BG none),
+ * row after row, into idx (MI_SRC * MI_SRC bytes). 0 when the glyph is 0. */
+int mi_source(const vt_u8 *glyph, vt_u8 *idx);
+/* The glyph's coverage (0..255) averaged to a w x h box into out (w * h bytes, h <= MI_MAX, w <= MI_MAX_W),
+ * row after row. 0 when the size is out of range or the glyph is bad. */
+int mi_render(const vt_u8 *glyph, int w, int h, vt_u8 *out);
+
+#endif

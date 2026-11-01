@@ -46,10 +46,25 @@ typedef struct prefs_fields {
     int aspect;     /* font-aspect: the font fitted to the screen's aspect (on by default) */
     int backspace_bs; /* backspace = bs: the key sends ^H; 0: del, ^? (the default) */
     int clipboard;  /* PREFS_CLIP_*: program-clipboard, what OSC 52 may do */
+    /* the Amarchy menu's keys: always the [default] profile's, whichever profile is edited (amarchy/gui.c
+     * reads them there); empty = key absent */
+    char am_music[UC_MAX_VALUE];    /* amarchy-music-drawers */
+    char am_demo[UC_MAX_VALUE];     /* amarchy-demo-drawers */
+    char am_hide[UC_MAX_VALUE];     /* amarchy-hide-drawers */
+    char am_font[UC_MAX_VALUE];     /* amarchy-menu-font, "name:size" as the font key */
+    char am_gtheme[UC_MAX_VALUE];   /* amarchy-gui-theme: the drawn menu's Omarchy theme name */
+    int am_icons;                   /* amarchy-app-icons: UC_ICONS_* (generic glyphs, amiga .info images, none) */
+    int am_termmenu;                /* menu-in-terminal: UC_TERMMENU_* (text, graphical) */
+    int am_flat;                    /* flat-system-look: index of off, on */
+    int am_flatgad;                 /* flat-window-gadgets: index of off, on */
+    int am_flatsize;                /* flat-border-size: index of stock, thin */
+    int am_iconstyle;               /* icon-style: index of filled, outline */
+    int am_mode;                    /* menu-style: UC_MENU_* (graphical = drawn, text, minimal) */
     char kcmode[UC_MAX_VALUE]; /* KingCON's FNCMODE letters (W L B C S); blank: W */
     int kcinfo;     /* KingCON completion lists .info files too */
     int kccache;    /* KingCON's directory cache (DIRCACHE; on by default) */
     int amiga_keys; /* amiga-keys: Shift+Left / Right send Home / End (on by default) */
+    int outline_aa; /* outline-antialias: outline glyphs drawn smoothed (on by default) */
     int dither;     /* dither: few-pen screens dither colours no pen shows closely (W-T9; on by default) */
     int pad_extend; /* padding-color: extend (W-T14) -- the strips beside the grid take the edge cells' colour; background is the default */
     int hlcat;      /* highlight-cat: vsh's cat is hl -p (on by default; see prefs_hlcat_text) */
@@ -145,8 +160,10 @@ void prefs_kc_encode(const prefs_kc *k, char *out, int cap);
 /* ---- font strings ------------------------------------------------------- */
 /* A font requester's result (ta_Name "topaz.font", size 8) as the profile's
  * font value "topaz:8" (".font" cut, any case). 0 and out "" when the name
- * is empty, holds a blank or a colon (the handler splits the value there)
- * or the result does not fit cap; a size under 1 gives the bare name. */
+ * is empty, holds a colon or the result does not fit cap; a size under 1
+ * gives the bare name. A blank is kept ("Vera Mono:14"): both readers split
+ * at the last separator only, the Amarchy menu by prefs_font_parse, the
+ * terminal handler by winspec_font. */
 int prefs_font_compose(const char *name, long size, char *out, int cap);
 /* The profile's font value back into what a requester starts from: name
  * with ".font" ("topaz:8" -> "topaz.font"), size 0 when none. 0 on "". */
@@ -234,6 +251,12 @@ int prefs_load_writable(int load_result);
 #define PREFS_STAGE_LOSSY (-3L)
 long prefs_stage(upconf *work, const upconf *cur, const char *profile,
                  const prefs_fields *f, char *buf, long cap);
+/* The same for the look alone (a Theme, Font or Background chosen in the
+ * window's menu becomes the profile's, STYLE-SAVED-DEFAULT): only font,
+ * fg, bg, cursor-color, selection-fg, selection-bg and palette are set;
+ * every other key stays as read, absent ones stay absent. Same results. */
+long prefs_stage_style(upconf *work, const upconf *cur, const char *profile,
+                       const prefs_fields *f, char *buf, long cap);
 
 /* The switch vsh's startup file reads (dist/vshrc): a variable of the
  * profile drawers (ENV:up-term/highlight-cat, and ENVARC:'s copy) holding
@@ -241,7 +264,6 @@ long prefs_stage(upconf *work, const upconf *cur, const char *profile,
  * means on. */
 #define PREFS_HLCAT_VAR "highlight-cat"
 const char *prefs_hlcat_text(int on);
-
 /* The file operations the install needs; the Amiga's are DOS calls, the
  * tests' a table in memory. Each answers 1 on success. */
 typedef struct prefs_fs {
@@ -268,6 +290,51 @@ enum {
  * moved, and only after the new one is complete. */
 int prefs_install(const prefs_fs *fs, const char *path, const char *tmp,
                   const char *orig, const char *buf, long len);
+
+/* The two places the profile file lives: ENV: (what the windows read) and
+ * ENVARC: (what the next boot copies to ENV:). */
+enum { PREFS_T_ENV, PREFS_T_ENVARC };
+
+/* One program's settings file: where it lives in ENV: and ENVARC:, and the
+ * names the ENVARC: install uses. UP-Term Prefs has one set, Amarchy its own;
+ * every writer goes through prefs_install_target_at with its set. */
+typedef struct prefs_paths {
+    const char *dir[2];   /* the drawer of each target, made when missing */
+    const char *path[2];  /* the file of each target */
+    const char *tmp;      /* ENVARC: install: the new file before it is renamed in */
+    const char *orig;     /* ENVARC: install: where the old file goes */
+} prefs_paths;
+extern const prefs_paths prefs_paths_upterm;  /* ENV:up-term/up-term, ENVARC:up-term/up-term */
+extern const prefs_paths prefs_paths_amarchy; /* ENV:Amarchy/prefs, ENVARC:Amarchy/prefs */
+/* What the Amarchy commodity watches for a live reload: the ENV: copies only. Every writer (prefs_save_at,
+ * the Installer) writes ENVARC: first and ENV: after it, so ENV: changes last. Watching ENVARC: too made the
+ * reload open ENV:Amarchy/prefs for reading just before the writer opened it for writing; the RAM handler
+ * refused that with error 202 and the theme save failed. */
+#define PREFS_NNOTIFY_AMARCHY 3
+extern const char *const prefs_notify_amarchy[PREFS_NNOTIFY_AMARCHY];
+#define prefs_conf_dir  (prefs_paths_upterm.dir)   /* ENV:up-term, ENVARC:up-term */
+#define prefs_conf_path (prefs_paths_upterm.path)  /* .../up-term */
+
+/* buf into target t's file. ENVARC: by prefs_install (tmp, then the old file
+ * to orig, then tmp to the file). ENV: is written in place: OS 3.2's
+ * ram-handler (47.x, the A1200 2026-10-26) answers a lookup of a name ENV:
+ * lacks with ENVARC:'s file of that name, so the rename onto orig (ENVARC:
+ * has its own up-term.orig) or back onto the file always finds its target
+ * "already there", and Save and Use failed every time ("no backup
+ * possible"). A RAM file has no half-written state to guard against, and
+ * ENVARC: holds the copy that survives. A prefs_install result. */
+int prefs_install_target_at(const prefs_fs *fs, const prefs_paths *p, int t, const char *buf, long len);
+/* buf into path set p's ENV: file and, when keep, its ENVARC: file first (ENVARC: is the one that
+ * survives). dir(p, t) makes the drawer of target t (1 when it is there; the Amiga's is a CreateDir);
+ * *failed is the target that failed. PREFS_INSTALL_OK, PREFS_SAVE_NODIR or a prefs_install result. */
+#define PREFS_SAVE_NODIR (-100)
+int prefs_save_at(const prefs_fs *fs, int (*dir)(const prefs_paths *, int), const prefs_paths *p,
+                  const char *buf, long len, int keep, int *failed);
+/* The variable of target t (PREFS_T_*) written in place through fs.write_file, no backup: the one write
+ * prefs_dos_save and the Amarchy menu's setting rows share. PREFS_INSTALL_OK or PREFS_INSTALL_WRITE. */
+int prefs_write_hlcat(const prefs_fs *fs, int t, int on);
+/* prefs_install_target_at with UP-Term's file. */
+int prefs_install_target(const prefs_fs *fs, int t, const char *buf, long len);
 
 /* ---- W30: the themes drawer ------------------------------------------------
  *

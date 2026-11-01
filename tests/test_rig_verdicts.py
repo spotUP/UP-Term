@@ -148,5 +148,51 @@ class ResultsLiveInThisCheckout(unittest.TestCase):
         self.assertEqual(pathlib.Path(tutorial_rig.VERDICTS).parent, ROOT / "build" / paths.RIG_NAME)
 
 
+class TutorialCasesSetTheirOwnProgress(unittest.TestCase):
+    """--only resume (or progress, hint-after) after a lesson12 run left System:.tutorial at 1-11: each case
+    must put the progress file it needs, not lean on lesson1 having run first in the same run."""
+
+    def setUp(self):
+        from unittest import mock
+        import tutorial_rig
+        self.t, self.file, self.seen = tutorial_rig, "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n", []
+        rig = pathlib.Path(tempfile.mkdtemp())
+        (rig / "vtc").mkdir()
+
+        def run(cmd, timeout=60):
+            if cmd.startswith("Type " + tutorial_rig.PROGRESS):
+                return (0, self.file) if self.file is not None else (10, "Type: can't open: error 205\n")
+            if cmd.startswith("Delete " + tutorial_rig.PROGRESS):
+                self.file = None
+            elif cmd.startswith("Copy VTC:tut-progress " + tutorial_rig.PROGRESS):
+                self.file = (rig / "vtc" / "tut-progress").read_text()
+            return 0, ""
+        # the progress file as the case's first window sees it
+        look = lambda *a, **k: self.seen.append(self.file)
+        for target, new in [("paths.RIG", rig), ("c.run", run), ("fresh_vsh", look), ("close_vsh", lambda: None),
+                            ("typewin.typ", lambda *a, **k: None), ("typewin.key", lambda *a, **k: None),
+                            ("typewin.screen_text", lambda: "")]:
+            p = mock.patch.object(eval("tutorial_rig." + target.rsplit(".", 1)[0]) if "." in target else tutorial_rig,
+                                  target.rsplit(".", 1)[-1], new)
+            p.start()
+            self.addCleanup(p.stop)
+
+    def test_resume_starts_from_lesson_1_done(self):
+        self.t.case_resume()
+        self.assertEqual(self.seen[0], "1\n")
+
+    def test_hint_after_starts_from_lesson_1_done(self):
+        self.t.case_hint(False)
+        self.assertEqual(self.seen[0], "1\n")
+
+    def test_progress_runs_lesson_1_from_no_progress(self):
+        self.t.case_progress()
+        self.assertEqual(self.seen[0], None)
+
+    def test_no_progress_file_saves_as_no_progress(self):
+        self.file = None
+        self.assertEqual(self.t.saved_progress(), [], "Type's fault number is not progress")
+
+
 if __name__ == "__main__":
     sys.exit(0 if unittest.main(exit=False, verbosity=1).result.wasSuccessful() else 1)

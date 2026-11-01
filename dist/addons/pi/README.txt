@@ -1,11 +1,11 @@
 amiga-pi - the pi coding agent
 ==============================
 
-pi, the coding agent, for the Amiga: C:amiga-pi. It stands alone; UP-Term.lha is optional.
+pi, the coding agent, for the Amiga: C:amiga-pi. It stands alone; up-term.lha is optional.
 
 WHAT YOU NEED
   AmigaOS 3.0 or newer, a 68020 or better, a TCP/IP stack (Roadshow, Miami, AmiTCP) and,
-  for https, AmiSSL 5 (Aminet util/libs/AmiSSL-v5-OS3.lha). UP-Term.lha is not needed.
+  for https, AmiSSL 5 (Aminet util/libs/AmiSSL-v5-OS3.lha). up-term.lha is not needed.
 
 ON A PLAIN WORKBENCH
   Without UP-Term the program runs in the Shell window in its line mode (the console's own
@@ -18,7 +18,7 @@ INSTALL
   SYS:Utilities/Installer). From a Shell, without Installer, cd into the drawer, then:
     Execute Files/install.dos Files
   It needs no UP-Term and looks for none. Its record (the list of files, for Update and
-  Uninstall) is ENVARC:upkg/amiga-pi. Install the archive over an earlier one and its first
+  Uninstall) is ENVARC:upkg/up-pi. Install the archive over an earlier one and its first
   page offers Update, which copies only what changed. An UP-Term installed from the single
   kit (before the kit split) that already has this program keeps it: Install recognises it
   and offers Update from "installed by the single UP-Term kit".
@@ -29,7 +29,7 @@ USE
 UNINSTALL
   Double-click Uninstall (or Execute Uninstall). It removes C:amiga-pi; your settings in
   ENVARC:amiga-pi stay. With UP-Term installed it asks whether to delete your data in
-  UP-Term:var/amiga-pi (default No). Uninstall of UP-Term.lha leaves this program alone.
+  UP-Term:var/amiga-pi (default No). Uninstall of up-term.lha leaves this program alone.
 
 AMIGA-PI
   C:amiga-pi is pi, the coding agent (pi.dev), for the Amiga: it

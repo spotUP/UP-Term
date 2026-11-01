@@ -1,0 +1,4 @@
+; uterm-start -- the first script of the window uterm-edit and uterm-view open: vsh runs uterm-open, the window closes after.
+Stack 65536
+UP-Term:bin/vsh UP-Term:bin/uterm-open
+EndCLI

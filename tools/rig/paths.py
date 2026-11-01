@@ -5,7 +5,7 @@ UPTERM_OS32_TREE, UPTERM_OS32_ROM).
 
 UPTERM_ROOT is the workspace directory that holds vtcon, ixemul-vtcon,
 tmux-amiga, ... side by side (the meta-repo `upterm` creates it). Default:
-the parent of this vtcon checkout. The Makefile's default is the same
+the parent of the main vtcon checkout (a git worktree's parent is not it). The Makefile's default is the same
 (`UPTERM_ROOT ?= $(abspath $(CURDIR)/..)`).
 """
 import contextlib
@@ -14,12 +14,34 @@ import os
 import pathlib
 import subprocess
 import sys
+import time
 
 VTCON = pathlib.Path(__file__).resolve().parents[2]
-UPTERM_ROOT = pathlib.Path(os.environ.get("UPTERM_ROOT") or VTCON.parent)
+
+
+def _main_checkout(checkout):
+    """The main checkout of the repository `checkout` belongs to: `checkout`
+    itself, or for a git worktree the checkout that owns its .git."""
+    try:
+        common = subprocess.run(
+            ["git", "-C", str(checkout), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return checkout
+    return pathlib.Path(common).resolve().parent
+
+
+MAIN_CHECKOUT = _main_checkout(VTCON)
+UPTERM_ROOT = pathlib.Path(os.environ.get("UPTERM_ROOT") or MAIN_CHECKOUT.parent)
+# third-party SDKs and archives (gitignored, so a worktree has none): this checkout's vendor/ if it has one, else the
+# main checkout's. The Makefile asks (`paths.py vendor`).
+VENDOR = VTCON / "vendor" if (VTCON / "vendor").is_dir() else MAIN_CHECKOUT / "vendor"
 # the rig's own UP-Term: drawer in the host drawer VTC: (the Workbench labels a drawer icon with the file name,
 # so the owner sees Apps); rig.py, the rig scripts and their tests all take it from here
 UPTERM_DRAWER = "Apps"
+# where stage_upterm puts the built binaries and where the rig scripts start them from: the rig drawer, not
+# UP-Term:, which a kit install moves (rig 4: UP-Term: was Rushhours:Tools/UP-Term, the binaries in VTC:Apps/bin)
+UPTERM_BIN = "VTC:%s/bin" % UPTERM_DRAWER
 OLD_UPTERM_DRAWER = "upterm"   # its name until 2026-10-14; rig.py install renames it
 
 
@@ -42,23 +64,11 @@ def code_root(upterm_root=None):
 CODE_ROOT = code_root()
 
 
-def _main_checkout(checkout):
-    """The main checkout of the repository `checkout` belongs to: `checkout`
-    itself, or for a git worktree the checkout that owns its .git."""
-    try:
-        common = subprocess.run(
-            ["git", "-C", str(checkout), "rev-parse", "--path-format=absolute", "--git-common-dir"],
-            capture_output=True, text=True, check=True).stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
-        return checkout
-    return pathlib.Path(common).resolve().parent
-
-
 # The rigs are machine resources (an FS-UAE each, a fixed wasabid port, a
 # 1.5 GB system disk), so they live in the main checkout's build/ for every
 # worktree. A worktree has no build/rig2: FS-UAE started from one booted with
 # no bootable device (2026-10-12).
-RIG_HOME = _main_checkout(VTCON) / "build"
+RIG_HOME = MAIN_CHECKOUT / "build"
 
 # Which rig: UPTERM_RIG unset or 1 is the first (build/rig, wasabid port 1234);
 # UPTERM_RIG=2 is the second (build/rig2, port 1235), a separate FS-UAE with
@@ -79,6 +89,41 @@ RESULTS = VTCON / "build" / RIG_NAME
 FSUAE_LOG_DIR = RIG / "logs"
 FSUAE_LOG_MAX = 50 * 1024 * 1024    # bytes on disk a log may hold before it is cut
 FSUAE_LOG_TAIL = 1024 * 1024        # the end of a cut log kept, as <name>.tail, for diagnosis
+
+
+def fsuae_crash(log_dir=None):
+    """(exception line, reset count) when the rig's FS-UAE log shows a CPU exception followed by emulated
+    CPU resets (a Guru turned into a reset loop: the rig then looks plain "down"), else None. Reads the
+    live log and its .tail. The exception is the first "Illegal instruction" / "Exception N" line of the run before the
+    "CPU reset" lines that follow it."""
+    d = pathlib.Path(log_dir or FSUAE_LOG_DIR)
+    text = ""
+    for n in ("fs-uae.log.txt.tail", "fs-uae.log.txt"):
+        try:
+            text += (d / n).read_text(encoding="latin-1")
+        except OSError:
+            pass
+    exc, resets = None, 0
+    for line in text.splitlines():
+        if line.startswith(("Illegal instruction", "Exception ")):
+            if exc is None or resets:
+                exc, resets = line.strip(), 0
+        elif exc and line.startswith("CPU reset"):
+            resets += 1
+    return (exc, resets) if exc and resets else None
+
+
+def fsuae_reset_count(log_dir=None):
+    """Number of "CPU reset" lines in the rig's live FS-UAE log. A healthy warm reboot writes one or two; after a Guru
+    on a 68060 rig Kickstart's ROM ColdReboot keeps the 68060.library's live CPU state, the next ROM boot dies in the
+    early alert 80000006, flashes and resets again, about 8 times a second, forever (RIG-RESET-LOOP, s18 findings
+    rig9-installer-loop.md result 8). The watchdog compares two counts a minute apart."""
+    d = pathlib.Path(log_dir or FSUAE_LOG_DIR)
+    try:
+        text = (d / "fs-uae.log.txt").read_text(encoding="latin-1")
+    except OSError:
+        return 0
+    return sum(1 for line in text.splitlines() if line.startswith("CPU reset"))
 
 
 def cap_fsuae_log(log_dir=None, limit=None, tail=None, extra=()):
@@ -123,24 +168,87 @@ WASABI_KEY = "rigwasabi"   # the rig key (wasabid's ENV:wasabi.key in the rig). 
 os.environ.setdefault("AMI_PORT", str(WASABI_PORT))   # ami.py reads it
 
 
+# Idle watchdog (RIG-IDLE-WATCHDOG): every command to a rig touches LAST_COMMAND in the rig dir; `rig.py watchdog`
+# stops a rig that nothing has talked to for N minutes. A long run (ami.py long, rig.py install) holds LONG_RUN
+# (the holder's pid) so a quiet disk write is never cut off.
+LAST_COMMAND = RIG / "last-command"
+LONG_RUN = RIG / "long-run"
+
+
+def touch_command(rig_dir=None):
+    """Record "a command just went to this rig". No rig dir (AMI_HOST, an A1200 run): nothing."""
+    d = pathlib.Path(rig_dir) if rig_dir else RIG
+    if d.is_dir():
+        (d / "last-command").write_text("%f\n" % time.time())
+
+
+def last_command(rig_dir=None):
+    """Epoch seconds of the last command, None when none was recorded."""
+    f = (pathlib.Path(rig_dir) if rig_dir else RIG) / "last-command"
+    try:
+        return float(f.read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def long_run_active(rig_dir=None):
+    """True while a process that set the long-run flag is alive (a dead holder's flag is stale)."""
+    f = (pathlib.Path(rig_dir) if rig_dir else RIG) / "long-run"
+    try:
+        pid = int(f.read_text().split()[0])
+        os.kill(pid, 0)
+        return True
+    except PermissionError:
+        return True
+    except (OSError, ValueError, IndexError):
+        return False
+
+
+@contextlib.contextmanager
+def long_run(rig_dir=None):
+    """Hold the long-run flag for the block (the watchdog will not stop the rig meanwhile); touches the
+    command stamp on the way out, so the idle clock starts after the run."""
+    d = pathlib.Path(rig_dir) if rig_dir else RIG
+    flag = d / "long-run"
+    if not d.is_dir():
+        yield
+        return
+    flag.write_text("%d\n" % os.getpid())
+    try:
+        yield
+    finally:
+        flag.unlink(missing_ok=True)
+        touch_command(d)
+
+
 def repo(name):
     """The checkout of repository `name` in the workspace."""
     return UPTERM_ROOT / name
 
 
-# The default Kickstart 3.1 (40.068) ROM; UPTERM_ROM names another file.
-UPROUGH_ROOT = pathlib.Path(os.environ.get("UPROUGH_ROOT") or CODE_ROOT / "UpRough")
-KICKSTART = pathlib.Path(os.environ.get("UPTERM_ROM") or
-    UPROUGH_ROOT / "Up_Rough_Demo_System/web/maker/public/puae/kick40068.A1200")
+def ports():
+    """The upterm-ports checkout the rig tools take kit binaries from: UPTERM_PORTS (a worktree such
+    as .claude/worktrees/kit-main) or the workspace's upterm-ports. Every tool asks here, so one
+    UPTERM_PORTS moves all of them (2026-10-29: upkg_browse_rig still read the shared checkout)."""
+    return pathlib.Path(os.environ.get("UPTERM_PORTS") or repo("upterm-ports"))
+
+
+# The default Kickstart 3.1 (40.68, A1200) ROM; UPTERM_ROM names another file. It lives in the
+# workspace, outside every repository (the repositories are public; a ROM is not ours to
+# publish): a copy of the owner's Dropbox ROM, header 40.68,
+# sha1 e21545723fe8374e91342617604f1b3d703094f1. The UpRough file named kick40068.A1200 is
+# really 40.63 (the A500/A600/A2000 ROM) and is no longer used.
+KICKSTART = pathlib.Path(os.environ.get("UPTERM_ROM") or UPTERM_ROOT / "roms/kick40068-a1200.rom")
 
 
 # The rest of the rig's inputs, each an environment variable with the owner's
 # path as the default (the README says where each comes from):
-# UPTERM_SYSTEM_HDF  the Workbench 3.x hard-disk image copied once to build/rig/sys.hdf
+# UPTERM_SYSTEM_HDF  the Workbench 3.x hard-disk image every rig start clones to build/rigN/sys.hdf; outside
+#                    ~/Downloads, which macOS keeps from the CLI ("Operation not permitted", 2026-10-24)
 # UPTERM_OS32_TREE   an installed AmigaOS 3.2 tree (a host drawer), for --os32
 # UPTERM_OS32_ROM    the Kickstart 3.2.3 ROM, for --os32
 SYSTEM_HDF = pathlib.Path(os.environ.get("UPTERM_SYSTEM_HDF") or
-    pathlib.Path.home() / "Downloads/nyhd2.hdf")
+    UPTERM_ROOT / "images/nyhd2.hdf")
 OS32_TREE = pathlib.Path(os.environ.get("UPTERM_OS32_TREE") or
     pathlib.Path.home() / "Downloads/AmigaOS-3.2-full (1)")
 OS32_ROM = pathlib.Path(os.environ.get("UPTERM_OS32_ROM") or
@@ -172,16 +280,33 @@ MMULIB = pathlib.Path(os.environ.get("UPTERM_MMULIB") or
 # UPTERM_ROM314     the A1200 Kickstart 3.1.4 (46.143), for --os 314
 OS_IMAGES = pathlib.Path(os.environ.get("UPTERM_OS_IMAGES") or
     pathlib.Path.home() / "Downloads/clean-wb/Clean Workbench Installs")
+# UPTERM_ROM_A500  the A500/A600/A2000 Kickstart 3.1 (40.63), for --a500: the default ROM is the A1200 40.68,
+#                   which FS-UAE refuses on a 68000 (NUMSG_KS68EC020, 2026-10-29). The default is a workspace
+#                   copy of the stock ROM, CRC32 FC24AE0D (vAmiga's fc24ae0d.rom). Amiberry's kick40063.A500.rom
+#                   (CRC32 88136CA9, magic 0x1116) is a relocated image whose reset jumps to $2000D2: the 68000
+#                   rig stayed black and never ran a line of BOOTX:s/startup-sequence (2026-10-29).
+ROM_A500 = pathlib.Path(os.environ.get("UPTERM_ROM_A500") or UPTERM_ROOT / "roms/kick40063-a500.rom")
 ROM314 = pathlib.Path(os.environ.get("UPTERM_ROM314") or
     pathlib.Path.home() / "Downloads/kickstart 3.1.4/kick.a1200.46.143")
 
 
 # --os with --060/--max: the clean system has no 68060.library and its
 # Startup-Sequence (SetPatch, CPU CHECKINSTALL) fails on a 68060 without it
-# (Software Failure 8000 888B, rig 3, 2026-10-10); UPTERM_LIB68060 names the file (default: Phase5's 68060.library 44.3,
-# taken from the old rig system disk's Libs:; GG-Lite's 68060.library did not help).
+# (Software Failure 8000 888B, rig 3, 2026-10-10); UPTERM_LIB68060 names the file. Default: Thor's MMULib 68060.library
+# 47.2 (Aminet util/libs/MMULib.lha), which needs its mmu.library and 680x0.library beside it (UPTERM_LIBMMU,
+# UPTERM_LIB680X0). Phase5's 68060.library 44.3 (the old rig system disk's) made OS 3.1 on the emulated 060 reset
+# in a loop once SetPatch had run: 333 resets on a clean 3.1, none with SetPatch commented out, none on MMULib
+# (rig 8, 2026-10-26, thoughts/spot/term-findings/reset-loop-cause-rig8-2026-10-26.md). GG-Lite's did not help.
 LIB68060 = pathlib.Path(os.environ.get("UPTERM_LIB68060") or
-    RIG_HOME / "rig-inputs/68060.library")
+    RIG_HOME / "rig-inputs/mmulib/68060.library")
+LIBMMU = pathlib.Path(os.environ.get("UPTERM_LIBMMU") or RIG_HOME / "rig-inputs/mmulib/mmu.library")
+LIB680X0 = pathlib.Path(os.environ.get("UPTERM_LIB680X0") or RIG_HOME / "rig-inputs/mmulib/680x0.library")
+def libs060():
+    """Every Libs: file a 060 with FPU gets, as (source, Libs: name, variable) for require_input; read at call time,
+    so a test that points LIB68060 elsewhere is followed."""
+    return ((LIB68060, "68060.library", "UPTERM_LIB68060"),
+            (LIBMMU, "mmu.library", "UPTERM_LIBMMU"),
+            (LIB680X0, "680x0.library", "UPTERM_LIB680X0"))
 
 
 # ... and the 3.1 68040.library, which SetPatch also loads on a 68060, crashes
@@ -193,6 +318,15 @@ LIB68040 = pathlib.Path(os.environ.get("UPTERM_LIB68040") or RIG_HOME / "rig-inp
 INSTALLER = pathlib.Path(os.environ.get("UPTERM_INSTALLER") or RIG_HOME / "rig-inputs/Installer")
 
 
+# the patched ixemul.library the kit ships (the Makefile's IXEMUL_LIB, IXEMUL_LIB_SOFT, IXNET_LIB): the FPU build,
+# the soft-float one for a machine with no FPU, and ixnet.library from the same tree (ixnet_open refuses an
+# ixemul of another revision, so the two always travel together). rig.py start puts them in VTC:ixp6.
+IXEMUL_LIB = pathlib.Path(os.environ.get("IXEMUL") or
+    repo("ixemul-vtcon") / "build295/library/68020/68881/amigaos/ixemul.library")
+IXEMUL_LIB_SOFT = IXEMUL_LIB.parents[2] / "soft-float/amigaos/ixemul.library"
+IXNET_LIB = pathlib.Path(os.environ.get("IXNET") or IXEMUL_LIB.parents[4] / "ixnet/68020/amigaos/ixnet.library")
+
+
 def require_input(path, var, what):
     """Exit with one clear message when a rig input is missing."""
     if not pathlib.Path(path).exists():
@@ -200,11 +334,26 @@ def require_input(path, var, what):
                  "where it comes from)" % (what, path, var))
 
 
+def rom_reset_pc(path):
+    """The initial PC a Kickstart ROM image's reset vector holds (the long at offset 4), or None for a file
+    the emulator decodes first (a Cloanto AMIROMTYPE1 image) or one too short to hold the vector."""
+    head = pathlib.Path(path).read_bytes()[:16]
+    if head.startswith(b"AMIROMTYPE1") or len(head) < 8:
+        return None
+    return int.from_bytes(head[4:8], "big")
+
+
 def require_rom(path):
-    """Exit with one clear message when the Kickstart ROM file is missing."""
+    """Exit with one clear message when the Kickstart ROM file is missing, or when its reset vector points
+    outside the ROM area ($E00000-$FFFFFF): such an image (relocated for a MapROM board, e.g. a jump to
+    $2000D2) leaves the machine black with no log line, and the rig waited 550 s for a boot (2026-10-29)."""
     if not pathlib.Path(path).is_file():
         sys.exit("rig: Kickstart ROM not found: %s (set UPTERM_ROM=<file> or "
                  "pass --kick <file>)" % path)
+    pc = rom_reset_pc(path)
+    if pc is not None and not 0xE00000 <= pc <= 0xFFFFFF:
+        sys.exit("rig: Kickstart ROM %s resets to $%06X, outside the ROM area: not a ROM to boot "
+                 "(a relocated MapROM image?)" % (path, pc))
 
 
 @contextlib.contextmanager
@@ -242,3 +391,15 @@ def rig_lock(rig_dir=None):
 
 if __name__ == "__main__" and sys.argv[1:] == ["code-root"]:
     print(CODE_ROOT)
+elif __name__ == "__main__" and sys.argv[1:] == ["main-checkout"]:
+    print(MAIN_CHECKOUT)
+elif __name__ == "__main__" and sys.argv[1:] == ["vendor"]:
+    print(VENDOR)
+
+
+def rig_flags(default=None):
+    """UPTERM_RIG_FLAGS as an argv list, split the shell way: `--purpose "a b"` stays two words, not three.
+    Unset or empty: `default` (a copy), or []. Every rig script that passes the flags to rig.py uses this."""
+    import shlex
+    raw = os.environ.get('UPTERM_RIG_FLAGS', '')
+    return shlex.split(raw) if raw.strip() else list(default or [])

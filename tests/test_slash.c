@@ -63,6 +63,14 @@ static void settings_name_their_menu_items(void)
     CHECK_INT(parse("/claude"), SLASH_OK); /* UP-Term > Claude */
     CHECK_INT(cmd.id, MENU_CLAUDE);
     CHECK_INT(parse("/claude now"), SLASH_ERROR);
+    CHECK_INT(parse("/pi"), SLASH_OK); /* Apps > pi */
+    CHECK_INT(cmd.id, MENU_PI);
+    CHECK_INT(parse("/pi now"), SLASH_ERROR);
+    CHECK_INT(parse("/agent pi"), SLASH_OK); /* what Super + L opens */
+    CHECK_INT(cmd.id, MENU_SET_AGENT_PI);
+    CHECK_INT(parse("/agent claude"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_SET_AGENT_CLAUDE);
+    CHECK_INT(parse("/agent emacs"), SLASH_ERROR);
     CHECK_INT(parse("/tutorial"), SLASH_OK); /* Help > Shell tutorial */
     CHECK_INT(cmd.id, MENU_TUTORIAL);
     CHECK_INT(parse("/tutorial now"), SLASH_ERROR);
@@ -91,6 +99,12 @@ static void settings_name_their_menu_items(void)
     CHECK_INT(parse("/dither on"), SLASH_OK);
     CHECK_INT(cmd.on, 1);
     CHECK_INT(parse("/dither maybe"), SLASH_ERROR);
+    CHECK_INT(parse("/outline-antialias off"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_SET_OUTLINE_AA);
+    CHECK_INT(cmd.on, 0);
+    CHECK_INT(parse("/outline-antialias on"), SLASH_OK);
+    CHECK_INT(cmd.on, 1);
+    CHECK_INT(parse("/outline-antialias maybe"), SLASH_ERROR);
     CHECK_INT(parse("/padding-color extend"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_SET_PAD_EXTEND);
     CHECK_INT(parse("/padding-color background"), SLASH_OK);
@@ -126,6 +140,12 @@ static void arguments_are_handed_on_trimmed(void)
     CHECK_STR(cmd.arg, "3000");
     CHECK_INT(parse("/profile vim"), SLASH_OK);
     CHECK_STR(cmd.arg, "vim");
+    CHECK_INT(parse("/ask  fix the *\" bug "), SLASH_OK); /* the agent's task, trimmed, rest of the line */
+    CHECK_INT(cmd.id, SLASH_ASK);
+    CHECK_STR(cmd.arg, "fix the *\" bug");
+    CHECK_INT(parse("/ask"), SLASH_OK); /* no task: the bare agent */
+    CHECK_INT(cmd.id, SLASH_ASK);
+    CHECK_STR(cmd.arg, "");
     CHECK_INT(parse("/find two words"), SLASH_OK);
     CHECK_STR(cmd.arg, "two words");
     CHECK_INT(parse("/link-open  Run >NIL: OpenURL %s "), SLASH_OK);
@@ -152,7 +172,7 @@ static void a_wrong_value_says_what_fits(void)
 
 static void the_help_lists_every_command(void)
 {
-    static char out[4096];
+    static char out[8192];
     int n, k, i;
     const slash_def *t = slash_table(&k);
     n = slash_help("", out, sizeof(out));
@@ -341,6 +361,7 @@ static void state_formats_the_counters(void)
     slash_state_bump(&s, STATE_COPY, 0, 0);
     slash_state_bump(&s, STATE_PASTE, 0, 0);
     slash_state_bump(&s, STATE_PASTE, 0, 0);
+    slash_state_bump(&s, STATE_KEYMAP, 0x127, 0); /* Super+K */
     s.active = 1;
     slash_state_bump(&s, STATE_SPLIT, 0, 0);
     slash_state_bump(&s, STATE_SPLIT, 0, 0);
@@ -353,6 +374,9 @@ static void state_formats_the_counters(void)
     slash_state_bump(&s, STATE_SPLIT_RESTORE, 0, 0); /* a saved split built again */
     CHECK_INT(s.split_restores, 1);
     s.scrollback = 200; /* the answering pane's own (NS4.3), filled as it answers */
+    s.font_size = 8;
+    s.outline_own = 5;
+    s.outline_aa = 7;
     /* the command is in the table and takes no argument or a key */
     CHECK_INT(parse("/state"), SLASH_OK);
     CHECK_INT(cmd.id, SLASH_STATE);
@@ -361,8 +385,16 @@ static void state_formats_the_counters(void)
     /* every key, "key value" per line */
     CHECK_INT(slash_state_text(&s, "", out, sizeof(out)) > 0, 1);
     CHECK_STR(out, "tabs-opened 2\ntab-switches 1\nmenu-picks 2\nlast-menu 49\nslash-count 1\n"
-                   "last-slash help\ncopies 1\npastes 2\ntabs 2\nactive 1\nsplits 3\npanes 2\nzoom 1\nslot-fonts 1\n"
-                   "split-restores 1\nscrollback 200\n");
+                   "last-slash help\ncopies 1\npastes 2\ntabs 2\nactive 1\nkm-hits 1\nlast-key 295\nfont-size 8\n"
+                   "outline-own 5\noutline-aa 7\nsplits 3\npanes 2\nzoom 1\nslot-fonts 1\nsplit-restores 1\nscrollback 200\n");
+    /* outline-own: the window's own-engine glyphs, the reachability sentinel outline_rig reads */
+    slash_state_text(&s, "outline-own", out, sizeof(out));
+    CHECK_STR(out, "5\n");
+    slash_state_text(&s, "outline-aa", out, sizeof(out));
+    CHECK_STR(out, "7\n");
+    /* font-size: the answering window's font height, the key keymap_rig reads for Left Amiga + and - */
+    slash_state_text(&s, "font-size", out, sizeof(out));
+    CHECK_STR(out, "8\n");
     CHECK_INT(slash_state_text(&s, "splits", out, sizeof(out)), 2); /* bytes written */
     CHECK_STR(out, "3\n");
     CHECK_INT(slash_state_text(&s, "panes", out, sizeof(out)), 2);

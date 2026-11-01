@@ -18,6 +18,7 @@
 #include "outline.h"
 #include "unifont.h"
 #include "emoji.h"
+#include "aa_ink.h"
 
 #define VR_EXACT_SLOTS 256  /* a power of two */
 #define VR_EXACT_MAX 160
@@ -182,6 +183,7 @@ typedef struct vr_render {
     UBYTE view_stale;      /* live output reached the grid while the view was back: the screen is not the scrollback's */
     WORD jump;             /* jump scroll: screen row s shows grid row s + jump (vr_scroll) */
     WORD jump_step;        /* the spare rows the next jump leaves; doubles while scrolls keep coming */
+    UBYTE whole_frame;     /* this pass draws a ?2026 frame the program ended: settled at vr_compose_end */
     UBYTE scrolled_pass;   /* this render pass scrolled the whole screen */
     /* Amiga layout requests (CSI t / u / x / y), -1 = automatic:
      * text rows, text columns, left and top offset in pixels */
@@ -199,6 +201,15 @@ typedef struct vr_render {
      * 0 for none; the owner opens and closes it (vr_set_outline) */
     struct vo_font *outline;
     ULONG n_outline;      /* cells drawn from it or from unifont */
+    /* R4 (plan 2026-10-22-handler-rasterizer.md): an outline glyph with a
+     * coverage (vo_coverage) drawn antialiased, the profile's
+     * `outline-antialias` (1, default; vr_set_antialias). The table and the
+     * shades are for the last text and background colours (aa.ok). */
+    UBYTE aa_on;
+    aa_ink aa;                    /* the coverage-to-ink path (render/aa_ink.c): table, shades, template */
+    UBYTE *aa_buf;                /* a bold glyph's coverage, fast RAM */
+    ULONG aa_buf_size;
+    ULONG n_aa;                   /* glyphs drawn antialiased: the reachability sentinel */
     /* GNU Unifont's pages for the BMP the font and the outline font lack
      * (U2), 0 for none; the owner keeps it (vr_set_unifont) */
     struct uf_cache *unifont;
@@ -244,6 +255,8 @@ typedef struct vr_render {
     /* W-T7: a screen of 16 pens or fewer, and its dithers (0 until needed) */
     UBYTE few;
     struct vr_dither *dith;
+    /* the screen's bitplanes: a pen number past them draws as its low bits */
+    UBYTE depth;
 } vr_render;
 
 /* Default colours from RGB (0xRRGGBB; VR_KEEP leaves the screen's text /
@@ -287,6 +300,13 @@ void vr_palette_changed(vr_render *r);
  * way). A change gives the pens back to be chosen again; the caller then
  * redraws (vr_redraw). */
 void vr_set_dither(vr_render *r, int on);
+
+/* R4, the profile's `outline-antialias`: an outline glyph from UP-Term's
+ * own TrueType engine drawn with its coverage (on, the default): blended
+ * through cybergraphics on a true-colour RTG screen, else in shade pens
+ * between the text and background colours where the screen has them; or
+ * one colour, as a bitmap font (off). The caller redraws. */
+void vr_set_antialias(vr_render *r, int on);
 
 /* W-T14, the profile's `padding-color`: the strips of the window beside the
  * grid (right of the last whole column, below the last whole row, and the

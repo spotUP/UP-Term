@@ -100,6 +100,39 @@ int  upconf_parse(upconf *c, const char *buf, long len);
  * and key case aside; a profile absent from both is equal)? A window's
  * live update: only a window whose own profile changed is redrawn. */
 int  upconf_profile_equal(const upconf *a, const upconf *b, const char *profile);
+/* Where a window's colours come from: the Amarchy theme table THEME (one profile section holding fg, ENV:up-term/theme-active)
+ * when it is one, else the profile P of PROF. Sets *sec to the section; *is_theme is 1 for the theme (a theme replaces every
+ * colour, a profile only the ones it sets). Owner 2026-10-29: the active Amarchy theme beats the up-term profile's. */
+const upconf *upconf_colour_source(const upconf *prof, const char *p, const upconf *theme, const char **sec, int *is_theme);
+/* The rows of one section, in file order, duplicate keys included: upconf's
+ * table keeps one value per key, a keymap needs every line. Reads the raw
+ * text through the same line rules as upconf_parse (comments, CRLF, the
+ * "[name]" / "[profile name]" sections, rows before any section belong to
+ * "default"); section is compared case-insensitively. fn gets the 1-based
+ * line number, the key and the value (the rest of the line, ends trimmed;
+ * both are only valid during the call). Lines too long for upconf_parse are
+ * left out and counted in *dropped (may be NULL). Returns the rows passed. */
+typedef int (*upconf_row_fn)(void *ud, int lineno, const char *key, const char *value);
+int  upconf_rows(const char *buf, long len, const char *section, upconf_row_fn fn, void *ud, int *dropped);
+/* The menu program setting: "menu-style = graphical | text | minimal" in the default profile (rows before any
+ * section count), the last row wins, case-insensitive. Anything else, or no row: graphical. Reads the
+ * raw text through upconf_rows, so the commodity needs no table. */
+#define UC_MENU_GRAPHICAL 0
+#define UC_MENU_TEXT      1
+#define UC_MENU_MINIMAL   2     /* amarchy-gui with text-only rows and two pens (it is the drawn program) */
+/* amarchy-app-icons = generic | amiga | none (absent: generic), the icons of the index rows */
+#define UC_ICONS_GENERIC  0
+#define UC_ICONS_AMIGA    1
+#define UC_ICONS_NONE     2
+int  upconf_app_icons(const char *value);
+int  upconf_menu_style(const char *buf, long len);
+/* One menu-style value to UC_MENU_*: the single parser the rows above and the Prefs editor share. */
+int  upconf_menu_style_value(const char *value);
+/* "menu-in-terminal = text | graphical" (absent or anything else: text): the menu style Super+Space opens while the
+ * active window is an UP-Term terminal (windowed; a full-screen terminal always gets the text menu). */
+#define UC_TERMMENU_TEXT       0
+#define UC_TERMMENU_GRAPHICAL  1
+int  upconf_term_menu_value(const char *value);
 /* The last value of key in profile, 0 when absent. Case-insensitive. */
 const char *upconf_get(const upconf *c, const char *profile, const char *key);
 /* upconf_get, or def when the key is absent or its value is empty. */

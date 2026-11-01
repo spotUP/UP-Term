@@ -1,0 +1,57 @@
+[INFO] theme list 23 rows, cursor on 20 (tokyo-night (current))
+[INFO] direction Down
+[INFO] picking row 21 (vantablack)
+Process  1: Loaded as command: BOOTX:wasabid
+Process  2: Loaded as command: VTCX:Apps/bin/amarchy-gui
+Process  3: Loaded as command: Workbench
+Process  4: Loaded as command: VTCX:Apps/bin/amarchy-menu
+Process  5: Loaded as command: RAM:af-rf
+Process  6: Loaded as command: VTCX:Apps/bin/Amarchy
+Process  7: No command loaded
+Process  8: No command loaded
+Process  9: Loaded as command: BOOTX:wasabid
+Process 10: Loaded as command: Status
+
+flat=on calls=1458 chained=0
+pens text=2 line=3 back=0 outline=3
+dopus=absent
+rectfill installed=yes calls=20474 hits=540
+frame=hooked calls=0 flat=0
+
+PEN 0 rgb 000000
+PEN 1 rgb bebebe
+PEN 2 rgb 505050
+PEN 3 rgb 8d8d8d
+RING open(B active) A 200x90 valid=580 pen3=580 pens0-7=0,0,0,580,0,0,0,0 other=0 active=0
+RING open(B active) B 200x90 valid=580 pen3=580 pens0-7=0,0,0,580,0,0,0,0 other=0 active=0
+RING activate A A 200x90 valid=580 pen3=580 pens0-7=0,0,0,580,0,0,0,0 other=0 active=1
+RING activate A B 200x90 valid=580 pen3=580 pens0-7=0,0,0,580,0,0,0,0 other=0 active=0
+RING activate B A 200x90 valid=580 pen3=580 pens0-7=0,0,0,580,0,0,0,0 other=0 active=0
+RING activate B B 200x90 valid=580 pen3=580 pens0-7=0,0,0,580,0,0,0,0 other=0 active=1
+RING resize A +40,+20 A 240x110 valid=700 pen3=700 pens0-7=0,0,0,700,0,0,0,0 other=0 active=0
+RING resize A +40,+20 B 200x90 valid=580 pen3=580 pens0-7=0,0,0,580,0,0,0,0 other=0 active=1
+RING resize B -30,-10 A 240x110 valid=700 pen3=700 pens0-7=0,0,0,700,0,0,0,0 other=0 active=0
+RING resize B -30,-10 B 170x80 valid=500 pen3=500 pens0-7=0,0,0,500,0,0,0,0 other=0 active=1
+RING B to back A 240x110 valid=700 pen3=700 pens0-7=0,0,0,700,0,0,0,0 other=0 active=0
+RING B to back B 170x80 valid=0 pen3=0 pens0-7=0,0,0,0,0,0,0,0 other=0 active=1
+RING B to front A 240x110 valid=700 pen3=700 pens0-7=0,0,0,700,0,0,0,0 other=0 active=0
+RING B to front B 170x80 valid=500 pen3=500 pens0-7=0,0,0,500,0,0,0,0 other=0 active=1
+RING A to back A 240x110 valid=700 pen3=700 pens0-7=0,0,0,700,0,0,0,0 other=0 active=0
+RING A to back B 170x80 valid=500 pen3=500 pens0-7=0,0,0,500,0,0,0,0 other=0 active=1
+RING A to front A 240x110 valid=700 pen3=700 pens0-7=0,0,0,700,0,0,0,0 other=0 active=0
+RING A to front B 170x80 valid=500 pen3=500 pens0-7=0,0,0,500,0,0,0,0 other=0 active=1
+RING A drag over simple-refresh B A 240x110 valid=700 pen3=700 pens0-7=0,0,0,700,0,0,0,0 other=0 active=0
+RING A drag over simple-refresh B B 170x80 valid=190 pen3=190 pens0-7=0,0,0,190,0,0,0,0 other=0 active=1
+RING A dragged off B A 240x110 valid=700 pen3=700 pens0-7=0,0,0,700,0,0,0,0 other=0 active=0
+RING A dragged off B B 170x80 valid=500 pen3=500 pens0-7=0,0,0,500,0,0,0,0 other=0 active=1
+RING A over B, sent to back (B on top) A 240x110 valid=700 pen3=700 pens0-7=0,0,0,700,0,0,0,0 other=0 active=0
+RING A over B, sent to back (B on top) B 170x80 valid=500 pen3=500 pens0-7=0,0,0,500,0,0,0,0 other=0 active=1
+RING A off again, final A 240x110 valid=700 pen3=700 pens0-7=0,0,0,700,0,0,0,0 other=0 active=0
+RING A off again, final B 170x80 valid=500 pen3=500 pens0-7=0,0,0,500,0,0,0,0 other=0 active=1
+
+flat=on calls=1850 chained=0
+pens text=2 line=3 back=0 outline=3
+dopus=absent
+rectfill installed=yes calls=21751 hits=792
+frame=hooked calls=0 flat=0
+

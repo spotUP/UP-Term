@@ -51,6 +51,12 @@ def handed_search(rows):
     return '\n'.join(out)
 
 
+def installer_rename(pairs):
+    """The Installer-language form of pkgs.rename_lines, for the update probe that reads the old MANIFEST."""
+    return '\n'.join('(if (and (exists "%s") (not (exists "%s"))) (run (cat "Rename >NIL: " "%s" " " "%s")))' % (o, n, o, n)
+                     for o, n in pairs)
+
+
 def addon_uninstall(rows):
     """The base Uninstall's lines that run each add-on's own Uninstall (the copy its Install kept in its
     record drawer under UP-Term:pkg); a standalone add-on (record in ENVARC:) is not run."""
@@ -63,7 +69,7 @@ def addon_uninstall(rows):
 
 
 def _addons(rows):
-    upkg_only = slim.ids()      # git, perl, vim: upkg install, never a checkbox of the base Install
+    upkg_only = slim.ids()      # git, perl, vim, bitchx, vbcc: upkg install, never a checkbox of the base Install
     return [r for r in rows if r['id'] != 'base' and r['id'] not in upkg_only]
 
 
@@ -82,7 +88,7 @@ def addon_find(rows):
 def addon_choices(rows):
     """The choices of the add-on page: one per non-base row, saying where the archive was found."""
     return '\n'.join(
-        '(cat "%s" (if (= #ad%skind "drawer") " (drawer found)" (if (= #ad%skind "lha") " (lha file found)" " (not found)")))'
+        '(cat "%s" (if (= #ad%skind "drawer") " (drawer found)" (if (= #ad%skind "lha") " (will unpack lha)" " (not found)")))'
         % (r['archive'], r['id'], r['id']) for r in _addons(rows))
 
 
@@ -103,26 +109,49 @@ def read_values(pkg_id, extra=()):
     if row is None:
         raise SystemExit('mkinstaller: no package %r in dist/packages.txt' % pkg_id)
     record = row['record']
+    # @ARCHIVE@ is the name the script's texts show: the base's is the product UP-Term (its archive is up-term)
     values = {
-        'ID': row['id'], 'ARCHIVE': row['archive'], 'VERSION': row['version'],
+        'ID': row['id'], 'ARCHIVE': 'UP-Term' if row['id'] == 'base' else row['archive'], 'VERSION': row['version'],
         'NEEDSBASE': row['needs-base'], 'IXEMUL': row['ixemul'], 'RECORD': record,
         'HANDED': row['handed'],
         'OPTS': 'ENVARC:up-term/opts' if row['id'] == 'base' else record.rstrip(':/') + '/opts',
-        # the record drawer with its separator (UP-Term: or UP-Term:pkg/UP-Term-nvim/)
+        # the record drawer with its separator (UP-Term: or UP-Term:pkg/up-nvim/)
         'RECORDP': record if record.endswith((':', '/')) else record + '/',
         # first lines of a package's record part and its Uninstall's data question: dist/common/ fragments
         'RECORDPRE': 'none.dos' if record.endswith(':') else 'record-addon.dos',
+        # where record.dos writes the MANIFEST and options: an add-on through $uptrec (set by its RECORDRESOLVE,
+        # UPTREAL: on a multi-directory UP-Term:), which RECORDEND then unassigns; the base by its own names
+        'RECORDW': (record if record.endswith((':', '/')) else record + '/') if record.endswith(':') else '$uptrec/',
+        'OPTSW': ('ENVARC:up-term/opts' if row['id'] == 'base' else record.rstrip(':/') + '/opts')
+                 if record.endswith(':') else '$uptrec/opts',
+        'RECORDEND': 'none.dos' if record.endswith(':') else 'record-end-addon.dos',
         'PKGDIR': record.rsplit('/', 1)[0] if '/' in record else record,
+        # where the record drawer is made: an add-on of the base resolves UP-Term: to one real drawer first
+        # (a multi-directory assign creates in its first directory only), a stand-alone one has an absolute record
+        'RECORDRESOLVE': 'resolve-addon.dos' if record.startswith('UP-Term:') else 'resolve-plain.dos',
+        'PKGDIRREAL': 'UPTREAL:' + record[len('UP-Term:'):].rsplit('/', 1)[0] if record.startswith('UP-Term:') else '',
+        'RECORDREAL': 'UPTREAL:' + record[len('UP-Term:'):] if record.startswith('UP-Term:') else '',
         'ADDONVAR': 'none.dos',
+        # the base's Update reads the options back from the Amiga when the last install recorded none
+        'OLDOPTS': 'oldopts.installer' if row['id'] == 'base' else 'none.dos',
         # a stand-alone archive (needs no base, packages.txt): its record is in ENVARC:, it is installed and
         # updated with no UP-Term: assign, and DESTTEXT is what its pages call the place it installs to
         'STANDALONE': 'YES' if row['id'] != 'base' and row['needs-base'] == '-' else 'NO',
         'DESTTEXT': '',
+        # YES: the package ships a 68000 build and chooses it itself, so requirements.installer lets a 68000 pass
+        'CPU68000': 'NO',
         # may an Update take over the files the single kit installed (UP-Term:pkg/legacy, kit-split D7)
         'LEGACY': 'YES',
         'CHECKFRAG': 'check-standalone.dos' if row['id'] != 'base' and row['needs-base'] == '-' else 'check.dos',
         'HANDEDSEARCH': handed_search(pkgs.rows()) if row['id'] == 'base' else '',
         'ADDONUNINSTALL': addon_uninstall(pkgs.rows()) if row['id'] == 'base' else '',
+        # a package that was renamed (dist/package-renames.txt): its record drawer of the old name is renamed
+        # first, by the check part (a Shell or upkg install), by the Installer's update probe, and by the base's
+        # Uninstall for every add-on, so a record the old Installer wrote is found under the new name
+        'RENAMERECORD': pkgs.rename_lines(pkgs.old_record(row)),
+        'RENAMERECORDI': installer_rename(pkgs.old_record(row)),
+        'RECORDRENAMES': pkgs.rename_lines([p for r in pkgs.rows() if r['id'] != 'base' for p in pkgs.old_record(r)])
+                         if row['id'] == 'base' else '',
         'ADDONFIND': addon_find(pkgs.rows()) if row['id'] == 'base' else '',
         'ADDONCHOICES': addon_choices(pkgs.rows()) if row['id'] == 'base' else '',
         'ADDONRUN': addon_run(pkgs.rows()) if row['id'] == 'base' else '',
@@ -142,6 +171,14 @@ def read_values(pkg_id, extra=()):
         if line.strip() and not line.startswith('#'):
             k, _, v = line.partition('=')
             values[k.strip()] = v
+    # the data drawer an add-on's Uninstall deletes, spelled through the one real drawer (UPTREAL:)
+    if values.get('VARDIR', '').startswith('UP-Term:'):
+        values['VARDIRREAL'] = 'UPTREAL:' + values['VARDIR'][len('UP-Term:'):]
+    # the check part's rename of a record drawer left under an old name: through UPTREAL:, resolved first
+    pairs = [(o.replace('UP-Term:', 'UPTREAL:', 1), n.replace('UP-Term:', 'UPTREAL:', 1))
+             for o, n in pkgs.old_record(row) if n.startswith('UP-Term:')]
+    values['RENAMERECORDREAL'] = ('; @include dist/common/resolve-uptreal.dos\n' + pkgs.rename_lines(pairs)
+                                  + '\nAssign >NIL: UPTREAL:') if pairs else ''
     return values
 
 

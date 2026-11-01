@@ -5,20 +5,28 @@
 #include <string.h>
 #include "prefs_dos.h"
 
-const char *const prefs_conf_dir[2] = { "ENV:up-term", "ENVARC:up-term" };
-const char *const prefs_conf_path[2] = { "ENV:up-term/up-term", "ENVARC:up-term/up-term" };
-static const char *const conf_tmp[2] = { "ENV:up-term/up-term.new", "ENVARC:up-term/up-term.new" };
-static const char *const conf_orig[2] = { "ENV:up-term/up-term.orig", "ENVARC:up-term/up-term.orig" };
+static long g_last_err;
+
+long prefs_dos_last_error(void)
+{
+    return g_last_err;
+}
 
 static int dos_write(void *ctx, const char *path, const char *buf, long len)
 {
     BPTR f = Open((STRPTR)path, MODE_NEWFILE);
     LONG w, closed;
     (void)ctx;
-    if (!f)
+    if (!f) {
+        g_last_err = IoErr();
         return 0;
+    }
     w = Write(f, (APTR)buf, len);
+    if (w != len)
+        g_last_err = IoErr();
     closed = Close(f); /* a buffered write can fail only here */
+    if (w == len && !closed)
+        g_last_err = IoErr();
     return w == len && closed;
 }
 
@@ -37,27 +45,40 @@ static int dos_remove(void *ctx, const char *path)
     (void)ctx;
     if (DeleteFile((STRPTR)path))
         return 1;
-    return IoErr() == ERROR_OBJECT_NOT_FOUND;
+    g_last_err = IoErr();
+    return g_last_err == ERROR_OBJECT_NOT_FOUND;
 }
 
 static int dos_rename(void *ctx, const char *from, const char *to)
 {
     (void)ctx;
-    return Rename((STRPTR)from, (STRPTR)to) ? 1 : 0;
+    if (Rename((STRPTR)from, (STRPTR)to))
+        return 1;
+    g_last_err = IoErr();
+    return 0;
 }
 
 const prefs_fs prefs_dos_fs = { 0, dos_write, dos_exists, dos_remove, dos_rename };
 
-int prefs_dos_dir(int t)
+int prefs_dos_dir(const prefs_paths *p, int t)
 {
-    BPTR l = CreateDir((STRPTR)prefs_conf_dir[t]); /* fails when it exists: fine */
+    BPTR l = CreateDir((STRPTR)p->dir[t]); /* fails when it exists: fine */
     if (l)
         UnLock(l);
-    l = Lock((STRPTR)prefs_conf_dir[t], SHARED_LOCK);
-    if (!l)
+    l = Lock((STRPTR)p->dir[t], SHARED_LOCK);
+    if (!l) {
+        g_last_err = IoErr();
         return 0;
+    }
     UnLock(l);
     return 1;
+}
+
+static int dos_save_one(const prefs_paths *p, int t, const char *buf, long len)
+{
+    if (!prefs_dos_dir(p, t))
+        return PREFS_DOS_NODIR;
+    return prefs_install_target_at(&prefs_dos_fs, p, t, buf, len);
 }
 
 int prefs_dos_save(const char *buf, long len, int keep, int *failed, int hlcat)
@@ -65,19 +86,12 @@ int prefs_dos_save(const char *buf, long len, int keep, int *failed, int hlcat)
     int t, r;
     for (t = keep ? PREFS_T_ENVARC : PREFS_T_ENV; t >= PREFS_T_ENV; t--) {
         *failed = t;
-        if (!prefs_dos_dir(t))
-            return PREFS_DOS_NODIR;
-        r = prefs_install(&prefs_dos_fs, prefs_conf_path[t], conf_tmp[t], conf_orig[t], buf, len);
+        r = dos_save_one(&prefs_paths_upterm, t, buf, len);
         if (r != PREFS_INSTALL_OK)
             return r;
-        {   /* the variable is a few bytes: written in place, no backup */
-            char path[48];
-            const char *v = prefs_hlcat_text(hlcat);
-            strcpy(path, prefs_conf_dir[t]);
-            strcat(path, "/" PREFS_HLCAT_VAR);
-            if (!dos_write(0, path, v, (long)strlen(v)))
-                return PREFS_INSTALL_WRITE;
-        }
+        r = prefs_write_hlcat(&prefs_dos_fs, t, hlcat);
+        if (r != PREFS_INSTALL_OK)
+            return r;
     }
     return PREFS_INSTALL_OK;
 }
@@ -90,7 +104,7 @@ int prefs_dos_splits(const char *buf, long len)
         if (len == 0) {
             if (!dos_remove(0, path[t]))
                 ok = 0;
-        } else if (!prefs_dos_dir(t) || !dos_write(0, path[t], buf, len))
+        } else if (!prefs_dos_dir(&prefs_paths_upterm, t) || !dos_write(0, path[t], buf, len))
             ok = 0;
     }
     return ok;

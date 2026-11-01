@@ -3,7 +3,7 @@
  * thoughts/shared/plans/2026-10-01-terminal-preferences.md and
  * 2026-10-14-prefs-ux.md).
  *
- * C:UP-Term Prefs opens a window with five pages, General, Colors, Palette,
+ * C:UP-Term-Prefs opens a window with five pages, General, Colors, Palette,
  * Keyboard and Advanced, picked with the Page gadget. The fields edit one
  * profile at a time (the Profile gadget lists the file's profiles; New...,
  * Rename... and Delete work on the list), then the Amiga Prefs buttons: Save
@@ -40,6 +40,7 @@
 #include <exec/memory.h>
 #include <dos/dos.h>
 #include <dos/dosextens.h>
+#include <dos/notify.h>
 #include <intuition/intuition.h>
 #include <intuition/screens.h>
 #include <intuition/intuitionbase.h>
@@ -58,14 +59,25 @@
 #include <proto/intuition.h>
 #include <proto/graphics.h>
 #include <proto/gadtools.h>
+#include "pick_list.h"
 #include <proto/utility.h>
 
 #include "../config/upconf.h"
 #include "prefs_core.h"
 #include "prefs_ui.h"
+#include "settings_def.h"
+#include "../amarchy/flat_shared.h"
 #include "prefs_asl.h"
+#include "../amarchy/gthemes_scan_dos.h"
 #include "../tty/qmark.h"
 #include "prefs_dos.h"
+#include "prefs_merge.h"
+#include "../amarchy/amconf_dos.h"
+
+/* vbcc's startup runs main on a stack of this size whatever the starter gives
+ * it; the cookie says the same to AmigaOS 3.2 and to vsh (RULES.md rule 6). */
+long __stack = 16384;
+const char upprefs_stack_cookie[] = "$STACK: 16384";
 
 /* The clib's calls read these; startup.o provides DOSBase only. */
 struct IntuitionBase *IntuitionBase;
@@ -91,12 +103,16 @@ struct Library *UtilityBase;
 /* a swatch's line of text is the larger of these, a name the longest */
 #define PROFNAME_CAP UC_NAME
 
+#define NNOTIFY 4 /* the profile file and Amarchy's file, in ENV: and ENVARC: */
+
 struct app {
     struct Window *win;
     struct Screen *scr;
     struct DrawInfo *dri;
     APTR vi;                  /* GadTools' VisualInfo of the screen */
     struct TextAttr *ta;      /* the font of the gadgets: the screen's, or topaz 8 */
+    struct TextFont *tf;      /* the font ta names, opened: what the swatch labels are drawn in */
+    int tf_owned;             /* tf was opened here, so it is closed here */
     WORD ox, oy;              /* the inner top left, in window coordinates */
     pl_result lay;            /* the boxes of every gadget */
     struct Gadget *glist_common; /* Page, status, Save / Use / Cancel */
@@ -113,7 +129,12 @@ struct app {
     int tab_dirty;            /* the table changed (rename, delete) and is not saved */
     STRPTR plab[UC_MAX_PROFILES + 2]; /* the Profile gadget's labels */
     prefs_fields f;           /* what the gadgets show */
+    am_prefs am;              /* Amarchy's own file (the one store of the Amarchy page), as loaded or last written */
+    int am_src;               /* the AMCONF_* source it came from */
     prefs_fields orig;        /* what the profile held when it was loaded or last written */
+    struct MsgPort *nport;    /* the files' change notices (the Amarchy menu writes them while Prefs is open) */
+    struct NotifyRequest nreq[NNOTIFY];
+    int non[NNOTIFY];         /* StartNotify took nreq[i] */
     prefs_kc kc;              /* KingCON's style, decoded from f.kcmode */
     long sb_lines;            /* the scrollback gadget's number */
     int sb_none;              /* "No scrollback" */
@@ -129,24 +150,7 @@ struct app {
 static struct TextAttr topaz8 = { (STRPTR)"topaz.font", 8, FS_NORMAL, FPF_ROMFONT };
 
 static STRPTR page_labels[] = { (STRPTR)"General", (STRPTR)"Colors", (STRPTR)"Palette",
-                                (STRPTR)"Keyboard", (STRPTR)"Advanced", 0 };
-static STRPTR cursor_labels[] = { (STRPTR)"Block", (STRPTR)"Underline", (STRPTR)"Bar", 0 };
-static STRPTR bell_labels[] = { (STRPTR)"None", (STRPTR)"Beep", (STRPTR)"Visual", 0 };
-/* in the order of PREFS_SPLIT_* */
-static STRPTR split_labels[] = { (STRPTR)"Off", (STRPTR)"Layout", (STRPTR)"Layout and programs", 0 };
-static STRPTR meta_labels[] = { (STRPTR)"Left Amiga", (STRPTR)"Alt", 0 };
-static STRPTR complete_labels[] = { (STRPTR)"Unix", (STRPTR)"KingCON", 0 };
-/* in the order of PREFS_KC_*, PREFS_SCREEN_*, PREFS_CLIP_* */
-static STRPTR kcmatch_labels[] = { (STRPTR)"Window", (STRPTR)"List under the line", (STRPTR)"Tab cycles",
-                                   (STRPTR)"List and Tab cycles", (STRPTR)"Common part only", 0 };
-static STRPTR screen_labels[] = { (STRPTR)"Workbench", (STRPTR)"Own screen", (STRPTR)"Full screen", 0 };
-static STRPTR backspace_labels[] = { (STRPTR)"Delete", (STRPTR)"Backspace", 0 };
-static STRPTR clip_labels[] = { (STRPTR)"Set the clipboard", (STRPTR)"Set and read the clipboard",
-                                (STRPTR)"Not use the clipboard", 0 };
-/* in prefs_colors_index order; the Settings menu's Colour mode words */
-static STRPTR colors_labels[] = { (STRPTR)"Not told", (STRPTR)"Full colour (RGB)", (STRPTR)"256 colours",
-                                  (STRPTR)"16 colours", 0 };
-
+                                (STRPTR)"Keyboard", (STRPTR)"Advanced", (STRPTR)"Amarchy", (STRPTR)"Flat Look", 0 };
 /* A taglist from (tag, data) pairs, ended by TAG_DONE: t has room for them.
  * (A compound literal: vbcc warns about va_start, and the values are not
  * constants.) */
@@ -231,7 +235,7 @@ static void show_help(struct app *a, int id)
         return;
     a->helped = id;
     it = id ? pg_find(id) : 0;
-    show_line(a, it && it->help ? it->help : a->action);
+    show_line(a, it && pg_help(it) ? pg_help(it) : a->action);
 }
 
 /* ---- the fields <-> the gadgets ------------------------------------------------- */
@@ -247,6 +251,9 @@ static char *text_field(struct app *a, int id, int *cap)
     case PG_SELFG_HEX: return a->f.selfg;
     case PG_SELBG_HEX: return a->f.selbg;
     case PG_LINK: return a->f.linkopen;
+    case PG_AM_MUSIC: return a->f.am_music;
+    case PG_AM_DEMO: return a->f.am_demo;
+    case PG_AM_HIDE: return a->f.am_hide;
     case PG_TERM:
         *cap = (int)sizeof(a->f.term);
         return a->f.term;
@@ -292,6 +299,13 @@ static int *int_of(struct app *a, int id)
     switch (id) {
     case PG_CURSOR: return &a->f.cursor;
     case PG_BLINK: return &a->f.blink;
+    case PG_AM_ICONS: return &a->f.am_icons;
+    case PG_AM_MODE: return &a->f.am_mode;
+    case PG_AM_TERMMENU: return &a->f.am_termmenu;
+    case PG_AM_FLAT: return &a->f.am_flat;
+    case PG_AM_FLATGAD: return &a->f.am_flatgad;
+    case PG_AM_FLATSIZE: return &a->f.am_flatsize;
+    case PG_AM_ICONSTYLE: return &a->f.am_iconstyle;
     case PG_BELL: return &a->f.bell;
     case PG_BOLD: return &a->f.bold;
     case PG_WHEEL: return &a->f.wheel;
@@ -299,6 +313,7 @@ static int *int_of(struct app *a, int id)
     case PG_SCROLLBAR: return &a->f.scrollbar;
     case PG_REFLOW: return &a->f.reflow;
     case PG_DITHER: return &a->f.dither;
+    case PG_OUTLINE_AA: return &a->f.outline_aa;
     case PG_PADDING: return &a->f.pad_extend;
     case PG_META: return &a->f.meta_alt;
     case PG_AMIGAKEYS: return &a->f.amiga_keys;
@@ -321,22 +336,25 @@ static int *int_of(struct app *a, int id)
     }
 }
 
+/* The choices of a cycle: the page switch here, every other cycle from its row of the settings table. */
+#define CYC_MAX 8
+static STRPTR cyc_buf[SDI_COUNT][CYC_MAX];
+static int get_state(struct app *a, int id);
+
+/* The Menu theme's choices: the one theme scan (gt_dos_scan) made when the window opened. */
+static pg_themes themes;
+
 static STRPTR *labels_of(int id)
 {
-    switch (id) {
-    case PG_PAGE: return page_labels;
-    case PG_CURSOR: return cursor_labels;
-    case PG_BELL: return bell_labels;
-    case PG_META: return meta_labels;
-    case PG_COMPLETE: return complete_labels;
-    case PG_KC_MATCH: return kcmatch_labels;
-    case PG_SCREEN: return screen_labels;
-    case PG_BACKSPACE: return backspace_labels;
-    case PG_CLIPBOARD: return clip_labels;
-    case PG_COLORS: return colors_labels;
-    case PG_SPLIT_RESTORE: return split_labels;
-    default: return 0;
-    }
+    const sd_setting *s;
+    if (id == PG_PAGE)
+        return page_labels;
+    s = sd_find_gadget(id);
+    if (!s || s->kind != SD_CYCLE || id != s->gadget)
+        return 0;
+    if (!cyc_buf[s->id][0])
+        pg_cycle_texts(id, (const char **)cyc_buf[s->id], CYC_MAX);
+    return cyc_buf[s->id];
 }
 
 static int count_of(STRPTR *l)
@@ -388,16 +406,12 @@ static void mode_text(struct app *a, char *out, int cap)
 {
     unsigned long id;
     int depth = prefs_depth_parse(a->f.screendepth), j;
-    struct NameInfo ni;
     out[0] = 0;
     if (!prefs_mode_parse(a->f.screenmode, &id) || !id) {
         strcpy(out, "Workbench's");
         return;
     }
-    if (GetDisplayInfoData(0, (UBYTE *)&ni, sizeof(ni), DTAG_NAME, (ULONG)id) > 0 && ni.Name[0]) {
-        strncpy(out, (const char *)ni.Name, (size_t)(cap - 1));
-        out[cap - 1] = 0;
-    } else {
+    if (!asl_mode_name(id, out, cap)) {
         strncpy(out, a->f.screenmode, (size_t)(cap - 1));
         out[cap - 1] = 0;
     }
@@ -410,10 +424,34 @@ static void mode_text(struct app *a, char *out, int cap)
         strcpy(out + j, ", default depth");
 }
 
+/* The text amarchy-flat reports (the STATUS path: flat_status_text over the state block of the "Amarchy.Flat"
+ * semaphore): on, off, absent, or "held by <patch>" naming the kill switch (FLAT-C4). */
+static const char *flat_prefs_status(void)
+{
+    static char text[48];
+    flat_state copy;
+    flatshared *r;
+    int found = 0;
+    memset(&copy, 0, sizeof copy);
+    Forbid();
+    r = (flatshared *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
+    if (r) {
+        found = 1;
+        copy = r->st;
+    }
+    Permit();
+    if (!flat_status_text(&copy, found, text, sizeof text))
+        return flat_status_word(&copy, found);
+    return text;
+}
+
 static void show_texts(struct app *a)
 {
     char t[UC_MAX_VALUE];
     set_attr(a, PG_FONT, GTTX_Text, (ULONG)(a->f.font[0] ? a->f.font : "Screen's font"));
+    set_attr(a, PG_AM_FONT, GTTX_Text, (ULONG)(a->f.am_font[0] ? a->f.am_font : "Built-in"));
+    set_attr(a, PG_AM_GTHEME, GTTX_Text, (ULONG)a->f.am_gtheme);
+    set_attr(a, PG_AM_FLATSTATUS, GTTX_Text, (ULONG)flat_prefs_status());
     set_attr(a, PG_FALLBACK, GTTX_Text, (ULONG)(a->f.fallback[0] ? a->f.fallback : "None"));
     mode_text(a, t, sizeof(t));
     set_attr(a, PG_SCREEN_MODE, GTTX_Text, (ULONG)t);
@@ -477,6 +515,8 @@ static void draw_swatch(struct app *a, int id)
         SetAPen(rp, pens[disabled ? SHADOWPEN : TEXTPEN]);
         SetBPen(rp, pens[BACKGROUNDPEN]);
         SetDrMd(rp, JAM2);
+        if (a->tf)
+            SetFont(rp, a->tf);
         Move(rp, x - a->lay.label_w[id], (WORD)(y + (b->h - a->lay.font_h) / 2 + rp->TxBaseline));
         Text(rp, (STRPTR)plain, (ULONG)strlen(plain));
     }
@@ -740,11 +780,69 @@ static void load_profile(struct app *a, const char *name)
         prefs_defaults(&a->f);
         a->prof_new = 1;
     }
+    amconf_to_fields(&a->am, &a->f); /* the Amarchy page is the same in every profile */
     a->orig = a->f;
     sb_load(a);
     a->colors = prefs_colors_index(a->f.colors);
     prefs_kc_decode(a->f.kcmode, &a->kc);
     show_fields(a);
+}
+
+/* ---- the files change while the window is open ---------------------------------------- */
+
+static void notify_start(struct app *a)
+{
+    int i;
+    a->nport = CreateMsgPort();
+    if (!a->nport)
+        return;
+    for (i = 0; i < NNOTIFY; i++) {
+        a->nreq[i].nr_Name = (STRPTR)(i < 2 ? prefs_paths_upterm.path[i] : prefs_paths_amarchy.path[i - 2]);
+        a->nreq[i].nr_Flags = NRF_SEND_MESSAGE;
+        a->nreq[i].nr_stuff.nr_Msg.nr_Port = a->nport;
+        a->non[i] = StartNotify(&a->nreq[i]) ? 1 : 0;
+    }
+}
+
+static void notify_stop(struct app *a)
+{
+    int i;
+    struct Message *m;
+    for (i = 0; i < NNOTIFY; i++)
+        if (a->non[i])
+            EndNotify(&a->nreq[i]);
+    while (a->nport && (m = GetMsg(a->nport)) != 0)
+        ReplyMsg(m);
+    if (a->nport)
+        DeleteMsgPort(a->nport);
+}
+
+/* A file changed: the pages the user has not edited take the file's values, the edited ones keep the
+ * user's (prefs_merge_external). A renamed or deleted profile, or one not in the table yet, is the user's
+ * own work in progress: the file is not read over it. */
+static void files_changed(struct app *a)
+{
+    prefs_fields file;
+    unsigned changed;
+    prefs_fields merged, orig;
+    if (a->tab_dirty || a->prof_new)
+        return;
+    collect(a);
+    load_file(a);
+    if (!prefs_profile_exists(&a->conf, a->prof))
+        return;
+    prefs_from_conf(&file, &a->conf, a->prof);
+    a->am_src = amconf_load(&a->am);
+    amconf_to_fields(&a->am, &file);
+    changed = prefs_merge_external(&a->f, &a->orig, &file, &merged, &orig);
+    a->f = merged;
+    a->orig = orig;
+    sb_load(a);
+    a->colors = prefs_colors_index(a->f.colors);
+    prefs_kc_decode(a->f.kcmode, &a->kc);
+    show_fields(a);
+    if (changed)
+        set_status(a, "A file changed: the pages you have not edited were reloaded.");
 }
 
 /* Is there something a Cancel would lose? */
@@ -839,6 +937,20 @@ static int commit(struct app *a, int keep)
     }
     if (len < 0) {
         puts_(msg, puts_(msg, 0, "The file would be over ", CONF_MAX), " bytes.", -1);
+        set_status(a, msg);
+        return 0;
+    }
+    /* Amarchy's file first: the profile's save below drops the Amarchy keys an older version left in it, so
+     * the values must already be in their one store. Written when the page changed, or when they were only
+     * read from that old copy. */
+    r = amconf_save_fields(&a->am, &a->am_src, &a->f, keep, &t);
+    if (r == PREFS_SAVE_NODIR) {
+        puts_(msg, puts_(msg, 0, "Cannot create ", -1), prefs_paths_amarchy.dir[t], -1);
+        set_status(a, msg);
+        return 0;
+    }
+    if (r != PREFS_INSTALL_OK) {
+        puts_(msg, 0, "Amarchy preferences could not be written.", -1);
         set_status(a, msg);
         return 0;
     }
@@ -1455,6 +1567,18 @@ static void pick_theme(struct app *a)
         set_status(a, "That file holds no colours.");
 }
 
+/* The Menu theme: the list of the installed themes (the scan made when the window opened) in the picker. */
+static void pick_menu_theme(struct app *a)
+{
+    int at = pk_initial(themes.n, pg_themes_find(&themes, a->f.am_gtheme));
+    int r = pk_result(themes.n, pk_run(a->scr, a->win, a->vi, a->ta, a->lay.font_w, a->lay.font_h,
+                                       "Menu theme", themes.text, themes.n, at), 1);
+    if (r < 0 || !pg_themes_pick(&themes, r, a->f.am_gtheme, (int)sizeof a->f.am_gtheme))
+        return;
+    show_texts(a);
+    set_status(a, "Theme chosen: Save or Use writes it.");
+}
+
 static void pick_font(struct app *a)
 {
     char name[UC_MAX_VALUE], iname[UC_MAX_VALUE], spec[UC_MAX_VALUE];
@@ -1464,12 +1588,29 @@ static void pick_font(struct app *a)
     if (!asl_pick_font(0, a->win, "UP-Term font", iname, isize, 1, name, sizeof(name), &size))
         return;
     if (!prefs_font_compose(name, size, spec, sizeof(spec))) {
-        set_status(a, "The font's name has a blank or a colon: not usable.");
+        set_status(a, "The font's name has a colon: not usable.");
         return;
     }
     strcpy(a->f.font, spec);
     show_texts(a);
     set_status(a, "Font chosen: Save or Use writes it.");
+}
+
+static void pick_menu_font(struct app *a)
+{
+    char name[UC_MAX_VALUE], iname[UC_MAX_VALUE], spec[UC_MAX_VALUE];
+    long size = 0, isize = 0;
+    iname[0] = 0;
+    prefs_font_parse(a->f.am_font, iname, sizeof(iname), &isize);
+    if (!asl_pick_font(0, a->win, "Amarchy menu font", iname, isize, 0, name, sizeof(name), &size))
+        return;
+    if (!prefs_font_compose(name, size, spec, sizeof(spec))) {
+        set_status(a, "The font's name has a colon: not usable.");
+        return;
+    }
+    strcpy(a->f.am_font, spec);
+    show_texts(a);
+    set_status(a, "Menu font chosen: Save or Use writes it.");
 }
 
 static void pick_fallback(struct app *a)
@@ -1494,7 +1635,7 @@ static void pick_mode(struct app *a)
     int depth = prefs_depth_parse(a->f.screendepth), ndepth;
     if (!prefs_mode_parse(a->f.screenmode, &id))
         id = 0;
-    if (!asl_pick_screenmode(a->win, "UP-Term screen mode", id, depth, PREFS_DEPTH_MIN, PREFS_DEPTH_MAX, &nid, &ndepth))
+    if (!asl_pick_screenmode(0, a->win, "UP-Term screen mode", id, depth, PREFS_DEPTH_MIN, PREFS_DEPTH_MAX, &nid, &ndepth))
         return;
     prefs_mode_format(nid, a->f.screenmode);
     prefs_depth_format(ndepth, a->f.screendepth);
@@ -1674,6 +1815,18 @@ static int act(struct app *a, int id, int val)
         a->f.font[0] = 0;
         show_texts(a);
         return 0;
+    case PG_AM_FONT:
+    case PG_AM_FONT_CHOOSE:
+        pick_menu_font(a);
+        return 0;
+    case PG_AM_GTHEME:
+    case PG_AM_GTHEME_CHOOSE:
+        pick_menu_theme(a);
+        return 0;
+    case PG_AM_FONT_CLEAR:
+        a->f.am_font[0] = 0;
+        show_texts(a);
+        return 0;
     case PG_FALLBACK:
     case PG_FALLBACK_CHOOSE:
         pick_fallback(a);
@@ -1830,12 +1983,12 @@ int main(void)
     struct IntuiMessage *im;
     struct RastPort mrp;
     pl_font pf;
-    ULONG sig;
+    ULONG sig, nsig;
     int done = 0, rc = 1, i;
 
-    /* `UP-Term Prefs ?` shows the usage and ends; the tool takes no arguments */
+    /* `UP-Term Prefs ?` shows the usage and ends; the one argument is the keyword AMARCHY */
     if (qmark_line((const char *)GetArgStr())) {
-        PutStr((STRPTR)"UP-Term Prefs: no arguments; opens the preferences window\n");
+        PutStr((STRPTR)"UP-Term Prefs [AMARCHY]: opens the preferences window; AMARCHY opens it on the Amarchy page\n");
         return RETURN_OK;
     }
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39L);
@@ -1870,6 +2023,10 @@ int main(void)
               a->scr->Height - (a->scr->BarHeight + 1) - (a->scr->WBorTop + a->scr->Font->ta_YSize + 1) -
               a->scr->WBorBottom - 2 * MARGIN_Y, &a->lay);
     a->ta = a->lay.fallback ? &topaz8 : a->scr->Font;
+    /* a window's RastPort starts in the system font (topaz 8), not the screen's: the swatch labels
+     * are drawn in the font they were measured in, set on the RastPort explicitly */
+    a->tf = a->lay.fallback ? OpenFont(&topaz8) : a->scr->RastPort.Font;
+    a->tf_owned = a->lay.fallback && a->tf;
     a->ox = (WORD)(a->scr->WBorLeft + MARGIN_X);
     a->oy = (WORD)(a->scr->WBorTop + a->scr->Font->ta_YSize + 1 + MARGIN_Y);
 
@@ -1883,6 +2040,13 @@ int main(void)
         prefs_from_conf(&a->f, &a->conf, a->prof);
     else
         prefs_defaults(&a->f);
+    a->am_src = amconf_load(&a->am);
+    amconf_to_fields(&a->am, &a->f);
+    {
+        gt_list found;
+        gt_dos_scan(&found);
+        pg_themes_build(&themes, &found, a->f.am_gtheme);
+    }
     a->prof_new = 0; /* the first profile is the file's own, or "default" as built in: nothing to lose */
     a->orig = a->f;
     sb_load(a);
@@ -1896,13 +2060,25 @@ int main(void)
     if (!a->win)  /* the screen stays locked while the window lives: the small windows open on it */
         goto out;
     GT_RefreshWindow(a->win, 0);
-    show_page(a, 0);
+    show_page(a, pg_page_for_args((const char *)GetArgStr()));
     show_fields(a);
     show_line(a, "Move the pointer over a control for its help.");
 
+    notify_start(a);
     sig = 1UL << a->win->UserPort->mp_SigBit;
+    nsig = a->nport ? 1UL << a->nport->mp_SigBit : 0;
     while (!done) {
-        Wait(sig);
+        ULONG got = Wait(sig | nsig);
+        if (nsig && (got & nsig)) {
+            struct Message *nm;
+            int any = 0;
+            while ((nm = GetMsg(a->nport)) != 0) {
+                ReplyMsg(nm);
+                any = 1;
+            }
+            if (any)
+                files_changed(a);
+        }
         while (!done && (im = GT_GetIMsg(a->win->UserPort))) {
             ULONG cls = im->Class;
             UWORD code = im->Code;
@@ -1928,6 +2104,7 @@ int main(void)
 out:
     /* whatever was made, undone once, in the reverse order */
     if (a) {
+        notify_stop(a);
         if (a->win) {
             /* the shown page is chained behind the common gadgets (AddGList):
              * unhook it first, or FreeGadgets(glist_common) walks on into
@@ -1947,6 +2124,8 @@ out:
                     ReleasePen(a->scr->ViewPort.ColorMap, (ULONG)a->pen[i]);
         if (a->dri && a->scr)
             FreeScreenDrawInfo(a->scr, a->dri);
+        if (a->tf_owned)
+            CloseFont(a->tf);
         if (a->vi)
             FreeVisualInfo(a->vi);
         if (a->scr)

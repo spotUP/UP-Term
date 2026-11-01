@@ -25,8 +25,8 @@ If NOT WARN
 EndIf
 Search >NIL: S:User-Startup ";BEGIN Python3"
 If NOT WARN
-  If EXISTS ENVARC:upkg/Python3/User-Startup.before
-    Copy ENVARC:upkg/Python3/User-Startup.before T:User-Startup.python CLONE QUIET
+  If EXISTS ENVARC:upkg/up-python/User-Startup.before
+    Copy ENVARC:upkg/up-python/User-Startup.before T:User-Startup.python CLONE QUIET
     Echo >>T:User-Startup.python ";BEGIN Python3"
     Echo >>T:User-Startup.python "If EXISTS SYS:Python3"
     Echo >>T:User-Startup.python "  Assign Python3: SYS:Python3"
@@ -38,7 +38,7 @@ If NOT WARN
     Execute T:User-Startup.size1
     Execute T:User-Startup.size2
     If "$uspsize" EQ "$usnsize"
-      Copy ENVARC:upkg/Python3/User-Startup.before S:User-Startup CLONE QUIET
+      Copy ENVARC:upkg/up-python/User-Startup.before S:User-Startup CLONE QUIET
     EndIf
     UnSet uspsize
     UnSet usnsize
@@ -75,5 +75,7 @@ EndIf
 ; the quick-launch icon in UP-Term: (only when there is an UP-Term: to look in)
 Assign >NIL: UP-Term: EXISTS
 If NOT WARN
-  Delete >NIL: "UP-Term:Python 3" "UP-Term:Python 3.info" QUIET
+; @include dist/common/resolve-uptreal.dos
+  Delete >NIL: "UPTREAL:Python 3" "UPTREAL:Python 3.info" QUIET
+  Assign >NIL: UPTREAL:
 EndIf

@@ -13,6 +13,53 @@
 #define TABPROG_H
 
 #include <string.h>
+#include "../shell/vsh_quote.h"
+
+/* The programs a tab can run. TAB_SHELL is a shell, not a program. */
+enum { TAB_SHELL = 0, TAB_DEMO, TAB_CLAUDE, TAB_TUTORIAL, TAB_PI };
+
+/* The AI agents: the one table from the ai-agent preference's word (Amarchy's settings file) to the tab that
+ * runs it. MENU_AGENT (super+l) opens the one the preference names; MENU_CLAUDE and MENU_PI open theirs. */
+struct tabprog_agent {
+    const char *name;
+    int tab;
+};
+static const struct tabprog_agent tabprog_agents[] = { { "claude", TAB_CLAUDE }, { "pi", TAB_PI } };
+#define TABPROG_NAGENTS (sizeof(tabprog_agents) / sizeof(tabprog_agents[0]))
+
+/* The tab of the agent `name` (any case); an empty or unknown word is the default, the first row (Claude). */
+static int tabprog_agent_tab(const char *name)
+{
+    unsigned long i;
+    const char *a, *b;
+    for (i = 0; name && i < TABPROG_NAGENTS; i++) {
+        for (a = name, b = tabprog_agents[i].name; *a && *b; a++, b++)
+            if ((*a | 0x20) != *b)
+                break;
+        if (!*a && !*b)
+            return tabprog_agents[i].tab;
+    }
+    return tabprog_agents[0].tab;
+}
+
+/* The agent's command line with a task: `cmd` and the task as one quoted item ("C:Claude "fix the *"bug*""),
+ * the first message of an interactive session (C:Claude: claude/main_amiga.c, its PROMPT; amiga-pi: args.c,
+ * its [prompt ...]). A null or empty task is `cmd` alone. 1 when it fits in out[size], 0 when not. */
+static int tabprog_task_cmd(char *out, unsigned long size, const char *cmd, const char *task)
+{
+    unsigned long n = strlen(cmd);
+    if (n + 1 > size)
+        return 0;
+    strcpy(out, cmd);
+    if (!task || !task[0])
+        return 1;
+    if (n + 1 + 2 * strlen(task) + 3 > size) /* the worst case: every character escaped, two quotes, the NUL */
+        return 0;
+    out[n++] = ' ';
+    n = (unsigned long)(vsh_put_word(out + n, task, 1) - out);
+    out[n] = 0;
+    return 1;
+}
 
 /* Help > Shell tutorial and /tutorial: a tab running the tutorial script
  * under vsh (the kit puts both in UP-Term:bin, as upkg-ask). The file is

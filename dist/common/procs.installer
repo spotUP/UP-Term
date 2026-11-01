@@ -8,9 +8,12 @@
 ; (#from) into UP-Term's drawer (#to) the same way: copyfiles makes #to,
 ; takes the subdrawers along, and shows each file as it copies it.
 
-; P_LEAD sets #lead, the newlines that centre a block of #n lines
+; P_LEAD sets #lead, the newlines that centre a block of #n lines. A block of
+; more than 14 lines gets none: a negative length makes the Installer's substr
+; zero-fill memory without end (strncpy with n = -1), and the next vertical
+; blank interrupt runs into the zeros (INSTALLER-END-CRASH, 2026-10-29).
 (procedure P_LEAD
-    (set #lead (substr "\n\n\n\n\n\n\n" 0 (/ (- 14 #n) 2))))
+    (set #lead (if (> #n 14) "" (substr "\n\n\n\n\n\n\n" 0 (/ (- 14 #n) 2)))))
 
 ; P_OPT writes one option: the file ENV:UPTOPT<name> holding #val (nothing when
 ; the option is off). textfile, not a SetEnv line: no quoting of a path with

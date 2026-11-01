@@ -18,7 +18,7 @@ import datetime, os, pathlib, subprocess, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
-import mkinstaller, pkgs, slim
+import libguard, mkinstaller, pkgs, slim
 
 BUILD = ROOT / 'build'
 
@@ -49,8 +49,13 @@ def main(argv):
     row = {r['id']: r for r in pkgs.rows()}.get(pkg_id) or sys.exit('mkkit: no package %r' % pkg_id)
     archive, version = row['archive'], row['version']
     kit = BUILD / 'dist' / archive
+    # the base's archive is up-term, its product is UP-Term: the Installer title, VERSIONS and $VER say the product
+    product = 'UP-Term' if pkg_id == 'base' else archive
     if not (kit / 'Files').is_dir():
         sys.exit('mkkit: %s is not staged (make dist-%s)' % (kit / 'Files', pkg_id))
+    ixnet = kit / 'Files/libs/ixnet.library'
+    if ixnet.is_file():
+        libguard.require_clean_ixnet(ixnet)
     inst, dos, unin, readme, lic, parts = templates(pkg_id)
     write(kit / 'Files/install.dos', mkinstaller.build(dos, pkg_id))
     write(kit / 'Install', mkinstaller.build(inst, pkg_id))
@@ -58,14 +63,14 @@ def main(argv):
     for src, name in ((readme, 'README.txt'), (lic, 'LICENSES.txt')):
         (kit / name).write_bytes(src.read_bytes())
     run('python3', 'tools/mkicon.py', kit / 'Install.info', '--tool', 'Installer', '--plain',
-        '--tooltype', 'APPNAME=' + archive, '--tooltype', 'MINUSER=AVERAGE', '--tooltype', 'DEFUSER=AVERAGE')
+        '--tooltype', 'APPNAME=' + product, '--tooltype', 'MINUSER=AVERAGE', '--tooltype', 'DEFUSER=AVERAGE')
     run('python3', 'tools/mkicon.py', kit / 'Uninstall.info', '--tool', 'C:IconX', '--plain')
     root = os.environ.get('UPTERM_ROOT') or str(ROOT.parent)
     with open(kit / 'Files/VERSIONS', 'wb') as f:
-        run('sh', 'tools/mkversions.sh', '--package', archive, version, root, *row['consumes'].split(','), stdout=f)
+        run('sh', 'tools/mkversions.sh', '--package', product, version, root, *row['consumes'].split(','), stdout=f)
     if pkg_id == 'base':
         date = datetime.date.today().strftime('%d.%m.%Y')
-        write(kit / 'Files/UP-Term.version', '$VER: %s %s (%s)\n' % (archive, version, date))
+        write(kit / 'Files/UP-Term.version', '$VER: %s %s (%s)\n' % (product, version, date))
     # every file's mode by one rule (lha carries it to the Amiga as protection bits: a file without
     # u+w cannot be replaced by the next Install or an Update); stops on one left without u+w
     run('python3', 'tools/kitmodes.py', kit)

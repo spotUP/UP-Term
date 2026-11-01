@@ -19,7 +19,11 @@
 #define UD_MAXPARTS 32
 #define UD_NAME 32
 #define UD_DRAWER 96
-#define UD_MAXHANDED 8
+/* handed# lines in one manifest; the 1.0 kit writes 9 (nvim, Claude, python3,
+ * amiga-pi, git, vim, perl and their share drawers). dist-check runs every
+ * kit's own manifest through ud_compare (updiff_kit_drv), so a kit that
+ * outgrows a limit here fails the build, not the owner's Update page. */
+#define UD_MAXHANDED 32
 
 typedef struct {
     char name[UD_NAME];

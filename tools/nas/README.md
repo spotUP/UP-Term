@@ -21,14 +21,25 @@ UNENCRYPTED telnet: LAN only, never forward the port on the router.
   Claude app: with an API key and that file it asks "Claude on the Amiga" or "Claude Code
   on the NAS" at every start (`Claude LOCAL` and `Claude REMOTE` answer in advance).
 
+## Pull the ready image
+
+The image is built for x86-64 and ARM64 and published as `ghcr.io/spotup/claude-amiga:latest`
+(GitHub Container Registry, no login needed to pull) and on Docker Hub as `claude-amiga`.
+Then you only need compose.yaml, no build files: skip step 1 below, put compose.yaml in
+`/volume1/docker/claude-amiga` with an empty `home` folder beside it, and start at step 2.
+On Synology, Container Manager > Registry > Settings > Add, enter `https://ghcr.io`, then search
+for `spotup/claude-amiga`; or search Docker Hub for `claude-amiga` in the same Registry page.
+On any other Docker machine, `docker compose pull` fetches it.
+
 ## Set up (Synology DSM 7, Container Manager)
 
-1. Copy this drawer (Dockerfile, compose.yaml, entrypoint.sh, as-claude, setpw, pairs, amiga-target, seed-claude-files,
-   wasabi.rev, mcp.json, skills/, README.md) and
+1. To build the image yourself instead, copy this drawer (Dockerfile, compose.yaml, entrypoint.sh, as-claude, setpw,
+   pairs, amiga-target, seed-claude-files, relay-config, settings.json, wasabi.rev, mcp.json, skills/, README.md) and
    `tools/uptelnetd.py` into one folder on the NAS, e.g. `/volume1/docker/claude-amiga`,
    and create `home` inside it (the container's /home/claude volume).
-2. Container Manager > Project > Create, source: the existing compose.yaml; edit
-   `NAS_IP` and `ALLOW` first; build and start. The container log then repeats
+2. Copy `env.example` to `.env` beside compose.yaml and edit `NAS_IP` and `ALLOW` there (never in
+   compose.yaml: updates replace that file, `.env` is never touched). Container Manager > Project >
+   Create, source: the existing compose.yaml; build and start. The container log then repeats
    "no login password yet ... run: setpw" until step 3.
 3. Container Manager > Container > claude-amiga > Action > Open terminal > Create >
    Launch with command: `setpw`. Type the password the Amiga will log in with
@@ -66,9 +77,9 @@ The server needs a new `uptelnetd.py` for this: copy tools/uptelnetd.py again wi
 files, raise the image tag and Build. A plain password login still works for an Amiga that is
 not paired (older uptelnet, no key file, or `Claude` without KEY).
 
-Without Synology: put the same files in one folder, set `NAS_IP` (the address the
+Without Synology: put the same files in one folder, copy `env.example` to `.env` and set `NAS_IP` (the address the
 Amiga reaches, space-separated with any others to listen on) and `ALLOW` (the
-LAN's CIDR) in `compose.yaml`, create `home/`, run `docker compose up -d`, then
+LAN's CIDR) there, not in `compose.yaml`, create `home/`, run `docker compose up -d`, then
 `docker exec -it claude-amiga setpw` for step 3 and
 `docker exec -it -u claude claude-amiga sh -c 'cd ~/work && tmux new -A -s claude claude'`
 for step 4. (Not tried on a machine other than the owner's Synology.)
@@ -103,7 +114,7 @@ x86-64 or ARM64 Synology with Container Manager.
 
 With this, the Claude Code in the container can act on the Amiga you talk to
 it from: run AmigaDOS commands, read and write files, list drawers, see the
-screen, click and type. It uses wasabi (https://github.com/creep-ltx/wasabi, MIT):
+screen, click and type. It uses wasabi (https://github.com/creep-ltx/wasabi, MIT; built from the fork named in `wasabi.repo`):
 wasabid on the Amiga and an MCP server (`wasabi_mcp.py`, pure Python 3 standard
 library) beside Claude Code. wasabid runs whatever it is sent, as you. It answers only
 clients with the key and only from private addresses; the link is encrypted only when
@@ -117,7 +128,7 @@ the Amiga on a LAN you trust, never forward the port (1234).
 2. On the NAS: rebuild the image (Build section below: copy this whole drawer,
    including `skills/`, `mcp.json`, `wasabi.rev`, `amiga-target` and `seed-claude-files`,
    raise the `image:` tag, Project > Action > Build). The image then holds wasabi's
-   client and MCP server in `/opt/wasabi` (cloned at the commit in `wasabi.rev`, its LICENSE
+   client and MCP server in `/opt/wasabi` (cloned from `wasabi.repo` at the commit in `wasabi.rev`, its LICENSE
    beside it) and the entrypoint seeds the skill (`~/.claude/skills/amiga-upterm`,
    which teaches Claude AmigaDOS, the UP-Term layout and the safety rules) and the MCP
    config (`~/work/.mcp.json`) into the volume.
@@ -150,6 +161,25 @@ Code is just a terminal session. The rig (tools/rig/README.md) uses the same
 wasabid, with key `rigwasabi`, on an emulated Amiga: never reuse that key
 on a real one.
 
+## Deploy from the Mac
+
+For the maintainer's own NAS: `make nas-deploy` copies the files the Dockerfile COPYs (the list is read from the Dockerfile, plus
+compose.yaml, README.md and env.example) and `tools/uptelnetd.py` to the NAS as a tar stream over ssh, then runs
+`docker compose build && docker compose up -d` there under sudo. It never sends `home/` or `.env` and never deletes remote files.
+Needs ssh key login (next section) and tar on both sides. Not rsync: Synology refuses rsync over ssh
+("Permission denied, please try again") unless Control Panel > File Services > rsync > "Enable rsync service" is on. Config, outside the repo, `~/.config/upterm/nas.conf`:
+
+    NAS_HOST=192.168.1.20
+    NAS_USER=admin
+    NAS_DIR=/volume1/docker/claude-amiga
+    NAS_PORT=22                # optional
+    NAS_DOCKER=sudo /usr/local/bin/docker   # optional; the default is sudo plus the docker the NAS finds,
+                                            # with /usr/local/bin (Synology's docker) added to the ssh PATH
+
+Environment variables of the same names win over the file. `make nas-deploy-dry` prints the two commands and runs nothing;
+`NAS_DEPLOY_ARGS=--no-build make nas-deploy` skips the image build. The deploy never copies `.env`, so `NAS_IP` and `ALLOW` there
+survive; if the NAS folder has none yet, the deploy says so: create it from `env.example`.
+
 ## ssh to the NAS (for setting this up from another computer)
 
 DSM: Control Panel > Terminal & SNMP > Enable SSH service (any port); Control
@@ -172,7 +202,7 @@ relay cannot tell which Amiga they come from.
 
 - A VPN client gets an address from the VPN Server's own range (shown on its OpenVPN page;
   10.8.0.0/24 is the usual default, check yours). Add that range to `ALLOW` in
-  `compose.yaml`, space-separated after the LAN: `ALLOW: "192.168.1.0/24 10.8.0.0/24"`,
+  `.env`, space-separated after the LAN: `ALLOW=192.168.1.0/24 10.8.0.0/24` in `.env`,
   then start the project again.
 - The Amiga and the NAS normally stay on the home LAN: the Amiga logs in from its LAN
   address and the relay reaches it there; nothing changes for them.

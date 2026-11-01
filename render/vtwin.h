@@ -31,7 +31,7 @@
 #include "sbar.h"
 
 /* With a key to the owner: the physical Alt key was down (VT_MOD_ALT is
- * Meta, which is Left Amiga unless meta_alt). KingCON's Alt+Tab. */
+ * Meta, which is Alt unless meta = amiga). KingCON's Alt+Tab. */
 #define VTWIN_MOD_ALTKEY 8
 
 /* What the window needs from its owner. `user` is vtwin.user. */
@@ -103,6 +103,7 @@ typedef struct vtwin {
     ULONG pal16[16];             /* profile palette: 0x01RRGGBB, 0 = the xterm's */
     int aspect_off;              /* font-aspect = off: the font as asked, on any screen */
     int aspect_known, square, square_fits; /* vtwin_set_screen: the screen's pixels */
+    WORD res_x, res_y;           /* vtwin_set_screen: the screen's pixel in ticks (outline glyphs) */
     char fallback[64];           /* outline font for glyphs the bitmap font lacks
                                   * (font-fallback; FONTS:<name>.otag), "" none */
     /* owner switches, 0 for XCON: (a console.device unit sets them) */
@@ -136,6 +137,7 @@ typedef struct vtwin {
     ULONG prof_part[8]; /* 0 rows, 1 scroll, 2 cursor pass whole, 3 vt_feed, 4 mask, 5 cursor off, 6 cursor on */
     int wrote;                   /* vtwin_write since the last frame tick */
     ULONG quiet_us;              /* frame time with no output since the last write (jump scroll settles) */
+    int outline_aa;              /* profile outline-antialias: outline glyphs drawn smoothed (1, default) */
     int dither;                  /* profile dither (W-T9): few-pen screens dither colours no pen shows closely (1, default) */
     int pad_extend;              /* profile padding-color = extend (W-T14): the strips beside the grid take the edge cells' colour */
     int amiga_keys;              /* profile amiga-keys: Shift+Left / Right send Home / End (vt_set_amiga_keys) */
@@ -143,7 +145,8 @@ typedef struct vtwin {
     long sync_held;              /* microseconds a ?2026 update has been held back */
     long note_us;                /* OSC 9 / 777: microseconds the notice stays in the title */
     char note_saved[80];         /* the title it stands in for */
-    int dragging, drag_moved;    /* mouse selection */
+    int dragging, drag_moved;    /* mouse selection: only while the left button is down and the window is active */
+    int inactive;                /* IDCMP_INACTIVEWINDOW came (vtwin_focus): no drag follows the pointer */
     long scroll_base;            /* vt_lines_scrolled at the last scroll report: how far a scroll fed the scrollback */
     int drag_ax, drag_ay;
     int drag_x, drag_y;          /* the cell the selection ends at now */

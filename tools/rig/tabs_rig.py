@@ -1,7 +1,7 @@
 """T1 on the rig: tabs in one UP-Term window (plan
 thoughts/shared/plans/2026-10-03-tabs.md, TB6).
 
-  1. Right Amiga T in a window opens a second tab: the bar shows, the window
+  1. Left Amiga T in a window opens a second tab: the bar shows, the window
      carries the new tab's title, the tab runs a shell of its own (a cd in one
      tab does not move the other).
   2. Switching: Right Amiga 1 / 2 and a click on the bar.
@@ -153,8 +153,8 @@ def main():
         t('Cd RAM:')
 
         # 1. a second tab
-        ami.key(0x14, RCMD)
-        check(until(lambda: ours() == 'UP-Term'), 'Right Amiga T: the new tab is active, its title on the window', ours())
+        ami.key(0x14, 0x0040)  # Left Amiga T: the keymap's super+t
+        check(until(lambda: ours() == 'UP-Term'), 'Left Amiga T: the new tab is active, its title on the window', ours())
         time.sleep(3)
         check(pixel(TAB_X[0], BAR_Y) != bare, 'the tab bar is drawn', (bare, pixel(TAB_X[0], BAR_Y)))
         cwd2 = cwd_of_active(2)

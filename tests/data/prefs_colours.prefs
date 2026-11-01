@@ -1,0 +1,9 @@
+; synthetic: the four colours, a nearly full palette and the no-scrollback word
+[profile default]
+scrollback = none
+fg = ABCDEF
+bg = 123456
+selection-fg = 010203
+selection-bg = 040506
+cursor-color = inverse
+palette = 00,010101,01,111111,02,212121,03,313131,04,414141,05,515151,06,616161,07,717171,08,818181,09,919191,10,A1A1A1,11,B1B1B1,12,C1C1C1,13,D1D1D1,14,E1E1E1,15,F1F1F1

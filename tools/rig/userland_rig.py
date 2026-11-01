@@ -72,12 +72,13 @@ BASH_SKIP = ROOT / "tests/bash/rig-skip.txt"
 BASH_DIVERGENCES = ROOT / "tests/bash/divergences.txt"
 VTC = paths.RIG / "vtc"
 VERDICTS = paths.RIG / "userland"
-PORTS = pathlib.Path(os.environ.get("UPTERM_PORTS", paths.repo("upterm-ports")))
+PORTS = paths.ports()
 COREUTILS = ROOT / "dist/gg/coreutils-5.2.1/bin"
 SYSBIN = PORTS / "build/sysroot/UP-Term"
 PTYRUN = PORTS / "build/tools/ptyrun.amiga"
 TERMINFO = PORTS / "build/tools/terminfo"
 VTDUMP = ROOT / "build/vtdump"
+PURPOSE = "userland_rig: port checks"   # window title when a hung rig is rebooted
 
 
 def run(cmd, timeout=60):
@@ -255,6 +256,14 @@ def check_package(pkg, only_case):
         return False
     # a case that passed under this fingerprint stays passed unless it is asked for
     todo = [c for c in wanted if only_case or prior.get(c[0]) != "PASS"]
+    # every case compares against the ports' host run; without it each case would FAIL like a broken
+    # port after a whole rig run, so a missing expected output stops the package before the rig is used
+    exp = PORTS / "build/expected" / pkg
+    lost = [n for n, _ in todo if not (exp / (n[4:] + ".stream" if n.startswith("tty:") else n + ".txt")).exists()]
+    if lost:
+        print("[ERROR] %s: no expected output for %d of %d cases (%s): make host-%s in the ports repo, then --only %s"
+              % (pkg, len(lost), len(todo), ", ".join(lost[:5]) + (", ..." if len(lost) > 5 else ""), pkg, pkg))
+        return False
     results = dict(prior)
     plain = [c for c in todo if not c[0].startswith("tty:")]
     tty = [(n[4:], c) for n, c in todo if n.startswith("tty:")]
@@ -311,11 +320,19 @@ def tty_stage(pkg, wanted):
         shutil.copyfile(PORTS / "pkgs" / pkg / "check/keys" / name, keys / name)
         (VTC / "userland" / pkg / ("tty-" + name + ".sh")).write_text(
             "cd VTC:userland/work/" + pkg + "\n"
-            "export PATH=/VTC/userland/bin:$PATH\n"
+            "export PATH=/VTC/userland/bin:/gg/bin:$PATH\n"   # sh: ptyrun's execvp finds it only on PATH; a rig's vsh starts with none
             "unset LC_ALL LC_CTYPE SHLVL\n"
             "export LANG=C TERM=vtcon TERMINFO=/VTC/userland/terminfo\n"
+            + "".join("Protect VTC:userland/work/%s/%s -e\n" % (pkg, r) for r in tty_plain_files(pkg)) +
             "ptyrun -t 30 VTC:userland/%s/keys/%s VTC:out/%s/%s.stream %s >VTC:out/%s/%s.txt 2>VTC:out/%s/%s.err\n"
             % (pkg, name, pkg, name, cmd, pkg, name, pkg, name), encoding="latin-1")
+
+
+def tty_plain_files(pkg):
+    """Files of the package's check data that are not executable on the Mac: the rig stages them
+    with the Amiga E bit, which a listing shows as an executable, so the script clears it."""
+    data = PORTS / "pkgs" / pkg / "check/data"
+    return sorted(str(p.relative_to(data)) for p in data.rglob("*") if p.is_file() and not os.access(p, os.X_OK)) if data.is_dir() else []
 
 
 def render(stream, upto):
@@ -331,6 +348,38 @@ def marks(f):
         if a != "end":
             out.append((a, int(b)))
     return out
+
+
+def tty_mask(pkg, name):
+    """Screen rows (1-based) of terminal case `name` that depend on the machine, from pkgs/<pkg>/check/mask
+    ("name<TAB>rows<TAB>why", rows "5" or "2-4" or a comma list): the working directory path, mtime, mode
+    and size of a listing. Only these rows are left out of the screen comparison; every other row
+    and every colour/attribute must still match."""
+    f = PORTS / "pkgs" / pkg / "check/mask"
+    rows = set()
+    for line in (f.read_text(encoding="utf-8").splitlines() if f.exists() else []):
+        p = line.split("\t")
+        if len(p) >= 2 and p[0] == name and not line.startswith("#"):
+            for part in p[1].split(","):
+                a, _, b = part.partition("-")
+                rows |= set(range(int(a), int(b or a) + 1))
+    return rows
+
+
+def mask_rows(screen, rows):
+    """A rendered screen (24 text rows, 24 attribute rows, then the cursor line "@x,y") with the given
+    1-based rows blanked, the cursor line too when the cursor sits on a masked row."""
+    if not rows:
+        return screen
+    lines = screen.splitlines()
+    for r in rows:
+        if 1 <= r <= 24 and len(lines) >= 48:
+            lines[r - 1] = lines[24 + r - 1] = "<masked>"
+    for i, l in enumerate(lines[48:], 48):
+        m = re.match(r"@(\d+),(\d+)$", l)
+        if m and int(m.group(2)) + 1 in rows:
+            lines[i] = "@<masked>"
+    return "\n".join(lines)
 
 
 def tty_compare(pkg, name):
@@ -355,8 +404,9 @@ def tty_compare(pkg, name):
     em, gm = marks(exp / (name + ".stream.marks")), marks(got / (name + ".stream.marks"))
     if len(em) != len(gm):
         return False, "key steps: expected %d, rig %d" % (len(em), len(gm))
+    masked = tty_mask(pkg, name)
     for (step, eb), (_s, gb) in zip(em, gm):
-        x, y = render(es, eb), render(gs, gb)
+        x, y = mask_rows(render(es, eb), masked), mask_rows(render(gs, gb), masked)
         if x != y:
             d = list(difflib.unified_diff(x.splitlines()[:24], y.splitlines()[:24], "expected", "rig", lineterm=""))
             return False, "screen before key step %s differs%s\n%s" % (
@@ -469,7 +519,7 @@ def run_watched(pkg, name, limit=90):
         time.sleep(0.5)
     rig = [sys.executable, str(pathlib.Path(__file__).with_name("rig.py"))]
     subprocess.run(rig + ["stop"], capture_output=True, timeout=120)
-    subprocess.run(rig + ["start", "--max"], capture_output=True, timeout=400)
+    subprocess.run(rig + ["start", "--max", "--purpose", PURPOSE], capture_output=True, timeout=400)
     return "HANG (no end in %d s; rig rebooted)" % limit
 
 
@@ -513,13 +563,16 @@ def check_bash(area, only_case, failed=False):
 
 
 def main():
+    global PURPOSE
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--bash", metavar="AREA", help="the bash probes of tests/bash/probes/AREA instead of the ports' cases")
     ap.add_argument("--only", nargs="+", metavar="PKG", help="these packages, even if they passed")
     ap.add_argument("--case", help="one case (with one --only package)")
     ap.add_argument("--failed", action="store_true", help="the packages whose verdict is FAIL")
     ap.add_argument("--force", action="store_true", help="rerun passed packages too")
+    ap.add_argument("--purpose", default=PURPOSE, help="window title for a rig rebooted after a hang (\"<session>: <task>\")")
     a = ap.parse_args()
+    PURPOSE = a.purpose
     if a.bash:
         VERDICTS.mkdir(parents=True, exist_ok=True)
         if a.force:
@@ -527,6 +580,11 @@ def main():
         return 0 if check_bash(a.bash, a.case, a.failed) else 1
     if a.case and not (a.only and len(a.only) == 1):
         ap.error("--case needs exactly one --only package")
+    with paths.rig_lock():
+        return run_packages(a, ap)
+
+
+def run_packages(a, ap):
     kit_assigns()
     names = a.only or packages()
     if a.failed:

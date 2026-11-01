@@ -1,0 +1,4 @@
+; uterm-shellstart -- the first script of the window uterm-shell opens: an interactive vsh, the window closes after.
+Stack 65536
+UP-Term:bin/vsh
+EndCLI

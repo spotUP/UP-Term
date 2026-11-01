@@ -1,0 +1,281 @@
+---
+date: 2026-10-25
+topic: Amarchy and Directory Opus 5 Magellan II: six separately optional integration pieces (menu group over ARexx, optional add-on, UP-Term as DOpus shell and viewer, theme, native amarchy.module, DOpus-aware index)
+status: plan (owner reviews before any code)
+research: thoughts/shared/research/2026-10-25_dopus-magellan-integration.md
+ledger: thoughts/spot/todos.md AM-FM (row 1441), AMB3 (row 1436)
+repos: vtcon (dist/keymap, dist/menu-icons, dist/packages.txt, dist/addons, amarchy/, tests/, tools/rig); dopus5 upstream (P5 only, as a pull request)
+---
+
+# Plan: Amarchy and Directory Opus 5 integration
+
+## Goal and finish line
+
+Amarchy gets a `DOpus` menu group that drives a running Directory Opus 5 (Magellan II) over ARexx and hides itself when
+none runs; DOpus can optionally be installed as an add-on; and, each separately, UP-Term can be DOpus's shell and
+viewer, DOpus can wear the UP-Term palette, a native `amarchy.module` can act on the active lister, and Amarchy's
+app index can see DOpus listers. The base kit never depends on DOpus (ledger decision: "not everyone likes it").
+Finish line per piece: its checklist ticked with its reachability test green (section 8). A plan is 100% or failed:
+the report is "n of N open". Scope cuts (dropping a piece) are the owner's call (section 7); nothing here is built yet.
+
+## 1. Facts the design rests on
+
+All from the research doc (commit `c8fbeb66b0952fe493aab9dc0e4c8ac559fa602e` of BlitterStudio/dopus5, v5.104):
+- ARexx port `DOPUS.<n>`, first free n from 1 (`rexx_proc.c:43`); two top-level verbs `lister` and `dopus`, 135 table
+  keywords; replies are RESULT string plus RC (F1).
+- `dopus screen` returns `<screen name> <w> <h> <depth> ...`; on its own screen DOpus is the public screen `DOPUS.n`
+  and the default public screen (F4). `dopus version` returns `5 99 104` for v5.104. The owner's A1200 runs Directory Opus 5.91 as its Workbench replacement (`dopus version` answered `5 91` there on 2026-10-25, read-only probe): P1's version gate must accept any 5.x port, and D1 reads the 5.91 templates on the A1200 before trusting the v5.104 guide.
+- Modules are `*.module` libraries in `DOpus5:Modules/`, found by directory notification; entry gets the selection, a
+  lister handle and an `EXTCMD_*` callback table; APL 1.1 headers in the repo (F2).
+- Filetypes and button banks are binary IFF `FORM OPUS`, readable and checkable with upstream `archive/tools/filetype_tool.py` (F3).
+- No clipboard hook in DOpus source (F5): not a piece of this plan, the clipboard probe stays a separate ledger row.
+- v5.104 os3 lha 1,810,459 bytes, APL 1.1 (`COPYING`), needs 68020 or better (F6).
+- Amarchy side: `rexx:` row kind runs `RX "script"` through `system()` (`amarchy/leaf.c:185`); rows live in `dist/keymap`
+  `[menu]` as `dotted.id = Label | action`; icons are Nerd Font code points in `dist/menu-icons`; hotkeys are `[bind]`
+  rows; add-ons are non-base rows of `dist/packages.txt` with an archive and a `dist/addons/<id>/` drawer
+  (`tools/mkinstaller.py:71-98`); AMB3 already keeps everything on the user's screen (`handler/frontscr.c`).
+- `dist/`, `tools/mkinstaller.py` and the Makefile belong to another session while this plan is written: this plan
+  only describes what their entries would hold.
+
+## 2. P1: the `DOpus` menu group over ARexx (size M)
+
+Why M: no new action kind (`rexx:` exists), but a probe, a script set, a conditional group, tests on a rig. The one
+real unknown is hiding a group when the port is absent.
+
+- Rows (ids, all `rexx:` unless noted; labels in full English words):
+  - `dopus.newlister` = `Open lister` | `rexx:UP-Term:Rexx/dopus-newlister.rexx` (sends `command DeviceList NEW`, a new lister showing the device list; owner 2026-10-26: an empty `lister new` lister shows nothing)
+  - `dopus.listerhere` = `Open lister at current folder` | `rexx:...dopus-listerhere.rexx` (`lister new <path>`; path last, per the 5.91 guide)
+  - `dopus.front` = `Bring Directory Opus to front` | script sending `dopus front`
+  - `dopus.back` = `Send Directory Opus to back` | `dopus back`
+  - `dopus.parent` = `Parent folder in active lister` | `command Parent`
+  - `dopus.refresh` = `Refresh active lister` | `lister refresh all` (the template needs `all` or a handle; a bare `lister refresh` is wrong on 5.91 and 5.104)
+  - `dopus.devicelist` = `Show devices` | `command DeviceList`
+  - `dopus.ftp` = `FTP connect` | `command FTPConnect` (module command; `DOpus5:Modules/ftp.module` is installed on the A1200. Use only HOST, PORT, USER, PASSWORD, DIR, SITE, GUI, NOSCAN, RECON: the 5.91 template has no TLS/K, TLSVERIFY, NOVERIFY or PROTOCOL, which v5.104 has)
+  - `dopus.shell` = `Open UP-Term here` | `open:uterm` (P3 gives it the lister path)
+  - `dopus.configure` = `Configure lister display format` | `command Configure` (5.91 and 5.104 guides agree: `Configure` opens only the current lister's display-format dialog, not Directory Opus settings; the old label was wrong)
+  Command names and templates were read in D1 (2026-10-26, `thoughts/spot/term-findings/dopus-591-templates-2026-10-26.md`):
+  there is no ARexx verb that lists commands; names come from `DOpus5.guide` on the A1200. The 5.91 ARexx guide equals the
+  v5.104 one except the `$VER` line. Version gate: parse the first token of `dopus version` (must be `5`); the A1200
+  answers `5 91`, v5.104 answers `5 99 104`. Verified against the 5.91 guide, per row: `dopus back`, `dopus front`,
+  `lister new`, `lister refresh all`, `command Parent`, `command DeviceList` match; see `thoughts/spot/term-findings/plan-gaps-2026-10-26.md`.
+- Scripts live in one drawer, `UP-Term:Rexx/` (`dopus-*.rexx`), each starting with the same probe: `IF ~SHOW('P',
+  'DOPUS.1')` then exit with RC 5 (no port). Port number: the script tries `DOPUS.1` to `DOPUS.9` and takes the first
+  that answers `dopus version`; a later piece of work if two copies matter.
+- Probe and hiding: the group must not show when no DOpus runs. Search first (reuse): how `trigger.clipboard`,
+  the app index (`amarchy/index_core.c`, `ix_drop_shadowed`) and `ix_skip_match` drop rows; D3 reads them and extends
+  the same mechanism with one condition ("port present") instead of a second hiding path. If no such mechanism
+  exists, the probe is one `amarchy-gui` call at menu build that does `FindPort("DOPUS.1")`; the group node is skipped
+  when it is absent. The base menu never lists `DOpus` with no DOpus.
+- Icons from the existing families in `dist/menu-icons` (Nerd Font, md/fa/cod): group `dopus` = `U+F07B ; fa-folder`;
+  `dopus.newlister` = `U+F07C ; fa-folder_open`; `dopus.parent` = `U+F062 ; fa-arrow_up`; `dopus.refresh` = `U+F021
+  ; fa-refresh` (as `apps.rescan`); `dopus.configure` = `U+F013 ; fa-gear` (as `system`); `dopus.shell` = `U+F120 ;
+  fa-terminal` (as `apps.upterm`); `dopus.devicelist` = `U+F0A0 ; fa-hdd_o`; `dopus.ftp` = `U+F0AC ; fa-globe`. Code
+  points are fa names to be confirmed in the generator's font at D4 (U).
+- Hotkeys `[bind]` on free combos. Taken (grep on `dist/keymap`): super+space, k, h, t, w, backspace, q, 1..9, f1..f4,
+  period, comma, left, right, c, v, a, f, g, plus, minus, p, return, l, e, u, i; shift+t, b, f, s, w, d, r, l, h, u;
+  alt+space, alt+k; M and N are Intuition's. Free (grep found no row, D2 re-checks with the parser, which refuses
+  duplicates): `super+shift+d` = `Open lister` (was super+o; main took super+o for win:front, owner moved it 2026-10-26), `super+shift+o` = `Open lister at current folder`, `super+d` = `Bring
+  Directory Opus to front`. Three keys only: the rest stay menu-only. A hotkey for an absent DOpus does nothing and shows
+  a one-line "Directory Opus is not running" message through the menu's existing notice path (U: name of that path, D3).
+- Screen: scripts that open requesters or listers inherit nothing; DOpus listers land on DOpus's own screen by
+  design. Rows that open UP-Term windows (`dopus.shell`) use AMB3's screen helper, so the window opens on the screen the
+  user is on, including `DOPUS.1`.
+
+## 3. P2: the optional add-on that repackages upstream v5.104 os3 (size M)
+
+Why M: no code, but an Installer page, a manifest entry, licence text, and the upgrade policy decision.
+Describe only; `dist/` is another session's.
+- Entry: one non-base row in `dist/packages.txt` (id `dopus`, archive `up-dopus.lha`, a `dist/addons/dopus/` drawer
+  with its own `Install` and `Uninstall` the way `up-python` has them), so `tools/mkinstaller.py` lists it on the
+  add-on page with "(drawer found)" or "(will unpack lha)". The exact column layout of `packages.txt` is read at D5 (U).
+- Content: the unmodified upstream `DOpus5_104_os3.lha` unpacked as a nested archive (pinned by name and an md5 in
+  the row), plus `Files/COPYING` (APL 1.1 text), `Files/THIRD_PARTY_NOTICES.md` if present in the lha, and a
+  `SOURCE.txt` naming https://github.com/BlitterStudio/dopus5, tag `v5.104`, commit to be read from the tag at D5
+  (the clone here is at `c8fbeb6`, not necessarily the tag: U). `dist/LICENSES.txt` gets a DOpus paragraph.
+- Installer page: tick "Directory Opus 5 (Magellan II) file manager, optional"; the page runs upstream's own
+  `Install DOpus5` script (Installer program) with every option ticked (rig rule), destination default; UP-Term does not
+  edit DOpus's start mode. CPU: the add-on carries BOTH 68k archives, `DOpus5_104_os3.lha` (68020+) and
+  `DOpus5_104_os3-68000.lha`, and the installer page offers the one that fits the machine (Installer's
+  `database "cpu"`: 68000/68010 get the 68000 archive, 68020 and up the os3 one); the other is never unpacked. Owner
+  decision 2026-10-25 ("carry all of them and offer the appropriate one for the system"). The os4, MorphOS and AROS
+  archives stay out: UP-Term's installer runs only on 68k AmigaOS 3, so nothing could install them (assumption, stated
+  to the owner).
+- Upgrade: if `DOpus5:` already exists the add-on does nothing (never overwrites a user's setup); an explicit
+  "Update Directory Opus" row is out of scope.
+- P1 works with this add-on or any existing DOpus; P2 never makes P1 required.
+
+## 4. P3: UP-Term as DOpus shell and viewer (size M)
+
+Why M: two shipped binary files from a generator and a text-mode viewer path to test; the shipping format is binary IFF.
+- Filetype file: `UP-Term:Dopus/Filetypes/UP-Term` (binary `FORM OPUS`), generated at build by a small script modelled
+  on upstream `archive/tools/filetype_tool.py` (its encoder is the reference; the file is verified by the tool's
+  `check` round trip and `lint`). Entries: text files (`MATCHNAME` `#?.(c|h|txt|md|rexx)`) with "Double-click" = AmigaDOS
+  instruction `Run >NIL: UP-Term:bin/uterm-edit "%s"` and "User1" = viewer; the launcher opens `$EDITOR` (joe when unset)/`less` in an UP-Term
+  window with the console spec `XCON:0/20/640/300/UP-Term/CLOSE/SCREEN <screen>` (spec from `LF_UTERM_SPEC`,
+  `amarchy/leaf.h:10`; the screen from `dopus screen`, F4).
+- Button bank: `UP-Term:Dopus/Buttons/UP-Term` (binary `FORM OPUS`, bank), buttons "UP-Term here", "Edit", "Page", "Shell";
+  each an AmigaDOS function with `{p}`-style path args (DOpus's own substitution, names read from its guide: U). Not
+  installed over the user's `Buttons/Toolbar`: the user opens the bank from DOpus's Buttons menu or the add-on
+  loads it with `command LoadButtons UP-Term:Dopus/Buttons/UP-Term` (D8).
+- No change to the user's existing filetypes: the file is added alongside; priority below the user's own.
+- "Open in UP-Term" from the Amarchy side: `dopus.shell` runs a script that asks `lister query <handle> path` and
+  passes it to the UP-Term launcher as the working directory.
+- Global alternative (setting `output_device` to `XCON:` for every DOpus output window) is not shipped by default
+  (invasive, section 7).
+
+## 5. P4: theme, DOpus pens from the upconf palette (size S to M)
+
+Why S: DOpus exposes `dopus pens` and `dopus palette` verbs (`RXCMD_PENS`, `RXCMD_PALETTE` in the table, F1); M if
+the lister background and button-bank pens need separate `lister set` calls (U: arguments not read).
+- Source of truth: the five roles `amarchy/menu_theme.c` already maps from the upconf palette: `MT_BG` (index 0),
+  `MT_TEXT` (7), `MT_DIM` (8), `MT_ACCENT` (14), `MT_SELBOX` (4), computed by `menu_theme_roles_fb` from the palette and the
+  `bg`/`fg` keys. P4 reuses `menu_theme_roles_fb` through a small commodity entry that formats the five RGB triples
+  as an ARexx script call; no second palette table.
+- Apply: a `dopus.theme` row (`Match Directory Opus colours to UP-Term`) runs `dopus pens`/`palette` once; a
+  `Restore Directory Opus colours` row sends the saved original (read first with `dopus pens` and written to
+  `UP-Term:Dopus/colours.saved`), because a bad palette must stay recoverable (research v2 risk, same rule: a 15 s
+  auto-revert).
+- Scope limit: DOpus screen pens when it has its own screen; on Workbench the Workbench palette is not touched here.
+
+## 6. P5: native `amarchy.module` (size L)
+
+Why L: a new C library with the Opus ABI, built on the m68k toolchain, a second licence regime, and an upstream pull
+request. Do it last and only if the owner wants a function ARexx cannot give.
+- What it can do that ARexx cannot (F2): receive the selected files and the source/destination lister in-process
+  (`FUNCF_NEED_SOURCE`, `NEED_FILES`), add entries to a lister, show DOpus progress and requesters, use `EXTCMD_GET_SCREENDATA`
+  so UP-Term windows open with DOpus's pens. Commands: `AmarchyOpen` (selection to an UP-Term window), `AmarchyRun`
+  (run a menu row on the selection), `AmarchyHere` (shell in the lister's path). ARexx can do the path and the first
+  selected entry, but not a multi-entry selection without long `lister query` loops.
+- Build: against the dopus5 repo headers only (`source/Include/libraries/module.h`, `dopus5.h`, `proto/`), never from
+  the 1998 SDK. Layout copied from `source/Modules/cleanup/` (`cleanup.c`, `_data.c`, `_strings.c`, `.cd`, `init`,
+  `makefile.os3`). Output `amarchy.module` into `DOpus5:Modules/` by the P2 add-on.
+- Stack: every Amiga program keeps `__stack` and the `$STACK` cookie (project rule): the module's own startup code and
+  any helper executable it launches carry both; the module's callbacks run on the Opus caller's stack, so the module
+  keeps its large buffers off the stack and checks free stack on entry (D13).
+- Licence: the module is derived from APL 1.1 headers and examples; the file headers state APL 1.1 and the module's
+  source ships with the add-on (`dist/addons/dopus/src/`). Repo-wide licence note added to `dist/LICENSES.txt`.
+- Upstream: the module goes to BlitterStudio/dopus5 as a pull request from a fork branch only to create the PR; no
+  long-lived private fork (ledger rule). Content: `source/Modules/amarchy/` plus `make` wiring. The Amarchy-specific
+  glue (launching UP-Term) stays in vtcon; upstream gets only a generic "run an external launcher on the selection"
+  command if upstream accepts that, otherwise the module ships only in the add-on (decision, section 7).
+
+## 7. P6: Amarchy's index aware of DOpus listers (size L)
+
+Why L: the index (`amarchy/index_core.c`, `ix_*`) is built for apps (volumes, drawers, `ix_row`); listers are live state.
+- Idea: when DOpus runs, `lister query` on each open lister gives its path; the index lists "Folders open in Directory
+  Opus" as a rows group so the menu can jump to a lister. Needs a refresh trigger (no event feed except `addtrap`), a
+  volume-ownership rule (`ix_volume_of`), and shadow handling (`ix_drop_shadowed`).
+- Order: after P1 (needs its probe) and P5 if the module path exists (the module can push, ARexx can only poll).
+  Optional; the owner may drop it without effect on P1 to P5.
+
+## 8. Phases and checklist
+
+Running count is reported at every tick. A test column names the layer; "A1200 eye" means the owner looks, marked
+unverified until then. 25 items.
+
+### Phase A: facts (read, then lock)
+- [x] D1 (done 2026-10-26, findings `thoughts/spot/term-findings/dopus-591-templates-2026-10-26.md`: 5.91 answers `5 91`; `dopus.refresh` sends `lister refresh all`; 5.91 FTPConnect lacks TLS/K, TLSVERIFY, NOVERIFY, PROTOCOL; `Configure` is the lister display format; gate accepts `5 91` and `5 99 104`) Read the `lister`/`dopus` verb templates from `documents/DOpusM2_ARexx.guide` and one live `dopus` session on the owner's A1200 (`dopus version` answers `5 91` there; also on a rig with v5.104 where it returns `5 99 104`; port name, command list; note every verb or argument 5.91 lacks); record in the research doc. Test: a rig case in `tools/rig/amarchy_menu_rig.py` prints `dopus version` and `dopus screen` (rig, text check).
+- [x] D2 Re-check the three hotkeys against the parser (duplicate refusal). Test: host test in `tests/test_keymap.c`, `dopus_binds_parse`. (done 2026-10-26, 1c002e70, host `dopus_binds_parse`, `the_dopus_group_needs_a_port`, `the_dopus_rows_are_shipped` in tests/test_keymap.c; fail-before shown for D3)
+
+### Phase P1: menu group
+- [x] D3 Port-present condition for a group (mechanism chosen after reading how rows are dropped). Test: host test in `tests/test_main.c` (or a new `tests/test_dopus.c`): group hidden with no port, shown with a fake port (a host stub of `FindPort`). (done 2026-10-26, 1c002e70, host `dopus_binds_parse`, `the_dopus_group_needs_a_port`, `the_dopus_rows_are_shipped` in tests/test_keymap.c; fail-before shown for D3)
+- [x] D4 Rows, labels, icons in `dist/keymap` and `dist/menu-icons` (row commands and labels as in section 2 after D1: `lister refresh all`, label `Configure lister display format`, FTP without TLS options); generator accepts every glyph. Test: host `tests/test_keymap.c` row count and id uniqueness; icon generator run is reported by the other session. (done 2026-10-26, 1c002e70, host `dopus_binds_parse`, `the_dopus_group_needs_a_port`, `the_dopus_rows_are_shipped` in tests/test_keymap.c; fail-before shown for D3)
+- [x] D5 Script drawer `UP-Term:Rexx/dopus-*.rexx` with the probe (RC 5 when no port) and the version gate (first token of `dopus version` is `5`; accepts `5 91` and `5 99 104`). Test: rig case: scripts run with no DOpus give RC 5 and no window. (code and rig row written in 1c002e70, rig NOT run: row dopus_absent, needs a rig (no DOpus)) Rig 4 --no-dopus, 2026-10-26: `amarchy_menu_rig.py --only dopus_absent`: "[OK] dopus-newlister.rexx without a port: RC 5" (and 8 more scripts RC 5), "[OK] windows before 2, after 2", "ok dopus_absent: 11 of 11 checks passed".
+- [x] D6 Hotkeys wired. (rig 4 with DOpus 5.82 run 2026-10-26: the dopus-newlister script run directly opens a "Device List" lister, but the chord Super+Shift+D opens nothing and km-hits stays 0: hotkey not delivered on that rig, cause open; sentinel now counts windows) Test: rig case: `super+shift+d` opens a lister (sentinel: lister count from `lister query`). (code and rig row written in 4edcb1c8, rig NOT run: row dopus_present, needs a rig with Directory Opus 5 running; the add-on D8/D9 is not built) A1200 owner PASS 2026-10-26 (07cfdfc6: opens a "Device List" lister); rig row still not run, and its sentinel must count windows, since `lister query` does not count listers on 5.91. Rig 4, DOpus 5.82, current build: `--only dopus_present`: "[OK] Super+Shift+D: new windows (screen, title) [('Directory Opus', 'Device List')]". The earlier FAIL was the rig, not the product: the rig shell path is C: only, so the commodity's `RX` was not found (km-hits is not a sentinel for rexx: rows, the handler defers them); r_start now runs `Path SYS:Rexxc ADD` first. Check 3 of the row (Open UP-Term here, D7) opened a Device List lister, not an UP-Term window: D7 still open.
+- [x] D7 (rig 4 run 2026-10-26: DOpus 5.82 there has its screen titled "Directory Opus ..."; the row's DOPUS.1 screen name is wrong, the row now compares with the lister's screen; leaf not yet proven) UP-Term row `dopus.shell` opens on the user's screen. Test: rig case with DOpus on its own screen: window is on `DOPUS.1`. (code and rig row written in 1c002e70, rig NOT run: row dopus_present, needs a rig with Directory Opus 5 running; the add-on D8/D9 is not built)
+  - Done 2026-10-26 (a5da5195): rig 4 dopus_present 3 of 3; the UP-Term row opens an "UP-Term" window on the Directory Opus screen (window title is the proof; screen titles follow the active window). The harness lost typed keys (one wasabi KEY frame per string kept about two characters); x9_type now sends one key per 100 ms and the case types the full "Open UP-Term here" inside the Dopus group.
+
+### Phase P2: add-on
+- [x] D8 `dist/packages.txt` row, `dist/addons/dopus/` drawer, pinned archive and md5, `COPYING`, `SOURCE.txt`, `LICENSES.txt` paragraph. Test: host `tests/test_dist_addons.py` (names and licence files present). (37895055, test DopusAddOn.test_both_68k_archives_are_pinned_licensed_and_chosen_by_cpu in tests/test_dist_addons.py; md5 pins are in dist/addons/dopus/archives.txt, not the packages.txt row, whose columns are fixed. `make dist-dopus` NOT built: archives must be placed in vendor/dopus5-5.104/; install.dos Installer call NOT rig-tested, see D9)
+- [x] D9 Installer page tick and run. Test: rig install of the add-on with every option ticked (rig rule), then `dopus version`. Done 2026-10-29: rig 11 installer_rig addon-dopus 27 of 27 (install fix 7b952ae4, Uninstall check 1304261e).
+- [x] D10 CPU choice: both 68k archives present and the Installer script picks by `database "cpu"`. Test: host test that both archive names and md5s are in the row, and that the script text names both with the CPU branch; rig: a 68000 rig (`rig.py start` without `--max`, if the rig supports it) gets the 68000 archive, an 060 rig the os3 one (`Version DOpus5:DOpus5` and the archive's md5). (host half done in 37895055, same test; rig half OPEN: 68000 vs 060 rig run not done, so box stays unticked) Progress 2026-10-29: 060 half PASS (rig 11, os3 archive, DirectoryOpus 5.104 [OS3], md5 e91d6f13 matches). 68000 half open: `rig.py start --a500` dies at FS-UAE init on rig 11 (being chased); installer_rig takes --a500 since bec5a1d2. Evidence: vtcon-05 scratchpad d10-proof.md. Done 2026-10-29: 68000 half PASS, rig 9 (--a500) installer_rig addon-dopus 17 of 17, DOpus5:DirectoryOpus is the os3-68000 build by md5 (fixes: shared 68020 check skipped for CPU68000=YES packages; rig --a500 strips UP-Term boot blocks and runs a stand-alone add-on alone).
+
+### Phase P3: shell and viewer
+- [x] D11 Filetype generator and file (`FORM OPUS`). Test: upstream `filetype_tool.py check` round trip and `lint` clean; host golden of the bytes. DONE: generator `tools/gen_dopus_filetype.py` (generator only; the file is not yet built into the kit or installed); test `tests/test_dopus_filetype.py` (`make test ONLY=dopus_filetype`, upstream check/lint run when `DOPUS5_SRC` is set); lint leaves only the UP-TERM: assign note (ours) and 'recognised by file name only'. `uterm-view` is a name I chose for User1; neither it nor `uterm-edit` exists yet.
+- [ ] D12 Button bank generator and file. Test: same tool if it covers banks, else a rig load: `command LoadButtons` returns RC 0 (U).
+  - D12 note (not ticked): tools/gen_dopus_buttons.py + tests/test_dopus_buttons.py written (FORM EPUS bank, 4 buttons; parse test incl. stock Hotkeys). Still open: not installed (installer row), rig load `command LoadButtons` RC 0 (U), {f} semantics (U). Commit 3e5be0ad.
+- [ ] D13 Double-click on a text file opens an UP-Term window on the user's screen. Test: rig case, screen name asserted; A1200 eye check (owner). HOST HALF DONE 2026-10-26: launchers `dist/uterm-edit`, `uterm-view` (AmigaDOS: SetEnv file+mode, `NewShell XCON:.../CLOSE/FRONT FROM UP-Term:bin/uterm-start`), `uterm-start`, `uterm-open` (vsh: `$EDITOR` or nvim, or less), shipped as userland bin; filetype now runs `Run >NIL: Execute UP-Term:bin/uterm-*` (no S bit on lha files); test `test_the_dopus_launchers_are_in_the_base_kit_and_the_filetype_names_them` in tests/test_dist_manifest.py. RIG 3 MEASURED 2026-10-26 (text: ami.py uitree window list + clipboard screen text, no screenshots; vsh built from this tree, kit otherwise from 11 Oct): `Execute UP-Term:bin/uterm-view "RAM:t1.txt"` gives one window titled UP-Term, 640x300 on the front screen, running less on RAM:t1.txt ("RAM:t1.txt (END)"); a name with a space (`RAM:t 2.txt`) works; `uterm-edit` opens nvim (EDITOR unset in a vsh script run, so the ${EDITOR:-nvim} fallback; vshrc's joe default is not reached; this kit has no joe and no nvim bin in UP-Term:bin, nvim is under UP-Term:nvim). RACE FOUND AND FIXED: with global SetEnv two launches back to back gave both windows the second file (touch-recorder as EDITOR: a.txt never created, only b.txt); the launchers now use local `Set`, which NewShell hands to the new CLI and vsh imports as exported variables; three back to back (one with a space) each reached its own file. Needs a vsh with the ENV:/locals import (commit b66f953c and later; an older kit vsh shows "uterm-open: no file given" and the window closes at once). Not measured: DOpus double-click itself (the rig's DOpus 5.82 runs as the Workbench replacement; the filetype is not installed on the rig). Owner eye check on the A1200 remains.
+
+### Phase P4: theme
+- [x] D14 `menu_theme_roles_fb` output formatted for DOpus. Test: host `tests/test_main.c` (five triples equal the role colours). DONE: `menu_theme_dopus_commands` in `amarchy/menu_theme.c`; test `menu_theme_formats_the_dopus_palette_and_pens_commands` in `tests/test_keymap.c` (golden string + bad input). Syntax read from dopus5 v5.104 `source/Program/rexx_dopus.c:587` (set palette), `:616` (set pens), `:994` (pen mapping), keywords `source/Program/rexx_data.c:223`. Not yet called from any commodity entry (apply/restore rows are later items). (SKIPPED: DOpus argument syntax undefined, question in scratchpad dopus-pkg-questions.md)
+- [ ] D15 `dopus.theme` and restore rows; auto-revert. Test: rig case: pens read back with `dopus pens` equal the roles, then equal the saved set after restore.
+
+### Phase P5: module
+- [ ] D16 Module skeleton from `source/Modules/cleanup/` layout, `Module_Identify`, one command. Test: rig: DOpus module cache lists the command.
+- [ ] D17 `__stack` and `$STACK` cookie on the module and every helper; large buffers off stack. Test: host check that the build flags and cookie string are present (as for other Amiga programs); rig run under a small `Stack`.
+- [ ] D18 `AmarchyOpen`, `AmarchyRun`, `AmarchyHere` act on the selection. Test: rig case: select three files, run, sentinel: the module's call count in STATUS equals 1 and three files reached the launcher.
+- [ ] D19 APL headers and notices; source ships in the add-on. Test: host dist test.
+- [ ] D20 Upstream pull request opened (no private fork). Test: PR URL recorded; not a test of code. Owner approves before opening.
+
+### Phase P6: index
+- [ ] D21 Lister rows in the index with refresh. Test: host `tests/test_main.c` for the pure part; rig for the live part.
+  - Pure part done (f917e3c4): `ix_lister_handles`, `ix_lister_row`, `ix_lister_of`, `IX_KIND_LISTER` in amarchy/index_core.c; host `the_lister_rows` in tests/test_clips.c (ONLY=clips). NOT done: ARexx send of `lister query all` / `lister query <h> path` (needs upactive-style DOPUS port call), an ix_index kind slot for the rows (kstart), refresh when the menu opens, the jump action, rig check on v5.104 (5.82 answers nothing).
+  - Amiga half wired (commit 8b6aff87): `rexx_send` in amarchy/leaf.c, `lf_load_listers` (`lister query all`, `lister query <h> path` on DOPUS.1, no port = no rows, no wait) called after every ix_load_file in gui.c and menu.c, `ix_add_listers` with its own kstart slot, group `dopus.listers` in dist/keymap, row activation sends `lister activate <h>` (LISTER_FRONT_FMT, command name UNVERIFIED). Host: the_lister_group (ONLY=clips, 95 checks) and keymap; amarchy-gui and amarchy-menu compile. Rig check needs DOpus v5.104 (5.82 answers nothing).
+  - Raise fixed 2026-10-26 (13eaf6c1): DOpus 5.104 ARexx has no `lister activate`; the row sends `dopus front`, then `lister set <h> visible off` and `visible on` (lf_lister_front_command in amarchy/leaf_core.c, host checks in tests/test_keymap.c). Rig NOT run: needs v5.104 on a rig image; may flicker (owner question).
+- [ ] D22 Group gone when DOpus quits. Test: rig case, quit DOpus, rows vanish. Half measured, 2026-10-26: rig 4 started --no-dopus, dopus_absent: "[OK] root rows without a port: ['Apps', 'Settings', ...]" (no Dopus). The vanish-on-quit half is not measured: `dopus quit` does not quit DOpus 5.82 on the rig.
+
+### Phase Z: finish
+- [ ] D23 Docs: tutorial and README mention, in plain words. Test: `tests/test_amarchy_docs.py`.
+  - D23 note: docs in dist/README.txt and lesson 14, test `test_directory_opus_section_in_readme_and_lesson`; commit 76421831 (not ticked).
+- [ ] D24 Ledger rows closed with commit hashes; AM-FM option (c) recorded as not started.
+- [ ] D25 Owner eye check on the A1200 (UNVERIFIED until then): the whole flow.
+
+## 9. Risks
+
+- Hiding a group on a missing port may need a new mechanism in the menu builder (D3); size could rise to L.
+- DOpus verbs and templates were read in D1 (guide text, 5.91 equals 5.104 except FTPConnect options and the version answer's token count). `dopus back`, `lister new`, `lister set`, `lister refresh` and the `command` rows were not run live (they change state); a wrong argument still makes a row do nothing, so the D5 rig case runs each script once on a rig.
+- DOpus on its own screen is the default public screen: any program started without a screen name lands there.
+  AMB3 handles ours; other programs are not ours.
+- Binary FORM files cannot be reviewed as text: only round-trip and rig loads prove them.
+- A bad pen set can make DOpus unreadable (P4): save-and-restore plus auto-revert are not optional.
+- The module runs inside DOpus: a crash takes DOpus down. Stack discipline and small first command (D17).
+- Upstream's os3 build targets 68020 (F6); a 68000 user gets no add-on.
+- The clipboard probe stays unexplained (research F5): do not close it with this work.
+- Shared files: `dist/`, `tools/mkinstaller.py`, Makefile belong to another session; items D4, D8, D10 wait for it.
+
+## 10. Open decisions for the owner (recommended first)
+
+Answered 2026-10-25 about 22:05 (AskUserQuestion for 1 to 4; 5 to 7 taken as recommended, the owner may veto).
+
+1. Order and scope: P1 then P2 then P3 now; P4 to P6 decided after using them. (Owner, 2026-10-25.)
+2. Hotkeys: three, super+shift+d, super+shift+o, super+d. (Owner, 2026-10-25; Open lister moved from super+o to super+shift+d on 2026-10-26 because super+o is win:front, Bring to front; the Wide window row moved to super+alt+d.)
+3. Add-on CPU builds: carry every 68k archive (os3 and os3-68000) and offer the one that fits the machine; see
+   section 3 and D10. Owner's words: "i should carry all of them and off ther apropriate one for the system its being
+   installed on". The non-68k archives (os4, MorphOS, AROS) are out: the installer cannot run there, and the owner
+   confirmed it ("non 68k archives can be left out", Owner, 2026-10-26).
+4. UP-Term as shell: per-filetype AmigaDOS instruction, the user's output device untouched. (Owner, 2026-10-25.)
+5. Existing DOpus: the add-on never touches an existing `DOpus5:`. (Owner, 2026-10-26.)
+6. Module upstream: PR a generic "run launcher on selection" command and keep Amarchy glue here. (Owner, 2026-10-26;
+   P5 is not scheduled yet.)
+7. P6: deferred. (Owner, 2026-10-26.)
+
+Answered 2026-10-26 morning (AskUserQuestion, owner; all recommended options):
+
+8. D21 raise: DOpus 5.104 ARexx has no per-lister raise; the row sends `dopus front`, `lister set <h> visible off`,
+   `lister set <h> visible on` (13eaf6c1). The owner accepts the hide/show flicker.
+9. D9: `rig.py --no-dopus` also drops the `DOpus5:` assign and PATH lines from the rig's S:User-Startup and hides
+   DH0:Opus5, so the add-on takes the fresh-install branch. Done in a worktree commit.
+10. D21 rig: install DOpus v5.104 on a rig image (5.82 answers nothing to `lister query all`).
+11. D11/D14 defaults stand: pens `files 1 0 dirs 3 0 selfiles 1 4 seldirs 3 4`, palette pens 0-3 from the menu
+    theme, viewer launcher `uterm-view` next to `uterm-edit`.
+12. D13 filetype: the base kit installs the DOpus filetype when `DOpus5:` exists (it needs UP-Term:bin); the
+    add-on stays standalone.
+13. D13 editor: the launcher uses the user's `EDITOR`, else joe, the same default as interactive vsh (one editor
+    setting everywhere). The plan text's nvim is replaced.
+14. D12 buttons: "UP-Term here" and "Shell" open vsh through a new `uterm-shell` launcher in the uterm-* pattern,
+    not a plain AmigaDOS NewShell.
+
+## 11. Reachability (one test per piece)
+
+- P1: `tools/rig/amarchy_menu_rig.py` case boots a rig with DOpus running, opens the drawn menu, picks
+  `dopus.newlister` through amarchy-gui, asserts RC 0 and that `lister query` on the returned handle reports the
+  path; sentinel: DOpus lister count rose by 1 AND Amarchy's row counter (`g_hits` in STATUS) rose by 1. The same case asserts the version gate: `dopus version` answers `5 91` (A1200) or `5 99 104` (v5.104 rig) and both pass; `dopus.refresh` sends `lister refresh all`. The same case
+  with DOpus quit asserts the group is absent (`dopus` not in the menu's node list).
+- P2: rig install of the add-on, then `FindPort DOPUS.1` after starting it; sentinel: `dopus version` returns `5 99 104` (the A1200's own 5.91 answers `5 91`; the P1 gate accepts both).
+- P3: rig: open a text file by DOpus double-click path (`command` of the filetype action) and assert an UP-Term
+  window titled `UP-Term` exists on the asserted screen; sentinel: the launcher's counter file.
+- P4: rig: apply, read `dopus pens`, assert equal to `menu_theme_roles_fb` output; restore, assert original.
+- P5: rig: with `amarchy.module` installed, run the command through ARexx `command AmarchyOpen` with three files
+  selected; sentinel: module call count 1 in STATUS and three paths in the launcher log.
+- P6: rig: open two listers, assert two rows in the index; quit one, assert one.
+- Every other behaviour (parsing, role mapping, binary encoding, licence files) is tested where it lives, host side.

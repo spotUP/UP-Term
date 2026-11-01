@@ -1,0 +1,7 @@
+8792e2f86e19b4e1c22ccfe84c4fe1a688ed66ce	refs/tags/v1.0
+8792e2f86e19b4e1c22ccfe84c4fe1a688ed66ce	refs/tags/v1.1
+8792e2f86e19b4e1c22ccfe84c4fe1a688ed66ce	refs/tags/v1.2
+8792e2f86e19b4e1c22ccfe84c4fe1a688ed66ce	refs/tags/v1.3
+8792e2f86e19b4e1c22ccfe84c4fe1a688ed66ce	refs/tags/v1.4
+8792e2f86e19b4e1c22ccfe84c4fe1a688ed66ce	refs/tags/v1.5
+8792e2f86e19b4e1c22ccfe84c4fe1a688ed66ce	refs/tags/v1.6

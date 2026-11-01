@@ -1,0 +1,809 @@
+2026-10-31 18:08:38.837 client | snoop stream open to 127.0.0.1:1241 (wasabid 0.11b2), wasabi's own traffic hidden, identical repeats folded, for 90 s - Ctrl-C to stop
+2026-10-31 18:08:38.898 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:08:38.958 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:08:39.018 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:08:39.193 snoop |   ... 1 more identical
+2026-10-31 18:08:39.193 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:08:39.194 snoop |   ... 1 more identical
+2026-10-31 18:08:39.194 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:08:39.534 snoop |   ... 4 more identical
+2026-10-31 18:08:39.534 snoop | DH0                  FindTask("(null)") = ok
+2026-10-31 18:08:39.703 snoop |   ... 1 more identical
+2026-10-31 18:08:39.703 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:08:39.815 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:08:39.816 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:08:39.817 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:08:40.046 snoop |   ... 4 more identical
+2026-10-31 18:08:40.046 snoop | dopus_rexx           FindTask("(null)") = ok
+2026-10-31 18:08:40.107 snoop |   ... 1 more identical
+2026-10-31 18:08:40.107 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:08:40.222 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:08:40.626 snoop |   ... 5 more identical
+2026-10-31 18:08:40.626 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:08:40.626 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:08:40.627 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:08:41.143 snoop |   ... 6 more identical
+2026-10-31 18:08:41.143 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:08:41.253 snoop |   ... 1 more identical
+2026-10-31 18:08:41.253 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:08:41.430 snoop |   ... 2 more identical
+2026-10-31 18:08:41.431 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:08:41.431 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:08:41.431 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:08:41.719 snoop |   ... 3 more identical
+2026-10-31 18:08:41.719 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:08:41.720 snoop |   ... 1 more identical
+2026-10-31 18:08:41.720 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:08:42.231 snoop |   ... 4 more identical
+2026-10-31 18:08:42.231 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:08:42.231 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:08:42.231 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:08:43.026 snoop |   ... 10 more identical
+2026-10-31 18:08:43.026 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:08:43.026 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:08:43.345 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:08:43.849 snoop |   ... 5 more identical
+2026-10-31 18:08:43.849 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:08:43.850 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:08:43.850 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:08:44.251 snoop |   ... 4 more identical
+2026-10-31 18:08:44.252 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:08:44.252 snoop |   ... 1 more identical
+2026-10-31 18:08:44.252 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:08:44.657 snoop |   ... 4 more identical
+2026-10-31 18:08:44.657 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:08:44.658 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:08:44.658 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:08:45.050 snoop |   ... 4 more identical
+2026-10-31 18:08:45.050 snoop | dopus_rexx           FindTask("(null)") = ok
+2026-10-31 18:08:45.181 snoop |   ... 1 more identical
+2026-10-31 18:08:45.181 snoop | Background CLI       GetVar("echo") = fail (Error 205: Object not found)
+2026-10-31 18:08:45.181 snoop | SYS:Prefs/Palette    GetVar("SYS:Prefs/Palette") = fail (Error 205: Object not found)
+2026-10-31 18:08:45.182 snoop | SYS:Prefs/Palette    GetVar("_pchar") = fail (Error 205: Object not found)
+2026-10-31 18:08:45.182 snoop | SYS:Prefs/Palette    GetVar("_mchar") = fail (Error 205: Object not found)
+2026-10-31 18:08:45.182 snoop | SYS:Prefs/Palette    CurrentDir(lock 0x0400ac25) = 0x0400ac25
+2026-10-31 18:08:45.183 snoop | SYS:Prefs/Palette    Lock("SYS:Prefs/Palette", read) = ok
+2026-10-31 18:08:45.183 snoop | SYS:Prefs/Palette    LoadSeg("SYS:Prefs/Palette") = ok
+2026-10-31 18:08:45.184 snoop | SYS:Prefs/Palette    Lock("SYS:Prefs/Palette", read) = ok
+2026-10-31 18:08:45.184 snoop | SYS:Prefs/Palette    CurrentDir(lock 0x0400ac25) = 0x0400ac25
+2026-10-31 18:08:45.184 snoop | SYS:Prefs/Palette    OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:08:45.185 snoop | SYS:Prefs/Palette    FindPort("Palette_Prefs") = fail
+2026-10-31 18:08:45.185 snoop | SYS:Prefs/Palette    OpenLibrary("intuition.library", v38) = ok
+2026-10-31 18:08:45.185 snoop | SYS:Prefs/Palette    OpenLibrary("graphics.library", v38) = ok
+2026-10-31 18:08:45.186 snoop | SYS:Prefs/Palette    OpenLibrary("dos.library", v38) = ok
+2026-10-31 18:08:45.186 snoop | SYS:Prefs/Palette    OpenLibrary("gadtools.library", v38) = ok
+2026-10-31 18:08:45.186 snoop | SYS:Prefs/Palette    OpenLibrary("icon.library", v38) = ok
+2026-10-31 18:08:45.187 snoop | SYS:Prefs/Palette    OpenLibrary("asl.library", v38) = ok
+2026-10-31 18:08:45.187 snoop | SYS:Prefs/Palette    OpenLibrary("iffparse.library", v38) = ok
+2026-10-31 18:08:45.187 snoop | SYS:Prefs/Palette    OpenLibrary("utility.library", v38) = ok
+2026-10-31 18:08:45.188 snoop | SYS:Prefs/Palette    CurrentDir(lock 0x00000000) = 0x0400ac25
+2026-10-31 18:08:45.188 snoop | SYS:Prefs/Palette    CurrentDir(lock 0x0400ac25) = 0x00000000
+2026-10-31 18:08:45.189 snoop | SYS:Prefs/Palette    OpenLibrary("locale.library", v38) = ok
+2026-10-31 18:08:45.189 snoop | ramlib               FindResident("colorwheel.gadget") = fail
+2026-10-31 18:08:45.189 snoop | ramlib               LoadSeg("LIBS:gadgets/colorwheel.gadget") = ok
+2026-10-31 18:08:45.189 snoop | ramlib               OpenLibrary("graphics.library", v39) = ok
+2026-10-31 18:08:45.190 snoop | ramlib               OpenLibrary("intuition.library", v39) = ok
+2026-10-31 18:08:45.190 snoop | ramlib               OpenLibrary("utility.library", v39) = ok
+2026-10-31 18:08:45.190 snoop | SYS:Prefs/Palette    OpenLibrary("gadgets/colorwheel.gadget", v39) = ok
+2026-10-31 18:08:45.191 snoop | ramlib               FindResident("gradientslider.gadget") = fail
+2026-10-31 18:08:45.191 snoop | ramlib               LoadSeg("LIBS:gadgets/gradientslider.gadget") = ok
+2026-10-31 18:08:45.191 snoop | ramlib               OpenLibrary("graphics.library", v39) = ok
+2026-10-31 18:08:45.192 snoop | ramlib               OpenLibrary("intuition.library", v39) = ok
+2026-10-31 18:08:45.192 snoop | ramlib               OpenLibrary("utility.library", v39) = ok
+2026-10-31 18:08:45.192 snoop | SYS:Prefs/Palette    OpenLibrary("gadgets/gradientslider.gadget", v39) = ok
+2026-10-31 18:08:45.193 snoop | SYS:Prefs/Palette    Open("T:flatpal.prefs", read) = ok
+2026-10-31 18:08:45.193 snoop | SYS:Prefs/Palette    Open("ENV:Sys/palette.prefs", create) = ok
+2026-10-31 18:08:45.194 snoop | SYS:Prefs/Palette    SetProtection("ENV:Sys/palette.prefs", 0x00000002) = ok
+2026-10-31 18:08:45.194 snoop | SYS:Prefs/Palette    CurrentDir(lock 0x0400ac25) = 0x0400ac25
+2026-10-31 18:08:45.194 snoop | SYS:Prefs/Palette    RunCommand("FROM T:flatpal.prefs USE", 25 byte(s)) = rc 0
+2026-10-31 18:08:45.195 snoop | Background CLI       GetVar("echo") = fail (Error 205: Object not found)
+2026-10-31 18:08:45.195 snoop | « IPrefs »           OpenLibrary("iffparse.library", v39) = ok
+2026-10-31 18:08:45.196 snoop | « IPrefs »           Open("ENV:Sys/palette.prefs", read) = ok
+2026-10-31 18:08:45.196 snoop | « IPrefs »           OpenLibrary("workbench.library", v39) = ok
+2026-10-31 18:08:45.196 snoop |   ... 1 more identical
+2026-10-31 18:08:45.196 snoop | « IPrefs »           FindTask("(null)") = ok
+2026-10-31 18:08:45.200 snoop |   ... 10 more identical
+2026-10-31 18:08:45.200 snoop | « IPrefs »           OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:08:45.201 snoop | « IPrefs »           FindTask("(null)") = ok
+2026-10-31 18:08:45.201 snoop | DOpus5:DirectoryOpus OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:08:45.201 snoop | dopus_closewb        FindTask("(null)") = ok
+2026-10-31 18:08:45.202 snoop |   ... 2 more identical
+2026-10-31 18:08:45.202 snoop | DOpus5:DirectoryOpus FindTask("(null)") = ok
+2026-10-31 18:08:45.204 snoop |   ... 5 more identical
+2026-10-31 18:08:45.204 snoop | dopus_start_menu     FindTask("(null)") = ok
+2026-10-31 18:08:45.204 snoop |   ... 1 more identical
+2026-10-31 18:08:45.204 snoop | DOpus5:DirectoryOpus FindTask("(null)") = ok
+2026-10-31 18:08:45.207 snoop |   ... 9 more identical
+2026-10-31 18:08:45.207 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:08:45.208 snoop | [wasabi: 5 snoop event(s) lost]
+2026-10-31 18:08:45.268 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:08:45.268 snoop | « IPrefs »           FindTask("(null)") = ok
+2026-10-31 18:08:45.330 snoop |   ... 5 more identical
+2026-10-31 18:08:45.330 snoop | « IPrefs »           FindResident("intuition.library") = ok
+2026-10-31 18:08:45.331 snoop | « IPrefs »           FindTask("(null)") = ok
+2026-10-31 18:08:45.332 snoop |   ... 2 more identical
+2026-10-31 18:08:45.332 snoop | DOpus5:DirectoryOpus FindTask("(null)") = ok
+2026-10-31 18:08:45.332 snoop | « IPrefs »           FindTask("(null)") = ok
+2026-10-31 18:08:45.335 snoop |   ... 7 more identical
+2026-10-31 18:08:45.335 snoop | DOpus5:DirectoryOpus FindTask("(null)") = ok
+2026-10-31 18:08:45.338 snoop |   ... 8 more identical
+2026-10-31 18:08:45.338 snoop | DOpus5:DirectoryOpus Lock("DH0:Internet/Genesis/Genesis", read) = fail (Error 205: Object not found)
+2026-10-31 18:08:45.339 snoop | DOpus5:DirectoryOpus Lock("DH0:Internet/Genesis/Genesis.info", read) = fail (Error 205: Object not found)
+2026-10-31 18:08:45.339 snoop | DOpus5:DirectoryOpus Lock("DOpus5:Desktop/", read) = ok
+2026-10-31 18:08:45.339 snoop | DOpus5:DirectoryOpus CurrentDir(lock 0x0400a35e) = 0x04018a11
+2026-10-31 18:08:45.339 snoop | DOpus5:DirectoryOpus CurrentDir(lock 0x04018a11) = 0x0400a35e
+2026-10-31 18:08:45.340 snoop | DOpus5:DirectoryOpus FindTask("(null)") = ok
+2026-10-31 18:08:45.341 snoop |   ... 2 more identical
+2026-10-31 18:08:45.341 snoop | DOpus5:DirectoryOpus OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:08:45.341 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:08:45.341 snoop | dopus_start_menu     Open("FONTS:", read) = fail (Error 212: Object not of required type)
+2026-10-31 18:08:45.342 snoop | dopus_start_menu     OpenDiskFont("") = fail
+2026-10-31 18:08:45.342 snoop | dopus_start_menu     FindTask("(null)") = ok
+2026-10-31 18:08:45.343 snoop |   ... 4 more identical
+2026-10-31 18:08:45.343 snoop | dopus_pattern_stuff  FindTask("(null)") = ok
+2026-10-31 18:08:45.344 snoop | DOpus5:DirectoryOpus FindTask("(null)") = ok
+2026-10-31 18:08:45.344 snoop | dopus_pattern_stuff  Open("env:sys/wbpattern.prefs", read) = ok
+2026-10-31 18:08:45.344 snoop | dopus_pattern_stuff  FindTask("(null)") = ok
+2026-10-31 18:08:45.401 snoop |   ... 1 more identical
+2026-10-31 18:08:45.401 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:08:45.459 snoop |   ... 1 more identical
+2026-10-31 18:08:45.459 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:08:45.460 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:08:45.578 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:08:46.209 snoop |   ... 6 more identical
+2026-10-31 18:08:46.209 snoop | DH0                  FindTask("(null)") = ok
+2026-10-31 18:08:46.268 snoop |   ... 1 more identical
+2026-10-31 18:08:46.268 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:08:46.268 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:08:46.385 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:08:46.784 snoop |   ... 5 more identical
+2026-10-31 18:08:46.784 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:08:46.894 snoop |   ... 1 more identical
+2026-10-31 18:08:46.894 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:08:47.074 snoop |   ... 2 more identical
+2026-10-31 18:08:47.074 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:08:47.075 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:08:47.184 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:08:47.294 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:08:47.408 client | snoop: connection lost (connection closed by the Amiga) - reconnecting until the Amiga returns; Ctrl-C to stop
+2026-10-31 18:09:15.515 client | snoop: reconnected after 28 s - wasabid 0.11b2
+2026-10-31 18:09:15.634 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:16.034 snoop |   ... 3 more identical
+2026-10-31 18:09:16.034 snoop | RexxMaster           FindTask("(null)") = ok
+2026-10-31 18:09:16.093 snoop |   ... 1 more identical
+2026-10-31 18:09:16.093 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:16.093 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:16.153 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:16.214 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:16.275 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:16.509 snoop |   ... 3 more identical
+2026-10-31 18:09:16.509 snoop | DH1                  FindTask("(null)") = ok
+2026-10-31 18:09:16.560 snoop |   ... 2 more identical
+2026-10-31 18:09:16.560 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:16.671 snoop |   ... 2 more identical
+2026-10-31 18:09:16.671 snoop | DH0                  FindTask("(null)") = ok
+2026-10-31 18:09:16.847 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:16.901 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:16.901 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:16.953 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:17.235 snoop |   ... 3 more identical
+2026-10-31 18:09:17.235 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:17.272 snoop |   ... 1 more identical
+2026-10-31 18:09:17.272 snoop | Background CLI       GetVar("echo") = fail (Error 205: Object not found)
+2026-10-31 18:09:17.272 snoop | Assign               GetVar("Assign") = fail (Error 205: Object not found)
+2026-10-31 18:09:17.272 snoop | Assign               GetVar("_pchar") = fail (Error 205: Object not found)
+2026-10-31 18:09:17.273 snoop | Assign               GetVar("_mchar") = fail (Error 205: Object not found)
+2026-10-31 18:09:17.273 snoop | Assign               CurrentDir(lock 0x04000a49) = 0x04000a49
+2026-10-31 18:09:17.273 snoop | Assign               Lock("Assign", read) = fail (Error 205: Object not found)
+2026-10-31 18:09:17.274 snoop | Assign               CurrentDir(lock 0x04000a49) = 0x04000a49
+2026-10-31 18:09:17.274 snoop | Assign               CurrentDir(lock 0x0400a3ee) = 0x04000a49
+2026-10-31 18:09:17.274 snoop | Assign               Lock("Assign", read) = ok
+2026-10-31 18:09:17.275 snoop | Assign               LoadSeg("Assign") = ok
+2026-10-31 18:09:17.275 snoop | Assign               Lock("Assign", read) = ok
+2026-10-31 18:09:17.275 snoop | Assign               CurrentDir(lock 0x04000a49) = 0x0400a3ee
+2026-10-31 18:09:17.275 snoop | Assign               OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:17.276 snoop | Assign               OpenLibrary("dos.library", v36) = ok
+2026-10-31 18:09:17.276 snoop | Assign               FindTask("(null)") = ok
+2026-10-31 18:09:17.276 snoop | Assign               RunCommand("LIST", 5 byte(s)) = rc 0
+2026-10-31 18:09:17.277 snoop | Background CLI       GetVar("echo") = fail (Error 205: Object not found)
+2026-10-31 18:09:17.277 snoop | [wasabi: 4 snoop event(s) lost]
+2026-10-31 18:09:17.462 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:17.523 snoop | DH1                  FindTask("(null)") = ok
+2026-10-31 18:09:17.576 snoop |   ... 2 more identical
+2026-10-31 18:09:17.576 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:17.740 snoop |   ... 3 more identical
+2026-10-31 18:09:17.740 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:17.740 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:17.792 snoop |   ... 1 more identical
+2026-10-31 18:09:17.793 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:09:17.959 snoop |   ... 1 more identical
+2026-10-31 18:09:17.959 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:18.249 snoop |   ... 3 more identical
+2026-10-31 18:09:18.249 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:18.309 snoop |   ... 1 more identical
+2026-10-31 18:09:18.309 snoop | DH0                  FindTask("(null)") = ok
+2026-10-31 18:09:18.367 snoop |   ... 1 more identical
+2026-10-31 18:09:18.367 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:18.536 snoop |   ... 1 more identical
+2026-10-31 18:09:18.536 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:18.537 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:18.596 snoop |   ... 1 more identical
+2026-10-31 18:09:18.596 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:19.283 snoop |   ... 4 more identical
+2026-10-31 18:09:19.283 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:19.284 snoop |   ... 1 more identical
+2026-10-31 18:09:19.284 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:19.364 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:19.365 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:19.485 snoop |   ... 2 more identical
+2026-10-31 18:09:19.485 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:20.163 snoop |   ... 7 more identical
+2026-10-31 18:09:20.163 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:20.163 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:20.225 snoop |   ... 1 more identical
+2026-10-31 18:09:20.225 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:20.278 snoop |   ... 2 more identical
+2026-10-31 18:09:20.278 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:20.334 snoop |   ... 1 more identical
+2026-10-31 18:09:20.334 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:09:20.395 snoop |   ... 1 more identical
+2026-10-31 18:09:20.395 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:20.970 snoop |   ... 6 more identical
+2026-10-31 18:09:20.970 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:20.970 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:21.022 snoop |   ... 1 more identical
+2026-10-31 18:09:21.022 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:21.773 snoop |   ... 7 more identical
+2026-10-31 18:09:21.773 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:21.773 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:21.830 snoop |   ... 1 more identical
+2026-10-31 18:09:21.830 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:22.219 snoop |   ... 3 more identical
+2026-10-31 18:09:22.219 snoop | dopus_rexx           FindTask("(null)") = ok
+2026-10-31 18:09:22.219 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:22.553 snoop |   ... 3 more identical
+2026-10-31 18:09:22.553 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:22.725 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:22.843 snoop |   ... 1 more identical
+2026-10-31 18:09:22.843 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:09:23.128 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:23.300 snoop |   ... 2 more identical
+2026-10-31 18:09:23.300 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:23.328 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:23.391 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:23.391 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:23.451 snoop |   ... 1 more identical
+2026-10-31 18:09:23.451 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:24.195 snoop |   ... 5 more identical
+2026-10-31 18:09:24.195 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:24.195 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:24.256 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:24.308 snoop |   ... 1 more identical
+2026-10-31 18:09:24.308 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:24.364 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:24.989 snoop |   ... 5 more identical
+2026-10-31 18:09:24.989 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:25.147 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:25.317 snoop |   ... 1 more identical
+2026-10-31 18:09:25.317 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:25.392 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:09:25.454 snoop |   ... 1 more identical
+2026-10-31 18:09:25.454 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:25.787 snoop |   ... 6 more identical
+2026-10-31 18:09:25.787 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:26.066 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:26.344 snoop |   ... 4 more identical
+2026-10-31 18:09:26.344 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:26.567 snoop |   ... 1 more identical
+2026-10-31 18:09:26.567 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:26.627 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:26.628 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:26.680 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:27.350 snoop |   ... 8 more identical
+2026-10-31 18:09:27.350 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:27.409 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:27.410 snoop |   ... 2 more identical
+2026-10-31 18:09:27.410 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:27.577 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:27.926 snoop |   ... 4 more identical
+2026-10-31 18:09:27.926 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:09:27.987 snoop |   ... 1 more identical
+2026-10-31 18:09:27.987 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:28.218 snoop |   ... 5 more identical
+2026-10-31 18:09:28.218 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:28.385 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:28.385 snoop |   ... 1 more identical
+2026-10-31 18:09:28.385 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:29.076 snoop |   ... 8 more identical
+2026-10-31 18:09:29.076 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:29.076 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:29.306 snoop |   ... 2 more identical
+2026-10-31 18:09:29.307 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:29.366 snoop | Background CLI       GetVar("echo") = fail (Error 205: Object not found)
+2026-10-31 18:09:29.366 snoop | List                 GetVar("List") = fail (Error 205: Object not found)
+2026-10-31 18:09:29.367 snoop | List                 GetVar("_pchar") = fail (Error 205: Object not found)
+2026-10-31 18:09:29.367 snoop | List                 GetVar("_mchar") = fail (Error 205: Object not found)
+2026-10-31 18:09:29.367 snoop | List                 CurrentDir(lock 0x0400ab7b) = 0x0400ab7b
+2026-10-31 18:09:29.368 snoop | List                 Lock("List", read) = fail (Error 205: Object not found)
+2026-10-31 18:09:29.368 snoop | List                 CurrentDir(lock 0x0400ab7b) = 0x0400ab7b
+2026-10-31 18:09:29.368 snoop | List                 CurrentDir(lock 0x0400a3ee) = 0x0400ab7b
+2026-10-31 18:09:29.369 snoop | List                 Lock("List", read) = ok
+2026-10-31 18:09:29.369 snoop | List                 LoadSeg("List") = ok
+2026-10-31 18:09:29.369 snoop | List                 Lock("List", read) = ok
+2026-10-31 18:09:29.370 snoop | List                 CurrentDir(lock 0x0400ab7b) = 0x0400a3ee
+2026-10-31 18:09:29.370 snoop | List                 OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:29.370 snoop | List                 OpenLibrary("dos.library", v36) = ok
+2026-10-31 18:09:29.371 snoop | List                 OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:29.372 snoop |   ... 3 more identical
+2026-10-31 18:09:29.372 snoop | List                 RunCommand("RAM: QUICK", 11 byte(s)) = rc 0
+2026-10-31 18:09:29.372 snoop | Background CLI       GetVar("echo") = fail (Error 205: Object not found)
+2026-10-31 18:09:29.373 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:29.373 snoop | [wasabi: 4 snoop event(s) lost]
+2026-10-31 18:09:29.427 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:29.501 snoop |   ... 1 more identical
+2026-10-31 18:09:29.501 snoop | Background CLI       GetVar("echo") = fail (Error 205: Object not found)
+2026-10-31 18:09:29.501 snoop | List                 GetVar("List") = fail (Error 205: Object not found)
+2026-10-31 18:09:29.501 snoop | List                 GetVar("_pchar") = fail (Error 205: Object not found)
+2026-10-31 18:09:29.502 snoop | List                 GetVar("_mchar") = fail (Error 205: Object not found)
+2026-10-31 18:09:29.502 snoop | List                 CurrentDir(lock 0x0400ab73) = 0x0400ab73
+2026-10-31 18:09:29.503 snoop | List                 Lock("List", read) = fail (Error 205: Object not found)
+2026-10-31 18:09:29.503 snoop | List                 CurrentDir(lock 0x0400ab73) = 0x0400ab73
+2026-10-31 18:09:29.504 snoop | List                 CurrentDir(lock 0x0400a3ee) = 0x0400ab73
+2026-10-31 18:09:29.504 snoop | List                 Lock("List", read) = ok
+2026-10-31 18:09:29.505 snoop | List                 LoadSeg("List") = ok
+2026-10-31 18:09:29.505 snoop | List                 Lock("List", read) = ok
+2026-10-31 18:09:29.505 snoop | List                 CurrentDir(lock 0x0400ab73) = 0x0400a3ee
+2026-10-31 18:09:29.506 snoop | List                 OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:29.506 snoop | List                 OpenLibrary("dos.library", v36) = ok
+2026-10-31 18:09:29.507 snoop | List                 OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:29.508 snoop |   ... 1 more identical
+2026-10-31 18:09:29.508 snoop | List                 RunCommand("T: QUICK", 9 byte(s)) = rc 0
+2026-10-31 18:09:29.508 snoop | Background CLI       GetVar("echo") = fail (Error 205: Object not found)
+2026-10-31 18:09:29.509 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:29.509 snoop | [wasabi: 4 snoop event(s) lost]
+2026-10-31 18:09:29.600 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:29.837 snoop |   ... 5 more identical
+2026-10-31 18:09:29.837 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:30.005 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:30.041 snoop | Background CLI       GetVar("echo") = fail (Error 205: Object not found)
+2026-10-31 18:09:30.041 snoop | Date                 GetVar("Date") = fail (Error 205: Object not found)
+2026-10-31 18:09:30.041 snoop | Date                 GetVar("_pchar") = fail (Error 205: Object not found)
+2026-10-31 18:09:30.042 snoop | Date                 GetVar("_mchar") = fail (Error 205: Object not found)
+2026-10-31 18:09:30.042 snoop | Date                 CurrentDir(lock 0x0400ab83) = 0x0400ab83
+2026-10-31 18:09:30.042 snoop | Date                 Lock("Date", read) = fail (Error 205: Object not found)
+2026-10-31 18:09:30.043 snoop | Date                 CurrentDir(lock 0x0400ab83) = 0x0400ab83
+2026-10-31 18:09:30.043 snoop | Date                 CurrentDir(lock 0x0400a3ee) = 0x0400ab83
+2026-10-31 18:09:30.043 snoop | Date                 Lock("Date", read) = ok
+2026-10-31 18:09:30.044 snoop | Date                 LoadSeg("Date") = ok
+2026-10-31 18:09:30.044 snoop | Date                 Lock("Date", read) = ok
+2026-10-31 18:09:30.045 snoop | Date                 CurrentDir(lock 0x0400ab83) = 0x0400a3ee
+2026-10-31 18:09:30.045 snoop | Date                 OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:30.046 snoop | Date                 OpenLibrary("dos.library", v36) = ok
+2026-10-31 18:09:30.046 snoop | Date                 OpenLibrary("utility.library", v0) = ok
+2026-10-31 18:09:30.046 snoop | Date                 OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:30.047 snoop | Date                 RunCommand("", 1 byte(s)) = rc 0
+2026-10-31 18:09:30.048 snoop | Background CLI       GetVar("echo") = fail (Error 205: Object not found)
+2026-10-31 18:09:30.049 snoop | [wasabi: 4 snoop event(s) lost]
+2026-10-31 18:09:30.109 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:30.277 snoop | Background CLI       GetVar("echo") = fail (Error 205: Object not found)
+2026-10-31 18:09:30.277 snoop | Avail                GetVar("Avail") = fail (Error 205: Object not found)
+2026-10-31 18:09:30.278 snoop | Avail                GetVar("_pchar") = fail (Error 205: Object not found)
+2026-10-31 18:09:30.278 snoop | Avail                GetVar("_mchar") = fail (Error 205: Object not found)
+2026-10-31 18:09:30.279 snoop | Avail                CurrentDir(lock 0x0400ab81) = 0x0400ab81
+2026-10-31 18:09:30.280 snoop | Avail                Lock("Avail", read) = fail (Error 205: Object not found)
+2026-10-31 18:09:30.280 snoop | Avail                CurrentDir(lock 0x0400ab81) = 0x0400ab81
+2026-10-31 18:09:30.280 snoop | Avail                CurrentDir(lock 0x0400a3ee) = 0x0400ab81
+2026-10-31 18:09:30.281 snoop | Avail                Lock("Avail", read) = ok
+2026-10-31 18:09:30.281 snoop | Avail                LoadSeg("Avail") = ok
+2026-10-31 18:09:30.281 snoop | Avail                Lock("Avail", read) = ok
+2026-10-31 18:09:30.282 snoop | Avail                CurrentDir(lock 0x0400ab81) = 0x0400a3ee
+2026-10-31 18:09:30.282 snoop | Avail                OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:30.282 snoop | Avail                OpenLibrary("dos.library", v36) = ok
+2026-10-31 18:09:30.283 snoop | Avail                RunCommand("", 1 byte(s)) = rc 0
+2026-10-31 18:09:30.283 snoop | Background CLI       GetVar("echo") = fail (Error 205: Object not found)
+2026-10-31 18:09:30.284 snoop | [wasabi: 4 snoop event(s) lost]
+2026-10-31 18:09:30.336 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:30.397 snoop |   ... 1 more identical
+2026-10-31 18:09:30.397 snoop | DH0                  FindTask("(null)") = ok
+2026-10-31 18:09:30.397 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:30.459 snoop |   ... 1 more identical
+2026-10-31 18:09:30.459 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:09:30.520 snoop |   ... 2 more identical
+2026-10-31 18:09:30.520 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:30.693 snoop |   ... 2 more identical
+2026-10-31 18:09:30.693 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:30.693 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:30.751 snoop |   ... 1 more identical
+2026-10-31 18:09:30.751 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:31.509 snoop |   ... 8 more identical
+2026-10-31 18:09:31.509 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:31.510 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:31.626 snoop |   ... 2 more identical
+2026-10-31 18:09:31.626 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:32.086 snoop |   ... 5 more identical
+2026-10-31 18:09:32.086 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:32.142 snoop |   ... 1 more identical
+2026-10-31 18:09:32.142 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:32.308 snoop |   ... 2 more identical
+2026-10-31 18:09:32.308 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:32.308 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:32.368 snoop |   ... 1 more identical
+2026-10-31 18:09:32.368 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:32.429 snoop |   ... 2 more identical
+2026-10-31 18:09:32.429 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:32.550 snoop |   ... 1 more identical
+2026-10-31 18:09:32.550 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:32.996 snoop |   ... 4 more identical
+2026-10-31 18:09:32.996 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:09:33.050 snoop |   ... 1 more identical
+2026-10-31 18:09:33.050 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:33.101 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:33.101 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:33.162 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:33.908 snoop |   ... 9 more identical
+2026-10-31 18:09:33.908 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:33.908 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:33.966 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:34.428 snoop |   ... 3 more identical
+2026-10-31 18:09:34.428 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:34.480 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:34.708 snoop |   ... 3 more identical
+2026-10-31 18:09:34.708 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:34.769 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:35.468 snoop |   ... 7 more identical
+2026-10-31 18:09:35.468 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:35.529 snoop |   ... 1 more identical
+2026-10-31 18:09:35.529 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:09:35.529 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:35.530 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:35.585 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:36.334 snoop |   ... 8 more identical
+2026-10-31 18:09:36.334 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:36.334 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:36.393 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:36.454 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:36.509 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:37.151 snoop |   ... 8 more identical
+2026-10-31 18:09:37.151 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:37.151 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:37.212 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:37.484 snoop |   ... 3 more identical
+2026-10-31 18:09:37.484 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:37.604 snoop |   ... 1 more identical
+2026-10-31 18:09:37.604 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:37.936 snoop |   ... 6 more identical
+2026-10-31 18:09:37.936 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:38.043 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:09:38.209 snoop |   ... 1 more identical
+2026-10-31 18:09:38.210 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:38.493 snoop |   ... 4 more identical
+2026-10-31 18:09:38.493 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:38.606 snoop |   ... 1 more identical
+2026-10-31 18:09:38.606 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:38.778 snoop |   ... 1 more identical
+2026-10-31 18:09:38.778 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:38.778 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:38.834 snoop |   ... 1 more identical
+2026-10-31 18:09:38.834 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:39.517 snoop |   ... 6 more identical
+2026-10-31 18:09:39.517 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:39.575 snoop |   ... 1 more identical
+2026-10-31 18:09:39.575 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:39.575 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:39.632 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:40.368 snoop |   ... 8 more identical
+2026-10-31 18:09:40.368 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:40.542 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:40.595 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:09:40.651 snoop |   ... 1 more identical
+2026-10-31 18:09:40.651 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:41.217 snoop |   ... 7 more identical
+2026-10-31 18:09:41.217 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:41.217 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:41.269 snoop |   ... 1 more identical
+2026-10-31 18:09:41.269 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:41.547 snoop |   ... 1 more identical
+2026-10-31 18:09:41.547 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:41.548 snoop |   ... 1 more identical
+2026-10-31 18:09:41.548 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:42.008 snoop |   ... 5 more identical
+2026-10-31 18:09:42.013 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:42.013 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:42.059 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:42.834 snoop |   ... 12 more identical
+2026-10-31 18:09:42.834 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:42.834 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:42.893 snoop |   ... 1 more identical
+2026-10-31 18:09:42.893 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:43.117 snoop |   ... 3 more identical
+2026-10-31 18:09:43.117 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:09:43.174 snoop |   ... 1 more identical
+2026-10-31 18:09:43.174 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:43.568 snoop |   ... 4 more identical
+2026-10-31 18:09:43.568 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:43.568 snoop |   ... 1 more identical
+2026-10-31 18:09:43.569 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:43.627 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:43.627 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:43.688 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:44.412 snoop |   ... 9 more identical
+2026-10-31 18:09:44.412 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:44.582 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:44.583 snoop |   ... 1 more identical
+2026-10-31 18:09:44.583 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:45.225 snoop |   ... 11 more identical
+2026-10-31 18:09:45.225 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:45.396 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:45.570 snoop |   ... 2 more identical
+2026-10-31 18:09:45.570 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:45.626 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:45.626 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:09:45.806 snoop |   ... 1 more identical
+2026-10-31 18:09:45.806 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:46.034 snoop |   ... 5 more identical
+2026-10-31 18:09:46.034 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:46.212 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:46.774 snoop |   ... 6 more identical
+2026-10-31 18:09:46.774 snoop | Background CLI       GetVar("echo") = fail (Error 205: Object not found)
+2026-10-31 18:09:46.774 snoop | List                 GetVar("List") = fail (Error 205: Object not found)
+2026-10-31 18:09:46.774 snoop | List                 GetVar("_pchar") = fail (Error 205: Object not found)
+2026-10-31 18:09:46.775 snoop | List                 GetVar("_mchar") = fail (Error 205: Object not found)
+2026-10-31 18:09:46.775 snoop | List                 CurrentDir(lock 0x0400ab87) = 0x0400ab87
+2026-10-31 18:09:46.775 snoop | List                 Lock("List", read) = fail (Error 205: Object not found)
+2026-10-31 18:09:46.776 snoop | List                 CurrentDir(lock 0x0400ab87) = 0x0400ab87
+2026-10-31 18:09:46.776 snoop | List                 CurrentDir(lock 0x0400a3ee) = 0x0400ab87
+2026-10-31 18:09:46.776 snoop | List                 Lock("List", read) = ok
+2026-10-31 18:09:46.776 snoop | List                 LoadSeg("List") = ok
+2026-10-31 18:09:46.777 snoop | List                 Lock("List", read) = ok
+2026-10-31 18:09:46.777 snoop | List                 CurrentDir(lock 0x0400ab87) = 0x0400a3ee
+2026-10-31 18:09:46.777 snoop | List                 OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:46.778 snoop | List                 OpenLibrary("dos.library", v36) = ok
+2026-10-31 18:09:46.778 snoop | List                 OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:46.778 snoop | List                 RunCommand("ENVARC:Sys QUICK PAT=pal#?", 27 byte(s)) = rc 0
+2026-10-31 18:09:46.779 snoop | Background CLI       GetVar("echo") = fail (Error 205: Object not found)
+2026-10-31 18:09:46.780 snoop | [wasabi: 3 snoop event(s) lost]
+2026-10-31 18:09:46.832 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:46.874 snoop |   ... 1 more identical
+2026-10-31 18:09:46.874 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:46.874 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:46.908 snoop |   ... 1 more identical
+2026-10-31 18:09:46.908 snoop | Background CLI       GetVar("echo") = fail (Error 205: Object not found)
+2026-10-31 18:09:46.909 snoop | List                 GetVar("List") = fail (Error 205: Object not found)
+2026-10-31 18:09:46.909 snoop | List                 GetVar("_pchar") = fail (Error 205: Object not found)
+2026-10-31 18:09:46.909 snoop | List                 GetVar("_mchar") = fail (Error 205: Object not found)
+2026-10-31 18:09:46.909 snoop | List                 CurrentDir(lock 0x0400ab85) = 0x0400ab85
+2026-10-31 18:09:46.910 snoop | List                 Lock("List", read) = fail (Error 205: Object not found)
+2026-10-31 18:09:46.910 snoop | List                 CurrentDir(lock 0x0400ab85) = 0x0400ab85
+2026-10-31 18:09:46.911 snoop | List                 CurrentDir(lock 0x0400a3ee) = 0x0400ab85
+2026-10-31 18:09:46.911 snoop | List                 Lock("List", read) = ok
+2026-10-31 18:09:46.911 snoop | List                 LoadSeg("List") = ok
+2026-10-31 18:09:46.912 snoop | List                 Lock("List", read) = ok
+2026-10-31 18:09:46.912 snoop | List                 CurrentDir(lock 0x0400ab85) = 0x0400a3ee
+2026-10-31 18:09:46.913 snoop | List                 OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:46.913 snoop | List                 OpenLibrary("dos.library", v36) = ok
+2026-10-31 18:09:46.914 snoop | List                 OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:46.914 snoop | List                 RunCommand("ENV:Sys QUICK PAT=pal#?", 24 byte(s)) = rc 0
+2026-10-31 18:09:46.915 snoop | Background CLI       GetVar("echo") = fail (Error 205: Object not found)
+2026-10-31 18:09:46.916 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:46.916 snoop | [wasabi: 3 snoop event(s) lost]
+2026-10-31 18:09:47.044 snoop | Background CLI       GetVar("echo") = fail (Error 205: Object not found)
+2026-10-31 18:09:47.044 snoop | List                 GetVar("List") = fail (Error 205: Object not found)
+2026-10-31 18:09:47.044 snoop | List                 GetVar("_pchar") = fail (Error 205: Object not found)
+2026-10-31 18:09:47.045 snoop | List                 GetVar("_mchar") = fail (Error 205: Object not found)
+2026-10-31 18:09:47.045 snoop | List                 CurrentDir(lock 0x0400ab83) = 0x0400ab83
+2026-10-31 18:09:47.045 snoop | List                 Lock("List", read) = fail (Error 205: Object not found)
+2026-10-31 18:09:47.046 snoop | List                 CurrentDir(lock 0x0400ab83) = 0x0400ab83
+2026-10-31 18:09:47.046 snoop | List                 CurrentDir(lock 0x0400a3ee) = 0x0400ab83
+2026-10-31 18:09:47.047 snoop | List                 Lock("List", read) = ok
+2026-10-31 18:09:47.047 snoop | List                 LoadSeg("List") = ok
+2026-10-31 18:09:47.047 snoop | List                 Lock("List", read) = ok
+2026-10-31 18:09:47.047 snoop | List                 CurrentDir(lock 0x0400ab83) = 0x0400a3ee
+2026-10-31 18:09:47.048 snoop | List                 OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:47.048 snoop | List                 OpenLibrary("dos.library", v36) = ok
+2026-10-31 18:09:47.048 snoop | List                 OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:47.049 snoop | List                 RunCommand("T:flatpal.prefs", 16 byte(s)) = rc 20
+2026-10-31 18:09:47.050 snoop | [wasabi: 4 snoop event(s) lost]
+2026-10-31 18:09:47.209 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:47.267 snoop | dopus_rexx           FindTask("(null)") = ok
+2026-10-31 18:09:47.326 snoop |   ... 1 more identical
+2026-10-31 18:09:47.326 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:47.615 snoop |   ... 2 more identical
+2026-10-31 18:09:47.615 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:47.615 snoop |   ... 1 more identical
+2026-10-31 18:09:47.616 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:47.668 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:47.668 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:47.727 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:47.788 snoop | DH0                  FindTask("(null)") = ok
+2026-10-31 18:09:47.847 snoop |   ... 1 more identical
+2026-10-31 18:09:47.847 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:48.189 snoop |   ... 2 more identical
+2026-10-31 18:09:48.189 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:09:48.247 snoop |   ... 2 more identical
+2026-10-31 18:09:48.247 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:48.481 snoop |   ... 1 more identical
+2026-10-31 18:09:48.481 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:48.481 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:48.538 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:49.272 snoop |   ... 13 more identical
+2026-10-31 18:09:49.273 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:49.448 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:49.614 snoop |   ... 2 more identical
+2026-10-31 18:09:49.614 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:49.670 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:50.130 snoop |   ... 5 more identical
+2026-10-31 18:09:50.130 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:50.131 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:50.247 snoop |   ... 2 more identical
+2026-10-31 18:09:50.247 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:50.642 snoop |   ... 5 more identical
+2026-10-31 18:09:50.642 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:50.698 snoop |   ... 1 more identical
+2026-10-31 18:09:50.698 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:09:50.754 snoop |   ... 1 more identical
+2026-10-31 18:09:50.754 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:50.921 snoop |   ... 1 more identical
+2026-10-31 18:09:50.921 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:50.922 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:50.982 snoop |   ... 1 more identical
+2026-10-31 18:09:50.982 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:51.666 snoop |   ... 4 more identical
+2026-10-31 18:09:51.666 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:51.666 snoop |   ... 1 more identical
+2026-10-31 18:09:51.666 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:51.726 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:51.727 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:51.779 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:52.069 snoop |   ... 3 more identical
+2026-10-31 18:09:52.069 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:52.188 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:52.539 snoop |   ... 5 more identical
+2026-10-31 18:09:52.540 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:52.540 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:52.594 snoop |   ... 1 more identical
+2026-10-31 18:09:52.594 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:52.653 snoop |   ... 1 more identical
+2026-10-31 18:09:52.653 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:52.705 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:53.223 snoop |   ... 7 more identical
+2026-10-31 18:09:53.223 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:09:53.338 snoop |   ... 1 more identical
+2026-10-31 18:09:53.338 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:53.338 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:53.396 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:53.679 snoop |   ... 4 more identical
+2026-10-31 18:09:53.679 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:53.796 snoop |   ... 1 more identical
+2026-10-31 18:09:53.796 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:54.148 snoop |   ... 5 more identical
+2026-10-31 18:09:54.149 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:54.149 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:54.203 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:54.991 snoop |   ... 11 more identical
+2026-10-31 18:09:54.991 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:54.992 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:55.105 snoop |   ... 2 more identical
+2026-10-31 18:09:55.105 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:55.768 snoop |   ... 8 more identical
+2026-10-31 18:09:55.769 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:09:55.769 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:55.769 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:55.828 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:56.589 snoop |   ... 11 more identical
+2026-10-31 18:09:56.589 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:56.589 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:56.641 snoop |   ... 1 more identical
+2026-10-31 18:09:56.641 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:56.702 snoop |   ... 1 more identical
+2026-10-31 18:09:56.702 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:56.761 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:57.275 snoop |   ... 6 more identical
+2026-10-31 18:09:57.276 snoop | dopus_rexx           FindTask("(null)") = ok
+2026-10-31 18:09:57.336 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:57.388 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:57.388 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:57.449 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:58.222 snoop |   ... 11 more identical
+2026-10-31 18:09:58.222 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:58.222 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:58.283 snoop |   ... 1 more identical
+2026-10-31 18:09:58.283 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:58.283 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:09:58.344 snoop |   ... 1 more identical
+2026-10-31 18:09:58.344 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:58.740 snoop |   ... 4 more identical
+2026-10-31 18:09:58.740 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:58.955 snoop |   ... 1 more identical
+2026-10-31 18:09:58.955 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:59.009 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:59.009 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:09:59.062 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:59.738 snoop |   ... 9 more identical
+2026-10-31 18:09:59.738 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:09:59.798 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:09:59.799 snoop |   ... 2 more identical
+2026-10-31 18:09:59.799 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:09:59.970 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:10:00.603 snoop |   ... 8 more identical
+2026-10-31 18:10:00.603 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:10:00.773 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:10:00.774 snoop |   ... 1 more identical
+2026-10-31 18:10:00.774 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:10:00.833 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:10:00.885 snoop |   ... 1 more identical
+2026-10-31 18:10:00.885 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:10:01.452 snoop |   ... 7 more identical
+2026-10-31 18:10:01.452 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:10:01.453 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:10:01.505 snoop |   ... 1 more identical
+2026-10-31 18:10:01.505 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:10:02.088 snoop |   ... 5 more identical
+2026-10-31 18:10:02.092 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:10:02.093 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:10:02.262 snoop |   ... 1 more identical
+2026-10-31 18:10:02.262 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:10:02.262 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:10:02.313 snoop |   ... 1 more identical
+2026-10-31 18:10:02.313 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:10:02.314 snoop |   ... 1 more identical
+2026-10-31 18:10:02.314 snoop | DOpus5:DirectoryOpus Open("dopus5:system/seed", create) = ok
+2026-10-31 18:10:02.600 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:10:02.764 snoop |   ... 1 more identical
+2026-10-31 18:10:02.764 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:10:02.822 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:10:03.060 snoop |   ... 2 more identical
+2026-10-31 18:10:03.060 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:10:03.060 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:10:03.118 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:10:03.330 snoop |   ... 4 more identical
+2026-10-31 18:10:03.330 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:10:03.720 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:10:03.779 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:10:03.840 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:10:03.841 snoop |   ... 1 more identical
+2026-10-31 18:10:03.841 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:10:04.013 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:10:04.355 snoop |   ... 3 more identical
+2026-10-31 18:10:04.355 snoop | DH0                  FindTask("(null)") = ok
+2026-10-31 18:10:04.532 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:10:04.703 snoop |   ... 2 more identical
+2026-10-31 18:10:04.703 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:10:04.703 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:10:04.817 snoop |   ... 2 more identical
+2026-10-31 18:10:04.817 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:10:04.932 snoop |   ... 1 more identical
+2026-10-31 18:10:04.932 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:10:05.479 snoop |   ... 7 more identical
+2026-10-31 18:10:05.479 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:10:05.479 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:10:05.538 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:10:05.817 snoop |   ... 5 more identical
+2026-10-31 18:10:05.817 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:10:05.872 snoop |   ... 1 more identical
+2026-10-31 18:10:05.872 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:10:06.046 snoop |   ... 1 more identical
+2026-10-31 18:10:06.046 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:10:06.280 snoop |   ... 2 more identical
+2026-10-31 18:10:06.280 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:10:06.338 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:10:07.083 snoop |   ... 13 more identical
+2026-10-31 18:10:07.083 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:10:07.254 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:10:07.310 snoop | dopus_rexx           FindTask("(null)") = ok
+2026-10-31 18:10:07.368 snoop |   ... 1 more identical
+2026-10-31 18:10:07.368 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:10:07.838 snoop |   ... 7 more identical
+2026-10-31 18:10:07.838 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:10:07.899 snoop |   ... 1 more identical
+2026-10-31 18:10:07.899 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:10:07.957 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:10:08.429 snoop |   ... 4 more identical
+2026-10-31 18:10:08.429 snoop | trackdisk.device     FindTask("(null)") = ok
+2026-10-31 18:10:08.489 snoop |   ... 2 more identical
+2026-10-31 18:10:08.489 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:10:08.718 snoop |   ... 1 more identical
+2026-10-31 18:10:08.718 snoop | dopus_clock          OpenLibrary("dos.library", v0) = ok
+2026-10-31 18:10:08.718 snoop | dopus_clock          FindTask("(null)") = ok
+2026-10-31 18:10:08.778 snoop | input.device         FindTask("(null)") = ok
+2026-10-31 18:10:08.838 snoop | DO_LAUNCHER          FindTask("(null)") = ok
+2026-10-31 18:10:08.844 client | snoop stream closed: 90 s are up

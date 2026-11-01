@@ -1,0 +1,339 @@
+; UP-Term key bindings (Amarchy). Read by the XCON: handler and by the Amarchy
+; commodity from ENVARC:up-term/keymap (ENV:up-term/keymap first). Without this
+; file the compiled-in copy of it stands, so the terminal never loses its keys.
+; Every Install replaces this file (an older different copy is saved as
+; keymap.bak). Put your own changes in the optional keymap.user beside this
+; file instead: a row there replaces the row for the same key, and
+;   super+t = none
+; unbinds one. An edit of ENVARC:up-term/keymap.user applies after a copy to
+; ENV:up-term/keymap.user (Amarchy picks it up at once) or at the next boot.
+;
+; Super is the Left Amiga key. Left Amiga + M and Left Amiga + N belong to
+; Intuition, Left Amiga + mouse to Workbench, and Ctrl + both Amigas is the
+; hardware reset: the parser refuses M, N and the mouse words, and the handler and
+; the commodity never take a press with Right Amiga down.
+; Alt is not used with Left Amiga: Left Amiga + Alt is Intuition's left mouse button
+; (it clicks the gadget under the pointer), so the window chords use Left Amiga + Ctrl.
+;
+; Format (one row a line, ; starts a comment):
+;   super[+shift][+ctrl][+rshift]+KEY = action ; label | category
+; KEY is a lower-case word: space return tab esc help del backspace up down
+; left right f1..f10 comma period minus plus, or a letter or digit. Letters
+; and digits are the key's place on the board, not its character, so the
+; Swedish keymap does not move them. "1..9" is nine rows; %n is the digit.
+; Actions:
+;   menu:<id>        the quick menu at a node of the [menu] tree
+;   viewer           this key list
+;   tab:new | close | next | prev | goto N
+;   menuid:<NAME>    any menu item by its MENU_ name
+;   slash:/command   a slash command (/theme, /size 132x43 ...)
+;   run:<command>    start a program (a vsh line: 'single quotes' round a path with a space,
+;                    never double quotes)
+;   job:<command>    like run:, for a long job (upkg upgrade): the menu shows its output in a job view
+                   (scroll, Esc cancels) when the menu style has one; otherwise it runs as run:
+  open:uterm       a new UP-Term window (commodity only; in a window: tab:new)
+;   rexx:<script>    an ARexx script or string (Amarchy hotkeys and menu rows)
+;   win:<verb> [arg] a window verb on the active or menu-targeted window: cycle, front, back,
+;                    zip, fullwidth, fullscreen, save, restore, move, size, focus,
+;                    closedrawers, screen, title
+;   cap:<screen|window|region>  a screenshot of the front screen, the active window, or a dragged
+;                    region: an IFF ILBM file in RAM:Shots and the clipboard (Left Amiga + Alt is the
+;                    left mouse button, so the window shot uses Left Amiga + Ctrl)
+;   bar:<on|off|toggle>  the status bar at the bottom of the Workbench screen (ARexx BAR)
+
+[keymap]
+version = 1
+super = lamiga
+
+[bind]
+; Menus
+super+space       = menu:root              ; Menu                  | menu
+super+shift+space = menu:apps              ; Apps                  | menu
+super+k           = viewer                 ; Key bindings          | menu
+super+h           = slash:/help            ; Help                  | menu
+super+shift+h     = slash:/tutorial        ; Tutorial              | menu
+
+; Tabs
+super+t           = tab:new                ; New tab               | window
+super+w           = tab:close              ; Close tab             | window
+super+backspace   = tab:close              ; Close tab             | window
+super+q           = menuid:MENU_CLOSE      ; Close window          | window
+super+1..9        = tab:goto %n            ; Switch to tab %n      | workspace
+super+f1          = tab:goto 1             ; Switch to tab 1       | workspace
+super+f2          = tab:goto 2             ; Switch to tab 2       | workspace
+super+f3          = tab:goto 3             ; Switch to tab 3       | workspace
+super+f4          = tab:goto 4             ; Switch to tab 4       | workspace
+super+period      = tab:next               ; Next tab              | workspace
+super+comma       = tab:prev               ; Previous tab          | workspace
+
+; Window (super+m and super+n are refused by the parser: Left Amiga M and N belong to Intuition's screen cycling)
+super+o           = win:front                ; Bring to front         | window
+super+ctrl+o       = win:back                 ; Send to back           | window
+super+z           = win:zip                  ; Zoom or restore        | window
+super+ctrl+f       = win:fullwidth            ; Full width             | window
+super+ctrl+s       = win:save                 ; Save position and size | window
+super+ctrl+r       = win:restore              ; Restore position and size | window
+super+ctrl+tab     = win:cycle next           ; Next window            | window
+super+ctrl+shift+tab = win:cycle prev           ; Previous window        | window
+super+shift+left  = win:move left            ; Move window left       | window
+super+shift+right = win:move right           ; Move window right      | window
+super+shift+up    = win:move up              ; Move window up         | window
+super+shift+down  = win:move down            ; Move window down       | window
+super+ctrl+t       = run:UP-Term:bin/AmTile TOGGLE ; Tile windows         | window
+super+ctrl+l       = run:UP-Term:bin/AmTile LAYOUT NEXT          ; Next layout           | window
+super+ctrl+1       = run:UP-Term:bin/AmTile LAYOUT dwindle       ; Layout dwindle        | window
+super+ctrl+2       = run:UP-Term:bin/AmTile LAYOUT master-stack  ; Layout master-stack   | window
+super+ctrl+3       = run:UP-Term:bin/AmTile LAYOUT mirrored      ; Layout mirrored master-stack | window
+super+ctrl+4       = run:UP-Term:bin/AmTile LAYOUT columns       ; Layout columns        | window
+super+ctrl+5       = run:UP-Term:bin/AmTile LAYOUT rows          ; Layout rows           | window
+super+ctrl+6       = run:UP-Term:bin/AmTile LAYOUT grid          ; Layout grid           | window
+super+ctrl+7       = run:UP-Term:bin/AmTile LAYOUT monocle       ; Layout monocle        | window
+super+ctrl+minus   = run:UP-Term:bin/AmTile RATIO -5             ; Shrink master         | window
+super+ctrl+plus    = run:UP-Term:bin/AmTile RATIO +5             ; Grow master           | window
+super+ctrl+j       = run:UP-Term:bin/AmTile NMASTER -1           ; Fewer masters         | window
+super+ctrl+k       = run:UP-Term:bin/AmTile NMASTER +1           ; More masters          | window
+super+ctrl+return  = run:UP-Term:bin/AmTile PROMOTE              ; Promote to master     | window
+super+ctrl+period  = run:UP-Term:bin/AmTile CYCLE NEXT           ; Next tiled window     | window
+super+ctrl+comma   = run:UP-Term:bin/AmTile CYCLE PREV           ; Previous tiled window | window
+super+left        = win:focus left         ; Focus window to the left  | window
+super+right       = win:focus right        ; Focus window to the right | window
+super+up          = win:focus up           ; Focus window above        | window
+super+down        = win:focus down         ; Focus window below        | window
+super+ctrl+shift+left  = win:snap left     ; Snap to left half      | window
+super+ctrl+shift+right = win:snap right    ; Snap to right half     | window
+super+ctrl+shift+up    = win:snap up       ; Snap to top half       | window
+super+ctrl+shift+down  = win:snap down     ; Snap to bottom half    | window
+super+ctrl+shift+1 = win:snap tl           ; Snap to top left       | window
+super+ctrl+shift+2 = win:snap tr           ; Snap to top right      | window
+super+ctrl+shift+3 = win:snap bl           ; Snap to bottom left    | window
+super+ctrl+shift+4 = win:snap br           ; Snap to bottom right   | window
+super+ctrl+shift+c = win:snap center       ; Centre window          | window
+super+ctrl+shift+t = run:UP-Term:bin/AmTile FLOAT TOGGLE ; Float or tile window | window
+super+ctrl+shift+h = run:UP-Term:bin/AmTile SWAP LEFT    ; Swap with window on the left  | window
+super+ctrl+shift+j = run:UP-Term:bin/AmTile SWAP DOWN    ; Swap with window below        | window
+super+ctrl+shift+k = run:UP-Term:bin/AmTile SWAP UP      ; Swap with window above        | window
+super+ctrl+shift+l = run:UP-Term:bin/AmTile SWAP RIGHT   ; Swap with window on the right | window
+super+ctrl+left    = win:size left           ; Make window narrower   | window
+super+ctrl+right   = win:size right           ; Make window wider      | window
+super+ctrl+up      = win:size up              ; Make window shorter    | window
+super+ctrl+down    = win:size down            ; Make window taller     | window
+; Screens
+super+tab         = win:screen next          ; Next screen            | workspace
+super+shift+tab   = win:screen prev          ; Previous screen        | workspace
+super+ctrl+b       = win:title toggle         ; Toggle title bar       | workspace
+
+; Clipboard and search
+super+c           = menuid:MENU_COPY       ; Copy                  | edit
+super+v           = menuid:MENU_PASTE      ; Paste                 | edit
+super+a           = menuid:MENU_SELECT_ALL ; Select all            | edit
+super+f           = menuid:MENU_FIND       ; Find                  | edit
+super+g           = menuid:MENU_FIND_NEXT  ; Find next             | edit
+
+; Look
+super+plus        = menuid:MENU_FONT_BIGGER  ; Bigger font         | style
+super+minus       = menuid:MENU_FONT_SMALLER ; Smaller font        | style
+super+shift+t     = slash:/theme           ; Terminal theme               | style
+super+shift+b     = slash:/bg              ; Background            | style
+super+shift+f     = slash:/font            ; Font                  | style
+super+shift+s     = slash:/screen own      ; Own screen            | style
+super+shift+w     = slash:/screen workbench       ; Workbench screen      | style
+super+ctrl+d       = slash:/size 132x43     ; Wide window           | style
+super+shift+r     = slash:/size 80x24      ; Standard window       | style
+super+shift+l     = slash:/demo            ; Demo tour             | style
+super+p           = menuid:MENU_PREFS      ; Preferences           | style
+
+; Apps
+super+return      = run:tmux               ; Tmux                  | apps
+super+l           = menuid:MENU_AGENT      ; AI Agent              | apps
+super+e           = run:nvim               ; Editor                | apps
+super+u           = run:upkg browse        ; Install and update    | apps
+super+shift+u     = run:upkg upgrade       ; Upgrade all           | apps
+super+i           = run:upkg browse        ; Install add-ons       | apps
+
+; Directory Opus (rows of the Dopus menu group; the keys do nothing when Directory Opus is not running)
+super+shift+d     = rexx:UP-Term:Rexx/dopus-newlister.rexx   ; Open lister       | apps
+super+shift+o     = rexx:UP-Term:Rexx/dopus-listerhere.rexx  ; Open lister at current folder | apps
+super+d           = rexx:UP-Term:Rexx/dopus-front.rexx       ; Bring Directory Opus to front | apps
+
+; Not shipped on (low value; remove the ; to try one).
+; super+shift+e   = run:emoji              ; Emoji picker          | apps
+; super+x         = run:SYS:Prefs/Sound    ; Sound preferences     | prefs
+; super+shift+x   = run:SYS:Prefs/Screenmode ; Screen mode preferences | prefs
+; super+y         = run:SYS:Prefs/Palette  ; Palette preferences   | prefs
+; super+z         = run:SYS:Prefs/Internet ; Internet preferences  | prefs
+super+help        = cap:region              ; Screenshot of a region | capture
+super+shift+help  = cap:screen              ; Screenshot of the screen | capture
+super+esc         = menu:system            ; Power and screen      | system
+super+ctrl+help   = cap:window              ; Screenshot of the window | capture
+super+b           = bar:toggle             ; Status bar            | system
+; super+shift+q   = run:Reboot             ; Reboot                | system
+; Previous and next prompt wait for an action id (super+up and super+down now focus windows).
+
+[menu]
+; dotted id        = label                 | action
+apps.upterm        = UP-Term               | open:uterm
+apps.tmux          = Tmux                  | run:tmux
+apps.editor        = Editor                | run:nvim
+apps.claude        = Claude                | menuid:MENU_CLAUDE
+apps.pi            = pi                    | menuid:MENU_PI
+dopus.newlister    = Open lister           | rexx:UP-Term:Rexx/dopus-newlister.rexx
+dopus.listerhere   = Open lister at current folder | rexx:UP-Term:Rexx/dopus-listerhere.rexx
+dopus.front        = Bring Directory Opus to front | rexx:UP-Term:Rexx/dopus-front.rexx
+dopus.back         = Send Directory Opus to back   | rexx:UP-Term:Rexx/dopus-back.rexx
+dopus.parent       = Parent folder in active lister | rexx:UP-Term:Rexx/dopus-parent.rexx
+dopus.refresh      = Refresh active lister | rexx:UP-Term:Rexx/dopus-refresh.rexx
+dopus.devicelist   = Show devices          | rexx:UP-Term:Rexx/dopus-devicelist.rexx
+dopus.ftp          = FTP connect           | rexx:UP-Term:Rexx/dopus-ftp.rexx
+dopus.shell        = Open UP-Term here     | open:uterm
+dopus.listers      = Open listers          | menu:dopus.listers
+dopus.configure    = Configure lister display format | rexx:UP-Term:Rexx/dopus-configure.rexx
+settings.general   = General  | settings:general
+settings.colors    = Colors   | settings:colors
+settings.palette   = Palette  | settings:palette
+settings.keyboard  = Keyboard | settings:keyboard
+settings.advanced  = Advanced | settings:advanced
+settings.amarchy = Amarchy | settings:amarchy
+settings.amarchy.rescan      = Rescan apps          | scan:amarchy-index
+settings.amarchy.preferences = Amarchy preferences  | detach:C:UP-Term-Prefs AMARCHY
+settings.amarchy.font        = Menu font            | detach:C:UP-Term-Prefs AMARCHY
+settings.amarchy.edit        = Edit menu            | run:nvim ENV:up-term/keymap
+settings.amarchy.agentclaude = AI Agent: Claude     | slash:/agent claude
+settings.amarchy.agentpi     = AI Agent: pi         | slash:/agent pi
+settings.flat = Flat Look | settings:flat
+# The agents panel the Amarchy bar's agents segment opens (amarchy/bar.c opens node "agents" hung from the bar).
+# The limit meters and token use (OMARCHY-AI part E) get a row here when part E exists (BAR_AGENT_LIMITS_ROW).
+agents.claude      = Default agent: Claude | slash:/agent claude
+agents.pi          = Default agent: pi     | slash:/agent pi
+agents.launch      = Launch the agent      | menuid:MENU_AGENT
+agents.review      = Review my changes     | slash:/ask Review my uncommitted changes and list the problems
+agents.tests       = Fix the failing tests | slash:/ask Run the tests, find why they fail and fix the cause
+agents.explain   = Explain this project  | slash:/ask Explain what this project does and how it is laid out
+# The bar's network segment (left click) opens node "network": its info rows come from BAR NET (menu_tree.c net_rows),
+# then these two rows switch the shown interface through BAR NETUP / BAR NETDOWN (ConfigureNetInterface).
+network.up          = Up | rexx:address AMARCHY BAR NETUP
+network.down        = Down | rexx:address AMARCHY BAR NETDOWN
+style.theme        = Amarchy theme         | menu:style.theme
+style.terminal.theme      = Theme          | slash:/theme
+style.terminal.font       = Font           | slash:/font
+style.terminal.background = Background     | slash:/bg
+capture.region      = Screenshot of a region   | cap:region
+capture.screen      = Screenshot of the screen | cap:screen
+capture.window      = Screenshot of the window | cap:window
+window.tab         = New tab               | tab:new
+window.preferences = Preferences           | menuid:MENU_PREFS
+window.next         = Next window              | win:cycle next
+window.previous     = Previous window          | win:cycle prev
+window.front        = Bring to front           | win:front
+window.back         = Send to back             | win:back
+window.zip          = Zoom or restore          | win:zip
+window.fullwidth    = Full width               | win:fullwidth
+window.fullscreen   = Fill the screen          | win:fullscreen
+window.save         = Save position and size   | win:save
+window.restore      = Restore position and size | win:restore
+window.moveleft     = Move left                | win:move left
+window.moveright    = Move right               | win:move right
+window.moveup       = Move up                  | win:move up
+window.movedown     = Move down                | win:move down
+window.narrower     = Make narrower            | win:size left
+window.wider        = Make wider               | win:size right
+window.shorter      = Make shorter             | win:size up
+window.taller       = Make taller              | win:size down
+window.focusleft    = Focus window to the left | win:focus left
+window.focusright   = Focus window to the right | win:focus right
+window.focusup      = Focus window above       | win:focus up
+window.focusdown    = Focus window below       | win:focus down
+window.closedrawer  = Close drawer window      | rexx:address WORKBENCH 'WINDOW ACTIVE CLOSE'
+window.closedrawers = Close all drawer windows | win:closedrawers
+window.tile         = Tile windows             | run:UP-Term:bin/AmTile TOGGLE
+window.snapleft         = Snap to left half        | win:snap left
+window.snapright        = Snap to right half       | win:snap right
+window.snaptop          = Snap to top half         | win:snap up
+window.snapbottom       = Snap to bottom half      | win:snap down
+window.snaptopleft      = Snap to top left         | win:snap tl
+window.snaptopright     = Snap to top right        | win:snap tr
+window.snapbottomleft   = Snap to bottom left      | win:snap bl
+window.snapbottomright  = Snap to bottom right     | win:snap br
+window.snapcenter       = Centre window            | win:snap center
+window.float            = Float or tile window     | run:UP-Term:bin/AmTile FLOAT TOGGLE
+window.swapleft        = Swap with window on the left  | run:UP-Term:bin/AmTile SWAP LEFT
+window.swapright       = Swap with window on the right | run:UP-Term:bin/AmTile SWAP RIGHT
+window.swapup          = Swap with window above        | run:UP-Term:bin/AmTile SWAP UP
+window.swapdown        = Swap with window below        | run:UP-Term:bin/AmTile SWAP DOWN
+window.layoutnext       = Next layout                      | run:UP-Term:bin/AmTile LAYOUT NEXT
+window.layoutdwindle    = Layout: Dwindle                  | run:UP-Term:bin/AmTile LAYOUT dwindle
+window.layoutmaster     = Layout: Master and stack         | run:UP-Term:bin/AmTile LAYOUT master-stack
+window.layoutmirrored   = Layout: Mirrored master and stack | run:UP-Term:bin/AmTile LAYOUT mirrored
+window.layoutcolumns    = Layout: Columns                  | run:UP-Term:bin/AmTile LAYOUT columns
+window.layoutrows       = Layout: Rows                     | run:UP-Term:bin/AmTile LAYOUT rows
+window.layoutgrid       = Layout: Grid                     | run:UP-Term:bin/AmTile LAYOUT grid
+window.layoutmonocle    = Layout: Monocle                  | run:UP-Term:bin/AmTile LAYOUT monocle
+screens.next        = Next screen              | win:screen next
+screens.previous    = Previous screen          | win:screen prev
+screens.workbench   = Workbench Screen To Front | win:screen workbench
+screens.back        = Send screen to back      | win:screen back
+screens.titlebar    = Toggle title bar         | win:title toggle
+screens.own         = UP-Term own screen       | slash:/screen own
+workbench.backdrop  = Backdrop                 | rexx:address WORKBENCH 'MENU WINDOW ROOT INVOKE WORKBENCH.BACKDROP'
+workbench.execute   = Execute Command          | rexx:address WORKBENCH 'MENU WINDOW ROOT INVOKE WORKBENCH.EXECUTE'
+workbench.redrawall = Redraw All               | rexx:address WORKBENCH 'MENU WINDOW ROOT INVOKE WORKBENCH.REDRAWALL'
+workbench.updateall = Update All               | rexx:address WORKBENCH 'MENU WINDOW ROOT INVOKE WORKBENCH.UPDATEALL'
+workbench.lastmessage = Last Message             | rexx:address WORKBENCH 'MENU WINDOW ROOT INVOKE WORKBENCH.LASTMESSAGE'
+workbench.about     = About Workbench          | rexx:address WORKBENCH 'MENU WINDOW ROOT INVOKE WORKBENCH.ABOUT'
+workbench.reset     = Restart Workbench        | rexx:address WORKBENCH 'MENU WINDOW ROOT INVOKE TOOLS.RESETWB'
+workbench.autoarrange = Auto-arrange Icons       | rexx:UP-Term:Rexx/wb-autoarrange.rexx
+workbench.openparent = Open Parent Drawer       | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE WINDOW.OPENPARENT'
+workbench.newdrawer = New Drawer               | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE WINDOW.NEWDRAWER'
+workbench.closewindow = Close Drawer Window      | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE WINDOW.CLOSE'
+workbench.updatewindow = Update Window            | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE WINDOW.UPDATE'
+workbench.selectcontents = Select Contents          | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE WINDOW.SELECTCONTENTS'
+workbench.clearselection = Clear Selection          | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE WINDOW.CLEARSELECTION'
+workbench.resizetofit = Resize To Fit            | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE WINDOW.RESIZETOFIT'
+workbench.cleanupcolumn = Clean Up By Column       | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE WINDOW.CLEANUPBY.COLUMN'
+workbench.cleanupname = Clean Up By Name         | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE WINDOW.CLEANUPBY.NAME'
+workbench.cleanupdate = Clean Up By Date         | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE WINDOW.CLEANUPBY.DATE'
+workbench.cleanupsize = Clean Up By Size         | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE WINDOW.CLEANUPBY.SIZE'
+workbench.cleanuptype = Clean Up By Type         | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE WINDOW.CLEANUPBY.TYPE'
+workbench.snapshotwindow = Snapshot Window          | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE WINDOW.SNAPSHOT.WINDOW'
+workbench.snapshotall = Snapshot All             | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE WINDOW.SNAPSHOT.ALL'
+workbench.showicons = Show Only Icons          | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE WINDOW.SHOW.ONLYICONS'
+workbench.showall   = Show All Files           | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE WINDOW.SHOW.ALLFILES'
+workbench.viewicon  = View By Icon             | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE WINDOW.VIEWBY.ICON'
+workbench.viewname  = View By Name             | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE WINDOW.VIEWBY.NAME'
+workbench.viewdate  = View By Date             | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE WINDOW.VIEWBY.DATE'
+workbench.viewsize  = View By Size             | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE WINDOW.VIEWBY.SIZE'
+workbench.viewtype  = View By Type             | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE WINDOW.VIEWBY.TYPE'
+workbench.sortforward = Sort Order Forward       | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE WINDOW.SORTORDER.FORWARD'
+workbench.sortreverse = Sort Order Reverse       | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE WINDOW.SORTORDER.REVERSE'
+workbench.find      = Find File                | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE WINDOW.FIND'
+workbench.iconopen  = Open Icon                | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE ICONS.OPEN'
+workbench.iconcopy  = Copy Icon                | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE ICONS.COPY'
+workbench.iconrename = Rename Icon              | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE ICONS.RENAME'
+workbench.iconinfo  = Icon Information         | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE ICONS.INFORMATION'
+workbench.iconsnapshot = Snapshot Icon            | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE ICONS.SNAPSHOT'
+workbench.iconunsnapshot = Unsnapshot Icon          | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE ICONS.UNSNAPSHOT'
+workbench.iconleaveout = Leave Icon Out           | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE ICONS.LEAVEOUT'
+workbench.iconputaway = Put Icon Away            | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE ICONS.PUTAWAY'
+workbench.delete    = Delete Icon              | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE ICONS.DELETE'
+workbench.emptytrash = Empty Trash              | rexx:address WORKBENCH 'MENU WINDOW ACTIVE INVOKE ICONS.EMPTYTRASH'
+learn.keys         = Key bindings          | viewer
+learn.tutorial     = Tutorial              | menuid:MENU_TUTORIAL
+learn.help         = Slash command help    | menuid:MENU_HELP_SLASH
+learn.demo         = Demo tour             | slash:/demo
+system.safeoff     = Safe to switch off    | detach:Execute UP-Term:S/safe-off
+system.reboot      = Reboot                | detach:Reboot
+system.workbench   = Workbench screen      | slash:/screen workbench
+system.own         = Own screen            | slash:/screen own
+install.browse     = Install add-ons       | run:upkg browse
+install.upgrade    = Upgrade all           | job:upkg upgrade
+install.update     = Update lists          | job:upkg update
+; Packages group: upkg and its UHC repo in one list (Browse by section,
+; Search by name or description, Installed, Upgrades, Refresh). The package
+; rows and their Install / Remove / Launch / Upgrade rows come from
+; `upkg list --tsv`, not from this file; every package job runs as a job: row
+; in the job view, so no terminal opens.
+packages.browse    = Browse                | menu:packages.browse
+packages.search    = Search                | menu:packages.search
+packages.installed = Installed             | menu:packages.installed
+packages.upgrades.all = Upgrade all        | job:upkg upgrade
+packages.refresh   = Refresh               | job:upkg update
+trigger.clipboard  = Clipboard history     | menu:trigger.clipboard

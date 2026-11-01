@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """installer_rig.py -- REAL-INSTALLER-TEST: the kit's Install icon the way a
-user starts it. The real Installer runs build/dist/UP-Term/Install (the
+user starts it. The real Installer runs build/dist/up-term/Install (the
 Installer script, dist/Install.installer) with the icon's tooltypes, visible
 on the rig's screen; this script reads its pages through wasabi's UITREE
 and clicks them, then checks what landed and runs Uninstall.
 
   default   AVERAGE (the icon's MINUSER/DEFUSER), every page answered with
-            its default: the drawer SYS:UP-Term
+            its default: the drawer UP-Term on the local disk with the most free room (SYS: when none)
   dest      AVERAGE, the drawer page given VTC:KitTest/UP-Term (typed into the
             askdir string gadget)
   space     AVERAGE on a System: partition made too full for the default choices (K7: a filler file leaves
-            about 12 MB; the kit needs more): the drawer page is answered by default, and the room message
+            about 12 MB; the kit needs more): the drawer page is answered with SYS:UP-Term (the default is the
+            biggest disk, VTCX: on the rig), and the room message
             (the choices need N KB, the drawer's disk has M KB; Proceed asks for another drawer) comes up
             before anything is copied. The case Aborts on the drawer page that follows it, and checks that
             nothing was installed. Every page is saved as build/<rig>/installer/space-<n>.png to read.
@@ -47,9 +48,10 @@ text, for reading what the Installer showed); the verdict goes to
 build/rig/installer/<case>.json with the fingerprint of the kit's scripts.
 Resumable:
   installer_rig.py                the cases not yet passed with this kit
-  installer_rig.py ONLY dest      one case (re-run even when it passed)
+  installer_rig.py ONLY dest      one case (re-run even when it passed; --only dest is the same)
   installer_rig.py FAILED         only the cases that failed last time
   installer_rig.py FORCE          all, from zero
+  installer_rig.py ONLY addon-dopus FORCE --no-dopus --purpose "<who: what>"   the case on a rig started without Directory Opus
 Needs `make dist` and the default rig (tools/rig/rig.py, the 3.1 machine
 install_rig.py is written for; it is started fresh here). Not run by `make
 test`: it needs the emulator.
@@ -64,6 +66,7 @@ import paths
 import ami
 import verdicts
 import install_rig as ir
+import amarchy_window_rig as amw
 from assign_rig import rig
 
 ROOT = ir.ROOT
@@ -75,18 +78,40 @@ KIT = ir.KIT
 CLEAN = "--os" in os.environ.get("UPTERM_RIG_FLAGS", "")
 WORKDEST = "Work:Apps/UP-Term"
 CASES = {"default": ("AVERAGE", None), "dest": ("AVERAGE", WORKDEST if CLEAN else "VTC:KitTest/UP-Term"),
-         "novice": ("NOVICE", None), "update": ("AVERAGE", WORKDEST if CLEAN else None), "space": ("AVERAGE", None),
-         "kingcon": ("AVERAGE", None)}
+         "novice": ("NOVICE", None), "update": ("AVERAGE", WORKDEST if CLEAN else None), "space": ("AVERAGE", "SYS:UP-Term"),
+         "space-sys": ("AVERAGE", "DH1:KitTest/spacesys"), "kingcon": ("AVERAGE", None)}
+# UPDATE-DETECT: the update case over an install that left no ENVARC:up-term/opts (a Shell install.dos run)
+CASES["update-noopts"] = CASES["update"]
 for _pkg in ir.addon_ids():
     CASES["addon-" + _pkg] = ("AVERAGE", None)
 CASES["migrate"] = ("AVERAGE", None)
 FULLDEST = "DH1:KitTest-full"   # the fullsuite case's drawer for UP-Term: never SYS: (it is small and the owner's)
 FULL_DRAWER = "nvim"            # the add-on staged as an unpacked drawer; the rest are .lha files
 CASES["fullsuite"] = ("AVERAGE", None)
+# F1: the fresh kit, every box on every page ticked (only drawer and install mode stay default), a reboot, Amarchy up
+CASES["fresh-all"] = ("AVERAGE", None)
+# The default drawer is UP-Term on the local disk with the most free room (UPBigVol -> ENV:UPTBIGVOL), which on the rig
+# is VTCX: or BOOTX: (host directories, 2 GB), not SYS:. The `space` case asks for SYS:UP-Term itself (it needs a small disk).
+# BIGVOL: the drawer page's default is UP-Term on the local disk with the most free room (UPBigVol), not SYS:
+CASES["bigvol"] = ("AVERAGE", None)
+# P-ANX-RUN-EXECUTE: the rig always has FS-UAE's bsdsocket.library, so the Installer finds a stack and never offers
+# AmiNetXDuo. The case swaps Files/tcpprobe of VTC:distkit for C:Wait (rc 0, no output: no id string), which makes
+# P_TCPCHECK find no stack; the ANX step then runs, and the window list is logged around it (no Shell may open).
+CASES["anx"] = ("AVERAGE", None)
+# the rig: DH0 System 106 MB (SYS:, 217222 blocks), DH1 Rushhours 519 MB, VTCX and BOOTX (uaefs directories) 2 GB
 ROOMDEST = "DH1:KitTest-default"   # the default case's answer to the room page: Rushhours, about 1 GB free
 UPDATED = "Files/unifont/SOURCE.txt"   # the update case changes this file of a copy part (copy-unifont)
 KITWINDOW = re.compile(r'VTC:(distkit|kit-\w+|legacykit)/Install')   # the Installer window's title: the kit it runs
 RAMIGA = 0x0080
+# INSTALLER_KEEP=1 with `ONLY fresh-all`: stop after the reboot check, leaving the fully ticked kit installed on the rig
+# (for timing work on a kit-installed machine); Uninstall and the fixture restore are skipped.
+KEEP_INSTALLED = bool(os.environ.get("INSTALLER_KEEP"))
+# INSTALLER_CHAIN=1: before each Proceed log input.device's handler chain (VTC:inhandlers ADDR: name, node, is_Code,
+# is_Data), so a hang at a click names the handler the click ran (INSTALLER-END-CRASH). `make build/amiga/inhandlers` first.
+CHAIN = bool(os.environ.get("INSTALLER_CHAIN"))
+# INSTALLER_OWNERMAP=1 (with INSTALLER_CHAIN): also log VTC:ownermap (seglist, library, device ranges, commodities brokers
+# with a live-task flag) before each Proceed; INSTALLER_OWNERMAP=<hex addr> adds the owner of that address. `make build/amiga/ownermap`.
+OWNERMAP = os.environ.get("INSTALLER_OWNERMAP", "")
 KEY_X, KEY_RETURN = 0x32, 0x44
 
 
@@ -165,6 +190,18 @@ def click(box):
     ami.click_px(x + w // 2, y + h // 2)
 
 
+BUSY_RETRY = 5   # s between asks while wasabid refuses connections
+
+
+def requester_detail():
+    """Title, task and buttons of every requester open, as `ami.py requesters` gives them: the D10 log said only "a
+    system requester came up", and the two Software Failure requesters of the boot had to be read by hand."""
+    try:
+        return "; ".join(ami.describe_requester(r) for r in ami.requesters()) or "none left to read"
+    except Exception as e:   # a log line only: a wasabi error here must not hide the failure it describes
+        return "not read (%s)" % e
+
+
 def installer_running(inst):
     # Status COM matches the command as it was started (the full path when one was given)
     try:
@@ -173,6 +210,8 @@ def installer_running(inst):
         if 'still running' in str(e):   # the agent is busy with an earlier command: the Installer is not gone
             return True
         raise
+    except ConnectionError:   # wasabid refuses or resets while a nested Install (AmiSSL) hogs the machine: busy, not gone
+        return True
 
 
 def find_installer():
@@ -278,6 +317,10 @@ def prompt_digest(tree, gads):
     return hashlib.md5(b''.join(bytes(rows[y][(x0 + 5) * 3:(x0 + w - 5) * 3]) for y in range(y0 + 14, min(H, y1)))).hexdigest()
 
 
+# bv_room_text's refusal (install/bigvol.h): the needed figure is on the line after the free one
+ROOM_RE = re.compile(r'has\s+(\S+)\s*KB\s+\w+.*?need\s+about\s+(\S+)\s*KB', re.S)
+
+
 def read_room(tree, case):
     """(KB free, KB needed, text) of the Installer's room page ("<dest> has N KB free; the parts you chose
     need about M KB"), read from the screen; None when the page is no room page. The digits are voted: the
@@ -289,7 +332,7 @@ def read_room(tree, case):
         txts = window_ocr(tree, case + '-room', scales=(3, 4, 5, 6, 8), resamplers=(Image.LANCZOS, Image.BICUBIC), thresholds=(100, 140))
         free, need = Counter(), Counter()
         for t in txts:
-            m = re.search(r'has\s+(\S+)\s*KB\s+\w+.*?need\s+about\s+(\S+)\s*KB', t)
+            m = ROOM_RE.search(t)
             if m and m.group(1).isdigit() and m.group(2).isdigit():   # a misread digit ($) is no vote
                 free[m.group(1)] += 1
                 need[m.group(2)] += 1
@@ -309,6 +352,19 @@ def installer_page(tree):
     return None, {}
 
 
+def unticked_boxes(gads):
+    """[(id, box)] of the Installer page's checkboxes still to tick: its enabled, unselected buttons and
+    toggles 2..88. Only `gads`, the Installer window's own gadgets: on a --no-dopus rig the plain Workbench
+    window behind it has its own buttons 3..6, and reading those from the whole UITREE clicked ids the
+    page does not have (KeyError: 5, 2026-10-29)."""
+    out = []
+    for gid, (box, rest) in gads.items():
+        m = re.match(r'(?:button|toggle)( \w+)?', rest)
+        if m and 2 <= gid < 89 and not any(w in (m.group(1) or '') for w in ('disabled', 'selected')):
+            out.append((gid, box))
+    return out
+
+
 def own_ask_answer(gads):
     """The gadget to click on a page of the Installer's own ask/confirm kind, or None. Install-AmiSSL's
     pages (the AmiSSL: assign upgrade question, the CPU choice, 2026-10-18) have no Proceed 90: 1 and 2 are
@@ -318,6 +374,37 @@ def own_ask_answer(gads):
     if 90 not in gads and {1, 2, 91, 100} <= set(gads) and gads[2][0][0] < gads[1][0][0]:
         return 2
     return None
+
+
+def layout_judged(tree, why):
+    """Whether a page dump's text is judged for layout faults. The Make New Drawer dialog is the Installer's
+    own, drawn over the askdir page (its frames read as a panel, the drawer list under it as stray text: 3.1
+    dest, 2026-10-08). Two Installer windows (a nested add-on Install over the base) overlap while one closes.
+    A window with neither Proceed (90) nor Abort Install (91) is a page half drawn: the last page's buttons
+    stood in the bottom strip before their gadgets were added, "text in the bottom border strip (y 204..205)
+    on [None]" (fresh-all, rig 9 2026-10-29). Only our whole pages are judged."""
+    if why in ('dialog', 'no dialog', 'after Make New Drawer'):
+        return False
+    if sum(1 for t in gadgets(tree) if 'Install' in t) > 1:
+        return False
+    return installer_page(tree)[0] is not None
+
+
+def installer_name(title):
+    """An Installer window's title without its progress: "Install-AmiSSL (100% done)" is "Install-AmiSSL"."""
+    return re.sub(r' \(\d+% done\)$', '', title or '')
+
+
+def reboot_later(gads, text):
+    """The gadget that answers P_END's "Reboot now?" with Later, or None when `text` (the page's OCR) does
+    not ask it. The page is matched by its question, not by a gadget list or the bare word: P_END's
+    (message #done) page before it says "AmiSSL installed: LIBS: has it now, usable at once." and is answered with Proceed
+    (rig 9 2026-10-28). Later is the right button: id 1 on a page with the ask gadgets, id 91 on a
+    Proceed/Abort-shaped page whose right button reads Later. A reboot question with neither returns 0: no
+    gadget is safe to click (the default is Reboot)."""
+    if not re.search(r'reboot\s+now', text, re.I):
+        return None
+    return 1 if 1 in gads else 91 if 91 in gads and 'later' in text.lower() else 0
 
 
 def text_faults(tree):
@@ -404,28 +491,59 @@ def text_faults(tree):
     return faults, ['y%d-%d x%d-%d' % (a - y0, b - y0, c - x0, d - x0) for a, b, c, d in bands]
 
 
-def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=2700, poll=20, expect_abort=False,
-          room_dest=None, console=False, tick_all=False):
+SETTLE_STEP = 0.4   # drive: how often the UI tree is asked while it waits for the page to change
+
+
+def wait_change(tree, secs):
+    """Wait up to `secs` for the Installer's UI tree to differ from `tree` (a new page, new gadgets, a gadget gone,
+    a percent step), asking every SETTLE_STEP s. Returns at once when it changed; the bound is the old fixed sleep."""
+    end = time.time() + secs
+    while time.time() < end:
+        time.sleep(min(SETTLE_STEP, max(end - time.time(), 0.01)))
+        try:
+            if ami.req(0x0D).decode('latin-1') != tree:
+                return True
+        except ConnectionError:   # wasabid busy: keep waiting inside the bound
+            pass
+    return False
+
+
+def drive(case, inst, dest, baseline_titles, **kw):
+    """drive_pages, but a link lost mid-run (wasabi's "connection closed by the Amiga" is a SystemExit) prints the
+    pages answered so far before it ends the run: without them a crash on the last page left no trace (rig 9,
+    2026-10-28). Returns (finished, log)."""
+    log = []
+    try:
+        return drive_pages(log, case, inst, dest, baseline_titles, **kw)
+    except SystemExit:
+        print("installer_rig: %s: the link dropped after:\n  %s" % (case, "\n  ".join(log) or "(no page)"))
+        raise
+
+
+def drive_pages(log, case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=2700, poll=20,
+                expect_abort=False, room_dest=None, room_abort=False, console=False, tick_all=False, askdir_probe=None):
     """Answer the Installer's pages by gadget id (its custom gadgets have no labels): 90 Proceed, 91 Abort
     (never), 89 Make New Drawer (never), 1 on the install-mode page Install for Real, 92 the askdir string.
     room_dest: the drawer to ask for when the room page ("<dest> has N KB free; the parts you chose need about
     M KB") comes after the drawer page (read from the screen, logged as `room page: N KB free, M KB needed`);
     console: tick "UP-Term serves CON: and RAW:" on the console page.
+    askdir_probe: a list; at the first drawer page drive appends the string gadget's text, clicks Abort Install (91) and returns.
     tick_all: on every options page tick every box not ticked (and not disabled) before Proceed; a page with the
     install-mode gadget 1 is a choice, not a list of boxes. Each Installer (the nested ones too: their window
     title is their script) asks its own drawer and room pages.
     A page unchanged `stall` s after a click is a FAIL; a page without Proceed is the copy: waited out
-    (percent logged) up to work_limit s. Returns (finished, log)."""
-    log = []
+    (percent logged) up to work_limit s. log collects what happened, in order. Returns (finished, log)."""
     pages = OUT / (case + ".pages.txt")
     pages.write_text('')
     t0 = time.time()
     last_sig, clicked_at, retried, typed, chose = None, None, None, False, set()
-    askdirs, shots = 0, 0
+    shots = 0
     last_page_at = time.time()
     work_since, last_pct, dumped_pct = None, None, set()
-    room, after_ask, asks, ticked = None, False, 0, False
+    room, after_ask, asks, ticked, drawer = None, False, 0, False, DrawerAsks()
     cur_title, ticked_sigs = None, set()
+    outer = None   # the Installer this case started; a nested add-on Install (AmiSSL) has another window name
+    last_wins = None
 
     seen_faults = set()
 
@@ -434,12 +552,7 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
         return tuple(re.findall(r'^G [2-9]\d? (\d+ \d+) \d+x\d+ (?:button|toggle)', tree, re.M))
 
     def dump(tree, why):
-        # the Make New Drawer dialog is the Installer's own, drawn over the askdir page (its frames read as a
-        # panel, the drawer list under it as stray text: 3.1 dest, 2026-10-08): only our pages' text is judged
-        own = why in ('dialog', 'no dialog', 'after Make New Drawer')
-        # two Installer windows (a nested add-on Install over the base) overlap while one closes: not a layout fault
-        nested = sum(1 for t in gadgets(tree) if 'Install' in t) > 1
-        faults, bands = ([], []) if own or nested else text_faults(tree)
+        faults, bands = text_faults(tree) if layout_judged(tree, why) else ([], [])
         with pages.open('a') as f:
             f.write('---- %.0f s %s\n%s\ntext: %s\n' % (time.time() - t0, why, tree, ' '.join(bands)))
             for x in faults:
@@ -452,26 +565,49 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
     while time.time() - t0 < timeout:
         if not installer_running(inst):
             return True, log
-        tree = ami.req(0x0D).decode('latin-1')
+        try:
+            tree = ami.req(0x0D).decode('latin-1')
+        except ConnectionError:   # wasabid not answering yet (nested Install at work): ask again; timeout still ends the run
+            time.sleep(BUSY_RETRY)
+            continue
         if any(t in ('System Request', 'Volume Request') for t, _ in windows(tree)):
-            log.append('a system requester came up')
+            log.append('a system requester came up: %s' % requester_detail())
             dump(tree, 'requester')
             return False, log
+        try:   # every window of every screen, logged when the set changes (a Shell the Installer opened shows here)
+            with ami._conn() as conn:
+                wins = ' || '.join('%s: %s' % (sc.get('title'), ' | '.join(w['title'] for w in sc['windows'])) for sc in ami._m().list_windows(conn)[0])
+        except Exception:
+            wins = last_wins
+        if wins != last_wins:
+            log.append('windows [%.0f s]: %s' % (time.time() - t0, wins))
+            last_wins = wins
         title, gads = installer_page(tree)
         if title and title != cur_title:
+            outer = outer or installer_name(title)
             if cur_title:   # another Installer (a nested add-on Install) with its own drawer and room pages
-                typed, room, asks = False, None, 0
+                typed, room, drawer = False, None, DrawerAsks()
                 log.append('Installer window [%s]' % title)
             cur_title = title
         sig = (title, tuple(sorted(gads)), tuple(l for _, l in gads.values()), prompt_digest(tree, gads) if console and 90 in gads else None)   # message pages with the same ids (installed, refused, open) differ by their text
         if sig != last_sig:
             dump(tree, 'page')
             log.append('page [%s] ids %s' % (title, ' '.join(map(str, sorted(gads)))))
+            if case == 'update-2':   # the pages file holds geometry only: the Update page's text is read from the pixels
+                time.sleep(1)
+                log.append('page text: %s' % window_ocr(tree, case + '-page'))
             last_sig, clicked_at, retried = sig, None, None
             last_page_at = time.time()
-            if 89 in gads and 92 in gads:
-                asks += 1
-            if room_dest and asks >= 1 and not room and set(gads) <= {0, 90, 91}:   # a message page after the drawer page
+            if 89 in gads and 92 in gads and askdir_probe is not None:
+                askdir_probe.append(gadget_text(92))
+                click(gads[91][0])   # Abort Install: nothing was copied
+                time.sleep(5)
+                return True, log
+            asks = drawer.see(gads)
+            if room_abort and asks >= 1 and set(gads) <= {0, 90, 91}:   # the first page after the drawer page: the room check's abort page, or Ready to install
+                time.sleep(1)
+                log.append('abort page text: %s' % ' '.join(window_ocr(tree, case + '-abort').split()))
+            if (room_dest or expect_abort) and asks >= 1 and not room and set(gads) <= {0, 90, 91}:   # a message page after the drawer page
                 room = read_room(tree, case)
                 if room:
                     log.append('room page: %d KB free, %d KB needed' % room[:2])
@@ -483,31 +619,57 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
             if room_dest and asks >= 2 and not room:
                 log.append('the drawer page came a second time but the room page was not read (%s-room.png)' % case)
                 return False, log
+            if not expect_abort and asks > (2 if room_dest else 1):
+                # the room page sent us back to the drawer page once more than this case answers: the drawer
+                # typed last is too small too, and Proceed would loop drawer -> room page until the timeout
+                log.append('room page repeats: the drawer page came %d times in [%s]' % (asks, title))
+                dump(tree, 'room loop')
+                return False, log
             if expect_abort:
                 # K7: every page as an image (to read the room message), and the drawer page counted: a second
                 # one is the room message's Proceed (ask for another drawer)
                 shots += 1
                 w, h, rows = ami.grab()
                 ami.png(str(OUT / ('%s-%02d.png' % (case, shots))), w, h, rows)
-                if 89 in gads and 92 in gads:
-                    askdirs += 1
         m = re.findall(r'(\d+)% done', tree)
         if m and m[-1] != last_pct:
             last_pct = m[-1]
             log.append('%s%% done at %.0f s' % (last_pct, time.time() - t0))
-        if expect_abort and askdirs >= 2 and 91 in gads:
+        if expect_abort and asks >= 2 and 91 in gads:   # DrawerAsks counts a drawer page that arrives from another page: the string redrawn after Make New Drawer is no second ask (askdirs counted it, and Abort came before the room page)
             # the room message was answered with Proceed and the drawer page came back: Abort Install ends it
             log.append('room message seen: the drawer page came a second time (page %d); Abort Install (id 91)' % shots)
             click(gads[91][0])
             time.sleep(5)
             continue
         ask = own_ask_answer(gads)
+        if (ask is None and '(100% done)' in (title or '') and installer_name(title) == outer
+                and (not clicked_at or time.time() - clicked_at > 2)):
+            # the last pages: P_END's Reboot question must never be clicked through to its default. Only the
+            # outer Installer asks it: a nested Install-AmiSSL's last page ("Please reboot for modifications to
+            # take effect", Proceed only) is a message, answered with Proceed (rig 9 2026-10-28)
+            txt = window_ocr(tree, case + '-ask')
+            log.append('last page text: %s' % ' '.join(txt.split()))
+            later = reboot_later(gads, txt)
+            if later == 0:
+                log.append('reboot page [%s] without a Later gadget, ids %s: not clicked' % (title, sorted(gads)))
+                dump(tree, 'reboot page')
+                return False, log
+            if later:
+                click(gads[later][0])
+                clicked_at = time.time()
+                log.append('reboot offered: answered Later (id %d)' % later)
+                wait_change(tree, 3)
+                continue
         if ask is not None:
             if not clicked_at or time.time() - clicked_at > 15:   # a click made while the page redraws is lost
+                # the last page asks to reboot (P_END): Later (id 1, the right button), or the rig's Amiga restarts
+                if 'Reboot' in window_ocr(tree, case + '-ask'):
+                    ask = 1
+                    log.append('reboot offered: answered Later (id 1)')
                 click(gads[ask][0])
                 clicked_at = time.time()
                 log.append('answered [%s] with id %d' % (title, ask))
-            time.sleep(3)
+            wait_change(tree, 3)
             continue
         if 90 not in gads:
             # copying or waiting for the next page: only Abort (or nothing) on it
@@ -518,7 +680,7 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
             if time.time() - work_since > work_limit:
                 log.append('no Proceed page for %d s: %s' % (work_limit, last_sig))
                 return False, log
-            time.sleep(poll)
+            wait_change(tree, poll)
             continue
         work_since = None
         if clicked_at and time.time() - clicked_at > stall:
@@ -529,8 +691,8 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
             if time.time() - (retried or clicked_at) > 15:   # a click made while the page still redraws is lost
                 click(gads[90][0])
                 retried = time.time()
-                log.append('Proceed (id 90) again: page unchanged 15 s')
-            time.sleep(3)
+                log.append('Proceed (id 90) again: page unchanged 15 s, at %.0f s' % (time.time() - t0))
+            wait_change(tree, 3)
             continue
         target = dest or (room_dest if room else None)
         if target and not typed and 89 in gads and 92 in gads:   # askdir page
@@ -565,11 +727,10 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
             continue
         if tick_all and 90 in gads and (sig, geom(tree), tree.count('selected')) not in ticked_sigs and 89 not in gads and not re.search(r'^G 1 \d+ \d+ \d+x\d+ button', tree, re.M):
             ticked_sigs.add((sig, geom(tree), tree.count('selected')))
-            boxes = [(int(m.group(1)), m.group(2)) for m in re.finditer(r'^G (\d+) (\d+ \d+ \d+x\d+) (?:button|toggle)( \w+)?', tree, re.M)
-                     if 2 <= int(m.group(1)) < 89 and 'disabled' not in (m.group(3) or '') and 'selected' not in (m.group(3) or '')]
+            boxes = unticked_boxes(gads)
             for gid, _ in boxes:
                 click(gads[gid][0])
-                time.sleep(1)
+                wait_change(tree, 1)
             if boxes:
                 log.append('ticked ids %s on [%s]' % (' '.join(str(g) for g, _ in boxes), title))
                 time.sleep(2)
@@ -590,10 +751,19 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
                 if not state or 'selected' not in state[0]:
                     return False, log
         after_ask = 89 in gads and 92 in gads
+        if CHAIN:
+            mapped = ['chain: ' + l for l in ir.run('VTC:inhandlers ADDR')[1].splitlines()]
+            if OWNERMAP:
+                addr = '' if OWNERMAP == '1' else OWNERMAP
+                mapped += ['ownermap: ' + l for l in ir.run('VTC:ownermap ' + addr)[1].splitlines()]
+            log.extend(mapped)
+            # a hung guest never returns the log: keep every mapped on disk as it is taken
+            with open(OUT / 'chain-live.txt', 'a') as f:
+                f.write('---- before Proceed at %.0f s on [%s]\n' % (time.time() - t0, title) + '\n'.join(mapped) + '\n')
         click(gads[90][0])
         clicked_at = time.time()
-        log.append('Proceed (id 90)')
-        time.sleep(3)
+        log.append('Proceed (id 90) at %.0f s' % (time.time() - t0))
+        wait_change(tree, 3)
     log.append('the Installer did not finish in %d s' % timeout)
     return False, log
 
@@ -606,11 +776,23 @@ def dates():
     return dict(l.rsplit('|', 1) for l in out.splitlines() if '|' in l)
 
 
-def update_phase(ck, inst, level, base, t_install):
-    """The update case's second Install: the kit with UPDATED changed, Update chosen (the default)."""
+def opts_now():
+    """ENVARC:up-term/opts as {name: contents}: what record.dos kept of the install's options."""
+    names = ir.run('List ENVARC:up-term/opts LFORMAT "%N"')[1].split()
+    return {n: ami.read_file('ENVARC:up-term/opts/' + n) for n in names}
+
+
+def update_phase(ck, inst, level, base, t_install, noopts=False):
+    """The update case's second Install: the kit with UPDATED changed, Update chosen (the default).
+    noopts (UPDATE-DETECT): the recorded options are deleted first, as an install from a Shell leaves
+    none; the Update reads them back from the Amiga and records the same ones again."""
     import subprocess
     before, startup = dates(), ir.run('Type S:User-Startup')[1]
     opts = ir.run('List ENVARC:up-term/opts LFORMAT "%N"')[1]
+    optvals = opts_now()
+    if noopts:
+        ir.run('Delete >NIL: ENVARC:up-term/opts ALL QUIET')
+        ck(ir.run('List >NIL: ENVARC:up-term/opts/UPTOPTDEST')[0] != 0, 'no recorded options before the Update')
     f = VTC / "distkit" / UPDATED
     f.write_bytes(f.read_bytes() + b"\n(installer_rig update case)\n")
     subprocess.run([sys.executable, str(ROOT / "tools/mkmanifest.py"), str(VTC / "distkit")], check=True)
@@ -622,6 +804,7 @@ def update_phase(ck, inst, level, base, t_install):
     (OUT / "update-2.log.txt").write_text('\n'.join(log) + '\n')
     print('installer_rig update: full install %.0f s, update %.0f s' % (t_install, t))
     ck(finished, 'the Update ran to its end (%.0f s; the full install %.0f s)' % (t, t_install), log[-1] if log else '')
+    ck(any(l.startswith('reboot offered') for l in log), 'the Update\'s last page offered a reboot (answered Later)')
     after = dates()
     changed = sorted(k for k in set(before) | set(after)
                      if before.get(k) != after.get(k) and k.lower() != 'up-term:manifest')
@@ -632,10 +815,31 @@ def update_phase(ck, inst, level, base, t_install):
        'UP-Term:MANIFEST is the new kit\'s (the record part ran)')
     ck(ir.run('Type S:User-Startup')[1] == startup, 'S:User-Startup as it was')
     ck(ir.run('List ENVARC:up-term/opts LFORMAT "%N"')[1] == opts, 'the recorded options as they were', opts)
+    if noopts:
+        got = opts_now()
+        ck(got == optvals, 'the options read back are the full install\'s', '%r != %r' % (got, optvals))
+        shown = ' '.join(' '.join(l.split()) for l in log if l.startswith('page text:'))
+        ck('read from this Amiga' in shown, 'the Update page says the choices were read back')
     lay = [l for l in log if l.startswith('LAYOUT')]
     ck(not lay, 'the Update\'s pages readable', '; '.join(lay[:4]))
     pct = [int(x) for l in log for x in re.findall(r'(\d+)% done', l)]
     ck(pct and max(pct) <= 100, 'the bar counts only the Update\'s parts (at most 100%%: %s)' % (max(pct) if pct else '-'))
+
+
+def check_room_text(ck, log, path, free_kb):
+    """The room page's two-line text (bv_room_text: "<path> has N KB free;" / "the parts you chose need about M KB.")
+    read from the screen by drive (`room page text:`), N against the rig's free KB on SYS: (sys_free_bytes), M above N."""
+    room = [l for l in log if l.startswith('room page: ')]
+    txt = [l for l in log if l.startswith('room page text: ')]
+    ck(bool(room), 'the room page was read from the screen', '; '.join(log[-3:]))
+    if room:
+        n_kb, m_kb = map(int, re.findall(r'\d+', room[0]))
+        # Info was read before the Installer's Make New Drawer wrote the empty drawer (and its icon): a few blocks less since
+        ck(0 <= free_kb - n_kb <= 8, '%s has %d KB free on the room page (Info before the drawer was made: %d KB, at most 8 KB more)' % (path, n_kb, free_kb))
+        ck(m_kb > n_kb, 'the room page\'s need (%d KB) is above the free room (%d KB)' % (m_kb, n_kb))
+    flat = ' '.join(txt[0].split()) if txt else ''
+    flat = re.sub('[-\u2013\u2014]+', '-', flat)   # OCR reads the hyphen of UP-Term as an em dash plus hyphen at times
+    ck(path.split(':', 1)[1].lower() in flat.lower() and 'KB free' in flat and 'the parts you chose need about' in flat, 'the room page text is "%s has N KB free; the parts you chose need about M KB"' % path, flat)
 
 
 SPACE_LEFT = 12 * 1024 * 1024    # what the space case leaves free on SYS:
@@ -647,16 +851,19 @@ def sys_free_bytes():
     out = ir.run('Info')[1]
     for line in out.splitlines():
         f = line.split()
-        if len(f) > 5 and f[0].upper() == 'DH0:':
+        if len(f) > 5 and f[0].upper().rstrip(':') == 'DH0':   # 3.1 prints DH0:, 3.2 prints DH0
             return int(f[3]) * 512
     raise SystemExit('installer_rig: cannot read the free space of SYS: from Info: %r' % out)
 
 
-def fill_sys():
+SPACE_LEFT_SYS = 3 * 1024 * 1024    # space-sys: less than the SYS: parts need (about 7 MB), the drawer disk DH1: has room
+
+
+def fill_sys(left=SPACE_LEFT):
     """A file on SYS: that leaves SPACE_LEFT free (the kit's default choices need more): written on the host in VTC: and
     copied, then the host copy removed."""
     ir.run('Delete >NIL: %s QUIET' % FILLER)
-    n = sys_free_bytes() - SPACE_LEFT
+    n = sys_free_bytes() - left
     if n <= 0:
         return
     host = VTC / 'space-filler'
@@ -669,13 +876,52 @@ def fill_sys():
     print('installer_rig space: SYS: has %d KB free after the filler' % (sys_free_bytes() // 1024))
 
 
+def big_drawer():
+    """The drawer the Installer offers as its default when no earlier install's assign exists: what the kit's UPBigVol
+    leaves in ENV:UPTBIGVOL (the variable is deleted again, so a stale value cannot stand in for the Installer's own
+    run of the helper), SYS:UP-Term when no volume qualifies."""
+    ir.run('Delete >NIL: ENV:UPTBIGVOL QUIET')
+    ir.run('VTC:distkit/Files/UPBigVol', 60)
+    rc, out = ir.run('Type ENV:UPTBIGVOL')
+    ir.run('Delete >NIL: ENV:UPTBIGVOL QUIET')
+    return out.strip() if rc == 0 and out.strip() else 'SYS:UP-Term'
+
+
+def run_bigvol():
+    """BIGVOL, through the real Installer: click Proceed to the drawer page (gadgets 89 and 92), read the string
+    gadget 92 and Abort. PASS: it shows the drawer big_drawer() reads from ENV:UPTBIGVOL, the volume UPBigVol LIST marks with `*`, not SYS:UP-Term
+    (what the Installer offered before this case existed), and that volume has more free room than SYS:."""
+    ck = Checks()
+    ir.prepare(None)
+    # the case is a first install: an UP-Term: assign (rig.py install leaves one) is an earlier install, and
+    # P_ASKDEST offers that drawer before the biggest volume. Fixtures.restore puts the assign back.
+    ir.run('Assign >NIL: UP-Term:')
+    inst = find_installer()
+    if not inst:
+        return False, 'no Installer on the rig'
+    listing = ir.run('VTC:distkit/Files/UPBigVol LIST', 60)[1]
+    best = [l for l in listing.splitlines() if l.startswith('* ')]
+    expect = big_drawer()
+    ck(len(best) == 1 and best[0][2:].startswith(expect.split(':')[0] + ':'), 'UPBigVol LIST marks %s' % expect, listing)
+    ck(not expect.upper().startswith('SYS:'), 'the biggest local disk on the rig is not SYS:', expect)
+    ir.run('Run >NIL: "%s" VTC:distkit/Install APPNAME UP-Term MINUSER AVERAGE DEFUSER AVERAGE NOLOG' % inst, 30)
+    time.sleep(5)
+    probe = []
+    ok, log = drive('bigvol', inst, None, set(), timeout=300, askdir_probe=probe)
+    got = probe[0] if probe else None
+    ck(got == expect, 'the askdir string (gadget 92) shows %s' % expect, 'shows [%s]' % got)
+    ck(got != 'SYS:UP-Term', 'the default is not SYS:UP-Term')
+    print('installer_rig bigvol: askdir default [%s]; UPBigVol LIST:\n%s' % (got, listing))
+    return not ck.failed, '; '.join(ck.failed) or 'all %d checks' % ck.total
+
+
 def run_case(case):
-    if case == "space":
+    if case in ("space", "space-sys"):
         try:
-            fill_sys()
-            return run_base_case(case)
+            return run_base_case(case)   # fills SYS: itself, after its cleanup
         finally:
             ir.run_slow('unfillsys', 'Delete >NIL: %s QUIET' % FILLER, 300)
+            ir.run_slow('deletedest', drawer_delete(CASES[case][1]))   # the empty drawer Make New Drawer made on the way to the room message
     if case.startswith("addon-"):
         return run_addon_case(case[len("addon-"):])
     if case == "migrate":
@@ -684,6 +930,8 @@ def run_case(case):
         return run_fullsuite()
     if case == "kingcon":
         return run_kingcon()
+    if case == "bigvol":
+        return run_bigvol()
     return run_base_case(case)
 
 
@@ -722,7 +970,7 @@ def run_kingcon():
         base = {t for t, _ in windows(ami.req(0x0D).decode('latin-1'))}
         ir.run('Run >NIL: "%s" VTC:distkit/Install APPNAME UP-Term MINUSER AVERAGE DEFUSER AVERAGE NOLOG' % inst, 30)
         time.sleep(5)
-        finished, dlog = drive('kingcon', inst, None, base, console=True, room_dest=ROOMDEST)   # SYS: is too small for the default drawer: the room page sends it to ROOMDEST
+        finished, dlog = drive('kingcon', inst, None, base, console=True)
         log += dlog
         (OUT / 'kingcon.log.txt').write_text('\n'.join(log) + '\n')
         ck(finished, 'the Installer ran to its end', log[-1])
@@ -747,26 +995,100 @@ def run_kingcon():
     # CON: is the foreign handler's until the next boot: every write is done (Uninstall returned), 5 s of quiet, then reboot
     time.sleep(5)
     rig("stop")
-    rig("start")
+    rig_start()
     ir._shown = None
     ck(ir.run('VTC:UPConsole STATUS')[0] in (0, 5), 'the rig was rebooted: CON: is the ROM\'s again')
     print('installer_rig kingcon: passed %d of %d' % (ck.total - len(ck.failed), ck.total))
     return not ck.failed, '; '.join(ck.failed) or 'all %d checks' % ck.total
 
 
+ROOM_CASES = ()   # the default drawer is on the biggest disk (VTCX: on the rig), so no case meets the room page by default; `space` meets it on SYS:
+
+
+def amarchy_window():
+    return any(t == 'Amarchy' for t, _ in windows(ami.req(0x0D).decode('latin-1')))
+
+
+class DrawerAsks:
+    """How often the drawer page (ids 89 Make New Drawer and 92 the path string) came, counted when it arrives from
+    another page. A redraw of the page itself (the path typed through Make New Drawer, then the string updated) is the
+    same ask: counting every redraw stopped a typed destination with "room page repeats" (master build, 2026-10-27)."""
+    def __init__(self):
+        self.n, self.on = 0, False
+
+    def see(self, gads):
+        on = 89 in gads and 92 in gads
+        self.n += on and not self.on
+        self.on = on
+        return self.n
+
+
+def reboot_amarchy_check(ck, log):
+    """F1: after the install the rig is rebooted (once the Installer's writes are quiet); the startup block must
+    have started Amarchy: its ARexx port answers STATUS, and Left Amiga + Space opens its menu (an XCON: window
+    titled Amarchy)."""
+    import tabstate
+    time.sleep(10)   # the Installer's last writes and the volume's flush, never a reset mid-write
+    rig("reboot")    # DH0: kept: a stop + start clones it anew from the master and the install is gone
+    ir._shown = None
+    time.sleep(5)
+    m = ami._m()
+    try:
+        with ami._conn() as conn:
+            st = m.arexx(conn, 'AMARCHY', 'STATUS')[2].strip()
+    except m.WasabiError:
+        st = ''
+    ck(bool(st), 'after the reboot: the AMARCHY ARexx port answers STATUS', st or 'no port')
+    print('amarchy STATUS after reboot: %s' % st)
+    tabstate.open_host('f1host')
+    # over the f1host terminal Left Amiga + Space opens amarchy-menu in the terminal while menu-in-terminal = text
+    # (the default); the drawn menu, titled Amarchy, needs graphical (FRESH-ALL-AFTER-END 32, as amarchy_window_rig)
+    saved = amw.drawn_menu_prefs()
+    try:
+        ami.key(0x40, 0x40)   # Left Amiga + Space
+        t0 = time.time()
+        while time.time() - t0 < 20 and not amarchy_window():
+            time.sleep(0.5)
+        up = amarchy_window()
+        ck(up, 'after the reboot: Left Amiga + Space opens the Amarchy menu window', 'no window titled Amarchy in 20 s')
+        print('menu window after reboot: %s' % up)
+        if not up:   # amarchy_window reads the front screen only: say where every window is
+            with ami._conn() as conn:
+                for s in ami._m().list_windows(conn)[0]:
+                    print('screen [%s]: %s' % (s.get('title'), ' | '.join(w['title'] for w in s['windows'])))
+        ami.key(0x45)         # Esc at the root leaves the menu
+        time.sleep(3)
+    finally:
+        amw.restore_prefs(saved)
+    ir.stock_libs()       # the boot put VTC:ixp6 first in LIBS: again; the Uninstall checks read the system's
+
+
+def check_other_disk_leaves_sys_upterm(ck, before):
+    """A drawer on another disk leaves SYS:UP-Term as it was (same List ... ALL comparison as install_rig's base-dest)."""
+    ir.check_dest_leaves_sys_upterm(ck, before, 'a drawer on another disk leaves SYS:UP-Term as it was')
+
+
 def run_base_case(case):
     level, dest = CASES[case]
-    drawer = dest or "SYS:UP-Term"
     ck = Checks()
     ir.prepare(dest)
+    drawer = dest or big_drawer()   # the Installer's own default (UPBigVol), not SYS:
+    if case == "anx":
+        ir.run('Copy >NIL: C:Wait VTC:distkit/Files/tcpprobe')   # no stack found: AmiNetXDuo is offered, ticked
+        ir.run('Copy >NIL: S:User-Startup T:UPTANX-startup')
+    sys_upterm_before = ir.run('List SYS:UP-Term ALL')   # the rig's baseline assign UP-Term: may name an empty or stale SYS:UP-Term: compare against it, not against absence
     ir.run_long('rununinstall')  # a run that stopped half-way left things behind
     ir.run('Delete >NIL: ENVARC:UP-Term.prefs ENVARC:Claude/remote QUIET')
     parent_existed = True
     if dest:
         parent_existed = make_dest_parent(dest)   # the new drawer's parent must exist
         ir.run_slow('deletedest', drawer_delete(dest))
-    if case == 'default':
+    if case in ROOM_CASES:
         ir.run_slow('deleteroom', drawer_delete(ROOMDEST))
+    if case in ("space", "space-sys"):
+        # filled after prepare and the Uninstall above: what they delete (a stopped run's SYS: parts) would free room
+        # again, and space-sys then had 11 MB on SYS:, enough for its SYS: parts (no refusal, the install ran)
+        fill_sys(SPACE_LEFT_SYS if case == 'space-sys' else SPACE_LEFT)
     sys_kb = sys_free_bytes() // 1024   # what the room page must say SYS: has
     startup_before = ir.run('Type S:User-Startup')[1]
     before = ir.lib_state()
@@ -781,31 +1103,49 @@ def run_base_case(case):
     t_install = time.time()
     ir.run('Run >NIL: "%s" VTC:distkit/Install APPNAME UP-Term MINUSER %s DEFUSER %s NOLOG' % (inst, level, level), 30)
     time.sleep(5)
-    finished, log = drive(case, inst, dest, base, expect_abort=(case == 'space'), room_dest=ROOMDEST if case == 'default' else None)
+    finished, log = drive(case, inst, dest, base, expect_abort=(case == 'space'), room_abort=(case == 'space-sys'), room_dest=ROOMDEST if case in ROOM_CASES else None, tick_all=(case == 'fresh-all'))
     t_install = time.time() - t_install
     (OUT / (case + ".log.txt")).write_text('\n'.join(log) + '\n')
     ck(finished, 'the Installer ran to its end (%s)' % level, log[-1] if log else '')
+    if case not in ('space', 'space-sys'):
+        ck(any(l.startswith('reboot offered') for l in log), 'the last page offered a reboot (answered Later)')
     room = [l for l in log if l.startswith('room page: ')]
-    if room:
+    if room and case != 'space':
         # SYS: has too little room for the default parts: the user takes another drive (ROOMDEST) and the install goes there
         n_kb, m_kb = map(int, re.findall(r'\d+', room[0]))
         ck(n_kb == sys_kb, 'the room page says SYS: has %d KB free (Info: %d KB)' % (n_kb, sys_kb))
-        ck(n_kb < m_kb and 60000 <= m_kb <= 110000, 'the room page\'s need (%d KB) is plausible for the default parts (60000 to 110000 KB, above the free room)' % m_kb)
+        ck(n_kb < m_kb and (case == 'fresh-all' or 60000 <= m_kb <= 110000), 'the room page\'s need (%d KB) is plausible for the default parts (60000 to 110000 KB, above the free room)' % m_kb)
         drawer = ROOMDEST
         ck(any(l.startswith('made %s through Make New Drawer' % ROOMDEST) for l in log), 'the drawer on the other drive was asked for')
     lay = [l for l in log if l.startswith('LAYOUT')]
     # the room message is the Installer's own abort dialog drawn over the page, not one of our pages
-    ck(not lay or case == 'space', 'every page\'s text readable: no line cut by the border, under the buttons or beside the copy panel',
+    ck(not lay or case in ('space', 'space-sys'), 'every page\'s text readable: no line cut by the border, under the buttons or beside the copy panel',
        '; '.join(lay[:4]))
     if not finished:
         if installer_running(inst):
             ir.run('Break >NIL: `Status COM "%s"` C' % inst)
         return False, '; '.join(ck.failed + log[-3:])
+    if case == 'space-sys':
+        # a refusal on a disk that is not the drawer's (the drawer is on DH1:, SYS: is full): the Installer ends with its abort text
+        txt = ' '.join(l for l in log if l.startswith('abort page text: '))
+        ck('Nothing was installed.' in txt, 'the abort page says "Nothing was installed."', txt)
+        ck(not any('% done' in l for l in log), 'the Installer ended without a copy phase', '; '.join(log[-3:]))
+        ck(ir.run('List >NIL: "%s/VERSIONS"' % dest)[0] != 0, 'nothing was copied into the drawer', '')
+        ck(ir.run('List >NIL: SYS:UP-Term/VERSIONS')[0] != 0, 'nothing was copied into SYS:UP-Term', '')
+        ck(ir.run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'no UP-Term: assign', '')
+        ck(ir.run('Type S:User-Startup')[1] == startup_before, 'S:User-Startup as it was, byte for byte', '')
+        st = ir.lib_state()
+        ck(st == before, 'LIBS: as it was', 'now %s, before %s' % (st, before))
+        m = re.search(r'S\S?S:\s*has\s+(\d+)\s*KB', txt)
+        ck(m and 0 <= sys_kb - int(m.group(1)) <= 8, 'the abort text names SYS: with its free KB (%d, Info)' % sys_kb, txt)
+        print('installer_rig %s: passed %d of %d' % (case, ck.total - len(ck.failed), ck.total))
+        return not ck.failed, '; '.join(ck.failed) or 'all %d checks' % ck.total
     if case == 'space':
         # the room check: Install on a volume with too little room says so and changes nothing
         ck(any(l.startswith('room message seen') for l in log), 'the room message came up and led back to the drawer page', '; '.join(log[-3:]))
+        check_room_text(ck, log, 'SYS:UP-Term', sys_kb)
         ck(not any('% done' in l for l in log), 'the Installer ended without a copy phase', '; '.join(log[-3:]))
-        ck(ir.run('List >NIL: SYS:UP-Term')[0] != 0, 'no drawer was made', '')
+        ck(ir.run('List >NIL: SYS:UP-Term/VERSIONS')[0] != 0, 'nothing was copied into the drawer', '')
         ck(ir.run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'no UP-Term: assign', '')
         ck(ir.run('Type S:User-Startup')[1] == startup_before, 'S:User-Startup as it was, byte for byte', '')
         st = ir.lib_state()
@@ -829,8 +1169,8 @@ def run_base_case(case):
     ck(('Assign UP-Term: "%s"' % drawer).lower() in out.lower(), 'S:User-Startup assigns UP-Term: to %s' % drawer, out[-300:])
     ck(out.find('Assign UP-Term:') >= 0 and (out.find('Assign GG:') < 0 or out.find('Assign UP-Term:') < out.find('Assign GG:')),
        'the UP-Term: block comes before the blocks that use it', out[-300:])
-    if dest or room:
-        ck(ir.run('List >NIL: SYS:UP-Term')[0] != 0, 'a chosen drawer leaves SYS:UP-Term unmade')
+    if drawer.upper() != 'SYS:UP-TERM':
+        check_other_disk_leaves_sys_upterm(ck, sys_upterm_before)
     for f in ('"%s/VERSIONS"' % drawer, 'UP-Term:bin/sh', 'UP-Term:bin/ls', 'UP-Term:unifont/00', 'UP-Term:emoji/1F6',
               'C:vsh', 'C:tmux', 'C:UPConsole', 'L:vtcon-handler', 'L:pty-handler', 'DEVS:DOSDrivers/XCON',
               'SYS:System/UP-Term.info', 'SYS:Prefs/UP-Term-Prefs.info', 'ENVARC:up-term/unstartup.sh',
@@ -838,12 +1178,17 @@ def run_base_case(case):
         ck(ir.run('List >NIL: %s' % f)[0] == 0, '%s is there' % f)
     st = ir.lib_state()
     ck(st.get('ixemul.library.orig') == before.get('ixemul.library'), 'the original ixemul kept as .orig', str(st))
-    ck(ir.run('Search >NIL: LIBS:ixemul.library vtcon-2')[0] == 0, 'the patched ixemul is in LIBS:')
+    ck(ir.run('Search >NIL: LIBS:ixemul.library %s' % ir.kit_ixemul_tag())[0] == 0, 'the patched ixemul is in LIBS:')
     ck(ir.run('Assign >NIL: PTY: EXISTS DEVICES')[0] == 0, 'PTY: is mounted')
     rc, out = ir.run('C:UPConsole STATUS')
     ck('kit:' in out, 'UPConsole STATUS prints the kit line (UP-Term:VERSIONS)', out)
-    if case == 'update':
-        update_phase(ck, inst, level, base, t_install)
+    if case == 'fresh-all':
+        reboot_amarchy_check(ck, log)
+        if KEEP_INSTALLED:
+            print('installer_rig fresh-all: INSTALLER_KEEP set, the kit stays installed (no Uninstall, no fixture restore)')
+            return not ck.failed, '; '.join(ck.failed) or 'all %d checks (kit kept)' % ck.total
+    if case in ('update', 'update-noopts'):
+        update_phase(ck, inst, level, base, t_install, noopts=case == 'update-noopts')
     # a running C:wasabid keeps running through Uninstall, the kit's or the
     # owner's: it may be the machine's only control channel, and an Uninstall
     # run over wasabi died with it (the A1200, 2026-10-17). The rig's own
@@ -856,8 +1201,18 @@ def run_base_case(case):
             ir.run('Copy >NIL: C:Wait C:wasabid')
         ir.run('Run >NIL: C:wasabid 600')
     # Uninstall gives it all back
+    installed_startup = ir.run('Type S:User-Startup')[1]
     rc, out = ir.run_long('rununinstall')
     ck(rc == 0, 'Uninstall runs', out)
+    if case == "anx":
+        # Uninstall leaves AmiNetXDuo (its own Uninstall removes it): prove it ran, then do its record's work by hand
+        ck(ir.run('List >NIL: S:AmiNetXDuo-Files')[0] == 0, 'the ANX step ran Install-AmiNetXDuo (S:AmiNetXDuo-Files written)')
+        ck(';BEGIN AmiNetXDuo' in ir.run('Type S:User-Startup')[1], 'S:User-Startup has the ;BEGIN AmiNetXDuo block')
+        ir.run('Execute S:AmiNetXDuo-Files', 120)
+        ir.run('Copy >NIL: T:UPTANX-startup S:User-Startup')
+        ir.run('Delete >NIL: S:AmiNetXDuo-Files S:Network-Startup T:UPTANX-startup QUIET')
+        ck(not any('Shell' in l or 'CLI' in l for l in log if l.startswith('windows [')), 'no Shell or CLI window at any time during the install (window list logged on every change)',
+           ' '.join(l for l in log if l.startswith('windows [') and ('Shell' in l or 'CLI' in l))[:300])
     ck(ir.run('Status >NIL: COM C:wasabid')[0] == 0, 'after Uninstall: the running C:wasabid still runs')
     if kit_wasabid:
         ck(ir.run('List >NIL: C:wasabid')[0] != 0, "after Uninstall: the kit's C:wasabid file is gone")
@@ -866,9 +1221,9 @@ def run_base_case(case):
     if stand_in and not kit_wasabid:
         ir.run('Delete >NIL: C:wasabid QUIET')
     ir.run('Delete >NIL: ENV:upw QUIET')
-    rc, out = ir.run('Type S:User-Startup')
-    ck(out == startup_before, 'after Uninstall: S:User-Startup as it was, byte for byte',
-       'differs: %r vs %r' % (out[-80:], startup_before[-80:]))
+    # AmiSSL stays after Uninstall (dist/Uninstall header), and so does the ;BEGIN AmiSSL block Install-AmiSSL wrote
+    ir.check_startup_after_uninstall(ck, startup_before, installed_startup, ir.run('Type S:User-Startup')[1],
+                                     ir.BASE_STARTUP_LEAVES, 'after Uninstall')
     ck(ir.run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'after Uninstall: no UP-Term: assign')
     ck(ir.run('List >NIL: "%s"' % drawer)[0] != 0, 'after Uninstall: %s is gone' % drawer)
     st = ir.lib_state()
@@ -925,7 +1280,7 @@ def installer_run(tag, inst, kitdir, appname, level, base, dest=None):
     t = time.time()
     ir.run('Run >NIL: "%s" VTC:%s/Install APPNAME %s MINUSER %s DEFUSER %s NOLOG' % (inst, kitdir, appname, level, level), 30)
     time.sleep(5)
-    finished, log = drive(tag, inst, dest, base, tick_all=(tag == "fullsuite"))
+    finished, log = drive(tag, inst, dest, base, tick_all=(tag == "fullsuite" or (tag.startswith("addon-") and not tag.endswith("-base"))))
     (OUT / (tag + ".log.txt")).write_text("\n".join(log) + "\n")
     return finished, log, time.time() - t
 
@@ -950,7 +1305,10 @@ def read_installer():
 
 
 def run_addon_case(pkg):
-    """The base by its Installer, then the add-on's own Install icon, both with every page answered by its default."""
+    """The base by its Installer, then the add-on's own Install icon, both with every page answered by its default.
+    On a 68000 rig a stand-alone add-on runs alone (run_addon_68000)."""
+    if "--a500" in RIG_FLAGS and pkg in ir.standalone_ids():
+        return run_addon_68000(pkg)
     case, ck = "addon-" + pkg, Checks()
     ir.prepare(None, [pkg])
     before = ir.Before()
@@ -962,7 +1320,19 @@ def run_addon_case(pkg):
         ir.addon_absent(ck, pkg, "before its Install")
         if pkg == "claude":
             ir.plant_old_claude()
+        decoy = os.environ.get("UPTERM_ADDON_DECOY") == "1"
+        if decoy:
+            # ADDON-OPTIONAL-UPTERM-WRITES: UP-Term: becomes a two-directory assign whose FIRST directory is a decoy
+            real = ir.run("Type ENVARC:up-term/Dir")[1].strip()
+            ir.run("MakeDir RAM:decoy")
+            ir.run("Assign UP-Term: RAM:decoy")
+            ir.run('Assign UP-Term: "%s" ADD' % real)
+            ck(ir.run("Assign >NIL: UP-Term: EXISTS")[0] == 0, "the decoy assign is in place, real drawer " + real)
         ok = installer_done(ck, inst, case, *installer_run(case, inst, "kit-" + pkg, ir.archive(pkg), "AVERAGE", base)[:2])
+        if ok and decoy:
+            ck("amiga-pi" not in ir.run("List RAM:decoy ALL")[1], "nothing of %s landed in the decoy first directory" % pkg, ir.run("List RAM:decoy ALL")[1])
+            ck(ir.run('List >NIL: "%s/var/amiga-pi/skills" ALL' % real)[0] == 0, "the skills landed in the real drawer " + real)
+            ck(ir.run('List >NIL: "%s/amiga-pi.info"' % real)[0] == 0, "the launch icon landed in the real drawer " + real)
     if ok:
         ir.addon_verify(ck, pkg, remote=False)
         ir.base_whole(ck, "with %s installed" % pkg)
@@ -973,9 +1343,50 @@ def run_addon_case(pkg):
     if not ok:
         ir.run_long("rununinstall")
     else:
-        ir.base_uninstall(ck, before)
+        # DOpus stays after Uninstall (owner rule): its own ;BEGIN DOpus5 block stays in S:User-Startup
+        ir.base_uninstall(ck, before, leaves=ir.startup_leaves([pkg]))
     print("installer_rig %s: passed %d of %d" % (case, ck.passed, ck.total))
     return not ck.failed, "; ".join(ck.failed) or "all %d checks" % ck.total
+
+
+def run_addon_68000(pkg):
+    """A stand-alone add-on (needs-base "-") on the 68000 rig (--a500, plan D10): the base Installer refuses the 68000
+    by design (distkit Install: "UP-Term needs a 68020 or better"), so the add-on's own Install icon runs alone, on a
+    Workbench with no UP-Term: assign, as on a real 68000. Its Install picks the 68000 build (ENV:UPTOPTCPU68000);
+    for dopus the installed DOpus5:DirectoryOpus must be the os3-68000 one by md5. Then its Uninstall, and
+    S:User-Startup as before apart from the blocks the package leaves (DOpus stays, owner rule). Before: the base ran
+    first, aborted, and the case failed on "a system requester came up" (RIG-A500-KIT-BOOT, 2026-10-29)."""
+    case, ck = "addon-" + pkg, Checks()
+    ir.prepare(None, [pkg])
+    before = ir.Before()
+    ir.plant(pkg)
+    ir.run("Assign UP-Term:")
+    ck(ir.run("Assign >NIL: UP-Term: EXISTS")[0] != 0, "%s: there is no UP-Term: assign" % case)
+    ir.addon_absent(ck, pkg, "before its Install")
+    inst, base = read_installer()
+    ok = installer_done(ck, inst, case, *installer_run(case, inst, "kit-" + pkg, ir.archive(pkg), "AVERAGE", base)[:2])
+    if ok:
+        ir.addon_verify(ck, pkg, remote=False, with_base=False)
+        if pkg == "dopus":
+            dopus_build_check(ck, "os3-68000")
+        rc, out = ir.run_long("rununinstall-" + pkg)
+        ck(rc == 0, "%s: its Uninstall runs" % pkg, out)
+        ir.addon_gone(ck, pkg, remote=False, with_base=False)
+        ir.check_startup_after_uninstall(ck, before.startup, ir.run("Type S:User-Startup")[1], ir.startup_leaves([pkg]), case)
+    print("installer_rig %s: passed %d of %d" % (case, ck.passed, ck.total))
+    return not ck.failed, "; ".join(ck.failed) or "all %d checks" % ck.total
+
+
+def dopus_build_check(ck, build):
+    """DOpus5:DirectoryOpus equals the kit's Files/<build>/DOpus5/DirectoryOpus by md5 (read back through VTC:)."""
+    import hashlib
+    want = hashlib.md5((ir.kit_dir("dopus") / "Files" / build / "DOpus5/DirectoryOpus").read_bytes()).hexdigest()
+    back = ir.VTC / "dopus-build-check.tmp"
+    back.unlink(missing_ok=True)
+    ir.run("Copy DOpus5:DirectoryOpus VTC:dopus-build-check.tmp CLONE")
+    got = hashlib.md5(back.read_bytes()).hexdigest() if back.exists() else "missing"
+    back.unlink(missing_ok=True)
+    ck(got == want, "dopus: DOpus5:DirectoryOpus is the %s build (md5 %s)" % (build, want), "md5 " + got)
 
 
 def run_fullsuite():
@@ -1104,8 +1515,8 @@ def _migrate(case, ck):
                 sizes = [ir.run('List "%s" LFORMAT "%%L"' % at(p))[1].strip() for p in changed]
                 want = [str(newnvim[p][0]) for p in changed]
                 ck(sizes == want, "the files that differ are the add-on kit\'s now (%d)" % len(changed), "%s vs %s" % (sizes, want))
-            ck(ir.run("List >NIL: UP-Term:pkg/UP-Term-nvim/MANIFEST")[0] == 0 and
-               ami.read_file("UP-Term:pkg/UP-Term-nvim/MANIFEST") == (ir.kit_dir("nvim") / "Files/MANIFEST").read_bytes(),
+            ck(ir.run("List >NIL: UP-Term:pkg/up-nvim/MANIFEST")[0] == 0 and
+               ami.read_file("UP-Term:pkg/up-nvim/MANIFEST") == (ir.kit_dir("nvim") / "Files/MANIFEST").read_bytes(),
                "the nvim add-on made its record (its MANIFEST)")
             rc, out = ir.run_slow("nvimverrun", "UP-Term:nvim/bin/nvim --version", 400)
             ck(rc == 0 and "NVIM v0.12" in out, "nvim answers after its add-on", out[-200:])
@@ -1119,33 +1530,78 @@ def _migrate(case, ck):
     return not ck.failed, "; ".join(ck.failed) or "all %d checks" % ck.total
 
 
+PURPOSE = []   # ["--purpose", text] for every rig start (the FS-UAE window title)
+RIG_FLAGS = []   # other rig.py start options from the command line (--no-dopus, --a500), kept apart from PURPOSE
+
+
+def set_purpose(text):
+    PURPOSE[:] = ["--purpose", text]
+
+
+def rig_start():
+    rig("start", *(PURPOSE + RIG_FLAGS))
+
+
+def parse_args(argv):
+    """(only, flags) from the command line. An unknown word or case stops the run before the rig is touched."""
+    args = list(argv)
+    only, flags = [], set()
+    while args:
+        a = args.pop(0)
+        if a in ("ONLY", "--only"):
+            if not args:
+                raise SystemExit("installer_rig: %s needs a case name" % a)
+            only.append(args.pop(0))
+        elif a in ("FAILED", "FORCE"):
+            flags.add(a)
+        elif a == "--max":   # max is the rig default (rig.py): accepted so the rig.py line can be reused
+            pass
+        elif a in ("--no-dopus", "--a500"):   # without Directory Opus (the dopus add-on installs it); a 68000 A500
+            if a not in RIG_FLAGS:
+                RIG_FLAGS.append(a)
+        elif a == "--purpose":
+            if not args:
+                raise SystemExit("installer_rig: --purpose needs a text")
+            set_purpose(args.pop(0))
+        else:   # an unknown word used to be ignored, and the run went on with every case
+            raise SystemExit("installer_rig: unknown argument %r (ONLY <case>, FAILED, FORCE)" % a)
+    unknown = [c for c in only if c not in CASES]
+    if unknown:
+        raise SystemExit("installer_rig: no case %s; cases: %s" % (" ".join(unknown), " ".join(CASES)))
+    return only, flags
+
+
 def main():
+    only, flags = parse_args(sys.argv[1:])
     fx = ir.Fixtures(('ENVARC:up-term/Dir',))
     with paths.rig_lock():
         try:
-            return _main(fx)
+            return _main(fx, only, flags)
         finally:
-            fx.restore()   # a killed or failing run leaves nothing planted
+            if not KEEP_INSTALLED:
+                fx.restore()   # a killed or failing run leaves nothing planted
             ir.show_close()
 
 
-def _main(fx):
-    args = sys.argv[1:]
-    only = [args[args.index("ONLY") + 1]] if "ONLY" in args else []
+def _main(fx, only, flags):
+    if CHAIN:
+        shutil.copyfile(ROOT / 'build/amiga/inhandlers', VTC / 'inhandlers')
+        if os.environ.get("INSTALLER_OWNERMAP"):
+            shutil.copyfile(ROOT / 'build/amiga/ownermap', VTC / 'ownermap')
     # space fills SYS: with a file first (K7); it is not part of the default run
     names = [c for c in CASES if only or c != 'space']
     for case in (c for c in names if not only or c in only):
         for pkg in case_packages(case)[0]:
             if not (ir.kit_dir(pkg) / "Install").exists():
                 raise SystemExit('no kit %s: make dist first' % ir.kit_dir(pkg))
-    todo, skip = verdicts.select(STORE, names, fingerprint, only, "FAILED" in args, "FORCE" in args)
+    todo, skip = verdicts.select(STORE, names, fingerprint, only, "FAILED" in flags, "FORCE" in flags)
     for c, why in skip:
         print("[SKIP] %s: %s" % (c, why))
     booted = False
     for case, _ in todo:
         if not booted:
             rig("stop")
-            rig("start")
+            rig_start()
             ir._shown = None   # a fresh boot: the watched window (UPTERM_RIG_SHOW) opens again
             fx.take()   # the user's files and assigns, before any case plants its own
             booted = True

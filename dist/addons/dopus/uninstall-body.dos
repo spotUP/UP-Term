@@ -1,0 +1,2 @@
+; Directory Opus 5 is left where it is: it may be the user's own, and its installer chose the drawer.
+Echo "Directory Opus 5 stays in place; delete its drawer (DOpus5:) by hand if you want it gone."

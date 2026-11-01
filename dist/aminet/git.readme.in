@@ -1,0 +1,18 @@
+Short:        Git 2.56 for UP-Term
+Author:       spotUP
+Uploader:     spotup@gmail.com (spotUP)
+Type:         dev/misc
+Version:      @VERSION@
+Architecture: m68k-amigaos >= 3.0.0; m68k-020
+Requires:     comm/term/up-term.lha >= @NEEDSBASE@ (it brings the patched ixemul.library)
+Distribution: Aminet
+
+Git 2.56.0 (the git program and its git-core helpers and templates) for an UP-Term window
+(TERM=vtcon, the patched ixemul.library of the base archive). Built without Rust.
+
+Needs the base archive up-term.lha (version @NEEDSBASE@ or newer) installed first.
+
+Install: unpack, double-click Install. Uninstall removes what this archive installed.
+
+Licence: GPL 2.0 (Git); bundled libraries carry their own
+(see LICENSES.txt in this archive).

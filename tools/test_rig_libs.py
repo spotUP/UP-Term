@@ -38,5 +38,58 @@ check(any(l.endswith(AMISSL) for l in rig.RIG_LIBS), "RIG_LIBS carries AmiSSL's 
 # by its volume, never through the AmiSSL: assign (a rig image without it would ask for a volume and stop the boot)
 check(not any("AmiSSL:" in l for l in rig.RIG_LIBS), "RIG_LIBS does not name the AmiSSL: assign")
 
+# Regression (2026-10-21, upkg_browse_rig step 0): the system disk's AmiSSL/ holds only the kit's
+# per-CPU subdrawers, so amisslmaster.library found no LIBS:AmiSSL/amissl_v362.library ("Couldn't open
+# AmiSSL!", curl rc 20).
+check(any(l.endswith("LIBS: VTC:amissl ADD") for l in rig.RIG_LIBS), "RIG_LIBS carries VTC:amissl (the flat AmiSSL library)")
+check(not any("amitcp" in l.lower() for l in rig.RIG_LIBS + lines) and "AmiTCP" not in rig.BOOT_ASSIGNS,
+      "the rig image has no AmiTCP: no assign, no LIBS: entry, no boot assign")
+check(any(l.endswith("LIBS: VTC:amissl ADD") for l in lines), "GO adds VTC:amissl to LIBS:")
+import tempfile  # noqa: E402
+for m060, cpu in ((True, "68060"), (False, "68020-40")):
+    with tempfile.TemporaryDirectory() as d:
+        vtc = pathlib.Path(d)
+        rig.stage_amissl(vtc, m060)
+        got = vtc / "amissl/AmiSSL/amissl_v362.library"
+        want = rig.paths.VENDOR / "amissl-5.27/AmiSSL/Libs/AmigaOS3/AmiSSL" / cpu / "amissl_v362.library"
+        check(got.is_file() and got.read_bytes() == want.read_bytes(),
+              "stage_amissl puts the %s library flat in VTC:amissl/AmiSSL" % cpu)
+
+# The kit's curl is the upterm-ports build on ixemul sockets: no usergroup.library, exactly one $STACK cookie.
+# The Aminet curl (libnet, removed from the kit) named usergroup.library and fails this.
+def curl_problems(path):
+    data = pathlib.Path(path).read_bytes()
+    bad = []
+    if b"usergroup.library" in data:
+        bad.append("names usergroup.library")
+    if data.count(b"$STACK") != 1:
+        bad.append("%d $STACK cookies, want 1" % data.count(b"$STACK"))
+    return bad
+
+
+with tempfile.TemporaryDirectory() as d:
+    old = pathlib.Path(d) / "curl"
+    old.write_bytes(b"\0libnet usergroup.library \0$STACK: 1\0")
+    check(curl_problems(old), "the checker rejects a curl that names usergroup.library")
+check(not list((rig.ROOT / "dist/net").glob("curl*")), "dist/net holds no vendored curl")
+ports = rig.paths.ports() / "build"
+staged = [p for p in (ports / "kit/userland/bin/curl", ports / "sysroot/UP-Term/bin/curl") if p.is_file()]
+if not staged:
+    print("[UNVERIFIED] no ports curl built under %s: make kit-stage in upterm-ports, rerun" % ports)
+for p in staged:
+    check(not curl_problems(p), "staged kit curl %s: %s" % (p, curl_problems(p)))
+
+# ixnet.library staged to VTC:ixp6 on every start: never one that opens AmiTCP:libs/usergroup.library
+# (the rig has no AmiTCP: assign, so ramlib asks for the volume and every ixemul program stops).
+with tempfile.TemporaryDirectory() as d:
+    old = pathlib.Path(d) / "ixnet.library"
+    old.write_bytes(b"\0AmiTCP:libs/usergroup.library\0")
+    check(rig.libguard.ixnet_problems(old), "the checker rejects an ixnet that opens AmiTCP:libs/usergroup.library")
+if rig.paths.IXNET_LIB.is_file():
+    check(not rig.libguard.ixnet_problems(rig.paths.IXNET_LIB),
+          "staged ixnet %s: %s" % (rig.paths.IXNET_LIB, rig.libguard.ixnet_problems(rig.paths.IXNET_LIB)))
+else:
+    print("[UNVERIFIED] no ixnet.library at %s" % rig.paths.IXNET_LIB)
+
 print("[%s] rig_libs: %d failed" % ("FAIL" if fails else "OK", fails))
 sys.exit(1 if fails else 0)

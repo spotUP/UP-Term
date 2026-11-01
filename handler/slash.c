@@ -23,6 +23,7 @@ static const slash_value v_meta[] = {
 static const slash_value v_copy[] = ONOFF(MENU_SET_COPY);
 static const slash_value v_amigakeys[] = ONOFF(MENU_SET_AMIGA_KEYS);
 static const slash_value v_dither[] = ONOFF(MENU_SET_DITHER);
+static const slash_value v_outline_aa[] = ONOFF(MENU_SET_OUTLINE_AA);
 static const slash_value v_padding[] = {
     { "background", MENU_SET_PAD_BG, 1 }, { "extend", MENU_SET_PAD_EXTEND, 1 }, { 0, 0, 0 }
 };
@@ -60,6 +61,9 @@ static const slash_value v_screen[] = {
     { "workbench", MENU_SCREEN_WB, 1 }, { "own", MENU_SCREEN_OWN, 1 },
     { "fullscreen", MENU_SCREEN_FULL, 1 }, { 0, 0, 0 }
 };
+static const slash_value v_agent[] = {
+    { "claude", MENU_SET_AGENT_CLAUDE, 1 }, { "pi", MENU_SET_AGENT_PI, 1 }, { 0, 0, 0 }
+};
 static const slash_value v_tab[] = {
     { "new", MENU_TAB_NEW, 1 }, { "next", MENU_TAB_NEXT, 1 }, { "previous", MENU_TAB_PREV, 1 },
     { "close", MENU_TAB_CLOSE, 1 }, { 0, 0, 0 }
@@ -68,8 +72,10 @@ static const slash_value v_tab[] = {
 /* Alphabetical: the help lists it in this order, completion offers it so. */
 static const slash_def table[] = {
     { "about", SL_ACTION, MENU_ABOUT, 0, 0, "", "the build" },
+    { "agent", SL_CHOICE, 0, 0, v_agent, "claude | pi", "the AI agent the Super + L key opens" },
     { "amiga-keys", SL_CHOICE, 0, 0, v_amigakeys, "on | off",
       "Shift+Left / Right send Home / End, as in the AmigaShell (off: xterm's codes)" },
+    { "ask", SL_ARG, SLASH_ASK, 0, 0, "[TASK]", "the AI agent in a new tab, started on TASK" },
     { "backspace", SL_CHOICE, 0, 0, v_backspace, "del | bs", "what the Backspace key sends (^? or ^H)" },
     { "bell", SL_CHOICE, 0, 0, v_bell, "none | beep | visual", "the bell" },
     { "bg", SL_ARG, SLASH_BG, 1, 0, "RRGGBB | none", "the background colour" },
@@ -100,9 +106,12 @@ static const slash_def table[] = {
     { "link-open", SL_ARG, SLASH_LINK_OPEN, 1, 0, "COMMAND | none",
       "what a Ctrl + click on a link runs (%s: the URL)" },
     { "meta", SL_CHOICE, 0, 0, v_meta, "amiga | alt", "the key that is Meta (ESC prefix)" },
+    { "outline-antialias", SL_CHOICE, 0, 0, v_outline_aa, "on | off",
+      "outline-font glyphs are drawn smoothed on a screen of 16 colours or more (off: hard edges)" },
     { "padding-color", SL_CHOICE, 0, 0, v_padding, "background | extend",
       "the strips beside the character grid: the background, or the colour of the cell next to them" },
     { "paste", SL_ACTION, MENU_PASTE, 0, 0, "", "type the clipboard in" },
+    { "pi", SL_ACTION, MENU_PI, 0, 0, "", "pi, in a new tab" },
     { "prefs", SL_ACTION, MENU_PREFS, 0, 0, "", "open UP-Term Prefs" },
     { "profile", SL_ARG, SLASH_PROFILE, 1, 0, "NAME", "switch to a profile" },
     { "program-clipboard", SL_CHOICE, 0, 0, v_clipboard, "write | read-write | off",
@@ -112,6 +121,7 @@ static const slash_def table[] = {
     { "save", SL_ACTION, MENU_SET_SAVE, 0, 0, "", "save the settings to the profile" },
     { "screen", SL_CHOICE, 0, 0, v_screen, "workbench | own | fullscreen",
       "the window on the Workbench, a screen of its own, or full screen" },
+    { "screen-text", SL_ARG, SLASH_SCREEN_TEXT, 1, 0, "FILE", "write the visible rows as text, one line per row, to FILE (UPTerm screen FILE x)" },
     { "scrollback", SL_ARG, SLASH_SCROLLBACK, 1, 0, "LINES | none", "the lines kept" },
     { "scrollbar", SL_CHOICE, 0, 0, v_scrollbar, "show | hide", "the scroll bar in the window's border" },
     { "select-all", SL_ACTION, MENU_SELECT_ALL, 0, 0, "", "select the scrollback and the screen" },
@@ -497,6 +507,7 @@ void slash_state_bump(slash_state *s, int ev, long arg, const char *name)
         break;
     case STATE_COPY: s->copies++; break;
     case STATE_PASTE: s->pastes++; break;
+    case STATE_KEYMAP: s->km_hits++; s->last_km = arg; break;
     case STATE_SPLIT: s->splits++; break;
     case STATE_SLOT_FONT: s->slot_fonts++; break;
     case STATE_SPLIT_RESTORE: s->split_restores++; break;
@@ -517,8 +528,9 @@ int slash_line_name(const char *line, int len, char *out, int cap)
 }
 
 static const char *const state_keys[] = { "tabs-opened", "tab-switches", "menu-picks", "last-menu", "slash-count",
-                                           "last-slash", "copies", "pastes", "tabs", "active", "splits",
-                                           "panes", "zoom", "slot-fonts", "split-restores", "scrollback" };
+                                           "last-slash", "copies", "pastes", "tabs", "active", "km-hits", "last-key", "font-size",
+                                           "outline-own", "outline-aa", "splits", "panes", "zoom", "slot-fonts",
+                                           "split-restores", "scrollback" };
 
 static void put_long(char *v, long n)
 {
@@ -549,12 +561,17 @@ static void state_value(const slash_state *s, int k, char *v)
     case 7: n = s->pastes; break;
     case 8: n = s->tabs; break;
     case 9: n = s->active; break;
-    case 10: n = s->splits; break;
-    case 11: n = s->panes; break;
-    case 12: n = s->zoom; break;
-    case 13: n = s->slot_fonts; break;
-    case 14: n = s->split_restores; break;
-    case 15: n = s->scrollback; break;
+    case 10: n = s->km_hits; break;
+    case 11: n = s->last_km; break;
+    case 12: n = s->font_size; break;
+    case 13: n = s->outline_own; break;
+    case 14: n = s->outline_aa; break;
+    case 15: n = s->splits; break;
+    case 16: n = s->panes; break;
+    case 17: n = s->zoom; break;
+    case 18: n = s->slot_fonts; break;
+    case 19: n = s->split_restores; break;
+    case 20: n = s->scrollback; break;
     }
     put_long(v, n);
 }

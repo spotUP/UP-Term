@@ -2,7 +2,9 @@
 ; ixemul.library and ixnet.library it replaced. XCON:, PTY: and IXPIPE: stay mounted until a reboot.
 ; Your history (ENVARC:vtcon.history), UP-Term:var (asked, default No) and $HOME/.vshrc are kept.
 ; AmiSSL (LIBS:amisslmaster.library, the AmiSSL: assign and its drawer) stays: other programs use it, and Install-AmiSSL put it there.
-; The add-on archive UP-Term-nvim and the upkg packages UP-Term-git, UP-Term-perl and UP-Term-vim are removed first, by its own Uninstall; Claude, amiga-pi and Python3 stand alone and stay.
+; AmiNetXDuo (the TCP/IP stack, installed only when none was found) stays too: its own Uninstall-AmiNetXDuo, in its drawer, removes it.
+; The add-on archive up-nvim and the upkg packages up-git, up-perl and up-vim are removed first, by its own Uninstall; Claude, amiga-pi and Python3 stand alone and stay.
+; Amarchy's own settings (ENVARC:Amarchy/bar.conf, your GUI themes in ENVARC:Amarchy/themes, ENVARC:up-term/keymap.user) are yours and stay.
 ; Run from anywhere:  Execute Uninstall
 FailAt 21
 ; CON:/RAW: back to the system's (new windows; open ones keep UP-Term)
@@ -15,7 +17,9 @@ Delete >NIL: DEVS:DOSDrivers/PTY DEVS:DOSDrivers/PTY.info QUIET
 ; GG: and the block in S:User-Startup, if Install made them (UP-Term:
 ; is ours only then): vsh takes the block out, before vsh itself goes
 ; The blocks Install wrote into S:User-Startup (GG:, the CON: and device
-; switches) go;
+; switches) go, and the Mount lines of another console replacement
+; (KingCON...) that Install turned off (";UP-Term off: ", takecon.sh) are
+; on again;
 ; vsh does it, before vsh itself goes. The script is in ENVARC:up-term
 ; (older kits kept it in UP-Term: only).
 ; UP-Term's own drawer: found through the assign UP-Term: (CD prints where
@@ -58,16 +62,18 @@ EndIf
 ; The add-on archives that need UP-Term go first, each by the Uninstall its
 ; Install kept, while UP-Term: is still assigned. The stand-alone ones (Claude, amiga-pi,
 ; Python3: their record is in ENVARC:upkg) are left alone.
+; A record the old Installer left under a package's former name (dist/package-renames.txt) is renamed first.
+@RECORDRENAMES@
 @ADDONUNINSTALL@
 ; The files of add-ons that the single kit (before the kit split) installed and
-; that no archive has taken over (UP-Term:pkg/legacy, kit-split D7): Claude.lha and amiga-pi.lha
+; that no archive has taken over (UP-Term:pkg/legacy, kit-split D7): up-claude.lha and up-pi.lha
 ; took over theirs when their record is in ENVARC:upkg (tests/test_dist_addons.py holds
 ; these names to dist/packages.txt)
 If EXISTS UP-Term:pkg/legacy
-  If NOT EXISTS ENVARC:upkg/Claude
+  If NOT EXISTS ENVARC:upkg/up-claude
     Delete >NIL: C:Claude C:ClaudeCode QUIET
   EndIf
-  If NOT EXISTS ENVARC:upkg/amiga-pi
+  If NOT EXISTS ENVARC:upkg/up-pi
     Delete >NIL: C:amiga-pi QUIET
   EndIf
 EndIf
@@ -85,17 +91,53 @@ If NOT WARN
     Set unvsh UP-Term:bin/vsh
   EndIf
 EndIf
+; a wasabid that was in C: before Install (no marker of ours) stays, and so
+; does its boot line: Install wrote the wasabi block only because
+; S:User-Startup had no line, so a plain one takes the block's place
+; (the owner, 2026-10-25)
+Set unwasabi ""
+If NOT EXISTS ENVARC:up-term/wasabid
+  If EXISTS C:wasabid
+    If EXISTS S:User-Startup
+      Search >NIL: S:User-Startup ";BEGIN UP-Term wasabi"
+      If NOT WARN
+        Set unwasabi 1
+      EndIf
+    EndIf
+  EndIf
+EndIf
 If NOT "$unst" EQ ""
   If EXISTS S:User-Startup
     $unvsh "$unst"
     If EXISTS T:User-Startup.up-term
       Copy T:User-Startup.up-term S:User-Startup CLONE QUIET
       Delete >NIL: T:User-Startup.up-term QUIET
+      If "$unwasabi" EQ "1"
+        Echo >>S:User-Startup "Run >NIL: C:wasabid"
+      EndIf
+    EndIf
+    ; the flat UI patch block carries no UP-Term in its name: the plain call above leaves it, so it goes by name
+    Delete >NIL: T:User-Startup.up-term QUIET
+    $unvsh "$unst" Amarchy-Flat
+    If EXISTS T:User-Startup.up-term
+      Copy T:User-Startup.up-term S:User-Startup CLONE QUIET
+      Delete >NIL: T:User-Startup.up-term QUIET
+    EndIf
+  EndIf
+  ; the upkg Alias block of S:Shell-Startup (its own output file, so an older
+  ; unstartup.sh that ignores the second argument cannot overwrite it)
+  If EXISTS S:Shell-Startup
+    Delete >NIL: T:Shell-Startup.up-term QUIET
+    $unvsh "$unst" "" S:Shell-Startup
+    If EXISTS T:Shell-Startup.up-term
+      Copy T:Shell-Startup.up-term S:Shell-Startup CLONE QUIET
+      Delete >NIL: T:Shell-Startup.up-term QUIET
     EndIf
   EndIf
 EndIf
 UnSet unst
 UnSet unvsh
+UnSet unwasabi
 ; TMP: only when Install assigned it (its marker)
 If EXISTS ENVARC:up-term/tmp
   Assign >NIL: TMP: T: REMOVE
@@ -111,7 +153,7 @@ If EXISTS "$updest/unstartup.sh"
 EndIf
 ; Python3: is the stand-alone Python3 archive's assign when its record is there; an older
 ; single kit's block (removed by unstartup.sh) made it otherwise
-If NOT EXISTS ENVARC:upkg/Python3
+If NOT EXISTS ENVARC:upkg/up-python
   Assign >NIL: Python3: EXISTS
   If NOT WARN
     Assign Python3:
@@ -140,6 +182,36 @@ If EXISTS ENVARC:up-term/amiagent
   UnSet >NIL: upw
   Delete >NIL: ENV:upw QUIET
 EndIf
+; Amarchy (the Super-key commodity), when it runs: stopped first with Ctrl-C (its Wait loop ends on it, the same
+; way as its ARexx QUIT, and it needs no RexxMast), because a running program's file cannot be deleted with the
+; drawer; its S:User-Startup block went with the other UP-Term blocks above
+Status >ENV:upw COM UP-Term:bin/Amarchy
+If NOT WARN
+  Break $upw C
+EndIf
+Status >ENV:upw COM Amarchy
+If NOT WARN
+  Break $upw C
+EndIf
+UnSet >NIL: upw
+Delete >NIL: ENV:upw QUIET
+; Ctrl-C is only a signal: Amarchy ends a moment later, and until then its process holds UP-Term:bin (its
+; home drawer), so the Delete ALL below left an empty UP-Term/bin behind (rig 9 fresh-all, 2026-10-29).
+; Wait until it is gone, at most 10 s (one dot per second: no Eval needed).
+Set upwait ""
+Lab amarchygone
+Status >NIL: COM UP-Term:bin/Amarchy
+If WARN
+  Status >NIL: COM Amarchy
+EndIf
+If NOT WARN
+  If NOT "$upwait" EQ ".........."
+    Wait 1
+    Set upwait "$upwait."
+    Skip amarchygone BACK
+  EndIf
+EndIf
+UnSet upwait
 ; Your data lives in UP-Term:var (asked above): on No everything else goes
 ; and var stays where it is.
 If "$upkeepvar" EQ "YES"
@@ -158,6 +230,13 @@ EndIf
 If EXISTS ENVARC:up-term/cryptossh
   Delete >NIL: LIBS:libcryptossh.library QUIET
 EndIf
+; the Directory Opus filetype, only when Install put it there (its marker) and DOpus5: is assigned
+If EXISTS ENVARC:up-term/dopus-filetype
+  Assign >NIL: DOpus5: EXISTS
+  If NOT WARN
+    Delete >NIL: DOpus5:Filetypes/UP-Term QUIET
+  EndIf
+EndIf
 ; the font sizes Install added (their markers); a drawer left empty goes,
 ; and FixFonts drops its .font
 If EXISTS ENVARC:up-term/font-TopazPro-16
@@ -172,7 +251,19 @@ EndIf
 If EXISTS ENVARC:up-term/font-IBM-16
   Delete >NIL: FONTS:IBM/16 QUIET
 EndIf
-Delete >NIL: FONTS:TopazPro FONTS:IBM QUIET
+If EXISTS ENVARC:up-term/font-SymbolsNerdFontMono
+  Delete >NIL: FONTS:SymbolsNerdFontMono.ttf QUIET
+EndIf
+If EXISTS ENVARC:up-term/font-JetBrainsMono-16
+  Delete >NIL: FONTS:JetBrainsMono/16 QUIET
+EndIf
+If EXISTS ENVARC:up-term/font-JetBrainsMono-ttf
+  Delete >NIL: FONTS:JetBrainsMono.ttf QUIET
+EndIf
+Delete >NIL: FONTS:TopazPro FONTS:IBM FONTS:JetBrainsMono QUIET
+If NOT EXISTS FONTS:JetBrainsMono
+  Delete >NIL: FONTS:JetBrainsMono.font QUIET
+EndIf
 If NOT EXISTS FONTS:TopazPro
   Delete >NIL: FONTS:TopazPro.font QUIET
 EndIf
@@ -182,9 +273,16 @@ EndIf
 If EXISTS SYS:System/FixFonts
   SYS:System/FixFonts
 EndIf
-Delete >NIL: L:vtcon-handler L:pty-handler C:vsh C:upgetty C:UPTerm C:UPDemo C:ixkill C:screen C:tmux C:UPConsole "C:UP-Term Prefs" DEVS:up-console.device QUIET
-; C:uptelnet is Claude.lha's program too: it stays while Claude's record is there
-If NOT EXISTS ENVARC:upkg/Claude
+Delete >NIL: L:vtcon-handler L:pty-handler C:vsh C:upgetty C:UPTerm C:WBPath C:Agent C:UPDemo C:ixkill C:screen C:tmux C:UPConsole C:UP-Term-Prefs "C:UP-Term Prefs" DEVS:up-console.device QUIET
+; C:Reboot only when it is ours (OS 3.2 has its own)
+If EXISTS C:Reboot
+  Search >NIL: C:Reboot "(UP-Term)"
+  If NOT WARN
+    Delete >NIL: C:Reboot QUIET
+  EndIf
+EndIf
+; C:uptelnet is up-claude.lha's program too: it stays while Claude's record is there
+If NOT EXISTS ENVARC:upkg/up-claude
   Delete >NIL: C:uptelnet QUIET
 EndIf
 Delete >NIL: ENVARC:screenrc ENV:screenrc ENVARC:tmux.conf ENV:tmux.conf QUIET
@@ -231,9 +329,14 @@ EndIf
 If EXISTS ENVARC:up-term/touch
   Delete >NIL: C:touch QUIET
 EndIf
-; ENV: first: on AmigaOS 3.2 a directory copied from ENVARC: into ENV: keeps
-; its source locked ("object is in use") until the copy in ENV: is gone
-Delete >NIL: ENV:up-term ENVARC:up-term ALL QUIET
+; Files only in ENV:, as deleting a drawer in 3.2's linked ENV: resets the
+; machine (common/env-empty.dos). ENVARC: then goes whole; on 3.2 its drawers
+; stay "in use" while ENV: has them, until a reboot.
+Set upempty ENV:up-term
+; @include dist/common/env-empty.dos
+Set upempty ENVARC:up-term
+; @include dist/common/env-empty.dos
+Delete >NIL: ENVARC:up-term ALL QUIET
 ; TERMINFO: ours goes, the user's from before Install comes back
 If EXISTS ENV:TERMINFO
   Search >NIL: ENV:TERMINFO /ENV/up-term/terminfo
@@ -304,6 +407,10 @@ Delete >NIL: ENV:upixemul ENV:upixnet QUIET
 UnSet upixemul
 UnSet upixnet
 Delete >NIL: ENVARC:up-term-orig ALL QUIET
-; ENV: first, as ENV:up-term above
-Delete >NIL: ENV:vsh ENVARC:vsh ALL QUIET
+; Files only in ENV:, as ENV:up-term above
+Set upempty ENV:vsh
+; @include dist/common/env-empty.dos
+Set upempty ENVARC:vsh
+; @include dist/common/env-empty.dos
+Delete >NIL: ENVARC:vsh ALL QUIET
 Echo "UP-Term removed. Reboot to unmount XCON:, PTY: and IXPIPE:, and to stop wasabid."

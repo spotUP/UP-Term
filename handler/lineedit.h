@@ -59,6 +59,7 @@ typedef struct le_line {
     unsigned char ghost[96];
     int ghost_n;
     unsigned long ghost_key, ghost_asked;
+    int ghost_file, ghost_asked_file; /* the ghost (the look-up) is a file word's: it goes before history */
     unsigned char *hist;    /* the lines, each NUL-terminated, oldest first (LE_MALLOC) */
     long hist_used, hist_cap;
     unsigned long *hist_at; /* where line i starts in hist (LE_MALLOC, hist_at_cap entries) */
@@ -77,6 +78,7 @@ typedef struct le_line {
     int undo_n, typing;     /* typing: the last change was an inserted char */
     /* V91 vi editing mode (set -o vi): vi 0 emacs keys, 1 vi. Each line starts in insert mode. */
     int vi, vi_cmd;         /* vi_cmd: command mode */
+    int esc;                /* emacs: Esc was pressed, the next key is Meta's (readline's ESC prefix) */
     unsigned char binds[LE_BINDS][2]; /* V92: the shell's key bindings: key, function (le_fns.h) */
     int nbinds;
     int vi_count, vi_count2; /* the count typed, the one saved by an operator */
@@ -164,8 +166,11 @@ void le_kc_show_list(le_line *le, const char *names, int len);
  * one now: 1 for a command word (the line's first word), 2 for a file
  * word; *from is the word's first byte, *key names the line it is asked
  * for. It answers 0 for an empty or finished word, a quote, a variable, a
- * wildcard, a slash command, a line with a history suggestion, a line
- * already asked about. The look-up must not wait on the disk: it is the
+ * wildcard, a slash command, a command word with a history suggestion, a
+ * line already asked about. A file word is looked up even when a history
+ * line fits: the current directory goes first (owner 2026-10-21, "rm -r up"
+ * offered a history line's up-Term-backup/ over the up-term.lha that is
+ * there), so a file ghost shows before the history suggestion. The look-up must not wait on the disk: it is the
  * caller's worker. le_ghost_offer gives the answer: tail (Latin-1, the
  * text that would follow the cursor; n 0: nothing) shows grey if the line
  * is still the one `key` names and the cursor is at its end; Right or End
@@ -234,6 +239,13 @@ void le_hist_clear(le_line *le);
  * no shell armed keep Ctrl-D as before, the CTRL_D break (LE_CTRLD_KEY). Ctrl-\ stays end of file everywhere. */
 enum { LE_CTRLD_KEY, LE_CTRLD_EOF, LE_CTRLD_SEND };
 int le_ctrl_d(int shell_armed, int reader_is_program, int line_len);
+
+/* A break key in key_in. Ctrl-C..F, Ctrl-\ (CTRL_E) and Ctrl-Z (CTRL_F) signal the opener in cooked mode and in
+ * Amiga raw mode; an xterm window in raw mode sends the byte only. *brk_bit is the break's bit (12 = CTRL_C ..
+ * 15 = CTRL_F), 0 for none. LE_BRK_ONLY: the key ends with its break. LE_BRK_KEY: the key then goes on as typed
+ * (raw mode appends it; cooked Ctrl-\ is end of file as well, as on CON:, so a cooked Copy ends). */
+enum { LE_BRK_NONE, LE_BRK_ONLY, LE_BRK_KEY };
+int le_break_key(int raw, int xterm, unsigned char b, int *brk_bit);
 
 /* A list to choose from with the keys, drawn under a finished line (W30:
  * /theme with no name): one name a row, the chosen one as a reverse bar,

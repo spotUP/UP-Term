@@ -1,0 +1,18 @@
+; UP-Term: can be a multi-directory assign (Assign UP-Term: A: + B:Tools/UP-Term): a lookup searches every
+; directory but MakeDir and Copy write into the first one only, where pkg/ (and the add-on's own
+; files) may not belong. So an add-on writes through one real drawer: the one Install wrote to
+; ENVARC:up-term/Dir, assigned to UPTREAL: (payload, record drawer, MANIFEST). The assign is dropped at
+; the end of record.dos. Without that file, or when it names a drawer that is gone, UPTREAL: is UP-Term:'s
+; own first directory, which is what the writes used before. Run first in every part of install.dos, so each
+; STEP finds UPTREAL: assigned.
+Set uptpkg "@PKGDIR@"
+Set uptrec "@RECORD@"
+Assign >NIL: UP-Term: EXISTS
+If NOT WARN
+; @include dist/common/resolve-uptreal.dos
+  If "$uptmoved" EQ YES
+    Set uptpkg "@PKGDIRREAL@"
+    Set uptrec "@RECORDREAL@"
+  EndIf
+  Unset uptmoved
+EndIf

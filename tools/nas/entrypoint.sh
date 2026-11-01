@@ -28,8 +28,8 @@ done
 # the connections that reach the NAS's tailnet address
 case "$NAS_IP $ALLOW" in
 *EDIT-ME*)
-    echo "claude-amiga: NAS_IP and ALLOW in compose.yaml are still the EDIT-ME placeholders."
-    echo "claude-amiga: set NAS_IP to the NAS's LAN address and ALLOW to your LAN (like 192.168.1.0/24), then start again."
+    echo "claude-amiga: NAS_IP and ALLOW are not set: .env beside compose.yaml is missing or still holds the EDIT-ME placeholders."
+    echo "claude-amiga: set NAS_IP to the NAS's LAN address and ALLOW to your LAN (like 192.168.1.0/24), in .env (copy env.example to .env), then start again."
     exit 1 ;;
 esac
 set --

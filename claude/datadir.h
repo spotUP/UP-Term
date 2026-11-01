@@ -18,10 +18,11 @@
 
 #define DD_KIT   "UP-Term:"          /* the kit's assign: present when the kit is installed */
 #define DD_DISK  "UP-Term:var"       /* the growing files' drawer, one per program inside */
+#define DD_DIRFILE "ENVARC:up-term/Dir"   /* the installer's record of the one real UP-Term drawer */
 #define DD_CONF  "ENVARC:"           /* the small configuration, ENVARC:<program> */
 
 /* the data directory of program prog ("Claude", "amiga-pi") into out:
- * 1 on disk (UP-Term:var/<prog>), 0 the fallback ENVARC:<prog>, -1 too long */
+ * 1 on disk (<real drawer>/var/<prog>: the drawer ENVARC:up-term/Dir names when it exists, else UP-Term:var/<prog>), 0 the fallback ENVARC:<prog>, -1 too long */
 int dd_dir(cl_sys *sys, const char *prog, char *out, long cap);
 
 /* every directory of path made, from its volume down: 0, -1 */

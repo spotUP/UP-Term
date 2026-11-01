@@ -3,16 +3,16 @@
 Shell tutorial, /tutorial, lesson 1 typed to its end, :quit then `tutorial next`, the progress file, the
 vshrc first-run hint).
 
-Cases, in this order (a later one may need an earlier one's state, so --only runs just the named case):
+Cases, in this order (each sets the progress file it needs, so --only runs any case alone):
   selftest-01 .. selftest-13   UP-Term:bin/vsh UP-Term:bin/tutorial --selftest <lesson>: "ok N" for every step
   hint-before   a fresh vsh window with no progress prints the vshrc hint
   typed         `tutorial` typed at the vsh prompt lists all 13 lessons (the hint's advice)
   menu          Help > Shell tutorial opens a tab that stays up at a tutorial prompt
   slash         /tutorial does the same
   lesson1       (run as `vsh UP-Term:bin/tutorial`, not the typed command: see typed) lesson 1 typed to its end: "Lesson finished."
-  progress      $HOME/.tutorial (System:.tutorial) holds the line 1
-  resume        :quit in lesson 2, then `tutorial next` starts lesson 2 again
-  hint-after    a fresh vsh window after lesson 1 prints no hint
+  progress      lesson 1 again from no progress, then $HOME/.tutorial (System:.tutorial) holds the line 1
+  resume        progress 1: :quit in lesson 2, then `tutorial next` starts lesson 2 again
+  hint-after    progress 1: a fresh vsh window prints no hint
 
 Verdicts go to build/<rig>/tutorial.verdicts.json when a case ends; a passed case with the same files is skipped.
   tutorial_rig.py                 every case not yet passed
@@ -55,7 +55,7 @@ def record(name, ok, detail):
     d[name] = {"verdict": "pass" if ok else "fail", "fp": FP, "detail": detail[-600:], "time": time.time()}
     VERDICTS.parent.mkdir(parents=True, exist_ok=True)
     VERDICTS.write_text(json.dumps(d, indent=1))
-    print("[%s] %s %s" % ("PASS" if ok else "FAIL", name, "" if ok else detail[-300:].replace("\n", " | ")), flush=True)
+    print("[%s] %s %s" % ("PASS" if ok else "FAIL", name, "" if ok else detail[:600].replace("\n", " | ")), flush=True)
 
 
 def until(cond, secs):
@@ -84,6 +84,17 @@ def close_vsh():
     typewin.key(typewin.RET, wait=2)
 
 
+def amarchy_port():
+    """True when the AMARCHY ARexx port is open on the rig"""
+    m = ami._m()
+    try:
+        with ami._conn() as conn:
+            m.arexx(conn, 'AMARCHY', 'STATUS')
+        return True
+    except m.WasabiError:
+        return False
+
+
 def case_selftest(n):
     """the lesson's own answers on Amiga vsh. The answers of the window lesson act on the window
     (UPTERM_STATE act ...), which --selftest cannot do: the host test's fake state stands in, as
@@ -92,7 +103,13 @@ def case_selftest(n):
     ami.put(os.path.join(ROOT, "tests", "fake-upterm-state"), "RAM:fake-upterm-state")
     c.run("Delete RAM:fakestate ALL QUIET >NIL:", 30)
     c.run("MakeDir RAM:fakestate", 30)
-    rc, out = c.run("UP-Term:bin/vsh -c \"UPTERM_STATE='UP-Term:bin/vsh RAM:fake-upterm-state' "
+    # lesson 14 asks Amarchy for its state through rx: the rig's shell path is C: only (a real Workbench has
+    # SYS:Rexxc in it) and the commodity is not started by the boot, so the rig gives both
+    pre = "Path SYS:Rexxc ADD\n" if n == "14" else ""
+    if n == "14" and amarchy_port() is False:
+        c.run("Run >NIL: UP-Term:bin/Amarchy", 30)
+        time.sleep(4)
+    rc, out = c.run(pre + "UP-Term:bin/vsh -c \"UPTERM_STATE='UP-Term:bin/vsh RAM:fake-upterm-state' "
                     "UPTERM_FAKE_DIR=RAM:fakestate %s --selftest UP-Term:share/tutorial/%s\""
                     % (TUT, name), 180)
     steps = [l for l in out.splitlines() if l.startswith(("ok ", "FAIL"))]
@@ -101,7 +118,7 @@ def case_selftest(n):
 
 
 def case_hint(expect):
-    c.run("Delete %s QUIET" % PROGRESS) if expect else None
+    set_progress([] if expect else [1])
     fresh_vsh("hintwin")
     text = typewin.screen_text()
     close_vsh()
@@ -116,6 +133,8 @@ def vsh_pids():
 
 
 RCMD = 0x0080
+LCMD = 0x0040
+LSHIFT = 0x0001
 SANDBOX = "T:tutorial"
 
 
@@ -144,6 +163,13 @@ def set_progress(nums):
     c.run("Delete %s QUIET" % PROGRESS)
     if nums:
         c.run("Copy VTC:tut-progress %s QUIET" % PROGRESS)
+
+
+def saved_progress():
+    """The progress file's numbers, to put back with set_progress; none when there is no file (Type's error text
+    carries a fault number, which is not progress)."""
+    rc, out = c.run("Type %s" % PROGRESS)
+    return [int(n) for n in out.split() if n.isdigit()] if rc == 0 else []
 
 
 def sandbox_there():
@@ -208,7 +234,7 @@ def counters():
     return d, out
 
 
-LINE = 16                                # pixel rows per text line: the tab is drawn at twice topaz 8's height
+LINE = 16                                # pixel rows per text line while the tab is drawn at twice topaz 8's height (Screen.line says which)
 
 
 class Screen:
@@ -227,6 +253,23 @@ class Screen:
         self.cols = (self.w - 24) // 8          # text columns; the last one is always background
         self.y0 = self.y + 22
         self.bg = self.px(self.x0 + (self.cols - 1) * 8 + 3, self.y + self.h // 2)
+        self.line, self.gh = LINE, LINE - 4     # pixel rows per text line and per glyph box; set_pitch() re-reads them
+        self.set_pitch()
+
+    def row_bytes(self, y):
+        o = 8 + (y * self.sw + self.x0) * 3
+        return bytes(self.b[o:o + self.cols * 8 * 3])
+
+    def set_pitch(self):
+        """The tab is not always drawn at twice topaz 8's height: at lesson 12 step 5 the text sits at the plain 8 pixel
+        pitch (s35 probe, stable over 4 s, so not a redraw). Twice-height text draws every glyph row twice, so almost
+        every ink row equals a neighbouring row over the whole width; plain topaz rows seldom do."""
+        ys = [y for y in range(self.y0, self.y + self.h - 12) if self.ink(y, 1, self.cols)]
+        if len(ys) < 8:
+            return
+        rows = {y: self.row_bytes(y) for y in range(ys[0] - 1, ys[-1] + 2)}
+        paired = sum(1 for y in ys if rows[y] == rows.get(y - 1) or rows[y] == rows.get(y + 1))
+        self.line, self.gh = (LINE, LINE - 4) if paired * 10 >= len(ys) * 9 else (LINE // 2, LINE // 2 - 1)
 
     def px(self, x, y):
         o = 8 + (y * self.sw + x) * 3
@@ -241,33 +284,40 @@ class Screen:
         return [y for y in range(self.y0, self.y + self.h - 12) if self.ink(y, c0, c1)]
 
     def line_sig(self, bottom, k, c0, c1):
-        """The pixels of text line k above the bottom (prompt) line, columns c0..c1: the 12 pixel rows (6 glyph rows, each drawn
-        twice) above the baseline (descenders of the line above never leak in). bottom = the prompt's last ink row."""
+        """The pixels of text line k above the bottom (prompt) line, columns c0..c1: the gh pixel rows (12 at twice height:
+        6 glyph rows, each drawn twice; 7 at plain height, the descender row of the line above stays out) above the baseline (descenders of the line above never leak in).
+        bottom = the prompt's last ink row."""
         out = b""
-        for y in range(bottom - LINE * k - 11, bottom - LINE * k + 1):
+        for y in range(bottom - self.line * k - self.gh + 1, bottom - self.line * k + 1):
             o = 8 + (y * self.sw + self.x0 + (c0 - 1) * 8) * 3
             out += bytes(self.b[o:o + (c1 - c0 + 1) * 8 * 3])
         return out
+
+    def bottom(self):
+        """The prompt's baseline: the last ink row of its first 9 columns ("tutorial>" has no descender). The cursor
+        block sits past column 9 and blinks, one pixel row below the baseline, so the last ink row of the whole line
+        moved by a pixel between snapshots and shifted every line grid read from it. None when the screen is blank."""
+        last = self.rows(1, 9) or self.rows(1, self.cols)
+        return last[-1] if last else None
 
     def task_rows(self):
         """[(y_center, last_col)] of the text lines above the last prompt group, nearest first: lines whose
         first 9 columns equal the bottom prompt ("tutorial> ", also with a typed command after it) and blank
         lines are skipped; every other line is a candidate for the task line's end."""
-        last = self.rows(1, self.cols)
-        if not last:
+        bottom = self.bottom()
+        if bottom is None:
             return []
-        bottom = last[-1]
         prompt = self.line_sig(bottom, 0, 1, 9)
         out = []
-        for k in range(1, (bottom - self.y0) // LINE):
+        for k in range(1, (bottom - self.y0) // self.line):
             if self.line_sig(bottom, k, 1, 9) == prompt:
                 continue
             sig = self.line_sig(bottom, k, 1, self.cols)
             if sig == self.bg * (len(sig) // 3):
                 continue
             cols = [cc for cc in range(self.cols, 0, -1)
-                    if self.line_sig(bottom, k, cc, cc) != self.bg * (12 * 8)]
-            out.append((bottom - LINE * k - 6, cols[0]))
+                    if self.line_sig(bottom, k, cc, cc) != self.bg * (self.gh * 8)]
+            out.append((bottom - self.line * k - self.gh // 2, cols[0]))
         return out
 
     def task_row(self, skip=0):
@@ -280,14 +330,13 @@ class Screen:
         """True when the bottom row (the "tutorial> " prompt) is pixel-identical, over the prompt's 9 columns, to
         the row above it: an empty line only re-prompted and the step did not advance. After a pass the row above
         the prompt is the next task (or its wrapped tail), never a prompt."""
-        last = self.rows(1, self.cols)
-        if not last:
+        y = self.bottom()
+        if y is None:
             return True
-        y = last[-1]
         # the prompt's glyph rows: compare the 8 pixel rows ending at the bottom ink row with the 8 above
         return all(self.b[8 + ((y - d) * self.sw + self.x0) * 3:8 + ((y - d) * self.sw + self.x0 + 72) * 3] ==
-                   self.b[8 + ((y - d - LINE) * self.sw + self.x0) * 3:8 + ((y - d - LINE) * self.sw + self.x0 + 72) * 3]
-                   for d in range(12))
+                   self.b[8 + ((y - d - self.line) * self.sw + self.x0) * 3:8 + ((y - d - self.line) * self.sw + self.x0 + 72) * 3]
+                   for d in range(self.gh))
 
     def word_span(self, skip=0):
         """(y_center, first_px, last_px) of the word at the end of the task row right above the prompt: the last
@@ -296,25 +345,56 @@ class Screen:
         if not t:
             return None
         y, last = t
-        rows = [yy for yy in range(y - 4, y + 5)]
+        rows = [yy for yy in range(y - self.gh // 3, y + self.gh // 3 + 1)]
         first = last
         while first > 1 and any(self.ink(yy, first - 1, first - 1) for yy in rows):
             first -= 1
         return y, self.x0 + (first - 1) * 8, self.x0 + last * 8
 
 
-def settled(secs=20):
-    """The Screen once two snapshots 1.5 s apart find the same text rows: the mirror is still drawing the last
-    Return's prompt and scroll before that (a snapshot taken then put the task line 2 rows too high and the drag
-    selected nothing: rig M, 2026-10-19, 3 of 4 runs)."""
-    prev, end = None, time.time() + secs
+def up_word_ready(sc):
+    """Step 5's expected word is there: a text row ending in 11 columns, `up` and a 9 digit pid."""
+    return any(last == 11 for _, last in sc.task_rows())
+
+
+def prompt_back(prompt_sig, rows_before):
+    """want() for settled(): the tutorial prompt (its 9 column pixels, read before the Return) is the bottom line again and
+    the task rows differ from those before the Return. Step 7 runs `$ key0=$(UPTerm state menu-picks)`, an external command,
+    before it prints its Press line: a still screen while it runs has no prompt at the bottom, so settled() alone returned
+    early and the K came before the baseline (s35c)."""
+    def want(sc):
+        b = sc.bottom()
+        return b is not None and sc.line_sig(b, 0, 1, 9) == prompt_sig and sc.task_rows() != rows_before
+    return want
+
+
+def settled(secs=20, want=None, snap=None, pause=1.5):
+    """The Screen once three snapshots 1.5 s apart find the same text rows and the same prompt baseline, and want(screen)
+    (when given) holds: the mirror is still drawing the lesson text, the last Return's prompt and the scroll before
+    that (a snapshot taken then put the task line 2 rows too high and the drag selected nothing: rig M 2026-10-19,
+    3 of 4 runs; rig 4 s35: the lesson still printing when two snapshots matched). Returns the last Screen on timeout."""
+    snap = snap or Screen
+    seen, end = [], time.time() + secs
     while True:
-        sc = Screen()
-        rows = sc.task_rows()
-        if rows and rows == prev or time.time() > end:
+        sc = snap()
+        seen = (seen + [(sc.task_rows(), sc.bottom())])[-3:]
+        stable = len(seen) == 3 and all(x == seen[0] for x in seen)
+        if (stable and (want is None or want(sc))) or time.time() > end:
             return sc
-        prev = rows
-        time.sleep(1.5)
+        time.sleep(pause)
+
+
+def next_row(rows, prev_rows, tried):
+    """Index of the candidate task row to drag next. After a failed copy the screen is re-read: when its rows differ
+    from the screen the last try ran on, the screen changed and candidate 0 is read again; only on the same screen are
+    the rows already tried skipped. None when every row of this screen was tried."""
+    if rows != prev_rows:
+        tried.clear()
+    for i, r in enumerate(rows):
+        if r not in tried:
+            tried.add(r)
+            return i
+    return None
 
 
 def drag(x0, x1, y):
@@ -334,7 +414,7 @@ def case_lesson12():
     line only re-prompts), so "12" in the progress file proves each action step was seen by the handler's counters.
     The Return is repeated up to 3 times when the tab still shows the same prompt (the mirror lagging); retries
     are listed in the detail."""
-    saved = c.run("Type %s" % PROGRESS)[1]
+    saved = saved_progress()
     set_progress(range(1, 12))
     log, retries, ok, host_title = [], [], False, "tabwin"
     try:
@@ -352,19 +432,21 @@ def case_lesson12():
         time.sleep(2)
 
         def ret(name):
-            """Return in the tutorial tab; repeated only while the prompt row is still the same prompt (the step
-            did not advance: the mirror lagging). Never pressed again once the next task shows."""
-            for n in range(3):
-                ami.key(typewin.RET)
-                time.sleep(3)
-                if not Screen().reprompted():
-                    if n:
-                        retries.append("%s x%d" % (name, n))
-                    return True
-            retries.append("%s gave up" % name)
-            return False
+            """Return in the tutorial tab, once, then wait until the next step's text AND its baseline command
+            (`$ x0=$(UPTerm state ...)`, an external command) are done and the prompt is back (prompt_back): an
+            action done earlier counted before the baseline and the step's check failed forever (s35c: the menu
+            pick at step 3 came before `menu0`, the lesson sat at step 3 and every later action landed there).
+            True when the step advanced (the prompt row is no longer a repeat of the row above)."""
+            pre = Screen()
+            sig, rows = pre.line_sig(pre.bottom(), 0, 1, 9), pre.task_rows()
+            ami.key(typewin.RET)
+            sc = settled(want=prompt_back(sig, rows))
+            if sc.reprompted():
+                retries.append("%s gave up" % name)
+                return False
+            return True
 
-        ami.key(0x14, RCMD)                      # 1. Right Amiga T
+        ami.key(0x14, LCMD)                      # 1. Left Amiga T (the keymap's super+t; Right Amiga T is no menu key: dist/keymap super+shift+t takes it)
         time.sleep(4)
         ami.key(0x02, RCMD)                      # back to the tutorial tab (tab 2)
         until(lambda: active_title() == tut, 8)
@@ -379,10 +461,13 @@ def case_lesson12():
         tab_type("/help", 2)                     # 4. a slash command; the shell sees an empty line
         ret("step4")                             # Return even when /help output sits above the prompt
         log.append(("slash", True))
-        sc = settled()                           # 5. drag over the word at the end of the task line
-        clip = None
-        for skip in range(4):                    # a try again on a settled screen when the clipboard is not "up<pid>"
-            w = sc.word_span(0)
+        sc = settled(want=up_word_ready)         # 5. drag over the word at the end of the task line
+        clip, clips, tried, prev_rows = None, [], set(), None
+        for _ in range(4):                       # a try again on a settled screen when the clipboard is not "up<pid>"
+            rows = sc.task_rows()
+            skip = next_row(rows, prev_rows, tried)
+            prev_rows = rows
+            w = sc.word_span(skip) if skip is not None else None
             if not w:
                 break
             y, px0, px1 = w
@@ -390,21 +475,25 @@ def case_lesson12():
             ami.key(0x33, RCMD)                  # copy-on-select is off by default: Right Amiga C copies the selection
             time.sleep(1)
             clip = typewin._clip("RAM:rig.clip").strip()
+            clips.append((skip, w, clip, sc.cols, rows[:4]))
             if re.fullmatch(r"up\d+", clip):
                 break
             kx, ky = ami.pointer_scale()         # one click clears the selection
             ami.script(("move", int(px0 * kx), int(y * ky)), ("wait", 2), ("button", 0, 1), ("wait", 2), ("button", 0, 0), ("wait", 3))
-            sc = settled()
+            sc = settled(want=up_word_ready)
         log.append(("copies", ret("step5")))
         ami.req(0x08, bytes([4]) + b"echo ")     # 6. echo + paste
         time.sleep(0.5)
         ami.key(0x34, RCMD)
         time.sleep(1)
+        pre = Screen()
+        pre_sig, pre_rows = pre.line_sig(pre.bottom(), 0, 1, 9), pre.task_rows()
         ami.key(typewin.RET)
         time.sleep(3)
         said = c.run("Type %s.out" % SANDBOX)[1].strip()
         log.append(("paste", bool(re.fullmatch(r"up\d+", said))))
-        ami.key(0x27, RCMD)                      # 7. Right Amiga K
+        settled(want=prompt_back(pre_sig, pre_rows))  # step 7's text and baseline (`$ key0=...` is an external command) must be printed before the K counts
+        ami.key(0x27, RCMD | LSHIFT)             # 7. Right Amiga Shift K
         time.sleep(1)
         log.append(("clear", ret("step7")))
         time.sleep(3)
@@ -418,7 +507,9 @@ def case_lesson12():
         # per-step proof is the progress file: "12" is written only after all seven checks passed (dist/tutorial),
         # and every counter grew. The pixel test of ret() can miss an advance, so it is detail, not a verdict.
         ok = done and grew and dict(log)["paste"]
-        detail = "progress %s; steps %s; counters %s; retries %s; echo said %r" % (prog, log, moved, retries or "none", said)
+        # counters first: the runner keeps the last 300 characters of a failure, and the counters name the step that
+        # never counted (a pixel-tested step in `log` can read advanced falsely)
+        detail = "counters %s; progress %s; steps %s; retries %s; clips %s; echo said %r" % (moved, prog, log, retries or "none", clips, said)
         if not (base or after):
             detail += "; state output %r" % out1[:80]
     finally:
@@ -429,7 +520,7 @@ def case_lesson12():
                 until(lambda: active_title() == host_title, 10)
         if active_title() == host_title:
             close_host()
-        set_progress([int(n) for n in saved.split() if n.isdigit()])
+        set_progress(saved)
     return ok, detail
 
 
@@ -458,11 +549,13 @@ def case_typed():
 
 
 def case_progress():
+    case_lesson1()
     rc, out = c.run("Type %s" % PROGRESS)
     return rc == 0 and out.split() == ["1"], "rc %s: %r" % (rc, out)
 
 
 def case_resume():
+    set_progress([1])
     fresh_vsh("reswin")
     typewin.typ(TUT + " next")
     typewin.key(typewin.RET, wait=4)
@@ -495,13 +588,13 @@ def case_check_b():
     names = [open(os.path.join(ROOT, "dist", "tutorial-lessons", n)).readline()[2:].strip() for n in LESSONS]
     lines = [l for l in out.splitlines() if l.strip().startswith("[")]
     miss = [n for n in names if n.lower() not in out.lower()]
-    return len(lines) == len(LESSONS) == 13 and not miss, "%d lessons listed; missing %s" % (len(lines), miss)
+    return len(lines) == len(LESSONS) and not miss, "%d lessons listed; missing %s" % (len(lines), miss)
 
 
 def case_check_c():
     """Every lesson finished: Help > Shell tutorial opens a tab that stays open on the lesson prompt. Judged by
     the title and the sentinel: no sandbox at the prompt (dist/tutorial:289-295), then `1` makes T:tutorial."""
-    saved = c.run("Type %s" % PROGRESS)[1]
+    saved = saved_progress()
     set_progress(range(1, len(LESSONS) + 1))
     try:
         open_tab("menu")
@@ -520,7 +613,7 @@ def case_check_c():
             tab_type("", 1)
             tab_type("exit", 2)
         close_host()
-        set_progress([int(n) for n in saved.split() if n.isdigit()])
+        set_progress(saved)
     return ok, detail
 
 

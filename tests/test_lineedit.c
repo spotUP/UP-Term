@@ -2,6 +2,7 @@
  * the engine's screen. */
 #include "harness.h"
 #include "../handler/lineedit.h"
+#include "../render/vtinput.h"
 
 static long colour_sgrs; /* the command word's green / red written (W44) */
 
@@ -295,6 +296,41 @@ static void completion_ghost_is_asked_only_for_a_plain_word_without_a_history_hi
     vt_free(t);
 }
 
+/* A1200 2026-10-21: in a drawer holding up-term.lha, "rm -r up" offered
+ * "-Term-backup-2026-10-17/" from an old history line. A file word is looked
+ * up even when history fits, and the current directory's name goes first;
+ * with no file match the history line still shows, and a command word keeps
+ * history first. */
+static void a_file_word_suggests_the_current_directory_before_history(void)
+{
+    vt_term *t = start(50, 6, "> ");
+    int from = -1, kind = 0;
+    unsigned long gk = 0;
+    run("rm -r up-Term-backup-2026-10-17/");
+    type("rm -r up");
+    CHECK_STR(h_row(t, 1), "> rm -r up-Term-backup-2026-10-17/"); /* history, until the look-up */
+    CHECK_INT(le_ghost_want(&le, &from, &kind, &gk), 1);
+    CHECK_INT(from, 6);
+    CHECK_INT(kind, 2);
+    le_ghost_offer(&le, gk, (const unsigned char *)"-term.lha", 9);
+    CHECK_STR(h_row(t, 1), "> rm -r up-term.lha");
+    key(VT_KEY_RIGHT, 0);
+    CHECK_STR(line(), "rm -r up-term.lha");
+    key(VT_KEY_RETURN, 0);
+    le_reset(&le);
+    h_put(le.t, "> ");
+    type("rm -r up");
+    CHECK_INT(le_ghost_want(&le, &from, &kind, &gk), 1);
+    le_ghost_offer(&le, gk, (const unsigned char *)"", 0); /* nothing by that name here */
+    CHECK_STR(h_row(t, 2), "> rm -r up-term.lha");      /* the newest history line */
+    key(VT_KEY_RETURN, 0);
+    le_reset(&le);
+    h_put(le.t, "> ");
+    type("r");
+    CHECK_INT(le_ghost_want(&le, &from, &kind, &gk), 0); /* a command word: history has it */
+    vt_free(t);
+}
+
 static void return_does_not_run_the_suggestion(void)
 {
     vt_term *t = start(40, 6, "> ");
@@ -350,6 +386,34 @@ static void word_motions_and_undo(void)
     ctrl(0x1F); /* undo */
     CHECK_STR(line(), "copy from to");
     CHECK_STR(h_row(t, 0), "> copy from to");
+    vt_free(t);
+}
+
+/* A6: Alt+b / Alt+f in a cooked xterm window, the way a key travels: vtwin_key gives the encoder the mods
+ * vti_char_mods says, vt_encode_key_plain makes the bytes, the handler's cooked_key hands le_key the first
+ * byte as the character (key 0 for a character); before the fix the bytes were ESC b and nothing moved.
+ * Esc, then b is M-b too (readline's ESC prefix). */
+static void alt_word_moves_through_the_window_encoding(void)
+{
+    vt_term *t = start(40, 3, "$ ");
+    unsigned char b[16];
+    int n;
+    type("one two");
+    n = vt_encode_key_plain(t, 'b', vti_char_mods(1, 1, 0, VT_MOD_ALT), b);
+    le_key(&le, n ? b[0] : 0, VT_MOD_ALT, b, n); /* Alt+b */
+    CHECK_INT(le.pos, 4);
+    n = vt_encode_key_plain(t, 'f', vti_char_mods(1, 1, 0, VT_MOD_ALT), b);
+    le_key(&le, n ? b[0] : 0, VT_MOD_ALT, b, n); /* Alt+f */
+    CHECK_INT(le.pos, 7);
+    key(VT_KEY_ESCAPE, 0);
+    type("b"); /* Esc b */
+    CHECK_INT(le.pos, 4);
+    type("x");
+    CHECK_STR(line(), "one xtwo");
+    /* a program that reads bytes keeps Meta's ESC */
+    CHECK_INT(vti_char_mods(1, 0, 0, VT_MOD_ALT | VT_MOD_CTRL), VT_MOD_ALT);
+    CHECK_INT(vti_char_mods(1, 0, 1, VT_MOD_ALT | VT_MOD_CTRL), VT_MOD_ALT | VT_MOD_CTRL);
+    CHECK_INT(vti_char_mods(0, 0, 0, VT_MOD_ALT), 0);
     vt_free(t);
 }
 
@@ -1203,9 +1267,11 @@ static void vi_mode_starts_each_line_in_insert_mode_and_emacs_keys_stay(void)
     CHECK_STR(line(), "two");
     vtype("\033k"); /* k: the history line before */
     CHECK_STR(line(), "one");
-    le_set_vi(&le, 0); /* set -o emacs: Esc and k are plain again */
+    le_set_vi(&le, 0); /* set -o emacs: Esc is readline's Meta prefix again, not vi's command mode */
     le_reset(&le);
     vtype("\033");
+    vtype("k"); /* M-k: unbound, no vi history line */
+    CHECK_STR(line(), "");
     vtype("k");
     CHECK_STR(line(), "k");
     vt_free(t);
@@ -1360,12 +1426,29 @@ static void ctrl_d_ends_a_program_read_under_vsh_only(void)
     CHECK_INT(le_ctrl_d(0, 1, 3), LE_CTRLD_KEY);
 }
 
+static void ctrl_backslash_ends_a_cooked_read_after_its_break(void)
+{
+    int bit;
+    CHECK_INT(le_break_key(0, 0, 0x1C, &bit), LE_BRK_KEY);  /* cooked: CTRL_E, then end of file (a cooked Copy ends) */
+    CHECK_INT(bit, 14);
+    CHECK_INT(le_break_key(0, 1, 0x1C, &bit), LE_BRK_KEY);
+    CHECK_INT(le_break_key(0, 0, 0x03, &bit), LE_BRK_ONLY); /* Ctrl-C: the break only */
+    CHECK_INT(bit, 12);
+    CHECK_INT(le_break_key(0, 0, 0x1A, &bit), LE_BRK_ONLY);
+    CHECK_INT(bit, 15);
+    CHECK_INT(le_break_key(1, 0, 0x03, &bit), LE_BRK_KEY);  /* Amiga raw: break and byte */
+    CHECK_INT(le_break_key(1, 1, 0x1C, &bit), LE_BRK_NONE); /* xterm raw: the byte only */
+    CHECK_INT(bit, 0);
+    CHECK_INT(le_break_key(0, 0, 'a', &bit), LE_BRK_NONE);
+}
+
 void suite_lineedit(void)
 {
     typed_ahead_enters_each_start_a_new_line();
     a_line_typed_ahead_is_drawn_after_the_next_prompt();
     typeahead_queue_drops_a_key_only_when_full();
     ctrl_d_ends_a_program_read_under_vsh_only();
+    ctrl_backslash_ends_a_cooked_read_after_its_break();
     bound_keys_run_their_functions_and_the_rest_keep_emacs();
     medium_mode_reports_tab_shift_tab_up_and_down_at_once();
     medium_mode_leaves_the_editing_keys_to_the_editor();
@@ -1386,10 +1469,12 @@ void suite_lineedit(void)
     completion_ghost_shows_when_no_history_fits_and_right_takes_it();
     completion_ghost_for_an_old_line_is_dropped();
     completion_ghost_is_asked_only_for_a_plain_word_without_a_history_hit();
+    a_file_word_suggests_the_current_directory_before_history();
     return_does_not_run_the_suggestion();
     ctrl_r_searches_history();
     ctrl_r_cancel_restores();
     word_motions_and_undo();
+    alt_word_moves_through_the_window_encoding();
     ctrl_l_clears_and_keeps_prompt_and_line();
     ctrl_l_keeps_a_prompt_beyond_the_bmp();
     editing_inside_the_line();

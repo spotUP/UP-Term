@@ -15,10 +15,15 @@
  * A variation selector 16 does not widen its base: glibc and xterm count
  * U+2764 U+FE0F as one cell (foot and kitty widen it only in grapheme mode,
  * ?2027).
+ * One exception of UP-Term's own (plan 2026-10-22-handler-rasterizer.md
+ * R6.2): the Private Use Areas U+E000-F8FF and U+F0000-FFFFD, the Nerd Font
+ * icons, are 2, so an icon draws over two cells; a remote wcwidth says 1.
+ * The powerline separators U+E0B0-E0D7 stay 1: made to fill one cell.
  *
  * Layout: below U+40000, page c >> 8 is its width (0, 1, 2) when all alike, or
  * 3 + a row of vt_width_bits with 2 bits a code point; above, only
- * U+E0000..E0FFF (tags, variation selectors supplement) is not 1. A lookup
+ * U+E0000..E0FFF (tags, variation selectors supplement: 0) and U+F0000..FFFFD
+ * (private use: 2) are not 1. A lookup
  * is two loads, no search: it runs for every character outside ASCII. */
 #ifndef VTWIDTH_H
 #define VTWIDTH_H
@@ -38,24 +43,24 @@ static const unsigned char vt_width_page[1024] = {
     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
     2, 2, 2, 2, 2, 2, 2, 45, 1, 1, 1, 1, 1, 1, 1, 1,
+    46, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+    2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 47, 1, 1, 48, 49,
+    1, 50, 51, 52, 1, 1, 1, 1, 1, 1, 53, 1, 1, 54, 55, 56,
+    57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 1, 68, 69, 70, 71,
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 46, 1, 1, 47, 48,
-    1, 49, 50, 51, 1, 1, 1, 1, 1, 1, 52, 1, 1, 53, 54, 55,
-    56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 1, 67, 68, 69, 70,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 71, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 72, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 72, 1, 1, 1, 1, 1, 1, 1, 1, 73, 74, 1, 1, 1, 75,
+    1, 73, 1, 1, 1, 1, 1, 1, 1, 1, 74, 75, 1, 1, 1, 76,
     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-    2, 2, 2, 2, 2, 2, 2, 76, 2, 2, 2, 2, 77, 78, 1, 1,
+    2, 2, 2, 2, 2, 2, 2, 77, 2, 2, 2, 2, 78, 79, 1, 1,
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 79,
-    2, 80, 81, 1, 1, 1, 1, 1, 1, 1, 1, 1, 82, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 83,
-    1, 84, 85, 86, 1, 1, 1, 1, 1, 1, 87, 1, 1, 1, 1, 1,
-    88, 74, 89, 1, 90, 91, 1, 1, 92, 93, 1, 1, 1, 1, 1, 1,
-    94, 95, 96, 97, 98, 99, 100, 101, 1, 102, 103, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 80,
+    2, 81, 82, 1, 1, 1, 1, 1, 1, 1, 1, 1, 83, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 84,
+    1, 85, 86, 87, 1, 1, 1, 1, 1, 1, 88, 1, 1, 1, 1, 1,
+    89, 75, 90, 1, 91, 92, 1, 1, 93, 94, 1, 1, 1, 1, 1, 1,
+    95, 96, 97, 98, 99, 100, 101, 102, 1, 103, 104, 1, 1, 1, 1, 1,
     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
@@ -71,7 +76,7 @@ static const unsigned char vt_width_page[1024] = {
     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-    2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 104,
+    2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 105,
     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
@@ -87,10 +92,10 @@ static const unsigned char vt_width_page[1024] = {
     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
     2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-    2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 104,
+    2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 105,
 };
 
-static const unsigned char vt_width_bits[102][64] = {
+static const unsigned char vt_width_bits[103][64] = {
     {
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x55, 0x55, 0x55, 0x55,
@@ -348,6 +353,12 @@ static const unsigned char vt_width_bits[102][64] = {
         0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
         0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0x55, 0x55, 0x55, 0x00, 0x00, 0x00, 0x00,
         0x00, 0x40, 0x15, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x55,
+    },
+    {
+        0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
+        0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
+        0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0x55, 0x55, 0x55, 0x55,
+        0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
     },
     {
         0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x45, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55,
@@ -711,8 +722,11 @@ static int vt_char_width(vt_u32 c)
     int p;
     if (c < 0x300)
         return 1;
-    if (c >= 0x40000UL)
-        return c >= 0xE0000UL && c <= 0xE0FFFUL ? 0 : 1;
+    if (c >= 0x40000UL) {
+        if (c >= 0xE0000UL && c <= 0xE0FFFUL)
+            return 0;
+        return c >= 0xF0000UL && c <= 0xFFFFDUL ? 2 : 1;
+    }
     p = vt_width_page[c >> 8];
     if (p < 3)
         return p;

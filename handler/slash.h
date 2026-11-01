@@ -32,7 +32,9 @@ enum {
     SLASH_TERM,              /* arg: TERM for programs vsh starts here, or "none" */
     SLASH_COLORS,            /* arg: rgb | 256 | 16 (COLORTERM, TERM for 16), or "none" */
     SLASH_SETUP,             /* the window's settings and where each came from */
-    SLASH_STATE              /* arg: a key, or empty for all: the window's action counters */
+    SLASH_STATE,             /* arg: a key, or empty for all: the window's action counters */
+    SLASH_SCREEN_TEXT,       /* arg: a file: the visible rows as text, one line per row, written there */
+    SLASH_ASK                /* arg: a task, or none: the ai-agent preference's agent in a new tab, started on it */
 };
 
 typedef struct slash_value {
@@ -138,19 +140,26 @@ int slash_setup_text(const slash_row *rows, int n, char *out, int cap);
  * Right Amiga 1-9), panes (the shown tab's) and zoom (1: its focused pane is zoomed) are
  * the host's, copied in by the push.
  * Keys (the /state names): tabs-opened tab-switches menu-picks last-menu slash-count
- * last-slash copies pastes tabs active splits panes zoom slot-fonts
- * split-restores scrollback (the answering pane's own scrollback size in lines, filled
- * when it answers, NS4.3). */
-enum { STATE_TAB_OPENED = 1, STATE_SWITCH, STATE_MENU, STATE_SLASH, STATE_COPY, STATE_PASTE, STATE_SPLIT, STATE_SLOT_FONT,
-       STATE_SPLIT_RESTORE };
+ * last-slash copies pastes tabs active km-hits last-key font-size outline-own outline-aa
+ * splits panes zoom slot-fonts split-restores scrollback. km-hits counts the keymap bindings the
+ * handler ran (Left Amiga keys, plan 2026-10-22-amarchy-commodity); last-key is the last one's
+ * (KM_Q_* mask << 8) | raw code. outline-own counts the glyphs UP-Term's own TrueType engine
+ * drew for the answering window's outline font (render/outline.h vo_own; plan
+ * 2026-10-22-handler-rasterizer.md R3.4). scrollback is the answering pane's own scrollback
+ * size in lines, filled when it answers (NS4.3). */
+enum { STATE_TAB_OPENED = 1, STATE_SWITCH, STATE_MENU, STATE_SLASH, STATE_COPY, STATE_PASTE, STATE_KEYMAP,
+       STATE_SPLIT, STATE_SLOT_FONT, STATE_SPLIT_RESTORE };
 
 typedef struct slash_state {
-    long tabs_opened, tab_switches, menu_picks, last_menu, slash_count, copies, pastes, tabs, active, splits, panes, zoom, slot_fonts,
-         split_restores, scrollback;
+    long tabs_opened, tab_switches, menu_picks, last_menu, slash_count, copies, pastes, tabs, active, km_hits, last_km;
+    long font_size;            /* the answering window's font height in pixels: its own, filled when /state answers */
+    long outline_aa;           /* glyphs the answering window drew antialiased (vr_render n_aa), filled as font_size */
+    long outline_own;          /* the answering window's own-engine glyph count, filled as font_size */
+    long splits, panes, zoom, slot_fonts, split_restores, scrollback;
     char last_slash[24];       /* the last typed command's name, "" before the first */
 } slash_state;
 
-/* One action: ev is a STATE_*; arg the menu item's id (STATE_MENU); name the command's (STATE_SLASH). */
+/* One action: ev is a STATE_*; arg the menu item's id (STATE_MENU), or the key (STATE_KEYMAP); name the command's (STATE_SLASH). */
 void slash_state_bump(slash_state *s, int ev, long arg, const char *name);
 
 /* The /state answer: key empty = every key, "key value" per line; a key = its bare value and "\n".

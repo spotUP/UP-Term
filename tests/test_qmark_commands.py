@@ -28,10 +28,13 @@ def check(ok, what):
 COMMANDS = {
     'UPConsole': 'device/upconsole.c',
     'UPDemo': 'demo/updemo_amiga.c',
+    'Reboot': 'install/reboot.c',
+    'UPBigVol': 'install/bigvol.c',
     'UPTerm': 'handler/upterm.c',
     'upprefs': 'prefs/upprefs.c',
     'upicon': 'install/upicon.c',
     'upupdate': 'install/upupdate.c',
+    'upsame': 'install/upsame.c',
     'upgetty': 'device/upgetty.c',
     'uptelnet': 'net/uptelnet.c',
     'sz': 'zm/zm_amiga.c',
@@ -43,10 +46,15 @@ COMMANDS = {
     'ps': 'proc/ps_amiga.c',
     'top': 'proc/top_amiga.c',
     'Claude': 'claude/main_amiga.c',
+    'Amarchy': 'amarchy/amarchy.c',
+    'amarchy-menu': 'amarchy/menu.c',
+    'amarchy-gui': 'amarchy/gui.c',
+    'amarchy-index': 'amarchy/index.c',
 }
 # not commands: handlers, devices, objects, and probes / test tools
 EXCLUDED = {
     'vtengine-$(CPU).o': 'object file, not a program',
+    'keymap.o': 'object file (the dist-check alloc probe)',
     'vtcon-handler': 'handler (mounted, takes no command line)',
     'pty-handler': 'handler',
     'ixpipe-handler': 'handler',
@@ -59,12 +67,14 @@ EXCLUDED = {
     'ttyprobe': 'probe',
     'dsrtime': 'probe',
     'dripens': 'probe',
+    'tcpprobe': 'install probe (not a user command)',
     'wasabikey': 'test tool for the Wasabi board (not a user command)',
     'cellbench': 'benchmark',
     'wprobe': 'probe',
     'phaseprobe': 'probe',
     'engbench': 'benchmark',
     'ptytest': 'rig test tool',
+    'scrprobe': 'rig probe (menu font on a screen)',
 }
 
 mk = open(os.path.join(ROOT, 'Makefile')).read()

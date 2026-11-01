@@ -1,30 +1,36 @@
 .KEY DIR/A,STEP/K
 .BRA {
 .KET }
-; UP-Term-git install: git 2.56.0, the version control system, at the paths the base UP-Term.lha used to carry
+; up-git install: git 2.56.0 (clone, fetch and ls-remote over https via AmiSSL; local commands) in UP-Term:bin and UP-Term:share/git-core
 ; Run by this archive's Install (an Installer script), which asks the questions:
 ;   Execute <archive>/Files/install.dos <archive>/Files [STEP <part>]
 ; From a Shell without Installer the same line installs everything. The Installer
 ; runs the parts one at a time with STEP (tests/test_dist_addons.py holds the two to
-; the same list); the first part, check, stops the install when UP-Term.lha is
+; the same list); the first part, check, stops the install when up-term.lha is
 ; missing or too old (the reason is in ENV:UPTCHECK).
 FailAt 21
 ; the archive's Files drawer: every name below is relative to it
 CD "{DIR}"
+; every write into UP-Term: goes through UPTREAL: (UP-Term: may be a multi-directory assign: it writes to the first one)
+; @include dist/common/@RECORDRESOLVE@
 If NOT "{STEP}" EQ ""
   Skip {STEP}
 EndIf
 ; @include dist/common/@CHECKFRAG@
 Lab copy-git
-; git 2.56.0, the version control system (bin/git, its dashed programs (git-upload-pack and others) and the templates in share/git-core): the same
-; paths in UP-Term: the base put them at (bin, share, licenses; vsh finds the program on its path).
+; git (bin/git and its helpers, share/git-core/templates): git keeps its objects as long-named files, so the
+; UP-Term volume needs long file names: FFS in long-name mode (DOS7), PFS3 or SFS. OFS and plain FFS
+; stop at 30 characters, too short for git's object files.
 ; userland holds what dist/slim.txt names; Copy of a drawer copies what is in it.
-MakeDir >NIL: UP-Term:bin
-MakeDir >NIL: UP-Term:share
-MakeDir >NIL: UP-Term:licenses
-Copy userland UP-Term: ALL CLONE QUIET
+MakeDir >NIL: UPTREAL:bin
+MakeDir >NIL: UPTREAL:lib
+MakeDir >NIL: UPTREAL:licenses
+Copy userland UPTREAL: ALL CLONE QUIET
+If WARN
+  Quit 20
+EndIf
 If NOT "{STEP}" EQ ""
   Quit 0
 EndIf
 ; @include dist/common/record.dos
-Echo "git installed: type  git --version  in an UP-Term window (vsh)."
+Echo "git installed: type  git  in an UP-Term window (vsh)."

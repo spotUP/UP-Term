@@ -1,0 +1,28 @@
+; synthetic: every check and cycle of the editor away from its default, KingCON letters, a hand-typed key
+[profile default]
+screen = own
+font-aspect = off
+backspace = bs
+amiga-keys = off
+dither = off
+outline-antialias = off
+padding-color = extend
+highlight-cat = off
+program-clipboard = read-write
+cursor = bar
+cursor-blink = on
+bell = visual
+bold-bright = off
+meta = amiga
+copy-on-select = on
+wheel = ignore
+reflow = off
+scrollbar = hide
+completion = kingcon
+kingcon-mode = LBCS
+kingcon-info = show
+kingcon-cache = off
+unknown-key = kept
+palette = 1,0x00CD00,4,0x5C5CFF
+[profile vim]
+bell = none

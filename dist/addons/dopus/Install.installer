@@ -1,0 +1,58 @@
+; @include dist/common/addon-head.installer
+
+(if (not #update)
+(
+; welcome: n = 7, lead 3
+(message
+    "\n\n\nD I R E C T O R Y   O P U S  5\n\n"
+    "Directory Opus 5 5.104 for AmigaOS 3, the open-source\n"
+    "release, unmodified. Optional: Amarchy's DOpus menu and\n"
+    "hotkeys use it. A Directory Opus already installed\n"
+    "(DOpus5: assigned) is left alone.\n"
+    (all))
+(set #kb-dopus @KBDOPUS@)
+(set #totalkb @KBTOTAL@)
+(set #free (getdiskspace (pathonly #dest)))
+(if (and (> #free 0) (< (/ #free 1024) #totalkb))
+    (abort "Nothing was installed. " #dest " has " (/ #free 1024) " KB free;\n"
+           "Directory Opus needs about " #totalkb " KB. Free room and\n"
+           "run Install again."))
+
+;  ready: n = 7, lead 3
+(message
+    (cat "\n\n\nReady to install Directory Opus 5, the build for\n"
+         "your " (database "cpu") ", through its own installer.\n\n"
+         "Proceed starts the install;\n"
+         "Abort Install leaves everything as it was."))
+)
+    ; Update: the options of the last install, from its record
+    (
+        (if (exists "@OPTS@/UPTOPTDEST") (run "Copy @OPTS@/#? ENV: QUIET"))
+        (set #kb-dopus 0)
+        (set #totalkb (+ 1 (getenv "UPTUPDKB")))
+        ))
+(set #donekb 0)
+
+(complete 0)
+
+(P_OPTIONS)
+
+; the CPU choice: 68000 and 68010 get DOpus5_104_os3-68000.lha (Files/os3-68000), 68020 and newer
+; DOpus5_104_os3.lha (Files/os3); install.dos reads ENV:UPTOPTCPU68000
+(if (or (= (database "cpu") "68000") (= (database "cpu") "68010"))
+    (textfile (dest "ENV:UPTOPTCPU68000") (append "68000")))
+
+(set #step "dopus" #kb #kb-dopus #n 3
+     #why (cat "Running Directory Opus's own installer: the\n"
+               "build DOpus5_104_os3.lha holds (68020 and newer)\n"
+               "or DOpus5_104_os3-68000.lha (68000, 68010)."))
+(P_STEP)
+
+(set #n 6)
+(P_LEAD)
+(set #done
+    (cat #lead "Directory Opus 5 is installed. Start it from\n"
+         "its drawer (DOpus5:), or from Amarchy's DOpus menu.\n\n"
+         "Uninstall (beside Install) removes this archive's\n"
+         "record; the DOpus5: drawer stays."))
+; @include dist/common/addon-tail.installer

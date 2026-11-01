@@ -1,0 +1,9 @@
+Directory Opus 5: parts, licences and where the source is
+
+Part                          Licence                          Source
+----------------------------  -------------------------------  --------------------------------------------
+Directory Opus 5 5.104        AROS Public License 1.1          https://github.com/BlitterStudio/dopus5
+(Files/os3, Files/os3-68000)  (Files/COPYING)                  tag v5.104 (SOURCE.txt)
+
+Notes
+- The programs are upstream's own release builds, unmodified; only the build that fits the CPU is installed.

@@ -206,6 +206,17 @@ static void palette_blends_over_the_background(void)
     }
 }
 
+/* the antialiased outline glyph's table: fg over bg at each coverage */
+static void ramp_runs_from_background_to_text(void)
+{
+    CHECK_INT(ce_mix(0xFF8000UL, 0x000040UL, 0), 0x000040L);   /* uncovered: the background */
+    CHECK_INT(ce_mix(0xFF8000UL, 0x000040UL, 255), 0xFF8000L); /* covered: the text colour */
+    /* 128 of 255: (255 * 128 + 127) / 255 = 128; (128 * 128 + 127) / 255 = 64; (64 * 127 + 127) / 255 = 32 */
+    CHECK_INT(ce_mix(0xFF8000UL, 0x000040UL, 128), 0x804020L);
+    CHECK_INT(ce_mix(0xFFFFFFUL, 0, 64), 0x404040L);
+    CHECK_INT(ce_mix(0xFFFFFFUL, 0, 192), 0xC0C0C0L);
+}
+
 /* ---- the target and the order ------------------------------------------------------ */
 
 #define FB_W 160
@@ -405,6 +416,7 @@ void suite_emoji(void)
     image_centres_in_the_two_cell_box();
     colour_cache_keeps_at_most_its_slots();
     palette_blends_over_the_background();
+    ramp_runs_from_background_to_text();
     colour_page_on_rtg_of_15_bits_mono_unifont_elsewhere();
     text_reaches_the_colour_painter();
 }

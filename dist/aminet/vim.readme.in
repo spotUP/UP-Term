@@ -1,0 +1,18 @@
+Short:        Vim 9.2 for UP-Term
+Author:       spotUP
+Uploader:     spotup@gmail.com (spotUP)
+Type:         text/edit
+Version:      @VERSION@
+Architecture: m68k-amigaos >= 3.0.0; m68k-020
+Requires:     comm/term/up-term.lha >= @NEEDSBASE@ (it brings the patched ixemul.library)
+Distribution: Aminet
+
+Vim 9.2.1202 (the vim program and its runtime files) for an UP-Term window (TERM=vtcon, the
+patched ixemul.library of the base archive).
+
+Needs the base archive up-term.lha (version @NEEDSBASE@ or newer) installed first.
+
+Install: unpack, double-click Install. Uninstall removes what this archive installed.
+
+Licence: Vim licence (Vim); bundled libraries carry their own (see LICENSES.txt in this
+archive).

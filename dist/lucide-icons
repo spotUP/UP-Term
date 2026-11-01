@@ -1,0 +1,95 @@
+; Filled icons for the flat Workbench (plan 2026-11-01-amarchy-filled-icon-set.md, F3).
+; One row per target: `match = phosphor-name`. tools/gen_lucide_icons.py renders each Phosphor Fill glyph
+; (build/phosphor, @phosphor-icons/web in the Makefile) to dist/Amarchy/Icons/lucide.dat; an unknown icon name fails the build.
+; match is one of
+;   a path          SYS:Prefs/Font         (volume or assign, then the .info path without ".info")
+;   a default       def_drawer             (ENVARC:Sys/def_NAME.info; def_disk, def_drawer, def_tool, def_project, def_trashcan, def_RAM, every def_* of OS 3.2 Prefs/Env-Archive/Sys)
+;   a type fallback type:disk type:drawer type:tool type:project type:garbage type:kick type:device
+; Workbench defaults
+def_disk        = hard-drive
+def_drawer      = folder
+def_tool        = wrench
+def_project     = file-text
+def_trashcan    = trash
+def_RAM         = memory
+def_rad         = hard-drive
+def_cd0         = vinyl-record
+def_adf         = disc
+def_diskarchive = archive
+def_archive     = archive
+def_amigaguide  = book-open
+def_ascii       = file-text
+def_asm         = cpu
+def_c           = file-code
+def_cpp         = file-code
+def_h           = file-code
+def_i           = file-code
+def_src         = file-code
+def_font        = text-aa
+def_iff         = image
+def_picture     = image
+def_key         = key
+def_kickstart   = cpu
+def_music       = music-notes
+def_sound       = speaker-high
+def_video       = film-strip
+def_officedocs  = file-xls
+def_pdf         = file-text
+def_prefs       = gear
+def_rexx        = terminal
+def_script      = scroll
+; The system drawers
+SYS:System      = monitor
+SYS:Utilities   = toolbox
+SYS:Prefs       = sliders-horizontal
+SYS:Tools       = hammer
+SYS:Devs        = plug
+SYS:Expansion   = puzzle-piece
+SYS:Storage     = archive
+SYS:WBStartup   = rocket
+SYS:Locale      = translate
+SYS:Fonts       = text-aa
+; SYS:Utilities
+SYS:Utilities/Clock       = clock
+SYS:Utilities/MultiView   = eye
+SYS:Utilities/Calculator  = calculator
+SYS:Utilities/More        = file-text
+SYS:Utilities/Notepad     = notebook
+SYS:Utilities/AmigaDOS    = terminal
+; SYS:Prefs
+SYS:Prefs/Font          = text-aa
+SYS:Prefs/Palette       = palette
+SYS:Prefs/Screenmode    = monitor
+SYS:Prefs/Time          = clock
+SYS:Prefs/Locale        = translate
+SYS:Prefs/Sound         = speaker-high
+SYS:Prefs/Input         = keyboard
+SYS:Prefs/Pointer       = cursor
+SYS:Prefs/WBPattern     = grid-four
+SYS:Prefs/Workbench     = squares-four
+SYS:Prefs/Printer       = printer
+SYS:Prefs/Serial        = plugs
+; SYS:System
+SYS:System/Shell        = terminal
+SYS:System/DiskCopy     = copy
+SYS:System/Format       = hard-drives
+SYS:System/RexxMast     = scroll
+; Amarchy and UP-Term
+UP-Term                 = terminal-window
+UP-Term:Amarchy         = squares-four
+UP-Term:Amarchy/Icons   = shapes
+UP-Term:Amarchy/Themes  = palette
+UP-Term:Amarchy/Amarchy      = squares-four
+UP-Term:Amarchy/amarchy-menu = list
+UP-Term:Amarchy/amarchy-gui  = app-window
+UP-Term:Amarchy/AmTile       = grid-four
+UP-Term:UPConsole       = terminal-window
+UP-Term:UP-Term         = terminal-window
+; Type fallbacks (any other .info)
+type:disk       = hard-drive
+type:drawer     = folder
+type:tool       = gear-six
+type:project    = file
+type:garbage    = trash
+type:kick       = cpu
+type:device     = usb

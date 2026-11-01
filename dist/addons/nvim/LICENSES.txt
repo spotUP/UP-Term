@@ -1,4 +1,4 @@
-UP-Term-nvim: parts, licences and where the source is
+up-nvim: parts, licences and where the source is
 (rows moved from the single kit's LICENSES.txt by the kit split; K2-6 completes them)
 
 Part                          Licence                          Source

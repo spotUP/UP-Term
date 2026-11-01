@@ -95,6 +95,28 @@ static long f_write(void *os, sh_fh fh, const char *b, long n)
 
 static void run_pending(pending *p);
 
+/* the fake OS layer's secondary result (AmigaDOS IoErr) and its Fault text, for why */
+static long fake_ioerr;
+static int fault_calls;
+
+static long f_ioerr(void *os)
+{
+    long e = fake_ioerr;
+    (void)os;
+    fake_ioerr = 0;
+    return e;
+}
+
+static int f_fault(void *os, long code, char *buf, long max)
+{
+    (void)os;
+    fault_calls++;
+    if (code != 205)
+        return 0;
+    strncpy(buf, "object not found", (size_t)max);
+    return 1;
+}
+
 /* An empty pipe with a job still to write it: run that job first, as a
  * reader blocks until its writer has written (the fake runs jobs whole). */
 static void feed(sh_fh fh)
@@ -203,8 +225,10 @@ static long run_now(char argv[][64], int argc, const sh_io *io)
         f_write(0, io->out, out, 2);
         return 0;
     }
-    if (!strcmp(argv[0], "fail"))
+    if (!strcmp(argv[0], "fail")) {
+        fake_ioerr = 205; /* object not found: the secondary result a failing command leaves */
         return argc > 1 ? atol(argv[1]) : 5;
+    }
     if (!strcmp(argv[0], "ls")) {
         /* Bare ls is the fake listing the pipeline tests count. Given
          * arguments it echoes them instead, so a test can see what vshrc's
@@ -410,7 +434,7 @@ static int f_stat(void *os, const char *path, sh_stat *st, int nofollow)
     memset(st, 0, sizeof(*st));
     st->mode = 0644;
     st->access = 6;
-    if (!strcmp(path, "SYS:")) {
+    if (!strcmp(path, "SYS:") || !strcmp(path, "tmpdir") || !strcmp(path, "ram:") || !strcmp(path, "cd")) {
         st->type = SH_ST_DIR;
         return 0;
     }
@@ -464,6 +488,10 @@ static void fresh(void)
     sh.os.pipe = f_pipe;
     sh.os.run = f_run;
     sh.os.wait = f_wait;
+    sh.os.ioerr = f_ioerr;
+    sh.os.fault = f_fault;
+    fake_ioerr = 0;
+    fault_calls = 0;
     sh.os.done = f_done;
     sh.os.cont = f_cont;
     sh.os.isatty = f_isatty;
@@ -522,6 +550,59 @@ static void kill_names_a_missing_signal_sender(void)
     CHECK_STR(slot(ERR)->data, "vsh: kill: ixkill not found: looked here\nvsh: 77: No such process\n");
 }
 
+/* $! is the background process's pid as the process sees it (the OS layer's job_pid: ixemul's getpid, the
+ * Task address on the Amiga), not the shell's job id; wait and kill take that pid and reach the job. */
+static int sig_hits, sig_target, sig_job;
+static long f_job_pid(void *os, long job)
+{
+    (void)os;
+    return 5000 + job * 16;
+}
+static int f_signal_record(void *os, long target, int sig, int is_job)
+{
+    (void)os;
+    (void)sig;
+    sig_hits++;
+    sig_target = (int)target;
+    sig_job = is_job;
+    return 0;
+}
+
+static void bang_is_the_process_pid(void)
+{
+    fresh();
+    sh.os.job_pid = f_job_pid;
+    sh.os.signal = f_signal_record;
+    sig_hits = 0;
+    {
+        int inc = 0;
+        sh_run_text(&sh, "cat & echo $!; kill $!; wait $!; echo st=$?", &inc);
+    }
+    CHECK_STR(slot(OUT)->data, "5016\nst=0\n"); /* job id 1 -> pid 5016 */
+    CHECK_INT(sig_hits, 1);                      /* the kill went through os.signal ... */
+    CHECK_INT(sig_target, 1);                    /* ... as the job (id 1), not the pid */
+    CHECK_INT(sig_job, 1);
+    CHECK_STR(slot(ERR)->data, "");
+}
+
+/* A bare directory word is a cd (AmigaDOS implicit cd, zsh AUTO_CD); a program or builtin of that name wins */
+static void autocd(void)
+{
+    run("tmpdir; echo $PWD");
+    CHECK_STR(slot(OUT)->data, "tmpdir\n");
+    CHECK_STR(slot(ERR)->data, "");
+    run("ram:; echo $PWD $OLDPWD");
+    CHECK_STR(slot(OUT)->data, "ram: RAM:\n");
+    run("tmpdir extra");
+    CHECK_STR(slot(ERR)->data, "vsh: tmpdir: not found\n");
+    CHECK_INT(sh.ctx.status, 127);
+    run("nosuchdir:");
+    CHECK_STR(slot(ERR)->data, "vsh: nosuchdir:: not found\n");
+    CHECK_INT(sh.ctx.status, 127);
+    run("cd; echo $PWD"); /* the builtin, not the directory named cd */
+    CHECK_STR(slot(OUT)->data, "SYS:\n");
+}
+
 static void basics(void)
 {
     CHECK_STR(run("echo hello world"), "hello world\n");
@@ -576,6 +657,20 @@ static int native_file_sent;
 static char native_list[8][40];
 static int native_n, native_asked;
 
+/* the system's variables (ENV:) a console-less host stands in for: one name and its value */
+static char sysenv_name[40], sysenv_val[80];
+static int sysenv_asked;
+
+static int f_getenv(void *os, const char *name, char *buf, long max)
+{
+    (void)os;
+    sysenv_asked++;
+    if (strcmp(name, sysenv_name) || strlen(sysenv_val) >= (size_t)max)
+        return 0;
+    strcpy(buf, sysenv_val);
+    return 1;
+}
+
 static long f_hist(void *os, int op, long arg, char *buf, long max)
 {
     (void)os;
@@ -618,6 +713,58 @@ static const char *file_data(const char *name)
         if (fs[i].used && !fs[i].is_pipe && !strcmp(fs[i].name, name))
             return fs[i].data;
     return "(no file)";
+}
+
+/* $name sees the system's variables (ENV:) the shell never assigned, as the AmigaDOS Shell does: one set before the
+ * shell started, one a command set during the run (read again at each lookup), and a variable the shell assigns is its
+ * own from then on. Without the os hook nothing changes. This is the path `echo "$pre1"` takes in a vsh script. */
+static void dollar_name_reads_the_system_variables(void)
+{
+    int inc = 0;
+    run("echo \"[$pre1]\"");                    /* no hook (run starts a fresh shell): unchanged */
+    CHECK_STR(slot(OUT)->data, "[]\n");
+    CHECK_INT(sysenv_asked, 0);
+    /* one shell from here on: its output accumulates in OUT */
+    strcpy(sysenv_name, "pre1");
+    strcpy(sysenv_val, "fromshell");
+    sh.os.getenv = f_getenv;
+    sh_run_text(&sh, "echo \"[$pre1][$nosuch]\"", &inc);
+    CHECK_STR(slot(OUT)->data, "[]\n[fromshell][]\n");
+    CHECK(sysenv_asked > 0);                    /* the hook ran */
+    strcpy(sysenv_val, "changed");              /* a SetEnv by a command during the run */
+    sh_run_text(&sh, "echo \"[$pre1]\"", &inc);
+    CHECK_STR(slot(OUT)->data, "[]\n[fromshell][]\n[changed]\n");
+    sh_run_text(&sh, "pre1=local; echo \"[$pre1]\"", &inc); /* the shell's own assignment wins from then on */
+    strcpy(sysenv_val, "again");
+    sh_run_text(&sh, "echo \"[$pre1]\"", &inc);
+    CHECK_STR(slot(OUT)->data, "[]\n[fromshell][]\n[changed]\n[local]\n[local]\n");
+    sh_run_text(&sh, "x=mine", &inc);           /* a plain shell variable is never asked of the system */
+    sysenv_asked = 0;
+    sh_run_text(&sh, "echo \"[$x]\"", &inc);
+    CHECK_INT(sysenv_asked, 0);
+    sh.os.getenv = 0;
+}
+
+/* unset NAME of a system variable (ENV:) hides it from $name for the rest of the shell and its subshells, as bash's
+ * unset does; a name never expanded before is hidden too, and the shell's own assignment still works afterwards */
+static void unset_hides_the_system_variable(void)
+{
+    int inc = 0;
+    run("");                                    /* a fresh shell, output from here on in OUT */
+    strcpy(sysenv_name, "pre1");
+    strcpy(sysenv_val, "fromshell");
+    sh.os.getenv = f_getenv;
+    sh_run_text(&sh, "echo \"[$pre1]\"; unset pre1; echo \"[$pre1]\"", &inc);
+    CHECK_STR(slot(OUT)->data, "[fromshell]\n[]\n");
+    strcpy(sysenv_val, "changed");              /* a later SetEnv by a command stays hidden too */
+    sysenv_asked = 0;
+    sh_run_text(&sh, "echo \"[$pre1]\"; (echo \"[$pre1]\")", &inc);
+    CHECK_STR(slot(OUT)->data, "[fromshell]\n[]\n[]\n[]\n");
+    CHECK_INT(sysenv_asked, 0);                 /* the hidden name is not even asked of the system */
+    strcpy(sysenv_name, "pre2");                /* unset before the first $pre2 */
+    sh_run_text(&sh, "unset pre2; echo \"[$pre2]\"; pre2=mine; echo \"[$pre2]\"", &inc);
+    CHECK_STR(slot(OUT)->data, "[fromshell]\n[]\n[]\n[]\n[]\n[mine]\n");
+    sh.os.getenv = 0;
 }
 
 static void history_has_one_owner_the_console_list_or_the_shell(void)
@@ -1229,6 +1376,35 @@ static void assignment_status_and_scope(void)
 
 /* read: IFS decides the splitting (IFS= keeps the line whole), -r keeps
  * backslashes; without -r a backslash quotes the next character. */
+/* CTRLC-RAW: a program that ended in raw mode (SetMode(1), no SetMode(0)) left the tab raw, and the prompt read
+ * there: CR did not end the line and Ctrl-C was typed as data, so the Copy run next could not be broken (rig
+ * 2026-10-30: 244 of 244 files copied). Before each prompt the shell puts its own line mode back. */
+static int prompt_echo_calls, prompt_echo_on;
+static sh_fh prompt_echo_fh;
+
+static void f_prompt_echo(void *os, sh_fh fh, int on)
+{
+    (void)os;
+    prompt_echo_calls++;
+    prompt_echo_on = on;
+    prompt_echo_fh = fh;
+}
+
+static void a_prompt_takes_the_line_mode_back_after_a_program_left_the_console_raw(void)
+{
+    fresh();
+    sh.os.echo = f_prompt_echo;
+    prompt_echo_calls = prompt_echo_on = 0;
+    prompt_echo_fh = 0;
+    sh_prompt_mode(&sh, IN);
+    CHECK(prompt_echo_calls == 1);
+    CHECK(prompt_echo_on == 1); /* echo on: the console's cooked mode (vsh os_echo: SetMode(fh, 0)) */
+    CHECK(prompt_echo_fh == IN);
+    sh.os.echo = 0;
+    sh_prompt_mode(&sh, IN); /* an OS layer with no terminal modes: nothing to put back */
+    CHECK(prompt_echo_calls == 1);
+}
+
 static void read_builtin(void)
 {
     CHECK_STR(run("echo '  lead  tail  ' | { IFS= read -r l; echo \"[$l]\"; }"), "[  lead  tail  ]\n");
@@ -1463,6 +1639,8 @@ static void prompts(void)
     /* only at a name boundary */
     CHECK_STR(prompt_after("HOME=Work:x; cd Work:xy", "%~"), "Work:xy");
     CHECK_STR(prompt_after("HOME=Work:x; cd Work:x/y", "%~ %c"), "~/y y");
+    /* the default prompt names the volume even inside HOME */
+    CHECK_STR(prompt_after("HOME=Work:; cd Work:src", SH_PS1_DEFAULT), "\033[36mWork:src\033[39m % ");
     CHECK_STR(prompt_after("", "%F{red}a%f%K{blue}b%k"), "\033[31ma\033[39m\033[44mb\033[49m");
     CHECK_STR(prompt_after("", "%F{#ff8000}x%F{208}y%B%bz"),
               "\033[38;2;255;128;0mx\033[38;5;208my\033[1m\033[22mz");
@@ -1585,6 +1763,7 @@ static const char *started(const char *text)
     put_file("RAM:s8", ".key a/m\necho ok\n", 17);
     put_file("RAM:s9", "ab\0cd\n", 6);
     put_file("RAM:prog", "\0\0\3\363#!/bin/sh\n", 14);
+    put_file("/tmp/opkg-ab/preinst", "#!/bin/sh\necho ok\n", 18);
     watched_io = 0;
     {
         int inc = 0;
@@ -1616,6 +1795,8 @@ static void a_bin_sh_and_bin_bash_are_the_shell_and_no_other_path_is(void)
     CHECK_STR(started("RAM:s7 x"), "RAM:s7|x");           /* the S bit: an AmigaDOS script, the OS layer's */
     CHECK_STR(started("RAM:s8 x"), "RAM:s8|x");           /* a .key line: an AmigaDOS script too */
     CHECK_STR(started("RAM:s9 x"), "RAM:s9|x");           /* a NUL byte: binary, not a script */
+    /* opkg's maintainer script: an absolute Unix path, no E bit (the fake has none), a #!/bin/sh line */
+    CHECK_STR(started("/tmp/opkg-ab/preinst install"), "VTC:vsh|/tmp/opkg-ab/preinst|install");
     /* an ordinary executable starts with no open or read of its file by the shell */
     strcpy(watched, "RAM:prog");
     CHECK_STR(started("RAM:prog x"), "RAM:prog|x");
@@ -1674,6 +1855,29 @@ static void a_slash_after_the_volume_colon_is_counted(void)
     CHECK(sh_vol_slashes(":/x") == 0);
 }
 
+/* The console's completion names a word's directory as vsh does: "./up" on
+ * the A1200 (2026-10-21) completed nothing, AmigaDOS has no "." entry. */
+static void a_unix_relative_name_is_the_amiga_one(void)
+{
+    char out[64];
+    sh_amiga_name("./", out, sizeof(out));
+    CHECK(!strcmp(out, ""));
+    sh_amiga_name("../src/", out, sizeof(out));
+    CHECK(!strcmp(out, "/src/"));
+    sh_amiga_name("./../../", out, sizeof(out));
+    CHECK(!strcmp(out, "//"));
+    sh_amiga_name("..", out, sizeof(out));
+    CHECK(!strcmp(out, "/"));
+    sh_amiga_name("/c/", out, sizeof(out)); /* the Amiga meaning stays: the parent's c */
+    CHECK(!strcmp(out, "/c/"));
+    sh_amiga_name("System:/Prefs/", out, sizeof(out));
+    CHECK(!strcmp(out, "System:Prefs/"));
+    sh_amiga_name("Work:src/", out, sizeof(out));
+    CHECK(!strcmp(out, "Work:src/"));
+    sh_amiga_name("", out, sizeof(out));
+    CHECK(!strcmp(out, ""));
+}
+
 /* Uninstall runs dist/unstartup.sh with vsh to take Install's blocks out of
  * S:User-Startup. The Replay kept ";BEGIN UP-Term python" after an
  * Uninstall: the script it ran (an older copy in ENVARC:up-term) listed the
@@ -1723,6 +1927,33 @@ static void unstartup_with_a_name_removes_only_that_block(void)
                          ";BEGIN UP-Term pythonic\nC:Other\n;END UP-Term pythonic\nuser line\n");
 }
 
+/* Install's upkg Alias: a ";BEGIN UP-Term upkg" block in S:Shell-Startup (dist/install.dos, the unix
+ * part, which a base Install and an Update both run). The block is written once (a second run finds it),
+ * and Uninstall's unstartup.sh with a second argument strips it from S:Shell-Startup into its own output
+ * file, user lines byte for byte. The install.dos lines are run here as sh with Search/Echo shimmed. */
+static void the_upkg_alias_block_in_shell_startup_is_written_once_and_removed(void)
+{
+    FILE *f = fopen("dist/unstartup.sh", "rb");
+    char script[4096];
+    char text[8192];
+    size_t n;
+    CHECK(f != NULL);
+    if (!f)
+        return;
+    n = fread(script, 1, sizeof(script) - 1, f);
+    fclose(f);
+    script[n] = 0;
+    /* install: the same three Echo lines as install.dos, guarded by the same Search; run twice */
+    snprintf(text, sizeof(text),
+             "printf '%%s\\n' 'Alias ll list' >S:Shell-Startup\n"
+             "w() { f=0; while read -r l; do case \"$l\" in ';BEGIN UP-Term upkg') f=1 ;; esac; done <S:Shell-Startup;"
+             " if [ $f = 0 ]; then"
+             " printf '%%s\\n' ';BEGIN UP-Term upkg' 'Alias upkg UP-Term:bin/upkg []' ';END UP-Term upkg' >>S:Shell-Startup; fi; }\n"
+             "w; w; n=0; while read -r l; do case \"$l\" in ';BEGIN UP-Term upkg') n=$((n+1)) ;; esac; done <S:Shell-Startup; echo blocks=$n\n"
+             "set -- '' S:Shell-Startup\n%s\ncat <T:Shell-Startup.up-term\n", script);
+    CHECK_STR(run(text), "blocks=1\nAlias ll list\n");
+}
+
 /* A stand-alone archive (Python3.lha) writes ";BEGIN Python3" without UP-Term in the name: with its name
  * unstartup.sh takes out that block only (an older base copy without this rule leaves it, and the
  * archive's Uninstall notices); with no name the base's Uninstall leaves it alone. */
@@ -1750,6 +1981,52 @@ static void unstartup_takes_a_stand_alone_block_by_its_name_only(void)
              " ';BEGIN Python3' 'Assign Python3: SYS:Python3' ';END Python3' 'user line' >S:User-Startup\n"
              "%s\ncat <T:User-Startup.up-term\n", script);
     CHECK_STR(run(text), ";BEGIN Python3\nAssign Python3: SYS:Python3\n;END Python3\nuser line\n");
+}
+
+/* UPConsole refuses CON ON while another console replacement serves CON: (DD21), so Install turns
+ * that replacement's Mount lines in S:User-Startup off (dist/takecon.sh: ";UP-Term off: <line>",
+ * listed in T:UPTCONOFF) and its boot block serves CON: from the next boot (the A1200: KingCON,
+ * 2026-10-20). A second run keeps them off and lists them again; Uninstall (unstartup.sh, no
+ * name) turns them back on byte for byte, a named run leaves them off. */
+static void takecon_turns_another_console_off_and_unstartup_back_on(void)
+{
+    const char *names[2] = { "dist/takecon.sh", "dist/unstartup.sh" };
+    const char *input =
+        "printf '%s\\n' 'Mount CON: from DEVS:KingCON-mountlist' 'Mount RAW: from DEVS:KingCON-mountlist'"
+        " 'mount >NIL: con: from x' 'Mount VNC: from y' '; Mount CON: noted' 'C:Mount CON: from z'"
+        " '  spaced \\\\ line  ' 'Assign CON: DISMOUNT' 'c:assign raw: dismount' 'Assign CON: SYS:x'"
+        " 'Assign FOO: DISMOUNT' >S:User-Startup\n";
+    char script[2][4096];
+    char text[12288];
+    int i;
+    for (i = 0; i < 2; i++) {
+        FILE *f = fopen(names[i], "rb");
+        size_t n;
+        CHECK(f != NULL);
+        if (!f)
+            return;
+        n = fread(script[i], 1, sizeof(script[i]) - 1, f);
+        fclose(f);
+        script[i][n] = 0;
+    }
+    snprintf(text, sizeof(text), "%s%s\ncat <T:User-Startup.up-term\n", input, script[0]);
+    CHECK_STR(run(text), ";UP-Term off: Mount CON: from DEVS:KingCON-mountlist\n"
+                         ";UP-Term off: Mount RAW: from DEVS:KingCON-mountlist\n"
+                         ";UP-Term off: mount >NIL: con: from x\nMount VNC: from y\n; Mount CON: noted\n"
+                         ";UP-Term off: C:Mount CON: from z\n  spaced \\\\ line  \n"
+                         ";UP-Term off: Assign CON: DISMOUNT\n;UP-Term off: c:assign raw: dismount\n"
+                         "Assign CON: SYS:x\nAssign FOO: DISMOUNT\n");
+    snprintf(text, sizeof(text), "%s%s\ncat <T:UPTCONOFF\n", input, script[0]);
+    CHECK_STR(run(text), "Mount CON: from DEVS:KingCON-mountlist\nMount RAW: from DEVS:KingCON-mountlist\n"
+                         "mount >NIL: con: from x\nC:Mount CON: from z\nAssign CON: DISMOUNT\n"
+                         "c:assign raw: dismount\n");
+    snprintf(text, sizeof(text),
+             "printf '%%s\\n' ';UP-Term off: Mount CON: from k' 'user line' ';BEGIN UP-Term console'"
+             " 'C:UPConsole >NIL: CON ON' ';END UP-Term console' >S:User-Startup\n"
+             ": >T:UPTCONOFF\n%s\ncat <T:UPTCONOFF\necho ==\n%s\ncat <T:User-Startup.up-term\necho ==\n"
+             "set -- console\n%s\ncat <T:User-Startup.up-term\n", script[0], script[1], script[1]);
+    CHECK_STR(run(text), "Mount CON: from k\n==\nMount CON: from k\nuser line\n==\n"
+                         ";UP-Term off: Mount CON: from k\nuser line\n");
 }
 
 /* eval, exec, trap, local, getopts, umask (plan unix-tool-ports row 0.6) */
@@ -1862,6 +2139,24 @@ static void trap_builtin(void)
     CHECK_STR(slot(OUT)->data, "");
     CHECK_INT(sh.exiting, 1);
     CHECK_INT((int)sh.exit_status, 131);
+    sh.exiting = 0;
+    sh.exit_status = 0;
+    /* TERM (the Amiga's Ctrl-D break, owner 2026-10-29) runs its trap; without one a script ends with
+     * 143. Before, vsh never polled break bit D: no sender reached a native vsh's TERM trap */
+    fresh();
+    sh.os.interrupted = f_interrupted;
+    intr_sig = 15;
+    intr_after = 20;
+    sh_run_text(&sh, "trap 'echo term' TERM; i=0; while [ $i -lt 40 ]; do i=$((i+1)); done; echo done $i", &inc);
+    CHECK_STR(slot(OUT)->data, "term\ndone 40\n");
+    fresh();
+    sh.os.interrupted = f_interrupted;
+    intr_after = 20;
+    sh.exiting = 0;
+    sh_run_text(&sh, "i=0; while [ $i -lt 40 ]; do i=$((i+1)); done; echo done $i", &inc);
+    CHECK_STR(slot(OUT)->data, "");
+    CHECK_INT(sh.exiting, 1);
+    CHECK_INT((int)sh.exit_status, 143);
     sh.exiting = 0;
     sh.exit_status = 0;
     intr_sig = 2;
@@ -2023,6 +2318,46 @@ static void an_interactive_shell_on_a_terminal_shows_monitor_in_dollar_dash(void
     CHECK_INT(strchr(sh.flagbuf, 'm') == 0, 1);
 }
 
+/* EndCLI and EndShell are AmigaDOS Shell internals with no file in C:, so they are builtins that end the shell like
+ * exit; AmigaDOS names ignore case, so those two (and only those) match in any case. */
+static void endcli_and_endshell_end_the_shell_like_exit(void)
+{
+    int inc = 0;
+    sh_run_text(&sh, "endcli", &inc);
+    CHECK_INT(sh.exiting, 1);
+    fresh();
+    sh_run_text(&sh, "EndCLI", &inc);
+    CHECK_INT(sh.exiting, 1);
+    fresh();
+    sh_run_text(&sh, "endshell", &inc);
+    CHECK_INT(sh.exiting, 1);
+    fresh();
+    sh_run_text(&sh, "ENDSHELL 3", &inc);
+    CHECK_INT(sh.exiting, 1);
+    CHECK_INT(sh.exit_status, 3);
+    fresh();
+    run("Echo x");
+    CHECK_INT(sh.exiting, 0);
+    CHECK_STR(slot(ERR)->data, "vsh: Echo: not found\n");
+    CHECK_INT(sh.ctx.status, 127);
+}
+
+/* Why explains THIS shell's last failure from the secondary result kept beside $?: a failing command then why
+ * prints the system's text for it (the sentinel: f_fault ran); after a success, or a failure that left none, it says
+ * no return code was set; the name matches in any case. */
+static void why_explains_the_last_failure_of_this_shell(void)
+{
+    run("fail");
+    CHECK_INT(sh.ctx.fault, 205);
+    CHECK_STR(run("fail; why"), "Last command failed because object not found\n");
+    CHECK_INT(fault_calls, 1);
+    CHECK_INT(sh.ctx.status, 0);
+    CHECK_STR(run("echo hi; why"), "hi\nThe last command did not set a return code\n");
+    CHECK_INT(fault_calls, 0);
+    CHECK_STR(run("fail; echo hi; WHY"), "hi\nThe last command did not set a return code\n");
+    CHECK_STR(run("fail; false; Why"), "The last command did not set a return code\n");
+}
+
 void suite_sh_exec(void)
 {
     bind_and_inputrc_reach_the_console_line_editor();
@@ -2042,13 +2377,18 @@ void suite_sh_exec(void)
     a_unix_absolute_name_maps_to_its_volume();
     a_doubled_leading_slash_is_the_same_unix_name();
     a_slash_after_the_volume_colon_is_counted();
+    a_unix_relative_name_is_the_amiga_one();
     a_bin_sh_and_bin_bash_are_the_shell_and_no_other_path_is();
     printf_builtin();
     prompts();
     basics();
+    autocd();
     kill_names_a_missing_signal_sender();
+    bang_is_the_process_pid();
     a_shell_made_on_dirty_memory_is_a_fresh_shell();
     a_login_shell_reads_its_profiles_and_a_posix_shell_reads_ENV();
+    dollar_name_reads_the_system_variables();
+    unset_hides_the_system_variable();
     history_has_one_owner_the_console_list_or_the_shell();
     histfile_is_told_to_the_console_that_keeps_the_list();
     control_flow();
@@ -2062,15 +2402,20 @@ void suite_sh_exec(void)
     fd_handles_are_counted();
     assignment_status_and_scope();
     read_builtin();
+    a_prompt_takes_the_line_mode_back_after_a_program_left_the_console_raw();
     path_entries_are_amigados_dirs();
     vshrc_unix_names();
     remote_logins_send_xterm_256color();
     command_skips_functions();
     deep_recursion();
+    endcli_and_endshell_end_the_shell_like_exit();
+    why_explains_the_last_failure_of_this_shell();
     word_lists();
     the_console_env_is_exported_and_unset();
     uninstall_removes_every_up_term_block();
     unstartup_with_a_name_removes_only_that_block();
     unstartup_takes_a_stand_alone_block_by_its_name_only();
+    the_upkg_alias_block_in_shell_startup_is_written_once_and_removed();
+    takecon_turns_another_console_off_and_unstartup_back_on();
     sh_shell_free(&sh);
 }

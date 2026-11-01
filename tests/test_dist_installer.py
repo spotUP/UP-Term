@@ -165,7 +165,7 @@ class OneListOfParts(unittest.TestCase):
         self.assertIn('(set #name #con #val #con)', opts)
         self.assertIn('(set #name #dev #val #dev)', opts)
         self.assertLess(INSTALLER.index('\n(P_OPTIONS)\n'), INSTALLER.index('(set #step "drawer"'))
-        self.assertLess(INSTALLER.index('\n(P_OPTIONS_END)\n'), INSTALLER.index('(exit #done)'))
+        self.assertLess(INSTALLER.index('\n(P_OPTIONS_END)\n'), INSTALLER.rindex('(P_END)'))
         self.assertRegex(INSTALLER, r'\(P_OPTIONS_END\)\n\s+\(abort', 'a failed part removes them too')
 
 
@@ -209,28 +209,69 @@ class TheBaseNamesNoAddOn(unittest.TestCase):
         self.assertIn('Copy upkg.conf UP-Term:etc/upkg.conf CLONE', DOS)
         self.assertNotIn('Copy upkg UP-Term:bin/upkg', DOS)
 
+    def test_a_package_install_prints_no_cant_set_uid_warning(self):
+        """The A1200 2026-10-20: every entry of an add-on printed "Can't set UID=0" (opkg extracts with
+        ARCHIVE_EXTRACT_OWNER; AmigaDOS has no owners). The host build of the same opkg, which cannot
+        chown either, installs a one-file package with the shipped conf and must print no such line."""
+        import subprocess, tempfile, tarfile, pkgs
+        sys.path.insert(0, str(ROOT / 'tools/rig'))
+        import paths
+        upkg = paths.repo('upterm-ports') / 'build/host/opkg/inst/bin/upkg'
+        if not upkg.is_file():
+            self.skipTest('no host upkg: make -C ../upterm-ports host-opkg')
+        ctl = b'Package: uidtest\nVersion: 1\nArchitecture: m68k-amigaos\nDescription: x\n'
+        d = pkgs._tinfo('./', mode=0o755, kind=tarfile.DIRTYPE)
+        ipk = pkgs._ar([('debian-binary', b'2.0\n'),
+                        ('control.tar.gz', pkgs._targz([(d, None), (pkgs._tinfo('./control', len(ctl)), ctl)])),
+                        ('data.tar.gz', pkgs._targz([(d, None), (pkgs._tinfo('./f', 2), b'x\n')]))])
+        with tempfile.TemporaryDirectory() as t:
+            t = pathlib.Path(t)
+            for sub in ('lists', 'info', 'cache'):
+                (t / 'root/pkg/upkg' / sub).mkdir(parents=True)
+            conf = re.sub(r'(?m)^src/gz .*$', '', (ROOT / 'dist/upkg.conf').read_text())
+            (t / 'c.conf').write_text(conf.replace('/UP-Term/pkg', str(t / 'root/pkg')))
+            (t / 'u.ipk').write_bytes(ipk)
+            p = subprocess.run([str(upkg), '-f', str(t / 'c.conf'), '-o', str(t / 'root'), 'install', str(t / 'u.ipk')],
+                               capture_output=True, text=True)
+            self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+            self.assertTrue((t / 'root/f').is_file())
+            self.assertNotIn('UID', p.stdout + p.stderr)
+
+    def test_install_writes_the_upkg_alias_block_once_and_uninstall_strips_it(self):
+        # the unix part runs in a base Install and in an Update (Install.installer: the part list)
+        part = DOS[DOS.index('Lab unix'):DOS.index('Lab desktop')]
+        self.assertIn('Search >NIL: S:Shell-Startup ";BEGIN UP-Term upkg"', part)
+        self.assertIn('Echo >>S:Shell-Startup "Alias upkg UP-Term:bin/upkg []"', part)
+        self.assertIn('Echo >>S:Shell-Startup ";END UP-Term upkg"', part)
+        self.assertIn('If NOT EXISTS S:Shell-Startup', part)
+        # the Search guard comes before the append, so a second run adds nothing
+        self.assertLess(part.index('Search >NIL: S:Shell-Startup'), part.index('Echo >>S:Shell-Startup ";BEGIN'))
+        self.assertIn('"unix"', mi.build(ROOT / "dist/Install.installer", "base"))
+        un = mi.build(ROOT / "dist/Uninstall", "base")
+        self.assertIn('"" S:Shell-Startup', un)
+
     def test_uninstall_leaves_the_add_ons_binaries_to_their_own_uninstall(self):
         un = mi.build(ROOT / "dist/Uninstall", "base")
         delete = [l for l in un.splitlines() if l.startswith('Delete >NIL: L:vtcon-handler')][0]
         for name in ('C:Claude', 'C:ClaudeCode', 'C:amiga-pi'):
             self.assertNotIn(name + ' ', delete + ' ')
         # the add-ons' own Uninstall runs first, from their records, then the single kit's leftovers
-        self.assertLess(un.index('Execute UP-Term:pkg/UP-Term-nvim/Uninstall'), un.index('Delete >NIL: L:vtcon-handler'))
+        self.assertLess(un.index('Execute UP-Term:pkg/up-nvim/Uninstall'), un.index('Delete >NIL: L:vtcon-handler'))
         self.assertLess(un.index('If EXISTS UP-Term:pkg/legacy'), un.index('Delete >NIL: L:vtcon-handler'))
         # only what needs the base is run from its record; the stand-alone ones (Claude, amiga-pi, Python3,
         # record in ENVARC:upkg) are left alone, and the single kit's leftovers go unless they took over
         self.assertNotIn('Execute ENVARC:upkg', un)
         self.assertNotIn('Execute UP-Term:pkg/UP-Term-Claude', un)
         legacy = un[un.index('If EXISTS UP-Term:pkg/legacy'):]
-        self.assertIn('If NOT EXISTS ENVARC:upkg/Claude', legacy.split('Set unst')[0])
-        self.assertIn('If NOT EXISTS ENVARC:upkg/amiga-pi', legacy.split('Set unst')[0])
+        self.assertIn('If NOT EXISTS ENVARC:upkg/up-claude', legacy.split('Set unst')[0])
+        self.assertIn('If NOT EXISTS ENVARC:upkg/up-pi', legacy.split('Set unst')[0])
 
     def test_the_bases_uninstall_keeps_what_the_stand_alone_archives_share_with_it(self):
-        """C:uptelnet is the base's and Claude.lha's; Python3: is the base's old block's or Python3.lha's"""
+        """C:uptelnet is the base's and up-claude.lha's; Python3: is the base's old block's or up-python.lha's"""
         un = mi.build(ROOT / "dist/Uninstall", "base")
         self.assertNotRegex(un, r'Delete >NIL: [^\n]*C:uptelnet [^\n]*L:vtcon|Delete >NIL: L:vtcon-handler[^\n]*C:uptelnet')
-        self.assertIn('If NOT EXISTS ENVARC:upkg/Claude\n  Delete >NIL: C:uptelnet QUIET', un)
-        self.assertIn('If NOT EXISTS ENVARC:upkg/Python3\n  Assign >NIL: Python3: EXISTS', un)
+        self.assertIn('If NOT EXISTS ENVARC:upkg/up-claude\n  Delete >NIL: C:uptelnet QUIET', un)
+        self.assertIn('If NOT EXISTS ENVARC:upkg/up-python\n  Assign >NIL: Python3: EXISTS', un)
 
     def test_uninstall_asks_about_the_var_drawer_once_before_the_add_ons_run(self):
         un = mi.build(ROOT / "dist/Uninstall", "base")
@@ -318,8 +359,68 @@ class FindsTheAddOns(unittest.TestCase):
         self.assertIn('#adnote', update)
         full = INSTALLER[INSTALLER.index('; ---- what went where'):]
         self.assertLess(full.index('(P_OPTIONS_END)'), full.index('(P_ADDONS)'))
-        self.assertLess(full.index('(P_ADDONS)'), full.index('(exit #done)'))
-        self.assertIn('#adnote))\n(if (= #wasabi "WASABI")', full)
+        self.assertLess(full.index('(P_ADDONS)'), full.rindex('(P_END)'))
+        self.assertIn('         #adnote))\n(P_END)', full)
+
+
+class OffersAReboot(unittest.TestCase):
+    """The handlers, XCON: and the assigns start with the next boot, so the
+    last page of a full install and of an Update asks to reboot."""
+    def setUp(self):
+        a = INSTALLER.index('(procedure P_END')
+        self.proc = INSTALLER[a:INSTALLER.index('\n\n', a)]
+
+    def test_both_last_pages_end_in_p_end_and_nothing_else_exits(self):
+        update = INSTALLER[INSTALLER.index('; ---- an Update ends here'):INSTALLER.index('; ---- what went where')]
+        full = INSTALLER[INSTALLER.index('; ---- what went where'):]
+        self.assertIn('(P_END)))', update)
+        self.assertTrue(full.rstrip().endswith('(P_END)'))
+        self.assertEqual(INSTALLER.count('(exit'), 1)
+        self.assertIn('(exit (quiet))', self.proc)
+
+    def test_the_question_says_reboot_or_later_and_later_is_the_default(self):
+        self.assertIn('(message #done)', self.proc)
+        self.assertIn('(askbool', self.proc)
+        self.assertIn('(choices "Reboot" "Later")', self.proc)
+        self.assertIn('(default 1)', self.proc)
+
+    def test_only_a_yes_runs_the_kits_flushing_reboot(self):
+        ask = self.proc[self.proc.index('(if (askbool'):]
+        self.assertEqual(self.proc.count('(run '), 1)
+        self.assertIn('(run (cat "\\"" (tackon #files "Reboot") "\\""))', ask)
+        self.assertNotIn('(reboot', self.proc)
+
+    def test_the_tools_part_installs_c_reboot_only_over_one_of_ours(self):
+        self.assertIn('tools           Files/Reboot',
+                      (ROOT / 'dist/parts.txt').read_text())
+        self.assertIn('Search >NIL: C:Reboot "(UP-Term)"\n  If NOT WARN\n'
+                      '    Copy Reboot C:Reboot CLONE', DOS)
+        un = (ROOT / 'dist/Uninstall').read_text()
+        self.assertIn('Search >NIL: C:Reboot "(UP-Term)"', un)
+        self.assertIn('Delete >NIL: C:Reboot QUIET', un)
+        self.assertIn('(UP-Term)"', (ROOT / 'install/reboot.c').read_text())
+
+
+class LucideDatShipped(unittest.TestCase):
+    """amarchy-icons reads UP-Term:Amarchy/Icons/lucide.dat (amarchy/iconapply_core.h IA_DAT). The kit must build it
+    (make lucide-dat, a prerequisite of dist-base), stage it in Files/lucide, list it in parts.txt, and install.dos
+    must copy it to that path. A rig 8 kit install lacked it."""
+
+    def test_icons_c_path_is_what_install_dos_copies_to(self):
+        h = (ROOT / "amarchy/iconapply_core.h").read_text()
+        self.assertIn('#define IA_DAT        "UP-Term:Amarchy/Icons/lucide.dat"', h)
+        self.assertIn("Copy lucide/lucide.dat UP-Term:Amarchy/Icons CLONE QUIET", (ROOT / "dist/install.dos").read_text())
+        self.assertIn('#define IA_DAT_OUTLINE "UP-Term:Amarchy/Icons/outline.dat"', h)
+        self.assertIn("Copy lucide/outline.dat UP-Term:Amarchy/Icons CLONE QUIET", (ROOT / "dist/install.dos").read_text())
+
+    def test_kit_lists_and_builds_lucide_dat(self):
+        self.assertRegex((ROOT / "dist/parts.txt").read_text(), r"(?m)^userland\s+Files/lucide$")
+        mk = (ROOT / "Makefile").read_text()
+        base = re.search(r"(?m)^dist-base:([^\n]*)", mk).group(1)
+        self.assertIn("$(LUCIDE_DAT)", base.split())
+        self.assertIn("$(OUTLINE_DAT)", base.split())
+        self.assertIn("cp $(LUCIDE_DAT) $(OUTLINE_DAT) dist/lucide/LICENSE dist/lucide/SOURCE.txt $(KIT)/Files/lucide/", mk)
+        self.assertIn("cp dist/phosphor/LICENSE dist/phosphor/SOURCE.txt $(KIT)/Files/phosphor/", mk)
 
 
 class AmiSSLPart(unittest.TestCase):
@@ -334,15 +435,17 @@ class AmiSSLPart(unittest.TestCase):
         self.assertRegex(s, r'\(set #kb-amissl \(if #amisslins [1-9][0-9]+ 0\)\)')
         # Install-AmiSSL's own default: the AmiSSL: assign, else Work:, else SYS:
         self.assertIn('(getassign "AmiSSL")', s)
-        self.assertIn('(getdiskspace #amissldisk)', s)
-        self.assertLess(s.index('(getdiskspace #amissldisk)'), s.index('(P_AMISSL)\n'))
+        room = s.index('>NIL: ROOM')
+        self.assertIn('(if #amisslins (cat " \\"" #amissldisk "\\" " #kb-amissl) "")', s[room:room + 600])
+        self.assertLess(room, s.index('(P_AMISSL)\n'))
         self.assertNotIn('not counted in the room check', s)
 
     def test_amissl_on_the_drawers_volume_or_on_sys_is_added_to_that_volumes_need(self):
-        # Work: holds both the drawer and AmiSSL by default: two checks that pass alone could overfill it
+        # Work: holds both the drawer and AmiSSL by default: two checks that pass alone could overfill it.
+        # UPBigVol ROOM merges paths of one volume (SameLock, install/bigvol.c), so AmiSSL goes in as its own path.
         s = INSTALLER
-        self.assertIn('(set #needkb (+ #totalkb (if (= #vol #amisslvol) #kb-amissl 0)))', s)
-        self.assertIn('(+ #kb-system #kb-rest (if (= #amisslvol "SYS:") #kb-amissl 0))', s)
+        self.assertNotIn('#needkb', s)
+        self.assertNotIn('(getdiskspace', s[s.index('(set #roomok 0)'):s.index('ENV:UPTROOM ENV:UPTROOMAT')])
 
     def test_the_part_exists_and_starts_install_amissl_from_the_kit_drawer(self):
         self.assertIn('AmiSSL 5.27', self.PAGE)
@@ -366,7 +469,7 @@ class AmiSSLPart(unittest.TestCase):
         self.assertEqual(inc.count('(getversion "LIBS:amisslmaster.library"'), 1)
         self.assertNotIn('getversion', (ROOT / "dist/Install.installer").read_text(encoding="latin-1"))
         self.assertEqual(INSTALLER.count('(P_AMISSLCHECK)'), 2)  # the include's call for the page's default, and the one after the run
-        self.assertLess(self.RUN.index('(run "Execute T:UPTAMISSL")'), self.RUN.index('(P_AMISSLCHECK)'))
+        self.assertLess(self.RUN.index('(execute "T:UPTAMISSL")'), self.RUN.index('(P_AMISSLCHECK)'))
 
     def test_the_last_page_says_when_ticked_amissl_did_not_get_installed(self):
         run = self.RUN
@@ -376,9 +479,9 @@ class AmiSSLPart(unittest.TestCase):
 
     def test_the_last_page_asks_for_a_reboot_when_amissl_was_installed(self):
         run = self.RUN
-        self.assertRegex(run, r'\(set #sslnote "\\nReboot once: then LIBS: has AmiSSL\."\)')
+        self.assertRegex(run, r'\(set #sslnote "\\nAmiSSL installed: LIBS: has it now, usable at once\."\)')
         self.assertIn('(set #sslrows 1)', run)
-        self.assertLess(run.index('AmiSSL was not installed'), run.index('Reboot once'))
+        self.assertLess(run.index('AmiSSL was not installed'), run.index('AmiSSL installed: LIBS'))
 
     def test_the_notes_reach_the_last_page_and_its_line_count(self):
         s = INSTALLER
@@ -387,13 +490,10 @@ class AmiSSLPart(unittest.TestCase):
         merge = '(set #adnote (cat #sslnote #adnote))'
         self.assertIn(rows, tail)
         self.assertLess(tail.index(rows), tail.index(merge))
-        self.assertLess(tail.index(merge), tail.index('(set #n (+ (if (= #wasabi'))
-        self.assertIn('(if (= #wasabi "WASABI") 14 9) #adrows)', tail)
+        self.assertLess(tail.index(merge), tail.index('(set #n (+ 9 #adrows))'))
+        self.assertIn('(set #n (+ 9 #adrows))', tail)
         self.assertIn('(set #sslnote "")', s[s.index('(procedure P_AMISSL\n'):][:300])
         self.assertIn('(set #sslrows 0)', s[s.index('(procedure P_AMISSL\n'):][:300])
-
-    def test_curl_follows_the_new_amissl(self):
-        self.assertRegex(INSTALLER, r'\(default \(\+ 1 2 \(if \(or #amissl #amisslins\) 4 0\)\)\)')
 
     def test_uninstall_says_it_leaves_amissl_in_place(self):
         self.assertRegex((ROOT / "dist/Uninstall").read_text(encoding="latin-1"), r'(?i);[^\n]*AmiSSL[^\n]*(stays|left|shared)')
@@ -408,7 +508,7 @@ class AmiSSLPart(unittest.TestCase):
 
 
 class WasabiDaemonOption(unittest.TestCase):
-    """wasabid 0.11b2 is the ONE daemon option of the kit's Install (off by default): it replaces the
+    """wasabid 0.11b2 is the ONE daemon option of the kit's Install (ticked like every option): it replaces the
     amiagent option and the wasabid 0.2 one. Install removes our old amiagent, stops and replaces our
     old wasabid, and Uninstall still takes both out. The binaries come from the build, not the repository."""
     PIN = (ROOT / "tools/nas/wasabi.rev").read_text().strip()
@@ -423,10 +523,9 @@ class WasabiDaemonOption(unittest.TestCase):
         self.assertFalse((ROOT / "dist/net/amiagent-0.13.2").exists())
         self.assertNotIn("AMIAGENT", (ROOT / "dist/README.txt").read_text(encoding="latin-1"))
 
-    def test_the_boot_page_offers_wasabi_0_10b4_off_by_default_and_names_the_key(self):
+    def test_the_boot_page_offers_wasabi_0_10b4_and_names_the_key(self):
         a = INSTALLER.index('(set #boot')
         page = INSTALLER[a:INSTALLER.index('(if (in #boot 0)', a)]
-        self.assertIn('(default 0)', page)
         self.assertIn('wasabi 0.11b2', page)
         self.assertIn('wasabi_mcp.py', page)
         self.assertIn('ENVARC:wasabi.key', page)
@@ -452,12 +551,37 @@ class WasabiDaemonOption(unittest.TestCase):
         self.assertIn('Delete >NIL: C:wasabid ENVARC:up-term/wasabid QUIET', rm)
         self.assertRegex(blk, r'(?im)^\s*Run >NIL: C:wasabid')            # a ticked install starts the new one
 
+    @staticmethod
+    def _generate(root, rev=None):
+        """the SOURCE.txt the kit step writes (Makefile target $(WASABI_SOURCE)), into a private dir; rev overrides the pin"""
+        import subprocess, tempfile
+        with tempfile.TemporaryDirectory() as td:
+            out = pathlib.Path(td) / "SOURCE.txt"
+            args = ["make", "-s", "-C", str(root), "WASABI_SOURCE=" + str(out), str(out)]
+            if rev:
+                args.insert(2, "WASABI_REV=" + rev)
+            subprocess.run(args, check=True, capture_output=True)
+            return out.read_text()
+
+    def test_bumping_the_pin_changes_the_shipped_source_note(self):
+        a = self._generate(ROOT, "1" * 40)
+        b = self._generate(ROOT, "2" * 40)
+        self.assertIn("1" * 40, a)
+        self.assertNotIn("2" * 40, a)
+        self.assertIn("2" * 40, b)
+        self.assertNotEqual(a, b)
+
     def test_the_drawer_holds_licence_and_source_note_but_no_binary(self):
         d = ROOT / "dist/wasabi"
-        self.assertEqual(sorted(p.name for p in d.iterdir()), ["LICENSE", "SOURCE.txt"])
+        self.assertEqual(sorted(p.name for p in d.iterdir()), ["LICENSE", "SOURCE.txt.in"])
         self.assertIn("MIT License", (d / "LICENSE").read_text())
-        self.assertIn(self.PIN, (d / "SOURCE.txt").read_text())            # the pin of the build is the one named
-        self.assertIn("wasabid 0.11b2", (d / "SOURCE.txt").read_text())
+        self.assertNotRegex((d / "SOURCE.txt.in").read_text(), r"[0-9a-f]{40}")   # no pin written by hand
+        built = self._generate(ROOT)
+        self.assertIn(self.PIN, built)                                     # the shipped note names the pin of tools/nas/wasabi.rev
+        self.assertIn((ROOT / "tools/nas/wasabi.repo").read_text().strip(), built)
+        self.assertNotIn("@WASABI", built)
+        self.assertIn("wasabid 0.11b2", built)
+        self.assertIn("(make wasabi, Bebbo's", built)
         lic = (ROOT / "dist/LICENSES.txt").read_text(encoding="latin-1")
         self.assertIn("wasabi 0.11b2", lic)
         self.assertIn("MIT", lic[lic.index("wasabi 0.11b2"):][:200])
@@ -476,13 +600,45 @@ class WasabiDaemonOption(unittest.TestCase):
         self.assertLess(mark, un.index("Delete >NIL: C:wasabid QUIET"))
         self.assertLess(un.index("Delete >NIL: C:wasabid QUIET"), un.index("EndIf", mark))
 
+    def test_uninstall_keeps_a_boot_line_for_a_wasabid_that_was_there_before_install(self):
+        # UNINSTALL-WASABI-BLOCK: Install writes its wasabi block whenever S:User-Startup has no C:wasabid
+        # line, also for a wasabid the owner put in C: (no marker). Stripping the block alone left that
+        # wasabid with no boot line; a plain one takes the block's place (the owner, 2026-10-25).
+        un = mi.build(ROOT / "dist/Uninstall", "base")
+        decide = un.index('Set unwasabi ""')
+        strip = un.index('$unvsh "$unst"\n')
+        self.assertLess(decide, strip)
+        cond = un[decide:strip]
+        for need in ("If NOT EXISTS ENVARC:up-term/wasabid", "If EXISTS C:wasabid",
+                     'Search >NIL: S:User-Startup ";BEGIN UP-Term wasabi"', "Set unwasabi 1"):
+            self.assertIn(need, cond)
+        copy = un.index("Copy T:User-Startup.up-term S:User-Startup CLONE QUIET")
+        add = un.index('Echo >>S:User-Startup "Run >NIL: C:wasabid"')
+        self.assertLess(copy, add)
+        self.assertIn('If "$unwasabi" EQ "1"', un[copy:add])
+        self.assertIn("UnSet unwasabi", un)
+
     def test_uninstall_stops_and_removes_both_daemons_before_the_drawer_goes(self):
         un = mi.build(ROOT / "dist/Uninstall", "base")
         stop = un.index("If EXISTS ENVARC:up-term/amiagent")
         self.assertIn("Break $upw C", un[stop:stop + 400])
         self.assertLess(stop, un.index('Delete >NIL: "$updest" ALL QUIET'))
-        self.assertLess(stop, un.index("Delete >NIL: ENV:up-term ENVARC:up-term ALL QUIET"))
+        self.assertLess(stop, un.index("Delete >NIL: ENVARC:up-term ALL QUIET"))
         self.assertIn("Delete >NIL: C:wasabid QUIET", un[un.index("If EXISTS ENVARC:up-term/wasabid"):][:300])
+
+    def test_uninstall_waits_for_amarchy_to_end_before_the_drawer_goes(self):
+        # Break C only signals Amarchy; its process held UP-Term:bin while Delete ALL ran, and an
+        # empty UP-Term/bin stayed behind (rig 9 fresh-all check 38, 2026-10-29)
+        un = mi.build(ROOT / "dist/Uninstall", "base")
+        brk = un.index("Status >ENV:upw COM Amarchy")
+        lab = un.index("Lab amarchygone", brk)
+        loop = un[lab:un.index("UnSet upwait", lab)]
+        self.assertIn("Status >NIL: COM UP-Term:bin/Amarchy", loop)
+        self.assertIn("Wait 1", loop)
+        self.assertIn("Skip amarchygone BACK", loop)
+        self.assertIn('If NOT "$upwait" EQ ".........."', loop)   # bounded: 10 s at most
+        self.assertLess(lab, un.index('Delete >NIL: "$updest" ALL QUIET'))
+        self.assertLess(lab, un.index('Delete >NIL: "$updest/~(var|var.info)" ALL QUIET'))
 
 
 class AmigaDosVariableNames(unittest.TestCase):
@@ -515,6 +671,49 @@ class OneClaudeApp(unittest.TestCase):
         self.assertIn('REMOTE-ADDRESS >ENV:UPTermRemote', page)
         self.assertNotIn('C:ClaudeCode and', page)
         self.assertNotIn('ClaudeCode', page.replace('(an old C:ClaudeCode is removed)', '').replace('(the old ClaudeCode icon goes)', ''))
+
+
+class DopusFiletypeOption(unittest.TestCase):
+    """The base Install's own option "Directory Opus filetype": asked only when DOpus5: exists, ticked, recorded
+    (ENV:UPTOPTDOPUS, then ENVARC: opts for Update), copied by install.dos's desktop part from the generated
+    kit file, and removed by Uninstall through its marker. The rig half: tools/rig/dopus_ft_rig.py."""
+
+    def page(self):
+        i = INSTALLER.index('(if (exists "DOpus5:Filetypes" (noreq))')
+        return INSTALLER[i:INSTALLER.index('(set #dopus "DOPUS")', i) + 25]
+
+    def test_the_page_is_asked_only_under_a_dopus5_check_and_is_ticked(self):
+        page = self.page()
+        self.assertIn('(askoptions', page)
+        self.assertIn('(default 1)', page)
+        self.assertIn('(noreq)', page)
+        self.assertEqual(INSTALLER.count('(askoptions\n                (prompt "Directory Opus 5 found'), 1)
+        self.assertIn('(set #dopus "")', INSTALLER)  # nothing without DOpus5:
+
+    def test_the_option_is_recorded_and_restored_by_update(self):
+        self.assertIn('(set #name "DOPUS" #val #dopus) (P_OPT)', INSTALLER)
+        self.assertIn('(set #dopus (getenv "UPTOPTDOPUS"))', INSTALLER)
+        self.assertIn('(set #name "DOPUS" #on (exists "ENVARC:up-term/dopus-filetype")) (P_OLDOPT)',
+                      (ROOT / "dist/common/oldopts.installer").read_text())
+
+    def test_install_dos_copies_the_kit_file_only_with_the_option_and_dopus5_and_writes_the_marker(self):
+        # the Assign check comes before EXISTS: EXISTS on an unassigned DOpus5: asks for the volume
+        self.assertRegex(DOS, r'(?s)If "\$optdopus" EQ "DOPUS"\n  Assign >NIL: DOpus5: EXISTS\n  If NOT WARN\n'
+                              r'    If EXISTS DOpus5:Filetypes\n'
+                              r'      Copy dopus-filetype DOpus5:Filetypes/UP-Term CLONE\n'
+                              r'      Echo "DOPUS" >ENVARC:up-term/dopus-filetype\n')
+        desktop = dict(dos_parts())["desktop"]
+        self.assertIn("optdopus", desktop)
+
+    def test_the_file_is_generated_into_the_kit_and_belongs_to_the_desktop_part(self):
+        mk = (ROOT / "Makefile").read_text()
+        self.assertIn("python3 tools/gen_dopus_filetype.py $(KIT)/Files/dopus-filetype", mk)
+        self.assertRegex((ROOT / "dist/parts.txt").read_text(), r'(?m)^desktop\s+Files/dopus-filetype$')
+
+    def test_uninstall_removes_the_file_only_by_its_marker(self):
+        u = (ROOT / "dist/Uninstall").read_text()
+        self.assertRegex(u, r'(?s)If EXISTS ENVARC:up-term/dopus-filetype\n  Assign >NIL: DOpus5: EXISTS\n'
+                            r'  If NOT WARN\n    Delete >NIL: DOpus5:Filetypes/UP-Term QUIET')
 
 
 def step_command_line(files, dest, installer=INSTALLER):
@@ -571,37 +770,292 @@ class StepCommandLine(unittest.TestCase):
         self.assertLess(len(line), 255, '%d characters: %s' % (len(line), line))
 
 
-class LinkedEnvOn32(unittest.TestCase):
-    """UNINSTALL-HANGS-ON-32: AmigaOS 3.2 links RAM:ENV to ENVARC:, so a drawer made in
-    ENVARC: shows in ENV: at once; a Copy or MakeDir into that linked drawer leaves one whose
-    Delete ALL never returns and stops the RAM disk (Uninstall in the boot of the Install hung,
-    2026-10-08). Every ENV: drawer the kit fills is deleted first in the same script, and
-    Uninstall deletes the ENV: drawer before the ENVARC: one (whose source is in use)."""
+class EveryOptionTicked(unittest.TestCase):
+    """ALL-TICKED (user, 2026-10-20): every checkbox of the Installer is ticked by default; the
+    user unticks what they do not want. Each askoptions page's default is all its choices, except
+    AmiSSL: the same version or a newer one is already installed, so it is ticked only when needed
+    (AmiSSLPart checks that default)."""
+    PAGES = {'#net': 2, '#extra': 3, '#boot': 2, '#sys': 2}
 
-    def test_every_env_drawer_install_fills_is_deleted_first(self):
+    def test_each_page_defaults_to_all_its_choices(self):
+        for var, n in self.PAGES.items():
+            a = INSTALLER.index('(set %s\n    (askoptions' % var)
+            page = INSTALLER[a:INSTALLER.index('(default', a) + 40]
+            d = page[page.index('(default') + 9:].split(')')[0]
+            value = int(d) if d.isdigit() else sum(int(x) for x in d.lstrip('(+ ').split())
+            self.assertEqual(value, 2 ** n - 1, var)
+        # AmiSSL's, the AmiNetXDuo page (AmiNetXDuoPart: ticked only with no stack found) and the add-on
+        # page (FindsTheAddOns: all add-ons) are the three more, the DOpus5: page (DopusFiletypeOption: ticked)
+        # the fourth
+        self.assertEqual(INSTALLER.count('(askoptions'), len(self.PAGES) + 4, 'a page this test misses')
+
+
+class UpdateWithNoRecordedOptions(unittest.TestCase):
+    """UPDATE-DETECT (owner, 2026-10-21): the 1.6 Install over a 1.5 install on a Replay offered no
+    Update and said nothing: that install had left no ENVARC:up-term/opts (record.dos keeps them
+    only when the Installer ran it). The base's Install now reads each option back from the Amiga
+    (dist/common/oldopts.installer) into T:UPTOLDOPTS, the gate takes those, and the Update branch
+    copies them to ENV:; every other reason an installed package gets no Update is said on a page
+    before the full install."""
+
+    def recorded(self):
+        """The options P_OPTIONS_LIST writes: CONSOLE and DEVICE come as #con and #dev."""
+        lst = INSTALLER[INSTALLER.index('(procedure P_OPTIONS_LIST'):]
+        lst = lst[:lst.index('\n\n')]
+        names = set(re.findall(r'\(set #name "([A-Z0-9]+)"', lst))
+        self.assertIn('(set #name #con', lst)
+        self.assertIn('(set #name #dev', lst)
+        return names | {'CONSOLE', 'NOCONSOLE', 'DEVICE', 'NODEVICE'}
+
+    def test_every_recorded_option_is_read_back(self):
+        frag = INSTALLER[INSTALLER.index('(procedure P_OLDOPT'):INSTALLER.index('(set #oldopts 1)')]
+        read = set(re.findall(r'#name (?:\(if #on )?"([A-Z0-9]+)"(?: "([A-Z0-9]+)")?', frag))
+        read = {n for pair in read for n in pair if n}
+        if 'T:UPTOLDOPTS/UPTOPTDEST' in frag:
+            read.add('DEST')
+        self.assertEqual(self.recorded() - read, set(), 'an option the Update would lose')
+
+    def test_gate_and_restore_take_the_read_back_options(self):
+        self.assertIn('(or #legacy #oldopts (exists "ENVARC:up-term/opts/UPTOPTDEST"))', INSTALLER)
+        self.assertIn('(if #oldopts "Copy T:UPTOLDOPTS/#? ENV: QUIET" "Copy ENVARC:up-term/opts/#? ENV: QUIET")',
+                      INSTALLER)
+        # read back only when there is no record: a recorded install keeps its own choices
+        frag = INSTALLER[INSTALLER.index('(procedure P_OLDOPT'):INSTALLER.index('(set #oldopts 1)')]
+        self.assertIn('(not (exists "ENVARC:up-term/opts/UPTOPTDEST"))', frag)
+
+    def test_the_drawer_read_back_is_the_one_the_install_named(self):
+        # getassign gives the volume's name (System:UP-Term for SYS:UP-Term): a rig run read back
+        # a DEST that differed from the full install's. install.dos keeps the drawer as named in
+        # ENVARC:up-term/Dir, which ENV: holds from boot.
+        frag = INSTALLER[INSTALLER.index('(procedure P_OLDOPT'):INSTALLER.index('(set #oldopts 1)')]
+        self.assertIn('(set #olddir (getenv "up-term/Dir"))', frag)
+        self.assertIn('(textfile (dest "T:UPTOLDOPTS/UPTOPTDEST") (append #olddir))', frag)
+        self.assertNotIn('(append #olddrawer)', frag)
+        self.assertIn('Echo >ENVARC:up-term/Dir "$updest"', (ROOT / 'dist/install.dos').read_text())
+
+    def test_add_ons_do_not_read_the_base_options(self):
+        import pkgs
+        for row in pkgs.rows():
+            if row['id'] == 'base' or not (ROOT / 'dist/addons' / row['id'] / 'Install.installer').exists():
+                continue
+            script = mi.build(ROOT / 'dist/addons' / row['id'] / 'Install.installer', row['id'])
+            self.assertNotIn('UPTOLDOPTS', script, row['id'])
+            self.assertIn('(set #oldopts 0)', script, row['id'])
+
+    def test_says_why_there_is_no_update(self):
+        self.assertIn('(if (<> #whyno "")\n    (message', INSTALLER)
+        for why in ('kept no record of its choices', 'has no upupdate', 'could not compare',
+                    'kept no list of the files'):
+            self.assertIn(why, INSTALLER)
+        # the page comes before the welcome, which a full install shows first
+        self.assertLess(INSTALLER.index('(if (<> #whyno "")'), INSTALLER.index('(if (not #update)'))
+
+
+class ShellIconStartsVsh(unittest.TestCase):
+    """SHELL-ICON-VSH (user, 2026-10-20): the Shell icon option makes SYS:System/Shell start vsh
+    in an UP-Term (XCON:) window; scripts and NewShell keep the AmigaDOS Shell. The icon as it was
+    is saved first and Uninstall puts it back."""
+    UPICON = (ROOT / "install/upicon.c").read_text()
+    UNINSTALL = (ROOT / "dist/Uninstall").read_text()
+
+    def test_the_option_saves_the_icon_then_points_it_at_vsh_in_xcon(self):
+        a = DOS.index('If "$optshellicon" EQ "SHELLICON"')
+        block = DOS[a:DOS.index('EndIf\nEndIf', a)]
+        save = block.index('Copy SYS:System/Shell.info ENVARC:up-term-orig/Shell.info CLONE')
+        run = block.index('upicon SYS:System/Shell WINDOWDEV=XCON TOOL=UP-Term:bin/vsh')
+        self.assertLess(save, run)
+
+    def test_upicon_takes_tool_and_sets_the_default_tool_of_a_project(self):
+        self.assertIn('"NAME/A,WINDOWDEV/K/A,TOOL/K"', self.UPICON)
+        self.assertIn('d->do_DefaultTool = (STRPTR)args[2];', self.UPICON)
+        self.assertIn('d->do_Type = WBPROJECT;', self.UPICON)
+
+    def test_nothing_else_points_the_amigados_shell_at_vsh(self):
+        self.assertEqual(DOS.count('TOOL=UP-Term:bin/vsh'), 1)
+        self.assertEqual([l.split()[1] for l in DOS.splitlines() if l.lstrip().startswith('upicon ')],
+                         ['SYS:System/Shell'])
+
+    def test_uninstall_puts_the_saved_icon_back(self):
+        self.assertIn('Copy ENVARC:up-term-orig/Shell.info SYS:System/Shell.info CLONE', self.UNINSTALL)
+
+
+class ConsoleTakeover(unittest.TestCase):
+    """CON-TAKEOVER: UPConsole refuses CON ON while another console replacement serves CON:
+    (DD21, never stack; the A1200's KingCON, 2026-10-20), and the Installer used to stop there.
+    Now the refusal turns that replacement's Mount lines in S:User-Startup off (takecon.sh,
+    tested in tests/test_sh_exec.c) and writes the boot block, so UP-Term serves CON: from the
+    next boot; ENV:UPTCONREBOOT tells the last page, and the kit ships takecon.sh."""
+
+    @staticmethod
+    def con_branch():
+        lines = [l.strip() for l in DOS.splitlines()]
+        start = lines.index('C:UPConsole >T:UPTCON CON ON')
+        return lines[start:lines.index('Delete >NIL: T:UPTCON QUIET', start)]
+
+    def test_refusal_turns_the_other_console_off_and_writes_the_block(self):
+        b = self.con_branch()
+        warn = b.index('If WARN')
+        run = b.index('vsh takecon.sh')
+        found = b.index('If EXISTS T:UPTCONOFF')
+        copy = b.index('Copy T:User-Startup.up-term S:User-Startup CLONE QUIET')
+        flag = b.index('Copy T:UPTCONOFF ENV:UPTCONREBOOT QUIET')
+        again = b.index('Set upcon "CONSOLE"')
+        refuse = b.index('Copy T:UPTCON ENV:UPTREFUSEDCON QUIET')
+        block = b.index('Echo >>S:User-Startup "C:UPConsole >NIL: CON ON"')
+        self.assertTrue(warn < run < found < copy < flag < again < refuse < block, b)
+        self.assertIn('ENV:UPTCONREBOOT', [w for l in DOS.splitlines() if l.startswith('Delete ')
+                                            for w in l.split()])
+
+    def test_last_page_reads_and_clears_the_reboot_note(self):
+        self.assertIn('(exists "ENV:UPTCONREBOOT")', INSTALLER)
+        self.assertIn('(run "Delete >NIL: ENV:UPTCONREBOOT QUIET")', INSTALLER)
+
+    def test_kit_ships_takecon(self):
+        self.assertIn('Files/takecon.sh', (ROOT / "dist/parts.txt").read_text().split())
+        self.assertRegex((ROOT / "Makefile").read_text(), r'cp [^\n]*dist/takecon\.sh[^\n]*\$\(KIT\)/Files/')
+
+
+class UserStartupBlocksAreGuarded(unittest.TestCase):
+    """BOOT-UPTERM-VOLUME-LOOP: with the UP-Term drawer gone, an unguarded S:User-Startup line that
+    names UP-Term: put up "Please insert volume UP-Term" at boot and nothing after it ran (wasabid
+    too). Every such line now sits inside Assign >NIL: UP-Term: EXISTS / If NOT WARN, the assign
+    inside If EXISTS "<drawer>"; an older unguarded block is rewritten; markers are unchanged."""
+
+    def blocks(self):
+        out, cur = {}, None
+        for m in re.finditer(r'(?m)^\s*Echo >>S:User-Startup "(.*)"$', DOS):
+            l = m.group(1).replace('*"', '"')
+            if l.startswith(';BEGIN'):
+                cur = out.setdefault(l, [])
+            elif l.startswith(';END'):
+                cur = None
+            elif cur is not None:
+                cur.append(l)
+        return out
+
+    def test_every_line_naming_upterm_is_guarded(self):
+        seen = 0
+        for name, lines in self.blocks().items():
+            for i, l in enumerate(lines):
+                if 'UP-Term:' not in l or l.strip() == 'Assign >NIL: UP-Term: EXISTS':
+                    continue
+                seen += 1
+                if name == ';BEGIN UP-Term assign':
+                    self.assertTrue(lines[i - 1].startswith('If EXISTS "'), (name, lines))
+                    continue
+                g = [j for j, x in enumerate(lines[:i]) if x.strip() == 'Assign >NIL: UP-Term: EXISTS']
+                self.assertTrue(g, (name, lines))
+                self.assertIn('If NOT WARN', [x.strip() for x in lines[g[-1] + 1:i]], (name, lines))
+                self.assertEqual(lines[-1], 'EndIf', (name, lines))
+        # the assign line, Amarchy, Amarchy index, Amarchy-Flat, GG
+        self.assertEqual(seen, 5)
+
+    def test_old_unguarded_block_is_replaced_on_update(self):
+        for key in ('  Run >NIL: UP-Term:bin/Amarchy', '  Run >NIL: UP-Term:bin/amarchy-index',
+                    '    Assign GG: UP-Term:', '  Assign UP-Term: *"$updest*"'):
+            self.assertIn('Search >NIL: S:User-Startup "%s' % key, DOS)
+        for call in ('vsh unstartup.sh Amarchy\n', 'vsh unstartup.sh "Amarchy index"\n',
+                     'vsh unstartup.sh UP-Term\n', 'vsh reassign.sh "$updest"'):
+            self.assertIn(call, DOS)
+
+    def sh(self, script, args, tmp):
+        import subprocess
+        s = (ROOT / 'dist' / script).read_text().replace('S:', 'S_').replace('T:', 'T_').replace('ENV:', 'E_')
+        r = subprocess.run(['sh', '-c', s, 'x', *args], cwd=tmp, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return pathlib.Path(tmp, 'T_User-Startup.up-term').read_text()
+
+    OLD = ('; user\n;BEGIN UP-Term assign\nAssign UP-Term: "Work:UP-Term"\n;END UP-Term assign\n'
+           ';BEGIN UP-Term Amarchy\nRun >NIL: UP-Term:bin/Amarchy\n;END UP-Term Amarchy\n'
+           ';BEGIN UP-Term\nAssign >NIL: GG: EXISTS\nIf WARN\n  Assign GG: UP-Term:\nEndIf\n;END UP-Term\n'
+           ';BEGIN UP-Term wasabi\nRun >NIL: C:wasabid\n;END UP-Term wasabi\nEcho keep\n')
+
+    def test_reassign_rewrites_an_old_block_guarded_in_place(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as t:
+            pathlib.Path(t, 'S_User-Startup').write_text(self.OLD)
+            out = self.sh('reassign.sh', ['Work:UP-Term'], t)
+            guarded = 'If EXISTS "Work:UP-Term"\n  Assign UP-Term: "Work:UP-Term"\nEndIf'
+            self.assertIn(';BEGIN UP-Term assign\n' + guarded + '\n;END UP-Term assign\n', out)
+            self.assertEqual(out.replace(guarded, 'Assign UP-Term: "Work:UP-Term"'), self.OLD)
+            self.assertFalse(pathlib.Path(t, 'E_upold').exists())
+            # a guarded block for another drawer moves to the new one
+            pathlib.Path(t, 'S_User-Startup').write_text(out)
+            out2 = self.sh('reassign.sh', ['Sys:Other'], t)
+            self.assertIn('If EXISTS "Sys:Other"\n  Assign UP-Term: "Sys:Other"\nEndIf\n', out2)
+            self.assertEqual(pathlib.Path(t, 'E_upold').read_text(), 'Work:UP-Term')
+
+    def test_unstartup_strips_every_guarded_block(self):
+        import tempfile
+        text = '; user\n'
+        for name, lines in self.blocks().items():
+            if not name.startswith(';BEGIN UP-Term'):
+                continue  # Amarchy-Flat goes by its own name (tests/test_flat_startup_block.py)
+            text += '\n'.join([name] + lines + [name.replace('BEGIN', 'END')]) + '\n'
+        text += 'Echo keep\n'
+        self.assertIn('  Run >NIL: UP-Term:bin/Amarchy', text)
+        with tempfile.TemporaryDirectory() as t:
+            pathlib.Path(t, 'S_User-Startup').write_text(text)
+            self.assertEqual(self.sh('unstartup.sh', [], t), '; user\nEcho keep\n')
+            one = self.sh('unstartup.sh', ['Amarchy'], t)
+            self.assertNotIn('bin/Amarchy', one)
+            self.assertIn('bin/amarchy-index', one)
+            gg = self.sh('unstartup.sh', ['UP-Term'], t)
+            self.assertNotIn('Assign GG:', gg)
+            self.assertIn('bin/Amarchy', gg)
+
+
+class LinkedEnvOn32(unittest.TestCase):
+    """UNINSTALL-HANGS-ON-32 / ENV-DRAWER-RESET: AmigaOS 3.2 links RAM:ENV to ENVARC:, so a
+    drawer made in ENVARC: shows in ENV: at once. Deleting a drawer in that ENV: resets the
+    machine (ram-handler 47.57, the A1200 Installer, 2026-10-20: Delete ENV:vsh once empty, and
+    Delete ENV:up-term/#? ALL after a Copy ALL into it); deleting its files is safe. So no script
+    deletes an ENV: drawer of the kit: each ENV: drawer Install fills is first emptied of its
+    files (common/env-empty.dos), and Uninstall empties ENV: of files, then removes ENVARC:."""
+
+    @staticmethod
+    def env_drawer_deletes(script):
+        out = []
+        for l in script.splitlines():
+            l = l.strip()
+            if l.startswith(';') or not re.match(r'(?i)delete\b', l):
+                continue
+            for name in ('up-term', 'vsh'):
+                # ENV:x itself, or anything under it with ALL (which takes its subdrawers)
+                if re.search(r'(?i)(?<![\w])env:%s(?=[\s"]|$)' % name, l) or \
+                   (re.search(r'(?i)(?<![\w])env:%s/' % name, l) and re.search(r'(?i)\ball\b', l)):
+                    out.append(l)
+        return out
+
+    def test_no_script_deletes_an_env_drawer(self):
+        for what, script in (('install.dos', DOS), ('Uninstall', mi.build(ROOT / "dist/Uninstall", "base"))):
+            self.assertEqual(self.env_drawer_deletes(script), [], what)
+
+    def test_every_env_drawer_install_fills_is_emptied_first(self):
         lines = [l.strip() for l in DOS.splitlines() if not l.strip().startswith(';')]
         filled = set()
         for i, l in enumerate(lines):
             m = (re.match(r'(?i)copy\s+\S+\s+env:([\w.-]+)\s.*\ball\b', l) or
                  re.match(r'(?i)makedir\s+(?:>nil:\s+)?env:([\w.-]+)\s*$', l))
-            # the drawers Uninstall deletes (ENV:Claude is the user's and stays)
+            # the drawers Uninstall empties (ENV:Claude is the user's and stays)
             if not m or m.group(1).lower() in filled or m.group(1).lower() not in ('up-term', 'vsh'):
                 continue
             name = m.group(1).lower()
-            before = [p.lower() for p in lines[:i]]
-            self.assertTrue(any(re.match(r'delete\s+(?:>nil:\s+)?env:%s\s+all\b' % re.escape(name), p)
-                                for p in before),
-                            'install.dos fills ENV:%s without deleting it first: %s' % (name, l))
+            before = '\n'.join(lines[:i])
+            set_at = before.lower().rfind('set upempty env:%s' % name)
+            self.assertGreaterEqual(set_at, 0, 'install.dos fills ENV:%s without emptying it first: %s' % (name, l))
+            self.assertIn('List >T:upempty "$upempty" ALL FILES', before[set_at:])
             filled.add(name)
         self.assertEqual(filled, {'up-term', 'vsh'})
 
-    def test_uninstall_deletes_env_before_envarc(self):
-        un = mi.build(ROOT / "dist/Uninstall", "base")
+    def test_uninstall_empties_env_then_removes_envarc(self):
+        un = mi.build(ROOT / "dist/Uninstall", "base").lower()
         for name in ('up-term', 'vsh'):
-            both = [l.lower() for l in un.splitlines() if l.lower().startswith('delete')
-                    and re.search(r'\benv:%s\s' % name, l.lower()) and re.search(r'\benvarc:%s\s' % name, l.lower())]
-            self.assertEqual(len(both), 1, name)
-            self.assertLess(both[0].index(' env:%s' % name), both[0].index(' envarc:%s' % name), both[0])
+            env = un.index('set upempty env:%s\n' % name)
+            arc = un.index('set upempty envarc:%s\n' % name)
+            gone = un.index('delete >nil: envarc:%s all quiet' % name)
+            self.assertLess(env, arc, name)
+            self.assertLess(arc, gone, name)
 
 
 class TermOnlyInUpTermWindows(unittest.TestCase):
@@ -633,6 +1087,236 @@ class TermOnlyInUpTermWindows(unittest.TestCase):
                 self.assertFalse(re.match(r'(?i)\s*(c:)?setenv\s+(>nil:\s+)?term\s', l), '%s sets TERM globally: %s' % (name, l))
         readme = (ROOT / "dist/README.txt").read_text()
         self.assertNotRegex(readme, r'(?im)^\s*SetEnv TERM ')
+
+
+class SoftFloatIxemul(unittest.TestCase):
+    """A machine without an FPU gets the soft-float ixemul.library (Files/libs/ixemul.library.nofpu)."""
+    MAKE = (ROOT / 'Makefile').read_text()
+    PY = mi.build(ROOT / 'dist/addons/python/install.dos', 'python')
+
+    def test_the_kits_carry_the_soft_float_build_beside_the_68881_one(self):
+        self.assertRegex(self.MAKE, r'(?m)^IXEMUL_LIB_SOFT \?= .*soft-float/amigaos/ixemul\.library$')
+        for kit in ('$(KIT)', '$(KIT_python)'):
+            self.assertIn('cp $(IXEMUL_LIB_SOFT) %s/Files/libs/ixemul.library.nofpu\n' % kit, self.MAKE)
+
+    def test_the_installer_hands_nofpu_down_and_the_base_script_picks_the_file_by_it(self):
+        self.assertIn('(set #nofpu (if (= (database "fpu") "NOFPU") "NOFPU" ""))', INSTALLER)
+        self.assertIn('(set #name "NOFPU" #val #nofpu) (P_OPT)', INSTALLER)
+        self.assertIn('(set #nofpu (getenv "UPTOPTNOFPU"))', INSTALLER)      # an Update keeps the choice
+        libs = DOS[DOS.index('Lab libs'):]
+        libs = libs[:libs.index('Avail >NIL: FLUSH')]
+        pick = libs.index('If "$optnofpu" EQ "NOFPU"')
+        self.assertIn('Set upixlib libs/ixemul.library.nofpu', libs[pick:pick + 120])
+        self.assertNotIn('Copy libs/ixemul.library', libs)                   # every copy goes through $upixlib
+        self.assertEqual(libs.count('Copy $upixlib '), 2)
+        self.assertLess(pick, libs.index('Copy $upixlib '))
+
+    def test_the_python_add_on_picks_the_soft_float_file_on_nofpu(self):
+        ix = self.PY[self.PY.index('Lab ixemul'):self.PY.index('Lab copy-python')]
+        self.assertIn('If EXISTS ENV:UPTOPTNOFPU\n    Set ixlib libs/ixemul.library.nofpu', ix)
+        self.assertLess(ix.index('Set ixlib libs/ixemul.library.nofpu'), ix.index('Copy $ixlib LIBS:ixemul.library'))
+        head = (ROOT / 'dist/common/addon-head.installer').read_text()
+        self.assertIn('(set #name "NOFPU" #val #nofpu) (P_OPT)', head)
+
+
+class RoomCheckSplit(unittest.TestCase):
+    """INSTALLER-ROOM-SPLIT: the GUI Install checks room with the Shell install's own UPBigVol ROOM and splits the
+    parts between the drawer's disk and SYS: exactly as dist/install.dos does (tests/test_install_dos_room.py)."""
+    TEMPLATE = (ROOT / 'dist/Install.installer').read_text(encoding='latin-1')
+
+    def loop(self):
+        s = self.TEMPLATE
+        return s[s.index('(set #roomok 0)'):s.index('(run "Delete >NIL: ENV:UPTROOM ENV:UPTROOMAT QUIET")')]
+
+    def group_values(self, names):
+        # each #kb- name of a group back to the @KB...@ values its (set ...) line names
+        s = self.TEMPLATE
+        out = []
+        for n in names:
+            line = s[s.index('(set %s ' % n):]
+            line = line[:line.index('\n(set') if '\n(set' in line else len(line)]
+            out += re.findall(r'@(KB[A-Z0-9]+)@', line)
+        return out
+
+    def test_every_part_is_counted_once_on_the_disk_install_dos_counts_it_on(self):
+        call = self.loop()[self.loop().index('>NIL: ROOM'):self.loop().index('(safe)')]
+        dest = call[:call.index('" SYS: "')]
+        sys_ = call[call.index('" SYS: "'):call.index('#amissldisk')]
+        dest_kb = self.group_values(re.findall(r'#kb-[a-z]+', dest))
+        sys_kb = self.group_values(re.findall(r'#kb-[a-z]+', sys_))
+        sys.path.insert(0, str(ROOT / 'tests'))
+        import test_install_dos_room as dr
+        want_dest = sorted([dr.kb(p) for p in dr.DEST] + ['KBSSH', 'KBBEBBOGET'])
+        want_sys = sorted([dr.kb(p) for p in dr.SYS] + ['KBWASABI'])
+        self.assertEqual(sorted(dest_kb), want_dest)
+        self.assertEqual(sorted(sys_kb), want_sys)
+        self.assertIn('#kb-amissl', call)
+
+    def test_a_short_drawer_disk_asks_again_and_a_short_other_disk_ends_the_install(self):
+        loop = self.loop()
+        self.assertIn('(set #room (getenv "UPTROOM"))', loop)
+        ask = loop.index('(if (= (getenv "UPTROOMAT") #dest)')
+        self.assertLess(ask, loop.index('(P_ASKDEST)'))
+        self.assertLess(loop.index('(P_ASKDEST)'), loop.index('(abort "Nothing was installed. " #room'))
+        self.assertIn('Nothing has been copied.', loop)
+        # the refusal text is install/bigvol.h's bv_room_text, never built again here
+        self.assertNotIn('KB free', loop)
+
+    def test_the_helper_is_the_kits_upbigvol(self):
+        self.assertIn('(tackon #files "UPBigVol") "\\" >NIL: ROOM \\"" #dest', self.loop())
+        self.assertIn('SetVar((STRPTR)ROOMVAR, (STRPTR)text', (ROOT / 'install/bigvol.c').read_text())
+
+
+
+
+class AmiNetXDuoPart(unittest.TestCase):
+    """The kit bundles AmiNetXDuo 1.0.0-rc2 and the Install offers it ONLY when no TCP/IP stack is found: the
+    detection (dist/common/tcpstack.installer) names the stack, the run (P_ANX) starts AmiNetXDuo's OWN
+    Install-AmiNetXDuo and does so only on #anxins, which a found stack forces to 0."""
+    INC = (ROOT / "dist/common/tcpstack.installer").read_text(encoding="latin-1")
+    RUN = INSTALLER[INSTALLER.index('(procedure P_ANX'):INSTALLER.index('(procedure P_ADFIND')]
+    PAGE = INSTALLER[INSTALLER.index('(set #anxins\n    (askoptions'):INSTALLER.index('(set #net')]
+
+    def test_detection_names_every_stack_in_order(self):
+        names = ["AmiNetXDuo", "Roadshow", "AmiTCP", "Miami", "Genesis", "TheWire", "emulator bsdsocket",
+                 "running bsdsocket", "bsdsocket.library in LIBS:"]
+        at = [self.INC.index('(set #tcpstack "%s")' % n) for n in names]
+        self.assertEqual(at, sorted(at))
+
+    def test_detection_evidence(self):
+        for needle in ['(getassign "AmiTCP")', '(getassign "Miami")', '(getassign "Genesis")', '(getassign "TheWire")',
+                       '"S:AmiNetXDuo-Files"', '(exists "LIBS:bsdsocket.library"', 'tackon #files "tcpprobe"', '"*UAE*"']:
+            self.assertIn(needle, self.INC)
+        # the probe (OpenLibrary) runs before the disk checks: an emulator's bsdsocket has no file
+        self.assertLess(self.INC.index('tcpprobe'), self.INC.index('(getassign "AmiTCP")'))
+        self.assertEqual(INSTALLER.count('(P_TCPCHECK)'), 1)
+
+    def test_the_page_names_the_stack_found_and_defaults_on_only_without_one(self):
+        self.assertIn('(cat "AmiNetXDuo (not installed: " #tcpstack " found)")', self.PAGE)
+        self.assertIn('(default (if (= #tcpstack "") 1 0))', self.PAGE)
+        self.assertIn('(set #anxins (if (= #tcpstack "") #anxins 0))', self.PAGE)
+
+    def test_the_run_is_gated_by_the_option_and_uses_the_kit_drawer(self):
+        run = self.RUN
+        self.assertIn('Installer SCRIPT Install-AmiNetXDuo APPNAME AmiNetXDuo', run)
+        self.assertIn('(tackon #files "AmiNetXDuo")', run)
+        self.assertTrue(run.lstrip().split("\n", 1)[0].startswith("(procedure P_ANX"))
+        self.assertRegex(run, r'\(procedure P_ANX\s+\(if #anxins\s+\(\s+\(textfile')
+        self.assertIn('TCP/IP stack found: " #tcpstack', run)
+        self.assertLess(INSTALLER.index('(P_AMISSL)\n'), INSTALLER.index('(P_ANX)\n'))
+        self.assertLess(INSTALLER.index('(P_ANX)\n'), INSTALLER.rindex('(P_ADDONS)\n'))
+
+    def test_staging_and_licence(self):
+        mk = (ROOT / "Makefile").read_text()
+        self.assertIn("$(VENDOR)/aminetxduo-1.0.0-rc2/AmiNetXDuo/. $(KIT)/Files/AmiNetXDuo/", mk)
+        self.assertIn("rm -rf $(KIT)/Files/AmiNetXDuo/Developer", mk)
+        self.assertIn("cp $(BUILD)/amiga/tcpprobe $(KIT)/Files/tcpprobe", mk)
+        parts = (ROOT / "dist/parts.txt").read_text()
+        self.assertRegex(parts, r"(?m)^-\s+Files/AmiNetXDuo$")
+        self.assertRegex(parts, r"(?m)^-\s+Files/tcpprobe$")
+        self.assertIn("AmiNetXDuo 1.0.0-rc2", (ROOT / "dist/LICENSES.txt").read_text(encoding="latin-1"))
+        self.assertIn("Uninstall-AmiNetXDuo", (ROOT / "dist/Uninstall").read_text(encoding="latin-1"))
+
+
+def tree(toks):
+    """The script as nested lists: a form is a list, a string ('str', text), a word ('word', text)."""
+    stack = [[]]
+    for kind, text in toks:
+        if kind == 'open':
+            stack.append([])
+        elif kind == 'close':
+            done = stack.pop()
+            stack[-1].append(done)
+        else:
+            stack[-1].append((kind, text))
+    return stack[0]
+
+
+class LastPageLineCount(unittest.TestCase):
+    """INSTALLER-END-CRASH (2026-10-29): with wasabi ticked and an add-on or AmiSSL note, the note moved to a
+    page of its own but #adrows still counted it, so the last page asked P_LEAD to centre 16 lines. Its substr
+    then got the length (14 - 16) / 2 = -1, the Installer zero-filled memory from the result buffer upward
+    (strncpy with n = -1, rig 9 memory watch), and the next vertical blank jumped into the wiped vblank server
+    of rtg.library. This evaluates the script from (P_ADDONS) to (P_END) for every combination and records the
+    #n of each P_LEAD call."""
+
+    def leads(self, wasabi, sslrows, adnote):
+        forms = tree(tokens(INSTALLER))
+        start = next(k for k, f in enumerate(forms) if f == [('word', 'P_ADDONS')])
+        env = {'#wasabi': wasabi, '#sslrows': sslrows, '#sslnote': '\\nx' * sslrows, '#adnote': adnote}
+        seen = []
+
+        def ev(x):
+            if isinstance(x, tuple):
+                kind, text = x
+                if kind == 'str':
+                    return text
+                if re.fullmatch(r'-?\d+', text):
+                    return int(text)
+                return env[text]
+            head, args = x[0][1], x[1:]
+            if head == 'set':
+                env[args[0][1]] = ev(args[1]); return env[args[0][1]]
+            if head == 'if':
+                c = ev(args[0])
+                return ev(args[1]) if c not in (0, '', False) else (ev(args[2]) if len(args) > 2 else 0)
+            if head == 'and':
+                return all(ev(a) not in (0, '', False) for a in args)
+            if head in ('=', '<>', '>', '<'):
+                a, b = ev(args[0]), ev(args[1])
+                return {'=': a == b, '<>': a != b, '>': a > b, '<': a < b}[head]
+            if head == '+':
+                return sum(ev(a) for a in args)
+            if head == 'cat':
+                return ''.join(str(ev(a)) for a in args)
+            if head == 'strlen':
+                return len(ev(args[0]))
+            if head == 'substr':
+                return ev(args[0])[ev(args[1]):][:ev(args[2])]
+            if head == 'getenv':
+                return 'key'
+            if head == 'P_LEAD':
+                seen.append(env['#n']); env['#lead'] = ''; return 0
+            if head in ('message', 'all'):
+                return 0
+            if isinstance(x[0], list):   # a block of forms
+                for f in x:
+                    ev(f)
+                return 0
+            raise AssertionError('form not modelled: %s' % head)
+
+        for f in forms[start + 1:]:
+            if f == [('word', 'P_END')]:
+                break
+            ev(f)
+        return seen
+
+    def test_no_page_asks_for_more_than_13_lines(self):
+        """INSTALLER-LAYOUT-BOTTOM-STRIP (rig 9, 640x256 depth 8): the Installer window is then 448x159, a 9 px
+        line, the first at y 12 and the buttons at y 129: 13 lines. The 14-line wasabi last page spilled its
+        last lines into the bottom border, where they stayed as glyph tops under the next page (the Reboot
+        question); the key now has a page of its own."""
+        for wasabi in ('WASABI', ''):
+            for sslrows in (0, 1, 2):
+                for adnote in ('', '\\nAdd-ons: see their pages.'):
+                    with self.subTest(wasabi=wasabi, sslrows=sslrows, adnote=bool(adnote)):
+                        leads = self.leads(wasabi, sslrows, adnote)
+                        self.assertTrue(leads)
+                        self.assertLessEqual(max(leads), 13, leads)
+
+    def test_no_page_asks_for_more_than_14_lines(self):
+        for wasabi in ('WASABI', ''):
+            for sslrows in (0, 1, 2):
+                for adnote in ('', '\\nAdd-ons: see their pages.'):
+                    with self.subTest(wasabi=wasabi, sslrows=sslrows, adnote=bool(adnote)):
+                        leads = self.leads(wasabi, sslrows, adnote)
+                        self.assertTrue(leads)
+                        self.assertLessEqual(max(leads), 14, leads)
+
+    def test_p_lead_gives_no_newlines_to_a_block_over_14_lines(self):
+        procs = (ROOT / "dist/common/procs.installer").read_text(encoding="latin-1")
+        body = procs[procs.index('(procedure P_LEAD'):][:200]
+        self.assertIn('(if (> #n 14) ""', body)
 
 
 if __name__ == '__main__':

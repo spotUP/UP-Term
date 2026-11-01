@@ -1,0 +1,2 @@
+# Files/os3-68000: the Installer picks it on a 68000 or 68010 (D10)
+CPU68000=YES

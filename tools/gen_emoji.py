@@ -259,9 +259,10 @@ def palette_of(images):
     return bits, pal, [[index[m[p]] for p in im] for im in images]
 
 
-def glyph_bytes(w, h, px):
-    """One emoji's glyph record (the layout above) from its 72 px RGBA."""
-    images = [area(w, h, px, W, H) for W, H in SIZES]
+def glyph_bytes(w, h, px, sizes=SIZES):
+    """One emoji's glyph record (the layout above) from its 72 px RGBA. `sizes` are the images the
+    record holds: SIZES for the emoji pages, one larger image for tools/gen_menu_icons.py's page."""
+    images = [area(w, h, px, W, H) for W, H in sizes]
     bits, pal, idx = palette_of(images)
     out = bytearray([bits, len(pal) - 1])
     for c in pal:
@@ -274,14 +275,14 @@ def glyph_bytes(w, h, px):
     return bytes(out)
 
 
-def decode_glyph(g):
+def decode_glyph(g, sizes=SIZES):
     """(bits, palette, [RGBA per image]) of a glyph record: the converter's
     inverse, for the tests."""
     bits, n = g[0], g[1] + 1
     pal = [tuple(g[2 + 4 * i:6 + 4 * i]) for i in range(n)]
     pos = 2 + 4 * n
     images = []
-    for W, H in SIZES:
+    for W, H in sizes:
         cnt = W * H
         if bits == 8:
             ix = list(g[pos:pos + cnt])
@@ -293,9 +294,9 @@ def decode_glyph(g):
     return bits, pal, images
 
 
-def glyph_size(g, off=0):
+def glyph_size(g, off=0, sizes=SIZES):
     bits, n = g[off], g[off + 1] + 1
-    return 2 + 4 * n + sum(W * H for W, H in SIZES) * bits // 8
+    return 2 + 4 * n + sum(W * H for W, H in sizes) * bits // 8
 
 
 # ---- pages ------------------------------------------------------------------------------

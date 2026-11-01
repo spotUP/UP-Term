@@ -54,6 +54,103 @@ class Manifest(unittest.TestCase):
                         mk.index("cp dist/tutorial $(KIT)/Files/userland/bin/tutorial"))
         self.assertIn("cp dist/tutorial-lessons/*.lesson $(KIT)/Files/userland/share/tutorial/", mk)
 
+    def test_upkg_has_a_workbench_tool_icon_with_its_stack_in_the_userland_bin(self):
+        """UPKG-WB-UI (owner Q10): upkg.info is a WBTOOL icon without a WINDOW tooltype (upkg opens its own window),
+        do_StackSize 262144 as upkg's $STACK cookie, and it installs with the userland bin (copy-userland)"""
+        import struct, subprocess
+        mk = (ROOT / "Makefile").read_text()
+        line = "python3 tools/mkicon.py $(KIT)/Files/userland/bin/upkg.info --wbtool --plain --stack 262144"
+        self.assertIn(line, mk)
+        self.assertLess(mk.index("python3 tools/slim.py remove $(KIT)/Files/userland"), mk.index(line))
+        k = kit({"Files/userland/bin/upkg.info": b"i"})
+        self.assertIn("copy-userland 1 %08x Files/userland/bin/upkg.info" % zlib.crc32(b"i"),
+                      mm.manifest(k, PARTS, "").splitlines())
+        out = pathlib.Path(tempfile.mkdtemp()) / "upkg.info"
+        subprocess.run([sys.executable, str(ROOT / "tools/mkicon.py"), str(out), "--wbtool", "--plain",
+                        "--stack", "262144"], check=True)
+        data = out.read_bytes()
+        self.assertEqual(struct.unpack(">H", data[:2])[0], 0xE310)    # WB_DISKMAGIC
+        self.assertEqual(data[48], 3)                                 # do_Type WBTOOL
+        self.assertEqual(struct.unpack(">I", data[74:78])[0], 262144) # do_StackSize
+        self.assertNotIn(b"WINDOW=", data)
+
+    def test_the_dopus_launchers_are_in_the_base_kit_and_the_filetype_names_them(self):
+        """D13: the filetype runs UP-Term:bin/uterm-edit and uterm-view; both ship (and their two helpers) as userland
+        bin files, are AmigaDOS scripts that open the XCON: window on the front screen, and hand the file to vsh by ENV:"""
+        import sys
+        sys.path.insert(0, str(ROOT / "tools"))
+        import gen_dopus_filetype as g
+        mk = (ROOT / "Makefile").read_text()
+        data = g.generate()
+        for n in ("uterm-edit", "uterm-view", "uterm-start", "uterm-open", "uterm-shell", "uterm-shellstart"):
+            self.assertTrue((ROOT / "dist" / n).is_file(), n)
+            self.assertRegex(mk, r"(?m)^\tcp (?:\S+ )*dist/%s (?:\S+ )*\$\(KIT\)/Files/userland/bin/$" % n)
+        self.assertLess(mk.index("python3 tools/slim.py remove $(KIT)/Files/userland"), mk.index("cp dist/uterm-edit"))
+        k = kit({"Files/userland/bin/uterm-edit": b"e", "Files/userland/bin/uterm-open": b"o"})
+        lines = mm.manifest(k, PARTS, "").splitlines()
+        self.assertIn("copy-userland 1 %08x Files/userland/bin/uterm-edit" % zlib.crc32(b"e"), lines)
+        for n, mode in (("uterm-edit", "edit"), ("uterm-view", "view")):
+            self.assertIn(b'Execute UP-Term:bin/' + n.encode() + b' "%s"', data)
+            s = (ROOT / "dist" / n).read_text()
+            self.assertIn(".KEY FILE/A", s)
+            # a local variable per launch: a global SetEnv is one slot, and two launches back to back (two files
+            # double-clicked in Opus) gave both windows the second file (measured on rig 3, 2026-10-26)
+            self.assertIn("\nSet UPTLAUNCHCMD " + mode + "\n", s)
+            self.assertIn('\nSet UPTLAUNCHFILE "{FILE}"\n', s)
+            self.assertNotIn("SetEnv UPTLAUNCH", s)
+            self.assertIn('NewShell "XCON:0/20/640/300/UP-Term/CLOSE/FRONT" FROM UP-Term:bin/uterm-start', s)
+        sh = (ROOT / "dist/uterm-shell").read_text()
+        self.assertIn('NewShell "XCON:0/20/640/300/UP-Term/CLOSE/FRONT" FROM UP-Term:bin/uterm-shellstart', sh)
+        self.assertNotIn("UPTLAUNCH", sh)
+        ss = (ROOT / "dist/uterm-shellstart").read_text()
+        self.assertRegex(ss, r"(?m)^UP-Term:bin/vsh$")
+        self.assertRegex(ss, r"(?m)^Stack [1-9][0-9]*$")
+        self.assertTrue(ss.rstrip().endswith("EndCLI"))
+        start = (ROOT / "dist/uterm-start").read_text()
+        self.assertIn("UP-Term:bin/vsh UP-Term:bin/uterm-open", start)
+        self.assertTrue(start.rstrip().endswith("EndCLI"))
+        self.assertRegex(start, r"(?m)^Stack [1-9][0-9]*$")
+        op = (ROOT / "dist/uterm-open").read_text()
+        self.assertIn('exec less "$f"', op)
+        self.assertIn('exec ${EDITOR:-joe} "$f"', op)
+        self.assertNotIn("nvim", op)
+
+    def test_upkg_browse_is_inside_upkg_not_a_script_in_the_kit(self):
+        """`upkg browse` runs in the upkg binary (opkg patch 0025): the kit carries no bin/upkg-browse script"""
+        self.assertFalse((ROOT / "dist/upkg-browse").exists())
+        self.assertNotIn("upkg-browse", (ROOT / "Makefile").read_text())
+
+    def test_make_amiga_builds_every_program_dist_base_copies_into_the_kit(self):
+        """A rig run with --no-build after `make amiga` stages what the kit ships: no program may be built only by
+        dist-base (a stale amarchy-gui failed the window-groups W3 step). amarchy-menu needs the ports toolchain
+        and libupkgui, so `make amiga` leaves it out."""
+        mk = (ROOT / "Makefile").read_text().replace("\\\n", " ")
+        amiga = set(re.search(r"^amiga:(.*)$", mk, re.M).group(1).split())
+        copies = [l for l in mk.splitlines() if l.startswith("\tcp ") and l.rstrip().endswith("$(KIT)/Files/")]
+        shipped = {w for l in copies for w in l.split() if w.startswith("$(BUILD)/amiga/")}
+        self.assertIn("$(BUILD)/amiga/amarchy-gui", shipped)
+        self.assertEqual(shipped - amiga, {"$(BUILD)/amiga/amarchy-menu"})
+
+    def test_every_program_a_keymap_run_row_starts_is_shipped(self):
+        """dist/keymap rows `run:<program> ...` start a program by name: a name the kit does not ship
+        opens nothing (`run:upkg-browse` after the script was deleted: Install add-ons did nothing).
+        Shipped = the dist scripts the Makefile copies into userland/bin, plus the ports' programs
+        (upkg, tmux, nvim: built by upterm-ports into the same bin) and the ROM/system command Reboot.
+        A volume-qualified name (C:..., SYS:...) is a path, not a bare name, and is skipped."""
+        mk = (ROOT / "Makefile").read_text()
+        shipped = set(re.findall(r"cp dist/(\S+) \$\(KIT\)/Files/userland/bin/", mk))
+        shipped |= {"upkg", "tmux", "nvim"}      # ports' userland/bin
+        shipped |= {"Reboot"}                    # system command
+        started = set()
+        for line in (ROOT / "dist/keymap").read_text().splitlines():
+            if line.lstrip().startswith(";"):
+                continue
+            for m in re.finditer(r"(?:=|\|)\s*run:(\S+)", line):
+                if ":" not in m.group(1) and not m.group(1).startswith("'"):
+                    started.add(m.group(1))
+        self.assertTrue(started, "no run: rows found: the parser is stale")
+        self.assertEqual(sorted(started - shipped), [])
+
     def test_every_name_the_kit_installs_fits_amigados_30_characters(self):
         """OFS/FFS keep 30 characters: a longer name is cut (05-pipes-and-redirection.lesson lost its
         .lesson and the tutorial could not see it). The lessons, dist's own files and parts.txt's paths."""
@@ -69,6 +166,22 @@ class Manifest(unittest.TestCase):
             mm.manifest(k, mm.read_parts("system  Files/vsh\n"), "")
         self.assertIn("Files/newtool", str(e.exception))
 
+    def test_a_part_the_kit_lacks_stops_the_build(self):
+        # RIG10-DISTKIT-MIXED: a kit without Files/Agent passed, install.dos then failed on the rig
+        k = kit({"Files/vsh": b"v", "Files/install.dos": b"; head\n"})
+        with tempfile.TemporaryDirectory() as d:
+            parts = pathlib.Path(d) / "parts.txt"
+            parts.write_text("system  Files/vsh\ntools  Files/Agent\ntools  Files/S\n")
+            with self.assertRaises(SystemExit) as e:
+                mm.main([str(k), str(parts)])
+        self.assertIn("Files/Agent, Files/S", str(e.exception))
+        self.assertFalse((k / "Files/MANIFEST").exists())
+
+    def test_absent_names_only_the_missing_parts_and_never_the_manifest(self):
+        k = kit({"Files/vsh": b"v", "Files/S/x": b"s"})
+        parts = mm.read_parts("system  Files/vsh\ntools  Files/S\ntools  Files/Agent\n-  Files/MANIFEST\n")
+        self.assertEqual(mm.absent(k, parts), ["Files/Agent"])
+
     def test_the_manifest_itself_is_not_in_it(self):
         k = kit({"Files/vsh": b"v", "Files/MANIFEST": b"old"})
         self.assertNotIn("MANIFEST", mm.manifest(k, mm.read_parts("system  Files/vsh\n"), ""))
@@ -79,11 +192,14 @@ class HandedLines(unittest.TestCase):
     (kit-split D7): the line an Update over the single kit reads to leave those files alone."""
     def test_the_base_hands_over_every_add_ons_paths_in_sorted_order(self):
         k = kit({"Files/vsh": b"v"})
-        lines = mm.manifest(k, mm.read_parts("system  Files/vsh\n"), "", mm.handed_paths('base')).splitlines()
+        rows = [{'id': 'base', 'handed': 'Files/vsh'}, {'id': 'nvim', 'handed': 'Files/nvim'},
+                {'id': 'git', 'handed': 'Files/userland/bin/git,Files/userland/share/git-core'},
+                {'id': 'bitchx', 'handed': 'Files/userland/bin/BitchX,Files/userland/lib/bx'},
+                {'id': 'claude', 'handed': 'Files/Claude'}, {'id': 'docs', 'handed': '-'}]
+        lines = mm.manifest(k, mm.read_parts("system  Files/vsh\n"), "", mm.handed_paths('base', rows)).splitlines()
         want = ["handed 0 00000000 handed#" + p for p in
-                ("Files/Claude", "Files/amiga-pi", "Files/nvim", "Files/python3", "Files/userland/bin/git",
-                 "Files/userland/bin/perl", "Files/userland/bin/vim", "Files/userland/share/git-core",
-                 "Files/userland/share/vim")]
+                ("Files/nvim", "Files/userland/bin/git", "Files/userland/share/git-core",
+                 "Files/userland/bin/BitchX", "Files/userland/lib/bx", "Files/Claude")]
         self.assertEqual([l for l in lines if l.startswith("handed ")], sorted(want, key=lambda l: l.split(' ', 3)[3].encode()))
         paths = [l.split(' ', 3)[3].encode() for l in lines]
         self.assertEqual(paths, sorted(paths))
@@ -101,7 +217,7 @@ class HandedLines(unittest.TestCase):
 
 
 # KIT=build/dist/<archive>: make dist-check runs this once for each archive
-KITDIR = pathlib.Path(os.environ.get("KIT", ROOT / "build/dist/UP-Term"))
+KITDIR = pathlib.Path(os.environ.get("KIT", ROOT / "build/dist/up-term"))
 if not KITDIR.is_absolute():
     KITDIR = ROOT / KITDIR
 
@@ -123,7 +239,7 @@ class BuiltKit(unittest.TestCase):
             self.assertIn(" install.dos#%s\n" % name, text)
 
     def test_only_the_base_hands_paths_over_and_holds_none_of_them(self):
-        if KITDIR.name != "UP-Term":
+        if KITDIR.name != "up-term":
             self.assertNotIn("handed#", (KITDIR / "Files/MANIFEST").read_text(encoding="latin-1"))
             self.skipTest("an add-on")
         kit = KITDIR
@@ -136,7 +252,7 @@ class BuiltKit(unittest.TestCase):
             "$VER: UP-Term %s (" % pkgs.get('base', 'version')))
 
     def test_the_base_manifest_lists_the_amissl_drawer_without_the_sdk(self):
-        if KITDIR.name != "UP-Term":
+        if KITDIR.name != "up-term":
             self.skipTest("an add-on")
         text = (KITDIR / "Files/MANIFEST").read_text(encoding="latin-1")
         for f in ("Install-AmiSSL", "Libs/AmigaOS3/amisslmaster.library", "Doc/AmiSSL.doc"):
@@ -154,6 +270,13 @@ class PartsTable(unittest.TestCase):
     def test_every_part_named_is_a_part_of_install_dos(self):
         labs = set(re.findall(r'(?m)^Lab (\S+)', DOS))
         self.assertEqual({p for p, _, _ in PARTS} - labs - {'-'}, set())
+
+    def test_every_file_the_makefile_copies_into_files_has_a_part(self):
+        """A cp into $(KIT)/Files/ with no parts.txt line stops make dist at kitsize (Files/upsame did)"""
+        mk = (ROOT / 'Makefile').read_text()
+        dests = re.findall(r'(?m)^\tcp (?:-\S+ )*\S+ \$\(KIT\)/(Files/[^\s/$*]+)$', mk)
+        self.assertIn('Files/upsame', dests)
+        self.assertEqual([d for d in dests if mm.part_of(d, PARTS) is None], [])
 
     def test_copy_parts_copy_the_drawers_parts_txt_names(self):
         """install.dos's copy-<part> and the Installer's P_COPY copy the same drawer to the same place."""

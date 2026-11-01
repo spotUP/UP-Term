@@ -1,0 +1,51 @@
+.KEY DIR/A,STEP/K
+.BRA {
+.KET }
+; Directory Opus 5 install: upstream's own Install DOpus5 script, from the build that fits the CPU
+; It stands alone: nothing here needs UP-Term, and nothing here looks at an UP-Term: assign.
+; Run by this archive's Install (an Installer script), which asks the questions:
+;   Execute <archive>/Files/install.dos <archive>/Files [STEP <part>]
+; The CPU choice is the installer's (database "cpu"), handed as ENV:UPTOPTCPU68000 (set for a 68000 or
+; 68010): then the os3-68000 drawer (DOpus5_104_os3-68000.lha), else the os3 one (DOpus5_104_os3.lha).
+FailAt 21
+CD "{DIR}"
+If NOT "{STEP}" EQ ""
+  Skip {STEP}
+EndIf
+; @include dist/common/@CHECKFRAG@
+Lab dopus
+; an existing Directory Opus is never touched (owner 2026-10-26)
+Assign >NIL: DOpus5: EXISTS
+If NOT WARN
+  Echo "Directory Opus 5 is already installed (DOpus5: is assigned): left as it is."
+Else
+  Set dopusbuild os3
+  If EXISTS ENV:UPTOPTCPU68000
+    Set dopusbuild os3-68000
+  EndIf
+  ; upstream's own Installer script, from the build that fits the CPU
+  ; the script finds its own files relative to the current directory: it runs from its own drawer
+  CD "$dopusbuild"
+  Installer SCRIPT "Install DOpus5" APPNAME "Directory Opus 5" MINUSER Novice DEFUSER Novice NOLOG
+  If WARN
+    CD "{DIR}"
+    UnSet dopusbuild
+    Quit 20
+  EndIf
+  CD "{DIR}"
+  UnSet dopusbuild
+  ; upstream writes the DOpus5: assign and the DOpus5:C path into its ;BEGIN DOpus5 block of
+  ; S:User-Startup and has them take effect at the next boot. Run those two lines now (whatever drawer
+  ; the Installer chose is in them), so DOpus5: and the path are live without a reboot.
+  Search >T:updopus-live FROM S:User-Startup SEARCH "Assign DOpus5:" NONUM
+  Search >>T:updopus-live FROM S:User-Startup SEARCH "Path DOpus5:" NONUM
+  If EXISTS T:updopus-live
+    Execute T:updopus-live
+    Delete >NIL: T:updopus-live QUIET
+  EndIf
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+; @include dist/common/record.dos
+Echo "Directory Opus 5 installed (DOpus5:), or found already installed."

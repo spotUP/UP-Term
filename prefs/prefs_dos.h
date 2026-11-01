@@ -6,19 +6,20 @@
 #define PREFS_DOS_H
 #include "prefs_core.h"
 
-enum { PREFS_T_ENV, PREFS_T_ENVARC };
-extern const char *const prefs_conf_dir[2];   /* ENV:up-term, ENVARC:up-term */
-extern const char *const prefs_conf_path[2];  /* .../up-term */
 extern const prefs_fs prefs_dos_fs;
 
-/* Make the profile drawer t when it is missing; 1 when it is there. */
-int prefs_dos_dir(int t);
+/* The DOS error (IoErr) of the last failed write, remove, rename or drawer step here; 0 before any failure. */
+long prefs_dos_last_error(void);
+
+/* Make the drawer of target t in path set p when it is missing; 1 when it is there. */
+int prefs_dos_dir(const prefs_paths *p, int t);
+
 
 /* buf (len bytes) into ENV:'s file, and ENVARC:'s too when keep, each by
- * prefs_install (the old file kept aside until the new one is in place).
+ * prefs_install_target.
  * PREFS_INSTALL_OK, PREFS_DOS_NODIR (a drawer could not be made) or
  * another prefs_install result; *failed is the target that failed. */
-#define PREFS_DOS_NODIR (-100)
+#define PREFS_DOS_NODIR PREFS_SAVE_NODIR
 int prefs_dos_save(const char *buf, long len, int keep, int *failed, int hlcat);
 /* The split-restore file: buf (len bytes) as up-term/splits in ENV: and ENVARC:
  * (the drawers made when missing, each file written in place); len 0 removes

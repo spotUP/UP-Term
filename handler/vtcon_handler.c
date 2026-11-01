@@ -34,6 +34,7 @@
 #include <intuition/intuition.h>
 #include <intuition/screens.h>
 #include <graphics/displayinfo.h>
+#include <graphics/layers.h>
 #include <graphics/gfxbase.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
@@ -66,12 +67,20 @@
 #include "complete_core.h"
 #include "menu_ids.h"
 #include "menu_def.h"
+#include "keymap_act.h"
+#include "upreq.h"
+#include "frontscr.h"
+#include "upactive.h"
+#include "../config/keymap_load.h"
 #include "slash.h"
+#include "winspec.h"
 #include "tabprog.h"
 #include "tabslot.h"
+#include "../amarchy/amconf_dos.h"
 #include "../demo/updemo.h"
 #include "brk.h"
 #include "ttyown.h"
+#include "closeeof.h"
 #include "waitset.h"
 #include "vtcon_packets.h"
 #include "../tty/ldisc.h"
@@ -79,6 +88,11 @@
 #include "../config/termurl.h"
 #include "../config/upconf.h"
 #include "../prefs/prefs_core.h"
+#include "../prefs/settings_def.h"
+#include "upterm_version.h"
+#include "screenreq.h"
+#include "wbpark.h"
+#include "screennotify.h"
 
 /* rexx/rexxio.h: ARexx PUSH and QUEUE */
 #ifndef ACTION_FORCE
@@ -98,6 +112,7 @@ struct Library *DiskfontBase;
 struct Library *GadToolsBase; /* the window's menu (may be 0: no menu) */
 struct Library *DataTypesBase; /* picture.datatype, opened by the picture worker per decode */
 struct Library *LayersBase; /* LockLayer, for the renderer's planar path */
+struct Library *ScreenNotifyBase; /* optional: the window leaves a closing Workbench (wb_msgs) */
 struct Device *TimerBase; /* for ReadEClock in the debug profile */
 
 static LONG handler_main(void);
@@ -109,7 +124,8 @@ LONG handler_entry(void)
     return handler_main();
 }
 
-/* Build fingerprint, readable with `version L:vtcon-handler`. VTCON_BUILD
+/* Build fingerprint, readable with `version L:vtcon-handler`: the base
+ * version and build day (upterm_version.h, written by the Makefile). VTCON_BUILD
  * is the git revision, passed bare (vc drops quotes on its way to the
  * compiler) and turned into a string here. */
 #ifndef VTCON_BUILD
@@ -117,7 +133,7 @@ LONG handler_entry(void)
 #endif
 #define STR2(x) #x
 #define STR(x) STR2(x)
-static const char vers[] = "$VER: vtcon-handler 0.1 (29.9.26) " STR(VTCON_BUILD);
+static const char vers[] = "$VER: vtcon-handler " UPTERM_VERSION " (" UPTERM_DATE ") " STR(VTCON_BUILD);
 
 /* ---- the console ----------------------------------------------------------- */
 
@@ -172,6 +188,8 @@ typedef struct con {
     int tty_ocol;                /* output column, for OXTABS */
     struct timerequest *rtimer;  /* VTIME for the first waiting read */
     int rtimer_busy, rtimer_fired;
+    struct timerequest *ztimer; /* once a second after a Workbench reopen: window back in front (wbpark_retry) */
+    int ztimer_busy;
     vt_u8 obuf[2048];            /* OPOST output of one chunk */
     /* bytes ready for Read (complete lines in cooked mode) */
     vt_u8 in[IN_MAX];
@@ -197,6 +215,7 @@ typedef struct con {
     struct MsgPort *rom_port;
     /* window spec */
     WORD wx, wy, ww, wh;
+    winspec_opts wopt; /* CELLS / CENTRE / FRONT / CLOSEINACTIVE (winspec.h) */
     char screen[64];
     ULONG wflags;
     /* a screen of its own (OWNSCREEN, FULLSCREEN, PUBSCREEN name; plan
@@ -206,7 +225,13 @@ typedef struct con {
     ULONG mode_id;               /* SCREENMODE 0x...; INVALID_ID = the Workbench's */
     int depth;                   /* DEPTH n; 0 = 4 on a native screen, 8 on a card */
     struct Screen *myscreen;     /* the screen opened for this window */
-    int screen_want;             /* a move to this screen kind asked for (-1 none): done after the IDCMP loop */
+    screenreq screen_want;       /* a move to another screen kind asked for: done after the IDCMP loop */
+    wbpark wb;                   /* the window is closed while the Workbench closes (screennotify) */
+    int tab_parked;              /* a tab: the host's window is closed for a Workbench close (TM_PARK) */
+    struct MsgPort *sn_port;     /* screennotify.library's Workbench messages */
+    APTR sn_handle;              /* our Workbench client; 0 = none */
+    WORD wb_box[4];              /* the parked window's left, top, width, height */
+    int wb_box_on;               /* create_window reopens at wb_box */
     struct Screen *screen_closing; /* ours, its close refused (a visitor still on it): tried again */
     int inactive;
     int auto_open;               /* AUTO: no window until the first read or write */
@@ -217,6 +242,8 @@ typedef struct con {
     char term[32];               /* W46: TERM told to vsh's programs ("": vsh's own, vtcon) */
     char colors[8];              /* W46: rgb | 256 ("": not told) */
     char link_open[UC_MAX_VALUE]; /* the profile's link-open, or /link-open's ("": OpenURL %s) */
+    char *theme_text;            /* ENV:up-term/theme-active as read (Amarchy theme), 0 none: beats the profile's colours */
+    long theme_len;
     int colours_spec;            /* the spec chose colours (DARK/FG/BG/LIGHT): it beats the profile */
     ULONG spec_fg, spec_bg;      /* the colours before any profile (a profile switch starts there) */
     upconf *save_work;           /* Save settings to profile: the table once the file is written
@@ -266,6 +293,7 @@ typedef struct con {
     char hist_queue[512];        /* lines waiting for the file, '\n'-ended */
     int hist_queue_len;
     int comp_busy, check_busy;
+    int style_save;              /* STYLE_SAVE_*: a look chosen in the menu, for the profile (style_save_run) */
     /* W21: ghost text from completion candidates, looked up off the key
      * path: the request (its names stay as the directory's listing), the
      * directory it lists, and what the pending look-up is for */
@@ -308,6 +336,7 @@ typedef struct con {
     int menu_len, menu_n, menu_i, menu_start;
     struct theme_menu *tm;       /* /theme's list (W30), 0 when none */
     int line_held;               /* a typed /theme's empty line waits for its list to close */
+    int km_user;                 /* this window counted itself in g_km_users (the shared keymap) */
     char *theme_file;            /* the theme file the window has (COMPLETE_MAX; 0: none yet):
                                   * the next theme requester and list start in its drawer */
     /* the find prompt (Right Amiga F): its own small window, open while the
@@ -357,7 +386,11 @@ typedef struct con {
     ULONG prof_idle, prof_t0;
     ULONG prof_pk[3], prof_npk[3]; /* packet() time and count: writes, WAIT_CHAR, the rest */
 #endif
+    int ua_on;                  /* this window counted in UPTERM.active (upactive.h) */
+    struct MsgPort *req_port;   /* the request port (upreq.h), made when the window first has focus */
+    char req_name[UPREQ_NAMELEN];
 } con;
+static void ua_set(con *c, int on);
 
 /* What one window costs (research/2026-10-04_window-memory.md), held at
  * compile time in the 68k build itself: the build fails when one of
@@ -841,23 +874,12 @@ static int alt_font_option(const char *field, const char **rest)
     return 0;
 }
 
-/* "name.font size" of a font option. */
+/* "name.font size" of a font option; the name may hold blanks (winspec_font). */
 static void parse_font(const char *rest, char *name, int max, WORD *size)
 {
-    int i = 0;
-    while (*rest == ' ')
-        rest++;
-    while (rest[i] && rest[i] != ' ' && i < max - 1) {
-        name[i] = rest[i];
-        i++;
-    }
-    name[i] = 0;
-    rest += i;
-    while (*rest == ' ')
-        rest++;
-    *size = 0;
-    while (*rest >= '0' && *rest <= '9')
-        *size = (WORD)(*size * 10 + (*rest++ - '0'));
+    int sz;
+    winspec_font(rest, name, max, &sz);
+    *size = (WORD)sz;
 }
 
 /* Is our DOS device node named `want` (case-insensitive)? The CON:/RAW:
@@ -908,9 +930,30 @@ struct config_msg {
     struct Message msg;
     upconf *conf;
     struct splits_rest *rest;    /* 0: no split file wanted */
+    keymap *km; /* the shared keymap to fill, or 0 when it is already loaded */
+    char *theme; /* the active Amarchy theme's text, read with the profile (0 none) */
+    long theme_len;
 };
 
 #define SPLITS_FILE_MAX 2304 /* the split file: four panes' URLs and commands */
+
+static char *read_active_theme(long *len);
+
+/* The keymap (Left Amiga keys, plan 2026-10-22-amarchy-commodity): one table
+ * for the whole handler, not one per window. The first window to open
+ * claims it (g_km_claim) and has its config worker fill it; after that it is
+ * read-only. A window that opens while it is still filling sees no keymap
+ * (g_km_ready 0) and its keys go to the terminal as before. */
+#include "keymap_default.inc" /* km_default_text, from dist/keymap (tools/gen_keymap_default.py) */
+static keymap *g_km;
+static volatile int g_km_claim, g_km_ready, g_km_users;
+
+/* The shipped file, then keymap.user over it, then the flag (keymap_load.c, shared with Amarchy). */
+static void read_keymap(keymap *km)
+{
+    keymap_load(km, km_default_text);
+    g_km_ready = 1;
+}
 
 /* The profile file into conf, in a process that may make DOS calls (a
  * worker). ENV: first, as Amiga prefs do (the editor's Use writes there;
@@ -981,6 +1024,9 @@ static void config_worker(void)
     read_conf(m->conf);
     if (m->rest)
         read_splits(m->rest);
+    m->theme = read_active_theme(&m->theme_len);
+    if (m->km)
+        read_keymap(m->km);
     Forbid(); /* the opener frees m: end before it can run on */
     ReplyMsg((struct Message *)m);
 }
@@ -1001,16 +1047,44 @@ static void config_worker(void)
 struct watch_msg {
     struct Message msg;
     upconf *conf;
+    char *theme;      /* the text of the theme file (GT_TERM_FILE) when it changed, else 0: the window frees it */
+    long theme_len;
     int quit, done;
 };
+
+/* The file the Amarchy theme switch writes (amarchy/gthemes_core.h GT_TERM_FILE): one profile section holding the new
+ * theme's colours. The watcher is told about it as it is about the profile file; the window applies it (theme_apply), so a
+ * switch recolours every open tab, a tab's hand-set theme included (owner 2026-10-29). */
+#define ACTIVE_THEME_FILE "ENV:up-term/theme-active"
+
+static char *read_active_theme(long *len)
+{
+    BPTR f = Open((STRPTR)ACTIVE_THEME_FILE, MODE_OLDFILE);
+    char *buf;
+    LONG got;
+    *len = 0;
+    if (!f)
+        return 0;
+    buf = (char *)AllocVec(UC_MAX_FILE + 1, MEMF_ANY);
+    got = buf ? Read(f, buf, UC_MAX_FILE) : -1;
+    Close(f);
+    if (got <= 0) {
+        if (buf)
+            FreeVec(buf);
+        return 0;
+    }
+    buf[got] = 0;
+    *len = got;
+    return buf;
+}
 
 static void watch_worker(void)
 {
     struct Process *me = (struct Process *)FindTask(0);
     struct watch_msg *m;
-    struct NotifyRequest nr;
-    LONG sig;
-    int have = 1, quitting = 0, watching;
+    struct NotifyRequest nr, nt;
+    LONG sig, sigt;
+    int have = 1, quitting = 0, watching, watching_t, theme_pend = 0;
     WaitPort(&me->pr_MsgPort);
     m = (struct watch_msg *)GetMsg(&me->pr_MsgPort);
     me->pr_WindowPtr = (APTR)-1;
@@ -1021,8 +1095,15 @@ static void watch_worker(void)
     nr.nr_stuff.nr_Signal.nr_Task = &me->pr_Task;
     nr.nr_stuff.nr_Signal.nr_SignalNum = (UBYTE)sig;
     watching = sig >= 0 && StartNotify(&nr);
+    sigt = AllocSignal(-1);
+    memset(&nt, 0, sizeof(nt));
+    nt.nr_Name = (STRPTR)ACTIVE_THEME_FILE;
+    nt.nr_Flags = NRF_SEND_SIGNAL;
+    nt.nr_stuff.nr_Signal.nr_Task = &me->pr_Task;
+    nt.nr_stuff.nr_Signal.nr_SignalNum = (UBYTE)sigt;
+    watching_t = sigt >= 0 && StartNotify(&nt);
     for (;;) {
-        ULONG got = Wait((watching ? 1UL << sig : 0) | SIGBREAKF_CTRL_C |
+        ULONG got = Wait((watching ? 1UL << sig : 0) | (watching_t ? 1UL << sigt : 0) | SIGBREAKF_CTRL_C |
                          (1UL << me->pr_MsgPort.mp_SigBit));
         struct Message *back;
         while ((back = GetMsg(&me->pr_MsgPort)) != 0) {
@@ -1034,8 +1115,18 @@ static void watch_worker(void)
             quitting = 1;
         if (quitting && have)
             break;
-        if (have && watching && (got & (1UL << sig))) {
+        if (watching_t && (got & (1UL << sigt)))
+            theme_pend = 1;
+        if (have && ((watching && (got & (1UL << sig))) || theme_pend)) {
             Delay(5); /* a writer that renames its new file in: let it finish */
+            if (m->theme) {
+                FreeVec(m->theme);
+                m->theme = 0;
+            }
+            if (theme_pend) {
+                m->theme = read_active_theme(&m->theme_len);
+                theme_pend = 0;
+            }
             if (m->conf)
                 FreeVec(m->conf); /* not taken (the window always takes it) */
             m->conf = (upconf *)AllocVec(sizeof(upconf), MEMF_ANY | MEMF_CLEAR);
@@ -1048,8 +1139,12 @@ static void watch_worker(void)
     }
     if (watching)
         EndNotify(&nr);
+    if (watching_t)
+        EndNotify(&nt);
     if (sig >= 0)
         FreeSignal(sig);
+    if (sigt >= 0)
+        FreeSignal(sigt);
     m->done = 1;
     Forbid(); /* the window frees m: end before it can run on */
     ReplyMsg(&m->msg);
@@ -1077,6 +1172,16 @@ static void config_load(con *c)
     /* every window reads the split file: whether it is a tab, or the window
      * of a program rather than a shell, is known only later (rest_poll) */
     m->rest = c->rest = (struct splits_rest *)AllocVec(sizeof(struct splits_rest), MEMF_CLEAR);
+    Forbid();
+    c->km_user = 1;
+    g_km_users++;
+    if (!g_km_claim) {
+        g_km_claim = 1;
+        Permit();
+        g_km = (keymap *)AllocVec(sizeof(keymap), MEMF_ANY | MEMF_CLEAR);
+        m->km = g_km; /* 0 (no memory): no keymap, the keys stay the terminal's */
+    } else
+        Permit();
     w = CreateNewProcTags(NP_Entry, (ULONG)config_worker,
                           NP_Name, (ULONG)"vtcon config", NP_StackSize, 8192,
                           NP_Input, 0, NP_Output, 0,
@@ -1101,6 +1206,8 @@ static void config_load(con *c)
     PutMsg(&w->pr_MsgPort, (struct Message *)m);
     WaitPort(port);
     GetMsg(port);
+    c->theme_text = m->theme; /* a new tab starts in the active Amarchy theme (apply_profile) */
+    c->theme_len = m->theme_len;
     FreeVec(m);
     DeleteMsgPort(port);
     if (c->rest && c->rest->n < 2) {
@@ -1161,6 +1268,8 @@ static void watch_stop(con *c)
     c->watch_task = 0;
     if (c->watch->conf)
         FreeVec(c->watch->conf); /* a table on its way when we quit */
+    if (c->watch->theme)
+        FreeVec(c->watch->theme);
     FreeVec(c->watch);
     c->watch = 0;
     DeleteMsgPort(c->watch_port);
@@ -1211,6 +1320,28 @@ static void apply_colours(con *c, const upconf *cf, const char *p, int theme)
     apply_colours_rest(c, cf, p, theme);
 }
 
+/* The colours: the active Amarchy theme beats the profile's (upconf_colour_source); the window spec beats both.
+ * p is the profile section, 0 when the file has none: the theme still applies then. */
+static void apply_profile_colours(con *c, const char *p)
+{
+    upconf *t = c->theme_text ? (upconf *)AllocVec(sizeof(upconf), MEMF_ANY | MEMF_CLEAR) : 0;
+    const upconf *src = c->conf;
+    const char *sec = p;
+    int is_theme = 0;
+    if (t) {
+        upconf_parse(t, c->theme_text, c->theme_len);
+        src = upconf_colour_source(c->conf, p, t, &sec, &is_theme);
+    }
+    if (sec) {
+        if (!c->colours_spec)
+            apply_colours(c, src, sec, is_theme);
+        else
+            apply_colours_rest(c, src, sec, is_theme);
+    }
+    if (t)
+        FreeVec(t);
+}
+
 /* The profile's values for every knob the spec did not set (precedence:
  * built-in defaults < profile < window spec; plan 2026-10-01). A profile
  * the file does not know falls back to "default". */
@@ -1225,8 +1356,10 @@ static void apply_profile(con *c)
     p = c->profile;
     if (!profile_exists(c->conf, p))
         p = profile_exists(c->conf, "default") ? "default" : 0;
-    if (!p)
+    if (!p) {
+        apply_profile_colours(c, 0); /* no profile in the file: the active theme still colours the window */
         return;
+    }
     /* OSC 8: the command a Ctrl + clicked link runs, %s the URL */
     copy_str(c->link_open, upconf_str(c->conf, p, "link-open", ""), sizeof(c->link_open));
     v = upconf_str(c->conf, p, "term", "");
@@ -1276,10 +1409,7 @@ static void apply_profile(con *c)
     /* glyphs the bitmap font lacks: an outline font's (F1); "" none */
     v = upconf_str(c->conf, p, "font-fallback", 0);
     copy_str(c->w.fallback, v ? v : "", sizeof(c->w.fallback));
-    if (!c->colours_spec)
-        apply_colours(c, c->conf, p, 0);
-    else
-        apply_colours_rest(c, c->conf, p, 0);
+    apply_profile_colours(c, p);
     /* no key: the built-in 500 (sb_lines 0); "scrollback = 0": none (-1),
      * as Settings > Scrollback > None saves it */
     if (upconf_get(c->conf, p, "scrollback")) {
@@ -1299,9 +1429,8 @@ static void apply_profile(con *c)
         else if (str_ieq(v, "bar"))
             c->w.cursor_style = 6;
     }
-    v = upconf_str(c->conf, p, "cursor-blink", 0);
-    if (v)
-        c->w.cursor_blink = str_ieq(v, "on");
+    if (upconf_get(c->conf, p, "cursor-blink"))
+        c->w.cursor_blink = sd_conf_key_index("cursor-blink", c->conf, p);
     v = upconf_str(c->conf, p, "bell", 0);
     if (v) {
         if (str_ieq(v, "none"))
@@ -1311,59 +1440,51 @@ static void apply_profile(con *c)
         else if (str_ieq(v, "beep"))
             c->w.bell = 1;
     }
-    v = upconf_str(c->conf, p, "bold-bright", 0);
-    if (v)
-        c->w.bold_bright = str_ieq(v, "on");
-    v = upconf_str(c->conf, p, "meta", 0);
-    if (v)
-        c->w.meta_alt = str_ieq(v, "alt");
+    if (upconf_get(c->conf, p, "bold-bright"))
+        c->w.bold_bright = sd_conf_key_index("bold-bright", c->conf, p);
+    if (upconf_get(c->conf, p, "meta"))
+        c->w.meta_alt = sd_conf_key_index("meta", c->conf, p); /* index 1 is alt (vtwin reset: the default); 0 moves Meta to Left Amiga */
     v = upconf_str(c->conf, p, "program-clipboard", 0);
     if (v) /* OSC 52: write (default) | read-write | off */
         c->w.clip_access = str_ieq(v, "off") ? 0 : str_ieq(v, "read-write") ? VT_CLIP_WRITE | VT_CLIP_READ
                          : VT_CLIP_WRITE;
-    v = upconf_str(c->conf, p, "copy-on-select", 0);
-    if (v)
-        c->w.copy_on_select = str_ieq(v, "on");
-    v = upconf_str(c->conf, p, "wheel", 0);
-    if (v)
-        c->w.wheel_scroll = !str_ieq(v, "ignore");
-    v = upconf_str(c->conf, p, "reflow", 0);
-    if (v)
-        c->w.reflow = !str_ieq(v, "off");
-    v = upconf_str(c->conf, p, "backspace", 0);
-    if (v)
-        c->w.backspace_bs = str_ieq(v, "bs"); /* del (^?, the default) or bs (^H) */
-    v = upconf_str(c->conf, p, "amiga-keys", 0);
-    if (v)
-        c->w.amiga_keys = !str_ieq(v, "off"); /* Shift+Left / Right as Home / End (on by default) */
-    v = upconf_str(c->conf, p, "dither", 0);
-    if (v)
-        c->w.dither = !str_ieq(v, "off"); /* few-pen screens dither (W-T9; on by default) */
-    v = upconf_str(c->conf, p, "padding-color", 0);
-    if (v)
-        c->w.pad_extend = str_ieq(v, "extend"); /* the strips beside the grid (W-T14; background by default) */
-    v = upconf_str(c->conf, p, "scrollbar", 0);
-    if (v)
-        c->sbar_on = !str_ieq(v, "hide");
+    if (upconf_get(c->conf, p, "copy-on-select"))
+        c->w.copy_on_select = sd_conf_key_index("copy-on-select", c->conf, p);
+    if (upconf_get(c->conf, p, "wheel"))
+        c->w.wheel_scroll = sd_conf_key_index("wheel", c->conf, p);
+    if (upconf_get(c->conf, p, "reflow"))
+        c->w.reflow = sd_conf_key_index("reflow", c->conf, p);
+    if (upconf_get(c->conf, p, "backspace"))
+        c->w.backspace_bs = sd_conf_key_index("backspace", c->conf, p); /* del (^?, the default) or bs (^H) */
+    if (upconf_get(c->conf, p, "amiga-keys"))
+        c->w.amiga_keys = sd_conf_key_index("amiga-keys", c->conf, p); /* Shift+Left / Right as Home / End */
+    if (upconf_get(c->conf, p, "dither"))
+        c->w.dither = sd_conf_key_index("dither", c->conf, p); /* few-pen screens dither */
+    if (upconf_get(c->conf, p, "outline-antialias"))
+        c->w.outline_aa = sd_conf_key_index("outline-antialias", c->conf, p); /* outline glyphs drawn smoothed */
+    if (upconf_get(c->conf, p, "padding-color"))
+        c->w.pad_extend = sd_conf_key_index("padding-color", c->conf, p); /* the strips beside the grid: background or extend */
+    if (upconf_get(c->conf, p, "scrollbar"))
+        c->sbar_on = sd_conf_key_index("scrollbar", c->conf, p);
     v = upconf_str(c->conf, p, "completion", 0);
     c->kingcon = v && str_ieq(v, "kingcon");
     v = upconf_str(c->conf, p, "split-restore", 0);
     c->split_restore = !v ? PREFS_SPLIT_OFF : str_ieq(v, "programs") ? PREFS_SPLIT_PROGRAMS
                      : str_ieq(v, "layout") ? PREFS_SPLIT_LAYOUT : PREFS_SPLIT_OFF;
     c->kc_style = le_kc_fncmode(upconf_str(c->conf, p, "kingcon-mode", ""));
-    v = upconf_str(c->conf, p, "kingcon-info", 0);
-    c->kc_info = v && str_ieq(v, "show");
-    v = upconf_str(c->conf, p, "kingcon-cache", 0);
-    c->kc_cache = !(v && str_ieq(v, "off"));
+    c->kc_info = sd_conf_key_index("kingcon-info", c->conf, p);
+    c->kc_cache = sd_conf_key_index("kingcon-cache", c->conf, p);
 }
 
-/* "x/y/w/h/title/OPT/OPT..." after the colon. */
+/* "x/y/w/h/title/OPT/OPT..." after the colon. A w or h of 0 is the screen's
+ * width or height (winspec.h), resolved when the window opens. */
 static void parse_spec(con *c, const char *s)
 {
     char field[128];
     int fno = 0, k, colours = 0;
     c->wx = 0;
     c->wy = 0;
+    memset(&c->wopt, 0, sizeof(c->wopt));
     c->ww = 640;
     c->wh = 200;
     copy_str(c->w.title, "vtcon", sizeof(c->w.title));
@@ -1376,7 +1497,7 @@ static void parse_spec(con *c, const char *s)
     vtwin_profile_defaults(&c->w); /* a profile may change them */
     copy_str(c->profile, "default", sizeof(c->profile));
     c->own_screen = 0;
-    c->screen_want = -1;
+    screenreq_clear(&c->screen_want);
     c->pubname[0] = 0;
     c->mode_id = (ULONG)INVALID_ID;
     c->depth = 0;
@@ -1413,6 +1534,8 @@ static void parse_spec(con *c, const char *s)
         } else if (fno == 4) {
             if (n)
                 copy_str(c->w.title, field, sizeof(c->w.title));
+        } else if (winspec_option(field, &c->wopt)) {
+            /* CELLS cxr, CENTRE, FRONT, CLOSEINACTIVE: winspec.c parses them */
         } else if (str_ieq(field, "CLOSE")) {
             c->wflags |= WFLG_CLOSEGADGET;
         } else if (str_ieq(field, "WAIT")) {
@@ -1423,7 +1546,11 @@ static void parse_spec(con *c, const char *s)
         } else if (str_ieq(field, "NODRAG")) {
             c->wflags &= ~WFLG_DRAGBAR;
         } else if (str_ieq(field, "NOBORDER")) {
+            /* borderless and bare: no drag bar, depth or size gadget (AM-OSD); no spec in the
+             * repo relied on them. No size gadget and no border also means no scroll bar
+             * (sbar_gad_fits), as the owner decided. CLOSE after it still adds the close gadget. */
             c->wflags |= WFLG_BORDERLESS;
+            c->wflags &= ~(WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_SIZEGADGET);
         } else if (str_ieq(field, "NOSIZE")) {
             c->wflags &= ~(WFLG_SIZEGADGET | WFLG_SIZEBRIGHT);
         } else if (str_ieq(field, "NODEPTH")) {
@@ -1522,12 +1649,17 @@ static void parse_spec(con *c, const char *s)
     }
     c->colours_spec = colours;
     /* Black background unless the options chose colours (owner, 2026-09-29:
-     * program colours sat on the Workbench's grey). The amiga personality
-     * keeps the screen's pens: CON: programs draw with pens 0-3 as the
-     * Workbench has them. LIGHT asks for the screen's pens anywhere. */
-    if (!colours && c->w.pers != VT_AMIGA) {
-        c->w.fg_rgb = 0xC0C0C0UL;
-        c->w.bg_rgb = 0x000000UL;
+     * program colours sat on the Workbench's grey). Every personality: a CON:
+     * window speaks the amiga escape dialect but looks like an XCON: one
+     * (owner, 2026-10-21); pens 0 and 1 draw with this ground, pens 2-7
+     * stay screen pens (vt_resolve_colors). LIGHT asks for the screen's pens
+     * anywhere. */
+    {
+        unsigned long gfg, gbg;
+        if (winspec_ground(colours, &gfg, &gbg)) {
+            c->w.fg_rgb = gfg;
+            c->w.bg_rgb = gbg;
+        }
     }
     c->spec_fg = c->w.fg_rgb;
     c->spec_bg = c->w.bg_rgb;
@@ -1548,6 +1680,7 @@ static int sb_size(const con *c);
 static void watch_take(con *c);
 static void tab_command(con *c, int what);
 static void slot_font_share(con *c);
+static void tab_command_arg(con *c, int what, const char *arg);
 static void sbar_apply(con *c);
 static int kc_cyc_key(con *c, const vt_u8 *b, int n, long key, int mods);
 static void kc_menu(con *c, int mode);
@@ -1561,8 +1694,10 @@ static void close_gadget(con *c);
 
 /* the items' ids: handler/menu_ids.h (the slash commands name them too) */
 
-/* Right Amiga C, V and F stay what they were: Intuition now hands them in
- * as MENUPICK, which picks the same actions. */
+/* The items' command keys are not here: menu_add sets them from the keymap
+ * (kact_comm_key), so the menu shows the keys the keymap file binds. Intuition
+ * hands such a key in as MENUPICK (either Amiga key), which picks the same
+ * action. */
 #define MD_ROW(type, label, key, id) { type, (STRPTR)(label), (STRPTR)(key), 0, 0, (APTR)(id) },
 static const struct NewMenu menu_def[] = {
     MENU_DEF_ROWS
@@ -1602,7 +1737,7 @@ static const struct NewMenu menu_help[MENU_HELP_ITEMS] = {
  * pick changes the window only -- Prefs keeps the profile. MutualExclude
  * bits are the item's place in its submenu. KingCON's .info and cache
  * switches are in its Complete menu. */
-#define MENU_SET_ITEMS 68
+#define MENU_SET_ITEMS 69
 static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_TITLE, (STRPTR)"Settings", 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Font...", 0, 0, 0, (APTR)MENU_SET_FONT },
@@ -1651,6 +1786,7 @@ static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_SUB, (STRPTR)"Backspace", 0, CHECKIT, 1, (APTR)MENU_SET_BS_BS },
     { NM_ITEM, (STRPTR)"AmigaShell keys", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_AMIGA_KEYS },
     { NM_ITEM, (STRPTR)"Dither on few colours", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_DITHER },
+    { NM_ITEM, (STRPTR)"Outline Antialias", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_OUTLINE_AA },
     { NM_ITEM, (STRPTR)"Padding colour", 0, 0, 0, 0 },
     { NM_SUB, (STRPTR)"Background", 0, CHECKIT, 2, (APTR)MENU_SET_PAD_BG },
     { NM_SUB, (STRPTR)"Extend the edge cells", 0, CHECKIT, 1, (APTR)MENU_SET_PAD_EXTEND },
@@ -1709,6 +1845,7 @@ static int menu_checked(const con *c, LONG id)
     case MENU_SET_BS_BS: return c->w.backspace_bs;
     case MENU_SET_AMIGA_KEYS: return c->w.amiga_keys;
     case MENU_SET_DITHER: return c->w.dither;
+    case MENU_SET_OUTLINE_AA: return c->w.outline_aa;
     case MENU_SET_PAD_BG: return !c->w.pad_extend;
     case MENU_SET_PAD_EXTEND: return c->w.pad_extend;
     case MENU_SET_CLIP_WRITE: return c->w.clip_access == VT_CLIP_WRITE;
@@ -1792,6 +1929,14 @@ static void menu_add(con *c, struct Window *win)
         for (i = 0; i < n; i++)
             if ((nm[i].nm_Flags & CHECKIT) && menu_checked(c, (LONG)nm[i].nm_UserData))
                 nm[i].nm_Flags |= CHECKED;
+        if (g_km && g_km_ready) {
+            /* the keymap's one-letter Super keys as the items' command keys */
+            char ck[sizeof(nm) / sizeof(nm[0])][2];
+            for (i = 0; i < n; i++)
+                if (nm[i].nm_Type == NM_ITEM && nm[i].nm_Label != NM_BARLABEL && (LONG)nm[i].nm_UserData > 0 &&
+                    kact_comm_key(g_km, (LONG)nm[i].nm_UserData, ck[i]))
+                    nm[i].nm_CommKey = (STRPTR)ck[i];
+        }
         CopyMem((APTR)&menu_def[sizeof(menu_def) / sizeof(menu_def[0]) - 1], nm + n,
                 sizeof(struct NewMenu));
         c->menustrip = CreateMenusA(nm, 0);
@@ -1824,14 +1969,14 @@ static void launcher(void)
 {
     static struct EasyStruct missing = {
         sizeof(struct EasyStruct), 0, (UBYTE *)"UP-Term",
-        (UBYTE *)"The preferences editor is not installed:\nC:UP-Term Prefs was not found.\n\n"
+        (UBYTE *)"The preferences editor is not installed:\nC:UP-Term-Prefs was not found.\n\n"
                  "Install UP-Term from its archive to get it.",
         (UBYTE *)"OK"
     };
     BPTR in, out, lock;
     /* the editor's errors would go to NIL: below: say here that it is not
      * there, instead of a menu item that does nothing */
-    if (!(lock = Lock((STRPTR)"C:UP-Term Prefs", SHARED_LOCK))) {
+    if (!(lock = Lock((STRPTR)"C:UP-Term-Prefs", SHARED_LOCK))) {
         EasyRequestArgs(0, &missing, 0, 0);
         return;
     }
@@ -1839,7 +1984,7 @@ static void launcher(void)
     in = Open((STRPTR)"NIL:", MODE_OLDFILE);
     out = Open((STRPTR)"NIL:", MODE_NEWFILE);
     if (in && out &&
-        SystemTags((STRPTR)"\"C:UP-Term Prefs\"", SYS_Input, in, SYS_Output, out, SYS_Asynch, TRUE,
+        SystemTags((STRPTR)"C:UP-Term-Prefs", SYS_Input, in, SYS_Output, out, SYS_Asynch, TRUE,
                    TAG_DONE) != -1)
         return; /* the streams are the editor's now */
     if (in)
@@ -1893,12 +2038,14 @@ static void rgb_hex(ULONG rgb, char *out)
     out[6] = 0;
 }
 
+static void window_style_fields(con *c, prefs_fields *f);
+
 /* The window's settings now, as UP-Term Prefs' fields for its profile:
  * the profile's own values first (what no menu sets, the scrollback),
  * then everything the window has changed. */
 static void window_fields(con *c, prefs_fields *f)
 {
-    int cs = c->w.cursor_style, i, k = 0;
+    int cs = c->w.cursor_style, k = 0;
     prefs_from_conf(f, c->conf, c->profile);
     f->cursor = cs == 3 || cs == 4 ? PREFS_CURSOR_UNDERLINE : cs >= 5 ? PREFS_CURSOR_BAR
               : PREFS_CURSOR_BLOCK;
@@ -1914,6 +2061,7 @@ static void window_fields(con *c, prefs_fields *f)
     f->backspace_bs = c->w.backspace_bs != 0;
     f->amiga_keys = c->w.amiga_keys != 0;
     f->dither = c->w.dither != 0;
+    f->outline_aa = c->w.outline_aa != 0;
     f->pad_extend = c->w.pad_extend != 0;
     f->split_restore = c->split_restore;
     f->clipboard = c->w.clip_access == 0 ? PREFS_CLIP_OFF
@@ -1942,6 +2090,14 @@ static void window_fields(con *c, prefs_fields *f)
             f->sb[k++] = n[--m];
         f->sb[k] = 0;
     }
+    window_style_fields(c, f);
+}
+
+/* The window's look over f: its font and colours, as the profile holds
+ * them (apply_profile reads them back). */
+static void window_style_fields(con *c, prefs_fields *f)
+{
+    int i, k;
     if (c->w.fontname[0]) {
         /* "NAME SIZE", as apply_profile reads it */
         char n[12];
@@ -1982,8 +2138,10 @@ static void comp_data_done(con *c)
 
 /* Settings > Save settings to profile: the file staged here (prefs_core,
  * as UP-Term Prefs does it), written by the worker (DOS) into ENV: and
- * ENVARC:; the window's table follows once both are in place. */
-static void save_ask(con *c)
+ * ENVARC:; the window's table follows once both are in place. style: the
+ * look alone (style_save_run) -- font and colours, every other key of the
+ * file as it is. */
+static void profile_save(con *c, int style)
 {
     prefs_fields f;
     long len;
@@ -1995,8 +2153,13 @@ static void save_ask(con *c)
         comp_data_done(c);
         return;
     }
-    window_fields(c, &f);
+    if (style) {
+        prefs_from_conf(&f, c->conf, c->profile);
+        window_style_fields(c, &f);
+    } else
+        window_fields(c, &f);
     len = prefs_validate(&f) ? -1
+        : style ? prefs_stage_style(c->save_work, c->conf, c->profile, &f, c->comp->data, UC_MAX_FILE + 1)
         : prefs_stage(c->save_work, c->conf, c->profile, &f, c->comp->data, UC_MAX_FILE + 1);
     if (len < 0) {
         comp_data_done(c);
@@ -2011,6 +2174,34 @@ static void save_ask(con *c)
         c->comp_busy = 1;
     else
         comp_data_done(c);
+}
+
+/* STYLE-SAVED-DEFAULT: a Theme, Font or Background chosen in the window's
+ * menu (or its keys: the request port) is the profile's too, so the next
+ * window opens in it. A typed /bg, /font or /theme stays this window's.
+ * WAIT: the menu's change is out (a requester, the worker); DUE: it is on
+ * the window, the save starts when the worker is free. */
+enum { STYLE_SAVE_NONE, STYLE_SAVE_WAIT, STYLE_SAVE_DUE };
+
+/* The menu's request went out (the worker took it): its answer decides. */
+static void style_save_wait(con *c, int was_busy)
+{
+    c->style_save = !was_busy && c->comp_busy ? STYLE_SAVE_WAIT : STYLE_SAVE_NONE;
+}
+
+/* The change the menu asked for came (ok), or was cancelled or refused. */
+static void style_save_got(con *c, int ok)
+{
+    if (c->style_save == STYLE_SAVE_WAIT)
+        c->style_save = ok ? STYLE_SAVE_DUE : STYLE_SAVE_NONE;
+}
+
+static void style_save_run(con *c)
+{
+    if (c->style_save == STYLE_SAVE_DUE && !c->comp_busy) {
+        c->style_save = STYLE_SAVE_NONE;
+        profile_save(c, 1);
+    }
 }
 
 /* A theme request for the worker (DOS): COMPLETE_THEME -- name a theme's
@@ -2303,6 +2494,15 @@ static void watch_take(con *c)
             menu_remove(c, c->w.win);
             menu_add(c, c->w.win);
         }
+        if (m->theme) {
+            if (c->w.t && c->w.win)
+                theme_apply(c, m->theme, m->theme_len);
+            if (c->theme_text)
+                FreeVec(c->theme_text);
+            c->theme_text = m->theme; /* kept: a profile switch or a later tab-profile reload stays in the theme */
+            c->theme_len = m->theme_len;
+            m->theme = 0;
+        }
         c->watch_held = 0;
         PutMsg(&c->watch_task->pr_MsgPort, &m->msg); /* back: the next change */
     }
@@ -2335,6 +2535,7 @@ static int menu_setting(con *c, LONG id, int on)
     case MENU_SET_BS_BS: c->w.backspace_bs = 1; restyle = 1; break;
     case MENU_SET_AMIGA_KEYS: c->w.amiga_keys = on; restyle = 1; break;
     case MENU_SET_DITHER: c->w.dither = on; restyle = 1; break;
+    case MENU_SET_OUTLINE_AA: c->w.outline_aa = on; restyle = 1; break;
     case MENU_SET_PAD_BG: c->w.pad_extend = 0; restyle = 1; break;
     case MENU_SET_PAD_EXTEND: c->w.pad_extend = 1; restyle = 1; break;
     case MENU_SET_CLIP_WRITE: c->w.clip_access = VT_CLIP_WRITE; restyle = 1; break;
@@ -2449,8 +2650,13 @@ static int menu_run(con *c, LONG id, int on)
     case MENU_FIND: find_open(c); return 1;
     case MENU_PREFS: prefs_launch(); return 1;
     case MENU_CLOSE: close_gadget(c); return 3; /* as the close gadget */
-    case MENU_TAB_NEW: case MENU_TAB_NEXT: case MENU_TAB_PREV: case MENU_TAB_CLOSE: case MENU_DEMO: case MENU_CLAUDE: case MENU_TUTORIAL:
+    case MENU_TAB_NEW: case MENU_TAB_NEXT: case MENU_TAB_PREV: case MENU_TAB_CLOSE: case MENU_DEMO: case MENU_CLAUDE: case MENU_PI: case MENU_AGENT: case MENU_SET_AGENT_CLAUDE: case MENU_SET_AGENT_PI: case MENU_TUTORIAL:
     case MENU_SPLIT_RIGHT: case MENU_SPLIT_DOWN: case MENU_PANE_CLOSE: case MENU_PANE_PREV: case MENU_PANE_NEXT: case MENU_PANE_ZOOM:
+        tab_command(c, (int)id);
+        return 3;
+    case MENU_TAB_GOTO0 + 1: case MENU_TAB_GOTO0 + 2: case MENU_TAB_GOTO0 + 3: case MENU_TAB_GOTO0 + 4:
+    case MENU_TAB_GOTO0 + 5: case MENU_TAB_GOTO0 + 6: case MENU_TAB_GOTO0 + 7: case MENU_TAB_GOTO0 + 8:
+    case MENU_TAB_GOTO0 + 9: /* the keymap's tab:goto N (not a menu item) */
         tab_command(c, (int)id);
         return 3;
     case MENU_KC_FILE: kc_menu(c, COMPLETE_FILES); return 1;
@@ -2458,13 +2664,13 @@ static int menu_run(con *c, LONG id, int on)
     case MENU_KC_DEVICE: kc_menu(c, COMPLETE_DEVICES); return 1;
     case MENU_KC_RESET: complete_cache_reset(); return 1;
     case MENU_KC_PURGE: complete_cache_purge(); return 1;
-    case MENU_SET_FONT: font_ask(c); return 1;
-    case MENU_SET_THEME: theme_ask(c, ""); return 1;
-    case MENU_SET_SAVE: save_ask(c); return 1;
+    case MENU_SET_FONT: { int b = c->comp_busy; font_ask(c); style_save_wait(c, b); return 1; }
+    case MENU_SET_THEME: { int b = c->comp_busy; theme_ask(c, ""); style_save_wait(c, b); return 1; }
+    case MENU_SET_SAVE: profile_save(c, 0); return 1;
     case MENU_ABOUT: about(c); return 1;
     case MENU_SCREEN_WB: case MENU_SCREEN_OWN: case MENU_SCREEN_FULL:
         /* after the IDCMP loop has replied its messages (the window goes) */
-        c->screen_want = (int)(id - MENU_SCREEN_WB);
+        screenreq_ask(&c->screen_want, (int)(id - MENU_SCREEN_WB));
         return 3;
     case MENU_SELECT_ALL: vtwin_select_all(&c->w); return 1;
     case MENU_FIND_NEXT:
@@ -2526,6 +2732,20 @@ static int menu_run(con *c, LONG id, int on)
     return menu_setting(c, id, on) ? 2 : 0;
 }
 
+/* One id, run as a menu pick runs it: menu_run, and the strip built again when a
+ * checkmark may have moved (every checkmark from the settings: one pick can move
+ * others, KingCON's W clears L and B). Returns menu_run's answer; at 2 and over the
+ * old strip is gone. The menu bar and the keymap's keys both come through here. */
+static int menu_do(con *c, LONG id, int on)
+{
+    int r = menu_run(c, id, on);
+    if (r == 2 && c->w.win) {
+        menu_remove(c, c->w.win);
+        menu_add(c, c->w.win);
+    }
+    return r;
+}
+
 static void menu_pick(con *c, UWORD code, UWORD qual)
 {
     while (code != MENUNULL && c->menustrip && c->w.win) {
@@ -2539,13 +2759,7 @@ static void menu_pick(con *c, UWORD code, UWORD qual)
         if (id == MENU_SPLIT_RIGHT && (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)))
             id = MENU_SPLIT_DOWN;
         stat_note(c, STATE_MENU, id, 0);
-        r = menu_run(c, id, (it->Flags & CHECKED) != 0);
-        if (r == 2 && c->w.win) {
-            /* the strip again: every checkmark from the settings (one pick
-             * can move others: KingCON's W clears L and B) */
-            menu_remove(c, c->w.win);
-            menu_add(c, c->w.win);
-        }
+        r = menu_do(c, id, (it->Flags & CHECKED) != 0);
         if (r >= 2)
             return; /* the old strip, and its NextSelect chain, are gone */
         code = it->NextSelect;
@@ -2774,6 +2988,8 @@ static struct Screen *lock_screen(con *c)
     DBG("own_screen", c->own_screen, c->myscreen);
     if (c->own_screen && !c->tab_host[0] && !c->foreign && (c->myscreen || own_screen_open(c)))
         scr = LockPubScreen((UBYTE *)c->pubname); /* ours, locked as any public screen */
+    if (!scr && c->wopt.front && !c->screen[0])
+        scr = lock_front_screen();
     if (!scr)
         scr = LockPubScreen(c->screen[0] ? (UBYTE *)c->screen : 0);
     if (!scr)
@@ -2801,13 +3017,40 @@ static struct Window *create_window(con *c, struct Screen *scr)
         tags[n].ti_Tag = WA_ScreenTitle; tags[n++].ti_Data = (ULONG)c->w.title;
         c->w.title_on_screen = 1;
     } else {
+        int bx = c->wx, by = c->wy;
+        int bw = winspec_size(c->ww, c->wx, scr->Width);
+        int bh = winspec_size(c->wh, c->wy, scr->Height);
+        int borderless = (c->wflags & WFLG_BORDERLESS) != 0;
         c->w.title_on_screen = 0;
-        tags[n].ti_Tag = WA_Left;    tags[n++].ti_Data = c->wx;
-        tags[n].ti_Tag = WA_Top;     tags[n++].ti_Data = c->wy;
-        tags[n].ti_Tag = WA_Width;   tags[n++].ti_Data = c->ww;
-        tags[n].ti_Tag = WA_Height;  tags[n++].ti_Data = c->wh;
+        if (c->wopt.cols || c->wopt.centre) {
+            /* CELLS / CENTRE: the box worked out once, here (winspec_box); the
+             * window opens at its place and size and never moves after. A
+             * borderless window has no borders; others the screen's. */
+            int bl = borderless ? 0 : scr->WBorLeft;
+            int br = borderless ? 0 : scr->WBorRight;
+            int bb = borderless ? 0 : scr->WBorBottom;
+            int bt = borderless ? 0 : scr->WBorTop + scr->Font->ta_YSize + 1;
+            winspec_box(&c->wopt, c->w.font->tf_XSize, c->w.font->tf_YSize, bl, bt, br, bb,
+                        scr->Width, scr->Height, &bx, &by, &bw, &bh);
+        }
+        if (c->wb_box_on) {
+            /* back from a Workbench close (wb_msgs): where the user left it;
+             * WA_AutoAdjust fits it to a smaller new Workbench */
+            bx = c->wb_box[0];
+            by = c->wb_box[1];
+            bw = c->wb_box[2];
+            bh = c->wb_box[3];
+        }
+        if (wbpark_flag_window(ScreenNotifyBase != 0, (scr->Flags & SCREENTYPE) == WBENCHSCREEN)) {
+            /* IPrefs 3.1 counts windows without this flag and refuses the reset (wbpark.h) */
+            tags[n].ti_Tag = WA_WBenchWindow; tags[n++].ti_Data = TRUE;
+        }
+        tags[n].ti_Tag = WA_Left;    tags[n++].ti_Data = bx;
+        tags[n].ti_Tag = WA_Top;     tags[n++].ti_Data = by;
+        tags[n].ti_Tag = WA_Width;   tags[n++].ti_Data = bw;
+        tags[n].ti_Tag = WA_Height;  tags[n++].ti_Data = bh;
         tags[n].ti_Tag = WA_Flags;   tags[n++].ti_Data = c->wflags;
-        tags[n].ti_Tag = WA_Title;   tags[n++].ti_Data = (ULONG)c->w.title;
+        tags[n].ti_Tag = WA_Title;   tags[n++].ti_Data = (ULONG)winspec_wa_title(borderless, c->w.title);
     }
     tags[n].ti_Tag = WA_IDCMP;       tags[n++].ti_Data = IDCMP_RAWKEY | IDCMP_NEWSIZE |
         IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_MOUSEBUTTONS | IDCMP_MOUSEMOVE |
@@ -2879,6 +3122,30 @@ have_window:
     return 1;
 }
 
+/* The "vtcon SIGWINCH" input handler (post_sizewindow) out of input.device's chain, and the
+ * request that added it closed. Every path that frees a con, or ends its session, runs this
+ * first: a node left in the chain points into freed memory and the next input event jumps
+ * through it (RIG9-INSTALLER-CRASH). Safe to call twice. */
+static void winch_remove(con *c)
+{
+    c->winch_closing = 1; /* stop naming a window before the node goes */
+    if (c->input_io) {
+        if (c->winch_added) {
+            c->input_io->io_Command = IND_REMHANDLER;
+            c->input_io->io_Data = &c->winch_irq;
+            DoIO((struct IORequest *)c->input_io);
+            c->winch_added = 0;
+        }
+        CloseDevice((struct IORequest *)c->input_io);
+        DeleteIORequest((struct IORequest *)c->input_io);
+        c->input_io = 0;
+    }
+    if (c->input_port) {
+        DeleteMsgPort(c->input_port);
+        c->input_port = 0;
+    }
+}
+
 /* What belongs to the window and not to the terminal: the Find prompt,
  * the selection window, menus, the input handler, the ROM console unit.
  * close_window, and a move to another screen, take these down first. */
@@ -2896,21 +3163,7 @@ static void window_parts_close(con *c)
     sbar_gad_close(&c->sbar); /* and the scroll bar in its border */
     kc_cyc_end(c);
     menu_remove(c, c->w.win);
-    if (c->input_io) {
-        if (c->winch_added) {
-            c->input_io->io_Command = IND_REMHANDLER;
-            c->input_io->io_Data = &c->winch_irq;
-            DoIO((struct IORequest *)c->input_io);
-            c->winch_added = 0;
-        }
-        CloseDevice((struct IORequest *)c->input_io);
-        DeleteIORequest((struct IORequest *)c->input_io);
-        c->input_io = 0;
-    }
-    if (c->input_port) {
-        DeleteMsgPort(c->input_port);
-        c->input_port = 0;
-    }
+    winch_remove(c);
     if (c->rom_io) {
         CloseDevice((struct IORequest *)c->rom_io);
         DeleteIORequest((struct IORequest *)c->rom_io);
@@ -2930,6 +3183,7 @@ static void close_window(con *c)
     window_parts_close(c);
     if (c->is_tab)
         tab_unregister(c); /* the host stops sending before the grid goes */
+    ua_set(c, 0);
     vtwin_detach(&c->w); /* engine, renderer, fonts; the frame clock stops */
     le_unbind(&c->le); /* its engine is gone: the next window's attach must not reach it */
     if (win && !c->is_tab) {
@@ -2947,6 +3201,34 @@ static void close_window(con *c)
     own_screen_close(c); /* its screen goes with it */
 }
 
+/* The terminal leaves its window, which closes; the grid, scrollback and
+ * the line being edited stay (screen_switch, wb_msgs). Only our own window. */
+static void window_unbind(con *c)
+{
+    window_parts_close(c);
+    ua_set(c, 0);
+    vtwin_unbind(&c->w);
+    CloseWindow(c->own_win);
+    c->own_win = 0;
+    if (c->locked) {
+        UnlockPubScreen(0, c->locked);
+        c->locked = 0;
+    }
+}
+
+/* The terminal into a new window on `scr` (locked by the caller) and redrawn. */
+static void window_rebind(con *c, struct Screen *scr, struct Window *win)
+{
+    c->locked = scr;
+    c->own_win = win;
+    vtwin_set_screen(&c->w, scr);
+    vtwin_rebind(&c->w, win);
+    pens_tell(c);
+    vtwin_fit_aspect(&c->w); /* topaz <-> Topaz Pro for the new screen's pixels */
+    menu_add(c, win);
+    sbar_apply(c); /* none on the borderless full-screen window: it has no border */
+}
+
 /* The window to another screen, its terminal with it (Settings > Screen,
  * /screen; P1.3): 0 the Workbench (or the SCREEN the spec named), 1 a
  * screen of its own, 2 full screen. The terminal is unbound from the old
@@ -2961,14 +3243,7 @@ static int screen_switch(con *c, int mode)
         return 0;
     if (mode == c->own_screen)
         return 1;
-    window_parts_close(c);
-    vtwin_unbind(&c->w);
-    CloseWindow(c->own_win);
-    c->own_win = 0;
-    if (c->locked) {
-        UnlockPubScreen(0, c->locked);
-        c->locked = 0;
-    }
+    window_unbind(c);
     own_screen_close(c); /* own -> full opens a fresh one: borderless, no title bar */
     c->own_screen = mode;
     scr = lock_screen(c);
@@ -2989,24 +3264,171 @@ static int screen_switch(con *c, int mode)
         c->eof = 1; /* nowhere to show the terminal: the reader sees the end */
         return 0;
     }
-    c->locked = scr;
-    c->own_win = win;
-    vtwin_set_screen(&c->w, scr);
-    vtwin_rebind(&c->w, win);
-    pens_tell(c);
-    vtwin_fit_aspect(&c->w); /* topaz <-> Topaz Pro for the new screen's pixels */
-    menu_add(c, win);
-    sbar_apply(c); /* none on the borderless full-screen window: it has no border */
+    window_rebind(c, scr, win);
     return c->own_screen == mode;
 }
 
 static void screen_pending(con *c)
 {
-    if (c->screen_want >= 0) {
-        int m = c->screen_want;
-        c->screen_want = -1;
+    int m = screenreq_take(&c->screen_want);
+    if (m != SCREENREQ_NONE) {
         if (!screen_switch(c, m))
             DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* tabs, or no such screen */
+    }
+}
+
+/* ---- the Workbench closes (screennotify.library) ---------------------------- */
+
+/* Our own plain window on the Workbench screen: one we may close and reopen
+ * with the terminal kept (not tabs, not our own screen, not a foreign window). */
+static int wb_eligible(con *c)
+{
+    return wbpark_eligible(c->own_win != 0, c->w.t != 0, c->is_tab, c->foreign != 0, c->own_screen,
+                           c->locked && (c->locked->Flags & SCREENTYPE) == WBENCHSCREEN);
+}
+
+static int wb_tabs_park(con *c);
+static void wb_tabs_abort(con *c);
+static void wb_tabs_unpark(con *c);
+
+/* No window now: a parked console (the host, or a tab of a parked host) must not open one. */
+static int wb_is_parked(const con *c)
+{
+    return c->wb.parked || c->tab_parked;
+}
+
+/* Become a Workbench client when the library is there; without it the
+ * handler works as before (the reset of the Workbench fails while our
+ * window is open and Intuition asks Retry/Cancel). */
+static void wb_client_add(con *c)
+{
+    if (!ScreenNotifyBase)
+        return;
+    c->sn_port = CreateMsgPort();
+    if (c->sn_port)
+        c->sn_handle = AddWorkbenchClient(c->sn_port, 0);
+}
+
+static void wb_client_remove(con *c)
+{
+    struct Message *m;
+    if (c->sn_handle) {
+        /* FALSE while the library is sending to its clients: it waits for
+         * our reply, so answer what came in and try again */
+        while (!RemWorkbenchClient(c->sn_handle)) {
+            while ((m = GetMsg(c->sn_port)) != 0)
+                ReplyMsg(m);
+            Delay(10);
+        }
+        c->sn_handle = 0;
+    }
+    if (c->sn_port) {
+        while ((m = GetMsg(c->sn_port)) != 0)
+            ReplyMsg(m);
+        DeleteMsgPort(c->sn_port);
+        c->sn_port = 0;
+    }
+}
+
+/* The library's messages: before CloseWorkBench (value FALSE) the window
+ * closes, the terminal kept, and the reply follows; after OpenWorkBench or
+ * a failed close (TRUE) the reply goes first -- the library holds its
+ * semaphore until every client replied, and our LockPubScreen/OpenWindow
+ * may call OpenWorkBench, which waits for that semaphore -- then the
+ * window reopens where it was. */
+static void ztimer_start(con *c)
+{
+    if (!c->ztimer || c->ztimer_busy)
+        return;
+    c->ztimer->tr_node.io_Command = TR_ADDREQUEST;
+    c->ztimer->tr_time.tv_secs = 1;
+    c->ztimer->tr_time.tv_micro = 0;
+    SendIO((struct IORequest *)c->ztimer);
+    c->ztimer_busy = 1;
+}
+
+/* Window layers lying in front of the window's own (depth order; the screen's title bar layer does not count). */
+static const void *wb_layer_next(const void *l)
+{
+    return ((const struct Layer *)l)->front;
+}
+
+static int wb_layers_in_front(const struct Window *win)
+{
+    if (!win || !win->WLayer)
+        return 0;
+    return wbpark_layers_in_front(win->WLayer, win->WScreen ? win->WScreen->BarLayer : 0, wb_layer_next);
+}
+
+static int wb_in_front(const struct Window *win)
+{
+    return wbpark_in_front(wb_layers_in_front(win));
+}
+
+/* The user picked another window: it is active, not ours, and not a Workbench drawer window (wbpark_user_other). */
+static int wb_user_other(const con *c)
+{
+    const struct Window *a = IntuitionBase->ActiveWindow;
+    return wbpark_user_other(a != 0, a == c->own_win, a && (a->Flags & WFLG_WBENCHWINDOW));
+}
+
+static void wb_raise(con *c, int bits)
+{
+    if (!c->own_win)
+        return;
+    if (bits & WBPARK_TO_FRONT)
+        WindowToFront(c->own_win);
+    if (bits & WBPARK_ACTIVATE)
+        ActivateWindow(c->own_win);
+}
+
+static void wb_msgs(con *c)
+{
+    struct ScreenNotifyMessage *m;
+    if (!c->sn_port)
+        return;
+    while ((m = (struct ScreenNotifyMessage *)GetMsg(c->sn_port)) != 0) {
+        int act = WBPARK_NONE;
+        if (m->snm_Type == SCREENNOTIFY_TYPE_WORKBENCH)
+            act = wbpark_note(&c->wb, m->snm_Value != 0, wb_eligible(c));
+        if (act == WBPARK_HIDE) {
+            struct Window *win = c->own_win;
+            c->wb_box[0] = win->LeftEdge;
+            c->wb_box[1] = win->TopEdge;
+            c->wb_box[2] = win->Width;
+            c->wb_box[3] = win->Height;
+            c->wb_box_on = 1;
+            wbpark_remember(&c->wb, wb_in_front(win),
+                            IntuitionBase->ActiveWindow == win);
+            if (wb_tabs_park(c)) { /* the tabs let go of the window first: it closes under them */
+                window_unbind(c);
+            } else {
+                /* a hung tab: the window stays, CloseWorkBench fails (IPrefs reports it) and screennotify
+                 * sends "opened" again, which finds nothing parked */
+                wb_tabs_abort(c);
+                c->wb_box_on = 0;
+                c->wb.parked = 0;
+                act = WBPARK_NONE;
+            }
+        }
+        ReplyMsg(&m->snm_Message);
+        if (act == WBPARK_SHOW) {
+            struct Screen *scr = lock_screen(c);
+            struct Window *win = scr ? create_window(c, scr) : 0;
+            c->wb_box_on = 0;
+            if (win) {
+                int back = wbpark_restore(&c->wb);
+                window_rebind(c, scr, win);
+                wb_tabs_unpark(c);
+                wb_raise(c, back);
+                ztimer_start(c);
+            } else {
+                if (scr)
+                    UnlockPubScreen(0, scr);
+                wbpark_failed(&c->wb); /* the next "opened" tries again */
+                c->wb_box_on = 1;
+            }
+        }
     }
 }
 
@@ -3273,9 +3695,11 @@ static void service_reads(con *c)
             n = c->raw ? c->in_len : line_end(c);
             if (!n && !c->raw)
                 n = c->in_len; /* a report or a mode switch left bytes without a newline */
-        } else if (c->eof) {
-            n = 0;
-            c->eof = 0;
+        } else if (closeeof_read(&c->eof, c->closing, c->raw, c->auto_open)) {
+            n = 0; /* closed: every read sees the end, not only the first (closeeof.h) */
+#ifdef VTCON_DEBUG
+            dbg("READ eof task", (LONG)p->dp_Port->mp_SigTask, 0);
+#endif
             reply(p, 0, 0);
             goto next;
         } else {
@@ -3287,6 +3711,9 @@ static void service_reads(con *c)
         for (i = n; i < c->in_len; i++)
             c->in[i - n] = c->in[i];
         c->in_len -= (int)n;
+#ifdef VTCON_DEBUG
+        dbg("READ bytes n/first", n, n ? c->in[0] : 0);
+#endif
         if (!c->marker_out && p->dp_Port && (struct Task *)p->dp_Port->mp_SigTask == c->comp_armed)
             c->comp_armed = 0; /* V93: its prompt line went: the shell arms again before the next prompt */
         reply(p, n, 0);
@@ -3936,12 +4363,15 @@ static void finish_completion(con *c)
             continue;
         }
         if (q->mode == COMPLETE_THEME) {
+            int ok = 0;
             if (q->matches && c->w.t) {
-                if (theme_apply(c, q->data, q->data_len))
+                if ((ok = theme_apply(c, q->data, q->data_len)) != 0)
                     theme_keep(c, q->add);
             } else if (q->word[0])
                 DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* "/theme NAME": no such theme */
             comp_data_done(c);
+            style_save_got(c, ok);
+            style_save_run(c);
             continue;
         }
         if (q->mode == COMPLETE_THEMES) {
@@ -3950,12 +4380,13 @@ static void finish_completion(con *c)
         }
         if (q->mode == COMPLETE_FONT) {
             /* Settings > Font...: the window in the chosen font, live */
-            if (q->matches && c->w.t) {
-                if (!vtwin_set_font(&c->w, q->add, (WORD)q->font_size))
-                    DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* not fixed width, or gone */
-                else
-                    slot_font_share(c);
-            }
+            int ok = 0;
+            if (q->matches && c->w.t && !(ok = vtwin_set_font(&c->w, q->add, (WORD)q->font_size)))
+                DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* not fixed width, or gone */
+            if (ok)
+                slot_font_share(c);
+            style_save_got(c, ok);
+            style_save_run(c);
             continue;
         }
         c->menu_n = 0;
@@ -3988,6 +4419,7 @@ static void finish_completion(con *c)
             DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* completed as far as they agree */
     }
     partial_refine(c); /* a warm-up we waited for has ended */
+    style_save_run(c); /* a look waiting for the worker */
 }
 
 /* name (Latin-1) in place of the word a completion is for, in the line's encoding */
@@ -4106,7 +4538,7 @@ static void setup_text(con *c, char *ans, int cap)
 {
     const char *p = c->conf && profile_exists(c->conf, c->profile) ? c->profile : 0;
     const char *base = p ? p : (c->conf && profile_exists(c->conf, "default") ? "default" : 0);
-    slash_row rows[8];
+    slash_row rows[9];
     const char *pv;
     char font[UC_MAX_VALUE];
     int n = 0;
@@ -4143,6 +4575,11 @@ static void setup_text(con *c, char *ans, int cap)
     rows[n].name = "dither";
     rows[n].value = c->w.dither ? "on" : "off";
     pv = base ? upconf_str(c->conf, base, "dither", 0) : 0;
+    rows[n].source = slash_source(rows[n].value, pv, "on");
+    n++;
+    rows[n].name = "outline-antialias";
+    rows[n].value = c->w.outline_aa ? "on" : "off";
+    pv = base ? upconf_str(c->conf, base, "outline-antialias", 0) : 0;
     rows[n].source = slash_source(rows[n].value, pv, "on");
     n++;
     rows[n].name = "padding-color";
@@ -4231,7 +4668,7 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap, int 
         copy_str(c->w.fallback, str_ieq(cmd.arg, "none") ? "" : cmd.arg, sizeof(c->w.fallback));
         vtwin_apply_settings(&c->w);
         if (c->w.fallback[0] && !c->w.outline) {
-            cat3(ans, cap, name, ": not installed, or no engine for it (FONTS:", "<name>.otag, LIBS:ttf.library)\n");
+            cat3(ans, cap, name, ": no TrueType font by that name (FONTS:", "<name>.ttf or <name>.otag)\n");
             return 2;
         }
         return 1;
@@ -4290,7 +4727,31 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap, int 
         if (!c->is_tab)
             stat_fill(c);
         c->st.scrollback = vtwin_scrollback_size(&c->w); /* this pane's own, after the NS4.3 cap */
+        c->st.font_size = c->w.font ? c->w.font->tf_YSize : 0; /* this window's own, never the host's copy */
+        c->st.outline_own = (long)vo_own(c->w.outline);
+        c->st.outline_aa = (long)c->w.r.n_aa;
         return slash_state_text(&c->st, cmd.arg, ans, cap) < 0 ? 2 : 1;
+    case SLASH_SCREEN_TEXT: {
+        /* the rows as they stand, with no selection and no clipboard (RIG-QUIET-READ): the file is
+         * written whole and closed before the answer, so the sender reads it at once */
+        long need = c->w.t ? vt_screen_text(c->w.t, 0, 0) : -1;
+        char *buf = need >= 0 ? (char *)AllocVec((ULONG)need + 1, MEMF_ANY) : 0;
+        BPTR fh = buf ? Open((STRPTR)cmd.arg, MODE_NEWFILE) : 0;
+        long done = 0;
+        if (fh) {
+            vt_screen_text(c->w.t, buf, need + 1);
+            done = Write(fh, buf, need) == need;
+            Close(fh);
+        }
+        if (buf)
+            FreeVec(buf);
+        if (!done) {
+            cat3(ans, cap, name, ": cannot write ", cmd.arg);
+            return 2;
+        }
+        ans[0] = 0;
+        return 1;
+    }
     case SLASH_THEME:
         if (!cmd.arg[0] && typed) {
             /* the themes under the line, chosen with the keys (W30); the
@@ -4341,6 +4802,9 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap, int 
         }
         return 1;
     }
+    case SLASH_ASK: /* the ai-agent preference's agent in a new tab (MENU_AGENT), started on the task */
+        tab_command_arg(c, MENU_AGENT, cmd.arg);
+        return 1;
     case SLASH_FIND:
         if (!vtwin_find(&c->w, cmd.arg[0] ? cmd.arg : 0)) {
             cat3(ans, cap, name, ": not found", "\n");
@@ -4631,19 +5095,13 @@ static void key_in(con *c, const vt_u8 *out, int n, long key, int mods)
             return;
         }
     }
-    if (n == 1 && !key && (!c->raw || c->w.pers != VT_XTERM)) {
-        ULONG brk = 0;
-        if (out[0] >= 0x03 && out[0] <= 0x06)
-            brk = SIGBREAKF_CTRL_C << (out[0] - 0x03);
-        else if (out[0] == 0x1C)
-            brk = SIGBREAKF_CTRL_E;
-        else if (out[0] == 0x1A)
-            brk = SIGBREAKF_CTRL_F;
-        if (brk) {
-            if (brk == SIGBREAKF_CTRL_C)
+    if (n == 1 && !key) {
+        int bit, act = le_break_key(c->raw, c->w.pers == VT_XTERM, out[0], &bit);
+        if (act != LE_BRK_NONE) {
+            if (bit == SIGBREAKB_CTRL_C)
                 le_ahead_clear(&c->ahead); /* an interrupt flushes what was typed ahead, as a tty's does */
-            send_break(c, brk);
-            if (!c->raw)
+            send_break(c, 1UL << bit);
+            if (act == LE_BRK_ONLY)
                 return;
         }
     }
@@ -5326,6 +5784,12 @@ static void close_gadget(con *c)
         return;
     }
     c->closing = 1;
+    if (tty_active(c)) {
+        ld_hangup(&c->ld); /* termios mode (an ixemul program, curses): a hang-up, its reads and select see the end */
+        /* an editor in a read loop ignores the end (and traps SIGINT): the foreground group gets the SIGHUP
+         * a patched ixemul turns CTRL_D into (vtcon_packets.h), as closing a terminal does */
+        send_break(c, SIGBREAKF_CTRL_D);
+    }
     if (!c->raw)
         c->eof = 1;
     else if (!vtwin_raw_report(&c->w, 11)) /* IECLASS_CLOSEWINDOW, if asked */
@@ -5335,6 +5799,120 @@ static void close_gadget(con *c)
 /* One window event for this process's terminal: from its own window's
  * IDCMP, or forwarded by the host when this process is a tab (wheel: 1 up,
  * -1 down, for IDCMP_EXTENDEDMOUSE). */
+/* UPTERM.active (upactive.h): count this window once while it has focus. */
+static void ua_set(con *c, int on)
+{
+    if (c->ua_on == on)
+        return;
+    c->ua_on = on;
+    upactive_note(on);
+    if (on) {
+        if (!c->req_port)
+            c->req_port = upreq_open(c->req_name);
+        if (c->req_port)
+            upactive_focus((ULONG)c->req_port);
+    }
+}
+
+/* The request port goes with the process: not findable, queued requests answered. */
+static void req_drop(con *c)
+{
+    if (!c->req_port)
+        return;
+    upactive_forget((ULONG)c->req_port);
+    upreq_close(c->req_port);
+    c->req_port = 0;
+}
+
+/* A Left Amiga key the keymap binds (B1). 1: it ran, the key is not the
+ * terminal's; 0: the key goes on to the terminal as it did (no keymap, no
+ * binding, a binding that is the commodity's, a repeat). One decision, two
+ * runners, both the menu bar's: a menu id through menu_do, a slash command
+ * through slash_run, as the same line typed. The qualifier mask is the file's
+ * (KM_Q_*): "shift" is either Shift, "rshift" the right one alone. */
+/* slash_run for a command the menu or a key sends: Theme, Font and
+ * Background are the profile's too (style_save_run); typed ones are not. */
+static int slash_menu(con *c, const char *line, char *ans, int cap)
+{
+    char err[80];
+    slash_cmd sc;
+    int len = (int)strlen(line), was_busy = c->comp_busy, ran,
+        style = slash_parse(line, len, &sc, err, sizeof err) == SLASH_OK &&
+                (sc.id == SLASH_THEME || sc.id == SLASH_FONT || sc.id == SLASH_BG);
+    ran = slash_run(c, line, len, ans, cap, 0);
+    if (!style)
+        return ran;
+    if (ran != 1)
+        c->style_save = STYLE_SAVE_NONE;
+    else if (sc.id == SLASH_BG || (sc.id == SLASH_FONT && sc.arg[0]))
+        c->style_save = STYLE_SAVE_DUE; /* on the window now */
+    else
+        style_save_wait(c, was_busy); /* a requester, or /theme NAME's read */
+    return ran;
+}
+
+static int keymap_key(con *c, UWORD code, UWORD qual)
+{
+    const km_bind *b = 0;
+    unsigned base;
+    kact a;
+    if (!g_km || !g_km_ready || !(qual & IEQUALIFIER_LCOMMAND) || (code & 0x80) ||
+        (qual & (IEQUALIFIER_RCOMMAND | IEQUALIFIER_REPEAT)))
+        return 0;
+    base = KM_Q_SUPER | ((qual & IEQUALIFIER_CONTROL) ? KM_Q_CTRL : 0) | ((qual & (IEQUALIFIER_LALT | IEQUALIFIER_RALT)) ? KM_Q_ALT : 0);
+    if ((qual & IEQUALIFIER_RSHIFT) && !(qual & IEQUALIFIER_LSHIFT))
+        b = keymap_find(g_km, base | KM_Q_RSHIFT, code);
+    if (!b)
+        b = keymap_find(g_km, base | ((qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) ? KM_Q_SHIFT : 0), code);
+    if (!b || (kact_resolve(b, &a) != KACT_MENU && a.kind != KACT_SLASH))
+        return 0;
+    stat_note(c, STATE_KEYMAP, ((LONG)b->qual << 8) | code, 0);
+    DBG("keymap", ((LONG)b->qual << 8) | code, a.id);
+    if (a.kind == KACT_MENU)
+        menu_do(c, a.id, !menu_checked(c, a.id));
+    else {
+        char ans[160];
+        slash_menu(c, a.line, ans, sizeof(ans));
+    }
+    style_save_run(c);
+    return 1;
+}
+
+/* The requests the quick menu (or any sender) put to this window's port (upreq.h): the action
+ * resolves as a keymap binding's would (upreq_resolve -> kact_resolve) and runs by the same two
+ * runners as keymap_key, whether or not any [bind] row exists. Junk answers a code, never more. */
+static void req_service(con *c)
+{
+    upreq_msg *m;
+    if (!c->req_port)
+        return;
+    while ((m = upreq_get(c->req_port))) {
+        kact a;
+        km_bind tmp;
+        long rc = upreq_resolve(&m->b, &a, &tmp);
+        if (rc == UPREQ_OK && !c->w.win)
+            rc = UPREQ_NOWINDOW;
+        if (rc == UPREQ_OK) {
+            stat_note(c, STATE_KEYMAP, 0, 0);
+            DBG("request", a.kind, a.id);
+            if (a.kind == KACT_MENU)
+                menu_do(c, a.id, !menu_checked(c, a.id));
+            else if (a.kind == KACT_SLASH) {
+                char ans[160], err[80];
+                slash_cmd sc = {0};
+                int ran = slash_menu(c, a.line, ans, sizeof(ans));
+                /* a refusal goes back to the sender with its reason: the menu says it, or asks
+                 * for the argument the command lacked (/bg from the menu has none) */
+                int missing = ran == 2 && slash_parse(a.line, (int)strlen(a.line), &sc, err, sizeof err) ==
+                              SLASH_ERROR && sc.def && sc.def->need_arg && !sc.arg[0];
+                rc = upreq_slash_answer(&m->b, ran, ans, missing ? sc.def->args : 0);
+            }
+        }
+        upreq_reply(m, rc);
+    }
+    style_save_run(c);
+}
+
 static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG mics,
                      WORD mx, WORD my, int wheel)
 {
@@ -5368,6 +5946,18 @@ static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULON
             find_open(c);
             break;
         }
+        /* Right Amiga Shift K: Clear screen (B4; Super K is the keymap's key viewer, and
+         * Intuition ignores Shift in a menu's command key, so the menu has no K). Raw
+         * code 0x27 is the K key on every keymap. This is the Clear screen item's shortcut, so
+         * it counts as that menu pick (the tutorial's menu-picks check reads the count). */
+        if ((qual & IEQUALIFIER_RCOMMAND) && (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) &&
+            !(qual & IEQUALIFIER_CONTROL) && !(code & 0x80) && code == 0x27) {
+            stat_note(c, STATE_MENU, MENU_CLEAR_SCREEN, 0);
+            clear_screen(c);
+            break;
+        }
+        if (keymap_key(c, code, qual))
+            break;
         vtwin_key(&c->w, code, qual, prev, secs, mics);
         break;
     case IDCMP_NEWSIZE:
@@ -5395,7 +5985,10 @@ static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULON
         break;
     case IDCMP_ACTIVEWINDOW:
     case IDCMP_INACTIVEWINDOW:
+        ua_set(c, cls == IDCMP_ACTIVEWINDOW);
         vtwin_focus(&c->w, cls == IDCMP_ACTIVEWINDOW); /* ?1004: CSI I / CSI O */
+        if (cls == IDCMP_INACTIVEWINDOW && c->wopt.close_inactive)
+            close_gadget(c); /* CLOSEINACTIVE: the same path as the close gadget */
         break;
     case IDCMP_IDCMPUPDATE:
         /* the scroll bar (sbar_route): code is the gadget, prev the knob's top */
@@ -5424,11 +6017,12 @@ static void idcmp(con *c)
         int wheel = 0;
         if (cls == IDCMP_EXTENDEDMOUSE && im->Code == IMSGCODE_INTUIWHEELDATA && im->IAddress) {
             /* the mouse wheel (OS 3.9+): the IntuiWheelData behind IAddress.
-             * WheelX is the main wheel; forward (up) is the negative delta.
-             * Anything else extended-mouse reports is not ours. */
+             * WheelY is the main wheel (forward, up, is the negative delta),
+             * WheelX the tilt. Anything else extended-mouse reports is not ours. */
             struct IntuiWheelData *wd = (struct IntuiWheelData *)im->IAddress;
-            if (wd->Version == INTUIWHEELDATA_VERSION)
-                wheel = wd->WheelX < 0 ? 1 : -1;
+            int up;
+            if (wd->Version == INTUIWHEELDATA_VERSION && vti_wheeldata(wd->WheelY, &up))
+                wheel = up ? 1 : -1;
         }
         if (cls == IDCMP_IDCMPUPDATE) {
             /* the scroll bar: read now, the tag list goes with the reply */
@@ -5468,7 +6062,7 @@ static void idcmp(con *c)
  * it when it comes back (tab_replies), REGISTER and UNREGISTER are waited
  * for. */
 enum { TM_REGISTER = 1, TM_UNREGISTER, TM_TITLE, TM_COMMAND, TM_EVENT, TM_SHOW, TM_HIDE, TM_RECT,
-       TM_KNOB, TM_STAT, TM_STATE, TM_FONT, TM_TYPE };
+       TM_KNOB, TM_STAT, TM_STATE, TM_FONT, TM_TYPE, TM_PARK, TM_UNPARK };
 
 struct tab_msg {
     struct Message msg;
@@ -5492,6 +6086,7 @@ struct tab_msg {
     char font[40];           /* FONT: the font's name ("" the default) and size, */
     WORD font_size, cw, ch;  /* its cell (pixels) */
     char text[SPLITS_CMD_MAX + 2]; /* TYPE: a restored pane's command and its newline, typed */
+    char task[200];          /* COMMAND: the first message for MENU_AGENT's agent ("": none) */
 };
 
 static struct tab_msg *tab_msg(con *c, int type)
@@ -5510,15 +6105,24 @@ static struct tab_msg *tab_msg(con *c, int type)
 }
 
 static void tab_show_active(con *c);
+static void bar_draw(con *c);
 
 static void tab_replies(con *c)
 {
     struct Message *m;
+    int bar = 0;
     while (c->tab_reply && (m = GetMsg(c->tab_reply)) != 0) {
         if (((struct tab_msg *)m)->type == TM_HIDE && c->hides && !--c->hides)
             tab_show_active(c); /* the old slot has stopped drawing: the window is free */
+        /* A tab answers SHOW and INSET after it laid out and redrew its text area; the bar was drawn
+         * before that (tab_activate), and a hand-over to a tab process is answered later (owner,
+         * 2026-10-23: from the third tab on the bar stayed empty until a click). The bar goes last. */
+        if (c->ntabs >= 2 && (((struct tab_msg *)m)->type == TM_SHOW || ((struct tab_msg *)m)->type == TM_RECT))
+            bar = 1;
         FreeVec(m);
     }
+    if (bar)
+        bar_draw(c);
 }
 
 /* host -> a tab, answered later (freed by tab_replies) */
@@ -5973,13 +6577,13 @@ struct tab_spawn_msg {
     char cwd[VT_URI_MAX];        /* the OSC 7 URL, "" none */
     int prog;                    /* TAB_SHELL, or the program the tab runs (tab_progs) */
     int serial;                  /* the spawn's number: picks the shell's script */
+    char task[200];              /* an AI agent's first message ("" none): the agent starts on it */
 };
 
 /* A tab that runs one program instead of a shell: Help > Demo tour (UPDemo)
  * and UP-Term > Claude (C:Claude). The tab closes when the program ends.
  * `file` is looked up first: a program that is not there is said in a
  * requester, as Preferences... says it of the editor. */
-enum { TAB_SHELL = 0, TAB_DEMO, TAB_CLAUDE, TAB_TUTORIAL };
 struct tab_prog {
     const char *file;    /* C:... the program */
     const char *cmd;     /* the script's command line (the program, or vsh and its script) */
@@ -5997,7 +6601,10 @@ static const struct tab_prog tab_progs[] = {
       "Claude is not installed:\nC:Claude was not found.\n\nInstall UP-Term from its archive to get it.", 0, 0 },
     { TABPROG_TUTORIAL_FILE, TABPROG_TUTORIAL_CMD, "T:UP-Term-tutorial", "",
       "The tutorial is not installed:\nUP-Term:bin/tutorial was not found.\n\nInstall UP-Term from its archive to get it.",
-      TABPROG_TUTORIAL_COLS, TABPROG_TUTORIAL_ROWS }
+      TABPROG_TUTORIAL_COLS, TABPROG_TUTORIAL_ROWS },
+    /* amiga-pi (the up-pi package) takes the same stack cookie as Claude */
+    { "C:amiga-pi", "C:amiga-pi", "T:UP-Term-pi", "Stack 32768\n",
+      "pi is not installed:\nC:amiga-pi was not found.\n\nInstall the up-pi package to get it.", 0, 0 }
 };
 
 /* 1 when the tab is on its way; 0 when the program is not there */
@@ -6008,14 +6615,15 @@ static int tab_prog_script(struct tab_spawn_msg *m)
         sizeof(struct EasyStruct), 0, (UBYTE *)"UP-Term", 0, (UBYTE *)"OK"
     };
     BPTR f, lock;
-    char script[160];
+    char script[640], line[480];
     missing.es_TextFormat = (UBYTE *)p->missing;
     if (!(lock = Lock((STRPTR)p->file, SHARED_LOCK))) {
         EasyRequestArgs(0, &missing, 0, 0);
         return 0;
     }
     UnLock(lock);
-    if (!tabprog_script(script, sizeof(script), p->pre, p->cmd) ||
+    if (!tabprog_task_cmd(line, sizeof(line), p->cmd, m->task) ||
+        !tabprog_script(script, sizeof(script), p->pre, line) ||
         !(f = Open((STRPTR)p->script, MODE_NEWFILE)))
         return 0;
     FPuts(f, (STRPTR)script);
@@ -6114,8 +6722,10 @@ static void h_open_link(void *u, const char *uri)
 /* The new tab's spawn number (never 0) when it is on its way, else 0;
  * prog: TAB_SHELL or the program it runs. pane: a split's pane, not a tab
  * of its own (PANE <number>: its registration finds the split it is for).
- * cwd: the OSC 7 URL its shell starts in, 0 from's. */
-static int tab_spawn(con *c, const char *profile, con *from, int prog, int pane, const char *cwd)
+ * cwd: the OSC 7 URL its shell starts in, 0 from's. task: the first
+ * message of an AI agent tab (0 or "": none). */
+static int tab_spawn(con *c, const char *profile, con *from, int prog, int pane, const char *cwd,
+                     const char *task)
 {
     struct tab_spawn_msg *m;
     const struct tab_prog *p = &tab_progs[prog];
@@ -6152,6 +6762,8 @@ static int tab_spawn(con *c, const char *profile, con *from, int prog, int pane,
     if (!++c->spawn_serial)
         c->spawn_serial = 1;
     m->serial = c->spawn_serial;
+    if (task)
+        copy_str(m->task, task, sizeof(m->task));
     copy_str(m->cmd, "NewShell \"XCON:0/0/320/100/UP-Term/TAB ", sizeof(m->cmd));
     strcat(m->cmd, c->tab_name);
     if (pane) {
@@ -6199,7 +6811,7 @@ static int pane_split(con *c, con *from, int dir, const char *cwd)
     for (k = 0; k < LAY_MAX_PANES; k++)
         if (!c->split_wait[k].serial)
             wait = k;
-    if (wait < 0 || !(serial = tab_spawn(c, from->profile, from, TAB_SHELL, 1, cwd)))
+    if (wait < 0 || !(serial = tab_spawn(c, from->profile, from, TAB_SHELL, 1, cwd, 0)))
         return 0;
     c->split_wait[wait].serial = serial;
     c->split_wait[wait].dir = dir;
@@ -6394,24 +7006,50 @@ static void pane_close(con *c, con *p)
 }
 
 /* a New / Next / Previous / Close tab from the host's own menu, or from a tab's */
-static void host_command(con *c, int what, con *from)
+static void host_command(con *c, int what, con *from, const char *task)
 {
+    if (what > MENU_TAB_GOTO0 && what <= MENU_TAB_GOTO0 + 9) {
+        int n = what - MENU_TAB_GOTO0 - 1; /* the tab's place: 0 is the first */
+        if (n < c->ntabs)
+            tab_switch(c, n);
+        return;
+    }
     switch (what) {
     case MENU_TAB_NEW:
-        tab_spawn(c, from->profile, from, TAB_SHELL, 0, 0);
+        tab_spawn(c, from->profile, from, TAB_SHELL, 0, 0, 0);
         break;
     case MENU_DEMO:
         /* the tour in a tab of its own: what it does to its screen (the
          * main screen, a resize) leaves the user's session alone */
-        if (!tab_spawn(c, from->profile, from, TAB_DEMO, 0, 0))
+        if (!tab_spawn(c, from->profile, from, TAB_DEMO, 0, 0, 0))
             DisplayBeep(c->own_win ? c->own_win->WScreen : 0); /* no room for a tab */
         break;
     case MENU_CLAUDE:
-        if (!tab_spawn(c, from->profile, from, TAB_CLAUDE, 0, 0))
+        if (!tab_spawn(c, from->profile, from, TAB_CLAUDE, 0, 0, 0))
             DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
         break;
+    case MENU_PI:
+        if (!tab_spawn(c, from->profile, from, TAB_PI, 0, 0, 0))
+            DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
+        break;
+    case MENU_AGENT: { /* super+l: the agent of the ai-agent preference, in a new tab */
+        am_prefs ap;
+        amconf_load(&ap);
+        if (!tab_spawn(c, from->profile, from, tabprog_agent_tab(amconf_agent(&ap)), 0, 0, task))
+            DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
+        break;
+    }
+    case MENU_SET_AGENT_CLAUDE: case MENU_SET_AGENT_PI: { /* /agent: the preference, for the next super+l */
+        am_prefs ap;
+        int failed = 0;
+        amconf_load(&ap);
+        strcpy(ap.val[AM_AGENT], what == MENU_SET_AGENT_PI ? "pi" : "claude");
+        if (amconf_save(&ap, 1, &failed) != PREFS_INSTALL_OK)
+            DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
+        break;
+    }
     case MENU_TUTORIAL:
-        if (!tab_spawn(c, from->profile, from, TAB_TUTORIAL, 0, 0))
+        if (!tab_spawn(c, from->profile, from, TAB_TUTORIAL, 0, 0, 0))
             DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
         break;
     case MENU_TAB_NEXT:
@@ -6472,16 +7110,23 @@ static void host_command(con *c, int what, con *from)
     }
 }
 
-static void tab_command(con *c, int what)
+/* what, with ARG as its text (MENU_AGENT: the agent's first message). */
+static void tab_command_arg(con *c, int what, const char *arg)
 {
     if (c->is_tab && c->host_pub) {
         struct tab_msg *t = tab_msg(c, TM_COMMAND);
         if (t) {
             t->what = what;
+            copy_str(t->task, arg ? arg : "", sizeof(t->task));
             PutMsg(c->host_pub, &t->msg);
         }
     } else
-        host_command(c, what, c);
+        host_command(c, what, c, arg);
+}
+
+static void tab_command(con *c, int what)
+{
+    tab_command_arg(c, what, 0);
 }
 
 /* The host's IDCMP with tabs: the bar and the window's own events here,
@@ -6546,7 +7191,7 @@ static int tab_route(con *c, struct IntuiMessage *im, int wheel)
          * (which keeps the host's first slot for the next window); one
          * pane: that pane's own close, below */
         if (c->active >= 0 && c->active < c->ntabs && tabslot_panes(&c->slots[c->active]) > 1) {
-            host_command(c, MENU_TAB_CLOSE, c);
+            host_command(c, MENU_TAB_CLOSE, c, 0);
             return 1;
         }
         break;
@@ -6748,7 +7393,7 @@ static void host_msgs(con *c)
             bar_draw(c);
             break;
         case TM_COMMAND:
-            host_command(c, t->what, t->from);
+            host_command(c, t->what, t->from, t->task);
             break;
         case TM_FONT:
             host_font(c, t->from, t->font, t->font_size, t->cw, t->ch);
@@ -6804,9 +7449,129 @@ static void tab_msgs(con *c)
         case TM_STATE:
             c->st = t->st;
             break;
+        case TM_PARK: /* the host's window closes for a Workbench close: the terminal stays */
+            if (c->w.win) {
+                window_parts_close(c);
+                ua_set(c, 0);
+                vtwin_unbind(&c->w);
+                if (c->locked) {
+                    UnlockPubScreen(0, c->locked);
+                    c->locked = 0;
+                }
+                c->shown = 0;
+                c->tab_parked = 1;
+            }
+            break;
+        case TM_UNPARK: /* the host's new window (t->win): the same terminal on it */
+            if (c->tab_parked && t->win) {
+                /* the screen the host window is on, not a lock of its own: the tab spec (FRONT, the
+                 * default public screen) can name another one after a reset. The open window keeps the
+                 * screen up, so the tab holds no lock of its own. */
+                struct Screen *scr = t->win->WScreen;
+                if (scr) {
+                    c->tab_rp = *t->win->RPort;
+                    c->w.own_rp = &c->tab_rp;
+                    vtwin_set_screen(&c->w, scr);
+                    vtwin_rebind(&c->w, t->win);
+                    pens_tell(c);
+                    menu_add(c, t->win);
+                    sbar_apply(c);
+                    c->tab_parked = 0;
+                }
+            }
+            break;
         }
         ReplyMsg(&t->msg);
     }
+}
+
+/* tab_sync's wait: the reply of `t` has come (every other reply on the way is freed) */
+struct sync_wait {
+    con *c;
+    struct tab_msg *t;
+};
+
+static int sync_got(void *u)
+{
+    struct sync_wait *w = (struct sync_wait *)u;
+    struct Message *m;
+    int mine = 0;
+    while ((m = GetMsg(w->c->tab_reply)) != 0) {
+        if (m == &w->t->msg)
+            mine = 1;
+        if (((struct tab_msg *)m)->type == TM_HIDE && w->c->hides)
+            w->c->hides--; /* the window is going or new: tab_show_active runs after the unpark */
+        FreeVec(m);
+    }
+    return mine;
+}
+
+static void sync_pause(int ticks)
+{
+    Delay(ticks);
+}
+
+/* host -> a tab, answered before this returns: the tab has done it (the window may close right after).
+ * 0 when the tab did not answer within WBPARK_WAIT_TICKS (a hung tab must not stall the Workbench close
+ * inside IPrefs); its message stays in flight and the late reply is freed by the next drain. */
+static int tab_sync(con *c, con *to, int type, struct Window *win)
+{
+    struct sync_wait w;
+    w.c = c;
+    w.t = to->tab_port ? tab_msg(c, type) : 0;
+    if (!w.t)
+        return 1;
+    w.t->win = win;
+    PutMsg(to->tab_port, &w.t->msg);
+    return wbpark_wait(sync_got, sync_pause, &w);
+}
+
+/* The Workbench closes (wb_msgs): every tab lets go of the host's window before it closes, and takes
+ * the new one when it opens again; the bar and the active tab are drawn again. 0 when a tab did not
+ * answer: nothing is closed, wb_tabs_abort puts the tabs back. */
+static int wb_tabs_park(con *c)
+{
+    int i;
+    if (c->ntabs < 2)
+        return 1;
+    ClearMenuStrip(c->own_win);
+    for (i = 0; i < c->ntabs * LAY_MAX_PANES; i++) { /* every split's every pane */
+        con *p = (con *)c->slots[i / LAY_MAX_PANES].pane[i % LAY_MAX_PANES];
+        if (p && p != c && !tab_sync(c, p, TM_PARK, 0))
+            return 0;
+    }
+    return 1;
+}
+
+/* A tab did not answer TM_PARK: the window stays. Every tab gets TM_UNPARK behind the park (the hung one
+ * parks when it wakes and comes straight back; one that is not parked ignores it). */
+static void wb_tabs_abort(con *c)
+{
+    int i;
+    for (i = 0; i < c->ntabs * LAY_MAX_PANES; i++) {
+        con *to = (con *)c->slots[i / LAY_MAX_PANES].pane[i % LAY_MAX_PANES];
+        struct tab_msg *t = to && to != c && to->tab_port ? tab_msg(c, TM_UNPARK) : 0;
+        if (t) {
+            t->win = c->own_win;
+            PutMsg(to->tab_port, &t->msg);
+        }
+    }
+    bar_draw(c);
+    tab_show_active(c);
+}
+
+static void wb_tabs_unpark(con *c)
+{
+    int i;
+    if (c->ntabs < 2)
+        return;
+    for (i = 0; i < c->ntabs * LAY_MAX_PANES; i++) {
+        con *p = (con *)c->slots[i / LAY_MAX_PANES].pane[i % LAY_MAX_PANES];
+        if (p && p != c)
+            tab_sync(c, p, TM_UNPARK, c->own_win);
+    }
+    bar_draw(c);
+    tab_show_active(c);
 }
 
 /* A tab's Open: the host's window, joined. 0 when there is no such host
@@ -6967,6 +7732,7 @@ static void post_sizewindow(con *c)
         c->winch_irq.is_Code = (void (*)())winch_handler;
         c->winch_irq.is_Data = (APTR)c;
         c->winch_irq.is_Node.ln_Pri = 20;
+        c->winch_irq.is_Node.ln_Type = NT_INTERRUPT;
         c->winch_irq.is_Node.ln_Name = (char *)"vtcon SIGWINCH";
         c->input_io->io_Command = IND_ADDHANDLER;
         c->input_io->io_Data = &c->winch_irq;
@@ -7258,7 +8024,7 @@ static void packet(con *c, struct DosPacket *p)
         reply(p, DOSTRUE, 0);
         return;
     case ACTION_READ:
-        if (!c->w.win && !open_window(c)) {
+        if (!c->w.win && !wb_is_parked(c) && !open_window(c)) { /* parked: the grid takes it (wb_msgs) */
             reply(p, -1, ERROR_NO_FREE_STORE);
             return;
         }
@@ -7288,7 +8054,7 @@ static void packet(con *c, struct DosPacket *p)
                                        (LONG)(k + 3 < p->dp_Arg3 ? wb[k + 3] : 0));
         }
 #endif
-        if (!c->w.win && !open_window(c)) {
+        if (!c->w.win && !wb_is_parked(c) && !open_window(c)) { /* parked: the grid takes it (wb_msgs) */
             reply(p, -1, ERROR_NO_FREE_STORE);
             return;
         }
@@ -7389,7 +8155,8 @@ static void packet(con *c, struct DosPacket *p)
         dbg("WAIT tty/pending", c->own.on, c->own.on ? ld_input_pending(&c->ld) : -1);
 #endif
         ahead_feed(c); /* it looks for input: what was typed ahead is its */
-        if (c->in_len || c->eof || (tty_active(c) && ld_input_pending(&c->ld))) {
+        if (c->in_len || c->eof || closeeof_sticky(c->closing, c->raw, c->auto_open) ||
+            (tty_active(c) && ld_input_pending(&c->ld))) {
             reply(p, DOSTRUE, 0);
         } else if (p->dp_Arg1 <= 0) {
             reply(p, DOSFALSE, 0); /* a poll */
@@ -7634,13 +8401,13 @@ static void packet(con *c, struct DosPacket *p)
     case ACTION_DISK_INFO: {
         struct InfoData *id = (struct InfoData *)BADDR(p->dp_Arg1);
         LONG i;
-        if (!c->w.win)
+        if (!c->w.win && !wb_is_parked(c))
             open_window(c); /* as V47's con-handler does: the caller wants the window */
         c->auto_held = 1;   /* the caller has the window: AUTO no longer shuts it */
         for (i = 0; i < (LONG)sizeof(*id); i++)
             ((UBYTE *)id)[i] = 0;
         id->id_DiskType = 0x434F4E00L; /* 'CON\0' (no NDK name; value unverified against the ROM) */
-        id->id_VolumeNode = (BPTR)c->w.win;
+        id->id_VolumeNode = (BPTR)wbpark_disk_window(wb_is_parked(c), c->w.win);
         id->id_InUse = (LONG)rom_console(c);
         reply(p, DOSTRUE, 0);
         return;
@@ -7672,6 +8439,7 @@ static void host_retire(con *c)
 {
     tab_remove(c, c);
     c->host_only = 1;
+    winch_remove(c); /* this session posts no more sizes, and the node must not outlive the con */
     find_close(c);
     sel_close(c);
     kc_cyc_end(c);
@@ -7705,6 +8473,9 @@ static LONG handler_main(void)
     /* diskfont.library: opened by the worker that loads a font from disk (render/vtwin.c disk_font) */
     GadToolsBase = OpenLibrary((STRPTR)"gadtools.library", 39);
     LayersBase = OpenLibrary((STRPTR)"layers.library", 39);
+    /* optional: without it a Workbench reset waits on our window (wb_msgs) */
+    ScreenNotifyBase = OpenLibrary((STRPTR)SCREENNOTIFY_NAME, SCREENNOTIFY_VERSION);
+    wb_client_add(c);
     c->timer_port = CreateMsgPort();
     if (c->timer_port) {
         c->timer = (struct timerequest *)CreateIORequest(c->timer_port, sizeof(struct timerequest));
@@ -7716,6 +8487,11 @@ static LONG handler_main(void)
             if (c->rtimer) {
                 c->rtimer->tr_node.io_Device = c->timer->tr_node.io_Device;
                 c->rtimer->tr_node.io_Unit = c->timer->tr_node.io_Unit;
+            }
+            c->ztimer = (struct timerequest *)CreateIORequest(c->timer_port, sizeof(struct timerequest));
+            if (c->ztimer) {
+                c->ztimer->tr_node.io_Device = c->timer->tr_node.io_Device;
+                c->ztimer->tr_node.io_Unit = c->timer->tr_node.io_Unit;
             }
         }
     }
@@ -7772,6 +8548,10 @@ static LONG handler_main(void)
             wait |= 1UL << c->watch_port->mp_SigBit;
         if (c->sel_port)
             wait |= 1UL << c->sel_port->mp_SigBit;
+        if (c->req_port)
+            wait |= 1UL << c->req_port->mp_SigBit;
+        if (c->sn_port)
+            wait |= 1UL << c->sn_port->mp_SigBit;
         own_screen_retry(c); /* an AUTO window's screen a visitor kept open */
         screen_pending(c);   /* a /screen from C:UPTerm (a packet, not a key) */
         /* No trace lines in the loop itself: each log Write's reply re-arms
@@ -7803,6 +8583,8 @@ static LONG handler_main(void)
 #else
             packet(c, (struct DosPacket *)m->mn_Node.ln_Name);
 #endif
+        wb_msgs(c); /* first: the library waits for our reply before the Workbench closes */
+        req_service(c);
         if (!(wait & ~(1UL << c->port->mp_SigBit)) && c->w.frame_open && !c->w.dragging) {
             /* only a DOS packet woke us: no other port has a message, no
              * timer is done, the frame is not due (each has its signal in
@@ -7828,6 +8610,16 @@ static LONG handler_main(void)
         idcmp(c);
         if (c->comp_port)
             finish_completion(c);
+        if (c->ztimer_busy && CheckIO((struct IORequest *)c->ztimer)) {
+            WaitIO((struct IORequest *)c->ztimer);
+            c->ztimer_busy = 0;
+            if (c->own_win && wbpark_raise_pending(&c->wb)) {
+                wb_raise(c, wbpark_retry(&c->wb, wb_in_front(c->own_win),
+                                         IntuitionBase->ActiveWindow == c->own_win, wb_user_other(c)));
+                if (wbpark_raise_pending(&c->wb))
+                    ztimer_start(c);
+            }
+        }
         if (c->rtimer_busy && CheckIO((struct IORequest *)c->rtimer)) {
             WaitIO((struct IORequest *)c->rtimer);
             c->rtimer_busy = 0;
@@ -7875,6 +8667,8 @@ static LONG handler_main(void)
          * cycles later (thoughts/spot/crash/accum.md). */
         c->winch_closing = 1;
         window_parts_close(c);
+        ua_set(c, 0); /* the window may close while it has focus: no INACTIVEWINDOW follows */
+        req_drop(c);
         CloseWindow(c->own_win);
         c->own_win = 0;
         if (c->locked) {
@@ -7972,12 +8766,33 @@ static LONG handler_main(void)
         CloseDevice((struct IORequest *)&c->lib_io); /* CONU_LIBRARY must be closed too (matrix 6.2) */
     if (GadToolsBase)
         CloseLibrary(GadToolsBase);
+    wb_client_remove(c);
+    if (ScreenNotifyBase)
+        CloseLibrary(ScreenNotifyBase);
     CloseLibrary(LayersBase);
     CloseLibrary((struct Library *)GfxBase);
     CloseLibrary((struct Library *)IntuitionBase);
     CloseLibrary((struct Library *)DOSBase);
     if (c->conf)
         FreeVec(c->conf);
+    if (c->theme_text)
+        FreeVec(c->theme_text);
+    req_drop(c);
+    if (c->km_user) {
+        keymap *gone = 0;
+        Forbid();
+        if (--g_km_users == 0) { /* the last window: the table goes, a later open loads it again */
+            gone = g_km;
+            g_km = 0;
+            g_km_ready = 0;
+            g_km_claim = 0;
+        }
+        Permit();
+        if (gone) {
+            keymap_free(gone);
+            FreeVec(gone);
+        }
+    }
     FreeVec(c);
     return 0;
 }

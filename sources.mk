@@ -37,6 +37,6 @@ CLAUDE_PORTABLE := $(call cl_src,claude/util.c claude/http.c claude/json.c claud
                    claude/regex.c claude/glob.c claude/schema.c claude/search.c claude/shells.c claude/html.c \
                    claude/webfetch.c claude/subagent.c claude/tasks.c claude/sched.c claude/watch.c claude/trust.c \
                    claude/keys.c claude/edit.c claude/tui.c claude/show.c) $(CLAUDE_INPUT) $(VIEW_MD) $(call cl_src,tty/ldisc.c tty/bmsg.c net/upagent.c \
-                   handler/clip.c handler/clipfmt.c \
+                   handler/clip.c handler/clipfmt.c handler/be32.c \
                    claude/config.c claude/memory.c claude/commands.c claude/hooks.c claude/session.c claude/checkpoint.c \
                    claude/policy.c claude/slash.c claude/setup.c claude/cli.c claude/launch.c claude/print.c claude/datadir.c) $(LLM_CLAUDE)

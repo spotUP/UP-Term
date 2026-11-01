@@ -303,9 +303,10 @@ void vtwin_profile_defaults(vtwin *w)
      * keep the last one's cursor or palette */
     w->cursor_style = 0;
     w->cursor_blink = 0;
-    w->meta_alt = 0;
+    w->meta_alt = 1; /* Alt is Meta; Left Amiga is Super (the keymap) */
     w->copy_on_select = 0;
     w->amiga_keys = 1;   /* on by default */
+    w->outline_aa = 1;   /* outline glyphs antialiased */
     w->dither = 1;       /* few-pen screens dither (W-T9) */
     w->pad_extend = 0;   /* padding-color = background */
     w->backspace_bs = 0; /* DEL, ^?: a profile without the key must not keep the last one's bs */
@@ -330,6 +331,8 @@ static int outline_sync(vtwin *w)
     w->outline = w->fallback[0] && w->font
                      ? vo_open(w->fallback, w->font->tf_XSize, w->font->tf_YSize, w->font->tf_Baseline)
                      : 0;
+    if (w->outline && w->aspect_known)
+        vo_set_aspect(w->outline, w->res_x, w->res_y);
     vr_set_outline(&w->r, w->outline);
     return 1;
 }
@@ -516,7 +519,7 @@ static void frame_start(vtwin *w)
 #define SETTLE_QUIET_US 250000UL
 static void settle(vtwin *w)
 {
-    if (!w->t || !w->r.jump)
+    if (!w->t || !w->win || !w->r.jump)
         return;
     vr_mask_begin(&w->r);
     vr_cursor_off(&w->r);
@@ -528,8 +531,8 @@ static void settle(vtwin *w)
 
 void vtwin_render(vtwin *w)
 {
-    if (!w->render_pending || !w->t)
-        return;
+    if (!w->render_pending || !w->t || !w->win)
+        return; /* (no window -- the handler hid it while the Workbench reopens: the grid waits, bind redraws it) */
     if (w->frame_open && (vt_modes(w->t) & VT_MODE_SYNC) && VTWIN_SYNC_HOLD(w->sync_held)) {
         /* synchronized output (?2026): the program is in the middle of a
          * frame. Nothing is drawn until it says the frame is whole -- or
@@ -566,10 +569,9 @@ void vtwin_render(vtwin *w)
         {
             /* a ?2026 frame ended since the last pass: drawn off screen,
              * shown at once (vr_compose_begin; W-T3) */
-            int composed = vr_compose_begin(&w->r);
+            vr_compose_begin(&w->r);
             vt_flush(w->t);
-            if (composed)
-                vr_compose_end(&w->r);
+            vr_compose_end(&w->r); /* also when drawn in place: the frame settles (C1) */
         }
         {
             PROF_IN(w);
@@ -604,6 +606,7 @@ void vtwin_render(vtwin *w)
 }
 
 static void drag_to(vtwin *w, WORD mx, WORD my);
+static void end_drag(vtwin *w);
 static void motion_to(vtwin *w, WORD mx, WORD my);
 static void pointer_sync(vtwin *w);
 
@@ -638,7 +641,7 @@ ULONG vtwin_tick(vtwin *w)
         if (w->t && vr_flash_tick(&w->r))
             vtwin_render(w); /* the flash's frame is over */
     }
-    if (w->dragging && w->win) {
+    if (w->dragging && !w->inactive && w->win) {
         /* follow the pointer on the frame clock (after the frame's own
          * bookkeeping, or frame_start finds it busy and the polling stops):
          * moves may never reach us as events -- Intuition keeps absolute
@@ -806,8 +809,11 @@ void vtwin_set_screen(vtwin *w, struct Screen *scr)
         !GetDisplayInfoData(0, (UBYTE *)&di, sizeof(di), DTAG_DISP, mode))
         return;
     w->square = di.Resolution.x == di.Resolution.y;
-    /* 25 rows of 16-pixel cells under the screen's title bar and a window's */
-    w->square_fits = scr->Height >= 25 * 16 + 2 * (scr->BarHeight + 1) + 4;
+    w->res_x = di.Resolution.x;
+    w->res_y = di.Resolution.y;
+    if (w->outline) /* outline glyphs keep their shape on this screen's pixels (R6.1) */
+        vo_set_aspect(w->outline, w->res_x, w->res_y);
+    w->square_fits = fontpair_square_fits(scr->Height, scr->BarHeight);
     w->aspect_known = 1;
 }
 
@@ -868,6 +874,7 @@ struct TextFont *vtwin_open_font(vtwin *w)
 static void settings(vtwin *w)
 {
     int i;
+    vr_set_antialias(&w->r, w->outline_aa);
     vr_set_dither(&w->r, w->dither); /* before the defaults: a change gives the pens back */
     vr_set_pad_extend(&w->r, w->pad_extend);
     vr_set_defaults(&w->r, w->fg_rgb, w->bg_rgb);
@@ -996,14 +1003,6 @@ int vtwin_rebind(vtwin *w, struct Window *win)
     return 1;
 }
 
-/* the old cells' pixels go: the viewport rectangle, not the window's edges */
-static void erase_rect(vtwin *w)
-{
-    WORD x0, y0, x1, y1;
-    vr_rect(&w->r, &x0, &y0, &x1, &y1);
-    EraseRect(w->r.rp, x0, y0, x1, y1);
-}
-
 int vtwin_set_font(vtwin *w, const char *name, WORD size)
 {
     struct TextFont *f, *old = w->font;
@@ -1027,8 +1026,8 @@ int vtwin_set_font(vtwin *w, const char *name, WORD size)
     vr_layout(&w->r);
     vt_resize(w->t, w->r.cols, w->r.rows);
     w->host->resized(w->user);
-    /* the old cells' pixels go: the new grid may not cover them */
-    erase_rect(w);
+    /* vr_redraw fills the whole text area with the theme background first, covering the old cells
+     * (an EraseRect here painted pen 0 -- white -- before it) */
     vr_redraw(&w->r);
     vr_cursor_on(&w->r);
     return 1;
@@ -1092,7 +1091,8 @@ void vtwin_show(vtwin *w, int on)
         w->host->resized(w->user);
     }
     vtwin_show_title(w);
-    erase_rect(w);
+    /* no EraseRect: it fills with the RastPort's pen 0 (white) and vr_redraw then paints the theme
+     * background over it, the white flash on a tab switch. vr_redraw fills the same rectangle. */
     vr_redraw(&w->r);
     vr_cursor_on(&w->r);
     vtwin_knob_resend(w); /* a tab shown: the window's scroll bar is its now */
@@ -1410,6 +1410,12 @@ void vtwin_focus(vtwin *w, int in)
 {
     vt_u8 out[8];
     int k;
+    w->inactive = !in;
+    if (!in && w->dragging) {
+        /* the button's release goes to the window that took the focus: the drag ends here, as on the release */
+        end_drag(w);
+        pointer_sync(w);
+    }
     if (!w->t || !w->host->raw(w->user))
         return; /* a cooked line would get the bytes as typing */
     k = vt_encode_focus(w->t, in, out);
@@ -1639,9 +1645,10 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
         ie.ie_EventAddress = (APTR)prev;
         k = RawKeyConvert(&ie, (STRPTR)buf, sizeof(buf), w->keymap);
         for (i = 0; i < k && n < (int)sizeof(out) - 16; i++) {
-            /* Meta (vt_encode_key adds the ESC for xterm), and Ctrl and
-             * Shift when the keymap left Ctrl to the encoder */
-            int km = (w->pers != VT_XTERM) ? 0 : mok_ctrl ? mods : (mods & VT_MOD_ALT);
+            /* Meta (vt_encode_key adds the ESC for an xterm program, the
+             * line editor gets it in mods), and Ctrl and Shift when the
+             * keymap left Ctrl to the encoder */
+            int km = vti_char_mods(w->pers == VT_XTERM, cooked, mok_ctrl, mods);
             n += encode_key(w, cooked, buf[i], km, out + n);
         }
     }
@@ -1683,6 +1690,17 @@ static void drag_to(vtwin *w, WORD mx, WORD my)
     w->drag_y = y;
     vr_select(&w->r, 1, w->drag_ax, w->drag_ay, x, y - w->r.view);
     w->drag_moved = 1;
+}
+
+/* The drag ends: on the release, when the window loses the focus, when a move comes with the left button up
+ * (the release went to another window). The selection stays as it is; a click that never moved clears it. */
+static void end_drag(vtwin *w)
+{
+    w->dragging = 0;
+    if (!w->drag_moved)
+        vr_select(&w->r, 0, 0, 0, 0, 0); /* a click clears the selection */
+    else if (w->copy_on_select && !w->no_clipboard)
+        copy_selection(w); /* the profile's copy-on-select */
 }
 
 /* Ctrl + click on a cell of an OSC 8 hyperlink: the owner opens it. 1 when
@@ -1744,7 +1762,10 @@ void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my, U
     in = cell_at(w, mx, my, &x, &y);
     w->mouse_mods = qual_mods(w, qual); /* Ctrl +16, Meta +8 in the reports */
     if (move) {
-        if (w->dragging)
+        if (w->dragging && !(qual & IEQUALIFIER_LEFTBUTTON)) {
+            end_drag(w); /* the left button is up and the release never came here */
+            pointer_sync(w);
+        } else if (w->dragging)
             drag_to(w, mx, my);
         else
             motion_to(w, mx, my);
@@ -1788,11 +1809,7 @@ void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my, U
         w->drag_moved = w->sel_whole; /* a word or line stays selected on release */
         break;
     case VTI_SELECT_END:
-        w->dragging = 0;
-        if (!w->drag_moved)
-            vr_select(&w->r, 0, 0, 0, 0, 0); /* a click clears the selection */
-        else if (w->copy_on_select && !w->no_clipboard)
-            copy_selection(w); /* the profile's copy-on-select */
+        end_drag(w);
         break;
     case VTI_PASTE:
         if (!w->no_clipboard)

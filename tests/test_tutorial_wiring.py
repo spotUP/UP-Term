@@ -24,21 +24,35 @@ class TutorialWiring(unittest.TestCase):
         self.assertIn("#define MENU_HELP_ITEMS 4", H)  # the strip copies this many rows
 
     def test_menu_id_reaches_tab_spawn_with_the_tutorial_row(self):
-        self.assertRegex(H, r"case MENU_DEMO: case MENU_CLAUDE: case MENU_TUTORIAL:\n[^\n]*MENU_PANE_ZOOM:\n\s*tab_command")
-        self.assertRegex(H, r"case MENU_TUTORIAL:\n\s*if \(!tab_spawn\(c, from->profile, from, TAB_TUTORIAL, 0, 0\)\)")
-        self.assertIn("enum { TAB_SHELL = 0, TAB_DEMO, TAB_CLAUDE, TAB_TUTORIAL };", H)
+        self.assertRegex(H, r"case MENU_DEMO: case MENU_CLAUDE: case MENU_PI: case MENU_AGENT: case MENU_SET_AGENT_CLAUDE: case MENU_SET_AGENT_PI: case MENU_TUTORIAL:\n[^\n]*MENU_PANE_ZOOM:\n\s*tab_command")
+        self.assertRegex(H, r"case MENU_TUTORIAL:\n\s*if \(!tab_spawn\(c, from->profile, from, TAB_TUTORIAL, 0, 0, 0\)\)")
+        self.assertIn("enum { TAB_SHELL = 0, TAB_DEMO, TAB_CLAUDE, TAB_TUTORIAL, TAB_PI };", (ROOT / "handler/tabprog.h").read_text())
         rows = H.split("static const struct tab_prog tab_progs[] = {")[1].split("};")[0]
-        self.assertEqual(len(re.findall(r"^\s*\{ ", rows, re.M)), 4)  # shell, demo, claude, tutorial: the enum's order
+        self.assertEqual(len(re.findall(r"^\s*\{ ", rows, re.M)), 5)  # shell, demo, claude, tutorial, pi: the enum's order
         self.assertRegex(rows, r'\{ TABPROG_TUTORIAL_FILE, TABPROG_TUTORIAL_CMD, "T:UP-Term-tutorial"')
         # the tab must start the next lesson: with no argument the tutorial lists and exits, and the tab closes
         self.assertIn('#define TABPROG_TUTORIAL_CMD "UP-Term:bin/vsh UP-Term:bin/tutorial next"', (ROOT / "handler/tabprog.h").read_text())
-        self.assertIn("tabprog_script(script, sizeof(script), p->pre, p->cmd)", H)
+        self.assertIn("tabprog_script(script, sizeof(script), p->pre, line)", H)
+
+
+class Lesson12ClearShortcut(unittest.TestCase):
+    def test_shift_k_counts_a_menu_pick_and_the_lesson_names_it(self):
+        # Right Amiga Shift K is Clear screen's shortcut; lesson 12 step 7 checks menu-picks, so the branch must count it
+        m = re.search(r"code == 0x27\) \{\n(.*?)\n\s*break;", H, re.S)
+        self.assertIsNotNone(m)
+        body = m.group(1)
+        self.assertIn("stat_note(c, STATE_MENU, MENU_CLEAR_SCREEN, 0);", body)
+        self.assertLess(body.index("stat_note"), body.index("clear_screen(c)"))
+        les = (ROOT / "dist/tutorial-lessons/12-the-up-term-window.lesson").read_text()
+        self.assertIn("Right Amiga Shift K", les)
+        self.assertNotRegex(les, r"Right Amiga K\b")
+        self.assertNotIn("Clear screen is K", les)
 
 
 class WindowStateWiring(unittest.TestCase):
     """The /state counters (plan 2026-10-19-tutorial-window-lesson P1-P4). The formatter and the bump
     rules are host-tested in tests/test_slash.c; this pins that each hook point in the Amiga-only
-    handler calls them. That the hooks RUN (a real Right Amiga T, menu pick, /help, mouse copy, paste)
+    handler calls them. That the hooks RUN (a real Left Amiga T, menu pick, /help, mouse copy, paste)
     only the rig can show."""
 
     def test_p1_each_action_has_its_bump_point(self):
@@ -47,7 +61,7 @@ class WindowStateWiring(unittest.TestCase):
         for call in ("tab_switch(c, (c->active + 1) % c->ntabs)", "tab_switch(c, (c->active + c->ntabs - 1) % c->ntabs)",
                      "tab_switch(c, im->Code - 1)", "tab_switch(c, (int)((LONG)(im->MouseX"):
             self.assertIn(call, H)
-        self.assertRegex(H, r"stat_note\(c, STATE_MENU, id, 0\);\n\s*r = menu_run\(")
+        self.assertRegex(H, r"stat_note\(c, STATE_MENU, id, 0\);\n\s*r = menu_do\(")  # menu_do runs the pick (keymap rows share it)
         self.assertRegex(H, r"slash_run\(c, line, l, ans, 4096, 1\)\) \{\n\s*slash_typed_note\(c, line, l\);")
         self.assertIn('strcmp(name, "state")', H)  # /state does not count itself
         self.assertRegex(H, r"h_clipped\(void \*u, int what\)\n\{\n\s*stat_note\(\(con \*\)u, what == VTWIN_CLIP_COPY \? STATE_COPY : STATE_PASTE")
@@ -61,7 +75,7 @@ class WindowStateWiring(unittest.TestCase):
         self.assertGreater(paste.index("VTWIN_CLIP_PASTE"), paste.index("FreeVec(text)"))
 
     def test_p2_host_pushes_and_tab_keeps_a_copy(self):
-        self.assertIn("TM_KNOB, TM_STAT, TM_STATE, TM_FONT, TM_TYPE };", H)
+        self.assertIn("TM_KNOB, TM_STAT, TM_STATE, TM_FONT, TM_TYPE, TM_PARK, TM_UNPARK };", H)
         push = H.split("static void stat_push(con *c)")[1].split("\n}\n")[0]
         self.assertIn("tab_msg(c, TM_STATE)", push)
         self.assertIn("PutMsg(p->tab_port", push)  # no wait: a PutMsg, freed by tab_replies
@@ -77,7 +91,7 @@ class WindowStateWiring(unittest.TestCase):
         self.assertRegex(H, r"tab_layout\(c\);\n\s*stat_push\(c\); /\* tabs and active changed \*/")
 
     def test_p3_p4_state_is_answered_from_the_window_block(self):
-        self.assertRegex(H, r"case SLASH_STATE:[^\n]*\n[^\n]*\n\s*if \(!c->is_tab\)\n\s*stat_fill\(c\);\n\s*return slash_state_text\(&c->st, cmd.arg, ans, cap\) < 0 \? 2 : 1;")
+        self.assertRegex(H, r"case SLASH_STATE:[^\n]*\n[^\n]*\n\s*if \(!c->is_tab\)\n\s*stat_fill\(c\);\n(?:\s*c->st\.[a-z_]+ = [^\n]*\n)*\s*return slash_state_text\(&c->st, cmd.arg, ans, cap\) < 0 \? 2 : 1;")
         # C:UPTerm sends its arguments as "/<args>", so `UPTerm state KEY` is the typed /state KEY
         # (test_slash.c parses it); an answer of 2 comes back as RETURN_ERROR (5)
         u = (ROOT / "handler/upterm.c").read_text()
@@ -102,8 +116,8 @@ class WindowStateWiring(unittest.TestCase):
         # capture pipe (shell/vsh.c, the job streams), so neither reaches the window and a tab
         # answered "not an UP-Term window" (rig 4, lesson 12, 2026-10-19). The third try is the
         # process's console, "*" at pr_ConsoleTask, which the runner inherits from vsh.
-        u = (ROOT / "handler/upterm.c").read_text()
-        loop = u.split("    r = 0;\n    for (i = 0;")[1].split("\n    }\n")[0]
+        u = (ROOT / "handler/upcmd.h").read_text()  # the route C:UPTerm and C:Agent share
+        loop = u.split("    for (i = 0;")[1].split("\n    }\n")[0]
         self.assertIn("i < 3", loop)
         self.assertIn('Open((STRPTR)"*", MODE_OLDFILE)', loop)
         self.assertIn("Close(h);", loop)

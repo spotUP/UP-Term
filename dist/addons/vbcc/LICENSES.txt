@@ -1,0 +1,12 @@
+up-vbcc: parts, licences and where the source is
+
+Part                          Licence                          Source
+----------------------------  -------------------------------  --------------------------------------------
+vbcc, vasm, vlink, target     redistributable unmodified,      the author's archives, unmodified:
+(vbcc/)                       non-commercial use               phoenix.owl.de/vbcc/current (upterm-ports pkgs/vbcc)
+                              (licenses/vbcc)
+
+Notes
+- The two lha archives (SHA-256 pinned) are in up-term-src.lha, published next to up-term.lha. Their
+  row of SOURCES.txt is in UP-Term:licenses/vbcc/SOURCES.txt.
+- The Amiga NDK is not part of this package.

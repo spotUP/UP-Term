@@ -97,11 +97,45 @@ void *realloc(void *p, size_t n)
     return q;
 }
 
-/* At exit, as vc.lib's malloc did (a vbcc destructor: __EXIT_<priority>_<name>) */
-void _EXIT_1_vsh_mem(void)
+/* An orphaned subshell (`( ... ) &` in a shell that has exited: shell/vsh.c orphan_jobs) still runs
+ * the interpreter on this heap: its shell state and parse tree are malloc blocks. The heap is
+ * therefore deleted by whoever leaves it last: the exiting shell, or the last orphan. */
+static int holds;    /* orphans still using the heap */
+static int closing;  /* the shell has exited */
+
+static void heap_delete(void)
 {
     if (ready) {
         DeletePool(pool);
         ready = 0;
     }
+}
+
+void vsh_heap_hold(void)
+{
+    Forbid();
+    holds++;
+    Permit();
+}
+
+void vsh_heap_release(void)
+{
+    int last;
+    Forbid();
+    last = --holds == 0 && closing;
+    Permit();
+    if (last)
+        heap_delete();
+}
+
+/* At exit, as vc.lib's malloc did (a vbcc destructor: __EXIT_<priority>_<name>) */
+void _EXIT_1_vsh_mem(void)
+{
+    int now;
+    Forbid();
+    closing = 1;
+    now = holds == 0;
+    Permit();
+    if (now)
+        heap_delete();
 }

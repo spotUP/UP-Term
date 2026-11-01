@@ -57,6 +57,18 @@ class Versions(unittest.TestCase):
             clean = [l for l in r.stdout.splitlines() if l.startswith('neovim-amiga ')][0]
             self.assertNotIn('dirty', clean)
 
+    def test_untracked_files_do_not_make_a_part_dirty(self):
+        # same rule as the Makefile GITREV (git diff --quiet): notes left
+        # untracked in a checkout are not part of what the kit is built from
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace(tmp)
+            open(os.path.join(tmp, 'tmux-amiga', 'notes.md'), 'w').write('draft')
+            r = self.run_script(tmp)
+            self.assertEqual(r.returncode, 0)
+            line = [l for l in r.stdout.splitlines() if l.startswith('tmux-amiga ')][0]
+            self.assertNotIn('dirty', line)
+            self.assertNotIn('tmux-amiga', r.stderr)
+
     def test_missing_part_is_named_not_skipped(self):
         with tempfile.TemporaryDirectory() as tmp:
             workspace(tmp)
@@ -69,11 +81,11 @@ class Versions(unittest.TestCase):
         """K2-7.4: mkversions.sh --package <archive> <version> [root [part ...]] for an add-on's repositories."""
         with tempfile.TemporaryDirectory() as tmp:
             workspace(tmp)
-            r = subprocess.run(['sh', SCRIPT, '--package', 'UP-Term-nvim', '1.2', tmp, 'neovim-amiga', 'ixemul-vtcon'],
+            r = subprocess.run(['sh', SCRIPT, '--package', 'up-nvim', '1.2', tmp, 'neovim-amiga', 'ixemul-vtcon'],
                                capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, r.stderr)
             lines = r.stdout.splitlines()
-            self.assertRegex(lines[0], r'^UP-Term-nvim 1\.2 \S+ \d{4}-\d\d-\d\d \(upterm [0-9a-f]+\)$')
+            self.assertRegex(lines[0], r'^up-nvim 1\.2 \S+ \d{4}-\d\d-\d\d \(upterm [0-9a-f]+\)$')
             self.assertEqual([l.split()[0] for l in lines[1:]], ['neovim-amiga', 'ixemul-vtcon'])
 
     def test_no_arguments_prints_todays_lines(self):
@@ -92,7 +104,7 @@ class Versions(unittest.TestCase):
 
 
 # KIT=build/dist/<archive> (make dist-check runs this once for each archive of dist/packages.txt)
-KIT = os.environ.get('KIT', os.path.join(ROOT, 'build/dist/UP-Term'))
+KIT = os.environ.get('KIT', os.path.join(ROOT, 'build/dist/up-term'))
 ARCHIVE = os.path.basename(KIT.rstrip('/'))
 LHA = os.path.join(ROOT, 'build', ARCHIVE + '.lha')
 
@@ -104,8 +116,32 @@ class BuiltKit(unittest.TestCase):
         self.assertIn(ARCHIVE + '/Files/VERSIONS', out)
         row = [r for r in pkgs.rows() if r['archive'] == ARCHIVE][0]
         txt = open(os.path.join(KIT, 'Files/VERSIONS')).read().splitlines()
-        self.assertEqual(txt[0].split()[:2], [ARCHIVE, row['version']])
+        self.assertEqual(txt[0].split()[:2], [row['id'] == 'base' and 'UP-Term' or ARCHIVE, row['version']])   # the base's VERSIONS names the product, not up-term
         self.assertEqual([l.split()[0] for l in txt[1:]], row['consumes'].split(','))
+
+    def assert_ver(self, names, version):
+        for name in names:
+            data = open(os.path.join(KIT, 'Files', name), 'rb').read()
+            i = data.find(b'$VER: ')
+            self.assertNotEqual(i, -1, name)
+            ver = data[i:data.index(b'\0', i)].split()
+            self.assertEqual(ver[1:3], [name.encode(), version], b' '.join(ver))
+
+    def test_base_programs_say_the_base_version(self):
+        # "Version UPTerm" or "Version L:vtcon-handler" on the Amiga prints the base's version, the
+        # one UP-Term.version holds; they were hand-written and stale (UPTerm 1.0, vtcon-handler 0.1,
+        # sz 1.0, UPConsole 0.1)
+        if ARCHIVE != 'up-term':
+            self.skipTest('the base only')
+        stamp = open(os.path.join(KIT, 'Files/UP-Term.version'), 'rb').read().split()
+        self.assert_ver(('UPTerm', 'vtcon-handler', 'pty-handler', 'vsh', 'hl', 'mdv', 'sz', 'rz',
+                         'uptelnet', 'upgetty', 'UPConsole'), stamp[2])
+
+    def test_claude_says_the_add_on_version(self):
+        # "Version C:Claude" prints the up-claude row's version (it said 1.0 while the add-on was 1.1)
+        if ARCHIVE != 'up-claude':
+            self.skipTest('up-claude only')
+        self.assert_ver(('Claude',), pkgs.get('claude', 'version').encode())
 
 
 if __name__ == '__main__':

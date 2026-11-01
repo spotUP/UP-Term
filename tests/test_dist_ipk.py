@@ -12,9 +12,9 @@ sys.path.insert(0, str(ROOT / 'tools'))
 import pkgs
 
 TABLE = """\
-base      UP-Term       1.0  -    -   UP-Term:                  -  vtcon
-nvim      UP-Term-nvim  2.1  1.0  80  UP-Term:pkg/UP-Term-nvim  -  vtcon
-claude    Claude        1.1  -    -   ENVARC:upkg/Claude        -  vtcon
+base      UP-Term       1.0  -    -   UP-Term:                  -  vtcon  -
+nvim      up-nvim  2.1  1.0  80  UP-Term:pkg/up-nvim  -  vtcon  UP-Term:nvim/bin/nvim
+claude    Claude        1.1  -    -   ENVARC:upkg/up-claude        -  vtcon  -
 """
 
 
@@ -64,14 +64,48 @@ class IpkTest(unittest.TestCase):
         self.build = self.tmp / 'build'
         self.table = self.tmp / 'packages.txt'
         self.table.write_text(TABLE)
-        for a in ('UP-Term-nvim', 'Claude'):
+        for a in ('up-nvim', 'Claude'):
             stage(self.build, a)
         pkgs.ipk(self.build, self.table)
         pkgs.write_feed(self.build, self.table)
         self.out = self.build / 'ipk'
 
+    def _control(self, name):
+        m = dict(split_ar((self.out / name).read_bytes()))
+        return tarfile.open(fileobj=io.BytesIO(m['control.tar.gz'])).extractfile('./control').read().decode()
+
+    def test_a_row_with_a_launch_value_carries_launch_in_control_and_packages_and_a_dash_row_does_not(self):
+        ctl = self._control('up-nvim_2.1_m68k-amigaos.ipk')
+        self.assertIn('Launch: UP-Term:nvim/bin/nvim\n', ctl)
+        self.assertNotIn('Launch', self._control('Claude_1.1_m68k-amigaos.ipk'))
+        stanzas = {s.split('\n')[0]: s for s in (self.build / 'ipk/Packages').read_text().split('\n\n')} \
+            if (self.build / 'ipk/Packages').is_file() else {}
+        self.assertTrue(stanzas, 'Packages index not written where expected')
+        self.assertIn('Launch: UP-Term:nvim/bin/nvim\n', stanzas['Package: up-nvim'])
+        self.assertNotIn('Launch', stanzas['Package: Claude'])
+
+    def test_a_package_with_deps_gets_a_depends_line_in_control_and_feed_and_a_package_without_deps_gets_none(self):
+        import unittest.mock, pkg_rows
+        seen = []
+        def fake(ports, pkg, field):
+            seen.append((pkg, field))
+            return 'up-git up-perl' if (pkg, field) == ('nvim', 'RUNTIME_DEPENDS') else ''
+        ports = self.tmp / 'ports'
+        (ports / 'pkgs/nvim').mkdir(parents=True)
+        (ports / 'pkgs/nvim/recipe.mk').write_text('')
+        with unittest.mock.patch('pkg_rows.read_field', fake), \
+                unittest.mock.patch.dict(os.environ, {'UPTERM_PORTS': str(ports)}):
+            pkgs.ipk(self.build, self.table)
+            pkgs.write_feed(self.build, self.table)
+        self.assertIn(('nvim', 'RUNTIME_DEPENDS'), seen)   # the sentinel: the recipe field was read
+        self.assertIn('Depends: up-git, up-perl\n', self._control('up-nvim_2.1_m68k-amigaos.ipk'))
+        self.assertNotIn('Depends', self._control('Claude_1.1_m68k-amigaos.ipk'))
+        stanzas = {s.split('\n')[0]: s for s in (self.build / 'ipk/Packages').read_text().split('\n\n')}
+        self.assertIn('Depends: up-git, up-perl\n', stanzas['Package: up-nvim'])
+        self.assertNotIn('Depends', stanzas['Package: Claude'])
+
     def test_ipk_is_an_ar_archive_with_control_and_data_at_the_right_paths(self):
-        f = self.out / 'UP-Term-nvim_2.1_m68k-amigaos.ipk'
+        f = self.out / 'up-nvim_2.1_m68k-amigaos.ipk'
         names = subprocess.run(['ar', 't', str(f)], capture_output=True, text=True, check=True).stdout.split()
         names = [n.rstrip('/') for n in names]
         self.assertEqual(names, ['debian-binary', 'control.tar.gz', 'data.tar.gz'])
@@ -80,25 +114,32 @@ class IpkTest(unittest.TestCase):
         ctl = tarfile.open(fileobj=io.BytesIO(m['control.tar.gz']))
         self.assertEqual(sorted(ctl.getnames()), ['.', './control', './postinst', './preinst', './prerm'])
         text = ctl.extractfile('./control').read().decode()
-        for line in ('Package: UP-Term-nvim', 'Version: 2.1', 'Architecture: m68k-amigaos',
+        for line in ('Package: up-nvim', 'Version: 2.1', 'Architecture: m68k-amigaos',
                      'Installed-Size: 3'):
             self.assertIn(line + '\n', text)
         self.assertNotIn('Depends', text)
         post = ctl.extractfile('./postinst').read().decode()
-        self.assertIn('Execute T:upkg-stage/UP-Term-nvim/Files/install.dos T:upkg-stage/UP-Term-nvim/Files\n', post)
-        self.assertIn('rm -rf T:upkg-stage/UP-Term-nvim\n', post)
+        self.assertIn('Execute T:upkg-stage/up-nvim/Files/install.dos T:upkg-stage/up-nvim/Files\n', post)
+        self.assertIn('rm -rf T:upkg-stage/up-nvim\n', post)
         pre = ctl.extractfile('./preinst').read().decode()
         self.assertIn('head -n 1 UP-Term:VERSIONS', pre)
         self.assertIn('if older "$base" 1.0; then', pre)
         self.assertIn('exit 1', pre)
-        self.assertIn('Execute UP-Term:pkg/UP-Term-nvim/Uninstall\n', ctl.extractfile('./prerm').read().decode())
+        prerm = ctl.extractfile('./prerm').read().decode()
+        # the Uninstall deletes its own record drawer, so it runs from a copy: a running script holds its file open
+        self.assertIn('Copy UP-Term:pkg/up-nvim/Uninstall T:up-nvim.Uninstall CLONE QUIET\n', prerm)
+        self.assertIn('Execute T:up-nvim.Uninstall\n', prerm)
+        self.assertIn('Delete >NIL: T:up-nvim.Uninstall QUIET\n', prerm)
+        self.assertNotIn('Execute UP-Term:pkg/up-nvim/Uninstall', prerm)
         data = tarfile.open(fileobj=io.BytesIO(m['data.tar.gz']))
-        top = './T/upkg-stage/UP-Term-nvim'
+        top = './T/upkg-stage/up-nvim'
         for n in (top + '/Uninstall', top + '/Files/install.dos', top + '/Files/sub/prog'):
             self.assertIn(n, data.getnames())
         self.assertEqual(data.getmember(top + '/Files/sub/prog').mode, 0o755)
         self.assertEqual(data.getmember(top + '/Uninstall').mode, 0o644)
-        self.assertTrue(all(n in ('.', './T', './T/upkg-stage') or n.startswith('./T/upkg-stage/') for n in data.getnames()))
+        self.assertTrue(all(n in ('.', './T/upkg-stage') or n.startswith('./T/upkg-stage/') for n in data.getnames()))
+        # ./T is the T: assign, which always exists: an entry for it makes opkg mkdir /T and warn errno 5.
+        self.assertNotIn('./T', data.getnames())
         no_need = tarfile.open(fileobj=io.BytesIO(dict(split_ar((self.out / 'Claude_1.1_m68k-amigaos.ipk').read_bytes()))['control.tar.gz']))
         self.assertNotIn('./preinst', no_need.getnames())
 
@@ -120,8 +161,15 @@ class IpkTest(unittest.TestCase):
         self.assertIn('Execute %s/Files/install.dos %s/Files "$@"\n' % (st, st), post)
         self.assertIn('./T/upkg-stage/Claude/Files/questions', data.getnames())
         # an add-on with no questions keeps the plain Execute line
-        post = self.ctl_of('UP-Term-nvim_2.1_m68k-amigaos.ipk')[0].extractfile('./postinst').read().decode()
+        post = self.ctl_of('up-nvim_2.1_m68k-amigaos.ipk')[0].extractfile('./postinst').read().decode()
         self.assertNotIn('upkg-ask', post)
+        # the control says so, from the questions file alone: upkg browse runs this package in the plain window
+        self.assertIn('UP-Term-Interactive: yes\n', ctl.extractfile('./control').read().decode())
+        self.assertNotIn('UP-Term-Interactive', self.ctl_of('up-nvim_2.1_m68k-amigaos.ipk')[0].extractfile('./control').read().decode())
+        pkgs.write_feed(self.build, self.table)
+        feed = {x['Package']: x for x in stanzas(gzip.decompress((self.out / 'Packages.gz').read_bytes()).decode())}
+        self.assertEqual(feed['Claude'].get('UP-Term-Interactive'), 'yes')
+        self.assertNotIn('UP-Term-Interactive', feed['up-nvim'])
 
     def test_a_question_that_is_no_install_dos_keyword_is_refused(self):
         (self.build / 'dist/Claude/Files/questions').write_bytes(b'HOST|string|Host|x|\n')
@@ -129,10 +177,23 @@ class IpkTest(unittest.TestCase):
             pkgs.ipk(self.build, self.table)
         self.assertIn('HOST is not a keyword', str(e.exception))
 
+    def test_prerm_warns_and_continues_when_the_uninstall_record_is_missing(self):
+        # an add-on installed before the Uninstall copy was fixed has no record: the prerm must not fail the upgrade
+        for ipk, rec in (('up-nvim_2.1_m68k-amigaos.ipk', 'UP-Term:pkg/up-nvim/Uninstall'),
+                         ('Claude_1.1_m68k-amigaos.ipk', None)):
+            m = dict(split_ar((self.out / ipk).read_bytes()))
+            prerm = tarfile.open(fileobj=io.BytesIO(m['control.tar.gz'])).extractfile('./prerm').read().decode()
+            lines = prerm.splitlines()
+            rec = rec or next(w for w in prerm.split() if w.endswith('/Uninstall'))
+            self.assertIn('if [ -f %s ]; then' % rec, lines)
+            self.assertLess(lines.index('if [ -f %s ]; then' % rec), next(i for i, l in enumerate(lines) if l.startswith('    Copy ' + rec + ' ')))
+            self.assertTrue(any(l.lstrip().startswith('echo "warning: ' + rec) for l in lines))
+            self.assertEqual(lines[-1], 'exit 0')
+
     def test_the_base_is_not_a_package(self):
         self.assertFalse(list(self.out.glob('UP-Term_*')))
         self.assertEqual([s['Package'] for s in stanzas(gzip.decompress((self.out / 'Packages.gz').read_bytes()).decode())],
-                         ['UP-Term-nvim', 'Claude'])
+                         ['up-nvim', 'Claude'])
         self.assertNotIn('Depends', (self.out / 'Packages').read_text())
 
     def test_rebuild_is_byte_equal(self):
@@ -162,6 +223,53 @@ class IpkTest(unittest.TestCase):
             pkgs.feed(self.build, self.table)
 
 
+class RenamedPackages(unittest.TestCase):
+    """The up-* rename: the real table, every add-on staged, the control and the Packages entry of each renamed
+    package say it replaces, conflicts with and provides its old name (opkg then removes the old package
+    first); the base UP-Term was never renamed and says nothing."""
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = pathlib.Path(tempfile.mkdtemp())
+        cls.build = cls.tmp / 'build'
+        for r in pkgs.addons(pkgs.TABLE):
+            stage(cls.build, r['archive'])
+        pkgs.ipk(cls.build, pkgs.TABLE)
+        cls.packages = pkgs.feed(cls.build, pkgs.TABLE)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp)
+
+    def control(self, r):
+        m = dict(split_ar((self.build / 'ipk' / pkgs.ipk_name(r)).read_bytes()))
+        return tarfile.open(fileobj=io.BytesIO(m['control.tar.gz'])).extractfile('./control').read().decode()
+
+    def test_the_seven_renames_are_in_every_control_and_in_the_packages_index(self):
+        want = {'Claude': 'up-claude', 'amiga-pi': 'up-pi', 'UP-Term-nvim': 'up-nvim', 'Python3': 'up-python',
+                'UP-Term-git': 'up-git', 'UP-Term-perl': 'up-perl', 'UP-Term-vim': 'up-vim'}
+        self.assertEqual(dict(pkgs.renames()), want)
+        by_name = {s['Package']: s for s in stanzas(self.packages)}
+        for old, new in want.items():
+            r = next(r for r in pkgs.addons(pkgs.TABLE) if r['archive'] == new)
+            for text in (self.control(r), self.packages_entry(by_name[new])):
+                for field in ('Replaces', 'Conflicts', 'Provides'):
+                    self.assertIn('%s: %s\n' % (field, old), text, '%s: %s' % (new, field))
+            for s in (dict(l.split(': ', 1) for l in self.control(r).splitlines()), by_name[new]):
+                self.assertEqual((s['Replaces'], s['Conflicts'], s['Provides']), (old, old, old))
+
+    def packages_entry(self, stanza):
+        return ''.join('%s: %s\n' % kv for kv in stanza.items())
+
+    def test_the_base_and_an_unrenamed_package_carry_none(self):
+        base = pkgs.rows()[0]
+        self.assertEqual(base['archive'], 'up-term')
+        self.assertEqual(pkgs.old_names('up-term'), [])
+        self.assertEqual(pkgs.old_record(base), [])
+        self.assertEqual(pkgs._rename_fields(base), [])
+        # a package of the scratch table that was never renamed
+        self.assertEqual(pkgs._rename_fields({'archive': 'Neverrenamed'}), [])
+
+
 class RealFeed(unittest.TestCase):
     def test_built_feed_equals_packages_txt_and_the_files(self):
         build = ROOT / 'build'
@@ -170,6 +278,62 @@ class RealFeed(unittest.TestCase):
                 self.fail('build/ipk/Packages.gz missing: make dist-ipk')
             self.skipTest('build/ipk not built (make dist-ipk)')
         check_feed(build, pkgs.TABLE)
+
+
+class FpuVariants(unittest.TestCase):
+    """PORTS-FPU-VARIANTS step 3, through the CLI (python3 tools/pkgs.py ipk / feed / index) on the real table: a
+    package staged for both variants gets two ipks (m68k-amigaos, m68k-amigaos-fpu) and two Packages entries; one
+    staged for the 020 only gets one ipk and a [WARN]; the legacy index never names the fpu build."""
+    PKGS = os.environ.get('PKGS_PY', str(ROOT / 'tools/pkgs.py'))   # the fail-before check points this at the old script
+
+    def run_pkgs(self, *args):
+        return subprocess.run([sys.executable, self.PKGS, *args], capture_output=True, text=True, check=True, cwd=ROOT,
+                              env={**os.environ, 'UPTERM_PACKAGES_TXT': str(self.table)})
+
+    def test_two_architectures_two_ipks_and_the_index_stays_020(self):
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        build = tmp / 'build'
+        self.table = tmp / 'packages.txt'
+        self.table.write_text(TABLE)
+        rows = pkgs.addons(self.table)
+        both = rows[0]
+        for r in rows:
+            stage(build, r['archive'])
+        (build / 'dist/fpu').mkdir()
+        shutil.copytree(build / 'dist' / both['archive'], build / 'dist/fpu' / both['archive'])
+        (build / 'dist/fpu' / both['archive'] / 'Files/sub/prog').write_bytes(b'\x01' * 3000)
+        done = self.run_pkgs('ipk', str(build))
+        self.run_pkgs('feed', str(build))
+        out = build / 'ipk'
+        a, b = ('%s_%s_%s.ipk' % (both['archive'], both['version'], x) for x in ('m68k-amigaos', 'm68k-amigaos-fpu'))
+        self.assertEqual(sorted(p.name for p in out.glob('*.ipk')), sorted([a, b] + [pkgs.ipk_name(r) for r in rows[1:]]))
+        self.assertEqual(len(done.stdout.split()), len(rows) + 1)
+        self.assertEqual(done.stderr.count('[WARN]'), len(rows) - 1)
+        self.assertNotEqual((out / a).read_bytes(), (out / b).read_bytes())
+        entries = [s for s in stanzas((out / 'Packages').read_text()) if s['Package'] == both['archive']]
+        self.assertEqual({s['Filename']: s['Architecture'] for s in entries}, {a: 'm68k-amigaos', b: 'm68k-amigaos-fpu'})
+        for s in entries:
+            self.assertEqual(s['SHA256sum'], hashlib.sha256((out / s['Filename']).read_bytes()).hexdigest())
+        control = lambda n: tarfile.open(fileobj=io.BytesIO(dict(split_ar((out / n).read_bytes()))['control.tar.gz'])).extractfile('./control').read().decode()
+        self.assertIn('Architecture: m68k-amigaos-fpu\n', control(b))
+        self.assertIn('Architecture: m68k-amigaos\n', control(a))
+        lhas = tmp / 'lha'
+        lhas.mkdir()
+        for r in pkgs.lha_rows(self.table):
+            (lhas / (r['archive'] + '.lha')).write_bytes(b'x')
+        index = self.run_pkgs('index', str(lhas)).stdout
+        self.assertNotIn('fpu', index)
+        self.assertEqual(index, pkgs.index(lhas, self.table))
+
+
+class VariantNames(unittest.TestCase):
+    def test_names_and_stage_dirs(self):
+        r = {'archive': 'up-nvim', 'version': '2.1'}
+        self.assertEqual(pkgs.ipk_name(r), 'up-nvim_2.1_m68k-amigaos.ipk')
+        self.assertEqual(pkgs.ipk_name(r, 'fpu'), 'up-nvim_2.1_m68k-amigaos-fpu.ipk')
+        self.assertEqual(pkgs.stage_dir('b', 'up-nvim'), pathlib.Path('b/dist/up-nvim'))
+        self.assertEqual(pkgs.stage_dir('b', 'up-nvim', 'fpu'), pathlib.Path('b/dist/fpu/up-nvim'))
 
 
 if __name__ == '__main__':

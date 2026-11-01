@@ -17,8 +17,8 @@ Nothing below is in any repository (all of it is licensed material or large);
 | Piece | Where `rig.py` looks | Where it comes from |
 |---|---|---|
 | FS-UAE | `$CODE_ROOT/Emulators/fs-uae/fs-uae` when it exists (a local 3.1.66 build, branch `fix/arm64-fpu-inf`, that keeps FPU Inf values), else `/Applications/FS-UAE.app` (started with `open -a`) | fs-uae.net, macOS build. Not checked by `upterm-doctor`. Set `UPTERM_FSUAE=<path>` to boot another one: an `.app` bundle (opened with `open -a`) or a bare `fs-uae` binary (run directly), such as a local build with the arm64 FPU Inf fix. |
-| Kickstart 3.1 ROM (40.068, A1200) | `$UPTERM_ROM`, else `$UPTERM_ROOT/Up_Rough_Demo_System/web/maker/public/puae/kick40068.A1200` (another repo of the owner's, not in `repos.lock`); `--kick <file>` for one boot | Your own legal copy (Amiga Forever, or dumped from your A1200). Set `UPTERM_ROM=<file>`. |
-| System disk | `~/Downloads/nyhd2.hdf`, copied once to `build/rig/sys.hdf` (1.5 GB) | A hard-disk image of a working Workbench 3.x install (the owner's own; there is no public source). Set `UPTERM_SYSTEM_HDF=<image>` (default `~/Downloads/nyhd2.hdf`). What it must hold, not verified for a smaller image: C:Assign, S:Startup-Sequence, Libs/Devs/Fonts, the Classes and MUI drawers the rig adds to `LIBS:`. |
+| Kickstart 3.1 ROM (40.068, A1200) | `$UPTERM_ROM`, else `$UPTERM_ROOT/roms/kick40068-a1200.rom` (outside every repository; header 40.68, sha1 `e2154572...`); `--kick <file>` for one boot | Your own legal copy (Amiga Forever, or dumped from your A1200). Set `UPTERM_ROM=<file>`. |
+| System disk | `$UPTERM_ROOT/images/nyhd2.hdf` (`~/Code/UP-Term/images`), cloned to `build/rigN/sys.hdf` on every `rig.py start` (APFS `cp -c`: instant, no disk until written) | A hard-disk image of a working Workbench 3.x install (the owner's own; there is no public source). Set `UPTERM_SYSTEM_HDF=<image>` (default `$UPTERM_ROOT/images/nyhd2.hdf`; not under `~/Downloads`, which macOS keeps from the CLI). What it must hold, not verified for a smaller image: C:Assign, S:Startup-Sequence, Libs/Devs/Fonts, the Classes and MUI drawers the rig adds to `LIBS:`. |
 | AmigaOS 3.2 tree (only for `--os32`) | `~/Downloads/AmigaOS-3.2-full (1)` (a host drawer, copied to `build/rig/os32`), ROM `~/Desktop/KICK_323.rom` (3.2.3) | An installed AmigaOS 3.2 tree and its Kickstart 3.2.3 ROM, from Hyperion (licensed). Set `UPTERM_OS32_TREE=<drawer>` and `UPTERM_OS32_ROM=<rom>` (defaults as shown). Also needs `media/AmigaOS3.2CD/ADF/Extras3.2.adf` inside the tree and `xdftool` (`pip install amitools`) to make SYS:L once. |
 | wasabid | `build/rig/boot/wasabid`, copied from `build/wasabi/wasabid` (`make wasabi`, pinned) on every `setup`/`start` | https://github.com/creep-ltx/wasabi (MIT). The rig key is `rigwasabi`, set in `go` with `SetEnv wasabi.key`; it listens on 1234 + N - 1 (`paths.wasabi_port`). `--stock` no longer changes the daemon. |
 | ncurses 5.5, less, nano, BitchX (what the userland and tmux/screen rigs and the tmux and screen builds use) | `build/rig/vtc/pkgs/ncurses-5.5-1-p-bin-m68k` and siblings | Aminet `dev/gg/ncurses-5.5-1-bin-m68k` (Geek Gadgets) unpacked there. The `-p-` in the directory name is the owner's; whether it marks a modified unpack is not verified. tmux-amiga and screen-amiga read the same directory (`NCURSES=`), so build the rig tree before them. |
@@ -42,6 +42,7 @@ Machine flags (on `start`, and `setup` when the config alone changes):
 |---|---|
 | none | the owner's machine: `--max` (below). Every test rig runs as this, so no script falls back to the 020 |
 | `--a1200` | A1200, 68020 + 68882, 8 MB fast + 64 MB Zorro III, RTG card, JIT, real CPU speed (timing runs only) |
+| `--nofpu` | the same machine with no FPU: the default becomes a 68LC060, with `--a1200` a 68020 with no `fpu` key (for the soft-float `ixemul.library`; `--mmu` is ignored) |
 | `--fast` | the `--a1200` machine at the host's speed |
 | `--a500` | A500, 68000 at 7 MHz cycle-exact, OCS, 512 KB chip + 512 KB slow + 8 MB Zorro II fast, no FPU, no RTG card, KS 40.63 (68000 speed runs, plan W7) |
 | `--060` | 68060 (no MMU) + FPU at the host's speed, 128 MB Zorro III |
@@ -54,6 +55,8 @@ Machine flags (on `start`, and `setup` when the config alone changes):
 | `--ro` | DH0: read-only (stalls on "write protected" requesters; avoid) |
 
 `dvmatrix.sh <kickstart file> <label>` boots the rig on another ROM and runs the console.device checks on it.
+
+In a fresh git worktree run `make worktree-ready` first (seeds build/ from the main checkout; `rig.py install` falls back to the main checkout's handler with a [WARN] when the worktree has none).
 
 `rig.py install` copies `build/amiga/vtcon-handler` into the VTC: drawer
 (host folder `build/rig/vtc`); a reboot is needed for DOS to load a new
@@ -222,7 +225,7 @@ The reachability tests (the product's top-level entry, with a sentinel):
 | `make test-rig` (`reach.py`) | `XCON:` is served by the freshly built handler: installs it, reboots the rig if it differs, runs the probe through DOS, requires PASS |
 | `concon_rig.py` | the system's CON:/RAW: served by UP-Term through `C:UPConsole` |
 | `condev_rig.py` | UP-Term's console.device under the ROM con-handler |
-| `install_rig.py` | the kit: unpack `build/dist/UP-Term`, run `Files/install.dos`, check what it did, Uninstall (needs `make dist` first) |
+| `install_rig.py` | the kit: unpack `build/dist/up-term`, run `Files/install.dos`, check what it did, Uninstall (needs `make dist` first) |
 | `standalone_rig.py` | what each add-on (Claude, amiga-pi, Neovim, Python 3) does on a stock Workbench 3.2 with no UP-Term file, in a ROM CON: and a KingCON window (K2-1; the screen text is read from the pixels, not OCR) |
 | `installer_rig.py` | the real Installer on the kit's Install icon, as a user starts it |
 | `ptytest_rig.py`, `ixpty_rig.py` | `PTY:` and BSD ptys through the patched ixemul |

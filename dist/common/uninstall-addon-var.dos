@@ -6,7 +6,9 @@ Assign >NIL: UP-Term: EXISTS
 If NOT WARN
   ; @include dist/common/uninstall-var.dos
   If NOT "$upkeepvar" EQ "YES"
-    Delete >NIL: "@VARDIR@" ALL QUIET
+; @include dist/common/resolve-uptreal.dos
+    Delete >NIL: "@VARDIRREAL@" ALL QUIET
+    Assign >NIL: UPTREAL:
   Else
     If EXISTS "@VARDIR@"
       Echo "Your data stayed in @VARDIR@."

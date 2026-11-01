@@ -1,0 +1,11 @@
+up-lynx: parts, licences and where the source is
+
+Part                          Licence                          Source
+----------------------------  -------------------------------  --------------------------------------------
+lynx (bin/lynx, etc/lynx.cfg, etc/lynx.lss, share/man/man1/lynx.1, licenses/lynx) GPL v2 upterm-ports (pkgs/lynx)
+
+Notes
+- These files were part of up-term.lha until the slim base (P9); the package installs them at the
+  same paths in UP-Term:. Its row of SOURCES.txt is in UP-Term:licenses/lynx/SOURCES.txt.
+- The complete source with UP-Term's patches and build recipes is up-term-src.lha, published next to
+  up-term.lha.

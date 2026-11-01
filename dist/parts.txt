@@ -13,15 +13,19 @@
 -               LICENSES.txt
 -               Files/install.dos
 -               Files/upupdate
+-               Files/upsame
 -               Files/AmiSSL
+-               Files/AmiNetXDuo
+-               Files/tcpprobe
 drawer          Files/reassign.sh
 system          Files/PTY
 system          Files/XCON
-system          Files/UP-Term Prefs
+system          Files/upprefs
 system          Files/ixkill
 system          Files/pty-handler
 system          Files/screen
 system          Files/screenrc
+system          Files/takecon.sh
 system          Files/termcap.vtcon
 system          Files/terminfo
 system          Files/themes
@@ -36,12 +40,31 @@ copy-coreutils  Files/coreutils/bin     bin
 -               Files/coreutils
 copy-userland   Files/userland/bin      bin
 userland        Files/userland
+userland        Files/amarchy-themes
+userland        Files/lucide
+userland        Files/phosphor
 copy-unifont    Files/unifont           unifont
 copy-emoji      Files/emoji             emoji
 tools           Files/UPDemo
+tools           Files/Reboot
+tools           Files/WBPath
+tools           Files/Agent
+-               Files/UPBigVol
 tools           Files/UPTerm
 tools           Files/UP-Term.version
 tools           Files/VERSIONS
+tools           Files/Amarchy
+tools           Files/amarchy-menu
+tools           Files/amarchy-gui
+tools           Files/amarchy-index
+tools           Files/amarchy-flat
+tools           Files/amarchy-icons
+tools           Files/amnotify
+tools           Files/AmTile
+tools           Files/keymap
+tools           Files/bar.conf
+tools           Files/Rexx
+tools           Files/S
 tools           Files/hl
 tools           Files/mdv
 tools           Files/net
@@ -57,6 +80,7 @@ desktop         Files/UP-Term.info
 desktop         Files/UP-Term-Prefs
 desktop         Files/UP-Term-Prefs.info
 desktop         Files/upicon
+desktop         Files/dopus-filetype
 boot            Files/banner
 boot            Files/vshrc
 boot            Files/wasabi

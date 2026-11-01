@@ -9,7 +9,7 @@
 ; tests/test_dist_installer.py holds this script and install.dos to the same
 ; parts in the same order, and to the Installer 43.3 language.
 ; Remove UP-Term again with Uninstall.
-; Neovim, Python, Claude and amiga-pi are archives of their own (UP-Term-nvim,
+; Neovim, Python, Claude and amiga-pi are archives of their own (up-nvim,
 ; Python3, Claude, amiga-pi), each with an Install of its own; the last three
 ; stand alone and install with no UP-Term.
 ;
@@ -56,8 +56,8 @@
 
 ; P_AMISSL: run AmiSSL's own Install-AmiSSL (an Installer script) from the kit's AmiSSL drawer.
 ; It reads Libs/, Certs/ and the rest by relative names, so it starts with that drawer as the current one
-; (a script in T: does the CD); then the same version check runs again (P_AMISSLCHECK, dist/common/amissl.installer):
-; still missing or older means it did not install (cancelled or failed), else LIBS: needs a reboot.
+; (a script in T: does the CD; started with (execute), because (run "Execute ...") without a >NIL: redirect opens a Shell window); then the same version check runs again (P_AMISSLCHECK, dist/common/amissl.installer):
+; still missing or older means it did not install (cancelled or failed), else LIBS: got AmiSSL:Libs added for this session (the User-Startup line serves later boots).
 ; #sslnote is the last page's line(s) for it and #sslrows how many (n + rows)
 (procedure P_AMISSL
     (set #sslnote "")
@@ -67,18 +67,50 @@
             (textfile (dest "T:UPTAMISSL")
                       (append (cat "CD \"" (tackon #files "AmiSSL") "\"\n"
                                    "Installer SCRIPT Install-AmiSSL APPNAME AmiSSL "
-                                   "MINUSER AVERAGE DEFUSER AVERAGE NOLOG\n")))
-            (run "Execute T:UPTAMISSL")
+                                   "MINUSER AVERAGE DEFUSER AVERAGE NOLOG\n"
+                                   ; Install-AmiSSL only writes the LIBS: assign into S:User-Startup: add it to this session
+                                   "Assign >NIL: AmiSSL: EXISTS\n"
+                                   "If NOT WARN\n"
+                                   "  Assign >NIL: LIBS: AmiSSL:Libs ADD\n"
+                                   "EndIf\n")))
+            (execute "T:UPTAMISSL")
             (run "Delete >NIL: T:UPTAMISSL QUIET")
             (P_AMISSLCHECK)
             (if #amissl-need
                 (
-                    (set #sslnote (cat "\nAmiSSL was not installed, curl cannot run.\n"
+                    (set #sslnote (cat "\nAmiSSL was not installed, https programs cannot run.\n"
                                        "Run " (tackon #files "AmiSSL/Install-AmiSSL") " again."))
                     (set #sslrows 2))
                 (
-                    (set #sslnote "\nReboot once: then LIBS: has AmiSSL.")
+                    (set #sslnote "\nAmiSSL installed: LIBS: has it now, usable at once.")
                     (set #sslrows 1))))))
+
+; P_ANX: run AmiNetXDuo's own Install-AmiNetXDuo (an Installer script) from the kit's AmiNetXDuo drawer, only when
+; no TCP/IP stack was found (#anxins). It finds its files by relative names, so a script in T: does the CD. Its own
+; pages choose the network card (the SANA-II driver), DHCP or a fixed address and the boot start; it writes the
+; ";BEGIN AmiNetXDuo" block in S:User-Startup and S:AmiNetXDuo-Files, which its Uninstall-AmiNetXDuo reads.
+; The note lines join #sslnote/#sslrows: a stack found is named, an install that left no bsdsocket.library is said.
+(procedure P_ANX
+    (if #anxins
+        (
+            (textfile (dest "T:UPTANX")
+                      (append (cat "CD \"" (tackon #files "AmiNetXDuo") "\"\n"
+                                   "Installer SCRIPT Install-AmiNetXDuo APPNAME AmiNetXDuo "
+                                   "MINUSER AVERAGE DEFUSER AVERAGE NOLOG\n")))
+            (execute "T:UPTANX")
+            (run "Delete >NIL: T:UPTANX QUIET")
+            (if (exists "S:AmiNetXDuo-Files" (noreq))
+                (
+                    (set #sslnote (cat #sslnote "\nAmiNetXDuo is installed: reboot once to use it."))
+                    (set #sslrows (+ #sslrows 1)))
+                (
+                    (set #sslnote (cat #sslnote "\nAmiNetXDuo was not installed: no TCP/IP stack.\n"
+                                       "Run " (tackon #files "AmiNetXDuo/Install-AmiNetXDuo") " again."))
+                    (set #sslrows (+ #sslrows 2)))))
+        (if (<> #tcpstack "")
+            (
+                (set #sslnote (cat #sslnote "\nTCP/IP stack found: " #tcpstack ".\nAmiNetXDuo was not installed."))
+                (set #sslrows (+ #sslrows 2))))))
 
 ; P_ADFIND: #adarc -> #adkind ("drawer", "lha" or "") and #adsrc (its Install, or the lha)
 (procedure P_ADFIND
@@ -160,23 +192,21 @@
 ; Its commands, Unifont and emoji live in one drawer (the add-on archives'
 ; files go there too) that is assigned as UP-Term: now and at every boot; every
 ; program reaches the files through that name. An earlier install's drawer is
-; the default.
+; the default. With none, the default is the local disk with the most free room
+; (Files/UPBigVol, install/bigvol.c, sets ENV:UPTBIGVOL to "<Volume>:UP-Term";
+; getdiskspace overflows past 2 GB, the helper counts in KiB, clamped at 4 TiB); SYS:UP-Term
+; when no local, writable disk with an Amiga file system is mounted.
 
 (set #old (getassign "UP-Term" "a"))
-(set #dest (if #old #old "SYS:UP-Term"))
+(set #big "")
+(if (not #old)
+    (
+        (run "Delete >NIL: ENV:UPTBIGVOL QUIET")
+        (run (cat "\"" (tackon #files "UPBigVol") "\" >NIL:") (safe))
+        (set #big (getenv "UPTBIGVOL"))
+        (if (= #big 0) (set #big ""))))
+(set #dest (if #old #old (if (= #big "") "SYS:UP-Term" #big)))
 ; asked again, with the last answer as its default, when the disk of the drawer is too small (room on the disk)
-; #vol: the volume of the path in #volpath, up to and with its first colon ("Work:" of
-; "Work:UP-Term"); the room checks add up what goes on one volume
-(procedure P_VOLUME
-    (set #vol #volpath)
-    (set #vi 0)
-    (while (< #vi (strlen #volpath))
-        (
-            (if (= (substr #volpath #vi 1) ":")
-                (
-                    (set #vol (substr #volpath 0 (+ #vi 1)))
-                    (set #vi (strlen #volpath))))
-            (set #vi (+ #vi 1)))))
 (procedure P_ASKDEST
     (set #dest
         (askdir
@@ -188,7 +218,11 @@
                   "Install makes now and at every boot (a block in "
                   "S:User-Startup that Uninstall takes out again).\n\n"
                   "An earlier UP-Term's drawer is offered first: installing into "
-                  "it again replaces the files and keeps your settings.")
+                  "it again replaces the files and keeps your settings. "
+                  "Without one, the offer is the drawer UP-Term on the local "
+                  "disk with the most free room (hard disk partitions with an "
+                  "Amiga file system, not RAM:, network shares, FAT or CD), "
+                  "or on SYS: when there is none.")
             (default #dest)
             (newpath)))
     (if (= (substr #dest (- (strlen #dest) 1) 1) ":")
@@ -204,22 +238,25 @@
 (set #serial "")
 (set #ssh "")
 (set #bget "")
-(set #curl "")
 (set #wasabi "")
 (set #unifont "")
 (set #emoji "")
+(set #dopus "")
 (set #cpu060 (if (= (database "cpu") "68060") "CPU060" ""))
 (set #cpu040 (if (= (database "cpu") "68040") "CPU040" ""))
+(set #nofpu (if (= (database "fpu") "NOFPU") "NOFPU" ""))
 ; @include dist/common/amissl.installer
+; @include dist/common/tcpstack.installer
 
 ; AmiSSL 5.27 (Apache 2.0): the kit's own drawer, Files/AmiSSL. Ticked when LIBS: has no
 ; amisslmaster.library or an older one; AmiSSL's own Install-AmiSSL does the work (P_AMISSL, after the parts)
 (set #amisslins
     (askoptions
-        (prompt "AmiSSL 5.27 (the TLS library curl needs):")
+        (prompt "AmiSSL 5.27 (the TLS library for https):")
         (help "AmiSSL 5.27 (Apache License 2.0, the AmiSSL Open Source Team, with OpenSSL) "
               "is in the kit's Files/AmiSSL drawer. It is ticked when LIBS: has no "
-              "amisslmaster.library, or an older one than the kit's.\n\n"
+              "amisslmaster.library, or an older one than the kit's; the same "
+              "version or a newer one is already installed and stays.\n\n"
               "Its own installer, Install-AmiSSL, runs after UP-Term's parts, "
               "with its own pages: where AmiSSL: goes, your CPU, the "
               "certificates. UP-Term does nothing to AmiSSL itself, and "
@@ -232,6 +269,29 @@
         (default (if #amissl-need 1 0))))
 (set #amisslins (in #amisslins 0))
 
+(set #anxins
+    (askoptions
+        (prompt "TCP/IP stack (bsdsocket.library):")
+        (help "UP-Term's network programs (curl, https) need a TCP/IP stack. "
+              "The Install looks for one first: Roadshow, AmiTCP, Miami, "
+              "Genesis, TheWire, AmiNetXDuo, an emulator's own "
+              "bsdsocket.library, or any bsdsocket.library in LIBS:. "
+              "When it finds one it says which and installs nothing.\n\n"
+              "Only when none is found, AmiNetXDuo 1.0.0-rc2 (MIT licence, "
+              "the kit's Files/AmiNetXDuo drawer, AmigaOS 2.04 or newer) "
+              "is offered, ticked. Its own installer, Install-AmiNetXDuo, "
+              "runs after UP-Term's parts with its own pages: which "
+              "network card (the SANA-II driver, a .device file from your "
+              "card), DHCP or a fixed address, start at boot.\n\n"
+              "Uninstall leaves it; its own Uninstall-AmiNetXDuo removes it.")
+        (choices (if (= #tcpstack "")
+                     "AmiNetXDuo 1.0.0-rc2 (no TCP/IP stack found)"
+                     (cat "AmiNetXDuo (not installed: " #tcpstack " found)")))
+        (default (if (= #tcpstack "") 1 0))))
+(set #anxins (in #anxins 0))
+; none found is the only case that installs it; a ticked box with a stack found is ignored
+(set #anxins (if (= #tcpstack "") #anxins 0))
+
 (set #net
     (askoptions
         (prompt "Network tools, in UP-Term:bin (they need a TCP/IP stack\n"
@@ -242,17 +302,12 @@
               "of UP-Term's is replaced; your own BebboSSH library is kept, "
               "with a note if it is older).\n\n"
               "bebboget: https downloads (GPL v3+), by the same author.\n\n"
-              "curl 8.22.0: downloads and transfers (the curl licence). It needs "
-              "AmiSSL 5 (Aminet util/libs/AmiSSL-v5-OS3.lha), so it is ticked "
-              "only when AmiSSL is found or ticked on the page before.\n\n"
               "Their licences and sources are in the kit's Files/net drawer.")
         (choices "ssh and scp (BebboSSH)"
-                 "bebboget (https downloads)"
-                 (if #amissl "curl (AmiSSL 5 found)" (if #amisslins "curl (AmiSSL 5 is installed first)" "curl (needs AmiSSL 5, not found)")))
-        (default (+ 1 2 (if (or #amissl #amisslins) 4 0)))))
+                 "bebboget (https downloads)")
+        (default (+ 1 2))))
 (if (in #net 0) (set #ssh "SSH"))
 (if (in #net 1) (set #bget "BEBBOGET"))
-(if (in #net 2) (set #curl "CURL"))
 
 (set #extra
     (askoptions
@@ -265,20 +320,40 @@
               "Colour emoji: Twemoji (CC-BY 4.0), 0.5 MB in UP-Term:emoji, "
               "drawn in colour on an RTG screen of 15 bits or more "
               "(Picasso96, CyberGraphX); other screens use Unifont's glyph.\n\n"
-              "Shell icon: SYS:System/Shell's WINDOW tooltype is changed to "
-              "XCON:, so the Shell opens an UP-Term window. A copy of the icon "
-              "is kept in ENVARC:up-term-orig and Uninstall puts it back.")
+              "Shell icon: SYS:System/Shell starts vsh in an UP-Term window "
+              "(its default tool becomes UP-Term:bin/vsh, its WINDOW tooltype "
+              "XCON:). Scripts and NewShell still use the AmigaDOS Shell. A "
+              "copy of the icon is kept in ENVARC:up-term-orig and Uninstall "
+              "puts it back.")
         (choices "Unifont: glyphs for every character and emoji (1.8 MB)"
                  "Colour emoji for RTG screens (Twemoji, 0.5 MB)"
-                 "Shell icon opens an UP-Term window")
-        (default (+ 1 2))))
+                 "Shell icon starts vsh in an UP-Term window")
+        (default (+ 1 2 4))))
 (if (in #extra 0) (set #unifont "UNIFONT"))
 (if (in #extra 1) (set #emoji "EMOJI"))
 (if (and (in #extra 2) (exists "SYS:System/Shell.info")) (set #shellicon "SHELLICON"))
 
+; Directory Opus 5: asked only when DOpus5: is assigned (its own installer made the assign);
+; ticked, since the filetype is the way in from DOpus to an UP-Term window
+(if (exists "DOpus5:Filetypes" (noreq))
+    (if (in (askoptions
+                (prompt "Directory Opus 5 found (DOpus5:):")
+                (help "Directory Opus filetype: double-clicking a text file "
+                      "(.c, .h, .txt, .md, .rexx) in a Directory Opus lister "
+                      "opens it in an UP-Term window, in your editor, through "
+                      "UP-Term:bin/uterm-edit. The file is "
+                      "DOpus5:Filetypes/UP-Term, below your own filetypes in "
+                      "priority; nothing else of Directory Opus is changed. "
+                      "Directory Opus reads it at its next start.\n\n"
+                      "Uninstall removes that file again.")
+                (choices "Directory Opus filetype: open text files in UP-Term")
+                (default 1))
+            0)
+        (set #dopus "DOPUS")))
+
 (set #boot
     (askoptions
-        (prompt "Started at every boot (both off unless you tick them):")
+        (prompt "Started at every boot (untick what you do not want):")
         (help "Serial login: C:upgetty LOOP runs at every boot from a block in "
               "S:User-Startup, and a terminal program on a null-modem cable at "
               "19200 baud gets vsh. While it runs no other program can use the "
@@ -291,16 +366,16 @@
               "of earlier kits. It runs ANY command a client with its key "
               "sends: Install makes a key (or keeps yours, ENVARC:wasabi.key) "
               "and shows it at the end. The link is encrypted only when "
-              "AmiSSL and keys are set up (see wasabi's README). Leave it off "
+              "AmiSSL and keys are set up (see wasabi's README). Untick it "
               "unless you work on this Amiga from another machine.\n"
-              "Without it, Claude.lha brings its own wasabid for the session "
+              "Without it, up-claude.lha brings its own wasabid for the session "
               "daemon: uptelnet starts one with a key of its own for each "
               "login to the NAS and ends it with the login, and the daemon "
               "left in C: here is not started at boot.\n\n"
               "Uninstall takes both blocks out again.")
         (choices "Serial login on the serial port"
                  "wasabi: remote development from another computer")
-        (default 0)))
+        (default (+ 1 2))))
 (if (in #boot 0) (set #serial "SERIAL"))
 (if (in #boot 1) (set #wasabi "WASABI"))
 
@@ -309,11 +384,13 @@
 (set #sys
     (askoptions
         (prompt "UP-Term can also take over the system's console.\n"
-                "Leave both off to keep the system's own.")
+                "Untick both to keep the system's own.")
         (help "CON: and RAW:: every new Shell window is an UP-Term window "
               "(the Amiga look, with UP-Term's line editing, history and Tab "
-              "completion); C:UPConsole CON OFF switches back. Refused when "
-              "another console replacement (KingCON, ViNCEd...) serves CON:.\n\n"
+              "completion); C:UPConsole CON OFF switches back. When another "
+              "console replacement (KingCON, ViNCEd...) serves CON:, its Mount "
+              "lines in S:User-Startup are turned off and UP-Term serves CON: "
+              "after a reboot; Uninstall turns them back on.\n\n"
               "console.device: every program's console window (Ed, More, the "
               "system's Shell windows) draws with UP-Term's engine; C:UPConsole "
               "DEVICE OFF switches back. Refused when console.device was patched "
@@ -322,7 +399,7 @@
               "which Uninstall takes out.")
         (choices "UP-Term serves CON: and RAW:"
                  "console.device is UP-Term's")
-        (default 0)))
+        (default (+ 1 2))))
 (if (in #sys 0) (set #con "CONSOLE"))
 (if (in #sys 1) (set #dev "DEVICE"))
 
@@ -339,64 +416,52 @@
 (set #kb-manpages @KBUSERLAND@)
 (set #kb-unifont (if #unifont @KBCOPYUNIFONT@ 0))
 (set #kb-emoji (if #emoji @KBCOPYEMOJI@ 0))
-(set #kb-tools (+ @KBTOOLS@ (if #ssh @KBSSH@ 0) (if #bget @KBBEBBOGET@ 0) (if #curl @KBCURL@ 0)))
-; fonts, unix, desktop, boot (with wasabi), libs, mount, console, record: their #kb below
-(set #kb-rest (+ @KBFONTS@ 60 @KBDESKTOP@ @KBBOOT@ (if #wasabi @KBWASABI@ 0) @KBLIBS@ @KBMOUNT@ @KBCONSOLE@ 20))
+(set #kb-tools (+ @KBTOOLS@ (if #ssh @KBSSH@ 0) (if #bget @KBBEBBOGET@ 0)))
+; the parts of the drawer's disk (unix and the record go into the drawer) and of SYS: (fonts, desktop, boot with
+; wasabi, libs, mount, console), as dist/install.dos splits them for its room check
+(set #kb-destrest (+ @KBUNIX@ @KBRECORD@))
+(set #kb-sysrest (+ @KBFONTS@ @KBDESKTOP@ @KBBOOT@ (if #wasabi @KBWASABI@ 0) @KBLIBS@ @KBMOUNT@ @KBCONSOLE@))
 ; AmiSSL goes where Install-AmiSSL puts it first, not into the drawer: its own default is the
-; AmiSSL: assign, else Work:, else SYS:. Its KB count on that volume's check below.
+; AmiSSL: assign, else Work:, else SYS:. Its KB count on that disk in the room check below.
 (set #kb-amissl (if #amisslins @KBAMISSL@ 0))
 (set #amissldisk (getassign "AmiSSL"))
 (if (= #amissldisk "") (set #amissldisk (if (exists "Work:" (noreq)) "Work:" "SYS:")))
-(set #volpath #amissldisk)
-(P_VOLUME)
-(set #amisslvol #vol)
 (set #totalkb (+ #kb-drawer #kb-system #kb-coreutils #kb-userland #kb-manpages #kb-unifont #kb-emoji
-                 #kb-tools #kb-rest))
+                 #kb-tools #kb-destrest #kb-sysrest))
 (set #donekb 0)
 
 ; ---- room on the disk --------------------------------------------------------
-; getdiskspace answers -1 when it cannot tell (and Installer 43.3 can
-; overflow on a volume past 2 GB): only a positive answer that is too small
-; asks. The drawer's disk too small: say how much there is and how much the
-; chosen parts need, and ask for another drawer (Abort Install ends it).
+; UPBigVol ROOM (install/bigvol.c, the Shell install's check too) gets the
+; drawer, SYS: and AmiSSL's disk, each followed by the KB of the parts that
+; write there. Paths on one volume (SYS:UP-Term and SYS:, DH0: and SYS:) count
+; together, and it counts in KB, so a disk past 2 GB answers right
+; (getdiskspace overflows there). A disk too small sets ENV:UPTROOM to what it
+; has free and what the parts need, and ENV:UPTROOMAT to its path: the
+; drawer's disk asks for another drawer (Abort Install ends it), SYS: or
+; AmiSSL's disk ends the install. A disk it cannot tell about passes.
 
 (set #roomok 0)
 (while (not #roomok)
     (
-        (set #free (getdiskspace (pathonly #dest)))
-        (set #volpath #dest)
-        (P_VOLUME)
-        (set #needkb (+ #totalkb (if (= #vol #amisslvol) #kb-amissl 0)))
-        (if (and (> #free 0) (< (/ #free 1024) #needkb))
-            (
-                (message
-                    (cat "\n\n\n" #dest " has " (/ #free 1024) " KB free;\n"
-                         "the parts you chose need about " #needkb " KB.\n\n"
-                         "Nothing has been copied. Proceed asks for\n"
-                         "another drawer, on a drive with room;\n"
-                         "Abort Install leaves everything as it was."))
-                (P_ASKDEST)
-            )
-            (set #roomok 1))
-    ))
-; what goes on SYS: whatever the drawer's volume is (C:, L:, LIBS:, DEVS:, fonts,
-; the S:User-Startup block)
-(set #sysfree (getdiskspace "SYS:"))
-(set #syskb (+ #kb-system #kb-rest (if (= #amisslvol "SYS:") #kb-amissl 0)))
-(if (and (> #sysfree 0) (< (/ #sysfree 1024) #syskb))
-    (abort "Nothing was installed. SYS: has " (/ #sysfree 1024) " KB free;\n"
-           "UP-Term puts about " #syskb " KB there.\n"
-           "Free room on SYS: and run Install again."))
-; AmiSSL on a volume of its own: neither the drawer's nor SYS:, so not counted above
-(set #volpath #dest)
-(P_VOLUME)
-(if (and #amisslins (<> #amisslvol #vol) (<> #amisslvol "SYS:"))
-    (
-        (set #amisslfree (getdiskspace #amissldisk))
-        (if (and (> #amisslfree 0) (< (/ #amisslfree 1024) #kb-amissl))
-            (abort "Nothing was installed. " #amissldisk " has " (/ #amisslfree 1024) " KB free;\n"
-                   "AmiSSL 5.27 needs about " #kb-amissl " KB there.\n"
-                   "Free room there or untick AmiSSL, then install again."))))
+        (run (cat "\"" (tackon #files "UPBigVol") "\" >NIL: ROOM \"" #dest "\" "
+                  (+ #kb-drawer #kb-coreutils #kb-userland #kb-manpages #kb-unifont #kb-emoji #kb-tools #kb-destrest)
+                  " SYS: " (+ #kb-system #kb-sysrest)
+                  (if #amisslins (cat " \"" #amissldisk "\" " #kb-amissl) ""))
+             (safe))
+        (set #room (getenv "UPTROOM"))
+        (if (or (= #room "") (= #room 0))
+            (set #roomok 1)
+            (if (= (getenv "UPTROOMAT") #dest)
+                (
+                    (message
+                        (cat "\n\n\n" #room "\n\n"
+                             "Nothing has been copied. Proceed asks for\n"
+                             "another drawer, on a drive with room;\n"
+                             "Abort Install leaves everything as it was."))
+                    (P_ASKDEST))
+                (abort "Nothing was installed. " #room "\n"
+                       "Free room there, or untick parts, then run Install again.")))))
+(run "Delete >NIL: ENV:UPTROOM ENV:UPTROOMAT QUIET")
 
 ;  ready: n = 9, lead 3
 (message
@@ -408,7 +473,7 @@
 )
     ; Update: the options of the last install, from its record
     (
-        (run "Copy @OPTS@/#? ENV: QUIET")
+        (run (if #oldopts "Copy T:UPTOLDOPTS/#? ENV: QUIET" "Copy @OPTS@/#? ENV: QUIET"))
         (set #dest (getenv "UPTOPTDEST"))
         (set @default-dest #dest)
         (set #con (if (exists "ENV:UPTOPTCONSOLE") "CONSOLE" "NOCONSOLE"))
@@ -417,12 +482,13 @@
         (set #serial (getenv "UPTOPTSERIAL"))
         (set #ssh (getenv "UPTOPTSSH"))
         (set #bget (getenv "UPTOPTBEBBOGET"))
-        (set #curl (getenv "UPTOPTCURL"))
         (set #wasabi (getenv "UPTOPTWASABI"))
         (set #unifont (getenv "UPTOPTUNIFONT"))
         (set #emoji (getenv "UPTOPTEMOJI"))
+        (set #dopus (getenv "UPTOPTDOPUS"))
         (set #cpu040 (getenv "UPTOPTCPU040"))
         (set #cpu060 (getenv "UPTOPTCPU060"))
+        (set #nofpu (getenv "UPTOPTNOFPU"))
         (set #kb-drawer 0 #kb-system 0 #kb-coreutils 0 #kb-userland 0 #kb-manpages 0 #kb-unifont 0 #kb-emoji 0
              #kb-tools 0)
         ; the parts upupdate named, and the record part's 1
@@ -441,12 +507,34 @@
     (set #name "SERIAL" #val #serial) (P_OPT)
     (set #name "SSH" #val #ssh) (P_OPT)
     (set #name "BEBBOGET" #val #bget) (P_OPT)
-    (set #name "CURL" #val #curl) (P_OPT)
     (set #name "WASABI" #val #wasabi) (P_OPT)
     (set #name "CPU040" #val #cpu040) (P_OPT)
     (set #name "CPU060" #val #cpu060) (P_OPT)
+    (set #name "NOFPU" #val #nofpu) (P_OPT)
     (set #name "UNIFONT" #val #unifont) (P_OPT)
-    (set #name "EMOJI" #val #emoji) (P_OPT))
+    (set #name "EMOJI" #val #emoji) (P_OPT)
+    (set #name "DOPUS" #val #dopus) (P_OPT))
+
+; P_END: the last page. #done says what went where; then the
+; Install offers to reboot, since the handlers, XCON: and the
+; assigns it set up start with the next boot. Reboot is the
+; kit's own (Files/Reboot): it writes every volume's buffers
+; out before ColdReboot, so no disk needs validating after.
+(procedure P_END
+    (message #done)
+    (set #n 3)
+    (P_LEAD)
+    (if (askbool
+            (prompt (cat #lead "Reboot now? UP-Term's handlers, XCON:\n"
+                         "and its assigns start with the next boot."))
+            (help "Reboot writes every disk's buffers out, then "
+                  "restarts the Amiga. Later leaves the Amiga "
+                  "running; UP-Term works fully after the next "
+                  "boot, whenever that is.")
+            (choices "Reboot" "Later")
+            (default 1))
+        (run (cat "\"" (tackon #files "Reboot") "\"")))
+    (exit (quiet)))
 
 (complete 0)
 
@@ -500,16 +588,18 @@
 
 (set #step "tools" #kb #kb-tools #n 3
      #why (cat "Installing UP-Term's own commands (UPTerm, UPDemo,\n"
-               "upgetty, uptelnet, hl, mdv, ps, top, sz, rz) and\n"
-               "the network tools you chose."))
+               "upgetty, uptelnet, hl, mdv, ps, top, sz, rz, Amarchy)\n"
+               "and the network tools you chose."))
 (P_STEP)
 
 (set #step "fonts" #kb @KBFONTS@ #n 2
-     #why (cat "Adding the TopazPro and IBM fonts (only the sizes you do\n"
-               "not have yet) and running FixFonts."))
+     #why (cat "Adding the TopazPro, IBM and JetBrains Mono fonts (only\n"
+               "the sizes you do not have yet), the Symbols Nerd Font\n"
+               "icons (FONTS:SymbolsNerdFontMono.ttf) and running\n"
+               "FixFonts."))
 (P_STEP)
 
-(set #step "unix" #kb 60 #n 2
+(set #step "unix" #kb @KBUNIX@ #n 2
      #why (cat "Setting up /gg/bin/sh and /tmp for Unix programs:\n"
                "GG: and TMP: are assigned only when you have none."))
 (P_STEP)
@@ -517,7 +607,7 @@
 (set #step "desktop" #kb @KBDESKTOP@ #n (if #shellicon 3 2)
      #why (cat "Putting the UP-Term icon in SYS:System and UP-Term Prefs\n"
                "in SYS:Prefs"
-               (if #shellicon ",\nand pointing the Shell icon at XCON:" "") "."))
+               (if #shellicon ",\nand pointing the Shell icon at vsh in XCON:" "") "."))
 (P_STEP)
 
 (set #step "boot" #kb (+ @KBBOOT@ (if #wasabi @KBWASABI@ 0)) #n (+ 1 (if #serial 1 0) (if #wasabi 1 0))
@@ -545,7 +635,7 @@
 
 (complete 100)
 
-(set #step "record" #kb 20 #n 2
+(set #step "record" #kb @KBRECORD@ #n 2
      #why (cat "Writing down this kit's list of files and your\n"
                "choices, for a later Update."))
 (P_STEP)
@@ -568,17 +658,17 @@
         (if (<> #stays "") (set #n 9))
         (if (<> #adnote "") (set #n (+ #n 2)))
         (P_LEAD)
-        (set #updated (cat #lead "UP-Term is updated:\n" (getenv "UPTVEROLD") "\nto\n"
+        (set #done (cat #lead "UP-Term is updated:\n" (getenv "UPTVEROLD") "\nto\n"
                         (getenv "UPTVERNEW") "\n\n"
                         (if (<> #stays "")
                             (cat "Stays installed: " (substr #stays 2 (strlen #stays)) ".\n"
                                  "They are archives of their own now: install\n"
-                                 "UP-Term-nvim, Python3, Claude or amiga-pi to update.")
+                                 "up-nvim, Python3, Claude or amiga-pi to update.")
                             "Nothing else changed.")
                         #adnote))
         (run "Delete >NIL: ENV:UPTHANDED QUIET")
         (run "Delete >NIL: ENV:UPTVER#? QUIET")
-        (exit #updated)))
+        (P_END)))
 
 ; ---- what went where ------------------------------------------------------------
 
@@ -643,26 +733,52 @@
                  "\nC:UPConsole STATUS says who serves them now."))
         (run "Delete >NIL: ENV:UPTREFUSED#? QUIET")))
 
+; another console replacement's Mount lines were turned off (install.dos:
+; ENV:UPTCONREBOOT, dist/takecon.sh): n = 6
+(if (exists "ENV:UPTCONREBOOT")
+    (
+        (set #n 6)
+        (P_LEAD)
+        (message
+            (cat #lead
+                 "UP-Term serves CON: and RAW: after a reboot.\n"
+                 "The Mount lines of the other console replacement\n"
+                 "(KingCON, ViNCEd...) in S:User-Startup are turned\n"
+                 "off; Uninstall turns them back on.\n"
+                 "\nC:UPConsole STATUS says who serves them now."))
+        (run "Delete >NIL: ENV:UPTCONREBOOT QUIET")))
+
 ; the parts are done: the options and the UPTKIT: assign go
 (P_OPTIONS_END)
 
 ; AmiSSL 5.27, by its own installer (its pages and record are its own)
 (P_AMISSL)
 
+; AmiNetXDuo, by its own installer, only when no TCP/IP stack was found
+(P_ANX)
+
 ; the add-ons found beside this kit (their pages and records are their own)
 (P_ADDONS)
 (set #adrows (+ #sslrows (if (<> #adnote "") 2 0)))
 (set #adnote (cat #sslnote #adnote))
 
-; the last page: 9 lines, 14 with the wasabi key; the AmiSSL note adds 1 or 2, the add-on note 2
-; (the wasabi page is full: the note then has a page of its own before it)
-(if (and (= #wasabi "WASABI") (<> #adnote ""))
+; the last pages. The text area of the smallest Installer window (448x159 on
+; a 640x256 depth-8 Workbench, 9 px a line, buttons at y 129) holds 13 lines;
+; a longer page spills into the window's bottom border, which a later page
+; does not clear (INSTALLER-LAYOUT-BOTTOM-STRIP, tests/test_dist_installer.py).
+; So the wasabi key (5 lines) has a page of its own, then the last page holds
+; 9 lines, the AmiSSL note adds 1 or 2, the add-on note 2: 13 at most.
+(if (= #wasabi "WASABI")
     (
-        (set #n 3)
+        (set #n 5)
         (P_LEAD)
-        (message (cat #lead (substr #adnote 1 (strlen #adnote))) (all))
-        (set #adnote "")))
-(set #n (+ (if (= #wasabi "WASABI") 14 9) #adrows))
+        (message
+            (cat #lead "wasabi is running. On the other computer, with Python 3:\n"
+                 "  copy Files/wasabi/wasabi from this kit, then\n"
+                 "  export WASABI_KEY=" (getenv "wasabi.key") "\n"
+                 "  ./wasabi discover\n"
+                 "The key is in ENVARC:wasabi.key; keep it to yourself."))))
+(set #n (+ 9 #adrows))
 (P_LEAD)
 (set #done
     (cat #lead "Open UP-Term: double-click SYS:System/UP-Term, or type\n"
@@ -673,12 +789,4 @@
          "A reboot mounts XCON:, PTY: and IXPIPE: at every start.\n"
          "Uninstall (beside Install) takes UP-Term out again."
          #adnote))
-(if (= #wasabi "WASABI")
-    (set #done
-        (cat #done "\n"
-             "wasabi is running. On the other computer, with Python 3:\n"
-             "  copy Files/wasabi/wasabi from this kit, then\n"
-             "  export WASABI_KEY=" (getenv "wasabi.key") "\n"
-             "  ./wasabi discover\n"
-             "The key is in ENVARC:wasabi.key; keep it to yourself.")))
-(exit #done)
+(P_END)

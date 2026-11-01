@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """mkicon.py OUT.info [--x X --y Y] [--tool NAME] [--plain] [--tooltype T ...] -- the UP-Term
 Workbench project icon (P8): default tool UP-Term:bin/vsh, tooltype WINDOW= the XCON
-window vsh opens, a 64 KB stack. Written in the Workbench DiskObject format
+window vsh opens (XCON:0/20/0/400/UP-Term/CLOSE: a width of 0 is the screen's width,
+a height of 0 its height), a 64 KB stack. Written in the Workbench DiskObject format
 (workbench/workbench.h, intuition/intuition.h): DiskObject, the Image and
 its planar data, then the default tool and the tooltypes as length-prefixed
 strings. The image is a small terminal window in the Workbench's four pens
@@ -13,7 +14,7 @@ workbench.h DRAWERDATAFILESIZE: the NewWindow, origin, dd_Flags, dd_ViewModes), 
 same four pens, for a drawer Workbench has no icon for (VTC:Apps.info on the rig)."""
 import argparse, struct
 
-WINDOW = "XCON:0/20/640/400/UP-Term/CLOSE"
+WINDOW = "XCON:0/20/0/400/UP-Term/CLOSE"  # width 0: as wide as the screen (handler/winspec.h)
 NO_ICON_POSITION = 0x80000000
 
 # 44 x 22, one character per pixel: . grey  # black  o white  b blue
@@ -69,13 +70,14 @@ DRAWER_ART = [
 PEN = {'.': 0, '#': 1, 'o': 2, 'b': 3}
 
 
-def planes(art, depth=2):
+def planes(art, depth=2, pens=PEN):
+    """art rows of pen characters (`pens` maps a character to its pen number), as planar bytes, plane after plane."""
     h, w = len(art), len(art[0])
     words = (w + 15) // 16
     out = b''
     for p in range(depth):
         for row in art:
-            bits = [(PEN[c] >> p) & 1 for c in row] + [0] * (words * 16 - w)
+            bits = [(pens[c] >> p) & 1 for c in row] + [0] * (words * 16 - w)
             for i in range(words):
                 v = 0
                 for b in bits[i * 16:(i + 1) * 16]:
@@ -103,7 +105,7 @@ def drawer_data():
     return new_window + struct.pack('>llLH', 0, 0, 0, 0)   # origin 0/0, DDFLAGS_SHOWDEFAULT, DDVM_BYDEFAULT
 
 
-def icon(x, y, tool, tooltypes, drawer=False):
+def icon(x, y, tool, tooltypes, drawer=False, wbtool=False, stack=65536):
     art = DRAWER_ART if drawer else ART
     w, h = len(art[0]), len(art)
     gadget = struct.pack('>LhhhhHHHLLLLLHL',
@@ -118,11 +120,11 @@ def icon(x, y, tool, tooltypes, drawer=False):
                          1)             # UserData: WB_DISKREVISION
     diskobj = struct.pack('>HH', 0xE310, 1) + gadget + struct.pack(
         '>BBLLllLLl',
-        2 if drawer else 4, 0,         # do_Type WBDRAWER or WBPROJECT, pad
-        0 if drawer else 1, 1 if tooltypes else 0,   # do_DefaultTool, do_ToolTypes: present
+        2 if drawer else 3 if wbtool else 4, 0,   # do_Type WBDRAWER, WBTOOL or WBPROJECT, pad
+        0 if drawer or wbtool else 1, 1 if tooltypes else 0,   # do_DefaultTool, do_ToolTypes: present
         x, y,                          # do_CurrentX/Y
         1 if drawer else 0, 0,         # do_DrawerData, do_ToolWindow
-        0 if drawer else 65536)        # do_StackSize
+        0 if drawer else stack)        # do_StackSize
     image = struct.pack('>hhhhhLBBL', 0, 0, w, h, 2, 1, 3, 0, 0) + planes(art)
     if drawer:
         tt = b''
@@ -132,7 +134,7 @@ def icon(x, y, tool, tooltypes, drawer=False):
     tt = b''
     if tooltypes:
         tt = struct.pack('>L', (len(tooltypes) + 1) * 4) + b''.join(bstr(t) for t in tooltypes)
-    return diskobj + image + bstr(tool) + tt
+    return diskobj + image + (b'' if wbtool else bstr(tool)) + tt
 
 
 def main():
@@ -143,7 +145,10 @@ def main():
     ap.add_argument('--tool', default='UP-Term:bin/vsh')
     ap.add_argument('--drawer', action='store_true')
     ap.add_argument('--plain', action='store_true')
+    ap.add_argument('--wbtool', action='store_true', help='a WBTOOL icon (no default tool): an app, as the Amarchy app index lists it')
     ap.add_argument('--tooltype', action='append', default=[])
+    ap.add_argument('--stack', type=int, default=65536,
+                    help='do_StackSize: the stack Workbench gives the program (upkg: 262144, as its $STACK cookie)')
     a = ap.parse_args()
     x = a.x if a.x is not None else NO_ICON_POSITION
     y = a.y if a.y is not None else NO_ICON_POSITION
@@ -152,7 +157,7 @@ def main():
     own_window = any(t.startswith("WINDOW=") for t in a.tooltype)
     tooltypes = ([] if a.plain or own_window else ["WINDOW=" + WINDOW]) + a.tooltype
     data = icon(x - (1 << 32) if x >= 1 << 31 else x, y - (1 << 32) if y >= 1 << 31 else y,
-                a.tool, [] if a.drawer else tooltypes, a.drawer)
+                a.tool, [] if a.drawer else tooltypes, a.drawer, a.wbtool, a.stack)
     open(a.out, 'wb').write(data)
 
 

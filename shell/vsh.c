@@ -17,6 +17,7 @@
 #include <dos/var.h>
 #include <ctype.h>
 #include <proto/exec.h>
+#include <devices/timer.h>
 #include <proto/dos.h>
 #include <proto/icon.h>
 #include <proto/intuition.h>
@@ -28,7 +29,9 @@
 #include "sh_exec.h"
 #include "sh_pipe.h"
 #include "sh_ixargv.h"
+#include "sh_jobgone.h"
 #include "sh_own.h"
+#include "vsh_cmdline.h"
 #include "../handler/vtcon_packets.h"
 #include "../tty/ldisc.h"
 #include "../tty/bmsg.h"
@@ -36,6 +39,11 @@
 #define UPASSIGN_DOS
 #include "../config/upassign.h"
 #include "../config/termurl.h"
+#define SEGSTACK_DOS
+#define CMDPATH_DOS
+#include "../config/cmdpath.h"
+#include "../config/segstack.h"
+#include "upterm_version.h"
 
 #ifdef VSH_DEBUG
 /* A trace on the serial port (the rig captures it in build/rig/serial.log). */
@@ -64,7 +72,7 @@ static void tr(const char *s, long a, long b)
 #define TR(s, a, b)
 #endif
 
-static const char version[] = "$VER: vsh 0.1 (29.9.2026)";
+static const char version[] = "$VER: vsh " UPTERM_VERSION " (" UPTERM_DATE ")";
 /* the stack vsh wants: AmigaOS 3.2 and 4 start it with that, and so does
  * a vsh it runs; otherwise it swaps to 64 KB itself (main) */
 static const char stack_cookie[] = "$STACK: 262144";
@@ -85,9 +93,13 @@ typedef struct job {
     BPTR home;              /* its directory, its PROGDIR: (a lock, or 0) */
     ULONG stack;            /* its stack for RunCommand */
     BPTR in, out, err;
+    BPTR term_in, term_out; /* the shell's own input and output: its terminal, the runner's CLI streams */
     int close_in, close_out, close_err;
     struct Task *task;      /* the runner, while it runs */
-    char child[24];         /* the name of the Shell process SystemTags makes */
+    char tname[32];         /* the runner's task name, unique per job (runner_alive); CreateNewProc copies it */
+    int has_child;          /* the command goes through SystemTags: a Shell process of its own (job_child) */
+    int child_seen;         /* that process has been seen to exist (job_gone) */
+    ULONG pend_sig;         /* a break job_signal could not deliver to the child, it not existing yet (job_flush_sig) */
     char *env;              /* exported variables: name\0value\0 ... \0 */
     char *ixvar;            /* the argv of the ixemul program a Shell starts for it (sh_ixargv.h) ... */
     long ixvarlen;          /* ... its bytes, the local variable __ixargv of the runner */
@@ -96,11 +108,27 @@ typedef struct job {
     sh_io io;
     int done;               /* set (under Forbid) as the runner ends */
     LONG rc;
+    LONG ioerr;             /* the runner's IoErr() when the command ended (the secondary result), for why */
     struct Task *held;      /* its process, whose console reads wait (stopped, bg) */
     vt_termios tios;        /* the console's termios when it was suspended ... */
     int tios_saved;         /* ... if the job had set one (S8) */
     int tios_restored;      /* fg put it back: the prompt takes the Amiga mode again */
+    struct job *next;       /* the runners not yet reaped (live_jobs) */
+    /* bg_own_stream: the job's own handle on the shell's out (0) and err (1), the shell's handle it
+     * copies, and where the job's handle ended when it was closed (-1: not yet). The shell, when it
+     * reaps the job, moves its handle on to that end (bg_reaped): `echo a & wait; echo b` >file */
+    BPTR bg_dup[2], bg_src[2];
+    LONG bg_end[2];
 } job;
+
+/* The runners the shell has started and not reaped. A runner is a process running this program's
+ * own code, so a shell that ends first (`vsh -c "cmd &"`) must not let its code or its reply port go
+ * under it: orphan_jobs hands them over. Changed under Forbid. */
+static job *live_jobs;
+
+/* shell/vsh_mem.c: the heap outlives the shell while an orphaned subshell still uses it */
+void vsh_heap_hold(void);
+void vsh_heap_release(void);
 
 /* The pipes vsh made. AmigaOS has no SIGPIPE: a PIPE: writer whose reader
  * has gone blocks for ever (rig: List | less, q, and the shell never came
@@ -120,18 +148,75 @@ static struct {
 } rl_kind[8];
 static int rl_next;
 
+/* Name j's task "<prefix> <n>", <n> counting up for the shell's whole life: never a repeat, as a freed
+ * job's address is (runner_alive tells the runner from a later task at its address by this name). */
+static const char *job_tname(job *j, const char *prefix)
+{
+    static unsigned long serial;
+    sh_job_tname(j->tname, prefix, ++serial);
+    return j->tname;
+}
+
+/* The Shell process SystemTags made for a Resident command or a script: SystemTags ignores NP_Name, so it is found as
+ * a CLI process on the job's input handle that is neither the runner nor the shell nor another vsh
+ * runner (sh_child_is; NP_ExitData cannot carry the job: AmiTCP programs read it, VSH-EXT-RC161).
+ * 0 when there is none now. Call under Forbid. */
+static struct Task *job_child(job *j)
+{
+    struct Node *n;
+    struct List *l[2];
+    int i;
+    l[0] = &SysBase->TaskReady;
+    l[1] = &SysBase->TaskWait;
+    struct Task *self = FindTask(0);
+    if (!j->has_child)
+        return 0;
+    for (i = 0; i < 2; i++)
+        for (n = l[i]->lh_Head; n->ln_Succ; n = n->ln_Succ) {
+            struct Process *p = (struct Process *)n;
+            struct CommandLineInterface *cli;
+            int isp = n->ln_Type == NT_PROCESS;
+            cli = (isp && p->pr_CLI) ? (struct CommandLineInterface *)BADDR(p->pr_CLI) : 0;
+            if (sh_child_is(isp, cli != 0, cli ? (unsigned long)cli->cli_StandardInput : 0,
+                            (unsigned long)j->in, n == (struct Node *)j->task, n == (struct Node *)self,
+                            n->ln_Name))
+                return (struct Task *)n;
+        }
+    return 0;
+}
+
 /* A break (Ctrl-C, or ^\ as CTRL_E) to a running job: its runner, which
  * is the command's process for a loaded command, and the Shell process
- * SystemTags spawned for a Resident command or a script (found by the
- * name vsh gave it). Call under Forbid. */
+ * SystemTags spawned for a Resident command or a script (job_child).
+ * Call under Forbid. */
 static void job_signal(job *j, ULONG sig)
 {
     struct Task *t;
     if (j->done)
         return;
     Signal(j->task, sig);
-    if (j->child[0] && (t = FindTask((STRPTR)j->child)) != 0)
+    if ((t = job_child(j)) != 0)
         Signal(t, sig);
+    else if (j->has_child)
+        j->pend_sig |= sig; /* `script & kill %1`: SystemTags has not made the child yet (job_flush_sig) */
+}
+
+/* Send the break kept by job_signal to the SystemTags child once it exists, and forget it (also when the
+ * job ended). Called from job_gone, which the wait loop and the done check run under Forbid. */
+static void job_flush_sig(job *j)
+{
+    struct Task *t;
+    if (j->done) {
+        j->pend_sig = 0;
+        return;
+    }
+    if (!j->pend_sig)
+        return;
+    t = job_child(j);
+    if (!sh_flush_pending(j->pend_sig, t != 0))
+        return;
+    Signal(t, j->pend_sig);
+    j->pend_sig = 0;
 }
 
 static void job_break(job *j)
@@ -148,7 +233,7 @@ static struct Task *job_process(job *j)
 {
     struct Task *t;
     Forbid();
-    t = j->done ? 0 : (j->child[0] ? FindTask((STRPTR)j->child) : j->task);
+    t = j->done ? 0 : (j->has_child ? job_child(j) : j->task);
     Permit();
     return t;
 }
@@ -199,17 +284,39 @@ static const char *ixkill_name(const char *path)
 static const char ixkill_missing[] = "ixkill not found: looked beside vsh, in $PATH, the Shell's path and C: "
                                      "(without it only INT, QUIT, HUP and TERM reach a command)";
 
+static long os_now(void *os, long *usec);
+static void runner(void);
+static char *job_dup(const char *s);
+static void job_close_streams(job *j);
+static void job_strings_free(job *j);
+static void job_free(job *j);
+static ULONG command_stack(BPTR seg);
+static ULONG wait_or_tick(ULONG mask);
+static int replied(struct MsgPort *port, job *j);
+static int orphans;
+
 /* 0 when the signal went out, -1 when it did not (the task ended, or ixkill found no ixemul process
- * there), SH_SIG_NOSENDER when there is no ixkill to send it. */
-static int task_unix_signal(struct Task *t, const char *sig, const char *path)
+ * there, or ixkill did not answer in time or the sender was interrupted), SH_SIG_NOSENDER when there is
+ * no ixkill to send it.
+ *
+ * ixkill runs as a hidden job (a runner with SystemTags, as a Resident command does), not in a
+ * synchronous SystemTags of the shell's own: ixkill is an ixemul program and its start needs lower
+ * priority tasks (ramlib), which a target busy at the sender's priority starves. A synchronous call then
+ * kept the sender, deaf to Ctrl-C, for as long as the target ran (s33 VSH-KILL-TERM-NATIVE-HANG). Here
+ * the shell waits for the runner's reply, Ctrl-C or SH_KILL_LIMIT_MS (sh_killwait). On a break or the
+ * limit the job is abandoned the way orphan_jobs abandons one: its reply port is cleared, the runner
+ * ends when ixkill ends and frees the job (and its NIL: streams) itself, the program's code stays
+ * loaded for it (orphans). The Ctrl-C is raised again for the interpreter, as os_wait does. */
+static int task_unix_signal(struct MsgPort *port, struct Task *t, const char *sig, const char *path)
 {
     char cmd[256];
     static const char hex[] = "0123456789abcdef";
     const char *ixkill;
     unsigned long a;
-    int i, k;
-    BPTR nil_in, nil_out;
-    LONG rc;
+    int i, k, verdict, broke = 0;
+    long usec, t0, rc;
+    job *j;
+    struct Process *p;
     if (!t)
         return -1;
     if (!(ixkill = ixkill_name(path)))
@@ -223,19 +330,80 @@ static int task_unix_signal(struct Task *t, const char *sig, const char *path)
     for (i = 0; i < 8; i++)
         cmd[k++] = hex[(a >> (28 - 4 * i)) & 15];
     cmd[k] = 0;
-    nil_in = Open((STRPTR)"NIL:", MODE_OLDFILE);
-    nil_out = Open((STRPTR)"NIL:", MODE_NEWFILE);
-    rc = SystemTags((STRPTR)cmd, SYS_Input, nil_in, SYS_Output, nil_out, SYS_UserShell, TRUE, TAG_END);
-    if (rc == -1) { /* not started: the streams are still ours */
-        Close(nil_in);
-        Close(nil_out);
+    j = (job *)AllocVec(sizeof(job), MEMF_PUBLIC | MEMF_CLEAR);
+    if (!j)
+        return -1;
+    j->cmd = job_dup(cmd);
+    j->in = Open((STRPTR)"NIL:", MODE_OLDFILE);
+    j->out = Open((STRPTR)"NIL:", MODE_NEWFILE);
+    j->close_in = j->in != 0;
+    j->close_out = j->out != 0;
+    j->stack = command_stack(0);
+    j->has_child = 1;
+    j->msg.mn_ReplyPort = port;
+    j->msg.mn_Length = sizeof(job);
+    p = j->cmd ? CreateNewProcTags(NP_Entry, (ULONG)runner, NP_Name, (ULONG)job_tname(j, "vsh job"), NP_StackSize,
+                                   8000, NP_Cli, TRUE, NP_CopyVars, FALSE, TAG_END)
+               : 0;
+    if (!p) {
+        job_close_streams(j);
+        job_strings_free(j);
+        FreeVec(j);
+        return -1;
     }
+    j->task = &p->pr_Task;
+    Forbid();
+    j->next = live_jobs;
+    live_jobs = j;
+    Permit();
+    PutMsg(&p->pr_MsgPort, &j->msg);
+    t0 = os_now(0, &usec);
+    for (;;) {
+        ULONG got;
+        long el;
+        int isr;
+        Forbid();
+        isr = replied(port, j);
+        Permit();
+        el = (os_now(0, &usec) - t0) * 1000L;
+        verdict = sh_killwait(isr, broke, el, SH_KILL_LIMIT_MS);
+        if (verdict != SH_KW_WAIT)
+            break;
+        got = wait_or_tick((1UL << port->mp_SigBit) | SIGBREAKF_CTRL_C);
+        if (got & SIGBREAKF_CTRL_C)
+            broke = 1;
+    }
+    if (verdict == SH_KW_DONE) {
+        Forbid();
+        Remove(&j->msg.mn_Node);
+        Permit();
+        rc = j->rc;
+        job_free(j);
+        if (broke)
+            SetSignal(SIGBREAKF_CTRL_C, SIGBREAKF_CTRL_C);
+        return rc == 0 ? 0 : -1;
+    }
+    /* abandoned: decided under Forbid against the runner's own reply, which also runs under Forbid */
+    Forbid();
+    if (replied(port, j)) {
+        Remove(&j->msg.mn_Node);
+        Permit();
+        rc = j->rc;
+        job_free(j);
+    } else {
+        j->msg.mn_ReplyPort = 0;
+        orphans++;
+        Permit();
+        rc = -1;
+    }
+    if (broke)
+        SetSignal(SIGBREAKF_CTRL_C, SIGBREAKF_CTRL_C);
     return rc == 0 ? 0 : -1;
 }
 
-static int job_unix_signal(job *j, const char *sig, const char *path)
+static int job_unix_signal(struct MsgPort *port, job *j, const char *sig, const char *path)
 {
-    return task_unix_signal(job_process(j), sig, path);
+    return task_unix_signal(port, job_process(j), sig, path);
 }
 
 /* The console's termios, if a program set one (TCGETA's Res2, see
@@ -271,6 +439,32 @@ static void close_stream(BPTR fh)
     int i;
     if (!fh)
         return;
+    {
+        /* a job's own handle on a shell stream (bg_own_stream): where it ended, for the shell's
+         * reap (bg_reaped); a shell stream a job copied: gone, nothing to move on at the reap */
+        job *j, *dup = 0;
+        int k, dk = 0;
+        Forbid();
+        for (j = live_jobs; j; j = j->next)
+            for (k = 0; k < 2; k++) {
+                if (j->bg_src[k] == fh)
+                    j->bg_src[k] = 0;
+                if (j->bg_dup[k] == fh) {
+                    j->bg_dup[k] = 0;
+                    dup = j;
+                    dk = k;
+                }
+            }
+        Permit();
+        if (dup) {
+            LONG end;
+            Flush(fh);
+            end = Seek(fh, 0, OFFSET_CURRENT);
+            Forbid();
+            dup->bg_end[dk] = end;
+            Permit();
+        }
+    }
     Forbid();
     for (i = 0; i < 8; i++)
         if (rl_kind[i].fh == fh)
@@ -301,7 +495,6 @@ static void close_stream(BPTR fh)
 }
 
 static BPTR lock_name(const char *path, char *used, int max);
-static void amiga_name(const char *in, char *out, int max);
 
 static sh_fh os_open(void *os, const char *path, int mode)
 {
@@ -311,7 +504,7 @@ static sh_fh os_open(void *os, const char *path, int mode)
     (void)os;
     /* "./x" and "../x" as AmigaDOS names them (AmigaDOS has no "." entry: ". ./e.sh" and
      * ENV=./e.sh could not open a file that was there) */
-    amiga_name(path, an, sizeof(an));
+    sh_amiga_name(path, an, sizeof(an));
     path = an;
     vol = path;
     while (*vol == '/')
@@ -352,7 +545,7 @@ static int os_remove(void *os, const char *path)
 {
     char an[256];
     (void)os;
-    amiga_name(path, an, sizeof(an));
+    sh_amiga_name(path, an, sizeof(an));
     return DeleteFile((STRPTR)an) ? 0 : -1;
 }
 
@@ -463,41 +656,6 @@ static int os_pipe(void *os, sh_fh *rd, sh_fh *wr)
     return 0;
 }
 
-/* argv as an AmigaDOS command line: arguments with spaces, quotes,
- * semicolons or newlines in double quotes, " and * escaped with * and a
- * newline written *N (AmigaDOS: ReadItem fails a raw newline inside quotes,
- * and an unquoted one ends the line, so `sed 'p<newline>p'` reached a native
- * or ixemul command cut after its first line). */
-static char *command_line(char **argv)
-{
-    long len = 1;
-    int i;
-    char *s, *o;
-    for (i = 0; argv[i]; i++)
-        len += 2 * (long)strlen(argv[i]) + 3;
-    s = (char *)malloc(len);
-    if (!s)
-        return 0;
-    o = s;
-    for (i = 0; argv[i]; i++) {
-        const char *a = argv[i];
-        int quote = !*a || strpbrk(a, " \t\";*=\n") != 0;
-        if (i)
-            *o++ = ' ';
-        if (quote)
-            *o++ = '"';
-        for (; *a; a++) {
-            if (quote && (*a == '"' || *a == '*' || *a == '\n'))
-                *o++ = '*';
-            *o++ = *a == '\n' ? 'N' : *a;
-        }
-        if (quote)
-            *o++ = '"';
-    }
-    *o = 0;
-    return s;
-}
-
 static int is_stream(BPTR fh);
 
 /* A command's own handle on the shell's stream `shared` (0: the shell has none there): "*" opened at
@@ -518,6 +676,69 @@ static BPTR own_handle(BPTR shared, LONG mode)
     fh = Open((STRPTR)"*", mode);
     SetConsoleTask(old);
     return fh;
+}
+
+/* A background command's own handle on the shell's non-interactive stream `shared` (VSH-JOB-SIGNALS).
+ * A job can outlive the shell, and an AmigaDOS handle has no reference count: whoever ran the shell
+ * Closes it when the shell returns (wasabid's T:wasabi-run-N after `sh -c "cmd &"`), and a borrowed
+ * handle is then freed memory. A killed ixemul job writes "Terminated" to it and waits for ever.
+ * A file: a second handle on the same file (DupLockFromFH + OpenFromLock), at the shell's position
+ * after a Flush. A file opened MODE_NEWFILE holds an exclusive lock that cannot be duplicated: its lock
+ * is made shared first (ChangeMode). The offsets are separate, unlike Unix: `cmd & echo b` into one
+ * file can overwrite instead of interleave. A stream without a lock (a PIPE: pipe, a handler without
+ * ACTION_COPY_DIR_FH): NIL:. A second writer on a Queue-Handler pipe has no defined end of file and the
+ * pipe's owner closes it when the shell ends; losing a background job's output there is safe, writing
+ * through a freed handle is not. Never 0 unless NIL: cannot open. */
+static BPTR bg_own_stream(job *j, int k, BPTR shared)
+{
+    BPTR lock, fh = 0;
+    LONG pos;
+    Flush(shared);
+    pos = Seek(shared, 0, OFFSET_CURRENT);
+    lock = DupLockFromFH(shared);
+    if (!lock && ChangeMode(CHANGE_FH, shared, SHARED_LOCK))
+        lock = DupLockFromFH(shared);
+    if (lock) {
+        fh = OpenFromLock(lock);
+        if (!fh)
+            UnLock(lock);
+        else if (pos > 0)
+            Seek(fh, pos, OFFSET_BEGINNING);
+    }
+    if (fh) {
+        Forbid(); /* close_stream reads these from any process */
+        j->bg_dup[k] = fh;
+        j->bg_src[k] = shared;
+        j->bg_end[k] = -1;
+        Permit();
+    }
+    return fh ? fh : Open((STRPTR)"NIL:", MODE_NEWFILE);
+}
+
+/* The shell reaps job j (os_wait): its own handles on the shell's file streams (bg_own_stream) have
+ * separate offsets, so the shell's handle is moved on to where the job's ended, if that is further.
+ * Sequential output then never overwrites: `echo one; echo two & wait; echo three` >file is one two
+ * three, as on Unix where the two share one offset. A shell handle closed since (close_stream cleared
+ * bg_src) or a job handle not closed (bg_end -1) is left alone. Writes that run at the same time,
+ * without a wait between, can still overwrite (separate offsets; accepted). */
+static void bg_reaped(job *j)
+{
+    int k;
+    for (k = 0; k < 2; k++) {
+        BPTR src;
+        LONG end, cur;
+        Forbid();
+        src = j->bg_src[k];
+        end = j->bg_end[k];
+        j->bg_src[k] = 0;
+        Permit();
+        if (!src || end < 0)
+            continue;
+        Flush(src);
+        cur = Seek(src, 0, OFFSET_CURRENT);
+        if (cur >= 0 && cur < end)
+            Seek(src, end, OFFSET_BEGINNING);
+    }
 }
 
 /* Where a command's input file is before it runs: -1 on a console or a pipe. RunCommand (and the Shell
@@ -544,6 +765,93 @@ static void input_restore(BPTR in, long mark)
     Flush(in);
     if (Seek(in, 0, OFFSET_CURRENT) < mark)
         Seek(in, mark, OFFSET_BEGINNING);
+}
+
+/* The strings a runner reads (cmd, name, args, env, ixvar) are AllocVec memory, never malloc: vbcc's
+ * library keeps every malloc block in one pool and deletes the pool at exit (vc.lib __EXIT_1_malloc ->
+ * LibDeletePool), and an orphaned runner (orphan_jobs) reads them, and frees them, after the shell
+ * has exited. Reading freed pool memory, then free() into a deleted pool, was the fault. */
+static char *job_mem(long n)
+{
+    return (char *)AllocVec((ULONG)n, MEMF_ANY);
+}
+
+static char *job_dup(const char *s)
+{
+    char *d = s ? job_mem((long)strlen(s) + 1) : 0;
+    if (d)
+        strcpy(d, s);
+    return d;
+}
+
+static void job_strings_free(job *j)
+{
+    FreeVec(j->name);
+    FreeVec(j->args);
+    FreeVec(j->cmd);
+    FreeVec(j->env);
+    FreeVec(j->ixvar);
+}
+
+/* A job's resources, once it has ended and its result is read (or nobody will read it). */
+static void job_free(job *j)
+{
+    job **pp;
+    Forbid();
+    for (pp = &live_jobs; *pp; pp = &(*pp)->next)
+        if (*pp == j) {
+            *pp = j->next;
+            break;
+        }
+    Permit();
+    if (j->seg)
+        UnLoadSeg(j->seg);
+    if (j->home)
+        UnLock(j->home);
+    job_strings_free(j);
+    FreeVec(j);
+}
+
+/* This program's code while orphaned runners still run in it (orphan_jobs takes it from cli_Module),
+ * and how many of them there are. Changed under Forbid. */
+static BPTR orphan_code;
+
+/* An orphaned runner ends: the last one gives this program's code to DOS to unload once the runner
+ * has returned (its own process's seglist array, entry 3, with PRF_FREESEGLIST, as for a process
+ * started with NP_Seglist and NP_FreeSeglist). Unloading it here would pull the code from under the
+ * return. The last call a runner makes. Entry 3 is not empty: for an NP_Entry process DOS puts a small
+ * jump segment there, inside the seglist array's own allocation (size word 0, freed with the array, no
+ * PRF_FREESEGLIST; Kickstart 40.68). Replacing it is safe; only a seglist DOS unloads itself is kept. */
+static void orphan_end(void)
+{
+    struct Process *me = (struct Process *)FindTask(0);
+    BPTR *segs = (BPTR *)BADDR(me->pr_SegList);
+    Forbid();
+    if (--orphans == 0 && orphan_code && segs && !(me->pr_Flags & PRF_FREESEGLIST)) {
+        segs[3] = orphan_code;
+        me->pr_Flags |= PRF_FREESEGLIST;
+        orphan_code = 0;
+    }
+    Permit();
+}
+
+/* Close the streams job j owns, once: each flag is cleared before its close, so a runner removed from
+ * outside part way through leaves the rest to the shell (os_wait) and nothing is closed twice. */
+static void job_close_streams(job *j)
+{
+    if (j->close_in) {
+        j->close_in = 0;
+        close_stream(j->in);
+    }
+    if (j->close_out) {
+        j->close_out = 0;
+        close_stream(j->out);
+    }
+    if (j->close_err) {
+        j->close_err = 0;
+        if (j->err != j->out)
+            close_stream(j->err);
+    }
 }
 
 static void runner(void)
@@ -578,7 +886,25 @@ static void runner(void)
     /* the runner has the shell's current directory (CreateNewProc copies it) */
     if (j->seg) {
         BPTR oin = SelectInput(j->in), oout = SelectOutput(j->out);
+        /* the CLI's standard streams are the shell's terminal, as the Shell keeps them: a command
+         * whose Input() is not cli_StandardInput takes its input as redirected. C:Type 47.4 (OS 3.2)
+         * then takes its template without FROM, and `Type file` failed with "wrong number of
+         * arguments" under the NIL: CreateNewProc put there (A1200, 2026-10-20). Put back before
+         * the runner ends: the process's own end closes what it opened. */
+        struct CommandLineInterface *cli = Cli();
+        BPTR ostdin = cli ? cli->cli_StandardInput : 0, ostdout = cli ? cli->cli_StandardOutput : 0;
+        if (cli && j->term_in)
+            cli->cli_StandardInput = j->term_in;
+        if (cli && j->term_out)
+            cli->cli_StandardOutput = j->term_out;
         BPTR oerr = me->pr_CES;
+        /* the command's seglist is in cli_Module while it runs, as the Shell has it, and what is still
+         * there afterwards is what gets unloaded. A program that detaches (cback.o, which CygnusEd and
+         * HiP link) takes its code by setting cli_Module to 0 and leaves a child running in it: freeing
+         * j->seg under that child was a Guru / reboot loop from vsh, fine from AmigaShell. */
+        BPTR omod = cli ? cli->cli_Module : 0;
+        if (cli)
+            cli->cli_Module = j->seg;
         BPTR ohome = j->home ? SetProgramDir(j->home) : 0;
         if (j->err)
             me->pr_CES = j->err;
@@ -594,6 +920,12 @@ static void runner(void)
         if (j->err && j->err != j->out)
             Flush(j->err);
         TR("runcommand back", j, j->rc);
+        if (cli) {
+            j->seg = cli->cli_Module; /* 0 when the command took its code: nothing left to unload */
+            cli->cli_Module = omod;
+            cli->cli_StandardInput = ostdin;
+            cli->cli_StandardOutput = ostdout;
+        }
         me->pr_CES = oerr;
         SelectInput(oin);
         SelectOutput(oout);
@@ -601,7 +933,7 @@ static void runner(void)
         /* a Shell process of its own: named, so Ctrl-C can find it, and
          * given the error stream (CreateNewProc takes NP_Error from V39) */
         j->rc = SystemTags((STRPTR)j->cmd, SYS_Input, j->in, SYS_Output, j->out,
-                           SYS_UserShell, TRUE, NP_Name, (ULONG)j->child,
+                           SYS_UserShell, TRUE,
                            j->err ? NP_Error : TAG_IGNORE, j->err, TAG_END);
     }
     /* the program ran: its return code is an exit status, which a POSIX shell reads as 0-255
@@ -609,17 +941,51 @@ static void runner(void)
      * -1 on an error) printed "vsh: upkg: not found" after its own message. */
     if (j->rc < 0)
         j->rc &= 255;
+    j->ioerr = IoErr(); /* the runner's own, read before any call below sets it */
     input_restore(j->in, mark);
-    if (j->close_in)
-        close_stream(j->in);
-    if (j->close_out)
-        close_stream(j->out);
-    if (j->close_err && j->err != j->out)
-        close_stream(j->err);
+    job_close_streams(j);
     TR("runner end", j, j->rc);
     Forbid(); /* the reply and our end, before the shell can free anything */
     j->done = 1;
-    ReplyMsg(&j->msg);
+    if (j->msg.mn_ReplyPort) {
+        ReplyMsg(&j->msg);
+        return;
+    }
+    /* orphaned: the shell that started this job has ended (orphan_jobs) and nobody will wait for
+     * it, so the job is freed here, as os_wait frees it */
+    Permit();
+    job_free(j);
+    orphan_end();
+}
+
+/* The shell ends: the runners still going are no longer its to wait for. Their reply port goes
+ * with the shell, so they get none (ReplyMsg of a message with no reply port only marks it), and
+ * this program's code stays loaded for them: the Shell that started us unloads cli_Module when we
+ * return, under a runner that is still in it (the runner then never ran the command: `sh -c
+ * "cmd &"` left "vsh job" waiting for ever and froze the rig). The last orphaned runner to end
+ * has DOS unload that code (orphan_end); before, every shell that orphaned a job leaked its
+ * program's segments (about 240 KB) for good. The job's strings are AllocVec memory (job_mem): the
+ * shell's malloc pool is deleted at its exit. */
+static void orphan_jobs(struct MsgPort *port)
+{
+    job *j;
+    int any = 0;
+    Forbid();
+    for (j = live_jobs; j; j = j->next)
+        if (j->msg.mn_ReplyPort == port && !j->done) {
+            j->msg.mn_ReplyPort = 0;
+            if (j->sub)
+                vsh_heap_hold(); /* its shell and tree are malloc blocks (subshell_proc ends it) */
+            orphans++;
+            any = 1;
+        }
+    /* a kill's abandoned ixkill runner (task_unix_signal) is orphaned without the shell ending: it counts
+     * (orphans) and its code is handed over now, if no orphaning did before */
+    if (Cli() && (any || (orphans && !orphan_code && Cli()->cli_Module))) {
+        orphan_code = Cli()->cli_Module;
+        Cli()->cli_Module = 0;
+    }
+    Permit();
 }
 
 /* The OS layer's data per process that runs the interpreter (the shell,
@@ -627,6 +993,7 @@ static void runner(void)
 typedef struct vproc {
     sh_shell *sh;
     struct MsgPort *port;
+    LONG ioerr;             /* the secondary result of the last command waited for (os_ioerr takes it) */
 } vproc;
 
 #define PORT(os) (((vproc *)(os))->port)
@@ -641,29 +1008,26 @@ static int replied(struct MsgPort *port, job *j)
     return 0;
 }
 
-/* The stack a command asks for in its file: the "$STACK: n" cookie
- * (AmigaOS 3.2 and 4 honour it; vsh does on 3.1 too). 0: none. */
-static ULONG seg_stack(BPTR seg)
+static int task_alive(struct Task *t);
+
+/* Is job j's runner alive: a task at its address (task_alive) that still is the runner and not a later
+ * task given the address of a dead one (sh_runner_is). Call under Forbid. */
+static int runner_alive(job *j)
 {
-    static const char key[] = "$STACK:";
-    for (; seg; seg = *(BPTR *)BADDR(seg)) {
-        const UBYTE *p = (const UBYTE *)BADDR(seg) + 4;
-        ULONG n = ((ULONG *)BADDR(seg))[-1];
-        const UBYTE *end = (const UBYTE *)BADDR(seg) - 4 + n;
-        for (; p + 8 < end; p++) {
-            if (*p == '$' && !memcmp(p, key, 7)) {
-                const UBYTE *d = p + 7;
-                ULONG v = 0;
-                while (d < end && *d == ' ')
-                    d++;
-                while (d < end && *d >= '0' && *d <= '9')
-                    v = v * 10 + (*d++ - '0');
-                if (v)
-                    return v;
-            }
-        }
-    }
-    return 0;
+    return task_alive(j->task) &&
+           sh_runner_is(j->task->tc_Node.ln_Type == NT_PROCESS, j->task->tc_Node.ln_Name, j->tname);
+}
+
+/* Was job j's process removed from outside (wasabi kill --force is a RemTask: no exit code runs, no
+ * reply comes)? Then it never replies and the shell must not wait for one (sh_jobgone.h). Call under
+ * Forbid. */
+static int job_gone(job *j)
+{
+    struct Task *c = job_child(j);
+    if (c)
+        j->child_seen = 1;
+    job_flush_sig(j);
+    return sh_job_gone(runner_alive(j), j->has_child, c != 0, j->child_seen);
 }
 
 /* Is a loaded command an ixemul program? The first longs of its first hunk (sh_ixargv.h). */
@@ -782,9 +1146,10 @@ static int resolve(const char *name, const char *path, BPTR *seg, char *found, l
     }
     {
         char used[256];
-        /* a bare name naming a drawer here goes on to $PATH; a path to a drawer stays the Shell's */
-        if ((lock = lock_name(name, used, sizeof(used))) != 0 &&
-            (strchr(name, ':') || strchr(name, '/') || !lock_is_dir(lock))) {
+        /* a bare name naming a drawer here goes on to $PATH; a path to a drawer is no command either (the
+         * Shell SystemTags started for it entered the drawer in its own process, a cd that never reached
+         * vsh): not found, and the executor's bare-directory cd takes it */
+        if ((lock = lock_name(name, used, sizeof(used))) != 0 && !lock_is_dir(lock)) {
             UnLock(lock);
             if ((*seg = LoadSeg((STRPTR)used)) != 0)
                 home_of(used, home);
@@ -901,7 +1266,7 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
 static long os_start(void *os, char **argv, const sh_io *io, int wait, int interp)
 {
     sh_shell *sh = ((vproc *)os)->sh;
-    char *cmd = command_line(argv), *sp;
+    char *cmd = vsh_command_line(argv), *sp;
     int ixres, r;
     BPTR home;
     const sh_var *v;
@@ -954,7 +1319,7 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
         /* found through $PATH: the command line names that file */
         char *a0 = argv[0], *full;
         argv[0] = found;
-        full = command_line(argv);
+        full = vsh_command_line(argv);
         argv[0] = a0;
         if (full) {
             free(cmd);
@@ -980,7 +1345,7 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
         for (v = sh_var_first(&sh->ctx, &it); v; v = sh_var_next(&sh->ctx, &it))
             if ((v->attr & SH_ATTR_EXPORT) && !v->arr)
                 need += (long)strlen(v->name) + (long)strlen(sh_var_str(v) ? sh_var_str(v) : "") + 2;
-        j->env = e = (char *)malloc(need);
+        j->env = e = job_mem(need);
         if (e) {
             for (v = sh_var_first(&sh->ctx, &it); v; v = sh_var_next(&sh->ctx, &it))
                 if ((v->attr & SH_ATTR_EXPORT) && !v->arr) {
@@ -992,13 +1357,10 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
             *e = 0;
         }
     }
-    j->cmd = cmd;
     j->seg = seg;
     j->home = home;
     j->stack = command_stack(seg);
-    j->name = (char *)malloc(strlen(argv[0]) + 1);
-    if (j->name)
-        strcpy(j->name, argv[0]);
+    j->name = job_dup(argv[0]);
     /* the argument string: the line after the name, ending in a newline */
     sp = cmd;
     if (*sp == '"') {
@@ -1016,11 +1378,11 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
     if (seg && seg_is_ixemul(seg)) {
         /* an ixemul program: after the line, its argv byte for byte (sh_ixargv.h). It is
          * this RunCommand's argument alone: no other process, and no native program, sees it */
-        j->args = (char *)malloc(ixa_len(sp, argv + 1) + 1);
+        j->args = job_mem(ixa_len(sp, argv + 1) + 1);
         if (j->args)
             ixa_put(j->args, sp, argv + 1);
     } else {
-        j->args = (char *)malloc(strlen(sp) + 2);
+        j->args = job_mem((long)strlen(sp) + 2);
         if (j->args) {
             strcpy(j->args, sp);
             strcat(j->args, "\n");
@@ -1037,9 +1399,9 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
                  command_is_ixemul(argv[1], sh_get(&sh->ctx, "PATH")))
             targ = argv + 1;
         if (targ) {
-            char *line = command_line(targ + 1);
+            char *line = vsh_command_line(targ + 1);
             long n = line ? ixa_len(line, targ + 1) : 0;
-            char *all = line ? (char *)malloc(n + 1) : 0;
+            char *all = line ? job_mem(n + 1) : 0;
             if (all) {
                 long skip = (long)strlen(line) + 1; /* the variable is the argv alone */
                 ixa_put(all, line, targ + 1);
@@ -1055,6 +1417,8 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
         j->in = (BPTR)io->in;
         j->out = (BPTR)io->out;
         j->err = (BPTR)io->err;
+        j->term_in = Input();
+        j->term_out = Output();
         j->close_in = (io->owned & SH_OWN_IN) != 0;
         j->close_out = (io->owned & SH_OWN_OUT) != 0;
         j->close_err = (io->owned & SH_OWN_ERR) != 0;
@@ -1079,19 +1443,24 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
     } else {
         /* streams it does not own are the shell's. Input: NIL:. Output on
          * a console: its own handle on that console, not the shell's.
-         * Output to a file or a pipe: the shell's handle itself, as Unix
-         * shares the descriptor (one offset; the shell waits or writes
-         * after it). "*" there was a console the process may not have:
+         * Output to a file or a pipe: its own handle on that stream
+         * (bg_own_stream), not the shell's: the job can outlive the shell,
+         * and the shell's caller Closes that handle when the shell returns
+         * (VSH-JOB-SIGNALS). "*" there was a console the process may not have:
          * the last stage of "seq 3 | cat" in "vsh script >file" wrote
          * nowhere. */
         j->in = (io->owned & SH_OWN_IN) ? (BPTR)io->in : Open((STRPTR)"NIL:", MODE_OLDFILE);
         j->close_in = 1;
+        /* in the background the terminal is not its input: its standard input is the input it
+         * has, as Run's Shell gives NIL: for both (`Type file &`) */
+        j->term_in = j->in;
+        j->term_out = Output();
         if (io->owned & SH_OWN_OUT) {
             j->out = (BPTR)io->out;
             j->close_out = 1;
         } else if (io->out && !IsInteractive((BPTR)io->out)) {
-            j->out = (BPTR)io->out;
-            j->close_out = 0;
+            j->out = bg_own_stream(j, 0, (BPTR)io->out);
+            j->close_out = j->out != 0;
         } else {
             j->out = own_handle((BPTR)io->out, MODE_NEWFILE);
             j->close_out = 1;
@@ -1101,9 +1470,12 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
         if (io->owned & SH_OWN_ERR) {
             j->err = (BPTR)io->err;
             j->close_err = 1;
-        } else if (io->err && !IsInteractive((BPTR)io->err)) {
-            j->err = (BPTR)io->err;
+        } else if (io->err && io->err == io->out && !(io->owned & SH_OWN_OUT) && !IsInteractive((BPTR)io->err)) {
+            j->err = j->out; /* one stream (2>&1 outside): one handle, one offset; closed as out */
             j->close_err = 0;
+        } else if (io->err && !IsInteractive((BPTR)io->err)) {
+            j->err = bg_own_stream(j, 1, (BPTR)io->err);
+            j->close_err = j->err != 0;
         } else {
             j->err = own_handle((BPTR)io->err, MODE_NEWFILE);
             j->close_err = j->err != 0;
@@ -1112,39 +1484,26 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
     /* NP_CopyVars FALSE: the command's environment is the shell's exported variables (runner sets
      * them) and nothing else; a copy of this process's local variables brought back the ones the
      * shell had unset (`unset SHLVL` in a vsh run by vsh: the child still saw the outer SHLVL) */
-    p = (j->name && j->args)
-        ? CreateNewProcTags(NP_Entry, (ULONG)runner, NP_Name, (ULONG)"vsh job", NP_StackSize, 8000,
+    /* cmd: the runner's own copy (the original is the shell's malloc memory) */
+    j->cmd = job_dup(cmd);
+    free(cmd);
+    cmd = 0;
+    p = (j->name && j->args && j->cmd)
+        ? CreateNewProcTags(NP_Entry, (ULONG)runner, NP_Name, (ULONG)job_tname(j, "vsh job"), NP_StackSize, 8000,
                             NP_Cli, TRUE, NP_CopyVars, FALSE, TAG_END)
         : 0;
     if (!p) {
-        if (j->close_in)
-            close_stream(j->in);
-        if (j->close_out)
-            close_stream(j->out);
-        if (j->close_err && j->err != j->out)
-            close_stream(j->err);
+        job_close_streams(j);
         if (seg)
             UnLoadSeg(seg);
         if (home)
             UnLock(home);
-        free(j->name);
-        free(j->args);
-        free(cmd);
-        free(j->env);
-        free(j->ixvar);
+        job_strings_free(j);
         FreeVec(j);
         return -1;
     }
     j->task = &p->pr_Task;
-    if (!seg) {
-        static const char hex[] = "0123456789abcdef";
-        unsigned long a = (unsigned long)j;
-        int i;
-        strcpy(j->child, "vsh command ");
-        for (i = 0; i < 8; i++)
-            j->child[12 + i] = hex[(a >> (28 - 4 * i)) & 15];
-        j->child[20] = 0;
-    }
+    j->has_child = !seg;
     if (j->close_out) {
         int i;
         Forbid();
@@ -1154,6 +1513,10 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
         Permit();
     }
     SetSignal(0, SIGBREAKF_CTRL_C); /* an old Ctrl-C is not for this command */
+    Forbid();
+    j->next = live_jobs;
+    live_jobs = j;
+    Permit();
     PutMsg(&p->pr_MsgPort, &j->msg);
     if (wait)
         return os_wait(os, (long)j);
@@ -1169,7 +1532,7 @@ static int suspend_job(void *os, job *j)
     sh_shell *sh = ((vproc *)os)->sh;
     int rc;
     TR("suspend", j, j->task);
-    if ((rc = job_unix_signal(j, "TSTP", sh_get(&sh->ctx, "PATH"))) != 0) {
+    if ((rc = job_unix_signal(PORT(os), j, "TSTP", sh_get(&sh->ctx, "PATH"))) != 0) {
         const char *m = rc == SH_SIG_NOSENDER ? ixkill_missing : "only ixemul programs can be suspended";
         Write((BPTR)sh->io.err, (APTR)"\nvsh: ", 6);
         Write((BPTR)sh->io.err, (APTR)m, (LONG)strlen(m));
@@ -1188,7 +1551,50 @@ static int suspend_job(void *os, job *j)
 static int os_cont(void *os, long id)
 {
     TR("cont", id, 0);
-    return job_unix_signal((job *)id, "CONT", sh_get(&((vproc *)os)->sh->ctx, "PATH")) ? -1 : 0;
+    return job_unix_signal(PORT(os), (job *)id, "CONT", sh_get(&((vproc *)os)->sh->ctx, "PATH")) ? -1 : 0;
+}
+
+/* The secondary result of the last command this process waited for, once (why) */
+static long os_ioerr(void *os)
+{
+    vproc *vp = (vproc *)os;
+    long e = vp->ioerr;
+    vp->ioerr = 0;
+    return e;
+}
+
+/* dos.library's text for a secondary result, as Why prints it ("object not found") */
+static int os_fault(void *os, long code, char *buf, long max)
+{
+    (void)os;
+    return Fault(code, 0, (STRPTR)buf, max) > 0;
+}
+
+/* Wait(mask), but at most one second: timer.device's UNIT_VBLANK, opened for the call. If the
+ * timer cannot be had, a plain Wait (the old behaviour). */
+static ULONG wait_or_tick(ULONG mask)
+{
+    struct MsgPort *mp = CreateMsgPort();
+    struct timerequest *tr = mp ? (struct timerequest *)CreateIORequest(mp, sizeof(*tr)) : 0;
+    ULONG got;
+    if (!tr || OpenDevice((STRPTR)"timer.device", UNIT_VBLANK, (struct IORequest *)tr, 0)) {
+        if (tr)
+            DeleteIORequest((struct IORequest *)tr);
+        if (mp)
+            DeleteMsgPort(mp);
+        return Wait(mask);
+    }
+    tr->tr_node.io_Command = TR_ADDREQUEST;
+    tr->tr_time.tv_secs = 1;
+    tr->tr_time.tv_micro = 0;
+    SendIO((struct IORequest *)tr);
+    got = Wait(mask | (1UL << mp->mp_SigBit));
+    AbortIO((struct IORequest *)tr);
+    WaitIO((struct IORequest *)tr);
+    CloseDevice((struct IORequest *)tr);
+    DeleteIORequest((struct IORequest *)tr);
+    DeleteMsgPort(mp);
+    return got & mask;
 }
 
 /* Wait for a job. Ctrl-C (and ^\) while waiting goes on to the job's
@@ -1221,13 +1627,32 @@ static long os_wait(void *os, long id)
             Permit();
             break;
         }
+        if (job_gone(j)) {
+            /* removed from outside: nothing will reply. A runner left alive (its Shell child removed)
+             * is blocked in SystemTags for ever (the child it waits for is gone): it is removed the way
+             * the child was, so it neither leaks nor touches the job again, and the job is the shell's to end here */
+            if (runner_alive(j))
+                RemTask(j->task);
+            j->done = 1;
+            j->rc = 20;
+            j->ioerr = 0;
+            Permit();
+            /* the streams the runner would have closed at its end are the shell's now: left open, a
+             * redirected file stayed locked ("object in use") and a pipe's reader never saw its end */
+            job_close_streams(j);
+            break;
+        }
         Permit();
-        got = Wait((1UL << PORT(os)->mp_SigBit) | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_E |
-                   SIGBREAKF_CTRL_F);
-        if (got & (SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_E)) {
+        /* CTRL_D: the console window closed (vtcon_packets.h). The console signals the shell, which
+         * opened it; the job's ixemul turns the break into SIGHUP. Not passed on, nano outlived its
+         * closed window (tools/rig/hangup_rig.py nano) */
+        /* a removed process sends nothing, so the wait wakes every second to look (job_gone) */
+        got = wait_or_tick((1UL << PORT(os)->mp_SigBit) | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D |
+                           SIGBREAKF_CTRL_E | SIGBREAKF_CTRL_F);
+        if (got & (SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D | SIGBREAKF_CTRL_E)) {
             Forbid(); /* still running: its reply is not in yet */
             if (!replied(PORT(os), j))
-                job_signal(j, got & (SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_E));
+                job_signal(j, got & (SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D | SIGBREAKF_CTRL_E));
             Permit();
             if (got & SIGBREAKF_CTRL_C)
                 broke = 1;
@@ -1245,6 +1670,7 @@ static long os_wait(void *os, long id)
     if (broke)
         SetSignal(SIGBREAKF_CTRL_C, SIGBREAKF_CTRL_C);
     rc = j->rc;
+    ((vproc *)os)->ioerr = j->ioerr;
     {
         int i;
         Forbid();
@@ -1253,16 +1679,8 @@ static long os_wait(void *os, long id)
                 pipe_tab[i].writer = 0;
         Permit();
     }
-    if (j->seg)
-        UnLoadSeg(j->seg);
-    if (j->home)
-        UnLock(j->home);
-    free(j->name);
-    free(j->args);
-    free(j->cmd);
-    free(j->env);
-    free(j->ixvar);
-    FreeVec(j);
+    bg_reaped(j);
+    job_free(j);
     return rc;
 }
 
@@ -1271,7 +1689,7 @@ static int os_done(void *os, long id)
 {
     int r;
     Forbid();
-    r = replied(PORT(os), (job *)id);
+    r = replied(PORT(os), (job *)id) || job_gone((job *)id);
     Permit();
     return r;
 }
@@ -1288,6 +1706,62 @@ static int task_alive(struct Task *t)
         found = n == (struct Node *)t;
     Permit();
     return found;
+}
+
+/* The pid of a job as ixemul numbers it (getpid, what kill and ps -p take): the job's process, or its
+ * runner while the Shell process of a Resident command or script has not started yet. 0: it has ended. */
+static long os_job_pid(void *os, long id)
+{
+    job *j = (job *)id;
+    struct Task *t = job_process(j);
+    (void)os;
+    return (long)(t ? t : j->task);
+}
+
+/* Is t a vsh: a process whose CLI command is a program named like this one (the command's last path
+ * component, "vsh" when this process has no CLI)? A vsh polls Ctrl-D as TERM (os_interrupted); another
+ * program takes Ctrl-D as nothing or as an end of file. Call under Forbid. */
+static int cmd_base_eq(const UBYTE *a, const UBYTE *b)
+{
+    int la = a[0], lb = b[0], i;
+    while (la && a[la] != '/' && a[la] != ':')
+        la--;
+    while (lb && b[lb] != '/' && b[lb] != ':')
+        lb--;
+    la = a[0] - la;
+    lb = b[0] - lb;
+    if (la != lb)
+        return 0;
+    for (i = 0; i < la; i++)
+        if ((a[a[0] - la + 1 + i] | 32) != (b[b[0] - la + 1 + i] | 32))
+            return 0;
+    return 1;
+}
+
+static int task_is_vsh(struct Task *t)
+{
+    static const UBYTE vsh_bstr[] = {3, 'v', 's', 'h'};
+    struct Process *p = (struct Process *)t;
+    struct CommandLineInterface *cli, *mine = Cli();
+    const UBYTE *own = vsh_bstr;
+    if (t->tc_Node.ln_Type != NT_PROCESS || !p->pr_CLI)
+        return 0;
+    cli = (struct CommandLineInterface *)BADDR(p->pr_CLI);
+    if (!cli->cli_CommandName)
+        return 0;
+    if (mine && mine->cli_CommandName)
+        own = (const UBYTE *)BADDR(mine->cli_CommandName);
+    return cmd_base_eq((const UBYTE *)BADDR(cli->cli_CommandName), own);
+}
+
+/* Is job j's work a vsh: a subshell's process (named "vsh subshell <n>"), or the Shell process SystemTags
+ * made for a script that is a vsh. Call under Forbid. */
+static int job_is_vsh(job *j)
+{
+    struct Task *c = job_child(j);
+    if (c)
+        return task_is_vsh(c);
+    return j->task && j->task->tc_Node.ln_Name && strncmp(j->task->tc_Node.ln_Name, "vsh subshell ", 13) == 0;
 }
 
 /* kill: sig (0: only test) to a job of this shell, a pid, or the shell. Ctrl-C and ^\ go
@@ -1338,14 +1812,26 @@ static int os_signal(void *os, long target, int sig, int is_job)
         return 0;
     }
     sh_ltoa(sig, num);
-    rc = j ? job_unix_signal(j, num, sh_get(&sh->ctx, "PATH")) : task_unix_signal(t, num, sh_get(&sh->ctx, "PATH"));
+    rc = j ? job_unix_signal(PORT(os), j, num, sh_get(&sh->ctx, "PATH")) : task_unix_signal(PORT(os), t, num, sh_get(&sh->ctx, "PATH"));
     ok = rc == 0;
     if (!ok && (sig == 1 || sig == 15)) {
+        /* ixkill gave no answer (SH_KILL_LIMIT_MS): the break stands in for the signal. TERM to a vsh is
+         * Ctrl-D (os_interrupted runs its TERM trap, an untrapped script exits 143); to any other program
+         * it is Ctrl-C, the one break a native program honours. HUP stays Ctrl-C: vsh polls no break bit
+         * for it, so a Ctrl-D would be TERM, not HUP. */
+        ULONG bit = SIGBREAKF_CTRL_C;
         Forbid();
-        if (j)
-            job_signal(j, SIGBREAKF_CTRL_C);
-        else
-            Signal(t, SIGBREAKF_CTRL_C);
+        if (sig == 15 && (j ? job_is_vsh(j) : task_is_vsh(t)))
+            bit = SIGBREAKF_CTRL_D;
+        if (j) {
+            if (bit == SIGBREAKF_CTRL_C)
+                job_signal(j, bit);
+            else {
+                struct Task *c = job_child(j);
+                Signal(c && task_is_vsh(c) ? c : j->task, bit);
+            }
+        } else
+            Signal(t, bit);
         Permit();
         ok = 1;
     }
@@ -1457,41 +1943,6 @@ static long os_read_line(void *os, sh_fh fh, char *buf, long max)
     return (long)strlen(buf);
 }
 
-/* Unix-style directory names: .. is the parent (/), . and "" stay. */
-/* A Unix-style relative name as AmigaDOS writes it: each leading ../ is
- * a / (the parent), ./ goes, and . and .. alone are "" and "/". */
-static void amiga_name(const char *in, char *out, int max)
-{
-    int n = 0, slashes;
-    /* the Unix devices a script names: /dev/null is NIL:, /dev/tty the console (". /dev/null",
-     * test -c /dev/null) */
-    if (!strcmp(in, "/dev/null") || !strcmp(in, "/dev/tty")) {
-        strncpy(out, in[5] == 'n' ? "NIL:" : "*", (size_t)max - 1);
-        out[max - 1] = 0;
-        return;
-    }
-    for (;;) {
-        if (!strncmp(in, "./", 2))
-            in += 2;
-        else if (!strncmp(in, "../", 3) || !strcmp(in, "..")) {
-            if (n < max - 1)
-                out[n++] = '/';
-            in += in[2] ? 3 : 2;
-        } else if (!strcmp(in, "."))
-            in++;
-        else
-            break;
-    }
-    out[n] = 0;
-    if ((slashes = sh_vol_slashes(in)) != 0) {
-        /* "Vol:/x" is Vol:x: HOME is a volume root and POSIX code writes $HOME/x */
-        size_t vl = (size_t)(strchr(in, ':') - in) + 1;
-        strncat(out, in, vl < (size_t)(max - n - 1) ? vl : (size_t)(max - n - 1));
-        in += vl + slashes;
-    }
-    strncat(out, in, max - strlen(out) - 1);
-}
-
 /* path as AmigaDOS names it, into used: the Amiga meaning first ("/x" is
  * the parent's x), and when nothing is there by it, the Unix one ("/vol/x"
  * is vol:x, as $PATH and ixemul programs name it -- V2: "/VTC/bin/nvim"
@@ -1499,7 +1950,7 @@ static void amiga_name(const char *in, char *out, int max)
 static BPTR lock_name(const char *path, char *used, int max)
 {
     BPTR lock;
-    amiga_name(path, used, max);
+    sh_amiga_name(path, used, max);
     if ((lock = Lock((STRPTR)used, SHARED_LOCK)) != 0)
         return lock;
     if (sh_unix_root(path, used, max)) {
@@ -1514,7 +1965,7 @@ static BPTR lock_name(const char *path, char *used, int max)
         if (lock)
             return lock;
     }
-    amiga_name(path, used, max); /* not there either way: the Amiga name */
+    sh_amiga_name(path, used, max); /* not there either way: the Amiga name */
     return 0;
 }
 
@@ -1648,7 +2099,7 @@ static int os_stat(void *os, const char *path, sh_stat *st, int nofollow)
     char an[256];
     const char *name = path;
     (void)os;
-    amiga_name(path, an, sizeof(an)); /* test -r ./x: AmigaDOS has no "." entry */
+    sh_amiga_name(path, an, sizeof(an)); /* test -r ./x: AmigaDOS has no "." entry */
     path = an;
     if (!strcmp(path, "NIL:") || !strcmp(path, "*")) {
         /* /dev/null and /dev/tty: character devices anybody reads and writes; no lock names them */
@@ -1705,10 +2156,14 @@ static int os_stat(void *os, const char *path, sh_stat *st, int nofollow)
     return r;
 }
 
-/* For globs: the names in a directory. */
+/* For globs: the names in a directory. The directory is named as the other callbacks take it (lock_name):
+ * "./x" and the Unix "/vol/x" too -- a raw Lock read "/UP-Term/pkg/upkg/lists" as the parent's
+ * UP-Term/..., so "$listsdir"/* stayed literal outside "/" and upkg browse ran an add-on with install
+ * questions in the programbox. */
 static int list_dir(sh_ctx *c, const char *dir, sh_list *out)
 {
-    BPTR lock = Lock((STRPTR)dir, SHARED_LOCK);
+    char an[256];
+    BPTR lock = lock_name(dir, an, sizeof(an));
     struct FileInfoBlock *fib;
     (void)c;
     if (!lock)
@@ -1733,18 +2188,19 @@ static long os_read(void *os, sh_fh fh, char *buf, long max)
 
 /* Ctrl-C since the last look (the console signals the interpreter's
  * process; os_wait raises it again after passing it on). */
-/* Ctrl-C is INT; break bit E is QUIT, the bit vsh's kill sends for it (os_signal) and the console for ^\.
- * One at a time: a QUIT that came with an INT stays for the next poll. */
+/* Ctrl-C is INT; break bit E is QUIT, the bit vsh's kill sends for it (os_signal) and the console for ^\;
+ * break bit D is TERM (owner 2026-10-29: the AmigaDOS Ctrl-D break, e.g. `Break <n> D`, runs the TERM
+ * trap; the console also sends it when the window closes). One at a time: the others stay for the next
+ * poll, INT first, then QUIT, then TERM. */
 static int os_interrupted(void *os)
 {
-    ULONG got = SetSignal(0, SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_E);
+    const ULONG bits = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D | SIGBREAKF_CTRL_E;
+    ULONG got = SetSignal(0, bits), one;
     (void)os;
-    if (got & SIGBREAKF_CTRL_C) {
-        if (got & SIGBREAKF_CTRL_E)
-            SetSignal(SIGBREAKF_CTRL_E, SIGBREAKF_CTRL_E);
-        return 2;
-    }
-    return (got & SIGBREAKF_CTRL_E) ? 3 : 0;
+    one = (got & SIGBREAKF_CTRL_C) ? SIGBREAKF_CTRL_C : (got & SIGBREAKF_CTRL_E) ? SIGBREAKF_CTRL_E : got & SIGBREAKF_CTRL_D;
+    if (got & ~one & bits)
+        SetSignal(got & ~one & bits, got & ~one & bits);
+    return one == SIGBREAKF_CTRL_C ? 2 : one == SIGBREAKF_CTRL_E ? 3 : one ? 15 : 0;
 }
 
 #define VSH_STACK_SUB 131072
@@ -1810,6 +2266,7 @@ static void subshell_proc(void)
     WaitPort(&me->pr_MsgPort);
     j = (job *)GetMsg(&me->pr_MsgPort);
     vp.sh = j->sub;
+    vp.ioerr = 0;
     vp.port = CreateMsgPort();
     if (vp.port) {
         j->sub->os.data = &vp;
@@ -1834,7 +2291,15 @@ static void subshell_proc(void)
     HW_REPORT("sub");
     Forbid(); /* the reply and our end, before the shell can free anything */
     j->done = 1;
-    ReplyMsg(&j->msg);
+    if (j->msg.mn_ReplyPort) {
+        ReplyMsg(&j->msg);
+        return;
+    }
+    /* orphaned (orphan_jobs): nobody waits for it; the heap it ran on is held for it */
+    Permit();
+    job_free(j);
+    vsh_heap_release();
+    orphan_end();
 }
 
 static long os_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io, int wait)
@@ -1854,26 +2319,33 @@ static long os_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io,
                 j->io.in = (sh_fh)Open((STRPTR)"NIL:", MODE_OLDFILE);
                 j->io.owned |= SH_OWN_IN;
             }
-            /* output as os_run gives a background command: a file or a pipe is the shell's handle
-             * itself (Unix shares the descriptor); "*" was a console the process may not have:
-             * `echo bg &` in `vsh script >file` (Run >NIL:) wrote nowhere */
-            if (!(io->owned & SH_OWN_OUT) && !(io->out && !IsInteractive((BPTR)io->out))) {
-                j->io.out = (sh_fh)own_handle((BPTR)io->out, MODE_NEWFILE);
+            /* output as os_run gives a background command: a file or a pipe is its own handle
+             * on the shell's stream (bg_own_stream: it can outlive the shell, whose caller
+             * Closes that stream); "*" was a console the process may not have: `echo bg &` in
+             * `vsh script >file` (Run >NIL:) wrote nowhere */
+            if (!(io->owned & SH_OWN_OUT)) {
+                j->io.out = (sh_fh)((io->out && !IsInteractive((BPTR)io->out)) ? bg_own_stream(j, 0, (BPTR)io->out)
+                                                                                 : own_handle((BPTR)io->out, MODE_NEWFILE));
                 j->io.owned |= SH_OWN_OUT;
             }
             if (!(io->owned & SH_OWN_ERR)) {
-                /* the shell's error stream, as Unix shares the descriptor: a file or a pipe is
-                 * that handle itself; a console its own handle on it. Never its output: the
+                /* the shell's error stream: a file or a pipe its own handle on it (bg_own_stream),
+                 * the same one as its output when the shell's two are one; a console its own
+                 * handle on it. Never its output: the
                  * errors (and set -x) of a $( ) went into the capture */
-                if (io->err && !IsInteractive((BPTR)io->err))
-                    j->io.err = io->err;
-                else if (!(io->owned & SH_OWN_OUT) && j->io.out != io->out)
+                if (io->err && io->err == io->out && !(io->owned & SH_OWN_OUT))
+                    j->io.err = j->io.out; /* one stream (2>&1 outside): its one own handle */
+                else if (io->err && !IsInteractive((BPTR)io->err)) {
+                    if ((j->io.err = (sh_fh)bg_own_stream(j, 1, (BPTR)io->err)) != 0)
+                        j->io.owned |= SH_OWN_ERR;
+                } else if (!(io->owned & SH_OWN_OUT) && !(io->out && !IsInteractive((BPTR)io->out)) &&
+                           j->io.out != io->out)
                     j->io.err = j->io.out; /* the console handle opened for its output */
                 else if ((j->io.err = (sh_fh)own_handle((BPTR)io->err, MODE_NEWFILE)) != 0)
                     j->io.owned |= SH_OWN_ERR;
             }
         }
-        p = CreateNewProcTags(NP_Entry, (ULONG)subshell_proc, NP_Name, (ULONG)"vsh subshell",
+        p = CreateNewProcTags(NP_Entry, (ULONG)subshell_proc, NP_Name, (ULONG)job_tname(j, "vsh subshell"),
                               NP_StackSize, VSH_STACK_SUB, NP_Cli, TRUE, TAG_END);
     }
     if (!p) {
@@ -1890,6 +2362,10 @@ static long os_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io,
         return -1;  /* child and tree stay the caller's */
     }
     j->task = &p->pr_Task;
+    Forbid();
+    j->next = live_jobs;
+    live_jobs = j;
+    Permit();
     if (j->io.owned & SH_OWN_OUT) {
         int i;
         Forbid();
@@ -2012,6 +2488,12 @@ static void sync_env(sh_shell *sh)
 #if SH_HIST_FILE != VTCON_HIST_FILE || SH_HIST_CONFIG != VTCON_HIST_CONFIG
 #error the history operations of sh_exec.h and vtcon_packets.h differ
 #endif
+static int os_getenv(void *os, const char *name, char *buf, long max)
+{
+    (void)os;
+    return GetVar((STRPTR)name, (STRPTR)buf, max, GVF_GLOBAL_ONLY) >= 0;
+}
+
 static long os_hist(void *os, int op, long arg, char *buf, long max)
 {
     struct FileHandle *fh = (struct FileHandle *)BADDR(Input());
@@ -2049,7 +2531,7 @@ static void prompt(sh_shell *sh, int more)
     if (!more)
         sh_prompt_command(sh);
     ps = sh_get(&sh->ctx, more ? "PS2" : "PS1");
-    text = sh_prompt(sh, ps ? ps : more ? "> " : "%F{cyan}%~%f %# ");
+    text = sh_prompt(sh, ps ? ps : more ? "> " : SH_PS1_DEFAULT);
     if (term_marks && !more) {
         char b[600];
         char *dir = os_cwd(0);
@@ -2168,6 +2650,8 @@ static int vsh_main(int argc, char **argv)
     sh.os.pipe = os_pipe;
     sh.os.run = os_run;
     sh.os.wait = os_wait;
+    sh.os.ioerr = os_ioerr;
+    sh.os.fault = os_fault;
     sh.os.done = os_done;
     sh.os.cont = os_cont;
     sh.os.isatty = os_isatty;
@@ -2183,9 +2667,11 @@ static int vsh_main(int argc, char **argv)
     sh.os.echo = os_echo;
     sh.os.interrupted = os_interrupted;
     sh.os.signal = os_signal;
+    sh.os.job_pid = os_job_pid;
     sh.os.write = os_write;
     sh.os.read_line = os_read_line;
     sh.os.hist = os_hist;
+    sh.os.getenv = os_getenv;
     sh.os.chdir = os_chdir;
     sh.os.cwd = os_cwd;
     sh.os.realpath = os_realpath;
@@ -2322,6 +2808,7 @@ static int vsh_main(int argc, char **argv)
             sh_prompt_command(&sh); /* vsh -i reading a pipe: PROMPT_COMMAND still runs, as in bash */
         if (IsInteractive(Input())) {
             char *got;
+            sh_prompt_mode(&sh, (sh_fh)Input()); /* cooked again, whatever the last command left (sh_exec.h) */
             if (!text)
                 comp_arm(&sh);
             while ((got = (char *)FGets(Input(), (STRPTR)line, sizeof(line))) != 0 && comp_answer(&sh, line))
@@ -2387,6 +2874,7 @@ static int vsh_main(int argc, char **argv)
         TR("exit free", st, 0);
         sh_shell_free(&sh);
         TR("exit port", 0, 0);
+        orphan_jobs(vp.port);
         DeleteMsgPort(vp.port);
         TR("exit return", 0, 0);
         HW_REPORT("main");
@@ -2425,21 +2913,11 @@ struct Library *IconBase;
  * Workbench (NP_Path: that process frees it). 0: none. */
 static BPTR wb_path(void)
 {
-    struct Process *wbp;
-    struct CommandLineInterface *cli;
-    BPTR *src, head = 0, *tail = &head;
+    BPTR *field, head = 0;
     Forbid();
-    wbp = (struct Process *)FindTask((STRPTR)"Workbench");
-    cli = wbp && wbp->pr_Task.tc_Node.ln_Type == NT_PROCESS
-              ? (struct CommandLineInterface *)BADDR(wbp->pr_CLI) : 0;
-    for (src = cli ? (BPTR *)BADDR(cli->cli_CommandDir) : 0; src; src = (BPTR *)BADDR(src[0])) {
-        BPTR *n = (BPTR *)AllocVec(2 * sizeof(BPTR), MEMF_PUBLIC | MEMF_CLEAR);
-        if (!n)
-            break;
-        n[1] = DupLock(src[1]);
-        *tail = MKBADDR(n);
-        tail = &n[0];
-    }
+    field = cmdpath_field(cmdpath_workbench());
+    if (field)
+        head = cmdpath_copy(*field, 0);
     Permit();
     return head;
 }
@@ -2549,8 +3027,8 @@ int main(int argc, char **argv)
     APTR stack;
     if (argc == 0)
         return wb_start((struct WBStartup *)argv);
-    if (qmark_argv(argc, argv))
-        argv[1] = (char *)"--help"; /* `vsh ?` shows the usage and ends, as --help does (sh_invoke) */
+    if (qmark_argv(argc, argv) && strcmp(argv[1], "-h"))
+        argv[1] = (char *)"--help"; /* `vsh ?` shows the usage and ends, as --help does (sh_invoke); -h stays bash's hashall */
     g_argc = argc;
     g_argv = argv;
     if ((ULONG)me->tc_SPUpper - (ULONG)me->tc_SPLower >= VSH_STACK)

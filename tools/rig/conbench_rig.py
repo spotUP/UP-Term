@@ -25,7 +25,7 @@ import ami, condev_rig as c
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 OUT = paths.RIG / 'conbench'
-FLAGS = os.environ['UPTERM_RIG_FLAGS'].split() if os.environ.get('UPTERM_RIG_FLAGS') else ['--stock', '--os32']  # UPTERM_RIG_FLAGS='--max': the owner's rig 2 start
+FLAGS = paths.rig_flags(['--stock', '--os32'])  # UPTERM_RIG_FLAGS='--max': the owner's rig 2 start
 
 CONSOLES = {
     # label: (mount file or None, window spec with %d for the height)

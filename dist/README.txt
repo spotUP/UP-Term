@@ -24,9 +24,9 @@ WHAT YOU NEED
     a TCP/IP stack running: Roadshow (part of AmigaOS 3.2), Miami or AmiTCP
     AmiSSL 5: Aminet util/libs/AmiSSL-v5-OS3.lha; run its own installer
       (Install ticks curl only when LIBS:amisslmaster.library is found)
-  Get UP-Term.lha onto the Amiga any way you like (a memory card, a shared
-  drive, ftp over the stack) and unpack it with lha. Reboot after Install:
-  XCON: and PTY: are mounted from then on.
+  Get up-term.lha onto the Amiga any way you like (a memory card, a shared
+  drive, ftp over the stack) and unpack it with lha. Reboot after Install
+  (its last page offers to): XCON: and PTY: are mounted from then on.
 
 INSTALL
   Unpack the archive and double-click Install in the UP-Term drawer
@@ -36,7 +36,8 @@ INSTALL
   ixemul.library and mounts XCON: and PTY:. A page of check boxes picks
   the optional parts: ssh and scp, bebboget, curl (see NETWORK), wasabi
   (see WASABI), the serial login (SERIAL LOGIN), the UP-Term icon in SYS:System and the
-  Shell icon. On 3.0/3.1 a second page asks whether UP-Term should also
+  Shell icon (it then starts vsh in an UP-Term window; scripts and NewShell
+  keep the AmigaDOS Shell). On 3.0/3.1 a second page asks whether UP-Term should also
   serve CON: and RAW: (see CON: AND RAW: below) and console.device (see
   CONSOLE.DEVICE below). Install first asks where UP-Term's own drawer
   goes (see WHERE IT IS INSTALLED).
@@ -73,11 +74,26 @@ PACKAGES (upkg)
     upkg install <package>   install an add-on (needs the base installed)
     upkg upgrade             bring the installed add-ons up to the feed
     upkg remove <package>    remove an add-on
+    upkg browse              pick add-ons from a full-screen list
+  upkg browse shows every add-on of the feed with its state (installed,
+  upgrade, available). Up and Down move, Enter shows the add-on's info,
+  i installs, r removes (after a Yes/No question), u upgrades, q or Escape
+  quits. After each action the list comes back on the same add-on. Run
+  upkg update first so the list is current.
+  From Workbench, double-click UP-Term:bin/upkg. It opens the window
+  "UP-Term Add-ons" on the Workbench screen: the list of add-ons with
+  their state, a cycle gadget that shows All, Installed or Upgradable,
+  the buttons Install, Remove, Upgrade and Update, and a log of what
+  upkg does. An add-on that asks questions of its own is not installed
+  from the window; run it from a Shell: upkg install <name>. When upkg
+  cannot make its temporary drawer (TMP: is not assigned, or its volume
+  is full), a requester names the reason; Assign TMP: T: gives it one.
   Uninstall removes UP-Term:pkg/upkg and UP-Term:etc/upkg.conf with the drawer.
 
 WHERE IT IS INSTALLED
   UP-Term's own files (bin with the Unix commands and sh, unifont, emoji,
-  VERSIONS, and the add-on archives' files: Python3, nvim, pkg) live in one drawer: SYS:UP-Term unless you
+  VERSIONS, and the add-on archives' files: Python3, nvim, pkg) live in one drawer: UP-Term on the local disk with the most free
+  room (SYS: when none qualifies; an earlier install's drawer wins), unless you
   pick another in the first question of Install (DEST <drawer> from a
   Shell; the drawer's parent must exist). Everything finds it through the
   assign UP-Term:, which Install makes at once and at every boot (a block
@@ -96,6 +112,11 @@ WHERE IT IS INSTALLED
 
 USE
   NewShell "XCON:0/20/640/300/My Shell/CLOSE"
+
+  The spec is left/top/width/height/title. A width of 0 is the screen's
+  width and a height of 0 its height, counted from the left or top edge
+  (the UP-Term icon uses XCON:0/20/0/400/UP-Term/CLOSE); an empty field
+  keeps the default.
 
   Options after the title, one per /: CLOSE WAIT BACKDROP NODRAG NOBORDER
   NOSIZE NODEPTH INACTIVE  SCREEN name  FONT name size
@@ -124,7 +145,7 @@ USE
 CONFIGURATION (profiles)
    XCON: windows are user-configurable like iTerm2's: /ENV/up-term/up-term
    holds named profiles; the Prefs app (SYS:Prefs/UP-Term-Prefs, its
-   tool is "C:UP-Term Prefs") writes it. Install lays down a fully
+   tool is "C:UP-Term-Prefs") writes it. Install lays down a fully
    commented sample; without the file every window behaves as before.
 
    Prefs: five pages, General (profile, font, fallback font, scrollback,
@@ -193,6 +214,7 @@ CONFIGURATION (profiles)
      dither = on               on | off: on a screen of 16 colours or fewer, a colour no
                                pen shows closely is drawn with two pens in a fixed
                                pattern; off draws the nearest single pen
+     outline-antialias = on    on | off: outline-font glyphs are drawn smoothed (off: hard edges)
      padding-color = background  background | extend: the strips beside the character
                                grid (the part of the window that is not a whole cell)
                                are the background, or take the colour of the cell next
@@ -248,16 +270,17 @@ OUTLINE FONTS (icons, other scripts)
    as '?', or as a near Latin-1 stand-in ('-' for a dash). With
    font-fallback naming an installed outline font, UP-Term draws those
    characters from it, at the size of your font; everything else keeps
-   your bitmap font. Characters up to U+FFFF.
-   You need a font engine for TrueType fonts: ttf.library 0.8.5 by Richard
-   Griffith, Aminet util/libs/ttflib68020 (also 68000, 68030, 68040 and
-   68060 builds), freely distributable, AmigaOS 3.0 or newer. Copy
-   ttf.library to LIBS:, then install a font with its ttfinstall, e.g. the
-   icons-only Nerd Font (github.com/ryanoasis/nerd-fonts, NerdFontsSymbolsOnly,
-   MIT licence):
-     ttfinstall SymbolsNerdFontMono-Regular.ttf FONTS:
-   and put  font-fallback = SymbolsNerdFontMono  (the .otag's name) in a
-   profile, or type it in UP-Term Prefs, General page, Fallback font.
+   your bitmap font. UP-Term reads TrueType fonts with its own engine; it
+   needs no font library. Install puts the icons-only Nerd Font in FONTS:
+   (the "fonts" part, always installed: FONTS:SymbolsNerdFontMono.ttf,
+   Symbols Nerd Font 3.5.1, github.com/ryanoasis/nerd-fonts, licences in
+   UP-Term:fonts/SymbolsNerdFont: MIT.txt, ICON-SETS.md, SOURCE.txt). Any other TrueType font works the same:
+   copy the .ttf to FONTS:, or install it with a tool that writes a .otag
+   for a TrueType file (ttfinstall). Characters above U+FFFF draw too (the
+   Nerd Fonts 3 icons at U+F0001 and up, the Material Design set).
+   Put  font-fallback = SymbolsNerdFontMono  (the name of the .ttf or .otag,
+   without the extension) in a profile, or type it in UP-Term Prefs,
+   General page, Fallback font.
    Open windows take it at once.
    What neither font has comes from GNU Unifont, when Install put it in
    (the "Unifont" part: UP-Term:unifont, 1.8 MB, SIL Open Font License
@@ -291,6 +314,7 @@ COMMANDS (/cursor bar)
      /completion kingcon                  /font-fallback SymbolsNerdFontMono
      /backspace bs      /program-clipboard read-write
      /amiga-keys off    /dither off
+     /outline-antialias off
      /padding-color extend   /split-restore layout
      /link-open Run >NIL: OpenURL %s
    They change the window you type in; /save writes them to its profile.
@@ -339,7 +363,7 @@ KEYS
                         link-open = OpenURL %s  runs (%s the URL), so the
                         OpenURL package must be installed, or name your
                         browser's command there
-  Right Amiga T         new tab (a shell of its own, the same profile,
+  Left Amiga T          new tab (a shell of its own, the same profile,
                         in the directory the shell of this tab is in)
   Right Amiga 1-9       that tab; Right Amiga . and , the next / previous
                         (or click the tab bar); the close gadget closes
@@ -434,6 +458,9 @@ VSH (the shell)
   compopt as in bash; Tab in an XCON: window asks vsh for the words.
   COMP_WORDS splits at blanks, " and = only (bash also at :, which would cut
   an Amiga path in two); -G -X -P -S -D -E -I are not there.
+  The vshrc completes lha, lzx, unzip, tar, gunzip and unxz with their own
+  archives only (any case); drawers appear when none matches. To change a
+  rule, in $HOME/.vshrc:  complete -r lha  and then your own  complete ... lha
   Keys: bind and an .inputrc ($INPUTRC, else $HOME/.inputrc) set the
   window's line editor: set editing-mode vi|emacs, and "\C-x" / "\M-x" /
   Control-x / Meta-x bound to one of the 19 functions bind -l lists (no
@@ -446,6 +473,11 @@ VSH (the shell)
   CDPATH is a list of directories in Unix form (/RAM/work:/Work/src), as PATH
   is: a volume name (RAM:work) holds a colon, which splits the entry, so it
   cannot be listed. cd and pushd themselves take either form.
+  A bare directory word runs cd on it, as in the AmigaDOS Shell and zsh
+  AUTO_CD: ram:  or  sys:c  or  ..  or  src  alone changes directory. A
+  program, builtin or function of that name wins, and a word that is
+  neither says  vsh: nosuchdir:: not found (probe builtins/autocd_bare_drawer).
+  EndCLI and EndShell (in any case) end vsh like  exit  does.
   Process substitution goes through a file in T: (T:vsh-ps-...; RAM: without
   T:), which native commands and ixemul programs both open: <(cmd) runs cmd
   to its end before the command starts, so the two do not run at the same
@@ -455,12 +487,15 @@ VSH (the shell)
   get the stack the builtin  stack [bytes]  sets (at least 16000), or more
   when their file asks for it with a $STACK: cookie (as on AmigaOS 3.2).
   Prompt: PS1 takes bash (\w \u \h) and zsh (%~ %n %m %? %F{red}...%f)
-  escapes; default %F{cyan}%~%f %#.
+  escapes; default %F{cyan}%/%f %#, the full path (SYS:Work %);
+  %~ shows HOME as ~.
   Unix commands: GNU coreutils 5.2.1 (ls cp mv rm mkdir cat sort head tail
   wc tr cut uniq seq du stat dd tee date and the rest, 86 in all) in
   UP-Term:bin, first in vsh's $PATH. They are not in C: (AmigaDOS
   names ignore case: GNU sort would be C:Sort), so the AmigaDOS Shell keeps
-  its own commands. .. is the parent directory, / the list of volumes.
+  its own commands; it gets only upkg, through an Alias in S:Shell-Startup
+  (Install writes it, Uninstall removes it), so its C: commands stay unshadowed.
+  .. is the parent directory, / the list of volumes.
   /tmp is TMP:; without one Install assigns it to T: at every boot.
   coreutils is GPL v2: COPYING and the complete source are in the kit's
   Files/coreutils drawer.
@@ -474,7 +509,7 @@ VSH (the shell)
   UP-Term:share/nano (UP-Term:etc/nanorc includes them). Each package's
   licence is in UP-Term:licenses, with SOURCES.txt (version, upstream
   archive, sha256); the complete source with UP-Term's patches and build
-  recipes is UP-Term-src.lha, published next to UP-Term.lha.
+  recipes is up-term-src.lha, published next to up-term.lha.
   Differences from bash
     vsh is being brought to bash 5 behaviour. A difference that stays on
     purpose (AmigaOS cannot do it, or it was decided) gets one line here,
@@ -510,12 +545,14 @@ VSH (the shell)
     DEBUG text of a command with a here-document leaves the document out.
     A signal from another process reaches vsh's traps only as a break bit:
     INT is Ctrl-C (break C), QUIT is break E (kill -s QUIT sends it, as
-    does ^\). TERM and HUP sent by vsh's kill arrive as INT (vsh is no
-    ixemul program, so kill falls back to Ctrl-C); USR1, USR2, TSTP and the
-    other signals cannot be sent to vsh, break D and F stand for no signal,
-    and vsh sees no window size change (WINCH) and no closed console (HUP:
-    the input ends). kill -s SIG $$ inside the shell runs any trap
-    (tools/rig/trapsig_rig.py).
+    does ^\), TERM is break D (Break <process> D sends it; the console
+    sends it too when its window closes). Untrapped, QUIT and TERM end a
+    script with status 128 + the signal number and are ignored by an
+    interactive vsh. TERM and HUP sent by vsh's kill arrive as INT (vsh is
+    no ixemul program, so kill falls back to Ctrl-C); USR1, USR2, TSTP and
+    the other signals cannot be sent to vsh, break F stands for no signal,
+    and vsh sees no window size change (WINCH). kill -s SIG $$ inside the
+    shell runs any trap (tools/rig/trapsig_rig.py).
     shopt knows all of bash 5.3's names. extglob, globstar, nullglob,
     failglob, dotglob, nocaseglob, nocasematch, lastpipe, expand_aliases,
     inherit_errexit, xpg_echo and sourcepath act; the others are remembered
@@ -580,6 +617,8 @@ IXEMUL
   (XCON:, PTY:), Ctrl-Z and fg/bg job control work, /dev/ptyXY are PTY:
   pairs, local sockets pass descriptors (tmux, screen). It runs the
   existing ixemul programs (80.x keeps every 48.x vector where it was).
+  A machine without an FPU gets the soft-float build of ixemul.library (no FPU
+  opcodes); ixnet.library has one build for both.
   The libraries that were there are kept as LIBS:ixemul.library.orig and
   LIBS:ixnet.library.orig; to go back:
     Copy LIBS:ixemul.library.orig LIBS:ixemul.library
@@ -649,6 +688,305 @@ VIEWING FILES (hl, mdv)
   right in a UTF-8 window; --latin1 / --utf8 say what the terminal reads
   when TERM does not (a ROM CON: window: Latin-1, lines and boxes drawn
   with + - |). hl --help and mdv --help list the options; Ctrl-C stops hl.
+
+AMARCHY
+  Amarchy is a small commodity that gives the whole machine Super-key
+  shortcuts, the way a tiling desktop does. Super is the Left Amiga key. It
+  runs from boot (a block in S:User-Startup starts UP-Term:bin/Amarchy), so
+  the keys work with no UP-Term window open: Left Amiga + T opens a window,
+  Left Amiga + Space shows the quick menu, Left Amiga + K lists every key.
+  Inside an UP-Term window the window itself answers first (Left Amiga + T is
+  a new tab there); everywhere else Amarchy does. Only the keys listed below
+  are taken; every other Left Amiga key reaches the program as before, and
+  Left Amiga + M, Left Amiga + N, Left Amiga + the mouse and the two-Amiga
+  reset keys are never touched.
+  Notices: amnotify TITLE [BODY] [SECONDS n] [BODYFILE file] (also amnotify
+  -t 3 Done "build ok") shows a short message from Amarchy, SECONDS 0 keeps it
+  until dismissed. Left Amiga + Esc opens the System menu; Safe to switch off
+  there runs UP-Term:S/safe-off, which flushes every disk (Reboot DRYRUN) and
+  then says "Safe to switch off" or "Not all disks answered".
+  The keys it ships (generated from dist/keymap):
+  [keys]
+  Left Amiga + Space                 Menu
+  Left Amiga + Shift + Space         Apps
+  Left Amiga + K                     Key bindings
+  Left Amiga + H                     Help
+  Left Amiga + Shift + H             Tutorial
+  Left Amiga + T                     New tab
+  Left Amiga + W                     Close tab
+  Left Amiga + Backspace             Close tab
+  Left Amiga + Q                     Close window
+  Left Amiga + 1 to 9                Switch to tab N
+  Left Amiga + F1                    Switch to tab 1
+  Left Amiga + F2                    Switch to tab 2
+  Left Amiga + F3                    Switch to tab 3
+  Left Amiga + F4                    Switch to tab 4
+  Left Amiga + .                     Next tab
+  Left Amiga + ,                     Previous tab
+  Left Amiga + O                     Bring to front
+  Left Amiga + Ctrl + O              Send to back
+  Left Amiga + Z                     Zoom or restore
+  Left Amiga + Ctrl + F              Full width
+  Left Amiga + Ctrl + S              Save position and size
+  Left Amiga + Ctrl + R              Restore position and size
+  Left Amiga + Ctrl + Tab            Next window
+  Left Amiga + Ctrl + Shift + Tab    Previous window
+  Left Amiga + Shift + Left          Move window left
+  Left Amiga + Shift + Right         Move window right
+  Left Amiga + Shift + Up            Move window up
+  Left Amiga + Shift + Down          Move window down
+  Left Amiga + Ctrl + T              Tile windows
+  Left Amiga + Ctrl + L              Next layout
+  Left Amiga + Ctrl + 1              Layout dwindle
+  Left Amiga + Ctrl + 2              Layout master-stack
+  Left Amiga + Ctrl + 3              Layout mirrored master-stack
+  Left Amiga + Ctrl + 4              Layout columns
+  Left Amiga + Ctrl + 5              Layout rows
+  Left Amiga + Ctrl + 6              Layout grid
+  Left Amiga + Ctrl + 7              Layout monocle
+  Left Amiga + Ctrl + -              Shrink master
+  Left Amiga + Ctrl + +              Grow master
+  Left Amiga + Ctrl + J              Fewer masters
+  Left Amiga + Ctrl + K              More masters
+  Left Amiga + Ctrl + Return         Promote to master
+  Left Amiga + Ctrl + .              Next tiled window
+  Left Amiga + Ctrl + ,              Previous tiled window
+  Left Amiga + Left                  Focus window to the left
+  Left Amiga + Right                 Focus window to the right
+  Left Amiga + Up                    Focus window above
+  Left Amiga + Down                  Focus window below
+  Left Amiga + Ctrl + Shift + Left   Snap to left half
+  Left Amiga + Ctrl + Shift + Right  Snap to right half
+  Left Amiga + Ctrl + Shift + Up     Snap to top half
+  Left Amiga + Ctrl + Shift + Down   Snap to bottom half
+  Left Amiga + Ctrl + Shift + 1      Snap to top left
+  Left Amiga + Ctrl + Shift + 2      Snap to top right
+  Left Amiga + Ctrl + Shift + 3      Snap to bottom left
+  Left Amiga + Ctrl + Shift + 4      Snap to bottom right
+  Left Amiga + Ctrl + Shift + C      Centre window
+  Left Amiga + Ctrl + Shift + T      Float or tile window
+  Left Amiga + Ctrl + Shift + H      Swap with window on the left
+  Left Amiga + Ctrl + Shift + J      Swap with window below
+  Left Amiga + Ctrl + Shift + K      Swap with window above
+  Left Amiga + Ctrl + Shift + L      Swap with window on the right
+  Left Amiga + Ctrl + Left           Make window narrower
+  Left Amiga + Ctrl + Right          Make window wider
+  Left Amiga + Ctrl + Up             Make window shorter
+  Left Amiga + Ctrl + Down           Make window taller
+  Left Amiga + Tab                   Next screen
+  Left Amiga + Shift + Tab           Previous screen
+  Left Amiga + Ctrl + B              Toggle title bar
+  Left Amiga + C                     Copy
+  Left Amiga + V                     Paste
+  Left Amiga + A                     Select all
+  Left Amiga + F                     Find
+  Left Amiga + G                     Find next
+  Left Amiga + +                     Bigger font
+  Left Amiga + -                     Smaller font
+  Left Amiga + Shift + T             Terminal theme
+  Left Amiga + Shift + B             Background
+  Left Amiga + Shift + F             Font
+  Left Amiga + Shift + S             Own screen
+  Left Amiga + Shift + W             Workbench screen
+  Left Amiga + Ctrl + D              Wide window
+  Left Amiga + Shift + R             Standard window
+  Left Amiga + Shift + L             Demo tour
+  Left Amiga + P                     Preferences
+  Left Amiga + Return                Tmux
+  Left Amiga + L                     AI Agent
+  Left Amiga + E                     Editor
+  Left Amiga + U                     Install and update
+  Left Amiga + Shift + U             Upgrade all
+  Left Amiga + I                     Install add-ons
+  Left Amiga + Shift + D             Open lister
+  Left Amiga + Shift + O             Open lister at current folder
+  Left Amiga + D                     Bring Directory Opus to front
+  Left Amiga + Help                  Screenshot of a region
+  Left Amiga + Shift + Help          Screenshot of the screen
+  Left Amiga + Esc                   Power and screen
+  Left Amiga + Ctrl + Help           Screenshot of the window
+  Left Amiga + B                     Status bar
+  [end keys]
+  The quick menu (Left Amiga + Space) is a short list you filter by typing;
+  Left Amiga + K is the key viewer. Two programs draw them. amarchy-gui is
+  the drawn menu: its own borderless window with an icon in front of each row.
+  amarchy-menu is the text menu in a console window. The setting
+    menu-style = graphical
+  in ENVARC:up-term/up-term (before the first section; graphical, text or
+  minimal, default graphical) picks the one Left Amiga + Space and Left
+  Amiga + K start. minimal is amarchy-gui as plain text rows: no border, no
+  icons, two colours (the fg and bg settings, else the screen's own pens 1
+  and 0), and a group row ends in " >". While an UP-Term window is
+  active, the setting
+    menu-in-terminal = text
+  (text or graphical, default text; the Prefs row "Menu in terminal") picks
+  the program instead, and a full-screen terminal always gets the text
+  menu. The setting amarchy-app-icons = generic, amiga or none picks the icons of app
+  rows (amiga: their .info images; none: no icon column). The Prefs program
+  sets both on its Amarchy page (Menu mode, App icons). You can also run
+  them by hand:
+    amarchy-gui menu [node]      the menu (node: a menu id, default root)
+    amarchy-gui viewer           the list of every key
+  and the same two words for amarchy-menu. The icons come from a table made
+  when the kit is built (the file dist/menu-icons in the source); a row in
+  keymap.user cannot name an icon, and a row without an entry in the table
+  shows an empty icon column. The groups of the index have glyphs too:
+  games, demos and music each have their own, and every other drawer of the
+  Apps level (a drawer found by the scan) shows the drawer glyph, a folder.
+  Change a key: edit ENVARC:up-term/keymap (the shipped file, written by
+  every Install: an older copy that differs is first saved as keymap.bak, so
+  edits there do not survive an upgrade) or put your own rows in ENVARC:up-term/keymap.user: a row there
+  replaces the row for the same key, and  super+t = none  unbinds one.
+  Amarchy watches the ENV: copies, not the ENVARC: ones, so an edit in
+  ENVARC: applies after you copy it to ENV: (Amarchy picks that up at once):
+    Copy ENVARC:up-term/keymap.user ENV:up-term/keymap.user
+  or after a reboot. To make Amarchy and every window read the files again
+  without a copy, send it the command:
+    rx "address AMARCHY RELOAD"
+  ARexx port AMARCHY: STATUS (hits, rows, enabled, active), RELOAD, RUN n
+  (do row n of the table), SHOW (the key viewer) and QUIT.
+  Switch it off for a while in Exchange (the commodity AMARCHY, Disable), or
+  stop it with  rx "address AMARCHY QUIT" . Uninstall takes the startup block
+  out. man amarchy has the file format.
+
+  Status bar: a thin bar along the top of the front screen (Left Amiga + B
+  switches it on and off; ARexx  address AMARCHY BAR ON|OFF|TOGGLE|STATUS ).
+  It shows the screens, the clock, CPU, RAM, the network, Agents, System
+  and your own tray entries. Its settings are in ENVARC:Amarchy/bar.conf
+  (ENV:Amarchy/bar.conf is read first): start on|off, clock, clockalt, the
+  order of each group, segment NAME on|off and run LABEL COMMAND rows. Install
+  lays down a commented default only when you have no bar.conf, and Uninstall
+  keeps yours. man amarchy lists every key and what the bar drops on a narrow
+  screen.
+
+  Job view (the Install group): a keymap row can start with  job:  instead
+  of  run: , as in  install.update = Update lists | job:upkg update . A job:
+  row runs the command and shows its output inside the menu window instead
+  of opening a terminal window. Install > Update lists and Install > Upgrade
+  all are job: rows; Install add-ons (upkg browse) stays a terminal row.
+  The view has a header (the job title, or the upkg progress such as
+  "3 of 7"), the output lines (they follow the end while the job runs) and
+  a footer: "Running...", then "Done", "Nothing to do", "Failed (code n)" or
+  a named code ("Package not found", "Network error", "Package script
+  failed", "Usage error", and "Needs answers: run it from a terminal" for
+  code 15), or "Cancelled". Done and Nothing to do are green, the failures
+  and Cancelled are red (the theme keys green and red; a theme without them
+  uses its accent colour and its foreground colour).
+  Keys: Up and Down scroll one line, Page Up and Page Down a page, the mouse
+  wheel three lines. Esc while the job runs cancels it. After the end, Esc,
+  Enter or the right mouse button close the view and return to the menu
+  row. The menu hotkey while the job runs cancels it and closes the view.
+  Both menu styles have the view: the drawn menu and the text menu show the
+  same header, output lines and footer. The view asks no package questions: upkg takes the defaults or the
+  recorded answers, and a package that needs answers ends with "Needs
+  answers". A last output line that has not ended with a newline shows once
+  it ends. A job: row bound to a hotkey runs like a run: row.
+
+  Packages (a top-level group of the menu): every add-on Amarchy can install,
+  from upkg and from upkg's UHC repo together, in one list. Rows:
+    Browse        every package, one sub-group per section, sorted by name
+    Search        type a word; lists the packages whose name or description
+                  holds it (case does not matter)
+    Installed     the packages installed now
+    Upgrades      the packages with a newer version; its first row,
+                  Upgrade all, upgrades them all
+    Refresh       reads the package lists again (upkg update)
+  A package row reads  [upkg] name  version  state  or  [UHC] name ... : the
+  tag says where the package comes from, the state is Installed, Upgrade to
+  <version>, or empty. Pick a package for its action rows, only those that
+  fit: Install (not installed), and Remove, Launch (when the package has a
+  program to start) and Upgrade (when a newer version exists) for an
+  installed one. Remove asks first: "Remove <name>", No then Yes. Install,
+  Remove, Upgrade and Upgrade all run in the job view, so no terminal or
+  console window opens for package work. upkg is the only back end: a UHC
+  package installs as  upkg install uhc:<name> , and Amarchy has no UHC
+  code of its own. The list loads once per boot, on the first open of
+  Packages, then again after each install, remove, upgrade or Refresh. When
+  upkg is missing or fails, the group shows one row with the reason.
+
+  Directory Opus (the DOpus group of the menu): if Directory Opus 5 is
+  running, Amarchy drives it. Left Amiga + Shift + D opens a lister, Left
+  Amiga + Shift + O opens a lister at the current folder, and Left Amiga + D
+  brings Directory Opus to the front. The DOpus group also sends it to the
+  back, goes to the parent folder, refreshes the lister, shows the devices,
+  connects FTP, opens UP-Term here and configures the lister display.
+  Directory Opus is not part of the base kit. To get it, type
+    upkg install dopus
+  (the package up-dopus: upstream Directory Opus 5.104, the build for your
+  CPU, installed by its own installer; an existing DOpus5: drawer is never
+  touched). Without Directory Opus running, these keys do nothing and no
+  window opens. The commands uterm-edit and uterm-view open a file in an
+  UP-Term window (the editor, or the pager) for Directory Opus to call; uterm-shell
+  opens an UP-Term window with vsh in the current directory.
+  uterm-edit runs the editor named by the variable EDITOR, or joe when it
+  is not set. To pick another editor for good, type for example
+    SetEnv EDITOR nvim
+    Copy ENV:EDITOR ENVARC:
+
+  Flat Directory Opus button banks: a flat theme looks best when the buttons
+  of a bank have no bevel of their own. The kit installs no button bank
+  files (the DOpus add-on is upstream's archive, unmodified), so the flag is
+  set per bank inside Directory Opus. Open the bank, choose
+    Settings > Buttons > Edit
+  (the lister toolbar: Lister > Edit Toolbar), and in the Appearance section of
+  the Button Bank Editor tick  Borderless Buttons . Then save the bank with
+  Settings > Buttons > Save. Repeat for each bank. Upstream's MagicWB image
+  set already ships its Toolbar and FTP banks borderless.
+
+  Window, Screens and Workbench groups: rows of the form  win:<verb>  act on
+  windows of any program. Verbs: cycle, front, back, zip, fullwidth,
+  fullscreen, save, restore, move, size, focus, closedrawers, screen, title.
+  When you open the menu, Amarchy records a target ticket: the window under
+  the pointer and its box. A win: row run from the menu uses the ticket only
+  if that window is still listed and its box is unchanged; otherwise the verb
+  fails with a screen flash (DisplayBeep). A win: hotkey reads the active
+  window at the moment you press it. There is no verb that closes a window of
+  another program: closing it could lose the unsaved work of that program.
+  The Workbench rows need the Workbench ARexx port, so RexxMast must run. The
+  Workbench group is hidden when the port WORKBENCH is absent, for example
+  under Directory Opus.
+
+  App index: the menu lists the programs found on your disks. The scanner
+  amarchy-index looks at the hard-disk volumes (not floppies, RAM: or other
+  virtual volumes) and walks their drawers down to depth 6. An icon of type
+  Tool with a program beside it makes an app; a project icon whose default
+  tool is WHDLoad makes a game, listed under Games. The system
+  drawers Devs, Libs, L, Fonts, Locale, Env, T and Trashcan are skipped, and
+  so is Prefs/Env-Archive. The result is the cache ENVARC:Amarchy/apps,
+  written to a temporary file and renamed, so a scan cut short never leaves
+  a broken cache. Amarchy only reads the cache; it never scans itself.
+  The scan runs in the background at every boot (a line in S:User-Startup,
+  taken out by Uninstall) and on demand with the Rescan apps row. The
+  scan runs in the background and the menu stays open: its first row shows
+  "Scanning..." with the drawer being read, then "Scan done: N apps, M
+  games" (or why it stopped), and the Apps level lists the new rows.
+  The Apps level of the menu lists the indexed apps after the menu's own
+  rows, a Games level lists the games, and the search at the root finds
+  both. When a menu row has the same label as an indexed app, the menu row
+  wins and the index row is left out. An indexed row starts like a
+  double-click in Workbench (OpenWorkbenchObject); if Workbench cannot
+  start it, Amarchy starts it through WBStartup itself, never through a
+  shell. To keep drawers out of the scan, list path prefixes, comma
+  separated, in ENVARC:up-term/up-term (before the first section):
+    amarchy-index-skip = Work:Old,DH1:Backup
+  A path matches when it begins with an entry, so Work:Old also skips
+  Work:Old/Tools. Press Rescan apps afterwards to rebuild the cache.
+  Network volumes (an SMB or NFS share, found by its handler) are left out
+  of the scan, since walking one over the network takes hours. To scan a
+  share, list its volume name, comma separated, in the same file:
+    amarchy-index-volumes = spotUP,Music
+  Ctrl-C stops a running scan: it writes no cache and returns WARN.
+  The scan keeps its progress in memory (a record named Amarchy.index, no
+  disk writes): the stage and the drawer or icon it is on. After a scan
+  that failed or hung, run  amarchy-index --where  (or -w): it prints the
+  stage, the volume and path last handled, the drawers and icons counted,
+  and whether the scanner task still exists, is moving, is stuck (a
+  Software Failure requester keeps it alive) or has died. After a normal
+  finish it shows done with the counts. A failed cache write shows stage
+  "write failed" (and the scan returns ERROR). The record lasts until a
+  reboot; one left by an older amarchy-index build is not read or reused,
+  --where then says "record from another amarchy-index build, reboot to
+  clear".
 
 SERIAL LOGIN
   A Unix-style login on the serial port: connect a null-modem cable (or a
@@ -733,7 +1071,7 @@ NETWORK
 
 UPTELNET
   uptelnet is a telnet client for the window (no ixemul; needs a TCP/IP
-  stack). Claude.lha's C:Claude uses it (that archive carries its own copy) to reach Claude Code on the NAS
+  stack). up-claude.lha's C:Claude uses it (that archive carries its own copy) to reach Claude Code on the NAS
   or a Mac, with a key instead of the password once the NAS has paired this Amiga (KEY file).
  On the Mac, from an UP-Term source checkout (nothing is installed; it
   runs until Ctrl-C):
@@ -768,7 +1106,7 @@ NEW TO A UNIX SHELL
   $HOME/.tutorial), tutorial reset forgets the progress. The lessons
   practise in a drawer of their own (T:tutorial), but a command you type
   runs for real: rm -r on one of your drawers deletes it. Until you have
-  finished lesson 1, a new vsh window prints one line pointing here;
+  finished lesson 1, a new vsh window prints two lines pointing here;
   creating $HOME/.tutorial-hint-off hides it.
 
 DEMO
@@ -826,21 +1164,25 @@ WASABI (REMOTE DEVELOPMENT, CLAUDE CODE ON ANOTHER COMPUTER)
   with "key = yourkey" saves typing it). Claude Code on that machine
   drives this Amiga through Files/wasabi/wasabi_mcp.py, which sits beside
   the client:  claude mcp add wasabi -- python3 /path/to/wasabi_mcp.py
-  (tools/nas/README.md in the vtcon source tree: the NAS image). Anyone
+  (the NAS image ghcr.io/spotup/claude-amiga; setup: https://github.com/spotUP/UP-Term/blob/main/tools/nas/README.md). Anyone
   with the key can run any command on this Amiga: keep it to yourself.
   wasabid answers only private network addresses; the link is encrypted
   only when the Amiga has AmiSSL 5 and keys (wasabi's README). Uninstall
   stops and removes it.
-  Claude.lha also carries this wasabid (as C:wasabid, only when none is
+  up-claude.lha also carries this wasabid (as C:wasabid, only when none is
   there): uptelnet starts a session daemon from it for each login to the
   NAS, with a key of its own, and ends it with the login. A wasabid put
-  in by this kit is used as it is; the one Claude.lha put in is not
+  in by this kit is used as it is; the one up-claude.lha put in is not
   started at boot.
 
 CON: AND RAW:
   UP-Term can serve the system's CON: and RAW: too, so every new Shell
-  window is an UP-Term window (the Amiga personality: programs see the
-  console they know). C:UPConsole switches it:
+  window is an UP-Term window. Programs see the console they know (the
+  Amiga escape sequences, the Shell inside), the window looks like any
+  UP-Term window: your default profile's font, colours and scroll bar
+  (a spec's DARK, LIGHT, FG, BG, FONT or PROFILE still win). Pen 0 is the
+  window's background colour and pen 1 its text colour; the pens 2 to 7 a
+  program asks for stay the screen's pens. C:UPConsole switches it:
     UPConsole CON ON     new CON:/RAW: windows are UP-Term
     UPConsole CON OFF    new windows are the system's again
     UPConsole STATUS     who serves CON: and RAW: now
@@ -871,30 +1213,39 @@ CONSOLE.DEVICE
 
 ADD-ONS
   Neovim, Python, Claude and amiga-pi are archives of their own, next to
-  UP-Term.lha. Each has its own Install, Uninstall and README.txt:
-    UP-Term-nvim.lha   Neovim 0.12 and its runtime (UP-Term:nvim). Needs this
-                       one installed first: it runs on its patched
-                       ixemul.library; its Install says so and stops when this
-                       one is missing or too old.
-    Python3.lha        Python 3.14 (SYS:Python3, Python3: assigned at boot).
-                       Stands alone: brings an ixemul.library when LIBS: has
-                       none of version 47 or newer, and uses this kit's.
-    Claude.lha         C:Claude and C:uptelnet (Claude,
-                       Anthropic's AI model). Stands alone.
-    amiga-pi.lha       C:amiga-pi (pi, the coding agent). Stands alone.
+  up-term.lha. Each has its own Install, Uninstall and README.txt:
+    up-nvim.lha     Neovim 0.12 and its runtime (UP-Term:nvim). Needs this
+                    one installed first: it runs on its patched
+                    ixemul.library; its Install says so and stops when this
+                    one is missing or too old.
+    up-python.lha   Python 3.14 (SYS:Python3, Python3: assigned at boot).
+                    Stands alone: brings an ixemul.library when LIBS: has
+                    none of version 47 or newer, and uses this kit's.
+    up-claude.lha   C:Claude and C:uptelnet (Claude, Anthropic's AI model).
+                    Stands alone.
+    up-pi.lha       C:amiga-pi (pi, the coding agent). Stands alone.
+    up-dopus.lha    Directory Opus 5.104 (DOpus5:), the build for your CPU, run
+                    through its own installer. Stands alone.
+    up-uhc.lha      The UHC tools (Ultimate Hunting Companion): runs UHC's own
+                    installer, which downloads the tools. Needs this one
+                    installed first, a network connection and LhA.
   Git, Perl and Vim are packages for upkg, not archives: they were in this
   archive before the slim base, and they install at the same places
   (UP-Term:bin, UP-Term:share). Type  upkg install git  (or perl, vim) in an
-  UP-Term window; upkg remove takes them out. Uninstall of UP-Term takes
+  UP-Term window; upkg remove takes them out. BitchX, the IRC client, is an
+  upkg package too (upkg install bitchx): C:BitchX in UP-Term:bin and its
+  scripts and help in UP-Term:lib/bx. vbcc, the C compiler, is one too
+  (upkg install vbcc): UP-Term:vbcc, with the VBCC: assign and path in
+  S:User-Startup (the Amiga NDK headers are not included). Uninstall of UP-Term takes
   them out too, before it takes UP-Term out.
   The stand-alone ones install on a Workbench with no UP-Term and record
   themselves in ENVARC:upkg; in an UP-Term window they use its screen, keys
-  and vsh. Uninstall of UP-Term takes UP-Term-nvim out first, by its own
+  and vsh. Uninstall of UP-Term takes up-nvim out first, by its own
   Uninstall (and asks once about UP-Term:var); the stand-alone ones stay.
   An UP-Term installed from the single kit (before the split) that had Neovim,
-  Python, Claude or amiga-pi keeps them when UP-Term.lha is installed over it
+  Python, Claude or amiga-pi keeps them when up-term.lha is installed over it
   (Update says so); install the archive of each to keep it updated. The source
-  of the GNU commands is UP-Term-src.lha, next to UP-Term.lha, with the Unix
+  of the GNU commands is up-term-src.lha, next to up-term.lha, with the Unix
   tools' source.
 
 STATUS

@@ -36,17 +36,29 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include "../handler/vtcon_packets.h"
+#define SEGSTACK_DOS
+#include "../config/segstack.h"
 extern struct DosLibrary *DOSBase;
 #define UPASSIGN_DOS
 #include "../config/upassign.h"
 #include "../tty/qmark.h"
+#include "upgetty_serial.h"
 
-static const char vers[] = "$VER: upgetty 0.1 (30.9.2026)";
+/* the base version and build day (upterm_version.h, written by the Makefile) */
+#include "upterm_version.h"
+static const char vers[] = "$VER: upgetty " UPTERM_VERSION " (" UPTERM_DATE ") UP-Term";
+
+/* vbcc's startup (vc.lib) reads ___stack and runs main on a stack of this
+ * size, so upgetty does not depend on the stack its Shell or script gives it;
+ * the cookie says the same to AmigaOS 3.2 and to vsh (RULES.md rule 6) */
+long __stack = 16384;
+const char upgetty_stack_cookie[] = "$STACK: 16384";
 
 struct ws { UWORD ws_row, ws_col, ws_xpixel, ws_ypixel; }; /* ixemul 48.2's winsize */
 
 typedef struct {
-    struct MsgPort *port;               /* serial replies */
+    struct MsgPort *port;               /* serial read replies */
+    struct MsgPort *wport;              /* serial write replies: its own, DoIO on the write must not eat the read's signal */
     struct MsgPort *pport;              /* the master's packet replies: a port of their own */
     struct IOExtSer *rd, *wr;
     int rd_busy;
@@ -153,10 +165,13 @@ static void set_size(getty *g, int rows, int cols)
  * terminal's Ctrl-C (the rig: Ctrl-C over the wire stopped upgetty and with
  * it the pump). The shell is started with CreateNewProc so we know its
  * process, then ACTION_CHANGE_SIGNAL names it. */
+#define SHELL_MIN_STACK 16000
+
 static int start_shell(getty *g, const char *shell, const char *term)
 {
     char name[32];
     BPTR in, out, seg;
+    ULONG stack;
     struct Process *pr;
     struct FileHandle *fh;
     sprintf(name, "PTY:%s/s", g->id);
@@ -174,9 +189,12 @@ static int start_shell(getty *g, const char *shell, const char *term)
     }
     SetVar((STRPTR)"TERM", (STRPTR)term, -1, GVF_LOCAL_ONLY); /* NP_CopyVars: the shell gets our locals */
     fh = (struct FileHandle *)BADDR(in);
+    stack = seg_stack(seg); /* what the shell asks for (vsh: 262144), never less than 16000 */
+    if (stack < SHELL_MIN_STACK)
+        stack = SHELL_MIN_STACK;
     pr = CreateNewProcTags(NP_Seglist, (ULONG)seg, NP_FreeSeglist, TRUE, NP_Name, (ULONG)"upgetty shell",
                            NP_Input, (ULONG)in, NP_Output, (ULONG)out, NP_CloseInput, TRUE,
-                           NP_CloseOutput, TRUE, NP_Cli, TRUE, NP_CopyVars, TRUE, NP_StackSize, 16000,
+                           NP_CloseOutput, TRUE, NP_Cli, TRUE, NP_CopyVars, TRUE, NP_StackSize, stack,
                            NP_ConsoleTask, (ULONG)fh->fh_Type, NP_Arguments, (ULONG)"\n", TAG_DONE);
     if (!pr) {
         Close(in);
@@ -223,23 +241,20 @@ int main(void)
     memset(&g, 0, sizeof(g));
     g.port = CreateMsgPort();
     g.pport = CreateMsgPort();
-    g.rd = g.port && g.pport ? (struct IOExtSer *)CreateIORequest(g.port, sizeof(struct IOExtSer)) : 0;
-    g.wr = g.port ? (struct IOExtSer *)CreateIORequest(g.port, sizeof(struct IOExtSer)) : 0;
+    g.wport = CreateMsgPort();
+    g.rd = g.port && g.pport && g.wport ? (struct IOExtSer *)CreateIORequest(g.port, sizeof(struct IOExtSer)) : 0;
+    g.wr = g.wport ? (struct IOExtSer *)CreateIORequest(g.wport, sizeof(struct IOExtSer)) : 0;
     if (!g.rd || !g.wr || OpenDevice((STRPTR)dev, (ULONG)unit, (struct IORequest *)g.rd, 0)) {
         printf("upgetty: cannot open %s unit %ld\n", dev, unit);
         rc = RETURN_FAIL;
         goto out;
     }
-    /* 8N1, no XON/XOFF (zmodem's data must pass), RTS/CTS only when asked
-     * (FS-UAE's serial port and a three-wire cable never raise CTS) */
-    g.rd->io_Baud = (ULONG)baud;
-    g.rd->io_ReadLen = g.rd->io_WriteLen = 8;
-    g.rd->io_StopBits = 1;
-    g.rd->io_SerFlags = SERF_XDISABLED | SERF_RAD_BOOGIE | (args[8] ? SERF_7WIRE : 0);
-    g.rd->IOSer.io_Command = SDCMD_SETPARAMS;
-    DoIO((struct IORequest *)g.rd);
-    *g.wr = *g.rd;
-    g.wr->IOSer.io_Message.mn_ReplyPort = g.port;
+    /* 8N1, no XON/XOFF, RTS/CTS only when asked (FS-UAE's serial port and a
+     * three-wire cable never raise CTS), a 64 KB receive buffer
+     * (upgetty_serial.h says why) */
+    upgetty_setparams(g.rd, (ULONG)baud, args[8] != 0);
+    LG("setparams", DoIO((struct IORequest *)g.rd));
+    upgetty_setup_write(g.wr, g.rd, g.wport);
     if (!open_master(&g)) {
         printf("upgetty: no free PTY: pair (is PTY: mounted?)\n");
         rc = RETURN_FAIL;
@@ -285,6 +300,10 @@ int main(void)
                  * build: when it did not, this Write was the debug build's
                  * only, and no key reached the shell) */
                 LG("  master write", Write(g.master, g.rbuf, n));
+            } else {
+                /* SerErr_BufOverflow (12): the receive buffer filled, its
+                 * bytes are gone; the trace names it (it was silent) */
+                LG("serial read error", g.rd->IOSer.io_Error);
             }
             serial_read(&g);
         }
@@ -333,6 +352,8 @@ out:
         DeleteMsgPort(g.port);
     if (g.pport)
         DeleteMsgPort(g.pport);
+    if (g.wport)
+        DeleteMsgPort(g.wport);
     FreeArgs(rd);
     return rc;
 }

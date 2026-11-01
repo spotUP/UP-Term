@@ -1,9 +1,8 @@
 Short:        UP-Term: XCON: console, vsh, tools
 Author:       spotUP
-Uploader:     UPLOADER-ADDRESS-PLACEHOLDER (spotUP)
+Uploader:     spotup@gmail.com (spotUP)
 Type:         comm/term
 Version:      @VERSION@
-Replaces:     PLACEHOLDER (the Aminet path of an earlier UP-Term upload, if there is one)
 Architecture: m68k-amigaos >= 3.0.0; m68k-020
 Requires:     AmigaOS 3.0 or newer, a 68020 or better
 Distribution: Aminet
@@ -16,11 +15,11 @@ terminfo entry for TERM=vtcon.
 
 This is the base archive. Neovim, Python, the Claude Code client and the pi coding
 agent are separate archives; Neovim needs this one, the other three stand alone:
-  comm/term/UP-Term-src.lha      source of the Unix tools and of coreutils (GPL)
-  comm/misc/Claude.lha           Claude Code client (stand-alone)
-  comm/misc/amiga-pi.lha         pi coding agent (stand-alone)
-  text/edit/UP-Term-nvim.lha     Neovim 0.12 (needs this archive)
-  dev/lang/Python3.lha           Python 3.14 (stand-alone, brings its own ixemul.library)
+  comm/term/up-term-src.lha      source of the Unix tools and of coreutils (GPL)
+  comm/misc/up-claude.lha           Claude Code client (stand-alone)
+  comm/misc/up-pi.lha         pi coding agent (stand-alone)
+  text/edit/up-nvim.lha     Neovim 0.12 (needs this archive)
+  dev/lang/up-python.lha           Python 3.14 (stand-alone, brings its own ixemul.library)
 
 Install: unpack, double-click Install (Installer 43 or newer). A second Install over an
 installed UP-Term offers Update and leaves your settings alone. Uninstall removes it; it

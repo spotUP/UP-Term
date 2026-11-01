@@ -15,6 +15,13 @@ int vti_mods(unsigned qual, int meta_alt)
     return mods;
 }
 
+int vti_char_mods(int xterm, int cooked, int mok_ctrl, int mods)
+{
+    if (!xterm || cooked)
+        return 0;
+    return mok_ctrl ? mods : (mods & VT_MOD_ALT);
+}
+
 int vti_button_code(unsigned code, int *btn, int *down)
 {
     switch (code & ~(unsigned)VTI_CODE_UP) {
@@ -201,6 +208,14 @@ int vti_newmouse_wheel(unsigned code, int *up)
     if (code != 0x7A && code != 0x7B)
         return 0;
     *up = code == 0x7A;
+    return 1;
+}
+
+int vti_wheeldata(int wheel_y, int *up)
+{
+    if (!wheel_y)
+        return 0;
+    *up = wheel_y < 0;
     return 1;
 }
 

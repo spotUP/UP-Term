@@ -32,9 +32,10 @@ class NoSizeTypedByHand(unittest.TestCase):
             s = raw(i)
             for m in re.finditer(r'\(set #(kb-[a-z]+|totalkb) \(?\+? ?[1-9]\d\d+', s):
                 self.fail('%s: %s' % (i, m.group(0)))
-            for m in re.finditer(r'\(set #step "[a-z-]+" #kb [1-9]\d\d+', s):
-                if '"unix"' not in m.group(0) and '"record"' not in m.group(0):
-                    self.fail('%s: %s' % (i, m.group(0)))
+            for m in re.finditer(r'\(set #step "[a-z-]+" #kb [1-9]\d*', s):
+                self.fail('%s: %s' % (i, m.group(0)))
+            for m in re.finditer(r'\(set #kb-[a-z]+ \(\+[^)]* [1-9]\d*[ )]', s):
+                self.fail('%s: %s' % (i, m.group(0)))
 
     def test_the_assembled_scripts_hold_the_kit_sizes(self):
         for i in ROWS:
@@ -49,13 +50,14 @@ class ABaseTooSmallForTheChoicesAsksForAnotherDrawer(unittest.TestCase):
         s = self.s
         self.assertIn('(procedure P_ASKDEST', s)
         loop = s[s.index('(while (not #roomok)'):]
-        loop = loop[:loop.index('; what goes on SYS:')]
-        self.assertIn('(getdiskspace (pathonly #dest))', loop)
-        self.assertIn('(P_ASKDEST)', loop)
-        self.assertIn('(message', loop)
-        self.assertNotIn('(abort', loop)        # nothing was copied: the user may choose, Abort Install is a button
-        self.assertIn('" KB free;', loop)       # how much there is ...
-        self.assertIn('#totalkb', loop)         # ... and how much is needed
+        loop = loop[:loop.index('(run "Delete >NIL: ENV:UPTROOM')]
+        # UPBigVol ROOM (install/bigvol.c) counts the drawer's disk; its text says what is free and what is needed
+        self.assertIn('>NIL: ROOM', loop)
+        self.assertIn('(set #room (getenv "UPTROOM"))', loop)
+        ask = loop[loop.index('(if (= (getenv "UPTROOMAT") #dest)'):loop.index('(P_ASKDEST)')]
+        self.assertIn('(message', ask)
+        self.assertNotIn('(abort', ask)         # nothing was copied: the user may choose, Abort Install is a button
+        self.assertIn('#room', ask)
 
     def test_the_check_comes_after_the_choices_and_before_any_copying(self):
         s = self.s
@@ -104,12 +106,11 @@ class KitsizeArithmetic(unittest.TestCase):
         self.assertEqual(kitsize.sizes(kit, 'base')['KBLIBS'], 2 * one)
 
     def test_only_the_files_of_a_chosen_option_count_for_it(self):
-        kit = self.kit({'net/curl-8.0/curl.020': 900000, 'net/curl-8.0/curl.040': 950000, 'net/curl-8.0/curl.060': 1000000,
-                        'net/curl-8.0/COPYING': 35000, 'net/bebbossh-1.0/bebbossh': 40000,
+        kit = self.kit({'net/bebbossh-1.0/libcryptossh.library020': 90000, 'net/bebbossh-1.0/libcryptossh.library060': 100000,
+                        'net/bebbossh-1.0/COPYING': 35000, 'net/bebbossh-1.0/bebbossh': 40000,
                         'net/bebbossh-1.0/bebbossh-1.0-src.tar.bz2': 250000, 'UPTerm': 10})
         v = kitsize.sizes(kit, 'base')
-        self.assertEqual(v['KBCURL'], -(-kitsize.file_bytes(1000000) // 1024))        # the largest build only
-        self.assertEqual(v['KBSSH'], -(-kitsize.file_bytes(40000) // 1024))           # the program, not the source
+        self.assertEqual(v['KBSSH'], -(-(kitsize.file_bytes(40000) + kitsize.file_bytes(100000)) // 1024))  # the largest library build only
         self.assertLess(v['KBTOOLS'], 100)                                            # nothing of net/ in the tools part
 
     def test_amissl_counts_its_common_files_and_one_cpus_library(self):
@@ -140,6 +141,22 @@ def manifest(kit):
         if len(f) == 4 and '#' not in f[3] and f[0] != '-':
             out[f[0]] = out.get(f[0], 0) + kitsize.file_bytes(int(f[1]))
     return out
+
+
+class NoAminetCurlInTheKit(unittest.TestCase):
+    """The product has no AmiTCP: the curl in the kit is the upterm-ports build (Files/userland). The vendored
+    Aminet curl names usergroup.library and must not come back into dist/net or the Install options."""
+
+    def test_no_curl_ships_from_dist_net_and_none_names_usergroup(self):
+        net = ROOT / 'dist/net'
+        self.assertEqual(sorted(p.name for p in net.glob('curl*')), [])
+        named = [str(p) for p in net.rglob('*') if p.is_file() and b'usergroup.library' in p.read_bytes()]
+        self.assertEqual(named, [])
+
+    def test_no_install_option_or_size_row_for_the_aminet_curl(self):
+        self.assertNotIn('KBCURL', kitsize.OPTIONS)
+        for f in ('dist/Install.installer', 'dist/install.dos', 'dist/common/oldopts.installer'):
+            self.assertNotRegex((ROOT / f).read_text(encoding='latin-1'), r'KBCURL|UPTOPTCURL|net/curl-')
 
 
 class TheBuiltKitsNumbersMatchTheirArchives(unittest.TestCase):
@@ -174,7 +191,10 @@ class TheBuiltKitsNumbersMatchTheirArchives(unittest.TestCase):
                 continue
             kit = self.kit(i)
             text, mf = (kit / 'Install').read_text(encoding='latin-1'), manifest(kit)
-            installed = sum(b for p, b in mf.items() if p != 'handed')
+            # the archive's files plus what the add-on fetches from the net on the user's machine (uhc's installer
+            # download and unpacked tree): kitsize.NO_KIT_FILES, the one place that figure lives
+            fetched = sum(kitsize.NO_KIT_FILES.get(i, {}).values()) * 1024
+            installed = sum(b for p, b in mf.items() if p != 'handed') + fetched
             self.within(self.number(text, 'totalkb'), installed, i)
 
 

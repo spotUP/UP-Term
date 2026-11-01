@@ -30,13 +30,14 @@ COPY relay-config /usr/local/bin/relay-config
 RUN chmod 755 /usr/local/bin/entrypoint.sh /usr/local/bin/as-claude /usr/local/bin/setpw /usr/local/bin/pairs \
     /usr/local/bin/amiga-target /usr/local/bin/seed-claude-files /usr/local/bin/relay-config
 
-# wasabi (MIT, Python standard library only), at the one commit in wasabi.rev (the Makefile's
-# wasabi target reads the same file). Its client `wasabi`, the MCP server wasabi_mcp.py and the
+# wasabi (MIT, Python standard library only), cloned from the repo in wasabi.repo at the one
+# commit in wasabi.rev (the Makefile's wasabi target reads the same two files; the clone source must
+# be the repo that holds the pin). Its client `wasabi`, the MCP server wasabi_mcp.py and the
 # LICENSE live in /opt/wasabi; the skill and mcp.json are seeded into the claude user's home
 # by the entrypoint (seed-claude-files). Host, port and key come from ~/.config/wasabi/config
 # (amiga-target writes them).
-COPY wasabi.rev /opt/wasabi/wasabi.rev
-RUN git clone -q https://github.com/creep-ltx/wasabi /tmp/wasabi \
+COPY wasabi.repo wasabi.rev /opt/wasabi/
+RUN git clone -q "$(cat /opt/wasabi/wasabi.repo)" /tmp/wasabi \
  && git -C /tmp/wasabi checkout -q "$(cat /opt/wasabi/wasabi.rev)" \
  && cp /tmp/wasabi/wasabi /tmp/wasabi/wasabi_mcp.py /tmp/wasabi/wasabi_client.py /tmp/wasabi/LICENSE /opt/wasabi/ \
  && rm -rf /tmp/wasabi

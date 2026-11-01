@@ -4,17 +4,22 @@
   python3 tools/pkgs.py names              ids, one a line
   python3 tools/pkgs.py archives           archive names, one a line
   python3 tools/pkgs.py get <id> <column>  one value ("-" is printed as it is)
+  python3 tools/pkgs.py prune <dir>        delete every <dir>/*.lha that dist/packages.txt does not list
   python3 tools/pkgs.py index <dir>        upkg's index of the archives in <dir>
-  python3 tools/pkgs.py ipk <build>        one .ipk per package into <build>/ipk (from build/dist/<archive>)
+  python3 tools/pkgs.py ipk <build>        one .ipk per package and variant into <build>/ipk (from build/dist/<archive> = 020, build/dist/fpu/<archive> = fpu)
   python3 tools/pkgs.py feed <build>       <build>/ipk/Packages and Packages.gz of those .ipk files
 """
 import gzip, hashlib, io, os, pathlib, re, sys, tarfile
 
 import slim
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / 'rig'))
+import paths   # the workspace layout: a worktree's sibling checkouts are the main checkout's siblings
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-TABLE = ROOT / 'dist/packages.txt'
-COLUMNS = ('id', 'archive', 'version', 'needs-base', 'ixemul', 'record', 'handed', 'consumes')
+TABLE = pathlib.Path(os.environ.get('UPTERM_PACKAGES_TXT') or ROOT / 'dist/packages.txt')   # the env var: a test's fixture table for the CLI
+RENAMES = ROOT / 'dist/package-renames.txt'
+COLUMNS = ('id', 'archive', 'version', 'needs-base', 'ixemul', 'record', 'handed', 'consumes', 'launch')
 
 
 def parse(text):
@@ -35,8 +40,44 @@ def rows(path=TABLE):
     return parse(pathlib.Path(path).read_text(encoding='utf-8'))
 
 
+def renames(path=RENAMES):
+    """[(old, new)] of dist/package-renames.txt ("old new" a line, # comments)."""
+    out = []
+    for line in pathlib.Path(path).read_text(encoding='utf-8').splitlines():
+        line = line.strip()
+        if line and not line.startswith('#'):
+            f = line.split()
+            if len(f) != 2:
+                raise SystemExit('package-renames.txt: %r: want "old new"' % line)
+            out.append((f[0], f[1]))
+    return out
+
+
+def old_names(archive, path=RENAMES):
+    """The names the package <archive> had before (empty for a package that was never renamed)."""
+    return [o for o, n in renames(path) if n == archive]
+
+
+def old_record(r, path=RENAMES):
+    """[(old record, new record)] of a row: its record drawer spelled with each old name; a record that
+    does not end in the archive name (the base's UP-Term:) has none."""
+    rec = r['record'].rstrip('/')
+    if not rec.endswith(r['archive']):
+        return []
+    return [(rec[:-len(r['archive'])] + o, rec) for o in old_names(r['archive'], path)]
+
+
+def rename_lines(pairs):
+    """AmigaDOS lines that move a record drawer left by the old Installer to its new name; nothing is
+    done when the new one is already there."""
+    out = []
+    for old, new in pairs:
+        out += ['If EXISTS ' + old, '  If NOT EXISTS ' + new, '    Rename >NIL: %s %s' % (old, new), '  EndIf', 'EndIf']
+    return '\n'.join(out)
+
+
 def lha_rows(path=TABLE):
-    """The rows published as an .lha next to UP-Term.lha. The packages of dist/slim.txt (git, perl, vim)
+    """The rows published as an .lha next to up-term.lha. The packages of dist/slim.txt (git, perl, vim, bitchx, vbcc)
     are upkg-only (owner 2026-10-19): the .ipk feed ships them, so no .lha, no index line, no Installer
     checkbox and no Aminet readme."""
     upkg_only = slim.ids()
@@ -50,6 +91,20 @@ def get(pkg_id, column, path=TABLE):
         if r['id'] == pkg_id:
             return r[column]
     raise SystemExit('pkgs: no package %r' % pkg_id)
+
+
+SOURCE_ARCHIVE = 'up-term-src'   # the source archive (Makefile dist-src): published next to the base, not a package row
+
+
+def prune(build, path=TABLE):
+    """Delete every <build>/*.lha that is not an archive of the table (lha_rows) or the source archive: what a
+    renamed or dropped package left behind. The name is compared as spelled (a case-insensitive disk keeps the
+    spelling the archive was written with, so a capitalised base archive is stale). Returns the names deleted."""
+    keep = {r['archive'] + '.lha' for r in lha_rows(path)} | {SOURCE_ARCHIVE + '.lha'}
+    gone = sorted(n for n in os.listdir(build) if n.endswith('.lha') and n not in keep)
+    for n in gone:
+        os.unlink(os.path.join(build, n))
+    return gone
 
 
 def index(build, path=TABLE):
@@ -72,22 +127,68 @@ def index(build, path=TABLE):
 # when its Architecture is "all", "noarch" or an `arch` line of the conf (the kit's upkg.conf must carry
 # `arch m68k-amigaos 10`). One string, because the binaries are 68020+ ixemul and nothing else runs them.
 ARCH = 'm68k-amigaos'
+# Two variants (thoughts/shared/plans/2026-10-27-ports-fpu-variants.md): the 020 build keeps ARCH (every installed
+# upkg.conf has that arch line, and the legacy `index` is for it alone); the FPU build (-m68060 -m68881) is the
+# arch m68k-amigaos-fpu, which upkg registers at a higher priority on a 040/060 with an FPU.
+VARIANTS = (('020', ARCH), ('fpu', ARCH + '-fpu'))
 MAINTAINER = 'UP-Term <https://github.com/spotUP/UP-Term>'
 # Where an add-on's files wait: T:upkg-stage/<archive> (RAM, owner 2026-10-19). data.tar paths are
 # relative to the dest root, and dist/upkg.conf has `dest root /`: ixemul reads /T/x as T:x, so
 # ./T/upkg-stage/<archive>/... lands in T: with no second dest and no patch of the upkg binary.
 STAGE = 'T/upkg-stage'
 STAGE_DOS = 'T:upkg-stage'
+# Packages whose files do not come from an upterm-ports recipe (claude, pi, nvim, python). A ports package (one with a
+# _FEED_ID) has no line here: its summary is the recipe's _SUMMARY (summary() below), so adding one touches no shared code.
 SUMMARY = {
-        'claude': 'Claude Code for the Amiga (C:Claude)',
+    'claude': 'Claude Code for the Amiga (C:Claude)',
     'pi': 'amiga-pi, the pi coding agent',
     'nvim': 'Neovim 0.12 in UP-Term:nvim',
     'python': 'Python 3.14 in SYS:Python3',
-    'git': 'git 2.56.0 in UP-Term:bin and UP-Term:share/git-core',
-    'perl': 'Perl 5.42.3 in UP-Term:bin',
-    'vim': 'Vim 9.2.1202 in UP-Term:bin and UP-Term:share/vim',
+    'dopus': 'Directory Opus 5 5.104 (the 68k build for the CPU), through its own installer',
+    'uhc': 'the UHC tools (aget, UHCSearch and the get/search scripts) in SYS:UHC',
 }
+# Packages that never had another name (born as up-<x>, 2026-10-25 up-bitchx): they have no line in
+# dist/package-renames.txt and no old record to migrate. tests/test_dist_packages.py holds both facts.
+# Derived: the archive (committed dist/packages.txt, not UPTERM_PACKAGES_TXT: a test's fixture table has no slim ids;
+# an archive is not always up-<id>: sqlite ships as up-sqlite3) of every slim package (dist/slim.txt) with no old name.
+# up-dopus is no slim package: born as up-dopus (2026-10-26), the one hand-written package without an old record (up-uhc, 2026-10-26, the second).
+NEW_PACKAGES = tuple(r['archive'] for r in rows(ROOT / 'dist/packages.txt')
+                    if r['id'] in slim.ids() and not old_names(r['archive'])) + ('up-dopus', 'up-uhc')
 EPOCH = 0
+
+
+def summary(pkg_id):
+    """The Description of a package: SUMMARY for the hand-built ones, else the recipe's _SUMMARY in $UPTERM_PORTS
+    (tools/pkg_rows.py read_field, the one reader). No recipe or no _SUMMARY is an error, never a stand-in text."""
+    if pkg_id in SUMMARY:
+        return SUMMARY[pkg_id]
+    ports = paths.ports()
+    if not (ports / 'pkgs' / pkg_id / 'recipe.mk').is_file():
+        raise SystemExit('pkgs: no Description for %s: not in SUMMARY and no recipe at %s (set UPTERM_PORTS to the '
+                         'upterm-ports checkout)' % (pkg_id, ports / 'pkgs' / pkg_id / 'recipe.mk'))
+    import pkg_rows
+    found = pkg_rows.read_field(ports, pkg_id, 'SUMMARY')
+    if not found:
+        raise SystemExit('pkgs: recipe %s has no %s_SUMMARY' % (ports / 'pkgs' / pkg_id / 'recipe.mk', pkg_id))
+    return found
+
+
+def depends(pkg_id):
+    """The runtime packages one package needs, as opkg package names: the recipe's <id>_RUNTIME_DEPENDS in
+    $UPTERM_PORTS (pkg_rows.read_field, the one reader, as for summary()). Not _DEPS: those are the static
+    libraries linked at build time and are inside the program. No recipe or no value: none."""
+    ports = paths.ports()
+    if not (ports / 'pkgs' / pkg_id / 'recipe.mk').is_file():
+        return []
+    import pkg_rows
+    return pkg_rows.read_field(ports, pkg_id, 'RUNTIME_DEPENDS').replace(',', ' ').split()
+
+
+def _depends_fields(r):
+    """['Depends: a, b'] for a package that declares runtime dependencies, else []. opkg installs them with
+    the package and refuses to remove one while this package is installed."""
+    d = depends(r['id'])
+    return ['Depends: ' + ', '.join(d)] if d else []
 
 
 def addons(path=TABLE):
@@ -111,14 +212,28 @@ def _scripts(r, keys=()):
                 '# with the answers, then drops the staged tree\n'
                 'set --\nif [ -f UP-Term:bin/upkg-ask ] && vsh UP-Term:bin/upkg-ask %s/Files/questions %s/answers %s; then\n'
                 '    . %s/answers\n    set -- %s\nfi\n'
-                'Execute %s/Files/install.dos %s/Files "$@"\nrc=$?\nrm -rf %s\nexit $rc\n'
+                'Execute %s/Files/install.dos %s/Files "$@"\nrc=$?\nDelete >NIL: %s ALL QUIET\nexit $rc\n'
                 % (st, st, r['archive'], st, ' '.join('%s "$%s"' % (k, k) for k in keys), st, st, st))
     else:
         post = ('#!/bin/sh\n# written by tools/pkgs.py ipk: runs the archive\'s own install script, then drops the staged tree\n'
-                'Execute %s/Files/install.dos %s/Files\nrc=$?\nrm -rf %s\nexit $rc\n' % (st, st, st))
+                'Execute %s/Files/install.dos %s/Files\nrc=$?\nDelete >NIL: %s ALL QUIET\nexit $rc\n' % (st, st, st))
     sep = '' if rec.endswith(':') else '/'
-    pre = ('#!/bin/sh\n# written by tools/pkgs.py ipk: the Uninstall copy the install left in its record\n'
-           'Execute %s%sUninstall\n' % (rec, sep))
+    # a record without its Uninstall (an install from before the copy was fixed) must not block an upgrade
+    # or a removal: warn and go on, so opkg still replaces the package
+    # the Uninstall deletes its own record drawer, and AmigaDOS cannot delete a file a running script holds
+    # open: it runs from a copy in T:, so the record drawer holds no open file when the Delete reaches it
+    # UP-Term: can be a multi-directory assign: a test finds the record in any directory, but Copy opens
+    # a path below the first directory only. So the record is read through the one real drawer that
+    # install.dos wrote to (ENVARC:up-term/Dir), assigned to UPTREAL: like resolve-addon.dos does
+    ur = rec.replace('UP-Term:', 'UPTREAL:', 1)
+    pre = ('#!/bin/sh\n# written by tools/pkgs.py ipk: runs a copy of the Uninstall the install left in its record\n'
+           'Assign >NIL: UPTREAL: UP-Term:\n'
+           'if [ -f ENVARC:up-term/Dir ]; then\n    d=$(cat ENVARC:up-term/Dir)\n'
+           '    if [ -d "$d" ]; then Assign >NIL: UPTREAL: "$d"; fi\nfi\n'
+           'if [ -f %(u)s ]; then\n    Copy %(u)s %(c)s CLONE QUIET\n    Execute %(c)s\n    Delete >NIL: %(c)s QUIET\nelse\n'
+           '    echo "warning: %(u)s does not exist, nothing to uninstall; continuing" >&2\nfi\n'
+           'Assign >NIL: UPTREAL:\nexit 0\n'
+           % {'u': '%s%sUninstall' % (ur, sep), 'c': 'T:%s.Uninstall' % r['archive']})
     need = None
     if r['needs-base'] != '-':
         # the refusal the retired vsh-script upkg made (same VERSIONS line, same older()): opkg aborts the
@@ -166,7 +281,9 @@ def _data_entries(kit, archive):
     top = '%s/%s' % (STAGE, archive)
     ents, size = [], 0
     parts = top.split('/')
-    for i in range(1, len(parts) + 1):
+    # From ./T/upkg-stage down, never ./T itself: /T is the T: assign, which always exists, and an
+    # entry for it makes opkg try to create /T and warn "Can't create '/T' (errno=5)" on every install.
+    for i in range(2, len(parts) + 1):
         ents.append((_tinfo('./' + '/'.join(parts[:i]), mode=0o755, kind=tarfile.DIRTYPE), None))
     for dirpath, dirs, files in os.walk(kit):
         dirs.sort()
@@ -194,8 +311,19 @@ def _ar(members):
     return out
 
 
-def ipk_name(r):
-    return '%s_%s_%s.ipk' % (r['archive'], r['version'], ARCH)
+def variant_arch(variant):
+    return dict(VARIANTS)[variant]
+
+
+def stage_dir(build, archive, variant='020'):
+    """The staged tree of one variant: build/dist/<archive> for the 020 build (where `make dist` stages it today),
+    build/dist/<variant>/<archive> for any other variant."""
+    top = pathlib.Path(build) / 'dist'
+    return top / archive if variant == VARIANTS[0][0] else top / variant / archive
+
+
+def ipk_name(r, variant='020'):
+    return '%s_%s_%s.ipk' % (r['archive'], r['version'], variant_arch(variant))
 
 
 def question_keys(kit):
@@ -217,16 +345,43 @@ def question_keys(kit):
     return keys
 
 
-def build_ipk(r, build):
-    """The .ipk bytes of one row from the staged tree <build>/dist/<archive>."""
-    kit = pathlib.Path(build) / 'dist' / r['archive']
+def _rename_fields(r):
+    """Replaces, Conflicts and Provides of a renamed package: opkg removes the old package, running
+    its prerm, before it installs this one, and anything that depends on the old name is still met."""
+    olds = old_names(r['archive'])
+    if not olds:
+        return []
+    j = ', '.join(olds)
+    return ['Replaces: ' + j, 'Conflicts: ' + j, 'Provides: ' + j]
+
+
+def _launch_fields(r):
+    """['Launch: <command line>'] for a row with a launch value, else []. upkg browse runs it on Enter."""
+    return [] if r['launch'] == '-' else ['Launch: ' + r['launch']]
+
+
+def _interactive_fields(kit):
+    """['UP-Term-Interactive: yes'] for an archive with install questions (its Files/questions file), else [].
+    upkg browse reads it from the feed's Packages list and runs such a package in the plain window, not in
+    a programbox. One source: the questions file."""
+    if (pathlib.Path(kit) / 'Files/questions').is_file():
+        return ['UP-Term-Interactive: yes']
+    return []
+
+
+def build_ipk(r, build, variant='020'):
+    """The .ipk bytes of one row and variant from its staged tree (stage_dir)."""
+    kit = stage_dir(build, r['archive'], variant)
     if not (kit / 'Files/install.dos').is_file():
         raise SystemExit('pkgs ipk: %s is not staged: make dist' % kit)
     data_ents, size = _data_entries(kit, r['archive'])
-    need, post, pre = _scripts(r, question_keys(kit))
-    lines = ['Package: ' + r['archive'], 'Version: ' + r['version'], 'Architecture: ' + ARCH,
+    keys = question_keys(kit)
+    need, post, pre = _scripts(r, keys)
+    lines = ['Package: ' + r['archive'], 'Version: ' + r['version'], 'Architecture: ' + variant_arch(variant),
              'Maintainer: ' + MAINTAINER, 'Installed-Size: %d' % ((size + 1023) // 1024),
-             'Description: ' + SUMMARY.get(r['id'], r['archive'])]
+             'Description: ' + summary(r['id'])]
+    lines[2:2] = _rename_fields(r) + _depends_fields(r)
+    lines += _interactive_fields(kit) + _launch_fields(r)
     ctl = ('\n'.join(lines) + '\n').encode()
     ents = [(_tinfo('./', mode=0o755, kind=tarfile.DIRTYPE), None), (_tinfo('./control', len(ctl)), ctl)]
     if need:
@@ -238,31 +393,41 @@ def build_ipk(r, build):
 
 
 def ipk(build, path=TABLE):
-    """Write one .ipk per row into <build>/ipk; byte-equal on a rebuild of the same staged tree."""
+    """Write one .ipk per row and staged variant into <build>/ipk; byte-equal on a rebuild of the same staged tree.
+    The 020 build is required; a package with no staged fpu tree gets the 020 ipk only, with a [WARN]."""
     out = pathlib.Path(build) / 'ipk'
     out.mkdir(parents=True, exist_ok=True)
     for old in out.glob('*.ipk'):
         old.unlink()
     names = []
     for r in addons(path):
-        (out / ipk_name(r)).write_bytes(build_ipk(r, build))
-        names.append(ipk_name(r))
+        for v, _ in VARIANTS:
+            if v != VARIANTS[0][0] and not (stage_dir(build, r['archive'], v) / 'Files/install.dos').is_file():
+                print('[WARN] pkgs ipk: %s has no %s build (%s): only the %s ipk is written'
+                      % (r['archive'], v, stage_dir(build, r['archive'], v), VARIANTS[0][0]), file=sys.stderr)
+                continue
+            (out / ipk_name(r, v)).write_bytes(build_ipk(r, build, v))
+            names.append(ipk_name(r, v))
     return names
 
 
 def feed(build, path=TABLE):
-    """Packages text (opkg format) of the .ipk files in <build>/ipk; one stanza a row."""
+    """Packages text (opkg format) of the .ipk files in <build>/ipk; one stanza a row and variant (the 020 ipk is
+    required, an fpu ipk is listed when it was written)."""
     out, blocks = pathlib.Path(build) / 'ipk', []
     for r in addons(path):
-        f = out / ipk_name(r)
-        if not f.is_file():
-            raise SystemExit('pkgs feed: %s missing: python3 tools/pkgs.py ipk %s' % (f, build))
-        data = f.read_bytes()
-        b = ['Package: ' + r['archive'], 'Version: ' + r['version']]
-        b += ['Architecture: ' + ARCH, 'Filename: ' + f.name, 'Size: %d' % len(data),
-              'SHA256sum: ' + hashlib.sha256(data).hexdigest(),
-              'Description: ' + SUMMARY.get(r['id'], r['archive'])]
-        blocks.append('\n'.join(b) + '\n')
+        for v, arch in VARIANTS:
+            f = out / ipk_name(r, v)
+            if not f.is_file():
+                if v != VARIANTS[0][0]:
+                    continue
+                raise SystemExit('pkgs feed: %s missing: python3 tools/pkgs.py ipk %s' % (f, build))
+            data = f.read_bytes()
+            b = ['Package: ' + r['archive'], 'Version: ' + r['version']] + _rename_fields(r) + _depends_fields(r) + _interactive_fields(stage_dir(build, r['archive'], v)) + _launch_fields(r)
+            b += ['Architecture: ' + arch, 'Filename: ' + f.name, 'Size: %d' % len(data),
+                  'SHA256sum: ' + hashlib.sha256(data).hexdigest(),
+                  'Description: ' + summary(r['id'])]
+            blocks.append('\n'.join(b) + '\n')
     return '\n'.join(blocks)
 
 
@@ -282,6 +447,9 @@ def main(argv):
         print('\n'.join(r['archive'] for r in lha_rows()))
     elif argv[:1] == ['get'] and len(argv) == 3:
         print(get(argv[1], argv[2]))
+    elif argv[:1] == ['prune'] and len(argv) == 2:
+        for n in prune(argv[1]):
+            print('dist: deleted stale %s/%s' % (argv[1], n))
     elif argv[:1] == ['index'] and len(argv) == 2:
         sys.stdout.write(index(argv[1]))
     elif argv[:1] == ['ipk'] and len(argv) == 2:

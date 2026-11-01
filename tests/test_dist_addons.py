@@ -4,7 +4,7 @@ for every add-on of dist/packages.txt, on the host (kit-split K2-6.5). The same 
 (tests/test_dist_installer.py): Installer 43.3 language, page text within 56 characters, the Installer
 runs install.dos's parts in order, every part ends with the STEP quit. Added: the check part comes first and
 stops the install, the record part is last, each Uninstall and parts.txt hold together."""
-import pathlib, re, sys, unittest
+import os, pathlib, re, sys, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 import mkinstaller as mi
 import mkmanifest as mm
 import pkgs
+import slim
 import test_dist_installer as ti
 
 ADDONS = [r for r in pkgs.rows() if r['id'] != 'base']
@@ -33,8 +34,30 @@ class EveryAddOn(unittest.TestCase):
     def each(self):
         return [(r['id'], scripts(r['id'])) for r in ADDONS]
 
-    def test_there_are_seven_add_ons(self):
-        self.assertEqual(sorted(r['id'] for r in ADDONS), ['claude', 'git', 'nvim', 'perl', 'pi', 'python', 'vim'])
+    def test_every_add_on_row_has_its_drawer_and_every_slim_package_is_one(self):
+        """One loop over the whole table: the add-ons are the hand-written six plus every slim package."""
+        hand = ['claude', 'dopus', 'nvim', 'pi', 'python', 'uhc']
+        self.assertEqual(sorted(r['id'] for r in ADDONS), sorted(hand + slim.ids()))
+
+    def test_a_failed_write_ends_the_install_with_rc_20_before_the_success_line(self):
+        """Disk full (rig, up-nvim through upkg): Copy and Echo-to-file failed with rc 20, but `FailAt 21`
+        lets rc 20 pass, so the script ran on and printed "Neovim installed" with exit 0. Every Copy and
+        every Echo to a file is followed by `If WARN` / `Quit 20`, so the Installer and upkg's postinst
+        (rc=$? of Execute) see the failure. Host-side check of the assembled script text."""
+        for pid, s in self.each():
+            lines = s['dos'].splitlines()
+            writes = 0
+            for i, line in enumerate(lines):
+                code = line.strip()
+                if not re.match(r'(Copy\s|Echo\s*>)', code) or 'ENV:UPTCHECK' in code:
+                    continue
+                writes += 1
+                ind = line[:len(line) - len(line.lstrip())]
+                # a failed Copy may first drop the assigns it was handed (Assign >NIL: NAME:, some spliced in
+                # unindented by an @include with its comment line), then quits
+                after = [l for l in lines[i + 1:i + 9] if not re.match(r'\s*(Assign >NIL: \w+:|;.*)$', l)]
+                self.assertEqual(after[:3], [ind + 'If WARN', ind + '  Quit 20', ind + 'EndIf'], '%s: %s' % (pid, line))
+            self.assertGreater(writes, 0, pid)
 
     def test_a_stand_alone_archive_never_names_an_up_term_object_outside_comments(self):
         """K2-1, owner 2026-10-13: Claude, amiga-pi and Python3 install on a Workbench with no UP-Term. An
@@ -81,7 +104,7 @@ class EveryAddOn(unittest.TestCase):
             self.assertEqual(depth, 0)
 
     def test_page_text_lines_fit_the_32_window(self):
-        for _, s in self.each():
+        for pid, s in self.each():
             stack, long = [], []
             toks = ti.tokens(s['installer'])
             for i, (kind, text) in enumerate(toks):
@@ -89,9 +112,10 @@ class EveryAddOn(unittest.TestCase):
                     stack.append(toks[i + 1][1] if i + 1 < len(toks) and toks[i + 1][0] == 'word' else '')
                 elif kind == 'close':
                     stack.pop()
-                elif kind == 'str' and 'help' not in stack and 'abort' not in stack:
+                elif kind == 'str' and 'help' not in stack and 'abort' not in stack and stack[-1:] not in (['='], ['<>']):
+                    # an operand of = or <> (a file list compared with "-") is never shown
                     long += [p for p in text.split('\\n') if len(p) > 56 and not p.startswith(' ONLY=')]   # ONLY= is upupdate's argument, not page text
-            self.assertEqual(long, [])
+            self.assertEqual(long, [], pid)
 
     def test_only_installer_43_language(self):
         for _, s in self.each():
@@ -111,8 +135,8 @@ class EveryAddOn(unittest.TestCase):
             for name, body in parts_of(s['dos']):
                 if name == 'check':
                     continue            # check.installer runs it, before any page
-                if name.startswith('copy-') and re.search(r'(?m)^\s*Copy \S+ UP-Term:\S', body):
-                    m = re.findall(r'(?m)^\s*Copy (\S+) UP-Term:(\S+) ALL CLONE QUIET$', body)
+                if name.startswith('copy-') and re.search(r'(?m)^\s*Copy \S+ (?:UP-Term|UPTREAL):\S', body):
+                    m = re.findall(r'(?m)^\s*Copy (\S+) (?:UP-Term|UPTREAL):(\S+) ALL CLONE QUIET$', body)
                     self.assertEqual(len(m), 1, name)
                     want.append(('copy', m[0][0], m[0][1]))
                 else:
@@ -125,6 +149,37 @@ class EveryAddOn(unittest.TestCase):
             self.assertIn('"STEP=check"', s['installer'])
             self.assertLess(s['installer'].index('"STEP=check"'), s['installer'].index('(P_OPTIONS)\n'))
             self.assertLess(s['installer'].index('"STEP=check"'), s['installer'].index('(askstring') if '(askstring' in s['installer'] else 10 ** 9)
+
+    # uhc: step 3 and its Uninstall clean up the files up-uhc 1.0 to 1.3 wrote through UP-Term: (its first
+    # directory, which is where they are); a delete through UPTREAL: would miss them
+    LEGACY_UP_TERM_DELETES = {'uhc'}
+
+    def test_no_add_on_writes_into_up_term_directly_every_write_goes_through_uptreal(self):
+        """s30: UP-Term: may be a multi-directory assign, where MakeDir/Copy/Delete act on its first directory
+        only. Every add-on (all rows of ADDONS, install.dos and Uninstall, whatever block: launch icons,
+        optional skills) names the real drawer UPTREAL: for anything it writes or removes, and a stand-alone
+        one assigns UPTREAL: before the first use."""
+        write = re.compile(r'^\s*(MakeDir|Delete|Rename|Protect|Copy)\b(.*)$')
+        rows = {r['id']: r for r in ADDONS}
+        for pid, s in self.each():
+            if pid in self.LEGACY_UP_TERM_DELETES:
+                continue
+            for kind in ('dos', 'uninstall'):
+                uses = 0
+                for line in s[kind].splitlines():
+                    m = write.match(line.split(';', 1)[0])
+                    if not m:
+                        continue
+                    args = [a for a in re.findall(r'"[^"]*"|\S+', m.group(2)) if not a.startswith('>')]
+                    # Copy writes its last argument (a source on UP-Term: is a read)
+                    targets = args[-1:] if m.group(1) == 'Copy' else args
+                    self.assertFalse([a for a in targets if 'UP-Term:' in a], (pid, kind, line))
+                    uses += 'UPTREAL:' in ' '.join(targets)
+                text = s[kind]
+                if uses and rows[pid]['needs-base'] == '-':
+                    first = text.index('Assign >NIL: UPTREAL: "$uptdir"')
+                    self.assertLess(text.index('Assign >NIL: UPTREAL: UP-Term:\n'), first, (pid, kind))
+                    self.assertIn('Assign >NIL: UPTREAL:\n', text[first:], (pid, kind))
 
     def test_each_part_ends_with_the_step_quit_and_if_endif_pair(self):
         end = 'If NOT "{STEP}" EQ ""\n  Quit 0\nEndIf\n'
@@ -156,7 +211,7 @@ class EveryAddOn(unittest.TestCase):
                 self.assertNotIn('Quit 20', check)
                 self.assertNotRegex(check, r'(?m)^[^;\n]*UP-Term')
                 continue
-            self.assertIn('Echo >ENV:UPTCHECK "%s needs UP-Term %s or newer. Install UP-Term.lha first."' % (row['archive'], row['needs-base']), check)
+            self.assertIn('Echo >ENV:UPTCHECK "%s needs UP-Term %s or newer. Install up-term.lha first."' % (row['archive'], row['needs-base']), check)
             major, minor = row['needs-base'].split('.')
             self.assertIn('Version >NIL: FILE UP-Term:UP-Term.version %s %s' % (major, minor), check)
             self.assertIn('Version >NIL: LIBS:ixemul.library %s' % row['ixemul'], check)
@@ -166,11 +221,37 @@ class EveryAddOn(unittest.TestCase):
         for pid, s in self.each():
             row = {r['id']: r for r in ADDONS}[pid]
             rec = dict(parts_of(s['dos']))['record']
-            self.assertIn('MakeDir >NIL: %s %s\n' % (row['record'].rsplit('/', 1)[0], row['record']), rec)
-            self.assertIn('Copy MANIFEST %s/MANIFEST CLONE' % row['record'], rec)
-            self.assertIn('Copy /Uninstall %s/Uninstall CLONE QUIET' % row['record'], rec)
-            self.assertIn('Copy VERSIONS %s/VERSIONS CLONE QUIET' % row['record'], rec)
-            self.assertIn('Delete >NIL: %s/opts ALL QUIET' % row['record'], rec)
+            # 8c76c96d: the drawers are named through $uptpkg/$uptrec (resolve-addon.dos may point them at UPTREAL:)
+            self.assertIn('Set uptpkg "%s"\n' % row['record'].rsplit('/', 1)[0], rec)
+            self.assertIn('Set uptrec "%s"\n' % row['record'], rec)
+            self.assertIn('MakeDir >NIL: $uptpkg $uptrec\n', rec)
+            self.assertIn('Copy MANIFEST $uptrec/MANIFEST CLONE', rec)
+            self.assertIn('Copy UPTPARENT:Uninstall $uptrec/Uninstall CLONE QUIET', rec)
+            self.assertIn('Copy VERSIONS $uptrec/VERSIONS CLONE QUIET', rec)
+            self.assertIn('Delete >NIL: $uptrec/opts ALL QUIET', rec)
+
+    def test_no_amigados_line_names_a_path_with_a_leading_slash(self):
+        """A1200 2026-10-20: upkg's configure of up-nvim hung on "Please insert volume Uninstall". That
+        Workbench runs UnixDirs3 WILDSTAR UNIXROOT, which reads a leading / as the root and /name as the
+        volume name:, so AmigaDOS's parent form /name breaks there. No command line of an add-on's or the
+        base's install.dos or Uninstall may give a path that starts with /.
+        A1200 2026-10-21: C:Copy 47.7 splits UPTFILES:/Uninstall into a lock on UPTFILES: plus the relative
+        name /Uninstall, which UNIXROOT reads as the root: rc 20, IoErr 218 "device (or volume) is not
+        mounted". So no name handed to Copy, Delete, Rename, List, Type, Execute, CD ... may be NAME:/...
+        either. Only Assign locks the whole X:/ name; hang a second assign on it (UPTPARENT: UPTFILES:/)
+        and name UPTPARENT:file."""
+        cmds = r'(?:Copy|CD|List|Delete|MakeDir|Execute|Rename|Protect|Assign|Type|Join|Lha|Version|IconX)'
+        texts = [(pid, kind, s[kind]) for pid, s in self.each() for kind in ('dos', 'uninstall')]
+        texts += [('base', 'dos', mi.build(ROOT / 'dist/install.dos', 'base')),
+                  ('base', 'uninstall', mi.build(ROOT / 'dist/Uninstall', 'base'))]
+        for pid, kind, text in texts:
+            for line in text.splitlines():
+                code = line.split(';', 1)[0]
+                if re.match(r'\s*%s\b' % cmds, code, re.I) and re.search(r'(?:^|\s)"?/', code):
+                    self.fail('%s %s: %s' % (pid, kind, line))
+                if (re.match(r'\s*%s\b' % cmds, code, re.I) and not re.match(r'\s*Assign\b', code, re.I)
+                        and re.search(r'(?:^|[\s">])[A-Za-z][\w.-]*:/', code)):
+                    self.fail('%s %s: NAME:/ given to a command other than Assign: %s' % (pid, kind, line))
 
     def test_the_installer_reads_the_legacy_manifest_through_only(self):
         for pid, s in self.each():
@@ -194,7 +275,7 @@ class EveryAddOn(unittest.TestCase):
                     self.assertIsNotNone(d)        # a copy part of the Installer's copyfiles/Update names its drawer
             handed = {h for h in {r['id']: r for r in ADDONS}[pid]['handed'].split(',')}
             kit = {k for _, k, _ in parts}
-            # a handed path is the archive's own, or lies under a drawer it lists (userland of git, perl, vim)
+            # a handed path is the archive's own, or lies under a drawer it lists (userland of git, perl, vim, bitchx)
             lone = {h for h in handed if not any(h == k or h.startswith(k + '/') for k in kit)}
             self.assertEqual(lone, set(), '%s: handed paths the archive does not list' % pid)
 
@@ -202,18 +283,18 @@ class EveryAddOn(unittest.TestCase):
         for pid, s in self.each():
             row = {r['id']: r for r in ADDONS}[pid]
             un = s['uninstall']
-            self.assertLess(un.index('FailAt 21'), un.index('Delete >NIL: "%s" ALL QUIET' % row['record']))
+            self.assertLess(un.index('FailAt 21'), un.index('Delete >NIL: "$uptrec" ALL QUIET'))
             lines = [l for l in un.splitlines() if l.strip() and not l.startswith(';')]
             self.assertTrue(lines[-1].startswith('Echo "%s removed' % row['archive']))
-            self.assertEqual(lines[-3], 'Delete >NIL: "%s" ALL QUIET' % row['record'])
-            self.assertEqual(lines[-2], 'Delete >NIL: "%s" QUIET' % row['record'].rsplit('/', 1)[0])   # an empty drawer only
+            self.assertEqual(lines[-4], 'Delete >NIL: "$uptrec" ALL QUIET')
+            self.assertEqual(lines[-3], 'Delete >NIL: "$uptpkg" QUIET')   # an empty drawer only
 
     def test_the_base_runs_the_uninstall_of_the_add_ons_that_need_it_and_leaves_the_others(self):
         base = mi.build(ROOT / 'dist/Uninstall', 'base')
         for r in ADDONS:
             if r['needs-base'] == '-':
-                self.assertNotIn(r['record'], base.replace('ENVARC:upkg/Claude\n', '').replace('ENVARC:upkg/amiga-pi\n', '')
-                                 .replace('ENVARC:upkg/Python3\n', ''), r['id'])
+                self.assertNotIn(r['record'], base.replace('ENVARC:upkg/up-claude\n', '').replace('ENVARC:upkg/up-pi\n', '')
+                                 .replace('ENVARC:upkg/up-python\n', '').replace('ENVARC:upkg/up-dopus\n', ''), r['id'])
             else:
                 self.assertIn('Execute %s/Uninstall' % r['record'], base)
 
@@ -221,8 +302,60 @@ class EveryAddOn(unittest.TestCase):
         """The base Uninstall asks three questions of ENVARC:upkg: the names in it are packages.txt's"""
         base = mi.build(ROOT / 'dist/Uninstall', 'base')
         names = set(re.findall(r'EXISTS ENVARC:upkg/(\S+)', base))
-        want = {r['record'].split('/')[-1] for r in ADDONS if r['needs-base'] == '-'}
-        self.assertEqual(names, want)
+        # up-dopus leaves no assign, startup block or library behind: the base Uninstall has nothing to undo for it
+        want = {r['record'].split('/')[-1] for r in ADDONS if r['needs-base'] == '-' and r['id'] != 'dopus'}
+        old = {o.split('/')[-1] for r in ADDONS for o, _ in pkgs.old_record(r)}    # the migration renames name the old records too
+        self.assertEqual(names - old, want)
+
+
+RENAMED = [r for r in ADDONS if r['archive'] not in pkgs.NEW_PACKAGES]     # a new package has no old record
+
+
+class RecordMigration(unittest.TestCase):
+    """The up-* rename: a record the old Installer or old .lha left under the old name is renamed to the new
+    one before anything looks at it, in the add-on's own check step, in the Installer's update probe and in the
+    base Uninstall (so it still finds the add-ons)."""
+    def test_each_add_on_check_step_renames_its_old_record_first(self):
+        for r in RENAMED:
+            (old, new), = pkgs.old_record(r)
+            check = mi.build(ROOT / ('dist/common/%s' % mi.read_values(r['id'])['CHECKFRAG']), r['id'])
+            if old.startswith('UP-Term:'):
+                # a record under UP-Term:: renamed through the one real drawer, resolved first (a multi-directory
+                # UP-Term: renames in its first directory only), and the assign dropped after
+                old, new = (x.replace('UP-Term:', 'UPTREAL:', 1) for x in (old, new))
+                block = 'If EXISTS %s\n  If NOT EXISTS %s\n    Rename >NIL: %s %s\n  EndIf\nEndIf\nAssign >NIL: UPTREAL:\n' % (old, new, old, new)
+                self.assertLess(check.index('Assign >NIL: UPTREAL: UP-Term:\n'), check.index('If EXISTS %s' % old), r['id'])
+            else:
+                block = 'If EXISTS %s\n  If NOT EXISTS %s\n    Rename >NIL: %s %s\n  EndIf\nEndIf' % (old, new, old, new)
+            self.assertIn(block, check, r['id'])
+
+    def test_the_uptreal_lookup_has_one_source_resolve_addon_includes_it(self):
+        src = (ROOT / 'dist/common/resolve-addon.dos').read_text(encoding='latin-1')
+        self.assertNotIn('ENVARC:up-term/Dir', '\n'.join(l for l in src.splitlines() if not l.startswith(';')))
+        self.assertIn('; @include dist/common/resolve-uptreal.dos\n', src)
+        out = mi.build(ROOT / 'dist/common/resolve-addon.dos', 'nvim')
+        self.assertEqual(out.count('If EXISTS ENVARC:up-term/Dir'), 1)
+        self.assertEqual(out.count('Assign >NIL: UPTREAL: "$uptdir"'), 1)
+
+    def test_each_add_on_installer_probe_renames_it_too(self):
+        for r in RENAMED:
+            (old, new), = pkgs.old_record(r)
+            upd = mi.build(ROOT / 'dist/common/update.installer', r['id'])
+            self.assertIn('(run (cat "Rename >NIL: " "%s" " " "%s"))' % (old, new), upd, r['id'])
+
+    def test_the_base_uninstall_renames_all_seven_old_records_before_it_looks_at_any(self):
+        base = mi.build(ROOT / 'dist/Uninstall', 'base')
+        first_look = base.index('Execute UP-Term:pkg/up-')
+        for r in RENAMED:
+            (old, new), = pkgs.old_record(r)
+            block = 'If EXISTS %s\n  If NOT EXISTS %s\n    Rename >NIL: %s %s\n  EndIf\nEndIf' % (old, new, old, new)
+            self.assertIn(block, base, r['id'])
+            self.assertLess(base.index(block), first_look, r['id'])
+        self.assertEqual(base.count('Rename >NIL:'), 7)
+
+    def test_the_base_itself_renames_nothing(self):
+        self.assertEqual(mi.read_values('base')['RENAMERECORD'], '')
+        self.assertEqual(mi.read_values('base')['RENAMERECORDI'], '')
 
 
 # W-I1: the quick-launch icons. id -> (launcher names, the app command vsh -c runs, window size)
@@ -245,7 +378,10 @@ class QuickLaunchIcons(unittest.TestCase):
             parts = [n for n, _ in parts_of(s['dos'])]
             self.assertEqual(parts[-2:], ['launch', 'record'], pid)
             body = dict(parts_of(s['dos']))['launch']
-            want = 'Copy %s UP-Term: CLONE QUIET' % ' '.join('"launch/%s" "launch/%s.info"' % (n, n) for n in names)
+            # s25/s30: every launch icon is written to the one real drawer UPTREAL: (a stand-alone add-on
+            # resolves it itself, inside its Assign UP-Term: EXISTS gate)
+            dest = 'UPTREAL:'
+            want = 'Copy %s %s CLONE QUIET' % (' '.join('"launch/%s" "launch/%s.info"' % (n, n) for n in names), dest)
             self.assertIn(want, body, pid)
             self.assertIn('(set #step "launch"', s['installer'], pid)
 
@@ -253,21 +389,24 @@ class QuickLaunchIcons(unittest.TestCase):
         rows = {r['id']: r for r in ADDONS}
         for pid in LAUNCHERS:
             body = dict(parts_of(scripts(pid)['dos']))['launch']
-            guard = 'Assign >NIL: UP-Term: EXISTS\nIf NOT WARN\n  Copy '
+            guard = 'Assign >NIL: UP-Term: EXISTS\nIf NOT WARN\nAssign >NIL: UPTREAL: UP-Term:\n'
             if rows[pid]['needs-base'] == '-':
-                self.assertIn(guard, body, pid)
+                self.assertIn(guard, re.sub(r'(?m)^ *;.*\n|^ +', '', body), pid)
+                self.assertIn('Assign >NIL: UPTREAL: "$uptdir"', body, pid)
             else:
                 self.assertNotIn('Assign >NIL', body, pid)       # the check part already stopped without the base
 
     def test_uninstall_deletes_each_script_and_its_info_from_up_term_and_guards_it_when_stand_alone(self):
         rows = {r['id']: r for r in ADDONS}
         for pid, (names, _, _) in LAUNCHERS.items():
-            body = (ROOT / 'dist/addons' / pid / 'uninstall-body.dos').read_text()
+            body = scripts(pid)['uninstall']
             for n in names:
-                q = '"UP-Term:%s" "UP-Term:%s.info"' % (n, n) if ' ' in n else 'UP-Term:%s UP-Term:%s.info' % (n, n)
+                d = 'UPTREAL:'
+                q = '"%s%s" "%s%s.info"' % (d, n, d, n) if ' ' in n else '%s%s %s%s.info' % (d, n, d, n)
                 self.assertIn(q, body, pid)
             if rows[pid]['needs-base'] == '-':
-                self.assertLess(body.index('Assign >NIL: UP-Term: EXISTS\nIf NOT WARN'), body.index('UP-Term:' + names[0]), pid)
+                self.assertLess(body.index('Assign >NIL: UP-Term: EXISTS\nIf NOT WARN'), body.index('Assign >NIL: UPTREAL: "$uptdir"'), pid)
+                self.assertLess(body.index('Assign >NIL: UPTREAL: "$uptdir"'), body.index('UPTREAL:' + names[0]), pid)
 
     def test_an_icon_with_its_own_window_tooltype_has_that_one_window_tooltype_only(self):
         """Two WINDOW= tooltypes (the default and the launcher's) opened the default 640x400 "UP-Term" window
@@ -282,7 +421,7 @@ class QuickLaunchIcons(unittest.TestCase):
             self.assertIn(b'WINDOW=XCON:0/12/800/560/Neovim/CLOSE', data)
             base = pathlib.Path(d) / 'y.info'
             subprocess.run([sys.executable, str(ROOT / 'tools/mkicon.py'), str(base)], check=True)
-            self.assertIn(b'WINDOW=XCON:0/20/640/400/UP-Term/CLOSE', base.read_bytes())    # the UP-Term icon keeps its default
+            self.assertIn(b'WINDOW=XCON:0/20/0/400/UP-Term/CLOSE', base.read_bytes())    # the UP-Term icon keeps its default
 
     def test_parts_txt_maps_the_launch_drawer_to_the_launch_part(self):
         for pid in LAUNCHERS:
@@ -324,7 +463,7 @@ class PythonUninstall(unittest.TestCase):
         # ... else by restoring the S:User-Startup Install kept, only when it is still that plus the block
         self.assertNotIn('Compare ', un.replace('no C:Compare', ''), 'a stock Workbench has no C:Compare (rig 2, 2026-10-13)')
         self.assertIn('If "$uspsize" EQ "$usnsize"', un)
-        self.assertIn('Copy ENVARC:upkg/Python3/User-Startup.before S:User-Startup CLONE QUIET', un)
+        self.assertIn('Copy ENVARC:upkg/up-python/User-Startup.before S:User-Startup CLONE QUIET', un)
         self.assertLess(v, un.index('If "$uspsize" EQ "$usnsize"'))
         # ... else it stays, and says so
         self.assertIn('S:User-Startup changed since Python3 was installed', un)
@@ -337,16 +476,16 @@ class PythonUninstall(unittest.TestCase):
             self.assertIn('Echo >>T:User-Startup.python "%s"' % line, self.S['uninstall'])
         # a name the base's unstartup.sh (every ";BEGIN UP-Term...") does not take with it
         self.assertNotIn('BEGIN UP-Term', dos)
-        self.assertIn('Copy S:User-Startup ENVARC:upkg/Python3/User-Startup.before CLONE QUIET', dos)
+        self.assertIn('Copy S:User-Startup ENVARC:upkg/up-python/User-Startup.before CLONE QUIET', dos)
 
     def test_the_ixemul_part_installs_only_when_none_that_new_is_there_and_never_downgrades(self):
         """THE IXEMUL.LIBRARY RULE: a library of 47 or newer stays (UP-Term's 80 included)."""
         ix = dict(parts_of(self.S['dos']))['ixemul']
         a = ix.index('Version >NIL: LIBS:ixemul.library 47\nIf WARN\n')
-        copy = ix.index('Copy libs/ixemul.library LIBS:ixemul.library CLONE QUIET')
-        end = ix.index('EndIf', copy)
+        copy = ix.index('Copy $ixlib LIBS:ixemul.library CLONE QUIET')
+        end = ix.index('\nEndIf', copy)       # the If WARN's own, not a write check's (those are indented)
         self.assertLess(a, copy)
-        self.assertEqual(ix.count('Copy libs/ixemul.library'), 1)        # one copy, inside the If WARN
+        self.assertEqual(ix.count('Copy $ixlib '), 1)        # one copy, inside the If WARN
         self.assertNotIn('\nEndIf', ix[a:copy])                          # nothing closes the If before the copy
         self.assertIn('Echo >ENVARC:upkg/ixemul/installed-by-Python3', ix[copy:end])
         self.assertIn('Copy libs/ixnet.library LIBS:ixnet.library CLONE QUIET', ix[copy:end])
@@ -412,7 +551,7 @@ class ClaudeInstall(unittest.TestCase):
         self.assertNotIn('Copy ClaudeCode', dos)
         self.assertNotIn('Protect C:ClaudeCode', dos)
         self.assertIn('Delete >NIL: C:ClaudeCode QUIET', dos)
-        self.assertIn('Delete >NIL: UP-Term:ClaudeCode UP-Term:ClaudeCode.info QUIET', dos)
+        self.assertIn('Delete >NIL: UPTREAL:ClaudeCode UPTREAL:ClaudeCode.info QUIET', dos)
         self.assertNotIn('launch/ClaudeCode', dos)
         self.assertIn(' C:Claude C:ClaudeCode ', self.S['uninstall'])
         parts = (ROOT / 'dist/addons/claude/parts.txt').read_text()
@@ -428,9 +567,9 @@ class ClaudeInstall(unittest.TestCase):
         """NL18: C:wasabid for the session daemon; a wasabid already there (the base kit's) is left alone"""
         dos = self.S['dos']
         self.assertIn('If NOT EXISTS C:wasabid\n  Copy wasabid C:wasabid CLONE QUIET', dos)
-        self.assertIn('Echo >ENVARC:upkg/Claude/wasabid "installed by Claude.lha"', dos)
+        self.assertIn('Echo >ENVARC:upkg/up-claude/wasabid "installed by up-claude.lha"', dos)
         # a later install updates only our own copy (the marker), never another one
-        self.assertIn('Else\n  If EXISTS ENVARC:upkg/Claude/wasabid\n    Copy wasabid C:wasabid CLONE QUIET', dos)
+        self.assertIn('Else\n  If EXISTS ENVARC:upkg/up-claude/wasabid\n    Copy wasabid C:wasabid CLONE QUIET', dos)
         parts = (ROOT / 'dist/addons/claude/parts.txt').read_text()
         self.assertRegex(parts, r'(?m)^claude\s+Files/wasabid$')
         self.assertRegex(parts, r'(?m)^claude\s+Files/wasabid\.LICENSE$')
@@ -444,13 +583,13 @@ class ClaudeInstall(unittest.TestCase):
 
     def test_uninstall_removes_only_the_wasabid_this_archive_put_in_and_not_one_the_boot_block_starts(self):
         un = self.S['uninstall']
-        self.assertIn('If EXISTS ENVARC:upkg/Claude/wasabid\n  Search >NIL: S:User-Startup "C:wasabid"\n  If WARN\n'
-                      '    Delete >NIL: C:wasabid QUIET\n  EndIf\n  Delete >NIL: ENVARC:upkg/Claude/wasabid QUIET', un)
-        self.assertLess(un.index('ENVARC:upkg/Claude/wasabid'), un.index('Delete >NIL: "ENVARC:upkg/Claude" ALL QUIET'))
+        self.assertIn('If EXISTS ENVARC:upkg/up-claude/wasabid\n  Search >NIL: S:User-Startup "C:wasabid"\n  If WARN\n'
+                      '    Delete >NIL: C:wasabid QUIET\n  EndIf\n  Delete >NIL: ENVARC:upkg/up-claude/wasabid QUIET', un)
+        self.assertLess(un.index('ENVARC:upkg/up-claude/wasabid'), un.index('Delete >NIL: "$uptrec" ALL QUIET'))
 
     def test_the_base_installer_help_mentions_the_session_daemon(self):
         base = (ROOT / 'dist/Install.installer').read_text()
-        self.assertIn('Claude.lha brings its own wasabid for the session', base)
+        self.assertIn('up-claude.lha brings its own wasabid for the session', base)
 
 
 SKILLS = ['amigados', 'arexx', 'amiga-c-build', 'amiga-autodocs']
@@ -462,18 +601,19 @@ class PiInstall(unittest.TestCase):
     S = scripts('pi')
 
     def test_the_binary_and_the_settings_drawer(self):
-        self.assertIn('Copy amiga-pi C:amiga-pi CLONE QUIET\nIf NOT EXISTS ENVARC:amiga-pi\n  MakeDir ENVARC:amiga-pi\nEndIf', self.S['dos'])
+        self.assertIn('Copy amiga-pi C:amiga-pi CLONE QUIET\nIf WARN\n  Quit 20\nEndIf\nIf NOT EXISTS ENVARC:amiga-pi\n  MakeDir ENVARC:amiga-pi\nEndIf', self.S['dos'])
 
     def test_the_changelog_goes_to_the_record_drawer_not_the_settings_drawer(self):
         """P12-B2: amiga-pi shows its CHANGELOG.md as What's New and for /changelog, read from
-        ENVARC:upkg/amiga-pi/CHANGELOG.md (amiga-pi's pi_platform.changelog); Install copies it into the record drawer
+        ENVARC:upkg/up-pi/CHANGELOG.md (amiga-pi's pi_platform.changelog); Install copies it into the record drawer
         (Uninstall removes that drawer whole) and writes nothing into ENVARC:amiga-pi; the kit stages it from amiga-pi."""
         dos = self.S['dos']
-        self.assertIn('Copy CHANGELOG.md ENVARC:upkg/amiga-pi/CHANGELOG.md CLONE QUIET', dos)
-        self.assertLess(dos.index('MakeDir >NIL: ENVARC:upkg ENVARC:upkg/amiga-pi'), dos.index('Copy CHANGELOG.md'))
+        self.assertIn('Copy CHANGELOG.md ENVARC:upkg/up-pi/CHANGELOG.md CLONE QUIET', dos)
+        self.assertLess(dos.index('MakeDir >NIL: ENVARC:upkg ENVARC:upkg/up-pi'), dos.index('Copy CHANGELOG.md'))
         self.assertIn('pi              Files/CHANGELOG.md', (ROOT / 'dist/addons/pi/parts.txt').read_text())
         self.assertIn('cp $(AMIGA_PI)/CHANGELOG.md $(KIT_pi)/Files/CHANGELOG.md', (ROOT / 'Makefile').read_text())
-        self.assertIn('Delete >NIL: "ENVARC:upkg/amiga-pi" ALL QUIET', self.S['uninstall'])
+        self.assertIn('Set uptrec "ENVARC:upkg/up-pi"', self.S['uninstall'])
+        self.assertIn('Delete >NIL: "$uptrec" ALL QUIET', self.S['uninstall'])
 
     def test_uninstall_removes_the_binary_not_the_settings_drawer(self):
         un = self.S['uninstall']
@@ -486,8 +626,10 @@ class PiInstall(unittest.TestCase):
         whole, so an update leaves no stale file) and never the skills drawer; Uninstall removes the same four by name."""
         dos = self.S['dos']
         part = dos.split('Lab skills\n')[1].split('Lab launch\n')[0]
-        self.assertIn('Assign >NIL: UP-Term: EXISTS\nIf NOT WARN\n  MakeDir >NIL: UP-Term:var UP-Term:var/amiga-pi UP-Term:var/amiga-pi/skills', part)
-        for where in ('UP-Term:var/amiga-pi/skills', 'ENVARC:amiga-pi/skills'):
+        self.assertIn('Assign >NIL: UP-Term: EXISTS\nIf NOT WARN\n', part)
+        self.assertIn('Assign >NIL: UPTREAL: "$uptdir"', part)     # s30: the real drawer, not the first of a multi-directory assign
+        self.assertIn('  MakeDir >NIL: UPTREAL:var UPTREAL:var/amiga-pi UPTREAL:var/amiga-pi/skills', part)
+        for where in ('UPTREAL:var/amiga-pi/skills', 'ENVARC:amiga-pi/skills'):
             copied = re.findall(r'Copy skills/(\S+) %s/(\S+) ALL CLONE QUIET' % re.escape(where), part)
             self.assertEqual(sorted(copied), sorted((n, n) for n in SKILLS), where)
             dels = re.findall(r'Delete >NIL: %s/(\S+) ALL QUIET' % re.escape(where), part)
@@ -497,9 +639,9 @@ class PiInstall(unittest.TestCase):
         self.assertIn('Quit 0', part.split('Lab launch')[0])                 # a step (STEP) ends here
         un = self.S['uninstall']
         self.assertEqual(sorted(re.findall(r'ENVARC:amiga-pi/skills/(\S+)', un)), sorted(SKILLS))
-        self.assertEqual(sorted(re.findall(r'UP-Term:var/amiga-pi/skills/(\S+)', un)), sorted(SKILLS))
-        self.assertLess(un.index('Assign >NIL: UP-Term: EXISTS\nIf NOT WARN\n  Delete >NIL: UP-Term:var/amiga-pi/skills/'),
-                        un.index('/skills/amigados UP-Term:var'))   # the UP-Term: drawers are looked at only when the assign exists
+        self.assertEqual(sorted(re.findall(r'UPTREAL:var/amiga-pi/skills/(\S+)', un)), sorted(SKILLS))
+        self.assertLess(un.index('Assign >NIL: UP-Term: EXISTS\nIf NOT WARN\n', un.index('ENVARC:amiga-pi/skills/amigados')),
+                        un.index('/skills/amigados UPTREAL:var'))   # the UP-Term: drawers are looked at only when the assign exists
 
     def test_the_kit_stages_the_skills_and_lists_them_as_the_skills_part(self):
         parts = mm.read_parts((ROOT / 'dist/addons/pi/parts.txt').read_text())
@@ -508,10 +650,10 @@ class PiInstall(unittest.TestCase):
         self.assertIn('cp -R $(AMIGA_PI_SKILLS) $(KIT_pi)/Files/skills', mk)
         self.assertIn('AMIGA_PI_SKILLS := $(AMIGA_PI)/skills', mk)
         self.assertIn('(set #step "skills" #kb @KBSKILLS@', (ROOT / 'dist/addons/pi/Install.installer').read_text())
-        check = re.search(r'(?ms)^dist-check:\n.*?^\t@test -s \$\(BUILD\)/UP-Term-src.lha', mk).group(0)
+        check = re.search(r'(?ms)^dist-check:[^\n]*\n.*?^\t@test -s \$\(BUILD\)/up-term-src.lha', mk).group(0)
         for n in SKILLS:     # dist-check lists the four SKILL.md in the lha
             self.assertIn(n, check)
-        self.assertIn('amiga-pi/Files/skills/$$s/SKILL.md', check)
+        self.assertIn('up-pi/Files/skills/$$s/SKILL.md', check)
 
     def test_the_readme_names_the_ndk_convention_and_that_the_autodocs_are_not_shipped(self):
         rd = (ROOT / 'dist/addons/pi/README.txt').read_text()
@@ -546,5 +688,308 @@ class NvimShell(unittest.TestCase):
         self.assertIn('dist/addons/nvim/sysinit.vim $(KIT_nvim)/Files/nvim/share/nvim/sysinit.vim', m.group(0))
 
 
+class DopusAddOn(unittest.TestCase):
+    """D8 and D10 of the Amarchy DOpus plan: the add-on carries both upstream 68k archives, pinned by md5
+    (dist/addons/dopus/archives.txt), with the licence files, and the Installer picks one by (database "cpu")."""
+    A = ROOT / 'dist/addons/dopus'
+
+    def pins(self):
+        return {f[0]: (f[1], f[2]) for f in (l.split() for l in (self.A / 'archives.txt').read_text().splitlines()
+                                              if l.strip() and not l.startswith('#'))}
+
+    def test_both_68k_archives_are_pinned_licensed_and_chosen_by_cpu(self):
+        self.assertEqual(self.pins(), {
+            'DOpus5_104_os3.lha': ('0800b7b3bf02c83bd45a84d038ee483e', 'os3'),
+            'DOpus5_104_os3-68000.lha': ('f8cc057cedabccdd5df0b0e4c2ab8cc2', 'os3-68000')})
+        self.assertIn('dopus', [r['id'] for r in ADDONS])
+        for f in ('COPYING', 'SOURCE.txt', 'LICENSES.txt'):
+            self.assertTrue((self.A / f).stat().st_size > 0, f)
+        self.assertIn('AROS PUBLIC LICENSE', (self.A / 'COPYING').read_text())
+        self.assertIn('Directory Opus 5', (ROOT / 'dist/LICENSES.txt').read_text())
+        src = (self.A / 'SOURCE.txt').read_text()
+        for name in self.pins():
+            self.assertIn(name, src)
+        s = scripts('dopus')
+        for name in self.pins():
+            self.assertIn(name, s['installer'])      # the page text names both archives
+        self.assertRegex(s['installer'], r'database "cpu"\) "68000"\)\s+\(= \(database "cpu"\) "68010"')
+        self.assertIn('ENV:UPTOPTCPU68000', s['installer'])
+        self.assertIn('Set dopusbuild os3-68000', s['dos'])
+        self.assertIn('Set dopusbuild os3\n', s['dos'])
+        self.assertIn('If EXISTS ENV:UPTOPTCPU68000', s['dos'])
+        self.assertIn('Install DOpus5', s['dos'])
+        # the Makefile unpacks the pinned drawers: its rule reads this table
+        mk = (ROOT / 'Makefile').read_text()
+        self.assertIn('dist/addons/dopus/archives.txt', mk[mk.index('\ndist-dopus:'):])
+
+    def test_the_68000_build_is_not_refused_by_the_68020_check(self):
+        # D10 on the 68000 rig (2026-10-29): the shared requirements part aborted "up-dopus needs a 68020 or
+        # better" before the add-on's own CPU choice ran; the base and the other add-ons still refuse a 68000
+        abort = 'needs a 68020 or better'
+        guard = '(if (and (= "NO" "NO") (or (= (database "cpu") "68000")'
+        self.assertIn(abort, scripts('dopus')['installer'])
+        self.assertNotIn(guard, scripts('dopus')['installer'])
+        for pkg_id in [r['id'] for r in ADDONS if r['id'] != 'dopus']:
+            self.assertIn(guard, scripts(pkg_id)['installer'], pkg_id)
+        base = mi.build(ROOT / 'dist/Install.installer', 'base')
+        self.assertIn(guard, base)
+
+
+
+class UhcAddOn(unittest.TestCase):
+    """up-uhc 1.5 installs UHC by running the author's own installer (uhcinstall). The host cannot run AmigaDOS:
+    these tests read the assembled script text and its line order (rig 8 runs the real thing, see
+    thoughts/spot/term-findings/uhc-1.5-uhcinstall.md)."""
+    A = ROOT / 'dist/addons/uhc'
+
+    def dos(self):
+        return scripts('uhc')['dos'].splitlines()
+
+    def at(self, lines, text, start=0):
+        for i in range(start, len(lines)):
+            if lines[i].strip() == text:
+                return i
+        self.fail('line not found: %r' % text)
+
+    def guards(self, lines, i):
+        """The If conditions enclosing line i (an Else turns the condition into 'NOT cond')."""
+        st = []
+        for l in lines[:i]:
+            s = l.strip()
+            if s.startswith('If '):
+                st.append(s[3:])
+            elif s == 'Else':
+                st[-1] = 'NOT ' + st[-1]
+            elif s == 'EndIf':
+                st.pop()
+        return st
+
+    def test_the_package_is_1_5_with_no_stubs_and_ships_unstartup_sh(self):
+        self.assertFalse((self.A / 'archives.txt').exists())
+        self.assertFalse((self.A / 'stubs').exists())
+        self.assertIn('fetch-uhc       Files/unstartup-uhc.sh', (self.A / 'parts.txt').read_text())
+        self.assertIn('uhc', [r['id'] for r in ADDONS])
+        self.assertIn('fetch-uhc', scripts('uhc')['installer'])
+        mk = (ROOT / 'Makefile').read_text()
+        rule = mk[mk.index('\ndist-uhc:'):mk.index('\ndist-uhc:') + 700]
+        self.assertIn('cp dist/unstartup.sh $(KIT_uhc)/Files/unstartup-uhc.sh', rule)
+        self.assertNotIn('stubs', rule)
+        self.assertEqual(pkgs.get('uhc', 'version'), '1.5')
+        self.assertEqual(pkgs.get('uhc', 'handed'), 'Files/unstartup-uhc.sh')
+
+    def test_the_postinst_fetches_over_plain_http_because_the_kit_curl_has_no_tls(self):
+        # UP-Term:bin/curl is built without TLS (CURL-HTTPS-TLS); an https URL ends the postinst with rc 20 and
+        # no SYS:UHC. uhc.megaburken.net serves aget.os3 and uhcinstall over http, as do uhcinstall's own mirrors.
+        L = self.dos()
+        live = [l for l in L if not l.strip().startswith(';')]
+        self.assertEqual([l.strip() for l in live if 'https://' in l], [])
+
+    def test_a_fresh_install_runs_uhcinstall_after_its_preconditions_and_verifies_the_result(self):
+        L = self.dos()
+        S = ['' if l.strip().startswith(';') else l.strip() for l in L]
+        which_lha = self.at(L, 'Which >NIL: LhA')
+        dl = self.at(L, 'UP-Term:bin/curl -fsSL -o T:uhcinstall http://uhc.megaburken.net/uhcinstall')
+        ver = self.at(L, 'Search >NIL: T:uhcinstall "VER: uhcinstall"')
+        run = self.at(L, 'Execute T:uhcinstall ARCH=os3 DEST=SYS:UHC SILENT')
+        chk = self.at(L, 'If NOT EXISTS SYS:UHC/UHC-Startup')
+        envchk = self.at(L, 'If NOT "$uhcbin" EQ "SYS:UHC/"')
+        self.assertTrue(which_lha < dl < ver < run < chk < envchk)
+        # lha is checked before uhcinstall runs: its Ask is not guarded by SILENT and would hang
+        self.assertEqual(L[which_lha + 1].strip(), 'If WARN')
+        self.assertIn('[ERROR]', L[which_lha + 2])
+        self.assertEqual(L[which_lha + 3].strip(), 'Quit 20')
+        # aget or wget on the path, else the author's own aget.os3 is fetched before uhcinstall runs
+        aget = self.at(L, 'Which >NIL: aget')
+        self.assertIn('http://uhc.megaburken.net/aget.os3', '\n'.join(S[aget:run]))
+        self.assertTrue(aget < run)
+        # the verification failures end with rc 20
+        for i in (chk, envchk):
+            self.assertEqual(L[i + 1].strip().startswith('Echo "[ERROR]'), True)
+            self.assertEqual(L[i + 2].strip(), 'Quit 20')
+        # nothing of 1.4 is left: no own unpack, block, seeding, stubs or UHC-Remove
+        text = '\n'.join(S)
+        for gone in ('uhctools_os3.lha', 'SYS:UHC/UHC-Remove', 'UHCFixENV', 'stubs', 'EXTBIN SYS', ';BEGIN UHC',
+                     'Echo >>S:User-Startup', 'SetEnv'):
+            self.assertNotIn(gone, text, gone)
+
+    def test_a_missing_amissl_is_named_before_curl_runs(self):
+        """Regression (2026-10-29, rig 9): without LIBS:amisslmaster.library the AmiSSL-linked curl cannot start, and the
+        script blamed 'network or server'. The check comes before every curl call and ends with rc 20."""
+        L = self.dos()
+        chk = self.at(L, 'Version >NIL: LIBS:amisslmaster.library 5')
+        self.assertEqual(L[chk + 1].strip(), 'If WARN')
+        self.assertIn('[ERROR]', L[chk + 2])
+        self.assertIn('AmiSSL', L[chk + 2])
+        self.assertIn('Install-AmiSSL', L[chk + 3])
+        self.assertEqual(L[chk + 4].strip(), 'Quit 20')
+        first_curl = min(i for i, l in enumerate(L) if l.strip().startswith('UP-Term:bin/curl '))
+        self.assertTrue(chk < first_curl)
+
+    def test_uhcinstall_never_runs_over_an_existing_uhc(self):
+        L = self.dos()
+        S = [l.strip() for l in L]
+        runs = [i for i, s in enumerate(S) if s.startswith('Execute T:uhcinstall')]
+        self.assertEqual(len(runs), 1)
+        self.assertIn('"$uhcmode" EQ fresh', self.guards(L, runs[0]))
+        # fresh is the default; both signs of an existing install turn it to foreign before that guard
+        fresh = self.at(L, 'Set uhcmode fresh')
+        g = self.at(L, 'If EXISTS SYS:UHC/UHC-Startup')
+        self.assertEqual(S[g + 1], 'Set uhcmode foreign')
+        e = self.at(L, 'If EXISTS "$uhcbin"')
+        self.assertEqual(S[e + 1], 'Set uhcmode foreign')
+        self.assertTrue(fresh < g < e < runs[0])
+
+    def test_an_empty_or_unset_uhcbin_never_reaches_exists(self):
+        """1.4 deleted UHCBIN and then tested If EXISTS "$UHCBIN": the empty expansion is the current directory,
+        so the mode became foreign and uhcinstall never ran."""
+        L = self.dos()
+        S = [l.strip() for l in L]
+        self.assertNotIn('If EXISTS "$UHCBIN"', S)
+        self.assertNotIn('If NOT EXISTS "$UHCBIN"', S)
+        self.assertIn('GetEnv >NIL: UHCBIN', S)
+        for i, s in enumerate(S):
+            if s.startswith('If EXISTS "$') or s.startswith('If NOT EXISTS "$'):
+                var = s[s.index('"$') + 2:s.rindex('"')]
+                self.assertIn('NOT "$%s" EQ ""' % var, self.guards(L, i), s)
+        # "is set" is GetEnv plus WARN, directly before the value is read
+        i = self.at(L, 'GetEnv >NIL: UHCBIN')
+        self.assertEqual(S[i + 1], 'If NOT WARN')
+
+    def test_the_legacy_block_goes_out_without_envarc_unstartup_sh(self):
+        L = self.dos()
+        S = ['' if l.strip().startswith(';') else l.strip() for l in L]
+        run = self.at(L, 'UP-Term:bin/vsh unstartup-uhc.sh uhc')
+        self.assertNotIn('EXISTS ENVARC:up-term/unstartup.sh', ' '.join(self.guards(L, run)))
+        self.assertNotIn('ENVARC:up-term/unstartup.sh', '\n'.join(S))
+        # the archive's own copy (an old ENVARC one cannot take a named block out) is read from the Files drawer,
+        # which is the current directory (CD "{DIR}"), and is built from dist/'s one copy
+        self.assertTrue((ROOT / 'dist/unstartup.sh').is_file())
+        self.assertIn('CD "', '\n'.join(S[:run]))
+        # a block that is still there afterwards is an error, not a silent pass
+        self.assertTrue(any('[ERROR] S:User-Startup still names UP-Term:uhc' in s for s in S[run:]))
+        # the legacy removal comes before uhcinstall
+        self.assertLess(run, self.at(L, 'Execute T:uhcinstall ARCH=os3 DEST=SYS:UHC SILENT'))
+
+    def test_uhc_variables_naming_up_term_are_dropped_from_env_and_envarc_before_the_mode_is_decided(self):
+        L = self.dos()
+        S = [l.strip() for l in L]
+        mode = self.at(L, 'Set uhcmode fresh')
+        for var in ('UHCBIN', 'UHC/EXTBIN', 'UHC/EXTDOC'):
+            for d in ('ENV:', 'ENVARC:'):
+                f = d + var
+                s = self.at(L, 'Search >NIL: %s "UP-Term:"' % f)
+                self.assertLess(s, mode, f)
+                self.assertEqual(S[s + 2], 'Delete >NIL: %s QUIET' % f)
+                self.assertIn('EXISTS ' + f, self.guards(L, s))
+        # the upgrade copies the user's packages into the UHC tree after uhcinstall
+        run = self.at(L, 'Execute T:uhcinstall ARCH=os3 DEST=SYS:UHC SILENT')
+        for line in ('Copy >NIL: UP-Term:uhc/ExtBin UHC:ExtBin ALL CLONE QUIET',
+                     'Copy >NIL: UP-Term:uhc/ExtDoc UHC:ExtDoc ALL CLONE QUIET',
+                     'Copy >NIL: UP-Term:uhc/Packages/Installed UHC:Packages/Installed ALL CLONE QUIET'):
+            self.assertGreater(self.at(L, line), run, line)
+        # no variable is ever set by this script: uhcinstall sets UHCBIN, so none can name UP-Term:
+        for s in S:
+            self.assertFalse(s.startswith(('SetEnv', 'Setenv')), s)
+
+    def test_uhc_extbin_is_made_and_put_on_the_path_by_the_install(self):
+        L = self.dos()
+        S = [l.strip() for l in L]
+        assign = self.at(L, 'Assign UHC: "$uhcdir"')
+        mk = self.at(L, 'Execute UHC:S/pkg-envcheck', assign)
+        live = self.at(L, 'Path UHC:ExtBin ADD', mk)
+        # live: the drawer exists before Path ADD takes its lock, at the top level (not inside the legacy copy)
+        self.assertEqual(self.guards(L, live), [])
+        self.assertEqual(self.guards(L, mk), [])
+        # the drawer is made on every run, so UHC's own boot block finds it; up-uhc writes no lines of its own
+        self.assertFalse(any('User-Startup' in x and x.startswith('Echo >>') for x in S))
+
+    def test_uhc_extbin_is_put_on_the_workbench_path_right_after_the_shell_path(self):
+        """Path ADD changes only the installer's Shell: new UP-Term windows and Amarchy launches copy the Workbench
+        process's path, so WBPath puts the drawer there too, at the top level, with the open-shell hint."""
+        L = self.dos()
+        S = [l.strip() for l in L]
+        path = self.at(L, 'Path UHC:ExtBin ADD')
+        wb = self.at(L, 'WBPath ADD UHC:ExtBin', path)
+        self.assertEqual(self.guards(L, wb), [])
+        hint = [i for i, s in enumerate(S) if i > wb and s.startswith('Echo') and 'Path UHC:ExtBin ADD' in s]
+        self.assertTrue(hint, 'no hint for the Shells that are already open')
+        self.assertIn('already open', S[hint[0]])
+        self.assertNotIn('WBPath REMOVE', ' '.join(S))
+
+    def test_uhc_uninstall_takes_the_workbench_path_node_off_before_anything_is_deleted(self):
+        """The Workbench path holds a lock on UHC:ExtBin: a delete under UHC: before WBPath REMOVE is 'object in use'."""
+        U = [l.strip() for l in (self.A / 'uninstall-body.dos').read_text().splitlines()]
+        U = [x for x in U if x and not x.startswith(';')]
+        rm = U.index('WBPath REMOVE UHC:ExtBin')
+        for x in U[:rm]:
+            self.assertTrue(x.startswith('FailAt'), 'before WBPath REMOVE: ' + x)
+
+    def test_wbpath_is_built_shipped_installed_and_removed_with_the_base(self):
+        mk = (ROOT / 'Makefile').read_text()
+        self.assertRegex(mk, r'\$\(BUILD\)/amiga/WBPath: install/wbpath\.c')
+        self.assertRegex(mk, r'(?m)^amiga:.*\$\(BUILD\)/amiga/WBPath')
+        self.assertRegex(mk, r'cp [^\n]*\$\(BUILD\)/amiga/WBPath [^\n]*\$\(KIT\)/Files/')
+        self.assertIn('tools           Files/WBPath', (ROOT / 'dist/parts.txt').read_text())
+        self.assertIn('\nCopy WBPath C:WBPath CLONE\n', (ROOT / 'dist/install.dos').read_text())
+        self.assertRegex((ROOT / 'dist/Uninstall').read_text(), r'Delete >NIL: [^\n]*\bC:WBPath\b')
+        # an Amiga program with its stack: __stack and the $STACK cookie in the file
+        c = (ROOT / 'install/wbpath.c').read_text()
+        self.assertRegex(c, r'long __stack = \d+;')
+        self.assertRegex(c, r'"\$STACK: \d+"')
+        # dos.library Printf takes 32-bit arguments only as %ld: a bare %d reads 16 bits and shifts every later
+        # argument (rig 7 printed "0 node(s) for  removed" for one removed node)
+        for line in re.findall(r'Printf\([^;]*;', c):
+            self.assertNotRegex(line, r'%-?\d*d', line)
+
+    def test_one_shared_command_path_copy_serves_vsh_and_amarchy(self):
+        """No second copy loop: vsh's wb_path() and Amarchy's pl_dup_path()/pl_free_path() use config/cmdpath.h,
+        and Amarchy copies the Workbench process's path first (own CLI path as fallback), UP-Term:bin last."""
+        for f in ('shell/vsh.c', 'amarchy/proclaunch.c', 'amarchy/wblaunch.c'):
+            t = (ROOT / f).read_text()
+            self.assertIn('config/cmdpath.h', t, f)
+            self.assertNotIn('AllocVec(2 * sizeof(BPTR)', t, f)
+        self.assertIn('cmdpath_copy(*field, 0)', (ROOT / 'shell/vsh.c').read_text())
+        pl = (ROOT / 'amarchy/proclaunch.c').read_text()
+        dup = pl[pl.index('BPTR pl_dup_path'):pl.index('void pl_free_path')]
+        self.assertLess(dup.index('cmdpath_workbench()'), dup.index('FindTask(0)'))
+        self.assertLess(dup.index('cmdpath_copy('), dup.index('PL_BIN_DIR'))
+        self.assertIn('cmdpath_free(p)', pl)
+
+    def test_uhc_extbin_is_never_made_without_the_variable_pkg_envcheck_reads(self):
+        """A bare MakeDir UHC:ExtBin left UHC/EXTBIN unset; UHC's pkg-envcheck then ran MakeDir on the drawer that
+        was there, rc 10, and every UHC package script failed ("MakeDir failed returncode 10", pipe on rig 7)."""
+        L = self.dos()
+        S = [l.strip() for l in L]
+        mk = self.at(L, 'Execute UHC:S/pkg-envcheck')
+        # pkg-envcheck runs under FailAt 21, so its MakeDir on a drawer that is there sets the variables anyway
+        fail = [i for i, s in enumerate(S[:mk]) if s.startswith('FailAt')]
+        self.assertEqual(S[fail[-1]], 'FailAt 21')
+        # outside the legacy copy (which runs after pkg-envcheck) no line makes ExtBin or ExtDoc on its own
+        for i, s in enumerate(S):
+            if s.startswith('MakeDir') and ('UHC:ExtBin' in s or 'UHC:ExtDoc' in s):
+                self.assertGreater(i, mk, s)
+                self.assertIn('EXISTS UP-Term:uhc', ' '.join(self.guards(L, i)), s)
+
+    def test_uninstall_leaves_uhc_alone(self):
+        body = (self.A / 'uninstall-body.dos').read_text()
+        U = body.splitlines()
+        for i, l in enumerate(U):
+            s = l.strip()
+            if s.startswith(';'):
+                continue
+            self.assertNotIn('SYS:UHC', s, s)
+            self.assertNotIn('ENVARC:UHC ', s + ' ', s)
+            self.assertNotIn('ENV:UHC ', s + ' ', s)
+            self.assertFalse(s.startswith('Assign UHC:'), s)
+            self.assertNotIn('UHC-Remove SYS', s)
+            if s.startswith('Delete') and ('UHCBIN' in s):
+                # only a variable naming UP-Term: (up-uhc 1.0 to 1.3) is ever deleted
+                prev = [x.strip() for x in U[:i] if x.strip().startswith('Search >NIL:')][-1]
+                self.assertIn('"UP-Term:"', prev)
+        self.assertNotIn('EndIf\nDelete >NIL: ENV:UHC', body)
+        # UHC's own block is upper case and unstartup.sh's name match is case-sensitive: the call names "uhc"
+        self.assertIn('unstartup.sh uhc', body)
+
+
 if __name__ == '__main__':
-    sys.exit(0 if unittest.main(exit=False, verbosity=1).result.wasSuccessful() else 1)
+    unittest.main()

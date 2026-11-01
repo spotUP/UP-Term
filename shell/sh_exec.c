@@ -1,4 +1,5 @@
 /* vsh's executor (see sh_exec.h). */
+#include <ctype.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,18 +23,6 @@ static const char *dev_name(const char *path)
     if (!strcmp(path, "/dev/tty"))
         return "*";
     return path;
-}
-int sh_vol_slashes(const char *in)
-{
-    const char *c = in;
-    long n = 0;
-    while (*c && *c != ':' && *c != '/')
-        c++;
-    if (*c != ':' || c == in)
-        return 0;
-    while (c[1 + n] == '/')
-        n++;
-    return (int)n;
 }
 
 int sh_unix_root(const char *in, char *out, long max)
@@ -258,6 +247,7 @@ static int opt_on(const sh_shell *sh, int i)
 
 static void core_warn(sh_ctx *c, const char *name, const char *msg);
 static void core_refresh(sh_ctx *c, const char *name);
+static void core_import(sh_ctx *c, const char *name);
 static char *core_unescape(sh_ctx *c, const char *s);
 static char *core_prompt(sh_ctx *c, const char *ps);
 static char *core_declared(sh_ctx *c, const char *name, int flags_only, int whole);
@@ -275,6 +265,7 @@ void sh_shell_init(sh_shell *sh)
     sh->ctx.user = sh;
     sh->ctx.warn = core_warn;
     sh->ctx.refresh = core_refresh;
+    sh->ctx.import = core_import;
     sh->ctx.on_assign = core_on_assign;
     sh->ctx.unescape = core_unescape;
     sh->ctx.prompt = core_prompt;
@@ -366,6 +357,7 @@ void sh_shell_free(sh_shell *sh)
     sh_list_free(&sh->hashtab);
     free(sh->hashpath);
     sh_list_free(&sh->disabled);
+    sh_list_free(&sh->env_hidden);
     sh_ctx_free(&sh->ctx);
 }
 
@@ -500,6 +492,7 @@ sh_shell *sh_shell_clone(const sh_shell *sh, int share)
         sh_list_add(&c->ctx.args, sh->ctx.args.v[i]);
     c->ctx.arg0 = sh->ctx.arg0;  /* not owned by a ctx */
     c->ctx.status = sh->ctx.status;
+    c->ctx.fault = sh->ctx.fault;
     c->ctx.pid = sh->ctx.pid;
     c->ctx.top_pid = sh->ctx.top_pid ? sh->ctx.top_pid : sh->ctx.pid;
     c->ctx.last_bg = sh->ctx.last_bg;
@@ -508,6 +501,7 @@ sh_shell *sh_shell_clone(const sh_shell *sh, int share)
             c->jobs[i] = sh->jobs[i];
             c->job_text[i] = sh->job_text[i] ? sdup(sh->job_text[i]) : 0;
             c->job_seq[i] = sh->job_seq[i];
+            c->job_pid[i] = sh->job_pid[i];
             c->job_stopped[i] = sh->job_stopped[i];
             c->job_foreign[i] = 1;
         }
@@ -552,6 +546,7 @@ sh_shell *sh_shell_clone(const sh_shell *sh, int share)
     c->ctx.procsub = sh->ctx.procsub;
     c->ctx.warn = sh->ctx.warn;
     c->ctx.refresh = sh->ctx.refresh;
+    c->ctx.import = sh->ctx.import;
     c->ctx.on_assign = sh->ctx.on_assign;
     c->ctx.unescape = sh->ctx.unescape;
     c->ctx.prompt = sh->ctx.prompt;
@@ -605,6 +600,8 @@ sh_shell *sh_shell_clone(const sh_shell *sh, int share)
     c->hashpath = sh->hashpath ? sdup(sh->hashpath) : 0;
     for (i = 0; i < sh->disabled.n; i++)
         sh_list_add(&c->disabled, sh->disabled.v[i]);
+    for (i = 0; i < sh->env_hidden.n; i++)
+        sh_list_add(&c->env_hidden, sh->env_hidden.v[i]);
     return c;
 }
 
@@ -789,6 +786,32 @@ static int special_id(const char *name)
     return -1;
 }
 
+/* A $name the shell has no variable for, or only a copy of the system's (SH_ATTR_ENVCOPY), is read from the
+ * system store (os.getenv) at each expansion (not at the shell's own reads of IFS, PATH, HOME): ENV: is the AmigaDOS Shell's variable table, and a SetEnv made
+ * before vsh started or by a command it ran must reach $name. The copy is dropped from the shell's own
+ * assignments by core_on_assign. */
+static void core_import(sh_ctx *c, const char *name)
+{
+    sh_shell *sh = (sh_shell *)c->user;
+    char v[512];
+    unsigned a;
+    int i;
+    if (!sh->os.getenv || sh->special_busy || !(isalpha((unsigned char)*name) || *name == '_'))
+        return;
+    a = sh_attr(&sh->ctx, name);
+    if (sh_lookup_raw(&sh->ctx, name) && !(a & SH_ATTR_ENVCOPY))
+        return;
+    for (i = 0; i < sh->env_hidden.n; i++) /* unset by the script: hidden for the rest of the shell */
+        if (!strcmp(sh->env_hidden.v[i], name))
+            return;
+    if (!sh->os.getenv(sh->os.data, name, v, sizeof(v)))
+        return;
+    sh->special_busy = 1;
+    sh_set(&sh->ctx, name, v);
+    sh_attr_change(&sh->ctx, name, SH_ATTR_ENVCOPY, 0);
+    sh->special_busy = 0;
+}
+
 /* the store's copy of a special variable is brought up to date just before it is read */
 static void core_refresh(sh_ctx *c, const char *name)
 {
@@ -871,6 +894,8 @@ static void core_on_assign(sh_ctx *c, const char *name, const char *value)
     sh_shell *sh = (sh_shell *)c->user;
     int k = special_id(name);
     long us;
+    if (!sh->special_busy && (sh_attr(c, name) & SH_ATTR_ENVCOPY))
+        sh_attr_change(c, name, 0, SH_ATTR_ENVCOPY); /* assigned by the shell: its own from here */
     if (!strcmp(name, "POSIXLY_CORRECT")) {
         sh->opts |= SO_POSIX;  /* assigning it, to anything, turns posix mode on */
         SH_HIT(POSIX_VAR);
@@ -943,6 +968,23 @@ static void err_not_found(sh_shell *sh, const sh_io *io, const char *name)
         sayl(sh, io->err, " (it lives in ", drawer, ": put that drawer on PATH, or run the UP-Term Install)", NULL);
     }
     say(sh, io->err, "\n");
+}
+
+static long b_cd(sh_shell *sh, int argc, char **argv, const sh_io *io);
+
+/* AmigaDOS (and zsh AUTO_CD): a bare word that starts nothing but names a directory
+ * (ram:, sys:c, .., src) is a cd to it, through b_cd so OLDPWD, PWD and the prompt follow.
+ * A program, builtin or function of that name never reaches here: bash wins on a real clash. */
+static int try_autocd(sh_shell *sh, const sh_io *io, const sh_list *argv, long *st)
+{
+    char *cdargv[3];
+    if (argv->n != 1 || !argv->v[0][0] || !sh_exists(sh, argv->v[0], 1))
+        return 0;
+    cdargv[0] = (char *)"cd";
+    cdargv[1] = argv->v[0];
+    cdargv[2] = 0;
+    *st = b_cd(sh, 2, cdargv, io);
+    return 1;
 }
 
 static void num(char *out, long v)
@@ -2956,6 +2998,28 @@ static void job_cur_prev(const sh_shell *sh, int *cur, int *prev)
 
 /* A job's line in jobs and notices: "[n]+  <state>  <command>"; bash pads the state to 27 columns,
  * -l puts the process id after the marker, an ended job's state is "Done" or "Exit n" */
+/* The pid the OS layer gives a job id (0: it knows none, the job id stands for it). */
+static long os_job_pid(sh_shell *sh, long job)
+{
+    return sh->os.job_pid ? sh->os.job_pid(sh->os.data, job) : 0;
+}
+
+/* The pid of job slot i: the process address $! gave (bash: the pid), else the job id. */
+static long jpid(sh_shell *sh, int i)
+{
+    return sh->job_pid[i] ? sh->job_pid[i] : sh->jobs[i];
+}
+
+/* The slot of a job given by pid (a job id matches too); -1: none. */
+static int job_by_pid(sh_shell *sh, long pid)
+{
+    int i;
+    for (i = 0; i < 32; i++)
+        if (sh->jobs[i] && (jpid(sh, i) == pid || sh->jobs[i] == pid))
+            return i;
+    return -1;
+}
+
 static void job_line_l(sh_shell *sh, sh_fh fh, int i, const char *state, long st, int longfmt)
 {
     char n[16], pad[32];
@@ -2964,7 +3028,7 @@ static void job_line_l(sh_shell *sh, sh_fh fh, int i, const char *state, long st
     num(n, i + 1);
     sayl(sh, fh, "[", n, "]", i == cur ? "+" : i == prev ? "-" : " ", " ", NULL);
     if (longfmt) {
-        num(n, sh->jobs[i]);
+        num(n, jpid(sh, i));
         for (k = (int)strlen(n); k < 5; k++) /* bash prints the pid as %5ld */
             say(sh, fh, " ");
         sayl(sh, fh, n, " ", NULL);
@@ -3007,6 +3071,7 @@ static void job_forget(sh_shell *sh, int i)
     sh->job_stopped[i] = 0;
     sh->job_nohup[i] = 0;
     sh->job_foreign[i] = 0;
+    sh->job_pid[i] = 0;
     free(sh->job_text[i]);
     sh->job_text[i] = 0;
 }
@@ -3118,7 +3183,7 @@ static long b_jobs(sh_shell *sh, int argc, char **argv, const sh_io *io)
         for (k = a; k < argc; k++) {
             int j = argv[k][0] == '%' && k > a ? job_spec(sh, argv[k]) : -1;
             if (j >= 0) {
-                num(nb, sh->jobs[j]);
+                num(nb, jpid(sh, j));
                 nv[n++] = sdup(nb);
             } else
                 nv[n++] = argv[k];
@@ -3147,7 +3212,7 @@ static long b_jobs(sh_shell *sh, int argc, char **argv, const sh_io *io)
             continue;
         if (pids) {
             char nb[16];
-            num(nb, sh->jobs[i]);
+            num(nb, jpid(sh, i));
             sayl(sh, io->out, nb, "\n", NULL);
         } else
             job_line_l(sh, io->out, i, sh->job_stopped[i] ? "Stopped" : "Running", 0, longfmt);
@@ -3180,6 +3245,7 @@ static long fg_status(sh_shell *sh, long st, int slot, char *text, const sh_io *
         free(text);
     }
     sh->jobs[i] = sh->os.stopped;
+    sh->job_pid[i] = os_job_pid(sh, sh->os.stopped);
     sh->job_stopped[i] = 1;
     sh->job_seq[i] = ++sh->job_seqno;
     sh->warned_stopped = 0;
@@ -3313,7 +3379,7 @@ static long b_wait(sh_shell *sh, int argc, char **argv, const sh_io *io)
                     if (!sh->jobs[i] || sh->job_stopped[i] || sh->job_foreign[i])
                         continue;
                     for (j = k; j < argc; j++)
-                        if (argv[j][0] == '%' ? job_spec(sh, argv[j]) == i : atol(argv[j]) == sh->jobs[i])
+                        if (argv[j][0] == '%' ? job_spec(sh, argv[j]) == i : job_by_pid(sh, atol(argv[j])) == i)
                             want = 1;
                     if (!want)
                         continue;
@@ -3329,7 +3395,7 @@ static long b_wait(sh_shell *sh, int argc, char **argv, const sh_io *io)
                             found = i;
                 if (pvar) {
                     char nb[16];
-                    num(nb, sh->jobs[found]);
+                    num(nb, jpid(sh, found));
                     sh_set(&sh->ctx, pvar, nb);
                 }
                 st = job_wait(sh, sh->jobs[found]);
@@ -3349,9 +3415,8 @@ static long b_wait(sh_shell *sh, int argc, char **argv, const sh_io *io)
                     }
                 } else {
                     long pid = atol(argv[k]);
-                    for (i = 0; i < 32 && !(sh->jobs[i] && sh->jobs[i] == pid); i++)
-                        ;
-                    if (i == 32) {
+                    i = job_by_pid(sh, pid);
+                    if (i < 0) {
                         sayl(sh, io->err, "vsh: wait: pid ", argv[k], " is not a child of this shell\n", NULL);
                         last = 127;
                         continue;
@@ -3359,7 +3424,7 @@ static long b_wait(sh_shell *sh, int argc, char **argv, const sh_io *io)
                 }
                 if (pvar) {
                     char nb[16];
-                    num(nb, sh->jobs[i]);
+                    num(nb, jpid(sh, i));
                     sh_set(&sh->ctx, pvar, nb);
                 }
                 last = job_wait(sh, sh->jobs[i]);
@@ -3429,8 +3494,7 @@ static long b_disown(sh_shell *sh, int argc, char **argv, const sh_io *io)
     for (; k < argc; k++) {
         i = job_spec(sh, argv[k][0] == '%' ? argv[k] : "%?");
         if (argv[k][0] != '%' && argv[k][0] >= '0' && argv[k][0] <= '9')
-            for (i = 0; i < 32 && !(sh->jobs[i] && sh->jobs[i] == atol(argv[k])); i++)
-                ;
+            i = job_by_pid(sh, atol(argv[k]));
         if (i < 0 || i >= 32) {
             sayl(sh, io->err, "vsh: disown: ", argv[k], ": no such job\n", NULL);
             st = 1;
@@ -3918,6 +3982,17 @@ static long b_export(sh_shell *sh, int argc, char **argv, const sh_io *io)
     return declare_main(sh, 3, argc, argv, io);
 }
 
+/* unset NAME hides the system's variable of that name (ENV:) from $name for the rest of the shell, as bash's unset
+ * leaves nothing behind; ENV: itself is not touched (the AmigaDOS Shell's Unsetenv does that) */
+static void env_hide(sh_shell *sh, const char *name)
+{
+    int i;
+    for (i = 0; i < sh->env_hidden.n; i++)
+        if (!strcmp(sh->env_hidden.v[i], name))
+            return;
+    sh_list_add(&sh->env_hidden, name);
+}
+
 static long b_unset(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     int i = 1, fn = 0, nameref = 0;
@@ -3986,6 +4061,8 @@ static long b_unset(sh_shell *sh, int argc, char **argv, const sh_io *io)
                 free(nm);
             } else {
                 bad = sh_unset(&sh->ctx, argv[i]);
+                if (!bad && sh->os.getenv)
+                    env_hide(sh, argv[i]);
                 if (!bad && !strcmp(argv[i], "DIRSTACK"))
                     sh->dirstack_gone = 1;
                 if (!bad && !strcmp(argv[i], "POSIXLY_CORRECT")) {
@@ -4449,12 +4526,16 @@ static long b_kill(sh_shell *sh, int argc, char **argv, const sh_io *io)
     }
     for (; i < argc; i++) {
         long target = atol(argv[i]);
-        int job = argv[i][0] == '%';
+        int job = argv[i][0] == '%', isjob = 0, k;
         if (job)
             target = atol(argv[i] + 1) > 0 && atol(argv[i] + 1) <= 32 ? sh->jobs[atol(argv[i] + 1) - 1] : 0;
+        else if ((k = job_by_pid(sh, target)) >= 0 && sh->job_pid[k] && sh->os.signal) { /* the pid the OS layer gave a job of this shell is the job */
+            target = sh->jobs[k];
+            isjob = 1;
+        }
         if (!job && target == sh->ctx.pid && sig > 0 && sh_trap_signal(sh, sig))
             continue;
-        r = target && sh->os.signal ? sh->os.signal(sh->os.data, target, sig, job) : -1;
+        r = target && sh->os.signal ? sh->os.signal(sh->os.data, target, sig, job || isjob) : -1;
         if (r == SH_SIG_NOSENDER && sh->os.signal_why) {
             err2(sh, io, "kill", sh->os.signal_why);
             st = 1;
@@ -4691,6 +4772,7 @@ static long b_caller(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_ulimit(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_help(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_logout(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_why(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_complete(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_bind(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_compgen(sh_shell *sh, int argc, char **argv, const sh_io *io);
@@ -4709,7 +4791,7 @@ static const struct {
     { ":", b_true }, { "true", b_true }, { "false", b_false }, { "echo", b_echo },
     { "printf", b_printf },
     { "cd", b_cd }, { "pwd", b_pwd }, { "export", b_export }, { "unset", b_unset },
-    { "set", b_set }, { "shift", b_shift }, { "exit", b_exit }, { "return", b_return },
+    { "set", b_set }, { "shift", b_shift }, { "exit", b_exit }, { "endcli", b_exit }, { "endshell", b_exit }, { "return", b_return },
     { "break", b_break }, { "continue", b_continue }, { "read", b_read }, { "alias", b_alias },
     { "unalias", b_unalias }, { "test", b_test }, { "[", b_test }, { "jobs", b_jobs },
     { "wait", b_wait }, { "disown", b_disown }, { "pushd", b_pushd }, { "popd", b_popd }, { "dirs", b_dirs }, { "fg", b_wait }, { "bg", b_bg }, { "stack", b_stack }, { "source", b_source }, { ".", b_source },
@@ -4718,7 +4800,7 @@ static const struct {
     { "which", b_type }, { "type", b_type }, { "readonly", b_readonly }, { "declare", b_declare },
     { "typeset", b_declare }, { "mapfile", b_mapfile }, { "readarray", b_mapfile }, { "builtin", b_builtin }, { "kill", b_kill },
     { "hash", b_hash }, { "history", b_history }, { "fc", b_fc }, { "enable", b_enable }, { "times", b_times }, { "caller", b_caller }, { "ulimit", b_ulimit }, { "help", b_help }, { "logout", b_logout },
-    { "bind", b_bind }, { "complete", b_complete }, { "compgen", b_compgen }, { "compopt", b_compopt }, { 0, 0 }
+    { "why", b_why }, { "bind", b_bind }, { "complete", b_complete }, { "compgen", b_compgen }, { "compopt", b_compopt }, { 0, 0 }
 };
 
 /* ---- hash, enable, times, caller, ulimit, help ---------------------------------- */
@@ -5862,6 +5944,20 @@ static long b_ulimit(sh_shell *sh, int argc, char **argv, const sh_io *io)
     return 0;
 }
 
+/* Why (AmigaDOS Shell): explains the last failure of THIS shell, as the AmigaShell's own does for its own. The
+ * secondary result is ctx.fault, kept beside $? when the command finished. */
+static long b_why(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    char text[128];
+    (void)argc;
+    (void)argv;
+    if (sh->ctx.status && sh->ctx.fault && sh->os.fault && sh->os.fault(sh->os.data, sh->ctx.fault, text, (long)sizeof(text)))
+        sayl(sh, io->out, "Last command failed because ", text, "\n", NULL);
+    else
+        say(sh, io->out, "The last command did not set a return code\n");
+    return 0;
+}
+
 static long b_help(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     int k, a, found = 0;
@@ -6777,12 +6873,24 @@ done:
     return n;
 }
 
+static const char *const amiga_internals[] = { "endcli", "endshell", "why", 0 };
+
 static builtin_fn find_builtin(const char *name)
 {
     int i;
     for (i = 0; builtins[i].name; i++)
         if (!strcmp(builtins[i].name, name))
             return builtins[i].fn;
+    /* EndCLI, EndShell and Why are AmigaDOS Shell internals, and AmigaDOS names ignore case: only these do */
+    for (i = 0; amiga_internals[i]; i++) {
+        const char *a = amiga_internals[i], *b = name;
+        while (*a && *b && *a == tolower((unsigned char)*b)) {
+            a++;
+            b++;
+        }
+        if (!*a && !*b)
+            return find_builtin(amiga_internals[i]);
+    }
     return 0;
 }
 
@@ -8064,8 +8172,13 @@ static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int w
             } else
                 st = 0;
         } else if (st < 0) {
-            err_not_found(sh, &io, argv.v[0]);
-            st = 127;
+            long cst;
+            if (try_autocd(sh, &io, &argv, &cst)) {
+                st = cst;
+            } else {
+                err_not_found(sh, &io, argv.v[0]);
+                st = 127;
+            }
         }
     }
     if ((sh->opts & SO_POSIX) && n_saved > 0 && !nofunc && special_bi(argv.v[0]) && !cmd_mode) {
@@ -8182,27 +8295,30 @@ static char *node_text(const sh_node *n)
 }
 
 /* A background job into the table, announced as "[n] id". */
-static void add_job(sh_shell *sh, long job, char *text, const sh_io *io)
+static long add_job(sh_shell *sh, long job, char *text, const sh_io *io)
 {
     int i;
     char nb[16];
+    long pid = os_job_pid(sh, job);
     for (i = 0; i < 32 && sh->jobs[i]; i++)
         ;
     if (i == 32) {
         free(text);
-        return;
+        return pid ? pid : job;
     }
     sh->jobs[i] = job;
+    sh->job_pid[i] = pid;
     sh->job_foreign[i] = 0;
     sh->job_seq[i] = ++sh->job_seqno;
     free(sh->job_text[i]);
     sh->job_text[i] = text;
     if (!(sh->opts & SO_INTERACTIVE)) /* bash: only an interactive shell announces a job */
-        return;
+        return pid ? pid : job;
     num(nb, i + 1);
     sayl(sh, io->err, "[", nb, "] ", NULL);
-    num(nb, job);
+    num(nb, pid ? pid : job);
     sayl(sh, io->err, nb, "\n", NULL);
+    return pid ? pid : job;
 }
 
 static long subshell(sh_shell *sh, const sh_node *n, const sh_io *io, int wait, long *job)
@@ -8359,12 +8475,10 @@ static long exec_coproc(sh_shell *sh, const sh_node *n, const sh_io *io)
     sh_assign(&sh->ctx, name, "1", d, 0);
     strcpy(vn, name);
     strcat(vn, "_PID");
-    sh_ltoa(job, d);
+    if (job)
+        sh->ctx.last_bg = add_job(sh, job, node_text(n->a), io);
+    sh_ltoa(job ? sh->ctx.last_bg : 0, d);
     sh_set(&sh->ctx, vn, d);
-    if (job) {
-        add_job(sh, job, node_text(n->a), io);
-        sh->ctx.last_bg = job;
-    }
     return 0;
 }
 
@@ -8906,18 +9020,22 @@ static long intr_status(const sh_shell *sh)
     return sh->intr == 2 ? 2 : sh->intr == 3 ? 1 : 130;
 }
 
-/* Ctrl-C: once it arrives, everything unwinds to the prompt (status 130). QUIT runs its trap; without
- * one a shell that is not interactive ends with 131 and an interactive one ignores it (bash). */
+/* Ctrl-C: once it arrives, everything unwinds to the prompt (status 130). QUIT and TERM run their trap;
+ * without one a shell that is not interactive ends with 128 + the signal and an interactive one ignores
+ * it (bash). */
 static int poll_break(sh_shell *sh)
 {
     int sig;
     if (sh->intr || !sh->os.interrupted || !(sig = sh->os.interrupted(sh->os.data)))
         return sh->intr;
-    if (sig == 3) {
-        SH_HIT(QUIT_SIGNAL);
-        if (!sh_trap_signal(sh, 3) && !(sh->opts & SO_INTERACTIVE)) {
+    if (sig == 3 || sig == 15) {
+        if (sig == 3)
+            SH_HIT(QUIT_SIGNAL);
+        else
+            SH_HIT(TERM_SIGNAL);
+        if (!sh_trap_signal(sh, sig) && !(sh->opts & SO_INTERACTIVE)) {
             sh->exiting = 1;
-            sh->exit_status = 131;
+            sh->exit_status = 128 + sig;
         }
     } else if (!sh_trap_signal(sh, 2))
         sh->intr = 1;
@@ -8985,6 +9103,11 @@ static long exec_node1(sh_shell *sh, const sh_node *n, const sh_io *io)
     case SH_CMD:
         st = exec_cmd(sh, n, io, 1, 0);
         sh_pstat(&sh->ctx, &st, 1);
+        /* the secondary result of this command, for why: only a failure keeps one */
+        {
+            long e = sh->os.ioerr ? sh->os.ioerr(sh->os.data) : 0;
+            sh->ctx.fault = st ? e : 0;
+        }
         break;
     case SH_SEQ:
         st = exec_node(sh, n->a, io);
@@ -9008,8 +9131,7 @@ static long exec_node1(sh_shell *sh, const sh_node *n, const sh_io *io)
             sh->debug_done = 0;
         }
         if (job) {
-            add_job(sh, job, node_text(n->a), io);
-            sh->ctx.last_bg = job;
+            sh->ctx.last_bg = add_job(sh, job, node_text(n->a), io);
         }
         st = 0;
         sh->ctx.status = st;
@@ -9623,6 +9745,12 @@ done:
     *out = r.s ? r.s : sdup("");
     *print_only = pr;
     return 1;
+}
+
+void sh_prompt_mode(sh_shell *sh, sh_fh in)
+{
+    if (sh->os.echo)
+        sh->os.echo(sh->os.data, in, 1);
 }
 
 void sh_prompt_command(sh_shell *sh)

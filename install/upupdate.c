@@ -34,6 +34,7 @@
 /* vbcc's startup (vc.lib) reads ___stack and runs main on a stack of this
  * size, so upupdate does not depend on the stack the Installer's run gives it */
 long __stack = 16384;
+const char upupdate_stack_cookie[] = "$STACK: 16384";
 
 static BPTR script[UD_MAXPARTS];
 static char scriptname[UD_MAXPARTS][UD_NAME];
@@ -164,13 +165,16 @@ int main(void)
     number(kb, total);
     setvar("UPTUPDKB", kb);
     if (r->nhanded) {
-        char list[UD_MAXHANDED * UD_DRAWER];
+        /* on the heap: the Installer's child stack may be 4096 bytes */
+        char *list = (char *)malloc(UD_MAXHANDED * UD_DRAWER);
+        if (!list) goto out;
         list[0] = 0;
         for (i = 0; i < r->nhanded; i++) {
             if (i) strcat(list, ",");
             strcat(list, r->handed[i]);
         }
         setvar("UPTHANDED", list);
+        free(list);
     }
     version((const char *)args[0], "UPTVEROLD");
     version((const char *)args[1], "UPTVERNEW");

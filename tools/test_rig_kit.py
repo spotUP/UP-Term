@@ -31,7 +31,7 @@ def boot(files, assigns=None):
     that is neither a device nor an assign when a line asks for it."""
     files = {k.lower(): v for k, v in files.items()}
     assigns = dict(assigns or {})
-    devices = {"VTC", "SYS", "C", "S", "L", "LIBS", "DEVS", "ENVARC", "BOOTX", "T", "ENV", "FONTS"}
+    devices = {"VTC", "SYS", "C", "S", "L", "LIBS", "DEVS", "ENVARC", "BOOTX", "T", "ENV", "FONTS", "RAM"}  # RAM: is always mounted at boot
     requesters, dirs = [], {"vtc:"}
 
     def resolve(path):
@@ -106,22 +106,22 @@ f3, _ = boot({**f2, "VTC:kit-restore": ""}, {"UP-TERM": "SYS:UP-Term"})
 check(f3["l:vtcon-handler"] == "kit-handler", "kit-restore: L:vtcon-handler is the kit's again")
 check(f3["l:pty-handler"] == "kit-pty", "kit-restore: L:pty-handler is the kit's again")
 
-# W-R3: the Prefs editor is C:"UP-Term Prefs" (the handler's menu runs that name); a kit's copy
+# W-R3: the Prefs editor is C:UP-Term-Prefs (the handler's menu runs that name); a kit's copy
 # is refreshed from VTC:upprefs, and the kit's own is kept for kit-restore
-PK = {"C:UP-Term Prefs": "kit-prefs"}
+PK = {"C:UP-Term-Prefs": "kit-prefs"}
 fp, reqp = boot({**KIT, **PK, **BUILD, "VTC:upprefs": "new-prefs"}, {"UP-TERM": "SYS:UP-Term"})
-check(fp["c:up-term prefs"] == "new-prefs", "kit: C:UP-Term Prefs is the VTC: build")
+check(fp["c:up-term-prefs"] == "new-prefs", "kit: C:UP-Term-Prefs is the VTC: build")
 check(fp["vtc:kit-orig/c-up-term-prefs"] == "kit-prefs", "kit: the kit's Prefs editor is kept in VTC:kit-orig")
 fp2, _ = boot({**fp, "VTC:kit-restore": ""}, {"UP-TERM": "SYS:UP-Term"})
-check(fp2["c:up-term prefs"] == "kit-prefs", "kit-restore: the kit's Prefs editor is back")
+check(fp2["c:up-term-prefs"] == "kit-prefs", "kit-restore: the kit's Prefs editor is back")
 fp3, reqp3 = boot({**BUILD, "VTC:upprefs": "new-prefs"})
-check(fp3.get("c:up-term prefs") == "new-prefs", "no kit: C:UP-Term Prefs is installed from VTC:upprefs")
+check(fp3.get("c:up-term-prefs") == "new-prefs", "no kit: C:UP-Term-Prefs is installed from VTC:upprefs")
 check(not reqp3, "no kit, Prefs: the boot asks for no volume (asked for %s)" % reqp3)
 
 # W-R4: every C: command the kit installs is the build on a rig with no kit too (plain `UPDemo`
 # ran an old C:UPDemo while the build sat in VTC:). The list is KIT_SHADOWS' C: rows.
 CNAMES = [(src, dest) for src, dest, _ in rig.KIT_SHADOWS if dest.startswith("C:")]
-check({d for _, d in CNAMES} >= {"C:UPDemo", "C:UPConsole", "C:vsh", "C:upgetty", "C:ixkill", "C:UP-Term Prefs"},
+check({d for _, d in CNAMES} >= {"C:UPDemo", "C:UPConsole", "C:vsh", "C:upgetty", "C:ixkill", "C:UP-Term-Prefs"},
       "KIT_SHADOWS names the kit's C: commands (%s)" % [d for _, d in CNAMES])
 nk = {"VTC:" + src: "new-" + src for src, _ in CNAMES} | {"VTC:vtcon-handler": "new-handler"}
 f4, req4 = boot(nk)
@@ -136,7 +136,31 @@ check(f5["c:updemo"] == "new-UPDemo" and f5["vtc:kit-orig/c-updemo"] == "old-upd
 check("l:vtcon-handler" not in f4 and "devs:up-console.device" not in f4 and "l:pty-handler" not in f4, "no kit: L: and DEVS: get no copy")
 # install puts every KIT_SHADOWS source in VTC:, also the ones the drawer never held
 import inspect  # noqa: E402
-check("KIT_SHADOWS" in inspect.getsource(rig.install), "install stages every KIT_SHADOWS source in VTC:")
+check("KIT_SHADOWS" in inspect.getsource(rig._install), "install stages every KIT_SHADOWS source in VTC:")
+
+# the dist's userland (UP-Term:bin/curl, ...) is what the rig runs, not the kit's older copy (rig 9,
+# AMITCP-GONE rerun, 2026-10-27: install staged no curl and the base image's, which opens
+# usergroup.library, ran). install stages the dist's file; the boot puts it over the kit's.
+UL = ROOT_DIST = rig.ROOT / "build/dist/up-term/Files/userland/bin"
+if (UL / "curl").is_file():
+    import shutil  # noqa: E402
+    row = [r for r in rig.KIT_SHADOWS if r[1] == "UP-Term:bin/curl"]
+    check(len(row) == 1, "KIT_SHADOWS shadows UP-Term:bin/curl with the dist's")
+    with tempfile.TemporaryDirectory() as t2:
+        v2 = pathlib.Path(t2)
+        rig.refresh_kit_shadows(v2)
+        staged = v2 / row[0][0] if row else v2 / "none"
+        check(staged.is_file() and staged.read_bytes() == (UL / "curl").read_bytes(),
+              "install stages the dist's curl in VTC:")
+        check(rig.build_drift(v2) == [] or all("kit-userland" not in x for x in rig.build_drift(v2)),
+              "a staged userland file equal to the dist is no drift")
+        if row:
+            (staged).write_bytes(b"old")
+            check(any(x.endswith("/curl") for x in rig.build_drift(v2)), "a stale staged curl is named by the drift check")
+    if row:
+        fb, rb = boot({"VTC:" + row[0][0]: "dist-curl", "SYS:UP-Term/bin/curl": "kit-curl"}, {"UP-TERM": "SYS:UP-Term"})
+        check(fb["sys:up-term/bin/curl"] == "dist-curl", "kit: UP-Term:bin/curl is the dist's after the boot")
+        check(fb["vtc:kit-orig/up-term-bin-curl"] == "kit-curl", "kit: the kit's curl is kept in VTC:kit-orig")
 
 # install and kit-restore (the host side)
 with tempfile.TemporaryDirectory() as tmp:
@@ -174,6 +198,57 @@ with tempfile.TemporaryDirectory() as tmp:
         check((stale / "v/vtcon").read_text() == "entry vtcon", "a stale entry is replaced by the build")
     else:
         check(False, "rig.stage_terminfo exists")
+
+# rig 3, 2026-10-19: a stale VTC:vsh (09:54 build) went over the kit's fresh C:vsh at every boot
+# after install_rig's install, so a kit check after the reboot ran the old vsh. The shadow sources
+# are the current build: the stale one replaced, a missing one added, and prepare refreshes them.
+with tempfile.TemporaryDirectory() as tmp:
+    tmp = pathlib.Path(tmp)
+    (tmp / "build/amiga").mkdir(parents=True)
+    (tmp / "vtc").mkdir()
+    (tmp / "build/amiga/vsh").write_bytes(b"vsh 237268")
+    (tmp / "build/amiga/UPDemo").write_bytes(b"updemo new")
+    (tmp / "vtc/vsh").write_bytes(b"vsh 236784")
+    (tmp / "vtc/gg/bin").mkdir(parents=True)
+    (tmp / "vtc/gg/bin/sh").write_bytes(b"vsh 213744")
+    old = rig.ROOT
+    rig.ROOT = tmp
+    try:
+        if hasattr(rig, "refresh_kit_shadows"):
+            rig.refresh_kit_shadows(tmp / "vtc")
+            check((tmp / "vtc/vsh").read_bytes() == b"vsh 237268", "a stale VTC:vsh is replaced by the build")
+            check((tmp / "vtc/UPDemo").read_bytes() == b"updemo new", "a missing VTC:UPDemo is added")
+            # rig 3, 2026-10-24: VTC:gg/bin/sh (GG:bin/sh, the sh of ixemul programs) was an 8 Oct vsh whose
+            # pipelines gave an ixemul child a non-interactive stdout (upkg-ui tty:programbox exit 3)
+            check((tmp / "vtc/gg/bin/sh").read_bytes() == b"vsh 237268", "a stale VTC:gg/bin/sh is replaced by the build vsh")
+        else:
+            check(False, "rig.refresh_kit_shadows exists")
+    finally:
+        rig.ROOT = old
+import ast  # noqa: E402
+prep = next(f for f in ast.walk(ast.parse((HERE / "rig/install_rig.py").read_text()))
+            if isinstance(f, ast.FunctionDef) and f.name == "prepare")
+check(any(isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute) and c.func.attr == "refresh_kit_shadows"
+          for c in ast.walk(prep)), "install_rig.prepare refreshes the kit shadows in VTC:")
+
+# upkg comes from the dist userland (the ports build the kit packs, RIG-KIT-DERIVE), is a KIT_SHADOWS row for
+# UP-Term:bin/upkg, and refresh_kit_shadows copies it into VTC: (the rig ran the kit's older upkg without
+# `list --tsv` one row per package, patch 0054)
+UPKG_ROW = (rig.USERLAND_STAGE + "/upkg", "UP-Term:bin/upkg", "UP-Term-bin-upkg")
+check(UPKG_ROW in rig.KIT_SHADOWS, "KIT_SHADOWS shadows UP-Term:bin/upkg from the dist userland")
+import tempfile  # noqa: E402
+with tempfile.TemporaryDirectory() as _d:
+    _src = pathlib.Path(_d) / "userland"
+    _src.mkdir()
+    (_src / "upkg").write_bytes(b"ports-upkg")
+    _saved = rig.USERLAND_SRC, rig.KIT_SHADOWS
+    rig.USERLAND_SRC, rig.KIT_SHADOWS = _src, [UPKG_ROW]
+    check(rig.kit_shadow_src(UPKG_ROW[0]) == _src / "upkg", "kit_shadow_src: upkg is the dist userland's")
+    _vtc = pathlib.Path(_d) / "vtc"
+    _vtc.mkdir()
+    rig.refresh_kit_shadows(_vtc)
+    rig.USERLAND_SRC, rig.KIT_SHADOWS = _saved
+    check((_vtc / UPKG_ROW[0]).read_bytes() == b"ports-upkg", "refresh_kit_shadows: VTC: upkg is the dist userland's")
 
 print("[%s] rig_kit: %d failed" % ("FAIL" if fails else "OK", fails))
 sys.exit(1 if fails else 0)

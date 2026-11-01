@@ -1,0 +1,43 @@
+diff --git a/src/od-fs/stubs.cpp b/src/od-fs/stubs.cpp
+index b82cc255d..c5723765a 100644
+--- a/src/od-fs/stubs.cpp
++++ b/src/od-fs/stubs.cpp
+@@ -188,7 +188,7 @@ void target_fixup_options (struct uae_prefs *p) {
+ }
+ 
+ int debuggable (void) {
+-    return 0;
++    return 1;
+ }
+ 
+ void logging_init(void) {
+diff --git a/src/od-fs/uaemisc.cpp b/src/od-fs/uaemisc.cpp
+index de3577d63..607f25c82 100644
+--- a/src/od-fs/uaemisc.cpp
++++ b/src/od-fs/uaemisc.cpp
+@@ -248,8 +248,12 @@ static RETSIGTYPE sigbrkhandler (int foo)
+ }
+ #endif
+ 
++extern void activate_debugger (void);
++static void sigusr1_debugger (int) { activate_debugger (); }
++
+ void setup_brkhandler (void)
+ {
++    signal (SIGUSR1, sigusr1_debugger);
+     /*
+ #if defined(__unix) && !defined(__NeXT__)
+     struct sigaction sa;
+diff --git a/src/rpc.cpp b/src/rpc.cpp
+index 9a32adaf3..81012e327 100644
+--- a/src/rpc.cpp
++++ b/src/rpc.cpp
+@@ -394,7 +394,7 @@ void handle_events(void)
+ 
+ int debuggable(void)
+ {
+-    return 0;
++    return 1;
+ }
+ 
+ int needmousehack(void)

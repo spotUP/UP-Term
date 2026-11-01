@@ -3,16 +3,9 @@
 #include <string.h>
 #include "harness.h"
 #include "../render/otag.h"
+#include "../handler/be32.h"
 
 static unsigned char f[256];
-
-static void put32(unsigned char *p, unsigned long v)
-{
-    p[0] = (unsigned char)(v >> 24);
-    p[1] = (unsigned char)(v >> 16);
-    p[2] = (unsigned char)(v >> 8);
-    p[3] = (unsigned char)v;
-}
 
 /* the shape ttfinstall writes: ident, engine, family, a plain tag, done,
  * then the strings */
@@ -20,15 +13,15 @@ static long make(void)
 {
     long len = 5 * 8 + 4 + 12;
     memset(f, 0, sizeof(f));
-    put32(f, OTAG_FILEIDENT);
-    put32(f + 4, (unsigned long)len);
-    put32(f + 8, OTAG_ENGINE);
-    put32(f + 12, 40);
-    put32(f + 16, OTAG_TAG_USER | 0x1000UL | OTAG_INDIRECT | 0x03UL); /* OT_Family */
-    put32(f + 20, 44);
-    put32(f + 24, OTAG_TAG_USER | 0x1000UL | 0x10UL);                 /* OT_SymbolSet */
-    put32(f + 28, 0x4C31);
-    put32(f + 32, OTAG_TAG_DONE);
+    be32_put(f, OTAG_FILEIDENT);
+    be32_put(f + 4, (unsigned long)len);
+    be32_put(f + 8, OTAG_ENGINE);
+    be32_put(f + 12, 40);
+    be32_put(f + 16, OTAG_TAG_USER | 0x1000UL | OTAG_INDIRECT | 0x03UL); /* OT_Family */
+    be32_put(f + 20, 44);
+    be32_put(f + 24, OTAG_TAG_USER | 0x1000UL | 0x10UL);                 /* OT_SymbolSet */
+    be32_put(f + 28, 0x4C31);
+    be32_put(f + 32, OTAG_TAG_DONE);
     memcpy(f + 40, "ttf", 4);
     memcpy(f + 44, "Symbols Nerd", 12);
     return len;
@@ -58,7 +51,7 @@ static void an_offset_outside_the_file_is_refused(void)
 {
     otag_info in;
     long len = make();
-    put32(f + 20, 4000);
+    be32_put(f + 20, 4000);
     CHECK_INT(otag_check(f, len, &in), OTAG_BAD_OFFSET);
 }
 
@@ -66,10 +59,10 @@ static void no_engine_or_an_unterminated_name_is_refused(void)
 {
     otag_info in;
     long len = make();
-    put32(f + 8, OTAG_TAG_USER | 0x1000UL | 0x10UL);
+    be32_put(f + 8, OTAG_TAG_USER | 0x1000UL | 0x10UL);
     CHECK_INT(otag_check(f, len, &in), OTAG_NO_ENGINE);
     len = make();
-    put32(f + 12, (unsigned long)(len - 1)); /* the last byte, then the end */
+    be32_put(f + 12, (unsigned long)(len - 1)); /* the last byte, then the end */
     f[len - 1] = 'x';
     CHECK_INT(otag_check(f, len, &in), OTAG_NO_ENGINE);
 }
@@ -79,8 +72,58 @@ static void a_list_without_tag_done_is_refused(void)
     otag_info in;
     long len = make(), at;
     for (at = 32; at + 8 <= len; at += 8)
-        put32(f + at, OTAG_TAG_USER | 0x1000UL | 0x10UL);
+        be32_put(f + at, OTAG_TAG_USER | 0x1000UL | 0x10UL);
     CHECK_INT(otag_check(f, len, &in), OTAG_NO_END);
+}
+
+/* the .otag ttfinstall 0.8.5 wrote for SymNerdMono.ttf (plan R0.1: run under
+ * vamos as "ttfinstall w:SymNerdMono.ttf w:out"), byte for byte */
+static const unsigned char real[] = {
+    0x80, 0x00, 0x10, 0x01, 0x00, 0x00, 0x01, 0x0f, 0x80, 0x00, 0x90, 0x02, 0x00, 0x00, 0x00, 0xb8,
+    0x80, 0x00, 0x90, 0x03, 0x00, 0x00, 0x00, 0xbc, 0x80, 0x00, 0x20, 0x19, 0x00, 0x00, 0x00, 0x03,
+    0x80, 0x00, 0x90, 0x20, 0x00, 0x00, 0x00, 0xd3, 0x80, 0x00, 0x20, 0x13, 0x00, 0x00, 0x00, 0x01,
+    0x80, 0x00, 0x10, 0x11, 0x08, 0x00, 0x08, 0x00, 0x80, 0x00, 0x20, 0x12, 0x00, 0x00, 0x1b, 0xc7,
+    0x80, 0x00, 0x10, 0x10, 0x00, 0x00, 0x00, 0x03, 0x80, 0x00, 0x10, 0x14, 0x00, 0x00, 0x00, 0x00,
+    0x80, 0x00, 0x10, 0x15, 0x00, 0x00, 0x00, 0x78, 0x80, 0x00, 0x10, 0x16, 0x00, 0x00, 0x00, 0x00,
+    0x80, 0x00, 0x10, 0x17, 0x00, 0x00, 0x00, 0x90, 0x80, 0x00, 0x11, 0x00, 0x00, 0x00, 0x00, 0x03,
+    0x80, 0x00, 0x91, 0x01, 0x00, 0x00, 0x00, 0xfd, 0x80, 0x00, 0x11, 0x02, 0x00, 0x00, 0x00, 0x00,
+    0x80, 0x00, 0x11, 0x03, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x11, 0x04, 0x00, 0x00, 0x00, 0x00,
+    0x80, 0x00, 0x11, 0x05, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x11, 0x06, 0x00, 0x00, 0x00, 0x00,
+    0x80, 0x00, 0x11, 0x07, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x11, 0x08, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x74, 0x74, 0x66, 0x00, 0x53, 0x79, 0x6d, 0x62,
+    0x6f, 0x6c, 0x73, 0x20, 0x4e, 0x65, 0x72, 0x64, 0x20, 0x46, 0x6f, 0x6e, 0x74, 0x20, 0x4d, 0x6f,
+    0x6e, 0x6f, 0x00, 0x00, 0x08, 0x00, 0x0c, 0x00, 0x0e, 0x00, 0x10, 0x00, 0x18, 0x00, 0x20, 0x00,
+    0x30, 0x00, 0x3c, 0x00, 0x48, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x77, 0x3a, 0x73,
+    0x79, 0x6d, 0x6e, 0x65, 0x72, 0x64, 0x6d, 0x6f, 0x6e, 0x6f, 0x2e, 0x74, 0x74, 0x66, 0x00
+};
+
+static void the_real_otag_gives_the_ttf_path_in_spec1(void)
+{
+    otag_info in;
+    CHECK_INT((int)sizeof(real), 271);
+    CHECK_INT(otag_check(real, (long)sizeof(real), &in), OTAG_OK);
+    CHECK(strcmp((const char *)real + in.engine_off, "ttf") == 0);
+    CHECK_INT(in.spec1_off, 0xfd);
+    CHECK(strcmp((const char *)real + in.spec1_off, "w:symnerdmono.ttf") == 0);
+}
+
+static void no_spec1_or_an_empty_one_gives_none(void)
+{
+    otag_info in;
+    long len = make();
+    CHECK_INT(otag_check(f, len, &in), OTAG_OK);
+    CHECK_INT(in.spec1_off, -1);
+    be32_put(f + 24, OTAG_SPEC1);
+    be32_put(f + 28, 43); /* the NUL after "ttf" */
+    CHECK_INT(otag_check(f, len, &in), OTAG_OK);
+    CHECK_INT(in.spec1_off, -1);
+    be32_put(f + 28, 44); /* "Symbols Nerd" runs to the end of the file with no NUL */
+    CHECK_INT(otag_check(f, len, &in), OTAG_OK);
+    CHECK_INT(in.spec1_off, -1);
+    be32_put(f + 28, 40);
+    CHECK_INT(otag_check(f, len, &in), OTAG_OK);
+    CHECK_INT(in.spec1_off, 40);
 }
 
 void suite_otag(void)
@@ -90,4 +133,6 @@ void suite_otag(void)
     an_offset_outside_the_file_is_refused();
     no_engine_or_an_unterminated_name_is_refused();
     a_list_without_tag_done_is_refused();
+    the_real_otag_gives_the_ttf_path_in_spec1();
+    no_spec1_or_an_empty_one_gives_none();
 }

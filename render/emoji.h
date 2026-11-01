@@ -24,6 +24,7 @@
 #define CE_PAGE_MAX 0x40000L         /* the largest page file read (gen_emoji.py PAGE_MAX) */
 #define CE_SLOTS 4                   /* colour pages a window keeps: the largest is ~106 KB */
 #define CE_W 16                      /* the images' width, both sizes */
+#define CE_PIXELS (CE_W * 16 + CE_W * 8) /* the pixels of the two images of a glyph record */
 #define CE_BOX_MAX 2048              /* the box of two cells, in pixels (32 x 32 cells) */
 #define CE_BG 255                    /* the index of the background in a box */
 #define CE_DIR "UP-Term:emoji/"  /* where the kit installs the pages */
@@ -37,10 +38,24 @@ int ce_page_check(const vt_u8 *p, long len, int page);
 /* Code point lo's glyph in a checked page, 0 when the page has none. */
 const vt_u8 *ce_page_glyph(const vt_u8 *p, int lo);
 
+/* The same for a page whose glyph records hold `pixels` pixels of images in all instead of CE_PIXELS
+ * (amarchy/menu_icon.c: one 32x32 image per icon). */
+int ce_page_check_px(const vt_u8 *p, long len, int page, long pixels);
+const vt_u8 *ce_page_glyph_px(const vt_u8 *p, int lo, long pixels);
+/* iw x ih bits-bit indices at src, centred in a bw x bh box of idx (CE_BG around); the box is at least
+ * the image. The unpacking ce_image and the menu icons share. */
+void ce_unpack(const vt_u8 *src, int bits, int iw, int ih, int bw, int bh, vt_u8 *idx);
+
 /* The palette of n RGBA entries blended over bg (0xRRGGBB): ctab[0..n-1]
  * each entry shown over the background, rounded to nearest, ctab[n..255]
  * the background. ctab has 256 entries. */
 void ce_blend(const vt_u8 *rgba, int n, vt_u32 bg, vt_u32 *ctab);
+
+/* fg over bg (both 0xRRGGBB) at coverage a (0..255): the colour a pixel
+ * a / 255 covered by fg shows, rounded to nearest (0 bg, 255 fg). The
+ * antialiased outline glyph's table is made of these (plan
+ * 2026-10-22-handler-rasterizer.md R4). */
+vt_u32 ce_mix(vt_u32 fg, vt_u32 bg, int a);
 
 /* Glyph g's image for a box of bw x bh pixels into idx (bw * bh bytes, row
  * after row): the 16x16 image when bh >= 16, else the 16x8 when bh >= 8,

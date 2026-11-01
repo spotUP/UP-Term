@@ -34,20 +34,33 @@ def windows():
         return [w for _, w in m.ui_windows(m.read_ui(c, every_screen=True))]
 
 
+def win_id(w):
+    # AmigaOS frees a closed window's memory at once and the next window can get the same address (the
+    # menu's window closes on Return and the Clock window opens at its address), so the address alone
+    # does not tell a new window from an old one: the owning task and the title go with it.
+    return (w["addr"], w.get("task"), w.get("title"))
+
+
+def window_ids():
+    return {win_id(w) for w in windows()}
+
+
 def wait_window(before, match, secs=20):
+    """The first window not in `before` (a window_ids() snapshot) that `match` accepts."""
     end = time.time() + secs
     while time.time() < end:
-        new = [w for w in windows() if w["addr"] not in before and match(w)]
+        new = [w for w in windows() if win_id(w) not in before and match(w)]
         if new:
             return new[0]
         time.sleep(1)
     return None
 
 
-def wait_gone(addr, secs=15):
+def wait_gone(win, secs=15):
+    """True once `win` (a windows() entry) is closed. A window opened later at its address is another window."""
     end = time.time() + secs
     while time.time() < end:
-        if addr not in {w["addr"] for w in windows()}:
+        if win_id(win) not in window_ids():
             return True
         time.sleep(1)
     return False
@@ -64,7 +77,7 @@ def check(name, ok, detail=""):
 
 
 def clock():
-    before = {w["addr"] for w in windows()}
+    before = window_ids()
     run('Run >NIL: RAM:wbrun >%s SYS:Utilities/Clock' % OUT)
     w = wait_window(before, lambda w: w.get("task") == "Clock")
     ok = check("Clock opens its window", w is not None)
@@ -77,7 +90,7 @@ def clock():
         with ami._conn() as c:
             c.send(m.UIACT, struct.pack(">III", 1, int(w["addr"], 16), quit_[0]["code"]))
             c.expect_ok()
-    ok &= check("Clock closes on Project/Quit", bool(quit_) and wait_gone(w["addr"]),
+    ok &= check("Clock closes on Project/Quit", bool(quit_) and wait_gone(w),
                 "" if quit_ else "no Quit menu: %s" % [m["path"] for m in w.get("menus", [])])
     time.sleep(2)
     t = out_text()
@@ -87,7 +100,7 @@ def clock():
 
 
 def shell():
-    before = {w["addr"] for w in windows()}
+    before = window_ids()
     rc, out = run('RAM:wbrun SYS:System/Shell')
     print("  " + out.strip().replace("\n", "\n  "))
     w = wait_window(before, lambda w: "amigashell" in w["title"].lower())
@@ -102,7 +115,7 @@ def shell():
     time.sleep(1)
     ami.req(0x08, bytes([4]) + b"EndCLI")
     ami.key(0x44)
-    return ok & check("the Shell closes on EndCLI", wait_gone(w["addr"]))
+    return ok & check("the Shell closes on EndCLI", wait_gone(w))
 
 
 def main():

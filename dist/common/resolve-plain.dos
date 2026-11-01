@@ -1,0 +1,3 @@
+; a stand-alone archive: its record drawer is an absolute name, no UP-Term: involved
+Set uptpkg "@PKGDIR@"
+Set uptrec "@RECORD@"

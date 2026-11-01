@@ -1,0 +1,128 @@
+---
+title: What ends FS-UAE silently when nvim runs on a vtcon rig
+date: 2026-10-31
+---
+Question: FS-UAE vanishes 0-2 s after nvim starts; no .ips, log cut mid-line, no quit reason.
+
+## Verdict
+It is a HOST CRASH (fatal signal), not a quit path, and macOS suppressed the crash report.
+Evidence: `/usr/bin/log show --last 5d` (kernel) lists 12 lines `Process[pid] crashed: fs-uae. Too many corpses being created.`
+each preceded by `fs-uae[pid] Corpse failure, too many 6` and `AMFI: Denying core dump`, between 19:47 and 20:31 on 2026-10-31
+(pids 28856 29521 38481 41400 41964 93505 23568 25594 29123 30253 32633, matching the nvim runs of s38). The kernel prints
+"crashed" only for core-dump signals (SEGV/BUS/ABRT/ILL), not for SIGKILL/SIGTERM/SIGPIPE. ReportCrash writes no .ips when
+6 corpses are already in flight (test_palette, tp_red, test_iconpens, test_term_engine also hit it). No .ips for fs-uae
+exists for 2026-10-31 (last one 26 Oct). Scratch log of the kernel query: only 50 lines, deleted below.
+Log cut mid-line is just stdio block buffering: libfsemu/src/log.c:84-112 flushes only with `log_flush`/`flush_log`; rig
+config sets neither; build/rig/logs/fs-uae.log.txt is 929792 B = 227 x 4096 (block boundary). An exit() would flush
+stdio, so a cut log also rules out every exit() path below.
+
+## Ranked candidates
+1. Host SIGSEGV/SIGBUS from guest-controlled data (most likely, unconfirmed which site). The emulated 68060 with
+   `bsdsocket_library = 1` (tools/rig/rig.py:1062,1065) runs nvim, which does socket/select/pipe work via ixnet; with a
+   corrupted heap the guest passes garbage pointers/lengths/fd sets to the host-side bsdsocket traps:
+   src/od-fs/bsdsocket_posix.cpp (recv :755, recvfrom :762, send :775, sendto :780, WaitSelect :1166, host_socket :1228).
+   Log of surviving rig 1 ends in `uae_start_tread "bsdsocket"` lines (threads per socket), so bsdsocket is live.
+2. abort() in FS-UAE bookkeeping: src/cpummu.cpp:1496 (`try stack underflow`), :1506 (`try stack overflow`),
+   src/vm.cpp:59/69/82 (alloc table full / address not found). The message goes to stderr, which rig.py:1163 sends to null
+   unless `--debugger`, so nothing is visible. Guest-reachable only through MMU exception nesting / mmap tracking.
+3. Not candidates (checked):
+   - rig tooling: rig.py stop (:1818) does `pkill -TERM -f CFG`, `pkill -9` only after 90 s (:1840-1846); watchdog
+     (:1927) calls stop() only after 60 idle min or a 10+ CPU-reset/min loop (recover_reset_loop :1905); start retry (:1713-1722)
+     only when wasabid never answered. TERM would be an orderly SDL quit that flushes the log. wasabi.py:199 kills only its own stream pid.
+     No other repo script pkills fs-uae (grep of UP-Term repos and ~/.claude/hooks).
+   - exit() paths: libfsemu emu.c:221 (fs_emu_fatal), :257 (gui mutex), render.c:1806, sdl.c:549/680, filesys.c:127,
+     od-fs/video.cpp:1035 (picasso mode, non-RTG build). All flush stdio, so a cut log excludes them; none is
+     reachable from guest action except video.cpp:1035 (gfx_set_picasso_modeinfo, #else build only).
+   - uae_quit()/quit_program: src/pci.cpp:1098, src/debug.cpp:4982, src/main.cpp:770, newcpu.cpp:5339-5354 are orderly
+     quits (log closed, reset path). Guest cannot trigger them via ordinary memory writes.
+   - SIGPIPE: bsdsocket send paths use MSG_NOSIGNAL (:775,:780); this SDK (26.2) defines it. recv has none but cannot SIGPIPE.
+     Binary imports no signal()/sigaction (nm -u fs-uae), so any SIGPIPE from another write would kill silently
+     (no "crashed" line though, so it does not match the kernel evidence).
+   - jetsam/memory pressure: no jetsam line for fs-uae in the 5 d kernel query.
+   - CPU halt option: no halt/quit key in rig config (rig.py:1062-1140).
+
+## Cheap confirmation (do not run on rigs 1, 2, 8)
+- `sysctl` is no help; corpses are not tunable here. Instead run ONE fresh rig's FS-UAE under lldb:
+  `lldb -- build/rig<N>/../../Emulators... fs-uae <cfg>` (path: ~/Code/Emulators/fs-uae/fs-uae <rig cfg>), `process handle
+  SIGSEGV -s true`, run nvim --headless +q on the guest; lldb stops at the faulting host line and `bt` names the
+  site (bsdsocket trap vs abort). lldb catches the signal before the kernel corpse step, so the corpse limit is irrelevant.
+- Alternative: clear the corpse backlog (let ReportCrash drain, close crashed test_* processes) and rerun once; an .ips then appears.
+- Add `log_flush = 1` to a test rig config to get the log up to the crash line (cheap, one config key).
+
+## lldb (s39)
+Rig 4 (060 max, fresh start), nvim a3aa3137 + uhome staged into build/rig4/vtc, `SetEnv HOME /VTCX/uhome`, `VTC:nvimd/bin/nvim --headless +q`. lldb attached to FS-UAE pid before the run (python loop: stop on SIGSEGV/SIGBUS/SIGILL/SIGABRT, pass, print bt 15, continue; tested by attach/detach first). FS-UAE has symbols but no debug info (no dSYM; line numbers only for some libfsemu frames), so `frame variable` is unavailable.
+- Result of run 1: NO crash. ami.py reported "Amiga stopped answering" (25 s); under lldb for ~100 s no signal at all reached lldb, FS-UAE stayed alive (50-57% CPU, later 9%), wasabi dead. This is the known HANG outcome, not the exit outcome.
+- Log: fs-uae log cut mid-line at "[AUDIO] fs_e" after `uae_start_tread "bsdsocket"` (stdout buffered, so last lines are unreliable). Three bsdsocket threads exist (nvim opened sockets).
+- `sample` of the hung process: bsdsocket threads idle in bsdlib_threadfunc -> SDL_SemWait; emulation thread in m68k_run_2 -> do_specialties -> haltloop (newcpu.cpp:3598) ~100% of samples, i.e. the guest CPU is halted/stopped (usleep + do_cycles_slow), not spinning in guest code. Not yet determined if it is regs.halted (cpu_halt, newcpu.cpp:4630, writes "CPU halted: reason" to the unflushed log) or a plain STOP; reading `regs` via lldb failed (duplicate symbol, no type info).
+- Not obtained: a fatal host backtrace. Exit outcome (process vanishes) did not occur this run; 1 of 3 allowed runs used (rig start took ~15 min wall: start restarted FS-UAE once).
+- Next: run again with lldb attached on a fresh rig until the vanish outcome occurs, plus `breakpoint set -n cpu_halt` and `-n exit -n _exit -n abort` to catch a host exit path; flush the log (fs-uae log is block-buffered) or read `gui_data.cpu_halted`.
+
+## lldb breakpoints (s39 run 2)
+Rig 4 (060 max), lldb attached to the FS-UAE pid; breakpoints cpu_halt, abort, exit, _exit; SIGSEGV/SIGBUS/SIGILL/SIGABRT stop+pass; Mach exceptions (EXC_BAD_ACCESS) caught by the script (a 4th re-fault at the same PC counts as fatal). nvim a3aa3137 + uhome, HOME=/VTCX/uhome, `nvim --headless +q`.
+- Run 1 (rig 4): VANISH. EXC_BAD_ACCESS (code=1, address=0x0) in thread 11 'filesys', `notify_check(_unit*, a_inode_struct*) + 40` (`ldrb w9,[x10]`, x10 null). Re-faulted 31 times on the same PC, then lldb detached and the process died. cpu_halt NOT hit; abort/exit/_exit NOT hit. The bt printed for it was unusable (script printed the wrong thread); callers of notify_check not captured.
+- Run 2 (fresh rig 4): VANISH. EXC_BAD_ACCESS (code=2, address=0x300a00001) in thread 13 (emulation thread): `op_0000_0_ff` <- m68k_run_2 <- m68k_go <- real_main <- amiga_main <- main_function (main.c:750) <- emulation_thread (emu.c:413). Re-faulted 4 times, detach, process died. cpu_halt NOT hit; no exit/abort.
+- Run 3: not done (rig start takes 8-15 min wall).
+- Conclusion: in 2 of 2 runs under lldb the stop is a HOST crash (EXC_BAD_ACCESS, a Mach exception, so `process handle SIGSEGV` did not catch it), not a guest cpu_halt. Two different fault sites (filesys thread notify_check null deref; emulation thread op_0000_0_ff wild address 0x300a00001), which smells like memory corruption of the emulator's own state (host heap/inode data), not one local bug. No halt id: cpu_halt never ran. The earlier HANG (haltloop) was a different outcome, no cpu_halt breakpoint was set then.
+- Next: crash site 1 needs a real bt of thread 11 (callers of notify_check; a_inode / unit pointers), site 2 needs the m68k PC/opcode (regs.pc, opcode arg) to see which guest instruction faulted. Scripts: scratchpad/loop2.py, r2.cmds, run2.py (session 0fbfe951).
+
+## AddressSanitizer run (s39 run 3)
+Build: ~/Code/Emulators/fs-uae-asan/fs-uae (copy of fs-uae-debug, `-fsanitize=address -fno-omit-frame-pointer -O1 -g`;
+libSDL3.dylib symlinks beside the binary and in gen/ stop an sdl2-compat NSAlert hang at start). Rig 4 (060 max) on it
+via `UPTERM_FSUAE=`, `ASAN_OPTIONS=halt_on_error=1:log_path=<scratch>/asan`, nvim a3aa3137 + uhome, HOME=/VTCX/uhome,
+`nvim --headless +q`.
+
+- Outcome: HANG ("the Amiga stopped answering while nvim was running (nothing for 25 s, and a ping got no reply)"),
+  FS-UAE alive at 56% CPU, no asan.* report, none at `rig.py stop` either.
+- Reading: no host heap overflow, use-after-free or double free on this run. ASan does not track guest RAM (one big host
+  mapping), so a host thread writing a stale guest address (bsdsocket recv/WaitSelect worker, clipboard copy) stays
+  invisible to it. The guest heap corruption and the wild-PC host crash of run 2 both still fit that shape.
+- Clipboard lead: the rig runs `clipboard_sharing = 1`; the FS-UAE log shows Mac clipboard text copied into the guest
+  during the run (`clipboard: to_amiga 10023808 220`, `->amiga ...`). src/od-fs/clipboard.cpp:852 amiga_clipboard_want_data
+  copies only after a size match against the guest's own AllocMem'd buffer, so the code reads safe; tested anyway with
+  `rig.py start --no-clipboard` (new flag, s39), see the A/B below.
+
+## Clipboard A/B (s39 run 4)
+
+Rig 4, 060 `--max`, normal nvim config (`HOME` = staged `userconf/home`), `VTC:nvimd/bin/nvim --headless +q` with a 90 s limit, then a check 5 s later that the FS-UAE process still exists. Six fresh rig boots: three with the new `rig.py start --no-clipboard` (config shows `clipboard_sharing = 0`), three with the default (clipboard sharing on).
+
+| clipboard sharing | runs | nvim result | FS-UAE afterwards |
+|---|---|---|---|
+| off | 3 | rc 0, empty output | gone in 3 of 3 |
+| on | 3 | rc 0, empty output | gone in 3 of 3 |
+
+Clipboard sharing does not cause the exit: FS-UAE disappears every time with sharing off as well. The clipboard path (`amiga_clipboard_want_data`) drops off the candidate list. bsdsocket stays the top candidate. It cannot be switched off on a rig, because wasabid needs it.
+
+Caveats: the first attempt ran the condev calls without `UPTERM_RIG=4` and talked to rig 1. Those runs and their logs were discarded. Staging the nvim tree into `vtc/` after the rig booted gave "Unknown command": a filesystem the guest has already mounted does not show new host folders. The staging now happens before the boot.
+
+## SysBase watchpoint (s39)
+
+Question: which guest PC writes first to nvim's `_SysBase` slot. Result: NOT answered. The debugger route works up to the first hit, but the watch must be aimed at the slot of the run being watched. Rig 4, `UPTERM_FSUAE=~/Code/Emulators/fs-uae-debug/fs-uae rig.py start --max --debugger` (option already in rig.py: console_debugger on a FIFO; `rig.py dbg`, `rig.py dbgbreak` = SIGUSR1 into the debug build, both work), nvim a3aa3137 + uhome staged before boot.
+
+Facts established
+- Symbol: the dist binary (a3aa3137) is stripped; the unstripped `neovim-amiga/build/v012/m68k/nvim/bin/nvim` (c4afdda0) has the same hunk layout (CODE 0x6477a8, DATA 0x15ed0, BSS 0x1fbb4). `m68k-amigaos-nm`: `_SysBase` = BSS hunk + 0x1fb88 (`__bss_start` = 0).
+- Runtime: `RAM:ownermap` (tests/amiga/ownermap.c) lists the hunks of a running nvim (`range START END seg ...`; START is the next-pointer, data starts at START+4; the three sizes match). Boot A: bss data start 0x11111ea0, slot 0x11131a28; `m 11131a28` showed 10000810, equal to the word at address 4 (SysBase), so the formula is right. The base is NOT stable between boots or runs: boot B had bss at 0x11112228 (+0x388), slot 0x11131db0.
+- Watch syntax that works: `w 0 <addr> 4 W`; hit line `Memwatch 0: break at 11131A28.L  W  00000000 PC=00FA6EF4 CPUDW`, then registers; `g` continues.
+- First write seen (boot B, watch still on boot A's address, which lies inside boot B's bss): PC=00FA6EF4, Kickstart ROM `DBF D2,*-2` clear loop, value 0, A2/D3=11112228 (bss start), D4=0001FBB4 (bss size). That is exec zeroing the freshly loaded bss, not a corrupting write. The legitimate startup store and any later bad write were not reached: no further hit before the guest stopped answering wasabi (HANG outcome), because the watch was on the old slot.
+- `nvim -u NONE "+sleep 60"` never exits by itself; ending it with `Break` made FS-UAE vanish (boot A, no hit logged). Boot C, wide watch `w 0 11130000 8192 W` then `g`: FS-UAE vanished at once, before any hit (the wide watch on the debug build may be the cause; untested). A debugger boot needs `g` sent twice.
+
+Not obtained: PC, module and value of the first bad write. 3 rig boots, about 45 tool calls.
+
+Exact next step
+1. One boot. After `rig.py start --debugger` + `g` (twice if "go not started"): load a hold-nvim, `dbgbreak`, read the bss range with `RAM:ownermap` (slot = bss data start + 0x1fb88), `w 0 <slot> 4 W`, `g`. Let that nvim end WITHOUT `Break` (give it a `+q` script after a delay), then start the normal-config nvim. If the new load lands at the same address the first startup hit has value 10000810 (proves the address); log every hit (PC, value) and `g`.
+2. If the base moves per run, retarget on the exec clear loop: hit PC 00FA6EF4 with D4=0001FBB4, slot = A2 + 0x1fb88, `w 0` then `w 1 <slot> 4 W`. The scratch driver doing this (parse hits, retarget, `g`) is scratchpad/drv2.py of session 0fbfe951; move it to rig.py as a subcommand if it works.
+3. Resolve a hit PC to a module: nvim code base = bss data start - 0x15ed8 - 0x6477b0 (ranges are contiguous in both boots); outside it, `ownermap <PC>` before `g`.
+
+## SysBase watchpoint retarget (s39b)
+
+Question: same as s39 (first guest write to nvim's `_SysBase` slot). Result: NOT answered; about 40 tool calls, 3 rig-4 boots with `UPTERM_FSUAE=~/Code/Emulators/fs-uae-debug/fs-uae rig.py start --max --debugger`.
+
+Facts established
+- Stage by hand first: the rig does not carry nvim. `cp -R build/dist/up-nvim/Files/nvim build/rig4/vtc/nvimd` (binary a3aa3137, v0.12.5) and `cp build/amiga/ownermap build/rig4/vtc/ownermap`; both are then visible as `VTC:nvimd/bin/nvim` and `VTC:ownermap` on the running rig.
+- `dbgbreak` freezes the guest, so `ownermap` cannot run after it. Read the segment ranges WHILE the hold-nvim runs (`nvim -u NONE --headless "+sleep 14" +q` ends by itself, no Break needed; startup about 2 s), then `dbgbreak`, set the watch, `g`.
+- ownermap names nvim's segments "Background CLI" (the process name), not "nvim". Find them by size: CODE 0x6477ac, DATA 0x15ed4, BSS 0x1fbb8 (END-START of the range line).
+- The load addresses are STABLE across runs within one boot (two consecutive hold runs gave identical ranges; also equal to a third run): boot D had CODE next-pointer 10aa2e94, DATA 1033cd5c, BSS 1036ca7c, so bss data = 1036ca80 and the slot = 1036ca80 + 0x1fb88 = 1038c608. Across boots they move (s39: 0x1113xxxx; here 0x1036xxxx), so measure per boot, then watch the slot for the next run in the same boot. No retarget on the exec clear loop is needed.
+- Not obtained: the watch run itself. In boot D, `dbgbreak` + `w 0 1038c608 4 W` + `g` + a normal-config `nvim --headless +q` left the guest unresponsive to wasabi (Echo timed out) and FS-UAE exited a minute later ("UAE: Calling uae_quit") with no Memwatch line in debugger.log; the debugger log is stdio-buffered and lags by minutes, so absence of a hit is not proof. Boot E: FS-UAE was gone right after the two `g` lines (start gave no error). A foreground `rig.py start` inside a tool call is killed when the call returns: start it with run_in_background.
+- The debug build may die on any memwatch hit or while idle after `g`; unresolved.
+
+Next step
+- One boot, `rig.py start` in a background task, `g` twice 3 s apart, wait for `up`, stage nvim + ownermap, h4-style measure (script: scratchpad h4.py of session 0fbfe951) while the hold-nvim runs, then dbgbreak, `w 0 <slot> 4 W`, `g`, run nvim, and poll debugger.log from a second process. If FS-UAE dies on the first hit, try a breakpoint form (`f <PC>` is not available for a data write) or build fs-uae-debug with the memwatch print unbuffered.

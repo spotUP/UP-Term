@@ -1,0 +1,52 @@
+; @include dist/common/addon-head.installer
+
+(if (not #update)
+(
+; welcome: n = 8, lead 3
+(message
+    "\n\n\nU H C   T O O L S\n\n"
+    "UHC's own installer (uhcinstall) is downloaded from\n"
+    "its author (uhc.megaburken.net) and run: it installs\n"
+    "the UHC tools into SYS:UHC (a UHC already there is\n"
+    "used as it is, nothing is replaced).\n"
+    "Needs up-term.lha, LhA and a network connection.\n"
+    (all))
+; the download and its unpacked tree are not in the kit: tools/kitsize.py NO_KIT_FILES holds their size
+(set #kb-uhc (+ @KBFETCHUHC@ @KBUHCTREE@))
+(set #totalkb @KBTOTAL@)
+(set #free (getdiskspace (pathonly #dest)))
+(if (and (> #free 0) (< (/ #free 1024) #totalkb))
+    (abort "Nothing was installed. " #dest " has " (/ #free 1024) " KB free;\n"
+           "UHC needs about " #totalkb " KB. Free room and\n"
+           "run Install again."))
+
+;  ready: n = 7, lead 3
+(message
+    (cat "\n\n\nReady to install the UHC tools into\n\n" #dest "\n\n"
+         "about " (/ #totalkb 1024) " MB.\n"
+         "Proceed starts the install;\n"
+         "Abort Install leaves everything as it was."))
+)
+    ; Update: the options of the last install, from its record
+    (
+        (if (exists "@OPTS@/UPTOPTDEST") (run "Copy @OPTS@/#? ENV: QUIET"))
+        (set #kb-uhc 0)
+        (set #totalkb (+ 1 (getenv "UPTUPDKB")))
+        ))
+(set #donekb 0)
+
+(complete 0)
+
+(P_OPTIONS)
+
+(set #step "fetch-uhc" #kb #kb-uhc #n 1
+     #why "Running the UHC installer (tools go to SYS:UHC).")
+(P_STEP)
+
+(set #n 6)
+(P_LEAD)
+(set #done
+    (cat #lead "The UHC tools are installed. In an UP-Term window:\n"
+         "  aget\n\n"
+         "Uninstall (beside Install) takes them out again."))
+; @include dist/common/addon-tail.installer

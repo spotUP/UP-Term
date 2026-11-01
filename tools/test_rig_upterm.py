@@ -35,11 +35,20 @@ if COPY in lines:
 with tempfile.TemporaryDirectory() as tmp:
     tmp = pathlib.Path(tmp)
     (tmp / "vsh").write_bytes(b"vsh-binary")
+    (tmp / "Amarchy").write_bytes(b"amarchy-binary")
+    (tmp / "amarchy-menu").write_bytes(b"menu-binary")
     if hasattr(rig, "stage_upterm"):
         rig.stage_upterm(tmp / "Apps", tmp / "vsh")
+        # 2026-10-22: the rig had no Amarchy (install refreshed only what VTC: held), so no rig check could start it
+        check((tmp / "Apps/bin/Amarchy").is_file() and (tmp / "Apps/bin/Amarchy").read_bytes() == b"amarchy-binary",
+              "UP-Term:bin/Amarchy is the built Amarchy, where the kit puts it")
+        check((tmp / "Apps/bin/amarchy-menu").is_file() and (tmp / "Apps/bin/amarchy-menu").read_bytes() == b"menu-binary",
+              "UP-Term:bin/amarchy-menu is the built amarchy-menu")
         check((tmp / "Apps/bin/vsh").read_bytes() == b"vsh-binary", "UP-Term:bin/vsh is vsh")
         check(b"UP-Term:bin/vsh" in (tmp / "Apps/UP-Term.info").read_bytes(), "the icon's tool is UP-Term:bin/vsh")
         check((tmp / "Apps/UP-Term").is_file(), "the icon has its file")
+        check(b"XCON:0/20/0/400/UP-Term/CLOSE" in (tmp / "Apps/UP-Term.info").read_bytes(),
+              "the icon window is XCON:0/20/0/400/UP-Term/CLOSE (width 0: as wide as the screen)")
         drawer = (tmp / "Apps.info").read_bytes() if (tmp / "Apps.info").is_file() else b""
         check(len(drawer) > 78 + 62, "the app drawer gets a drawer icon, VTC:Apps.info (Workbench could not open it)")
         check(drawer[:4].hex() == "e3100001" and drawer[48:49] == b"\x02",
@@ -47,9 +56,19 @@ with tempfile.TemporaryDirectory() as tmp:
         # do_DefaultTool 0, do_DrawerData present: the 62-byte DrawerData follows the 78-byte DiskObject
         check(drawer[50:54] == b"\0\0\0\0" and drawer[66:70] != b"\0\0\0\0",
               "the drawer icon has no default tool and carries a DrawerData")
-        check(b"UP-Term Prefs" in (tmp / "Apps/UP-Term-Prefs.info").read_bytes(), "the Prefs icon's tool is C:UP-Term Prefs")
+        check(b"C:UP-Term-Prefs" in (tmp / "Apps/UP-Term-Prefs.info").read_bytes(), "the Prefs icon's tool is C:UP-Term-Prefs")
     else:
         check(False, "rig.stage_upterm exists")
+
+# 2026-10-22 (rig 4): UP-Term: was Rushhours:Tools/UP-Term, the binaries were staged in VTC:Apps/bin, and the
+# rig scripts started UP-Term:bin/Amarchy and found nothing. They start from where stage_upterm writes.
+import paths
+check(rig.paths.UPTERM_BIN == "VTC:%s/bin" % rig.paths.UPTERM_DRAWER, "UPTERM_BIN is the staged drawer's bin")
+for script in ("amarchy_rig.py", "amarchy_menu_rig.py"):
+    src = (HERE / "rig" / script).read_text()
+    check("UP-Term:bin/Amarchy" not in src, "%s does not start Amarchy from UP-Term: (a kit install moves it)" % script)
+    check("Run >NIL: %s/Amarchy" in src and "paths.UPTERM_BIN" in src,
+          "%s starts Amarchy from paths.UPTERM_BIN, where stage_upterm stages it" % script)
 
 # install removes what no committed code makes at the root of the host drawer, and an orphan drawer icon
 import subprocess
@@ -152,7 +171,7 @@ a, f, req = boot(rig.GO, {}, PICON)
 check("sys:prefs/up-term-prefs.info" in f, "no kit: the Prefs icon is copied to SYS:Prefs")
 a, f, req = boot(rig.GO, {}, PICON | {"sys:prefs/up-term-prefs.info"})
 check("sys:prefs/up-term-prefs" not in f, "a kit's Prefs icon in SYS:Prefs stays")
-check('C:Copy >NIL: VTC:upprefs "C:UP-Term Prefs" CLONE' in [l.strip() for l in rig.GO.splitlines()], "GO installs C:UP-Term Prefs")
+check('C:Copy >NIL: VTC:upprefs C:UP-Term-Prefs CLONE' in [l.strip() for l in rig.GO.splitlines()], "GO installs C:UP-Term-Prefs")
 
 # regression (rig 1, 2026-10-13): an installer_rig run left ENVARC:up-term/Dir naming
 # SYS:UP-Term, a drawer it had deleted; the boot asked for the volume UP-Term: and froze

@@ -317,6 +317,93 @@ static void packed_table(void)
     CHECK(upconf_profile_equal(&c, &back, "default"));
 }
 
+/* upconf_rows: the raw rows of a section in file order, duplicates kept */
+typedef struct rowlog {
+    int n;
+    int line[8];
+    char text[8][48];
+} rowlog;
+
+static int log_row(void *ud, int lineno, const char *key, const char *value)
+{
+    rowlog *r = (rowlog *)ud;
+    if (r->n < 8) {
+        r->line[r->n] = lineno;
+        strcpy(r->text[r->n], key);
+        strcat(r->text[r->n], "=");
+        strcat(r->text[r->n], value);
+        r->n++;
+    }
+    return 0;
+}
+
+static void rows_in_file_order(void)
+{
+    static const char text[] =
+        "orphan = 1\r\n"
+        "; comment\r\n"
+        "[bind]\r\n"
+        "a = one  \r\n"
+        "  b=two\t\r\n"
+        "a = three\r\n"
+        "# note\r\n"
+        "[profile bind]\n"
+        "c = four\n"
+        "[other]\n"
+        "a = nope\n";
+    static char longline[400];
+    rowlog r;
+    int dropped = -1;
+    memset(&r, 0, sizeof(r));
+    CHECK_INT(upconf_rows(text, (long)strlen(text), "BIND", log_row, &r, &dropped), 4);
+    CHECK_INT(dropped, 0);
+    CHECK_STR(r.text[0], "a=one");                /* CR and blanks cut */
+    CHECK_STR(r.text[1], "b=two");
+    CHECK_STR(r.text[2], "a=three");              /* the duplicate key is its own row */
+    CHECK_STR(r.text[3], "c=four");               /* "[profile bind]" is the same section */
+    CHECK_INT(r.line[0], 4);
+    CHECK_INT(r.line[3], 9);
+    memset(&r, 0, sizeof(r));
+    CHECK_INT(upconf_rows(text, (long)strlen(text), "default", log_row, &r, 0), 1);
+    CHECK_STR(r.text[0], "orphan=1");             /* rows before any section */
+    memset(&r, 0, sizeof(r));
+    CHECK_INT(upconf_rows(text, 0, "bind", log_row, &r, &dropped), 0);
+    CHECK_INT(upconf_rows(0, 5, "bind", log_row, &r, 0), 0);
+    /* a line the table parser cannot hold is left out and counted */
+    strcpy(longline, "[bind]\nk = ");
+    memset(longline + strlen(longline), 'x', 300);
+    strcat(longline, "\nok = 1\n");
+    memset(&r, 0, sizeof(r));
+    CHECK_INT(upconf_rows(longline, (long)strlen(longline), "bind", log_row, &r, &dropped), 1);
+    CHECK_INT(dropped, 1);
+    CHECK_STR(r.text[0], "ok=1");
+    CHECK_INT(r.line[0], 3);
+}
+
+/* A tab opened after an Amarchy theme switch starts in that theme: the active theme's colours beat the up-term profile's
+ * (owner 2026-10-29); no theme file, or text that is not a theme, leaves the profile's. */
+static void theme_beats_profile(void)
+{
+    static upconf prof, theme, junk;
+    static const char pt[] = "[profile default]\nfg = C0C0C0\nbg = 000000\n";
+    static const char tt[] = "[profile amarchy]\nfg = AABBCC\nbg = 112233\n";
+    static const char nt[] = "[profile amarchy]\nbell = none\n";
+    const char *sec = 0;
+    int is_theme = -1;
+    const upconf *src;
+    upconf_parse(&prof, pt, (long)strlen(pt));
+    upconf_parse(&theme, tt, (long)strlen(tt));
+    upconf_parse(&junk, nt, (long)strlen(nt));
+    src = upconf_colour_source(&prof, "default", &theme, &sec, &is_theme);
+    CHECK(src == &theme && is_theme == 1);
+    CHECK_STR(sec, "amarchy");
+    src = upconf_colour_source(&prof, "default", 0, &sec, &is_theme);
+    CHECK(src == &prof && is_theme == 0);
+    CHECK_STR(sec, "default");
+    src = upconf_colour_source(&prof, "default", &junk, &sec, &is_theme);
+    CHECK(src == &prof && is_theme == 0);
+}
+
 void suite_upconf(void)
 {
     upconf c;
@@ -636,6 +723,8 @@ void suite_upconf(void)
         CHECK_STR(out + 150, "15,111111");             /* the last entry whole, nothing after */
     }
     profile_equal();
+    theme_beats_profile();
     comments_kept();
     packed_table();
+    rows_in_file_order();
 }

@@ -1,0 +1,2 @@
+; the record drawer is filled: drop the real-drawer assign of resolve-addon.dos
+Assign >NIL: UPTREAL:

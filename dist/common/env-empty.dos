@@ -1,0 +1,14 @@
+; Empties the drawer named in $upempty: every file in it and in the drawers
+; under it goes, the drawers stay. On AmigaOS 3.2 ENV: is a link to ENVARC:
+; (S:Startup-Sequence: MakeLink RAM:ENV to ENVARC:), and deleting a drawer in
+; that ENV: resets the machine (ram-handler 47.57 on the A1200, 2026-10-20:
+; Delete ENV:vsh once its files were gone, and Delete ENV:up-term/#? ALL after
+; a Copy ALL into it; the earlier Guru there was 81000005 in task 'RAM'). Files
+; delete safely, any number of times. While a drawer is in ENV: its ENVARC:
+; drawer is "in use" and stays too; a reboot ends both.
+If EXISTS "$upempty"
+  List >T:upempty "$upempty" ALL FILES LFORMAT "Delete >NIL: *"%p%n*" QUIET"
+  Execute T:upempty
+  Delete >NIL: T:upempty QUIET
+EndIf
+UnSet >NIL: upempty

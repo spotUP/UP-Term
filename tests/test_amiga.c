@@ -72,11 +72,17 @@ static void pens_are_screen_pens(void)
     vt_color f, b;
     h_put(t, "a\x9b" "1;33;41mb");
     vt_resolve_colors(t, h_cell(t, 0, 0), &f, &b);
-    CHECK_INT(f, 1);
-    CHECK_INT(b, 0);
+    CHECK_INT(f, VT_COLOR_DEFAULT);    /* pen 1, the text: the window's ground */
+    CHECK_INT(b, VT_COLOR_DEFAULT_BG); /* pen 0, the background */
     vt_resolve_colors(t, h_cell(t, 1, 0), &f, &b);
     CHECK_INT(f, 3); /* bold does not brighten: it is a font style */
-    CHECK_INT(b, 1);
+    CHECK_INT(b, VT_COLOR_DEFAULT); /* pen 1 as a background: the window's text colour */
+    h_put(t, "\x9b" "32;40mc\x9b" ">0m\x9b" "K");
+    vt_resolve_colors(t, h_cell(t, 2, 0), &f, &b);
+    CHECK_INT(f, 2); /* pens 2-7 stay screen pens */
+    CHECK_INT(b, VT_COLOR_DEFAULT_BG);
+    vt_resolve_colors(t, h_cell(t, 5, 0), &f, &b);
+    CHECK_INT(b, VT_COLOR_DEFAULT_BG); /* a prompt's CSI >0m: the ground */
     vt_free(t);
 }
 

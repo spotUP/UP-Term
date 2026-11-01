@@ -6,6 +6,7 @@
 #define SH_EXEC_H
 #include "sh_parse.h"
 #include "sh_expand.h"
+#include "sh_path.h"
 
 /* An open stream: an opaque handle of the OS layer (a BPTR on the Amiga). */
 typedef long sh_fh;
@@ -131,6 +132,9 @@ typedef struct sh_os {
      * the signal is missing, and signal_why says what (vsh: no ixkill); 0 in the table: kill reports
      * it cannot */
     int   (*signal)(void *os, long target, int sig, int is_job);
+    /* the pid of a job id as the process sees it (ixemul getpid: the Task address); 0: none known (the job id is its pid);
+     * 0 in the table: the job id is the pid */
+    long  (*job_pid)(void *os, long job);
     const char *signal_why;
     /* read -t: 1 when input is waiting (or at its end) within ms milliseconds, 0 on timeout;
      * 0 in the table: always ready */
@@ -157,6 +161,16 @@ typedef struct sh_os {
     /* the console's line history (history): op is SH_HIST_*; a result below 0 for COUNT means the console does not
      * have one, and the shell keeps a list of its own from then on; 0 in the table: the shell's own list */
     long  (*hist)(void *os, int op, long arg, char *buf, long max);
+    /* the system's variable of this name (vsh: ENV:), copied into buf (max bytes, NUL ended): 1 when it is set,
+     * 0 when not; a $name the shell has no variable for is looked up here, so a SetEnv done before the shell
+     * started or by a command it ran is seen as in the AmigaDOS Shell. 0 in the table: no such store */
+    int   (*getenv)(void *os, const char *name, char *buf, long max);
+    /* the secondary result (AmigaDOS IoErr) of the last command run(wait)/wait finished, returned once and
+     * cleared (a second call gives 0); 0 in the table: none. `why` explains it */
+    long  (*ioerr)(void *os);
+    /* the system's text for a secondary result (AmigaDOS Fault), copied into buf (max bytes, NUL ended); 1 when
+     * there is one; 0 in the table: no text */
+    int   (*fault)(void *os, long code, char *buf, long max);
     void *data;
 } sh_os;
 #define SH_HIST_COUNT 0   /* the number of lines */
@@ -252,6 +266,7 @@ typedef struct sh_shell {
     sh_list hashtab;       /* hash: "name\tpath\thits" in the order they were added */
     char *hashpath;        /* the PATH the hash table was built for */
     sh_list disabled;      /* enable -n: the builtins switched off */
+    sh_list env_hidden;    /* names the script unset: the system's variable of that name (ENV:) stays hidden from $name */
     int exiting;           /* exit ran: stop */
     long exit_status;
     int breaking;          /* break / continue levels pending */
@@ -261,6 +276,7 @@ typedef struct sh_shell {
     long jobs[32];         /* background job ids, 0 = free */
     char *job_text[32];
     char job_stopped[32];  /* suspended (^Z), until fg or bg */
+    long job_pid[32];      /* the process address of the job (what $! and kill/wait/jobs -p show, as ixemul's getpid), 0: the job id itself */
     long job_seq[32];      /* when the job was added or last stopped: the newest is the current job (%+) */
     long job_seqno;
     char job_foreign[32];  /* a clone's copy of its parent's job: listed by jobs, never waited for */
@@ -382,11 +398,6 @@ int sh_path_next(const char **p, char *dir, long max);
  * parent directory, so vsh tries a name that way first and this one only
  * when there is nothing by the Amiga meaning (vsh.c lock_name). */
 int sh_unix_root(const char *in, char *out, long max);
-/* How many slashes follow the volume's colon in "Vol:/x" (0 when the name has no volume before its
- * first slash). To AmigaDOS that slash is the parent of the volume's root, always an error; POSIX
- * code writes "$HOME/x" with HOME a volume ("System:"), so vsh drops them: "Vol:/x" is Vol:x, a run
- * of slashes too, as in POSIX (vsh.c amiga_name). */
-int sh_vol_slashes(const char *in);
 /* The OS layer, for a command file it found and could not load: the argv that runs it in this shell
  * when its #! (or ;!) line names /bin/sh or /bin/bash (ixemul's rule; sh_exec.c), else 0. Malloc'ed;
  * out[1] is malloc'ed too when it is not argv[0] (the interpreter's argument). */
@@ -422,6 +433,12 @@ int  sh_hist_expand(sh_shell *sh, const char *line, char **out, int *print_only)
  * expanded as a prompt, is what is shown after a command line is read and before it runs (malloc'ed, 0 if
  * PS0 is unset or empty). */
 void sh_prompt_command(sh_shell *sh);
+/* Before an interactive prompt reads its line from `in`: the terminal back in the shell's own line mode (echo
+ * on, cooked: os.echo(in, 1)), whatever mode the last command left it in -- as readline puts its own mode in
+ * at every prompt and the 3.2 Shell sets its mode per prompt. A program that ended raw (SetMode(1) without
+ * SetMode(0): an error path, a crash) left the prompt with no line editing, CR not ending the line and Ctrl-C
+ * typed as data, so the next Copy could not be broken (CTRLC-COPY / CTRLC-RAW, 2026-10-30) */
+void sh_prompt_mode(sh_shell *sh, sh_fh in);
 /* Before a prompt of an interactive shell: COLUMNS and LINES from the terminal's size (shopt checkwinsize,
  * on by default as in bash 5; V42) */
 void sh_check_winsize(sh_shell *sh);
@@ -446,6 +463,11 @@ void sh_startup_login(sh_shell *sh);   /* a login shell: login_shell on, then EN
  * %B %b %U %u %S %s %%), then parameter, command and arithmetic expansion.
  * $HOME in the directory shows as ~. malloc'ed. */
 char *sh_prompt(sh_shell *sh, const char *ps);
+
+/* The prompt when PS1 is unset: the full Amiga path of the current
+ * directory (SYS:Work, not ~/Work: HOME is SYS: when nothing names it, and
+ * a lone ~ hid the volume) and %, in cyan. */
+#define SH_PS1_DEFAULT "%F{cyan}%/%f %# "
 
 /* Report background jobs that have ended ("[1] Done  cmd") on the
  * shell's error stream and forget them; the shell calls it before each

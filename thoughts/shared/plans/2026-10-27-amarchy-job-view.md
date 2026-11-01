@@ -1,0 +1,101 @@
+---
+date: 2026-10-27
+topic: Amarchy shared job view (roadmap Phase J): run a command, stream its output into the menu, Done/Failed footer
+status: approved scope (owner, 2026-10-27), in progress (10 of 11; RJ.7 drawn style passed on sentinels, text style and footer text open)
+ledger: thoughts/spot/todos.md row AMARCHY-JOB-VIEW
+research: thoughts/shared/research/2026-10-27-amarchy-job-view.md
+roadmap: thoughts/shared/plans/2026-10-26-amarchy-roadmap.md Phase J (RJ.1-RJ.7)
+---
+# Amarchy shared job view
+
+## Owner decisions (2026-10-27)
+- RJ.3 scope: output-only first. The job view streams output; upkg-ask keeps taking defaults or recorded answers
+  (its stdin/stdout are not a terminal, dist/upkg-ask:55-62). The two-way question protocol (tagged `@ASK` lines,
+  PTY: channel, choose-one/confirm rows) is a later item, not part of this plan.
+- Done/Failed colours: new theme roles (MT_OK, MT_FAIL) with theme-file keys and fallbacks, not ACCENT/DIM reuse.
+- Both styles: the drawn menu (gui.c) and the text menu (menu.c, libupkgui) both get the job view.
+
+## Design
+- Channel: the job's output goes to a T: file (`T:amarchy-job.<task>`); Amarchy reads new bytes on a timer.device
+  tick (TR_ADDREQUEST, the handler/pty_handler.c:185-200 timer_start/timer_stop pattern). PIPE: is out (its Read
+  blocks, RULES.md:67). Input is NIL:. upkg output is line buffered into a file (patch 0024), so lines arrive per line.
+- Exit code: the job runs as an async SystemTags child; it ends by a wrapper that records the return code. Default:
+  run `<line>` through the shell with `SYS_UserShell` and an end marker the job writes after the command
+  (`<line>` then `Echo "@JOBRC $RC"` into the same file). The pure parser takes the `@JOBRC n` line as the end and the
+  code; the marker line is not shown. Chosen because it needs no child-process completion message on the libnix/ixemul
+  sides; if the rig shows `$RC` does not expand in the shell the menu uses, the fallback is a NP_ExitCode hook, decided
+  at RJ.1 with evidence.
+- Pure core `amarchy/job_core.c` (host tested): append bytes with partial-line carry, CR and CRLF handling, tab
+  expand, ring of the last JOB_MAX_LINES lines, `@JOBRC` detection, footer state (RUNNING, DONE rc 0, FAILED rc != 0,
+  CANCELLED), scroll position that follows the tail until the user scrolls up.
+- DOS side `amarchy/job_dos.c`: jb_start(line, prog, title) (pl_stack for the stack, rule 6), jb_sigmask(), jb_poll()
+  (Seek/Read the new bytes into job_core), jb_cancel() (Signal CTRL_C to the child task), jb_end() (close, delete file,
+  stop timer). One job at a time.
+- Drawn menu: mode M_JOB in gui.c beside M_VIEW. Header band = job title (the logo slot stays empty until Phase L RL.2,
+  which reads the logo file). Body = output lines, MT_TEXT. Footer = "Running...", "Done", "Failed (code n)" or
+  "Cancelled" in MT_DIM / MT_OK / MT_FAIL. event_loop ORs jb_sigmask() into its Wait in every mode, so nested modes do
+  not starve the job.
+- Text menu: menu.c drives the same job_core from its ui_on_tick hook (menu.c:145, 243), draws through libupkgui. If
+  libupkgui has no scrolling text view that can be refreshed from a tick, that API is a request to the UP-Term session
+  (ledger row), and RJ.2t waits on it.
+- Keys in the view: Up/Down/PageUp/PageDown scroll; Esc while running = cancel (CTRL_C to the child); Esc or Enter after
+  the end = close back to the menu row.
+- Keymap: a new row action prefix `job:<line>` (beside `run:`). `install.upgrade` and `install.update` move from `run:` to
+  `job:`. `upkg browse` stays `run:` (curses, needs a terminal).
+- upkg contract (upterm-ports feat/uhc-repo a3a9752, pkgs/opkg/doc/upkg-api.txt): rc 0 ok, 5 nothing to do, 11 usage,
+  12 not found, 13 network, 14 package script failed, 15 needs answers (no tty), 20 fail. With stdout not a tty it prints
+  `[PROGRESS n/m] <phase> <name>` lines. The footer names these codes in words (rc 5 counts as Done, "Nothing to do";
+  rc 15 = "Needs answers: run it from a terminal"); job_core keeps the last `[PROGRESS n/m]` for the header
+  ("3 of 7"). Codes live in one table in job_core, not in gui.c or menu.c.
+- Sentinels: AMARCHY_JOB_LINES (lines appended) and AMARCHY_JOB_DONE (end seen, value rc + 1), published like
+  AMARCHY_DRAWS (gui.c:515).
+
+## Checklist
+- [x] RJ.6a pure core job_core.c + tests/test_job.c: carry across chunks, CR, CRLF, tab, empty lines, ring overflow,
+  `@JOBRC 0` / `@JOBRC 5` / marker split across two chunks, marker never shown, follow-tail vs scrolled. Done 5e91f921, suite job 70 checks 0 failed.
+- [x] RJ.6b footer state machine in job_core (RUNNING to DONE/FAILED/CANCELLED, cancel after end ignored), upkg code
+  table (0, 5, 11-15, 20, unknown), `[PROGRESS n/m]` capture, host tested. Done 5e91f921.
+- [x] RJ.1 job_dos.c: jb_start/jb_sigmask/jb_poll/jb_cancel/jb_end, timer.device tick (pty_handler pattern), stack via
+  pl_stack, T: file removed at the end. `$RC` marker proven on the rig (or the fallback chosen with evidence).
+  Done fb3d6fae. The shell is vsh, which has `$?` (not `$RC`): the line is `vsh -c "<cmd>; echo @JOBRC $?"`, no hook needed.
+  Output file opened MODE_READWRITE (shared lock) so the reader can open it while the job writes. Rig 7, tools/probes/jobrun/jobprobe.c:
+  `Echo one` -> line [one], ended=1 state=DONE rc=0; `Search NOFILE x` -> [object not found], state=FAILED rc=20; no @JOBRC line shown.
+  jb_cancel (Ctrl-C to task name amarchy-job) built but not yet driven on the rig.
+- [x] RJ.4 theme roles MT_OK and MT_FAIL: menu_theme.h, gthemes_core (GUI themes), text-menu roles, every theme file
+  gets keys or a documented fallback; host test that each theme resolves both roles. Done c13e74f0: theme keys `green` /
+  `red`, fallback accent / foreground, terminal colours 10 / 9; gthemes 490 checks 0 failed.
+- [x] RJ.2 drawn view M_JOB in gui.c: header title, body, footer, scroll keys, jb_sigmask in every event_loop Wait.
+  Done 4141abf9 (merged 687ea3dc): gui_run_job is lf_ui.run_job at all 3 places; 18 fixed rows; redraw only on change.
+  Host and m68k build only; the rig proof is RJ.7.
+- [x] RJ.2t text view in menu.c through libupkgui on the ui_on_tick hook (or the libupkgui API request ledgered).
+  Done commit 'Amarchy text menu job view' (libupkgui upterm-ports 570074b: ui_invalidate/ui_follow/ui_status); host and m68k build only; rig proof RJ.7 text style.
+  Was blocked 2026-10-27: libupkgui (upterm-ports kit-main 8b49328) lacks tick redraw, follow release on scroll-up and a
+  caller status footer; request ui_invalidate / ui_follow / ui_status ledgered as UPKGUI-JOB-API (UP-Term session).
+  Research thoughts/shared/research/2026-10-27-libupkgui-job-view.md.
+- [x] RJ.5 cancel and close (drawn side done 4141abf9: jc_key_act, Esc = jb_cancel while running, Esc/Enter/right
+  button close after the end, hotkey cancels then closes, list_rebuild_keep returns to the row; text side done commit 'Amarchy text menu job view' in menu.c text_run_job; host and m68k build only; rig proof RJ.7 text style): Esc sends CTRL_C while running, Esc/Enter closes after the end, menu returns to the row.
+- [x] RJ.K keymap `job:` action in leaf.c, host test in test_keymap (row action parsed, run: rows unchanged);
+  dist/keymap install.upgrade and install.update move to `job:`. Done 22e507e0 (KA_JOB, LF_JOB, lf_ui.run_job, fallback
+  to the run: path when 0); keymap 11420 checks 0 failed.
+- [x] RJ.S sentinels AMARCHY_JOB_LINES (running total) and AMARCHY_JOB_DONE (rc + 1), drawn view. Done 4141abf9; rig proof RJ.7.
+- [ ] RJ.7 rig reachability (rig 7, 060, both styles): hotkey, Install > Update lists, the view shows upkg output lines,
+  footer Done with code 0, sentinels move; a failing job (`job:Failat 1 ; Fault 205`-style line, no network) shows
+  Failed with its code; Esc during a long job cancels. Against the local P7 feed, never the real feed.
+  Drawn style 2026-10-27 (84ddd379, research 2026-10-27-job-view-rj7-run.md): sentinels PASS for Done rc 0
+  (JOB_LINES 3, JOB_DONE 1), feed stopped rc 13 (JOB_DONE 14), Esc cancel (vsh/upkg/curl gone, no amarchy-job, no T: file),
+  conf and prefs restored by md5. Open: footer words on screen (no text sentinel), return to the same row (only the level was
+  read), text style (RJ.2t build eed2cacc). Rig note: the commodity path lacks UP-Term:bin, so the rig needs
+  `Path <kit>/bin ADD` before Amarchy starts.
+  Part 2 2026-10-27 (build e4ed3649, notes ed426c0d, same research file "Part 2"): both styles. PASS: Done rc 0
+  (text JOB_LINES 3 / JOB_DONE 1, footer `Enter: Accept  Escape: Back    Done`, Enter returns to Update lists in both
+  styles). FAIL, three defects: (1) status word longer than the free space overwrites the key hint
+  (`Escape:NBackrk error`, `Backancelled`), both styles; (2) Esc cancel leaves vsh, upkg and curl alive until the server
+  answers (22 s); (3) T:amarchy-job lingers when the view closes before the cancelled children end. Root cause in
+  progress; each fix gets a regression test, then a rig rerun of A2, A3, B2, B3.
+- [x] RJ.D docs: dist/keymap comment for `job:`, Amarchy user doc row on the job view. Done 48b9f296, dist/README.txt.
+
+## Deferred (owner, 2026-10-27)
+- Two-way questions in the job view (RJ.3 full): upkg-ask tagged-line mode in upterm-ports, PTY: channel, choose-one and
+  confirm input rows. Own plan after this one lands.
+
+## Results

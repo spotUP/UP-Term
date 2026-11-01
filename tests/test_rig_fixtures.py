@@ -2,7 +2,7 @@
 """tools/rig on the host, against a fake agent (no emulator): gclick matches a
 gadget id exactly ('90' is not '290': it clicked a radio button), and a rig run
 puts back what it planted (ENVARC:Claude/remote from a killed run) even when it fails."""
-import os, pathlib, shlex, struct, sys, unittest
+import contextlib, io, os, pathlib, shlex, struct, sys, unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools/rig"))
 import ami, install_rig as ir
@@ -120,6 +120,32 @@ class Rig(unittest.TestCase):
         self.assertIn('Assign UP-Term: "Rushhours:UpkgRig/UP-Term"', self.fake.cmds)
         self.assertNotIn('Assign >NIL: UP-Term:', self.fake.cmds)
 
+    def test_restore_takes_out_a_uhc_the_run_installed_with_its_block(self):
+        # ALL-CASE-RERUN-STALE (s25): restore() put S:User-Startup back without the ;BEGIN UHC block but kept the
+        # SYS:UHC the run made, so the next run's up-uhc found UHC there and wrote no block
+        there = set()
+        def run(cmd, timeout=60):
+            self.fake.cmds.append(cmd)
+            if cmd.startswith('List >NIL: '): return (0 if cmd[11:] in there else 205), ''
+            if cmd.startswith('Delete >NIL: SYS:UHC '): there.discard('SYS:UHC/UHC-Startup')
+            return 0, ''
+        ir.run = run
+        fx = ir.Fixtures(); fx.take()
+        there.add('SYS:UHC/UHC-Startup')          # the run installs UHC
+        fx.restore()
+        self.assertIn('Delete >NIL: SYS:UHC ALL QUIET FORCE', self.fake.cmds)
+        self.assertLess(self.fake.cmds.index('WBPath REMOVE UHC:ExtBin'),
+                        self.fake.cmds.index('Delete >NIL: SYS:UHC ALL QUIET FORCE'), 'the Workbench path lock goes first')
+        self.assertNotIn('SYS:UHC/UHC-Startup', there)
+
+    def test_restore_keeps_a_uhc_that_was_there_before_the_run(self):
+        def run(cmd, timeout=60):
+            self.fake.cmds.append(cmd)
+            return 0, ''
+        ir.run = run
+        fx = ir.Fixtures(); fx.take(); fx.restore()
+        self.assertFalse([c for c in self.fake.cmds if 'UHC' in c and not c.startswith('List')], self.fake.cmds)
+
     def test_main_restores_when_the_body_raises(self):
         orig = ir._main
         def boom(dest=None):
@@ -193,8 +219,8 @@ class InstallCases(unittest.TestCase):
             else:
                 self.assertIn('base' if name != 'nobase' else ir.based_ids()[0], pk, name)
             self.assertTrue(callable(fn), name)
-        self.assertEqual(ir.standalone_ids(), ['claude', 'pi', 'python'])
-        self.assertEqual(ir.based_ids(), ['nvim'])
+        self.assertEqual(ir.standalone_ids(), ['claude', 'pi', 'python', 'dopus'])
+        self.assertEqual(ir.based_ids(), ['nvim', 'uhc'])
 
     def test_a_pass_with_the_same_kit_is_skipped_and_a_changed_archive_runs_again(self):
         for pkg in ir.package_ids(): self.kit(pkg)
@@ -266,9 +292,10 @@ class InstallCases(unittest.TestCase):
 
     def test_prepare_unpacks_each_add_on_with_its_run_scripts(self):
         calls = []
-        saved = (ir.VTC, ir.KIT, ir.run, ir.SYSVOL)
+        saved = (ir.VTC, ir.KIT, ir.run, ir.SYSVOL, ir.stale_kit)
         try:
             ir.VTC = self.tmp / 'vtc'; ir.VTC.mkdir()
+            ir.stale_kit = lambda kit=None: None  # a two-file kit; stale_kit has its own tests
             (self.tmp / 'basekit').mkdir(); (self.tmp / 'basekit/Install').write_text('x')
             ir.KIT = self.tmp / 'basekit'
             for pkg in ir.package_ids(): self.kit(pkg)
@@ -289,7 +316,19 @@ class InstallCases(unittest.TestCase):
             self.assertIn('Set upvardelete YES', un); self.assertIn('CD VTC:kit-nvim', un); self.assertIn('Execute Uninstall', un)
             self.assertFalse((ir.VTC / 'kit-pi').exists(), 'only the add-ons asked for are unpacked')
         finally:
-            ir.VTC, ir.KIT, ir.run, ir.SYSVOL = saved
+            ir.VTC, ir.KIT, ir.run, ir.SYSVOL, ir.stale_kit = saved
+
+    def test_prepare_refuses_a_kit_that_lacks_a_part_before_vtc_is_touched(self):
+        saved = (ir.VTC, ir.KIT)
+        try:
+            ir.VTC = self.tmp / 'vtc3'; (ir.VTC / 'distkit').mkdir(parents=True)
+            ir.KIT = self.tmp / 'oldkit'; (ir.KIT / 'Files').mkdir(parents=True)
+            with self.assertRaises(SystemExit) as e:
+                ir.prepare(None)
+            self.assertIn('lacks Install, Install.info', str(e.exception))
+            self.assertTrue((ir.VTC / 'distkit').exists(), 'the refusal comes before VTC:distkit is replaced')
+        finally:
+            ir.VTC, ir.KIT = saved
 
     def test_run_long_keeps_its_wrapper_alive_when_the_script_returns_20(self):
         written = {}
@@ -337,6 +376,51 @@ class RigMachine(unittest.TestCase):
     def test_the_default_machine_is_the_060(self):
         self.assertEqual(self.machine(), ['True', 'True'])
 
+    def config(self, *flags):
+        import subprocess, sys
+        code = ("import sys; sys.argv = ['rig.py'] + %r; sys.path.insert(0, %r); import rig; "
+                "print('\\n'.join(rig.cpu_lines() + rig.unimplemented_lines()))"
+                % (['start'] + list(flags), str(pathlib.Path(ir.__file__).parent)))
+        return subprocess.run([sys.executable, '-I', '-c', code], capture_output=True, text=True).stdout.split('\n')[:-1]
+
+    def title(self, rig, *flags):
+        import os, subprocess, sys
+        code = ("import sys; sys.argv = ['rig.py'] + %r; sys.path.insert(0, %r); import rig; print(rig.title_line())"
+                % (['start'] + list(flags), str(pathlib.Path(ir.__file__).parent)))
+        env = dict(os.environ, UPTERM_RIG=str(rig))
+        return subprocess.run([sys.executable, '-I', '-c', code], capture_output=True, text=True, env=env).stdout.strip()
+
+    def kick(self, *flags):
+        import subprocess, sys
+        code = ("import sys; sys.argv = ['rig.py'] + %r; sys.path.insert(0, %r); import rig, paths; "
+                "print(rig.KICK == paths.ROM_A500, rig.KICK.name)"
+                % (['start'] + list(flags), str(pathlib.Path(ir.__file__).parent)))
+        return subprocess.run([sys.executable, '-I', '-c', code], capture_output=True, text=True).stdout.split()
+
+    def test_a500_boots_the_a500_rom(self):
+        """--a500 booted the A1200 3.1 (40.68); FS-UAE refused it on a 68000 and exited at once (2026-10-29)."""
+        self.assertEqual(self.kick('--a500')[0], 'True')
+        self.assertEqual(self.kick()[0], 'False')
+        self.assertEqual(self.kick('--a500', '--kick', '/x/other.rom'), ['False', 'other.rom'])
+
+    def test_each_rig_window_names_its_rig(self):
+        """With several rigs open the owner saw only identical FS-UAE windows (2026-10-24)."""
+        self.assertEqual(self.title(6), 'title = vtcon rig 6 (060 max) - purpose not given (rig.py start --purpose)')
+        self.assertEqual(self.title(3, '--a1200', '--purpose', 'x'), 'title = vtcon rig 3 (68020) - x')
+
+    def test_each_rig_window_names_its_session_and_task(self):
+        """The owner could not tell what each rig did or whose it was (2026-10-25): --purpose goes in the title."""
+        self.assertEqual(self.title(7, '--max', '--purpose', 'Amarchy session:\n menu  terminal check'),
+                         'title = vtcon rig 7 (060 max) - Amarchy session: menu terminal check')
+
+    def test_nofpu_drops_the_fpu_on_every_machine(self):
+        self.assertEqual(self.config(), ['cpu = 68060-NOMMU', 'fpu = 68060',
+                                         'uae_cpu_no_unimplemented = false', 'uae_fpu_no_unimplemented = false'])
+        self.assertEqual(self.config('--a1200'), ['cpu = 68020', 'fpu = 68882'])
+        self.assertEqual(self.config('--nofpu'), ['cpu = 68LC060', 'uae_cpu_no_unimplemented = false'])
+        self.assertEqual(self.config('--a1200', '--nofpu'), ['cpu = 68020'])
+        self.assertEqual(self.config('--nofpu', '--mmu'), ['cpu = 68LC060', 'uae_cpu_no_unimplemented = false'])
+
     def test_a1200_asks_for_the_stock_020(self):
         for f in ('--a1200', '--stock', '--exact', '--fast'):
             self.assertEqual(self.machine(f), ['False', 'False'], f)
@@ -364,6 +448,10 @@ class ScriptedAmiga:
             self.files |= {'ENVARC:Claude/remote', 'C:uptelnet'}
             if 'oldclaude' not in self.skip:   # install.dos deletes the 1.0 leftovers (NL4)
                 self.files -= set(ir.OLD_CLAUDECODE)
+        if pkg == 'dopus':   # install.dos makes DOpus5: live at every boot (7b952ae4)
+            self.startup += ';BEGIN DOpus5\nAssign DOpus5: SYS:DOpus5\n;END DOpus5\n'
+        if pkg == 'uhc':   # uhcinstall puts its block and one blank line before the file's own first line
+            self.startup = ';BEGIN UHC\nExecute SYS:UHC/UHC-Startup\n;END UHC\n\n' + self.startup
         if pkg == 'python':
             self.files.add('ENVARC:upkg/ixemul/needs/Python3')
             self.startup += ';BEGIN Python3\nIf EXISTS SYS:Python3\n  Assign Python3: SYS:Python3\nEndIf\n;END Python3\n'
@@ -373,7 +461,10 @@ class ScriptedAmiga:
         if 'uninstall' in self.skip and pkg == 'python':
             self.files -= set(ir.ADDON_FILES[pkg]) | {f for f in self.files if f.startswith(rec)}
             return
-        self.files -= set(ir.ADDON_FILES[pkg]) | {f for f in self.files if f.startswith(rec)}
+        # Directory Opus and its DOpus5 block, UHC and its UHC block stay after their Uninstall (owner rules,
+        # dist/addons/<pkg>/uninstall-body.dos)
+        keep = set(ir.ADDON_FILES[pkg]) if pkg in ir.LEFT_BY_UNINSTALL else set()
+        self.files -= (set(ir.ADDON_FILES[pkg]) - keep) | {f for f in self.files if f.startswith(rec)}
         if pkg == 'claude' and not self.base:
             self.files.discard('C:uptelnet')
         if pkg == 'python':
@@ -383,12 +474,18 @@ class ScriptedAmiga:
     def python_block(self):
         return ';BEGIN Python3' in self.startup
 
+    def exists(self, p):
+        return p in self.files or any(f.startswith(p + '/') for f in self.files)
+
     def run(self, cmd, timeout=60):
         self.log.append(cmd)
         c = cmd.split('\n')[-1]
         if c.startswith('List >NIL: '):
-            p = c[11:].strip('"')
-            return (0 if p in self.files or any(f.startswith(p + '/') for f in self.files) else 5), ''
+            return (0 if self.exists(c[11:].strip('"')) else 5), ''
+        if c.startswith('Echo >T:rig-exists.dos '):   # install_rig.lock_exists: the If EXISTS script, run next
+            self.lock_path = c.split('If EXISTS ', 1)[1].split('*N', 1)[0]
+            return 0, ''
+        if c == 'Execute T:rig-exists.dos': return 0, 'YES' if self.exists(self.lock_path) else 'NO'
         if c == 'Type S:User-Startup': return 0, self.startup
         if c == 'Type S:Startup-Sequence': return 0, 'ss'
         if c == 'Type UP-Term:UP-Term.version': return 0, '$VER: UP-Term 1.0 (13.10.2026)'
@@ -402,6 +499,9 @@ class ScriptedAmiga:
         if c == 'C:amiga-pi --version': return 0, 'amiga-pi 1.2.0'
         if c == 'Type ENVARC:amiga-pi/settings.json': return 0, 'userfile-keepme'
         if c.startswith('Echo >ENVARC:amiga-pi'): return 0, ''
+        if c == 'Version DOpus5:DirectoryOpus': return 0, 'DirectoryOpus 5.91'
+        if c == 'Version DOpus5:DirectoryOpus FULL': return 0, 'DirectoryOpus 5.91 (68060)'
+        if c.startswith('Assign >NIL: DOpus5: EXISTS'): return (0 if 'DOpus5:DirectoryOpus' in self.files else 5), ''
         if c.startswith('Echo >') and c.split()[1][1:].startswith(('C:ClaudeCode', 'UP-Term:ClaudeCode')):
             self.files.add(c.split()[1][1:])
             return 0, ''
@@ -429,7 +529,7 @@ class ScriptedAmiga:
         elif script == 'rununinstall':
             for pkg in ir.based_ids(): self._remove(pkg)
             self.files = {f for f in self.files if not f.startswith(('UP-Term', 'SYS:UP-Term'))}
-            if 'ENVARC:upkg/Claude/MANIFEST' not in self.files: self.files.discard('C:uptelnet')
+            if 'ENVARC:upkg/up-claude/MANIFEST' not in self.files: self.files.discard('C:uptelnet')
             self.base = False
             self.startup = self.startup.replace(';BEGIN UP-Term assign\nAssign UP-Term: SYS:UP-Term\n;END UP-Term assign\n', '')
         return 0, ''
@@ -437,6 +537,18 @@ class ScriptedAmiga:
     def run_slow(self, name, cmd, timeout=600):
         self.log.append(name)
         return 0, 'NVIM v0.12.0'
+
+
+class FakeWasabi:
+    """The wasabi client as ami._m() returns it, for the host: ARexx answers like Directory Opus, no connection."""
+    class WasabiError(Exception): pass
+    class Conn:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def close(self): pass
+    @staticmethod
+    def arexx(conn, port, cmd): return (0, '', '5 91')
 
 
 class AddonCases(unittest.TestCase):
@@ -447,15 +559,21 @@ class AddonCases(unittest.TestCase):
         sys.path.insert(0, str(ROOT / 'tools'))
         import pkgs, verdicts
         sim = ScriptedAmiga(pkgs, skip)
-        saved = (ir.run, ir.run_long, ir.run_slow, ir.prepare, ir.remote_banner, ir.time.sleep)
+        saved = (ir.run, ir.run_long, ir.run_slow, ir.prepare, ir.remote_banner, ir.time.sleep, ami._m)
         ir.run, ir.run_long, ir.run_slow = sim.run, sim.run_long, sim.run_slow
+        ir.time.sleep = lambda s: None
+        ami._m = lambda: FakeWasabi    # the add-on checks that ask a program over ARexx (dopus) never open a socket
         ir.prepare = lambda dest, addons=(): sim.log.append('prepare %s' % ','.join(addons))
         ir.remote_banner = lambda ck: sim.log.append('banner')
         ck = verdicts.Checks()
+        # The simulated run's ok/FAIL lines stay out of the test log: the deliberate
+        # faults (skip=...) print FAIL lines a green dist-check must not show.
+        # Failures are asserted from ck.failed, which keeps them.
         try:
-            case(ck)
+            with contextlib.redirect_stdout(io.StringIO()):
+                case(ck)
         finally:
-            ir.run, ir.run_long, ir.run_slow, ir.prepare, ir.remote_banner, ir.time.sleep = saved
+            ir.run, ir.run_long, ir.run_slow, ir.prepare, ir.remote_banner, ir.time.sleep, ami._m = saved
         return ck, sim
 
     def ids(self):
@@ -475,9 +593,12 @@ class AddonCases(unittest.TestCase):
         self.assertEqual(ck.failed, [])
         self.assertEqual([l for l in sim.log if l.startswith('runinstall-')], ['runinstall-' + i for i in self.ids()])
         self.assertEqual([l for l in sim.log if l.startswith('rununinstall-')],
-                         ['rununinstall-python', 'rununinstall-claude', 'rununinstall-pi'],
+                         ['rununinstall-python', 'rununinstall-claude', 'rununinstall-pi', 'rununinstall-dopus'],
                          'Python3 while the base is there; Claude and amiga-pi after it (stand-alone); nvim goes with the base')
-        self.assertEqual(sim.files - {'ENVARC:Claude/remote'}, set(), 'the base Uninstall left files (only the user\'s ENVARC:Claude stays)')
+        self.assertEqual(sim.files - {'ENVARC:Claude/remote', 'DOpus5:DirectoryOpus', 'SYS:UHC/C/aget'}, set(),
+                         'the base Uninstall left files (only the user\'s ENVARC:Claude, Directory Opus and UHC stay)')
+        self.assertIn('DOpus5:DirectoryOpus', sim.files, 'Directory Opus stays after Uninstall (owner rule)')
+        self.assertIn('SYS:UHC/C/aget', sim.files, 'UHC stays after Uninstall (owner rule)')
 
     def test_every_stand_alone_archive_installs_and_uninstalls_with_no_base(self):
         for pkg in ir.standalone_ids():
@@ -487,12 +608,20 @@ class AddonCases(unittest.TestCase):
             self.assertIn('runinstall-' + pkg, sim.log)
             self.assertIn('rununinstall-' + pkg, sim.log)
             self.assertNotIn('runinstall', sim.log, 'the base is not installed')
-            self.assertEqual(sim.files, {'ENVARC:Claude/remote'} if pkg == 'claude' else set())
+            stays = {'claude': {'ENVARC:Claude/remote'}, 'dopus': {'DOpus5:DirectoryOpus'}}.get(pkg, set())
+            self.assertEqual(sim.files, stays, pkg)
 
     def test_python_ixemul_case_leaves_a_library_that_is_new_enough(self):
         ck, sim = self.play(ir.case_python_ixemul)
         self.assertEqual(ck.failed, [])
         self.assertNotIn('ENVARC:upkg/ixemul/installed-by-Python3', sim.files)
+
+    def test_a_deliberate_fault_prints_no_fail_line(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            ck, _ = self.play(lambda ck: ir.case_addon(ck, 'nvim'), skip=('record',))
+        self.assertTrue(ck.failed)
+        self.assertNotIn('FAIL', out.getvalue())
 
     def test_an_add_on_without_its_record_fails_its_case(self):
         ck, _ = self.play(lambda ck: ir.case_addon(ck, 'nvim'), skip=('record',))
@@ -609,11 +738,14 @@ class InstallerCases(unittest.TestCase):
                 return True, [], 0.0
             saved = (ir.run, ir.run_long, ir.run_slow, ir.prepare, self.ir2.installer_run, self.ir2.read_installer)
             ir.run, ir.run_long, ir.run_slow, ir.prepare = sim.run, sim.run_long, sim.run_slow, lambda dest, addons=(): None
+            saved_io = (ir.time.sleep, ami._m)
+            ir.time.sleep, ami._m = (lambda s: None), (lambda: FakeWasabi)   # dopus asks its program over ARexx: no socket
             self.ir2.installer_run, self.ir2.read_installer = installer_run, lambda: ('Installer', set())
             try:
                 ok, detail = self.ir2.run_addon_case(pkg)
             finally:
                 ir.run, ir.run_long, ir.run_slow, ir.prepare, self.ir2.installer_run, self.ir2.read_installer = saved
+                ir.time.sleep, ami._m = saved_io
             self.assertTrue(ok, (pkg, detail))
             self.assertEqual(started, [('distkit', 'UP-Term'), ('kit-' + pkg, ir.archive(pkg))], 'base first, then its own icon')
 
@@ -627,8 +759,9 @@ class NoBaseCase(unittest.TestCase):
         ran, files = [], {'S:User-Startup': 'u'}
         def run(cmd, timeout=60):
             if cmd.startswith('Type S:User-Startup'): return 0, files['S:User-Startup']
-            if cmd.startswith('Type ENV:UPTCHECK'): return 0, 'UP-Term-nvim needs UP-Term 1.0 or newer. Install UP-Term.lha first.'
-            if cmd.startswith('List >NIL: C:') or cmd.startswith('List >NIL: UP-Term:'): return (0 if ran and not refuses else 5), ''
+            if cmd.startswith('Type ENV:UPTCHECK'): return 0, 'up-nvim needs UP-Term 1.0 or newer. Install up-term.lha first.'
+            if cmd.startswith('List >NIL: UP-Term:') or cmd[11:] in {f for fs in ir.ADDON_FILES.values() for f in fs}:
+                return (0 if ran and not refuses else 5), ''
             return 0, ''
         def run_long(script, timeout=1500):
             if script.startswith('runinstall-'): ran.append(script)
@@ -638,7 +771,8 @@ class NoBaseCase(unittest.TestCase):
         ir.run, ir.run_long, ir.prepare, ir.Before = run, run_long, lambda dest, addons=(): None, FakeBefore
         ck = verdicts.Checks()
         try:
-            ir.case_nobase(ck)
+            with contextlib.redirect_stdout(io.StringIO()):   # as play(): the faulted run's FAIL lines stay out of the log
+                ir.case_nobase(ck)
         finally:
             ir.run, ir.run_long, ir.prepare, ir.Before = saved
         return ck, ran, ids
@@ -782,13 +916,13 @@ class OwnersAddonsOnTheRig(unittest.TestCase):
 
 class UpkgRigPure(unittest.TestCase):
     """upkg_rig's pure parts: the Packages edits (the per-case feeds), the config, the bumped table, the records."""
-    PACKAGES = "Package: Claude\nVersion: 1.1\nSHA256sum: aa\n\nPackage: UP-Term-nvim\nVersion: 1.0\nSHA256sum: bb\n"
+    PACKAGES = "Package: Claude\nVersion: 1.1\nSHA256sum: aa\n\nPackage: up-nvim\nVersion: 1.0\nSHA256sum: bb\n"
 
     def test_edit_packages_changes_only_the_named_package(self):
         import upkg_rig as u
-        out = u.edit_packages(self.PACKAGES, 'UP-Term-nvim', SHA256sum='cc', Version='1.1')
+        out = u.edit_packages(self.PACKAGES, 'up-nvim', SHA256sum='cc', Version='1.1')
         self.assertEqual([(p['Package'], p['Version'], p['SHA256sum']) for p in u.parse_packages(out)],
-                         [('Claude', '1.1', 'aa'), ('UP-Term-nvim', '1.1', 'cc')])
+                         [('Claude', '1.1', 'aa'), ('up-nvim', '1.1', 'cc')])
         with self.assertRaises(KeyError):
             u.edit_packages(self.PACKAGES, 'nosuch', Version='1')
 
@@ -822,9 +956,153 @@ class UpkgRigPure(unittest.TestCase):
 
     def test_status_version_and_lowered_record(self):
         import upkg_rig as u
-        self.assertEqual(u.status_version(self.PACKAGES, 'UP-Term-nvim'), '1.0')
+        self.assertEqual(u.status_version(self.PACKAGES, 'up-nvim'), '1.0')
         self.assertIsNone(u.status_version(self.PACKAGES, 'Python3'))
-        self.assertEqual(u.lower_record("UP-Term-nvim 1.0 abc d\nrest\n", '0.0.1'), "UP-Term-nvim 0.0.1 abc d\nrest\n")
+        self.assertEqual(u.lower_record("up-nvim 1.0 abc d\nrest\n", '0.0.1'), "up-nvim 0.0.1 abc d\nrest\n")
+
+class UserlandTtyStage(unittest.TestCase):
+    def test_tty_script_has_sh_on_its_path(self):
+        # ptyrun runs `sh -c ...` through execvp, which searches only PATH; a rig's vsh starts with an empty
+        # PATH, and sh lives in /gg/bin (GG:bin), not in userland/bin: without it every tty case exits 127
+        import tempfile, userland_rig as ur
+        saved = ur.VTC, ur.PORTS
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                d = pathlib.Path(d)
+                (d / "vtc/userland/bin").mkdir(parents=True)
+                (d / "ports/pkgs/p/check/keys").mkdir(parents=True)
+                (d / "ports/pkgs/p/check/keys/c").write_bytes(b"")
+                ur.VTC, ur.PORTS = d / "vtc", d / "ports"
+                ur.PTYRUN, ur.TERMINFO = d / "ptyrun", d / "ti"
+                (d / "ptyrun").write_bytes(b""); (d / "ti").mkdir()
+                ur.tty_stage("p", [("c", 'sh -c "x"')])
+                text = (d / "vtc/userland/p/tty-c.sh").read_text(encoding="latin-1")
+                path = [l for l in text.splitlines() if l.startswith("export PATH=")][0]
+                self.assertIn("/gg/bin", path.split("=", 1)[1].split(":"))
+        finally:
+            ur.VTC, ur.PORTS = saved
+
+
+class RigStart(unittest.TestCase):
+    """RIG-FRESH-SYS (2026-10-24): a rig start boots a fresh APFS clone of the master system disk, so a killed or hung
+    run can never leave DH0: dirty for the next one."""
+    class Stop(Exception):
+        pass
+
+    def start_with(self, d, cp_c):
+        """rig.start() in a temp rig dir against a fake master; returns the ordered list of steps before the emulator.
+        cp_c replaces `cp -c` (subprocess.run); the run is cut at START_ARGS.write_text, just before the config."""
+        import rig
+        steps = []
+        master = pathlib.Path(d) / "master.hdf"
+        master.write_bytes(b"MASTER")
+        saved = (rig.RIG, rig.OS, rig.OS32, rig.mine, rig.SRC_HDF, rig.START_ARGS, rig.subprocess.run,
+                 rig.sys_hdf_cpu_lib, rig.sys_hdf_screenmode, rig.sys_hdf_no_wasabid, rig.sys_hdf_kit, rig.port_listeners,
+                 rig.sys_hdf_monitors, rig.sys_hdf_dopus, rig.sys_hdf_no_dopus)
+        class NoWrite:
+            def write_text(self, *_): raise RigStart.Stop()
+        def run(cmd, *a, **k):
+            steps.append(cmd[:2])
+            return cp_c(cmd)
+        try:
+            rig.RIG, rig.OS, rig.OS32, rig.mine = pathlib.Path(d) / "rig", None, False, lambda: False
+            rig.RIG.mkdir()
+            rig.SRC_HDF, rig.START_ARGS = master, NoWrite()
+            rig.subprocess.run = run
+            rig.port_listeners = lambda port: []   # RIG-PORT-CLASH: no other rig holds this rig's wasabi port
+            rig.sys_hdf_screenmode = lambda image: steps.append(["screenmode", image.name])
+            rig.sys_hdf_cpu_lib = lambda image: steps.append(["cpu_lib", image.name])
+            rig.sys_hdf_no_wasabid = lambda image: steps.append(["no_wasabid", image.name])
+            rig.sys_hdf_kit = lambda image: steps.append(["kit", image.name])
+            rig.sys_hdf_monitors = lambda image: steps.append(["monitors", image.name])
+            rig.sys_hdf_dopus = rig.sys_hdf_no_dopus = lambda image: steps.append(["dopus", image.name])
+            (rig.RIG / "sys.hdf").write_bytes(b"DIRTY from a killed run")
+            try:
+                rig.start()
+            except RigStart.Stop:
+                pass
+            return steps, rig.RIG
+        finally:
+            (rig.RIG, rig.OS, rig.OS32, rig.mine, rig.SRC_HDF, rig.START_ARGS, rig.subprocess.run,
+             rig.sys_hdf_cpu_lib, rig.sys_hdf_screenmode, rig.sys_hdf_no_wasabid, rig.sys_hdf_kit, rig.port_listeners,
+             rig.sys_hdf_monitors, rig.sys_hdf_dopus, rig.sys_hdf_no_dopus) = saved
+
+    def test_start_replaces_sys_hdf_from_the_master_by_clone_before_the_writes_into_it(self):
+        import tempfile
+        def clone(cmd):
+            self.assertEqual(cmd[:2], ["cp", "-c"])
+            shutil_copy(cmd[2], cmd[3])
+            return subprocess_result(0)
+        with tempfile.TemporaryDirectory() as d:
+            steps, rigdir = self.start_with(d, clone)
+            self.assertEqual((rigdir / "sys.hdf").read_bytes(), b"MASTER", "the dirty disk was not replaced")
+            self.assertFalse((rigdir / "sys.hdf.new").exists())
+            self.assertEqual([s[0] for s in steps], ["cp", "screenmode", "monitors", "no_wasabid", "dopus", "kit", "cpu_lib"],
+                             "the clone happens once, before every write into the image")
+
+    def test_start_without_a_clone_fails_and_never_copies_the_whole_disk(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            def no_clone(cmd):
+                return subprocess_result(1, "not supported")
+            with self.assertRaises(SystemExit) as e:
+                self.start_with(d, no_clone)
+            self.assertIn("APFS clone", str(e.exception))
+            self.assertFalse((pathlib.Path(d) / "rig/sys.hdf.new").exists())
+
+    def test_start_refuses_when_the_master_system_disk_is_missing(self):
+        import tempfile, rig
+        saved = (rig.RIG, rig.OS, rig.OS32, rig.mine, rig.SRC_HDF, rig.subprocess.Popen, rig.subprocess.run, rig.port_listeners)
+        launched = []
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                rig.RIG, rig.OS, rig.OS32, rig.mine = pathlib.Path(d), None, False, lambda: False
+                rig.SRC_HDF = pathlib.Path(d) / "no-master.hdf"
+                def launch(*a, **k):
+                    launched.append(a)
+                    raise AssertionError('the emulator was launched')
+                rig.subprocess.Popen = rig.subprocess.run = launch
+                rig.port_listeners = lambda port: []
+                with self.assertRaises(SystemExit):
+                    rig.start()
+                self.assertEqual(launched, [])
+        finally:
+            rig.RIG, rig.OS, rig.OS32, rig.mine, rig.SRC_HDF, rig.subprocess.Popen, rig.subprocess.run, rig.port_listeners = saved
+
+class RomCheck(unittest.TestCase):
+    """The --a500 default was Amiberry's kick40063.A500.rom, a relocated image whose reset jumps to $2000D2:
+    the 68000 rig stayed black, never ran a line of its startup-sequence, and start waited 550 s (2026-10-29)."""
+    def rom(self, head):
+        import tempfile
+        d = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(__import__('shutil').rmtree, d)
+        f = d / 'kick.rom'
+        f.write_bytes(head + bytes(512 * 1024 - len(head)))
+        return f
+
+    def test_relocated_rom_stops_the_start(self):
+        import paths
+        with self.assertRaises(SystemExit) as e:
+            paths.require_rom(self.rom(bytes.fromhex('11164ef9002000d2')))
+        self.assertIn('$2000D2', str(e.exception))
+
+    def test_stock_rom_passes(self):
+        import paths
+        paths.require_rom(self.rom(bytes.fromhex('11144ef900f800d2')))
+        paths.require_rom(self.rom(b'AMIROMTYPE1' + bytes(5)))   # Cloanto image: FS-UAE decodes it
+
+    def test_the_a500_default_is_a_stock_rom(self):
+        import paths
+        if paths.ROM_A500.is_file():
+            paths.require_rom(paths.ROM_A500)
+
+def shutil_copy(a, b):
+    import shutil
+    shutil.copyfile(a, b)
+
+def subprocess_result(rc, err=""):
+    import subprocess
+    return subprocess.CompletedProcess([], rc, "", err)
 
 if __name__ == '__main__':
     sys.exit(0 if unittest.main(exit=False, verbosity=1).result.wasSuccessful() else 1)

@@ -1,0 +1,11 @@
+up-tig: parts, licences and where the source is
+
+Part                          Licence                          Source
+----------------------------  -------------------------------  --------------------------------------------
+tig (bin/tig, licenses/tig) GPL v2 or later upterm-ports (pkgs/tig)
+
+Notes
+- These files were part of up-term.lha until the slim base (P9); the package installs them at the
+  same paths in UP-Term:. Its row of SOURCES.txt is in UP-Term:licenses/tig/SOURCES.txt.
+- The complete source with UP-Term's patches and build recipes is up-term-src.lha, published next to
+  up-term.lha.

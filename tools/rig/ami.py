@@ -3,7 +3,9 @@
    ami.py ping | info | reboot | exec "cmd" [secs] | menus [win] | uitree | requesters | ui verb win gadget [text]
           | shot out.png [x y w h] | rexx "program" | get path out | put local path
           | key code [qual] | type text | screens
-          | gclick win gadget   (clicks a uitree gadget by its id, matched exactly: '90' is not '290')
+          | gclick win gadget   (clicks a uitree gadget by its id, matched exactly: '90' is not '290'; 'string:2' = the 2nd
+                                 String gadget of the window, any kind works: MUI gadgets all have id 0; also ui click/settext)
+          | open [icon]   (opens a window the way a Workbench double-click does: default SYS:System/UP-Term; prints the new window)
           | long script [secs] [title]   (Executes an Amiga script in a window on the Amiga's screen, waits for its rc)
 
 The importers (72 files) keep the API they were written against: req(opcode, payload) with the legacy opcode
@@ -37,6 +39,7 @@ requester is the finding. The EXEC ends within wasabi's RUN_CHECK (10 s) of that
 watch off for a run that opens requesters on purpose. `ami.py requesters` lists the open ones."""
 import contextlib, os, socket, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import kitstamp
 import paths   # the one reader of UPTERM_RIG: rig 2's wasabid is on 1235
 import wasabi as rigwasabi
 
@@ -61,8 +64,10 @@ def _m():
 
 
 @contextlib.contextmanager
-def _conn(timeout=None):
+def _conn(timeout=None, touch=True):
+    """Every connection to a rig's wasabid stamps the idle watchdog's clock (paths.touch_command), AMI_HOST runs not."""
     m = _m()
+    if touch and not os.environ.get('AMI_HOST'): paths.touch_command()
     try:
         c = m.Conn(HOST, PORT, TOKEN, timeout=timeout)
     except m.WasabiError as e:
@@ -88,18 +93,75 @@ def _keys(c, events):
     c.expect_ok()
 
 
+# Typed text: wasabid's `key type` (KEY op 1) maps characters with MapANSI(), which answers for keymap.library's own
+# default (US) and not for the keymap the Amiga's consoles use (the rig's input.prefs names "s", Swedish). So ';'
+# went out as the US ';' key (raw 0x29), which the Swedish console reads as 'o with diaeresis' (2026-10-26, the
+# upkg-ask rig). The text is therefore turned into raw keys here, from the table of the keymap the console really
+# has (RawKeyConvert with the default map, the way UP-Term and CON: convert): the same characters whatever the layout.
+KEYMAP_TABLE = {}      # char code -> (raw key, qualifier), filled once per process
+_QUAL_PREFERENCE = (0, 0x0001, 0x0010, 0x0011, 0x0008)      # none, Shift, Alt, Shift+Alt, Ctrl: a plain key beats a shifted one
+# the numeric keypad's raw keys: an application keypad mode reads them as keypad keys, so a main-block key is preferred
+_KEYPAD = frozenset((0x0F, 0x1D, 0x1E, 0x1F, 0x2D, 0x2E, 0x2F, 0x3C, 0x3D, 0x3E, 0x3F, 0x43, 0x4A, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F))
+
+
+def parse_keymap_table(text):
+    """rkcprobe TABLE's lines ("code qual n b1 b2 ..", hex) -> {char code: (raw key, qualifier)}. Only keys that
+    give exactly one byte count; a main-block key beats a keypad key, then the plainest qualifier wins, then the lowest raw key."""
+    best = {}
+    for line in text.splitlines():
+        f = line.split()
+        if len(f) != 4 or f[2] != '1':
+            continue
+        code, qual, ch = int(f[0], 16), int(f[1], 16), int(f[3], 16)
+        if qual not in _QUAL_PREFERENCE or code & 0x80:
+            continue
+        rank = (code in _KEYPAD, _QUAL_PREFERENCE.index(qual), code)
+        if ch not in best or rank < best[ch][0]:
+            best[ch] = (rank, (code, qual))
+    return {ch: v[1] for ch, v in best.items()}
+
+
+def keys_for_text(data, table):
+    """The (raw key, qualifier) events, key down then up, that type `data` (latin-1 bytes); SystemExit for a
+    character the keymap has no key for (a dead-key letter: type it with `key press`)."""
+    events = []
+    for b in data:
+        if b not in table:
+            raise SystemExit('ERR: the console keymap has no key for character %d (0x%02x)' % (b, b))
+        code, qual = table[b]
+        events += [(code, qual), (code | 0x80, qual)]
+    return events
+
+
+def _keymap_table(c):
+    if not KEYMAP_TABLE:
+        probe = paths.MAIN_CHECKOUT / 'build' / 'amiga' / 'rkcprobe'
+        if not probe.is_file():
+            probe = paths.VTCON / 'build' / 'amiga' / 'rkcprobe'
+        if not probe.is_file():
+            raise SystemExit('ERR: typing needs the console keymap: make build/amiga/rkcprobe')
+        _m().do_put(c, str(probe), 'RAM:rkcprobe', quiet=True)
+        _exec(c, struct.pack('>H', 30) + b'Protect RAM:rkcprobe +e')
+        _exec(c, struct.pack('>H', 30) + b'RAM:rkcprobe TABLE RAM:rkc-table.txt')
+        KEYMAP_TABLE.update(parse_keymap_table(_get(c, 'RAM:rkc-table.txt').decode('latin-1')))
+        if not KEYMAP_TABLE:
+            raise SystemExit('ERR: rkcprobe TABLE gave no keymap table')
+    return KEYMAP_TABLE
+
+
 def _type(c, data):
-    for i in range(0, len(data), 2048):
-        c.send(_m().KEY, struct.pack('>H', 1) + data[i:i + 2048])
-        c.expect_ok()
+    events = keys_for_text(data, _keymap_table(c))
+    for i in range(0, len(events), 1000):
+        _keys(c, events[i:i + 1000])
 
 
-# Window titles that are always a requester: AmigaDOS's (insert volume, disk full, write protected) and ixemul's
-# show_msg default (ix_panic, panic, ix_warning: library/hwck.c).
-REQUESTER_TITLES = ('system request', 'ixemul.library message')
+# Window titles that are always a requester: AmigaDOS's (insert volume, disk full, write protected), AssignWedge's
+# "Volume Request" (Retry|Assign|Deny|Cancel for an unknown volume) and ixemul's show_msg default (ix_panic, panic,
+# ix_warning: library/hwck.c).
+REQUESTER_TITLES = ('system request', 'volume request', 'ixemul.library message')
 # The answers a requester's buttons carry; a window whose every button is one of these is a requester.
 REQUESTER_ANSWERS = {'ok', 'cancel', 'retry', 'abort', 'continue', 'yes', 'no', 'quit', 'suspend', 'reboot',
-                     'ignore', 'resume', 'proceed'}
+                     'ignore', 'resume', 'proceed', 'assign', 'deny'}
 REQUESTER_POLL = float(os.environ.get('UPTERM_REQUESTER_POLL') or 10)
 REQUESTER_LOG = paths.RIG / 'requesters.log'
 
@@ -124,6 +186,20 @@ def requesters():
     """The requesters open on any screen now, on a connection of their own (an EXEC may hold the other)."""
     with _conn(30) as c:
         return requesters_in(_m().read_ui(c, every_screen=True))
+
+
+def dismiss_requesters():
+    """Click Cancel on every open requester; returns the descriptions of those found. A cancelled IPrefs reset leaves the screen
+    half-applied: the caller stops the rig afterwards instead of reusing it."""
+    done = []
+    for r in requesters():
+        with _conn(30) as c:
+            try:
+                _m().ui_click(c, 'Cancel', r['title'] or None, nth=1)
+                done.append(describe_requester(r))
+            except (SystemExit, Exception) as e:
+                done.append('%s NOT dismissed: %s' % (describe_requester(r), e))
+    return done
 
 
 def describe_requester(r):
@@ -353,8 +429,33 @@ def _input(c, p):
         raise Gap('INPUT operation %d has no wasabi command' % op)
 
 
+def ordinal_address(gadget):
+    """'string:2' -> ('string', 2): the 2nd gadget of that kind in the window, 1-based, in uitree order. MUI gadgets all
+    have id 0, so this is the only way to name the second String gadget. None for any other address ('90', 'sys:close',
+    a label): the N must be digits, which keeps 'sys:close' and friends out."""
+    kind, sep, n = gadget.rpartition(':')
+    if sep and kind and kind != 'sys' and n.isdigit() and int(n) >= 1:
+        return kind.lower(), int(n)
+    return None
+
+
+def nth_of_kind(gadgets, kind, n):
+    """The n-th (1-based) gadget of KIND in a window's gadget list, or None."""
+    hits = [g for g in gadgets if g['kind'] == kind]
+    return hits[n - 1] if n <= len(hits) else None
+
+
 def _click_gadget(c, window, gadget, double=False):
     m = _m()
+    ordinal = ordinal_address(gadget)
+    if ordinal:
+        for sc, w in m.ui_windows(m.read_ui(c, every_screen=bool(window)), window or None):
+            g = nth_of_kind(w['gadgets'], *ordinal)
+            if g:
+                x, y = g['x'] + g['width'] // 2, g['y'] + g['height'] // 2
+                _mouse(c, 1, 0, 2 if double else 1, x, y)
+                return x, y
+        raise SystemExit('no gadget %s in a window matching %r' % (gadget, window))
     if gadget.isdigit():
         for sc, w in m.ui_windows(m.read_ui(c, every_screen=bool(window)), window or None):
             for g in w['gadgets']:
@@ -402,11 +503,23 @@ def _pointer(c):
     return struct.pack('>HH', x & 0xFFFF, (y // scr[0]['row_scale']) & 0xFFFF)
 
 
+def gate():
+    """rig.ensure_current before a command goes to a local rig: VTC: hashed against the build, a drifted file refreshed
+    (a stale binary has cost many test runs). Not for a ping, an A1200 (AMI_HOST) or a tree without a build."""
+    if os.environ.get('AMI_HOST'): return
+    main_mod = sys.modules.get('__main__')
+    rigmod = sys.modules.get('rig') or (main_mod if hasattr(main_mod, 'ensure_current') else None)
+    if rigmod is None:
+        import rig as rigmod
+    rigmod.ensure_current()
+
+
 def req(code, payload=b'', timeout=150):
     """One legacy operation, answered in the legacy shape. timeout: the connection's silence limit."""
     m = _m()
     paths.cap_fsuae_log()   # every rig script passes here: the FS-UAE log never outgrows paths.FSUAE_LOG_MAX
-    with _conn(timeout) as c:
+    if code != 0x01: gate()   # every command to a rig passes here too: VTC: is current before it runs
+    with _conn(timeout, touch=code != 0x01) as c:   # a ping (rig.py status, the watchdog) is not use
         try:
             if code == 0x01: return c.banner.encode('latin-1')
             if code == 0x02: return _exec(c, payload)
@@ -479,16 +592,36 @@ def click_px(x, y):
     sx, sy = pointer_scale()
     req(0x08, bytes([5]) + struct.pack('>HH', int(round(x * sx)), int(round(y * sy))) + bytes([0, 1]))
 
-def window(title):
+def raise_window(title, x=None, y=None):
+    # Bring the front screen's window titled exactly `title` to the front when another window covers screen pixel
+    # (x, y) of it (default its centre), so a click there reaches it: a boot UP-Term window over menuhost took
+    # close_vsh's click. wasabi's own covered() and ui_front() (its ui_click does the same). False: no such window.
+    m = _m()
+    with _conn() as c:
+        scr = m.read_ui(c)
+        if not scr:
+            return False
+        sc = scr[0]
+        w = next((w for w in sc['windows'] if w['title'] == title), None)
+        if w is None:
+            return False
+        k = sc['row_scale']
+        gx = w['left'] + w['width'] // 2 if x is None else x
+        gy = w['top'] + w['height'] // 2 if y is None else y * k
+        if m.covered(sc, w, gx, gy):
+            m.ui_front(c, w)
+    return True
+
+def window(title, prefix=False):
     # The front screen's window titled exactly `title`, from the uitree:
-    # {'box': (x, y, w, h), 'active': bool, 'sys:size': (x, y, w, h), ...}
+    # {'box': (x, y, w, h), 'active': bool, 'sys:size': (x, y, w, h), ...}; prefix=True matches a title that starts with `title`
     import shlex
     found = None
     for line in req(0x0D).decode('latin-1').splitlines():
         if line.startswith('W '):
             if found is not None: break
             f = shlex.split(line)
-            if f[-1] == title:
+            if f[-1] == title or (prefix and f[-1].startswith(title)):
                 w, h = map(int, f[4].split('x'))
                 found = {'box': (int(f[2]), int(f[3]), w, h), 'active': f[5] == 'active'}
         elif found is not None and line.startswith('G '):
@@ -496,6 +629,20 @@ def window(title):
             w, h = map(int, f[4].split('x'))
             found.setdefault(f[5], (int(f[2]), int(f[3]), w, h))
     return found
+
+def screen_text(title=None, out='RAM:screen.txt'):
+    # The active UP-Term window's text as the program drew it (the handler's own dump, `UPTerm ACTIVE screen FILE`;
+    # Select all + Copy and VTC:snipprobe only where no UP-Term window answers): the one reader typewin.screen_text, reached from here so a script that imports only ami has it.
+    # `title` is the window to read (the menu is its own window, titled Amarchy, so no one title fits every
+    # call): by default the front screen's active window, from the uitree.
+    import shlex, typewin
+    if not title:
+        for line in req(0x0D).decode('latin-1').splitlines():
+            if line.startswith('W ') and shlex.split(line)[5] == 'active':
+                title = shlex.split(line)[-1]
+                break
+    typewin._last_title = title
+    return typewin.screen_text(out)
 
 def grab(box=None):
     # The front screen (or box = (x, y, w, h) of it) as (w, h, rows): each row w*3 bytes of RGB.
@@ -512,27 +659,46 @@ def put(local, remote):
 
 REBOOT_MARKER = 'RAM:ami-reboot.marker'
 
+def boot_log():
+    """The rig's BOOTX:boot.log on the host, or None for the real A1200 (no UPTERM_RIG: nothing to read).
+    BOOTX:go appends a line per boot phase, so a changing file is a boot that advances (RIG-SLOW-BOOT)."""
+    if not os.environ.get('UPTERM_RIG'):
+        return None
+    return paths.RIG / 'boot' / 'boot.log'
+
 def reboot(wait=240, every=5):
     """Reboot the Amiga with C:Reboot and wait until wasabid answers again. A marker file in RAM: (RAM: does not
     survive a reboot) proves the machine really restarted, not that a ping slipped in before the reset.
-    For the real A1200; an FS-UAE rig restarts with rig.py stop/start. Returns the seconds it took."""
+    `wait` is the stall budget: on a rig, every change of BOOTX:boot.log restarts it, so a slow boot (the ~1000
+    UAE-filesystem round trips of go's shadow copies took ~10 minutes under host load, 2026-10-28) is waited
+    for and only a boot that stops writing is given up. The A1200 has no host-side boot.log: `wait` is its
+    whole deadline, as before. Returns the seconds it took."""
     def run(cmd, secs=10):
         b = req(0x02, struct.pack('>H', secs) + cmd.encode('latin-1'), timeout=secs + 5)
         return struct.unpack('>I', b[:4])[0]
     if run('Echo >%s x' % REBOOT_MARKER) != 0:
         raise SystemExit('reboot: cannot write %s' % REBOOT_MARKER)
+    log = boot_log()
+    if log is not None:
+        # RIG-SLOW-BOOT: go skips its kit shadow pass only while VTC: holds the kit that pass put on DH0:
+        kitstamp.check(paths.RIG / 'boot', paths.RIG / 'vtc')
     t0 = time.time()
+    seen, changed = None, t0
     try:
         run('Run >NIL: C:Reboot', 5)
     except (OSError, SystemExit):
         pass   # the reset may cut the answer
-    while time.time() - t0 < wait:
+    while time.time() - changed < wait:
         time.sleep(every)
         try:
             if run('List %s QUICK' % REBOOT_MARKER) != 0:
                 return time.time() - t0
         except (OSError, SystemExit):
             pass   # down or still booting
+        if log is not None:
+            text = log.read_text() if log.exists() else ''
+            if text != seen:
+                seen, changed = text, time.time()
     raise SystemExit('reboot: the Amiga did not come back within %d s (or RAM: kept %s)' % (wait, REBOOT_MARKER))
 
 LONG_WRAP, LONG_RC = 'RAM:ami-long.wrap', 'RAM:ami-long.rc'
@@ -565,6 +731,35 @@ def long(script, wait=3600, title='ami long', every=5):
         if b is not None and b.strip():
             return int(b.split()[0])
     return None
+
+WBRUN_REMOTE = 'RAM:wbrun'
+WBRUN_LOCAL = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'build', 'amiga', 'wbrun')
+
+def open_command(icon):
+    """The CLI line that starts `icon` as a Workbench double-click does. `Run UP-Term` cannot: SYS:System/UP-Term is a
+    60-byte text note, not a program; its UP-Term.info names the default tool UP-Term:bin/vsh and the tool type
+    WINDOW=XCON:...; only a Workbench-style launch (wbrun: builds the WBStartup itself, because Directory Opus
+    replaces Workbench and OpenWorkbenchObjectA / C:WBRun fail) honours them. Run >NIL: because wbrun waits for the tool."""
+    return 'Run >NIL: %s %s' % (WBRUN_REMOTE, icon)
+
+def window_keys():
+    m = _m()
+    with _conn() as c:
+        return {(w['addr'], w.get('task'), w.get('title')): w for _, w in m.ui_windows(m.read_ui(c, every_screen=True))}
+
+def open_window(icon='SYS:System/UP-Term', wait=20):
+    """Open `icon`'s window on the Amiga and return the new window entries (a window list diff, as wbrun_rig does:
+    the address alone repeats, so task and title go into the key). Empty list when none appeared in `wait` s."""
+    if read_file(WBRUN_REMOTE) is None:
+        put(WBRUN_LOCAL, WBRUN_REMOTE)
+    before = window_keys()
+    req(0x02, struct.pack('>H', 10) + open_command(icon).encode('latin-1'), timeout=15)
+    end = time.time() + wait
+    while time.time() < end:
+        new = [w for k, w in window_keys().items() if k not in before]
+        if new: return new
+        time.sleep(1)
+    return []
 
 def png(path, w, h, rows):
     _m().write_png(path, w, h, b''.join(rows))
@@ -602,22 +797,46 @@ def main(a):
         # the gadget with id (or role, 'sys:close') a[2] in the window whose title contains a[1], clicked at its middle
         tree = req(0x0D).decode('latin-1').splitlines()
         win = None
+        ordinal = ordinal_address(a[2])   # 'string:2': the 2nd string gadget of the window
+        seen = 0
         for line in tree:
             f = line.split()
             if line.startswith('W ') and a[1].lower() in line.lower():
                 win = f[1]
             elif win is not None and line.startswith('W '):
                 win = None
+            elif win is not None and line.startswith('G ') and ordinal:
+                if f[5].lower() != ordinal[0]: continue
+                seen += 1
+                if seen != ordinal[1]: continue
+                x, y = int(f[2]), int(f[3]); w, h = map(int, f[4].split('x'))
+                cx, cy = x + w // 2, y + h // 2
+                click_px(cx, cy)
+                print('click at %d,%d' % (cx, cy)); return
             elif win is not None and line.startswith('G ') and a[2].lower() in (f[1].lower(), f[5].lower()):
                 x, y = int(f[2]), int(f[3]); w, h = map(int, f[4].split('x'))
                 cx, cy = x + w // 2, y + h // 2
                 click_px(cx, cy)
                 print('click at %d,%d' % (cx, cy)); return
         raise SystemExit('no matching gadget')
+    elif cmd == 'open':
+        new = open_window(a[1] if len(a) > 1 else 'SYS:System/UP-Term')
+        if not new: raise SystemExit('open: no new window appeared')
+        for w in new: print('window %s task %s at %s,%s %sx%s' % (w.get('title'), w.get('task'), w['left'], w['top'], w['width'], w['height']))
     elif cmd == 'long':
-        rc = long(a[1], int(a[2]) if len(a) > 2 else 3600, a[3] if len(a) > 3 else 'ami long')
+        with paths.long_run(): rc = long(a[1], int(a[2]) if len(a) > 2 else 3600, a[3] if len(a) > 3 else 'ami long')
         if rc is None: raise SystemExit('long: %s did not finish (its window on the Amiga shows why)' % a[1])
         print('rc', rc)
     else: raise SystemExit(__doc__)
 
-if __name__ == '__main__': main(sys.argv[1:])
+def require_target():
+    # the command line must name its machine: with neither set it would silently drive local rig 1 (a session meaning the
+    # A1200 wrote its files there). Imports of ami keep the 127.0.0.1 / rig 1 default.
+    if not (os.environ.get('AMI_HOST') or os.environ.get('UPTERM_RIG')):
+        sys.stderr.write('ami.py: set UPTERM_RIG or AMI_HOST first, e.g. UPTERM_RIG=7 for a rig, or AMI_HOST=192.168.0.74 for the A1200\n')
+        raise SystemExit(2)
+
+
+if __name__ == '__main__':
+    require_target()
+    main(sys.argv[1:])

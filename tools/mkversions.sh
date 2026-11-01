@@ -3,7 +3,8 @@
 #   line 1:  <archive> [<version>] <vtcon commit> <date>  (upterm <meta-repo commit>)
 #            (UP-Term <vtcon commit> <date> without --package)
 #   then one line per consumed part:  <name> <branch> <commit>[+dirty]
-# A part with uncommitted changes gets "+dirty" and one warning on stderr.
+# A part with uncommitted changes to tracked files gets "+dirty" and one
+# warning on stderr; untracked files do not count (same as the Makefile GITREV).
 # Usage: tools/mkversions.sh [--package <archive> <version>] [UPTERM_ROOT [part ...]]
 #   (UPTERM_ROOT default: the parent of vtcon; parts default: the single kit's list.
 #   make dist passes the archive's repositories from dist/packages.txt, column consumes.)
@@ -24,7 +25,7 @@ rev() {  # rev <dir>: "<branch> <commit>[+dirty]" or "none unknown"
         echo "none unknown"; return
     fi
     b=$(git -C "$d" rev-parse --abbrev-ref HEAD 2>/dev/null)
-    if [ -n "$(git -C "$d" status --short 2>/dev/null)" ]; then
+    if [ -n "$(git -C "$d" status --short --untracked-files=no 2>/dev/null)" ]; then
         c="$c+dirty"
         echo "mkversions: warning: $d has uncommitted changes" >&2
     fi

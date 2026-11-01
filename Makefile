@@ -3,6 +3,12 @@
 HOSTCC  ?= cc
 HOSTCFLAGS := -std=c89 -pedantic -Wno-long-long -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined -DVT_CHECK_USED
 BUILD   := build
+# the generated version header; named here because the host rules above its own rule list it as a prerequisite
+UPTERM_VERSION_H := $(BUILD)/amiga/upterm_version.h
+# the generated menu icon page and the font it is drawn from, named here for the same reason: vttest_host
+# lists the page, whose rule lists the font, both above their own rules (a prerequisite expands when read)
+MENU_ICONS_INC := $(BUILD)/amiga/menu_icons.inc
+SYMBOLS_TTF := $(BUILD)/symbolsnerd/SymbolsNerdFontMono-Regular.ttf
 
 # a recipe that fails must not leave its target behind: a 0-byte build/amiga/wbrun once counted as up to date (M2)
 .DELETE_ON_ERROR:
@@ -10,7 +16,12 @@ BUILD   := build
 # The workspace directory that holds vtcon and the other UP-Term repos side by
 # side (see the upterm meta-repo); every sibling default below hangs off it.
 # tools/rig/paths.py reads the same variable, with the same default.
-UPTERM_ROOT ?= $(abspath $(CURDIR)/..)
+# A git worktree sits inside the main checkout (.claude/worktrees/x), so the workspace is the main checkout's parent,
+# and vendor/ (gitignored) is the main checkout's when the worktree has none: both asked of tools/rig/paths.py.
+VENDOR := $(shell python3 -I $(CURDIR)/tools/rig/paths.py vendor)
+UPTERM_ROOT ?= $(abspath $(shell python3 -I $(CURDIR)/tools/rig/paths.py main-checkout)/..)
+# the upterm-ports checkout (a worktree works too); every upterm-ports path uses it
+UPTERM_PORTS ?= $(UPTERM_ROOT)/upterm-ports
 # The directory of the projects that are not UP-Term repos (DCTelnet/, AmiExpress/, UpRough/): CODE_ROOT, else the
 # nearest ancestor of UPTERM_ROOT holding DCTelnet/. One rule for the flat layout and the ~/Code/UP-Term umbrella;
 # it lives in tools/rig/paths.py (code_root), which the rig scripts read too.
@@ -21,15 +32,15 @@ DCTELNET_ROOT ?= $(CODE_ROOT)/DCTelnet
 AMIEXPRESS_ROOT ?= $(CODE_ROOT)/AmiExpress
 
 ENGINE  := engine/vtengine.c
-RENDER  := render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/sbar.c render/layout.c render/otag.c render/painter.c handler/lineedit.c handler/kcmode.c handler/slash.c handler/clipfmt.c handler/complete_core.c render/vtinput.c handler/waitset.c handler/histfile.c
-SHELL_CORE := shell/sh_parse.c shell/sh_expand.c shell/sh_exec.c shell/sh_float.c
+RENDER  := render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/sbar.c render/layout.c render/otag.c render/ttf.c render/painter.c handler/lineedit.c handler/kcmode.c handler/slash.c handler/winspec.c handler/clipfmt.c handler/be32.c handler/complete_core.c render/vtinput.c handler/waitset.c handler/histfile.c
+SHELL_CORE := shell/sh_parse.c shell/sh_expand.c shell/sh_exec.c shell/sh_float.c shell/sh_path.c shell/vsh_cmdline.c
 TTY     := tty/ldisc.c tty/bmsg.c
 DEVICE_CORE := device/upc_core.c
 PROC_CORE := proc/proc_core.c
-CONF    := config/upconf.c
+CONF    := config/upconf.c config/upconf_rows.c
 SPLITS  := config/splits_state.c
 TERMURL := config/termurl.c
-PREFS_CORE := prefs/prefs_core.c prefs/prefs_ui.c
+PREFS_CORE := prefs/prefs_core.c prefs/prefs_ui.c prefs/pick_list.c prefs/settings_def.c prefs/prefs_merge.c
 ICONSPEC := install/iconspec.c install/updiff.c
 ZMODEM  := zm/zmodem.c
 TELNET  := net/tn.c net/upagent.c
@@ -44,23 +55,78 @@ HOST_HDR := engine/kitty.c engine/inflate.c engine/png.c $(wildcard engine/*.h e
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_reflow.c tests/test_sixel.c tests/test_kitty.c tests/test_pcansi.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c \
            tests/test_sh_parse.c tests/test_sh_expand.c tests/test_sh_exec.c tests/test_ldisc.c \
-           tests/test_upcon.c tests/test_upconf.c tests/test_prefs.c tests/test_iconspec.c tests/test_updiff.c tests/test_zmodem.c tests/test_otag.c tests/test_slash.c tests/test_fontpair.c tests/test_updemo.c tests/test_tabprog.c tests/test_pace.c tests/test_painter.c tests/test_text.c tests/test_clip.c \
+           tests/test_desk.c tests/test_upcon.c tests/test_upconf.c tests/test_keymap.c tests/test_prefs.c tests/test_amconf.c tests/test_settings_def.c tests/test_iconspec.c tests/test_updiff.c tests/test_zmodem.c tests/test_otag.c tests/test_ttf.c tests/test_slash.c tests/test_winspec.c tests/test_screenreq.c tests/test_wbpark.c tests/test_cmdline.c tests/test_fontpair.c tests/test_updemo.c tests/test_tabprog.c tests/test_pace.c tests/test_painter.c tests/test_text.c tests/test_clip.c tests/test_menusrv.c tests/test_gthemes.c tests/test_pkgs.c tests/test_job.c tests/test_bar.c tests/test_tick.c tests/test_wbmode.c tests/test_status_core.c tests/test_barconf.c tests/test_note_core.c tests/test_flat_core.c tests/test_iconfile.c tests/test_iconapply.c tests/test_iconpen.c tests/test_wbreset.c tests/test_menu_text.c \
            tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_layout.c tests/test_splits_state.c tests/test_tabslot.c tests/test_menudef.c tests/test_telnet.c tests/test_upagent.c tests/test_complete.c tests/test_winmem.c tests/test_sbpack.c tests/test_hl.c tests/test_md.c \
-           tests/claude_load.c tests/claude_vol.c tests/claude_screen.c tests/pi_stub.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_pi_llm.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c tests/test_emoji.c tests/test_waitset.c tests/test_brk.c tests/test_sh_pipe.c tests/test_sh_ixargv.c tests/test_sh_own.c tests/test_histfile.c tests/test_pens.c tests/test_proc.c tests/test_pty_name.c tests/test_bmsg.c tests/test_qmark.c tests/test_ttyown.c tests/test_upassign.c
+           tests/claude_load.c tests/claude_vol.c tests/claude_screen.c tests/pi_stub.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_pi_llm.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c tests/test_emoji.c tests/test_waitset.c tests/test_brk.c tests/test_sh_pipe.c tests/test_sh_ixargv.c tests/test_sh_own.c tests/test_sh_jobgone.c tests/test_histfile.c tests/test_pens.c tests/test_proc.c tests/test_pty_name.c tests/test_bmsg.c tests/test_qmark.c tests/test_ttyown.c tests/test_closeeof.c tests/test_upassign.c tests/test_bigvol.c tests/test_fssm.c tests/test_clips.c tests/test_shot_core.c tests/test_win.c tests/test_tile.c
 
-.PHONY: wasabi wasabi-clean bebbossh bebbossh-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
+.PHONY: symbolsnerd phosphor lucide lucide-dat screennotify jbmono wasabi wasabi-clean nas-deploy nas-deploy-dry bebbossh bebbossh-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
 
+# ONLY=desk the native desktop theme core: palette/pointer/font/wbpattern prefs bytes, darker tone, readability guard, targets and marker (tests/test_desk.c)
+# ONLY=fssm a device node's startup is read as a FileSysStartupMsg only when it is one (tests/test_fssm.c)
+# ONLY=clips the clipboard history: ring prepend, dedupe, cap 20, labels, file round trip, the menu level (tests/test_clips.c)
+# ONLY=iconapply amarchy-icons APPLY / RESTORE: manifest, backup, idempotence, atomic-write recovery, restore byte for byte (tests/test_iconapply.c)
+# ONLY=tick the commodity tick hook list (tests/test_tick.c)
+# ONLY=wbmode the ScreenMode prefs parser and the wait-for-final-Workbench-mode decision (tests/test_wbmode.c)
+# ONLY=status_core the AMARCHY STATUS and BAR STATUS replies fit REXX_HOST_OUT at the largest counters; BAR verb parse (tests/test_status_core.c)
+# ONLY=barconf bar.conf parse, defaults, bad rows counted (tests/test_barconf.c)
+# ONLY=note_core the notice queue: parse with \| escape, expiry at t0+timeout, sticky, overflow drops oldest, corner slots, hit-test (tests/test_note_core.c)
+# ONLY=iconfile the .info rewrite: parse, splice, NewIcon and FORM ICON strip, restore byte for byte, variant pick, backup path, lucide.dat reader, every .info of the rig trees (tests/test_iconfile.c)
+# ONLY=iconpen  the icon pens, pure half: ip_colours, ip_fold, desk_pen_plan_for no-overlap, the pen holder model (tests/test_iconpen.c)
+# ONLY=flat_core the amarchy-flat state block: offsets pinned, version and size mismatch refused, STATUS word (tests/test_flat_core.c)
+# ONLY=shot_core the screenshot ILBM writer: ByteRun1 edges, planes, golden bytes, round trip through tools/ilbm_decode.py (tests/test_shot_core.c)
+# ONLY=winspec the XCON: spec's size fields and the default ground (a CON:/RAW: window looks like an XCON: one) (tests/test_winspec.c)
+# ONLY=screenreq a zeroed screen move request asks for no move, so a new XCON: process does not flash the screen (tests/test_screenreq.c)
+# ONLY=wbpark   a closing Workbench parks a plain Workbench window once and its reopen brings it back; a failed reopen retries (tests/test_wbpark.c)
+# ONLY=cmdline vsh's argv as an AmigaDOS command line: KEY=value keeps KEY= unquoted so ReadArgs sees the keyword (tests/test_cmdline.c)
+# ONLY=dopus_filetype the Directory Opus filetype file's golden bytes; upstream filetype_tool check/lint when $(DOPUS5_SRC) is set (tests/test_dopus_filetype.py)
+# ONLY=menu_rig_dopus_absent the amarchy_menu_rig dopus_absent row starts the commodity before the root menu (tests/test_menu_rig_dopus_absent_commodity.py)
+# ONLY=menu_rig_dopus_quit the dopus_quit row starts DOpus again with C:LoadWB at its end, also on a raise (tests/test_menu_rig_dopus_quit_restore.py)
+# ONLY=rig_only_list `--only a,b` in the amarchy rig scripts runs those rows; an unknown row exits naming it (tests/test_rig_only_list.py)
+# ONLY=rig_dopus_own_screen rig.py dopus --own-screen writes the DOpus environment that opens DOpus on its own screen (tests/test_rig_dopus_own_screen.py)
+# ONLY=menu_rig_dopus_screen dopus_present checks that Open UP-Term here and the drawn menu open on DOpus's own screen (tests/test_menu_rig_dopus_screen.py)
 # ONLY=claude_fixture the fake Messages API's routes (tools/test_claude_fixture.py)
+# ONLY=worktree_ready make worktree-ready dates a source that differs from main newer than the seeded binaries (tools/test_worktree_ready.py)
+# ONLY=menu_stamp the Amarchy hotkey press path reaches ms_binary_changed (act_menu_open -> ms_open, stamp and quit hooks set) (tests/test_amarchy_menu_stamp.py)
+# ONLY=gui_rig_open_menu the rig's open_menu() closes a menu an earlier step left open before the toggle hotkey, so it never closes it instead (tests/test_amarchy_gui_rig_open_menu.py)
+# ONLY=desk_rig_pick_waits the rig's desk pick() returns only after Amarchy wrote AMARCHY_WBCLOSES again, so pen reads see the applied theme (tests/test_amarchy_desk_rig_pick_waits.py)
+# ONLY=one_select_level the rig's one_select accepts Style level after a theme pick and checks "(current)" on the reopened theme list (tests/test_amarchy_one_select_level.py)
+# ONLY=rig_installer_free installer_rig sys_free_bytes reads SYS: free space from Info with DH0: (3.1) and DH0 (3.2) (tests/test_installer_rig_free.py)
+# ONLY=flat_on_hang amarchy-flat passes the library base in a6 on every saved Text/RectFill/DrawBox/FieldBox call, so flat-ON no longer jumps into DOS device data (tests/test_flat_on_hang_wild_call.py)
+# ONLY=rig_install_no_vsh rig.py install without build/amiga/vsh exits with one message naming the file and the make target (tests/test_rig_install_no_vsh.py)
+# ONLY=rig_themes_live rig.py install/start stage the Amarchy themes into the live drawer UP-Term: points at, no boot needed (tests/test_rig_themes_live.py)
+# ONLY=editor_stack dk_editor gives the prefs editors a pl_stack stack, floor 32768 (tests/test_amarchy_editor_stack.py)
+# ONLY=gui_rebind amarchy-gui takes and drops every screen resource in screen_bind/screen_unbind, so a Workbench reset between gui_hide and gui_show leaves nothing on the freed screen (tests/test_amarchy_gui_rebind.py)
+# ONLY=dist_stack every kit program sets its stack ($STACK: cookie), no launcher gives a loaded program a fixed stack (tests/test_dist_stack.py)
+# ONLY=ami_screen_text the rig's screen reader asks the focused window and clicks nothing first: a menu opening during the read stays (tests/test_ami_screen_text.py)
+# ONLY=rig_keys a rig's Right Option is Left Amiga (Amarchy), the Cmd keys stay Right Amiga (tests/test_rig_keys.py)
+# ONLY=keymap_rig_font_keys keymap_rig.py reads the rig keymap from input.prefs and presses the font keys by that keymap (tests/test_keymap_rig_font_keys.py)
+# ONLY=installer_drive installer_rig.drive FAILs when the room page keeps coming back (tests/test_installer_drive_loop.py)
+# ONLY=rig_tty_mask a terminal case's check/mask rows are blanked before the screens are compared, nothing else (tools/test_rig_tty_mask.py)
 # ONLY=rig_paths a worktree's rig scripts use the main checkout's build/rig<N> (tools/test_rig_paths.py)
 # ONLY=rig_wasabimcp tools/rig/wasabimcp.py picks the wasabid target from the environment (tools/test_rig_wasabimcp.py)
 # ONLY=rig_ami tools/rig/ami.py over wasabid, every function against wasabi's mock daemon (tools/test_rig_ami.py; needs `make wasabi`)
 # ONLY=rig_fsuae_log FS-UAE log in the rig dir, capped (tools/test_rig_fsuae_log.py)
+# ONLY=rig_iprefs_sysreq the rig clone drops the Replay monitor driver whose boot output made IPrefs ask to close windows; Retry is bounded (tests/test_rig_iprefs_sysreq.py)
+# ONLY=rig_screennotify every rig start stages the pinned screennotify.library in VTC:ixp6 (tests/test_rig_screennotify.py)
+# ONLY=rig_clone_new a rig number that never ran gets its sys.hdf clone (tools/test_rig_clone_new.py)
+# ONLY=rig_crashed rig.py status says crashed on a Guru reset loop in the fs-uae log; userland_rig takes the rig lock (tools/test_rig_crashed.py)
+# ONLY=userland_expected userland_rig stops a package with no build/expected outputs before the rig runs it (tests/test_userland_rig_expected.py)
 # ONLY=rig_wasabi rig.py wasabi: arguments, the port per rig, the log paths, the process list parser (tools/test_rig_wasabi.py)
 # ONLY=rig_muforce rig.py muforce: the MuForce report parser and argument handling (tools/test_rig_muforce.py)
 # ONLY=rig_screenmode rig.py aga/aga256/rtg reboot with the last start's machine flags (tools/test_rig_screenmode.py)
 # ONLY=rig_claude_import importing tools/rig/claude_rig.py runs nothing (tools/test_rig_claude_import.py)
 # ONLY=rig_stdin amiga-pi in a rig window script gets <NIL: (tools/test_rig_stdin.py)
+# ONLY=pkg_rows tools/pkg_rows.py emit bitchx against the committed rows, through main(argv); needs upterm-ports (the workspace's upterm-ports, UPTERM_PORTS= to move it; skips when absent) (tests/test_pkg_rows.py)
+# ONLY=win the win: verbs' parse and window geometry: step, clamp, size limits, full width/screen, save ring, direction search (tests/test_win.c)
+# ONLY=tile AmTile's pure layout: what tiles, window order, the master-stack boxes (tests/test_tile.c)
 # ONLY=rig_libs the rig's boot keeps AmiSSL's drawer in LIBS: (tools/test_rig_libs.py)
+# ONLY=rig_booted_ixemul a rig probe stops when the rig booted another ixemul (tools/test_rig_booted_ixemul.py)
+# ONLY=rig_all_case install_rig's `all` case installs on DH1 and stock_libs keeps AmiSSL on LIBS: (tools/test_rig_all_case.py)
+# ONLY=rig_helpers install_rig refuses up front, naming make rig-helpers, when a helper program is not built (tools/test_rig_helpers.py)
+# ONLY=rig_browse_base upkg_browse_rig step 0 installs the kit over an older base (tools/test_rig_browse_base.py)
+# ONLY=rig_browse_free upkg_browse_rig: the Info free-space parser, the precheck message (tools/test_rig_browse_free.py)
+# ONLY=rig_help rig.py takes --help, -h, help and ? (tools/test_rig_help.py)
+# ONLY=ans2utf8 the vsh banner's bright letters are not drawn bold (tools/test_ans2utf8.py)
 # ONLY=rig_kit a rig with a kit boots the builds of VTC: over the kit's copies in SYS: (tools/test_rig_kit.py)
 # ONLY=rig_upterm the rig has UP-Term:bin/vsh, the SYS:System icon and no global TERM (tools/test_rig_upterm.py)
 # ONLY=pi_recordings amiga-pi's OpenAI recordings against OpenAI's schema (tools/test_pi_recordings.py)
@@ -76,21 +142,51 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # and volatile loads (tests/test_gcc_move2_overlap.py, the installed $(AGCC), -m68080 -mexperimental)
 # The ONLY= names of the recipe lines below; the C suites are tests/test_main.c's (vttest_host --has)
 TEST_ONLY_NAMES := $(shell grep -o '"$$(ONLY)" = [a-z_0-9]*' $(firstword $(MAKEFILE_LIST)) | sed 's/.* //' | sort -u)
-test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host
+# ONLY= rows that run python3 on files alone: no C binary below is built or run for them (a worktree without the vendor NDK
+# cannot build render_host, and pkg_rows needs none). Add a name only after checking its script starts no $(BUILD) binary.
+TEST_PY_ONLY := gen_lucide_icons pkg_rows worktree_ready rig_handler_fallback rig_amarchy_conf rig_booted_ixemul rig_iprefs_sysreq gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free flat_on_hang
+TEST_BINS := $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host $(BUILD)/upgetty_host
+test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -n "$(ONLY)" ] && [ -z "$(filter $(ONLY),$(TEST_ONLY_NAMES))" ] && ! ./$(BUILD)/vttest_host --has $(ONLY); then echo "[ERROR] make test: no suite named $(ONLY)"; exit 2; fi
-	@if [ -z "$(ONLY)" ] || ./$(BUILD)/vttest_host --has $(ONLY); then ./$(BUILD)/vttest_host $(ONLY); fi
+	@if [ -z "$(filter $(ONLY),$(TEST_PY_ONLY))" ] && { [ -z "$(ONLY)" ] || ./$(BUILD)/vttest_host --has $(ONLY); }; then ./$(BUILD)/vttest_host $(ONLY); fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uptelnetd ]; then python3 tools/test_uptelnetd.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = claude_fixture ]; then python3 tools/test_claude_fixture.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = build_stamp ]; then python3 -I tools/test_build_stamp.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = worktree_ready ]; then python3 -I tools/test_worktree_ready.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_paths ]; then python3 -I tools/test_rig_paths.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_wasabimcp ]; then python3 -I tools/test_rig_wasabimcp.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_muforce ]; then python3 -I tools/test_rig_muforce.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_amarchy_conf ]; then python3 -I tools/test_rig_amarchy_conf.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_screenmode ]; then python3 -I tools/test_rig_screenmode.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_wasabi ]; then python3 -I tools/test_rig_wasabi.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_fsuae_log ]; then python3 -I tools/test_rig_fsuae_log.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_iprefs_sysreq ]; then python3 tests/test_rig_iprefs_sysreq.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_screennotify ]; then python3 tests/test_rig_screennotify.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_clone_new ]; then python3 -I tools/test_rig_clone_new.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_crashed ]; then python3 -I tools/test_rig_crashed.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = userland_expected ]; then python3 -I tests/test_userland_rig_expected.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_stamp ]; then python3 -I tests/test_amarchy_menu_stamp.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_install_no_vsh ]; then python3 -I tests/test_rig_install_no_vsh.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_themes_live ]; then python3 -I tests/test_rig_themes_live.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_installer_free ]; then python3 -I tests/test_installer_rig_free.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = flat_on_hang ]; then python3 -I tests/test_flat_on_hang_wild_call.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rebind ]; then python3 -I tests/test_amarchy_gui_rebind.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = editor_stack ]; then python3 -I tests/test_amarchy_editor_stack.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rig_open_menu ]; then python3 -I tests/test_amarchy_gui_rig_open_menu.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = desk_rig_pick_waits ]; then python3 -I tests/test_amarchy_desk_rig_pick_waits.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = one_select_level ]; then python3 -I tests/test_amarchy_one_select_level.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_ami ]; then if [ -f "$(BUILD)/wasabi/src/tests/mock-wasabid.py" ] || [ -f "$(CURDIR)/../../$(BUILD)/wasabi/src/tests/mock-wasabid.py" ] || [ -n "$(ONLY)" ]; then python3 -I tools/test_rig_ami.py; else echo "[SKIP] rig_ami: wasabi is not built (make wasabi)"; fi; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_claude_import ]; then python3 -I tools/test_rig_claude_import.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_stdin ]; then python3 -I tools/test_rig_stdin.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_libs ]; then python3 -I tools/test_rig_libs.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_booted_ixemul ]; then python3 -I tools/test_rig_booted_ixemul.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_helpers ]; then python3 -I tools/test_rig_helpers.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_all_case ]; then python3 -I tools/test_rig_all_case.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_browse_base ]; then python3 -I tools/test_rig_browse_base.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_browse_free ]; then python3 -I tools/test_rig_browse_free.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_help ]; then python3 -I tools/test_rig_help.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_handler_fallback ]; then python3 -I tools/test_rig_handler_fallback.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ans2utf8 ]; then python3 -I tools/test_ans2utf8.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_upterm ]; then python3 -I tools/test_rig_upterm.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_kit ]; then python3 -I tools/test_rig_kit.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = pi_recordings ]; then python3 -I tools/test_pi_recordings.py; fi
@@ -101,11 +197,30 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = pi_search ]; then python3 -I tests/test_pi_search.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = updiff ]; then ./$(BUILD)/updiff_stack_drv; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = render ]; then ./$(BUILD)/render_host; fi
-	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = fonts ]; then python3 tests/test_dist_fonts.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = upgetty ]; then ./$(BUILD)/upgetty_host; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = fonts ]; then $(MAKE) --no-print-directory jbmono && python3 tests/test_dist_fonts.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = dopus_filetype ]; then python3 tests/test_dopus_filetype.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_rig_dopus_absent ]; then python3 tests/test_menu_rig_dopus_absent_commodity.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_rig_dopus_quit ]; then python3 tests/test_menu_rig_dopus_quit_restore.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_only_list ]; then python3 tests/test_rig_only_list.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_rig_dopus_screen ]; then python3 tests/test_menu_rig_dopus_screen.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_dopus_own_screen ]; then python3 tests/test_rig_dopus_own_screen.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_installer.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_manifest.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_safeoff.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_kitsize.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_install_dos_room.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_install_rig_sys_upterm.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_installer_rig_startup_block.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_flat_startup_block.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = flat_prefs_notify ]; then python3 -I tests/test_flat_prefs_notify.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_install_dos_amissl.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_bebbossh.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = dist_stack ]; then python3 tests/test_dist_stack.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = pkg_rows ]; then python3 -I tests/test_pkg_rows.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_amarchy_themes.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_ports_fresh.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_ports_path.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = addons ]; then python3 tests/test_dist_addons.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = addons ]; then python3 tests/test_dist_userdata.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_dist_packages.py; fi
@@ -117,25 +232,37 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = docs_setenv ]; then python3 -I tests/test_doc_setenv_save.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_rig_fixtures.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_rig_verdicts.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_stage_rig.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_cube_check.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_keys ]; then python3 tests/test_rig_keys.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ami_screen_text ]; then python3 tests/test_ami_screen_text.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = keymap_rig_font_keys ]; then python3 tests/test_keymap_rig_font_keys.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer_drive ]; then python3 tests/test_installer_drive_loop.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_tty_mask ]; then python3 -I tools/test_rig_tty_mask.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = terminfo_amiga ]; then python3 tests/test_terminfo_amiga.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = emoji ]; then python3 tests/test_gen_emoji.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gen_lucide_icons ]; then python3 -I tests/test_gen_lucide_icons.py; python3 -I tests/test_preview_lucide_icons.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_delete_on_error.py; fi
-	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_only.py; python3 -I tests/test_handler_deps.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_only.py; python3 -I tests/test_handler_deps.py; python3 -I tests/test_handler_rows.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_netinclude_in_tree.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_dist_builds_wasabi.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = hl ]; then python3 tests/test_hl_plain.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = vshrc_net ]; then python3 tests/test_vshrc_net.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = vshrc_editor ]; then python3 tests/test_vshrc_editor.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = vshrc_complete ]; then python3 tests/test_vshrc_complete.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = tutorial ]; then python3 tests/test_tutorial.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = tutorial ]; then python3 tests/test_tutorial_lessons.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = tutorial ]; then python3 tests/test_tutorial_wiring.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = wbtext ]; then python3 -I tests/test_wbtext.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = entry ]; then python3 tests/test_entry_stub.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = tab_bg ]; then python3 tests/test_tab_switch_bg.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = tab_bar ]; then python3 tests/test_tab_bar_redraw.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = bar ] || [ "$(ONLY)" = bar_font ]; then python3 tests/test_bar_font.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = qmark ]; then python3 -I tests/test_qmark_commands.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = deps ]; then python3 tests/test_host_deps.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ixemul_startfile ]; then python3 -I tests/test_ixemul_startfile.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ixemul_sincos ]; then python3 -I tests/test_ixemul_sincos.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = icons_skip ]; then python3 -I tests/test_icons_skip_glue.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gcc_mul_overflow_cc ]; then python3 -I tests/test_gcc_mul_overflow_cc.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gcc_move2_overlap ]; then python3 -I tests/test_gcc_move2_overlap.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ixemul ]; then $(MAKE) -s -C $(IXEMUL_SRC)/tests/host test; fi
@@ -143,19 +270,20 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = man ]; then for f in man/*.1; do mandoc -T lint -W warning $$f || exit 1; done; echo "[OK] man/*.1 lint clean"; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = bashdiff ]; then python3 tools/bashdiff.py --gate && python3 tools/bashdiff.py --leak; fi
 
-$(BUILD)/vttest_host: $(HOST_HDR) $(CLAUDE_CORE) $(CLAUDE_HDR) $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(PROC_CORE) proc/proc_core.h $(CONF) $(SPLITS) config/splits_state.h $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h install/updiff.h $(ZMODEM) $(TELNET) net/tn.h demo/updemo.c demo/updemo.h demo/tour_themes.inc zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h tty/bmsg.h tty/qmark.h handler/ttyown.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h handler/complete_core.h render/glyphmap.h render/unifont.h render/emoji.h render/fontpair.h render/sbar.h render/pace.h render/otag.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(VIEW_CORE) $(VIEW_HDR) $(TESTS) tests/harness.h tests/claude_screen.h handler/clipfmt.h render/vtinput.h handler/brk.c handler/brk.h tests/exec_host/exec_host.h
+$(BUILD)/vttest_host: $(HOST_HDR) $(CLAUDE_CORE) $(CLAUDE_HDR) $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(PROC_CORE) proc/proc_core.h $(CONF) $(SPLITS) config/splits_state.h config/keymap.c config/keymap.h amarchy/cxdesc.c amarchy/cxdesc.h amarchy/amconf_core.c amarchy/amconf_keys.c amarchy/amconf_core.h amarchy/menu_core.c amarchy/leaf_core.c amarchy/wbmode_core.c amarchy/leaf_pkg.c amarchy/leaf.h amarchy/menu_tree.c amarchy/index_core.c amarchy/index_load.c amarchy/clips_core.c amarchy/shot_core.c amarchy/clips_core.h amarchy/shot_core.h amarchy/win_core.c amarchy/win_core.h amarchy/tile_core.c amarchy/tile_core.h amarchy/index_core.h amarchy/icon_core.c amarchy/icon_core.h amarchy/menu_geom.c amarchy/menu_icon.c amarchy/menu_theme.c amarchy/menu_theme.h amarchy/menu_core.h amarchy/menu_geom.h amarchy/menu_icon.h $(MENU_ICONS_INC) handler/keymap_act.c handler/upmru.c handler/keymap_act.h $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h install/updiff.h $(ZMODEM) $(TELNET) net/tn.h demo/updemo.c demo/updemo.h demo/tour_themes.inc zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h prefs/settings_def.h tty/ldisc.h tty/bmsg.h tty/qmark.h handler/ttyown.h handler/closeeof.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h shell/sh_path.h engine/vtengine.h engine/vtwidth.h handler/complete_core.h render/glyphmap.h render/unifont.h render/emoji.h render/fontpair.h render/sbar.h render/pace.h render/otag.h render/ttf.h tests/data/symnerd_subset.h tests/data/ttf_golden.h tests/data/flat_glyph_golden.inc handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(VIEW_CORE) $(VIEW_HDR) $(TESTS) tests/harness.h tests/claude_screen.h handler/clipfmt.h render/vtinput.h handler/brk.c handler/brk.h tests/exec_host/exec_host.h amarchy/gthemes_core.c amarchy/desk_core.c amarchy/desk_core.h amarchy/gthemes_core.h amarchy/menu_text_core.c amarchy/menu_text_core.h amarchy/menusrv_core.c amarchy/menusrv_core.h amarchy/serve_sig.h amarchy/pkgs_core.c amarchy/pkgs_core.h amarchy/job_core.c amarchy/bar_core.c amarchy/bar_core.h amarchy/tick_core.c amarchy/status_core.c amarchy/tick_core.h amarchy/status_core.h amarchy/barconf_core.c amarchy/barconf_core.h amarchy/note_core.c amarchy/flat_core.c amarchy/iconfile_core.c amarchy/iconapply_core.c amarchy/iconpen_core.c amarchy/iconpen_core.h amarchy/iconapply_core.h amarchy/flat_glyph.c amarchy/note_core.h amarchy/flat_core.h amarchy/wbreset_core.c amarchy/wbreset_core.h device/romspan.h amarchy/flat_glyph.h amarchy/job_core.h
 	@mkdir -p $(BUILD)
-	$(HOSTCC) $(HOSTCFLAGS) -DVT_COUNT_ALLOC -Itests/exec_host -o $@ handler/brk.c $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(PROC_CORE) $(CONF) $(SPLITS) $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) $(TELNET) demo/updemo.c $(VIEW_CORE) $(CLAUDE_CORE) $(TESTS)
+	$(HOSTCC) $(HOSTCFLAGS) -DVT_COUNT_ALLOC -Itests/exec_host -I$(BUILD)/amiga -o $@ handler/brk.c $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(PROC_CORE) $(CONF) $(SPLITS) config/keymap.c amarchy/cxdesc.c amarchy/amconf_core.c amarchy/amconf_keys.c amarchy/menu_core.c amarchy/leaf_core.c amarchy/leaf_pkg.c amarchy/menu_tree.c amarchy/index_core.c amarchy/index_load.c amarchy/clips_core.c amarchy/shot_core.c amarchy/icon_core.c amarchy/menu_geom.c amarchy/menu_icon.c amarchy/menu_theme.c amarchy/win_core.c amarchy/tile_core.c handler/keymap_act.c handler/upmru.c $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) $(TELNET) demo/updemo.c $(VIEW_CORE) $(CLAUDE_CORE) $(TESTS) amarchy/gthemes_core.c amarchy/desk_core.c amarchy/menu_text_core.c amarchy/menusrv_core.c amarchy/pkgs_core.c amarchy/job_core.c amarchy/bar_core.c amarchy/tick_core.c amarchy/wbmode_core.c amarchy/status_core.c amarchy/barconf_core.c amarchy/note_core.c amarchy/flat_core.c amarchy/iconfile_core.c amarchy/iconapply_core.c amarchy/iconpen_core.c amarchy/flat_glyph.c amarchy/wbreset_core.c
 
 # render/amiga_render.c itself on the host (ledger R8): the NDK's structs and a fake graphics.library
 # (tests/render_host/gfx_fake.c) that logs the calls and draws into a pixel canvas. Its own binary: the
 # NDK headers and the engine's strict host build cannot share a translation unit (struct timeval).
 # Needs the NDK of `make amiga` (VTCON_NDK); the sanitizers stay on.
-RENDER_HOST_SRC := tests/test_render.c tests/render_host/gfx_fake.c render/amiga_render.c tests/harness.c $(ENGINE) render/glyphmap.c render/unifont.c render/emoji.c render/painter.c render/vtinput.c
-$(BUILD)/render_host: $(HOST_HDR) tests/render_host/gfx_fake.h tests/render_host/proto/*.h $(RENDER_HOST_SRC)
+# render/vtwin.c is the Amiga 32-bit code: its ULONG <-> pointer casts get the two -Wno flags below
+RENDER_HOST_SRC := tests/test_render.c tests/render_host/gfx_fake.c render/amiga_render.c render/pens_amiga.c render/aa_ink.c tests/harness.c $(ENGINE) render/glyphmap.c render/unifont.c render/emoji.c render/painter.c render/vtinput.c render/ttf.c render/vtwin.c render/fontpair.c render/sbar.c handler/clipfmt.c handler/be32.c tests/render_host/vtwin_stubs.c
+$(BUILD)/render_host: $(HOST_HDR) render/aa_ink.h render/aa_ink_rule.h tests/render_host/gfx_fake.h tests/render_host/proto/*.h $(RENDER_HOST_SRC)
 	@mkdir -p $(BUILD)
 	@test -d $(VTCON_NDK) || { echo "[ERROR] the NDK headers are missing: unpack NDK3.2R4 to $(VTCON_NDK) (see make amiga)"; exit 1; }
-	$(HOSTCC) -std=gnu99 -Wall -Wextra -Werror -Wno-unused-parameter -O1 -g -fsanitize=address,undefined -Itests -Itests/render_host -I$(VTCON_NDK) -DAMIGA_STDC_C99 -DVR_HOST_TEST -o $@ $(RENDER_HOST_SRC)
+	$(HOSTCC) -std=gnu99 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-pointer-to-int-cast -Wno-int-to-void-pointer-cast -O1 -g -fsanitize=address,undefined -Itests -Itests/render_host -I$(VTCON_NDK) -DAMIGA_STDC_C99 -DVR_HOST_TEST -o $@ $(RENDER_HOST_SRC)
 
 # amiga-pi's NFKC (claude/unorm.c) for tests/test_unorm.py
 $(BUILD)/unorm_drv: tests/unorm_drv.c claude/unorm.c claude/unorm.h claude/unorm_tab.h claude/json.c claude/util.c
@@ -165,22 +293,27 @@ $(BUILD)/unorm_drv: tests/unorm_drv.c claude/unorm.c claude/unorm.h claude/unorm
 # amiga-pi's grep and find (claude/search_pi.c) for tests/test_pi_search.py (against rg and git)
 $(BUILD)/pi_search_drv: tests/pi_search_drv.c $(CLAUDE_CORE) $(CLAUDE_PI) $(CLAUDE_HDR) $(VIEW_CORE)
 	@mkdir -p $(BUILD)
-	$(HOSTCC) $(HOSTCFLAGS) -I. -o $@ tests/pi_search_drv.c $(CLAUDE_CORE) $(CLAUDE_PI) $(VIEW_CORE) tty/bmsg.c handler/clipfmt.c
+	$(HOSTCC) $(HOSTCFLAGS) -I. -o $@ tests/pi_search_drv.c $(CLAUDE_CORE) $(CLAUDE_PI) $(VIEW_CORE) tty/bmsg.c handler/clipfmt.c handler/be32.c
 
 # ud_compare's stack use against the Amiga budget: plain -O2, NO sanitizers (they inflate frames)
 $(BUILD)/updiff_stack_drv: tests/updiff_stack_drv.c install/updiff.c install/updiff.h
 	@mkdir -p $(BUILD)
 	$(HOSTCC) -std=c89 -pedantic -Wall -Wextra -Werror -O2 -I. -o $@ tests/updiff_stack_drv.c install/updiff.c
 
+# every kit's own manifest must be one upupdate can read (dist-check runs it per archive)
+$(BUILD)/updiff_kit_drv: tests/updiff_kit_drv.c install/updiff.c install/updiff.h
+	@mkdir -p $(BUILD)
+	$(HOSTCC) -std=c89 -pedantic -Wall -Wextra -Werror -O2 -I. -o $@ tests/updiff_kit_drv.c install/updiff.c
+
 # vsh's shell core on the host behind a POSIX sh_os (tests/vsh_host.c), and the
 # differential run of tests/bash/probes against bash 5 (tools/bashdiff.py;
 # ONLY=<area> runs one area, PROBE=<name> one probe, FAILED=1 the failing ones)
-$(BUILD)/vsh_host: $(HOST_HDR) tests/vsh_host.c $(SHELL_CORE) tty/bmsg.c tty/bmsg.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h shell/sh_hits.h shell/sh_float.h
+$(BUILD)/vsh_host: $(HOST_HDR) tests/vsh_host.c $(SHELL_CORE) tty/bmsg.c tty/bmsg.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h shell/sh_path.h shell/sh_hits.h shell/sh_float.h
 	@mkdir -p $(BUILD)
 	$(HOSTCC) $(HOSTCFLAGS) -DSH_HITS -o $@ tests/vsh_host.c $(SHELL_CORE) claude/regex.c tty/bmsg.c
 # the same host shell with a counting allocator (tests/vh_alloc.c) instead of the sanitizers: the leak
 # gate (tools/bashdiff.py --leak) runs it and fails when a ratchet probe leaves a block live (V44)
-$(BUILD)/vsh_host_leak: $(HOST_HDR) tests/vsh_host.c tests/vh_alloc.c $(SHELL_CORE) tty/bmsg.c tty/bmsg.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h shell/sh_hits.h shell/sh_float.h
+$(BUILD)/vsh_host_leak: $(HOST_HDR) tests/vsh_host.c tests/vh_alloc.c $(SHELL_CORE) tty/bmsg.c tty/bmsg.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h shell/sh_path.h shell/sh_hits.h shell/sh_float.h
 	@mkdir -p $(BUILD)
 	$(HOSTCC) -std=c89 -pedantic -Wall -Wextra -Werror -O1 -g -c -o $(BUILD)/vh_alloc.o tests/vh_alloc.c
 	$(HOSTCC) -std=c89 -pedantic -Wno-long-long -Wall -Wextra -Werror -O1 -g -DSH_HITS -DVH_COUNT -Dmalloc=vh_malloc -Dcalloc=vh_calloc -Drealloc=vh_realloc -Dfree=vh_free -o $@ tests/vsh_host.c $(SHELL_CORE) claude/regex.c tty/bmsg.c $(BUILD)/vh_alloc.o
@@ -203,15 +336,27 @@ engine/vtcaps.inc: tools/gen_vtcaps.py terminfo/vtcon.terminfo
 
 # hl and mdv for the host terminal (and the timings): build/hl, build/mdv
 view-host: $(BUILD)/hl $(BUILD)/mdv
-$(BUILD)/hl: $(HOST_HDR) view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_posix.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h
+$(BUILD)/hl: $(HOST_HDR) $(UPTERM_VERSION_H) view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_posix.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h
 	@mkdir -p $(BUILD)
-	$(HOSTCC) -std=c89 -pedantic -Wall -Wextra -Werror -O2 -o $@ view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_posix.c
-$(BUILD)/mdv: $(HOST_HDR) view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_posix.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h
+	$(HOSTCC) -std=c89 -pedantic -Wall -Wextra -Werror -O2 -I$(BUILD)/amiga -o $@ view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_posix.c
+$(BUILD)/mdv: $(HOST_HDR) $(UPTERM_VERSION_H) view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_posix.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h
 	@mkdir -p $(BUILD)
-	$(HOSTCC) -std=c89 -pedantic -Wall -Wextra -Werror -O2 -o $@ view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_posix.c
+	$(HOSTCC) -std=c89 -pedantic -Wall -Wextra -Werror -O2 -I$(BUILD)/amiga -o $@ view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_posix.c
 
 render/glyph_tables.inc: tools/gen_glyph_tables.py engine/vtengine.c
 	python3 tools/gen_glyph_tables.py
+
+KEYMAP_DEFAULT_INC := $(BUILD)/amiga/keymap_default.inc
+# the shipped keymap, compiled into the handler (the table when no keymap file exists)
+$(KEYMAP_DEFAULT_INC): tools/gen_keymap_default.py dist/keymap
+	@mkdir -p $(dir $@)
+	python3 tools/gen_keymap_default.py dist/keymap $@
+
+# The drawn Amarchy menu's icons (plan 2026-10-23-amarchy-drawn-menu.md, G3): dist/menu-icons names Symbols
+# Nerd Font glyphs; tools/gen_menu_icons.py (on tools/gen_emoji.py) makes one emoji page of them for amarchy/menu_icon.c.
+$(MENU_ICONS_INC): tools/gen_menu_icons.py tools/gen_emoji.py dist/menu-icons $(SYMBOLS_TTF)
+	@mkdir -p $(dir $@)
+	python3 tools/gen_menu_icons.py dist/menu-icons $(SYMBOLS_TTF) $@
 
 # the themes the UPDemo tour switches between, from themes/ (committed)
 demo/tour_themes.inc: tools/gen_tour_themes.py themes/dracula-default.conf themes/solarized-dark.conf themes/gruvbox-dark.conf themes/nord-default.conf
@@ -241,6 +386,121 @@ $(UNIFONT_PAGES)/stamp: $(UNIFONT_HEX) tools/gen_unifont.py
 	python3 tools/gen_unifont.py $(UNIFONT_HEX) $(UNIFONT_PAGES)
 	touch $@
 unifont: $(UNIFONT_PAGES)/stamp
+
+# Symbols Nerd Font (Nerd Fonts 3.5.1, icons only): the release archive fetched once into
+# build/symbolsnerd/, both SHA-256 checked, the Mono .ttf extracted; the kit's
+# Files/fonts/SymbolsNerdFontMono.ttf (FONTS: after Install). NERDFONTS_VER= another release
+# (with NERDFONTS_SHA256 and SYMBOLS_TTF_SHA256).
+NERDFONTS_VER ?= 3.5.1
+NERDFONTS_SHA256 ?= 01172f37db8543edb102e5cb5c64101c9f4686630804d49b419aa07b23a69996
+SYMBOLS_TTF_SHA256 ?= fe471e538392f51910faab985fa8e192a39dd3426125edd15b71b3680df0e749
+SYMBOLS_ARCHIVE := $(BUILD)/symbolsnerd/NerdFontsSymbolsOnly-$(NERDFONTS_VER).tar.xz
+$(SYMBOLS_ARCHIVE):
+	@mkdir -p $(BUILD)/symbolsnerd
+	curl -sSfL -o $@.tmp https://github.com/ryanoasis/nerd-fonts/releases/download/v$(NERDFONTS_VER)/NerdFontsSymbolsOnly.tar.xz
+	echo "$(NERDFONTS_SHA256)  $@.tmp" | shasum -a 256 -c -
+	mv $@.tmp $@
+$(SYMBOLS_TTF): $(SYMBOLS_ARCHIVE)
+	tar -xJmf $(SYMBOLS_ARCHIVE) -C $(BUILD)/symbolsnerd SymbolsNerdFontMono-Regular.ttf
+	echo "$(SYMBOLS_TTF_SHA256)  $@" | shasum -a 256 -c -
+symbolsnerd: $(SYMBOLS_TTF)
+
+# Phosphor Fill icons (@phosphor-icons/web 2.1.2 from the npm registry, MIT; the Flat Workbench icon set, plan
+# 2026-11-01-amarchy-filled-icon-set.md F1): the package tarball fetched once into build/phosphor/, SHA-256 checked, the
+# Phosphor-Fill.ttf and style.css extracted (both checked); tools/phosphor_codepoints.py turns the style.css rules
+# `.ph-fill.ph-NAME:before { content: "\eXXX" }` into codepoints.json (name -> code point, sorted, deterministic).
+# tools/gen_lucide_icons.py renders dist/lucide-icons to the planar images of dist/Amarchy/Icons/lucide.dat (built into
+# the kit by dist-base; the file name stays, no on-disk migration). PHOSPHOR_VER= another release (with the three SHA-256).
+PHOSPHOR_VER ?= 2.1.2
+PHOSPHOR_SHA256 ?= 40e3096099ca818c047979cece6a3764944d5200c67b64092f7bcd8bcd1d2b08
+PHOSPHOR_TTF_SHA256 ?= a53f5d2630cab5e3b7536ecb9d69d71519a2190298c22b1f8d770dd37bc2940a
+PHOSPHOR_CSS_SHA256 ?= 555980683a582c1910a954648b4ae38f58d76e797f02bfdc2c5e817901e6d4fc
+PHOSPHOR_TGZ := $(BUILD)/phosphor/web-$(PHOSPHOR_VER).tgz
+PHOSPHOR_TTF := $(BUILD)/phosphor/Phosphor-Fill.ttf
+PHOSPHOR_CP := $(BUILD)/phosphor/codepoints.json
+LUCIDE_DAT := dist/Amarchy/Icons/lucide.dat
+OUTLINE_DAT := dist/Amarchy/Icons/outline.dat
+# Outline icon style (the second set, pref icon-style = outline): lucide-static 1.66.0 from the npm registry, ISC; tarball
+# fetched once into build/lucide/, all SHA-256 checked, lucide.ttf + codepoints.json extracted. LUCIDE_VER= another release
+# (with LUCIDE_SHA256, LUCIDE_TTF_SHA256, LUCIDE_CODEPOINTS_SHA256).
+LUCIDE_VER ?= 1.66.0
+LUCIDE_SHA256 ?= 6a1debc19076123ece73f6729a9643ac90aab9c9db15f7c16debf72a9a02a82a
+LUCIDE_TTF_SHA256 ?= c6355db6e4f0834f62193f9effde900dab785c5c18877cf95cd1a44fa62fa8d5
+LUCIDE_CODEPOINTS_SHA256 ?= 7d6401da27c94468f2b5a2672b2826d6a041a3432b7d9ca6ca609ab5541b77b7
+LUCIDE_TGZ := $(BUILD)/lucide/lucide-static-$(LUCIDE_VER).tgz
+LUCIDE_TTF := $(BUILD)/lucide/lucide.ttf
+$(PHOSPHOR_TGZ):
+	@mkdir -p $(BUILD)/phosphor
+	curl -sSfL -o $@.tmp https://registry.npmjs.org/@phosphor-icons/web/-/web-$(PHOSPHOR_VER).tgz
+	echo "$(PHOSPHOR_SHA256)  $@.tmp" | shasum -a 256 -c -
+	mv $@.tmp $@
+$(PHOSPHOR_TTF): $(PHOSPHOR_TGZ)
+	tar -xzmf $(PHOSPHOR_TGZ) -C $(BUILD)/phosphor --strip-components=3 package/src/fill/Phosphor-Fill.ttf package/src/fill/style.css
+	echo "$(PHOSPHOR_TTF_SHA256)  $@" | shasum -a 256 -c -
+	echo "$(PHOSPHOR_CSS_SHA256)  $(BUILD)/phosphor/style.css" | shasum -a 256 -c -
+$(PHOSPHOR_CP): $(PHOSPHOR_TTF) tools/phosphor_codepoints.py
+	python3 -I tools/phosphor_codepoints.py $(BUILD)/phosphor/style.css $@
+phosphor: $(PHOSPHOR_TTF) $(PHOSPHOR_CP)
+# one generator run emits both files: the Filled set (default) and the Outline set (make 3.81 has no grouped targets:
+# the Outline file hangs off the Filled one, and a missing Outline file forces the generator again)
+$(LUCIDE_DAT): tools/gen_lucide_icons.py tools/gen_menu_icons.py tools/gen_emoji.py tools/mkicon.py dist/lucide-icons dist/lucide-icons-outline $(PHOSPHOR_TTF) $(PHOSPHOR_CP) $(LUCIDE_TTF)
+	python3 tools/gen_lucide_icons.py dist/lucide-icons $(PHOSPHOR_TTF) $(LUCIDE_DAT) dist/lucide-icons-outline $(LUCIDE_TTF) $(OUTLINE_DAT)
+$(OUTLINE_DAT): $(LUCIDE_DAT)
+	@test -f $@ || { rm -f $(LUCIDE_DAT); $(MAKE) $(LUCIDE_DAT); }
+lucide-dat: $(LUCIDE_DAT) $(OUTLINE_DAT)
+$(LUCIDE_TGZ):
+	@mkdir -p $(BUILD)/lucide
+	curl -sSfL -o $@.tmp https://registry.npmjs.org/lucide-static/-/lucide-static-$(LUCIDE_VER).tgz
+	echo "$(LUCIDE_SHA256)  $@.tmp" | shasum -a 256 -c -
+	mv $@.tmp $@
+$(LUCIDE_TTF): $(LUCIDE_TGZ)
+	tar -xzmf $(LUCIDE_TGZ) -C $(BUILD)/lucide --strip-components=2 package/font/lucide.ttf package/font/codepoints.json
+	echo "$(LUCIDE_TTF_SHA256)  $@" | shasum -a 256 -c -
+	echo "$(LUCIDE_CODEPOINTS_SHA256)  $(BUILD)/lucide/codepoints.json" | shasum -a 256 -c -
+lucide: $(LUCIDE_TTF)
+
+# screennotify.library 1.0 (Stefan Becker, Aminet util/libs/ScreenNotify10.lha): the archive fetched
+# once into build/screennotify/, both SHA-256 checked, the library extracted. Its licence forbids
+# shipping it in other packages, so it is never committed or put in the kit: only the rigs carry it
+# (tools/rig/rig.py stage_screennotify, every start), so the handler parks its Workbench window
+# when IPrefs resets the screen (handler/wbpark.h, WB-RESET-SCREENNOTIFY).
+SCREENNOTIFY_SHA256 ?= 7128e0defe25522043c29469cfaf2b8df4e2e31babda82db494f45ce4d80d3f9
+SCREENNOTIFY_LIB_SHA256 ?= 506e1a0870e6c900ab0603608a33ae95fbef516994aeaf65ab8570609806be46
+SCREENNOTIFY_ARCHIVE := $(BUILD)/screennotify/ScreenNotify10.lha
+SCREENNOTIFY_LIB := $(BUILD)/screennotify/ScreenNotify/libs/screennotify.library
+$(SCREENNOTIFY_ARCHIVE):
+	@mkdir -p $(BUILD)/screennotify
+	curl -sSfL -o $@.tmp https://aminet.net/util/libs/ScreenNotify10.lha
+	echo "$(SCREENNOTIFY_SHA256)  $@.tmp" | shasum -a 256 -c -
+	mv $@.tmp $@
+$(SCREENNOTIFY_LIB): $(SCREENNOTIFY_ARCHIVE)
+	cd $(BUILD)/screennotify && lha xqf ScreenNotify10.lha ScreenNotify/libs/screennotify.library
+	echo "$(SCREENNOTIFY_LIB_SHA256)  $@" | shasum -a 256 -c -
+	touch $@
+screennotify: $(SCREENNOTIFY_LIB)
+
+# JetBrains Mono (OFL 1.1; Omarchy's font): the release archive fetched once into build/jbmono/, SHA-256
+# checked, JetBrainsMono-Regular.ttf extracted, then drawn as the Amiga strike font JetBrainsMono.font 16
+# (tools/gen_jbmono.py: build/jbmono/out/JetBrainsMono.font and JetBrainsMono/16) for the Amarchy menu on
+# square-pixel screens. The kit's Files/fonts/JetBrainsMono.font + JetBrainsMono/16 (licence drawer dist/fonts/JetBrainsMonoLicence). JBMONO_VER= another
+# release (with JBMONO_SHA256 and JBMONO_TTF_SHA256).
+JBMONO_VER ?= 2.304
+JBMONO_SHA256 ?= 6f6376c6ed2960ea8a963cd7387ec9d76e3f629125bc33d1fdcd7eb7012f7bbf
+JBMONO_TTF_SHA256 ?= a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f
+JBMONO_ARCHIVE := $(BUILD)/jbmono/JetBrainsMono-$(JBMONO_VER).zip
+JBMONO_TTF := $(BUILD)/jbmono/JetBrainsMono-Regular.ttf
+JBMONO_OUT := $(BUILD)/jbmono/out
+$(JBMONO_ARCHIVE):
+	@mkdir -p $(BUILD)/jbmono
+	curl -sSfL -o $@.tmp https://github.com/JetBrains/JetBrainsMono/releases/download/v$(JBMONO_VER)/JetBrainsMono-$(JBMONO_VER).zip
+	echo "$(JBMONO_SHA256)  $@.tmp" | shasum -a 256 -c -
+	mv $@.tmp $@
+$(JBMONO_TTF): $(JBMONO_ARCHIVE)
+	unzip -o -j -q $(JBMONO_ARCHIVE) fonts/ttf/JetBrainsMono-Regular.ttf -d $(BUILD)/jbmono
+	echo "$(JBMONO_TTF_SHA256)  $@" | shasum -a 256 -c -
+$(JBMONO_OUT)/JetBrainsMono.font: $(JBMONO_TTF) tools/gen_jbmono.py
+	python3 -I tools/gen_jbmono.py $(JBMONO_TTF) $(JBMONO_OUT)
+jbmono: $(JBMONO_OUT)/JetBrainsMono.font
 
 # Twemoji (ledger U4): the release archive fetched once into build/twemoji/
 # and checked against its pinned sha256, then the colour pages of the
@@ -315,8 +575,17 @@ golden: $(BUILD)/vtdump
 # headers are upstream's own since 0.9 (include/wasabi_cgx.h); no shim. The upstream Makefile's own flags (-fbbb=-: Bebbo's
 # loop pass miscompiles small structs) are kept; only CC and the SDK are ours.
 # Idempotent: the stamp holds the pinned commit. Uninstall: make wasabi-clean.
-WASABI_REPO := https://github.com/creep-ltx/wasabi
+WASABI_REPO := $(strip $(shell cat tools/nas/wasabi.repo))
 WASABI_REV  := $(strip $(shell cat tools/nas/wasabi.rev))
+# the kit's wasabi SOURCE.txt: dist/wasabi/SOURCE.txt.in with the pin and the fork filled in from the two files above (one source of truth)
+WASABI_SOURCE := $(BUILD)/wasabi/SOURCE.txt
+$(WASABI_SOURCE): dist/wasabi/SOURCE.txt.in tools/nas/wasabi.rev tools/nas/wasabi.repo
+	mkdir -p $(dir $@) && sed -e 's|@WASABI_REV@|$(WASABI_REV)|g' -e 's|@WASABI_REPO@|$(WASABI_REPO)|g' $< > $@
+# Deploy tools/nas to the owner's NAS (tar over ssh + docker compose build/up); config ~/.config/upterm/nas.conf, see tools/nas/README.md "Deploy from the Mac".
+nas-deploy:
+	python3 -I tools/nas/deploy.py $(NAS_DEPLOY_ARGS)
+nas-deploy-dry:
+	python3 -I tools/nas/deploy.py --dry-run $(NAS_DEPLOY_ARGS)
 wasabi: $(BUILD)/wasabi/.stamp-$(WASABI_REV)
 	@echo "[OK] wasabi $(WASABI_REV) built: $(BUILD)/wasabi/wasabid and the client $(BUILD)/wasabi/wasabi."
 $(BUILD)/wasabi/.stamp-$(WASABI_REV):
@@ -421,7 +690,7 @@ CPU      ?= 68020
 # The AmigaOS 3.2 SDK headers. vendor/ is gitignored (4.1 MB of third-party
 # headers), so unpack NDK3.2R4 there once, or point this at your own copy:
 #   make amiga VTCON_NDK=<path>/Include_H
-VTCON_NDK ?= $(CURDIR)/vendor/ndk-3.2r4-Include_H
+VTCON_NDK ?= $(VENDOR)/ndk-3.2r4-Include_H
 VC       := vc +$(VBCC_CFG) -I$(VTCON_NDK) -cpu=$(CPU) -O2 -warn=-1 -dontwarn=163,166,167,168,170,306,307,81 -warnings-as-errors
 
 # The 68020 check (tty/cpucheck.c, built for the 68000): the program's main is
@@ -432,16 +701,26 @@ $(BUILD)/amiga/obj/cpuchk-%.o: tty/cpucheck.c tty/bmsg.h tty/bmsg.c
 
 
 GITREV  := $(shell git rev-parse --short HEAD 2>/dev/null)$(shell git diff --quiet 2>/dev/null || echo -dirty)
+# The base's version and the build day in the $VER of every base program (C:UPTerm, vtcon-handler,
+# pty-handler, vsh, hl, mdv, sz, rz, uptelnet, upgetty, UPConsole), so "Version UPTerm" says the base it
+# came with: the version from dist/packages.txt (the one tools/mkkit.py writes into UP-Term.version), the
+# day as mkkit.py writes it. C:Claude ships in the up-claude add-on and says that row's version
+# (UPCLAUDE_VERSION). The header is rewritten only when it changes, so the programs rebuild when a
+# version or the day moves, not on every make.
+$(UPTERM_VERSION_H): FORCE
+	@mkdir -p $(@D)
+	@printf '#define UPTERM_VERSION "%s"\n#define UPTERM_DATE "%s"\n#define UPCLAUDE_VERSION "%s"\n' "$$(python3 tools/pkgs.py get base version)" "$$(date +%d.%m.%Y)" "$$(python3 tools/pkgs.py get claude version)" > $@.new
+	@if cmp -s $@.new $@; then rm $@.new; else mv $@.new $@; fi
 # the engine's hot loops in assembler, for the builds that define VT_ASM (S1)
 ENGINE_68K := engine/vtengine_68k.s
 # the console's history file (handler/histfile.c) by C:Claude's rule for growing files, over its DOS calls alone
 HANDLER_DATADIR := claude/datadir.c claude/path.c claude/util.c claude/datadir_amiga.c
-HANDLER_SRC := handler/handler_start.s $(ENGINE_68K) render/amiga_render_68k.s render/painter.c render/painter_68k.s render/painter.h handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/kcmode.c handler/complete.c handler/complete_core.c prefs/prefs_asl.c handler/brk.c handler/waitset.c handler/slash.c handler/sbar_gad.c $(ENGINE) render/amiga_render.c render/vtwin.c render/vtinput.c render/sbar.c render/layout.c render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/outline.c render/otag.c tty/ldisc.c config/upconf.c config/splits_state.c config/termurl.c prefs/prefs_core.c prefs/prefs_dos.c handler/clipfmt.c handler/histfile.c $(HANDLER_DATADIR)
-HANDLER_HDR := engine/vtengine.h engine/vtcaps.inc engine/vtwidth.h render/amiga_render.h render/vtwin.h render/synchold.h render/vtinput.h render/sbar.h handler/sbar_gad.h render/glyphmap.h render/unifont.h render/emoji.h render/glyph_tables.inc render/outline.h render/otag.h \
-               handler/clip.h handler/clipfmt.h handler/lineedit.h handler/le_fns.h handler/complete.h handler/complete_core.h handler/histfile.h claude/datadir.h claude/sys.h claude/datadir_amiga.h handler/brk.h handler/ttyown.h handler/slash.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h config/termurl.h config/upassign.h \
-               handler/tabprog.h handler/tabslot.h handler/menu_def.h render/layout.h handler/waitset.h demo/updemo.h prefs/prefs_core.h
+HANDLER_SRC := handler/handler_start.s $(ENGINE_68K) render/amiga_render_68k.s render/painter.c render/painter_68k.s render/painter.h handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/kcmode.c handler/complete.c handler/complete_core.c prefs/prefs_asl.c handler/brk.c handler/waitset.c handler/slash.c handler/keymap_act.c handler/upmru.c config/keymap.c amarchy/win_core.c config/keymap_load.c handler/upactive.c handler/upreq.c handler/frontscr.c handler/winspec.c handler/sbar_gad.c $(ENGINE) render/amiga_render.c render/pens_amiga.c render/aa_ink.c render/aa_ink.h render/aa_ink_rule.h render/pens_amiga.h render/vtwin.c render/vtinput.c render/sbar.c render/layout.c render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/outline.c render/otag.c render/ttf.c tty/ldisc.c config/upconf.c config/splits_state.c config/upconf_rows.c config/termurl.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c amarchy/amconf_core.c amarchy/amconf_keys.c amarchy/amconf_dos.c handler/clipfmt.c handler/be32.c handler/histfile.c shell/sh_path.c $(HANDLER_DATADIR)
+HANDLER_HDR := $(KEYMAP_DEFAULT_INC) handler/keymap_act.h config/keymap.h config/keymap_load.h handler/upactive.h handler/upcmd.h shell/vsh_quote.h handler/upreq.h handler/frontscr.h engine/vtengine.h engine/vtcaps.inc engine/vtwidth.h render/amiga_render.h render/vtwin.h render/synchold.h render/vtinput.h render/sbar.h handler/sbar_gad.h render/glyphmap.h render/unifont.h render/emoji.h render/glyph_tables.inc render/outline.h render/otag.h render/ttf.h \
+               handler/clip.h handler/clipfmt.h handler/lineedit.h handler/le_fns.h handler/complete.h handler/complete_core.h handler/histfile.h claude/datadir.h claude/sys.h claude/datadir_amiga.h handler/brk.h handler/ttyown.h handler/closeeof.h handler/slash.h handler/winspec.h handler/screenreq.h handler/wbpark.h handler/screennotify.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h config/termurl.h config/upassign.h \
+               handler/tabprog.h handler/waitset.h demo/updemo.h prefs/prefs_core.h shell/sh_path.h amarchy/amconf_core.h amarchy/amconf_dos.h handler/tabslot.h handler/menu_def.h render/layout.h
 
-amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/phaseprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/upicon $(BUILD)/amiga/upupdate $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Claude
+amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/tcpprobe $(BUILD)/amiga/Reboot $(BUILD)/amiga/WBPath $(BUILD)/amiga/UPBigVol $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/phaseprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/amarchy-icons $(BUILD)/amiga/amnotify $(BUILD)/amiga/AmTile $(BUILD)/amiga/upicon $(BUILD)/amiga/upupdate $(BUILD)/amiga/upsame $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/Agent $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Claude $(BUILD)/amiga/scrprobe
 
 # hl and mdv: the portable view/ core and the AmigaDOS side (no ixemul).
 # vbcc warns (153, 65) on the (void) parameter casts, as for vsh.
@@ -453,24 +732,48 @@ $(BUILD)/amiga/top: proc/top_amiga.c proc/tasks_amiga.c proc/tasks_amiga.h proc/
 	@mkdir -p $(BUILD)/amiga/obj
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/vbsample.o proc/vbsample.s
 	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ proc/top_amiga.c proc/tasks_amiga.c $(PROC_CORE) $(BUILD)/amiga/obj/vbsample.o $(BUILD)/amiga/obj/cpuchk-top.o
+$(BUILD)/amiga/shotprobe: tests/amiga/shotprobe.c amarchy/shot_core.c amarchy/shot_core.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -o $@ tests/amiga/shotprobe.c amarchy/shot_core.c
+$(BUILD)/amiga/shotscreen: tests/amiga/shotscreen.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -o $@ tests/amiga/shotscreen.c
+$(BUILD)/amiga/shotfill: tests/amiga/shotfill.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -o $@ tests/amiga/shotfill.c
 $(BUILD)/amiga/busyloop: tests/amiga/busyloop.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/busyloop.c
+$(BUILD)/amiga/rawleave: tests/amiga/rawleave.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/rawleave.c
 $(BUILD)/amiga/rcneg: tests/amiga/rcneg.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/rcneg.c
+$(BUILD)/amiga/clistdin: tests/amiga/clistdin.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/clistdin.c
+$(BUILD)/amiga/detach: tests/amiga/detach.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/detach.c
+$(BUILD)/amiga/deafvol: tests/amiga/deafvol.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/deafvol.c
 $(BUILD)/amiga/intlist: tests/amiga/intlist.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/intlist.c
 $(BUILD)/amiga/inputlist: tests/amiga/inputlist.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=65 -o $@ tests/amiga/inputlist.c
-$(BUILD)/amiga/hl: view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_amiga.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h handler/vtcon_packets.h tty/ldisc.h $(BUILD)/amiga/obj/cpuchk-hl.o
+$(BUILD)/amiga/inhandlers: tests/amiga/inhandlers.c
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_amiga.c $(BUILD)/amiga/obj/cpuchk-hl.o
-$(BUILD)/amiga/mdv: view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_amiga.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h handler/vtcon_packets.h tty/ldisc.h $(BUILD)/amiga/obj/cpuchk-mdv.o
+	$(VC) -o $@ tests/amiga/inhandlers.c
+$(BUILD)/amiga/hl: view/hl_main.c $(UPTERM_VERSION_H) $(VIEW_HL) $(VIEW_CLI) view/vw_plat_amiga.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h handler/vtcon_packets.h tty/ldisc.h $(BUILD)/amiga/obj/cpuchk-hl.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_amiga.c $(BUILD)/amiga/obj/cpuchk-mdv.o
+	$(VC) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153,65 -o $@ view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_amiga.c $(BUILD)/amiga/obj/cpuchk-hl.o
+$(BUILD)/amiga/mdv: view/md_main.c $(UPTERM_VERSION_H) $(VIEW_MD) $(VIEW_CLI) view/vw_plat_amiga.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h handler/vtcon_packets.h tty/ldisc.h $(BUILD)/amiga/obj/cpuchk-mdv.o
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153,65 -o $@ view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_amiga.c $(BUILD)/amiga/obj/cpuchk-mdv.o
 
 # C:Claude, the native Claude client (ledger A2): the portable core
 # (claude/*.c, host-tested) with bsdsocket and AmigaDOS. bsdsocket's headers
@@ -482,7 +785,7 @@ $(BUILD)/amiga/mdv: view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_amiga.c $
 # build without TLS that refuses https (http URLs, the fixture, still work).
 VTCON_NETINCLUDE ?= $(CURDIR)/third_party/roadshow-netinclude
 # the SDK unpacked into vendor/ (gitignored, like the NDK) is used when present
-AMISSL_SDK ?= $(firstword $(wildcard $(CURDIR)/vendor/amissl-*/AmiSSL/Developer))
+AMISSL_SDK ?= $(firstword $(wildcard $(VENDOR)/amissl-*/AmiSSL/Developer))
 ifdef AMISSL_SDK
 CLAUDE_TLS := claude/tls_amissl.c
 CLAUDE_TLS_INC := -I$(AMISSL_SDK)/include
@@ -501,12 +804,22 @@ $(BUILD)/amiga/pi-llmprobe: $(PI_PROBE_SRC) claude/net_amiga.c $(CLAUDE_HDR) tty
 	$(VC) -dontwarn=153,65 -I$(VTCON_NETINCLUDE) -c -o $(BUILD)/amiga/obj/pi/net_amiga.o claude/net_amiga.c
 	$(VC) -dontwarn=153,65 -o $@ $(PI_PROBE_SRC) $(BUILD)/amiga/obj/pi/net_amiga.o
 
-$(BUILD)/amiga/Claude: $(CLAUDE_PORTABLE) claude/net_amiga.c $(CLAUDE_TLS) $(CLAUDE_HDR) $(VIEW_HDR) tty/ldisc.h tty/bmsg.h handler/vtcon_packets.h $(CLAUDE_FORCE) $(BUILD)/amiga/obj/cpuchk-Claude.o
+$(BUILD)/amiga/Claude: $(CLAUDE_PORTABLE) $(UPTERM_VERSION_H) claude/net_amiga.c $(CLAUDE_TLS) $(CLAUDE_HDR) $(VIEW_HDR) tty/ldisc.h tty/bmsg.h handler/vtcon_packets.h $(CLAUDE_FORCE) $(BUILD)/amiga/obj/cpuchk-Claude.o
 	@mkdir -p $(BUILD)/amiga/obj/claude
 	@echo '$(CLAUDE_FLAGS)' > $(BUILD)/amiga/claude.flags
 	$(VC) -dontwarn=153,65 -I$(VTCON_NETINCLUDE) -c -o $(BUILD)/amiga/obj/claude/net_amiga.o claude/net_amiga.c
 	$(VC) -dontwarn=153,65 $(CLAUDE_TLS_INC) -c -o $(BUILD)/amiga/obj/claude/tls.o $(CLAUDE_TLS)
-	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ $(CLAUDE_PORTABLE) $(BUILD)/amiga/obj/claude/net_amiga.o $(BUILD)/amiga/obj/claude/tls.o $(BUILD)/amiga/obj/cpuchk-Claude.o
+	$(VC) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153,65 -o $@ $(CLAUDE_PORTABLE) $(BUILD)/amiga/obj/claude/net_amiga.o $(BUILD)/amiga/obj/claude/tls.o $(BUILD)/amiga/obj/cpuchk-Claude.o
+
+# P2 probes (R2.1 network query, R2.2 idle counter), plans/2026-10-29-amarchy-p2-status-bar.md
+$(BUILD)/amiga/netprobe: tools/probes/p2/netprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -I$(VTCON_NETINCLUDE) -o $@ tools/probes/p2/netprobe.c
+
+# P2 probes (R2.1 network query, R2.2 idle counter), plans/2026-10-29-amarchy-p2-status-bar.md
+$(BUILD)/amiga/idleprobe: tools/probes/p2/idleprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -I$(VTCON_NETINCLUDE) -o $@ tools/probes/p2/idleprobe.c
 
 # The reachability probe (ledger V3), an ordinary program with vbcc's startup.
 $(BUILD)/amiga/reach: tests/amiga/reach.c
@@ -520,15 +833,15 @@ $(BUILD)/amiga/reach: tests/amiga/reach.c
 # and -O2 grow vsh); -D__NOINLINE__ stops vbcc's string.h from inlining
 # strcmp/strlen/strcpy at every call (another 3.5 KB). Measured 2026-10-07.
 VSH_OPT := -O=1 -size -D__NOINLINE__
-VSH_SRC := shell/vsh.c shell/vsh_mem.c shell/sh_exec.c shell/sh_expand.c shell/sh_parse.c shell/sh_float.c claude/regex.c config/termurl.c tty/bmsg.c
-$(BUILD)/amiga/vsh: $(VSH_SRC) config/termurl.h shell/sh_exec.h shell/sh_expand.h shell/sh_parse.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-vsh.o
+VSH_SRC := shell/vsh.c shell/vsh_cmdline.c shell/vsh_mem.c shell/sh_exec.c shell/sh_path.c shell/sh_expand.c shell/sh_parse.c shell/sh_float.c claude/regex.c config/termurl.c tty/bmsg.c
+$(BUILD)/amiga/vsh: $(VSH_SRC) $(UPTERM_VERSION_H) config/termurl.h config/cmdpath.h shell/sh_exec.h shell/sh_path.h shell/sh_expand.h shell/sh_parse.h shell/vsh_quote.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-vsh.o
 	@mkdir -p $(BUILD)/amiga
-	$(subst -O2,$(VSH_OPT),$(VC)) -Dmain=up_main -dontwarn=153,65,79 $(if $(DEBUG),-DVSH_DEBUG) -o $@ $(VSH_SRC) $(BUILD)/amiga/obj/cpuchk-vsh.o
+	$(subst -O2,$(VSH_OPT),$(VC)) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153,65,79 $(if $(DEBUG),-DVSH_DEBUG) -o $@ $(VSH_SRC) $(BUILD)/amiga/obj/cpuchk-vsh.o
 
 # vsh that logs how deep its stacks went (RAM:vsh_hw.log, shell/vsh.c VSH_STACKHW): the $$STACK measurement
-$(BUILD)/amiga/vsh_hw: $(VSH_SRC) $(HOST_HDR) $(BUILD)/amiga/obj/cpuchk-vsh.o
+$(BUILD)/amiga/vsh_hw: $(VSH_SRC) $(UPTERM_VERSION_H) $(HOST_HDR) $(BUILD)/amiga/obj/cpuchk-vsh.o
 	@mkdir -p $(BUILD)/amiga
-	$(subst -O2,$(VSH_OPT),$(VC)) -Dmain=up_main -dontwarn=153,65,79 -DVSH_STACKHW -o $@ $(VSH_SRC) $(BUILD)/amiga/obj/cpuchk-vsh.o
+	$(subst -O2,$(VSH_OPT),$(VC)) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153,65,79 -DVSH_STACKHW -o $@ $(VSH_SRC) $(BUILD)/amiga/obj/cpuchk-vsh.o
 
 $(BUILD)/amiga/vtshow: tests/amiga/vtshow.c
 	@mkdir -p $(BUILD)/amiga
@@ -568,10 +881,168 @@ $(BUILD)/amiga/breakport: tests/amiga/breakport.c
 # of GadTools gadgets; its model (prefs_core) is host-tested. A plain CLI
 # program (its own window), so vc links it. vbcc warns (153, 65) on the
 # (void) parameter casts of the file callbacks, as for vsh.
-# The kit ships it as "UP-Term Prefs" (make cannot hold a space in a target).
-$(BUILD)/amiga/upprefs: prefs/upprefs.c prefs/prefs_core.c prefs/prefs_core.h prefs/prefs_dos.c prefs/prefs_dos.h prefs/prefs_asl.c prefs/prefs_asl.h prefs/prefs_ui.c prefs/prefs_ui.h handler/kcmode.c handler/kcmode.h handler/slash.c handler/slash.h config/upconf.c config/upconf.h $(BUILD)/amiga/obj/cpuchk-upprefs.o
+# The kit ships it as Files/upprefs; Install copies it to C:UP-Term-Prefs.
+$(BUILD)/amiga/upprefs: prefs/upprefs.c prefs/prefs_merge.c prefs/prefs_merge.h prefs/prefs_core.c prefs/settings_def.c prefs/settings_def.h prefs/prefs_core.h prefs/prefs_dos.c prefs/prefs_dos.h prefs/prefs_asl.c prefs/prefs_asl.h prefs/prefs_ui.c prefs/prefs_ui.h prefs/pick_list.c prefs/pick_list.h prefs/pick_list_gt.c handler/kcmode.c handler/kcmode.h handler/slash.c handler/slash.h config/upconf.c config/upconf_rows.c config/upconf.h amarchy/amconf_core.c amarchy/amconf_core.h amarchy/amconf_dos.c amarchy/amconf_dos.h amarchy/amconf_keys.c amarchy/gthemes_core.c amarchy/gthemes_core.h amarchy/gthemes_scan_dos.c amarchy/gthemes_scan_dos.h amarchy/flat_core.c amarchy/flat_core.h amarchy/flat_shared.h device/romspan.h $(BUILD)/amiga/obj/cpuchk-upprefs.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ prefs/upprefs.c prefs/prefs_core.c prefs/prefs_dos.c prefs/prefs_asl.c prefs/prefs_ui.c handler/kcmode.c handler/slash.c config/upconf.c $(BUILD)/amiga/obj/cpuchk-upprefs.o
+	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ prefs/upprefs.c prefs/prefs_merge.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c prefs/prefs_asl.c prefs/prefs_ui.c prefs/pick_list.c prefs/pick_list_gt.c handler/kcmode.c handler/slash.c config/upconf.c config/upconf_rows.c amarchy/amconf_core.c amarchy/amconf_dos.c amarchy/amconf_keys.c amarchy/gthemes_core.c amarchy/gthemes_scan_dos.c amarchy/flat_core.c $(BUILD)/amiga/obj/cpuchk-upprefs.o
+
+# Amarchy: the Super-key commodity (plan 2026-10-22-amarchy-commodity.md, Phase C). A plain
+# vbcc CLI/WBStartup program, no ixemul. Parser, loader and semaphore reader are the handler's.
+# leaf_core.c calls the prefs and amconf modules; every program linking it links this set.
+AMARCHY_LEAF_DEPS := handler/kcmode.c handler/slash.c config/upconf.c config/upconf_rows.c amarchy/amconf_core.c amarchy/amconf_keys.c amarchy/amconf_dos.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c
+AMARCHY_SRC := amarchy/iconpen_core.c amarchy/iconpen_dos.c amarchy/note.c amarchy/note_core.c amarchy/shot.c amarchy/shot_core.c amarchy/rexx_host.c amarchy/taskalive.c amarchy/menusrv_core.c amarchy/termenv.c claude/util.c handler/frontscr.c amarchy/leaf_core.c amarchy/leaf_pkg.c amarchy/wblaunch.c amarchy/menu_open.c amarchy/amarchy.c amarchy/cx.c amarchy/act.c amarchy/win.c amarchy/win_apply.c amarchy/bar_usable.c amarchy/win_core.c amarchy/tile_core.c amarchy/cxdesc.c amarchy/menu_tree.c config/keymap.c config/keymap_load.c $(AMARCHY_LEAF_DEPS) handler/upactive.c handler/upmru.c amarchy/clipwatch.c amarchy/clips_core.c handler/clip.c handler/clipfmt.c handler/be32.c amarchy/index_core.c amarchy/pkgs_core.c amarchy/gthemes_core.c amarchy/gthemes_dos.c amarchy/desk_dos.c amarchy/win_refresh.c amarchy/flat_core.c amarchy/desk_core.c amarchy/gthemes_scan_dos.c amarchy/proclaunch.c amarchy/poll_timer.c amarchy/tick.c amarchy/tick_core.c amarchy/wbmode_core.c amarchy/wbmode.c amarchy/status_core.c amarchy/barconf_core.c amarchy/barconf_dos.c amarchy/themewin.c amarchy/bar.c amarchy/bar_core.c amarchy/menu_theme.c render/pens_amiga.c handler/upreq.c handler/keymap_act.c amarchy/wbreset_core.c amarchy/wbreset.c amarchy/wbreset_patch.c
+$(BUILD)/amiga/Amarchy: $(AMARCHY_SRC) amarchy/win_refresh.h amarchy/flat_shared.h amarchy/flat_core.h amarchy/note.h amarchy/note_core.h amarchy/shot.h amarchy/shot_core.h amarchy/rexx_host.h amarchy/taskalive.h amarchy/menusrv_core.h amarchy/menu_open.h config/segstack.h config/cmdpath.h amarchy/clipwatch.h amarchy/clips_core.h handler/clip.h amarchy/wblaunch.h amarchy/act.h amarchy/leaf.h amarchy/win.h amarchy/win_apply.h amarchy/bar_usable.h amarchy/win_core.h amarchy/tile_core.h handler/frontscr.h amarchy/cx.h amarchy/cxdesc.h amarchy/menu_core.h claude/util.h config/keymap.h config/keymap_load.h handler/upactive.h handler/keymap_act.h config/upconf.h config/upconf_lex.h $(KEYMAP_DEFAULT_INC) amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h amarchy/index_core.h amarchy/pkgs_core.h amarchy/gthemes_core.h amarchy/gthemes_dos.h amarchy/desk_dos.h amarchy/desk_core.h amarchy/gthemes_scan_dos.h amarchy/proclaunch.h amarchy/poll_timer.h amarchy/tick.h amarchy/tick_core.h amarchy/wbmode_core.h amarchy/wbmode.h amarchy/status_core.h amarchy/barconf_core.h amarchy/barconf_dos.h amarchy/themewin.h amarchy/bar.h amarchy/bar_core.h amarchy/menu_theme.h render/pens_amiga.h handler/upreq.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -I$(VTCON_NETINCLUDE) -o $@ $(AMARCHY_SRC)
+
+.PHONY: ttf-testdata
+# Regenerates tests/data/symnerd_subset.h and ttf_golden.h (needs fontTools and Homebrew FreeType); not part of any default target
+ttf-testdata:
+	python3 -I tools/fonts/make_ttf_testdata.py
+
+# Renders every glyph of the real Symbols Nerd Font through render/ttf.c (R2.4); run after a rasterizer change
+SYMNERD_TTF ?= $(UPTERM_ROOT)/vtcon/build/third_party/f1/SymNerdMono.ttf
+.PHONY: bench-ttf
+bench-ttf: $(BUILD)/bench_ttf
+	$(BUILD)/bench_ttf $(SYMNERD_TTF)
+
+$(BUILD)/bench_ttf: tests/bench_ttf.c render/ttf.c render/ttf.h
+	@mkdir -p $(BUILD)
+	$(HOSTCC) -std=c89 -O2 -Wall -Wextra -Werror -o $@ tests/bench_ttf.c render/ttf.c
+
+# keymap.c as Amarchy and the handler compile it: its allocator must be exec's AllocVec, not vc.lib's
+# malloc, whose 16 KB puddles stay until exit (tests/test_keymap_amiga_alloc.py).
+$(BUILD)/amiga/keymap.o: config/keymap.c config/keymap.h config/upconf.h config/upconf_lex.h amarchy/win_core.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -c -o $@ config/keymap.c
+
+# amarchy-menu: the quick menu and key viewer (Phase D). A gcc/ixemul program linked with
+# libupkgui.a straight from upterm-ports' sysroot (decision D4), so it is NOT part of `make amiga`
+# (that needs no ports build). `make dist-check` builds it (a link error such as GfxBase in
+# pv_get landed unnoticed once, 9e04c45d fixed by 2e900ae1), so the build check covers it.
+# libupkgui and its headers come from a PINNED upterm-ports commit (tools/upkgui.rev), not from the peer checkout's
+# working tree: `git archive` of that commit is unpacked into build/upkgui/src and `make upkg-ui` there builds the
+# sysroot (libupkgui.a, libncursesw.a, libixcompat.a, headers). The peer checkout is only read, never built in.
+# Bump tools/upkgui.rev to relink against a new libupkgui. Idempotent: the stamp holds the pinned commit.
+# Uninstall: make upkgui-clean.
+UPTERM_PORTS ?= $(UPTERM_ROOT)/upterm-ports
+UPKGUI_REV := $(strip $(shell cat tools/upkgui.rev))
+# The sysroot is built ONCE per pinned commit into the MAIN checkout's build/upkgui/<rev>, shared by every worktree (a
+# worktree used to build its own copy: minutes lost per agent, and the documented sibling path did not exist). One drawer
+# per rev, so a worktree on another rev never deletes the one a peer links against.
+MAIN_CHECKOUT := $(shell python3 -I $(CURDIR)/tools/rig/paths.py main-checkout)
+UPKGUI_HOME ?= $(MAIN_CHECKOUT)/$(BUILD)/upkgui/$(UPKGUI_REV)
+UPKGUI_SYS ?= $(UPKGUI_HOME)/src/build/sysroot/UP-Term
+.PHONY: upkgui upkgui-clean worktree-ready
+upkgui: $(UPKGUI_HOME)/.stamp
+	@echo "[OK] libupkgui $(UPKGUI_REV) built: $(UPKGUI_SYS)/lib/libupkgui.a"
+$(UPKGUI_HOME)/.stamp:
+	rm -rf $(UPKGUI_HOME)
+	mkdir -p $(UPKGUI_HOME)/src
+	git -C $(UPTERM_PORTS) archive $(UPKGUI_REV) | tar -x -C $(UPKGUI_HOME)/src
+	$(MAKE) -C $(UPKGUI_HOME)/src UPTERM_ROOT=$(UPTERM_ROOT) upkg-ui
+	touch $@
+$(UPKGUI_SYS)/lib/libupkgui.a: $(UPKGUI_HOME)/.stamp
+upkgui-clean:
+	rm -rf $(MAIN_CHECKOUT)/$(BUILD)/upkgui
+# A fresh git worktree rig-ready in about a minute: build/ seeded from the main checkout, source mtimes matched so make
+# rebuilds only what this branch changed, the shared libupkgui present (tools/worktree_ready.py).
+worktree-ready:
+	python3 -I tools/worktree_ready.py
+	$(MAKE) upkgui
+# One suite, fast: only the host test binary, at the lowest priority (make test ONLY= rebuilds every test binary).
+# SUITE= a tests/test_main.c suite (vttest_host --has); python-only suites: make test ONLY=<name>.
+.PHONY: test-one
+test-one: $(BUILD)/vttest_host
+	@if [ -z "$(SUITE)" ]; then echo "[ERROR] make test-one SUITE=<name>"; exit 2; fi
+	nice -n 19 ./$(BUILD)/vttest_host $(SUITE)
+AMARCHY_MENU_SRC := amarchy/rexx_host.c amarchy/poll_timer.c amarchy/taskalive.c amarchy/menusrv_core.c amarchy/termenv.c amarchy/menu_open.c amarchy/menu.c amarchy/leaf.c amarchy/wblaunch.c amarchy/leaf_core.c amarchy/leaf_pkg.c handler/frontscr.c amarchy/menu_core.c amarchy/menu_tree.c amarchy/index_core.c amarchy/index_load.c amarchy/ixwatch.c config/keymap.c amarchy/win_core.c config/keymap_load.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c amarchy/clips_core.c handler/clip.c handler/clipfmt.c handler/be32.c amarchy/gthemes_core.c amarchy/gthemes_dos.c amarchy/desk_dos.c amarchy/win_refresh.c amarchy/flat_core.c amarchy/desk_core.c amarchy/gthemes_scan_dos.c amarchy/proclaunch.c amarchy/pkgs_core.c amarchy/pkgs_dos.c $(AMARCHY_LEAF_DEPS) prefs/prefs_asl.c amarchy/job_core.c amarchy/job_dos.c amarchy/sentinel_dos.c amarchy/menu_theme.c amarchy/wbreset_core.c amarchy/wbreset.c
+.PHONY: amarchy-menu
+amarchy-menu: $(BUILD)/amiga/amarchy-menu
+$(BUILD)/amiga/amarchy-menu: $(AMARCHY_MENU_SRC) amarchy/win_refresh.h amarchy/flat_shared.h amarchy/flat_core.h amarchy/rexx_host.h amarchy/taskalive.h amarchy/menusrv_core.h amarchy/menu_open.h amarchy/termenv.h handler/frontscr.h amarchy/clips_core.h amarchy/menu_core.h amarchy/index_core.h amarchy/ixwatch.h amarchy/leaf.h amarchy/wblaunch.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC) $(UPKGUI_SYS)/lib/libupkgui.a amarchy/gthemes_core.h amarchy/gthemes_dos.h amarchy/desk_dos.h amarchy/desk_core.h amarchy/gthemes_scan_dos.h amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h amarchy/proclaunch.h config/cmdpath.h amarchy/pkgs_core.h amarchy/pkgs_dos.h amarchy/job_core.h amarchy/job_dos.h amarchy/sentinel_dos.h amarchy/menu_theme.h
+	@mkdir -p $(BUILD)/amiga
+	$(UPTERM_PORTS)/tools/m68k-cc -m68020 -O2 -Wall -I$(BUILD)/amiga -I$(UPKGUI_SYS)/include -I$(UPKGUI_SYS)/include/ncursesw -o $@ $(AMARCHY_MENU_SRC) $(UPKGUI_SYS)/lib/libupkgui.a $(UPKGUI_SYS)/lib/libncursesw.a $(UPKGUI_SYS)/lib/libixcompat.a
+
+# jobprobe: RJ.1 proof of amarchy/job_dos.c on the rig (tools/probes/jobrun/jobprobe.c)
+$(BUILD)/amiga/jobprobe: tools/probes/jobrun/jobprobe.c amarchy/taskalive.c amarchy/job_core.c amarchy/job_dos.c amarchy/sentinel_dos.c amarchy/leaf_core.c amarchy/proclaunch.c $(AMARCHY_LEAF_DEPS) amarchy/job_core.h amarchy/job_dos.h amarchy/sentinel_dos.h amarchy/proclaunch.h amarchy/taskalive.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ tools/probes/jobrun/jobprobe.c amarchy/taskalive.c amarchy/job_core.c amarchy/job_dos.c amarchy/sentinel_dos.c amarchy/leaf_core.c amarchy/proclaunch.c $(AMARCHY_LEAF_DEPS)
+
+# amarchy-gui: the drawn menu and key viewer (plan 2026-10-23-amarchy-drawn-menu.md, G5). A plain vbcc
+# Intuition program, no ixemul, same command line as amarchy-menu.
+AMARCHY_GUI_SRC := amarchy/rexx_host.c amarchy/poll_timer.c amarchy/taskalive.c amarchy/menusrv_core.c amarchy/termenv.c amarchy/menu_open.c amarchy/gui.c amarchy/icon_core.c amarchy/icon_gfx.c amarchy/leaf.c amarchy/wblaunch.c amarchy/leaf_core.c amarchy/leaf_pkg.c amarchy/menu_core.c amarchy/menu_tree.c amarchy/index_core.c amarchy/index_load.c amarchy/ixwatch.c amarchy/menu_geom.c amarchy/menu_icon.c amarchy/menu_font.c amarchy/menu_theme.c render/emoji.c render/fontpair.c render/unifont.c render/pens_amiga.c handler/frontscr.c config/keymap.c amarchy/win_core.c config/keymap_load.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c amarchy/clips_core.c handler/clip.c handler/clipfmt.c handler/be32.c $(AMARCHY_LEAF_DEPS) amarchy/gthemes_core.c amarchy/gthemes_dos.c amarchy/desk_dos.c amarchy/win_refresh.c amarchy/flat_core.c amarchy/desk_core.c amarchy/gthemes_scan_dos.c amarchy/proclaunch.c amarchy/pkgs_core.c amarchy/pkgs_dos.c amarchy/menu_text.c amarchy/menu_text_core.c render/aa_ink.c render/ttf.c render/otag.c render/outline.c prefs/prefs_asl.c amarchy/job_core.c amarchy/job_dos.c amarchy/sentinel_dos.c amarchy/wbreset_core.c amarchy/wbreset.c
+.PHONY: amarchy-gui
+amarchy-gui: $(BUILD)/amiga/amarchy-gui
+$(BUILD)/amiga/amarchy-gui: $(AMARCHY_GUI_SRC) amarchy/win_refresh.h amarchy/flat_shared.h amarchy/flat_core.h amarchy/rexx_host.h amarchy/taskalive.h amarchy/menusrv_core.h amarchy/menu_open.h amarchy/clips_core.h amarchy/menu_core.h amarchy/index_core.h amarchy/ixwatch.h amarchy/icon_core.h amarchy/icon_gfx.h amarchy/wblaunch.h amarchy/menu_geom.h amarchy/menu_icon.h amarchy/menu_font.h render/emoji.h render/fontpair.h render/unifont.h $(MENU_ICONS_INC) amarchy/menu_theme.h amarchy/leaf.h render/pens_amiga.h handler/frontscr.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h prefs/prefs_core.h $(KEYMAP_DEFAULT_INC) amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h amarchy/gthemes_core.h amarchy/gthemes_dos.h amarchy/desk_dos.h amarchy/desk_core.h amarchy/gthemes_scan_dos.h amarchy/menu_text.h amarchy/menu_text_core.h render/aa_ink.h render/aa_ink_rule.h render/pen_match.h render/ttf.h render/otag.h render/outline.h amarchy/proclaunch.h amarchy/pkgs_core.h amarchy/pkgs_dos.h amarchy/job_core.h amarchy/job_dos.h amarchy/sentinel_dos.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ $(AMARCHY_GUI_SRC)
+
+# amarchy-index: the app index scanner (plan 2026-10-23-amarchy-app-index.md, X2). A plain vbcc DOS program,
+# no ixemul; it writes ENVARC:Amarchy/apps, which Amarchy reads (it never scans itself).
+AMARCHY_INDEX_SRC := amarchy/taskalive.c amarchy/index.c install/hardvol.c amarchy/index_core.c amarchy/pkgs_core.c amarchy/ixwatch.c amarchy/menu_tree.c config/upconf.c config/upconf_rows.c amarchy/amconf_core.c amarchy/amconf_keys.c amarchy/amconf_dos.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c handler/kcmode.c handler/slash.c
+.PHONY: amarchy-index
+amarchy-index: $(BUILD)/amiga/amarchy-index
+$(BUILD)/amiga/amarchy-index: $(AMARCHY_INDEX_SRC) amarchy/taskalive.h amarchy/index_core.h amarchy/pkgs_core.h amarchy/ixwatch.h amarchy/menu_core.h config/upconf.h tty/qmark.h install/hardvol.h install/fssm.h amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -o $@ $(AMARCHY_INDEX_SRC)
+
+# amarchy-flat: the resident flat-UI program (plan 2026-10-29-amarchy-flat-ui-patch.md FLAT-C0). A plain vbcc DOS program,
+# no ixemul; it keeps the public state block "Amarchy.Flat" that Amarchy writes. flat_core.c is host-tested.
+.PHONY: amarchy-flat
+amarchy-flat: $(BUILD)/amiga/amarchy-flat
+$(BUILD)/amiga/amarchy-flat: device/romspan.h amarchy/flat_shared.h amarchy/flat.c amarchy/flat_rf.s amarchy/flat_tx.s amarchy/flat_glyph.c amarchy/flat_glyph.h amarchy/flat_core.c amarchy/desk_core.c amarchy/desk_core.h amarchy/gthemes_core.c amarchy/gthemes_core.h amarchy/iconpen_core.c amarchy/iconpen_core.h amarchy/iconpen_dos.c amarchy/iconpen_dos.h handler/be32.c handler/be32.h amarchy/taskalive.c amarchy/flat_core.h amarchy/taskalive.h tty/qmark.h amarchy/poll_timer.c amarchy/poll_timer.h amarchy/amconf_core.h amarchy/amconf_dos.h $(AMARCHY_LEAF_DEPS)
+	@mkdir -p $(BUILD)/amiga
+	@mkdir -p $(BUILD)/amiga/obj
+	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_rf.o amarchy/flat_rf.s
+	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_tx.o amarchy/flat_tx.s
+	$(VC) -dontwarn=153,65 -o $@ amarchy/flat.c $(BUILD)/amiga/obj/flat_rf.o $(BUILD)/amiga/obj/flat_tx.o amarchy/flat_glyph.c amarchy/flat_core.c amarchy/desk_core.c amarchy/gthemes_core.c amarchy/iconpen_core.c amarchy/iconpen_dos.c handler/be32.c amarchy/taskalive.c amarchy/poll_timer.c $(AMARCHY_LEAF_DEPS)
+
+# amarchy-icons: filled icons on the Workbench default icons, APPLY and RESTORE (plan 2026-10-31-amarchy-lucide-icons.md L8, L9).
+# A plain vbcc DOS program; every decision is amarchy/iconapply_core.c (host suite iconapply).
+.PHONY: amarchy-icons
+amarchy-icons: $(BUILD)/amiga/amarchy-icons
+$(BUILD)/amiga/amarchy-icons: amarchy/icons.c amarchy/iconapply_core.c amarchy/iconapply_core.h amarchy/iconfile_core.c amarchy/iconfile_core.h amarchy/iconpen_core.c amarchy/iconpen_core.h amarchy/iconpen_dos.c amarchy/iconpen_dos.h amarchy/gthemes_core.c amarchy/gthemes_core.h amarchy/desk_core.c amarchy/desk_core.h amarchy/amconf_core.h amarchy/amconf_dos.h handler/be32.c handler/be32.h tty/qmark.h $(AMARCHY_LEAF_DEPS)
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -o $@ amarchy/icons.c amarchy/iconfile_core.c amarchy/iconapply_core.c amarchy/iconpen_core.c amarchy/iconpen_dos.c amarchy/gthemes_core.c amarchy/desk_core.c handler/be32.c $(AMARCHY_LEAF_DEPS)
+
+# FLAT-C3: vbcc's assembly of the dispatcher objects, checked by tests/test_flat_budget.py (entry frames <= 64 bytes, no libc call)
+FLAT_ASM_DIR := $(BUILD)/amiga/flat_asm
+.PHONY: flat-budget
+flat-budget: $(BUILD)/amiga/flat_asm/flat.s $(BUILD)/amiga/flat_asm/flat_glyph.s $(BUILD)/amiga/flat_asm/flat_core.s
+	python3 tests/test_flat_budget.py $(FLAT_ASM_DIR)/flat.s $(FLAT_ASM_DIR)/flat_glyph.s $(FLAT_ASM_DIR)/flat_core.s
+$(FLAT_ASM_DIR)/%.s: amarchy/%.c amarchy/flat_core.h amarchy/flat_glyph.h
+	@mkdir -p $(FLAT_ASM_DIR)
+	$(VC) -dontwarn=153,65 -S -o $@ $<
+
+# amnotify: the notice CLI (plan 2026-10-29-amarchy-p4-capture-notify-power.md R4.10). A plain vbcc DOS program; it sends
+# NOTIFY lines to AMARCHY.NOTIFY and shares note_core.c (its argument parse) with Amarchy.
+.PHONY: amnotify
+amnotify: $(BUILD)/amiga/amnotify
+$(BUILD)/amiga/amnotify: amarchy/amnotify.c amarchy/note_core.c amarchy/rexx_host.c amarchy/poll_timer.c amarchy/note.h amarchy/note_core.h amarchy/rexx_host.h tty/qmark.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -o $@ amarchy/amnotify.c amarchy/note_core.c amarchy/rexx_host.c amarchy/poll_timer.c
+
+# rexxbound + deafport: the bound of rexx_send (tools/rig/rexxbound_rig.py; REXX-DEAD-AFTER-THEME)
+$(BUILD)/amiga/rexxbound: tests/amiga/rexxbound.c amarchy/rexx_host.c amarchy/poll_timer.c amarchy/rexx_host.h amarchy/poll_timer.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -o $@ tests/amiga/rexxbound.c amarchy/rexx_host.c amarchy/poll_timer.c
+$(BUILD)/amiga/deafport: tests/amiga/deafport.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/deafport.c
+
+# renameopen: rename a file with an open handle, then close (s43 FS-UAE filesys rename crash)
+$(BUILD)/amiga/renameopen: tools/rig/renameopen.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tools/rig/renameopen.c
+
+# AmTile: the autotiling commodity (plan 2026-10-28-amarchy-autotile.md, phase 2). A plain vbcc program like Amarchy;
+# tile_core.c is its pure part, win_apply.c the OS calls it shares with win.c.
+AMTILE_SRC := handler/frontscr.c amarchy/poll_timer.c amarchy/tile.c amarchy/tile_core.c amarchy/win_core.c amarchy/win_apply.c amarchy/win_refresh.c amarchy/bar_usable.c amarchy/rexx_host.c $(AMARCHY_LEAF_DEPS)
+.PHONY: AmTile
+AmTile: $(BUILD)/amiga/AmTile
+$(BUILD)/amiga/AmTile: $(AMTILE_SRC) amarchy/win_refresh.h amarchy/poll_timer.h amarchy/rexx_host.h amarchy/tile_core.h amarchy/win_core.h amarchy/win_apply.h amarchy/bar_usable.h amarchy/bar_core.h amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -o $@ $(AMTILE_SRC)
 
 # ixemul programs: bebbo's gcc (thoughts plan: TOOLCHAIN), linked against
 # Aminet's ixemul SDK (-m68020 is safe since the driver names ixemul/lib/crt0.o by path,
@@ -610,10 +1081,25 @@ $(BUILD)/amiga/ixmouse: tests/amiga/ixmouse.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixmouse.c
 
+# The AmigaDOS rc of a program ended by a signal: 128+sig (tools/rig/sigexit_rc_rig.py).
+$(BUILD)/amiga/ixsigexit: tests/amiga/ixsigexit.c
+	@mkdir -p $(BUILD)/amiga
+	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixsigexit.c
+
+# ixemul's kill() pid lookup (pfind): native task, self, live ixemul process (tools/rig/pfind_rig.py).
+$(BUILD)/amiga/ixpfind: tests/amiga/ixpfind.c
+	@mkdir -p $(BUILD)/amiga
+	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixpfind.c
+
 # The characters typed after a Ctrl-C that ended a read (tools/rig/intr_rig.py).
 $(BUILD)/amiga/ixintr: tests/amiga/ixintr.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixintr.c
+
+# An ixemul program in a native Wait() that kill SIGINT must end (tools/rig/nwait_rig.py).
+$(BUILD)/amiga/ixnwait: tests/amiga/ixnwait.c
+	@mkdir -p $(BUILD)/amiga
+	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixnwait.c
 
 $(BUILD)/amiga/ixwait: tests/amiga/ixwait.c
 	@mkdir -p $(BUILD)/amiga
@@ -680,20 +1166,31 @@ $(BUILD)/amiga/stackprobe: tests/amiga/stackprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/stackprobe.c
 	$(VC) -DSTACK_COOKIE -o $(BUILD)/amiga/stackprobe50k tests/amiga/stackprobe.c
+	$(VC) -DSTACK_COOKIE_BIG -o $(BUILD)/amiga/stackprobe256k tests/amiga/stackprobe.c
+
+# vfork + execve of a native program from ixemul (tools/rig/stackext_rig.py)
+$(BUILD)/amiga/ixexecstack: tests/amiga/ixexecstack.c
+	@mkdir -p $(BUILD)/amiga
+	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixexecstack.c
 
 # sz / rz: ZMODEM over the shell's stream, no ixemul (ledger T4 G3)
-$(BUILD)/amiga/sz: zm/zm_amiga.c zm/zmodem.c zm/zmodem.h $(BUILD)/amiga/obj/cpuchk-sz.o
+$(BUILD)/amiga/sz: zm/zm_amiga.c $(UPTERM_VERSION_H) zm/zmodem.c zm/zmodem.h $(BUILD)/amiga/obj/cpuchk-sz.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -dontwarn=153,65 -DZM_SZ -o $@ zm/zm_amiga.c zm/zmodem.c $(BUILD)/amiga/obj/cpuchk-sz.o
+	$(VC) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153,65 -DZM_SZ -o $@ zm/zm_amiga.c zm/zmodem.c $(BUILD)/amiga/obj/cpuchk-sz.o
 
-$(BUILD)/amiga/rz: zm/zm_amiga.c zm/zmodem.c zm/zmodem.h $(BUILD)/amiga/obj/cpuchk-rz.o
+$(BUILD)/amiga/rz: zm/zm_amiga.c $(UPTERM_VERSION_H) zm/zmodem.c zm/zmodem.h $(BUILD)/amiga/obj/cpuchk-rz.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -dontwarn=153,65 -DZM_RZ -o $@ zm/zm_amiga.c zm/zmodem.c $(BUILD)/amiga/obj/cpuchk-rz.o
+	$(VC) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153,65 -DZM_RZ -o $@ zm/zm_amiga.c zm/zmodem.c $(BUILD)/amiga/obj/cpuchk-rz.o
 
 # the kit's icon tool (Install: the Shell icon opens UP-Term)
 $(BUILD)/amiga/upicon: install/upicon.c install/iconspec.c install/iconspec.h $(BUILD)/amiga/obj/cpuchk-upicon.o
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -Dmain=up_main -o $@ install/upicon.c install/iconspec.c $(BUILD)/amiga/obj/cpuchk-upicon.o
+
+# the kit's byte compare by size and CRC-32 (Install: the original TopazPro 16)
+$(BUILD)/amiga/upsame: install/upsame.c tty/qmark.h $(BUILD)/amiga/obj/cpuchk-upsame.o
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -Dmain=up_main -o $@ install/upsame.c $(BUILD)/amiga/obj/cpuchk-upsame.o
 
 # the kit's update tool (Install: what changed since the installed kit; installer update plan U4)
 $(BUILD)/amiga/upupdate: install/upupdate.c install/updiff.c install/updiff.h $(BUILD)/amiga/obj/cpuchk-upupdate.o
@@ -704,13 +1201,29 @@ $(BUILD)/amiga/iconprobe: tests/amiga/iconprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/iconprobe.c
 
-$(BUILD)/amiga/wbrun: tests/amiga/wbrun.c
+$(BUILD)/amiga/wbrun: tests/amiga/wbrun.c amarchy/wblaunch.c amarchy/leaf_core.c $(AMARCHY_LEAF_DEPS) amarchy/wblaunch.h amarchy/leaf.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -o $@ tests/amiga/wbrun.c
+	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ tests/amiga/wbrun.c amarchy/wblaunch.c amarchy/leaf_core.c $(AMARCHY_LEAF_DEPS)
+
+$(BUILD)/amiga/wbfake: tests/amiga/wbfake.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/wbfake.c
 
 $(BUILD)/amiga/taskdump: tests/amiga/taskdump.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/taskdump.c
+
+$(BUILD)/amiga/addrowner: tests/amiga/addrowner.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/addrowner.c
+
+$(BUILD)/amiga/ownermap: tests/amiga/ownermap.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/ownermap.c
+
+$(BUILD)/amiga/crashme: tests/amiga/crashme.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/crashme.c
 
 $(BUILD)/amiga/inwho: tests/amiga/inwho.c
 	@mkdir -p $(BUILD)/amiga
@@ -762,6 +1275,31 @@ $(BUILD)/amiga/wasabikey: install/wasabikey.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ install/wasabikey.c
 
+# The Install's TCP/IP stack probe (OpenLibrary of bsdsocket.library; the AmiNetXDuo part)
+$(BUILD)/amiga/tcpprobe: install/tcpprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ install/tcpprobe.c
+
+# C:Reboot: flushes every volume, then ColdReboot (the Install's last page)
+$(BUILD)/amiga/Reboot: install/reboot.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ install/reboot.c
+
+# C:WBPath: puts a drawer on / takes it off the Workbench process's command path live (up-uhc: UHC:ExtBin)
+$(BUILD)/amiga/WBPath: install/wbpath.c config/cmdpath.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ install/wbpath.c
+
+# C:Agent [TASK]: the ai-agent preference's agent in a new tab, started on TASK (sends /ask like C:UPTerm)
+$(BUILD)/amiga/Agent: install/agent.c handler/upcmd.h handler/vtcon_packets.h $(UPTERM_VERSION_H) $(BUILD)/amiga/obj/cpuchk-Agent.o
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -I$(BUILD)/amiga -Dmain=up_main -o $@ install/agent.c $(BUILD)/amiga/obj/cpuchk-Agent.o
+
+# UPBigVol: the Install's helper that picks the drawer's default disk (the local one with the most room; ENV:UPTBIGVOL)
+$(BUILD)/amiga/UPBigVol: install/bigvol.c install/hardvol.c install/bigvol.h install/hardvol.h install/fssm.h tty/qmark.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ install/bigvol.c install/hardvol.c
+
 # The engine alone on the 68k: bytes a second per workload (S1)
 $(BUILD)/amiga/engbench: tests/amiga/engbench.c $(ENGINE) $(ENGINE_68K) render/amiga_render_68k.s render/painter.c render/painter_68k.s render/painter.h engine/vtengine.h
 	@mkdir -p $(BUILD)/amiga
@@ -781,10 +1319,78 @@ $(BUILD)/amiga/cellbench: tests/amiga/cellbench.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/cellbench.c
 
+# Who holds which Workbench screen pen: PalExtra dump, WATCH patches ObtainPen / ObtainBestPenA / ReleasePen (vtcon L7)
+$(BUILD)/amiga/palprobe: tests/amiga/palprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -o $@ tests/amiga/palprobe.c
+
 # A public screen's DrawInfo pens and their colours (ownscreen_rig)
 $(BUILD)/amiga/dripens: tests/amiga/dripens.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/dripens.c
+
+# DESK-31: samples the Workbench screen while IPrefs resets it after a WBPattern USE
+$(BUILD)/amiga/resetprobe: tests/amiga/resetprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/resetprobe.c
+
+# DESK-31: Workbench window list + owner task changes as failing Locks a wasabi snoop puts in the DOS timeline
+$(BUILD)/amiga/winwatch: tests/amiga/winwatch.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/winwatch.c
+
+# Window census of the Workbench screen with Flags / WFLG_WBENCHWINDOW / owner task (WBRESET-EXT)
+$(BUILD)/amiga/wincensus: tests/amiga/wincensus.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/wincensus.c
+
+# A pen dump of an active and an inactive window with GadTools gadgets (FLAT-M1)
+$(BUILD)/amiga/flatprobe: tests/amiga/flatprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/flatprobe.c
+
+# A checker-pattern window with one button, for the round-corner background check (s28 FLAT-BUTTON-ROUND-BG)
+$(BUILD)/amiga/btnbgprobe: tests/amiga/btnbgprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/btnbgprobe.c
+
+$(BUILD)/amiga/iconpens: tests/amiga/iconpens.c amarchy/iconpen_core.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/iconpens.c
+
+$(BUILD)/amiga/wbpenprobe: tests/amiga/wbpenprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/wbpenprobe.c
+
+# The Hook layout of intuition's sysiclass (FLAT-R3)
+$(BUILD)/amiga/sysiprobe: tests/amiga/sysiprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/sysiprobe.c
+
+# Counts frameiclass dispatcher calls while a GadTools window opens (FLAT-C8 Q2)
+$(BUILD)/amiga/frameprobe: tests/amiga/frameprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/frameprobe.c
+
+# dopus5.library jump-table entries and the flat enable switch (FLAT-D4 rig)
+$(BUILD)/amiga/dopusprobe: tests/amiga/dopusprobe.c amarchy/flat_core.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/dopusprobe.c
+
+# Windows with sysiclass gadgets opened in a loop, and a hash of their frame pixels (FLAT-C1 rig, tools/rig/amarchy_flat_rig.py)
+$(BUILD)/amiga/flatwin: tests/amiga/flatwin.c amarchy/flat_core.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/flatwin.c
+
+# A public or a private screen to hold in front, and the font numbers of a public screen (amarchy_gui_rig, G7)
+$(BUILD)/amiga/scrprobe: tests/amiga/scrprobe.c amarchy/menu_font.c amarchy/menu_font.h render/fontpair.c render/fontpair.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/scrprobe.c amarchy/menu_font.c render/fontpair.c
+
+# The front-to-back windows of the Workbench screen with Flags and borders (BAR-ZOOMED-DRAWER)
+$(BUILD)/amiga/winprobe: tests/amiga/winprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/winprobe.c
 
 # Picasso96's 24-bit pens (RPTAG_PenMode/FgColor/BgColor) on the Workbench screen (W-T13)
 $(BUILD)/amiga/rgbprobe: tests/amiga/rgbprobe.c
@@ -803,7 +1409,7 @@ $(BUILD)/amiga/ttyprobe: tests/amiga/ttyprobe.c handler/vtcon_packets.h tty/ldis
 # UP-Term's console.device (console plan D1.6): upcon_rom.o first (the
 # RomTag and the ROM forwards), no C startup, as the handler.
 DEVICE_SRC := device/upcon_device.c device/upcon_unit.c device/upcon_input.c device/upc_core.c \
-              render/vtwin.c render/vtinput.c render/sbar.c render/amiga_render.c render/painter.c render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/outline.c render/otag.c handler/clip.c handler/clipfmt.c $(ENGINE)
+              render/vtwin.c render/vtinput.c render/sbar.c render/amiga_render.c render/pens_amiga.c render/aa_ink.c render/aa_ink.h render/aa_ink_rule.h render/pens_amiga.h render/painter.c render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/outline.c render/otag.c render/ttf.c handler/clip.c handler/clipfmt.c handler/be32.c $(ENGINE)
 DEVICE_HDR := device/upcon.h device/upc_public.h device/upc_core.h render/vtwin.h render/vtinput.h render/sbar.h render/amiga_render.h render/painter.h render/glyphmap.h render/unifont.h render/emoji.h \
               render/glyph_tables.inc handler/clip.h handler/clipfmt.h engine/vtengine.h engine/vtwidth.h
 DEVICE_FLAGS := DEBUG=$(DEBUG)
@@ -824,43 +1430,55 @@ $(BUILD)/amiga/up-console.device: device/upcon_rom.s $(DEVICE_SRC) $(DEVICE_HDR)
 	$(VC) -c -o $(BUILD)/amiga/devobj/sbar.o render/sbar.c
 	$(VC) -c -o $(BUILD)/amiga/devobj/amiga_render.o render/amiga_render.c
 	$(VC) -c -o $(BUILD)/amiga/devobj/painter.o render/painter.c
+	$(VC) -c -o $(BUILD)/amiga/devobj/pens_amiga.o render/pens_amiga.c
+	$(VC) -c -o $(BUILD)/amiga/devobj/aa_ink.o render/aa_ink.c
 	$(VC) -c -o $(BUILD)/amiga/devobj/glyphmap.o render/glyphmap.c
 	$(VC) -c -o $(BUILD)/amiga/devobj/unifont.o render/unifont.c
 	$(VC) -c -o $(BUILD)/amiga/devobj/emoji.o render/emoji.c
 	$(VC) -c -o $(BUILD)/amiga/devobj/fontpair.o render/fontpair.c
-	$(VC) -c -o $(BUILD)/amiga/devobj/outline.o render/outline.c
+	$(VC) -dontwarn=153,65 -c -o $(BUILD)/amiga/devobj/outline.o render/outline.c
 	$(VC) -c -o $(BUILD)/amiga/devobj/otag.o render/otag.c
+	$(VC) -c -o $(BUILD)/amiga/devobj/ttf.o render/ttf.c
 	$(VC) -c -o $(BUILD)/amiga/devobj/clip.o handler/clip.c
 	$(VC) -c -o $(BUILD)/amiga/devobj/clipfmt.o handler/clipfmt.c
+	$(VC) -c -o $(BUILD)/amiga/devobj/be32.o handler/be32.c
 	$(VC) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/devobj/vtengine.o $(ENGINE)
 	vlink -bamigahunk -x -Bstatic -Cvbcc -nostdlib -s -o $@ $(BUILD)/amiga/devobj/upcon_rom.o \
 	  $(BUILD)/amiga/devobj/upcon_device.o $(BUILD)/amiga/devobj/upcon_unit.o $(BUILD)/amiga/devobj/upcon_input.o \
 	  $(BUILD)/amiga/devobj/upc_core.o $(BUILD)/amiga/devobj/vtwin.o $(BUILD)/amiga/devobj/vtinput.o $(BUILD)/amiga/devobj/sbar.o $(BUILD)/amiga/devobj/amiga_render.o \
-	  $(BUILD)/amiga/devobj/glyphmap.o $(BUILD)/amiga/devobj/unifont.o $(BUILD)/amiga/devobj/emoji.o $(BUILD)/amiga/devobj/outline.o $(BUILD)/amiga/devobj/otag.o \
-	  $(BUILD)/amiga/devobj/fontpair.o $(BUILD)/amiga/devobj/painter.o \
-	  $(BUILD)/amiga/devobj/clip.o $(BUILD)/amiga/devobj/clipfmt.o $(BUILD)/amiga/devobj/vtengine.o \
+	  $(BUILD)/amiga/devobj/glyphmap.o $(BUILD)/amiga/devobj/unifont.o $(BUILD)/amiga/devobj/emoji.o $(BUILD)/amiga/devobj/outline.o $(BUILD)/amiga/devobj/otag.o $(BUILD)/amiga/devobj/ttf.o \
+	  $(BUILD)/amiga/devobj/fontpair.o $(BUILD)/amiga/devobj/painter.o $(BUILD)/amiga/devobj/pens_amiga.o $(BUILD)/amiga/devobj/aa_ink.o \
+	  $(BUILD)/amiga/devobj/clip.o $(BUILD)/amiga/devobj/clipfmt.o $(BUILD)/amiga/devobj/be32.o $(BUILD)/amiga/devobj/vtengine.o \
 	  -L$(VBCC_PREFIX)/targets/m68k-amigaos/lib -lvc -lamiga
 
 # C:UPTerm: the slash commands from scripts (ledger C1)
-$(BUILD)/amiga/UPTerm: handler/upterm.c handler/vtcon_packets.h $(BUILD)/amiga/obj/cpuchk-UPTerm.o
+# (UPTerm ACTIVE ... asks the focused window through its request port: upreq.c and what it needs)
+UPTERM_SRC := handler/upterm.c handler/upreq.c handler/upactive.c handler/upmru.c handler/keymap_act.c config/keymap.c amarchy/win_core.c config/upconf_rows.c handler/slash.c handler/kcmode.c
+$(BUILD)/amiga/UPTerm: $(UPTERM_SRC) $(UPTERM_VERSION_H) handler/vtcon_packets.h handler/upreq.h handler/upactive.h handler/upcmd.h handler/keymap_act.h $(BUILD)/amiga/obj/cpuchk-UPTerm.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -o $@ handler/upterm.c $(BUILD)/amiga/obj/cpuchk-UPTerm.o
+	$(VC) -I$(BUILD)/amiga -Dmain=up_main -o $@ $(UPTERM_SRC) $(BUILD)/amiga/obj/cpuchk-UPTerm.o
 
 # C:uptelnet: a telnet client for the window, no ixemul (ledger A1.1). The
 # Roadshow network headers: VTCON_NETINCLUDE, as C:Claude's.
-$(BUILD)/amiga/uptelnet: net/uptelnet.c net/tn.c net/tn.h net/upagent.c net/upagent.h llm/sha256.c llm/sha256.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-uptelnet.o
+$(BUILD)/amiga/uptelnet: net/uptelnet.c $(UPTERM_VERSION_H) net/tn.c net/tn.h net/upagent.c net/upagent.h llm/sha256.c llm/sha256.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-uptelnet.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -I$(VTCON_NETINCLUDE) -o $@ net/uptelnet.c net/tn.c net/upagent.c llm/sha256.c tty/bmsg.c $(BUILD)/amiga/obj/cpuchk-uptelnet.o
+	$(VC) -I$(BUILD)/amiga -Dmain=up_main -I$(VTCON_NETINCLUDE) -o $@ net/uptelnet.c net/tn.c net/upagent.c llm/sha256.c tty/bmsg.c $(BUILD)/amiga/obj/cpuchk-uptelnet.o
+
+# ONLY=upgetty: upgetty's serial.device request on the host against the NDK's structs
+# (tests/test_upgetty_serial.c: the receive buffer zmodem's bursts need, flags)
+$(BUILD)/upgetty_host: tests/test_upgetty_serial.c device/upgetty_serial.h
+	@mkdir -p $(BUILD)
+	$(HOSTCC) -std=gnu99 -Wall -Wextra -Werror -Wno-unused-function -O1 -g -fsanitize=address,undefined -I$(VTCON_NDK) -DAMIGA_STDC_C99 -o $@ tests/test_upgetty_serial.c
 
 # C:upgetty: a shell over the serial port through a PTY: pair (ledger T4)
-$(BUILD)/amiga/upgetty: device/upgetty.c handler/vtcon_packets.h $(BUILD)/amiga/obj/cpuchk-upgetty.o
+$(BUILD)/amiga/upgetty: device/upgetty.c device/upgetty_serial.h $(UPTERM_VERSION_H) handler/vtcon_packets.h $(BUILD)/amiga/obj/cpuchk-upgetty.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -dontwarn=153 -o $@ device/upgetty.c $(BUILD)/amiga/obj/cpuchk-upgetty.o
+	$(VC) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153 -o $@ device/upgetty.c $(BUILD)/amiga/obj/cpuchk-upgetty.o
 
 # C:UPConsole: CON:/RAW: to UP-Term and back (console plan H5.4)
-$(BUILD)/amiga/UPConsole: device/upconsole.c device/upc_public.h $(BUILD)/amiga/obj/cpuchk-UPConsole.o
+$(BUILD)/amiga/UPConsole: device/upconsole.c $(UPTERM_VERSION_H) device/upc_public.h device/romspan.h $(BUILD)/amiga/obj/cpuchk-UPConsole.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -o $@ device/upconsole.c $(BUILD)/amiga/obj/cpuchk-UPConsole.o
+	$(VC) -I$(BUILD)/amiga -Dmain=up_main -o $@ device/upconsole.c $(BUILD)/amiga/obj/cpuchk-UPConsole.o
 
 # DV6's signal-bit probe (tools/rig/soak_rig.py)
 $(BUILD)/amiga/sigprobe: tests/amiga/sigprobe.c
@@ -891,10 +1509,30 @@ $(BUILD)/amiga/patchcon: tests/amiga/patchcon.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/patchcon.c
 
-# D1.3's copy probe (tools/rig/snip_rig.py)
-$(BUILD)/amiga/snipprobe: tests/amiga/snipprobe.c handler/clip.c handler/clip.h handler/clipfmt.c handler/clipfmt.h
+# WBRESET-EXT step 1: counting probe on every intuition vector (test only)
+$(BUILD)/amiga/lvoprobe: tests/amiga/lvoprobe.c
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -o $@ tests/amiga/snipprobe.c handler/clip.c handler/clipfmt.c
+	$(VC) -o $@ tests/amiga/lvoprobe.c
+
+# D1.3's copy probe (tools/rig/snip_rig.py)
+$(BUILD)/amiga/snipprobe: tests/amiga/snipprobe.c handler/clip.c handler/clip.h handler/clipfmt.c handler/be32.c handler/clipfmt.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/snipprobe.c handler/clip.c handler/clipfmt.c handler/be32.c
+
+# P1A R1.1f: the Workbench screen's live colours and DrawInfo pens as text (tests/amiga/wbpens.c)
+$(BUILD)/amiga/wbpens: tests/amiga/wbpens.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/wbpens.c
+
+# leafprobe <variant> <command>: leaf.c's run: start in one-variable forms (tests/amiga/leafprobe.c)
+$(BUILD)/amiga/leafprobe: tests/amiga/leafprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/leafprobe.c
+
+# runs a command line with pr_WindowPtr 0 (tools/rig/vshwin.py real_window_ptr; upkg_browse_extra_rig.py B5)
+$(BUILD)/amiga/winptr0: tests/amiga/winptr0.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/winptr0.c
 
 # D3.2's probe (tools/rig/cudump_rig.py)
 $(BUILD)/amiga/cudump: tests/amiga/cudump.c
@@ -906,10 +1544,20 @@ $(BUILD)/amiga/rkcprobe: tests/amiga/rkcprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/rkcprobe.c
 
+# Amarchy clash rig's third-party window (tools/rig/amarchy_clash_rig.py)
+$(BUILD)/amiga/lcmdprobe: tests/amiga/lcmdprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/lcmdprobe.c
+
 # DV1's probe (tools/rig/condev_rig.py)
 $(BUILD)/amiga/devwho: tests/amiga/devwho.c device/upc_public.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/devwho.c
+
+# the helper programs install_rig.prepare copies into VTC: (install_rig.HELPERS);
+# dist-base does not build iconprobe, wbrun or conwho, so a fresh worktree needs this first
+.PHONY: rig-helpers
+rig-helpers: $(BUILD)/amiga/ptytest $(BUILD)/amiga/iconprobe $(BUILD)/amiga/wbrun $(BUILD)/amiga/conwho $(BUILD)/amiga/UPConsole $(BUILD)/amiga/wbpens $(BUILD)/amiga/iconpens $(BUILD)/amiga/idleprobe $(BUILD)/amiga/netprobe
 
 # H5.6's probes (tools/rig/concon_rig.py)
 $(BUILD)/amiga/conwho: tests/amiga/conwho.c handler/vtcon_packets.h
@@ -933,25 +1581,28 @@ $(BUILD)/amiga/vtengine-$(CPU).o: $(ENGINE) engine/kitty.c engine/inflate.c engi
 # The handler: no C startup (handler_entry is the first code), exec memory.
 # Gotcha: with -O2, vbcc can loop forever on a source that has a compile
 # error instead of reporting it; build with -O0 to see the error.
-# Rebuild when the flags change (DEBUG=1, PROF=1, DIRECT=1 on or off): the last
+# Rebuild when the flags change (DEBUG=1, PROF=1, DIRECT=1 on or off, or a new git revision for the
+# "UP-Term build" in $VER, tools/test_build_stamp.py): the last
 # flags are read while make parses, and a difference forces the link (a
 # stamp file's mtime could equal the binary's to the second and be ignored).
-HANDLER_FLAGS := DEBUG=$(DEBUG) SERIAL=$(SERIAL) PROF=$(PROF) CPU=$(CPU) DIRECT=$(DIRECT)
+HANDLER_FLAGS := DEBUG=$(DEBUG) SERIAL=$(SERIAL) PROF=$(PROF) CPU=$(CPU) DIRECT=$(DIRECT) BUILD=$(GITREV)
 HANDLER_FLAGS_OLD := $(shell cat $(BUILD)/amiga/handler.flags 2>/dev/null)
 ifneq ($(HANDLER_FLAGS),$(HANDLER_FLAGS_OLD))
 HANDLER_FORCE := FORCE
 endif
 FORCE:
 
-$(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(HANDLER_FORCE)
+$(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(UPTERM_VERSION_H) $(HANDLER_FORCE)
 	@mkdir -p $(BUILD)/amiga/obj
 	@echo '$(HANDLER_FLAGS)' > $(BUILD)/amiga/handler.flags
-	$(VC) $(if $(DEBUG),-DVTCON_DEBUG) $(if $(SERIAL),-DVTCON_SERIAL) $(if $(PROF),-DVTCON_PROF) -DVT_AMIGA_EXEC_ALLOC -DVTCON_BUILD=$(subst -,_,$(GITREV)) -c -o $(BUILD)/amiga/obj/handler.o handler/vtcon_handler.c
+	$(VC) $(if $(DEBUG),-DVTCON_DEBUG) $(if $(SERIAL),-DVTCON_SERIAL) $(if $(PROF),-DVTCON_PROF) -DVT_AMIGA_EXEC_ALLOC -DVTCON_BUILD=$(subst -,_,$(GITREV)) -I$(BUILD)/amiga -c -o $(BUILD)/amiga/obj/handler.o handler/vtcon_handler.c
 	$(VC) -DVT_AMIGA_EXEC_ALLOC -DVT_ASM -c -o $(BUILD)/amiga/obj/vtengine.o $(ENGINE)
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/vtengine_68k.o $(ENGINE_68K)
 	$(VC) $(if $(DIRECT),-DVTCON_DIRECT) $(if $(PROF),-DVTCON_PROF) -DVR_ASM -c -o $(BUILD)/amiga/obj/amiga_render.o render/amiga_render.c
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/amiga_render_68k.o render/amiga_render_68k.s
 	$(VC) -DVP_ASM -c -o $(BUILD)/amiga/obj/painter.o render/painter.c
+	$(VC) -c -o $(BUILD)/amiga/obj/pens_amiga.o render/pens_amiga.c
+	$(VC) -c -o $(BUILD)/amiga/obj/aa_ink.o render/aa_ink.c
 	vasmm68k_mot -quiet -Fhunk -m68020 -o $(BUILD)/amiga/obj/painter_68k.o render/painter_68k.s
 	$(VC) $(if $(PROF),-DVTCON_PROF) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/obj/vtwin.o render/vtwin.c
 	$(VC) -c -o $(BUILD)/amiga/obj/vtinput.o render/vtinput.c
@@ -963,10 +1614,12 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(HANDLER_FORCE)
 	$(VC) -c -o $(BUILD)/amiga/obj/unifont.o render/unifont.c
 	$(VC) -c -o $(BUILD)/amiga/obj/emoji.o render/emoji.c
 	$(VC) -c -o $(BUILD)/amiga/obj/fontpair.o render/fontpair.c
-	$(VC) -c -o $(BUILD)/amiga/obj/outline.o render/outline.c
+	$(VC) -dontwarn=153,65 -c -o $(BUILD)/amiga/obj/outline.o render/outline.c
 	$(VC) -c -o $(BUILD)/amiga/obj/otag.o render/otag.c
+	$(VC) -c -o $(BUILD)/amiga/obj/ttf.o render/ttf.c
 	$(VC) -c -o $(BUILD)/amiga/obj/clip.o handler/clip.c
 	$(VC) -c -o $(BUILD)/amiga/obj/clipfmt.o handler/clipfmt.c
+	$(VC) -c -o $(BUILD)/amiga/obj/be32.o handler/be32.c
 	$(VC) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/obj/lineedit.o handler/lineedit.c
 	$(VC) -c -o $(BUILD)/amiga/obj/complete.o handler/complete.c
 	$(VC) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/obj/histfile.o handler/histfile.c
@@ -975,36 +1628,51 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(HANDLER_FORCE)
 	$(VC) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/obj/hd_util.o claude/util.c
 	$(VC) -DVT_AMIGA_EXEC_ALLOC -dontwarn=153,65 -c -o $(BUILD)/amiga/obj/hd_datadir_amiga.o claude/datadir_amiga.c
 	$(VC) -c -o $(BUILD)/amiga/obj/complete_core.o handler/complete_core.c
+	$(VC) -c -o $(BUILD)/amiga/obj/sh_path.o shell/sh_path.c
 	$(VC) -c -o $(BUILD)/amiga/obj/kcmode.o handler/kcmode.c
 	$(VC) -c -o $(BUILD)/amiga/obj/prefs_asl.o prefs/prefs_asl.c
 	$(VC) -c -o $(BUILD)/amiga/obj/brk.o handler/brk.c
 	$(VC) -c -o $(BUILD)/amiga/obj/waitset.o handler/waitset.c
 	$(VC) -c -o $(BUILD)/amiga/obj/slash.o handler/slash.c
+	$(VC) -c -o $(BUILD)/amiga/obj/keymap_act.o handler/keymap_act.c
+	$(VC) -c -o $(BUILD)/amiga/obj/upmru.o handler/upmru.c
+	$(VC) -c -o $(BUILD)/amiga/obj/keymap.o config/keymap.c
+	$(VC) -c -o $(BUILD)/amiga/obj/win_core.o amarchy/win_core.c
+	$(VC) -c -o $(BUILD)/amiga/obj/keymap_load.o config/keymap_load.c
+	$(VC) -c -o $(BUILD)/amiga/obj/upactive.o handler/upactive.c
+	$(VC) -c -o $(BUILD)/amiga/obj/upreq.o handler/upreq.c
+	$(VC) -c -o $(BUILD)/amiga/obj/frontscr.o handler/frontscr.c
+	$(VC) -c -o $(BUILD)/amiga/obj/winspec.o handler/winspec.c
 	$(VC) -c -o $(BUILD)/amiga/obj/ldisc.o tty/ldisc.c
-	$(VC) -c -o $(BUILD)/amiga/obj/upconf.o $(CONF)
+	$(VC) -c -o $(BUILD)/amiga/obj/upconf.o config/upconf.c
+	$(VC) -c -o $(BUILD)/amiga/obj/upconf_rows.o config/upconf_rows.c
 	$(VC) -c -o $(BUILD)/amiga/obj/termurl.o $(TERMURL)
 	$(VC) -dontwarn=153,65 -c -o $(BUILD)/amiga/obj/prefs_core.o prefs/prefs_core.c
+	$(VC) -dontwarn=153,65 -c -o $(BUILD)/amiga/obj/settings_def.o prefs/settings_def.c
+	$(VC) -c -o $(BUILD)/amiga/obj/amconf_keys.o amarchy/amconf_keys.c
+	$(VC) -dontwarn=153,65 -c -o $(BUILD)/amiga/obj/amconf_core.o amarchy/amconf_core.c
+	$(VC) -dontwarn=153,65 -c -o $(BUILD)/amiga/obj/amconf_dos.o amarchy/amconf_dos.c
 	$(VC) -dontwarn=153,65 -c -o $(BUILD)/amiga/obj/prefs_dos.o prefs/prefs_dos.c
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/handler_start.o handler/handler_start.s
 	vlink -bamigahunk -x -Bstatic -Cvbcc -nostdlib -s -o $@ $(BUILD)/amiga/obj/handler_start.o $(BUILD)/amiga/obj/handler.o \
-	  $(BUILD)/amiga/obj/vtengine.o $(BUILD)/amiga/obj/vtengine_68k.o $(BUILD)/amiga/obj/amiga_render.o $(BUILD)/amiga/obj/amiga_render_68k.o $(BUILD)/amiga/obj/painter.o $(BUILD)/amiga/obj/painter_68k.o $(BUILD)/amiga/obj/vtwin.o $(BUILD)/amiga/obj/vtinput.o $(BUILD)/amiga/obj/sbar.o $(BUILD)/amiga/obj/layout.o $(BUILD)/amiga/obj/splits_state.o $(BUILD)/amiga/obj/sbar_gad.o $(BUILD)/amiga/obj/glyphmap.o $(BUILD)/amiga/obj/unifont.o $(BUILD)/amiga/obj/emoji.o \
-	  $(BUILD)/amiga/obj/outline.o $(BUILD)/amiga/obj/otag.o $(BUILD)/amiga/obj/fontpair.o \
-	  $(BUILD)/amiga/obj/clip.o $(BUILD)/amiga/obj/clipfmt.o $(BUILD)/amiga/obj/lineedit.o $(BUILD)/amiga/obj/kcmode.o $(BUILD)/amiga/obj/complete.o $(BUILD)/amiga/obj/complete_core.o \
-	  $(BUILD)/amiga/obj/brk.o $(BUILD)/amiga/obj/waitset.o $(BUILD)/amiga/obj/slash.o $(BUILD)/amiga/obj/ldisc.o $(BUILD)/amiga/obj/upconf.o $(BUILD)/amiga/obj/termurl.o \
-	  $(BUILD)/amiga/obj/prefs_core.o $(BUILD)/amiga/obj/prefs_dos.o $(BUILD)/amiga/obj/prefs_asl.o \
+	  $(BUILD)/amiga/obj/vtengine.o $(BUILD)/amiga/obj/vtengine_68k.o $(BUILD)/amiga/obj/amiga_render.o $(BUILD)/amiga/obj/amiga_render_68k.o $(BUILD)/amiga/obj/painter.o $(BUILD)/amiga/obj/pens_amiga.o $(BUILD)/amiga/obj/aa_ink.o $(BUILD)/amiga/obj/painter_68k.o $(BUILD)/amiga/obj/vtwin.o $(BUILD)/amiga/obj/vtinput.o $(BUILD)/amiga/obj/sbar.o $(BUILD)/amiga/obj/layout.o $(BUILD)/amiga/obj/splits_state.o $(BUILD)/amiga/obj/sbar_gad.o $(BUILD)/amiga/obj/glyphmap.o $(BUILD)/amiga/obj/unifont.o $(BUILD)/amiga/obj/emoji.o \
+	  $(BUILD)/amiga/obj/outline.o $(BUILD)/amiga/obj/otag.o $(BUILD)/amiga/obj/ttf.o $(BUILD)/amiga/obj/fontpair.o \
+	  $(BUILD)/amiga/obj/clip.o $(BUILD)/amiga/obj/clipfmt.o $(BUILD)/amiga/obj/be32.o $(BUILD)/amiga/obj/lineedit.o $(BUILD)/amiga/obj/kcmode.o $(BUILD)/amiga/obj/complete.o $(BUILD)/amiga/obj/complete_core.o $(BUILD)/amiga/obj/sh_path.o \
+	  $(BUILD)/amiga/obj/brk.o $(BUILD)/amiga/obj/waitset.o $(BUILD)/amiga/obj/slash.o $(BUILD)/amiga/obj/keymap_act.o $(BUILD)/amiga/obj/upmru.o $(BUILD)/amiga/obj/keymap.o $(BUILD)/amiga/obj/win_core.o $(BUILD)/amiga/obj/keymap_load.o $(BUILD)/amiga/obj/upactive.o $(BUILD)/amiga/obj/upreq.o $(BUILD)/amiga/obj/frontscr.o $(BUILD)/amiga/obj/winspec.o $(BUILD)/amiga/obj/ldisc.o $(BUILD)/amiga/obj/upconf.o $(BUILD)/amiga/obj/upconf_rows.o $(BUILD)/amiga/obj/termurl.o \
+	  $(BUILD)/amiga/obj/prefs_core.o $(BUILD)/amiga/obj/settings_def.o $(BUILD)/amiga/obj/amconf_keys.o $(BUILD)/amiga/obj/amconf_core.o $(BUILD)/amiga/obj/amconf_dos.o $(BUILD)/amiga/obj/prefs_dos.o $(BUILD)/amiga/obj/prefs_asl.o \
 	  $(BUILD)/amiga/obj/histfile.o $(BUILD)/amiga/obj/hd_datadir.o $(BUILD)/amiga/obj/hd_path.o $(BUILD)/amiga/obj/hd_util.o $(BUILD)/amiga/obj/hd_datadir_amiga.o \
 	  -L$(VBCC_PREFIX)/targets/m68k-amigaos/lib -lvc -lamiga
 
 # PTY: (P5): pseudo-terminals on the same line discipline. No C startup:
 # handler/handler_start.s (shared with vtcon-handler) is linked first.
-PTY_FLAGS := DEBUG=$(DEBUG)
+PTY_FLAGS := DEBUG=$(DEBUG) BUILD=$(GITREV)
 ifneq ($(PTY_FLAGS),$(shell cat $(BUILD)/amiga/pty.flags 2>/dev/null))
 PTY_FORCE := FORCE
 endif
-$(BUILD)/amiga/pty-handler: handler/pty_handler.c handler/pty_name.h handler/handler_start.s $(PTY_FORCE) handler/brk.c handler/brk.h handler/vtcon_packets.h tty/ldisc.c tty/ldisc.h handler/waitset.c handler/waitset.h
+$(BUILD)/amiga/pty-handler: handler/pty_handler.c $(UPTERM_VERSION_H) handler/pty_name.h handler/handler_start.s $(PTY_FORCE) handler/brk.c handler/brk.h handler/vtcon_packets.h tty/ldisc.c tty/ldisc.h handler/waitset.c handler/waitset.h
 	@mkdir -p $(BUILD)/amiga/obj/pty
 	@echo '$(PTY_FLAGS)' > $(BUILD)/amiga/pty.flags
-	$(VC) $(if $(DEBUG),-DPTY_DEBUG) -DVTCON_BUILD=$(subst -,_,$(GITREV)) -c -o $(BUILD)/amiga/obj/pty/pty_handler.o handler/pty_handler.c
+	$(VC) $(if $(DEBUG),-DPTY_DEBUG) -DVTCON_BUILD=$(subst -,_,$(GITREV)) -I$(BUILD)/amiga -c -o $(BUILD)/amiga/obj/pty/pty_handler.o handler/pty_handler.c
 	$(VC) -c -o $(BUILD)/amiga/obj/pty/brk.o handler/brk.c
 	$(VC) -c -o $(BUILD)/amiga/obj/pty/waitset.o handler/waitset.c
 	$(VC) -c -o $(BUILD)/amiga/obj/pty/ldisc.o tty/ldisc.c
@@ -1013,19 +1681,30 @@ $(BUILD)/amiga/pty-handler: handler/pty_handler.c handler/pty_name.h handler/han
 	  $(BUILD)/amiga/obj/pty/brk.o $(BUILD)/amiga/obj/pty/waitset.o $(BUILD)/amiga/obj/pty/ldisc.o \
 	  -L$(VBCC_PREFIX)/targets/m68k-amigaos/lib -lvc -lamiga
 
-# The install kit: build/UP-Term.lha -- a drawer UP-Term with Install (an
+# The install kit: build/up-term.lha -- a drawer UP-Term with Install (an
 # Installer script and its icon), Uninstall, README.txt, LICENSES.txt and Files/ (the rest).
-KIT := $(BUILD)/dist/UP-Term
-# the archive names are dist/packages.txt's (Claude, amiga-pi and Python3 stand alone)
-KIT_claude := $(BUILD)/dist/Claude
-KIT_pi := $(BUILD)/dist/amiga-pi
-KIT_nvim := $(BUILD)/dist/UP-Term-nvim
-KIT_python := $(BUILD)/dist/Python3
-KIT_git := $(BUILD)/dist/UP-Term-git
-KIT_perl := $(BUILD)/dist/UP-Term-perl
-KIT_vim := $(BUILD)/dist/UP-Term-vim
+KIT := $(BUILD)/dist/up-term
+# the archive names are dist/packages.txt's (up-claude, up-pi and up-python stand alone)
+KIT_claude := $(BUILD)/dist/up-claude
+KIT_pi := $(BUILD)/dist/up-pi
+KIT_nvim := $(BUILD)/dist/up-nvim
+KIT_python := $(BUILD)/dist/up-python
+KIT_dopus := $(BUILD)/dist/up-dopus
+KIT_uhc := $(BUILD)/dist/up-uhc
+# the upkg-only packages: every id of dist/slim.txt (git, perl, vim, bitchx, vbcc and the application ports); one stage
+# drawer and one dist-<id> target each, from the table, no target per package
+SLIM_IDS := $(shell python3 tools/slim.py ids)
+SLIM_DIST := $(addprefix dist-,$(SLIM_IDS))
+# the drawer is build/dist/<archive> of packages.txt (what ADDON_STAGE makes and mkkit.py reads), not up-<id>:
+# sqlite's archive is up-sqlite3, so up-$(p) staged its payload into a drawer no archive packed
+$(foreach k,$(shell python3 tools/slim.py kits),$(eval KIT_$(firstword $(subst =, ,$(k))) := $(BUILD)/dist/$(lastword $(subst =, ,$(k)))))
 # the patched ixemul (P6): built in ixemul-vtcon with sh docker/build.sh
 IXEMUL_LIB ?= $(UPTERM_ROOT)/ixemul-vtcon/build295/library/68020/68881/amigaos/ixemul.library
+# the soft-float build of the same ixemul (no FPU opcodes): the installer puts it in on a machine
+# whose (database "fpu") is NOFPU, from Files/libs/ixemul.library.nofpu. ixnet.library has one
+# build only (68020), so it needs no variant: docker/build.sh builds it as ixnet.68020.soft-float.amigaos
+# (-m68020 -msoft-float), and objdump -d -m68020 of the library finds no F-line opcode (0 fmove/fadd/fsave/..., 0 bad).
+IXEMUL_LIB_SOFT ?= $(dir $(IXEMUL_LIB))../../soft-float/amigaos/ixemul.library
 # Python 3.14 and Neovim 0.12, built in their own repos (make dist there)
 PYTHON_DIST ?= $(UPTERM_ROOT)/cpython-amiga/build/m68k/dist/Python3
 NVIM_DIST ?= $(UPTERM_ROOT)/neovim-amiga/build/v012/dist/nvim
@@ -1033,9 +1712,30 @@ NVIM_DIST ?= $(UPTERM_ROOT)/neovim-amiga/build/v012/dist/nvim
 IXNET_LIB ?= $(dir $(IXEMUL_LIB))../../../../ixnet/68020/amigaos/ixnet.library
 # the Unix tool ports: staged by `make kit-stage` in upterm-ports (programs,
 # pages, licences, SOURCES.txt) with their source beside it; the source goes
-# into build/UP-Term-src.lha, published next to the kit (plan D2)
-UPTERM_PORTS ?= $(UPTERM_ROOT)/upterm-ports
+# into build/up-term-src.lha, published next to the kit (plan D2).
+# UPTERM_PORTS is set near the top so every upterm-ports path follows it.
+# tools/pkgs.py reads a ports package's Description from its recipe there
+export UPTERM_PORTS
 PORTS_KIT ?= $(UPTERM_PORTS)/build/kit/userland
+# a package's build/state/<p>.checked newer than the staged SOURCES.txt means the ports were rebuilt after the last
+# kit-stage: the kit would ship the old programs (v1.2 feed build of 2026-10-20 carried the old upkg)
+PORTS_STATE ?= $(UPTERM_PORTS)/build/state
+# the kit's STAGED-FROM (written by upterm-ports' kit-stage) names the ports commit it came from; the kit must come from the
+# checkout UPTERM_PORTS has now, clean, and that commit must be on the ports origin/main (a kit staged on port/htop, 21 commits
+# behind main, passed the mtime check on 2026-10-26 and died later in slim.py)
+define PORTS_KIT_FRESH
+	@test -f $(PORTS_KIT)/SOURCES.txt || { echo "$(1): no $(PORTS_KIT)/SOURCES.txt: make kit-stage in upterm-ports first"; exit 1; }
+	@test -f $(PORTS_KIT)/STAGED-FROM || { echo "$(1): $(PORTS_KIT) was staged before the stamp: make kit-stage in upterm-ports"; exit 1; }
+	@stamp=$$(cat $(PORTS_KIT)/STAGED-FROM); head=$$(git -C $(UPTERM_PORTS) rev-parse HEAD) || exit 1; \
+	  case "$$stamp" in *-dirty) echo "$(1): $(PORTS_KIT) was staged from $$stamp, a checkout with uncommitted tracked changes: commit or discard them in $(UPTERM_PORTS), make kit-stage"; exit 1;; esac; \
+	  test "$$stamp" = "$$head" || { echo "$(1): $(PORTS_KIT) was staged from $$stamp but $(UPTERM_PORTS) is at $$head: make kit-stage in upterm-ports"; exit 1; }; \
+	  git -C $(UPTERM_PORTS) merge-base --is-ancestor $$head origin/main || { echo "$(1): $(PORTS_KIT) was staged from $$stamp, which is not on the ports origin/main: merge it, check out main in $(UPTERM_PORTS), make kit-stage"; exit 1; }
+	@stale=$$(find $(PORTS_STATE) -name '*.checked' -newer $(PORTS_KIT)/SOURCES.txt 2>/dev/null); \
+	  test -z "$$stale" || { echo "$(1): $(PORTS_KIT) is older than these checked builds: make kit-stage in upterm-ports first"; echo "$$stale"; exit 1; }
+endef
+.PHONY: ports-kit-check
+ports-kit-check:
+	$(call PORTS_KIT_FRESH,ports-kit-check)
 # amiga-pi, the pi coding agent port (its own repo): built by its Makefile, which reads
 # vtcon's core in place; the kit gets the binary as C:Claude's sits beside it
 AMIGA_PI ?= $(UPTERM_ROOT)/amiga-pi
@@ -1045,69 +1745,89 @@ AMIGA_PI_SKILLS := $(AMIGA_PI)/skills
 .PHONY: amiga-pi-bin
 amiga-pi-bin:
 	$(MAKE) -C $(AMIGA_PI) UPTERM_ROOT=$(UPTERM_ROOT) amiga
-dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim dist-src dist-index
+dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-dopus dist-uhc $(SLIM_DIST) dist-src dist-index dist-ipk
 
 # every archive of dist/packages.txt, and the source archive
-# the base archive build/UP-Term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
+# the base archive build/up-term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
 # Python, Claude and amiga-pi are archives of their own (dist/packages.txt, kit-split plan)
-dist-base: amiga bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV)
+dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/amarchy-icons $(BUILD)/amiga/AmTile bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(SYMBOLS_TTF) $(LUCIDE_DAT) $(OUTLINE_DAT) $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV)
+	@# the ports kit is checked before the kit drawer is wiped: a missing kit left no build/dist/up-term
+	$(call PORTS_KIT_FRESH,dist)
 	rm -rf $(KIT) && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
 	cd $(BUILD)/kit-terminfo && cp -R [a-z] [0-9]* $(CURDIR)/$(KIT)/Files/terminfo/
 	cp $(SCREEN_BIN) $(KIT)/Files/screen
 	cp dist/screenrc $(KIT)/Files/screenrc
 	cp $(TMUX_BIN) $(KIT)/Files/tmux
-	cp dist/tmux.conf dist/unstartup.sh dist/reassign.sh dist/upkg.conf $(KIT)/Files/
+	cp dist/tmux.conf dist/unstartup.sh dist/takecon.sh dist/reassign.sh dist/upkg.conf $(KIT)/Files/
 	cp $(IXEMUL_LIB) $(KIT)/Files/libs/ixemul.library
+	cp $(IXEMUL_LIB_SOFT) $(KIT)/Files/libs/ixemul.library.nofpu
+	python3 tools/libguard.py $(IXNET_LIB)
 	cp $(IXNET_LIB) $(KIT)/Files/libs/ixnet.library
 	python3 tools/ans2utf8.py art/up_rough_banner.ans $(KIT)/Files/banner
 	python3 tools/mkicon.py $(KIT)/Files/UP-Term.info
 	printf 'UP-Term: double-click the icon to open a terminal with vsh.\n' > $(KIT)/Files/UP-Term
-	python3 tools/mkicon.py $(KIT)/Files/UP-Term-Prefs.info --tool "C:UP-Term Prefs" --plain
+	python3 tools/mkicon.py $(KIT)/Files/UP-Term-Prefs.info --tool "C:UP-Term-Prefs" --plain
 	printf 'UP-Term Prefs: edit the profiles in ENVARC:up-term/up-term.\n' > $(KIT)/Files/UP-Term-Prefs
 	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/amiga/pty-handler $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/vsh $(BUILD)/amiga/ixkill dist/XCON dist/PTY dist/IXPIPE dist/vshrc \
 	  dist/up-term.conf $(KIT)/Files/
 	mkdir -p $(KIT)/Files/themes && cp themes/*.conf themes/ATTRIBUTION.md $(KIT)/Files/themes/
+	@# the Omarchy colour themes of the drawn Amarchy menu: install.dos copies this drawer to UP-Term:Amarchy/Themes
+	rm -rf $(KIT)/Files/amarchy-themes && cp -R dist/amarchy-themes $(KIT)/Files/amarchy-themes
+	@# the icon images of the flat Workbench (Amarchy/Icons/lucide.dat, file name kept) with the Phosphor licence and source note
+	rm -rf $(KIT)/Files/lucide $(KIT)/Files/phosphor && mkdir -p $(KIT)/Files/lucide $(KIT)/Files/phosphor && cp $(LUCIDE_DAT) $(OUTLINE_DAT) dist/lucide/LICENSE dist/lucide/SOURCE.txt $(KIT)/Files/lucide/ && cp dist/phosphor/LICENSE dist/phosphor/SOURCE.txt $(KIT)/Files/phosphor/
 	rm -rf $(KIT)/Files/coreutils && mkdir -p $(KIT)/Files/coreutils
 	cp -R dist/gg/coreutils-5.2.1/bin dist/gg/coreutils-5.2.1/COPYING dist/gg/coreutils-5.2.1/SOURCE.txt $(KIT)/Files/coreutils/
 	@# the ports (copy-userland: bin; userland: share, etc, licenses) and
 	@# UP-Term's own pages beside theirs (sz.1 is rz's too: no links on AmigaOS)
-	@test -f $(PORTS_KIT)/SOURCES.txt || { echo "dist: no $(PORTS_KIT)/SOURCES.txt: make kit-stage in upterm-ports first"; exit 1; }
 	rm -rf $(KIT)/Files/userland && cp -R $(PORTS_KIT) $(KIT)/Files/userland
-	@# the slim base (P9): git, perl and vim are packages (dist/slim.txt), staged by dist-git, dist-perl, dist-vim
+	@# the slim base (P9): git, perl, vim, bitchx and vbcc are packages (dist/slim.txt), staged by dist-<id>
 	python3 tools/slim.py remove $(KIT)/Files/userland
 	@# upkg-ask (upkg plan P10.6): asks an add-on's install questions, through the ports' upkg-ui
 	cp dist/upkg-ask $(KIT)/Files/userland/bin/upkg-ask
+	@# upkg's Workbench icon (UPKG-WB-UI): a tool icon, no XCON window (upkg opens its own "UP-Term Add-ons"
+	@# window); stack 262144 as upkg's $$STACK cookie. install.dos copies it with userland/bin.
+	python3 tools/mkicon.py $(KIT)/Files/userland/bin/upkg.info --wbtool --plain --stack 262144
 	@# the shell tutorial (plan 2026-10-19-shell-tutorial L-6): the script in bin (copy-userland), the lessons in
 	@# share/tutorial (userland); after slim.py, which removes only what dist/slim.txt names
 	cp dist/tutorial $(KIT)/Files/userland/bin/tutorial
+	@# the Directory Opus filetype's launchers (plan 2026-10-25-amarchy-dopus-integration.md D13): uterm-edit and uterm-view open an UP-Term window
+	@# on the front screen (AmigaDOS scripts; uterm-start and uterm-open run in that window)
+	cp dist/uterm-edit dist/uterm-view dist/uterm-start dist/uterm-open dist/uterm-shell dist/uterm-shellstart $(KIT)/Files/userland/bin/
+	@# the filetype file itself (the base Install's DOPUS option copies it to DOpus5:Filetypes/UP-Term)
+	python3 tools/gen_dopus_filetype.py $(KIT)/Files/dopus-filetype
 	mkdir -p $(KIT)/Files/userland/share/tutorial && cp dist/tutorial-lessons/*.lesson $(KIT)/Files/userland/share/tutorial/
 	mkdir -p $(KIT)/Files/userland/share/man/man1 && cp man/*.1 $(KIT)/Files/userland/share/man/man1/
 	cp man/sz.1 $(KIT)/Files/userland/share/man/man1/rz.1
-	cp $(BUILD)/amiga/upprefs "$(KIT)/Files/UP-Term Prefs"
+	cp $(BUILD)/amiga/upprefs $(KIT)/Files/upprefs
 	cp $(BUILD)/amiga/upicon $(KIT)/Files/upicon
 	cp $(BUILD)/amiga/upupdate $(KIT)/Files/upupdate
-	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(KIT)/Files/
+	cp $(BUILD)/amiga/upsame $(KIT)/Files/upsame
+	cp $(BUILD)/amiga/tcpprobe $(KIT)/Files/tcpprobe
+	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/Agent $(BUILD)/amiga/UPDemo $(BUILD)/amiga/Reboot $(BUILD)/amiga/WBPath $(BUILD)/amiga/UPBigVol $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/amnotify $(BUILD)/amiga/amarchy-icons $(BUILD)/amiga/AmTile dist/keymap dist/bar.conf $(KIT)/Files/
 	rm -rf $(KIT)/Files/net && cp -R dist/net $(KIT)/Files/net
+	rm -rf $(KIT)/Files/Rexx && cp -R dist/rexx $(KIT)/Files/Rexx
+	rm -rf $(KIT)/Files/S && cp -R dist/S $(KIT)/Files/S
 	# BebboSSH: our build (make bebbossh) over the drawer's sources, patches and licence; SHA256SUMS and TOOLCHAIN.txt from the build
 	cp $(BUILD)/bebbossh/out/* $(KIT)/Files/net/bebbossh-1.46.1/
-	# curl.020/.040/.060 are vendored Aminet binaries shipped with symbol hunks (~44 KB each); strip the kit's copies with the gcc-track strip (never on vbcc-built files)
-	for f in $(KIT)/Files/net/curl-*/curl.0?0; do $(AMIGA_STRIP) $$f; done
-	rm -rf $(KIT)/Files/fonts && cp -R dist/fonts $(KIT)/Files/fonts
+	rm -rf $(KIT)/Files/fonts && cp -R dist/fonts $(KIT)/Files/fonts && cp $(SYMBOLS_TTF) $(KIT)/Files/fonts/SymbolsNerdFontMono.ttf && cp -R $(JBMONO_OUT)/JetBrainsMono $(JBMONO_OUT)/JetBrainsMono.font $(KIT)/Files/fonts/ && cp $(JBMONO_TTF) $(KIT)/Files/fonts/JetBrainsMono.ttf
 	mkdir -p $(KIT)/Files/unifont && cp $(UNIFONT_PAGES)/[0-9A-F][0-9A-F] $(UNIFONT_PAGES)/1F[0-9A] dist/unifont/OFL-1.1.txt dist/unifont/SOURCE.txt $(KIT)/Files/unifont/
 	mkdir -p $(KIT)/Files/emoji && cp $(EMOJI_PAGES)/[0-9A-F][0-9A-F] $(EMOJI_PAGES)/1F[0-9A] dist/emoji/CC-BY-4.0.txt dist/emoji/SOURCE.txt $(KIT)/Files/emoji/
 	@# wasabi: LICENSE and SOURCE.txt from dist/wasabi, the daemon and the client from the build (the wasabi stamp, the pin tools/nas/wasabi.rev)
-	rm -rf $(KIT)/Files/wasabi && cp -R dist/wasabi $(KIT)/Files/wasabi
+	rm -rf $(KIT)/Files/wasabi && cp -R dist/wasabi $(KIT)/Files/wasabi && rm $(KIT)/Files/wasabi/SOURCE.txt.in
+	$(MAKE) $(WASABI_SOURCE) && cp $(WASABI_SOURCE) $(KIT)/Files/wasabi/SOURCE.txt
 	cp $(BUILD)/wasabi/wasabid $(BUILD)/wasabi/wasabi $(BUILD)/wasabi/wasabi_mcp.py $(BUILD)/wasabi/wasabi_client.py $(BUILD)/amiga/wasabikey $(KIT)/Files/wasabi/
 	@# AmiSSL 5.27 (Apache 2.0) as its own release drawer: the Install runs its Install-AmiSSL (the Developer SDK is for building only, so it stays out)
-	rm -rf $(KIT)/Files/AmiSSL && mkdir -p $(KIT)/Files/AmiSSL && cp -R vendor/amissl-5.27/AmiSSL/. $(KIT)/Files/AmiSSL/ && rm -rf $(KIT)/Files/AmiSSL/Developer $(KIT)/Files/AmiSSL/Developer.info
+	rm -rf $(KIT)/Files/AmiSSL && mkdir -p $(KIT)/Files/AmiSSL && cp -R $(VENDOR)/amissl-5.27/AmiSSL/. $(KIT)/Files/AmiSSL/ && rm -rf $(KIT)/Files/AmiSSL/Developer $(KIT)/Files/AmiSSL/Developer.info
+	@# AmiNetXDuo 1.0.0-rc2 (MIT) as its own release drawer: the Install runs its Install-AmiNetXDuo only when no TCP/IP stack is found (the Developer drawer is headers, not installed)
+	rm -rf $(KIT)/Files/AmiNetXDuo && mkdir -p $(KIT)/Files/AmiNetXDuo && cp -R $(VENDOR)/aminetxduo-1.0.0-rc2/AmiNetXDuo/. $(KIT)/Files/AmiNetXDuo/ && rm -rf $(KIT)/Files/AmiNetXDuo/Developer $(KIT)/Files/AmiNetXDuo/Developer.info
 	cp terminfo/vtcon.termcap $(KIT)/Files/termcap.vtcon
 	# the shared tail of every archive: the scripts assembled from dist/ and dist/common/, texts, icons,
 	# VERSIONS, UP-Term.version, modes, manifest, the lha archive and its Aminet readme (tools/mkkit.py)
 	python3 tools/mkkit.py base
-	@ls -la $(BUILD)/UP-Term.lha
+	@ls -la $(BUILD)/up-term.lha
 
 # The add-on archives (dist/packages.txt): each stages its payload into build/dist/<archive>/Files and
-# tools/mkkit.py does the rest. UP-Term-nvim needs the base (UP-Term.lha) installed first on the
+# tools/mkkit.py does the rest. up-nvim needs the base (up-term.lha) installed first on the
 # Amiga; Claude, amiga-pi and Python3 stand alone.
 ADDON_STAGE = rm -rf $(BUILD)/dist/$(call pkg,$(1),archive) && mkdir -p $(BUILD)/dist/$(call pkg,$(1),archive)/Files \
 	&& cp $(BUILD)/amiga/upupdate $(BUILD)/dist/$(call pkg,$(1),archive)/Files/
@@ -1119,12 +1839,13 @@ pkg = $(shell python3 tools/pkgs.py get $(1) $(2))
 LAUNCHER = mkdir -p "$(1)/Files/launch" && cp "$(2)" "$(1)/Files/launch/$(3)" \
 	&& python3 tools/mkicon.py "$(1)/Files/launch/$(3).info" --tool C:IconX \
 	  --tooltype "WINDOW=XCON:0/12/$(4)/$(3)/CLOSE"
-.PHONY: dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim
+.PHONY: dist-claude dist-pi dist-nvim dist-python dist-dopus dist-uhc $(SLIM_DIST)
 dist-claude: $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(BUILD)/amiga/upupdate $(BUILD)/wasabi/.stamp-$(WASABI_REV)
 	$(call ADDON_STAGE,claude)
 	cp $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(KIT_claude)/Files/
 	cp $(BUILD)/wasabi/wasabid $(KIT_claude)/Files/wasabid
 	cp dist/addons/claude/questions $(KIT_claude)/Files/questions
+	python3 tools/nas/deploy.py --stage $(KIT_claude)/Files/nas
 	cp dist/wasabi/LICENSE $(KIT_claude)/Files/wasabid.LICENSE
 	$(call LAUNCHER,$(KIT_claude),dist/addons/claude/launch/Claude,Claude,800/560)
 	python3 tools/mkkit.py claude
@@ -1146,50 +1867,82 @@ dist-python: $(BUILD)/amiga/upupdate
 	cp -R $(PYTHON_DIST) $(KIT_python)/Files/python3
 	mkdir -p $(KIT_python)/Files/libs
 	cp $(IXEMUL_LIB) $(KIT_python)/Files/libs/ixemul.library
+	cp $(IXEMUL_LIB_SOFT) $(KIT_python)/Files/libs/ixemul.library.nofpu
+	python3 tools/libguard.py $(IXNET_LIB)
 	cp $(IXNET_LIB) $(KIT_python)/Files/libs/ixnet.library
 	$(call LAUNCHER,$(KIT_python),dist/addons/python/launch/Python 3,Python 3,640/400)
 	python3 tools/mkkit.py python
-# git, perl and vim (P9, dist/slim.txt): the ports' own files at the paths the base used to carry, taken from the
+# up-dopus: the unmodified upstream Directory Opus 5 68k archives (dist/addons/dopus/archives.txt), each checked
+# against its md5 in vendor/dopus5-5.104/ (download URLs: dist/addons/dopus/SOURCE.txt) and unpacked into its
+# drawer of Files; Install runs upstream's own "Install DOpus5" from the drawer that fits the CPU
+dist-dopus: $(BUILD)/amiga/upupdate
+	$(call ADDON_STAGE,dopus)
+	cp dist/addons/dopus/COPYING dist/addons/dopus/SOURCE.txt dist/addons/dopus/archives.txt $(KIT_dopus)/Files/
+	grep -v '^#' dist/addons/dopus/archives.txt | while read a md5 drawer rest; do \
+	  [ "$$(md5 -q $(VENDOR)/dopus5-5.104/$$a 2>/dev/null || md5sum < $(VENDOR)/dopus5-5.104/$$a | cut -d' ' -f1)" = "$$md5" ] || { echo "[ERROR] $$a: md5 is not $$md5"; exit 1; }; \
+	  mkdir -p $(KIT_dopus)/Files/$$drawer && lha -xqw=$(KIT_dopus)/Files/$$drawer $(VENDOR)/dopus5-5.104/$$a || exit 1; \
+	done
+	python3 tools/mkkit.py dopus
+# up-uhc: no UHC files (owner decision 2026-10-27): install.dos downloads the author's installer uhcinstall on the
+# user's machine and runs it. The kit holds only unstartup-uhc.sh (dist/unstartup.sh, copied), which takes the legacy
+# ";BEGIN uhc" block of up-uhc 1.0 to 1.3 out of S:User-Startup.
+dist-uhc: $(BUILD)/amiga/upupdate
+	$(call ADDON_STAGE,uhc)
+	cp dist/unstartup.sh $(KIT_uhc)/Files/unstartup-uhc.sh
+	python3 tools/mkkit.py uhc
+# every package of dist/slim.txt (P9): the ports' own files at the paths the base used to carry, taken from the
 # same PORTS_KIT as dist-base, which removes them
 define SLIM_STAGE
 	$(call ADDON_STAGE,$(1))
-	@test -f $(PORTS_KIT)/SOURCES.txt || { echo "dist-$(1): no $(PORTS_KIT)/SOURCES.txt: make kit-stage in upterm-ports first"; exit 1; }
+	$(call PORTS_KIT_FRESH,dist-$(1))
 	python3 tools/slim.py stage $(1) $(PORTS_KIT) $(KIT_$(1))/Files/userland
 	python3 tools/mkkit.py $(1)
 endef
-dist-git: $(BUILD)/amiga/upupdate
-	$(call SLIM_STAGE,git)
-dist-perl: $(BUILD)/amiga/upupdate
-	$(call SLIM_STAGE,perl)
-dist-vim: $(BUILD)/amiga/upupdate
-	$(call SLIM_STAGE,vim)
+define SLIM_RULE
+dist-$(1): $$(BUILD)/amiga/upupdate
+	$$(call SLIM_STAGE,$(1))
+endef
+$(foreach p,$(SLIM_IDS),$(eval $(call SLIM_RULE,$(p))))
 
-# build/UP-Term-src.lha, published next to the kit: the Unix tools' source (upterm-ports) and the
+# build/up-term-src.lha, published next to the kit: the Unix tools' source (upterm-ports) and the
 # complete source of GNU coreutils (GPL v2 section 3: the same place as the binaries)
 .PHONY: dist-base dist-src dist-index dist-ipk
 # upkg's index (upkg plan D1): released next to the archives it names
-dist-index: dist-base dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim
+dist-index: dist-base dist-claude dist-pi dist-nvim dist-python dist-dopus dist-uhc $(SLIM_DIST)
+	python3 tools/pkgs.py prune $(BUILD)
 	python3 tools/pkgs.py index $(BUILD) > $(BUILD)/upkg-index.txt
-# the .ipk feed for the opkg-based upkg (P10.4): build/ipk/*.ipk, Packages, Packages.gz from the staged trees
-dist-ipk: dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim
+# the .ipk feed for the opkg-based upkg (P10.4): build/ipk/*.ipk, Packages, Packages.gz from the staged trees.
+# It goes through dist-index: the add-on targets rebuild the archives, so the index is written again with them
+# (a lone `make dist-ipk` left upkg-index.txt naming the old archives and dist-check refused it)
+dist-ipk: dist-index
 	python3 tools/pkgs.py ipk $(BUILD)
 	python3 tools/pkgs.py feed $(BUILD)
 dist-src:
-	@test -f $(PORTS_KIT)/SOURCES.txt || { echo "dist-src: no $(PORTS_KIT)/SOURCES.txt: make kit-stage in upterm-ports first"; exit 1; }
+	$(call PORTS_KIT_FRESH,dist-src)
 	rm -rf $(BUILD)/dist-src && mkdir -p $(BUILD)/dist-src/coreutils-5.2.1
 	cp dist/gg/coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2 dist/gg/coreutils-5.2.1/SOURCE.txt dist/gg/coreutils-5.2.1/COPYING $(BUILD)/dist-src/coreutils-5.2.1/
-	cd $(PORTS_KIT)/.. && rm -f $(CURDIR)/$(BUILD)/UP-Term-src.lha && lha -aq $(CURDIR)/$(BUILD)/UP-Term-src.lha userland-src
-	cd $(BUILD)/dist-src && lha -aq ../UP-Term-src.lha coreutils-5.2.1
+	cd $(PORTS_KIT)/.. && rm -f $(CURDIR)/$(BUILD)/up-term-src.lha && lha -aq $(CURDIR)/$(BUILD)/up-term-src.lha userland-src
+	cd $(BUILD)/dist-src && lha -aq ../up-term-src.lha coreutils-5.2.1
 	python3 tools/mkreadme.py src
-	@ls -la $(BUILD)/UP-Term-src.lha
+	@ls -la $(BUILD)/up-term-src.lha
 
 # The kit says what it was built from: Files/VERSIONS has a line per part, and
 # it is in the lha archive.
-dist-check:
+dist-check: flat-budget $(BUILD)/amiga/keymap.o $(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/amarchy-icons $(BUILD)/amiga/amarchy-menu $(BUILD)/updiff_kit_drv
 	python3 tests/test_dist_installer.py
 	KITSIZE_REQUIRE=1 python3 tests/test_dist_kitsize.py
 	python3 tests/test_dist_addons.py
 	python3 tests/test_dist_launch.py
+	python3 tests/test_amarchy_docs.py
+	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amarchy-menu
+	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amarchy-gui
+	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/Amarchy
+	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amarchy-index
+	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amnotify
+	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amarchy-flat
+	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amarchy-icons
+	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/AmTile
+	python3 tests/test_keymap_amiga_alloc.py $(BUILD)/amiga/keymap.o
 	python3 tests/test_dist_userdata.py
 	python3 tests/test_rig_fixtures.py
 	python3 tests/test_rig_verdicts.py
@@ -1202,14 +1955,15 @@ dist-check:
 	  echo "dist-check: $$a"; \
 	  KIT=$(BUILD)/dist/$$a python3 tests/test_dist_versions.py; \
 	  KIT=$(BUILD)/dist/$$a python3 tests/test_dist_manifest.py; \
+	  ./$(BUILD)/updiff_kit_drv $(BUILD)/dist/$$a/Files/MANIFEST; \
 	  KIT=$(BUILD)/dist/$$a python3 tests/test_dist_modes.py; \
 	done
-	@for s in amigados arexx amiga-c-build amiga-autodocs; do grep -q " amiga-pi/Files/skills/$$s/SKILL.md$$" $(BUILD)/amiga-pi.lst || { echo "dist-check: amiga-pi.lha lacks Files/skills/$$s/SKILL.md"; exit 1; }; done
+	@for s in amigados arexx amiga-c-build amiga-autodocs; do grep -q " up-pi/Files/skills/$$s/SKILL.md$$" $(BUILD)/up-pi.lst || { echo "dist-check: up-pi.lha lacks Files/skills/$$s/SKILL.md"; exit 1; }; done
 	@python3 tools/pkgs.py index $(BUILD) | cmp -s - $(BUILD)/upkg-index.txt || { echo "dist-check: $(BUILD)/upkg-index.txt does not match the archives: make dist-index"; exit 1; }
 	IPK_REQUIRE=1 python3 tests/test_dist_ipk.py
 	SLIM_REQUIRE=1 python3 tests/test_dist_slim.py
-	@test -s $(BUILD)/UP-Term-src.lha || { echo "dist-check: $(BUILD)/UP-Term-src.lha missing: make dist"; exit 1; }
-	@lha l $(BUILD)/UP-Term-src.lha | grep -q "coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2" || { echo "dist-check: UP-Term-src.lha lacks the coreutils source"; exit 1; }
+	@test -s $(BUILD)/up-term-src.lha || { echo "dist-check: $(BUILD)/up-term-src.lha missing: make dist"; exit 1; }
+	@lha l $(BUILD)/up-term-src.lha | grep -q "coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2" || { echo "dist-check: up-term-src.lha lacks the coreutils source"; exit 1; }
 
 # The one reachability test: XCON: through DOS on the running rig.
 test-rig: amiga
@@ -1217,3 +1971,8 @@ test-rig: amiga
 
 clean:
 	rm -rf $(BUILD)
+
+# upkg browse launch rig (tools/rig/upkg_browse_launch_rig.py): writes a sentinel, reports its stack, exits 7
+$(BUILD)/amiga/launchprobe: tests/amiga/launchprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/launchprobe.c

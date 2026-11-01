@@ -1,0 +1,391 @@
+/* The pure part of AmTile: classify, order, layouts (tile_core.h). */
+#include <string.h>
+#include "tile_core.h"
+
+#define TILE_FRESH_MAX 64
+
+tile_kind tile_classify(const tile_win *w)
+{
+    if (!(w->flags & TW_SIZEGADGET) || (w->flags & (TW_BACKDROP | TW_BORDERLESS)))
+        return TILE_FLOAT;
+    if (win_is_amarchy(w->title))
+        return TILE_FLOAT;
+    if ((w->box.maxw > 0 && w->box.maxw <= w->box.minw) || (w->box.maxh > 0 && w->box.maxh <= w->box.minh))
+        return TILE_FLOAT;                                 /* fixed size: nothing to resize */
+    return TILE_TILE;
+}
+
+static int has(const long *a, int n, long id)
+{
+    int i;
+    for (i = 0; i < n; i++)
+        if (a[i] == id)
+            return 1;
+    return 0;
+}
+
+int tile_order_update(long *order, int n, const long *set, int m)
+{
+    long fresh[TILE_FRESH_MAX];
+    int i, k = 0, f = 0;
+    for (i = 0; i < n; i++)
+        if (has(set, m, order[i]))
+            order[k++] = order[i];
+    for (i = 0; i < m && f < TILE_FRESH_MAX; i++)
+        if (!has(order, k, set[i]))
+            fresh[f++] = set[i];
+    if (f) {
+        memmove(order + f, order, (size_t)k * sizeof order[0]);
+        memcpy(order, fresh, (size_t)f * sizeof fresh[0]);
+        k += f;
+    }
+    return k;
+}
+
+/* One cell: the window's own limits and the room the screen leaves from the cell's corner decide the size. */
+static void cell(win_box *o, const tile_win *w, const win_screen *s, int x, int y, int cw, int ch)
+{
+    *o = w->box;
+    o->left = x;
+    o->top = y;
+    o->width = win_fit(cw, w->box.minw, w->box.maxw, s->width - x);
+    o->height = win_fit(ch, w->box.minh, w->box.maxh, s->height - s->bottom - y);
+}
+
+int tile_screen_switch(long *cur, long next, int n)
+{
+    if (*cur == next)
+        return n;
+    *cur = next;
+    return 0;
+}
+
+static void master_stack(const win_screen *s, int gap, int ratio_pct, int nmaster, int mirror, int n,
+                         const tile_win *in, win_box *out)
+{
+    int x0, y0, w, h;
+    int nm = nmaster < 1 ? 1 : nmaster > n ? n : nmaster;
+    int mw, sw, mx, sx, ch, i, y, k;
+    win_work_area(s, gap, &x0, &y0, &w, &h);
+    if (nm >= n) {                                         /* everything in the master column: one full-width stack */
+        ch = (h - (n - 1) * gap) / n;
+        for (i = 0, y = y0; i < n; i++, y += ch + gap)
+            cell(&out[i], &in[i], s, x0, y, w, i == n - 1 ? y0 + h - y : ch);
+        return;
+    }
+    mw = (w - gap) * ratio_pct / 100;
+    sw = w - gap - mw;
+    mx = mirror ? x0 + sw + gap : x0;
+    sx = mirror ? x0 : x0 + mw + gap;
+    ch = (h - (nm - 1) * gap) / nm;
+    for (i = 0, y = y0; i < nm; i++, y += ch + gap)
+        cell(&out[i], &in[i], s, mx, y, mw, i == nm - 1 ? y0 + h - y : ch);
+    k = n - nm;
+    ch = (h - (k - 1) * gap) / k;
+    for (i = nm, y = y0; i < n; i++, y += ch + gap)
+        cell(&out[i], &in[i], s, sx, y, sw, i == n - 1 ? y0 + h - y : ch);
+}
+
+static void columns(const win_screen *s, int gap, int n, const tile_win *in, win_box *out)
+{
+    int x0, y0, w, h;
+    int cw, i, x;
+    win_work_area(s, gap, &x0, &y0, &w, &h);
+    cw = (w - (n - 1) * gap) / n;
+    for (i = 0, x = x0; i < n; i++, x += cw + gap)
+        cell(&out[i], &in[i], s, x, y0, i == n - 1 ? x0 + w - x : cw, h);
+}
+
+static void rows(const win_screen *s, int gap, int n, const tile_win *in, win_box *out)
+{
+    int x0, y0, w, h;
+    int ch, i, y;
+    win_work_area(s, gap, &x0, &y0, &w, &h);
+    ch = (h - (n - 1) * gap) / n;
+    for (i = 0, y = y0; i < n; i++, y += ch + gap)
+        cell(&out[i], &in[i], s, x0, y, w, i == n - 1 ? y0 + h - y : ch);
+}
+
+static void grid(const win_screen *s, int gap, int n, const tile_win *in, win_box *out)
+{
+    int x0, y0, w, h;
+    int cols = 1, nrows, rh, r, c, k, cw, x, y, i = 0;
+    while (cols * cols < n)
+        cols++;
+    win_work_area(s, gap, &x0, &y0, &w, &h);
+    nrows = (n + cols - 1) / cols;
+    rh = (h - (nrows - 1) * gap) / nrows;
+    for (r = 0, y = y0; r < nrows; r++, y += rh + gap) {
+        k = r == nrows - 1 ? n - (nrows - 1) * cols : cols;
+        cw = (w - (k - 1) * gap) / k;
+        for (c = 0, x = x0; c < k; c++, x += cw + gap, i++)
+            cell(&out[i], &in[i], s, x, y, c == k - 1 ? x0 + w - x : cw, r == nrows - 1 ? y0 + h - y : rh);
+    }
+}
+
+static void monocle(const win_screen *s, int gap, int n, const tile_win *in, win_box *out)
+{
+    int x0, y0, w, h, i;
+    win_work_area(s, gap, &x0, &y0, &w, &h);
+    for (i = 0; i < n; i++)
+        cell(&out[i], &in[i], s, x0, y0, w, h);
+}
+
+/* Oldest window first: it takes the left / top share of the longer side, the remainder box shrinks toward in[0]. */
+static void dwindle(const win_screen *s, int gap, int ratio_pct, int n, const tile_win *in, win_box *out)
+{
+    int bx, by, bw, bh;
+    int i, f;
+    win_work_area(s, gap, &bx, &by, &bw, &bh);
+    for (i = n - 1; i >= 1; i--) {
+        if (bw >= bh) {
+            f = (bw - gap) * ratio_pct / 100;
+            cell(&out[i], &in[i], s, bx, by, f, bh);
+            bx += f + gap;
+            bw -= gap + f;
+        } else {
+            f = (bh - gap) * ratio_pct / 100;
+            cell(&out[i], &in[i], s, bx, by, bw, f);
+            by += f + gap;
+            bh -= gap + f;
+        }
+    }
+    cell(&out[0], &in[0], s, bx, by, bw, bh);
+}
+
+void tile_layout(int kind, const win_screen *s, int gap, int ratio_pct, int nmaster, int n, const tile_win *in,
+                 win_box *out)
+{
+    if (n < 1)
+        return;
+    switch (kind) {
+    case TL_MASTER:  master_stack(s, gap, ratio_pct, nmaster, 0, n, in, out); break;
+    case TL_MIRROR:  master_stack(s, gap, ratio_pct, nmaster, 1, n, in, out); break;
+    case TL_COLUMNS: columns(s, gap, n, in, out); break;
+    case TL_ROWS:    rows(s, gap, n, in, out); break;
+    case TL_GRID:    grid(s, gap, n, in, out); break;
+    case TL_MONOCLE: monocle(s, gap, n, in, out); break;
+    default:         dwindle(s, gap, ratio_pct, n, in, out); break;
+    }
+}
+
+static const char *const layout_names[TL_COUNT] = { "dwindle", "master-stack", "mirrored", "columns", "rows", "grid",
+                                                    "monocle" };
+
+const char *tile_layout_name(int kind)
+{
+    return kind >= 0 && kind < TL_COUNT ? layout_names[kind] : NULL;
+}
+
+int tile_layout_parse(const char *word, int *kind)
+{
+    int k;
+    size_t i;
+    for (k = 0; k < TL_COUNT; k++) {
+        const char *nm = layout_names[k];
+        for (i = 0; nm[i] && word[i]; i++)
+            if ((word[i] | 0x20) != nm[i])
+                break;
+        if (!nm[i] && (word[i] == '\0' || word[i] == ' ')) {
+            *kind = k;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int tile_layout_step(int kind, int dir)
+{
+    return ((kind + (dir < 0 ? -1 : 1)) % TL_COUNT + TL_COUNT) % TL_COUNT;
+}
+
+int tile_promote(long *order, int n, long id)
+{
+    int i;
+    for (i = 0; i < n; i++)
+        if (order[i] == id)
+            break;
+    if (i == n)
+        return 0;
+    memmove(order + 1, order, (size_t)i * sizeof order[0]);
+    order[0] = id;
+    return 1;
+}
+
+int tile_cycle(const long *order, int n, long id, int dir)
+{
+    int i;
+    if (n < 1)
+        return 0;
+    for (i = 0; i < n; i++)
+        if (order[i] == id)
+            return ((i + (dir < 0 ? -1 : 1)) % n + n) % n;
+    return 0;
+}
+
+int tile_state_on(const char *buf, long len)
+{
+    return len >= 2 && (buf[0] == 'o' || buf[0] == 'O') && (buf[1] == 'n' || buf[1] == 'N') &&
+           (len == 2 || buf[2] == '\n' || buf[2] == '\r' || buf[2] == ' ');
+}
+
+int tile_swap(long *order, int n, long a, long b)
+{
+    int i, ia = -1, ib = -1;
+    for (i = 0; i < n; i++) {
+        if (order[i] == a)
+            ia = i;
+        if (order[i] == b)
+            ib = i;
+    }
+    if (ia < 0 || ib < 0)
+        return 0;
+    order[ia] = b;
+    order[ib] = a;
+    return 1;
+}
+
+int tile_float_has(const tile_floats *f, long id)
+{
+    return has(f->id, f->n, id);
+}
+
+int tile_float_set(tile_floats *f, long id)
+{
+    if (has(f->id, f->n, id) || f->n >= TILE_MAX)
+        return 0;
+    f->id[f->n++] = id;
+    return 1;
+}
+
+int tile_float_clear(tile_floats *f, long id)
+{
+    int i;
+    for (i = 0; i < f->n; i++)
+        if (f->id[i] == id) {
+            memmove(f->id + i, f->id + i + 1, (size_t)(f->n - i - 1) * sizeof f->id[0]);
+            f->n--;
+            return 1;
+        }
+    return 0;
+}
+
+void tile_float_prune(tile_floats *f, const long *live, int m)
+{
+    int i, k = 0;
+    for (i = 0; i < f->n; i++)
+        if (has(live, m, f->id[i]))
+            f->id[k++] = f->id[i];
+    f->n = k;
+}
+
+/* ---- FLOAT, SWAP and the opt-out list --------------------------------------------------------------------------- */
+
+int tile_float_parse(const char *cmd, int *mode, long *id)
+{
+    const char *p = cmd;
+    char w[12];
+    int n = 0, digits = 0;
+    unsigned long v = 0;
+    while (*p && *p != ' ')
+        p++;
+    while (*p == ' ')
+        p++;
+    while (p[n] && p[n] != ' ' && n < (int)sizeof w - 1) {
+        w[n] = (char)(p[n] >= 'a' && p[n] <= 'z' ? p[n] - 32 : p[n]);
+        n++;
+    }
+    w[n] = 0;
+    if (p[n] && p[n] != ' ')
+        return 0;
+    if (!strcmp(w, "ON"))
+        *mode = TF_ON;
+    else if (!strcmp(w, "OFF"))
+        *mode = TF_OFF;
+    else if (!strcmp(w, "TOGGLE"))
+        *mode = TF_TOGGLE;
+    else
+        return 0;
+    p += n;
+    while (*p == ' ')
+        p++;
+    *id = 0;
+    if (!*p)
+        return 1;
+    if (*p == '$')
+        p++;
+    else if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X'))
+        p += 2;
+    for (; *p && *p != ' '; p++, digits++) {
+        int d = *p >= '0' && *p <= '9' ? *p - '0' : *p >= 'a' && *p <= 'f' ? *p - 'a' + 10 :
+                *p >= 'A' && *p <= 'F' ? *p - 'A' + 10 : -1;
+        if (d < 0 || digits >= 8)
+            return 0;
+        v = v * 16 + (unsigned long)d;
+    }
+    if (!digits)
+        return 0;
+    while (*p == ' ')
+        p++;
+    if (*p)
+        return 0;
+    *id = (long)v;
+    return 1;
+}
+
+int tile_swap_dir(long *order, int n, const win_box *boxes, long active, win_arg dir)
+{
+    int i, j;
+    for (i = 0; i < n && order[i] != active; i++)
+        ;
+    if (i == n)
+        return 0;
+    j = win_pick(boxes, n, i, dir);
+    if (j < 0)
+        return 0;
+    return tile_swap(order, n, order[i], order[j]);
+}
+
+int tile_conf_split(const char *buf, long len, tile_conf *c)
+{
+    long i = 0;
+    c->n = 0;
+    while (i < len && c->n < TILE_CONF_LINES) {
+        char *d = c->pat[c->n];
+        int k = 0;
+        while (i < len && buf[i] != '\n' && buf[i] != '\r') {
+            if (k < TILE_CONF_LEN - 1)
+                d[k++] = buf[i];
+            i++;
+        }
+        while (i < len && (buf[i] == '\n' || buf[i] == '\r'))
+            i++;
+        while (k > 0 && (d[k - 1] == ' ' || d[k - 1] == '\t'))
+            k--;
+        d[k] = 0;
+        if (k > 0 && d[0] != ';')
+            c->n++;
+    }
+    return c->n;
+}
+
+int tile_optout(const tile_conf *c, const char *title, tile_match_fn match)
+{
+    int i;
+    if (!c || !title || !match)
+        return 0;
+    for (i = 0; i < c->n; i++)
+        if (match(c->pat[i], title))
+            return 1;
+    return 0;
+}
+
+int tile_set(const tile_win *in, int n, const tile_floats *f, const tile_conf *c, tile_match_fn match, long *set)
+{
+    int i, m = 0;
+    for (i = 0; i < n; i++)
+        if (tile_classify(&in[i]) == TILE_TILE && !(f && tile_float_has(f, in[i].id)) &&
+            !tile_optout(c, in[i].title, match))
+            set[m++] = in[i].id;
+    return m;
+}

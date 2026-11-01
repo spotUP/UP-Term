@@ -1,0 +1,307 @@
+/* amarchy-flat, the portable core (plan 2026-10-29-amarchy-flat-ui-patch.md FLAT-C0; OD-F8 separate resident
+ * program). The state block that the resident program and Amarchy share through the public semaphore
+ * "Amarchy.Flat": a versioned MEMF_PUBLIC record. Amarchy writes the switch and the glyph pens, the program
+ * counts every hook call (the sentinel that proves the hook ran) and reports whether it is still chained.
+ * No OS calls: tests/test_flat_core.c pins every offset and the refusal of a block of another layout.
+ *
+ * Every field is a fixed-width integer at its natural alignment, so the layout is the same on the Amiga (vbcc)
+ * and on the host, and a reader built from an older header can read version and size first and refuse. */
+#ifndef AMARCHY_FLAT_CORE_H
+#define AMARCHY_FLAT_CORE_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#define FLAT_SEM_NAME "Amarchy.Flat"
+#define FLAT_VERSION 2
+
+typedef struct flat_state {
+    uint16_t version;           /*  0 FLAT_VERSION; first, so a reader of another layout can refuse before the rest */
+    uint16_t size;              /*  2 sizeof(flat_state) of the writer */
+    uint16_t enabled;           /*  4 1 = glyph hook draws flat (written by Amarchy) */
+    uint16_t style;             /*  6 reserved, ignored: glyphs are always solid blocks (FLAT-SOLID-FILL); the slot keeps the offsets */
+    uint16_t held;              /*  8 0 = running; else the FLAT_HELD_* reason a kill switch kept it inert (FLAT-C4) */
+    uint16_t still_chained;     /* 10 1 = a foreign hook sits on top of ours, so we cannot unload (FLAT-C1) */
+    uint32_t calls;             /* 12 hook calls so far: the sentinel */
+    uint8_t pen_text;           /* 16 glyph line pen */
+    uint8_t pen_line;           /* 17 thin outline pen */
+    uint8_t pen_back;           /* 18 background pen */
+    uint8_t pen_outline;        /* 19 theme accent pen of the 1 px window outer edge (FLAT-OUTER-EDGE); 0 = none (pen 0 is the background, never an edge) */
+    uint8_t pen_button;         /* 20 raised fill of a GadTools button, cycle and scroller arrow (FLAT-BUTTON-FILL): the theme lighter_background (DK_SELECTION); 0 or a pen the screen lacks = pen_back */
+    uint8_t pen_ptext;          /* 21 label pen of a pressed button, dark on the accent fill (DK_BG) */
+    uint8_t pen_dim;            /* 22 FLAT-BUTTON-DISABLED-DIM: solid fill of a disabled button, a dim tone of pen_button; obtained by amarchy-flat itself (ObtainBestPen), 0 = none */
+    uint8_t pen_dimtext;        /* 23 label pen of a disabled button (DK_MUTED) */
+} flat_state;                   /* 24 bytes */
+
+#define FLAT_STATE_SIZE 24
+
+/* flat_check results */
+enum { FLAT_OK = 0, FLAT_ERR_VERSION = -1, FLAT_ERR_SIZE = -2 };
+
+/* A fresh block: current version and size, everything else zero (off, not held, not chained). */
+void flat_init(flat_state *s);
+
+/* Is the block at p (avail bytes readable) a block of this layout? Reads only version and size, in that order,
+ * so a block of another layout is refused before any other field is trusted. Another version is
+ * FLAT_ERR_VERSION (checked first); a size field other than FLAT_STATE_SIZE, or fewer than FLAT_STATE_SIZE
+ * readable bytes, is FLAT_ERR_SIZE. */
+int flat_check(const void *p, size_t avail);
+
+/* The STATUS word: "absent" (no block), "held", "on", "off". */
+const char *flat_status_word(const flat_state *s, int found);
+
+/* The whole STATUS line, "flat=<word>" plus " calls=N chained=0|1" for a valid block; a block of another
+ * layout reads "flat=absent bad=version|size". Returns the length, 0 when cap < 48. */
+int flat_status_line(const void *p, size_t avail, int found, char *out, size_t cap);
+
+/* Can the program unload on Ctrl-C? 1 when nothing is chained on top of it. */
+int flat_can_exit(const flat_state *s);
+
+/* ---- FLAT-C1: the sysiclass hook swap, as a pure model -------------------------------------------------------
+ * The OS part (flat.c) swaps the h_SubEntry slot of sysiclass's cl_Dispatcher (never h_Entry: one routine serves
+ * five classes, research section 10). The model sees only the slot's value (an address as uintptr_t), so a fake
+ * Hook in a test drives the same code the program runs. */
+typedef struct flat_swap {
+    uintptr_t saved;            /* the h_SubEntry we found and must hand back */
+    uintptr_t ours;             /* the trampoline we put there */
+    int installed;
+    int inert;                  /* 1 after a refused remove: the program does nothing more to the hook */
+} flat_swap;
+
+/* flat_swap_remove results */
+enum { FLAT_REMOVED = 0, FLAT_STILL_CHAINED = 1, FLAT_NOT_INSTALLED = -1 };
+/* flat_swap_install results besides FLAT_OK */
+enum { FLAT_ERR_DOUBLE = -3, FLAT_ERR_ARG = -4 };
+
+void flat_swap_init(flat_swap *w);
+
+/* Save *slot and put ours there. A second install (while installed, or a slot that already holds ours, or ours == 0
+ * or ours == the saved value) is refused and changes nothing. The caller holds Forbid() around it. */
+int flat_swap_install(flat_swap *w, uintptr_t *slot, uintptr_t ours);
+
+/* Put the saved value back ONLY when *slot is still ours. Anything else on top (a foreign patcher chained on our
+ * trampoline) is FLAT_STILL_CHAINED: *slot is left untouched (our saved value is never written over a foreign one),
+ * st->still_chained = 1 and the swap goes inert. FLAT_REMOVED clears still_chained. st may be NULL. */
+int flat_swap_remove(flat_swap *w, uintptr_t *slot, flat_state *st);
+
+/* The trampoline: 24 bytes of 68000 code + two longs, position independent.
+ *   move.l a0,-(sp) / movea.l cnt(pc),a0 / addq.l #1,(a0) / movea.l (sp)+,a0 / move.l saved(pc),-(sp) / rts
+ * It bumps the call counter and tail-jumps to the saved routine with every register and the whole stack as the
+ * caller left them (a0..a2 and a6 on 3.2, C stack arguments on 3.1: the same code serves both conventions, so a
+ * pass-through needs no per-OS case). Big-endian bytes, as the Amiga reads them. out must hold FLAT_TRAMP_SIZE. */
+#define FLAT_TRAMP_SIZE 24
+void flat_tramp_build(unsigned char *out, uint32_t counter_addr, uint32_t saved_addr);
+
+/* The calling convention of the saved routine by intuition.library version: 3.1 (40) passes hook / object / message
+ * on the C stack, 3.2 (47) in a0 / a2 / a1. FLAT_CONV_STACK below 44, else FLAT_CONV_REG. C2's glyph code picks its
+ * entry by this; the C1 trampoline is valid for both. */
+enum { FLAT_CONV_STACK = 0, FLAT_CONV_REG = 1 };
+int flat_conv(unsigned intuition_version);
+
+/* ---- FLAT-D4: the runtime DOpus flat patch, as a pure model ---------------------------------------------------
+ * Plan 2026-10-29-amarchy-flat-ui-patch.md FLAT-D4 (OD-F9 / OD-F10), research section 14. Only the dopus5.library
+ * entries that DOpus calls through the jump table can be patched this way: DrawBox (LVO -696, Library/gui.c:27: toolbar
+ * buttons, column header boxes, file-list border) and DrawFieldBox (LVO -702, gui.c:60). The patched slot is the long
+ * operand of the entry's JMP abs.l, swapped with the C1 model (flat_swap): same restore-if-ours, same still_chained.
+ * A build is patched only when its version, revision and the checksum of the first FLAT_FUNC_BYTES bytes of each
+ * routine match the table; any other build is inert and STATUS says why. */
+enum { FLAT_EL_DRAWBOX = 0, FLAT_EL_FIELDBOX = 1, FLAT_EL_COUNT = 2 };
+#define FLAT_LVO_TEXT (-60)         /* graphics.library Text (the pressed-button label patch, FLAT-BUTTON-FILL) */
+#define FLAT_LVO_RECTFILL (-306)    /* graphics.library RectFill (the outer-edge patch) */
+#define FLAT_LVO_DRAWBOX (-696)
+#define FLAT_LVO_FIELDBOX (-702)
+#define FLAT_FUNC_BYTES 64
+
+typedef struct flat_dopus_build {
+    uint16_t version, revision;             /* lib_Version / lib_Revision of dopus5.library */
+    uint32_t sum[FLAT_EL_COUNT];            /* flat_sum of the routine's first FLAT_FUNC_BYTES; 0 = not measured yet: never matches */
+} flat_dopus_build;
+
+/* gate reasons */
+enum { FLAT_GATE_OK = 0, FLAT_GATE_UNKNOWN = 1, FLAT_GATE_UNMEASURED = 2, FLAT_GATE_SUM = 3 };
+
+/* The built-in table (DOpus 5.104 = library 73.8, sums still to be measured on the rig) and its length. */
+const flat_dopus_build *flat_dopus_table(int *n);
+
+/* Sum of the big-endian 32-bit words of len bytes (len a multiple of 4; a trailing remainder is ignored). Never 0:
+ * a computed 0 reads as 1, so 0 stays free for "not measured". */
+uint32_t flat_sum(const void *p, size_t len);
+
+/* The address a JMP abs.l entry (4E F9 + long) jumps to; 0 when the entry is anything else (already a foreign patch,
+ * an unexpected build). */
+/* flat_sum over opcode words only: absolute-long operands (relocations) are skipped, so the value is the same at every load address. */
+uint32_t flat_sum_reloc(const void *p, size_t len);
+uint32_t flat_jmp_target(const unsigned char *entry);
+
+/* Which elements may be patched for this library. Bit (1 << FLAT_EL_*) per element; *reason says why a bit is missing. */
+int flat_dopus_gate(const flat_dopus_build *tab, int n, unsigned version, unsigned revision,
+                    const uint32_t sums[FLAT_EL_COUNT], int *reason);
+
+/* The flat-draw decision for one call of a patched element. FLAT_DRAW_SKIP: draw nothing (under flat pens the shine
+ * half equals the background and the shadow half would remain as a right/bottom L; owner 2026-10-30: draw flat, no
+ * shadow L). FLAT_DRAW_STOCK: call the saved routine. Skip only when the switch is on, not held, and the screen pens
+ * really are flat (SHINEPEN == BACKGROUNDPEN, the flat signal of OD-F4); otherwise stock pens keep stock bevels. */
+enum { FLAT_DRAW_STOCK = 0, FLAT_DRAW_SKIP = 1 };
+int flat_dopus_decide(const flat_state *s, int element, int recessed, int pen_shine, int pen_back);
+
+/* FLAT-C8: frameiclass (every GadTools bevel and ridge: buttons, strings, checkboxes, cycles, listviews, DrawBevelBox).
+ * The same decision for one method call of the class: SKIP only for IM_DRAW (0x202) and IM_DRAWFRAME (0x206), when the
+ * switch is on, not held, and the screen pens are flat (shine == background). Any other method (OM_GET, IM_ERASE,
+ * IM_HITFRAME, ...) is STOCK. A missing state is STOCK. */
+#define FLAT_IM_DRAWFRAME 0x206UL
+int flat_frame_decide(const flat_state *s, unsigned long method, int pen_shine, int pen_back);
+/* STATUS line of the frameiclass hook: "frame=absent" or "frame=hooked calls=N flat=N" (flat = draws skipped). */
+int flat_frame_status_line(int installed, unsigned long calls, unsigned long flat, char *out, size_t cap);
+
+/* STATUS extra line for the DOpus patch: "dopus=absent", "dopus=73.8 inert unknown|unmeasured|sum" or
+ * "dopus=73.8 patched=<mask> calls=N flat=N". Appends " sums=<hex>,<hex>" (the measured routine sums, NULL = none) when found. Returns the length, 0 when cap < 96. */
+int flat_dopus_status_line(int found, unsigned version, unsigned revision, int reason, int mask, int installed,
+                           unsigned long calls, unsigned long flat, const uint32_t sums[FLAT_EL_COUNT], char *out, size_t cap);
+
+/* SYSIA_Which of a system gadget from its GadgetType & GTYP_SYSTYPEMASK (0xF0): WDEPTH 0x40 -> 0, WZOOM 0x60 -> 1,
+ * SIZING 0x10 -> 2, CLOSE 0x80 -> 3. -1 for every other type. Used where GetAttr(SYSIA_Which) fails (Kickstart 3.1). */
+int flat_which_from_gtype(unsigned gadget_type);
+
+/* FLAT-C7: the SYSIA_Which of a system gadget (window or screen: GTYP_SYSGADGET set) when one of its two render
+ * pointers is `image`, else -1. Screen gadgets (Screen->FirstGadget, type 0xc055 for the depth gadget) have no window,
+ * so flat.c walks the screen's list with this too. */
+int flat_gadget_which(unsigned gadget_type, const void *gadget_render, const void *select_render, const void *image);
+
+/* SYSIA_Which values that draw the glyph of another one (SDEPTHIMAGE 5 -> DEPTHIMAGE 0). */
+unsigned long flat_which_alias(unsigned long which);
+
+/* ---- FLAT-C4: kill switches ------------------------------------------------------------------------------------
+ * Plan 2026-10-29-amarchy-flat-ui-patch.md FLAT-C4 (OD-F5, OD-F7). The program starts INERT (no hook swapped, held
+ * = the reason, STATUS flat=held why=...) when any switch is set. Priority, first match wins:
+ *   1 crash marker ENVARC:Amarchy/flat-starting present (written before the swap, deleted FLAT_MARKER_SECS later:
+ *     a start that crashed the machine leaves it, so the next boot starts inert),
+ *   2 both mouse buttons held at boot (OD-F7),
+ *   3 VisualPrefs or Birdie running, by task name, or a foreign hook already on the sysiclass slot (OD-F5; P1 pens
+ *     still apply because they are not part of this program). */
+#define FLAT_MARKER_PATH "ENVARC:Amarchy/flat-starting"
+#define FLAT_MARKER_HEAD "flat-starting 1\n"
+#define FLAT_MARKER_SECS 60
+
+enum { FLAT_HELD_NONE = 0, FLAT_HELD_MARKER = 1, FLAT_HELD_GESTURE = 2, FLAT_HELD_VISUALPREFS = 3,
+       FLAT_HELD_BIRDIE = 4, FLAT_HELD_HOOK = 5 };
+
+/* Which foreign patcher a task name belongs to: FLAT_HELD_VISUALPREFS, FLAT_HELD_BIRDIE or FLAT_HELD_NONE.
+ * Case-insensitive prefix match ("VisualPrefs", "VisualPrefs Handler", "Birdie", "BirdieD"). */
+int flat_other_task(const char *name);
+
+/* A hook entry address already on the sysiclass slot: outside the intuition.library ROM span [lo, hi) is
+ * FLAT_HELD_HOOK, inside is FLAT_HELD_NONE. */
+int flat_other_hook(unsigned long entry, unsigned long lo, unsigned long hi);
+
+/* The start decision. marker: the marker file exists. lmb / rmb: that button is down. other: a FLAT_HELD_* from
+ * flat_other_task / flat_other_hook (a task name wins over the hook; the caller passes the first nonzero).
+ * Returns FLAT_HELD_NONE (start) or the reason held. */
+int flat_start_decide(int marker, int lmb, int rmb, int other);
+
+/* Seconds the marker still has to live: FLAT_MARKER_SECS minus the age (now and written are seconds on any clock,
+ * unsigned arithmetic so a wrapped clock still works), 0 when expired. */
+unsigned flat_marker_remaining(unsigned long written, unsigned long now);
+
+/* The held reason as one word ("marker", "gesture", "VisualPrefs", "Birdie", "hook"; "" for NONE). */
+const char *flat_held_name(unsigned reason);
+
+/* The prefs status text (shows in Amarchy's settings page): flat_status_word, plus for a held block the cause
+ * by name, "held by VisualPrefs" / "held by crash marker" / "held by both mouse buttons" / "held by another
+ * hook on the gadget class". Returns the length, 0 when cap is too small (cap >= 40 needed). */
+int flat_status_text(const flat_state *s, int found, char *out, size_t cap);
+
+/* ---- FLAT-BUTTON-FILL: the pressed-label arm, as a pure model ------------------------------------------------
+ * A pressed filled frame arms {rastport, task, box}; the graphics Text patch recolours the label pen only for a Text
+ * call on that rastport, from that task, whose current pen position lies inside the box. Any other frame draw on the
+ * rastport, and any Text call on it outside the box, disarms. */
+typedef struct flat_tx {
+    const void *surf, *task;    /* surf: flat_tx_surface of the frame's rastport */
+    int armed, x0, y0, x1, y1;
+} flat_tx;
+
+/* The drawing surface a rastport draws on: its layer, else its bitmap. Not the RastPort pointer: on 3.2 intuition draws
+ * the pressed frame through one RastPort and the label Text through another RastPort of the same window layer
+ * (rig 8 diag 2026-10-31: arms=1, Text on another rastport of the same layer=1, hits=0). */
+const void *flat_tx_surface(const void *layer, const void *bitmap);
+
+/* A frame was drawn on surface surf by task: disarm when surf is the armed one; with pressed && fill, arm for box
+ * (x0,y0)-(x1,y1). */
+void flat_tx_frame(flat_tx *t, const void *surf, const void *task, int pressed, int fill, int x0, int y0, int x1, int y1);
+
+/* Does a Text call at pen position (cx, cy) on surface surf from task get the pressed-label pen? 1 yes; a call on the
+ * armed surface outside the box disarms (0). Another surface or task: 0, state untouched. */
+int flat_tx_text(flat_tx *t, const void *surf, const void *task, int cx, int cy);
+
+/* The pen a patched Text call draws with: pen_ptext when flat is on and not held and flat_tx_text matches, else -1 (stock
+ * pen). pen_ptext is DK_BG = pen 0, a real pen: 0 never means "unset" here. */
+int flat_tx_pen(const flat_state *s, flat_tx *t, const void *surf, const void *task, int cx, int cy);
+
+/* ---- FLAT-TITLE-ACCENT: a window title drawn by Intuition (one Text call on the border rastport) ---------------------
+ * flat_title_decide: 1 and *t filled when the call is a window title under flat (enabled, not held, title string prefix
+ * match of str/count against the Window title, pen y inside bar_h = BorderTop). Active: band (0,0)-(w-1,bar_h-1) in
+ * pen_outline (band_pen -1 = none: pen_outline unset or not a pen of the depth) and the title text in pen_ptext.
+ * bg_pen = band_pen when a band is drawn (the title Text call is JAM2: its cell box repaints BgPen, so BgPen must be the band pen
+ * for that call or the band is erased behind the glyphs), else -1 (BgPen untouched). Inactive: no band, title text in flat_dimtext_pen (dark_foreground). 0: not a title, stock Text untouched. */
+typedef struct flat_title { int band_pen, bx0, by0, bx1, by1, text_pen, bg_pen; } flat_title;
+int flat_title_decide(const flat_state *s, int depth, int active, const char *title, int win_w, int bar_h,
+                      const char *str, int count, int cp_y, flat_title *t);
+
+/* ---- FLAT-BUTTON-DISABLED-DIM: the ghost fill of a disabled gadget, as a pure model ---------------------------------
+ * Intuition draws a disabled gadget (frame, label), then ghosts it with one pattern RectFill (rp->AreaPtrn set, AreaPtSz != 0)
+ * over the gadget box, called from Intuition's ROM. The frame hook records every filled primary button box per surface and task, the Text
+ * patch records the label drawn inside it. A pattern fill that lands inside a recorded box is replaced by a solid fill in the
+ * dim pen and the label is redrawn in the dim label pen; any other fill is untouched. */
+#define FLAT_GH_N 8
+typedef struct flat_gbox {
+    const void *surf, *task;
+    int x0, y0, x1, y1;
+    const char *str;            /* the label: pointer, length and pen position of its Text call; str 0 = none seen */
+    int count, lx, ly;
+} flat_gbox;
+typedef struct flat_gh {
+    flat_gbox box[FLAT_GH_N];
+    int next;
+} flat_gh;
+/* A filled frame was drawn: pressed or unfilled or outline-only (role secondary) frames drop a record for the box, a filled
+ * primary non-pressed frame records it (a ring of FLAT_GH_N, the same box replaces its record). */
+void flat_gh_frame(flat_gh *g, const void *surf, const void *task, int pressed, int fill, int secondary, int x0, int y0, int x1, int y1);
+/* A Text call at pen position (cx, cy): stored as the label of the record whose box holds the position. */
+void flat_gh_text(flat_gh *g, const void *surf, const void *task, int cx, int cy, const char *str, int count);
+/* The dim fill pen of a button on a screen of this depth: pen_dim when it is a pen of the depth (depth >= 3 and 0 < pen_dim < 1 << depth),
+ * else (a screen under 8 colours cannot hold a third tone, or no dim pen) the plain button pen flat_button_pen. */
+int flat_dim_pen(const flat_state *s, int depth);
+int flat_dimtext_pen(const flat_state *s, int depth);
+/* A fill (x0,y0)-(x1,y1) on surface surf by task with area pattern size ptsz: the record it ghosts, or 0 (not enabled, held,
+ * no pattern, no record of that surface and task containing the rect). */
+const flat_gbox *flat_gh_match(const flat_state *s, const flat_gh *g, const void *surf, const void *task, int ptsz, int x0, int y0, int x1, int y1);
+
+/* FLAT-BUTTON-FILL: the size of a frame draw. Only IM_DRAWFRAME carries Dimensions (a 0 side falls back to the image's);
+ * IM_DRAW has no such field, its message words past the state are junk (3.1: 4096 x -17232). */
+void flat_frame_size(int draw_frame, int dim_w, int dim_h, int img_w, int img_h, int *w, int *h);
+
+/* FLAT-BUTTON-FILL, 3.1 (frameiclass does not answer OM_GET): is this window gadget a button or cycle drawn by image? GadTools
+ * BUTTON and CYCLE have GadgetRender == SelectRender == the frame; STRING, LISTVIEW, SLIDER have no select image. */
+int flat_button_gadget(const void *gadget_render, const void *select_render, const void *image);
+
+/* The PRIMARY button fill pen for a screen of the given depth: under 8 colours (depth < 3) the accent pen_line; from 8 colours the
+ * theme lighter background pen_button, or pen_back when it is 0 or not a pen of that depth. */
+int flat_button_pen(const flat_state *s, int depth);
+
+/* BUTTON-ROLES: a button box in gadget coordinates. */
+typedef struct { int x, y, w, h; } flat_box;
+enum { FLAT_ROLE_PRIMARY = 0, FLAT_ROLE_SECONDARY = 1 };
+/* Amiga style guide: in a row of buttons the rightmost is secondary (Cancel, drawn as a text-pen outline), every other button
+ * primary (filled); a lone button is primary. A row = siblings whose vertical span overlaps this box. sib lists every button of
+ * the window, the box itself included (skipped by equal box). */
+int flat_button_role(const flat_box *self, const flat_box *sib, int n);
+
+/* FLAT-SCROLLER: a window scroller (prop gadget). The pen for one fill inside the gadget's container (cx,cy,cw,ch in the
+ * rastport's coordinates): a fill inside the knob rectangle takes the pen one shade lighter than the frame (flat_button_pen); the
+ * rest of the container is track and takes the frame pen (pen_back: the flat map sets FILLPEN and BACKGROUNDPEN to it). The knob
+ * is laid out as Intuition does: size = body * container / 0xFFFF (at least 1 px), position = pot * (container - size) / 0xFFFF.
+ * Returns -1 when flat is off or held, or the fill is not inside the container (the caller leaves the call alone).
+ * horiz / vert: the PropInfo FREEHORIZ / FREEVERT flags; depth: the screen depth. */
+int flat_scroller_pen(const flat_state *s, int depth, int cx, int cy, int cw, int ch, int horiz, int vert,
+                      unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody, int x0, int y0, int x1, int y1);
+
+#endif

@@ -1,6 +1,6 @@
 UP-Term kit: parts, licences and where the source is
 
-Every part the kit (UP-Term.lha) ships is listed once. The source column
+Every part the kit (up-term.lha) ships is listed once. The source column
 names the repository (all side by side in one workspace directory, pinned together by the upterm
 meta-repo, repos.lock) or the archive the source is in. "unconfirmed" means
 no licence file or statement for it was found in the tree; the place looked
@@ -17,14 +17,22 @@ scripts                                                        up-console.device
 ixemul.library, ixnet.library GNU LGPL v2 or later (parts from ixemul-vtcon repo (COPYING.LIB,
 and libixcompat (linked into  BSD and other authors keep       LICENSES.README), a fork of ixemul 48.2
 every Amiga program)          their notices in their files)
-GNU coreutils 5.2.1 (Files/   GPL v2 (Files/coreutils/COPYING) UP-Term-src.lha (published next to
-coreutils)                                                     UP-Term.lha): coreutils-5.2.1-src.tar.bz2;
+GNU coreutils 5.2.1 (Files/   GPL v2 (Files/coreutils/COPYING) up-term-src.lha (published next to
+coreutils)                                                     up-term.lha): coreutils-5.2.1-src.tar.bz2;
                                                                vtcon dist/gg/coreutils-5.2.1/SOURCE.txt
 AmiSSL 5.27 (Files/AmiSSL,    Apache License 2.0 (AmiSSL       AmiSSL Open Source Team (Doc/AmiSSL.doc
 installed by its own          and OpenSSL; the notice is in    in the drawer); github.com/jens-maus/amissl.
 Install-AmiSSL)               Doc/AmiSSL.doc)                  The Developer SDK is not in the kit
-Unix tool ports (Files/       per package, the licence files   UP-Term-src.lha (published next to
-userland, UP-Term:bin): GNU   in UP-Term:licenses/<package>;   UP-Term.lha): each upstream archive with
+AmiNetXDuo 1.0.0-rc2 (Files/  MIT, with named exceptions:      aminet.net/package/comm/net/
+AmiNetXDuo, installed by its  ThreadX/NetX Duo MIT; NE2000    AmiNetXDuo-1.0.0-rc2; the licence list
+own Install-AmiNetXDuo only   core BSD-2; Dropbear MIT-style; is in its ReadMe (LICENCE) and the
+when no TCP/IP stack is       CodeMirror MIT; CA certificates drawer's Terminal/CodeMirror-LICENSE,
+found)                        MPL 2.0; xircomce2.device and   Wireless/WirelessManager-LICENSE,
+                              pccard.library GPL-2.0-or-later PCMCIA/ (with their source). The
+                              (source in PCMCIA/); anxwifipi  Developer drawer is not in the kit
+                              MPL 2.0; WirelessManager BSD-3
+Unix tool ports (Files/       per package, the licence files   up-term-src.lha (published next to
+userland, UP-Term:bin): GNU   in UP-Term:licenses/<package>;   up-term.lha): each upstream archive with
 grep, sed, findutils,         GPL v3 or later: grep, sed,      UP-Term's patches, recipes and build
 diffutils, patch, nano,       findutils, diffutils, patch,     scripts (upterm-ports repo); the list
 gzip; less; onetrue-awk;      nano, gzip; less GPL v3 or       with versions, URLs and sha256 is
@@ -33,6 +41,10 @@ tools; bzip2; xz;             ISC; ncurses MIT; bzip2
 libarchive (tar, cpio);       BSD-like; xz 0BSD and public
 zip; zlib (linked)            domain; libarchive BSD-2; zip
                               Info-ZIP; zlib Zlib
+Directory Opus 5 5.104 (the      AROS Public License 1.1          https://github.com/BlitterStudio/dopus5, tag v5.104
+up-dopus add-on: upstream's   (up-dopus.lha: Files/COPYING)    (up-dopus.lha: Files/SOURCE.txt)
+68k release builds,
+unmodified)
 bebboget 1.11                 GPL v3 or later (COPYING,        Files/net/bebboget-1.11/bebboget-1.11-src.tar.bz2
                               LICENSE)
 BebboSSH 1.46.1 (bebbossh,    GPL v3 or later (COPYING); some  Files/net/bebbossh-1.46.1/ (bebbossh-1.45-src.tar.bz2 + patches/)
@@ -47,6 +59,24 @@ GNU Unifont 17.0.05 pages     SIL OFL 1.1 (Files/unifont/      https://unifoundr
                               OFL-1.1.txt)
 Twemoji 17.0.3 emoji pages    CC-BY 4.0 (Files/emoji/          https://github.com/jdecked/twemoji;
                               CC-BY-4.0.txt)                   Files/emoji/SOURCE.txt
+Symbols Nerd Font Mono        MIT (Nerd Fonts project;         https://github.com/ryanoasis/nerd-fonts v3.5.1;
+3.5.1 (Files/fonts/           Files/fonts/SymbolsNerdFont/     Files/fonts/SymbolsNerdFont/SOURCE.txt. Icon sets
+SymbolsNerdFontMono.ttf)      MIT.txt); icon sets: MIT, OFL    inside: ICON-SETS.md (same drawer)
+                              1.1, Apache 2.0, CC BY 4.0
+Amarchy menu icons            Glyphs of Symbols Nerd Font      Built into amarchy-gui from dist/menu-icons.
+(built into amarchy-gui)      Mono (row above): Font Awesome   Glyph sources: ICON-SETS.md (same drawer)
+                              and Codicons CC BY 4.0, Material
+                              Design Icons Apache 2.0
+Phosphor Icons Fill 2.1.2     MIT (Files/phosphor/LICENSE)     https://phosphoricons.com; Files/phosphor/SOURCE.txt.
+(Files/lucide/lucide.dat,                                      Flat Workbench icons rendered from the Phosphor
+UP-Term:Amarchy/Icons)                                         Fill font
+Lucide icons 1.66.0           ISC (Files/lucide/LICENSE),      https://lucide.dev; Files/lucide/SOURCE.txt. Outline
+(Files/lucide/outline.dat,    with Feather icons MIT (same     style of the flat Workbench icons, rendered from the
+UP-Term:Amarchy/Icons)        file)                            Lucide font
+JetBrains Mono 2.304          SIL OFL 1.1 (Files/fonts/        https://github.com/JetBrains/JetBrainsMono;
+(Files/fonts/JetBrainsMono/,  JetBrainsMonoLicence/OFL.txt)    Files/fonts/JetBrainsMonoLicence/SOURCE.txt. Drawn at
+                                                               build time as a 7 x 16 bitmap strike font
+Files/fonts/JetBrainsMono.ttf)                                 and shipped unchanged as JetBrainsMono.ttf
 TopazPro font                 unconfirmed: no licence in       Files/fonts/SOURCE.txt, TopazPro.diz (by spot /
                               dist/fonts (SOURCE.txt,          Divine Stylers, 2022)
                               TopazPro.diz)
@@ -84,11 +114,11 @@ engine/inflate.c)             LICENSE)                         top of both files
 Notes
 - GNU Unifont is also offered under GPL v2 or later; the kit uses the OFL.
 - Source for the GPL parts is in the kit as source archives where the table
-  says so, or in UP-Term-src.lha; for GNU screen and tmux it is in the
+  says so, or in up-term-src.lha; for GNU screen and tmux it is in the
   repositories named, which the upterm meta-repo pins to the commits the kit
   was built from.
 - Claude, amiga-pi, Python and Neovim are archives of their own
-  (Claude.lha, amiga-pi.lha, Python3.lha, UP-Term-nvim.lha),
-  each with its own LICENSES.txt. Git, Perl and Vim are upkg packages (upkg
-  install git, perl, vim): their licence files and SOURCES rows are in
+  (up-claude.lha, up-pi.lha, up-python.lha, up-nvim.lha),
+  each with its own LICENSES.txt. Git, Perl, Vim, BitchX and vbcc are upkg
+  packages (upkg install git, perl, vim, bitchx, vbcc): their licence files and SOURCES rows are in
   UP-Term:licenses once installed, as the base had them.

@@ -1,0 +1,202 @@
+#include <string.h>
+#include "menu_core.h"
+#include "gthemes_core.h"
+
+static char lower(char c)
+{
+    return (c >= 'A' && c <= 'Z') ? (char)(c + 32) : c;
+}
+
+int mn_match(const char *label, const char *filter)
+{
+    int i, j, any = 0;
+    if (!filter || !*filter)
+        return 2;
+    for (i = 0; label[i]; i++) {
+        for (j = 0; filter[j] && label[i + j] && lower(label[i + j]) == lower(filter[j]); j++)
+            ;
+        if (!filter[j]) {
+            if (i == 0)
+                return 2;
+            any = 1;
+        }
+    }
+    return any;
+}
+
+int mn_filter(const mn_item *items, int n, const char *filter, int *idx, int max)
+{
+    int pass, i, c = 0;
+    for (pass = 2; pass >= 1; pass--)
+        for (i = 0; i < n && c < max; i++)
+            if (mn_match(items[i].label, filter) == pass)
+                idx[c++] = i;
+    return c;
+}
+
+void mn_rows_join(const mn_item *items, const int *idx, int c, char *out, int n)
+{
+    int i, used = 0;
+    if (n <= 0)
+        return;
+    out[0] = 0;
+    for (i = 0; i < c; i++) {
+        const char *l = items[idx[i]].label;
+        int len = (int)strlen(l);
+        if (used + len + 2 >= n)
+            break;
+        if (i > 0)
+            out[used++] = '|';
+        memcpy(out + used, l, len);
+        used += len;
+        out[used] = 0;
+    }
+}
+
+int mn_pick(const mn_item *items, const int *idx, int c, const char *label)
+{
+    int i;
+    for (i = 0; label && i < c; i++)
+        if (!strcmp(items[idx[i]].label, label))
+            return i;
+    return -1;
+}
+
+int mn_pick_setting(const mn_item *items, const int *idx, int c, int ix)
+{
+    int i;
+    for (i = 0; i < c; i++)
+        if (MN_IS_SETTING(&items[idx[i]]) && items[idx[i]].ix == ix)
+            return i;
+    return -1;
+}
+
+int mn_open_pos(const mn_item *items, const int *idx, int c, int ix, const char *keep, const char *current_label)
+{
+    if (ix >= 0)
+        return mn_pick_setting(items, idx, c, ix);
+    return mn_pick(items, idx, c, keep && keep[0] ? keep : current_label);
+}
+
+int mn_back(int bs, const char *filter, const char *node)
+{
+    if (filter[0])
+        return bs ? MN_BACK_DROP_CHAR : MN_BACK_CLEAR_FILTER;
+    return node[0] ? MN_BACK_UP : MN_BACK_CLOSE;
+}
+
+void mn_bsguard_init(mn_bsguard *g)
+{
+    g->last = -1000000L;
+}
+
+int mn_back_held(int repeat, const char *filter, const char *node)
+{
+    int act = mn_back(1, filter, node);
+    return (repeat && act != MN_BACK_DROP_CHAR) ? MN_BACK_NONE : act;
+}
+
+int mn_back_rep(mn_bsguard *g, long now, const char *filter, const char *node)
+{
+    long d = now - g->last;
+    g->last = now;                         /* a held key keeps refreshing: it stays a repeat until released */
+    return mn_back_held(d >= 0 && d < MN_BS_REPEAT_TICKS, filter, node);
+}
+
+int mn_parent(const char *node, char *out, int n)
+{
+    const char *dot = strrchr(node, '.');
+    int len;
+    if (!*node)
+        return 0;
+    len = dot ? (int)(dot - node) : 0;
+    if (len > n - 1)
+        len = n - 1;
+    memcpy(out, node, len);
+    out[len] = 0;
+    return 1;
+}
+
+int mn_pick_back(const char *path, const char *node, char *out, int n)
+{
+    if (strncmp(path, GT_ROW_PREFIX, sizeof GT_ROW_PREFIX - 1))
+        return 0;
+    return mn_parent(node, out, n);
+}
+
+static void app(char *out, int n, const char *s)
+{
+    int l = (int)strlen(out);
+    while (*s && l < n - 1)
+        out[l++] = *s++;
+    out[l] = 0;
+}
+
+int mn_spec(const km_bind *b, char *out, int n)
+{
+    const char *key = keymap_key_name(b->code);
+    char cap[2];
+    out[0] = 0;
+    app(out, n, "Super");
+    if (b->qual & KM_Q_SHIFT)
+        app(out, n, "+Shift");
+    if (b->qual & KM_Q_CTRL)
+        app(out, n, "+Ctrl");
+    if (b->qual & KM_Q_ALT)
+        app(out, n, "+Alt");
+    if (b->qual & KM_Q_RSHIFT)
+        app(out, n, "+RShift");
+    app(out, n, "+");
+    if (!key)
+        key = "?";
+    cap[0] = (key[0] >= 'a' && key[0] <= 'z') ? (char)(key[0] - 32) : key[0];
+    cap[1] = 0;
+    app(out, n, cap);
+    app(out, n, key + 1);
+    return (int)strlen(out) < n - 1;
+}
+
+int mn_viewer_line(const km_bind *b, char *out, int n)
+{
+    char spec[48];
+    int l, ok = mn_spec(b, spec, sizeof spec);
+    out[0] = 0;
+    app(out, n, spec);
+    for (l = (int)strlen(out); l < MN_SPEC_COL && l < n - 1; l++)
+        out[l] = ' ';
+    out[l] = 0;
+    app(out, n, "  ");
+    app(out, n, b->label[0] ? b->label : b->arg);
+    if (b->cat[0]) {
+        app(out, n, "  (");
+        app(out, n, b->cat);
+        app(out, n, ")");
+    }
+    return ok && (int)strlen(out) < n - 1;
+}
+
+int mn_viewer_text(const keymap *k, char *buf, long cap)
+{
+    int i, lines = 0;
+    long len = 0;
+    char line[160];
+    buf[0] = 0;
+    for (i = 0; i < k->nbind; i++) {
+        long l;
+        mn_viewer_line(&k->bind[i], line, sizeof line);
+        l = (long)strlen(line);
+        if (len + l + 2 > cap)
+            break;
+        memcpy(buf + len, line, l);
+        buf[len + l] = '\n';
+        len += l + 1;
+        buf[len] = 0;
+        lines++;
+    }
+    return lines;
+}
+
+const char *mn_term_default(const char *term)
+{
+    return term && *term ? 0 : "vtcon";
+}

@@ -35,6 +35,11 @@ int cf_paste_keeps(unsigned long cp);
 void cf_ftxt_head(unsigned char *head, long chrs, long utf8);
 int  cf_ftxt_mid(unsigned char *mid, long chrs, long utf8);
 
+/* A finished IFF FORM file as a clip: head holds the file's first 12 bytes, filelen its length. Returns the
+ * bytes to write to clipboard.device (the whole file, filelen), or -1 when it is no FORM or the FORM size field
+ * plus 8 (rounded up to even) is not the file length: a clip must be exactly one FORM. */
+long cf_form_total(const unsigned char *head, long filelen);
+
 /* Reads an FTXT clip through rd (bytes in order, as clipboard.device
  * gives them; returns the count, < n at the end, -1 on an error) and
  * returns its text as UTF-8, NUL-terminated, in memory from alloc (free it

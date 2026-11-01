@@ -25,7 +25,7 @@ session. When the session ends (Ctrl-], the line drops), so does the daemon.
 - "no Amiga is connected to Claude Code" means no session daemon exists: this session was a
   password login (no key, so no daemon), the daemon was switched off (`NOAGENT`), the Amiga
   has no wasabid installed (C:wasabid), or it exited. Say so to the user and ask them to
-  pair the Amiga (log in once with the password, then start Claude again) or check Claude.lha
+  pair the Amiga (log in once with the password, then start Claude again) or check up-claude.lha
   installed wasabid. Do not try to guess an address or key and do not edit
   `~/.config/wasabi/config`: that file holds the NAS-side key for the relay, and an
   `amiga-target` setting points the tools at a different Amiga directly.
