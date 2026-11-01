@@ -475,6 +475,8 @@ static void test_theme_switch_recolour(void)
     rcm_other = 1;
     rcm_theme(&c, &b, &i, (unsigned *)&scr);
     rcm_other = 0;
+    CHECK_INT((long)ip_ground(&a, 1, 1u << DT_WBPATTERN), (long)desk_darker(&a)); /* PEN255: the desktop-theme tile keeps the dark backdrop */
+    CHECK_INT((long)ip_ground(&a, 1, 1u << DT_WBPATTERN), (long)ip_ground(&a, 1, 0));
     CHECK(ip_ground(&a, 1, 0) != desk_role(&a, DK_BG));              /* the backdrop is not the panel tone */
     CHECK_INT(ip_sync(&h, &o, 1, &scr, 8, 8), IP_SYNC_OBTAIN);
     /* theme A: the spare slots (the ramp's zero point) are the backdrop RGB, not pen 0 */

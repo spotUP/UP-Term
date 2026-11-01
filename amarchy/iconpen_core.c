@@ -17,7 +17,8 @@ static void blend(uint8_t out[3], uc_u32 from, uc_u32 to, int pct)
 
 uc_u32 ip_ground(const gtheme *t, int flat, unsigned mask)
 {
-    return desk_pen_colour(t, desk_backdrop_pen(), flat && !((mask >> DT_WBPATTERN) & 1));
+    (void)mask; /* the tone does not depend on who writes the tile */
+    return desk_pen_colour(t, desk_backdrop_pen(), flat);
 }
 
 void ip_colours(const gtheme *t, uc_u32 ground, uint8_t rgb[IP_PENS][3])

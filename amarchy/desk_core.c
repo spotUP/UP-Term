@@ -353,21 +353,21 @@ uc_u32 desk_live_baseline(const unsigned char *saved, long savedlen, int pen, in
     return pen >= 4 && pen < 8 ? stock[pen - 4] : 0;
 }
 
-uc_u32 desk_pen_colour(const gtheme *t, int pen, int own_backdrop)
+uc_u32 desk_pen_colour(const gtheme *t, int pen, int flat_backdrop)
 {
     if (pen == desk_backdrop_pen())
-        return own_backdrop ? desk_darker(t) : t->muted; /* the desktop-theme pattern keeps its muted tone */
+        return flat_backdrop ? desk_darker(t) : t->muted; /* flat: the dark tone, whether flat or the desktop-theme part writes the tile */
     return desk_role(t, pen);
 }
 
 int desk_live_follow(const gtheme *t, int flat, unsigned mask, int depth, int pens[4], uc_u32 rgb[4])
 {
-    int own = flat && !((mask >> DT_WBPATTERN) & 1), n, i;
+    int n, i;
     if (!t || !(flat || ((mask >> DT_PALETTE) & 1)))
         return 0;
     n = desk_live_role_pens(depth, pens);
     for (i = 0; i < n; i++)
-        rgb[i] = desk_pen_colour(t, pens[i], own);
+        rgb[i] = desk_pen_colour(t, pens[i], flat);
     return n;
 }
 
@@ -479,7 +479,7 @@ long desk_palette_set_rgb(const unsigned char *cur, long curlen, int pen, int de
     return curlen;
 }
 
-long desk_palette_theme(const unsigned char *cur, long curlen, const gtheme *t, int depth, int own_backdrop, unsigned char *out, long cap)
+long desk_palette_theme(const unsigned char *cur, long curlen, const gtheme *t, int depth, int flat_backdrop, unsigned char *out, long cap)
 {
     int p;
     if (palette_entry(cur, curlen, 0, depth) < 0 || curlen > cap)
@@ -488,14 +488,14 @@ long desk_palette_theme(const unsigned char *cur, long curlen, const gtheme *t, 
     for (p = 0; p < DK_ROLES; p++) {
         long e = palette_entry(out, curlen, p, depth);
         if (e >= 0)
-            palette_put_rgb(out + e, desk_pen_colour(t, p, own_backdrop));
+            palette_put_rgb(out + e, desk_pen_colour(t, p, flat_backdrop));
     }
     /* FLAT-VIS-1: the entry that sets the screen pen the backdrop is drawn in (entry 7 = pen 255 on a deep screen) */
     {
         int bp = desk_backdrop_pen_at(depth), sp = desk_backdrop_screen_pen(depth);
         long e = sp != bp ? palette_entry(out, curlen, sp, depth) : -1;
         if (e >= 0)
-            palette_put_rgb(out + e, desk_pen_colour(t, bp, own_backdrop));
+            palette_put_rgb(out + e, desk_pen_colour(t, bp, flat_backdrop));
     }
     return curlen;
 }
