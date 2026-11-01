@@ -237,6 +237,69 @@ static void test_newicon_form(void)
     CHECK_INT(li_parse(g_a, len, &wr), LI_E_MAGIC);
 }
 
+static void test_form_build(void)
+{
+    static const uint8_t planes[12] = { 0x40,0, 0,0, 0x80,0, 0x80,0, 0,0, 0xC0,0 };   /* 2x1: pen 44 (ground), pen 33 */
+    static uint8_t rgb[LI_FORM_COLOURS][3], out[2048];
+    static const char *tt[] = { "DONOTWAIT" };
+    static uint8_t dat[8192];
+    li_image im, nrm, sel;
+    li_dat d;
+    li_file src, wr;
+    li_edit e;
+    size_t n, len;
+    int i;
+
+    memset(&im, 0, sizeof im);
+    im.width = 2; im.height = 1; im.depth = 6; im.data = planes; im.dlen = sizeof planes;
+    for (i = 0; i < LI_FORM_COLOURS; i++) { rgb[i][0] = (uint8_t)i; rgb[i][1] = (uint8_t)(i + 100); rgb[i][2] = (uint8_t)(i + 200); }
+    n = li_form_build(&im, &im, rgb, out, sizeof out);
+    CHECK_INT(n, 162);
+    CHECK(memcmp(out, "FORM", 4) == 0 && memcmp(out + 8, "ICONFACE", 8) == 0);
+    CHECK_INT(out[7], 154);                                   /* FORM size: everything after the size field */
+    CHECK_INT(out[19], 6);                                    /* FACE size */
+    CHECK_INT(out[20], 1); CHECK_INT(out[21], 0);             /* width-1, height-1 */
+    CHECK_INT(out[24], 0); CHECK_INT(out[25], 47);            /* MaxPaletteBytes-1 */
+    CHECK(memcmp(out + 26, "IMAG", 4) == 0);
+    CHECK_INT(out[33], 59);                                   /* chunk size, odd, padded after */
+    CHECK_INT(out[34], 0);                                    /* transparent index */
+    CHECK_INT(out[35], 15);                                   /* NumColors-1 */
+    CHECK_INT(out[36], 3);                                    /* transparent + palette */
+    CHECK_INT(out[39], 4);                                    /* depth */
+    CHECK_INT(out[43], 47);                                   /* NumPaletteBytes-1 */
+    CHECK_INT(out[44], 0x02);                                 /* pen 44 -> index 0, pen 33 -> slot 1 -> index 2 */
+    CHECK_INT(out[45], rgb[12][0]);                           /* index 0 carries the ground colour (slot 12) */
+    CHECK_INT(out[45 + 3 * 2 + 1], rgb[1][1]);                /* index 2 is slot 1 */
+    CHECK_INT(out[45 + 3 * 15 + 2], rgb[15][2]);              /* index 15 is slot 15 */
+    CHECK_INT(out[93], 0);                                    /* pad byte */
+    CHECK(memcmp(out + 94, "IMAG", 4) == 0);
+    im.depth = 4;
+    CHECK_INT(li_form_build(&im, &im, rgb, out, sizeof out), 0);   /* only depth 6 sources */
+    im.depth = 6;
+    CHECK_INT(li_form_build(&im, &im, rgb, out, 100), 0);          /* the cap is honoured */
+
+    /* splice writes our tail in place of the source's FORM; RESTORE gives the original bytes back */
+    len = make_dat(dat);
+    CHECK_INT(li_dat_open(dat, len, &d), 0);
+    CHECK_INT(li_dat_find(&d, "folder", 0, &nrm, &sel), 0);
+    len = make_tool(g_a, 1, tt, 1, 1);
+    CHECK_INT(li_parse(g_a, len, &src), 0);
+    CHECK(src.form_len > 0);
+    li_edit_apply(&e, &src, &nrm, &sel);
+    n = li_form_build(&nrm, &sel, rgb, out, sizeof out);
+    CHECK(n > 0);
+    e.form_new = out; e.form_new_len = n;
+    n = li_splice(&src, &e, g_c, BUF);
+    CHECK(n > 0);
+    CHECK_INT(li_parse(g_c, n, &wr), 0);
+    CHECK_INT(wr.form_len, (long)e.form_new_len);
+    CHECK(memcmp(wr.buf + wr.form_off, out, e.form_new_len) == 0);
+    li_edit_restore(&e, &wr, &src);
+    n = li_splice(&wr, &e, g_d, BUF);
+    CHECK_INT(n, len);
+    CHECK(memcmp(g_d, g_a, len) == 0);
+}
+
 static void test_interleaved_newicon_lines_restore_to_their_original_positions(void)
 {
     /* NewIcon lines split by normal tooltypes before, between and after */
@@ -366,6 +429,7 @@ void suite_iconfile(void)
 {
     test_fixtures();
     test_newicon_form();
+    test_form_build();
     test_interleaved_newicon_lines_restore_to_their_original_positions();
     test_pick_backup();
     test_dat();

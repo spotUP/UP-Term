@@ -270,10 +270,87 @@ size_t li_splice(const li_file *src, const li_edit *e, uint8_t *out, size_t cap)
     tail_start = src->form_len ? src->form_off : src->len;
     at = src->ntt >= 0 ? src->tt_end : src->tt_off;
     put(&w, b + at, tail_start - at);
-    if (e->form_src && e->form_src->form_len)
+    if (e->form_new && e->form_new_len)
+        put(&w, e->form_new, e->form_new_len);
+    else if (e->form_src && e->form_src->form_len)
         put(&w, e->form_src->buf + e->form_src->form_off, e->form_src->form_len);
     else if (src->form_len && !e->drop_form)
         put(&w, b + src->form_off, src->form_len);
+    return w.over ? 0 : w.pos;
+}
+
+/* Layout of the OS 3.2 "FORM ICON" colour icon, read from stock 3.2 files (AmigaOS3.2CD GlowIconsCollection .info files, hexdumped;
+ * the NDK headers do not describe it) and the icon.library documentation: FORM <u32 size> ICON, then
+ *   FACE (6 bytes): u8 width-1, u8 height-1, u8 flags (0), u8 aspect (0), u16 MaxPaletteBytes-1 (largest stored palette - 1)
+ *   IMAG, twice (normal, selected): u8 transparent index, u8 NumColors-1, u8 flags (bit0 has transparent colour, bit1 has
+ *     palette), u8 ImageFormat (0 raw, 1 RLE), u8 PaletteFormat (0 raw, 1 RLE), u8 depth, u16 NumImageBytes-1,
+ *     u16 NumPaletteBytes-1, then the image bytes (depth bits per pixel, packed MSB first, row after row), then the palette
+ *     (RGB bytes per colour).
+ * Chunks are padded to even length (the pad is not in the chunk size). */
+static void put8(wr *w, unsigned v) { uint8_t b = (uint8_t)v; put(w, &b, 1); }
+
+static unsigned pen_at(const li_image *m, unsigned x, unsigned y)
+{
+    unsigned wb = ((unsigned)m->width + 15) / 16 * 2, p, pen = 0;
+    for (p = 0; p < m->depth; p++)
+        pen |= (unsigned)((m->data[((size_t)p * m->height + y) * wb + x / 8] >> (7 - x % 8)) & 1) << p;
+    return pen;
+}
+
+static unsigned form_index(unsigned pen)
+{
+    unsigned slot;
+    if (pen < 32 || pen > 47) return 0;
+    slot = pen - 32;
+    return slot < 12 ? slot + 1 : slot == 12 ? 0 : slot;
+}
+
+static void form_imag(wr *w, const li_image *m, const uint8_t rgb[LI_FORM_COLOURS][3])
+{
+    unsigned x, y, i, nbits = 0, acc = 0, imgbytes = ((unsigned)m->width * m->height * 4 + 7) / 8, pal = 3 * LI_FORM_COLOURS;
+    size_t size = 10 + imgbytes + pal;
+    put(w, (const uint8_t *)"IMAG", 4);
+    put32(w, (uint32_t)size);
+    put8(w, 0); put8(w, LI_FORM_COLOURS - 1); put8(w, 3); put8(w, 0); put8(w, 0); put8(w, 4);
+    put16(w, imgbytes - 1);
+    put16(w, pal - 1);
+    for (y = 0; y < m->height; y++)
+        for (x = 0; x < m->width; x++) {
+            acc = (acc << 4) | form_index(pen_at(m, x, y));
+            nbits += 4;
+            if (nbits == 8) { put8(w, acc & 255); acc = 0; nbits = 0; }
+        }
+    if (nbits) put8(w, (acc << (8 - nbits)) & 255);
+    for (i = 0; i < LI_FORM_COLOURS; i++) {
+        unsigned slot = i == 0 ? 12 : i <= 12 ? i - 1 : i;
+        put(w, rgb[slot], 3);
+    }
+    if (size & 1) put8(w, 0);
+}
+
+size_t li_form_build(const li_image *normal, const li_image *selected, const uint8_t rgb[LI_FORM_COLOURS][3],
+                     uint8_t *out, size_t cap)
+{
+    wr w;
+    unsigned ib, total;
+    const li_image *im[2];
+    int k;
+    im[0] = normal; im[1] = selected;
+    w.out = out; w.cap = cap; w.pos = 0; w.over = 0;
+    for (k = 0; k < 2; k++)
+        if (!im[k] || im[k]->depth != 6 || im[k]->width < 1 || im[k]->width > 256 || im[k]->height < 1 || im[k]->height > 256 ||
+            im[k]->width != normal->width || im[k]->height != normal->height)
+            return 0;
+    ib = ((unsigned)normal->width * normal->height * 4 + 7) / 8;
+    total = 4 + (8 + 6) + 2 * (8 + 10 + ib + 3 * LI_FORM_COLOURS + ((10 + ib + 3 * LI_FORM_COLOURS) & 1));
+    put(&w, (const uint8_t *)"FORM", 4);
+    put32(&w, total);
+    put(&w, (const uint8_t *)"ICONFACE", 8);
+    put32(&w, 6);
+    put8(&w, normal->width - 1); put8(&w, normal->height - 1); put8(&w, 0); put8(&w, 0);
+    put16(&w, 3 * LI_FORM_COLOURS - 1);
+    form_imag(&w, normal, rgb);
+    form_imag(&w, selected, rgb);
     return w.over ? 0 : w.pos;
 }
 

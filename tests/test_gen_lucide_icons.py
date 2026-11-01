@@ -113,13 +113,13 @@ class Images(unittest.TestCase):
         cov[h // 2][w // 2 + 1] = 0.3
         return cov
 
-    def test_normal_image_pens_and_transparent_pen_zero(self):
+    def test_normal_image_pens_and_transparent_ground(self):
         for w, h in g.VARIANTS:
             n, _ = g.images(self.grid(w, h), w, h)
             pens = unplane(n, w, h)
             self.assertEqual(pens[h // 2][w // 2], 33)
             self.assertEqual(pens[h // 2][w // 2 + 1], 32)
-            self.assertEqual(sum(1 for r in pens for v in r if v), 2)
+            self.assertEqual(sum(1 for r in pens for v in r if v != g.PEN_GROUND), 2)
             self.assertEqual(len(n), g.DEPTH * h * (w // 16) * 2)
 
     def test_selected_image_has_the_selbg_plate_and_selfg_glyph(self):

@@ -427,6 +427,11 @@ int main(void)
         ipd_owner(IP_OWNER_ICONS, 1);     /* F14: icons that name pens 32..47 are only on disk while the pens are held; first, so no .info is written without them */
         s = LockPubScreen(NULL);
         c->variant = s ? li_pick_variant(s->Width, s->Height) : 0;
+        if (IconBase->lib_Version >= 47) {     /* OS 3.2: true transparency through our FORM ICON; 3.1 keeps the classic image on pen 44 */
+            static uint8_t form_rgb[16][3];
+            ipd_icon_rgb(form_rgb);
+            c->form_rgb = form_rgb;
+        }
         if (s) UnlockPubScreen(NULL, s);
         ia_apply(c);
         walk_volumes(c);

@@ -76,6 +76,8 @@ typedef struct li_edit {
     const li_file *ins_src;
     const li_file *form_src;
     uint32_t tt_raw;            /* do_ToolTypes to write when the source had none and the result has some */
+    const uint8_t *form_new;    /* APPLY: our own FORM ICON tail (li_form_build) written in place of the source's; NULL = none */
+    size_t   form_new_len;
 } li_edit;
 
 /* An APPLY of normal (and selected, may be NULL) over src: gadget size from the normal image, GADGHIMAGE when selected
@@ -85,6 +87,15 @@ void li_edit_apply(li_edit *e, const li_file *src, const li_image *normal, const
 /* A RESTORE: the images, gadget fields, NewIcon lines and FORM tail of backup over cur (cur is the file as APPLY wrote
  * it, possibly with later edits of its other fields). */
 void li_edit_restore(li_edit *e, const li_file *cur, const li_file *backup);
+
+/* Our FORM ICON (OS 3.2 colour icon) for the two lucide.dat images: transparency without a pen. Pure.
+ * Pixels are the stored pens 32..47 (the icon slots of iconpen_core); pen 44 (slot 12, the ground) and every pen outside 32..47
+ * become palette index 0 = the transparent colour, slots 0..11 index 1..12, slots 13..15 index 13..15. rgb[slot] is the colour of
+ * each slot (ip_colours), baked into the palette of both images. Uncompressed (ImageFormat 0, PaletteFormat 0), 4 bits per pixel.
+ * Returns the length written to out, 0 when cap is too small, the two images differ in size, a side is not 1..256, or depth is not 6. */
+#define LI_FORM_COLOURS 16
+size_t li_form_build(const li_image *normal, const li_image *selected, const uint8_t rgb[LI_FORM_COLOURS][3],
+                     uint8_t *out, size_t cap);
 
 /* Writes the spliced file to out (cap bytes). Returns its length, 0 when cap is too small. */
 size_t li_splice(const li_file *src, const li_edit *e, uint8_t *out, size_t cap);
