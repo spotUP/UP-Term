@@ -34,6 +34,7 @@
 #include "poll_timer.h"
 #include "amconf_core.h"
 #include "../handler/frontscr.h"
+#include "../tty/qmark.h"
 
 #define PORT_NAME      "AMTILE"
 #define TILE_POLL_MICROS 250000UL
@@ -617,6 +618,10 @@ int main(int argc, char **argv)
 {
     char line[64], result[REXX_HOST_OUT];
     int i;
+    if (qmark_argv(argc, argv)) {
+        PutStr((STRPTR)"AmTile [ON|OFF|TOGGLE|RETILE|GAP n|STATUS|QUIT|LAYOUT name|NEXT|PREV|RATIO n|NMASTER n|CYCLE NEXT|PREV|PROMOTE|FLOAT ON|OFF|TOGGLE [id]|SWAP LEFT|RIGHT|UP|DOWN]\n");
+        return 0;
+    }
     line[0] = 0;
     for (i = 1; i < argc; i++) {
         if (line[0] && strlen(line) < sizeof line - 2)

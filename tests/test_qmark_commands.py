@@ -51,6 +51,12 @@ COMMANDS = {
     'amarchy-menu': 'amarchy/menu.c',
     'amarchy-gui': 'amarchy/gui.c',
     'amarchy-index': 'amarchy/index.c',
+    'amarchy-flat': 'amarchy/flat.c',
+    'amarchy-icons': 'amarchy/icons.c',
+    'amnotify': 'amarchy/amnotify.c',
+    'AmTile': 'amarchy/tile.c',
+    'WBPath': 'install/wbpath.c',
+    'Agent': 'install/agent.c',
 }
 # not commands: handlers, devices, objects, and probes / test tools
 EXCLUDED = {
@@ -103,7 +109,12 @@ for n in sorted(COMMANDS):
     check(n in names, '%s is built by the Makefile' % n)
     src = open(os.path.join(ROOT, COMMANDS[n])).read()
     check('#include "../tty/qmark.h"' in src, '%s: %s includes tty/qmark.h' % (n, COMMANDS[n]))
-    call = re.search(r'\bqmark_(line|argv)\(', src[src.find('main('):] if 'main(' in src else '')
+    body = src[src.find('main('):] if 'main(' in src else ''
+    call = re.search(r'\bqmark_(line|argv)\(', body)
+    if not call:
+        # one level of indirection: a static helper (is_help) whose body makes the call and which main calls
+        for h in re.finditer(r'^static\s+int\s+(\w+)\([^)]*\)\s*\{(?:(?!^\}).)*?\bqmark_(?:line|argv)\(', src, re.M | re.S):
+            call = call or re.search(r'\b%s\(' % h.group(1), body)
     check(call is not None, '%s: its main calls the helper' % n)
     if 'ReadArgs(' in src and call:
         main_at = src.find('int main(')
