@@ -43,6 +43,7 @@ COMMANDS = {
     'ixkill': 'shell/ixkill.c',
     'hl': 'view/hl_main.c',
     'mdv': 'view/md_main.c',
+    'icat': 'pic/icat.c',
     'ps': 'proc/ps_amiga.c',
     'top': 'proc/top_amiga.c',
     'Claude': 'claude/main_amiga.c',

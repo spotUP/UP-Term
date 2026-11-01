@@ -67,6 +67,7 @@ tools           Files/Rexx
 tools           Files/S
 tools           Files/hl
 tools           Files/mdv
+tools           Files/icat
 tools           Files/net
 tools           Files/ps
 tools           Files/rz
