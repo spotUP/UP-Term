@@ -339,7 +339,7 @@ int main(void)
         if (!pix) {
             say("icat: no datatype reads ");
             say(name);
-            say("\n");
+            say(" (picture.datatype and the format's class must be installed: OS 3.2 has them, a 3.1 system may not)\n");
             FreeVec(file);
             FreeArgs(rd);
             return 10;
