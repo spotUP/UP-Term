@@ -57,3 +57,39 @@ After the pick:
 
 Rig proof wanted after the fix: pick with flat on, GetRGB32 pens 0-5 = desk_role(theme, 0..4) and desk_darker(theme) on pen 5,
 pens 252-255 unchanged from before the pick.
+
+## 2026-11-01: who writes pens 4-7 after desk_dos_apply (rig 11, OS 3.2, AGA 256, branch build)
+
+Probe: `tests/amiga/wbpens.c WATCH <seconds>` polls the Workbench screen every tick and prints a line when the
+screen address, pens 4-7, `T:amarchy-revert/flatlive.rgb` (F) or `ENV:AMARCHY_WBCLOSES` (D) changes.
+Pick = Style > Amarchy theme, tokyo-night (current) -> vantablack, driven by amarchy_desk_rig.py pick().
+
+Baseline: 4-7 = 0000ff ff00ff 00ffff ffffff, 252-255 = ee4444 55dd55 0044dd ee9900.
+
+Flat ON timeline:
+- T0 stock, screen 0x100f0e00.
+- T31 4-7 = 292e42 0e0e14 9ece6a f7768e: the Amarchy menu opens; its MT_ROLES pens come from vr_pen_obtain
+  (ObtainBestPen), and on a 3.2 Workbench pens 4-7 are free, so the menu's own shared pens land there and recolour them.
+- T279 vantablack preview (gt_pv saves pens 0-7, sets theme 0-7).
+- T301 4-7 back to the menu colours: gt_dos_select's gt_dos_desk_restore, then theme_live re-obtains the menu pens.
+- T729 4-7 = theme (1a1a1a 222222 b6b6b6 a4a4a4), F 1, D 1: dk_live_pens in desk_dos_apply.
+- T732 NEW Workbench screen 0x10052f10 (3 ticks after apply returned); 4-7 stay theme there because amarchy-flat
+  pens_sync (IP_SYNC_OBTAIN, commit 16504079) sets them on the new screen.
+- Final: 0-7 = 000000 222222 bebebe 8d8d8d 1a1a1a 222222 b6b6b6 a4a4a4; 252-255 unchanged. PASS (pen 5 = 222222).
+
+Flat OFF timeline (same pick):
+- T814 F 0: dk_live_pens(0) restores flatlive.rgb, which holds the MENU colours 292e42 0e0e14 9ece6a f7768e, not the
+  user palette: the capture at apply time read the menu's ObtainBestPen pens.
+- T819 4-7 = stock: the GUI close (cleanup -> gt_preview_term -> gt_dos_preview_send -> gt_dos_desk_restore) writes
+  gt_pv's saved pens back.
+- Final 4-7 = 0000ff ff00ff 00ffff ffffff = baseline. PASS, but only by ordering.
+
+Conclusion:
+- The magenta pen 5 after a pick does not reproduce with this branch (0166e729 + 16504079): the post-apply writer was
+  the Workbench reopen (fresh screen, stock pens 4-7); amarchy-flat pens_sync on the new screen covers it.
+- Open defect (not fixed here): dk_live_pens' baseline capture (desk_dos.c) and the preview save (desk_preview) read
+  pens 4-7 while the Amarchy menu holds them as shared ObtainBestPen pens. flatlive.rgb then stores menu colours, and
+  flat OFF only lands on the user palette because the menu-close preview restore runs after it. A pick from ARexx
+  (KA_GTHEME, no menu) or any other holder of the free pens 4-7 would restore the wrong colours. Root-fix direction:
+  the baseline must come from the user's saved palette (the Palette prefs / pre-theme capture before any menu pen is
+  obtained), not from the live ViewPort.
