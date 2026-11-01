@@ -4,7 +4,7 @@ UP-Term builds from its fork https://github.com/spotUP/wasabi.
 
   wasabid        the daemon, for the Amiga: wasabid 0.11b2 (17.10.2026) plus the
                  fork's unreleased MUI group-button, AAList row and AAText label
-                 listing, commit 83acd194db643cc88981a5fc41ab3c0ebf861fa9, built by UP-Term from that
+                 listing and the sub-item mutual-exclude fix, commit f59c83940948be63ca8e432d82ea22bc5d11a6ea, built by UP-Term from that
                  source (make wasabi, Bebbo's m68k-amigaos-gcc, the 68000 build; the
                  pin is tools/nas/wasabi.rev). Install puts it in C: when asked,
                  with a key of its own, started at every boot. It replaces the
