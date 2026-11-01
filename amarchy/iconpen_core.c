@@ -156,3 +156,32 @@ int ip_screen_depth(int planes, int ehb)
 {
     return (ehb && planes == 6) ? 5 : planes;
 }
+
+void ip_shared_init(ip_shared *s)
+{
+    s->owners = 0;
+    ip_holder_init(&s->h);
+}
+
+int ip_shared_set(ip_shared *s, unsigned owner, int on)
+{
+    if (on)
+        s->owners |= owner;
+    else
+        s->owners &= ~owner;
+    return ip_shared_refs(s);
+}
+
+int ip_shared_refs(const ip_shared *s)
+{
+    int n = 0;
+    unsigned o;
+    for (o = s->owners; o; o >>= 1)
+        n += (int)(o & 1u);
+    return n;
+}
+
+int ip_shared_hold(const ip_shared *s, int gfx_v39)
+{
+    return s->owners != 0 && gfx_v39;
+}

@@ -67,6 +67,25 @@ int ip_sync_decide(const ip_holder *h, int hold, const void *screen, int depth);
  * so the next ObtainBestPen of any client (the dim pen, Amarchy's own theme pens, colour icons) took 47, then 46, and
  * flat on again found them shared. The flat switch is deliberately not an input. */
 int ip_hold_wanted(int quit, int held, int gfx_v39);
+/* ---- the shared holder (plan 2026-11-01-amarchy-filled-icon-set.md F14, H1) ----
+ * The pens are held for as long as ANY owner wants them, not for as long as amarchy-flat runs: icons that name pens 32..47 are
+ * on disk after amarchy-icons APPLY exits, flat on or off. Each owner is one bit, so a second APPLY or a second RESTORE counts
+ * once (the reference count is the number of owners). The pens are released when the last owner lets go. */
+#define IP_OWNER_FLAT 1u    /* amarchy-flat, while it runs and no other patcher holds the kill switch */
+#define IP_OWNER_ICONS 2u   /* amarchy-icons APPLY, until RESTORE */
+
+typedef struct ip_shared {
+    unsigned owners;
+    ip_holder h;
+} ip_shared;
+
+void ip_shared_init(ip_shared *s);
+/* Add (on 1) or drop (on 0) one owner; returns the reference count after. Idempotent per owner. */
+int ip_shared_set(ip_shared *s, unsigned owner, int on);
+int ip_shared_refs(const ip_shared *s);
+/* The `hold` input of ip_sync_decide: some owner is left and graphics is V39 or newer. */
+int ip_shared_hold(const ip_shared *s, int gfx_v39);
+
 /* ObtainPen takes 32-bit colour gun values: an 8-bit gun c becomes c * 0x01010101 */
 unsigned long ip_scale32(unsigned c);
 /* the depth ip_fold / desk_pen_plan_for take: the bitmap's planes, EHB (6 planes) counts as 5 */

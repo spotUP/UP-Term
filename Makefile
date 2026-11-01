@@ -960,20 +960,20 @@ $(BUILD)/amiga/amarchy-index: $(AMARCHY_INDEX_SRC) amarchy/taskalive.h amarchy/i
 # no ixemul; it keeps the public state block "Amarchy.Flat" that Amarchy writes. flat_core.c is host-tested.
 .PHONY: amarchy-flat
 amarchy-flat: $(BUILD)/amiga/amarchy-flat
-$(BUILD)/amiga/amarchy-flat: device/romspan.h amarchy/flat_shared.h amarchy/flat.c amarchy/flat_rf.s amarchy/flat_tx.s amarchy/flat_glyph.c amarchy/flat_glyph.h amarchy/flat_core.c amarchy/desk_core.c amarchy/desk_core.h amarchy/gthemes_core.c amarchy/gthemes_core.h amarchy/iconpen_core.c amarchy/iconpen_core.h handler/be32.c handler/be32.h amarchy/taskalive.c amarchy/flat_core.h amarchy/taskalive.h tty/qmark.h amarchy/poll_timer.c amarchy/poll_timer.h amarchy/amconf_core.h amarchy/amconf_dos.h $(AMARCHY_LEAF_DEPS)
+$(BUILD)/amiga/amarchy-flat: device/romspan.h amarchy/flat_shared.h amarchy/flat.c amarchy/flat_rf.s amarchy/flat_tx.s amarchy/flat_glyph.c amarchy/flat_glyph.h amarchy/flat_core.c amarchy/desk_core.c amarchy/desk_core.h amarchy/gthemes_core.c amarchy/gthemes_core.h amarchy/iconpen_core.c amarchy/iconpen_core.h amarchy/iconpen_dos.c amarchy/iconpen_dos.h handler/be32.c handler/be32.h amarchy/taskalive.c amarchy/flat_core.h amarchy/taskalive.h tty/qmark.h amarchy/poll_timer.c amarchy/poll_timer.h amarchy/amconf_core.h amarchy/amconf_dos.h $(AMARCHY_LEAF_DEPS)
 	@mkdir -p $(BUILD)/amiga
 	@mkdir -p $(BUILD)/amiga/obj
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_rf.o amarchy/flat_rf.s
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_tx.o amarchy/flat_tx.s
-	$(VC) -dontwarn=153,65 -o $@ amarchy/flat.c $(BUILD)/amiga/obj/flat_rf.o $(BUILD)/amiga/obj/flat_tx.o amarchy/flat_glyph.c amarchy/flat_core.c amarchy/desk_core.c amarchy/gthemes_core.c amarchy/iconpen_core.c handler/be32.c amarchy/taskalive.c amarchy/poll_timer.c $(AMARCHY_LEAF_DEPS)
+	$(VC) -dontwarn=153,65 -o $@ amarchy/flat.c $(BUILD)/amiga/obj/flat_rf.o $(BUILD)/amiga/obj/flat_tx.o amarchy/flat_glyph.c amarchy/flat_core.c amarchy/desk_core.c amarchy/gthemes_core.c amarchy/iconpen_core.c amarchy/iconpen_dos.c handler/be32.c amarchy/taskalive.c amarchy/poll_timer.c $(AMARCHY_LEAF_DEPS)
 
 # amarchy-icons: filled icons on the Workbench default icons, APPLY and RESTORE (plan 2026-10-31-amarchy-lucide-icons.md L8, L9).
 # A plain vbcc DOS program; every decision is amarchy/iconapply_core.c (host suite iconapply).
 .PHONY: amarchy-icons
 amarchy-icons: $(BUILD)/amiga/amarchy-icons
-$(BUILD)/amiga/amarchy-icons: amarchy/icons.c amarchy/iconapply_core.c amarchy/iconapply_core.h amarchy/iconfile_core.c amarchy/iconfile_core.h tty/qmark.h
+$(BUILD)/amiga/amarchy-icons: amarchy/icons.c amarchy/iconapply_core.c amarchy/iconapply_core.h amarchy/iconfile_core.c amarchy/iconfile_core.h amarchy/iconpen_core.c amarchy/iconpen_core.h amarchy/iconpen_dos.c amarchy/iconpen_dos.h amarchy/gthemes_core.c amarchy/gthemes_core.h amarchy/desk_core.c amarchy/desk_core.h amarchy/amconf_core.h amarchy/amconf_dos.h handler/be32.c handler/be32.h tty/qmark.h $(AMARCHY_LEAF_DEPS)
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 -o $@ amarchy/icons.c amarchy/iconfile_core.c amarchy/iconapply_core.c
+	$(VC) -dontwarn=153,65 -o $@ amarchy/icons.c amarchy/iconfile_core.c amarchy/iconapply_core.c amarchy/iconpen_core.c amarchy/iconpen_dos.c amarchy/gthemes_core.c amarchy/desk_core.c handler/be32.c $(AMARCHY_LEAF_DEPS)
 
 # FLAT-C3: vbcc's assembly of the dispatcher objects, checked by tests/test_flat_budget.py (entry frames <= 64 bytes, no libc call)
 FLAT_ASM_DIR := $(BUILD)/amiga/flat_asm

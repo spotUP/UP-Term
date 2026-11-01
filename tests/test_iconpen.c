@@ -238,6 +238,58 @@ static void test_free_list_model(void)
     CHECK_INT(px_take(&p, IP_FIRST + 15), IP_FIRST + 15);
 }
 
+/* F14 (H1) symptom: icons keep theme pens when flat stops. amarchy-icons APPLY takes a reference and exits; amarchy-flat takes
+ * another while it runs; flat stopping (or the kill switch) must not release the pens while the icons are applied. Drives the
+ * same decisions ipd_owner runs in amarchy/iconpen_dos.c (ip_shared_set -> ip_shared_hold -> ip_sync_decide -> obtain/release). */
+static void sh_sync(ip_shared *s, const ip_ops *o, const void *scr, const uint8_t rgb[IP_PENS][3])
+{
+    int act = ip_sync_decide(&s->h, ip_shared_hold(s, 1), scr, 8);
+    if (act == IP_SYNC_RELEASE)
+        ip_holder_release(&s->h, o);
+    else if (act == IP_SYNC_OBTAIN)
+        ip_holder_obtain(&s->h, o, scr, 8, rgb);
+}
+
+static int sh_owner(ip_shared *s, const ip_ops *o, const void *scr, const uint8_t rgb[IP_PENS][3], unsigned owner, int on)
+{
+    int refs = ip_shared_set(s, owner, on);
+    sh_sync(s, o, scr, rgb);
+    return refs;
+}
+
+static void test_icons_keep_pens_when_flat_stops(void)
+{
+    palx p;
+    ip_shared s;
+    ip_ops o;
+    uint8_t rgb[IP_PENS][3];
+    int scr;
+    memset(rgb, 0, sizeof rgb);
+    px_boot(&p);
+    o.obtain = px_obtain; o.release = px_release; o.ctx = &p;
+    ip_shared_init(&s);
+    CHECK_INT(sh_owner(&s, &o, &scr, rgb, IP_OWNER_ICONS, 1), 1);       /* APPLY with flat OFF and not running */
+    CHECK_INT(s.h.held, 16);
+    CHECK_INT(sh_owner(&s, &o, &scr, rgb, IP_OWNER_ICONS, 1), 1);       /* a second APPLY counts once */
+    CHECK_INT(sh_owner(&s, &o, &scr, rgb, IP_OWNER_FLAT, 1), 2);        /* amarchy-flat starts */
+    CHECK_INT(s.h.held, 16);
+    CHECK_INT(sh_owner(&s, &o, &scr, rgb, IP_OWNER_FLAT, 0), 1);        /* flat stops: the icons stay themed */
+    CHECK_INT(s.h.held, 16);
+    CHECK_INT(px_take(&p, IP_FIRST), -1);                               /* pen 32 is still ours, not free for a shared pen */
+    CHECK_INT(sh_owner(&s, &o, &scr, rgb, IP_OWNER_FLAT, 0), 1);        /* a second stop does not underflow */
+    CHECK_INT(s.h.held, 16);
+    CHECK_INT(sh_owner(&s, &o, &scr, rgb, IP_OWNER_ICONS, 0), 0);       /* RESTORE: the last reference releases */
+    CHECK_INT(s.h.held, 0);
+    CHECK_INT(px_take(&p, IP_FIRST + 15), IP_FIRST + 15);   /* freed: a probe can take it ... */
+    px_boot(&p);                                            /* ... then a fresh palette for the next order */
+    /* flat alone first, then APPLY, then RESTORE: flat keeps the pens */
+    CHECK_INT(sh_owner(&s, &o, &scr, rgb, IP_OWNER_FLAT, 1), 1);
+    CHECK_INT(sh_owner(&s, &o, &scr, rgb, IP_OWNER_ICONS, 1), 2);
+    CHECK_INT(sh_owner(&s, &o, &scr, rgb, IP_OWNER_ICONS, 0), 1);
+    CHECK_INT(s.h.held, 16);
+    CHECK_INT(ip_shared_hold(&s, 0), 0);                                /* graphics < V39 never holds */
+}
+
 void suite_iconpen(void)
 {
     test_colours_and_fold();
@@ -245,4 +297,5 @@ void suite_iconpen(void)
     test_holder();
     test_free_list_model();
     test_sync();
+    test_icons_keep_pens_when_flat_stops();
 }
