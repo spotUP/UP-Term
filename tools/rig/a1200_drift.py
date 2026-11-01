@@ -37,7 +37,8 @@ def lib_entries(nofpu=False):
 def install_map(install_dos_text, built_names):
     """[(build file name, Amiga path)] from the Copy lines of install.dos whose sources are built programs.
     `Copy a b DIR` puts every source in DIR; a single source goes to the named file, unless the destination
-    ends in ':' or '/' (a drawer). Copies of drawers (ALL) and everything not built are skipped."""
+    ends in ':' or '/' (a drawer). Copies of drawers (ALL) and sources not built are skipped; a
+    line's other, built sources are still checked."""
     built, out = set(built_names), []
     for line in install_dos_text.splitlines():
         words = line.split()
@@ -47,9 +48,7 @@ def install_map(install_dos_text, built_names):
         if len(args) < 2:
             continue
         *srcs, dest = args
-        if not all(s in built for s in srcs):
-            continue
-        for s in srcs:
+        for s in (s for s in srcs if s in built):
             if len(srcs) > 1 or dest.endswith((":", "/")):
                 path = dest + ("" if dest.endswith((":", "/")) else "/") + s
             else:
