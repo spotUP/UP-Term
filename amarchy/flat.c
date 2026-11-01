@@ -53,6 +53,7 @@
 #include "amconf_dos.h"
 #include "desk_core.h"
 #include "iconpen_core.h"
+#include "iconpen_dos.h"
 #include "gthemes_core.h"
 #include <graphics/view.h>
 
@@ -550,10 +551,8 @@ static void print_status(void)
     int finst = 0, rinst = 0;
     unsigned long rcalls = 0, rhits = 0, shits = 0, tcalls = 0, thits = 0;
     int tinst = 0;
-    ip_holder held;
     uint32_t dsum[FLAT_EL_COUNT] = { 0, 0 };
     memset(&copy, 0, sizeof copy);
-    memset(&held, 0, sizeof held);
     Forbid();
     r = (flatshared *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
     if (r) {
@@ -565,7 +564,6 @@ static void print_status(void)
         finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat;
         rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits;
         tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits;
-        held = r->ih;
     }
     Permit();
     if (flat_status_line(&copy, sizeof copy, found, line, sizeof line)) {
@@ -608,7 +606,7 @@ static void print_status(void)
         PutStr((STRPTR)"\n");
     }
     if (found) {                                    /* LUCIDE L7: the icon pens held on the Workbench screen */
-        if (ip_status_line(&held, line, sizeof line)) {
+        if (ipd_status_line(line, sizeof line)) {
             int n = (int)strlen(line);
             put_word(line, &n, " dim=");  put_num(line, &n, copy.pen_dim);
             line[n] = 0;
@@ -802,83 +800,16 @@ static void dopus_scan(flatshared *r)
         CloseLibrary(lib);
 }
 
-/* ---- LUCIDE L7: the pen holder. amarchy-flat holds the 16 icon pens (iconpen_core.c: ip_holder_*) on the Workbench screen
- * for its whole run, flat on or off (ip_hold_wanted: a released pen heads the free list and the next shared pen takes it). ObtainPen(PENF_EXCLUSIVE) takes the exact pen number or fails (-1); the decisions are iconpen_core.c
- * (ip_sync_decide, host-tested), here only the OS calls. Nothing in the OS tells us the Workbench screen closed and reopened
- * (no screennotify exists in amarchy; wbreset_patch.c signals only clients with windows), so pens_sync runs at start, on
- * Ctrl-D (desk apply signals it after writing flat_state) and on a 1 s tick that compares the screen pointer and depth. ---- */
-typedef struct pen_ctx { struct ColorMap *cur, *old; } pen_ctx;   /* cur: obtain on; old: release on (0 = its screen is gone) */
-
-static int pen_obtain(void *ctx, int pen, unsigned r, unsigned g, unsigned b)
-{
-    pen_ctx *c = (pen_ctx *)ctx;
-    if (!c->cur)
-        return -1;
-    return (int)ObtainPen(c->cur, (ULONG)pen, ip_scale32(r), ip_scale32(g), ip_scale32(b), PENF_EXCLUSIVE);
-}
-
-static void pen_release(void *ctx, int pen)
-{
-    pen_ctx *c = (pen_ctx *)ctx;
-    if (c->old)                         /* 0 = the screen the pens were obtained on is gone; they went with it */
-        ReleasePen(c->old, (ULONG)pen);
-}
-
-static long pen_theme_read(void *ctx, const char *path, char *buf, long cap)
-{
-    BPTR f = Open((STRPTR)path, MODE_OLDFILE);
-    LONG got;
-    (void)ctx;
-    if (!f)
-        return -1;
-    got = Read(f, buf, cap);
-    Close(f);
-    return got < 0 ? 0 : got;
-}
-
-/* The Workbench screen, found in the public screen list (the caller holds its lock). LockPubScreen("Workbench") is never used:
- * it opens a closed Workbench. 0 when the Workbench is closed. */
-static struct Screen *wb_screen(struct List *pl)
-{
-    struct PubScreenNode *n;
-    for (n = (struct PubScreenNode *)pl->lh_Head; n->psn_Node.ln_Succ; n = (struct PubScreenNode *)n->psn_Node.ln_Succ)
-        if (n->psn_Node.ln_Name && !strcmp(n->psn_Node.ln_Name, "Workbench"))
-            return n->psn_Screen;
-    return 0;
-}
-
-/* Bring the held pens in line with: flat on and the Workbench screen as it is now. The public screen list stays locked for
- * the whole sync, so the screen cannot close under the colour map. */
+/* ---- LUCIDE L7 / F14: amarchy-flat is one OWNER of the shared icon pen holder (iconpen_dos.c; amarchy-icons APPLY is the other).
+ * It holds the 16 pens for its whole run, flat on or off (ip_hold_wanted: a released pen heads the free list and the next shared
+ * pen takes it) and gives its reference back on quit or when the kill switch is held; the pens go only with the last owner, so
+ * unloading flat leaves applied icons themed. Nothing in the OS tells us the Workbench screen closed and reopened (no
+ * screennotify exists in amarchy; wbreset_patch.c signals only clients with windows), so pens_sync runs at start, on Ctrl-D
+ * (desk apply signals it after writing flat_state) and on a 1 s tick that compares the screen pointer and depth. ---- */
 static void pens_sync(flatshared *r, int quit)
 {
-    pen_ctx c;
-    ip_ops o;
-    struct List *pl;
-    struct Screen *sc;
-    int act, depth = 0;
     int hold = ip_hold_wanted(quit, r->st.held != 0, GfxBase && GfxBase->LibNode.lib_Version >= 39);   /* not the flat switch */
-    o.obtain = pen_obtain;
-    o.release = pen_release;
-    o.ctx = &c;
-    pl = LockPubScreenList();
-    sc = wb_screen(pl);
-    if (sc)
-        depth = ip_screen_depth(sc->BitMap.Depth, (sc->ViewPort.Modes & EXTRA_HALFBRITE) != 0);
-    c.cur = sc ? sc->ViewPort.ColorMap : 0;
-    c.old = (sc && r->ih.screen == (const void *)sc) ? c.cur : 0;   /* old pens are released only on the screen they belong to */
-    act = ip_sync_decide(&r->ih, hold, sc, depth);
-    if (act == IP_SYNC_RELEASE) {
-        ip_holder_release(&r->ih, &o);
-    } else if (act == IP_SYNC_OBTAIN) {
-        gtheme th;
-        uint8_t rgb[IP_PENS][3];
-        am_prefs ap;
-        amconf_load(&ap);
-        gt_load(pen_theme_read, 0, ap.val[AM_GTHEME][0] ? ap.val[AM_GTHEME] : GT_DEFAULT, &th);
-        ip_colours(&th, rgb);
-        ip_holder_obtain(&r->ih, &o, sc, depth, rgb);   /* releases the old ones first */
-    }
-    UnlockPubScreenList();
+    ipd_owner(IP_OWNER_FLAT, hold);     /* also syncs the pens with the owners and the screen */
 }
 
 /* Take the record out of the list and free it; 0 when someone holds it (never pull it from under a user). */
@@ -1123,7 +1054,6 @@ int main(void)
         }
     }
     g_r = r;
-    ip_holder_init(&r->ih);
     pens_sync(r, 0);                                    /* the exclusive icon pens first: a shared pen (dim) must not sit on one */
     if (!r->st.held) {
         dopus_scan(r);

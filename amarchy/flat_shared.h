@@ -45,8 +45,7 @@ typedef struct flatshared {
     ULONG ghits;                /* ghost fills replaced by the solid dim fill (the sentinel) */
     ULONG ttitle;               /* window titles redrawn by FLAT-TITLE-ACCENT (the sentinel) */
     ULONG tcalls, thits;        /* every patched Text call / every pressed label recoloured (the sentinels) */
-    /* LUCIDE L7: the 16 icon pens held on the Workbench screen (iconpen_core.h); NOT in flat_state, whose 24 bytes tests pin */
-    ip_holder ih;
+    /* the icon pens are no longer here: the shared holder record "Amarchy.IconPens" owns them (iconpen_dos.h, F14) */
 } flatshared;
 
 #endif

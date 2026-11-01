@@ -69,4 +69,4 @@ shows its true self on 4-bit hardware.
 
 ## Credits
 
-The flat Workbench icons are Lucide icons (https://lucide.dev, ISC licence, with Feather icons under MIT), pinned as lucide-static 1.66.0 in the Makefile; the licence text ships in the kit as Files/lucide/LICENSE and dist/LICENSES.txt lists it.
+The flat Workbench icons are Phosphor Icons, Fill weight (https://phosphoricons.com, MIT licence), pinned as @phosphor-icons/web 2.1.2 in the Makefile; the licence text ships in the kit as Files/phosphor/LICENSE and dist/LICENSES.txt lists it.

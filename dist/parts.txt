@@ -42,6 +42,7 @@ copy-userland   Files/userland/bin      bin
 userland        Files/userland
 userland        Files/amarchy-themes
 userland        Files/lucide
+userland        Files/phosphor
 copy-unifont    Files/unifont           unifont
 copy-emoji      Files/emoji             emoji
 tools           Files/UPDemo

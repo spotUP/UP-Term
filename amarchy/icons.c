@@ -1,7 +1,7 @@
-/* amarchy-icons: put the Lucide icons on the Workbench default icons, and the originals back (plan
+/* amarchy-icons: put the filled icons on the Workbench default icons, and the originals back (plan
  * 2026-10-31-amarchy-lucide-icons.md rows L8, L9).
  *
- *   amarchy-icons APPLY     Lucide images over ENVARC:Sys/def_*.info and ENV:Sys/def_*.info (disk, drawer, tool, project,
+ *   amarchy-icons APPLY     icon images over ENVARC:Sys/def_*.info and ENV:Sys/def_*.info (disk, drawer, tool, project,
  *                           trashcan, RAM); the originals go to SYS:Storage/Icons/Amarchy/<volume>/<path>.info
  *   amarchy-icons RESTORE   the originals back byte for byte, backups and manifest entries removed
  *   amarchy-icons STATUS    the counters of the last run in this process (written, skipped-*, restored)
@@ -20,7 +20,10 @@
 #include <proto/icon.h>
 #include <proto/intuition.h>
 
+#include <proto/graphics.h>
+#include <graphics/gfxbase.h>
 #include "iconapply_core.h"
+#include "iconpen_dos.h"
 #include "../tty/qmark.h"
 
 long __stack = 16384;
@@ -29,8 +32,9 @@ static const char ver[] = "$VER: amarchy-icons 1.0 (1.11.2026)";
 
 struct Library *IconBase;
 struct IntuitionBase *IntuitionBase;
+struct GfxBase *GfxBase;
 
-#define TEMPLATE_TEXT "amarchy-icons APPLY | RESTORE | STATUS: Lucide icons on the Workbench default icons, originals in SYS:Storage/Icons/Amarchy\n"
+#define TEMPLATE_TEXT "amarchy-icons APPLY | RESTORE | STATUS: filled icons on the Workbench default icons, originals in SYS:Storage/Icons/Amarchy\n"
 #define DFLT_TMP "T:amarchy-icons-tmp"
 
 static uint8_t *g_chk;      /* scratch for ia_recover's parse checks and the default object */
@@ -378,11 +382,13 @@ int main(void)
         dn = load_dat(&dat);
         if (dn > 0 && li_dat_open(dat, (size_t)dn, &d) == 0) c->dat = &d;     /* without lucide.dat the table path rows count as walked */
         if (ia_status(c, line, sizeof line)) PutStr((STRPTR)line);
+        if (ipd_status_line(line, sizeof line)) { PutStr((STRPTR)line); PutStr((STRPTR)"\n"); }   /* the shared icon pen holder (F14) */
         goto out;
     }
     IconBase = OpenLibrary((STRPTR)"icon.library", 36);
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 36);
-    if (!IconBase || !IntuitionBase) { rc = 10; goto out; }
+    GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 36);
+    if (!IconBase || !IntuitionBase || !GfxBase) { rc = 10; goto out; }
 
     if (cmd == IA_CMD_APPLY) {
         static li_dat d;
@@ -394,6 +400,7 @@ int main(void)
             goto out;
         }
         c->dat = &d;
+        ipd_owner(IP_OWNER_ICONS, 1);     /* F14: icons that name pens 32..47 are only on disk while the pens are held; first, so no .info is written without them */
         s = LockPubScreen(NULL);
         c->variant = s ? li_pick_variant(s->Width, s->Height) : 0;
         if (s) UnlockPubScreen(NULL, s);
@@ -402,11 +409,13 @@ int main(void)
     } else {
         ia_restore(c);
         if (c->restore_failed) rc = 5;
+        else ipd_owner(IP_OWNER_ICONS, 0);   /* originals are back: give the reference up (the pens go with the last owner) */
     }
     print_counters(c);
 out:
     if (dat) FreeVec(dat);
     if (IntuitionBase) CloseLibrary((struct Library *)IntuitionBase);
+    if (GfxBase) CloseLibrary((struct Library *)GfxBase);
     if (IconBase) CloseLibrary(IconBase);
     FreeVec(c);
     return rc;

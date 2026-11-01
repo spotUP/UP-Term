@@ -91,12 +91,28 @@ int desk_reset_done(const void *before, const void *now, const unsigned short *l
 long desk_palette(const gtheme *t, int ncolors, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap);
 
 /* FLAT-PENS-LIVE: the palette.prefs of the colours now on the screen (rgb4 = ncolors 4-bit 0x0RGB entries) with the pen map pens */
-long desk_palette_live(const unsigned short *rgb4, int ncolors, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap);
+long desk_palette_live(const unsigned short *rgb4, int nlive, int depth, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap);
+/* FLAT-PEN5-MAGENTA: the one entry-to-pen mapping of palette.prefs. desk_palette_pen = the screen pen ColorSpec entry (0-7) sets at
+ * depth (IPrefs: 0-3 -> 0-3, 4-7 -> 2^depth-8+entry; -1 none); desk_palette_entry_of = the inverse (-1: no entry reaches that pen).
+ * desk_palette_live above takes the live colours of pens 0..nlive-1 (4-bit 0x0RGB) and fills each entry from the pen it sets. */
+int desk_palette_pen(int entry, int depth);
+int desk_palette_entry_of(int pen, int depth);
+/* the role pens 0..7 no palette.prefs entry reaches at depth (4-7 on a screen deeper than 3): they are set live (SetRGB32). Returns
+ * how many, the pens in out */
+int desk_live_role_pens(int depth, int out[4]);
+/* FLAT-LIVEBASE-SAVED: the colour of role pen at depth under the saved palette.prefs (saved/savedlen, may be 0): its entry's colour,
+ * else the graphics default of pens 4-7. The restore baseline of the live pens; never read from the live screen. */
+uc_u32 desk_live_baseline(const unsigned char *saved, long savedlen, int pen, int depth);
+/* the theme colour of role pen 0..7 (desk_role); the backdrop pen is the theme dark (desk_darker) when flat owns the backdrop */
+uc_u32 desk_pen_colour(const gtheme *t, int pen, int own_backdrop);
+/* FLAT-PEN5-MAGENTA: cur (a palette.prefs, pens already set) with every entry that reaches a role pen at depth recoloured to
+ * desk_pen_colour; the entries that reach other pens (252-255 on a deep screen) keep the user's colours. 0 on a bad file. */
+long desk_palette_theme(const unsigned char *cur, long curlen, const gtheme *t, int depth, int own_backdrop, unsigned char *out, long cap);
 /* FLAT-PENS-LIVE: cur (a palette.prefs of curlen bytes) with only the pen arrays replaced by pens; the colours stay. Returns curlen,
  * 0 when cur is no palette.prefs or does not fit cap */
 int desk_backdrop_pen(void);
-long desk_palette_rgb(const unsigned char *cur, long curlen, int pen);
-long desk_palette_set_rgb(const unsigned char *cur, long curlen, int pen, uc_u32 c, unsigned char *out, long cap);
+long desk_palette_rgb(const unsigned char *cur, long curlen, int pen, int depth);
+long desk_palette_set_rgb(const unsigned char *cur, long curlen, int pen, int depth, uc_u32 c, unsigned char *out, long cap);
 long desk_palette_pens(const unsigned char *cur, long curlen, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap);
 /* FLAT-PENS-LIVE: the pen write flat-system-look (flat 0/1) asks for. pens gets desk_pens_for(flat). Returns 1 to write it: flat on and
  * the live pens (live/nlive, the Workbench DrawInfo) differ from the flat map; flat off and the live pens ARE the flat map (restore

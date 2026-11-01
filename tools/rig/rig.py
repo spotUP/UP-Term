@@ -1256,6 +1256,13 @@ def stage_amarchy_assets(vtc):
         (vtc / "amarchy-themes").mkdir(parents=True, exist_ok=True)
         for f in themes:
             shutil.copyfile(f, vtc / "amarchy-themes" / f.name)
+        # Live as well: VTC: is the host drawer of a running rig, and the boot copy above ran before `install`
+        # staged anything, so a rig started first never got the themes (rig 8, 2026-11-01). The drawer is the one
+        # the boot's UP-Term: assign and amarchy_gui_rig --setup (UP-Term: VTCX:Apps) point at.
+        live = vtc / paths.UPTERM_DRAWER / "Amarchy/Themes"
+        live.mkdir(parents=True, exist_ok=True)
+        for f in themes:
+            shutil.copyfile(f, live / f.name)
     else:
         print("no themes in %s: the rig's theme list stays empty" % (ROOT / "dist/amarchy-themes"))
     ttf = ROOT / "build/jbmono/JetBrainsMono-Regular.ttf"

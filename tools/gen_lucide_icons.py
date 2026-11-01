@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Lucide icons for the flat Workbench (plan 2026-10-31-amarchy-lucide-icons.md, L3): dist/lucide-icons
-(match = lucide-name) and the Lucide icon font -> lucide.dat, the planar images the on-Amiga applier splices into .info files.
+"""Filled icons for the flat Workbench (plan 2026-11-01-amarchy-filled-icon-set.md F4, earlier L3): dist/lucide-icons
+(match = phosphor-name) and the Phosphor Fill icon font -> lucide.dat (file name kept), the planar images the on-Amiga applier splices into .info files.
 
 Reuses, writes no rasteriser of its own: tools/gen_menu_icons.py (Flatten, raster: outline -> 64x64 coverage, SUB=4),
 tools/gen_emoji.py (area: coverage averaged to the icon size) and tools/mkicon.py (planes: the planar packer).
@@ -16,7 +16,7 @@ lucide.dat (big endian):
   record   for each variant in order: normal image planes, then selected image planes (depth planes, each height rows of
            width/16 words; pen 0 is transparent)
 
-usage: gen_lucide_icons.py <dist/lucide-icons> <lucide.ttf> <out lucide.dat>   (codepoints.json, the icon names, beside lucide.ttf)"""
+usage: gen_lucide_icons.py <dist/lucide-icons> <Phosphor-Fill.ttf> <out lucide.dat>   (codepoints.json, the icon names, beside the font; make phosphor)"""
 import json
 import pathlib
 import re
@@ -42,7 +42,7 @@ PENS = {chr(i): i for i in range(64)}   # art character -> pen: chr(pen), for mk
 
 
 def parse_table(path, names):
-    """[(match, lucide name)] of the table; `names` is the set of icon names of the font."""
+    """[(match, icon name)] of the table; `names` is the set of icon names of the font."""
     rows, seen = [], set()
     for line in pathlib.Path(path).read_text().splitlines():
         line = line.split(";", 1)[0].strip()
@@ -57,7 +57,7 @@ def parse_table(path, names):
         if not ok or len(match) > 200:
             raise SystemExit("%s: bad match: %s" % (path, match))
         if name not in names:
-            raise SystemExit("%s: unknown Lucide icon: %s" % (path, name))
+            raise SystemExit("%s: unknown icon: %s" % (path, name))
         if match in seen:
             raise SystemExit("%s: duplicate match: %s" % (path, match))
         seen.add(match)
@@ -125,7 +125,7 @@ def build(table, ttf):
 
 
 def pack(key, icons, recs):
-    """lucide.dat: one record per Lucide icon; the index maps each table match to its icon's record."""
+    """lucide.dat: one record per icon; the index maps each table match to its icon's record."""
     head = 16 + 4 * len(VARIANTS) + (NAME_LEN + 4) * len(key)
     offs, pos = {}, head
     for n in icons:

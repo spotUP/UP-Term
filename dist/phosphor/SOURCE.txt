@@ -1,0 +1,6 @@
+Phosphor Icons, Fill weight, @phosphor-icons/web 2.1.2 (npm package), MIT licence, see LICENSE in this drawer.
+Source: https://phosphoricons.com, https://github.com/phosphor-icons/web ; package https://registry.npmjs.org/@phosphor-icons/web/-/web-2.1.2.tgz
+sha256 40e3096099ca818c047979cece6a3764944d5200c67b64092f7bcd8bcd1d2b08 (pinned in the Makefile, PHOSPHOR_SHA256).
+lucide.dat (Amarchy/Icons; the file name is kept from the earlier Lucide set) is built from the icon font
+(package/src/fill/Phosphor-Fill.ttf) by tools/gen_lucide_icons.py over dist/lucide-icons: the glyphs rendered to 32x32
+and 32x16 planar images. Amarchy splices them into the .info files when the flat look is on (UP-Term:Amarchy/Icons/lucide.dat).

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""tools/gen_lucide_icons.py (plan 2026-10-31-amarchy-lucide-icons.md, L3): table parse, unknown name fails, quantise
+"""tools/gen_lucide_icons.py (plan 2026-11-01-amarchy-filled-icon-set.md, F4): table parse, unknown name fails, quantise
 levels, the selected image's plate, planar round trip through mkicon.planes, the 32x16 variant, the lucide.dat layout.
-The Lucide font is the pinned build/lucide/ one (make lucide); without it the font tests are skipped, REQUIRE=1 fails instead."""
+The Phosphor Fill font is the pinned build/phosphor/ one (make phosphor); without it the font tests are skipped, REQUIRE=1 fails instead."""
 import json
 import os
 import pathlib
@@ -14,7 +14,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 import gen_lucide_icons as g  # noqa: E402
 
-TTF = ROOT / "build" / "lucide" / "lucide.ttf"
+TTF = ROOT / "build" / "phosphor" / "Phosphor-Fill.ttf"
 HAVE = TTF.exists() or bool(os.environ.get("REQUIRE"))
 NAMES = {"folder", "hard-drive", "wrench"}
 ENTRY = g.NAME_LEN + 4
@@ -44,7 +44,7 @@ class Table(unittest.TestCase):
         rows = self.parse("; c\ndef_drawer = folder ; tail\nSYS:Prefs/Font=wrench\ntype:disk = hard-drive\n")
         self.assertEqual(rows, [("def_drawer", "folder"), ("SYS:Prefs/Font", "wrench"), ("type:disk", "hard-drive")])
 
-    def test_unknown_lucide_name_fails(self):
+    def test_unknown_icon_name_fails(self):
         with self.assertRaises(SystemExit) as e:
             self.parse("def_drawer = no-such-icon\n")
         self.assertIn("no-such-icon", str(e.exception))
@@ -54,14 +54,51 @@ class Table(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 self.parse(text)
 
-    @unittest.skipUnless(HAVE, "make lucide first")
+    @unittest.skipUnless(HAVE, "make phosphor first")
     def test_shipped_table_parses_against_the_codepoint_file(self):
-        cp = ROOT / "build" / "lucide" / "codepoints.json"
+        cp = ROOT / "build" / "phosphor" / "codepoints.json"
         rows = g.parse_table(ROOT / "dist" / "lucide-icons", set(json.loads(cp.read_text())))
         got = {m for m, _ in rows}
         for need in ("def_disk", "def_drawer", "def_tool", "def_project", "def_trashcan", "def_RAM",
                      "type:disk", "type:drawer", "type:tool", "type:project", "type:garbage", "type:kick", "type:device"):
             self.assertIn(need, got)
+
+
+SUBSTITUTES = {   # lucide name -> phosphor name for the 7 accepted substitutes (plan section 7); a silent swap shows here
+    "cable": "plugs", "hard-drive-download": "hard-drives", "layout-dashboard": "squares-four", "memory-stick": "memory",
+    "menu": "list", "monitor-cog": "monitor", "notebook-pen": "notebook"}
+
+
+@unittest.skipUnless(HAVE, "make phosphor first")
+class Pin(unittest.TestCase):
+    CP = json.loads((ROOT / "build" / "phosphor" / "codepoints.json").read_text()) if (ROOT / "build" / "phosphor" / "codepoints.json").exists() else {}
+
+    def test_every_table_name_resolves_and_the_set_is_the_accepted_one(self):
+        rows = g.parse_table(ROOT / "dist" / "lucide-icons", set(self.CP))      # an unknown name aborts here
+        names = {n for _, n in rows}
+        self.assertEqual(len(rows), 81)
+        self.assertEqual(len(names), 50)                                         # 51 Lucide names, monitor and monitor-cog share one glyph
+        for sub in SUBSTITUTES.values():
+            self.assertIn(sub, names)
+        for must in ("gear-six", "vinyl-record", "text-aa", "terminal-window", "speaker-high", "file-xls", "film-strip"):
+            self.assertIn(must, names)
+
+    def test_codepoint_extraction_is_deterministic_and_complete(self):
+        sys.path.insert(0, str(ROOT / "tools"))
+        import phosphor_codepoints as pc
+        css = (ROOT / "build" / "phosphor" / "style.css").read_text()
+        a, b = pc.parse(css), pc.parse(css)
+        self.assertEqual(json.dumps(a), json.dumps(b))
+        self.assertEqual(len(a), 1530)
+        self.assertEqual(a["gear-six"], 0xE272)
+        self.assertEqual(a, self.CP)
+        self.assertEqual(list(a), sorted(a))
+
+    def test_extraction_rejects_a_stylesheet_without_rules(self):
+        sys.path.insert(0, str(ROOT / "tools"))
+        import phosphor_codepoints as pc
+        with self.assertRaises(SystemExit):
+            pc.parse(".ph.ph-x:before { content: \"\\e001\"; }")
 
 
 class Levels(unittest.TestCase):
@@ -95,11 +132,17 @@ class Images(unittest.TestCase):
             self.assertEqual(pens[h // 2][1], 43)
             self.assertEqual({v for r in pens for v in r}, {0, 34, 42, 43})
 
+    def test_every_emitted_pen_is_a_reserved_pen_or_transparent(self):
+        for w, h in g.VARIANTS:
+            n, s = g.images([[(x + y) % 11 / 10.0 for x in range(w)] for y in range(h)], w, h)
+            for data in (n, s):
+                self.assertTrue({v for r in unplane(data, w, h) for v in r} <= {0} | set(range(32, 48)))
+
     def test_both_variants_are_square_and_tall_pixel_sizes(self):
         self.assertEqual(g.VARIANTS, ((32, 32), (32, 16)))
 
 
-@unittest.skipUnless(HAVE, "build/lucide/lucide.ttf missing: make lucide")
+@unittest.skipUnless(HAVE, "build/phosphor/Phosphor-Fill.ttf missing: make phosphor")
 class Font(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -121,7 +164,7 @@ class Font(unittest.TestCase):
             raw = d[base + i * ENTRY: base + i * ENTRY + g.NAME_LEN]
             ents[raw.rstrip(b"\0").decode()] = struct.unpack_from(">L", d, base + i * ENTRY + g.NAME_LEN)[0]
         self.assertEqual(sorted(ents), ["SYS:Prefs/Font", "def_disk", "def_drawer"])
-        self.assertEqual(ents["SYS:Prefs/Font"], ents["def_drawer"])        # one record per Lucide icon, shared
+        self.assertEqual(ents["SYS:Prefs/Font"], ents["def_drawer"])        # one record per icon, shared
         sq = g.DEPTH * 32 * 4
         rec = self.recs["folder"]
         self.assertEqual(len(rec), 2 * sq + 2 * (sq // 2))
@@ -142,6 +185,19 @@ class Font(unittest.TestCase):
             self.assertTrue({34, 43} <= {v for row in ps for v in row})
             self.assertGreater(sum(1 for row in pn for v in row if v), w * h // 16)
         self.assertEqual(pos, len(r))
+
+    def test_cutouts_stay_colour_zero_no_second_tone(self):
+        """owner 2026-11-01: two-tone none; the hole of the gear is pen 0 in the normal image (the backdrop shows through)."""
+        cp = json.loads((TTF.parent / "codepoints.json").read_text())["gear-six"]
+        for w, h in g.VARIANTS:
+            n, _ = g.images(g.coverage(self.font, cp, w, h), w, h)
+            pens = unplane(n, w, h)
+            self.assertLessEqual({v for r in pens for v in r}, {0, 32, 37, 33})
+            ys = range(h)
+            # the centre of the gear: a run of transparent pixels with glyph ink on its left and right (the hole)
+            row = pens[h // 2]
+            self.assertEqual(row[w // 2], 0)
+            self.assertTrue(any(row[:w // 2]) and any(row[w // 2:]))
 
     def test_tall_variant_is_the_square_one_averaged_over_row_pairs(self):
         sq = g.coverage(self.font, json.loads((TTF.parent / "codepoints.json").read_text())["folder"], 32, 32)
