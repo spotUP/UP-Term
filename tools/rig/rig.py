@@ -22,6 +22,8 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   --no-dopus: Workbench without Directory Opus (no DOPUS.1; the clone gets the stock
                   C/LoadWB and no Libs/workbench.library, the ROM's runs);
                   --idle-minutes <N>: stop the rig after N minutes with no command (default 60, 0 = off, rig 1 never);
+                  --allow-stale-base "<reason>": start although this checkout's HEAD lacks origin/main
+                  (RIG-STALE-BASE-GUARD; the reason is required and printed);
                   --purpose "<who: what>": the window title says which session runs the
                   rig and for what, e.g. "Amarchy session: menu terminal check")
                   --overscan: AGA rigs show the whole overscan picture (zoom = full), not the cropped 640x512 area;
@@ -1747,6 +1749,36 @@ def boot_frozen(text, since_change, elapsed):
     return "go started" in text and "wasabid started" not in text and since_change >= BOOT_STALL
 
 
+def stale_base(root, fetch=True):
+    """RIG-STALE-BASE-GUARD: (head, origin_main, missing) when the checkout at root does not contain origin/main, else
+    None. A rig built from a branch cut before a landed fix tested old code (s29-flat-colour, 2026-11-01). No network:
+    the fetch failure is a [WARN] and the last known origin/main is used."""
+    def git(*a):
+        return subprocess.run(["git", "-C", str(root), *a], capture_output=True, text=True)
+    if fetch and git("fetch", "-q", "origin").returncode != 0:
+        print("[WARN] rig: git fetch origin failed (no network?); checking against the last known origin/main")
+    if git("rev-parse", "--verify", "-q", "origin/main").returncode != 0:
+        return None
+    if git("merge-base", "--is-ancestor", "origin/main", "HEAD").returncode == 0:
+        return None
+    short = lambda ref: git("rev-parse", "--short", ref).stdout.strip()
+    return short("HEAD"), short("origin/main"), int(git("rev-list", "--count", "HEAD..origin/main").stdout.strip() or 0)
+
+def guard_stale_base(root, argv, fetch=True):
+    """Refuse (SystemExit naming RIG-STALE-BASE) unless argv carries --allow-stale-base with a non-empty reason."""
+    allow = argv.index("--allow-stale-base") if "--allow-stale-base" in argv else None
+    reason = argv[allow + 1].strip() if allow is not None and allow + 1 < len(argv) else ""
+    if allow is not None and not reason:
+        sys.exit("rig: --allow-stale-base needs a non-empty reason (RIG-STALE-BASE)")
+    stale = stale_base(root, fetch)
+    if stale is None:
+        return
+    head, om, missing = stale
+    if allow is None:
+        sys.exit("rig: RIG-STALE-BASE: HEAD %s does not contain origin/main %s (%d origin/main commits missing); rebase or "
+                 "merge origin/main, or pass --allow-stale-base \"<reason>\"" % (head, om, missing))
+    print("[WARN] rig: RIG-STALE-BASE overridden: HEAD %s lacks %d origin/main commits (%s); reason: %s" % (head, missing, om, reason))
+
 def start(retries=START_RETRIES):
     """Boot; a boot whose boot.log stops advancing (boot_frozen: the emulator froze before anything under test
     loaded, seen 3 times on 2026-09-29, cause not found) is killed and retried. A slow boot is waited for.
@@ -1754,6 +1786,8 @@ def start(retries=START_RETRIES):
     clone), so two starts begun together both saw no emulator and both launched one on the same sys.hdf, and the
     Amiga showed a disk checksum error (rig 3, 2026-10-30). A second start waits on start.lock for the first, then
     finds its emulator in mine() and says "already running"."""
+    if not KEEP_SYS:   # a reboot restarts the run the guard already passed
+        guard_stale_base(ROOT, sys.argv)
     RIG.mkdir(parents=True, exist_ok=True)
     with open(RIG / "start.lock", "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)   # released when the block ends or the process dies
