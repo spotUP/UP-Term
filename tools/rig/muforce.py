@@ -115,6 +115,7 @@ def running():
 
 
 def on():
+    paths.needs_fsuae("muforce")
     cfg = paths.RIG / "vtcon-rig.fs-uae"
     if not cfg.is_file() or not has_mmu(cfg.read_text()):
         raise SystemExit("rig muforce: %s has no MMU (cpu = 68060-NOMMU). Restart the rig with `rig.py start --mmu`." % paths.RIG.name)

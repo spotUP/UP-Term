@@ -305,16 +305,41 @@ FSUAE = pathlib.Path(os.environ.get("UPTERM_FSUAE") or
     (_FSUAE_LOCAL if _FSUAE_LOCAL.exists() else "/Applications/FS-UAE.app"))
 
 # UPTERM_RIG_EMU / `rig.py start --emu <name>`  the emulator a rig boots: "fsuae" or "amiberry" (tools/rig/amiberry.py;
-# UPTERM_AMIBERRY names the app or binary). The flag wins over the environment. fs-uae stays the default
-# until the Amiberry rigs pass the proof in thoughts/shared/research/s29-amiberry-port.md.
+# UPTERM_AMIBERRY names the app or binary). The flag wins over the environment. Amiberry is the default
+# (owner switched 2026-11-02); fs-uae stays available with --emu fsuae or UPTERM_RIG_EMU=fsuae.
 # A command that finds a running rig (stop, status, reboot, watchdog ...) given neither flag nor variable asks the emulator
 # the rig's last start recorded in <rig>/emu; without that, `rig.py stop` looked for fs-uae, found none, printed "stopped"
 # and left the Amiberry process running. start and setup never read it: no flag there means the default.
 EMU_FILE = RIG / "emu"
-_RECORDED = (EMU_FILE.read_text().strip() if EMU_FILE.is_file() and sys.argv[1:2] not in (["start"], ["setup"]) else "")
-EMU = (sys.argv[sys.argv.index("--emu") + 1] if "--emu" in sys.argv[:-1] else os.environ.get("UPTERM_RIG_EMU") or _RECORDED or "fsuae")
+def resolve_emu(argv, environ, emu_file):
+    """The emulator for this command line: --emu, else UPTERM_RIG_EMU, else (not start/setup) the rig's recorded
+    <rig>/emu, else the default amiberry."""
+    recorded = emu_file.read_text().strip() if emu_file.is_file() and argv[1:2] not in (["start"], ["setup"]) else ""
+    return (argv[argv.index("--emu") + 1] if "--emu" in argv[:-1] else environ.get("UPTERM_RIG_EMU") or recorded or "amiberry")
+
+
+EMU = resolve_emu(sys.argv, os.environ, EMU_FILE)
 if EMU not in ("fsuae", "amiberry"):
     sys.exit("rig: --emu must be fsuae or amiberry, not %s" % EMU)
+
+
+def needs_fsuae(what, argv=None):
+    """Exit with the standard message when the active emulator is Amiberry and `what` (a flag or a script) is an FS-UAE
+    feature the Amiberry rig does not have yet (ledger AMIBERRY-RIGS-GAPS). Nothing boots half-working."""
+    if EMU == "amiberry":
+        sys.exit("rig: %s needs FS-UAE: add --emu fsuae (Amiberry gap, AMIBERRY-RIGS-GAPS)" % what)
+
+
+# flags only an FS-UAE rig has: --debugger (console debugger FIFO), --a500 and --stock (machines not yet proved on Amiberry)
+FSUAE_ONLY_FLAGS = ("--debugger", "--a500", "--stock")
+
+
+def gate_fsuae_flags(argv):
+    """start and setup: refuse an FS-UAE-only flag on an Amiberry rig."""
+    if argv[1:2] in (["start"], ["setup"]):
+        for f in FSUAE_ONLY_FLAGS:
+            if f in argv:
+                needs_fsuae(f)
 
 
 # UPTERM_MUTOOLS    the NDK 3.2R4 MuTools drawer (MuForce, disassembler.library), for `rig.py muforce`

@@ -79,6 +79,7 @@ import amiberry
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 RIG = paths.RIG      # build/rig, or build/rig2 with UPTERM_RIG=2
 AMIBERRY = paths.EMU == "amiberry"
+paths.gate_fsuae_flags(sys.argv)
 CFG = RIG / ("vtcon-rig.uae" if AMIBERRY else "vtcon-rig.fs-uae")
 # what the running emulator's command line carries: the config path, or for Amiberry the win/ drawer of title links
 EMU_KEY = str(RIG / "win") + "/" if AMIBERRY else str(CFG)
@@ -1668,12 +1669,12 @@ def screenmode(name):
 
 def reboot_args(given):
     """The arguments a reboot starts with: the ones given to this command, else the last start's."""
-    if given:
-        return list(given)
     try:
-        return json.loads(START_ARGS.read_text())
+        args = list(given) if given else json.loads(START_ARGS.read_text())
     except (OSError, ValueError):
-        return []
+        args = []
+    # the new start must boot the emulator this rig runs on, not the default (a fs-uae rig stays fs-uae over a reboot)
+    return args if "--emu" in args else args + ["--emu", paths.EMU]
 
 def reboot(given=None):
     """Stop safely (stop() flushes the volumes) and start again on the same sys.hdf. A start clones DH0: from the master,

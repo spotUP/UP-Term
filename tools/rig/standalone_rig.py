@@ -1096,6 +1096,7 @@ def main():
     if a.cleanup:
         cleanup()
         return 0
+    paths.needs_fsuae('standalone_rig.py')   # it watches fs-uae processes and its config file
     todo = [s for s in SESSIONS if not a.only or any(s.startswith(o) for o in a.only)]
     if not a.force:
         todo = [s for s in todo if not session_state(s)[0] or (a.failed and session_state(s)[1])]
