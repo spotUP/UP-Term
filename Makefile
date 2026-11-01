@@ -533,7 +533,7 @@ golden: $(BUILD)/vtdump
 # headers are upstream's own since 0.9 (include/wasabi_cgx.h); no shim. The upstream Makefile's own flags (-fbbb=-: Bebbo's
 # loop pass miscompiles small structs) are kept; only CC and the SDK are ours.
 # Idempotent: the stamp holds the pinned commit. Uninstall: make wasabi-clean.
-WASABI_REPO := https://github.com/spotUP/wasabi
+WASABI_REPO := $(strip $(shell cat tools/nas/wasabi.repo))
 WASABI_REV  := $(strip $(shell cat tools/nas/wasabi.rev))
 # Deploy tools/nas to the owner's NAS (tar over ssh + docker compose build/up); config ~/.config/upterm/nas.conf, see tools/nas/README.md "Deploy from the Mac".
 nas-deploy:

@@ -110,3 +110,14 @@ def test_send_round_trip(tmp_path):
     for n in d.copy_list():
         assert (out / n).exists(), n
     assert not list(out.rglob("._*")) and not (out / ".env").exists()
+
+
+def test_wasabi_clone_source_is_one_file():
+    """The pinned wasabi commit can exist only on the fork: Dockerfile and Makefile clone from wasabi.repo, no literal URL."""
+    df = (ROOT / "tools/nas/Dockerfile").read_text()
+    clone = [l for l in df.splitlines() if "git clone" in l and "wasabi" in l]
+    assert clone and all("/opt/wasabi/wasabi.repo" in l and "github.com" not in l for l in clone)
+    assert "wasabi.repo" in d.copy_list()
+    mk = (ROOT / "Makefile").read_text()
+    assert "WASABI_REPO := $(strip $(shell cat tools/nas/wasabi.repo))" in mk
+    assert (ROOT / "tools/nas/wasabi.repo").read_text().strip() == "https://github.com/spotUP/wasabi"

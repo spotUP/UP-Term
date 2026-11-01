@@ -114,7 +114,7 @@ x86-64 or ARM64 Synology with Container Manager.
 
 With this, the Claude Code in the container can act on the Amiga you talk to
 it from: run AmigaDOS commands, read and write files, list drawers, see the
-screen, click and type. It uses wasabi (https://github.com/creep-ltx/wasabi, MIT):
+screen, click and type. It uses wasabi (https://github.com/creep-ltx/wasabi, MIT; built from the fork named in `wasabi.repo`):
 wasabid on the Amiga and an MCP server (`wasabi_mcp.py`, pure Python 3 standard
 library) beside Claude Code. wasabid runs whatever it is sent, as you. It answers only
 clients with the key and only from private addresses; the link is encrypted only when
@@ -128,7 +128,7 @@ the Amiga on a LAN you trust, never forward the port (1234).
 2. On the NAS: rebuild the image (Build section below: copy this whole drawer,
    including `skills/`, `mcp.json`, `wasabi.rev`, `amiga-target` and `seed-claude-files`,
    raise the `image:` tag, Project > Action > Build). The image then holds wasabi's
-   client and MCP server in `/opt/wasabi` (cloned at the commit in `wasabi.rev`, its LICENSE
+   client and MCP server in `/opt/wasabi` (cloned from `wasabi.repo` at the commit in `wasabi.rev`, its LICENSE
    beside it) and the entrypoint seeds the skill (`~/.claude/skills/amiga-upterm`,
    which teaches Claude AmigaDOS, the UP-Term layout and the safety rules) and the MCP
    config (`~/work/.mcp.json`) into the volume.
