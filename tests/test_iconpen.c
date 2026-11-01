@@ -50,6 +50,7 @@ static void test_plan_no_overlap(void)
         desk_pen_plan_for(depth, &p);
         CHECK_INT(p.button, 4);
         CHECK_INT(p.backdrop, 5);
+        CHECK_INT(desk_backdrop_pen(), p.backdrop); /* L6: the backdrop pen (WBPattern tile, palette write) is the plan's */
         CHECK(p.button != p.backdrop);
         CHECK(p.icon_first + p.icon_count <= (1 << depth));
         for (i = 0; i < p.icon_count; i++) {
