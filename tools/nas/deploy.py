@@ -96,7 +96,8 @@ def ssh_cmd(cfg, remote, tty=False):
 def commands(cfg, build=True):
     pack = pack_list()
     nas_dir = shlex.quote(cfg["NAS_DIR"])
-    unpack = ssh_cmd(cfg, "mkdir -p %s && tar -xzf - --no-same-owner -C %s" % (nas_dir, nas_dir))
+    unpack = ssh_cmd(cfg, "mkdir -p %s && tar -x%sf - --no-same-owner -C %s"
+                  % (nas_dir, "z" if have_gzip() else "", nas_dir))
     dk = cfg["NAS_DOCKER"]
     steps = ["cd %s" % shlex.quote(cfg["NAS_DIR"])]
     if build:
@@ -115,16 +116,31 @@ def pack_filter(ti):
     return ti
 
 
-def pack_to(fileobj, pack):
-    """Write the copy list as a tar.gz to fileobj (streamed: nothing needs to seek)."""
-    with tarfile.open(fileobj=fileobj, mode="w|gz", format=tarfile.GNU_FORMAT) as tf:
+def have_gzip():
+    """False where Python has no zlib (the Amiga build): the archive is then a plain tar, unpacked with tar -xf."""
+    try:
+        import zlib  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def pack_to(fileobj, pack, gz=None):
+    """Write the copy list as a tar.gz (a plain tar without zlib) to fileobj (streamed: nothing needs to seek)."""
+    gz = have_gzip() if gz is None else gz
+    with tarfile.open(fileobj=fileobj, mode="w|gz" if gz else "w|", format=tarfile.GNU_FORMAT) as tf:
         for base, name in pack:
             tf.add(os.path.join(base, name), arcname=name, filter=pack_filter)
 
 
 def pack_text(pack, unpack):
     flat = " ".join("-C %s %s" % (b, n) for b, n in pack)
-    return "python-tarfile czf - --exclude home %s | %s" % (flat, shlex.join(unpack))
+    return "python-tarfile c%sf - --exclude home %s | %s" % ("z" if have_gzip() else "", flat, shlex.join(unpack))
+
+
+def default_spool():
+    """On the Amiga a Popen stdin pipe to bebbossh hangs (measured on rig 5), so the archive goes through T: by default."""
+    return "T:nas.tar" if sys.platform == "amigaos" else None
 
 
 def send(pack, unpack, spool=None):
@@ -207,7 +223,7 @@ def main(argv=None):
     if not has_env:
         print(env_note(cfg))
     print("[INFO] " + pack_text(pack, unpack), flush=True)
-    if send(pack, unpack, a.spool) != 0:
+    if send(pack, unpack, a.spool or default_spool()) != 0:
         print("[ERROR] failed: copy to the NAS (tar over ssh)")
         return 1
     print("[INFO] " + shlex.join(ssh), flush=True)

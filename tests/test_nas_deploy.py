@@ -208,3 +208,25 @@ def test_stage_ships_the_copy_list_and_deploy_py(tmp_path):
                        env={"PATH": "/usr/bin:/bin", "NAS_CONF": str(tmp_path / "c")} | {"NAS_HOST": "h", "NAS_USER": "u", "NAS_DIR": "/x"})
     assert r.returncode == 0, r.stderr
     assert str(tmp_path / "nas") + " uptelnetd.py" in r.stdout
+
+
+def test_without_zlib_the_archive_is_a_plain_tar(monkeypatch, tmp_path):
+    """The Amiga Python has no zlib: pack a plain tar and unpack it with tar -xf (no z), not a gzip the Amiga cannot write."""
+    import io, tarfile
+    monkeypatch.setattr(d, "have_gzip", lambda: False)
+    (pack, unpack), _ = d.commands(CFG)
+    assert unpack[-1].count("tar -xf - --no-same-owner") == 1 and "-xzf" not in unpack[-1]
+    buf = io.BytesIO()
+    d.pack_to(buf, pack)
+    buf.seek(0)
+    assert buf.getvalue()[:2] != b"\x1f\x8b"
+    assert "Dockerfile" in tarfile.open(fileobj=buf, mode="r:").getnames()
+    monkeypatch.setattr(d, "have_gzip", lambda: True)
+    assert "tar -xzf - " in d.commands(CFG)[0][1][-1]
+
+
+def test_amiga_spools_by_default(monkeypatch):
+    monkeypatch.setattr(d.sys, "platform", "amigaos")
+    assert d.default_spool() == "T:nas.tar"
+    monkeypatch.setattr(d.sys, "platform", "darwin")
+    assert d.default_spool() is None
