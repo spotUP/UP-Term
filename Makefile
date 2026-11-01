@@ -1310,6 +1310,10 @@ $(BUILD)/amiga/btnbgprobe: tests/amiga/btnbgprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/btnbgprobe.c
 
+$(BUILD)/amiga/wbpenprobe: tests/amiga/wbpenprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/wbpenprobe.c
+
 # The Hook layout of intuition's sysiclass (FLAT-R3)
 $(BUILD)/amiga/sysiprobe: tests/amiga/sysiprobe.c
 	@mkdir -p $(BUILD)/amiga
