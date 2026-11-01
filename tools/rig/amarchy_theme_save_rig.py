@@ -31,6 +31,8 @@ OPEN_SECS = 60
 STEP_SECS = 30
 SHIPPED = 'UP-Term:Amarchy/Themes'
 PREFS = ('ENV:Amarchy/prefs', 'ENVARC:Amarchy/prefs')
+APPLY_DONE = 'AMARCHY_WBCLOSES'   # lf_gt_select (amarchy/leaf.c) writes it once gt_dos_select, desk_dos_apply included, returned
+APPLY_SECS = 60
 
 
 def menu_state():
@@ -71,6 +73,21 @@ def step(key, what):
     ami.key(key)
     st, dt = wait_stable(STEP_SECS, differ_from=before, what=what)
     return st, dt
+
+
+def wait_apply_done(secs=None):
+    """True once the pick's apply finished: APPLY_DONE, deleted before the pick, exists again. The theme list recolours
+    ~5 s before desk_dos_apply returns (rig 11, 3.2: Palette USE, IPrefs reset, Workbench USE); a pen read before that
+    sees the old pens (S28-PENS-NOT-LIVE-AGAIN). The apply also hides the menu window (gui_hide) and opens it again on the
+    same level when it returns (gui_show): Escape sent while it is hidden reaches no menu, close_menu sees no window and
+    stops, the menu comes back open, and the next pick's hotkey closes it (MENU-TOGGLE): "open menu: no stable state"
+    (THEME-PICK-MENU-STABLE). So the menu is closed only after this returned."""
+    end = time.time() + (APPLY_SECS if secs is None else secs)
+    while time.time() < end:
+        if c.run('GetEnv >NIL: %s' % APPLY_DONE)[0] == 0:
+            return True
+        time.sleep(0.5)
+    return False
 
 
 def theme_line(path):
@@ -246,6 +263,7 @@ def one_select(n, allowed):
     row reads "(current)" and the cursor stays on it."""
     before = {p: theme_line(p) for p in PREFS}
     dopus_pens_reset()
+    c.run('Delete >NIL: ENV:%s QUIET' % APPLY_DONE)
     open_menu()
     try:
         st, open_wait = wait_stable(OPEN_SECS, what='open menu')
@@ -265,6 +283,9 @@ def one_select(n, allowed):
             return False, 'the menu closed on the pick (it must stay open and recolour)', 0.0
         g.close_menu()
         return False, str(e), 0.0
+    if not wait_apply_done():
+        g.close_menu()
+        return False, 'the theme apply did not finish within %d s (%s never written)' % (APPLY_SECS, APPLY_DONE), open_wait
     if not g.where(g.TITLE)[1]:
         return False, 'the menu closed on the pick (it must stay open and recolour)', open_wait
     after = {}

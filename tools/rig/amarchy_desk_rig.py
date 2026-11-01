@@ -194,26 +194,11 @@ def live_pens_differ():
     say(rc == 0 and tile.bar_box() is not None, 'trigger: bar open again before the desk apply', str(rc))
 
 
-APPLY_DONE = 'AMARCHY_WBCLOSES'   # lf_gt_select (amarchy/leaf.c) writes it once gt_dos_select, desk_dos_apply included, returned
-APPLY_SECS = 60
-
-
-def wait_apply_done(secs=None):
-    """True once the pick's apply finished: APPLY_DONE, deleted before the pick, exists again. The theme list recolours
-    ~5 s before desk_dos_apply returns (rig 11, 3.2: Palette USE, IPrefs reset, Workbench USE); a pen read before that
-    sees the old pens (S28-PENS-NOT-LIVE-AGAIN)."""
-    end = time.time() + (APPLY_SECS if secs is None else secs)
-    while time.time() < end:
-        if c.run('GetEnv >NIL: %s' % APPLY_DONE)[0] == 0:
-            return True
-        time.sleep(0.5)
-    return False
-
-
 def pick(up=None):
     """Style > Amarchy theme > a row next to the cursor that is not the current theme > Return. The menu stays open on the pick: close it.
-    Returns once Amarchy finished the apply (wait_apply_done), so the Workbench pens read next are the ones the pick set."""
-    c.run('Delete >NIL: ENV:%s QUIET' % APPLY_DONE)
+    Returns once Amarchy finished the apply (t.wait_apply_done), so the Workbench pens read next are the ones the pick set;
+    the menu is closed only after that (the apply hides and reopens it: THEME-PICK-MENU-STABLE)."""
+    c.run('Delete >NIL: ENV:%s QUIET' % t.APPLY_DONE)
     t.open_menu()
     st, _ = t.wait_stable(t.OPEN_SECS, what='open menu')
     # the top level differs per rig (3.1: Style is the 4th entry; the 3.2 rig lists Apps, Settings, Style): read where it is
@@ -240,9 +225,10 @@ def pick(up=None):
     except TimeoutError:
         if t.menu_state()[0] is not None:  # the pick may also close the menu; only a menu still showing the old state is a failure
             raise
+    if not t.wait_apply_done():
+        g.close_menu()
+        raise TimeoutError('the theme apply did not finish within %d s (%s never written)' % (t.APPLY_SECS, t.APPLY_DONE))
     g.close_menu()
-    if not wait_apply_done():
-        raise TimeoutError('the theme apply did not finish within %d s (%s never written)' % (APPLY_SECS, APPLY_DONE))
     return rows[sel].split(' (')[0], up
 
 
