@@ -237,6 +237,66 @@ static void test_newicon_form(void)
     CHECK_INT(li_parse(g_a, len, &wr), LI_E_MAGIC);
 }
 
+/* The OS 3.5 IMAG reader as icon.library has it (AROS workbench/libs/icon/diskobj35io.c ReadImage35 + Decode35):
+ * ImageFormat 0 copies width*height bytes, one per pixel; 1 is the RLE bit stream. Decodes the IMAG chunk at off into
+ * px[w*h]; -1 when the chunk is not one the reader can fill the image from. */
+static int ref_read_imag(const uint8_t *b, size_t len, size_t off, unsigned w, unsigned h, uint8_t *px)
+{
+    const uint8_t *src;
+    size_t csize, imgsize, cur = 0, total = (size_t)w * h;
+    unsigned depth, cop = 0, loop = 0, numbits = 0, mask, v;
+    uint32_t bitbuf = 0;
+    long numbytes;
+
+    if (off + 18 > len || memcmp(b + off, "IMAG", 4) != 0) return -1;
+    csize = (size_t)b[off + 4] << 24 | (size_t)b[off + 5] << 16 | (size_t)b[off + 6] << 8 | b[off + 7];
+    if (off + 8 + csize > len) return -1;
+    depth = b[off + 13];
+    imgsize = ((size_t)b[off + 14] << 8 | b[off + 15]) + 1;
+    if (10 + imgsize > csize) return -1;
+    src = b + off + 18;
+    if (b[off + 11] == 0) {
+        if (imgsize < total) return -1;           /* the reader copies w*h bytes */
+        memcpy(px, src, total);
+        return 0;
+    }
+    if (b[off + 11] != 1 || depth < 1 || depth > 8) return -1;
+    mask = (1u << depth) - 1;
+    numbytes = (long)imgsize;
+    while ((numbytes || (cop && numbits >= depth)) && cur < total) {
+        if (!cop) {
+            unsigned byte;
+            if (numbits < 8) { bitbuf = bitbuf << 8 | *src++; numbytes--; numbits += 8; }
+            byte = (bitbuf >> (numbits - 8)) & 255;
+            numbits -= 8;
+            if (byte <= 127) cop = byte + 1;
+            else if (byte > 128) loop = 256 - byte + 1;
+            else continue;
+        }
+        if (cop) loop++;
+        if (numbits < depth) {
+            if (!numbytes) return -1;
+            bitbuf = bitbuf << 8 | *src++; numbytes--; numbits += 8;
+        }
+        v = (bitbuf >> (numbits - depth)) & mask;
+        while (loop && cur < total) { px[cur++] = (uint8_t)v; loop--; }
+        if (cop) cop--;
+        numbits -= depth;
+    }
+    return cur == total ? 0 : -1;
+}
+
+/* the colour index li_form_build gives a pixel of a depth-6 planar image (pens 32..47 -> theme slots, slot 12 -> 0) */
+static unsigned ref_index(const li_image *m, unsigned x, unsigned y)
+{
+    unsigned wb = ((unsigned)m->width + 15) / 16 * 2, p, pen = 0, slot;
+    for (p = 0; p < m->depth; p++)
+        pen |= (unsigned)((m->data[((size_t)p * m->height + y) * wb + x / 8] >> (7 - x % 8)) & 1) << p;
+    if (pen < 32 || pen > 47) return 0;
+    slot = pen - 32;
+    return slot < 12 ? slot + 1 : slot == 12 ? 0 : slot;
+}
+
 static void test_form_build(void)
 {
     static const uint8_t planes[12] = { 0x40,0, 0,0, 0x80,0, 0x80,0, 0,0, 0xC0,0 };   /* 2x1: pen 44 (ground), pen 33 */
@@ -261,17 +321,26 @@ static void test_form_build(void)
     CHECK_INT(out[20], 1); CHECK_INT(out[21], 0);             /* width-1, height-1 */
     CHECK_INT(out[24], 0); CHECK_INT(out[25], 47);            /* MaxPaletteBytes-1 */
     CHECK(memcmp(out + 26, "IMAG", 4) == 0);
-    CHECK_INT(out[33], 59);                                   /* chunk size, odd, padded after */
+    CHECK_INT(out[33], 60);                                   /* chunk size: 10 + 2 RLE bytes + 48 palette */
     CHECK_INT(out[34], 0);                                    /* transparent index */
     CHECK_INT(out[35], 15);                                   /* NumColors-1 */
     CHECK_INT(out[36], 3);                                    /* transparent + palette */
+    CHECK_INT(out[37], 1);                                    /* ImageFormat 1: RLE, as stock GlowIcons */
     CHECK_INT(out[39], 4);                                    /* depth */
+    CHECK_INT(out[41], 1);                                    /* NumImageBytes-1 */
     CHECK_INT(out[43], 47);                                   /* NumPaletteBytes-1 */
-    CHECK_INT(out[44], 0x02);                                 /* pen 44 -> index 0, pen 33 -> slot 1 -> index 2 */
-    CHECK_INT(out[45], rgb[12][0]);                           /* index 0 carries the ground colour (slot 12) */
-    CHECK_INT(out[45 + 3 * 2 + 1], rgb[1][1]);                /* index 2 is slot 1 */
-    CHECK_INT(out[45 + 3 * 15 + 2], rgb[15][2]);              /* index 15 is slot 15 */
-    CHECK_INT(out[93], 0);                                    /* pad byte */
+    CHECK_INT(out[44], 0x01); CHECK_INT(out[45], 0x02);       /* control 1 (2 literals), then 4-bit indexes 0 and 2 */
+    CHECK_INT(out[46], rgb[12][0]);                           /* index 0 carries the ground colour (slot 12) */
+    CHECK_INT(out[46 + 3 * 2 + 1], rgb[1][1]);                /* index 2 is slot 1 */
+    CHECK_INT(out[46 + 3 * 15 + 2], rgb[15][2]);              /* index 15 is slot 15 */
+    {   /* what icon.library reads: pen 44 -> index 0, pen 33 -> slot 1 -> index 2 */
+        static const uint8_t want[2] = { 0, 2 };
+        uint8_t got[2];
+        CHECK_INT(ref_read_imag(out, n, 26, 2, 1, got), 0);
+        CHECK(memcmp(got, want, 2) == 0);
+        CHECK_INT(ref_read_imag(out, n, 94, 2, 1, got), 0);
+        CHECK(memcmp(got, want, 2) == 0);
+    }
     CHECK(memcmp(out + 94, "IMAG", 4) == 0);
     im.depth = 4;
     CHECK_INT(li_form_build(&im, &im, rgb, out, sizeof out), 0);   /* only depth 6 sources */
@@ -288,6 +357,23 @@ static void test_form_build(void)
     li_edit_apply(&e, &src, &nrm, &sel);
     n = li_form_build(&nrm, &sel, rgb, out, sizeof out);
     CHECK(n > 0);
+    {   /* every pixel of both images reads back through the icon.library reader as the planar image's index */
+        static uint8_t got[256 * 256];
+        size_t at = 26, k;
+        unsigned x, y, bad = 0;
+        const li_image *ims[2];
+        ims[0] = &nrm; ims[1] = &sel;
+        for (k = 0; k < 2; k++) {
+            size_t cs = (size_t)out[at + 4] << 24 | (size_t)out[at + 5] << 16 | (size_t)out[at + 6] << 8 | out[at + 7];
+            CHECK_INT(ref_read_imag(out, n, at, nrm.width, nrm.height, got), 0);
+            for (y = 0; y < nrm.height; y++)
+                for (x = 0; x < nrm.width; x++)
+                    if (got[(size_t)y * nrm.width + x] != ref_index(ims[k], x, y)) bad++;
+            at += 8 + cs + (cs & 1);
+        }
+        CHECK_INT(bad, 0);
+        CHECK_INT(at, n);                                     /* the two IMAGs end the FORM */
+    }
     e.form_new = out; e.form_new_len = n;
     n = li_splice(&src, &e, g_c, BUF);
     CHECK(n > 0);
