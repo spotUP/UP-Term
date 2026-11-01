@@ -58,7 +58,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
            tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_telnet.c tests/test_upagent.c tests/test_complete.c tests/test_winmem.c tests/test_sbpack.c tests/test_hl.c tests/test_md.c \
            tests/claude_load.c tests/claude_vol.c tests/claude_screen.c tests/pi_stub.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_pi_llm.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c tests/test_emoji.c tests/test_waitset.c tests/test_brk.c tests/test_sh_pipe.c tests/test_sh_ixargv.c tests/test_sh_own.c tests/test_sh_jobgone.c tests/test_histfile.c tests/test_pens.c tests/test_proc.c tests/test_pty_name.c tests/test_bmsg.c tests/test_qmark.c tests/test_ttyown.c tests/test_closeeof.c tests/test_upassign.c tests/test_bigvol.c tests/test_fssm.c tests/test_clips.c tests/test_shot_core.c tests/test_win.c tests/test_tile.c
 
-.PHONY: symbolsnerd lucide lucide-dat screennotify jbmono wasabi wasabi-clean nas-deploy nas-deploy-dry bebbossh bebbossh-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
+.PHONY: symbolsnerd phosphor lucide-dat screennotify jbmono wasabi wasabi-clean nas-deploy nas-deploy-dry bebbossh bebbossh-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
 
 # ONLY=desk the native desktop theme core: palette/pointer/font/wbpattern prefs bytes, darker tone, readability guard, targets and marker (tests/test_desk.c)
 # ONLY=fssm a device node's startup is read as a FileSysStartupMsg only when it is one (tests/test_fssm.c)
@@ -69,8 +69,8 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=status_core the AMARCHY STATUS and BAR STATUS replies fit REXX_HOST_OUT at the largest counters; BAR verb parse (tests/test_status_core.c)
 # ONLY=barconf bar.conf parse, defaults, bad rows counted (tests/test_barconf.c)
 # ONLY=note_core the notice queue: parse with \| escape, expiry at t0+timeout, sticky, overflow drops oldest, corner slots, hit-test (tests/test_note_core.c)
-# ONLY=iconfile the Lucide .info rewrite: parse, splice, NewIcon and FORM ICON strip, restore byte for byte, variant pick, backup path, lucide.dat reader, every .info of the rig trees (tests/test_iconfile.c)
-# ONLY=iconpen  the Lucide icon pens, pure half: ip_colours, ip_fold, desk_pen_plan_for no-overlap, the pen holder model (tests/test_iconpen.c)
+# ONLY=iconfile the .info rewrite: parse, splice, NewIcon and FORM ICON strip, restore byte for byte, variant pick, backup path, lucide.dat reader, every .info of the rig trees (tests/test_iconfile.c)
+# ONLY=iconpen  the icon pens, pure half: ip_colours, ip_fold, desk_pen_plan_for no-overlap, the pen holder model (tests/test_iconpen.c)
 # ONLY=flat_core the amarchy-flat state block: offsets pinned, version and size mismatch refused, STATUS word (tests/test_flat_core.c)
 # ONLY=shot_core the screenshot ILBM writer: ByteRun1 edges, planes, golden bytes, round trip through tools/ilbm_decode.py (tests/test_shot_core.c)
 # ONLY=winspec the XCON: spec's size fields and the default ground (a CON:/RAW: window looks like an XCON: one) (tests/test_winspec.c)
@@ -402,30 +402,34 @@ $(SYMBOLS_TTF): $(SYMBOLS_ARCHIVE)
 	echo "$(SYMBOLS_TTF_SHA256)  $@" | shasum -a 256 -c -
 symbolsnerd: $(SYMBOLS_TTF)
 
-# Lucide icons (lucide-static 1.66.0 from the npm registry, ISC; the Flat Workbench icon set, plan
-# 2026-10-31-amarchy-lucide-icons.md): the package tarball fetched once into build/lucide/, all SHA-256 checked,
-# lucide.ttf + codepoints.json extracted. tools/gen_lucide_icons.py renders dist/lucide-icons to the planar images of
-# dist/Amarchy/Icons/lucide.dat (built into the kit by dist-base). LUCIDE_VER= another release (with LUCIDE_SHA256,
-# LUCIDE_TTF_SHA256, LUCIDE_CODEPOINTS_SHA256).
-LUCIDE_VER ?= 1.66.0
-LUCIDE_SHA256 ?= 6a1debc19076123ece73f6729a9643ac90aab9c9db15f7c16debf72a9a02a82a
-LUCIDE_TTF_SHA256 ?= c6355db6e4f0834f62193f9effde900dab785c5c18877cf95cd1a44fa62fa8d5
-LUCIDE_CODEPOINTS_SHA256 ?= 7d6401da27c94468f2b5a2672b2826d6a041a3432b7d9ca6ca609ab5541b77b7
-LUCIDE_TGZ := $(BUILD)/lucide/lucide-static-$(LUCIDE_VER).tgz
-LUCIDE_TTF := $(BUILD)/lucide/lucide.ttf
+# Phosphor Fill icons (@phosphor-icons/web 2.1.2 from the npm registry, MIT; the Flat Workbench icon set, plan
+# 2026-11-01-amarchy-filled-icon-set.md F1): the package tarball fetched once into build/phosphor/, SHA-256 checked, the
+# Phosphor-Fill.ttf and style.css extracted (both checked); tools/phosphor_codepoints.py turns the style.css rules
+# `.ph-fill.ph-NAME:before { content: "\eXXX" }` into codepoints.json (name -> code point, sorted, deterministic).
+# tools/gen_lucide_icons.py renders dist/lucide-icons to the planar images of dist/Amarchy/Icons/lucide.dat (built into
+# the kit by dist-base; the file name stays, no on-disk migration). PHOSPHOR_VER= another release (with the three SHA-256).
+PHOSPHOR_VER ?= 2.1.2
+PHOSPHOR_SHA256 ?= 40e3096099ca818c047979cece6a3764944d5200c67b64092f7bcd8bcd1d2b08
+PHOSPHOR_TTF_SHA256 ?= a53f5d2630cab5e3b7536ecb9d69d71519a2190298c22b1f8d770dd37bc2940a
+PHOSPHOR_CSS_SHA256 ?= 555980683a582c1910a954648b4ae38f58d76e797f02bfdc2c5e817901e6d4fc
+PHOSPHOR_TGZ := $(BUILD)/phosphor/web-$(PHOSPHOR_VER).tgz
+PHOSPHOR_TTF := $(BUILD)/phosphor/Phosphor-Fill.ttf
+PHOSPHOR_CP := $(BUILD)/phosphor/codepoints.json
 LUCIDE_DAT := dist/Amarchy/Icons/lucide.dat
-$(LUCIDE_TGZ):
-	@mkdir -p $(BUILD)/lucide
-	curl -sSfL -o $@.tmp https://registry.npmjs.org/lucide-static/-/lucide-static-$(LUCIDE_VER).tgz
-	echo "$(LUCIDE_SHA256)  $@.tmp" | shasum -a 256 -c -
+$(PHOSPHOR_TGZ):
+	@mkdir -p $(BUILD)/phosphor
+	curl -sSfL -o $@.tmp https://registry.npmjs.org/@phosphor-icons/web/-/web-$(PHOSPHOR_VER).tgz
+	echo "$(PHOSPHOR_SHA256)  $@.tmp" | shasum -a 256 -c -
 	mv $@.tmp $@
-$(LUCIDE_TTF): $(LUCIDE_TGZ)
-	tar -xzmf $(LUCIDE_TGZ) -C $(BUILD)/lucide --strip-components=2 package/font/lucide.ttf package/font/codepoints.json
-	echo "$(LUCIDE_TTF_SHA256)  $@" | shasum -a 256 -c -
-	echo "$(LUCIDE_CODEPOINTS_SHA256)  $(BUILD)/lucide/codepoints.json" | shasum -a 256 -c -
-lucide: $(LUCIDE_TTF)
-$(LUCIDE_DAT): tools/gen_lucide_icons.py tools/gen_menu_icons.py tools/gen_emoji.py tools/mkicon.py dist/lucide-icons $(LUCIDE_TTF)
-	python3 tools/gen_lucide_icons.py dist/lucide-icons $(LUCIDE_TTF) $@
+$(PHOSPHOR_TTF): $(PHOSPHOR_TGZ)
+	tar -xzmf $(PHOSPHOR_TGZ) -C $(BUILD)/phosphor --strip-components=3 package/src/fill/Phosphor-Fill.ttf package/src/fill/style.css
+	echo "$(PHOSPHOR_TTF_SHA256)  $@" | shasum -a 256 -c -
+	echo "$(PHOSPHOR_CSS_SHA256)  $(BUILD)/phosphor/style.css" | shasum -a 256 -c -
+$(PHOSPHOR_CP): $(PHOSPHOR_TTF) tools/phosphor_codepoints.py
+	python3 -I tools/phosphor_codepoints.py $(BUILD)/phosphor/style.css $@
+phosphor: $(PHOSPHOR_TTF) $(PHOSPHOR_CP)
+$(LUCIDE_DAT): tools/gen_lucide_icons.py tools/gen_menu_icons.py tools/gen_emoji.py tools/mkicon.py dist/lucide-icons $(PHOSPHOR_TTF) $(PHOSPHOR_CP)
+	python3 tools/gen_lucide_icons.py dist/lucide-icons $(PHOSPHOR_TTF) $@
 lucide-dat: $(LUCIDE_DAT)
 
 # screennotify.library 1.0 (Stefan Becker, Aminet util/libs/ScreenNotify10.lha): the archive fetched
@@ -963,7 +967,7 @@ $(BUILD)/amiga/amarchy-flat: device/romspan.h amarchy/flat_shared.h amarchy/flat
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_tx.o amarchy/flat_tx.s
 	$(VC) -dontwarn=153,65 -o $@ amarchy/flat.c $(BUILD)/amiga/obj/flat_rf.o $(BUILD)/amiga/obj/flat_tx.o amarchy/flat_glyph.c amarchy/flat_core.c amarchy/desk_core.c amarchy/gthemes_core.c amarchy/iconpen_core.c handler/be32.c amarchy/taskalive.c amarchy/poll_timer.c $(AMARCHY_LEAF_DEPS)
 
-# amarchy-icons: Lucide icons on the Workbench default icons, APPLY and RESTORE (plan 2026-10-31-amarchy-lucide-icons.md L8, L9).
+# amarchy-icons: filled icons on the Workbench default icons, APPLY and RESTORE (plan 2026-10-31-amarchy-lucide-icons.md L8, L9).
 # A plain vbcc DOS program; every decision is amarchy/iconapply_core.c (host suite iconapply).
 .PHONY: amarchy-icons
 amarchy-icons: $(BUILD)/amiga/amarchy-icons
@@ -1723,8 +1727,8 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	mkdir -p $(KIT)/Files/themes && cp themes/*.conf themes/ATTRIBUTION.md $(KIT)/Files/themes/
 	@# the Omarchy colour themes of the drawn Amarchy menu: install.dos copies this drawer to UP-Term:Amarchy/Themes
 	rm -rf $(KIT)/Files/amarchy-themes && cp -R dist/amarchy-themes $(KIT)/Files/amarchy-themes
-	@# the Lucide icon images of the flat Workbench (Amarchy/Icons/lucide.dat) with the Lucide licence and source note
-	rm -rf $(KIT)/Files/lucide && mkdir -p $(KIT)/Files/lucide && cp $(LUCIDE_DAT) dist/lucide/LICENSE dist/lucide/SOURCE.txt $(KIT)/Files/lucide/
+	@# the icon images of the flat Workbench (Amarchy/Icons/lucide.dat, file name kept) with the Phosphor licence and source note
+	rm -rf $(KIT)/Files/lucide $(KIT)/Files/phosphor && mkdir -p $(KIT)/Files/lucide $(KIT)/Files/phosphor && cp $(LUCIDE_DAT) $(KIT)/Files/lucide/ && cp dist/phosphor/LICENSE dist/phosphor/SOURCE.txt $(KIT)/Files/phosphor/
 	rm -rf $(KIT)/Files/coreutils && mkdir -p $(KIT)/Files/coreutils
 	cp -R dist/gg/coreutils-5.2.1/bin dist/gg/coreutils-5.2.1/COPYING dist/gg/coreutils-5.2.1/SOURCE.txt $(KIT)/Files/coreutils/
 	@# the ports (copy-userland: bin; userland: share, etc, licenses) and

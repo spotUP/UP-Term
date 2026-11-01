@@ -416,7 +416,8 @@ class LucideDatShipped(unittest.TestCase):
         mk = (ROOT / "Makefile").read_text()
         base = re.search(r"(?m)^dist-base:([^\n]*)", mk).group(1)
         self.assertIn("$(LUCIDE_DAT)", base.split())
-        self.assertIn("cp $(LUCIDE_DAT) dist/lucide/LICENSE dist/lucide/SOURCE.txt $(KIT)/Files/lucide/", mk)
+        self.assertIn("cp $(LUCIDE_DAT) $(KIT)/Files/lucide/", mk)
+        self.assertIn("cp dist/phosphor/LICENSE dist/phosphor/SOURCE.txt $(KIT)/Files/phosphor/", mk)
 
 
 class AmiSSLPart(unittest.TestCase):

@@ -1,6 +1,0 @@
-Lucide icons 1.66.0 (lucide-static npm package), ISC licence, see LICENSE in this drawer.
-Source: https://lucide.dev, https://github.com/lucide-icons/lucide ; package https://registry.npmjs.org/lucide-static/-/lucide-static-1.66.0.tgz
-sha256 6a1debc19076123ece73f6729a9643ac90aab9c9db15f7c16debf72a9a02a82a (pinned in the Makefile, LUCIDE_SHA256).
-lucide.dat in this drawer is built from the icon font (package/font/lucide.ttf) by tools/gen_lucide_icons.py
-over dist/lucide-icons: the glyphs rendered to 32x32 and 32x16 planar images. Amarchy splices them into the
-.info files when the flat look is on (UP-Term:Amarchy/Icons/lucide.dat).
