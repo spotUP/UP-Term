@@ -50,6 +50,7 @@ static void test_plan_no_overlap(void)
         desk_pen_plan_for(depth, &p);
         CHECK_INT(p.button, 4);
         CHECK_INT(p.backdrop, 5);
+        CHECK_INT(desk_backdrop_pen(), p.backdrop); /* L6: the backdrop pen (WBPattern tile, palette write) is the plan's */
         CHECK(p.button != p.backdrop);
         CHECK(p.icon_first + p.icon_count <= (1 << depth));
         for (i = 0; i < p.icon_count; i++) {
@@ -107,7 +108,7 @@ static void test_holder(void)
     f.taken[40] = 1;
     CHECK_INT(ip_holder_obtain(&h, &o, &s1, 6, rgb), 15);
     ip_status_line(&h, line, sizeof line);
-    CHECK_STR(line, "pens-held 15");
+    CHECK_STR(line, "pens-held 15 missing 40");   /* names the pen another user holds (rig 10: the dim pen on 46/47) */
     /* flat off releases everything */
     CHECK_INT(ip_holder_release(&h, &o), 15);
     ip_status_line(&h, line, sizeof line);
@@ -120,9 +121,128 @@ static void test_holder(void)
     CHECK_INT(ip_holder_obtain(&h, &o, &s1, 3, rgb), 0);
 }
 
+static void test_sync(void)
+{
+    ip_holder h;
+    ip_ops o;
+    uint8_t rgb[IP_PENS][3];
+    int s1, s2;
+    memset(rgb, 0, sizeof rgb);
+    memset(&o, 0, sizeof o);
+    ip_holder_init(&h);
+    CHECK_INT(ip_sync_decide(&h, 1, &s1, 6), IP_SYNC_OBTAIN);       /* boot, flat on */
+    CHECK_INT(ip_sync_decide(&h, 0, &s1, 6), IP_SYNC_NONE);         /* flat off, nothing held */
+    CHECK_INT(ip_sync_decide(&h, 1, NULL, 6), IP_SYNC_NONE);        /* no Workbench screen yet */
+    CHECK_INT(ip_scale32(0xff), 0xffffffffUL);
+    CHECK_INT(ip_scale32(0x80), 0x80808080UL);
+    CHECK_INT(ip_screen_depth(6, 1), 5);
+    CHECK_INT(ip_screen_depth(6, 0), 6);
+    CHECK_INT(ip_screen_depth(8, 0), 8);
+    /* hold on s1 (depth 3 holds none but still ties to the screen) */
+    h.screen = &s1; h.depth = 6; h.held = 16;
+    CHECK_INT(ip_sync_decide(&h, 1, &s1, 6), IP_SYNC_NONE);         /* same screen: no re-obtain */
+    CHECK_INT(ip_sync_decide(&h, 1, &s2, 6), IP_SYNC_OBTAIN);       /* Workbench reopened: new screen */
+    CHECK_INT(ip_sync_decide(&h, 1, &s1, 8), IP_SYNC_OBTAIN);       /* depth changed */
+    CHECK_INT(ip_sync_decide(&h, 1, NULL, 6), IP_SYNC_RELEASE);     /* Workbench closed: drop */
+    CHECK_INT(ip_sync_decide(&h, 0, &s1, 6), IP_SYNC_RELEASE);      /* quitting / kill switch held */
+    CHECK_INT(ip_hold_wanted(0, 0, 1), 1);                          /* running: hold, whatever the flat switch says */
+    CHECK_INT(ip_hold_wanted(1, 0, 1), 0);                          /* quitting */
+    CHECK_INT(ip_hold_wanted(0, 1, 1), 0);                          /* kill switch held */
+    CHECK_INT(ip_hold_wanted(0, 0, 0), 0);                          /* graphics < V39 */
+    /* after a real release the holder ties to no screen, so flat on again obtains again (regression: it stayed on the old screen) */
+    {
+        fake f;
+        memset(&f, 0, sizeof f);
+        o.obtain = f_obtain; o.release = f_release; o.ctx = &f;
+        ip_holder_init(&h);
+        CHECK_INT(ip_holder_obtain(&h, &o, &s1, 6, rgb), 16);
+        CHECK_INT(ip_holder_release(&h, &o), 16);
+        CHECK_INT(ip_sync_decide(&h, 1, &s1, 6), IP_SYNC_OBTAIN);
+    }
+}
+
+/* ---- L7 cause 2: the graphics PalExtra free list as measured on rig 10 (3.2, depth 8): free pens are handed out from the
+ * head (boot order 251 250 .. top down), ReleasePen puts the pen back at the HEAD (after flat off: 47 46 .. 32 244 ..),
+ * ObtainPen(n, exclusive) takes n only while n is free, ObtainBestPen of a new colour takes the head. ---- */
+typedef struct palx { int list[256]; int n; } palx;
+
+static void px_boot(palx *p)
+{
+    int i;
+    p->n = 0;
+    for (i = 251; i >= 4; i--)
+        if (i < 17 || i > 19)
+            p->list[p->n++] = i;
+}
+
+static int px_take(palx *p, int pen)
+{
+    int i;
+    for (i = 0; i < p->n; i++)
+        if (p->list[i] == pen) {
+            memmove(&p->list[i], &p->list[i + 1], (size_t)(p->n - i - 1) * sizeof p->list[0]);
+            p->n--;
+            return pen;
+        }
+    return -1;
+}
+
+static int px_best(palx *p) { return p->n ? px_take(p, p->list[0]) : -1; }   /* a new shared colour */
+
+static int px_obtain(void *ctx, int pen, unsigned r, unsigned g, unsigned b) { (void)r; (void)g; (void)b; return px_take((palx *)ctx, pen); }
+
+static void px_release(void *ctx, int pen)
+{
+    palx *p = (palx *)ctx;
+    memmove(&p->list[1], &p->list[0], (size_t)p->n * sizeof p->list[0]);
+    p->list[0] = pen;
+    p->n++;
+}
+
+/* pens_sync of amarchy/flat.c: the same two decisions in the same order (the flat switch is not an input) */
+static void px_sync(ip_holder *h, const ip_ops *o, int quit, const void *scr, const uint8_t rgb[IP_PENS][3])
+{
+    int act = ip_sync_decide(h, ip_hold_wanted(quit, 0, 1), scr, 8);
+    if (act == IP_SYNC_RELEASE)
+        ip_holder_release(h, o);
+    else if (act == IP_SYNC_OBTAIN)
+        ip_holder_obtain(h, o, scr, 8, rgb);
+}
+
+static void test_free_list_model(void)
+{
+    palx p;
+    ip_holder h;
+    ip_ops o;
+    uint8_t rgb[IP_PENS][3];
+    int scr, dim, i, k;
+    memset(rgb, 0, sizeof rgb);
+    px_boot(&p);
+    o.obtain = px_obtain; o.release = px_release; o.ctx = &p;
+    ip_holder_init(&h);
+    px_sync(&h, &o, 0, &scr, rgb);                      /* boot, flat on */
+    CHECK_INT(h.held, 16);
+    for (k = 0; k < 2; k++) {                           /* flat off, on, off, on: the 1 s tick and Ctrl-D syncs */
+        px_sync(&h, &o, 0, &scr, rgb);                  /* flat off */
+        dim = px_best(&p);                              /* dim_refresh and Amarchy's theme pens while off */
+        CHECK_INT(dim >= IP_FIRST && dim < IP_FIRST + IP_PENS, 0);
+        for (i = 0; i < 3; i++) {
+            int sh = px_best(&p);
+            CHECK_INT(sh >= IP_FIRST && sh < IP_FIRST + IP_PENS, 0);
+        }
+        px_sync(&h, &o, 0, &scr, rgb);                  /* flat on again */
+        CHECK_INT(h.held, 16);
+    }
+    px_sync(&h, &o, 1, &scr, rgb);                      /* quit: every pen back */
+    CHECK_INT(h.held, 0);
+    CHECK_INT(px_take(&p, IP_FIRST + 15), IP_FIRST + 15);
+}
+
 void suite_iconpen(void)
 {
     test_colours_and_fold();
     test_plan_no_overlap();
     test_holder();
+    test_free_list_model();
+    test_sync();
 }

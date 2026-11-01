@@ -87,6 +87,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=worktree_ready make worktree-ready dates a source that differs from main newer than the seeded binaries (tools/test_worktree_ready.py)
 # ONLY=menu_stamp the Amarchy hotkey press path reaches ms_binary_changed (act_menu_open -> ms_open, stamp and quit hooks set) (tests/test_amarchy_menu_stamp.py)
 # ONLY=gui_rig_open_menu the rig's open_menu() closes a menu an earlier step left open before the toggle hotkey, so it never closes it instead (tests/test_amarchy_gui_rig_open_menu.py)
+# ONLY=desk_rig_pick_waits the rig's desk pick() returns only after Amarchy wrote AMARCHY_WBCLOSES again, so pen reads see the applied theme (tests/test_amarchy_desk_rig_pick_waits.py)
 # ONLY=rig_installer_free installer_rig sys_free_bytes reads SYS: free space from Info with DH0: (3.1) and DH0 (3.2) (tests/test_installer_rig_free.py)
 # ONLY=flat_on_hang amarchy-flat passes the library base in a6 on every saved Text/RectFill/DrawBox/FieldBox call, so flat-ON no longer jumps into DOS device data (tests/test_flat_on_hang_wild_call.py)
 # ONLY=rig_install_no_vsh rig.py install without build/amiga/vsh exits with one message naming the file and the make target (tests/test_rig_install_no_vsh.py)
@@ -140,7 +141,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 TEST_ONLY_NAMES := $(shell grep -o '"$$(ONLY)" = [a-z_0-9]*' $(firstword $(MAKEFILE_LIST)) | sed 's/.* //' | sort -u)
 # ONLY= rows that run python3 on files alone: no C binary below is built or run for them (a worktree without the vendor NDK
 # cannot build render_host, and pkg_rows needs none). Add a name only after checking its script starts no $(BUILD) binary.
-TEST_PY_ONLY := gen_lucide_icons pkg_rows worktree_ready rig_handler_fallback rig_amarchy_conf rig_booted_ixemul rig_iprefs_sysreq gui_rig_open_menu rig_install_no_vsh rig_installer_free flat_on_hang
+TEST_PY_ONLY := gen_lucide_icons pkg_rows worktree_ready rig_handler_fallback rig_amarchy_conf rig_booted_ixemul rig_iprefs_sysreq gui_rig_open_menu desk_rig_pick_waits rig_install_no_vsh rig_installer_free flat_on_hang
 TEST_BINS := $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host $(BUILD)/upgetty_host
 test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -n "$(ONLY)" ] && [ -z "$(filter $(ONLY),$(TEST_ONLY_NAMES))" ] && ! ./$(BUILD)/vttest_host --has $(ONLY); then echo "[ERROR] make test: no suite named $(ONLY)"; exit 2; fi
@@ -168,6 +169,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rebind ]; then python3 -I tests/test_amarchy_gui_rebind.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = editor_stack ]; then python3 -I tests/test_amarchy_editor_stack.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rig_open_menu ]; then python3 -I tests/test_amarchy_gui_rig_open_menu.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = desk_rig_pick_waits ]; then python3 -I tests/test_amarchy_desk_rig_pick_waits.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_ami ]; then if [ -f "$(BUILD)/wasabi/src/tests/mock-wasabid.py" ] || [ -f "$(CURDIR)/../../$(BUILD)/wasabi/src/tests/mock-wasabid.py" ] || [ -n "$(ONLY)" ]; then python3 -I tools/test_rig_ami.py; else echo "[SKIP] rig_ami: wasabi is not built (make wasabi)"; fi; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_claude_import ]; then python3 -I tools/test_rig_claude_import.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_stdin ]; then python3 -I tools/test_rig_stdin.py; fi
@@ -540,6 +542,10 @@ golden: $(BUILD)/vtdump
 # Idempotent: the stamp holds the pinned commit. Uninstall: make wasabi-clean.
 WASABI_REPO := $(strip $(shell cat tools/nas/wasabi.repo))
 WASABI_REV  := $(strip $(shell cat tools/nas/wasabi.rev))
+# the kit's wasabi SOURCE.txt: dist/wasabi/SOURCE.txt.in with the pin and the fork filled in from the two files above (one source of truth)
+WASABI_SOURCE := $(BUILD)/wasabi/SOURCE.txt
+$(WASABI_SOURCE): dist/wasabi/SOURCE.txt.in tools/nas/wasabi.rev tools/nas/wasabi.repo
+	mkdir -p $(dir $@) && sed -e 's|@WASABI_REV@|$(WASABI_REV)|g' -e 's|@WASABI_REPO@|$(WASABI_REPO)|g' $< > $@
 # Deploy tools/nas to the owner's NAS (tar over ssh + docker compose build/up); config ~/.config/upterm/nas.conf, see tools/nas/README.md "Deploy from the Mac".
 nas-deploy:
 	python3 -I tools/nas/deploy.py $(NAS_DEPLOY_ARGS)
@@ -679,7 +685,7 @@ HANDLER_HDR := $(KEYMAP_DEFAULT_INC) handler/keymap_act.h config/keymap.h config
                handler/clip.h handler/clipfmt.h handler/lineedit.h handler/le_fns.h handler/complete.h handler/complete_core.h handler/histfile.h claude/datadir.h claude/sys.h claude/datadir_amiga.h handler/brk.h handler/ttyown.h handler/slash.h handler/winspec.h handler/screenreq.h handler/wbpark.h handler/screennotify.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h config/termurl.h config/upassign.h \
                handler/tabprog.h handler/waitset.h demo/updemo.h prefs/prefs_core.h shell/sh_path.h amarchy/amconf_core.h amarchy/amconf_dos.h
 
-amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/tcpprobe $(BUILD)/amiga/Reboot $(BUILD)/amiga/WBPath $(BUILD)/amiga/UPBigVol $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/phaseprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/amnotify $(BUILD)/amiga/AmTile $(BUILD)/amiga/upicon $(BUILD)/amiga/upupdate $(BUILD)/amiga/upsame $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/Agent $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Claude $(BUILD)/amiga/scrprobe
+amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/tcpprobe $(BUILD)/amiga/Reboot $(BUILD)/amiga/WBPath $(BUILD)/amiga/UPBigVol $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/phaseprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/amarchy-icons $(BUILD)/amiga/amnotify $(BUILD)/amiga/AmTile $(BUILD)/amiga/upicon $(BUILD)/amiga/upupdate $(BUILD)/amiga/upsame $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/Agent $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Claude $(BUILD)/amiga/scrprobe
 
 # hl and mdv: the portable view/ core and the AmigaDOS side (no ixemul).
 # vbcc warns (153, 65) on the (void) parameter casts, as for vsh.
@@ -946,12 +952,12 @@ $(BUILD)/amiga/amarchy-index: $(AMARCHY_INDEX_SRC) amarchy/taskalive.h amarchy/i
 # no ixemul; it keeps the public state block "Amarchy.Flat" that Amarchy writes. flat_core.c is host-tested.
 .PHONY: amarchy-flat
 amarchy-flat: $(BUILD)/amiga/amarchy-flat
-$(BUILD)/amiga/amarchy-flat: device/romspan.h amarchy/flat_shared.h amarchy/flat.c amarchy/flat_rf.s amarchy/flat_tx.s amarchy/flat_glyph.c amarchy/flat_glyph.h amarchy/flat_core.c amarchy/desk_core.c amarchy/desk_core.h amarchy/gthemes_core.c amarchy/gthemes_core.h handler/be32.c handler/be32.h amarchy/taskalive.c amarchy/flat_core.h amarchy/taskalive.h tty/qmark.h amarchy/poll_timer.c amarchy/poll_timer.h amarchy/amconf_core.h amarchy/amconf_dos.h $(AMARCHY_LEAF_DEPS)
+$(BUILD)/amiga/amarchy-flat: device/romspan.h amarchy/flat_shared.h amarchy/flat.c amarchy/flat_rf.s amarchy/flat_tx.s amarchy/flat_glyph.c amarchy/flat_glyph.h amarchy/flat_core.c amarchy/desk_core.c amarchy/desk_core.h amarchy/gthemes_core.c amarchy/gthemes_core.h amarchy/iconpen_core.c amarchy/iconpen_core.h handler/be32.c handler/be32.h amarchy/taskalive.c amarchy/flat_core.h amarchy/taskalive.h tty/qmark.h amarchy/poll_timer.c amarchy/poll_timer.h amarchy/amconf_core.h amarchy/amconf_dos.h $(AMARCHY_LEAF_DEPS)
 	@mkdir -p $(BUILD)/amiga
 	@mkdir -p $(BUILD)/amiga/obj
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_rf.o amarchy/flat_rf.s
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_tx.o amarchy/flat_tx.s
-	$(VC) -dontwarn=153,65 -o $@ amarchy/flat.c $(BUILD)/amiga/obj/flat_rf.o $(BUILD)/amiga/obj/flat_tx.o amarchy/flat_glyph.c amarchy/flat_core.c amarchy/desk_core.c amarchy/gthemes_core.c handler/be32.c amarchy/taskalive.c amarchy/poll_timer.c $(AMARCHY_LEAF_DEPS)
+	$(VC) -dontwarn=153,65 -o $@ amarchy/flat.c $(BUILD)/amiga/obj/flat_rf.o $(BUILD)/amiga/obj/flat_tx.o amarchy/flat_glyph.c amarchy/flat_core.c amarchy/desk_core.c amarchy/gthemes_core.c amarchy/iconpen_core.c handler/be32.c amarchy/taskalive.c amarchy/poll_timer.c $(AMARCHY_LEAF_DEPS)
 
 # amarchy-icons: Lucide icons on the Workbench default icons, APPLY and RESTORE (plan 2026-10-31-amarchy-lucide-icons.md L8, L9).
 # A plain vbcc DOS program; every decision is amarchy/iconapply_core.c (host suite iconapply).
@@ -1264,6 +1270,11 @@ $(BUILD)/amiga/phaseprobe: tests/amiga/phaseprobe.c
 $(BUILD)/amiga/cellbench: tests/amiga/cellbench.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/cellbench.c
+
+# Who holds which Workbench screen pen: PalExtra dump, WATCH patches ObtainPen / ObtainBestPenA / ReleasePen (vtcon L7)
+$(BUILD)/amiga/palprobe: tests/amiga/palprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -o $@ tests/amiga/palprobe.c
 
 # A public screen's DrawInfo pens and their colours (ownscreen_rig)
 $(BUILD)/amiga/dripens: tests/amiga/dripens.c
@@ -1739,7 +1750,8 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	mkdir -p $(KIT)/Files/unifont && cp $(UNIFONT_PAGES)/[0-9A-F][0-9A-F] $(UNIFONT_PAGES)/1F[0-9A] dist/unifont/OFL-1.1.txt dist/unifont/SOURCE.txt $(KIT)/Files/unifont/
 	mkdir -p $(KIT)/Files/emoji && cp $(EMOJI_PAGES)/[0-9A-F][0-9A-F] $(EMOJI_PAGES)/1F[0-9A] dist/emoji/CC-BY-4.0.txt dist/emoji/SOURCE.txt $(KIT)/Files/emoji/
 	@# wasabi: LICENSE and SOURCE.txt from dist/wasabi, the daemon and the client from the build (the wasabi stamp, the pin tools/nas/wasabi.rev)
-	rm -rf $(KIT)/Files/wasabi && cp -R dist/wasabi $(KIT)/Files/wasabi
+	rm -rf $(KIT)/Files/wasabi && cp -R dist/wasabi $(KIT)/Files/wasabi && rm $(KIT)/Files/wasabi/SOURCE.txt.in
+	$(MAKE) $(WASABI_SOURCE) && cp $(WASABI_SOURCE) $(KIT)/Files/wasabi/SOURCE.txt
 	cp $(BUILD)/wasabi/wasabid $(BUILD)/wasabi/wasabi $(BUILD)/wasabi/wasabi_mcp.py $(BUILD)/wasabi/wasabi_client.py $(BUILD)/amiga/wasabikey $(KIT)/Files/wasabi/
 	@# AmiSSL 5.27 (Apache 2.0) as its own release drawer: the Install runs its Install-AmiSSL (the Developer SDK is for building only, so it stays out)
 	rm -rf $(KIT)/Files/AmiSSL && mkdir -p $(KIT)/Files/AmiSSL && cp -R $(VENDOR)/amissl-5.27/AmiSSL/. $(KIT)/Files/AmiSSL/ && rm -rf $(KIT)/Files/AmiSSL/Developer $(KIT)/Files/AmiSSL/Developer.info

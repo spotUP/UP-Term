@@ -56,4 +56,20 @@ int ip_holder_release(ip_holder *h, const ip_ops *o);
 /* "pens-held N"; returns the length, 0 when cap is too small */
 int ip_status_line(const ip_holder *h, char *out, size_t cap);
 
+/* ---- the Amiga glue's decisions (amarchy/flat.c pens_sync) ---- */
+enum { IP_SYNC_NONE, IP_SYNC_OBTAIN, IP_SYNC_RELEASE };
+/* What a sync does: `hold` 0 (program quitting, kill switch held, graphics < V39) or no Workbench screen -> release what
+ * is held (RELEASE only while pens are tied to a screen); `hold` 1 and the screen or its depth is not the one the pens were
+ * obtained on (first run, Workbench closed and reopened, mode change) -> obtain; else nothing. */
+int ip_sync_decide(const ip_holder *h, int hold, const void *screen, int depth);
+/* Whether amarchy-flat holds the icon pens: for its whole run, whatever the flat switch says (L7 cause 2). graphics puts a
+ * released pen at the HEAD of the PalExtra free list (rig 10, 3.2: after flat off the free order read 47 46 .. 32 244 ..),
+ * so the next ObtainBestPen of any client (the dim pen, Amarchy's own theme pens, colour icons) took 47, then 46, and
+ * flat on again found them shared. The flat switch is deliberately not an input. */
+int ip_hold_wanted(int quit, int held, int gfx_v39);
+/* ObtainPen takes 32-bit colour gun values: an 8-bit gun c becomes c * 0x01010101 */
+unsigned long ip_scale32(unsigned c);
+/* the depth ip_fold / desk_pen_plan_for take: the bitmap's planes, EHB (6 planes) counts as 5 */
+int ip_screen_depth(int planes, int ehb);
+
 #endif

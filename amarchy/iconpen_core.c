@@ -83,6 +83,8 @@ int ip_holder_release(ip_holder *h, const ip_ops *o)
             n++;
         }
     h->held = 0;
+    h->screen = NULL;            /* nothing is obtained on any screen now: the next sync obtains again */
+    h->depth = 0;
     return n;
 }
 
@@ -114,6 +116,43 @@ int ip_holder_stale(const ip_holder *h, const void *screen, int depth)
 
 int ip_status_line(const ip_holder *h, char *out, size_t cap)
 {
-    int n = snprintf(out, cap, "pens-held %d", h->held);
-    return n > 0 && (size_t)n < cap ? n : 0;
+    int n = snprintf(out, cap, "pens-held %d", h->held), i;
+    if (n <= 0 || (size_t)n >= cap)
+        return 0;
+    if (h->screen && h->held < h->count) {       /* name the pens another user holds */
+        int w = snprintf(out + n, cap - (size_t)n, " missing");
+        if (w <= 0 || (size_t)(n + w) >= cap)
+            return 0;
+        n += w;
+        for (i = 0; i < h->count; i++)
+            if (!h->have[i]) {
+                w = snprintf(out + n, cap - (size_t)n, " %d", h->first + i);
+                if (w <= 0 || (size_t)(n + w) >= cap)
+                    return 0;
+                n += w;
+            }
+    }
+    return n;
+}
+
+int ip_sync_decide(const ip_holder *h, int hold, const void *screen, int depth)
+{
+    if (!hold || !screen)
+        return h->screen ? IP_SYNC_RELEASE : IP_SYNC_NONE;
+    return ip_holder_stale(h, screen, depth) ? IP_SYNC_OBTAIN : IP_SYNC_NONE;
+}
+
+int ip_hold_wanted(int quit, int held, int gfx_v39)
+{
+    return !quit && !held && gfx_v39;
+}
+
+unsigned long ip_scale32(unsigned c)
+{
+    return (unsigned long)(c & 0xff) * 0x01010101UL;
+}
+
+int ip_screen_depth(int planes, int ehb)
+{
+    return (ehb && planes == 6) ? 5 : planes;
 }

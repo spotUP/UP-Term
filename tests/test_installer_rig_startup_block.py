@@ -54,6 +54,15 @@ class StartupBlock(unittest.TestCase):
         res = self.run_check(master, master, installed=master)
         self.assertEqual(res, [(True, "after base Uninstall: S:User-Startup as it was, byte for byte")])
 
+    def test_amissl_block_stays_after_base_uninstall(self):
+        # fresh-all check 36 (rig 9, 2026-11-01): Install-AmiSSL's ;BEGIN AmiSSL block stays, AmiSSL is kept
+        import install_rig as ir
+        amissl = ';BEGIN AmiSSL\nAssign AmiSSL: "Work:AmiSSL"\nAssign LIBS: AmiSSL:Libs ADD\n;END AmiSSL\n'
+        for leaves, want in ((ir.BASE_STARTUP_LEAVES, True), ((), False)):
+            ck = Checks()
+            ir.check_startup_after_uninstall(ck, BEFORE, BEFORE + amissl, BEFORE + amissl, leaves, 'after Uninstall')
+            self.assertEqual(all(ok for ok, _ in ck.results), want, leaves)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -762,16 +762,23 @@
 (set #adrows (+ #sslrows (if (<> #adnote "") 2 0)))
 (set #adnote (cat #sslnote #adnote))
 
-; the last page: 9 lines, 14 with the wasabi key; the AmiSSL note adds 1 or 2, the add-on note 2
-; (the wasabi page is full: the note then has a page of its own before it)
-(if (and (= #wasabi "WASABI") (<> #adnote ""))
+; the last pages. The text area of the smallest Installer window (448x159 on
+; a 640x256 depth-8 Workbench, 9 px a line, buttons at y 129) holds 13 lines;
+; a longer page spills into the window's bottom border, which a later page
+; does not clear (INSTALLER-LAYOUT-BOTTOM-STRIP, tests/test_dist_installer.py).
+; So the wasabi key (5 lines) has a page of its own, then the last page holds
+; 9 lines, the AmiSSL note adds 1 or 2, the add-on note 2: 13 at most.
+(if (= #wasabi "WASABI")
     (
-        (set #n 3)
+        (set #n 5)
         (P_LEAD)
-        (message (cat #lead (substr #adnote 1 (strlen #adnote))) (all))
-        (set #adnote "")
-        (set #adrows 0)))
-(set #n (+ (if (= #wasabi "WASABI") 14 9) #adrows))
+        (message
+            (cat #lead "wasabi is running. On the other computer, with Python 3:\n"
+                 "  copy Files/wasabi/wasabi from this kit, then\n"
+                 "  export WASABI_KEY=" (getenv "wasabi.key") "\n"
+                 "  ./wasabi discover\n"
+                 "The key is in ENVARC:wasabi.key; keep it to yourself."))))
+(set #n (+ 9 #adrows))
 (P_LEAD)
 (set #done
     (cat #lead "Open UP-Term: double-click SYS:System/UP-Term, or type\n"
@@ -782,12 +789,4 @@
          "A reboot mounts XCON:, PTY: and IXPIPE: at every start.\n"
          "Uninstall (beside Install) takes UP-Term out again."
          #adnote))
-(if (= #wasabi "WASABI")
-    (set #done
-        (cat #done "\n"
-             "wasabi is running. On the other computer, with Python 3:\n"
-             "  copy Files/wasabi/wasabi from this kit, then\n"
-             "  export WASABI_KEY=" (getenv "wasabi.key") "\n"
-             "  ./wasabi discover\n"
-             "The key is in ENVARC:wasabi.key; keep it to yourself.")))
 (P_END)

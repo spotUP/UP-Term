@@ -77,5 +77,26 @@ class DestLeavesSysUpTerm(unittest.TestCase):
         self.assertFalse(dest_check(EMPTY, KIT))
 
 
+class OtherDiskLeavesSysUpTerm(unittest.TestCase):
+    """FRESHALL-CHECK10-STRONGER: installer_rig check 10 compares List SYS:UP-Term ALL, like base-dest. The old
+    test (VERSIONS absent when SYS:UP-Term pre-existed) passed a stale drawer that the Install wrote other files into."""
+    STALE = (0, "old  10  ----rwed\n")
+    STALE_PLUS = (0, "old  10  ----rwed\nbin  Dir\n")
+
+    def run_check(self, before, after):
+        import installer_rig as irig
+        ck = Checks()
+        with mock.patch.object(ir, "run", lambda line: after if line == 'List SYS:UP-Term ALL' else (5, "")):
+            irig.check_other_disk_leaves_sys_upterm(ck, before)
+        return list(ck.results.values())
+
+    def test_stale_drawer_untouched_passes(self):
+        self.assertEqual(self.run_check(self.STALE, self.STALE), [True])
+
+    def test_stale_drawer_written_into_without_versions_fails(self):
+        # the old check saw no SYS:UP-Term/VERSIONS and passed
+        self.assertEqual(self.run_check(self.STALE, self.STALE_PLUS), [False])
+
+
 if __name__ == "__main__":
     unittest.main()

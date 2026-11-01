@@ -584,11 +584,11 @@ def main(dest=None):
     finally:
         fx.restore()
 
-def check_dest_leaves_sys_upterm(check, before):
+def check_dest_leaves_sys_upterm(check, before, what='a non-default DEST leaves SYS:UP-Term as it was'):
     """An Install given another DEST writes nothing into SYS:UP-Term: the drawer is as it was before, not absent
     (the master image has an empty one, BASEDEST-EMPTY-SYSUPTERM)."""
     now = run('List SYS:UP-Term ALL')
-    check(now == before, 'a non-default DEST leaves SYS:UP-Term as it was', 'before %r, now %r' % (before, now))
+    check(now == before, what, 'before %r, now %r' % (before, now))
 
 
 def _main(dest=None):
@@ -1231,6 +1231,11 @@ def strip_block(text, name):
             skip = False
             after_end = True
     return '\n'.join(out)
+
+
+# The base Uninstall keeps AmiSSL (other programs use it, dist/Uninstall header), so the ;BEGIN AmiSSL block that
+# Install-AmiSSL's (startup) call wrote stays in S:User-Startup: the assign that makes LIBS: find it at boot.
+BASE_STARTUP_LEAVES = ('AmiSSL',)
 
 
 def startup_leaves(pkgs):

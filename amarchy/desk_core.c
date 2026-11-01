@@ -318,9 +318,12 @@ long desk_palette_pens(const unsigned char *cur, long curlen, const unsigned cha
  * in the live DrawInfo array, black in stock icons), pen 4 is the flat button fill (DK_SELECTION), and the flat DrawInfo map only ever
  * uses pens 0, 1 and 2. Pen 5 (DK_MUTED) is inside the tile range, outside 0-4 and in no DrawInfo slot, so recolouring it to the theme dark
  * changes nothing but the backdrop. Never BACKGROUNDPEN: with no pattern the root fills with it, the window interior pen. */
+#define PT_DEPTH_MAX 3 /* the planes of a WBPattern tile */
 int desk_backdrop_pen(void)
 {
-    return DK_MUTED;
+    desk_pen_plan p;
+    desk_pen_plan_for(PT_DEPTH_MAX, &p); /* L6: the plan is the one source; the backdrop pen is the same at every depth */
+    return p.backdrop;
 }
 
 /* the palette entry of a pen in a palette.prefs: its offset in cur, -1 when none */

@@ -1063,6 +1063,11 @@ def reboot_amarchy_check(ck, log):
     ir.stock_libs()       # the boot put VTC:ixp6 first in LIBS: again; the Uninstall checks read the system's
 
 
+def check_other_disk_leaves_sys_upterm(ck, before):
+    """A drawer on another disk leaves SYS:UP-Term as it was (same List ... ALL comparison as install_rig's base-dest)."""
+    ir.check_dest_leaves_sys_upterm(ck, before, 'a drawer on another disk leaves SYS:UP-Term as it was')
+
+
 def run_base_case(case):
     level, dest = CASES[case]
     ck = Checks()
@@ -1071,7 +1076,7 @@ def run_base_case(case):
     if case == "anx":
         ir.run('Copy >NIL: C:Wait VTC:distkit/Files/tcpprobe')   # no stack found: AmiNetXDuo is offered, ticked
         ir.run('Copy >NIL: S:User-Startup T:UPTANX-startup')
-    sys_had = ir.run('List >NIL: SYS:UP-Term')[0] == 0   # the rig's baseline assign UP-Term: may name an empty SYS:UP-Term: leave it, and test only what this run adds
+    sys_upterm_before = ir.run('List SYS:UP-Term ALL')   # the rig's baseline assign UP-Term: may name an empty or stale SYS:UP-Term: compare against it, not against absence
     ir.run_long('rununinstall')  # a run that stopped half-way left things behind
     ir.run('Delete >NIL: ENVARC:UP-Term.prefs ENVARC:Claude/remote QUIET')
     parent_existed = True
@@ -1165,7 +1170,7 @@ def run_base_case(case):
     ck(out.find('Assign UP-Term:') >= 0 and (out.find('Assign GG:') < 0 or out.find('Assign UP-Term:') < out.find('Assign GG:')),
        'the UP-Term: block comes before the blocks that use it', out[-300:])
     if drawer.upper() != 'SYS:UP-TERM':
-        ck(ir.run('List >NIL: SYS:UP-Term/VERSIONS')[0] != 0 if sys_had else ir.run('List >NIL: SYS:UP-Term')[0] != 0, 'a drawer on another disk leaves SYS:UP-Term unmade')
+        check_other_disk_leaves_sys_upterm(ck, sys_upterm_before)
     for f in ('"%s/VERSIONS"' % drawer, 'UP-Term:bin/sh', 'UP-Term:bin/ls', 'UP-Term:unifont/00', 'UP-Term:emoji/1F6',
               'C:vsh', 'C:tmux', 'C:UPConsole', 'L:vtcon-handler', 'L:pty-handler', 'DEVS:DOSDrivers/XCON',
               'SYS:System/UP-Term.info', 'SYS:Prefs/UP-Term-Prefs.info', 'ENVARC:up-term/unstartup.sh',
@@ -1196,6 +1201,7 @@ def run_base_case(case):
             ir.run('Copy >NIL: C:Wait C:wasabid')
         ir.run('Run >NIL: C:wasabid 600')
     # Uninstall gives it all back
+    installed_startup = ir.run('Type S:User-Startup')[1]
     rc, out = ir.run_long('rununinstall')
     ck(rc == 0, 'Uninstall runs', out)
     if case == "anx":
@@ -1215,9 +1221,9 @@ def run_base_case(case):
     if stand_in and not kit_wasabid:
         ir.run('Delete >NIL: C:wasabid QUIET')
     ir.run('Delete >NIL: ENV:upw QUIET')
-    rc, out = ir.run('Type S:User-Startup')
-    ck(out == startup_before, 'after Uninstall: S:User-Startup as it was, byte for byte',
-       'differs: %r vs %r' % (out[-80:], startup_before[-80:]))
+    # AmiSSL stays after Uninstall (dist/Uninstall header), and so does the ;BEGIN AmiSSL block Install-AmiSSL wrote
+    ir.check_startup_after_uninstall(ck, startup_before, installed_startup, ir.run('Type S:User-Startup')[1],
+                                     ir.BASE_STARTUP_LEAVES, 'after Uninstall')
     ck(ir.run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'after Uninstall: no UP-Term: assign')
     ck(ir.run('List >NIL: "%s"' % drawer)[0] != 0, 'after Uninstall: %s is gone' % drawer)
     st = ir.lib_state()
