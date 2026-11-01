@@ -247,8 +247,9 @@ ULONG c8_disp_stk(struct Hook *h, Object *obj, Msg msg)
 /* ---- FLAT-D4: the replacement routines. They run on the caller's task with the caller's registers (a0 rp, a1 rect,
  * a2 info, d0 recessed). Flat on and flat pens: draw nothing. Otherwise the saved routine, same arguments. */
 typedef void (*boxfn)(__reg("a0") struct RastPort *, __reg("a1") struct Rectangle *, __reg("a2") struct DrawInfo *,
-                      __reg("d0") LONG);
-typedef void (*fieldfn)(__reg("a0") struct RastPort *, __reg("a1") struct Rectangle *, __reg("a2") struct DrawInfo *);
+                      __reg("d0") LONG, __reg("a6") struct Library *);
+typedef void (*fieldfn)(__reg("a0") struct RastPort *, __reg("a1") struct Rectangle *, __reg("a2") struct DrawInfo *,
+                        __reg("a6") struct Library *);
 
 static int d4_flat(int el, struct DrawInfo *info, LONG recessed)
 {
@@ -264,13 +265,13 @@ static void d4_drawbox(__reg("a0") struct RastPort *rp, __reg("a1") struct Recta
                        __reg("d0") LONG recessed)
 {
     if (!d4_flat(FLAT_EL_DRAWBOX, info, recessed))
-        ((boxfn)g_r->dsw[FLAT_EL_DRAWBOX].saved)(rp, rect, info, recessed);
+        ((boxfn)g_r->dsw[FLAT_EL_DRAWBOX].saved)(rp, rect, info, recessed, g_r->dlib);
 }
 
 static void d4_fieldbox(__reg("a0") struct RastPort *rp, __reg("a1") struct Rectangle *rect, __reg("a2") struct DrawInfo *info)
 {
     if (!d4_flat(FLAT_EL_FIELDBOX, info, 0))
-        ((fieldfn)g_r->dsw[FLAT_EL_FIELDBOX].saved)(rp, rect, info);
+        ((fieldfn)g_r->dsw[FLAT_EL_FIELDBOX].saved)(rp, rect, info, g_r->dlib);
 }
 
 static const LONG d4_lvo[FLAT_EL_COUNT] = { FLAT_LVO_DRAWBOX, FLAT_LVO_FIELDBOX };
@@ -279,7 +280,10 @@ static const LONG d4_lvo[FLAT_EL_COUNT] = { FLAT_LVO_DRAWBOX, FLAT_LVO_FIELDBOX 
  * label in pen 1 with JAM1, also when pressed, so the dark pressed label needs this patch: while c8_skip has armed
  * {surface (layer, else bitmap: the label comes through another RastPort than the frame), task, box} for a pressed filled frame, a Text call on that rastport from that task with the pen position
  * inside the box runs with pen_ptext (flat_tx_text decides; the stub is flat_tx.s). Everything else: stock Text. ---- */
-typedef void (*textfn)(__reg("a1") struct RastPort *, __reg("a0") CONST_STRPTR, __reg("d0") ULONG);
+/* Every saved library routine (Text, RectFill, the dopus5 ones) is called with its library base in a6, as through its
+ * LVO: the ROM code reads its base from a6, and these hooks use a6 as a scratch register and for FindTask (a6 = SysBase).
+ * Without it, the stock Text ran with a6 = SysBase and jumped through a garbage base (s28 flat-ON hang). */
+typedef void (*textfn)(__reg("a1") struct RastPort *, __reg("a0") CONST_STRPTR, __reg("d0") ULONG, __reg("a6") struct Library *);
 extern void flat_tx_entry(void);
 
 void flat_tx_c(struct RastPort *rp, CONST_STRPTR str, ULONG count)
@@ -293,11 +297,11 @@ void flat_tx_c(struct RastPort *rp, CONST_STRPTR str, ULONG count)
         UBYTE fg = rp->FgPen;
         r->thits++;
         SetAPen(rp, (UBYTE)pen);
-        ((textfn)r->tsw.saved)(rp, str, count);
+        ((textfn)r->tsw.saved)(rp, str, count, (struct Library *)GfxBase);
         SetAPen(rp, fg);
         return;
     }
-    ((textfn)r->tsw.saved)(rp, str, count);
+    ((textfn)r->tsw.saved)(rp, str, count, (struct Library *)GfxBase);
 }
 
 static int tx_install(flatshared *r)
@@ -343,7 +347,8 @@ static int tx_remove(flatshared *r)
  * is recoloured to pen_outline only when ALL hold: enabled and not held, the rastport is a window's layer, the window
  * has a border, the rect is exactly one outer strip of the window (flat_outer_edge_match) and the caller lies in
  * Intuition's ROM code. Anything else runs the stock RectFill untouched. ---- */
-typedef void (*rectfn)(__reg("a1") struct RastPort *, __reg("d0") LONG, __reg("d1") LONG, __reg("d2") LONG, __reg("d3") LONG);
+typedef void (*rectfn)(__reg("a1") struct RastPort *, __reg("d0") LONG, __reg("d1") LONG, __reg("d2") LONG, __reg("d3") LONG,
+                       __reg("a6") struct Library *);
 extern void flat_rf_entry(void);
 
 /* FLAT-SCROLLER: the pen for one Intuition fill inside a window scroller, or -1. Walks the window's prop gadgets (no
@@ -389,12 +394,12 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
             rp->AreaPtrn = 0; rp->AreaPtSz = 0;
             SetDrMd(rp, JAM2);
             SetAPen(rp, (UBYTE)flat_dim_pen(&r->st, depth));
-            ((rectfn)r->rsw.saved)(rp, gb->x0, gb->y0, gb->x1, gb->y1);
+            ((rectfn)r->rsw.saved)(rp, gb->x0, gb->y0, gb->x1, gb->y1, (struct Library *)GfxBase);
             if (gb->str) {
                 SetDrMd(rp, JAM1);
                 SetAPen(rp, (UBYTE)flat_dimtext_pen(&r->st, depth));
                 Move(rp, gb->lx, gb->ly);
-                ((textfn)r->tsw.saved)(rp, gb->str, gb->count);
+                ((textfn)r->tsw.saved)(rp, gb->str, gb->count, (struct Library *)GfxBase);
             }
             Move(rp, cx, cy);
             SetAPen(rp, fg);
@@ -410,7 +415,7 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
             rp->AreaPtrn = 0; rp->AreaPtSz = 0;               /* a solid fill: the stock track is a dither */
             SetDrMd(rp, JAM2);
             SetAPen(rp, sp);
-            ((rectfn)r->rsw.saved)(rp, x0, y0, x1, y1);
+            ((rectfn)r->rsw.saved)(rp, x0, y0, x1, y1, (struct Library *)GfxBase);
             SetAPen(rp, fg);
             SetDrMd(rp, dm);
             rp->AreaPtrn = pa; rp->AreaPtSz = pt;
@@ -423,11 +428,11 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
         UBYTE fg = rp->FgPen;
         r->rhits++;
         SetAPen(rp, r->st.pen_outline);
-        ((rectfn)r->rsw.saved)(rp, x0, y0, x1, y1);
+        ((rectfn)r->rsw.saved)(rp, x0, y0, x1, y1, (struct Library *)GfxBase);
         SetAPen(rp, fg);
         return;
     }
-    ((rectfn)r->rsw.saved)(rp, x0, y0, x1, y1);
+    ((rectfn)r->rsw.saved)(rp, x0, y0, x1, y1, (struct Library *)GfxBase);
 }
 
 static int rf_install(flatshared *r)

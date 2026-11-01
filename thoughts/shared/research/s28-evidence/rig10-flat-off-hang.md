@@ -68,3 +68,25 @@ so tw_tick runs pens_release/pens_get and then `g_slot[i].fn(g_slot[i].win)` for
 Next probe: KPrintF (wasabi debug) brackets around each step of tw_tick and each g_slot[i].fn call, and around
 bar_tick's sample/paint_all, then repeat the flat-ON write. Also print g_slot[i].fn and the library bases used
 by the recolour callbacks before the call.
+
+## Part 3 (2026-11-01): the wild call is amarchy-flat's own Text / RectFill fall-through, a6 = SysBase
+
+- Cause: amarchy/flat.c called the stock graphics.library routines through their saved LVO pointers with C typedefs
+  (`textfn`, `rectfn`) that had no `__reg("a6")` parameter. vbcc used a6 as scratch in flat_tx_c / flat_rf_c and
+  called FindTask (a6 = SysBase) before the fall-through `((textfn)r->tsw.saved)(rp, str, count)`. ROM Text then ran
+  with a6 = SysBase, read a garbage base and executed `jsr -156(a6)` into DOS DeviceNode data (the 0x1000deb4 spin).
+  Disassembly of the old amarchy-flat confirmed no a6 load before the saved calls; the rebuilt one loads a6 before each.
+- Why flat ON: the theme pick installs the Text patch; Amarchy's bar (bar_tick -> tw_text -> Text, every tick) is the
+  first caller, so the commodity hangs right after the flat-ON prefs write. Same defect in flat_rf_c (RectFill after
+  FindTask) and the dopus5 DrawBox/FieldBox saved calls (a6 must be the dopus5 base `dlib`); all fixed.
+- The 28 KB "stack pattern" is `am_prefs` (char val[AM_NKEYS][UC_MAX_VALUE]) on the stack in gt_dos_current /
+  amconf_load: not the cause.
+- Fix: textfn, rectfn, boxfn, fieldfn take a trailing `__reg("a6") struct Library *`; saved calls pass GfxBase or dlib.
+- Test: tests/test_flat_on_hang_wild_call.py (python3 -m unittest): OK with the fix, FAILED (failures=2) with the old flat.c.
+- Rig 10 (OS 3.2, 060): amarchy_desk_rig.py --flat: flat ON pick -> flat=on, pens 2/3/0/3, glyph counter rose, Text and
+  RectFill patches installed and called thousands of times, AMARCHY port answers. The second pick (flat OFF) timed out
+  once at the menu step "Down to Style" (30 s, no stable state); a rerun of the OFF pick by itself passed: flat=off,
+  Amarchy answers, amarchy-flat unloads (STATUS flat=absent). The one menu-step timeout is unexplained (unverified
+  whether a slow redraw or rig load).
+- Open: the input.device hang in rig10-thistask.md is plausibly the same bug (the patch runs on the caller's task);
+  unverified.
