@@ -786,8 +786,8 @@ class EveryOptionTicked(unittest.TestCase):
             self.assertEqual(value, 2 ** n - 1, var)
         # AmiSSL's, the AmiNetXDuo page (AmiNetXDuoPart: ticked only with no stack found) and the add-on
         # page (FindsTheAddOns: all add-ons) are the three more, the DOpus5: page (DopusFiletypeOption: ticked)
-        # the fourth
-        self.assertEqual(INSTALLER.count('(askoptions'), len(self.PAGES) + 4, 'a page this test misses')
+        # the fourth, the icon library page (IconLib: ticked on 3.0/3.1, unticked on 3.2; tests/test_dist_iconlib.py) the fifth
+        self.assertEqual(INSTALLER.count('(askoptions'), len(self.PAGES) + 5, 'a page this test misses')
 
 
 class UpdateWithNoRecordedOptions(unittest.TestCase):

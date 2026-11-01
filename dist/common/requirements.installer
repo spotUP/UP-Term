@@ -1,6 +1,8 @@
 ; ---- requirements ---------------------------------------------------------
 
-(if (< (/ (getversion "exec.library" (resident)) 65536) 39)
+; #execmajor: exec.library's major version (39 = 3.0, 40 = 3.1, 47 = 3.2), also read by the base Install's icon library page
+(set #execmajor (/ (getversion "exec.library" (resident)) 65536))
+(if (< #execmajor 39)
     (abort "@ARCHIVE@ needs AmigaOS 3.0 or newer."))
 ; a package with a 68000 build of its own (@CPU68000@ = YES, dist/values/<id>.txt) picks it on a 68000/68010
 (if (and (= "@CPU68000@" "NO") (or (= (database "cpu") "68000") (= (database "cpu") "68010")))

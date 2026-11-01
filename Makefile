@@ -210,6 +210,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_dopus_own_screen ]; then python3 tests/test_rig_dopus_own_screen.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_installer.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_manifest.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = dist_iconlib ]; then python3 tests/test_dist_iconlib.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_safeoff.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_kitsize.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_install_dos_room.py; fi
@@ -1836,6 +1837,8 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	rm -rf $(KIT)/Files/AmiSSL && mkdir -p $(KIT)/Files/AmiSSL && cp -R $(VENDOR)/amissl-5.27/AmiSSL/. $(KIT)/Files/AmiSSL/ && rm -rf $(KIT)/Files/AmiSSL/Developer $(KIT)/Files/AmiSSL/Developer.info
 	@# AmiNetXDuo 1.0.0-rc2 (MIT) as its own release drawer: the Install runs its Install-AmiNetXDuo only when no TCP/IP stack is found (the Developer drawer is headers, not installed)
 	rm -rf $(KIT)/Files/AmiNetXDuo && mkdir -p $(KIT)/Files/AmiNetXDuo && cp -R $(VENDOR)/aminetxduo-1.0.0-rc2/AmiNetXDuo/. $(KIT)/Files/AmiNetXDuo/ && rm -rf $(KIT)/Files/AmiNetXDuo/Developer $(KIT)/Files/AmiNetXDuo/Developer.info
+	@# IconLib 46.4 (Peter Keunecke, freeware): the two builds, its guide and licence page; the Install copies one to LIBS:icon.library when ticked
+	rm -rf $(KIT)/Files/iconlib && cp -R dist/iconlib $(KIT)/Files/iconlib
 	cp terminfo/vtcon.termcap $(KIT)/Files/termcap.vtcon
 	# the shared tail of every archive: the scripts assembled from dist/ and dist/common/, texts, icons,
 	# VERSIONS, UP-Term.version, modes, manifest, the lha archive and its Aminet readme (tools/mkkit.py)

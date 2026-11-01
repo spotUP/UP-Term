@@ -404,6 +404,14 @@ If EXISTS "$upixnet.orig"
   Avail >NIL: FLUSH
 EndIf
 Delete >NIL: ENV:upixemul ENV:upixnet QUIET
+; IconLib: the library Install kept before it replaced LIBS:icon.library (the marker is Install's)
+If EXISTS ENVARC:up-term/iconlib
+  If EXISTS LIBS:icon.library.amarchy-backup
+    Copy LIBS:icon.library.amarchy-backup LIBS:icon.library CLONE
+    Delete >NIL: LIBS:icon.library.amarchy-backup QUIET
+    Avail >NIL: FLUSH
+  EndIf
+EndIf
 UnSet upixemul
 UnSet upixnet
 Delete >NIL: ENVARC:up-term-orig ALL QUIET

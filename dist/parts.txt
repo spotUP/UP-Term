@@ -86,6 +86,7 @@ boot            Files/banner
 boot            Files/vshrc
 boot            Files/wasabi
 libs            Files/libs
+libs            Files/iconlib
 mount           Files/IXPIPE
 mount           Files/ixpipe-handler
 console         Files/UPConsole

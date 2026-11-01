@@ -1,4 +1,4 @@
-.KEY DIR/A,STEP/K,DEST/K,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SERIAL/S,SSH/S,BEBBOGET/S,WASABI/S,CPU040/S,CPU060/S,NOFPU/S,UNIFONT/S,EMOJI/S,DOPUS/S
+.KEY DIR/A,STEP/K,DEST/K,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SERIAL/S,SSH/S,BEBBOGET/S,WASABI/S,CPU040/S,CPU060/S,NOFPU/S,UNIFONT/S,EMOJI/S,DOPUS/S,ICONLIB/S
 .BRA {
 .KET }
 ; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
@@ -12,6 +12,8 @@
 ;     [SERIAL]   (a serial login at every boot: no unless asked)
 ;     [SSH] [BEBBOGET]   (the network tools, each: none unless asked)
 ;     [DOPUS]   (the Directory Opus 5 filetype in DOpus5:Filetypes, when DOpus5: is assigned)
+;     [ICONLIB] (Peter Keunecke's IconLib as LIBS:icon.library: the 46.4 build on OS 3.0/3.1, the 51.4
+;               build on 3.2; the old library is kept once as LIBS:icon.library.amarchy-backup)
 ;     [WASABI]  (wasabid 0.11b2, remote development and Claude Code on another computer, with a
 ;               key: no unless asked; replaces an older wasabid and amiagent of ours)
 ; (Python, Neovim, Claude and amiga-pi are archives of their own: Python3,
@@ -53,6 +55,7 @@ Set optnofpu "{NOFPU}"
 Set optunifont "{UNIFONT}"
 Set optemoji "{EMOJI}"
 Set optdopus "{DOPUS}"
+Set opticonlib "{ICONLIB}"
 If NOT "{STEP}" EQ ""
   If EXISTS ENV:UPTOPTDEST
     Set optdest "$UPTOPTDEST"
@@ -101,6 +104,9 @@ If NOT "{STEP}" EQ ""
   EndIf
   If EXISTS ENV:UPTOPTDOPUS
     Set optdopus DOPUS
+  EndIf
+  If EXISTS ENV:UPTOPTICONLIB
+    Set opticonlib ICONLIB
   EndIf
 EndIf
 ; The parts, each from its Lab line to the next. With no STEP every part runs,
@@ -1058,6 +1064,26 @@ Else
   Echo >ENVARC:up-term-orig/ixnet.none ""
 EndIf
 Delete >NIL: ENV:upixemul ENV:upixnet QUIET
+; ICONLIB: Peter Keunecke's IconLib (freeware, Files/iconlib) as LIBS:icon.library. AmigaOS 3.0/3.1 get the 46.4
+; build (68020, unrestricted), 3.2 the 51.4 TrueColor build (the only one that beats the 3.2 ROM module).
+; The library there is kept once as LIBS:icon.library.amarchy-backup BEFORE the copy (never overwritten by a second
+; Install); ENVARC:up-term/iconlib is Install's marker: Uninstall puts the backup back only then.
+If "$opticonlib" EQ "ICONLIB"
+  Set upiconlib iconlib/icon.library.os30
+  Version >NIL: exec.library 47
+  If NOT WARN
+    Set upiconlib iconlib/icon.library.os32
+  EndIf
+  If NOT EXISTS LIBS:icon.library.amarchy-backup
+    If EXISTS LIBS:icon.library
+      Copy LIBS:icon.library LIBS:icon.library.amarchy-backup CLONE
+    EndIf
+  EndIf
+  Copy $upiconlib LIBS:icon.library CLONE
+  Echo "ICONLIB" >ENVARC:up-term/iconlib
+  Avail >NIL: FLUSH
+  UnSet upiconlib
+EndIf
 ; AmiSSL: UP-Term:bin/curl is linked against it and cannot start without LIBS:amisslmaster.library version 5. The kit's
 ; Install (STEP set) offers it as its own page (P_AMISSL); a Shell install without Installer has no page, so this
 ; part runs the same Install-AmiSSL through Installer, from the kit's AmiSSL drawer (it reads Libs/ and Certs/ by
