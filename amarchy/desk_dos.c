@@ -454,7 +454,9 @@ static void dk_icons_sync(int on)
     }
 }
 
-static void dk_flat_sync(void)
+/* changed_only: the prefs-file notify path (desk_dos_flat_sync): write and redraw only when the block's fields differ, so a keymap edit
+ * or the commodity's own save after a desk apply redraws nothing. */
+static void dk_flat_sync_with(int changed_only)
 {
     am_prefs ap;
     flatshared *r;
@@ -466,8 +468,12 @@ static void dk_flat_sync(void)
     Forbid();
     r = (flatshared *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
     if (r && flat_check(&r->st, sizeof r->st) == FLAT_OK) {
-        desk_flat_state(flat, gad, &r->st);
-        wrote = 1;
+        flat_state next = r->st;
+        desk_flat_state(flat, gad, &next);
+        if (!changed_only || memcmp(&next, &r->st, sizeof next) != 0) {
+            desk_flat_state(flat, gad, &r->st);
+            wrote = 1;
+        }
     }
     Permit();
     if (wrote) {
@@ -476,6 +482,18 @@ static void dk_flat_sync(void)
     } else if (!r && (flat || gad)) {
         pl_start(PL_BIN_DIR "/amarchy-flat BOOT", PL_BIN_DIR "/amarchy-flat", 32768, "amarchy-flat");   /* its $STACK cookie (rule 6) */
     }
+}
+
+static void dk_flat_sync(void)
+{
+    dk_flat_sync_with(0);
+}
+
+/* FLAT-PREFS-NOT-NOTIFIED: ENV:Amarchy/prefs changed under the commodity (its notify, RELOAD): a flat switch flipped by any writer
+ * reaches the running amarchy-flat, or starts it, as a desk apply does. */
+void desk_dos_flat_sync(void)
+{
+    dk_flat_sync_with(1);
 }
 
 /* FLAT-PENS-LIVE: flat-system-look writes the flat pen roles itself (dk_apply carries them only on a desktop palette write). The user's

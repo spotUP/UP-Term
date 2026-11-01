@@ -326,6 +326,7 @@ static int do_row(int row)
 static void reload(void)
 {
     style_load();
+    desk_dos_flat_sync();   /* FLAT-PREFS-NOT-NOTIFIED: a flat switch written to the prefs file reaches amarchy-flat */
     cx_detach();   /* the gate must not read the table that is about to be released */
     keymap_reload_compact(&g_km, cx_row_installed);   /* a bad edit leaves the old table */
     cx_install(&g_km);

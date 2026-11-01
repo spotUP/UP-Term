@@ -10,6 +10,8 @@
  * or written). The old files are copied to T:amarchy-revert/ first. Returns the mask applied, 0 when off, -1 when the
  * theme is refused (desk_check; why gets the text) or a write failed. ENVARC: is never written (persist is R1.10). */
 int desk_dos_apply(const gtheme *th, char *why, int cap);
+/* FLAT-PREFS-NOT-NOTIFIED: the prefs file changed: sync the running amarchy-flat (write + redraw only on a change), or start it (BOOT) */
+void desk_dos_flat_sync(void);
 /* R1.17: IPrefs resets the Workbench screen after a Palette/WBPattern/Pointer/Font USE and cannot while any window of ours is on it
  * ("Please close the following windows: Amarchy bar"). A Palette USE resets it only when the live DrawInfo pens differ from the chosen pen map (desk_pens_for, desk_pens_reset); then the apply closes the windows first and reopens them when the new screen is up.
  * The main process installs direct hooks (it cannot send ARexx to itself); every other process leaves them 0 and the apply sends BAR STATUS, and BAR OFF / BAR ON when the bar was open. */
