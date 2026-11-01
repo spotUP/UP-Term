@@ -336,6 +336,9 @@ static long dk_dopus_send(const char *port, const char *line, char *result, int 
 }
 
 static void dk_live_pens(const gtheme *th, int own);
+/* the live role pens (FLAT-PEN5-MAGENTA) are set last, in desk_dos_apply: every Workbench reset of this apply (palette, wbpattern,
+ * wbborder USE) reopens the screen with the graphics defaults on pens 4-7. 1 = theme colours, -1 = restore the kept ones, 0 = leave. */
+static int dk_live_want, dk_live_own;
 static long dk_palette_base(int restore, const unsigned char pens[DK_SLOTS], int depth, unsigned char *buf, long cap);
 
 static int dk_apply(const gtheme *th, char *why, int cap)
@@ -395,7 +398,8 @@ static int dk_apply(const gtheme *th, char *why, int cap)
          * raised a Program Error requester when started under the running reset) */
         if (reset)
             dk_wait_reset(wb_before, flat_pens);
-        dk_live_pens(th, own);
+        dk_live_want = 1;
+        dk_live_own = own;
         desk_dos_dopus_sends++;
         dopus_theme_send(th, dk_dopus_send, 0);
     }
@@ -678,10 +682,11 @@ static int dk_flat_pens(const gtheme *th)
             dk_wait_iprefs(idle);
         }
     }
-    if (own || theme)
-        dk_live_pens(th, own);
-    else if (restore)
-        dk_live_pens(0, 0);
+    if (own || theme) {
+        dk_live_want = 1;
+        dk_live_own = own;
+    } else if (restore)
+        dk_live_want = -1;
     if (own) {
         plen = dk_read("ENV:Sys/wbpattern.prefs", prev, sizeof prev);
         wlen = desk_wbpattern(th, depth > 3 ? 3 : depth, plen > 0 ? prev : 0, plen > 0 ? plen : 0, out, sizeof out);
@@ -756,10 +761,14 @@ static void dk_wbborder(void)
 
 int desk_dos_apply(const gtheme *th, char *why, int cap)
 {
-    int r = dk_apply(th, why, cap);
+    int r;
+    dk_live_want = 0;
+    r = dk_apply(th, why, cap);
     if (!(r > 0 && (r & (1 << DT_PALETTE))) && dk_flat_pens(th) && r >= 0)
         r |= 1 << DT_PALETTE;   /* the theme colours are in the palette and DOpus has them: no wb_pens_apply */
     dk_wbborder();
+    if (dk_live_want)
+        dk_live_pens(dk_live_want > 0 ? th : 0, dk_live_own);
     dk_flat_sync();          /* also when no desk target changed: flipping a flat switch alone must reach the block */
     return r;
 }
