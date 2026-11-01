@@ -25,6 +25,39 @@ class ResetCount(unittest.TestCase):
             self.assertEqual(paths.fsuae_reset_count(d), 0)
 
 
+# Real Amiberry console lines (build/rig30 fs-uae.log.txt, Amiberry 6e3ca06): macOS prefixes each line with
+# "<date> <time> Amiberry[pid:tid] "; custom_reset (custom.cpp:6632) logs "Reset at ..." on every reset; Exception /
+# Illegal instruction / "CPU halted" come from newcpu.cpp:3334, 3999, 6137.
+AMI = "2026-11-01 21:31:%s Amiberry[4853:104620118] "
+
+
+class AmiberryLog(unittest.TestCase):
+    def log(self, d, lines):
+        (pathlib.Path(d) / "fs-uae.log.txt").write_text("".join(AMI % "27.9" + l + "\n" for l in lines))
+
+    def test_amiberry_resets_are_counted(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.log(d, ["Reset at 00F800D2. Chipset mask = 00000007", "RTG: mode", "Reset at 00F800D2. Chipset mask = 00000007",
+                         "config reset", "Resetting frame rate hack"])
+            self.assertEqual(paths.fsuae_reset_count(d), 2)
+
+    def test_amiberry_guru_then_resets_is_a_crash(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.log(d, ["Illegal instruction: 1050 at 104E8438 -> 00F80AD2", "Reset at 00F800D2. Chipset mask = 00000007",
+                         "Reset at 00F800D2. Chipset mask = 00000007"])
+            self.assertEqual(paths.fsuae_crash(d), ("Illegal instruction: 1050 at 104E8438 -> 00F80AD2", 2))
+
+    def test_amiberry_cpu_halt_then_reset_is_a_crash(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.log(d, ["CPU halted: reason = 2 PC=00f80a10", "Reset at 00F800D2. Chipset mask = 00000007"])
+            self.assertEqual(paths.fsuae_crash(d), ("CPU halted: reason = 2 PC=00f80a10", 1))
+
+    def test_amiberry_exception_line_is_a_crash_marker(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.log(d, ["Exception 3 (4 0) at f80a10 -> f80b00!", "Reset at 00F800D2. Chipset mask = 00000007"])
+            self.assertEqual(paths.fsuae_crash(d)[1], 1)
+
+
 class ResetLoopStep(unittest.TestCase):
     def test_the_first_check_only_takes_a_baseline(self):
         calls = []
