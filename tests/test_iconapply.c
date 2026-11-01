@@ -394,6 +394,44 @@ static void test_walkfile(void)
     mfs_free(&s);
 }
 
+/* rig 8: one failing entry stopped RESTORE, so the walked entries behind it were never restored */
+static void test_restore_continues(void)
+{
+    mfs s;
+    ia_ctx c;
+    char bp[IA_MAXPATH + 40];
+    int i, nwalk = 0;
+    static const char *const w[] = { "Empty-12MB-FFS:L12/zzfallback.info", "Empty-12MB-FFS:L12/zzuaemdir.info", "Work:Games/Foo.info" };
+    setup(&s, &c, 0);
+    CI("defaults applied", ia_apply(&c), 12);
+    for (i = 0; i < 3; i++) mf_put(&s, w[i], g_drawer, (size_t)g_drawer_n);
+    ia_walk_begin(&c);
+    for (i = 0; i < 3; i++) nwalk += ia_walk_file(&c, w[i], 0, 0) == IA_DO_FALLBACK;
+    CI("walked entries written", nwalk, 3);
+    CI("manifest has table plus walked entries", c.man.n, 15);
+    {   /* rig 8/9: an absent entry whose icon write never landed (APPLY skipped-io) read back as an error and failed RESTORE for good */
+        static char mt[IA_FILECAP];
+        ia_entry ab;
+        memset(&ab, 0, sizeof ab);
+        strcpy(ab.path, "ENV:Sys/def_neverwritten.info");
+        ab.absent = 1; ab.wcrc = 0x1234;
+        ia_man_put(&c.man, &ab);
+        mf_put(&s, IA_MANIFEST, (const uint8_t *)mt, ia_man_format(&c.man, mt, sizeof mt));   /* RESTORE reloads the file */
+        mf_put(&s, ab.path, g_drawer, 0);                   /* zero-length: read returns 0, not -1 */
+    }
+    /* break the backup of the FIRST table entry: it fails, everything behind it must still be restored */
+    for (i = 0; c.man.e[i].absent; i++) ;
+    CK("backup path", li_backup_path(c.man.e[i].path, bp, sizeof bp) == 0 && mf_find(&s, bp) != NULL);
+    mf_find(&s, bp)->used = 0;
+    c.restored = c.restore_failed = 0;
+    CI("restore returns all but the broken one", ia_restore(&c), 15);
+    CI("restored", (int)c.restored, 15);
+    CI("one failure counted", (int)c.restore_failed, 1);
+    for (i = 0; i < 3; i++) CK("walked file restored", same(&s, w[i], g_drawer, g_drawer_n));
+    CI("only the failed entry remains in the manifest", c.man.n, 1);
+    mfs_free(&s);
+}
+
 void suite_iconapply(void)
 {
     long dn;
@@ -409,4 +447,5 @@ void suite_iconapply(void)
     test_edge();
     test_walk();
     test_walkfile();
+    test_restore_continues();
 }

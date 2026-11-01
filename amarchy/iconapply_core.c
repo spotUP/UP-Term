@@ -311,10 +311,10 @@ void ia_walk_begin(ia_ctx *c) { man_load(c); }
 
 int ia_restore(ia_ctx *c)
 {
-    int done = 0;
+    int done = 0, i = 0;
     man_load(c);
-    while (c->man.n > 0) {
-        ia_entry e = c->man.e[0];
+    while (i < c->man.n) {                                  /* a failed entry stays and the loop goes on: one bad entry must not strand the walked ones behind it */
+        ia_entry e = c->man.e[i];
         char bpath[IA_MAXPATH + 40];
         long n = c->io->read(c->io->ctx, e.path, c->cur, IA_FILECAP), bn = 0;
         li_file cur, back;
@@ -325,7 +325,7 @@ int ia_restore(ia_ctx *c)
         if (e.absent) {
             /* the file did not exist before APPLY: delete it unless the user changed it since */
             if (n > 0 && li_parse(c->cur, (size_t)n, &cur) == 0 && ia_imgcrc(&cur) == e.wcrc) ok = c->io->remove(c->io->ctx, e.path) == 0;
-            else ok = n == -1 || n > 0;     /* gone already, or the user's own file: leave it, drop the entry */
+            else ok = 1;                    /* gone, unreadable (APPLY's write never landed: dir missing) or the user's own file: nothing of ours to remove, drop the entry */
         } else if (li_backup_path(e.path, bpath, sizeof bpath) == 0 &&
                    (bn = c->io->read(c->io->ctx, bpath, c->bak, IA_FILECAP)) > 0 &&
                    li_parse(c->bak, (size_t)bn, &back) == 0) {
@@ -342,9 +342,10 @@ int ia_restore(ia_ctx *c)
         }
         if (!ok) {                                          /* keep the entry (and the backup) for a later run */
             c->restore_failed++;
-            break;
+            i++;
+            continue;
         }
-        ia_man_del(&c->man, 0);
+        ia_man_del(&c->man, i);
         if (man_save(c) != 0) { c->restore_failed++; break; }
         c->restored++;
         done++;
