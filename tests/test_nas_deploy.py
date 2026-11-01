@@ -136,14 +136,14 @@ def test_send_round_trip(tmp_path):
 
 
 def test_wasabi_clone_source_is_one_file():
-    """The pinned wasabi commit can exist only on the fork: Dockerfile and Makefile clone from wasabi.repo, no literal URL."""
+    """The clone source must hold the pinned wasabi commit: Dockerfile and Makefile clone from wasabi.repo, no literal URL."""
     df = (ROOT / "tools/nas/Dockerfile").read_text()
     clone = [l for l in df.splitlines() if "git clone" in l and "wasabi" in l]
     assert clone and all("/opt/wasabi/wasabi.repo" in l and "github.com" not in l for l in clone)
     assert "wasabi.repo" in d.copy_list()
     mk = (ROOT / "Makefile").read_text()
     assert "WASABI_REPO := $(strip $(shell cat tools/nas/wasabi.repo))" in mk
-    assert (ROOT / "tools/nas/wasabi.repo").read_text().strip() == "https://github.com/spotUP/wasabi"
+    assert (ROOT / "tools/nas/wasabi.repo").read_text().strip() == "https://github.com/creep-ltx/wasabi"
 
 
 CFG = {"NAS_HOST": "h", "NAS_USER": "u", "NAS_DIR": "/x", "NAS_PORT": "22", "NAS_DOCKER": "docker", "NAS_SSH": "ssh"}

@@ -1,9 +1,9 @@
 wasabi -- drive an Amiga from a Linux / macOS / BSD machine over the network
 (Tobias Karlsson, MIT licence: LICENSE). Source: https://github.com/creep-ltx/wasabi;
-UP-Term builds from its fork @WASABI_REPO@.
+UP-Term builds from @WASABI_REPO@ at a pinned commit.
 
   wasabid        the daemon, for the Amiga: wasabid 0.11b2 (17.10.2026) plus the
-                 fork's unreleased MUI group-button, AAList row and AAText label
+                 unreleased MUI button label, AAList row and AAText label
                  listing and the sub-item mutual-exclude fix, commit @WASABI_REV@, built by UP-Term from that
                  source (make wasabi, Bebbo's m68k-amigaos-gcc, the 68000 build; the
                  pin is tools/nas/wasabi.rev). Install puts it in C: when asked,

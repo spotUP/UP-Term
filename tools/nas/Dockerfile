@@ -31,8 +31,8 @@ RUN chmod 755 /usr/local/bin/entrypoint.sh /usr/local/bin/as-claude /usr/local/b
     /usr/local/bin/amiga-target /usr/local/bin/seed-claude-files /usr/local/bin/relay-config
 
 # wasabi (MIT, Python standard library only), cloned from the repo in wasabi.repo at the one
-# commit in wasabi.rev (the Makefile's wasabi target reads the same two files; the pin can live
-# only on the spotUP fork, so the clone source must match it). Its client `wasabi`, the MCP server wasabi_mcp.py and the
+# commit in wasabi.rev (the Makefile's wasabi target reads the same two files; the clone source must
+# be the repo that holds the pin). Its client `wasabi`, the MCP server wasabi_mcp.py and the
 # LICENSE live in /opt/wasabi; the skill and mcp.json are seeded into the claude user's home
 # by the entrypoint (seed-claude-files). Host, port and key come from ~/.config/wasabi/config
 # (amiga-target writes them).
