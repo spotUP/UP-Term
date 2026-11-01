@@ -229,7 +229,7 @@ commit.
 
 #### Files (t=f, t=t, t=s, S=, O=)
 
-- [ ] K25 Engine hook for files. The engine has no OS calls (RULES 1), so
+- [x] K25 Engine hook (done 75a8c755: host test k25, 204 checks) for files. The engine has no OS calls (RULES 1), so
       as with vt_set_image_decoder: `vt_set_file_reader(t, read, unlink)`
       where read(path, offset, size, &buf, &n) returns 1/0 and fills a
       host-owned buffer (freed through the existing release hook),
@@ -242,13 +242,13 @@ commit.
       stand-in reader with a call count; t=f reads, O=/S= arrive at the
       reader as given, a reader failure gives the EBADF text, no reader
       gives EBADF; fail-before: today `ENOTSUP:only direct data`.
-- [ ] K26 t=t deletes after the read, only when the full path contains
+- [x] K26 t=t deletes (done 75a8c755: host test k26) after the read, only when the full path contains
       `tty-graphics-protocol` AND the host says the path is in a temp
       place (the unlink hook decides the place, the engine checks the
       name). The engine calls unlink only after a successful read, and
       never for t=f. Test: name without the marker -> no unlink call;
       marker -> one unlink call; t=f -> none. Fails before (no reads).
-- [ ] K27 Handler reader (handler/vtcon_handler.c, next to the K9
+- [x] K27 Handler reader (done 75a8c755 + tools/rig/kitty_files_rig.py on rig 40: both pictures show, 512 px per stripe colour; T: loses tty-graphics-protocol-1.rgb, keeps kf2.rgb; PROF kitty files read/deleted 2/1; CON: t=f leaves the window alive. Not read back: the EBADF reply bytes themselves, covered by the host test only) (handler/vtcon_handler.c, next to the K9
       datatypes decoder). AmigaDOS path as given (`T:x`, `RAM:x`,
       `Work:pics/x.png`). A path starting with '/' is an ixemul program's
       Unix path: `/tmp/...` -> `T:...` (D11) and `/vol/rest` -> `vol:rest`
@@ -267,7 +267,7 @@ commit.
       picture shows (pixel check) and `List T:` no longer has the file;
       the same with t=f leaves it; `t=f` of `CON:` answers EBADF without
       hanging (reply bytes read back through the rig's capture).
-- [ ] K28 t=s shared memory answers `EBADF:Failed to read image file`
+- [x] K28 t=s shared (done 75a8c755: host test k28. ixemul grep: shm_open/shm_unlink in 3169 .c/.h files of /Users/spot/Code/UP-Term/ixemul-vtcon, no match; only SysV shmget man pages) memory answers `EBADF:Failed to read image file`
       (D10). Reason: AmigaOS has no named shared memory objects (no
       shm_open; one address space, but nothing names a region a client
       could hand over), and ixemul has no shm_open either (unverified: grep
