@@ -38,6 +38,9 @@ extern void (*desk_dos_confirm_begin)(unsigned mask);
 void desk_dos_confirmed(void);
 /* Revert (button or timeout): the snapshot in T:amarchy-revert/ goes back through the stock editors */
 void desk_dos_revert(void);
+/* FP-3 (R1.9): at Amarchy start, reverts an apply that never reached Keep or Revert (marker in ENVARC:Amarchy). 1 when it did. */
+int desk_dos_marker_recover(void);
+extern unsigned long desk_dos_marker_reverts;
 /* counters (the reachability sentinels): applies that asked, keeps, reverts */
 extern unsigned long desk_dos_confirm_asks, desk_dos_keeps, desk_dos_reverts;
 /* FP-2: files Keep copied to ENVARC:, originals saved before a first write, originals put back by "off" */

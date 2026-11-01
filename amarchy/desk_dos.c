@@ -988,21 +988,91 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
 void (*desk_dos_confirm_begin)(unsigned mask);
 unsigned long desk_dos_confirm_asks, desk_dos_reverts, desk_dos_keeps;
 
+/* decimal text of v into out (no terminator); returns the length */
+static long dk_num(unsigned v, unsigned char *out)
+{
+    long n = 0, d;
+    for (d = 1000000000L; d >= 1; d /= 10)
+        if (n || v / (unsigned)d)
+            out[n++] = (unsigned char)('0' + (v / (unsigned)d) % 10);
+    if (!n)
+        out[n++] = '0';
+    return n;
+}
+
+/* FP-3 (R1.9): T: is RAM, so an unconfirmed apply must outlive a reboot. When the confirm starts, the snapshot copies of the pending targets (and
+ * of the Workbench.prefs write) are copied to ENVARC:Amarchy/pending-revert.d/ under their T: names, then ENVARC:Amarchy/pending-revert is written
+ * (desk_marker_make: the target names) last, so a half-copied set has no marker. Keep and a finished Revert delete both; Amarchy start finds a
+ * leftover (desk_dos_marker_recover) and reverts from it. ENV: is rebuilt from ENVARC: at boot and the apply writes ENVARC: only for icontrol, so
+ * the copy of ENVARC:Sys/icontrol.prefs is the one that changes the outcome; the rest is restored from the same set for fidelity. */
+#define DK_MARK "ENVARC:Amarchy/pending-revert"
+#define DK_MARK_DIR "ENVARC:Amarchy/pending-revert.d"
+unsigned long desk_dos_marker_reverts;
+static const char *const dk_mark_extra[3] = { "wbpending", "wbborder.snap", "wbgauge.snap" };
+
+/* copy every member of the set between the T: snapshot dir and the marker dir; absent source = absent copy (a missing snapshot means "did not exist") */
+static void dk_marker_copy(unsigned mask, int to_marker)
+{
+    const char *list[16];
+    char a[96], b[96];
+    int i, n = desk_pending_files(mask, 1, list, 16);
+    for (i = 0; i < n + 3; i++) {
+        if (i < n) {
+            desk_copy_name(DK_REVERT, list[i], a, sizeof a);
+            desk_copy_name(DK_MARK_DIR, list[i], b, sizeof b);
+        } else {
+            desk_copy_name(DK_REVERT, dk_mark_extra[i - n], a, sizeof a);
+            desk_copy_name(DK_MARK_DIR, dk_mark_extra[i - n], b, sizeof b);
+        }
+        if (to_marker ? dk_stream_copy(a, b) < 0 : dk_stream_copy(b, a) < 0)
+            DeleteFile((STRPTR)(to_marker ? b : a));
+    }
+}
+
+static void dk_marker_write(unsigned mask)
+{
+    char text[128];
+    long len;
+    UnLock(CreateDir((STRPTR) "ENVARC:Amarchy"));
+    UnLock(CreateDir((STRPTR)DK_MARK_DIR));
+    dk_marker_copy(mask, 1);
+    len = desk_marker_make(mask, text, sizeof text);
+    if (len > 0)
+        dk_write(DK_MARK, (const unsigned char *)text, len);
+}
+
+static unsigned dk_marker_mask(void)
+{
+    static unsigned char b[128];
+    long n = dk_read(DK_MARK, b, sizeof b);
+    return n > 0 ? desk_marker_parse((const char *)b, n) : 0;
+}
+
+static void dk_marker_clear(void)
+{
+    const char *list[16];
+    char b[96];
+    unsigned mask = dk_marker_mask();
+    int i, n;
+    DeleteFile((STRPTR)DK_MARK);   /* first: a crash while deleting leaves no marker that points at half a set */
+    n = desk_pending_files(mask, 1, list, 16);
+    for (i = 0; i < n + 3; i++) {
+        desk_copy_name(DK_MARK_DIR, i < n ? list[i] : dk_mark_extra[i - n], b, sizeof b);
+        DeleteFile((STRPTR)b);
+    }
+    DeleteFile((STRPTR)DK_MARK_DIR);
+}
+
 static void dk_confirm_ask(unsigned mask)
 {
     char num[16], res[32];
     unsigned char out[16];
     unsigned all = mask | dk_pending_mask();
-    long n = 0, d;
-    for (d = 1000000000L; d >= 1; d /= 10)
-        if (n || all / (unsigned)d) {
-            out[n++] = (unsigned char)('0' + (all / (unsigned)d) % 10);
-        }
-    if (!n)
-        out[n++] = '0';
+    long n = dk_num(all, out);
     out[n] = 0;
     UnLock(CreateDir((STRPTR)DK_REVERT));
     dk_write(DK_PENDING, out, n);
+    dk_marker_write(all);
     desk_dos_confirm_asks++;
     if (desk_dos_confirm_begin) {
         desk_dos_confirm_begin(all);
@@ -1021,6 +1091,7 @@ void desk_dos_confirmed(void)
     for (i = 0; i < n; i++)
         if (dk_stream_copy(env[i], arc[i]) > 0)
             desk_dos_persists++;
+    dk_marker_clear();
     DeleteFile((STRPTR)DK_PENDING);
     DeleteFile((STRPTR)DK_WBPEND);
     DeleteFile((STRPTR)DK_WBB_SNAP);
@@ -1081,7 +1152,28 @@ void desk_dos_revert(void)
     dk_wb_restore();
     if (mask)
         dk_restore_targets(mask, DK_REVERT);
+    dk_marker_clear();   /* last: a crash during the revert leaves the marker for the next start */
     dk_flat_sync();
+}
+
+/* Amarchy start (R1.9): a marker left behind means an apply never reached Keep or Revert. T:amarchy-revert/pending still there: Amarchy died, the
+ * snapshot is intact. Gone: the machine rebooted, so the snapshot is rebuilt in T: from the marker dir first. Then the ordinary revert runs. */
+int desk_dos_marker_recover(void)
+{
+    unsigned char num[16];
+    unsigned mask = dk_marker_mask();
+    long n;
+    if (!dk_exists(DK_MARK))
+        return 0;
+    if (mask && !dk_exists(DK_PENDING)) {
+        UnLock(CreateDir((STRPTR)DK_REVERT));
+        dk_marker_copy(mask, 0);
+        n = dk_num(mask, num);
+        dk_write(DK_PENDING, num, n);
+    }
+    desk_dos_marker_reverts++;
+    desk_dos_revert();
+    return 1;
 }
 
 /* OD14: a desktop part the settings no longer apply (or the flat Workbench.prefs when flat is off) goes back to the user's original, in ENV: through

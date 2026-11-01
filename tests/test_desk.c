@@ -1052,6 +1052,14 @@ static void test_desk_targets(void)
     CHECK_INT(desk_marker_parse("garbage", 7), 0);
     CHECK_INT(desk_marker_parse("desk-pending 1\nfont\nbogus\n", 25), 1u << DT_FONT);
     CHECK_INT(desk_marker_make(mask, buf, 10), 0);
+    /* FP-3: the marker keeps the snapshot files of its targets, plus Workbench.prefs when the border/gauge write is pending */
+    n = desk_pending_files(1u << DT_ICONTROL, 0, list, 16);
+    CHECK_INT(n, 2);
+    CHECK_STR(list[0], "ENVARC:Sys/icontrol.prefs");
+    CHECK_INT(desk_pending_files(1u << DT_ICONTROL, 1, list, 16), 3);
+    CHECK_STR(list[2], "ENV:Sys/Workbench.prefs");
+    CHECK_INT(desk_pending_files(0, 1, list, 16), 1);
+    CHECK_INT(desk_pending_files(1u << DT_ICONTROL, 1, list, 2), 2);
 }
 
 /* R1.17: the 3.1 Pointer editor (40.x) reset-loops on the 3.2 prefs; only 47+ is fed them */

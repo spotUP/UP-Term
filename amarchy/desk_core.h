@@ -203,6 +203,9 @@ int desk_restore(unsigned mask, const char **list, int cap);
 /* the pending marker: written before the first write, removed after the last. Its text names the targets, so a
  * crashed run restores what it had touched even when the switches changed since. Returns the length. */
 long desk_marker_make(unsigned mask, char *out, long cap);
+/* FP-3 (R1.9): the files whose T:amarchy-revert snapshot copies the on-disk marker ENVARC:Amarchy/pending-revert keeps, so a reboot (T: is gone) can still
+ * revert an unconfirmed apply: the desk_snapshot list of mask, plus ENV:Sys/Workbench.prefs when wbprefs (the border/gauge write). Returns the count. */
+int desk_pending_files(unsigned mask, int wbprefs, const char **list, int cap);
 
 /* Pointer editor version gate (R1.17): the 3.1 editor (40.x) reset-loops on the 3.2 pointer.prefs this module writes
  * (PRHD + 41 PNTR); the 3.2 editor (47.x) applies it. Reads the major version from the "$VER: <name> N.M" string inside

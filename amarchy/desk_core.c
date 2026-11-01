@@ -1042,6 +1042,14 @@ int desk_copy_name(const char *dir, const char *file, char *out, int cap)
     return 1;
 }
 
+int desk_pending_files(unsigned mask, int wbprefs, const char **list, int cap)
+{
+    int n = desk_snapshot(mask, list, cap);
+    if (wbprefs && n < cap)
+        list[n++] = DESK_WBPREFS_ENV;
+    return n;
+}
+
 #define MARKER_HEAD "desk-pending 1\n"
 
 long desk_marker_make(unsigned mask, char *out, long cap)
