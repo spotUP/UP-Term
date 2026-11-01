@@ -361,12 +361,6 @@ int main(void)
         PutStr((STRPTR)TEMPLATE_TEXT);
         return 5;
     }
-    if (cmd == IA_CMD_STATUS) {       /* nothing is resident: the counters live for one run, and the manifest is the state */
-        BPTR l = Lock((STRPTR)IA_MANIFEST, SHARED_LOCK);
-        PutStr((STRPTR)(l ? "icons=applied\n" : "icons=original\n"));
-        if (l) UnLock(l);
-        return 0;
-    }
     c = (ia_ctx *)AllocVec(sizeof *c + 4 * IA_FILECAP, MEMF_PUBLIC | MEMF_CLEAR);
     if (!c) return 10;
     c->cur = (uint8_t *)(c + 1);
@@ -377,6 +371,14 @@ int main(void)
         static ia_io io;
         io.ctx = NULL; io.read = io_read; io.write = io_write; io.remove = io_remove; io.dflt = io_dflt;
         c->io = &io;
+    }
+    if (cmd == IA_CMD_STATUS) {       /* nothing is resident: the counters live for one run, and the manifest is the state */
+        static li_dat d;
+        char line[160];
+        dn = load_dat(&dat);
+        if (dn > 0 && li_dat_open(dat, (size_t)dn, &d) == 0) c->dat = &d;     /* without lucide.dat the table path rows count as walked */
+        if (ia_status(c, line, sizeof line)) PutStr((STRPTR)line);
+        goto out;
     }
     IconBase = OpenLibrary((STRPTR)"icon.library", 36);
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 36);

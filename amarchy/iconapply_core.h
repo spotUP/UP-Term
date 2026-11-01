@@ -47,6 +47,10 @@ int    ia_man_find(const ia_manifest *m, const char *path);       /* index or -1
 void   ia_man_put(ia_manifest *m, const ia_entry *e);            /* replace by path, else append */
 void   ia_man_del(ia_manifest *m, int i);
 
+/* What the manifest holds, by kind: total replaced icon entries = defaults (the ia_target def_* files) + paths (the table's
+ * "Vol:Dir/Name" rows, matched against dat; dat may be NULL, then none) + walked (every other entry, from the all-volume walk). Pure. */
+typedef struct ia_man_stats { unsigned total, defaults, paths, walked; } ia_man_stats;
+
 /* "name.info" -> "name.info.amt" / "name.info.amo"; 0 ok */
 int ia_atomic_names(const char *path, char *tmp, char *old, size_t cap);
 /* What to do with a leftover of an interrupted atomic write. has_* : the file exists, ok_* : it parses as an icon. */
@@ -104,6 +108,11 @@ const char *ia_walk_fallback_match(int dotype);
 int ia_walk_count(ia_ctx *c, int decision);
 /* may the walk enter/name an entry? Path so far plen, entry name length nl, buffer cap, depth of the drawer. 1 = yes; 0 = no, counted as skipped_deep */
 int ia_walk_fits(ia_ctx *c, size_t plen, size_t nl, size_t cap, unsigned depth, unsigned maxdepth, int is_dir);
+
+/* STATUS text for the manifest on io: "icons=original\n" when there is none, else
+ * "icons=applied entries=N defaults=D paths=P walked=W\n" (counters of one run are not kept, so skipped-deep is not here). Loads the manifest into c->man. Returns the length. */
+size_t ia_status(ia_ctx *c, char *out, size_t cap);
+void ia_man_count(const ia_manifest *m, const li_dat *dat, ia_man_stats *st);
 
 /* the type byte of a .info file (do_Type), 0 when too short */
 int ia_info_type(const uint8_t *buf, size_t len);

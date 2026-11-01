@@ -252,6 +252,23 @@ static void test_paths(void)
     mfs_free(&s);
 }
 
+/* STATUS: no manifest -> original; after APPLY with two table paths the line carries the entry counts by kind */
+static void test_status_counts(void)
+{
+    mfs s;
+    ia_ctx c;
+    char line[160];
+    setup(&s, &c, 0);
+    CK("STATUS without a manifest says original", ia_status(&c, line, sizeof line) > 0 && strcmp(line, "icons=original\n") == 0);
+    mf_put(&s, "SYS:System.info", g_drawer, (size_t)g_drawer_n);
+    mf_put(&s, "SYS:System/Shell.info", g_tool, (size_t)g_tool_n);
+    ia_apply(&c);
+    memset(line, 0, sizeof line);
+    ia_status(&c, line, sizeof line);
+    CK("STATUS reports manifest entry counts", strstr(line, "icons=applied entries=14 defaults=12 paths=2 walked=0\n") != NULL);
+    mfs_free(&s);
+}
+
 static void test_absent(void)
 {
     mfs s;
@@ -446,6 +463,7 @@ void suite_iconapply(void)
     test_flow();
     test_absent();
     test_paths();
+    test_status_counts();
     test_edge();
     test_walk();
     test_walkfile();

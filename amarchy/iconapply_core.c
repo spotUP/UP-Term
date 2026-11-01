@@ -250,6 +250,42 @@ static int apply_one(ia_ctx *c, const char *path, const char *match)
     return 1;
 }
 
+void ia_man_count(const ia_manifest *m, const li_dat *dat, ia_man_stats *st)
+{
+    int i, j;
+    unsigned k;
+    char path[IA_MAXPATH];
+    const char *match;
+    memset(st, 0, sizeof *st);
+    for (i = 0; i < m->n; i++) {
+        const char *ep = m->e[i].path;
+        int kind = 2;                       /* 0 default, 1 table path, 2 walked */
+        for (j = 0; ia_target(j, path, sizeof path, &match); j++)
+            if (strcmp(path, ep) == 0) { kind = 0; break; }
+        for (k = 0; kind == 2 && dat && k < dat->count; k++) {
+            const char *nm = li_dat_name(dat, k);
+            size_t len = strlen(nm);
+            if (strchr(nm, ':') && len + 6 <= sizeof path && strncmp(ep, nm, len) == 0 && strcmp(ep + len, ".info") == 0) kind = 1;
+        }
+        st->total++;
+        if (kind == 0) st->defaults++; else if (kind == 1) st->paths++; else st->walked++;
+    }
+}
+
+size_t ia_status(ia_ctx *c, char *out, size_t cap)
+{
+    ia_man_stats st;
+    int w;
+    if (c->io->read(c->io->ctx, IA_MANIFEST, c->bak, IA_FILECAP) == -1) {
+        w = snprintf(out, cap, "icons=original\n");
+    } else {
+        man_load(c);
+        ia_man_count(&c->man, c->dat, &st);
+        w = snprintf(out, cap, "icons=applied entries=%u defaults=%u paths=%u walked=%u\n", st.total, st.defaults, st.paths, st.walked);
+    }
+    return w < 0 || (size_t)w >= cap ? 0 : (size_t)w;
+}
+
 int ia_apply(ia_ctx *c)
 {
     char path[IA_MAXPATH];
