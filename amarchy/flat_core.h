@@ -243,6 +243,9 @@ int flat_tx_pen(const flat_state *s, flat_tx *t, const void *surf, const void *t
  * bg_pen = band_pen when a band is drawn (the title Text call is JAM2: its cell box repaints BgPen, so BgPen must be the band pen
  * for that call or the band is erased behind the glyphs), else -1 (BgPen untouched). Inactive: no band, title text in flat_dimtext_pen (dark_foreground). 0: not a title, stock Text untouched. */
 typedef struct flat_title { int band_pen, bx0, by0, bx1, by1, text_pen, bg_pen; } flat_title;
+/* flat_frame_pen: the pen of an active window's title band (pen_outline) when flat is on, not held, and pen_outline is a pen of the
+ * depth; else -1 (caller uses its stock frame pen). flat_title_decide and the window gadget boxes both take the band from here. */
+int flat_frame_pen(const flat_state *s, int depth, int active);
 int flat_title_decide(const flat_state *s, int depth, int active, const char *title, int win_w, int bar_h,
                       const char *str, int count, int cp_y, flat_title *t);
 

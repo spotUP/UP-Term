@@ -13,6 +13,10 @@
 #define FLAT_W_ZOOM 0x01
 #define FLAT_W_SIZE 0x02
 #define FLAT_W_CLOSE 0x03
+#define FLAT_W_LEFT 0x0A                /* scroller arrow images (SYSIA_Which LEFTIMAGE..DOWNIMAGE): clone path only */
+#define FLAT_W_UP 0x0B
+#define FLAT_W_RIGHT 0x0C
+#define FLAT_W_DOWN 0x0D
 #define FLAT_W_MENUCHECK 0x10
 #define FLAT_W_AMIGAKEY 0x11
 #define FLAT_W_ICONIFY 0x16
@@ -89,4 +93,31 @@ int flat_outline_rects(const flat_state *s, int w, int h, flat_fill_fn fn, void 
  * outer-edge fills. */
 int flat_outer_edge_match(int w, int h, int x0, int y0, int x1, int y1);
 
+
+/* FLAT-GLYPH-OS-SHAPES: the clone of the system's own gadget image. The OS side draws the stock image offscreen with a private
+ * DrawInfo whose pen i is the marker i + 1 (FLAT_CLONE_MARK(i)); flat_clone_map turns that grid into box (0) and glyph (1):
+ * the bevel ring (SHINE / SHADOW / BACKGROUND markers on the outermost 1 px) and the ground (the marker filling most of the
+ * inside, 0 = untouched) become the box, every other pixel is one glyph pixel. */
+#define FLAT_CLONE_MARK(i) ((i) + 1)
+/* dri_Pens indices (intuition/screens.h): SHINEPEN 3, SHADOWPEN 4, BACKGROUNDPEN 7 */
+#define FLAT_CLONE_BACK FLAT_CLONE_MARK(7)
+#define FLAT_CLONE_SHINE FLAT_CLONE_MARK(3)
+#define FLAT_CLONE_SHADOW FLAT_CLONE_MARK(4)
+#define FLAT_CLONE_MARKS 16
+#define FLAT_CLONE_SCRATCH (2 * 32 * 32)
+#define FLAT_CLONE_MAX 32           /* the two grids (FLAT_CLONE_SCRATCH bytes) are the caller's, never the calling task's stack */
+enum { FLAT_CLONE_NO = 0, FLAT_CLONE_OK = 1, FLAT_CLONE_FAIL = 2 };    /* not routed / drawn / render failed (use the block drawing) */
+typedef int (*flat_render_fn)(void *ctx, unsigned long ids, uint8_t *grid, int w, int h);
+void flat_glyph_roles(unsigned long which, int state, int *glyph_role, int *box_role);
+int flat_glyph_window_gadget(unsigned long which);
+/* 1 for the images that sit in the title bar (close, depth, zoom, iconify): their box is the title band. Size and the scroller
+ * arrows sit in the border, whose colour is the stock BACKGROUNDPEN. */
+int flat_glyph_on_band(unsigned long which);
+/* The clone path's own route: flat on, not held, method OM_DRAW, and a window-border image (flat_glyph_window_gadget). */
+int flat_clone_route(const flat_state *s, unsigned long which, unsigned long method);
+int flat_clone_map(const uint8_t *grid, int w, int h, uint8_t *out);
+int flat_clone_pen(const flat_state *s, int role, int frame_pen);
+int flat_clone_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
+                    int w, int h, int frame_pen, int text_pen, flat_render_fn render, void *rctx, flat_fill_fn fill, void *fctx, uint8_t *scratch);
+/* scratch: FLAT_CLONE_SCRATCH bytes owned by the caller for the call. text_pen: >= 0 replaces the pen of the normal (active, unselected) glyph, the pen the title text uses on the band; -1 keeps flat_glyph_pen. */
 #endif
