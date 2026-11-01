@@ -21,10 +21,20 @@ UNENCRYPTED telnet: LAN only, never forward the port on the router.
   Claude app: with an API key and that file it asks "Claude on the Amiga" or "Claude Code
   on the NAS" at every start (`Claude LOCAL` and `Claude REMOTE` answer in advance).
 
+## Pull the ready image
+
+The image is built for x86-64 and ARM64 and published as `ghcr.io/spotup/claude-amiga:latest`
+(GitHub Container Registry, no login needed to pull) and on Docker Hub as `claude-amiga`.
+Then you only need compose.yaml, no build files: skip step 1 below, put compose.yaml in
+`/volume1/docker/claude-amiga` with an empty `home` folder beside it, and start at step 2.
+On Synology, Container Manager > Registry > Settings > Add, enter `https://ghcr.io`, then search
+for `spotup/claude-amiga`; or search Docker Hub for `claude-amiga` in the same Registry page.
+On any other Docker machine, `docker compose pull` fetches it.
+
 ## Set up (Synology DSM 7, Container Manager)
 
-1. Copy this drawer (Dockerfile, compose.yaml, entrypoint.sh, as-claude, setpw, pairs, amiga-target, seed-claude-files,
-   wasabi.rev, mcp.json, skills/, README.md) and
+1. To build the image yourself instead, copy this drawer (Dockerfile, compose.yaml, entrypoint.sh, as-claude, setpw,
+   pairs, amiga-target, seed-claude-files, relay-config, settings.json, wasabi.rev, mcp.json, skills/, README.md) and
    `tools/uptelnetd.py` into one folder on the NAS, e.g. `/volume1/docker/claude-amiga`,
    and create `home` inside it (the container's /home/claude volume).
 2. Container Manager > Project > Create, source: the existing compose.yaml; edit
