@@ -261,6 +261,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = deps ]; then python3 tests/test_host_deps.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ixemul_startfile ]; then python3 -I tests/test_ixemul_startfile.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ixemul_sincos ]; then python3 -I tests/test_ixemul_sincos.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = icons_skip ]; then python3 -I tests/test_icons_skip_glue.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gcc_mul_overflow_cc ]; then python3 -I tests/test_gcc_mul_overflow_cc.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gcc_move2_overlap ]; then python3 -I tests/test_gcc_move2_overlap.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ixemul ]; then $(MAKE) -s -C $(IXEMUL_SRC)/tests/host test; fi

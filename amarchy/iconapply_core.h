@@ -125,6 +125,8 @@ int ia_info_type(const uint8_t *buf, size_t len);
 int ia_walk_skip_dir(const char *path);
 /* load the manifest once before a walk (ia_apply does it for the defaults) */
 void ia_walk_begin(ia_ctx *c);
+/* Count one skipped file in *ctr and name it through io->note ("skip <reason>: <path>") when note is set; returns 0. */
+int ia_skip_note(ia_ctx *c, unsigned *ctr, const char *path, const char *reason);
 /* One report line for a walked volume ("VOL:"): is its root Disk.info written by us, present but skipped, or missing (the volume then
  * shows the def_disk default). Call after the volume's walk; goes through io->note. */
 void ia_walk_volume(ia_ctx *c, const char *vol);

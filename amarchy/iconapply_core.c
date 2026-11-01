@@ -198,19 +198,18 @@ static void man_rollback(ia_ctx *c, const char *path, const ia_entry *prev)
     man_save(c);
 }
 
-/* One icon file: backup, manifest line, icon, with the images of lucide.dat entry `match`. 1 written, 0 not (a counter says why) */
-/* report one skipped file through io->note (when set) and bump its counter; returns 0 */
-static int skip_note(ia_ctx *c, unsigned *ctr, const char *path, const char *reason)
+int ia_skip_note(ia_ctx *c, unsigned *ctr, const char *path, const char *reason)
 {
     char line[IA_MAXPATH + 48];
     (*ctr)++;
-    if (c->io->note && strlen(path) + strlen(reason) + 16 < sizeof line) {
-        snprintf(line, sizeof line, "skip %s: %s", reason, path);
+    if (c->io->note) {
+        snprintf(line, sizeof line, "skip %s: %s", reason, path);   /* an over-long path is cut, never left silent */
         c->io->note(c->io->ctx, line);
     }
     return 0;
 }
 
+/* One icon file: backup, manifest line, icon, with the images of lucide.dat entry `match`. 1 written, 0 not (a counter says why) */
 static int apply_one(ia_ctx *c, const char *path, const char *match)
 {
     char bpath[IA_MAXPATH + 40];
@@ -225,17 +224,17 @@ static int apply_one(ia_ctx *c, const char *path, const char *match)
     if (n == -1) {
         /* only a defaults match has a system default object; a table path that is not on this volume is skipped */
         n = c->io->dflt && strncmp(match, "def_", 4) == 0 ? c->io->dflt(c->io->ctx, match, c->cur, IA_FILECAP) : -1;
-        if (n <= 0) { return skip_note(c, &c->skipped_nodefault, path, "nodefault"); }
+        if (n <= 0) { return ia_skip_note(c, &c->skipped_nodefault, path, "nodefault"); }
         absent = 1;
-    } else if (n <= 0) { return skip_note(c, &c->skipped_io, path, "io"); }
-    if (li_parse(c->cur, (size_t)n, &src) != 0) { return skip_note(c, &c->skipped_bad, path, "bad"); }
+    } else if (n <= 0) { return ia_skip_note(c, &c->skipped_io, path, "io"); }
+    if (li_parse(c->cur, (size_t)n, &src) != 0) { return ia_skip_note(c, &c->skipped_bad, path, "bad"); }
     e_i = ia_man_find(&c->man, path);
     own = !absent && e_i >= 0 && ia_imgcrc(&src) == c->man.e[e_i].wcrc;     /* carries an image we wrote: done, or the other icon set */
-    if (li_dat_find(c->dat, match, c->variant, &nrm, &sel) != 0) { return skip_note(c, &c->skipped_nodat, path, "nodat"); }
-    if (e_i < 0 && c->man.n >= IA_MAXENT) { return skip_note(c, &c->skipped_io, path, "io"); }    /* no manifest line, no write: RESTORE must cover it */
+    if (li_dat_find(c->dat, match, c->variant, &nrm, &sel) != 0) { return ia_skip_note(c, &c->skipped_nodat, path, "nodat"); }
+    if (e_i < 0 && c->man.n >= IA_MAXENT) { return ia_skip_note(c, &c->skipped_io, path, "io"); }    /* no manifest line, no write: RESTORE must cover it */
     li_edit_apply(&ed, &src, &nrm, &sel);
     outn = li_splice(&src, &ed, c->out, IA_FILECAP);
-    if (!outn || li_parse(c->out, outn, &wr) != 0) { return skip_note(c, &c->skipped_bad, path, "bad"); }
+    if (!outn || li_parse(c->out, outn, &wr) != 0) { return ia_skip_note(c, &c->skipped_bad, path, "bad"); }
     if (own && ia_imgcrc(&wr) == c->man.e[e_i].wcrc) { c->skipped_done++; return 0; }
 
     memset(&ne, 0, sizeof ne);
@@ -250,17 +249,17 @@ static int apply_one(ia_ctx *c, const char *path, const char *match)
     ne.wcrc = ia_imgcrc(&wr);
     if (!absent && !own) {
         if (li_backup_path(path, bpath, sizeof bpath) != 0 || c->io->write(c->io->ctx, bpath, c->cur, (size_t)n) != 0) {
-            return skip_note(c, &c->skipped_io, path, "io");
+            return ia_skip_note(c, &c->skipped_io, path, "io");
         }
     }
     if (e_i >= 0) prev = c->man.e[e_i];
     ia_man_put(&c->man, &ne);
-    if (man_save(c) != 0) { man_rollback(c, path, e_i >= 0 ? &prev : NULL); return skip_note(c, &c->skipped_io, path, "io"); }
+    if (man_save(c) != 0) { man_rollback(c, path, e_i >= 0 ? &prev : NULL); return ia_skip_note(c, &c->skipped_io, path, "io"); }
     if (c->io->write(c->io->ctx, path, c->out, outn) != 0) {
         /* the manifest lists only icons Amarchy replaced: a failed write takes its line (and a backup nothing refers to) back */
         man_rollback(c, path, e_i >= 0 ? &prev : NULL);
         if (e_i < 0 && !absent && !own) c->io->remove(c->io->ctx, bpath);
-        return skip_note(c, &c->skipped_io, path, "io");
+        return ia_skip_note(c, &c->skipped_io, path, "io");
     }
     c->written++;
     return 1;
@@ -360,21 +359,21 @@ int ia_walk_file(ia_ctx *c, const char *path, int vol_readonly, unsigned long pr
     if (ends_with(name, ".uaem") || vol_readonly || (prot & (IA_PROT_WRITE | IA_PROT_DELETE)))
     {
         d = ia_walk_decide(&e);                          /* decided without reading the file */
-        if (d == IA_DO_SKIP_UAEM) skip_note(c, &c->skipped_uaem, path, "uaem");
-        else if (d == IA_DO_SKIP_READONLY) skip_note(c, &c->skipped_readonly, path, "readonly");
-        else if (d == IA_DO_SKIP_LOCKED) skip_note(c, &c->skipped_locked, path, "locked");
+        if (d == IA_DO_SKIP_UAEM) ia_skip_note(c, &c->skipped_uaem, path, "uaem");
+        else if (d == IA_DO_SKIP_READONLY) ia_skip_note(c, &c->skipped_readonly, path, "readonly");
+        else if (d == IA_DO_SKIP_LOCKED) ia_skip_note(c, &c->skipped_locked, path, "locked");
         else ia_walk_count(c, d);
         return d;
     }
     n = c->io->read(c->io->ctx, path, c->cur, IA_FILECAP);
-    if (n <= 0) { skip_note(c, &c->skipped_io, path, "io"); return IA_DO_SKIP_OTHER; }
-    if (li_parse(c->cur, (size_t)n, &src) != 0) { skip_note(c, &c->skipped_bad, path, "bad"); return IA_DO_SKIP_OTHER; }
+    if (n <= 0) { ia_skip_note(c, &c->skipped_io, path, "io"); return IA_DO_SKIP_OTHER; }
+    if (li_parse(c->cur, (size_t)n, &src) != 0) { ia_skip_note(c, &c->skipped_bad, path, "bad"); return IA_DO_SKIP_OTHER; }
     own = ia_man_find(&c->man, path) >= 0;
     if (!own)
         for (i = 0; i < c->man.n; i++)                   /* already carries a icon set image we wrote (ENVARC:Sys seen again by its volume path) */
             if (ia_imgcrc(&src) == c->man.e[i].wcrc) { c->skipped_done++; return IA_DO_SKIP_OTHER; }
     bl = strlen(name) - 5;                               /* ".info" */
-    if (bl >= sizeof base) { skip_note(c, &c->skipped_bad, path, "bad"); return IA_DO_SKIP_OTHER; }
+    if (bl >= sizeof base) { ia_skip_note(c, &c->skipped_bad, path, "bad"); return IA_DO_SKIP_OTHER; }
     memcpy(base, name, bl);
     base[bl] = 0;
     e.dotype = ia_info_type(c->cur, (size_t)n);
@@ -382,7 +381,7 @@ int ia_walk_file(ia_ctx *c, const char *path, int vol_readonly, unsigned long pr
     d = ia_walk_decide(&e);
     if (d == IA_DO_FALLBACK) {
         match = ia_walk_fallback_match(e.dotype);
-        if (!match) { ia_walk_count(c, d); skip_note(c, &c->skipped_nodat, path, "nodat"); return d; }
+        if (!match) { ia_walk_count(c, d); ia_skip_note(c, &c->skipped_nodat, path, "nodat"); return d; }
     } else {
         match = base;
     }

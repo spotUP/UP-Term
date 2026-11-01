@@ -286,7 +286,7 @@ static void walk_dir(ia_ctx *c, size_t plen, int ro, unsigned depth)
     uint8_t *list = NULL;
     size_t n = 0, i;
     int pass;
-    if (!lock) { c->skipped_io++; return; }
+    if (!lock) { ia_skip_note(c, &c->skipped_io, g_wpath, "io (no lock)"); return; }
     if (!list_dir(lock, &list, &n)) ia_walk_count(c, IA_DO_SKIP_DEEP);
     UnLock(lock);
     for (pass = 0; pass < 2; pass++) {          /* icons of this drawer first, then the subdrawers */
