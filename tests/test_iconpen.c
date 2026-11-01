@@ -290,6 +290,61 @@ static void test_icons_keep_pens_when_flat_stops(void)
     CHECK_INT(ip_shared_hold(&s, 0), 0);                                /* graphics < V39 never holds */
 }
 
+/* ICONPEN-MAIN-BOOT symptom: flat OFF, icons applied, reboot. The holder record is RAM-only, so nobody holds pens 32-47 though the
+ * Amarchy .info files name them. Amarchy main, started at boot, takes IP_OWNER_MAIN while the manifest exists (ip_main_step drives
+ * it, as iconpens_follow in amarchy/amarchy.c does), re-takes after a Workbench reopen, drops on RESTORE and on exit. */
+static void px_gone(void *ctx, int pen)   /* iconpen_dos pen_release with old = 0: the old screen is gone, its pens went with it */
+{
+    (void)ctx; (void)pen;
+}
+
+static int main_follow(ip_shared *s, const ip_ops *o, const void *scr, const uint8_t rgb[IP_PENS][3], int applied, int *own, int *synced)
+{
+    int step = ip_main_step(applied, *own);
+    if (step == IP_MAIN_TAKE) { sh_owner(s, o, scr, rgb, IP_OWNER_MAIN, 1); *own = 1; }
+    else if (step == IP_MAIN_DROP) { sh_owner(s, o, scr, rgb, IP_OWNER_MAIN, 0); *own = 0; }
+    else if (step == IP_MAIN_SYNC) { sh_sync(s, o, scr, rgb); (*synced)++; }
+    return step;
+}
+
+static void test_main_takes_pens_at_boot(void)
+{
+    palx p;
+    ip_shared s;
+    ip_ops o;
+    uint8_t rgb[IP_PENS][3];
+    ip_ops o2;
+    int scr, scr2, own = 0, synced = 0;
+    memset(rgb, 0, sizeof rgb);
+    px_boot(&p);
+    o.obtain = px_obtain; o.release = px_release; o.ctx = &p;
+    ip_shared_init(&s);                                                 /* fresh boot: no record, no owner */
+    CHECK_INT(main_follow(&s, &o, &scr, rgb, 0, &own, &synced), IP_MAIN_NONE);   /* icons original: main holds nothing */
+    CHECK_INT(s.h.held, 0);
+    CHECK_INT(main_follow(&s, &o, &scr, rgb, 1, &own, &synced), IP_MAIN_TAKE);   /* icons applied: main takes the pens at start */
+    CHECK_INT(s.h.held, 16);
+    CHECK_INT(ip_shared_refs(&s), 1);
+    CHECK_INT(px_take(&p, IP_FIRST), -1);
+    CHECK_INT(main_follow(&s, &o, &scr, rgb, 1, &own, &synced), IP_MAIN_SYNC);   /* the tick: nothing changes while the screen stays */
+    CHECK_INT(s.h.held, 16);
+    px_boot(&p);                                                        /* Workbench reopened: new screen, new colour map */
+    o2 = o; o2.release = px_gone;
+    CHECK_INT(main_follow(&s, &o2, &scr2, rgb, 1, &own, &synced), IP_MAIN_SYNC);
+    CHECK_INT(s.h.screen == (const void *)&scr2, 1);                    /* re-taken on the new screen */
+    CHECK_INT(s.h.held, 16);
+    CHECK_INT(px_take(&p, IP_FIRST), -1);
+    CHECK_INT(main_follow(&s, &o, &scr2, rgb, 0, &own, &synced), IP_MAIN_DROP);  /* RESTORE ran while main runs */
+    CHECK_INT(s.h.held, 0);
+    CHECK_INT(ip_shared_refs(&s), 0);
+    CHECK_INT(main_follow(&s, &o, &scr2, rgb, 1, &own, &synced), IP_MAIN_TAKE);
+    sh_owner(&s, &o, &scr2, rgb, IP_OWNER_ICONS, 1);                    /* another owner joins: main's exit keeps the pens */
+    sh_owner(&s, &o, &scr2, rgb, IP_OWNER_MAIN, 0);
+    CHECK_INT(s.h.held, 16);
+    sh_owner(&s, &o, &scr2, rgb, IP_OWNER_ICONS, 0);
+    CHECK_INT(s.h.held, 0);
+    CHECK_INT(synced >= 2, 1);
+}
+
 void suite_iconpen(void)
 {
     test_colours_and_fold();
@@ -298,4 +353,5 @@ void suite_iconpen(void)
     test_free_list_model();
     test_sync();
     test_icons_keep_pens_when_flat_stops();
+    test_main_takes_pens_at_boot();
 }

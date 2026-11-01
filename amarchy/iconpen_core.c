@@ -185,3 +185,10 @@ int ip_shared_hold(const ip_shared *s, int gfx_v39)
 {
     return s->owners != 0 && gfx_v39;
 }
+
+int ip_main_step(int applied, int owned)
+{
+    if (applied)
+        return owned ? IP_MAIN_SYNC : IP_MAIN_TAKE;
+    return owned ? IP_MAIN_DROP : IP_MAIN_NONE;
+}

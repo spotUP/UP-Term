@@ -73,6 +73,13 @@ int ip_hold_wanted(int quit, int held, int gfx_v39);
  * once (the reference count is the number of owners). The pens are released when the last owner lets go. */
 #define IP_OWNER_FLAT 1u    /* amarchy-flat, while it runs and no other patcher holds the kill switch */
 #define IP_OWNER_ICONS 2u   /* amarchy-icons APPLY, until RESTORE */
+#define IP_OWNER_MAIN 4u    /* Amarchy (main), while it runs and the icons are applied: the holder record lives in RAM, so after a reboot nobody else holds the pens the .info files on disk name */
+
+/* What Amarchy main does at start and on every 1 s tick: `applied` = the amarchy-icons manifest exists, `owned` = main holds
+ * IP_OWNER_MAIN now. TAKE: become an owner; DROP: RESTORE ran, give the reference up; SYNC: re-take after a Workbench reopen
+ * (ipd_resync); NONE: nothing to do. */
+enum { IP_MAIN_NONE, IP_MAIN_TAKE, IP_MAIN_DROP, IP_MAIN_SYNC };
+int ip_main_step(int applied, int owned);
 
 typedef struct ip_shared {
     unsigned owners;

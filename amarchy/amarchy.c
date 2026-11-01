@@ -40,6 +40,8 @@
 #include "status_core.h"
 #include "shot.h"
 #include "wbreset.h"
+#include "iconpen_dos.h"
+#include "iconapply_core.h"
 #include "keymap_default.inc"
 
 
@@ -187,6 +189,50 @@ static void wbr_wake(void)
         g_wbr_was = desk_wb_close();
     else if (d == WBR_DO_SHOW)
         desk_wb_open(g_wbr_was);
+}
+
+/* ICONPEN-MAIN-BOOT: the icon pens the Amarchy .info files name (32..47) are held by Amarchy main while the icons are applied
+ * (the manifest of amarchy-icons exists): at start, after a reboot, and again after every Workbench reopen (ipd_resync inside
+ * the tick). RESTORE removes the manifest, and main lets go. The decisions are ip_main_step (iconpen_core.c). */
+static int g_ip_own;
+static int icons_applied(void)
+{
+    BPTR l = Lock((STRPTR)IA_MANIFEST, ACCESS_READ);
+    if (l)
+        UnLock(l);
+    return l != 0;
+}
+
+static void iconpens_follow(long now)
+{
+    (void)now;
+    switch (ip_main_step(icons_applied(), g_ip_own)) {
+    case IP_MAIN_TAKE:
+        if (tw_libs_open()) {           /* graphics.library, the pens' base */
+            ipd_owner(IP_OWNER_MAIN, 1);
+            g_ip_own = 1;
+        }
+        break;
+    case IP_MAIN_DROP:
+        ipd_owner(IP_OWNER_MAIN, 0);
+        tw_libs_close();
+        g_ip_own = 0;
+        break;
+    case IP_MAIN_SYNC:
+        ipd_resync();
+        break;
+    default:
+        break;
+    }
+}
+
+static void iconpens_stop(void)
+{
+    if (g_ip_own) {
+        ipd_owner(IP_OWNER_MAIN, 0);
+        tw_libs_close();
+        g_ip_own = 0;
+    }
 }
 
 /* every window Amarchy opens at start: the status bar (the menu servers and AmTile open theirs on use) */
@@ -497,6 +543,8 @@ int main(void)
     tick_hook(note_expire);
     tick_hook(bar_tick);
     tick_hook(tw_tick);                         /* R2.5b: a theme switch retakes the helper windows' pens */
+    tick_hook(iconpens_follow);
+    iconpens_follow(0);                         /* at boot, before the tick's first second */
     tick_open_ok = tick_open();                 /* the 1 s tick, before the bar and running without it */
     tks = tick_sigmask();
     /* W43: no window before the Workbench is in its final mode (IPrefs resets it late; the reset cannot run while a
@@ -554,6 +602,7 @@ int main(void)
         wbr_report(SIGBREAKF_CTRL_F, WBR_HIDE, bar_is_open());   /* BAR ON / OFF, the hold, a reload: all end here */
     }
     bar_close();
+    iconpens_stop();
     wbr_client_drop();
     wbr_patch_remove();
     tick_close();
