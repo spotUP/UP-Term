@@ -312,6 +312,7 @@ static int *int_of(struct app *a, int id)
     case PG_COPY: return &a->f.copy_sel;
     case PG_SCROLLBAR: return &a->f.scrollbar;
     case PG_REFLOW: return &a->f.reflow;
+    case PG_MUSIC: return &a->f.music;
     case PG_DITHER: return &a->f.dither;
     case PG_OUTLINE_AA: return &a->f.outline_aa;
     case PG_PADDING: return &a->f.pad_extend;

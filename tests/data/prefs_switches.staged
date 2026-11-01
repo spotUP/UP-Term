@@ -26,6 +26,7 @@ kingcon-cache = off
 unknown-key = kept
 palette = 01,00CD00,04,5C5CFF
 split-restore = off
+ansi-music = on
 
 
 [profile vim]

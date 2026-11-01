@@ -27,6 +27,7 @@
 ;   ; copy-on-select = off         ; on: a mouse drag ends with the text on the clipboard
 ;   ; wheel = scroll               ; scroll | ignore (the mouse wheel moves the scrollback)
 ;   ; reflow = on                  ; on | off (a resize re-wraps the lines and the scrollback)
+;   ; ansi-music = on              ; on | off (plays ANSI music sent by BBSes, PC-ANSI personality)
 ;   ; backspace = del              ; del | bs: what Backspace sends (bs, ^H, for a remote host whose
 ;   ;                                ; terminfo says kbs=^H -- upstream ncurses' xterm-256color, as on
 ;   ;                                ; Arch or macOS; Debian and Fedora say ^?). A program can switch
@@ -64,6 +65,7 @@ meta = alt
 copy-on-select = off
 wheel = scroll
 reflow = on
+ansi-music = on
 scrollbar = show
 completion = unix
 kingcon-info = hide

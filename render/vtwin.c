@@ -2,6 +2,7 @@
  * XCON: handler (plan 2026-09-30-console-device.md, DX1/DX2): the same code,
  * with the owner's policy behind vtwin_host. */
 #include "vtwin.h"
+#include "vtmusic.h"
 #include <string.h>
 #include <exec/memory.h>
 #include <dos/dosextens.h>
@@ -296,6 +297,7 @@ void vtwin_profile_defaults(vtwin *w)
     w->bell = 1;          /* beep; a profile may choose none or a flash */
     w->bold_bright = 1;   /* xterm SGR 1 takes the bright 8-15 */
     w->wheel_scroll = 1;  /* the wheel moves through the scrollback */
+    w->music = 1;         /* ANSI music plays */
     w->reflow = 1;        /* a resize re-wraps, as modern terminals do (gaps #11) */
     w->cursor_rgb = VR_KEEP;
     w->sel_fg_rgb = w->sel_bg_rgb = VR_KEEP;
@@ -883,6 +885,7 @@ static void settings(vtwin *w)
      * palette change can re-derive the pens through cb_colors() */
     vt_set_bold_bright(w->t, w->bold_bright);
     vt_set_reflow(w->t, w->reflow);
+    vt_set_music(w->t, w->music);
     vt_set_backspace_bs(w->t, w->backspace_bs);
     vt_set_amiga_keys(w->t, w->amiga_keys);
     vt_set_cursor_style(w->t, w->cursor_style);
@@ -903,23 +906,39 @@ static void settings(vtwin *w)
 
 static void bind(vtwin *w, struct Window *win);
 
+static void cb_music(void *u, const vt_note *n, int c, int bg)
+{
+    if (u) /* the window; vbcc refuses (void)u */
+        vtmusic_play(n, c, bg);
+}
+
+/* Windows with an engine: the last one to go closes audio.device. */
+static int vtwin_live;
+
+void vtwin_callbacks(struct vt_callbacks *cb)
+{
+    memset(cb, 0, sizeof(*cb)); /* a callback the engine gains is off until set here */
+    cb->damage = cb_damage;
+    cb->scroll = cb_scroll;
+    cb->reply = cb_reply;
+    cb->bell = cb_bell;
+    cb->title = cb_title;
+    cb->layout = cb_layout;
+    cb->colors = cb_colors;
+    cb->clipboard_set = cb_clipboard_set; /* vt_set_clipboard_access (settings) says what may run */
+    cb->clipboard_get = cb_clipboard_get;
+    cb->notify = cb_notify;
+    cb->music = cb_music; /* ANSI music (render/vtmusic) */
+}
+
 int vtwin_attach(vtwin *w, struct Window *win)
 {
     struct vt_callbacks cb;
     w->win = win;
     if (!w->font)
         vtwin_open_font(w);
-    memset(&cb, 0, sizeof(cb)); /* a callback the engine gains is off until set here */
-    cb.damage = cb_damage;
-    cb.scroll = cb_scroll;
-    cb.reply = cb_reply;
-    cb.bell = cb_bell;
-    cb.title = cb_title;
-    cb.layout = cb_layout;
-    cb.colors = cb_colors;
-    cb.clipboard_set = cb_clipboard_set; /* vt_set_clipboard_access (settings) says what may run */
-    cb.clipboard_get = cb_clipboard_get;
-    cb.notify = cb_notify;
+    vtwin_callbacks(&cb);
+    vtwin_live++;
     {
         /* size from the window before the engine exists */
         int cols = (win->Width - win->BorderLeft - win->BorderRight) / w->font->tf_XSize;
@@ -1144,6 +1163,8 @@ void vtwin_apply_settings(vtwin *w)
 void vtwin_detach(vtwin *w)
 {
     int k;
+    if (w->t && vtwin_live > 0 && --vtwin_live == 0)
+        vtmusic_close();
     /* the frame clock draws (cursor blink) through the renderer freed
      * below: stop it; an AUTO window closes mid-life and opens again
      * (the reopened window hung the handler on the rig, 2026-09-30) */
@@ -1370,8 +1391,16 @@ static void type_text(vtwin *w, const char *text, long n, int raw)
     int k;
     for (i = 0; i < n;) {
         unsigned long ch = cf_next(text, n, &i);
-        long key = ch == '\n' ? VT_KEY_RETURN : (long)ch;
-        if (ch == '\r' || !cf_paste_keeps(ch) || !vti_paste_keeps(w->t, ch))
+        long key = (long)ch;
+        if (ch == '\r' || ch == '\n') {
+            /* a line break is one Return whichever way the text spells it: LF, CR LF, or a lone CR (old Mac) */
+            if (ch == '\r' && i < n && text[i] == '\n')
+                i++;
+            key = VT_KEY_RETURN;
+        } else if (!cf_paste_keeps(ch)) {
+            continue;
+        }
+        if (!vti_paste_keeps(w->t, ch))
             continue; /* controls never; inside ?2004 nothing that ends the brackets early */
         k = encode_key(w, !raw, key, 0, out);
         w->host->pasted(w->user, out, k, key == VT_KEY_RETURN ? key : 0);

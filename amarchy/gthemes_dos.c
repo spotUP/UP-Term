@@ -13,6 +13,7 @@
 #include <proto/intuition.h>
 #include "gthemes_dos.h"
 #include "desk_dos.h"
+#include "iconpen_dos.h"
 #include "desk_core.h"
 #include "amconf_dos.h"
 #include "../prefs/prefs_dos.h"
@@ -228,6 +229,7 @@ int gt_dos_select(const char *name, char *why, int cap)
             dopus_theme_send(&th, gt_dopus_send, 0);
             wb_pens_apply(&th);
         }
+        ipd_recolour();             /* ICON-AA-WRONG-BG: the held icon pens 32-47 follow the new theme live */
         return 1;
     }
     if (why)

@@ -33,6 +33,9 @@ uc_u32 desk_role(const gtheme *t, int role);
  * backdrop pen never equals the ground pen (DESK-BACKDROP-DARKER). A ground that is black on the screen (desk_ground_black)
  * keeps its colour and the backdrop is dark grey, lighter than black. */
 uc_u32 desk_darker(const gtheme *t);
+/* FLAT-COLOUR-OVERHAUL: the selection role colour: t->selection pushed darker (light ground) or lighter (dark ground) until its contrast
+ * against the surface is >= 1.5 */
+uc_u32 desk_selection(const gtheme *t);
 
 /* 1 when the ground is black on a 12-bit screen: all channels below 16 */
 int desk_ground_black(const gtheme *t);
@@ -59,8 +62,8 @@ extern unsigned long desk_flat_state_calls;
 int desk_icons_state(int on, int outline);
 
 /* Pen plan (lucide icons L6): which screen pens the desktop uses beyond the DrawInfo pens, per screen depth (EHB counts as 5).
- * button = the flat button fill (DK_SELECTION), backdrop = the Workbench backdrop tone (DK_MUTED; WBPattern tiles are 3 planes,
- * so both are below 8). The icon pens are the range icon_first .. icon_first + icon_count - 1 that amarchy-flat holds for icon
+ * button = the flat button fill (DK_SELECTION), backdrop = the Workbench backdrop tone (FLAT-COLOUR-OVERHAUL: its own pen DK_RED, nothing draws with it; a WBPattern tile is 3 planes,
+ * so it is below 8; on a screen below 3 planes no pen is free and it is DK_DARKER, the same tone). DK_MUTED keeps the theme muted text colour. The icon pens are the range icon_first .. icon_first + icon_count - 1 that amarchy-flat holds for icon
  * slots icon_slot ..: depth >= 6 pens 32..47 (slots 0..15), depth 4 and 5 pens 8..15 (slots 8..15), depth 2 and 3 none. The
  * range never overlaps button, backdrop or the eight role pens 0..7. */
 typedef struct desk_pen_plan {
@@ -121,6 +124,8 @@ long desk_palette_theme(const unsigned char *cur, long curlen, const gtheme *t, 
 /* FLAT-PENS-LIVE: cur (a palette.prefs of curlen bytes) with only the pen arrays replaced by pens; the colours stay. Returns curlen,
  * 0 when cur is no palette.prefs or does not fit cap */
 int desk_backdrop_pen(void);
+/* the backdrop pen of a screen of depth planes (the plan's) */
+int desk_backdrop_pen_at(int depth);
 long desk_palette_rgb(const unsigned char *cur, long curlen, int pen, int depth);
 long desk_palette_set_rgb(const unsigned char *cur, long curlen, int pen, int depth, uc_u32 c, unsigned char *out, long cap);
 long desk_palette_pens(const unsigned char *cur, long curlen, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap);
@@ -180,11 +185,27 @@ int desk_target_by_name(const char *name); /* -1 when unknown */
 
 /* R1.16a: the files to snapshot for the enabled targets (bit t of mask = target t) in write order; returns the count */
 int desk_snapshot(unsigned mask, const char **list, int cap);
+/* FP-2 (R1.10, OD14): the (ENV: file, ENVARC: file) pairs of the targets in mask (icontrol excluded: it writes both copies itself), plus the
+ * Workbench.prefs pair when wbprefs. Kept = copy ENV to ENVARC; the originals are saved from and restored to the same pairs. Returns the count. */
+#define DESK_WBPREFS_ENV "ENV:Sys/Workbench.prefs"
+#define DESK_WBPREFS_ARC "ENVARC:Sys/Workbench.prefs"
+int desk_persist_pairs(unsigned mask, int wbprefs, const char **env, const char **arc, int cap);
+/* OD14 off: the targets whose originals are saved (bit t of saved) and that the current desktop mask no longer applies; icontrol is never in it */
+unsigned desk_off_mask(unsigned saved, unsigned desk_mask);
+/* the copy name of a prefs file inside dir: dir "/" + file with ':' and '/' turned into '-'. 0 when out (cap bytes) is too small */
+/* FP-2: after "off" ran the stock editors and IPrefs/flat code had their say, the ENV: file must equal the original byte for byte:
+ * nothing to do, copy the original over it, or delete it (the original did not exist) */
+enum { DESK_FIX_NONE, DESK_FIX_COPY, DESK_FIX_DELETE };
+int desk_env_fix(int want_exists, int got_exists, int equal);
+int desk_copy_name(const char *dir, const char *file, char *out, int cap);
 /* the files to restore for mask, in restore order (reverse of the write order); returns the count */
 int desk_restore(unsigned mask, const char **list, int cap);
 /* the pending marker: written before the first write, removed after the last. Its text names the targets, so a
  * crashed run restores what it had touched even when the switches changed since. Returns the length. */
 long desk_marker_make(unsigned mask, char *out, long cap);
+/* FP-3 (R1.9): the files whose T:amarchy-revert snapshot copies the on-disk marker ENVARC:Amarchy/pending-revert keeps, so a reboot (T: is gone) can still
+ * revert an unconfirmed apply: the desk_snapshot list of mask, plus ENV:Sys/Workbench.prefs when wbprefs (the border/gauge write). Returns the count. */
+int desk_pending_files(unsigned mask, int wbprefs, const char **list, int cap);
 
 /* Pointer editor version gate (R1.17): the 3.1 editor (40.x) reset-loops on the 3.2 pointer.prefs this module writes
  * (PRHD + 41 PNTR); the 3.2 editor (47.x) applies it. Reads the major version from the "$VER: <name> N.M" string inside
@@ -238,5 +259,21 @@ typedef struct desk_pv {
     int have;
 } desk_pv;
 int desk_preview(desk_pv *p, const gtheme *t);
+
+
+/* FP-1 (R1.8): the confirm state machine, pure. After an apply the user has DESK_CONFIRM_SECS to Keep it; the clock is the
+ * commodity tick (whole seconds). Keep = DC_KEEP, Revert or the timeout = a revert. The mask is what the snapshot holds. */
+#define DESK_CONFIRM_SECS 15
+typedef struct { int pending; unsigned mask; long deadline; } desk_confirm;
+enum { DC_WAIT, DC_KEEP, DC_REVERT_USER, DC_REVERT_TIMEOUT };
+void desk_confirm_init(desk_confirm *c);
+/* an apply happened at now: pending, the 15 s start over, the masks of applies still unconfirmed add up (the first snapshot stands) */
+void desk_confirm_begin(desk_confirm *c, long now, unsigned mask);
+/* the tick: DC_REVERT_TIMEOUT once when the deadline passed (pending ends), else DC_WAIT */
+int desk_confirm_tick(desk_confirm *c, long now);
+/* the user's answer: DC_KEEP or DC_REVERT_USER (pending ends); DC_WAIT when nothing was pending */
+int desk_confirm_answer(desk_confirm *c, int keep);
+/* whole seconds left (0 when not pending or past) */
+long desk_confirm_left(const desk_confirm *c, long now);
 
 #endif

@@ -188,7 +188,7 @@ static void packed_table(void)
     /* the sentinel: a climb back towards slots fails here */
     CHECK(sizeof(upconf) <= 18500);
 
-    /* a full file -- 8 profiles x 32 keys of long values and a long comment,
+    /* a full file -- 8 profiles x 40 keys of long values and a long comment,
      * as close to UC_MAX_FILE as it goes -- is read whole, every value kept,
      * and saved back byte for byte */
     len = 0;
@@ -209,8 +209,8 @@ static void packed_table(void)
             val[1] = (char)('0' + k / 10);
             val[2] = (char)('0' + k % 10);
             strcpy(val + 3, " = ");
-            memset(val + 6, 'a' + (p + k) % 26, 55);
-            strcpy(val + 61, "\n");
+            memset(val + 6, 'a' + (p + k) % 26, 43);
+            strcpy(val + 49, "\n");
             len = app(file, len, val);
         }
     }
@@ -222,8 +222,8 @@ static void packed_table(void)
     CHECK(c.used <= len);
     for (p = 0; p < UC_MAX_PROFILES; p++)
         CHECK_INT(c.n[p], UC_MAX_KEYS);
-    memset(val, 'a' + (5 + 9) % 26, 55);
-    val[55] = 0;
+    memset(val, 'a' + (5 + 9) % 26, 43);
+    val[43] = 0;
     CHECK_STR(upconf_get(&c, "p5", "k09"), val);
     n = upconf_save(&c, saved, sizeof(saved));
     CHECK_INT(n, len);
@@ -242,8 +242,8 @@ static void packed_table(void)
             name[0] = 'p';
             name[1] = (char)('0' + p);
             name[2] = 0;
-            file[0] = 'k';
-            file[1] = (char)('A' + k);
+            file[0] = (char)('A' + k / 26); /* distinct ignoring case, 2 chars */
+            file[1] = (char)('A' + k % 26);
             file[2] = 0;
             n += upconf_set(&c, name, file, val);
         }
@@ -251,7 +251,7 @@ static void packed_table(void)
     CHECK(c.used <= UC_POOL);
     CHECK(c.used > UC_POOL - (3 + UC_MAX_VALUE + 1));
     CHECK_INT(n, UC_POOL / (3 + UC_MAX_VALUE));         /* as many as fit, whole */
-    CHECK_STR(upconf_get(&c, "p0", "kA"), val);
+    CHECK_STR(upconf_get(&c, "p0", "AA"), val);
     /* the last bytes exactly filled, then one byte more than that refused */
     {
         int left = UC_POOL - c.used - 4; /* "zz" NUL value NUL */

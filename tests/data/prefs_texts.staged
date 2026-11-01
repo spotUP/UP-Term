@@ -28,6 +28,7 @@ meta = alt
 copy-on-select = off
 wheel = scroll
 reflow = on
+ansi-music = on
 scrollbar = show
 completion = unix
 kingcon-info = hide

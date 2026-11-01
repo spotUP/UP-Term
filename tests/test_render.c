@@ -2152,6 +2152,89 @@ static void amiga_text_pen_past_a_4_colour_screen_is_not_drawn_in_the_background
     planar_depth = 0;
 }
 
+/* Paste: a line break in the clipboard reaches the program as a Return. A lone LF was dropped, so a multi-line
+ * paste arrived as one joined line; CR LF is one Return, a lone CR (old Mac text) is one too. */
+extern const char *stub_clip_text;
+static char pst_keys[16];
+static int pst_n;
+static void pst_pasted(void *u, const vt_u8 *b, int n, long key)
+{
+    (void)u; (void)b; (void)n;
+    if (pst_n < (int)sizeof pst_keys)
+        pst_keys[pst_n++] = key == VT_KEY_RETURN ? 'R' : 'c';
+}
+static const vtwin_host phost = { 0, dh_input, 0, pst_pasted, dh_raw, 0, 0, 0, 0, 0 };
+
+static void pst_run(const char *clip, const char *want)
+{
+    pst_n = 0;
+    stub_clip_text = clip;
+    vtwin_paste(&dw);
+    pst_keys[pst_n] = 0;
+    CHECK_STR(pst_keys, want);
+}
+
+static void a_pasted_line_break_reaches_the_program_as_one_return(void)
+{
+    drag_open();
+    dw.host = &phost;
+    pst_run("a\nb", "cRc");        /* LF */
+    pst_run("a\r\nb", "cRc");      /* CR LF: one Return, not two */
+    pst_run("a\rb", "cRc");        /* lone CR */
+    pst_run("a\n\nb", "cRRc");     /* a blank line stays */
+    pst_run("a\r\n\r\nb", "cRRc");
+    pst_run("a\033b", "cc");       /* controls are still dropped */
+    stub_clip_text = 0;
+    drag_close();
+}
+
+/* ANSI music reaches the player through the console window's own callbacks
+ * (render/vtwin.c vtwin_callbacks, as vtwin_attach fills them): the stub
+ * below stands in for render/vtmusic.c, which needs audio.device. */
+static int mus_calls, mus_n, mus_closes;
+static vt_note mus_notes[VT_MUSIC_NOTES];
+void vtmusic_play(const vt_note *notes, int n, int background);
+void vtmusic_close(void);
+void vtmusic_play(const vt_note *notes, int n, int background)
+{
+    (void)background;
+    mus_calls++;
+    if (n > VT_MUSIC_NOTES)
+        n = VT_MUSIC_NOTES;
+    memcpy(mus_notes, notes, sizeof(vt_note) * (size_t)n);
+    mus_n = n;
+}
+void vtmusic_close(void) { mus_closes++; }
+
+static void ansi_music_written_to_a_console_window_reaches_the_player(void)
+{
+    static const char s[] = "\x1b[MT120 L4 O3 C\x0e";
+    vt_callbacks cb;
+    int x, y;
+    memset(&dw, 0, sizeof dw);
+    gf_open(COLS * CW, ROWS * CH, CW, CH, 6);
+    vtwin_init(&dw, &dhost, 0);
+    vtwin_callbacks(&cb);
+    CHECK(cb.music != 0);
+    term = vt_new(COLS, ROWS, 100, &cb, &dw);
+    vt_set_personality(term, VT_PCANSI);
+    dw.t = term;
+    dw.win = gf_window();
+    vr_init(&dw.r, gf_window(), gf_font(), term, VT_ENC_LATIN1);
+    mus_calls = mus_n = 0;
+    vtwin_write(&dw, (const vt_u8 *)s, (long)sizeof s - 1);
+    CHECK_INT(mus_calls, 1);
+    CHECK_INT(mus_n, 1);
+    CHECK_INT(mus_notes[0].chz, 52300);
+    CHECK_INT(mus_notes[0].ms, 500);
+    CHECK_INT(mus_notes[0].on_ms, 437);
+    CHECK_INT(vt_note_period(mus_notes[0].chz, 16), 423);
+    CHECK_STR(h_screen(term), "");
+    vt_cursor(term, &x, &y);
+    CHECK_INT(x, 0);
+    drag_close();
+}
+
 int main(void)
 {
     an_inert_renderer_has_no_selection();
@@ -2162,6 +2245,7 @@ int main(void)
     a_planar_rect_keeps_every_draw_inside_it(4, 0, 40);
     a_planar_rect_keeps_every_draw_inside_it(2, 24, 0);
 #endif
+    a_pasted_line_break_reaches_the_program_as_one_return();
     pen_matches_on_a_prepared_palette_are_the_bare_palettes_picks();
     a_second_window_on_the_same_palette_matches_no_colour_again();
     a_kitty_image_draws_its_pixels_on_the_canvas();
@@ -2199,6 +2283,7 @@ int main(void)
     an_outline_glyph_uses_the_shade_pens_a_palette_has_and_the_mask_when_none();
     selection_of_a_renderer_not_yet_initialised_is_none_and_reads_no_terminal();
     a_drag_ends_when_the_left_button_is_up_or_the_window_goes_inactive();
+    ansi_music_written_to_a_console_window_reaches_the_player();
     printf("render: %d checks, %d failures\n", h_checks, h_failures);
     return h_failures ? 1 : 0;
 }

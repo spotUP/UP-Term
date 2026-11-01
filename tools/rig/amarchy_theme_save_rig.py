@@ -90,6 +90,23 @@ def wait_apply_done(secs=None):
     return False
 
 
+def keep_requester(secs=5):
+    """FP-1: every desktop theme apply opens the 15 s requester "Amarchy desktop theme"; unanswered it reverts the apply. Click Keep
+    (wasabi ui_click) so the picked theme stays. True when Keep was clicked; False when no requester came within secs (an apply that
+    changed no desktop part asks nothing). The one place that clicks it: the other rig scripts call this."""
+    end = time.time() + secs
+    while time.time() < end:
+        try:
+            with ami._conn(30) as cn:
+                ami._m().ui_click(cn, 'Keep', 'Amarchy desktop theme', nth=1)
+            return True
+        except AttributeError:
+            return False   # a stub ami (the unit test of the pick order) has no wasabi connection
+        except Exception:
+            time.sleep(0.5)
+    return False
+
+
 def theme_line(path):
     rc, out = c.run('Type %s' % path)
     if rc != 0:
@@ -308,6 +325,7 @@ def one_select(n, allowed):
     if not wait_apply_done():
         g.close_menu()
         return False, 'the theme apply did not finish within %d s (%s never written)' % (APPLY_SECS, APPLY_DONE), open_wait
+    keep_requester()
     if not g.where(g.TITLE)[1]:
         return False, 'the menu closed on the pick (it must stay open and recolour)', open_wait
     after = {}

@@ -372,6 +372,9 @@ static int lf_gt_select(const char *name, char *why, int cap)
     am_sentinel("AMARCHY_WBREFUSED", (long)gt_dos_wb_refused);
     am_sentinel("AMARCHY_DESKS", (long)desk_dos_applies);
     am_sentinel("AMARCHY_DESKMASK", (long)desk_dos_last_mask);
+    am_sentinel("AMARCHY_DESK_MARKER_REVERTS", (long)desk_dos_marker_reverts);
+    am_sentinel("AMARCHY_DESK_ORIG_SAVED", (long)desk_dos_originals_saved);
+    am_sentinel("AMARCHY_DESK_ORIG_RESTORED", (long)desk_dos_originals_restored);
     am_sentinel("AMARCHY_WBCLOSES", (long)desk_dos_wb_closes);
     return ok;
 }

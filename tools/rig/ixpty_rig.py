@@ -40,6 +40,7 @@ def booted_ixemul():
 def use_ixemul(orig=False):
     """The patched ixemul first in LIBS: for this boot (or the original). Stops the probe when the rig
     booted another ixemul (booted_ixemul)."""
+    paths.rig_only("ixpty_rig.use_ixemul (Assign LIBS: VTC:ixp6)")
     if not orig:
         why = booted_ixemul()
         if why:

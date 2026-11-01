@@ -31,4 +31,19 @@ extern unsigned long desk_dos_flat_writes; /* FLAT-C9: times desk_dos_apply wrot
 extern unsigned long desk_dos_dopus_sends; /* FLAT-D2: times desk_dos_apply handed the theme to dopus_theme_send */
 extern unsigned long desk_dos_applies, desk_dos_last_mask;
 
+/* FP-1 (R1.8): after an apply that changed something the user has 15 s to Keep it. The commodity installs the begin hook (it owns the
+ * requester and the timer); every other process sends the ARexx verb DESK CONFIRM <mask> to it. */
+extern void (*desk_dos_confirm_begin)(unsigned mask);
+/* Keep: the hook FP-2 fills to persist to ENVARC:; now it clears the pending state */
+void desk_dos_confirmed(void);
+/* Revert (button or timeout): the snapshot in T:amarchy-revert/ goes back through the stock editors */
+void desk_dos_revert(void);
+/* FP-3 (R1.9): at Amarchy start, reverts an apply that never reached Keep or Revert (marker in ENVARC:Amarchy). 1 when it did. */
+int desk_dos_marker_recover(void);
+extern unsigned long desk_dos_marker_reverts;
+/* counters (the reachability sentinels): applies that asked, keeps, reverts */
+extern unsigned long desk_dos_confirm_asks, desk_dos_keeps, desk_dos_reverts;
+/* FP-2: files Keep copied to ENVARC:, originals saved before a first write, originals put back by "off" */
+extern unsigned long desk_dos_persists, desk_dos_originals_saved, desk_dos_originals_restored;
+
 #endif

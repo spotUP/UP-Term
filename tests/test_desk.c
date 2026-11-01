@@ -70,6 +70,15 @@ static void probe_theme(gtheme *t)
 #define PAL_BODY 34
 #define PAL_ENTRY(i) (PAL_BODY + 144 + 8 * (i))
 
+/* byte-equal to a golden except the selection colour, which desk_selection() lifts for contrast against the probe's background */
+static int golden_same(const unsigned char *out, const unsigned char *gold)
+{
+    unsigned char a[DK_PALETTE_SIZE];
+    memcpy(a, out, DK_PALETTE_SIZE);
+    memcpy(a + PAL_ENTRY(DK_SELECTION) + 2, gold + PAL_ENTRY(DK_SELECTION) + 2, 6);
+    return !memcmp(a, gold, DK_PALETTE_SIZE);
+}
+
 static void test_desk_palette(void)
 {
     static unsigned char gold[BUF_MAX], out[BUF_MAX], out4[BUF_MAX];
@@ -89,6 +98,8 @@ static void test_desk_palette(void)
             continue;
         if (i >= PAL_ENTRY(0) + 2 && i < PAL_ENTRY(0) + 8)
             continue;
+        if (i >= PAL_ENTRY(DK_SELECTION) + 2 && i < PAL_ENTRY(DK_SELECTION) + 8)
+            continue; /* the selection entry is guarded for contrast, checked below */
         if (out[i] != gold[i])
             diff++;
     }
@@ -186,7 +197,7 @@ static void test_desk_palette_flat(void)
         CHECK_INT(slurp(path, gold, sizeof gold), DK_PALETTE_SIZE);
         n = desk_palette(&t, k % 2 ? 4 : 8, pm, out, sizeof out);
         CHECK_INT(n, DK_PALETTE_SIZE);
-        CHECK(!memcmp(out, gold, DK_PALETTE_SIZE));
+        CHECK(golden_same(out, gold));
         for (s = 0; s < DK_SLOTS; s++) {
             pen = (out[PAL_BODY + 16 + 2 * s] << 8) | out[PAL_BODY + 17 + 2 * s];
             CHECK_INT(pen, pm[s]);
@@ -379,7 +390,7 @@ static void test_desk_flat_pens_key(void)
         snprintf(path, sizeof path, DESK_DATA "%s", names[k]);
         CHECK_INT(slurp(path, gold, sizeof gold), DK_PALETTE_SIZE);
         CHECK_INT(desk_palette(&t, 8, pens, out, sizeof out), DK_PALETTE_SIZE);
-        CHECK(!memcmp(out, gold, DK_PALETTE_SIZE));
+        CHECK(golden_same(out, gold));
         if (k == 0)
             desk_pens_flat(want);
         else
@@ -492,6 +503,29 @@ static void test_desk_darker(void)
     CHECK_INT(desk_darker(&t), 0x101010UL);
 }
 
+/* FLAT-COLOUR-OVERHAUL: the backdrop has its own pen, so pen 5 draws the theme muted colour, not the backdrop tone; and the selection
+ * pen stands >= 1.5 off the surface on every shipped theme */
+static void test_flat_colour_pens(void)
+{
+    gtheme all[SHIPPED_MAX];
+    int n = load_all(all, SHIPPED_MAX), i, depth;
+    CHECK_INT(n, 23);
+    for (depth = 3; depth <= 8; depth++) {
+        CHECK(desk_backdrop_pen_at(depth) != DK_MUTED);
+        CHECK(desk_backdrop_pen_at(depth) != DK_SELECTION);
+        CHECK(desk_backdrop_pen_at(depth) < 8);
+    }
+    CHECK_INT(desk_backdrop_pen_at(2), DK_DARKER); /* below 3 planes no pen is free: the shared darker pen holds the same tone */
+    for (i = 0; i < n; i++) {
+        uc_u32 sel = desk_selection(&all[i]);
+        if (desk_contrast(all[i].selection, all[i].bg) >= 150)
+            CHECK_INT(sel, all[i].selection); /* a good selection is left alone */
+        CHECK(desk_contrast(sel, all[i].bg) >= 150);
+        CHECK_INT(desk_pen_colour(&all[i], DK_MUTED, 1), (long)all[i].muted);
+        CHECK(desk_pen_colour(&all[i], desk_backdrop_pen(), 1) == desk_darker(&all[i]));
+    }
+}
+
 /* DESK-BACKDROP-DARKER: the backdrop pen (DK_DARKER) never equals the shell background pen (DK_BG) on the palette the
  * Workbench screen really holds: read back from desk_palette at 4 and 8 colours, at 24 bit (AGA) and at 12 bit (OCS, a
  * nibble per channel). Darker for every bg, except a bg that is black on the screen: the shell keeps it, the backdrop is a
@@ -562,8 +596,8 @@ static void test_desk_wbpattern(void)
     }
     CHECK_INT(ptrn(out, 0)[8 + 21], 3);
     /* ROOT solid: pen 1 = plane 0 all set; DRAWER: pen 0 = all clear, so it differs from the root (OD7) */
-    CHECK_INT(ptrn(out, 0)[8 + 24], 0xff);
-    CHECK_INT(ptrn(out, 0)[8 + 24 + 32], 0);
+    CHECK_INT(ptrn(out, 0)[8 + 24], 0xff);          /* the backdrop pen (7 at 3 planes): every plane set */
+    CHECK_INT(ptrn(out, 0)[8 + 24 + 32], 0xff);
     CHECK_INT(ptrn(out, 1)[8 + 24], 0);
     CHECK(memcmp(ptrn(out, 0) + 8 + 24, ptrn(out, 1) + 8 + 24, 96));
     /* SCREEN: the empty chunk Wbpattern writes for none */
@@ -601,7 +635,7 @@ static void test_desk_wbpattern_no_dots(void)
                 for (p = 0; p < depth; p++)
                     if (data[p * 32 + y * 2 + x / 8] & (0x80 >> (x % 8)))
                         pen |= 1 << p;
-                CHECK_INT(pen, desk_backdrop_pen() & ((1 << depth) - 1));
+                CHECK_INT(pen, desk_backdrop_pen_at(depth) & ((1 << depth) - 1));
             }
     }
 }
@@ -624,6 +658,7 @@ static void test_flat_on_keeps_backdrop_pen_distinct_from_window_background(void
     CHECK(desk_backdrop_pen() != pens[DK_BACKGROUND]);
     /* the backdrop pen is its own: not a stock icon pen (0-3), not in the DrawInfo array flat writes, inside the 3-plane tile range */
     CHECK(desk_backdrop_pen() > 3 && desk_backdrop_pen() < (1 << depth));
+    CHECK(desk_backdrop_pen() != DK_MUTED); /* FLAT-COLOUR-OVERHAUL */
     for (p = 0; p < DK_SLOTS; p++)
         CHECK(pens[p] != desk_backdrop_pen());
     n = desk_palette(&a, 8, pens, pal, sizeof pal);
@@ -666,7 +701,8 @@ static void test_flat_reopen_keeps_theme_on_pens47(void)
         CHECK_INT(lp[i], 4 + i);
         CHECK_INT((long)c[i], (long)desk_pen_colour(&t, 4 + i, 1));
     }
-    CHECK_INT((long)c[1], 0x222222L);
+    CHECK_INT((long)c[3], 0x222222L);            /* pen 7: the backdrop's own pen */
+    CHECK_INT((long)c[1], (long)t.muted);        /* pen 5 keeps the muted text colour */
     CHECK((long)c[1] != 0xff00ffL);
     /* the wallpaper is the desktop theme's: pen 5 keeps its role colour */
     CHECK_INT(desk_live_follow(&t, 1, 1u << DT_WBPATTERN, 8, lp, c), 4);
@@ -723,13 +759,16 @@ static void test_flat_pick_leaves_pen5_magenta_on_deep_workbench(void)
     for (p = 252; p < 256; p++)
         CHECK_INT(desk_palette_rgb(out, m, p, 8), desk_palette_rgb(cur, n, p, 8));
     CHECK_INT(desk_pen_colour(&t, desk_backdrop_pen(), 1), 0x222222L);
-    CHECK_INT(desk_pen_colour(&t, 4, 1), (long)t.selection);
+    CHECK_INT(desk_pen_colour(&t, 4, 1), (long)desk_selection(&t));
+    CHECK_INT(desk_pen_colour(&t, 5, 1), (long)t.muted); /* FLAT-COLOUR-OVERHAUL: the muted pen keeps the muted colour under the own backdrop */
+    CHECK(desk_backdrop_pen() != 5);
     CHECK_INT(desk_pen_colour(&t, desk_backdrop_pen(), 0), (long)t.muted);
     /* depth 3: the same pick reaches pens 4-7 through the file, the backdrop pen gets the theme dark */
     n = desk_palette_live(rgb4, 8, 3, flat, cur, sizeof cur);
     m = desk_palette_theme(cur, n, &t, 3, 1, out, sizeof out);
     CHECK_INT(desk_palette_rgb(out, m, desk_backdrop_pen(), 3), 0x222222L);
-    CHECK_INT(desk_palette_rgb(out, m, 4, 3), (long)t.selection);
+    CHECK_INT(desk_palette_rgb(out, m, 4, 3), (long)desk_selection(&t));
+    CHECK_INT(desk_palette_rgb(out, m, 5, 3), (long)t.muted);
     CHECK_INT(desk_palette_theme(cur, 10, &t, 3, 1, out, sizeof out), 0);
 }
 
@@ -1013,6 +1052,14 @@ static void test_desk_targets(void)
     CHECK_INT(desk_marker_parse("garbage", 7), 0);
     CHECK_INT(desk_marker_parse("desk-pending 1\nfont\nbogus\n", 25), 1u << DT_FONT);
     CHECK_INT(desk_marker_make(mask, buf, 10), 0);
+    /* FP-3: the marker keeps the snapshot files of its targets, plus Workbench.prefs when the border/gauge write is pending */
+    n = desk_pending_files(1u << DT_ICONTROL, 0, list, 16);
+    CHECK_INT(n, 2);
+    CHECK_STR(list[0], "ENVARC:Sys/icontrol.prefs");
+    CHECK_INT(desk_pending_files(1u << DT_ICONTROL, 1, list, 16), 3);
+    CHECK_STR(list[2], "ENV:Sys/Workbench.prefs");
+    CHECK_INT(desk_pending_files(0, 1, list, 16), 1);
+    CHECK_INT(desk_pending_files(1u << DT_ICONTROL, 1, list, 2), 2);
 }
 
 /* R1.17: the 3.1 Pointer editor (40.x) reset-loops on the 3.2 prefs; only 47+ is fed them */
@@ -1077,6 +1124,64 @@ static void dp_send(const char *name)
         if (!strcmp(dp_theme[i].name, name))
             desk_preview(&dp_pv, strcmp(name, dp_cur) ? &dp_theme[i] : 0);
 }
+/* FP-1 (R1.8): the confirm window. Keep ends it; Revert and the 15 s timeout both ask for a revert; a second apply restarts the clock and keeps the first snapshot's targets */
+static void test_desk_confirm(void)
+{
+    desk_confirm c;
+    desk_confirm_init(&c);
+    CHECK_INT(desk_confirm_tick(&c, 100), DC_WAIT);             /* nothing pending: no revert, ever */
+    CHECK_INT(desk_confirm_answer(&c, 0), DC_WAIT);
+    desk_confirm_begin(&c, 100, 0x3);
+    CHECK_INT(c.pending, 1);
+    CHECK_INT(desk_confirm_left(&c, 100), DESK_CONFIRM_SECS);
+    CHECK_INT(desk_confirm_tick(&c, 100 + DESK_CONFIRM_SECS - 1), DC_WAIT);
+    CHECK_INT(desk_confirm_tick(&c, 100 + DESK_CONFIRM_SECS), DC_REVERT_TIMEOUT);
+    CHECK_INT(c.pending, 0);
+    CHECK_INT(desk_confirm_tick(&c, 500), DC_WAIT);             /* once only */
+    desk_confirm_begin(&c, 200, 0x1);
+    CHECK_INT(desk_confirm_answer(&c, 1), DC_KEEP);
+    CHECK_INT(c.pending, 0);
+    CHECK_INT(desk_confirm_tick(&c, 900), DC_WAIT);             /* kept: the timer no longer reverts */
+    desk_confirm_begin(&c, 300, 0x1);
+    CHECK_INT(desk_confirm_answer(&c, 0), DC_REVERT_USER);
+    desk_confirm_begin(&c, 400, 0x1);
+    desk_confirm_begin(&c, 410, 0x4);                           /* second apply: clock restarts, masks add up */
+    CHECK_INT((int)c.mask, 0x5);
+    CHECK_INT(desk_confirm_tick(&c, 410 + DESK_CONFIRM_SECS - 1), DC_WAIT);
+    CHECK_INT(desk_confirm_left(&c, 420), DESK_CONFIRM_SECS - 10);
+    CHECK_INT(desk_confirm_tick(&c, 410 + DESK_CONFIRM_SECS), DC_REVERT_TIMEOUT);
+}
+
+/* FP-2 (R1.10, OD14): what Keep copies to ENVARC:, what "off" restores, how the originals are named */
+static void test_desk_persist(void)
+{
+    const char *env[8], *arc[8];
+    char name[96], tiny[8];
+    int n;
+    n = desk_persist_pairs((1u << DT_PALETTE) | (1u << DT_FONT) | (1u << DT_ICONTROL), 1, env, arc, 8);
+    CHECK_INT(n, 3);                                            /* icontrol writes both copies itself: not a pair */
+    CHECK_STR(env[0], "ENV:Sys/palette.prefs");
+    CHECK_STR(arc[0], "ENVARC:Sys/palette.prefs");
+    CHECK_STR(env[1], "ENV:Sys/font.prefs");
+    CHECK_STR(arc[1], "ENVARC:Sys/font.prefs");
+    CHECK_STR(env[2], "ENV:Sys/Workbench.prefs");
+    CHECK_STR(arc[2], "ENVARC:Sys/Workbench.prefs");
+    CHECK_INT(desk_persist_pairs(0, 0, env, arc, 8), 0);
+    CHECK_INT(desk_persist_pairs(0xffu, 1, env, arc, 2), 2);    /* cap respected */
+    CHECK_INT((int)desk_off_mask(0x1fu, 0x5u), 0x1a & ~(1 << DT_ICONTROL)); /* saved 0..4, applied palette+pointer: wbpattern, font off; icontrol never */
+    CHECK_INT((int)desk_off_mask(0x3u, 0x3u), 0);
+    CHECK_INT((int)desk_off_mask(0, 0), 0);
+    CHECK_INT((int)desk_off_mask(0x3u, 0), 3);
+    CHECK_INT(desk_env_fix(0, 1, 0), DESK_FIX_DELETE);  /* original absent, an editor/IPrefs recreated it: palette.prefs */
+    CHECK_INT(desk_env_fix(0, 0, 0), DESK_FIX_NONE);
+    CHECK_INT(desk_env_fix(1, 1, 0), DESK_FIX_COPY);    /* editor USE rewrote the bytes: pointer.prefs */
+    CHECK_INT(desk_env_fix(1, 0, 0), DESK_FIX_COPY);
+    CHECK_INT(desk_env_fix(1, 1, 1), DESK_FIX_NONE);
+    CHECK_INT(desk_copy_name("ENVARC:Amarchy/desk-original", "ENV:Sys/palette.prefs", name, sizeof name), 1);
+    CHECK_STR(name, "ENVARC:Amarchy/desk-original/ENV-Sys-palette.prefs");
+    CHECK_INT(desk_copy_name("T:x", "ENV:Sys/palette.prefs", tiny, sizeof tiny), 0);
+}
+
 static void test_desk_preview(void)
 {
     char drawn[GT_NAME], row[GT_NAME + 8];
@@ -1142,6 +1247,7 @@ void suite_desk(void)
     test_desk_reset_done();
     test_desk_iprefs_idle();
     test_desk_darker();
+    test_flat_colour_pens();
     test_desk_backdrop();
     test_desk_wbpattern();
     test_desk_wbpattern_no_dots();
@@ -1158,4 +1264,6 @@ void suite_desk(void)
     test_desk_icontrol();
     test_desk_targets();
     test_desk_preview();
+    test_desk_confirm();
+    test_desk_persist();
 }

@@ -1,0 +1,67 @@
+---
+title: Port the vtcon test rigs from FS-UAE to Amiberry
+date: 2026-11-01
+branch: s29-amiberry-rigs
+---
+
+# Rig port: FS-UAE to Amiberry (v8.2.0)
+
+Backend: `tools/rig/amiberry.py` (config spelling, launch command, title link). Machine decisions stay in
+`tools/rig/rig.py` (`amiberry_machine()` mirrors what `setup()` builds for FS-UAE). Select with
+`rig.py start --emu amiberry` or `UPTERM_RIG_EMU=amiberry`; `paths.EMU`. Default is still fs-uae (see the end).
+
+## Map: fs-uae part, Amiberry equivalent, gap
+
+| rig.py / paths.py | fs-uae option | Amiberry | Gap |
+|---|---|---|---|
+| rig.py:78 CFG | `vtcon-rig.fs-uae` | `vtcon-rig.uae` (WinUAE-style `key=value`, no `[fs-uae]` section), started `Amiberry -G --log -f <cfg>` | none |
+| rig.py setup() machine | `amiga_model=A1200\|A500` | `chipset=aga\|ocs`, `chipset_compatible=A1200\|A500` | none |
+| cpu_lines() 946 | `cpu=68060-NOMMU\|68060\|68LC060\|68020`, `fpu=...` | `cpu_model=68060\|68020`, `fpu_model=68060\|68882`, `mmu_model=68060` only with `--mmu`; `--nofpu` omits fpu_model | `ShowConfig` reads "CPU 68060/FPU 68882" on the 060 rig (FS-UAE value not compared); LC060 is the 060 without fpu_model, not a distinct model |
+| unimplemented_lines() 957 | `uae_cpu_no_unimplemented`, `uae_fpu_no_unimplemented` | `cpu_no_unimplemented`, `fpu_no_unimplemented` (false) | none |
+| RAM | `fast_memory` (KB), `chip_memory` (KB), `zorro_iii_memory` (KB) | `fastmem_size` (MB), `chipmem_size` (512 KB units), `z3mem_size` (MB) | A500 slow RAM written as `bogomem_size=2` (unverified on a 500 run) |
+| JIT | `jit_compiler` | `cachesize=8192` or 0 (0 for `--exact`, `--mmu`) | JIT accepted on the arm64 build; speed not compared |
+| speed / exact | `uae_cpu_speed`, `uae_cpu_cycle_exact`, `uae_cpu_compatible` | `cpu_speed`, `cpu_cycle_exact`, `cpu_compatible` | none |
+| RTG (`graphics_card=uaegfx`, hw sprite) | | `gfxcard_type=ZorroIII`, `gfxcard_size=16`, `gfxcard_hardware_sprite=true` | Picasso96 uaegfx screenmode not re-proved visually on Amiberry (rtg gap, see below) |
+| network | `bsdsocket_library=1` | `bsdsocket_emu=true` | wasabid answers on rig 20 (ping, exec, get); TCP port per rig unchanged |
+| drives 1169-1180 | `hard_drive_N`, `_label`, `_priority`, `_read_only` | `uaehf<N>=dir,rw\|ro,DH<N>:<label>:<path>,<pri>` (host dirs); `uaehf<N>=hdf,...` for sys.hdf | HDF line form written but not run by this port's 3.2 proof; 3.1 run below |
+| kick | `kickstart_file` | `kickstart_rom_file` | A500 ROM: use paths.ROM_A500 (Amiberry's own kick40063 stayed black) |
+| sound | `uae_sound_output=exact`, `volume` | `sound_output=exact\|none`, `sound_volume` (attenuation) | volume scale mapped 100-x |
+| floppy clicks | `floppy_drive_volume(_empty)=0` | `floppy0sound=0` | none |
+| clipboard | `clipboard_sharing` | `clipboard_sharing` | works (log shows amiga_clipboard_want_data) |
+| joystick | `joystick_port_1=none` | `joyport1=none` | none |
+| window size | `window_width/height`, `zoom`, `scale=integer`, `texture_filter` | `gfx_width_windowed`, `gfx_height_windowed` | no integer-scale / nearest-filter key found; zoom crop not mapped |
+| title 983-998 / title_line() | `title = vtcon rig N (...) - PURPOSE` | none; Amiberry titles the window "Amiberry - [<config file name>]". Solved: `launch_path()` starts it on a symlink `build/rigN/win/<title>.uae`; `config_description` carries the text too | works: see proof. No hand renaming |
+| HOST_KEYS 983 | `modifier_key=rctrl`, Cmd to Right Amiga, Right Option to Left Amiga | only `rctrl_as_ramiga` in amiberry.conf (global, not per rig) | GAP: Cmd/Option remap not done; owner must test keys |
+| serial (SERIAL, `serial_port`) | file | Amiberry wants a serial device ("Error finding serial port <file>") | GAP: kprintf-to-file traces and `--serial` do not work; not written |
+| screenshots_output_dir | per-rig shots dir | key unknown ("unknown config entry") | GAP: screenshots go to Amiberry's own dir |
+| logs_dir, FSUAE_LOG_DIR | per-rig fs-uae log | none; stdout (`--log`) appended to `build/rigN/logs/fs-uae.log.txt`, so cap_fsuae_log, fsuae_crash, fsuae_reset_count keep reading it | reset-loop and crash line formats of Amiberry not verified (patterns written for fs-uae) |
+| uaem_write_flags | `nhsparwed` | none known | GAP: log flood from .uaem writes not checked on Amiberry |
+| `--debugger`, dbg, dbgbreak | console_debugger FIFO | none wired | GAP |
+| mine() 1664 | ps line has CFG and "fs-uae" | ps line has `<rig>/win/` and "amiberry" (EMU_KEY) | none |
+| _start() 1700-1790 | `open -a` or `nice <bin> CFG` | `nice -n 19 Amiberry -G --log -f <link>`, detached, own session | none |
+| stop() 1895-1925 | lock DH0:, 8 s quiet, `pkill -TERM -f CFG`, then -9 | same sequence; pkill pattern is EMU_KEY | none (rig 20 stopped clean) |
+| watchdog 1940-2025, status() 2029 | reset-loop and crash from fs-uae.log.txt | same files, Amiberry output | counts not exercised |
+| [WARN] drift line | emulator independent | unchanged | none |
+| Other files naming fs-uae | muforce.py:118, standalone_rig.py:319-349, ami.py:520, detach_rig.py:51, upkg_wb_rig.py, fpu_inf_rig.py | not changed | those paths still assume fs-uae; they do not select Amiberry |
+
+## Proof
+
+### OS 3.2 (rig 20, `--max --os 32 --emu amiberry --purpose "Amarchy s29: Amiberry port check"`)
+- `ami.py ping`: `wasabid 0.11b2`
+- `Version FULL`: `Kickstart 47.115, Workbench 47.2 (04/10/2021)` (3.2)
+- `SYS:Tools/ShowConfig`: `PROCESSOR: CPU 68060/FPU 68882/MMU n/a`, AGA PAL, 1024 MB Z3 fast + 8 MB + 0.5 MB, 2 MB chip, uaegfx boards present
+- md5 `VTC:vsh` over wasabi `get` = `22ba11bf3893aee623d5e367ecb3318d` = `build/amiga/vsh`
+- window title (System Events): `Amiberry - [vtcon rig 20 (060 max, OS 32) - Amarchy s29: Amiberry port check]`
+- stop: `stopped`, no Amiberry process left
+(the 3.2 block above was re-read on the final code: same results, title included)
+
+### OS 3.1 (rig 20, `--max --emu amiberry --purpose "Amarchy s29: Amiberry port check 3.1"`, sys.hdf clone of images/nyhd2.hdf)
+- wasabid answers; `Version FULL`: `Kickstart 40.68, Workbench 40.42 (02/18/94)`
+- config has `cpu_model=68060`, `fpu_model=68060`; `Version 68060.library`: `47.2` (loads only on a real 060 model)
+- `ShowConfig` (3.1 tool) prints `CPU 68040/68040fpu`: that old tool names a 060 as 040; the 3.2 tool reads 68060. Not compared with an FS-UAE 3.1 rig (rigs 12/14 not touched).
+- md5 `VTC:vsh` = `22ba11bf3893aee623d5e367ecb3318d` = `build/amiga/vsh`
+- window title: `Amiberry - [vtcon rig 20 (060 max) - Amarchy s29: Amiberry port check 3.1]`
+- the `uaehf0=hdf` line for sys.hdf booted
+
+## Decision: default stays fs-uae
+Both proofs pass, but three open gaps need the owner: (1) Cmd/Option key mapping (Right Amiga on Cmd, Left Amiga on Right Option) has no per-rig key; (2) serial-to-file (kprintf/`--serial`) does not work; (3) `--debugger`/`dbgbreak` not wired. Also unchecked: A500 and `--stock` configs on a real run, RTG screenmode look, integer scaling/nearest filter, reset-loop watchdog on Amiberry log text, .uaem log flood. Host test: `tests/test_rig_amiberry_config.py` (9 tests, config generator + machine from flags).

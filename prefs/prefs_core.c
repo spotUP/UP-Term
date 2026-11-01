@@ -54,6 +54,7 @@ void prefs_defaults(prefs_fields *f)
     f->bold = 1;
     f->wheel = 1;
     f->reflow = 1;
+    f->music = 1;
     f->scrollbar = 1;
     f->kccache = 1;
     f->aspect = 1;
@@ -584,7 +585,7 @@ int prefs_equal(const prefs_fields *a, const prefs_fields *b)
             return 0;
     return a->cursor == b->cursor && a->bell == b->bell && a->blink == b->blink &&
            a->bold == b->bold && a->meta_alt == b->meta_alt && a->copy_sel == b->copy_sel &&
-           a->wheel == b->wheel && a->reflow == b->reflow && a->scrollbar == b->scrollbar &&
+           a->wheel == b->wheel && a->reflow == b->reflow && a->music == b->music && a->scrollbar == b->scrollbar &&
            a->completion == b->completion && a->screen == b->screen && a->aspect == b->aspect &&
            a->backspace_bs == b->backspace_bs && a->clipboard == b->clipboard &&
            a->kcinfo == b->kcinfo && a->kccache == b->kccache && a->amiga_keys == b->amiga_keys &&

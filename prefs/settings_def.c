@@ -172,6 +172,9 @@ const sd_setting sd_settings[SDI_COUNT] = {
     { SDI_REFLOW, "reflow", 0, PG_PAGE_ADVANCED, SD_CHECK, "_Reflow on resize",
       "Re-wrap the lines when the window changes size.",
       VALS(v_off_on), "on", SD_UPTERM, SDF_INT, FO(reflow), 0, NORANGE, PG_REFLOW, 0, 0, 1, 0 },
+    { SDI_MUSIC, "ansi-music", 0, PG_PAGE_ADVANCED, SD_CHECK, "ANS_I Music",
+      "Plays ANSI music sent by BBSes (PC-ANSI personality).",
+      VALS(v_off_on), "on", SD_UPTERM, SDF_INT, FO(music), 0, NORANGE, PG_MUSIC, 0, 0, 1, 0 },
     { SDI_LINK, "link-open", 0, PG_PAGE_ADVANCED, SD_STRING, "_Link command",
       "The command a Ctrl-clicked link runs; %s is the address.",
       NOVALS, "", SD_UPTERM, SDF_STR, FO(linkopen), FS(linkopen), NORANGE, PG_LINK, 0, 0, 1, 0 },
@@ -330,7 +333,7 @@ int sd_conf_key_index(const char *key, const upconf *c, const char *p)
 const int sd_write_order[] = {
     SDI_FALLBACK, SDI_SCREEN, SDI_SCREEN_MODE, SDI_SCROLLBACK, SDI_ASPECT, SDI_BACKSPACE, SDI_AMIGAKEYS,
     SDI_DITHER, SDI_OUTLINE_AA, SDI_PADDING, SDI_HLCAT, SDI_SPLIT_RESTORE, SDI_CLIPBOARD, SDI_LINK, SDI_TERM, SDI_COLORS,
-    SDI_CURSOR, SDI_BLINK, SDI_BELL, SDI_BOLD, SDI_META, SDI_COPY, SDI_WHEEL, SDI_REFLOW, SDI_SCROLLBAR,
+    SDI_CURSOR, SDI_BLINK, SDI_BELL, SDI_BOLD, SDI_META, SDI_COPY, SDI_WHEEL, SDI_REFLOW, SDI_MUSIC, SDI_SCROLLBAR,
     SDI_COMPLETE, SDI_KC_MATCH, SDI_KC_INFO, SDI_KC_CACHE,
     /* the look */
     SDI_FONT, SDI_CURSOR_COLOUR, SDI_FG, SDI_BG, SDI_SELFG, SDI_SELBG, SDI_PALETTE

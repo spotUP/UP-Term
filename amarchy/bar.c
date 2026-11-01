@@ -23,6 +23,7 @@
 #include <proto/bsdsocket.h>
 #include <string.h>
 #include "bar.h"
+#include "strut_patch.h"
 #include "bar_core.h"
 #include "act.h"
 #include "tick.h"
@@ -397,6 +398,7 @@ static int sample(int ram_every, int force)
 void bar_tick(long now)
 {
     (void)now;
+    strut_sentinels();
     if (!g_win)
         return;
     if (sample(2, 0))
@@ -513,6 +515,7 @@ int bar_open(const char *dir)
     g_top = g_win->TopEdge;
     g_h = g_win->Height;
     g_live = 1;
+    strut_publish(g_scr, (int)(g_scr->Height - g_top));   /* BAR-STRIP-RESERVE: windows keep out of the strip */
     /* no layers.library or timer: the bar still works, it just is not re-raised */
     if (LayersBase && pt_open(&g_poll))
         pt_start(&g_poll, BAR_RAISE_POLL_MICROS);
@@ -522,6 +525,7 @@ int bar_open(const char *dir)
 void bar_close(void)
 {
     g_live = 0;
+    strut_clear();
     idle_stop();
     pt_close(&g_poll);
     if (g_win) {

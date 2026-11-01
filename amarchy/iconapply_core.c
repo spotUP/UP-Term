@@ -124,6 +124,18 @@ int ia_target(int i, char *path, size_t cap, const char **match)
     return 1;
 }
 
+/* a lucide.dat row that names a file: "Vol:Dir/Name". The type fallbacks (type:disk, type:drawer, ...) also carry a colon but
+ * name no volume; taken as a path, Lock("type:disk.info") opened the "Please insert volume TYPE:" requester at every APPLY. */
+int ia_row_is_path(const char *nm)
+{
+    static const char ty[] = "type:";
+    size_t i;
+    if (!strchr(nm, ':')) return 0;
+    for (i = 0; ty[i]; i++)
+        if ((nm[i] | 0x20) != ty[i]) return 1;
+    return 0;
+}
+
 /* ---- all-volume walk decisions (L12) ---- */
 static int ends_with(const char *s, const char *suf)
 {
@@ -285,7 +297,7 @@ void ia_man_count(const ia_manifest *m, const li_dat *dat, ia_man_stats *st)
         for (k = 0; kind == 2 && dat && k < dat->count; k++) {
             const char *nm = li_dat_name(dat, k);
             size_t len = strlen(nm);
-            if (strchr(nm, ':') && len + 6 <= sizeof path && strncmp(ep, nm, len) == 0 && strcmp(ep + len, ".info") == 0) kind = 1;
+            if (ia_row_is_path(nm) && len + 6 <= sizeof path && strncmp(ep, nm, len) == 0 && strcmp(ep + len, ".info") == 0) kind = 1;
         }
         st->total++;
         if (kind == 0) st->defaults++; else if (kind == 1) st->paths++; else st->walked++;
@@ -320,7 +332,7 @@ int ia_apply(ia_ctx *c)
     for (k = 0; k < c->dat->count; k++) {
         const char *nm = li_dat_name(c->dat, k);
         size_t len = strlen(nm);
-        if (!strchr(nm, ':') || len + 6 > sizeof path) continue;
+        if (!ia_row_is_path(nm) || len + 6 > sizeof path) continue;
         memcpy(path, nm, len);
         memcpy(path + len, ".info", 6);
         wrote += apply_one(c, path, nm);

@@ -55,7 +55,9 @@ with tempfile.TemporaryDirectory() as t:
 mk = (HERE.parent / "Makefile").read_text()
 m = re.search(r"^rig-helpers:(.*)$", mk, re.M)
 built = set(re.findall(r"\$\(BUILD\)/amiga/(\S+)", m.group(1))) if m else set()
-check(built == set(ir.HELPERS), "Makefile rig-helpers %s equals install_rig.HELPERS %s" % (sorted(built), sorted(ir.HELPERS)))
+# rig-helpers also builds probes other rig scripts copy themselves (wbpens, iconpens, idleprobe, netprobe since
+# 3f34fb6d / 816bb673); the contract is that it builds every helper install_rig needs.
+check(set(ir.HELPERS) <= built, "Makefile rig-helpers %s builds every install_rig.HELPERS %s" % (sorted(built), sorted(ir.HELPERS)))
 
 print("rig_helpers: %s" % ("FAIL" if fails else "PASS"))
 sys.exit(1 if fails else 0)

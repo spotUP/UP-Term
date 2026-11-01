@@ -1454,6 +1454,8 @@ static void apply_profile(con *c)
         c->w.wheel_scroll = sd_conf_key_index("wheel", c->conf, p);
     if (upconf_get(c->conf, p, "reflow"))
         c->w.reflow = sd_conf_key_index("reflow", c->conf, p);
+    if (upconf_get(c->conf, p, "ansi-music"))
+        c->w.music = sd_conf_key_index("ansi-music", c->conf, p);
     if (upconf_get(c->conf, p, "backspace"))
         c->w.backspace_bs = sd_conf_key_index("backspace", c->conf, p); /* del (^?, the default) or bs (^H) */
     if (upconf_get(c->conf, p, "amiga-keys"))
@@ -2056,6 +2058,7 @@ static void window_fields(con *c, prefs_fields *f)
     f->copy_sel = c->w.copy_on_select != 0;
     f->wheel = c->w.wheel_scroll != 0;
     f->reflow = c->w.reflow != 0;
+    f->music = c->w.music != 0;
     f->scrollbar = c->sbar_on != 0;
     f->completion = c->kingcon ? PREFS_COMPLETE_KINGCON : PREFS_COMPLETE_UNIX;
     f->backspace_bs = c->w.backspace_bs != 0;

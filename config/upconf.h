@@ -55,7 +55,7 @@
  * (research/2026-10-04_window-memory.md). A set that would not fit marks
  * overflow; such a table could not be saved within UC_MAX_FILE either. */
 #define UC_MAX_PROFILES 8
-#define UC_MAX_KEYS     32
+#define UC_MAX_KEYS     40
 #define UC_NAME         32
 #define UC_MAX_VALUE    160
 #define UC_MAX_FILE     16384

@@ -175,6 +175,16 @@ LAST_COMMAND = RIG / "last-command"
 LONG_RUN = RIG / "long-run"
 
 
+def rig_only(what):
+    """Stop before `what` reaches a real Amiga. A rig run never sets AMI_HOST (or sets it to this Mac); an A1200
+    run does. Commands that replace a system assign with rig paths (Assign LIBS: VTC:ixp6, Assign LIBS: DH0:Libs
+    without ADD) would drop that machine's own ADDs (AmiSSL:Libs, MUI:Libs) and point it at drawers it does not
+    have (LIBS-ASSIGN-AUDIT, 2026-11-01)."""
+    host = os.environ.get("AMI_HOST") or os.environ.get("WASABI_HOST") or ""
+    if host and host not in ("127.0.0.1", "localhost"):
+        raise SystemExit("%s: rig only, refused for AMI_HOST/WASABI_HOST=%s (a real Amiga)" % (what, host))
+
+
 def touch_command(rig_dir=None):
     """Record "a command just went to this rig". No rig dir (AMI_HOST, an A1200 run): nothing."""
     d = pathlib.Path(rig_dir) if rig_dir else RIG
@@ -262,6 +272,18 @@ OS32_ROM = pathlib.Path(os.environ.get("UPTERM_OS32_ROM") or
 _FSUAE_LOCAL = CODE_ROOT / "Emulators/fs-uae/fs-uae"
 FSUAE = pathlib.Path(os.environ.get("UPTERM_FSUAE") or
     (_FSUAE_LOCAL if _FSUAE_LOCAL.exists() else "/Applications/FS-UAE.app"))
+
+# UPTERM_RIG_EMU / `rig.py start --emu <name>`  the emulator a rig boots: "fsuae" or "amiberry" (tools/rig/amiberry.py;
+# UPTERM_AMIBERRY names the app or binary). The flag wins over the environment. fs-uae stays the default
+# until the Amiberry rigs pass the proof in thoughts/shared/research/s29-amiberry-port.md.
+# A command that finds a running rig (stop, status, reboot, watchdog ...) given neither flag nor variable asks the emulator
+# the rig's last start recorded in <rig>/emu; without that, `rig.py stop` looked for fs-uae, found none, printed "stopped"
+# and left the Amiberry process running. start and setup never read it: no flag there means the default.
+EMU_FILE = RIG / "emu"
+_RECORDED = (EMU_FILE.read_text().strip() if EMU_FILE.is_file() and sys.argv[1:2] not in (["start"], ["setup"]) else "")
+EMU = (sys.argv[sys.argv.index("--emu") + 1] if "--emu" in sys.argv[:-1] else os.environ.get("UPTERM_RIG_EMU") or _RECORDED or "fsuae")
+if EMU not in ("fsuae", "amiberry"):
+    sys.exit("rig: --emu must be fsuae or amiberry, not %s" % EMU)
 
 
 # UPTERM_MUTOOLS    the NDK 3.2R4 MuTools drawer (MuForce, disassembler.library), for `rig.py muforce`

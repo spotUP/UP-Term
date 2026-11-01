@@ -39,7 +39,7 @@ typedef struct prefs_fields {
     char pal[16][16];
     int cursor;     /* PREFS_CURSOR_* */
     int bell;       /* PREFS_BELL_* */
-    int blink, bold, meta_alt, copy_sel, wheel, reflow; /* 0 / 1 */
+    int blink, bold, meta_alt, copy_sel, wheel, reflow, music; /* 0 / 1 */
     int scrollbar;  /* the scroll bar in a sizable window's border (default on) */
     int completion; /* PREFS_COMPLETE_* */
     int screen;     /* PREFS_SCREEN_*: screen = workbench | own | fullscreen */

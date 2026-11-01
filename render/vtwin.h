@@ -98,6 +98,7 @@ typedef struct vtwin {
     int meta_alt;                /* Alt (not Left Amiga) is the ESC prefix */
     int copy_on_select;          /* a drag ends with the text on the clipboard */
     int wheel_scroll;            /* the wheel moves through the scrollback */
+    int music;                   /* ANSI music plays (1, default; vt_set_music) */
     int reflow;                  /* a resize re-wraps lines and scrollback (1, default) */
     int clip_access;             /* VT_CLIP_*: what OSC 52 may do (program-clipboard; write) */
     ULONG pal16[16];             /* profile palette: 0x01RRGGBB, 0 = the xterm's */
@@ -215,6 +216,8 @@ void vtwin_set_screen(vtwin *w, struct Screen *scr);
 /* After a move to another screen: the pair's other font when this screen
  * wants it (1 when the font changed). */
 int vtwin_fit_aspect(vtwin *w);
+/* Every engine callback of a console window (vtwin_attach uses it). */
+void vtwin_callbacks(struct vt_callbacks *cb);
 int vtwin_attach(vtwin *w, struct Window *win); /* 0: no memory (the owner closes its window) */
 void vtwin_detach(vtwin *w);
 /* The window goes but the terminal stays (moving to another screen):

@@ -237,6 +237,19 @@ Not collisions (same meaning): CUU..CPL, CUP/HVP, CHT, CBT, IL, DL, ICH,
 DCH, SU, SD, TBC, LNM 20, AWM ?7, SGR 0/1/3/4/7/8/22-28/30-37/39/40-47/49
 (colour **semantics** still differ, §4), `ESC c`, IND/NEL/HTS/RI.
 
+**ANSI music (pcansi only, 2026-11-01, ANSI-MUSIC).** `CSI M`, `CSI N` and
+`CSI |` with no parameter and no private marker start a GW-BASIC PLAY string
+that ends at SO (0E); ESC, CAN or SUB also end it. `CSI M` is music only
+when the next byte can start one (A-G N P R T L O M S < > or SO, any case);
+otherwise it stays DL, and `CSI Pn M` is always DL. Nothing of the string
+prints. Notes go to the host's `music` callback, then audio.device
+(render/vtmusic.c). MF and MB both queue without blocking. amiga and xterm
+keep DL for `CSI M`. Defaults are T120 L4 O4 MN; O3 C is 261.63 Hz, as in
+GW-BASIC. Tests: `tests/test_ansimusic.c` (parser, notes, DL kept, xterm
+untouched) and the render test
+`ansi_music_written_to_a_console_window_reaches_the_player` (vtwin_write
+reaches the player). Source: DCTelnet `ansimusic.c` / `sound.c`.
+
 ---
 
 ## 4. SGR per personality

@@ -27,6 +27,11 @@ const char *h_row(vt_term *t, int row);
 const char *h_screen(vt_term *t);
 const vt_cell *h_cell(vt_term *t, int x, int y);
 void h_reply_clear(void);
+/* ANSI music the engine handed over since h_new: calls, notes, the last
+ * call's background flag. */
+#define H_NOTES_MAX 256
+extern int h_music_calls, h_music_bg, h_note_n;
+extern vt_note h_notes[H_NOTES_MAX];
 
 typedef void (*h_suite_fn)(void);
 typedef struct { const char *name; h_suite_fn fn; } h_suite;

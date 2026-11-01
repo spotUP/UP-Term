@@ -10,7 +10,25 @@ status: handoff
 Ledger: thoughts/spot/todos.md (s28 rows). Evidence: thoughts/shared/research/s28-evidence/
 (on branch s28-crash-hunt; only side-worktrees.md and rig9-flat-gap.md sit uncommitted in main).
 
-## Latest state (2026-11-01 late, read this first; supersedes "Open" item 0)
+## Session 29 end state (2026-11-01 night, read this first)
+
+- LANDED since the block below: ab225093 (colour audit, thoughts/shared/research/s29-flat-colour-audit.md), dea43f24 (ICON-AA-WRONG-BG + ICONPEN-THEME-SWITCH-RECOLOUR; rig 14 OS 3.2 flat OFF, theme switch rewrites pens 32-47; flat ON not run on rig).
+- LANDED later: 856af98e FP-1 (15 s Keep/Revert requester; revert skips AM_GTHEME + DOpus send; user-clicked Revert not rig-checked), 4254f87d AMIBERRY-RIGS (--emu amiberry; gaps in ledger AMIBERRY-RIGS-GAPS, AMIBERRY-STOP-FINDS-NOTHING).
+- LANDED latest: 1c74d07d FP-2 (Keep persists ENV:Sys to ENVARC:Sys, originals in ENVARC:Amarchy/desk-original, off restores; rig 12 Keep+reboot PASS, off 11/13), 8dd1dff2 Amiberry stop/status find the emulator (<rig>/emu file). Amiberry keys: probe log empty, suspect background stall (ledger AMIBERRY-RIGS-GAPS).
+- Running at this update: FP-2-ENV-GAPS fix (sonnet, ../vtcon-wt-fp2gaps, s29-fp2-env-gaps, rig 12), BAR-STRIP-RESERVE design (opus, host only, writes thoughts/shared/research/2026-11-01-bar-strip-reserve-design.md), flat colour rig 22 check.
+- Next: FP-3 (R1.9 marker), RIG-STALE-BASE-GUARD, Amiberry key retry (Amiberry frontmost, inactive_pause off), deploy main to A1200 (runs old 2c684f70) after dctelnet-db hands it back, then BAR-STRIP-RESERVE implementation.
+- Flat colour a+b: 81ef33c1 on s29-flat-colour, host tests pass, rig 22 check running (ledger FLAT-COLOUR-AB-RIG). Land after FP-2/FP-3, rebased.
+- Running at last update: FP-2 (../vtcon-wt-fp2, rig 12), Amiberry stop fix + key test (../vtcon-wt-amikeys, s29-amiberry-keys, rig 20), flat colour rig check (rig 22).
+- Older list (superseded where it says FP-1/AMIBERRY running):
+  - FP-1 (R1.8 confirm requester + 15 s timer): ../vtcon-wt-fp1, branch s29-fp1-confirm, rig 12, evidence s28-evidence/flat-persist.md.
+  - AMIBERRY-RIGS: ../vtcon-wt-amiberry, branch s29-amiberry-rigs, rigs 20/21, map in thoughts/shared/research/s29-amiberry-port.md. Owner: every brief after this lands uses Amiberry.
+  - Flat colour a+b (backdrop gets own pen; selection contrast guard min 1.5): ../vtcon-wt-colour, branch s29-flat-colour, rig 22, evidence s28-evidence/flat-colour-ab.md.
+- Owner: "Merge everything to main when done so I can check" (FP-LAND: rebase, test ONLY=affected, make amiga, push, remove worktree).
+- Next after FP-1: FP-2 (R1.10 + OD14 ENVARC persist and originals), then FP-3 (R1.9 pending-revert marker), then restart rig 8 from main for the owner's view.
+- Colour audit items 3-8 to ask the owner after a+b land. Queue: AM-ICONS-DISK-ALL, F11-31, WASABI-SHORTHELP-MUI3, A1200 stack-16384 check, AMARCHY_WBCLOSES read 0.
+- Rig 8 is DOWN (idle watchdog 16:47). Rig folders 12, 14, 16 stay until owner OK.
+
+## Latest state (2026-11-01 late; superseded by the block above)
 
 Session 29 (2026-11-01), current state:
 - LANDED on origin/main: BAR-FONT-MISMATCH (6342584d, 02723ad5, A1200 evidence d45e87cc), ICONS-SKIP-NAMES (e25d5fb2, 0ac3482c, b3bbc2fd: ia_skip_note + tests/test_icons_skip_glue.py, ONLY=icons_skip), FLAT-PENS47 (ca98536c fix, c0ef8042 evidence: holder checks the ColorMap via is_free, follow path sets live role pens). Their worktrees and branches are removed.

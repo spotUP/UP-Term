@@ -15,9 +15,14 @@ static void blend(uint8_t out[3], uc_u32 from, uc_u32 to, int pct)
     out[2] = mix(from & 255, to & 255, pct);
 }
 
-void ip_colours(const gtheme *t, uint8_t rgb[IP_PENS][3])
+uc_u32 ip_ground(const gtheme *t, int flat, unsigned mask)
 {
-    uc_u32 bg = desk_role(t, DK_BG), fg = desk_role(t, DK_FG), ac = desk_role(t, DK_ACCENT);
+    return desk_pen_colour(t, desk_backdrop_pen(), flat && !((mask >> DT_WBPATTERN) & 1));
+}
+
+void ip_colours(const gtheme *t, uc_u32 ground, uint8_t rgb[IP_PENS][3])
+{
+    uc_u32 bg = ground, fg = desk_role(t, DK_FG), ac = desk_role(t, DK_ACCENT);
     uc_u32 mu = desk_role(t, DK_MUTED), sel = desk_role(t, DK_SELECTION);
     int i;
     for (i = 0; i < IP_PENS; i++)
@@ -56,7 +61,7 @@ int ip_fold(const gtheme *t, int slot, int depth)
         return IP_FIRST + slot;
     if (depth >= 4 && slot >= 8)
         return slot;
-    ip_colours(t, rgb);
+    ip_colours(t, desk_role(t, DK_BG), rgb);   /* the fold picks among the role pens, which are drawn on the panel tone */
     last = depth <= 2 ? DK_ACCENT : DK_MUTED;
     for (pen = 0; pen <= last; pen++) {
         d = dist(rgb[slot], desk_role(t, pen));
@@ -102,12 +107,35 @@ int ip_holder_obtain(ip_holder *h, const ip_ops *o, const void *screen, int dept
     h->count = p.icon_count;
     for (i = 0; i < p.icon_count; i++) {
         const uint8_t *c = rgb[p.icon_slot + i];
+        memcpy(h->rgb[i], c, 3);
         if (o->obtain(o->ctx, p.icon_first + i, c[0], c[1], c[2]) == p.icon_first + i) {
             h->have[i] = 1;
             h->held++;
         }
     }
     return h->held;
+}
+
+int ip_recolour(ip_holder *h, const ip_ops *o)
+{
+    gtheme th;
+    uint8_t rgb[IP_PENS][3];
+    int flat = 0, i, n = 0;
+    unsigned mask = 0;
+    if (!h->screen || !o->theme || !o->set_rgb)
+        return 0;
+    memset(&th, 0, sizeof th);
+    o->theme(o->ctx, &th, &flat, &mask);
+    ip_colours(&th, ip_ground(&th, flat, mask), rgb);
+    for (i = 0; i < h->count; i++) {
+        const uint8_t *c = rgb[h->slot0 + i];
+        if (!h->have[i] || !memcmp(h->rgb[i], c, 3))
+            continue;
+        memcpy(h->rgb[i], c, 3);
+        o->set_rgb(o->ctx, h->first + i, ((uc_u32)c[0] << 16) | ((uc_u32)c[1] << 8) | c[2]);
+        n++;
+    }
+    return n;
 }
 
 int ip_holder_stale(const ip_holder *h, const void *screen, int depth)
@@ -182,7 +210,7 @@ int ip_sync(ip_holder *h, const ip_ops *o, int hold, const void *screen, int dep
         uc_u32 lc[4];
         memset(&th, 0, sizeof th);
         o->theme(o->ctx, &th, &flat, &mask);
-        ip_colours(&th, rgb);
+        ip_colours(&th, ip_ground(&th, flat, mask), rgb);
         ip_holder_obtain(h, o, screen, depth, rgb);   /* releases the old ones first */
         n = desk_live_follow(&th, flat, mask, planes, lp, lc);
         for (k = 0; k < n && o->set_rgb; k++)

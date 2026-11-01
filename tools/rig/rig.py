@@ -22,6 +22,8 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   --no-dopus: Workbench without Directory Opus (no DOPUS.1; the clone gets the stock
                   C/LoadWB and no Libs/workbench.library, the ROM's runs);
                   --idle-minutes <N>: stop the rig after N minutes with no command (default 60, 0 = off, rig 1 never);
+                  --allow-stale-base "<reason>": start although this checkout's HEAD lacks origin/main
+                  (RIG-STALE-BASE-GUARD; the reason is required and printed);
                   --purpose "<who: what>": the window title says which session runs the
                   rig and for what, e.g. "Amarchy session: menu terminal check")
                   --overscan: AGA rigs show the whole overscan picture (zoom = full), not the cropped 640x512 area;
@@ -72,10 +74,14 @@ import kitset
 import kitstamp
 import user_startup
 import wasabi as rigwasabi
+import amiberry
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 RIG = paths.RIG      # build/rig, or build/rig2 with UPTERM_RIG=2
-CFG = RIG / "vtcon-rig.fs-uae"
+AMIBERRY = paths.EMU == "amiberry"
+CFG = RIG / ("vtcon-rig.uae" if AMIBERRY else "vtcon-rig.fs-uae")
+# what the running emulator's command line carries: the config path, or for Amiberry the win/ drawer of title links
+EMU_KEY = str(RIG / "win") + "/" if AMIBERRY else str(CFG)
 DBG_IN = RIG / "debugger.in"
 DBG_LOG = RIG / "debugger.log"
 # the last start's arguments (the machine: --a1200, --060, --kick ...). A reboot from another command
@@ -960,6 +966,13 @@ def unimplemented_lines():
 SCREEN_SIZES = {"rtg": (800, 600), "aga": (640, 512), "aga256": (640, 512)}
 WINDOW_BUDGET = (1280, 1024)   # the window size the rigs opened at before integer scaling
 
+def window_size():
+    """The window in host pixels: the picture of the screen mode times the largest whole factor within WINDOW_BUDGET."""
+    name = SCREENMODE_NAME.read_text().strip() if SCREENMODE_NAME.exists() else "aga256" if OS else "rtg"
+    w, h = SCREEN_SIZES[name]
+    k = max(1, min(WINDOW_BUDGET[0] // w, WINDOW_BUDGET[1] // h))
+    return w * k, h * k
+
 def window_lines():
     """The window fits the picture: with scale = integer a fixed 1280x1024 window showed the 800x600 RTG
     Workbench at x1 inside wide black bands (owner 2026-10-26: "they open windows much bigger than the
@@ -970,14 +983,43 @@ def window_lines():
     zoom = ["zoom = full"] if OVERSCAN else [] if name == "rtg" else ["zoom = 640x512"]   # --overscan: every mode, rtg included
     return ["window_width = %d" % (w * k), "window_height = %d" % (h * k)] + zoom   # AGA: crop the overscan border, or x2 no longer fits
 
+def amiberry_machine():
+    """The machine setup() builds for FS-UAE, as the dict tools/rig/amiberry.py spells in Amiberry's keys."""
+    if STOCK:
+        base = dict(model="A1200", cpu="68020", chip_kb=2048, fast_mb=0, speed="real", compatible=False, cycle_exact=False, jit=False)
+    elif A500:
+        base = dict(model="A500", cpu="68000", chip_kb=512, fast_mb=8, speed="real", compatible=True, cycle_exact=True, jit=False)
+    else:
+        z3 = Z3_MB if Z3_MB and M060 else 1024 if MAX else 128 if M060 else 64
+        cpu = "68060" if M060 else "68020"
+        base = dict(model="A1200", cpu=cpu, chip_kb=2048, fast_mb=8, z3_mb=z3, rtg=True,
+                    fpu=None if NOFPU else ("68060" if M060 else "68882"),
+                    mmu="68060" if MMU else None,
+                    speed="max" if FAST or M060 else "real", compatible=EXACT, cycle_exact=EXACT,
+                    jit=not (EXACT or MMU), no_unimplemented=M060)
+    drives = [dict(path=str(RIG / ("os-%s" % OS if OS else "os32" if OS32 else "sys.hdf")), hdf=not (OS or OS32),
+                   label=(RIG / ("os-%s.label" % OS)).read_text().strip() if OS else "System",
+                   ro=not RW, pri=10 if OS else 0),
+              dict(path=str(RIG / "vtc"), label="VTCX", pri=0),
+              dict(path=str(RIG / "boot"), label="BOOTX", pri=0 if OS else 10)]
+    if OS:
+        drives.append(dict(path=str(RIG / "work"), label="Work", pri=-128))
+    w, h = window_size()
+    return dict(base, title=title_text(), rom=str(KICK), bsdsocket=True, drives=drives, volume=rig_volume(),
+                clipboard=bool(CLIPBOARD), window=(w, h))   # no serial file, no shots dir: gaps in the research file
+
+
 def title_line():
     """The window title names the rig and its machine: with several rigs open the
     owner saw only identical FS-UAE windows (2026-10-24) and could not tell them apart. It also names the
     session and task from --purpose: with rigs of several sessions open the owner could not tell what each
     one did or whose it was (2026-10-25). A start without --purpose says so in the title."""
+    return "title = " + title_text()
+
+def title_text():
     machine = ("A1200 stock" if STOCK else "A500" if A500 else
                "060 max" if MAX else "060" if M060 else "68020")
-    return "title = vtcon rig %d (%s%s) - %s" % (paths.RIG_N, machine, ", OS %s" % OS if OS else ", OS 3.2" if OS32 else "",
+    return "vtcon rig %d (%s%s) - %s" % (paths.RIG_N, machine, ", OS %s" % OS if OS else ", OS 3.2" if OS32 else "",
                                                   PURPOSE or "purpose not given (rig.py start --purpose)")
 
 # The Mac keys the rig's fs-uae maps (setup writes them into the config).
@@ -1130,6 +1172,11 @@ def setup():
     ] + unimplemented_lines()
     paths.require_rom(KICK)
     paths.FSUAE_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    if AMIBERRY:
+        CFG.write_text("\n".join(amiberry.config_lines(amiberry_machine())) + "\n")
+        if "start" not in sys.argv:
+            print("rig ready:", CFG)
+        return
     CFG.write_text("\n".join(machine + [
         # FS-UAE's log in this rig's dir, capped by paths.cap_fsuae_log; not the shared ~/Documents/FS-UAE log
         # that grew to 7.9 GB (2026-10-17). No log_* option is set: the rig needs none of them.
@@ -1666,7 +1713,7 @@ def os_tree_no_dopus(tree):
 
 def mine():
     out = subprocess.run(["ps", "-eo", "pid,command"], capture_output=True, text=True).stdout
-    return [l for l in out.splitlines() if str(CFG) in l and "fs-uae" in l.lower()]
+    return [l for l in out.splitlines() if EMU_KEY in l and ("amiberry" if AMIBERRY else "fs-uae") in l.lower()]
 
 LOGWATCH_EVERY = 30   # seconds between two log caps while a rig runs
 
@@ -1705,6 +1752,36 @@ def boot_frozen(text, since_change, elapsed):
     return "go started" in text and "wasabid started" not in text and since_change >= BOOT_STALL
 
 
+def stale_base(root, fetch=True):
+    """RIG-STALE-BASE-GUARD: (head, origin_main, missing) when the checkout at root does not contain origin/main, else
+    None. A rig built from a branch cut before a landed fix tested old code (s29-flat-colour, 2026-11-01). No network:
+    the fetch failure is a [WARN] and the last known origin/main is used."""
+    def git(*a):
+        return subprocess.run(["git", "-C", str(root), *a], capture_output=True, text=True)
+    if fetch and git("fetch", "-q", "origin").returncode != 0:
+        print("[WARN] rig: git fetch origin failed (no network?); checking against the last known origin/main")
+    if git("rev-parse", "--verify", "-q", "origin/main").returncode != 0:
+        return None
+    if git("merge-base", "--is-ancestor", "origin/main", "HEAD").returncode == 0:
+        return None
+    short = lambda ref: git("rev-parse", "--short", ref).stdout.strip()
+    return short("HEAD"), short("origin/main"), int(git("rev-list", "--count", "HEAD..origin/main").stdout.strip() or 0)
+
+def guard_stale_base(root, argv, fetch=True):
+    """Refuse (SystemExit naming RIG-STALE-BASE) unless argv carries --allow-stale-base with a non-empty reason."""
+    allow = argv.index("--allow-stale-base") if "--allow-stale-base" in argv else None
+    reason = argv[allow + 1].strip() if allow is not None and allow + 1 < len(argv) else ""
+    if allow is not None and not reason:
+        sys.exit("rig: --allow-stale-base needs a non-empty reason (RIG-STALE-BASE)")
+    stale = stale_base(root, fetch)
+    if stale is None:
+        return
+    head, om, missing = stale
+    if allow is None:
+        sys.exit("rig: RIG-STALE-BASE: HEAD %s does not contain origin/main %s (%d origin/main commits missing); rebase or "
+                 "merge origin/main, or pass --allow-stale-base \"<reason>\"" % (head, om, missing))
+    print("[WARN] rig: RIG-STALE-BASE overridden: HEAD %s lacks %d origin/main commits (%s); reason: %s" % (head, missing, om, reason))
+
 def start(retries=START_RETRIES):
     """Boot; a boot whose boot.log stops advancing (boot_frozen: the emulator froze before anything under test
     loaded, seen 3 times on 2026-09-29, cause not found) is killed and retried. A slow boot is waited for.
@@ -1712,6 +1789,8 @@ def start(retries=START_RETRIES):
     clone), so two starts begun together both saw no emulator and both launched one on the same sys.hdf, and the
     Amiga showed a disk checksum error (rig 3, 2026-10-30). A second start waits on start.lock for the first, then
     finds its emulator in mine() and says "already running"."""
+    if not KEEP_SYS:   # a reboot restarts the run the guard already passed
+        guard_stale_base(ROOT, sys.argv)
     RIG.mkdir(parents=True, exist_ok=True)
     with open(RIG / "start.lock", "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)   # released when the block ends or the process dies
@@ -1748,12 +1827,19 @@ def _start(retries):
         sys_hdf_cpu_lib(RIG / "sys.hdf")   # the master image is never touched; this and any other write into DH0: runs after the clone
     RIG.mkdir(parents=True, exist_ok=True)
     START_ARGS.write_text(json.dumps([a for a in sys.argv[2:] if a != "--keep-sys"]))
+    paths.EMU_FILE.write_text(paths.EMU + "\n")   # stop/status of a later call find this rig's emulator without the flag
     setup_config_only()
     paths.cap_fsuae_log(limit=0)   # a fresh log per start (the tail of the last run stays in <name>.tail)
     log = RIG / "boot/boot.log"
     if log.exists():
         log.unlink()
-    if paths.FSUAE.suffix == ".app":
+    if AMIBERRY:
+        # Amiberry's console log goes where cap_fsuae_log, fsuae_crash and fsuae_reset_count already read
+        paths.FSUAE_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        subprocess.Popen(["nice", "-n", "19"] + amiberry.command(amiberry.launch_path(RIG, CFG, title_text())), stdin=subprocess.DEVNULL,
+                         stdout=open(paths.FSUAE_LOG_DIR / "fs-uae.log.txt", "ab"), stderr=subprocess.STDOUT,
+                         start_new_session=True)
+    elif paths.FSUAE.suffix == ".app":
         subprocess.run(["open", "-g", "-n", "-a", str(paths.FSUAE), "--args", str(CFG)], check=True)
     else:  # a bare binary: detached, so the rig outlives this command; nice 19 so the
         # machine-load gates of other sessions do not block on the rig
@@ -1842,6 +1928,38 @@ WB_RESET_RETRIES = 3   # Retry clicks before the start fails: Retry never succee
 NATIVE_WB = {(640, 200), (640, 256), (640, 400), (640, 512)}
 
 
+def wb_reset_retry_gadgets(tree):
+    """The Retry gadgets of IPrefs' "attempting to reset the Workbench screen"
+    requester in a UITREE dump, and a description of any OTHER requester that
+    offers Retry (an AssignWedge "Volume Request", a "Please insert volume"
+    System Request with more gadgets, ...). Only a window titled "System Request"
+    whose labelled gadgets are exactly Retry and Cancel counts as IPrefs'
+    (RIG-VOLREQ-MISREAD: rig.py clicked Retry on a Volume Request three times).
+    Gadget boxes are absolute screen pixels (UITREE gives them so)."""
+    wins = []
+    for line in tree:
+        f = line.split()
+        if line.startswith("W "):
+            title = line.rstrip().rsplit('"', 2)[-2] if line.rstrip().endswith('"') else ""
+            wins.append((title, [], []))
+        elif line.startswith("G ") and wins:
+            label = line.rstrip().rsplit('"', 2)[-2] if line.rstrip().endswith('"') else ""
+            if label:
+                wins[-1][1].append(label)
+            if label == "Retry":
+                w, h = map(int, f[4].split("x"))
+                wins[-1][2].append((int(f[2]), int(f[3]), w, h))
+    gads, other = [], []
+    for title, labels, retry in wins:
+        if not retry:
+            continue
+        if title == "System Request" and sorted(labels) == ["Cancel", "Retry"]:
+            gads.extend(retry)
+        else:
+            other.append('"%s" [%s]' % (title, "|".join(labels)))
+    return gads, " ; ".join(other)
+
+
 def retry_wb_reset():
     """--060: the boot comes up on a PAL Workbench with Intuition's "attempting
     to reset the Workbench screen ... close all windows" requester (IPrefs'
@@ -1868,14 +1986,12 @@ def retry_wb_reset():
         log.write("%.0fs PAL\n%s\n" % (time.time() - t0, "\n".join(tree[:20])))
         # the requester: the gadget labelled Retry; ami.py's UITREE gives gadgets
         # in absolute screen pixels
-        win, gads = None, []
-        for line in tree:
-            f = line.split()
-            if line.startswith("W "):
-                win = (0, 0)
-            elif line.startswith("G ") and win and line.rstrip().endswith('"Retry"'):
-                w, h = map(int, f[4].split("x"))
-                gads.append((win[0] + int(f[2]), win[1] + int(f[3]), w, h))
+        gads, other = wb_reset_retry_gadgets(tree)
+        if other:
+            log.write("other requester: %s\n" % other)
+            log.flush()
+            sys.exit("rig: a requester other than IPrefs' Workbench reset System Request is open (RIG-VOLREQ-MISREAD); "
+                     "not clicking it. Saw: %s" % other)
         if gads:
             if clicks >= WB_RESET_RETRIES:
                 shown = " | ".join(l.strip() for l in tree if l.startswith(("S ", "W ", "G ")) and ("Request" in l or "Retry" in l or "Cancel" in l or l.startswith("S ")))
@@ -1917,13 +2033,13 @@ def stop():
             time.sleep(8)
         except BaseException:
             pass
-    subprocess.run(["pkill", "-TERM", "-f", str(CFG)])
+    subprocess.run(["pkill", "-TERM", "-f", EMU_KEY])
     for _ in range(90):   # FS-UAE closes its disks before it exits
         if not mine():
             break
         time.sleep(1)
     if mine():
-        subprocess.run(["pkill", "-9", "-f", str(CFG)])
+        subprocess.run(["pkill", "-9", "-f", EMU_KEY])
     print("stopped" if not mine() else "[ERROR] still running")
 
 WATCHDOG_EVERY = 60   # seconds between two idle checks

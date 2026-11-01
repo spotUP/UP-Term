@@ -90,6 +90,7 @@ static void claude_code_symbols_get_a_stand_in_not_a_question_mark(void)
     static const struct { vt_u32 cp; int ch; } want[] = {
         { 0x2722, '*' }, { 0x2733, '*' }, { 0x2736, '*' }, { 0x273B, '*' }, { 0x273D, '*' }, /* spinner */
         { 0x276F, '>' }, /* the prompt */
+        { 0x279C, '>' }, /* starship and oh-my-zsh prompts: heavy round-tipped rightwards arrow (peer dctelnet-db) */
         { 0x23FA, 'o' }, /* an answer's bullet, as the black circle */
         { 0x23F5, '>' }, /* the mode marker */
         { 0x26A0, '!' }, { 0x203B, '*' }, { 0x25D0, 'o' }, { 0x25D1, 'o' }
