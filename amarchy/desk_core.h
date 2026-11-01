@@ -33,6 +33,9 @@ uc_u32 desk_role(const gtheme *t, int role);
  * backdrop pen never equals the ground pen (DESK-BACKDROP-DARKER). A ground that is black on the screen (desk_ground_black)
  * keeps its colour and the backdrop is dark grey, lighter than black. */
 uc_u32 desk_darker(const gtheme *t);
+/* FLAT-COLOUR-OVERHAUL: the selection role colour: t->selection pushed darker (light ground) or lighter (dark ground) until its contrast
+ * against the surface is >= 1.5 */
+uc_u32 desk_selection(const gtheme *t);
 
 /* 1 when the ground is black on a 12-bit screen: all channels below 16 */
 int desk_ground_black(const gtheme *t);
@@ -59,8 +62,8 @@ extern unsigned long desk_flat_state_calls;
 int desk_icons_state(int on, int outline);
 
 /* Pen plan (lucide icons L6): which screen pens the desktop uses beyond the DrawInfo pens, per screen depth (EHB counts as 5).
- * button = the flat button fill (DK_SELECTION), backdrop = the Workbench backdrop tone (DK_MUTED; WBPattern tiles are 3 planes,
- * so both are below 8). The icon pens are the range icon_first .. icon_first + icon_count - 1 that amarchy-flat holds for icon
+ * button = the flat button fill (DK_SELECTION), backdrop = the Workbench backdrop tone (FLAT-COLOUR-OVERHAUL: its own pen DK_RED, nothing draws with it; a WBPattern tile is 3 planes,
+ * so it is below 8; on a screen below 3 planes no pen is free and it is DK_DARKER, the same tone). DK_MUTED keeps the theme muted text colour. The icon pens are the range icon_first .. icon_first + icon_count - 1 that amarchy-flat holds for icon
  * slots icon_slot ..: depth >= 6 pens 32..47 (slots 0..15), depth 4 and 5 pens 8..15 (slots 8..15), depth 2 and 3 none. The
  * range never overlaps button, backdrop or the eight role pens 0..7. */
 typedef struct desk_pen_plan {
@@ -121,6 +124,8 @@ long desk_palette_theme(const unsigned char *cur, long curlen, const gtheme *t, 
 /* FLAT-PENS-LIVE: cur (a palette.prefs of curlen bytes) with only the pen arrays replaced by pens; the colours stay. Returns curlen,
  * 0 when cur is no palette.prefs or does not fit cap */
 int desk_backdrop_pen(void);
+/* the backdrop pen of a screen of depth planes (the plan's) */
+int desk_backdrop_pen_at(int depth);
 long desk_palette_rgb(const unsigned char *cur, long curlen, int pen, int depth);
 long desk_palette_set_rgb(const unsigned char *cur, long curlen, int pen, int depth, uc_u32 c, unsigned char *out, long cap);
 long desk_palette_pens(const unsigned char *cur, long curlen, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap);

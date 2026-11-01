@@ -21,6 +21,9 @@ int desk_contrast(uc_u32 a, uc_u32 b)
 #define DK_FLOOR_TEXT 220 /* text on a ground: measured, the weakest shipped pair is rose-pine at 233 */
 #define DK_FLOOR_FILL 150 /* the title text on the fill, and the fill on the ground */
 #define DK_STEP_DARK 108  /* the darker tone against the background */
+#define DK_FLOOR_SEL 150  /* the selection (button fill, scroller knob) against the surface: shipped light themes sit at 110-130 */
+
+#define PT_DEPTH_MAX 3 /* the planes of a WBPattern tile */
 
 #define DK_BLACK_LIFT 0x222222UL /* the backdrop over a black ground: dark grey, lighter than black */
 
@@ -56,6 +59,27 @@ uc_u32 desk_darker(const gtheme *t)
     return 0x000000UL;
 }
 
+/* FLAT-COLOUR-OVERHAUL: the selection pen colour. The theme's selection when it stands DK_FLOOR_SEL off the surface (as the nibble-cut
+ * screen shows both), else pushed away from the surface in 10 % steps: toward black on a light ground, toward white on a dark one. */
+uc_u32 desk_selection(const gtheme *t)
+{
+    uc_u32 sel = t->selection, goal = desk_luma(t->bg) >= 128 ? 0x000000UL : 0xFFFFFFUL;
+    int pct;
+    for (pct = 0; pct <= 100; pct += 10) {
+        uc_u32 c = pct ? 0 : sel;
+        if (pct) {
+            int sh;
+            for (sh = 16; sh >= 0; sh -= 8) {
+                int a = (int)((sel >> sh) & 255), b = (int)((goal >> sh) & 255);
+                c |= (uc_u32)(a + (b - a) * pct / 100) << sh;
+            }
+        }
+        if (desk_contrast(c, t->bg) >= DK_FLOOR_SEL && desk_contrast(nib(c), nib(t->bg)) >= DK_FLOOR_SEL)
+            return c;
+    }
+    return goal;
+}
+
 uc_u32 desk_role(const gtheme *t, int role)
 {
     switch (role) {
@@ -63,7 +87,7 @@ uc_u32 desk_role(const gtheme *t, int role)
     case DK_DARKER: return desk_darker(t);
     case DK_FG: return t->fg;
     case DK_ACCENT: return t->accent;
-    case DK_SELECTION: return t->selection;
+    case DK_SELECTION: return desk_selection(t);
     case DK_MUTED: return t->muted;
     case DK_GREEN: return t->ok;
     default: return t->fail;
@@ -189,7 +213,7 @@ void desk_pens_for(int flat, unsigned char pens[DK_SLOTS])
 void desk_pen_plan_for(int depth, desk_pen_plan *p)
 {
     p->button = DK_SELECTION;
-    p->backdrop = DK_MUTED;
+    p->backdrop = depth >= PT_DEPTH_MAX ? DK_RED : DK_DARKER; /* FLAT-COLOUR-OVERHAUL: pen 5 keeps the muted text colour; below 3 planes no pen is free, the backdrop shares the darker pen */
     if (depth >= 6) {
         p->icon_first = 32; p->icon_count = 16; p->icon_slot = 0;
     } else if (depth >= 4) {
@@ -331,8 +355,8 @@ uc_u32 desk_live_baseline(const unsigned char *saved, long savedlen, int pen, in
 
 uc_u32 desk_pen_colour(const gtheme *t, int pen, int own_backdrop)
 {
-    if (own_backdrop && pen == desk_backdrop_pen())
-        return desk_darker(t);
+    if (pen == desk_backdrop_pen())
+        return own_backdrop ? desk_darker(t) : t->muted; /* the desktop-theme pattern keeps its muted tone */
     return desk_role(t, pen);
 }
 
@@ -388,12 +412,16 @@ long desk_palette_pens(const unsigned char *cur, long curlen, const unsigned cha
  * in the live DrawInfo array, black in stock icons), pen 4 is the flat button fill (DK_SELECTION), and the flat DrawInfo map only ever
  * uses pens 0, 1 and 2. Pen 5 (DK_MUTED) is inside the tile range, outside 0-4 and in no DrawInfo slot, so recolouring it to the theme dark
  * changes nothing but the backdrop. Never BACKGROUNDPEN: with no pattern the root fills with it, the window interior pen. */
-#define PT_DEPTH_MAX 3 /* the planes of a WBPattern tile */
-int desk_backdrop_pen(void)
+int desk_backdrop_pen_at(int depth)
 {
     desk_pen_plan p;
-    desk_pen_plan_for(PT_DEPTH_MAX, &p); /* L6: the plan is the one source; the backdrop pen is the same at every depth */
+    desk_pen_plan_for(depth, &p); /* L6: the plan is the one source */
     return p.backdrop;
+}
+
+int desk_backdrop_pen(void)
+{
+    return desk_backdrop_pen_at(PT_DEPTH_MAX);
 }
 
 /* the ColorSpec of a pen in a palette.prefs (entry desk_palette_entry_of(pen, depth)): its offset in cur, -1 when none */
@@ -526,7 +554,7 @@ long desk_wbpattern(const gtheme *t, int depth, const unsigned char *prev, long 
         depth = 1;
     at = iff_header(out, DK_WBPATTERN_SIZE);
     /* ROOT: one solid darker tone, no dots (dark_background is no pen under OD13) */
-    pattern_fill(data, depth, desk_backdrop_pen());
+    pattern_fill(data, depth, desk_backdrop_pen_at(depth));
     pattern_chunk(at, 0, depth, data);
     /* DRAWER: the panel tone MT_BG, which is pen 0 (OD7) */
     pattern_fill(data, depth, DK_BG);

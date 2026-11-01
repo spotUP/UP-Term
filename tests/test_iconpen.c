@@ -49,8 +49,8 @@ static void test_plan_no_overlap(void)
         desk_pen_plan p;
         desk_pen_plan_for(depth, &p);
         CHECK_INT(p.button, 4);
-        CHECK_INT(p.backdrop, 5);
-        CHECK_INT(desk_backdrop_pen(), p.backdrop); /* L6: the backdrop pen (WBPattern tile, palette write) is the plan's */
+        CHECK_INT(p.backdrop, depth >= 3 ? DK_RED : DK_DARKER); /* FLAT-COLOUR-OVERHAUL: own pen, pen 5 stays muted */
+        CHECK_INT(desk_backdrop_pen_at(depth), p.backdrop); /* L6: the backdrop pen (WBPattern tile, palette write) is the plan's */
         CHECK(p.button != p.backdrop);
         CHECK(p.icon_first + p.icon_count <= (1 << depth));
         for (i = 0; i < p.icon_count; i++) {
@@ -488,7 +488,7 @@ static void test_theme_switch_recolour(void)
     CHECK_INT(ip_recolour(&h, &o), 16);
     CHECK_INT(c.sets, 16);                                            /* sentinel: every pen 32-47 rewritten */
     CHECK_INT((long)c.rgb[IP_FIRST + IP_SPARE12], (long)ip_ground(&b, 1, 0));
-    CHECK_INT((long)c.rgb[IP_FIRST + IP_SELBG], (long)b.selection);
+    CHECK_INT((long)c.rgb[IP_FIRST + IP_SELBG], (long)desk_selection(&b));
     CHECK_INT(c.bad_release, 0);
     CHECK_INT(h.held, 16);
     CHECK_INT(ip_recolour(&h, &o), 0);                                /* and only once */
