@@ -284,6 +284,8 @@ static const LONG d4_lvo[FLAT_EL_COUNT] = { FLAT_LVO_DRAWBOX, FLAT_LVO_FIELDBOX 
 /* Every saved library routine (Text, RectFill, the dopus5 ones) is called with its library base in a6, as through its
  * LVO: the ROM code reads its base from a6, and these hooks use a6 as a scratch register and for FindTask (a6 = SysBase).
  * Without it, the stock Text ran with a6 = SysBase and jumped through a garbage base (s28 flat-ON hang). */
+typedef void (*rectfn)(__reg("a1") struct RastPort *, __reg("d0") LONG, __reg("d1") LONG, __reg("d2") LONG, __reg("d3") LONG,
+                       __reg("a6") struct Library *);
 typedef void (*textfn)(__reg("a1") struct RastPort *, __reg("a0") CONST_STRPTR, __reg("d0") ULONG, __reg("a6") struct Library *);
 extern void flat_tx_entry(void);
 
@@ -293,6 +295,32 @@ void flat_tx_c(struct RastPort *rp, CONST_STRPTR str, ULONG count)
     r->tcalls++;
     int pen;
     flat_gh_text(&r->gh, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL), rp->cp_x, rp->cp_y, (const char *)str, (int)count);
+    if (r->st.enabled && !r->st.held && r->rsw.installed && rp->Layer && rp->Layer->Window) {      /* FLAT-TITLE-ACCENT */
+        struct Window *w = (struct Window *)rp->Layer->Window;
+        flat_title ft;
+        if (flat_title_decide(&r->st, rp->BitMap ? rp->BitMap->Depth : 0, (w->Flags & WFLG_WINDOWACTIVE) != 0, (const char *)w->Title,
+                              w->Width, w->BorderTop, (const char *)str, (int)count, rp->cp_y - (rp->Font ? rp->Font->tf_Baseline : 0), &ft)) {
+            UBYTE fg = rp->FgPen, dm = rp->DrawMode;
+            WORD cx = rp->cp_x, cy = rp->cp_y;
+            r->ttitle++;
+            if (ft.band_pen >= 0) {
+                UWORD *pa = (UWORD *)rp->AreaPtrn;
+                UBYTE pt = rp->AreaPtSz;
+                rp->AreaPtrn = 0; rp->AreaPtSz = 0;
+                SetDrMd(rp, JAM2);
+                SetAPen(rp, (UBYTE)ft.band_pen);
+                ((rectfn)r->rsw.saved)(rp, ft.bx0, ft.by0, ft.bx1, ft.by1, (struct Library *)GfxBase);
+                rp->AreaPtrn = pa; rp->AreaPtSz = pt;
+                SetDrMd(rp, dm);
+                Move(rp, cx, cy);
+            }
+            if (ft.text_pen >= 0)
+                SetAPen(rp, (UBYTE)ft.text_pen);
+            ((textfn)r->tsw.saved)(rp, str, count, (struct Library *)GfxBase);
+            SetAPen(rp, fg);
+            return;
+        }
+    }
     if (r->tx.armed && (pen = flat_tx_pen(&r->st, &r->tx, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL),
                                            rp->cp_x, rp->cp_y)) >= 0) {
         UBYTE fg = rp->FgPen;
@@ -348,8 +376,6 @@ static int tx_remove(flatshared *r)
  * is recoloured to pen_outline only when ALL hold: enabled and not held, the rastport is a window's layer, the window
  * has a border, the rect is exactly one outer strip of the window (flat_outer_edge_match) and the caller lies in
  * Intuition's ROM code. Anything else runs the stock RectFill untouched. ---- */
-typedef void (*rectfn)(__reg("a1") struct RastPort *, __reg("d0") LONG, __reg("d1") LONG, __reg("d2") LONG, __reg("d3") LONG,
-                       __reg("a6") struct Library *);
 extern void flat_rf_entry(void);
 
 /* FLAT-SCROLLER: the pen for one Intuition fill inside a window scroller, or -1. Walks the window's prop gadgets (no

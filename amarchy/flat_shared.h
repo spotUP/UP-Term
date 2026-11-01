@@ -43,6 +43,7 @@ typedef struct flatshared {
     flat_tx tx;                 /* the armed pressed frame (flat_core.h) */
     flat_gh gh;                 /* FLAT-BUTTON-DISABLED-DIM: the recorded filled button boxes and labels (flat_core.h) */
     ULONG ghits;                /* ghost fills replaced by the solid dim fill (the sentinel) */
+    ULONG ttitle;               /* window titles redrawn by FLAT-TITLE-ACCENT (the sentinel) */
     ULONG tcalls, thits;        /* every patched Text call / every pressed label recoloured (the sentinels) */
     /* LUCIDE L7: the 16 icon pens held on the Workbench screen (iconpen_core.h); NOT in flat_state, whose 24 bytes tests pin */
     ip_holder ih;

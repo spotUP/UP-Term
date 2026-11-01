@@ -236,6 +236,15 @@ int flat_tx_text(flat_tx *t, const void *surf, const void *task, int cx, int cy)
  * pen). pen_ptext is DK_BG = pen 0, a real pen: 0 never means "unset" here. */
 int flat_tx_pen(const flat_state *s, flat_tx *t, const void *surf, const void *task, int cx, int cy);
 
+/* ---- FLAT-TITLE-ACCENT: a window title drawn by Intuition (one Text call on the border rastport) ---------------------
+ * flat_title_decide: 1 and *t filled when the call is a window title under flat (enabled, not held, title string prefix
+ * match of str/count against the Window title, pen y inside bar_h = BorderTop). Active: band (0,0)-(w-1,bar_h-1) in
+ * pen_outline (band_pen -1 = none: pen_outline unset or not a pen of the depth) and the title text in pen_ptext.
+ * Inactive: no band, title text in flat_dimtext_pen (dark_foreground). 0: not a title, stock Text untouched. */
+typedef struct flat_title { int band_pen, bx0, by0, bx1, by1, text_pen; } flat_title;
+int flat_title_decide(const flat_state *s, int depth, int active, const char *title, int win_w, int bar_h,
+                      const char *str, int count, int cp_y, flat_title *t);
+
 /* ---- FLAT-BUTTON-DISABLED-DIM: the ghost fill of a disabled gadget, as a pure model ---------------------------------
  * Intuition draws a disabled gadget (frame, label), then ghosts it with one pattern RectFill (rp->AreaPtrn set, AreaPtSz != 0)
  * over the gadget box, called from Intuition's ROM. The frame hook records every filled primary button box per surface and task, the Text
