@@ -263,6 +263,13 @@ _FSUAE_LOCAL = CODE_ROOT / "Emulators/fs-uae/fs-uae"
 FSUAE = pathlib.Path(os.environ.get("UPTERM_FSUAE") or
     (_FSUAE_LOCAL if _FSUAE_LOCAL.exists() else "/Applications/FS-UAE.app"))
 
+# UPTERM_RIG_EMU / `rig.py start --emu <name>`  the emulator a rig boots: "fsuae" or "amiberry" (tools/rig/amiberry.py;
+# UPTERM_AMIBERRY names the app or binary). The flag wins over the environment. fs-uae stays the default
+# until the Amiberry rigs pass the proof in thoughts/shared/research/s29-amiberry-port.md.
+EMU = (sys.argv[sys.argv.index("--emu") + 1] if "--emu" in sys.argv[:-1] else os.environ.get("UPTERM_RIG_EMU") or "fsuae")
+if EMU not in ("fsuae", "amiberry"):
+    sys.exit("rig: --emu must be fsuae or amiberry, not %s" % EMU)
+
 
 # UPTERM_MUTOOLS    the NDK 3.2R4 MuTools drawer (MuForce, disassembler.library), for `rig.py muforce`
 # UPTERM_MMULIB     Thomas Richter's mmu.library (not in the NDK: its Developer Distribution only documents it)

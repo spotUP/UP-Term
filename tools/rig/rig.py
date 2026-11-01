@@ -72,10 +72,14 @@ import kitset
 import kitstamp
 import user_startup
 import wasabi as rigwasabi
+import amiberry
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 RIG = paths.RIG      # build/rig, or build/rig2 with UPTERM_RIG=2
-CFG = RIG / "vtcon-rig.fs-uae"
+AMIBERRY = paths.EMU == "amiberry"
+CFG = RIG / ("vtcon-rig.uae" if AMIBERRY else "vtcon-rig.fs-uae")
+# what the running emulator's command line carries: the config path, or for Amiberry the win/ drawer of title links
+EMU_KEY = str(RIG / "win") + "/" if AMIBERRY else str(CFG)
 DBG_IN = RIG / "debugger.in"
 DBG_LOG = RIG / "debugger.log"
 # the last start's arguments (the machine: --a1200, --060, --kick ...). A reboot from another command
@@ -960,6 +964,13 @@ def unimplemented_lines():
 SCREEN_SIZES = {"rtg": (800, 600), "aga": (640, 512), "aga256": (640, 512)}
 WINDOW_BUDGET = (1280, 1024)   # the window size the rigs opened at before integer scaling
 
+def window_size():
+    """The window in host pixels: the picture of the screen mode times the largest whole factor within WINDOW_BUDGET."""
+    name = SCREENMODE_NAME.read_text().strip() if SCREENMODE_NAME.exists() else "aga256" if OS else "rtg"
+    w, h = SCREEN_SIZES[name]
+    k = max(1, min(WINDOW_BUDGET[0] // w, WINDOW_BUDGET[1] // h))
+    return w * k, h * k
+
 def window_lines():
     """The window fits the picture: with scale = integer a fixed 1280x1024 window showed the 800x600 RTG
     Workbench at x1 inside wide black bands (owner 2026-10-26: "they open windows much bigger than the
@@ -970,14 +981,43 @@ def window_lines():
     zoom = ["zoom = full"] if OVERSCAN else [] if name == "rtg" else ["zoom = 640x512"]   # --overscan: every mode, rtg included
     return ["window_width = %d" % (w * k), "window_height = %d" % (h * k)] + zoom   # AGA: crop the overscan border, or x2 no longer fits
 
+def amiberry_machine():
+    """The machine setup() builds for FS-UAE, as the dict tools/rig/amiberry.py spells in Amiberry's keys."""
+    if STOCK:
+        base = dict(model="A1200", cpu="68020", chip_kb=2048, fast_mb=0, speed="real", compatible=False, cycle_exact=False, jit=False)
+    elif A500:
+        base = dict(model="A500", cpu="68000", chip_kb=512, fast_mb=8, speed="real", compatible=True, cycle_exact=True, jit=False)
+    else:
+        z3 = Z3_MB if Z3_MB and M060 else 1024 if MAX else 128 if M060 else 64
+        cpu = "68060" if M060 else "68020"
+        base = dict(model="A1200", cpu=cpu, chip_kb=2048, fast_mb=8, z3_mb=z3, rtg=True,
+                    fpu=None if NOFPU else ("68060" if M060 else "68882"),
+                    mmu="68060" if MMU else None,
+                    speed="max" if FAST or M060 else "real", compatible=EXACT, cycle_exact=EXACT,
+                    jit=not (EXACT or MMU), no_unimplemented=M060)
+    drives = [dict(path=str(RIG / ("os-%s" % OS if OS else "os32" if OS32 else "sys.hdf")), hdf=not (OS or OS32),
+                   label=(RIG / ("os-%s.label" % OS)).read_text().strip() if OS else "System",
+                   ro=not RW, pri=10 if OS else 0),
+              dict(path=str(RIG / "vtc"), label="VTCX", pri=0),
+              dict(path=str(RIG / "boot"), label="BOOTX", pri=0 if OS else 10)]
+    if OS:
+        drives.append(dict(path=str(RIG / "work"), label="Work", pri=-128))
+    w, h = window_size()
+    return dict(base, title=title_text(), rom=str(KICK), bsdsocket=True, drives=drives, volume=rig_volume(),
+                clipboard=bool(CLIPBOARD), window=(w, h))   # no serial file, no shots dir: gaps in the research file
+
+
 def title_line():
     """The window title names the rig and its machine: with several rigs open the
     owner saw only identical FS-UAE windows (2026-10-24) and could not tell them apart. It also names the
     session and task from --purpose: with rigs of several sessions open the owner could not tell what each
     one did or whose it was (2026-10-25). A start without --purpose says so in the title."""
+    return "title = " + title_text()
+
+def title_text():
     machine = ("A1200 stock" if STOCK else "A500" if A500 else
                "060 max" if MAX else "060" if M060 else "68020")
-    return "title = vtcon rig %d (%s%s) - %s" % (paths.RIG_N, machine, ", OS %s" % OS if OS else ", OS 3.2" if OS32 else "",
+    return "vtcon rig %d (%s%s) - %s" % (paths.RIG_N, machine, ", OS %s" % OS if OS else ", OS 3.2" if OS32 else "",
                                                   PURPOSE or "purpose not given (rig.py start --purpose)")
 
 # The Mac keys the rig's fs-uae maps (setup writes them into the config).
@@ -1130,6 +1170,11 @@ def setup():
     ] + unimplemented_lines()
     paths.require_rom(KICK)
     paths.FSUAE_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    if AMIBERRY:
+        CFG.write_text("\n".join(amiberry.config_lines(amiberry_machine())) + "\n")
+        if "start" not in sys.argv:
+            print("rig ready:", CFG)
+        return
     CFG.write_text("\n".join(machine + [
         # FS-UAE's log in this rig's dir, capped by paths.cap_fsuae_log; not the shared ~/Documents/FS-UAE log
         # that grew to 7.9 GB (2026-10-17). No log_* option is set: the rig needs none of them.
@@ -1663,7 +1708,7 @@ def os_tree_no_dopus(tree):
 
 def mine():
     out = subprocess.run(["ps", "-eo", "pid,command"], capture_output=True, text=True).stdout
-    return [l for l in out.splitlines() if str(CFG) in l and "fs-uae" in l.lower()]
+    return [l for l in out.splitlines() if EMU_KEY in l and ("amiberry" if AMIBERRY else "fs-uae") in l.lower()]
 
 LOGWATCH_EVERY = 30   # seconds between two log caps while a rig runs
 
@@ -1750,7 +1795,13 @@ def _start(retries):
     log = RIG / "boot/boot.log"
     if log.exists():
         log.unlink()
-    if paths.FSUAE.suffix == ".app":
+    if AMIBERRY:
+        # Amiberry's console log goes where cap_fsuae_log, fsuae_crash and fsuae_reset_count already read
+        paths.FSUAE_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        subprocess.Popen(["nice", "-n", "19"] + amiberry.command(amiberry.launch_path(RIG, CFG, title_text())), stdin=subprocess.DEVNULL,
+                         stdout=open(paths.FSUAE_LOG_DIR / "fs-uae.log.txt", "ab"), stderr=subprocess.STDOUT,
+                         start_new_session=True)
+    elif paths.FSUAE.suffix == ".app":
         subprocess.run(["open", "-g", "-n", "-a", str(paths.FSUAE), "--args", str(CFG)], check=True)
     else:  # a bare binary: detached, so the rig outlives this command; nice 19 so the
         # machine-load gates of other sessions do not block on the rig
@@ -1914,13 +1965,13 @@ def stop():
             time.sleep(8)
         except BaseException:
             pass
-    subprocess.run(["pkill", "-TERM", "-f", str(CFG)])
+    subprocess.run(["pkill", "-TERM", "-f", EMU_KEY])
     for _ in range(90):   # FS-UAE closes its disks before it exits
         if not mine():
             break
         time.sleep(1)
     if mine():
-        subprocess.run(["pkill", "-9", "-f", str(CFG)])
+        subprocess.run(["pkill", "-9", "-f", EMU_KEY])
     print("stopped" if not mine() else "[ERROR] still running")
 
 WATCHDOG_EVERY = 60   # seconds between two idle checks
