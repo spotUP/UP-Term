@@ -95,6 +95,21 @@ static int wbpark_in_front(int layers_in_front)
     return layers_in_front == 0;
 }
 
+/* The chain walk: layers lying in front of `own`, following `next` (Layer->front) from `own`, `bar` (the screen's
+ * title bar layer, may be NULL) left out. `own` NULL: 0. The handler passes the real Layer chain, the host test a
+ * fake one, so the walk is tested as it runs. */
+static int wbpark_layers_in_front(const void *own, const void *bar, const void *(*next)(const void *))
+{
+    const void *l;
+    int n = 0;
+    if (!own)
+        return 0;
+    for (l = next(own); l; l = next(l))
+        if (!bar || l != bar)
+            n++;
+    return n;
+}
+
 /* After the reopen: what to do with the new window (WBPARK_TO_FRONT, WBPARK_ACTIVATE bits), and the retries start. */
 static int wbpark_restore(wbpark *p)
 {

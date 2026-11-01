@@ -3266,16 +3266,16 @@ static void ztimer_start(con *c)
 }
 
 /* Window layers lying in front of the window's own (depth order; the screen's title bar layer does not count). */
+static const void *wb_layer_next(const void *l)
+{
+    return ((const struct Layer *)l)->front;
+}
+
 static int wb_layers_in_front(const struct Window *win)
 {
-    const struct Layer *l;
-    int n = 0;
     if (!win || !win->WLayer)
         return 0;
-    for (l = win->WLayer->front; l; l = l->front)
-        if (!win->WScreen || l != win->WScreen->BarLayer)
-            n++;
-    return n;
+    return wbpark_layers_in_front(win->WLayer, win->WScreen ? win->WScreen->BarLayer : 0, wb_layer_next);
 }
 
 static int wb_in_front(const struct Window *win)

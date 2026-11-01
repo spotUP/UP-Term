@@ -112,9 +112,18 @@ static void count_pause(int ticks)
 
 /* The reopened window goes back in front and active when it was before the park (the reopened Workbench drawer
  * window otherwise covers it); the handler remembers it at park time and applies it after the rebind. */
+typedef struct fakelayer {
+    struct fakelayer *front;
+} fakelayer;
+
+static const void *fake_next(const void *l)
+{
+    return ((const fakelayer *)l)->front;
+}
+
 static void park_restore_order(void)
 {
-    wbpark p = {0, 0, 0, 0};
+    wbpark p = {0, 0, 0, 0, 0};
     const char *src = handler_src();
     char *h, *s, *r;
     int i;
@@ -124,6 +133,23 @@ static void park_restore_order(void)
     CHECK_INT(wbpark_in_front(0), 1);
     CHECK_INT(wbpark_in_front(1), 0);
     CHECK_INT(strstr(src, "FirstWindow == ") == 0, 1);
+    {
+        /* behaviour: a fake layer chain. Windows were opened own first (screen window list: own is FIRST), yet a
+         * later window lies in front by depth: the old FirstWindow rule said "front", depth says covered. */
+        fakelayer bar = {0}, top = {0}, own = {0};
+        own.front = &top; /* top is in front of own */
+        top.front = &bar;
+        CHECK_INT(wbpark_in_front(wbpark_layers_in_front(&own, &bar, fake_next)), 0);
+        /* the reverse: own is not first in the window list (opened later) but nothing lies in front of it */
+        top.front = 0;
+        own.front = &bar; /* only the title bar layer in front: does not count */
+        CHECK_INT(wbpark_in_front(wbpark_layers_in_front(&own, &bar, fake_next)), 1);
+        own.front = 0;
+        CHECK_INT(wbpark_in_front(wbpark_layers_in_front(&own, &bar, fake_next)), 1);
+        CHECK_INT(wbpark_layers_in_front(0, &bar, fake_next), 0);
+        /* the handler walks through the shared function */
+        CHECK_INT(strstr(src, "wbpark_layers_in_front(win->WLayer") != 0, 1);
+    }
     /* the drawer window opens later and covers it: each tick puts back what is missing; ticks run 10 s */
     CHECK_INT(wbpark_retry(&p, 1, 1, 0), 0);
     CHECK_INT(wbpark_retry(&p, 0, 0, 0), WBPARK_TO_FRONT | WBPARK_ACTIVATE);
