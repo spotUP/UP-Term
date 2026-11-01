@@ -186,6 +186,37 @@ void ipd_resync(void)
     ReleaseSemaphore(&r->ss);
 }
 
+/* The sync of pens_sync, but only the colours: the screen is the one the pens are held on or nothing happens. The screen list stays
+ * locked so the ColorMap cannot close under SetRGB32. */
+void ipd_recolour(void)
+{
+    ipd_rec *r = find_rec(0);
+    pen_ctx c;
+    ip_ops o;
+    struct List *pl;
+    struct Screen *sc;
+    if (!r)
+        return;
+    ObtainSemaphore(&r->ss);
+    o.obtain = pen_obtain;
+    o.release = pen_release;
+    o.is_free = pen_is_free;
+    o.theme = pens_theme;
+    o.set_rgb = pen_set_rgb;
+    o.ctx = &c;
+    pl = LockPubScreenList();
+    sc = wb_screen(pl);
+    if (sc && sc == r->s.h.screen) {
+        c.cur = sc->ViewPort.ColorMap;
+        c.vp = &sc->ViewPort;
+        c.h = &r->s.h;
+        c.sc = sc;
+        ip_recolour(&r->s.h, &o);
+    }
+    UnlockPubScreenList();
+    ReleaseSemaphore(&r->ss);
+}
+
 int ipd_status_line(char *out, size_t cap)
 {
     ip_shared s;

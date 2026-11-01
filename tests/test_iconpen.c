@@ -17,7 +17,7 @@ static void test_colours_and_fold(void)
     uint8_t rgb[IP_PENS][3];
     int slot, depth;
     theme(&t);
-    ip_colours(&t, rgb);
+    ip_colours(&t, desk_role(&t, DK_BG), rgb);
     CHECK(rgb[IP_FG100][0] == 0xe0 && rgb[IP_FG100][1] == 0xe8 && rgb[IP_FG100][2] == 0xf0);
     CHECK(rgb[IP_ACCENT100][0] == 0xff && rgb[IP_ACCENT100][2] == 0x00);
     CHECK(rgb[IP_SELBG][0] == 0x30 && rgb[IP_SELBG][1] == 0x48 && rgb[IP_SELBG][2] == 0x60);
@@ -90,7 +90,7 @@ static void test_holder(void)
     char line[32];
     int s1, s2, i, left = 0;
     theme(&t);
-    ip_colours(&t, rgb);
+    ip_colours(&t, desk_role(&t, DK_BG), rgb);
     memset(&f, 0, sizeof f);
     o.obtain = f_obtain; o.release = f_release; o.ctx = &f;
     ip_holder_init(&h);
@@ -382,10 +382,16 @@ static void rcm_release(void *ctx, int pen)
     c->alloc[pen] = 0;
 }
 static int rcm_is_free(void *ctx, int pen) { return !((rcm *)ctx)->alloc[pen]; }
+static int rcm_other;            /* 1: the theme the user switched to */
 static void rcm_theme(void *ctx, gtheme *t, int *flat, unsigned *mask)
 {
+    static const char *b = "name = ipb\nbackground = #f0e8d8\nforeground = #202830\ndark_foreground = #706050\naccent = #0050c0\n"
+                           "selection = #c8b898\nmuted = #908070\n";
     (void)ctx;
-    theme(t);
+    if (rcm_other)
+        gt_parse(b, (long)strlen(b), t);
+    else
+        theme(t);
     *flat = 1;                   /* flat on, flat owns the backdrop */
     *mask = 0;
 }
@@ -450,6 +456,45 @@ static void test_reopen_same_address(void)
     CHECK_INT(c.bad_release, 0);
 }
 
+/* ICON-AA-WRONG-BG + ICONPEN-THEME-SWITCH-RECOLOUR: the ramp starts at the backdrop, and a theme switch on the same screen rewrites 32-47 */
+static void test_theme_switch_recolour(void)
+{
+    static rcm c;
+    ip_holder h;
+    ip_ops o;
+    gtheme a, b;
+    int scr, i;
+    memset(&c, 0, sizeof c);
+    memset(&o, 0, sizeof o);
+    o.obtain = rcm_obtain; o.release = rcm_release; o.is_free = rcm_is_free; o.theme = rcm_theme; o.set_rgb = rcm_set;
+    o.ctx = &c;
+    ip_holder_init(&h);
+    rcm_open(&c);
+    rcm_other = 0;
+    theme(&a);
+    rcm_other = 1;
+    rcm_theme(&c, &b, &i, (unsigned *)&scr);
+    rcm_other = 0;
+    CHECK(ip_ground(&a, 1, 0) != desk_role(&a, DK_BG));              /* the backdrop is not the panel tone */
+    CHECK_INT(ip_sync(&h, &o, 1, &scr, 8, 8), IP_SYNC_OBTAIN);
+    /* theme A: the spare slots (the ramp's zero point) are the backdrop RGB, not pen 0 */
+    CHECK_INT((long)c.rgb[IP_FIRST + IP_SPARE12], (long)ip_ground(&a, 1, 0));
+    CHECK(c.rgb[IP_FIRST + IP_SPARE12] != desk_role(&a, DK_BG));
+    c.sets = 0;
+    CHECK_INT(ip_recolour(&h, &o), 0);                                /* same theme: no poke */
+    CHECK_INT(c.sets, 0);
+    rcm_other = 1;                                                    /* switch to theme B, same screen */
+    CHECK_INT(ip_sync(&h, &o, 1, &scr, 8, 8), IP_SYNC_NONE);          /* the holder alone sees no change */
+    CHECK_INT(ip_recolour(&h, &o), 16);
+    CHECK_INT(c.sets, 16);                                            /* sentinel: every pen 32-47 rewritten */
+    CHECK_INT((long)c.rgb[IP_FIRST + IP_SPARE12], (long)ip_ground(&b, 1, 0));
+    CHECK_INT((long)c.rgb[IP_FIRST + IP_SELBG], (long)b.selection);
+    CHECK_INT(c.bad_release, 0);
+    CHECK_INT(h.held, 16);
+    CHECK_INT(ip_recolour(&h, &o), 0);                                /* and only once */
+    rcm_other = 0;
+}
+
 void suite_iconpen(void)
 {
     test_colours_and_fold();
@@ -460,4 +505,5 @@ void suite_iconpen(void)
     test_icons_keep_pens_when_flat_stops();
     test_main_takes_pens_at_boot();
     test_reopen_same_address();
+    test_theme_switch_recolour();
 }

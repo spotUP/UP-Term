@@ -17,6 +17,8 @@
 int ipd_owner(unsigned owner, int on);
 /* Re-sync without changing owners (screen reopened, theme changed). */
 void ipd_resync(void);
+/* A theme switch: rewrite the held pens 32..47 with SetRGB32 from the new theme (ip_recolour). Does nothing when no record exists. */
+void ipd_recolour(void);
 /* "pens-held N refs=M" from the record; no record reads "pens-held 0 refs=0". Needs no library. Returns the length. */
 int ipd_status_line(char *out, size_t cap);
 

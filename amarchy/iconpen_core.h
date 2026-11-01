@@ -22,7 +22,11 @@ enum {
 /* The colour of every slot. FG, ACCENT and MUTED levels blend from the theme background toward the role (33 / 66 / 100 %),
  * SELFG levels blend from the selection colour toward the foreground (the selected image sits on a SELBG plate), SELBG is
  * the selection colour, the spare slots are the background. */
-void ip_colours(const gtheme *t, uint8_t rgb[IP_PENS][3]);
+void ip_colours(const gtheme *t, uc_u32 ground, uint8_t rgb[IP_PENS][3]);
+/* ICON-AA-WRONG-BG: the colour the icons are drawn ON, the Workbench backdrop pen's colour (desk_pen_colour: the darker tone when flat
+ * owns the backdrop, else the muted role). `ground` of ip_colours: the AA ramp (FG/ACCENT/MUTED 33/66 %) must start at it, or the edge
+ * pixels form a fringe against the real backdrop. flat / mask as desk_live_follow takes them. */
+uc_u32 ip_ground(const gtheme *t, int flat, unsigned mask);
 
 /* The screen pen that icon slot (0..15) is drawn with at screen depth `depth` (EHB counts as 5):
  * depth >= 6: IP_FIRST + slot (held); depth 4 and 5: slots 8..15 are pens 8..15 (held), slots 0..7 fold; depth 2 and 3: every
@@ -51,6 +55,7 @@ typedef struct ip_holder {
     int held;                    /* pens held now */
     uint8_t have[IP_PENS];       /* have[i] = 1 when slot desk_pen_plan.icon_slot + i is held */
     int slot0, first, count;     /* the plan the pens were obtained under */
+    uint8_t rgb[IP_PENS][3];     /* the colours the held pens carry now (ip_recolour compares against them) */
     int recheck;                 /* ip_holder_verify: a missing pen is free now; the next sync re-obtains */
 } ip_holder;
 
@@ -70,6 +75,10 @@ int ip_holder_stale(const ip_holder *h, const void *screen, int depth);
  * - the same address at another depth is a reopened screen too: forget, returns 1.
  * Else 0 (also with no o->is_free, another screen, or nothing obtained). */
 int ip_holder_verify(ip_holder *h, const ip_ops *o, const void *screen, int depth);
+/* ICON-AA-WRONG-BG / ICONPEN-THEME-SWITCH-RECOLOUR: a theme switch on the same screen. Re-reads the theme (o->theme), and every held pen
+ * whose colour changed is rewritten with o->set_rgb (SetRGB32); no release, no obtain. Returns the pens rewritten, 0 when nothing is
+ * held or the colours are the same. */
+int ip_recolour(ip_holder *h, const ip_ops *o);
 /* Release every held pen (flat off, program exit). Returns the number released. */
 int ip_holder_release(ip_holder *h, const ip_ops *o);
 /* "pens-held N"; returns the length, 0 when cap is too small */
