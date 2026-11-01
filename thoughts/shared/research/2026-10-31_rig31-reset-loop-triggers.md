@@ -92,3 +92,24 @@ Result: the loop needs BOTH 68060.library and mmu.library; 680x0.library is not 
 Versions: 68060.library 47.2 (6.7.2022), mmu.library 47.11 (24.11.2025), 680x0.library 47.3 (THOR / MMU.lib development group). Source: the owner's copies in build/rig-inputs/mmulib/ (paths.LIB68060 / LIBMMU / LIB680X0, UPTERM_LIB* override), copied into the rig's os-31/Libs by os_image_copy; not staged from an OS tree. The 3.1 image ships none of them.
 
 Mechanism: HYPOTHESIS, not measured (no ExecBase ColdCapture/KickTagPtr read before the reset). mmu.library 47.x is the part that builds MMU tables and installs itself reset-proof; 68060.library on its own only installs the 060 exception handlers and the FPSP. The pair is needed, so the likely chain is: the illegal-instruction guru ends in ColdReboot; mmu.library's reset-surviving state (KickTag / ColdCapture, MMU table pointers) runs in the ROM boot with the 060 libs' traps expecting a state the emulated NOMMU CPU does not give, faults again before wasabid starts, and the guru reset repeats. To confirm: after the crash and before the reset, `wasabi` read of ExecBase ColdCapture (offset 0x2A), CoolCapture (0x2E) and KickTagPtr (0x226) with and without mmu.library, and a Guru alert code from the loop (first Alert number in the log).
+
+## Full-MMU 060 and capture vectors (s40, rig 3)
+
+Question: is the loop an artifact of the rig's 060-NOMMU CPU running mmu.library? Tool: existing `rig.py start --max --os 31 --mmu` (FS-UAE cpu_model/fpu_model/mmu_model = 68060, no JIT; log shows `set option "mmu_model" to "68060"`), all three libs in Libs:. Boot without crash is normal (wasabid up, ping answers).
+
+| Config | Illegal instruction line | CPU reset lines at ~50 s | wasabid |
+|---|---|---|---|
+| 68060 full MMU, 68060+mmu+680x0 libs | "Illegal instruction: 1050 at 408F7328 -> 00F80AD2", then "CPU reset PC=f80dc8" / "f800d0" repeating | 286 | refused |
+| 68060-NOMMU, same libs (repeat) | "Illegal instruction: 1050 at 1009BE80 -> 00F80AD2" | 308 | refused |
+
+Result: the loop also happens on a full-MMU 060. It is not an artifact of the NOMMU CPU. The first exception line is the illegal-instruction trap itself, which vectors into the ROM alert path (00F80AD2); the first reset is PC=f80dc8 (ROM), the next f800d0, then the pair repeats (~8 per second).
+
+ExecBase vectors before the crash (ARexx `import()` of ExecBase+offset, via `rx`; ExecBase at 10000810 NOMMU, 40000810 MMU):
+
+| Config | KickMemPtr 0x222 | KickTagPtr 0x226 | ColdCapture 0x2A | CoolCapture 0x2E | WarmCapture 0x32 |
+|---|---|---|---|---|---|
+| NOMMU, 68060 + mmu + 680x0 | 0 | 0 | 0 | 0 | 0 |
+| NOMMU, 68060.library only (no loop) | 0 | 0 | 0 | 0 | 0 |
+| full MMU, all three | 0 | 0 | 0 | 00004000 | 00004000 |
+
+So the reset survival is not carried in the capture vectors or Kick pointers (all zero in the NOMMU pair): the hypothesis "mmu.library installs a ColdCapture/KickTag" is wrong for NOMMU. Not measured: the state after the crash (wasabid is dead), and why 68060.library + mmu.library together fail the ROM reset path. Next: a debug-fs-uae run with a breakpoint at f80dc8 to read the stack/vector base (VBR) after the first reset; mmu.library moves the VBR/tables, the likely reset-surviving state.
