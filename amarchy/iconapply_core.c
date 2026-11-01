@@ -161,7 +161,14 @@ int ia_walk_count(ia_ctx *c, int d)
     else if (d == IA_DO_SKIP_LOCKED) c->skipped_locked++;
     else if (d == IA_DO_SKIP_UAEM) c->skipped_uaem++;
     else if (d == IA_DO_FALLBACK) c->fallback++;
+    else if (d == IA_DO_SKIP_DEEP) c->skipped_deep++;
     return d;
+}
+
+int ia_walk_fits(ia_ctx *c, size_t plen, size_t nl, size_t cap, unsigned depth, unsigned maxdepth, int is_dir)
+{
+    if (plen + nl + 2 >= cap || (is_dir && depth >= maxdepth)) { ia_walk_count(c, IA_DO_SKIP_DEEP); return 0; }
+    return 1;
 }
 
 /* ---- apply / restore ---- */

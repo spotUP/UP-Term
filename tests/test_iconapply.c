@@ -352,7 +352,12 @@ static void test_walk(void)
     CI("no specific entry falls back to the type", ia_walk_count(&c, ia_walk_decide(&e)), IA_DO_FALLBACK);
     CK("type fallback names", !strcmp(ia_walk_fallback_match(2), "def_drawer") && !strcmp(ia_walk_fallback_match(3), "def_tool")
        && !ia_walk_fallback_match(99));
-    CK("counters moved once each", c.skipped_readonly == 1 && c.skipped_locked == 1 && c.skipped_uaem == 1 && c.fallback == 1);
+    CK("counters moved once each", c.skipped_readonly == 1 && c.skipped_locked == 1 && c.skipped_uaem == 1 && c.fallback == 1 && c.skipped_deep == 0);
+    CI("fits: shallow short path", ia_walk_fits(&c, 10, 5, 64, 3, 24, 1), 1);
+    CI("fits: too deep dir refused", ia_walk_fits(&c, 10, 5, 64, 24, 24, 1), 0);
+    CI("fits: deep file still fine", ia_walk_fits(&c, 10, 5, 64, 24, 24, 0), 1);
+    CI("fits: too long path refused", ia_walk_fits(&c, 60, 5, 64, 3, 24, 0), 0);
+    CK("deep counter bumped twice", c.skipped_deep == 2);
 }
 
 static void test_walkfile(void)

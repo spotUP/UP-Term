@@ -72,7 +72,7 @@ typedef struct ia_ctx {
     ia_manifest man;
     /* counters (STATUS prints them; the sentinel) */
     unsigned written, skipped_done, skipped_bad, skipped_nodat, skipped_nodefault, skipped_io, restored, restore_failed;
-    unsigned skipped_readonly, skipped_locked, skipped_uaem, fallback;   /* all-volume walk (L12) */
+    unsigned skipped_readonly, skipped_locked, skipped_uaem, fallback, skipped_deep;   /* all-volume walk (L12) */
 } ia_ctx;
 
 /* the Workbench defaults: i-th target, its icon file ("ENVARC:Sys/def_disk.info") and its lucide.dat match ("def_disk"). 0 past the end */
@@ -86,7 +86,8 @@ int ia_restore(ia_ctx *c);
 /* All-volume walk (L12): what to do with one directory entry. Pure; the Amiga side fills ia_walk_entry from ExAll / Info / Examine.
  * Precedence: .uaem sidecar (never an icon) > read-only volume > locked file > type fallback > write. */
 enum { IA_DO_WRITE, IA_DO_SKIP_READONLY, IA_DO_SKIP_LOCKED, IA_DO_SKIP_UAEM, IA_DO_FALLBACK,
-       IA_DO_SKIP_OTHER };     /* ia_walk_file only: unreadable, unparsable or already Lucide (counted in skipped_io / _bad / _done) */
+       IA_DO_SKIP_OTHER,       /* ia_walk_file only: unreadable, unparsable or already Lucide (counted in skipped_io / _bad / _done) */
+       IA_DO_SKIP_DEEP };      /* a directory the walk could not enter: too deep, path too long, no memory */
 #define IA_PROT_DELETE 0x01     /* AmigaDOS protection bits, a SET bit denies the action */
 #define IA_PROT_WRITE  0x04
 typedef struct ia_walk_entry {
@@ -101,6 +102,8 @@ int ia_walk_decide(const ia_walk_entry *e);
 const char *ia_walk_fallback_match(int dotype);
 /* count one decision in the ctx counters; returns it unchanged. Counts the skips and the fallback; ia_walk_file calls it. */
 int ia_walk_count(ia_ctx *c, int decision);
+/* may the walk enter/name an entry? Path so far plen, entry name length nl, buffer cap, depth of the drawer. 1 = yes; 0 = no, counted as skipped_deep */
+int ia_walk_fits(ia_ctx *c, size_t plen, size_t nl, size_t cap, unsigned depth, unsigned maxdepth, int is_dir);
 
 /* the type byte of a .info file (do_Type), 0 when too short */
 int ia_info_type(const uint8_t *buf, size_t len);

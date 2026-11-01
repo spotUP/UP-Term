@@ -217,7 +217,6 @@ static long load_dat(uint8_t **out)
 #define WALK_MAXDEPTH 24
 #define WALK_MAXVOL   32
 static char g_wpath[IA_MAXPATH];
-static unsigned g_walk_deep;        /* directories not entered: deeper than WALK_MAXDEPTH, path too long, or no memory */
 
 /* list entry: u32 protection, 1 byte kind ('D' directory, 'F' .info, 'U' .info.uaem), name, NUL */
 static int list_dir(BPTR lock, uint8_t **out, size_t *outn)
@@ -266,7 +265,7 @@ static void walk_dir(ia_ctx *c, size_t plen, int ro, unsigned depth)
     size_t n = 0, i;
     int pass;
     if (!lock) { c->skipped_io++; return; }
-    if (!list_dir(lock, &list, &n)) g_walk_deep++;
+    if (!list_dir(lock, &list, &n)) ia_walk_count(c, IA_DO_SKIP_DEEP);
     UnLock(lock);
     for (pass = 0; pass < 2; pass++) {          /* icons of this drawer first, then the subdrawers */
         for (i = 0; i < n;) {
@@ -276,13 +275,12 @@ static void walk_dir(ia_ctx *c, size_t plen, int ro, unsigned depth)
             size_t nl = strlen(name);
             memcpy(&pr, list + i, 4);
             i += 5 + nl + 1;
-            if (plen + nl + 2 >= sizeof g_wpath) { g_walk_deep++; continue; }
+            if (!ia_walk_fits(c, plen, nl, sizeof g_wpath, depth, WALK_MAXDEPTH, pass == 1 && kind == 'D')) continue;
             if (pass == 0 && kind != 'D') {
                 memcpy(g_wpath + plen, name, nl + 1);
                 ia_walk_file(c, g_wpath, ro, pr);
             } else if (pass == 1 && kind == 'D') {
                 size_t np = plen;
-                if (depth >= WALK_MAXDEPTH) { g_walk_deep++; continue; }
                 memcpy(g_wpath + np, name, nl);
                 np += nl;
                 g_wpath[np] = 0;
@@ -337,11 +335,11 @@ static void walk_volumes(ia_ctx *c)
 
 static void print_counters(const ia_ctx *c)
 {
-    unsigned long v[12];
+    unsigned long v[13];
     v[0] = c->written; v[1] = c->skipped_done; v[2] = c->skipped_bad; v[3] = c->skipped_nodat;
     v[4] = c->skipped_nodefault; v[5] = c->skipped_io; v[6] = c->restored; v[7] = c->restore_failed;
-    v[8] = c->skipped_readonly; v[9] = c->skipped_locked; v[10] = c->skipped_uaem; v[11] = c->fallback;
-    VPrintf((STRPTR)"written=%ld skipped-done=%ld skipped-bad=%ld skipped-nodat=%ld skipped-nodefault=%ld skipped-io=%ld restored=%ld restore-failed=%ld skipped-readonly=%ld skipped-locked=%ld skipped-uaem=%ld fallback=%ld\n",
+    v[8] = c->skipped_readonly; v[9] = c->skipped_locked; v[10] = c->skipped_uaem; v[11] = c->fallback; v[12] = c->skipped_deep;
+    VPrintf((STRPTR)"written=%ld skipped-done=%ld skipped-bad=%ld skipped-nodat=%ld skipped-nodefault=%ld skipped-io=%ld restored=%ld restore-failed=%ld skipped-readonly=%ld skipped-locked=%ld skipped-uaem=%ld fallback=%ld skipped-deep=%ld\n",
             (LONG *)v);
 }
 
