@@ -1046,6 +1046,24 @@ int desk_env_fix(int want_exists, int got_exists, int equal)
     return got_exists && equal ? DESK_FIX_NONE : DESK_FIX_COPY;
 }
 
+int desk_env_fix_run(const desk_fix_ops *ops, void *ud, int tries)
+{
+    int a, act;
+    for (a = 0;; a++) {
+        act = desk_env_fix(ops->want(ud), ops->got(ud), ops->equal(ud));
+        if (act == DESK_FIX_NONE)
+            return a;
+        if (a == tries)
+            return -1;
+        if (a)
+            ops->pause(ud);
+        if (act == DESK_FIX_COPY)
+            ops->copy(ud);
+        else
+            ops->del(ud);
+    }
+}
+
 int desk_copy_name(const char *dir, const char *file, char *out, int cap)
 {
     int n = (int)strlen(dir);

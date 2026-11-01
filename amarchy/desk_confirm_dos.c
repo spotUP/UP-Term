@@ -20,6 +20,8 @@ static void publish(void)
     am_sentinel("AMARCHY_CONFIRM_KEEPS", (long)dc_keeps);
     am_sentinel("AMARCHY_DESK_PERSISTS", (long)desk_dos_persists);
     am_sentinel("AMARCHY_DESK_ORIG_DROPPED", (long)desk_dos_originals_dropped);
+    am_sentinel("AMARCHY_DESK_ENV_FIX_RETRIES", (long)desk_dos_env_fix_retries);
+    am_sentinel("AMARCHY_DESK_ENV_FIX_FAILS", (long)desk_dos_env_fix_fails);
     am_sentinel("AMARCHY_CONFIRM_REVERTS_USER", (long)dc_reverts_user);
     am_sentinel("AMARCHY_CONFIRM_REVERTS_TIMEOUT", (long)dc_reverts_timeout);
 }

@@ -2,8 +2,9 @@
 UPTERM_RIG=<n> python3 tools/rig/amarchy_desk_orig_rig.py   (rig up, Amarchy running, rig prefs as after amarchy_persist_rig.py c)
   1. desktop theme on, pick a theme without Keep: the 15 s timeout reverts it (AMARCHY_DESK_ORIG_DROPPED rises, desk-original/ holds no file)
   2. pointer.prefs edited by hand (one byte, ENV: and ENVARC:), theme picked again with Keep, desktop theme off, pick: pointer.prefs equals the hand edit
-KNOWN OPEN (session 29): step 1 passes for font/wbpattern/palette (ORIG_DROPPED 0 -> 4 on the timeout Revert) but pointer.prefs ENV: stays at the themed bytes
-after the Revert and its original is kept, so this script still fails on pointer; cause not yet found (revert not applied, or a re-apply after it)."""
+Session 29 cause: the ENV: fix copy after the Pointer editor was refused while IPrefs read the file (object in use) and its result was unchecked;
+dk_env_fix_file now retries until the file is right (AMARCHY_DESK_ENV_FIX_RETRIES counts the repeats, _FAILS the fixes that never landed).
+A Revert that put Workbench.prefs back drops its original too."""
 import os, sys, tempfile, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import amarchy_desk_rig as d
@@ -25,6 +26,7 @@ def main():
     print('[INFO] DROPPED %d -> %d; desk-original after the Revert: %r' % (n0, n1, left))
     d.say(n1 > n0, 'Revert: AMARCHY_DESK_ORIG_DROPPED moved')
     d.say(F not in left, 'Revert: no %s original left' % F, left[:80])
+    d.say('Workbench' not in left, 'Revert: no Workbench.prefs original left', left[:80])
     raw = bytearray(ami.read_file('ENV:Sys/' + F))
     raw[-1] ^= 1
     with tempfile.NamedTemporaryFile(delete=False) as f:
@@ -43,6 +45,8 @@ def main():
     for w in ('ENV', 'ENVARC'):
         got = pr.md5('%s:Sys/%s' % (w, F))
         d.say(got == want, 'off: %s:Sys/%s equals the hand edit' % (w, F), '%s vs %s' % (got, want))
+    print('[INFO] ENV fix retries %d, fails %d, last refused IoErr %d' % (pr.sent('AMARCHY_DESK_ENV_FIX_RETRIES'), pr.sent('AMARCHY_DESK_ENV_FIX_FAILS'), pr.sent('AMARCHY_DESK_ENV_FIX_ERR')))
+    d.say(pr.sent('AMARCHY_DESK_ENV_FIX_FAILS') == 0, 'no ENV: fix left unlanded')
     print('failed', d.failed)
     return 1 if d.failed else 0
 
