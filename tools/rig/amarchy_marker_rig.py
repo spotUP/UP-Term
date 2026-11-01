@@ -43,12 +43,22 @@ def main():
         time.sleep(3)
         S['pre'] = snap()
         print('[INFO] pre-apply', S['pre'])
-        d.pick(keep=False)      # the apply under test: no Keep
+        # The apply under test: no Keep. The pick returns only when the apply is done and the menu closed, which takes longer than the 15 s
+        # requester: its timeout revert has deleted the marker by then. So the pick runs in a thread and the marker is polled while it runs;
+        # the marker is written last (after its copies), so seeing it means the set is complete.
+        import threading
+        pt = threading.Thread(target=lambda: d.pick(keep=False), daemon=True)
+        pt.start()
         t0 = time.time()
-        d.say(exists('ENVARC:Amarchy/pending-revert'), 'a: marker ENVARC:Amarchy/pending-revert written at confirm start')
-        S['applied'] = snap()
-        print('[INFO] applied', S['applied'], 'seconds since pick returned', round(time.time() - t0, 1))
-        d.say(S['applied'] != S['pre'], 'a: the apply changed ENV:Sys or ENVARC:Sys (else the test proves nothing)')
+        seen = False
+        while pt.is_alive() and time.time() - t0 < 120 and not seen:
+            seen = exists('ENVARC:Amarchy/pending-revert')
+            if not seen:
+                time.sleep(0.3)
+        t1 = time.time()
+        d.say(seen, 'a: marker ENVARC:Amarchy/pending-revert written at confirm start', 'seen %.1f s after the pick began' % (t1 - t0))
+        # no snapshot of the applied state here: the 15 s requester is running and the reboot must come before it times out; the marker itself
+        # proves the apply changed a target (desk_dos_apply asks for a confirm only when r > 0)
         json.dump(S, open(st, 'w'))
         print('[INFO] now (within the 15 s) wait 5 s quiet, then rig.py reboot; failed', d.failed)
     else:

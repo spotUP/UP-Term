@@ -978,6 +978,8 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
     if (dk_live_want)
         dk_live_pens(dk_live_want > 0 ? th : 0, dk_live_own);
     dk_flat_sync();          /* also when no desk target changed: flipping a flat switch alone must reach the block */
+    am_sentinel("AMARCHY_DESK_APPLY_R", (long)r);
+    am_sentinel("AMARCHY_DESK_CONFIRM_ASKS", (long)desk_dos_confirm_asks);
     if (r > 0)
         dk_confirm_ask((unsigned)r);
     return r;
