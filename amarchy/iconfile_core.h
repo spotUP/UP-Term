@@ -103,6 +103,8 @@ typedef struct li_dat {
 } li_dat;
 
 int li_dat_open(const uint8_t *buf, size_t len, li_dat *d);
+/* The k-th name of the sorted index (k < count). */
+const char *li_dat_name(const li_dat *d, unsigned k);
 /* The normal and selected image of `name` in variant v. 0 found, -1 not. The images point into the dat. */
 int li_dat_find(const li_dat *d, const char *name, int v, li_image *normal, li_image *selected);
 

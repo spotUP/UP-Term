@@ -20,7 +20,7 @@
 #define IA_MANIFEST   IA_BACKUP_DIR "/manifest"
 #define IA_DAT        "UP-Term:Amarchy/Icons/lucide.dat"
 #define IA_MAXPATH    160
-#define IA_MAXENT     64
+#define IA_MAXENT     256       /* defaults (12) + every path row of the table; a full manifest drops entries silently */
 #define IA_FILECAP    65536     /* biggest .info file handled (the size of each buffer the caller gives ia_ctx) */
 
 typedef struct ia_entry {

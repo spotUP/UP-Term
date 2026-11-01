@@ -87,15 +87,16 @@ static long slurp(const char *path, uint8_t *buf, long cap)
 static size_t w16(uint8_t *p, unsigned v) { p[0] = (uint8_t)(v >> 8); p[1] = (uint8_t)v; return 2; }
 static size_t w32(uint8_t *p, uint32_t v) { w16(p, v >> 16); w16(p + 2, v & 0xFFFF); return 4; }
 
-/* a lucide.dat with the six defaults (sorted by strcmp), variants 32x32 and 32x16, depth 6 */
+#define NDAT 8
+/* a lucide.dat with the six defaults and two table paths (sorted by strcmp), variants 32x32 and 32x16, depth 6 */
 static size_t make_dat(uint8_t *d)
 {
-    static const char *const nm[6] = { "def_RAM", "def_disk", "def_drawer", "def_project", "def_tool", "def_trashcan" };
-    size_t pos = 4, sz0 = 6 * 32 * 4, sz1 = 6 * 16 * 4, rec = 4 + 12 + 8 + 6 * 52, i, k;
+    static const char *const nm[NDAT] = { "SYS:System", "SYS:System/Shell", "def_RAM", "def_disk", "def_drawer", "def_project", "def_tool", "def_trashcan" };
+    size_t pos = 4, sz0 = 6 * 32 * 4, sz1 = 6 * 16 * 4, rec = 4 + 12 + 8 + NDAT * 52, i, k;
     memcpy(d, "LUCI", 4);
-    pos += w16(d + pos, 1); pos += w16(d + pos, 6); pos += w16(d + pos, 6); pos += w16(d + pos, 2); pos += w32(d + pos, 0);
+    pos += w16(d + pos, 1); pos += w16(d + pos, NDAT); pos += w16(d + pos, 6); pos += w16(d + pos, 2); pos += w32(d + pos, 0);
     pos += w16(d + pos, 32); pos += w16(d + pos, 32); pos += w16(d + pos, 32); pos += w16(d + pos, 16);
-    for (k = 0; k < 6; k++) {
+    for (k = 0; k < NDAT; k++) {
         size_t base = rec + k * 2 * (sz0 + sz1);
         memset(d + pos, 0, 52);
         memcpy(d + pos, nm[k], strlen(nm[k]));
@@ -103,7 +104,7 @@ static size_t make_dat(uint8_t *d)
         pos += 52;
         for (i = 0; i < 2 * (sz0 + sz1); i++) d[base + i] = (uint8_t)(0x20 + k * 8 + (i < 2 * sz0 ? 0 : 1));
     }
-    return rec + 6 * 2 * (sz0 + sz1);
+    return rec + NDAT * 2 * (sz0 + sz1);
 }
 
 static uint8_t g_dat[IA_FILECAP], g_tool[IA_FILECAP], g_drawer[IA_FILECAP];
@@ -227,6 +228,30 @@ static void test_flow(void)
     mfs_free(&s);
 }
 
+/* L10: the table's path rows. APPLY over SYS:System.info (drawer) and SYS:System/Shell.info (tool) writes both with a backup;
+ * a path row whose file is absent from the volume is skipped, not created. */
+static void test_paths(void)
+{
+    mfs s;
+    ia_ctx c;
+    char bp[200];
+    setup(&s, &c, 0);
+    mf_put(&s, "SYS:System.info", g_drawer, (size_t)g_drawer_n);
+    mf_put(&s, "SYS:System/Shell.info", g_tool, (size_t)g_tool_n);
+    CI("apply writes twelve defaults plus two table paths", ia_apply(&c), 14);
+    CK("SYS:System.info changed", !same(&s, "SYS:System.info", g_drawer, g_drawer_n));
+    CK("SYS:System/Shell.info changed", !same(&s, "SYS:System/Shell.info", g_tool, g_tool_n));
+    CK("backup of the drawer icon is the original", li_backup_path("SYS:System.info", bp, sizeof bp) == 0 && same(&s, bp, g_drawer, g_drawer_n));
+    ia_restore(&c);
+    CK("restore gives SYS:System.info back", same(&s, "SYS:System.info", g_drawer, g_drawer_n));
+    CK("restore gives SYS:System/Shell.info back", same(&s, "SYS:System/Shell.info", g_tool, g_tool_n));
+    mfs_free(&s);
+    setup(&s, &c, 0);
+    CI("table paths absent from the volume are skipped", ia_apply(&c), 12);
+    CK("and not created", mf_find(&s, "SYS:System.info") == NULL);
+    mfs_free(&s);
+}
+
 static void test_absent(void)
 {
     mfs s;
@@ -341,6 +366,7 @@ void suite_iconapply(void)
     test_pure();
     test_flow();
     test_absent();
+    test_paths();
     test_edge();
     test_walk();
 }

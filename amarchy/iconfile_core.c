@@ -302,6 +302,11 @@ int li_dat_open(const uint8_t *buf, size_t len, li_dat *d)
     return 0;
 }
 
+const char *li_dat_name(const li_dat *d, unsigned k)
+{
+    return k < d->count ? (const char *)d->buf + d->index_off + 52 * (size_t)k : "";
+}
+
 int li_dat_find(const li_dat *d, const char *name, int v, li_image *normal, li_image *selected)
 {
     unsigned lo = 0, hi = d->count;

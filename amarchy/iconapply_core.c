@@ -183,50 +183,67 @@ static int man_save(ia_ctx *c)
     return n ? c->io->write(c->io->ctx, IA_MANIFEST, c->bak, n) : -1;
 }
 
+/* One target: backup, manifest line, icon file. Returns 1 when written. */
+static int apply_one(ia_ctx *c, const char *path, const char *match)
+{
+    char bpath[IA_MAXPATH + 40];
+    long n = c->io->read(c->io->ctx, path, c->cur, IA_FILECAP);
+    int absent = 0, e_i;
+    li_file src, wr;
+    li_edit ed;
+    li_image nrm, sel;
+    size_t outn;
+    ia_entry ne;
+
+    if (n == -1) {
+        /* only a defaults match has a system default object; a table path that is not on this volume is skipped */
+        n = c->io->dflt && strncmp(match, "def_", 4) == 0 ? c->io->dflt(c->io->ctx, match, c->cur, IA_FILECAP) : -1;
+        if (n <= 0) { c->skipped_nodefault++; return 0; }
+        absent = 1;
+    } else if (n <= 0) { c->skipped_io++; return 0; }
+    if (li_parse(c->cur, (size_t)n, &src) != 0) { c->skipped_bad++; return 0; }
+    e_i = ia_man_find(&c->man, path);
+    if (!absent && e_i >= 0 && ia_imgcrc(&src) == c->man.e[e_i].wcrc) { c->skipped_done++; return 0; }
+    if (li_dat_find(c->dat, match, c->variant, &nrm, &sel) != 0) { c->skipped_nodat++; return 0; }
+    li_edit_apply(&ed, &src, &nrm, &sel);
+    outn = li_splice(&src, &ed, c->out, IA_FILECAP);
+    if (!outn || li_parse(c->out, outn, &wr) != 0) { c->skipped_bad++; return 0; }
+
+    memset(&ne, 0, sizeof ne);
+    strcpy(ne.path, path);
+    ne.absent = absent;
+    ne.ocrc = absent ? 0 : ia_crc32(c->cur, (size_t)n);
+    ne.wcrc = ia_imgcrc(&wr);
+    if (!absent) {
+        if (li_backup_path(path, bpath, sizeof bpath) != 0 || c->io->write(c->io->ctx, bpath, c->cur, (size_t)n) != 0) {
+            c->skipped_io++;
+            return 0;
+        }
+    }
+    ia_man_put(&c->man, &ne);
+    if (man_save(c) != 0 || c->io->write(c->io->ctx, path, c->out, outn) != 0) { c->skipped_io++; return 0; }
+    c->written++;
+    return 1;
+}
+
 int ia_apply(ia_ctx *c)
 {
-    char path[IA_MAXPATH], bpath[IA_MAXPATH + 40];
+    char path[IA_MAXPATH];
     const char *match;
+    unsigned k;
     int i, wrote = 0;
 
     man_load(c);
-    for (i = 0; ia_target(i, path, sizeof path, &match); i++) {
-        long n = c->io->read(c->io->ctx, path, c->cur, IA_FILECAP);
-        int absent = 0, e_i;
-        li_file src, wr;
-        li_edit ed;
-        li_image nrm, sel;
-        size_t outn;
-        ia_entry ne;
-
-        if (n == -1) {
-            n = c->io->dflt ? c->io->dflt(c->io->ctx, match, c->cur, IA_FILECAP) : -1;
-            if (n <= 0) { c->skipped_nodefault++; continue; }
-            absent = 1;
-        } else if (n <= 0) { c->skipped_io++; continue; }
-        if (li_parse(c->cur, (size_t)n, &src) != 0) { c->skipped_bad++; continue; }
-        e_i = ia_man_find(&c->man, path);
-        if (!absent && e_i >= 0 && ia_imgcrc(&src) == c->man.e[e_i].wcrc) { c->skipped_done++; continue; }
-        if (li_dat_find(c->dat, match, c->variant, &nrm, &sel) != 0) { c->skipped_nodat++; continue; }
-        li_edit_apply(&ed, &src, &nrm, &sel);
-        outn = li_splice(&src, &ed, c->out, IA_FILECAP);
-        if (!outn || li_parse(c->out, outn, &wr) != 0) { c->skipped_bad++; continue; }
-
-        memset(&ne, 0, sizeof ne);
-        strcpy(ne.path, path);
-        ne.absent = absent;
-        ne.ocrc = absent ? 0 : ia_crc32(c->cur, (size_t)n);
-        ne.wcrc = ia_imgcrc(&wr);
-        if (!absent) {
-            if (li_backup_path(path, bpath, sizeof bpath) != 0 || c->io->write(c->io->ctx, bpath, c->cur, (size_t)n) != 0) {
-                c->skipped_io++;
-                continue;
-            }
-        }
-        ia_man_put(&c->man, &ne);
-        if (man_save(c) != 0 || c->io->write(c->io->ctx, path, c->out, outn) != 0) { c->skipped_io++; continue; }
-        c->written++;
-        wrote++;
+    for (i = 0; ia_target(i, path, sizeof path, &match); i++)
+        wrote += apply_one(c, path, match);
+    /* the table's path rows (L10: SYS:System, SYS:Utilities, SYS:Prefs, SYS:Tools, ...): "Vol:Dir/Name" -> "Vol:Dir/Name.info" */
+    for (k = 0; k < c->dat->count; k++) {
+        const char *nm = li_dat_name(c->dat, k);
+        size_t len = strlen(nm);
+        if (!strchr(nm, ':') || len + 6 > sizeof path) continue;
+        memcpy(path, nm, len);
+        memcpy(path + len, ".info", 6);
+        wrote += apply_one(c, path, nm);
     }
     return wrote;
 }
