@@ -1157,6 +1157,10 @@ $(BUILD)/amiga/taskdump: tests/amiga/taskdump.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/taskdump.c
 
+$(BUILD)/amiga/addrowner: tests/amiga/addrowner.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/addrowner.c
+
 $(BUILD)/amiga/ownermap: tests/amiga/ownermap.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/ownermap.c
