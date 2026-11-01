@@ -311,6 +311,19 @@ int desk_live_role_pens(int depth, int out[4])
     return n;
 }
 
+/* FLAT-LIVEBASE-SAVED: the colour a live role pen has when the user's palette rules. A pen some entry reaches takes the saved
+ * palette.prefs colour (desk_palette_rgb, the per-depth map); a pen none reaches (4-7 deeper than 3) is never in the file, it keeps the
+ * graphics.library default (measured rig 11, OS 3.2: 0000ff ff00ff 00ffff ffffff). Never a snapshot of the live screen: an open menu
+ * holds those pens with its own colours. */
+uc_u32 desk_live_baseline(const unsigned char *saved, long savedlen, int pen, int depth)
+{
+    static const uc_u32 stock[4] = {0x0000FFUL, 0xFF00FFUL, 0x00FFFFUL, 0xFFFFFFUL};
+    long c = saved ? desk_palette_rgb(saved, savedlen, pen, depth) : -1;
+    if (c >= 0)
+        return (uc_u32)c;
+    return pen >= 4 && pen < 8 ? stock[pen - 4] : 0;
+}
+
 uc_u32 desk_pen_colour(const gtheme *t, int pen, int own_backdrop)
 {
     if (own_backdrop && pen == desk_backdrop_pen())

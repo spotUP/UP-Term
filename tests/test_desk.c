@@ -671,6 +671,30 @@ static void test_flat_pick_leaves_pen5_magenta_on_deep_workbench(void)
     CHECK_INT(desk_palette_theme(cur, 10, &t, 3, 1, out, sizeof out), 0);
 }
 
+/* flat OFF restores the saved palette even when the menu held pens 4-7: the baseline of a live role pen comes from the saved
+ * palette.prefs through the per-depth map, and the live screen (where an open menu's ObtainBestPen colours sit on pens 4-7, rgb4 below)
+ * has no say. Pens 4-7 deeper than 3 are in no entry: graphics default. At depth 3 the entries reach them: the saved colours. */
+static void test_desk_live_baseline_ignores_menu(void)
+{
+    static unsigned char saved[BUF_MAX], flat[DK_SLOTS];
+    unsigned short rgb4[256];
+    int p;
+    long n;
+    desk_pens_flat(flat);
+    for (p = 0; p < 256; p++)
+        rgb4[p] = 0x0123; /* the menu's colours on every free pen */
+    rgb4[252] = 0xe44; rgb4[253] = 0x222; rgb4[254] = 0x04d; rgb4[255] = 0xe90;
+    n = desk_palette_live(rgb4, 256, 8, flat, saved, sizeof saved);
+    CHECK_INT(n, DK_PALETTE_SIZE);
+    CHECK_INT(desk_live_baseline(saved, n, 4, 8), 0x0000FFL);
+    CHECK_INT(desk_live_baseline(saved, n, 5, 8), 0xFF00FFL);
+    CHECK_INT(desk_live_baseline(saved, n, 6, 8), 0x00FFFFL);
+    CHECK_INT(desk_live_baseline(saved, n, 7, 8), 0xFFFFFFL);
+    CHECK_INT(desk_live_baseline(0, -1, 5, 8), 0xFF00FFL);
+    n = desk_palette_live(rgb4, 8, 3, flat, saved, sizeof saved);
+    CHECK_INT(desk_live_baseline(saved, n, 5, 3), 0x112233L);
+}
+
 static void test_desk_pointer(void)
 {
     static unsigned char gold[BUF_MAX * 2], out[BUF_MAX * 2];
@@ -1034,6 +1058,7 @@ void suite_desk(void)
 {
     test_desk_palette();
     test_desk_palette_flat();
+    test_desk_live_baseline_ignores_menu();
     test_desk_flat_pens_key();
     test_desk_flat_pens_live();
     test_desk_wbborder();

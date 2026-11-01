@@ -100,6 +100,9 @@ int desk_palette_entry_of(int pen, int depth);
 /* the role pens 0..7 no palette.prefs entry reaches at depth (4-7 on a screen deeper than 3): they are set live (SetRGB32). Returns
  * how many, the pens in out */
 int desk_live_role_pens(int depth, int out[4]);
+/* FLAT-LIVEBASE-SAVED: the colour of role pen at depth under the saved palette.prefs (saved/savedlen, may be 0): its entry's colour,
+ * else the graphics default of pens 4-7. The restore baseline of the live pens; never read from the live screen. */
+uc_u32 desk_live_baseline(const unsigned char *saved, long savedlen, int pen, int depth);
 /* the theme colour of role pen 0..7 (desk_role); the backdrop pen is the theme dark (desk_darker) when flat owns the backdrop */
 uc_u32 desk_pen_colour(const gtheme *t, int pen, int own_backdrop);
 /* FLAT-PEN5-MAGENTA: cur (a palette.prefs, pens already set) with every entry that reaches a role pen at depth recoloured to

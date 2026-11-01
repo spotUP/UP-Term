@@ -551,36 +551,31 @@ static void dk_flat_backdrop_take(const unsigned char *pal, long pallen)
 }
 
 /* FLAT-PEN5-MAGENTA: the role pens no palette.prefs entry reaches at the Workbench depth (desk_live_role_pens: 4-7 on a screen deeper
- * than 3, where IPrefs puts entries 4-7 on the last four pens) get their colour live, after IPrefs applied the file. th = the theme:
- * the colours those pens had are kept first (once, DK_FLAT_LIVE); th = 0 puts the kept colours back. amarchy-flat sets the same pens on
- * every new Workbench screen while flat is on (pens_sync). */
-#define DK_FLAT_LIVE DK_REVERT "/flatlive.rgb"
+ * than 3, where IPrefs puts entries 4-7 on the last four pens) get their colour live, after IPrefs applied the file. th = the theme;
+ * th = 0 puts the user's colours back: FLAT-LIVEBASE-SAVED, from the saved palette (the kept DK_FLAT_PAL, else palette.prefs in ENV or
+ * ENVARC) through desk_live_baseline, never from the live screen (an open Amarchy menu holds pens 4-7 with its own colours). amarchy-flat
+ * sets the same pens on every new Workbench screen while flat is on (pens_sync). */
 unsigned long desk_dos_live_pens;
 static void dk_live_pens(const gtheme *th, int own)
 {
+    static unsigned char saved[DK_BUF];
     struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
     struct GfxBase *GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
     struct Screen *scr = IntuitionBase && GfxBase ? LockPubScreen((STRPTR)"Workbench") : 0;
-    unsigned char sv[12];
-    int pens[4], n = 0, i;
+    int pens[4], n = 0, i, depth = 0;
+    long slen = -1;
     if (scr) {
-        n = desk_live_role_pens(scr->RastPort.BitMap->Depth, pens);
-        if (!th && dk_read(DK_FLAT_LIVE, sv, sizeof sv) != 3L * n)
-            n = 0;
-        if (th && n > 0 && !dk_exists(DK_FLAT_LIVE)) {
-            for (i = 0; i < n; i++) {
-                ULONG t[3] = {0, 0, 0};
-                GetRGB32(scr->ViewPort.ColorMap, (ULONG)pens[i], 1, t);
-                sv[3 * i] = (unsigned char)(t[0] >> 24);
-                sv[3 * i + 1] = (unsigned char)(t[1] >> 24);
-                sv[3 * i + 2] = (unsigned char)(t[2] >> 24);
-            }
-            UnLock(CreateDir((STRPTR)DK_REVERT));
-            dk_write(DK_FLAT_LIVE, sv, 3L * n);
+        depth = scr->RastPort.BitMap->Depth;
+        n = desk_live_role_pens(depth, pens);
+        if (!th) {
+            slen = dk_read(DK_FLAT_PAL, saved, sizeof saved);
+            if (slen < 0)
+                slen = dk_read("ENV:Sys/Palette.prefs", saved, sizeof saved);
+            if (slen < 0)
+                slen = dk_read("ENVARC:Sys/Palette.prefs", saved, sizeof saved);
         }
         for (i = 0; i < n; i++) {
-            uc_u32 c = th ? desk_pen_colour(th, pens[i], own)
-                          : ((uc_u32)sv[3 * i] << 16) | ((uc_u32)sv[3 * i + 1] << 8) | sv[3 * i + 2];
+            uc_u32 c = th ? desk_pen_colour(th, pens[i], own) : desk_live_baseline(slen > 0 ? saved : 0, slen, pens[i], depth);
             SetRGB32(&scr->ViewPort, (ULONG)pens[i], ((c >> 16) & 255) * 0x01010101UL, ((c >> 8) & 255) * 0x01010101UL,
                      (c & 255) * 0x01010101UL);
         }
@@ -588,8 +583,6 @@ static void dk_live_pens(const gtheme *th, int own)
             desk_dos_live_pens++;
         UnlockPubScreen(0, scr);
     }
-    if (!th)
-        DeleteFile((STRPTR)DK_FLAT_LIVE);
     if (GfxBase)
         CloseLibrary((struct Library *)GfxBase);
     if (IntuitionBase)
