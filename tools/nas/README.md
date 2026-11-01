@@ -160,6 +160,23 @@ Code is just a terminal session. The rig (tools/rig/README.md) uses the same
 wasabid, with key `rigwasabi`, on an emulated Amiga: never reuse that key
 on a real one.
 
+## Deploy from the Mac
+
+For the maintainer's own NAS: `make nas-deploy` copies the files the Dockerfile COPYs (the list is read from the Dockerfile, plus
+compose.yaml and README.md) and `tools/uptelnetd.py` to the NAS with rsync over ssh, then runs
+`sudo docker compose build && sudo docker compose up -d` there. It never sends `home/` and never deletes remote files.
+Needs ssh key login (next section) and rsync on both sides. Config, outside the repo, `~/.config/upterm/nas.conf`:
+
+    NAS_HOST=192.168.1.20
+    NAS_USER=admin
+    NAS_DIR=/volume1/docker/claude-amiga
+    NAS_PORT=22                # optional
+    NAS_DOCKER=sudo docker     # optional, this is the default (Synology needs sudo for docker)
+
+Environment variables of the same names win over the file. `make nas-deploy-dry` prints the two commands and runs nothing;
+`NAS_DEPLOY_ARGS=--no-build make nas-deploy` skips the image build. `NAS_IP` and `ALLOW` in the NAS's compose.yaml are
+overwritten by the copy: keep your values in a compose override on the NAS or re-edit after the first deploy.
+
 ## ssh to the NAS (for setting this up from another computer)
 
 DSM: Control Panel > Terminal & SNMP > Enable SSH service (any port); Control

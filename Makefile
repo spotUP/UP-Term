@@ -58,7 +58,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
            tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_telnet.c tests/test_upagent.c tests/test_complete.c tests/test_winmem.c tests/test_sbpack.c tests/test_hl.c tests/test_md.c \
            tests/claude_load.c tests/claude_vol.c tests/claude_screen.c tests/pi_stub.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_pi_llm.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c tests/test_emoji.c tests/test_waitset.c tests/test_brk.c tests/test_sh_pipe.c tests/test_sh_ixargv.c tests/test_sh_own.c tests/test_sh_jobgone.c tests/test_histfile.c tests/test_pens.c tests/test_proc.c tests/test_pty_name.c tests/test_bmsg.c tests/test_qmark.c tests/test_ttyown.c tests/test_upassign.c tests/test_bigvol.c tests/test_fssm.c tests/test_clips.c tests/test_shot_core.c tests/test_win.c tests/test_tile.c
 
-.PHONY: symbolsnerd lucide lucide-dat screennotify jbmono wasabi wasabi-clean bebbossh bebbossh-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
+.PHONY: symbolsnerd lucide lucide-dat screennotify jbmono wasabi wasabi-clean nas-deploy nas-deploy-dry bebbossh bebbossh-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
 
 # ONLY=desk the native desktop theme core: palette/pointer/font/wbpattern prefs bytes, darker tone, readability guard, targets and marker (tests/test_desk.c)
 # ONLY=fssm a device node's startup is read as a FileSysStartupMsg only when it is one (tests/test_fssm.c)
@@ -532,6 +532,11 @@ golden: $(BUILD)/vtdump
 # Idempotent: the stamp holds the pinned commit. Uninstall: make wasabi-clean.
 WASABI_REPO := https://github.com/spotUP/wasabi
 WASABI_REV  := $(strip $(shell cat tools/nas/wasabi.rev))
+# Deploy tools/nas to the owner's NAS (rsync + docker compose build/up); config ~/.config/upterm/nas.conf, see tools/nas/README.md "Deploy from the Mac".
+nas-deploy:
+	python3 -I tools/nas/deploy.py $(NAS_DEPLOY_ARGS)
+nas-deploy-dry:
+	python3 -I tools/nas/deploy.py --dry-run $(NAS_DEPLOY_ARGS)
 wasabi: $(BUILD)/wasabi/.stamp-$(WASABI_REV)
 	@echo "[OK] wasabi $(WASABI_REV) built: $(BUILD)/wasabi/wasabid and the client $(BUILD)/wasabi/wasabi."
 $(BUILD)/wasabi/.stamp-$(WASABI_REV):
