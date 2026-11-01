@@ -24,7 +24,7 @@ enum {
  * the selection colour, the spare slots are the background. */
 void ip_colours(const gtheme *t, uc_u32 ground, uint8_t rgb[IP_PENS][3]);
 /* ICON-AA-WRONG-BG: the colour the icons are drawn ON, the Workbench backdrop pen's colour (desk_pen_colour: the darker tone when flat
- * owns the backdrop, else the muted role). `ground` of ip_colours: the AA ramp (FG/ACCENT/MUTED 33/66 %) must start at it, or the edge
+ * is on, else the muted role). `ground` of ip_colours: the AA ramp (FG/ACCENT/MUTED 33/66 %) must start at it, or the edge
  * pixels form a fringe against the real backdrop. flat / mask as desk_live_follow takes them. */
 uc_u32 ip_ground(const gtheme *t, int flat, unsigned mask);
 

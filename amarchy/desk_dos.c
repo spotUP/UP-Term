@@ -332,11 +332,11 @@ static long dk_dopus_send(const char *port, const char *line, char *result, int 
     return rexx_send(port, line, result, cap);
 }
 
-static void dk_live_pens(const gtheme *th, int own);
+static void dk_live_pens(const gtheme *th, int flat);
 static void dk_confirm_ask(unsigned mask);
 /* the live role pens (FLAT-PEN5-MAGENTA) are set last, in desk_dos_apply: every Workbench reset of this apply (palette, wbpattern,
  * wbborder USE) reopens the screen with the graphics defaults on pens 4-7. 1 = theme colours, -1 = restore the kept ones, 0 = leave. */
-static int dk_live_want, dk_live_own;
+static int dk_live_want, dk_live_flat;
 static long dk_palette_base(int restore, const unsigned char pens[DK_SLOTS], int depth, unsigned char *buf, long cap);
 
 /* FP-1 (R1.8): the unconfirmed-apply marker T:amarchy-revert/pending holds the mask of targets whose snapshot is waiting for Keep or
@@ -399,12 +399,11 @@ static int dk_apply(const gtheme *th, char *why, int cap)
     desk_dos_last_mask = mask;
     if (mask & (1u << DT_PALETTE)) {
         unsigned char pens[DK_SLOTS];
-        int own = flat_pens && !((amconf_desk_mask(&ap) >> DT_WBPATTERN) & 1);
         desk_pens_for(flat_pens, pens);
         /* FLAT-PEN5-MAGENTA: the theme colours on the entries that reach the role pens at this depth; on a deep screen entries 4-7
          * land on the last four pens, so those keep the user's colours and pens 4-7 are set live below */
         len = dk_palette_base(0, pens, depth, prev, sizeof prev);
-        len = len > 0 ? desk_palette_theme(prev, len, th, depth, own, buf, sizeof buf) : 0;
+        len = len > 0 ? desk_palette_theme(prev, len, th, depth, flat_pens, buf, sizeof buf) : 0;
         if (len <= 0)
             len = desk_palette(th, depth >= 3 ? 8 : 4, pens, buf, sizeof buf);
         ok &= dk_put("Palette", DK_WORK "/palette.prefs", buf, len);
@@ -413,7 +412,7 @@ static int dk_apply(const gtheme *th, char *why, int cap)
         if (reset)
             dk_wait_reset(wb_before, flat_pens);
         dk_live_want = 1;
-        dk_live_own = own;
+        dk_live_flat = flat_pens;
         desk_dos_dopus_sends++;
         dopus_theme_send(th, dk_dopus_send, 0);
     }
@@ -572,7 +571,7 @@ static void dk_flat_backdrop_take(const unsigned char *pal, long pallen)
  * reopen that follows makes a new screen with graphics-default 4-7: FLAT-PENS47-RESET, iconpen_dos pens_sync sets them on every new
  * screen through desk_live_follow. */
 unsigned long desk_dos_live_pens;
-static void dk_live_pens(const gtheme *th, int own)
+static void dk_live_pens(const gtheme *th, int flat)
 {
     static unsigned char saved[DK_BUF];
     struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
@@ -591,7 +590,7 @@ static void dk_live_pens(const gtheme *th, int own)
                 slen = dk_read("ENVARC:Sys/Palette.prefs", saved, sizeof saved);
         }
         for (i = 0; i < n; i++) {
-            uc_u32 c = th ? desk_pen_colour(th, pens[i], own) : desk_live_baseline(slen > 0 ? saved : 0, slen, pens[i], depth);
+            uc_u32 c = th ? desk_pen_colour(th, pens[i], flat) : desk_live_baseline(slen > 0 ? saved : 0, slen, pens[i], depth);
             SetRGB32(&scr->ViewPort, (ULONG)pens[i], ((c >> 16) & 255) * 0x01010101UL, ((c >> 8) & 255) * 0x01010101UL,
                      (c & 255) * 0x01010101UL);
         }
@@ -672,7 +671,7 @@ static int dk_flat_pens(const gtheme *th)
     UnLock(CreateDir((STRPTR)DK_WORK));
     if ((own || theme) && len > 0) {
         dk_flat_backdrop_take(buf, len);
-        wlen = theme ? desk_palette_theme(buf, len, th, depth, own, out, sizeof out)
+        wlen = theme ? desk_palette_theme(buf, len, th, depth, flat, out, sizeof out)
                      : desk_palette_set_rgb(buf, len, desk_backdrop_screen_pen(depth), depth, desk_darker(th), out, sizeof out);
         if (wlen > 0) {
             if (wlen != len || memcmp(buf, out, wlen))
@@ -693,7 +692,7 @@ static int dk_flat_pens(const gtheme *th)
     }
     if (own || theme) {
         dk_live_want = 1;
-        dk_live_own = own;
+        dk_live_flat = flat;
     } else if (restore)
         dk_live_want = -1;
     if (own) {
@@ -998,7 +997,7 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
     if (r <= 0 && !dk_pending_mask())
         DeleteFile((STRPTR)DK_WBPEND);   /* nothing to confirm: the Workbench.prefs snapshot has no owner */
     if (dk_live_want)
-        dk_live_pens(dk_live_want > 0 ? th : 0, dk_live_own);
+        dk_live_pens(dk_live_want > 0 ? th : 0, dk_live_flat);
     dk_flat_sync();          /* also when no desk target changed: flipping a flat switch alone must reach the block */
     am_sentinel("AMARCHY_DESK_APPLY_R", (long)r);
     am_sentinel("AMARCHY_DESK_ENV_FIX_RETRIES", (long)desk_dos_env_fix_retries);

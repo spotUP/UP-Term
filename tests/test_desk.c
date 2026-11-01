@@ -706,7 +706,14 @@ static void test_flat_reopen_keeps_theme_on_pens47(void)
     CHECK((long)c[1] != 0xff00ffL);
     /* the wallpaper is the desktop theme's: pen 5 keeps its role colour */
     CHECK_INT(desk_live_follow(&t, 1, 1u << DT_WBPATTERN, 8, lp, c), 4);
-    CHECK_INT((long)c[1], (long)desk_pen_colour(&t, 5, 0));
+    CHECK_INT((long)c[1], (long)t.muted);
+    /* PEN255: flat on with the desktop-theme WBPattern part (and palette part) also on: the backdrop pen is still the dark tone */
+    CHECK_INT(desk_live_follow(&t, 1, 1u << DT_WBPATTERN, 8, lp, c), 4);
+    CHECK_INT((long)c[3], 0x222222L);
+    CHECK_INT((long)c[1], (long)t.muted);
+    CHECK_INT(desk_live_follow(&t, 1, (1u << DT_WBPATTERN) | (1u << DT_PALETTE), 8, lp, c), 4);
+    CHECK_INT((long)c[3], 0x222222L);
+    CHECK_INT((long)c[1], (long)t.muted);
     /* the desktop-theme palette alone also puts the theme on the live pens */
     CHECK_INT(desk_live_follow(&t, 0, 1u << DT_PALETTE, 8, lp, c), 4);
     /* flat off and no theme palette: the new screen keeps the user's colours; depth 3 has no live pens; no theme, nothing */
