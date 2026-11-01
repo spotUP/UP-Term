@@ -992,6 +992,11 @@ $(BUILD)/amiga/deafport: tests/amiga/deafport.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/deafport.c
 
+# renameopen: rename a file with an open handle, then close (s43 FS-UAE filesys rename crash)
+$(BUILD)/amiga/renameopen: tools/rig/renameopen.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tools/rig/renameopen.c
+
 # AmTile: the autotiling commodity (plan 2026-10-28-amarchy-autotile.md, phase 2). A plain vbcc program like Amarchy;
 # tile_core.c is its pure part, win_apply.c the OS calls it shares with win.c.
 AMTILE_SRC := handler/frontscr.c amarchy/poll_timer.c amarchy/tile.c amarchy/tile_core.c amarchy/win_core.c amarchy/win_apply.c amarchy/win_refresh.c amarchy/bar_usable.c amarchy/rexx_host.c $(AMARCHY_LEAF_DEPS)
