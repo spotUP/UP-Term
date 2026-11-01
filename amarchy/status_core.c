@@ -4,7 +4,8 @@
 
 static const char *const status_key[STATUS_NVALS] = { "hits=", " rows=", " enabled=", " active=", " wins=", " snaps=",
     " bar=", " wbpens=", " wbrefused=", " shots=", " notes=", " ticks=" };
-static const char *const bar_key[BARSTATUS_NVALS] = { "bar=", " draws=", " panels=", " launches=", " raises=", " ticks=", " net=" };
+static const char *const bar_key[BARSTATUS_NVALS] = { "bar=", " draws=", " panels=", " launches=", " raises=", " ticks=", " net=",
+    " strut_opens=", " strut_clamped=", " strut_zoom=" };
 
 long status_line(int bar_status, const long *val, char *out, long cap)
 {

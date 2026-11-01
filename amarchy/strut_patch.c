@@ -387,6 +387,13 @@ void strut_clear(void)
     g_pub->nd = 0;
 }
 
+void strut_counts(long *opens, long *clamped, long *zoom)
+{
+    *opens = g_pub ? g_pub->opens : 0;
+    *clamped = g_pub ? g_pub->clamped : 0;
+    *zoom = g_pub ? g_pub->zoom_set : 0;
+}
+
 void strut_sentinels(void)
 {
     long v[5];
