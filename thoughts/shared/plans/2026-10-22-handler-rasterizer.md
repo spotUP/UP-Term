@@ -392,3 +392,126 @@ Checklist:
   TTF_SHAPE fits the glyph's own advance x one em into the span, centred; TTF_FILL maps
   the advance across and the font's hhea line down the cell, baseline from the font.
   Tests in tests/test_ttf.c (test_place, test_place_fill) fail on the old placement.
+
+## R6 blend over destination (2026-11-01, plan only, session s48)
+
+Owner decision 2026-11-01: antialiased glyph edges blend over the destination's real
+pixel colour, not a fixed fg-over-bg ramp. Source idea: MusicPlayer
+src/gui/draw/gui_draw.c (MIT, same owner): build_cube l.60, cube_index_in l.390,
+put() l.451, coverage scaling l.616/722.
+
+### Finding first: vtcon never draws glyph text over non-flat pixels
+
+Measured by reading the renderer (render/amiga_render.c at 664f90db), not by grep alone:
+
+- draw_outline (l.2420) calls draw_aa (l.2403) -> aa_ink_draw (render/aa_ink.c l.97), which
+  covers the WHOLE glyph box ("over the whole box, nothing to fill first"). Every pixel of
+  the box is fg over st->bg, one colour per cell: the LUT in aa_ink.c colours() (l.57) is
+  built from exactly that one pair (aa_ink_build_tab -> ce_mix). The destination is never
+  read, because the box is rewritten completely. A readback would return the previous
+  frame's glyph, which is not what to blend over.
+- Sixel images: vtengine.c l.5168-5187 puts BLANK cells marked VT_CELL_IMAGE; draw_images
+  (amiga_render.c l.2587) draws the picture over those cells after draw_rows, only where
+  c[x].pad has the flag (l.2602). Text written onto an image cell replaces the cell and
+  clears the flag; text is never drawn on top of picture pixels.
+- Colour emoji (l.2443, emoji_lut l.489): already blended with ce_mix over the cell bg;
+  flat bg, same as text.
+- Cursor and selection (cursor_ink, sel_ink l.601-724): flat inks, so the cell bg is flat.
+- Background images, gradients, wallpaper, transparency: none exist in the renderer or in
+  RULES.md (grep of background-image/wallpaper/gradient/transparen/opacity over render/,
+  view/ and RULES.md: no hit in a drawing path).
+- The one non-flat bg: AGA/few-pen screens, where area_ink (l.464) gives a bg a dither
+  ink (VR_INK_DITH: two pens in an 8 x 8 Bayer tile, render/pen_match.h). aa_ink_draw
+  then fills bg_ink (dithered) and BltTemplates 3 shade pens over it; the shade targets
+  were computed against the MEAN bg colour (ink_rgb), not the actual tile pixels. Edge
+  pixels over a dithered bg can therefore land on a shade that is a poor match for the
+  pen underneath. This is the only place R6 has any visible effect today.
+
+Consequence: on RTG/truecolor (flat bg only) R6 has NO visible benefit with the product as
+it is: per-pixel readback blend equals the LUT result bit for bit. The benefit exists only
+when (a) a future feature puts text over images/wallpaper/transparent windows, or (b) AGA
+dithered backgrounds, a narrow case. The plan below is therefore split: R6.A (small, AGA
+dither bg, real) and R6.B (RTG readback, only when a non-flat source of text exists).
+
+### Design
+
+RTG (R6.B): keep the LUT whenever the cell bg is flat. Detect "not flat" without reading
+pixels: the renderer already knows. A cell is non-flat only if a source declares it: a new
+per-window flag r->bg_busy (set by a future wallpaper/transparency feature; never by
+sixel, see above), or the cell lies in a VT_CELL_IMAGE rectangle that text is drawn into
+(cannot happen today). Flat path = today's code, zero cost. Non-flat path: vr_cgx_read
+(ReadPixelArray via cgx) of the w x ch box into fast RAM, then per pixel
+dst = ce_mix(fg, dst, cov) (coverage 0 keeps dst, 255 writes fg), WritePixelArray. Cost
+from pixel counts (cell 8 x 16 = 128 px, wide 256 px): read 128 px + 128 px blend + write
+128 px. Estimate 68020 (about 25 cycles/px blend, three div255 channels, ce_mix inline
+without the loop) ~3.5k cycles + two 128 px bus transfers: ~0.4 ms/glyph at 14 MHz; a full
+80 x 25 screen of 2000 glyphs ~0.8 s; 68060 (50 MHz, 10x): ~0.08 s. Hence flat-bg stays on
+the LUT (LUT path is ~1 table load per px) and the blend path runs only for declared-busy
+cells. Not measured: the numbers are estimates until R6.B1 measures them on rig 060 and
+the 68020 profile.
+
+AGA (R6.A): reuse pen_match.h, no Selecta cube. The MusicPlayer cube is 32 x 32 x 32 =
+32 KB of INDEX8 plus 3 x 64 x 32 distance tables, built in 32768 x n steps (a 68020 spent
+118 s before I574 tabled it) and it needs the palette to be stable: it fits a program that
+owns its screen palette, not a terminal on a shared Workbench/AGA screen with a handful of
+pens (PM_MAXPENS 32) where pens are obtained and released. pen_match.h already gives the
+nearest pen and 8 x 8 Bayer pattern per target (pm_match, pm_mix, linear-light), cached
+in vr_picks (amiga_render.c l.231). R6.A: for a dithered bg tile, compute the three
+shade targets per tile phase (pm_mix of the two bg pens with fg at 1/4, 1/2, 3/4, i.e.
+over each of the 2 distinct bg pens, so 6 targets, not 3) and draw the shade passes with
+a stencil of (coverage threshold AND tile pen), i.e. BltTemplate masks split by the bg
+tile bit. Cost: 2x the BltTemplate passes (8 instead of 4) on dithered cells only; masks
+built by ttf_threshold_at plus a tile mask, chip RAM same size as today. Pens exhausted:
+the existing rule stays (aa_ink_shade_accept: a shade pen is used only if nearer than fg
+and bg), then the 1-bit mask path; no new failure mode. A dither of the shade itself
+(MusicPlayer -8..7 bias) is not lifted: pm_pattern already dithers by tile.
+
+### Reuse (no duplicate blend code)
+
+- Lift from gui_draw.c: nothing verbatim. put()'s ARGB branch is the same arithmetic as
+  ce_mix (render/emoji.c l.94, div255 per channel); its INDEX8 branch needs the cube, which
+  vtcon replaces with pm_match. build_cube's table trick (per-entry squared distances,
+  no multiply) is the only idea worth borrowing, and only if R6.A1 shows pm_dist is the
+  hot spot (pm_dist is per target, not per pixel, so it is not expected to).
+- Keep: ce_mix, aa_ink_build_tab, vr_cgx_write_lut, pen_match.h, aa_ink_shade_*.
+- New code: one function aa_ink_blend_box (aa_ink.c) = read, ce_mix per px, write; the
+  AGA stencil pass. ce_mix gets exposed once from emoji.h to aa_ink.c (it already is
+  shared: aa_ink_build_tab uses it).
+
+### Checklist (R6.x; none done; 0 of 9)
+
+- [ ] R6.0 Record the finding above in the plan and get the owner's decision on D1 below.
+  Proven by: owner answer written into this section.
+- [ ] R6.A1 Host test: AGA fake screen, bg = dither ink, glyph edge: the shade pen chosen
+  per pixel is the nearest to ce_mix(fg, actual tile pen pixel, cov); fails before (mean-bg
+  shade chosen), passes after. Entry point: vr_draw / draw_rows through
+  tests/test_render.c (RENDER_HOST_SRC), sentinel n_aa and a new n_aa_tile counter that
+  must be > 0; asserted pixel values from the fake RastPort (gfx_fake.c), exact numbers.
+- [ ] R6.A2 Implement the AGA tile-stencil passes in aa_ink_draw; regression: A1 reverted
+  fails again.
+- [ ] R6.A3 Rig proof on rig 060, AGA 256 screen, dithered bg (tools/rig/outline_rig.py):
+  screenshot pixel measurement of 5 edge pixels against the expected pen per pixel
+  (not by eye); owner told to look only after.
+- [ ] R6.B1 Measure on the host fake and rig 060 / 020 profile: ms per glyph of the
+  readback blend vs LUT; replaces the estimates above.
+- [ ] R6.B2 Host test: a window with r->bg_busy over a non-flat gradient fake; every edge
+  pixel equals ce_mix(fg, dst_pixel, cov); sentinel n_aa_blend counts glyphs on the blend
+  path and stays 0 for a flat cell (fail-before: LUT result differs on gradient).
+- [ ] R6.B3 Flat cell keeps the LUT path: n_aa_blend 0, output identical to today (golden).
+- [ ] R6.B4 Rig proof RTG: only if a busy-bg source exists (D1 option 2); pixel measure.
+- [ ] R6.5 Knob: profile key outline-blend-dest (on/off) moves the output (on: blend, off:
+  today's ramp); the host test toggles it and asserts different pixels.
+
+### Open decisions for the owner
+
+- D1. Scope. (a) Recommended: R6.A only (AGA dithered-bg tile), skip RTG until a feature
+  puts text over images/wallpaper; the benefit today is zero on RTG. (b) R6.A plus R6.B
+  now as a dormant path with only a test source: costs a session, shows nothing. (c) Drop
+  R6.
+- D2. If a wallpaper/transparent-window feature is wanted, it needs its own plan; R6.B is
+  its prerequisite. Recommended: decide it before R6.B; no feature, no R6.B.
+- D3. Selecta cube (32 KB) vs pen_match reuse. Recommended: pen_match reuse (no memory, no
+  palette-stability need, shared pen cache).
+- D4. Busy-bg detection: declared flag (recommended: free, exact) vs probing pixels with a
+  readback (costs a read per glyph, ~the price of the blend itself).
+- D5. Profile key outline-blend-dest default. Recommended: on, with the LUT kept for flat.
