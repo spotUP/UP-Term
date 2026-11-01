@@ -1196,6 +1196,7 @@ def run_base_case(case):
             ir.run('Copy >NIL: C:Wait C:wasabid')
         ir.run('Run >NIL: C:wasabid 600')
     # Uninstall gives it all back
+    installed_startup = ir.run('Type S:User-Startup')[1]
     rc, out = ir.run_long('rununinstall')
     ck(rc == 0, 'Uninstall runs', out)
     if case == "anx":
@@ -1215,9 +1216,9 @@ def run_base_case(case):
     if stand_in and not kit_wasabid:
         ir.run('Delete >NIL: C:wasabid QUIET')
     ir.run('Delete >NIL: ENV:upw QUIET')
-    rc, out = ir.run('Type S:User-Startup')
-    ck(out == startup_before, 'after Uninstall: S:User-Startup as it was, byte for byte',
-       'differs: %r vs %r' % (out[-80:], startup_before[-80:]))
+    # AmiSSL stays after Uninstall (dist/Uninstall header), and so does the ;BEGIN AmiSSL block Install-AmiSSL wrote
+    ir.check_startup_after_uninstall(ck, startup_before, installed_startup, ir.run('Type S:User-Startup')[1],
+                                     ir.BASE_STARTUP_LEAVES, 'after Uninstall')
     ck(ir.run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'after Uninstall: no UP-Term: assign')
     ck(ir.run('List >NIL: "%s"' % drawer)[0] != 0, 'after Uninstall: %s is gone' % drawer)
     st = ir.lib_state()

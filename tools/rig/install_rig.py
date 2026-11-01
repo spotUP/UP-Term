@@ -1233,6 +1233,11 @@ def strip_block(text, name):
     return '\n'.join(out)
 
 
+# The base Uninstall keeps AmiSSL (other programs use it, dist/Uninstall header), so the ;BEGIN AmiSSL block that
+# Install-AmiSSL's (startup) call wrote stays in S:User-Startup: the assign that makes LIBS: find it at boot.
+BASE_STARTUP_LEAVES = ('AmiSSL',)
+
+
 def startup_leaves(pkgs):
     """The S:User-Startup blocks the Uninstall of these add-ons leaves in place on purpose: DOpus stays (owner rule),
     and so does its ;BEGIN DOpus5 block. UHC stays too (it is UHC's own install in SYS:UHC, owner decision
