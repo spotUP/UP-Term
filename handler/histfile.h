@@ -7,12 +7,18 @@
  * there on first use (ENVARC: is copied into RAM: at every boot on 3.1);
  * without the kit, ENVARC:vtcon.history as before.
  *
+ * A shell_file of the form "path\nproject" (claude/histline.h) names a file of the
+ * prompt history's JSON lines (claude/hist.c, amiga-pi's): the lines of that project are
+ * loaded as their prompts, and a line appended is written in the same form.
+ *
  * Portable C89 over cl_sys, host-tested (tests/test_histfile.c); the handler
  * runs it in its completion worker over sys_amiga. */
 #ifndef HISTFILE_H
 #define HISTFILE_H
 
+#include <string.h>
 #include "../claude/sys.h"
+#include "../claude/histline.h"
 
 #define HF_PROG "vtcon"                   /* UP-Term:var/vtcon */
 #define HF_NAME "history"                 /* the file in it */
@@ -23,5 +29,13 @@
  * (cap bytes), the default's drawer made and an old file moved into it.
  * 0, -1 when it does not fit. */
 int hf_path(cl_sys *sys, const char *shell_file, char *out, long cap);
+
+/* The file's text data[0..n) as the plain lines the console's editor keeps (JSON lines turned to their prompts
+ * in place): the new length. */
+long hf_load(char *data, long n, const char *shell_file);
+/* The text to append to the file for the entered line word, into out (cap bytes, terminated): its length, -1 when
+ * it does not fit. A line of at most HF_LINE_MAX(word, shell_file) bytes always fits. */
+long hf_line(const char *shell_file, const char *word, char *out, long cap);
+#define HF_LINE_MAX(word, shell_file) (HL_LINE_MAX(strlen(word), strlen(shell_file)) + 2)
 
 #endif

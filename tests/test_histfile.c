@@ -15,6 +15,7 @@
 #include "../claude/sys_posix.h"
 #include "../handler/histfile.h"
 #include "../claude/datadir.h"
+#include "../claude/hist.h"
 
 static sys_posix sp;
 static cl_sys inner, vsys;
@@ -121,10 +122,57 @@ static void shell_histfile_is_used_as_given(void)
     done(dir);
 }
 
+/* A name "path\nproject" is a file of the prompt history's JSON lines (what amiga-pi's raw mode keeps): the handler
+ * loads the prompts of that project as its plain lines and appends in the same form, so line mode and raw mode
+ * recall one list. A plain name stays the Shell's plain lines. */
+static void prompt_history_file_is_shared_with_raw_mode(void)
+{
+    char dir[400], out[300], file[400], spec[420], *b, *data;
+    cl_hist h;
+    long n, m;
+    if (!fresh_dir(dir, sizeof(dir)))
+        return;
+    volumes(dir, 1, 0);
+    sprintf(file, "%s/prompt-history", dir);
+    hist_init(&h);
+    CHECK_INT(hist_add(&h, &inner, file, "first \"prompt\"", ""), 0);
+    CHECK_INT(hist_add(&h, &inner, file, "other project", "/x"), 0);
+    hist_free(&h);
+    sprintf(spec, "%s\n", file);
+    CHECK_INT(hf_path(&vsys, spec, out, sizeof(out)), 0);
+    CHECK_STR(out, file);
+    CHECK_INT(inner.read(inner.u, out, 1L << 20, &b, &n), 0);
+    data = b;
+    m = hf_load(data, n, spec);
+    data[m] = 0;
+    CHECK_STR(data, "first \"prompt\"\n");
+    free(b);
+    /* a line entered in line mode is appended as a JSON line raw mode loads */
+    CHECK_INT(hf_line(spec, "typed in line mode", out, sizeof(out)) > 0, 1);
+    {
+        FILE *f = fopen(file, "ab");
+        if (f) {
+            fputs(out, f);
+            fclose(f);
+        }
+    }
+    hist_init(&h);
+    CHECK_INT(hist_load(&h, &inner, file), 3);
+    CHECK_INT(h.n, 3);
+    CHECK_STR(h.n == 3 ? h.d[2] : "", "typed in line mode");
+    CHECK_STR(h.n == 3 ? h.p[2] : "x", "");
+    hist_free(&h);
+    /* a plain name stays plain */
+    CHECK_INT(hf_line("RAM:h", "ls", out, sizeof(out)), 3);
+    CHECK_STR(out, "ls\n");
+    done(dir);
+}
+
 void suite_histfile(void)
 {
     history_moves_out_of_envarc_into_the_kit_drawer();
     kit_without_an_old_file_gets_its_drawer();
     without_the_kit_the_history_stays_in_envarc();
     shell_histfile_is_used_as_given();
+    prompt_history_file_is_shared_with_raw_mode();
 }

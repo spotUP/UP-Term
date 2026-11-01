@@ -97,7 +97,14 @@
 #define VTCON_HIST_CONFIG 5
 /*            VTCON_HIST_FILE    dp_Arg4 the NUL-terminated name of the shell's history file (HISTFILE; "" the
  *                               console's default): the list is read from it again and each entered line goes to it.
- *                               dp_Res1 DOSTRUE, DOSFALSE ERROR_LINE_TOO_LONG when the name does not fit. */
+ *                               dp_Res1 DOSTRUE, DOSFALSE ERROR_LINE_TOO_LONG when the name does not fit.
+ *                               The name may be "path\nproject": the file then holds the prompt history's JSON lines
+ *                               ({"display":..,"project":..}, claude/histline.h) of that project (amiga-pi's; the project may be
+ *                               empty), loaded as their prompts and appended in the same form. A plain name is the Shell's
+ *                               plain lines. The format rides the name because a file is chosen by the program that
+ *                               owns it, an empty or new file shows no format, and the project is not known to the handler.
+ *                               dp_Arg3 (0: none) and dp_Arg5 its size: a buffer that gets the name the console had (in the same
+ *                               form), so the program can give it back when it ends. */
 #define VTCON_HIST_FILE 6
 
 /* The environment the window tells its programs (W46: /term, /colors and

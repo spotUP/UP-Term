@@ -174,8 +174,25 @@ static int c_edit(void *u, const char *path)
     return rc == -1 ? -1 : 0;
 }
 
+/* The console's history file (VTCON_HIST_FILE, as vsh sends it): spec is the name, the one in force before it comes
+ * back in prev (cap bytes). 0 done, -1 not an UP-Term console or an old handler (it answers ERROR_ACTION_NOT_KNOWN). */
+static int c_history_file(void *u, const char *spec, char *prev, long cap)
+{
+    struct FileHandle *fh = console(Input());
+    (void)u;
+    if (prev && cap > 0)
+        prev[0] = 0;
+    if (!fh)
+        return -1;
+    return DoPkt(fh->fh_Type, ACTION_VTCON_HISTORY, fh->fh_Arg1, VTCON_HIST_FILE, prev ? (LONG)prev : 0, (LONG)spec,
+                 prev ? cap : 0)
+               ? 0
+               : -1;
+}
+
 void io_amiga_line(cl_io *io)
 {
+    io->history_file = c_history_file;
     io->read_line = c_read;
     io->write = c_write;
     io->brk = c_brk;

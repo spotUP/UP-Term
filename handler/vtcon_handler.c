@@ -8334,6 +8334,12 @@ static void packet(con *c, struct DosPacket *p)
                 reply(p, DOSFALSE, ERROR_LINE_TOO_LONG);
                 return;
             }
+            if (p->dp_Arg3 && p->dp_Arg5 > 0) {
+                /* the file it was, for the program that gives it back (amiga-pi) */
+                const char *was = c->hist_file_switch ? c->hist_file_next : c->hist_file;
+                strncpy((char *)p->dp_Arg3, was ? was : "", (size_t)p->dp_Arg5 - 1);
+                ((char *)p->dp_Arg3)[p->dp_Arg5 - 1] = 0;
+            }
             if (!strcmp(f, c->hist_file_switch ? (c->hist_file_next ? c->hist_file_next : "")
                                                : (c->hist_file ? c->hist_file : ""))) {
                 reply(p, DOSTRUE, 0);
