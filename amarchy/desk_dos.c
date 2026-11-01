@@ -784,12 +784,12 @@ static void dk_wb_snapshot(void)
 }
 
 /* revert: the saved Workbench.prefs goes back through the stock editor (deleted when it did not exist), the .prev marks come back too */
-static void dk_wb_restore(void)
+static int dk_wb_restore(void)
 {
     char name[96];
     unsigned char one[2];
     if (dk_read(DK_WBPEND, one, 2) < 0)
-        return;
+        return 0;
     dk_copy_name(DK_WB_ENV, name);
     if (dk_read(name, one, 0) < 0)
         DeleteFile((STRPTR)DK_WB_ENV);
@@ -798,6 +798,7 @@ static void dk_wb_restore(void)
     dk_copy_file(DK_WBB_SNAP, DK_WBB_PREV);
     dk_copy_file(DK_WBG_SNAP, DK_WBG_PREV);
     DeleteFile((STRPTR)DK_WBPEND);
+    return 1;
 }
 
 static void dk_wbborder(void)
@@ -843,7 +844,8 @@ static void dk_wbborder(void)
  * (ENVARC: copy, else the ENV: copy) under desk_copy_name(ENV: path); a file that did not exist is recorded by "<name>.absent". Kept until
  * "off" restores that file, so it never saves a theme as the original. */
 #define DK_ORIG "ENVARC:Amarchy/desk-original"
-unsigned long desk_dos_persists, desk_dos_originals_saved, desk_dos_originals_restored;
+unsigned long desk_dos_persists, desk_dos_originals_saved, desk_dos_originals_restored, desk_dos_originals_dropped;
+unsigned long desk_dos_env_fix_retries, desk_dos_env_fix_fails, desk_dos_env_fix_err;
 
 /* streamed (a prefs file may be larger than any fixed buffer, and the copy must be byte-identical): 1 copied, 0 write failed, -1 no source */
 static int dk_stream_copy(const char *src, const char *dst)
@@ -856,6 +858,7 @@ static int dk_stream_copy(const char *src, const char *dst)
         return -1;
     out = Open((STRPTR)dst, MODE_NEWFILE);
     if (!out) {
+        desk_dos_env_fix_err = (unsigned long)IoErr();   /* 202: object in use (IPrefs reading the ENV: file) */
         Close(in);
         return 0;
     }
@@ -958,6 +961,25 @@ static void dk_orig_forget(const char *env)
     DeleteFile((STRPTR)ab);
 }
 
+/* DESK-STALE-ORIG: an original lives only while its target's ENV: is themed. A Revert (user, timeout, boot marker) puts ENV: back to what it was before
+ * the apply; a target whose ENVARC: or ENV: file equals its saved original (ENV: is the stock editor's rewrite, so ENVARC: is the stable witness; or ENV: is absent as the original was) was not themed, so the original goes. A revert to
+ * an earlier theme leaves ENV: different from the original, and the original stays. */
+static void dk_orig_drop_reverted(unsigned mask, int wbprefs)
+{
+    const char *env[8], *arc[8];
+    char name[96];
+    int i, n = desk_persist_pairs(mask, wbprefs, env, arc, 8);   /* icontrol is never a pair; Workbench.prefs when dk_wb_restore put it back */
+    for (i = 0; i < n; i++) {
+        if (!dk_orig_have(env[i]))
+            continue;
+        desk_copy_name(DK_ORIG, env[i], name, sizeof name);
+        if (dk_exists(name) ? ((dk_exists(arc[i]) && dk_files_equal(name, arc[i])) || (dk_exists(env[i]) && dk_files_equal(name, env[i]))) : !dk_exists(env[i])) {
+            dk_orig_forget(env[i]);
+            desk_dos_originals_dropped++;
+        }
+    }
+}
+
 int desk_dos_apply(const gtheme *th, char *why, int cap)
 {
     int r;
@@ -979,6 +1001,9 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
         dk_live_pens(dk_live_want > 0 ? th : 0, dk_live_own);
     dk_flat_sync();          /* also when no desk target changed: flipping a flat switch alone must reach the block */
     am_sentinel("AMARCHY_DESK_APPLY_R", (long)r);
+    am_sentinel("AMARCHY_DESK_ENV_FIX_RETRIES", (long)desk_dos_env_fix_retries);
+    am_sentinel("AMARCHY_DESK_ENV_FIX_FAILS", (long)desk_dos_env_fix_fails);
+    am_sentinel("AMARCHY_DESK_ENV_FIX_ERR", (long)desk_dos_env_fix_err);
     am_sentinel("AMARCHY_DESK_CONFIRM_ASKS", (long)desk_dos_confirm_asks);
     if (r > 0)
         dk_confirm_ask((unsigned)r);
@@ -1104,20 +1129,27 @@ void desk_dos_confirmed(void)
 
 /* The stock editors rewrite what they are fed (Pointer) and IPrefs/the palette editor recreate files that were deleted: whatever ran, the ENV: file
  * ends byte-equal to its copy in dir, or absent when there was none. Shared by Revert (desk_dos_revert) and "off" (dk_orig_off). */
+struct dk_fix { char name[96]; const char *env; };
+static int dk_fix_want(void *ud) { return dk_exists(((struct dk_fix *)ud)->name); }
+static int dk_fix_got(void *ud) { return dk_exists(((struct dk_fix *)ud)->env); }
+static int dk_fix_equal(void *ud) { return dk_files_equal(((struct dk_fix *)ud)->name, ((struct dk_fix *)ud)->env); }
+static void dk_fix_copy(void *ud) { dk_stream_copy(((struct dk_fix *)ud)->name, ((struct dk_fix *)ud)->env); }
+static void dk_fix_del(void *ud) { DeleteFile((STRPTR)((struct dk_fix *)ud)->env); }
+static void dk_fix_pause(void *ud) { (void)ud; Delay(DESK_IPREFS_POLL_TICKS); }
+
+/* checked and retried (desk_env_fix_run): IPrefs reading the file after the editor's USE refuses the open, which left the editor's rewrite */
 static void dk_env_fix_file(const char *dir, const char *env)
 {
-    char name[96];
-    desk_copy_name(dir, env, name, sizeof name);
-    switch (desk_env_fix(dk_exists(name), dk_exists(env), dk_files_equal(name, env))) {
-    case DESK_FIX_COPY:
-        dk_stream_copy(name, env);
-        break;
-    case DESK_FIX_DELETE:
-        DeleteFile((STRPTR)env);
-        break;
-    default:
-        break;
-    }
+    static const desk_fix_ops ops = { dk_fix_want, dk_fix_got, dk_fix_equal, dk_fix_copy, dk_fix_del, dk_fix_pause };
+    struct dk_fix f;
+    int r;
+    f.env = env;
+    desk_copy_name(dir, env, f.name, sizeof f.name);
+    r = desk_env_fix_run(&ops, &f, DK_RESET_SECS * 50 / DESK_IPREFS_POLL_TICKS);
+    if (r < 0)
+        desk_dos_env_fix_fails++;
+    else if (r > 1)
+        desk_dos_env_fix_retries += (unsigned long)(r - 1);
 }
 
 /* put the files of mask back from the copies in dir (T:amarchy-revert for Revert, the originals for "off"): each target's ENV: file is fed from
@@ -1134,7 +1166,7 @@ static void dk_restore_targets(unsigned mask, const char *dir)
     int i, was = 0, pal = (mask >> DT_PALETTE) & 1;
     char name[96];
     amconf_load(&ap);
-    if (mask & ((1u << DT_FONT) | (1u << DT_ICONTROL)))
+    if (mask & ((1u << DT_FONT) | (1u << DT_POINTER) | (1u << DT_ICONTROL)))
         idle = dk_iprefs_idle_mask();
     if (pal) {
         before = dk_wb_screen(0, 0);
@@ -1152,8 +1184,8 @@ static void dk_restore_targets(unsigned mask, const char *dir)
             dk_editor(ed[i].editor, name);
         if (ed[i].t == DT_PALETTE)
             dk_wait_reset(before, amconf_desk_flat_pens(&ap));
-        else if (ed[i].t == DT_FONT)
-            dk_wait_iprefs(idle);
+        else if (ed[i].t == DT_FONT || ed[i].t == DT_POINTER)
+            dk_wait_iprefs(idle);   /* DESK-PTR-REVERT: IPrefs reads the editor's ENV: write on its notify; a fix copy opened meanwhile fails (object in use) */
         dk_env_fix_file(dir, ed[i].file);
     }
     if ((mask >> DT_ICONTROL) & 1) {
@@ -1169,11 +1201,14 @@ static void dk_restore_targets(unsigned mask, const char *dir)
 void desk_dos_revert(void)
 {
     unsigned mask = dk_pending_mask();
+    int wb;
     desk_dos_reverts++;
     DeleteFile((STRPTR)DK_PENDING);
-    dk_wb_restore();
+    wb = dk_wb_restore();
     if (mask)
         dk_restore_targets(mask, DK_REVERT);
+    if (mask || wb)
+        dk_orig_drop_reverted(mask, wb);
     dk_marker_clear();   /* last: a crash during the revert leaves the marker for the next start */
     dk_flat_sync();
 }
@@ -1197,6 +1232,7 @@ int desk_dos_marker_recover(void)
     desk_dos_revert();
     /* published by the process that recovers (Amarchy, at its start): the menu's copy of the counter stays 0 */
     am_sentinel("AMARCHY_DESK_MARKER_REVERTS", (long)desk_dos_marker_reverts);
+    am_sentinel("AMARCHY_DESK_ORIG_DROPPED", (long)desk_dos_originals_dropped);
     return 1;
 }
 

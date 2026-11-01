@@ -1219,6 +1219,44 @@ static void test_desk_persist(void)
     CHECK_INT(desk_copy_name("T:x", "ENV:Sys/palette.prefs", tiny, sizeof tiny), 0);
 }
 
+/* DESK-STALE-ORIG: a fake ENV: file whose first copies fail like an open while IPrefs reads it ("object is in use") */
+static struct { int want, got, eq, busy, copies, dels, pauses; } ef;
+static int ef_want(void *ud) { (void)ud; return ef.want; }
+static int ef_got(void *ud) { (void)ud; return ef.got; }
+static int ef_equal(void *ud) { (void)ud; return ef.got && ef.eq; }
+static void ef_copy(void *ud) { (void)ud; ef.copies++; if (ef.busy > 0) { ef.busy--; return; } ef.got = ef.eq = 1; }
+static void ef_del(void *ud) { (void)ud; ef.dels++; ef.got = 0; }
+static void ef_pause(void *ud) { (void)ud; ef.pauses++; }
+
+static void test_desk_env_fix_retry(void)
+{
+    static const desk_fix_ops ops = { ef_want, ef_got, ef_equal, ef_copy, ef_del, ef_pause };
+    /* the off-step failure: the Pointer editor's rewrite in ENV:, the first two copies refused; the fix lands on the third */
+    memset(&ef, 0, sizeof ef);
+    ef.want = ef.got = 1;
+    ef.busy = 2;
+    CHECK_INT(desk_env_fix_run(&ops, 0, 10), 3);
+    CHECK_INT(ef.copies, 3);
+    CHECK_INT(ef.pauses, 2);
+    CHECK(ef.got && ef.eq);
+    /* a file that never frees: bounded, reported */
+    memset(&ef, 0, sizeof ef);
+    ef.want = ef.got = 1;
+    ef.busy = 100;
+    CHECK_INT(desk_env_fix_run(&ops, 0, 4), -1);
+    CHECK_INT(ef.copies, 4);
+    /* already right: nothing touched */
+    memset(&ef, 0, sizeof ef);
+    ef.want = ef.got = ef.eq = 1;
+    CHECK_INT(desk_env_fix_run(&ops, 0, 10), 0);
+    CHECK_INT(ef.copies + ef.dels + ef.pauses, 0);
+    /* original absent, IPrefs recreated the file: deleted once */
+    memset(&ef, 0, sizeof ef);
+    ef.got = 1;
+    CHECK_INT(desk_env_fix_run(&ops, 0, 10), 1);
+    CHECK_INT(ef.dels, 1);
+}
+
 static void test_desk_preview(void)
 {
     char drawn[GT_NAME], row[GT_NAME + 8];
@@ -1301,6 +1339,7 @@ void suite_desk(void)
     test_desk_plan();
     test_desk_icontrol();
     test_desk_targets();
+    test_desk_env_fix_retry();
     test_desk_preview();
     test_desk_confirm();
     test_desk_persist();

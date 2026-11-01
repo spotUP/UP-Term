@@ -199,6 +199,19 @@ unsigned desk_off_mask(unsigned saved, unsigned desk_mask);
  * nothing to do, copy the original over it, or delete it (the original did not exist) */
 enum { DESK_FIX_NONE, DESK_FIX_COPY, DESK_FIX_DELETE };
 int desk_env_fix(int want_exists, int got_exists, int equal);
+/* DESK-STALE-ORIG: the fix runs until the ENV: file is right, not once. Opening ENV:Sys/pointer.prefs while IPrefs still reads it after the
+ * editor's USE fails ("object is in use"), and that failed copy left the editor's rewrite in ENV:. Each round re-reads the state (want: the
+ * copy exists; got: the ENV: file exists; equal), acts, and pauses before every retry. Returns the actions taken (0: already right), -1 when
+ * the file is still wrong after tries actions. */
+typedef struct desk_fix_ops {
+    int (*want)(void *ud);
+    int (*got)(void *ud);
+    int (*equal)(void *ud);
+    void (*copy)(void *ud);
+    void (*del)(void *ud);
+    void (*pause)(void *ud);
+} desk_fix_ops;
+int desk_env_fix_run(const desk_fix_ops *ops, void *ud, int tries);
 int desk_copy_name(const char *dir, const char *file, char *out, int cap);
 /* the files to restore for mask, in restore order (reverse of the write order); returns the count */
 int desk_restore(unsigned mask, const char **list, int cap);

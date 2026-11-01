@@ -38,6 +38,7 @@ def main():
     c.run('MakeDir >NIL: ENV:Amarchy')
     S = json.load(open(st)) if os.path.exists(st) else {}
     if ph == 'a':
+        c.run('Delete ENVARC:Amarchy/desk-original ALL QUIET FORCE >NIL:', 30)   # a reused disk: originals left by an earlier run would be recorded as ours
         S['orig'] = snap()
         print('[INFO] originals', S['orig'])
         prefs(True)
@@ -81,4 +82,5 @@ def main():
     return 1 if d.failed else 0
 
 
-sys.exit(main())
+if __name__ == '__main__':
+    sys.exit(main())

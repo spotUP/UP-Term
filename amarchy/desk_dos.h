@@ -44,6 +44,8 @@ extern unsigned long desk_dos_marker_reverts;
 /* counters (the reachability sentinels): applies that asked, keeps, reverts */
 extern unsigned long desk_dos_confirm_asks, desk_dos_keeps, desk_dos_reverts;
 /* FP-2: files Keep copied to ENVARC:, originals saved before a first write, originals put back by "off" */
-extern unsigned long desk_dos_persists, desk_dos_originals_saved, desk_dos_originals_restored;
+extern unsigned long desk_dos_persists, desk_dos_originals_saved, desk_dos_originals_restored, desk_dos_originals_dropped;
+/* DESK-STALE-ORIG: ENV: fix actions repeated after a refused one (IPrefs still reading), fixes that never landed, the last refused open's IoErr */
+extern unsigned long desk_dos_env_fix_retries, desk_dos_env_fix_fails, desk_dos_env_fix_err;
 
 #endif
