@@ -1202,12 +1202,19 @@ def setup():
             check(got.group(0) == want, 'setup: %s/%s matches build/amiga/%s' % (SETUP_BIN, n, n))
         else:
             print('setup: md5 of %s not checked (no md5sum on the rig): %s' % (n, out.strip()[:60]), flush=True)
+    return start_amarchy('setup')
+
+
+def start_amarchy(tag):
+    """Run the build's Amarchy from SETUP_BIN and wait for its port. --setup ends with it; a rig script that reboots a
+    host-directory system (--os 32: the clean image has no kit S:User-Startup block, so no boot starts Amarchy) calls it
+    after the reboot, with UP-Term: as BOOTX:go assigns it (VTCX:Apps)."""
     c.run('Run >NIL: %s/Amarchy' % SETUP_BIN, 20)
     for _ in range(20):
         if amarchy_window_rig.port('STATUS', 5)[0] is not None:
-            return check(True, 'setup: Amarchy runs from %s, port AMARCHY answers' % SETUP_BIN)
+            return check(True, '%s: Amarchy runs from %s, port AMARCHY answers' % (tag, SETUP_BIN))
         time.sleep(1)
-    return check(False, 'setup: port AMARCHY did not appear in 20 s')
+    return check(False, '%s: port AMARCHY did not appear in 20 s' % tag)
 
 
 PKG_CASES = (('install', case_pkg_install), ('upgrades', case_pkg_upgrades), ('fail', case_pkg_fail),
