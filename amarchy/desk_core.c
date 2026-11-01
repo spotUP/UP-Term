@@ -974,6 +974,39 @@ int desk_restore(unsigned mask, const char **list, int cap)
     return collect(mask, 1, list, cap);
 }
 
+int desk_persist_pairs(unsigned mask, int wbprefs, const char **env, const char **arc, int cap)
+{
+    int n = 0, t;
+    for (t = 0; t < DT_COUNT; t++)
+        if (t != DT_ICONTROL && (mask & (1u << t)) && n < cap) {
+            arc[n] = targets[t].files[0];
+            env[n++] = targets[t].files[1];
+        }
+    if (wbprefs && n < cap) {
+        arc[n] = DESK_WBPREFS_ARC;
+        env[n++] = DESK_WBPREFS_ENV;
+    }
+    return n;
+}
+
+unsigned desk_off_mask(unsigned saved, unsigned desk_mask)
+{
+    return saved & ~desk_mask & ~(1u << DT_ICONTROL);
+}
+
+int desk_copy_name(const char *dir, const char *file, char *out, int cap)
+{
+    int n = (int)strlen(dir);
+    if (n + 1 + (int)strlen(file) + 1 > cap)
+        return 0;
+    memcpy(out, dir, (size_t)n);
+    out[n++] = '/';
+    for (; *file; file++)
+        out[n++] = (*file == ':' || *file == '/') ? '-' : *file;
+    out[n] = 0;
+    return 1;
+}
+
 #define MARKER_HEAD "desk-pending 1\n"
 
 long desk_marker_make(unsigned mask, char *out, long cap)

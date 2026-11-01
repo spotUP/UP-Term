@@ -30,7 +30,7 @@ def watcher():
             if any('Amarchy desktop theme' in x for x in ts):
                 seen.append(time.time())
                 if auto['keep']:
-                    with ami._conn(30) as cn: ami._m().ui_click(cn,'Keep','Amarchy desktop theme',nth=1)
+                    t.keep_requester(1)
                     auto['keep']=False
                     print('[INFO] watcher clicked Keep', flush=True)
         except BaseException as e: pass
@@ -39,7 +39,7 @@ threading.Thread(target=watcher,daemon=True).start()
 c.run('MakeDir >NIL: ENV:Amarchy')
 prefs(False)
 auto['keep']=True
-d.pick()   # settle baseline (may show requester)
+d.pick(keep=False)   # settle baseline (may show requester)
 time.sleep(1)
 for r in ami.requesters(): print('[INFO] baseline requester', ami.describe_requester(r))
 try:
@@ -52,7 +52,7 @@ time.sleep(20); auto['keep']=False
 prefs(True)
 auto['keep']=True; seen.clear()
 s0, k0 = sent('AMARCHY_CONFIRM_SHOWN'), sent('AMARCHY_CONFIRM_KEEPS')
-d.pick()
+d.pick(keep=False)
 time.sleep(1)
 time.sleep(3)
 d.say(sent('AMARCHY_CONFIRM_SHOWN') == s0 + 1, 'check1: requester shown (sentinel +1)')
@@ -64,7 +64,7 @@ auto['keep']=False; seen.clear()
 prefs(False)
 pre = md5('ENV:Sys/Workbench.prefs'); print('[INFO] pre md5', pre)
 sh0, rt0 = sent('AMARCHY_CONFIRM_SHOWN'), sent('AMARCHY_CONFIRM_REVERTS_TIMEOUT')
-d.pick()
+d.pick(keep=False)
 mid = md5('ENV:Sys/Workbench.prefs'); print('[INFO] applied md5', mid, 'byte73', b73())
 time.sleep(20)
 post = md5('ENV:Sys/Workbench.prefs'); print('[INFO] post md5', post)

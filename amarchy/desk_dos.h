@@ -40,5 +40,7 @@ void desk_dos_confirmed(void);
 void desk_dos_revert(void);
 /* counters (the reachability sentinels): applies that asked, keeps, reverts */
 extern unsigned long desk_dos_confirm_asks, desk_dos_keeps, desk_dos_reverts;
+/* FP-2: files Keep copied to ENVARC:, originals saved before a first write, originals put back by "off" */
+extern unsigned long desk_dos_persists, desk_dos_originals_saved, desk_dos_originals_restored;
 
 #endif

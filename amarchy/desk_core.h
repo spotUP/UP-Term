@@ -180,6 +180,15 @@ int desk_target_by_name(const char *name); /* -1 when unknown */
 
 /* R1.16a: the files to snapshot for the enabled targets (bit t of mask = target t) in write order; returns the count */
 int desk_snapshot(unsigned mask, const char **list, int cap);
+/* FP-2 (R1.10, OD14): the (ENV: file, ENVARC: file) pairs of the targets in mask (icontrol excluded: it writes both copies itself), plus the
+ * Workbench.prefs pair when wbprefs. Kept = copy ENV to ENVARC; the originals are saved from and restored to the same pairs. Returns the count. */
+#define DESK_WBPREFS_ENV "ENV:Sys/Workbench.prefs"
+#define DESK_WBPREFS_ARC "ENVARC:Sys/Workbench.prefs"
+int desk_persist_pairs(unsigned mask, int wbprefs, const char **env, const char **arc, int cap);
+/* OD14 off: the targets whose originals are saved (bit t of saved) and that the current desktop mask no longer applies; icontrol is never in it */
+unsigned desk_off_mask(unsigned saved, unsigned desk_mask);
+/* the copy name of a prefs file inside dir: dir "/" + file with ':' and '/' turned into '-'. 0 when out (cap bytes) is too small */
+int desk_copy_name(const char *dir, const char *file, char *out, int cap);
 /* the files to restore for mask, in restore order (reverse of the write order); returns the count */
 int desk_restore(unsigned mask, const char **list, int cap);
 /* the pending marker: written before the first write, removed after the last. Its text names the targets, so a

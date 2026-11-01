@@ -194,7 +194,7 @@ def live_pens_differ():
     say(rc == 0 and tile.bar_box() is not None, 'trigger: bar open again before the desk apply', str(rc))
 
 
-def pick(up=None):
+def pick(up=None, keep=True):
     """Style > Amarchy theme > a row next to the cursor that is not the current theme > Return. The menu stays open on the pick: close it.
     Returns once Amarchy finished the apply (t.wait_apply_done), so the Workbench pens read next are the ones the pick set;
     the menu is closed only after that (the apply hides and reopens it: THEME-PICK-MENU-STABLE)."""
@@ -219,6 +219,11 @@ def pick(up=None):
         if not rows[sel].endswith(' (current)'):
             break
     print('[INFO] picking row %d (%s)' % (sel, rows[sel]))
+    kept = []
+    if keep:   # FP-1: the apply asks "Keep?" for 15 s and reverts otherwise; the waits below can take longer, so a thread clicks it as it appears
+        import threading
+        kt = threading.Thread(target=lambda: kept.append(t.keep_requester(t.APPLY_SECS)), daemon=True)
+        kt.start()
     ami.key(g.RETURN)
     try:
         t.wait_stable(t.STEP_SECS, differ_from=st, what='recoloured theme list')
@@ -228,6 +233,8 @@ def pick(up=None):
     if not t.wait_apply_done():
         g.close_menu()
         raise TimeoutError('the theme apply did not finish within %d s (%s never written)' % (t.APPLY_SECS, t.APPLY_DONE))
+    if keep:
+        kt.join(10)
     g.close_menu()
     return rows[sel].split(' (')[0], up
 

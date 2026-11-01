@@ -1105,6 +1105,31 @@ static void test_desk_confirm(void)
     CHECK_INT(desk_confirm_tick(&c, 410 + DESK_CONFIRM_SECS), DC_REVERT_TIMEOUT);
 }
 
+/* FP-2 (R1.10, OD14): what Keep copies to ENVARC:, what "off" restores, how the originals are named */
+static void test_desk_persist(void)
+{
+    const char *env[8], *arc[8];
+    char name[96], tiny[8];
+    int n;
+    n = desk_persist_pairs((1u << DT_PALETTE) | (1u << DT_FONT) | (1u << DT_ICONTROL), 1, env, arc, 8);
+    CHECK_INT(n, 3);                                            /* icontrol writes both copies itself: not a pair */
+    CHECK_STR(env[0], "ENV:Sys/palette.prefs");
+    CHECK_STR(arc[0], "ENVARC:Sys/palette.prefs");
+    CHECK_STR(env[1], "ENV:Sys/font.prefs");
+    CHECK_STR(arc[1], "ENVARC:Sys/font.prefs");
+    CHECK_STR(env[2], "ENV:Sys/Workbench.prefs");
+    CHECK_STR(arc[2], "ENVARC:Sys/Workbench.prefs");
+    CHECK_INT(desk_persist_pairs(0, 0, env, arc, 8), 0);
+    CHECK_INT(desk_persist_pairs(0xffu, 1, env, arc, 2), 2);    /* cap respected */
+    CHECK_INT((int)desk_off_mask(0x1fu, 0x5u), 0x1a & ~(1 << DT_ICONTROL)); /* saved 0..4, applied palette+pointer: wbpattern, font off; icontrol never */
+    CHECK_INT((int)desk_off_mask(0x3u, 0x3u), 0);
+    CHECK_INT((int)desk_off_mask(0, 0), 0);
+    CHECK_INT((int)desk_off_mask(0x3u, 0), 3);
+    CHECK_INT(desk_copy_name("ENVARC:Amarchy/desk-original", "ENV:Sys/palette.prefs", name, sizeof name), 1);
+    CHECK_STR(name, "ENVARC:Amarchy/desk-original/ENV-Sys-palette.prefs");
+    CHECK_INT(desk_copy_name("T:x", "ENV:Sys/palette.prefs", tiny, sizeof tiny), 0);
+}
+
 static void test_desk_preview(void)
 {
     char drawn[GT_NAME], row[GT_NAME + 8];
@@ -1187,4 +1212,5 @@ void suite_desk(void)
     test_desk_targets();
     test_desk_preview();
     test_desk_confirm();
+    test_desk_persist();
 }

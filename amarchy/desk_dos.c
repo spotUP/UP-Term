@@ -63,11 +63,7 @@ static int dk_font_exists(void *ctx, const char *name)
 /* the revert copy name of a snapshot file: ':' and '/' become '-' */
 static void dk_copy_name(const char *file, char *out)
 {
-    strcpy(out, DK_REVERT "/");
-    out += strlen(out);
-    for (; *file; file++)
-        *out++ = (*file == ':' || *file == '/') ? '-' : *file;
-    *out = 0;
+    desk_copy_name(DK_REVERT, file, out, 96);
 }
 
 static void dk_snapshot(unsigned mask)
@@ -355,6 +351,8 @@ static unsigned dk_pending_mask(void)
     return m;
 }
 
+static void dk_orig_off(unsigned desk_mask, int flat);
+static void dk_orig_save(unsigned mask, int wbprefs);
 static int dk_apply(const gtheme *th, char *why, int cap)
 {
     static unsigned char buf[DK_BUF], prev[DK_BUF], big[8192];
@@ -385,6 +383,7 @@ static int dk_apply(const gtheme *th, char *why, int cap)
     UnLock(CreateDir((STRPTR)DK_WORK));
     if (old_ws || (mask & ((1u << DT_FONT) | (1u << DT_ICONTROL))))
         idle = dk_iprefs_idle_mask(); /* before any editor: the Wait() IPrefs returns to when done */
+    dk_orig_save(mask, 0);   /* FP-2: the user's own version of every file about to be rewritten, once */
     dk_snapshot((ic_snap ? mask : (mask & ~(1u << DT_ICONTROL))) & ~dk_pending_mask()); /* FP-1: targets of an unconfirmed apply keep their first snapshot */
     depth = dk_screen_depth();
     if (mask & (1u << DT_PALETTE)) {
@@ -825,6 +824,7 @@ static void dk_wbborder(void)
     n = desk_wbborder(flat, cur, len, saved, &keep, mid, sizeof mid);
     g = desk_wbgauge(flat, n > 0 ? mid : cur, n > 0 ? n : len, gsaved, &gkeep, out, sizeof out);
     if (n > 0 || g > 0) {
+        dk_orig_save(0, 1);
         dk_wb_snapshot();
         UnLock(CreateDir((STRPTR)DK_WORK));
         if (n > 0)
@@ -838,11 +838,113 @@ static void dk_wbborder(void)
     dk_keep_mark(DK_WBG_PREV, gkeep);
 }
 
+/* FP-2 (R1.10, OD14): ENVARC:Amarchy/desk-original/ holds, per file Amarchy may rewrite, the user's version from before the first apply
+ * (ENVARC: copy, else the ENV: copy) under desk_copy_name(ENV: path); a file that did not exist is recorded by "<name>.absent". Kept until
+ * "off" restores that file, so it never saves a theme as the original. */
+#define DK_ORIG "ENVARC:Amarchy/desk-original"
+unsigned long desk_dos_persists, desk_dos_originals_saved, desk_dos_originals_restored;
+
+/* streamed (a prefs file may be larger than any fixed buffer, and the copy must be byte-identical): 1 copied, 0 write failed, -1 no source */
+static int dk_stream_copy(const char *src, const char *dst)
+{
+    static unsigned char cb[2048];
+    BPTR in = Open((STRPTR)src, MODE_OLDFILE), out;
+    LONG got;
+    int ok = 1;
+    if (!in)
+        return -1;
+    out = Open((STRPTR)dst, MODE_NEWFILE);
+    if (!out) {
+        Close(in);
+        return 0;
+    }
+    while ((got = Read(in, cb, sizeof cb)) > 0)
+        if (Write(out, cb, got) != got) {
+            ok = 0;
+            break;
+        }
+    Close(in);
+    Close(out);
+    return ok && got >= 0;
+}
+
+static void dk_orig_dirs(void)
+{
+    UnLock(CreateDir((STRPTR) "ENVARC:Amarchy"));
+    UnLock(CreateDir((STRPTR)DK_ORIG));
+}
+
+static int dk_orig_have(const char *env)
+{
+    char name[96], ab[104];
+    desk_copy_name(DK_ORIG, env, name, sizeof name);
+    strcpy(ab, name);
+    strcat(ab, ".absent");
+    return dk_exists(name) || dk_exists(ab);
+}
+
+/* the targets (bit t) with a saved original; bit DT_ICONTROL is never set */
+static unsigned dk_orig_mask(void)
+{
+    const char *env[1], *arc[1];
+    unsigned m = 0;
+    int t;
+    for (t = 0; t < DT_COUNT; t++)
+        if (t != DT_ICONTROL && desk_persist_pairs(1u << t, 0, env, arc, 1) == 1 && dk_orig_have(env[0]))
+            m |= 1u << t;
+    return m;
+}
+
+/* before the first write of each file: save the user's version once. The caller passes what it is about to write. */
+static void dk_orig_save(unsigned mask, int wbprefs)
+{
+    const char *env[8], *arc[8];
+    char name[96], ab[104];
+    int i, n = desk_persist_pairs(mask, wbprefs, env, arc, 8);
+    for (i = 0; i < n; i++) {
+        if (dk_orig_have(env[i]))
+            continue;
+        dk_orig_dirs();
+        desk_copy_name(DK_ORIG, env[i], name, sizeof name);
+        strcpy(ab, name);
+        strcat(ab, ".absent");
+        if (dk_stream_copy(arc[i], name) < 0 && dk_stream_copy(env[i], name) < 0)
+            dk_write(ab, (const unsigned char *)"1", 1);
+        desk_dos_originals_saved++;
+    }
+}
+
+/* the original of one file pair goes back over its ENVARC: copy (copied or deleted); the copy in desk-original/ stays until dk_orig_forget */
+static void dk_orig_restore_arc(const char *env, const char *arc)
+{
+    char name[96];
+    desk_copy_name(DK_ORIG, env, name, sizeof name);
+    if (dk_stream_copy(name, arc) < 0)
+        DeleteFile((STRPTR)arc);
+    desk_dos_originals_restored++;
+}
+
+/* the restored original is forgotten: a later apply saves the file anew */
+static void dk_orig_forget(const char *env)
+{
+    char name[96], ab[104];
+    desk_copy_name(DK_ORIG, env, name, sizeof name);
+    strcpy(ab, name);
+    strcat(ab, ".absent");
+    DeleteFile((STRPTR)name);
+    DeleteFile((STRPTR)ab);
+}
+
 int desk_dos_apply(const gtheme *th, char *why, int cap)
 {
     int r;
     dk_live_want = 0;
     r = dk_apply(th, why, cap);
+    if (r >= 0) {
+        am_prefs ap;
+        amconf_load(&ap);
+        dk_orig_off(amconf_desk_mask(&ap), amconf_desk_flat_pens(&ap));
+    }
     if (!(r > 0 && (r & (1 << DT_PALETTE))) && dk_flat_pens(th) && r >= 0)
         r |= 1 << DT_PALETTE;   /* the theme colours are in the palette and DOpus has them: no wb_pens_apply */
     dk_wbborder();
@@ -887,9 +989,14 @@ static void dk_confirm_ask(unsigned mask)
     rexx_send("AMARCHY", num, res, sizeof res);
 }
 
-/* FP-2 fills this: the user kept the applied theme, so the prefs written to ENV: are persisted to ENVARC: here. For now it only clears the pending state. */
+/* Keep: the prefs the apply wrote to ENV: are persisted to ENVARC: now, not before (R1.10). Workbench.prefs is outside the target mask (WBPENDING). */
 void desk_dos_confirmed(void)
 {
+    const char *env[8], *arc[8];
+    int i, n = desk_persist_pairs(dk_pending_mask(), dk_exists(DK_WBPEND), env, arc, 8);
+    for (i = 0; i < n; i++)
+        if (dk_stream_copy(env[i], arc[i]) > 0)
+            desk_dos_persists++;
     DeleteFile((STRPTR)DK_PENDING);
     DeleteFile((STRPTR)DK_WBPEND);
     DeleteFile((STRPTR)DK_WBB_SNAP);
@@ -897,27 +1004,19 @@ void desk_dos_confirmed(void)
     desk_dos_keeps++;
 }
 
-/* put the snapshot back: each target's ENV: file is fed from its revert copy through the stock editor (as the apply did), a file that did
- * not exist then is deleted; icontrol goes through dk_icontrol_restore. */
-void desk_dos_revert(void)
+/* put the files of mask back from the copies in dir (T:amarchy-revert for Revert, the originals for "off"): each target's ENV: file is fed from
+ * its copy through the stock editor (as the apply did), a file that did not exist then is deleted; icontrol goes through dk_icontrol_restore. */
+static void dk_restore_targets(unsigned mask, const char *dir)
 {
     static const struct { int t; const char *editor; const char *file; } ed[] = {
         { DT_FONT, "Font", "ENV:Sys/font.prefs" }, { DT_POINTER, "Pointer", "ENV:Sys/pointer.prefs" },
         { DT_WBPATTERN, "WBPattern", "ENV:Sys/wbpattern.prefs" }, { DT_PALETTE, "Palette", "ENV:Sys/palette.prefs" } };
     static unsigned char buf[8192];
-    unsigned mask = dk_pending_mask();
     am_prefs ap;
     unsigned long idle = 0;
     struct Screen *before = 0;
     int i, was = 0, pal = (mask >> DT_PALETTE) & 1;
     char name[96];
-    desk_dos_reverts++;
-    DeleteFile((STRPTR)DK_PENDING);
-    dk_wb_restore();
-    if (!mask) {
-        dk_flat_sync();
-        return;
-    }
     amconf_load(&ap);
     if (mask & ((1u << DT_FONT) | (1u << DT_ICONTROL)))
         idle = dk_iprefs_idle_mask();
@@ -929,8 +1028,8 @@ void desk_dos_revert(void)
         long len;
         if (!((mask >> ed[i].t) & 1) || (ed[i].t == DT_POINTER && !dk_pointer_editor_ok()))
             continue;
-        dk_copy_name(ed[i].file, name);
-        len = dk_read(name, buf, sizeof buf);
+        desk_copy_name(dir, ed[i].file, name, sizeof name);
+        len = dk_read(name, buf, 1);
         if (len < 0)
             DeleteFile((STRPTR)ed[i].file);
         else
@@ -948,5 +1047,45 @@ void desk_dos_revert(void)
         dk_live_pens(0, 0);
         dk_windows_open(was);
     }
+}
+
+void desk_dos_revert(void)
+{
+    unsigned mask = dk_pending_mask();
+    desk_dos_reverts++;
+    DeleteFile((STRPTR)DK_PENDING);
+    dk_wb_restore();
+    if (mask)
+        dk_restore_targets(mask, DK_REVERT);
     dk_flat_sync();
+}
+
+/* OD14: a desktop part the settings no longer apply (or the flat Workbench.prefs when flat is off) goes back to the user's original, in ENV: through
+ * its editor and in ENVARC: by copy; the original is forgotten, a later apply saves the file anew. */
+static void dk_orig_off(unsigned desk_mask, int flat)
+{
+    const char *env[8], *arc[8];
+    char name[96];
+    unsigned off = desk_off_mask(dk_orig_mask(), desk_mask);
+    int wb = !flat && dk_orig_have(DESK_WBPREFS_ENV), i, n;
+    if (!off && !wb)
+        return;
+    /* ENVARC: first: a reader that finds ENV: missing falls back to ENVARC:, which must already hold the original */
+    n = desk_persist_pairs(off, wb, env, arc, 8);
+    for (i = 0; i < n; i++)
+        dk_orig_restore_arc(env[i], arc[i]);
+    if (off)
+        dk_restore_targets(off, DK_ORIG);
+    if (wb) {
+        desk_copy_name(DK_ORIG, DESK_WBPREFS_ENV, name, sizeof name);
+        if (dk_exists(name))
+            dk_editor("Workbench", name);
+        else
+            DeleteFile((STRPTR)DESK_WBPREFS_ENV);
+        DeleteFile((STRPTR)DK_WBB_PREV);
+        DeleteFile((STRPTR)DK_WBG_PREV);
+    }
+    for (i = 0; i < n; i++)
+        dk_orig_forget(env[i]);
+    DeleteFile((STRPTR)DK_ORIG);   /* the directory, once empty */
 }

@@ -18,6 +18,7 @@ static void publish(void)
 {
     am_sentinel("AMARCHY_CONFIRM_SHOWN", (long)dc_shown);
     am_sentinel("AMARCHY_CONFIRM_KEEPS", (long)dc_keeps);
+    am_sentinel("AMARCHY_DESK_PERSISTS", (long)desk_dos_persists);
     am_sentinel("AMARCHY_CONFIRM_REVERTS_USER", (long)dc_reverts_user);
     am_sentinel("AMARCHY_CONFIRM_REVERTS_TIMEOUT", (long)dc_reverts_timeout);
 }
