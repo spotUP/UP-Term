@@ -16,20 +16,14 @@
 #include "wbreset.h"
 #include "flat_core.h"
 #include "libpatch.h"
+#include "ipatch.h"
 
 extern struct IntuitionBase *IntuitionBase;
 
 typedef LONG (*wbfn)(__reg("a6") struct Library *);
 
 static wbr_pub *g_pub;
-static unsigned char *g_gc, *g_go;  /* gates of CloseWorkBench / OpenWorkBench */
-static uintptr_t *g_slc, *g_slo;
-static flat_swap g_swc, g_swo;
-
-static ULONG gate_long(const unsigned char *g, int at)
-{
-    return ((ULONG)g[at] << 24) | ((ULONG)g[at + 1] << 16) | ((ULONG)g[at + 2] << 8) | g[at + 3];
-}
+static ipatch g_pc, g_po;       /* CloseWorkBench / OpenWorkBench */
 
 static void signal_all(const wbr_sig *s, int n)
 {
@@ -80,7 +74,7 @@ static LONG close_hook(__reg("a6") struct Library *ib)
         timed = n != 0;
     }
     diag_census();
-    ok = ((wbfn)gate_long(g_gc, WBR_GATE_SAVED))(ib);
+    ok = ((wbfn)ipatch_saved(&g_pc))(ib);
     g_pub->rec.diag_ok = ok;
     Forbid();
     n = wbr_close_end(&g_pub->rec, ok != 0, timed, s);
@@ -98,7 +92,7 @@ static LONG open_hook(__reg("a6") struct Library *ib)
     Forbid();
     g_pub->rec.busy++;
     Permit();
-    scr = ((wbfn)gate_long(g_go, WBR_GATE_SAVED))(ib);
+    scr = ((wbfn)ipatch_saved(&g_po))(ib);
     Forbid();
     n = wbr_open_end(&g_pub->rec, scr != 0, s);
     signal_all(s, n);
@@ -109,31 +103,29 @@ static LONG open_hook(__reg("a6") struct Library *ib)
 
 int wbr_patch_install(void)
 {
-    unsigned char *ec, *eo;
     int rc1, rc2;
     if (!IntuitionBase)
         return -1;
-    ec = (unsigned char *)IntuitionBase + WBR_LVO_CLOSEWB;
-    eo = (unsigned char *)IntuitionBase + WBR_LVO_OPENWB;
-    if (!flat_jmp_target(ec) || !flat_jmp_target(eo))
-        return -2;
+    rc1 = ipatch_alloc(&g_pc, WBR_LVO_CLOSEWB);
+    if (rc1)
+        return rc1;
+    rc1 = ipatch_alloc(&g_po, WBR_LVO_OPENWB);
+    if (rc1) {
+        ipatch_free(&g_pc, 0);
+        return rc1;
+    }
     Forbid();
     rc1 = FindSemaphore((STRPTR)WBR_SEM_NAME) != 0;
     Permit();
-    if (rc1)
+    if (rc1) {
+        ipatch_free(&g_pc, 0);
+        ipatch_free(&g_po, 0);
         return -3;                  /* another Amarchy holds the patch */
+    }
     g_pub = (wbr_pub *)AllocMem(sizeof *g_pub, MEMF_PUBLIC | MEMF_CLEAR);
-    g_gc = (unsigned char *)AllocMem(WBR_GATE_SIZE, MEMF_PUBLIC);
-    g_go = (unsigned char *)AllocMem(WBR_GATE_SIZE, MEMF_PUBLIC);
-    if (!g_pub || !g_gc || !g_go) {
-        if (g_pub)
-            FreeMem(g_pub, sizeof *g_pub);
-        if (g_gc)
-            FreeMem(g_gc, WBR_GATE_SIZE);
-        if (g_go)
-            FreeMem(g_go, WBR_GATE_SIZE);
-        g_pub = 0;
-        g_gc = g_go = 0;
+    if (!g_pub) {
+        ipatch_free(&g_pc, 0);
+        ipatch_free(&g_po, 0);
         return -4;
     }
     wbr_init(&g_pub->rec);
@@ -141,16 +133,9 @@ int wbr_patch_install(void)
     g_pub->ss.ss_Link.ln_Name = g_pub->name;
     g_pub->ss.ss_Link.ln_Pri = 0;
     AddSemaphore(&g_pub->ss);
-    flat_swap_init(&g_swc);
-    flat_swap_init(&g_swo);
     Forbid();
-    wbr_gate_build(g_gc, (uint32_t)close_hook, flat_jmp_target(ec));
-    wbr_gate_build(g_go, (uint32_t)open_hook, flat_jmp_target(eo));
-    CacheClearU();
-    rc1 = flat_swap_install(&g_swc, (uintptr_t *)(ec + 2), (uintptr_t)g_gc);
-    rc2 = flat_swap_install(&g_swo, (uintptr_t *)(eo + 2), (uintptr_t)g_go);
-    g_slc = (uintptr_t *)(ec + 2);
-    g_slo = (uintptr_t *)(eo + 2);
+    rc1 = ipatch_arm(&g_pc, (void *)close_hook);
+    rc2 = ipatch_arm(&g_po, (void *)open_hook);
     libpatch_done((struct Library *)IntuitionBase);
     Permit();
     if (rc1 != FLAT_OK || rc2 != FLAT_OK) {
@@ -162,17 +147,14 @@ int wbr_patch_install(void)
 
 void wbr_patch_remove(void)
 {
-    int rc1 = FLAT_NOT_INSTALLED, rc2 = FLAT_NOT_INSTALLED, i;
+    int rc1, rc2, i;
     if (!g_pub)
         return;
     Forbid();
-    memset(g_gc + WBR_GATE_HOOK, 0, 4);     /* pass-through from now on, also for a gate left chained */
-    memset(g_go + WBR_GATE_HOOK, 0, 4);
-    CacheClearU();
-    if (g_swc.installed)
-        rc1 = flat_swap_remove(&g_swc, g_slc, 0);
-    if (g_swo.installed)
-        rc2 = flat_swap_remove(&g_swo, g_slo, 0);
+    ipatch_passthru(&g_pc);                 /* pass-through from now on, also for a gate left chained */
+    ipatch_passthru(&g_po);
+    rc1 = ipatch_unarm(&g_pc);
+    rc2 = ipatch_unarm(&g_po);
     libpatch_done((struct Library *)IntuitionBase);
     RemSemaphore(&g_pub->ss);
     Permit();
@@ -181,11 +163,8 @@ void wbr_patch_remove(void)
         Delay(2);
     if (g_pub->rec.busy)
         return;                             /* a caller is still inside: leak rather than free under it */
-    if (rc1 != FLAT_STILL_CHAINED)
-        FreeMem(g_gc, WBR_GATE_SIZE);
-    if (rc2 != FLAT_STILL_CHAINED)
-        FreeMem(g_go, WBR_GATE_SIZE);
+    ipatch_free(&g_pc, rc1);
+    ipatch_free(&g_po, rc2);
     FreeMem(g_pub, sizeof *g_pub);
     g_pub = 0;
-    g_gc = g_go = 0;
 }
