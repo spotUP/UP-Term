@@ -1,7 +1,7 @@
 ---
 date: 2026-11-01
 topic: Amarchy flat look - flat FILLED icon set instead of Lucide line icons (source swap, theme-pen model unchanged)
-status: draft (research done; owner picks the set, section 3 question)
+status: F1-F10 implemented on s28-filled-set (owner decisions 2026-11-01 in section 3); F11 rig check and F12 owner look open
 ledger: thoughts/spot/todos.md AM-ICONS-FILLED-SET (s28)
 related: AM-LUCIDE-ICONS (thoughts/shared/plans/2026-10-31-amarchy-lucide-icons.md), AM-ICON-NOBORDER
 ---
@@ -120,7 +120,20 @@ Apache-2.0, bigger catalogue, thinner details). The look at 32 px is checked on 
 the table is final; the choice is reversible there because only the table names and the source
 change.
 
-Other choices made here (veto if wrong): single tone first, cutout tone as an option (F7); keep the
+Owner decisions 2026-11-01 (binding):
+- Set: Phosphor Fill. The 7 substitutes of section 7 are accepted.
+- Two-tone: none; cut-outs colour 0 (owner 2026-11-01). The backdrop shows through glyph holes; no region
+  classification and no second theme pen in the glyph images (this replaces the earlier "cut-out tone ON" answer).
+- Pen hold when flat is off: H1 (section 7b), done in amarchy/flat.c and iconpen_core by the F13-F14 agent.
+- Distinct names: the table has 81 rows, 51 Lucide names mapped to 50 Phosphor names (monitor and monitor-cog share
+  the `monitor` glyph); the dat holds 50 records.
+- F5 quantiser: kept at FIRST_LEVEL 0.20, LEVELS 0.50/0.835. Measured over the 50 glyphs at 32x32: 43.5 percent colour 0,
+  3.4 / 8.4 / 44.8 percent in levels 1/2/3; the alternatives 0.30/0.55/0.85 and 0.35/0.60/0.90 moved under 1.5 points
+  per level and thin the rim, so no change. Enclosed cut-out pixels (colour 0): gear-six 80 (32x32) / 36 (32x16),
+  printer 104 / 58, keyboard 118 / 0 (the key gaps close on the tall variant), hard-drive 4 / 0. Contact sheet:
+  ~/Desktop/upterm-shots/s28-filled-contact.png (owner look is F12).
+
+Other choices made here (veto if wrong): single tone, cut-outs colour 0 (F7 dropped); keep the
 `LUCI` container and bump its version rather than rename the file (F6); keep sizes 32x32 and 32x16.
 
 ## 4. Pipeline changes as phased steps (checklist, 12 rows)
@@ -148,7 +161,7 @@ Other choices made here (veto if wrong): single tone first, cutout tone as an op
   the single-tone case), so the Amiga reader and the files stay compatible. If any layout
   change is made, `li_dat_open` (`iconfile_core`) and its test move together. Done: reader test
   green, old and new dat each load or are refused on purpose.
-- F7 Optional second tone: in `images()` classify enclosed transparent regions (flood fill from the
+- F7 DROPPED (owner 2026-11-01: two-tone none, cut-outs colour 0). Was: optional second tone: in `images()` classify enclosed transparent regions (flood fill from the
   border on the 64x64 raster) and give them the detail pen (MUTED 33 percent = pen 40 for normal, a
   SELFG 33 pen for selected). Behind a table switch (`; tone2 = on` or a per-row flag), default off.
   Done: unit test on a glyph with a hole (gear): hole pixels carry pen 40 only when on.
@@ -172,7 +185,7 @@ Other choices made here (veto if wrong): single tone first, cutout tone as an op
 - New pin test: the 51 names of `dist/lucide-icons` all resolve in the Phosphor code point file
   (guards against a font bump dropping a name); the substitute rows are listed in the test so a
   silent swap shows.
-- New tone test (F7): hole pixel pen with the switch on and off.
+- Cut-out test (replaces the F7 tone test): the hole of gear-six is pen 0 in the normal image, only pens 0/32/37/33 appear.
 - Unchanged and rerun: `tests/test_iconfile.c` (ONLY=iconfile: parse, splice, NewIcon/FORM ICON strip,
   restore byte for byte on every `.info` of the rig trees), `tests/test_iconpen.c`,
   `tests/test_iconapply.c`, `tests/test_dist_manifest.py`.
