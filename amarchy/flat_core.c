@@ -496,6 +496,13 @@ int flat_scroller_pen(const flat_state *s, int depth, int cx, int cy, int cw, in
     return s->pen_back;
 }
 
+int flat_frame_pen(const flat_state *s, int depth, int active)
+{
+    if (s->enabled && !s->held && active && s->pen_outline && depth >= 1 && depth <= 8 && s->pen_outline < (1 << depth))
+        return s->pen_outline;
+    return -1;
+}
+
 int flat_title_decide(const flat_state *s, int depth, int active, const char *title, int win_w, int bar_h,
                       const char *str, int count, int cp_y, flat_title *t)
 {
@@ -509,8 +516,7 @@ int flat_title_decide(const flat_state *s, int depth, int active, const char *ti
     t->bg_pen = -1;
     t->bx0 = 0; t->by0 = 0; t->bx1 = win_w - 1; t->by1 = bar_h - 1;
     if (active) {
-        if (s->pen_outline && depth >= 1 && depth <= 8 && s->pen_outline < (1 << depth))
-            t->band_pen = s->pen_outline;
+        t->band_pen = flat_frame_pen(s, depth, 1);
         t->bg_pen = t->band_pen;
         t->text_pen = t->band_pen >= 0 ? s->pen_ptext : -1;
     } else {

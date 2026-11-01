@@ -1053,8 +1053,137 @@ static void test_title_accent(void)
     CHECK_INT(t.text_pen, -1);
 }
 
+/* ---- FLAT-GLYPH-OS-SHAPES: the clone. A fake 3D close gadget (9 x 9) as the stock image draws it with marker pens: bevel ring
+ * (shine top / left, shadow bottom / right), ground, a 3 x 3 glyph in the text marker. The one reachability test: through
+ * flat_clone_draw (what flat.c runs) with a render sentinel; the pens are checked on the canvas. */
+static int g_render_calls, g_render_fail;
+static int g_render_selected;
+static int fake_render(void *ctx, unsigned long ids, uint8_t *grid, int w, int h)
+{
+    int x, y;
+    (void)ctx;
+    g_render_calls++;
+    if (g_render_fail)
+        return 0;
+    g_render_selected = ids == 1;
+    for (y = 0; y < h; y++)
+        for (x = 0; x < w; x++) {
+            int ring = x == 0 || y == 0 || x == w - 1 || y == h - 1;
+            int m = FLAT_CLONE_MARK(g_render_selected ? 5 : 7);                 /* ground: FILLPEN selected, BACKGROUNDPEN normal */
+            if (ring)
+                m = (x == 0 || y == 0) != g_render_selected ? FLAT_CLONE_SHINE : FLAT_CLONE_SHADOW;
+            else if (x >= 3 && x <= 5 && y >= 3 && y <= 5)
+                m = FLAT_CLONE_MARK(2);                                         /* the glyph */
+            grid[y * w + x] = (uint8_t)m;
+        }
+    return 1;
+}
+
+static void test_clone_arrows(void)
+{
+    flat_state st;
+    unsigned long w;
+    int g, b;
+    glyph_state(&st);
+    st.enabled = 1; st.held = 0;
+    for (w = FLAT_W_LEFT; w <= FLAT_W_DOWN; w++) {
+        CHECK_INT(flat_glyph_window_gadget(w), 1);                              /* scroller arrows take the clone path */
+        CHECK_INT(flat_clone_route(&st, w, FLAT_IM_DRAW), 1);
+        CHECK_INT(flat_glyph_on_band(w), 0);                                    /* they sit in the border, not the title band */
+        CHECK_INT(flat_glyph_known(w), 0);                                      /* no hand-drawn block glyph exists for them */
+        flat_glyph_roles(w, FLAT_G_NORMAL, &g, &b);
+        CHECK_INT(b, FLAT_ROLE_FRAME);
+        CHECK(g != b);                                                          /* glyph pen differs from box pen */
+    }
+    CHECK_INT(flat_glyph_on_band(FLAT_W_CLOSE), 1);
+    CHECK_INT(flat_glyph_on_band(FLAT_W_DEPTH), 1);
+    CHECK_INT(flat_glyph_on_band(FLAT_W_ZOOM), 1);
+    CHECK_INT(flat_glyph_on_band(FLAT_W_ICONIFY), 1);
+    CHECK_INT(flat_glyph_on_band(FLAT_W_SIZE), 0);
+    CHECK_INT(flat_clone_route(&st, FLAT_W_LEFT, 0), 0);                        /* only OM_DRAW */
+    st.held = 1;
+    CHECK_INT(flat_clone_route(&st, FLAT_W_LEFT, FLAT_IM_DRAW), 0);
+    st.held = 0; st.enabled = 0;
+    CHECK_INT(flat_clone_route(&st, FLAT_W_LEFT, FLAT_IM_DRAW), 0);
+}
+
+static void test_frame_pen(void)
+{
+    flat_state s;
+    glyph_state(&s);
+    s.enabled = 1; s.held = 0; s.pen_outline = 5;
+    CHECK_INT(flat_frame_pen(&s, 3, 1), 5);          /* active, pen 5 < 8 */
+    CHECK_INT(flat_frame_pen(&s, 3, 0), -1);         /* inactive: stock frame */
+    CHECK_INT(flat_frame_pen(&s, 9, 1), -1);         /* depth > 8 */
+    CHECK_INT(flat_frame_pen(&s, 2, 1), -1);         /* pen not of the depth */
+    s.pen_outline = 0;
+    CHECK_INT(flat_frame_pen(&s, 3, 1), -1);
+    s.pen_outline = 5; s.held = 1;
+    CHECK_INT(flat_frame_pen(&s, 3, 1), -1);
+}
+
+static uint8_t g_scr[FLAT_CLONE_SCRATCH];
+
+static void test_glyph_clone(void)
+{
+    flat_state st;
+    int x, y, glyph, box;
+    glyph_state(&st);
+    st.enabled = 1;
+    cv_clear();
+    g_render_calls = g_render_fail = 0;
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 2, 3, 9, 9, 'F', -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
+    CHECK_INT(g_render_calls, 1);                                               /* the sentinel: the clone path ran */
+    glyph = box = 0;
+    for (y = 0; y < 9; y++)
+        for (x = 0; x < 9; x++) {
+            char c = cv[3 + y][2 + x];
+            int in = x >= 3 && x <= 5 && y >= 3 && y <= 5;
+            CHECK(c == (in ? '#' : 'F'));                                       /* ring gone, box = frame pen, glyph = text pen */
+            glyph += c == '#';
+            box += c == 'F';
+        }
+    CHECK_INT(glyph, 9);
+    CHECK_INT(box, 72);
+    CHECK_INT(cv[2][2], '?');                                                   /* nothing outside the box */
+    /* inactive: the glyph takes the line pen, the box stays the frame pen */
+    cv_clear();
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_ZOOM, FLAT_IM_DRAW, 5, 0, 0, 9, 9, 'F', -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
+    CHECK_INT(cv[4][4], '+');
+    CHECK_INT(cv[0][0], 'F');
+    /* selected: ground is FILLPEN (the dominant inside marker), ring reversed; glyph in back pen on the text-pen box */
+    cv_clear();
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 1, 0, 0, 9, 9, 'F', -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
+    CHECK_INT(cv[0][0], '#');
+    CHECK_INT(cv[4][4], '.');
+    CHECK_INT(cv[1][1], '#');
+    /* refusals: render failure is reported for the block fallback; menu glyphs, other methods, a held switch, small boxes: not routed, no render */
+    {   /* active window: box = band pen, glyph = the title text pen (text_pen overrides the normal glyph only) */
+        flat_state b = st;
+        cv_clear();
+        CHECK_INT(flat_clone_draw(&b, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 9, 9, 'B', 'T', fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
+        CHECK(cv[0][0] == 'B' && cv[4][4] == 'T');
+        cv_clear();
+        CHECK_INT(flat_clone_draw(&b, FLAT_W_CLOSE, FLAT_IM_DRAW, 2, 0, 0, 9, 9, 'B', 'T', fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
+        CHECK(cv[4][4] == '+');                                                 /* inactive keeps its own glyph pen */
+        cv_clear();
+    }
+    g_render_calls = 0; g_render_fail = 1;
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 9, 9, 'F', -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_FAIL);
+    g_render_fail = 0; g_render_calls = 0;
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_MENUCHECK, FLAT_IM_DRAW, 0, 0, 0, 9, 9, 'F', -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_NO);
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, 0x203, 0, 0, 0, 9, 9, 'F', -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_NO);
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 6, 9, 'F', -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_NO);
+    st.held = 1;
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 9, 9, 'F', -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_NO);
+    CHECK_INT(g_render_calls, 0);
+}
+
 void suite_flat_core(void)
 {
+    test_frame_pen();
+    test_clone_arrows();
+    test_glyph_clone();
     test_title_accent();
     test_scroller();
     test_desk_flat_state();

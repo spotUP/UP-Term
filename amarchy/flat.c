@@ -107,13 +107,100 @@ static int c7_screen_which(struct Layer *lay, Object *obj)
     return wh;
 }
 
-static int c2_draw(Object *obj, Msg msg)
+
+/* ---- FLAT-GLYPH-OS-SHAPES: the clone. The saved (system) dispatcher draws the real gadget image offscreen with a private
+ * DrawInfo whose pen i is the marker pen i + 1; flat_clone_draw (flat_glyph.c) maps those markers to box / glyph and paints
+ * them flat in the real RastPort. Any installed replacement of sysiclass underneath is cloned the same way. One cached
+ * 8 bit offscreen bitmap, guarded by a semaphore (the dispatcher runs on every task that draws a window). */
+typedef struct cloneenv {
+    struct Hook *h;
+    Object *obj;
+    struct impDraw *d;
+    int reg;
+} cloneenv;
+
+static struct SignalSemaphore cl_ss;
+static struct BitMap *cl_bm;
+static struct RastPort cl_rp;
+static int cl_w, cl_h;
+static UWORD cl_pens[FLAT_CLONE_MARKS];
+static uint8_t cl_scratch[FLAT_CLONE_SCRATCH];     /* the grids: static (held under cl_ss), not on the stack of whatever task draws */
+
+static int clone_ensure(int w, int h)
+{
+    if (cl_bm && w <= cl_w && h <= cl_h)
+        return 1;
+    if (w < cl_w) w = cl_w;
+    if (h < cl_h) h = cl_h;
+    if (GfxBase->LibNode.lib_Version < 39)
+        return 0;
+    {
+        struct BitMap *bm = AllocBitMap((ULONG)w, (ULONG)h, 8, BMF_CLEAR, NULL);
+        if (!bm)
+            return 0;
+        if (cl_bm)
+            FreeBitMap(cl_bm);
+        cl_bm = bm;
+        cl_w = w;
+        cl_h = h;
+        InitRastPort(&cl_rp);
+        cl_rp.BitMap = cl_bm;
+    }
+    return 1;
+}
+
+static void clone_free(void)
+{
+    if (cl_bm) {
+        WaitBlit();
+        FreeBitMap(cl_bm);
+        cl_bm = NULL;
+    }
+}
+
+static int clone_render(void *ctx, unsigned long ids, uint8_t *grid, int w, int h)
+{
+    cloneenv *e = (cloneenv *)ctx;
+    struct Image *im = (struct Image *)e->obj;
+    struct impDraw m = *e->d;
+    struct DrawInfo di;
+    int x, y, i, ok = 0;
+    (void)ids;
+    if (!e->d->imp_DrInfo || !AttemptSemaphore(&cl_ss))
+        return 0;
+    if (clone_ensure(w, h)) {
+        di = *e->d->imp_DrInfo;
+        for (i = 0; i < FLAT_CLONE_MARKS; i++)
+            cl_pens[i] = (UWORD)FLAT_CLONE_MARK(i);
+        di.dri_Pens = cl_pens;
+        m.imp_RPort = &cl_rp;
+        m.imp_Offset.X = (WORD)-im->LeftEdge;
+        m.imp_Offset.Y = (WORD)-im->TopEdge;
+        m.imp_DrInfo = &di;
+        SetRast(&cl_rp, 0);
+        if (e->reg)
+            ((oldfn_reg)g_r->sw.saved)(e->h, e->obj, (Msg)&m);
+        else
+            ((oldfn_stk)g_r->sw.saved)(e->h, e->obj, (Msg)&m);
+        WaitBlit();
+        for (y = 0; y < h; y++)
+            for (x = 0; x < w; x++) {
+                LONG p = ReadPixel(&cl_rp, x, y);      /* offscreen bitmap, no layer: not the screen */
+                grid[y * w + x] = (uint8_t)(p < 0 ? 0 : p);
+            }
+        ok = 1;
+    }
+    ReleaseSemaphore(&cl_ss);
+    return ok;
+}
+
+static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
 {
     flatshared *r = g_r;
     struct impDraw *d = (struct impDraw *)msg;
     struct Image *im = (struct Image *)obj;
     ULONG which = 0xFFFF;
-    int frame_pen = -1;
+    int frame_pen = -1, text_pen = -1;
     r->st.calls++;
     if (msg->MethodID != FLAT_IM_DRAW || !r->st.enabled || r->st.held || !d->imp_RPort)
         return 0;
@@ -143,9 +230,31 @@ static int c2_draw(Object *obj, Msg msg)
     if (d->imp_DrInfo) {
         struct Layer *fl = d->imp_RPort->Layer;
         if (fl && fl->Window) {
-            frame_pen = d->imp_DrInfo->dri_Pens[BACKGROUNDPEN];     /* FLAT-SOLID-FILL: both states, the frame is the background */
+            int band = flat_frame_pen(&r->st, d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0,
+                                      (((struct Window *)fl->Window)->Flags & WFLG_WINDOWACTIVE) != 0);
+            if (band >= 0 && flat_glyph_on_band(which)) {   /* active: the box is the title band; the glyph takes the title text's pen */
+                frame_pen = band;
+                text_pen = r->st.pen_ptext;
+            } else
+                frame_pen = d->imp_DrInfo->dri_Pens[BACKGROUNDPEN];     /* FLAT-SOLID-FILL: the frame is the background */
         } else if (fl && d->imp_DrInfo->dri_Version >= 2)
             frame_pen = d->imp_DrInfo->dri_Pens[BARBLOCKPEN];
+    }
+    if (flat_clone_route(&r->st, which, msg->MethodID)) {
+        cloneenv env;
+        int rc, got;
+        env.h = hk; env.obj = obj; env.d = d; env.reg = reg;
+        got = AttemptSemaphore(&cl_ss);
+        rc = !got ? FLAT_CLONE_FAIL : flat_clone_draw(&r->st, which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
+                             im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, frame_pen, text_pen, clone_render, &env, c2_fill, d->imp_RPort, cl_scratch);
+        if (got)
+            ReleaseSemaphore(&cl_ss);
+        if (rc == FLAT_CLONE_OK) {
+            r->cdraws++;
+            return 1;
+        }
+        if (rc == FLAT_CLONE_FAIL)
+            r->cfall++;                     /* no offscreen bitmap / busy / no DrawInfo: the block glyph below */
     }
     return flat_glyph_draw(&r->st, which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
                            im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, frame_pen, c2_fill, d->imp_RPort);
@@ -153,14 +262,14 @@ static int c2_draw(Object *obj, Msg msg)
 
 ULONG c2_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1") Msg msg)
 {
-    if (c2_draw(obj, msg))
+    if (c2_draw(h, obj, msg, 1))
         return TRUE;
     return ((oldfn_reg)g_r->sw.saved)(h, obj, msg);
 }
 
 ULONG c2_disp_stk(struct Hook *h, Object *obj, Msg msg)
 {
-    if (c2_draw(obj, msg))
+    if (c2_draw(h, obj, msg, 0))
         return TRUE;
     return ((oldfn_stk)g_r->sw.saved)(h, obj, msg);
 }
@@ -551,6 +660,7 @@ static void print_status(void)
     int finst = 0, rinst = 0;
     unsigned long rcalls = 0, rhits = 0, shits = 0, tcalls = 0, thits = 0;
     int tinst = 0;
+    unsigned long cdraws = 0, cfall = 0;
     uint32_t dsum[FLAT_EL_COUNT] = { 0, 0 };
     memset(&copy, 0, sizeof copy);
     Forbid();
@@ -564,6 +674,7 @@ static void print_status(void)
         finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat;
         rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits;
         tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits;
+        cdraws = r->cdraws; cfall = r->cfall;
     }
     Permit();
     if (flat_status_line(&copy, sizeof copy, found, line, sizeof line)) {
@@ -601,6 +712,14 @@ static void print_status(void)
         put_word(line, &n, "text installed=");      put_word(line, &n, tinst ? "yes" : "no");
         put_word(line, &n, " calls=");              put_num(line, &n, tcalls);
         put_word(line, &n, " hits=");               put_num(line, &n, thits);
+        line[n] = 0;
+        PutStr((STRPTR)line);
+        PutStr((STRPTR)"\n");
+    }
+    if (found) {                                    /* FLAT-GLYPH-OS-SHAPES sentinels: draws rising = the clone path ran, fallback = block glyph used */
+        int n = 0;
+        put_word(line, &n, "clone draws=");         put_num(line, &n, cdraws);
+        put_word(line, &n, " fallback=");           put_num(line, &n, cfall);
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
@@ -961,6 +1080,7 @@ int main(void)
     poll_timer tm, pen_tm;
     int marker_live = 0;
     (void)ver;
+    InitSemaphore(&cl_ss);
     if (is_help(args)) {
         PutStr((STRPTR)"amarchy-flat [STATUS]: the flat-UI resident program; prints flat=on|off|absent|held. Ctrl-C unloads it\n");
         return 0;
@@ -1100,6 +1220,9 @@ int main(void)
             PutStr((STRPTR)"amarchy-flat: a hook is still chained on top of ours, not unloading\n");
             continue;
         }
+        ObtainSemaphore(&cl_ss);
+        clone_free();
+        ReleaseSemaphore(&cl_ss);
         dim_release(r);
         pt_stop(&pen_tm);
         pens_sync(r, 1);                                /* unloading: give the icon pens back */

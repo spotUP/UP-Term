@@ -1,4 +1,5 @@
 /* amarchy-flat glyph geometry: see flat_glyph.h. */
+#include <string.h>
 #include "flat_glyph.h"
 
 typedef struct plan {
@@ -124,16 +125,108 @@ int flat_glyph_state(unsigned long ids)
     }
 }
 
+
+/* Both entry points and the clone path take their roles from here: one definition of "glyph pen" and "box pen". */
+void flat_glyph_roles(unsigned long which, int state, int *glyph_role, int *box_role)
+{
+    int fg = state == FLAT_G_SELECTED ? FLAT_ROLE_BACK : state == FLAT_G_INACTIVE ? FLAT_ROLE_LINE : FLAT_ROLE_TEXT;
+    int bg = state == FLAT_G_SELECTED ? FLAT_ROLE_TEXT : FLAT_ROLE_BACK;
+    if (state != FLAT_G_SELECTED && flat_glyph_window_gadget(which))
+        bg = FLAT_ROLE_FRAME;           /* the gadget box takes the frame's colour: only the glyph lines show */
+    *glyph_role = fg;
+    *box_role = bg;
+}
+
+int flat_glyph_window_gadget(unsigned long which)
+{
+    return which == FLAT_W_CLOSE || which == FLAT_W_DEPTH || which == FLAT_W_ZOOM || which == FLAT_W_SIZE || which == FLAT_W_ICONIFY ||
+           which == FLAT_W_LEFT || which == FLAT_W_UP || which == FLAT_W_RIGHT || which == FLAT_W_DOWN;
+}
+
+int flat_glyph_on_band(unsigned long which)
+{
+    return which == FLAT_W_CLOSE || which == FLAT_W_DEPTH || which == FLAT_W_ZOOM || which == FLAT_W_ICONIFY;
+}
+
+int flat_clone_route(const flat_state *s, unsigned long which, unsigned long method)
+{
+    return s && s->enabled && !s->held && method == FLAT_IM_DRAW && flat_glyph_window_gadget(which);
+}
+
+/* ---- FLAT-GLYPH-OS-SHAPES: the clone. The system's own image is drawn offscreen with marker pens; this is the pure part. */
+int flat_clone_map(const uint8_t *grid, int w, int h, uint8_t *out)
+{
+    int x, y, n = 0, i, best = 0, cnt[FLAT_CLONE_MARKS + 1];
+    int bgm;
+    if (!grid || !out || w < 3 || h < 3)
+        return -1;
+    for (i = 0; i <= FLAT_CLONE_MARKS; i++)
+        cnt[i] = 0;
+    for (y = 1; y < h - 1; y++)
+        for (x = 1; x < w - 1; x++)
+            if (grid[y * w + x] <= FLAT_CLONE_MARKS)
+                cnt[grid[y * w + x]]++;
+    bgm = FLAT_CLONE_BACK;
+    for (i = 0; i <= FLAT_CLONE_MARKS; i++)     /* the pen that fills most of the inside is the gadget's own ground */
+        if (cnt[i] > best) {
+            best = cnt[i];
+            bgm = i;
+        }
+    for (y = 0; y < h; y++)
+        for (x = 0; x < w; x++) {
+            int m = grid[y * w + x], ring = x == 0 || y == 0 || x == w - 1 || y == h - 1;
+            int glyph;
+            if (m == 0 || m == bgm)
+                glyph = 0;                       /* untouched or ground */
+            else if (ring && (m == FLAT_CLONE_SHINE || m == FLAT_CLONE_SHADOW || m == FLAT_CLONE_BACK))
+                glyph = 0;                       /* the bevel ring */
+            else
+                glyph = 1;
+            out[y * w + x] = (uint8_t)glyph;
+            n += glyph;
+        }
+    return n;
+}
+
+int flat_clone_pen(const flat_state *s, int role, int frame_pen)
+{
+    return role == FLAT_ROLE_FRAME && frame_pen >= 0 ? frame_pen : flat_glyph_pen(s, role);
+}
+
+int flat_clone_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
+                    int w, int h, int frame_pen, int text_pen, flat_render_fn render, void *rctx, flat_fill_fn fill, void *fctx, uint8_t *scratch)
+{
+    uint8_t *grid = scratch, *map = scratch + FLAT_CLONE_MAX * FLAT_CLONE_MAX;
+    int state, grole, brole, gpen, bpen, x, y;
+    if (!fill || !render || !scratch || !flat_clone_route(s, which, method) ||
+        w < FLAT_GLYPH_MIN_SIZE || h < FLAT_GLYPH_MIN_SIZE || w > FLAT_CLONE_MAX || h > FLAT_CLONE_MAX)
+        return FLAT_CLONE_NO;
+    state = flat_glyph_state(ids);
+    memset(grid, 0, (size_t)(w * h));
+    if (!render(rctx, ids, grid, w, h) || flat_clone_map(grid, w, h, map) < 0)
+        return FLAT_CLONE_FAIL;
+    flat_glyph_roles(which, state, &grole, &brole);
+    gpen = grole == FLAT_ROLE_TEXT && text_pen >= 0 ? text_pen : flat_clone_pen(s, grole, frame_pen);
+    bpen = flat_clone_pen(s, brole, frame_pen);
+    fill(fctx, ox, oy, ox + w - 1, oy + h - 1, bpen);
+    for (y = 0; y < h; y++)
+        for (x = 0; x < w; x++)
+            if (map[y * w + x]) {
+                int x1 = x;
+                while (x1 + 1 < w && map[y * w + x1 + 1])
+                    x1++;
+                fill(fctx, ox + x, oy + y, ox + x1, oy + y, gpen);
+                x = x1;
+            }
+    return FLAT_CLONE_OK;
+}
+
 /* Both entry points run the same generator; g carries either the array or the fill callback. */
 static int plan_run(plan *g, unsigned long which, int w, int h, int state)
 {
     int i;
     g->n = 0; g->w = w; g->h = h;
-    g->fg = state == FLAT_G_SELECTED ? FLAT_ROLE_BACK : state == FLAT_G_INACTIVE ? FLAT_ROLE_LINE : FLAT_ROLE_TEXT;
-    g->bg = state == FLAT_G_SELECTED ? FLAT_ROLE_TEXT : FLAT_ROLE_BACK;
-    if (state != FLAT_G_SELECTED && (which == FLAT_W_CLOSE || which == FLAT_W_DEPTH || which == FLAT_W_ZOOM ||
-                                     which == FLAT_W_SIZE || which == FLAT_W_ICONIFY))
-        g->bg = FLAT_ROLE_FRAME;        /* the gadget box takes the frame's colour: only the glyph lines show */
+    flat_glyph_roles(which, state, &g->fg, &g->bg);
     i = imax(1, imin(w, h) / 4);
     g->ix0 = i; g->iy0 = i; g->ix1 = w - 1 - i; g->iy1 = h - 1 - i;
     put(g, 0, 0, w - 1, h - 1, g->bg);

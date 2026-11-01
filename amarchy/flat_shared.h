@@ -45,6 +45,7 @@ typedef struct flatshared {
     ULONG ghits;                /* ghost fills replaced by the solid dim fill (the sentinel) */
     ULONG ttitle;               /* window titles redrawn by FLAT-TITLE-ACCENT (the sentinel) */
     ULONG tcalls, thits;        /* every patched Text call / every pressed label recoloured (the sentinels) */
+    ULONG cdraws, cfall;        /* FLAT-GLYPH-OS-SHAPES sentinels: gadgets drawn by cloning the system image / clone attempts that fell back to the block glyph */
     /* the icon pens are no longer here: the shared holder record "Amarchy.IconPens" owns them (iconpen_dos.h, F14) */
 } flatshared;
 
