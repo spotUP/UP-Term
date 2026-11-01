@@ -49,7 +49,7 @@ def vsh(cmd):
 
 def main():
     shutil.copyfile(ROOT / 'build/amiga/vsh', paths.RIG / 'vtc/vsh')
-    c.run('Assign V2A: REMOVE')
+    c.run('Assign V2A: RAM:v2/sub REMOVE')
     c.run('Delete RAM:v2 RAM:v2.out ALL QUIET')
     c.run('MakeDir RAM:v2 RAM:v2/sub RAM:v2/RAM')
     c.run('MakeLink RAM:v2/link RAM:v2/sub FORCE')
@@ -84,7 +84,7 @@ def main():
         rc, out = vsh('cd RAM:v2 ; echo ./s*')
         check(out.strip() == './sub', 'a glob below ./ (./s* in RAM:v2)', out)
     finally:
-        c.run('Assign V2A: REMOVE')
+        c.run('Assign V2A: RAM:v2/sub REMOVE')
         c.run('Delete RAM:v2 RAM:v2.out ALL QUIET')
     print('vshpath_rig: passed %d of %d' % (passed, total))
     return 0 if passed == total else 1

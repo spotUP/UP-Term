@@ -1012,7 +1012,7 @@ def uhc_catalogue():
     c.run('Assign UHC: SYS:UHC', 20)
     for f in (PKG_UHC, PKG_UHC + '.desc'):
         ami.put(os.path.join(d, f), 'SYS:UHC/Packages/' + f)
-    return lambda: (c.run('Assign UHC: REMOVE', 20), c.run('Delete >NIL: SYS:UHC ALL QUIET', 30))
+    return lambda: (c.run('Assign UHC: SYS:UHC REMOVE', 20), c.run('Delete >NIL: SYS:UHC ALL QUIET', 30))
 
 
 def tag_problems(rows, feed, uhc, windowed=False):
