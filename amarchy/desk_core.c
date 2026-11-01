@@ -279,14 +279,55 @@ long desk_palette(const gtheme *t, int ncolors, const unsigned char pens[DK_SLOT
     return palette_fill(ncolors, pens, (const unsigned short (*)[3])rgb16, out, cap);
 }
 
-long desk_palette_live(const unsigned short *rgb4, int ncolors, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap)
+/* FLAT-PEN5-MAGENTA: the screen pen a palette.prefs ColorSpec entry sets. IPrefs (3.2, rig 11 depth 8, measured) puts entries 0-3 on
+ * pens 0-3 and entries 4-7 on the LAST four pens, 2^depth - 8 + entry; at depth 3 that is the entry itself, at depth 2 there is none. */
+#define PAL_ENTRIES 8
+int desk_palette_pen(int entry, int depth)
+{
+    int n;
+    if (entry < 0 || entry >= PAL_ENTRIES || depth < 1)
+        return -1;
+    n = 1 << (depth > 8 ? 8 : depth);
+    if (entry < 4)
+        return entry < n ? entry : -1;
+    return n >= PAL_ENTRIES ? n - PAL_ENTRIES + entry : -1;
+}
+
+int desk_palette_entry_of(int pen, int depth)
+{
+    int e;
+    for (e = 0; e < PAL_ENTRIES; e++)
+        if (desk_palette_pen(e, depth) == pen)
+            return e;
+    return -1;
+}
+
+int desk_live_role_pens(int depth, int out[4])
+{
+    int p, n = 0, have = 1 << (depth > 8 ? 8 : depth < 1 ? 1 : depth);
+    for (p = 0; p < DK_ROLES && p < have; p++)
+        if (desk_palette_entry_of(p, depth) < 0 && n < 4)
+            out[n++] = p;
+    return n;
+}
+
+uc_u32 desk_pen_colour(const gtheme *t, int pen, int own_backdrop)
+{
+    if (own_backdrop && pen == desk_backdrop_pen())
+        return desk_darker(t);
+    return desk_role(t, pen);
+}
+
+long desk_palette_live(const unsigned short *rgb4, int nlive, int depth, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap)
 {
     unsigned short rgb16[8][3];
-    int i;
-    if ((ncolors != 4 && ncolors != 8) || !rgb4)
+    int i, ncolors = desk_palette_pen(4, depth) >= 0 ? 8 : 4;
+    if (!rgb4 || nlive <= 0)
         return 0;
     for (i = 0; i < ncolors; i++) {
-        unsigned r = (rgb4[i] >> 8) & 15, g = (rgb4[i] >> 4) & 15, b = rgb4[i] & 15;
+        int p = desk_palette_pen(i, depth);
+        unsigned v = p >= 0 && p < nlive ? rgb4[p] : 0;
+        unsigned r = (v >> 8) & 15, g = (v >> 4) & 15, b = v & 15;
         rgb16[i][0] = (unsigned short)(r * 0x1111);
         rgb16[i][1] = (unsigned short)(g * 0x1111);
         rgb16[i][2] = (unsigned short)(b * 0x1111);
@@ -326,42 +367,62 @@ int desk_backdrop_pen(void)
     return p.backdrop;
 }
 
-/* the palette entry of a pen in a palette.prefs: its offset in cur, -1 when none */
-static long palette_entry(const unsigned char *cur, long curlen, int pen)
+/* the ColorSpec of a pen in a palette.prefs (entry desk_palette_entry_of(pen, depth)): its offset in cur, -1 when none */
+static long palette_entry(const unsigned char *cur, long curlen, int pen, int depth)
 {
     long pos = DK_HDR, body, size, e;
+    int want = desk_palette_entry_of(pen, depth);
     char id[4];
-    if (!cur || !is_prefs(cur, curlen))
+    if (want < 0 || !cur || !is_prefs(cur, curlen))
         return -1;
     while (next_chunk(cur, curlen, &pos, id, &body, &size))
         if (!memcmp(id, "PALT", 4) && size >= PAL_COLORS) {
             for (e = body + PAL_COLORS; e + 8 <= body + size && get16(cur + e) != 0xffff; e += 8)
-                if (get16(cur + e) == (unsigned)pen)
+                if (get16(cur + e) == (unsigned)want)
                     return e;
             return -1;
         }
     return -1;
 }
 
-/* the colour (0xRRGGBB, the high byte of each 16-bit channel) of a pen in a palette.prefs, -1 when it has none */
-long desk_palette_rgb(const unsigned char *cur, long curlen, int pen)
+static void palette_put_rgb(unsigned char *e, uc_u32 c)
 {
-    long e = palette_entry(cur, curlen, pen);
+    put16(e + 2, wide(c, 16));
+    put16(e + 4, wide(c, 8));
+    put16(e + 6, wide(c, 0));
+}
+
+/* the colour (0xRRGGBB, the high byte of each 16-bit channel) of a pen in a palette.prefs, -1 when it has none */
+long desk_palette_rgb(const unsigned char *cur, long curlen, int pen, int depth)
+{
+    long e = palette_entry(cur, curlen, pen, depth);
     if (e < 0)
         return -1;
     return ((long)cur[e + 2] << 16) | ((long)cur[e + 4] << 8) | (long)cur[e + 6];
 }
 
 /* cur with the colour of one pen replaced; the pen map and the other colours stay. 0 when cur has no such entry or does not fit out. */
-long desk_palette_set_rgb(const unsigned char *cur, long curlen, int pen, uc_u32 c, unsigned char *out, long cap)
+long desk_palette_set_rgb(const unsigned char *cur, long curlen, int pen, int depth, uc_u32 c, unsigned char *out, long cap)
 {
-    long e = palette_entry(cur, curlen, pen);
+    long e = palette_entry(cur, curlen, pen, depth);
     if (e < 0 || curlen > cap)
         return 0;
     memcpy(out, cur, (size_t)curlen);
-    put16(out + e + 2, wide(c, 16));
-    put16(out + e + 4, wide(c, 8));
-    put16(out + e + 6, wide(c, 0));
+    palette_put_rgb(out + e, c);
+    return curlen;
+}
+
+long desk_palette_theme(const unsigned char *cur, long curlen, const gtheme *t, int depth, int own_backdrop, unsigned char *out, long cap)
+{
+    int p;
+    if (palette_entry(cur, curlen, 0, depth) < 0 || curlen > cap)
+        return 0;
+    memcpy(out, cur, (size_t)curlen);
+    for (p = 0; p < DK_ROLES; p++) {
+        long e = palette_entry(out, curlen, p, depth);
+        if (e >= 0)
+            palette_put_rgb(out + e, desk_pen_colour(t, p, own_backdrop));
+    }
     return curlen;
 }
 

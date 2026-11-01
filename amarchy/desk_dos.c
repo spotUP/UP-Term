@@ -335,6 +335,9 @@ static long dk_dopus_send(const char *port, const char *line, char *result, int 
     return rexx_send(port, line, result, cap);
 }
 
+static void dk_live_pens(const gtheme *th, int own);
+static long dk_palette_base(int restore, const unsigned char pens[DK_SLOTS], int depth, unsigned char *buf, long cap);
+
 static int dk_apply(const gtheme *th, char *why, int cap)
 {
     static unsigned char buf[DK_BUF], prev[DK_BUF], big[8192];
@@ -379,13 +382,20 @@ static int dk_apply(const gtheme *th, char *why, int cap)
     desk_dos_last_mask = mask;
     if (mask & (1u << DT_PALETTE)) {
         unsigned char pens[DK_SLOTS];
+        int own = flat_pens && !((amconf_desk_mask(&ap) >> DT_WBPATTERN) & 1);
         desk_pens_for(flat_pens, pens);
-        len = desk_palette(th, depth >= 3 ? 8 : 4, pens, buf, sizeof buf);
+        /* FLAT-PEN5-MAGENTA: the theme colours on the entries that reach the role pens at this depth; on a deep screen entries 4-7
+         * land on the last four pens, so those keep the user's colours and pens 4-7 are set live below */
+        len = dk_palette_base(0, pens, depth, prev, sizeof prev);
+        len = len > 0 ? desk_palette_theme(prev, len, th, depth, own, buf, sizeof buf) : 0;
+        if (len <= 0)
+            len = desk_palette(th, depth >= 3 ? 8 : 4, pens, buf, sizeof buf);
         ok &= dk_put("Palette", DK_WORK "/palette.prefs", buf, len);
         /* IPrefs resets Workbench for the palette: the other editors run only after it finished (SYS:Prefs/Pointer
          * raised a Program Error requester when started under the running reset) */
         if (reset)
             dk_wait_reset(wb_before, flat_pens);
+        dk_live_pens(th, own);
         desk_dos_dopus_sends++;
         dopus_theme_send(th, dk_dopus_send, 0);
     }
@@ -536,61 +546,126 @@ static void dk_flat_backdrop_take(const unsigned char *pal, long pallen)
     dk_write(DK_FLAT_TAKEN, (const unsigned char *)"1", 1);
 }
 
-static void dk_flat_pens(const gtheme *th)
+/* FLAT-PEN5-MAGENTA: the role pens no palette.prefs entry reaches at the Workbench depth (desk_live_role_pens: 4-7 on a screen deeper
+ * than 3, where IPrefs puts entries 4-7 on the last four pens) get their colour live, after IPrefs applied the file. th = the theme:
+ * the colours those pens had are kept first (once, DK_FLAT_LIVE); th = 0 puts the kept colours back. amarchy-flat sets the same pens on
+ * every new Workbench screen while flat is on (pens_sync). */
+#define DK_FLAT_LIVE DK_REVERT "/flatlive.rgb"
+unsigned long desk_dos_live_pens;
+static void dk_live_pens(const gtheme *th, int own)
 {
-    static unsigned char cur[DK_BUF], buf[DK_BUF], out[DK_BUF], prev[DK_BUF];
+    struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
+    struct GfxBase *GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
+    struct Screen *scr = IntuitionBase && GfxBase ? LockPubScreen((STRPTR)"Workbench") : 0;
+    unsigned char sv[12];
+    int pens[4], n = 0, i;
+    if (scr) {
+        n = desk_live_role_pens(scr->RastPort.BitMap->Depth, pens);
+        if (!th && dk_read(DK_FLAT_LIVE, sv, sizeof sv) != 3L * n)
+            n = 0;
+        if (th && n > 0 && !dk_exists(DK_FLAT_LIVE)) {
+            for (i = 0; i < n; i++) {
+                ULONG t[3] = {0, 0, 0};
+                GetRGB32(scr->ViewPort.ColorMap, (ULONG)pens[i], 1, t);
+                sv[3 * i] = (unsigned char)(t[0] >> 24);
+                sv[3 * i + 1] = (unsigned char)(t[1] >> 24);
+                sv[3 * i + 2] = (unsigned char)(t[2] >> 24);
+            }
+            UnLock(CreateDir((STRPTR)DK_REVERT));
+            dk_write(DK_FLAT_LIVE, sv, 3L * n);
+        }
+        for (i = 0; i < n; i++) {
+            uc_u32 c = th ? desk_pen_colour(th, pens[i], own)
+                          : ((uc_u32)sv[3 * i] << 16) | ((uc_u32)sv[3 * i + 1] << 8) | sv[3 * i + 2];
+            SetRGB32(&scr->ViewPort, (ULONG)pens[i], ((c >> 16) & 255) * 0x01010101UL, ((c >> 8) & 255) * 0x01010101UL,
+                     (c & 255) * 0x01010101UL);
+        }
+        if (n > 0)
+            desk_dos_live_pens++;
+        UnlockPubScreen(0, scr);
+    }
+    if (!th)
+        DeleteFile((STRPTR)DK_FLAT_LIVE);
+    if (GfxBase)
+        CloseLibrary((struct Library *)GfxBase);
+    if (IntuitionBase)
+        CloseLibrary((struct Library *)IntuitionBase);
+}
+
+/* the palette.prefs to colour, with the pen map pens: the kept user palette (restore), else the file in force, else a snapshot of the
+ * live screen (each entry from the pen IPrefs puts it on, desk_palette_live). Returns its length, 0 when none. */
+static long dk_palette_base(int restore, const unsigned char pens[DK_SLOTS], int depth, unsigned char *buf, long cap)
+{
+    static unsigned char cur[DK_BUF];
+    static unsigned short rgb4[256];
+    long len = restore ? dk_read(DK_FLAT_PAL, cur, sizeof cur) : -1;
+    int i, n = 0;
+    if (len < 0)
+        len = dk_read("ENV:Sys/Palette.prefs", cur, sizeof cur);
+    if (len < 0)
+        len = dk_read("ENVARC:Sys/Palette.prefs", cur, sizeof cur);
+    len = len > 0 ? desk_palette_pens(cur, len, pens, buf, cap) : 0;
+    if (len > 0)
+        return len;
+    {
+        struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
+        struct GfxBase *GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
+        struct Screen *scr = IntuitionBase && GfxBase ? LockPubScreen((STRPTR)"Workbench") : 0;
+        if (scr) {
+            n = 1 << scr->RastPort.BitMap->Depth;
+            if (n > 256)
+                n = 256;
+            for (i = 0; i < n; i++)
+                rgb4[i] = (unsigned short)GetRGB4(scr->ViewPort.ColorMap, i);
+            UnlockPubScreen(0, scr);
+        }
+        if (GfxBase)
+            CloseLibrary((struct Library *)GfxBase);
+        if (IntuitionBase)
+            CloseLibrary((struct Library *)IntuitionBase);
+    }
+    return desk_palette_live(rgb4, n, depth, pens, buf, cap);
+}
+
+/* FLAT-PENS-LIVE + FLAT-PEN5-MAGENTA. Owner 2026-11-01: with flat on, a theme pick writes the theme colours into the Workbench palette
+ * (palette.prefs, every entry that reaches a role pen, plus the role pens no entry reaches, live), unless the desktop theme's palette
+ * part writes its own; flat off puts the palette in force before flat went on back. Returns 1 when it wrote the theme colours (the
+ * caller then skips wb_pens_apply, whose bg/fg/dim/accent order does not match the flat pen map). */
+static int dk_flat_pens(const gtheme *th)
+{
+    static unsigned char buf[DK_BUF], out[DK_BUF], prev[DK_BUF];
     am_prefs ap;
     unsigned char pens[DK_SLOTS];
     unsigned short live[DK_SLOTS];
     struct Screen *before;
-    int nlive = 0, flat, own, restore, sync;
+    int nlive = 0, flat, own, theme, restore, sync, depth;
     unsigned long idle = 0;
     long len, wlen, plen;
     amconf_load(&ap);
     flat = amconf_desk_flat_pens(&ap);
     own = flat && !((amconf_desk_mask(&ap) >> DT_WBPATTERN) & 1);
+    theme = flat && !((amconf_desk_mask(&ap) >> DT_PALETTE) & 1);
     restore = !flat && dk_exists(DK_FLAT_TAKEN);
     before = dk_wb_screen(live, &nlive);
     if (!before || !dk_palette_editor_ok())
-        return;
+        return 0;
     sync = desk_pens_sync(flat, live, nlive, pens);
-    if (!sync && !own && !restore)
-        return;
+    if (!sync && !own && !theme && !restore)
+        return 0;
     if (!sync)
         desk_pens_for(flat, pens);
-    len = restore ? dk_read(DK_FLAT_PAL, cur, sizeof cur) : -1;
-    if (len < 0)
-        len = dk_read("ENV:Sys/Palette.prefs", cur, sizeof cur);
-    if (len < 0)
-        len = dk_read("ENVARC:Sys/Palette.prefs", cur, sizeof cur);
-    len = len > 0 ? desk_palette_pens(cur, len, pens, buf, sizeof buf) : 0;
-    if (len <= 0) {
-        unsigned short rgb4[8];
-        int i, n = dk_screen_depth() >= 3 ? 8 : 4;
-        struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
-        struct GfxBase *GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
-        struct Screen *scr = IntuitionBase && GfxBase ? LockPubScreen((STRPTR)"Workbench") : 0;
-        for (i = 0; i < 8; i++)
-            rgb4[i] = scr && i < (1 << scr->RastPort.BitMap->Depth) ? (unsigned short)GetRGB4(scr->ViewPort.ColorMap, i) : 0;
-        if (scr)
-            UnlockPubScreen(0, scr);
-        if (GfxBase)
-            CloseLibrary((struct Library *)GfxBase);
-        if (IntuitionBase)
-            CloseLibrary((struct Library *)IntuitionBase);
-        len = desk_palette_live(rgb4, n, pens, buf, sizeof buf);
-    }
+    depth = dk_screen_depth();
+    len = dk_palette_base(restore, pens, depth, buf, sizeof buf);
     UnLock(CreateDir((STRPTR)DK_WORK));
-    if (own && len > 0) {
-        uc_u32 want = desk_darker(th);
+    if ((own || theme) && len > 0) {
         dk_flat_backdrop_take(buf, len);
-        if (desk_palette_rgb(buf, len, desk_backdrop_pen()) != (long)want) {
-            wlen = desk_palette_set_rgb(buf, len, desk_backdrop_pen(), want, out, sizeof out);
-            if (wlen > 0) {
-                memcpy(buf, out, wlen);
-                len = wlen;
+        wlen = theme ? desk_palette_theme(buf, len, th, depth, own, out, sizeof out)
+                     : desk_palette_set_rgb(buf, len, desk_backdrop_pen(), depth, desk_darker(th), out, sizeof out);
+        if (wlen > 0) {
+            if (wlen != len || memcmp(buf, out, wlen))
                 sync = 1;
-            }
+            memcpy(buf, out, wlen);
+            len = wlen;
         }
     }
     if (restore)
@@ -603,8 +678,11 @@ static void dk_flat_pens(const gtheme *th)
             dk_wait_iprefs(idle);
         }
     }
+    if (own || theme)
+        dk_live_pens(th, own);
+    else if (restore)
+        dk_live_pens(0, 0);
     if (own) {
-        int depth = dk_screen_depth();
         plen = dk_read("ENV:Sys/wbpattern.prefs", prev, sizeof prev);
         wlen = desk_wbpattern(th, depth > 3 ? 3 : depth, plen > 0 ? prev : 0, plen > 0 ? plen : 0, out, sizeof out);
         if (wlen > 0 && (wlen != plen || memcmp(out, prev, wlen)))
@@ -619,6 +697,12 @@ static void dk_flat_pens(const gtheme *th)
         }
         DeleteFile((STRPTR)DK_FLAT_TAKEN);
     }
+    if (theme && len > 0) {
+        desk_dos_dopus_sends++;
+        dopus_theme_send(th, dk_dopus_send, 0);
+        return 1;
+    }
+    return 0;
 }
 
 /* AM-ICON-NOBORDER: flat-system-look sets the Workbench icon border to "No Border" (WBNC wbp_Borderless in ENV:Sys/Workbench.prefs) through the
@@ -673,8 +757,8 @@ static void dk_wbborder(void)
 int desk_dos_apply(const gtheme *th, char *why, int cap)
 {
     int r = dk_apply(th, why, cap);
-    if (!(r > 0 && (r & (1 << DT_PALETTE))))
-        dk_flat_pens(th);
+    if (!(r > 0 && (r & (1 << DT_PALETTE))) && dk_flat_pens(th) && r >= 0)
+        r |= 1 << DT_PALETTE;   /* the theme colours are in the palette and DOpus has them: no wb_pens_apply */
     dk_wbborder();
     dk_flat_sync();          /* also when no desk target changed: flipping a flat switch alone must reach the block */
     return r;

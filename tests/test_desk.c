@@ -219,7 +219,7 @@ static void test_desk_flat_pens_live(void)
     CHECK_INT(desk_palette(&t, 8, flat, got, sizeof got), DK_PALETTE_SIZE);
     CHECK(!memcmp(got, out, DK_PALETTE_SIZE));          /* pens = the flat map, every colour byte = the old file */
     CHECK_INT(desk_palette_pens(cur, 10, flat, out, sizeof out), 0);
-    n = desk_palette_live(rgb4, 4, flat, out, sizeof out);
+    n = desk_palette_live(rgb4, 4, 2, flat, out, sizeof out);
     CHECK_INT(n, DK_PALETTE_SIZE);
     CHECK_INT(out[26 + 8 + 144 + 8 * 2 + 5], 0x22);  /* colour 2 green 0x2 -> 0x2222 */
     for (i = 0; i < DK_SLOTS; i++)
@@ -596,19 +596,19 @@ static void test_flat_on_keeps_backdrop_pen_distinct_from_window_background(void
         CHECK(pens[p] != desk_backdrop_pen());
     n = desk_palette(&a, 8, pens, pal, sizeof pal);
     CHECK(n > 0);
-    CHECK_INT(desk_palette_rgb(pal, n, 1) >= 0, 1);
-    m = desk_palette_set_rgb(pal, n, desk_backdrop_pen(), desk_darker(&a), out, sizeof out);
+    CHECK_INT(desk_palette_rgb(pal, n, 1, depth) >= 0, 1);
+    m = desk_palette_set_rgb(pal, n, desk_backdrop_pen(), depth, desk_darker(&a), out, sizeof out);
     CHECK(m > 0);
-    CHECK_INT(desk_palette_rgb(out, m, desk_backdrop_pen()), desk_darker(&a));
-    CHECK(desk_palette_rgb(out, m, desk_backdrop_pen()) != desk_palette_rgb(out, m, pens[DK_BACKGROUND]));
-    m = desk_palette_set_rgb(pal, n, desk_backdrop_pen(), desk_darker(&b), out, sizeof out);
-    CHECK_INT(desk_palette_rgb(out, m, desk_backdrop_pen()), desk_darker(&b));
+    CHECK_INT(desk_palette_rgb(out, m, desk_backdrop_pen(), depth), desk_darker(&a));
+    CHECK(desk_palette_rgb(out, m, desk_backdrop_pen(), depth) != desk_palette_rgb(out, m, pens[DK_BACKGROUND], depth));
+    m = desk_palette_set_rgb(pal, n, desk_backdrop_pen(), depth, desk_darker(&b), out, sizeof out);
+    CHECK_INT(desk_palette_rgb(out, m, desk_backdrop_pen(), depth), desk_darker(&b));
     /* pen 1 (BLOCKPEN, stock icon black) keeps its colour; so do all other pens */
     for (p = 0; p < 8; p++)
         if (p != desk_backdrop_pen())
-            CHECK_INT(desk_palette_rgb(out, m, p), desk_palette_rgb(pal, n, p));
+            CHECK_INT(desk_palette_rgb(out, m, p, depth), desk_palette_rgb(pal, n, p, depth));
     CHECK(desk_darker(&a) != desk_darker(&b));
-    CHECK_INT(desk_palette_rgb(pal, 0, desk_backdrop_pen()), -1);
+    CHECK_INT(desk_palette_rgb(pal, 0, desk_backdrop_pen(), depth), -1);
     CHECK_INT(desk_wbpattern(&a, depth, 0, 0, pat, sizeof pat), 410);
     data = ptrn(pat, 0) + 8 + 24;
     for (p = 0; p < depth; p++)
@@ -616,6 +616,59 @@ static void test_flat_on_keeps_backdrop_pen_distinct_from_window_background(void
             pen |= 1 << p;
     CHECK_INT(pen, desk_backdrop_pen());
     CHECK(pen != pens[DK_BACKGROUND]);
+}
+
+/* FLAT-PEN5-MAGENTA (rig 11, 3.2, depth 8): IPrefs puts palette.prefs entries 4-7 on the last four pens of a deep screen, so a flat pick
+ * that coloured "entry 5" left pen 5 (backdrop, button dim) at the graphics default ff00ff and overwrote pens 252-255. */
+static void test_flat_pick_leaves_pen5_magenta_on_deep_workbench(void)
+{
+    static unsigned char cur[BUF_MAX], out[BUF_MAX];
+    static unsigned short rgb4[256];
+    unsigned char flat[DK_SLOTS];
+    gtheme t;
+    int lp[4], p;
+    long n, m;
+    probe_theme(&t);
+    t.darker_bg = 0x222222UL;
+    desk_pens_flat(flat);
+    /* the one mapping: entries 0-3 -> pens 0-3 at every depth; 4-7 -> 252-255 at depth 8, themselves at depth 3, none at depth 2 */
+    CHECK_INT(desk_palette_pen(5, 8), 253);
+    CHECK_INT(desk_palette_pen(4, 4), 12);
+    CHECK_INT(desk_palette_pen(5, 3), 5);
+    CHECK_INT(desk_palette_pen(5, 2), -1);
+    CHECK_INT(desk_palette_pen(2, 8), 2);
+    CHECK_INT(desk_palette_entry_of(5, 8), -1);
+    CHECK_INT(desk_palette_entry_of(253, 8), 5);
+    CHECK_INT(desk_live_role_pens(8, lp), 4);
+    CHECK(lp[0] == 4 && lp[1] == 5 && lp[2] == 6 && lp[3] == 7);
+    CHECK_INT(desk_live_role_pens(3, lp), 0);
+    CHECK_INT(desk_live_role_pens(2, lp), 0);
+    /* the live snapshot of a depth-8 screen: entry 5 is pen 253 (0x222), not pen 5 (0xf0f) */
+    for (p = 0; p < 256; p++)
+        rgb4[p] = 0x0f0f;
+    rgb4[252] = 0xe44; rgb4[253] = 0x222; rgb4[254] = 0x04d; rgb4[255] = 0xe90;
+    n = desk_palette_live(rgb4, 256, 8, flat, cur, sizeof cur);
+    CHECK_INT(n, DK_PALETTE_SIZE);
+    CHECK_INT(desk_palette_rgb(cur, n, 253, 8), 0x222222L);
+    CHECK_INT(desk_palette_rgb(cur, n, 5, 8), -1);
+    CHECK_INT(desk_palette_set_rgb(cur, n, desk_backdrop_pen(), 8, 0x123456UL, out, sizeof out), 0);
+    /* the flat pick: role pens 0-3 get the theme in the flat map's role order; 252-255 keep the user's colours; 4-7 are live */
+    m = desk_palette_theme(cur, n, &t, 8, 1, out, sizeof out);
+    CHECK_INT(m, n);
+    for (p = 0; p < 4; p++)
+        CHECK_INT(desk_palette_rgb(out, m, p, 8), (long)desk_role(&t, p));
+    CHECK_INT(desk_palette_rgb(out, m, 1, 8), 0x222222L);
+    for (p = 252; p < 256; p++)
+        CHECK_INT(desk_palette_rgb(out, m, p, 8), desk_palette_rgb(cur, n, p, 8));
+    CHECK_INT(desk_pen_colour(&t, desk_backdrop_pen(), 1), 0x222222L);
+    CHECK_INT(desk_pen_colour(&t, 4, 1), (long)t.selection);
+    CHECK_INT(desk_pen_colour(&t, desk_backdrop_pen(), 0), (long)t.muted);
+    /* depth 3: the same pick reaches pens 4-7 through the file, the backdrop pen gets the theme dark */
+    n = desk_palette_live(rgb4, 8, 3, flat, cur, sizeof cur);
+    m = desk_palette_theme(cur, n, &t, 3, 1, out, sizeof out);
+    CHECK_INT(desk_palette_rgb(out, m, desk_backdrop_pen(), 3), 0x222222L);
+    CHECK_INT(desk_palette_rgb(out, m, 4, 3), (long)t.selection);
+    CHECK_INT(desk_palette_theme(cur, 10, &t, 3, 1, out, sizeof out), 0);
 }
 
 static void test_desk_pointer(void)
@@ -994,6 +1047,7 @@ void suite_desk(void)
     test_desk_wbpattern();
     test_desk_wbpattern_no_dots();
     test_flat_on_keeps_backdrop_pen_distinct_from_window_background();
+    test_flat_pick_leaves_pen5_magenta_on_deep_workbench();
     test_desk_pointer();
     test_desk_pointer_gate();
     test_desk_palette_gate();

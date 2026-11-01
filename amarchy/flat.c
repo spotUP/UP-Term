@@ -877,6 +877,17 @@ static void pens_sync(flatshared *r, int quit)
         gt_load(pen_theme_read, 0, ap.val[AM_GTHEME][0] ? ap.val[AM_GTHEME] : GT_DEFAULT, &th);
         ip_colours(&th, rgb);
         ip_holder_obtain(&r->ih, &o, sc, depth, rgb);   /* releases the old ones first */
+        if (amconf_desk_flat_pens(&ap)) {
+            /* FLAT-PEN5-MAGENTA: a new Workbench screen deeper than 3 gets the role pens no palette.prefs entry reaches (4-7: the
+             * button fill, the backdrop) from the theme, the same colours desk_dos.c dk_live_pens sets after a pick */
+            int lp[4], k, n = desk_live_role_pens(sc->BitMap.Depth, lp);
+            int own = !((amconf_desk_mask(&ap) >> DT_WBPATTERN) & 1);
+            for (k = 0; k < n; k++) {
+                uc_u32 c = desk_pen_colour(&th, lp[k], own);
+                SetRGB32(&sc->ViewPort, (ULONG)lp[k], ((c >> 16) & 255) * 0x01010101UL, ((c >> 8) & 255) * 0x01010101UL,
+                         (c & 255) * 0x01010101UL);
+            }
+        }
     }
     UnlockPubScreenList();
 }
