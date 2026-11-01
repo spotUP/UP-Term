@@ -1899,8 +1899,45 @@ static void amiga_text_pen_past_a_4_colour_screen_is_not_drawn_in_the_background
     planar_depth = 0;
 }
 
+/* Paste: a line break in the clipboard reaches the program as a Return. A lone LF was dropped, so a multi-line
+ * paste arrived as one joined line; CR LF is one Return, a lone CR (old Mac text) is one too. */
+extern const char *stub_clip_text;
+static char pst_keys[16];
+static int pst_n;
+static void pst_pasted(void *u, const vt_u8 *b, int n, long key)
+{
+    (void)u; (void)b; (void)n;
+    if (pst_n < (int)sizeof pst_keys)
+        pst_keys[pst_n++] = key == VT_KEY_RETURN ? 'R' : 'c';
+}
+static const vtwin_host phost = { 0, dh_input, 0, pst_pasted, dh_raw, 0, 0, 0, 0, 0 };
+
+static void pst_run(const char *clip, const char *want)
+{
+    pst_n = 0;
+    stub_clip_text = clip;
+    vtwin_paste(&dw);
+    pst_keys[pst_n] = 0;
+    CHECK_STR(pst_keys, want);
+}
+
+static void a_pasted_line_break_reaches_the_program_as_one_return(void)
+{
+    drag_open();
+    dw.host = &phost;
+    pst_run("a\nb", "cRc");        /* LF */
+    pst_run("a\r\nb", "cRc");      /* CR LF: one Return, not two */
+    pst_run("a\rb", "cRc");        /* lone CR */
+    pst_run("a\n\nb", "cRRc");     /* a blank line stays */
+    pst_run("a\r\n\r\nb", "cRRc");
+    pst_run("a\033b", "cc");       /* controls are still dropped */
+    stub_clip_text = 0;
+    drag_close();
+}
+
 int main(void)
 {
+    a_pasted_line_break_reaches_the_program_as_one_return();
     pen_matches_on_a_prepared_palette_are_the_bare_palettes_picks();
     a_second_window_on_the_same_palette_matches_no_colour_again();
     a_kitty_image_draws_its_pixels_on_the_canvas();

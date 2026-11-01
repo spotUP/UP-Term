@@ -1326,8 +1326,16 @@ static void paste(vtwin *w)
     }
     for (i = 0; i < n;) {
         unsigned long ch = cf_next(text, n, &i);
-        long key = ch == '\n' ? VT_KEY_RETURN : (long)ch;
-        if (ch == '\n' || !cf_paste_keeps(ch) || !vti_paste_keeps(w->t, ch))
+        long key = (long)ch;
+        if (ch == '\r' || ch == '\n') {
+            /* a line break is one Return whichever way the text spells it: LF, CR LF, or a lone CR (old Mac) */
+            if (ch == '\r' && i < n && text[i] == '\n')
+                i++;
+            key = VT_KEY_RETURN;
+        } else if (!cf_paste_keeps(ch)) {
+            continue;
+        }
+        if (!vti_paste_keeps(w->t, ch))
             continue; /* controls never; inside ?2004 nothing that ends the brackets early */
         k = encode_key(w, !raw, key, 0, out);
         w->host->pasted(w->user, out, k, key == VT_KEY_RETURN ? key : 0);
