@@ -7,7 +7,6 @@
 - Rig: NOT DONE. Rig 8 was already running for another session (title "Amarchy s28: backdrop vs window colour", started 23:31:56); not touched.
 - Open: with no Workbench.prefs file at all, flat on does nothing (the core needs the file to keep the other fields); the rig check must show whether 3.2 always has one.
 
-<<<<<<< HEAD
 ## 3.2 measurement and no-file fix (rig 9, fresh 3.2, 2026-11-01)
 
 - Stock 3.2: ENV:Sys has only pointer.prefs and screenmode.prefs; ENVARC:Sys has WBConfig.prefs (54 bytes, no WBNC chunk) and no Workbench.prefs. So the file does not exist by default.
@@ -20,9 +19,8 @@
 - Fix: desk_wbborder() (amarchy/desk_core.c) with no file writes that stock file with the border word 1 and keeps DESK_WB_CREATED in wbborder.prev; off writes the stock file with border 0 through USE, then dk_wbborder() deletes ENV:Sys/Workbench.prefs and the prev file, only while the file is byte-identical to what we wrote (else forgotten, left alone). The rect is not changed by us.
 - Host: tests/test_desk.c test_desk_wbborder_absent; `make test ONLY=desk` 1790 checks 0 failed; with the create branch reverted 5 failed.
 - Rig 9: flat on (theme pick, entry point desk_dos_apply) with the file absent -> ENV:Sys/Workbench.prefs 84 bytes, FORM/WBNC, border word 0001, wbborder.prev = "2", no ENVARC copy. flat off -> ENV:Sys/Workbench.prefs gone, T:amarchy-revert empty. Frame pixels: NOT verified (the theme pick repaints the whole screen; the whole-screen diff cannot isolate the icon frame). Screenshot: ~/Desktop/upterm-shots/s28-icon-noborder-rig9.png (not viewed).
-=======
-## Rig 8 result (3.2, 2026-11-01, branch s28-verify-rig8)
+
+## Rig 8 result (3.2, 2026-11-01, branch s28-verify-rig8; superseded by the rig 9 measurement above)
 Flat on via theme pick: amarchy-flat STATUS flat=on. ENV:Sys before: screenmode.prefs, Pointer.prefs; after: + Palette.prefs, WBConfig.prefs. ENVARC:Sys: screenmode.prefs, WBConfig.prefs (+ def_*.info). Workbench.prefs exists in NEITHER ENV:Sys nor ENVARC:Sys, before or after. WBConfig.prefs (54 bytes, FORM PREF / PRHD / WBCF chunk) is a different chunk, no WBNC.
 So wbp_Borderless could not be read back and the icon border could not be checked: dk_wbborder does nothing without the file, as predicted. FAIL (not verifiable on this tree); no fix invented. Open for owner: does 3.2 create Workbench.prefs only after the stock Workbench editor saves once?
 Screenshot: ~/Desktop/upterm-shots/s28-icon-noborder-rig8.png (plain screen copy, shows no checked evidence).
->>>>>>> dd5f4a92 (s28 rig 8 evidence: round buttons pass with emulated flat pens; icon border not verifiable (no Workbench.prefs on 3.2 tree))
