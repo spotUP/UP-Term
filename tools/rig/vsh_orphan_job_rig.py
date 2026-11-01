@@ -24,13 +24,31 @@ Fifth test (kill, VSH-JOB-SIGNALS): `sh -c "VTC:ixsigexit sleep &"` leaves an ix
 orphaned job; another shell sends it `kill -TERM $!` (the pid the first shell wrote). The job must end
 within 10 s (the sleeper's own sleep is 30 s) and the system must still answer. Before the orphan fix the
 runner of such a job waited for ever on its dead parent's port: the kill left "vsh job" behind and the
-rig froze (s21). Needs build/amiga/ixsigexit (copied to VTC:ixsigexit here).
+rig froze (s21). Needs build/amiga/ixsigexit (copied to VTC:ixsigexit here). After the orphan fix the
+job still hung in 1 of 2 tries: its error stream was the shell's own handle, which the caller (wasabid's
+exec file) Closes when the shell returns, and the killed sleeper writes "Terminated" through it. Other
+shells allocate in between (churn), which reuses that freed handle; KILL_ROUNDS rounds (default 4).
 
-  UPTERM_RIG=<n> vsh_orphan_job_rig.py"""
+Sixth test (order, VSH-JOB-SIGNALS follow-up): a background job has its own handle on the shell's file
+output (separate offset), so the shell moves its handle on to the job's end when it reaps it.
+`echo one; echo two & wait; echo three` into a file (the AmigaDOS `>T:file` of the exec) must read one,
+two, three; also with `wait $!` and with an external command (C:Type) as the job. Fails as "one three"
+when the reap does not move the shell's handle on.
+
+  UPTERM_RIG=<n> vsh_orphan_job_rig.py      ONLY=kill | ONLY=order: one test
+  VSH=<host path>: the vsh under test (default build/amiga/vsh), copied to VTC:vshtest; the orphaning
+  and the order shells run it (a gate refreshes GG:bin/sh from the build, so an older vsh goes there)"""
 import os, shutil, subprocess, sys, time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import paths
+
+VSH = os.environ.get('VSH') or os.path.join(HERE, '..', '..', 'build', 'amiga', 'vsh')
+SH = 'VTC:vshtest'
+
+
+def put_vsh():
+    shutil.copyfile(VSH, str(paths.RIG / 'vtc' / 'vshtest'))
 
 
 def ami(*a):
@@ -88,9 +106,19 @@ def code_leak():
 
 def kill_orphan():
     shutil.copyfile(os.path.join(HERE, '..', '..', 'build', 'amiga', 'ixsigexit'), str(paths.RIG / 'vtc' / 'ixsigexit'))
+    for r in range(int(os.environ.get('KILL_ROUNDS', '4'))):
+        if not kill_round(r):
+            return False
+    return True
+
+
+def kill_round(r):
     ami('exec', 'Delete RAM:kpid QUIET', '10')
-    ami('exec', 'GG:bin/sh -c "VTC:ixsigexit sleep & echo $! >RAM:kpid"', '20')
-    time.sleep(2)
+    ami('exec', SH + ' -c "VTC:ixsigexit sleep & echo $! >RAM:kpid"', '20')
+    # churn: other shells allocate and free, reusing whatever the exited shell's caller freed
+    for i in range(4):
+        ami('exec', 'GG:bin/sh -c "Echo churn%d >RAM:orphan5.out ; Type RAM:orphan5.out >NIL:"' % i, '20')
+    time.sleep(1)
     running = len(job_tasks())
     pid = ami('exec', 'Type RAM:kpid', '10').strip().splitlines()
     pid = pid[-1].strip() if pid else ''
@@ -105,14 +133,34 @@ def kill_orphan():
     ami('exec', 'GG:bin/sh -c "Echo alive5 >RAM:orphan5.out"', '20')
     alive = 'alive5' in ami('exec', 'Type RAM:orphan5.out', '10')
     ok = running == 1 and not left and alive
-    print('[%s] killed orphaned job: running before kill=%d, tasks left 10 s after kill -TERM=%d, system answers=%s'
-          % ('OK' if ok else 'ERROR', running, len(left), alive))
+    print('[%s] killed orphaned job, round %d: running before kill=%d, tasks left 10 s after kill -TERM=%d, system answers=%s'
+          % ('OK' if ok else 'ERROR', r + 1, running, len(left), alive))
+    return ok
+
+
+def order():
+    ok = True
+    ami('exec', 'Echo two >T:vshtwo.txt', '10')
+    for line in ('echo one; echo two & wait; echo three',
+                 'echo one; echo two & wait $!; echo three',
+                 'echo one; C:Type T:vshtwo.txt & wait; echo three'):
+        ami('exec', 'Delete T:vshorder.out QUIET', '10')
+        ami('exec', '%s >T:vshorder.out -c "%s"' % (SH, line), '20')
+        got = [l.strip() for l in ami('exec', 'Type T:vshorder.out', '10').splitlines() if l.strip() and not l.startswith('rc ')]
+        good = got == ['one', 'two', 'three']
+        ok = ok and good
+        print('[%s] background job output kept after the reap: `%s` >T:file gave %s'
+              % ('OK' if good else 'ERROR', line, ' '.join(got)))
+    ami('exec', 'Delete T:vshorder.out T:vshtwo.txt QUIET', '10')
     return ok
 
 
 def main():
+    put_vsh()
     if os.environ.get('ONLY') == 'kill':
         return 0 if kill_orphan() else 1
+    if os.environ.get('ONLY') == 'order':
+        return 0 if order() else 1
     ami('exec', 'Delete RAM:orphan.out QUIET', '10')
     ami('exec', 'GG:bin/sh -c "Echo ok >RAM:orphan.out &"', '20')
     end = time.time() + 20
@@ -151,8 +199,9 @@ def main():
     print('[%s] orphaned subshell: command ran=%s, tasks left=%d, system answers=%s'
           % ('OK' if ok3 else 'ERROR', 'sub' in got3, len(left3), alive3))
     ok4 = code_leak()
+    ok6 = order()
     ok5 = kill_orphan()
-    return 0 if ok and ok2 and ok3 and ok4 and ok5 else 1
+    return 0 if ok and ok2 and ok3 and ok4 and ok5 and ok6 else 1
 
 
 sys.exit(main())

@@ -114,6 +114,11 @@ typedef struct job {
     int tios_saved;         /* ... if the job had set one (S8) */
     int tios_restored;      /* fg put it back: the prompt takes the Amiga mode again */
     struct job *next;       /* the runners not yet reaped (live_jobs) */
+    /* bg_own_stream: the job's own handle on the shell's out (0) and err (1), the shell's handle it
+     * copies, and where the job's handle ended when it was closed (-1: not yet). The shell, when it
+     * reaps the job, moves its handle on to that end (bg_reaped): `echo a & wait; echo b` >file */
+    BPTR bg_dup[2], bg_src[2];
+    LONG bg_end[2];
 } job;
 
 /* The runners the shell has started and not reaped. A runner is a process running this program's
@@ -434,6 +439,32 @@ static void close_stream(BPTR fh)
     int i;
     if (!fh)
         return;
+    {
+        /* a job's own handle on a shell stream (bg_own_stream): where it ended, for the shell's
+         * reap (bg_reaped); a shell stream a job copied: gone, nothing to move on at the reap */
+        job *j, *dup = 0;
+        int k, dk = 0;
+        Forbid();
+        for (j = live_jobs; j; j = j->next)
+            for (k = 0; k < 2; k++) {
+                if (j->bg_src[k] == fh)
+                    j->bg_src[k] = 0;
+                if (j->bg_dup[k] == fh) {
+                    j->bg_dup[k] = 0;
+                    dup = j;
+                    dk = k;
+                }
+            }
+        Permit();
+        if (dup) {
+            LONG end;
+            Flush(fh);
+            end = Seek(fh, 0, OFFSET_CURRENT);
+            Forbid();
+            dup->bg_end[dk] = end;
+            Permit();
+        }
+    }
     Forbid();
     for (i = 0; i < 8; i++)
         if (rl_kind[i].fh == fh)
@@ -658,7 +689,7 @@ static BPTR own_handle(BPTR shared, LONG mode)
  * ACTION_COPY_DIR_FH): NIL:. A second writer on a Queue-Handler pipe has no defined end of file and the
  * pipe's owner closes it when the shell ends; losing a background job's output there is safe, writing
  * through a freed handle is not. Never 0 unless NIL: cannot open. */
-static BPTR bg_own_stream(BPTR shared)
+static BPTR bg_own_stream(job *j, int k, BPTR shared)
 {
     BPTR lock, fh = 0;
     LONG pos;
@@ -674,7 +705,40 @@ static BPTR bg_own_stream(BPTR shared)
         else if (pos > 0)
             Seek(fh, pos, OFFSET_BEGINNING);
     }
+    if (fh) {
+        Forbid(); /* close_stream reads these from any process */
+        j->bg_dup[k] = fh;
+        j->bg_src[k] = shared;
+        j->bg_end[k] = -1;
+        Permit();
+    }
     return fh ? fh : Open((STRPTR)"NIL:", MODE_NEWFILE);
+}
+
+/* The shell reaps job j (os_wait): its own handles on the shell's file streams (bg_own_stream) have
+ * separate offsets, so the shell's handle is moved on to where the job's ended, if that is further.
+ * Sequential output then never overwrites: `echo one; echo two & wait; echo three` >file is one two
+ * three, as on Unix where the two share one offset. A shell handle closed since (close_stream cleared
+ * bg_src) or a job handle not closed (bg_end -1) is left alone. Writes that run at the same time,
+ * without a wait between, can still overwrite (separate offsets; accepted). */
+static void bg_reaped(job *j)
+{
+    int k;
+    for (k = 0; k < 2; k++) {
+        BPTR src;
+        LONG end, cur;
+        Forbid();
+        src = j->bg_src[k];
+        end = j->bg_end[k];
+        j->bg_src[k] = 0;
+        Permit();
+        if (!src || end < 0)
+            continue;
+        Flush(src);
+        cur = Seek(src, 0, OFFSET_CURRENT);
+        if (cur >= 0 && cur < end)
+            Seek(src, end, OFFSET_BEGINNING);
+    }
 }
 
 /* Where a command's input file is before it runs: -1 on a console or a pipe. RunCommand (and the Shell
@@ -1395,7 +1459,7 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
             j->out = (BPTR)io->out;
             j->close_out = 1;
         } else if (io->out && !IsInteractive((BPTR)io->out)) {
-            j->out = bg_own_stream((BPTR)io->out);
+            j->out = bg_own_stream(j, 0, (BPTR)io->out);
             j->close_out = j->out != 0;
         } else {
             j->out = own_handle((BPTR)io->out, MODE_NEWFILE);
@@ -1410,7 +1474,7 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
             j->err = j->out; /* one stream (2>&1 outside): one handle, one offset; closed as out */
             j->close_err = 0;
         } else if (io->err && !IsInteractive((BPTR)io->err)) {
-            j->err = bg_own_stream((BPTR)io->err);
+            j->err = bg_own_stream(j, 1, (BPTR)io->err);
             j->close_err = j->err != 0;
         } else {
             j->err = own_handle((BPTR)io->err, MODE_NEWFILE);
@@ -1615,6 +1679,7 @@ static long os_wait(void *os, long id)
                 pipe_tab[i].writer = 0;
         Permit();
     }
+    bg_reaped(j);
     job_free(j);
     return rc;
 }
@@ -2259,7 +2324,7 @@ static long os_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io,
              * Closes that stream); "*" was a console the process may not have: `echo bg &` in
              * `vsh script >file` (Run >NIL:) wrote nowhere */
             if (!(io->owned & SH_OWN_OUT)) {
-                j->io.out = (sh_fh)((io->out && !IsInteractive((BPTR)io->out)) ? bg_own_stream((BPTR)io->out)
+                j->io.out = (sh_fh)((io->out && !IsInteractive((BPTR)io->out)) ? bg_own_stream(j, 0, (BPTR)io->out)
                                                                                  : own_handle((BPTR)io->out, MODE_NEWFILE));
                 j->io.owned |= SH_OWN_OUT;
             }
@@ -2271,7 +2336,7 @@ static long os_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io,
                 if (io->err && io->err == io->out && !(io->owned & SH_OWN_OUT))
                     j->io.err = j->io.out; /* one stream (2>&1 outside): its one own handle */
                 else if (io->err && !IsInteractive((BPTR)io->err)) {
-                    if ((j->io.err = (sh_fh)bg_own_stream((BPTR)io->err)) != 0)
+                    if ((j->io.err = (sh_fh)bg_own_stream(j, 1, (BPTR)io->err)) != 0)
                         j->io.owned |= SH_OWN_ERR;
                 } else if (!(io->owned & SH_OWN_OUT) && !(io->out && !IsInteractive((BPTR)io->out)) &&
                            j->io.out != io->out)
