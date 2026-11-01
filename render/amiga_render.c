@@ -540,6 +540,8 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->dith = 0;
     r->dither_on = 1;
     r->aa_on = 1;
+    r->blend_dest = 1;
+    r->n_aa_tile = 0;
     {
         aa_ink_ops ops;
         ops.u = r;
@@ -767,6 +769,11 @@ void vr_set_dither(vr_render *r, int on)
         return;
     r->dither_on = (UBYTE)(on != 0);
     vr_palette_changed(r);
+}
+
+void vr_set_blend_dest(vr_render *r, int on)
+{
+    r->blend_dest = (UBYTE)(on != 0);
 }
 
 void vr_set_antialias(vr_render *r, int on)
@@ -2438,6 +2445,16 @@ static void aa_fill_bg(void *u, WORD x0, WORD y0, WORD x1, WORD y1, ULONG ink)
     fill(r, x0, y0, x1, y1, ink);
 }
 
+/* aa_ink_tile's pattern: the dither ink's tile as a template, a set bit where pen b is (as pat_fill draws it) */
+static void aa_tile_bits(void *u, WORD x, WORD y, WORD h, UBYTE *rows, WORD bpr)
+{
+    vr_render *r = (vr_render *)u;
+    WORD yy, i;
+    for (yy = 0; yy < h; yy++)
+        for (i = 0; i < bpr; i++)
+            rows[(LONG)yy * bpr + i] = pat_bits(r, r->aa_tile_ink, (WORD)(x + i * 8), (WORD)(y + yy));
+}
+
 /* The glyph with coverage cov (w x ch bytes) antialiased, over the whole
  * box (nothing to fill first). 0 when it could not be (no memory, no shade
  * the screen shows): the caller draws the mask. */
@@ -2449,6 +2466,22 @@ static int draw_aa(vr_render *r, WORD px, WORD py, const UBYTE *cov, WORD w, con
             return 0;
         ttf_embolden(cov, w, h, r->aa_buf);
         cov = r->aa_buf;
+    }
+    if (r->blend_dest && !r->truecolor && IS_DITH(st->bgf)) {
+        /* R6.A: over a dithered background (the cell's area ink st->bgf; st->bg is its one nearest pen) the glyph box
+         * keeps the dither and each shade is chosen against the pen under the pixel */
+        aa_ink_tile t;
+        r->aa_tile_ink = st->bgf;
+        t.u = r;
+        t.ink_a = DITH_A(st->bgf);
+        t.ink_b = DITH_B(st->bgf);
+        t.rgb_a = ink_rgb(r, t.ink_a);
+        t.rgb_b = ink_rgb(r, t.ink_b);
+        t.bits = aa_tile_bits;
+        if (aa_ink_draw_tile(&r->aa, r->rp, px, py, cov, w, h, st->fg, ink_rgb(r, st->fg), st->bgf, &t)) {
+            r->n_aa_tile++;
+            return 1;
+        }
     }
     return aa_ink_draw(&r->aa, r->rp, r->cgx, r->truecolor, px, py, cov, w, h, st->fg, ink_rgb(r, st->fg), st->bg,
                        ink_rgb(r, st->bg));

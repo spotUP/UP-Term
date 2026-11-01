@@ -138,6 +138,7 @@ typedef struct vtwin {
     ULONG prof_part[8]; /* 0 rows, 1 scroll, 2 cursor pass whole, 3 vt_feed, 4 mask, 5 cursor off, 6 cursor on */
     int wrote;                   /* vtwin_write since the last frame tick */
     ULONG quiet_us;              /* frame time with no output since the last write (jump scroll settles) */
+    int blend_dest;              /* profile outline-blend-dest: antialiased edges blend with the pen under the pixel on a dithered cell (1, default) */
     int outline_aa;              /* profile outline-antialias: outline glyphs drawn smoothed (1, default) */
     int dither;                  /* profile dither (W-T9): few-pen screens dither colours no pen shows closely (1, default) */
     int pad_extend;              /* profile padding-color = extend (W-T14): the strips beside the grid take the edge cells' colour */

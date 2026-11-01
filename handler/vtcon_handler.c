@@ -1464,6 +1464,8 @@ static void apply_profile(con *c)
         c->w.dither = sd_conf_key_index("dither", c->conf, p); /* few-pen screens dither */
     if (upconf_get(c->conf, p, "outline-antialias"))
         c->w.outline_aa = sd_conf_key_index("outline-antialias", c->conf, p); /* outline glyphs drawn smoothed */
+    if (upconf_get(c->conf, p, "outline-blend-dest")) /* R6.A: a profile-file key, no Preferences row */
+        c->w.blend_dest = strcmp(upconf_str(c->conf, p, "outline-blend-dest", "on"), "off") != 0;
     if (upconf_get(c->conf, p, "padding-color"))
         c->w.pad_extend = sd_conf_key_index("padding-color", c->conf, p); /* the strips beside the grid: background or extend */
     if (upconf_get(c->conf, p, "scrollbar"))
