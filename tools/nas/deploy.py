@@ -3,7 +3,9 @@
 
 Config (git-ignored, outside the repo): ~/.config/upterm/nas.conf, lines KEY=value, '#' comments.
 Keys: NAS_HOST (required), NAS_USER (required), NAS_DIR (required, e.g. /volume1/docker/claude-amiga),
-NAS_PORT (default 22), NAS_DOCKER (default "sudo docker"; Synology needs sudo for docker),
+NAS_PORT (default 22), NAS_DOCKER (default sudo "$(command -v docker)": Synology needs sudo for docker, and docker lives in
+/usr/local/bin, which is not on a non-login ssh PATH; the remote command adds it and resolves docker before sudo, so
+sudo's secure_path does not matter),
 NAS_SSH (default "ssh"; on the Amiga bebbossh, whose flags differ: -p, -T, no -o, no -t).
 Environment variables of the same names win over the file; NAS_CONF names another file.
 Only the copy list is sent (files are overwritten, nothing is deleted), and home/ (the volume) is excluded.
@@ -19,7 +21,10 @@ HERE = pathlib.Path(__file__).resolve().parent
 TOOLS = HERE.parent
 KEYS = ("NAS_HOST", "NAS_PORT", "NAS_USER", "NAS_DIR", "NAS_DOCKER", "NAS_SSH")
 REQUIRED = ("NAS_HOST", "NAS_USER", "NAS_DIR")
-DEFAULTS = {"NAS_PORT": "22", "NAS_DOCKER": "sudo docker", "NAS_SSH": "ssh"}
+DEFAULTS = {"NAS_PORT": "22", "NAS_DOCKER": 'sudo "$(command -v docker)"', "NAS_SSH": "ssh"}
+# Prepended to the remote docker steps: a non-login ssh shell on Synology has PATH=/usr/bin:/bin:/usr/sbin:/sbin
+# (measured on the owner's DS), but docker is /usr/local/bin/docker.
+REMOTE_PATH = 'export PATH="$PATH:/usr/local/bin"'
 EXTRA = ("Dockerfile", "compose.yaml", "README.md", "env.example")  # not COPY sources, but the build and the compose project need them
 # Key login only: BatchMode stops ssh falling back to a password prompt, which the deploy cannot answer
 # (the user types the sudo password there instead and gets "Permission denied"). sudo on the NAS still prompts over -t.
@@ -73,7 +78,7 @@ def load_config(env=None):
     missing = [k for k in REQUIRED if not cfg.get(k)]
     if missing:
         raise SystemExit("[ERROR] NAS config incomplete: missing %s. Put them in %s (KEY=value lines; keys %s; "
-                         "NAS_PORT defaults to 22, NAS_DOCKER to \"sudo docker\") or export them."
+                         "NAS_PORT defaults to 22, NAS_DOCKER to sudo plus the docker found on the NAS) or export them."
                          % (", ".join(missing), path, ", ".join(KEYS)))
     return cfg
 
@@ -99,7 +104,7 @@ def commands(cfg, build=True):
     unpack = ssh_cmd(cfg, "mkdir -p %s && tar -x%sf - --no-same-owner -C %s"
                   % (nas_dir, "z" if have_gzip() else "", nas_dir))
     dk = cfg["NAS_DOCKER"]
-    steps = ["cd %s" % shlex.quote(cfg["NAS_DIR"])]
+    steps = [REMOTE_PATH, "cd %s" % shlex.quote(cfg["NAS_DIR"])]
     if build:
         steps.append("%s compose build" % dk)
     steps.append("%s compose up -d" % dk)

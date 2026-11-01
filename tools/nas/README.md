@@ -165,7 +165,7 @@ on a real one.
 
 For the maintainer's own NAS: `make nas-deploy` copies the files the Dockerfile COPYs (the list is read from the Dockerfile, plus
 compose.yaml, README.md and env.example) and `tools/uptelnetd.py` to the NAS as a tar stream over ssh, then runs
-`sudo docker compose build && sudo docker compose up -d` there. It never sends `home/` or `.env` and never deletes remote files.
+`docker compose build && docker compose up -d` there under sudo. It never sends `home/` or `.env` and never deletes remote files.
 Needs ssh key login (next section) and tar on both sides. Not rsync: Synology refuses rsync over ssh
 ("Permission denied, please try again") unless Control Panel > File Services > rsync > "Enable rsync service" is on. Config, outside the repo, `~/.config/upterm/nas.conf`:
 
@@ -173,7 +173,8 @@ Needs ssh key login (next section) and tar on both sides. Not rsync: Synology re
     NAS_USER=admin
     NAS_DIR=/volume1/docker/claude-amiga
     NAS_PORT=22                # optional
-    NAS_DOCKER=sudo docker     # optional, this is the default (Synology needs sudo for docker)
+    NAS_DOCKER=sudo /usr/local/bin/docker   # optional; the default is sudo plus the docker the NAS finds,
+                                            # with /usr/local/bin (Synology's docker) added to the ssh PATH
 
 Environment variables of the same names win over the file. `make nas-deploy-dry` prints the two commands and runs nothing;
 `NAS_DEPLOY_ARGS=--no-build make nas-deploy` skips the image build. The deploy never copies `.env`, so `NAS_IP` and `ALLOW` there

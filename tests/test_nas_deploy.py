@@ -1,5 +1,5 @@
 """nas deploy: the copy list comes from the Dockerfile COPY lines; dry-run prints rsync (home excluded) and the ssh docker command."""
-import pathlib, subprocess, sys
+import pathlib, shlex, subprocess, sys
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -25,7 +25,31 @@ def test_dry_run_prints_rsync_and_ssh(tmp_path):
     assert copy.startswith("python-tarfile czf - --exclude home") and " | ssh " in copy and "--delete" not in copy
     assert "admin@nas.example" in copy and "-C /volume1/docker/claude-amiga" in copy and "-p 2222" in copy
     assert str(ROOT / "tools") + " uptelnetd.py" in copy
-    assert "sudo docker compose build && sudo docker compose up -d" in ssh
+    assert 'sudo "$(command -v docker)" compose build && sudo "$(command -v docker)" compose up -d' in ssh
+
+
+def test_default_docker_is_found_in_usr_local_bin(tmp_path):
+    """Synology: a non-login ssh PATH is /usr/bin:/bin:/usr/sbin:/sbin, docker is /usr/local/bin/docker, so a bare
+    'sudo docker' is 'command not found'. The remote command adds /usr/local/bin and resolves docker before sudo."""
+    r = run(tmp_path, "--dry-run")
+    ssh = r.stdout.splitlines()[1]
+    remote = shlex.split(ssh)[-1]
+    assert remote.startswith('export PATH="$PATH:/usr/local/bin" && cd ')
+    fake = tmp_path / "usrlocal"
+    fake.mkdir()
+    (fake / "docker").write_text("#!/bin/sh\necho DOCKER \"$@\"\n")
+    (fake / "docker").chmod(0o755)
+    bin_ = tmp_path / "bin"  # a sudo that runs its command, ahead of the real one; docker stays only in "/usr/local/bin"
+    bin_.mkdir()
+    (bin_ / "sudo").write_text('#!/bin/sh\nexec "$@"\n')
+    (bin_ / "sudo").chmod(0o755)
+    nas_dir = tmp_path / "nasdir"
+    nas_dir.mkdir()
+    script = remote.replace("/usr/local/bin", str(fake)).replace("/volume1/docker/claude-amiga", str(nas_dir))
+    out = subprocess.run(["/bin/sh", "-c", script], capture_output=True, text=True,
+                         env={"PATH": "%s:/usr/bin:/bin:/usr/sbin:/sbin" % bin_})
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.splitlines() == ["DOCKER compose build", "DOCKER compose up -d"]
 
 
 def test_dry_run_does_not_claim_env_missing(tmp_path):
