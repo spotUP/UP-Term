@@ -435,7 +435,7 @@ class PairsTool(unittest.TestCase):
     def test_the_container_files_carry_it(self):
         nas = ROOT / "tools/nas"
         self.assertIn("COPY pairs /usr/local/bin/pairs", (nas / "Dockerfile").read_text())
-        self.assertIn("image: claude-amiga:11", (nas / "compose.yaml").read_text())
+        self.assertIn("image: ghcr.io/spotup/claude-amiga:latest", (nas / "compose.yaml").read_text())
         ep = (nas / "entrypoint.sh").read_text()
         self.assertIn('[ ! -s "$CLIENTS" ]', ep)                 # it starts with a password OR a clients file
         self.assertIn('/home/claude/.config/uptelnetd/clients', ep)
@@ -1154,7 +1154,7 @@ class AmigaTargetTool(unittest.TestCase):
         mk = (ROOT / "Makefile").read_text()
         self.assertNotIn(rev, mk)                               # no second copy of the pin
         df = (self.NAS / "Dockerfile").read_text()
-        self.assertIn("COPY wasabi.rev /opt/wasabi/wasabi.rev", df)
+        self.assertIn("COPY wasabi.repo wasabi.rev /opt/wasabi/", df)
         self.assertIn('checkout -q "$(cat /opt/wasabi/wasabi.rev)"', df)
         self.assertNotIn(rev, df)
         self.assertNotIn("amimcp", df)
