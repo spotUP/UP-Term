@@ -843,7 +843,7 @@ static void dk_wbborder(void)
  * (ENVARC: copy, else the ENV: copy) under desk_copy_name(ENV: path); a file that did not exist is recorded by "<name>.absent". Kept until
  * "off" restores that file, so it never saves a theme as the original. */
 #define DK_ORIG "ENVARC:Amarchy/desk-original"
-unsigned long desk_dos_persists, desk_dos_originals_saved, desk_dos_originals_restored;
+unsigned long desk_dos_persists, desk_dos_originals_saved, desk_dos_originals_restored, desk_dos_originals_dropped;
 
 /* streamed (a prefs file may be larger than any fixed buffer, and the copy must be byte-identical): 1 copied, 0 write failed, -1 no source */
 static int dk_stream_copy(const char *src, const char *dst)
@@ -956,6 +956,25 @@ static void dk_orig_forget(const char *env)
     strcat(ab, ".absent");
     DeleteFile((STRPTR)name);
     DeleteFile((STRPTR)ab);
+}
+
+/* DESK-STALE-ORIG: an original lives only while its target's ENV: is themed. A Revert (user, timeout, boot marker) puts ENV: back to what it was before
+ * the apply; a target whose ENVARC: or ENV: file equals its saved original (ENV: is the stock editor's rewrite, so ENVARC: is the stable witness; or ENV: is absent as the original was) was not themed, so the original goes. A revert to
+ * an earlier theme leaves ENV: different from the original, and the original stays. */
+static void dk_orig_drop_reverted(unsigned mask)
+{
+    const char *env[1], *arc[1];
+    char name[96];
+    int t;
+    for (t = 0; t < DT_COUNT; t++) {
+        if (t == DT_ICONTROL || !((mask >> t) & 1) || desk_persist_pairs(1u << t, 0, env, arc, 1) != 1 || !dk_orig_have(env[0]))
+            continue;
+        desk_copy_name(DK_ORIG, env[0], name, sizeof name);
+        if (dk_exists(name) ? ((dk_exists(arc[0]) && dk_files_equal(name, arc[0])) || (dk_exists(env[0]) && dk_files_equal(name, env[0]))) : !dk_exists(env[0])) {
+            dk_orig_forget(env[0]);
+            desk_dos_originals_dropped++;
+        }
+    }
 }
 
 int desk_dos_apply(const gtheme *th, char *why, int cap)
@@ -1172,8 +1191,10 @@ void desk_dos_revert(void)
     desk_dos_reverts++;
     DeleteFile((STRPTR)DK_PENDING);
     dk_wb_restore();
-    if (mask)
+    if (mask) {
         dk_restore_targets(mask, DK_REVERT);
+        dk_orig_drop_reverted(mask);
+    }
     dk_marker_clear();   /* last: a crash during the revert leaves the marker for the next start */
     dk_flat_sync();
 }
@@ -1197,6 +1218,7 @@ int desk_dos_marker_recover(void)
     desk_dos_revert();
     /* published by the process that recovers (Amarchy, at its start): the menu's copy of the counter stays 0 */
     am_sentinel("AMARCHY_DESK_MARKER_REVERTS", (long)desk_dos_marker_reverts);
+    am_sentinel("AMARCHY_DESK_ORIG_DROPPED", (long)desk_dos_originals_dropped);
     return 1;
 }
 
