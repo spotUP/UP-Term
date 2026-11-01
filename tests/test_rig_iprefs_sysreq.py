@@ -55,6 +55,27 @@ class Bounded(unittest.TestCase):
         self.assertEqual(len(clicks), rig.WB_RESET_RETRIES)
         self.assertIn("System Request", str(cm.exception))
 
+    def test_a_volume_request_is_not_clicked_and_is_named(self):
+        # RIG-VOLREQ-MISREAD: an AssignWedge "Volume Request" offers Retry too; rig.py clicked it three times and
+        # called it IPrefs' System Request. It must click nothing and name the requester it saw.
+        tree = "\n".join(['S 0 640x256 depth=2 "Workbench Screen"', 'W 0 0 0 420x90 active "Volume Request"',
+                          'G 1 8 70 60x16 custom - "Retry"', 'G 0 80 70 60x16 custom - "Assign"',
+                          'G 0 160 70 60x16 custom - "Deny"', 'G 0 340 70 70x16 custom - "Cancel"'])
+        fake = types.SimpleNamespace(
+            req=lambda op: bytes([1, 0, 2, 128, 1, 0, 2]) if op == 0x0A else tree.encode(),
+            pointer_scale=lambda: (1, 1), script=lambda *a: self.fail("clicked a Volume Request"))
+        saved = (sys.modules.get("ami"), rig.RIG, rig.time.sleep)
+        sys.modules["ami"] = fake
+        rig.RIG = pathlib.Path(tempfile.mkdtemp())
+        rig.time.sleep = lambda s: None
+        try:
+            with self.assertRaises(SystemExit) as cm:
+                rig.retry_wb_reset()
+        finally:
+            sys.modules["ami"], rig.RIG, rig.time.sleep = saved
+        self.assertIn('"Volume Request" [Retry|Assign|Deny|Cancel]', str(cm.exception))
+        self.assertIn("RIG-VOLREQ-MISREAD", str(cm.exception))
+
     def test_a_640x360_rtg_workbench_is_not_pal(self):
         # W43 false alarm: the rtg360 screenmode (640x360 uaegfx) is 640 wide; it must count as RTG, so no Retry hunt
         # and no "[WARN] the Workbench stayed PAL" line

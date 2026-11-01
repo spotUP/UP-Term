@@ -1891,6 +1891,38 @@ WB_RESET_RETRIES = 3   # Retry clicks before the start fails: Retry never succee
 NATIVE_WB = {(640, 200), (640, 256), (640, 400), (640, 512)}
 
 
+def wb_reset_retry_gadgets(tree):
+    """The Retry gadgets of IPrefs' "attempting to reset the Workbench screen"
+    requester in a UITREE dump, and a description of any OTHER requester that
+    offers Retry (an AssignWedge "Volume Request", a "Please insert volume"
+    System Request with more gadgets, ...). Only a window titled "System Request"
+    whose labelled gadgets are exactly Retry and Cancel counts as IPrefs'
+    (RIG-VOLREQ-MISREAD: rig.py clicked Retry on a Volume Request three times).
+    Gadget boxes are absolute screen pixels (UITREE gives them so)."""
+    wins = []
+    for line in tree:
+        f = line.split()
+        if line.startswith("W "):
+            title = line.rstrip().rsplit('"', 2)[-2] if line.rstrip().endswith('"') else ""
+            wins.append((title, [], []))
+        elif line.startswith("G ") and wins:
+            label = line.rstrip().rsplit('"', 2)[-2] if line.rstrip().endswith('"') else ""
+            if label:
+                wins[-1][1].append(label)
+            if label == "Retry":
+                w, h = map(int, f[4].split("x"))
+                wins[-1][2].append((int(f[2]), int(f[3]), w, h))
+    gads, other = [], []
+    for title, labels, retry in wins:
+        if not retry:
+            continue
+        if title == "System Request" and sorted(labels) == ["Cancel", "Retry"]:
+            gads.extend(retry)
+        else:
+            other.append('"%s" [%s]' % (title, "|".join(labels)))
+    return gads, " ; ".join(other)
+
+
 def retry_wb_reset():
     """--060: the boot comes up on a PAL Workbench with Intuition's "attempting
     to reset the Workbench screen ... close all windows" requester (IPrefs'
@@ -1917,14 +1949,12 @@ def retry_wb_reset():
         log.write("%.0fs PAL\n%s\n" % (time.time() - t0, "\n".join(tree[:20])))
         # the requester: the gadget labelled Retry; ami.py's UITREE gives gadgets
         # in absolute screen pixels
-        win, gads = None, []
-        for line in tree:
-            f = line.split()
-            if line.startswith("W "):
-                win = (0, 0)
-            elif line.startswith("G ") and win and line.rstrip().endswith('"Retry"'):
-                w, h = map(int, f[4].split("x"))
-                gads.append((win[0] + int(f[2]), win[1] + int(f[3]), w, h))
+        gads, other = wb_reset_retry_gadgets(tree)
+        if other:
+            log.write("other requester: %s\n" % other)
+            log.flush()
+            sys.exit("rig: a requester other than IPrefs' Workbench reset System Request is open (RIG-VOLREQ-MISREAD); "
+                     "not clicking it. Saw: %s" % other)
         if gads:
             if clicks >= WB_RESET_RETRIES:
                 shown = " | ".join(l.strip() for l in tree if l.startswith(("S ", "W ", "G ")) and ("Request" in l or "Retry" in l or "Cancel" in l or l.startswith("S ")))
