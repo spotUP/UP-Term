@@ -25,3 +25,9 @@ STATUS now prints `pens-held N missing <pens> dim=<pen>` (ip_status_line names t
   rig state, not the OFF->ON path alone, decides. Next: identify the holder (run the probe on a fresh rig boot with no picks; open/close drawers; compare).
 - Rig picks became flaky ("open menu: no stable state") after the first pick in a run; probe at scratchpad probe.py (put_flat_prefs + pick + STATUS).
 Host: iconpen 2008/0, flat_core 675/0 (test_iconpen.c checks the `missing 40` text).
+
+## Result (2026-11-01)
+
+Cause measured: ReleasePen on flat OFF put 32..47 at the free-list head; the next ObtainBestPen took
+47, 46. Fix: amarchy-flat holds the pens for its whole run. Route comparison and rig numbers:
+l7-pen-route.md.

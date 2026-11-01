@@ -135,11 +135,16 @@ int ip_status_line(const ip_holder *h, char *out, size_t cap)
     return n;
 }
 
-int ip_sync_decide(const ip_holder *h, int enabled, const void *screen, int depth)
+int ip_sync_decide(const ip_holder *h, int hold, const void *screen, int depth)
 {
-    if (!enabled || !screen)
+    if (!hold || !screen)
         return h->screen ? IP_SYNC_RELEASE : IP_SYNC_NONE;
     return ip_holder_stale(h, screen, depth) ? IP_SYNC_OBTAIN : IP_SYNC_NONE;
+}
+
+int ip_hold_wanted(int quit, int held, int gfx_v39)
+{
+    return !quit && !held && gfx_v39;
 }
 
 unsigned long ip_scale32(unsigned c)

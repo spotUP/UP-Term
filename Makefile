@@ -1265,6 +1265,11 @@ $(BUILD)/amiga/cellbench: tests/amiga/cellbench.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/cellbench.c
 
+# Who holds which Workbench screen pen: PalExtra dump, WATCH patches ObtainPen / ObtainBestPenA / ReleasePen (vtcon L7)
+$(BUILD)/amiga/palprobe: tests/amiga/palprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -o $@ tests/amiga/palprobe.c
+
 # A public screen's DrawInfo pens and their colours (ownscreen_rig)
 $(BUILD)/amiga/dripens: tests/amiga/dripens.c
 	@mkdir -p $(BUILD)/amiga

@@ -774,7 +774,7 @@ static void dopus_scan(flatshared *r)
 }
 
 /* ---- LUCIDE L7: the pen holder. amarchy-flat holds the 16 icon pens (iconpen_core.c: ip_holder_*) on the Workbench screen
- * while flat is on. ObtainPen(PENF_EXCLUSIVE) takes the exact pen number or fails (-1); the decisions are iconpen_core.c
+ * for its whole run, flat on or off (ip_hold_wanted: a released pen heads the free list and the next shared pen takes it). ObtainPen(PENF_EXCLUSIVE) takes the exact pen number or fails (-1); the decisions are iconpen_core.c
  * (ip_sync_decide, host-tested), here only the OS calls. Nothing in the OS tells us the Workbench screen closed and reopened
  * (no screennotify exists in amarchy; wbreset_patch.c signals only clients with windows), so pens_sync runs at start, on
  * Ctrl-D (desk apply signals it after writing flat_state) and on a 1 s tick that compares the screen pointer and depth. ---- */
@@ -827,7 +827,7 @@ static void pens_sync(flatshared *r, int quit)
     struct List *pl;
     struct Screen *sc;
     int act, depth = 0;
-    int enabled = !quit && r->st.enabled && !r->st.held && GfxBase && GfxBase->LibNode.lib_Version >= 39;
+    int hold = ip_hold_wanted(quit, r->st.held != 0, GfxBase && GfxBase->LibNode.lib_Version >= 39);   /* not the flat switch */
     o.obtain = pen_obtain;
     o.release = pen_release;
     o.ctx = &c;
@@ -837,7 +837,7 @@ static void pens_sync(flatshared *r, int quit)
         depth = ip_screen_depth(sc->BitMap.Depth, (sc->ViewPort.Modes & EXTRA_HALFBRITE) != 0);
     c.cur = sc ? sc->ViewPort.ColorMap : 0;
     c.old = (sc && r->ih.screen == (const void *)sc) ? c.cur : 0;   /* old pens are released only on the screen they belong to */
-    act = ip_sync_decide(&r->ih, enabled, sc, depth);
+    act = ip_sync_decide(&r->ih, hold, sc, depth);
     if (act == IP_SYNC_RELEASE) {
         ip_holder_release(&r->ih, &o);
     } else if (act == IP_SYNC_OBTAIN) {
