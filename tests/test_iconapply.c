@@ -71,7 +71,9 @@ static long m_dflt(void *c, const char *match, uint8_t *buf, size_t cap)
     memcpy(buf, s->dflt, (size_t)s->dflt_len);
     return s->dflt_len;
 }
-static const ia_io g_io = { NULL, m_read, m_write, m_remove, m_dflt };
+static char g_notes[4096];
+static void m_note(void *ctx, const char *line) { (void)ctx; strcat(g_notes, line); strcat(g_notes, "\n"); }
+static const ia_io g_io = { NULL, m_read, m_write, m_remove, m_dflt, m_note };
 
 static void mfs_free(mfs *s) { int i; for (i = 0; i < NFILES; i++) if (s->f[i].used) free(s->f[i].d); }
 
@@ -484,6 +486,32 @@ static void test_walkfile(void)
     mfs_free(&s);
 }
 
+/* ICONS-SKIP-NAMES: every skipped file and every walked volume is named in the output, not only counted */
+static void test_skip_names(void)
+{
+    mfs s;
+    ia_ctx c;
+    static uint8_t junk[8] = { 1, 2, 3, 4, 5, 6, 7, 8 };
+    setup(&s, &c, 0);
+    g_notes[0] = 0;
+    mf_put(&s, "Work:Games/Bad.info", junk, sizeof junk);
+    mf_put(&s, "Work:Games/Locked.info", g_tool, (size_t)g_tool_n);
+    mf_put(&s, "Boot:Disk.info", g_tool, (size_t)g_tool_n);
+    ia_walk_begin(&c);
+    ia_walk_file(&c, "Work:Games/Bad.info", 0, 0);
+    ia_walk_file(&c, "Work:Games/Locked.info", 0, IA_PROT_WRITE);
+    ia_walk_file(&c, "Boot:Disk.info", 0, 0);
+    CK("bad file named with its reason", strstr(g_notes, "skip bad: Work:Games/Bad.info\n") != NULL);
+    CK("locked file named with its reason", strstr(g_notes, "skip locked: Work:Games/Locked.info\n") != NULL);
+    CI("a written file is not a skip line", strstr(g_notes, "skip") != NULL && strstr(g_notes, "Boot:Disk.info") == NULL, 1);
+    ia_walk_volume(&c, "Boot:");
+    ia_walk_volume(&c, "VTCX:");
+    CK("volume with Disk.info reported written", strstr(g_notes, "volume Boot: Disk.info written\n") != NULL);
+    CK("volume without Disk.info reported missing", strstr(g_notes, "volume VTCX: Disk.info missing, shows def_disk\n") != NULL);
+    CK("counters still count", c.skipped_bad == 1 && c.skipped_locked == 1);
+    mfs_free(&s);
+}
+
 /* rig 8: one failing entry stopped RESTORE, so the walked entries behind it were never restored */
 static void test_restore_continues(void)
 {
@@ -540,5 +568,6 @@ void suite_iconapply(void)
     test_edge();
     test_walk();
     test_walkfile();
+    test_skip_names();
     test_restore_continues();
 }

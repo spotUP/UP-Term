@@ -69,6 +69,8 @@ typedef struct ia_io {
     int  (*remove)(void *ctx, const char *path);
     /* the system default object for a defaults match when its file is absent ("def_drawer"); length or -1 */
     long (*dflt)(void *ctx, const char *match, uint8_t *buf, size_t cap);
+    /* optional: one report line (no newline) per skipped file and per walked volume; NULL = silent */
+    void (*note)(void *ctx, const char *line);
 } ia_io;
 
 typedef struct ia_ctx {
@@ -123,6 +125,9 @@ int ia_info_type(const uint8_t *buf, size_t len);
 int ia_walk_skip_dir(const char *path);
 /* load the manifest once before a walk (ia_apply does it for the defaults) */
 void ia_walk_begin(ia_ctx *c);
+/* One report line for a walked volume ("VOL:"): is its root Disk.info written by us, present but skipped, or missing (the volume then
+ * shows the def_disk default). Call after the volume's walk; goes through io->note. */
+void ia_walk_volume(ia_ctx *c, const char *vol);
 /* One .info (or .info.uaem) file found by the walk: decide, count, and on WRITE / FALLBACK back it up and rewrite it through the
  * same path ia_apply uses (backup, manifest line, atomic write). Needs ia_walk_begin first. Returns the IA_DO_* decision. */
 int ia_walk_file(ia_ctx *c, const char *path, int vol_readonly, unsigned long prot);

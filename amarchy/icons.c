@@ -171,6 +171,14 @@ static int io_remove(void *ctx, const char *p)
     return !exists(p) || DeleteFile((STRPTR)p) ? 0 : -1;
 }
 
+/* one report line per skipped file and per walked volume (iconapply_core.h ia_io.note) */
+static void io_note(void *ctx, const char *line)
+{
+    (void)ctx;
+    PutStr((STRPTR)line);
+    PutStr((STRPTR)"\n");
+}
+
 /* the system default object of a defaults match, as the bytes of its .info file */
 static long io_dflt(void *ctx, const char *match, uint8_t *buf, size_t cap)
 {
@@ -343,6 +351,7 @@ static void walk_volumes(ia_ctx *c)
         UnLock(l);
         strcpy(g_wpath, names[i]);
         walk_dir(c, strlen(g_wpath), ro, 0);
+        ia_walk_volume(c, names[i]);
     }
     me->pr_WindowPtr = oldwin;
 }
@@ -383,7 +392,7 @@ int main(void)
     g_chk = c->bak + IA_FILECAP;
     {
         static ia_io io;
-        io.ctx = NULL; io.read = io_read; io.write = io_write; io.remove = io_remove; io.dflt = io_dflt;
+        io.ctx = NULL; io.read = io_read; io.write = io_write; io.remove = io_remove; io.dflt = io_dflt; io.note = io_note;
         c->io = &io;
     }
     if (cmd == IA_CMD_STATUS) {       /* nothing is resident: the counters live for one run, and the manifest is the state */
