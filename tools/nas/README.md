@@ -37,8 +37,9 @@ On any other Docker machine, `docker compose pull` fetches it.
    pairs, amiga-target, seed-claude-files, relay-config, settings.json, wasabi.rev, mcp.json, skills/, README.md) and
    `tools/uptelnetd.py` into one folder on the NAS, e.g. `/volume1/docker/claude-amiga`,
    and create `home` inside it (the container's /home/claude volume).
-2. Container Manager > Project > Create, source: the existing compose.yaml; edit
-   `NAS_IP` and `ALLOW` first; build and start. The container log then repeats
+2. Copy `env.example` to `.env` beside compose.yaml and edit `NAS_IP` and `ALLOW` there (never in
+   compose.yaml: updates replace that file, `.env` is never touched). Container Manager > Project >
+   Create, source: the existing compose.yaml; build and start. The container log then repeats
    "no login password yet ... run: setpw" until step 3.
 3. Container Manager > Container > claude-amiga > Action > Open terminal > Create >
    Launch with command: `setpw`. Type the password the Amiga will log in with
@@ -76,9 +77,9 @@ The server needs a new `uptelnetd.py` for this: copy tools/uptelnetd.py again wi
 files, raise the image tag and Build. A plain password login still works for an Amiga that is
 not paired (older uptelnet, no key file, or `Claude` without KEY).
 
-Without Synology: put the same files in one folder, set `NAS_IP` (the address the
+Without Synology: put the same files in one folder, copy `env.example` to `.env` and set `NAS_IP` (the address the
 Amiga reaches, space-separated with any others to listen on) and `ALLOW` (the
-LAN's CIDR) in `compose.yaml`, create `home/`, run `docker compose up -d`, then
+LAN's CIDR) there, not in `compose.yaml`, create `home/`, run `docker compose up -d`, then
 `docker exec -it claude-amiga setpw` for step 3 and
 `docker exec -it -u claude claude-amiga sh -c 'cd ~/work && tmux new -A -s claude claude'`
 for step 4. (Not tried on a machine other than the owner's Synology.)
@@ -174,8 +175,8 @@ Needs ssh key login (next section) and rsync on both sides. Config, outside the 
     NAS_DOCKER=sudo docker     # optional, this is the default (Synology needs sudo for docker)
 
 Environment variables of the same names win over the file. `make nas-deploy-dry` prints the two commands and runs nothing;
-`NAS_DEPLOY_ARGS=--no-build make nas-deploy` skips the image build. `NAS_IP` and `ALLOW` in the NAS's compose.yaml are
-overwritten by the copy: keep your values in a compose override on the NAS or re-edit after the first deploy.
+`NAS_DEPLOY_ARGS=--no-build make nas-deploy` skips the image build. The deploy never copies `.env`, so `NAS_IP` and `ALLOW` there
+survive; if the NAS folder has none yet, the deploy says so: create it from `env.example`.
 
 ## ssh to the NAS (for setting this up from another computer)
 
@@ -199,7 +200,7 @@ relay cannot tell which Amiga they come from.
 
 - A VPN client gets an address from the VPN Server's own range (shown on its OpenVPN page;
   10.8.0.0/24 is the usual default, check yours). Add that range to `ALLOW` in
-  `compose.yaml`, space-separated after the LAN: `ALLOW: "192.168.1.0/24 10.8.0.0/24"`,
+  `.env`, space-separated after the LAN: `ALLOW=192.168.1.0/24 10.8.0.0/24` in `.env`,
   then start the project again.
 - The Amiga and the NAS normally stay on the home LAN: the Amiga logs in from its LAN
   address and the relay reaches it there; nothing changes for them.

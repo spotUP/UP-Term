@@ -6,6 +6,7 @@ Keys: NAS_HOST (required), NAS_USER (required), NAS_DIR (required, e.g. /volume1
 NAS_PORT (default 22), NAS_DOCKER (default "sudo docker"; Synology needs sudo for docker).
 Environment variables of the same names win over the file; NAS_CONF names another file.
 Only the copy list is sent, never with --delete, and home/ (the volume) is excluded.
+.env (site settings NAS_IP, ALLOW) is never sent; if the remote folder has none, a note says to create it from env.example.
 Run: python3 -I tools/nas/deploy.py [--dry-run] [--no-build]
 """
 import argparse, os, pathlib, re, shlex, subprocess, sys
@@ -84,6 +85,17 @@ def commands(cfg, build=True):
     return rsync, ["ssh", "-t", "-p", cfg["NAS_PORT"], target, remote]
 
 
+def env_note(cfg):
+    return ("[NOTE] No .env in %s on the NAS: create it from env.example (cp env.example .env, then edit NAS_IP and ALLOW). "
+            "The container refuses to start on the EDIT-ME defaults. The deploy never sends .env." % cfg["NAS_DIR"])
+
+
+def remote_has_env(cfg):
+    p = subprocess.call(["ssh", "-p", cfg["NAS_PORT"], "%s@%s" % (cfg["NAS_USER"], cfg["NAS_HOST"]),
+                         "test -f %s" % shlex.quote(cfg["NAS_DIR"] + "/.env")])
+    return p == 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--dry-run", action="store_true", help="print the rsync and ssh commands, run nothing")
@@ -94,7 +106,10 @@ def main(argv=None):
     if a.dry_run:
         print(shlex.join(rsync))
         print(shlex.join(ssh))
+        print(env_note(cfg))
         return 0
+    if not remote_has_env(cfg):
+        print(env_note(cfg))
     for cmd in (rsync, ssh):
         print("[INFO] " + shlex.join(cmd), flush=True)
         if subprocess.call(cmd) != 0:

@@ -21,11 +21,31 @@ def run(tmp_path, *args, conf=CONF):
 def test_dry_run_prints_rsync_and_ssh(tmp_path):
     r = run(tmp_path, "--dry-run")
     assert r.returncode == 0, r.stderr
-    rsync, ssh = r.stdout.splitlines()
+    rsync, ssh, _note = r.stdout.splitlines()
     assert rsync.startswith("rsync ") and "--exclude home" in rsync and "--delete" not in rsync
     assert "admin@nas.example:/volume1/docker/claude-amiga/" in rsync and "ssh -p 2222" in rsync
     assert "tools/uptelnetd.py" in rsync
     assert "sudo docker compose build && sudo docker compose up -d" in ssh
+
+
+def test_dry_run_prints_env_note(tmp_path):
+    r = run(tmp_path, "--dry-run")
+    assert "[NOTE] No .env" in r.stdout and "env.example" in r.stdout
+
+
+def test_env_never_copied():
+    assert ".env" not in d.copy_list()
+    assert (ROOT / "tools/nas/env.example").is_file()
+
+
+def test_compose_has_no_site_values():
+    import re
+    text = (ROOT / "tools/nas/compose.yaml").read_text()
+    for key in ("NAS_IP", "ALLOW"):
+        m = re.search(r"^\s*%s:\s*(.+?)\s*(#.*)?$" % key, text, re.M)
+        assert m, key + " missing"
+        v = m.group(1).strip().strip('"')
+        assert re.fullmatch(r"\$\{%s:-EDIT-ME[^}]*\}" % key, v), "literal %s in compose.yaml: %s" % (key, v)
 
 
 def test_no_build(tmp_path):
