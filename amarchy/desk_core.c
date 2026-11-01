@@ -1022,6 +1022,13 @@ unsigned desk_off_mask(unsigned saved, unsigned desk_mask)
     return saved & ~desk_mask & ~(1u << DT_ICONTROL);
 }
 
+int desk_env_fix(int want_exists, int got_exists, int equal)
+{
+    if (!want_exists)
+        return got_exists ? DESK_FIX_DELETE : DESK_FIX_NONE;
+    return got_exists && equal ? DESK_FIX_NONE : DESK_FIX_COPY;
+}
+
 int desk_copy_name(const char *dir, const char *file, char *out, int cap)
 {
     int n = (int)strlen(dir);

@@ -193,6 +193,10 @@ int desk_persist_pairs(unsigned mask, int wbprefs, const char **env, const char 
 /* OD14 off: the targets whose originals are saved (bit t of saved) and that the current desktop mask no longer applies; icontrol is never in it */
 unsigned desk_off_mask(unsigned saved, unsigned desk_mask);
 /* the copy name of a prefs file inside dir: dir "/" + file with ':' and '/' turned into '-'. 0 when out (cap bytes) is too small */
+/* FP-2: after "off" ran the stock editors and IPrefs/flat code had their say, the ENV: file must equal the original byte for byte:
+ * nothing to do, copy the original over it, or delete it (the original did not exist) */
+enum { DESK_FIX_NONE, DESK_FIX_COPY, DESK_FIX_DELETE };
+int desk_env_fix(int want_exists, int got_exists, int equal);
 int desk_copy_name(const char *dir, const char *file, char *out, int cap);
 /* the files to restore for mask, in restore order (reverse of the write order); returns the count */
 int desk_restore(unsigned mask, const char **list, int cap);

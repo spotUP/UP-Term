@@ -1164,6 +1164,11 @@ static void test_desk_persist(void)
     CHECK_INT((int)desk_off_mask(0x3u, 0x3u), 0);
     CHECK_INT((int)desk_off_mask(0, 0), 0);
     CHECK_INT((int)desk_off_mask(0x3u, 0), 3);
+    CHECK_INT(desk_env_fix(0, 1, 0), DESK_FIX_DELETE);  /* original absent, an editor/IPrefs recreated it: palette.prefs */
+    CHECK_INT(desk_env_fix(0, 0, 0), DESK_FIX_NONE);
+    CHECK_INT(desk_env_fix(1, 1, 0), DESK_FIX_COPY);    /* editor USE rewrote the bytes: pointer.prefs */
+    CHECK_INT(desk_env_fix(1, 0, 0), DESK_FIX_COPY);
+    CHECK_INT(desk_env_fix(1, 1, 1), DESK_FIX_NONE);
     CHECK_INT(desk_copy_name("ENVARC:Amarchy/desk-original", "ENV:Sys/palette.prefs", name, sizeof name), 1);
     CHECK_STR(name, "ENVARC:Amarchy/desk-original/ENV-Sys-palette.prefs");
     CHECK_INT(desk_copy_name("T:x", "ENV:Sys/palette.prefs", tiny, sizeof tiny), 0);

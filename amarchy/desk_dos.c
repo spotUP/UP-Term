@@ -868,6 +868,28 @@ static int dk_stream_copy(const char *src, const char *dst)
     return ok && got >= 0;
 }
 
+/* 1 when both files are readable and hold the same bytes */
+static int dk_files_equal(const char *a, const char *b)
+{
+    static unsigned char ba[1024], bb[1024];
+    BPTR fa = Open((STRPTR)a, MODE_OLDFILE), fb = fa ? Open((STRPTR)b, MODE_OLDFILE) : 0;
+    LONG ga = 0, gb = 0;
+    int eq = fa && fb;
+    while (eq) {
+        ga = Read(fa, ba, sizeof ba);
+        gb = Read(fb, bb, sizeof bb);
+        if (ga < 0 || ga != gb || (ga > 0 && memcmp(ba, bb, (size_t)ga)))
+            eq = 0;
+        else if (ga == 0)
+            break;
+    }
+    if (fa)
+        Close(fa);
+    if (fb)
+        Close(fb);
+    return eq;
+}
+
 static void dk_orig_dirs(void)
 {
     UnLock(CreateDir((STRPTR) "ENVARC:Amarchy"));
@@ -940,13 +962,15 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
     int r;
     dk_live_want = 0;
     r = dk_apply(th, why, cap);
+    if (!(r > 0 && (r & (1 << DT_PALETTE))) && dk_flat_pens(th) && r >= 0)
+        r |= 1 << DT_PALETTE;   /* the theme colours are in the palette and DOpus has them: no wb_pens_apply */
     if (r >= 0) {
+        /* after dk_flat_pens: its flat-off palette restore writes palette.prefs from the live screen when the original is gone, and the
+         * originals must have the last word on the ENV: files (FP-2) */
         am_prefs ap;
         amconf_load(&ap);
         dk_orig_off(amconf_desk_mask(&ap), amconf_desk_flat_pens(&ap));
     }
-    if (!(r > 0 && (r & (1 << DT_PALETTE))) && dk_flat_pens(th) && r >= 0)
-        r |= 1 << DT_PALETTE;   /* the theme colours are in the palette and DOpus has them: no wb_pens_apply */
     dk_wbborder();
     if (r <= 0 && !dk_pending_mask())
         DeleteFile((STRPTR)DK_WBPEND);   /* nothing to confirm: the Workbench.prefs snapshot has no owner */
@@ -1084,6 +1108,21 @@ static void dk_orig_off(unsigned desk_mask, int flat)
             DeleteFile((STRPTR)DESK_WBPREFS_ENV);
         DeleteFile((STRPTR)DK_WBB_PREV);
         DeleteFile((STRPTR)DK_WBG_PREV);
+    }
+    /* the stock editors rewrite what they are fed (Pointer) and IPrefs/the palette editor recreate files that were deleted: whatever
+     * ran, the ENV: file ends equal to the original, or absent when there was none */
+    for (i = 0; i < n; i++) {
+        desk_copy_name(DK_ORIG, env[i], name, sizeof name);
+        switch (desk_env_fix(dk_exists(name), dk_exists(env[i]), dk_files_equal(name, env[i]))) {
+        case DESK_FIX_COPY:
+            dk_stream_copy(name, env[i]);
+            break;
+        case DESK_FIX_DELETE:
+            DeleteFile((STRPTR)env[i]);
+            break;
+        default:
+            break;
+        }
     }
     for (i = 0; i < n; i++)
         dk_orig_forget(env[i]);
