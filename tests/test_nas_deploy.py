@@ -21,16 +21,23 @@ def run(tmp_path, *args, conf=CONF):
 def test_dry_run_prints_rsync_and_ssh(tmp_path):
     r = run(tmp_path, "--dry-run")
     assert r.returncode == 0, r.stderr
-    rsync, ssh, _note = r.stdout.splitlines()
+    rsync, ssh, _info = r.stdout.splitlines()
     assert rsync.startswith("rsync ") and "--exclude home" in rsync and "--delete" not in rsync
     assert "admin@nas.example:/volume1/docker/claude-amiga/" in rsync and "ssh -p 2222" in rsync
     assert "tools/uptelnetd.py" in rsync
     assert "sudo docker compose build && sudo docker compose up -d" in ssh
 
 
-def test_dry_run_prints_env_note(tmp_path):
+def test_dry_run_does_not_claim_env_missing(tmp_path):
     r = run(tmp_path, "--dry-run")
-    assert "[NOTE] No .env" in r.stdout and "env.example" in r.stdout
+    assert "No .env" not in r.stdout and "[NOTE]" not in r.stdout
+    assert "[INFO] would check for .env in /volume1/docker/claude-amiga on the NAS" in r.stdout
+
+
+def test_env_example_sent_but_not_env(tmp_path):
+    rsync = run(tmp_path, "--dry-run").stdout.splitlines()[0].split()
+    assert any(a.endswith("tools/nas/env.example") for a in rsync)
+    assert not any(a.endswith("/.env") or a == ".env" for a in rsync)
 
 
 def test_env_never_copied():

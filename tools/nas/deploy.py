@@ -16,7 +16,7 @@ TOOLS = HERE.parent
 KEYS = ("NAS_HOST", "NAS_PORT", "NAS_USER", "NAS_DIR", "NAS_DOCKER")
 REQUIRED = ("NAS_HOST", "NAS_USER", "NAS_DIR")
 DEFAULTS = {"NAS_PORT": "22", "NAS_DOCKER": "sudo docker"}
-EXTRA = ("Dockerfile", "compose.yaml", "README.md")  # not COPY sources, but the build and the compose project need them
+EXTRA = ("Dockerfile", "compose.yaml", "README.md", "env.example")  # not COPY sources, but the build and the compose project need them
 
 
 def conf_path():
@@ -106,7 +106,7 @@ def main(argv=None):
     if a.dry_run:
         print(shlex.join(rsync))
         print(shlex.join(ssh))
-        print(env_note(cfg))
+        print("[INFO] would check for .env in %s on the NAS (the deploy never sends .env)" % cfg["NAS_DIR"])
         return 0
     if not remote_has_env(cfg):
         print(env_note(cfg))
