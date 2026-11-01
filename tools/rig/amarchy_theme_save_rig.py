@@ -257,10 +257,32 @@ def open_menu():
     ami.key(g.SPACE, g.LAMIGA)
 
 
+STYLE_LEVEL_ROWS = ('Amarchy theme', 'Terminal')   # AMARCHY_ROWS of the Style level (THEME-PICK-MENU-LEVEL)
+
+
+def menu_level(rows):
+    """'style' when the menu rows are the Style level, else 'themes' (the theme list). After a pick the menu may sit on
+    either: returning to Style level is the product's behaviour (owner, 2026-11-01), the theme list is the older one."""
+    return 'style' if all(r in rows for r in STYLE_LEVEL_ROWS) else 'themes'
+
+
+def current_verdict(name, rows_before, rows_after, sel_before, sel_after):
+    """None when the reopened/recoloured theme list marks `name` "(current)" on the picked row with the cursor still on
+    it, else the failure text."""
+    want = name + ' (current)'
+    at = [i for i, r in enumerate(rows_before) if r.split(' (')[0] == name]
+    if want not in rows_after or not at or rows_after.index(want) != at[0]:
+        return 'rows after the pick do not mark %r: %s' % (want, rows_after)
+    if sel_after != sel_before:
+        return 'cursor moved from row %s to %s' % (sel_before, sel_after)
+    return None
+
+
 def one_select(n, allowed):
     """Returns (ok, detail, open_wait_seconds). The pick switches live (owner, 2026-10-28): the menu stays open on
     the theme list, AMARCHY_THEME (set where gui.c pens_get takes the colours) names the picked theme, the picked
-    row reads "(current)" and the cursor stays on it."""
+    row reads "(current)" and the cursor stays on it. The menu may instead return to Style level after the apply
+    (product behaviour, owner 2026-11-01): then the theme list is reopened and checked the same way."""
     before = {p: theme_line(p) for p in PREFS}
     dopus_pens_reset()
     c.run('Delete >NIL: ENV:%s QUIET' % APPLY_DONE)
@@ -296,6 +318,16 @@ def one_select(n, allowed):
         time.sleep(1)
     drew, rows_after, sel_after = env('AMARCHY_THEME'), env('AMARCHY_ROWS').split('|'), env('AMARCHY_SEL')
     head = header_accent_pixels(theme_accent(drew)) if drew else 0
+    if menu_level(rows_after) == 'style':
+        # the pick left the menu on Style level (SEL 0 = "Amarchy theme"): reopen the theme list, the cursor opens on the current theme
+        try:
+            now = menu_state()
+            ami.key(g.RETURN)
+            wait_stable(STEP_SECS, differ_from=now, what='reopen theme list')
+        except TimeoutError as e:
+            g.close_menu()
+            return False, str(e), open_wait
+        rows_after, sel_after = env('AMARCHY_ROWS').split('|'), env('AMARCHY_SEL')
     g.close_menu()
     bad = strangers(allowed)
     if bad:
@@ -309,12 +341,9 @@ def one_select(n, allowed):
     name = picked.pop()
     if drew != name:
         return False, 'the open menu drew theme %r after picking %r (AMARCHY_THEME)' % (drew, name), open_wait
-    want = name + ' (current)'
-    at = [i for i, r in enumerate(rows_before) if r.split(' (')[0] == name]
-    if want not in rows_after or not at or rows_after.index(want) != at[0]:
-        return False, 'rows after the pick do not mark %r: %s' % (want, rows_after), open_wait
-    if sel_after != sel_before:
-        return False, 'cursor moved from row %s to %s' % (sel_before, sel_after), open_wait
+    bad = current_verdict(name, rows_before, rows_after, sel_before, sel_after)
+    if bad:
+        return False, bad, open_wait
     if head < 10:
         return False, 'the header is not drawn in %s\'s accent (%d accent pixels outside border and selection)' % (
             name, head), open_wait
