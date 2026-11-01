@@ -62,8 +62,8 @@ extern unsigned long desk_flat_state_calls;
 int desk_icons_state(int on, int outline);
 
 /* Pen plan (lucide icons L6): which screen pens the desktop uses beyond the DrawInfo pens, per screen depth (EHB counts as 5).
- * button = the flat button fill (DK_SELECTION), backdrop = the Workbench backdrop tone (FLAT-COLOUR-OVERHAUL: its own pen DK_RED, nothing draws with it; a WBPattern tile is 3 planes,
- * so it is below 8; on a screen below 3 planes no pen is free and it is DK_DARKER, the same tone). DK_MUTED keeps the theme muted text colour. The icon pens are the range icon_first .. icon_first + icon_count - 1 that amarchy-flat holds for icon
+ * button = the flat button fill (DK_SELECTION), backdrop = the Workbench backdrop tone (FLAT-COLOUR-OVERHAUL: its own pen DK_RED, nothing draws with it; a WBPattern tile is 3 planes, so its pen is below 8 but it is the SCREEN pen 2^depth-8+pen
+ * when depth > 3 (desk_backdrop_screen_pen: pen 255 on 8 planes), tile pen == screen pen only at depth <= 3; on a screen below 3 planes no pen is free and it is DK_DARKER, the same tone). DK_MUTED keeps the theme muted text colour. The icon pens are the range icon_first .. icon_first + icon_count - 1 that amarchy-flat holds for icon
  * slots icon_slot ..: depth >= 6 pens 32..47 (slots 0..15), depth 4 and 5 pens 8..15 (slots 8..15), depth 2 and 3 none. The
  * range never overlaps button, backdrop or the eight role pens 0..7. */
 typedef struct desk_pen_plan {
@@ -126,6 +126,8 @@ long desk_palette_theme(const unsigned char *cur, long curlen, const gtheme *t, 
 int desk_backdrop_pen(void);
 /* the backdrop pen of a screen of depth planes (the plan's) */
 int desk_backdrop_pen_at(int depth);
+/* FLAT-VIS-1: the screen pen the backdrop tile pen is drawn in (tile pens 4-7 land on 2^depth-8+pen: 255 on 8 planes, = the tile pen at depth <= 3) */
+int desk_backdrop_screen_pen(int depth);
 long desk_palette_rgb(const unsigned char *cur, long curlen, int pen, int depth);
 long desk_palette_set_rgb(const unsigned char *cur, long curlen, int pen, int depth, uc_u32 c, unsigned char *out, long cap);
 long desk_palette_pens(const unsigned char *cur, long curlen, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap);

@@ -102,6 +102,15 @@ static void pens_theme(void *ctx, gtheme *t, int *flat, unsigned *mask)
     *mask = amconf_desk_mask(&ap);
 }
 
+void ipd_icon_rgb(uint8_t rgb[IP_PENS][3])
+{
+    gtheme t;
+    int flat;
+    unsigned mask;
+    pens_theme(0, &t, &flat, &mask);
+    ip_colours(&t, ip_ground(&t, flat, mask), rgb);
+}
+
 static void pens_sync(ipd_rec *r)
 {
     pen_ctx c;

@@ -4,21 +4,27 @@
 #include <string.h>
 #include "iconapply_core.h"
 
-uint32_t ia_crc32(const uint8_t *p, size_t n)
+static uint32_t crc_upd(uint32_t c, const uint8_t *p, size_t n)
 {
-    uint32_t c = 0xFFFFFFFFu;
     size_t i;
     int k;
     for (i = 0; i < n; i++) {
         c ^= p[i];
         for (k = 0; k < 8; k++) c = (c >> 1) ^ (0xEDB88320u & (0u - (c & 1u)));
     }
-    return ~c;
+    return c;
+}
+
+uint32_t ia_crc32(const uint8_t *p, size_t n)
+{
+    return ~crc_upd(0xFFFFFFFFu, p, n);
 }
 
 uint32_t ia_imgcrc(const li_file *f)
 {
-    return ia_crc32(f->buf + f->img_off, f->img_end - f->img_off);
+    uint32_t c = crc_upd(0xFFFFFFFFu, f->buf + f->img_off, f->img_end - f->img_off);
+    if (f->form_len) c = crc_upd(c, f->buf + f->form_off, f->form_len);
+    return ~c;
 }
 
 /* ---- manifest ---- */
@@ -245,6 +251,12 @@ static int apply_one(ia_ctx *c, const char *path, const char *match)
     if (li_dat_find(c->dat, match, c->variant, &nrm, &sel) != 0) { return ia_skip_note(c, &c->skipped_nodat, path, "nodat"); }
     if (e_i < 0 && c->man.n >= IA_MAXENT) { return ia_skip_note(c, &c->skipped_io, path, "io"); }    /* no manifest line, no write: RESTORE must cover it */
     li_edit_apply(&ed, &src, &nrm, &sel);
+    if (c->form_rgb) {
+        size_t fn = li_form_build(&nrm, &sel, c->form_rgb, c->form, sizeof c->form);
+        if (!fn) { return ia_skip_note(c, &c->skipped_bad, path, "bad"); }
+        ed.form_new = c->form;
+        ed.form_new_len = fn;
+    }
     outn = li_splice(&src, &ed, c->out, IA_FILECAP);
     if (!outn || li_parse(c->out, outn, &wr) != 0) { return ia_skip_note(c, &c->skipped_bad, path, "bad"); }
     if (own && ia_imgcrc(&wr) == c->man.e[e_i].wcrc) { c->skipped_done++; return 0; }
