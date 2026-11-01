@@ -426,7 +426,7 @@ static void shared_vectors(void)
     fclose(f);
     if (have)
         run_vector(&v), count++;
-    CHECK_INT(count, 32);
+    CHECK_INT(count, 34); /* DEViLBOX master dd37a194e: + intro-m-8-spaces, intro-m-9-spaces */
 }
 
 /* The copy must equal the master; absent master: skipped. */
