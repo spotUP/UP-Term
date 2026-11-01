@@ -506,10 +506,12 @@ int flat_title_decide(const flat_state *s, int depth, int active, const char *ti
         if (!title[i] || title[i] != str[i])
             return 0;
     t->band_pen = -1;
+    t->bg_pen = -1;
     t->bx0 = 0; t->by0 = 0; t->bx1 = win_w - 1; t->by1 = bar_h - 1;
     if (active) {
         if (s->pen_outline && depth >= 1 && depth <= 8 && s->pen_outline < (1 << depth))
             t->band_pen = s->pen_outline;
+        t->bg_pen = t->band_pen;
         t->text_pen = t->band_pen >= 0 ? s->pen_ptext : -1;
     } else {
         t->text_pen = flat_dimtext_pen(s, depth);

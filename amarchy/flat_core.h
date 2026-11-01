@@ -240,8 +240,9 @@ int flat_tx_pen(const flat_state *s, flat_tx *t, const void *surf, const void *t
  * flat_title_decide: 1 and *t filled when the call is a window title under flat (enabled, not held, title string prefix
  * match of str/count against the Window title, pen y inside bar_h = BorderTop). Active: band (0,0)-(w-1,bar_h-1) in
  * pen_outline (band_pen -1 = none: pen_outline unset or not a pen of the depth) and the title text in pen_ptext.
- * Inactive: no band, title text in flat_dimtext_pen (dark_foreground). 0: not a title, stock Text untouched. */
-typedef struct flat_title { int band_pen, bx0, by0, bx1, by1, text_pen; } flat_title;
+ * bg_pen = band_pen when a band is drawn (the title Text call is JAM2: its cell box repaints BgPen, so BgPen must be the band pen
+ * for that call or the band is erased behind the glyphs), else -1 (BgPen untouched). Inactive: no band, title text in flat_dimtext_pen (dark_foreground). 0: not a title, stock Text untouched. */
+typedef struct flat_title { int band_pen, bx0, by0, bx1, by1, text_pen, bg_pen; } flat_title;
 int flat_title_decide(const flat_state *s, int depth, int active, const char *title, int win_w, int bar_h,
                       const char *str, int count, int cp_y, flat_title *t);
 

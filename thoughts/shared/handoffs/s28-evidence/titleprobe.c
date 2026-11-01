@@ -55,6 +55,7 @@ int main(void)
     GfxBase = (struct GfxBase *)OpenLibrary("graphics.library", 36);
     if (!IntuitionBase || !GfxBase) return 20;
     scr = LockPubScreen(NULL);
+    printf("SCREEN depth %d\n", (int)scr->RastPort.BitMap->Depth);
     for (i = 0; i < 8; i++) { GetRGB32(scr->ViewPort.ColorMap, i, 1, c); printf("PEN %d rgb %02lx%02lx%02lx\n", i, c[0] >> 24, c[1] >> 24, c[2] >> 24); }
     A = OpenWindowTags(NULL, WA_Left, 20, WA_Top, 60, WA_Width, 240, WA_Height, 90, WA_Title, "title A active", WA_CloseGadget, 1,
         WA_DepthGadget, 1, WA_DragBar, 1, WA_SmartRefresh, 1, WA_IDCMP, IDCMP_REFRESHWINDOW, TAG_END);

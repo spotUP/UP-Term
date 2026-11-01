@@ -1031,10 +1031,12 @@ static void test_title_accent(void)
     CHECK_INT(t.band_pen, 3);
     CHECK_INT(t.bx0 == 0 && t.by0 == 0 && t.bx1 == 199 && t.by1 == 10, 1);
     CHECK_INT(t.text_pen, 0);
+    CHECK_INT(t.bg_pen, 3);          /* JAM2 Text box must repaint the band pen, not pen 0 */
     /* inactive: no band, text in the dark_foreground pen */
     CHECK_INT(flat_title_decide(&s, 3, 0, "Shell", 200, 11, "Shell", 5, 9, &t), 1);
     CHECK_INT(t.band_pen, -1);
     CHECK_INT(t.text_pen, 5);
+    CHECK_INT(t.bg_pen, -1);
     /* a clipped title (prefix) still matches; body text, wrong text, a row below the bar, off/held do not */
     CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "She", 3, 9, &t), 1);
     CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "Hello", 5, 9, &t), 0);

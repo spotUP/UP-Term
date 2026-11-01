@@ -300,7 +300,7 @@ void flat_tx_c(struct RastPort *rp, CONST_STRPTR str, ULONG count)
         flat_title ft;
         if (flat_title_decide(&r->st, rp->BitMap ? rp->BitMap->Depth : 0, (w->Flags & WFLG_WINDOWACTIVE) != 0, (const char *)w->Title,
                               w->Width, w->BorderTop, (const char *)str, (int)count, rp->cp_y - (rp->Font ? rp->Font->tf_Baseline : 0), &ft)) {
-            UBYTE fg = rp->FgPen, dm = rp->DrawMode;
+            UBYTE fg = rp->FgPen, bg = rp->BgPen, dm = rp->DrawMode;
             WORD cx = rp->cp_x, cy = rp->cp_y;
             r->ttitle++;
             if (ft.band_pen >= 0) {
@@ -316,8 +316,11 @@ void flat_tx_c(struct RastPort *rp, CONST_STRPTR str, ULONG count)
             }
             if (ft.text_pen >= 0)
                 SetAPen(rp, (UBYTE)ft.text_pen);
+            if (ft.bg_pen >= 0)
+                SetBPen(rp, (UBYTE)ft.bg_pen);
             ((textfn)r->tsw.saved)(rp, str, count, (struct Library *)GfxBase);
             SetAPen(rp, fg);
+            SetBPen(rp, bg);
             return;
         }
     }
