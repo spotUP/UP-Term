@@ -542,6 +542,10 @@ golden: $(BUILD)/vtdump
 # Idempotent: the stamp holds the pinned commit. Uninstall: make wasabi-clean.
 WASABI_REPO := $(strip $(shell cat tools/nas/wasabi.repo))
 WASABI_REV  := $(strip $(shell cat tools/nas/wasabi.rev))
+# the kit's wasabi SOURCE.txt: dist/wasabi/SOURCE.txt.in with the pin and the fork filled in from the two files above (one source of truth)
+WASABI_SOURCE := $(BUILD)/wasabi/SOURCE.txt
+$(WASABI_SOURCE): dist/wasabi/SOURCE.txt.in tools/nas/wasabi.rev tools/nas/wasabi.repo
+	mkdir -p $(dir $@) && sed -e 's|@WASABI_REV@|$(WASABI_REV)|g' -e 's|@WASABI_REPO@|$(WASABI_REPO)|g' $< > $@
 # Deploy tools/nas to the owner's NAS (tar over ssh + docker compose build/up); config ~/.config/upterm/nas.conf, see tools/nas/README.md "Deploy from the Mac".
 nas-deploy:
 	python3 -I tools/nas/deploy.py $(NAS_DEPLOY_ARGS)
@@ -1746,7 +1750,8 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	mkdir -p $(KIT)/Files/unifont && cp $(UNIFONT_PAGES)/[0-9A-F][0-9A-F] $(UNIFONT_PAGES)/1F[0-9A] dist/unifont/OFL-1.1.txt dist/unifont/SOURCE.txt $(KIT)/Files/unifont/
 	mkdir -p $(KIT)/Files/emoji && cp $(EMOJI_PAGES)/[0-9A-F][0-9A-F] $(EMOJI_PAGES)/1F[0-9A] dist/emoji/CC-BY-4.0.txt dist/emoji/SOURCE.txt $(KIT)/Files/emoji/
 	@# wasabi: LICENSE and SOURCE.txt from dist/wasabi, the daemon and the client from the build (the wasabi stamp, the pin tools/nas/wasabi.rev)
-	rm -rf $(KIT)/Files/wasabi && cp -R dist/wasabi $(KIT)/Files/wasabi
+	rm -rf $(KIT)/Files/wasabi && cp -R dist/wasabi $(KIT)/Files/wasabi && rm $(KIT)/Files/wasabi/SOURCE.txt.in
+	$(MAKE) $(WASABI_SOURCE) && cp $(WASABI_SOURCE) $(KIT)/Files/wasabi/SOURCE.txt
 	cp $(BUILD)/wasabi/wasabid $(BUILD)/wasabi/wasabi $(BUILD)/wasabi/wasabi_mcp.py $(BUILD)/wasabi/wasabi_client.py $(BUILD)/amiga/wasabikey $(KIT)/Files/wasabi/
 	@# AmiSSL 5.27 (Apache 2.0) as its own release drawer: the Install runs its Install-AmiSSL (the Developer SDK is for building only, so it stays out)
 	rm -rf $(KIT)/Files/AmiSSL && mkdir -p $(KIT)/Files/AmiSSL && cp -R $(VENDOR)/amissl-5.27/AmiSSL/. $(KIT)/Files/AmiSSL/ && rm -rf $(KIT)/Files/AmiSSL/Developer $(KIT)/Files/AmiSSL/Developer.info
