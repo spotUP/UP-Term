@@ -3,7 +3,7 @@
 "RESTORE byte-for-byte check").
   UPTERM_RIG=<n> tools/rig/rig.py start --max --os 32 --purpose "<session>: icon RESTORE byte check"
   UPTERM_RIG=<n> python3 tools/rig/rig.py install     (the script puts md5sum in RAM: and lucide.dat in UP-Term:Amarchy/Icons/ when the rig has none)
-  UPTERM_RIG=<n> python3 tools/rig/amarchy_icons_restore_rig.py [--vols SYS:,VTCX:,BOOTX:,Work:]
+  UPTERM_RIG=<n> python3 tools/rig/amarchy_icons_restore_rig.py [--vols SYS:,VTCX:,BOOTX:,Work:] [--watch SYS:Utilities.info]
 Steps: List every .info per volume (ALL), md5sum them on the Amiga, APPLY, md5 again (how many changed), RESTORE, md5
 again, compare with the first list. Prints counters, rc, and for each differing file size and md5 before and after."""
 import os, re, sys
@@ -69,6 +69,8 @@ def main():
     rc, out = c.run('RAM:amarchy-icons RESTORE', 300)
     print('[INFO] RESTORE rc %d: %s' % (rc, out.strip()))
     after = snapshot(files)
+    for w in sys.argv[sys.argv.index('--watch') + 1].split(',') if '--watch' in sys.argv else []:
+        print('[WATCH] %s before %s apply %s after %s' % (w, before.get(w), mid.get(w), after.get(w)))
     bad = [f for f in before if before[f] != after.get(f)]
     for f in bad:
         sz = lambda p: len(ami.read_file(p) or b'')
