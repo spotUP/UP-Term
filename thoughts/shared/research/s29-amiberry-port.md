@@ -33,7 +33,7 @@ Backend: `tools/rig/amiberry.py` (config spelling, launch command, title link). 
 | title 983-998 / title_line() | `title = vtcon rig N (...) - PURPOSE` | none; Amiberry titles the window "Amiberry - [<config file name>]". Solved: `launch_path()` starts it on a symlink `build/rigN/win/<title>.uae`; `config_description` carries the text too | works: see proof. No hand renaming |
 | HOST_KEYS 983 | `modifier_key=rctrl`, Cmd to Right Amiga, Right Option to Left Amiga | only `rctrl_as_ramiga` in amiberry.conf (global, not per rig) | GAP: Cmd/Option remap not done; owner must test keys |
 | serial (SERIAL, `serial_port`) | file | Amiberry wants a serial device ("Error finding serial port <file>") | SOLVED in s48: see "## s48 serial" (TCP listener + serialwatch) |
-| screenshots_output_dir | per-rig shots dir | key unknown ("unknown config entry") | GAP: screenshots go to Amiberry's own dir |
+| screenshots_output_dir | per-rig shots dir | not a .uae key; amiberry.conf `screenshot_dir`, overridden per run by `-o screenshot_dir=<rig>/shots` on the command line (amiberry.command) | DONE host-side (s48); the hotkey press on the live rig is unverified |
 | logs_dir, FSUAE_LOG_DIR | per-rig fs-uae log | none; stdout (`--log`) appended to `build/rigN/logs/fs-uae.log.txt`, so cap_fsuae_log, fsuae_crash, fsuae_reset_count keep reading it | reset-loop and crash line formats of Amiberry not verified (patterns written for fs-uae) |
 | uaem_write_flags | `nhsparwed` | none known | GAP: log flood from .uaem writes not checked on Amiberry |
 | `--debugger`, dbg, dbgbreak | console_debugger FIFO | none wired | GAP |
@@ -81,3 +81,11 @@ Host test: `tests/test_rig_amiberry_config.py` `MachineFromFlags.test_serial_is_
 Proof, rig 30 (`--max --emu amiberry`): Amiberry log "TCP: Listening on 127.0.0.1 port 12030" then "TCP: Serial connection accepted";
 `build/rig30/serial.log` filled with the Amiga's upgetty shell on the serial line, e.g. `New to a Unix shell? Type  tutorial  for a short hands-on course.`
 Unverified: a probe string of our own (`Echo >SER:` and `>AUX:` do not exist on this rig; upgetty owns serial.device); kprintf via RawPutChar not exercised.
+
+
+## s48 screenshots
+
+- Source (Amiberry checkout /Users/spot/Code/Emulators/amiberry, 6e3ca06): `screenshot_dir` is an amiberry.conf path key (src/osdep/amiberry.cpp, table near line 3818), read by get_screenshot_path() for every PNG. The .uae parser has no such entry. `-o <amiberry.conf line>` on the command line goes through the same parser (parse_amiberry_cmd_line), so the setting is per run and the shared amiberry.conf stays untouched.
+- Rig: tools/rig/amiberry.py command(cfg, shots) appends `-o screenshot_dir=<rig>/shots`; rig.py amiberry_machine() passes shots_dir. Rig 30 process list showed the argument.
+- Amiberry has no default screenshot hotkey (config key `amiberry.screenshot`); config_lines now sets `LCtrl+LShift+F10`.
+- Unverified: a synthetic osascript key press (control+shift+F10, Amiberry frontmost) produced no PNG in build/rig30/shots or ~/Documents/Amiberry/Screenshots (both empty). Cause not isolated: key not delivered by System Events, or hotkey path; needs a human press of Ctrl+Shift+F10 in the rig window.

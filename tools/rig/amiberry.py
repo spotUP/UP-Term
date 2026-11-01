@@ -65,6 +65,10 @@ def config_lines(m):
         "gfx_fullscreen_amiga=false",
         "gfx_fullscreen_picasso=false",
     ]
+    if m.get("shots_dir"):
+        # Amiberry has no default screenshot hotkey (FS-UAE has its own); with this one the emulator writes a PNG
+        # into the screenshot_dir that command() passes
+        l.append("amiberry.screenshot=LCtrl+LShift+F10")
     if m.get("serial_tcp"):
         # Amiberry's serial_port is a device or TCP://host:port, never a file ("Error finding serial port <file>");
         # it listens, rig.py's serialwatch connects and writes the stream to serial.log
@@ -72,9 +76,15 @@ def config_lines(m):
     return l + m.get("extra", [])
 
 
-def command(cfg):
-    """The argv that starts one rig: no GUI, the config, console log on stdout."""
-    return [str(BINARY), "-G", "--log", "-f", str(cfg)]
+def command(cfg, shots=None):
+    """The argv that starts one rig: no GUI, the config, console log on stdout. shots: this rig's screenshot directory.
+    Amiberry's .uae config has no such key ("unknown config entry"); the directory is an amiberry.conf setting
+    (screenshot_dir, default ~/Documents/Amiberry/Screenshots) that `-o screenshot_dir=<dir>` overrides for this run
+    only, so the shared amiberry.conf stays untouched."""
+    argv = [str(BINARY), "-G", "--log", "-f", str(cfg)]
+    if shots:
+        argv += ["-o", "screenshot_dir=%s" % shots]
+    return argv
 
 
 def launch_path(rig_dir, cfg, title):

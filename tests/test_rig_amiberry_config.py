@@ -127,6 +127,17 @@ class MachineFromFlags(unittest.TestCase):
         self.assertEqual(c["serial_port"], "TCP://127.0.0.1:12029")
         self.assertIsNone(self.machine("--max", "--emu", "amiberry", "--serial", "/dev/ttys9")["serial_tcp"])
 
+    def test_screenshots_go_to_the_rig_shots_dir(self):
+        """AMIBERRY-SHOTS: the .uae has no screenshots_output_dir; the rig launches Amiberry with
+        -o screenshot_dir=<rig>/shots (an amiberry.conf key, overridden per run)."""
+        m = self.machine("--max", "--emu", "amiberry")
+        self.assertTrue(m["shots_dir"].endswith("/shots"))
+        argv = amiberry.command("/c.uae", m["shots_dir"])
+        self.assertEqual(argv[-2:], ["-o", "screenshot_dir=" + m["shots_dir"]])
+        self.assertNotIn("-o", amiberry.command("/c.uae"))
+        c = dict(l.split("=", 1) for l in amiberry.config_lines(dict(m, window=tuple(m["window"]))))
+        self.assertEqual(c["amiberry.screenshot"], "LCtrl+LShift+F10")
+
 
 if __name__ == "__main__":
     unittest.main()

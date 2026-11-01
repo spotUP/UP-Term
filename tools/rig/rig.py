@@ -1007,7 +1007,8 @@ def amiberry_machine():
     w, h = window_size()
     return dict(base, title=title_text(), rom=str(KICK), bsdsocket=True, drives=drives, volume=rig_volume(),
                 clipboard=bool(CLIPBOARD), window=(w, h),
-                serial_tcp=None if "--serial" in sys.argv else paths.serial_tcp_port())   # no shots dir: a gap in the research file
+                serial_tcp=None if "--serial" in sys.argv else paths.serial_tcp_port(),
+                shots_dir=str(RIG / "shots"))   # passed to Amiberry as -o screenshot_dir=, see amiberry.command
 
 
 def title_line():
@@ -1861,7 +1862,7 @@ def _start(retries):
     if AMIBERRY:
         # Amiberry's console log goes where cap_fsuae_log, fsuae_crash and fsuae_reset_count already read
         paths.FSUAE_LOG_DIR.mkdir(parents=True, exist_ok=True)
-        subprocess.Popen(["nice", "-n", "19"] + amiberry.command(amiberry.launch_path(RIG, CFG, title_text())), stdin=subprocess.DEVNULL,
+        subprocess.Popen(["nice", "-n", "19"] + amiberry.command(amiberry.launch_path(RIG, CFG, title_text()), amiberry_machine()["shots_dir"]), stdin=subprocess.DEVNULL,
                          stdout=open(paths.FSUAE_LOG_DIR / "fs-uae.log.txt", "ab"), stderr=subprocess.STDOUT,
                          start_new_session=True)
     elif paths.FSUAE.suffix == ".app":
