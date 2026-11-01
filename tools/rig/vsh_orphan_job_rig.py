@@ -20,9 +20,17 @@ Fourth test (code leak): the code kept for the orphans goes when the last of the
 DOS unload it). Old code never unloaded it: every shell that orphaned a job lost about 240 KB of free
 memory for good. Five orphaning shells (jobs and subshells) may now cost at most 64 KB in all.
 
+Fifth test (kill, VSH-JOB-SIGNALS): `sh -c "VTC:ixsigexit sleep &"` leaves an ixemul sleeper running in an
+orphaned job; another shell sends it `kill -TERM $!` (the pid the first shell wrote). The job must end
+within 10 s (the sleeper's own sleep is 30 s) and the system must still answer. Before the orphan fix the
+runner of such a job waited for ever on its dead parent's port: the kill left "vsh job" behind and the
+rig froze (s21). Needs build/amiga/ixsigexit (copied to VTC:ixsigexit here).
+
   UPTERM_RIG=<n> vsh_orphan_job_rig.py"""
-import os, subprocess, sys, time
+import os, shutil, subprocess, sys, time
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import paths
 
 
 def ami(*a):
@@ -78,7 +86,33 @@ def code_leak():
     return ok
 
 
+def kill_orphan():
+    shutil.copyfile(os.path.join(HERE, '..', '..', 'build', 'amiga', 'ixsigexit'), str(paths.RIG / 'vtc' / 'ixsigexit'))
+    ami('exec', 'Delete RAM:kpid QUIET', '10')
+    ami('exec', 'GG:bin/sh -c "VTC:ixsigexit sleep & echo $! >RAM:kpid"', '20')
+    time.sleep(2)
+    running = len(job_tasks())
+    pid = ami('exec', 'Type RAM:kpid', '10').strip().splitlines()
+    pid = pid[-1].strip() if pid else ''
+    if not pid.isdigit():
+        print('[ERROR] killed orphan: no pid in RAM:kpid (%r)' % pid)
+        return False
+    ami('exec', 'GG:bin/sh -c "kill -TERM %s"' % pid, '20')
+    end = time.time() + 10
+    while time.time() < end and job_tasks():
+        time.sleep(1)
+    left = job_tasks()
+    ami('exec', 'GG:bin/sh -c "Echo alive5 >RAM:orphan5.out"', '20')
+    alive = 'alive5' in ami('exec', 'Type RAM:orphan5.out', '10')
+    ok = running == 1 and not left and alive
+    print('[%s] killed orphaned job: running before kill=%d, tasks left 10 s after kill -TERM=%d, system answers=%s'
+          % ('OK' if ok else 'ERROR', running, len(left), alive))
+    return ok
+
+
 def main():
+    if os.environ.get('ONLY') == 'kill':
+        return 0 if kill_orphan() else 1
     ami('exec', 'Delete RAM:orphan.out QUIET', '10')
     ami('exec', 'GG:bin/sh -c "Echo ok >RAM:orphan.out &"', '20')
     end = time.time() + 20
@@ -117,7 +151,8 @@ def main():
     print('[%s] orphaned subshell: command ran=%s, tasks left=%d, system answers=%s'
           % ('OK' if ok3 else 'ERROR', 'sub' in got3, len(left3), alive3))
     ok4 = code_leak()
-    return 0 if ok and ok2 and ok3 and ok4 else 1
+    ok5 = kill_orphan()
+    return 0 if ok and ok2 and ok3 and ok4 and ok5 else 1
 
 
 sys.exit(main())
