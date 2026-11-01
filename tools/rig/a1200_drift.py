@@ -12,8 +12,8 @@ checked against paths.IXEMUL_LIB (paths.IXEMUL_LIB_SOFT with --nofpu, the build 
 paths.IXNET_LIB, the files rig.py start stages in VTC:ixp6. md5 is read on the Amiga (UP-Term:bin/md5sum)
 over ami.py. Exit status 1 when anything differs or is missing. The rig's start-time [WARN] (rig.build_drift)
 checks the same build files against a rig's VTC: copies; this is the same check against an installed Amiga."""
-import hashlib, pathlib, re, subprocess, sys
-
+import hashlib, os, pathlib, re, subprocess, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths
 
 HERE = pathlib.Path(__file__).resolve().parent

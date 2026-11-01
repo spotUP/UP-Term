@@ -77,3 +77,13 @@ def test_nofpu_checks_the_soft_float_ixemul():
     got = {n: src for n, _, src in d.lib_entries(nofpu=True)}
     assert got["ixemul.library"] == d.paths.IXEMUL_LIB_SOFT != d.paths.IXEMUL_LIB
     assert got["ixnet.library"] == d.paths.IXNET_LIB
+
+
+def test_loads_under_python_isolated_mode():
+    # The documented run is `python3 -I tools/rig/a1200_drift.py`; -I leaves the script's drawer off sys.path,
+    # so the script must put it there itself before `import paths`.
+    import subprocess
+    script = pathlib.Path(d.__file__).resolve()
+    r = subprocess.run([sys.executable, "-I", "-c", "import runpy, sys; runpy.run_path(sys.argv[1])", str(script)],
+                       cwd=str(script.anchor), capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
