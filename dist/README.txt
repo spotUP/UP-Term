@@ -655,9 +655,9 @@ PICTURES IN THE CONSOLE (icat)
   WIDTH and HEIGHT count character cells. A console that cannot show
   pictures gets one line (name, size, format) and the return code 5.
   PNG is decoded by icat itself. Every other format needs a V43
-  picture.datatype in SYS:Classes/DataTypes: OS 3.2 has one; on OS 3.1
-  install a V43 picture.datatype first, or icat stops with return code 10
-  and names the missing class.
+  picture.datatype in SYS:Classes/DataTypes: OS 3.2 has one. The OS 3.1
+  picture.datatype is V40 and cannot hand out pixels, so install a V43 one
+  there first; without it icat stops with return code 10.
 
 VIEWING FILES (hl, mdv)
   hl shows a source file in colour, with line numbers, the language found
