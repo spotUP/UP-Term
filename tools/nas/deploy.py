@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Deploy the Claude-on-NAS drawer to the owner's own NAS: rsync over ssh, then docker compose build + up.
+"""Deploy the Claude-on-NAS drawer to the owner's own NAS: tar piped over ssh, then docker compose build + up.
 
 Config (git-ignored, outside the repo): ~/.config/upterm/nas.conf, lines KEY=value, '#' comments.
 Keys: NAS_HOST (required), NAS_USER (required), NAS_DIR (required, e.g. /volume1/docker/claude-amiga),
 NAS_PORT (default 22), NAS_DOCKER (default "sudo docker"; Synology needs sudo for docker).
 Environment variables of the same names win over the file; NAS_CONF names another file.
-Only the copy list is sent, never with --delete, and home/ (the volume) is excluded.
+Only the copy list is sent (files are overwritten, nothing is deleted), and home/ (the volume) is excluded.
+tar over ssh, not rsync: Synology refuses rsync over ssh ("Permission denied, please try again") unless the
+DSM rsync service is enabled; a plain ssh command needs no NAS setting.
 .env (site settings NAS_IP, ALLOW) is never sent; if the remote folder has none, a note says to create it from env.example.
 Run: python3 -I tools/nas/deploy.py [--dry-run] [--no-build]
 """
@@ -37,11 +39,11 @@ def copy_sources(dockerfile=None):
     return out
 
 
-def local_path(name):
-    """A COPY source lives in the drawer, or in tools/ (uptelnetd.py)."""
+def local_base(name):
+    """The folder a COPY source lives in: the drawer, or tools/ (uptelnetd.py)."""
     for base in (HERE, TOOLS):
         if (base / name).exists():
-            return base / name
+            return base
     raise SystemExit("[ERROR] Dockerfile COPY source not found in tools/nas or tools/: " + name)
 
 
@@ -75,17 +77,28 @@ def load_config(env=None):
 
 
 def commands(cfg, build=True):
-    ssh = shlex.join(["ssh", *SSH_OPTS, "-p", cfg["NAS_PORT"]])
     target = "%s@%s" % (cfg["NAS_USER"], cfg["NAS_HOST"])
-    srcs = [str(local_path(n)) for n in copy_list()]
-    rsync = ["rsync", "-az", "--exclude", "home", "-e", ssh] + srcs + ["%s:%s/" % (target, cfg["NAS_DIR"])]
+    pack = ["tar", "-czf", "-", "--no-xattrs", "--exclude", "home"]  # no xattrs: GNU tar on the NAS warns on each macOS one
+    for n in copy_list():
+        pack += ["-C", str(local_base(n)), n]
+    nas_dir = shlex.quote(cfg["NAS_DIR"])
+    unpack = ["ssh", *SSH_OPTS, "-p", cfg["NAS_PORT"], target,
+              "mkdir -p %s && tar -xzf - --no-same-owner -C %s" % (nas_dir, nas_dir)]
     dk = cfg["NAS_DOCKER"]
     steps = ["cd %s" % shlex.quote(cfg["NAS_DIR"])]
     if build:
         steps.append("%s compose build" % dk)
     steps.append("%s compose up -d" % dk)
     remote = " && ".join(steps)
-    return rsync, ["ssh", "-t", *SSH_OPTS, "-p", cfg["NAS_PORT"], target, remote]
+    return (pack, unpack), ["ssh", "-t", *SSH_OPTS, "-p", cfg["NAS_PORT"], target, remote]
+
+
+def send(pack, unpack):
+    """Run pack | unpack; 0 only when both ends succeed. COPYFILE_DISABLE keeps macOS ._ files out of the archive."""
+    tar = subprocess.Popen(pack, stdout=subprocess.PIPE, env=dict(os.environ, COPYFILE_DISABLE="1"))
+    rc = subprocess.call(unpack, stdin=tar.stdout)
+    tar.stdout.close()
+    return tar.wait() or rc
 
 
 def env_note(cfg):
@@ -109,13 +122,13 @@ def remote_has_env(cfg):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--dry-run", action="store_true", help="print the rsync and ssh commands, run nothing")
+    ap.add_argument("--dry-run", action="store_true", help="print the copy and ssh commands, run nothing")
     ap.add_argument("--no-build", action="store_true", help="skip docker compose build (copy and up -d only)")
     a = ap.parse_args(argv)
     cfg = load_config()
-    rsync, ssh = commands(cfg, build=not a.no_build)
+    (pack, unpack), ssh = commands(cfg, build=not a.no_build)
     if a.dry_run:
-        print(shlex.join(rsync))
+        print(shlex.join(pack) + " | " + shlex.join(unpack))
         print(shlex.join(ssh))
         print("[INFO] would check for .env in %s on the NAS (the deploy never sends .env)" % cfg["NAS_DIR"])
         return 0
@@ -125,11 +138,14 @@ def main(argv=None):
         return 1
     if not has_env:
         print(env_note(cfg))
-    for cmd in (rsync, ssh):
-        print("[INFO] " + shlex.join(cmd), flush=True)
-        if subprocess.call(cmd) != 0:
-            print("[ERROR] failed: " + cmd[0])
-            return 1
+    print("[INFO] " + shlex.join(pack) + " | " + shlex.join(unpack), flush=True)
+    if send(pack, unpack) != 0:
+        print("[ERROR] failed: copy to the NAS (tar over ssh)")
+        return 1
+    print("[INFO] " + shlex.join(ssh), flush=True)
+    if subprocess.call(ssh) != 0:
+        print("[ERROR] failed: docker compose on the NAS")
+        return 1
     print("[OK] deployed to %s:%s" % (cfg["NAS_HOST"], cfg["NAS_DIR"]))
     return 0
 

@@ -535,7 +535,7 @@ golden: $(BUILD)/vtdump
 # Idempotent: the stamp holds the pinned commit. Uninstall: make wasabi-clean.
 WASABI_REPO := https://github.com/spotUP/wasabi
 WASABI_REV  := $(strip $(shell cat tools/nas/wasabi.rev))
-# Deploy tools/nas to the owner's NAS (rsync + docker compose build/up); config ~/.config/upterm/nas.conf, see tools/nas/README.md "Deploy from the Mac".
+# Deploy tools/nas to the owner's NAS (tar over ssh + docker compose build/up); config ~/.config/upterm/nas.conf, see tools/nas/README.md "Deploy from the Mac".
 nas-deploy:
 	python3 -I tools/nas/deploy.py $(NAS_DEPLOY_ARGS)
 nas-deploy-dry:

@@ -21,10 +21,10 @@ def run(tmp_path, *args, conf=CONF):
 def test_dry_run_prints_rsync_and_ssh(tmp_path):
     r = run(tmp_path, "--dry-run")
     assert r.returncode == 0, r.stderr
-    rsync, ssh, _info = r.stdout.splitlines()
-    assert rsync.startswith("rsync ") and "--exclude home" in rsync and "--delete" not in rsync
-    assert "admin@nas.example:/volume1/docker/claude-amiga/" in rsync and "-p 2222" in rsync
-    assert "tools/uptelnetd.py" in rsync
+    copy, ssh, _info = r.stdout.splitlines()
+    assert copy.startswith("tar -czf - --no-xattrs --exclude home") and " | ssh " in copy and "--delete" not in copy
+    assert "admin@nas.example" in copy and "-C /volume1/docker/claude-amiga" in copy and "-p 2222" in copy
+    assert str(ROOT / "tools") + " uptelnetd.py" in copy
     assert "sudo docker compose build && sudo docker compose up -d" in ssh
 
 
@@ -35,9 +35,9 @@ def test_dry_run_does_not_claim_env_missing(tmp_path):
 
 
 def test_env_example_sent_but_not_env(tmp_path):
-    rsync = run(tmp_path, "--dry-run").stdout.splitlines()[0].split()
-    assert any(a.endswith("tools/nas/env.example") for a in rsync)
-    assert not any(a.endswith("/.env") or a == ".env" for a in rsync)
+    pack = run(tmp_path, "--dry-run").stdout.splitlines()[0].split(" | ")[0].split()
+    assert "env.example" in pack
+    assert not any(a.endswith("/.env") or a == ".env" for a in pack)
 
 
 def test_env_never_copied():
@@ -72,15 +72,15 @@ def test_copy_list_covers_every_dockerfile_copy_source():
     lst = d.copy_list()
     for s in srcs:
         assert s in lst
-        assert d.local_path(s).exists()
+        assert (d.local_base(s) / s).exists()
     for extra in ("compose.yaml", "README.md", "skills"):
         assert extra in lst
 
 
 def test_ssh_never_falls_back_to_password(tmp_path):
     r = run(tmp_path, "--dry-run")
-    rsync, ssh, _info = r.stdout.splitlines()
-    assert "BatchMode=yes" in rsync and "BatchMode=yes" in ssh
+    copy, ssh, _info = r.stdout.splitlines()
+    assert "BatchMode=yes" in copy and "BatchMode=yes" in ssh
 
 
 def test_failed_key_login_stops_with_key_hint(tmp_path, monkeypatch, capsys):
@@ -91,4 +91,22 @@ def test_failed_key_login_stops_with_key_hint(tmp_path, monkeypatch, capsys):
     assert d.main([]) == 1
     out = capsys.readouterr().out
     assert "key login" in out and "No .env" not in out
-    assert len(calls) == 1, "rsync must not run after a failed key login"
+    assert len(calls) == 1, "the copy must not run after a failed key login"
+
+
+def test_copy_is_not_rsync(tmp_path):
+    """Synology refuses rsync over ssh unless its rsync service is on; the copy must be a plain ssh command."""
+    copy = run(tmp_path, "--dry-run").stdout.splitlines()[0]
+    assert "rsync" not in copy
+
+
+def test_send_round_trip(tmp_path):
+    """pack | unpack really carries the copy list: unpack into a local folder with sh instead of ssh."""
+    (pack, _unpack), _ssh = d.commands({"NAS_HOST": "h", "NAS_USER": "u", "NAS_DIR": "/x", "NAS_PORT": "22",
+                                         "NAS_DOCKER": "docker"})
+    out = tmp_path / "nas"
+    out.mkdir()
+    assert d.send(pack, ["tar", "-xzf", "-", "-C", str(out)]) == 0
+    for n in d.copy_list():
+        assert (out / n).exists(), n
+    assert not list(out.rglob("._*")) and not (out / ".env").exists()

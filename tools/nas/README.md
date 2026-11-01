@@ -164,9 +164,10 @@ on a real one.
 ## Deploy from the Mac
 
 For the maintainer's own NAS: `make nas-deploy` copies the files the Dockerfile COPYs (the list is read from the Dockerfile, plus
-compose.yaml and README.md) and `tools/uptelnetd.py` to the NAS with rsync over ssh, then runs
-`sudo docker compose build && sudo docker compose up -d` there. It never sends `home/` and never deletes remote files.
-Needs ssh key login (next section) and rsync on both sides. Config, outside the repo, `~/.config/upterm/nas.conf`:
+compose.yaml, README.md and env.example) and `tools/uptelnetd.py` to the NAS as a tar stream over ssh, then runs
+`sudo docker compose build && sudo docker compose up -d` there. It never sends `home/` or `.env` and never deletes remote files.
+Needs ssh key login (next section) and tar on both sides. Not rsync: Synology refuses rsync over ssh
+("Permission denied, please try again") unless Control Panel > File Services > rsync > "Enable rsync service" is on. Config, outside the repo, `~/.config/upterm/nas.conf`:
 
     NAS_HOST=192.168.1.20
     NAS_USER=admin
