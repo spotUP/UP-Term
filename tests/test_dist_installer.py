@@ -401,6 +401,24 @@ class OffersAReboot(unittest.TestCase):
         self.assertIn('(UP-Term)"', (ROOT / 'install/reboot.c').read_text())
 
 
+class LucideDatShipped(unittest.TestCase):
+    """amarchy-icons reads UP-Term:Amarchy/Icons/lucide.dat (amarchy/iconapply_core.h IA_DAT). The kit must build it
+    (make lucide-dat, a prerequisite of dist-base), stage it in Files/lucide, list it in parts.txt, and install.dos
+    must copy it to that path. A rig 8 kit install lacked it."""
+
+    def test_icons_c_path_is_what_install_dos_copies_to(self):
+        h = (ROOT / "amarchy/iconapply_core.h").read_text()
+        self.assertIn('#define IA_DAT        "UP-Term:Amarchy/Icons/lucide.dat"', h)
+        self.assertIn("Copy lucide/lucide.dat UP-Term:Amarchy/Icons CLONE QUIET", (ROOT / "dist/install.dos").read_text())
+
+    def test_kit_lists_and_builds_lucide_dat(self):
+        self.assertRegex((ROOT / "dist/parts.txt").read_text(), r"(?m)^userland\s+Files/lucide$")
+        mk = (ROOT / "Makefile").read_text()
+        base = re.search(r"(?m)^dist-base:([^\n]*)", mk).group(1)
+        self.assertIn("$(LUCIDE_DAT)", base.split())
+        self.assertIn("cp $(LUCIDE_DAT) dist/lucide/LICENSE dist/lucide/SOURCE.txt $(KIT)/Files/lucide/", mk)
+
+
 class AmiSSLPart(unittest.TestCase):
     """P7: the base kit ships AmiSSL 5.27 and the Install has a part that runs AmiSSL's OWN Install-AmiSSL
     (never a copy of its logic) when LIBS:amisslmaster.library is missing or older than the kit's."""
