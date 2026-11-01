@@ -39,7 +39,7 @@
                 "asks which at every start. Empty: none.")
         (help "C:Claude is always installed (README.txt, "
               "CLAUDE FROM THE AMIGA). C:Claude without an API key connects to "
-              "Claude Code on this computer with uptelnet (your Claude "
+              "Claude Code on your server with uptelnet (your Claude "
               "subscription, through the server); with a key and this address "
               "it asks which. Kept in ENVARC:Claude/remote; "
               "edit or delete it later. The answer replaces an existing file; its "
