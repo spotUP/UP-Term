@@ -63,10 +63,13 @@ typedef struct jw {
     char *p;                    /* always terminated */
     long n, cap;
     int oom;
+    int fixed;                  /* jw_fixed: p is the caller's, never grown or freed */
 } jw;
 
 void jw_init(jw *w);
 void jw_free(jw *w);
+/* a writer over buf (cap bytes): no allocation, oom set when the text does not fit (the console handler has no C heap) */
+void jw_fixed(jw *w, char *buf, long cap);
 void jw_reset(jw *w);
 void jw_raw(jw *w, const char *s, long n);
 void jw_rawz(jw *w, const char *s);

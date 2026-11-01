@@ -809,20 +809,27 @@ static void history_load(struct complete_req *q)
             Close(f);
         }
     }
+    q->data_len = hf_load(q->data, q->data_len, q->hist_file ? q->hist_file : ""); /* JSON lines: their prompts */
 }
 
 static void history_append(struct complete_req *q)
 {
     char path[HF_MAX];
     BPTR f;
-    history_path(q, path, sizeof(path));
-    f = Open((STRPTR)path, MODE_READWRITE);
-    if (!f)
+    const char *spec = q->hist_file ? q->hist_file : "";
+    long cap = HF_LINE_MAX(q->word, spec), n;
+    char *line = (char *)AllocVec(cap, MEMF_ANY);
+    if (!line)
         return;
-    Seek(f, 0, OFFSET_END);
-    Write(f, q->word, (LONG)strlen(q->word));
-    Write(f, "\n", 1);
-    Close(f);
+    n = hf_line(spec, q->word, line, cap);
+    history_path(q, path, sizeof(path));
+    f = n > 0 ? Open((STRPTR)path, MODE_READWRITE) : 0;
+    if (f) {
+        Seek(f, 0, OFFSET_END);
+        Write(f, line, n);
+        Close(f);
+    }
+    FreeVec(line);
 }
 
 /* The shell's words (q->extra) that start with prefix; the shell's names

@@ -457,12 +457,25 @@ void jw_init(jw *w)
     w->p = 0;
     w->n = w->cap = 0;
     w->oom = 0;
+    w->fixed = 0;
 }
 
 void jw_free(jw *w)
 {
-    free(w->p);
+    if (!w->fixed)
+        free(w->p);
     jw_init(w);
+}
+
+void jw_fixed(jw *w, char *buf, long cap)
+{
+    w->p = buf;
+    w->n = 0;
+    w->cap = cap;
+    w->oom = 0;
+    w->fixed = 1;
+    if (cap > 0)
+        buf[0] = 0;
 }
 
 void jw_reset(jw *w)
@@ -480,6 +493,10 @@ static int room(jw *w, long more)
         return 0;
     if (w->n + more + 1 <= w->cap)
         return 1;
+    if (w->fixed) {
+        w->oom = 1;
+        return 0;
+    }
     c = w->cap ? w->cap : 256;
     while (c < w->n + more + 1)
         c *= 2;

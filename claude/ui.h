@@ -46,6 +46,10 @@ typedef struct cl_io {
      * yes, 0 not; 0 pointer: not known, taken as no. The start banner names
      * UP-Term only when this says yes. */
     int (*upterm)(void *u);
+    /* the console's history file for the line mode (VTCON_HIST_FILE): spec is "path" (plain lines, the Shell's) or
+     * "path\nproject" (the prompt history's JSON lines, claude/histline.h); the name in force before comes back in
+     * prev (cap bytes; 0 and 0: not wanted). 0 done, -1 not UP-Term's console or an old handler; 0 pointer: none. */
+    int (*history_file)(void *u, const char *spec, char *prev, long cap);
 } cl_io;
 
 /* A4 (WP1) -- what the screen needs from the rest of the program. Each

@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "hist.h"
-#include "json.h"
+#include "histline.h"
 
 void hist_init(cl_hist *h)
 {
@@ -80,14 +80,13 @@ int hist_load(cl_hist *h, cl_sys *sys, const char *path)
     if (!path || !*path || sys->kind(sys->u, path) != 1 || sys->read(sys->u, path, 4L * 1024 * 1024, &b, &n))
         return h->n;
     for (i = 0; i <= n; i++) {
-        jv v, x;
+        jv d, pj;
         if (i < n && b[i] != '\n')
             continue;
-        if (i > a && json_parse(b + a, i - a, &v) == 0 && json_get(v, "display", &x)) {
+        if (hl_parse(b + a, i - a, &d, &pj)) {
             long l;
-            char *d = json_strdup(x, &l), *p;
-            p = json_get(v, "project", &x) ? json_strdup(x, &l) : dupz("");
-            push(h, d, p);
+            char *dd = json_strdup(d, &l), *p = json_strdup(pj, &l);
+            push(h, dd, p);
         }
         a = i + 1;
     }
@@ -123,11 +122,7 @@ int hist_add(cl_hist *h, cl_sys *sys, const char *path, const char *display, con
         return 0;
     jw_init(&w);
     for (i = 0; i < h->n; i++) {
-        jw_rawz(&w, "{\"display\":");
-        jw_strz(&w, h->d[i]);
-        jw_rawz(&w, ",\"project\":");
-        jw_strz(&w, h->p[i]);
-        jw_rawz(&w, "}\n");
+        hl_put(&w, h->d[i], h->p[i]);
     }
     i = w.oom ? -1 : sys->write(sys->u, path, w.p, w.n);
     jw_free(&w);
