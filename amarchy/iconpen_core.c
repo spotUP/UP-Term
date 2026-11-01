@@ -116,8 +116,23 @@ int ip_holder_stale(const ip_holder *h, const void *screen, int depth)
 
 int ip_status_line(const ip_holder *h, char *out, size_t cap)
 {
-    int n = snprintf(out, cap, "pens-held %d", h->held);
-    return n > 0 && (size_t)n < cap ? n : 0;
+    int n = snprintf(out, cap, "pens-held %d", h->held), i;
+    if (n <= 0 || (size_t)n >= cap)
+        return 0;
+    if (h->screen && h->held < h->count) {       /* name the pens another user holds */
+        int w = snprintf(out + n, cap - (size_t)n, " missing");
+        if (w <= 0 || (size_t)(n + w) >= cap)
+            return 0;
+        n += w;
+        for (i = 0; i < h->count; i++)
+            if (!h->have[i]) {
+                w = snprintf(out + n, cap - (size_t)n, " %d", h->first + i);
+                if (w <= 0 || (size_t)(n + w) >= cap)
+                    return 0;
+                n += w;
+            }
+    }
+    return n;
 }
 
 int ip_sync_decide(const ip_holder *h, int enabled, const void *screen, int depth)

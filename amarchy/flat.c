@@ -580,6 +580,9 @@ static void print_status(void)
     }
     if (found) {                                    /* LUCIDE L7: the icon pens held on the Workbench screen */
         if (ip_status_line(&held, line, sizeof line)) {
+            int n = (int)strlen(line);
+            put_word(line, &n, " dim=");  put_num(line, &n, copy.pen_dim);
+            line[n] = 0;
             PutStr((STRPTR)line);
             PutStr((STRPTR)"\n");
         }
@@ -1091,12 +1094,12 @@ int main(void)
         }
     }
     g_r = r;
+    ip_holder_init(&r->ih);
+    pens_sync(r, 0);                                    /* the exclusive icon pens first: a shared pen (dim) must not sit on one */
     if (!r->st.held) {
         dopus_scan(r);
         dim_refresh(r);
     }
-    ip_holder_init(&r->ih);
-    pens_sync(r, 0);
     pt_start(&pen_tm, 1000000UL);                       /* the Workbench screen watch (pens_sync) */
     print_status();
     for (;;) {
@@ -1110,6 +1113,8 @@ int main(void)
             marker_live = 0;
         }
         if (got & SIGBREAKF_CTRL_D) {                   /* desk apply wrote flat_state, or amarchy-flat DOPUS */
+            if (!r->st.held)
+                dim_release(r);                         /* the dim pen is a shared pen: let go first so it cannot sit on an icon pen index */
             pens_sync(r, 0);
             if (!r->st.held) {
                 dopus_scan(r);

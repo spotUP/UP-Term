@@ -107,7 +107,7 @@ static void test_holder(void)
     f.taken[40] = 1;
     CHECK_INT(ip_holder_obtain(&h, &o, &s1, 6, rgb), 15);
     ip_status_line(&h, line, sizeof line);
-    CHECK_STR(line, "pens-held 15");
+    CHECK_STR(line, "pens-held 15 missing 40");   /* names the pen another user holds (rig 10: the dim pen on 46/47) */
     /* flat off releases everything */
     CHECK_INT(ip_holder_release(&h, &o), 15);
     ip_status_line(&h, line, sizeof line);
