@@ -433,6 +433,24 @@ static int dk_apply(const gtheme *th, char *why, int cap)
  * window frame so the switch shows at once. The layout is checked (flat_check) before the write; the other fields are the program's.
  * No record: the program is not running, so start it (BOOT: resident only when a flat switch is on; it writes the same fields itself). */
 unsigned long desk_dos_flat_writes;
+/* L9: flat on puts the Lucide icons on the Workbench default icons (amarchy-icons APPLY), flat off puts the originals back (RESTORE).
+ * One process per change of the on/off state, so two quick prefs writes never run two at once on the manifest; RESTORE with no
+ * manifest is a no-op, so the first sync after a start with flat off costs nothing. Counters are the sentinel. */
+unsigned long desk_dos_icons_apply, desk_dos_icons_restore;
+
+static void dk_icons_sync(int on)
+{
+    static int last = -1;
+    if (on == last) return;
+    last = on;
+    if (on) {
+        desk_dos_icons_apply++;
+        pl_start(PL_BIN_DIR "/amarchy-icons APPLY", PL_BIN_DIR "/amarchy-icons", 16384, "amarchy-icons");     /* its $STACK cookie (rule 6) */
+    } else {
+        desk_dos_icons_restore++;
+        pl_start(PL_BIN_DIR "/amarchy-icons RESTORE", PL_BIN_DIR "/amarchy-icons", 16384, "amarchy-icons");
+    }
+}
 
 static void dk_flat_sync(void)
 {
@@ -442,6 +460,7 @@ static void dk_flat_sync(void)
     amconf_load(&ap);
     flat = amconf_flat_index(&ap, AM_FLAT);
     gad = amconf_flat_index(&ap, AM_FLATGAD);
+    dk_icons_sync(flat || gad);
     Forbid();
     r = (flatshared *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
     if (r && flat_check(&r->st, sizeof r->st) == FLAT_OK) {

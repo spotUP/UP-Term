@@ -941,6 +941,14 @@ $(BUILD)/amiga/amarchy-flat: device/romspan.h amarchy/flat_shared.h amarchy/flat
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_tx.o amarchy/flat_tx.s
 	$(VC) -dontwarn=153,65 -o $@ amarchy/flat.c $(BUILD)/amiga/obj/flat_rf.o $(BUILD)/amiga/obj/flat_tx.o amarchy/flat_glyph.c amarchy/flat_core.c amarchy/desk_core.c amarchy/gthemes_core.c handler/be32.c amarchy/taskalive.c amarchy/poll_timer.c $(AMARCHY_LEAF_DEPS)
 
+# amarchy-icons: Lucide icons on the Workbench default icons, APPLY and RESTORE (plan 2026-10-31-amarchy-lucide-icons.md L8, L9).
+# A plain vbcc DOS program; every decision is amarchy/iconapply_core.c (host suite iconapply).
+.PHONY: amarchy-icons
+amarchy-icons: $(BUILD)/amiga/amarchy-icons
+$(BUILD)/amiga/amarchy-icons: amarchy/icons.c amarchy/iconapply_core.c amarchy/iconapply_core.h amarchy/iconfile_core.c amarchy/iconfile_core.h tty/qmark.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -o $@ amarchy/icons.c amarchy/iconfile_core.c amarchy/iconapply_core.c
+
 # FLAT-C3: vbcc's assembly of the dispatcher objects, checked by tests/test_flat_budget.py (entry frames <= 64 bytes, no libc call)
 FLAT_ASM_DIR := $(BUILD)/amiga/flat_asm
 .PHONY: flat-budget
@@ -1652,7 +1660,7 @@ dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-dopus dist-uhc $(
 # every archive of dist/packages.txt, and the source archive
 # the base archive build/up-term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
 # Python, Claude and amiga-pi are archives of their own (dist/packages.txt, kit-split plan)
-dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/AmTile bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(SYMBOLS_TTF) $(LUCIDE_DAT) $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV)
+dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/amarchy-icons $(BUILD)/amiga/AmTile bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(SYMBOLS_TTF) $(LUCIDE_DAT) $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV)
 	@# the ports kit is checked before the kit drawer is wiped: a missing kit left no build/dist/up-term
 	$(call PORTS_KIT_FRESH,dist)
 	rm -rf $(KIT) && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
@@ -1705,7 +1713,7 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	cp $(BUILD)/amiga/upupdate $(KIT)/Files/upupdate
 	cp $(BUILD)/amiga/upsame $(KIT)/Files/upsame
 	cp $(BUILD)/amiga/tcpprobe $(KIT)/Files/tcpprobe
-	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/Agent $(BUILD)/amiga/UPDemo $(BUILD)/amiga/Reboot $(BUILD)/amiga/WBPath $(BUILD)/amiga/UPBigVol $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/amnotify $(BUILD)/amiga/AmTile dist/keymap dist/bar.conf $(KIT)/Files/
+	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/Agent $(BUILD)/amiga/UPDemo $(BUILD)/amiga/Reboot $(BUILD)/amiga/WBPath $(BUILD)/amiga/UPBigVol $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/amnotify $(BUILD)/amiga/amarchy-icons $(BUILD)/amiga/AmTile dist/keymap dist/bar.conf $(KIT)/Files/
 	rm -rf $(KIT)/Files/net && cp -R dist/net $(KIT)/Files/net
 	rm -rf $(KIT)/Files/Rexx && cp -R dist/rexx $(KIT)/Files/Rexx
 	rm -rf $(KIT)/Files/S && cp -R dist/S $(KIT)/Files/S
@@ -1828,7 +1836,7 @@ dist-src:
 
 # The kit says what it was built from: Files/VERSIONS has a line per part, and
 # it is in the lha archive.
-dist-check: flat-budget $(BUILD)/amiga/keymap.o $(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/amarchy-menu $(BUILD)/updiff_kit_drv
+dist-check: flat-budget $(BUILD)/amiga/keymap.o $(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/amarchy-icons $(BUILD)/amiga/amarchy-menu $(BUILD)/updiff_kit_drv
 	python3 tests/test_dist_installer.py
 	KITSIZE_REQUIRE=1 python3 tests/test_dist_kitsize.py
 	python3 tests/test_dist_addons.py
@@ -1840,6 +1848,7 @@ dist-check: flat-budget $(BUILD)/amiga/keymap.o $(BUILD)/amiga/amarchy-flat $(BU
 	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amarchy-index
 	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amnotify
 	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amarchy-flat
+	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amarchy-icons
 	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/AmTile
 	python3 tests/test_keymap_amiga_alloc.py $(BUILD)/amiga/keymap.o
 	python3 tests/test_dist_userdata.py
