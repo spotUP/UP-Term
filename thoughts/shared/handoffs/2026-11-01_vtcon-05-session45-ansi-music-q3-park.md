@@ -13,7 +13,7 @@ status: unfinished (Q3-PARK control run, SMILE-SFX, LIBS audit open)
 - Q3 40/40 and Q10 done in earlier stretches (see ledger).
 
 ## Open, in order
-1. Q3-PARK control run (ledger row Q3-PARK). The 2-pane park FAILED on rig 6: after ScreenMode USE an IPrefs System Request stayed open. Next: a NEW sonnet agent runs the same park.py with 1 pane on the splits build (worktree ../vtcon-splits, 0afac5be) and then on main. It must quote the requester text. rig6 was deleted for disk space; a fresh rig needs about 2.5 GB free. The script is in the s45 scratchpad (gone after cleanup): rebuild it from thoughts/spot/term-findings/q3-park-s45.md.
+1. Q3-PARK control run (ledger row Q3-PARK). The 2-pane park FAILED on rig 6: after ScreenMode USE an IPrefs System Request stayed open. Next: a NEW sonnet agent runs the same park.py with 1 pane on the splits build (worktree ../vtcon-splits, 0afac5be) and then on main. It must quote the requester text. rig6 was deleted for disk space; a fresh rig needs about 2.5 GB free. The script is thoughts/spot/term-findings/q3-park-s45-evidence/park.py (git-ignored copy).
 2. LIBS-ASSIGN-AUDIT (new row): ixpty_rig.py / install_rig.py replace LIBS:. Check whether any flow runs them on the A1200.
 3. ANSI-MUSIC-SMILE-SFX: read Terminate ANSMUSIC.DOC first (units of Delay/Variation). Brief in two parts: parse, then play.
 
