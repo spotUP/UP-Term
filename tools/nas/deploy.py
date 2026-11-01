@@ -204,7 +204,7 @@ def main(argv=None):
     ap.add_argument("--dry-run", action="store_true", help="print the copy and ssh commands, run nothing")
     ap.add_argument("--no-build", action="store_true", help="skip docker compose build (copy and up -d only)")
     ap.add_argument("--stage", metavar="DIR", help="copy the drawer and deploy.py into DIR (the up-claude build), run nothing else")
-    ap.add_argument("--spool", metavar="FILE", help="write the archive to FILE (T:nas.tgz on the Amiga) and feed ssh by a redirect, not a pipe")
+    ap.add_argument("--spool", metavar="FILE", help="write the archive to FILE (default T:nas.tar on the Amiga) and feed ssh by a redirect, not a pipe")
     a = ap.parse_args(argv)
     if a.stage:
         stage(a.stage)
