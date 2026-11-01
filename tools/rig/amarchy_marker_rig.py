@@ -3,7 +3,10 @@ UPTERM_RIG=<n> python3 tools/rig/amarchy_marker_rig.py <a|b> <state.json>
   a: record the md5 of every ENV:Sys / ENVARC:Sys file, desktop-theme on + flat-border-size thin (the ENVARC: icontrol write is the one that
      outlives a reboot), pick a theme and do NOT click Keep, check ENVARC:Amarchy/pending-revert exists, then stop. Reboot at once
      (UPTERM_RIG=<n> python3 tools/rig/rig.py reboot, after 5 s quiet) while the 15 s requester is still open.
-  b: after the reboot and the Amarchy start: AMARCHY_DESK_MARKER_REVERTS == 1, marker and marker dir gone, ENV:Sys + ENVARC:Sys md5 equal the recorded ones."""
+  Before a: `UPTERM_RIG=<n> python3 tools/rig/amarchy_gui_rig.py --setup` (stages the build to VTCX:Apps/bin and starts it).
+  b: after the reboot and the Amarchy start (a --os 32 rig boots the clean 3.2 image, whose S:User-Startup has no kit
+     block and starts no Amarchy: b then starts VTCX:Apps/bin/Amarchy itself, the way a kit's `Run >NIL: UP-Term:bin/Amarchy`
+     would; the marker is read at that start, desk_dos_marker_recover): AMARCHY_DESK_MARKER_REVERTS == 1, marker and marker dir gone, ENV:Sys + ENVARC:Sys md5 equal the recorded ones."""
 import json, os, sys, tempfile, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import amarchy_desk_rig as d
@@ -22,7 +25,9 @@ def snap():
 
 
 def exists(p):
-    return 'rror' not in c.run('List %s QUICK' % p, 30)[1] and bool(c.run('List %s QUICK' % p, 30)[1].strip())
+    # the return code, not the text: 3.2's List says 'object not found' (rc 20) for a missing file, no 'rror' in it
+    rc, out = c.run('List %s QUICK' % p, 30)
+    return rc == 0 and bool(out.strip())
 
 
 def main():
@@ -47,10 +52,13 @@ def main():
         json.dump(S, open(st, 'w'))
         print('[INFO] now (within the 15 s) wait 5 s quiet, then rig.py reboot; failed', d.failed)
     else:
-        for _ in range(60):
+        for _ in range(15):
             if g.process_running('Amarchy'):
                 break
             time.sleep(2)
+        else:
+            print('[INFO] the boot started no Amarchy (no kit S:User-Startup block on this system): starting it', flush=True)
+            g.start_amarchy('b')
         time.sleep(10)
         r = int(t.env('AMARCHY_DESK_MARKER_REVERTS') or 0)
         d.say(r == 1, 'b: AMARCHY_DESK_MARKER_REVERTS == 1', str(r))

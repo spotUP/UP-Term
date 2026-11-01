@@ -18,6 +18,7 @@
 #include "flat_shared.h"
 #include "win_refresh.h"
 #include "proclaunch.h"
+#include "sentinel_dos.h"
 
 #define DK_BUF 1024
 #define DK_REVERT "T:amarchy-revert"
@@ -1173,6 +1174,8 @@ int desk_dos_marker_recover(void)
     }
     desk_dos_marker_reverts++;
     desk_dos_revert();
+    /* published by the process that recovers (Amarchy, at its start): the menu's copy of the counter stays 0 */
+    am_sentinel("AMARCHY_DESK_MARKER_REVERTS", (long)desk_dos_marker_reverts);
     return 1;
 }
 
