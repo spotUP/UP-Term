@@ -1102,6 +1102,24 @@ void desk_dos_confirmed(void)
     desk_dos_keeps++;
 }
 
+/* The stock editors rewrite what they are fed (Pointer) and IPrefs/the palette editor recreate files that were deleted: whatever ran, the ENV: file
+ * ends byte-equal to its copy in dir, or absent when there was none. Shared by Revert (desk_dos_revert) and "off" (dk_orig_off). */
+static void dk_env_fix_file(const char *dir, const char *env)
+{
+    char name[96];
+    desk_copy_name(dir, env, name, sizeof name);
+    switch (desk_env_fix(dk_exists(name), dk_exists(env), dk_files_equal(name, env))) {
+    case DESK_FIX_COPY:
+        dk_stream_copy(name, env);
+        break;
+    case DESK_FIX_DELETE:
+        DeleteFile((STRPTR)env);
+        break;
+    default:
+        break;
+    }
+}
+
 /* put the files of mask back from the copies in dir (T:amarchy-revert for Revert, the originals for "off"): each target's ENV: file is fed from
  * its copy through the stock editor (as the apply did), a file that did not exist then is deleted; icontrol goes through dk_icontrol_restore. */
 static void dk_restore_targets(unsigned mask, const char *dir)
@@ -1136,6 +1154,7 @@ static void dk_restore_targets(unsigned mask, const char *dir)
             dk_wait_reset(before, amconf_desk_flat_pens(&ap));
         else if (ed[i].t == DT_FONT)
             dk_wait_iprefs(idle);
+        dk_env_fix_file(dir, ed[i].file);
     }
     if ((mask >> DT_ICONTROL) & 1) {
         dk_icontrol_restore();
@@ -1206,21 +1225,9 @@ static void dk_orig_off(unsigned desk_mask, int flat)
         DeleteFile((STRPTR)DK_WBB_PREV);
         DeleteFile((STRPTR)DK_WBG_PREV);
     }
-    /* the stock editors rewrite what they are fed (Pointer) and IPrefs/the palette editor recreate files that were deleted: whatever
-     * ran, the ENV: file ends equal to the original, or absent when there was none */
-    for (i = 0; i < n; i++) {
-        desk_copy_name(DK_ORIG, env[i], name, sizeof name);
-        switch (desk_env_fix(dk_exists(name), dk_exists(env[i]), dk_files_equal(name, env[i]))) {
-        case DESK_FIX_COPY:
-            dk_stream_copy(name, env[i]);
-            break;
-        case DESK_FIX_DELETE:
-            DeleteFile((STRPTR)env[i]);
-            break;
-        default:
-            break;
-        }
-    }
+    /* dk_restore_targets already fixed the editor targets; Workbench.prefs (wb) is the one it does not cover */
+    if (wb)
+        dk_env_fix_file(DK_ORIG, DESK_WBPREFS_ENV);
     for (i = 0; i < n; i++)
         dk_orig_forget(env[i]);
     DeleteFile((STRPTR)DK_ORIG);   /* the directory, once empty */
