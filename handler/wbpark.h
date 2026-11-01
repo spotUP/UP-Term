@@ -110,6 +110,15 @@ static int wbpark_layers_in_front(const void *own, const void *bar, const void *
     return n;
 }
 
+/* The user picked another window: one is active (`any_active`), it is not ours (`is_own`) and it is not a
+ * Workbench drawer window (`wbench_window`, WFLG_WBENCHWINDOW). A drawer window taking the activation is the
+ * reopened Workbench, not the user, so the retries go on. The handler passes IntuitionBase->ActiveWindow's
+ * state, the host test plain values. */
+static int wbpark_user_other(int any_active, int is_own, int wbench_window)
+{
+    return any_active && !is_own && !wbench_window;
+}
+
 /* After the reopen: what to do with the new window (WBPARK_TO_FRONT, WBPARK_ACTIVATE bits), and the retries start. */
 static int wbpark_restore(wbpark *p)
 {

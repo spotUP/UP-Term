@@ -3283,11 +3283,11 @@ static int wb_in_front(const struct Window *win)
     return wbpark_in_front(wb_layers_in_front(win));
 }
 
-/* The user picked another window: it is active, not ours, and not a Workbench drawer window. */
+/* The user picked another window: it is active, not ours, and not a Workbench drawer window (wbpark_user_other). */
 static int wb_user_other(const con *c)
 {
     const struct Window *a = IntuitionBase->ActiveWindow;
-    return a && a != c->own_win && !(a->Flags & WFLG_WBENCHWINDOW);
+    return wbpark_user_other(a != 0, a == c->own_win, a && (a->Flags & WFLG_WBENCHWINDOW));
 }
 
 static void wb_raise(con *c, int bits)

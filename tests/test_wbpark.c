@@ -158,6 +158,7 @@ static void park_restore_order(void)
     CHECK_INT(wbpark_raise_pending(&p), 0);
     wbpark_remember(&p, 1, 1);
     wbpark_restore(&p);
+    CHECK_INT(WBPARK_RAISE_TRIES, 10); /* the span is 10 one-second ticks: drawer windows open seconds late */
     for (i = 0; i < WBPARK_RAISE_TRIES - 1; i++)
         wbpark_retry(&p, 1, 1, 0); /* never covered: runs the whole span */
     CHECK_INT(wbpark_raise_pending(&p), 1);
@@ -168,6 +169,18 @@ static void park_restore_order(void)
     wbpark_restore(&p);
     CHECK_INT(wbpark_retry(&p, 0, 0, 1), 0); /* the user activated another window: raise nothing */
     CHECK_INT(wbpark_raise_pending(&p), 0);
+    /* who counts as "the user picked another window": not nothing active, not ours, not a drawer window */
+    CHECK_INT(wbpark_user_other(1, 0, 0), 1);
+    CHECK_INT(wbpark_user_other(1, 0, 1), 0); /* the reopened drawer window took it: keep retrying */
+    CHECK_INT(wbpark_user_other(1, 1, 1), 0); /* ours (it carries WA_WBenchWindow too) */
+    CHECK_INT(wbpark_user_other(0, 0, 0), 0);
+    /* a drawer window holding the activation does not stop the retries; the window is raised again */
+    wbpark_remember(&p, 1, 1);
+    wbpark_restore(&p);
+    CHECK_INT(wbpark_retry(&p, 0, 0, wbpark_user_other(1, 0, 1)), WBPARK_TO_FRONT | WBPARK_ACTIVATE);
+    CHECK_INT(wbpark_raise_pending(&p), 1);
+    CHECK_INT(strstr(src, "wbpark_user_other(a != 0") != 0, 1); /* the handler asks the shared rule */
+    p.tries = 0;
     wbpark_remember(&p, 1, 0);
     CHECK_INT(wbpark_restore(&p), WBPARK_TO_FRONT);
     wbpark_remember(&p, 0, 0);
