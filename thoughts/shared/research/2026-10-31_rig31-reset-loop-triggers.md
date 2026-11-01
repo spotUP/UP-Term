@@ -113,3 +113,9 @@ ExecBase vectors before the crash (ARexx `import()` of ExecBase+offset, via `rx`
 | full MMU, all three | 0 | 0 | 0 | 00004000 | 00004000 |
 
 So the reset survival is not carried in the capture vectors or Kick pointers (all zero in the NOMMU pair): the hypothesis "mmu.library installs a ColdCapture/KickTag" is wrong for NOMMU. Not measured: the state after the crash (wasabid is dead), and why 68060.library + mmu.library together fail the ROM reset path. Next: a debug-fs-uae run with a breakpoint at f80dc8 to read the stack/vector base (VBR) after the first reset; mmu.library moves the VBR/tables, the likely reset-surviving state.
+
+## Verdict (s40, 2026-11-01): known 060 quirk, closed
+
+This is the mechanism already found in s18 (thoughts/spot/term-findings/rig9-installer-loop.md, Result 8). After a guru, the ROM dead-end path resets the CPU but keeps the live CPU state that the 060 libraries set up (PCR, CACR, transparent translation registers). Kickstart's early init trips over that state, raises the dead-end alert again, and resets again. The 68060.library's own ColdReboot clears that state first, so a normal reboot is clean.
+
+The s40 library bisect narrows the trigger: the loop needs 68060.library and mmu.library loaded together. A full-MMU 060 loops too, so a real 060 with the same libraries can do the same thing. A cold restart (power cycle, or a fresh fs-uae start) clears it. The rig watchdog already restarts the emulator on a reset loop (8f1e504f), so nothing more is needed on the vtcon side. No further hunt.
