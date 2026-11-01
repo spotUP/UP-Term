@@ -128,9 +128,9 @@ class Images(unittest.TestCase):
             pens = unplane(s, w, h)
             self.assertEqual(pens[h // 2][w // 2], 34)
             self.assertEqual(pens[h // 2][w // 2 + 1], 42)
-            self.assertEqual(pens[0][0], 0)                       # the plate is rounded: the corner stays transparent
+            self.assertEqual(pens[0][0], g.PEN_GROUND)                       # the plate is rounded: the corner stays transparent
             self.assertEqual(pens[h // 2][1], 43)
-            self.assertEqual({v for r in pens for v in r}, {0, 34, 42, 43})
+            self.assertEqual({v for r in pens for v in r}, {g.PEN_GROUND, 34, 42, 43})
 
     def test_every_emitted_pen_is_a_reserved_pen_or_transparent(self):
         for w, h in g.VARIANTS:
@@ -181,22 +181,22 @@ class Font(unittest.TestCase):
             pos += 2 * size
             pn, ps = unplane(n, w, h), unplane(s, w, h)
             self.assertEqual(g.mkicon.planes(["".join(chr(v) for v in row) for row in pn], g.DEPTH, g.PENS), n)
-            self.assertTrue({33} <= {v for row in pn for v in row} <= {0, 32, 37, 33})
+            self.assertTrue({33} <= {v for row in pn for v in row} <= {g.PEN_GROUND, 32, 37, 33})
             self.assertTrue({34, 43} <= {v for row in ps for v in row})
             self.assertGreater(sum(1 for row in pn for v in row if v), w * h // 16)
         self.assertEqual(pos, len(r))
 
     def test_cutouts_stay_colour_zero_no_second_tone(self):
-        """owner 2026-11-01: two-tone none; the hole of the gear is pen 0 in the normal image (the backdrop shows through)."""
+        """owner 2026-11-01: two-tone none; the hole of the gear is the ground pen 44 (never pen 0, a black box) in the normal image (the backdrop shows through)."""
         cp = json.loads((TTF.parent / "codepoints.json").read_text())["gear-six"]
         for w, h in g.VARIANTS:
             n, _ = g.images(g.coverage(self.font, cp, w, h), w, h)
             pens = unplane(n, w, h)
-            self.assertLessEqual({v for r in pens for v in r}, {0, 32, 37, 33})
+            self.assertLessEqual({v for r in pens for v in r}, {g.PEN_GROUND, 32, 37, 33})
             ys = range(h)
             # the centre of the gear: a run of transparent pixels with glyph ink on its left and right (the hole)
             row = pens[h // 2]
-            self.assertEqual(row[w // 2], 0)
+            self.assertEqual(row[w // 2], g.PEN_GROUND)
             self.assertTrue(any(row[:w // 2]) and any(row[w // 2:]))
 
     def test_tall_variant_is_the_square_one_averaged_over_row_pairs(self):

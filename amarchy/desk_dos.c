@@ -673,7 +673,7 @@ static int dk_flat_pens(const gtheme *th)
     if ((own || theme) && len > 0) {
         dk_flat_backdrop_take(buf, len);
         wlen = theme ? desk_palette_theme(buf, len, th, depth, own, out, sizeof out)
-                     : desk_palette_set_rgb(buf, len, desk_backdrop_pen_at(depth), depth, desk_darker(th), out, sizeof out);
+                     : desk_palette_set_rgb(buf, len, desk_backdrop_screen_pen(depth), depth, desk_darker(th), out, sizeof out);
         if (wlen > 0) {
             if (wlen != len || memcmp(buf, out, wlen))
                 sync = 1;

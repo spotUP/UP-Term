@@ -419,6 +419,16 @@ int desk_backdrop_pen_at(int depth)
     return p.backdrop;
 }
 
+/* FLAT-VIS-1: the screen pen the Workbench draws the ROOT tile's backdrop pen in. A 3-plane WBPattern tile names pens 0-7, and
+ * Workbench maps them the way IPrefs maps palette.prefs entries (desk_palette_pen): 0-3 as they are, 4-7 to the last four pens
+ * 2^depth - 8 + pen. On a Workbench deeper than 3 planes the backdrop (tile pen 7) is screen pen 2^depth-8+7 (255 on 8 planes), the
+ * pen palette.prefs entry 7 sets, not pen 7. Below 3 planes the backdrop is the darker pen itself. */
+int desk_backdrop_screen_pen(int depth)
+{
+    int p = desk_palette_pen(desk_backdrop_pen_at(depth), depth);
+    return p >= 0 ? p : desk_backdrop_pen_at(depth);
+}
+
 int desk_backdrop_pen(void)
 {
     return desk_backdrop_pen_at(PT_DEPTH_MAX);
@@ -479,6 +489,13 @@ long desk_palette_theme(const unsigned char *cur, long curlen, const gtheme *t, 
         long e = palette_entry(out, curlen, p, depth);
         if (e >= 0)
             palette_put_rgb(out + e, desk_pen_colour(t, p, own_backdrop));
+    }
+    /* FLAT-VIS-1: the entry that sets the screen pen the backdrop is drawn in (entry 7 = pen 255 on a deep screen) */
+    {
+        int bp = desk_backdrop_pen_at(depth), sp = desk_backdrop_screen_pen(depth);
+        long e = sp != bp ? palette_entry(out, curlen, sp, depth) : -1;
+        if (e >= 0)
+            palette_put_rgb(out + e, desk_pen_colour(t, bp, own_backdrop));
     }
     return curlen;
 }
