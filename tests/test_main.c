@@ -57,6 +57,7 @@ void suite_iconfile(void);
 void suite_iconapply(void);
 void suite_iconpen(void);
 void suite_wbreset(void);
+void suite_borderblank(void);
 void suite_menusrv(void);
 void suite_menu_text(void);
 void suite_iconspec(void);
@@ -160,6 +161,7 @@ static const h_suite suites[] = {
     { "iconapply", suite_iconapply },
     { "iconpen", suite_iconpen },
     { "wbreset", suite_wbreset },
+    { "borderblank", suite_borderblank },
     { "menusrv", suite_menusrv },
     { "menu_text", suite_menu_text },
     { "iconspec", suite_iconspec },

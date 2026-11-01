@@ -34,6 +34,7 @@ enum {
     AM_FLATGAD, /* flat-window-gadgets: the flat window gadgets (off/on, default off) */
     AM_FLATSIZE, /* flat-border-size: stock, thin (the window border and title size) */
     AM_ICONSTYLE, /* icon-style: filled (default, Phosphor Fill) or outline (Lucide); the set amarchy-icons APPLY splices */
+    AM_BORDERBLANK, /* border-blank: native screens show black outside the picture (off/on, default on); borderblank_patch.c */
     AM_NKEYS
 };
 

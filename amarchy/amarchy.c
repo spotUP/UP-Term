@@ -42,6 +42,7 @@
 #include "shot.h"
 #include "wbreset.h"
 #include "strut_patch.h"
+#include "borderblank_patch.h"
 #include "iconpen_dos.h"
 #include "iconapply_core.h"
 #include "keymap_default.inc"
@@ -89,6 +90,7 @@ static void dir_resolve(void)
 /* the menu-style setting (UC_MENU_*), read from the upconf at startup and on every reload */
 static int g_style;
 static int g_term_menu;   /* menu-in-terminal (UC_TERMMENU_*) */
+static int g_borderblank; /* AM-BORDERBLANK: border-blank = on (the default) */
 
 static void style_load(void)
 {
@@ -96,6 +98,16 @@ static void style_load(void)
     amconf_load(&p);
     g_style = amconf_style(&p);
     g_term_menu = amconf_term_menu(&p);
+    g_borderblank = amconf_flat_index(&p, AM_BORDERBLANK) != 0;
+}
+
+/* AM-BORDERBLANK: the patch follows the setting (boot and every reload). An install error leaves the stock border. */
+static void borderblank_follow(void)
+{
+    if (g_borderblank && !borderblank_on())
+        borderblank_install();
+    else if (!g_borderblank && borderblank_on())
+        borderblank_remove();
 }
 
 /* AmTile was on when the session ended (ENV:Amarchy/tile reads "on"): start it again, asynchronously so the boot is
@@ -375,6 +387,7 @@ static int do_row(int row)
 static void reload(void)
 {
     style_load();
+    borderblank_follow();
     desk_dos_flat_sync();   /* FLAT-PREFS-NOT-NOTIFIED: a flat switch written to the prefs file reaches amarchy-flat */
     cx_detach();   /* the gate must not read the table that is about to be released */
     keymap_reload_compact(&g_km, cx_row_installed);   /* a bad edit leaves the old table */
@@ -559,6 +572,7 @@ int main(void)
     desk_dos_wb_open = desk_wb_open;
     strut_patch_install();                      /* BAR-STRIP-RESERVE: no patch (error) = windows open as before */
     wbr_patch_install();                        /* WBRESET-EXT: no patch (error) = the old behaviour */
+    borderblank_follow();                       /* AM-BORDERBLANK: the setting read by style_load at startup */
     wbm_begin();
     g_wb_hold = tick_open_ok && wbm_check(0) == WBM_WAIT;
     if (!g_wb_hold)
@@ -616,6 +630,7 @@ int main(void)
     wbr_client_drop();
     wbr_patch_remove();
     strut_patch_remove();
+    borderblank_remove();
     tick_close();
     act_menu_server_quit();
     cw_stop();
