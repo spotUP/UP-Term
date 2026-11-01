@@ -105,6 +105,8 @@ typedef struct vt_image {
     vt_u16 gen;
     vt_u8 kind;         /* 0 sixel, 1 kitty on the screen, 2 kitty stored (not placed) */
     vt_u32 kid, knum, pid; /* kitty's i=, I= and p= */
+    long kz;            /* kitty's z= (negative: under the text) */
+    vt_u8 ktrans;       /* kitty's N=1 on a stored picture: evicted first */
 } vt_image;
 
 #define VT_IMG_SLOTS 64 /* images alive at once (the oldest gives way) */
@@ -290,6 +292,7 @@ struct vt_term {
     vt_u32 kit_next;           /* counter for the ids kitty gives by number (I=) */
     vt_u32 kit_png_own;        /* PNG pictures the engine decoded itself (vt_kitty_png_own) */
     vt_u32 kit_placed;         /* kitty images placed on the screen (vt_kitty_placed) */
+    long kit_last_z;           /* z= of the last kitty placement (vt_kitty_last_z) */
     vt_image_decoder decode;   /* vt_set_image_decoder: PNG and the like (f=100) */
     vt_image_release decode_free;
     vt_u32 *six_regs;
@@ -5271,6 +5274,8 @@ static int image_install(vt_term *t, vt_u8 *pix, long bytes, long w, long h, int
     im->refs = 0;
     im->kind = 0;
     im->kid = im->knum = im->pid = 0;
+    im->kz = 0;
+    im->ktrans = 0;
     im->serial = ++t->img_serial;
     for (i = 0; i < npal; i++)
         im->pal[i] = pal[i];

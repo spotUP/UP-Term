@@ -189,23 +189,23 @@ commit.
 
 #### Keys and replies
 
-- [ ] K19 Signed keys. kit_parse keeps the sign: kv[] becomes long (C89,
+- [x] K19 Signed keys. kit_parse keeps the sign: kv[] becomes long (C89,
       32 bits on vbcc), values past 2^31 (i=, p= up to 4294967295) kept
       as unsigned through a cast at the use sites. Letters stay as today.
       Test: `z=-1` reaches kit_show as -1 (sentinel: a vt_kitty_last_z
       test accessor, or the placement's z through vt_row_image after
       K27); fails before (reads 1).
-- [ ] K20 Reply rules: i= with I= answers `EINVAL`; a=p without i/I
+- [x] K20 Reply rules: i= with I= answers `EINVAL`; a=p without i/I
       answers EINVAL; a delete (a=d) that arrives while an m=1 upload is
       open aborts the upload (kitty_abort before the delete runs). Test:
       the three replies / the abort (a following m=0 chunk finds no
       upload: no image placed, vt_kitty_placed unchanged); each fails
       before.
-- [ ] K21 Re-transmit with the same i= deletes the old image's placements
+- [x] K21 Re-transmit with the same i= deletes the old image's placements
       as well (kind 1 with that kid freed in kit_store). Test: T i=5, T
       i=5 with another picture: one image on the screen
       (vt_row_image count 1); fails before (2).
-- [ ] K22 N=1 transient: such a stored image is evicted before any other
+- [x] K22 N=1 transient: such a stored image is evicted before any other
       in kit_room. Test: fill the budget, the N=1 one goes first while an
       older plain one stays; fails before (oldest goes).
 - [ ] K23 X=, Y= pixel offset inside the first cell (must be smaller than
@@ -219,7 +219,7 @@ commit.
       the cell count, 2 vs today's 2 for 10 px... use 14 px: 3+14 = 17 ->
       3 cells, today 2). Rig: a 1-px red frame placed with X=4,Y=4: pixel
       measurement shows the red edge 4 px into the cell.
-- [ ] K24 The missing deletes: d=p/P (cell x,y), q/Q (cell x,y, z), r/R
+- [x] K24 The missing deletes: d=p/P (cell x,y), q/Q (cell x,y, z), r/R
       (ids x..y), x/X (column x), y/Y (row y), z/Z (z-index). Cell
       coordinates are 1-based. Capital letters also free stored images
       with no placement left. One table-driven test, one row per letter,
