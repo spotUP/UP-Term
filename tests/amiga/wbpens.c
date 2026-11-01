@@ -2,7 +2,7 @@
  * theme moved the desktop (plan 2026-10-29-amarchy-p1a-native-theme.md).
  *
  * Prints, for the Workbench public screen: its depth, GetRGB32 of colours 0-7 and the sprite
- * colours 17-19 (8-bit per gun, the high byte of the 32-bit value), the DrawInfo pens
+ * colours 17-19 and on a screen deeper than 8 colours the last four (8-bit per gun, the high byte of the 32-bit value), the DrawInfo pens
  * (dri_Pens[0..dri_NumPens-1]) and the screen title. One line each, nothing else:
  *   DEPTH 8
  *   RGB 0 aa aa aa
@@ -42,6 +42,14 @@ int main(void)
     for (i = 0; i < 11; i++) {
         GetRGB32(s->ViewPort.ColorMap, (ULONG)idx[i], 1, rgb);
         printf("RGB %d %02lx %02lx %02lx\n", idx[i], rgb[0] >> 24, rgb[1] >> 24, rgb[2] >> 24);
+    }
+    /* the last four colours of a deeper screen (3.x Palette prefs colours 4-7 may land there) */
+    if (s->RastPort.BitMap->Depth > 3) {
+        int top = 1 << s->RastPort.BitMap->Depth;
+        for (i = top - 4; i < top; i++) {
+            GetRGB32(s->ViewPort.ColorMap, (ULONG)i, 1, rgb);
+            printf("RGB %d %02lx %02lx %02lx\n", i, rgb[0] >> 24, rgb[1] >> 24, rgb[2] >> 24);
+        }
     }
     dri = GetScreenDrawInfo(s);
     if (dri) {
