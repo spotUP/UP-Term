@@ -22,6 +22,7 @@
 #include <string.h>
 #define CMDPATH_DOS
 #include "../config/cmdpath.h"
+#include "../tty/qmark.h"
 
 /* vbcc's startup runs main on a stack of this size whatever the starter gives; the cookie is what
  * AmigaOS 3.2 and launchers read from the file (config/segstack.h) */
@@ -49,6 +50,10 @@ int main(int argc, char **argv)
     BPTR lock, *field, *tail;
     struct Process *me = (struct Process *)FindTask(0);
     APTR oldwin;
+    if (qmark_argv(argc, argv)) {
+        usage();
+        return 0;                           /* a lone ? asks for the template: usage, rc 0 */
+    }
     if (argc != 3)
         return usage();
     if (same_word(argv[1], "ADD"))

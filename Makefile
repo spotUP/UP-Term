@@ -1047,7 +1047,7 @@ $(BUILD)/amiga/renameopen: tools/rig/renameopen.c
 AMTILE_SRC := handler/frontscr.c amarchy/poll_timer.c amarchy/tile.c amarchy/tile_core.c amarchy/win_core.c amarchy/win_apply.c amarchy/win_refresh.c amarchy/bar_usable.c amarchy/rexx_host.c $(AMARCHY_LEAF_DEPS)
 .PHONY: AmTile
 AmTile: $(BUILD)/amiga/AmTile
-$(BUILD)/amiga/AmTile: $(AMTILE_SRC) amarchy/win_refresh.h amarchy/poll_timer.h amarchy/rexx_host.h amarchy/tile_core.h amarchy/win_core.h amarchy/win_apply.h amarchy/bar_usable.h amarchy/bar_core.h amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h
+$(BUILD)/amiga/AmTile: $(AMTILE_SRC) tty/qmark.h amarchy/win_refresh.h amarchy/poll_timer.h amarchy/rexx_host.h amarchy/tile_core.h amarchy/win_core.h amarchy/win_apply.h amarchy/bar_usable.h amarchy/bar_core.h amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -o $@ $(AMTILE_SRC)
 
@@ -1293,12 +1293,12 @@ $(BUILD)/amiga/Reboot: install/reboot.c
 	$(VC) -o $@ install/reboot.c
 
 # C:WBPath: puts a drawer on / takes it off the Workbench process's command path live (up-uhc: UHC:ExtBin)
-$(BUILD)/amiga/WBPath: install/wbpath.c config/cmdpath.h
+$(BUILD)/amiga/WBPath: install/wbpath.c config/cmdpath.h tty/qmark.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ install/wbpath.c
 
 # C:Agent [TASK]: the ai-agent preference's agent in a new tab, started on TASK (sends /ask like C:UPTerm)
-$(BUILD)/amiga/Agent: install/agent.c handler/upcmd.h handler/vtcon_packets.h $(UPTERM_VERSION_H) $(BUILD)/amiga/obj/cpuchk-Agent.o
+$(BUILD)/amiga/Agent: install/agent.c tty/qmark.h handler/upcmd.h handler/vtcon_packets.h $(UPTERM_VERSION_H) $(BUILD)/amiga/obj/cpuchk-Agent.o
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -I$(BUILD)/amiga -Dmain=up_main -o $@ install/agent.c $(BUILD)/amiga/obj/cpuchk-Agent.o
 
