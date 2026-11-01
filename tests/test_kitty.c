@@ -528,6 +528,29 @@ static void k22_transient_pictures_are_evicted_first(void)
     vt_free(t);
 }
 
+static void k23_pixel_offset_inside_the_first_cell(void)
+{
+    vt_term *t = h_new(10, 5, VT_XTERM);
+    vt_image_view v;
+    int n = 0, x;
+    vt_set_cell_pixels(t, 8, 16);
+    /* 14 x 1 black, X=3 Y=5: 3 + 14 = 17 pixels -> 3 cells (2 without the offset) */
+    h_put(t, "\033_Ga=T,f=24,s=14,v=1,X=3,Y=5;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\033\\");
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(v.px0, 3);
+    CHECK_INT(v.py0, 5);
+    CHECK_INT(v.py, -5);
+    for (x = 0; x < 10; x++)
+        n += (h_cell(t, x, 0)->pad & VT_CELL_IMAGE) ? 1 : 0;
+    CHECK_INT(n, 3);
+    CHECK_INT(h_cell(t, 3, 0)->pad & VT_CELL_IMAGE, 0);
+    h_put(t, "\033[2J\033[H\033_Ga=T,f=24,s=14,v=1,X=99,Y=99;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\033\\");
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(v.px0, 7); /* clamped to cell - 1 */
+    CHECK_INT(v.py0, 15);
+    vt_free(t);
+}
+
 /* three one-cell pictures: id 1 at (1,1) z 0, id 2 at (3,2) z 5, id 3 at (5,3) z -2 */
 typedef struct {
     const char *cmd;
@@ -589,5 +612,6 @@ void suite_kitty(void)
     k20_bad_key_combinations_are_einval();
     k21_retransmitting_an_id_removes_its_placements();
     k22_transient_pictures_are_evicted_first();
+    k23_pixel_offset_inside_the_first_cell();
     k24_the_missing_deletes();
 }

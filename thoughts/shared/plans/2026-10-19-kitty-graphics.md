@@ -208,7 +208,7 @@ commit.
 - [x] K22 N=1 transient: such a stored image is evicted before any other
       in kit_room. Test: fill the budget, the N=1 one goes first while an
       older plain one stays; fails before (oldest goes).
-- [ ] K23 X=, Y= pixel offset inside the first cell (must be smaller than
+- [ ] K23 (engine, render code, host test done 2026-11-01; rig pixel proof OPEN) X=, Y= pixel offset inside the first cell (must be smaller than
       the cell; else clamp to cell-1). Engine: vt_image_view gains px0,
       py0 (pixel offset of the image inside col0); vt_row_image fills
       them; the image covers ceil((X + w) / cw) cells. Render: img_run

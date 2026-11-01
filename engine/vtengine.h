@@ -365,7 +365,10 @@ typedef struct vt_image_view {
     int cw, ch;         /* the cell size the image was placed with */
     int col0;           /* the grid column of the image's left edge on this
                          * row (negative when a reflow split the image) */
-    int py;             /* the image's pixel row at the top of this row */
+    int px0, py0;       /* the image starts px0 pixels into its first cell
+                         * column and py0 into its first cell row (kitty X=, Y=) */
+    int py;             /* the image's pixel row at the top of this row
+                         * (negative on the first row when py0 > 0) */
     long serial;        /* different for every image (a pen cache's key) */
 } vt_image_view;
 /* The i-th image on row `row` (vt_row's numbering), the oldest first, so

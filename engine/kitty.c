@@ -25,7 +25,7 @@
  * Supported: a=t (transmit), a=T (transmit and show), a=p (show by id),
  * a=d (delete: a A i I n N c C), a=q (query); f=24, 32, 100 (PNG through
  * the host's decoder); o=z; m=1 chunks; t=d only (no files); i= I= p=;
- * q=1/2; c= r= x= y= w= h= C=1. Not supported, each answered with an
+ * q=1/2; c= r= x= y= X= Y= w= h= C=1. Not supported, each answered with an
  * error: z<0 below the text (drawn on top), U=1 placeholders, animation,
  * t=f/t/s. Included by vtengine.c (one translation unit with the engine).
  */
@@ -422,10 +422,20 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
     int x0 = (int)KV(k, 'x'), y0 = (int)KV(k, 'y'), w = (int)KV(k, 'w'), h = (int)KV(k, 'h');
     int c = (int)KV(k, 'c'), r = (int)KV(k, 'r'), tw, th, npal, slot;
     int cw = t->cell_w > 0 ? t->cell_w : 8, ch = t->cell_h > 0 ? t->cell_h : 16;
-    int left = (t->cols - t->cx) * cw;
+    int px0 = (int)KV(k, 'X'), py0 = (int)KV(k, 'Y');
+    int left;
     vt_u8 *pix;
     vt_u32 pal[256];
     vt_image *im;
+    if (px0 < 0)
+        px0 = 0;
+    if (px0 >= cw)
+        px0 = cw - 1; /* an offset past the cell: the cell's last pixel */
+    if (py0 < 0)
+        py0 = 0;
+    if (py0 >= ch)
+        py0 = ch - 1;
+    left = (t->cols - t->cx) * cw - px0;
     if (x0 < 0 || y0 < 0 || x0 >= s->w || y0 >= s->h)
         x0 = y0 = 0;
     if (w <= 0 || w > s->w - x0)
@@ -477,6 +487,8 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
     im->knum = KU(k, 'I');
     im->pid = KU(k, 'p');
     im->kz = KV(k, 'z');
+    im->px0 = px0;
+    im->py0 = py0;
     t->kit_last_z = KV(k, 'z');
     image_place(t, slot, KV(k, 'C') == 1 ? 2 : 3);
     t->kit_placed++;
