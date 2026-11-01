@@ -319,6 +319,7 @@ static void test_form_build(void)
     CHECK_INT(out[7], 154);                                   /* FORM size: everything after the size field */
     CHECK_INT(out[19], 6);                                    /* FACE size */
     CHECK_INT(out[20], 1); CHECK_INT(out[21], 0);             /* width-1, height-1 */
+    CHECK_INT(out[22], 1);                                    /* FACE flags: bit0 frameless (0 = OS 3.2 draws a bevel frame) */
     CHECK_INT(out[24], 0); CHECK_INT(out[25], 47);            /* MaxPaletteBytes-1 */
     CHECK(memcmp(out + 26, "IMAG", 4) == 0);
     CHECK_INT(out[33], 60);                                   /* chunk size: 10 + 2 RLE bytes + 48 palette */

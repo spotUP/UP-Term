@@ -282,7 +282,7 @@ size_t li_splice(const li_file *src, const li_edit *e, uint8_t *out, size_t cap)
 /* Layout of the OS 3.2 "FORM ICON" colour icon, read from stock 3.2 files (AmigaOS3.2CD GlowIconsCollection .info files, hexdumped;
  * the NDK headers do not describe it) and the OS 3.5 icon format as icon.library reads it (reference: AROS
  * workbench/libs/icon/diskobj35io.c, ReadImage35 + Decode35): FORM <u32 size> ICON, then
- *   FACE (6 bytes): u8 width-1, u8 height-1, u8 flags (0), u8 aspect (0), u16 MaxPaletteBytes-1 (largest stored palette - 1)
+ *   FACE (6 bytes): u8 width-1, u8 height-1, u8 flags (bit0 frameless: icon.library draws no bevel frame round the image, AROS diskobj35io.c: fc.Flags = ni_Frameless ? ICON35F_FRAMELESS (1) : 0; we write 1), u8 aspect (0), u16 MaxPaletteBytes-1 (largest stored palette - 1)
  *   IMAG, twice (normal, selected): u8 transparent index, u8 NumColors-1, u8 flags (bit0 has transparent colour, bit1 has
  *     palette), u8 ImageFormat (0 raw, 1 RLE), u8 PaletteFormat (0 raw, 1 RLE), u8 depth, u16 NumImageBytes-1,
  *     u16 NumPaletteBytes-1, then the image bytes, then the palette (RGB bytes per colour).
@@ -402,7 +402,7 @@ size_t li_form_build(const li_image *normal, const li_image *selected, const uin
     put32(&w, 0);                                   /* FORM size, set below */
     put(&w, (const uint8_t *)"ICONFACE", 8);
     put32(&w, 6);
-    put8(&w, normal->width - 1); put8(&w, normal->height - 1); put8(&w, 0); put8(&w, 0);
+    put8(&w, normal->width - 1); put8(&w, normal->height - 1); put8(&w, 1); put8(&w, 0);   /* flags bit0: frameless */
     put16(&w, 3 * LI_FORM_COLOURS - 1);
     form_imag(&w, normal, rgb);
     form_imag(&w, selected, rgb);
