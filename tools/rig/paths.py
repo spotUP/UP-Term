@@ -266,7 +266,12 @@ FSUAE = pathlib.Path(os.environ.get("UPTERM_FSUAE") or
 # UPTERM_RIG_EMU / `rig.py start --emu <name>`  the emulator a rig boots: "fsuae" or "amiberry" (tools/rig/amiberry.py;
 # UPTERM_AMIBERRY names the app or binary). The flag wins over the environment. fs-uae stays the default
 # until the Amiberry rigs pass the proof in thoughts/shared/research/s29-amiberry-port.md.
-EMU = (sys.argv[sys.argv.index("--emu") + 1] if "--emu" in sys.argv[:-1] else os.environ.get("UPTERM_RIG_EMU") or "fsuae")
+# A command that finds a running rig (stop, status, reboot, watchdog ...) given neither flag nor variable asks the emulator
+# the rig's last start recorded in <rig>/emu; without that, `rig.py stop` looked for fs-uae, found none, printed "stopped"
+# and left the Amiberry process running. start and setup never read it: no flag there means the default.
+EMU_FILE = RIG / "emu"
+_RECORDED = (EMU_FILE.read_text().strip() if EMU_FILE.is_file() and sys.argv[1:2] not in (["start"], ["setup"]) else "")
+EMU = (sys.argv[sys.argv.index("--emu") + 1] if "--emu" in sys.argv[:-1] else os.environ.get("UPTERM_RIG_EMU") or _RECORDED or "fsuae")
 if EMU not in ("fsuae", "amiberry"):
     sys.exit("rig: --emu must be fsuae or amiberry, not %s" % EMU)
 

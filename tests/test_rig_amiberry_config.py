@@ -19,6 +19,42 @@ def cfg(**kw):
     return dict(l.split("=", 1) for l in amiberry.config_lines(dict(BASE, **kw)))
 
 
+class StopFindsAmiberry(unittest.TestCase):
+    """`rig.py stop` / `status` without --emu or UPTERM_RIG_EMU must find the Amiberry process the rig's start recorded
+    (<rig>/emu); they used to look for fs-uae, print "stopped" and leave Amiberry running. A stand-in process carries the
+    command line Amiberry has (...Amiberry -G --log -f <rig>/win/<title>.uae); a second one belongs to another rig."""
+    def run_rig(self, *args):
+        return subprocess.run([sys.executable, str(ROOT / "tools/rig/rig.py"), *args], capture_output=True, text=True,
+                              env=dict(os.environ, UPTERM_RIG="97"), timeout=120)
+
+    def test_stop_and_status_find_recorded_amiberry(self):
+        import paths
+        rig = paths.RIG_HOME / "rig97"
+        other = paths.RIG_HOME / "rig98"
+        made = [d for d in (rig, other) if not d.exists()]
+        procs = []
+        with tempfile.TemporaryDirectory() as tmp:
+            fake = pathlib.Path(tmp) / "Amiberry"
+            fake.write_text("import time\ntime.sleep(300)\n")
+            try:
+                (rig / "win").mkdir(parents=True, exist_ok=True)
+                (rig / "emu").write_text("amiberry\n")
+                for d in (rig, other):
+                    procs.append(subprocess.Popen([sys.executable, str(fake), "-G", "--log", "-f", str(d / "win/t t.uae")]))
+                self.assertIn("down", self.run_rig("status").stdout)   # wasabid is not there; status must not crash
+                out = self.run_rig("stop")
+                self.assertIn("stopped", out.stdout, out.stdout + out.stderr)
+                procs[0].wait(timeout=20)       # this rig's process is gone
+                self.assertIsNone(procs[1].poll())   # the other rig's keeps running
+            finally:
+                for p in procs:
+                    p.kill()
+                    p.wait()
+                (rig / "emu").unlink(missing_ok=True)
+                for d in made:
+                    subprocess.run(["rm", "-rf", str(d)])
+
+
 class Config(unittest.TestCase):
     def test_060_max(self):
         c = cfg()

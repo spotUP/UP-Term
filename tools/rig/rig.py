@@ -1790,6 +1790,7 @@ def _start(retries):
         sys_hdf_cpu_lib(RIG / "sys.hdf")   # the master image is never touched; this and any other write into DH0: runs after the clone
     RIG.mkdir(parents=True, exist_ok=True)
     START_ARGS.write_text(json.dumps([a for a in sys.argv[2:] if a != "--keep-sys"]))
+    paths.EMU_FILE.write_text(paths.EMU + "\n")   # stop/status of a later call find this rig's emulator without the flag
     setup_config_only()
     paths.cap_fsuae_log(limit=0)   # a fresh log per start (the tail of the last run stays in <name>.tail)
     log = RIG / "boot/boot.log"
