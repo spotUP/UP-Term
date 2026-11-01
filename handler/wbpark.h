@@ -74,4 +74,26 @@ static void wbpark_failed(wbpark *p)
     p->parked = 1;
 }
 
+/* A tab that does not answer TM_PARK must not stall the Workbench close inside IPrefs for ever (tab_sync used to
+ * wait without a limit). 5 seconds: a healthy tab answers in a few ticks, one busy with a long write well within
+ * a second; IPrefs shows its own Retry/Cancel requester when CloseWorkBench fails, so a late answer costs nothing
+ * and an endless wait costs the whole Workbench. In 1/50 s ticks, polled every WBPARK_POLL_TICKS. */
+#define WBPARK_WAIT_TICKS 250
+#define WBPARK_POLL_TICKS 2
+
+/* Wait for a reply, polling: 1 as soon as `got(u)` says so, 0 after WBPARK_WAIT_TICKS without one. `pause(n)`
+ * sleeps n ticks. */
+static int wbpark_wait(int (*got)(void *), void (*pause)(int), void *u)
+{
+    int waited = 0;
+    for (;;) {
+        if (got(u))
+            return 1;
+        if (waited >= WBPARK_WAIT_TICKS)
+            return 0;
+        pause(WBPARK_POLL_TICKS);
+        waited += WBPARK_POLL_TICKS;
+    }
+}
+
 #endif

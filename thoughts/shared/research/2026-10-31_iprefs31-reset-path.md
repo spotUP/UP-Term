@@ -43,3 +43,14 @@
   its tabs). Blocking until reopen would stall the caller inside the Workbench close, which waits for every client.
 
 Rig result (s40, 2026-11-01): rig 2, `--os 31` then `--os 32`, UP-Term with a second tab (Left Amiga T), `SYS:Prefs/ScreenMode FROM VTC:screenmode.aga16.prefs USE`. Both: no System Request (requesters empty over 5 polls), screen reopens at depth 4, UP-Term window back at 0,0 640x256 on the new screen. On 3.1 the tab bar is drawn after the reopen (pixel check). Not verified: tab count after reopen (no text channel for the bar on the rig).
+
+## s40 park timeout and tab count (2026-11-01)
+
+- Invariant: the screennotify handler must never wait forever on a tab. `tab_sync` waited unbounded on `c->tab_reply`, so one stuck tab stalled the Workbench close inside IPrefs.
+- Fix: `wbpark_wait` (handler/wbpark.h) polls every 2 ticks and gives up after 250 ticks (5 s). On timeout `wb_tabs_abort` posts TM_UNPARK to every tab, the window stays open (keeps WFLG_WBENCHWINDOW), the screennotify message is still replied, so CloseWorkBench fails and IPrefs reports it. A late reply is freed by the next drain.
+- `tab_unregister`: no bound added. It answers incoming PARK/UNPARK while it waits, so it cannot deadlock a host in `tab_sync`.
+- lock_screen: TM_UNPARK used the tab own spec (FRONT, default pubscreen), which can differ from the host window screen after a reset. It now uses `t->win->WScreen`.
+- Tab count channel: reused `C:UPTerm state` (`tabs` counter), read with tools/rig/tabstate.py `counters()`.
+- Rig 2 (3.1), tools/rig/wbtabs_rig.py: two tabs before the reset, two after `ScreenMode FROM VTC:screenmode.aga16.prefs USE`, both tabs run a marker command (mark-m1, mark-m2).
+- Revert proof: with the HEAD handler, tests/test_wbpark.c:134 fails (`wbpark_wait(sync_got` missing); with the fix, 43 checks pass.
+- Open: after the Workbench reopen the UP-Term window sits behind the Workbench window; only the top 11 rows show until a click at y=5. Candidate fix: WindowToFront after reopen. Not verified before the reset.

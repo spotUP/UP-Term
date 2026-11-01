@@ -3202,7 +3202,8 @@ static int wb_eligible(con *c)
                            c->locked && (c->locked->Flags & SCREENTYPE) == WBENCHSCREEN);
 }
 
-static void wb_tabs_park(con *c);
+static int wb_tabs_park(con *c);
+static void wb_tabs_abort(con *c);
 static void wb_tabs_unpark(con *c);
 
 /* No window now: a parked console (the host, or a tab of a parked host) must not open one. */
@@ -3266,8 +3267,16 @@ static void wb_msgs(con *c)
             c->wb_box[2] = win->Width;
             c->wb_box[3] = win->Height;
             c->wb_box_on = 1;
-            wb_tabs_park(c); /* the tabs let go of the window first: it closes under them */
-            window_unbind(c);
+            if (wb_tabs_park(c)) { /* the tabs let go of the window first: it closes under them */
+                window_unbind(c);
+            } else {
+                /* a hung tab: the window stays, CloseWorkBench fails (IPrefs reports it) and screennotify
+                 * sends "opened" again, which finds nothing parked */
+                wb_tabs_abort(c);
+                c->wb_box_on = 0;
+                c->wb.parked = 0;
+                act = WBPARK_NONE;
+            }
         }
         ReplyMsg(&m->snm_Message);
         if (act == WBPARK_SHOW) {
@@ -6667,9 +6676,11 @@ static void tab_msgs(con *c)
             break;
         case TM_UNPARK: /* the host's new window (t->win): the same terminal on it */
             if (c->tab_parked && t->win) {
-                struct Screen *scr = lock_screen(c);
+                /* the screen the host window is on, not a lock of its own: the tab spec (FRONT, the
+                 * default public screen) can name another one after a reset. The open window keeps the
+                 * screen up, so the tab holds no lock of its own. */
+                struct Screen *scr = t->win->WScreen;
                 if (scr) {
-                    c->locked = scr;
                     c->tab_rp = *t->win->RPort;
                     c->w.own_rp = &c->tab_rp;
                     vtwin_set_screen(&c->w, scr);
@@ -6686,39 +6697,77 @@ static void tab_msgs(con *c)
     }
 }
 
-/* host -> a tab, answered before this returns: the tab has done it (the window may close right after) */
-static void tab_sync(con *c, con *to, int type, struct Window *win)
+/* tab_sync's wait: the reply of `t` has come (every other reply on the way is freed) */
+struct sync_wait {
+    con *c;
+    struct tab_msg *t;
+};
+
+static int sync_got(void *u)
 {
-    struct tab_msg *t = to->tab_port ? tab_msg(c, type) : 0;
+    struct sync_wait *w = (struct sync_wait *)u;
     struct Message *m;
-    if (!t)
-        return;
-    t->win = win;
-    PutMsg(to->tab_port, &t->msg);
-    for (;;) {
-        while ((m = GetMsg(c->tab_reply)) != 0) {
-            int mine = m == &t->msg;
-            if (m == c->hiding)
-                c->hiding = 0; /* the window is going or new: tab_show_active runs after the unpark */
-            FreeVec(m);
-            if (mine)
-                return;
-        }
-        Wait(1UL << c->tab_reply->mp_SigBit);
+    int mine = 0;
+    while ((m = GetMsg(w->c->tab_reply)) != 0) {
+        if (m == &w->t->msg)
+            mine = 1;
+        if (m == w->c->hiding)
+            w->c->hiding = 0; /* the window is going or new: tab_show_active runs after the unpark */
+        FreeVec(m);
     }
+    return mine;
+}
+
+static void sync_pause(int ticks)
+{
+    Delay(ticks);
+}
+
+/* host -> a tab, answered before this returns: the tab has done it (the window may close right after).
+ * 0 when the tab did not answer within WBPARK_WAIT_TICKS (a hung tab must not stall the Workbench close
+ * inside IPrefs); its message stays in flight and the late reply is freed by the next drain. */
+static int tab_sync(con *c, con *to, int type, struct Window *win)
+{
+    struct sync_wait w;
+    w.c = c;
+    w.t = to->tab_port ? tab_msg(c, type) : 0;
+    if (!w.t)
+        return 1;
+    w.t->win = win;
+    PutMsg(to->tab_port, &w.t->msg);
+    return wbpark_wait(sync_got, sync_pause, &w);
 }
 
 /* The Workbench closes (wb_msgs): every tab lets go of the host's window before it closes, and takes
- * the new one when it opens again; the bar and the active tab are drawn again. */
-static void wb_tabs_park(con *c)
+ * the new one when it opens again; the bar and the active tab are drawn again. 0 when a tab did not
+ * answer: nothing is closed, wb_tabs_abort puts the tabs back. */
+static int wb_tabs_park(con *c)
 {
     int i;
     if (c->ntabs < 2)
-        return;
+        return 1;
     ClearMenuStrip(c->own_win);
     for (i = 0; i < c->ntabs; i++)
-        if (c->tab_list[i] != c)
-            tab_sync(c, c->tab_list[i], TM_PARK, 0);
+        if (c->tab_list[i] != c && !tab_sync(c, c->tab_list[i], TM_PARK, 0))
+            return 0;
+    return 1;
+}
+
+/* A tab did not answer TM_PARK: the window stays. Every tab gets TM_UNPARK behind the park (the hung one
+ * parks when it wakes and comes straight back; one that is not parked ignores it). */
+static void wb_tabs_abort(con *c)
+{
+    int i;
+    for (i = 0; i < c->ntabs; i++) {
+        con *to = c->tab_list[i];
+        struct tab_msg *t = to != c && to->tab_port ? tab_msg(c, TM_UNPARK) : 0;
+        if (t) {
+            t->win = c->own_win;
+            PutMsg(to->tab_port, &t->msg);
+        }
+    }
+    bar_draw(c);
+    tab_show_active(c);
 }
 
 static void wb_tabs_unpark(con *c)

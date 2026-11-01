@@ -97,6 +97,52 @@ static void tabs_park(void)
     }
 }
 
+static int polls, pauses, answer_after;
+static int got_after(void *u)
+{
+    (void)u;
+    polls++;
+    return answer_after >= 0 && pauses >= answer_after;
+}
+static void count_pause(int ticks)
+{
+    (void)ticks;
+    pauses++;
+}
+
+/* A tab that never answers TM_PARK ends the wait after the bound, not never; one that answers ends it at once. */
+static void park_wait_bounded(void)
+{
+    const char *src = handler_src();
+    char *s, *m;
+    polls = pauses = 0;
+    answer_after = -1; /* never */
+    CHECK_INT(wbpark_wait(got_after, count_pause, 0), 0);
+    CHECK_INT(pauses, WBPARK_WAIT_TICKS / WBPARK_POLL_TICKS);
+    polls = pauses = 0;
+    answer_after = 3;
+    CHECK_INT(wbpark_wait(got_after, count_pause, 0), 1);
+    CHECK_INT(pauses, 3);
+    polls = pauses = 0;
+    answer_after = 0;
+    CHECK_INT(wbpark_wait(got_after, count_pause, 0), 1);
+    CHECK_INT(pauses, 0);
+    /* wired: tab_sync waits through wbpark_wait (no Wait on the reply port without a limit), a failed park
+     * leaves the window open, puts the tabs back and answers the message */
+    s = strstr(src, "static int tab_sync(con *c, con *to");
+    CHECK_INT(s && strstr(s, "wbpark_wait(sync_got") && strstr(s, "wbpark_wait(sync_got") - s < 500, 1);
+    CHECK_INT(s && strstr(s, "Wait(1UL << c->tab_reply") == 0 || (strstr(s, "Wait(1UL << c->tab_reply") - s > 700), 1);
+    {   /* TM_UNPARK binds the tab to the screen of the host's window, never its own lock_screen */
+        char *u = strstr(src, "case TM_UNPARK:");
+        char *e2 = u ? strstr(u, "ReplyMsg(&t->msg)") : 0;
+        CHECK_INT(u && e2 && strstr(u, "t->win->WScreen") && strstr(u, "t->win->WScreen") < e2, 1);
+        CHECK_INT(u && e2 && (strstr(u, "lock_screen(c)") == 0 || strstr(u, "lock_screen(c)") > e2), 1);
+    }
+    m = strstr(src, "static void wb_msgs(con *c)");
+    CHECK_INT(m && strstr(m, "if (wb_tabs_park(c))") && strstr(m, "wb_tabs_abort(c)") && strstr(m, "c->wb.parked = 0"), 1);
+    CHECK_INT(m && strstr(m, "wb_tabs_abort(c)") < strstr(m, "ReplyMsg(&m->snm_Message)"), 1);
+}
+
 void suite_wbpark(void)
 {
     close_then_open();
@@ -104,4 +150,5 @@ void suite_wbpark(void)
     not_eligible();
     failed_reopen_retries();
     tabs_park();
+    park_wait_bounded();
 }
