@@ -34,6 +34,7 @@
 #include <intuition/intuition.h>
 #include <intuition/screens.h>
 #include <graphics/displayinfo.h>
+#include <graphics/layers.h>
 #include <graphics/gfxbase.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
@@ -3264,6 +3265,31 @@ static void ztimer_start(con *c)
     c->ztimer_busy = 1;
 }
 
+/* Window layers lying in front of the window's own (depth order; the screen's title bar layer does not count). */
+static int wb_layers_in_front(const struct Window *win)
+{
+    const struct Layer *l;
+    int n = 0;
+    if (!win || !win->WLayer)
+        return 0;
+    for (l = win->WLayer->front; l; l = l->front)
+        if (!win->WScreen || l != win->WScreen->BarLayer)
+            n++;
+    return n;
+}
+
+static int wb_in_front(const struct Window *win)
+{
+    return wbpark_in_front(wb_layers_in_front(win));
+}
+
+/* The user picked another window: it is active, not ours, and not a Workbench drawer window. */
+static int wb_user_other(const con *c)
+{
+    const struct Window *a = IntuitionBase->ActiveWindow;
+    return a && a != c->own_win && !(a->Flags & WFLG_WBENCHWINDOW);
+}
+
 static void wb_raise(con *c, int bits)
 {
     if (!c->own_win)
@@ -3290,7 +3316,7 @@ static void wb_msgs(con *c)
             c->wb_box[2] = win->Width;
             c->wb_box[3] = win->Height;
             c->wb_box_on = 1;
-            wbpark_remember(&c->wb, win->WScreen && win->WScreen->FirstWindow == win,
+            wbpark_remember(&c->wb, wb_in_front(win),
                             IntuitionBase->ActiveWindow == win);
             if (wb_tabs_park(c)) { /* the tabs let go of the window first: it closes under them */
                 window_unbind(c);
@@ -7845,8 +7871,8 @@ static LONG handler_main(void)
             WaitIO((struct IORequest *)c->ztimer);
             c->ztimer_busy = 0;
             if (c->own_win && wbpark_raise_pending(&c->wb)) {
-                wb_raise(c, wbpark_retry(&c->wb, c->own_win->WScreen->FirstWindow == c->own_win,
-                                         IntuitionBase->ActiveWindow == c->own_win));
+                wb_raise(c, wbpark_retry(&c->wb, wb_in_front(c->own_win),
+                                         IntuitionBase->ActiveWindow == c->own_win, wb_user_other(c)));
                 if (wbpark_raise_pending(&c->wb))
                     ztimer_start(c);
             }

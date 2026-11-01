@@ -23,6 +23,7 @@ typedef struct {
     int was_front; /* it was the frontmost window of its screen when it closed */
     int was_active; /* it was the active window when it closed */
     int tries; /* raise ticks left after the reopen */
+    int covered; /* a tick saw the window covered: the drawer window has appeared */
 } wbpark;
 
 /* The host console of a window (with tabs or without) may close and reopen it: its own window on the
@@ -84,25 +85,44 @@ static void wbpark_remember(wbpark *p, int front, int active)
 
 /* The Workbench opens its drawer windows a while AFTER the console's window is back, over it and active. So the
  * restore is repeated once a second for WBPARK_RAISE_TRIES seconds (the handler's raise timer). */
-#define WBPARK_RAISE_TRIES 6
+#define WBPARK_RAISE_TRIES 10
+
+/* Front means depth, not open order: no window layer lies in front of ours. Screen->FirstWindow is the order the
+ * windows were opened in and says nothing about which one is on top. The handler counts the layers in front of
+ * the window (Layer->front chain, the screen's title bar layer left out). */
+static int wbpark_in_front(int layers_in_front)
+{
+    return layers_in_front == 0;
+}
 
 /* After the reopen: what to do with the new window (WBPARK_TO_FRONT, WBPARK_ACTIVATE bits), and the retries start. */
 static int wbpark_restore(wbpark *p)
 {
     p->tries = WBPARK_RAISE_TRIES;
+    p->covered = 0;
     return (p->was_front ? WBPARK_TO_FRONT : 0) | (p->was_active ? WBPARK_ACTIVATE : 0);
 }
 
-/* One tick of the raise timer: `front` / `active` say where the window stands now. Returns the bits still to do;
- * the last tick forgets what was remembered. 0 and no more ticks wanted once wbpark_raise_pending is 0. */
-static int wbpark_retry(wbpark *p, int front, int active)
+/* One tick of the raise timer: `front` / `active` say where the window stands now; `user_other` says another
+ * window that is not a Workbench drawer window holds the activation (the user picked it). Returns the bits still
+ * to do. The rule: retry for WBPARK_RAISE_TRIES ticks; stop early once the window was seen covered (the drawer
+ * window appeared) and stands in front again; stop at once, raising nothing, when the user activated another
+ * window. The last tick forgets what was remembered. */
+static int wbpark_retry(wbpark *p, int front, int active, int user_other)
 {
     int r;
     if (p->tries <= 0)
         return 0;
-    r = (p->was_front && !front ? WBPARK_TO_FRONT : 0) | (p->was_active && !active ? WBPARK_ACTIVATE : 0);
-    if (--p->tries == 0)
+    if (p->was_active && user_other) {
+        p->tries = 0;
         p->was_front = p->was_active = 0;
+        return 0;
+    }
+    if (p->was_front && !front)
+        p->covered = 1;
+    r = (p->was_front && !front ? WBPARK_TO_FRONT : 0) | (p->was_active && !active ? WBPARK_ACTIVATE : 0);
+    if (--p->tries == 0 || (p->covered && !r))
+        p->tries = 0, p->was_front = p->was_active = 0;
     return r;
 }
 

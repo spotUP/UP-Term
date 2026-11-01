@@ -117,19 +117,31 @@ static void park_restore_order(void)
     wbpark p = {0, 0, 0, 0};
     const char *src = handler_src();
     char *h, *s, *r;
+    int i;
     wbpark_remember(&p, 1, 1);
     CHECK_INT(wbpark_restore(&p), WBPARK_TO_FRONT | WBPARK_ACTIVATE);
-    /* the drawer window opens later and covers it: each tick puts back what is missing, for 6 ticks, then stops */
-    CHECK_INT(wbpark_retry(&p, 1, 1), 0);
-    CHECK_INT(wbpark_retry(&p, 0, 0), WBPARK_TO_FRONT | WBPARK_ACTIVATE);
-    CHECK_INT(wbpark_retry(&p, 1, 0), WBPARK_ACTIVATE);
+    /* front is depth (layers in front), never Screen->FirstWindow (open order) */
+    CHECK_INT(wbpark_in_front(0), 1);
+    CHECK_INT(wbpark_in_front(1), 0);
+    CHECK_INT(strstr(src, "FirstWindow == ") == 0, 1);
+    /* the drawer window opens later and covers it: each tick puts back what is missing; ticks run 10 s */
+    CHECK_INT(wbpark_retry(&p, 1, 1, 0), 0);
+    CHECK_INT(wbpark_retry(&p, 0, 0, 0), WBPARK_TO_FRONT | WBPARK_ACTIVATE);
     CHECK_INT(wbpark_raise_pending(&p), 1);
-    wbpark_retry(&p, 1, 1);
-    wbpark_retry(&p, 1, 1);
-    CHECK_INT(wbpark_raise_pending(&p), 1);
-    wbpark_retry(&p, 1, 1);
+    CHECK_INT(wbpark_retry(&p, 1, 1, 0), 0); /* covered once, in front again: done early */
     CHECK_INT(wbpark_raise_pending(&p), 0);
-    CHECK_INT(wbpark_retry(&p, 0, 0), 0);
+    wbpark_remember(&p, 1, 1);
+    wbpark_restore(&p);
+    for (i = 0; i < WBPARK_RAISE_TRIES - 1; i++)
+        wbpark_retry(&p, 1, 1, 0); /* never covered: runs the whole span */
+    CHECK_INT(wbpark_raise_pending(&p), 1);
+    wbpark_retry(&p, 1, 1, 0);
+    CHECK_INT(wbpark_raise_pending(&p), 0);
+    CHECK_INT(wbpark_retry(&p, 0, 0, 0), 0);
+    wbpark_remember(&p, 1, 1);
+    wbpark_restore(&p);
+    CHECK_INT(wbpark_retry(&p, 0, 0, 1), 0); /* the user activated another window: raise nothing */
+    CHECK_INT(wbpark_raise_pending(&p), 0);
     wbpark_remember(&p, 1, 0);
     CHECK_INT(wbpark_restore(&p), WBPARK_TO_FRONT);
     wbpark_remember(&p, 0, 0);
