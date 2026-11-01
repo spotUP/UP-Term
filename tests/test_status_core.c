@@ -19,12 +19,19 @@ static void test_fit(void)
     CHECK(status_line(0, five, out, sizeof out) <= REXX_HOST_OUT);
     CHECK(strstr(out, " ticks=99999") != 0);
     CHECK(status_line(0, mid, out, sizeof out) <= REXX_HOST_OUT);
-    CHECK(status_line(1, big, out, sizeof out) <= REXX_HOST_OUT);
-    CHECK(strstr(out, " ticks=2147483647") != 0);
+    /* BAR STATUS likewise holds 5 digit counters with the strut keys last */
+    CHECK(status_line(1, five, out, sizeof out) <= REXX_HOST_OUT);
+    CHECK(strstr(out, " strut_zoom=99999") != 0);
+    CHECK(status_line(1, big, out, sizeof out) > 0);
     CHECK(strncmp(out, "bar=", 4) == 0);
     CHECK(strstr(out, " draws=") != 0 && strstr(out, " raises=") != 0);
     CHECK(strstr(out, " hits=") == 0);
     CHECK(strstr(out, " net=2147483647") != 0);
+    {
+        long b[BARSTATUS_NVALS] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
+        status_line(1, b, out, sizeof out);
+        CHECK_STR(out, "bar=1 draws=2 panels=3 launches=4 raises=5 ticks=6 net=7 strut_opens=8 strut_clamped=9 strut_zoom=10");
+    }
 }
 
 static void test_keys(void)
