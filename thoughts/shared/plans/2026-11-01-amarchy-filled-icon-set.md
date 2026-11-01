@@ -273,6 +273,47 @@ are rerun as part of F10/F11:
 - A glyph the new set draws larger or smaller never changes the stored original: nothing in RESTORE
   reads `lucide.dat`.
 
+## 7b. Pen hold when flat is off (coordinator input, hunt measurement)
+
+Measured by the hunt: the glyph pens 32 / 37 / 33 (`tools/gen_lucide_icons.py:38`) receive theme
+colours only while `amarchy-flat` holds them (`amarchy/flat.c:852-881`, `ObtainPen` PEN_EXCLUSIVE).
+Without `amarchy-flat` they keep the screen's default palette (ffffff / ffffff / 888888), so
+planes that draw "foreground" in pen 33 render grey on white and the icons look inverted. A filled
+set makes this worse than Lucide: the solid body is level 3 (pen 33), so the whole glyph is the
+wrong colour, not only its 2 px stroke. Rasterising is unchanged (`:77-104`, 4 levels; selected
+image draws pen 43 on a rounded square, `:102`), so the fix is about WHO owns the pens, not the
+raster.
+
+Invariant: an icon image that names pens 32..47 is only on disk while some process holds those pens
+with theme colours.
+
+Options for where the hold lives:
+- H1 (recommended): the pen hold moves out of `amarchy-flat` into the icon applier's own long-lived
+  holder (`amarchy/iconpen_core.c`, the `ip_colours` table is already there). Flat and icons each take
+  a reference; the pens are released when the last reference goes. APPLY starts the holder, RESTORE
+  stops it after the originals are spliced back. Icons are themed whether flat is on or off, and
+  flat off keeps the icons. Cost: a holder process or a shared library-level refcount, plus a
+  handoff test that flat can start and stop while icons stay themed.
+- H2: icons require flat. APPLY refuses when `amarchy-flat` is not running, and flat off runs RESTORE
+  first. No new process, but the icons disappear whenever the owner turns flat off, which is the
+  state the hunt found inverted today.
+- H3: write shared-pen indices (the fold table used on shallow screens) into the dat when flat is off.
+  Rejected: needs a second image set and a rewrite on every flat toggle, against the binding
+  decision "no file rewrite on theme change".
+
+Plan rows (added to section 4):
+- F13 Decide H1 or H2 (owner, below). Done: decision in the ledger row.
+- F14 (H1) Move the `ObtainPen` block of `amarchy/flat.c:852-881` behind a refcounted holder in
+  `iconpen_core`; flat calls acquire/release; the icon applier acquires on APPLY and releases on
+  RESTORE. Done: host test of acquire/release counts and `ip_colours` application.
+- F15 Rig: with flat OFF, APPLY, read pen 33 / 37 / 32 RGB (`amarchy-icons STATUS` pens-held 16) and
+  assert they equal the theme's `ip_colours`, not ffffff / ffffff / 888888; toggle flat on and off and
+  re-read; RESTORE and assert `.info` md5 identical and pens released. This is part of the one
+  reachability test of section 6, as an extra step, not a new test.
+- RESTORE guarantee: unchanged. The holder only owns pens; it never reads or writes `.info` bytes.
+
+Owner decision: H1 (recommended: icons stay themed with flat off) or H2 (icons only with flat).
+
 ## Risks
 
 - Phosphor Fill cutouts may close on the 32x16 variant (F5 look).
