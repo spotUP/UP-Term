@@ -83,6 +83,8 @@ int ip_holder_release(ip_holder *h, const ip_ops *o)
             n++;
         }
     h->held = 0;
+    h->screen = NULL;            /* nothing is obtained on any screen now: the next sync obtains again */
+    h->depth = 0;
     return n;
 }
 
@@ -116,4 +118,21 @@ int ip_status_line(const ip_holder *h, char *out, size_t cap)
 {
     int n = snprintf(out, cap, "pens-held %d", h->held);
     return n > 0 && (size_t)n < cap ? n : 0;
+}
+
+int ip_sync_decide(const ip_holder *h, int enabled, const void *screen, int depth)
+{
+    if (!enabled || !screen)
+        return h->screen ? IP_SYNC_RELEASE : IP_SYNC_NONE;
+    return ip_holder_stale(h, screen, depth) ? IP_SYNC_OBTAIN : IP_SYNC_NONE;
+}
+
+unsigned long ip_scale32(unsigned c)
+{
+    return (unsigned long)(c & 0xff) * 0x01010101UL;
+}
+
+int ip_screen_depth(int planes, int ehb)
+{
+    return (ehb && planes == 6) ? 5 : planes;
 }

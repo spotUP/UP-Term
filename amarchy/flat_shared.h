@@ -9,6 +9,7 @@
 #include <exec/libraries.h>
 #include <stdint.h>
 #include "flat_core.h"
+#include "iconpen_core.h"
 
 /* The public record. ss is first so AddSemaphore's node is the allocation's start (as ixshared, ixwatch.h). */
 typedef struct flatshared {
@@ -43,6 +44,8 @@ typedef struct flatshared {
     flat_gh gh;                 /* FLAT-BUTTON-DISABLED-DIM: the recorded filled button boxes and labels (flat_core.h) */
     ULONG ghits;                /* ghost fills replaced by the solid dim fill (the sentinel) */
     ULONG tcalls, thits;        /* every patched Text call / every pressed label recoloured (the sentinels) */
+    /* LUCIDE L7: the 16 icon pens held on the Workbench screen (iconpen_core.h); NOT in flat_state, whose 24 bytes tests pin */
+    ip_holder ih;
 } flatshared;
 
 #endif

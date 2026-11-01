@@ -56,4 +56,15 @@ int ip_holder_release(ip_holder *h, const ip_ops *o);
 /* "pens-held N"; returns the length, 0 when cap is too small */
 int ip_status_line(const ip_holder *h, char *out, size_t cap);
 
+/* ---- the Amiga glue's decisions (amarchy/flat.c pens_sync) ---- */
+enum { IP_SYNC_NONE, IP_SYNC_OBTAIN, IP_SYNC_RELEASE };
+/* What a sync does: flat off or no Workbench screen -> release what is held (RELEASE only while pens are tied to a screen);
+ * flat on and the screen or its depth is not the one the pens were obtained on (first run, Workbench closed and reopened,
+ * mode change) -> obtain; else nothing. */
+int ip_sync_decide(const ip_holder *h, int enabled, const void *screen, int depth);
+/* ObtainPen takes 32-bit colour gun values: an 8-bit gun c becomes c * 0x01010101 */
+unsigned long ip_scale32(unsigned c);
+/* the depth ip_fold / desk_pen_plan_for take: the bitmap's planes, EHB (6 planes) counts as 5 */
+int ip_screen_depth(int planes, int ehb);
+
 #endif

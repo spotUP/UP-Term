@@ -472,6 +472,8 @@ static void dk_flat_sync_with(int changed_only)
         desk_flat_state(flat, gad, &next);
         if (!changed_only || memcmp(&next, &r->st, sizeof next) != 0) {
             desk_flat_state(flat, gad, &r->st);
+            if (r->task)
+                Signal(r->task, SIGBREAKF_CTRL_D);  /* LUCIDE L7: amarchy-flat takes or drops the icon pens */
             wrote = 1;
         }
     }

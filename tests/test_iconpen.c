@@ -120,9 +120,46 @@ static void test_holder(void)
     CHECK_INT(ip_holder_obtain(&h, &o, &s1, 3, rgb), 0);
 }
 
+static void test_sync(void)
+{
+    ip_holder h;
+    ip_ops o;
+    uint8_t rgb[IP_PENS][3];
+    int s1, s2;
+    memset(rgb, 0, sizeof rgb);
+    memset(&o, 0, sizeof o);
+    ip_holder_init(&h);
+    CHECK_INT(ip_sync_decide(&h, 1, &s1, 6), IP_SYNC_OBTAIN);       /* boot, flat on */
+    CHECK_INT(ip_sync_decide(&h, 0, &s1, 6), IP_SYNC_NONE);         /* flat off, nothing held */
+    CHECK_INT(ip_sync_decide(&h, 1, NULL, 6), IP_SYNC_NONE);        /* no Workbench screen yet */
+    CHECK_INT(ip_scale32(0xff), 0xffffffffUL);
+    CHECK_INT(ip_scale32(0x80), 0x80808080UL);
+    CHECK_INT(ip_screen_depth(6, 1), 5);
+    CHECK_INT(ip_screen_depth(6, 0), 6);
+    CHECK_INT(ip_screen_depth(8, 0), 8);
+    /* hold on s1 (depth 3 holds none but still ties to the screen) */
+    h.screen = &s1; h.depth = 6; h.held = 16;
+    CHECK_INT(ip_sync_decide(&h, 1, &s1, 6), IP_SYNC_NONE);         /* same screen: no re-obtain */
+    CHECK_INT(ip_sync_decide(&h, 1, &s2, 6), IP_SYNC_OBTAIN);       /* Workbench reopened: new screen */
+    CHECK_INT(ip_sync_decide(&h, 1, &s1, 8), IP_SYNC_OBTAIN);       /* depth changed */
+    CHECK_INT(ip_sync_decide(&h, 1, NULL, 6), IP_SYNC_RELEASE);     /* Workbench closed: drop */
+    CHECK_INT(ip_sync_decide(&h, 0, &s1, 6), IP_SYNC_RELEASE);      /* flat off */
+    /* after a real release the holder ties to no screen, so flat on again obtains again (regression: it stayed on the old screen) */
+    {
+        fake f;
+        memset(&f, 0, sizeof f);
+        o.obtain = f_obtain; o.release = f_release; o.ctx = &f;
+        ip_holder_init(&h);
+        CHECK_INT(ip_holder_obtain(&h, &o, &s1, 6, rgb), 16);
+        CHECK_INT(ip_holder_release(&h, &o), 16);
+        CHECK_INT(ip_sync_decide(&h, 1, &s1, 6), IP_SYNC_OBTAIN);
+    }
+}
+
 void suite_iconpen(void)
 {
     test_colours_and_fold();
     test_plan_no_overlap();
     test_holder();
+    test_sync();
 }
