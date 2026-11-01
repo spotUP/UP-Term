@@ -2556,12 +2556,22 @@ static void img_colours(vr_render *r, const vt_image_view *v)
  * the image (a cell it does not fill keeps the background the text drew). */
 static void img_run(vr_render *r, const vt_image_view *v, int a, int b, int y)
 {
-    LONG sx = (LONG)(a - v->col0) * v->cw, sy = v->py, w = (LONG)(b - a) * r->cw, h = r->ch;
+    LONG sx = (LONG)(a - v->col0) * v->cw - v->px0, sy = v->py, w = (LONG)(b - a) * r->cw, h = r->ch;
     LONG stride, k, j;
     WORD dx = (WORD)(r->ox + a * r->cw), dy = (WORD)(r->oy + y * r->ch);
     const vt_u8 *src;
     UBYTE *d;
-    if (sx < 0 || sx >= v->w || sy >= v->h)
+    if (sx < 0) { /* the first cell: the image starts px0 pixels in, the rest keeps the background */
+        dx = (WORD)(dx - sx);
+        w += sx;
+        sx = 0;
+    }
+    if (sy < 0) { /* the first row: py0 pixels down */
+        dy = (WORD)(dy - sy);
+        h += sy;
+        sy = 0;
+    }
+    if (sx >= v->w || sy >= v->h)
         return;
     if (w > v->w - sx)
         w = v->w - sx;
@@ -2635,7 +2645,7 @@ static void draw_images(vr_render *r, int x0, int y0, int x1, int y1)
         if (!c || (!r->view && vt_row_size(r->t, gy)))
             continue; /* a double-size row shows no images */
         for (i = 0; vt_row_image(r->t, gy, i, &v); i++) {
-            xe = v.col0 + (v.w + v.cw - 1) / v.cw;
+            xe = v.col0 + (v.px0 + v.w + v.cw - 1) / v.cw;
             if (xe > x1)
                 xe = x1;
             if (xe > ncells)

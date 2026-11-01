@@ -107,6 +107,7 @@ typedef struct vt_image {
     vt_u32 kid, knum, pid; /* kitty's i=, I= and p= */
     long kz;            /* kitty's z= (negative: under the text) */
     vt_u8 ktrans;       /* kitty's N=1 on a stored picture: evicted first */
+    int px0, py0;       /* kitty's X=, Y=: the picture's offset inside its first cell */
 } vt_image;
 
 #define VT_IMG_SLOTS 64 /* images alive at once (the oldest gives way) */
@@ -431,7 +432,7 @@ static vt_image *place_image(const vt_term *t, const vt_place *p)
 
 static int image_cols(const vt_image *im)
 {
-    return (im->w + im->cw - 1) / im->cw;
+    return (im->px0 + im->w + im->cw - 1) / im->cw;
 }
 
 /* Placement i back to the pool, its image released. */
@@ -5276,6 +5277,7 @@ static int image_install(vt_term *t, vt_u8 *pix, long bytes, long w, long h, int
     im->kid = im->knum = im->pid = 0;
     im->kz = 0;
     im->ktrans = 0;
+    im->px0 = im->py0 = 0;
     im->serial = ++t->img_serial;
     for (i = 0; i < npal; i++)
         im->pal[i] = pal[i];
@@ -5295,7 +5297,7 @@ static void image_place(vt_term *t, int slot, int mode)
 {
     vt_image *im = t->imgs[slot];
     int rows, k, cy, ocx = t->cx, scrolled = 0, ocy = t->cy;
-    rows = (im->h + im->ch - 1) / im->ch;
+    rows = (im->py0 + im->h + im->ch - 1) / im->ch;
     if (mode == 1) {
         for (k = 0; k < rows && k < t->rows; k++)
             sixel_place_row(t, slot, k, 0, k);
@@ -5443,7 +5445,9 @@ int vt_row_image(const vt_term *t, int row, int i, vt_image_view *v)
         v->cw = im->cw;
         v->ch = im->ch;
         v->col0 = t->pl[k].col0;
-        v->py = t->pl[k].row * im->ch;
+        v->px0 = im->px0;
+        v->py0 = im->py0;
+        v->py = t->pl[k].row * im->ch - im->py0;
         v->serial = im->serial;
         return 1;
     }
