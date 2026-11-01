@@ -118,6 +118,15 @@ class MachineFromFlags(unittest.TestCase):
         m = self.machine("--a500", "--emu", "amiberry")
         self.assertEqual((m["model"], m["cpu"], m["cycle_exact"]), ("A500", "68000", True))
 
+    def test_serial_is_a_tcp_port_never_a_file(self):
+        """AMIBERRY-SERIAL: Amiberry rejects a file as serial_port ("Error finding serial port"); the rig config names
+        a TCP listener on 12000 + rig number, which rig.py serialwatch reads into serial.log."""
+        m = self.machine("--max", "--emu", "amiberry")
+        self.assertEqual(m["serial_tcp"], 12029)
+        c = dict(l.split("=", 1) for l in amiberry.config_lines(dict(m, window=tuple(m["window"]))))
+        self.assertEqual(c["serial_port"], "TCP://127.0.0.1:12029")
+        self.assertIsNone(self.machine("--max", "--emu", "amiberry", "--serial", "/dev/ttys9")["serial_tcp"])
+
 
 if __name__ == "__main__":
     unittest.main()

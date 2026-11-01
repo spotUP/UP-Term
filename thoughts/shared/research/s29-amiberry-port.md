@@ -32,7 +32,7 @@ Backend: `tools/rig/amiberry.py` (config spelling, launch command, title link). 
 | window size | `window_width/height`, `zoom`, `scale=integer`, `texture_filter` | `gfx_width_windowed`, `gfx_height_windowed` | no integer-scale / nearest-filter key found; zoom crop not mapped |
 | title 983-998 / title_line() | `title = vtcon rig N (...) - PURPOSE` | none; Amiberry titles the window "Amiberry - [<config file name>]". Solved: `launch_path()` starts it on a symlink `build/rigN/win/<title>.uae`; `config_description` carries the text too | works: see proof. No hand renaming |
 | HOST_KEYS 983 | `modifier_key=rctrl`, Cmd to Right Amiga, Right Option to Left Amiga | only `rctrl_as_ramiga` in amiberry.conf (global, not per rig) | GAP: Cmd/Option remap not done; owner must test keys |
-| serial (SERIAL, `serial_port`) | file | Amiberry wants a serial device ("Error finding serial port <file>") | GAP: kprintf-to-file traces and `--serial` do not work; not written |
+| serial (SERIAL, `serial_port`) | file | Amiberry wants a serial device ("Error finding serial port <file>") | SOLVED in s48: see "## s48 serial" (TCP listener + serialwatch) |
 | screenshots_output_dir | per-rig shots dir | key unknown ("unknown config entry") | GAP: screenshots go to Amiberry's own dir |
 | logs_dir, FSUAE_LOG_DIR | per-rig fs-uae log | none; stdout (`--log`) appended to `build/rigN/logs/fs-uae.log.txt`, so cap_fsuae_log, fsuae_crash, fsuae_reset_count keep reading it | reset-loop and crash line formats of Amiberry not verified (patterns written for fs-uae) |
 | uaem_write_flags | `nhsparwed` | none known | GAP: log flood from .uaem writes not checked on Amiberry |
@@ -65,3 +65,19 @@ Backend: `tools/rig/amiberry.py` (config spelling, launch command, title link). 
 
 ## Decision: default stays fs-uae
 Both proofs pass, but three open gaps need the owner: (1) Cmd/Option key mapping (Right Amiga on Cmd, Left Amiga on Right Option) has no per-rig key; (2) serial-to-file (kprintf/`--serial`) does not work; (3) `--debugger`/`dbgbreak` not wired. Also unchecked: A500 and `--stock` configs on a real run, RTG screenmode look, integer scaling/nearest filter, reset-loop watchdog on Amiberry log text, .uaem log flood. Host test: `tests/test_rig_amiberry_config.py` (9 tests, config generator + machine from flags).
+
+## s48 serial
+
+Source read: Amiberry `src/osdep/amiberry_serial.cpp` `openser()`: a `serial_port` starting with `TCP:` opens a TCP
+listener (`uae_tcp_listen_uri`, default port 1234, `/wait` suffix blocks boot until a client connects); anything else
+goes to libserialport `sp_get_port_by_name`, which fails for a file. No file or pty-to-file form exists.
+
+Mechanism: `amiberry.config_lines` writes `serial_port=TCP://127.0.0.1:<12000 + rig>` (`paths.serial_tcp_port`); `rig.py start`
+spawns `rig.py serialwatch` (one per rig, lock `<rig>/.serialwatch.lock`), which connects, appends the stream to the same
+`SERIAL` file (`<rig>/serial.log`) FS-UAE rigs write, and retries until the emulator is gone. `logwatch`
+(`cap_fsuae_log(extra=[SERIAL])`) and every other reader are unchanged. `--serial <path>` (a pty for getty_rig) is not
+translated: the Amiberry config leaves serial_port out then.
+Host test: `tests/test_rig_amiberry_config.py` `MachineFromFlags.test_serial_is_a_tcp_port_never_a_file`.
+Proof, rig 30 (`--max --emu amiberry`): Amiberry log "TCP: Listening on 127.0.0.1 port 12030" then "TCP: Serial connection accepted";
+`build/rig30/serial.log` filled with the Amiga's upgetty shell on the serial line, e.g. `New to a Unix shell? Type  tutorial  for a short hands-on course.`
+Unverified: a probe string of our own (`Echo >SER:` and `>AUX:` do not exist on this rig; upgetty owns serial.device); kprintf via RawPutChar not exercised.

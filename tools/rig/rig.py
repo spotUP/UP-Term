@@ -1006,7 +1006,8 @@ def amiberry_machine():
         drives.append(dict(path=str(RIG / "work"), label="Work", pri=-128))
     w, h = window_size()
     return dict(base, title=title_text(), rom=str(KICK), bsdsocket=True, drives=drives, volume=rig_volume(),
-                clipboard=bool(CLIPBOARD), window=(w, h))   # no serial file, no shots dir: gaps in the research file
+                clipboard=bool(CLIPBOARD), window=(w, h),
+                serial_tcp=None if "--serial" in sys.argv else paths.serial_tcp_port())   # no shots dir: a gap in the research file
 
 
 def title_line():
@@ -1712,6 +1713,33 @@ def mine():
     out = subprocess.run(["ps", "-eo", "pid,command"], capture_output=True, text=True).stdout
     return [l for l in out.splitlines() if EMU_KEY in l and ("amiberry" if AMIBERRY else "fs-uae") in l.lower()]
 
+def serialwatch():
+    """Amiberry rigs: connect to the rig's serial TCP port (paths.serial_tcp_port) and append what the Amiga sends
+    (kprintf, `Echo >SER:`) to SERIAL, the file an FS-UAE rig writes through serial_port. Retries until the emulator
+    is gone; one watcher per rig (lock)."""
+    import socket
+    with open(RIG / ".serialwatch.lock", "w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            return
+        time.sleep(2)
+        while mine():
+            try:
+                with socket.create_connection(("127.0.0.1", paths.serial_tcp_port()), timeout=5) as s, open(SERIAL, "ab", buffering=0) as out:
+                    s.settimeout(5)
+                    while mine():
+                        try:
+                            data = s.recv(4096)
+                        except socket.timeout:
+                            continue
+                        if not data:
+                            break
+                        out.write(data)
+            except OSError:
+                pass
+            time.sleep(1)
+
 LOGWATCH_EVERY = 30   # seconds between two log caps while a rig runs
 
 def logwatch():
@@ -1845,6 +1873,9 @@ def _start(retries):
                          stdout=fout, stderr=ferr, start_new_session=True)
     subprocess.Popen([sys.executable, str(pathlib.Path(__file__).resolve()), "logwatch"], stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    if AMIBERRY and "--serial" not in sys.argv:
+        subprocess.Popen([sys.executable, str(pathlib.Path(__file__).resolve()), "serialwatch"], stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     t0 = time.time()
     seen, changed, noted = "", t0, t0
     while True:
@@ -2196,7 +2227,7 @@ def main(argv):
     """Run the command argv[1]. --help, -h, help and ? (alone or after a command) print this file's usage (rc 0), the command not run; no command or an
     unknown one prints it to stderr (rc 2)."""
     cmds = {"setup": setup, "start": start, "stop": stop, "clear": clear, "reboot": reboot, "install": install, "kit-restore": kit_restore,
-            "status": status, "logwatch": logwatch, "muforce": muforce, "dbg": dbg, "dbgbreak": dbgbreak, "watchdog": watchdog, "wasabi": wasabi, "aga": lambda: screenmode("aga"),
+            "status": status, "logwatch": logwatch, "serialwatch": serialwatch, "muforce": muforce, "dbg": dbg, "dbgbreak": dbgbreak, "watchdog": watchdog, "wasabi": wasabi, "aga": lambda: screenmode("aga"),
             "aga256": lambda: screenmode("aga256"), "rtg": lambda: screenmode("rtg"), "dopus": dopus}
     helps = ("--help", "-h", "help", "?")
     if len(argv) > 1 and (argv[1] in helps or (argv[1] in cmds and any(a in helps for a in argv[2:]))):

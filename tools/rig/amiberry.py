@@ -65,6 +65,10 @@ def config_lines(m):
         "gfx_fullscreen_amiga=false",
         "gfx_fullscreen_picasso=false",
     ]
+    if m.get("serial_tcp"):
+        # Amiberry's serial_port is a device or TCP://host:port, never a file ("Error finding serial port <file>");
+        # it listens, rig.py's serialwatch connects and writes the stream to serial.log
+        l.append("serial_port=TCP://127.0.0.1:%d" % m["serial_tcp"])
     return l + m.get("extra", [])
 
 
