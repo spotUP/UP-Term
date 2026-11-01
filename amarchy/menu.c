@@ -576,6 +576,8 @@ static int viewer(void)
 
 /* front_screen_name (AMB3: leaves open on the screen in front) reads the front screen from it */
 struct IntuitionBase *IntuitionBase;
+/* iconpen_dos.c (linked for the theme switch recolour, ipd_recolour) reads the graphics version through it */
+struct GfxBase *GfxBase;
 
 /* The theme's background is palette pen 0 (libupkgui init_theme: every attribute is a pair on background 0).
  * Painted before newterm so a console that opened in its own default pens is not shown in them. ncurses'
@@ -731,6 +733,7 @@ int main(int argc, char **argv)
         return 2;
     }
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 36);
+    GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
     if (!strcmp(argv[1], "serve"))
         return serve();
     at_mark("start");

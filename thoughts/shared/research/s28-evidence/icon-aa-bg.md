@@ -10,3 +10,12 @@ no obtain). ipd_recolour() (iconpen_dos.c) runs it under the public screen list 
 
 Host test: tests/test_iconpen.c test_theme_switch_recolour (spare slot == backdrop RGB, not pen 0; switch A to B on an unchanged
 screen rewrites 16 pens, sentinel c.sets == 16; second recolour pokes 0).
+
+## Rig 14 (OS 3.2, this branch's build, flat OFF so the backdrop pen is the muted role)
+
+Path: `amarchy-icons APPLY`, then the real theme pick (menu Style > Amarchy theme > row > Return, gt_dos_select -> ipd_recolour), `RAM:iconpens` read after each.
+- vantablack (muted #7a7a7a): pen 44 (spare slot, ramp zero point) = 7a7a7a, pens 32-47 = 909090 bebebe bebebe 8d8d8d 808080 a7a7a7 868686 878787 7a7a7a ...
+- white (muted #808080), picked live: pen 44 = 808080, pens 32-47 = 565656 000000 000000 6e6e6e 7a7a7a 2c2c2c 414141 747474 808080 ... (all rewritten, owners=6 unchanged, no reboot, no icon file rewrite)
+- vantablack again: pens back to the first set byte for byte.
+Before the fix pen 44 held the pen-0 panel tone (theme background), not the backdrop colour.
+Needed for amarchy-menu (gcc build): it links iconpen_dos.c through gthemes_dos.c, so menu.c now defines and opens GfxBase.
