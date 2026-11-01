@@ -464,7 +464,7 @@ Copy sz rz UP-Term:bin CLONE
 Copy upgetty C:upgetty CLONE
 ; hl and mdv: a source file in colour, Markdown formatted for the window
 ; (README, VIEWING FILES), beside coreutils; vshrc pages them (hlp, mdp)
-Copy hl mdv UP-Term:bin CLONE
+Copy hl mdv icat UP-Term:bin CLONE
 ; Amarchy: the Super-key commodity (Left Amiga + a key) and amarchy-menu and amarchy-gui, the
 ; quick menu and key viewer its keys start. The key file: every Install lays the shipped one down
 ; in ENVARC: and ENV: (a stale copy would hide the keys a newer kit adds). A different file already

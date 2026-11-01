@@ -10,7 +10,7 @@ Part                          Licence                          Source
 ----------------------------  -------------------------------  --------------------------------------------
 UP-Term own programs and      MIT, Copyright (c) 2026 spotUP   vtcon repo LICENSE. Programs: vtcon-handler,
 scripts                                                        up-console.device, UPConsole, UPTerm, UPDemo,
-                                                               UP-Term Prefs, vsh, uptelnet, hl, mdv, sz, rz,
+                                                               UP-Term Prefs, vsh, uptelnet, hl, mdv, icat, sz, rz,
                                                                upgetty, upicon, ixkill, pty-handler,
                                                                ixpipe-handler, wasabikey, Install,
                                                                Uninstall, install.dos, config files

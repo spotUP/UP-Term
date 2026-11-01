@@ -646,6 +646,14 @@ TASKS (ps, top)
   task: top samples the running task 50 times a second at the vertical
   blank, so a share is statistical, and idle is the time no task ran.
 
+PICTURES IN THE CONSOLE (icat)
+  icat shows a picture in the window: PNG, JPEG, GIF, IFF ILBM and anything
+  else picture.datatype reads, scaled down to fit the window.
+    icat photo.jpg         icat logo.png WIDTH 20     icat a.iff HEIGHT 10
+    icat a.png PLACE 10,5  (column 10, row 5)         icat CLEAR (remove all)
+  WIDTH and HEIGHT count character cells. A console that cannot show
+  pictures gets one line (name, size, format) and the return code 5.
+
 VIEWING FILES (hl, mdv)
   hl shows a source file in colour, with line numbers, the language found
   from the name, the #! line or -l:

@@ -7,6 +7,7 @@ void suite_amiga(void);
 void suite_reflow(void);
 void suite_sixel(void);
 void suite_kitty(void);
+void suite_kittyout(void);
 void suite_pcansi(void);
 void suite_ansimusic(void);
 void suite_glyph(void);
@@ -111,6 +112,7 @@ static const h_suite suites[] = {
     { "reflow", suite_reflow },
     { "sixel", suite_sixel },
     { "kitty", suite_kitty },
+    { "kittyout", suite_kittyout },
     { "pcansi", suite_pcansi },
     { "ansimusic", suite_ansimusic },
     { "glyph", suite_glyph },
