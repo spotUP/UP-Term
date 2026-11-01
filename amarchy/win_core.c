@@ -333,3 +333,41 @@ int win_ticket_valid(int usable, const win_box *taken, const win_box *now)
     return usable && taken->left == now->left && taken->top == now->top && taken->width == now->width &&
            taken->height == now->height;
 }
+
+win_strut_cls win_strut_class(const win_strut_req *r, const win_screen *s)
+{
+    if (s->bottom <= 0)
+        return WSC_PASS;
+    if (win_strut(&r->box, s) == s->bottom)                  /* the bar itself: exactly the strip */
+        return WSC_PASS;
+    if (win_is_fullscreen_terminal(r->backdrop && r->borderless, r->box.left, r->box.top, r->box.width, r->box.height, s))
+        return WSC_PASS;
+    if (r->desktop)
+        return WSC_DESKTOP;
+    if (!r->dragbar && !r->sizegad)                          /* popups, tooltips: the override-redirect analogue */
+        return WSC_PASS;
+    return WSC_BORDERED;
+}
+
+int win_strut_clamp(win_strut_cls c, win_box *b, const win_screen *s)
+{
+    int ub = s->height - s->bottom, top = b->top, h = b->height;
+    if (c == WSC_PASS || s->bottom <= 0 || top + h <= ub)
+        return 0;
+    if (c == WSC_BORDERED) {
+        top = ub - h;
+        if (top < s->title)
+            top = s->title;
+    }
+    if (top + h > ub)
+        h = ub - top;
+    if (c == WSC_BORDERED && h < b->minh)
+        h = b->minh;
+    if (h < 1)
+        h = 1;
+    if (top == b->top && h == b->height)
+        return 0;
+    b->top = top;
+    b->height = h;
+    return 1;
+}

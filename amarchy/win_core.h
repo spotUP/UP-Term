@@ -55,6 +55,31 @@ void win_usable(const win_screen *s, win_box *b);
  * target of the win verbs, never tiled. */
 int win_is_amarchy(const char *title);
 
+/* ---- BAR-STRIP-RESERVE: what the OpenWindow patch (strut_patch.c) does with a window's requested box ---------------
+ * The request is read from the NewWindow / tag list by the patch; everything below is pure. */
+typedef struct win_strut_req {
+    win_box box;           /* the requested outer box (left, top, width, height) and minh / minw */
+    int desktop;           /* 1 for the Workbench root window or a backdrop desktop (bar_is_desktop) */
+    int backdrop;          /* WFLG_BACKDROP */
+    int borderless;        /* WFLG_BORDERLESS */
+    int dragbar;           /* WFLG_DRAGBAR */
+    int sizegad;           /* WFLG_SIZEGADGET */
+} win_strut_req;
+
+typedef enum {
+    WSC_PASS = 0,          /* left alone: popups, the bar itself, a full-screen terminal, no strip on this screen */
+    WSC_DESKTOP,           /* the Workbench root window: keeps its top, its bottom moves above the strip */
+    WSC_BORDERED           /* a window with a drag bar or size gadget: moved up, then shrunk, out of the strip */
+} win_strut_cls;
+
+/* How a request is treated on screen s (s->bottom is the strip height, 0 = no strip: always PASS). */
+win_strut_cls win_strut_class(const win_strut_req *r, const win_screen *s);
+
+/* The box a request gets: PASS leaves b alone. DESKTOP shortens the height so the bottom is the usable bottom.
+ * BORDERED moves the window up so it ends above the strip (top never above the title bar), then shrinks it to the
+ * usable height, never below b->minh. Idempotent. 1 when b changed. */
+int win_strut_clamp(win_strut_cls c, win_box *b, const win_screen *s);
+
 /* win:snap: the box of one zone of the work area. WA_LEFT / WA_RIGHT / WA_UP / WA_DOWN halves, WA_TL / WA_TR / WA_BL /
  * WA_BR quarters (cells split at (size - gap) / 2, the remainder pixel to the right / bottom cell), WA_CENTER keeps the
  * window's size and centres it. Every size goes through win_fit. 1 when the box changed, 0 when not or arg is no zone. */

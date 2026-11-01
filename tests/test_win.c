@@ -324,6 +324,85 @@ static void snap_knobs_each_move_the_box(void)
             CHECK(memcmp(&b[i], &b[j], sizeof b[i]) != 0);  /* zone */
 }
 
+/* BAR-STRIP-RESERVE: the OpenWindow patch's classifier and clamp. Strip 16 high: usable bottom 240. */
+static win_strut_req req(int l, int t, int w, int h, int drag, int size)
+{
+    win_strut_req r;
+    memset(&r, 0, sizeof r);
+    r.box = box(l, t, w, h);
+    r.dragbar = drag;
+    r.sizegad = size;
+    return r;
+}
+
+static void strip_reserve(void)
+{
+    const win_screen bar = { 640, 256, 11, 16 };
+    win_strut_req r;
+    win_box b;
+    /* no strip on the screen: nothing is touched (guard s->bottom <= 0) */
+    r = req(10, 200, 200, 100, 1, 1);
+    CHECK_INT(win_strut_class(&r, &scr), WSC_PASS);
+    b = r.box;
+    CHECK_INT(win_strut_clamp(WSC_BORDERED, &b, &scr), 0);
+    CHECK_INT(b.top, 200);
+    /* a bordered window opened below the strip top moves up, size kept */
+    r = req(10, 200, 200, 100, 1, 1);
+    CHECK_INT(win_strut_class(&r, &bar), WSC_BORDERED);
+    b = r.box;
+    CHECK_INT(win_strut_clamp(WSC_BORDERED, &b, &bar), 1);
+    CHECK_INT(b.top, 140);
+    CHECK_INT(b.height, 100);
+    /* taller than the usable height: top stops at the title bar, then it shrinks */
+    r = req(0, 0, 300, 255, 1, 1);
+    b = r.box;
+    CHECK_INT(win_strut_clamp(WSC_BORDERED, &b, &bar), 1);
+    CHECK_INT(b.top, 11);
+    CHECK_INT(b.height, 229);
+    /* never below MinHeight (guard) */
+    r = req(0, 0, 300, 255, 1, 1);
+    b = r.box;
+    b.minh = 235;
+    win_strut_clamp(WSC_BORDERED, &b, &bar);
+    CHECK_INT(b.height, 235);
+    /* idempotent second pass */
+    r = req(10, 200, 200, 100, 1, 1);
+    b = r.box;
+    win_strut_clamp(WSC_BORDERED, &b, &bar);
+    CHECK_INT(win_strut_clamp(WSC_BORDERED, &b, &bar), 0);
+    /* a window that already fits is left alone */
+    r = req(10, 100, 200, 100, 1, 0);
+    b = r.box;
+    CHECK_INT(win_strut_clamp(win_strut_class(&r, &bar), &b, &bar), 0);
+    /* the desktop keeps its top and loses the strip rows */
+    r = req(0, 11, 640, 245, 0, 0);
+    r.desktop = 1;
+    r.backdrop = 1;
+    r.borderless = 1;
+    CHECK_INT(win_strut_class(&r, &bar), WSC_DESKTOP);
+    b = r.box;
+    CHECK_INT(win_strut_clamp(WSC_DESKTOP, &b, &bar), 1);
+    CHECK_INT(b.top, 11);
+    CHECK_INT(b.height, 229);
+    /* the bar itself (exactly the strip) passes, also with drag bar flags */
+    r = req(0, 240, 640, 16, 1, 1);
+    CHECK_INT(win_strut_class(&r, &bar), WSC_PASS);
+    /* a borderless popup without drag bar or size gadget passes, also deep in the strip */
+    r = req(50, 230, 100, 60, 0, 0);
+    r.borderless = 1;
+    CHECK_INT(win_strut_class(&r, &bar), WSC_PASS);
+    /* a full-screen terminal (backdrop, borderless, whole screen) passes before the desktop test */
+    r = req(0, 0, 640, 256, 0, 0);
+    r.desktop = 1;
+    r.backdrop = 1;
+    r.borderless = 1;
+    CHECK_INT(win_strut_class(&r, &bar), WSC_PASS);
+    /* the zoom box goes through the same rule */
+    b = box(0, 11, 640, 245);
+    CHECK_INT(win_strut_clamp(WSC_BORDERED, &b, &bar), 1);
+    CHECK_INT(b.top + b.height, 240);
+}
+
 void suite_win(void)
 {
     parse_verbs();
@@ -340,4 +419,5 @@ void suite_win(void)
     snap_parse();
     snap_boxes();
     snap_knobs_each_move_the_box();
+    strip_reserve();
 }
