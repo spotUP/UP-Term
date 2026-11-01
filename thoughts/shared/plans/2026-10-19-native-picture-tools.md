@@ -42,9 +42,9 @@ work once kitty lands; this plan is only for native programs.
 
 ## Items (later; run after K1-K14)
 
-- [ ] P1 kittyout.c shared encoder + host test (round trip through the
+- [x] P1 kittyout.c shared encoder + host test (round trip through the
       engine's kitty parser: the decoded image equals the input).
-- [ ] P2 `icat` (Amiga command): `icat FILE [WIDTH n] [HEIGHT n] [PLACE x,y]
+- [ ] (PNG proven on rig 32, IFF ILBM not shown: open) P2 `icat` (Amiga command): `icat FILE [WIDTH n] [HEIGHT n] [PLACE x,y]
       [CLEAR]`, ReadArgs template, any datatypes picture, fit-to-window
       scaling, a=q detection (N-D4). Reachability: rig run in an XCON
       window shows a PNG and a JPEG; sentinel = vtcon kitty placed counter
