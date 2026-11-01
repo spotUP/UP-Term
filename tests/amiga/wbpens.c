@@ -23,6 +23,7 @@
 #include <proto/dos.h>
 #include <proto/intuition.h>
 #include <proto/graphics.h>
+#include "../../amarchy/flat_shared.h"   /* the "Amarchy.Flat" record: st.enabled is the flat state (F marker) */
 
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
@@ -37,12 +38,15 @@ static void watch(long secs)
     long t;
     for (t = 0; t < secs * 50; t++) {
         struct Screen *s = LockPubScreen((STRPTR)"Workbench");
-        BPTR l = Lock((STRPTR)"T:amarchy-revert/flatlive.rgb", ACCESS_READ);
+        flatshared *fr;
+        int flat_on;
         int i, n = 0;
         ULONG rgb[3];
         BPTR d = Lock((STRPTR)"ENV:AMARCHY_WBCLOSES", ACCESS_READ);
-        if (l)
-            UnLock(l);
+        Forbid();
+        fr = (flatshared *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
+        flat_on = fr && fr->st.enabled;
+        Permit();
         if (d)
             UnLock(d);
         if (s) {
@@ -60,7 +64,7 @@ static void watch(long secs)
             UnlockPubScreen(NULL, s);
         } else
             n += sprintf(cur + n, "SCR none");
-        sprintf(cur + n, " F %d D %d", l ? 1 : 0, d ? 1 : 0);
+        sprintf(cur + n, " F %d D %d", flat_on, d ? 1 : 0);
         if (strcmp(cur, last)) {
             printf("T %ld %s\n", t, cur);
             fflush(stdout);
