@@ -322,9 +322,6 @@ static void walk_volumes(ia_ctx *c)
     char names[WALK_MAXVOL][34];
     int nv = 0, i;
     struct DosList *dl;
-    struct Process *me = (struct Process *)FindTask(NULL);
-    APTR oldwin = me->pr_WindowPtr;
-    me->pr_WindowPtr = (APTR)-1L;               /* no "insert volume" requesters */
     dl = LockDosList(LDF_VOLUMES | LDF_READ);
     while ((dl = NextDosEntry(dl, LDF_VOLUMES)) != NULL && nv < WALK_MAXVOL) {
         const UBYTE *bs = (const UBYTE *)BADDR(dl->dol_Name);
@@ -353,7 +350,6 @@ static void walk_volumes(ia_ctx *c)
         walk_dir(c, strlen(g_wpath), ro, 0);
         ia_walk_volume(c, names[i]);
     }
-    me->pr_WindowPtr = oldwin;
 }
 
 static void print_counters(const ia_ctx *c)
@@ -374,6 +370,8 @@ int main(void)
     uint8_t *dat = NULL;
     long dn;
     int rc = 0;
+    struct Process *me = NULL;
+    APTR oldwin = NULL;
     (void)ver;
 
     if (qmark_line(args) || cmd == IA_CMD_HELP) {
@@ -408,6 +406,11 @@ int main(void)
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 36);
     GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 36);
     if (!IconBase || !IntuitionBase || !GfxBase) { rc = 10; goto out; }
+    /* no "Please insert volume" requester for the whole APPLY / RESTORE: a table path row on an absent assign (UP-Term:), a manifest
+     * path on a removed volume, or the walk's volumes; such a path is skipped and counted (restored in out:) */
+    me = (struct Process *)FindTask(NULL);
+    oldwin = me->pr_WindowPtr;
+    me->pr_WindowPtr = (APTR)-1L;
 
     if (cmd == IA_CMD_APPLY) {
         static li_dat d;
@@ -434,6 +437,7 @@ int main(void)
     }
     print_counters(c);
 out:
+    if (me) me->pr_WindowPtr = oldwin;
     if (dat) FreeVec(dat);
     if (IntuitionBase) CloseLibrary((struct Library *)IntuitionBase);
     if (GfxBase) CloseLibrary((struct Library *)GfxBase);

@@ -18,6 +18,7 @@ typedef struct mf { char path[200]; uint8_t *d; size_t len; int used; } mf;
 typedef struct mfs {
     mf f[NFILES];
     int writes, removes;
+    int type_reads;             /* reads of a type:* row taken as a path (the TYPE: volume requester) */
     const char *fail_write;     /* a write whose path contains this fails */
     uint8_t dflt[IA_FILECAP]; long dflt_len;
 } mfs;
@@ -41,6 +42,7 @@ static void mf_put(mfs *s, const char *p, const uint8_t *d, size_t n)
 static long m_read(void *c, const char *p, uint8_t *buf, size_t cap)
 {
     mf *m = mf_find((mfs *)c, p);
+    if (strncmp(p, "type:", 5) == 0) ((mfs *)c)->type_reads++;
     if (!m) return -1;
     if (m->len > cap) return -2;
     memcpy(buf, m->d, m->len);
@@ -89,11 +91,11 @@ static long slurp(const char *path, uint8_t *buf, long cap)
 static size_t w16(uint8_t *p, unsigned v) { p[0] = (uint8_t)(v >> 8); p[1] = (uint8_t)v; return 2; }
 static size_t w32(uint8_t *p, uint32_t v) { w16(p, v >> 16); w16(p + 2, v & 0xFFFF); return 4; }
 
-#define NDAT 8
-/* a lucide.dat with the six defaults and two table paths (sorted by strcmp), variants 32x32 and 32x16, depth 6 */
+#define NDAT 9
+/* a lucide.dat with the six defaults, two table paths and one type fallback (sorted by strcmp), variants 32x32 and 32x16, depth 6 */
 static size_t make_dat(uint8_t *d, unsigned bias)
 {
-    static const char *const nm[NDAT] = { "SYS:System", "SYS:System/Shell", "def_RAM", "def_disk", "def_drawer", "def_project", "def_tool", "def_trashcan" };
+    static const char *const nm[NDAT] = { "SYS:System", "SYS:System/Shell", "def_RAM", "def_disk", "def_drawer", "def_project", "def_tool", "def_trashcan", "type:disk" };
     size_t pos = 4, sz0 = 6 * 32 * 4, sz1 = 6 * 16 * 4, rec = 4 + 12 + 8 + NDAT * 52, i, k;
     memcpy(d, "LUCI", 4);
     pos += w16(d + pos, 1); pos += w16(d + pos, NDAT); pos += w16(d + pos, 6); pos += w16(d + pos, 2); pos += w32(d + pos, 0);
@@ -312,6 +314,13 @@ static void test_paths(void)
     mf_put(&s, "SYS:System.info", g_drawer, (size_t)g_drawer_n);
     mf_put(&s, "SYS:System/Shell.info", g_tool, (size_t)g_tool_n);
     CI("apply writes twelve defaults plus two table paths", ia_apply(&c), 14);
+    CI("a type:* row is never read as a path (no TYPE: volume requester)", s.type_reads, 0);
+    CK("SYS:System is a path row", ia_row_is_path("SYS:System") == 1);
+    CK("UP-Term:bin/vsh is a path row", ia_row_is_path("UP-Term:bin/vsh") == 1);
+    CK("type:disk is not", ia_row_is_path("type:disk") == 0);
+    CK("TYPE:Drawer is not", ia_row_is_path("TYPE:Drawer") == 0);
+    CK("def_disk is not", ia_row_is_path("def_disk") == 0);
+    CK("typed:x is a path row", ia_row_is_path("typed:x") == 1);
     CK("SYS:System.info changed", !same(&s, "SYS:System.info", g_drawer, g_drawer_n));
     CK("SYS:System/Shell.info changed", !same(&s, "SYS:System/Shell.info", g_tool, g_tool_n));
     CK("backup of the drawer icon is the original", li_backup_path("SYS:System.info", bp, sizeof bp) == 0 && same(&s, bp, g_drawer, g_drawer_n));

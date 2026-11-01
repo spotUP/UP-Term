@@ -86,6 +86,8 @@ typedef struct ia_ctx {
 
 /* the Workbench defaults: i-th target, its icon file ("ENVARC:Sys/def_disk.info") and its lucide.dat match ("def_disk"). 0 past the end */
 int ia_target(int i, char *path, size_t cap, const char **match);
+/* 1 when a lucide.dat row names a file ("Vol:Dir/Name"); 0 for def_* and the type:* fallbacks, which name no volume */
+int ia_row_is_path(const char *nm);
 
 /* APPLY the defaults (L8). Loads the manifest, then per target: backup, manifest, icon. Returns the number written. */
 int ia_apply(ia_ctx *c);
