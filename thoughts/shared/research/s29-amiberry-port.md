@@ -35,7 +35,7 @@ Backend: `tools/rig/amiberry.py` (config spelling, launch command, title link). 
 | serial (SERIAL, `serial_port`) | file | Amiberry wants a serial device ("Error finding serial port <file>") | SOLVED in s48: see "## s48 serial" (TCP listener + serialwatch) |
 | screenshots_output_dir | per-rig shots dir | not a .uae key; amiberry.conf `screenshot_dir`, overridden per run by `-o screenshot_dir=<rig>/shots` on the command line (amiberry.command) | DONE host-side (s48); the hotkey press on the live rig is unverified |
 | logs_dir, FSUAE_LOG_DIR | per-rig fs-uae log | none; stdout (`--log`) appended to `build/rigN/logs/fs-uae.log.txt`, so cap_fsuae_log, fsuae_crash, fsuae_reset_count keep reading it | reset-loop and crash line formats of Amiberry not verified (patterns written for fs-uae) |
-| uaem_write_flags | `nhsparwed` | none known | GAP: log flood from .uaem writes not checked on Amiberry |
+| uaem_write_flags | `nhsparwed` | none; not needed | NO GAP (s48): Amiberry writes a .uaem only when needed, no unconditional log |
 | `--debugger`, dbg, dbgbreak | console_debugger FIFO | none wired | GAP |
 | mine() 1664 | ps line has CFG and "fs-uae" | ps line has `<rig>/win/` and "amiberry" (EMU_KEY) | none |
 | _start() 1700-1790 | `open -a` or `nice <bin> CFG` | `nice -n 19 Amiberry -G --log -f <link>`, detached, own session | none |
@@ -89,3 +89,11 @@ Unverified: a probe string of our own (`Echo >SER:` and `>AUX:` do not exist on 
 - Rig: tools/rig/amiberry.py command(cfg, shots) appends `-o screenshot_dir=<rig>/shots`; rig.py amiberry_machine() passes shots_dir. Rig 30 process list showed the argument.
 - Amiberry has no default screenshot hotkey (config key `amiberry.screenshot`); config_lines now sets `LCtrl+LShift+F10`.
 - Unverified: a synthetic osascript key press (control+shift+F10, Amiberry frontmost) produced no PNG in build/rig30/shots or ~/Documents/Amiberry/Screenshots (both empty). Cause not isolated: key not delivered by System Events, or hotkey path; needs a human press of Ctrl+Shift+F10 in the rig window.
+
+## s48 uaem
+
+Verdict: no gap, no code change. Amiberry has no uaem_write_flags key (grep of src: no hit) and needs none.
+
+- src/osdep/fsdb_host.cpp:415 fsdb_needs_uaem_sidecar: a sidecar is written only for a non-empty comment or a mode the host file cannot represent (default rwed bits write none; line 450 removes a stale one). The set-attrs path (793-870) logs only on error; no unconditional write_log per protect/filenote/date as in FS-UAE's fsdb_host.cpp.
+- Measured on rig 30 (Amiberry, 060): Copy SYS:C to VTCX:s48t ALL (~250 files), Protect +s then -s, Filenote comment=hi, Filenote cleared, Delete ALL. During the workload 307 .uaem existed (comment ones only, not one per file), 0 after the delete; total .uaem in rig drawers 7236 before and after (those predate the run). Log grew 2565 lines, all wasabi socket-thread traces; 0 lines mentioning uaem, metadata, writing, fsdb or FILESYS.
+- Unverified: the 7236 pre-existing .uaem in build/rig30 were not traced to an emulator.
