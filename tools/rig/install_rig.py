@@ -487,6 +487,7 @@ def stock_libs():
     ixpty_rig.use_ixemul does), and Install would then replace and keep the copy there. prepare() sets it, and
     a case that reboots sets it again: the boot assigned VTC:ixp6 first once more, and fresh-all's Uninstall
     checks then listed VTC:ixp6's stale 7 Oct .orig files as the system's (FRESH-ALL-AFTER-END, 2026-10-29)."""
+    paths.rig_only("install_rig.stock_libs (Assign LIBS: %sLibs)" % SYSVOL)
     run('Assign LIBS: %sLibs' % SYSVOL)
     run('Assign LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD')
     for line in amissl_libs():   # the AmiSSL of a machine that has it: UP-Term:bin/curl opens amisslmaster.library

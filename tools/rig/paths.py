@@ -175,6 +175,16 @@ LAST_COMMAND = RIG / "last-command"
 LONG_RUN = RIG / "long-run"
 
 
+def rig_only(what):
+    """Stop before `what` reaches a real Amiga. A rig run never sets AMI_HOST (or sets it to this Mac); an A1200
+    run does. Commands that replace a system assign with rig paths (Assign LIBS: VTC:ixp6, Assign LIBS: DH0:Libs
+    without ADD) would drop that machine's own ADDs (AmiSSL:Libs, MUI:Libs) and point it at drawers it does not
+    have (LIBS-ASSIGN-AUDIT, 2026-11-01)."""
+    host = os.environ.get("AMI_HOST") or os.environ.get("WASABI_HOST") or ""
+    if host and host not in ("127.0.0.1", "localhost"):
+        raise SystemExit("%s: rig only, refused for AMI_HOST/WASABI_HOST=%s (a real Amiga)" % (what, host))
+
+
 def touch_command(rig_dir=None):
     """Record "a command just went to this rig". No rig dir (AMI_HOST, an A1200 run): nothing."""
     d = pathlib.Path(rig_dir) if rig_dir else RIG

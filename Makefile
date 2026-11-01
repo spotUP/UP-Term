@@ -120,6 +120,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=tile AmTile's pure layout: what tiles, window order, the master-stack boxes (tests/test_tile.c)
 # ONLY=rig_libs the rig's boot keeps AmiSSL's drawer in LIBS: (tools/test_rig_libs.py)
 # ONLY=rig_booted_ixemul a rig probe stops when the rig booted another ixemul (tools/test_rig_booted_ixemul.py)
+# ONLY=rig_libs_rig_only the rig helpers that replace LIBS: refuse a real Amiga (AMI_HOST) (tools/test_rig_libs_rig_only.py)
 # ONLY=rig_all_case install_rig's `all` case installs on DH1 and stock_libs keeps AmiSSL on LIBS: (tools/test_rig_all_case.py)
 # ONLY=rig_helpers install_rig refuses up front, naming make rig-helpers, when a helper program is not built (tools/test_rig_helpers.py)
 # ONLY=rig_browse_base upkg_browse_rig step 0 installs the kit over an older base (tools/test_rig_browse_base.py)
@@ -143,7 +144,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 TEST_ONLY_NAMES := $(shell grep -o '"$$(ONLY)" = [a-z_0-9]*' $(firstword $(MAKEFILE_LIST)) | sed 's/.* //' | sort -u)
 # ONLY= rows that run python3 on files alone: no C binary below is built or run for them (a worktree without the vendor NDK
 # cannot build render_host, and pkg_rows needs none). Add a name only after checking its script starts no $(BUILD) binary.
-TEST_PY_ONLY := gen_lucide_icons pkg_rows worktree_ready rig_handler_fallback rig_amarchy_conf rig_booted_ixemul rig_iprefs_sysreq gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free flat_on_hang
+TEST_PY_ONLY := gen_lucide_icons pkg_rows worktree_ready rig_handler_fallback rig_amarchy_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free flat_on_hang
 TEST_BINS := $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host $(BUILD)/upgetty_host
 test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -n "$(ONLY)" ] && [ -z "$(filter $(ONLY),$(TEST_ONLY_NAMES))" ] && ! ./$(BUILD)/vttest_host --has $(ONLY); then echo "[ERROR] make test: no suite named $(ONLY)"; exit 2; fi
@@ -179,6 +180,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_stdin ]; then python3 -I tools/test_rig_stdin.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_libs ]; then python3 -I tools/test_rig_libs.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_booted_ixemul ]; then python3 -I tools/test_rig_booted_ixemul.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_libs_rig_only ]; then python3 -I tools/test_rig_libs_rig_only.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_helpers ]; then python3 -I tools/test_rig_helpers.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_all_case ]; then python3 -I tools/test_rig_all_case.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_browse_base ]; then python3 -I tools/test_rig_browse_base.py; fi
