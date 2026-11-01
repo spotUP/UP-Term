@@ -17,6 +17,7 @@
 #include "amconf_core.h"
 #include "amconf_dos.h"
 #include "gthemes_core.h"
+#include "desk_core.h"
 
 extern struct IntuitionBase *IntuitionBase;
 extern struct GfxBase *GfxBase;
@@ -27,7 +28,10 @@ typedef struct ipd_rec {
     ip_shared s;
 } ipd_rec;
 
-typedef struct pen_ctx { struct ColorMap *cur, *old; } pen_ctx;   /* cur: obtain on; old: release on (0 = its screen is gone) */
+/* cur: the Workbench screen's colour map now (0 = Workbench closed); vp its viewport; h the holder, sc the screen now: a held pen
+ * is released only while h->screen is sc (else its screen is gone and the pens went with it; ip_holder_verify forgets the pens
+ * of a screen reopened at the same address before any release) */
+typedef struct pen_ctx { struct ColorMap *cur; struct ViewPort *vp; const ip_holder *h; const void *sc; } pen_ctx;
 
 static int pen_obtain(void *ctx, int pen, unsigned r, unsigned g, unsigned b)
 {
@@ -40,8 +44,27 @@ static int pen_obtain(void *ctx, int pen, unsigned r, unsigned g, unsigned b)
 static void pen_release(void *ctx, int pen)
 {
     pen_ctx *c = (pen_ctx *)ctx;
-    if (c->old)                         /* 0 = the screen the pens were obtained on is gone; they went with it */
-        ReleasePen(c->old, (ULONG)pen);
+    if (c->cur && c->h->screen == c->sc)
+        ReleasePen(c->cur, (ULONG)pen);
+}
+
+/* The ColorMap's own answer: an exclusive obtain of a pen anyone holds fails; one that succeeds is handed straight back. */
+static int pen_is_free(void *ctx, int pen)
+{
+    pen_ctx *c = (pen_ctx *)ctx;
+    if (!c->cur)
+        return 0;
+    if ((LONG)ObtainPen(c->cur, (ULONG)pen, 0, 0, 0, PENF_EXCLUSIVE | PENF_NO_SETCOLOR) != (LONG)pen)
+        return 0;
+    ReleasePen(c->cur, (ULONG)pen);
+    return 1;
+}
+
+static void pen_set_rgb(void *ctx, int pen, uc_u32 rgb)
+{
+    pen_ctx *c = (pen_ctx *)ctx;
+    if (c->vp)
+        SetRGB32(c->vp, (ULONG)pen, ip_scale32((unsigned)(rgb >> 16)), ip_scale32((unsigned)(rgb >> 8)), ip_scale32((unsigned)rgb));
 }
 
 static long pen_theme_read(void *ctx, const char *path, char *buf, long cap)
@@ -69,35 +92,39 @@ static struct Screen *wb_screen(struct List *pl)
 
 /* Bring the held pens in line with the owners and the Workbench screen as it is now. The public screen list stays locked for
  * the whole sync, so the screen cannot close under the colour map. The caller holds r->ss. */
+static void pens_theme(void *ctx, gtheme *t, int *flat, unsigned *mask)
+{
+    am_prefs ap;
+    (void)ctx;
+    amconf_load(&ap);
+    gt_load(pen_theme_read, 0, ap.val[AM_GTHEME][0] ? ap.val[AM_GTHEME] : GT_DEFAULT, t);
+    *flat = amconf_desk_flat_pens(&ap);
+    *mask = amconf_desk_mask(&ap);
+}
+
 static void pens_sync(ipd_rec *r)
 {
     pen_ctx c;
     ip_ops o;
     struct List *pl;
     struct Screen *sc;
-    int act, depth = 0;
+    int depth = 0;
     int hold = ip_shared_hold(&r->s, GfxBase && GfxBase->LibNode.lib_Version >= 39);
     o.obtain = pen_obtain;
     o.release = pen_release;
+    o.is_free = pen_is_free;
+    o.theme = pens_theme;
+    o.set_rgb = pen_set_rgb;
     o.ctx = &c;
     pl = LockPubScreenList();
     sc = wb_screen(pl);
     if (sc)
         depth = ip_screen_depth(sc->BitMap.Depth, (sc->ViewPort.Modes & EXTRA_HALFBRITE) != 0);
     c.cur = sc ? sc->ViewPort.ColorMap : 0;
-    c.old = (sc && r->s.h.screen == (const void *)sc) ? c.cur : 0;   /* old pens are released only on the screen they belong to */
-    act = ip_sync_decide(&r->s.h, hold, sc, depth);
-    if (act == IP_SYNC_RELEASE) {
-        ip_holder_release(&r->s.h, &o);
-    } else if (act == IP_SYNC_OBTAIN) {
-        gtheme th;
-        uint8_t rgb[IP_PENS][3];
-        am_prefs ap;
-        amconf_load(&ap);
-        gt_load(pen_theme_read, 0, ap.val[AM_GTHEME][0] ? ap.val[AM_GTHEME] : GT_DEFAULT, &th);
-        ip_colours(&th, rgb);
-        ip_holder_obtain(&r->s.h, &o, sc, depth, rgb);   /* releases the old ones first */
-    }
+    c.vp = sc ? &sc->ViewPort : 0;
+    c.h = &r->s.h;
+    c.sc = sc;
+    ip_sync(&r->s.h, &o, hold, sc, depth, sc ? sc->BitMap.Depth : 0);
     UnlockPubScreenList();
 }
 

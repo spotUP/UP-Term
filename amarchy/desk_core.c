@@ -336,6 +336,17 @@ uc_u32 desk_pen_colour(const gtheme *t, int pen, int own_backdrop)
     return desk_role(t, pen);
 }
 
+int desk_live_follow(const gtheme *t, int flat, unsigned mask, int depth, int pens[4], uc_u32 rgb[4])
+{
+    int own = flat && !((mask >> DT_WBPATTERN) & 1), n, i;
+    if (!t || !(flat || ((mask >> DT_PALETTE) & 1)))
+        return 0;
+    n = desk_live_role_pens(depth, pens);
+    for (i = 0; i < n; i++)
+        rgb[i] = desk_pen_colour(t, pens[i], own);
+    return n;
+}
+
 long desk_palette_live(const unsigned short *rgb4, int nlive, int depth, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap)
 {
     unsigned short rgb16[8][3];

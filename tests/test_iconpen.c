@@ -345,6 +345,111 @@ static void test_main_takes_pens_at_boot(void)
     CHECK_INT(synced >= 2, 1);
 }
 
+/* FLAT-PENS47-RESET (s28 evidence flat-pens47-hunt.md, rig 14, 3.2, depth 8): the Workbench reopen that desk_dos_apply runs
+ * allocated the new Screen at the freed one's address. The holder keyed its screen on address + depth, so ip_sync_decide said
+ * NONE: the 16 icon pens stayed missing on the new ColorMap ("pens-held 0 missing 32 .. 47") and pens 4-7 kept the graphics
+ * defaults 0000ff ff00ff 00ffff ffffff. This drives ip_sync (the whole of amarchy/iconpen_dos.c pens_sync) against a model
+ * ColorMap whose allocation state is the truth, like graphics' PalExtra. */
+typedef struct rcm {
+    int alloc[256];              /* 1 = allocated (by anyone) */
+    unsigned long rgb[256];
+    int bad_release;             /* ReleasePen of a pen that is not allocated: corrupts a real free list */
+    int sets;                    /* set_rgb calls */
+} rcm;
+
+static void rcm_open(rcm *c)          /* a fresh screen: nothing allocated, graphics-default pens 4-7 */
+{
+    static const unsigned long def[4] = { 0x0000ffUL, 0xff00ffUL, 0x00ffffUL, 0xffffffUL };
+    int i;
+    memset(c->alloc, 0, sizeof c->alloc);
+    for (i = 0; i < 4; i++)
+        c->rgb[4 + i] = def[i];
+}
+static int rcm_obtain(void *ctx, int pen, unsigned r, unsigned g, unsigned b)
+{
+    rcm *c = (rcm *)ctx;
+    if (c->alloc[pen])
+        return -1;
+    c->alloc[pen] = 1;
+    c->rgb[pen] = ((unsigned long)r << 16) | ((unsigned long)g << 8) | b;
+    return pen;
+}
+static void rcm_release(void *ctx, int pen)
+{
+    rcm *c = (rcm *)ctx;
+    if (!c->alloc[pen])
+        c->bad_release++;
+    c->alloc[pen] = 0;
+}
+static int rcm_is_free(void *ctx, int pen) { return !((rcm *)ctx)->alloc[pen]; }
+static void rcm_theme(void *ctx, gtheme *t, int *flat, unsigned *mask)
+{
+    (void)ctx;
+    theme(t);
+    *flat = 1;                   /* flat on, flat owns the backdrop */
+    *mask = 0;
+}
+static void rcm_set(void *ctx, int pen, uc_u32 rgb)
+{
+    rcm *c = (rcm *)ctx;
+    c->rgb[pen] = rgb;
+    c->sets++;
+}
+
+static void check_theme_pens47(const rcm *c)
+{
+    gtheme t;
+    int i;
+    theme(&t);
+    for (i = 0; i < 4; i++)
+        CHECK_INT((long)c->rgb[4 + i], (long)desk_pen_colour(&t, 4 + i, 1));
+    CHECK(c->rgb[5] != 0xff00ffUL);
+}
+
+static void test_reopen_same_address(void)
+{
+    static rcm c;
+    ip_holder h;
+    ip_ops o;
+    int scr;                     /* one address for both screens */
+    memset(&c, 0, sizeof c);
+    memset(&o, 0, sizeof o);
+    o.obtain = rcm_obtain; o.release = rcm_release; o.is_free = rcm_is_free; o.theme = rcm_theme; o.set_rgb = rcm_set;
+    o.ctx = &c;
+    ip_holder_init(&h);
+    rcm_open(&c);
+    CHECK_INT(ip_sync(&h, &o, 1, &scr, 8, 8), IP_SYNC_OBTAIN);        /* boot */
+    CHECK_INT(h.held, 16);
+    check_theme_pens47(&c);
+    c.sets = 0;
+    CHECK_INT(ip_sync(&h, &o, 1, &scr, 8, 8), IP_SYNC_NONE);          /* same screen, pens still ours: nothing */
+    CHECK_INT(c.sets, 0);
+    rcm_open(&c);                                                     /* Workbench reopen at the SAME address */
+    CHECK_INT(ip_sync(&h, &o, 1, &scr, 8, 8), IP_SYNC_OBTAIN);        /* the ColorMap says the pens are gone */
+    CHECK_INT(h.held, 16);
+    CHECK_INT(c.alloc[IP_FIRST] + c.alloc[IP_FIRST + 15], 2);
+    check_theme_pens47(&c);                                           /* cause 1: the new screen gets the theme on 4-7 */
+    CHECK_INT(c.bad_release, 0);                                      /* never released on a ColorMap it did not obtain on */
+    rcm_open(&c);                                                     /* same address, other depth */
+    CHECK_INT(ip_sync(&h, &o, 1, &scr, 4, 4), IP_SYNC_OBTAIN);
+    CHECK_INT(c.bad_release, 0);
+    /* a pen another program held at obtain time and has let go since: re-obtained on the same screen (released normally) */
+    rcm_open(&c);
+    ip_holder_init(&h);
+    c.alloc[IP_FIRST + 8] = 1;
+    CHECK_INT(ip_sync(&h, &o, 1, &scr, 8, 8), IP_SYNC_OBTAIN);
+    CHECK_INT(h.held, 15);
+    CHECK_INT(ip_sync(&h, &o, 1, &scr, 8, 8), IP_SYNC_NONE);          /* still taken: no churn */
+    c.alloc[IP_FIRST + 8] = 0;
+    CHECK_INT(ip_sync(&h, &o, 1, &scr, 8, 8), IP_SYNC_OBTAIN);
+    CHECK_INT(h.held, 16);
+    CHECK_INT(c.bad_release, 0);
+    CHECK_INT(ip_sync(&h, &o, 0, &scr, 8, 8), IP_SYNC_RELEASE);       /* last owner gone */
+    CHECK_INT(h.held, 0);
+    CHECK_INT(c.alloc[IP_FIRST], 0);
+    CHECK_INT(c.bad_release, 0);
+}
+
 void suite_iconpen(void)
 {
     test_colours_and_fold();
@@ -354,4 +459,5 @@ void suite_iconpen(void)
     test_sync();
     test_icons_keep_pens_when_flat_stops();
     test_main_takes_pens_at_boot();
+    test_reopen_same_address();
 }

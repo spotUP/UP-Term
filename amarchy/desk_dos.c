@@ -554,8 +554,9 @@ static void dk_flat_backdrop_take(const unsigned char *pal, long pallen)
 /* FLAT-PEN5-MAGENTA: the role pens no palette.prefs entry reaches at the Workbench depth (desk_live_role_pens: 4-7 on a screen deeper
  * than 3, where IPrefs puts entries 4-7 on the last four pens) get their colour live, after IPrefs applied the file. th = the theme;
  * th = 0 puts the user's colours back: FLAT-LIVEBASE-SAVED, from the saved palette (the kept DK_FLAT_PAL, else palette.prefs in ENV or
- * ENVARC) through desk_live_baseline, never from the live screen (an open Amarchy menu holds pens 4-7 with its own colours). amarchy-flat
- * sets the same pens on every new Workbench screen while flat is on (pens_sync). */
+ * ENVARC) through desk_live_baseline, never from the live screen (an open Amarchy menu holds pens 4-7 with its own colours). The Workbench
+ * reopen that follows makes a new screen with graphics-default 4-7: FLAT-PENS47-RESET, iconpen_dos pens_sync sets them on every new
+ * screen through desk_live_follow. */
 unsigned long desk_dos_live_pens;
 static void dk_live_pens(const gtheme *th, int own)
 {

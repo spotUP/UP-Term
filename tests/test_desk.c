@@ -618,6 +618,36 @@ static void test_flat_on_keeps_backdrop_pen_distinct_from_window_background(void
     CHECK(pen != pens[DK_BACKGROUND]);
 }
 
+/* FLAT-PENS47-RESET (rig 14, 3.2, depth 8, wbpens WATCH): desk_dos_apply set pens 4-7 to the theme on screen A, the Workbench reopen 3
+ * ticks later made screen B with graphics-default 0000ff ff00ff 00ffff ffffff and nothing set them again. The screen follow path
+ * (iconpen_dos pens_sync, IP_SYNC_OBTAIN) asks desk_live_follow what a new screen needs. */
+static void test_flat_reopen_keeps_theme_on_pens47(void)
+{
+    gtheme t;
+    int lp[4], i;
+    uc_u32 c[4];
+    probe_theme(&t);
+    t.darker_bg = 0x222222UL;
+    /* flat on, flat owns the backdrop (no DT_WBPATTERN): pens 4-7, pen 5 the dark backdrop, the rest their role colours */
+    CHECK_INT(desk_live_follow(&t, 1, 0, 8, lp, c), 4);
+    for (i = 0; i < 4; i++) {
+        CHECK_INT(lp[i], 4 + i);
+        CHECK_INT((long)c[i], (long)desk_pen_colour(&t, 4 + i, 1));
+    }
+    CHECK_INT((long)c[1], 0x222222L);
+    CHECK((long)c[1] != 0xff00ffL);
+    /* the wallpaper is the desktop theme's: pen 5 keeps its role colour */
+    CHECK_INT(desk_live_follow(&t, 1, 1u << DT_WBPATTERN, 8, lp, c), 4);
+    CHECK_INT((long)c[1], (long)desk_pen_colour(&t, 5, 0));
+    /* the desktop-theme palette alone also puts the theme on the live pens */
+    CHECK_INT(desk_live_follow(&t, 0, 1u << DT_PALETTE, 8, lp, c), 4);
+    /* flat off and no theme palette: the new screen keeps the user's colours; depth 3 has no live pens; no theme, nothing */
+    CHECK_INT(desk_live_follow(&t, 0, 0, 8, lp, c), 0);
+    CHECK_INT(desk_live_follow(&t, 0, 1u << DT_WBPATTERN, 8, lp, c), 0);
+    CHECK_INT(desk_live_follow(&t, 1, 0, 3, lp, c), 0);
+    CHECK_INT(desk_live_follow(0, 1, 0, 8, lp, c), 0);
+}
+
 /* FLAT-PEN5-MAGENTA (rig 11, 3.2, depth 8): IPrefs puts palette.prefs entries 4-7 on the last four pens of a deep screen, so a flat pick
  * that coloured "entry 5" left pen 5 (backdrop, button dim) at the graphics default ff00ff and overwrote pens 252-255. */
 static void test_flat_pick_leaves_pen5_magenta_on_deep_workbench(void)
@@ -1084,6 +1114,7 @@ void suite_desk(void)
     test_desk_wbpattern_no_dots();
     test_flat_on_keeps_backdrop_pen_distinct_from_window_background();
     test_flat_pick_leaves_pen5_magenta_on_deep_workbench();
+    test_flat_reopen_keeps_theme_on_pens47();
     test_desk_pointer();
     test_desk_pointer_gate();
     test_desk_palette_gate();

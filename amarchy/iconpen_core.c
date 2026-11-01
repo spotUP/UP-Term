@@ -83,6 +83,7 @@ int ip_holder_release(ip_holder *h, const ip_ops *o)
             n++;
         }
     h->held = 0;
+    h->recheck = 0;
     h->screen = NULL;            /* nothing is obtained on any screen now: the next sync obtains again */
     h->depth = 0;
     return n;
@@ -111,7 +112,31 @@ int ip_holder_obtain(ip_holder *h, const ip_ops *o, const void *screen, int dept
 
 int ip_holder_stale(const ip_holder *h, const void *screen, int depth)
 {
-    return h->screen != screen || h->depth != depth;
+    return h->screen != screen || h->depth != depth || h->recheck;
+}
+
+int ip_holder_verify(ip_holder *h, const ip_ops *o, const void *screen, int depth)
+{
+    int i, lost = 0, gained = 0;
+    if (!o->is_free || !h->screen || h->screen != screen)
+        return 0;
+    if (h->depth == depth)
+        for (i = 0; i < h->count; i++) {
+            int fr = o->is_free(o->ctx, h->first + i);
+            if (fr && h->have[i])
+                lost = 1;
+            else if (fr)
+                gained = 1;
+        }
+    if (h->depth != depth || lost) {     /* reopened at the same address: our pens went with the old ColorMap */
+        ip_holder_init(h);
+        return 1;
+    }
+    if (gained) {
+        h->recheck = 1;
+        return 1;
+    }
+    return 0;
 }
 
 int ip_status_line(const ip_holder *h, char *out, size_t cap)
@@ -140,6 +165,30 @@ int ip_sync_decide(const ip_holder *h, int hold, const void *screen, int depth)
     if (!hold || !screen)
         return h->screen ? IP_SYNC_RELEASE : IP_SYNC_NONE;
     return ip_holder_stale(h, screen, depth) ? IP_SYNC_OBTAIN : IP_SYNC_NONE;
+}
+
+int ip_sync(ip_holder *h, const ip_ops *o, int hold, const void *screen, int depth, int planes)
+{
+    int act;
+    ip_holder_verify(h, o, screen, depth);
+    act = ip_sync_decide(h, hold, screen, depth);
+    if (act == IP_SYNC_RELEASE) {
+        ip_holder_release(h, o);
+    } else if (act == IP_SYNC_OBTAIN) {
+        gtheme th;
+        uint8_t rgb[IP_PENS][3];
+        int flat = 0, lp[4], k, n;
+        unsigned mask = 0;
+        uc_u32 lc[4];
+        memset(&th, 0, sizeof th);
+        o->theme(o->ctx, &th, &flat, &mask);
+        ip_colours(&th, rgb);
+        ip_holder_obtain(h, o, screen, depth, rgb);   /* releases the old ones first */
+        n = desk_live_follow(&th, flat, mask, planes, lp, lc);
+        for (k = 0; k < n && o->set_rgb; k++)
+            o->set_rgb(o->ctx, lp[k], lc[k]);
+    }
+    return act;
 }
 
 int ip_hold_wanted(int quit, int held, int gfx_v39)

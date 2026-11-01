@@ -35,6 +35,14 @@ typedef struct ip_ops {
     int (*obtain)(void *ctx, int pen, unsigned r, unsigned g, unsigned b);   /* the pen number, or -1 when it is taken */
     void (*release)(void *ctx, int pen);
     void *ctx;
+    /* The rest are used by ip_sync only (the screen follow path); 0 = absent. */
+    /* 1 when `pen` is allocated to nobody on the CURRENT Workbench screen's ColorMap (FLAT-PENS47-RESET): the ColorMap is the
+     * one record of who holds a pen, so the holder checks its belief against it (ip_holder_verify) */
+    int (*is_free)(void *ctx, int pen);
+    /* load the theme and the switches desk_live_follow takes (amconf_desk_flat_pens, amconf_desk_mask) for an obtain */
+    void (*theme)(void *ctx, gtheme *t, int *flat, unsigned *mask);
+    /* set one live role pen of the current screen to rgb (0xRRGGBB) */
+    void (*set_rgb)(void *ctx, int pen, uc_u32 rgb);
 } ip_ops;
 
 typedef struct ip_holder {
@@ -43,14 +51,25 @@ typedef struct ip_holder {
     int held;                    /* pens held now */
     uint8_t have[IP_PENS];       /* have[i] = 1 when slot desk_pen_plan.icon_slot + i is held */
     int slot0, first, count;     /* the plan the pens were obtained under */
+    int recheck;                 /* ip_holder_verify: a missing pen is free now; the next sync re-obtains */
 } ip_holder;
 
 void ip_holder_init(ip_holder *h);
 /* Release what is held, then obtain the pens of desk_pen_plan(depth) for rgb. Returns the pens held. A taken pen is skipped
  * (the applier then folds that slot). */
 int ip_holder_obtain(ip_holder *h, const ip_ops *o, const void *screen, int depth, const uint8_t rgb[IP_PENS][3]);
-/* 1 when the screen or its depth is not the one the pens were obtained on (the re-obtain trigger) */
+/* 1 when the screen or its depth is not the one the pens were obtained on, or ip_holder_verify found pens to re-obtain (the
+ * re-obtain trigger) */
 int ip_holder_stale(const ip_holder *h, const void *screen, int depth);
+/* FLAT-PENS47-RESET cause 2: the screen ADDRESS is not a screen identity. A Workbench reopen can allocate the new Screen at the
+ * freed one's address (rig 14, 3.2, depth 8), and address + depth then say "same screen" while the 16 pens went with the old
+ * ColorMap. The identity check therefore asks the ColorMap (o->is_free) on the screen the holder believes it holds on:
+ * - a pen the holder holds is free there: the screen was reopened. Nothing is held on it, so the holder forgets its pens
+ *   without ReleasePen (releasing a pen we never obtained on this ColorMap would corrupt its free list) and returns 1;
+ * - a pen the holder could not get is free now: the holder is marked stale (re-obtain, releasing its pens normally), returns 1;
+ * - the same address at another depth is a reopened screen too: forget, returns 1.
+ * Else 0 (also with no o->is_free, another screen, or nothing obtained). */
+int ip_holder_verify(ip_holder *h, const ip_ops *o, const void *screen, int depth);
 /* Release every held pen (flat off, program exit). Returns the number released. */
 int ip_holder_release(ip_holder *h, const ip_ops *o);
 /* "pens-held N"; returns the length, 0 when cap is too small */
@@ -62,6 +81,11 @@ enum { IP_SYNC_NONE, IP_SYNC_OBTAIN, IP_SYNC_RELEASE };
  * is held (RELEASE only while pens are tied to a screen); `hold` 1 and the screen or its depth is not the one the pens were
  * obtained on (first run, Workbench closed and reopened, mode change) -> obtain; else nothing. */
 int ip_sync_decide(const ip_holder *h, int hold, const void *screen, int depth);
+/* One sync of the screen follow path (amarchy/iconpen_dos.c pens_sync; the caller holds the public screen list):
+ * ip_holder_verify, ip_sync_decide, then RELEASE: ip_holder_release; OBTAIN (a new Workbench screen or depth): o->theme,
+ * ip_colours + ip_holder_obtain, then the live role pens the new screen needs (desk_live_follow at `planes`, FLAT-PENS47-RESET
+ * cause 1: a reopened screen starts with graphics-default pens 4-7) through o->set_rgb. Returns the action taken. */
+int ip_sync(ip_holder *h, const ip_ops *o, int hold, const void *screen, int depth, int planes);
 /* Whether amarchy-flat holds the icon pens: for its whole run, whatever the flat switch says (L7 cause 2). graphics puts a
  * released pen at the HEAD of the PalExtra free list (rig 10, 3.2: after flat off the free order read 47 46 .. 32 244 ..),
  * so the next ObtainBestPen of any client (the dim pen, Amarchy's own theme pens, colour icons) took 47, then 46, and
