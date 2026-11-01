@@ -18,6 +18,7 @@
 #include "flat_shared.h"
 #include "win_refresh.h"
 #include "proclaunch.h"
+#include "sentinel_dos.h"
 
 #define DK_BUF 1024
 #define DK_REVERT "T:amarchy-revert"
@@ -672,7 +673,7 @@ static int dk_flat_pens(const gtheme *th)
     if ((own || theme) && len > 0) {
         dk_flat_backdrop_take(buf, len);
         wlen = theme ? desk_palette_theme(buf, len, th, depth, own, out, sizeof out)
-                     : desk_palette_set_rgb(buf, len, desk_backdrop_pen_at(depth), depth, desk_darker(th), out, sizeof out);
+                     : desk_palette_set_rgb(buf, len, desk_backdrop_screen_pen(depth), depth, desk_darker(th), out, sizeof out);
         if (wlen > 0) {
             if (wlen != len || memcmp(buf, out, wlen))
                 sync = 1;
@@ -977,6 +978,8 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
     if (dk_live_want)
         dk_live_pens(dk_live_want > 0 ? th : 0, dk_live_own);
     dk_flat_sync();          /* also when no desk target changed: flipping a flat switch alone must reach the block */
+    am_sentinel("AMARCHY_DESK_APPLY_R", (long)r);
+    am_sentinel("AMARCHY_DESK_CONFIRM_ASKS", (long)desk_dos_confirm_asks);
     if (r > 0)
         dk_confirm_ask((unsigned)r);
     return r;
@@ -1099,6 +1102,24 @@ void desk_dos_confirmed(void)
     desk_dos_keeps++;
 }
 
+/* The stock editors rewrite what they are fed (Pointer) and IPrefs/the palette editor recreate files that were deleted: whatever ran, the ENV: file
+ * ends byte-equal to its copy in dir, or absent when there was none. Shared by Revert (desk_dos_revert) and "off" (dk_orig_off). */
+static void dk_env_fix_file(const char *dir, const char *env)
+{
+    char name[96];
+    desk_copy_name(dir, env, name, sizeof name);
+    switch (desk_env_fix(dk_exists(name), dk_exists(env), dk_files_equal(name, env))) {
+    case DESK_FIX_COPY:
+        dk_stream_copy(name, env);
+        break;
+    case DESK_FIX_DELETE:
+        DeleteFile((STRPTR)env);
+        break;
+    default:
+        break;
+    }
+}
+
 /* put the files of mask back from the copies in dir (T:amarchy-revert for Revert, the originals for "off"): each target's ENV: file is fed from
  * its copy through the stock editor (as the apply did), a file that did not exist then is deleted; icontrol goes through dk_icontrol_restore. */
 static void dk_restore_targets(unsigned mask, const char *dir)
@@ -1133,6 +1154,7 @@ static void dk_restore_targets(unsigned mask, const char *dir)
             dk_wait_reset(before, amconf_desk_flat_pens(&ap));
         else if (ed[i].t == DT_FONT)
             dk_wait_iprefs(idle);
+        dk_env_fix_file(dir, ed[i].file);
     }
     if ((mask >> DT_ICONTROL) & 1) {
         dk_icontrol_restore();
@@ -1173,6 +1195,8 @@ int desk_dos_marker_recover(void)
     }
     desk_dos_marker_reverts++;
     desk_dos_revert();
+    /* published by the process that recovers (Amarchy, at its start): the menu's copy of the counter stays 0 */
+    am_sentinel("AMARCHY_DESK_MARKER_REVERTS", (long)desk_dos_marker_reverts);
     return 1;
 }
 
@@ -1201,21 +1225,9 @@ static void dk_orig_off(unsigned desk_mask, int flat)
         DeleteFile((STRPTR)DK_WBB_PREV);
         DeleteFile((STRPTR)DK_WBG_PREV);
     }
-    /* the stock editors rewrite what they are fed (Pointer) and IPrefs/the palette editor recreate files that were deleted: whatever
-     * ran, the ENV: file ends equal to the original, or absent when there was none */
-    for (i = 0; i < n; i++) {
-        desk_copy_name(DK_ORIG, env[i], name, sizeof name);
-        switch (desk_env_fix(dk_exists(name), dk_exists(env[i]), dk_files_equal(name, env[i]))) {
-        case DESK_FIX_COPY:
-            dk_stream_copy(name, env[i]);
-            break;
-        case DESK_FIX_DELETE:
-            DeleteFile((STRPTR)env[i]);
-            break;
-        default:
-            break;
-        }
-    }
+    /* dk_restore_targets already fixed the editor targets; Workbench.prefs (wb) is the one it does not cover */
+    if (wb)
+        dk_env_fix_file(DK_ORIG, DESK_WBPREFS_ENV);
     for (i = 0; i < n; i++)
         dk_orig_forget(env[i]);
     DeleteFile((STRPTR)DK_ORIG);   /* the directory, once empty */

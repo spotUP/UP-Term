@@ -756,8 +756,9 @@ static void test_flat_pick_leaves_pen5_magenta_on_deep_workbench(void)
     for (p = 0; p < 4; p++)
         CHECK_INT(desk_palette_rgb(out, m, p, 8), (long)desk_role(&t, p));
     CHECK_INT(desk_palette_rgb(out, m, 1, 8), 0x222222L);
-    for (p = 252; p < 256; p++)
+    for (p = 252; p < 255; p++)
         CHECK_INT(desk_palette_rgb(out, m, p, 8), desk_palette_rgb(cur, n, p, 8));
+    CHECK_INT(desk_palette_rgb(out, m, 255, 8), 0x222222L); /* FLAT-VIS-1: the backdrop screen pen takes the theme dark */
     CHECK_INT(desk_pen_colour(&t, desk_backdrop_pen(), 1), 0x222222L);
     CHECK_INT(desk_pen_colour(&t, 4, 1), (long)desk_selection(&t));
     CHECK_INT(desk_pen_colour(&t, 5, 1), (long)t.muted); /* FLAT-COLOUR-OVERHAUL: the muted pen keeps the muted colour under the own backdrop */
@@ -770,6 +771,42 @@ static void test_flat_pick_leaves_pen5_magenta_on_deep_workbench(void)
     CHECK_INT(desk_palette_rgb(out, m, 4, 3), (long)desk_selection(&t));
     CHECK_INT(desk_palette_rgb(out, m, 5, 3), (long)t.muted);
     CHECK_INT(desk_palette_theme(cur, 10, &t, 3, 1, out, sizeof out), 0);
+}
+
+/* FLAT-VIS-1 (rig 8, depth 8: orange backdrop): the ROOT tile's pen 7 is drawn as screen pen 2^depth-8+7, the pen palette.prefs
+ * entry 7 sets; recolouring pen 7 (nothing draws with it) left the backdrop at the user's stock EE9900. */
+static void test_flat_backdrop_screen_pen_deep(void)
+{
+    static unsigned char cur[BUF_MAX], out[BUF_MAX];
+    static unsigned short rgb4[256];
+    unsigned char flat[DK_SLOTS];
+    gtheme t;
+    long n, m;
+    int p;
+    probe_theme(&t);
+    t.darker_bg = 0x222222UL;
+    desk_pens_flat(flat);
+    CHECK_INT(desk_backdrop_screen_pen(8), 255);
+    CHECK_INT(desk_backdrop_screen_pen(6), 63);
+    CHECK_INT(desk_backdrop_screen_pen(4), 15);
+    CHECK_INT(desk_backdrop_screen_pen(3), desk_backdrop_pen()); /* tile pen == screen pen only at depth <= 3 */
+    CHECK_INT(desk_backdrop_screen_pen(2), desk_backdrop_pen_at(2));
+    for (p = 0; p < 256; p++)
+        rgb4[p] = 0x0f0f;
+    rgb4[255] = 0xe90;
+    n = desk_palette_live(rgb4, 256, 8, flat, cur, sizeof cur);
+    CHECK_INT(desk_palette_rgb(cur, n, 255, 8), 0xEE9900L);
+    /* own backdrop (flat only): the single-pen write reaches pen 255 */
+    m = desk_palette_set_rgb(cur, n, desk_backdrop_screen_pen(8), 8, desk_darker(&t), out, sizeof out);
+    CHECK_INT(m, n);
+    CHECK_INT(desk_palette_rgb(out, m, 255, 8), 0x222222L);
+    CHECK_INT(desk_palette_rgb(out, m, 254, 8), desk_palette_rgb(cur, n, 254, 8));
+    /* desktop theme on (muted tone) */
+    m = desk_palette_theme(cur, n, &t, 8, 0, out, sizeof out);
+    CHECK_INT(desk_palette_rgb(out, m, 255, 8), (long)t.muted);
+    CHECK(desk_palette_rgb(out, m, 255, 8) != 0xEE9900L);
+    /* flat off: the kept original palette, written back whole, still has entry 7 */
+    CHECK_INT(desk_palette_rgb(cur, n, 255, 8), 0xEE9900L);
 }
 
 /* flat OFF restores the saved palette even when the menu held pens 4-7: the baseline of a live role pen comes from the saved
@@ -1253,6 +1290,7 @@ void suite_desk(void)
     test_desk_wbpattern_no_dots();
     test_flat_on_keeps_backdrop_pen_distinct_from_window_background();
     test_flat_pick_leaves_pen5_magenta_on_deep_workbench();
+    test_flat_backdrop_screen_pen_deep();
     test_flat_reopen_keeps_theme_on_pens47();
     test_desk_pointer();
     test_desk_pointer_gate();

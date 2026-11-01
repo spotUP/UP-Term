@@ -270,10 +270,143 @@ size_t li_splice(const li_file *src, const li_edit *e, uint8_t *out, size_t cap)
     tail_start = src->form_len ? src->form_off : src->len;
     at = src->ntt >= 0 ? src->tt_end : src->tt_off;
     put(&w, b + at, tail_start - at);
-    if (e->form_src && e->form_src->form_len)
+    if (e->form_new && e->form_new_len)
+        put(&w, e->form_new, e->form_new_len);
+    else if (e->form_src && e->form_src->form_len)
         put(&w, e->form_src->buf + e->form_src->form_off, e->form_src->form_len);
     else if (src->form_len && !e->drop_form)
         put(&w, b + src->form_off, src->form_len);
+    return w.over ? 0 : w.pos;
+}
+
+/* Layout of the OS 3.2 "FORM ICON" colour icon, read from stock 3.2 files (AmigaOS3.2CD GlowIconsCollection .info files, hexdumped;
+ * the NDK headers do not describe it) and the OS 3.5 icon format as icon.library reads it (reference: AROS
+ * workbench/libs/icon/diskobj35io.c, ReadImage35 + Decode35): FORM <u32 size> ICON, then
+ *   FACE (6 bytes): u8 width-1, u8 height-1, u8 flags (bit0 frameless: icon.library draws no bevel frame round the image, AROS diskobj35io.c: fc.Flags = ni_Frameless ? ICON35F_FRAMELESS (1) : 0; we write 1), u8 aspect (0), u16 MaxPaletteBytes-1 (largest stored palette - 1)
+ *   IMAG, twice (normal, selected): u8 transparent index, u8 NumColors-1, u8 flags (bit0 has transparent colour, bit1 has
+ *     palette), u8 ImageFormat (0 raw, 1 RLE), u8 PaletteFormat (0 raw, 1 RLE), u8 depth, u16 NumImageBytes-1,
+ *     u16 NumPaletteBytes-1, then the image bytes, then the palette (RGB bytes per colour).
+ * ImageFormat 0 is ONE BYTE PER PIXEL (width*height bytes); depth only applies to RLE. We write RLE (format 1), as every
+ * stock GlowIcon does: a bit stream, MSB first, of an 8-bit control (0..127: that many + 1 literal values follow;
+ * 129..255: one value follows, repeated 257 - control times; 128: nothing) and values of depth bits each; the last byte
+ * is zero-padded. (A raw image packed 4 bits per pixel, as FLAT-VIS-2 first wrote, is half the bytes the reader takes
+ * for a raw image, so OS 3.2 drew the planar image instead.)
+ * Chunks are padded to even length (the pad is not in the chunk size). */
+static void put8(wr *w, unsigned v) { uint8_t b = (uint8_t)v; put(w, &b, 1); }
+
+static void poke16(wr *w, size_t at, unsigned v)
+{
+    if (!w->over) { w->out[at] = (uint8_t)(v >> 8); w->out[at + 1] = (uint8_t)v; }
+}
+
+static void poke32(wr *w, size_t at, uint32_t v)
+{
+    poke16(w, at, (unsigned)(v >> 16));
+    poke16(w, at + 2, (unsigned)(v & 0xFFFF));
+}
+
+static unsigned pen_at(const li_image *m, unsigned x, unsigned y)
+{
+    unsigned wb = ((unsigned)m->width + 15) / 16 * 2, p, pen = 0;
+    for (p = 0; p < m->depth; p++)
+        pen |= (unsigned)((m->data[((size_t)p * m->height + y) * wb + x / 8] >> (7 - x % 8)) & 1) << p;
+    return pen;
+}
+
+static unsigned form_index(unsigned pen)
+{
+    unsigned slot;
+    if (pen < 32 || pen > 47) return 0;
+    slot = pen - 32;
+    return slot < 12 ? slot + 1 : slot == 12 ? 0 : slot;
+}
+
+static unsigned form_px(const li_image *m, unsigned k)
+{
+    return form_index(pen_at(m, k % m->width, k / m->width));
+}
+
+typedef struct bits { wr *w; unsigned acc, n; } bits;
+
+static void bits_put(bits *b, unsigned v, unsigned nb)
+{
+    b->acc = (b->acc << nb) | (v & ((1u << nb) - 1));
+    b->n += nb;
+    while (b->n >= 8) { b->n -= 8; put8(b->w, (b->acc >> b->n) & 255); }
+}
+
+#define FORM_DEPTH 4
+
+/* The RLE stream of m's colour indexes (see the layout comment). */
+static void form_rle(wr *w, const li_image *m)
+{
+    unsigned total = (unsigned)m->width * m->height, k = 0, run, lit, j;
+    bits b;
+    b.w = w; b.acc = 0; b.n = 0;
+    while (k < total) {
+        unsigned v = form_px(m, k);
+        for (run = 1; k + run < total && run < 128 && form_px(m, k + run) == v; run++) {}
+        if (run >= 3) {
+            bits_put(&b, 257 - run, 8);
+            bits_put(&b, v, FORM_DEPTH);
+            k += run;
+            continue;
+        }
+        /* literals up to the next run of 3 or 128 values */
+        for (lit = 0; k + lit < total && lit < 128; lit++) {
+            unsigned u = form_px(m, k + lit);
+            if (k + lit + 2 < total && form_px(m, k + lit + 1) == u && form_px(m, k + lit + 2) == u) break;
+        }
+        if (lit == 0) lit = 1;
+        bits_put(&b, lit - 1, 8);
+        for (j = 0; j < lit; j++) bits_put(&b, form_px(m, k + j), FORM_DEPTH);
+        k += lit;
+    }
+    if (b.n) put8(w, (b.acc << (8 - b.n)) & 255);
+}
+
+static void form_imag(wr *w, const li_image *m, const uint8_t rgb[LI_FORM_COLOURS][3])
+{
+    unsigned i, pal = 3 * LI_FORM_COLOURS;
+    size_t at = w->pos, img0, size;
+    put(w, (const uint8_t *)"IMAG", 4);
+    put32(w, 0);                                    /* chunk size, set below */
+    put8(w, 0); put8(w, LI_FORM_COLOURS - 1); put8(w, 3); put8(w, 1); put8(w, 0); put8(w, FORM_DEPTH);
+    put16(w, 0);                                    /* NumImageBytes-1, set below */
+    put16(w, pal - 1);
+    img0 = w->pos;
+    form_rle(w, m);
+    poke16(w, at + 14, (unsigned)(w->pos - img0 - 1));
+    for (i = 0; i < LI_FORM_COLOURS; i++) {
+        unsigned slot = i == 0 ? 12 : i <= 12 ? i - 1 : i;
+        put(w, rgb[slot], 3);
+    }
+    size = w->pos - at - 8;
+    poke32(w, at + 4, (uint32_t)size);
+    if (size & 1) put8(w, 0);
+}
+
+size_t li_form_build(const li_image *normal, const li_image *selected, const uint8_t rgb[LI_FORM_COLOURS][3],
+                     uint8_t *out, size_t cap)
+{
+    wr w;
+    const li_image *im[2];
+    int k;
+    im[0] = normal; im[1] = selected;
+    w.out = out; w.cap = cap; w.pos = 0; w.over = 0;
+    for (k = 0; k < 2; k++)
+        if (!im[k] || im[k]->depth != 6 || im[k]->width < 1 || im[k]->width > 256 || im[k]->height < 1 || im[k]->height > 256 ||
+            im[k]->width != normal->width || im[k]->height != normal->height)
+            return 0;
+    put(&w, (const uint8_t *)"FORM", 4);
+    put32(&w, 0);                                   /* FORM size, set below */
+    put(&w, (const uint8_t *)"ICONFACE", 8);
+    put32(&w, 6);
+    put8(&w, normal->width - 1); put8(&w, normal->height - 1); put8(&w, 1); put8(&w, 0);   /* flags bit0: frameless */
+    put16(&w, 3 * LI_FORM_COLOURS - 1);
+    form_imag(&w, normal, rgb);
+    form_imag(&w, selected, rgb);
+    poke32(&w, 4, (uint32_t)(w.pos - 8));
     return w.over ? 0 : w.pos;
 }
 

@@ -25,6 +25,7 @@ const char *ia_dat_for_style(const char *style);
 #define IA_MAXPATH    160
 /* manifest lines: defaults (12) + table path rows + the all-volume walk; a full manifest skips the write */
 #define IA_MAXENT     512
+#define IA_FORMCAP    4096      /* room for one li_form_build result (2 x 32x32 images are about 1.3 KB) */
 #define IA_FILECAP    65536     /* biggest .info file handled (the size of each buffer the caller gives ia_ctx) */
 
 typedef struct ia_entry {
@@ -40,7 +41,8 @@ typedef struct ia_manifest {
 } ia_manifest;
 
 uint32_t ia_crc32(const uint8_t *p, size_t n);
-/* crc of the image region of a parsed file: what idempotence compares */
+/* crc of what APPLY writes into a parsed file: the image region plus the FORM ICON tail (its palette carries the theme colours,
+ * so a theme change moves the crc and rewrites once). What idempotence compares. */
 uint32_t ia_imgcrc(const li_file *f);
 
 /* manifest text: "# amarchy-icons manifest 1" then one line per entry. parse returns the entries read (bad lines dropped) */
@@ -79,6 +81,10 @@ typedef struct ia_ctx {
     int      variant;           /* li_pick_variant of the Workbench screen */
     uint8_t *cur, *out, *bak;   /* three IA_FILECAP byte buffers */
     ia_manifest man;
+    /* OS 3.2+: the 16 icon slot colours (ip_colours of the current theme); then APPLY also writes our FORM ICON tail
+     * (transparent ground). NULL on OS 3.1: classic planar image only. */
+    const uint8_t (*form_rgb)[3];
+    uint8_t  form[IA_FORMCAP];
     /* counters (STATUS prints them; the sentinel) */
     unsigned written, skipped_done, skipped_bad, skipped_nodat, skipped_nodefault, skipped_io, restored, restore_failed;
     unsigned skipped_readonly, skipped_locked, skipped_uaem, fallback, skipped_deep;   /* all-volume walk (L12) */

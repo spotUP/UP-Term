@@ -351,6 +351,49 @@ static void test_status_counts(void)
     mfs_free(&s);
 }
 
+/* FLAT-VIS-2: OS 3.2 gets our FORM ICON tail; the original tail (a stock 3.2 colour icon) comes back byte for byte on RESTORE;
+ * the palette is part of the rewrite-or-skip decision, so a theme change rewrites once and then skips. */
+static void test_form(void)
+{
+    mfs s;
+    ia_ctx c;
+    static uint8_t withform[IA_FILECAP], rgb[16][3], want[IA_FORMCAP];
+    long wn = g_tool_n;
+    li_file lf;
+    li_image nrm, sel;
+    size_t fn, i;
+    unsigned w0;
+
+    memcpy(withform, g_tool, (size_t)g_tool_n);
+    memcpy(withform + wn, "FORM\0\0\0\x10ICONFACE\0\0\0\2\1\1\0\0", 24);   /* a stock colour icon stands in: only the FORM ICON header matters */
+    wn += 24;
+    setup(&s, &c, 0);
+    mf_put(&s, "ENVARC:Sys/def_tool.info", withform, (size_t)wn);
+    for (i = 0; i < 48; i++) ((uint8_t *)rgb)[i] = (uint8_t)(i * 5 + 1);
+    c.form_rgb = (const uint8_t (*)[3])rgb;
+
+    CI("apply writes all twelve", ia_apply(&c), 12);
+    CK("icon written", mf_find(&s, "ENVARC:Sys/def_tool.info") != NULL);
+    {
+        long n = m_read(&s, "ENVARC:Sys/def_tool.info", c.cur, IA_FILECAP);
+        li_parse(c.cur, (size_t)n, &lf);
+        CK("the stock tail (24 bytes) is replaced by ours", lf.form_len > 40 && lf.form_len != 24);
+        CK("tail starts with FORM....ICONFACE", lf.form_len > 40 && memcmp(c.cur + lf.form_off + 8, "ICONFACE", 8) == 0);
+        li_dat_find(c.dat, "def_tool", 0, &nrm, &sel);
+        fn = li_form_build(&nrm, &sel, (const uint8_t (*)[3])rgb, want, sizeof want);
+        CK("tail is exactly li_form_build of the dat images", fn == lf.form_len && memcmp(want, c.cur + lf.form_off, fn) == 0);
+    }
+    w0 = c.written;
+    CI("same theme again writes nothing", ia_apply(&c), 0);
+    CI("written unchanged", (int)(c.written - w0), 0);
+    rgb[3][1] ^= 0x40;                                  /* theme B: one baked palette colour moves */
+    CI("another theme rewrites every icon once", ia_apply(&c), 12);
+    CI("then skips", ia_apply(&c), 0);
+    ia_restore(&c);
+    CK("restore gives back the original tail, exactly", same(&s, "ENVARC:Sys/def_tool.info", withform, (size_t)wn));
+    mfs_free(&s);
+}
+
 static void test_absent(void)
 {
     mfs s;
@@ -571,6 +614,7 @@ void suite_iconapply(void)
     test_pure();
     test_style();
     test_flow();
+    test_form();
     test_absent();
     test_paths();
     test_status_counts();

@@ -8,6 +8,7 @@
 #define ICONPEN_DOS_H
 
 #include <stddef.h>
+#include <stdint.h>
 #include "iconpen_core.h"
 
 #define IPD_SEM_NAME "Amarchy.IconPens"
@@ -15,6 +16,8 @@
 /* Add (on 1) or drop (on 0) `owner`, then bring the held pens in line with the owners and the Workbench screen as it is now.
  * Returns the reference count after. The record is freed with the last owner. */
 int ipd_owner(unsigned owner, int on);
+/* The 16 icon slot colours of the current theme (ip_colours on ip_ground): the palette amarchy-icons bakes into the FORM ICON. */
+void ipd_icon_rgb(uint8_t rgb[16][3]);
 /* Re-sync without changing owners (screen reopened, theme changed). */
 void ipd_resync(void);
 /* A theme switch: rewrite the held pens 32..47 with SetRGB32 from the new theme (ip_recolour). Does nothing when no record exists. */

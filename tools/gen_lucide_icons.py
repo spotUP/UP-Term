@@ -5,7 +5,7 @@
 Reuses, writes no rasteriser of its own: tools/gen_menu_icons.py (Flatten, raster: outline -> 64x64 coverage, SUB=4),
 tools/gen_emoji.py (area: coverage averaged to the icon size) and tools/mkicon.py (planes: the planar packer).
 
-Pens (plan section 3): 16 reserved pens 32..47. The glyph has 4 levels of coverage: transparent (pen 0) under 20%, then
+Pens (plan section 3): 16 reserved pens 32..47. The glyph has 4 levels of coverage: transparent (ground pen 44: the backdrop colour; classic planar images have no alpha, pen 0 would be a black box) under 20%, then
 33%, 66%, 100%. The normal image draws them in FG (pens 32, 37, 33); the selected image draws them in SELFG (42, 38, 34)
 on a rounded square of SELBG (43), so the antialiased edge has a known background.
 
@@ -36,8 +36,9 @@ VERSION = 1
 NAME_LEN = 48
 FIRST_LEVEL = 0.20                      # coverage under this is transparent
 LEVELS = (0.50, 0.835)                  # upper edges of levels 1 and 2 (33%, 66%); above is level 3 (100%)
-PEN_NORMAL = (0, 32, 37, 33)            # pen of level 0..3: FG 33%, FG 66%, FG 100%
-PEN_SELECTED = (0, 42, 38, 34)          # SELFG 33%, 66%, 100%
+PEN_GROUND = 44                         # spare pen 12: always the backdrop ground colour (iconpen_core fills spares with ground)
+PEN_NORMAL = (PEN_GROUND, 32, 37, 33)   # pen of level 0..3: ground, FG 33%, FG 66%, FG 100%
+PEN_SELECTED = (PEN_GROUND, 42, 38, 34) # ground, SELFG 33%, 66%, 100%
 PEN_SELBG = 43
 PENS = {chr(i): i for i in range(64)}   # art character -> pen: chr(pen), for mkicon.planes
 
@@ -100,7 +101,7 @@ def images(cov, w, h):
         row = ""
         for x in range(w):
             lv = level(cov[y][x])
-            row += chr(PEN_SELECTED[lv] if lv else PEN_SELBG if rounded(w, h, x, y) else 0)
+            row += chr(PEN_SELECTED[lv] if lv else PEN_SELBG if rounded(w, h, x, y) else PEN_GROUND)
         selected.append(row)
     return mkicon.planes(normal, DEPTH, PENS), mkicon.planes(selected, DEPTH, PENS)
 

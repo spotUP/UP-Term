@@ -164,6 +164,13 @@ def wasabi_port(rig_n=None):
 
 
 WASABI_PORT = wasabi_port()
+
+
+def serial_tcp_port(rig_n=None):
+    """The TCP port Amiberry listens on for this rig's serial line (serial_port=TCP://127.0.0.1:<port>): Amiberry
+    cannot write the serial line to a file the way FS-UAE does, so rig.py connects to this port and appends the stream
+    to the per-rig serial.log. 12000 + rig number, clear of wasabid (1234 + n - 1) and of the 4xxx dev servers."""
+    return 12000 + (RIG_N if rig_n is None else rig_n)
 WASABI_KEY = "rigwasabi"   # the rig key (wasabid's ENV:wasabi.key in the rig). Not a secret.
 os.environ.setdefault("AMI_PORT", str(WASABI_PORT))   # ami.py reads it
 
