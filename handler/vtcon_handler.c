@@ -3239,7 +3239,7 @@ static int screen_switch(con *c, int mode)
 {
     struct Screen *scr;
     struct Window *win;
-    if (!c->w.t || !c->own_win || c->is_tab || c->foreign || c->ntabs >= 2 || mode < 0 || mode > 2)
+    if (!c->w.t || !c->own_win || c->is_tab || c->foreign || tabslot_all(c->slots, c->ntabs) >= 2 || mode < 0 || mode > 2)
         return 0;
     if (mode == c->own_screen)
         return 1;
@@ -7532,7 +7532,7 @@ static int tab_sync(con *c, con *to, int type, struct Window *win)
 static int wb_tabs_park(con *c)
 {
     int i;
-    if (c->ntabs < 2)
+    if (tabslot_all(c->slots, c->ntabs) < 2)
         return 1;
     ClearMenuStrip(c->own_win);
     for (i = 0; i < c->ntabs * LAY_MAX_PANES; i++) { /* every split's every pane */
@@ -7563,7 +7563,7 @@ static void wb_tabs_abort(con *c)
 static void wb_tabs_unpark(con *c)
 {
     int i;
-    if (c->ntabs < 2)
+    if (tabslot_all(c->slots, c->ntabs) < 2)
         return;
     for (i = 0; i < c->ntabs * LAY_MAX_PANES; i++) {
         con *p = (con *)c->slots[i / LAY_MAX_PANES].pane[i % LAY_MAX_PANES];

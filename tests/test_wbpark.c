@@ -198,6 +198,7 @@ static void park_wait_bounded(void)
 {
     const char *src = handler_src();
     char *s, *m;
+    int i;
     polls = pauses = 0;
     answer_after = -1; /* never */
     CHECK_INT(wbpark_wait(got_after, count_pause, 0), 0);
@@ -220,6 +221,17 @@ static void park_wait_bounded(void)
         char *e2 = u ? strstr(u, "ReplyMsg(&t->msg)") : 0;
         CHECK_INT(u && e2 && strstr(u, "t->win->WScreen") && strstr(u, "t->win->WScreen") < e2, 1);
         CHECK_INT(u && e2 && (strstr(u, "lock_screen(c)") == 0 || strstr(u, "lock_screen(c)") > e2), 1);
+    }
+    {   /* the park and the unpark count panes (tabslot_all), not tab slots: one slot split in two has ntabs 1 */
+        for (i = 0; i < 2; i++) {
+            const char *name = i ? "static void wb_tabs_unpark(con *c)\n{" : "static int wb_tabs_park(con *c)\n{";
+            char *b = strstr(src, name);
+            char *end = b ? strstr(b, "\n}\n") : 0;
+            char *g = b ? strstr(b, "tabslot_all(") : 0;
+            char *bad = b ? strstr(b, "ntabs < 2") : 0;
+            CHECK_INT(b && end && g && g < end, 1);
+            CHECK_INT(bad == 0 || (end && bad > end), 1);
+        }
     }
     m = strstr(src, "static void wb_msgs(con *c)");
     CHECK_INT(m && strstr(m, "if (wb_tabs_park(c))") && strstr(m, "wb_tabs_abort(c)") && strstr(m, "c->wb.parked = 0"), 1);
