@@ -20,6 +20,9 @@
 
 typedef struct {
     int parked; /* the window was closed for a Workbench close */
+    int was_front; /* it was the frontmost window of its screen when it closed */
+    int was_active; /* it was the active window when it closed */
+    int tries; /* raise ticks left after the reopen */
 } wbpark;
 
 /* The host console of a window (with tabs or without) may close and reopen it: its own window on the
@@ -66,6 +69,46 @@ static int wbpark_note(wbpark *p, int opened, int eligible)
 static int wbpark_flag_window(int notify_present, int on_wb_screen)
 {
     return notify_present && on_wb_screen;
+}
+
+/* The window about to close: remember where it stood, so the reopen puts it back. The reopened Workbench
+ * (its drawer windows open after the console's) otherwise covers the new window and keeps the activation. */
+static void wbpark_remember(wbpark *p, int front, int active)
+{
+    p->was_front = front != 0;
+    p->was_active = active != 0;
+}
+
+#define WBPARK_TO_FRONT 1
+#define WBPARK_ACTIVATE 2
+
+/* The Workbench opens its drawer windows a while AFTER the console's window is back, over it and active. So the
+ * restore is repeated once a second for WBPARK_RAISE_TRIES seconds (the handler's raise timer). */
+#define WBPARK_RAISE_TRIES 6
+
+/* After the reopen: what to do with the new window (WBPARK_TO_FRONT, WBPARK_ACTIVATE bits), and the retries start. */
+static int wbpark_restore(wbpark *p)
+{
+    p->tries = WBPARK_RAISE_TRIES;
+    return (p->was_front ? WBPARK_TO_FRONT : 0) | (p->was_active ? WBPARK_ACTIVATE : 0);
+}
+
+/* One tick of the raise timer: `front` / `active` say where the window stands now. Returns the bits still to do;
+ * the last tick forgets what was remembered. 0 and no more ticks wanted once wbpark_raise_pending is 0. */
+static int wbpark_retry(wbpark *p, int front, int active)
+{
+    int r;
+    if (p->tries <= 0)
+        return 0;
+    r = (p->was_front && !front ? WBPARK_TO_FRONT : 0) | (p->was_active && !active ? WBPARK_ACTIVATE : 0);
+    if (--p->tries == 0)
+        p->was_front = p->was_active = 0;
+    return r;
+}
+
+static int wbpark_raise_pending(const wbpark *p)
+{
+    return p->tries > 0;
 }
 
 /* The reopen failed: stay parked, so the next "opened" message tries again. */

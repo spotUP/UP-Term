@@ -171,6 +171,8 @@ typedef struct con {
     int tty_ocol;                /* output column, for OXTABS */
     struct timerequest *rtimer;  /* VTIME for the first waiting read */
     int rtimer_busy, rtimer_fired;
+    struct timerequest *ztimer; /* once a second after a Workbench reopen: window back in front (wbpark_retry) */
+    int ztimer_busy;
     vt_u8 obuf[2048];            /* OPOST output of one chunk */
     /* bytes ready for Read (complete lines in cooked mode) */
     vt_u8 in[IN_MAX];
@@ -3251,6 +3253,27 @@ static void wb_client_remove(con *c)
  * semaphore until every client replied, and our LockPubScreen/OpenWindow
  * may call OpenWorkBench, which waits for that semaphore -- then the
  * window reopens where it was. */
+static void ztimer_start(con *c)
+{
+    if (!c->ztimer || c->ztimer_busy)
+        return;
+    c->ztimer->tr_node.io_Command = TR_ADDREQUEST;
+    c->ztimer->tr_time.tv_secs = 1;
+    c->ztimer->tr_time.tv_micro = 0;
+    SendIO((struct IORequest *)c->ztimer);
+    c->ztimer_busy = 1;
+}
+
+static void wb_raise(con *c, int bits)
+{
+    if (!c->own_win)
+        return;
+    if (bits & WBPARK_TO_FRONT)
+        WindowToFront(c->own_win);
+    if (bits & WBPARK_ACTIVATE)
+        ActivateWindow(c->own_win);
+}
+
 static void wb_msgs(con *c)
 {
     struct ScreenNotifyMessage *m;
@@ -3267,6 +3290,8 @@ static void wb_msgs(con *c)
             c->wb_box[2] = win->Width;
             c->wb_box[3] = win->Height;
             c->wb_box_on = 1;
+            wbpark_remember(&c->wb, win->WScreen && win->WScreen->FirstWindow == win,
+                            IntuitionBase->ActiveWindow == win);
             if (wb_tabs_park(c)) { /* the tabs let go of the window first: it closes under them */
                 window_unbind(c);
             } else {
@@ -3284,8 +3309,11 @@ static void wb_msgs(con *c)
             struct Window *win = scr ? create_window(c, scr) : 0;
             c->wb_box_on = 0;
             if (win) {
+                int back = wbpark_restore(&c->wb);
                 window_rebind(c, scr, win);
                 wb_tabs_unpark(c);
+                wb_raise(c, back);
+                ztimer_start(c);
             } else {
                 if (scr)
                     UnlockPubScreen(0, scr);
@@ -7692,6 +7720,11 @@ static LONG handler_main(void)
                 c->rtimer->tr_node.io_Device = c->timer->tr_node.io_Device;
                 c->rtimer->tr_node.io_Unit = c->timer->tr_node.io_Unit;
             }
+            c->ztimer = (struct timerequest *)CreateIORequest(c->timer_port, sizeof(struct timerequest));
+            if (c->ztimer) {
+                c->ztimer->tr_node.io_Device = c->timer->tr_node.io_Device;
+                c->ztimer->tr_node.io_Unit = c->timer->tr_node.io_Unit;
+            }
         }
     }
     c->ld.echo = tty_echo;
@@ -7808,6 +7841,16 @@ static LONG handler_main(void)
         idcmp(c);
         if (c->comp_port)
             finish_completion(c);
+        if (c->ztimer_busy && CheckIO((struct IORequest *)c->ztimer)) {
+            WaitIO((struct IORequest *)c->ztimer);
+            c->ztimer_busy = 0;
+            if (c->own_win && wbpark_raise_pending(&c->wb)) {
+                wb_raise(c, wbpark_retry(&c->wb, c->own_win->WScreen->FirstWindow == c->own_win,
+                                         IntuitionBase->ActiveWindow == c->own_win));
+                if (wbpark_raise_pending(&c->wb))
+                    ztimer_start(c);
+            }
+        }
         if (c->rtimer_busy && CheckIO((struct IORequest *)c->rtimer)) {
             WaitIO((struct IORequest *)c->rtimer);
             c->rtimer_busy = 0;

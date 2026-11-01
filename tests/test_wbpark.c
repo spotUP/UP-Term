@@ -110,6 +110,38 @@ static void count_pause(int ticks)
     pauses++;
 }
 
+/* The reopened window goes back in front and active when it was before the park (the reopened Workbench drawer
+ * window otherwise covers it); the handler remembers it at park time and applies it after the rebind. */
+static void park_restore_order(void)
+{
+    wbpark p = {0, 0, 0, 0};
+    const char *src = handler_src();
+    char *h, *s, *r;
+    wbpark_remember(&p, 1, 1);
+    CHECK_INT(wbpark_restore(&p), WBPARK_TO_FRONT | WBPARK_ACTIVATE);
+    /* the drawer window opens later and covers it: each tick puts back what is missing, for 6 ticks, then stops */
+    CHECK_INT(wbpark_retry(&p, 1, 1), 0);
+    CHECK_INT(wbpark_retry(&p, 0, 0), WBPARK_TO_FRONT | WBPARK_ACTIVATE);
+    CHECK_INT(wbpark_retry(&p, 1, 0), WBPARK_ACTIVATE);
+    CHECK_INT(wbpark_raise_pending(&p), 1);
+    wbpark_retry(&p, 1, 1);
+    wbpark_retry(&p, 1, 1);
+    CHECK_INT(wbpark_raise_pending(&p), 1);
+    wbpark_retry(&p, 1, 1);
+    CHECK_INT(wbpark_raise_pending(&p), 0);
+    CHECK_INT(wbpark_retry(&p, 0, 0), 0);
+    wbpark_remember(&p, 1, 0);
+    CHECK_INT(wbpark_restore(&p), WBPARK_TO_FRONT);
+    wbpark_remember(&p, 0, 0);
+    CHECK_INT(wbpark_restore(&p), 0);
+    h = strstr(src, "act == WBPARK_HIDE");
+    s = strstr(src, "act == WBPARK_SHOW");
+    r = s ? strstr(s, "wbpark_restore(&c->wb)") : 0;
+    CHECK_INT(h && strstr(h, "wbpark_remember(&c->wb") && strstr(h, "wbpark_remember(&c->wb") < s, 1);
+    CHECK_INT(r && strstr(r, "wb_raise(c, back)") && strstr(r, "ztimer_start(c)"), 1);
+    CHECK_INT(strstr(src, "wbpark_retry(&c->wb") != 0, 1); /* the timer applies the retries */
+}
+
 /* A tab that never answers TM_PARK ends the wait after the bound, not never; one that answers ends it at once. */
 static void park_wait_bounded(void)
 {
@@ -150,5 +182,6 @@ void suite_wbpark(void)
     not_eligible();
     failed_reopen_retries();
     tabs_park();
+    park_restore_order();
     park_wait_bounded();
 }
