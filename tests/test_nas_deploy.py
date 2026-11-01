@@ -22,7 +22,7 @@ def test_dry_run_prints_rsync_and_ssh(tmp_path):
     r = run(tmp_path, "--dry-run")
     assert r.returncode == 0, r.stderr
     copy, ssh, _info = r.stdout.splitlines()
-    assert copy.startswith("tar -czf - --no-xattrs --exclude home") and " | ssh " in copy and "--delete" not in copy
+    assert copy.startswith("python-tarfile czf - --exclude home") and " | ssh " in copy and "--delete" not in copy
     assert "admin@nas.example" in copy and "-C /volume1/docker/claude-amiga" in copy and "-p 2222" in copy
     assert str(ROOT / "tools") + " uptelnetd.py" in copy
     assert "sudo docker compose build && sudo docker compose up -d" in ssh
@@ -102,8 +102,7 @@ def test_copy_is_not_rsync(tmp_path):
 
 def test_send_round_trip(tmp_path):
     """pack | unpack really carries the copy list: unpack into a local folder with sh instead of ssh."""
-    (pack, _unpack), _ssh = d.commands({"NAS_HOST": "h", "NAS_USER": "u", "NAS_DIR": "/x", "NAS_PORT": "22",
-                                         "NAS_DOCKER": "docker"})
+    (pack, _unpack), _ssh = d.commands(CFG)
     out = tmp_path / "nas"
     out.mkdir()
     assert d.send(pack, ["tar", "-xzf", "-", "-C", str(out)]) == 0
@@ -121,3 +120,91 @@ def test_wasabi_clone_source_is_one_file():
     mk = (ROOT / "Makefile").read_text()
     assert "WASABI_REPO := $(strip $(shell cat tools/nas/wasabi.repo))" in mk
     assert (ROOT / "tools/nas/wasabi.repo").read_text().strip() == "https://github.com/spotUP/wasabi"
+
+
+CFG = {"NAS_HOST": "h", "NAS_USER": "u", "NAS_DIR": "/x", "NAS_PORT": "22", "NAS_DOCKER": "docker", "NAS_SSH": "ssh"}
+
+
+def test_tarfile_pack_members_equal_copy_list(tmp_path):
+    """The in-process pack carries exactly the copy list: top-level members == copy_list(), no home/, no ._ files."""
+    import io, tarfile
+    home = d.HERE / "home"
+    made = not home.exists()
+    home.mkdir(exist_ok=True)
+    (home / "keep-out").write_text("x")
+    try:
+        buf = io.BytesIO()
+        d.pack_to(buf, d.pack_list())
+    finally:
+        (home / "keep-out").unlink()
+        if made:
+            home.rmdir()
+    buf.seek(0)
+    names = tarfile.open(fileobj=buf, mode="r:gz").getnames()
+    assert sorted({n.split("/")[0] for n in names}) == sorted(d.copy_list())
+    assert not any("home" in n.split("/") or n.split("/")[-1].startswith("._") for n in names)
+
+
+def test_pack_filter_drops_home_and_appledouble_and_owner():
+    import tarfile
+    for n in ("home", "skills/home/x", "skills/._x", "._Dockerfile"):
+        assert d.pack_filter(tarfile.TarInfo(n)) is None, n
+    ti = tarfile.TarInfo("skills/a")
+    ti.uid = ti.gid = 501
+    ti.uname = "mac"
+    out = d.pack_filter(ti)
+    assert (out.uid, out.gid, out.uname) == (0, 0, "")
+
+
+def test_send_does_not_spawn_a_tar_program(monkeypatch, tmp_path):
+    """One code path for Mac and Amiga: the pack is Python tarfile, the only subprocess is the unpack end."""
+    calls = []
+    real = subprocess.Popen
+    monkeypatch.setattr(d.subprocess, "Popen", lambda cmd, **kw: calls.append(cmd) or real(cmd, **kw))
+    out = tmp_path / "o"
+    out.mkdir()
+    assert d.send(d.pack_list(), ["tar", "-xzf", "-", "-C", str(out)]) == 0
+    assert calls == [["tar", "-xzf", "-", "-C", str(out)]]
+    assert (out / "Dockerfile").is_file()
+
+
+def test_send_spool_feeds_ssh_by_redirect(tmp_path):
+    out = tmp_path / "o"
+    out.mkdir()
+    spool = tmp_path / "T-nas.tgz"
+    assert d.send(d.pack_list(), ["tar", "-xzf", "-", "-C", str(out)], spool=str(spool)) == 0
+    assert (out / "Dockerfile").is_file() and not spool.exists()
+
+
+def test_nas_ssh_reaches_every_ssh_argv(tmp_path, monkeypatch):
+    """NAS_SSH is the program of the unpack, the docker step and the .env check (and key_note), default ssh."""
+    cfg = dict(CFG, NAS_SSH="/opt/mine/myssh")
+    (_pack, unpack), docker = d.commands(cfg)
+    assert unpack[0] == docker[0] == "/opt/mine/myssh"
+    seen = []
+    monkeypatch.setattr(d.subprocess, "call", lambda cmd, **kw: seen.append(cmd) or 0)
+    d.remote_has_env(cfg)
+    assert seen[0][0] == "/opt/mine/myssh"
+    assert "/opt/mine/myssh" in d.key_note(cfg)
+    assert d.commands(CFG)[0][1][0] == "ssh"
+    assert d.load_config({})["NAS_SSH"] == "ssh"
+    assert d.load_config({"NAS_SSH": "bebbossh"})["NAS_SSH"] == "bebbossh"
+
+
+def test_bebbossh_flags():
+    """bebbossh: -p port, -T when no terminal, no -o and no -t (it has neither); the docker step keeps its terminal."""
+    cfg = dict(CFG, NAS_SSH="C:bebbossh", NAS_PORT="1337")
+    (_pack, unpack), docker = d.commands(cfg)
+    assert unpack[:4] == ["C:bebbossh", "-p", "1337", "-T"] and "-o" not in unpack and "-t" not in unpack
+    assert docker[:3] == ["C:bebbossh", "-p", "1337"] and "-T" not in docker and "-t" not in docker and "-o" not in docker
+
+
+def test_stage_ships_the_copy_list_and_deploy_py(tmp_path):
+    d.stage(tmp_path / "nas")
+    for n in d.copy_list() + ["deploy.py"]:
+        assert (tmp_path / "nas" / n).exists(), n
+    assert not (tmp_path / "nas" / "home").exists()
+    r = subprocess.run([sys.executable, "-I", str(tmp_path / "nas/deploy.py"), "--dry-run"], capture_output=True, text=True,
+                       env={"PATH": "/usr/bin:/bin", "NAS_CONF": str(tmp_path / "c")} | {"NAS_HOST": "h", "NAS_USER": "u", "NAS_DIR": "/x"})
+    assert r.returncode == 0, r.stderr
+    assert str(tmp_path / "nas") + " uptelnetd.py" in r.stdout

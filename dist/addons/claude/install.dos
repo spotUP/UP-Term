@@ -45,6 +45,14 @@ EndIf
 ; NAS, with a key of its own, so Claude Code there can work on this Amiga. It is put in only when no wasabid
 ; is there (the base kit's, or one of yours): that one stays and is not ours. ENVARC:upkg/up-claude/wasabid (in the record drawer) is the
 ; marker for Uninstall, and a later install updates our own copy.
+; ENVARC:Claude/nas: the NAS drawer and deploy.py (python3 ENVARC:Claude/nas/deploy.py puts Claude Code on your NAS)
+If NOT EXISTS ENVARC:Claude
+  MakeDir ENVARC:Claude
+EndIf
+Copy nas ENVARC:Claude/nas ALL CLONE QUIET
+If WARN
+  Quit 20
+EndIf
 If NOT EXISTS C:wasabid
   Copy wasabid C:wasabid CLONE QUIET
   If WARN

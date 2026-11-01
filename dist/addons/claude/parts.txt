@@ -13,4 +13,5 @@ claude          Files/Claude
 claude          Files/uptelnet
 claude          Files/wasabid
 claude          Files/wasabid.LICENSE
+claude          Files/nas
 launch          Files/launch

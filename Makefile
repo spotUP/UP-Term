@@ -1770,6 +1770,7 @@ dist-claude: $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(BUILD)/amiga/upupda
 	cp $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(KIT_claude)/Files/
 	cp $(BUILD)/wasabi/wasabid $(KIT_claude)/Files/wasabid
 	cp dist/addons/claude/questions $(KIT_claude)/Files/questions
+	python3 tools/nas/deploy.py --stage $(KIT_claude)/Files/nas
 	cp dist/wasabi/LICENSE $(KIT_claude)/Files/wasabid.LICENSE
 	$(call LAUNCHER,$(KIT_claude),dist/addons/claude/launch/Claude,Claude,800/560)
 	python3 tools/mkkit.py claude

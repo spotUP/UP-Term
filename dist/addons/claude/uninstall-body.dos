@@ -14,6 +14,8 @@ If NOT WARN
   Delete >NIL: UPTREAL:Claude UPTREAL:Claude.info UPTREAL:ClaudeCode UPTREAL:ClaudeCode.info QUIET
   Assign >NIL: UPTREAL:
 EndIf
+; the NAS drawer and deploy.py
+Delete >NIL: ENVARC:Claude/nas ALL QUIET
 ; C:wasabid: ours only (the marker Claude's install wrote), and not while the base kit's block in
 ; S:User-Startup starts it at boot (that kit's Install took it over). The session daemon of a
 ; running uptelnet ends with that login; one still running keeps the file busy, so it is left.
