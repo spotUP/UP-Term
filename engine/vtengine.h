@@ -109,6 +109,15 @@ enum vt_layout {
     VT_LAYOUT_COLUMNS          /* DECCOLM (?3, allowed by ?40): 80 or 132 columns */
 };
 
+/* ANSI music (PC-ANSI personality: CSI M / CSI N / CSI | ... SO): one
+ * note. chz is the pitch in centi-Hz (26163 = middle C), 0 a rest; ms the
+ * whole length, on_ms the part that sounds (articulation), the rest silent. */
+typedef struct vt_note {
+    vt_u32 chz;
+    vt_u16 ms, on_ms;
+} vt_note;
+#define VT_MUSIC_NOTES 64 /* notes handed over in one music call at most */
+
 typedef struct vt_callbacks {
     /* Cells x0 <= x < x1, y0 <= y < y1 of the visible grid changed. */
     void (*damage)(void *user, int x0, int y0, int x1, int y1);
@@ -143,6 +152,10 @@ typedef struct vt_callbacks {
     /* OSC 9 ; text (title "") and OSC 777 ; notify ; title ; body: a
      * program asks to tell the user something. UTF-8. */
     void (*notify)(void *user, const char *title, const char *body);
+    /* ANSI music: n notes to play in order (a long string comes in several
+     * calls). background: MB was given (MF / default 0). The host must not
+     * block: the notes are queued and played while output goes on. */
+    void (*music)(void *user, const vt_note *notes, int n, int background);
 } vt_callbacks;
 
 /* vt_modes() bits the host needs for input. */
@@ -208,6 +221,12 @@ void     vt_set_charset(vt_term *t, enum vt_charset cs);
  * does by default (the host's AmigaDOS programs end lines with a bare LF).
  * Unlike LNM (CSI 20 h) it does not change what Return sends. */
 void     vt_set_onlcr(vt_term *t, int on);
+/* ANSI music (PC-ANSI personality only): on by default. Off, the music
+ * string is still swallowed (it never prints), the callback is not called. */
+void     vt_set_music(vt_term *t, int on);
+/* The Paula period that plays chz (centi-Hz) from a wave_len byte sample
+ * (PAL clock 3546895 Hz), clamped to 124..65535; 0 for a rest. */
+vt_u16   vt_note_period(vt_u32 chz, int wave_len);
 /* Reflow on resize, as modern terminals and the ROM console's
  * character-mapped units do: vt_resize joins the rows a wrap linked into
  * logical lines and wraps them again at the new width, the cursor staying

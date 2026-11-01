@@ -2,6 +2,7 @@
  * XCON: handler (plan 2026-09-30-console-device.md, DX1/DX2): the same code,
  * with the owner's policy behind vtwin_host. */
 #include "vtwin.h"
+#include "vtmusic.h"
 #include <string.h>
 #include <exec/memory.h>
 #include <dos/dosextens.h>
@@ -901,23 +902,39 @@ static void settings(vtwin *w)
 
 static void bind(vtwin *w, struct Window *win);
 
+static void cb_music(void *u, const vt_note *n, int c, int bg)
+{
+    if (u) /* the window; vbcc refuses (void)u */
+        vtmusic_play(n, c, bg);
+}
+
+/* Windows with an engine: the last one to go closes audio.device. */
+static int vtwin_live;
+
+void vtwin_callbacks(struct vt_callbacks *cb)
+{
+    memset(cb, 0, sizeof(*cb)); /* a callback the engine gains is off until set here */
+    cb->damage = cb_damage;
+    cb->scroll = cb_scroll;
+    cb->reply = cb_reply;
+    cb->bell = cb_bell;
+    cb->title = cb_title;
+    cb->layout = cb_layout;
+    cb->colors = cb_colors;
+    cb->clipboard_set = cb_clipboard_set; /* vt_set_clipboard_access (settings) says what may run */
+    cb->clipboard_get = cb_clipboard_get;
+    cb->notify = cb_notify;
+    cb->music = cb_music; /* ANSI music (render/vtmusic) */
+}
+
 int vtwin_attach(vtwin *w, struct Window *win)
 {
     struct vt_callbacks cb;
     w->win = win;
     if (!w->font)
         vtwin_open_font(w);
-    memset(&cb, 0, sizeof(cb)); /* a callback the engine gains is off until set here */
-    cb.damage = cb_damage;
-    cb.scroll = cb_scroll;
-    cb.reply = cb_reply;
-    cb.bell = cb_bell;
-    cb.title = cb_title;
-    cb.layout = cb_layout;
-    cb.colors = cb_colors;
-    cb.clipboard_set = cb_clipboard_set; /* vt_set_clipboard_access (settings) says what may run */
-    cb.clipboard_get = cb_clipboard_get;
-    cb.notify = cb_notify;
+    vtwin_callbacks(&cb);
+    vtwin_live++;
     {
         /* size from the window before the engine exists */
         int cols = (win->Width - win->BorderLeft - win->BorderRight) / w->font->tf_XSize;
@@ -1091,6 +1108,8 @@ void vtwin_apply_settings(vtwin *w)
 void vtwin_detach(vtwin *w)
 {
     int k;
+    if (w->t && vtwin_live > 0 && --vtwin_live == 0)
+        vtmusic_close();
     /* the frame clock draws (cursor blink) through the renderer freed
      * below: stop it; an AUTO window closes mid-life and opens again
      * (the reopened window hung the handler on the rig, 2026-09-30) */

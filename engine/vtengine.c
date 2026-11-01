@@ -52,9 +52,13 @@ enum {
     S_KITTY, /* APC G: the bytes go to the kitty graphics decoder */
     S_SIXEL, /* DCS P1;P2;P3 q: the bytes go to the sixel decoder (after S_STRING:
               * feed tests state >= S_OSC once for all three) */
-    S_PRINT /* printer controller mode (CSI 5 i): the bytes go to no printer
-             * (feed handles it before anything else) */
+    S_PRINT, /* printer controller mode (CSI 5 i): the bytes go to no printer
+              * (feed handles it before anything else) */
+    S_CSI_M, /* PC-ANSI CSI M: music if the next byte starts it, else Delete Line */
+    S_MUSIC  /* ANSI music string to SO (feed handles it first, as S_PRINT) */
 };
+
+#include "ansimusic.c"
 
 /* A grid line: one allocation, cells follow the header. */
 typedef struct vt_line {
@@ -178,6 +182,8 @@ struct vt_term {
     int gl, single_shift;
     int gr;                /* LS1R-LS3R: G1-G3 in GR (8-bit windows); 0 Latin-1 itself */
     int prn_match;         /* S_PRINT: how much of CSI 4 i has come */
+    vt_u8 music_off;       /* vt_set_music(0): music strings swallowed, not played */
+    vt_music music;        /* ANSI music: the PLAY state and the notes not yet handed over */
     vt_saved sav, sav_1049;
     vt_u8 saved_1048;      /* ?1048 / ?1049 saved a cursor (DECRQM ?1048) */
     vt_u8 rect_extent;     /* DECSACE 2: DECCARA / DECRARA cover a rectangle, not a stream */
@@ -5429,8 +5435,49 @@ static void end_string(vt_term *t)
     t->state = S_GROUND;
 }
 
+/* The music notes so far to the host. */
+static void music_flush(vt_term *t)
+{
+    if (t->music.n && t->cb.music && !t->music_off)
+        t->cb.music(t->user, t->music.notes, t->music.n, t->music.bg);
+    t->music.n = 0;
+}
+
+/* A byte of an ANSI music string (S_MUSIC): SO ends it, ESC / CAN / SUB end
+ * it early; nothing of it prints. 1 when the byte was the string's. */
+static int music_feed(vt_term *t, vt_u32 c)
+{
+    if (c == 0x0E || c == 0x1B || c == 0x18 || c == 0x1A) {
+        am_end(&t->music);
+        music_flush(t);
+        t->state = S_GROUND;
+        return c == 0x0E; /* ESC starts its sequence, CAN / SUB do nothing more */
+    }
+    if (c >= 0x20 && c < 0x7F) {
+        am_byte(&t->music, (vt_u8)c);
+        if (t->music.n >= VT_MUSIC_NOTES)
+            music_flush(t); /* a long string: in parts */
+    }
+    return 1; /* other controls: ignored inside the string */
+}
+
 static void feed(vt_term *t, vt_u32 c)
 {
+    if (t->state == S_MUSIC) {
+        if (music_feed(t, c))
+            return;
+    } else if (t->state == S_CSI_M) {
+        t->state = S_GROUND;
+        if (am_starts(c)) {
+            t->state = S_MUSIC;
+            t->music.cmd = 'M'; /* the CSI's M is the string's first M: CSI MF, CSI MB */
+            t->music.n = 0;
+            if (music_feed(t, c))
+                return;
+        } else {
+            delete_lines(t, 1); /* not music: CSI M is Delete Line, the byte is new */
+        }
+    }
     if (t->state == S_PRINT) {
         /* printer controller mode: everything is the printer's (there is
          * none) until CSI 4 i -- ESC [ 4 i or the 8-bit CSI 4 i */
@@ -5688,6 +5735,13 @@ static void feed(vt_term *t, vt_u32 c)
         }
         if (c >= 0x40 && c <= 0x7E) {
             t->state = S_GROUND;
+            if (t->pers == VT_PCANSI && !t->np && !t->priv && (c == 'M' || c == 'N' || c == '|')) {
+                /* ANSI music: CSI N and CSI | always, CSI M only when music follows */
+                t->state = c == 'M' ? S_CSI_M : S_MUSIC;
+                t->music.cmd = AM_NONE;
+                t->music.n = 0;
+                return;
+            }
             csi_dispatch(t, (vt_u8)c);
             return;
         }
@@ -5952,6 +6006,7 @@ void vt_reset(vt_term *t)
     t->amiga_dbg = VT_COLOR_DEFAULT;
     t->amiga_dattr = 0;
     t->amiga_msb = 0;
+    am_init(&t->music); /* T120 L4 O4 MN MF */
     soft_reset(t);
     t->sav_1049 = t->sav;
     t->saved_1048 = 0;
@@ -6138,6 +6193,11 @@ void vt_set_cell_pixels(vt_term *t, int w, int h)
 int vt_cursor_style(const vt_term *t)
 {
     return t->cursor_style;
+}
+
+void vt_set_music(vt_term *t, int on)
+{
+    t->music_off = (vt_u8)!on;
 }
 
 void vt_set_onlcr(vt_term *t, int on)
@@ -6502,6 +6562,8 @@ static long csi_fast(vt_term *t, const vt_u8 *b, long len)
     c = b[r];
     if (c < 0x40 || c > 0x7E)
         return 0;
+    if (t->pers == VT_PCANSI && !np && (c == 'M' || c == 'N' || c == '|'))
+        return 0; /* may be ANSI music: the parser's states decide */
     /* clear_params' work, now that the sequence is known whole */
     t->np = np;
     t->have = 0;

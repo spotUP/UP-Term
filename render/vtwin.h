@@ -201,6 +201,8 @@ void vtwin_set_screen(vtwin *w, struct Screen *scr);
 /* After a move to another screen: the pair's other font when this screen
  * wants it (1 when the font changed). */
 int vtwin_fit_aspect(vtwin *w);
+/* Every engine callback of a console window (vtwin_attach uses it). */
+void vtwin_callbacks(struct vt_callbacks *cb);
 int vtwin_attach(vtwin *w, struct Window *win); /* 0: no memory (the owner closes its window) */
 void vtwin_detach(vtwin *w);
 /* The window goes but the terminal stays (moving to another screen):

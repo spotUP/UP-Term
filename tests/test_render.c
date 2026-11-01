@@ -1935,6 +1935,53 @@ static void a_pasted_line_break_reaches_the_program_as_one_return(void)
     drag_close();
 }
 
+/* ANSI music reaches the player through the console window's own callbacks
+ * (render/vtwin.c vtwin_callbacks, as vtwin_attach fills them): the stub
+ * below stands in for render/vtmusic.c, which needs audio.device. */
+static int mus_calls, mus_n, mus_closes;
+static vt_note mus_notes[VT_MUSIC_NOTES];
+void vtmusic_play(const vt_note *notes, int n, int background);
+void vtmusic_close(void);
+void vtmusic_play(const vt_note *notes, int n, int background)
+{
+    (void)background;
+    mus_calls++;
+    if (n > VT_MUSIC_NOTES)
+        n = VT_MUSIC_NOTES;
+    memcpy(mus_notes, notes, sizeof(vt_note) * (size_t)n);
+    mus_n = n;
+}
+void vtmusic_close(void) { mus_closes++; }
+
+static void ansi_music_written_to_a_console_window_reaches_the_player(void)
+{
+    static const char s[] = "\x1b[MT120 L4 O3 C\x0e";
+    vt_callbacks cb;
+    int x, y;
+    memset(&dw, 0, sizeof dw);
+    gf_open(COLS * CW, ROWS * CH, CW, CH, 6);
+    vtwin_init(&dw, &dhost, 0);
+    vtwin_callbacks(&cb);
+    CHECK(cb.music != 0);
+    term = vt_new(COLS, ROWS, 100, &cb, &dw);
+    vt_set_personality(term, VT_PCANSI);
+    dw.t = term;
+    dw.win = gf_window();
+    vr_init(&dw.r, gf_window(), gf_font(), term, VT_ENC_LATIN1);
+    mus_calls = mus_n = 0;
+    vtwin_write(&dw, (const vt_u8 *)s, (long)sizeof s - 1);
+    CHECK_INT(mus_calls, 1);
+    CHECK_INT(mus_n, 1);
+    CHECK_INT(mus_notes[0].chz, 26163);
+    CHECK_INT(mus_notes[0].ms, 500);
+    CHECK_INT(mus_notes[0].on_ms, 437);
+    CHECK_INT(vt_note_period(mus_notes[0].chz, 16), 847);
+    CHECK_STR(h_screen(term), "");
+    vt_cursor(term, &x, &y);
+    CHECK_INT(x, 0);
+    drag_close();
+}
+
 int main(void)
 {
     a_pasted_line_break_reaches_the_program_as_one_return();
@@ -1974,6 +2021,7 @@ int main(void)
     an_outline_glyph_uses_the_shade_pens_a_palette_has_and_the_mask_when_none();
     selection_of_a_renderer_not_yet_initialised_is_none_and_reads_no_terminal();
     a_drag_ends_when_the_left_button_is_up_or_the_window_goes_inactive();
+    ansi_music_written_to_a_console_window_reaches_the_player();
     printf("render: %d checks, %d failures\n", h_checks, h_failures);
     return h_failures ? 1 : 0;
 }

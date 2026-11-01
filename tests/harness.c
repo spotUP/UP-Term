@@ -47,6 +47,18 @@ void h_reply_clear(void)
     h_reply[0] = 0;
 }
 
+int h_music_calls, h_music_bg, h_note_n;
+vt_note h_notes[H_NOTES_MAX];
+
+static void cb_music(void *user, const vt_note *notes, int n, int background)
+{
+    (void)user;
+    h_music_calls++;
+    h_music_bg = background;
+    while (n-- > 0 && h_note_n < H_NOTES_MAX)
+        h_notes[h_note_n++] = *notes++;
+}
+
 vt_term *h_new(int cols, int rows, enum vt_personality p)
 {
     vt_callbacks cb;
@@ -57,6 +69,7 @@ vt_term *h_new(int cols, int rows, enum vt_personality p)
     cb.reply = cb_reply;
     cb.bell = cb_bell;
     cb.layout = cb_layout;
+    cb.music = cb_music;
     t = vt_new(cols, rows, 100, &cb, 0);
     if (!t) {
         printf("vt_new failed\n");
@@ -65,6 +78,7 @@ vt_term *h_new(int cols, int rows, enum vt_personality p)
     vt_set_personality(t, p);
     h_reply_clear();
     h_damage_calls = h_scroll_calls = h_bells = 0;
+    h_music_calls = h_music_bg = h_note_n = 0;
     return t;
 }
 
