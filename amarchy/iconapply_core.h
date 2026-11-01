@@ -18,7 +18,10 @@
 
 #define IA_BACKUP_DIR "SYS:Storage/Icons/Amarchy"
 #define IA_MANIFEST   IA_BACKUP_DIR "/manifest"
-#define IA_DAT        "UP-Term:Amarchy/Icons/lucide.dat"
+#define IA_DAT        "UP-Term:Amarchy/Icons/lucide.dat"       /* Filled: Phosphor Fill, the default */
+#define IA_DAT_OUTLINE "UP-Term:Amarchy/Icons/outline.dat"     /* Outline: Lucide */
+/* the dat path for the icon-style value ("outline" picks IA_DAT_OUTLINE; "filled", NULL and unknown values pick IA_DAT) */
+const char *ia_dat_for_style(const char *style);
 #define IA_MAXPATH    160
 /* manifest lines: defaults (12) + table path rows + the all-volume walk; a full manifest skips the write */
 #define IA_MAXENT     512

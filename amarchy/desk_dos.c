@@ -454,11 +454,12 @@ unsigned long desk_dos_flat_writes;
  * manifest is a no-op, so the first sync after a start with flat off costs nothing. Counters are the sentinel. */
 unsigned long desk_dos_icons_apply, desk_dos_icons_restore;
 
-static void dk_icons_sync(int on)
+static void dk_icons_sync(int on, int outline)
 {
     static int last = -1;
-    if (on == last) return;
-    last = on;
+    int state = desk_icons_state(on, outline);
+    if (state == last) return;                 /* a change of the icon style while on runs APPLY again: it reads the pref itself */
+    last = state;
     if (on) {
         desk_dos_icons_apply++;
         pl_start(PL_BIN_DIR "/amarchy-icons APPLY", PL_BIN_DIR "/amarchy-icons", 16384, "amarchy-icons");     /* its $STACK cookie (rule 6) */
@@ -478,7 +479,7 @@ static void dk_flat_sync_with(int changed_only)
     amconf_load(&ap);
     flat = amconf_flat_index(&ap, AM_FLAT);
     gad = amconf_flat_index(&ap, AM_FLATGAD);
-    dk_icons_sync(flat || gad);
+    dk_icons_sync(flat || gad, amconf_icon_outline(&ap));
     Forbid();
     r = (flatshared *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
     if (r && flat_check(&r->st, sizeof r->st) == FLAT_OK) {

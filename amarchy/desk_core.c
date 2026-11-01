@@ -158,6 +158,11 @@ void desk_flat_glyph_pens(unsigned char *text, unsigned char *line, unsigned cha
 
 unsigned long desk_flat_state_calls;
 
+int desk_icons_state(int on, int outline)
+{
+    return on ? (outline ? 2 : 1) : 0;
+}
+
 void desk_flat_state(int flat, int gadgets, flat_state *s)
 {
     unsigned char t, l, b;

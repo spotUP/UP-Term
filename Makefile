@@ -58,7 +58,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
            tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_telnet.c tests/test_upagent.c tests/test_complete.c tests/test_winmem.c tests/test_sbpack.c tests/test_hl.c tests/test_md.c \
            tests/claude_load.c tests/claude_vol.c tests/claude_screen.c tests/pi_stub.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_pi_llm.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c tests/test_emoji.c tests/test_waitset.c tests/test_brk.c tests/test_sh_pipe.c tests/test_sh_ixargv.c tests/test_sh_own.c tests/test_sh_jobgone.c tests/test_histfile.c tests/test_pens.c tests/test_proc.c tests/test_pty_name.c tests/test_bmsg.c tests/test_qmark.c tests/test_ttyown.c tests/test_closeeof.c tests/test_upassign.c tests/test_bigvol.c tests/test_fssm.c tests/test_clips.c tests/test_shot_core.c tests/test_win.c tests/test_tile.c
 
-.PHONY: symbolsnerd phosphor lucide-dat screennotify jbmono wasabi wasabi-clean nas-deploy nas-deploy-dry bebbossh bebbossh-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
+.PHONY: symbolsnerd phosphor lucide lucide-dat screennotify jbmono wasabi wasabi-clean nas-deploy nas-deploy-dry bebbossh bebbossh-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
 
 # ONLY=desk the native desktop theme core: palette/pointer/font/wbpattern prefs bytes, darker tone, readability guard, targets and marker (tests/test_desk.c)
 # ONLY=fssm a device node's startup is read as a FileSysStartupMsg only when it is one (tests/test_fssm.c)
@@ -416,6 +416,16 @@ PHOSPHOR_TGZ := $(BUILD)/phosphor/web-$(PHOSPHOR_VER).tgz
 PHOSPHOR_TTF := $(BUILD)/phosphor/Phosphor-Fill.ttf
 PHOSPHOR_CP := $(BUILD)/phosphor/codepoints.json
 LUCIDE_DAT := dist/Amarchy/Icons/lucide.dat
+OUTLINE_DAT := dist/Amarchy/Icons/outline.dat
+# Outline icon style (the second set, pref icon-style = outline): lucide-static 1.66.0 from the npm registry, ISC; tarball
+# fetched once into build/lucide/, all SHA-256 checked, lucide.ttf + codepoints.json extracted. LUCIDE_VER= another release
+# (with LUCIDE_SHA256, LUCIDE_TTF_SHA256, LUCIDE_CODEPOINTS_SHA256).
+LUCIDE_VER ?= 1.66.0
+LUCIDE_SHA256 ?= 6a1debc19076123ece73f6729a9643ac90aab9c9db15f7c16debf72a9a02a82a
+LUCIDE_TTF_SHA256 ?= c6355db6e4f0834f62193f9effde900dab785c5c18877cf95cd1a44fa62fa8d5
+LUCIDE_CODEPOINTS_SHA256 ?= 7d6401da27c94468f2b5a2672b2826d6a041a3432b7d9ca6ca609ab5541b77b7
+LUCIDE_TGZ := $(BUILD)/lucide/lucide-static-$(LUCIDE_VER).tgz
+LUCIDE_TTF := $(BUILD)/lucide/lucide.ttf
 $(PHOSPHOR_TGZ):
 	@mkdir -p $(BUILD)/phosphor
 	curl -sSfL -o $@.tmp https://registry.npmjs.org/@phosphor-icons/web/-/web-$(PHOSPHOR_VER).tgz
@@ -428,9 +438,23 @@ $(PHOSPHOR_TTF): $(PHOSPHOR_TGZ)
 $(PHOSPHOR_CP): $(PHOSPHOR_TTF) tools/phosphor_codepoints.py
 	python3 -I tools/phosphor_codepoints.py $(BUILD)/phosphor/style.css $@
 phosphor: $(PHOSPHOR_TTF) $(PHOSPHOR_CP)
-$(LUCIDE_DAT): tools/gen_lucide_icons.py tools/gen_menu_icons.py tools/gen_emoji.py tools/mkicon.py dist/lucide-icons $(PHOSPHOR_TTF) $(PHOSPHOR_CP)
-	python3 tools/gen_lucide_icons.py dist/lucide-icons $(PHOSPHOR_TTF) $@
-lucide-dat: $(LUCIDE_DAT)
+# one generator run emits both files: the Filled set (default) and the Outline set (make 3.81 has no grouped targets:
+# the Outline file hangs off the Filled one, and a missing Outline file forces the generator again)
+$(LUCIDE_DAT): tools/gen_lucide_icons.py tools/gen_menu_icons.py tools/gen_emoji.py tools/mkicon.py dist/lucide-icons dist/lucide-icons-outline $(PHOSPHOR_TTF) $(PHOSPHOR_CP) $(LUCIDE_TTF)
+	python3 tools/gen_lucide_icons.py dist/lucide-icons $(PHOSPHOR_TTF) $(LUCIDE_DAT) dist/lucide-icons-outline $(LUCIDE_TTF) $(OUTLINE_DAT)
+$(OUTLINE_DAT): $(LUCIDE_DAT)
+	@test -f $@ || { rm -f $(LUCIDE_DAT); $(MAKE) $(LUCIDE_DAT); }
+lucide-dat: $(LUCIDE_DAT) $(OUTLINE_DAT)
+$(LUCIDE_TGZ):
+	@mkdir -p $(BUILD)/lucide
+	curl -sSfL -o $@.tmp https://registry.npmjs.org/lucide-static/-/lucide-static-$(LUCIDE_VER).tgz
+	echo "$(LUCIDE_SHA256)  $@.tmp" | shasum -a 256 -c -
+	mv $@.tmp $@
+$(LUCIDE_TTF): $(LUCIDE_TGZ)
+	tar -xzmf $(LUCIDE_TGZ) -C $(BUILD)/lucide --strip-components=2 package/font/lucide.ttf package/font/codepoints.json
+	echo "$(LUCIDE_TTF_SHA256)  $@" | shasum -a 256 -c -
+	echo "$(LUCIDE_CODEPOINTS_SHA256)  $(BUILD)/lucide/codepoints.json" | shasum -a 256 -c -
+lucide: $(LUCIDE_TTF)
 
 # screennotify.library 1.0 (Stefan Becker, Aminet util/libs/ScreenNotify10.lha): the archive fetched
 # once into build/screennotify/, both SHA-256 checked, the library extracted. Its licence forbids
@@ -1713,7 +1737,7 @@ dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-dopus dist-uhc $(
 # every archive of dist/packages.txt, and the source archive
 # the base archive build/up-term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
 # Python, Claude and amiga-pi are archives of their own (dist/packages.txt, kit-split plan)
-dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/amarchy-icons $(BUILD)/amiga/AmTile bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(SYMBOLS_TTF) $(LUCIDE_DAT) $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV)
+dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/amarchy-icons $(BUILD)/amiga/AmTile bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(SYMBOLS_TTF) $(LUCIDE_DAT) $(OUTLINE_DAT) $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV)
 	@# the ports kit is checked before the kit drawer is wiped: a missing kit left no build/dist/up-term
 	$(call PORTS_KIT_FRESH,dist)
 	rm -rf $(KIT) && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
@@ -1737,7 +1761,7 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	@# the Omarchy colour themes of the drawn Amarchy menu: install.dos copies this drawer to UP-Term:Amarchy/Themes
 	rm -rf $(KIT)/Files/amarchy-themes && cp -R dist/amarchy-themes $(KIT)/Files/amarchy-themes
 	@# the icon images of the flat Workbench (Amarchy/Icons/lucide.dat, file name kept) with the Phosphor licence and source note
-	rm -rf $(KIT)/Files/lucide $(KIT)/Files/phosphor && mkdir -p $(KIT)/Files/lucide $(KIT)/Files/phosphor && cp $(LUCIDE_DAT) $(KIT)/Files/lucide/ && cp dist/phosphor/LICENSE dist/phosphor/SOURCE.txt $(KIT)/Files/phosphor/
+	rm -rf $(KIT)/Files/lucide $(KIT)/Files/phosphor && mkdir -p $(KIT)/Files/lucide $(KIT)/Files/phosphor && cp $(LUCIDE_DAT) $(OUTLINE_DAT) dist/lucide/LICENSE dist/lucide/SOURCE.txt $(KIT)/Files/lucide/ && cp dist/phosphor/LICENSE dist/phosphor/SOURCE.txt $(KIT)/Files/phosphor/
 	rm -rf $(KIT)/Files/coreutils && mkdir -p $(KIT)/Files/coreutils
 	cp -R dist/gg/coreutils-5.2.1/bin dist/gg/coreutils-5.2.1/COPYING dist/gg/coreutils-5.2.1/SOURCE.txt $(KIT)/Files/coreutils/
 	@# the ports (copy-userland: bin; userland: share, etc, licenses) and

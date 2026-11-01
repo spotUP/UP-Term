@@ -89,7 +89,7 @@ static size_t w32(uint8_t *p, uint32_t v) { w16(p, v >> 16); w16(p + 2, v & 0xFF
 
 #define NDAT 8
 /* a lucide.dat with the six defaults and two table paths (sorted by strcmp), variants 32x32 and 32x16, depth 6 */
-static size_t make_dat(uint8_t *d)
+static size_t make_dat(uint8_t *d, unsigned bias)
 {
     static const char *const nm[NDAT] = { "SYS:System", "SYS:System/Shell", "def_RAM", "def_disk", "def_drawer", "def_project", "def_tool", "def_trashcan" };
     size_t pos = 4, sz0 = 6 * 32 * 4, sz1 = 6 * 16 * 4, rec = 4 + 12 + 8 + NDAT * 52, i, k;
@@ -102,7 +102,7 @@ static size_t make_dat(uint8_t *d)
         memcpy(d + pos, nm[k], strlen(nm[k]));
         w32(d + pos + 48, (uint32_t)base);
         pos += 52;
-        for (i = 0; i < 2 * (sz0 + sz1); i++) d[base + i] = (uint8_t)(0x20 + k * 8 + (i < 2 * sz0 ? 0 : 1));
+        for (i = 0; i < 2 * (sz0 + sz1); i++) d[base + i] = (uint8_t)(0x20 + bias + k * 8 + (i < 2 * sz0 ? 0 : 1));
     }
     return rec + NDAT * 2 * (sz0 + sz1);
 }
@@ -110,7 +110,8 @@ static size_t make_dat(uint8_t *d)
 static uint8_t g_dat[IA_FILECAP], g_tool[IA_FILECAP], g_drawer[IA_FILECAP];
 static long g_tool_n, g_drawer_n;
 static uint8_t g_cur[IA_FILECAP], g_out[IA_FILECAP], g_bak[IA_FILECAP];
-static li_dat g_d;
+static li_dat g_d, g_d2;            /* the Filled set and the Outline set (different images, same names) */
+static uint8_t g_dat2[IA_FILECAP];
 
 static void setup(mfs *s, ia_ctx *c, int variant)
 {
@@ -225,6 +226,76 @@ static void test_flow(void)
     nbak = 0;
     for (i = 0; i < NFILES; i++) if (s.f[i].used && strstr(s.f[i].path, "SYS:Storage/Icons/Amarchy/") == s.f[i].path) nbak++;
     CI("backup files removed", nbak, 0);
+    mfs_free(&s);
+}
+
+/* s28: the icon style. Filled APPLY, then APPLY with the Outline dat swaps the images but keeps the backup of the ORIGINALS, and RESTORE
+ * after the switch gives the original bytes back (the backup is never of the other set). */
+static void test_style(void)
+{
+    mfs s;
+    ia_ctx c;
+    char bp[IA_MAXPATH + 40], path[IA_MAXPATH];
+    const char *match;
+    uint8_t filled[IA_FILECAP];
+    long fn;
+    int i, ok, nbak = 0;
+    mf *m;
+
+    CK("style helper: outline picks outline.dat", strcmp(ia_dat_for_style("outline"), IA_DAT_OUTLINE) == 0);
+    CK("style helper: filled, missing and unknown pick lucide.dat", strcmp(ia_dat_for_style("filled"), IA_DAT) == 0 &&
+       strcmp(ia_dat_for_style(NULL), IA_DAT) == 0 && strcmp(ia_dat_for_style("bogus"), IA_DAT) == 0);
+    CK("the two dat names differ", strcmp(IA_DAT, IA_DAT_OUTLINE) != 0);
+
+    setup(&s, &c, 0);
+    CI("filled apply writes twelve", ia_apply(&c), 12);
+    m = mf_find(&s, "ENVARC:Sys/def_tool.info");
+    fn = m ? (long)m->len : 0;
+    if (m) memcpy(filled, m->d, m->len);
+    c.dat = &g_d2;
+    c.skipped_done = 0;
+    CI("outline apply rewrites all twelve", ia_apply(&c), 12);
+    CI("none skipped as done", (int)c.skipped_done, 0);
+    m = mf_find(&s, "ENVARC:Sys/def_tool.info");
+    CK("the tool icon now differs from the Filled one", m && ((long)m->len != fn || memcmp(m->d, filled, (size_t)fn) != 0));
+    CK("and from the original", m && !same(&s, "ENVARC:Sys/def_tool.info", g_tool, g_tool_n));
+    CK("backup of the tool icon is still the ORIGINAL", li_backup_path("ENVARC:Sys/def_tool.info", bp, sizeof bp) == 0 && same(&s, bp, g_tool, g_tool_n));
+    CK("backup of the ENV drawer is still the original", li_backup_path("ENV:Sys/def_drawer.info", bp, sizeof bp) == 0 && same(&s, bp, g_drawer, g_drawer_n));
+    for (i = 0; i < NFILES; i++) if (s.f[i].used && strstr(s.f[i].path, "SYS:Storage/Icons/Amarchy/") == s.f[i].path && !strstr(s.f[i].path, "manifest")) nbak++;
+    CI("still six backups, none of a set", nbak, 6);
+    {
+        int w0 = s.writes;
+        CI("a second outline apply writes nothing", ia_apply(&c), 0);
+        CI("it is skipped as done", (int)c.skipped_done, 12);
+        CI("no write", s.writes, w0);
+    }
+    c.dat = &g_d;
+    CI("back to filled rewrites twelve again", ia_apply(&c), 12);
+    CK("filled image is back byte for byte", (m = mf_find(&s, "ENVARC:Sys/def_tool.info")) != NULL && (long)m->len == fn && memcmp(m->d, filled, (size_t)fn) == 0);
+    c.dat = &g_d2;
+    ia_apply(&c);
+    CI("restore after the switch restores all", ia_restore(&c), 12);
+    ok = 1;
+    for (i = 0; ia_target(i, path, sizeof path, &match); i++) {
+        int k = i % 6;
+        if (k == 1 || k == 2 || k == 5) ok &= same(&s, path, k == 1 ? g_drawer : g_tool, k == 1 ? g_drawer_n : g_tool_n);
+        else ok &= mf_find(&s, path) == NULL;
+    }
+    CK("restore after the switch gives the original bytes", ok);
+    mfs_free(&s);
+
+    /* a walked file keeps its own line when the set changes: the volume-path skip applies only to files WITHOUT a line */
+    setup(&s, &c, 0);
+    mf_put(&s, "Work:Games/Foo.info", g_drawer, (size_t)g_drawer_n);
+    ia_walk_begin(&c);
+    ia_walk_file(&c, "Work:Games/Foo.info", 0, 0);
+    c.dat = &g_d2;
+    c.written = 0;
+    CI("walk visit after the switch is not skipped as done", ia_walk_file(&c, "Work:Games/Foo.info", 0, 0), IA_DO_FALLBACK);
+    CI("and rewrites the file", (int)c.written, 1);
+    CI("walk visit again is idempotent", ia_walk_file(&c, "Work:Games/Foo.info", 0, 0), IA_DO_SKIP_OTHER);
+    ia_restore(&c);
+    CK("restore puts the walked original back", same(&s, "Work:Games/Foo.info", g_drawer, g_drawer_n));
     mfs_free(&s);
 }
 
@@ -457,9 +528,11 @@ void suite_iconapply(void)
     g_tool_n = slurp("tests/data/icons/os322-tool.info", g_tool, IA_FILECAP);
     g_drawer_n = slurp("tests/data/icons/os322-drawer.info", g_drawer, IA_FILECAP);
     CK("fixtures read", g_tool_n > 0 && g_drawer_n > 0);
-    dn = (long)make_dat(g_dat);
+    dn = (long)make_dat(g_dat, 0);
     CI("dat opens", li_dat_open(g_dat, (size_t)dn, &g_d), 0);
+    CI("outline dat opens", li_dat_open(g_dat2, (size_t)make_dat(g_dat2, 0x40), &g_d2), 0);
     test_pure();
+    test_style();
     test_flow();
     test_absent();
     test_paths();

@@ -57,6 +57,8 @@ def main():
         c.run('MakeDir VTCX:Apps/Amarchy')
         c.run('MakeDir VTCX:Apps/Amarchy/Icons')
         ami.put(os.path.join(HERE, '..', '..', 'dist', 'Amarchy', 'Icons', 'lucide.dat'), 'UP-Term:Amarchy/Icons/lucide.dat')
+    if '--outline' in sys.argv and ami.read_file('UP-Term:Amarchy/Icons/outline.dat') is None:
+        ami.put(os.path.join(HERE, '..', '..', 'dist', 'Amarchy', 'Icons', 'outline.dat'), 'UP-Term:Amarchy/Icons/outline.dat')
     ami.put(os.path.join(HERE, '..', '..', 'build', 'dist', 'up-term', 'Files', 'userland', 'bin', 'md5sum'), 'RAM:md5sum')
     c.run('Protect RAM:md5sum +e')
     ami.put(os.path.join(HERE, '..', '..', 'build', 'amiga', 'amarchy-icons'), 'RAM:amarchy-icons')
@@ -66,6 +68,16 @@ def main():
     print('[INFO] APPLY rc %d: %s' % (rc, out.strip()))
     mid = snapshot(files)
     print('[INFO] changed by APPLY: %d' % sum(1 for f in before if before[f] != mid.get(f)))
+    if '--outline' in sys.argv:   # the Icon style pref set to Outline, then the same APPLY the desk trigger runs on a style change
+        c.run('MakeDir ENV:Amarchy')
+        pf = os.path.join(os.environ.get('TMPDIR', '/tmp'), 'icon-style-prefs')
+        open(pf, 'w').write('[profile default]\nicon-style = outline\n')
+        ami.put(pf, 'ENV:Amarchy/prefs')
+        rc, out = c.run('RAM:amarchy-icons APPLY', 300)
+        print('[INFO] APPLY (Outline) rc %d: %s' % (rc, out.strip()))
+        sty = snapshot(files)
+        print('[INFO] Outline differs from Filled: %d, from the originals: %d, of %d' % (
+            sum(1 for f in before if sty.get(f) != mid.get(f)), sum(1 for f in before if sty.get(f) != before[f]), len(before)))
     rc, out = c.run('RAM:amarchy-icons RESTORE', 300)
     print('[INFO] RESTORE rc %d: %s' % (rc, out.strip()))
     after = snapshot(files)

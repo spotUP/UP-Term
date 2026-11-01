@@ -203,7 +203,7 @@ static int apply_one(ia_ctx *c, const char *path, const char *match)
 {
     char bpath[IA_MAXPATH + 40];
     long n = c->io->read(c->io->ctx, path, c->cur, IA_FILECAP);
-    int absent = 0, e_i;
+    int absent = 0, e_i, own;
     li_file src, wr;
     li_edit ed;
     li_image nrm, sel;
@@ -218,19 +218,25 @@ static int apply_one(ia_ctx *c, const char *path, const char *match)
     } else if (n <= 0) { c->skipped_io++; return 0; }
     if (li_parse(c->cur, (size_t)n, &src) != 0) { c->skipped_bad++; return 0; }
     e_i = ia_man_find(&c->man, path);
-    if (!absent && e_i >= 0 && ia_imgcrc(&src) == c->man.e[e_i].wcrc) { c->skipped_done++; return 0; }
+    own = !absent && e_i >= 0 && ia_imgcrc(&src) == c->man.e[e_i].wcrc;     /* carries an image we wrote: done, or the other icon set */
     if (li_dat_find(c->dat, match, c->variant, &nrm, &sel) != 0) { c->skipped_nodat++; return 0; }
     if (e_i < 0 && c->man.n >= IA_MAXENT) { c->skipped_io++; return 0; }    /* no manifest line, no write: RESTORE must cover it */
     li_edit_apply(&ed, &src, &nrm, &sel);
     outn = li_splice(&src, &ed, c->out, IA_FILECAP);
     if (!outn || li_parse(c->out, outn, &wr) != 0) { c->skipped_bad++; return 0; }
+    if (own && ia_imgcrc(&wr) == c->man.e[e_i].wcrc) { c->skipped_done++; return 0; }
 
     memset(&ne, 0, sizeof ne);
     strcpy(ne.path, path);
-    ne.absent = absent;
-    ne.ocrc = absent ? 0 : ia_crc32(c->cur, (size_t)n);
+    if (own) {                       /* the set changed: the backup stays the ORIGINAL, only the written-image crc moves on */
+        ne.absent = c->man.e[e_i].absent;
+        ne.ocrc = c->man.e[e_i].ocrc;
+    } else {
+        ne.absent = absent;
+        ne.ocrc = absent ? 0 : ia_crc32(c->cur, (size_t)n);
+    }
     ne.wcrc = ia_imgcrc(&wr);
-    if (!absent) {
+    if (!absent && !own) {
         if (li_backup_path(path, bpath, sizeof bpath) != 0 || c->io->write(c->io->ctx, bpath, c->cur, (size_t)n) != 0) {
             c->skipped_io++;
             return 0;
@@ -242,12 +248,17 @@ static int apply_one(ia_ctx *c, const char *path, const char *match)
     if (c->io->write(c->io->ctx, path, c->out, outn) != 0) {
         /* the manifest lists only icons Amarchy replaced: a failed write takes its line (and a backup nothing refers to) back */
         man_rollback(c, path, e_i >= 0 ? &prev : NULL);
-        if (e_i < 0 && !absent) c->io->remove(c->io->ctx, bpath);
+        if (e_i < 0 && !absent && !own) c->io->remove(c->io->ctx, bpath);
         c->skipped_io++;
         return 0;
     }
     c->written++;
     return 1;
+}
+
+const char *ia_dat_for_style(const char *style)
+{
+    return style && strcmp(style, "outline") == 0 ? IA_DAT_OUTLINE : IA_DAT;
 }
 
 void ia_man_count(const ia_manifest *m, const li_dat *dat, ia_man_stats *st)
@@ -327,7 +338,8 @@ int ia_walk_file(ia_ctx *c, const char *path, int vol_readonly, unsigned long pr
     li_image nrm, sel;
     long n;
     size_t bl;
-    int i, d;
+    int i, d, own;
+    unsigned done0;
 
     for (p = path; *p; p++)
         if (*p == '/' || *p == ':') name = p + 1;
@@ -340,23 +352,27 @@ int ia_walk_file(ia_ctx *c, const char *path, int vol_readonly, unsigned long pr
     n = c->io->read(c->io->ctx, path, c->cur, IA_FILECAP);
     if (n <= 0) { c->skipped_io++; return IA_DO_SKIP_OTHER; }
     if (li_parse(c->cur, (size_t)n, &src) != 0) { c->skipped_bad++; return IA_DO_SKIP_OTHER; }
-    for (i = 0; i < c->man.n; i++)                       /* already carries a icon set image we wrote (ENVARC:Sys seen again by its volume path) */
-        if (ia_imgcrc(&src) == c->man.e[i].wcrc) { c->skipped_done++; return IA_DO_SKIP_OTHER; }
+    own = ia_man_find(&c->man, path) >= 0;
+    if (!own)
+        for (i = 0; i < c->man.n; i++)                   /* already carries a icon set image we wrote (ENVARC:Sys seen again by its volume path) */
+            if (ia_imgcrc(&src) == c->man.e[i].wcrc) { c->skipped_done++; return IA_DO_SKIP_OTHER; }
     bl = strlen(name) - 5;                               /* ".info" */
     if (bl >= sizeof base) { c->skipped_bad++; return IA_DO_SKIP_OTHER; }
     memcpy(base, name, bl);
     base[bl] = 0;
     e.dotype = ia_info_type(c->cur, (size_t)n);
     e.specific = li_dat_find(c->dat, base, c->variant, &nrm, &sel) == 0;
-    d = ia_walk_count(c, ia_walk_decide(&e));
+    d = ia_walk_decide(&e);
     if (d == IA_DO_FALLBACK) {
         match = ia_walk_fallback_match(e.dotype);
-        if (!match) { c->skipped_nodat++; return d; }
+        if (!match) { ia_walk_count(c, d); c->skipped_nodat++; return d; }
     } else {
         match = base;
     }
+    done0 = c->skipped_done;
     apply_one(c, path, match);
-    return d;
+    if (own && c->skipped_done != done0) return IA_DO_SKIP_OTHER;   /* our own line and already this set: not decided again */
+    return ia_walk_count(c, d);
 }
 
 void ia_walk_begin(ia_ctx *c) { man_load(c); }

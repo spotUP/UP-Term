@@ -24,10 +24,10 @@ MD5 = "UP-Term:bin/md5sum"
 # Files the kit copies from dist/ rather than build/amiga, checked like built programs. keymap is checked whole:
 # the user's own rows live in ENVARC:up-term/keymap.user, so the installed keymap must equal dist/keymap exactly.
 DIST_SOURCES = ("keymap",)
-# Data the kit lays down, by install.dos source name -> file in dist/. lucide.dat is built into dist/Amarchy
+# Data the kit lays down, by install.dos source name -> file in dist/. lucide.dat and outline.dat are built into dist/Amarchy
 # (make lucide-dat); bar.conf is the user's once it exists (install.dos copies it only when absent), so it is
 # checked for existence only (USER_OWNED); the theme drawer (`Copy amarchy-themes <dir> ALL`) is DATA_DRAWERS.
-DATA_FILES = {"lucide/lucide.dat": "Amarchy/Icons/lucide.dat", "bar.conf": "bar.conf"}
+DATA_FILES = {"lucide/lucide.dat": "Amarchy/Icons/lucide.dat", "lucide/outline.dat": "Amarchy/Icons/outline.dat", "bar.conf": "bar.conf"}
 DATA_DRAWERS = {"amarchy-themes": "amarchy-themes"}
 USER_OWNED = ("bar.conf",)
 

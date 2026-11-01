@@ -207,5 +207,32 @@ class Font(unittest.TestCase):
                 self.assertAlmostEqual(tall[y][x], (sq[2 * y][x] + sq[2 * y + 1][x]) / 2, delta=0.08)
 
 
+LUCIDE_TTF = ROOT / "build" / "lucide" / "lucide.ttf"
+
+
+@unittest.skipUnless(HAVE and (LUCIDE_TTF.exists() or os.environ.get("REQUIRE")), "make phosphor lucide first")
+class TwoSets(unittest.TestCase):
+    """One generator run emits both sets: Filled (Phosphor Fill, lucide.dat) and Outline (Lucide, outline.dat)."""
+
+    def test_one_run_writes_both_dats_with_the_same_layout_and_different_glyphs(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as d:
+            a, b = pathlib.Path(d) / "lucide.dat", pathlib.Path(d) / "outline.dat"
+            subprocess.run([sys.executable, str(ROOT / "tools" / "gen_lucide_icons.py"),
+                            str(ROOT / "dist" / "lucide-icons"), str(TTF), str(a),
+                            str(ROOT / "dist" / "lucide-icons-outline"), str(LUCIDE_TTF), str(b)],
+                           check=True, capture_output=True)
+            fa, fb = a.read_bytes(), b.read_bytes()
+        self.assertEqual(fa[:4], b"LUCI")
+        self.assertEqual(fb[:4], b"LUCI")
+        self.assertNotEqual(fa, fb)                                # the two sets differ
+        self.assertGreater(len(fb), 20000)
+
+    def test_a_partial_triple_is_refused(self):
+        import subprocess
+        r = subprocess.run([sys.executable, str(ROOT / "tools" / "gen_lucide_icons.py"), "a", "b"], capture_output=True)
+        self.assertNotEqual(r.returncode, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

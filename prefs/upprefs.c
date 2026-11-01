@@ -305,6 +305,7 @@ static int *int_of(struct app *a, int id)
     case PG_AM_FLAT: return &a->f.am_flat;
     case PG_AM_FLATGAD: return &a->f.am_flatgad;
     case PG_AM_FLATSIZE: return &a->f.am_flatsize;
+    case PG_AM_ICONSTYLE: return &a->f.am_iconstyle;
     case PG_BELL: return &a->f.bell;
     case PG_BOLD: return &a->f.bold;
     case PG_WHEEL: return &a->f.wheel;

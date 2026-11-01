@@ -410,13 +410,16 @@ class LucideDatShipped(unittest.TestCase):
         h = (ROOT / "amarchy/iconapply_core.h").read_text()
         self.assertIn('#define IA_DAT        "UP-Term:Amarchy/Icons/lucide.dat"', h)
         self.assertIn("Copy lucide/lucide.dat UP-Term:Amarchy/Icons CLONE QUIET", (ROOT / "dist/install.dos").read_text())
+        self.assertIn('#define IA_DAT_OUTLINE "UP-Term:Amarchy/Icons/outline.dat"', h)
+        self.assertIn("Copy lucide/outline.dat UP-Term:Amarchy/Icons CLONE QUIET", (ROOT / "dist/install.dos").read_text())
 
     def test_kit_lists_and_builds_lucide_dat(self):
         self.assertRegex((ROOT / "dist/parts.txt").read_text(), r"(?m)^userland\s+Files/lucide$")
         mk = (ROOT / "Makefile").read_text()
         base = re.search(r"(?m)^dist-base:([^\n]*)", mk).group(1)
         self.assertIn("$(LUCIDE_DAT)", base.split())
-        self.assertIn("cp $(LUCIDE_DAT) $(KIT)/Files/lucide/", mk)
+        self.assertIn("$(OUTLINE_DAT)", base.split())
+        self.assertIn("cp $(LUCIDE_DAT) $(OUTLINE_DAT) dist/lucide/LICENSE dist/lucide/SOURCE.txt $(KIT)/Files/lucide/", mk)
         self.assertIn("cp dist/phosphor/LICENSE dist/phosphor/SOURCE.txt $(KIT)/Files/phosphor/", mk)
 
 

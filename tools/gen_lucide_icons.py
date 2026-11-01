@@ -16,7 +16,8 @@ lucide.dat (big endian):
   record   for each variant in order: normal image planes, then selected image planes (depth planes, each height rows of
            width/16 words; pen 0 is transparent)
 
-usage: gen_lucide_icons.py <dist/lucide-icons> <Phosphor-Fill.ttf> <out lucide.dat>   (codepoints.json, the icon names, beside the font; make phosphor)"""
+usage: gen_lucide_icons.py (<table> <font.ttf> <out.dat>)...   one triple per set: Filled (lucide.dat, Phosphor Fill) and
+Outline (outline.dat, Lucide); codepoints.json, the icon names, beside each font (make phosphor, make lucide)"""
 import json
 import pathlib
 import re
@@ -144,15 +145,18 @@ def pack(key, icons, recs):
 
 
 def main():
-    if len(sys.argv) != 4:
+    args = sys.argv[1:]
+    if not args or len(args) % 3:
         raise SystemExit(__doc__)
-    key, icons, recs, _ = build(sys.argv[1], sys.argv[2])
-    data = pack(key, icons, recs)
-    tmp = pathlib.Path(sys.argv[3] + ".tmp")
-    tmp.parent.mkdir(parents=True, exist_ok=True)
-    tmp.write_bytes(data)
-    tmp.replace(sys.argv[3])
-    print("[OK] %d targets, %d icons, %d bytes in %s" % (len(key), len(icons), len(data), sys.argv[3]))
+    for i in range(0, len(args), 3):
+        table, ttf, dest = args[i:i + 3]
+        key, icons, recs, _ = build(table, ttf)
+        data = pack(key, icons, recs)
+        tmp = pathlib.Path(dest + ".tmp")
+        tmp.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_bytes(data)
+        tmp.replace(dest)
+        print("[OK] %d targets, %d icons, %d bytes in %s" % (len(key), len(icons), len(data), dest))
 
 
 if __name__ == "__main__":

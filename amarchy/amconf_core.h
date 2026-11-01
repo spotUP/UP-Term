@@ -33,6 +33,7 @@ enum {
     AM_FLAT,    /* flat-system-look: the flat window frame glyphs (amarchy-flat, off/on, default off) */
     AM_FLATGAD, /* flat-window-gadgets: the flat window gadgets (off/on, default off) */
     AM_FLATSIZE, /* flat-border-size: stock, thin (the window border and title size) */
+    AM_ICONSTYLE, /* icon-style: filled (default, Phosphor Fill) or outline (Lucide); the set amarchy-icons APPLY splices */
     AM_NKEYS
 };
 
@@ -65,6 +66,8 @@ int amconf_style(const am_prefs *p);
 int amconf_term_menu(const am_prefs *p);   /* UC_TERMMENU_* */
 /* the flat rows as their index into the value list (0 off / stock / line, 1 on / thin / block) */
 int amconf_flat_index(const am_prefs *p, int key);
+/* 1 when icon-style is "outline" (the Lucide set), 0 for "filled" and anything else */
+int amconf_icon_outline(const am_prefs *p);
 /* ai-agent as the raw word; empty -> the default "claude". handler/tabprog.h (tabprog_agent_tab) maps it to a tab */
 const char *amconf_agent(const am_prefs *p);
 /* shot-dir as the raw path; empty -> the default "RAM:Shots" */

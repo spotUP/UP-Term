@@ -1054,8 +1054,19 @@ static void test_desk_preview(void)
     CHECK(shown > 3);
 }
 
+/* s28: the icon applier re-runs when the set changes while flat is on, and not when nothing changed */
+static void test_desk_icons_state(void)
+{
+    CHECK_INT(desk_icons_state(0, 0), 0);
+    CHECK_INT(desk_icons_state(0, 1), 0);        /* flat off: originals, whatever the style */
+    CHECK_INT(desk_icons_state(1, 0), 1);
+    CHECK_INT(desk_icons_state(1, 1), 2);
+    CHECK(desk_icons_state(1, 0) != desk_icons_state(1, 1));
+}
+
 void suite_desk(void)
 {
+    test_desk_icons_state();
     test_desk_palette();
     test_desk_palette_flat();
     test_desk_live_baseline_ignores_menu();

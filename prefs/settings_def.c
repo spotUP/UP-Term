@@ -39,6 +39,7 @@ static const sd_value v_colors[] = { { "", "Not told" }, { "rgb", "Full colour (
                                      { "16", "16 colours" } };
 static const sd_value v_icons[] = { { "generic", "Generic" }, { "amiga", "Amiga" }, { "none", "None" } };
 static const sd_value v_flatsize[] = { { "stock", "Stock" }, { "thin", "Thin" } };
+static const sd_value v_iconstyle[] = { { "filled", "Filled" }, { "outline", "Outline" } };
 static const sd_value v_termmenu[] = { { "text", "Text" }, { "graphical", "Graphical" } };
 static const sd_value v_mode[] = { { "graphical", "Drawn" }, { "text", "Text" }, { "minimal", "Minimal" } };
 
@@ -211,6 +212,10 @@ const sd_setting sd_settings[SDI_COUNT] = {
       "Stock: the size of the system. Thin: slimmer window borders and title bars.",
       VALS(v_flatsize), "stock", SD_AMARCHY, SDF_AMSTR, AO(AM_FLATSIZE), UC_MAX_VALUE, NORANGE,
       PG_AM_FLATSIZE, 0, 0, 1, 0 },
+    { SDI_AM_ICONSTYLE, "icon-style", 0, PG_PAGE_FLAT, SD_CYCLE, "Icon st_yle",
+      "Filled: solid icons. Outline: thin lines. Applies at once; Restore undoes.",
+      VALS(v_iconstyle), "filled", SD_AMARCHY, SDF_AMSTR, AO(AM_ICONSTYLE), UC_MAX_VALUE, NORANGE,
+      PG_AM_ICONSTYLE, 0, 0, 1, 0 },
     { SDI_AM_FLATSTATUS, 0, 0, PG_PAGE_FLAT, SD_INFO, "Flat st_atus",
       "What amarchy-flat reports: on, off, held, absent. Read only.",
       NOVALS, "", SD_UPTERM, SDF_NONE, 0, 0, NORANGE, PG_AM_FLATSTATUS, 0, 0, 1, 0 },

@@ -23,6 +23,8 @@
 #include <proto/graphics.h>
 #include <graphics/gfxbase.h>
 #include "iconapply_core.h"
+#include "amconf_core.h"
+#include "amconf_dos.h"
 #include "iconpen_dos.h"
 #include "../tty/qmark.h"
 
@@ -191,10 +193,18 @@ static long io_dflt(void *ctx, const char *match, uint8_t *buf, size_t cap)
     return n > 0 ? n : -1;
 }
 
-/* lucide.dat whole into a fresh buffer (the images point into it); its length, 0 when missing or unreadable */
-static long load_dat(uint8_t **out)
+/* the icon set the icon-style pref names (Filled: lucide.dat, Outline: outline.dat); the pref is read from the Amarchy prefs files */
+static const char *dat_path(void)
 {
-    BPTR f = Open((STRPTR)IA_DAT, MODE_OLDFILE);
+    static am_prefs ap;
+    amconf_load(&ap);
+    return ia_dat_for_style(ap.val[AM_ICONSTYLE]);
+}
+
+/* the dat whole into a fresh buffer (the images point into it); its length, 0 when missing or unreadable */
+static long load_dat(uint8_t **out, const char *path)
+{
+    BPTR f = Open((STRPTR)path, MODE_OLDFILE);
     long n = 0;
     uint8_t *b;
     if (!f) return 0;
@@ -379,7 +389,7 @@ int main(void)
     if (cmd == IA_CMD_STATUS) {       /* nothing is resident: the counters live for one run, and the manifest is the state */
         static li_dat d;
         char line[160];
-        dn = load_dat(&dat);
+        dn = load_dat(&dat, dat_path());
         if (dn > 0 && li_dat_open(dat, (size_t)dn, &d) == 0) c->dat = &d;     /* without lucide.dat the table path rows count as walked */
         if (ia_status(c, line, sizeof line)) PutStr((STRPTR)line);
         if (ipd_status_line(line, sizeof line)) { PutStr((STRPTR)line); PutStr((STRPTR)"\n"); }   /* the shared icon pen holder (F14) */
@@ -393,9 +403,11 @@ int main(void)
     if (cmd == IA_CMD_APPLY) {
         static li_dat d;
         struct Screen *s;
-        dn = load_dat(&dat);
+        dn = load_dat(&dat, dat_path());
         if (dn <= 0 || li_dat_open(dat, (size_t)dn, &d) != 0) {
-            PutStr((STRPTR)"amarchy-icons: UP-Term:Amarchy/Icons/lucide.dat missing or bad\n");
+            PutStr((STRPTR)"amarchy-icons: ");
+            PutStr((STRPTR)dat_path());
+            PutStr((STRPTR)" missing or bad\n");
             rc = 10;
             goto out;
         }

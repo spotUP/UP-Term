@@ -54,6 +54,9 @@ void desk_flat_glyph_pens(unsigned char *text, unsigned char *line, unsigned cha
  * belong to the resident program and are left alone. desk_flat_state_calls counts calls (the reachability sentinel). */
 void desk_flat_state(int flat, int gadgets, flat_state *s);
 extern unsigned long desk_flat_state_calls;
+/* The icon applier's state: 0 originals (flat off), 1 Filled applied, 2 Outline applied. The desk re-runs amarchy-icons when it changes,
+ * so a switch of the icon style while flat is on applies the other set at once. */
+int desk_icons_state(int on, int outline);
 
 /* Pen plan (lucide icons L6): which screen pens the desktop uses beyond the DrawInfo pens, per screen depth (EHB counts as 5).
  * button = the flat button fill (DK_SELECTION), backdrop = the Workbench backdrop tone (DK_MUTED; WBPattern tiles are 3 planes,
