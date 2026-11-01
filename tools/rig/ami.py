@@ -37,7 +37,7 @@ there when the command started and is still there on the next look ends the EXEC
 owning task and buttons (also appended to build/rig<N>/requesters.log). It is never answered for the caller: the
 requester is the finding. The EXEC ends within wasabi's RUN_CHECK (10 s) of that. A timeout ERR names any requester open at that moment. UPTERM_REQUESTER_WATCH=0 turns the
 watch off for a run that opens requesters on purpose. `ami.py requesters` lists the open ones."""
-import contextlib, os, socket, struct, sys, time
+import contextlib, os, re, socket, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kitstamp
 import paths   # the one reader of UPTERM_RIG: rig 2's wasabid is on 1235
@@ -51,6 +51,41 @@ TOKEN = os.environ.get('AMI_TOKEN', paths.WASABI_KEY)
 
 NOPOS = -32768          # MOUSE: keep the pointer where it is
 TICKS = 50.0            # Amiga ticks per second (script waits)
+
+
+ASSIGN_SWITCHES = {'LIST', 'EXISTS', 'DISMOUNT', 'DEFER', 'PATH', 'ADD', 'REMOVE', 'VOLS', 'DIRS', 'DEVICES'}
+
+def assign_danger(text):
+    """AMI-ASSIGN-REMOVES: the offending line of `text` (a command, lines joined by newline or ';') when it is an
+    AmigaDOS Assign that REMOVES the assign it names: `Assign NAME:` with no target, `Assign NAME: LIST`,
+    `Assign NAME: REMOVE`, `Assign NAME: DISMOUNT` (the LIBS: assign vanished from the A1200 and the rigs this way).
+    Allowed: plain `Assign`, `Assign NAME: EXISTS`, `Assign NAME: <target> [ADD|PATH|DEFER]`, `Assign NAME: <target> REMOVE`
+    (that removes one path only). Case-insensitive, optional C: prefix. None when every line is safe."""
+    for line in re.split(r'[\n\r;]', text):
+        toks = [t.strip('"') for t in line.split() if not t.startswith(('>', '<'))]
+        if not toks or toks[0].lower() not in ('assign', 'c:assign'): continue
+        args = toks[1:]
+        name = next((t for t in args if t.endswith(':') and t.upper() not in ASSIGN_SWITCHES), None)
+        if name is None: continue
+        rest = [t for t in args if t is not name]
+        sw = {t.upper() for t in rest if t.upper() in ASSIGN_SWITCHES}
+        targets = [t for t in rest if t.upper() not in ASSIGN_SWITCHES]
+        if 'EXISTS' in sw or targets: continue
+        return line.strip()
+    return None
+
+
+def guard_assign(text):
+    """Refuse (SystemExit naming AMI-ASSIGN-REMOVES) a command that removes an assign, unless the environment variable
+    AMI_ALLOW_ASSIGN_REMOVE (set by `--allow-assign-remove "<reason>"`) carries a non-empty reason (printed)."""
+    bad = assign_danger(text)
+    if bad is None: return
+    why = os.environ.get('AMI_ALLOW_ASSIGN_REMOVE', '').strip()
+    if why:
+        sys.stderr.write('ami.py: assign removal allowed (AMI-ASSIGN-REMOVES): %s -- %s\n' % (bad, why)); return
+    raise SystemExit('ami.py: refused (AMI-ASSIGN-REMOVES): "%s" removes the assign it names (no target, LIST, REMOVE and '
+                     'DISMOUNT all do); read with `Assign NAME: EXISTS` or `List NAME: QUICK`, or pass '
+                     '--allow-assign-remove "<reason>"' % bad)
 
 
 class Gap(SystemExit):
@@ -517,6 +552,9 @@ def gate():
 def req(code, payload=b'', timeout=150):
     """One legacy operation, answered in the legacy shape. timeout: the connection's silence limit."""
     m = _m()
+    if code == 0x02: guard_assign(payload[2:].decode('latin-1'))
+    elif code == 0x08 and payload[:1] == bytes([4]): guard_assign(payload[1:].decode('latin-1'))
+    elif code == 0x04: guard_assign(payload[2 + struct.unpack('>H', payload[:2])[0]:].decode('latin-1'))
     paths.cap_fsuae_log()   # every rig script passes here: the FS-UAE log never outgrows paths.FSUAE_LOG_MAX
     if code != 0x01: gate()   # every command to a rig passes here too: VTC: is current before it runs
     with _conn(timeout, touch=code != 0x01) as c:   # a ping (rig.py status, the watchdog) is not use
@@ -653,6 +691,7 @@ def grab(box=None):
 
 def put(local, remote):
     # a file onto the Amiga, streamed from disk (wasabi's PUT carries 32-bit sizes: no parts)
+    with open(local, 'rb') as f: guard_assign(f.read().decode('latin-1'))   # a script is sent line by line too
     with _conn(600) as c:
         try: _m().do_put(c, local, remote, quiet=True)
         except _m().WasabiError as e: raise _err(e)
@@ -837,6 +876,16 @@ def require_target():
         raise SystemExit(2)
 
 
+def take_allow_assign_remove(argv):
+    """Strip `--allow-assign-remove "<reason>"` from argv into AMI_ALLOW_ASSIGN_REMOVE; the reason is required."""
+    if '--allow-assign-remove' not in argv: return argv
+    i = argv.index('--allow-assign-remove')
+    if i + 1 >= len(argv) or not argv[i + 1].strip() or argv[i + 1].startswith('--'):
+        raise SystemExit('ami.py: --allow-assign-remove needs a non-empty reason (AMI-ASSIGN-REMOVES)')
+    os.environ['AMI_ALLOW_ASSIGN_REMOVE'] = argv[i + 1]
+    return argv[:i] + argv[i + 2:]
+
+
 if __name__ == '__main__':
     require_target()
-    main(sys.argv[1:])
+    main(take_allow_assign_remove(sys.argv[1:]))
