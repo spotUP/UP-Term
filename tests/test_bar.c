@@ -656,8 +656,18 @@ static void test_bar_net_click_opens_panel(void)
     CHECK_INT(bar_net_cmd(cmd, 10, "replayeth", 1), 0);
 }
 
+/* BAR-FONT-MISMATCH: the bar height comes from the font the bar draws in (the screen font, 13 px on the A1200),
+ * not topaz 8: 13 rows of text plus 2, no empty band under the text. tests/test_bar_font.py pins the glue. */
+static void test_bar_height_follows_font(void)
+{
+    CHECK_INT(bar_height(13), 15);
+    CHECK_INT(bar_height(8), 10);
+    CHECK_INT(bar_height(0), 10);
+}
+
 void suite_bar(void)
 {
+    test_bar_height_follows_font();
     test_layout_groups();
     test_narrow_bar_drops_right_segments_by_priority();
     test_very_narrow_bar_clips_first_screen_without_overlap();

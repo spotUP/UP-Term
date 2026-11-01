@@ -114,6 +114,10 @@ struct Window *tw_open(struct Screen *scr, int x, int y, int w, int h, const cha
      * A1200 bar). The title stays the window's identity for the others (bar_usable, win_is_amarchy), so it is set
      * on the structure, which draws nothing. The caller's string must outlive the window. */
     win->Title = (UBYTE *)title;
+    /* BAR-FONT-MISMATCH: a new window's RastPort starts in topaz 8, not the screen font; callers size and measure
+     * (TextLength on the screen RastPort) with the screen font, so draw in it too: one font for measure and draw. */
+    if (scr->RastPort.Font)
+        SetFont(win->RPort, scr->RastPort.Font);
     win->UserPort = g_port;
     ModifyIDCMP(win, idcmp);
     g_wins++;

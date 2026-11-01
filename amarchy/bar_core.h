@@ -62,6 +62,9 @@ typedef struct bar {
     int cw;                     /* pixel width of one character, for the "+N" marker (bar.c sets it; default 8) */
 } bar;
 
+/* The bar window's height for a font of ysize rows (0 = unknown, topaz 8): the text rows plus a row above and below.
+ * The window is drawn in that same font (tw_open sets it), so the height and the drawn text agree. */
+int bar_height(int font_ysize);
 void bar_init(bar *b, int width, int pad, int gap);
 /* Appends a segment; its index, or -1 when full. */
 int bar_add(bar *b, int id, int side, const char *text, int tw);

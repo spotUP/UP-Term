@@ -476,7 +476,7 @@ int bar_open(const char *dir)
         return 0;
     }
     font = g_scr->RastPort.Font;
-    h = (font ? font->tf_YSize : 8) + 2;
+    h = bar_height(font ? font->tf_YSize : 0);
     bar_init(&g_bar, g_scr->Width, BAR_PAD, BAR_GAP);
     if (!g_conf_set)
         barconf_defaults(&g_conf);

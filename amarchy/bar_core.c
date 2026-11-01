@@ -689,3 +689,8 @@ const char *bar_act_node(int act)
     default: return 0;
     }
 }
+
+int bar_height(int font_ysize)
+{
+    return (font_ysize > 0 ? font_ysize : 8) + 2;
+}

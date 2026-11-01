@@ -256,6 +256,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = entry ]; then python3 tests/test_entry_stub.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = tab_bg ]; then python3 tests/test_tab_switch_bg.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = tab_bar ]; then python3 tests/test_tab_bar_redraw.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = bar ] || [ "$(ONLY)" = bar_font ]; then python3 tests/test_bar_font.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = qmark ]; then python3 -I tests/test_qmark_commands.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = deps ]; then python3 tests/test_host_deps.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ixemul_startfile ]; then python3 -I tests/test_ixemul_startfile.py; fi
