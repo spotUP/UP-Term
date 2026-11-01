@@ -463,7 +463,11 @@ T-A first because K19's signed values are used by K23, K29, K30, K34. Each
 task updates the conformance matrix and the kitty.c header comment
 ("Supported: ...") in its own commit.
 
-### Open owner decisions
+### Owner decisions (answered 2026-11-01)
+
+Owner picked the recommended option for D11, D12, D14 and D15 on
+2026-11-01. D10, D13 and D16 take the recommended default as stated
+below. Every decision is closed; T-B to T-H need no further input.
 
 - D10 t=s shared memory. Recommended: answer EBADF (no named shared
   memory on AmigaOS or in ixemul; clients fall back). Other: emulate
