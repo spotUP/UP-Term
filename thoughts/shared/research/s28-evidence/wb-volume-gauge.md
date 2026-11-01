@@ -31,3 +31,13 @@ Revert proof: with `return 0;` inserted right after `*save_out = -1;` in `desk_w
 # Rig result
 
 Not yet verified on a 3.2 rig that the gauge disappears from an open volume window after USE, nor the byte-identical RESTORE. See the handoff row.
+
+# Rig 12 3.2 check (2026-11-01, build 2cb78383, `--os 32`)
+
+Start state: ENV: and ENVARC:Sys/Workbench.prefs both 84 bytes, byte 73 = 0 (earlier editor save with byte 73 = 1 reset to 0 by copying), md5 cb431079bba5268a1061de7bd47b76b2.
+Driver: `put_flat_prefs(on)` + `pick()` from tools/rig/amarchy_desk_rig.py (drawn theme menu -> desk_dos_apply). Window probe: `ami.window('VTCX', prefix=True)` on a volume window opened with ARexx `WINDOW 'VTCX:' OPEN`.
+- Gauge shown (before): window has a `custom` gadget (50,61,19,81) in the left border = the volume gauge.
+- Flat ON: ENV:Sys/Workbench.prefs byte 73 = 1 (md5 e30c49d3...); T:amarchy-revert/wbgauge.prev = "0"; reopened volume window has NO `custom` gadget (gauge gone, text-verified). PASS.
+  ENVARC:Sys/Workbench.prefs stays byte 73 = 0, md5 unchanged (only the ENV: copy is written, as for the other desk files; persisting is the separate R1.10 step).
+- Flat OFF: byte 73 = 0 in ENV: and ENVARC:, both md5 cb431079... = start md5; wbgauge.prev removed; reopened volume window has the `custom` gauge gadget (50,61,19,81) again. PASS.
+Not checked visually (no screenshot taken); the gauge gadget presence is from the window's gadget list.
