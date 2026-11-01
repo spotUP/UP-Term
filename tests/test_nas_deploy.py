@@ -23,7 +23,7 @@ def test_dry_run_prints_rsync_and_ssh(tmp_path):
     assert r.returncode == 0, r.stderr
     rsync, ssh, _info = r.stdout.splitlines()
     assert rsync.startswith("rsync ") and "--exclude home" in rsync and "--delete" not in rsync
-    assert "admin@nas.example:/volume1/docker/claude-amiga/" in rsync and "ssh -p 2222" in rsync
+    assert "admin@nas.example:/volume1/docker/claude-amiga/" in rsync and "-p 2222" in rsync
     assert "tools/uptelnetd.py" in rsync
     assert "sudo docker compose build && sudo docker compose up -d" in ssh
 
@@ -75,3 +75,20 @@ def test_copy_list_covers_every_dockerfile_copy_source():
         assert d.local_path(s).exists()
     for extra in ("compose.yaml", "README.md", "skills"):
         assert extra in lst
+
+
+def test_ssh_never_falls_back_to_password(tmp_path):
+    r = run(tmp_path, "--dry-run")
+    rsync, ssh, _info = r.stdout.splitlines()
+    assert "BatchMode=yes" in rsync and "BatchMode=yes" in ssh
+
+
+def test_failed_key_login_stops_with_key_hint(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("NAS_CONF", str(tmp_path / "nas.conf"))
+    (tmp_path / "nas.conf").write_text(CONF)
+    calls = []
+    monkeypatch.setattr(d.subprocess, "call", lambda cmd: calls.append(cmd) or 255)
+    assert d.main([]) == 1
+    out = capsys.readouterr().out
+    assert "key login" in out and "No .env" not in out
+    assert len(calls) == 1, "rsync must not run after a failed key login"

@@ -17,6 +17,9 @@ KEYS = ("NAS_HOST", "NAS_PORT", "NAS_USER", "NAS_DIR", "NAS_DOCKER")
 REQUIRED = ("NAS_HOST", "NAS_USER", "NAS_DIR")
 DEFAULTS = {"NAS_PORT": "22", "NAS_DOCKER": "sudo docker"}
 EXTRA = ("Dockerfile", "compose.yaml", "README.md", "env.example")  # not COPY sources, but the build and the compose project need them
+# Key login only: BatchMode stops ssh falling back to a password prompt, which the deploy cannot answer
+# (the user types the sudo password there instead and gets "Permission denied"). sudo on the NAS still prompts over -t.
+SSH_OPTS = ("-o", "BatchMode=yes")
 
 
 def conf_path():
@@ -72,7 +75,7 @@ def load_config(env=None):
 
 
 def commands(cfg, build=True):
-    ssh = "ssh -p %s" % cfg["NAS_PORT"]
+    ssh = shlex.join(["ssh", *SSH_OPTS, "-p", cfg["NAS_PORT"]])
     target = "%s@%s" % (cfg["NAS_USER"], cfg["NAS_HOST"])
     srcs = [str(local_path(n)) for n in copy_list()]
     rsync = ["rsync", "-az", "--exclude", "home", "-e", ssh] + srcs + ["%s:%s/" % (target, cfg["NAS_DIR"])]
@@ -82,7 +85,7 @@ def commands(cfg, build=True):
         steps.append("%s compose build" % dk)
     steps.append("%s compose up -d" % dk)
     remote = " && ".join(steps)
-    return rsync, ["ssh", "-t", "-p", cfg["NAS_PORT"], target, remote]
+    return rsync, ["ssh", "-t", *SSH_OPTS, "-p", cfg["NAS_PORT"], target, remote]
 
 
 def env_note(cfg):
@@ -90,10 +93,18 @@ def env_note(cfg):
             "The container refuses to start on the EDIT-ME defaults. The deploy never sends .env." % cfg["NAS_DIR"])
 
 
+def key_note(cfg):
+    return ("[ERROR] ssh key login to %s@%s port %s failed (the deploy never asks for the account password). "
+            "Check: ssh -o BatchMode=yes -p %s %s@%s true. Fix: ssh-copy-id -p %s %s@%s, and on Synology enable "
+            "the user home service (Control Panel > User > Advanced) so ~/.ssh/authorized_keys is read."
+            % ((cfg["NAS_USER"], cfg["NAS_HOST"], cfg["NAS_PORT"]) + (cfg["NAS_PORT"], cfg["NAS_USER"], cfg["NAS_HOST"]) * 2))
+
+
 def remote_has_env(cfg):
-    p = subprocess.call(["ssh", "-p", cfg["NAS_PORT"], "%s@%s" % (cfg["NAS_USER"], cfg["NAS_HOST"]),
+    """True or False for .env in NAS_DIR; None when ssh itself failed (exit 255: no key login)."""
+    p = subprocess.call(["ssh", *SSH_OPTS, "-p", cfg["NAS_PORT"], "%s@%s" % (cfg["NAS_USER"], cfg["NAS_HOST"]),
                          "test -f %s" % shlex.quote(cfg["NAS_DIR"] + "/.env")])
-    return p == 0
+    return None if p == 255 else p == 0
 
 
 def main(argv=None):
@@ -108,7 +119,11 @@ def main(argv=None):
         print(shlex.join(ssh))
         print("[INFO] would check for .env in %s on the NAS (the deploy never sends .env)" % cfg["NAS_DIR"])
         return 0
-    if not remote_has_env(cfg):
+    has_env = remote_has_env(cfg)
+    if has_env is None:
+        print(key_note(cfg))
+        return 1
+    if not has_env:
         print(env_note(cfg))
     for cmd in (rsync, ssh):
         print("[INFO] " + shlex.join(cmd), flush=True)
