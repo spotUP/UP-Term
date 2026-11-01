@@ -78,6 +78,7 @@
 #include "../demo/updemo.h"
 #include "brk.h"
 #include "ttyown.h"
+#include "closeeof.h"
 #include "waitset.h"
 #include "vtcon_packets.h"
 #include "../tty/ldisc.h"
@@ -3613,9 +3614,11 @@ static void service_reads(con *c)
             n = c->raw ? c->in_len : line_end(c);
             if (!n && !c->raw)
                 n = c->in_len; /* a report or a mode switch left bytes without a newline */
-        } else if (c->eof) {
-            n = 0;
-            c->eof = 0;
+        } else if (closeeof_read(&c->eof, c->closing, c->raw, c->auto_open)) {
+            n = 0; /* closed: every read sees the end, not only the first (closeeof.h) */
+#ifdef VTCON_DEBUG
+            dbg("READ eof task", (LONG)p->dp_Port->mp_SigTask, 0);
+#endif
             reply(p, 0, 0);
             goto next;
         } else {
@@ -3627,6 +3630,9 @@ static void service_reads(con *c)
         for (i = n; i < c->in_len; i++)
             c->in[i - n] = c->in[i];
         c->in_len -= (int)n;
+#ifdef VTCON_DEBUG
+        dbg("READ bytes n/first", n, n ? c->in[0] : 0);
+#endif
         if (!c->marker_out && p->dp_Port && (struct Task *)p->dp_Port->mp_SigTask == c->comp_armed)
             c->comp_armed = 0; /* V93: its prompt line went: the shell arms again before the next prompt */
         reply(p, n, 0);
@@ -7414,7 +7420,8 @@ static void packet(con *c, struct DosPacket *p)
         dbg("WAIT tty/pending", c->own.on, c->own.on ? ld_input_pending(&c->ld) : -1);
 #endif
         ahead_feed(c); /* it looks for input: what was typed ahead is its */
-        if (c->in_len || c->eof || (tty_active(c) && ld_input_pending(&c->ld))) {
+        if (c->in_len || c->eof || closeeof_sticky(c->closing, c->raw, c->auto_open) ||
+            (tty_active(c) && ld_input_pending(&c->ld))) {
             reply(p, DOSTRUE, 0);
         } else if (p->dp_Arg1 <= 0) {
             reply(p, DOSFALSE, 0); /* a poll */

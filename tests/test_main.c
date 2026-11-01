@@ -28,6 +28,7 @@ void suite_pty_name(void);
 void suite_bmsg(void);
 void suite_qmark(void);
 void suite_ttyown(void);
+void suite_closeeof(void);
 void suite_upassign(void);
 void suite_bigvol(void);
 void suite_fssm(void);
@@ -126,6 +127,7 @@ static const h_suite suites[] = {
     { "bmsg", suite_bmsg },
     { "qmark", suite_qmark },
     { "ttyown", suite_ttyown },
+    { "closeeof", suite_closeeof },
     { "upassign", suite_upassign },
     { "bigvol", suite_bigvol },
     { "fssm", suite_fssm },
