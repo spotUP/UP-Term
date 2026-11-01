@@ -52,11 +52,21 @@ CLAUDE FROM THE AMIGA
   net/tn.h). Revoke an Amiga on the NAS with: pairs revoke ID. The NAS starts
   Claude Code in tmux. (An old ClaudeCode icon and C:ClaudeCode are removed by
   Install: the one Claude does both.)
-  Claude Code runs on your Mac; the Amiga is its terminal over the LAN.
-  To set up the NAS end (a Synology container that keeps Claude Code in
-  tmux), see tools/nas/README.md in the vtcon source tree; to let Claude
-  there run commands on this Amiga, wasabi (wasabid on the Amiga) is described
-  in the same file (never share its key).
+  Claude Code runs on the NAS (or any Linux box with Docker) that you set
+  up; the Amiga is its terminal over the LAN. The server end is a Docker
+  image, ghcr.io/spotup/claude-amiga:latest (x86-64 and ARM64, no login to
+  pull). Full steps: https://github.com/spotUP/UP-Term/blob/main/tools/nas/README.md
+  In short:
+    1. Get compose.yaml from https://github.com/spotUP/UP-Term/blob/main/tools/nas/compose.yaml
+       into a folder with an empty home folder beside it; edit NAS_IP (the
+       server's address) and ALLOW (your LAN); docker compose up -d
+       (Synology: Container Manager > Project > Create).
+    2. In the container run: setpw  (the password the Amiga logs in with).
+    3. Log Claude Code in once with your Claude subscription (Pro/Max), not
+       an API key: run /login inside the container (README: step 4).
+    4. On the Amiga: Claude REMOTE, address NAS_IP, port 2323.
+  To let Claude there run commands on this Amiga, wasabi (wasabid on the
+  Amiga) is described in the same README (never share its key).
   Install puts wasabid 0.11b2 (MIT, by Tobias Karlsson, Files/wasabid.LICENSE) in
   C: only when no C:wasabid is there; a wasabid of up-term.lha or of yours stays.
   It is not started at boot: after a key login uptelnet starts a copy for that

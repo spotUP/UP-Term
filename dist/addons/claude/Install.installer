@@ -45,7 +45,10 @@
               "edit or delete it later. The answer replaces an existing file; its "
               "address is what this page starts with. With no file the page starts empty "
               "and nothing is written: type your server's address and port (the port is "
-              "2323 for the server in tools/nas).")
+              "2323 for the ready server image).\n"
+              "No server yet? It is the Docker image "
+              "ghcr.io/spotup/claude-amiga; setup: "
+              "https://github.com/spotUP/UP-Term/blob/main/tools/nas/README.md")
         (default #oldremote)))
 
 (set #totalkb @KBTOTAL@)

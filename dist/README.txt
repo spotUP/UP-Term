@@ -1133,7 +1133,7 @@ WASABI (REMOTE DEVELOPMENT, CLAUDE CODE ON ANOTHER COMPUTER)
   with "key = yourkey" saves typing it). Claude Code on that machine
   drives this Amiga through Files/wasabi/wasabi_mcp.py, which sits beside
   the client:  claude mcp add wasabi -- python3 /path/to/wasabi_mcp.py
-  (tools/nas/README.md in the vtcon source tree: the NAS image). Anyone
+  (the NAS image ghcr.io/spotup/claude-amiga; setup: https://github.com/spotUP/UP-Term/blob/main/tools/nas/README.md). Anyone
   with the key can run any command on this Amiga: keep it to yourself.
   wasabid answers only private network addresses; the link is encrypted
   only when the Amiga has AmiSSL 5 and keys (wasabi's README). Uninstall
