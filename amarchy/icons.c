@@ -212,10 +212,11 @@ static long load_dat(uint8_t **out)
 
 static void print_counters(const ia_ctx *c)
 {
-    unsigned long v[8];
+    unsigned long v[12];
     v[0] = c->written; v[1] = c->skipped_done; v[2] = c->skipped_bad; v[3] = c->skipped_nodat;
     v[4] = c->skipped_nodefault; v[5] = c->skipped_io; v[6] = c->restored; v[7] = c->restore_failed;
-    VPrintf((STRPTR)"written=%ld skipped-done=%ld skipped-bad=%ld skipped-nodat=%ld skipped-nodefault=%ld skipped-io=%ld restored=%ld restore-failed=%ld\n",
+    v[8] = c->skipped_readonly; v[9] = c->skipped_locked; v[10] = c->skipped_uaem; v[11] = c->fallback;
+    VPrintf((STRPTR)"written=%ld skipped-done=%ld skipped-bad=%ld skipped-nodat=%ld skipped-nodefault=%ld skipped-io=%ld restored=%ld restore-failed=%ld skipped-readonly=%ld skipped-locked=%ld skipped-uaem=%ld fallback=%ld\n",
             (LONG *)v);
 }
 

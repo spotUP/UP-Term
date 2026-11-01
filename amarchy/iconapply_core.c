@@ -124,6 +124,46 @@ int ia_target(int i, char *path, size_t cap, const char **match)
     return 1;
 }
 
+/* ---- all-volume walk decisions (L12) ---- */
+static int ends_with(const char *s, const char *suf)
+{
+    size_t n = strlen(s), m = strlen(suf);
+    if (n < m) return 0;
+    for (s += n - m; *suf; s++, suf++)
+        if ((*s | 0x20) != (*suf | 0x20)) return 0;
+    return 1;
+}
+
+const char *ia_walk_fallback_match(int dotype)
+{
+    switch (dotype) {
+    case 1: return "def_disk";
+    case 2: return "def_drawer";
+    case 3: return "def_tool";
+    case 4: return "def_project";
+    case 5: return "def_trashcan";
+    default: return NULL;
+    }
+}
+
+int ia_walk_decide(const ia_walk_entry *e)
+{
+    if (ends_with(e->name, ".uaem")) return IA_DO_SKIP_UAEM;
+    if (e->vol_readonly) return IA_DO_SKIP_READONLY;
+    if (e->prot & (IA_PROT_WRITE | IA_PROT_DELETE)) return IA_DO_SKIP_LOCKED;
+    if (!e->specific) return IA_DO_FALLBACK;
+    return IA_DO_WRITE;
+}
+
+int ia_walk_count(ia_ctx *c, int d)
+{
+    if (d == IA_DO_SKIP_READONLY) c->skipped_readonly++;
+    else if (d == IA_DO_SKIP_LOCKED) c->skipped_locked++;
+    else if (d == IA_DO_SKIP_UAEM) c->skipped_uaem++;
+    else if (d == IA_DO_FALLBACK) c->fallback++;
+    return d;
+}
+
 /* ---- apply / restore ---- */
 static void man_load(ia_ctx *c)
 {

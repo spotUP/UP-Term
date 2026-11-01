@@ -305,6 +305,31 @@ static void test_edge(void)
     mfs_free(&s);
 }
 
+static void test_walk(void)
+{
+    ia_ctx c;
+    ia_walk_entry e = { "Foo.info", 0, 0, 1, 3 };
+    memset(&c, 0, sizeof c);
+    CI("normal file is still written", ia_walk_decide(&e), IA_DO_WRITE);
+    e.vol_readonly = 1;
+    CI("read-only volume skips", ia_walk_count(&c, ia_walk_decide(&e)), IA_DO_SKIP_READONLY);
+    e.vol_readonly = 0; e.prot = IA_PROT_WRITE;
+    CI("write-protected file skips as locked", ia_walk_count(&c, ia_walk_decide(&e)), IA_DO_SKIP_LOCKED);
+    e.prot = IA_PROT_DELETE;
+    CI("undeletable file skips as locked", ia_walk_decide(&e), IA_DO_SKIP_LOCKED);
+    e.prot = 0x02;
+    CI("an unrelated protection bit does not lock", ia_walk_decide(&e), IA_DO_WRITE);
+    e.name = "Foo.info.uaem";
+    CI("uaem sidecar skips", ia_walk_count(&c, ia_walk_decide(&e)), IA_DO_SKIP_UAEM);
+    e.name = "Foo.INFO.UAEM"; e.vol_readonly = 1;
+    CI("uaem beats read-only, case-insensitive", ia_walk_decide(&e), IA_DO_SKIP_UAEM);
+    e.name = "Foo.info"; e.vol_readonly = 0; e.specific = 0;
+    CI("no specific entry falls back to the type", ia_walk_count(&c, ia_walk_decide(&e)), IA_DO_FALLBACK);
+    CK("type fallback names", !strcmp(ia_walk_fallback_match(2), "def_drawer") && !strcmp(ia_walk_fallback_match(3), "def_tool")
+       && !ia_walk_fallback_match(99));
+    CK("counters moved once each", c.skipped_readonly == 1 && c.skipped_locked == 1 && c.skipped_uaem == 1 && c.fallback == 1);
+}
+
 void suite_iconapply(void)
 {
     long dn;
@@ -317,4 +342,5 @@ void suite_iconapply(void)
     test_flow();
     test_absent();
     test_edge();
+    test_walk();
 }

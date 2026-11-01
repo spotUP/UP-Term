@@ -255,7 +255,7 @@ Each row: done criterion. First visible slice is L8 (Workbench defaults on 3.2).
 
 - L10 Table paths: SYS:System, SYS:Utilities, SYS:Prefs, SYS:Tools. Done: rig listing of written counts per drawer.
 - L11 Amarchy program icons. Done: written count and screen check.
-- L12 All-volume walk, type fallback, read-only / locked / `.uaem` skips. Done: STATUS counters on a rig with one write-protected volume.
+- L12 All-volume walk, type fallback, read-only / locked / `.uaem` skips. Done: STATUS counters on a rig with one write-protected volume. PURE HALF DONE (iconapply_core: ia_walk_decide / ia_walk_fallback_match / ia_walk_count, counters in STATUS, host suite iconapply); walk itself and rig test open.
 - L13 FORM ICON and NewIcon strip plus restore. Done: host suite + rig file with a NewIcon restored byte for byte. HOST PART DONE slice B (NewIcon and FORM ICON strip + restore in iconfile_core, host suite); rig file test open.
 - L14 Live theme update in `gt_dos_select` and preview `pv_set`. Done: pen RGB changes, file dates unchanged.
 - L15 Over-8-bit redraw (per Q6). Done: 3.2 RTG rig icons recolour after switch.

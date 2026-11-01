@@ -71,6 +71,7 @@ typedef struct ia_ctx {
     ia_manifest man;
     /* counters (STATUS prints them; the sentinel) */
     unsigned written, skipped_done, skipped_bad, skipped_nodat, skipped_nodefault, skipped_io, restored, restore_failed;
+    unsigned skipped_readonly, skipped_locked, skipped_uaem, fallback;   /* all-volume walk (L12) */
 } ia_ctx;
 
 /* the Workbench defaults: i-th target, its icon file ("ENVARC:Sys/def_disk.info") and its lucide.dat match ("def_disk"). 0 past the end */
@@ -80,6 +81,24 @@ int ia_target(int i, char *path, size_t cap, const char **match);
 int ia_apply(ia_ctx *c);
 /* RESTORE (L9): the originals back from the backup, entries and backup files removed. No manifest: nothing happens. */
 int ia_restore(ia_ctx *c);
+
+/* All-volume walk (L12): what to do with one directory entry. Pure; the Amiga side fills ia_walk_entry from ExAll / Info / Examine.
+ * Precedence: .uaem sidecar (never an icon) > read-only volume > locked file > type fallback > write. */
+enum { IA_DO_WRITE, IA_DO_SKIP_READONLY, IA_DO_SKIP_LOCKED, IA_DO_SKIP_UAEM, IA_DO_FALLBACK };
+#define IA_PROT_DELETE 0x01     /* AmigaDOS protection bits, a SET bit denies the action */
+#define IA_PROT_WRITE  0x04
+typedef struct ia_walk_entry {
+    const char *name;           /* entry name, e.g. "Foo.info" or "Foo.info.uaem" */
+    int vol_readonly;           /* the volume is write-protected or mounted read-only */
+    unsigned long prot;         /* protection bits of the .info file */
+    int specific;               /* lucide.dat has an entry for this icon's own name */
+    int dotype;                 /* do_Type of the existing icon: 1 disk, 2 drawer, 3 tool, 4 project, 5 garbage, 7 kick */
+} ia_walk_entry;
+int ia_walk_decide(const ia_walk_entry *e);
+/* the lucide.dat match name the type fallback uses ("def_drawer"), NULL when the type has none */
+const char *ia_walk_fallback_match(int dotype);
+/* count one decision in the ctx counters; returns it unchanged. Write and fallback are counted by ia_apply, not here. */
+int ia_walk_count(ia_ctx *c, int decision);
 
 /* the command line: "APPLY", "RESTORE", "STATUS", "?" or "" -> IA_CMD_* */
 enum { IA_CMD_NONE, IA_CMD_APPLY, IA_CMD_RESTORE, IA_CMD_STATUS, IA_CMD_HELP };
