@@ -336,10 +336,24 @@ static long dk_dopus_send(const char *port, const char *line, char *result, int 
 }
 
 static void dk_live_pens(const gtheme *th, int own);
+static void dk_confirm_ask(unsigned mask);
 /* the live role pens (FLAT-PEN5-MAGENTA) are set last, in desk_dos_apply: every Workbench reset of this apply (palette, wbpattern,
  * wbborder USE) reopens the screen with the graphics defaults on pens 4-7. 1 = theme colours, -1 = restore the kept ones, 0 = leave. */
 static int dk_live_want, dk_live_own;
 static long dk_palette_base(int restore, const unsigned char pens[DK_SLOTS], int depth, unsigned char *buf, long cap);
+
+/* FP-1 (R1.8): the unconfirmed-apply marker T:amarchy-revert/pending holds the mask of targets whose snapshot is waiting for Keep or
+ * Revert; a file, so the menu process (which applies) and the commodity (which asks and reverts) share it. */
+#define DK_PENDING DK_REVERT "/pending"
+static unsigned dk_pending_mask(void)
+{
+    unsigned char b[16];
+    long n = dk_read(DK_PENDING, b, sizeof b - 1), i;
+    unsigned m = 0;
+    for (i = 0; i < n && b[i] >= '0' && b[i] <= '9'; i++)
+        m = m * 10 + (unsigned)(b[i] - '0');
+    return m;
+}
 
 static int dk_apply(const gtheme *th, char *why, int cap)
 {
@@ -371,7 +385,7 @@ static int dk_apply(const gtheme *th, char *why, int cap)
     UnLock(CreateDir((STRPTR)DK_WORK));
     if (old_ws || (mask & ((1u << DT_FONT) | (1u << DT_ICONTROL))))
         idle = dk_iprefs_idle_mask(); /* before any editor: the Wait() IPrefs returns to when done */
-    dk_snapshot(ic_snap ? mask : (mask & ~(1u << DT_ICONTROL)));
+    dk_snapshot((ic_snap ? mask : (mask & ~(1u << DT_ICONTROL))) & ~dk_pending_mask()); /* FP-1: targets of an unconfirmed apply keep their first snapshot */
     depth = dk_screen_depth();
     if (mask & (1u << DT_PALETTE)) {
         wb_before = dk_wb_screen(live, &nlive);
@@ -737,6 +751,55 @@ static void dk_keep_mark(const char *file, int keep)
 unsigned long desk_dos_wbgauge_writes;
 #define DK_WBG_PREV DK_REVERT "/wbgauge.prev"
 
+/* FP-1: the Workbench.prefs write of dk_wbborder (border + gauge) is outside the desk target mask; its pre-apply bytes and the two .prev marks
+ * are kept in T:amarchy-revert until the apply is confirmed or reverted. The first unconfirmed apply wins (DK_WBPEND exists). */
+#define DK_WBPEND DK_REVERT "/wbpending"
+#define DK_WBB_SNAP DK_REVERT "/wbborder.snap"
+#define DK_WBG_SNAP DK_REVERT "/wbgauge.snap"
+#define DK_WB_ENV "ENV:Sys/Workbench.prefs"
+
+static void dk_copy_file(const char *src, const char *dst)
+{
+    static unsigned char cb[DK_BUF];
+    long len = dk_read(src, cb, sizeof cb);
+    if (len < 0)
+        DeleteFile((STRPTR)dst);
+    else
+        dk_write(dst, cb, len);
+}
+
+static void dk_wb_snapshot(void)
+{
+    char name[96];
+    unsigned char one[2];
+    if (dk_read(DK_WBPEND, one, 2) >= 0)
+        return;
+    UnLock(CreateDir((STRPTR)DK_REVERT));
+    dk_copy_name(DK_WB_ENV, name);
+    dk_copy_file(DK_WB_ENV, name);
+    dk_copy_file(DK_WBB_PREV, DK_WBB_SNAP);
+    dk_copy_file(DK_WBG_PREV, DK_WBG_SNAP);
+    one[0] = '1';
+    dk_write(DK_WBPEND, one, 1);
+}
+
+/* revert: the saved Workbench.prefs goes back through the stock editor (deleted when it did not exist), the .prev marks come back too */
+static void dk_wb_restore(void)
+{
+    char name[96];
+    unsigned char one[2];
+    if (dk_read(DK_WBPEND, one, 2) < 0)
+        return;
+    dk_copy_name(DK_WB_ENV, name);
+    if (dk_read(name, one, 0) < 0)
+        DeleteFile((STRPTR)DK_WB_ENV);
+    else
+        dk_editor("Workbench", name);
+    dk_copy_file(DK_WBB_SNAP, DK_WBB_PREV);
+    dk_copy_file(DK_WBG_SNAP, DK_WBG_PREV);
+    DeleteFile((STRPTR)DK_WBPEND);
+}
+
 static void dk_wbborder(void)
 {
     static unsigned char cur[DK_BUF], mid[DK_BUF], out[DK_BUF];
@@ -762,6 +825,7 @@ static void dk_wbborder(void)
     n = desk_wbborder(flat, cur, len, saved, &keep, mid, sizeof mid);
     g = desk_wbgauge(flat, n > 0 ? mid : cur, n > 0 ? n : len, gsaved, &gkeep, out, sizeof out);
     if (n > 0 || g > 0) {
+        dk_wb_snapshot();
         UnLock(CreateDir((STRPTR)DK_WORK));
         if (n > 0)
             desk_dos_wbborder_writes++;
@@ -782,8 +846,107 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
     if (!(r > 0 && (r & (1 << DT_PALETTE))) && dk_flat_pens(th) && r >= 0)
         r |= 1 << DT_PALETTE;   /* the theme colours are in the palette and DOpus has them: no wb_pens_apply */
     dk_wbborder();
+    if (r <= 0 && !dk_pending_mask())
+        DeleteFile((STRPTR)DK_WBPEND);   /* nothing to confirm: the Workbench.prefs snapshot has no owner */
     if (dk_live_want)
         dk_live_pens(dk_live_want > 0 ? th : 0, dk_live_own);
     dk_flat_sync();          /* also when no desk target changed: flipping a flat switch alone must reach the block */
+    if (r > 0)
+        dk_confirm_ask((unsigned)r);
     return r;
+}
+
+/* FP-1 (R1.8): the 15 s confirm after an apply. The commodity (desk_confirm_dos.c) owns the requester and the timer: it installs
+ * desk_dos_confirm_begin; every other process sends DESK CONFIRM <mask> to it. Keep calls desk_dos_confirmed, Revert and the timeout
+ * call desk_dos_revert. */
+void (*desk_dos_confirm_begin)(unsigned mask);
+unsigned long desk_dos_confirm_asks, desk_dos_reverts, desk_dos_keeps;
+
+static void dk_confirm_ask(unsigned mask)
+{
+    char num[16], res[32];
+    unsigned char out[16];
+    unsigned all = mask | dk_pending_mask();
+    long n = 0, d;
+    for (d = 1000000000L; d >= 1; d /= 10)
+        if (n || all / (unsigned)d) {
+            out[n++] = (unsigned char)('0' + (all / (unsigned)d) % 10);
+        }
+    if (!n)
+        out[n++] = '0';
+    out[n] = 0;
+    UnLock(CreateDir((STRPTR)DK_REVERT));
+    dk_write(DK_PENDING, out, n);
+    desk_dos_confirm_asks++;
+    if (desk_dos_confirm_begin) {
+        desk_dos_confirm_begin(all);
+        return;
+    }
+    strcpy(num, "DESK CONFIRM ");
+    strcat(num, (const char *)out);
+    rexx_send("AMARCHY", num, res, sizeof res);
+}
+
+/* FP-2 fills this: the user kept the applied theme, so the prefs written to ENV: are persisted to ENVARC: here. For now it only clears the pending state. */
+void desk_dos_confirmed(void)
+{
+    DeleteFile((STRPTR)DK_PENDING);
+    DeleteFile((STRPTR)DK_WBPEND);
+    DeleteFile((STRPTR)DK_WBB_SNAP);
+    DeleteFile((STRPTR)DK_WBG_SNAP);
+    desk_dos_keeps++;
+}
+
+/* put the snapshot back: each target's ENV: file is fed from its revert copy through the stock editor (as the apply did), a file that did
+ * not exist then is deleted; icontrol goes through dk_icontrol_restore. */
+void desk_dos_revert(void)
+{
+    static const struct { int t; const char *editor; const char *file; } ed[] = {
+        { DT_FONT, "Font", "ENV:Sys/font.prefs" }, { DT_POINTER, "Pointer", "ENV:Sys/pointer.prefs" },
+        { DT_WBPATTERN, "WBPattern", "ENV:Sys/wbpattern.prefs" }, { DT_PALETTE, "Palette", "ENV:Sys/palette.prefs" } };
+    static unsigned char buf[8192];
+    unsigned mask = dk_pending_mask();
+    am_prefs ap;
+    unsigned long idle = 0;
+    struct Screen *before = 0;
+    int i, was = 0, pal = (mask >> DT_PALETTE) & 1;
+    char name[96];
+    desk_dos_reverts++;
+    DeleteFile((STRPTR)DK_PENDING);
+    dk_wb_restore();
+    if (!mask) {
+        dk_flat_sync();
+        return;
+    }
+    amconf_load(&ap);
+    if (mask & ((1u << DT_FONT) | (1u << DT_ICONTROL)))
+        idle = dk_iprefs_idle_mask();
+    if (pal) {
+        before = dk_wb_screen(0, 0);
+        was = dk_windows_close();
+    }
+    for (i = 0; i < 4; i++) {
+        long len;
+        if (!((mask >> ed[i].t) & 1) || (ed[i].t == DT_POINTER && !dk_pointer_editor_ok()))
+            continue;
+        dk_copy_name(ed[i].file, name);
+        len = dk_read(name, buf, sizeof buf);
+        if (len < 0)
+            DeleteFile((STRPTR)ed[i].file);
+        else
+            dk_editor(ed[i].editor, name);
+        if (ed[i].t == DT_PALETTE)
+            dk_wait_reset(before, amconf_desk_flat_pens(&ap));
+        else if (ed[i].t == DT_FONT)
+            dk_wait_iprefs(idle);
+    }
+    if ((mask >> DT_ICONTROL) & 1) {
+        dk_icontrol_restore();
+        dk_wait_iprefs(idle);
+    }
+    if (pal) {
+        dk_live_pens(0, 0);
+        dk_windows_open(was);
+    }
+    dk_flat_sync();
 }

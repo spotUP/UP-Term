@@ -239,4 +239,20 @@ typedef struct desk_pv {
 } desk_pv;
 int desk_preview(desk_pv *p, const gtheme *t);
 
+
+/* FP-1 (R1.8): the confirm state machine, pure. After an apply the user has DESK_CONFIRM_SECS to Keep it; the clock is the
+ * commodity tick (whole seconds). Keep = DC_KEEP, Revert or the timeout = a revert. The mask is what the snapshot holds. */
+#define DESK_CONFIRM_SECS 15
+typedef struct { int pending; unsigned mask; long deadline; } desk_confirm;
+enum { DC_WAIT, DC_KEEP, DC_REVERT_USER, DC_REVERT_TIMEOUT };
+void desk_confirm_init(desk_confirm *c);
+/* an apply happened at now: pending, the 15 s start over, the masks of applies still unconfirmed add up (the first snapshot stands) */
+void desk_confirm_begin(desk_confirm *c, long now, unsigned mask);
+/* the tick: DC_REVERT_TIMEOUT once when the deadline passed (pending ends), else DC_WAIT */
+int desk_confirm_tick(desk_confirm *c, long now);
+/* the user's answer: DC_KEEP or DC_REVERT_USER (pending ends); DC_WAIT when nothing was pending */
+int desk_confirm_answer(desk_confirm *c, int keep);
+/* whole seconds left (0 when not pending or past) */
+long desk_confirm_left(const desk_confirm *c, long now);
+
 #endif

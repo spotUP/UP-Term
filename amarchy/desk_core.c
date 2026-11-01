@@ -1094,3 +1094,38 @@ int desk_preview(desk_pv *p, const gtheme *t)
         p->set(p->ctx, i, desk_role(t, i));
     return 1;
 }
+
+void desk_confirm_init(desk_confirm *c)
+{
+    c->pending = 0;
+    c->mask = 0;
+    c->deadline = 0;
+}
+
+void desk_confirm_begin(desk_confirm *c, long now, unsigned mask)
+{
+    c->mask = c->pending ? (c->mask | mask) : mask;
+    c->pending = 1;
+    c->deadline = now + DESK_CONFIRM_SECS;
+}
+
+int desk_confirm_tick(desk_confirm *c, long now)
+{
+    if (!c->pending || now < c->deadline)
+        return DC_WAIT;
+    c->pending = 0;
+    return DC_REVERT_TIMEOUT;
+}
+
+int desk_confirm_answer(desk_confirm *c, int keep)
+{
+    if (!c->pending)
+        return DC_WAIT;
+    c->pending = 0;
+    return keep ? DC_KEEP : DC_REVERT_USER;
+}
+
+long desk_confirm_left(const desk_confirm *c, long now)
+{
+    return c->pending && now < c->deadline ? c->deadline - now : 0;
+}

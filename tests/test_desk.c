@@ -1077,6 +1077,34 @@ static void dp_send(const char *name)
         if (!strcmp(dp_theme[i].name, name))
             desk_preview(&dp_pv, strcmp(name, dp_cur) ? &dp_theme[i] : 0);
 }
+/* FP-1 (R1.8): the confirm window. Keep ends it; Revert and the 15 s timeout both ask for a revert; a second apply restarts the clock and keeps the first snapshot's targets */
+static void test_desk_confirm(void)
+{
+    desk_confirm c;
+    desk_confirm_init(&c);
+    CHECK_INT(desk_confirm_tick(&c, 100), DC_WAIT);             /* nothing pending: no revert, ever */
+    CHECK_INT(desk_confirm_answer(&c, 0), DC_WAIT);
+    desk_confirm_begin(&c, 100, 0x3);
+    CHECK_INT(c.pending, 1);
+    CHECK_INT(desk_confirm_left(&c, 100), DESK_CONFIRM_SECS);
+    CHECK_INT(desk_confirm_tick(&c, 100 + DESK_CONFIRM_SECS - 1), DC_WAIT);
+    CHECK_INT(desk_confirm_tick(&c, 100 + DESK_CONFIRM_SECS), DC_REVERT_TIMEOUT);
+    CHECK_INT(c.pending, 0);
+    CHECK_INT(desk_confirm_tick(&c, 500), DC_WAIT);             /* once only */
+    desk_confirm_begin(&c, 200, 0x1);
+    CHECK_INT(desk_confirm_answer(&c, 1), DC_KEEP);
+    CHECK_INT(c.pending, 0);
+    CHECK_INT(desk_confirm_tick(&c, 900), DC_WAIT);             /* kept: the timer no longer reverts */
+    desk_confirm_begin(&c, 300, 0x1);
+    CHECK_INT(desk_confirm_answer(&c, 0), DC_REVERT_USER);
+    desk_confirm_begin(&c, 400, 0x1);
+    desk_confirm_begin(&c, 410, 0x4);                           /* second apply: clock restarts, masks add up */
+    CHECK_INT((int)c.mask, 0x5);
+    CHECK_INT(desk_confirm_tick(&c, 410 + DESK_CONFIRM_SECS - 1), DC_WAIT);
+    CHECK_INT(desk_confirm_left(&c, 420), DESK_CONFIRM_SECS - 10);
+    CHECK_INT(desk_confirm_tick(&c, 410 + DESK_CONFIRM_SECS), DC_REVERT_TIMEOUT);
+}
+
 static void test_desk_preview(void)
 {
     char drawn[GT_NAME], row[GT_NAME + 8];
@@ -1158,4 +1186,5 @@ void suite_desk(void)
     test_desk_icontrol();
     test_desk_targets();
     test_desk_preview();
+    test_desk_confirm();
 }

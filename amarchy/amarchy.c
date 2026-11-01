@@ -17,6 +17,7 @@
 #include "win.h"
 #include "gthemes_dos.h"
 #include "desk_dos.h"
+#include "desk_confirm_dos.h"
 #include "leaf.h"
 #include "rexx_host.h"
 #include "note.h"
@@ -408,6 +409,8 @@ static long rexx_cmd(void *ud, const char *cmd, char *out)
         status_text(out, REXX_HOST_OUT, 0);
     else if (starts(cmd, "BAR") && (cmd[3] == ' ' || cmd[3] == '\t'))
         rc = bar_port(cmd + 3, out);
+    else if (starts(cmd, "DESK CONFIRM"))   /* FP-1: an apply in another process; the verb carries the mask */
+        dc_begin((unsigned)parse_int(cmd + 12));
     else if (starts(cmd, "RELOAD"))
         reload();
     else if (starts(cmd, "RUN"))
@@ -546,6 +549,7 @@ int main(void)
     tick_hook(iconpens_follow);
     iconpens_follow(0);                         /* at boot, before the tick's first second */
     tick_open_ok = tick_open();                 /* the 1 s tick, before the bar and running without it */
+    dc_init();                                  /* FP-1: the confirm requester and its 15 s timeout ride the tick */
     tks = tick_sigmask();
     /* W43: no window before the Workbench is in its final mode (IPrefs resets it late; the reset cannot run while a
      * foreign window is open). Ready now, or no tick to wait on: open at once; else the tick hook opens them. */
@@ -559,7 +563,7 @@ int main(void)
     else
         tick_hook(wb_gate);
     while (!g_quit) {
-        sigs = Wait(cxs | rxs | nos | nts | lps | wrs | cws | g_bs | g_bts | tks | shot_region_sigmask() | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F);
+        sigs = Wait(cxs | rxs | nos | nts | lps | wrs | cws | g_bs | g_bts | tks | shot_region_sigmask() | dc_sigmask() | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F);
         if (sigs & SIGBREAKF_CTRL_C)
             break;
         if (sigs & SIGBREAKF_CTRL_F)
@@ -575,6 +579,8 @@ int main(void)
                 else if (ev == CXE_KILL)
                     g_quit = 1;
             }
+        if (sigs & dc_sigmask())
+            dc_serve();
         if (sigs & shot_region_sigmask())
             shot_region_serve();
         if (sigs & g_bs)
