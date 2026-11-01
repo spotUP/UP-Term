@@ -183,7 +183,7 @@ static int man_save(ia_ctx *c)
     return n ? c->io->write(c->io->ctx, IA_MANIFEST, c->bak, n) : -1;
 }
 
-/* One target: backup, manifest line, icon file. Returns 1 when written. */
+/* One icon file: backup, manifest line, icon, with the images of lucide.dat entry `match`. 1 written, 0 not (a counter says why) */
 static int apply_one(ia_ctx *c, const char *path, const char *match)
 {
     char bpath[IA_MAXPATH + 40];
@@ -205,6 +205,7 @@ static int apply_one(ia_ctx *c, const char *path, const char *match)
     e_i = ia_man_find(&c->man, path);
     if (!absent && e_i >= 0 && ia_imgcrc(&src) == c->man.e[e_i].wcrc) { c->skipped_done++; return 0; }
     if (li_dat_find(c->dat, match, c->variant, &nrm, &sel) != 0) { c->skipped_nodat++; return 0; }
+    if (e_i < 0 && c->man.n >= IA_MAXENT) { c->skipped_io++; return 0; }    /* no manifest line, no write: RESTORE must cover it */
     li_edit_apply(&ed, &src, &nrm, &sel);
     outn = li_splice(&src, &ed, c->out, IA_FILECAP);
     if (!outn || li_parse(c->out, outn, &wr) != 0) { c->skipped_bad++; return 0; }
@@ -247,6 +248,59 @@ int ia_apply(ia_ctx *c)
     }
     return wrote;
 }
+
+int ia_info_type(const uint8_t *buf, size_t len)
+{
+    return len > 48 ? buf[48] : 0;      /* DiskObject: magic 2, version 2, Gadget 44, then do_Type */
+}
+
+int ia_walk_skip_dir(const char *path)
+{
+    return ends_with(path, "Storage/Icons/Amarchy") || ends_with(path, "Storage/Icons/Amarchy/");
+}
+
+int ia_walk_file(ia_ctx *c, const char *path, int vol_readonly, unsigned long prot)
+{
+    const char *name = path, *p, *match;
+    char base[IA_MAXPATH];
+    ia_walk_entry e;
+    li_file src;
+    li_image nrm, sel;
+    long n;
+    size_t bl;
+    int i, d;
+
+    for (p = path; *p; p++)
+        if (*p == '/' || *p == ':') name = p + 1;
+    memset(&e, 0, sizeof e);
+    e.name = name;
+    e.vol_readonly = vol_readonly;
+    e.prot = prot;
+    if (ends_with(name, ".uaem") || vol_readonly || (prot & (IA_PROT_WRITE | IA_PROT_DELETE)))
+        return ia_walk_count(c, ia_walk_decide(&e));     /* decided without reading the file */
+    n = c->io->read(c->io->ctx, path, c->cur, IA_FILECAP);
+    if (n <= 0) { c->skipped_io++; return IA_DO_SKIP_OTHER; }
+    if (li_parse(c->cur, (size_t)n, &src) != 0) { c->skipped_bad++; return IA_DO_SKIP_OTHER; }
+    for (i = 0; i < c->man.n; i++)                       /* already carries a Lucide image we wrote (ENVARC:Sys seen again by its volume path) */
+        if (ia_imgcrc(&src) == c->man.e[i].wcrc) { c->skipped_done++; return IA_DO_SKIP_OTHER; }
+    bl = strlen(name) - 5;                               /* ".info" */
+    if (bl >= sizeof base) { c->skipped_bad++; return IA_DO_SKIP_OTHER; }
+    memcpy(base, name, bl);
+    base[bl] = 0;
+    e.dotype = ia_info_type(c->cur, (size_t)n);
+    e.specific = li_dat_find(c->dat, base, c->variant, &nrm, &sel) == 0;
+    d = ia_walk_count(c, ia_walk_decide(&e));
+    if (d == IA_DO_FALLBACK) {
+        match = ia_walk_fallback_match(e.dotype);
+        if (!match) { c->skipped_nodat++; return d; }
+    } else {
+        match = base;
+    }
+    apply_one(c, path, match);
+    return d;
+}
+
+void ia_walk_begin(ia_ctx *c) { man_load(c); }
 
 int ia_restore(ia_ctx *c)
 {

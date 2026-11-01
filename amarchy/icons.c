@@ -210,6 +210,131 @@ static long load_dat(uint8_t **out)
     return n;
 }
 
+/* ---- all-volume walk (L12) ----
+ * Every mounted, online volume: Info() id_DiskState says read-only; each directory is listed completely (Examine / ExNext) into
+ * a heap list BEFORE any file is written, because the atomic write renames files in the directory being listed. The recursion
+ * is bounded by WALK_MAXDEPTH; a frame holds two pointers and a length, the path buffer is shared, the FileInfoBlock is on the heap. */
+#define WALK_MAXDEPTH 24
+#define WALK_MAXVOL   32
+static char g_wpath[IA_MAXPATH];
+static unsigned g_walk_deep;        /* directories not entered: deeper than WALK_MAXDEPTH, path too long, or no memory */
+
+/* list entry: u32 protection, 1 byte kind ('D' directory, 'F' .info, 'U' .info.uaem), name, NUL */
+static int list_dir(BPTR lock, uint8_t **out, size_t *outn)
+{
+    struct FileInfoBlock *fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, NULL);
+    uint8_t *b = NULL;
+    size_t n = 0, cap = 0;
+    int ok = 1;
+    if (!fib) return 0;
+    if (Examine(lock, fib)) {
+        while (ExNext(lock, fib)) {
+            size_t nl = strlen(fib->fib_FileName), need;
+            char kind;
+            unsigned long pr = (unsigned long)fib->fib_Protection;
+            if (fib->fib_DirEntryType > 0) kind = 'D';
+            else if (nl > 5 && strcmp(fib->fib_FileName + nl - 5, ".info") == 0) kind = 'F';
+            else if (nl > 10 && strcmp(fib->fib_FileName + nl - 10, ".info.uaem") == 0) kind = 'U';
+            else continue;
+            need = 5 + nl + 1;
+            if (n + need > cap) {
+                size_t nc = cap ? cap * 2 : 2048;
+                uint8_t *nb;
+                while (nc < n + need) nc *= 2;
+                nb = (uint8_t *)AllocVec((ULONG)nc, MEMF_PUBLIC);
+                if (!nb) { ok = 0; break; }
+                if (b) { memcpy(nb, b, n); FreeVec(b); }
+                b = nb;
+                cap = nc;
+            }
+            memcpy(b + n, &pr, 4);
+            b[n + 4] = (uint8_t)kind;
+            memcpy(b + n + 5, fib->fib_FileName, nl + 1);
+            n += need;
+        }
+    }
+    FreeDosObject(DOS_FIB, fib);
+    *out = b;
+    *outn = n;
+    return ok;
+}
+
+static void walk_dir(ia_ctx *c, size_t plen, int ro, unsigned depth)
+{
+    BPTR lock = Lock((STRPTR)g_wpath, SHARED_LOCK);
+    uint8_t *list = NULL;
+    size_t n = 0, i;
+    int pass;
+    if (!lock) { c->skipped_io++; return; }
+    if (!list_dir(lock, &list, &n)) g_walk_deep++;
+    UnLock(lock);
+    for (pass = 0; pass < 2; pass++) {          /* icons of this drawer first, then the subdrawers */
+        for (i = 0; i < n;) {
+            unsigned long pr;
+            const char *name = (const char *)list + i + 5;
+            char kind = (char)list[i + 4];
+            size_t nl = strlen(name);
+            memcpy(&pr, list + i, 4);
+            i += 5 + nl + 1;
+            if (plen + nl + 2 >= sizeof g_wpath) { g_walk_deep++; continue; }
+            if (pass == 0 && kind != 'D') {
+                memcpy(g_wpath + plen, name, nl + 1);
+                ia_walk_file(c, g_wpath, ro, pr);
+            } else if (pass == 1 && kind == 'D') {
+                size_t np = plen;
+                if (depth >= WALK_MAXDEPTH) { g_walk_deep++; continue; }
+                memcpy(g_wpath + np, name, nl);
+                np += nl;
+                g_wpath[np] = 0;
+                if (ia_walk_skip_dir(g_wpath)) { g_wpath[plen] = 0; continue; }
+                g_wpath[np++] = '/';
+                g_wpath[np] = 0;
+                walk_dir(c, np, ro, depth + 1);
+            }
+        }
+    }
+    g_wpath[plen] = 0;
+    if (list) FreeVec(list);
+}
+
+static void walk_volumes(ia_ctx *c)
+{
+    char names[WALK_MAXVOL][34];
+    int nv = 0, i;
+    struct DosList *dl;
+    struct Process *me = (struct Process *)FindTask(NULL);
+    APTR oldwin = me->pr_WindowPtr;
+    me->pr_WindowPtr = (APTR)-1L;               /* no "insert volume" requesters */
+    dl = LockDosList(LDF_VOLUMES | LDF_READ);
+    while ((dl = NextDosEntry(dl, LDF_VOLUMES)) != NULL && nv < WALK_MAXVOL) {
+        const UBYTE *bs = (const UBYTE *)BADDR(dl->dol_Name);
+        unsigned l;
+        if (!dl->dol_Task || !bs) continue;     /* not mounted */
+        l = bs[0] > 31 ? 31 : bs[0];
+        memcpy(names[nv], bs + 1, l);
+        names[nv][l] = ':';
+        names[nv][l + 1] = 0;
+        nv++;
+    }
+    UnLockDosList(LDF_VOLUMES | LDF_READ);
+    ia_walk_begin(c);
+    for (i = 0; i < nv; i++) {
+        BPTR l;
+        int ro = 1;
+        l = Lock((STRPTR)names[i], SHARED_LOCK);
+        if (!l) continue;
+        {
+            struct InfoData *info = (struct InfoData *)AllocVec(sizeof *info, MEMF_PUBLIC);     /* AllocVec: longword aligned */
+            if (info && Info(l, info)) ro = info->id_DiskState != ID_VALIDATED;
+            if (info) FreeVec(info);
+        }
+        UnLock(l);
+        strcpy(g_wpath, names[i]);
+        walk_dir(c, strlen(g_wpath), ro, 0);
+    }
+    me->pr_WindowPtr = oldwin;
+}
+
 static void print_counters(const ia_ctx *c)
 {
     unsigned long v[12];
@@ -273,6 +398,7 @@ int main(void)
         c->variant = s ? li_pick_variant(s->Width, s->Height) : 0;
         if (s) UnlockPubScreen(NULL, s);
         ia_apply(c);
+        walk_volumes(c);
     } else {
         ia_restore(c);
         if (c->restore_failed) rc = 5;

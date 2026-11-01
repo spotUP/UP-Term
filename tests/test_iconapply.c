@@ -355,6 +355,40 @@ static void test_walk(void)
     CK("counters moved once each", c.skipped_readonly == 1 && c.skipped_locked == 1 && c.skipped_uaem == 1 && c.fallback == 1);
 }
 
+static void test_walkfile(void)
+{
+    mfs s;
+    ia_ctx c;
+    char bp[IA_MAXPATH + 40];
+    mf *m;
+    setup(&s, &c, 0);
+    CI("drawer fixture type", ia_info_type(g_drawer, (size_t)g_drawer_n), 2);
+    CI("tool fixture type", ia_info_type(g_tool, (size_t)g_tool_n), 3);
+    CK("backup drawer is skipped", ia_walk_skip_dir("Boot:Storage/Icons/Amarchy") && !ia_walk_skip_dir("Boot:Storage/Icons"));
+    mf_put(&s, "Work:Games/Foo.info", g_drawer, (size_t)g_drawer_n);
+    mf_put(&s, "Work:Games/Bar.info", g_tool, (size_t)g_tool_n);
+    mf_put(&s, "Work:Games/Foo.info.uaem", g_tool, (size_t)g_tool_n);
+    mf_put(&s, "Work:Games/Locked.info", g_tool, (size_t)g_tool_n);
+    mf_put(&s, "Rom:Disk.info", g_tool, (size_t)g_tool_n);
+    ia_walk_begin(&c);
+    CI("no specific entry: type fallback", ia_walk_file(&c, "Work:Games/Foo.info", 0, 0), IA_DO_FALLBACK);
+    CI("fallback wrote through ia_apply's path", (int)c.written, 1);
+    CK("file now differs", !same(&s, "Work:Games/Foo.info", g_drawer, g_drawer_n));
+    CK("original backed up under the Amarchy drawer", li_backup_path("Work:Games/Foo.info", bp, sizeof bp) == 0 && same(&s, bp, g_drawer, g_drawer_n));
+    m = mf_find(&s, IA_MANIFEST);
+    CK("manifest lists the walked file", m != NULL && strstr((const char *)m->d, "Work:Games/Foo.info") != NULL);
+    CI("second visit is idempotent (already Lucide)", ia_walk_file(&c, "Work:Games/Foo.info", 0, 0), IA_DO_SKIP_OTHER);
+    CI("written unchanged by a repeat", (int)c.written, 1);
+    ia_walk_file(&c, "Work:Games/Foo.info.uaem", 0, 0);
+    ia_walk_file(&c, "Work:Games/Locked.info", 0, IA_PROT_WRITE);
+    ia_walk_file(&c, "Rom:Disk.info", 1, 0);
+    CK("skips counted, nothing written", c.skipped_uaem == 1 && c.skipped_locked == 1 && c.skipped_readonly == 1 && c.written == 1);
+    CK("locked and read-only files untouched", same(&s, "Work:Games/Locked.info", g_tool, g_tool_n) && same(&s, "Rom:Disk.info", g_tool, g_tool_n));
+    ia_restore(&c);
+    CK("restore puts the walked original back", same(&s, "Work:Games/Foo.info", g_drawer, g_drawer_n));
+    mfs_free(&s);
+}
+
 void suite_iconapply(void)
 {
     long dn;
@@ -369,4 +403,5 @@ void suite_iconapply(void)
     test_paths();
     test_edge();
     test_walk();
+    test_walkfile();
 }

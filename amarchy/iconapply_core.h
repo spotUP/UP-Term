@@ -20,7 +20,8 @@
 #define IA_MANIFEST   IA_BACKUP_DIR "/manifest"
 #define IA_DAT        "UP-Term:Amarchy/Icons/lucide.dat"
 #define IA_MAXPATH    160
-#define IA_MAXENT     256       /* defaults (12) + every path row of the table; a full manifest drops entries silently */
+/* manifest lines: defaults (12) + table path rows + the all-volume walk; a full manifest skips the write */
+#define IA_MAXENT     512
 #define IA_FILECAP    65536     /* biggest .info file handled (the size of each buffer the caller gives ia_ctx) */
 
 typedef struct ia_entry {
@@ -84,7 +85,8 @@ int ia_restore(ia_ctx *c);
 
 /* All-volume walk (L12): what to do with one directory entry. Pure; the Amiga side fills ia_walk_entry from ExAll / Info / Examine.
  * Precedence: .uaem sidecar (never an icon) > read-only volume > locked file > type fallback > write. */
-enum { IA_DO_WRITE, IA_DO_SKIP_READONLY, IA_DO_SKIP_LOCKED, IA_DO_SKIP_UAEM, IA_DO_FALLBACK };
+enum { IA_DO_WRITE, IA_DO_SKIP_READONLY, IA_DO_SKIP_LOCKED, IA_DO_SKIP_UAEM, IA_DO_FALLBACK,
+       IA_DO_SKIP_OTHER };     /* ia_walk_file only: unreadable, unparsable or already Lucide (counted in skipped_io / _bad / _done) */
 #define IA_PROT_DELETE 0x01     /* AmigaDOS protection bits, a SET bit denies the action */
 #define IA_PROT_WRITE  0x04
 typedef struct ia_walk_entry {
@@ -97,8 +99,18 @@ typedef struct ia_walk_entry {
 int ia_walk_decide(const ia_walk_entry *e);
 /* the lucide.dat match name the type fallback uses ("def_drawer"), NULL when the type has none */
 const char *ia_walk_fallback_match(int dotype);
-/* count one decision in the ctx counters; returns it unchanged. Write and fallback are counted by ia_apply, not here. */
+/* count one decision in the ctx counters; returns it unchanged. Counts the skips and the fallback; ia_walk_file calls it. */
 int ia_walk_count(ia_ctx *c, int decision);
+
+/* the type byte of a .info file (do_Type), 0 when too short */
+int ia_info_type(const uint8_t *buf, size_t len);
+/* a directory path the walk must not enter: the backup drawer (Storage/Icons/Amarchy) */
+int ia_walk_skip_dir(const char *path);
+/* load the manifest once before a walk (ia_apply does it for the defaults) */
+void ia_walk_begin(ia_ctx *c);
+/* One .info (or .info.uaem) file found by the walk: decide, count, and on WRITE / FALLBACK back it up and rewrite it through the
+ * same path ia_apply uses (backup, manifest line, atomic write). Needs ia_walk_begin first. Returns the IA_DO_* decision. */
+int ia_walk_file(ia_ctx *c, const char *path, int vol_readonly, unsigned long prot);
 
 /* the command line: "APPLY", "RESTORE", "STATUS", "?" or "" -> IA_CMD_* */
 enum { IA_CMD_NONE, IA_CMD_APPLY, IA_CMD_RESTORE, IA_CMD_STATUS, IA_CMD_HELP };
