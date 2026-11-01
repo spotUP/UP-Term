@@ -309,12 +309,14 @@ static void test_edge(void)
     ia_apply(&c);
     CK("failed icon write left the original", same(&s, "ENVARC:Sys/def_tool.info", g_tool, g_tool_n));
     CK("failed icon write counted", c.skipped_io >= 1);
-    CK("backup existed before the icon write", li_backup_path("ENVARC:Sys/def_tool.info", bp, sizeof bp) == 0 && same(&s, bp, g_tool, g_tool_n));
+    CK("failed icon write leaves no manifest entry", ia_man_find(&c.man, "ENVARC:Sys/def_tool.info") < 0);
+    CK("failed icon write leaves no manifest entry (saved file)", !mf_find(&s, IA_MANIFEST) || mf_find(&s, IA_MANIFEST)->len == 0 || !memmem(mf_find(&s, IA_MANIFEST)->d, mf_find(&s, IA_MANIFEST)->len, "ENVARC:Sys/def_tool.info", 24));
+    CK("failed icon write leaves no orphan backup", li_backup_path("ENVARC:Sys/def_tool.info", bp, sizeof bp) == 0 && !mf_find(&s, bp));
     s.fail_write = NULL;
     c.written = 0;
     ia_apply(&c);
     CK("re-run after the failure applies it", c.written >= 1 && !same(&s, "ENVARC:Sys/def_tool.info", g_tool, g_tool_n));
-    CK("backup still the original after the re-run", same(&s, bp, g_tool, g_tool_n));
+    CK("backup is the original after the re-run", same(&s, bp, g_tool, g_tool_n));
     ia_restore(&c);
     CK("restore after the re-run gives the original", same(&s, "ENVARC:Sys/def_tool.info", g_tool, g_tool_n));
     mfs_free(&s);

@@ -190,6 +190,14 @@ static int man_save(ia_ctx *c)
     return n ? c->io->write(c->io->ctx, IA_MANIFEST, c->bak, n) : -1;
 }
 
+/* Undo the manifest line of a write that did not happen: the previous line comes back, or the path goes. Saved best effort. */
+static void man_rollback(ia_ctx *c, const char *path, const ia_entry *prev)
+{
+    if (prev) ia_man_put(&c->man, prev);
+    else ia_man_del(&c->man, ia_man_find(&c->man, path));
+    man_save(c);
+}
+
 /* One icon file: backup, manifest line, icon, with the images of lucide.dat entry `match`. 1 written, 0 not (a counter says why) */
 static int apply_one(ia_ctx *c, const char *path, const char *match)
 {
@@ -200,7 +208,7 @@ static int apply_one(ia_ctx *c, const char *path, const char *match)
     li_edit ed;
     li_image nrm, sel;
     size_t outn;
-    ia_entry ne;
+    ia_entry ne, prev;
 
     if (n == -1) {
         /* only a defaults match has a system default object; a table path that is not on this volume is skipped */
@@ -228,8 +236,16 @@ static int apply_one(ia_ctx *c, const char *path, const char *match)
             return 0;
         }
     }
+    if (e_i >= 0) prev = c->man.e[e_i];
     ia_man_put(&c->man, &ne);
-    if (man_save(c) != 0 || c->io->write(c->io->ctx, path, c->out, outn) != 0) { c->skipped_io++; return 0; }
+    if (man_save(c) != 0) { man_rollback(c, path, e_i >= 0 ? &prev : NULL); c->skipped_io++; return 0; }
+    if (c->io->write(c->io->ctx, path, c->out, outn) != 0) {
+        /* the manifest lists only icons Amarchy replaced: a failed write takes its line (and a backup nothing refers to) back */
+        man_rollback(c, path, e_i >= 0 ? &prev : NULL);
+        if (e_i < 0 && !absent) c->io->remove(c->io->ctx, bpath);
+        c->skipped_io++;
+        return 0;
+    }
     c->written++;
     return 1;
 }
