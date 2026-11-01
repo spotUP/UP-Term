@@ -360,7 +360,7 @@ class FindsTheAddOns(unittest.TestCase):
         full = INSTALLER[INSTALLER.index('; ---- what went where'):]
         self.assertLess(full.index('(P_OPTIONS_END)'), full.index('(P_ADDONS)'))
         self.assertLess(full.index('(P_ADDONS)'), full.rindex('(P_END)'))
-        self.assertIn('#adnote))\n(if (= #wasabi "WASABI")', full)
+        self.assertIn('         #adnote))\n(P_END)', full)
 
 
 class OffersAReboot(unittest.TestCase):
@@ -486,8 +486,8 @@ class AmiSSLPart(unittest.TestCase):
         merge = '(set #adnote (cat #sslnote #adnote))'
         self.assertIn(rows, tail)
         self.assertLess(tail.index(rows), tail.index(merge))
-        self.assertLess(tail.index(merge), tail.index('(set #n (+ (if (= #wasabi'))
-        self.assertIn('(if (= #wasabi "WASABI") 14 9) #adrows)', tail)
+        self.assertLess(tail.index(merge), tail.index('(set #n (+ 9 #adrows))'))
+        self.assertIn('(set #n (+ 9 #adrows))', tail)
         self.assertIn('(set #sslnote "")', s[s.index('(procedure P_AMISSL\n'):][:300])
         self.assertIn('(set #sslrows 0)', s[s.index('(procedure P_AMISSL\n'):][:300])
 
@@ -1138,8 +1138,6 @@ class RoomCheckSplit(unittest.TestCase):
         self.assertIn('SetVar((STRPTR)ROOMVAR, (STRPTR)text', (ROOT / 'install/bigvol.c').read_text())
 
 
-if __name__ == '__main__':
-    sys.exit(0 if unittest.main(exit=False, verbosity=1).result.wasSuccessful() else 1)
 
 
 class AmiNetXDuoPart(unittest.TestCase):
@@ -1264,6 +1262,19 @@ class LastPageLineCount(unittest.TestCase):
             ev(f)
         return seen
 
+    def test_no_page_asks_for_more_than_13_lines(self):
+        """INSTALLER-LAYOUT-BOTTOM-STRIP (rig 9, 640x256 depth 8): the Installer window is then 448x159, a 9 px
+        line, the first at y 12 and the buttons at y 129: 13 lines. The 14-line wasabi last page spilled its
+        last lines into the bottom border, where they stayed as glyph tops under the next page (the Reboot
+        question); the key now has a page of its own."""
+        for wasabi in ('WASABI', ''):
+            for sslrows in (0, 1, 2):
+                for adnote in ('', '\\nAdd-ons: see their pages.'):
+                    with self.subTest(wasabi=wasabi, sslrows=sslrows, adnote=bool(adnote)):
+                        leads = self.leads(wasabi, sslrows, adnote)
+                        self.assertTrue(leads)
+                        self.assertLessEqual(max(leads), 13, leads)
+
     def test_no_page_asks_for_more_than_14_lines(self):
         for wasabi in ('WASABI', ''):
             for sslrows in (0, 1, 2):
@@ -1277,3 +1288,7 @@ class LastPageLineCount(unittest.TestCase):
         procs = (ROOT / "dist/common/procs.installer").read_text(encoding="latin-1")
         body = procs[procs.index('(procedure P_LEAD'):][:200]
         self.assertIn('(if (> #n 14) ""', body)
+
+
+if __name__ == '__main__':
+    sys.exit(0 if unittest.main(exit=False, verbosity=1).result.wasSuccessful() else 1)
