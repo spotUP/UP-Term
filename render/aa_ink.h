@@ -60,15 +60,18 @@ typedef struct aa_ink_ops {
 typedef struct aa_ink {
     aa_ink_ops ops;
     UBYTE ok, shades_ok;
+    UBYTE nshades;      /* shade inks wanted (aa_ink_shades_for_depth), at most AA_INK_MAX_SHADES */
     ULONG fg, bg;       /* 0xRRGGBB the table and shades are for */
     aa_ink_rgb *tab;       /* fg over bg at each coverage, made at the first draw (1 KB) */
-    ULONG shade[3];     /* the inks of 1/4, 1/2, 3/4 of the way to fg */
-    UBYTE use[3];       /* 1 when that ink shows its shade closer than fg and bg */
+    ULONG shade[AA_INK_MAX_SHADES]; /* the inks of the shades, evenly from bg to fg */
+    UBYTE use[AA_INK_MAX_SHADES];   /* 1 when that ink shows its shade closer than fg and bg and no other shade's pen */
     UBYTE *mask;        /* a pass's template, chip RAM */
     ULONG mask_size;
 } aa_ink;
 
 void aa_ink_init(aa_ink *a, const aa_ink_ops *ops);
+/* The depth of a pen screen sets how many shades it gets (default: the deep count); call before the first draw */
+void aa_ink_set_depth(aa_ink *a, int depth);
 void aa_ink_free(aa_ink *a);
 /* The pens the shades hold show other colours now (the palette changed): remake them at the next draw */
 void aa_ink_forget(aa_ink *a);

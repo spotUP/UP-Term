@@ -99,10 +99,43 @@ static void aa_ink_rules(void)
     CHECK(tab[0] == 0x000000);
     CHECK(tab[255] == 0xFFFFFF);
     CHECK(tab[128] == ce_mix(0xFFFFFF, 0, 128));
-    CHECK(aa_ink_shade_target(tab, 0) == tab[64]);
-    CHECK(aa_ink_shade_target(tab, 1) == tab[128]);
-    CHECK(aa_ink_shade_target(tab, 2) == tab[192]);
-    CHECK(aa_ink_level(0) == 64 && aa_ink_level(1) == 128 && aa_ink_level(2) == 192 && aa_ink_level(3) == 255);
+    /* 3 shades is the old ramp: 64, 128, 192, 255 */
+    CHECK(aa_ink_shade_target(tab, 0, 3) == tab[64]);
+    CHECK(aa_ink_shade_target(tab, 1, 3) == tab[128]);
+    CHECK(aa_ink_shade_target(tab, 2, 3) == tab[192]);
+    CHECK(aa_ink_level(1, 3) == 64 && aa_ink_level(2, 3) == 128 && aa_ink_level(3, 3) == 192 && aa_ink_level(4, 3) == 255);
+    /* the depth picks the count: 4 on AGA and <= 8 bits, 8 deeper (more than the old 3) */
+    CHECK(aa_ink_shades_for_depth(8) == 4 && aa_ink_shades_for_depth(5) == 4 && aa_ink_shades_for_depth(15) == 8
+          && aa_ink_shades_for_depth(24) == 8);
+    CHECK(aa_ink_shades_for_depth(8) > 3 && aa_ink_shades_for_depth(24) <= AA_INK_MAX_SHADES);
+    /* step index = Selecta's (cov*(steps-1)+127)/255 with steps = n+2 */
+    CHECK(aa_ink_index(0, 3) == 0 && aa_ink_index(255, 3) == 4 && aa_ink_index(127, 3) == 2 && aa_ink_index(32, 3) == 1);
+    CHECK(aa_ink_index(31, 3) == 0 && aa_ink_index(96, 3) == 2 && aa_ink_index(95, 3) == 1);
+    CHECK(aa_ink_index(0, 4) == 0 && aa_ink_index(255, 4) == 5 && aa_ink_index(51, 4) == 1 && aa_ink_index(50, 4) == 1
+          && aa_ink_index(25, 4) == 0 && aa_ink_index(26, 4) == 1 && aa_ink_index(127, 4) == 2 && aa_ink_index(128, 4) == 3);
+    CHECK(aa_ink_index(0, 8) == 0 && aa_ink_index(255, 8) == 9 && aa_ink_index(127, 8) == 4 && aa_ink_index(15, 8) == 1
+          && aa_ink_index(14, 8) == 0 && aa_ink_index(-5, 8) == 0 && aa_ink_index(999, 8) == 9);
+    {
+        int n, c, k;
+        for (n = 3; n <= 8; n++)
+            for (c = 0; c < 256; c++) { /* the passes (threshold between neighbours) draw the step index says, +-0 */
+                int want = aa_ink_index(c, n), got = 0;
+                for (k = 1; k <= n + 1; k++)
+                    if (c >= aa_ink_threshold(k - 1, k, n))
+                        got = k;
+                if (got != want) {
+                    printf("pass/index mismatch n=%d c=%d got=%d want=%d\n", n, c, got, want);
+                    CHECK(0);
+                }
+            }
+    }
+    /* colour mix of each step: the table at its level, n = 4 white over black */
+    CHECK(aa_ink_shade_target(tab, 0, 4) == tab[aa_ink_level(1, 4)] && (aa_ink_shade_target(tab, 0, 4) & 255) == 51);
+    CHECK((aa_ink_shade_target(tab, 3, 4) & 255) == 204 && (aa_ink_shade_target(tab, 7, 8) & 255) == 227);
+    /* revert check: the old 3-step mapping (coverage/64 passes) puts 127 at step 1, the ramp at step 2 of 3 shades,
+     * and 4 shades distinguish 51 from 25 where 3 shades cannot */
+    CHECK(aa_ink_index(127, 3) == 2 && 127 / 64 == 1); /* old mapping: 1 */
+    CHECK(aa_ink_index(51, 4) != aa_ink_index(25, 4) && aa_ink_shades_for_depth(8) != 3);
     CHECK(aa_ink_shade_accept(10, 50, 60));   /* closer than both: used */
     CHECK(!aa_ink_shade_accept(50, 50, 60));  /* as far as the text pen: the text pen draws it */
     CHECK(!aa_ink_shade_accept(60, 70, 60));  /* as far as the background pen */

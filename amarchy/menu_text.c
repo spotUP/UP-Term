@@ -203,6 +203,7 @@ static void ink_init(menu_text *m)
     ops.set_pen = op_set_pen;
     ops.fill = op_fill;
     aa_ink_init(&m->ink, &ops);
+    aa_ink_set_depth(&m->ink, (int)GetBitMapAttr(m->scr->RastPort.BitMap, BMA_DEPTH));
     m->ink_ready = 1;
 }
 

@@ -11,14 +11,22 @@
 
 void aa_ink_init(aa_ink *a, const aa_ink_ops *ops)
 {
+    int i;
     a->ops = *ops;
     a->ok = a->shades_ok = 0;
     a->fg = a->bg = 0;
     a->tab = 0;
-    a->use[0] = a->use[1] = a->use[2] = 0;
-    a->shade[0] = a->shade[1] = a->shade[2] = 0;
+    for (i = 0; i < AA_INK_MAX_SHADES; i++)
+        a->use[i] = 0, a->shade[i] = 0;
+    a->nshades = AA_INK_SHADES_DEEP;
     a->mask = 0;
     a->mask_size = 0;
+}
+
+void aa_ink_set_depth(aa_ink *a, int depth)
+{
+    a->nshades = (UBYTE)aa_ink_shades_for_depth(depth);
+    a->shades_ok = 0;
 }
 
 void aa_ink_free(aa_ink *a)
@@ -61,7 +69,7 @@ UBYTE *aa_ink_room(UBYTE **buf, ULONG *size, ULONG n, ULONG flags)
  * text and background pens do. 0 when there is no memory for the table. */
 static int colours(aa_ink *a, ULONG fg, ULONG bg, int lut, int truecolor)
 {
-    int i;
+    int i, j;
     if (!a->tab) {
         a->tab = (aa_ink_rgb *)AllocVec(256 * sizeof(aa_ink_rgb), MEMF_ANY);
         if (!a->tab)
@@ -77,8 +85,8 @@ static int colours(aa_ink *a, ULONG fg, ULONG bg, int lut, int truecolor)
     }
     if (lut || a->shades_ok)
         return 1;
-    for (i = 0; i < 3; i++) {
-        ULONG want = aa_ink_shade_target(a->tab, i);
+    for (i = 0; i < a->nshades; i++) {
+        ULONG want = aa_ink_shade_target(a->tab, i, a->nshades);
         a->use[i] = 0;
         if (truecolor) {
             a->shade[i] = a->ops.truecolor_ink(a->ops.u, want);
@@ -88,6 +96,10 @@ static int colours(aa_ink *a, ULONG fg, ULONG bg, int lut, int truecolor)
             ULONG prgb = a->ops.pen_rgb(a->ops.u, p);
             a->shade[i] = p;
             a->use[i] = (UBYTE)aa_ink_shade_accept(a->ops.dist(want, prgb), a->ops.dist(want, fg), a->ops.dist(want, bg));
+            /* the screen gave one pen for two shades: the lower step keeps it */
+            for (j = 0; j < i && a->use[i]; j++)
+                if (a->use[j] && a->shade[j] == a->shade[i])
+                    a->use[i] = 0;
         }
     }
     a->shades_ok = 1;
@@ -105,25 +117,26 @@ int aa_ink_draw(aa_ink *a, struct RastPort *rp, struct Library *cgx, int truecol
                          (UWORD)h, VR_CTABFMT_XRGB8);
         return 1;
     }
-    if (!a->use[0] && !a->use[1] && !a->use[2])
+    for (i = 0; i < a->nshades && !a->use[i]; i++)
+        ;
+    if (i == a->nshades)
         return 0;
     bpr = ((w + 15) >> 4) << 1;
     if (!aa_ink_room(&a->mask, &a->mask_size, (ULONG)bpr * h, MEMF_CHIP))
         return 0;
     /* each pixel the level nearest its coverage among the background, the
-     * shades the screen shows and the text: a pass per level from the
+     * shades the screen shows and the text: a pass per step from the
      * lightest, at the coverage halfway between it and the level below */
     a->ops.fill(a->ops.u, px, py, (WORD)(px + w - 1), (WORD)(py + h - 1), bg_ink);
     SetDrMd(rp, JAM1);
-    for (i = 0, lo = 0; i < 4; i++) {
-        int lv = aa_ink_level(i);
-        if (i < 3 && !a->use[i])
+    for (i = 0, lo = 0; i <= a->nshades; i++) {
+        if (i < a->nshades && !a->use[i])
             continue;
         WaitBlit(); /* the previous pass may still read the template */
-        ttf_threshold_at(cov, w, h, a->mask, bpr, (lo + lv + 1) / 2);
-        a->ops.set_pen(a->ops.u, i < 3 ? a->shade[i] : fg_ink);
+        ttf_threshold_at(cov, w, h, a->mask, bpr, aa_ink_threshold(lo, i + 1, a->nshades));
+        a->ops.set_pen(a->ops.u, i < a->nshades ? a->shade[i] : fg_ink);
         BltTemplate((PLANEPTR)a->mask, 0, (WORD)bpr, rp, px, py, w, h);
-        lo = lv;
+        lo = i + 1;
     }
     SetDrMd(rp, JAM2);
     return 1;
