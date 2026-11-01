@@ -216,6 +216,11 @@ int desk_icontrol_decide(int thin, const unsigned char *cur, long curlen, int ha
 #define DESK_WB_CREATED 2
 int desk_wbborder_value(const unsigned char *cur, long curlen);
 long desk_wbborder(int flat, const unsigned char *cur, long curlen, int saved, int *save_out, unsigned char *out, long cap);
+/* WB-VOLUME-GAUGE-OFF: the Workbench volume gauge is the BOOL wbe_DisableVolumeGauge (WBNC body offset 38, NDK 3.2 prefs/workbench.h). Same contract as
+ * desk_wbborder without the created-file case: flat 1 sets it (saved value kept in *save_out), flat 0 puts the saved value back, every other byte kept.
+ * desk_wbgauge_value: 1 disabled, 0 shown, -1 no such field (no file, 3.1, short chunk, which are left unchanged). Returns the size written, 0 for nothing. */
+int desk_wbgauge_value(const unsigned char *cur, long curlen);
+long desk_wbgauge(int flat, const unsigned char *cur, long curlen, int saved, int *save_out, unsigned char *out, long cap);
 /* the mask a marker names; 0 when buf is no marker */
 unsigned desk_marker_parse(const char *buf, long len);
 

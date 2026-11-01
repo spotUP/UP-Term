@@ -721,37 +721,57 @@ static int dk_wbborder_editor_ok(void)
     return 0;
 }
 
+static void dk_keep_mark(const char *file, int keep)
+{
+    unsigned char sv[2];
+    if (keep >= 0) {
+        UnLock(CreateDir((STRPTR)DK_REVERT));
+        sv[0] = (unsigned char)('0' + keep);
+        dk_write(file, sv, 1);
+    } else if (keep == -2)
+        DeleteFile((STRPTR)file);
+}
+
+/* WB-VOLUME-GAUGE-OFF: the volume gauge (wbe_DisableVolumeGauge, same WBNC chunk) goes through the same one write and one editor USE as the border;
+ * its saved value lives in T:amarchy-revert/wbgauge.prev. */
+unsigned long desk_dos_wbgauge_writes;
+#define DK_WBG_PREV DK_REVERT "/wbgauge.prev"
+
 static void dk_wbborder(void)
 {
-    static unsigned char cur[DK_BUF], out[DK_BUF];
+    static unsigned char cur[DK_BUF], mid[DK_BUF], out[DK_BUF];
     am_prefs ap;
     unsigned char sv[2];
-    int flat, saved = -1, keep;
-    long len, n;
+    int flat, saved = -1, keep, gsaved = -1, gkeep;
+    long len, n, g;
     amconf_load(&ap);
     flat = amconf_desk_flat_pens(&ap);
     if (!dk_wbborder_editor_ok())
         return;
     if (dk_read(DK_WBB_PREV, sv, 2) == 1)
         saved = sv[0] - '0';
+    if (dk_read(DK_WBG_PREV, sv, 2) == 1)
+        gsaved = sv[0] - '0';
     len = dk_read("ENV:Sys/Workbench.prefs", cur, sizeof cur);
     if (len < 0)
         len = dk_read("ENVARC:Sys/Workbench.prefs", cur, sizeof cur);
     if (len >= DK_BUF)
         return;
-    n = desk_wbborder(flat, cur, len > 0 ? len : 0, saved, &keep, out, sizeof out);
-    if (n > 0) {
+    if (len < 0)
+        len = 0;
+    n = desk_wbborder(flat, cur, len, saved, &keep, mid, sizeof mid);
+    g = desk_wbgauge(flat, n > 0 ? mid : cur, n > 0 ? n : len, gsaved, &gkeep, out, sizeof out);
+    if (n > 0 || g > 0) {
         UnLock(CreateDir((STRPTR)DK_WORK));
-        desk_dos_wbborder_writes++;
-        if (!dk_put("Workbench", DK_WORK "/workbench.prefs", out, n))
+        if (n > 0)
+            desk_dos_wbborder_writes++;
+        if (g > 0)
+            desk_dos_wbgauge_writes++;
+        if (!dk_put("Workbench", DK_WORK "/workbench.prefs", g > 0 ? out : mid, g > 0 ? g : n))
             return;
     }
-    if (keep >= 0) {
-        UnLock(CreateDir((STRPTR)DK_REVERT));
-        sv[0] = (unsigned char)('0' + keep);
-        dk_write(DK_WBB_PREV, sv, 1);
-    } else if (keep == -2)
-        DeleteFile((STRPTR)DK_WBB_PREV);
+    dk_keep_mark(DK_WBB_PREV, keep);
+    dk_keep_mark(DK_WBG_PREV, gkeep);
 }
 
 int desk_dos_apply(const gtheme *th, char *why, int cap)

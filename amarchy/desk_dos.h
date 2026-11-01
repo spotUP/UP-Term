@@ -26,6 +26,7 @@ extern void (*desk_dos_own_open)(void);
 extern unsigned long desk_dos_live_pens;       /* FLAT-PEN5-MAGENTA: live sets of the role pens no palette.prefs entry reaches (dk_live_pens) */
 extern unsigned long desk_dos_flat_pens_writes; /* FLAT-PENS-LIVE: palette pen writes made by flat-system-look itself */
 extern unsigned long desk_dos_wbborder_writes; /* AM-ICON-NOBORDER: Workbench editor writes of the icon border */
+extern unsigned long desk_dos_wbgauge_writes;  /* WB-VOLUME-GAUGE-OFF: Workbench editor writes that changed the volume gauge */
 extern unsigned long desk_dos_flat_writes; /* FLAT-C9: times desk_dos_apply wrote the flat_state block of a running amarchy-flat */
 extern unsigned long desk_dos_dopus_sends; /* FLAT-D2: times desk_dos_apply handed the theme to dopus_theme_send */
 extern unsigned long desk_dos_applies, desk_dos_last_mask;

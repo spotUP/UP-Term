@@ -800,6 +800,8 @@ int desk_icontrol_decide(int thin, const unsigned char *cur, long curlen, int ha
 /* ---- AM-ICON-NOBORDER: the Workbench icon border (Prefs/Workbench "Border Size", WBNC chunk, struct WorkbenchPrefs.wbp_Borderless) ---- */
 #define WBNC_BORDERLESS 20L /* 3 ULONG + struct Rectangle (4 WORD) = 20, then BOOL (a WORD, NDK 3.2 exec/types.h:167) */
 #define WBNC_MIN 22L
+#define WBNC_GAUGE 38L      /* WorkbenchExtendedPrefs after the 30-byte WorkbenchPrefs: IconMemoryType ULONG 30, LockPens 34, DisableTitleBar 36, DisableVolumeGauge 38 */
+#define WBNC_GAUGE_MIN 40L
 #define WBNC_STOCK_BODY 50L
 
 static long wbnc_find(const unsigned char *cur, long curlen, long *size)
@@ -825,7 +827,7 @@ int desk_wbborder_value(const unsigned char *cur, long curlen)
  * NewIcons, colour icons, then the V45/V47 extension words. */
 static const unsigned char wbnc_stock[WBNC_STOCK_BODY] = {
     0, 0, 0x10, 0, 0, 0, 0, 3, 0, 0, 0, 0x10, 0xff, 0xfd, 0xff, 0xfd, 0, 3, 0, 3, 0, 0, 0, 0, 0, 0x19, 0, 1, 0, 1,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0x32, 0, 0, 0, 0, 0, 0, 0, 0
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x32, 0, 0, 0, 0, 0, 0, 0, 0   /* TitleUpdateDelay 50 ms is the word at 40 (measured file, rig 12) */
 };
 
 static long wbnc_stock_file(int borderless, unsigned char *out, long cap)
@@ -880,6 +882,46 @@ long desk_wbborder(int flat, const unsigned char *cur, long curlen, int saved, i
     memcpy(out, cur, (size_t)curlen);
     out[body + WBNC_BORDERLESS] = 0;
     out[body + WBNC_BORDERLESS + 1] = (unsigned char)want;
+    return curlen;
+}
+
+/* WB-VOLUME-GAUGE-OFF: wbe_DisableVolumeGauge, the BOOL at body offset 38 of the WBNC chunk (V45 extension, 3.2 Prefs/Workbench "Disable volume gauge") */
+static long wbgauge_find(const unsigned char *cur, long curlen)
+{
+    long size, body = wbnc_find(cur, curlen, &size);
+    return body >= 0 && size >= WBNC_GAUGE_MIN && body + WBNC_GAUGE_MIN <= curlen ? body : -1;
+}
+
+int desk_wbgauge_value(const unsigned char *cur, long curlen)
+{
+    long body = wbgauge_find(cur, curlen);
+    return body < 0 ? -1 : (int)(get16(cur + body + WBNC_GAUGE) != 0);
+}
+
+long desk_wbgauge(int flat, const unsigned char *cur, long curlen, int saved, int *save_out, unsigned char *out, long cap)
+{
+    long body = wbgauge_find(cur, curlen);
+    int now, want;
+    *save_out = -1;
+    if (body < 0 || curlen > cap)           /* no file, 3.1, or a WBNC chunk without the V45 words: nothing to do */
+        return 0;
+    now = get16(cur + body + WBNC_GAUGE) != 0;
+    if (flat) {
+        if (now)
+            return 0;                       /* already disabled by the user: nothing to remember or restore */
+        *save_out = now;
+        want = 1;
+    } else {
+        if (saved < 0)
+            return 0;
+        *save_out = -2;
+        if (now == saved)
+            return 0;
+        want = saved;
+    }
+    memcpy(out, cur, (size_t)curlen);
+    out[body + WBNC_GAUGE] = 0;
+    out[body + WBNC_GAUGE + 1] = (unsigned char)want;
     return curlen;
 }
 

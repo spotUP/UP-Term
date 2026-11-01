@@ -322,6 +322,38 @@ static void test_desk_wbborder_keeps_tweaks(void)
     CHECK_INT(keep, -2);
 }
 
+/* WB-VOLUME-GAUGE-OFF: wbe_DisableVolumeGauge is the WORD at WBNC body offset 38; flat sets it, off puts the user's value back byte-identical, 3.1 files stay */
+static void test_desk_wbgauge(void)
+{
+    static unsigned char cur[128], out[128], back[128], small[128];
+    int keep;
+    long n = desk_wbborder(1, 0, 0, -1, &keep, cur, sizeof cur);   /* the 3.2 editor's stock file: gauge shown */
+    CHECK_INT(n, 84);
+    CHECK_INT(desk_wbgauge_value(cur, n), 0);
+    CHECK_INT(desk_wbgauge(1, cur, n, -1, &keep, out, sizeof out), n);
+    CHECK_INT(keep, 0);
+    CHECK_INT(desk_wbgauge_value(out, n), 1);
+    CHECK_INT(out[26 + 8 + 38], 0);
+    CHECK_INT(out[26 + 8 + 39], 1);
+    CHECK(!memcmp(cur, out, 26 + 8 + 38) && !memcmp(cur + 26 + 8 + 40, out + 26 + 8 + 40, (size_t)(n - 26 - 8 - 40)));   /* every other chunk and byte untouched */
+    CHECK_INT(desk_wbgauge(1, out, n, 0, &keep, back, sizeof back), 0);    /* already off: no second write */
+    CHECK_INT(keep, -1);
+    CHECK_INT(desk_wbgauge(0, out, n, 0, &keep, back, sizeof back), n);    /* off: the user's 0 returns */
+    CHECK_INT(keep, -2);
+    CHECK(!memcmp(back, cur, (size_t)n));
+    CHECK_INT(desk_wbgauge(0, out, n, -1, &keep, back, sizeof back), 0);   /* never changed by us */
+    memcpy(back, cur, (size_t)n);
+    back[26 + 8 + 39] = 1;                                                 /* the user had the gauge off themselves */
+    CHECK_INT(desk_wbgauge(1, back, n, -1, &keep, out, sizeof out), 0);
+    CHECK_INT(keep, -1);
+    CHECK_INT(desk_wbgauge(0, back, n, -1, &keep, out, sizeof out), 0);
+    n = wbnc_file(small, 0);                                               /* a 3.1 style 30-byte WBNC: no gauge field */
+    CHECK_INT(desk_wbgauge_value(small, n), -1);
+    CHECK_INT(desk_wbgauge(1, small, n, -1, &keep, out, sizeof out), 0);
+    CHECK_INT(desk_wbgauge(1, small, 10, -1, &keep, out, sizeof out), 0);  /* no WBNC chunk at all */
+    CHECK_INT(desk_wbgauge(1, 0, 0, -1, &keep, out, sizeof out), 0);       /* no file */
+}
+
 static void test_desk_flat_pens_key(void)
 {
     static unsigned char gold[BUF_MAX], out[BUF_MAX];
@@ -1105,6 +1137,7 @@ void suite_desk(void)
     test_desk_wbborder();
     test_desk_wbborder_absent();
     test_desk_wbborder_keeps_tweaks();
+    test_desk_wbgauge();
     test_desk_pens_reset();
     test_desk_reset_done();
     test_desk_iprefs_idle();
