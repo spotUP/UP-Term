@@ -3,15 +3,27 @@
  * #included by vtengine.c before struct vt_term (ENGINE is the one file);
  * it knows nothing of the terminal. The engine's parser catches the
  * introducer (CSI M / CSI N / CSI |) and feeds the string here byte by
- * byte until SO. Rules from DCTelnet's ansimusic.c and GW-BASIC:
+ * byte until SO. Rules from GW-BASIC PLAY (GWSTS.ASM) and SyncTERM:
  *   A-G [#|+|-] [len] [.]...  note; len 1-64 (4 = quarter), default L
- *   N n [.]...                note number 1-84 (46 = A 440), 0 a rest
+ *   N n [.]...                note number 0-84: N1 = C in O0, octave
+ *                             (n-1) div 12, N34 = A 440, 0 a rest
  *   P / R [len] [.]...        pause
- *   O n (0-6), < >            octave (O3 C = middle C)
- *   L n (1-64), T n (32-255)  default length, tempo (quarter notes a minute)
+ *   O n (0-6), < >            octave (O2 A = 440, O2 C = 261.63, O3 C = 523)
+ *   L n (1-64, above clamps), T n (32-255)  default length, tempo (quarter notes a minute);
+ *                             O and T out of range are clamped
  *   MN ML MS                  normal (7/8 sounds), legato (all), staccato (3/4)
  *   MF MB                     foreground / background (a flag for the host)
- * Spaces and anything unknown are skipped. Portable C89. */
+ * Each dot multiplies the length by 1.5 (C. 1.5x, C.. 2.25x, C... 3.375x).
+ * After the CSI M intro, N or n followed by a digit is the note-number
+ * command; N not followed by a digit is MN.
+ * Spaces and any other byte (CR, LF, quotes, ...) are skipped and the string
+ * plays on: real files carry such bytes inside PLAY strings. A ';' marks a
+ * SMILE sound-effect block ("MF 7000;.12;200;15;-100"): once one is seen the
+ * string plays nothing -- the notes not yet handed over are dropped and the
+ * host is not called. Notes go to the host in parts of VT_MUSIC_NOTES, so a
+ * ';' after such a flush cannot recall the earlier parts; sound-effect
+ * strings are far shorter than that. Playing the effect itself is not done.
+ * Portable C89. */
 
 #define AM_NONE 0
 
@@ -22,13 +34,16 @@ typedef struct vt_music {
     vt_u8 has_num, dots;
     int acc;                      /* -1 flat, +1 sharp */
     long num;
+    vt_u8 intro_m;                /* CSI M intro, first command not read yet */
+    vt_u8 mn_pending;             /* intro M then N: note number if a digit follows */
+    vt_u8 silent;                 /* a ';' was seen: a sound-effect block, no notes */
     int n;                        /* notes in the buffer */
     vt_note notes[VT_MUSIC_NOTES];
 } vt_music;
 
-/* Octave 3, C to B, in centi-Hz. */
-static const vt_u32 am_oct3[12] = {
-    26163, 27718, 29366, 31113, 32963, 34923, 36999, 39200, 41530, 44000, 46616, 49388
+/* Octave 6, C to B, in Hz (GW-BASIC NOTTAB). */
+static const vt_u16 am_oct6[12] = {
+    4186, 4435, 4699, 4978, 5274, 5588, 5920, 6272, 6645, 7040, 7459, 7902
 };
 
 static void am_init(vt_music *m)
@@ -54,30 +69,31 @@ static vt_u32 am_chz(int oct, int semi)
         oct = 0;
     if (oct > 6)
         oct = 6;
-    c = am_oct3[semi];
-    if (oct > 3)
-        c <<= oct - 3;
-    else
-        c >>= 3 - oct;
+    /* GW-BASIC: shift right by 6-octave, ADC 0 adds the last bit shifted out */
+    c = am_oct6[semi];
+    if (oct < 6)
+        c = (c >> (6 - oct)) + ((c >> (5 - oct)) & 1);
+    c *= 100; /* whole Hz in centi-Hz */
     return c;
 }
 
-/* A len note at the tempo, with dots: whole = 240000 / tempo ms. */
+/* A len note at the tempo, with dots: whole = 240000 / tempo ms; each dot
+ * is 1.5 times the length so far. */
 static vt_u32 am_ms(const vt_music *m, long len, int dots)
 {
-    vt_u32 add = 240000UL / m->tempo / (vt_u32)len;
-    vt_u32 ms = add;
+    vt_u32 num = 240000UL, den = (vt_u32)m->tempo * (vt_u32)len, ms;
     while (dots-- > 0) {
-        add /= 2;
-        ms += add;
+        num *= 3; /* 240000 * 3^8 fits 32 bits */
+        den *= 2;
     }
+    ms = num / den;
     return ms > 65535UL ? 65535UL : ms;
 }
 
 static void am_add(vt_music *m, vt_u32 chz, vt_u32 ms)
 {
     vt_note *nt;
-    if (ms == 0 || m->n >= VT_MUSIC_NOTES)
+    if (ms == 0 || m->silent || m->n >= VT_MUSIC_NOTES)
         return;
     nt = &m->notes[m->n++];
     nt->chz = chz;
@@ -98,7 +114,7 @@ static void am_finish(vt_music *m)
     static const vt_u8 base[7] = { 9, 11, 0, 2, 4, 5, 7 }; /* A..G from C */
     vt_u8 c = m->cmd;
     long v = m->num;
-    long len = m->has_num && m->num >= 1 && m->num <= 64 ? m->num : m->len;
+    long len = m->has_num && m->num >= 1 ? (m->num > 64 ? 64 : m->num) : m->len;
     m->cmd = AM_NONE;
     if (c >= 'A' && c <= 'G') {
         am_add(m, am_chz(m->oct, base[c - 'A'] + m->acc), am_ms(m, len, m->dots));
@@ -110,14 +126,14 @@ static void am_finish(vt_music *m)
     } else if (c == 'P' || c == 'R') {
         am_add(m, 0, am_ms(m, len, m->dots));
     } else if (c == 'O') {
-        if (m->has_num && v <= 6)
-            m->oct = (vt_u8)v;
+        if (m->has_num)
+            m->oct = v > 6 ? 6 : (vt_u8)v;
     } else if (c == 'L') {
-        if (m->has_num && v >= 1 && v <= 64)
-            m->len = (vt_u8)v;
+        if (m->has_num && v >= 1)
+            m->len = v > 64 ? 64 : (vt_u8)v;
     } else if (c == 'T') {
-        if (m->has_num && v >= 32 && v <= 255)
-            m->tempo = (vt_u8)v;
+        if (m->has_num)
+            m->tempo = v < 32 ? 32 : v > 255 ? 255 : (vt_u8)v;
     }
 }
 
@@ -126,8 +142,26 @@ static void am_byte(vt_music *m, vt_u8 c)
 {
     if (c >= 'a' && c <= 'z')
         c = (vt_u8)(c - 'a' + 'A');
+    if (m->mn_pending) { /* CSI M N: a digit makes it the note-number command */
+        m->mn_pending = 0;
+        if (c >= '0' && c <= '9') {
+            m->cmd = 'N';
+            m->num = 0;
+            m->has_num = 0;
+            m->dots = 0;
+            m->acc = 0;
+        } else {
+            m->style = 0; /* MN */
+        }
+    }
     if (m->cmd == 'M') { /* M and its letter */
         m->cmd = AM_NONE;
+        if (c == 'N' && m->intro_m) {
+            m->intro_m = 0;
+            m->mn_pending = 1;
+            return;
+        }
+        m->intro_m = 0;
         if (c == 'F')
             m->bg = 0;
         else if (c == 'B')
@@ -161,6 +195,13 @@ static void am_byte(vt_music *m, vt_u8 c)
     }
     if (c == ' ')
         return;
+    if (c == ';') { /* SMILE sound effect: no notes from this string */
+        m->silent = 1;
+        m->n = 0;
+        return;
+    }
+    if (!((c >= 'A' && c <= 'G') || c == 'N' || c == 'P' || c == 'R' || c == 'O' || c == 'L' || c == 'T' || c == 'M' || c == '<' || c == '>'))
+        return; /* unknown byte (quote, ...): skipped, the command waiting goes on */
     if (m->cmd != AM_NONE)
         am_finish(m);
     if (c == '<') {
@@ -181,9 +222,14 @@ static void am_byte(vt_music *m, vt_u8 c)
 /* The end of the string (SO): the last command. */
 static void am_end(vt_music *m)
 {
+    if (m->mn_pending)
+        m->style = 0;
+    m->mn_pending = 0;
     if (m->cmd != AM_NONE && m->cmd != 'M')
         am_finish(m);
     m->cmd = AM_NONE;
+    if (m->silent)
+        m->n = 0;
 }
 
 /* Does c start a music string after CSI M (else CSI M is Delete Line)? */
@@ -192,6 +238,18 @@ static int am_starts(vt_u32 c)
     if (c >= 'a' && c <= 'z')
         c -= 'a' - 'A';
     return (c >= 'A' && c <= 'G') || c == 'N' || c == 'P' || c == 'R' || c == 'T' || c == 'L' || c == 'O' || c == 'M' || c == 'S' || c == '<' || c == '>' || c == 0x0E;
+}
+
+/* A new string with the introducer M (CSI M), N (CSI N) or | (CSI |). */
+static void am_start(vt_music *m, vt_u8 intro)
+{
+    m->cmd = intro == 'M' ? 'M' : AM_NONE; /* the CSI's M is the first M: CSI MF, CSI MB */
+    m->intro_m = intro == 'M';
+    m->mn_pending = m->silent = 0;
+    m->n = 0;
+    m->num = 0;
+    m->has_num = m->dots = 0;
+    m->acc = 0;
 }
 
 vt_u16 vt_note_period(vt_u32 chz, int wave_len)

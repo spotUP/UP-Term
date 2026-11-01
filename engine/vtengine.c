@@ -183,6 +183,7 @@ struct vt_term {
     int gr;                /* LS1R-LS3R: G1-G3 in GR (8-bit windows); 0 Latin-1 itself */
     int prn_match;         /* S_PRINT: how much of CSI 4 i has come */
     vt_u8 music_off;       /* vt_set_music(0): music strings swallowed, not played */
+    vt_u8 music_sp;        /* spaces held after a bare CSI M until music or Delete Line is known */
     vt_music music;        /* ANSI music: the PLAY state and the notes not yet handed over */
     vt_saved sav, sav_1049;
     vt_u8 saved_1048;      /* ?1048 / ?1049 saved a cursor (DECRQM ?1048) */
@@ -5458,7 +5459,7 @@ static int music_feed(vt_term *t, vt_u32 c)
         if (t->music.n >= VT_MUSIC_NOTES)
             music_flush(t); /* a long string: in parts */
     }
-    return 1; /* other controls: ignored inside the string */
+    return 1; /* other controls (CR, LF, ...): skipped, the string plays on */
 }
 
 static void feed(vt_term *t, vt_u32 c)
@@ -5467,15 +5468,23 @@ static void feed(vt_term *t, vt_u32 c)
         if (music_feed(t, c))
             return;
     } else if (t->state == S_CSI_M) {
+        if (c == ' ' && t->music_sp < 8) {
+            t->music_sp++; /* held: up to 8 spaces may come before the first music byte */
+            return;
+        }
         t->state = S_GROUND;
         if (am_starts(c)) {
+            t->music_sp = 0;
             t->state = S_MUSIC;
-            t->music.cmd = 'M'; /* the CSI's M is the string's first M: CSI MF, CSI MB */
-            t->music.n = 0;
+            am_start(&t->music, 'M');
             if (music_feed(t, c))
                 return;
         } else {
-            delete_lines(t, 1); /* not music: CSI M is Delete Line, the byte is new */
+            vt_u8 held = t->music_sp;
+            t->music_sp = 0;
+            delete_lines(t, 1); /* not music: CSI M is Delete Line, the held spaces and the byte are new */
+            while (held--)
+                feed(t, ' ');
         }
     }
     if (t->state == S_PRINT) {
@@ -5738,8 +5747,8 @@ static void feed(vt_term *t, vt_u32 c)
             if (t->pers == VT_PCANSI && !t->np && !t->priv && (c == 'M' || c == 'N' || c == '|')) {
                 /* ANSI music: CSI N and CSI | always, CSI M only when music follows */
                 t->state = c == 'M' ? S_CSI_M : S_MUSIC;
-                t->music.cmd = AM_NONE;
-                t->music.n = 0;
+                t->music_sp = 0;
+                am_start(&t->music, (vt_u8)c);
                 return;
             }
             csi_dispatch(t, (vt_u8)c);

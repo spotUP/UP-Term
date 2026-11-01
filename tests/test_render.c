@@ -1972,10 +1972,10 @@ static void ansi_music_written_to_a_console_window_reaches_the_player(void)
     vtwin_write(&dw, (const vt_u8 *)s, (long)sizeof s - 1);
     CHECK_INT(mus_calls, 1);
     CHECK_INT(mus_n, 1);
-    CHECK_INT(mus_notes[0].chz, 26163);
+    CHECK_INT(mus_notes[0].chz, 52300);
     CHECK_INT(mus_notes[0].ms, 500);
     CHECK_INT(mus_notes[0].on_ms, 437);
-    CHECK_INT(vt_note_period(mus_notes[0].chz, 16), 847);
+    CHECK_INT(vt_note_period(mus_notes[0].chz, 16), 423);
     CHECK_STR(h_screen(term), "");
     vt_cursor(term, &x, &y);
     CHECK_INT(x, 0);
