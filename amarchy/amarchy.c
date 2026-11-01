@@ -41,6 +41,7 @@
 #include "status_core.h"
 #include "shot.h"
 #include "wbreset.h"
+#include "strut_patch.h"
 #include "iconpen_dos.h"
 #include "iconapply_core.h"
 #include "keymap_default.inc"
@@ -555,6 +556,7 @@ int main(void)
      * foreign window is open). Ready now, or no tick to wait on: open at once; else the tick hook opens them. */
     desk_dos_wb_close = desk_wb_close;
     desk_dos_wb_open = desk_wb_open;
+    strut_patch_install();                      /* BAR-STRIP-RESERVE: no patch (error) = windows open as before */
     wbr_patch_install();                        /* WBRESET-EXT: no patch (error) = the old behaviour */
     wbm_begin();
     g_wb_hold = tick_open_ok && wbm_check(0) == WBM_WAIT;
@@ -612,6 +614,7 @@ int main(void)
     iconpens_stop();
     wbr_client_drop();
     wbr_patch_remove();
+    strut_patch_remove();
     tick_close();
     act_menu_server_quit();
     cw_stop();

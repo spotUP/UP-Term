@@ -202,9 +202,120 @@ def r_two_rows():
     return ok, 'bar height %d top %d border %r row_scale %d' % (w['height'], w['top'], w['border'], scale)
 
 
+def sent(name):
+    rc, out = c.run('GetEnv ' + name)
+    return int(out.strip()) if rc == 0 and out.strip().lstrip('-').isdigit() else 0
+
+
+def bar_top():
+    with ami._conn() as conn:
+        scr = ami._m().list_windows(conn)[0][0]
+    bar = [w for w in scr['windows'] if w['title'] == 'Amarchy bar']
+    sc = scr.get('row_scale', 1)     # the listing is in screen-bitmap rows: Intuition's coordinates are scale times smaller
+    if not bar:
+        return None, 0
+    top = int(bar[0]['top']) // sc
+    return top, top + int(bar[0]['height']) // sc     # the bar is the last rows: its bottom is the screen's
+
+
+def opener(args):
+    """Runs RAM:struttest and returns {'BOX': [l,t,w,h], 'ZIP': [[...], ...]}."""
+    out = c.run('RAM:struttest ' + args, 90)[1]
+    got = {'ZIP': []}
+    for ln in out.splitlines():
+        f = ln.split()
+        if f and f[0] in ('SCR', 'BOX'):
+            got[f[0]] = [int(x) for x in f[1:]]
+        elif f and f[0] == 'ZIP':
+            got['ZIP'].append([int(x) for x in f[1:]])
+    return got
+
+
+def strut_put():
+    base = str(pathlib.Path(__file__).resolve().parents[2] / 'build' / 'amiga')
+    ami.put(base + '/struttest', 'RAM:struttest')
+
+
+def r_strut_open():
+    # BAR-STRIP-RESERVE: a window opened 100 rows above the screen bottom (200x150, so it would cover the bar) is moved up out of
+    # the strip: its bottom edge is at or above the bar's top, and AMARCHY_STRUT_CLAMPED rose by 1 (the patch ran).
+    strut_put()
+    top, h = bar_top()
+    if top is None:
+        return False, 'no bar window'
+    c0, o0 = sent('AMARCHY_STRUT_CLAMPED'), sent('AMARCHY_STRUT_OPENS')
+    got = opener('100 %d 200 150 sd 3' % (h - 100))
+    time.sleep(2)
+    box = got.get('BOX')
+    c1, o1 = sent('AMARCHY_STRUT_CLAMPED'), sent('AMARCHY_STRUT_OPENS')
+    ok = bool(box) and box[1] + box[3] <= top and c1 == c0 + 1 and o1 > o0
+    return ok, 'bar top %d box %r clamped %d -> %d opens %d -> %d' % (top, box, c0, c1, o0, o1)
+
+
+def r_strut_zoom():
+    # A window that asks for a zoom box over the whole screen (WA_Zoom) gets the box cut at the strip: both ZipWindow boxes stay out of it.
+    top, h = bar_top()
+    if top is None:
+        return False, 'no bar window'
+    z0 = sent('AMARCHY_STRUT_ZOOM')
+    got = opener('0 11 400 %d szg 3' % (top - 11))
+    time.sleep(2)
+    z1 = sent('AMARCHY_STRUT_ZOOM')
+    boxes = [got.get('BOX')] + got['ZIP']
+    ok = len(got['ZIP']) == 2 and all(b[1] + b[3] <= top for b in boxes if b) and z1 == z0 + 1
+    return ok, 'bar top %d boxes %r zoom %d -> %d' % (top, boxes, z0, z1)
+
+
+def root_ends():
+    """[(title, bottom row in Intuition units)] of the screen-wide windows other than the bar."""
+    with ami._conn() as conn:
+        scr = ami._m().list_windows(conn)[0][0]
+    sc = scr.get('row_scale', 1)
+    return [(w['title'], (int(w['top']) + int(w['height'])) // sc) for w in scr['windows']
+            if w['title'] != 'Amarchy bar' and int(w['left']) == 0 and int(w['width']) >= int(scr['width'])]
+
+
+def r_strut_desk():
+    # The Workbench root window ends above the strip (icons stay above it); AMARCHY_STRUT_DESK counts the shortened windows.
+    top, h = bar_top()
+    if top is None:
+        return False, 'no bar window'
+    with ami._conn() as conn:
+        scr = ami._m().list_windows(conn)[0][0]
+    ends = root_ends()
+    d = sent('AMARCHY_STRUT_DESK')
+    ok = d >= 1 and any(e <= top for _, e in ends)
+    return ok, 'bar top %d wide windows %r DESK %d' % (top, ends, d)
+
+
+def r_strut_off():
+    # BAR OFF: the same open is not clamped (CLAMPED unchanged, the window reaches the strip rows) and the root grows back to the
+    # screen bottom; BAR ON clamps again and shortens the root again.
+    top, h = bar_top()
+    ar.arexx('BAR OFF')
+    time.sleep(3)
+    c0 = sent('AMARCHY_STRUT_CLAMPED')
+    off = opener('100 %d 200 150 sd 3' % (h - 100)).get('BOX')
+    root_off = root_ends()
+    time.sleep(2)
+    c1 = sent('AMARCHY_STRUT_CLAMPED')
+    ar.arexx('BAR ON')
+    time.sleep(3)
+    top2, _ = bar_top()
+    on = opener('100 %d 200 150 sd 3' % (h - 100)).get('BOX')
+    root_on = root_ends()
+    time.sleep(2)
+    c2 = sent('AMARCHY_STRUT_CLAMPED')
+    ok = (bool(off) and off[1] + off[3] > top and c1 == c0 and all(e == h for _, e in root_off) and bool(on) and top2 is not None
+          and on[1] + on[3] <= top2 and c2 == c1 + 1 and all(e <= top2 for _, e in root_on))
+    return ok, 'off box %r root %r clamped %d -> %d; on box %r root %r (bar top %r) clamped -> %d' % (off, root_off, c0, c1, on, root_on, top2, c2)
+
+
+
 ROWS = [('start', r_start), ('left_panel', r_left_panel), ('close_panel', r_close_panel),
         ('right_launch', r_right_launch), ('cold_panel', r_cold_panel), ('behind', r_behind),
-        ('two_rows', r_two_rows)]
+        ('two_rows', r_two_rows),
+        ('strut_open', r_strut_open), ('strut_zoom', r_strut_zoom), ('strut_desk', r_strut_desk), ('strut_off', r_strut_off)]
 
 
 def main():
