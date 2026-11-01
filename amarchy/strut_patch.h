@@ -21,5 +21,7 @@ void strut_publish(const struct Screen *scr, int height);
 void strut_clear(void);
 /* Writes the counters (opens, clamped, zoom, desktop) as AMARCHY_STRUT_* sentinels when they changed. */
 void strut_sentinels(void);
+/* The same counters for BAR STATUS (strut_opens strut_clamped strut_zoom); all 0 without the patch. */
+void strut_counts(long *opens, long *clamped, long *zoom);
 
 #endif
