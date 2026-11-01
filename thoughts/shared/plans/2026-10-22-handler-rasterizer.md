@@ -499,6 +499,7 @@ and bg), then the 1-bit mask path; no new failure mode. A dither of the shade it
   path and stays 0 for a flat cell (fail-before: LUT result differs on gradient).
 - [ ] R6.B3 Flat cell keeps the LUT path: n_aa_blend 0, output identical to today (golden).
 - [ ] R6.B4 Rig proof RTG: only if a busy-bg source exists (D1 option 2); pixel measure.
+- [ ] R6.6 Prefs > Advanced switch for outline-blend-dest (D6): saved key moves; layout fits PAL and NTSC.
 - [x] R6.5 Knob: profile key outline-blend-dest (on/off) moves the output (on: blend, off:
   today's ramp); the host test toggles it and asserts different pixels.
 
@@ -509,6 +510,7 @@ and bg), then the 1-bit mask path; no new failure mode. A dither of the shade it
 - D3: pen_match reuse (implementation default, stated, not asked).
 - D4: moot with R6.B dropped.
 - D5: profile key outline-blend-dest, default on, LUT kept for flat cells (stated default).
+- D6 (owner 2026-11-02): outline-blend-dest also gets a switch in UP-Term Prefs > Advanced (not a profile key only). Open as R6.6 in the checklist above.
 
 Open R6 items: R6.A3 (1 item).
 
