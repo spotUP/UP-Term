@@ -88,6 +88,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=menu_stamp the Amarchy hotkey press path reaches ms_binary_changed (act_menu_open -> ms_open, stamp and quit hooks set) (tests/test_amarchy_menu_stamp.py)
 # ONLY=gui_rig_open_menu the rig's open_menu() closes a menu an earlier step left open before the toggle hotkey, so it never closes it instead (tests/test_amarchy_gui_rig_open_menu.py)
 # ONLY=rig_install_no_vsh rig.py install without build/amiga/vsh exits with one message naming the file and the make target (tests/test_rig_install_no_vsh.py)
+# ONLY=editor_stack dk_editor gives the prefs editors a pl_stack stack, floor 32768 (tests/test_amarchy_editor_stack.py)
 # ONLY=gui_rebind amarchy-gui takes and drops every screen resource in screen_bind/screen_unbind, so a Workbench reset between gui_hide and gui_show leaves nothing on the freed screen (tests/test_amarchy_gui_rebind.py)
 # ONLY=dist_stack every kit program sets its stack ($STACK: cookie), no launcher gives a loaded program a fixed stack (tests/test_dist_stack.py)
 # ONLY=ami_screen_text the rig's screen reader asks the focused window and clicks nothing first: a menu opening during the read stays (tests/test_ami_screen_text.py)
@@ -161,6 +162,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_stamp ]; then python3 -I tests/test_amarchy_menu_stamp.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_install_no_vsh ]; then python3 -I tests/test_rig_install_no_vsh.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rebind ]; then python3 -I tests/test_amarchy_gui_rebind.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = editor_stack ]; then python3 -I tests/test_amarchy_editor_stack.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rig_open_menu ]; then python3 -I tests/test_amarchy_gui_rig_open_menu.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_ami ]; then if [ -f "$(BUILD)/wasabi/src/tests/mock-wasabid.py" ] || [ -f "$(CURDIR)/../../$(BUILD)/wasabi/src/tests/mock-wasabid.py" ] || [ -n "$(ONLY)" ]; then python3 -I tools/test_rig_ami.py; else echo "[SKIP] rig_ami: wasabi is not built (make wasabi)"; fi; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_claude_import ]; then python3 -I tools/test_rig_claude_import.py; fi

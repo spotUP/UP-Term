@@ -90,14 +90,16 @@ static void dk_snapshot(unsigned mask)
 /* run one stock editor on a prefs file, USE: ENV: only, no window left behind */
 static void dk_editor(const char *editor, const char *file)
 {
-    char cmd[160];
+    char cmd[160], prog[80];
     BPTR in = Open((STRPTR)"NIL:", MODE_OLDFILE), out = Open((STRPTR)"NIL:", MODE_NEWFILE);
-    strcpy(cmd, "SYS:Prefs/");
-    strcat(cmd, editor);
+    strcpy(prog, "SYS:Prefs/");
+    strcat(prog, editor);
+    strcpy(cmd, prog);
     strcat(cmd, " FROM ");
     strcat(cmd, file);
     strcat(cmd, " USE");
-    SystemTags((STRPTR)cmd, SYS_Input, in, SYS_Output, out, TAG_DONE);
+    /* its $STACK cookie, floor 32768 (rule 6): under WBStartup the child gets 4096 otherwise */
+    SystemTags((STRPTR)cmd, SYS_Input, in, SYS_Output, out, NP_StackSize, pl_stack(prog, 32768), TAG_DONE);
     if (in)
         Close(in);
     if (out)
