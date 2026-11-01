@@ -12,6 +12,7 @@ import contextlib
 import fcntl
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import time
@@ -91,6 +92,29 @@ FSUAE_LOG_MAX = 50 * 1024 * 1024    # bytes on disk a log may hold before it is 
 FSUAE_LOG_TAIL = 1024 * 1024        # the end of a cut log kept, as <name>.tail, for diagnosis
 
 
+_AMIBERRY_PREFIX = re.compile(r"^\d{4}-\d\d-\d\d \d\d:[\d:.]+ Amiberry\[\d+:\d+\] ")
+
+
+def uae_log_line(line):
+    """(text, is_amiberry) for one emulator log line. Amiberry's macOS console prefixes every line with
+    "<date> <time> Amiberry[pid:tid] ", so startswith() on the raw line never matched (AMIBERRY-WATCHDOG, s48)."""
+    m = _AMIBERRY_PREFIX.match(line)
+    return (line[m.end():], True) if m else (line, False)
+
+
+def uae_log_is_reset(line):
+    """True for the line an emulated CPU reset leaves: FS-UAE "CPU reset PC=..."; Amiberry logs that only outside
+    compatible mode (newcpu.cpp:8446) but "Reset at <pc>. Chipset mask" on every reset (custom.cpp:6632)."""
+    text, ami = uae_log_line(line)
+    return text.startswith("CPU reset") or (ami and text.startswith("Reset at "))
+
+
+def uae_log_is_exception(line):
+    """True for a CPU exception line: "Illegal instruction" (newcpu.cpp:3999), "Exception N" (3334, 3365) and
+    Amiberry's "CPU halted: reason" (6137)."""
+    return uae_log_line(line)[0].startswith(("Illegal instruction", "Exception ", "CPU halted"))
+
+
 def fsuae_crash(log_dir=None):
     """(exception line, reset count) when the rig's FS-UAE log shows a CPU exception followed by emulated
     CPU resets (a Guru turned into a reset loop: the rig then looks plain "down"), else None. Reads the
@@ -105,10 +129,10 @@ def fsuae_crash(log_dir=None):
             pass
     exc, resets = None, 0
     for line in text.splitlines():
-        if line.startswith(("Illegal instruction", "Exception ")):
+        if uae_log_is_exception(line):
             if exc is None or resets:
-                exc, resets = line.strip(), 0
-        elif exc and line.startswith("CPU reset"):
+                exc, resets = uae_log_line(line)[0].strip(), 0
+        elif exc and uae_log_is_reset(line):
             resets += 1
     return (exc, resets) if exc and resets else None
 
@@ -123,7 +147,7 @@ def fsuae_reset_count(log_dir=None):
         text = (d / "fs-uae.log.txt").read_text(encoding="latin-1")
     except OSError:
         return 0
-    return sum(1 for line in text.splitlines() if line.startswith("CPU reset"))
+    return sum(1 for line in text.splitlines() if uae_log_is_reset(line))
 
 
 def cap_fsuae_log(log_dir=None, limit=None, tail=None, extra=()):
