@@ -22,10 +22,21 @@
  * string plays nothing -- the notes not yet handed over are dropped and the
  * host is not called. Notes go to the host in parts of VT_MUSIC_NOTES, so a
  * ';' after such a flush cannot recall the earlier parts; sound-effect
- * strings are far shorter than that. Playing the effect itself is not done.
+ * strings are far shorter than that.
+ * A SMILE block "Freq;Duration;Cycles;CycleDelay;Variation" (fields empty = 0)
+ * ends at SO and plays: f = Freq; Cycles times { tone f for Duration, silence
+ * CycleDelay, f += Variation (signed) }. Duration is in BASIC SOUND ticks
+ * (1/18.2 s, fractions allowed), CycleDelay in ms, each pause at most 2000 ms.
+ * Cycles 0 or empty is 1. No Freq or no Duration: a pure pause of CycleDelay.
+ * f outside 37..7904 Hz: that cycle is silent, the timing kept. Cycles are
+ * capped at AM_SM_CYCLES. The tones are full length (no articulation gap).
  * Portable C89. */
 
 #define AM_NONE 0
+#define AM_SM_CYCLES 1000L  /* most cycles of one SMILE block played */
+#define AM_SM_PAUSE 2000L   /* longest CycleDelay pause, ms */
+#define AM_SM_LO 37L        /* BASIC SOUND range, Hz */
+#define AM_SM_HI 7904L
 
 typedef struct vt_music {
     vt_u8 tempo, len, oct, style; /* style 0 normal, 1 legato, 2 staccato */
@@ -37,6 +48,12 @@ typedef struct vt_music {
     vt_u8 intro_m;                /* CSI M intro, first command not read yet */
     vt_u8 mn_pending;             /* intro M then N: note number if a digit follows */
     vt_u8 silent;                 /* a ';' was seen: a sound-effect block, no notes */
+    vt_u8 sm_len;                 /* bytes of the SMILE block text so far */
+    vt_u8 sm_semi;                /* a ';' was in it: it is a block */
+    char sm_txt[64];
+    vt_u8 sm_on, sm_gap;          /* block expanding; next is the pause */
+    long sm_f, sm_var, sm_cycles, sm_dur, sm_delay; /* Hz, Hz, cycles left, ms, ms */
+    unsigned long sm_blocks;      /* blocks expanded (a test sentinel) */
     int n;                        /* notes in the buffer */
     vt_note notes[VT_MUSIC_NOTES];
 } vt_music;
@@ -176,6 +193,13 @@ static void am_byte(vt_music *m, vt_u8 c)
             am_byte(m, c); /* not a modifier: a command of its own */
         return;
     }
+    if (m->cmd == AM_NONE && !m->mn_pending && !m->silent && ((c >= '0' && c <= '9') || c == '.' || c == '-' || c == ';')) {
+        if (m->sm_len < sizeof m->sm_txt) /* SMILE block text: parsed at SO */
+            m->sm_txt[m->sm_len++] = (char)c;
+        if (c == ';')
+            m->sm_semi = 1;
+        return;
+    }
     if (c >= '0' && c <= '9') {
         if (m->cmd != AM_NONE && !m->dots) {
             if (m->num < 100000L)
@@ -219,6 +243,108 @@ static void am_byte(vt_music *m, vt_u8 c)
     }
 }
 
+/* One SMILE field from p (up to ';' or the end): value times 1000, sign kept,
+ * at most 3 decimals read; p moves past the ';'. */
+static long am_field(const char **p)
+{
+    const char *q = *p;
+    long v = 0, frac = 0;
+    int neg = 0, dec = 0, digits = 0;
+    if (*q == '-') {
+        neg = 1;
+        q++;
+    }
+    for (; *q && *q != ';'; q++) {
+        if (*q == '.') {
+            dec = 1;
+        } else if (*q >= '0' && *q <= '9') {
+            if (!dec) {
+                if (v < 10000000L)
+                    v = v * 10 + (*q - '0');
+            } else if (digits < 3) {
+                frac = frac * 10 + (*q - '0');
+                digits++;
+            }
+        }
+    }
+    while (digits++ < 3)
+        frac *= 10;
+    if (*q == ';')
+        q++;
+    *p = q;
+    v = v * 1000 + frac;
+    return neg ? -v : v;
+}
+
+/* Set up the expansion of the SMILE block text. */
+static void am_smile_start(vt_music *m)
+{
+    const char *p = m->sm_txt;
+    long f, dur, cyc, delay, var;
+    m->sm_txt[m->sm_len < sizeof m->sm_txt ? m->sm_len : sizeof m->sm_txt - 1] = 0;
+    f = am_field(&p) / 1000;
+    dur = am_field(&p);
+    cyc = am_field(&p) / 1000;
+    delay = am_field(&p) / 1000;
+    var = am_field(&p) / 1000;
+    if (delay < 0)
+        delay = 0;
+    if (delay > AM_SM_PAUSE)
+        delay = AM_SM_PAUSE;
+    /* milli-ticks to ms: x1000 / 18.2 / 1000, rounded; a tone is at least 1 ms */
+    if (dur > 0) {
+        dur = (dur * 5 + 45) / 91;
+        if (dur < 1)
+            dur = 1;
+    }
+    if (dur > 65535L)
+        dur = 65535L;
+    if (f > 0 && dur > 0) {
+        if (cyc < 1)
+            cyc = 1;
+        if (cyc > AM_SM_CYCLES)
+            cyc = AM_SM_CYCLES;
+    } else {
+        cyc = 1; /* a pure pause */
+        dur = 0;
+    }
+    m->sm_f = f;
+    m->sm_var = var;
+    m->sm_cycles = cyc;
+    m->sm_dur = dur;
+    m->sm_delay = delay;
+    m->sm_gap = 0;
+    m->sm_on = 1;
+    m->sm_blocks++;
+}
+
+/* Fill the note buffer from the SMILE block; the host calls again while am_more. */
+static void am_gen(vt_music *m)
+{
+    while (m->sm_on && m->n < VT_MUSIC_NOTES) {
+        if (!m->sm_gap) {
+            if (m->sm_dur > 0) {
+                int ok = m->sm_f >= AM_SM_LO && m->sm_f <= AM_SM_HI;
+                am_add(m, ok ? (vt_u32)m->sm_f * 100UL : 0, (vt_u32)m->sm_dur);
+                if (ok)
+                    m->notes[m->n - 1].on_ms = m->notes[m->n - 1].ms;
+            }
+            m->sm_gap = 1;
+        } else {
+            am_add(m, 0, (vt_u32)m->sm_delay);
+            m->sm_f += m->sm_var;
+            m->sm_gap = 0;
+            if (--m->sm_cycles <= 0)
+                m->sm_on = 0;
+        }
+    }
+}
+
+static int am_more(const vt_music *m)
+{
+    return m->sm_on;
+}
+
 /* The end of the string (SO): the last command. */
 static void am_end(vt_music *m)
 {
@@ -230,6 +356,10 @@ static void am_end(vt_music *m)
     m->cmd = AM_NONE;
     if (m->silent)
         m->n = 0;
+    else if (m->sm_semi)
+        am_smile_start(m);
+    m->sm_len = m->sm_semi = 0;
+    am_gen(m);
 }
 
 /* Does c start a music string after CSI M (else CSI M is Delete Line)? */
@@ -246,6 +376,7 @@ static void am_start(vt_music *m, vt_u8 intro)
     m->cmd = intro == 'M' ? 'M' : AM_NONE; /* the CSI's M is the first M: CSI MF, CSI MB */
     m->intro_m = intro == 'M';
     m->mn_pending = m->silent = 0;
+    m->sm_len = m->sm_semi = m->sm_on = 0;
     m->n = 0;
     m->num = 0;
     m->has_num = m->dots = 0;

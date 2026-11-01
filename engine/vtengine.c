@@ -5451,6 +5451,10 @@ static int music_feed(vt_term *t, vt_u32 c)
     if (c == 0x0E || c == 0x1B || c == 0x18 || c == 0x1A) {
         am_end(&t->music);
         music_flush(t);
+        while (am_more(&t->music)) { /* a long SMILE block: in parts */
+            am_gen(&t->music);
+            music_flush(t);
+        }
         t->state = S_GROUND;
         return c == 0x0E; /* ESC starts its sequence, CAN / SUB do nothing more */
     }
@@ -6202,6 +6206,11 @@ void vt_set_cell_pixels(vt_term *t, int w, int h)
 int vt_cursor_style(const vt_term *t)
 {
     return t->cursor_style;
+}
+
+unsigned long vt_music_smile_blocks(const vt_term *t)
+{
+    return t->music.sm_blocks;
 }
 
 void vt_set_music(vt_term *t, int on)

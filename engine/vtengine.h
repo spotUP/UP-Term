@@ -509,6 +509,8 @@ int      vt_modify_other_keys(const vt_term *t);
 #define VT_KITTY_ALL_KEYS     8
 #define VT_KITTY_TEXT         16
 int      vt_kitty_flags(const vt_term *t);
+/* How many SMILE sound-effect blocks of ANSI music were expanded to notes (a test sentinel). */
+unsigned long vt_music_smile_blocks(const vt_term *t);
 /* How many kitty graphics images were placed on the screen (a test sentinel). */
 unsigned long vt_kitty_placed(const vt_term *t);
 /* How many of the f=100 pictures the engine's own PNG decoder made (the rest went to the host's). */

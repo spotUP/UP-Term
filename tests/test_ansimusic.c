@@ -253,15 +253,103 @@ static void unknown_bytes_are_skipped_and_the_string_plays(void)
     vt_free(t);
 }
 
-static void semicolon_makes_a_sound_effect_block_silent(void)
+static void semicolon_after_a_command_drops_the_notes(void)
 {
-    vt_term *t = play("\x1b[MF 7000;.12;200;15;-100\x0e");
-    CHECK_INT(h_music_calls, 0);
-    CHECK_STR(h_screen(t), "");
-    vt_free(t);
-    t = play("\x1b[NO3CDE;F\x0e\x1b[NO3C\x0e"); /* notes before the ';' are dropped */
+    vt_term *t = play("\x1b[NO3CDE;F\x0e\x1b[NO3C\x0e"); /* notes before the ';' are dropped */
     CHECK_INT(h_music_calls, 1);
     CHECK_INT(h_note_n, 1);
+    vt_free(t);
+}
+
+static long read_file(const char *name, unsigned char *buf, long max);
+
+/* A tone of the SMILE block: Hz, ms, sounding the whole length; a gap: silence. */
+static void tone_is(int i, long hz, long ms)
+{
+    note_is(i, hz * 100, ms, hz ? ms : 0);
+}
+
+static void smile_cycles_variation_and_delay(void)
+{
+    vt_term *t = play("\x1b[MF 7000;.12;3;15;-100\x0e");
+    CHECK_INT(h_music_calls, 1);
+    CHECK_INT(h_note_n, 6);
+    tone_is(0, 7000, 7); /* .12 tick = 6.59 ms, rounded */
+    tone_is(1, 0, 15);
+    tone_is(2, 6900, 7);
+    tone_is(3, 0, 15);
+    tone_is(4, 6800, 7);
+    tone_is(5, 0, 15);
+    CHECK_INT(h_music_bg, 0);
+    CHECK_STR(h_screen(t), "");
+    CHECK_INT((long)vt_music_smile_blocks(t), 1);
+    vt_free(t);
+    t = play("\x1b[MB2600;4;;;150\x0e"); /* 4 ticks = 220 ms, cycles empty = 1, no delay */
+    CHECK_INT(h_note_n, 1);
+    tone_is(0, 2600, 220);
+    CHECK_INT(h_music_bg, 1);
+    vt_free(t);
+}
+
+static void smile_pure_pause_is_capped(void)
+{
+    vt_term *t = play("\x1b[MF;;;900000\x0e");
+    CHECK_INT(h_note_n, 1);
+    tone_is(0, 0, 2000);
+    vt_free(t);
+    t = play("\x1b[MF;;;250\x0e");
+    tone_is(0, 0, 250);
+    vt_free(t);
+}
+
+static void smile_cr_lf_inside_a_block_is_ignored(void)
+{
+    vt_term *t = play("\x1b[MF 7000;4;2;\r\n10;0\x0e");
+    CHECK_INT(h_note_n, 4);
+    tone_is(0, 7000, 220);
+    tone_is(1, 0, 10);
+    tone_is(2, 7000, 220);
+    tone_is(3, 0, 10);
+    CHECK_STR(h_screen(t), "");
+    vt_free(t);
+}
+
+static void smile_out_of_range_frequency_is_a_silent_cycle(void)
+{
+    vt_term *t = play("\x1b[MF 7900;4;3;5;10\x0e"); /* 7900, 7910 (silent), 7920 (silent) */
+    CHECK_INT(h_note_n, 6);
+    tone_is(0, 7900, 220);
+    tone_is(2, 0, 220);
+    CHECK_INT(h_notes[2].on_ms, 0);
+    tone_is(3, 0, 5);
+    tone_is(4, 0, 220);
+    vt_free(t);
+    t = play("\x1b[MF 30;4;1;;0\x0e"); /* below 37 Hz */
+    CHECK_INT(h_note_n, 1);
+    tone_is(0, 0, 220);
+    vt_free(t);
+}
+
+static void smile_long_block_comes_in_parts(void)
+{
+    vt_term *t = play("\x1b[MF 1000;1;100;1;1\x0e"); /* 200 notes: 4 calls of up to 64 */
+    CHECK_INT(h_music_calls, 4);
+    CHECK_INT(h_note_n, 200);
+    tone_is(198, 1099, 55);
+    tone_is(199, 0, 1);
+    vt_free(t);
+}
+
+/* The real file: its 22 SMILE blocks play, none of their text reaches the screen. */
+static void real_file_smile_blocks_play(void)
+{
+    static unsigned char buf[40000];
+    long n = read_file("ANSIPL20_INTRO.ANS", buf, sizeof buf);
+    vt_term *t = h_new(80, 25, VT_PCANSI);
+    vt_write(t, buf, n);
+    CHECK_INT((long)vt_music_smile_blocks(t), 22); /* the sentinel: the expansion ran 22 times */
+    CHECK(h_music_calls >= 22 && h_note_n > 22);
+    CHECK(strstr(h_screen(t), "7000;") == 0 && strstr(h_screen(t), ";;;") == 0 && strstr(h_screen(t), "MF") == 0);
     vt_free(t);
 }
 
@@ -323,7 +411,10 @@ static void real_files_play_every_block(void)
         count_blocks(buf, n, &all, &plain);
         CHECK_INT(all, want_all[k]);
         vt_write(t, buf, n);
-        CHECK_INT(h_music_calls, plain);
+        if (k == 2)
+            CHECK(h_music_calls > plain); /* the SMILE blocks play too */
+        else
+            CHECK_INT(h_music_calls, plain);
         if (k == 0)
             note_is(0, 52300, 1000, 875); /* the LOGO tune: C at O3, a half note */
         if (k == 2)
@@ -365,11 +456,14 @@ static void run_vector(const vec *v)
 {
     vt_term *t = h_new(80, 25, VT_PCANSI);
     int i, plain_text = 1;
+    int smile = v->nev == 0 && memchr(v->in, ';', (size_t)v->nin) != 0;
     vt_write(t, v->in, v->nin);
-    if (h_note_n != v->nev)
+    /* the master keeps SMILE blocks silent; here they play (the smile_* tests): only the text is compared */
+    if (!smile && h_note_n != v->nev)
         printf("[FAIL] vector %s: %d events, expected %d\n", v->name, h_note_n, v->nev);
-    CHECK_INT(h_note_n, v->nev);
-    for (i = 0; i < v->nev && i < h_note_n; i++) {
+    if (!smile)
+        CHECK_INT(h_note_n, v->nev);
+    for (i = 0; i < v->nev && i < h_note_n && !smile; i++) {
         long dm = h_notes[i].ms - v->ms[i], dg = h_notes[i].on_ms - v->gate[i];
         int ok = (long)(h_notes[i].chz / 100) == v->hz[i] && dm >= -1 && dm <= 1 && dg >= -1 && dg <= 1;
         if (!ok)
@@ -530,7 +624,13 @@ void suite_ansimusic(void)
     csi_m_n_digit_is_note_number();
     csi_m_spaces_are_held();
     unknown_bytes_are_skipped_and_the_string_plays();
-    semicolon_makes_a_sound_effect_block_silent();
+    semicolon_after_a_command_drops_the_notes();
+    smile_cycles_variation_and_delay();
+    smile_pure_pause_is_capped();
+    smile_cr_lf_inside_a_block_is_ignored();
+    smile_out_of_range_frequency_is_a_silent_cycle();
+    smile_long_block_comes_in_parts();
+    real_file_smile_blocks_play();
     real_files_play_every_block();
     shared_vectors();
     shared_vectors_match_master();
