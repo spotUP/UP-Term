@@ -191,7 +191,10 @@ class TheBuiltKitsNumbersMatchTheirArchives(unittest.TestCase):
                 continue
             kit = self.kit(i)
             text, mf = (kit / 'Install').read_text(encoding='latin-1'), manifest(kit)
-            installed = sum(b for p, b in mf.items() if p != 'handed')
+            # the archive's files plus what the add-on fetches from the net on the user's machine (uhc's installer
+            # download and unpacked tree): kitsize.NO_KIT_FILES, the one place that figure lives
+            fetched = sum(kitsize.NO_KIT_FILES.get(i, {}).values()) * 1024
+            installed = sum(b for p, b in mf.items() if p != 'handed') + fetched
             self.within(self.number(text, 'totalkb'), installed, i)
 
 
