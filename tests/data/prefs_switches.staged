@@ -25,6 +25,7 @@ kingcon-info = show
 kingcon-cache = off
 unknown-key = kept
 palette = 01,00CD00,04,5C5CFF
+ansi-music = on
 
 
 [profile vim]

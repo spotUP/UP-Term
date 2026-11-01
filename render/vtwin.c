@@ -295,6 +295,7 @@ void vtwin_profile_defaults(vtwin *w)
     w->bell = 1;          /* beep; a profile may choose none or a flash */
     w->bold_bright = 1;   /* xterm SGR 1 takes the bright 8-15 */
     w->wheel_scroll = 1;  /* the wheel moves through the scrollback */
+    w->music = 1;         /* ANSI music plays */
     w->reflow = 1;        /* a resize re-wraps, as modern terminals do (gaps #11) */
     w->cursor_rgb = VR_KEEP;
     w->sel_fg_rgb = w->sel_bg_rgb = VR_KEEP;
@@ -882,6 +883,7 @@ static void settings(vtwin *w)
      * palette change can re-derive the pens through cb_colors() */
     vt_set_bold_bright(w->t, w->bold_bright);
     vt_set_reflow(w->t, w->reflow);
+    vt_set_music(w->t, w->music);
     vt_set_backspace_bs(w->t, w->backspace_bs);
     vt_set_amiga_keys(w->t, w->amiga_keys);
     vt_set_cursor_style(w->t, w->cursor_style);

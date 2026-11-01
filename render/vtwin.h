@@ -93,6 +93,7 @@ typedef struct vtwin {
     int meta_alt;                /* Alt (not Left Amiga) is the ESC prefix */
     int copy_on_select;          /* a drag ends with the text on the clipboard */
     int wheel_scroll;            /* the wheel moves through the scrollback */
+    int music;                   /* ANSI music plays (1, default; vt_set_music) */
     int reflow;                  /* a resize re-wraps lines and scrollback (1, default) */
     int clip_access;             /* VT_CLIP_*: what OSC 52 may do (program-clipboard; write) */
     ULONG pal16[16];             /* profile palette: 0x01RRGGBB, 0 = the xterm's */

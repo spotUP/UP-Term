@@ -197,6 +197,7 @@ CONFIGURATION (profiles)
      wheel = scroll            scroll | ignore (the mouse wheel moves the scrollback)
      reflow = on               on | off (a resize re-wraps the lines and the scrollback;
                                off cuts or pads the rows, as xterm does)
+     ansi-music = on           on | off (plays ANSI music sent by BBSes, PC-ANSI personality)
      program-clipboard = write write | read-write | off: programs set the
                                clipboard (OSC 52: tmux, neovim over ssh);
                                read-write also lets them read it, which a
