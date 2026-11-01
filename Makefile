@@ -705,7 +705,7 @@ $(BUILD)/amiga/obj/cpuchk-%.o: tty/cpucheck.c tty/bmsg.h tty/bmsg.c
 
 GITREV  := $(shell git rev-parse --short HEAD 2>/dev/null)$(shell git diff --quiet 2>/dev/null || echo -dirty)
 # The base's version and the build day in the $VER of every base program (C:UPTerm, vtcon-handler,
-# pty-handler, vsh, hl, mdv, sz, rz, uptelnet, upgetty, UPConsole), so "Version UPTerm" says the base it
+# pty-handler, vsh, hl, mdv, icat, sz, rz, uptelnet, upgetty, UPConsole), so "Version UPTerm" says the base it
 # came with: the version from dist/packages.txt (the one tools/mkkit.py writes into UP-Term.version), the
 # day as mkkit.py writes it. C:Claude ships in the up-claude add-on and says that row's version
 # (UPCLAUDE_VERSION). The header is rewritten only when it changes, so the programs rebuild when a
