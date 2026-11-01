@@ -167,6 +167,7 @@ void desk_pens_flat(unsigned char pens[DK_SLOTS])
     pens[DK_SHINE] = DK_BG;     /* FLAT-SOLID-FILL: highlight, shadow and the active frame fill all take the surface pen, */
     pens[DK_SHADOW] = DK_BG;    /* so every window is one solid rectangle and only title and glyph colour show focus */
     pens[DK_FILL] = DK_BG;
+    pens[DK_EXTRA] = pens[DK_BARBLOCK];  /* FLAT-BAR-CONTOUR: slot 12 is BARCONTOURPEN (OS 3.2): the 1 px line along the top of the screen bar, stock FG = a bright "shine" line; the bar background hides it */
     pens[DK_FILLTEXT] = DK_FG;  /* the active title text is drawn in FILLTEXTPEN on FILLPEN (= DK_BG now): keep it bright */
 }
 

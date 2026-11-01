@@ -175,6 +175,9 @@ static void test_desk_palette_flat(void)
         } else if (s == DK_SHINE || s == DK_SHADOW || s == DK_FILL) {  /* FLAT-SOLID-FILL: one surface pen for highlight, shadow, fill */
             CHECK_INT(flat[s], DK_BG);
             CHECK(stock[s] != flat[s]);
+        } else if (s == DK_EXTRA) {  /* FLAT-BAR-CONTOUR: slot 12 is BARCONTOURPEN (OS 3.2), the 1 px line along the top of the screen bar: bar background */
+            CHECK_INT(flat[s], flat[DK_BARBLOCK]);
+            CHECK(stock[s] != flat[s]);
         } else
             CHECK_INT(flat[s], stock[s]);
     }
