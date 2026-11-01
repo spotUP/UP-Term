@@ -1,0 +1,134 @@
+diff --git a/amarchy/desk_core.c b/amarchy/desk_core.c
+index 15f3d1ed..4c69e235 100644
+--- a/amarchy/desk_core.c
++++ b/amarchy/desk_core.c
+@@ -331,6 +331,17 @@ uc_u32 desk_pen_colour(const gtheme *t, int pen, int own_backdrop)
+     return desk_role(t, pen);
+ }
+ 
++int desk_live_follow(const gtheme *t, int flat, unsigned mask, int depth, int pens[4], uc_u32 rgb[4])
++{
++    int own = flat && !((mask >> DT_WBPATTERN) & 1), n, i;
++    if (!t || !(flat || ((mask >> DT_PALETTE) & 1)))
++        return 0;
++    n = desk_live_role_pens(depth, pens);
++    for (i = 0; i < n; i++)
++        rgb[i] = desk_pen_colour(t, pens[i], own);
++    return n;
++}
++
+ long desk_palette_live(const unsigned short *rgb4, int nlive, int depth, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap)
+ {
+     unsigned short rgb16[8][3];
+diff --git a/amarchy/desk_core.h b/amarchy/desk_core.h
+index a1db6259..975f16b4 100644
+--- a/amarchy/desk_core.h
++++ b/amarchy/desk_core.h
+@@ -105,6 +105,13 @@ int desk_live_role_pens(int depth, int out[4]);
+ uc_u32 desk_live_baseline(const unsigned char *saved, long savedlen, int pen, int depth);
+ /* the theme colour of role pen 0..7 (desk_role); the backdrop pen is the theme dark (desk_darker) when flat owns the backdrop */
+ uc_u32 desk_pen_colour(const gtheme *t, int pen, int own_backdrop);
++/* FLAT-PENS47-RESET: what a NEW Workbench screen needs on its live role pens. flat = amconf_desk_flat_pens, mask = amconf_desk_mask (the
++ * desktop-theme palette also writes the theme). When either puts the theme in the palette: the pens (desk_live_role_pens at depth) in
++ * pens and their colours (desk_pen_colour; the backdrop pen is the dark one when flat owns the backdrop, no DT_WBPATTERN) in rgb,
++ * returns how many. Else 0: the screen keeps what IPrefs and graphics give it. desk_dos_apply sets them once on the screen open at
++ * apply time; the Workbench reopen that follows makes a fresh screen with graphics-default pens 4-7, so the screen follow path
++ * (amarchy iconpen_dos pens_sync, IP_SYNC_OBTAIN) sets them again on every new screen. */
++int desk_live_follow(const gtheme *t, int flat, unsigned mask, int depth, int pens[4], uc_u32 rgb[4]);
+ /* FLAT-PEN5-MAGENTA: cur (a palette.prefs, pens already set) with every entry that reaches a role pen at depth recoloured to
+  * desk_pen_colour; the entries that reach other pens (252-255 on a deep screen) keep the user's colours. 0 on a bad file. */
+ long desk_palette_theme(const unsigned char *cur, long curlen, const gtheme *t, int depth, int own_backdrop, unsigned char *out, long cap);
+diff --git a/amarchy/desk_dos.c b/amarchy/desk_dos.c
+index 371d24e5..29b6abe6 100644
+--- a/amarchy/desk_dos.c
++++ b/amarchy/desk_dos.c
+@@ -553,8 +553,9 @@ static void dk_flat_backdrop_take(const unsigned char *pal, long pallen)
+ /* FLAT-PEN5-MAGENTA: the role pens no palette.prefs entry reaches at the Workbench depth (desk_live_role_pens: 4-7 on a screen deeper
+  * than 3, where IPrefs puts entries 4-7 on the last four pens) get their colour live, after IPrefs applied the file. th = the theme;
+  * th = 0 puts the user's colours back: FLAT-LIVEBASE-SAVED, from the saved palette (the kept DK_FLAT_PAL, else palette.prefs in ENV or
+- * ENVARC) through desk_live_baseline, never from the live screen (an open Amarchy menu holds pens 4-7 with its own colours). amarchy-flat
+- * sets the same pens on every new Workbench screen while flat is on (pens_sync). */
++ * ENVARC) through desk_live_baseline, never from the live screen (an open Amarchy menu holds pens 4-7 with its own colours). The Workbench
++ * reopen that follows makes a new screen with graphics-default 4-7: FLAT-PENS47-RESET, iconpen_dos pens_sync sets them on every new
++ * screen through desk_live_follow. */
+ unsigned long desk_dos_live_pens;
+ static void dk_live_pens(const gtheme *th, int own)
+ {
+diff --git a/amarchy/iconpen_dos.c b/amarchy/iconpen_dos.c
+index 7de6788e..c33e85fd 100644
+--- a/amarchy/iconpen_dos.c
++++ b/amarchy/iconpen_dos.c
+@@ -17,6 +17,7 @@
+ #include "amconf_core.h"
+ #include "amconf_dos.h"
+ #include "gthemes_core.h"
++#include "desk_core.h"
+ 
+ extern struct IntuitionBase *IntuitionBase;
+ extern struct GfxBase *GfxBase;
+@@ -97,6 +98,16 @@ static void pens_sync(ipd_rec *r)
+         gt_load(pen_theme_read, 0, ap.val[AM_GTHEME][0] ? ap.val[AM_GTHEME] : GT_DEFAULT, &th);
+         ip_colours(&th, rgb);
+         ip_holder_obtain(&r->s.h, &o, sc, depth, rgb);   /* releases the old ones first */
++        {
++            /* FLAT-PENS47-RESET: a new Workbench screen starts with graphics-default pens 4-7 (no palette.prefs entry reaches them at
++             * depth > 3); while the theme is in the palette they take the theme here, as desk_dos_apply did on the screen before */
++            int lp[4], k, n;
++            uc_u32 lc[4];
++            n = desk_live_follow(&th, amconf_desk_flat_pens(&ap), amconf_desk_mask(&ap), sc->BitMap.Depth, lp, lc);
++            for (k = 0; k < n; k++)
++                SetRGB32(&sc->ViewPort, (ULONG)lp[k], ((lc[k] >> 16) & 255) * 0x01010101UL, ((lc[k] >> 8) & 255) * 0x01010101UL,
++                         (lc[k] & 255) * 0x01010101UL);
++        }
+     }
+     UnlockPubScreenList();
+ }
+diff --git a/tests/test_desk.c b/tests/test_desk.c
+index f3bc6cd6..ec0ba5cd 100644
+--- a/tests/test_desk.c
++++ b/tests/test_desk.c
+@@ -618,6 +618,36 @@ static void test_flat_on_keeps_backdrop_pen_distinct_from_window_background(void
+     CHECK(pen != pens[DK_BACKGROUND]);
+ }
+ 
++/* FLAT-PENS47-RESET (rig 14, 3.2, depth 8, wbpens WATCH): desk_dos_apply set pens 4-7 to the theme on screen A, the Workbench reopen 3
++ * ticks later made screen B with graphics-default 0000ff ff00ff 00ffff ffffff and nothing set them again. The screen follow path
++ * (iconpen_dos pens_sync, IP_SYNC_OBTAIN) asks desk_live_follow what a new screen needs. */
++static void test_flat_reopen_keeps_theme_on_pens47(void)
++{
++    gtheme t;
++    int lp[4], i;
++    uc_u32 c[4];
++    probe_theme(&t);
++    t.darker_bg = 0x222222UL;
++    /* flat on, flat owns the backdrop (no DT_WBPATTERN): pens 4-7, pen 5 the dark backdrop, the rest their role colours */
++    CHECK_INT(desk_live_follow(&t, 1, 0, 8, lp, c), 4);
++    for (i = 0; i < 4; i++) {
++        CHECK_INT(lp[i], 4 + i);
++        CHECK_INT((long)c[i], (long)desk_pen_colour(&t, 4 + i, 1));
++    }
++    CHECK_INT((long)c[1], 0x222222L);
++    CHECK((long)c[1] != 0xff00ffL);
++    /* the wallpaper is the desktop theme's: pen 5 keeps its role colour */
++    CHECK_INT(desk_live_follow(&t, 1, 1u << DT_WBPATTERN, 8, lp, c), 4);
++    CHECK_INT((long)c[1], (long)desk_pen_colour(&t, 5, 0));
++    /* the desktop-theme palette alone also puts the theme on the live pens */
++    CHECK_INT(desk_live_follow(&t, 0, 1u << DT_PALETTE, 8, lp, c), 4);
++    /* flat off and no theme palette: the new screen keeps the user's colours; depth 3 has no live pens; no theme, nothing */
++    CHECK_INT(desk_live_follow(&t, 0, 0, 8, lp, c), 0);
++    CHECK_INT(desk_live_follow(&t, 0, 1u << DT_WBPATTERN, 8, lp, c), 0);
++    CHECK_INT(desk_live_follow(&t, 1, 0, 3, lp, c), 0);
++    CHECK_INT(desk_live_follow(0, 1, 0, 8, lp, c), 0);
++}
++
+ /* FLAT-PEN5-MAGENTA (rig 11, 3.2, depth 8): IPrefs puts palette.prefs entries 4-7 on the last four pens of a deep screen, so a flat pick
+  * that coloured "entry 5" left pen 5 (backdrop, button dim) at the graphics default ff00ff and overwrote pens 252-255. */
+ static void test_flat_pick_leaves_pen5_magenta_on_deep_workbench(void)
+@@ -1073,6 +1103,7 @@ void suite_desk(void)
+     test_desk_wbpattern_no_dots();
+     test_flat_on_keeps_backdrop_pen_distinct_from_window_background();
+     test_flat_pick_leaves_pen5_magenta_on_deep_workbench();
++    test_flat_reopen_keeps_theme_on_pens47();
+     test_desk_pointer();
+     test_desk_pointer_gate();
+     test_desk_palette_gate();
