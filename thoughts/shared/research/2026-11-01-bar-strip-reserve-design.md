@@ -193,3 +193,7 @@ Revert check: steps 1-3 fail with the patch install line commented out.
   leave; new placement and CleanUp are fixed by I1, no disk writes).
 - D2: after W1, bring the bar back in front of normal windows (only user-dragged windows reach the strip then)
   or keep BAR-BEHIND (recommended: keep until the rig shows W1 holds, then ask).
+
+Owner answers (2026-11-01, session 29):
+- D1: leave icons already snapshotted inside the strip. No `.info` writes.
+- D2: keep BAR-BEHIND until the rig proves W1 holds; ask again then.
