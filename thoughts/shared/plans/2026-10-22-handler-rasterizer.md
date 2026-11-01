@@ -480,8 +480,8 @@ and bg), then the 1-bit mask path; no new failure mode. A dither of the shade it
 
 ### Checklist (R6.x; none done; 0 of 9)
 
-- [ ] R6.0 Record the finding above in the plan and get the owner's decision on D1 below.
-  Proven by: owner answer written into this section.
+- [x] R6.0 Record the finding above in the plan and get the owner's decision on D1 below.
+  Proven by: owner answers 2026-11-01 (s48) under "Owner decisions" below.
 - [ ] R6.A1 Host test: AGA fake screen, bg = dither ink, glyph edge: the shade pen chosen
   per pixel is the nearest to ce_mix(fg, actual tile pen pixel, cov); fails before (mean-bg
   shade chosen), passes after. Entry point: vr_draw / draw_rows through
@@ -502,7 +502,17 @@ and bg), then the 1-bit mask path; no new failure mode. A dither of the shade it
 - [ ] R6.5 Knob: profile key outline-blend-dest (on/off) moves the output (on: blend, off:
   today's ramp); the host test toggles it and asserts different pixels.
 
-### Open decisions for the owner
+### Owner decisions (2026-11-01, s48)
+
+- D1: R6.A only (AGA dithered-background tile). R6.B1-B4 are dropped, not dormant.
+- D2: no wallpaper or transparent-window feature is planned, so no R6.B.
+- D3: pen_match reuse (implementation default, stated, not asked).
+- D4: moot with R6.B dropped.
+- D5: profile key outline-blend-dest, default on, LUT kept for flat cells (stated default).
+
+Open R6 items: R6.A1, R6.A2, R6.A3, R6.5 (4 items).
+
+### Decisions as asked
 
 - D1. Scope. (a) Recommended: R6.A only (AGA dithered-bg tile), skip RTG until a feature
   puts text over images/wallpaper; the benefit today is zero on RTG. (b) R6.A plus R6.B
