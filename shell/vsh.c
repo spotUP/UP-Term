@@ -647,6 +647,36 @@ static BPTR own_handle(BPTR shared, LONG mode)
     return fh;
 }
 
+/* A background command's own handle on the shell's non-interactive stream `shared` (VSH-JOB-SIGNALS).
+ * A job can outlive the shell, and an AmigaDOS handle has no reference count: whoever ran the shell
+ * Closes it when the shell returns (wasabid's T:wasabi-run-N after `sh -c "cmd &"`), and a borrowed
+ * handle is then freed memory. A killed ixemul job writes "Terminated" to it and waits for ever.
+ * A file: a second handle on the same file (DupLockFromFH + OpenFromLock), at the shell's position
+ * after a Flush. A file opened MODE_NEWFILE holds an exclusive lock that cannot be duplicated: its lock
+ * is made shared first (ChangeMode). The offsets are separate, unlike Unix: `cmd & echo b` into one
+ * file can overwrite instead of interleave. A stream without a lock (a PIPE: pipe, a handler without
+ * ACTION_COPY_DIR_FH): NIL:. A second writer on a Queue-Handler pipe has no defined end of file and the
+ * pipe's owner closes it when the shell ends; losing a background job's output there is safe, writing
+ * through a freed handle is not. Never 0 unless NIL: cannot open. */
+static BPTR bg_own_stream(BPTR shared)
+{
+    BPTR lock, fh = 0;
+    LONG pos;
+    Flush(shared);
+    pos = Seek(shared, 0, OFFSET_CURRENT);
+    lock = DupLockFromFH(shared);
+    if (!lock && ChangeMode(CHANGE_FH, shared, SHARED_LOCK))
+        lock = DupLockFromFH(shared);
+    if (lock) {
+        fh = OpenFromLock(lock);
+        if (!fh)
+            UnLock(lock);
+        else if (pos > 0)
+            Seek(fh, pos, OFFSET_BEGINNING);
+    }
+    return fh ? fh : Open((STRPTR)"NIL:", MODE_NEWFILE);
+}
+
 /* Where a command's input file is before it runs: -1 on a console or a pipe. RunCommand (and the Shell
  * of SystemTags) put the argument line into the input handle's buffer; an ixemul command flushes that
  * buffer unread when it ends, and a flush of unread bytes seeks the file BACK by their number. The
@@ -1349,9 +1379,10 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
     } else {
         /* streams it does not own are the shell's. Input: NIL:. Output on
          * a console: its own handle on that console, not the shell's.
-         * Output to a file or a pipe: the shell's handle itself, as Unix
-         * shares the descriptor (one offset; the shell waits or writes
-         * after it). "*" there was a console the process may not have:
+         * Output to a file or a pipe: its own handle on that stream
+         * (bg_own_stream), not the shell's: the job can outlive the shell,
+         * and the shell's caller Closes that handle when the shell returns
+         * (VSH-JOB-SIGNALS). "*" there was a console the process may not have:
          * the last stage of "seq 3 | cat" in "vsh script >file" wrote
          * nowhere. */
         j->in = (io->owned & SH_OWN_IN) ? (BPTR)io->in : Open((STRPTR)"NIL:", MODE_OLDFILE);
@@ -1364,8 +1395,8 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
             j->out = (BPTR)io->out;
             j->close_out = 1;
         } else if (io->out && !IsInteractive((BPTR)io->out)) {
-            j->out = (BPTR)io->out;
-            j->close_out = 0;
+            j->out = bg_own_stream((BPTR)io->out);
+            j->close_out = j->out != 0;
         } else {
             j->out = own_handle((BPTR)io->out, MODE_NEWFILE);
             j->close_out = 1;
@@ -1375,9 +1406,12 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
         if (io->owned & SH_OWN_ERR) {
             j->err = (BPTR)io->err;
             j->close_err = 1;
-        } else if (io->err && !IsInteractive((BPTR)io->err)) {
-            j->err = (BPTR)io->err;
+        } else if (io->err && io->err == io->out && !(io->owned & SH_OWN_OUT) && !IsInteractive((BPTR)io->err)) {
+            j->err = j->out; /* one stream (2>&1 outside): one handle, one offset; closed as out */
             j->close_err = 0;
+        } else if (io->err && !IsInteractive((BPTR)io->err)) {
+            j->err = bg_own_stream((BPTR)io->err);
+            j->close_err = j->err != 0;
         } else {
             j->err = own_handle((BPTR)io->err, MODE_NEWFILE);
             j->close_err = j->err != 0;
@@ -2220,20 +2254,27 @@ static long os_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io,
                 j->io.in = (sh_fh)Open((STRPTR)"NIL:", MODE_OLDFILE);
                 j->io.owned |= SH_OWN_IN;
             }
-            /* output as os_run gives a background command: a file or a pipe is the shell's handle
-             * itself (Unix shares the descriptor); "*" was a console the process may not have:
-             * `echo bg &` in `vsh script >file` (Run >NIL:) wrote nowhere */
-            if (!(io->owned & SH_OWN_OUT) && !(io->out && !IsInteractive((BPTR)io->out))) {
-                j->io.out = (sh_fh)own_handle((BPTR)io->out, MODE_NEWFILE);
+            /* output as os_run gives a background command: a file or a pipe is its own handle
+             * on the shell's stream (bg_own_stream: it can outlive the shell, whose caller
+             * Closes that stream); "*" was a console the process may not have: `echo bg &` in
+             * `vsh script >file` (Run >NIL:) wrote nowhere */
+            if (!(io->owned & SH_OWN_OUT)) {
+                j->io.out = (sh_fh)((io->out && !IsInteractive((BPTR)io->out)) ? bg_own_stream((BPTR)io->out)
+                                                                                 : own_handle((BPTR)io->out, MODE_NEWFILE));
                 j->io.owned |= SH_OWN_OUT;
             }
             if (!(io->owned & SH_OWN_ERR)) {
-                /* the shell's error stream, as Unix shares the descriptor: a file or a pipe is
-                 * that handle itself; a console its own handle on it. Never its output: the
+                /* the shell's error stream: a file or a pipe its own handle on it (bg_own_stream),
+                 * the same one as its output when the shell's two are one; a console its own
+                 * handle on it. Never its output: the
                  * errors (and set -x) of a $( ) went into the capture */
-                if (io->err && !IsInteractive((BPTR)io->err))
-                    j->io.err = io->err;
-                else if (!(io->owned & SH_OWN_OUT) && j->io.out != io->out)
+                if (io->err && io->err == io->out && !(io->owned & SH_OWN_OUT))
+                    j->io.err = j->io.out; /* one stream (2>&1 outside): its one own handle */
+                else if (io->err && !IsInteractive((BPTR)io->err)) {
+                    if ((j->io.err = (sh_fh)bg_own_stream((BPTR)io->err)) != 0)
+                        j->io.owned |= SH_OWN_ERR;
+                } else if (!(io->owned & SH_OWN_OUT) && !(io->out && !IsInteractive((BPTR)io->out)) &&
+                           j->io.out != io->out)
                     j->io.err = j->io.out; /* the console handle opened for its output */
                 else if ((j->io.err = (sh_fh)own_handle((BPTR)io->err, MODE_NEWFILE)) != 0)
                     j->io.owned |= SH_OWN_ERR;
