@@ -65,3 +65,15 @@ def test_real_makefile_lists_every_amarchy_program():
     names = d.program_names((root / "Makefile").read_text(errors="replace"))
     for n in ("Amarchy", "amarchy-menu", "amarchy-gui", "amarchy-index", "vtcon-handler", "upprefs"):
         assert n in names
+
+
+def test_libs_are_checked_from_the_paths_module_sources():
+    got = {n: (p, src) for n, p, src in d.lib_entries()}
+    assert got["ixemul.library"] == ("LIBS:ixemul.library", d.paths.IXEMUL_LIB)
+    assert got["ixnet.library"] == ("LIBS:ixnet.library", d.paths.IXNET_LIB)
+
+
+def test_nofpu_checks_the_soft_float_ixemul():
+    got = {n: src for n, _, src in d.lib_entries(nofpu=True)}
+    assert got["ixemul.library"] == d.paths.IXEMUL_LIB_SOFT != d.paths.IXEMUL_LIB
+    assert got["ixnet.library"] == d.paths.IXNET_LIB

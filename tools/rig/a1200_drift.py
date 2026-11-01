@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """a1200_drift.py -- which UP-Term programs on a real Amiga differ from this checkout's build (build/amiga).
 
-   AMI_HOST=<ip> AMI_PORT=<port> AMI_TOKEN=<key> python3 -I tools/rig/a1200_drift.py [--build DIR]
+   AMI_HOST=<ip> AMI_PORT=<port> AMI_TOKEN=<key> python3 -I tools/rig/a1200_drift.py [--build DIR] [--nofpu]
 
 One line per installed file: `same`, `DIFF` or `missing`, with the file's path on the Amiga. The paths come from
 the `Copy` lines of dist/install.dos (what the kit installs where), not from a second list: a program the kit
 copies to C:, L:, DEVS: or UP-Term:bin is checked at that place; dist/keymap is checked at ENVARC:up-term/keymap
-and ENV:up-term/keymap (DIST_SOURCES). md5 is read on the Amiga (UP-Term:bin/md5sum)
+and ENV:up-term/keymap (DIST_SOURCES). The kit's patched libraries, which the Installer
+'libs' step puts in LIBS:, are not Copy lines of a built program: LIBS:ixemul.library and LIBS:ixnet.library are
+checked against paths.IXEMUL_LIB (paths.IXEMUL_LIB_SOFT with --nofpu, the build for a machine with no FPU) and
+paths.IXNET_LIB, the files rig.py start stages in VTC:ixp6. md5 is read on the Amiga (UP-Term:bin/md5sum)
 over ami.py. Exit status 1 when anything differs or is missing. The rig's start-time [WARN] (rig.build_drift)
 checks the same build files against a rig's VTC: copies; this is the same check against an installed Amiga."""
 import hashlib, pathlib, re, subprocess, sys
+
+import paths
 
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
@@ -19,6 +24,14 @@ MD5 = "UP-Term:bin/md5sum"
 # Files the kit copies from dist/ rather than build/amiga, checked like built programs. keymap is checked whole:
 # the user's own rows live in ENVARC:up-term/keymap.user, so the installed keymap must equal dist/keymap exactly.
 DIST_SOURCES = ("keymap",)
+
+
+def lib_entries(nofpu=False):
+    """[(name, Amiga path, source file)] for the kit's ixemul.library and ixnet.library, sources from paths.py.
+    LIBS: may be several drawers; md5sum opens LIBS:<name> the way every program does, so it reads the first one,
+    the copy that is in use (install.dos replaces the one Which finds, which is that same first one)."""
+    ixemul = paths.IXEMUL_LIB_SOFT if nofpu else paths.IXEMUL_LIB
+    return [("ixemul.library", "LIBS:ixemul.library", ixemul), ("ixnet.library", "LIBS:ixnet.library", paths.IXNET_LIB)]
 
 
 def install_map(install_dos_text, built_names):
@@ -99,13 +112,21 @@ def main(argv):
     names = [f.name for f in bdir.iterdir() if f.is_file()]
     install = (ROOT / "dist/install.dos").read_text(errors="replace")
     entries = install_map(install, names + list(DIST_SOURCES))
+    libs = lib_entries("--nofpu" in argv)
+    have = [(n, p, src) for n, p, src in libs if src.is_file()]
     skipped = unchecked(install, program_names((ROOT / "Makefile").read_text(errors="replace")), names)
     build = {n: md5_file(ROOT / "dist" / n if n in DIST_SOURCES else bdir / n) for n, _ in entries}
+    build.update({n: md5_file(src) for n, _, src in have})
+    entries = entries + [(n, p) for n, p, _ in have]
     res = verdicts(entries, build, amiga_md5s([p for _, p in entries]))
     for state, n, p in res:
         print("%-8s %-28s %s" % (state, n, p))
     for n in skipped:
         print("%-8s %-28s not checked: no %s" % ("unbuilt", n, bdir / n))
+    for n, _, src in libs:
+        if not src.is_file():
+            skipped.append(n)
+            print("%-8s %-28s not checked: no %s" % ("unbuilt", n, src))
     bad = sum(1 for s, _, _ in res if s != "same")
     print("%d file(s), %d differ or missing, %d installed program(s) not checked (not built)" % (len(res), bad, len(skipped)))
     return 1 if bad else 0
