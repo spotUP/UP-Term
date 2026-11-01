@@ -4,6 +4,7 @@
  * host PNG decoder here is a stand-in that hands back fixed pixels. */
 #include "harness.h"
 #include <stdlib.h>
+#include <string.h>
 /* The engine's own PNG decoder, compiled in here to assert its words
  * exactly; the engine has its own copy behind vt_term. */
 #define VT_MALLOC(n) malloc(n)
@@ -430,6 +431,140 @@ static void apc_g_is_not_reported_unhandled(void)
     vt_free(t);
 }
 
+/* ---- K19-K24: protocol completion (s48) ---- */
+
+static int shown(vt_term *t)
+{
+    vt_image_view v;
+    int r, i, n = 0;
+    for (r = 0; r < 8; r++)
+        for (i = 0; vt_row_image(t, r, i, &v); i++)
+            n++;
+    return n;
+}
+
+/* a 2 x 2 picture (one cell) at cell (col, row), 1-based, with the keys */
+static void put_at(vt_term *t, int col, int row, const char *keys)
+{
+    char b[96] = "\033[r;cH\033_Ga=T,C=1,f=24,s=2,v=2,"; /* single digits */
+    b[2] = (char)('0' + row);
+    b[4] = (char)('0' + col);
+    strcat(b, keys);
+    strcat(b, ";");
+    h_put(t, b);
+    h_put(t, rgb2x2);
+    h_put(t, "\033\\");
+}
+
+static void k19_signed_keys_keep_their_sign(void)
+{
+    vt_term *t = kitty_term(10, 5);
+    put_at(t, 1, 1, "i=1,z=-1");
+    CHECK_INT((int)vt_kitty_last_z(t), -1);
+    put_at(t, 1, 2, "i=2,z=7");
+    CHECK_INT((int)vt_kitty_last_z(t), 7);
+    h_reply_clear();
+    h_put(t, "\033_Ga=q,i=4294967295,f=24,s=1,v=1;AAAA\033\\"); /* the ids stay unsigned */
+    CHECK_STR(h_reply, "\033_Gi=4294967295;OK\033\\");
+    vt_free(t);
+}
+
+static void k20_bad_key_combinations_are_einval(void)
+{
+    vt_term *t = kitty_term(10, 5);
+    unsigned long placed;
+    h_reply_clear();
+    h_put(t, "\033_Ga=T,i=3,I=4,f=24,s=2,v=2;");
+    h_put(t, rgb2x2);
+    h_put(t, "\033\\");
+    CHECK_STR(h_reply, "\033_Gi=3,I=4;EINVAL:i and I together\033\\");
+    CHECK_INT(vt_images(t), 0);
+    h_reply_clear();
+    h_put(t, "\033_Ga=p\033\\");
+    CHECK_STR(h_reply, "\033_G;EINVAL:no image id\033\\");
+    /* a delete ends an open upload: the closing chunk finds none */
+    placed = vt_kitty_placed(t);
+    h_put(t, "\033_Ga=T,i=8,f=24,s=2,v=2,m=1;/wAAAP8A\033\\");
+    h_put(t, "\033_Ga=d\033\\");
+    h_reply_clear();
+    h_put(t, "\033_Gm=0;AAD/////\033\\");
+    CHECK_INT(vt_images(t), 0);
+    CHECK_INT((int)(vt_kitty_placed(t) - placed), 0);
+    vt_free(t);
+}
+
+static void k21_retransmitting_an_id_removes_its_placements(void)
+{
+    vt_term *t = kitty_term(10, 5);
+    vt_image_view v;
+    put_at(t, 1, 1, "i=5");
+    CHECK_INT(shown(t), 1);
+    h_put(t, "\033[2;1H\033_Ga=T,i=5,f=32,s=2,v=2;");
+    h_put(t, rgba2x2);
+    h_put(t, "\033\\");
+    CHECK_INT(shown(t), 1);
+    CHECK(!vt_row_image(t, 0, 0, &v));
+    vt_free(t);
+}
+
+static void k22_transient_pictures_are_evicted_first(void)
+{
+    vt_term *t = kitty_term(10, 5);
+    char put[] = "\033_Ga=t,i=0,f=24,s=1000,v=1000,o=z;", putn[] = "\033_Ga=t,i=0,N=1,f=24,s=1000,v=1000,o=z;";
+    int i, j;
+    for (i = 1; i <= 3; i++) {
+        char *c = i == 2 ? putn : put;
+        c[9] = (char)('0' + i);
+        h_put(t, c);
+        for (j = 0; black1000_z[j]; j++)
+            h_put(t, black1000_z[j]);
+        h_put(t, "\033\\");
+    }
+    CHECK_INT(vt_images(t), 2);
+    h_put(t, "\033_Ga=d,d=I,i=2\033\\"); /* the transient one went: nothing to free */
+    CHECK_INT(vt_images(t), 2);
+    h_put(t, "\033_Ga=d,d=I,i=1\033\\"); /* the older plain one stayed */
+    CHECK_INT(vt_images(t), 1);
+    vt_free(t);
+}
+
+/* three one-cell pictures: id 1 at (1,1) z 0, id 2 at (3,2) z 5, id 3 at (5,3) z -2 */
+typedef struct {
+    const char *cmd;
+    int shown, total; /* after: on the screen, alive (stored ones count) */
+} kdel_row;
+
+static void k24_the_missing_deletes(void)
+{
+    static const kdel_row rows[] = {
+        { "d=p,x=3,y=2", 2, 5 },   { "d=P,x=3,y=2", 2, 4 },        { "d=q,x=3,y=2,z=5", 2, 5 },
+        { "d=q,x=3,y=2,z=4", 3, 6 }, { "d=Q,x=3,y=2,z=5", 2, 4 }, { "d=r,x=1,y=2", 1, 4 },
+        { "d=R,x=1,y=2", 1, 2 },   { "d=x,x=5", 2, 5 },             { "d=X,x=5", 2, 4 },
+        { "d=y,y=1", 2, 5 },       { "d=Y,y=1", 2, 4 },             { "d=z,z=-2", 2, 5 },
+        { "d=Z,z=-2", 2, 4 },
+    };
+    size_t n;
+    for (n = 0; n < sizeof(rows) / sizeof(rows[0]); n++) {
+        vt_term *t = kitty_term(10, 5);
+        char b[64];
+        put_at(t, 1, 1, "i=1,z=0");
+        put_at(t, 3, 2, "i=2,z=5");
+        put_at(t, 5, 3, "i=3,z=-2");
+        CHECK_INT(shown(t), 3);
+        CHECK_INT(vt_images(t), 6);
+        strcpy(b, "\033_Ga=d,");
+        strcat(b, rows[n].cmd);
+        strcat(b, "\033\\");
+        h_put(t, b);
+        if (shown(t) != rows[n].shown || vt_images(t) != rows[n].total)
+            printf("  row %s: shown %d (want %d) total %d (want %d)\n", rows[n].cmd, shown(t),
+                   rows[n].shown, vt_images(t), rows[n].total);
+        CHECK_INT(shown(t), rows[n].shown);
+        CHECK_INT(vt_images(t), rows[n].total);
+        vt_free(t);
+    }
+}
+
 void suite_kitty(void)
 {
     raw_rgb_becomes_an_indexed_image();
@@ -450,4 +585,9 @@ void suite_kitty(void)
     c_equals_1_keeps_the_cursor();
     columns_and_rows_scale_the_picture();
     apc_g_is_not_reported_unhandled();
+    k19_signed_keys_keep_their_sign();
+    k20_bad_key_combinations_are_einval();
+    k21_retransmitting_an_id_removes_its_placements();
+    k22_transient_pictures_are_evicted_first();
+    k24_the_missing_deletes();
 }

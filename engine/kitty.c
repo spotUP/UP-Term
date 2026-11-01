@@ -35,9 +35,10 @@
 #include "png.c"
 #define KIT_KEYS 192                     /* the longest key list */
 #define KV(k, c) ((k)->kv[(c) >= 'a' ? (c) - 'a' + 26 : (c) - 'A'])
+#define KU(k, c) ((vt_u32)KV(k, c)) /* the ids: unsigned, up to 4294967295 */
 
 typedef struct vt_kitty {
-    vt_u32 kv[52];   /* the keys of the first chunk, a-z then A-Z */
+    long kv[52];     /* the keys of the first chunk, a-z then A-Z (z= may be negative) */
     vt_u8 *raw;      /* the data so far */
     long len, cap;
     vt_u32 acc;      /* the base64 quad being read */
@@ -125,7 +126,8 @@ static int kit_room(vt_term *t, long bytes)
         old = -1;
         for (i = 0; i < VT_IMG_SLOTS; i++)
             if (t->imgs[i] && t->imgs[i]->pix && t->imgs[i]->kind == 2 &&
-                (old < 0 || t->imgs[i]->serial < t->imgs[old]->serial))
+                (old < 0 || t->imgs[i]->ktrans > t->imgs[old]->ktrans ||
+                 (t->imgs[i]->ktrans == t->imgs[old]->ktrans && t->imgs[i]->serial < t->imgs[old]->serial)))
                 old = i;
         if (old >= 0)
             image_free(t, old);
@@ -181,22 +183,25 @@ static void kitty_abort(vt_term *t)
     t->kit = 0;
 }
 
-static void kit_parse(const char *s, int n, vt_u32 *kv)
+static void kit_parse(const char *s, int n, long *kv)
 {
     const char *e = s + n;
     while (s < e) {
         int k = *s;
         if (s + 1 < e && s[1] == '=' && ((k >= 'a' && k <= 'z') || (k >= 'A' && k <= 'Z'))) {
             vt_u32 val = 0;
+            int neg = 0;
             s += 2;
-            if (s < e && *s == '-')
-                s++; /* z<0: under the text (it is not) */
+            if (s < e && *s == '-') {
+                neg = 1; /* z<0: under the text */
+                s++;
+            }
             if (s < e && (*s < '0' || *s > '9'))
                 val = (vt_u8)*s++;
             else
                 while (s < e && *s >= '0' && *s <= '9')
                     val = val * 10 + (vt_u32)(*s++ - '0');
-            kv[k >= 'a' ? k - 'a' + 26 : k - 'A'] = val;
+            kv[k >= 'a' ? k - 'a' + 26 : k - 'A'] = neg ? -(long)val : (long)val;
         }
         while (s < e && *s != ',')
             s++;
@@ -305,11 +310,11 @@ static int kit_put(char *b, int n, const char *s)
     return n;
 }
 
-static void kit_reply(vt_term *t, const vt_kitty *k, vt_u32 id, const char *err)
+static void kit_reply(vt_term *t, const vt_kitty *k, vt_u32 id, const char *err, int bare)
 {
     char b[112];
     int n = 0, q = (int)KV(k, 'q');
-    if ((!id && !KV(k, 'I')) || q >= (err ? 2 : 1))
+    if ((!id && !KV(k, 'I') && !bare) || q >= (err ? 2 : 1))
         return;
     n = kit_put(b, n, "\033_G");
     if (id) {
@@ -318,11 +323,11 @@ static void kit_reply(vt_term *t, const vt_kitty *k, vt_u32 id, const char *err)
     }
     if (KV(k, 'I')) {
         n = kit_put(b, n, id ? ",I=" : "I=");
-        n = fmt_uint(b, n, (long)KV(k, 'I'));
+        n = fmt_uint(b, n, (long)KU(k, 'I'));
     }
     if (KV(k, 'p')) {
         n = kit_put(b, n, ",p=");
-        n = fmt_uint(b, n, (long)KV(k, 'p'));
+        n = fmt_uint(b, n, (long)KU(k, 'p'));
     }
     b[n++] = ';';
     n = kit_put(b, n, err ? err : "OK");
@@ -457,7 +462,7 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
         int i;
         for (i = 0; i < VT_IMG_SLOTS; i++)
             if (t->imgs[i] && t->imgs[i]->pix && t->imgs[i]->kind == 1 && t->imgs[i]->kid == id &&
-                t->imgs[i]->pid == KV(k, 'p'))
+                t->imgs[i]->pid == KU(k, 'p'))
                 image_free(t, i);
     }
     if (!kit_make(t, s, x0, y0, w, h, tw, th, &pix, pal, &npal))
@@ -469,15 +474,17 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
     im->pal[0] = vt_default_color(t, 1);
     im->kind = 1;
     im->kid = id;
-    im->knum = KV(k, 'I');
-    im->pid = KV(k, 'p');
+    im->knum = KU(k, 'I');
+    im->pid = KU(k, 'p');
+    im->kz = KV(k, 'z');
+    t->kit_last_z = KV(k, 'z');
     image_place(t, slot, KV(k, 'C') == 1 ? 2 : 3);
     t->kit_placed++;
     return 0;
 }
 
 /* The whole picture kept under its id (stored, not on the screen). */
-static const char *kit_store(vt_term *t, const kit_src *s, vt_u32 id, vt_u32 num)
+static const char *kit_store(vt_term *t, const kit_src *s, vt_u32 id, vt_u32 num, int trans)
 {
     vt_u8 *pix;
     vt_u32 pal[256];
@@ -485,8 +492,8 @@ static const char *kit_store(vt_term *t, const kit_src *s, vt_u32 id, vt_u32 num
     if ((long)s->w * s->h > VT_IMAGE_MEMORY / 2)
         return "ENOMEM:too big to keep";
     for (i = 0; i < VT_IMG_SLOTS; i++)
-        if (t->imgs[i] && t->imgs[i]->pix && t->imgs[i]->kind == 2 && t->imgs[i]->kid == id)
-            image_free(t, i); /* the same id again: the new one */
+        if (t->imgs[i] && t->imgs[i]->pix && t->imgs[i]->kind && t->imgs[i]->kid == id)
+            image_free(t, i); /* the same id again: the new one, and its placements go */
     if (!kit_make(t, s, 0, 0, s->w, s->h, s->w, s->h, &pix, pal, &npal))
         return "ENOMEM:no room for the picture";
     slot = image_install(t, pix, (long)s->w * s->h, s->w, s->h, npal, pal);
@@ -495,6 +502,7 @@ static const char *kit_store(vt_term *t, const kit_src *s, vt_u32 id, vt_u32 num
     t->imgs[slot]->kind = 2;
     t->imgs[slot]->kid = id;
     t->imgs[slot]->knum = num;
+    t->imgs[slot]->ktrans = (vt_u8)trans; /* N=1: the first to go when room is needed */
     return 0;
 }
 
@@ -511,13 +519,76 @@ static int kit_find(const vt_term *t, vt_u32 id, vt_u32 num)
     return best;
 }
 
+/* d=p q x y z r (and capitals): the kitty images whose placement is at
+ * cell (x, y) (1-based; p), the same with z (q), in column x, in row y, at
+ * z-index z, or whose id is x..y (r). The capitals also free the stored
+ * picture of each when no placement of it is left. */
+static void kit_delete_where(vt_term *t, const vt_kitty *k, int lo, int up)
+{
+    char hit[VT_IMG_SLOTS];
+    long x = KV(k, 'x'), y = KV(k, 'y'), z = KV(k, 'z');
+    int i, row;
+    memset(hit, 0, sizeof(hit));
+    if (lo == 'r' || lo == 'z') {
+        for (i = 0; i < VT_IMG_SLOTS; i++) {
+            const vt_image *im = t->imgs[i];
+            if (im && im->pix && im->kind == 1 &&
+                (lo == 'z' ? im->kz == z : y >= x && im->kid >= (vt_u32)x && im->kid <= (vt_u32)y))
+                hit[i] = 1;
+        }
+    } else {
+        for (row = 0; row < t->rows; row++) {
+            vt_u16 e;
+            if ((lo == 'p' || lo == 'q' || lo == 'y') && y != row + 1)
+                continue;
+            for (e = t->scr[row]->img; e; e = t->pl[e].next) {
+                const vt_image *im = place_image(t, &t->pl[e]);
+                if (!im || im->kind != 1)
+                    continue;
+                if (lo != 'y' && (x <= t->pl[e].col0 || x > t->pl[e].col0 + image_cols(im)))
+                    continue;
+                if (lo == 'q' && im->kz != z)
+                    continue;
+                hit[t->pl[e].img] = 1;
+            }
+        }
+    }
+    for (i = 0; i < VT_IMG_SLOTS; i++)
+        if (hit[i])
+            image_free(t, i);
+    if (lo == 'r' && up) {
+        for (i = 0; i < VT_IMG_SLOTS; i++)
+            if (t->imgs[i] && t->imgs[i]->pix && t->imgs[i]->kind == 2 && y >= x &&
+                t->imgs[i]->kid >= (vt_u32)x && t->imgs[i]->kid <= (vt_u32)y)
+                image_free(t, i);
+    } else if (up) { /* stored pictures left without a placement */
+        int j, used, was;
+        for (i = 0; i < VT_IMG_SLOTS; i++) {
+            const vt_image *st = t->imgs[i];
+            if (!st || !st->pix || st->kind != 2 || !st->kid)
+                continue;
+            used = was = 0;
+            for (j = 0; j < VT_IMG_SLOTS; j++) {
+                if (!t->imgs[j] || t->imgs[j]->kind != 1 || t->imgs[j]->kid != st->kid)
+                    continue;
+                if (t->imgs[j]->pix)
+                    used = 1;
+                else if (hit[j])
+                    was = 1; /* a placement of it was just deleted */
+            }
+            if (!used && was)
+                image_free(t, i);
+        }
+    }
+}
+
 /* a=d: d=a all on the screen, i by id (and p), n by number, c at the
  * cursor; the capital letters free the stored pictures too. */
 static void kit_delete(vt_term *t, const vt_kitty *k)
 {
     int d = KV(k, 'd') ? (int)KV(k, 'd') : 'a', i;
     int up = d >= 'A' && d <= 'Z', lo = up ? d + 32 : d;
-    vt_u32 id = KV(k, 'i'), num = KV(k, 'I');
+    vt_u32 id = KU(k, 'i'), num = KU(k, 'I');
     if (lo == 'n') {
         int f = kit_find(t, 0, num);
         id = f >= 0 ? t->imgs[f]->kid : 0;
@@ -541,13 +612,17 @@ static void kit_delete(vt_term *t, const vt_kitty *k)
             return;
         lo = 'i';
     }
+    if (lo == 'p' || lo == 'q' || lo == 'x' || lo == 'y' || lo == 'z' || lo == 'r') {
+        kit_delete_where(t, k, lo, up);
+        return;
+    }
     if (lo != 'a' && lo != 'i')
         return;
     for (i = 0; i < VT_IMG_SLOTS; i++) {
         vt_image *im = t->imgs[i];
         if (!im || !im->pix || !im->kind)
             continue;
-        if (im->kind == 1 && (lo == 'a' || (im->kid == id && (!KV(k, 'p') || im->pid == KV(k, 'p')))))
+        if (im->kind == 1 && (lo == 'a' || (im->kid == id && (!KV(k, 'p') || im->pid == KU(k, 'p')))))
             image_free(t, i);
         else if (im->kind == 2 && up && (lo == 'a' || im->kid == id))
             image_free(t, i);
@@ -558,11 +633,19 @@ static void kit_delete(vt_term *t, const vt_kitty *k)
 static void kitty_run(vt_term *t, vt_kitty *k)
 {
     int a = KV(k, 'a') ? (int)KV(k, 'a') : 't';
-    vt_u32 id = KV(k, 'i'), num = KV(k, 'I');
+    vt_u32 id = KU(k, 'i'), num = KU(k, 'I');
     const char *err = 0;
     kit_src s;
     int f;
-    if (KV(k, 'U') && (a == 'T' || a == 'p')) {
+    int bare = 0;
+    if (id && num) {
+        err = "EINVAL:i and I together";
+        a = 0;
+    } else if (a == 'p' && !id && !num) {
+        err = "EINVAL:no image id";
+        bare = 1; /* the one error that is answered without an id */
+        a = 0;
+    } else if (KV(k, 'U') && (a == 'T' || a == 'p')) {
         err = "EINVAL:no unicode placeholders";
         a = 0;
     }
@@ -575,7 +658,7 @@ static void kitty_run(vt_term *t, vt_kitty *k)
                 if (num && !id)
                     id = 0x40000000u | (++t->kit_next & 0x3FFFFFFF);
                 if (id)
-                    err = kit_store(t, &s, id, num);
+                    err = kit_store(t, &s, id, num, KV(k, 'N') == 1);
                 if (!err && a == 'T')
                     err = kit_show(t, k, &s, id);
             }
@@ -602,14 +685,14 @@ static void kitty_run(vt_term *t, vt_kitty *k)
     } else if (!err) {
         err = "EINVAL:not supported";
     }
-    kit_reply(t, k, id, err);
+    kit_reply(t, k, id, err, bare);
 }
 
 /* ST (or the end of an empty command): the chunk is in. */
 static void kitty_end(vt_term *t)
 {
     vt_kitty *k = t->kit;
-    vt_u32 nv[52];
+    long nv[52];
     int i;
     if (!k)
         return;
@@ -623,6 +706,11 @@ static void kitty_end(vt_term *t)
     k->nacc = 0;
     memset(nv, 0, sizeof(nv));
     kit_parse(k->keys, k->nkeys, nv);
+    if (k->more && nv['a' - 'a' + 26] == 'd') { /* a delete ends the open upload */
+        if (k->raw)
+            VT_FREE(k->raw);
+        memset(k, 0, sizeof(*k));
+    }
     if (k->more) { /* a later chunk brings m= (and q=) only */
         KV(k, 'm') = nv['m' - 'a' + 26];
         if (nv['q' - 'a' + 26])
@@ -641,6 +729,11 @@ static void kitty_end(vt_term *t)
 unsigned long vt_kitty_placed(const vt_term *t)
 {
     return t->kit_placed;
+}
+
+long vt_kitty_last_z(const vt_term *t)
+{
+    return t->kit_last_z;
 }
 
 unsigned long vt_kitty_png_own(const vt_term *t)
