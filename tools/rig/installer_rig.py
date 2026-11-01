@@ -851,7 +851,7 @@ def sys_free_bytes():
     out = ir.run('Info')[1]
     for line in out.splitlines():
         f = line.split()
-        if len(f) > 5 and f[0].upper() == 'DH0:':
+        if len(f) > 5 and f[0].upper().rstrip(':') == 'DH0':   # 3.1 prints DH0:, 3.2 prints DH0
             return int(f[3]) * 512
     raise SystemExit('installer_rig: cannot read the free space of SYS: from Info: %r' % out)
 
