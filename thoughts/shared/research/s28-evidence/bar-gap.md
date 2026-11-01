@@ -19,3 +19,12 @@ Status: cause NOT found. No code fix landed. Budget spent.
 3. Old Amarchy build on A1200 predates drop-order fix: deploy current build and recheck (needs owner OK, A1200 write).
 
 Next: owner to confirm whether A1200 runs a current Amarchy build.
+
+## Part 2 (2026-11-01): current origin/main (2c684f70) deployed to the A1200, measured read-only
+- Deployed UP-Term:bin Amarchy, amarchy-gui, amarchy-menu, amarchy-index, amarchy-flat, amarchy-icons (md5 on A1200 == build). Backups beside them: *.bak-s28bar2. Old md5: Amarchy 1e8ee28a, gui 9bce11e9, menu 32619899, index c4dd5372 (same as new), flat bf3f320a, icons 7baa92c2. Restarted: AMARCHY QUIT via ARexx, then Run >NIL: UP-Term:bin/Amarchy as User-Startup does.
+- Screen: Workbench 680x270, id 0x29000, DClip = TxtOScan 0,0..679,269 (full), ViewPort dx=0 dy=0, DWidth 680 DHeight 270. NO clip of the bottom rows. Screen font helvetica.font/13.
+- Bar window 'Amarchy bar' at 0,255 680x15: flush with the screen bottom (255+15 = 270). Height 15 = screen font YSize 13 + 2 (bar.c:479).
+- Bar window RastPort font is topaz.font/8 (probe), NOT the screen font. tw_text draws at rp->TxBaseline+1 in topaz 8: text occupies bar rows 1..8; rows 9..14 (6 rows) are plain MT_BG.
+- Screenshot (wasabi grab, 680x270): rows 255..269 all bar background; text pixels only in rows 256..263; rows 264..269 solid (11,12,22). So the "gap under the bar" is 6 empty bar-coloured rows below 8 px text, not an unpainted strip.
+- Also bar.c text_w() measures in g_scr->RastPort (helvetica 13) but tw_text draws in the window font (topaz 8): slot widths and drop order are computed for a different font than the one drawn. On the rig the screen font is topaz 8, so both agree and h = 10.
+- Cause: window font != screen font. Fix direction: SetFont(g_win->RPort, g_scr->RastPort.Font) after tw_open in bar_open (bar-local), so height, measure and draw use one font. Not landed: no host test can reach this (SetFont on a real window); needs a rig run with a 13 px screen font (UpTerm font prefs) to prove.
