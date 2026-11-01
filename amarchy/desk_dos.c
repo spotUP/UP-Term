@@ -449,7 +449,7 @@ static int dk_apply(const gtheme *th, char *why, int cap)
  * window frame so the switch shows at once. The layout is checked (flat_check) before the write; the other fields are the program's.
  * No record: the program is not running, so start it (BOOT: resident only when a flat switch is on; it writes the same fields itself). */
 unsigned long desk_dos_flat_writes;
-/* L9: flat on puts the Lucide icons on the Workbench default icons (amarchy-icons APPLY), flat off puts the originals back (RESTORE).
+/* L9: flat on puts the filled icons on the Workbench default icons (amarchy-icons APPLY), flat off puts the originals back (RESTORE).
  * One process per change of the on/off state, so two quick prefs writes never run two at once on the manifest; RESTORE with no
  * manifest is a no-op, so the first sync after a start with flat off costs nothing. Counters are the sentinel. */
 unsigned long desk_dos_icons_apply, desk_dos_icons_restore;

@@ -340,7 +340,7 @@ int ia_walk_file(ia_ctx *c, const char *path, int vol_readonly, unsigned long pr
     n = c->io->read(c->io->ctx, path, c->cur, IA_FILECAP);
     if (n <= 0) { c->skipped_io++; return IA_DO_SKIP_OTHER; }
     if (li_parse(c->cur, (size_t)n, &src) != 0) { c->skipped_bad++; return IA_DO_SKIP_OTHER; }
-    for (i = 0; i < c->man.n; i++)                       /* already carries a Lucide image we wrote (ENVARC:Sys seen again by its volume path) */
+    for (i = 0; i < c->man.n; i++)                       /* already carries a icon set image we wrote (ENVARC:Sys seen again by its volume path) */
         if (ia_imgcrc(&src) == c->man.e[i].wcrc) { c->skipped_done++; return IA_DO_SKIP_OTHER; }
     bl = strlen(name) - 5;                               /* ".info" */
     if (bl >= sizeof base) { c->skipped_bad++; return IA_DO_SKIP_OTHER; }

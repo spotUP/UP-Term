@@ -1,7 +1,7 @@
-/* amarchy-icons: put the Lucide icons on the Workbench default icons, and the originals back (plan
+/* amarchy-icons: put the filled icons on the Workbench default icons, and the originals back (plan
  * 2026-10-31-amarchy-lucide-icons.md rows L8, L9).
  *
- *   amarchy-icons APPLY     Lucide images over ENVARC:Sys/def_*.info and ENV:Sys/def_*.info (disk, drawer, tool, project,
+ *   amarchy-icons APPLY     icon images over ENVARC:Sys/def_*.info and ENV:Sys/def_*.info (disk, drawer, tool, project,
  *                           trashcan, RAM); the originals go to SYS:Storage/Icons/Amarchy/<volume>/<path>.info
  *   amarchy-icons RESTORE   the originals back byte for byte, backups and manifest entries removed
  *   amarchy-icons STATUS    the counters of the last run in this process (written, skipped-*, restored)
@@ -30,7 +30,7 @@ static const char ver[] = "$VER: amarchy-icons 1.0 (1.11.2026)";
 struct Library *IconBase;
 struct IntuitionBase *IntuitionBase;
 
-#define TEMPLATE_TEXT "amarchy-icons APPLY | RESTORE | STATUS: Lucide icons on the Workbench default icons, originals in SYS:Storage/Icons/Amarchy\n"
+#define TEMPLATE_TEXT "amarchy-icons APPLY | RESTORE | STATUS: filled icons on the Workbench default icons, originals in SYS:Storage/Icons/Amarchy\n"
 #define DFLT_TMP "T:amarchy-icons-tmp"
 
 static uint8_t *g_chk;      /* scratch for ia_recover's parse checks and the default object */

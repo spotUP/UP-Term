@@ -1,4 +1,4 @@
-/* The .info rewrite of the Lucide icons (amarchy/iconfile_core.c; plan 2026-10-31-amarchy-lucide-icons.md L4, L13 host
+/* The .info rewrite of the filled icons (amarchy/iconfile_core.c; plan 2026-10-31-amarchy-lucide-icons.md L4, L13 host
  * part). Fixtures: tests/data/icons/ (a stock 3.2 drawer icon and tool icon), a built-here NewIcon + FORM ICON file, a
  * built-here lucide.dat, and every .info under build/rig/os-31 and os-322 when those trees exist (UPTERM_ICON_ROOT
  * names another root). */

@@ -1,4 +1,4 @@
-/* iconfile_core -- the .info file rewrite of the Lucide icons (plan 2026-10-31-amarchy-lucide-icons.md, L4 and L13).
+/* iconfile_core -- the .info file rewrite of the filled icons (plan 2026-10-31-amarchy-lucide-icons.md, L4 and L13).
  * Pure bytes in, bytes out: no OS calls, so tests/test_iconfile.c covers it on the host. amarchy-icons (DOS glue, later
  * rows) reads a file, calls li_parse + li_splice, and writes the result atomically.
  *

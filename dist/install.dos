@@ -412,7 +412,7 @@ MakeDir >NIL: UP-Term:share
 ; the Omarchy colour themes of the drawn Amarchy menu (Style > Theme); a user theme goes in ENVARC:Amarchy/themes
 MakeDir >NIL: UP-Term:Amarchy UP-Term:Amarchy/Themes
 Copy amarchy-themes UP-Term:Amarchy/Themes ALL CLONE QUIET
-; the Lucide icon images of the flat Workbench (the applier splices them into .info files)
+; the icon images of the flat Workbench (the applier splices them into .info files)
 MakeDir >NIL: UP-Term:Amarchy/Icons
 Copy lucide/lucide.dat UP-Term:Amarchy/Icons CLONE QUIET
 MakeDir >NIL: UP-Term:etc

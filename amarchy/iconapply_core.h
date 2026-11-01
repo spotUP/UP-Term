@@ -6,7 +6,7 @@
  *   path ; crc of the original file (8 hex digits, or "absent" when the icon file did not exist) ; crc of the written images
  * Order of one target (a crash between any two steps leaves the original recoverable): backup file, manifest line, icon file.
  * Idempotence: an icon whose current image bytes have the manifest's written crc is skipped, so a second APPLY never backs
- * the Lucide icon up over the original. A different crc means the user changed it: the backup is refreshed first.
+ * the icon set icon up over the original. A different crc means the user changed it: the backup is refreshed first.
  * Atomic write (ia_atomic_names, ia_recover): write <name>.amt, Close checked, Rename name to <name>.amo, Rename .amt to
  * name, Delete .amo; a leftover .amt / .amo is resolved on the next run by ia_recover. */
 #ifndef AMARCHY_ICONAPPLY_CORE_H
@@ -90,7 +90,7 @@ int ia_restore(ia_ctx *c);
 /* All-volume walk (L12): what to do with one directory entry. Pure; the Amiga side fills ia_walk_entry from ExAll / Info / Examine.
  * Precedence: .uaem sidecar (never an icon) > read-only volume > locked file > type fallback > write. */
 enum { IA_DO_WRITE, IA_DO_SKIP_READONLY, IA_DO_SKIP_LOCKED, IA_DO_SKIP_UAEM, IA_DO_FALLBACK,
-       IA_DO_SKIP_OTHER,       /* ia_walk_file only: unreadable, unparsable or already Lucide (counted in skipped_io / _bad / _done) */
+       IA_DO_SKIP_OTHER,       /* ia_walk_file only: unreadable, unparsable or already icon set (counted in skipped_io / _bad / _done) */
        IA_DO_SKIP_DEEP };      /* a directory the walk could not enter: too deep, path too long, no memory */
 #define IA_PROT_DELETE 0x01     /* AmigaDOS protection bits, a SET bit denies the action */
 #define IA_PROT_WRITE  0x04

@@ -205,7 +205,7 @@ static void test_flow(void)
     for (i = 0; i < NFILES; i++) if (s.f[i].used && strstr(s.f[i].path, "SYS:Storage/Icons/Amarchy/") == s.f[i].path && !strstr(s.f[i].path, "manifest")) nbak++;
     CI("six backups (one per existing original, none for the six absent ones)", nbak, 6);
 
-    {   /* idempotence: the second APPLY must not back the Lucide icon up over the original */
+    {   /* idempotence: the second APPLY must not back the icon set icon up over the original */
         int w0 = s.writes;
         CI("second apply writes nothing", ia_apply(&c), 0);
         CI("second apply skipped_done", (int)c.skipped_done, 12);
@@ -278,7 +278,7 @@ static void test_absent(void)
     mf_put(&s, "x", g_tool, 1);   /* keep the table non-trivial */
     /* ENVARC:Sys/def_disk.info, def_project, def_trashcan and the ENV copies are absent: the template stands in */
     ia_apply(&c);
-    CK("absent origin gets the default plus Lucide", mf_find(&s, "ENVARC:Sys/def_disk.info") != NULL);
+    CK("absent origin gets the default plus icon set", mf_find(&s, "ENVARC:Sys/def_disk.info") != NULL);
     {
         char txt[4096];
         long n = m_read(&s, IA_MANIFEST, (uint8_t *)txt, sizeof txt - 1);
@@ -401,7 +401,7 @@ static void test_walkfile(void)
     CK("original backed up under the Amarchy drawer", li_backup_path("Work:Games/Foo.info", bp, sizeof bp) == 0 && same(&s, bp, g_drawer, g_drawer_n));
     m = mf_find(&s, IA_MANIFEST);
     CK("manifest lists the walked file", m != NULL && strstr((const char *)m->d, "Work:Games/Foo.info") != NULL);
-    CI("second visit is idempotent (already Lucide)", ia_walk_file(&c, "Work:Games/Foo.info", 0, 0), IA_DO_SKIP_OTHER);
+    CI("second visit is idempotent (already icon set)", ia_walk_file(&c, "Work:Games/Foo.info", 0, 0), IA_DO_SKIP_OTHER);
     CI("written unchanged by a repeat", (int)c.written, 1);
     ia_walk_file(&c, "Work:Games/Foo.info.uaem", 0, 0);
     ia_walk_file(&c, "Work:Games/Locked.info", 0, IA_PROT_WRITE);
