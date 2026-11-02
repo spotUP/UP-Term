@@ -201,24 +201,31 @@ static int edge_line(const uint8_t *grid, int w, int h, int bgm, int k, int col)
 }
 
 /* ---- FLAT-GLYPH-OS-SHAPES: the clone. The system's own image is drawn offscreen with marker pens; this is the pure part. */
+/* The pen that fills most of the inside is the gadget's own ground. Counted one marker at a time, not through a
+ * per-marker count array: this runs on the drawing task's stack (FLAT-C3 budget, test_flat_budget.py HELPER_MAX). */
+static int clone_ground(const uint8_t *grid, int w, int h)
+{
+    int x, y, i, c, best = 0, bgm = FLAT_CLONE_BACK;
+    for (i = 0; i <= FLAT_CLONE_MARKS; i++) {
+        c = 0;
+        for (y = 1; y < h - 1; y++)
+            for (x = 1; x < w - 1; x++)
+                c += grid[y * w + x] == i;
+        if (c > best) {
+            best = c;
+            bgm = i;
+        }
+    }
+    return bgm;
+}
+
 int flat_clone_map(const uint8_t *grid, int w, int h, uint8_t *out)
 {
-    int x, y, n = 0, i, best = 0, cnt[FLAT_CLONE_MARKS + 1];
+    int x, y, n = 0;
     int bgm, l, r, t, b;
     if (!grid || !out || w < 3 || h < 3)
         return -1;
-    for (i = 0; i <= FLAT_CLONE_MARKS; i++)
-        cnt[i] = 0;
-    for (y = 1; y < h - 1; y++)
-        for (x = 1; x < w - 1; x++)
-            if (grid[y * w + x] <= FLAT_CLONE_MARKS)
-                cnt[grid[y * w + x]]++;
-    bgm = FLAT_CLONE_BACK;
-    for (i = 0; i <= FLAT_CLONE_MARKS; i++)     /* the pen that fills most of the inside is the gadget's own ground */
-        if (cnt[i] > best) {
-            best = cnt[i];
-            bgm = i;
-        }
+    bgm = clone_ground(grid, w, h);
     /* FLAT-NO-DIVIDERS: peel the full-span edge lines from each side (at most a third of the box): only the glyph shows */
     for (l = 0; l < w / 3 && edge_line(grid, w, h, bgm, l, 1); l++)
         ;
