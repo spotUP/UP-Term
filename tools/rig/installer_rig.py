@@ -887,18 +887,25 @@ def big_drawer():
     return out.strip() if rc == 0 and out.strip() else 'SYS:UP-Term'
 
 
+def norm_volume(name):
+    """A volume name for comparing: case-insensitive, no trailing colon or drawer."""
+    return name.strip().split(':', 1)[0].upper()
+
+
 def sys_volume_name():
-    """The volume name SYS: resolves to (Assign LIST prints `SYS  <Volume>:`), None when not found."""
-    for l in ir.run('Assign LIST')[1].splitlines():
-        w = l.split(None, 1)
-        if len(w) == 2 and w[0].upper().rstrip(':') == 'SYS':
-            return w[1].strip().rstrip(':').split(':')[0].upper()
-    return None
+    """The volume name SYS: resolves to, None when not found. `CD SYS:` then a bare `CD` in the same command line:
+    AmigaDOS prints the current directory with its volume name (`Empty-12MB-FFS:`), whatever format Assign LIST has."""
+    rc, out = ir.run('CD SYS:\nCD')
+    lines = [l for l in out.splitlines() if l.strip()]
+    if rc != 0 or not lines:
+        return None
+    vol = norm_volume(lines[-1])
+    return vol or None
 
 
 def on_sys_volume(drawer):
     """True when the drawer is on the volume SYS: is, whether it is named SYS:UP-Term or <Volume>:UP-Term."""
-    vol = drawer.split(':', 1)[0].upper()
+    vol = norm_volume(drawer)
     return vol == 'SYS' or vol == sys_volume_name()
 
 
@@ -907,6 +914,28 @@ def real_drawer():
     prediction of a separate UPBigVol run; volumes of equal free space tie-break differently between two runs."""
     rc, out = ir.run('Type ENVARC:up-term/Dir')
     return out.strip() if rc == 0 and out.strip() else None
+
+
+def installer_choice():
+    """The Installer's own record of its choice, independent of ENVARC:up-term/Dir. dist/Install.installer sets
+    #dest (the askdir answer, default #old from the UP-Term: assign or UPBigVol's ENV:UPTBIGVOL, tie to SYS: in
+    install/bigvol.h:54), P_OPTIONS_LIST writes it as ENV:UPTOPTDEST (kept in ENVARC:up-term/opts/UPTOPTDEST);
+    install.dos writes ENVARC:up-term/Dir (line 215) from that. ENV:UPTBIGVOL is only UPBigVol's offer and may be
+    deleted again, so the options file is the record. None when absent."""
+    for f in ('ENVARC:up-term/opts/UPTOPTDEST', 'ENV:UPTOPTDEST'):
+        rc, out = ir.run('Type ' + f)
+        if rc == 0 and out.strip():
+            return out.strip()
+    return None
+
+
+def same_drawer_volume(a, b):
+    """True when two drawer paths name the same volume (SYS: and its volume name count as one) and the same drawer."""
+    def vol(d):
+        v = norm_volume(d)
+        return sys_volume_name() if v == 'SYS' else v
+    tail = lambda d: d.split(':', 1)[1].strip('/').lower() if ':' in d else ''
+    return vol(a) == vol(b) and tail(a) == tail(b)
 
 
 def run_bigvol():
@@ -1181,7 +1210,9 @@ def run_base_case(case):
     ck(al and al[0].split(None, 1)[-1].strip().lower().endswith(drawer.split(':', 1)[1].lower()),
        'UP-Term: is assigned to %s' % drawer, out)
     rc, out = ir.run('Type ENVARC:up-term/Dir')
-    ck(rc == 0 and out.strip().lower() == drawer.lower(), 'ENVARC:up-term/Dir names %s' % drawer, out)
+    chosen = installer_choice()
+    ck(rc == 0 and chosen is not None and same_drawer_volume(out.strip(), chosen),
+       "ENVARC:up-term/Dir names the Installer's own choice (%s)" % chosen, out)
     rc, out = ir.run('Type S:User-Startup')
     ck(';BEGIN UP-Term assign' in out and ';END UP-Term assign' in out, 'the UP-Term: block is marked', out[-300:])
     # an AmigaDOS $name ends at the first non-alphanumeric: $o_dest went in
