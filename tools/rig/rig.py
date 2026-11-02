@@ -1557,16 +1557,46 @@ def program_pairs(vtc, built):
 # VSH-JOB-SIGNALS hunt (STALE-VTC-SH, 2026-10-29). refresh_programs removes them.
 RETIRED_VTC_FILES = ("bin/sh",)
 
+def ensure_built(files, run=None):
+    """Makes every file of this tree's build/amiga in `files` current before it is pushed to a rig: make's own graph
+    (`make -q`) says which are older than their sources, and those are rebuilt with `make`; a failed build exits with
+    `[ERROR] ... <program>`. A file make has no rule for (rc 2) is pushed as it is. Nothing stale: one `make -q`, no
+    build. Before, install and the refresh gate copied build/amiga as-is, and rig 91 ran a pre-K40d handler after a merge
+    (RIG-PUSH-STALE-BUILD). Files outside this tree's build/amiga (the main checkout's, via merge_build) are not ours to build."""
+    run = run or subprocess.run
+    own = (ROOT / "build/amiga").resolve()
+    names = sorted({f.name for f in map(pathlib.Path, files) if f.resolve().parent == own})
+    if not names:
+        return []
+    env = {**os.environ, "UPTERM_ROOT": str(paths.UPTERM_ROOT)}
+    def make(*args):
+        return run(["make", *args], cwd=ROOT, capture_output=True, text=True, env=env)
+    targets = ["build/amiga/" + n for n in names]
+    if make("-q", *targets).returncode == 0:
+        return []
+    stale = [t for t in targets if make("-q", t).returncode == 1]
+    if not stale:
+        return []
+    print("[BUILD] stale before push: " + ", ".join(t.rsplit("/", 1)[1] for t in stale))
+    r = make(*stale)
+    if r.returncode:
+        sys.exit("[ERROR] make failed for stale program(s) %s, not pushing them:\n%s"
+                 % (", ".join(t.rsplit("/", 1)[1] for t in stale), (r.stdout + r.stderr)[-1500:]))
+    return stale
+
 def refresh_programs(vtc, built, required=()):
     """Copies every program of program_pairs that differs (or, for the `required` names, is absent from VTC: itself).
-    The copy replaces the file whole (temp file, rename), so a running rig never reads half a program."""
+    The copy replaces the file whole (temp file, rename), so a running rig never reads half a program. A program that
+    differs is made current first (ensure_built), so a stale build/amiga file is never what lands on the rig."""
     done = []
+    pairs = program_pairs(vtc, built)
+    ensure_built([src for src, dst in pairs if dst.is_file() and dst.read_bytes() != src.read_bytes()])
     for name in RETIRED_VTC_FILES:
         if (vtc / name).is_file():
             (vtc / name).unlink()
             print("removed retired", name)
             done.append(name)
-    for src, dst in program_pairs(vtc, built):
+    for src, dst in pairs:
         absent = src.name in required and dst.parent == vtc and not dst.is_file()
         if (absent or dst.is_file()) and (absent or dst.read_bytes() != src.read_bytes()):
             tmp = dst.with_name(dst.name + ".new")
@@ -1720,6 +1750,7 @@ def install():
         _install()
 
 def _install():
+    ensure_built(sorted(f for f in (ROOT / "build/amiga").iterdir() if f.is_file()) if (ROOT / "build/amiga").is_dir() else [])
     require_vsh(build_amiga() / "vsh")
     merge_build()
     (RIG / "vtc/kit-restore").unlink(missing_ok=True)
