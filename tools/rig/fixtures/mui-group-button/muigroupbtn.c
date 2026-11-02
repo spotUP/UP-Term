@@ -15,6 +15,36 @@ const char muigroupbtn_stack_cookie[] = "$STACK: 65536";
 
 struct Library *MUIMasterBase;
 struct IntuitionBase *IntuitionBase;
+#ifdef __GNUC__
+/* Bebbo gcc: libamiga has DoMethod; the muimaster calls are register-argument stubs here, so the MUI SDK's proto/inline
+ * headers are not needed (only libraries/mui.h from $(MUI_INC)). */
+#include <clib/alib_protos.h>
+static Object *MUI_NewObject(const char *cls, ULONG tag1, ...)
+{
+    register Object *_r __asm("d0");
+    register struct Library *_a6 __asm("a6") = MUIMasterBase;
+    register const char *_a0 __asm("a0") = cls;
+    register ULONG *_a1 __asm("a1") = &tag1;
+    __asm volatile("jsr -30(%%a6)" : "=r"(_r) : "r"(_a6), "r"(_a0), "r"(_a1) : "d1", "memory", "cc");
+    return _r;
+}
+static Object *MUI_MakeObject(LONG type, ...)
+{
+    register Object *_r __asm("d0");
+    register struct Library *_a6 __asm("a6") = MUIMasterBase;
+    register LONG _d0 __asm("d0") = type;
+    register ULONG *_a0 __asm("a0") = (ULONG *)(&type + 1);
+    __asm volatile("jsr -120(%%a6)" : "+r"(_d0) : "r"(_a6), "r"(_a0) : "a1", "d1", "memory", "cc");
+    _r = (Object *)_d0;
+    return _r;
+}
+static void MUI_DisposeObject(Object *o)
+{
+    register struct Library *_a6 __asm("a6") = MUIMasterBase;
+    register Object *_a0 __asm("a0") = o;
+    __asm volatile("jsr -36(%%a6)" : : "r"(_a6), "r"(_a0) : "d0", "d1", "a1", "memory", "cc");
+}
+#else
 extern ULONG DoMethod(Object *obj, ULONG MethodID, ...);
 
 /* MUI_NewObject / MUI_MakeObject without the SDK's proto stubs: vbcc passes varargs on the
@@ -25,6 +55,8 @@ extern void mui_disp(__reg("a6") struct Library *, __reg("a0") Object *) = "\tjs
 void MUI_DisposeObject(Object *o) { mui_disp(MUIMasterBase, o); }
 Object *MUI_NewObject(char *cls, ULONG tag1, ...) { return mui_newobj(MUIMasterBase, cls, &tag1); }
 Object *MUI_MakeObject(LONG type, ...) { return mui_makeobj(MUIMasterBase, type, (ULONG *)(&type + 1)); }
+
+#endif
 
 int main(void)
 {
