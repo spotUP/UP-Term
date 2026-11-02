@@ -21,7 +21,7 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   --no-060lib: the 060 machine without 68060.library, mmu.library, 680x0.library in Libs: (reset-loop hunt, s40);
                   --no-dopus: Workbench without Directory Opus (no DOPUS.1; the clone gets the stock
                   C/LoadWB and no Libs/workbench.library, the ROM's runs);
-                  --idle-minutes <N>: stop the rig after N minutes with no command (default 60, 0 = off, rig 1 never);
+                  --idle-minutes <N>: stop the rig after N minutes with no command (default 15, 0 = off, rig 1 never);
                   --allow-stale-base "<reason>": start although this checkout's HEAD lacks origin/main
                   (RIG-STALE-BASE-GUARD; the reason is required and printed);
                   --purpose "<who: what>": the window title says which session runs the
@@ -34,7 +34,7 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
   rig.py rtg      Workbench back on the graphics card from next boot
   (The screen mode is the Workbench's ScreenMode prefs, not the config: the
   owner's way, 2026-09-29. aga/rtg need the rig up and reboot it.)
-  rig.py watchdog the idle watchdog `start` launches (--idle-minutes N, default 60, 0 = off): stops the rig after N
+  rig.py watchdog the idle watchdog `start` launches (--idle-minutes N, default 15, 0 = off): stops the rig after N
                   minutes with no ami/typewin/wasabi command (paths.LAST_COMMAND); never while a long run holds
                   paths.LONG_RUN (ami.py long, install) or within 5 s of a command; never rig 1
                   also cold-restarts (stop + start --keep-sys) a rig whose FS-UAE log gains 10+ "CPU reset"
@@ -2249,11 +2249,11 @@ def stop():
 
 WATCHDOG_EVERY = 60   # seconds between two idle checks
 WATCHDOG_QUIET = 5    # the last command must be at least this old: a stop never lands on a write in flight
-WATCHDOG_IDLE_MINUTES = 60
+WATCHDOG_IDLE_MINUTES = 15   # owner 2026-11-03: 60 idle minutes held a core far too long
 WATCHDOG_RESET_LOOP = 10   # "CPU reset" lines added between two checks: a reset loop (a healthy warm reboot adds 1 or 2)
 
 def idle_minutes():
-    """--idle-minutes N of this command line (default 60; 0 = no watchdog)."""
+    """--idle-minutes N of this command line (default 15; 0 = no watchdog)."""
     if "--idle-minutes" in sys.argv[:-1]:
         return int(sys.argv[sys.argv.index("--idle-minutes") + 1])
     return WATCHDOG_IDLE_MINUTES
