@@ -1,5 +1,6 @@
 /* AMARCHY-WELCOME (amarchy/help_core.c): placeholder expansion from the live keymap, sections, the welcome-shown key
  * and the checkbox key handling. */
+#include <stdio.h>
 #include <string.h>
 #include "../amarchy/help_core.h"
 #include "harness.h"
@@ -134,6 +135,67 @@ static void test_welcome_key(void)
     CHECK_INT(ticked, 0);                       /* closing never changes the tick */
 }
 
+static long help_slurp(const char *path, char *buf, long cap)
+{
+    FILE *f = fopen(path, "rb");
+    long n;
+    if (!f)
+        return -1;
+    n = (long)fread(buf, 1, (size_t)cap - 1, f);
+    fclose(f);
+    buf[n] = 0;
+    return n;
+}
+
+/* every placeholder in the shipped dist/amarchy.help names a real binding or menu row in the shipped keymap */
+static void test_shipped_text_placeholders(void)
+{
+    static char km_file[32768], txt[16384];
+    static const char *names[2] = { "welcome", "help" };
+    keymap k;
+    long tn = help_slurp("dist/amarchy.help", txt, sizeof txt), kn = help_slurp("dist/keymap", km_file, sizeof km_file);
+    int s, seen = 0;
+    CHECK(tn > 0);
+    CHECK(kn > 0);
+    memset(&k, 0, sizeof k);
+    CHECK(keymap_parse(&k, km_file, kn) != 0);
+    for (s = 0; s < 2; s++) {
+        long blen = 0, i = 0;
+        const char *body = hc_section(txt, tn, names[s], &blen);
+        CHECK(body != 0);
+        if (!body)
+            continue;
+        while (i < blen) {
+            const char *open = memchr(body + i, '{', (size_t)(blen - i)), *close;
+            char ph[128], out[200];
+            int pl;
+            if (!open)
+                break;
+            close = memchr(open, '}', (size_t)(body + blen - open));
+            CHECK(close != 0);
+            if (!close)
+                break;
+            pl = (int)(close - open) + 1;
+            memcpy(ph, open, (size_t)pl);
+            ph[pl] = 0;
+            i = (open - body) + pl;
+            hc_expand(&k, ph, out, sizeof out);
+            seen++;
+            /* W11 (gui:help key) and W11b (Quit Amarchy key) are phase 3: their keys do not exist yet. When those
+             * land, delete this exception so every placeholder must resolve. */
+            if (!strcmp(ph, "{key:gui:help}") || !strcmp(ph, "{key:amarchy:quit}")) { /* W11, W11b */
+                CHECK_STR(out, HC_UNBOUND);
+                continue;
+            }
+            if (!strcmp(out, HC_UNBOUND))
+                printf("[FAIL] placeholder %s is unbound in dist/keymap\n", ph);
+            CHECK(strcmp(out, HC_UNBOUND) != 0);
+        }
+    }
+    CHECK(seen >= 15);
+    keymap_free(&k);
+}
+
 void suite_help_core(void)
 {
     test_expand();
@@ -143,4 +205,5 @@ void suite_help_core(void)
     test_sections();
     test_key_default_and_roundtrip();
     test_welcome_key();
+    test_shipped_text_placeholders();
 }
