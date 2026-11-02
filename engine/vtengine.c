@@ -309,6 +309,7 @@ struct vt_term {
     long img_mem, img_serial;
     long img_budget, anim_budget; /* VT_IMAGE_MEMORY / VT_ANIM_MEMORY, times 4 in RGB mode (vt_set_image_rgb) */
     vt_u8 image_rgb;           /* vt_set_image_rgb */
+    unsigned long kit_rgba_frames; /* RGBA frame canvases made (vt_kitty_rgba_frames, K39) */
     unsigned long kit_rgb_made; /* RGB pictures made (vt_kitty_rgb_made) */
     long anim_mem;             /* bytes of animation frames, against VT_ANIM_MEMORY (K34) */
     vt_place *pl;
@@ -446,7 +447,7 @@ static void anim_free(vt_term *t, vt_image *im)
         return;
     for (i = 0; i < im->anim->n; i++) {
         VT_FREE(im->anim->fr[i]);
-        t->anim_mem -= (long)im->w * im->h;
+        t->anim_mem -= (long)im->w * im->h * (im->fmt ? 4 : 1);
     }
     VT_FREE(im->anim);
     im->anim = 0;
@@ -6447,6 +6448,11 @@ void vt_set_image_rgb(vt_term *t, int on)
 long vt_image_memory(const vt_term *t)
 {
     return t->img_mem;
+}
+
+unsigned long vt_kitty_rgba_frames(const vt_term *t)
+{
+    return t->kit_rgba_frames;
 }
 
 unsigned long vt_kitty_rgb_made(const vt_term *t)

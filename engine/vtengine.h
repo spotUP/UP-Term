@@ -558,7 +558,8 @@ unsigned long vt_kitty_frame_switches(const vt_term *t);
  * changed pictures. Returns the microseconds to the next due frame, -1 when
  * nothing runs. */
 long vt_anim_tick(vt_term *t, long us);
-/* Frame `frame` (1 = root) of kitty image `id`: the 6x6x6 + grey cube index at (x, y), 0 clear, -1 when none. */
+/* Frame `frame` (1 = root) of kitty image `id`: the 6x6x6 + grey cube index at (x, y), 0 clear, -1 when none;
+ * on an RGB picture (vt_set_image_rgb, K39) the exact 0xAARRGGBB. */
 long vt_kitty_frame_px(const vt_term *t, unsigned long id, int frame, int x, int y);
 /* Kitty unicode placeholders (U=1, K31). A cell whose base code point is
  * U+10EEEE shows one tile of a virtual placement: the cell's foreground
@@ -580,6 +581,8 @@ unsigned long vt_kitty_png_own(const vt_term *t);
  * off converts the RGBA pictures to indices. Sentinel: RGB pictures made. */
 void vt_set_image_rgb(vt_term *t, int on);
 unsigned long vt_kitty_rgb_made(const vt_term *t);
+/* K39: frame canvases made as RGBA (4 bytes a pixel, charged to the x4 frame budget), a test sentinel. */
+unsigned long vt_kitty_rgba_frames(const vt_term *t);
 /* The bytes the pictures hold now, against the image budget (a test's view of img_mem). */
 long vt_image_memory(const vt_term *t);
 #define VT_KEY_EV_PRESS   1

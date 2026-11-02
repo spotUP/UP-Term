@@ -1355,6 +1355,89 @@ static void k35_the_clock_changes_the_placement(void)
     vt_free(t);
 }
 
+/* ---- K39: frames of an RGB picture are RGBA canvases ---- */
+
+/* 200 x 200 canvases: 160,000 B each in RGB mode, 40,000 in index mode, against 8 MB / 2 MB:
+ * 52 canvases (the root's and 51 frames) fit in both modes, the 53rd answers ENOSPC */
+static void k39_frame_canvases_stop_at_the_x4_budget_in_both_modes(void)
+{
+    static const char *const mode[2] = { "index", "rgb" };
+    int m;
+    for (m = 0; m < 2; m++) {
+        unsigned char *raw = (unsigned char *)calloc(200L * 200L * 4L, 1);
+        char *b = (char *)malloc(200L * 200L * 4L / 3 * 4 + 8);
+        char *msg = (char *)malloc(200L * 200L * 4L / 3 * 4 + 128);
+        vt_term *t = k38_term(m);
+        int j, bad = 0;
+        k38_b64(raw, 200L * 200L * 4L, b);
+        snprintf(msg, 200L * 200L * 4L / 3 * 4 + 128, "\033_Ga=t,i=7,f=32,s=200,v=200;%s\033\\", b);
+        h_put(t, msg);
+        for (j = 0; j < 51; j++) { /* frames 2..52 */
+            h_reply_clear();
+            h_put(t, "\033_Ga=f,i=7,f=32,s=1,v=1;EjRW/w==\033\\");
+            if (strcmp(h_reply, "\033_Gi=7;OK\033\\"))
+                bad++;
+        }
+        h_checks++;
+        if (bad)
+            h_failures++, printf("[FAIL] %s mode: %d of 51 frames refused\n", mode[m], bad);
+        CHECK_INT((long)vt_kitty_frames(t), 52);
+        CHECK_INT((long)vt_kitty_rgba_frames(t), m ? 52 : 0); /* sentinel: the root's canvas and 51 frames */
+        h_reply_clear();
+        h_put(t, "\033_Ga=f,i=7,f=32,s=1,v=1;EjRW/w==\033\\"); /* the 53rd canvas */
+        CHECK_STR(h_reply, "\033_Gi=7;ENOSPC:no room for frames\033\\");
+        CHECK_INT((long)vt_kitty_frames(t), 52);
+        CHECK_INT((long)vt_kitty_rgba_frames(t), m ? 52 : 0);
+        vt_free(t);
+        free(raw);
+        free(b);
+        free(msg);
+    }
+}
+
+/* frame 2 = root + a 1-px rectangle in exact RGB with alpha, frame 3 = frame 2 + another (a=f c=2), a=c copies
+ * a rectangle with its alpha; a pixel under half alpha keeps the base; the clock shows frame 2 in the placement */
+static void k39_rgba_frames_keep_exact_bytes_and_alpha(void)
+{
+    vt_term *t = k38_term(1);
+    vt_image_view v;
+    unsigned long sw0, n0;
+    /* root 2x2: 0x112233 FF, 0x445566 80, 0x778899 FF, 0xAABBCC 10 */
+    h_put(t, "\033_Ga=T,i=5,f=32,s=2,v=2,C=1;ESIz/0RVZoB3iJn/qrvMEA==\033\\");
+    n0 = vt_kitty_rgba_frames(t);
+    h_put(t, "\033_Ga=f,i=5,c=1,f=32,s=1,v=1,x=1,y=1,z=40;EjRW/w==\033\\"); /* frame 2: (1,1) = 0x123456 FF */
+    h_put(t, "\033_Ga=f,i=5,c=2,f=32,s=1,v=1,x=0,y=0;AQID7w==\033\\"); /* frame 3 on 2: alpha 0xEF at (0,0) */
+    h_put(t, "\033_Ga=f,i=5,c=2,f=32,s=1,v=1,x=1,y=0;/wAAIA==\033\\"); /* frame 4 on 2: alpha 0x20, base kept */
+    CHECK_INT((long)(vt_kitty_rgba_frames(t) - n0), 4); /* root canvas + frames 2, 3, 4 */
+    CHECK_INT(vt_kitty_frame_px(t, 5, 1, 0, 0), 0xFF112233L);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 1, 1, 1), 0x10AABBCCL);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 2, 1, 1), 0xFF123456L);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 2, 0, 0), 0xFF112233L);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 2, 1, 0), 0x80445566L); /* the base alpha stays exact */
+    CHECK_INT(vt_kitty_frame_px(t, 5, 3, 0, 0), 0xEF010203L);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 3, 1, 1), 0xFF123456L);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 4, 1, 0), 0x80445566L); /* alpha 0x20 under half: the base stays */
+    /* a=c: frame 3's (1,1) onto frame 1's (0,1) */
+    h_put(t, "\033_Ga=c,i=5,r=3,c=1,X=1,Y=1,x=0,y=1,w=1,h=1\033\\");
+    CHECK_INT(vt_kitty_frame_px(t, 5, 1, 0, 1), 0xFF123456L);
+    sw0 = vt_kitty_frame_switches(t);
+    h_put(t, "\033_Ga=a,i=5,s=3\033\\");
+    vt_anim_tick(t, 40000);
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1);
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(v.fmt, 1);
+    CHECK_INT(v.w, 2);
+    CHECK_INT(v.pix[3 * 4], 0x12); /* frame 2, pixel (1,1): R G B A */
+    CHECK_INT(v.pix[3 * 4 + 1], 0x34);
+    CHECK_INT(v.pix[3 * 4 + 2], 0x56);
+    CHECK_INT(v.pix[3 * 4 + 3], 0xFF);
+    CHECK_INT(v.pix[4 + 3], 0x80); /* (1,0) keeps its own alpha */
+    CHECK_INT(v.opaque, 0);
+    vt_set_image_rgb(t, 0); /* off: the canvases are cube indices again, a quarter of the bytes */
+    CHECK_INT(vt_kitty_frame_px(t, 5, 2, 1, 1) >= 0 && vt_kitty_frame_px(t, 5, 2, 1, 1) < 256, 1);
+    vt_free(t);
+}
+
 void suite_kitty(void)
 {
     raw_rgb_becomes_an_indexed_image();
@@ -1403,4 +1486,6 @@ void suite_kitty(void)
     k38_an_opaque_picture_says_so_and_a_placement_scales_the_rgba();
     k38_budget_is_x4_with_the_same_pixel_capacity();
     k38_switching_off_converts_and_on_leaves_indices();
+    k39_frame_canvases_stop_at_the_x4_budget_in_both_modes();
+    k39_rgba_frames_keep_exact_bytes_and_alpha();
 }
