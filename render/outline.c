@@ -82,7 +82,7 @@ struct vo_engine {
 };
 
 /* cp's glyph into mask (cleared, ch rows of bpr bytes, w pixels used) and
- * its coverage into e->cov. how: TTF_SHAPE or TTF_FILL, placed by
+ * its coverage into e->cov. how: TTF_SHAPE, TTF_FILL or TTF_ICON, placed by
  * ttf_place; or VO_AT_CELL, at the cell's scale with its current point ox
  * pixels from the left edge (0, or the cell's width for a mark that draws
  * left of its point) and on the cell's baseline. Every code point; 0 when
@@ -139,6 +139,14 @@ static int fills_cell(ULONG cp)
 {
     return (cp >= 0x2500 && cp <= 0x259F) || (cp >= 0x1FB00 && cp <= 0x1FBFF) ||
            (cp >= 0xE0B0 && cp <= 0xE0D7);
+}
+
+/* icon-font glyphs (TTF_ICON: Nerd Font, Font Awesome and the like live in
+ * the Private Use Areas): shaped as TTF_SHAPE, their stems grid fitted on
+ * non-square pixels. fills_cell is asked first (the powerline separators) */
+static int icon_glyph(ULONG cp)
+{
+    return (cp >= 0xE000 && cp <= 0xF8FF) || (cp >= 0xF0000 && cp <= 0x10FFFD);
 }
 
 /* render/ttf's reads and memory: dos.library, so the worker's only */
@@ -327,7 +335,10 @@ static void worker(void)
             m->ok = m->mark && render(&e, m->cp, m->mask, m->bpr, w, w, VO_AT_CELL);
             if (!m->ok)
                 m->ok = render(&e, m->cp, m->mask, m->bpr, w, 0,
-                               m->mark ? VO_AT_CELL : fills_cell(m->cp) ? TTF_FILL : TTF_SHAPE);
+                               m->mark              ? VO_AT_CELL
+                               : fills_cell(m->cp) ? TTF_FILL
+                               : icon_glyph(m->cp) ? TTF_ICON
+                                                   : TTF_SHAPE);
             m->cov_ok = m->ok && m->cov; /* render left the glyph's coverage in e.cov */
             if (m->cov_ok)
                 memcpy(m->cov, e.cov, (size_t)w * e.ch);
