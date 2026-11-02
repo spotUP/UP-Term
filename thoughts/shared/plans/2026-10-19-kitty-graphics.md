@@ -360,7 +360,7 @@ commit.
       a script doing what tmux would (virtual placement, then the cells
       printed as text, then the screen scrolled by 3 lines with plain
       text): the picture scrolls with the text (pixel check).
-- [ ] K33 What ncurses/tmux programs need, checked, not built: vtcon's
+- [x] K33 What ncurses/tmux programs need, checked, not built: vtcon's
       terminfo already has RGB and Tc (terminfo/vtcon.terminfo:25), so
       tmux passes 24-bit fg ids; tmux needs `allow-passthrough on` for
       the APC upload (DCS tmux; wrapper: confirm vtcon's DCS parser
@@ -369,6 +369,18 @@ commit.
       note in the man page plus one rig run of a tmux build from the
       kit, if the kit has tmux (unverified; if not, the note says so and
       the run is dropped by the owner, not by the agent).
+      PARTIAL 2026-11-02: facts checked (terminfo/vtcon.terminfo:25 has
+      RGB, Tc; engine/vtengine.c dcs_dispatch :4899 handles only $q and
+      +q, any other DCS goes to note_value, so no tmux unwrap), note in
+      dist/README.txt TMUX section, the kit has tmux 3.6a (dist/packages.txt
+      base row). Rig run OPEN: `kitty_z_rig.py <out> phtmux` (rig 82) found
+      no tmux server after the typed command, window text not read; the
+      next step is a screenshot read of that window (error text).
+
+      DONE 2026-11-02 (s51): `kitty_z_rig.py phtmux` PASS on rig 86 (four
+      boxes) with tmux-amiga branch s51-pane-console. Blocker was
+      TMUX-PANE-CONSOLE: native commands in a pane printed nowhere; root
+      cause and fix in thoughts/shared/research/s51-evidence/k33-tmux.md.
 
 #### Animation (a=f, a=a, a=c)
 

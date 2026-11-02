@@ -639,6 +639,16 @@ TMUX
   panes (ENV:tmux.conf: default-shell, 256 colours). Your own settings go
   in ~/.tmux.conf.
 
+  Kitty pictures under tmux use Unicode placeholders. Put
+  `set -g allow-passthrough on` in ~/.tmux.conf: the program then wraps
+  its picture upload (the APC data) in tmux's passthrough (DCS tmux;
+  ... ST), tmux hands it to UP-Term, and UP-Term itself does not unwrap
+  it. The picture cells (U+10EEEE with their combining marks and the
+  colour that names the image) are ordinary text to tmux, which keeps
+  the marks in its grid and redraws the picture with every pane change.
+  Programs built on ncurses only print those cells. The terminfo entry
+  vtcon has RGB and Tc, so tmux sends 24-bit colour ids unchanged.
+
 TASKS (ps, top)
   ps lists the tasks and processes: CLI number, priority, state, type and
   name (a CLI process shows the command it runs). top shows them by CPU
