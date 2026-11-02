@@ -30,8 +30,8 @@ enum {
     AM_DESKBACK, /* desktop-backdrop */
     AM_DESKPTR, /* desktop-pointer */
     AM_DESKLBL, /* desktop-labels */
-    AM_FLAT,    /* flat-system-look: the flat window frame glyphs (amarchy-flat, off/on, default off) */
-    AM_FLATGAD, /* flat-window-gadgets: the flat window gadgets (off/on, default off) */
+    AM_FLAT,    /* flat-system-look: the flat window frame glyphs (amarchy-flat, off/on, default on: a header-only prefs file after install is the full flat look) */
+    AM_FLATGAD, /* flat-window-gadgets: the flat window gadgets (off/on, default on) */
     AM_FLATSIZE, /* flat-border-size: stock, thin (the window border and title size) */
     AM_ICONSTYLE, /* icon-style: filled (default, Phosphor Fill) or outline (Lucide); the set amarchy-icons APPLY splices */
     AM_ICONTEXT, /* icon-text: the icon label text mode in the WB font prefs, plain (default), outline or shadow (desk_font_pens) */
