@@ -87,6 +87,49 @@ def alive(out):
     pathlib.Path(out + '.alive').write_text('PASS' if ok else 'FAIL')
 
 
+def longest_ink_run(line):
+    """Length of the longest run of non-background pens ('#' or 'o') in a row or column string."""
+    best = cur = 0
+    for c in line:
+        cur = cur + 1 if c != '.' else 0
+        best = max(best, cur)
+    return best
+
+
+def stem_verdict(cls):
+    """A stem is a row or column whose longest ink run (any non-background pen) covers at least 3/4 of the cell's
+    extent. Judge only that run: the stem is SOFT when at least 3/4 of the run's pens are intermediate shades (an
+    unsnapped stem sits on two pixels at half coverage, every pen soft). A notch in the font design (a broken line, a
+    diagonal cut) softens a minority of the run and does not make the stem soft. Returns (stem rows, stem cols,
+    intermediate pens on stem runs, verdict)."""
+    ch, gw = len(cls), len(cls[0])
+    cols = [''.join(cls[y][x] for y in range(ch)) for x in range(gw)]
+
+    def runs(lines, extent):
+        out = []
+        for i, ln in enumerate(lines):
+            if longest_ink_run(ln) * 4 >= extent * 3:
+                # the longest run itself
+                best, start, cur, s0 = 0, 0, 0, 0
+                for k, c in enumerate(ln + '.'):
+                    if c != '.':
+                        if cur == 0:
+                            s0 = k
+                        cur += 1
+                    else:
+                        if cur > best:
+                            best, start = cur, s0
+                        cur = 0
+                out.append((i, ln[start:start + best]))
+        return out
+    rr, cc = runs([''.join(r) for r in cls], gw), runs(cols, ch)
+    srow, scol = [i for i, _ in rr], [i for i, _ in cc]
+    o_stem = sum(r.count('o') for _, r in rr + cc)
+    soft = any(r.count('o') * 4 >= len(r) * 3 for _, r in rr + cc)
+    verdict = 'NO-STEM' if not (srow or scol) else 'SOFT' if soft else 'SNAPPED'
+    return srow, scol, o_stem, verdict
+
+
 def analyse(run, w, h, px, geom=None):
     cps = RUNS[run][2]
     if run == 'stress':
@@ -161,10 +204,8 @@ def analyse(run, w, h, px, geom=None):
         if cp in (0x2500, 0x2502, 0x253C) and n_o:
             bad += 1
         if run == 'icons' and cp != 0xE0B0:   # straight stems: rows/cols that are at least half fg; intermediate pens beside them
-            srow = [i for i, r in enumerate(cls) if r.count('#') >= gw // 2]
-            scol = [i for i, k in enumerate(cols) if k.count('#') >= ch // 2]
-            o_stem = sum(cls[i][2:-2].count('o') for i in srow) + sum(cols[i][2:-2].count('o') for i in scol)   # the 2 pixels at each end are corner rounding, not the stem
-            print('  stems: rows %s cols %s, intermediate on them %d -> %s' % (srow, scol, o_stem, 'SNAPPED' if (srow or scol) and not o_stem else 'NO-STEM' if not (srow or scol) else 'SOFT'))
+            srow, scol, o_stem, verdict = stem_verdict(cls)
+            print('  stems: rows %s cols %s, intermediate on them %d -> %s' % (srow, scol, o_stem, verdict))
     return bad
 
 
@@ -180,4 +221,5 @@ def main():
     sys.exit(1 if analyse(run, w, h, px, geom) else 0)
 
 
-main()
+if __name__ == '__main__':
+    main()
