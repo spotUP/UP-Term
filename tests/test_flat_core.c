@@ -1099,6 +1099,13 @@ static int fake_render(void *ctx, unsigned long ids, uint8_t *grid, int w, int h
     return 1;
 }
 
+static int blank_render(void *ctx, unsigned long ids, uint8_t *grid, int w, int h)
+{
+    (void)ctx; (void)ids; (void)grid; (void)w; (void)h;
+    g_render_calls++;
+    return 1;                                                                   /* OS 3.2 window gadgets: rc 1, nothing drawn */
+}
+
 static void test_clone_arrows(void)
 {
     flat_state st;
@@ -1191,6 +1198,11 @@ static void test_glyph_clone(void)
     g_render_calls = 0; g_render_fail = 1;
     CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 9, 9, 'F', -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_FAIL);
     g_render_fail = 0; g_render_calls = 0;
+    cv_clear();                                                                 /* an empty clone is a failure and paints nothing */
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 9, 9, 'F', 'T', blank_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_FAIL);
+    CHECK_INT(g_render_calls, 1);
+    CHECK(cv[0][0] == '?' && cv[4][4] == '?');
+    g_render_calls = 0;
     CHECK_INT(flat_clone_draw(&st, FLAT_W_MENUCHECK, FLAT_IM_DRAW, 0, 0, 0, 9, 9, 'F', -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_NO);
     CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, 0x203, 0, 0, 0, 9, 9, 'F', -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_NO);
     CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 6, 9, 'F', -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_NO);
