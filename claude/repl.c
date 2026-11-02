@@ -2336,12 +2336,37 @@ int repl_line(cl_repl *r, const char *line)
     return 0;
 }
 
+/* The line mode's own list is the console's: it recalls the prompt history file the raw mode keeps, for this
+ * project (VTCON_HIST_FILE "file\nproject", claude/histline.h), so Up brings back the prompts of either mode. on:
+ * the console is told (the name in force before comes back in prev); off: prev is put back. A console that is not
+ * UP-Term's, no history file (CLAUDE_CODE_SKIP_PROMPT_HISTORY) or an io without the call leaves the console alone. */
+static void line_history_share(cl_repl *r, char *prev, long cap, int on)
+{
+    char spec[600];
+    if (!r->io->history_file)
+        return;
+    if (!on) {
+        if (r->hist_shared)
+            r->io->history_file(r->io->u, prev, 0, 0);
+        r->hist_shared = 0;
+        return;
+    }
+    if (!r->ui.histfile[0] || env_on(r, "CLAUDE_CODE_SKIP_PROMPT_HISTORY"))
+        return;
+    cl_copy(spec, r->ui.histfile, sizeof(spec));
+    cl_cat(spec, "\n", sizeof(spec));
+    cl_cat(spec, r->tools.root, sizeof(spec));
+    r->hist_shared = r->io->history_file(r->io->u, spec, prev, cap) == 0;
+}
+
 void repl_run(cl_repl *r)
 {
     char *line = (char *)malloc(8192);
     char m[200];
+    char prevh[600];
     if (!line)
         return;
+    prevh[0] = 0;
     if (r->tui) {
         welcome(r);
         if (start(r)) {
@@ -2378,6 +2403,7 @@ void repl_run(cl_repl *r)
         free(line);
         return;
     }
+    line_history_share(r, prevh, sizeof(prevh), 1);
     for (;;) {
         long n;
         if (!r->await_key)
@@ -2388,6 +2414,7 @@ void repl_run(cl_repl *r)
         if (n < 0 || repl_line(r, line))
             break;
     }
+    line_history_share(r, prevh, sizeof(prevh), 0);
     free(line);
 }
 
