@@ -503,7 +503,7 @@ and bg), then the 1-bit mask path; no new failure mode. A dither of the shade it
   Row "Blend edges" (PG_BLEND_DEST, Advanced row 3 column 2, beside Programs may; the wider labels
   overflowed the 618 px window). Test advanced_page_has_the_outline_blend_switch in tests/test_prefs.c
   (row on the Advanced page, staged key on then off, read back; fails before: no row); layout by
-  the_window_fits_an_ntsc_and_a_pal_workbench (NTSC 618x176, PAL 618x232, 11 px font) passes. Commit: see git log s48-blendprefs.
+  the_window_fits_an_ntsc_and_a_pal_workbench (NTSC 618x176, PAL 618x232, 11 px font) passes. Commit: 1a87b4a4 (branch s48-blendprefs).
 - [x] R6.5 Knob: profile key outline-blend-dest (on/off) moves the output (on: blend, off:
   today's ramp); the host test toggles it and asserts different pixels.
 
