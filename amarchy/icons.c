@@ -321,9 +321,32 @@ static void walk_dir(ia_ctx *c, size_t plen, int ro, unsigned depth)
     if (list) FreeVec(list);
 }
 
+/* RL11: the device entry that serves a volume (same handler port) gives the classifier its device name and handler file. */
+static int vol_is_net(const struct MsgPort *port)
+{
+    char dev[34], hnd[64];
+    struct DosList *d = LockDosList(LDF_DEVICES | LDF_READ);
+    int net = 0;
+    while ((d = NextDosEntry(d, LDF_DEVICES)) != NULL) {
+        const UBYTE *dn = (const UBYTE *)BADDR(d->dol_Name);
+        const UBYTE *hb = d->dol_misc.dol_handler.dol_Handler ? (const UBYTE *)BADDR(d->dol_misc.dol_handler.dol_Handler) : NULL;
+        unsigned l;
+        if (d->dol_Task != port || !dn) continue;
+        l = dn[0] > 33 ? 33 : dn[0];
+        memcpy(dev, dn + 1, l); dev[l] = 0;
+        hnd[0] = 0;
+        if (hb) { l = hb[0] > 63 ? 63 : hb[0]; memcpy(hnd, hb + 1, l); hnd[l] = 0; }
+        if (ia_vol_is_net(dev, hnd)) { net = 1; break; }
+    }
+    UnLockDosList(LDF_DEVICES | LDF_READ);
+    return net;
+}
+
 static void walk_volumes(ia_ctx *c)
 {
     char names[WALK_MAXVOL][34];
+    char isnet[WALK_MAXVOL];
+    const struct MsgPort *ports[WALK_MAXVOL];
     int nv = 0, i;
     struct DosList *dl;
     dl = LockDosList(LDF_VOLUMES | LDF_READ);
@@ -335,9 +358,12 @@ static void walk_volumes(ia_ctx *c)
         memcpy(names[nv], bs + 1, l);
         names[nv][l] = ':';
         names[nv][l + 1] = 0;
+        isnet[nv] = 0;
+        ports[nv] = dl->dol_Task;
         nv++;
     }
     UnLockDosList(LDF_VOLUMES | LDF_READ);
+    for (i = 0; i < nv; i++) isnet[i] = (char)vol_is_net(ports[i]);     /* volumes list unlocked: the device lookup takes its own lock */
     ia_walk_begin(c);
     for (i = 0; i < nv; i++) {
         BPTR l;
@@ -352,17 +378,18 @@ static void walk_volumes(ia_ctx *c)
         UnLock(l);
         strcpy(g_wpath, names[i]);
         walk_dir(c, strlen(g_wpath), ro, 0);
+        if (isnet[i] && !ro) ia_walk_net(c, names[i]);     /* after the walk: the walk's def_disk fallback must not overwrite it */
         ia_walk_volume(c, names[i]);
     }
 }
 
 static void print_counters(const ia_ctx *c)
 {
-    unsigned long v[13];
+    unsigned long v[14];
     v[0] = c->written; v[1] = c->skipped_done; v[2] = c->skipped_bad; v[3] = c->skipped_nodat;
     v[4] = c->skipped_nodefault; v[5] = c->skipped_io; v[6] = c->restored; v[7] = c->restore_failed;
-    v[8] = c->skipped_readonly; v[9] = c->skipped_locked; v[10] = c->skipped_uaem; v[11] = c->fallback; v[12] = c->skipped_deep;
-    VPrintf((STRPTR)"written=%ld skipped-done=%ld skipped-bad=%ld skipped-nodat=%ld skipped-nodefault=%ld skipped-io=%ld restored=%ld restore-failed=%ld skipped-readonly=%ld skipped-locked=%ld skipped-uaem=%ld fallback=%ld skipped-deep=%ld\n",
+    v[8] = c->skipped_readonly; v[9] = c->skipped_locked; v[10] = c->skipped_uaem; v[11] = c->fallback; v[12] = c->skipped_deep; v[13] = c->net;
+    VPrintf((STRPTR)"written=%ld skipped-done=%ld skipped-bad=%ld skipped-nodat=%ld skipped-nodefault=%ld skipped-io=%ld restored=%ld restore-failed=%ld skipped-readonly=%ld skipped-locked=%ld skipped-uaem=%ld fallback=%ld skipped-deep=%ld net=%ld\n",
             (LONG *)v);
 }
 

@@ -42,5 +42,18 @@ class IconsSkipGlue(unittest.TestCase):
         self.assertLess(skip.start(), body.index("if (fib->fib_DirEntryType > 0) kind = 'D';"))
 
 
+    def test_network_volume_gets_the_net_icon(self):
+        """RL11: walk_volumes classifies each volume with ia_vol_is_net and, for a network volume, applies the type:net icon
+        to its Disk.info through ia_walk_net, which hands apply_one the match type:net (core pin below)."""
+        s = (ROOT / "amarchy/icons.c").read_text()
+        body = s[s.index("static void walk_volumes"):]
+        body = body[:body.index("\n}\n")]
+        self.assertIn("vol_is_net(ports[i])", body)
+        self.assertRegex(body, r"if \(isnet\[i\][^)]*\) ia_walk_net\(c, names\[i\]\);")
+        self.assertIn("ia_vol_is_net(dev, hnd)", s)
+        core = (ROOT / "amarchy/iconapply_core.c").read_text()
+        net = core[core.index("int ia_walk_net"):]
+        self.assertIn('apply_one(c, path, "type:net")', net[:net.index("\n}\n")])
+
 if __name__ == "__main__":
     unittest.main()

@@ -241,7 +241,8 @@ static int apply_one(ia_ctx *c, const char *path, const char *match)
 
     if (n == -1) {
         /* only a defaults match has a system default object; a table path that is not on this volume is skipped */
-        n = c->io->dflt && strncmp(match, "def_", 4) == 0 ? c->io->dflt(c->io->ctx, match, c->cur, IA_FILECAP) : -1;
+        const char *dm = strcmp(match, "type:net") == 0 ? "def_disk" : match;     /* the net icon is a disk object with other images */
+        n = c->io->dflt && strncmp(dm, "def_", 4) == 0 ? c->io->dflt(c->io->ctx, dm, c->cur, IA_FILECAP) : -1;
         if (n <= 0) { return ia_skip_note(c, &c->skipped_nodefault, path, "nodefault"); }
         absent = 1;
     } else if (n <= 0) { return ia_skip_note(c, &c->skipped_io, path, "io"); }
@@ -416,6 +417,41 @@ int ia_walk_file(ia_ctx *c, const char *path, int vol_readonly, unsigned long pr
 }
 
 void ia_walk_begin(ia_ctx *c) { man_load(c); }
+
+static int ci_contains(const char *s, const char *needle)
+{
+    size_t n = strlen(needle), i, j;
+    if (!s) return 0;
+    for (i = 0; s[i]; i++) {
+        for (j = 0; j < n && s[i + j]; j++) {
+            char a = s[i + j], b = needle[j];
+            if (a >= 'A' && a <= 'Z') a = (char)(a + 32);
+            if (a != b) break;
+        }
+        if (j == n) return 1;
+    }
+    return 0;
+}
+
+int ia_vol_is_net(const char *devname, const char *handler)
+{
+    static const char *const k[] = { "smb", "samba", "cifs", "nfs", "ftpmount", "netfs", "webdav", "sftp" };
+    size_t i;
+    for (i = 0; i < sizeof k / sizeof k[0]; i++)
+        if (ci_contains(devname, k[i]) || ci_contains(handler, k[i])) return 1;
+    return 0;
+}
+
+int ia_walk_net(ia_ctx *c, const char *vol)
+{
+    char path[IA_MAXPATH];
+    int w;
+    if (strlen(vol) + 10 >= sizeof path) return 0;
+    snprintf(path, sizeof path, "%sDisk.info", vol);
+    w = apply_one(c, path, "type:net");
+    c->net++;
+    return w;
+}
 
 int ia_restore(ia_ctx *c)
 {

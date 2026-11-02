@@ -4,7 +4,7 @@
 ; match is one of
 ;   a path          SYS:Prefs/Font         (volume or assign, then the .info path without ".info")
 ;   a default       def_drawer             (ENVARC:Sys/def_NAME.info; def_disk, def_drawer, def_tool, def_project, def_trashcan, def_RAM, every def_* of OS 3.2 Prefs/Env-Archive/Sys)
-;   a type fallback type:disk type:drawer type:tool type:project type:garbage type:kick type:device
+;   a type fallback type:disk type:drawer type:tool type:project type:garbage type:kick type:device type:net
 ; Workbench defaults
 def_disk        = hard-drive
 def_drawer      = folder
@@ -93,3 +93,4 @@ type:project    = file
 type:garbage    = trash-2
 type:kick       = cpu
 type:device     = usb
+type:net        = network

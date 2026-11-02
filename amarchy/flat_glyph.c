@@ -105,9 +105,33 @@ static void g_menusub(plan *g)
     }
 }
 
+/* The scroller arrows: a solid triangle in the inner box, base on the side the arrow comes from. OS 3.2's sysiclass puts nothing
+ * into the clone's offscreen rastport for LEFTIMAGE..DOWNIMAGE, and the stock draw under flat pens (shine == shadow == background)
+ * leaves glyph and box in one colour, so the arrows get their own block glyph, in the same roles as every window gadget. */
+static void g_arrow(plan *g, unsigned long which)
+{
+    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1, k;
+    if (which == FLAT_W_LEFT || which == FLAT_W_RIGHT) {
+        for (k = 0; k < ih; k++) {
+            int len = imin(iw, 2 * (imin(k, ih - 1 - k) + 1));
+            if (which == FLAT_W_RIGHT)
+                put(g, g->ix0, g->iy0 + k, g->ix0 + len - 1, g->iy0 + k, g->fg);
+            else
+                put(g, g->ix1 - len + 1, g->iy0 + k, g->ix1, g->iy0 + k, g->fg);
+        }
+    } else {
+        for (k = 0; k < ih; k++) {
+            int row = which == FLAT_W_UP ? k : ih - 1 - k;
+            int len = imin(iw, 2 * row + 1), x0 = g->ix0 + (iw - len) / 2;
+            put(g, x0, g->iy0 + k, x0 + len - 1, g->iy0 + k, g->fg);
+        }
+    }
+}
+
 int flat_glyph_known(unsigned long which)
 {
     switch (which) {
+    case FLAT_W_LEFT: case FLAT_W_UP: case FLAT_W_RIGHT: case FLAT_W_DOWN:
     case FLAT_W_DEPTH: case FLAT_W_ZOOM: case FLAT_W_SIZE: case FLAT_W_CLOSE: case FLAT_W_MENUCHECK:
     case FLAT_W_AMIGAKEY: case FLAT_W_ICONIFY: case FLAT_W_MENUSUB:
         return 1;
@@ -266,6 +290,7 @@ static int plan_run(plan *g, unsigned long which, int w, int h, int state)
     case FLAT_W_MENUCHECK: g_check(g); break;
     case FLAT_W_AMIGAKEY: g_amigakey(g); break;
     case FLAT_W_MENUSUB: g_menusub(g); break;
+    case FLAT_W_LEFT: case FLAT_W_UP: case FLAT_W_RIGHT: case FLAT_W_DOWN: g_arrow(g, which); break;
     }
     return g->n;
 }
