@@ -1229,6 +1229,8 @@ long vt_anim_tick(vt_term *t, long us)
     int i;
     if (us < 0)
         us = 0;
+    if (t->anim_off)
+        return -1;
     for (i = 0; i < VT_IMG_SLOTS; i++) {
         vt_image *im = t->imgs[i];
         vt_anim *an;
@@ -1260,6 +1262,12 @@ long vt_anim_tick(vt_term *t, long us)
         }
     }
     return due;
+}
+
+void vt_set_animation(vt_term *t, int on)
+{
+    if (t)
+        t->anim_off = on ? 0 : 1;
 }
 
 unsigned long vt_kitty_frame_switches(const vt_term *t)

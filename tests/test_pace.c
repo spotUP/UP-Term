@@ -23,8 +23,16 @@ static void eclock_ticks_become_microseconds(void)
     CHECK_INT((int)vt_pace_us(100, 0), 0);
 }
 
+static void the_animation_clock_stops_when_hidden_or_scrolled_back(void)
+{
+    CHECK_INT(vt_anim_paused(0, 0), 0);
+    CHECK_INT(vt_anim_paused(1, 0), 1);
+    CHECK_INT(vt_anim_paused(0, 3), 1);
+}
+
 void suite_pace(void)
 {
+    the_animation_clock_stops_when_hidden_or_scrolled_back();
     a_frame_waits_one_and_a_half_times_its_cost();
     a_cheap_frame_still_waits_20_ms_and_a_dear_one_at_most_160();
     eclock_ticks_become_microseconds();

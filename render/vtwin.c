@@ -305,6 +305,7 @@ void vtwin_profile_defaults(vtwin *w)
      * keep the last one's cursor or palette */
     w->cursor_style = 0;
     w->cursor_blink = 0;
+    w->image_animation = 1; /* D14: on */
     w->meta_alt = 1; /* Alt is Meta; Left Amiga is Super (the keymap) */
     w->copy_on_select = 0;
     w->amiga_keys = 1;   /* on by default */
@@ -618,6 +619,33 @@ void vtwin_clock(vtwin *w)
     frame_start(w);
 }
 
+/* K36: kitty animations ride the frame clock. The tick passes the time this frame waited; a switch marks
+ * the rows, the render pass of this very tick draws them. While one still runs (due >= 0) the clock re-arms,
+ * so nothing wakes when no animation plays. Hidden or scrolled back: no call, no time passes for it. */
+static void anim_tick(vtwin *w, ULONG waited)
+{
+    unsigned long sw0;
+    long due;
+    struct EClockVal e0, e1;
+    ULONG freq;
+    if (!w->t || !w->win || vt_anim_paused(w->r.hidden, w->r.view))
+        return;
+    sw0 = vt_kitty_frame_switches(w->t);
+    due = vt_anim_tick(w->t, (long)waited);
+    if (due < 0)
+        return;
+    if (vt_kitty_frame_switches(w->t) != sw0) {
+        w->render_pending = 1;
+        freq = vtwin_timer ? ReadEClock(&e0) : 0;
+        vtwin_render(w);
+        if (freq) {
+            ReadEClock(&e1);
+            w->prof_anim += e1.ev_lo - e0.ev_lo;
+        }
+    }
+    frame_start(w);
+}
+
 ULONG vtwin_tick(vtwin *w)
 {
     ULONG waited = 0;
@@ -637,6 +665,7 @@ ULONG vtwin_tick(vtwin *w)
         note_tick(w, w->frame_wait); /* a notice in the title counts down */
         if (w->t && (vr_flash_tick(&w->r) || vr_blink_tick(&w->r, w->frame_wait)))
             frame_start(w); /* that frame ended a flash or a blink phase */
+        anim_tick(w, waited);
     }
     if (!w->frame_open) {
         vtwin_render(w); /* no frame clock: draw at once */
@@ -892,6 +921,7 @@ static void settings(vtwin *w)
     vt_set_amiga_keys(w->t, w->amiga_keys);
     vt_set_cursor_style(w->t, w->cursor_style);
     vt_set_cursor_blink(w->t, w->cursor_blink);
+    vt_set_animation(w->t, w->image_animation);
     vt_set_clipboard_access(w->t, w->no_clipboard ? 0 : w->clip_access);
     for (i = 0; i < 16; i++)
         if (w->pal16[i] & 0x01000000UL)

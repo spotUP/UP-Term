@@ -555,6 +555,9 @@ unsigned long vt_kitty_placeholders(const vt_term *t);
 unsigned long vt_kitty_frames(const vt_term *t);
 /* K35: frame switches made (by the clock or by a=a c=), a test sentinel. */
 unsigned long vt_kitty_frame_switches(const vt_term *t);
+/* K36: the host's switch for terminal-driven playback (profile key image-animation, default on). Off: vt_anim_tick
+ * switches nothing and returns -1; a client's a=a c= still switches. */
+void vt_set_animation(vt_term *t, int on);
 /* K35: advance every running kitty animation by `us` microseconds, switching
  * frames whose gap ran out (gapless ones skipped) and marking the rows of the
  * changed pictures. Returns the microseconds to the next due frame, -1 when

@@ -134,6 +134,8 @@ typedef struct vtwin {
     int frame_open, frame_busy;
     ULONG frame_us;              /* the frame clock's next interval (pace.h); 0: the shortest */
     ULONG frame_wait;            /* the interval of the request in flight (us) */
+    unsigned char image_animation;       /* profile image-animation (default on): the frame clock plays kitty animations */
+    ULONG prof_anim;              /* K36 PROF: EClock ticks drawing frames that switched an animation */
     ULONG prof_render, prof_frames; /* EClock ticks drawing, and render passes (the handler's PROF=1) */
     ULONG prof_part[8]; /* 0 rows, 1 scroll, 2 cursor pass whole, 3 vt_feed, 4 mask, 5 cursor off, 6 cursor on */
     int wrote;                   /* vtwin_write since the last frame tick */
