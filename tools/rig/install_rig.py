@@ -45,7 +45,7 @@ ends, with a fingerprint of the archives it installs; a case that passed with th
 One script per rig: a second one on the same rig stops with the first one's pid (paths.rig_lock)."""
 import os, pathlib, re, shutil, signal, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from user_startup import strip_upterm_blocks
+from user_startup import strip_upterm_blocks, without_rig_blocks
 import paths  # before ami: it sets the agent port of UPTERM_RIG
 import ami
 import verdicts
@@ -824,7 +824,8 @@ def _main(dest=None):
     rc, out = run('GetEnv TERMINFO')
     check(rc == 0 and out.strip() == terminfo_before, 'after Uninstall: the TERMINFO from before Install is back', out)
     rc, out = run('Type S:User-Startup')
-    check(out == startup_before, 'after Uninstall: S:User-Startup as it was, byte for byte',
+    judged = lambda t: without_rig_blocks(t.encode('latin-1')).decode('latin-1')   # the rig's own block is not Install's
+    check(judged(out) == judged(startup_before), 'after Uninstall: S:User-Startup as it was, byte for byte',
           'differs: %r vs %r' % (out[-80:], startup_before[-80:]))
     if not gg_before:
         check(run('Assign >NIL: GG: EXISTS')[0] != 0, 'after Uninstall: no GG: (Install made it)')

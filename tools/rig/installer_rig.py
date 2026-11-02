@@ -65,6 +65,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths
 import ami
 import verdicts
+import user_startup
 import install_rig as ir
 import amarchy_window_rig as amw
 from assign_rig import rig
@@ -114,6 +115,13 @@ CHAIN = bool(os.environ.get("INSTALLER_CHAIN"))
 OWNERMAP = os.environ.get("INSTALLER_OWNERMAP", "")
 KEY_X, KEY_RETURN = 0x32, 0x44
 
+
+
+def startup_now():
+    """S:User-Startup as the byte-for-byte checks judge it: without the rig's own ';BEGIN rig-upterm-shadows' block.
+    rig.py writes that block on every start (and a reboot inside a case re-inserts it after Install); Uninstall
+    removes the kit's blocks only (INSTALL-CHECK39-SHADOW-LEFTOVER)."""
+    return user_startup.without_rig_blocks(ir.run('Type S:User-Startup')[1].encode('latin-1')).decode('latin-1')
 
 def case_packages(case):
     """([packages the case installs], [more files its fingerprint reads])."""
@@ -787,7 +795,7 @@ def update_phase(ck, inst, level, base, t_install, noopts=False):
     noopts (UPDATE-DETECT): the recorded options are deleted first, as an install from a Shell leaves
     none; the Update reads them back from the Amiga and records the same ones again."""
     import subprocess
-    before, startup = dates(), ir.run('Type S:User-Startup')[1]
+    before, startup = dates(), startup_now()
     opts = ir.run('List ENVARC:up-term/opts LFORMAT "%N"')[1]
     optvals = opts_now()
     if noopts:
@@ -813,7 +821,7 @@ def update_phase(ck, inst, level, base, t_install, noopts=False):
     ck(got.endswith(b"(installer_rig update case)\n"), 'the changed file is the new kit\'s')
     ck(ami.read_file('UP-Term:MANIFEST') == (VTC / "distkit/Files/MANIFEST").read_bytes(),
        'UP-Term:MANIFEST is the new kit\'s (the record part ran)')
-    ck(ir.run('Type S:User-Startup')[1] == startup, 'S:User-Startup as it was')
+    ck(startup_now() == startup, 'S:User-Startup as it was')
     ck(ir.run('List ENVARC:up-term/opts LFORMAT "%N"')[1] == opts, 'the recorded options as they were', opts)
     if noopts:
         got = opts_now()
@@ -1003,7 +1011,7 @@ def run_kingcon():
     ir.run_long('rununinstall')
     ir.run('Delete >NIL: ENVARC:UP-Term.prefs ENVARC:Claude/remote ENV:UPTREFUSED#? QUIET')
     ir.run_slow('deleteroom', drawer_delete(ROOMDEST))
-    startup_before = ir.run('Type S:User-Startup')[1]
+    startup_before = startup_now()
     # an older Install's console block (the A1200 has one): the refused switch must take it out too (Uninstall
     # at the end takes every UP-Term block, so startup_before still holds after it)
     for l in (';BEGIN UP-Term console', 'C:UPConsole >NIL: CON ON', ';END UP-Term console'):
@@ -1042,7 +1050,7 @@ def run_kingcon():
         ir.run('Delete >NIL: VTC:foreigncon VTC:foreigncon.ml QUIET')
     rc, out = ir.run_long('rununinstall')
     ir.run_slow('deleteroom', drawer_delete(ROOMDEST))
-    ck(ir.run('Type S:User-Startup')[1] == startup_before, 'after Uninstall: S:User-Startup as it was, byte for byte')
+    ck(startup_now() == startup_before, 'after Uninstall: S:User-Startup as it was, byte for byte')
     # CON: is the foreign handler's until the next boot: every write is done (Uninstall returned), 5 s of quiet, then reboot
     time.sleep(5)
     rig("stop", "--keep")
@@ -1141,7 +1149,7 @@ def run_base_case(case):
         # again, and space-sys then had 11 MB on SYS:, enough for its SYS: parts (no refusal, the install ran)
         fill_sys(SPACE_LEFT_SYS if case == 'space-sys' else SPACE_LEFT)
     sys_kb = sys_free_bytes() // 1024   # what the room page must say SYS: has
-    startup_before = ir.run('Type S:User-Startup')[1]
+    startup_before = startup_now()
     before = ir.lib_state()
     rig_gg = ir.run('Assign >NIL: GG: EXISTS')[0] == 0
     if rig_gg:
@@ -1184,7 +1192,7 @@ def run_base_case(case):
         ck(ir.run('List >NIL: "%s/VERSIONS"' % dest)[0] != 0, 'nothing was copied into the drawer', '')
         ck(ir.run('List >NIL: SYS:UP-Term/VERSIONS')[0] != 0, 'nothing was copied into SYS:UP-Term', '')
         ck(ir.run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'no UP-Term: assign', '')
-        ck(ir.run('Type S:User-Startup')[1] == startup_before, 'S:User-Startup as it was, byte for byte', '')
+        ck(startup_now() == startup_before, 'S:User-Startup as it was, byte for byte', '')
         st = ir.lib_state()
         ck(st == before, 'LIBS: as it was', 'now %s, before %s' % (st, before))
         m = re.search(r'S\S?S:\s*has\s+(\d+)\s*KB', txt)
@@ -1198,7 +1206,7 @@ def run_base_case(case):
         ck(not any('% done' in l for l in log), 'the Installer ended without a copy phase', '; '.join(log[-3:]))
         ck(ir.run('List >NIL: SYS:UP-Term/VERSIONS')[0] != 0, 'nothing was copied into the drawer', '')
         ck(ir.run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'no UP-Term: assign', '')
-        ck(ir.run('Type S:User-Startup')[1] == startup_before, 'S:User-Startup as it was, byte for byte', '')
+        ck(startup_now() == startup_before, 'S:User-Startup as it was, byte for byte', '')
         st = ir.lib_state()
         ck(st == before, 'LIBS: as it was', 'now %s, before %s' % (st, before))
         print('installer_rig %s: passed %d of %d' % (case, ck.total - len(ck.failed), ck.total))
