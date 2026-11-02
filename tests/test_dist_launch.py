@@ -40,7 +40,8 @@ class BuiltArchives(unittest.TestCase):
                 self.assertIn('"launch/%s" "launch/%s.info"' % (n, n), dos)
             un = (ROOT / 'build/dist' / ARCHIVE[pid] / 'Uninstall').read_text(encoding='latin-1')
             for n in names:
-                self.assertIn('UP-Term:%s.info' % n, un.replace('"', ''))
+                # a276b6f5: the uninstall deletes through UPTREAL: (the real drawer), not the first UP-Term:
+                self.assertIn('UPTREAL:%s.info' % n, un.replace('"', ''))
 
 
 if __name__ == '__main__':

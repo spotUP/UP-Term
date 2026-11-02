@@ -624,8 +624,8 @@
 
 (set #step "tools" #kb #kb-tools #n 3
      #why (cat "Installing UP-Term's own commands (UPTerm, UPDemo,\n"
-               "upgetty, uptelnet, hl, mdv, icat, ps, top, sz, rz, Amarchy)\n"
-               "and the network tools you chose."))
+               "upgetty, uptelnet, hl, mdv, icat, ps, top, sz, rz,\n"
+               "Amarchy) and the network tools you chose."))
 (P_STEP)
 
 (set #step "fonts" #kb @KBFONTS@ #n 2

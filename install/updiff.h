@@ -19,11 +19,15 @@
 #define UD_MAXPARTS 32
 #define UD_NAME 32
 #define UD_DRAWER 96
-/* handed# lines in one manifest; the 1.0 kit writes 9 (nvim, Claude, python3,
- * amiga-pi, git, vim, perl and their share drawers). dist-check runs every
+/* handed# lines in one manifest; the 1.0 kit wrote 9 (nvim, Claude, python3,
+ * amiga-pi, git, vim, perl and their share drawers), the base now writes 40 as
+ * every add-on archive of dist/packages.txt hands its paths over (2026-11-02;
+ * 32 was the old ceiling and made upupdate refuse the base manifest, "is not a
+ * kit manifest"). 64 keeps room for the next add-ons; the cost is 6 KB for
+ * ud_out.hpath and 6 KB for ud_result.handed, both malloc'd. dist-check runs every
  * kit's own manifest through ud_compare (updiff_kit_drv), so a kit that
  * outgrows a limit here fails the build, not the owner's Update page. */
-#define UD_MAXHANDED 32
+#define UD_MAXHANDED 64
 
 typedef struct {
     char name[UD_NAME];
