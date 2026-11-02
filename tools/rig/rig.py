@@ -1913,6 +1913,32 @@ def start(retries=START_RETRIES):
         fcntl.flock(lock, fcntl.LOCK_EX)   # released when the block ends or the process dies
         return _start(retries)
 
+def boot_device_path():
+    """The path of the rig's first hard drive (the boot device), read from CFG: FS-UAE `hard_drive_0 = <path>`, Amiberry
+    `uaehf0=dir,rw,DH0:<volume>:<path>,<pri>` or `uaehf0=hdf,rw,DH0:<path>,...` (amiberry.drive_line). None when the
+    config lists none."""
+    for l in CFG.read_text().splitlines():
+        if AMIBERRY and l.startswith("uaehf0="):
+            kind, _, rest = l.split("=", 1)[1].split(",", 2)
+            dev = rest.split(",")[0]          # DH0:<volume>:<path>  or  DH0:<path>
+            body = dev.split(":", 1)[1]
+            return body.split(":", 1)[1] if kind == "dir" else body
+        if not AMIBERRY and l.startswith("hard_drive_0 ="):
+            return l.split("=", 1)[1].strip()
+    return None
+
+def boot_device_check():
+    """Refuse to launch the emulator without a boot device: the config must exist and its first hard drive must be a
+    present, non-empty directory or file. An emulator with no boot device just sits on the insert-disk screen."""
+    if not CFG.exists():
+        sys.exit("rig: not starting: config %s is missing" % CFG)
+    hd = boot_device_path()
+    if not hd:
+        sys.exit("rig: not starting: %s lists no first hard drive (no boot device)" % CFG)
+    p = pathlib.Path(hd)
+    if not p.exists() or (p.is_dir() and not any(p.iterdir())) or (p.is_file() and p.stat().st_size == 0):
+        sys.exit("rig: not starting: boot device %s is missing or empty" % p)
+
 def _start(retries):
     # before anything is written: a start while the rig runs (or boots, when
     # status still says down) must not rewrite BOOTX:go, BOOTX:s/startup-sequence
@@ -1952,6 +1978,7 @@ def _start(retries):
     log = RIG / "boot/boot.log"
     if log.exists():
         log.unlink()
+    boot_device_check()   # no boot device = an emulator on the insert-disk screen; refuse before launching either one
     if AMIBERRY:
         # Amiberry's console log goes where cap_fsuae_log, fsuae_crash and fsuae_reset_count already read
         paths.FSUAE_LOG_DIR.mkdir(parents=True, exist_ok=True)
