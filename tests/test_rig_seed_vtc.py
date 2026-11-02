@@ -37,5 +37,24 @@ class StageThemes(unittest.TestCase):
         self.assertGreater(len(want), 1)
         self.assertEqual(sorted(p.name for p in (vtc / "amarchy-themes").glob("*.theme")), want)
 
+class StageEtc(unittest.TestCase):
+    def test_setup_path_makes_vtc_etc_with_the_termcap(self):
+        """stage_rig_vtc alone (rig 1 setup, no hand-made etc) gives VTC:etc for the ETC: assign and /etc/termcap"""
+        vtc = pathlib.Path(tempfile.mkdtemp())
+        (vtc / rig.paths.UPTERM_DRAWER / "bin").mkdir(parents=True)
+        (vtc / rig.paths.UPTERM_DRAWER / "bin/vsh").write_text("x")
+        rig.stage_rig_vtc(vtc)
+        self.assertTrue((vtc / "etc").is_dir())
+        self.assertEqual((vtc / "etc/termcap").read_bytes(), (ROOT / "terminfo/vtcon.termcap").read_bytes())
+
+    def test_an_existing_termcap_is_kept(self):
+        vtc = pathlib.Path(tempfile.mkdtemp())
+        (vtc / rig.paths.UPTERM_DRAWER / "bin").mkdir(parents=True)
+        (vtc / rig.paths.UPTERM_DRAWER / "bin/vsh").write_text("x")
+        (vtc / "etc").mkdir()
+        (vtc / "etc/termcap").write_text("mine")
+        rig.stage_rig_vtc(vtc)
+        self.assertEqual((vtc / "etc/termcap").read_text(), "mine")
+
 if __name__ == "__main__":
     unittest.main()
