@@ -8,6 +8,7 @@ PASS case 1: the picture is found in the shot, >= 90% of the source's distinct c
   >= 99% of its pixels equal the source RGB. The 8-bit index path cannot show more than 255 colours.
 PASS cases 2, 3 and 4: the blended pixel equals (255*a + bg*(255-a) + 127) / 255 per channel (+-1), bg sampled next to it.
   UPTERM_RIG=<n> python3 tools/rig/kitty_rgb_rig.py <out-prefix>
+icat mode (K41 ICAT f=100): `kitty_rgb_rig.py icat <out-prefix>` runs `VTC:icat VTC:kr-icat.png` (case-1 picture as a PNG, f=100) with the same case 1 thresholds.
 Needs the rig on the 800x600x24 RTG screen (`rig.py rtg`); the script prints the shot size.
 
 AGA mode (K41 AGA half): same raw f=32 stream (picture 1 as RGBA with alpha 255, plus the two 50% alpha pictures),
@@ -91,16 +92,17 @@ def aga_main(args):
     sys.exit(0 if ok else 1)
 
 
-def shoot(stream, geom=(WX, WY, WW, WH)):
+def shoot(stream, geom=(WX, WY, WW, WH), cmd='Type VTC:kr-stream.bin'):
     gx, gy, gw, gh = geom
-    (VTC / 'kr-stream.bin').write_bytes(stream)
+    if stream is not None:
+        (VTC / 'kr-stream.bin').write_bytes(stream)
     c.run('Run >NIL: NewShell "XCON:%d/%d/%d/%d/kr/CLOSE/XTERM"' % (gx, gy, gw, gh))
     time.sleep(4)
     kx, ky = ami.pointer_scale()
     ami.script(('move', int((gx + gw // 2) * kx), int((gy + gh // 2) * ky)), ('wait', 2), ('button', 0, 1),
                ('wait', 2), ('button', 0, 0), ('wait', 5))
     time.sleep(1)
-    ami.req(0x08, bytes([4]) + b'Type VTC:kr-stream.bin')
+    ami.req(0x08, bytes([4]) + cmd.encode())
     time.sleep(0.5)
     ami.key(0x44)
     time.sleep(8)
@@ -115,9 +117,53 @@ def finish():
     time.sleep(3)
 
 
+def measure_pic1(at, w, h):
+    """Case 1 measurement, shared by the raw-stream mode and the icat mode: find picture 1 (the PW x PH
+    all-different-colour source) in the shot by its first row, then count exact pixels and shown colours.
+    Returns (origin or None, passed)."""
+    first = [src_px(x, 0) for x in range(PW)]
+    org = None
+    for y in range(h):
+        row = [at(x, y) for x in range(w)]
+        for x in range(0, w - PW):
+            if row[x] == first[0] and row[x:x + PW] == first:
+                org = (x, y)
+                break
+        if org:
+            break
+    if not org:
+        print('case 1 FAIL: picture first row not found in the shot')
+        return None, False
+    want = [src_px(x, y) for y in range(PH) for x in range(PW)]
+    got = [at(org[0] + x, org[1] + y) for y in range(PH) for x in range(PW)]
+    exact = sum(1 for a, g in zip(want, got) if a == g)
+    shown = len(set(want) & set(got))
+    pe, pc = 100.0 * exact / len(want), 100.0 * shown / len(set(want))
+    c1 = pe >= 99 and pc >= 90
+    print('case 1 origin %s distinct source %d shown %d (%.2f%%) exact pixels %d/%d (%.2f%%) %s'
+          % (org, len(set(want)), shown, pc, exact, len(want), pe, 'PASS' if c1 else 'FAIL'))
+    return org, c1
+
+
+def icat_main(out):
+    """K41 ICAT f=100: `VTC:icat VTC:kr-icat.png` (a PNG goes as kitty f=100, unscaled: it is smaller than the
+    window) draws picture 1 in true colour; same thresholds as case 1."""
+    rgb = b''.join(bytes(src_px(x, y)) for y in range(PH) for x in range(PW))
+    (VTC / 'kr-icat.png').write_bytes(png(PW, PH, rgb))
+    w, h, px = shoot(None, cmd='VTC:icat VTC:kr-icat.png')
+    pathlib.Path(out + '.png').write_bytes(png(w, h, px))
+    print('shot', w, h)
+    org, ok = measure_pic1(lambda x, y: tuple(px[(y * w + x) * 3:(y * w + x) * 3 + 3]), w, h)
+    print('PASS' if ok else 'FAIL')
+    finish()
+    sys.exit(0 if ok else 1)
+
+
 def main():
     if sys.argv[1] == 'aga':
         aga_main(sys.argv[2:])
+    if sys.argv[1] == 'icat':
+        icat_main(sys.argv[2])
     out = sys.argv[1]
     pic1 = b''.join(bytes(src_px(x, y)) for y in range(PH) for x in range(PW))
     pic2 = bytes((255, 0, 0, ALPHA)) * (TW * TH)
@@ -132,30 +178,8 @@ def main():
     at = lambda x, y: tuple(px[(y * w + x) * 3:(y * w + x) * 3 + 3])
     ok = True
 
-    # case 1: find the origin: first row of the source (100 distinct pixels) must match in the shot
-    first = [src_px(x, 0) for x in range(PW)]
-    org = None
-    for y in range(h):
-        row = [at(x, y) for x in range(w)]
-        for x in range(0, w - PW):
-            if row[x] == first[0] and row[x:x + PW] == first:
-                org = (x, y)
-                break
-        if org:
-            break
-    if not org:
-        print('case 1 FAIL: picture first row not found in the shot')
-        ok = False
-    else:
-        want = [src_px(x, y) for y in range(PH) for x in range(PW)]
-        got = [at(org[0] + x, org[1] + y) for y in range(PH) for x in range(PW)]
-        exact = sum(1 for a, g in zip(want, got) if a == g)
-        shown = len(set(want) & set(got))
-        pe, pc = 100.0 * exact / len(want), 100.0 * shown / len(set(want))
-        c1 = pe >= 99 and pc >= 90
-        print('case 1 origin %s distinct source %d shown %d (%.2f%%) exact pixels %d/%d (%.2f%%) %s'
-              % (org, len(set(want)), shown, pc, exact, len(want), pe, 'PASS' if c1 else 'FAIL'))
-        ok &= c1
+    org, c1 = measure_pic1(at, w, h)
+    ok &= c1
 
     # case 2/3: 50% red pictures; cell width = (pic 2 column - pic 1 column) / 58 columns is 8 px (checked
     # below by the measured box). Case 2 sits on cells with SGR 44 background (blue), case 3 on the default
