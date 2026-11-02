@@ -3,6 +3,7 @@
 gadget id exactly ('90' is not '290': it clicked a radio button), and a rig run
 puts back what it planted (ENVARC:Claude/remote from a killed run) even when it fails."""
 import contextlib, io, os, pathlib, shlex, struct, sys, unittest
+from unittest import mock
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools/rig"))
 import ami, install_rig as ir
@@ -989,6 +990,14 @@ class RigStart(unittest.TestCase):
     class Stop(Exception):
         pass
 
+    def setUp(self):
+        import rig
+        for name, stub in (("guard_stale_base", lambda *a, **k: None),   # git checks against the real checkout
+                           ("gc", lambda: [])):   # the start sweep reads the real build/ folders
+            p = mock.patch.object(rig, name, stub)
+            p.start()
+            self.addCleanup(p.stop)
+
     def start_with(self, d, cp_c):
         """rig.start() in a temp rig dir against a fake master; returns the ordered list of steps before the emulator.
         cp_c replaces `cp -c` (subprocess.run); the run is cut at START_ARGS.write_text, just before the config."""
@@ -998,7 +1007,7 @@ class RigStart(unittest.TestCase):
         master.write_bytes(b"MASTER")
         saved = (rig.RIG, rig.OS, rig.OS32, rig.mine, rig.SRC_HDF, rig.START_ARGS, rig.subprocess.run,
                  rig.sys_hdf_cpu_lib, rig.sys_hdf_screenmode, rig.sys_hdf_no_wasabid, rig.sys_hdf_kit, rig.port_listeners,
-                 rig.sys_hdf_monitors, rig.sys_hdf_dopus, rig.sys_hdf_no_dopus)
+                 rig.sys_hdf_monitors, rig.sys_hdf_dopus, rig.sys_hdf_no_dopus, rig.sys_hdf_shadows_block)
         class NoWrite:
             def write_text(self, *_): raise RigStart.Stop()
         def run(cmd, *a, **k):
@@ -1016,6 +1025,7 @@ class RigStart(unittest.TestCase):
             rig.sys_hdf_kit = lambda image: steps.append(["kit", image.name])
             rig.sys_hdf_monitors = lambda image: steps.append(["monitors", image.name])
             rig.sys_hdf_dopus = rig.sys_hdf_no_dopus = lambda image: steps.append(["dopus", image.name])
+            rig.sys_hdf_shadows_block = lambda image: steps.append(["shadows", image.name])
             (rig.RIG / "sys.hdf").write_bytes(b"DIRTY from a killed run")
             try:
                 rig.start()
@@ -1025,7 +1035,7 @@ class RigStart(unittest.TestCase):
         finally:
             (rig.RIG, rig.OS, rig.OS32, rig.mine, rig.SRC_HDF, rig.START_ARGS, rig.subprocess.run,
              rig.sys_hdf_cpu_lib, rig.sys_hdf_screenmode, rig.sys_hdf_no_wasabid, rig.sys_hdf_kit, rig.port_listeners,
-             rig.sys_hdf_monitors, rig.sys_hdf_dopus, rig.sys_hdf_no_dopus) = saved
+             rig.sys_hdf_monitors, rig.sys_hdf_dopus, rig.sys_hdf_no_dopus, rig.sys_hdf_shadows_block) = saved
 
     def test_start_replaces_sys_hdf_from_the_master_by_clone_before_the_writes_into_it(self):
         import tempfile
@@ -1037,7 +1047,7 @@ class RigStart(unittest.TestCase):
             steps, rigdir = self.start_with(d, clone)
             self.assertEqual((rigdir / "sys.hdf").read_bytes(), b"MASTER", "the dirty disk was not replaced")
             self.assertFalse((rigdir / "sys.hdf.new").exists())
-            self.assertEqual([s[0] for s in steps], ["cp", "screenmode", "monitors", "no_wasabid", "dopus", "kit", "cpu_lib"],
+            self.assertEqual([s[0] for s in steps], ["cp", "screenmode", "monitors", "no_wasabid", "dopus", "kit", "shadows", "cpu_lib"],
                              "the clone happens once, before every write into the image")
 
     def test_start_without_a_clone_fails_and_never_copies_the_whole_disk(self):

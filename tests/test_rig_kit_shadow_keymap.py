@@ -60,6 +60,7 @@ class KitShadowKeymap(unittest.TestCase):
         tmp = pathlib.Path(tempfile.mkdtemp())
         root, vtc = tmp / "root", tmp / "rig9/vtc"
         (root / "build/amiga").mkdir(parents=True)
+        (root / "build/amiga/vsh").write_bytes(b"vsh")   # rig install refuses a build without vsh
         (root / "dist").mkdir()
         (root / "dist/keymap").write_text("[bind]\nnew.row = A-x\n")
         (root / "build/amiga/vtcon-handler").write_bytes(b"handler-new")
@@ -82,6 +83,7 @@ class KitShadowKeymap(unittest.TestCase):
         tmp = pathlib.Path(tempfile.mkdtemp())
         root, vtc = tmp / "root", tmp / "rig9/vtc"
         (root / "build/amiga").mkdir(parents=True)
+        (root / "build/amiga/vsh").write_bytes(b"vsh")   # rig install refuses a build without vsh
         (root / "dist").mkdir()
         (root / "build/amiga/vtcon-handler").write_bytes(b"handler-new")
         (root / "build/amiga/UPTerm").write_bytes(b"upterm-new")
@@ -99,7 +101,7 @@ class KitShadowKeymap(unittest.TestCase):
         # The set is the one dist/install.dos copies into UP-Term:bin, read from that file.
         dos = (ROOT / "dist/install.dos").read_text()
         names = next(l.split()[1:-2] for l in dos.splitlines() if l.startswith("Copy Amarchy "))
-        self.assertEqual(sorted(names), ["AmTile", "Amarchy", "amarchy-gui", "amarchy-index", "amarchy-menu"])
+        self.assertEqual(sorted(names), ["AmTile", "Amarchy", "amarchy-flat", "amarchy-gui", "amarchy-icons", "amarchy-index", "amarchy-menu", "amnotify"])
         up = rig.kit_shadow_lines(True)
         for n in names:
             self.assertIn("C:Copy >NIL: VTC:%s UP-Term:bin/%s CLONE" % (n, n), up)
@@ -111,6 +113,7 @@ class KitShadowKeymap(unittest.TestCase):
         tmp = pathlib.Path(tempfile.mkdtemp())
         root, vtc = tmp / "root", tmp / "rig9/vtc"
         (root / "build/amiga").mkdir(parents=True)
+        (root / "build/amiga/vsh").write_bytes(b"vsh")   # rig install refuses a build without vsh
         (root / "build/jbmono").mkdir(parents=True)
         (root / "dist/amarchy-themes").mkdir(parents=True)
         (root / "build/amiga/vtcon-handler").write_bytes(b"handler-new")

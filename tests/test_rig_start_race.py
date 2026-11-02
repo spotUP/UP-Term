@@ -18,7 +18,7 @@ import rig
 class StartRace(unittest.TestCase):
     def test_two_concurrent_starts_launch_one_emulator(self):
         names = ("RIG", "OS", "M060", "mine", "START_ARGS", "setup_config_only", "status", "time", "subprocess",
-                 "boot_assigns_missing", "guard_shell_startup", "start_watchdog")
+                 "boot_assigns_missing", "guard_shell_startup", "start_watchdog", "guard_stale_base", "gc", "port_listeners")
         saved = {n: getattr(rig, n) for n in names}
         saved_paths = (rig.paths.cap_fsuae_log, rig.paths.FSUAE)
         launched = []
@@ -45,6 +45,9 @@ class StartRace(unittest.TestCase):
                 rig.OS = "32"   # skips the system disk clone
                 rig.M060 = False
                 rig.mine = lambda: bool(launched)
+                rig.guard_stale_base = lambda *a, **k: None   # git checks against the real checkout
+                rig.gc = lambda: []   # the start sweep reads the real build/ folders
+                rig.port_listeners = lambda port: []   # RIG-PORT-CLASH: lsof sees the real machine
                 rig.START_ARGS = rig.RIG / "start_args.json"
                 # the window between the mine() check and the launch (the disk clone on a real rig)
                 rig.setup_config_only = lambda: real_sleep(0.3)
