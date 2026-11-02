@@ -369,6 +369,13 @@ commit.
       note in the man page plus one rig run of a tmux build from the
       kit, if the kit has tmux (unverified; if not, the note says so and
       the run is dropped by the owner, not by the agent).
+      PARTIAL 2026-11-02: facts checked (terminfo/vtcon.terminfo:25 has
+      RGB, Tc; engine/vtengine.c dcs_dispatch :4899 handles only $q and
+      +q, any other DCS goes to note_value, so no tmux unwrap), note in
+      dist/README.txt TMUX section, the kit has tmux 3.6a (dist/packages.txt
+      base row). Rig run OPEN: `kitty_z_rig.py <out> phtmux` (rig 82) found
+      no tmux server after the typed command, window text not read; the
+      next step is a screenshot read of that window (error text).
 
 #### Animation (a=f, a=a, a=c)
 

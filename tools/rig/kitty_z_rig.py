@@ -12,6 +12,9 @@ Uploads a 2x2 cell virtual placement (U=1, i=7: red green / blue yellow), prints
 (U+10EEEE, fg 38;5;7, row/column marks) at row 3 column 3 and measures the four colour boxes in the shot.
 PASS: the four boxes exist, red top-left, green top-right, blue bottom-left, yellow bottom-right, each about a
 cell wide and high. Before K32 the cells drew the replacement glyph and no picture.
+
+Mode "phtmux" (K33): the same, but inside tmux from the kit with `allow-passthrough on`: the upload goes out wrapped
+in DCS tmux; ... ST (ESC doubled), the placeholder cells are plain pane text. Same PASS test.
 """
 import base64, pathlib, struct, sys, time, zlib
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
@@ -40,11 +43,14 @@ def png(w, h, rgb):
             + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b''))
 
 
-def ph_main(out):
+def ph_main(out, tmux=False):
     quarters = {'red': (255, 0, 0), 'green': (0, 255, 0), 'blue': (0, 0, 255), 'yellow': (255, 255, 0)}
     pic = bytes((255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 0))
     ph, m0, m1 = '\U0010EEEE'.encode(), '\u0305'.encode(), '\u030d'.encode()
-    stream = (b'\x1b[2J' + apc('a=T,U=1,i=7,f=24,s=2,v=2,c=2,r=2,q=2', pic) + b'\x1b[3;3H\x1b[38;5;7m'
+    up = apc('a=T,U=1,i=7,f=24,s=2,v=2,c=2,r=2,q=2', pic)
+    if tmux:
+        up = b'\x1bPtmux;' + up.replace(b'\x1b', b'\x1b\x1b') + b'\x1b\\'
+    stream = (b'\x1b[2J' + up + b'\x1b[3;3H\x1b[38;5;7m'
               + ph + m0 + m0 + ph + m0 + m1 + b'\x1b[4;3H' + ph + m1 + m0 + ph + m1 + m1 + b'\x1b[0m\x1b[8;1H')
     (VTC / 'kz-stream.bin').write_bytes(stream)
     c.run('Run >NIL: NewShell "XCON:%d/%d/%d/%d/kz/CLOSE/XTERM"' % (WX, WY, WW, WH))
@@ -53,10 +59,20 @@ def ph_main(out):
     ami.script(('move', int((WX + 200) * kx), int((WY + 100) * ky)), ('wait', 2), ('button', 0, 1),
                ('wait', 2), ('button', 0, 0), ('wait', 5))
     time.sleep(1)
-    ami.req(0x08, bytes([4]) + b'Type VTC:kz-stream.bin')
+    if tmux:
+        (VTC / 'kz.conf').write_text('source-file /ENV/tmux.conf\nset -g allow-passthrough on\n')
+        cmd = b'tmux -f VTC:kz.conf new-session "Type VTC:kz-stream.bin; sleep 60"'
+    else:
+        cmd = b'Type VTC:kz-stream.bin'
+    if tmux:   # a bare NewShell has no TERM; tmux refuses to start without one
+        ami.req(0x08, bytes([4]) + b'Setenv TERM vtcon')
+        time.sleep(0.5)
+        ami.key(0x44)
+        time.sleep(1)
+    ami.req(0x08, bytes([4]) + cmd)
     time.sleep(0.5)
     ami.key(0x44)
-    time.sleep(6)
+    time.sleep(12 if tmux else 6)
     b = ami.req(0x07)
     w, h = struct.unpack('>HH', b[2:6])
     px = bytes(b[8:8 + w * h * 3])
@@ -89,6 +105,8 @@ def main():
     out = sys.argv[1]
     if len(sys.argv) > 2 and sys.argv[2] == 'ph':
         return ph_main(out)
+    if len(sys.argv) > 2 and sys.argv[2] == 'phtmux':
+        return ph_main(out, True)
     pic = bytes((255, 0, 0)) * (64 * 16)
     stream = (b'\x1b[2J\x1b[3;3H'
               + apc('a=T,f=24,s=64,v=16,i=1,p=1,z=-1,C=1,q=2', pic)
