@@ -360,7 +360,7 @@ commit.
       a script doing what tmux would (virtual placement, then the cells
       printed as text, then the screen scrolled by 3 lines with plain
       text): the picture scrolls with the text (pixel check).
-- [ ] K33 What ncurses/tmux programs need, checked, not built: vtcon's
+- [x] K33 What ncurses/tmux programs need, checked, not built: vtcon's
       terminfo already has RGB and Tc (terminfo/vtcon.terminfo:25), so
       tmux passes 24-bit fg ids; tmux needs `allow-passthrough on` for
       the APC upload (DCS tmux; wrapper: confirm vtcon's DCS parser
@@ -379,6 +379,10 @@ commit.
 
 #### Animation (a=f, a=a, a=c)
 
+      DONE 2026-11-02 (s51): `kitty_z_rig.py phtmux` PASS on rig 86 (four
+      boxes) with tmux-amiga branch s51-pane-console. Blocker was
+      TMUX-PANE-CONSOLE: native commands in a pane printed nowhere; root
+      cause and fix in thoughts/shared/research/s51-evidence/k33-tmux.md.
 - [ ] K34 Frames (a=f) in the engine. A stored image gains a frame list:
       frame 1 is the root (the a=t picture), each a=f adds a frame (or
       edits frame r=), built on the canvas of frame c= (default: a

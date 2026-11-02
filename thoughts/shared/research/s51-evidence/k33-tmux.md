@@ -1,97 +1,57 @@
 ---
 date: 2026-11-02
-topic: K33 kitty placeholder under tmux, rig check
-status: rig run open
+topic: TMUX-PANE-CONSOLE and K33 phtmux
+status: fixed (tmux-amiga branch s51-pane-console, not merged)
 ---
-# K33: why `kitty_z_rig.py <out> phtmux` FAILed
 
-## Host side (Mac tmux 3.6a, same stream, TERM=vtcon from terminfo/vtcon.terminfo)
-tmux with `allow-passthrough on` re-emits the upload unwrapped to the outer terminal and keeps the cells:
-  apc 1, dcs-tmux 0, U+10EEEE 12, U+0305 6, U+030D 6
-  outer bytes: `\e_Ga=T,U=1,i=7,f=24,s=2,v=2,c=2,r=2,q=2;/wAAAP8AAAD///8A\e\\`
-  cells: `\e[3;3H\e[37m <ph> BS <ph><0305> BS <ph><0305><0305> ...` (base, backspace, base+marks)
-So the protocol path is sound; the failure is in the rig run.
+# TMUX-PANE-CONSOLE: native commands in a tmux pane print nowhere
 
-## Rig 83, by hand, window text (screen_text of window kz)
-`tmux -f VTC:kz.conf new-session "Type VTC:kz-stream.bin; sleep 60"` from the XCON NewShell (AmigaDOS CLI, prompt `11.BOOTX:>`):
-  vsh: sleep: not found (it lives in [server exited unexpectedly]
-  [0] 0:Type*        "BMS-MAC001" 19:00 02-Nov-26
-A second tmux start in the same window crashed the machine:
-  rig.py status: crashed: Illegal instruction: 10c8 at 10C8B3B0 -> 00F80AD2, 88 CPU reset(s)
+## Symptom
+In a tmux pane, C:Type, C:List, C:Version run by vsh printed nothing; vsh
+builtins and ixemul programs (cat, echo) printed. `>*`, `>/dev/tty` and
+`>CONSOLE:` went to the outer XCON window tmux was started from.
 
-## Cause (rig tool, not vtcon, not the tmux port)
-The phtmux mode started tmux from the bare AmigaDOS CLI of a NewShell. The kit tmux carries `$STACK: 262144`
-(strings of build/dist/up-term/Files/tmux, same size as tmux-amiga/build/tmux-bin, 1095068), but only vsh and the
-kit launchers honour that cookie; the CLI ran it on its own small stack (tmux-amiga 0d30fa7 records the same
-overflow under a 16000-byte stack). The working tools/rig/tmux_rig.py starts tmux from vsh (vshwin.open_vsh).
-Second, smaller fault: the pane command `sleep 60` is not found in the pane's vsh (no PATH to the kit drawer),
-so the pane ended at once; `vsh -c "sleep 1"` from wasabi's runner does find it.
+## Evidence (rig 86, before the fix)
+- tests/amiga/inwho in a pane: `in=4118f97/... out=41162c1/... clin=41162c1
+  clout=41162c1 ... console=103b0af4:XCON`: vsh's Input() and Output() are
+  the same DOS FileHandle on the pty slave; pr_ConsoleTask is the outer XCON.
+- wasabi snoop: C:Type and C:Version run and return 0, no Open("*"): they
+  write to Output().
+- A probe in the pane: unbuffered `Write(Output())` shows; `FPuts(Output())`
+  + Flush and `VPrintf` + Flush are lost. Output()'s DOS buffer was in read
+  state: `pos=0 end=196`.
 
-## Fix (tools/rig/kitty_z_rig.py, phtmux only)
-Open the window with vshwin.open_vsh (vsh sets TERM, honours $STACK); pane command `Type ...; C:Wait 60`;
-after the shot `tmux ls` + `tmux kill-server` through vsh, then `exit` (keys typed while tmux runs reach the pane).
+## Root cause
+tmux-amiga amiga/vspawn.c opened the pane tty once and made fd 1 and 2 with
+dup(0). ixemul's execve hands a native command u_ofile[0]->f_fh and
+u_ofile[1]->f_fh as pr_CIS / pr_COS: dup'd fds share one FileHandle, so vsh
+(native, the pane's shell) got Input() == Output(). vsh's buffered line reads
+leave that shared handle's buffer in read state, and every DOS buffered write
+on it (FPuts, VPrintf, FWrite: what Type, List, Version use) is dropped. A
+Shell window gives each stream its own handle. pr_ConsoleTask was never set,
+so `*` and CONSOLE: kept the console of the process that started tmux.
 
-## Rig verdict: OPEN
-Rig 83 restart after the crash booted to the vsh prompt on serial, but wasabid never answered
-("auth failed: ... did not answer for 150 s"; status stayed `down` 8+ min) with rigs 80, 84, 90 at 70-107% CPU.
-Rig stopped and cleared. Next: on a quiet host, `UPTERM_RIG=<n> python3 tools/rig/kitty_z_rig.py <out> phtmux`;
-PASS = four colour boxes, `tmux ls` shows the session. Unproven: that the stack is the whole cause of the
-server death (probe: same run with `Stack 262144` typed first in the bare CLI).
+## Fix (tmux-amiga, branch s51-pane-console)
+- amiga/vspawn.c: open the tty once per stream (fd 0, 1, 2), no dup.
+- amiga/console.c (new): amiga_console_from_fd(0) sets the pane process's
+  console task to the slave handle's port (SetConsoleTask). Own file because
+  proto/dos.h and ixemul's sys/time.h both define struct timeval.
 
-## K33 rig check, rig 85, 2026-11-02 (branch s51-kitty-k33, aec39407)
+## Proof (rig 86, after the fix)
+- Pane running `inwho; C:Type; C:List; C:Version; echo S-STAR >*`: screen
+  shows the file lines, `kd.txt / 1 file - 2 blocks used`,
+  `Kickstart 40.68, Workbench 40.42`, `S-STAR`. inwho: in and out are
+  distinct handles, `console=10e6fa0e:PTY`.
+- `UPTERM_RIG=86 python3 tools/rig/kitty_z_rig.py <out> phtmux`: PASS (four
+  boxes), shot ~/Desktop/upterm-shots/s51-k33-phtmux-pass.png.
 
-Host load before start: fs-uae rig 90 103%, two clang 89% and 58%, Defender 70%, WindowServer 42%, Chrome 38%.
-Rig 85 started with --max --allow-stale-base; wasabid answered at boot (no starvation, no retry for that).
+## Regression test
+No host test: the defect is DOS FileHandle buffering under ixemul, which has
+no host model. The rig run above is the regression check (failed before:
+Type output lost; passes after).
 
-`UPTERM_RIG=85 python3 tools/rig/kitty_z_rig.py <prefix> phtmux`: **FAIL**.
-```
-red None
-green None
-blue None
-yellow None
-FAIL
-tmux ls: 0: 1 windows (created Mon Nov  2 19:17:51 2026) (attached)
-```
-tmux ls shows the session; no colour box was found (none of the four).
-
-Second look (same steps, a diagnostic copy of the tool dumping `ami.screen_text()` and the uitree 12 s after the
-command, same FAIL): the "kz" window (400x200 at 0,20) is active; its text is eleven empty rows and the tmux
-status line `[0] 0:Type*        "BMS-MAC001" 19:19 02-Nov-26`. No error text, no replacement glyph, no
-requester in the uitree (windows: kz, Amarchy bar, a 39x15 window, a 800x573 backdrop). So the pane is blank:
-the tmux session starts and the command `Type VTC:kz-stream.bin` runs, but nothing is drawn in the pane and no
-picture is shown through the DCS-tmux passthrough.
-Not hunted further (task: one check, no code change). Next: does the same stream drawn through tmux without
-`allow-passthrough`, or the plain `ph` mode (K32) in the same rig, show the boxes; and does the status line
-`Type*` mean Type was still running (activity flag) with the output held by tmux.
-Shot: ~/Desktop/upterm-shots/k33-tmux-fail-rig85.png. K33 stays unticked.
-
-## K33 hunt, rig 86, 2026-11-02 (branch s51-kitty-k33, 644b02ae): cause is AmigaDOS command output in a tmux pane
-
-Controls, in order (diagnostic script: open_vsh window kz, `tmux -f VTC:kd.conf ...`, `ami.screen_text('kz')`):
-1. `kitty_z_rig.py <out> ph` (no tmux): PASS, red (20,27,66,81,128) green (28,35,66,81,128) blue (20,27,82,97,128)
-   yellow (28,35,82,97,128), cell 8 x 16. Stream and build draw.
-2. Pane command `echo HELLO-ECHO; Type VTC:kd.txt; C:Wait 60`: pane blank, status `[0] 0:echo*`; ps shows tmux, vsh,
-   C:Wait. With remain-on-exit: only `Pane is dead (status 0 ...)`: the command ran and its text never showed.
-3. Narrowed:
-   - default shell pane (interactive vsh): prompt and hint show. vsh builtins (`echo X-ECHO`) show.
-   - `echo EARLY; C:Wait 6; echo LATE; Type VTC:kd.txt; C:Wait 60`: EARLY and LATE show, Type's text does not.
-   - interactive pane: `C:Type VTC:kd.txt`, `C:List VTC:kd.txt`, `C:Version`: no output at all (prompt follows at once).
-     `C:Type VTC:kd.txt | cat` and `cat VTC:kd.txt`: both lines show.
-   - `C:Type VTC:kd.txt >*`, `>/dev/tty`, `C:Version >CONSOLE:`: the text lands in the OUTER XCON window, past tmux
-     (staircase, no OPOST; it overwrote tmux's status line: `[0] 0:vsh*  "BMS-MAC001" BOOTX: % Nov-26`).
-     So a pane process's console ("*", pr_ConsoleTask) is the window tmux was started in, not the pane's pty slave.
-   - phtmux with the pane command `cat VTC:kz-stream.bin; C:Wait 60` instead of `Type ...` (scratch copy of the tool):
-     **PASS**, the same four boxes as ph (red 20..27/66..81 ... cell 8 x 16), `tmux ls: 0: 1 windows ... (attached)`.
-
-Cause: not kitty, not the passthrough. Any non-ixemul AmigaDOS command (Type, List, Version) that vsh runs in a tmux
-pane writes nowhere visible; only vsh builtins and ixemul programs (cat) reach the pane. The K33 stream went out by
-`Type`, so the pane stayed blank. Proven part: pane processes keep the tmux server's pr_ConsoleTask (outer XCON
-window): tmux-amiga amiga/vspawn.c makes the slave the ixemul controlling tty (open(c->tty), TIOCSCTTY) but never
-points pr_ConsoleTask at the slave's port (pty_handler.c: "A Shell started on a slave gets the slave port as
-pr_ConsoleTask"). Unproven: where plain foreground output goes (not in the outer window either): vsh's runner
-(shell/vsh.c ~888, SelectOutput(j->out), cli_StandardOutput = j->term_out) hands the command vsh's Output(), which is
-the slave (vsh's own echo reaches the pane), and pty_handler.c slave_writes drops only on hang-up.
-Next probe: in the pane, a tiny native program printing Output(), Cli()->cli_StandardOutput, pr_ConsoleTask and their
-fh_Type ports, run plain and via vsh; compare with the slave port. Fix site is then tmux-amiga vspawn.c (SetConsoleTask
-to the slave's fh_Type before exec) and/or vsh's runner; not done here (tmux port: report only; vsh: cause unproven).
-K33 kitty part: proven to work through tmux (PASS with cat). K33 left unticked; kitty_z_rig.py unchanged.
+## Open
+- ixemul execve still gives one DOS handle to fd 0 and fd 1 when they are
+  dup'd. Any other ixemul parent that dup's a tty and execs vsh (GNU screen,
+  ptyrun) can hit the same lost output. Not changed here (ixemul repo out of
+  scope for this task).
