@@ -399,6 +399,19 @@ static void test_desk_wbborder_absent(void)
 }
 
 /* flat off keeps the user's other Workbench tweaks */
+/* AM-ICON-NOBORDER-OFF (rig 56 s31): flat off with no Workbench.prefs before flat on left the icons frameless; the restore to "absent" USEs this
+ * stock file first. It must be the editor's 84-byte file with the border shown and the gauge shown. */
+static void test_desk_wb_stock_shows_border(void)
+{
+    static unsigned char st[128], user[128];
+    long n = desk_wb_stock(st, sizeof st);
+    CHECK_INT(n, 84);
+    CHECK_INT(desk_wbborder_value(st, n), 0);
+    CHECK_INT(desk_wbgauge_value(st, n), 0);
+    CHECK(!memcmp(st, user_stock(user, n), (size_t)n));
+    CHECK_INT(desk_wb_stock(st, 83), 0);                                   /* too small: nothing */
+}
+
 static void test_desk_wbborder_keeps_tweaks(void)
 {
     static unsigned char made[128], tweaked[128], back[128];
@@ -1474,6 +1487,7 @@ void suite_desk(void)
     test_desk_flat_pens_live();
     test_desk_wbborder();
     test_desk_wbborder_absent();
+    test_desk_wb_stock_shows_border();
     test_desk_wbborder_keeps_tweaks();
     test_desk_wbgauge();
     test_desk_pens_reset();

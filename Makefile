@@ -96,6 +96,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=rig_install_no_vsh rig.py install without build/amiga/vsh exits with one message naming the file and the make target (tests/test_rig_install_no_vsh.py)
 # ONLY=rig_themes_live rig.py install/start stage the Amarchy themes into the live drawer UP-Term: points at, no boot needed (tests/test_rig_themes_live.py)
 # ONLY=editor_stack dk_editor gives the prefs editors a pl_stack stack, floor 32768 (tests/test_amarchy_editor_stack.py)
+# ONLY=wb_absent flat off / revert to no Workbench.prefs USEs the stock file before the delete, so the icon border returns (tests/test_wb_absent_restore.py)
 # ONLY=gui_rebind amarchy-gui takes and drops every screen resource in screen_bind/screen_unbind, so a Workbench reset between gui_hide and gui_show leaves nothing on the freed screen (tests/test_amarchy_gui_rebind.py)
 # ONLY=dist_stack every kit program sets its stack ($STACK: cookie), no launcher gives a loaded program a fixed stack (tests/test_dist_stack.py)
 # ONLY=ami_screen_text the rig's screen reader asks the focused window and clicks nothing first: a menu opening during the read stays (tests/test_ami_screen_text.py)
@@ -176,6 +177,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = flat_on_hang ]; then python3 -I tests/test_flat_on_hang_wild_call.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rebind ]; then python3 -I tests/test_amarchy_gui_rebind.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = editor_stack ]; then python3 -I tests/test_amarchy_editor_stack.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = wb_absent ]; then python3 -I tests/test_wb_absent_restore.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rig_open_menu ]; then python3 -I tests/test_amarchy_gui_rig_open_menu.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = desk_rig_pick_waits ]; then python3 -I tests/test_amarchy_desk_rig_pick_waits.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = one_select_level ]; then python3 -I tests/test_amarchy_one_select_level.py; fi

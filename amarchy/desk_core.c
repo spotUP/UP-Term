@@ -916,6 +916,11 @@ static long wbnc_stock_file(int borderless, unsigned char *out, long cap)
     return total;
 }
 
+long desk_wb_stock(unsigned char *out, long cap)
+{
+    return wbnc_stock_file(0, out, cap);
+}
+
 long desk_wbborder(int flat, const unsigned char *cur, long curlen, int saved, int *save_out, unsigned char *out, long cap)
 {
     long size, body = wbnc_find(cur, curlen, &size);

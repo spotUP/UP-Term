@@ -264,6 +264,10 @@ int desk_icontrol_decide(int thin, const unsigned char *cur, long curlen, int ha
  * border off and keeps DESK_WB_CREATED; off writes only the border word back (border 0) into the current file, every other byte kept; the file is never deleted. */
 #define DESK_WB_CREATED 2
 int desk_wbborder_value(const unsigned char *cur, long curlen);
+/* AM-ICON-NOBORDER-OFF: the 3.2 editor's stock Workbench.prefs (border shown, gauge shown), the settings an absent original stands for. Deleting
+ * ENV:Sys/Workbench.prefs does not tell workbench.library (the icons stayed frameless after flat off, rig 56 s31); a restore to "absent" USEs this file
+ * through SYS:Prefs/Workbench first, then deletes. Returns the size written (84), 0 when cap is too small. */
+long desk_wb_stock(unsigned char *out, long cap);
 long desk_wbborder(int flat, const unsigned char *cur, long curlen, int saved, int *save_out, unsigned char *out, long cap);
 /* WB-VOLUME-GAUGE-OFF: the Workbench volume gauge is the BOOL wbe_DisableVolumeGauge (WBNC body offset 38, NDK 3.2 prefs/workbench.h). Same contract as
  * desk_wbborder without the created-file case: flat 1 sets it (saved value kept in *save_out), flat 0 puts the saved value back, every other byte kept.

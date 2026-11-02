@@ -781,6 +781,17 @@ static void dk_copy_file(const char *src, const char *dst)
         dk_write(dst, cb, len);
 }
 
+/* AM-ICON-NOBORDER-OFF: Workbench.prefs goes back to "absent" (the user had none). Deleting the ENV: file alone leaves workbench.library on the
+ * last USE (no border); the editor's stock file is USEd first, so the live Workbench gets the stock border and gauge, then the file goes. */
+static void dk_wb_absent(void)
+{
+    static unsigned char st[128];
+    long n = desk_wb_stock(st, sizeof st);
+    UnLock(CreateDir((STRPTR)DK_WORK));
+    dk_put("Workbench", DK_WORK "/workbench.prefs", st, n);
+    DeleteFile((STRPTR)DK_WB_ENV);
+}
+
 static void dk_wb_snapshot(void)
 {
     char name[96];
@@ -805,7 +816,7 @@ static int dk_wb_restore(void)
         return 0;
     dk_copy_name(DK_WB_ENV, name);
     if (dk_read(name, one, 0) < 0)
-        DeleteFile((STRPTR)DK_WB_ENV);
+        dk_wb_absent();
     else
         dk_editor("Workbench", name);
     dk_copy_file(DK_WBB_SNAP, DK_WBB_PREV);
@@ -1293,7 +1304,7 @@ static void dk_orig_off(unsigned desk_mask, int flat)
         if (dk_exists(name))
             dk_editor("Workbench", name);
         else
-            DeleteFile((STRPTR)DESK_WBPREFS_ENV);
+            dk_wb_absent();
         DeleteFile((STRPTR)DK_WBB_PREV);
         DeleteFile((STRPTR)DK_WBG_PREV);
     }
