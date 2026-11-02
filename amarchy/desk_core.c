@@ -1330,3 +1330,15 @@ unsigned desk_start_plan(unsigned mask, int flat, int wbok, const unsigned char 
     }
     return plan;
 }
+
+long desk_start_palette(unsigned mask, int flat, const gtheme *th, int depth, const unsigned char *base, long baselen,
+                        const unsigned char *cur, long curlen, unsigned char *out, long cap)
+{
+    long n;
+    if (!((mask >> DT_PALETTE) & 1) || !base || baselen <= 0)
+        return 0;
+    n = desk_palette_theme(base, baselen, th, depth, flat, out, cap);
+    if (n <= 0 || (cur && n == curlen && !memcmp(out, cur, (size_t)n)))
+        return 0;
+    return n;
+}

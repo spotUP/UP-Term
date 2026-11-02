@@ -1562,9 +1562,47 @@ static void test_desk_start_prefs_on_writes_border_gauge_backdrop(void)
     CHECK_INT(desk_start_plan(amconf_desk_mask(&p), amconf_desk_flat_pens(&p), 1, 0, -1, -1, -1, &t, 3, 0, -1), DESK_START_WB);
 }
 
+/* S31-START-PALETTE (rig 96): desktop-theme + desktop-palette on (the installer's full look), a stock palette in ENV:: the start writes
+ * the theme colours (before, only a theme pick did, and the Workbench kept grey/orange under the theme backdrop); a second start
+ * writes nothing; the palette part off, or the desktop theme off, leaves the colours to dk_flat_pens */
+static void test_desk_start_prefs_on_writes_theme_palette(void)
+{
+    static const char on[] = "[profile default]\ndesktop-theme = on\ndesktop-palette = on\nflat-system-look = on\n";
+    static const char nopal[] = "[profile default]\ndesktop-theme = on\ndesktop-palette = off\nflat-system-look = on\n";
+    static const char nodesk[] = "[profile default]\nflat-system-look = on\n";
+    static const unsigned short stock[8] = { 0xaaa, 0x000, 0xfff, 0x68b, 0xe44, 0x5d5, 0x04d, 0xe90 };
+    static unsigned char base[1024], out[1024], again[1024];
+    unsigned char pens[DK_SLOTS];
+    am_prefs p;
+    gtheme t;
+    unsigned mask;
+    int flat, r;
+    long n, m;
+    gt_builtin(&t);
+    amconf_parse(on, (long)strlen(on), &p);
+    mask = amconf_desk_mask(&p);
+    flat = amconf_desk_flat_pens(&p);
+    CHECK(mask & (1u << DT_PALETTE));
+    desk_pens_for(flat, pens);
+    n = desk_palette_live(stock, 8, 3, pens, base, sizeof base);
+    CHECK(n > 0);
+    m = desk_start_palette(mask, flat, &t, 3, base, n, base, n, out, sizeof out);   /* ENV: holds the stock colours with the pens set */
+    CHECK_INT(m, n);
+    for (r = 0; r < 4; r++)
+        CHECK_INT(desk_palette_rgb(out, m, r, 3), desk_pen_colour(&t, r, flat));
+    CHECK(desk_palette_rgb(out, m, 0, 3) != 0xaaaaaaL);
+    CHECK_INT(desk_start_palette(mask, flat, &t, 3, base, n, 0, -1, again, sizeof again), m);   /* no ENV: file */
+    CHECK_INT(desk_start_palette(mask, flat, &t, 3, base, n, out, m, again, sizeof again), 0);  /* second start: matches */
+    amconf_parse(nopal, (long)strlen(nopal), &p);
+    CHECK_INT(desk_start_palette(amconf_desk_mask(&p), 1, &t, 3, base, n, base, n, again, sizeof again), 0);
+    amconf_parse(nodesk, (long)strlen(nodesk), &p);
+    CHECK_INT(desk_start_palette(amconf_desk_mask(&p), 1, &t, 3, base, n, base, n, again, sizeof again), 0);
+}
+
 void suite_desk_start_apply(void)
 {
     test_desk_start_prefs_on_writes_border_gauge_backdrop();
+    test_desk_start_prefs_on_writes_theme_palette();
 }
 
 void suite_desk(void)
