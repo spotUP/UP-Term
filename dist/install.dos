@@ -1081,6 +1081,24 @@ If "$opticonlib" EQ "ICONLIB"
   EndIf
   Copy $upiconlib LIBS:icon.library CLONE
   Echo "ICONLIB" >ENVARC:up-term/iconlib
+  ; OS 3.0/3.1 only (exec below 47): the ROM icon.library is resident there and wins over LIBS:, so RemLib (Thomas
+  ; Rapp, from IconLib's ThirdParty) goes to C: and a ";BEGIN UP-Term RemLib" block runs it in S:Startup-Sequence
+  ; BEFORE SetPatch. C:RemLib is ours only when none was there (marker ENVARC:up-term/remlib: Uninstall deletes it).
+  If "$upiconlib" EQ iconlib/icon.library.os30
+    If NOT EXISTS C:RemLib
+      Copy iconlib/RemLib C:RemLib CLONE
+      Echo "REMLIB" >ENVARC:up-term/remlib
+    EndIf
+    If NOT EXISTS S:Startup-Sequence.before-UP-Term
+      Copy S:Startup-Sequence S:Startup-Sequence.before-UP-Term CLONE
+    EndIf
+    Delete >NIL: T:Startup-Sequence.up-term QUIET
+    vsh iconlib/instremlib.sh
+    If EXISTS T:Startup-Sequence.up-term
+      Copy T:Startup-Sequence.up-term S:Startup-Sequence CLONE QUIET
+      Delete >NIL: T:Startup-Sequence.up-term QUIET
+    EndIf
+  EndIf
   Avail >NIL: FLUSH
   UnSet upiconlib
 EndIf

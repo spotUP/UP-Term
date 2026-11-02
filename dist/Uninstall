@@ -124,6 +124,15 @@ If NOT "$unst" EQ ""
       Delete >NIL: T:User-Startup.up-term QUIET
     EndIf
   EndIf
+  ; the RemLib block of S:Startup-Sequence (OS 3.0/3.1, Install's IconLib option; its own output file as below)
+  If EXISTS S:Startup-Sequence
+    Delete >NIL: T:Startup-Sequence.up-term QUIET
+    $unvsh "$unst" "" S:Startup-Sequence
+    If EXISTS T:Startup-Sequence.up-term
+      Copy T:Startup-Sequence.up-term S:Startup-Sequence CLONE QUIET
+      Delete >NIL: T:Startup-Sequence.up-term QUIET
+    EndIf
+  EndIf
   ; the upkg Alias block of S:Shell-Startup (its own output file, so an older
   ; unstartup.sh that ignores the second argument cannot overwrite it)
   If EXISTS S:Shell-Startup
@@ -410,6 +419,10 @@ If EXISTS ENVARC:up-term/iconlib
     Copy LIBS:icon.library.amarchy-backup LIBS:icon.library CLONE
     Delete >NIL: LIBS:icon.library.amarchy-backup QUIET
     Avail >NIL: FLUSH
+  EndIf
+  ; C:RemLib only when Install put it there (its marker)
+  If EXISTS ENVARC:up-term/remlib
+    Delete >NIL: C:RemLib QUIET
   EndIf
 EndIf
 UnSet upixemul

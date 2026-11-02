@@ -11,3 +11,9 @@ icon.library.os32  Libs/icon.library, $VER icon.library 51.4.602 (TC020). Instal
 Install copies the one for the system to LIBS:icon.library when the "PeterK icon library" option is
 ticked, after keeping the old library as LIBS:icon.library.amarchy-backup (only when no backup exists).
 Uninstall puts the backup back.
+
+RemLib, RemLib.doc  Thomas Rapp's RemLib, unchanged, as shipped in IconLib 46.4 ThirdParty/RemLib
+                   (bundling approved by the author). On AmigaOS 3.0/3.1 Install copies RemLib to C: (only when
+                   there is none) and adds a ";BEGIN UP-Term RemLib" block before SetPatch in S:Startup-Sequence
+                   (made by instremlib.sh) that removes the Kickstart ROM icon.library from the resident list,
+                   so the LIBS:icon.library above gets loaded. Never on 3.2. Uninstall strips the block.
