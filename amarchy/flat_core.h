@@ -246,8 +246,15 @@ typedef struct flat_title { int band_pen, bx0, by0, bx1, by1, text_pen, bg_pen; 
 /* flat_frame_pen: the pen of an active window's title band (pen_outline) when flat is on, not held, and pen_outline is a pen of the
  * depth; else -1 (caller uses its stock frame pen). flat_title_decide and the window gadget boxes both take the band from here. */
 int flat_frame_pen(const flat_state *s, int depth, int active);
+/* FLAT-GADGETS-RIG8: the band spans only the title area between the system gadgets (bx0..bx1, from flat_title_span), so it never
+ * wipes the close / depth / zoom gadgets Intuition draws once and does not redraw. */
+typedef struct flat_gadrect { int x, y, w, h, relright, relwidth, drag; } flat_gadrect;
+/* flat_title_span: *x0 / *x1 = the title area of a bar_h high, win_w wide title bar. Gadgets in the title rows (y < bar_h,
+ * y + h > 0) other than the drag bar are resolved against win_w (relright adds win_w to x, relwidth to w); one centred in the
+ * left half pushes x0 past its right edge, one in the right half pulls x1 before its left edge. No gadgets: 0 .. win_w-1. */
+void flat_title_span(const flat_gadrect *g, int n, int win_w, int bar_h, int *x0, int *x1);
 int flat_title_decide(const flat_state *s, int depth, int active, const char *title, int win_w, int bar_h,
-                      const char *str, int count, int cp_y, flat_title *t);
+                      const char *str, int count, int cp_y, int bx0, int bx1, flat_title *t);
 
 /* ---- FLAT-BUTTON-DISABLED-DIM: the ghost fill of a disabled gadget, as a pure model ---------------------------------
  * Intuition draws a disabled gadget (frame, label), then ghosts it with one pattern RectFill (rp->AreaPtrn set, AreaPtSz != 0)

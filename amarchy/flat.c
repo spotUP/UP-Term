@@ -408,8 +408,23 @@ void flat_tx_c(struct RastPort *rp, CONST_STRPTR str, ULONG count)
     if (r->st.enabled && !r->st.held && r->rsw.installed && rp->Layer && rp->Layer->Window) {      /* FLAT-TITLE-ACCENT */
         struct Window *w = (struct Window *)rp->Layer->Window;
         flat_title ft;
+        flat_gadrect gr[8];
+        struct Gadget *g;
+        int ng = 0, sx0, sx1;
+        for (g = w->FirstGadget; g && ng < 8; g = g->NextGadget) {
+            if (!(g->GadgetType & GTYP_SYSGADGET))
+                continue;
+            gr[ng].x = g->LeftEdge; gr[ng].w = g->Width;
+            gr[ng].y = g->TopEdge + ((g->Flags & GFLG_RELBOTTOM) ? w->Height : 0);    /* sizing gadget sits at the bottom */
+            gr[ng].h = g->Height + ((g->Flags & GFLG_RELHEIGHT) ? w->Height : 0);
+            gr[ng].relright = (g->Flags & GFLG_RELRIGHT) != 0;
+            gr[ng].relwidth = (g->Flags & GFLG_RELWIDTH) != 0;
+            gr[ng].drag = (g->GadgetType & GTYP_SYSTYPEMASK) == GTYP_WDRAGGING;
+            ng++;
+        }
+        flat_title_span(gr, ng, w->Width, w->BorderTop, &sx0, &sx1);
         if (flat_title_decide(&r->st, rp->BitMap ? rp->BitMap->Depth : 0, (w->Flags & WFLG_WINDOWACTIVE) != 0, (const char *)w->Title,
-                              w->Width, w->BorderTop, (const char *)str, (int)count, rp->cp_y - (rp->Font ? rp->Font->tf_Baseline : 0), &ft)) {
+                              w->Width, w->BorderTop, (const char *)str, (int)count, rp->cp_y - (rp->Font ? rp->Font->tf_Baseline : 0), sx0, sx1, &ft)) {
             UBYTE fg = rp->FgPen, bg = rp->BgPen, dm = rp->DrawMode;
             WORD cx = rp->cp_x, cy = rp->cp_y;
             r->ttitle++;
