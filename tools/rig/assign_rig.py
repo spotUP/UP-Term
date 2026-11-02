@@ -184,7 +184,7 @@ def _main(fx):
     ran_boot = installed = False
     for case, _ in todo:
         if not ran_boot:
-            rig("stop")
+            rig("stop", "--keep")
             rig("start")
             ir.prepare(None)
             fx.take()   # the user's files and assigns, before any case plants its own

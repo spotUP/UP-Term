@@ -2283,7 +2283,7 @@ def ensure_os32_rig():
     rig = [sys.executable, '-I', str(ROOT / 'tools/rig/rig.py')]
     new = os32_start_args(args or ['--max'])
     print('amarchy_menu_rig: restarting rig %d on OS 3.2: rig.py start %s' % (paths.RIG_N, ' '.join(new)), flush=True)
-    subprocess.run(rig + ['stop'], check=True)
+    subprocess.run(rig + ['stop', '--keep'], check=True)
     subprocess.run(rig + ['start'] + new, check=True)
     return '' if is_os32(start_args()) else 'rig %d did not come up on OS 3.2' % paths.RIG_N
 

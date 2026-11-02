@@ -32,7 +32,15 @@ Nothing below is in any repository (all of it is licensed material or large);
     python3 tools/rig/rig.py start --max    # boots it in the background, waits for wasabid (two retries)
     python3 tools/rig/rig.py status         # is wasabid answering on 127.0.0.1:1234 (rig 1)
     python3 tools/rig/ami.py exec "Version" # a command on the emulated Amiga; the first thing to try
-    python3 tools/rig/rig.py stop           # kills this rig only (matched by its config path)
+    python3 tools/rig/rig.py stop           # kills this rig only (matched by its config path); rig N > 1: then removes build/rig<N>
+    python3 tools/rig/rig.py stop --keep    # stop only, folder kept: for a script that stops and starts again mid-run
+    python3 tools/rig/rig.py gc             # removes idle rig folders (see below)
+
+`stop` of rig 2 and up clears the rig's folder (the same code as `rig.py clear`, rename to `.del`, then rmtree, retried; an
+[ERROR] names a `.del` that would not go). Rig 1 (`build/rig`) is never cleared. A script that stops the rig and starts it
+again passes `--keep`: the folder holds its resumable verdict files. `start` and `gc` sweep every other `build/rig<N>`
+(N > 1) that has no emulator on it, no held `start.lock` and no command for 2 hours, plus any `build/rig*.del`; each removal
+is printed and appended to `build/rig-gc.log` (time, folder, size, reason).
 
 `start` prints the boot log (`build/rig/boot/boot.log`) when wasabid never
 answers. Keep the machine flags the same between `setup` and `start`.

@@ -34,9 +34,12 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
    (after the running command and 5 s of quiet, never mid-write), and confirms with
    `ps` that its fs-uae process is gone. Never keep a rig up "for later", for writing
    the report, or for a step that is code work. Done with a rig means cleared, so
-   no other agent waits on its number: stop it, then free its folder with
-   `UPTERM_RIG=<n> python3 tools/rig/rig.py clear` (it refuses while that rig's fs-uae runs; never `rm -rf build/rig<n>` by hand). A rig that crashed
-   or hangs counts as done; clear it the same way. Every brief that starts a rig ends
+   no other agent waits on its number: `UPTERM_RIG=<n> python3 tools/rig/rig.py stop` stops it and, for rig N > 1, removes
+   its `build/rig<n>` folder (rig 1 never). A script that stops and starts again mid-run passes `--keep`, because the
+   folder holds its resumable verdict files; its final stop may clear. `rig.py start` and `rig.py gc` also sweep other
+   rig folders that have no emulator, no held start.lock and no command for 2 hours (and any `build/rig*.del`), logging to
+   `build/rig-gc.log`. `rig.py clear` still exists (it refuses while that rig's fs-uae runs; never `rm -rf build/rig<n>`
+   by hand). A rig that crashed or hangs counts as done; stop it the same way. Every brief that starts a rig ends
    with "stop your rig, confirm by ps". A session that finds a running rig it does
    not own reports it to the owner instead of stopping it; rig 1 is the owner's.
 8. **Every subagent brief ends with a cleanup step, and the briefing session checks it.**

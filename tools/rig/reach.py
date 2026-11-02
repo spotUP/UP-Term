@@ -20,7 +20,7 @@ def main():
     installed = RIG / "vtc/vtcon-handler"
     rig = [sys.executable, str(ROOT / "tools/rig/rig.py")]
     if not installed.exists() or not filecmp.cmp(built, installed, shallow=False):
-        subprocess.run(rig + ["stop"], check=True)
+        subprocess.run(rig + ["stop", "--keep"], check=True)
         subprocess.run(rig + ["install"], check=True)
         subprocess.run(rig + ["start"], check=True)
     shutil.copyfile(ROOT / "build/amiga/reach", RIG / "vtc/reach")

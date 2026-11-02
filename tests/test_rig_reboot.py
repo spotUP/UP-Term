@@ -24,6 +24,7 @@ class RigReboot(unittest.TestCase):
         for name in ("sys_hdf_screenmode", "sys_hdf_no_wasabid", "sys_hdf_no_dopus", "sys_hdf_dopus", "sys_hdf_kit", "sys_hdf_cpu_lib"):
             p(name, lambda image, _n=name: self.calls.append(_n))
         p("mine", lambda: [])
+        p("gc", lambda: [])   # the start sweep reads the real build/ folders
         p("setup_config_only", lambda: None)
         p("status", lambda quiet=False: True)
         p("boot_assigns_missing", lambda: [])

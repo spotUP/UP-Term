@@ -73,7 +73,7 @@ def main():
     data = payload()
     (VTC / "zm-send.bin").write_bytes(data)
     wire = g.Wire()
-    subprocess.run(g.RIG + ["stop"], capture_output=True)
+    subprocess.run(g.RIG + ["stop", "--keep"], capture_output=True)
     subprocess.run(g.RIG + ["start", "--serial", wire.path, "--purpose", "zmodem_rig: sz/rz over the serial wire"], check=True)
     import ixpty_rig
     ixpty_rig.use_ixemul()
@@ -129,7 +129,7 @@ def main():
     shutil.rmtree(got, ignore_errors=True)
     for f in ('zm-send.bin', 'zm-back.bin'):
         (VTC / f).unlink(missing_ok=True)
-    subprocess.run(g.RIG + ["stop"], capture_output=True)
+    subprocess.run(g.RIG + ["stop", "--keep"], capture_output=True)
     print('zmodem_rig: passed %d of %d' % (sum(results), len(results)))
     return 0 if all(results) else 1
 

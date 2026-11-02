@@ -39,7 +39,12 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   paths.LONG_RUN (ami.py long, install) or within 5 s of a command; never rig 1
                   also cold-restarts (stop + start --keep-sys) a rig whose FS-UAE log gains 10+ "CPU reset"
                   lines in a minute: the 060 post-Guru Kickstart reset loop (RIG-RESET-LOOP)
-  rig.py stop     kill THIS rig only (matched by its config path, at kill time)
+  rig.py stop [--keep]   kill THIS rig only (matched by its config path, at kill time), then, for rig N > 1, remove its
+                  build/rig<N> folder (as `clear`; never rig 1; not while the emulator still runs). --keep leaves the folder: a script
+                  that stops and starts again mid-run passes it, the folder holds its resumable verdict files
+  rig.py gc       sweep: remove every build/rig<N> (N > 1, not this rig's) with no emulator on it, no start.lock held and no command
+                  for 2 hours, and every leftover build/rig*.del; each removal is printed and appended to build/rig-gc.log.
+                  `start` runs the same sweep first
   rig.py reboot   stop and start again with DH0: as the last run left it (a start clones it anew):
                   an install's writes survive. The last start's machine flags, or the ones given
   rig.py install  copy build/amiga/vtcon-handler to the VTC: drawer; the boot then puts
@@ -50,7 +55,7 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   "Instead of Workbench") and record its S:User-Startup block + stamp there; every later
                   clone start then boots 5.104 as the Workbench (default; --no-dopus skips it, no stamp: [WARN], 5.82);
                   --own-screen also writes the saved environment that puts DOpus on its own 1344x1080 screen (DOPUS.1)
-  rig.py clear    remove this rig's build/rig<N> folder; refused while its fs-uae runs (stop it first)
+  rig.py clear    remove this rig's build/rig<N> folder (rig 1 too); refused while its fs-uae runs (stop it first); retried, [ERROR] if it stays
   rig.py status   is it up (wasabid ping)
   rig.py start --mmu   the 68060 with an MMU (slower, no JIT), for MuForce
   rig.py muforce on|off|log   MuForce crash reports on the rig (tools/rig/muforce.py)
@@ -1883,6 +1888,7 @@ def start(retries=START_RETRIES):
     finds its emulator in mine() and says "already running"."""
     if not KEEP_SYS:   # a reboot restarts the run the guard already passed
         guard_stale_base(ROOT, sys.argv)
+        gc()   # idle rig folders of other numbers (RULES.md rule 7) go before this rig's own folder is made
     RIG.mkdir(parents=True, exist_ok=True)
     with open(RIG / "start.lock", "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)   # released when the block ends or the process dies
@@ -2277,6 +2283,32 @@ def dopus():
 # reboot, kit-restore, logwatch and watchdog send it nothing. Every other path to a rig (ami.py, the scripts) passes ami.req.
 GATED = ("dbg", "dbgbreak", "wasabi", "muforce", "aga", "aga256", "rtg", "dopus")
 
+CLEAR_TRIES = 4
+GC_IDLE_SECONDS = 2 * 3600   # a rig folder idle this long, with no emulator on it and no start in progress, is stale
+
+def remove_folder(folder):
+    """Rename `folder` to <folder>.del (a slow rmtree must not race the next start of this number), then rmtree it;
+    retried CLEAR_TRIES times. Returns True when nothing is left; on failure prints [ERROR] and returns False, the .del
+    named in the message (never left silently)."""
+    folder = pathlib.Path(folder)
+    gone = folder.with_name(folder.name + ".del")
+    if gone.exists():
+        shutil.rmtree(gone, ignore_errors=True)
+    if folder.exists():
+        folder.rename(gone)
+    err = None
+    for attempt in range(CLEAR_TRIES):
+        try:
+            shutil.rmtree(gone)
+            return True
+        except FileNotFoundError:
+            return True
+        except OSError as e:
+            err = e
+            time.sleep(1 + attempt)
+    print("[ERROR] rig: could not remove %s after %d tries (%s); remove it by hand" % (gone, CLEAR_TRIES, err), file=sys.stderr)
+    return False
+
 def clear():
     """Free this rig's folder (RULES.md rule 7). Refused while this rig's fs-uae runs: rig 9 ran with build/rig9
     deleted under it and build/rig4 vanished the same way (RIG-FOLDER-VANISHED), because the documented
@@ -2286,16 +2318,118 @@ def clear():
     if not RIG.exists():
         print("rig: %s already gone" % RIG)
         return
-    gone = RIG.with_name(RIG.name + ".del")   # renamed first: a slow rmtree must not race the next start of this number
-    shutil.rmtree(gone, ignore_errors=True)
-    RIG.rename(gone)
-    shutil.rmtree(gone)
+    if not remove_folder(RIG):
+        sys.exit(1)
     print("rig: removed", RIG)
+
+def stop_command():
+    """`rig.py stop`: stop() (emulator exit), then, for rig N > 1, clear() the folder so it does not pile up. Not for rig 1
+    (the owner's), not with --keep (a script that stops and starts again mid-run: the folder holds its verdict files),
+    not while the emulator still runs. The internal stop() of reboot, the start retries and the watchdog never clears."""
+    stop()
+    if "--keep" in sys.argv[2:] or paths.RIG_N == 1 or mine():
+        return
+    clear()
+
+def gc_decision(n, has_process, lock_held, newest, now, max_age=GC_IDLE_SECONDS):
+    """(delete, reason) for the folder of rig N. Pure: rig 1 and a missing rig number are never touched; a live emulator, a
+    held start.lock or activity (`newest`, epoch seconds, None = unknown) younger than max_age keep it."""
+    if n <= 1:
+        return False, "rig 1 is the owner's"
+    if has_process:
+        return False, "emulator running"
+    if lock_held:
+        return False, "start in progress"
+    if newest is not None and now - newest < max_age:
+        return False, "active %d min ago" % ((now - newest) // 60)
+    return True, "idle %s, no emulator" % ("%d min" % ((now - newest) // 60) if newest is not None else "unknown time")
+
+def folder_newest(folder):
+    """Newest activity of a rig folder: its last-command stamp, else the newest mtime of its top-level entries."""
+    t = paths.last_command(folder)
+    if t is not None:
+        return t
+    times = []
+    for e in pathlib.Path(folder).iterdir():
+        try:
+            times.append(e.stat().st_mtime)
+        except OSError:
+            pass
+    return max(times) if times else pathlib.Path(folder).stat().st_mtime
+
+def folder_size(folder):
+    total = 0
+    for root, _dirs, files in os.walk(folder):
+        for f in files:
+            try:
+                total += os.lstat(os.path.join(root, f)).st_size
+            except OSError:
+                pass
+    return total
+
+def lock_held(folder):
+    """True when another process holds <folder>/start.lock (a start in progress)."""
+    f = pathlib.Path(folder) / "start.lock"
+    if not f.exists():
+        return False
+    with open(f, "r") as fh:
+        try:
+            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            return True
+        fcntl.flock(fh, fcntl.LOCK_UN)
+    return False
+
+def process_lines():
+    return subprocess.run(["ps", "-eo", "pid,command"], capture_output=True, text=True).stdout.splitlines()
+
+def folder_in_use(folder, lines):
+    """True when an fs-uae or Amiberry command line names a path inside `folder` (the config path, or Amiberry's win/ drawer)."""
+    key = str(folder) + "/"
+    return any(key in l and ("fs-uae" in l.lower() or "amiberry" in l.lower()) for l in lines)
+
+def gc(home=None, own_n=None, lines=None, now=None, remove=None):
+    """Sweep build/rig<N> folders (N > 1, not this rig's own number): remove the idle ones (gc_decision) and every leftover
+    build/rig*.del. Each removal is printed and appended to <home>/rig-gc.log (time, folder, size, reason). Returns the
+    removed folder names."""
+    home = pathlib.Path(home or paths.RIG_HOME)
+    own_n = paths.RIG_N if own_n is None else own_n
+    lines = process_lines() if lines is None else lines
+    now = time.time() if now is None else now
+    remove = remove or remove_folder
+    removed = []
+    if not home.is_dir():
+        return removed
+    def log(folder, size, reason):
+        line = "%s %s %d bytes %s" % (time.strftime("%F %T", time.localtime(now)), folder, size, reason)
+        print("rig gc: removed " + line)
+        with open(home / "rig-gc.log", "a") as fh:
+            fh.write(line + "\n")
+    for d in sorted(home.iterdir()):
+        m = re.fullmatch(r"rig(\d*)(\.del)?", d.name)
+        if not m or not d.is_dir():
+            continue
+        n = int(m.group(1) or 1)
+        if m.group(2):
+            if n > 1 and folder_in_use(d, lines):
+                continue
+            size, reason = folder_size(d), "leftover .del"
+        else:
+            if n == own_n:
+                continue
+            delete, reason = gc_decision(n, folder_in_use(d, lines), lock_held(d), folder_newest(d), now)
+            if not delete:
+                continue
+            size = folder_size(d)
+        if remove(d):
+            removed.append(d.name)
+            log(d, size, reason)
+    return removed
 
 def main(argv):
     """Run the command argv[1]. --help, -h, help and ? (alone or after a command) print this file's usage (rc 0), the command not run; no command or an
     unknown one prints it to stderr (rc 2)."""
-    cmds = {"setup": setup, "start": start, "stop": stop, "clear": clear, "reboot": reboot, "install": install, "kit-restore": kit_restore,
+    cmds = {"setup": setup, "start": start, "stop": stop_command, "clear": clear, "gc": gc, "reboot": reboot, "install": install, "kit-restore": kit_restore,
             "status": status, "logwatch": logwatch, "serialwatch": serialwatch, "muforce": muforce, "dbg": dbg, "dbgbreak": dbgbreak, "watchdog": watchdog, "wasabi": wasabi, "aga": lambda: screenmode("aga"),
             "aga256": lambda: screenmode("aga256"), "rtg": lambda: screenmode("rtg"), "dopus": dopus}
     helps = ("--help", "-h", "help", "?")

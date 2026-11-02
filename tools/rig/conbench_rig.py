@@ -58,7 +58,7 @@ def typeline(s):
 
 def run_one(label, rows):
     mount, spec = CONSOLES[label]
-    rig('stop')
+    rig('stop', '--keep')
     rig('start')                      # a fresh boot for every run, as creep does
     if mount:
         dev = spec.split(':')[0]

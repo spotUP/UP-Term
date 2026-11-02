@@ -208,7 +208,7 @@ def capture_fail(what):
 
 def reboot():
     rig = [sys.executable, str(ROOT / 'tools/rig/rig.py')]
-    subprocess.run(rig + ['stop'], capture_output=True, timeout=120)
+    subprocess.run(rig + ['stop', '--keep'], capture_output=True, timeout=120)
     subprocess.run(rig + ['start'], capture_output=True, timeout=400)
 
 
