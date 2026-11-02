@@ -19,6 +19,12 @@ class BootLogTruncate(unittest.TestCase):
         self.assertEqual(len(trunc), 1)
         self.assertLess(trunc[0], go[0])
 
+    def test_truncate_uses_the_shell_builtin_echo(self):
+        """Echo is a Shell built-in on OS 3.x: no C:Echo file exists, so DH0:C/Echo failed, boot.log was never
+        truncated and "boot started" never appeared (rig 58/59, 2026-11-02)."""
+        line = next(l for l in rig.STARTUP.splitlines() if TRUNC.search(l))
+        self.assertTrue(line.startswith('Echo '), line)
+
     def test_no_other_writer_truncates(self):
         for name in ('GO', 'SHADOWS_UP_SCRIPT'):
             self.assertIsNone(TRUNC.search(getattr(rig, name)), name)

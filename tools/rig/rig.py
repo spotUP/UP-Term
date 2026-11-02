@@ -157,7 +157,7 @@ DH0:C/Assign >NIL: LIBS: DH0:Libs
 DH0:C/Assign >NIL: DEVS: DH0:Devs
 DH0:C/Assign >NIL: FONTS: DH0:Fonts
 DH0:C/Assign >NIL: VTC: VTCX:
-DH0:C/Echo >BOOTX:boot.log "boot started"
+Echo >BOOTX:boot.log "boot started"
 C:Run >NIL: C:Execute BOOTX:go
 C:Execute DH0:S/Startup-Sequence
 """
