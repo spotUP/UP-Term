@@ -542,6 +542,18 @@ int      vt_kitty_flags(const vt_term *t);
 unsigned long vt_music_smile_blocks(const vt_term *t);
 /* How many kitty graphics images were placed on the screen (a test sentinel). */
 unsigned long vt_kitty_placed(const vt_term *t);
+/* How many placeholder cells vt_cell_placeholder resolved to a tile (a test sentinel). */
+unsigned long vt_kitty_placeholders(const vt_term *t);
+/* Kitty unicode placeholders (U=1, K31). A cell whose base code point is
+ * U+10EEEE shows one tile of a virtual placement: the cell's foreground
+ * colour is the image id (256-colour index, or R<<16|G<<8|B), the third
+ * combining mark its high byte, the underline colour the placement id (0
+ * = any); the first two marks are the tile's row and column. Missing marks
+ * are inferred from the cell to the left. Returns 1 with the placement's
+ * picture scaled to its cells (cw x ch per cell, col0 = px0 = py0 = py = 0)
+ * and the tile (*tile_col, *tile_row) this cell shows; 0 when the cell is
+ * no placeholder, the image or placement is unknown, or the tile is out of range. */
+int vt_cell_placeholder(const vt_term *t, int row, int col, vt_image_view *v, int *tile_col, int *tile_row);
 /* z= of the newest kitty placement, sign kept (test accessor) */
 long vt_kitty_last_z(const vt_term *t);
 /* How many of the f=100 pictures the engine's own PNG decoder made (the rest went to the host's). */

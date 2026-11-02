@@ -546,6 +546,7 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
     int cw = t->cell_w > 0 ? t->cell_w : 8, ch = t->cell_h > 0 ? t->cell_h : 16;
     int px0 = (int)KV(k, 'X'), py0 = (int)KV(k, 'Y');
     int left, parent = -1, depth = 0, col = t->cx, row = t->cy;
+    int virt = KV(k, 'U') == 1; /* K31: a virtual placement, shown by placeholder cells */
     vt_u8 *pix;
     vt_u32 pal[256];
     vt_image *im;
@@ -564,7 +565,7 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
         py0 = 0;
     if (py0 >= ch)
         py0 = ch - 1;
-    left = (t->cols - col) * cw - px0;
+    left = virt ? 0x7FFFFFFF : (t->cols - col) * cw - px0; /* a virtual one is on no row: no edge */
     if (x0 < 0 || y0 < 0 || x0 >= s->w || y0 >= s->h)
         x0 = y0 = 0;
     if (w <= 0 || w > s->w - x0)
@@ -600,7 +601,7 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
     if (id && KV(k, 'p')) { /* the same placement again: the new one */
         int i;
         for (i = 0; i < VT_IMG_SLOTS; i++)
-            if (t->imgs[i] && t->imgs[i]->pix && t->imgs[i]->kind == 1 && t->imgs[i]->kid == id &&
+            if (t->imgs[i] && t->imgs[i]->pix && t->imgs[i]->kind == (virt ? 3 : 1) && t->imgs[i]->kid == id &&
                 t->imgs[i]->pid == KU(k, 'p'))
                 image_free(t, i);
     }
@@ -611,10 +612,15 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
         return "ENOMEM:no room for the picture";
     im = t->imgs[slot];
     im->pal[0] = vt_default_color(t, 1);
-    im->kind = 1;
+    im->kind = virt ? 3 : 1;
     im->kid = id;
     im->knum = KU(k, 'I');
     im->pid = KU(k, 'p');
+    if (virt) { /* stored scaled to its cells; nothing on the screen, the cursor stays */
+        im->vc = (tw + cw - 1) / cw;
+        im->vr = (th + ch - 1) / ch;
+        return 0;
+    }
     im->kz = KV(k, 'z');
     im->px0 = px0;
     im->py0 = py0;
@@ -680,7 +686,7 @@ static void kit_delete_where(vt_term *t, const vt_kitty *k, int lo, int up)
     if (lo == 'r' || lo == 'z') {
         for (i = 0; i < VT_IMG_SLOTS; i++) {
             const vt_image *im = t->imgs[i];
-            if (im && im->pix && im->kind == 1 &&
+            if (im && im->pix && (im->kind == 1 || (im->kind == 3 && lo == 'r')) &&
                 (lo == 'z' ? im->kz == z : y >= x && im->kid >= (vt_u32)x && im->kid <= (vt_u32)y))
                 hit[i] = 1;
         }
@@ -774,6 +780,8 @@ static void kit_delete(vt_term *t, const vt_kitty *k)
             image_free(t, i);
         else if (im->kind == 2 && up && (lo == 'a' || im->kid == id))
             image_free(t, i);
+        else if (im->kind == 3 && lo == 'i' && im->kid == id && (!KV(k, 'p') || im->pid == KU(k, 'p')))
+            image_free(t, i); /* d=a leaves the virtual placements (K31) */
     }
 }
 
@@ -795,9 +803,6 @@ static void kitty_run(vt_term *t, vt_kitty *k)
         a = 0;
     } else if (KV(k, 'U') && KU(k, 'P') && (a == 'T' || a == 'p')) {
         err = "EINVAL:a virtual placement has no parent";
-        a = 0;
-    } else if (KV(k, 'U') && (a == 'T' || a == 'p')) {
-        err = "EINVAL:no unicode placeholders";
         a = 0;
     }
     if (a == 't' || a == 'T' || a == 'q') {
@@ -879,6 +884,11 @@ static void kitty_end(vt_term *t)
     kitty_abort(t);
 }
 
+unsigned long vt_kitty_placeholders(const vt_term *t)
+{
+    return t->kit_ph;
+}
+
 unsigned long vt_kitty_placed(const vt_term *t)
 {
     return t->kit_placed;
@@ -892,4 +902,178 @@ long vt_kitty_last_z(const vt_term *t)
 unsigned long vt_kitty_png_own(const vt_term *t)
 {
     return t->kit_png_own;
+}
+
+/* ---- unicode placeholders (U=1, K31) ------------------------------------- */
+
+#define KIT_PLACEHOLDER 0x10EEEEUL
+
+/* kitty's rowcolumn-diacritics.txt (gen/rowcolumn-diacritics.txt, 297 code
+ * points, counted from the file twice: data lines and distinct values), in
+ * file order, which is ascending: a mark's index is its row, column or id
+ * high byte number. */
+static const vt_u32 kit_diacritics[297] = {
+    0x0305, 0x030D, 0x030E, 0x0310, 0x0312, 0x033D, 0x033E, 0x033F,
+    0x0346, 0x034A, 0x034B, 0x034C, 0x0350, 0x0351, 0x0352, 0x0357,
+    0x035B, 0x0363, 0x0364, 0x0365, 0x0366, 0x0367, 0x0368, 0x0369,
+    0x036A, 0x036B, 0x036C, 0x036D, 0x036E, 0x036F, 0x0483, 0x0484,
+    0x0485, 0x0486, 0x0487, 0x0592, 0x0593, 0x0594, 0x0595, 0x0597,
+    0x0598, 0x0599, 0x059C, 0x059D, 0x059E, 0x059F, 0x05A0, 0x05A1,
+    0x05A8, 0x05A9, 0x05AB, 0x05AC, 0x05AF, 0x05C4, 0x0610, 0x0611,
+    0x0612, 0x0613, 0x0614, 0x0615, 0x0616, 0x0617, 0x0657, 0x0658,
+    0x0659, 0x065A, 0x065B, 0x065D, 0x065E, 0x06D6, 0x06D7, 0x06D8,
+    0x06D9, 0x06DA, 0x06DB, 0x06DC, 0x06DF, 0x06E0, 0x06E1, 0x06E2,
+    0x06E4, 0x06E7, 0x06E8, 0x06EB, 0x06EC, 0x0730, 0x0732, 0x0733,
+    0x0735, 0x0736, 0x073A, 0x073D, 0x073F, 0x0740, 0x0741, 0x0743,
+    0x0745, 0x0747, 0x0749, 0x074A, 0x07EB, 0x07EC, 0x07ED, 0x07EE,
+    0x07EF, 0x07F0, 0x07F1, 0x07F3, 0x0816, 0x0817, 0x0818, 0x0819,
+    0x081B, 0x081C, 0x081D, 0x081E, 0x081F, 0x0820, 0x0821, 0x0822,
+    0x0823, 0x0825, 0x0826, 0x0827, 0x0829, 0x082A, 0x082B, 0x082C,
+    0x082D, 0x0951, 0x0953, 0x0954, 0x0F82, 0x0F83, 0x0F86, 0x0F87,
+    0x135D, 0x135E, 0x135F, 0x17DD, 0x193A, 0x1A17, 0x1A75, 0x1A76,
+    0x1A77, 0x1A78, 0x1A79, 0x1A7A, 0x1A7B, 0x1A7C, 0x1B6B, 0x1B6D,
+    0x1B6E, 0x1B6F, 0x1B70, 0x1B71, 0x1B72, 0x1B73, 0x1CD0, 0x1CD1,
+    0x1CD2, 0x1CDA, 0x1CDB, 0x1CE0, 0x1DC0, 0x1DC1, 0x1DC3, 0x1DC4,
+    0x1DC5, 0x1DC6, 0x1DC7, 0x1DC8, 0x1DC9, 0x1DCB, 0x1DCC, 0x1DD1,
+    0x1DD2, 0x1DD3, 0x1DD4, 0x1DD5, 0x1DD6, 0x1DD7, 0x1DD8, 0x1DD9,
+    0x1DDA, 0x1DDB, 0x1DDC, 0x1DDD, 0x1DDE, 0x1DDF, 0x1DE0, 0x1DE1,
+    0x1DE2, 0x1DE3, 0x1DE4, 0x1DE5, 0x1DE6, 0x1DFE, 0x20D0, 0x20D1,
+    0x20D4, 0x20D5, 0x20D6, 0x20D7, 0x20DB, 0x20DC, 0x20E1, 0x20E7,
+    0x20E9, 0x20F0, 0x2CEF, 0x2CF0, 0x2CF1, 0x2DE0, 0x2DE1, 0x2DE2,
+    0x2DE3, 0x2DE4, 0x2DE5, 0x2DE6, 0x2DE7, 0x2DE8, 0x2DE9, 0x2DEA,
+    0x2DEB, 0x2DEC, 0x2DED, 0x2DEE, 0x2DEF, 0x2DF0, 0x2DF1, 0x2DF2,
+    0x2DF3, 0x2DF4, 0x2DF5, 0x2DF6, 0x2DF7, 0x2DF8, 0x2DF9, 0x2DFA,
+    0x2DFB, 0x2DFC, 0x2DFD, 0x2DFE, 0x2DFF, 0xA66F, 0xA67C, 0xA67D,
+    0xA6F0, 0xA6F1, 0xA8E0, 0xA8E1, 0xA8E2, 0xA8E3, 0xA8E4, 0xA8E5,
+    0xA8E6, 0xA8E7, 0xA8E8, 0xA8E9, 0xA8EA, 0xA8EB, 0xA8EC, 0xA8ED,
+    0xA8EE, 0xA8EF, 0xA8F0, 0xA8F1, 0xAAB0, 0xAAB2, 0xAAB3, 0xAAB7,
+    0xAAB8, 0xAABE, 0xAABF, 0xAAC1, 0xFE20, 0xFE21, 0xFE22, 0xFE23,
+    0xFE24, 0xFE25, 0xFE26, 0x10A0F, 0x10A38, 0x1D185, 0x1D186, 0x1D187,
+    0x1D188, 0x1D189, 0x1D1AA, 0x1D1AB, 0x1D1AC, 0x1D1AD, 0x1D242, 0x1D243,
+    0x1D244,
+};
+
+/* a mark's number, -1 when it is none of the 297 */
+static int kit_mark(vt_u32 cp)
+{
+    int lo = 0, hi = (int)(sizeof(kit_diacritics) / sizeof(kit_diacritics[0])) - 1;
+    while (lo <= hi) {
+        int mid = (lo + hi) / 2;
+        if (kit_diacritics[mid] == cp)
+            return mid;
+        if (kit_diacritics[mid] < cp)
+            lo = mid + 1;
+        else
+            hi = mid - 1;
+    }
+    return -1;
+}
+
+/* a colour as the id it names: a 256-colour index, or R<<16|G<<8|B */
+static vt_u32 kit_color_id(vt_color c)
+{
+    if (c & VT_COLOR_RGB)
+        return VT_RGB_OF(c);
+    return c < 256 ? (vt_u32)c : 0;
+}
+
+/* One placeholder cell's own marks and colours: 1 when it is one. row,
+ * col, hi are -1 for a mark it does not carry. */
+static int kit_ph_cell(const vt_term *t, const vt_cell *c, int *row, int *col, int *hi, vt_u32 *id, vt_u32 *pid)
+{
+    vt_u32 cp[VT_CLUSTER_CPS];
+    int n, i, m;
+    int *slot[3];
+    if (c->ch < VT_CLUSTER_FIRST || c->ch > VT_CLUSTER_LAST)
+        return 0;
+    n = vt_cell_text(t, c, cp);
+    if (n < 1 || cp[0] != KIT_PLACEHOLDER)
+        return 0;
+    slot[0] = row;
+    slot[1] = col;
+    slot[2] = hi;
+    *row = *col = *hi = -1;
+    for (i = 1; i < n && i <= 3; i++) {
+        m = kit_mark(cp[i]);
+        if (m < 0)
+            break;
+        *slot[i - 1] = m;
+    }
+    *id = kit_color_id(c->fg);
+    *pid = kit_color_id(vt_cell_underline_color(t, c));
+    return 1;
+}
+
+int vt_cell_placeholder(const vt_term *t, int row, int col, vt_image_view *v, int *tile_col, int *tile_row)
+{
+    int n, s, x, r = 0, cc = 0, h = 0, best = -1, i;
+    const vt_cell *cells;
+    vt_u32 id = 0, pid = 0;
+    const vt_image *im;
+    if (row < 0 || row >= t->rows || col < 0 || col >= t->cols)
+        return 0;
+    cells = vt_row(t, row, &n);
+    if (!cells || col >= n)
+        return 0;
+    {
+        int r0, c0, h0;
+        vt_u32 i0, p0;
+        if (!kit_ph_cell(t, &cells[col], &r0, &c0, &h0, &i0, &p0))
+            return 0;
+    }
+    /* back to the first cell of the run that shares this cell's colours, then
+     * forward, each cell taking what it lacks from the one before (a cell
+     * the run starts on lacks nothing it could take: it gets 0) */
+    for (s = col; s > 0; s--) {
+        int a, b, c2;
+        vt_u32 i1, p1, i2, p2;
+        if (!kit_ph_cell(t, &cells[s - 1], &a, &b, &c2, &i1, &p1))
+            break;
+        kit_ph_cell(t, &cells[col], &a, &b, &c2, &i2, &p2);
+        if (i1 != i2 || p1 != p2)
+            break;
+    }
+    for (x = s; x <= col; x++) {
+        int mr, mc, mh;
+        kit_ph_cell(t, &cells[x], &mr, &mc, &mh, &id, &pid);
+        if (x == s) {
+            r = mr < 0 ? 0 : mr;
+            cc = mc < 0 ? 0 : mc;
+            h = mh < 0 ? 0 : mh;
+        } else {
+            int nr = mr < 0 ? r : mr;
+            cc = mc >= 0 ? mc : (nr == r ? cc + 1 : 0);
+            r = nr;
+            h = mh < 0 ? h : mh;
+        }
+    }
+    id |= (vt_u32)h << 24;
+    if (!id)
+        return 0;
+    for (i = 0; i < VT_IMG_SLOTS; i++) {
+        im = t->imgs[i];
+        if (im && im->pix && im->kind == 3 && im->kid == id && (!pid || im->pid == pid) &&
+            (best < 0 || t->imgs[best]->serial < im->serial))
+            best = i;
+    }
+    if (best < 0)
+        return 0;
+    im = t->imgs[best];
+    if (cc >= im->vc || r >= im->vr)
+        return 0;
+    v->pix = im->pix;
+    v->w = im->w;
+    v->h = im->h;
+    v->pal = im->pal;
+    v->npal = im->npal;
+    v->cw = im->cw;
+    v->ch = im->ch;
+    v->col0 = 0;
+    v->px0 = v->py0 = v->py = 0;
+    v->serial = im->serial;
+    v->z = 0;
+    *tile_col = cc;
+    *tile_row = r;
+    ((vt_term *)t)->kit_ph++; /* a test sentinel on an otherwise read-only query */
+    return 1;
 }

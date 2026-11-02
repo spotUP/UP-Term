@@ -103,7 +103,9 @@ typedef struct vt_image {
     vt_u32 pal[256];    /* 0xRRGGBB; 0 the unset pixels */
     int w, h, cw, ch, npal, refs;
     vt_u16 gen;
-    vt_u8 kind;         /* 0 sixel, 1 kitty on the screen, 2 kitty stored (not placed) */
+    vt_u8 kind;         /* 0 sixel, 1 kitty on the screen, 2 kitty stored (not placed),
+                         * 3 kitty virtual placement (U=1: shown by placeholder cells, K31) */
+    int vc, vr;         /* kind 3: the picture's size in cells */
     vt_u32 kid, knum, pid; /* kitty's i=, I= and p= */
     long kz;            /* kitty's z= (negative: under the text) */
     vt_u8 ktrans;       /* kitty's N=1 on a stored picture: evicted first */
@@ -296,6 +298,7 @@ struct vt_term {
     vt_u32 kit_png_own;        /* PNG pictures the engine decoded itself (vt_kitty_png_own) */
     vt_u32 kit_placed;         /* kitty images placed on the screen (vt_kitty_placed) */
     long kit_last_z;           /* z= of the last kitty placement (vt_kitty_last_z) */
+    vt_u32 kit_ph;             /* placeholder cells resolved (vt_kitty_placeholders) */
     vt_image_decoder decode;   /* vt_set_image_decoder: PNG and the like (f=100) */
     vt_image_release decode_free;
     vt_file_reader file_read;  /* vt_set_file_reader: t=f, t=t */
@@ -5339,6 +5342,7 @@ static int image_install(vt_term *t, vt_u8 *pix, long bytes, long w, long h, int
     im->px0 = im->py0 = 0;
     im->pkid = im->ppid = 0;
     im->kdepth = 0;
+    im->vc = im->vr = 0;
     im->serial = ++t->img_serial;
     for (i = 0; i < npal; i++)
         im->pal[i] = pal[i];

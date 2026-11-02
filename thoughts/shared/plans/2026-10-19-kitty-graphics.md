@@ -322,7 +322,7 @@ commit.
 
 #### Unicode placeholders (U=1)
 
-- [ ] K31 Engine. a=p,U=1 (or a=T,U=1) makes a virtual placement: a
+- [x] K31 (done on branch s51-kitty-k31: host tests k31_* in ONLY=kitty; virtual placement = vt_image kind 3 with vc, vr; vt_cell_placeholder, vt_kitty_placeholders; diacritic table 297 entries counted twice from gen/rowcolumn-diacritics.txt) Engine. a=p,U=1 (or a=T,U=1) makes a virtual placement: a
       stored image (kind 2) with vc, vr (c=, r=; default from the picture
       size in cells) and a placement id; nothing on the cells, the cursor
       untouched. Placeholder cells are ordinary text: U+10EEEE (not BMP:

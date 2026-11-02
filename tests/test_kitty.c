@@ -800,6 +800,85 @@ static void k29_virtual_placements_and_parents(void)
 }
 
 
+/* K31: a=T,U=1 stores a virtual placement and puts nothing on the screen;
+ * cells of U+10EEEE with the row and column marks (U+0305 = 0, U+030D = 1),
+ * fg 38;5;7 = image id 7, each resolve to one tile of the 2 x 2 cell
+ * picture. Before K31 U=1 answered EINVAL:no unicode placeholders. */
+#define PH "\xF4\x8E\xBB\xAE"
+#define M0 "\xCC\x85"
+#define M1 "\xCC\x8D"
+static int ph_tile(vt_term *t, int col, int row, int *tc, int *tr, vt_image_view *v)
+{
+    return vt_cell_placeholder(t, row, col, v, tc, tr);
+}
+
+static void k31_placeholder_cells_resolve_to_tiles(void)
+{
+    vt_term *t = kitty_term(20, 8);
+    vt_image_view v, w;
+    int tc = -1, tr = -1, cx, cy;
+    unsigned long n0;
+    h_reply_clear();
+    h_put(t, "\033_Ga=T,U=1,i=7,f=24,s=2,v=2,c=2,r=2;");
+    h_put(t, rgb2x2);
+    h_put(t, "\033\\");
+    CHECK_STR(h_reply, "\033_Gi=7;OK\033\\");
+    vt_cursor(t, &cx, &cy);
+    CHECK_INT(cx, 0);
+    CHECK_INT(cy, 0);
+    CHECK(!vt_row_image(t, 0, 0, &v)); /* nothing on the cells */
+    h_put(t, "\033[2;1H\033[38;5;7m" PH M0 M0 PH M0 M1 "\033[3;1H" PH M1 M0 PH M1 M1);
+    n0 = vt_kitty_placeholders(t);
+    CHECK(ph_tile(t, 0, 1, &tc, &tr, &v));
+    CHECK_INT(tc, 0);
+    CHECK_INT(tr, 0);
+    CHECK_INT(v.w, 4); /* scaled to 2 x 2 cells of 2 x 6 pixels */
+    CHECK_INT(v.h, 12);
+    CHECK_INT(pixel(&v, 0, 0), 0xFF0000); /* red quarter */
+    CHECK(ph_tile(t, 1, 1, &tc, &tr, &w));
+    CHECK_INT(tc, 1);
+    CHECK_INT(tr, 0);
+    CHECK_INT(pixel(&w, tc * 2, tr * 6), 0x00FF00);
+    CHECK(ph_tile(t, 0, 2, &tc, &tr, &w));
+    CHECK_INT(pixel(&w, tc * 2, tr * 6), 0x0000FF);
+    CHECK(ph_tile(t, 1, 2, &tc, &tr, &w));
+    CHECK_INT(tc, 1);
+    CHECK_INT(tr, 1);
+    CHECK_INT(pixel(&w, tc * 2, tr * 6), 0xFFFFFF);
+    CHECK_INT((long)(vt_kitty_placeholders(t) - n0), 4); /* the sentinel: four cells resolved */
+    /* marks only on the first cell: the next two are column 1, then past the picture */
+    h_put(t, "\033[5;1H" PH M0 M0 PH PH);
+    CHECK(ph_tile(t, 1, 4, &tc, &tr, &w));
+    CHECK_INT(tc, 1);
+    CHECK_INT(tr, 0);
+    CHECK(!ph_tile(t, 2, 4, &tc, &tr, &w));
+    /* another colour is another image: nothing known as 8 */
+    h_put(t, "\033[7;1H\033[38;5;8m" PH M0 M0);
+    CHECK(!ph_tile(t, 0, 6, &tc, &tr, &w));
+    /* d=a leaves the virtual placement; d=i,i=7 takes it */
+    h_put(t, "\033_Ga=d,d=a\033\\");
+    CHECK(ph_tile(t, 0, 1, &tc, &tr, &w));
+    h_put(t, "\033_Ga=d,d=i,i=7\033\\");
+    CHECK(!ph_tile(t, 0, 1, &tc, &tr, &w));
+    vt_free(t);
+}
+
+/* the third mark is the id's high byte: fg RGB 0,0,7 plus U+030D (1) is id 0x01000007 */
+static void k31_third_mark_is_the_ids_high_byte(void)
+{
+    vt_term *t = kitty_term(20, 8);
+    vt_image_view v;
+    int tc, tr;
+    h_put(t, "\033_Ga=T,U=1,i=16777223,f=24,s=2,v=2;");
+    h_put(t, rgb2x2);
+    h_put(t, "\033\\");
+    h_put(t, "\033[2;1H\033[38;2;0;0;7m" PH M0 M0 M1);
+    CHECK(vt_cell_placeholder(t, 1, 0, &v, &tc, &tr));
+    h_put(t, "\033[3;1H" PH M0 M0); /* without it: id 7, unknown */
+    CHECK(!vt_cell_placeholder(t, 2, 0, &v, &tc, &tr));
+    vt_free(t);
+}
+
 /* K30: the images of a row come out by z, then i=, whatever their age.
  * Before K30 they came in age order (5, 2, 9, 7 here) and had no z. */
 static void k30_row_images_go_by_z_then_id(void)
@@ -902,4 +981,6 @@ void suite_kitty(void)
     k30_row_images_go_by_z_then_id();
     k30_text_over_a_picture_below_keeps_it();
     k30_z_0_and_up_still_takes_the_cells();
+    k31_placeholder_cells_resolve_to_tiles();
+    k31_third_mark_is_the_ids_high_byte();
 }
