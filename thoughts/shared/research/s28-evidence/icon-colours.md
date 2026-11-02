@@ -1,7 +1,7 @@
 ---
 date: 2026-11-01
 topic: OWNER-ICON-COLOURS-INVERTED, rig measurement
-status: Q1 root measured; Q2 and "filled" open
+status: paused 2026-11-01 (owner: wait for the filled icon set); Q1 measured, Q2 not measured
 ---
 # Lucide icon colours on a 3.2 rig (rig 11, AGA 256, 640x256)
 
@@ -33,3 +33,23 @@ Next probe: apply a theme with desktop-labels on and compare the pens under a la
 ## "Flat and filled"
 lucide.dat is rasterised from the Lucide font: a stroke-outline icon set, 2-3 px strokes, nothing filled.
 "Filled" needs a design choice: another icon set with filled glyphs (e.g. Phosphor Fill), or filling closed Lucide paths.
+
+## Code references
+- Glyph pens: tools/gen_lucide_icons.py:38 PEN_NORMAL (0, 32, 37, 33), :39 PEN_SELECTED, :94-104 images(); coverage from the
+  Lucide TTF outline raster, tools/gen_lucide_icons.py:77-81 (gen_menu_icons.raster, gen_emoji.area).
+- Pens 32..47 coloured only by a running amarchy-flat: amarchy/flat.c:852-881 pens_sync (ip_colours, ip_holder_obtain).
+- Amarchy starts amarchy-flat on a prefs change only, from PL_BIN_DIR: amarchy/desk_dos.c:499 (pl_start ... amarchy-flat BOOT);
+  boot start: dist/install.dos:563. On rig 11 the binary was absent from UP-Term:bin, so nothing held the pens.
+- Label pens: amarchy/desk_core.c:590 desk_font_pens, :600 fp_SpecialDrawMode = 1 (assumed "outline").
+
+## Unknown
+- Rig 8: is amarchy-flat running and holding 16 pens? (not touched)
+- Q2: which font.prefs field gives the coloured label background on 3.2 (fp_SpecialDrawMode 1 semantics, BackPen DK_DARKER
+  vs the backdrop pen).
+- Whether amarchy-icons APPLY should refuse, or the pens be held by another owner, when amarchy-flat is not running.
+
+## Next probe (after the filled icon set lands)
+1. Rig (not 8), Amarchy + amarchy-flat running, theme with desktop-labels on: `tools/rig/wbpenprobe_rig.py labels apply`,
+   compare the pens under a label with the window pen.
+2. Same with font.prefs fp_SpecialDrawMode 0, 1, 2 written by hand (one IPrefs reload each).
+3. On rig 8, read-only: `amarchy-flat STATUS` (expect `pens-held 16`).
