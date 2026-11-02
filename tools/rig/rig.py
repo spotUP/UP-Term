@@ -145,6 +145,8 @@ elif OS == "314":
 if "--kick" in sys.argv:
     KICK = pathlib.Path(sys.argv[sys.argv.index("--kick") + 1]).expanduser()
 
+# boot.log is truncated here, once per boot, before any writer: go runs beside the Startup-Sequence and the
+# early shadows block in S:User-Startup can write first, so go only appends (a truncating go wiped those lines).
 STARTUP = """DH0:C/Assign >NIL: SYS: DH0:
 DH0:C/Assign >NIL: C: DH0:C
 DH0:C/Assign >NIL: S: DH0:S
@@ -155,6 +157,7 @@ DH0:C/Assign >NIL: LIBS: DH0:Libs
 DH0:C/Assign >NIL: DEVS: DH0:Devs
 DH0:C/Assign >NIL: FONTS: DH0:Fonts
 DH0:C/Assign >NIL: VTC: VTCX:
+DH0:C/Echo >BOOTX:boot.log "boot started"
 C:Run >NIL: C:Execute BOOTX:go
 C:Execute DH0:S/Startup-Sequence
 """
@@ -363,7 +366,7 @@ If NOT EXISTS FONTS:JetBrainsMono.ttf
 EndIf"""
 
 GO = """FailAt 21
-Echo >BOOTX:boot.log "go started"
+Echo >>BOOTX:boot.log "go started"
 %(shadows)s
 Echo >>BOOTX:boot.log "kit shadows done"
 C:Wait 15
