@@ -233,6 +233,22 @@ static void test_desk_flat_pens_stale_file(void)
     CHECK_INT(desk_palette_pens_stale(old, 10, flat), 1);
 }
 
+static void test_desk_flat_start_refresh(void)
+{
+    static unsigned char gold[BUF_MAX], old[BUF_MAX];
+    unsigned char flat[DK_SLOTS];
+    long n = slurp("tests/data/desk/palette-flat-pen8.prefs", gold, sizeof gold);
+    desk_pens_flat(flat);
+    CHECK(n > 0);
+    memcpy(old, gold, (size_t)n);
+    old[74] = 0; old[75] = 2;
+    old[138] = 0; old[139] = 2;
+    CHECK_INT(desk_flat_start_refresh(1, old, n, flat), 1);   /* flat on + stale file: write */
+    CHECK_INT(desk_flat_start_refresh(1, gold, n, flat), 0);  /* flat on + current file: no write */
+    CHECK_INT(desk_flat_start_refresh(0, old, n, flat), 0);   /* flat off: no write */
+    CHECK_INT(desk_flat_start_refresh(1, old, -1, flat), 0);  /* no file read: no write */
+}
+
 static void test_desk_flat_pens_live(void)
 {
     static unsigned char cur[BUF_MAX], out[BUF_MAX], got[BUF_MAX];
@@ -1341,6 +1357,7 @@ void suite_desk(void)
     test_desk_live_baseline_ignores_menu();
     test_desk_flat_pens_key();
     test_desk_flat_pens_stale_file();
+    test_desk_flat_start_refresh();
     test_desk_flat_pens_live();
     test_desk_wbborder();
     test_desk_wbborder_absent();
