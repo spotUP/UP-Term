@@ -64,3 +64,34 @@ Not hunted further (task: one check, no code change). Next: does the same stream
 `allow-passthrough`, or the plain `ph` mode (K32) in the same rig, show the boxes; and does the status line
 `Type*` mean Type was still running (activity flag) with the output held by tmux.
 Shot: ~/Desktop/upterm-shots/k33-tmux-fail-rig85.png. K33 stays unticked.
+
+## K33 hunt, rig 86, 2026-11-02 (branch s51-kitty-k33, 644b02ae): cause is AmigaDOS command output in a tmux pane
+
+Controls, in order (diagnostic script: open_vsh window kz, `tmux -f VTC:kd.conf ...`, `ami.screen_text('kz')`):
+1. `kitty_z_rig.py <out> ph` (no tmux): PASS, red (20,27,66,81,128) green (28,35,66,81,128) blue (20,27,82,97,128)
+   yellow (28,35,82,97,128), cell 8 x 16. Stream and build draw.
+2. Pane command `echo HELLO-ECHO; Type VTC:kd.txt; C:Wait 60`: pane blank, status `[0] 0:echo*`; ps shows tmux, vsh,
+   C:Wait. With remain-on-exit: only `Pane is dead (status 0 ...)`: the command ran and its text never showed.
+3. Narrowed:
+   - default shell pane (interactive vsh): prompt and hint show. vsh builtins (`echo X-ECHO`) show.
+   - `echo EARLY; C:Wait 6; echo LATE; Type VTC:kd.txt; C:Wait 60`: EARLY and LATE show, Type's text does not.
+   - interactive pane: `C:Type VTC:kd.txt`, `C:List VTC:kd.txt`, `C:Version`: no output at all (prompt follows at once).
+     `C:Type VTC:kd.txt | cat` and `cat VTC:kd.txt`: both lines show.
+   - `C:Type VTC:kd.txt >*`, `>/dev/tty`, `C:Version >CONSOLE:`: the text lands in the OUTER XCON window, past tmux
+     (staircase, no OPOST; it overwrote tmux's status line: `[0] 0:vsh*  "BMS-MAC001" BOOTX: % Nov-26`).
+     So a pane process's console ("*", pr_ConsoleTask) is the window tmux was started in, not the pane's pty slave.
+   - phtmux with the pane command `cat VTC:kz-stream.bin; C:Wait 60` instead of `Type ...` (scratch copy of the tool):
+     **PASS**, the same four boxes as ph (red 20..27/66..81 ... cell 8 x 16), `tmux ls: 0: 1 windows ... (attached)`.
+
+Cause: not kitty, not the passthrough. Any non-ixemul AmigaDOS command (Type, List, Version) that vsh runs in a tmux
+pane writes nowhere visible; only vsh builtins and ixemul programs (cat) reach the pane. The K33 stream went out by
+`Type`, so the pane stayed blank. Proven part: pane processes keep the tmux server's pr_ConsoleTask (outer XCON
+window): tmux-amiga amiga/vspawn.c makes the slave the ixemul controlling tty (open(c->tty), TIOCSCTTY) but never
+points pr_ConsoleTask at the slave's port (pty_handler.c: "A Shell started on a slave gets the slave port as
+pr_ConsoleTask"). Unproven: where plain foreground output goes (not in the outer window either): vsh's runner
+(shell/vsh.c ~888, SelectOutput(j->out), cli_StandardOutput = j->term_out) hands the command vsh's Output(), which is
+the slave (vsh's own echo reaches the pane), and pty_handler.c slave_writes drops only on hang-up.
+Next probe: in the pane, a tiny native program printing Output(), Cli()->cli_StandardOutput, pr_ConsoleTask and their
+fh_Type ports, run plain and via vsh; compare with the slave port. Fix site is then tmux-amiga vspawn.c (SetConsoleTask
+to the slave's fh_Type before exec) and/or vsh's runner; not done here (tmux port: report only; vsh: cause unproven).
+K33 kitty part: proven to work through tmux (PASS with cat). K33 left unticked; kitty_z_rig.py unchanged.
