@@ -1,7 +1,7 @@
 ---
 date: 2026-11-02
 topic: IDE page-down speed (scidemo-lite), brief r8-ide-speed
-status: blocked - no new measurement taken, no code changed
+status: measured 2026-11-02 rig 66 --a1200; no speed fix landed; handler regression found
 ---
 
 # IDE page-down speed: findings, no fix yet
@@ -48,3 +48,41 @@ TERMINFO at another compiled vtcon entry, before any bench.
 3. Re-bench twice on the same rig and mode; host test per change.
 
 No commits in ide-spike (branch s51-ide-speed exists, unchanged).
+
+## 2026-11-02 run (R8, rig 66 --a1200, kit-main terminfo, out/scidemo-lite of 19 Oct)
+
+Bench unblocked: ide-spike d9cbcb3 makes bench_rig.py take terminfo from paths.ports()
+(UPTERM_PORTS=upterm-ports/.claude/worktrees/kit-main).
+
+### Correction of point 2 above
+The "no ?2026" observation came from old captures (memo-backup) that predate ncurses patch 0008.
+Patch 0008 (doupdate brackets a changing frame with Sync), 0001 (one write per frame), 0002/0003
+(tparm memo) and 0004 (vid_puts memo per old/new attribute) are all in upterm-ports pkgs/ncurses
+already; the vtcon terminfo declares Sync; the binary looks it up. New cap_scroll.bin (8869 B,
+two pages): 2 x ESC[?2026h, 2 x ESC[?2026l, starts with ?2026h and ends with ?2026l.
+vtwin_write renders once on the ?2026l and the frame tick holds while sync is open (render/vtwin.c
+~539, ~1221), so colours and text arrive in one frame (text check of the stream + code path;
+not eye-checked). Brief levers 2 and 3 (sync, vid_puts/tparm cache) were already shipped on 19 Oct:
+results/scidemo-lite-a1200.hand-sync-*.txt measured 1007-1017 ms with them.
+
+### Numbers (ms per page, scroll = 20 x PageDown)
+| run | scroll | paint | tty (doupdate) | write per page |
+|---|---|---|---|---|
+| 19 Oct rig 3 (recorded) | 995 | 294 | 701 | 2 / 5713 B / 453 |
+| 2 Nov rig 66 run 1 | 1233 | 237 | 996 | 2 / 4484 B / 775 |
+| 2 Nov rig 66 run 2 | 1251 | 233 | 1018 | 2 / 4484 B / 778 |
+| 2 Nov rig 66, PC sampler on (BENCH_FLAGS=p) | 1846 | 688 | 1158 | 2 / 4484 B / 901 |
+
+Scintilla paint is down (294 -> 235) and the stream is 22% smaller, but the time blocked in
+write() went from 453 to ~776 ms per page: the handler (XCON task) costs ~70% more per page
+than on 19 Oct. Sampler task split (2 ms ticks, sampler run): XCON 60%, vsh/scidemo 29%, rest
+other tasks. The goal (<= 500 ms) is out of reach from the app side: even a zero-cost doupdate
+leaves ~776 ms of handler time per page.
+
+### Next (not done, out of budget)
+1. Find the handler regression since 19 Oct: same bench, handler builds bisected between the
+   19 Oct vtcon commit and main (or rig 66 vs rig 3 screen mode: depth/planes change render cost;
+   check the window's screen first). Handler PROF build (VTCON_PROF, vtwin_write PROF_IN/OUT
+   phase 3 = vt_feed, phase 2 = render) splits feed vs render per page.
+2. Then render cost per sync frame (compose/convert/blit) as in brief item 4.
+Raw before files (scratch, small): r8b/pcs-before.txt, r8b/before-p.txt.
