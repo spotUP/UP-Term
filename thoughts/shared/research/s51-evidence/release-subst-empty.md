@@ -67,3 +67,31 @@ bg_own_stream. core_subst1 spawns STAGE.
   - Note: vshpipe_rig.py / rig.py start from the worktree refresh VTC: vsh from the worktree build,
     so VSH= alone does not keep main's C:vsh.
 - tools/rig/vsh_orphan_job_rig.py: not run (rig froze first).
+
+## Builtin-first pipeline hang: main vs branch (2026-11-02 evening, hunt agent)
+
+Question: does s51-subst (a9976a6d + c5352892) make `builtin | external` pipelines hang?
+Verdict: not shown to be a regression. Main's vsh hangs the same way on the same rig, and on
+both the Amiga then freezes (wasabid gone, TCP connect times out).
+
+Runs (rig 83 started from this worktree; host carried rig 91 + rig 98 + node/tsc, no test runner):
+- main vsh (/Users/spot/Code/UP-Term/vtcon/build/amiga/vsh, also put to C:vsh, VSH=main):
+  `[OK] echo_wc '6\n'`, `[FAIL] printf_wc: 'hung (no end after 20 s)'`, then
+  `auth failed: the Amiga took the connection but its daemon did not answer for 150 s`.
+- branch vsh (fresh rig 83, rig start copies the branch vsh to C:vsh):
+  `[OK] echo_wc '6\n'`, then the same `auth failed ... 150 s` freeze during printf_wc.
+- Earlier today rig 81, branch vsh: echo_wc/func_stage/three_stages hung 20 s, printf_wc + 6 OK,
+  Amiga kept answering.
+
+So which case hangs moves from run to run (echo_wc hung on rig 81, passed on rig 83) on both
+builds: a timing-dependent fault in the builtin-first stage path (subshell writer on a PIPE:,
+external last stage), present on main. Not reached: wasabi ps/snoop during a hang (wasabid dies
+with the freeze; Guru log not readable, no Guru/alert text in serial.log).
+
+Side finding: a rig started from the MAIN checkout (rig 82, twice) froze during start itself
+("the Amiga stopped answering while Assign was running"), before any vsh test; a rig started
+from this worktree (rig 83) came up. Not investigated.
+
+Next step for the fault: run printf_wc alone in a loop with `rig.py wasabi snoop` running from
+the start, and a serial-debug kprintf at subshell end / close_stream / os_wait, so the last
+lines before the freeze survive in serial.log.
