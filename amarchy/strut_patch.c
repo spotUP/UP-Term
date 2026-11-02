@@ -17,6 +17,7 @@
 #include "win_core.h"
 #include "bar_core.h"
 #include "sentinel_dos.h"
+#include "iconpen_dos.h"
 
 extern struct IntuitionBase *IntuitionBase;
 
@@ -112,7 +113,12 @@ static int on_bar_screen(const strut_pub *p, const req *r)
     int same;
     if (r->scr)
         return r->scr == p->scr;
-    s = LockPubScreen((STRPTR)(r->name ? r->name : (r->wbench ? "Workbench" : 0)));
+    /* The Workbench by flag or name is looked up, never opened (BOOT-31-WB-DEADLOCK). Another name or the default screen is the
+     * caller's own OpenWindow target: the system opens it for that caller anyway, so locking it here adds no new open. */
+    if (r->wbench || (r->name && !strcmp(r->name, "Workbench")))
+        s = ipd_lock_wb_screen();
+    else
+        s = LockPubScreen((STRPTR)r->name);
     if (!s)
         return 0;
     same = s == p->scr;

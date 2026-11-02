@@ -65,6 +65,10 @@ static void test_ready(void)
     CHECK_INT(wb_mode_ready(RTG_ID, 1, PAL_ID, 30, 30), WBM_TIMEOUT);
     CHECK_INT(wb_mode_ready(RTG_ID, 1, PAL_ID, 99, 30), WBM_TIMEOUT);
     CHECK_INT(wb_mode_ready(RTG_ID, 1, RTG_ID, 99, 30), WBM_READY);           /* the mode arrived late: READY wins */
+    /* BOOT-31-WB-DEADLOCK: a closed Workbench reads WBM_INVALID_ID (wb_mode_id never opens it); that is "not there yet", never READY */
+    CHECK_INT(wb_mode_ready(RTG_ID, 1, WBM_INVALID_ID, 0, 30), WBM_WAIT);
+    CHECK_INT(wb_mode_ready(RTG_ID, 1, WBM_INVALID_ID, 29, 30), WBM_WAIT);
+    CHECK_INT(wb_mode_ready(RTG_ID, 1, WBM_INVALID_ID, 30, 30), WBM_TIMEOUT);
 }
 
 void suite_wbmode(void)

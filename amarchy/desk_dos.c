@@ -20,6 +20,7 @@
 #include "win_refresh.h"
 #include "proclaunch.h"
 #include "sentinel_dos.h"
+#include "iconpen_dos.h"
 
 #define DK_BUF 1024
 #define DK_REVERT "T:amarchy-revert"
@@ -109,7 +110,7 @@ static int dk_screen_depth(void)
     struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
     struct Screen *scr;
     int d = 2;
-    if (IntuitionBase && (scr = LockPubScreen((STRPTR)"Workbench")) != 0) {
+    if (IntuitionBase && (scr = ipd_lock_wb_screen()) != 0) {
         d = scr->RastPort.BitMap->Depth;
         UnlockPubScreen(0, scr);
     }
@@ -206,7 +207,7 @@ static struct Screen *dk_wb_screen(unsigned short *pens, int *npens)
     struct Screen *scr = 0, *s;
     if (npens)
         *npens = 0;
-    if (IntuitionBase && (s = LockPubScreen((STRPTR)"Workbench")) != 0) {
+    if (IntuitionBase && (s = ipd_lock_wb_screen()) != 0) {
         struct DrawInfo *dri = pens ? GetScreenDrawInfo(s) : 0;
         scr = s;
         if (dri) {
@@ -577,7 +578,7 @@ static void dk_live_pens(const gtheme *th, int flat)
     static unsigned char saved[DK_BUF];
     struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
     struct GfxBase *GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
-    struct Screen *scr = IntuitionBase && GfxBase ? LockPubScreen((STRPTR)"Workbench") : 0;
+    struct Screen *scr = IntuitionBase && GfxBase ? ipd_lock_wb_screen() : 0;
     int pens[4], n = 0, i, depth = 0;
     long slen = -1;
     if (scr) {
@@ -623,7 +624,7 @@ static long dk_palette_base(int restore, const unsigned char pens[DK_SLOTS], int
     {
         struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
         struct GfxBase *GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
-        struct Screen *scr = IntuitionBase && GfxBase ? LockPubScreen((STRPTR)"Workbench") : 0;
+        struct Screen *scr = IntuitionBase && GfxBase ? ipd_lock_wb_screen() : 0;
         if (scr) {
             n = 1 << scr->RastPort.BitMap->Depth;
             if (n > 256)
