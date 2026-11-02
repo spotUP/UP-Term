@@ -658,6 +658,18 @@ Read 2026-11-02 on a6de061d (what the design rests on):
       case in RGB mode: picture before text in the call log; vr_init on
       gf_truecolor(0) leaves RGB off (vt_kitty_rgb_made stays 0). K37
       green. `make amiga` builds.
+      Probe result (2026-11-02, tests/amiga/wpaprobe.c): the rig's P96
+      cybergraphics.library is 42.7 with NegSize 240; its slots -204 to
+      -228 all jump to one stub, and WritePixelArrayAlpha (-216) draws
+      nothing, so the version number says nothing about whether the call
+      is real. The renderer therefore detects it by the jump targets
+      (vr_cgx_has_alpha: the table must reach -228, every slot read must
+      be a JMP abs.l, and -216 must have a target of its own) and on this
+      rig takes the binary 50% fallback (D4's rule, sentinel
+      n_img_rgb_blend_fallback). This settles T2 and D13 for the rig:
+      the R6 rule (no screen read) still holds, and glyph edges over a
+      z < 0 picture follow the fallback. K41's rig proof exercises the
+      fallback, not true alpha; true alpha is only host-tested here.
 - [ ] K41 Rig proof (after K38-K40 merge to main; one build on the rig).
       tools/rig/kitty_truecolor_rig.py, reusing colour_check.py's PNG
       reader for both the source and the shot. Stream: demo.png decoded on
