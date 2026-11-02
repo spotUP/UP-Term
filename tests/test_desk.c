@@ -152,6 +152,36 @@ static void test_desk_palette(void)
     CHECK_INT(desk_palette(&t, 8, pens, out4, 100), 0);
 }
 
+/* FILENAME-PEN: Workbench draws list-view file names with the fixed DrawInfo pen 1, so pen 1 carries the theme muted colour,
+ * and Amarchy's own dark uses sit on the dark pen. The users are counted from the pen-map builders, not grepped. */
+static void test_desk_filename_pen(void)
+{
+    static unsigned char out[BUF_MAX];
+    unsigned char pens[DK_SLOTS], flat[DK_SLOTS];
+    gtheme t;
+    int s, dark = 0, darkflat = 0, pen1 = 0, pen1flat = 0;
+    probe_theme(&t);
+    desk_pens(pens);
+    desk_pens_flat(flat);
+    CHECK_INT(DK_MUTED, 1);
+    CHECK_INT(DK_DARKER, 5);
+    CHECK_INT(desk_palette(&t, 8, pens, out, sizeof out), DK_PALETTE_SIZE);
+    CHECK(desk_role(&t, 1) == t.muted); /* pen 1 colour is the theme muted colour */
+    CHECK(desk_role(&t, 5) == desk_darker(&t)); /* pen 5 is the dark tone */
+    for (s = 0; s < DK_SLOTS; s++) {
+        dark += pens[s] == DK_DARKER;
+        darkflat += flat[s] == DK_DARKER;
+        pen1 += pens[s] == 1;
+        pen1flat += flat[s] == 1;
+    }
+    CHECK_INT(dark, 3);     /* BLOCK, SHADOW, BARTRIM */
+    CHECK_INT(darkflat, 2); /* the flat map overrides SHADOW with the background */
+    CHECK_INT(pen1, 0);     /* no DrawInfo slot is pen 1: it belongs to Workbench file names */
+    CHECK_INT(pen1flat, 0);
+    CHECK_INT(pens[DK_BLOCK], 5);
+    CHECK_INT(pens[DK_BARTRIM], 5);
+}
+
 /* FLAT-P1-1: the flat pen map differs from the stock one in the shine slot only (shine = background),
  * every slot reaches the PALT pen bytes, and the output equals the goldens made from the two maps */
 static void test_desk_palette_flat(void)
@@ -551,7 +581,7 @@ static void test_flat_colour_pens(void)
         CHECK(desk_backdrop_pen_at(depth) != DK_SELECTION);
         CHECK(desk_backdrop_pen_at(depth) < 8);
     }
-    CHECK_INT(desk_backdrop_pen_at(2), DK_DARKER); /* below 3 planes no pen is free: the shared darker pen holds the same tone */
+    CHECK_INT(desk_backdrop_pen_at(2), DK_MUTED); /* below 3 planes pen 5 is off the screen: the backdrop shares pen 1, recoloured to the dark */
     for (i = 0; i < n; i++) {
         uc_u32 sel = desk_selection(&all[i]);
         if (desk_contrast(all[i].selection, all[i].bg) >= 150)
@@ -913,7 +943,7 @@ static void test_desk_font_default(void)
     static unsigned char d[BUF_MAX];
     CHECK_INT(desk_font_default(d, sizeof d), 518);
     CHECK_INT(desk_font_default(d, 100), 0);
-    CHECK_INT(desk_font_pens(d, 518), 1); /* a valid font.prefs with one WBFONT chunk */
+    CHECK_INT(desk_font_pens(d, 518, DK_ICONTEXT_OUTLINE), 1); /* a valid font.prefs with one WBFONT chunk */
     CHECK_STR((const char *)d + 26 + 8 + 28, "topaz.font");
     CHECK_INT(d[26 + 8 + 15], 0);
     CHECK_INT(d[26 + 164 + 8 + 15], 1);
@@ -933,16 +963,24 @@ static void test_desk_font(void)
             wb = 26 + 8 + k * 164;
     CHECK(wb > 0);
     memcpy(out, gold, (size_t)n);
-    CHECK_INT(desk_font_pens(out, n), 1);
+    CHECK_INT(desk_font_pens(out, n, DK_ICONTEXT_OUTLINE), 1);
     CHECK_INT(out[wb + 16], DK_FG);
     CHECK_INT(out[wb + 17], DK_DARKER);
     CHECK_INT(out[wb + 18], 0);
     CHECK_INT(out[wb + 19], 1);
+    /* FILENAME-PEN: icon-text plain/outline/shadow is FP_SPECIAL 0/1/2; anything else is plain */
+    CHECK_INT(desk_font_pens(out, n, DK_ICONTEXT_PLAIN), 1);
+    CHECK_INT(out[wb + 19], 0);
+    CHECK_INT(desk_font_pens(out, n, DK_ICONTEXT_SHADOW), 1);
+    CHECK_INT(out[wb + 19], 2);
+    CHECK_INT(desk_font_pens(out, n, 9), 1);
+    CHECK_INT(out[wb + 19], 0);
+    CHECK_INT(desk_font_pens(out, n, DK_ICONTEXT_OUTLINE), 1);
     CHECK(out[wb + 16] != out[wb + 17]); /* label pen != backdrop pen */
     for (i = 0; i < n; i++)
         if (out[i] != gold[i])
             CHECK(i >= wb + 16 && i <= wb + 19);
-    CHECK_INT(desk_font_pens(out, 10), -1);
+    CHECK_INT(desk_font_pens(out, 10, DK_ICONTEXT_OUTLINE), -1);
     /* font=: an existing font is written, an unknown one leaves the file untouched */
     memcpy(out, gold, (size_t)n);
     strcpy(t.font, "topaz.font");
@@ -1354,6 +1392,7 @@ void suite_desk(void)
     test_desk_icons_state();
     test_desk_palette();
     test_desk_palette_flat();
+    test_desk_filename_pen();
     test_desk_live_baseline_ignores_menu();
     test_desk_flat_pens_key();
     test_desk_flat_pens_stale_file();

@@ -63,7 +63,7 @@ int ip_fold(const gtheme *t, int slot, int depth)
     if (depth >= 4 && slot >= 8)
         return slot;
     ip_colours(t, desk_role(t, DK_BG), rgb);   /* the fold picks among the role pens, which are drawn on the panel tone */
-    last = depth <= 2 ? DK_ACCENT : DK_MUTED;
+    last = depth <= 2 ? DK_ACCENT : DK_DARKER; /* the highest low role pen: 3 at depth 2, 5 (DK_DARKER) from depth 3 */
     for (pen = 0; pen <= last; pen++) {
         d = dist(rgb[slot], desk_role(t, pen));
         if (pen == 0 || d < bd) {

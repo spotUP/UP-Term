@@ -9,8 +9,10 @@
 #include "gthemes_core.h"
 #include "flat_core.h"
 
-/* the eight palette roles of the flat mapping (OD13): the pen index of a role is its enum value */
-enum { DK_BG, DK_DARKER, DK_FG, DK_ACCENT, DK_SELECTION, DK_MUTED, DK_GREEN, DK_RED, DK_ROLES };
+/* the eight palette roles of the flat mapping (OD13): the pen index of a role is its enum value.
+ * FILENAME-PEN: Workbench draws the list-view file names with the fixed DrawInfo pen 1, so pen 1 holds the muted text colour
+ * (DK_MUTED) and follows every theme; Amarchy's own dark tone (DK_DARKER: BLOCKPEN, BARTRIMPEN, the label backdrop) lives on pen 5. */
+enum { DK_BG, DK_MUTED, DK_FG, DK_ACCENT, DK_SELECTION, DK_DARKER, DK_GREEN, DK_RED, DK_ROLES };
 
 /* the DrawInfo slots of pap_4ColorPens / pap_8ColorPens, in the order of the file */
 enum {
@@ -153,7 +155,9 @@ long desk_pointer(const gtheme *t, unsigned char *buf, long len);
 
 /* R1.22a: the WBFONT chunk of font.prefs gets the label pen, the backdrop pen, JAM1 and special mode 1 (OD10). Returns
  * the number of chunks changed (0 or 1), -1 when buf is no font.prefs. */
-long desk_font_pens(unsigned char *buf, long len);
+/* icon label text mode = fp_SpecialDrawMode of the WBFONT chunk (prefs/font.h; values from the 2026-10-29 prefs probe, OD10) */
+enum { DK_ICONTEXT_PLAIN = 0, DK_ICONTEXT_OUTLINE = 1, DK_ICONTEXT_SHADOW = 2 };
+long desk_font_pens(unsigned char *buf, long len, int text_mode);
 
 /* FLAT-P1-2: the icontrol.prefs for the window border and title size. cur/curlen = the file now on disk (or 0): every chunk and
  * every ICTL field is kept (IEXC exception chunks byte for byte); ICB_VERSIONED, ic_Version 2, ic_VersionMagic 0 and

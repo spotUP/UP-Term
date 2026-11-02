@@ -214,7 +214,7 @@ void desk_pens_for(int flat, unsigned char pens[DK_SLOTS])
 void desk_pen_plan_for(int depth, desk_pen_plan *p)
 {
     p->button = DK_SELECTION;
-    p->backdrop = depth >= PT_DEPTH_MAX ? DK_RED : DK_DARKER; /* FLAT-COLOUR-OVERHAUL: pen 5 keeps the muted text colour; below 3 planes no pen is free, the backdrop shares the darker pen */
+    p->backdrop = depth >= PT_DEPTH_MAX ? DK_RED : DK_MUTED; /* FLAT-COLOUR-OVERHAUL: pen 7 is its own backdrop pen; FILENAME-PEN: below 3 planes no pen is free (DK_DARKER = 5 is off a 4-colour screen), the backdrop takes pen 1 as the old shared darker pen did */
     if (depth >= 6) {
         p->icon_first = 32; p->icon_count = 16; p->icon_slot = 0;
     } else if (depth >= 4) {
@@ -423,9 +423,9 @@ int desk_flat_start_refresh(int flat, const unsigned char *cur, long curlen, con
 }
 
 /* FLAT-BACKDROP-SAME-AS-WINDOW: the pen the ROOT tile is drawn in, a dedicated pen of its own. Chosen by measurement: a WBPattern tile has
- * PT_DEPTH_MAX (3) bitplanes, so it can only name pens 0-7. Pens 0-3 are the stock icon pens (and DK_DARKER = 1 is BLOCKPEN/BARTRIMPEN
- * in the live DrawInfo array, black in stock icons), pen 4 is the flat button fill (DK_SELECTION), and the flat DrawInfo map only ever
- * uses pens 0, 1 and 2. Pen 5 (DK_MUTED) is inside the tile range, outside 0-4 and in no DrawInfo slot, so recolouring it to the theme dark
+ * PT_DEPTH_MAX (3) bitplanes, so it can only name pens 0-7. Pens 0-3 are the stock icon pens (pen 1 is DK_MUTED since FILENAME-PEN: the fixed pen of Workbench list-view file names,
+ * and the outline of stock icons, which turn muted grey), pen 4 is the flat button fill (DK_SELECTION), and the flat DrawInfo map only ever
+ * uses pens 0, 1 and 2. Pen 5 (DK_DARKER) is BLOCKPEN/BARTRIMPEN in the live DrawInfo array since FILENAME-PEN, so the backdrop has pen 7, which is in the tile range and in no DrawInfo slot: recolouring it to the theme dark
  * changes nothing but the backdrop. Never BACKGROUNDPEN: with no pattern the root fills with it, the window interior pen. */
 int desk_backdrop_pen_at(int depth)
 {
@@ -663,7 +663,9 @@ static long wbfont_body(const unsigned char *buf, long len)
     return -1;
 }
 
-long desk_font_pens(unsigned char *buf, long len)
+/* text_mode: fp_SpecialDrawMode, 0 plain, 1 outline, 2 shadow in BackPen (prefs/font.h names the byte, no values; the values were measured
+ * live, thoughts/shared/research/2026-10-29-amarchy-p1a-prefs-probe.md line 104, OD10). Anything else is plain. */
+long desk_font_pens(unsigned char *buf, long len, int text_mode)
 {
     long b = wbfont_body(buf, len);
     if (b == -2)
@@ -673,7 +675,7 @@ long desk_font_pens(unsigned char *buf, long len)
     buf[b + FP_FRONT] = DK_FG;     /* the label */
     buf[b + FP_BACK] = DK_DARKER;  /* the backdrop */
     buf[b + FP_DRAW] = 0;          /* JAM1 */
-    buf[b + FP_SPECIAL] = 1;       /* outline */
+    buf[b + FP_SPECIAL] = (unsigned char)(text_mode == DK_ICONTEXT_OUTLINE || text_mode == DK_ICONTEXT_SHADOW ? text_mode : DK_ICONTEXT_PLAIN);
     return 1;
 }
 

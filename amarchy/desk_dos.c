@@ -441,7 +441,7 @@ static int dk_apply(const gtheme *th, char *why, int cap)
             len = dk_read("ENVARC:Sys/font.prefs", buf, sizeof buf);
         if (len <= 0)
             len = desk_font_default(buf, sizeof buf);
-        if (len > 0 && desk_font_pens(buf, len) >= 0 && desk_font_name(th, buf, len, dk_font_exists, 0) >= 0) {
+        if (len > 0 && desk_font_pens(buf, len, amconf_icon_text(&ap)) >= 0 && desk_font_name(th, buf, len, dk_font_exists, 0) >= 0) {
             ok &= dk_put("Font", DK_WORK "/font.prefs", buf, len);
             if (reset || old_ws)
                 dk_wait_iprefs(idle); /* the Font editor resets the Workbench screen too (3.1: twice): the windows return after it */
