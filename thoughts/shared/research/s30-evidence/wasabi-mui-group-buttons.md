@@ -37,3 +37,15 @@ Result: NO PR opened. No MUI program on the OS 3.1 rig has a framed group used a
   Diff: the three lines above became ONE line. 356,273 88x57 is the whole window contents (the root VGroup), not the HGroup (which is about 64+ wide, 11-15 high). The toggle group and Plain Button vanished from the list.
 - Click: pinned `ui click "Group Button"` -> no gadget (it is a label); a raw `mouse click 405 283` on the pinned daemon DID print GROUP PRESSED (the fixture works). Patched `ui click "Group Button"` -> "clicked button ..." but NO GROUP PRESSED (it clicks the centre of the root group, a gap between children).
 - Verdict: the patch changes the output, but on this app it is a regression: it labels the root group as the button and hides the real children. Needs a fix (only list a Group.mui whose own InputMode is set and that is not an ancestor of other listed gadgets) before any PR.
+
+## 2026-11-02 fix (vtcon-ee): PASS on rig 59 (OS 3.1, 060, muimaster 19.35)
+
+- Fix (local branch pr/mui-group-buttons, commit 0baee77, one commit on cfdd89d1; patch saved over wasabi-mui-group-buttons.patch): a Group.mui is an item only below the window's root group, only with an input mode AND a label (its own Text, else tooltip); it is emitted and its children are still walked, with the group's own Text not listed again; `mui3_group_mode` tells toggle from button (bit 16 of the old rule is set on every group, so it called the toggle a button).
+- Found with a debug build (dump of the object words): RelVerify and Toggle group of equal size differ only in bit 0x80 of the word 120 bytes into the object (0x340 vs 0x3c0); it does not change when the toggle is pressed. Evidence is one pair on muimaster 19.35; a Text.mui-based toggle uses the older rule, unchanged.
+- Fixed wasabid md5 1c635eb37f9c44f06d533c26e23ec856, ran as RAM:wasabid-fx on 1298 beside the pinned one. Test app built with vbcc + MUI 3.8 SDK (the fixture needs a DoMethod shim, written out of tree).
+- Before (patch from s50, 99 lines): `button "Group Button" at 356,273 88x57 (Group.mui)` (root group), Group Toggle and Plain Button gone.
+- After `ui list`:
+    button   "Group Button"  id 0 at 360,276 80x15  (Group.mui)
+    toggle   "Group Toggle"  id 0 at 360,294 80x15  (Group.mui)
+    button   "Plain Button"  id 0 at 360,312 80x15  (Text.mui)
+- Clicks: `ui click "Group Button"` -> app output file RAM:o.txt reads READY, GROUP PRESSED (one click, one line). `ui click "Group Toggle"` -> `[selected]` appears on the toggle line. `ui click "Plain Button"` clicked (no output expected).
