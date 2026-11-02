@@ -59,7 +59,9 @@ def run_case(name, script, want):
     base = "%s/%s" % (DIR, name)
     ex('Delete >NIL: "%s.out" "%s.done" QUIET' % (base, base))
     put_text(PATH_LINE + script, base + ".sh")
-    put_text("FailAt 21\n%s/vsh %s.sh >%s.out\nEcho >%s.done $RC\n" % (DIR, base, base, base), base + ".run")
+    # STACK=<bytes> runs vsh (and so the commands it starts, command_stack) under that Stack
+    stack = "Stack %s\n" % os.environ["STACK"] if os.environ.get("STACK") else ""
+    put_text(stack + "FailAt 21\n%s/vsh %s.sh >%s.out\nEcho >%s.done $RC\n" % (DIR, base, base, base), base + ".run")
     ex("Run >NIL: <NIL: Execute %s.run" % base)
     end = time.time() + 20
     while time.time() < end:
