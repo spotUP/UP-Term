@@ -82,12 +82,16 @@ typedef struct vt_cell {
     vt_u8  ext;     /* 0, or 1 + an entry of the terminal's rare styles:
                      * underline colour and font (vt_cell_underline_color,
                      * vt_cell_font) */
-    vt_u8  pad;     /* VT_CELL_IMAGE, else 0 */
+    vt_u8  pad;     /* VT_CELL_IMAGE, VT_CELL_UNDER, else 0 */
 } vt_cell;
 /* vt_cell.pad: the cell shows a tile of an image placed on its row
  * (vt_row_image); its own text is a blank. Writing or erasing the cell
  * rewrites it whole, so text over an image takes its place. */
 #define VT_CELL_IMAGE 0x01
+/* vt_cell.pad: a kitty picture placed with z < 0 lies under the cell's
+ * text (K30). The text stays and keeps the bit when it is rewritten or
+ * erased; draw the background, then the picture, then the glyph. */
+#define VT_CELL_UNDER 0x02
 
 /* A cell's ch in U+D800..U+DFFF (the surrogates, which are never a
  * character of their own) is not a character: it names an entry of the
@@ -370,10 +374,15 @@ typedef struct vt_image_view {
     int py;             /* the image's pixel row at the top of this row
                          * (negative on the first row when py0 > 0) */
     long serial;        /* different for every image (a pen cache's key) */
+    long z;             /* kitty's z= (0 for a sixel): below 0 the image is
+                         * under the text, in the VT_CELL_UNDER cells */
 } vt_image_view;
-/* The i-th image on row `row` (vt_row's numbering), the oldest first, so
- * drawing them in order puts the newest on top. Draw a tile only in the
- * row's cells with VT_CELL_IMAGE set. 0 when there is no i-th. */
+/* The i-th image on row `row` (vt_row's numbering), in draw order: by z,
+ * then kitty i=, then the oldest first, so drawing them in order puts the
+ * top one last. Draw a tile with z >= 0 only in the row's VT_CELL_IMAGE
+ * cells, one with z < 0 only in its VT_CELL_UNDER cells, under the text
+ * (with z <= -1073741824 only in the cells with the default background).
+ * 0 when there is no i-th. */
 int      vt_row_image(const vt_term *t, int row, int i, vt_image_view *v);
 /* Kitty graphics (APC G ... ST): raw RGB / RGBA (f=24, 32), o=z, chunks,
  * a=t T p d q, replies, become the same images. A PNG (f=100) needs the

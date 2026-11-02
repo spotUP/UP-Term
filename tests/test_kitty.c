@@ -799,6 +799,74 @@ static void k29_virtual_placements_and_parents(void)
     vt_free(t);
 }
 
+
+/* K30: the images of a row come out by z, then i=, whatever their age.
+ * Before K30 they came in age order (5, 2, 9, 7 here) and had no z. */
+static void k30_row_images_go_by_z_then_id(void)
+{
+    vt_term *t = kitty_term(20, 8);
+    vt_image_view v[4];
+    int i;
+    /* four cells of one row: a picture written over a picture's cell would replace it */
+    put_at(t, 1, 1, "i=5,p=1,z=3");
+    put_at(t, 2, 1, "i=2,p=1,z=3");
+    put_at(t, 3, 1, "i=9,p=1,z=-1");
+    put_at(t, 4, 1, "i=7,p=1");
+    for (i = 0; i < 4; i++)
+        CHECK(vt_row_image(t, 0, i, &v[i]));
+    CHECK_INT((int)v[0].z, -1);
+    CHECK_INT((int)v[1].z, 0);
+    CHECK_INT((int)v[2].z, 3);
+    CHECK_INT((int)v[3].z, 3);
+    CHECK(v[2].serial > v[3].serial); /* i=2 is the newer, yet goes first */
+    vt_free(t);
+}
+
+static int is_under(vt_term *t, int x, int y)
+{
+    return (h_cell(t, x, y)->pad & VT_CELL_UNDER) != 0;
+}
+
+/* K30: a z<0 picture leaves the text in its cells, and text written or
+ * erased over it later keeps the picture under it. Before K30 the
+ * picture blanked the cells and the text took its place. */
+static void k30_text_over_a_picture_below_keeps_it(void)
+{
+    vt_term *t = kitty_term(20, 8);
+    vt_image_view v;
+    h_put(t, "\033[1;1HXY");
+    put_at(t, 1, 1, "i=1,p=1,z=-1,c=6");
+    CHECK(h_cell(t, 0, 0)->ch == 'X'); /* the text stays */
+    CHECK(h_cell(t, 1, 0)->ch == 'Y');
+    CHECK(is_under(t, 0, 0) && is_under(t, 5, 0) && !is_under(t, 6, 0));
+    CHECK(!is_image(t, 0, 0));
+    h_put(t, "\033[1;3Ha\033[31mb\033[0mcdef"); /* one cell, a run, the colour path */
+    CHECK(h_cell(t, 2, 0)->ch == 'a');
+    CHECK(h_cell(t, 3, 0)->ch == 'b');
+    CHECK(is_under(t, 2, 0) && is_under(t, 3, 0) && is_under(t, 5, 0));
+    h_put(t, "\033[1;5H\033[K"); /* erase to the end: the picture stays */
+    CHECK(h_cell(t, 4, 0)->ch == ' ');
+    CHECK(is_under(t, 4, 0) && is_under(t, 5, 0));
+    h_put(t, "\033[1;1H\033[2X"); /* erase characters */
+    CHECK(is_under(t, 0, 0));
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT((int)v.z, -1);
+    h_put(t, "\033[2K"); /* the whole line: the picture goes, as for z>=0 */
+    CHECK(!vt_row_image(t, 0, 0, &v));
+    vt_free(t);
+}
+
+/* z >= 0 keeps the model of D12: the picture takes the cells */
+static void k30_z_0_and_up_still_takes_the_cells(void)
+{
+    vt_term *t = kitty_term(20, 8);
+    h_put(t, "\033[1;1HXY");
+    put_at(t, 1, 1, "i=1,p=1,z=5");
+    CHECK(is_image(t, 0, 0) && !is_under(t, 0, 0));
+    CHECK(h_cell(t, 0, 0)->ch == ' ');
+    vt_free(t);
+}
+
 void suite_kitty(void)
 {
     raw_rgb_becomes_an_indexed_image();
@@ -831,4 +899,7 @@ void suite_kitty(void)
     k29_deleting_a_parent_deletes_its_children();
     k29_the_error_replies();
     k29_virtual_placements_and_parents();
+    k30_row_images_go_by_z_then_id();
+    k30_text_over_a_picture_below_keeps_it();
+    k30_z_0_and_up_still_takes_the_cells();
 }

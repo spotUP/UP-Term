@@ -2011,6 +2011,64 @@ static void a_kitty_image_draws_its_pixels_on_the_canvas(void)
     close_term();
 }
 
+
+/* K30: a kitty picture with z<0 lies under the text: the image first, the
+ * glyph over it (its Text after the image in the log), and the cells
+ * without text show the picture. Before K30 the picture blanked the cells
+ * and covered the X. */
+static void k30_open_truecolour(void)
+{
+    open_term_in(0, VT_XTERM);
+    gf_truecolor(1);
+    vr_free(&rn);
+    vr_init(&rn, gf_window(), gf_font(), term, VT_ENC_LATIN1);
+    vt_set_cell_pixels(term, CW, CH);
+    vr_redraw(&rn);
+}
+
+static int k30_last_text_after_image(const char *want)
+{
+    int i, img = -1, txt = -1;
+    for (i = 0; i < gf_n; i++) {
+        if (gf_log[i].kind == GF_CGXLUT)
+            img = i;
+        if (gf_log[i].kind == GF_TEXT && !strcmp(gf_log[i].str, want))
+            txt = i;
+    }
+    return img >= 0 && txt > img;
+}
+
+static void k30_text_lies_over_a_picture_below(void)
+{
+    int under;
+    k30_open_truecolour();
+    pass("\x1b[1;1HX");
+    under = gf_pixel(3, 3);
+    gf_clear_log();
+    /* red green blue white / black yellow cyan magenta, 2 cells wide */
+    pass("\x1b[1;1H\x1b_Ga=T,f=24,s=4,v=2,c=2,r=1,z=-1,C=1;/wAAAP8AAAD/////AAAA//8AAP///wD/\x1b\\");
+    CHECK(gf_count(GF_CGXLUT) >= 1);
+    CHECK(k30_last_text_after_image("X")); /* the glyph over the image */
+    CHECK_INT(gf_pixel(3, 3), under);      /* the fake paints the X's cell whole */
+    CHECK((gf_pixel(12, 1) & GF_CGX) != 0); /* the blank cell beside it: the picture */
+    close_term();
+}
+
+static void k30_far_below_stays_under_a_coloured_background(void)
+{
+    int bg;
+    k30_open_truecolour();
+    /* a green text cell under the picture, and a control one clear of it (both drawn by Text(), whose
+     * JAM2 background pen the fake keeps in gf_bg) */
+    pass("\x1b[1;1H\x1b[42mA\x1b[0m\x1b[1;5H\x1b[42mA\x1b[0m");
+    pass("\x1b[1;1H\x1b_Ga=T,f=24,s=4,v=2,c=2,r=1,z=-2000000000,C=1;/wAAAP8AAAD/////AAAA//8AAP///wD/\x1b\\\x1b[5;1H"); /* the cursor away from the cells */
+    bg = gf_bg(4 * CW + 3, 3);
+    CHECK_INT(gf_bg(3, 3), bg);               /* the green cell keeps its background */
+    CHECK((gf_pixel(3, 3) & GF_CGX) == 0);    /* and takes no picture */
+    CHECK((gf_pixel(12, 1) & GF_CGX) != 0);   /* the default cell shows the picture */
+    close_term();
+}
+
 /* ---- NS1.1 / NS1.2: the viewport rectangle ---- */
 
 /* a hash of every graphics call since gf_clear_log: what the renderer did, not what the canvas shows */
@@ -2332,6 +2390,8 @@ int main(void)
     pen_matches_on_a_prepared_palette_are_the_bare_palettes_picks();
     a_second_window_on_the_same_palette_matches_no_colour_again();
     a_kitty_image_draws_its_pixels_on_the_canvas();
+    k30_text_lies_over_a_picture_below();
+    k30_far_below_stays_under_a_coloured_background();
     the_cursor_pass_counts_its_gfx_calls_and_unchanged_cells();
     scrollback_view_move_blits_and_draws_only_the_exposed_rows();
     cursor_glyph_is_drawn_at_the_cursor_cell_from_the_grid_row();
