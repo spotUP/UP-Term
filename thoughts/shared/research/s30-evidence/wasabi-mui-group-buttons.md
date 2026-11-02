@@ -63,3 +63,7 @@ Result: NO PR opened. No MUI program on the OS 3.1 rig has a framed group used a
 - Fixture rebuilt with Bebbo gcc (SDK headers from mui38dev.lha; commit 9e61fe46 on s51-muigroup). Fixed wasabid rebuilt with the Makefile's flags: md5 1c635eb37f9c44f06d533c26e23ec856 (identical to the earlier fixed build), run as RAM:wasabid-fx on 1298.
 - Result: the app object is created and prints READY, but `get(win, MUIA_Window_Open)` right after `set(win, MUIA_Window_Open, TRUE)` reads 0 (debug build, RAM:o2.txt: `READY open=0`); `ui list` / `windows` show no "MUI Group Button Test" window after 6-15 s, no requester. So no Group Button / Group Toggle / Plain Button exist to list or click; the word at object+120 was not dumped. Not a verdict on the bit rule: the same fixture opens fine on 19.35. Cause of the failed open on MUI 5 is not found (candidates: MUI 5 prefs/screen defaults on this image, missing MUI 5 support files; not investigated further).
 - To finish: find why MUI 5 refuses to open the window (MUI 5 Settings / MUI:Presets / a Workbench-screen setting), or test MUI 3.8 user (github amiga-mui/muidev release 3.8, mui38usr.lha).
+
+## 2026-11-02 MUI 3.8 check (vtcon-ee): NOT-NEW (MUI 3.8 user release = muimaster 19.35, already proven)
+
+mui38usr.lha (Aminet util/libs, 1033392 bytes) extracted; `strings` on MUI/Libs/muimaster.library gives `$VER: muimaster.library 19.35 (12.02.97)`. Identical version to the one on rig 59, so the PASS in "fix (vtcon-ee): PASS on rig 59" already covers MUI 3.8. No rig was started. Download and extraction deleted.
