@@ -20,3 +20,15 @@ First pair of runs (no baseline) gave the same 932 / 932.
 Open: why off leaves the frame: desk_wbborder(flat=0, ...) either did not USE border 0 or the later delete of ENV:Sys/Workbench.prefs
 undid it before workbench.library re-read. Not diagnosed (no code edits in this task).
 Screenshots: ~/Desktop/upterm-shots/s31-noborder-{base,on,off}.png
+
+## Re-proof after 2ae68838
+
+Verdict: FAIL. Flat OFF still does not bring the icon frame back. Build: 2ae68838 sources, amarchy-menu/Amarchy/amarchy-gui/amarchy-flat
+rebuilt 14:30 (amarchy-menu was stale before; `make build/amiga/amarchy` is a different target). Rig 56, OS 3.2, FS-UAE, `--setup`, same helpers (put_flat_prefs + pick()).
+Region x22-62 y101-133, non-backdrop pixels:
+- Baseline (ENV:Sys/Workbench.prefs absent): bbox x22-62 y102-133 = 41x32, 990 px against a white reference pixel (the helper reference was a frame pixel; a mode-colour count is unreliable on the patterned backdrop). Frame present.
+- Flat ON: file 84 bytes, WBNC body present (border word read as 0001 earlier method; not re-decoded); bbox x25-59 y104-130 = 35x27, 932 px.
+- Flat OFF right after pick: ENV:Sys/Workbench.prefs absent (expected); bbox x25-59 y104-130 = 35x27, 932 px.
+- Flat OFF 20 s later: file absent; 35x27, 932 px. Frame ring still 0 px.
+OFF equals ON in count and bbox: the stock-prefs USE before the delete did not bring the frame back.
+Screenshots: ~/Desktop/upterm-shots/s31-noborder-fix-{base,on,off,off20}.png
