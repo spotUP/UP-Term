@@ -447,12 +447,15 @@ class AmiSSLPart(unittest.TestCase):
         self.assertNotIn('#needkb', s)
         self.assertNotIn('(getdiskspace', s[s.index('(set #roomok 0)'):s.index('ENV:UPTROOM ENV:UPTROOMAT')])
 
-    def test_the_part_exists_and_starts_install_amissl_from_the_kit_drawer(self):
+    def test_the_part_exists_and_runs_install_amissl_dos_from_the_kit_drawer(self):
+        # a4928c9d: AmiSSL's own Install-AmiSSL is an Installer script that asks at every level, so the part
+        # runs the kit's non-interactive Files/install-amissl.dos instead (never the nested Installer).
         self.assertIn('AmiSSL 5.27', self.PAGE)
-        self.assertIn('Install-AmiSSL', self.RUN)
-        self.assertIn('Installer SCRIPT', self.RUN)
-        self.assertIn('(tackon #files "AmiSSL")', self.RUN)
-        self.assertIn('Installer SCRIPT Install-AmiSSL APPNAME AmiSSL', self.RUN)
+        self.assertIn('(tackon #files "install-amissl.dos")', self.RUN)
+        self.assertIn('(execute "T:UPTAMISSL")', self.RUN)
+        part = self.RUN[:self.RUN.index('(procedure P_ANX')]  # RUN runs on into the AmiNetXDuo part, which does use Installer SCRIPT
+        self.assertNotIn('Installer SCRIPT', part)
+        self.assertNotIn('Install-AmiSSL', part)
         self.assertIn('(P_AMISSL)', INSTALLER)
         self.assertLess(INSTALLER.index('(P_OPTIONS_END)'), INSTALLER.index('(P_AMISSL)'))
 
@@ -474,7 +477,7 @@ class AmiSSLPart(unittest.TestCase):
     def test_the_last_page_says_when_ticked_amissl_did_not_get_installed(self):
         run = self.RUN
         self.assertRegex(run, r'\(if #amissl-need\s+\(\s*\(set #sslnote \(cat "\\nAmiSSL was not installed')
-        self.assertIn('Install-AmiSSL', run[run.index('AmiSSL was not installed'):][:200])
+        self.assertIn('install-amissl.dos', run[run.index('AmiSSL was not installed'):][:200])
         self.assertIn('(set #sslrows 2)', run)
 
     def test_the_last_page_asks_for_a_reboot_when_amissl_was_installed(self):
