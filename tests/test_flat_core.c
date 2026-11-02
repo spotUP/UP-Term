@@ -949,9 +949,11 @@ static void test_scroller(void)
     int kn, tr;
     flat_init(&s);
     desk_flat_state(1, 1, &s);
-    kn = DK_SELECTION;
+    kn = DK_ACCENT;                                                      /* GREY-TOO-DARK: the knob is the accent pen_outline, not the selection pen */
     tr = s.pen_back;
     CHECK(kn != tr);
+    CHECK(kn != DK_SELECTION);
+    CHECK_INT(s.pen_outline, kn);
     /* vertical 16 x 100 container at (10,20), body half: knob height 50 */
     CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), kn);
     CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 70, 25, 119), tr);
@@ -973,6 +975,15 @@ static void test_scroller(void)
     s.held = 0;
     /* under 8 colours the knob takes the accent pen_line (flat_button_pen), never a missing pen */
     CHECK_INT(flat_scroller_pen(&s, 2, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), s.pen_line);
+    /* fallback: pen_outline 0 or not a pen of the depth keeps flat_button_pen */
+    {
+        int keep = s.pen_outline;
+        s.pen_outline = 0;
+        CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), flat_button_pen(&s, 3));
+        s.pen_outline = 9;
+        CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), flat_button_pen(&s, 3));
+        s.pen_outline = keep;
+    }
     s.enabled = 0;
     CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), -1);
 }

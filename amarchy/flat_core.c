@@ -475,6 +475,14 @@ int flat_button_gadget(const void *gadget_render, const void *select_render, con
     return image && gadget_render == image && select_render == image;
 }
 
+/* pen_outline when it is a pen of the depth (non-zero, below 1 << depth), else 0. */
+static int flat_outline_of_depth(const flat_state *s, int depth)
+{
+    if (s->pen_outline && depth >= 1 && depth <= 8 && s->pen_outline < (1 << depth))
+        return s->pen_outline;
+    return 0;
+}
+
 int flat_scroller_pen(const flat_state *s, int depth, int cx, int cy, int cw, int ch, int horiz, int vert,
                       unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody, int x0, int y0, int x1, int y1)
 {
@@ -492,13 +500,13 @@ int flat_scroller_pen(const flat_state *s, int depth, int cx, int cy, int cw, in
         ky = cy + (int)(((unsigned long)vpot * (unsigned long)(ch - kh)) / 0xFFFFUL);
     }
     if (x0 >= kx && x1 < kx + kw && y0 >= ky && y1 < ky + kh)
-        return flat_button_pen(s, depth);
+        return flat_outline_of_depth(s, depth) ? s->pen_outline : flat_button_pen(s, depth);
     return s->pen_back;
 }
 
 int flat_frame_pen(const flat_state *s, int depth, int active)
 {
-    if (s->enabled && !s->held && active && s->pen_outline && depth >= 1 && depth <= 8 && s->pen_outline < (1 << depth))
+    if (s->enabled && !s->held && active && flat_outline_of_depth(s, depth))
         return s->pen_outline;
     return -1;
 }

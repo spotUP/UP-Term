@@ -306,7 +306,7 @@ enum { FLAT_ROLE_PRIMARY = 0, FLAT_ROLE_SECONDARY = 1 };
 int flat_button_role(const flat_box *self, const flat_box *sib, int n);
 
 /* FLAT-SCROLLER: a window scroller (prop gadget). The pen for one fill inside the gadget's container (cx,cy,cw,ch in the
- * rastport's coordinates): a fill inside the knob rectangle takes the pen one shade lighter than the frame (flat_button_pen); the
+ * rastport's coordinates): a fill inside the knob rectangle takes the accent pen_outline (the active title band's pen; flat_button_pen when pen_outline is 0 or not a pen of the depth); the
  * rest of the container is track and takes the frame pen (pen_back: the flat map sets FILLPEN and BACKGROUNDPEN to it). The knob
  * is laid out as Intuition does: size = body * container / 0xFFFF (at least 1 px), position = pot * (container - size) / 0xFFFF.
  * Returns -1 when flat is off or held, or the fill is not inside the container (the caller leaves the call alone).
