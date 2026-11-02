@@ -220,6 +220,17 @@ static const prefix prefixes[] = {
     { "win", KA_WIN }, { "gtheme", KA_GTHEME }, { "cap", KA_CAP }, { "settings", KA_SETTINGS }, { "bar", KA_BAR }
 };
 
+const char *keymap_kind_name(int kind)
+{
+    unsigned i;
+    if (kind == KA_VIEWER)
+        return "viewer";
+    for (i = 0; i < sizeof prefixes / sizeof prefixes[0]; i++)
+        if (prefixes[i].kind == kind)
+            return prefixes[i].name;
+    return "";
+}
+
 static int tab_arg_ok(const char *a)
 {
     if (!strcmp(a, "new") || !strcmp(a, "close") || !strcmp(a, "next") || !strcmp(a, "prev"))

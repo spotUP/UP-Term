@@ -153,6 +153,8 @@ void keymap_set_layout(int (*char_to_raw)(char ch));
 int  keymap_key_code(const char *name);
 /* The key name of a raw code, 0 when it has none (the inverse, for the viewer). */
 const char *keymap_key_name(unsigned code);
+/* The action prefix of a kind ("menu", "win", "viewer" ...), "" for KA_NONE: the inverse of the parser's prefix table. */
+const char *keymap_kind_name(int kind);
 /* KS_* of an action kind. */
 int  keymap_action_scope(int kind);
 
