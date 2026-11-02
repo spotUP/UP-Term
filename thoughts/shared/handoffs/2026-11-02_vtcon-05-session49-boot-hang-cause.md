@@ -31,7 +31,7 @@ status: cause found, fix handed to vtcon-16 (Amarchy owner)
 ## Open
 1. vtcon-16 runs 3+ fresh OS 3.1 RTG boots on rig 50. On 0 hangs, mark ledger lines 7 (AMIBERRY-DEFAULT)
    and 8 (FSUAE-WASABID-NO-ANSWER) done. Ask musicplayer-16 whether upkg_browse_rig.py:150 needs --keep.
-2. BLOCKED on owner (agent spawn denied by permission classifier). Secondary wasabid defect: cmd_screenctl sends on the socket while holding LockIBase
+2. PR OPEN: creep-ltx/wasabi#8 (37f387f, compile-checked only, not rig-tested; >~74 screens now truncates with an error like WINDOWS). Next: rig-test after merge, bump tools/nas/wasabi.rev. Secondary wasabid defect: cmd_screenctl sends on the socket while holding LockIBase
    (build/wasabi/src/wasabid.c:5783-5802). Buffer first like WINDOWS (~2591). Write a PR to
    creep-ltx/wasabi (spotUP is a collaborator; merge own PRs there).
 3. dctelnet-db's 3.1 + Amiberry sample with ~91% CPU and wasabid never up may be a second hang.
