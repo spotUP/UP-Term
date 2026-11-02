@@ -253,6 +253,10 @@ static int list_dir(BPTR lock, uint8_t **out, size_t *outn)
             size_t nl = strlen(fib->fib_FileName), need;
             char kind;
             unsigned long pr = (unsigned long)fib->fib_Protection;
+            /* RL11 (rig 73): a soft link has type ST_SOFTLINK (3), > 0, so it was walked as a drawer: RAM Disk:Disk.info (a link
+             * to ENVARC:Sys/def_RAM.info) gave "skip io (no lock)". Links are not ours to walk: the soft link's target is written
+             * where it lives (def_RAM through the defaults), and a linked drawer (ST_LINKDIR) would walk a tree twice or loop. */
+            if (fib->fib_DirEntryType == ST_SOFTLINK || fib->fib_DirEntryType == ST_LINKDIR) continue;
             if (fib->fib_DirEntryType > 0) kind = 'D';
             else if (nl > 5 && strcmp(fib->fib_FileName + nl - 5, ".info") == 0) kind = 'F';
             else if (nl > 10 && strcmp(fib->fib_FileName + nl - 10, ".info.uaem") == 0) kind = 'U';
