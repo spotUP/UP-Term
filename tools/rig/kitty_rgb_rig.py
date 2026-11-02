@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """kitty_rgb_rig.py -- K41: kitty RGB pictures draw in true colour on a deep RTG screen.
 Types a stream into an XCON: window: (1) a 100x80 raw RGB picture (f=24, a=T, no c=/r=, so 1:1 pixels) whose
-8000 pixels are all different colours, (2, 3) a 40x32 RGBA picture, 50% red (alpha 128), over blue-background cells (z=1, C=1: the engine blanks the cells under a z>=0 picture, see D12) and
+8000 pixels are all different colours, (2, 3) a 40x32 RGBA picture, 50% red (alpha 128), over blue-background cells (z=1, C=1: the cells keep their text and background under a kitty z>=0 picture, O6 / K40d) and
 over the plain window background (K40b software blend), (4) the same picture at z=-1 over blue cells (the cells
 keep their background; proves ReadPixelArray returns the blue on the real driver). Takes a screenshot (<out>.png) and measures it in Python.
 PASS case 1: the picture is found in the shot, >= 90% of the source's distinct colours appear in its rectangle and

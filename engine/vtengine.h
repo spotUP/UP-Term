@@ -85,8 +85,10 @@ typedef struct vt_cell {
     vt_u8  pad;     /* VT_CELL_IMAGE, VT_CELL_UNDER, else 0 */
 } vt_cell;
 /* vt_cell.pad: the cell shows a tile of an image placed on its row
- * (vt_row_image); its own text is a blank. Writing or erasing the cell
- * rewrites it whole, so text over an image takes its place. */
+ * (vt_row_image) over its text. A sixel blanks the cell's text; a kitty
+ * picture (z >= 0) keeps it, drawn first and seen through the picture's
+ * translucent pixels (O6). Writing or erasing the cell rewrites it whole,
+ * so text over an image takes its place. */
 #define VT_CELL_IMAGE 0x01
 /* vt_cell.pad: a kitty picture placed with z < 0 lies under the cell's
  * text (K30). The text stays and keeps the bit when it is rewritten or

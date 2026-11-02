@@ -5306,8 +5306,8 @@ static void under_mark(vt_term *t, int y, int x0, int x1)
         mark(t, hit0, y, hit1);
 }
 
-/* The image's cells: blanks marked VT_CELL_IMAGE on line y from x0, its
- * tile row k. */
+/* The image's cells on line y from x0 (its tile row k): marked VT_CELL_IMAGE (a sixel blanks them, a kitty
+ * picture keeps them, O6), or VT_CELL_UNDER for a kitty z < 0. */
 static void sixel_place_row(vt_term *t, int slot, int y, int x0, int k)
 {
     vt_line *l = t->scr[y];
@@ -5325,6 +5325,18 @@ static void sixel_place_row(vt_term *t, int slot, int y, int x0, int k)
         place_add(t, l, slot, x0, k);
         return;
     }
+    if (t->imgs[slot]->kind == 1) {
+        /* kitty z >= 0: over the text, which stays under it as in kitty
+         * (O6, K40d): the cells keep their glyph and colours and the
+         * picture's translucent pixels show them. Text written there
+         * later still takes the cell (D12). */
+        for (x = x0; x < x1; x++)
+            l->c[x].pad |= VT_CELL_IMAGE;
+        mark(t, x0, y, x1);
+        place_add(t, l, slot, x0, k);
+        return;
+    }
+    /* a sixel: its cells become blanks in the default colours */
     unwide(t, x0, y);
     if (x1 < t->cols)
         unwide(t, x1 - 1, y);

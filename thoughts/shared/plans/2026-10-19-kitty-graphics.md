@@ -302,8 +302,10 @@ commit.
       VT_CELL_IMAGE; it sets a new flag VT_CELL_UNDER on them, which text
       writes keep (the one exception to "writing rewrites the cell
       whole": pad bit 0x02 survives print and erase-with-default-bg; ED/EL
-      that blank the line drop the placement as today). z >= 0 keeps
-      today's model (D12). Render: draw_rows learns one more step for
+      that blank the line drop the placement as today). z >= 0: sets
+      VT_CELL_IMAGE; since K40d (O6) a kitty picture keeps the cells' text
+      and colours under it (a sixel still blanks them); text written later
+      takes the cell (D12). Render: draw_rows learns one more step for
       cells with VT_CELL_UNDER: fill the cell background, draw the z<0
       image tiles (z <= -1073741824 only into cells whose bg is the
       default; above that into every cell, drawn over the cell's bg),
@@ -738,6 +740,10 @@ switch it will ship with.
   and K30; the host test k40_soft_blend_reads_the_text_under_a_front_picture
   ("A z>=0 picture owns its cells") is rewritten to the new model. Work item
   K40d; K41 case 2 then expects (128,0,119) over blue cells.
+  Done on branch s51-k40d: engine/vtengine.c sixel_place_row, host tests
+  k40d_kitty_front_picture_keeps_the_cells (kitty) and
+  k40_soft_blend_reads_the_text_under_a_front_picture (render), rig
+  evidence s51-evidence/k41-kitty-rgb.md "K40d".
 
 ##### Open questions for the owner (answered above)
 
@@ -795,6 +801,11 @@ below. Every decision is closed; T-B to T-H need no further input.
   model, the text replaces the image in that cell (same as sixel; no render
   change). Other: kitty's, the image stays on top and hides the text
   (needs VT_CELL_UNDER-like bookkeeping for every image).
+  Amended by O6 / K40d (2026-11-02): the text written later still takes
+  the cell, but a kitty z >= 0 placement no longer blanks the cells it
+  lands on: their text and background stay under the picture and show
+  through its translucent pixels (the render draws bg + glyph, then blends
+  the picture over them). Sixel placements still blank.
 - D13 Glyph edges over a z < 0 image. R6 (owner) rules out reading the
   screen back to blend. Recommended: glyphs in cells over an image are
   drawn without antialiasing (hard edges, no fringe). Other: antialiased

@@ -82,3 +82,35 @@ Shots: ~/Desktop/upterm-shots/k41-aga-ref.png, k41-aga-new1..3.png. K41 stays op
 Note for K40d (owner decision O6, kitty z>=0 keeps the cells): the AGA stream's z=1 picture at column 50 sits on blue
 cells, so after K40d the pixels of that picture change from the reference (blue shows through). The AGA compare after
 K40d must differ only inside that picture's rectangle; everything else stays pixel-equal.
+
+## K40d (2026-11-02, branch s51-k40d, rig 91, OS 3.2 RTG 800x600x24)
+
+Owner decision O6: a kitty z >= 0 placement keeps the text and cell background under it, as real kitty does.
+Fix in engine/vtengine.c sixel_place_row: a kitty picture (kind 1) with z >= 0 now only ORs VT_CELL_IMAGE into
+the cells (glyph, fg, bg, attrs and any VT_CELL_UNDER stay); a sixel still blanks them to the default colours.
+Text written later still takes the cell (D12: print clears VT_CELL_IMAGE as before). No render change: draw_rows
+already draws every cell's background and glyph, and draw_images then blends the picture over them (K40b soft blend,
+ReadPixelArray). Other VT_CELL_IMAGE readers checked: reflow copies the cell whole and carries the placement
+(place_carry); scrollback packing stores pad with the cell; row_no_glyphs / cell_plain_blank already treat a pad
+cell as written; erase and ED/EL rewrite the cell as before; selection reads ch (now the real text under a kitty
+picture, as in kitty).
+
+Host tests: tests/test_kitty.c k40d_kitty_front_picture_keeps_the_cells (replaces k30_z_0_and_up_still_takes_the_cells:
+kitty z=5 over red-on-blue "XY" keeps X/Y, fg 1, bg 4, image bit; a later "q" takes its cell; a sixel over the
+same text blanks), tests/test_render.c k40_soft_blend_reads_the_text_under_a_front_picture rewritten (the X under
+a z=1 picture is drawn before it; column 0 row 12 is the blend over an RGB blue cell: (0,48,24) over (0,0,238)).
+Before the fix (cbd9e471 engine): kitty 4 failed, render 2 failed (pixel blend read black, 0x0C blue instead of
+0x83). After: kitty 434/0, sixel 451/0, reflow 147/0, xterm 470/0, render 702/0.
+
+Rig runs (tools/rig/kitty_rgb_rig.py; rig 91 vtc/vtcon-handler md5 60938589 = worktree build; case 2 expectation
+comes from the blue cell beside the picture, so the script needed no change, only its docstring):
+
+| run | case 1 (exact px) | case 2 blue cells z=1 | case 3 default bg | case 4 z=-1 blue | result |
+|-----|-------------------|-----------------------|-------------------|------------------|--------|
+| 1 | 8000/8000 PASS | (128,0,119) 1280/1280 PASS | (128,0,0) 1280/1280 PASS | (128,0,119) 1280/1280 PASS | PASS |
+| 2 | 8000/8000 PASS | (128,0,119) 1280/1280 PASS | (128,0,0) 1280/1280 PASS | (128,0,119) 1280/1280 PASS | PASS |
+| 3 | 8000/8000 PASS | (128,0,119) 1280/1280 PASS | (128,0,0) 1280/1280 PASS | (128,0,119) 1280/1280 PASS | PASS |
+
+Before K40d (k40c runs): case 2 measured (128,0,0) x3. Shots: ~/Desktop/upterm-shots/k40d-run1..3.png.
+AGA: not rerun here. The K41 AGA compare against the pre-K38 reference will now differ only inside the z=1 picture
+rectangle over the blue cells (the picture blends with the blue instead of a blanked cell), as noted above.
