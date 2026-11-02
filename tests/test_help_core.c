@@ -181,12 +181,6 @@ static void test_shipped_text_placeholders(void)
             i = (open - body) + pl;
             hc_expand(&k, ph, out, sizeof out);
             seen++;
-            /* W11 (gui:help key) and W11b (Quit Amarchy key) are phase 3: their keys do not exist yet. When those
-             * land, delete this exception so every placeholder must resolve. */
-            if (!strcmp(ph, "{key:gui:help}") || !strcmp(ph, "{key:amarchy:quit}")) { /* W11, W11b */
-                CHECK_STR(out, HC_UNBOUND);
-                continue;
-            }
             if (!strcmp(out, HC_UNBOUND))
                 printf("[FAIL] placeholder %s is unbound in dist/keymap\n", ph);
             CHECK(strcmp(out, HC_UNBOUND) != 0);
@@ -194,6 +188,35 @@ static void test_shipped_text_placeholders(void)
     }
     CHECK(seen >= 15);
     keymap_free(&k);
+}
+
+/* RL16 W8/W10: amarchy-gui draws the welcome and Help windows from the amhelp text through hc_expand, keeps the
+ * checkbox key state in hc_welcome_key and saves through hc_mark_shown; the commodity starts the welcome after the
+ * desktop apply. The pieces are Amiga-only, so the wiring is checked in the sources. */
+static void test_gui_welcome_wired(void)
+{
+    static char gui[400000], am[400000];
+    size_t n;
+    FILE *f = fopen("amarchy/gui.c", "rb");
+    CHECK(f != 0);
+    if (!f)
+        return;
+    n = fread(gui, 1, sizeof gui - 1, f);
+    fclose(f);
+    gui[n] = 0;
+    f = fopen("amarchy/amarchy.c", "rb");
+    CHECK(f != 0);
+    if (!f)
+        return;
+    n = fread(am, 1, sizeof am - 1, f);
+    fclose(f);
+    am[n] = 0;
+    CHECK(strstr(gui, "hc_expand(&km, viewer == 2 ? amhelp_welcome : amhelp_help") != 0);
+    CHECK(strstr(gui, "hc_welcome_key(c, &g->wticked, &g->wdone)") != 0);
+    CHECK(strstr(gui, "hc_mark_shown(&p)") != 0);
+    CHECK(strstr(gui, "amconf_save_with(amconf_dos_io(), &p, 1, &failed)") != 0);
+    CHECK(strstr(gui, "\"Welcome to Amarchy\"") != 0 && strstr(gui, "\"Amarchy Help\"") != 0);
+    CHECK(strstr(am, "hc_should_welcome(") != 0 && strstr(am, "\"amarchy-gui\", \"welcome\"") != 0);
 }
 
 void suite_help_core(void)
@@ -206,4 +229,5 @@ void suite_help_core(void)
     test_key_default_and_roundtrip();
     test_welcome_key();
     test_shipped_text_placeholders();
+    test_gui_welcome_wired();
 }

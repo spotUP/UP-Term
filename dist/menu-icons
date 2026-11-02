@@ -182,3 +182,5 @@ agents.explain    = U+F059    ; fa-question_circle
 network           = U+F012    ; fa-signal
 network.up        = U+F062    ; fa-arrow_up
 network.down      = U+F063    ; fa-arrow_down
+help              = U+F059    ; fa-question_circle
+quit              = U+F011    ; fa-power_off
