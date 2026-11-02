@@ -1201,7 +1201,7 @@ static uint8_t g_scr[FLAT_CLONE_SCRATCH];
 /* S31-ARROW-ASPECT: on hires (flat_side_px 2) the owner saw narrow left/right and too-big up/down arrows. Every arrow must have
  * the same 45-degree shape in visual units (a row counts side columns): left/right base (rows * side) == 2 * length (columns),
  * up/down widest row == 2 * side * (rows - 1) + 1; the glyph is centred in its box. Box sizes are the rig's 3.2 hires ones. */
-static void arrow_bbox(const flat_state *st, unsigned long w, int bw, int bh, int side, int *x0, int *x1, int *rows)
+static void arrow_bbox(const flat_state *st, unsigned long w, int bw, int bh, int side, int *x0, int *x1, int *rows, int *top, int *bot)
 {
     int x, y, y0 = -1, y1 = -1;
     cv_clear();
@@ -1216,32 +1216,39 @@ static void arrow_bbox(const flat_state *st, unsigned long w, int bw, int bh, in
                 y1 = y;
             }
     *rows = y1 - y0 + 1;
+    if (top) *top = y0;
+    if (bot) *bot = y1;
 }
 
 static void test_arrow_aspect(void)
 {
     flat_state st;
     unsigned long w;
-    int side, x0, x1, rows, lw[3] = { 0 }, uh[3] = { 0 };
+    int side, x0, x1, rows, top, bot, lw[3] = { 0 }, uh[3] = { 0 }, gap[3] = { 0 };
     flat_init(&st);
     desk_flat_state(1, 1, &st);
     for (side = 1; side <= 2; side++) {
         for (w = FLAT_W_LEFT; w <= FLAT_W_DOWN; w++) {
             if (w == FLAT_W_LEFT || w == FLAT_W_RIGHT) {
-                arrow_bbox(&st, w, 16, 10, side, &x0, &x1, &rows);
+                arrow_bbox(&st, w, 16, 10, side, &x0, &x1, &rows, 0, 0);
                 CHECK_INT(rows * side, 2 * (x1 - x0 + 1));        /* base twice the length, in visual units */
                 CHECK(abs(x0 - (16 - 1 - x1)) <= 1);              /* centred */
                 lw[side] = x1 - x0 + 1;
             } else {
-                arrow_bbox(&st, w, 18, 11, side, &x0, &x1, &rows);
+                arrow_bbox(&st, w, 18, 11, side, &x0, &x1, &rows, &top, &bot);
                 CHECK_INT(x1 - x0 + 1, 2 * side * (rows - 1) + 1);
                 CHECK(abs(x0 - (18 - 1 - x1)) <= 1);
                 uh[side] = rows;
+                if (w == FLAT_W_UP) gap[side] += 11 - 1 - bot;    /* up box sits above the down box */
+                else gap[side] += top;
             }
         }
     }
     CHECK_INT(lw[2], 2 * lw[1]);                                  /* hires: left/right twice as wide */
     CHECK(uh[2] < uh[1]);                                         /* hires: up/down fewer rows */
+    /* S31-ARROW-GAP: the shorter hires glyphs sit toward the shared edge, so the empty rows between the up and the down
+     * glyph stay what they are on a square-pixel screen (owner: "the vertical spacing between the arrows are bigger"). */
+    CHECK_INT(gap[2], gap[1]);
 }
 
 /* S31 SCROLLER-ARROWS-INVISIBLE: OS 3.2's sysiclass draws nothing offscreen for the arrow images, so the clone fails and the
