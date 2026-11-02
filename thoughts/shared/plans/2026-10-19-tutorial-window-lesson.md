@@ -1,7 +1,7 @@
 ---
 date: 2026-10-19
 topic: Shell tutorial lesson 12 "The UP-Term window" with real checks of window state
-status: plan
+status: done P1-P8 (s52 verified)
 scope_report: session scratchpad window-state-scope.md (summarised below)
 depends_on: feature/shell-tutorial merged (after the 1.2 release; peer holds vtcon main until "1.2 published")
 ---

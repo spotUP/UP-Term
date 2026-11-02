@@ -1,7 +1,7 @@
 ---
 date: 2026-10-19
 topic: kitty graphics protocol (APC G) in vtcon
-status: K1-K18 done; K19-K36 planned (s48, owner 2026-11-01); K37-K41 truecolor designed (s51, 2026-11-02), O1-O4 open
+status: K1-K18 done; K19-K35 planned; K36 host part done (c63dcb4f), AGA/RTG rig proof open; K37-K41 truecolor done (a14fe089, ceacf685, eaa21b90, b0a0a42a, cbd9e471; s52 verified)
 source: ~/Code/creep-cterm (github.com/creep-ltx/cterm 51a9ba3, MIT, Tobias Karlsson) src/vt.c 1425-1610, 2191-2480; src/inflate.c; src/pics.c
 research: thoughts/shared/research/2026-10-19_cterm-draw-and-vt-techniques.md
 ---
@@ -602,7 +602,7 @@ Read 2026-11-02 on a6de061d (what the design rests on):
 
 ##### Items
 
-- [ ] K37 8-bit golden, first. Host test that pins today's 8-bit output
+- [x] K37 (a14fe089, 5ff4b661) 8-bit golden, first. Host test that pins today's 8-bit output
       before any change: tests/test_render.c `k37_eight_bit_golden`, run
       on gf_planar(8) (AGA) and on a chunky 8-bit screen (gf_truecolor(0),
       not planar): a 64x64 f=32 gradient (r=4x, g=4y, b=2(x+y), column 0
@@ -614,7 +614,7 @@ Read 2026-11-02 on a6de061d (what the design rests on):
       tests/test_render.c (and gfx_fake.c if the chunky buffers are not
       yet hashable). Passes before and after every later item; a change
       that moves it fails. Lands before K38.
-- [ ] K38 Engine RGB store (T1, T2, T3, T5, T6). Files: engine/vtengine.h
+- [x] K38 (ceacf685, merge 41acbb56) Engine RGB store (T1, T2, T3, T5, T6). Files: engine/vtengine.h
       (vt_set_image_rgb, view fmt/opaque, `unsigned long
       vt_kitty_rgb_made(const vt_term *)` sentinel), engine/vtengine.c
       (vt_image fmt/opaque, budgets, vt_row_image and vt_cell_placeholder
@@ -631,7 +631,7 @@ Read 2026-11-02 on a6de061d (what the design rests on):
       vt_kitty_rgb_made +1 per picture in RGB mode, 0 in index mode;
       switching to off converts: fmt 0, npal <= 256, img_mem divided by 4,
       vt_images unchanged. Fail before (no vt_set_image_rgb). K37 green.
-- [ ] K39 Engine frames in RGB (T4, T5). Files: engine/kitty.c (canvas,
+- [x] K39 (eaa21b90, merge b0f5c9da) Engine frames in RGB (T4, T5). Files: engine/kitty.c (canvas,
       blit, compose, kit_anim_show, frame_px), tests/test_kitty.c (the
       k34_*/k35_* cases run in both modes through one loop; RGB mode
       checks pixels as 0xAARRGGBB). Numbers: root + 2 frames, frame 3 =

@@ -1,7 +1,7 @@
 ---
 date: 2026-10-25
 topic: Amarchy minimal menu mode, a third mode of amarchy-gui with text-only rows and two pens, and the app-icons value none
-status: plan (owner reviews before any code; the mode and its shape are decided, the key name and four details are open)
+status: done (14 of 14 ticked, s52 verified)
 research: thoughts/spot/todos.md, vtcon-05 rows MENU-MINIMAL (owner 2026-10-25 21:55, decision 22:03)
 ledger: thoughts/spot/todos.md, section 2026-10-25 Amarchy session vtcon-05
 repos: vtcon (config/upconf.h, config/upconf_rows.c, amarchy/amarchy.c, amarchy/cxdesc.c, amarchy/gui.c, amarchy/menu_geom.c/.h, amarchy/menu_theme.c/.h, prefs/*, dist docs, host and rig tests)

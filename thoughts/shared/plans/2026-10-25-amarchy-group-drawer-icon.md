@@ -1,7 +1,7 @@
 ---
 date: 2026-10-25
 topic: Amarchy drawn menu, icons for the kind groups (games, demos, music) and for scanned drawer groups
-status: plan (owner reviews before any code)
+status: done (9 of 9 ticked, s52 verified)
 research: thoughts/spot/todos.md, vtcon-05 rows GROUP-DRAWER-ICON (2026-10-25 22:05, 23:45, 23:48, 00:05)
 ledger: thoughts/spot/todos.md, section 2026-10-25 Amarchy session vtcon-05
 repos: vtcon (dist/menu-icons, amarchy/menu_icon.c and .h, amarchy/gui.c, tests/test_keymap.c, one rig row)
