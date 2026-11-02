@@ -49,3 +49,10 @@ Result: NO PR opened. No MUI program on the OS 3.1 rig has a framed group used a
     toggle   "Group Toggle"  id 0 at 360,294 80x15  (Group.mui)
     button   "Plain Button"  id 0 at 360,312 80x15  (Text.mui)
 - Clicks: `ui click "Group Button"` -> app output file RAM:o.txt reads READY, GROUP PRESSED (one click, one line). `ui click "Group Toggle"` -> `[selected]` appears on the toggle line. `ui click "Plain Button"` clicked (no output expected).
+
+## 2026-11-02 second MUI version (vtcon-ee): NOT-TESTABLE (no second muimaster available)
+
+- Rig 60 on OS 3.2 (`UPTERM_RIG=60 rig.py start --max --os 32`, Kickstart 47.115 / Workbench 47.2): `Version LIBS:muimaster.library`, `Version MUI:Libs/muimaster.library` and `Version muimaster.library` all fail "object not found" (rc 20); `List DH0:MUI/Libs` -> object not found; `List DH0:Libs PAT=#?mui#?` lists nothing. The 3.2 system image has no MUI at all, so there is no 3.2 MUI to test.
+- Repo search (dist/, vendor/, build/dist, build/rig-inputs, and build/rig*/ trees; find -iname muimaster*, MUI*.lha, MUI*.lzx): nothing. The only muimaster known is 19.35 from the OS 3.1 rig image (the first PASS). Not downloaded from the web, per the brief.
+- Not done as a consequence: fixture shim/commit (an untested, uncommitted domethod.c shim sits untracked in vtcon-s51-muigroup/tools/rig/fixtures/mui-group-button; the branch has no new commit), wasabid rebuild, ui list, clicks, word at object+120.
+- To make it testable: supply a second MUI install (for example MUI 3.8 / 4.0 / 5.0 library set) as a rig input, then rerun steps 1, 4 and 5.
