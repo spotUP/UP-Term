@@ -14,6 +14,7 @@
 -               Files/install.dos
 -               Files/upupdate
 -               Files/upsame
+-               Files/install-amissl.dos
 -               Files/AmiSSL
 -               Files/AmiNetXDuo
 -               Files/tcpprobe

@@ -1474,6 +1474,65 @@ static void test_desk_icons_state(void)
     CHECK(desk_icons_state(1, 0) != desk_icons_state(1, 1));
 }
 
+/* S31-START-APPLY (rig 55, 2026-11-02): Amarchy started with desktop-theme, flat-system-look and flat-window-gadgets on, on a fresh 3.2 system
+ * (no ENV:Sys/Workbench.prefs, no wbpattern.prefs), kept the backdrop pattern, the icon frame and the volume gauge: only a theme pick wrote them.
+ * The start plan must name the Workbench.prefs (border + gauge) and the backdrop, and the files those writes make must leave nothing to do. */
+static void test_desk_start_prefs_on_writes_border_gauge_backdrop(void)
+{
+    static const char on[] = "[profile default]\ndesktop-theme = on\nflat-system-look = on\nflat-window-gadgets = on\n";
+    static const char off[] = "[profile default]\n";
+    static const char nodesk[] = "[profile default]\nflat-system-look = on\n";
+    static unsigned char mid[128], wb[128], pat[1024];
+    am_prefs p;
+    gtheme t;
+    unsigned mask;
+    int flat, keep, gkeep;
+    long n, g, plen;
+    gt_builtin(&t);
+    amconf_parse(on, (long)strlen(on), &p);
+    mask = amconf_desk_mask(&p);
+    flat = amconf_desk_flat_pens(&p);
+    CHECK_INT(flat, 1);
+    CHECK(mask & (1u << DT_WBPATTERN));
+    /* fresh rig: nothing in ENV: */
+    CHECK_INT(desk_start_plan(mask, flat, 1, 0, -1, -1, -1, &t, 3, 0, -1), DESK_START_WB | DESK_START_PATTERN);
+    /* the writes the start makes (dk_wbborder, dk_put WBPattern) */
+    n = desk_wbborder(1, 0, 0, -1, &keep, mid, sizeof mid);
+    g = desk_wbgauge(1, mid, n, -1, &gkeep, wb, sizeof wb);
+    if (g <= 0) {
+        memcpy(wb, mid, (size_t)n);
+        g = n;
+    }
+    CHECK_INT(desk_wbborder_value(wb, g), 1);            /* icon frame off */
+    CHECK_INT(desk_wbgauge_value(wb, g), 1);             /* volume gauge off */
+    plen = desk_wbpattern(&t, 3, 0, 0, pat, sizeof pat);
+    CHECK(plen > 0);
+    /* second start: ENV: matches, nothing written */
+    CHECK_INT(desk_start_plan(mask, flat, 1, wb, g, keep, gkeep, &t, 3, pat, plen), 0);
+    CHECK_INT(desk_start_plan(mask, flat, 1, wb, g, -1, -1, &t, 3, pat, plen), 0);   /* after a reboot (T: marks gone) too */
+    /* rig 56: the WBPattern editor stores the all-pen-0 DRAWER and SCREEN chunks with depth 1 (file header 26 bytes, chunks 128):
+     * the same pens, so no write (a byte compare planned a backdrop write and a Workbench reset on every start) */
+    CHECK_INT(plen, 26 + 3 * 128);
+    pat[26 + 128 + 8 + 21] = 1;
+    pat[26 + 256 + 8 + 21] = 1;
+    CHECK_INT(desk_start_plan(mask, flat, 1, wb, g, keep, gkeep, &t, 3, pat, plen), 0);
+    pat[26 + 8 + 24] ^= 0x80;                            /* one ROOT pixel on another pen: a real difference */
+    CHECK_INT(desk_start_plan(mask, flat, 1, wb, g, keep, gkeep, &t, 3, pat, plen), DESK_START_PATTERN);
+    /* no 3.2 Workbench editor: the backdrop only */
+    CHECK_INT(desk_start_plan(mask, flat, 0, 0, -1, -1, -1, &t, 3, 0, -1), DESK_START_PATTERN);
+    /* look off: nothing */
+    amconf_parse(off, (long)strlen(off), &p);
+    CHECK_INT(desk_start_plan(amconf_desk_mask(&p), amconf_desk_flat_pens(&p), 1, 0, -1, -1, -1, &t, 3, 0, -1), 0);
+    /* flat alone (no desktop theme): border + gauge; the backdrop is dk_flat_pens' own (already idempotent) */
+    amconf_parse(nodesk, (long)strlen(nodesk), &p);
+    CHECK_INT(desk_start_plan(amconf_desk_mask(&p), amconf_desk_flat_pens(&p), 1, 0, -1, -1, -1, &t, 3, 0, -1), DESK_START_WB);
+}
+
+void suite_desk_start_apply(void)
+{
+    test_desk_start_prefs_on_writes_border_gauge_backdrop();
+}
+
 void suite_desk(void)
 {
     test_desk_icons_state();
@@ -1484,6 +1543,7 @@ void suite_desk(void)
     test_desk_flat_pens_key();
     test_desk_flat_pens_stale_file();
     test_desk_flat_start_refresh();
+    test_desk_start_prefs_on_writes_border_gauge_backdrop();
     test_desk_flat_pens_live();
     test_desk_wbborder();
     test_desk_wbborder_absent();

@@ -27,8 +27,10 @@
  * the host's decoder); o=z; m=1 chunks; t=d, t=f, t=t (the host's file reader); i= I= p=;
  * q=1/2; c= r= x= y= X= Y= w= h= C=1; P= Q= H= V= relative placements (at the
  * parent's top left plus H columns, V rows; the cursor stays; deleted with
- * the parent; ENOPARENT, ECYCLE, ETOODEEP past 8 deep). Not supported, each answered with an
- * error: z<0 below the text (drawn on top), U=1 placeholders, animation,
+ * the parent; ENOPARENT, ECYCLE, ETOODEEP past 8 deep); z= draw order (z<0
+ * under the text, which stays; z <= -1073741824 also under a non-default
+ * cell background). Not supported, each answered with an
+ * error: U=1 placeholders, animation,
  * t=s (answered EBADF). t=f/t go to the host's file reader. Included by vtengine.c (one translation unit with the engine).
  */
 #include "inflate.c"

@@ -2667,32 +2667,83 @@ static void img_run(vr_render *r, const vt_image_view *v, int a, int b, int y)
 /* The images on screen rows [y0, y1), cells [x0, x1): drawn over what
  * draw_rows put there, in the cells still marked as theirs, the oldest
  * first. draw_rows calls it only while the engine has images at all. */
+/* Cell x of a row may take a tile of image v: one over the text in a
+ * VT_CELL_IMAGE cell; one under it (z < 0, K30) in a VT_CELL_UNDER cell,
+ * and with z <= -1073741824 only where the background is the default. */
+static int img_cell(vr_render *r, const vt_image_view *v, const vt_cell *c)
+{
+    vt_color f, b;
+    if (v->z >= 0)
+        return (c->pad & VT_CELL_IMAGE) != 0;
+    if (!(c->pad & VT_CELL_UNDER))
+        return 0;
+    if (v->z > -1073741824L)
+        return 1;
+    vt_resolve_colors(r->t, c, &f, &b);
+    return b == VT_COLOR_DEFAULT_BG;
+}
+
+/* The glyphs of cells [a, b) of row y again, over the image under them
+ * (K30): in JAM1 and plain (D13: no antialiasing, hard edges -- R6: no
+ * read back of the picture to blend with). Printable ASCII only. */
+static void under_text(vr_render *r, const vt_cell *c, int a, int b, int y)
+{
+    vr_style st;
+    UBYTE ch;
+    int x;
+    for (x = a; x < b; x++) {
+        if (!(c[x].pad & VT_CELL_UNDER) || c[x].ch <= ' ' || c[x].ch >= 0x7F || c[x].width != 1)
+            continue;
+        cell_style(r, &c[x], 0, &st);
+        ch = (UBYTE)c[x].ch;
+        ink_a(r, st.fg);
+        SetDrMd(r->rp, JAM1);
+        SetSoftStyle(r->rp, style_of(st.attr) & ~FSF_BOLD, FSF_BOLD | FSF_UNDERLINED | FSF_ITALIC);
+        Move(r->rp, (WORD)(r->ox + x * r->cw), (WORD)(r->oy + y * r->ch + r->base));
+        Text(r->rp, (STRPTR)&ch, 1);
+    }
+    SetSoftStyle(r->rp, 0, FSF_BOLD | FSF_UNDERLINED | FSF_ITALIC);
+}
+
+/* The images of the rows, in vt_row_image's order: those under the text
+ * (z < 0) first, then the row's glyphs over them, then those over the
+ * text. Only rows that hold an image pay for any of it. */
 static void draw_images(vr_render *r, int x0, int y0, int x1, int y1)
 {
     vt_image_view v;
     const vt_cell *c;
-    int y, i, x, a, xe, ncells, gy;
+    int y, i, x, a, xe, ncells, gy, under;
     for (y = y0; y < y1; y++) {
         gy = y - r->view + r->jump;
         c = vt_row(r->t, gy, &ncells);
         if (!c || (!r->view && vt_row_size(r->t, gy)))
             continue; /* a double-size row shows no images */
-        for (i = 0; vt_row_image(r->t, gy, i, &v); i++) {
+        under = 0;
+        for (i = 0;; i++) {
+            int more = vt_row_image(r->t, gy, i, &v);
+            if (under && (!more || v.z >= 0)) {
+                under_text(r, c, x0, x1 < ncells ? x1 : ncells, y);
+                under = 0;
+            }
+            if (!more)
+                break;
             xe = v.col0 + (v.px0 + v.w + v.cw - 1) / v.cw;
             if (xe > x1)
                 xe = x1;
             if (xe > ncells)
                 xe = ncells;
             for (x = v.col0 > x0 ? v.col0 : x0; x < xe;) {
-                if (!(c[x].pad & VT_CELL_IMAGE)) {
+                if (!img_cell(r, &v, &c[x])) {
                     x++;
                     continue;
                 }
-                for (a = x; x < xe && (c[x].pad & VT_CELL_IMAGE); x++)
+                for (a = x; x < xe && img_cell(r, &v, &c[x]); x++)
                     ;
                 if (cpu_refuses(r))
                     return;
                 img_run(r, &v, a, x, y);
+                if (v.z < 0)
+                    under = 1;
             }
         }
     }
