@@ -278,7 +278,7 @@ commit.
 
 #### Placements: relative and z
 
-- [ ] K29 Relative placements P=, Q=, H=, V=. The child is placed at the
+- [x] K29 Relative placements P=, Q=, H=, V= (done c0a4a712: host tests k29_*, rig check tools/rig/kitty_rel_rig.py). The child is placed at the
       parent placement's top-left cell plus H columns, V rows (signed,
       K19); it never moves the cursor whatever C= says. vt_image gains
       ppid/pkid (the parent's kid/pid) and a depth; deleting a parent

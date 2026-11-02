@@ -695,6 +695,110 @@ static void k24_the_missing_deletes(void)
     }
 }
 
+/* ---- K29: relative placements (P= Q= H= V=) ---- */
+
+static int is_image(vt_term *t, int x, int y)
+{
+    return (h_cell(t, x, y)->pad & VT_CELL_IMAGE) != 0;
+}
+
+/* a one-cell picture with the keys, at the cursor unless they name a parent */
+static void put_rel(vt_term *t, const char *keys)
+{
+    h_put(t, "\033_Ga=T,f=24,s=2,v=2,");
+    h_put(t, keys);
+    h_put(t, ";");
+    h_put(t, rgb2x2);
+    h_put(t, "\033\\");
+}
+
+/* The reachability test: escape bytes in, the child's cells out. The
+ * cell (parent + H, V) can only come from the relative path: before K29
+ * P/Q/H/V were ignored and the child landed at the cursor. */
+static void k29_child_sits_at_the_parent_plus_h_v(void)
+{
+    vt_term *t = kitty_term(20, 8);
+    int x, y;
+    put_at(t, 3, 2, "i=1,p=1"); /* parent at column 2, row 1 (0-based) */
+    CHECK(is_image(t, 2, 1));
+    h_put(t, "\033[7;9H"); /* the cursor far away: column 8, row 6 */
+    h_reply_clear();
+    put_rel(t, "i=2,p=1,P=1,Q=1,H=2,V=1");
+    CHECK_STR(h_reply, "\033_Gi=2,p=1;OK\033\\");
+    CHECK(is_image(t, 4, 2));  /* 2 + 2, 1 + 1 */
+    CHECK(!is_image(t, 8, 6)); /* not at the cursor */
+    vt_cursor(t, &x, &y);      /* C=0, and still the cursor stays */
+    CHECK_INT(x, 8);
+    CHECK_INT(y, 6);
+    put_rel(t, "i=3,p=1,P=2,Q=1,H=-3,V=-2"); /* signed, from the child's cell */
+    CHECK(is_image(t, 1, 0));
+    CHECK_INT(shown(t), 3);
+    vt_free(t);
+}
+
+static void k29_deleting_a_parent_deletes_its_children(void)
+{
+    vt_term *t = kitty_term(20, 8);
+    put_at(t, 1, 1, "i=1,p=1");
+    put_rel(t, "i=2,p=1,P=1,Q=1,H=4");
+    put_rel(t, "i=3,p=1,P=2,Q=1,V=2"); /* a grandchild */
+    put_at(t, 1, 5, "i=4,p=1");          /* unrelated */
+    CHECK_INT(shown(t), 4);
+    CHECK(is_image(t, 4, 2));
+    h_put(t, "\033_Ga=d,d=i,i=1\033\\");
+    CHECK_INT(shown(t), 1);
+    CHECK(is_image(t, 0, 4));
+    vt_free(t);
+}
+
+static void k29_the_error_replies(void)
+{
+    vt_term *t = kitty_term(20, 8);
+    int n;
+    char b[64];
+    h_reply_clear();
+    put_rel(t, "i=2,p=1,P=9,Q=1");
+    CHECK_STR(h_reply, "\033_Gi=2,p=1;ENOPARENT:no such parent placement\033\\");
+    CHECK_INT(shown(t), 0);
+    put_at(t, 1, 1, "i=1,p=1");
+    h_reply_clear();
+    h_put(t, "\033_Ga=p,i=1,p=1,P=1,Q=1\033\\"); /* itself */
+    CHECK_STR(h_reply, "\033_Gi=1,p=1;ECYCLE:the parent chain loops\033\\");
+    put_rel(t, "i=2,p=1,P=1,Q=1,H=1");
+    h_reply_clear();
+    h_put(t, "\033_Ga=p,i=1,p=1,P=2,Q=1\033\\"); /* its parent's parent is the one being placed */
+    CHECK_STR(h_reply, "\033_Gi=1,p=1;ECYCLE:the parent chain loops\033\\");
+    CHECK_INT(shown(t), 2);
+    /* the chain 1 <- 2 <- ... <- 9 is 8 deep; the 10th is one too many */
+    for (n = 3; n <= 10; n++) {
+        static const char *const id[] = { "", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10" };
+        strcpy(b, "i=");
+        strcat(b, id[n]);
+        strcat(b, ",p=1,P=");
+        strcat(b, id[n - 1]);
+        strcat(b, ",Q=1,H=1");
+        h_reply_clear();
+        put_rel(t, b);
+    }
+    CHECK_STR(h_reply, "\033_Gi=10,p=1;ETOODEEP:more than 8 parents deep\033\\");
+    CHECK_INT(shown(t), 9);
+    vt_free(t);
+}
+
+static void k29_virtual_placements_and_parents(void)
+{
+    vt_term *t = kitty_term(20, 8);
+    put_rel(t, "i=5,p=1,U=1"); /* a virtual parent: none until K31 */
+    h_reply_clear();
+    put_rel(t, "i=6,p=1,P=5,Q=1");
+    CHECK_STR(h_reply, "\033_Gi=6,p=1;ENOPARENT:no such parent placement\033\\");
+    put_at(t, 1, 1, "i=1,p=1");
+    h_reply_clear();
+    put_rel(t, "i=7,p=1,U=1,P=1,Q=1");
+    CHECK_STR(h_reply, "\033_Gi=7,p=1;EINVAL:a virtual placement has no parent\033\\");
+    vt_free(t);
+}
+
 void suite_kitty(void)
 {
     raw_rgb_becomes_an_indexed_image();
@@ -723,4 +827,8 @@ void suite_kitty(void)
     k22_transient_pictures_are_evicted_first();
     k23_pixel_offset_inside_the_first_cell();
     k24_the_missing_deletes();
+    k29_child_sits_at_the_parent_plus_h_v();
+    k29_deleting_a_parent_deletes_its_children();
+    k29_the_error_replies();
+    k29_virtual_placements_and_parents();
 }
