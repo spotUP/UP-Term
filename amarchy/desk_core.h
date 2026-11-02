@@ -308,4 +308,16 @@ int desk_confirm_answer(desk_confirm *c, int keep);
 /* whole seconds left (0 when not pending or past) */
 long desk_confirm_left(const desk_confirm *c, long now);
 
+/* S31-START-APPLY (rig 55, 2026-11-02): which desk files Amarchy's start must rewrite so ENV: matches the prefs it starts with. Before this only
+ * a theme pick (desk_dos_apply) wrote them, so a fresh 3.2 system with desktop-theme / flat-system-look on kept the stock backdrop pattern, the
+ * icon frame and the volume gauge. DESK_START_WB: flat on and desk_wbborder or desk_wbgauge would change the Workbench.prefs bytes wb (wblen < 0:
+ * none read, the created-file case; wbok 0: no 3.2 Workbench editor, never). DESK_START_PATTERN: DT_WBPATTERN in mask and desk_wbpattern(th,
+ * depth) differs from the ENV: bytes pat (patlen < 0: none). 0 when ENV: already matches: a second start writes nothing. */
+#define DESK_START_WB 1u
+#define DESK_START_PATTERN 2u
+/* 1 when two wbpattern.prefs show the same pens (the editor stores an all-pen-0 chunk with depth 1) */
+int desk_wbpattern_same(const unsigned char *a, long alen, const unsigned char *b, long blen);
+unsigned desk_start_plan(unsigned mask, int flat, int wbok, const unsigned char *wb, long wblen, int saved, int gsaved,
+                         const gtheme *th, int depth, const unsigned char *pat, long patlen);
+
 #endif

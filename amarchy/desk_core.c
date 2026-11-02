@@ -582,6 +582,36 @@ static const unsigned char *prev_screen(const unsigned char *prev, long prevlen)
     return 0;
 }
 
+/* S31-START-APPLY rig 56: the WBPattern editor stores an all-pen-0 chunk with depth 1 where desk_wbpattern writes depth 3 (and 1 for
+ * the "none" chunk written with depth 0), so a byte compare planned a backdrop write (and a Workbench reset) on every start. Two files
+ * match when the header bytes match and every chunk has the same which/flags and the same pen at every pixel. */
+static int pattern_pen_at(const unsigned char *data, int depth, int x, int y)
+{
+    int p, pen = 0;
+    for (p = 0; p < depth && p < PT_DEPTH_MAX; p++)
+        if (data[p * 32 + y * 2 + (x >> 3)] & (0x80 >> (x & 7)))
+            pen |= 1 << p;
+    return pen;
+}
+
+int desk_wbpattern_same(const unsigned char *a, long alen, const unsigned char *b, long blen)
+{
+    long head = alen - 3 * PT_CHUNK, k;
+    int x, y;
+    if (alen != blen || head < 0 || memcmp(a, b, (size_t)head))
+        return 0;
+    for (k = 0; k < 3; k++) {
+        const unsigned char *ca = a + head + k * PT_CHUNK, *cb = b + head + k * PT_CHUNK;
+        if (memcmp(ca, cb, 8 + 20) || memcmp(ca + 8 + 22, cb + 8 + 22, 2))
+            return 0;
+        for (y = 0; y < 16; y++)
+            for (x = 0; x < 16; x++)
+                if (pattern_pen_at(ca + 8 + 24, ca[8 + 21], x, y) != pattern_pen_at(cb + 8 + 24, cb[8 + 21], x, y))
+                    return 0;
+    }
+    return 1;
+}
+
 long desk_wbpattern(const gtheme *t, int depth, const unsigned char *prev, long prevlen,
                     unsigned char *out, long cap)
 {
@@ -1271,4 +1301,27 @@ int desk_confirm_answer(desk_confirm *c, int keep)
 long desk_confirm_left(const desk_confirm *c, long now)
 {
     return c->pending && now < c->deadline ? c->deadline - now : 0;
+}
+
+unsigned desk_start_plan(unsigned mask, int flat, int wbok, const unsigned char *wb, long wblen, int saved, int gsaved,
+                         const gtheme *th, int depth, const unsigned char *pat, long patlen)
+{
+    static unsigned char mid[1024], out[1024];
+    unsigned plan = 0;
+    int keep, gkeep;
+    long n, g;
+    if (flat && wbok && wblen < (long)sizeof mid) {
+        if (wblen < 0)
+            wblen = 0;
+        n = desk_wbborder(1, wb, wblen, saved, &keep, mid, sizeof mid);
+        g = desk_wbgauge(1, n > 0 ? mid : wb, n > 0 ? n : wblen, gsaved, &gkeep, out, sizeof out);
+        if (n > 0 || g > 0)
+            plan |= DESK_START_WB;
+    }
+    if ((mask >> DT_WBPATTERN) & 1) {
+        n = desk_wbpattern(th, depth, patlen > 0 ? pat : 0, patlen > 0 ? patlen : 0, out, sizeof out);
+        if (n > 0 && !desk_wbpattern_same(out, n, pat, patlen))
+            plan |= DESK_START_PATTERN;
+    }
+    return plan;
 }

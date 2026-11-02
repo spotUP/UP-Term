@@ -581,6 +581,7 @@ int main(void)
         tick_hook(wb_gate);
     desk_dos_flat_pens_refresh();               /* FLAT-PENS-STALE-FILE: after the windows (or the W43 hold) are set up, the hooks above close/reopen them around a reset */
     desk_dos_marker_recover();                  /* FP-3 (R1.9): an apply that never reached Keep or Revert does not stick */
+    desk_dos_start_apply();                     /* S31-START-APPLY: after the recover, so a leftover revert runs first; prefs on reach ENV: */
     while (!g_quit) {
         sigs = Wait(cxs | rxs | nos | nts | lps | wrs | cws | g_bs | g_bts | tks | shot_region_sigmask() | dc_sigmask() | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F);
         if (sigs & SIGBREAKF_CTRL_C)
