@@ -50,7 +50,7 @@ static void test_plan_no_overlap(void)
         desk_pen_plan p;
         desk_pen_plan_for(depth, &p);
         CHECK_INT(p.button, 4);
-        CHECK_INT(p.backdrop, depth >= 3 ? DK_RED : DK_MUTED); /* FLAT-COLOUR-OVERHAUL: own pen at 3+ planes */
+        CHECK_INT(p.backdrop, depth >= 3 ? DK_RED : DK_BG); /* FLAT-COLOUR-OVERHAUL: own pen at 3+ planes; FILENAME-PEN: below that pen 5 folds to DK_BG */
         CHECK_INT(desk_backdrop_pen_at(depth), p.backdrop); /* L6: the backdrop pen (WBPattern tile, palette write) is the plan's */
         CHECK(p.button != p.backdrop);
         CHECK(p.icon_first + p.icon_count <= (1 << depth));

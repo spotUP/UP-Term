@@ -214,7 +214,7 @@ void desk_pens_for(int flat, unsigned char pens[DK_SLOTS])
 void desk_pen_plan_for(int depth, desk_pen_plan *p)
 {
     p->button = DK_SELECTION;
-    p->backdrop = depth >= PT_DEPTH_MAX ? DK_RED : DK_MUTED; /* FLAT-COLOUR-OVERHAUL: pen 7 is its own backdrop pen; FILENAME-PEN: below 3 planes no pen is free (DK_DARKER = 5 is off a 4-colour screen), the backdrop takes pen 1 as the old shared darker pen did */
+    p->backdrop = depth >= PT_DEPTH_MAX ? DK_RED : desk_pen_fold(DK_DARKER, 1 << (depth > 0 ? depth : 1)); /* FLAT-COLOUR-OVERHAUL: pen 7 is its own backdrop pen; FILENAME-PEN: below 3 planes the shared darker pen (5) is off the screen and folds to DK_BG, the same rule as the 4-colour pen map */
     if (depth >= 6) {
         p->icon_first = 32; p->icon_count = 16; p->icon_slot = 0;
     } else if (depth >= 4) {
@@ -265,6 +265,25 @@ static unsigned wide(uc_u32 c, int shift)
     return (b << 8) | b;
 }
 
+/* FILENAME-PEN: the one place the pen maps of a palette.prefs body are written. The 8-colour table keeps the pens as they are; the
+ * 4-colour table (pens 0-3 only) folds every pen at or above the colour count to DK_BG, so a role on pen 5 (DK_DARKER) never names a
+ * pen the screen does not have. */
+int desk_pen_fold(int pen, int ncolors)
+{
+    return pen >= ncolors ? DK_BG : pen;
+}
+
+static void put_pen_tables(unsigned char *body, const unsigned char pens[DK_SLOTS])
+{
+    int i;
+    for (i = 0; i < DK_SLOTS; i++) {
+        put16(body + PAL_4PENS + 2 * i, (unsigned)desk_pen_fold(pens[i], 4));
+        put16(body + PAL_8PENS + 2 * i, (unsigned)desk_pen_fold(pens[i], 8));
+    }
+    put16(body + PAL_4PENS + 2 * DK_SLOTS, 0xffff);
+    put16(body + PAL_8PENS + 2 * DK_SLOTS, 0xffff);
+}
+
 /* the palette.prefs body for ncolors colours (rgb16[i] = 16-bit r, g, b) and the pen map pens */
 static long palette_fill(int ncolors, const unsigned char pens[DK_SLOTS], const unsigned short rgb16[][3], unsigned char *out, long cap)
 {
@@ -277,12 +296,7 @@ static long palette_fill(int ncolors, const unsigned char pens[DK_SLOTS], const 
     be32_put(body + 4, (unsigned long)PAL_BODY);
     body += 8;
     memset(body, 0, (size_t)PAL_BODY);
-    for (i = 0; i < DK_SLOTS; i++) {
-        put16(body + PAL_4PENS + 2 * i, pens[i]);
-        put16(body + PAL_8PENS + 2 * i, pens[i]);
-    }
-    put16(body + PAL_4PENS + 2 * DK_SLOTS, 0xffff);
-    put16(body + PAL_8PENS + 2 * DK_SLOTS, 0xffff);
+    put_pen_tables(body, pens);
     for (i = 0; i < ncolors; i++) {
         unsigned char *e = body + PAL_COLORS + 8 * i;
         put16(e, (unsigned)i);
@@ -393,16 +407,12 @@ long desk_palette_pens(const unsigned char *cur, long curlen, const unsigned cha
 {
     long pos = DK_HDR, body, size;
     char id[4];
-    int i;
     if (!cur || !is_prefs(cur, curlen) || curlen > cap)
         return 0;
     while (next_chunk(cur, curlen, &pos, id, &body, &size))
         if (!memcmp(id, "PALT", 4) && size >= PAL_COLORS) {
             memcpy(out, cur, (size_t)curlen);
-            for (i = 0; i < DK_SLOTS; i++) {
-                put16(out + body + PAL_4PENS + 2 * i, pens[i]);
-                put16(out + body + PAL_8PENS + 2 * i, pens[i]);
-            }
+            put_pen_tables(out + body, pens);
             return curlen;
         }
     return 0;

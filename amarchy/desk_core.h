@@ -132,6 +132,8 @@ int desk_backdrop_pen_at(int depth);
 int desk_backdrop_screen_pen(int depth);
 long desk_palette_rgb(const unsigned char *cur, long curlen, int pen, int depth);
 long desk_palette_set_rgb(const unsigned char *cur, long curlen, int pen, int depth, uc_u32 c, unsigned char *out, long cap);
+/* FILENAME-PEN: a pen at or above the screen's colour count folds to DK_BG (the one fold rule of the pen maps and the backdrop fallback) */
+int desk_pen_fold(int pen, int ncolors);
 long desk_palette_pens(const unsigned char *cur, long curlen, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap);
 /* FLAT-PENS-STALE-FILE: 1 when the palette file bytes cur differ from a write of pens (either pen table, any slot), or are no palette file */
 int desk_palette_pens_stale(const unsigned char *cur, long curlen, const unsigned char pens[DK_SLOTS]);

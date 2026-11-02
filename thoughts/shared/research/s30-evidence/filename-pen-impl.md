@@ -34,3 +34,10 @@ New prefs key icon-text: plain (default), outline, shadow, cycle on the Flat Loo
 
 tests/test_desk.c (test_desk_filename_pen, font mode cases, backdrop fallback), tests/test_iconpen.c (DK_MUTED == 1, DK_DARKER == 5),
 tests/test_amconf.c (icon-text default/parse, flat row write/read).
+
+# Finished (2026-11-02)
+
+- Fold rule (owner decision): desk_pen_fold(pen, ncolors) in amarchy/desk_core.c; pen >= colour count becomes DK_BG. Applied in put_pen_tables (the one writer of both pen tables of a palette.prefs body: 4-colour table folded, 8-colour table raw) and in desk_pen_plan_for (backdrop at depth < 3 = DK_BG). The earlier "backdrop takes DK_MUTED at depth 2" is replaced.
+- Goldens tests/data/desk/palette-*.prefs: no generator exists; the four palette-p1a/flat files were regenerated from desk_palette output (selection entry kept), palette-gui-save.prefs had colour entries 1 and 5 swapped. Tests assert the new order (pen 1 muted, pen 5 dark), 4-colour table folded.
+- Revert proof: with the enum swap reverted the desk suite fails 73 checks (test_desk_filename_pen DK_MUTED=5 / DK_DARKER=1, goldens, backdrop); iconpen DK_MUTED==1 fails too.
+- Unverified: desk_pens_reset compares the live DrawInfo array (no depth argument) with the unfolded map; on a 4-colour Workbench the live pens are folded, so the reset verdict reports "needs reset" there. Not checked on a rig.
