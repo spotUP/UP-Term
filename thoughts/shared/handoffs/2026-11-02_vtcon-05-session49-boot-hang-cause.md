@@ -20,11 +20,18 @@ status: cause found, fix handed to vtcon-16 (Amarchy owner)
 - Fix handed to vtcon-16 with the proposed change (LockPubScreenList + shared wb_screen() walk from
   amarchy/iconpen_dos.c:84) and the full list of same-pattern call sites.
 - Rig 2 returned to musicplayer-16, stopped. Rigs 37 and 48 deleted earlier (owner OK).
+- Owner flagged 20 GB of leftover rig folders. Own rigs 31 and 35 deleted; musicplayer-16's idle rigs deleted
+  with owner OK. Root fix 8df99f0b: `rig.py stop` clears rig N>1 (unless --keep or emulator still running);
+  `rig.py start` and `rig.py gc` sweep other rigs' folders idle >2 h with no emulator and no held start.lock
+  (log build/rig-gc.log). Follow-up 58b83636: rig start tests stub gc/guard_stale_base/refuse_port_clash so a
+  unit test can never sweep the real build/ folders.
+- vtcon-16 landed the Amarchy fix: origin/main 13955b72 (fix 5145f5a5, ipd_lock_wb_screen()); forwarded to
+  dctelnet-db and musicplayer-16.
 
 ## Open
-1. Wait for vtcon-16's Amarchy fix commit; forward it to dctelnet-db and musicplayer-16 (both re-run
-   on OS 3.1). Then mark ledger lines 7 (AMIBERRY-DEFAULT) and 8 (FSUAE-WASABID-NO-ANSWER) done.
-2. Secondary wasabid defect: cmd_screenctl sends on the socket while holding LockIBase
+1. vtcon-16 runs 3+ fresh OS 3.1 RTG boots on rig 50. On 0 hangs, mark ledger lines 7 (AMIBERRY-DEFAULT)
+   and 8 (FSUAE-WASABID-NO-ANSWER) done. Ask musicplayer-16 whether upkg_browse_rig.py:150 needs --keep.
+2. BLOCKED on owner (agent spawn denied by permission classifier). Secondary wasabid defect: cmd_screenctl sends on the socket while holding LockIBase
    (build/wasabi/src/wasabid.c:5783-5802). Buffer first like WINDOWS (~2591). Write a PR to
    creep-ltx/wasabi (spotUP is a collaborator; merge own PRs there).
 3. dctelnet-db's 3.1 + Amiberry sample with ~91% CPU and wasabid never up may be a second hang.
