@@ -122,8 +122,9 @@ class RequireFresh(unittest.TestCase):
         put.assert_not_called()
 
     # KIT-AMARCHY-FLAT: --setup stages the build's amarchy-flat and proves Amarchy's boot start loaded it
-    def _setup_rig(self, flat_survives_break=False, status_word="on"):
-        """A fake rig: Status lists the kit Amarchy and its amarchy-flat until Break; Run Amarchy brings both back."""
+    def _setup_rig(self, flat_survives_break=False, status_word="on", flat_pref="on"):
+        """A fake rig: Status lists the kit Amarchy and its amarchy-flat until Break; Run Amarchy brings Amarchy back,
+        and amarchy-flat only while ENV:Amarchy/prefs turns flat on (desk_dos dk_flat_sync)."""
         procs = {2: "UP-Term:bin/Amarchy", 3: "UP-Term:bin/amarchy-flat BOOT"}
         cmds = []
 
@@ -137,9 +138,13 @@ class RequireFresh(unittest.TestCase):
                     procs.pop(n, None)
             if cmd.startswith("Run >NIL: VTCX:Apps/bin/Amarchy"):
                 procs[4] = "VTCX:Apps/bin/Amarchy"
-                if not any("amarchy-flat" in v for v in procs.values()):
+                if flat_pref == "on" and not any("amarchy-flat" in v for v in procs.values()):
                     procs[5] = "UP-Term:bin/amarchy-flat BOOT"
+            if cmd.startswith("Type ENV:Amarchy/prefs"):
+                return 0, "; Amarchy preferences.\n[profile default]\nflat-system-look = %s\n" % flat_pref
             if cmd.endswith("amarchy-flat STATUS"):
+                if not any("amarchy-flat" in v for v in procs.values()):
+                    return 0, "flat=absent\n"
                 return 0, "flat=%s calls=3 chained=0\n" % status_word
             return 0, ""
         return run, cmds
@@ -175,6 +180,13 @@ class RequireFresh(unittest.TestCase):
         run, cmds = self._setup_rig(status_word="held")
         g, ok, make, put = self._run_setup(run)
         self.assertFalse(ok)
+
+    def test_setup_passes_with_flat_prefs_off_and_no_resident(self):
+        run, cmds = self._setup_rig(flat_pref="off")
+        g, ok, make, put = self._run_setup(run)
+        self.assertIn("VTCX:Apps/bin/amarchy-flat STATUS", cmds)
+        self.assertTrue(ok)
+        self.assertEqual(g.bad, 0)
 
 
 if __name__ == "__main__":

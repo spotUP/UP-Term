@@ -1213,9 +1213,20 @@ def setup():
     return flat_started('setup')
 
 
+def flat_prefs_on():
+    """True when ENV:Amarchy/prefs turns flat-system-look or flat-window-gadgets on (both default off, amconf_core.h)."""
+    out = c.run('Type ENV:Amarchy/prefs', 20)[1]
+    return re.search(r'^\s*flat-(system-look|window-gadgets)\s*=\s*on\b', out, re.M) is not None
+
+
 def flat_started(tag):
-    """Amarchy's start (desk_dos BOOT) loaded amarchy-flat from UP-Term:bin, which resolves to SETUP_BIN first, and
-    the resident answers STATUS with flat=on or flat=off (the prefs pick which); held or absent means no hook went in."""
+    """Amarchy's start (desk_dos dk_flat_sync) loads amarchy-flat from UP-Term:bin, which resolves to SETUP_BIN first,
+    only while a flat pref is on. Prefs off: the right state is no resident (STATUS flat=absent). Prefs on: the resident
+    answers STATUS with flat=on or flat=off; held or absent means no hook went in."""
+    if not flat_prefs_on():
+        out = c.run('%s/amarchy-flat STATUS' % SETUP_BIN, 20)[1]
+        return check('flat=absent' in out, '%s: flat prefs off, Amarchy loaded no amarchy-flat, STATUS: %s'
+                     % (tag, out.strip()[:60]))
     for _ in range(15):
         if process_running('amarchy-flat'):
             break
