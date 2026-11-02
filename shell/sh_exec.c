@@ -7976,6 +7976,9 @@ static long run_program(sh_shell *sh, sh_list *argv, const sh_io *io, int wait)
 
 static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int wait, long *job, char **last)
 {
+    /* wait SH_SPAWN_STAGE: a pipeline stage, started without a wait as a `&` job is, but the OS layer
+     * is told so (os.run): it keeps the shell's streams instead of handles that outlive the shell */
+    int run_mode = wait;
     sh_list argv;
     sh_io io;
     const sh_word *a;
@@ -7985,6 +7988,8 @@ static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int w
     saved_var *saved = 0;   /* on the heap: this frame is on every recursion level */
     int n_saved = 0, n_assigns = 0, nofunc = 0, cmd_mode = 0;
     memset(&argv, 0, sizeof(argv));
+    if (wait == SH_SPAWN_STAGE)
+        wait = 0;
     if (job)
         *job = 0;
     sh->subst_ran = 0;
@@ -8144,7 +8149,7 @@ static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int w
                 io.owned |= SH_OWN_ERR;
         }
         sh->os.suspendable = wait && sh->os.cont;
-        st = run_program(sh, &argv, &io, wait);
+        st = run_program(sh, &argv, &io, run_mode);
         sh->os.suspendable = 0;
         if (!wait) {
             /* a redirection took the place of a pipe end the pipeline opened for this command: that
@@ -8381,7 +8386,7 @@ static long exec_pipeline(sh_shell *sh, const sh_node *n, const sh_io *io)
         if (st[i]->kind == SH_CMD)
             debug_trap(sh, st[i], io);
         if (is_external(sh, st[i])) {
-            long r = exec_cmd(sh, st[i], &sio[i], 0, &job[i]);
+            long r = exec_cmd(sh, st[i], &sio[i], SH_SPAWN_STAGE, &job[i]);
             if (!job[i]) {
                 /* it did not start (not found, or a redirection failed): its streams are gone */
                 started[i] = 1;
@@ -9926,8 +9931,10 @@ static char *core_subst1(sh_ctx *c, const char *cmd)
         io.out = wr;
         io.owned = SH_OWN_OUT;
         /* the shell reads the pipe to its end, then waits for the child: nothing here changes a
-         * variable before the child has ended, so it reads them in place (share) */
-        st = subshell_mode(sh, p.tree, &io, 0, 0, 1, &job);
+         * variable before the child has ended, so it reads them in place (share). Waited for, so a
+         * stage (SH_SPAWN_STAGE), not a `&` job: it keeps the shell's input and error stream, as
+         * bash's $( ) does, not NIL: and handles of its own */
+        st = subshell_mode(sh, p.tree, &io, 0, 1, 1, &job);
         sh_parse_free(&p);
         while ((n = sh->os.read(sh->os.data, rd, buf, sizeof(buf))) > 0)
             pb_add(&out, buf, n);

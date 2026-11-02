@@ -1412,7 +1412,7 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
             free(line);
         }
     }
-    if (wait) {
+    if (wait == SH_SPAWN_FG) {
         /* in the foreground: the shell's own streams, not handed over */
         j->in = (BPTR)io->in;
         j->out = (BPTR)io->out;
@@ -1458,6 +1458,12 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
         if (io->owned & SH_OWN_OUT) {
             j->out = (BPTR)io->out;
             j->close_out = 1;
+        } else if (io->out && !IsInteractive((BPTR)io->out) && wait == SH_SPAWN_STAGE) {
+            /* a pipeline stage: the shell waits for it, so it shares the shell's handle (one
+             * offset, as Unix shares the descriptor). bg_own_stream gave a PIPE: stream NIL:
+             * (no lock to duplicate): `echo "$(echo abc | sed s/b/X/)"` printed nothing */
+            j->out = (BPTR)io->out;
+            j->close_out = 0;
         } else if (io->out && !IsInteractive((BPTR)io->out)) {
             j->out = bg_own_stream(j, 0, (BPTR)io->out);
             j->close_out = j->out != 0;
@@ -1472,6 +1478,9 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
             j->close_err = 1;
         } else if (io->err && io->err == io->out && !(io->owned & SH_OWN_OUT) && !IsInteractive((BPTR)io->err)) {
             j->err = j->out; /* one stream (2>&1 outside): one handle, one offset; closed as out */
+            j->close_err = 0;
+        } else if (io->err && !IsInteractive((BPTR)io->err) && wait == SH_SPAWN_STAGE) {
+            j->err = (BPTR)io->err; /* a stage: the shell's handle, as its output */
             j->close_err = 0;
         } else if (io->err && !IsInteractive((BPTR)io->err)) {
             j->err = bg_own_stream(j, 1, (BPTR)io->err);
@@ -1518,7 +1527,7 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
     live_jobs = j;
     Permit();
     PutMsg(&p->pr_MsgPort, &j->msg);
-    if (wait)
+    if (wait == SH_SPAWN_FG)
         return os_wait(os, (long)j);
     return (long)j;
 }

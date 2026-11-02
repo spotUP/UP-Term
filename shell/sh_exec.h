@@ -84,9 +84,14 @@ typedef struct sh_os {
     int   (*pipe)(void *os, sh_fh *rd, sh_fh *wr);
     /* start argv as a command with io; the streams io->owned marks become
      * the OS layer's to close -- when the command ends, or at once if it
-     * cannot start (the caller never closes them again). wait: return its exit
-     * status (-1: not found); !wait: return a job id (> 0) for sh_os.wait,
-     * or -1 */
+     * cannot start (the caller never closes them again). wait, as for spawn:
+     * SH_SPAWN_FG returns its exit status (-1: not found); SH_SPAWN_BG (a `&`
+     * job, a coproc) and SH_SPAWN_STAGE (a pipeline stage the caller waits
+     * for) return a job id (> 0) for sh_os.wait, or -1. A BG job gets handles
+     * of its own for the streams it does not own (it can outlive the shell);
+     * a STAGE shares them: the last stage of `a | b` inside $( ) or in a
+     * stage of an outer pipeline writes to a pipe, which has no lock to
+     * duplicate, and a BG handle there was NIL: */
     long  (*run)(void *os, char **argv, const sh_io *io, int wait);
     long  (*wait)(void *os, long job);            /* its exit status */
     int   (*done)(void *os, long job);            /* 1: it has ended (wait returns at once) */

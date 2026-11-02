@@ -273,7 +273,7 @@ static long h_run(void *os, char **argv, const sh_io *io, int wait)
         free(envp);
     }
     close_owned(io);
-    if (wait)
+    if (wait == SH_SPAWN_FG)
         return reap(pid, 1);
     for (i = 0; i < MAXJOB; i++)
         if (!jobs[i].pid) {
