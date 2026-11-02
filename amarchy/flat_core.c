@@ -419,9 +419,15 @@ int flat_dim_pen(const flat_state *s, int depth)
     return flat_button_pen(s, depth);
 }
 
+/* pen_dimtext (DK_MUTED) is usable: set, 8+ colours, and a pen of the depth. Shared by the dim text and the scroller knob. */
+static int flat_dimtext_ok(const flat_state *s, int depth)
+{
+    return depth >= 3 && depth <= 8 && s->pen_dimtext && s->pen_dimtext < (1 << depth);
+}
+
 int flat_dimtext_pen(const flat_state *s, int depth)
 {
-    if (depth >= 3 && depth <= 8 && s->pen_dimtext && s->pen_dimtext < (1 << depth))
+    if (flat_dimtext_ok(s, depth))
         return s->pen_dimtext;
     return s->pen_text;
 }
@@ -500,7 +506,7 @@ int flat_scroller_pen(const flat_state *s, int depth, int cx, int cy, int cw, in
         ky = cy + (int)(((unsigned long)vpot * (unsigned long)(ch - kh)) / 0xFFFFUL);
     }
     if (x0 >= kx && x1 < kx + kw && y0 >= ky && y1 < ky + kh)
-        return (depth >= 3 && depth <= 8 && s->pen_dimtext && s->pen_dimtext < (1 << depth)) ? s->pen_dimtext : flat_button_pen(s, depth);   /* KNOB-MUTED: the theme muted text pen (DK_MUTED), flat_button_pen under 8 colours */
+        return flat_dimtext_ok(s, depth) ? s->pen_dimtext : flat_button_pen(s, depth);   /* KNOB-MUTED: the theme muted text pen (DK_MUTED), flat_button_pen under 8 colours */
     return s->pen_back;
 }
 
