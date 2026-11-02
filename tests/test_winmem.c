@@ -15,8 +15,13 @@
  * 53,125 + 2,664 + 17,844 = 73,633. The engine's part is unchanged (its
  * grid and scrollback ring are the screen itself). */
 #define WINMEM_BEFORE 145501L
-/* The bound: after the cut, with a little room. A climb past it fails. */
-#define WINMEM_BOUND 76000L
+/* The bound: after the cut, with a little room. A climb past it fails.
+ * Re-measured 2026-11-03 (main c63dcb4f): engine 54,885 + le_line 3,192 +
+ * upconf 17,972 = 76,049. The climb from 73,633 is features that landed
+ * since (kitty frames and animation state in vt_term, the line editor's
+ * history fields, profile keys), not a leak; the old 76,000 had only
+ * ~2,400 B of room and a K36 byte flag tipped it. Same room again. */
+#define WINMEM_BOUND 78500L
 
 static void nothing(void *u, const unsigned char *b, long n)
 {
