@@ -475,6 +475,16 @@ bits (RTG 15/16/24/32), in this release; 8-bit screens (AGA, 8-bit RTG)
 exactly as today. Measured today: rig 91 RTG 800x600x24 shows demo.png
 (320 px wide, 29954 source colours) in 18 colours.
 
+Verified 2026-11-02 (two independent cybergraphics_lib.fd copies, CGX/AMOS SDK
+and MorphOS SDK, both agree; their -120/-126/-150/-198 match our proven calls):
+WritePixelArrayAlpha is LVO -216, registers
+(src a0, srcx d0, srcy d1, srcmod d2, rp a1, destx d3, desty d4, width d5,
+height d6, globalalpha d7), source format fixed 32-bit ARGB (alpha byte first),
+globalalpha 0xFFFFFFFF = per-pixel alpha only. BltTemplateAlpha is -222.
+cybergraphics.h: RECTFMT_RGB 0, RECTFMT_RGBA 1, RECTFMT_ARGB 2. -126 is
+WritePixelArray (not the alpha call). Still unproven: that the rig's P96
+cybergraphics.library exports -216 (version >= 43, lib_NegSize >= 216).
+
 Read 2026-11-02 on a6de061d (what the design rests on):
 
 - The colour is lost in the engine, not the renderer. kit_make
