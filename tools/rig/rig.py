@@ -1170,6 +1170,15 @@ def stage_rig_vtc(vtc):
         paths.require_input(vsh, "UPTERM_ROOT", "build/amiga/vsh (run make for the Amiga programs)")
         stage_upterm(vtc / paths.UPTERM_DRAWER, vsh)
     stage_amarchy_assets(vtc)
+    # icat (ICAT-STACK): a fresh rig answered "icat: Unknown command"; VTC: for VTC:icat, the drawer's bin for the PATH
+    icat = ROOT / "build/amiga/icat"
+    if icat.is_file():
+        for dst in (vtc / "icat", vtc / paths.UPTERM_DRAWER / "bin/icat"):
+            if not dst.exists():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(icat, dst)
+    else:
+        print("no build/amiga/icat: the rig has no icat (run make build/amiga/icat)")
 
 
 def seed_rig_vtc(src, dst):
@@ -1703,7 +1712,7 @@ def built_handler():
 # absent (the loop below refreshes only files already there). UPTerm: typewin.quiet_screen_text runs
 # `VTC:UPTerm ACTIVE screen FILE`; a rig whose VTC: predates it answered "Unknown command", and every
 # screen_text() fell back to Select all + Copy (the owner saw the text menu fully selected, 2026-10-28).
-VTC_REQUIRED = ("UPTerm",)
+VTC_REQUIRED = ("UPTerm", "icat")
 
 
 def install():

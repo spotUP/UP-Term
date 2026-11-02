@@ -56,5 +56,28 @@ class StageEtc(unittest.TestCase):
         rig.stage_rig_vtc(vtc)
         self.assertEqual((vtc / "etc/termcap").read_text(), "mine")
 
+class StageIcat(unittest.TestCase):
+    def test_setup_path_stages_icat_in_vtc_and_the_drawer_bin(self):
+        """ICAT-STACK: a fresh rig had no icat; stage_rig_vtc copies build/amiga/icat to VTC:icat and Apps/bin/icat"""
+        from unittest import mock
+        root = pathlib.Path(tempfile.mkdtemp())
+        (root / "terminfo").mkdir()
+        (root / "terminfo/vtcon.termcap").write_text("t")
+        (root / "build/amiga").mkdir(parents=True)
+        (root / "build/amiga/icat").write_bytes(b"icat-binary")
+        vtc = pathlib.Path(tempfile.mkdtemp())
+        (vtc / rig.paths.UPTERM_DRAWER / "bin").mkdir(parents=True)
+        (vtc / rig.paths.UPTERM_DRAWER / "bin/vsh").write_text("x")
+        with mock.patch.object(rig, "ROOT", root):
+            rig.stage_rig_vtc(vtc)
+        self.assertEqual((vtc / "icat").read_bytes(), b"icat-binary")
+        self.assertEqual((vtc / rig.paths.UPTERM_DRAWER / "bin/icat").read_bytes(), b"icat-binary")
+
+    def test_icat_stack_and_cookie_are_262144(self):
+        """icat crashed at its own 65536 stack on a rig; vtcon rule 6: __stack and the $STACK cookie say the same"""
+        src = (ROOT / "pic/icat.c").read_text()
+        self.assertIn("long __stack = 262144;", src)
+        self.assertIn('"$STACK: 262144"', src)
+
 if __name__ == "__main__":
     unittest.main()
