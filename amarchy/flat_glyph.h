@@ -77,6 +77,11 @@ typedef int (*flat_read_fn)(void *ctx, int x, int y);
 #define FLAT_ROUND_TALL 12
 #define FLAT_ROUND_MAX 12
 int flat_button_corners(int w, int h, int out[][4]);
+/* FLAT-SLIDER-ROUND: the knob gets the button radius. When the fill (x0,y0)-(x1,y1) is exactly the knob rectangle, the cut pixels
+ * (absolute x, y) that take the track pen are written to out (FLAT_ROUND_MAX at most) and their count returned, else 0. The corner
+ * rule is flat_button_corners (the same cuts as a flat button of the knob's size). */
+int flat_scroller_cuts(int cx, int cy, int cw, int ch, int horiz, int vert, unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody,
+                       int x0, int y0, int x1, int y1, int out[][2]);
 /* flat_frame_draw plus rounded corners: the outside pens are read with rd BEFORE the box is painted, then each cut pixel takes its
  * sampled pen (an unreadable pixel is left as drawn). rd null: no rounding, same as flat_frame_draw. */
 int flat_frame_draw_round(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn,

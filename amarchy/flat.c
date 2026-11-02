@@ -509,7 +509,7 @@ extern void flat_rf_entry(void);
 
 /* FLAT-SCROLLER: the pen for one Intuition fill inside a window scroller, or -1. Walks the window's prop gadgets (no
  * Intuition call: this runs inside graphics.library, GetScreenDrawInfo here could deadlock) and asks flat_scroller_pen. */
-static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, LONG x0, LONG y0, LONG x1, LONG y1)
+static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, LONG x0, LONG y0, LONG x1, LONG y1, int cuts[][2], int *ncuts)
 {
     struct Gadget *g;
     for (g = w->FirstGadget; g; g = g->NextGadget) {
@@ -526,8 +526,11 @@ static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, LO
         cx = gx + pi->LeftBorder; cy = gy + pi->TopBorder; cw = pi->CWidth; ch = pi->CHeight;
         pen = flat_scroller_pen(&r->st, (rp->BitMap ? rp->BitMap->Depth : 0), cx, cy, cw, ch, (pi->Flags & FREEHORIZ) != 0, (pi->Flags & FREEVERT) != 0,
                                 pi->HorizPot, pi->VertPot, pi->HorizBody, pi->VertBody, (int)x0, (int)y0, (int)x1, (int)y1);
-        if (pen >= 0)
+        if (pen >= 0) {
+            *ncuts = flat_scroller_cuts(cx, cy, cw, ch, (pi->Flags & FREEHORIZ) != 0, (pi->Flags & FREEVERT) != 0, pi->HorizPot, pi->VertPot,
+                                        pi->HorizBody, pi->VertBody, (int)x0, (int)y0, (int)x1, (int)y1, cuts);
             return pen;
+        }
     }
     return -1;
 }
@@ -559,7 +562,7 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
     r->rcalls++;
     if (r->st.enabled && !r->st.held && rp && rp->Layer && (w = (struct Window *)rp->Layer->Window) != 0 && ret >= r->irom_lo &&
         ret < r->irom_hi) {
-        int sp;
+        int sp, cuts[FLAT_ROUND_MAX][2], ncuts = 0, ci;
         const flat_gbox *gb = flat_gh_match(&r->st, &r->gh, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL), rp->AreaPtSz, (int)x0, (int)y0, (int)x1, (int)y1);
         if (gb) {          /* FLAT-BUTTON-DISABLED-DIM: Intuition's dither over a disabled button: solid dim fill, label again in the dim label pen */
             int depth = rp->BitMap ? rp->BitMap->Depth : 0;
@@ -583,7 +586,7 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
             rp->AreaPtrn = pa; rp->AreaPtSz = pt;
             return;
         }
-        sp = scroller_pen(r, rp, w, x0, y0, x1, y1);
+        sp = scroller_pen(r, rp, w, x0, y0, x1, y1, cuts, &ncuts);
         if (sp >= 0) {
             UBYTE fg = rp->FgPen, dm = rp->DrawMode, pt = rp->AreaPtSz;
             UWORD *pa = (UWORD *)rp->AreaPtrn;
@@ -592,6 +595,11 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
             SetDrMd(rp, JAM2);
             SetAPen(rp, sp);
             ((rectfn)r->rsw.saved)(rp, x0, y0, x1, y1, (struct Library *)GfxBase);
+            if (ncuts > 0) {                                  /* FLAT-SLIDER-ROUND: the knob corners take the track pen */
+                SetAPen(rp, (UBYTE)r->st.pen_back);
+                for (ci = 0; ci < ncuts; ci++)
+                    ((rectfn)r->rsw.saved)(rp, cuts[ci][0], cuts[ci][1], cuts[ci][0], cuts[ci][1], (struct Library *)GfxBase);
+            }
             SetAPen(rp, fg);
             SetDrMd(rp, dm);
             rp->AreaPtrn = pa; rp->AreaPtSz = pt;
