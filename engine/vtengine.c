@@ -113,6 +113,7 @@ typedef struct vt_image {
     vt_u32 pkid, ppid;  /* kitty's P=, Q=: the parent placement's i= and p= (0 none) */
     int kdepth;         /* parents above this placement (0 none, at most 8) */
     struct vt_anim *anim; /* kind 2: the frame list (kitty a=f, K34), 0 for a plain picture */
+    int sx0, sy0, sw, sh; /* kind 1: the part of the stored picture shown (sw 0: unknown), for K35's rescale */
 } vt_image;
 
 /* The frames of a kitty animation: full w x h canvases of cube indices
@@ -122,6 +123,11 @@ typedef struct vt_anim {
     int n;
     vt_u8 *fr[VT_ANIM_FRAMES];
     long gap[VT_ANIM_FRAMES];
+    int cur;        /* the frame shown (1-based) */
+    int state;      /* a=a s=: 1 stopped, 2 run and wait at the end, 3 run and loop */
+    long loops;     /* a=a v=: 0 unset (forever), 1 forever, n plays n-1 loops */
+    long done;      /* loops played since the animation started */
+    long elapsed;   /* us the current frame has shown */
 } vt_anim;
 
 #define VT_IMG_SLOTS 64 /* images alive at once (the oldest gives way) */
@@ -307,6 +313,7 @@ struct vt_term {
     struct vt_kitty *kit;      /* the kitty graphics command being received */
     vt_u32 kit_next;           /* counter for the ids kitty gives by number (I=) */
     vt_u32 kit_png_own;        /* PNG pictures the engine decoded itself (vt_kitty_png_own) */
+    unsigned long kit_switches; /* animation frames switched (vt_kitty_frame_switches) */
     vt_u32 kit_placed;         /* kitty images placed on the screen (vt_kitty_placed) */
     long kit_last_z;           /* z= of the last kitty placement (vt_kitty_last_z) */
     vt_u32 kit_ph;             /* placeholder cells resolved (vt_kitty_placeholders) */

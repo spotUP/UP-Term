@@ -126,7 +126,9 @@ static void g_arrow(plan *g, unsigned long which)
                 put(g, xs + lmax - len, g->iy0 + k, xs + lmax - 1, g->iy0 + k, g->fg);
         }
     } else {
-        int n = imin(ih, (iw - 1) / (2 * g->side) + 1), ys = g->iy0 + (ih - n) / 2;
+        /* Up sits on the bottom of its box, down on the top: the up gadget is above the down gadget, so on hires (fewer
+         * rows) the pair keeps the gap a full-height glyph pair has instead of growing apart (S31-ARROW-GAP). */
+        int n = imin(ih, (iw - 1) / (2 * g->side) + 1), ys = which == FLAT_W_UP ? g->iy1 - n + 1 : g->iy0;
         for (k = 0; k < n; k++) {
             int row = which == FLAT_W_UP ? k : n - 1 - k;
             int len = imin(iw, 2 * g->side * row + 1), x0 = g->ix0 + (iw - len) / 2;
