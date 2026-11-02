@@ -591,6 +591,23 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
             UBYTE fg = rp->FgPen, dm = rp->DrawMode, pt = rp->AreaPtSz;
             UWORD *pa = (UWORD *)rp->AreaPtrn;
             r->shits++;
+            {
+                int *e = r->sring[r->sring_n++ & 15];
+                struct Gadget *g2;
+                e[0] = (int)x0; e[1] = (int)y0; e[2] = (int)x1; e[3] = (int)y1; e[4] = e[5] = e[6] = e[7] = -1; e[8] = ncuts;
+                for (g2 = w->FirstGadget; g2; g2 = g2->NextGadget) {
+                    struct PropInfo *p2;
+                    int gx2, gy2;
+                    if ((g2->GadgetType & GTYP_GTYPEMASK) != GTYP_PROPGADGET || !(p2 = (struct PropInfo *)g2->SpecialInfo))
+                        continue;
+                    gx2 = g2->LeftEdge + ((g2->Flags & GFLG_RELRIGHT) ? w->Width - 1 : 0);
+                    gy2 = g2->TopEdge + ((g2->Flags & GFLG_RELBOTTOM) ? w->Height - 1 : 0);
+                    if (x0 >= gx2 && y0 >= gy2 && flat_scroller_knob(gx2 + p2->LeftBorder, gy2 + p2->TopBorder, p2->CWidth, p2->CHeight,
+                            (p2->Flags & FREEHORIZ) != 0, (p2->Flags & FREEVERT) != 0, p2->HorizPot, p2->VertPot, p2->HorizBody, p2->VertBody,
+                            &e[4], &e[5], &e[6], &e[7]))
+                        break;
+                }
+            }
             rp->AreaPtrn = 0; rp->AreaPtSz = 0;               /* a solid fill: the stock track is a dither */
             SetDrMd(rp, JAM2);
             SetAPen(rp, sp);
@@ -707,7 +724,7 @@ static void print_status(void)
     unsigned long rcalls = 0, rhits = 0, shits = 0, tcalls = 0, thits = 0;
     int tinst = 0;
     unsigned long cdraws = 0, cfall = 0, alooks = 0;
-    int apx = 0;
+    int apx = 0, sring[16][9], sn = 0;
     uint32_t dsum[FLAT_EL_COUNT] = { 0, 0 };
     memset(&copy, 0, sizeof copy);
     Forbid();
@@ -723,6 +740,7 @@ static void print_status(void)
         tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits;
         cdraws = r->cdraws; cfall = r->cfall;
         apx = r->aspect_px; alooks = r->aspect_looks;
+        memcpy(sring, r->sring, sizeof sring); sn = (int)(r->sring_n > 16 ? 16 : r->sring_n);
     }
     Permit();
     if (flat_status_line(&copy, sizeof copy, found, line, sizeof line)) {
@@ -756,6 +774,17 @@ static void print_status(void)
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
+    }
+    {                                               /* RL6: the last scroller fills: sfill x0 y0 x1 y1 knobx knoby knobw knobh cuts */
+        int si, k;
+        for (si = 0; found && si < sn; si++) {
+            int n = 0, *e = sring[si];
+            put_word(line, &n, "sfill");
+            for (k = 0; k < 9; k++) { put_word(line, &n, " "); put_num(line, &n, (unsigned long)(e[k] < 0 ? 0 : e[k])); }
+            line[n] = 0;
+            PutStr((STRPTR)line);
+            PutStr((STRPTR)"\n");
+        }
     }
     if (found) {                                    /* FLAT-BUTTON-FILL sentinels: calls rising = the stub runs, hits rising = pressed label recoloured */
         int n = 0;

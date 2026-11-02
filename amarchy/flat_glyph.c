@@ -345,17 +345,19 @@ int flat_button_corners(int w, int h, int out[][4])
 int flat_scroller_cuts(int cx, int cy, int cw, int ch, int horiz, int vert, unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody,
                        int x0, int y0, int x1, int y1, int out[][2])
 {
-    int kx, ky, kw, kh, cut[FLAT_ROUND_MAX][4], n, i;
+    int kx, ky, kw, kh, cut[FLAT_ROUND_MAX][4], n, m, i;
     if (!flat_scroller_knob(cx, cy, cw, ch, horiz, vert, hpot, vpot, hbody, vbody, &kx, &ky, &kw, &kh))
         return 0;
-    if (x0 != kx || y0 != ky || x1 != kx + kw - 1 || y1 != ky + kh - 1)
-        return 0;
     n = flat_button_corners(kw, kh, cut);
-    for (i = 0; i < n; i++) {
-        out[i][0] = kx + cut[i][0];
-        out[i][1] = ky + cut[i][1];
+    for (i = 0, m = 0; i < n; i++) {                /* every corner pixel inside THIS fill: 3.2 paints the knob as several fills */
+        int px = kx + cut[i][0], py = ky + cut[i][1];
+        if (px < x0 || px > x1 || py < y0 || py > y1)
+            continue;
+        out[m][0] = px;
+        out[m][1] = py;
+        m++;
     }
-    return n;
+    return m;
 }
 
 int flat_frame_draw_round(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn,

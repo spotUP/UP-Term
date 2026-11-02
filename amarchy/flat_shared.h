@@ -36,6 +36,8 @@ typedef struct flatshared {
     flat_swap rsw;
     uintptr_t *rslot;
     uintptr_t irom_lo, irom_hi; /* Intuition's ROM code range (FindResident rt_MatchTag .. rt_EndSkip): the caller gate */
+    int sring[16][9];           /* RL6 diagnostic: last 16 scroller fills: fill x0 y0 x1 y1, knob x y w h, cuts made */
+    ULONG sring_n;              /* scroller fills logged so far (ring index = n % 16) */
     ULONG rcalls, rhits, shits; /* every patched RectFill call / every outer-edge fill recoloured / every scroller fill recoloured (the sentinels) */
     /* FLAT-BUTTON-FILL: the graphics.library Text patch (LVO -60) that draws a pressed button's label in pen_ptext */
     flat_swap tsw;

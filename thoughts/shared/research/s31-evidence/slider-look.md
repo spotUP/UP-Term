@@ -57,3 +57,21 @@ whole knob; each frame strip then recuts the corners it covers, whatever order I
 tests/test_flat_core.c next to the existing cuts block, a top strip (10,20)-(25,20) and a left strip (10,20)-(10,69) of
 the 16x50 knob return the corner pixels they contain (non-zero, includes (10,20)); the interior (11,21)-(24,68) returns 0.
 If the ring shows a layout offset instead, flat_scroller_knob must copy Intuition's knob arithmetic.
+
+## Rig 76 fill log and fix (OS 3.2, FS-UAE, 2026-11-02)
+
+The ring (flatshared.sring, 16 entries, printed by `amarchy-flat STATUS` as `sfill x0 y0 x1 y1 knobx knoby knobw knobh cuts`)
+confirmed the first guess: 3.2 paints the knob as SEVERAL fills, not one. Vertical knob 10 x 190 at (626,12), window
+relative, one repaint:
+  626 12 635 201 (whole knob), 626 12 634 200 (inner), 626 12 634 12 (top strip), 626 13 626 200 (left strip),
+  635 12 635 200 (right strip), 626 201 635 201 (bottom strip).
+The knob rect computed by flat_scroller_knob matched Intuition's (no offset). The old exact-equality test cut corners only
+on the whole-knob fill, and the strips (painted after) then overpainted them square. Horizontal knob: whole fill, then
+top/left/right/bottom strips the same way.
+
+Fix: flat_scroller_cuts returns every knob corner pixel that lies inside the CURRENT fill, so each strip recuts the corners
+it covers whatever the order. Test: tests/test_flat_core.c, block "RL6: 3.2 paints the knob as several fills".
+
+Pixels after the fix (shot s31-rl6-knob-fixed.png, SYS:C drawer, knob colour 993366, track 000000):
+vertical knob (436,62) 10x55: TL TR BL BR all 000000 (track); row0 `000000 000000 993366 ... 993366 000000 000000`, centre 993366.
+horizontal knob (53,142) 345x6: all four corners 000000, centre 993366.

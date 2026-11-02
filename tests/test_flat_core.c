@@ -993,9 +993,28 @@ static void test_scroller(void)
         for (i = 0; i < n; i++)
             if (cuts[i][0] == 10 && cuts[i][1] == 20) hit = 1;
         CHECK_INT(hit, 1);                                                                       /* top left knob pixel is cut */
-        CHECK_INT(flat_scroller_cuts(10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 21, 25, 69, cuts), 0);
+        CHECK_INT(flat_scroller_cuts(10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 11, 22, 24, 67, cuts), 0);
         CHECK_INT(flat_scroller_cuts(10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 70, 25, 119, cuts), 0);   /* the track */
         CHECK_INT(flat_scroller_cuts(10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 12, 22, 20, 30, cuts), 0);
+    }
+    /* RL6: 3.2 paints the knob as several fills (frame strips + interior), never one fill equal to the knob: every strip cuts the
+     * corner pixels it contains, the interior cuts none, and across the strips every corner pixel is cut */
+    {
+        int cuts[FLAT_ROUND_MAX][2], all[FLAT_ROUND_MAX][2], n, i, j, total = 0, seen_tl = 0, seen_br = 0;
+        static const int strip[5][4] = { {10, 20, 25, 20}, {10, 69, 25, 69}, {10, 21, 10, 68}, {25, 21, 25, 68}, {11, 21, 24, 68} };
+        for (j = 0; j < 5; j++) {
+            n = flat_scroller_cuts(10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, strip[j][0], strip[j][1], strip[j][2], strip[j][3], cuts);
+            if (j == 4) CHECK_INT(n, 0);                                                         /* the interior has no corner */
+            for (i = 0; i < n; i++) {
+                CHECK_INT(cuts[i][0] >= strip[j][0] && cuts[i][0] <= strip[j][2] && cuts[i][1] >= strip[j][1] && cuts[i][1] <= strip[j][3], 1);
+                all[total][0] = cuts[i][0]; all[total][1] = cuts[i][1]; total++;
+                if (cuts[i][0] == 10 && cuts[i][1] == 20) seen_tl = 1;
+                if (cuts[i][0] == 25 && cuts[i][1] == 69) seen_br = 1;
+            }
+        }
+        CHECK_INT(seen_tl, 1);
+        CHECK_INT(seen_br, 1);
+        CHECK_INT(total >= 12, 1);                                                               /* every cut of the whole knob is covered */
     }
     /* a tiny body still gives a 1 px knob */
     CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 1, 10, 20, 25, 20), kn);
