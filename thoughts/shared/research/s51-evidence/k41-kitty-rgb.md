@@ -127,3 +127,14 @@ measures with the same function as case 1 (measure_pic1). Thresholds: >= 99% exa
 Shots: ~/Desktop/upterm-shots/k41-icat-run1..3.png.
 Default mode rerun (cases 1-4, same rig, handler md5 19a477ed): case 1 PASS, case 3 PASS, case 4 PASS (128,0,119), case 2 FAIL measured (128,0,0) over blue cells,
 expected (128,0,119). Not caused by this change (script change only touches case 1 measurement); the rig's handler build (23:16) likely predates K40d (85c5c1f7, 23:19): rebuild and remount before judging case 2.
+
+## K41 rerun with the K40d handler
+
+Rig 91 rebooted via `rig.py install` + `rig.py reboot`; handler md5 on the rig (build/rig91/vtc/vtcon-handler) d2dee4b626b8c0eb6b044f17f881fca6 (main 1ed14b5f build). Default mode, 3 runs, all PASS (shot 800x600):
+
+- case 1 origin (12, 39): 8000/8000 exact pixels (100.00%) PASS
+- case 2 (on blue cells): bg (0, 0, 238) expected (128, 0, 119) measured (128, 0, 119) on 1280 of 1280 pixels PASS
+- case 3 (default background): expected (128, 0, 0) measured (128, 0, 0) on 1280 of 1280 PASS
+- case 4 (z=-1, blue cells): expected (128, 0, 119) measured (128, 0, 119) on 1280 of 1280 PASS
+
+Identical lines in runs 1, 2, 3. Shots: ~/Desktop/upterm-shots/k41-default-run1..3.png.

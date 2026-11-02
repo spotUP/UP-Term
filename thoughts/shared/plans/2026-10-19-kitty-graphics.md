@@ -640,7 +640,7 @@ Read 2026-11-02 on a6de061d (what the design rests on):
       at 1 and 4 B/px); vt_anim_tick(40000) switches to frame 2 with
       vt_kitty_frame_switches +1 and the placement's bytes equal frame 2
       scaled. Fail before (frames are indices). K37 green.
-- [ ] K40 Renderer deep path (T7, T8). Files: render/aa_ink.h
+- [x] K40 Renderer deep path (T7, T8). Files: render/aa_ink.h
       (vr_cgx_write_pixels, VR_RECTFMT_RGBA), render/amiga_render.c
       (img_run fmt 1 branch, img_buf growth, n_img_rgb_runs, vr_init
       calls vt_set_image_rgb), render/amiga_render.h (counter),
@@ -672,7 +672,7 @@ Read 2026-11-02 on a6de061d (what the design rests on):
       replaces the binary 50% fallback. K41's rig proof therefore exercises
       true alpha (translucent pixels blended with text and background); the
       WritePixelArrayAlpha path itself stays host-tested only.
-- [ ] K41 Rig proof (after K38-K40 merge to main; one build on the rig).
+- [x] K41 Rig proof (after K38-K40 merge to main; one build on the rig).
       tools/rig/kitty_truecolor_rig.py, reusing colour_check.py's PNG
       reader for both the source and the shot. Stream: demo.png decoded on
       the host and sent raw (f=32, a=T, no c=/r=, so 1:1 pixels), so the
