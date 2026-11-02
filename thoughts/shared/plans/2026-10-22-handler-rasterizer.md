@@ -478,7 +478,7 @@ and bg), then the 1-bit mask path; no new failure mode. A dither of the shade it
   AGA stencil pass. ce_mix gets exposed once from emoji.h to aa_ink.c (it already is
   shared: aa_ink_build_tab uses it).
 
-### Checklist (R6.x; 5 of 10 done, R6.A3 open, R6.B1-B4 dropped by D1)
+### Checklist (R6.x; 6 of 10 done, R6.B1-B4 dropped by D1)
 
 - [x] R6.0 Record the finding above in the plan and get the owner's decision on D1 below.
   Proven by: owner answers 2026-11-01 (s48) under "Owner decisions" below.
@@ -489,9 +489,13 @@ and bg), then the 1-bit mask path; no new failure mode. A dither of the shade it
   must be > 0; asserted pixel values from the fake RastPort (gfx_fake.c), exact numbers.
 - [x] R6.A2 Implement the AGA tile-stencil passes in aa_ink_draw; regression: A1 reverted
   fails again.
-- [ ] R6.A3 Rig proof on rig 060, AGA 16-pen screen, dithered bg (tools/rig/outline_rig.py):
+- [x] R6.A3 Rig proof on rig 060, AGA 16-pen screen, dithered bg (tools/rig/outline_rig.py):
   screenshot pixel measurement of 5 edge pixels against the expected pen per pixel
   (not by eye); owner told to look only after.
+  DONE 2026-11-02 (rig 35, AGA 16 pens, dither tiles 3/0, blend-dest on): tools/rig/aadither_measure.py reads the
+  screenshot pixels against tools/rig/aadither_expect.c fed the true 16-pen palette: E0A0 36 of 36 edge pixels and
+  F07B 37 of 37 equal the expected pen, pen 5 (f0f0ff) included. The handler shade table dumped from aa_ink colours()
+  equals the model's. An earlier mismatch came from classifying f0f0ff as pen 2, not from the handler or the model.
 - [ ] R6.B1 Measure on the host fake and rig 060 / 020 profile: ms per glyph of the
   readback blend vs LUT; replaces the estimates above.
 - [ ] R6.B2 Host test: a window with r->bg_busy over a non-flat gradient fake; every edge
@@ -516,7 +520,7 @@ and bg), then the 1-bit mask path; no new failure mode. A dither of the shade it
 - D5: profile key outline-blend-dest, default on, LUT kept for flat cells (stated default).
 - D6 (owner 2026-11-02): outline-blend-dest also gets a switch in UP-Term Prefs > Advanced (not a profile key only). Open as R6.6 in the checklist above.
 
-Open R6 items: R6.A3 (1 item).
+Open R6 items: none besides the dropped B items (R6.A3 done).
 
 Done on branch s48-r6a (test: an_antialiased_edge_over_a_dither_is_blended_with_the_pen_under_it_and_the_knob_moves_it,
 render suite 611 checks, 0 failures; make amiga rc 0; with the tile branch disabled the test fails 4 checks).
@@ -524,7 +528,7 @@ Premise corrections found while implementing:
 - A glyph cell's st->bg is the solid nearest pen; the dither ink is st->bgf. Before the fix the AA glyph box
   was filled with the solid pen and lost the cell's dither. The tile path now takes st->bgf.
 - Dither exists only on screens of 16 or fewer pens (test screens_of_more_than_16_pens_are_not_dithered), so
-  "AGA 256 screen with dithered bg" cannot occur. R6.A3 needs a screen with 16 or fewer pens; it is open.
+  "AGA 256 screen with dithered bg" cannot occur. R6.A3 needs a screen with 16 or fewer pens; done 2026-11-02 on rig 35.
 - The 1-bit mask path (antialias off) still fills the solid st->bg.
 - outline-blend-dest is a profile-file key only; no settings_def row, prefs UI, slash command or menu entry.
 
