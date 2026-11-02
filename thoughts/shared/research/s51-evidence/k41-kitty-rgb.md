@@ -24,7 +24,6 @@ Case 2 FAIL: the blend ignores the blue cell background (0,0,238): the result is
 black. The host fake returns canvas pixels (k40_soft_blend_reads_the_text_under_a_front_picture), so the real
 P96 read path is the suspect (r->rp may be the back bitmap, img_run_rgb in render/amiga_render.c). Not diagnosed
 further; cases 2 and 3 do not both pass only because case 3's base is black, which hides a read that returns zeros.
-Shots: ~/Desktop/upterm-shots/k41-run1.png, k41-run4-final-script.png (runs 2 and 3 lost their shots when the
-rig rebooted; their numbers were printed).
+Shots: ~/Desktop/upterm-shots/k41-run1..3.png (runs 2-4 of the table; the rig rebooted once between the first and the second batch) and k41-run4-final-script.png.
 AGA pixel-equal comparison: open (needs an aga256 rig and the a6de061d reference
 truecolor-aga-ref.png, which does not exist in the tree).
