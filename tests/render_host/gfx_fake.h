@@ -83,6 +83,10 @@ const char *gf_screen(void);
  * created and not disposed (a leak check). */
 int gf_clip(int *x0, int *y0, int *x1, int *y1);
 int gf_regions(void);
+/* FNV-1a over every WriteChunkyPixels call (its rectangle, then each row's pixels without the stride padding),
+ * and the call count; both reset by gf_open. K37 pins the 8-bit picture output with them. */
+extern unsigned long gf_chunky_hash;
+extern int gf_chunky_n;
 void gf_clear_log(void);
 int gf_count(enum gf_kind k);
 /* Calls of that kind since the last gf_clear_log. */

@@ -646,9 +646,22 @@ LONG WritePixelArray8(struct RastPort *rp, ULONG a, ULONG b, ULONG c, ULONG d, U
     (void)rp; (void)a; (void)b; (void)c; (void)d; (void)p; (void)t;
     return 0;
 }
+unsigned long gf_chunky_hash = 2166136261UL;
+int gf_chunky_n;
+static void chunky_fnv(unsigned long v)
+{
+    gf_chunky_hash = ((gf_chunky_hash ^ (v & 0xFFUL)) * 16777619UL) & 0xFFFFFFFFUL;
+}
 VOID WriteChunkyPixels(struct RastPort *rp, ULONG a, ULONG b, ULONG c, ULONG d, UBYTE *p, LONG m)
 {
-    (void)rp; (void)a; (void)b; (void)c; (void)d; (void)p; (void)m;
+    ULONG x, y;
+    (void)rp;
+    gf_chunky_n++;
+    chunky_fnv(a); chunky_fnv(a >> 8); chunky_fnv(b); chunky_fnv(b >> 8);
+    chunky_fnv(c); chunky_fnv(c >> 8); chunky_fnv(d); chunky_fnv(d >> 8);
+    for (y = 0; y <= d - b; y++)
+        for (x = 0; x <= c - a; x++)
+            chunky_fnv(p[y * (ULONG)m + x]); /* the row's w bytes only: the padding to 16 is not the picture */
 }
 ULONG ObtainPen(struct ColorMap *cm, ULONG n, ULONG r, ULONG g, ULONG b, LONG f)
 {
