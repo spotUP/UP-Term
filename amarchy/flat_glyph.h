@@ -98,6 +98,17 @@ int flat_outline_rects(const flat_state *s, int w, int h, flat_fill_fn fn, void 
  * outer-edge fills. */
 int flat_outer_edge_match(int w, int h, int x0, int y0, int x1, int y1);
 
+/* FLAT-ASPECT-BORDERS: the width in pixels of a vertical 1-pixel-looking line on a mode whose DisplayInfo Resolution is
+ * rx x ry ticks per pixel. Non-square modes with taller pixels (PAL/NTSC hires non-interlace 22 x 44, super hires
+ * 11 x 44) give ry / rx rounded (2, 4), so the left and right frame lines look as thick as the 1 px top and bottom
+ * lines. Square modes, wide-pixel modes, RTG and an unknown mode (rx or ry 0) give 1. */
+int flat_side_px(int rx, int ry);
+
+/* The rect the RectFill patch fills for one of Intuition's outer strips: when (x0,y0)-(x1,y1) is exactly one strip
+ * (flat_outer_edge_match), writes it to out[] with the left strip widened rightwards and the right strip widened
+ * leftwards to px columns (px clamped to 1 .. w / 2), top and bottom unchanged, and returns 1; else returns 0. */
+int flat_outer_edge_fill(int w, int h, int x0, int y0, int x1, int y1, int px, int out[4]);
+
 
 /* FLAT-GLYPH-OS-SHAPES: the clone of the system's own gadget image. The OS side draws the stock image offscreen with a private
  * DrawInfo whose pen i is the marker i + 1 (FLAT_CLONE_MARK(i)); flat_clone_map turns that grid into box (0) and glyph (1):

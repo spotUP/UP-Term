@@ -823,6 +823,29 @@ static void test_which_from_gtype(void)
         }
         CHECK_INT(flat_outer_edge_match(1, 9, 0, 0, 0, 0), 0);                   /* under 2 x 2 */
     }
+    {   /* FLAT-ASPECT-BORDERS: on PAL hires (22 x 44) the window's side lines are 2 px wide, so they look as thick as the top line */
+        int r[4];
+        CHECK_INT(flat_side_px(22, 44), 2);      /* PAL/NTSC hires non-interlace */
+        CHECK_INT(flat_side_px(11, 44), 4);      /* super hires non-interlace */
+        CHECK_INT(flat_side_px(22, 22), 1);      /* hires interlace: square */
+        CHECK_INT(flat_side_px(44, 44), 1);      /* lores: square */
+        CHECK_INT(flat_side_px(44, 22), 1);      /* lores interlace: wide pixels, sides stay 1 */
+        CHECK_INT(flat_side_px(0, 0), 1);        /* unknown mode / RTG without DisplayInfo */
+        CHECK_INT(flat_side_px(30, 44), 1);      /* 1.47 rounds to 1 */
+        CHECK_INT(flat_outer_edge_fill(640, 256, 0, 1, 0, 255, flat_side_px(22, 44), r), 1);       /* left: x 0..1 */
+        CHECK_INT(r[0], 0); CHECK_INT(r[1], 1); CHECK_INT(r[2], 1); CHECK_INT(r[3], 255);
+        CHECK_INT(flat_outer_edge_fill(640, 256, 639, 1, 639, 254, 2, r), 1);   /* right: x 638..639 */
+        CHECK_INT(r[0], 638); CHECK_INT(r[1], 1); CHECK_INT(r[2], 639); CHECK_INT(r[3], 254);
+        CHECK_INT(flat_outer_edge_fill(640, 256, 0, 0, 639, 0, 2, r), 1);       /* top stays 1 px */
+        CHECK_INT(r[0], 0); CHECK_INT(r[1], 0); CHECK_INT(r[2], 639); CHECK_INT(r[3], 0);
+        CHECK_INT(flat_outer_edge_fill(640, 256, 1, 255, 639, 255, 2, r), 1);   /* bottom stays 1 px */
+        CHECK_INT(r[1], 255); CHECK_INT(r[3], 255);
+        CHECK_INT(flat_outer_edge_fill(640, 512, 0, 1, 0, 511, flat_side_px(22, 22), r), 1);       /* interlace: left stays 1 px */
+        CHECK_INT(r[0], 0); CHECK_INT(r[2], 0);
+        CHECK_INT(flat_outer_edge_fill(3, 3, 0, 1, 0, 2, 4, r), 1);             /* px clamps to w / 2 */
+        CHECK_INT(r[2], 0);
+        CHECK_INT(flat_outer_edge_fill(640, 256, 1, 1, 1, 254, 2, r), 0);       /* not an outer strip */
+    }
     CHECK_INT((int)flat_which_alias(5), FLAT_W_DEPTH);
     CHECK_INT((int)flat_which_alias(3), FLAT_W_CLOSE);
 }

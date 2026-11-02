@@ -411,3 +411,33 @@ int flat_outer_edge_match(int w, int h, int x0, int y0, int x1, int y1)
             return 1;
     return 0;
 }
+
+int flat_side_px(int rx, int ry)
+{
+    int px;
+    if (rx <= 0 || ry <= rx)
+        return 1;
+    px = (ry + rx / 2) / rx;
+    return px < 1 ? 1 : px;
+}
+
+int flat_outer_edge_fill(int w, int h, int x0, int y0, int x1, int y1, int px, int out[4])
+{
+    int i, r[4];
+    if (w < 2 || h < 2)
+        return 0;
+    if (px < 1)
+        px = 1;
+    if (px > w / 2)
+        px = w / 2 < 1 ? 1 : w / 2;
+    for (i = 0; i < 4; i++)
+        if (outer_strip(i, w, h, r) && r[0] == x0 && r[1] == y0 && r[2] == x1 && r[3] == y1) {
+            out[0] = r[0]; out[1] = r[1]; out[2] = r[2]; out[3] = r[3];
+            if (i == 1)
+                out[2] = r[0] + px - 1;
+            else if (i == 2)
+                out[0] = r[2] - px + 1;
+            return 1;
+        }
+    return 0;
+}
