@@ -1529,7 +1529,7 @@ static const char *screen_bind(gui *g)
 {
     g->scr = lock_front_screen();
     if (!g->scr)
-        g->scr = LockPubScreen(0);
+        g->scr = LockPubScreen(0); /* interactive window, user-started: the default screen is the user's own target, not a boot-time lookup */
     if (!g->scr)
         return "amarchy-gui: no screen\n";
     g->cm = g->scr->ViewPort.ColorMap;

@@ -13,6 +13,14 @@
 
 #define IPD_SEM_NAME "Amarchy.IconPens"
 
+struct List;
+struct Screen;
+/* The Workbench screen found in the public screen list the caller has locked (LockPubScreenList); 0 when it is closed. */
+struct Screen *ipd_wb_screen_in(struct List *pl);
+/* The Workbench screen, locked (the caller UnlockPubScreen(0, scr)), or 0 when the Workbench is closed. NEVER call
+ * LockPubScreen("Workbench") elsewhere: on OS 3.1 it reopens a closed Workbench and deadlocks against IPrefs (BOOT-31-WB-DEADLOCK). */
+struct Screen *ipd_lock_wb_screen(void);
+
 /* Add (on 1) or drop (on 0) `owner`, then bring the held pens in line with the owners and the Workbench screen as it is now.
  * Returns the reference count after. The record is freed with the last owner. */
 int ipd_owner(unsigned owner, int on);

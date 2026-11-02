@@ -286,7 +286,7 @@ int lf_setting_enter(const mn_item *it, const lf_ui *ui)
         if (!where.win)
             where.scr = lock_front_screen();
         if (!where.win && !where.scr)
-            where.scr = LockPubScreen(0);
+            where.scr = LockPubScreen(0); /* user clicked a menu entry: the default screen is the user's own target, not a boot-time lookup */
         r = lf_setting_pick(amconf_dos_io(), s, &asl, &failed);
         if (where.scr)
             UnlockPubScreen(0, where.scr);

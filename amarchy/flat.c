@@ -783,7 +783,7 @@ static int is_help(const char *a)
 static uintptr_t *class_slot(int frame)
 {
     struct TagItem t[4];
-    struct Screen *scr = LockPubScreen(NULL);
+    struct Screen *scr = ipd_lock_wb_screen();
     struct DrawInfo *di = scr ? GetScreenDrawInfo(scr) : NULL;
     uintptr_t *slot = 0;
     if (di) {
@@ -1055,7 +1055,7 @@ static LONG g_dim_pen = -1;
 
 static void dim_refresh(flatshared *r)
 {
-    struct Screen *scr = LockPubScreen(NULL);
+    struct Screen *scr = ipd_lock_wb_screen();
     if (scr) {
         struct ColorMap *cm = scr->ViewPort.ColorMap;
         if (g_dim_pen >= 0) {
@@ -1079,7 +1079,7 @@ static void dim_refresh(flatshared *r)
 
 static void dim_release(flatshared *r)
 {
-    struct Screen *scr = g_dim_pen >= 0 ? LockPubScreen(NULL) : NULL;
+    struct Screen *scr = g_dim_pen >= 0 ? ipd_lock_wb_screen() : NULL;
     r->st.pen_dim = 0;
     if (scr) {
         ReleasePen(scr->ViewPort.ColorMap, (ULONG)g_dim_pen);
