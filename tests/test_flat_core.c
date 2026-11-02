@@ -1027,28 +1027,48 @@ static void test_title_accent(void)
     memset(&s, 0, sizeof s);
     s.enabled = 1; s.pen_outline = 3; s.pen_ptext = 0; s.pen_dimtext = 5; s.pen_text = 2;
     /* active: accent band over the title bar only (rows 0..bar_h-1), title text dark on it */
-    CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "Shell", 5, 9, &t), 1);
+    CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "Shell", 5, 9, 0, 199, &t), 1);
     CHECK_INT(t.band_pen, 3);
     CHECK_INT(t.bx0 == 0 && t.by0 == 0 && t.bx1 == 199 && t.by1 == 10, 1);
+    /* FLAT-GADGETS-RIG8: the band misses every system gadget (close left, depth + zoom relright, drag bar ignored) */
+    {
+        flat_gadrect g[4] = { { 0, 0, 18, 11, 0, 0, 0 }, { -18, 0, 18, 11, 1, 0, 0 }, { -36, 0, 18, 11, 1, 0, 0 },
+                              { 0, 0, -54, 11, 0, 1, 1 } };
+        int x0, x1, i, gl, gr;
+        flat_title_span(g, 4, 200, 11, &x0, &x1);
+        CHECK_INT(x0, 18);
+        CHECK_INT(x1, 200 - 36 - 1);
+        CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "Shell", 5, 9, x0, x1, &t), 1);
+        for (i = 0; i < 3; i++) {
+            gl = g[i].x + (g[i].relright ? 200 : 0);
+            gr = gl + g[i].w - 1;
+            CHECK_INT(t.bx1 < gl || t.bx0 > gr, 1);
+        }
+        flat_title_span(g + 1, 2, 200, 11, &x0, &x1);       /* no close gadget */
+        CHECK_INT(x0, 0);
+        CHECK_INT(x1, 200 - 36 - 1);
+        flat_title_span(g, 0, 200, 11, &x0, &x1);
+        CHECK_INT(x0 == 0 && x1 == 199, 1);
+    }
     CHECK_INT(t.text_pen, 0);
     CHECK_INT(t.bg_pen, 3);          /* JAM2 Text box must repaint the band pen, not pen 0 */
     /* inactive: no band, text in the dark_foreground pen */
-    CHECK_INT(flat_title_decide(&s, 3, 0, "Shell", 200, 11, "Shell", 5, 9, &t), 1);
+    CHECK_INT(flat_title_decide(&s, 3, 0, "Shell", 200, 11, "Shell", 5, 9, 0, 199, &t), 1);
     CHECK_INT(t.band_pen, -1);
     CHECK_INT(t.text_pen, 5);
     CHECK_INT(t.bg_pen, -1);
     /* a clipped title (prefix) still matches; body text, wrong text, a row below the bar, off/held do not */
-    CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "She", 3, 9, &t), 1);
-    CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "Hello", 5, 9, &t), 0);
-    CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "Shell", 5, 30, &t), 0);
-    CHECK_INT(flat_title_decide(&s, 3, 1, 0, 200, 11, "Shell", 5, 9, &t), 0);
+    CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "She", 3, 9, 0, 199, &t), 1);
+    CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "Hello", 5, 9, 0, 199, &t), 0);
+    CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "Shell", 5, 30, 0, 199, &t), 0);
+    CHECK_INT(flat_title_decide(&s, 3, 1, 0, 200, 11, "Shell", 5, 9, 0, 199, &t), 0);
     s.held = 1;
-    CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "Shell", 5, 9, &t), 0);
+    CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "Shell", 5, 9, 0, 199, &t), 0);
     s.held = 0; s.enabled = 0;
-    CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "Shell", 5, 9, &t), 0);
+    CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "Shell", 5, 9, 0, 199, &t), 0);
     s.enabled = 1;
     /* accent pen not a pen of a 2 colour screen: no band, stock text pen */
-    CHECK_INT(flat_title_decide(&s, 1, 1, "Shell", 200, 11, "Shell", 5, 9, &t), 1);
+    CHECK_INT(flat_title_decide(&s, 1, 1, "Shell", 200, 11, "Shell", 5, 9, 0, 199, &t), 1);
     CHECK_INT(t.band_pen, -1);
     CHECK_INT(t.text_pen, -1);
 }
