@@ -436,8 +436,9 @@ commit.
       pixels = frame 2, root edit r=1 reaches the placement): `make test
       ONLY=kitty` 351 checks, 44 new, all failed before (a=a/a=c answered
       `EINVAL:not supported`), 0 failed after; make amiga builds.
-      Resolved: a=c copies frame r= onto frame c= as written here (real
-      kitty has the roles the other way round; owner to confirm); the
+      Resolved: a=c copies frame r= onto frame c= as written here; this
+      matches the kitty spec ("source frame r=, destination frame c=",
+      checked 2026-11-02 against sw.kovidgoyal.net graphics-protocol); the
       root gap stays K34's 40 ms; a=a on a picture without frames answers
       `ENOENT:the picture has no frames`; c= counts in the sentinel.
 - [ ] K36 Handler timer, CPU and the profile key. The window already has a
