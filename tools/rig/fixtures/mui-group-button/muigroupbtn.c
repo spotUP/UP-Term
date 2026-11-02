@@ -20,7 +20,7 @@ extern ULONG DoMethod(Object *obj, ULONG MethodID, ...);
 /* MUI_NewObject / MUI_MakeObject without the SDK's proto stubs: vbcc passes varargs on the
  * stack, so the address of the first tag is the tag list. */
 extern Object *mui_newobj(__reg("a6") struct Library *, __reg("a0") char *, __reg("a1") ULONG *) = "\tjsr\t-30(a6)";
-extern Object *mui_makeobj(__reg("a6") struct Library *, __reg("d0") LONG, __reg("a0") ULONG *) = "\tjsr\t-78(a6)";
+extern Object *mui_makeobj(__reg("a6") struct Library *, __reg("d0") LONG, __reg("a0") ULONG *) = "\tjsr\t-120(a6)";
 extern void mui_disp(__reg("a6") struct Library *, __reg("a0") Object *) = "\tjsr\t-36(a6)";
 void MUI_DisposeObject(Object *o) { mui_disp(MUIMasterBase, o); }
 Object *MUI_NewObject(char *cls, ULONG tag1, ...) { return mui_newobj(MUIMasterBase, cls, &tag1); }
@@ -49,6 +49,7 @@ int main(void)
             WindowContents, VGroup, Child, rv, Child, tg, Child, plain, End,
         End,
     End;
+    if (!rv || !tg || !plain || !app) printf("rv %lx tg %lx plain %lx app %lx\n", (ULONG)rv, (ULONG)tg, (ULONG)plain, (ULONG)app);
     if (!app) { puts("no app"); CloseLibrary(MUIMasterBase); return 20; }
 
     DoMethod(win, MUIM_Notify, MUIA_Window_CloseRequest, TRUE, app, 2, MUIM_Application_ReturnID, MUIV_Application_ReturnID_Quit);
