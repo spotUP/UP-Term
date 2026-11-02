@@ -781,15 +781,17 @@ static void dk_copy_file(const char *src, const char *dst)
         dk_write(dst, cb, len);
 }
 
-/* AM-ICON-NOBORDER-OFF: Workbench.prefs goes back to "absent" (the user had none). Deleting the ENV: file alone leaves workbench.library on the
- * last USE (no border); the editor's stock file is USEd first, so the live Workbench gets the stock border and gauge, then the file goes. */
+/* AM-ICON-NOBORDER-OFF: Workbench.prefs goes back to "absent" (the user had none): the editor's stock file is USEd, so the live Workbench gets the
+ * stock border and gauge, and the ENV: file it writes STAYS. workbench.library learns a change only from IPrefs reading that file, which IPrefs does
+ * on its change notice 1.5-7 s after the editor's USE (rig 56, OS 3.2, wasabi snoop); deleting it right after the USE made IPrefs' open fail
+ * (Error 205) and the icons stayed frameless. ENVARC: is the persistent "absent" (dk_orig_restore_arc deletes it); a stock ENV: file reads the same
+ * as none and goes at the next reboot. */
 static void dk_wb_absent(void)
 {
     static unsigned char st[128];
     long n = desk_wb_stock(st, sizeof st);
     UnLock(CreateDir((STRPTR)DK_WORK));
     dk_put("Workbench", DK_WORK "/workbench.prefs", st, n);
-    DeleteFile((STRPTR)DK_WB_ENV);
 }
 
 static void dk_wb_snapshot(void)
@@ -807,7 +809,7 @@ static void dk_wb_snapshot(void)
     dk_write(DK_WBPEND, one, 1);
 }
 
-/* revert: the saved Workbench.prefs goes back through the stock editor (deleted when it did not exist), the .prev marks come back too */
+/* revert: the saved Workbench.prefs goes back through the stock editor (the stock file when it did not exist: dk_wb_absent), the .prev marks come back too */
 static int dk_wb_restore(void)
 {
     char name[96];
@@ -1290,7 +1292,7 @@ static void dk_orig_off(unsigned desk_mask, int flat)
     const char *env[8], *arc[8];
     char name[96];
     unsigned off = desk_off_mask(dk_orig_mask(), desk_mask);
-    int wb = !flat && dk_orig_have(DESK_WBPREFS_ENV), i, n;
+    int wb = !flat && dk_orig_have(DESK_WBPREFS_ENV), wbfix = 0, i, n;
     if (!off && !wb)
         return;
     /* ENVARC: first: a reader that finds ENV: missing falls back to ENVARC:, which must already hold the original */
@@ -1301,15 +1303,17 @@ static void dk_orig_off(unsigned desk_mask, int flat)
         dk_restore_targets(off, DK_ORIG);
     if (wb) {
         desk_copy_name(DK_ORIG, DESK_WBPREFS_ENV, name, sizeof name);
-        if (dk_exists(name))
+        wbfix = dk_exists(name);
+        if (wbfix)
             dk_editor("Workbench", name);
         else
             dk_wb_absent();
         DeleteFile((STRPTR)DK_WBB_PREV);
         DeleteFile((STRPTR)DK_WBG_PREV);
     }
-    /* dk_restore_targets already fixed the editor targets; Workbench.prefs (wb) is the one it does not cover */
-    if (wb)
+    /* dk_restore_targets already fixed the editor targets; Workbench.prefs (wb) is the one it does not cover. Only a saved file is fixed: for an
+     * absent original the fix would delete the stock ENV: file before IPrefs read it (dk_wb_absent) */
+    if (wbfix)
         dk_env_fix_file(DK_ORIG, DESK_WBPREFS_ENV);
     for (i = 0; i < n; i++)
         dk_orig_forget(env[i]);
