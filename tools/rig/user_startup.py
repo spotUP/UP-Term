@@ -15,3 +15,14 @@ def strip_upterm_blocks(data, name='UP-Term'):
         if not skip: out.append(line)
         if skip and line.startswith(';END ' + name): skip = False
     return ''.join(out).encode('latin-1')
+
+
+# The block the RIG (rig.py, every start) puts before the kit's Amarchy block; it is rig state, not something Install
+# wrote or Uninstall removes, so a check that compares S:User-Startup around Install/Uninstall must not judge it
+# (INSTALL-CHECK39-SHADOW-LEFTOVER: a reboot inside fresh-all re-inserted it after Install, Uninstall left it).
+RIG_SHADOWS_BLOCK = 'rig-upterm-shadows'
+
+
+def without_rig_blocks(data):
+    """data without the rig's own shadow block (bytes in, bytes out)."""
+    return strip_upterm_blocks(data, RIG_SHADOWS_BLOCK)

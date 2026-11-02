@@ -302,7 +302,7 @@ EndIf""" % {"stamp": kitstamp.STAMP, "hash": kitstamp.HASH}
 # from a rig-only block in S:User-Startup directly before the kit's Amarchy block (BOOTX:shadows-up); it leaves
 # SHADOWS_UP_DONE, and go then skips its own pass (a rig with no Amarchy block has no such block: go runs the pass).
 # The kit stamp stays in go: it must follow both passes, and go runs the other pass.
-SHADOWS_UP_BLOCK = "rig-upterm-shadows"
+SHADOWS_UP_BLOCK = user_startup.RIG_SHADOWS_BLOCK
 SHADOWS_UP_DONE = "RAM:rig-upterm-shadows-done"
 # AMARCHY-MENU-IXEMUL-BOOT-RACE: the kit's Amarchy block starts amarchy-menu, which needs ixemul v48 from LIBS:; the
 # RIG_LIBS assigns lived only in go (async beside the Startup-Sequence), so the menu opened a "needs ixemul v48"
