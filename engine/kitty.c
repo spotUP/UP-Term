@@ -264,6 +264,25 @@ static void kit_to_index(vt_term *t)
         s.w = im->w;
         s.h = im->h;
         kit_index(&s, 0, 0, im->w, im->h, im->w, im->h, o, im->pal, &im->npal);
+        if (im->anim) { /* K39: the frame canvases go back to cube indices too */
+            int f;
+            for (f = 0; f < im->anim->n; f++) {
+                long n = (long)im->w * im->h, j;
+                vt_u8 *c = (vt_u8 *)VT_MALLOC(n);
+                if (!c)
+                    break; /* cannot happen in practice: a quarter of the size; the loop below frees what it has */
+                for (j = 0; j < n; j++) {
+                    kit_src fs;
+                    memset(&fs, 0, sizeof(fs));
+                    fs.px = im->anim->fr[f];
+                    fs.bpp = 4;
+                    c[j] = kit_quant(kit_px(&fs, j), (int)(j % im->w), (int)(j / im->w));
+                }
+                VT_FREE(im->anim->fr[f]);
+                im->anim->fr[f] = c;
+                t->anim_mem -= n * 3;
+            }
+        }
         VT_FREE(im->pix);
         im->pix = o;
         t->img_mem -= im->bytes - (long)im->w * im->h;
@@ -908,14 +927,24 @@ static void kit_root_map(const vt_image *im, vt_u8 *map)
             }
 }
 
-/* the root's picture as a cube canvas, or 0 for no memory */
+/* bytes a pixel of a canvas of this picture: 4 (R G B A, K39) on an RGB picture, else a cube index */
+static long kit_cbpp(const vt_image *im)
+{
+    return im->fmt ? 4 : 1;
+}
+
+/* the root's picture as a canvas (cube indices; an RGBA picture is copied as it is), or 0 for no memory */
 static vt_u8 *kit_root_canvas(const vt_image *im)
 {
     vt_u8 map[256], *c;
     long i, n = (long)im->w * im->h;
-    c = (vt_u8 *)VT_MALLOC(n);
+    c = (vt_u8 *)VT_MALLOC(n * kit_cbpp(im));
     if (!c)
         return 0;
+    if (im->fmt) {
+        memcpy(c, im->pix, n * 4);
+        return c;
+    }
     kit_root_map(im, map);
     for (i = 0; i < n; i++)
         c[i] = map[im->pix[i]];
@@ -926,15 +955,25 @@ static vt_u8 *kit_root_canvas(const vt_image *im)
 static vt_u8 *kit_new_canvas(const vt_image *im, const vt_kitty *k, int base)
 {
     long n = (long)im->w * im->h;
-    vt_u8 *c = (vt_u8 *)VT_MALLOC(n);
+    vt_u8 *c = (vt_u8 *)VT_MALLOC(n * kit_cbpp(im));
     if (!c)
         return 0;
     if (base) {
-        memcpy(c, im->anim ? im->anim->fr[base - 1] : im->pix, n);
+        memcpy(c, im->anim ? im->anim->fr[base - 1] : im->pix, n * kit_cbpp(im));
     } else {
         vt_u32 y = KU(k, 'Y'); /* RGBA */
-        vt_u32 p = ((y & 255u) << 24) | (y >> 8);
-        memset(c, kit_quant(p, 0, 0), n);
+        if (im->fmt) {
+            long i;
+            for (i = 0; i < n; i++) {
+                c[i * 4] = (vt_u8)(y >> 24);
+                c[i * 4 + 1] = (vt_u8)(y >> 16);
+                c[i * 4 + 2] = (vt_u8)(y >> 8);
+                c[i * 4 + 3] = (vt_u8)y;
+            }
+        } else {
+            vt_u32 p = ((y & 255u) << 24) | (y >> 8);
+            memset(c, kit_quant(p, 0, 0), n);
+        }
     }
     return c;
 }
@@ -949,8 +988,17 @@ static const char *kit_blit(vt_u8 *c, const vt_image *im, const vt_kitty *k, con
     for (y = 0; y < s->h; y++)
         for (x = 0; x < s->w; x++) {
             vt_u32 p = kit_px(s, (long)y * s->w + x);
-            if (KV(k, 'X') == 1 || (p >> 24) >= 128)
-                c[(y0 + y) * im->w + x0 + x] = kit_quant(p, (int)x0 + x, (int)y0 + y);
+            if (KV(k, 'X') == 1 || (p >> 24) >= 128) {
+                if (im->fmt) { /* K39: the exact bytes, alpha with them */
+                    vt_u8 *q = c + ((y0 + y) * im->w + x0 + x) * 4;
+                    q[0] = (vt_u8)(p >> 16);
+                    q[1] = (vt_u8)(p >> 8);
+                    q[2] = (vt_u8)p;
+                    q[3] = (vt_u8)(p >> 24);
+                } else {
+                    c[(y0 + y) * im->w + x0 + x] = kit_quant(p, (int)x0 + x, (int)y0 + y);
+                }
+            }
         }
     return 0;
 }
@@ -960,7 +1008,7 @@ static void kit_anim_show(vt_term *t, vt_image *st);
 /* a=f: a new frame (r= 0) or an edit of frame r= */
 static const char *kit_frame(vt_term *t, const vt_kitty *k, const kit_src *s, vt_image *im)
 {
-    long r = KV(k, 'r'), c = KV(k, 'c'), z = KV(k, 'z'), per = (long)im->w * im->h;
+    long r = KV(k, 'r'), c = KV(k, 'c'), z = KV(k, 'z'), per = (long)im->w * im->h * kit_cbpp(im);
     int n = im->anim ? im->anim->n : 1;
     vt_u8 *root = 0, *cv;
     const char *err;
@@ -968,14 +1016,14 @@ static const char *kit_frame(vt_term *t, const vt_kitty *k, const kit_src *s, vt
         return "ENOENT:no such frame";
     if (!r && n >= VT_ANIM_FRAMES)
         return "ENOSPC:too many frames";
-    if (im->fmt)
-        return "EINVAL:frames of an RGB picture come with K39";
     if (t->anim_mem + (im->anim ? 0 : per) + (r ? 0 : per) > t->anim_budget)
         return "ENOSPC:no room for frames";
     if (!im->anim) {
         root = kit_root_canvas(im);
         if (!root)
             return "ENOMEM:no room for frames";
+        if (im->fmt)
+            t->kit_rgba_frames++;
     }
     if (r && root) { /* editing the root: its canvas is the one written */
         cv = root;
@@ -992,6 +1040,8 @@ static const char *kit_frame(vt_term *t, const vt_kitty *k, const kit_src *s, vt
             VT_FREE(root);
         return "ENOMEM:no room for frames";
     }
+    if (!r && im->fmt)
+        t->kit_rgba_frames++;
     err = kit_blit(cv, im, k, s);
     if (err) {
         if (cv != root && !r)
@@ -1046,13 +1096,29 @@ static void kit_anim_show(vt_term *t, vt_image *st)
         if (!p || !p->pix || p->kind != 1 || p->kid != st->kid || p->sw <= 0 || p->sx0 + p->sw > st->w ||
             p->sy0 + p->sh > st->h)
             continue;
-        if (p->npal != 256) { /* first switch: the packed palette becomes the cube; the pen cache sees a new serial */
+        if (p->fmt) { /* K39: RGBA to RGBA, no palette; the sent alpha bytes decide opaque */
+            long n = (long)p->w * p->h, i;
+            const vt_u8 *a;
+            for (y = 0; y < p->h; y++) {
+                long sy = p->sy0 + (long)y * p->sh / p->h;
+                for (x = 0; x < p->w; x++)
+                    memcpy(p->pix + ((long)y * p->w + x) * 4,
+                           src + (sy * st->w + p->sx0 + (long)x * p->sw / p->w) * 4, 4);
+            }
+            p->opaque = 1;
+            for (a = p->pix, i = 0; i < n; i++)
+                if (a[i * 4 + 3] != 255) {
+                    p->opaque = 0;
+                    break;
+                }
+            p->serial = ++t->img_serial;
+        } else if (p->npal != 256) { /* first switch: the packed palette becomes the cube; the pen cache sees a new serial */
             for (c = 1; c < 256; c++)
                 p->pal[c] = kit_color(c);
             p->npal = 256;
             p->serial = ++t->img_serial;
         }
-        for (y = 0; y < p->h; y++) {
+        for (y = 0; y < (p->fmt ? 0 : p->h); y++) {
             long sy = p->sy0 + (long)y * p->sh / p->h;
             for (x = 0; x < p->w; x++)
                 p->pix[(long)y * p->w + x] = src[sy * st->w + p->sx0 + (long)x * p->sw / p->w];
@@ -1110,6 +1176,7 @@ static const char *kit_compose(vt_term *t, const vt_kitty *k, vt_image *im)
     long w = KV(k, 'w'), h = KV(k, 'h'), x, y;
     const vt_u8 *a;
     vt_u8 *b;
+    int bpp = (int)kit_cbpp(im);
     if (!an || fr < 1 || fr > an->n || to < 1 || to > an->n)
         return "ENOENT:no such frame";
     if (w <= 0)
@@ -1125,9 +1192,9 @@ static const char *kit_compose(vt_term *t, const vt_kitty *k, vt_image *im)
     b = an->fr[to - 1];
     for (y = 0; y < h; y++)
         for (x = 0; x < w; x++) {
-            vt_u8 p = a[(sy + y) * im->w + sx + x];
-            if (p || KV(k, 'C') == 1)
-                b[(dy + y) * im->w + dx + x] = p;
+            const vt_u8 *p = a + ((sy + y) * im->w + sx + x) * bpp;
+            if ((bpp == 4 ? p[3] >= 128 : *p != 0) || KV(k, 'C') == 1)
+                memcpy(b + ((dy + y) * im->w + dx + x) * bpp, p, bpp);
         }
     if (to == an->cur)
         kit_anim_show(t, im);
@@ -1350,6 +1417,10 @@ long vt_kitty_frame_px(const vt_term *t, unsigned long id, int frame, int x, int
     im = t->imgs[f];
     if (!im->anim || frame < 1 || frame > im->anim->n || x < 0 || y < 0 || x >= im->w || y >= im->h)
         return -1;
+    if (im->fmt) { /* K39: 0xAARRGGBB (on a 32-bit long an opaque white reads as -1) */
+        const vt_u8 *q = im->anim->fr[frame - 1] + ((long)y * im->w + x) * 4;
+        return (long)(((vt_u32)q[3] << 24) | ((vt_u32)q[0] << 16) | ((vt_u32)q[1] << 8) | q[2]);
+    }
     return im->anim->fr[frame - 1][(long)y * im->w + x];
 }
 
