@@ -77,8 +77,9 @@ def level(cov):
 
 
 def coverage(font, cp, w, h):
-    """h rows of w coverages 0..1 of the glyph (code point cp) averaged from the 64x64 raster to w x h."""
-    rw, rh, px = gen_menu_icons.raster(font, cp)
+    """h rows of w coverages 0..1 of the glyph (code point cp) averaged from the 64x64 raster to w x h. A variant
+    that is not square has its horizontal stems snapped to whole rows first (gen_menu_icons.fit_stems_y)."""
+    rw, rh, px = gen_menu_icons.raster(font, cp, h if h != w else None)
     out = gen_emoji.area(rw, rh, px, w, h)
     return [[out[y * w + x][3] / 255.0 for x in range(w)] for y in range(h)]
 
