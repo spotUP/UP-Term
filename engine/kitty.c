@@ -25,7 +25,9 @@
  * Supported: a=t (transmit), a=T (transmit and show), a=p (show by id),
  * a=d (delete: a A i I n N c C), a=q (query); f=24, 32, 100 (PNG through
  * the host's decoder); o=z; m=1 chunks; t=d, t=f, t=t (the host's file reader); i= I= p=;
- * q=1/2; c= r= x= y= X= Y= w= h= C=1. Not supported, each answered with an
+ * q=1/2; c= r= x= y= X= Y= w= h= C=1; P= Q= H= V= relative placements (at the
+ * parent's top left plus H columns, V rows; the cursor stays; deleted with
+ * the parent; ENOPARENT, ECYCLE, ETOODEEP past 8 deep). Not supported, each answered with an
  * error: z<0 below the text (drawn on top), U=1 placeholders, animation,
  * t=s (answered EBADF). t=f/t go to the host's file reader. Included by vtengine.c (one translation unit with the engine).
  */
@@ -449,19 +451,109 @@ static const char *kit_load(vt_term *t, const vt_kitty *k, kit_src *s)
 
 /* ---- showing ---- */
 
+/* The slot of the newest placement i=id, p=pid on the screen, or -1. */
+static int kit_placement(const vt_term *t, vt_u32 id, vt_u32 pid)
+{
+    int i, best = -1;
+    for (i = 0; i < VT_IMG_SLOTS; i++) {
+        const vt_image *im = t->imgs[i];
+        if (im && im->pix && im->kind == 1 && im->kid == id && im->pid == pid &&
+            (best < 0 || im->serial > t->imgs[best]->serial))
+            best = i;
+    }
+    return best;
+}
+
+/* The screen cell of placement `slot`'s top left: its first tile row's
+ * line less that row. 0 when none of it is on the screen. */
+static int kit_corner(const vt_term *t, int slot, int *col, int *row)
+{
+    const vt_image *im = t->imgs[slot];
+    int y;
+    for (y = 0; y < t->rows; y++) {
+        vt_u16 i;
+        for (i = t->scr[y]->img; i; i = t->pl[i].next)
+            if (place_image(t, &t->pl[i]) == im) {
+                *col = t->pl[i].col0;
+                *row = y - t->pl[i].row;
+                return 1;
+            }
+    }
+    return 0;
+}
+
+/* A relative placement's parent (P=, Q=): its slot, and the cell the
+ * child's top left goes to (the parent's top left plus H= columns, V=
+ * rows). -1 and the error text when the parent is missing, the chain
+ * would loop back to the placement being made, or runs past 8 deep. */
+static int kit_parent(const vt_term *t, const vt_kitty *k, vt_u32 id, int *col, int *row, const char **err)
+{
+    vt_u32 pk = KU(k, 'P'), pp = KU(k, 'Q'), p = KU(k, 'p');
+    int slot, at, n;
+    if (id && p && pk == id && pp == p) {
+        *err = "ECYCLE:the parent chain loops";
+        return -1;
+    }
+    slot = kit_placement(t, pk, pp);
+    if (slot < 0 || !kit_corner(t, slot, col, row)) {
+        *err = "ENOPARENT:no such parent placement";
+        return -1;
+    }
+    for (at = slot, n = 0; at >= 0 && t->imgs[at]->pkid && n <= 8; n++) {
+        const vt_image *im = t->imgs[at];
+        if (id && p && im->pkid == id && im->ppid == p) {
+            *err = "ECYCLE:the parent chain loops";
+            return -1;
+        }
+        at = kit_placement(t, im->pkid, im->ppid);
+    }
+    if (t->imgs[slot]->kdepth + 1 > 8) {
+        *err = "ETOODEEP:more than 8 parents deep";
+        return -1;
+    }
+    *col += (int)KV(k, 'H');
+    *row += (int)KV(k, 'V');
+    if (*col < 0)
+        *col = 0; /* left of the screen: its first column */
+    if (*col >= t->cols)
+        *col = t->cols - 1;
+    return slot;
+}
+
+/* Image `slot` with its top left at (col, row), the rows off the screen
+ * cut; no scrolling, the cursor untouched (a relative placement). */
+static void kit_place_at(vt_term *t, int slot, int col, int row)
+{
+    vt_image *im = t->imgs[slot];
+    int rows = (im->py0 + im->h + im->ch - 1) / im->ch, k;
+    for (k = 0; k < rows; k++)
+        if (row + k >= 0 && row + k < t->rows)
+            sixel_place_row(t, slot, row + k, col, k);
+    if (im->pix && !im->refs)
+        image_free(t, slot); /* nowhere on the screen */
+}
+
 /* The part of src the keys ask, as a new image on the screen at the
- * cursor (C=1: the cursor stays), tagged with the picture's ids. NULL, or
- * the error text. */
+ * cursor (C=1: the cursor stays), or relative to a parent placement (P=:
+ * the cursor stays whatever C= says), tagged with the picture's ids. NULL,
+ * or the error text. */
 static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_u32 id)
 {
     int x0 = (int)KV(k, 'x'), y0 = (int)KV(k, 'y'), w = (int)KV(k, 'w'), h = (int)KV(k, 'h');
     int c = (int)KV(k, 'c'), r = (int)KV(k, 'r'), tw, th, npal, slot;
     int cw = t->cell_w > 0 ? t->cell_w : 8, ch = t->cell_h > 0 ? t->cell_h : 16;
     int px0 = (int)KV(k, 'X'), py0 = (int)KV(k, 'Y');
-    int left;
+    int left, parent = -1, depth = 0, col = t->cx, row = t->cy;
     vt_u8 *pix;
     vt_u32 pal[256];
     vt_image *im;
+    if (KU(k, 'P')) {
+        const char *err = 0;
+        parent = kit_parent(t, k, id, &col, &row, &err);
+        if (parent < 0)
+            return err;
+        depth = t->imgs[parent]->kdepth + 1; /* kept: the parent may give way below */
+    }
     if (px0 < 0)
         px0 = 0;
     if (px0 >= cw)
@@ -470,7 +562,7 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
         py0 = 0;
     if (py0 >= ch)
         py0 = ch - 1;
-    left = (t->cols - t->cx) * cw - px0;
+    left = (t->cols - col) * cw - px0;
     if (x0 < 0 || y0 < 0 || x0 >= s->w || y0 >= s->h)
         x0 = y0 = 0;
     if (w <= 0 || w > s->w - x0)
@@ -525,7 +617,14 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
     im->px0 = px0;
     im->py0 = py0;
     t->kit_last_z = KV(k, 'z');
-    image_place(t, slot, KV(k, 'C') == 1 ? 2 : 3);
+    if (parent >= 0) {
+        im->pkid = KU(k, 'P');
+        im->ppid = KU(k, 'Q');
+        im->kdepth = depth;
+        kit_place_at(t, slot, col, row);
+    } else {
+        image_place(t, slot, KV(k, 'C') == 1 ? 2 : 3);
+    }
     t->kit_placed++;
     return 0;
 }
@@ -691,6 +790,9 @@ static void kitty_run(vt_term *t, vt_kitty *k)
     } else if (a == 'p' && !id && !num) {
         err = "EINVAL:no image id";
         bare = 1; /* the one error that is answered without an id */
+        a = 0;
+    } else if (KV(k, 'U') && KU(k, 'P') && (a == 'T' || a == 'p')) {
+        err = "EINVAL:a virtual placement has no parent";
         a = 0;
     } else if (KV(k, 'U') && (a == 'T' || a == 'p')) {
         err = "EINVAL:no unicode placeholders";
