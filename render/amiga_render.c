@@ -623,6 +623,8 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->ex = 0;
     r->img_serial = 0;
     r->n_img_runs = 0;
+    r->n_img_rgb_runs = r->n_img_rgb_blend_fallback = 0;
+    r->cgx_alpha = 0;
     r->back = 0;
     r->front_rp = 0;
     r->sync_seen = vt_sync_frames(t); /* frames before this window are not its to compose */
@@ -633,6 +635,11 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
             CloseLibrary(r->cgx);
         r->cgx = 0;
     }
+    /* K40: pictures hold their exact colours (RGBA) only where the screen is deeper than 8 bits and the
+     * cybergraphics calls are there; everywhere else the engine makes today's indexed pictures */
+    r->cgx_alpha = r->cgx ? vr_cgx_has_alpha(r->cgx) : 0;
+    if (t)
+        vt_set_image_rgb(t, r->cgx != 0);
     /* colour emoji (U4) through the same call; ce_has asks for RTG of 15
      * bits or more and the call, so AGA and 8-bit RTG keep Unifont's glyph */
     r->emoji.tg.rtg = !r->planar;
@@ -2587,6 +2594,78 @@ static void img_colours(vr_render *r, const vt_image_view *v)
 
 /* Cells [a, b) of screen row y show image v: its pixels there, clipped to
  * the image (a cell it does not fill keeps the background the text drew). */
+static int img_buf_need(vr_render *r, ULONG size)
+{
+    if (r->img_buf_size >= size)
+        return 1;
+    if (r->img_buf)
+        FreeVec(r->img_buf);
+    r->img_buf_size = size;
+    r->img_buf = (UBYTE *)AllocVec(size, MEMF_ANY);
+    if (!r->img_buf) {
+        r->img_buf_size = 0;
+        return 0;
+    }
+    return 1;
+}
+
+/* K40: a run of an RGB picture (fmt 1: w x h x 4 bytes R G B A) at source (sx, sy), size (w, h), on screen at
+ * (dx, dy). An opaque picture goes to WritePixelArray straight from the view's pixels. Otherwise the driver blends
+ * through WritePixelArrayAlpha from an ARGB copy of the run, or, where the library has no working one, the binary
+ * 50% rule: alpha below 128 shows the background, the rest is drawn solid (counted, n_img_rgb_blend_fallback). */
+static void img_run_rgb(vr_render *r, const vt_image_view *v, LONG sx, LONG sy, LONG w, LONG h, WORD dx, WORD dy)
+{
+    const vt_u8 *s;
+    UBYTE *d;
+    LONG k, j;
+    ULONG bg;
+    if (!r->cgx)
+        return; /* cannot happen: RGB pictures are made only with the library (vr_init) */
+    r->blank = 0;
+    r->n_img_rgb_runs++;
+    if (v->opaque) {
+        vr_cgx_write_pixels(r->cgx, (APTR)v->pix, (UWORD)sx, (UWORD)sy, (UWORD)(v->w * 4), r->rp, (UWORD)dx,
+                            (UWORD)dy, (UWORD)w, (UWORD)h, VR_RECTFMT_RGBA);
+        return;
+    }
+    if (!img_buf_need(r, (ULONG)(4 * w * h)))
+        return;
+    d = r->img_buf;
+    if (r->cgx_alpha) {
+        for (k = 0; k < h; k++) {
+            s = v->pix + ((sy + k) * v->w + sx) * 4;
+            for (j = 0; j < w; j++, s += 4, d += 4) {
+                d[0] = s[3];
+                d[1] = s[0];
+                d[2] = s[1];
+                d[3] = s[2];
+            }
+        }
+        vr_cgx_write_alpha(r->cgx, (APTR)r->img_buf, 0, 0, (UWORD)(w * 4), r->rp, (UWORD)dx, (UWORD)dy, (UWORD)w,
+                           (UWORD)h, 0xFFFFFFFFUL);
+        return;
+    }
+    bg = ink_rgb(r, r->bg_ink);
+    r->n_img_rgb_blend_fallback++;
+    for (k = 0; k < h; k++) {
+        s = v->pix + ((sy + k) * v->w + sx) * 4;
+        for (j = 0; j < w; j++, s += 4, d += 4) {
+            if (s[3] < 128) {
+                d[0] = (UBYTE)(bg >> 16);
+                d[1] = (UBYTE)(bg >> 8);
+                d[2] = (UBYTE)bg;
+            } else {
+                d[0] = s[0];
+                d[1] = s[1];
+                d[2] = s[2];
+            }
+            d[3] = 255;
+        }
+    }
+    vr_cgx_write_pixels(r->cgx, (APTR)r->img_buf, 0, 0, (UWORD)(w * 4), r->rp, (UWORD)dx, (UWORD)dy, (UWORD)w,
+                        (UWORD)h, VR_RECTFMT_RGBA);
+}
+
 static void img_run(vr_render *r, const vt_image_view *v, int a, int b, int y)
 {
     LONG sx = (LONG)(a - v->col0) * v->cw - v->px0, sy = v->py, w = (LONG)(b - a) * r->cw, h = r->ch;
@@ -2612,6 +2691,10 @@ static void img_run(vr_render *r, const vt_image_view *v, int a, int b, int y)
         h = v->h - sy;
     if (w <= 0 || h <= 0)
         return;
+    if (v->fmt == 1) {
+        img_run_rgb(r, v, sx, sy, w, h, dx, dy);
+        return;
+    }
     if (!r->img) {
         /* the window's first image: its colour tables now (vr_images) */
         if (!(r->img = (struct vr_images *)AllocVec(sizeof(struct vr_images), MEMF_ANY | MEMF_CLEAR)))
@@ -2627,16 +2710,8 @@ static void img_run(vr_render *r, const vt_image_view *v, int a, int b, int y)
         return;
     }
     stride = (w + 15) & ~15L; /* WritePixelArray8 wants rows of 16 */
-    if (r->img_buf_size < (ULONG)(stride * h)) {
-        if (r->img_buf)
-            FreeVec(r->img_buf);
-        r->img_buf_size = (ULONG)(stride * h);
-        r->img_buf = (UBYTE *)AllocVec(r->img_buf_size, MEMF_ANY);
-        if (!r->img_buf) {
-            r->img_buf_size = 0;
-            return;
-        }
-    }
+    if (!img_buf_need(r, (ULONG)(stride * h)))
+        return;
     for (k = 0; k < h; k++) {
         src = v->pix + (sy + k) * v->w + sx;
         d = r->img_buf + k * stride;

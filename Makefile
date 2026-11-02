@@ -1373,6 +1373,11 @@ $(BUILD)/amiga/btnbgprobe: tests/amiga/btnbgprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/btnbgprobe.c
 
+# K40 gate: cybergraphics WritePixelArrayAlpha (-216) export and blend on the rig's RTG screen
+$(BUILD)/amiga/wpaprobe: tests/amiga/wpaprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/wpaprobe.c
+
 $(BUILD)/amiga/iconpens: tests/amiga/iconpens.c amarchy/iconpen_core.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/iconpens.c

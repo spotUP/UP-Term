@@ -12,7 +12,7 @@
 #include <graphics/gfxbase.h>
 #include <graphics/rastport.h>
 
-enum gf_kind { GF_TEXT, GF_RECT, GF_SCROLL, GF_BLT, GF_MOVE, GF_CGXFILL, GF_CGXLUT, GF_SETRGB, GF_ALLOC, GF_TOF, GF_OTHER };
+enum gf_kind { GF_TEXT, GF_RECT, GF_SCROLL, GF_BLT, GF_MOVE, GF_CGXFILL, GF_CGXLUT, GF_CGXPIX, GF_CGXALPHA, GF_SETRGB, GF_ALLOC, GF_TOF, GF_OTHER };
 
 typedef struct gf_call {
     enum gf_kind kind;
@@ -27,6 +27,13 @@ extern int gf_n;
 
 /* The canvas value of a pixel: 0 untouched, 32..255 a glyph's code (Text), GF_FILL | pen a fill. */
 #define GF_FILL 0x1000
+/* K40: the last WritePixelArray / WritePixelArrayAlpha call (src pointer, SrcX, SrcY, SrcMod, globalalpha); the
+ * alpha fake blends src ARGB over the canvas pixel (rgb of GF_CGX pixels; others count as black):
+ * (s*a + d*(255-a)) / 255 per channel. gf_cgx_alpha(0) makes the library one whose -216 is a stub. */
+typedef struct gf_pixcall { const void *src; unsigned sx, sy, smod; unsigned long ga; } gf_pixcall;
+extern gf_pixcall gf_lastpix;
+void gf_cgx_alpha(int on);
+
 /* A FillPixelArray fill (cybergraphics) paints GF_CGX | 0xRRGGBB, not a pen. */
 #define GF_CGX 0x10000000
 #define GF_FLIP 0x40000   /* a COMPLEMENT fill flips this bit */

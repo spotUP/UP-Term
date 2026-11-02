@@ -2005,7 +2005,7 @@ static void a_kitty_image_draws_its_pixels_on_the_canvas(void)
     /* red green blue white / black yellow cyan magenta */
     pass("\x1b_Ga=T,f=24,s=4,v=2;/wAAAP8AAAD/////AAAA//8AAP///wD/\x1b\\");
     CHECK_INT((int)vt_kitty_placed(term), 1);
-    CHECK(gf_count(GF_CGXLUT) >= 1);
+    CHECK(gf_count(GF_CGXPIX) >= 1);
     for (i = 0; i < 8; i++)
         CHECK_INT(gf_pixel(i % 4, i / 4), GF_CGX | want[i]);
     close_term();
@@ -2030,7 +2030,7 @@ static int k30_last_text_after_image(const char *want)
 {
     int i, img = -1, txt = -1;
     for (i = 0; i < gf_n; i++) {
-        if (gf_log[i].kind == GF_CGXLUT)
+        if (gf_log[i].kind == GF_CGXPIX)
             img = i;
         if (gf_log[i].kind == GF_TEXT && !strcmp(gf_log[i].str, want))
             txt = i;
@@ -2047,7 +2047,7 @@ static void k30_text_lies_over_a_picture_below(void)
     gf_clear_log();
     /* red green blue white / black yellow cyan magenta, 2 cells wide */
     pass("\x1b[1;1H\x1b_Ga=T,f=24,s=4,v=2,c=2,r=1,z=-1,C=1;/wAAAP8AAAD/////AAAA//8AAP///wD/\x1b\\");
-    CHECK(gf_count(GF_CGXLUT) >= 1);
+    CHECK(gf_count(GF_CGXPIX) >= 1);
     CHECK(k30_last_text_after_image("X")); /* the glyph over the image */
     CHECK_INT(gf_pixel(3, 3), under);      /* the fake paints the X's cell whole */
     CHECK((gf_pixel(12, 1) & GF_CGX) != 0); /* the blank cell beside it: the picture */
@@ -2544,6 +2544,184 @@ static void k37_eight_bit_golden(void)
         }
 }
 
+/* K40: RGB pictures on a deep screen. 64x64 gradient (r = 4x, g = 4y, b = 2(x + y)) with the alpha of column 0 given. */
+static void k40_gradient(unsigned char *px, int alpha0)
+{
+    int x, y;
+    k37_gradient(px);
+    for (y = 0; y < 64; y++)
+        for (x = 0; x < 64; x++)
+            px[(y * 64 + x) * 4 + 3] = x == 0 ? (unsigned char)alpha0 : 255;
+}
+
+static void k40_open(int alpha_real)
+{
+    gf_cgx_alpha(alpha_real);
+    open_term_in(0, VT_XTERM);
+    gf_truecolor(1);
+    vr_free(&rn);
+    vr_init(&rn, gf_window(), gf_font(), term, VT_ENC_LATIN1);
+    vt_set_cell_pixels(term, CW, CH);
+    vr_redraw(&rn);
+}
+
+static int k40_blend(int s, int d, int a) { return (s * a + d * (255 - a)) / 255; }
+
+static int k40_distinct(int x0, int x1)
+{
+    static unsigned char seen[1 << 21];
+    int x, y, n = 0;
+    memset(seen, 0, sizeof seen);
+    for (y = 0; y < 64; y++)
+        for (x = x0; x < x1; x++) {
+            int v = gf_pixel(x, y) & 0xFFFFFF;
+            if (!seen[v >> 3] || !(seen[v >> 3] & (1 << (v & 7)))) {
+                seen[v >> 3] |= (unsigned char)(1 << (v & 7));
+                n++;
+            }
+        }
+    return n;
+}
+
+/* The one reachability test: the byte stream -> engine RGBA picture -> img_run -> WritePixelArray. Every pixel of an
+ * opaque 4096-colour gradient reaches the screen exact, drawn straight from the view's pixels (SrcMod 256). */
+static void k40_opaque_rgb_picture_reaches_the_screen_exact(void)
+{
+    static unsigned char px[64 * 64 * 4];
+    int x, y, bad = 0;
+    k40_open(1);
+    CHECK_INT((int)vt_kitty_rgb_made(term), 0);
+    k40_gradient(px, 255);
+    pass("\x1b[1;1H");
+    gf_clear_log();
+    k37_send("a=T,f=32,s=64,v=64,i=1", px, sizeof px);
+    CHECK(rn.n_img_rgb_runs >= 1);
+    CHECK(vt_kitty_rgb_made(term) >= 1);
+    CHECK(gf_count(GF_CGXPIX) >= 1);
+    CHECK_INT(gf_count(GF_CGXLUT), 0);
+    CHECK_INT(gf_count(GF_CGXALPHA), 0); /* opaque: no blend needed */
+    CHECK_INT((int)gf_lastpix.smod, 256);
+    for (y = 0; y < 64; y++)
+        for (x = 0; x < 64; x++)
+            if (gf_pixel(x, y) != (GF_CGX | ((4 * x) << 16) | ((4 * y) << 8) | (2 * (x + y))))
+                bad++;
+    CHECK_INT(bad, 0);
+    CHECK_INT(k40_distinct(0, 64), 4096);
+    close_term();
+}
+
+/* Translucent: column 0 at alpha 128 over the background is the driver's blend; column 1.. exact. 4033 colours:
+ * 4032 exact + the blended column's 64 distinct colours are not in it: count the exact columns only. */
+static void k40_translucent_pixels_blend_over_the_background(void)
+{
+    static unsigned char px[64 * 64 * 4];
+    int y, bg, bad = 0;
+    k40_open(1);
+    pass("\x1b[1;1H");
+    bg = gf_pixel(0, 0);
+    gf_clear_log();
+    k40_gradient(px, 128);
+    k37_send("a=T,f=32,s=64,v=64,i=1", px, sizeof px);
+    CHECK(gf_count(GF_CGXALPHA) >= 1);
+    CHECK_INT(gf_count(GF_CGXPIX), 0);
+    CHECK_INT((int)rn.n_img_rgb_blend_fallback, 0);
+    CHECK_INT((int)gf_lastpix.ga, (int)0xFFFFFFFFUL);
+    for (y = 0; y < 64; y++) {
+        int want = GF_CGX | (k40_blend(0, bg >> 16 & 255, 128) << 16 | k40_blend(4 * y, bg >> 8 & 255, 128) << 8
+                            | k40_blend(2 * y, bg & 255, 128));
+        if (!(bg & GF_CGX)) /* the fake treats an unfilled pixel as black */
+            want = GF_CGX | (k40_blend(0, 0, 128) << 16 | k40_blend(4 * y, 0, 128) << 8 | k40_blend(2 * y, 0, 128));
+        if (gf_pixel(0, y) != want)
+            bad++;
+        if (gf_pixel(1, y) != (GF_CGX | (4 << 16) | ((4 * y) << 8) | (2 * (1 + y))))
+            bad++;
+    }
+    CHECK_INT(bad, 0);
+    CHECK_INT(k40_distinct(1, 64), 4032);
+    close_term();
+}
+
+/* No working WritePixelArrayAlpha (the rig's P96 42.7): the binary 50% rule and the sentinel. Alpha 127 shows the
+ * background, 128 and up is drawn solid. */
+static void k40_fallback_is_the_binary_rule_with_a_sentinel(void)
+{
+    static unsigned char px[64 * 64 * 4];
+    int y, bad = 0, bg;
+    k40_open(0);
+    pass("\x1b[1;1H");
+    bg = gf_pixel(0, 0);
+    gf_clear_log();
+    k40_gradient(px, 127);
+    k37_send("a=T,f=32,s=64,v=64,i=1", px, sizeof px);
+    bg = gf_pixel(0, 0);
+    CHECK_INT(gf_count(GF_CGXALPHA), 0);
+    CHECK(gf_count(GF_CGXPIX) >= 1);
+    CHECK(rn.n_img_rgb_blend_fallback >= 1);
+    for (y = 0; y < 64; y++)
+        if (gf_pixel(0, y) != bg || gf_pixel(5, y) != (GF_CGX | (20 << 16) | ((4 * y) << 8) | (2 * (5 + y))))
+            bad++;
+    CHECK_INT(bad, 0);
+    close_term();
+    gf_cgx_alpha(1);
+}
+
+/* Redraw order: a z<0 picture is drawn before the text in the log (the glyph over it), a z>=0 picture after;
+ * a damage of the second cell row alone redraws that row's slice (SrcY 8, 8 rows). */
+static int k40_after(enum gf_kind k, const char *txt, int want_text_first)
+{
+    int i, ki = -1, ti = -1;
+    for (i = 0; i < gf_n; i++) {
+        if (gf_log[i].kind == k)
+            ki = i;
+        if (gf_log[i].kind == GF_TEXT && gf_log[i].str[0] == txt[0])
+            ti = i;
+    }
+    return ki >= 0 && ti >= 0 && (want_text_first ? ti < ki : ki < ti);
+}
+
+static void k40_redraw_order_and_partial_damage(void)
+{
+    static unsigned char px[64 * 64 * 4];
+    k40_open(1);
+    pass("\x1b[1;1HX");
+    gf_clear_log();
+    k40_gradient(px, 128);
+    pass("\x1b[1;1H");
+    k37_send("a=T,f=32,s=64,v=64,i=1,z=-1,C=1,c=8,r=8", px, sizeof px);
+    CHECK(k40_after(GF_CGXALPHA, "X", 0)); /* under: the picture first, the glyph over it */
+    CHECK(gf_count(GF_CGXALPHA) >= 1);
+    gf_clear_log();
+    vr_damage(&rn, 0, 1, COLS, 2); /* the second cell row only */
+    CHECK_INT(gf_count(GF_CGXALPHA), 1); /* only the damaged row's slice */
+    close_term();
+    k40_open(1);
+    pass("\x1b[1;1HX");
+    gf_clear_log();
+    k37_send("a=T,f=32,s=64,v=64,i=2,z=1,C=1,c=8,r=8", px, sizeof px);
+    gf_clear_log();
+    vr_damage(&rn, 0, 0, COLS - 1, ROWS - 1);
+    vr_redraw(&rn);
+    CHECK(k40_after(GF_CGXALPHA, "X", 1)); /* over: the glyph first */
+    close_term();
+}
+
+/* An 8-bit screen keeps today's indexed pictures: no RGB picture is made. */
+static void k40_eight_bit_screen_stays_indexed(void)
+{
+    static unsigned char px[64 * 64 * 4];
+    open_term_in(0, VT_XTERM);
+    gf_truecolor(0);
+    vr_free(&rn);
+    vr_init(&rn, gf_window(), gf_font(), term, VT_ENC_LATIN1);
+    vt_set_cell_pixels(term, CW, CH);
+    k40_gradient(px, 255);
+    k37_send("a=T,f=32,s=64,v=64,i=1", px, sizeof px);
+    CHECK_INT((int)vt_kitty_rgb_made(term), 0);
+    CHECK_INT((int)rn.n_img_rgb_runs, 0);
+    CHECK_INT(gf_count(GF_CGXPIX), 0);
+    close_term();
+}
+
 int main(void)
 {
     an_inert_renderer_has_no_selection();
@@ -2562,6 +2740,11 @@ int main(void)
     k30_far_below_stays_under_a_coloured_background();
     k32_placeholder_cells_draw_their_tiles();
     k37_eight_bit_golden();
+    k40_opaque_rgb_picture_reaches_the_screen_exact();
+    k40_translucent_pixels_blend_over_the_background();
+    k40_fallback_is_the_binary_rule_with_a_sentinel();
+    k40_redraw_order_and_partial_damage();
+    k40_eight_bit_screen_stays_indexed();
     the_cursor_pass_counts_its_gfx_calls_and_unchanged_cells();
     scrollback_view_move_blits_and_draws_only_the_exposed_rows();
     cursor_glyph_is_drawn_at_the_cursor_cell_from_the_grid_row();
