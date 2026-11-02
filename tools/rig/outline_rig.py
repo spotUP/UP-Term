@@ -217,11 +217,11 @@ def main():
               (aa_plain, aa_fancy, aa_off))
         print('  outline-aa: plain %s, on %s, off %s' % (aa_plain, aa_fancy, aa_off))
         print('  line with the font drawn within %.1f s of Return (6 s wait)' % secs)
-        ami.png(str(paths.RIG / 'outline_plain.png'), w, h,
+        ami.png(str(paths.reports_dir() / 'outline_plain.png'), w, h,
                 [plain[r * w * 3:(r + 1) * w * 3] for r in range(h)])
-        ami.png(str(paths.RIG / 'outline_fancy.png'), w, h,
+        ami.png(str(paths.reports_dir() / 'outline_fancy.png'), w, h,
                 [fancy[r * w * 3:(r + 1) * w * 3] for r in range(h)])
-        ami.png(str(paths.RIG / 'outline_flat.png'), w, h,
+        ami.png(str(paths.reports_dir() / 'outline_flat.png'), w, h,
                 [flat[r * w * 3:(r + 1) * w * 3] for r in range(h)])
     finally:
         if had:

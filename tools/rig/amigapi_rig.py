@@ -203,7 +203,7 @@ def step1(port):
     if not probe.exists():
         sys.exit('[ERROR] build/amiga/pi-llmprobe missing: make build/amiga/pi-llmprobe')
     shutil.copy(probe, VTC / 'pi-llmprobe')
-    log = paths.RIG / 'amigapi_fixture.log'
+    log = paths.reports_dir() / 'amigapi_fixture.log'
     fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
                            '--delay', '0.01'], stdout=open(log, 'w'), stderr=subprocess.STDOUT)
     time.sleep(1)
@@ -260,7 +260,7 @@ def step2(port):
             sys.exit('[ERROR] %s missing: %s' % (b, hint))
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     shutil.copy(claude, VTC / 'Claude')
-    log = paths.RIG / 'amigapi_fixture2.log'
+    log = paths.reports_dir() / 'amigapi_fixture2.log'
     fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
                            '--delay', '0.01'], stdout=open(log, 'w'), stderr=subprocess.STDOUT)
     time.sleep(1)
@@ -308,7 +308,7 @@ def step3(port):
     if not AMIGA_PI.exists():
         sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
-    log = paths.RIG / 'amigapi_fixture3.log'
+    log = paths.reports_dir() / 'amigapi_fixture3.log'
     fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
                            '--delay', '0.01'], stdout=open(log, 'w'), stderr=subprocess.STDOUT)
     time.sleep(1)
@@ -471,8 +471,8 @@ def step4(port):
           repr(('UP-TERM' in had, saved_dir)))
     rc, out = c.run('List C:vsh QUICK')
     check('4 no C:vsh', rc != 0, out)
-    log = paths.RIG / 'amigapi_fixture4.log'
-    dump = paths.RIG / 'amigapi_dump4'
+    log = paths.reports_dir() / 'amigapi_fixture4.log'
+    dump = paths.reports_dir() / 'amigapi_dump4'
     shutil.rmtree(dump, ignore_errors=True)
     dump.mkdir()
     fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
@@ -589,8 +589,8 @@ def step5(port):
     saved_dir = ami.read_file('ENVARC:up-term/Dir')
     check('5 no UP-Term: on this rig to begin with', 'UP-TERM' not in had and saved_dir is None,
           repr(('UP-TERM' in had, saved_dir)))
-    log = paths.RIG / 'amigapi_fixture5.log'
-    dump = paths.RIG / 'amigapi_dump5'
+    log = paths.reports_dir() / 'amigapi_fixture5.log'
+    dump = paths.reports_dir() / 'amigapi_dump5'
     shutil.rmtree(dump, ignore_errors=True)
     dump.mkdir()
     fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
@@ -708,8 +708,8 @@ def step6(port):
     saved_dir = ami.read_file('ENVARC:up-term/Dir')
     check('6 no UP-Term: on this rig to begin with', 'UP-TERM' not in had and saved_dir is None,
           repr(('UP-TERM' in had, saved_dir)))
-    log = paths.RIG / 'amigapi_fixture6.log'
-    dump = paths.RIG / 'amigapi_dump6'
+    log = paths.reports_dir() / 'amigapi_fixture6.log'
+    dump = paths.reports_dir() / 'amigapi_dump6'
     shutil.rmtree(dump, ignore_errors=True)
     dump.mkdir()
     fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
@@ -811,14 +811,14 @@ def step10(port):
         return
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     shutil.copy(echo, VTC / 'mcp-echo')
-    mlog = paths.RIG / 'amigapi_mcp.log'
+    mlog = paths.reports_dir() / 'amigapi_mcp.log'
     if mlog.exists():
         mlog.unlink()
     srv = subprocess.Popen([sys.executable, '-I', str(fake), '--http', '0', '--bind', '0.0.0.0', '--log', str(mlog)],
                            stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
     first = srv.stdout.readline()
     mport = int(first.split()[1]) if first.startswith('port ') else 0
-    log = paths.RIG / 'amigapi_fixture10.log'
+    log = paths.reports_dir() / 'amigapi_fixture10.log'
     fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
                            '--delay', '0.01'], stdout=open(log, 'w'), stderr=subprocess.STDOUT)
     time.sleep(1)
@@ -883,8 +883,8 @@ def step9(port):
     if not AMIGA_PI.exists():
         sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
-    log = paths.RIG / 'amigapi_fixture9.log'
-    dump = paths.RIG / 'amigapi_dump9'
+    log = paths.reports_dir() / 'amigapi_fixture9.log'
+    dump = paths.reports_dir() / 'amigapi_dump9'
     shutil.rmtree(dump, ignore_errors=True)
     dump.mkdir()
     fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
@@ -944,8 +944,8 @@ def step7(port):
     if not AMIGA_PI.exists():
         sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
-    log = paths.RIG / 'amigapi_fixture7.log'
-    dump = paths.RIG / 'amigapi_dump7'
+    log = paths.reports_dir() / 'amigapi_fixture7.log'
+    dump = paths.reports_dir() / 'amigapi_dump7'
     shutil.rmtree(dump, ignore_errors=True)
     dump.mkdir()
     fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
@@ -1025,8 +1025,8 @@ def step8(port):
     if not AMIGA_PI.exists():
         sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
-    log = paths.RIG / 'amigapi_fixture8.log'
-    dump = paths.RIG / 'amigapi_dump8'
+    log = paths.reports_dir() / 'amigapi_fixture8.log'
+    dump = paths.reports_dir() / 'amigapi_dump8'
     shutil.rmtree(dump, ignore_errors=True)
     dump.mkdir()
     fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
@@ -1101,8 +1101,8 @@ def step11(port):
     if not AMIGA_PI.exists():
         sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
-    log = paths.RIG / 'amigapi_fixture11.log'
-    dump = paths.RIG / 'amigapi_dump11'
+    log = paths.reports_dir() / 'amigapi_fixture11.log'
+    dump = paths.reports_dir() / 'amigapi_dump11'
     shutil.rmtree(dump, ignore_errors=True)
     dump.mkdir()
     fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
@@ -1181,8 +1181,8 @@ def step12(port):
     if not AMIGA_PI.exists():
         sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
-    log = paths.RIG / 'amigapi_fixture12.log'
-    dump = paths.RIG / 'amigapi_dump12'
+    log = paths.reports_dir() / 'amigapi_fixture12.log'
+    dump = paths.reports_dir() / 'amigapi_dump12'
     shutil.rmtree(dump, ignore_errors=True)
     dump.mkdir()
     fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
@@ -1253,8 +1253,8 @@ def step15(port):
     if not AMIGA_PI.exists():
         sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
-    log = paths.RIG / 'amigapi_fixture15.log'
-    dump = paths.RIG / 'amigapi_dump15'
+    log = paths.reports_dir() / 'amigapi_fixture15.log'
+    dump = paths.reports_dir() / 'amigapi_dump15'
     shutil.rmtree(dump, ignore_errors=True)
     dump.mkdir()
     fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
@@ -1374,8 +1374,8 @@ def step14(port):
         sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     gold = AMIGA_PI.parents[2] / 'tests' / 'pi' / 'rpc'
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
-    log = paths.RIG / 'amigapi_fixture14.log'
-    dump = paths.RIG / 'amigapi_dump14'
+    log = paths.reports_dir() / 'amigapi_fixture14.log'
+    dump = paths.reports_dir() / 'amigapi_dump14'
     shutil.rmtree(dump, ignore_errors=True)
     dump.mkdir()
     fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
@@ -1418,7 +1418,7 @@ def step14(port):
             if bad else repr(rd('pi14.out')[:300])
         for name, ok in verd.items():
             record14(name, ok, detail)
-        (paths.RIG / 'amigapi14-out.jsonl').write_text(rd('pi14.out'))
+        (paths.reports_dir() / 'amigapi14-out.jsonl').write_text(rd('pi14.out'))
         # 14e (HF1, Q18): json mode's own diagnostic goes to the error stream (pr_CES) as ONE line, not to the JSONL on
         # stdout. Trigger: a models.json that is not JSON in the step's own agent dir, which makes amiga-pi write
         # "[WARN] <why> (models.json is ignored)" (amiga-pi/app.c, tests/test_pi_modes.c test_diag_one_line). An unknown
@@ -1462,8 +1462,8 @@ def verdicts14():
         return {}
 
 
-VERDICTS14 = paths.REPORTS / 'amigapi14.verdicts.json'
-VERDICTS = paths.REPORTS / 'amigapi13.verdicts.json'
+VERDICTS14 = paths.reports_dir() / 'amigapi14.verdicts.json'
+VERDICTS = paths.reports_dir() / 'amigapi13.verdicts.json'
 STEP13 = {'a': ['13a Steering row', '13a Follow-up row', '13a steering text in request 2 only',
                 '13a follow-up text in request 3', '13a session: three user messages', '13a Ctrl+D twice ends amiga-pi'],
           'b': ['13b Shift+Tab: Thinking level on screen', '13b Shift+Tab: thinking_level_change in session',
@@ -1555,8 +1555,8 @@ def step13(port):
     shutil.copy(ROOT / 'build' / 'amiga' / 'snipprobe', VTC / 'snipprobe')
     had = assigns()
     saved_dir = ami.read_file('ENVARC:up-term/Dir')
-    log = paths.RIG / 'amigapi_fixture13.log'
-    dump = paths.RIG / 'amigapi_dump13'
+    log = paths.reports_dir() / 'amigapi_fixture13.log'
+    dump = paths.reports_dir() / 'amigapi_dump13'
     kit = VTC / paths.UPTERM_DRAWER    # UP-Term: is the rig's own (rig.py, UT1): VTC:Apps holds unifont/ and emoji/, the sessions go to VTC:Apps/var/amiga-pi (UT2)
     sess = kit / 'var' / 'amiga-pi' / 'sessions'
     agent = VTC / 'pi13agent'
@@ -1605,7 +1605,7 @@ def step13(port):
 
     def text(name):
         t = tw.screen_text('RAM:pi13-%s.txt' % name)
-        (paths.RIG / ('amigapi13-%s.txt' % name)).write_text(t)
+        (paths.reports_dir() / ('amigapi13-%s.txt' % name)).write_text(t)
         return t
 
     try:

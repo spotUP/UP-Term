@@ -25,7 +25,7 @@ import paths
 import userland_rig as U
 
 BUDGET = 1.0
-LEDGER = paths.RIG / "userland" / "substmem"
+LEDGER = paths.reports_dir("userland") / "substmem"
 # what fills the shell between the two measurements, and how many
 FILL = {
     "array": (10000, "for ((i=0;i<%(n)d;i++)); do a[i]=x$i; done"),

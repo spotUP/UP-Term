@@ -1222,7 +1222,7 @@ PKG_CASES = (('install', case_pkg_install), ('upgrades', case_pkg_upgrades), ('f
 
 
 def pkg_results_file():
-    return os.path.join(paths.RIG, 'amarchy-pkg-all.txt')
+    return os.path.join(paths.reports_dir(), 'amarchy-pkg-all.txt')
 
 
 def pkg_results():

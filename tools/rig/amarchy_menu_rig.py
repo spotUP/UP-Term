@@ -28,7 +28,7 @@ ALT = 0x10                          # IEQUALIFIER_LALT
 TEXT_MENU = LAMIGA
 RAW = {'up': 0x4C, 'down': 0x4D, 'right': 0x4E, 't': 0x14, 'h': 0x25, 'k': 0x27, 'space': 0x40, 'esc': 0x45, 'return': 0x44, 'o': 0x18, 'd': 0x22}
 KEYMAP = pathlib.Path(__file__).resolve().parents[2] / 'dist' / 'keymap'
-TIMING = pathlib.Path(paths.RIG) / 'amarchy' / 'menu-timing.txt'
+TIMING = paths.reports_dir('amarchy') / 'menu-timing.txt'
 
 
 def km_hits():

@@ -156,7 +156,7 @@ def main():
         time.sleep(1)
         t('Type VTC:r6-line.txt', 6)
         sw, sh, px = shot()
-        out = str(paths.RIG / ('r6_%s.png' % mode))
+        out = str(paths.reports_dir() / ('r6_%s.png' % mode))
         ami.png(out, sw, sh, [px[r * sw * 3:(r + 1) * sw * 3] for r in range(sh)])
         print('  screenshot %dx%d -> %s' % (sw, sh, out))
         analyse(mode, sw, sh, px, box)

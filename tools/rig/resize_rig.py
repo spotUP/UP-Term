@@ -121,7 +121,7 @@ def nvim_case():
     ask = ':redir! > RAM:nvsize.txt | echo &columns . "x" . &lines | redir END'
     time.sleep(5)
     before = ask_size(ask)
-    ami.main(['shot', str(paths.RIG / 'shots/rznvim.png')])
+    ami.main(['shot', str(paths.reports_dir('shots') / 'rznvim.png')])
     run('Delete RAM:nvsize.txt QUIET')
     grow(title)
     time.sleep(3)

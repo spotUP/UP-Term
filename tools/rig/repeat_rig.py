@@ -24,7 +24,7 @@ import capture
 
 ROOT = U.ROOT
 VTC = U.VTC
-LEDGER = paths.RIG / "userland" / "repeat"
+LEDGER = paths.reports_dir("userland") / "repeat"
 
 
 def stage(area, case, label, text):

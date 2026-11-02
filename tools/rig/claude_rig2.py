@@ -16,8 +16,8 @@ import condev_rig as c
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 SHOTS = os.path.join(paths.REPORTS, 'shots')
-DUMP = os.path.join(paths.RIG, 'claude_dump')
-LOG = os.path.join(paths.RIG, 'claude_fixture.log')
+DUMP = os.path.join(paths.reports_dir(), 'claude_dump')
+LOG = os.path.join(paths.reports_dir(), 'claude_fixture.log')
 URL = 'http://127.0.0.1:8080/v1/messages'
 RET, ESC, UP = 0x44, 0x45, 0x4C
 fails = []

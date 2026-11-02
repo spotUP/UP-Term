@@ -29,7 +29,7 @@ import condev_rig as c
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 SHOTS = os.path.join(paths.REPORTS, 'shots')
-LOG = os.path.join(paths.RIG, 'claude_fixture.log')
+LOG = os.path.join(paths.reports_dir(), 'claude_fixture.log')
 URL = 'http://127.0.0.1:8080/v1/messages'
 from typewin import RET, ESC, TAB, typ, key, open_xcon
 fails = []

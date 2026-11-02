@@ -1983,7 +1983,7 @@ def cli(argv):
                 return show_check()
             finally:
                 show_close()
-    store = verdicts.Store(paths.RIG / "install")
+    store = verdicts.Store(paths.reports_dir("install"))
     todo, skip = verdicts.select(store, list(table), lambda c: case_fingerprint(table[c]), only, failed, force)
     if lst:
         for c in table:

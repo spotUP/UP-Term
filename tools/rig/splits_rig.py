@@ -58,7 +58,7 @@ import tutorial_rig as tr          # counters(), active_title()
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = paths.RIG / 'vtc'
 OUT = paths.REPORTS / 'splits_rig'
-FAILS = paths.RIG / 'splits'          # fail-<case>-<n>.txt, hang-<case>-<n>.txt, repeat-<case>.log
+FAILS = paths.reports_dir('splits')         # fail-<case>-<n>.txt, hang-<case>-<n>.txt, repeat-<case>.log
 CUR = {'case': '?', 'n': 1, 'raw': ''}   # the case running now, its round, the last VTC:inputlist output
 TITLE = 'splitswin'
 BOX = '0/20/600/240'

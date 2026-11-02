@@ -23,7 +23,7 @@ import install_rig
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = paths.RIG / "vtc"
-SHOT = paths.REPORTS / "shots/tmux_colors.png"
+SHOT = paths.reports_dir("shots") / "tmux_colors.png"
 TMUX = paths.repo("tmux-amiga") / "build/tmux-bin"
 CONF = """set -g default-shell /VTC/vsh
 set -g default-terminal screen-256color
