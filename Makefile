@@ -1819,6 +1819,9 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	rm -rf $(KIT)/Files/lucide $(KIT)/Files/phosphor && mkdir -p $(KIT)/Files/lucide $(KIT)/Files/phosphor && cp $(LUCIDE_DAT) $(OUTLINE_DAT) dist/lucide/LICENSE dist/lucide/SOURCE.txt $(KIT)/Files/lucide/ && cp dist/phosphor/LICENSE dist/phosphor/SOURCE.txt $(KIT)/Files/phosphor/
 	rm -rf $(KIT)/Files/coreutils && mkdir -p $(KIT)/Files/coreutils
 	cp -R dist/gg/coreutils-5.2.1/bin dist/gg/coreutils-5.2.1/COPYING dist/gg/coreutils-5.2.1/SOURCE.txt $(KIT)/Files/coreutils/
+	@# the ports build coreutils 9.12 (a $$STACK cookie in every program); the GG 5.2.1 binaries have none
+	@# (PIPE-FREEZE: wc overflowed vsh's 16000 bytes). Only the names 9.12 does not build stay (hostname, pinky, who).
+	for f in $(KIT)/Files/coreutils/bin/*; do test -e $(PORTS_KIT)/bin/$$(basename $$f) && rm $$f; done; true
 	@# the ports (copy-userland: bin; userland: share, etc, licenses) and
 	@# UP-Term's own pages beside theirs (sz.1 is rz's too: no links on AmigaOS)
 	rm -rf $(KIT)/Files/userland && cp -R $(PORTS_KIT) $(KIT)/Files/userland
@@ -2004,6 +2007,7 @@ dist-check: flat-budget $(BUILD)/amiga/keymap.o $(BUILD)/amiga/amarchy-flat $(BU
 	  KIT=$(BUILD)/dist/$$a python3 tests/test_dist_manifest.py; \
 	  ./$(BUILD)/updiff_kit_drv $(BUILD)/dist/$$a/Files/MANIFEST; \
 	  KIT=$(BUILD)/dist/$$a python3 tests/test_dist_modes.py; \
+	  KIT=$(BUILD)/dist/$$a python3 tests/test_dist_stack.py; \
 	done
 	@for s in amigados arexx amiga-c-build amiga-autodocs; do grep -q " up-pi/Files/skills/$$s/SKILL.md$$" $(BUILD)/up-pi.lst || { echo "dist-check: up-pi.lha lacks Files/skills/$$s/SKILL.md"; exit 1; }; done
 	@python3 tools/pkgs.py index $(BUILD) | cmp -s - $(BUILD)/upkg-index.txt || { echo "dist-check: $(BUILD)/upkg-index.txt does not match the archives: make dist-index"; exit 1; }

@@ -182,3 +182,12 @@ A cheap guard worth a row: a dist check that every kit binary in SYS:UP-Term/bin
 (tests/test_dist_stack.py covers only programs this repo builds).
 
 The job_free/pipe_tab use-after-free (Hunt 2) stays a separate row.
+
+## Fix (s51-cu912)
+
+The dist no longer ships GNU wc 5.2.1 (and the other 5.2.1 binaries without a $STACK cookie).
+- Makefile kit recipe: after copying dist/gg/coreutils-5.2.1/bin into Files/coreutils, every name the ports kit (PORTS_KIT/bin, coreutils 9.12, $STACK 262144) also has is removed. Files/coreutils/bin keeps only hostname, pinky and who, which 9.12 does not build. install.dos copies userland/bin after it, so UP-Term:bin gets 9.12 for the other names.
+- tools/rig/paths.py coreutils(): the same rule for vshpipe_rig and userland_rig (they read dist/gg directly before, which is why the rig staged 5.2.1 wc).
+- DIST-STACK-ALL: tests/test_dist_stack.py checks, with KIT=build/dist/<archive>, that every AmigaOS executable in Files/coreutils/bin and Files/userland/bin has a $STACK cookie; exemptions hostname, pinky, who (GNU 5.2.1, not built by 9.12). make dist-check runs it.
+- Proof, rig 83 (fresh, 060, kit-main d94a685 ports kit), vshpipe_rig.py without STACK: run 1, 2, 3 each 7 of 7 OK, printf_wc included ("2\n"). `wc --version` on the rig: "wc (GNU coreutils) 9.12". Rig 83 stopped after 8 s quiet and cleared.
+- Unrelated failures already on origin/main (checked): make flat-budget (_flat_clone_map frame 152 > 80), tests/test_dist_installer.py (3 failures), tests/test_dist_versions.py (dopus consumes).

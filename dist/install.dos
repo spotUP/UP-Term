@@ -388,7 +388,8 @@ If NOT "{STEP}" EQ ""
   Quit 0
 EndIf
 Lab copy-coreutils
-; The Unix userland: GNU coreutils 5.2.1 (ls, cp, mv, rm, sort, head,
+; The Unix userland: GNU coreutils (the ports' 9.12 come with userland/bin
+; below; this drawer keeps only hostname, pinky and who, GNU 5.2.1) (ls, cp, mv, rm, sort, head,
 ; wc... GPL v2: COPYING is in the kit's coreutils drawer, the complete
 ; source in up-term-src.lha) in UP-Term's own drawer UP-Term:bin, not C::
 ; AmigaDOS names ignore case, so GNU sort, date, join and install would be
