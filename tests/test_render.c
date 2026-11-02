@@ -2407,6 +2407,143 @@ static void ansi_music_written_to_a_console_window_reaches_the_player(void)
     drag_close();
 }
 
+/* K37: the 8-bit golden. Truecolor on deep screens (K38-K41) must not change what an 8-bit screen shows, so
+ * this pins today's output first: four streams (a 64x64 f=32 gradient by a=T, the same by a=p c=4, an a=f frame
+ * with a 4x4 rectangle and a=a c=2, a 4x4 sixel) on gf_planar(8) (AGA) and on the chunky 8-bit screen
+ * (gf_truecolor(0), not planar). Per stream an FNV-1a hash of the window's pens (gf_pixel of every pixel) and
+ * of every WriteChunkyPixels buffer (gf_chunky_hash). The constants were captured on commit a6de061d (the engine
+ * and renderer sources are byte-identical on this branch's base). A change to the 8-bit output moves a hash. */
+extern char *getenv(const char *); /* stdlib.h and the NDK headers clash over struct timeval */
+static unsigned long k37_fnv(unsigned long h, unsigned long v)
+{
+    return ((h ^ (v & 0xFFUL)) * 16777619UL) & 0xFFFFFFFFUL;
+}
+
+static void k37_b64(char *o, const unsigned char *s, int n)
+{
+    static const char t[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    int i;
+    for (i = 0; i < n; i += 3) {
+        unsigned long v = (unsigned long)s[i] << 16 | (i + 1 < n ? (unsigned long)s[i + 1] << 8 : 0) |
+                          (i + 2 < n ? s[i + 2] : 0);
+        *o++ = t[(v >> 18) & 63];
+        *o++ = t[(v >> 12) & 63];
+        *o++ = i + 1 < n ? t[(v >> 6) & 63] : '=';
+        *o++ = i + 2 < n ? t[v & 63] : '=';
+    }
+    *o = 0;
+}
+
+/* send `n` raw bytes as the data of one kitty command (keys first), in chunks of 3072 bytes (m=1 ... m=0) */
+static void k37_send(const char *keys, const unsigned char *raw, int n)
+{
+    static char cmd[8192];
+    char b[4200];
+    int off = 0;
+    do {
+        int len = n - off > 3072 ? 3072 : n - off, more = off + len < n;
+        k37_b64(b, raw + off, len);
+        if (off == 0)
+            snprintf(cmd, sizeof cmd, "\x1b_G%s,m=%d;%s\x1b\\", keys, more, b);
+        else
+            snprintf(cmd, sizeof cmd, "\x1b_Gm=%d;%s\x1b\\", more, b);
+        pass(cmd);
+        off += len;
+    } while (off < n);
+}
+
+static void k37_gradient(unsigned char *px)
+{
+    int x, y;
+    for (y = 0; y < 64; y++)
+        for (x = 0; x < 64; x++) {
+            unsigned char *p = px + (y * 64 + x) * 4;
+            p[0] = (unsigned char)(4 * x);
+            p[1] = (unsigned char)(4 * y);
+            p[2] = (unsigned char)(2 * (x + y));
+            p[3] = x == 0 ? 127 : x == 1 ? 128 : 255;
+        }
+}
+
+static void k37_scene(int which)
+{
+    static unsigned char px[64 * 64 * 4];
+    unsigned char rect[4 * 4 * 3], root[8 * 8 * 3];
+    int i;
+    k37_gradient(px);
+    switch (which) {
+    case 0:
+        pass("\x1b[1;1H");
+        k37_send("a=T,f=32,s=64,v=64,i=1", px, sizeof px);
+        break;
+    case 1:
+        k37_send("a=t,f=32,s=64,v=64,i=2", px, sizeof px);
+        pass("\x1b[1;1H\x1b_Ga=p,i=2,c=4\x1b\\");
+        break;
+    case 2:
+        for (i = 0; i < 8 * 8 * 3; i++)
+            root[i] = (unsigned char)(i * 7);
+        for (i = 0; i < 4 * 4 * 3; i += 3) {
+            rect[i] = 255;
+            rect[i + 1] = 0;
+            rect[i + 2] = (unsigned char)(i * 5);
+        }
+        pass("\x1b[1;1H");
+        k37_send("a=T,f=24,s=8,v=8,i=3", root, sizeof root);
+        k37_send("a=f,i=3,c=1,f=24,s=4,v=4,x=2,y=2", rect, sizeof rect);
+        pass("\x1b_Ga=a,i=3,c=2\x1b\\");
+        break;
+    default:
+        pass("\x1b[1;1H\x1bPq\"1;1;4;4#1;2;100;0;0#2;2;0;100;0#1~~~~-#2~~~~\x1b\\");
+        break;
+    }
+}
+
+/* mode: 0 = chunky 8-bit screen, 1 = planar 8 planes (AGA). Fills *pens and *chunky. */
+static void k37_run(int planar, int which, unsigned long *pens, unsigned long *chunky, int *calls)
+{
+    int x, y;
+    unsigned long h = 2166136261UL;
+    planar_depth = planar ? 8 : 0;
+    planar_left = 0;
+    open_term_in(0, VT_XTERM);
+    vt_set_cell_pixels(term, CW, CH);
+    gf_chunky_hash = 2166136261UL;
+    gf_chunky_n = 0;
+    k37_scene(which);
+    for (y = 0; y < ROWS * CH; y++)
+        for (x = 0; x < COLS * CW; x++) {
+            int v = gf_pixel(x, y);
+            h = k37_fnv(k37_fnv(k37_fnv(h, (unsigned long)v), (unsigned long)v >> 8), (unsigned long)v >> 16);
+        }
+    *pens = h;
+    *chunky = gf_chunky_hash;
+    *calls = gf_chunky_n;
+    close_term();
+    planar_depth = 0;
+}
+
+static void k37_eight_bit_golden(void)
+{
+    /* [planar][scene] captured on a6de061d: pens hash, chunky hash */
+    static const unsigned long gold[2][4][2] = {
+        { { 1594208197UL, 3479184592UL }, { 3441995717UL, 2929294831UL }, { 1184631749UL, 3938940050UL }, { 584822725UL, 4290872673UL } },
+        { { 2071090437UL, 3479184592UL }, { 3456382213UL, 2929294831UL }, { 987634949UL, 3938940050UL }, { 412095749UL, 4290872673UL } },
+    };
+    int m, s;
+    for (m = 0; m < 2; m++)
+        for (s = 0; s < 4; s++) {
+            unsigned long pens, chunky;
+            int calls;
+            k37_run(m, s, &pens, &chunky, &calls);
+            if (getenv("K37_PRINT"))
+                printf("K37 planar=%d scene=%d pens=%luUL chunky=%luUL calls=%d\n", m, s, pens, chunky, calls);
+            CHECK(calls >= 1); /* the picture reached WriteChunkyPixels: the 8-bit path ran */
+            CHECK(pens == gold[m][s][0]);
+            CHECK(chunky == gold[m][s][1]);
+        }
+}
+
 int main(void)
 {
     an_inert_renderer_has_no_selection();
@@ -2424,6 +2561,7 @@ int main(void)
     k30_text_lies_over_a_picture_below();
     k30_far_below_stays_under_a_coloured_background();
     k32_placeholder_cells_draw_their_tiles();
+    k37_eight_bit_golden();
     the_cursor_pass_counts_its_gfx_calls_and_unchanged_cells();
     scrollback_view_move_blits_and_draws_only_the_exposed_rows();
     cursor_glyph_is_drawn_at_the_cursor_cell_from_the_grid_row();
