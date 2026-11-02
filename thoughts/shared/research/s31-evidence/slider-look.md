@@ -75,3 +75,17 @@ it covers whatever the order. Test: tests/test_flat_core.c, block "RL6: 3.2 pain
 Pixels after the fix (shot s31-rl6-knob-fixed.png, SYS:C drawer, knob colour 993366, track 000000):
 vertical knob (436,62) 10x55: TL TR BL BR all 000000 (track); row0 `000000 000000 993366 ... 993366 000000 000000`, centre 993366.
 horizontal knob (53,142) 345x6: all four corners 000000, centre 993366.
+
+## Arrows fix
+
+Symptom: with the flat look on (OS 3.2) the scroller arrow gadgets (FLAT_W_LEFT 0x0A, UP 0x0B, RIGHT 0x0C, DOWN 0x0D) showed glyph and box in one colour (000000), so they were invisible.
+
+Violated invariant: every window gadget glyph is drawn through flat_glyph_roles (glyph pen TEXT, box pen FRAME, which differ). The four arrows were the only window gadgets without a block glyph: flat_glyph_known returned 0 for them.
+
+Diagnosis on rig 78 (temporary debug build, reverted): for all four arrows (sizes 16x10 horizontal, 18x11 vertical) the clone path returns FLAT_CLONE_FAIL and the offscreen grid is entirely marker 0, because OS 3.2 sysiclass draws nothing offscreen for arrow images (STATUS: clone draws=0 fallback=135). Fallback to flat_glyph_draw returned 0 (unknown), so the stock draw ran under the flat pens, where shine, shadow and background are one pen. Before pixels (vantablack pick): rows 117-141 over x430-450 all 000000.
+
+Fix (amarchy/flat_glyph.c): new g_arrow() builds a solid triangle in the inner box (left/right per-row length from the row distance to the edge, base on the opposite side; up/down per-row length 2*row+1, centred). flat_glyph_known and plan_run route the four Which values to it, so roles, pens and the inactive LINE pen come from the existing flat_glyph_roles. No new pen logic, no special-case colour.
+
+Tests (tests/test_flat_core.c): test_arrow_glyph_pens runs the two steps flat.c runs (clone with a blank render returns FLAT_CLONE_FAIL, then flat_glyph_draw) for every arrow, both box sizes, normal and inactive: canvas holds glyph pen > 0 pixels and a different box pen, nothing else. test_clone_arrows now expects flat_glyph_known 1; test_glyph_route no longer lists 0x0A-0x0D as unknown.
+
+Rig proof (rig 78, shot ~/Desktop/upterm-shots/s31-arrows-fixed.png, measured with PIL): up arrow box x430-447 y117-127: 149 px 000000 (box) + 49 px bebebe (glyph). Down arrow box y129-139: same 149/49. Left and right arrows (bottom border, y142-147): bebebe triangles on 000000. Every arrow box holds two colours, glyph != background. Knob corners: rows 116 at the knob edges are 000000 = track colour, cut corners intact. STATUS after fix: clone draws=0 fallback=136 (fallback now draws the block glyph).

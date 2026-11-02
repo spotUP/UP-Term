@@ -512,7 +512,7 @@ static void test_glyph_solid_and_state_equal(void)
 static void test_glyph_route(void)
 {
     flat_state st;
-    static const unsigned long unknown[] = { 0x04, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x05, 0x1B, 0x2A, 0xFFFF };
+    static const unsigned long unknown[] = { 0x04, 0x0E, 0x0F, 0x05, 0x1B, 0x2A, 0xFFFF };
     static const unsigned long other[] = { 0x101UL /* OM_NEW */, 0x103UL /* OM_GET */, 0x203UL /* IM_HITTEST */,
                                            0x204UL /* IM_ERASE */, 0x206UL /* IM_DRAWFRAME */, 0x207UL /* IM_FRAMEBOX */, 0 };
     unsigned i;
@@ -1196,6 +1196,41 @@ static int blank_render(void *ctx, unsigned long ids, uint8_t *grid, int w, int 
     return 1;                                                                   /* OS 3.2 window gadgets: rc 1, nothing drawn */
 }
 
+static uint8_t g_scr[FLAT_CLONE_SCRATCH];
+
+/* S31 SCROLLER-ARROWS-INVISIBLE: OS 3.2's sysiclass draws nothing offscreen for the arrow images, so the clone fails and the
+ * block glyph is what shows. Through the same two steps flat.c runs (clone, then glyph draw) with the pens desk_flat_state
+ * gives: the canvas must hold the glyph pen AND a different box pen, for every arrow, state and box size seen on the rig. */
+static void test_arrow_glyph_pens(void)
+{
+    static const int dims[2][2] = { { 16, 10 }, { 18, 11 } };
+    static const int states[2] = { 0, 5 };                       /* IDS_NORMAL, IDS_INACTIVEDISABLED */
+    flat_state st;
+    unsigned long w;
+    int d, si, x, y, glyph, box;
+    flat_init(&st);
+    desk_flat_state(1, 1, &st);
+    for (w = FLAT_W_LEFT; w <= FLAT_W_DOWN; w++)
+        for (d = 0; d < 2; d++)
+            for (si = 0; si < 2; si++) {
+                int bw = dims[d][0], bh = dims[d][1], rc;
+                cv_clear();
+                rc = flat_clone_draw(&st, w, FLAT_IM_DRAW, (unsigned long)states[si], 0, 0, bw, bh, st.pen_back, -1, blank_render, 0, cv_fill, 0, g_scr);
+                CHECK_INT(rc, FLAT_CLONE_FAIL);                  /* the system image gave no pixel */
+                CHECK_INT(flat_glyph_draw(&st, w, FLAT_IM_DRAW, (unsigned long)states[si], 0, 0, bw, bh, st.pen_back, cv_fill, 0), 1);
+                glyph = box = 0;
+                for (y = 0; y < bh; y++)
+                    for (x = 0; x < bw; x++) {
+                        glyph += cv[y][x] == (char)(states[si] ? st.pen_line : st.pen_text);
+                        box += cv[y][x] == (char)st.pen_back;
+                    }
+                CHECK(glyph > 0);                                /* an arrow was drawn */
+                CHECK(box > 0);                                  /* and the box shows around it */
+                CHECK_INT(glyph + box, bw * bh);                 /* nothing else */
+                CHECK((states[si] ? st.pen_line : st.pen_text) != st.pen_back);
+            }
+}
+
 static void test_clone_arrows(void)
 {
     flat_state st;
@@ -1207,7 +1242,7 @@ static void test_clone_arrows(void)
         CHECK_INT(flat_glyph_window_gadget(w), 1);                              /* scroller arrows take the clone path */
         CHECK_INT(flat_clone_route(&st, w, FLAT_IM_DRAW), 1);
         CHECK_INT(flat_glyph_on_band(w), 0);                                    /* they sit in the border, not the title band */
-        CHECK_INT(flat_glyph_known(w), 0);                                      /* no hand-drawn block glyph exists for them */
+        CHECK_INT(flat_glyph_known(w), 1);                                      /* OS 3.2 draws nothing offscreen: the block glyph is the arrow */
         flat_glyph_roles(w, FLAT_G_NORMAL, &g, &b);
         CHECK_INT(b, FLAT_ROLE_FRAME);
         CHECK(g != b);                                                          /* glyph pen differs from box pen */
@@ -1239,7 +1274,6 @@ static void test_frame_pen(void)
     CHECK_INT(flat_frame_pen(&s, 3, 1), -1);
 }
 
-static uint8_t g_scr[FLAT_CLONE_SCRATCH];
 
 static void test_glyph_clone(void)
 {
@@ -1365,6 +1399,7 @@ static void test_clone_no_dividers(void)
 void suite_flat_core(void)
 {
     test_frame_pen();
+    test_arrow_glyph_pens();
     test_clone_arrows();
     test_glyph_clone();
     test_clone_no_dividers();
