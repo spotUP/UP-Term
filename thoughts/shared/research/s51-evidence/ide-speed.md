@@ -86,3 +86,31 @@ leaves ~776 ms of handler time per page.
    phase 3 = vt_feed, phase 2 = render) splits feed vs render per page.
 2. Then render cost per sync frame (compose/convert/blit) as in brief item 4.
 Raw before files (scratch, small): r8b/pcs-before.txt, r8b/before-p.txt.
+
+## 2026-11-02 run R8c: no handler regression, the screen mode differs
+
+Rig 66 ran on the default RTG screen (uaegfx 800x600, 24-bit, square pixels: topaz 8 becomes
+TopazPro 16, 24 rows in the 660x400 window). The 19 Oct rig 3 runs had 30 rows: a 256-line
+PAL hires screen (tall pixels, topaz 8). Re-measured on rig 66 with `screenmode.name = aga`
+(640x256, 4 planes; `ami.py screens` shows 0x280 x 0x100 depth 4), same handler build
+(main checkout build/amiga/vtcon-handler 15:02), same out/scidemo-lite, `--a1200`:
+
+| run | scroll | paint | tty | rows | write per page | write per row |
+|---|---|---|---|---|---|---|
+| 19 Oct rig 3 (AGA, recorded) | 995 | 294 | 701 | 30 | 2 / 5713 B / 453 | 15.1 |
+| 2 Nov rig 66 RTG 24-bit | 1233-1251 | 235 | ~1007 | 24 | 2 / 4484 B / 776 | 32.3 |
+| 2 Nov rig 66 AGA 4 planes, run 1 | 874 | 254 | 620 | 26 | 2 / 4906 B / 398 | 15.3 |
+| 2 Nov rig 66 AGA 4 planes, run 2 | 871 | 254 | 617 | 26 | 2 / 4906 B / 395 | 15.2 |
+
+Verdict: handler cost per row is unchanged since 19 Oct (15.1 vs 15.2-15.3 ms/row on AGA), so
+no bisect. The whole 453 -> 776 ms step is the RTG 24-bit screen with 8x16 cells: 2.1x the
+handler time per row. Result file: ide-spike results/scidemo-lite-a1200.aga16-rig66.txt (3309e59).
+
+Goal (<= 500 ms/page) is still open in both modes:
+- AGA: 871 ms = paint 254 + tty 617, of which 395 ms blocked in write (handler) and ~220 ms
+  ncurses doupdate itself.
+- RTG 24-bit: the handler render per row (8x16 cells at 4 bytes per pixel on the 020) is the
+  largest single cost (~776 ms/page). Next: VTCON_PROF handler build (make amiga PROF=1, PROF lines
+  in serial.log: vt_feed vs rows/scroll/paint) on the RTG screen to split feed from the chunky
+  render, then cut the chunky row path (blit only changed cells, or scroll the bitmap instead of
+  redrawing rows). Not done in this run (budget).
