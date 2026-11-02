@@ -1799,6 +1799,7 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	cd $(BUILD)/kit-terminfo && cp -R [a-z] [0-9]* $(CURDIR)/$(KIT)/Files/terminfo/
 	cp $(SCREEN_BIN) $(KIT)/Files/screen
 	cp dist/screenrc $(KIT)/Files/screenrc
+	python3 tools/tmuxfresh.py $(dir $(patsubst %/,%,$(dir $(TMUX_BIN)))) $(TMUX_BIN)
 	cp $(TMUX_BIN) $(KIT)/Files/tmux
 	cp dist/tmux.conf dist/unstartup.sh dist/takecon.sh dist/reassign.sh dist/upkg.conf $(KIT)/Files/
 	cp $(IXEMUL_LIB) $(KIT)/Files/libs/ixemul.library
