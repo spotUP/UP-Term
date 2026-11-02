@@ -28,7 +28,7 @@ AMARCHY-MENU-IXEMUL-BOOT-RACE). Evidence: thoughts/shared/research/s30-evidence/
 - 82746511 + ee6e1361 AMARCHY-MENU-IXEMUL-BOOT-RACE: early S:User-Startup block assigns LIBS: VTCX:ixp6
   before the Amarchy block. Rig 57 proof PASS, 2 cold boots (ixemul-boot-race-proof.md).
 - 8941cc55 FLAT-GADGET-NO-DIVIDERS: flat_clone_map peels full-span edge lines (edge_line helper). Pixels
-  PASS on 3.1 and 3.2 (flat-gadget-no-dividers.md); shots s30-no-dividers-31/32.png sent, owner look pending.
+  PASS on 3.1 and 3.2 (flat-gadget-no-dividers.md); owner PASS 2026-11-02.
 - 2cf9de4f + 23d38c23 (peer fix: bare Echo, no C:Echo exists): rig STARTUP truncates boot.log once; go appends.
 - 54dd15e4 rig.py refuses a bare rig number; 726f684d clear refuses rig 1 without --rig1.
 - Glyph clone on 3.2 works clean and under the desktop (GLYPH-CLONE-32 closed, 58616e98, 870c1f1c).
@@ -47,7 +47,6 @@ AMARCHY-MENU-IXEMUL-BOOT-RACE). Evidence: thoughts/shared/research/s30-evidence/
    rig shot after kit refresh, 222222 body fill, knob depth-3 fallback host-only.
 
 ## Blocked on owner
-- Look at s30-no-dividers-31.png / -32.png.
 - Is wasabi/pin-f59c839 still needed?
 - Thomas Rapp reply pending.
 
