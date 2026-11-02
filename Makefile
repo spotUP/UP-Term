@@ -64,6 +64,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=desk the native desktop theme core: palette/pointer/font/wbpattern prefs bytes, darker tone, readability guard, targets and marker (tests/test_desk.c)
 # ONLY=desk_start_apply Amarchy's start writes the icon border, volume gauge and backdrop the prefs ask for, and nothing when ENV: matches (tests/test_desk.c)
 # ONLY=help_core the welcome window and Help view core: placeholder expansion from the live keymap, sections, welcome-shown key, checkbox keys (tests/test_help_core.c)
+# ONLY=help_man_sync man/amarchy.1 GETTING STARTED equals what tools/gen_amarchy_help.py makes from dist/amarchy.help (tests/test_help_man_sync.py)
 # ONLY=fssm a device node's startup is read as a FileSysStartupMsg only when it is one (tests/test_fssm.c)
 # ONLY=clips the clipboard history: ring prepend, dedupe, cap 20, labels, file round trip, the menu level (tests/test_clips.c)
 # ONLY=iconapply amarchy-icons APPLY / RESTORE: manifest, backup, idempotence, atomic-write recovery, restore byte for byte (tests/test_iconapply.c)
@@ -151,7 +152,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 TEST_ONLY_NAMES := $(shell grep -o '"$$(ONLY)" = [a-z_0-9]*' $(firstword $(MAKEFILE_LIST)) | sed 's/.* //' | sort -u)
 # ONLY= rows that run python3 on files alone: no C binary below is built or run for them (a worktree without the vendor NDK
 # cannot build render_host, and pkg_rows needs none). Add a name only after checking its script starts no $(BUILD) binary.
-TEST_PY_ONLY := gen_lucide_icons icon_grid_fit pkg_rows worktree_ready rig_handler_fallback rig_amarchy_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free flat_on_hang icat_stderr
+TEST_PY_ONLY := gen_lucide_icons icon_grid_fit pkg_rows worktree_ready rig_handler_fallback rig_amarchy_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free flat_on_hang icat_stderr help_man_sync
 TEST_BINS := $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host $(BUILD)/upgetty_host
 test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -n "$(ONLY)" ] && [ -z "$(filter $(ONLY),$(TEST_ONLY_NAMES))" ] && ! ./$(BUILD)/vttest_host --has $(ONLY); then echo "[ERROR] make test: no suite named $(ONLY)"; exit 2; fi
@@ -179,6 +180,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_themes_live ]; then python3 -I tests/test_rig_themes_live.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_installer_free ]; then python3 -I tests/test_installer_rig_free.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = icat_stderr ]; then python3 -I tests/test_icat_stderr.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = help_man_sync ]; then python3 -I tests/test_help_man_sync.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_real_drawer ]; then python3 -I tests/test_installer_rig_real_drawer.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = flat_on_hang ]; then python3 -I tests/test_flat_on_hang_wild_call.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rebind ]; then python3 -I tests/test_amarchy_gui_rebind.py; fi
@@ -367,6 +369,12 @@ KEYMAP_DEFAULT_INC := $(BUILD)/amiga/keymap_default.inc
 $(KEYMAP_DEFAULT_INC): tools/gen_keymap_default.py dist/keymap
 	@mkdir -p $(dir $@)
 	python3 tools/gen_keymap_default.py dist/keymap $@
+
+AMHELP_INC := $(BUILD)/amiga/amhelp.inc
+# the welcome window and Help view text for amarchy-gui, from dist/amarchy.help (also the man page's GETTING STARTED)
+$(AMHELP_INC): tools/gen_amarchy_help.py dist/amarchy.help dist/keymap
+	@mkdir -p $(dir $@)
+	python3 tools/gen_amarchy_help.py dist/amarchy.help dist/keymap $@
 
 # The drawn Amarchy menu's icons (plan 2026-10-23-amarchy-drawn-menu.md, G3): dist/menu-icons names Symbols
 # Nerd Font glyphs; tools/gen_menu_icons.py (on tools/gen_emoji.py) makes one emoji page of them for amarchy/menu_icon.c.
