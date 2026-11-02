@@ -562,8 +562,8 @@ static void test_amconf_save_nodir(void)
 static void test_amconf_flat_rows_write_their_keys(void)
 {
     static const struct { int key, gadget; const char *name, *on; } row[5] = {
-        { AM_FLAT, PG_AM_FLAT, "flat-system-look", "on" },
-        { AM_FLATGAD, PG_AM_FLATGAD, "flat-window-gadgets", "on" },
+        { AM_FLAT, PG_AM_FLAT, "flat-system-look", "off" },
+        { AM_FLATGAD, PG_AM_FLATGAD, "flat-window-gadgets", "off" },
         { AM_FLATSIZE, PG_AM_FLATSIZE, "flat-border-size", "thin" },
         { AM_ICONSTYLE, PG_AM_ICONSTYLE, "icon-style", "outline" },
         { AM_ICONTEXT, PG_AM_ICONTEXT, "icon-text", "outline" } };
@@ -586,7 +586,7 @@ static void test_amconf_flat_rows_write_their_keys(void)
         amconf_from_fields(&p, &f);
         CHECK(amconf_serialize(&p, txt, UC_MAX_FILE) > 0);
         CHECK(strstr(txt, row[i].name) == 0);
-        (&f.am_flat)[i] = 1;
+        (&f.am_flat)[i] = i < 2 ? 0 : 1; /* the two flat switches default on: the row writes the non-default off */
         amconf_from_fields(&p, &f);
         CHECK_STR(p.val[row[i].key], row[i].on);
         CHECK(amconf_serialize(&p, txt, UC_MAX_FILE) > 0);
@@ -597,7 +597,7 @@ static void test_amconf_flat_rows_write_their_keys(void)
         amconf_parse(txt, (long)strlen(txt), &q);
         memset(&f, 0, sizeof f);
         amconf_to_fields(&q, &f);
-        CHECK_INT((&f.am_flat)[i], 1);
+        CHECK_INT((&f.am_flat)[i], i < 2 ? 0 : 1);
     }
 }
 
@@ -632,6 +632,20 @@ static void test_amconf_borderblank_row(void)
     CHECK_INT(f.am_borderblank, 0);
 }
 
+/* INSTALLER-FLAT-OFF: the installer writes ENVARC:Amarchy/prefs with the header only, so the key defaults are the
+ * look a fresh install shows. A header-only file means the flat look and flat window gadgets on (the thin border
+ * size stays stock: it changes the window geometry). */
+static void test_amconf_header_only_prefs_is_flat_on(void)
+{
+    am_prefs p;
+    static const char hdr[] = "; Amarchy preferences.\n";
+    amconf_parse(hdr, (long)strlen(hdr), &p);
+    CHECK_INT(amconf_flat_index(&p, AM_FLAT), 1);
+    CHECK_INT(amconf_flat_index(&p, AM_FLATGAD), 1);
+    CHECK_INT(amconf_flat_index(&p, AM_FLATSIZE), 0);
+    CHECK_INT(amconf_desk_flat_pens(&p), 1);
+}
+
 /* FLAT-SOLID-FILL: a prefs file saved before the key went away still holds "flat-glyph-style = line"; it is ignored
  * (no error, no effect on the other keys) and the next save drops it. */
 static void test_amconf_old_flat_glyph_style_ignored(void)
@@ -639,16 +653,16 @@ static void test_amconf_old_flat_glyph_style_ignored(void)
     am_prefs p;
     prefs_fields f;
     static char txt[UC_MAX_FILE + 1];
-    static const char old[] = "[profile default]\nflat-window-gadgets = on\nflat-glyph-style = line\nflat-border-size = thin\n";
+    static const char old[] = "[profile default]\nflat-window-gadgets = off\nflat-glyph-style = line\nflat-border-size = thin\n";
     amconf_parse(old, (long)strlen(old), &p);
-    CHECK_STR(p.val[AM_FLATGAD], "on");
+    CHECK_STR(p.val[AM_FLATGAD], "off");
     CHECK_STR(p.val[AM_FLATSIZE], "thin");
     memset(&f, 0, sizeof f);
     amconf_to_fields(&p, &f);
     amconf_from_fields(&p, &f);
     CHECK(amconf_serialize(&p, txt, UC_MAX_FILE) > 0);
     CHECK(strstr(txt, "flat-glyph-style") == 0);
-    CHECK(strstr(txt, "flat-window-gadgets = on") != 0);
+    CHECK(strstr(txt, "flat-window-gadgets = off") != 0);
 }
 
 static void test_lf_setting_check_toggle(void)
@@ -1072,6 +1086,7 @@ void suite_amconf(void)
     test_prefs_dos_dir_amarchy();
     test_amconf_save_nodir();
     test_amconf_flat_rows_write_their_keys();
+    test_amconf_header_only_prefs_is_flat_on();
     test_amconf_borderblank_row();
     test_amconf_old_flat_glyph_style_ignored();
     test_lf_setting_check_toggle();
