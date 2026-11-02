@@ -12,6 +12,7 @@ typedef struct plan {
     int w, h, fg, bg;
     int frame_pen;              /* pen of FLAT_ROLE_FRAME, -1: none known (pen_back) */
     int ix0, iy0, ix1, iy1;     /* the inner box the glyph lives in */
+    int side;                   /* flat_side_px of the screen: columns per row of visual height (1 square, 2 hires, 4 superhires) */
 } plan;
 
 static void put(plan *g, int x0, int y0, int x1, int y1, int role)
@@ -107,23 +108,29 @@ static void g_menusub(plan *g)
 
 /* The scroller arrows: a solid triangle in the inner box, base on the side the arrow comes from. OS 3.2's sysiclass puts nothing
  * into the clone's offscreen rastport for LEFTIMAGE..DOWNIMAGE, and the stock draw under flat pens (shine == shadow == background)
- * leaves glyph and box in one colour, so the arrows get their own block glyph, in the same roles as every window gadget. */
+ * leaves glyph and box in one colour, so the arrows get their own block glyph, in the same roles as every window gadget.
+ * S31-ARROW-ASPECT: all four arrows have the same shape on screen, sides at 45 degrees (base twice the length), measured in visual
+ * units where a column is 1 and a row is g->side (flat_side_px: 2 on hires, whose pixels are twice as tall as wide). Left/right
+ * grow g->side columns per row, up/down 2 * g->side columns per row; the triangle is centred in the inner box. Before this, hires
+ * showed left/right half as wide and up/down twice as tall as on a square-pixel screen. */
 static void g_arrow(plan *g, unsigned long which)
 {
     int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1, k;
     if (which == FLAT_W_LEFT || which == FLAT_W_RIGHT) {
+        int lmax = imin(iw, g->side * ((ih + 1) / 2)), xs = g->ix0 + (iw - lmax) / 2;
         for (k = 0; k < ih; k++) {
-            int len = imin(iw, 2 * (imin(k, ih - 1 - k) + 1));
+            int len = imin(lmax, g->side * (imin(k, ih - 1 - k) + 1));
             if (which == FLAT_W_RIGHT)
-                put(g, g->ix0, g->iy0 + k, g->ix0 + len - 1, g->iy0 + k, g->fg);
+                put(g, xs, g->iy0 + k, xs + len - 1, g->iy0 + k, g->fg);
             else
-                put(g, g->ix1 - len + 1, g->iy0 + k, g->ix1, g->iy0 + k, g->fg);
+                put(g, xs + lmax - len, g->iy0 + k, xs + lmax - 1, g->iy0 + k, g->fg);
         }
     } else {
-        for (k = 0; k < ih; k++) {
-            int row = which == FLAT_W_UP ? k : ih - 1 - k;
-            int len = imin(iw, 2 * row + 1), x0 = g->ix0 + (iw - len) / 2;
-            put(g, x0, g->iy0 + k, x0 + len - 1, g->iy0 + k, g->fg);
+        int n = imin(ih, (iw - 1) / (2 * g->side) + 1), ys = g->iy0 + (ih - n) / 2;
+        for (k = 0; k < n; k++) {
+            int row = which == FLAT_W_UP ? k : n - 1 - k;
+            int len = imin(iw, 2 * g->side * row + 1), x0 = g->ix0 + (iw - len) / 2;
+            put(g, x0, ys + k, x0 + len - 1, ys + k, g->fg);
         }
     }
 }
@@ -273,10 +280,10 @@ int flat_clone_draw(const flat_state *s, unsigned long which, unsigned long meth
 }
 
 /* Both entry points run the same generator; g carries either the array or the fill callback. */
-static int plan_run(plan *g, unsigned long which, int w, int h, int state)
+static int plan_run(plan *g, unsigned long which, int w, int h, int state, int side)
 {
     int i;
-    g->n = 0; g->w = w; g->h = h;
+    g->n = 0; g->w = w; g->h = h; g->side = side < 1 ? 1 : side;
     flat_glyph_roles(which, state, &g->fg, &g->bg);
     i = imax(1, imin(w, h) / 4);
     g->ix0 = i; g->iy0 = i; g->ix1 = w - 1 - i; g->iy1 = h - 1 - i;
@@ -301,7 +308,7 @@ int flat_glyph_plan(unsigned long which, int w, int h, int state, flat_prim *out
     if (!out || cap < FLAT_GLYPH_MAX_PRIMS || !flat_glyph_known(which) || w < FLAT_GLYPH_MIN_SIZE || h < FLAT_GLYPH_MIN_SIZE)
         return 0;
     g.p = out; g.cap = cap; g.fill = 0; g.ctx = 0; g.st = 0; g.frame_pen = -1; g.ox = g.oy = 0;
-    return plan_run(&g, which, w, h, state);
+    return plan_run(&g, which, w, h, state, 1);
 }
 
 int flat_glyph_pen(const flat_state *s, int role)
@@ -315,13 +322,13 @@ int flat_glyph_route(const flat_state *s, unsigned long which, unsigned long met
 }
 
 int flat_glyph_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
-                    int w, int h, int frame_pen, flat_fill_fn fill, void *ctx)
+                    int w, int h, int frame_pen, int side, flat_fill_fn fill, void *ctx)
 {
     plan g;
     if (!fill || !flat_glyph_route(s, which, method) || w < FLAT_GLYPH_MIN_SIZE || h < FLAT_GLYPH_MIN_SIZE)
         return 0;
     g.p = 0; g.cap = FLAT_GLYPH_MAX_PRIMS; g.fill = fill; g.ctx = ctx; g.st = s; g.frame_pen = frame_pen; g.ox = ox; g.oy = oy;
-    return plan_run(&g, which, w, h, flat_glyph_state(ids)) > 0;
+    return plan_run(&g, which, w, h, flat_glyph_state(ids), side) > 0;
 }
 
 int flat_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn, void *ctx)

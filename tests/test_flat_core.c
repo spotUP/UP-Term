@@ -361,7 +361,7 @@ static void cv_fill(void *ctx, int x0, int y0, int x1, int y1, int pen)
 static int fake_dispatch(const flat_state *st, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy, int w, int h)
 {
     g_disp_calls++;
-    if (flat_glyph_draw(st, which, method, ids, ox, oy, w, h, g_frame_pen, cv_fill, 0))
+    if (flat_glyph_draw(st, which, method, ids, ox, oy, w, h, g_frame_pen, 1, cv_fill, 0))
         return 1;
     g_old_calls++;                                      /* the saved routine */
     return 0;
@@ -1198,6 +1198,52 @@ static int blank_render(void *ctx, unsigned long ids, uint8_t *grid, int w, int 
 
 static uint8_t g_scr[FLAT_CLONE_SCRATCH];
 
+/* S31-ARROW-ASPECT: on hires (flat_side_px 2) the owner saw narrow left/right and too-big up/down arrows. Every arrow must have
+ * the same 45-degree shape in visual units (a row counts side columns): left/right base (rows * side) == 2 * length (columns),
+ * up/down widest row == 2 * side * (rows - 1) + 1; the glyph is centred in its box. Box sizes are the rig's 3.2 hires ones. */
+static void arrow_bbox(const flat_state *st, unsigned long w, int bw, int bh, int side, int *x0, int *x1, int *rows)
+{
+    int x, y, y0 = -1, y1 = -1;
+    cv_clear();
+    *x0 = CV; *x1 = -1;
+    CHECK_INT(flat_glyph_draw(st, w, FLAT_IM_DRAW, 0, 0, 0, bw, bh, st->pen_back, side, cv_fill, 0), 1);
+    for (y = 0; y < bh; y++)
+        for (x = 0; x < bw; x++)
+            if (cv[y][x] == (char)st->pen_text) {
+                if (x < *x0) *x0 = x;
+                if (x > *x1) *x1 = x;
+                if (y0 < 0) y0 = y;
+                y1 = y;
+            }
+    *rows = y1 - y0 + 1;
+}
+
+static void test_arrow_aspect(void)
+{
+    flat_state st;
+    unsigned long w;
+    int side, x0, x1, rows, lw[3] = { 0 }, uh[3] = { 0 };
+    flat_init(&st);
+    desk_flat_state(1, 1, &st);
+    for (side = 1; side <= 2; side++) {
+        for (w = FLAT_W_LEFT; w <= FLAT_W_DOWN; w++) {
+            if (w == FLAT_W_LEFT || w == FLAT_W_RIGHT) {
+                arrow_bbox(&st, w, 16, 10, side, &x0, &x1, &rows);
+                CHECK_INT(rows * side, 2 * (x1 - x0 + 1));        /* base twice the length, in visual units */
+                CHECK(abs(x0 - (16 - 1 - x1)) <= 1);              /* centred */
+                lw[side] = x1 - x0 + 1;
+            } else {
+                arrow_bbox(&st, w, 18, 11, side, &x0, &x1, &rows);
+                CHECK_INT(x1 - x0 + 1, 2 * side * (rows - 1) + 1);
+                CHECK(abs(x0 - (18 - 1 - x1)) <= 1);
+                uh[side] = rows;
+            }
+        }
+    }
+    CHECK_INT(lw[2], 2 * lw[1]);                                  /* hires: left/right twice as wide */
+    CHECK(uh[2] < uh[1]);                                         /* hires: up/down fewer rows */
+}
+
 /* S31 SCROLLER-ARROWS-INVISIBLE: OS 3.2's sysiclass draws nothing offscreen for the arrow images, so the clone fails and the
  * block glyph is what shows. Through the same two steps flat.c runs (clone, then glyph draw) with the pens desk_flat_state
  * gives: the canvas must hold the glyph pen AND a different box pen, for every arrow, state and box size seen on the rig. */
@@ -1217,7 +1263,7 @@ static void test_arrow_glyph_pens(void)
                 cv_clear();
                 rc = flat_clone_draw(&st, w, FLAT_IM_DRAW, (unsigned long)states[si], 0, 0, bw, bh, st.pen_back, -1, blank_render, 0, cv_fill, 0, g_scr);
                 CHECK_INT(rc, FLAT_CLONE_FAIL);                  /* the system image gave no pixel */
-                CHECK_INT(flat_glyph_draw(&st, w, FLAT_IM_DRAW, (unsigned long)states[si], 0, 0, bw, bh, st.pen_back, cv_fill, 0), 1);
+                CHECK_INT(flat_glyph_draw(&st, w, FLAT_IM_DRAW, (unsigned long)states[si], 0, 0, bw, bh, st.pen_back, 1, cv_fill, 0), 1);
                 glyph = box = 0;
                 for (y = 0; y < bh; y++)
                     for (x = 0; x < bw; x++) {
@@ -1400,6 +1446,7 @@ void suite_flat_core(void)
 {
     test_frame_pen();
     test_arrow_glyph_pens();
+    test_arrow_aspect();
     test_clone_arrows();
     test_glyph_clone();
     test_clone_no_dividers();

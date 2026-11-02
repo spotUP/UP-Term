@@ -258,7 +258,9 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
             r->cfall++;                     /* no offscreen bitmap / busy / no DrawInfo: the block glyph below */
     }
     return flat_glyph_draw(&r->st, which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
-                           im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, frame_pen, c2_fill, d->imp_RPort);
+                           im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, frame_pen,
+                           d->imp_DrInfo ? flat_side_px(d->imp_DrInfo->dri_Resolution.X, d->imp_DrInfo->dri_Resolution.Y) : 1,
+                           c2_fill, d->imp_RPort);
 }
 
 ULONG c2_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1") Msg msg)
