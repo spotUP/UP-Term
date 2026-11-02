@@ -830,6 +830,105 @@ static void test_grid_fit(void)
     CHECK_INT(m.live, 0);
 }
 
+/* TTF_ICON on tall pixels (1:2, PAL hires two cells: 16 x 8, a unit 1/64 px
+ * across and 1/128 px down, baseline row 6): each stem keeps a whole-pixel
+ * width and lands on pixel boundaries, its two edges paired rather than
+ * snapped one by one (HANDLER-ICON-GRID-FIT step 2). Glyph 8 is a ring:
+ * outer x 100..500 (1.56..7.81 px), y -100..700 (rows 6.78..0.53), the
+ * counter x 200..400 (3.13..6.25), y 100..500 (rows 5.22..2.09), drawn the
+ * other way round. Its walls are 1.56 px: two pixels each. Edge by edge the
+ * left wall would be column 2 alone and the right one 6..7. Glyph 9 a
+ * stem 1.41 px wide at x 147..237 (2.30..3.70 px): one column, not two. */
+static void test_icon_stems(void)
+{
+    static const pt ring[8] = { { 100, -100, 1 }, { 100, 700, 1 }, { 500, 700, 1 }, { 500, -100, 1 },
+                                { 200, 100, 1 },  { 400, 100, 1 }, { 400, 500, 1 }, { 200, 500, 1 } };
+    static const int e8[2] = { 3, 7 };
+    static const pt stem[4] = { { 147, -100, 1 }, { 147, 600, 1 }, { 237, 600, 1 }, { 237, -100, 1 } };
+    static const int e4[1] = { 3 };
+    unsigned char cov[16 * 8], ref[16 * 8];
+    ttf_place_out pl, shape;
+    mem m;
+    ttf_font *f;
+    unsigned gid;
+    int x, y, ok, ink;
+    unsigned long runs, pairs;
+    base_glyphs();
+    nglyph = 10;
+    simple(8, ring, e8, 2);
+    simple(9, stem, e4, 1);
+    CHECK_INT(open_mem(&m, sfont, build(0), &f), TTF_OK);
+    if (!f)
+        return;
+
+    /* the reachability path: place as an icon, then the fitted render */
+    ttf_place(f, 8, TTF_ICON, 16, 8, 6, 1, 2, &pl);
+    CHECK_INT(pl.snap, TTF_SNAP_STEMS);
+    CHECK_INT(pl.ox, 0);
+    CHECK_INT(pl.baseline, 6);
+    ttf_place(f, 8, TTF_SHAPE, 16, 8, 6, 1, 2, &shape);
+    CHECK(pl.xscale == shape.xscale && pl.yscale == shape.yscale && pl.ox == shape.ox &&
+          pl.baseline == shape.baseline); /* placed as a shape */
+    memset(cov, 0, sizeof cov);
+    runs = ttf_snap_runs;
+    pairs = ttf_stem_pairs;
+    CHECK_INT(ttf_render_fit(f, 8, pl.xscale, pl.yscale, pl.ox, pl.baseline, cov, 16, 8, pl.snap), 1);
+    CHECK_INT((int)(ttf_snap_runs - runs), 1);
+    CHECK_INT((int)(ttf_stem_pairs - pairs), 4); /* two walls across, two down */
+    for (y = 0, ok = 1; y < 8; y++)
+        for (x = 0; x < 16; x++) {
+            ink = x >= 1 && x <= 7 && y <= 6 && !(x >= 3 && x <= 5 && y >= 2 && y <= 4);
+            if (cov[y * 16 + x] != (ink ? 255 : 0))
+                ok = 0;
+        }
+    CHECK(ok); /* walls two pixels each, the counter three, nothing half covered */
+    memset(ref, 0, sizeof ref);
+    ttf_render(f, 8, pl.xscale, pl.yscale, pl.ox, pl.baseline, ref, 16, 8);
+    CHECK(ref[3 * 16 + 1] > 0 && ref[3 * 16 + 1] < 255); /* unfitted: a blurred side */
+
+    ttf_place(f, 9, TTF_ICON, 16, 8, 6, 1, 2, &pl);
+    memset(cov, 0, sizeof cov);
+    CHECK_INT(ttf_render_fit(f, 9, pl.xscale, pl.yscale, pl.ox, pl.baseline, cov, 16, 8, pl.snap), 1);
+    for (y = 0, ok = 1; y < 8; y++)
+        for (x = 0; x < 16; x++)
+            if (cov[y * 16 + x] != (x == 3 && y >= 2 && y <= 6 ? 255 : 0))
+                ok = 0;
+    CHECK(ok); /* 1.41 px: one whole column */
+
+    /* square pixels: no fit, ttf_render's bytes, TTF_SHAPE's place */
+    for (gid = 1; gid <= 9; gid++) {
+        if (gid == 5 || gid == 6 || gid == 7)
+            continue;
+        ttf_place(f, gid, TTF_ICON, 16, 16, 13, 2, 2, &pl);
+        ttf_place(f, gid, TTF_SHAPE, 16, 16, 13, 2, 2, &shape);
+        CHECK_INT(pl.snap, TTF_SNAP_NONE);
+        CHECK(memcmp(&pl, &shape, sizeof pl) == 0);
+        {
+            unsigned char c2[16 * 16], r2[16 * 16];
+            memset(c2, 0, sizeof c2);
+            memset(r2, 0, sizeof r2);
+            runs = ttf_snap_runs;
+            ttf_render_fit(f, gid, pl.xscale, pl.yscale, pl.ox, pl.baseline, c2, 16, 16, pl.snap);
+            ttf_render(f, gid, pl.xscale, pl.yscale, pl.ox, pl.baseline, r2, 16, 16);
+            CHECK_INT((int)(ttf_snap_runs - runs), 0);
+            CHECK(memcmp(c2, r2, sizeof c2) == 0);
+        }
+    }
+
+    /* a curve (no straight edge) is the same fitted or not at 1:2 */
+    ttf_place(f, 3, TTF_ICON, 16, 8, 6, 1, 2, &pl);
+    memset(cov, 0, sizeof cov);
+    memset(ref, 0, sizeof ref);
+    pairs = ttf_stem_pairs;
+    ttf_render_fit(f, 3, pl.xscale, pl.yscale, pl.ox, pl.baseline, cov, 16, 8, pl.snap);
+    ttf_render(f, 3, pl.xscale, pl.yscale, pl.ox, pl.baseline, ref, 16, 8);
+    CHECK_INT((int)(ttf_stem_pairs - pairs), 0);
+    CHECK(memcmp(cov, ref, sizeof cov) == 0);
+    ttf_close(f);
+    CHECK_INT(m.live, 0);
+    base_glyphs();
+}
+
 void suite_ttf(void)
 {
     test_subset_font();
@@ -844,4 +943,5 @@ void suite_ttf(void)
     test_threshold();
     test_threshold_at();
     test_embolden();
+    test_icon_stems();
 }
