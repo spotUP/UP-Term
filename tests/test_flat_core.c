@@ -962,6 +962,18 @@ static void test_scroller(void)
     CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0xFFFF, 0, 0x8000, 10, 70, 25, 119), kn);
     CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0xFFFF, 0, 0x8000, 10, 20, 25, 69), tr);
     CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 60, 25, 80), tr);   /* straddles the knob edge */
+    /* FLAT-SLIDER-ROUND: a fill that is exactly the knob gets the button corner cuts; any other fill gets none */
+    {
+        int cuts[FLAT_ROUND_MAX][2], n, i, hit = 0;
+        n = flat_scroller_cuts(10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69, cuts);   /* knob 16 x 50 at (10,20): tall, 12 cuts */
+        CHECK_INT(n, 12);
+        for (i = 0; i < n; i++)
+            if (cuts[i][0] == 10 && cuts[i][1] == 20) hit = 1;
+        CHECK_INT(hit, 1);                                                                       /* top left knob pixel is cut */
+        CHECK_INT(flat_scroller_cuts(10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 21, 25, 69, cuts), 0);
+        CHECK_INT(flat_scroller_cuts(10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 70, 25, 119, cuts), 0);   /* the track */
+        CHECK_INT(flat_scroller_cuts(10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 12, 22, 20, 30, cuts), 0);
+    }
     /* a tiny body still gives a 1 px knob */
     CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 1, 10, 20, 25, 20), kn);
     CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 1, 10, 21, 25, 21), tr);

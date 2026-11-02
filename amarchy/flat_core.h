@@ -322,5 +322,8 @@ int flat_button_role(const flat_box *self, const flat_box *sib, int n);
  * horiz / vert: the PropInfo FREEHORIZ / FREEVERT flags; depth: the screen depth. */
 int flat_scroller_pen(const flat_state *s, int depth, int cx, int cy, int cw, int ch, int horiz, int vert,
                       unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody, int x0, int y0, int x1, int y1);
+/* The knob rectangle (the layout flat_scroller_pen uses) inside container (cx,cy,cw,ch); 0 when the container is empty. */
+int flat_scroller_knob(int cx, int cy, int cw, int ch, int horiz, int vert, unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody,
+                       int *kx, int *ky, int *kw, int *kh);
 
 #endif
