@@ -736,6 +736,8 @@ AMARCHY
   Left Amiga + K                     Key bindings
   Left Amiga + H                     Help
   Left Amiga + Shift + H             Tutorial
+  Left Amiga + Shift + /             Amarchy Help
+  Left Amiga + Ctrl + Shift + Q      Quit Amarchy
   Left Amiga + T                     New tab
   Left Amiga + W                     Close tab
   Left Amiga + Backspace             Close tab
