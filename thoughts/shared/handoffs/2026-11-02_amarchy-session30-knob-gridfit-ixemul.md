@@ -24,23 +24,31 @@ AMARCHY-MENU-IXEMUL-BOOT-RACE). Evidence: thoughts/shared/research/s30-evidence/
   s48 unmerged).
 - rig.py stop removes build/rigN by design (8df99f0b). Not a bug.
 
+## Landed later in session 30 (pushed)
+- 82746511 + ee6e1361 AMARCHY-MENU-IXEMUL-BOOT-RACE: early S:User-Startup block assigns LIBS: VTCX:ixp6
+  before the Amarchy block. Rig 57 proof PASS, 2 cold boots (ixemul-boot-race-proof.md).
+- 8941cc55 FLAT-GADGET-NO-DIVIDERS: flat_clone_map peels full-span edge lines (edge_line helper). Pixels
+  PASS on 3.1 and 3.2 (flat-gadget-no-dividers.md); shots s30-no-dividers-31/32.png sent, owner look pending.
+- 2cf9de4f + 23d38c23 (peer fix: bare Echo, no C:Echo exists): rig STARTUP truncates boot.log once; go appends.
+- 54dd15e4 rig.py refuses a bare rig number; 726f684d clear refuses rig 1 without --rig1.
+- Glyph clone on 3.2 works clean and under the desktop (GLYPH-CLONE-32 closed, 58616e98, 870c1f1c).
+- build/rig (rig 1) was deleted by an agent's bare `clear 55`: RIG1-REBUILD open (rebuild on next need).
+
 ## Open, in order
-1. AMARCHY-MENU-IXEMUL-BOOT-RACE (ixemul48-snoop.md): SYS:Libs has no ixemul; amarchy-menu starts
-   from User-Startup before async BOOTX:go adds VTCX:ixp6 to LIBS:. Next: find where the installer
-   "libs" step (dist/Install.installer ~line 659, P_STEP "libs") really copies ixemul; it probably
-   resolves LIBS: to the first multi-assign dir. Fix at the installer or make the Amarchy start
-   wait for the BOOTX assigns; pick after reading the copy target. Boot-time open not snooped yet.
-2. Stale kit: build/dist/up-term/Files/Amarchy 11:03 (md5 56830d1a) is pre-deadlock-fix. A
-   fresh-all kit install brings the hang back until make dist + kit-stage (upterm-ports) run.
-3. Rest of queue as in the ledger: FLAT-SLIDER-LOOK (a) arrows (c) knob radius,
+1. KIT-AMARCHY-FLAT: kit has no amarchy-flat; amarchy_gui_rig.py --setup stages only Amarchy,
+   amarchy-menu, amarchy-gui. Rigs never test the boot start of UP-Term:bin/amarchy-flat.
+2. Stale kit: vtcon-ee runs make kit-stage + make dist from upterm-ports kit-main worktree.
+3. AM-ICON-NOBORDER branch worktree-agent-a5868f0ddde7bcf3e (360d8455, 87c1f697): rig 3.2 check.
+4. INSTALLER-CHECK10: installer check 10 failed twice on rig 57 (not investigated).
+5. Rest of queue as in the ledger: remote s28-button-round unchecked, FLAT-SLIDER-LOOK (a)(c),
    FLAT-ASPECT-BORDERS, ICONTEXT/SELECTA-AA-ICONTEXT, colour audit 3-8, AM-ICONS-DISK-ALL, F11-31,
-   AMARCHY_WBCLOSES reads 0, fs-uae 3.2 no Amarchy autostart, 3.2 sysiclass IM_DRAW offscreen,
-   SolidWin open points, installer rig IconLib case, RIG-OS32-NO-RTG, RIG-APPICONS-TEARDOWN-REQ,
-   INSTALL-AMISSL-STALL, DIST-STAGED-FROM, bar_open retry with no screenmode.prefs.
+   AMARCHY_WBCLOSES reads 0, fs-uae 3.2 no Amarchy autostart, SolidWin open points, installer rig IconLib
+   case, RIG-OS32-NO-RTG, RIG-APPICONS-TEARDOWN-REQ, INSTALL-AMISSL-STALL, bar_open retry, ICON-GRID-FIT
+   rig shot after kit refresh, 222222 body fill, knob depth-3 fallback host-only.
 
 ## Blocked on owner
-- Look at s30-knob-muted.png and s30-icon-grid-fit.png.
-- Owner of build/rig27 and of the upterm-ports checkout on port/htop.
+- Look at s30-no-dividers-31.png / -32.png.
+- Is wasabi/pin-f59c839 still needed?
 - Thomas Rapp reply pending.
 
 ## Rules carried
