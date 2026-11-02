@@ -65,6 +65,15 @@ int ttf_num_glyphs(const ttf_font *f);
 int ttf_render(ttf_font *f, unsigned gid, long xscale, long yscale, int ox, int baseline,
                unsigned char *cov, int w, int h);
 
+/* ttf_render with grid fitting when snap is set: the glyph's straight edges
+ * (consecutive on-curve points with one coordinate) go to pixel boundaries
+ * per axis, distinct edges at least 1 px apart, so a thin line of a
+ * box-drawing glyph in tall pixels covers whole pixels. snap 0 is
+ * ttf_render exactly. ttf_snap_runs counts the glyphs fitted. */
+extern unsigned long ttf_snap_runs;
+int ttf_render_fit(ttf_font *f, unsigned gid, long xscale, long yscale, int ox, int baseline,
+                   unsigned char *cov, int w, int h, int snap);
+
 /* coverage to a 1-bit mask (bpr bytes a row, most significant bit the left
  * pixel): a level of 128 or more sets the bit; mask is written whole */
 void ttf_threshold(const unsigned char *cov, int w, int h, unsigned char *mask, int bpr);
@@ -101,6 +110,7 @@ enum { TTF_SHAPE, TTF_FILL };
 typedef struct ttf_place_out {
     long xscale, yscale;
     int ox, baseline;
+    int snap; /* 1: pass to ttf_render_fit (TTF_FILL on non-square pixels) */
 } ttf_place_out;
 void ttf_place(const ttf_font *f, unsigned gid, int how, int w, int h, int base, int rx, int ry,
                ttf_place_out *out);

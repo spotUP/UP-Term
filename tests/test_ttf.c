@@ -237,7 +237,7 @@ static void test_format4_fallback(void)
 
 #define S_HEAD 1
 #define S_CMAP 2
-#define MAXG 9
+#define MAXG 11
 
 typedef struct pt {
     int x, y, on;
@@ -736,6 +736,100 @@ static void test_place_fill(void)
     base_glyphs();
 }
 
+/* TTF_FILL on tall pixels (1:2): straight stems land on whole pixels.
+ * Glyph 8 is a thin horizontal line across the cell straddling rows 6 and 7
+ * as scaled, glyph 9 a thin vertical line straddling columns 3 and 4. Cell
+ * 8 x 16, upem 1024, line 1024: 1/128 px a unit across, 1/64 down, baseline
+ * row 13 (HANDLER-ICON-GRID-FIT) */
+static void test_grid_fit(void)
+{
+    static const pt hline[4] = { { 0, 350, 1 }, { 0, 390, 1 }, { 1024, 390, 1 }, { 1024, 350, 1 } };
+    static const pt vline[4] = { { 400, -205, 1 }, { 400, 819, 1 }, { 440, 819, 1 }, { 440, -205, 1 } };
+    static const int e4[1] = { 3 };
+    unsigned char cov[8 * 16], ref[8 * 16];
+    ttf_place_out pl;
+    mem m;
+    ttf_font *f;
+    unsigned gid;
+    int x, y, ok, i;
+    unsigned long runs;
+    base_glyphs();
+    nglyph = 10;
+    simple(8, hline, e4, 1);
+    simple(9, vline, e4, 1);
+    s_asc = 819;
+    s_desc = -205;
+    CHECK_INT(open_mem(&m, sfont, build(0), &f), TTF_OK);
+    s_asc = s_desc = 0;
+    if (!f)
+        return;
+
+    /* tall pixels: the reachability path (place, then fitted render) */
+    ttf_place(f, 8, TTF_FILL, 8, 16, 6, 1, 2, &pl);
+    CHECK_INT(pl.snap, 1);
+    CHECK_INT(pl.baseline, 13);
+    memset(cov, 0, sizeof cov);
+    runs = ttf_snap_runs;
+    CHECK_INT(ttf_render_fit(f, 8, pl.xscale, pl.yscale, pl.ox, pl.baseline, cov, 8, 16, pl.snap), 1);
+    CHECK_INT((int)(ttf_snap_runs - runs), 1); /* the fit ran, once */
+    for (y = 0, ok = 1; y < 16; y++)
+        for (x = 0; x < 8; x++)
+            if (cov[y * 8 + x] != (y == 7 ? 255 : 0))
+                ok = 0;
+    CHECK(ok); /* one full row, no half rows */
+    /* unfitted, the same line is two partial rows */
+    memset(ref, 0, sizeof ref);
+    ttf_render(f, 8, pl.xscale, pl.yscale, pl.ox, pl.baseline, ref, 8, 16);
+    CHECK(ref[6 * 8 + 3] > 0 && ref[6 * 8 + 3] < 255);
+    CHECK(ref[7 * 8 + 3] > 0 && ref[7 * 8 + 3] < 255);
+
+    ttf_place(f, 9, TTF_FILL, 8, 16, 6, 1, 2, &pl);
+    memset(cov, 0, sizeof cov);
+    CHECK_INT(ttf_render_fit(f, 9, pl.xscale, pl.yscale, pl.ox, pl.baseline, cov, 8, 16, pl.snap), 1);
+    for (y = 0, ok = 1; y < 16; y++)
+        for (x = 0; x < 8; x++)
+            if (cov[y * 8 + x] != (x == 3 ? 255 : 0))
+                ok = 0;
+    CHECK(ok); /* one full column */
+    memset(ref, 0, sizeof ref);
+    ttf_render(f, 9, pl.xscale, pl.yscale, pl.ox, pl.baseline, ref, 8, 16);
+    CHECK(ref[3] > 0 && ref[3] < 255);
+
+    /* square pixels: no fit, the same bytes as ttf_render */
+    for (gid = 1; gid <= 9; gid++) {
+        if (gid == 5 || gid == 6 || gid == 7)
+            continue;
+        ttf_place(f, gid, TTF_FILL, 8, 16, 6, 2, 2, &pl);
+        CHECK_INT(pl.snap, 0);
+        memset(cov, 0, sizeof cov);
+        memset(ref, 0, sizeof ref);
+        runs = ttf_snap_runs;
+        ttf_render_fit(f, gid, pl.xscale, pl.yscale, pl.ox, pl.baseline, cov, 8, 16, pl.snap);
+        ttf_render(f, gid, pl.xscale, pl.yscale, pl.ox, pl.baseline, ref, 8, 16);
+        CHECK_INT((int)(ttf_snap_runs - runs), 0);
+        CHECK(memcmp(cov, ref, sizeof cov) == 0);
+    }
+
+    /* a shape glyph on tall pixels is not fitted */
+    ttf_place(f, 8, TTF_SHAPE, 8, 16, 6, 1, 2, &pl);
+    CHECK_INT(pl.snap, 0);
+
+    /* a curve (all points off the curve: no straight edge) is the same
+     * fitted or not, at 1:2 */
+    ttf_place(f, 3, TTF_FILL, 8, 16, 6, 1, 2, &pl);
+    CHECK_INT(pl.snap, 1);
+    memset(cov, 0, sizeof cov);
+    memset(ref, 0, sizeof ref);
+    ttf_render_fit(f, 3, pl.xscale, pl.yscale, pl.ox, pl.baseline, cov, 8, 16, 1);
+    ttf_render(f, 3, pl.xscale, pl.yscale, pl.ox, pl.baseline, ref, 8, 16);
+    for (i = 0, ok = 0; i < 8 * 16; i++)
+        ok += ref[i] != 0;
+    CHECK(ok > 0);
+    CHECK(memcmp(cov, ref, sizeof cov) == 0);
+    ttf_close(f);
+    CHECK_INT(m.live, 0);
+}
+
 void suite_ttf(void)
 {
     test_subset_font();
@@ -745,6 +839,7 @@ void suite_ttf(void)
     test_place();
     test_place_fill();
     test_synthetic();
+    test_grid_fit();
     test_refused();
     test_threshold();
     test_threshold_at();

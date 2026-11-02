@@ -93,7 +93,7 @@ static int render(struct vo_engine *e, ULONG cp, UBYTE *mask, WORD bpr, WORD w, 
 {
     unsigned gid = ttf_glyph_index(e->tt, cp);
     long xs = e->xscale, ys = e->yscale;
-    int baseline = e->base;
+    int baseline = e->base, snap = 0;
     if (!gid)
         return 0;
     if (how != VO_AT_CELL) {
@@ -103,9 +103,10 @@ static int render(struct vo_engine *e, ULONG cp, UBYTE *mask, WORD bpr, WORD w, 
         ys = pl.yscale;
         baseline = pl.baseline;
         ox = (WORD)pl.ox;
+        snap = pl.snap;
     }
     memset(e->cov, 0, (size_t)w * e->ch);
-    if (ttf_render(e->tt, gid, xs, ys, ox, baseline, e->cov, w, e->ch) != 1)
+    if (ttf_render_fit(e->tt, gid, xs, ys, ox, baseline, e->cov, w, e->ch, snap) != 1)
         return 0;
     ttf_threshold(e->cov, w, e->ch, mask, bpr);
     e->own++;
