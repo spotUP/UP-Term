@@ -90,3 +90,31 @@ falls back to the block glyph drawing (counted as clone fallback). Host test: te
 Open: why 3.2 sysiclass draws nothing offscreen is not known (cached imagery tied to the screen is the likely reason,
 unverified). Rig pixel proof of the fallback glyph after activation and re-activation is not yet measured.
 The diagnostic patch is kept out of the tree.
+
+## Rig 8 second cause: the resident amarchy-flat lags one boot behind the files
+
+Owner's rig 8 (OS 3.2) still showed solid band-colour gadget boxes after the 99fa0fe5 fix was built
+(shot ~/Desktop/upterm-shots/s29-rig8-gadgets-fix2-fail.png: close zone 113-133 solid 8d8d8d, no glyph
+pixel; STATUS `clone draws=47 fallback=0`). The fixed build cannot report draws>0 on an empty clone map,
+so the resident process was not the fixed build, although UP-Term:bin/amarchy-flat already had the build's
+md5 (88102e4c).
+
+Proof (2026-11-02, rig 8):
+- A diagnostic amarchy-flat (extra shared-record fields) was placed in build/amiga and the rig rebooted
+  (ami.py refreshed VTC:, the boot shadow copied it to UP-Term:bin). After the boot STATUS printed garbage
+  for the new fields (`tb n=4101 1633683443 ...`) although the record is MEMF_CLEAR: the resident was the
+  PREVIOUS boot's file (the fixed main build), giving `clone draws=0 fallback=46` and visible block glyphs.
+- After restoring main's build and rebooting twice: `clone draws=0 fallback=46`; shot close zone
+  197 px 8d8d8d + 18 px 000000 + 16 px bebebe (glyph ink present), right zone 168 px bebebe.
+
+Cause: Amarchy starts `UP-Term:bin/amarchy-flat BOOT` (desk_dos.c:514 pl_start) before the boot's shadow
+Copy VTC: -> UP-Term:bin replaces that file. The resident keeps the old code in memory; the file on disk
+looks current. Same race as RIG-WARM-SRV-RACE (rig.py sys_hdf_kit_upterm), which only pre-writes
+UP-Term: files on a fresh clone, not on `ami.py reboot` / `rig.py reboot`.
+
+Consequence: the flat_glyph.c fix (99fa0fe5) is correct; the rig-8 failure was stale code. Any rig check
+of amarchy-flat (and any other program Amarchy starts at boot) after one reboot measures the previous
+build. Workaround until the rig is fixed: reboot twice, or quit the resident and start it again.
+Rig fix (not done here, rig tooling scope): write the UP-Term: kit files into the clone before every
+boot that refreshed them (extend sys_hdf_kit_upterm to reboots), or have the boot shadow run before
+User-Startup starts Amarchy.
