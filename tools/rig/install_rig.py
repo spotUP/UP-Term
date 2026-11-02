@@ -1825,26 +1825,30 @@ def case_wasabi(ck):
     ck(rc2 == 0 and key2.strip() == key, 'wasabi: ENV:wasabi.key (what wasabid reads) is the same', '%d %r' % (rc2, key2))
     ck(key != rigkey, 'wasabi: the kit made a key of its own')
     ck(';BEGIN UP-Term wasabi' in run('Type S:User-Startup')[1], 'wasabi: the S:User-Startup block is there')
-    ck(run('Status >NIL: COM C:wasabid')[0] == 0, 'wasabi: Install started wasabid')
-    # restart on a port of its own: WASABI_PORT is held by the rig's wasabid (a second bind there fails and the
-    # ping reaches the rig's daemon, which answers 'bad key'), the Mac's end of 1234 is rig 1's
-    run('Status COM C:wasabid >T:wpid')
-    rc, pid = run('Type T:wpid')
-    pid = pid.split()[0] if pid.split() else ''
-    ck(pid.isdigit(), 'wasabi: found the running wasabid', pid)
-    run('Break %s C' % pid)
-    time.sleep(3)
-    run('Run >NIL: <NIL: C:wasabid %d name rig%d' % (KIT_WASABI_PORT, paths.RIG_N))
+    # One non-trial wasabid per Amiga (KIT-WASABI-DOUBLE): the rig's daemon (BOOTX:wasabid, started by the
+    # rig-wasabid block before the kit's blocks) owns the machine. The kit's C:wasabid, started by Install and at
+    # every boot, finds the port WASABI.daemon taken, prints 'already running' and exits with rc 5; before the
+    # singleton it bound the kit port (1234, rig 1's) beside it.
+    startup = run('Type S:User-Startup')[1]
+    ck(';BEGIN rig-wasabid' in startup and startup.index(';BEGIN rig-wasabid') < startup.index(';BEGIN UP-Term'),
+       'wasabi: the rig-wasabid block comes before the kit blocks in S:User-Startup')
+    ck(run('Status >NIL: COM C:wasabid')[0] != 0, 'wasabi: no C:wasabid daemon runs beside the rig daemon')
+    rc, out = run('C:wasabid')
+    ck(rc == 5 and 'already running' in out, 'wasabi: a second C:wasabid says already running and exits (rc 5)', '%d %r' % (rc, out))
+    # the kit binary still serves: a trial instance (exempt from the singleton) on a port of its own, since
+    # WASABI_PORT is held by the rig's wasabid (the ping would reach it and be answered 'bad key')
+    run('Run >NIL: <NIL: C:wasabid %d trial name rig%d' % (KIT_WASABI_PORT, paths.RIG_N))
     time.sleep(3)
     client = ROOT / 'build/wasabi/wasabi'
     r = subprocess.run([sys.executable, '-I', str(client), '--host', '127.0.0.1', '--port', str(KIT_WASABI_PORT),
                         '--key', key, '--plain', 'ping'], capture_output=True, text=True, timeout=60)
-    ck(r.returncode == 0 and 'wasabid 0.11b2' in (r.stdout + r.stderr), 'wasabi: the Mac client pings the kit-installed wasabid',
+    ck(r.returncode == 0 and 'wasabid 0.11b2' in (r.stdout + r.stderr), 'wasabi: the Mac client pings the kit-installed wasabid (trial)',
        (r.stdout + r.stderr)[:300])
     run('Status COM C:wasabid >T:wpid')
     pid = (run('Type T:wpid')[1].split() or [''])[0]
-    run('Break %s C' % pid)
-    time.sleep(3)
+    if pid.isdigit():
+        run('Break %s C' % pid)
+        time.sleep(3)
     base_uninstall(ck, before)
     ck(run('List >NIL: C:wasabid')[0] != 0, 'wasabi: after Uninstall C:wasabid is gone')
     ck(run('List >NIL: ENVARC:wasabi.key')[0] != 0, 'wasabi: after Uninstall the key is gone')

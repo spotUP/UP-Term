@@ -368,6 +368,22 @@ EndIf"""
 # The stack the boot gives wasabid (RIG-AGA-WASABID-STACK): Run inherits the boot shell's 4096 bytes otherwise.
 WASABID_STACK = 262144
 
+# KIT-WASABI-DOUBLE: the lines that start the rig's daemon, in go (fallback) and in BOOTX:wasabid-up (the early
+# S:User-Startup block). wasabid refuses a second non-trial instance ("already running", RETURN_WARN), so whichever runs
+# second is harmless; the early block makes the rig's daemon the one that wins the race against the kit's C:wasabid.
+WASABID_START = """C:SetEnv wasabi.key %(key)s
+; wasabid needs a real stack: Run gives it the boot shell's 4096 bytes, and on an AGA
+; boot it stopped answering for good (RIG-AGA-WASABID-STACK, 2026-11-02)
+C:Stack %(wasabid_stack)d
+C:Run >NIL: <NIL: BOOTX:wasabid %(port)d name rig%(rign)d""" % {"port": paths.WASABI_PORT, "key": paths.WASABI_KEY, "rign": paths.RIG_N, "wasabid_stack": WASABID_STACK}
+WASABID_UP_SCRIPT = """FailAt 21
+Echo >>BOOTX:boot.log "early wasabid start (before the kit blocks)"
+%s
+""" % WASABID_START
+WASABID_UP_BLOCK = user_startup.RIG_WASABID_BLOCK
+WASABID_UP_BLOCK_TEXT = ";BEGIN %s\nExecute BOOTX:wasabid-up\n;END %s\n" % (WASABID_UP_BLOCK, WASABID_UP_BLOCK)
+KIT_BLOCK = ";BEGIN UP-Term"
+
 GO = """FailAt 21
 Echo >>BOOTX:boot.log "go started"
 %(shadows)s
@@ -470,13 +486,9 @@ If NOT WARN
 EndIf
 Echo >>BOOTX:boot.log "assigns done"
 Run >NIL: SYS:System/RexxMast
-C:SetEnv wasabi.key %(key)s
-; wasabid needs a real stack: Run gives it the boot shell's 4096 bytes, and on an AGA
-; boot it stopped answering for good (RIG-AGA-WASABID-STACK, 2026-11-02)
-C:Stack %(wasabid_stack)d
-C:Run >NIL: <NIL: BOOTX:wasabid %(port)d name rig%(rign)d
+%(wasabid_start)s
 Echo >>BOOTX:boot.log "wasabid started"
-""" % {"port": paths.WASABI_PORT, "key": paths.WASABI_KEY, "rign": paths.RIG_N, "wasabid_stack": WASABID_STACK, "upterm_assign": UPTERM_ASSIGN, "amarchy_assets": AMARCHY_ASSETS_BOOT, "shadows": kit_shadow_lines(False), "shadows_up": kit_shadow_lines(True), "shadows_up_done": SHADOWS_UP_DONE, "kit_stamp": KIT_STAMP_BOOT, "libs": "\n".join("    C:" + l for l in RIG_LIBS), "libs_done": RIG_LIBS_DONE,
+""" % {"wasabid_start": WASABID_START, "upterm_assign": UPTERM_ASSIGN, "amarchy_assets": AMARCHY_ASSETS_BOOT, "shadows": kit_shadow_lines(False), "shadows_up": kit_shadow_lines(True), "shadows_up_done": SHADOWS_UP_DONE, "kit_stamp": KIT_STAMP_BOOT, "libs": "\n".join("    C:" + l for l in RIG_LIBS), "libs_done": RIG_LIBS_DONE,
        "shellpath": "\n".join('    Echo >>S:Shell-Startup "%s"' % l for l in SHELL_STARTUP_PATH)}
 # boot.log in the host drawer BOOTX: tells from the Mac how far a boot got
 # (the rig's screen is not visible from here).
@@ -837,6 +849,24 @@ def sys_hdf_kit_upterm(image):
     finally:
         shutil.rmtree(back, ignore_errors=True)
 
+def user_startup_with_wasabid_block(data):
+    """data (S:User-Startup bytes) with the rig's wasabid block before the first kit ';BEGIN UP-Term' block, or at the
+    end when no kit block is there (a kit installed later appends its blocks after it); an earlier copy is removed
+    first."""
+    data = user_startup.strip_upterm_blocks(data, WASABID_UP_BLOCK)
+    at = data.find(KIT_BLOCK.encode("latin-1"))
+    if at < 0:
+        if data and not data.endswith(b"\n"):
+            data += b"\n"
+        return data + WASABID_UP_BLOCK_TEXT.encode("latin-1")
+    return data[:at] + WASABID_UP_BLOCK_TEXT.encode("latin-1") + data[at:]
+
+
+def user_startup_with_rig_blocks(data):
+    """Every rig-only block in S:User-Startup: the shadow block, then the wasabid block before the kit's blocks."""
+    return user_startup_with_wasabid_block(user_startup_with_shadows_block(data))
+
+
 def sys_hdf_shadows_block(image):
     """RIG-BOOT-STALE-BIN: the rig's shadow block goes into the image's S:User-Startup before the kit's Amarchy block."""
     xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
@@ -845,7 +875,7 @@ def sys_hdf_shadows_block(image):
     if subprocess.run([xdf, str(image), "read", "S/User-Startup", str(us)], capture_output=True).returncode != 0:
         return
     data = us.read_bytes()
-    new = user_startup_with_shadows_block(data)
+    new = user_startup_with_rig_blocks(data)
     if new != data:
         us.write_bytes(new)
         subprocess.run([xdf, str(image), "delete", "S/User-Startup"], check=True, capture_output=True)
@@ -859,7 +889,7 @@ def os_tree_shadows_block(tree):
         us = pathlib.Path(tree) / sub / "User-Startup"
         if us.is_file():
             data = us.read_bytes()
-            new = user_startup_with_shadows_block(data)
+            new = user_startup_with_rig_blocks(data)
             if new != data:
                 us.write_bytes(new)
 
@@ -1255,6 +1285,7 @@ def setup():
               % (len(stale), ", ".join(stale)))
     (RIG / "boot/go").write_text(GO)
     (RIG / "boot/shadows-up").write_text(SHADOWS_UP_SCRIPT)
+    (RIG / "boot/wasabid-up").write_text(WASABID_UP_SCRIPT)
     (RIG / "boot" / kitstamp.LIST).write_text("".join(n + "\n" for n in sorted({x[0] for x in KIT_SHADOWS})))
     kitstamp.check(RIG / "boot", RIG / "vtc")
     (RIG / "boot/Mountlist").write_text(MOUNTLIST)

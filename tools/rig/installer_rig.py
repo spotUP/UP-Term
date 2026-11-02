@@ -1263,7 +1263,9 @@ def run_base_case(case):
     if stand_in:
         if ir.run('List >NIL: C:wasabid')[0] != 0:
             ir.run('Copy >NIL: C:Wait C:wasabid')
-        ir.run('Run >NIL: C:wasabid 600')
+        # the kit's real wasabid is a singleton (the rig's daemon already holds the port): a trial instance
+        # (exempt) stands in; the C:Wait copy takes the plain seconds
+        ir.run('Run >NIL: C:wasabid 600%s' % (' trial' if kit_wasabid else ''))
     # Uninstall gives it all back
     installed_startup = ir.run('Type S:User-Startup')[1]
     rc, out = ir.run_long('rununinstall')
