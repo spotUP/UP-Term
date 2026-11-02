@@ -549,6 +549,13 @@ unsigned long vt_kitty_placed(const vt_term *t);
 unsigned long vt_kitty_placeholders(const vt_term *t);
 /* K34: animation frames alive (a picture with a frame list counts its root too). */
 unsigned long vt_kitty_frames(const vt_term *t);
+/* K35: frame switches made (by the clock or by a=a c=), a test sentinel. */
+unsigned long vt_kitty_frame_switches(const vt_term *t);
+/* K35: advance every running kitty animation by `us` microseconds, switching
+ * frames whose gap ran out (gapless ones skipped) and marking the rows of the
+ * changed pictures. Returns the microseconds to the next due frame, -1 when
+ * nothing runs. */
+long vt_anim_tick(vt_term *t, long us);
 /* Frame `frame` (1 = root) of kitty image `id`: the 6x6x6 + grey cube index at (x, y), 0 clear, -1 when none. */
 long vt_kitty_frame_px(const vt_term *t, unsigned long id, int frame, int x, int y);
 /* Kitty unicode placeholders (U=1, K31). A cell whose base code point is

@@ -1030,6 +1030,152 @@ static void k34_frames_stop_at_the_animation_memory(void)
     vt_free(t);
 }
 
+/* ---- K35: animation control (a=a), compose (a=c), the clock ---- */
+
+/* a 2 x 2 picture (red green / blue white) with frame 2 = root plus a blue pixel at (0,0) and frame 3 on
+ * frame 2 with a red pixel at (1,1); placed on the screen */
+static vt_term *k35_term(void)
+{
+    vt_term *t = kitty_term(10, 5);
+    h_put(t, "\033_Ga=t,i=5,f=24,s=2,v=2;/wAAAP8AAAD/////\033\\");
+    h_put(t, "\033_Ga=f,i=5,c=1,f=24,s=1,v=1,x=0,y=0,z=40;AAD/\033\\");
+    return t;
+}
+
+static void k35_a_a_keys_move_the_state(void)
+{
+    vt_term *t = k35_term();
+    unsigned long sw0 = vt_kitty_frame_switches(t);
+    h_reply_clear();
+    h_put(t, "\033_Ga=a,i=5,s=3\033\\");
+    CHECK_STR(h_reply, "\033_Gi=5;OK\033\\");
+    CHECK_INT(vt_anim_tick(t, 0), 40000);
+    CHECK_INT(vt_anim_tick(t, 40000), 40000); /* frame 2 now, the next due in 40 ms */
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1);
+    CHECK_INT(vt_anim_tick(t, 40000), 40000); /* loops back to frame 1 */
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 2);
+    /* s=1 stops: nothing runs */
+    h_put(t, "\033_Ga=a,i=5,s=1\033\\");
+    CHECK_INT(vt_anim_tick(t, 40000), -1);
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 2);
+    /* r= with z= sets a frame's gap, the root's included */
+    h_put(t, "\033_Ga=a,i=5,s=3,r=1,z=10\033\\");
+    CHECK_INT(vt_anim_tick(t, 0), 10000);
+    CHECK_INT(vt_anim_tick(t, 10000), 40000); /* on frame 2, gap 40 */
+    h_put(t, "\033_Ga=a,i=5,s=1\033\\");
+    /* c= shows a frame at once, no tick, and counts as a switch */
+    sw0 = vt_kitty_frame_switches(t);
+    h_put(t, "\033_Ga=a,i=5,c=1\033\\");
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1); /* the clock left it on frame 2 */
+    h_put(t, "\033_Ga=a,i=5,c=1\033\\");
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1); /* already frame 1: no switch */
+    vt_free(t);
+}
+
+static void k35_loops_wait_and_errors(void)
+{
+    vt_term *t = k35_term();
+    unsigned long sw0 = vt_kitty_frame_switches(t);
+    /* v=2: one loop, then it stops on the last frame */
+    h_put(t, "\033_Ga=a,i=5,s=3,v=2\033\\");
+    vt_anim_tick(t, 40000);
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1);
+    CHECK_INT(vt_anim_tick(t, 40000), -1); /* stopped at the end of its one loop */
+    CHECK_INT(vt_anim_tick(t, 400000), -1);
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1);
+    /* s=2 waits at the last frame and goes on when a frame arrives */
+    h_put(t, "\033_Ga=a,i=5,s=2,c=1\033\\");
+    sw0 = vt_kitty_frame_switches(t);
+    vt_anim_tick(t, 40000);
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1);
+    CHECK_INT(vt_anim_tick(t, 400000), -1); /* at the end: waits */
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1);
+    h_put(t, "\033_Ga=f,i=5,c=2,f=24,s=1,v=1,x=1,y=1;/wAA\033\\");
+    CHECK_INT(vt_anim_tick(t, 1000), -1); /* frame 3 is the last again: waits */
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 2); /* frame 3 shown */
+    /* gapless frames are never shown */
+    h_put(t, "\033_Ga=a,i=5,s=3,c=1,r=2,z=-1\033\\");
+    sw0 = vt_kitty_frame_switches(t);
+    vt_anim_tick(t, 40000);
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1); /* 1 -> 3 */
+    /* errors */
+    h_reply_clear();
+    h_put(t, "\033_Ga=a,i=9,s=3\033\\");
+    CHECK_STR(h_reply, "\033_Gi=9;ENOENT:no such image\033\\");
+    h_reply_clear();
+    h_put(t, "\033_Ga=a,i=5,c=9\033\\");
+    CHECK_STR(h_reply, "\033_Gi=5;ENOENT:no such frame\033\\");
+    h_put(t, "\033_Ga=t,i=6,f=24,s=1,v=1;AAD/\033\\");
+    h_reply_clear();
+    h_put(t, "\033_Ga=a,i=6,s=3\033\\");
+    CHECK_STR(h_reply, "\033_Gi=6;ENOENT:the picture has no frames\033\\");
+    vt_free(t);
+}
+
+static void k35_a_c_composes_a_rectangle(void)
+{
+    vt_term *t = k35_term();
+    h_put(t, "\033_Ga=f,i=5,c=2,f=24,s=1,v=1,x=1,y=1;/wAA\033\\"); /* frame 3 */
+    h_reply_clear();
+    /* frame 3's pixel (1,1) red onto frame 1 at (0,0) */
+    h_put(t, "\033_Ga=c,i=5,r=3,c=1,X=1,Y=1,x=0,y=0,w=1,h=1\033\\");
+    CHECK_STR(h_reply, "\033_Gi=5;OK\033\\");
+    CHECK_INT(vt_kitty_frame_px(t, 5, 1, 0, 0), K34_RED);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 1, 1, 0), K34_GREEN); /* the rest stays */
+    /* frame 2's blue (0,0) onto frame 1's (1,1) */
+    h_put(t, "\033_Ga=c,i=5,r=2,c=1,X=0,Y=0,x=1,y=1,w=1,h=1\033\\");
+    CHECK_INT(vt_kitty_frame_px(t, 5, 1, 1, 1), K34_BLUE);
+    /* errors */
+    h_reply_clear();
+    h_put(t, "\033_Ga=c,i=5,r=2,c=7,w=1,h=1\033\\");
+    CHECK_STR(h_reply, "\033_Gi=5;ENOENT:no such frame\033\\");
+    h_reply_clear();
+    h_put(t, "\033_Ga=c,i=9,r=2,c=1\033\\");
+    CHECK_STR(h_reply, "\033_Gi=9;ENOENT:no such image\033\\");
+    h_reply_clear();
+    h_put(t, "\033_Ga=c,i=5,r=2,c=1,x=1,y=1,w=2,h=2\033\\");
+    CHECK_STR(h_reply, "\033_Gi=5;EINVAL:rectangle outside the picture\033\\");
+    h_reply_clear();
+    h_put(t, "\033_Ga=c,i=5,r=1,c=1,X=0,Y=0,x=1,y=0,w=2,h=1\033\\");
+    CHECK_STR(h_reply, "\033_Gi=5;EINVAL:rectangle outside the picture\033\\");
+    h_reply_clear();
+    h_put(t, "\033_Ga=c,i=5,r=1,c=1,X=0,Y=0,x=1,y=1,w=2,h=2\033\\"); /* overlaps itself (and is out) */
+    CHECK_STR(h_reply, "\033_Gi=5;EINVAL:rectangle outside the picture\033\\");
+    h_reply_clear();
+    h_put(t, "\033_Ga=c,i=5,r=1,c=1,X=0,Y=0,x=0,y=0,w=1,h=2\033\\"); /* the same rectangle: overlap */
+    CHECK_STR(h_reply, "\033_Gi=5;EINVAL:rectangles overlap\033\\");
+    vt_free(t);
+}
+
+/* THE reachability test: the byte stream of a program puts a picture, animates it, and the clock changes
+ * the pixels on the screen and damages its rows */
+static void k35_the_clock_changes_the_placement(void)
+{
+    vt_term *t = k35_term();
+    vt_image_view v;
+    unsigned long sw0 = vt_kitty_frame_switches(t);
+    int d0;
+    h_put(t, "\033_Ga=p,i=5\033\\"); /* placed: root frame, 2 x 2 */
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(pixel(&v, 0, 0), 0xFF0000);
+    h_put(t, "\033_Ga=a,i=5,s=3\033\\");
+    vt_flush(t);
+    d0 = h_damage_calls;
+    vt_anim_tick(t, 40000);
+    vt_flush(t);
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1); /* sentinel: the clock ran */
+    CHECK(h_damage_calls > d0);                              /* the rows of the placement were marked */
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(pixel(&v, 0, 0), 0x0000FF); /* frame 2: blue at (0,0) */
+    CHECK_INT(pixel(&v, 1, 1), 0xFFFFFF);
+    /* editing the root (r=1) while it is shown reaches the placement without a tick */
+    h_put(t, "\033_Ga=a,i=5,s=1,c=1\033\\");
+    h_put(t, "\033_Ga=f,i=5,r=1,f=24,s=1,v=1,x=1,y=0;/wAA\033\\");
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(pixel(&v, 1, 0), 0xFF0000);
+    vt_free(t);
+}
+
 void suite_kitty(void)
 {
     raw_rgb_becomes_an_indexed_image();
@@ -1069,4 +1215,8 @@ void suite_kitty(void)
     k31_third_mark_is_the_ids_high_byte();
     k34_frames_build_on_each_other();
     k34_frames_stop_at_the_animation_memory();
+    k35_a_a_keys_move_the_state();
+    k35_loops_wait_and_errors();
+    k35_a_c_composes_a_rectangle();
+    k35_the_clock_changes_the_placement();
 }
