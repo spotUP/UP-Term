@@ -27,3 +27,28 @@ further; cases 2 and 3 do not both pass only because case 3's base is black, whi
 Shots: ~/Desktop/upterm-shots/k41-run1..3.png (runs 2-4 of the table; the rig rebooted once between the first and the second batch) and k41-run4-final-script.png.
 AGA pixel-equal comparison: open (needs an aga256 rig and the a6de061d reference
 truecolor-aga-ref.png, which does not exist in the tree).
+
+## K41 AGA (2026-11-02)
+Rig 84, `rig.py start --max --os 32`, Workbench screen aga256: ENVARC:Sys/screenmode.prefs on the rig is byte-equal to
+VTC:screenmode.aga256.prefs (640 wide, depth 8 inside the prefs), shot 640x256. Script: `kitty_rgb_rig.py aga save|compare`.
+Stream: the generated 100x80 picture as raw f=32 (alpha 255), plus the two 40x32 alpha-128 red pictures (z=1 C=1 over
+blue cells at column 50; plain at column 70); crop = XCON window (0,12,640,240), 153,600 pixels. The 780x500 RTG window
+does not fit the 640x256 AGA screen, so the AGA geometry and columns differ from the RTG mode; both builds got the same stream.
+
+Reference: worktree vtcon-s51-agaref detached at a6de061d, `make amiga` there, rig 84 started from that checkout (rig.py
+reads build/amiga from its own checkout; it refused the old base with RIG-STALE-BASE, so `--allow-stale-base "<reason>"`
+was used; no push of files by hand). Rig VTC:vtcon-handler md5 19480a8e... = the reference build's. Shot saved as
+truecolor-aga-ref.png: 150 distinct colours.
+Compare: build 23513ced (s51-k41aga, handler md5 ded538d7...), rig refreshed by the rig gate (LIBS reboot) on the first run.
+
+| run | differing pixels vs reference | distinct colours | verdict |
+|---|---|---|---|
+| 1 | 0 of 153600 | 150 | PASS |
+| 2 | 0 of 153600 | 150 | PASS |
+| 3 | 0 of 153600 | 150 | PASS |
+
+Run 3 first failed with connection refused (wasabid down: the rig was resetting after run 2); after the rig answered again
+the same command passed. A first reference attempt ran the script from the s51-k41aga checkout, whose gate pushed the main
+build onto the rig; it was discarded, the reference was re-taken after the gate put the a6de061d build back (handler md5
+checked before and after).
+Shots: ~/Desktop/upterm-shots/k41-aga-ref.png, k41-aga-new1..3.png. K41 stays open: the case 2 blend FAIL (RTG half) is not fixed.
