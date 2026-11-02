@@ -406,7 +406,7 @@ commit.
       vt_kitty_frames == 3, frame 3 = frame 2 + rectangle, blend/X=1,
       ENOSPC past VT_ANIM_MEMORY, d=f/d=F): `make test ONLY=kitty` 307
       checks, 22 failed before (a=f branch off), 0 after; make amiga builds.
-- [ ] K35 Control and compose (a=a, a=c). a=a: s=1 stop, s=2 run and wait
+- [x] K35 Control and compose (a=a, a=c). a=a: s=1 stop, s=2 run and wait
       for frames at the end, s=3 run and loop; v= loops (0 ignored, 1
       forever, n plays n-1 loops; stopping resets the count); c= makes a
       frame current (client-driven); r=+z= sets a frame's gap (the root
@@ -427,6 +427,17 @@ commit.
       40000; v=2 stops after one loop; s=2 waits at the last frame and
       goes on when a frame arrives; c=2 shows frame 2 with no tick; a=c
       results and its two errors. All fail before.
+      Evidence 2026-11-02 / DONE (the K35 commit on s51-kitty-k35):
+      tests/test_kitty.c k35_* (every a=a key, loops/wait/gapless/errors,
+      a=c pixels and errors, reachability through the byte stream: a=p,
+      a=a s=3, vt_anim_tick, sentinel +1, damage after vt_flush, placement
+      pixels = frame 2, root edit r=1 reaches the placement): `make test
+      ONLY=kitty` 351 checks, 44 new, all failed before (a=a/a=c answered
+      `EINVAL:not supported`), 0 failed after; make amiga builds.
+      Resolved: a=c copies frame r= onto frame c= as written here (real
+      kitty has the roles the other way round; owner to confirm); the
+      root gap stays K34's 40 ms; a=a on a picture without frames answers
+      `ENOENT:the picture has no frames`; c= counts in the sentinel.
 - [ ] K36 Handler timer, CPU and the profile key. The window already has a
       frame clock: render/vtwin.c frame_start arms a timer.device
       TR_ADDREQUEST for frame_wait us, vtwin_tick runs on its signal and

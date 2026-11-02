@@ -30,7 +30,7 @@
  * the parent; ENOPARENT, ECYCLE, ETOODEEP past 8 deep); z= draw order (z<0
  * under the text, which stays; z <= -1073741824 also under a non-default
  * cell background). Not supported, each answered with an
- * error: U=1 placeholders, animation control (a=a, a=c; a=f frames are stored, K34),
+ * error: U=1 placeholders, (a=f frames K34, a=a and a=c K35 are supported),
  * t=s (answered EBADF). t=f/t go to the host's file reader. Included by vtengine.c (one translation unit with the engine).
  */
 #include "inflate.c"
@@ -621,6 +621,10 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
         im->vr = (th + ch - 1) / ch;
         return 0;
     }
+    im->sx0 = x0; /* K35: what a frame switch rescales from */
+    im->sy0 = y0;
+    im->sw = w;
+    im->sh = h;
     im->kz = KV(k, 'z');
     im->px0 = px0;
     im->py0 = py0;
@@ -861,6 +865,8 @@ static const char *kit_blit(vt_u8 *c, const vt_image *im, const vt_kitty *k, con
     return 0;
 }
 
+static void kit_anim_show(vt_term *t, vt_image *st);
+
 /* a=f: a new frame (r= 0) or an edit of frame r= */
 static const char *kit_frame(vt_term *t, const vt_kitty *k, const kit_src *s, vt_image *im)
 {
@@ -914,6 +920,8 @@ static const char *kit_frame(vt_term *t, const vt_kitty *k, const kit_src *s, vt
         im->anim->fr[0] = root;
         im->anim->gap[0] = 40;
         im->anim->n = 1;
+        im->anim->cur = 1;
+        im->anim->state = 1;
         t->anim_mem += per;
     }
     if (!r) {
@@ -924,7 +932,180 @@ static const char *kit_frame(vt_term *t, const vt_kitty *k, const kit_src *s, vt
     }
     if (z)
         im->anim->gap[r - 1] = z;
+    if (r == im->anim->cur)
+        kit_anim_show(t, im); /* the frame on view changed */
     return 0;
+}
+
+/* ---- K35: animation control (a=a), compose (a=c) and the clock ---- */
+
+/* the placements of stored picture `st` show its current frame again: one w x h copy each, nearest
+ * pixel (kit_make without the quantiser), on the fixed cube palette; their rows are marked */
+static void kit_anim_show(vt_term *t, vt_image *st)
+{
+    int i, y;
+    const vt_u8 *src;
+    if (!st->anim)
+        return;
+    src = st->anim->fr[st->anim->cur - 1];
+    for (i = 0; i < VT_IMG_SLOTS; i++) {
+        vt_image *p = t->imgs[i];
+        int x, c;
+        if (!p || !p->pix || p->kind != 1 || p->kid != st->kid || p->sw <= 0 || p->sx0 + p->sw > st->w ||
+            p->sy0 + p->sh > st->h)
+            continue;
+        if (p->npal != 256) { /* first switch: the packed palette becomes the cube; the pen cache sees a new serial */
+            for (c = 1; c < 256; c++)
+                p->pal[c] = kit_color(c);
+            p->npal = 256;
+            p->serial = ++t->img_serial;
+        }
+        for (y = 0; y < p->h; y++) {
+            long sy = p->sy0 + (long)y * p->sh / p->h;
+            for (x = 0; x < p->w; x++)
+                p->pix[(long)y * p->w + x] = src[sy * st->w + p->sx0 + (long)x * p->sw / p->w];
+        }
+        for (y = 0; y < t->rows; y++) {
+            vt_u16 e;
+            for (e = t->scr[y]->img; e; e = t->pl[e].next)
+                if (t->pl[e].img == i && t->pl[e].gen == p->gen)
+                    mark(t, t->pl[e].col0, y, t->pl[e].col0 + image_cols(p));
+        }
+    }
+}
+
+/* make frame `f` (1-based) the one shown */
+static void kit_anim_goto(vt_term *t, vt_image *im, int f)
+{
+    im->anim->cur = f;
+    im->anim->elapsed = 0;
+    t->kit_switches++;
+    kit_anim_show(t, im);
+}
+
+/* a=a: s= run state, v= loops, c= current frame, r= with z= a frame's gap */
+static const char *kit_control(vt_term *t, const vt_kitty *k, vt_image *im)
+{
+    vt_anim *an = im->anim;
+    long s = KV(k, 's'), v = KV(k, 'v'), c = KV(k, 'c'), r = KV(k, 'r'), z = KV(k, 'z');
+    if (!an)
+        return "ENOENT:the picture has no frames";
+    if (c < 0 || c > an->n || r < 0 || r > an->n)
+        return "ENOENT:no such frame";
+    if (s < 0 || s > 3)
+        return "EINVAL:bad animation state";
+    if (r && z)
+        an->gap[r - 1] = z;
+    if (v > 0)
+        an->loops = v;
+    if (s == 1) { /* stopping resets the loop count */
+        an->state = 1;
+        an->done = 0;
+    } else if (s) {
+        an->state = (int)s;
+    }
+    if (c && c != an->cur)
+        kit_anim_goto(t, im, (int)c);
+    return 0;
+}
+
+/* a=a done: frame r= onto frame c=, the rectangle w x h from X,Y to x,y; C=1 overwrites, else a clear
+ * source pixel keeps the base (D16) */
+static const char *kit_compose(vt_term *t, const vt_kitty *k, vt_image *im)
+{
+    vt_anim *an = im->anim;
+    long fr = KV(k, 'r'), to = KV(k, 'c'), sx = KV(k, 'X'), sy = KV(k, 'Y'), dx = KV(k, 'x'), dy = KV(k, 'y');
+    long w = KV(k, 'w'), h = KV(k, 'h'), x, y;
+    const vt_u8 *a;
+    vt_u8 *b;
+    if (!an || fr < 1 || fr > an->n || to < 1 || to > an->n)
+        return "ENOENT:no such frame";
+    if (w <= 0)
+        w = im->w - (sx > dx ? sx : dx);
+    if (h <= 0)
+        h = im->h - (sy > dy ? sy : dy);
+    if (sx < 0 || sy < 0 || dx < 0 || dy < 0 || w <= 0 || h <= 0 || sx + w > im->w || dx + w > im->w ||
+        sy + h > im->h || dy + h > im->h)
+        return "EINVAL:rectangle outside the picture";
+    if (fr == to && sx < dx + w && dx < sx + w && sy < dy + h && dy < sy + h)
+        return "EINVAL:rectangles overlap";
+    a = an->fr[fr - 1];
+    b = an->fr[to - 1];
+    for (y = 0; y < h; y++)
+        for (x = 0; x < w; x++) {
+            vt_u8 p = a[(sy + y) * im->w + sx + x];
+            if (p || KV(k, 'C') == 1)
+                b[(dy + y) * im->w + dx + x] = p;
+        }
+    if (to == an->cur)
+        kit_anim_show(t, im);
+    return 0;
+}
+
+/* the next frame after cur the clock shows: gapless frames are skipped; 0 when the run ends here */
+static int kit_anim_next(vt_anim *an)
+{
+    int f = an->cur, tries;
+    for (tries = 0; tries < an->n; tries++) {
+        f++;
+        if (f > an->n) {
+            if (an->state == 2)
+                return 0; /* waits for a frame at the end */
+            if (an->loops > 1 && ++an->done >= an->loops - 1) {
+                an->state = 1; /* v=n played its n-1 loops: stops on the last frame, the count reset */
+                an->done = 0;
+                return 0;
+            }
+            f = 1;
+        }
+        if (an->gap[f - 1] >= 0)
+            return f == an->cur ? 0 : f;
+    }
+    return 0;
+}
+
+long vt_anim_tick(vt_term *t, long us)
+{
+    long due = -1;
+    int i;
+    if (us < 0)
+        us = 0;
+    for (i = 0; i < VT_IMG_SLOTS; i++) {
+        vt_image *im = t->imgs[i];
+        vt_anim *an;
+        int guard = 0;
+        if (!im || !im->pix || im->kind != 2 || !im->anim || im->anim->state == 1)
+            continue;
+        an = im->anim;
+        an->elapsed += us;
+        while (an->state != 1 && an->gap[an->cur - 1] >= 0 && an->elapsed >= an->gap[an->cur - 1] * 1000L &&
+               guard++ < 4 * VT_ANIM_FRAMES) {
+            long rest = an->elapsed - an->gap[an->cur - 1] * 1000L;
+            int f = kit_anim_next(an);
+            if (!f) {
+                if (an->state != 1)
+                    an->elapsed = an->gap[an->cur - 1] * 1000L; /* waits, ready when a frame arrives */
+                else
+                    an->elapsed = 0;
+                break;
+            }
+            kit_anim_goto(t, im, f);
+            an->elapsed = rest;
+        }
+        if (an->state != 1 && an->cur < an->n + (an->state == 3)) {
+            long d = an->gap[an->cur - 1] * 1000L - an->elapsed;
+            if (d < 0)
+                d = 0;
+            if (due < 0 || d < due)
+                due = d;
+        }
+    }
+    return due;
+}
+
+unsigned long vt_kitty_frame_switches(const vt_term *t)
+{
+    return t->kit_switches;
 }
 
 /* the picture complete (or the command without data): what the keys ask */
@@ -970,9 +1151,17 @@ static void kitty_run(vt_term *t, vt_kitty *k)
             err = "ENOENT:no such image";
         } else {
             vt_image *im = t->imgs[f];
+            vt_u32 cube[256];
+            int ci;
             memset(&s, 0, sizeof(s));
             s.px = im->pix;
             s.pal = im->pal;
+            if (im->anim) { /* the picture shown is the current frame (the root's pix is not edited, K34) */
+                for (ci = 0; ci < 256; ci++)
+                    cube[ci] = kit_color(ci);
+                s.px = im->anim->fr[im->anim->cur - 1];
+                s.pal = cube;
+            }
             s.bpp = 1;
             s.w = im->w;
             s.h = im->h;
@@ -988,6 +1177,14 @@ static void kitty_run(vt_term *t, vt_kitty *k)
             if (!err)
                 err = kit_frame(t, k, &s, t->imgs[f]);
             kit_src_free(&s);
+            id = t->imgs[f]->kid;
+        }
+    } else if (a == 'a' || a == 'c') {
+        f = kit_find(t, id, num);
+        if (f < 0) {
+            err = "ENOENT:no such image";
+        } else {
+            err = a == 'a' ? kit_control(t, k, t->imgs[f]) : kit_compose(t, k, t->imgs[f]);
             id = t->imgs[f]->kid;
         }
     } else if (a == 'd') {
