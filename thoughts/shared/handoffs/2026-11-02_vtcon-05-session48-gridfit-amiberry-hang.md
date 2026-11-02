@@ -49,16 +49,28 @@ Each Amiberry start clones a 1.5 GB sys.hdf; disk was 2.0 GB free on 2026-11-02,
 Branch s48-amiberry-default (Amiberry as default emulator) stays unmerged until Amiberry boots answer.
 rig 2 belongs to musicplayer-16; never touch it.
 
-## Icon stems
+## Icon stems: done
 
-Rig 35 read 6 of 8 icons SOFT. The host hunt (a0aaeb96, research/2026-11-02-icon-stem-soft.md) shows snap_stems
-is correct: rig 35's maps equal the unfitted render, so its mounted XCON: ran a stale handler. gridfit_rig.py also
-drops the top row of each cell (faint E0B0 anchor row). F013 and F1C0 stay SOFT by font design (curves).
-In flight at handoff: gridfit_rig row fix (host) and rig 35 rerun after install plus reboot.
+Rig 35 rerun with the current handler (md5 matched build, fresh boot) and the fixed gridfit_rig.py (acd465ff,
+cell top from the non-background column): F07B, F15B, F0C9, E0A0, F013 and F023 SNAPPED, F00C has no stem,
+F1C0 SOFT by font design (ellipse curves). Ledger row HANDLER-ICON-GRID-FIT is ticked. The earlier SOFT run used
+a stale mounted handler (research/2026-11-02-icon-stem-soft.md).
+
+## Hunt 9 and the hunt split
+
+Probe (b) failed: with JIT on, cpu_speed=max (already the --max default), cpu_idle=0, cpu_throttle=0 and every
+amiberry.*_pause=false, boot.log ends "wasabid started", then "the Amiga stopped answering while Assign was
+running", with Amiberry frozen at 0.1% CPU. Probe (a) was not run because the disk filled. Next: `sample` the frozen
+Amiberry right after "wasabid started", then probe (a). Step 9 is in the worktree research file.
+
+vtcon-16 (Amarchy) runs its own Amiberry hunt on rig 47 (OS 3.2, branch s30-amiberry-hang, findings
+thoughts/shared/research/s30-evidence/amiberry-hang.md): OS 3.2 vs 3.1, other Amiberry builds, boot drawer bisect.
+This session holds the sample and probe (a). Owner decision: all rig work uses fs-uae meanwhile.
+
+Disk: other sessions' rig clones drove / to 0.6 GB; build/rig33/37/40/41 were deleted with the owner's OK.
 
 ## Owner decisions still open
 
-- OK to delete build/rig33 (later rig37/40/41).
 - Whether --a500 / --stock stay blocked under Amiberry.
 
 ## Queue after the hang
