@@ -1339,7 +1339,7 @@ unsigned long desk_dos_start_plans, desk_dos_start_writes;
 
 int desk_dos_start_apply(void)
 {
-    static unsigned char wb[DK_BUF], pat[DK_BUF], out[DK_BUF], pal[DK_BUF];
+    static unsigned char wb[DK_BUF], pat[DK_BUF], out[DK_BUF], pal[DK_BUF], pcur[8192], pnew[8192], fcur[DK_BUF], fnew[DK_BUF];
     am_prefs ap;
     gtheme th;
     unsigned mask, plan;
@@ -1347,7 +1347,8 @@ int desk_dos_start_apply(void)
     unsigned short live[DK_SLOTS];
     int flat, depth, saved = -1, gsaved = -1, was, nlive = 0;
     unsigned long idle = 0;
-    long wblen, patlen, len, pallen, curlen;
+    long wblen, patlen, len, pallen, curlen, ptrlen = 0, fontlen = 0, flen;
+    int ic_act = DK_IC_NONE, ic_snap = 0;
     amconf_load(&ap);
     mask = amconf_desk_mask(&ap);
     flat = amconf_desk_flat_pens(&ap);
@@ -1376,6 +1377,32 @@ int desk_dos_start_apply(void)
         if (pallen > 0)
             plan |= DESK_START_PALETTE;
     }
+    /* S31-START-PARTS: the pointer, font and icontrol parts of a theme pick, planned like the palette (dk_apply wrote them only on a pick) */
+    if (((mask >> DT_POINTER) & 1) && dk_pointer_editor_ok()) {
+        curlen = dk_read("ENV:Sys/pointer.prefs", pcur, sizeof pcur);
+        if (curlen < 0)
+            curlen = dk_read("ENVARC:Sys/Pointer.prefs", pcur, sizeof pcur);
+        ptrlen = desk_start_prefs(DT_POINTER, mask, &th, 0, 0, 0, curlen > 0 ? pcur : 0, curlen, pnew, sizeof pnew);
+        if (ptrlen > 0)
+            plan |= DESK_START_POINTER;
+    }
+    if ((mask >> DT_FONT) & 1) {
+        flen = dk_read("ENV:Sys/font.prefs", fcur, sizeof fcur);
+        if (flen < 0)
+            flen = dk_read("ENVARC:Sys/font.prefs", fcur, sizeof fcur);
+        fontlen = desk_start_prefs(DT_FONT, mask, &th, amconf_icon_text(&ap), dk_font_exists, 0, flen > 0 ? fcur : 0, flen, fnew, sizeof fnew);
+        if (fontlen > 0)
+            plan |= DESK_START_FONT;
+    }
+    if (dk_palette_editor_ok()) {
+        static unsigned char ic_cur[DK_BUF * 8];
+        long ic_len = dk_read("ENV:Sys/icontrol.prefs", ic_cur, sizeof ic_cur);
+        if (ic_len < 0)
+            ic_len = dk_read("ENVARC:Sys/icontrol.prefs", ic_cur, sizeof ic_cur);
+        ic_act = desk_start_icontrol(mask, ic_cur, ic_len, dk_have_icontrol_snapshot(), &ic_snap);
+        if (ic_act != DK_IC_NONE)
+            plan |= DESK_START_ICONTROL;
+    }
     desk_dos_start_plans++;
     am_sentinel("AMARCHY_DESK_START_PLAN", (long)plan);
     dk_live_want = 0;
@@ -1401,6 +1428,28 @@ int desk_dos_start_apply(void)
         dk_live_flat = flat;
         desk_dos_dopus_sends++;
         dopus_theme_send(&th, dk_dopus_send, 0);
+    }
+    if (plan & DESK_START_POINTER) {
+        dk_orig_save(1u << DT_POINTER, 0);
+        UnLock(CreateDir((STRPTR)DK_WORK));
+        if (dk_put("Pointer", DK_WORK "/pointer.prefs", pnew, ptrlen))
+            desk_dos_start_writes++;
+    }
+    if (plan & DESK_START_FONT) {
+        dk_orig_save(1u << DT_FONT, 0);
+        UnLock(CreateDir((STRPTR)DK_WORK));
+        if (dk_put("Font", DK_WORK "/font.prefs", fnew, fontlen))
+            desk_dos_start_writes++;
+        dk_wait_iprefs(idle);   /* the Font editor resets the Workbench screen too */
+    }
+    if (plan & DESK_START_ICONTROL) {
+        dk_orig_save(1u << DT_ICONTROL, 0);
+        if (ic_snap)
+            dk_snapshot(1u << DT_ICONTROL);
+        UnLock(CreateDir((STRPTR)DK_WORK));
+        if (ic_act == DK_IC_RESTORE ? dk_icontrol_restore() : dk_icontrol(1))
+            desk_dos_start_writes++;
+        dk_wait_iprefs(idle);
     }
     if (flat)
         dk_flat_pens(&th);   /* idempotent: writes palette / own backdrop only when they differ */
