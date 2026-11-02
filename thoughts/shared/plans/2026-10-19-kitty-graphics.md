@@ -294,7 +294,7 @@ commit.
       error replies; cursor unchanged with C=0. All fail before
       (P/Q ignored: the child lands at the cursor). Rig: a parent and
       two children at H=4 and V=2 drawn where expected (pixel check).
-- [ ] K30 z-index. Engine: vt_image gains z (signed). vt_row_image returns
+- [x] K30 z-index (done on branch s51-kitty-te: host tests k30_* in kitty and render, rig check tools/rig/kitty_z_rig.py, evidence thoughts/shared/research/s51-evidence/kitty-te.md). Engine: vt_image gains z (signed). vt_row_image returns
       a row's images ordered by (z, kid), lowest first (the spec: equal z,
       lower id is lower), not by age; sixels keep z = 0 and their age
       order among themselves (kid 0, serial). vt_image_view gains z.
