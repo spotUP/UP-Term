@@ -114,3 +114,16 @@ comes from the blue cell beside the picture, so the script needed no change, onl
 Before K40d (k40c runs): case 2 measured (128,0,0) x3. Shots: ~/Desktop/upterm-shots/k40d-run1..3.png.
 AGA: not rerun here. The K41 AGA compare against the pre-K38 reference will now differ only inside the z=1 picture
 rectangle over the blue cells (the picture blends with the blue instead of a blanked cell), as noted above.
+
+## K41 ICAT f=100 (s51-icat, rig 91, 800x600x24 RTG, 2 Nov)
+`UPTERM_RIG=91 python3 tools/rig/kitty_rgb_rig.py icat <prefix>`: writes the case-1 picture (100x80, 8000 distinct colours) as PNG to VTC:kr-icat.png,
+runs `VTC:icat VTC:kr-icat.png` in an XCON: window (icat md5 1c34ca79, equal to build/amiga/icat; PNG goes as kitty f=100, not scaled: smaller than the window),
+measures with the same function as case 1 (measure_pic1). Thresholds: >= 99% exact pixels, >= 90% distinct source colours.
+| run | origin | distinct shown | exact pixels | verdict |
+|---|---|---|---|---|
+| 1 | (4,39) | 8000/8000 (100%) | 8000/8000 (100%) | PASS |
+| 2 | (4,39) | 8000/8000 (100%) | 8000/8000 (100%) | PASS |
+| 3 | (4,39) | 8000/8000 (100%) | 8000/8000 (100%) | PASS |
+Shots: ~/Desktop/upterm-shots/k41-icat-run1..3.png.
+Default mode rerun (cases 1-4, same rig, handler md5 19a477ed): case 1 PASS, case 3 PASS, case 4 PASS (128,0,119), case 2 FAIL measured (128,0,0) over blue cells,
+expected (128,0,119). Not caused by this change (script change only touches case 1 measurement); the rig's handler build (23:16) likely predates K40d (85c5c1f7, 23:19): rebuild and remount before judging case 2.
