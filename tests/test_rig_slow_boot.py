@@ -87,7 +87,7 @@ class StartWaitsForProgress(unittest.TestCase):
     """rig.start: a boot.log that keeps changing for far longer than the old 180 s wait is not killed."""
 
     def test_start_keeps_waiting_while_boot_log_advances_and_comes_up(self):
-        names = ("RIG", "OS", "mine", "START_ARGS", "setup_config_only", "status", "stop", "time", "subprocess",
+        names = ("RIG", "OS", "mine", "START_ARGS", "setup_config_only", "status", "stop", "time", "subprocess", "guard_stale_base", "gc", "refuse_port_clash",
                  "boot_assigns_missing", "guard_shell_startup", "start_watchdog", "M060")
         saved = {n: getattr(rig, n) for n in names}
         saved_paths = (rig.paths.cap_fsuae_log, rig.paths.FSUAE)
@@ -118,6 +118,9 @@ class StartWaitsForProgress(unittest.TestCase):
                 rig.RIG = pathlib.Path(d)
                 rig.OS = "32"
                 rig.mine = lambda: False
+                rig.guard_stale_base = lambda *a, **k: None   # git checks against the real checkout
+                rig.gc = lambda: []   # the start sweep reads the real build/ folders
+                rig.refuse_port_clash = lambda port=None: None   # lsof sees the real machine
                 rig.START_ARGS = rig.RIG / "start_args.json"
                 rig.setup_config_only = lambda: None
                 rig.status = lambda quiet=False: state["now"] >= 630
