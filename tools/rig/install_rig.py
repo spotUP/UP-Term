@@ -1259,6 +1259,12 @@ def first_difference(now, before):
     return 'identical'
 
 
+def rig_blocks_out(text):
+    """text without the rig's own ';BEGIN rig-upterm-shadows' block: rig.py writes it on every start and a reboot inside
+    a case re-inserts it after Install; Uninstall removes the kit's blocks only."""
+    return without_rig_blocks(text.encode('latin-1')).decode('latin-1')
+
+
 def check_startup_after_uninstall(ck, before_text, installed_text, now_text, leaves=(), what='after base Uninstall'):
     """S:User-Startup after the base Uninstall is as it was, byte for byte. leaves: names of blocks another
     installer wrote that Uninstall leaves in place on purpose (DOpus5: DOpus stays, owner rule); they are
@@ -1266,7 +1272,7 @@ def check_startup_after_uninstall(ck, before_text, installed_text, now_text, lea
     the block is in installed_text (S:User-Startup after the Installs) and was not in before_text. An add-on that
     found its program already there (DOpus5: assigned on a rig that boots its master's Directory Opus 5.82, whose
     block is ;BEGIN DirectoryOpus 5) writes no block, and none is demanded."""
-    a, b = before_text, now_text
+    a, b = rig_blocks_out(before_text), rig_blocks_out(now_text)   # the rig's own block is not Install's (INSTALL-CHECK39)
     for name in leaves:
         a, b = strip_block(a, name), strip_block(b, name)
     ck(b == a, '%s: S:User-Startup as it was, byte for byte' % what, first_difference(b, a))

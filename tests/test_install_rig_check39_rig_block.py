@@ -2,7 +2,6 @@
 ';BEGIN rig-upterm-shadows' block. rig.py writes it on every start (and a reboot inside fresh-all re-inserts it after
 Install); Uninstall removes the kit's blocks only, so the block stayed and the byte comparison failed."""
 import pathlib, sys, unittest
-from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools/rig"))
@@ -28,17 +27,17 @@ class Check39RigBlock(unittest.TestCase):
         self.assertNotEqual(j("; head\n" + BLOCK + ";BEGIN UP-Term tmp\nAssign TMP: T:\n;END UP-Term tmp\n"), j("; head\n"))
         self.assertNotEqual(j("; head\nstray\n" + BLOCK), j("; head\n"))
 
-    def test_installer_rig_judges_startup_through_the_filter(self):
-        # fresh-all check 39 and its siblings read S:User-Startup only through startup_now()
-        src = (ROOT / "tools/rig/installer_rig.py").read_text()
-        self.assertIn("ck(startup_now() == startup_before, 'after Uninstall: S:User-Startup as it was, byte for byte')", src)
-        self.assertNotIn("ir.run('Type S:User-Startup')[1] ==", src)
-
-    def test_startup_now_drops_only_the_rig_block(self):
-        import installer_rig
-        text = "; head\n" + BLOCK + ";BEGIN UP-Term tmp\nx\n;END UP-Term tmp\n"
-        with mock.patch.object(installer_rig.ir, "run", return_value=(0, text)):
-            self.assertEqual(installer_rig.startup_now(), "; head\n;BEGIN UP-Term tmp\nx\n;END UP-Term tmp\n")
+    def test_check_startup_after_uninstall_ignores_only_the_rig_block(self):
+        # the byte-for-byte check of fresh-all (check 40) reads before/now texts; reboot put the rig block back
+        import install_rig
+        def run(before, now):
+            res = []
+            ck = lambda ok, name, detail='': res.append(bool(ok))
+            install_rig.check_startup_after_uninstall(ck, before, before, now)
+            return res
+        self.assertEqual(run("; head\n", "; head\n" + BLOCK), [True])
+        self.assertEqual(run("; head\n", "; head\nstray\n" + BLOCK), [False])
+        self.assertEqual(run("; head\n", "; head\n" + BLOCK + ";BEGIN UP-Term tmp\nx\n;END UP-Term tmp\n"), [False])
 
 if __name__ == "__main__":
     unittest.main()
