@@ -188,3 +188,47 @@ IPrefs waits one frame at a time for the word IntuitionBase+$B3A to drop to zero
 **Mitigation (proposal only, not done).** On the rigs, keep the boot screen mode PAL for OS 3.1 (rig ENV:Sys/screenmode.prefs, or no uaegfx monitor at boot) and switch to RTG after boot when a test needs RTG. This removes the IPrefs mode switch, which is the only trigger seen (vtcon-16: 3.2 boots stayed PAL and never hung; their 3.1 boot switched to RTG). Report to P96 with the $FD13A6 loop and the $B3A word once the holder is known.
 
 **Who can hit it.** Any OS 3.1 (intuition 40.85) system with P96 rtg.library 43.787 whose saved Workbench mode is an RTG mode, so IPrefs switches at boot. That includes Amiberry and FS-UAE users with uaegfx and 3.1. The A1200 runs OS 3.2 (different intuition); it is not seen there and is unverified. A real 060 with an RTG card on 3.1 could hit it in theory (unverified). The hang is intermittent (musicplayer-16 and vtcon-05 hit it on rig 2; vtcon-16 hit 0 of 5).
+
+## Step 15 (vtcon-05 session 49, hunt 15): who raises IntuitionBase+$B3A - answered from the Step 13 frozen dump, rig 2 not started
+
+**Method.** Static, no new boot. Disassembled the rig's Kickstart (`roms/kick40068-a1200.rom`, `m68k-elf-objdump -b binary -m m68k:68020 --adjust-vma=0xf80000`; output in the session scratchpad as kick31.dis) and re-read the frozen boot w0-2 stacks (scratchpad stacks-w0-2.txt, Step 13). The live write watchpoint was not run: the answer was already in the dump, and FS-UAE memwatch is unreliable with the JIT on (rig.py has no JIT-off switch except --mmu, which changes the machine).
+
+**Every ROM access to IntuitionBase+$B3A (whole-ROM grep for offset 2874 / $0B3A on any register):**
+
+```
+fd13ac  4a6b 0b3a  tstw   %a3@(2874)      ; the spin test (Step 14 loop)
+fd13c0  526b 0b3a  addqw  #1,%a3@(2874)   ; INCREMENT, after the lock at $FE7A40
+fd1434  536b 0b3a  subqw  #1,%a3@(2874)   ; DECREMENT, function exit
+```
+
+All three sit in one intuition 40.85 function at $FD139C(d3 = screen type), called as $FD139C(1) from $FD2884 when a public-screen lookup by name ($FD2828) matches the ROM string "Workbench" ($FE8548) and that screen is not open. The path is LockPubScreen(name) (LVO stub $FCF9FA -> $FD25F8 -> $FD2828 -> $FD2888). Between the increment and the decrement it releases the screen lock ($FCFDAA at $FD1404) and, for d3 = 1, calls $FD23C6 (the internal Workbench open) at $FD142C. Nothing else in the ROM writes the word; rtg.library is not a writer.
+
+**Who holds it (frozen boot w0-2, stack of Amarchy task $402CF980, dump at $402D5B94):**
+
+```
+402D5B94 4000 0810 00F8 28DA 00F8 2E7A 4000 B93A   ; Wait <- ObtainSemaphore
+402D5BA4 4000 B936 402C F980 ...                     ; saved: task = Amarchy
+402D5BB4 4000 B926 ...                               ; semaphore IntuitionBase+$8DA (IPrefs owns it, Step 13)
+402D5BD4 00FC FD9E 0000 0004 00FD 1F9C ...           ; Workbench-open internals
+402D5C20 .... 00FC FD68 00FD 23FE ...
+402D5C54 00FD 1432 ...                               ; return from jsr $FD23C6 at $FD142C: INSIDE the $B3A section
+402D5C64 4004 F3B8 00FD 288E 0000 0001               ; $FD139C(1) from the name lookup
+402D5C74 .... 00FD 260A 4033 C5BC                    ; LockPubScreen(name = $4033C5BC)
+402D5C84 4000 B04C 00FC FA02                         ; LVO stub
+```
+
+IPrefs ($400F6408, stack $400F6E38) and dopus ($407CB198, stack $407CD12C) both show `00FE 822E 4000 B04C 00FD 13BE ... 00FD 288E` (IPrefs also `00FD 260A`): both are in the $FD13A6 spin through the same LockPubScreen("Workbench") path.
+
+| Writer PC | Instruction | Module | Task in w0-2 | Matched? |
+|---|---|---|---|---|
+| $FD13C0 | ADDQ.W #1,$B3A(A3) | intuition 40.85 ROM, LockPubScreen("Workbench") auto-open | Amarchy (CLI 5) | NO: Amarchy blocked at $FD142C -> $FD23C6 on IntuitionBase+$8DA |
+| $FD1434 | SUBQ.W #1,$B3A(A3) | same function | never reached | - |
+| $FD13AC | TST.W (read) | same function | IPrefs, dopus spin | - |
+
+**Verdict: ABBA deadlock inside intuition 40.85, triggered by our Amarchy.** Amarchy calls LockPubScreen("Workbench") while IPrefs has the Workbench closed for its boot-time RTG mode switch. Intuition then reopens the Workbench for Amarchy: it raises $B3A, drops its own lock, and waits for IntuitionBase+$8DA. IPrefs holds $8DA (and $822) and, through its own LockPubScreen("Workbench"), waits one frame at a time for $B3A to fall. Neither can move. The ROM bug is the lock order; the trigger is a third task calling LockPubScreen("Workbench") inside IPrefs' close/reopen window.
+
+**Our call site (inferred: Amarchy's return address into its own code is past the end of the dump).** amarchy/wbmode.c:38, `wb_mode_id()`: `LockPubScreen((STRPTR)"Workbench")`, called by `wbm_check()` (wbmode.c:51) at start (amarchy.c:577) and on every 1 s tick while the windows are held (amarchy.c:267, `wb_gate`, W43 commit d64bffe0). It is the only Amarchy Workbench lock that runs during boot by design: it polls exactly while IPrefs switches the mode. Same hazard, user-triggered only: gthemes_dos.c:49 and :157, strut_patch.c:115. amarchy/iconpen_dos.c:82-91 already avoids it (`wb_screen()` walks LockPubScreenList(), comment: "LockPubScreen("Workbench") is never used: it opens a closed Workbench").
+
+**Fix (proposal, not made).** In wbmode.c `wb_mode_id()`, read the mode under LockPubScreenList() through the existing `wb_screen()` walk (move it from iconpen_dos.c to a shared helper, reuse from both), return WBM_INVALID_ID when the Workbench is closed so the gate keeps waiting. Then apply the same helper to gthemes_dos.c:49/157 and strut_patch.c:115. The list lock does not touch $B3A, so a closed Workbench means "wait", never "reopen". Regression proof: OS 3.1 rig boot with the RTG screenmode.prefs, repeated boots (the hang is intermittent, Step 14), plus a sentinel that wb_mode_id never calls LockPubScreen. PAL-first boot also avoids it (no IPrefs close/reopen) but is a mitigation only; any other program polling LockPubScreen("Workbench") at boot can still hit the ROM race, so keep our code off that call; the ROM 40.85 lock order itself cannot be fixed.
+
+**Next.** Implement the wbmode.c change, then a live confirmation on rig 2: break at $FD13C0 and $FD1434 (instruction breakpoints work under the JIT, Step 14), log ThisTask per hit, expect no Amarchy hit at $FD13C0 after the fix.
