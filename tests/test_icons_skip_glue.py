@@ -31,6 +31,16 @@ class IconsSkipGlue(unittest.TestCase):
         self.assertRegex(helper, r"Forbid\(\);\s*l = \(struct ia_lock \*\)FindSemaphore")
         self.assertIn("ObtainSemaphore(&l->ss);", helper)
 
+    def test_links_are_not_walked_as_drawers(self):
+        """RL11 (rig 73): RAM Disk:Disk.info is a soft link (fib_DirEntryType ST_SOFTLINK = 3 > 0); list_dir walked it as a drawer
+        and printed 'skip io (no lock): RAM Disk:Disk.info/'. Links are skipped before the drawer test."""
+        s = (ROOT / "amarchy/icons.c").read_text()
+        body = s[s.index("static int list_dir"):]
+        body = body[:body.index("\n}\n")]
+        skip = re.search(r"if \(fib->fib_DirEntryType == ST_SOFTLINK \|\| fib->fib_DirEntryType == ST_LINKDIR\) continue;", body)
+        self.assertIsNotNone(skip)
+        self.assertLess(skip.start(), body.index("if (fib->fib_DirEntryType > 0) kind = 'D';"))
+
 
 if __name__ == "__main__":
     unittest.main()
