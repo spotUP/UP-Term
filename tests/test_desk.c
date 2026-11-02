@@ -510,6 +510,40 @@ static void test_desk_flat_pens_key(void)
 /* DESK-31 (3.1, rig 7 Run 10): the windows came back on the first poll whose screen title matched the idle one, which was the
  * fresh screen of IPrefs' first Font reset; its second reset then raised "System Request" (Retry|Cancel). The signal is IPrefs
  * itself: back in its idle Wait() with no notification pending. */
+/* RL15 AMARCHY-WBPREFS-INUSE: every Workbench / WBPattern editor USE is followed by the IPrefs idle wait. The decision is pure; the
+ * wiring is that dk_editor (the only place SYS:Prefs/<editor> is run) calls it before and after the run and waits. */
+static void test_desk_editor_waits_iprefs(void)
+{
+    static unsigned char src[200000];
+    long n = slurp("amarchy/desk_dos.c", src, sizeof src - 1);
+    char *e, *end, *p;
+    int runs = 0;
+    CHECK_INT(desk_editor_waits_iprefs("Workbench"), 1);
+    CHECK_INT(desk_editor_waits_iprefs("WBPattern"), 1);
+    CHECK_INT(desk_editor_waits_iprefs("Palette"), 0); /* waits on the reset itself */
+    CHECK_INT(desk_editor_waits_iprefs("Font"), 0);    /* callers wait with their own mask */
+    CHECK_INT(desk_editor_waits_iprefs(0), 0);
+    CHECK_INT(n > 0, 1);
+    if (n <= 0)
+        return;
+    src[n] = 0;
+    e = strstr((char *)src, "static void dk_editor(const char *editor");
+    CHECK_INT(e != 0, 1);
+    if (!e)
+        return;
+    end = strstr(e, "\n}\n");
+    CHECK_INT(end != 0, 1);
+    if (!end)
+        return;
+    *end = 0;
+    for (p = e; (p = strstr(p, "desk_editor_waits_iprefs(editor)")) != 0; p++)
+        runs++;
+    CHECK_INT(runs, 2);                                   /* mask before the run, wait after it */
+    CHECK_INT(strstr(e, "dk_wait_iprefs(idle)") != 0, 1);
+    *end = '\n';
+    CHECK_INT(strstr(end, "SYS:Prefs/\"") == 0, 1);        /* no second editor-run path past dk_editor */
+}
+
 static void test_desk_iprefs_idle(void)
 {
     unsigned long idle = 0x00010000UL | 0x1000UL; /* notify port signal | SIGBREAKF_CTRL_C */
@@ -1554,6 +1588,7 @@ void suite_desk(void)
     test_desk_pens_reset_folded();
     test_desk_reset_done();
     test_desk_iprefs_idle();
+    test_desk_editor_waits_iprefs();
     test_desk_darker();
     test_knob_colour();
     test_flat_colour_pens();

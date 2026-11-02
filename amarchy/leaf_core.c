@@ -28,6 +28,10 @@ lf_how lf_plan(int kind)
         return LF_GTHEME;
     case KA_CAP:
         return LF_CAP;
+    case KA_GUI:
+        return LF_GUI;
+    case KA_AMARCHY:
+        return LF_QUIT;
     default:
         return LF_REQUEST;
     }
@@ -136,14 +140,19 @@ int lf_lister_front_command(char *out, int cap, int step, unsigned long handle)
 
 int lf_viewer_command(char *out, int cap, const char *dir)
 {
+    return lf_gui_command(out, cap, dir, "viewer");
+}
+
+int lf_gui_command(char *out, int cap, const char *dir, const char *mode)
+{
     int n;
     if (cap < 1)
         return 0;
     out[0] = 0;
-    if (!dir || !*dir || strchr(dir, '"'))
+    if (!dir || !*dir || strchr(dir, '"') || !mode || !*mode)
         return 0;
-    n = snprintf(out, (size_t)cap, "\"%s%samarchy-gui\" viewer", dir,
-                 dir[strlen(dir) - 1] == ':' || dir[strlen(dir) - 1] == '/' ? "" : "/");
+    n = snprintf(out, (size_t)cap, "\"%s%samarchy-gui\" %s", dir,
+                 dir[strlen(dir) - 1] == ':' || dir[strlen(dir) - 1] == '/' ? "" : "/", mode);
     if (n < 0 || n >= cap) {
         out[0] = 0;
         return 0;

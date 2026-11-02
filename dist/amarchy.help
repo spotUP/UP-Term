@@ -1,0 +1,70 @@
+; Amarchy welcome and help text. One source: tools/gen_amarchy_help.py turns it into build/amiga/amhelp.inc (the
+; welcome window and the Help view) and into the GETTING STARTED section of man/amarchy.1.
+; Placeholders are filled from the live keymap: {key:ACTION} is the key bound to an action, {menu:ID} a menu path.
+; A line may not start with an opening square bracket (that starts a section). Keep lines under 72 characters.
+
+[welcome]
+Welcome to Amarchy
+
+Amarchy puts the whole Amiga under one key, called Super.
+Super is the Left Amiga key.
+
+Open the menu:      {key:menu:root}
+Snap a window left: {key:win:snap left}
+Take a screenshot:  {key:cap:region}
+Change the theme:   {menu:style.theme}
+Open this help:     {key:gui:help}
+Quit Amarchy:       {key:amarchy:quit}
+
+The menu lists every program, setting and action. Press Escape
+to close it. Every key above can be changed in the keymap file,
+and this text then shows your key.
+
+Tick the box below to stop this window from opening at start.
+
+[help]
+Amarchy Help
+
+THE MENU
+Press {key:menu:root} to open the menu. Use the arrow keys and Return, or
+the mouse. Escape closes a level. Apps open with {key:menu:apps}. The
+list of every key is on {key:viewer}.
+
+WINDOWS AND TILING
+Windows can be snapped to a half or a corner of the screen. Snap
+left with {key:win:snap left} and right with {key:win:snap right}. Snap to the
+top left corner with {key:win:snap tl}. Centre a window with {key:win:snap center}.
+Bring a window to the front with {key:win:front}, zoom or restore it
+with {key:win:zip}. Save its position and size with {key:win:save}.
+
+THEMES
+Choose {menu:style.theme} from the menu to change the look of the
+whole desktop: colours, pointer, fonts and backdrop. The change
+applies at once and is kept for the next start.
+
+SCREEN CAPTURE
+{key:cap:region} saves a dragged region, {key:cap:screen} the whole screen and
+{key:cap:window} the active window. The picture is stored in
+RAM:Shots as an IFF file and also placed on the clipboard.
+
+THE STATUS BAR
+The bar at the top of the screen shows the clock, memory and other
+segments. Its rows are set in ENVARC:Amarchy/bar.conf.
+
+PREFERENCES
+Amarchy settings are in the menu under Settings. They are kept in
+ENV:Amarchy and ENVARC:Amarchy.
+
+THE KEYMAP FILE
+Every key is a line in ENVARC:up-term/keymap. Put your own lines
+in ENVARC:up-term/keymap.user so an Install does not replace
+them. Then reload the keys from the menu or with the ARexx
+command RELOAD.
+
+AREXX
+The port AMARCHY takes STATUS, RELOAD, RUN, SHOW and QUIT. The
+manual page lists every command: read it with man amarchy.
+
+QUITTING
+Quit Amarchy with {key:amarchy:quit}. Its keys stop working until you
+start it again.
