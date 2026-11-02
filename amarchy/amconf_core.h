@@ -36,6 +36,7 @@ enum {
     AM_ICONSTYLE, /* icon-style: filled (default, Phosphor Fill) or outline (Lucide); the set amarchy-icons APPLY splices */
     AM_ICONTEXT, /* icon-text: the icon label text mode in the WB font prefs, plain (default), outline or shadow (desk_font_pens) */
     AM_BORDERBLANK, /* border-blank: native screens show black outside the picture (off/on, default on); borderblank_patch.c */
+    AM_WELCOME, /* welcome-shown: the first-start welcome window was shown and ticked "don't show again" (off/on, default off); no Prefs gadget */
     AM_NKEYS
 };
 
