@@ -24,6 +24,13 @@ static unsigned long vt_pace_next(unsigned long cost_us)
     return n;
 }
 
+/* K36: the animation clock stands still while the window is hidden/iconified or scrolled back
+ * (vr_render.hidden, vr_render.view): vtwin_tick does not call vt_anim_tick, so no time passes for it. */
+static int vt_anim_paused(int hidden, int view)
+{
+    return hidden != 0 || view != 0;
+}
+
 /* EClock ticks to microseconds at freq ticks a second, exact in 32 bits
  * (C89: no long long): whole seconds, then milliseconds, then the rest. */
 static unsigned long vt_pace_us(unsigned long ticks, unsigned long freq)

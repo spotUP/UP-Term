@@ -187,6 +187,7 @@ CONFIGURATION (profiles)
      scrollback = 2000         lines to keep (no key = the built-in 500; 0 or less = none)
      cursor = block            block | underline | bar
      cursor-blink = off        on | off
+     image-animation = on      on | off (off: a kitty animation stays on its current frame)
      cursor-color = inverse    inverse (the flipped cell) or RRGGBB
      selection-bg = 87AFD7     the selected cell's background and text
      selection-fg = 262626     colour; blank either keeps the flip

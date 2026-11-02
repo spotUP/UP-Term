@@ -1581,6 +1581,9 @@ static void apply_profile(con *c)
     }
     if (upconf_get(c->conf, p, "cursor-blink"))
         c->w.cursor_blink = sd_conf_key_index("cursor-blink", c->conf, p);
+    /* K36: kitty animations play on the frame clock (D14: on); off keeps the image on its current frame */
+    v = upconf_str(c->conf, p, "image-animation", 0);
+    c->w.image_animation = !(v && str_ieq(v, "off"));
     v = upconf_str(c->conf, p, "bell", 0);
     if (v) {
         if (str_ieq(v, "none"))
@@ -8173,9 +8176,11 @@ static void packet(con *c, struct DosPacket *p)
             PROF_LOG("PROF kitty decodes/placed", kitty_decodes, vt_kitty_placed(c->w.t));
             PROF_LOG("PROF kitty files read/deleted", kitty_files_read, kitty_files_deleted);
             PROF_LOG("PROF kitty own png decodes", vt_kitty_png_own(c->w.t), 0);
+            PROF_LOG("PROF kitty anim switches/ticks", vt_kitty_frame_switches(c->w.t), c->w.prof_anim);
             c->w.prof_part[0] = c->w.prof_part[1] = c->w.prof_part[2] = 0;
             c->prof_idle = c->prof_out = c->prof_writes = c->prof_bytes = 0;
             c->w.prof_render = c->w.prof_frames = 0;
+            c->w.prof_anim = 0;
             c->prof_t0 = e.ev_lo;
         }
 #endif

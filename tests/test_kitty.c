@@ -1375,6 +1375,26 @@ static void k35_the_clock_changes_the_placement(void)
     vt_free(t);
 }
 
+/* K36: the profile key image-animation = off reaches the engine as vt_set_animation(t, 0): the clock
+ * switches nothing and says nothing runs; a client's a=a c= still switches. */
+static void k36_image_animation_off_stops_the_clock(void)
+{
+    vt_term *t = k35_term();
+    unsigned long sw0 = vt_kitty_frame_switches(t);
+    h_put(t, "\033_Ga=a,i=5,s=3\033\\");
+    vt_set_animation(t, 0);
+    CHECK_INT(vt_anim_tick(t, 40000), -1);
+    CHECK_INT(vt_anim_tick(t, 400000), -1);
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 0); /* no frame advanced */
+    h_put(t, "\033_Ga=a,i=5,c=2\033\\");
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1); /* the client still switches */
+    vt_set_animation(t, 1);
+    CHECK_INT(vt_anim_tick(t, 0), 40000);
+    CHECK_INT(vt_anim_tick(t, 40000), 40000);
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 2); /* on again: the sentinel moves */
+    vt_free(t);
+}
+
 /* ---- K39: frames of an RGB picture are RGBA canvases ---- */
 
 /* 200 x 200 canvases: 160,000 B each in RGB mode, 40,000 in index mode, against 8 MB / 2 MB:
@@ -1501,6 +1521,7 @@ void suite_kitty(void)
     k35_loops_wait_and_errors();
     k35_a_c_composes_a_rectangle();
     k35_the_clock_changes_the_placement();
+    k36_image_animation_off_stops_the_clock();
     k38_rgb_store_keeps_every_colour_and_the_alpha_byte();
     k38_index_mode_is_unchanged();
     k38_an_opaque_picture_says_so_and_a_placement_scales_the_rgba();

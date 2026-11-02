@@ -319,6 +319,7 @@ struct vt_term {
     struct vt_kitty *kit;      /* the kitty graphics command being received */
     vt_u32 kit_next;           /* counter for the ids kitty gives by number (I=) */
     vt_u32 kit_png_own;        /* PNG pictures the engine decoded itself (vt_kitty_png_own) */
+    vt_u8 anim_off; /* vt_set_animation(0): the clock plays nothing (profile image-animation = off) */
     unsigned long kit_switches; /* animation frames switched (vt_kitty_frame_switches) */
     vt_u32 kit_placed;         /* kitty images placed on the screen (vt_kitty_placed) */
     long kit_last_z;           /* z= of the last kitty placement (vt_kitty_last_z) */
