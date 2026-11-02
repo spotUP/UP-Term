@@ -27,7 +27,7 @@ import ami
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = paths.RIG / "vtc"
-OUT = paths.RIG / "shots"
+OUT = paths.REPORTS / "shots"
 RIG = [sys.executable, str(ROOT / "tools/rig/rig.py")]
 lines, failed = [], 0
 
@@ -153,7 +153,7 @@ def main():
         if src.exists():
             shutil.copyfile(src, VTC / f)
     wire = Wire()
-    subprocess.run(RIG + ["stop"], capture_output=True)
+    subprocess.run(RIG + ["stop", "--keep"], capture_output=True)
     subprocess.run(RIG + ["start", "--serial", wire.path, "--purpose", "getty_rig: serial login checks"], check=True)
     import ixpty_rig
     ixpty_rig.use_ixemul()
@@ -205,7 +205,7 @@ def main():
     print(lines[-1])
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / 'getty.log').write_text('\n'.join(lines) + '\n')
-    subprocess.run(RIG + ["stop"], capture_output=True)
+    subprocess.run(RIG + ["stop", "--keep"], capture_output=True)
     return 1 if failed else 0
 
 

@@ -155,7 +155,7 @@ def main():
     check('/scrollbar hide removes it', not has_bar())
     typeline('/scrollbar show')
     check('/scrollbar show brings it back', has_bar())
-    ami.main(['shot', os.path.join(paths.RIG, 'pf1_rig.png')])
+    ami.main(['shot', os.path.join(paths.reports_dir(), 'pf1_rig.png')])
 
     print('%d failed' % len(fails), flush=True)
     # close by the gadget: on a 2 MB rig a typed EndShell can find no memory

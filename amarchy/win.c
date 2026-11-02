@@ -24,6 +24,7 @@
 #include "amconf_dos.h"
 #include "rexx_host.h"
 #include "../handler/upactive.h"
+#include "iconpen_dos.h"
 
 #define WIN_MAXW 32          /* windows on one screen considered by cycle and focus */
 
@@ -181,7 +182,7 @@ static int do_screen(const win_cmd *c)
     ULONG lock;
     int ok = 1;
     if (c->arg == WA_WORKBENCH) {
-        if (!(s = LockPubScreen((STRPTR)"Workbench")))
+        if (!(s = ipd_lock_wb_screen()))
             return 0;
         ScreenToFront(s);
         UnlockPubScreen(0, s);

@@ -8,6 +8,7 @@
 #include <proto/intuition.h>
 #include <proto/graphics.h>
 #include "wbmode.h"
+#include "iconpen_dos.h"
 
 #define WBM_FILE "ENV:Sys/screenmode.prefs"
 
@@ -35,7 +36,7 @@ static unsigned long wb_mode_id(void)
     struct GfxBase *GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
     unsigned long id = WBM_INVALID_ID;
     struct Screen *scr;
-    if (IntuitionBase && GfxBase && (scr = LockPubScreen((STRPTR)"Workbench")) != 0) {
+    if (IntuitionBase && GfxBase && (scr = ipd_lock_wb_screen()) != 0) {
         id = (unsigned long)GetVPModeID(&scr->ViewPort);
         UnlockPubScreen(0, scr);
     }

@@ -28,7 +28,7 @@ installed over it and keeps it. The files are copied into UP-Term:bin and left t
 The rig's UP-Term:etc/upkg.conf is replaced by the feed conf for the run (browse's child commands use the
 default config) and put back at the end. The script stops the rig at the end.
 
-  upkg_browse_rig.py [--out DIR]      report.md and the screenshots go to DIR (default build/<rig>/upkg-browse)
+  upkg_browse_rig.py [--out DIR]      report.md and the screenshots go to DIR (default build/rig-reports/<rig>/upkg-browse)
   upkg_browse_rig.py --help | -h | help | ?
 """
 import argparse, os, pathlib, re, shutil, subprocess, sys, time
@@ -152,7 +152,7 @@ def teardown(rel, st):
 
 def main(argv):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--out', default=str(paths.RIG / 'upkg-browse'))
+    ap.add_argument('--out', default=str(paths.REPORTS / 'upkg-browse'))
     a = ap.parse_args(argv)
     out = pathlib.Path(a.out)
     out.mkdir(parents=True, exist_ok=True)

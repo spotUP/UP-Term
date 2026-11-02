@@ -28,7 +28,8 @@ static void test_layout(void)
     CHECK_INT(offsetof(flat_state, pen_ptext), 21);
     CHECK_INT(offsetof(flat_state, pen_dim), 22);
     CHECK_INT(offsetof(flat_state, pen_dimtext), 23);
-    CHECK_INT(FLAT_STATE_SIZE, 24);
+    CHECK_INT(offsetof(flat_state, pen_knob), 24);
+    CHECK_INT(FLAT_STATE_SIZE, 28);
     CHECK_STR(FLAT_SEM_NAME, "Amarchy.Flat");
     CHECK_INT(FLAT_VERSION, 2);
 }
@@ -41,7 +42,7 @@ static void test_init_check(void)
     flat_init(&s);
     CHECK_INT(s.version, FLAT_VERSION);
     CHECK_INT(s.size, FLAT_STATE_SIZE);
-    CHECK_INT(s.enabled | s.style | s.held | s.still_chained | s.calls | s.pen_text | s.pen_line | s.pen_back | s.pen_outline | s.pen_button | s.pen_ptext | s.pen_dim | s.pen_dimtext, 0);
+    CHECK_INT(s.enabled | s.style | s.held | s.still_chained | s.calls | s.pen_text | s.pen_line | s.pen_back | s.pen_outline | s.pen_button | s.pen_ptext | s.pen_dim | s.pen_dimtext | s.pen_knob, 0);
     CHECK_INT(flat_check(&s, sizeof s), FLAT_OK);
     CHECK_INT(flat_check(&s, sizeof s + 20), FLAT_OK);
     CHECK_INT(flat_check(&s, FLAT_STATE_SIZE - 1), FLAT_ERR_SIZE);      /* fewer readable bytes than the layout */
@@ -949,9 +950,12 @@ static void test_scroller(void)
     int kn, tr;
     flat_init(&s);
     desk_flat_state(1, 1, &s);
-    kn = DK_SELECTION;
+    kn = DK_MUTED;                                                       /* KNOB-MUTED: the knob is the theme muted text pen, not the selection pen nor the lighter pen_outline */
     tr = s.pen_back;
     CHECK(kn != tr);
+    CHECK(kn != DK_SELECTION);
+    CHECK_INT(s.pen_dimtext, kn);
+    CHECK(kn != s.pen_outline);
     /* vertical 16 x 100 container at (10,20), body half: knob height 50 */
     CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), kn);
     CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 70, 25, 119), tr);
@@ -973,8 +977,40 @@ static void test_scroller(void)
     s.held = 0;
     /* under 8 colours the knob takes the accent pen_line (flat_button_pen), never a missing pen */
     CHECK_INT(flat_scroller_pen(&s, 2, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), s.pen_line);
+    /* fallback: pen_dimtext 0 or not a pen of the depth keeps flat_button_pen */
+    {
+        int keep = s.pen_dimtext;
+        s.pen_dimtext = 0;
+        CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), flat_button_pen(&s, 3));
+        s.pen_dimtext = 9;
+        CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), flat_button_pen(&s, 3));
+        s.pen_dimtext = keep;
+    }
     s.enabled = 0;
     CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), -1);
+}
+
+/* KNOB-PEN: the knob has its own pen from 16 colours, a colour between the surface and the muted text on every theme; at 8 colours
+ * or fewer (no free pen) it is DK_MUTED as before. */
+static void test_knob_pen(void)
+{
+    flat_state s;
+    flat_init(&s);
+    desk_flat_state(1, 1, &s);
+    s.pen_knob = 9;
+    CHECK_INT(flat_knob_pen(&s, 4), 9);
+    CHECK_INT(flat_scroller_pen(&s, 4, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), 9);   /* reachable through the scroller entry */
+    CHECK_INT(flat_scroller_pen(&s, 8, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), 9);
+    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), DK_MUTED);   /* 3 planes: no free pen */
+    CHECK_INT(flat_knob_pen(&s, 3), DK_MUTED);
+    s.pen_knob = 0;
+    CHECK_INT(flat_knob_pen(&s, 5), DK_MUTED);
+    s.pen_knob = 20;                                                     /* not a pen of 4 planes */
+    CHECK_INT(flat_knob_pen(&s, 4), DK_MUTED);
+    CHECK_INT(flat_knob_colour(0x000000UL, 0x7A7A7AUL), 0x494949UL);      /* vantablack */
+    /* a light theme: white surface, 666666 muted text: strictly between both */
+    CHECK(flat_knob_colour(0xFFFFFFUL, 0x666666UL) > 0x666666UL && flat_knob_colour(0xFFFFFFUL, 0x666666UL) < 0xFFFFFFUL);
+    CHECK_INT(flat_knob_colour(0xFFFFFFUL, 0x666666UL) & 0xFF, (255 * 40 / 100) + (0x66 * 60 / 100));
 }
 
 /* disabled flat button gets solid dim fill, no dither: a pattern fill over a recorded filled button box takes the dim pen
@@ -1027,28 +1063,48 @@ static void test_title_accent(void)
     memset(&s, 0, sizeof s);
     s.enabled = 1; s.pen_outline = 3; s.pen_ptext = 0; s.pen_dimtext = 5; s.pen_text = 2;
     /* active: accent band over the title bar only (rows 0..bar_h-1), title text dark on it */
-    CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "Shell", 5, 9, &t), 1);
+    CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "Shell", 5, 9, 0, 199, &t), 1);
     CHECK_INT(t.band_pen, 3);
     CHECK_INT(t.bx0 == 0 && t.by0 == 0 && t.bx1 == 199 && t.by1 == 10, 1);
+    /* FLAT-GADGETS-RIG8: the band misses every system gadget (close left, depth + zoom relright, drag bar ignored) */
+    {
+        flat_gadrect g[4] = { { 0, 0, 18, 11, 0, 0, 0 }, { -18, 0, 18, 11, 1, 0, 0 }, { -36, 0, 18, 11, 1, 0, 0 },
+                              { 0, 0, -54, 11, 0, 1, 1 } };
+        int x0, x1, i, gl, gr;
+        flat_title_span(g, 4, 200, 11, &x0, &x1);
+        CHECK_INT(x0, 18);
+        CHECK_INT(x1, 200 - 36 - 1);
+        CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "Shell", 5, 9, x0, x1, &t), 1);
+        for (i = 0; i < 3; i++) {
+            gl = g[i].x + (g[i].relright ? 200 : 0);
+            gr = gl + g[i].w - 1;
+            CHECK_INT(t.bx1 < gl || t.bx0 > gr, 1);
+        }
+        flat_title_span(g + 1, 2, 200, 11, &x0, &x1);       /* no close gadget */
+        CHECK_INT(x0, 0);
+        CHECK_INT(x1, 200 - 36 - 1);
+        flat_title_span(g, 0, 200, 11, &x0, &x1);
+        CHECK_INT(x0 == 0 && x1 == 199, 1);
+    }
     CHECK_INT(t.text_pen, 0);
     CHECK_INT(t.bg_pen, 3);          /* JAM2 Text box must repaint the band pen, not pen 0 */
     /* inactive: no band, text in the dark_foreground pen */
-    CHECK_INT(flat_title_decide(&s, 3, 0, "Shell", 200, 11, "Shell", 5, 9, &t), 1);
+    CHECK_INT(flat_title_decide(&s, 3, 0, "Shell", 200, 11, "Shell", 5, 9, 0, 199, &t), 1);
     CHECK_INT(t.band_pen, -1);
     CHECK_INT(t.text_pen, 5);
     CHECK_INT(t.bg_pen, -1);
     /* a clipped title (prefix) still matches; body text, wrong text, a row below the bar, off/held do not */
-    CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "She", 3, 9, &t), 1);
-    CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "Hello", 5, 9, &t), 0);
-    CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "Shell", 5, 30, &t), 0);
-    CHECK_INT(flat_title_decide(&s, 3, 1, 0, 200, 11, "Shell", 5, 9, &t), 0);
+    CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "She", 3, 9, 0, 199, &t), 1);
+    CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "Hello", 5, 9, 0, 199, &t), 0);
+    CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "Shell", 5, 30, 0, 199, &t), 0);
+    CHECK_INT(flat_title_decide(&s, 3, 1, 0, 200, 11, "Shell", 5, 9, 0, 199, &t), 0);
     s.held = 1;
-    CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "Shell", 5, 9, &t), 0);
+    CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "Shell", 5, 9, 0, 199, &t), 0);
     s.held = 0; s.enabled = 0;
-    CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "Shell", 5, 9, &t), 0);
+    CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "Shell", 5, 9, 0, 199, &t), 0);
     s.enabled = 1;
     /* accent pen not a pen of a 2 colour screen: no band, stock text pen */
-    CHECK_INT(flat_title_decide(&s, 1, 1, "Shell", 200, 11, "Shell", 5, 9, &t), 1);
+    CHECK_INT(flat_title_decide(&s, 1, 1, "Shell", 200, 11, "Shell", 5, 9, 0, 199, &t), 1);
     CHECK_INT(t.band_pen, -1);
     CHECK_INT(t.text_pen, -1);
 }
@@ -1077,6 +1133,13 @@ static int fake_render(void *ctx, unsigned long ids, uint8_t *grid, int w, int h
             grid[y * w + x] = (uint8_t)m;
         }
     return 1;
+}
+
+static int blank_render(void *ctx, unsigned long ids, uint8_t *grid, int w, int h)
+{
+    (void)ctx; (void)ids; (void)grid; (void)w; (void)h;
+    g_render_calls++;
+    return 1;                                                                   /* OS 3.2 window gadgets: rc 1, nothing drawn */
 }
 
 static void test_clone_arrows(void)
@@ -1171,6 +1234,11 @@ static void test_glyph_clone(void)
     g_render_calls = 0; g_render_fail = 1;
     CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 9, 9, 'F', -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_FAIL);
     g_render_fail = 0; g_render_calls = 0;
+    cv_clear();                                                                 /* an empty clone is a failure and paints nothing */
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 9, 9, 'F', 'T', blank_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_FAIL);
+    CHECK_INT(g_render_calls, 1);
+    CHECK(cv[0][0] == '?' && cv[4][4] == '?');
+    g_render_calls = 0;
     CHECK_INT(flat_clone_draw(&st, FLAT_W_MENUCHECK, FLAT_IM_DRAW, 0, 0, 0, 9, 9, 'F', -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_NO);
     CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, 0x203, 0, 0, 0, 9, 9, 'F', -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_NO);
     CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 6, 9, 'F', -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_NO);
@@ -1186,6 +1254,7 @@ void suite_flat_core(void)
     test_glyph_clone();
     test_title_accent();
     test_scroller();
+    test_knob_pen();
     test_desk_flat_state();
     test_kill_switches();
     test_which_from_gtype();

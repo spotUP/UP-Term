@@ -113,7 +113,7 @@ def main():
         sys.exit('[ERROR] build/amiga/Claude missing: make build/amiga/Claude')
     shutil.copy(binary, VTC / 'Claude')
     KIT.mkdir()
-    log = paths.RIG / 'claude_datadir_fixture.log'
+    log = paths.reports_dir() / 'claude_datadir_fixture.log'
     fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(a.port),
                            '--delay', '0'], stdout=open(log, 'w'), stderr=subprocess.STDOUT)
     time.sleep(1)

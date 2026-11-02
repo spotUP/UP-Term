@@ -11,6 +11,7 @@
 #include <proto/exec.h>
 #include <proto/intuition.h>
 #include "desk_dos.h"
+#include "gthemes_dos.h"
 #include "rexx_host.h"
 #include "desk_core.h"
 #include "menu_theme.h"
@@ -19,6 +20,7 @@
 #include "win_refresh.h"
 #include "proclaunch.h"
 #include "sentinel_dos.h"
+#include "iconpen_dos.h"
 
 #define DK_BUF 1024
 #define DK_REVERT "T:amarchy-revert"
@@ -108,7 +110,7 @@ static int dk_screen_depth(void)
     struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
     struct Screen *scr;
     int d = 2;
-    if (IntuitionBase && (scr = LockPubScreen((STRPTR)"Workbench")) != 0) {
+    if (IntuitionBase && (scr = ipd_lock_wb_screen()) != 0) {
         d = scr->RastPort.BitMap->Depth;
         UnlockPubScreen(0, scr);
     }
@@ -205,7 +207,7 @@ static struct Screen *dk_wb_screen(unsigned short *pens, int *npens)
     struct Screen *scr = 0, *s;
     if (npens)
         *npens = 0;
-    if (IntuitionBase && (s = LockPubScreen((STRPTR)"Workbench")) != 0) {
+    if (IntuitionBase && (s = ipd_lock_wb_screen()) != 0) {
         struct DrawInfo *dri = pens ? GetScreenDrawInfo(s) : 0;
         scr = s;
         if (dri) {
@@ -253,14 +255,14 @@ static void dk_windows_open(int was)
 /* Windows of ours back once IPrefs applied the palette: the live pens equal the desk pens (3.2 resets in place, the screen
  * address stays) or the screen is a new one (at most DK_RESET_SECS: a part that changes nothing resets nothing). */
 #define DK_RESET_SECS 6
-static void dk_wait_reset(struct Screen *before, int flat)
+static void dk_wait_reset(struct Screen *before, int flat, int depth)
 {
     int i;
     for (i = 0; i < DK_RESET_SECS * 4; i++) {
         unsigned short live[DK_SLOTS];
         int n;
         struct Screen *now = dk_wb_screen(live, &n);
-        if (desk_reset_done(before, now, live, n, flat))
+        if (desk_reset_done(before, now, live, n, flat, depth))
             break;
         Delay(12);
     }
@@ -389,7 +391,7 @@ static int dk_apply(const gtheme *th, char *why, int cap)
     depth = dk_screen_depth();
     if (mask & (1u << DT_PALETTE)) {
         wb_before = dk_wb_screen(live, &nlive);
-        reset = desk_pens_reset(live, nlive, flat_pens);
+        reset = desk_pens_reset(live, nlive, flat_pens, depth);
     }
     if (reset || old_ws) {
         desk_dos_wb_closes++;
@@ -410,7 +412,7 @@ static int dk_apply(const gtheme *th, char *why, int cap)
         /* IPrefs resets Workbench for the palette: the other editors run only after it finished (SYS:Prefs/Pointer
          * raised a Program Error requester when started under the running reset) */
         if (reset)
-            dk_wait_reset(wb_before, flat_pens);
+            dk_wait_reset(wb_before, flat_pens, depth);
         dk_live_want = 1;
         dk_live_flat = flat_pens;
         desk_dos_dopus_sends++;
@@ -440,7 +442,7 @@ static int dk_apply(const gtheme *th, char *why, int cap)
             len = dk_read("ENVARC:Sys/font.prefs", buf, sizeof buf);
         if (len <= 0)
             len = desk_font_default(buf, sizeof buf);
-        if (len > 0 && desk_font_pens(buf, len) >= 0 && desk_font_name(th, buf, len, dk_font_exists, 0) >= 0) {
+        if (len > 0 && desk_font_pens(buf, len, amconf_icon_text(&ap)) >= 0 && desk_font_name(th, buf, len, dk_font_exists, 0) >= 0) {
             ok &= dk_put("Font", DK_WORK "/font.prefs", buf, len);
             if (reset || old_ws)
                 dk_wait_iprefs(idle); /* the Font editor resets the Workbench screen too (3.1: twice): the windows return after it */
@@ -576,7 +578,7 @@ static void dk_live_pens(const gtheme *th, int flat)
     static unsigned char saved[DK_BUF];
     struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
     struct GfxBase *GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
-    struct Screen *scr = IntuitionBase && GfxBase ? LockPubScreen((STRPTR)"Workbench") : 0;
+    struct Screen *scr = IntuitionBase && GfxBase ? ipd_lock_wb_screen() : 0;
     int pens[4], n = 0, i, depth = 0;
     long slen = -1;
     if (scr) {
@@ -622,7 +624,7 @@ static long dk_palette_base(int restore, const unsigned char pens[DK_SLOTS], int
     {
         struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
         struct GfxBase *GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
-        struct Screen *scr = IntuitionBase && GfxBase ? LockPubScreen((STRPTR)"Workbench") : 0;
+        struct Screen *scr = IntuitionBase && GfxBase ? ipd_lock_wb_screen() : 0;
         if (scr) {
             n = 1 << scr->RastPort.BitMap->Depth;
             if (n > 256)
@@ -637,6 +639,16 @@ static long dk_palette_base(int restore, const unsigned char pens[DK_SLOTS], int
             CloseLibrary((struct Library *)IntuitionBase);
     }
     return desk_palette_live(rgb4, n, depth, pens, buf, cap);
+}
+
+/* FLAT-PENS-STALE-FILE: 1 when the palette.prefs a reset would read (ENV:, else ENVARC:) does not hold pens exactly */
+static int dk_palette_file_stale(int flat, const unsigned char pens[DK_SLOTS])
+{
+    static unsigned char cur[DK_BUF];
+    long len = dk_read("ENV:Sys/Palette.prefs", cur, sizeof cur);
+    if (len < 0)
+        len = dk_read("ENVARC:Sys/Palette.prefs", cur, sizeof cur);
+    return desk_flat_start_refresh(flat, cur, len, pens);
 }
 
 /* FLAT-PENS-LIVE + FLAT-PEN5-MAGENTA. Owner 2026-11-01: with flat on, a theme pick writes the theme colours into the Workbench palette
@@ -661,12 +673,14 @@ static int dk_flat_pens(const gtheme *th)
     before = dk_wb_screen(live, &nlive);
     if (!before || !dk_palette_editor_ok())
         return 0;
-    sync = desk_pens_sync(flat, live, nlive, pens);
+    depth = dk_screen_depth();
+    sync = desk_pens_sync(flat, live, nlive, pens, depth);
     if (!sync && !own && !theme && !restore)
         return 0;
     if (!sync)
         desk_pens_for(flat, pens);
-    depth = dk_screen_depth();
+    if (flat && !sync && dk_palette_file_stale(flat, pens))
+        sync = 1; /* FLAT-PENS-STALE-FILE: the live pens match but the file on disk (an older build's map) does not */
     len = dk_palette_base(restore, pens, depth, buf, sizeof buf);
     UnLock(CreateDir((STRPTR)DK_WORK));
     if ((own || theme) && len > 0) {
@@ -686,7 +700,7 @@ static int dk_flat_pens(const gtheme *th)
         idle = dk_iprefs_idle_mask();
         desk_dos_flat_pens_writes++;
         if (dk_put("Palette", DK_WORK "/palette.prefs", buf, len)) {
-            dk_wait_reset(before, flat);
+            dk_wait_reset(before, flat, depth);
             dk_wait_iprefs(idle);
         }
     }
@@ -979,6 +993,29 @@ static void dk_orig_drop_reverted(unsigned mask, int wbprefs)
     }
 }
 
+/* FLAT-PENS-STALE-FILE part 2: Amarchy's start. Called from main after the hooks desk_dos_wb_close/own_close are installed, so the write
+ * path (dk_flat_pens: dk_wait_reset, the bar close/reopen around a Workbench reset) is the one a theme pick uses. */
+int desk_dos_flat_pens_refresh(void)
+{
+    am_prefs ap;
+    unsigned char pens[DK_SLOTS];
+    gtheme th;
+    int flat, done;
+    amconf_load(&ap);
+    flat = amconf_desk_flat_pens(&ap);
+    if (!flat || !dk_palette_editor_ok())
+        return 0;
+    desk_pens_for(flat, pens);
+    if (!dk_palette_file_stale(flat, pens))
+        return 0;
+    gt_dos_load_current(&th);
+    dk_live_want = 0;
+    done = dk_flat_pens(&th);
+    if (dk_live_want)
+        dk_live_pens(dk_live_want > 0 ? &th : 0, dk_live_flat);
+    return done;
+}
+
 int desk_dos_apply(const gtheme *th, char *why, int cap)
 {
     int r;
@@ -1182,7 +1219,7 @@ static void dk_restore_targets(unsigned mask, const char *dir)
         else
             dk_editor(ed[i].editor, name);
         if (ed[i].t == DT_PALETTE)
-            dk_wait_reset(before, amconf_desk_flat_pens(&ap));
+            dk_wait_reset(before, amconf_desk_flat_pens(&ap), dk_screen_depth());
         else if (ed[i].t == DT_FONT || ed[i].t == DT_POINTER)
             dk_wait_iprefs(idle);   /* DESK-PTR-REVERT: IPrefs reads the editor's ENV: write on its notify; a fix copy opened meanwhile fails (object in use) */
         dk_env_fix_file(dir, ed[i].file);

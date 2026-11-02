@@ -29,7 +29,7 @@ import userland_rig as U
 N = 10000
 BUDGET = 24.0
 STRING_BYTES = sum(len("x%d" % i) + 1 for i in range(N))   # the strings' own bytes, NULs counted
-LEDGER = paths.RIG / "userland" / "v44mem"
+LEDGER = paths.reports_dir("userland") / "v44mem"
 SCRIPT = """\
 for k in 0 1 2 3; do echo 0000000000 >RAM:v44m$k; done
 C:Avail FLUSH TOTAL >RAM:v44m0

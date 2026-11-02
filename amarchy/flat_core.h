@@ -31,9 +31,11 @@ typedef struct flat_state {
     uint8_t pen_ptext;          /* 21 label pen of a pressed button, dark on the accent fill (DK_BG) */
     uint8_t pen_dim;            /* 22 FLAT-BUTTON-DISABLED-DIM: solid fill of a disabled button, a dim tone of pen_button; obtained by amarchy-flat itself (ObtainBestPen), 0 = none */
     uint8_t pen_dimtext;        /* 23 label pen of a disabled button (DK_MUTED) */
-} flat_state;                   /* 24 bytes */
+    uint8_t pen_knob;           /* 24 KNOB-PEN: scroller knob fill, the surface moved FLAT_KNOB_PCT (60) percent toward the muted text colour; obtained by amarchy-flat itself (ObtainBestPen), 0 = none */
+    uint8_t pad[3];             /* 25 reserved, zero (keeps calls 4-byte aligned) */
+} flat_state;                   /* 28 bytes */
 
-#define FLAT_STATE_SIZE 24
+#define FLAT_STATE_SIZE 28
 
 /* flat_check results */
 enum { FLAT_OK = 0, FLAT_ERR_VERSION = -1, FLAT_ERR_SIZE = -2 };
@@ -246,8 +248,15 @@ typedef struct flat_title { int band_pen, bx0, by0, bx1, by1, text_pen, bg_pen; 
 /* flat_frame_pen: the pen of an active window's title band (pen_outline) when flat is on, not held, and pen_outline is a pen of the
  * depth; else -1 (caller uses its stock frame pen). flat_title_decide and the window gadget boxes both take the band from here. */
 int flat_frame_pen(const flat_state *s, int depth, int active);
+/* FLAT-GADGETS-RIG8: the band spans only the title area between the system gadgets (bx0..bx1, from flat_title_span), so it never
+ * wipes the close / depth / zoom gadgets Intuition draws once and does not redraw. */
+typedef struct flat_gadrect { int x, y, w, h, relright, relwidth, drag; } flat_gadrect;
+/* flat_title_span: *x0 / *x1 = the title area of a bar_h high, win_w wide title bar. Gadgets in the title rows (y < bar_h,
+ * y + h > 0) other than the drag bar are resolved against win_w (relright adds win_w to x, relwidth to w); one centred in the
+ * left half pushes x0 past its right edge, one in the right half pulls x1 before its left edge. No gadgets: 0 .. win_w-1. */
+void flat_title_span(const flat_gadrect *g, int n, int win_w, int bar_h, int *x0, int *x1);
 int flat_title_decide(const flat_state *s, int depth, int active, const char *title, int win_w, int bar_h,
-                      const char *str, int count, int cp_y, flat_title *t);
+                      const char *str, int count, int cp_y, int bx0, int bx1, flat_title *t);
 
 /* ---- FLAT-BUTTON-DISABLED-DIM: the ghost fill of a disabled gadget, as a pure model ---------------------------------
  * Intuition draws a disabled gadget (frame, label), then ghosts it with one pattern RectFill (rp->AreaPtrn set, AreaPtSz != 0)
@@ -274,6 +283,13 @@ void flat_gh_text(flat_gh *g, const void *surf, const void *task, int cx, int cy
  * else (a screen under 8 colours cannot hold a third tone, or no dim pen) the plain button pen flat_button_pen. */
 int flat_dim_pen(const flat_state *s, int depth);
 int flat_dimtext_pen(const flat_state *s, int depth);
+/* KNOB-PEN: the scroller knob mix. The surface colour moved FLAT_KNOB_PCT percent toward the muted text colour (0xRRGGBB, per channel):
+ * vantablack (000000, 7A7A7A) gives 494949 (about 4A4A4A: gt_scale truncates). Shared by amarchy-flat (screen colours) and the host tests (theme colours). */
+#define FLAT_KNOB_PCT 60
+unsigned long flat_knob_colour(unsigned long surface, unsigned long muted);
+/* The scroller knob pen: pen_knob when it is a pen of the depth and the screen has 16+ colours (depth 4..8: a free pen exists),
+ * else pen_dimtext (DK_MUTED; flat_button_pen under 8 colours or when pen_dimtext is 0 or not a pen of the depth). */
+int flat_knob_pen(const flat_state *s, int depth);
 /* A fill (x0,y0)-(x1,y1) on surface surf by task with area pattern size ptsz: the record it ghosts, or 0 (not enabled, held,
  * no pattern, no record of that surface and task containing the rect). */
 const flat_gbox *flat_gh_match(const flat_state *s, const flat_gh *g, const void *surf, const void *task, int ptsz, int x0, int y0, int x1, int y1);
@@ -299,7 +315,7 @@ enum { FLAT_ROLE_PRIMARY = 0, FLAT_ROLE_SECONDARY = 1 };
 int flat_button_role(const flat_box *self, const flat_box *sib, int n);
 
 /* FLAT-SCROLLER: a window scroller (prop gadget). The pen for one fill inside the gadget's container (cx,cy,cw,ch in the
- * rastport's coordinates): a fill inside the knob rectangle takes the pen one shade lighter than the frame (flat_button_pen); the
+ * rastport's coordinates): a fill inside the knob rectangle takes flat_knob_pen (its own pen_knob from 16 colours, else the theme muted text pen); the
  * rest of the container is track and takes the frame pen (pen_back: the flat map sets FILLPEN and BACKGROUNDPEN to it). The knob
  * is laid out as Intuition does: size = body * container / 0xFFFF (at least 1 px), position = pot * (container - size) / 0xFFFF.
  * Returns -1 when flat is off or held, or the fill is not inside the container (the caller leaves the call alone).

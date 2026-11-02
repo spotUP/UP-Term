@@ -37,6 +37,7 @@
 #include "../config/upconf.h"
 #include "../handler/frontscr.h"
 #include "../handler/upreq.h"
+#include "iconpen_dos.h"
 
 extern struct IntuitionBase *IntuitionBase;
 extern struct GfxBase *GfxBase;      /* themewin.c opens and owns it */
@@ -470,9 +471,7 @@ int bar_open(const char *dir)
     }
     strncpy(g_dir, dir ? dir : "", sizeof g_dir - 1);
     g_dir[sizeof g_dir - 1] = 0;
-    g_scr = LockPubScreen((STRPTR) "Workbench");
-    if (!g_scr)
-        g_scr = LockPubScreen(0);
+    g_scr = ipd_lock_wb_screen(); /* 0 while the Workbench is closed: the bar is not opened then (BOOT-31-WB-DEADLOCK) */
     if (!g_scr) {
         tw_libs_close();
         return 0;

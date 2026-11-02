@@ -19,7 +19,7 @@ import paths, verdicts
 import ami, condev_rig as c
 import stage_rig, tabstate
 
-OUT = pathlib.Path(paths.RIG) / 'amarchy'
+OUT = pathlib.Path(paths.REPORTS) / 'amarchy'
 LAMIGA, CTRL = 0x40, 0x08          # IEQUALIFIER_LCOMMAND, IEQUALIFIER_CONTROL
 RAW_J = 0x26
 SENT = 'T:amarchy.sentinel'

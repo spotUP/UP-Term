@@ -71,7 +71,7 @@ from assign_rig import rig
 
 ROOT = ir.ROOT
 VTC = ir.VTC
-OUT = paths.RIG / "installer"
+OUT = paths.REPORTS / "installer"
 OUT.mkdir(parents=True, exist_ok=True)  # pages are logged before the first verdict is written
 KIT = ir.KIT
 # a clean image (--os) has a 12 MB system partition: the kit goes to its Work: drive
@@ -994,7 +994,7 @@ def run_kingcon():
     ck(ir.run('Type S:User-Startup')[1] == startup_before, 'after Uninstall: S:User-Startup as it was, byte for byte')
     # CON: is the foreign handler's until the next boot: every write is done (Uninstall returned), 5 s of quiet, then reboot
     time.sleep(5)
-    rig("stop")
+    rig("stop", "--keep")
     rig_start()
     ir._shown = None
     ck(ir.run('VTC:UPConsole STATUS')[0] in (0, 5), 'the rig was rebooted: CON: is the ROM\'s again')
@@ -1600,7 +1600,7 @@ def _main(fx, only, flags):
     booted = False
     for case, _ in todo:
         if not booted:
-            rig("stop")
+            rig("stop", "--keep")
             rig_start()
             ir._shown = None   # a fresh boot: the watched window (UPTERM_RIG_SHOW) opens again
             fx.take()   # the user's files and assigns, before any case plants its own

@@ -15,7 +15,7 @@ import ami
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = paths.RIG / "vtc"
-OUT = paths.RIG / "shots"
+OUT = paths.reports_dir("shots")
 CLICK_AFTER = ("wrote", "diskinfo", "undisk")
 
 def run(cmd, timeout=60):

@@ -1,4 +1,4 @@
-.KEY DIR/A,STEP/K,DEST/K,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SERIAL/S,SSH/S,BEBBOGET/S,WASABI/S,CPU040/S,CPU060/S,NOFPU/S,UNIFONT/S,EMOJI/S,DOPUS/S
+.KEY DIR/A,STEP/K,DEST/K,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SERIAL/S,SSH/S,BEBBOGET/S,WASABI/S,SOLIDWIN/S,CPU040/S,CPU060/S,NOFPU/S,UNIFONT/S,EMOJI/S,DOPUS/S,ICONLIB/S
 .BRA {
 .KET }
 ; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
@@ -12,6 +12,9 @@
 ;     [SERIAL]   (a serial login at every boot: no unless asked)
 ;     [SSH] [BEBBOGET]   (the network tools, each: none unless asked)
 ;     [DOPUS]   (the Directory Opus 5 filetype in DOpus5:Filetypes, when DOpus5: is assigned)
+;     [ICONLIB] (Peter Keunecke's IconLib as LIBS:icon.library: the 46.4 build on OS 3.0/3.1, the 51.4
+;               build on 3.2; the old library is kept once as LIBS:icon.library.amarchy-backup)
+;     [SOLIDWIN] (Thomas Rapp's SolidWin 1.12 in C:, started at every boot: solid window moving)
 ;     [WASABI]  (wasabid 0.11b2, remote development and Claude Code on another computer, with a
 ;               key: no unless asked; replaces an older wasabid and amiagent of ours)
 ; (Python, Neovim, Claude and amiga-pi are archives of their own: Python3,
@@ -47,12 +50,14 @@ Set optserial "{SERIAL}"
 Set optssh "{SSH}"
 Set optbebboget "{BEBBOGET}"
 Set optwasabi "{WASABI}"
+Set optsolidwin "{SOLIDWIN}"
 Set optcpu040 "{CPU040}"
 Set optcpu060 "{CPU060}"
 Set optnofpu "{NOFPU}"
 Set optunifont "{UNIFONT}"
 Set optemoji "{EMOJI}"
 Set optdopus "{DOPUS}"
+Set opticonlib "{ICONLIB}"
 If NOT "{STEP}" EQ ""
   If EXISTS ENV:UPTOPTDEST
     Set optdest "$UPTOPTDEST"
@@ -84,6 +89,9 @@ If NOT "{STEP}" EQ ""
   If EXISTS ENV:UPTOPTWASABI
     Set optwasabi WASABI
   EndIf
+  If EXISTS ENV:UPTOPTSOLIDWIN
+    Set optsolidwin SOLIDWIN
+  EndIf
   If EXISTS ENV:UPTOPTCPU040
     Set optcpu040 CPU040
   EndIf
@@ -101,6 +109,9 @@ If NOT "{STEP}" EQ ""
   EndIf
   If EXISTS ENV:UPTOPTDOPUS
     Set optdopus DOPUS
+  EndIf
+  If EXISTS ENV:UPTOPTICONLIB
+    Set opticonlib ICONLIB
   EndIf
 EndIf
 ; The parts, each from its Lab line to the next. With no STEP every part runs,
@@ -984,6 +995,29 @@ If "$optwasabi" EQ "WASABI"
     Run >NIL: C:wasabid
   EndIf
 EndIf
+;
+; SOLIDWIN: Thomas Rapp's SolidWin 1.12 (solidwin/SOURCE.txt), an input.device handler: windows move opaque instead of
+; as an outline. C:SolidWin is started at every boot by a marked block in S:User-Startup, as wasabid above (the block is
+; stripped by Uninstall's unstartup.sh). ENVARC:up-term/solidwin is Install's marker: Uninstall deletes C:SolidWin only
+; when Install put it there (a SolidWin that was in C: before stays, with its own startup line).
+If "$optsolidwin" EQ "SOLIDWIN"
+  If NOT EXISTS C:SolidWin
+    Echo >ENVARC:up-term/solidwin "installed by UP-Term"
+  EndIf
+  Copy solidwin/SolidWin C:SolidWin CLONE
+  If NOT EXISTS S:User-Startup
+    Echo >S:User-Startup ""
+  EndIf
+  Search >NIL: S:User-Startup "C:SolidWin"
+  If WARN
+    If NOT EXISTS S:User-Startup.before-UP-Term
+      Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+    EndIf
+    Echo >>S:User-Startup ";BEGIN UP-Term SolidWin"
+    Echo >>S:User-Startup "Run >NIL: C:SolidWin"
+    Echo >>S:User-Startup ";END UP-Term SolidWin"
+  EndIf
+EndIf
 MakeDir >NIL: ENVARC:vsh
 Copy vshrc ENVARC:vsh/vshrc CLONE
 Copy banner ENVARC:vsh/banner CLONE
@@ -1058,6 +1092,44 @@ Else
   Echo >ENVARC:up-term-orig/ixnet.none ""
 EndIf
 Delete >NIL: ENV:upixemul ENV:upixnet QUIET
+; ICONLIB: Peter Keunecke's IconLib (freeware, Files/iconlib) as LIBS:icon.library. AmigaOS 3.0/3.1 get the 46.4
+; build (68020, unrestricted), 3.2 the 51.4 TrueColor build (the only one that beats the 3.2 ROM module).
+; The library there is kept once as LIBS:icon.library.amarchy-backup BEFORE the copy (never overwritten by a second
+; Install); ENVARC:up-term/iconlib is Install's marker: Uninstall puts the backup back only then.
+If "$opticonlib" EQ "ICONLIB"
+  Set upiconlib iconlib/icon.library.os30
+  Version >NIL: exec.library 47
+  If NOT WARN
+    Set upiconlib iconlib/icon.library.os32
+  EndIf
+  If NOT EXISTS LIBS:icon.library.amarchy-backup
+    If EXISTS LIBS:icon.library
+      Copy LIBS:icon.library LIBS:icon.library.amarchy-backup CLONE
+    EndIf
+  EndIf
+  Copy $upiconlib LIBS:icon.library CLONE
+  Echo "ICONLIB" >ENVARC:up-term/iconlib
+  ; OS 3.0/3.1 only (exec below 47): the ROM icon.library is resident there and wins over LIBS:, so RemLib (Thomas
+  ; Rapp, from IconLib's ThirdParty) goes to C: and a ";BEGIN UP-Term RemLib" block runs it in S:Startup-Sequence
+  ; BEFORE SetPatch. C:RemLib is ours only when none was there (marker ENVARC:up-term/remlib: Uninstall deletes it).
+  If "$upiconlib" EQ iconlib/icon.library.os30
+    If NOT EXISTS C:RemLib
+      Copy iconlib/RemLib C:RemLib CLONE
+      Echo "REMLIB" >ENVARC:up-term/remlib
+    EndIf
+    If NOT EXISTS S:Startup-Sequence.before-UP-Term
+      Copy S:Startup-Sequence S:Startup-Sequence.before-UP-Term CLONE
+    EndIf
+    Delete >NIL: T:Startup-Sequence.up-term QUIET
+    vsh iconlib/instremlib.sh
+    If EXISTS T:Startup-Sequence.up-term
+      Copy T:Startup-Sequence.up-term S:Startup-Sequence CLONE QUIET
+      Delete >NIL: T:Startup-Sequence.up-term QUIET
+    EndIf
+  EndIf
+  Avail >NIL: FLUSH
+  UnSet upiconlib
+EndIf
 ; AmiSSL: UP-Term:bin/curl is linked against it and cannot start without LIBS:amisslmaster.library version 5. The kit's
 ; Install (STEP set) offers it as its own page (P_AMISSL); a Shell install without Installer has no page, so this
 ; part runs the same Install-AmiSSL through Installer, from the kit's AmiSSL drawer (it reads Libs/ and Certs/ by

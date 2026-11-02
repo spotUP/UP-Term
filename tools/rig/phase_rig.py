@@ -23,7 +23,7 @@ SER = paths.RIG / 'serial.log'
 
 def main():
     only = sys.argv[sys.argv.index('ONLY') + 1] if 'ONLY' in sys.argv else None
-    cb.rig('stop')
+    cb.rig('stop', '--keep')
     SER.write_bytes(b'')  # FS-UAE rewrites the file from its start each boot
     cb.rig('start')
     start = 0
@@ -40,7 +40,7 @@ def main():
             break
     time.sleep(2)
     print(out)
-    cb.rig('stop')  # FS-UAE buffers the serial file: stopping flushes it
+    cb.rig('stop', '--keep')  # FS-UAE buffers the serial file: stopping flushes it
     log = SER.read_bytes()[start:].decode('latin-1', 'replace').splitlines()
     name = None
     vals = {}

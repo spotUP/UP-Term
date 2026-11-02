@@ -79,15 +79,27 @@ static long pen_theme_read(void *ctx, const char *path, char *buf, long cap)
     return got < 0 ? 0 : got;
 }
 
-/* The Workbench screen, found in the public screen list (the caller holds its lock). LockPubScreen("Workbench") is never used:
- * it opens a closed Workbench. 0 when the Workbench is closed. */
-static struct Screen *wb_screen(struct List *pl)
+/* The Workbench screen, found in the public screen list (the caller holds its lock). 0 when the Workbench is closed. */
+struct Screen *ipd_wb_screen_in(struct List *pl)
 {
     struct PubScreenNode *n;
     for (n = (struct PubScreenNode *)pl->lh_Head; n->psn_Node.ln_Succ; n = (struct PubScreenNode *)n->psn_Node.ln_Succ)
         if (n->psn_Node.ln_Name && !strcmp(n->psn_Node.ln_Name, "Workbench"))
             return n->psn_Screen;
     return 0;
+}
+
+/* BOOT-31-WB-DEADLOCK: LockPubScreen("Workbench") on a closed Workbench makes Intuition reopen it (OS 3.1), which deadlocks
+ * against IPrefs closing it for the boot RTG switch. This is the only place that asks for the Workbench lock: it looks the
+ * screen up in the list first and calls LockPubScreen only when it is open (the list lock is held, so it cannot close between). */
+struct Screen *ipd_lock_wb_screen(void)
+{
+    struct List *pl = LockPubScreenList();
+    struct Screen *sc = 0;
+    if (ipd_wb_screen_in(pl))
+        sc = LockPubScreen((STRPTR)"Workbench");
+    UnlockPubScreenList();
+    return sc;
 }
 
 /* Bring the held pens in line with the owners and the Workbench screen as it is now. The public screen list stays locked for
@@ -126,7 +138,7 @@ static void pens_sync(ipd_rec *r)
     o.set_rgb = pen_set_rgb;
     o.ctx = &c;
     pl = LockPubScreenList();
-    sc = wb_screen(pl);
+    sc = ipd_wb_screen_in(pl);
     if (sc)
         depth = ip_screen_depth(sc->BitMap.Depth, (sc->ViewPort.Modes & EXTRA_HALFBRITE) != 0);
     c.cur = sc ? sc->ViewPort.ColorMap : 0;
@@ -214,7 +226,7 @@ void ipd_recolour(void)
     o.set_rgb = pen_set_rgb;
     o.ctx = &c;
     pl = LockPubScreenList();
-    sc = wb_screen(pl);
+    sc = ipd_wb_screen_in(pl);
     if (sc && sc == r->s.h.screen) {
         c.cur = sc->ViewPort.ColorMap;
         c.vp = &sc->ViewPort;

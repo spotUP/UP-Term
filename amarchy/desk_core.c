@@ -214,7 +214,7 @@ void desk_pens_for(int flat, unsigned char pens[DK_SLOTS])
 void desk_pen_plan_for(int depth, desk_pen_plan *p)
 {
     p->button = DK_SELECTION;
-    p->backdrop = depth >= PT_DEPTH_MAX ? DK_RED : DK_DARKER; /* FLAT-COLOUR-OVERHAUL: pen 5 keeps the muted text colour; below 3 planes no pen is free, the backdrop shares the darker pen */
+    p->backdrop = depth >= PT_DEPTH_MAX ? DK_RED : desk_pen_fold(DK_DARKER, 1 << (depth > 0 ? depth : 1)); /* FLAT-COLOUR-OVERHAUL: pen 7 is its own backdrop pen; FILENAME-PEN: below 3 planes the shared darker pen (5) is off the screen and folds to DK_BG, the same rule as the 4-colour pen map */
     if (depth >= 6) {
         p->icon_first = 32; p->icon_count = 16; p->icon_slot = 0;
     } else if (depth >= 4) {
@@ -224,24 +224,24 @@ void desk_pen_plan_for(int depth, desk_pen_plan *p)
     }
 }
 
-int desk_pens_reset(const unsigned short *cur, int ncur, int flat)
+int desk_pens_reset(const unsigned short *cur, int ncur, int flat, int depth)
 {
     unsigned char want[DK_SLOTS];
-    int i;
+    int i, ncolors = depth > 0 ? 1 << depth : 256; /* depth <= 0: unknown, no folding */
     if (!cur || ncur <= 0)
         return 1;
     desk_pens_for(flat, want);
     for (i = 0; i < DK_SLOTS && i < ncur; i++)
-        if (cur[i] != want[i])
+        if (cur[i] != desk_pen_fold(want[i], ncolors)) /* FILENAME-PEN: the live pens of a 4-colour screen are the folded map */
             return 1;
     return 0;
 }
 
-int desk_reset_done(const void *before, const void *now, const unsigned short *live, int nlive, int flat)
+int desk_reset_done(const void *before, const void *now, const unsigned short *live, int nlive, int flat, int depth)
 {
     if (!now || nlive <= 0) /* the screen is closed for about 200 ms in the middle of the reset (rig 7, 3.2): not done, not "a new screen" */
         return 0;
-    return now != before || !desk_pens_reset(live, nlive, flat);
+    return now != before || !desk_pens_reset(live, nlive, flat, depth);
 }
 
 int desk_iprefs_idle(int have, int waiting, unsigned long sigwait, unsigned long recvd, unsigned long idle_mask)
@@ -265,6 +265,25 @@ static unsigned wide(uc_u32 c, int shift)
     return (b << 8) | b;
 }
 
+/* FILENAME-PEN: the one place the pen maps of a palette.prefs body are written. The 8-colour table keeps the pens as they are; the
+ * 4-colour table (pens 0-3 only) folds every pen at or above the colour count to DK_BG, so a role on pen 5 (DK_DARKER) never names a
+ * pen the screen does not have. */
+int desk_pen_fold(int pen, int ncolors)
+{
+    return pen >= ncolors ? DK_BG : pen;
+}
+
+static void put_pen_tables(unsigned char *body, const unsigned char pens[DK_SLOTS])
+{
+    int i;
+    for (i = 0; i < DK_SLOTS; i++) {
+        put16(body + PAL_4PENS + 2 * i, (unsigned)desk_pen_fold(pens[i], 4));
+        put16(body + PAL_8PENS + 2 * i, (unsigned)desk_pen_fold(pens[i], 8));
+    }
+    put16(body + PAL_4PENS + 2 * DK_SLOTS, 0xffff);
+    put16(body + PAL_8PENS + 2 * DK_SLOTS, 0xffff);
+}
+
 /* the palette.prefs body for ncolors colours (rgb16[i] = 16-bit r, g, b) and the pen map pens */
 static long palette_fill(int ncolors, const unsigned char pens[DK_SLOTS], const unsigned short rgb16[][3], unsigned char *out, long cap)
 {
@@ -277,12 +296,7 @@ static long palette_fill(int ncolors, const unsigned char pens[DK_SLOTS], const 
     be32_put(body + 4, (unsigned long)PAL_BODY);
     body += 8;
     memset(body, 0, (size_t)PAL_BODY);
-    for (i = 0; i < DK_SLOTS; i++) {
-        put16(body + PAL_4PENS + 2 * i, pens[i]);
-        put16(body + PAL_8PENS + 2 * i, pens[i]);
-    }
-    put16(body + PAL_4PENS + 2 * DK_SLOTS, 0xffff);
-    put16(body + PAL_8PENS + 2 * DK_SLOTS, 0xffff);
+    put_pen_tables(body, pens);
     for (i = 0; i < ncolors; i++) {
         unsigned char *e = body + PAL_COLORS + 8 * i;
         put16(e, (unsigned)i);
@@ -393,25 +407,35 @@ long desk_palette_pens(const unsigned char *cur, long curlen, const unsigned cha
 {
     long pos = DK_HDR, body, size;
     char id[4];
-    int i;
     if (!cur || !is_prefs(cur, curlen) || curlen > cap)
         return 0;
     while (next_chunk(cur, curlen, &pos, id, &body, &size))
         if (!memcmp(id, "PALT", 4) && size >= PAL_COLORS) {
             memcpy(out, cur, (size_t)curlen);
-            for (i = 0; i < DK_SLOTS; i++) {
-                put16(out + body + PAL_4PENS + 2 * i, pens[i]);
-                put16(out + body + PAL_8PENS + 2 * i, pens[i]);
-            }
+            put_pen_tables(out + body, pens);
             return curlen;
         }
     return 0;
 }
 
+/* FLAT-PENS-STALE-FILE: 1 when the palette.prefs bytes in cur do not hold exactly the pens in both pen tables (all DK_SLOTS slots), or
+ * are not a palette file with a PALT chunk; 0 when a write of pens would change no byte. Compared against the file as it is on disk. */
+int desk_palette_pens_stale(const unsigned char *cur, long curlen, const unsigned char pens[DK_SLOTS])
+{
+    static unsigned char out[DK_PALETTE_SIZE * 4];
+    long n = desk_palette_pens(cur, curlen, pens, out, sizeof out);
+    return n != curlen || memcmp(cur, out, (size_t)n);
+}
+
+int desk_flat_start_refresh(int flat, const unsigned char *cur, long curlen, const unsigned char pens[DK_SLOTS])
+{
+    return flat && curlen > 0 && desk_palette_pens_stale(cur, curlen, pens);
+}
+
 /* FLAT-BACKDROP-SAME-AS-WINDOW: the pen the ROOT tile is drawn in, a dedicated pen of its own. Chosen by measurement: a WBPattern tile has
- * PT_DEPTH_MAX (3) bitplanes, so it can only name pens 0-7. Pens 0-3 are the stock icon pens (and DK_DARKER = 1 is BLOCKPEN/BARTRIMPEN
- * in the live DrawInfo array, black in stock icons), pen 4 is the flat button fill (DK_SELECTION), and the flat DrawInfo map only ever
- * uses pens 0, 1 and 2. Pen 5 (DK_MUTED) is inside the tile range, outside 0-4 and in no DrawInfo slot, so recolouring it to the theme dark
+ * PT_DEPTH_MAX (3) bitplanes, so it can only name pens 0-7. Pens 0-3 are the stock icon pens (pen 1 is DK_MUTED since FILENAME-PEN: the fixed pen of Workbench list-view file names,
+ * and the outline of stock icons, which turn muted grey), pen 4 is the flat button fill (DK_SELECTION), and the flat DrawInfo map only ever
+ * uses pens 0, 1 and 2. Pen 5 (DK_DARKER) is BLOCKPEN/BARTRIMPEN in the live DrawInfo array since FILENAME-PEN, so the backdrop has pen 7, which is in the tile range and in no DrawInfo slot: recolouring it to the theme dark
  * changes nothing but the backdrop. Never BACKGROUNDPEN: with no pattern the root fills with it, the window interior pen. */
 int desk_backdrop_pen_at(int depth)
 {
@@ -501,15 +525,15 @@ long desk_palette_theme(const unsigned char *cur, long curlen, const gtheme *t, 
     return curlen;
 }
 
-int desk_pens_sync(int flat, const unsigned short *live, int nlive, unsigned char pens[DK_SLOTS])
+int desk_pens_sync(int flat, const unsigned short *live, int nlive, unsigned char pens[DK_SLOTS], int depth)
 {
     desk_pens_for(flat, pens);
     if (!live || nlive <= 0)
         return 0;
     if (flat)
-        return desk_pens_reset(live, nlive, 1);
+        return desk_pens_reset(live, nlive, 1, depth);
     /* off: undo only what the switch wrote (the live map is the flat one); a system never flat keeps its own pens */
-    return !desk_pens_reset(live, nlive, 1);
+    return !desk_pens_reset(live, nlive, 1, depth);
 }
 
 /* ---- R1.3, R1.20: wbpattern.prefs ---- */
@@ -649,7 +673,9 @@ static long wbfont_body(const unsigned char *buf, long len)
     return -1;
 }
 
-long desk_font_pens(unsigned char *buf, long len)
+/* text_mode: fp_SpecialDrawMode, 0 plain, 1 outline, 2 shadow in BackPen (prefs/font.h names the byte, no values; the values were measured
+ * live, thoughts/shared/research/2026-10-29-amarchy-p1a-prefs-probe.md line 104, OD10). Anything else is plain. */
+long desk_font_pens(unsigned char *buf, long len, int text_mode)
 {
     long b = wbfont_body(buf, len);
     if (b == -2)
@@ -659,7 +685,7 @@ long desk_font_pens(unsigned char *buf, long len)
     buf[b + FP_FRONT] = DK_FG;     /* the label */
     buf[b + FP_BACK] = DK_DARKER;  /* the backdrop */
     buf[b + FP_DRAW] = 0;          /* JAM1 */
-    buf[b + FP_SPECIAL] = 1;       /* outline */
+    buf[b + FP_SPECIAL] = (unsigned char)(text_mode == DK_ICONTEXT_OUTLINE || text_mode == DK_ICONTEXT_SHADOW ? text_mode : DK_ICONTEXT_PLAIN);
     return 1;
 }
 

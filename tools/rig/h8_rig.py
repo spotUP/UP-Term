@@ -27,7 +27,7 @@ TAB, RET, ESC, D = 0x42, 0x44, 0x45, 0x22
 LALT, CTRL = 0x0010, 0x0008
 
 
-SHOTS = os.path.join(paths.RIG, 'shots')
+SHOTS = os.path.join(paths.REPORTS, 'shots')
 
 
 def shot(name):

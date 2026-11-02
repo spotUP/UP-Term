@@ -71,7 +71,7 @@ BASH_EXPECTED = ROOT / "build/bashdiff/expected"
 BASH_SKIP = ROOT / "tests/bash/rig-skip.txt"
 BASH_DIVERGENCES = ROOT / "tests/bash/divergences.txt"
 VTC = paths.RIG / "vtc"
-VERDICTS = paths.RIG / "userland"
+VERDICTS = paths.REPORTS / "userland"
 PORTS = paths.ports()
 COREUTILS = ROOT / "dist/gg/coreutils-5.2.1/bin"
 SYSBIN = PORTS / "build/sysroot/UP-Term"
@@ -518,7 +518,7 @@ def run_watched(pkg, name, limit=90):
             return "ended"
         time.sleep(0.5)
     rig = [sys.executable, str(pathlib.Path(__file__).with_name("rig.py"))]
-    subprocess.run(rig + ["stop"], capture_output=True, timeout=120)
+    subprocess.run(rig + ["stop", "--keep"], capture_output=True, timeout=120)
     subprocess.run(rig + ["start", "--max", "--purpose", PURPOSE], capture_output=True, timeout=400)
     return "HANG (no end in %d s; rig rebooted)" % limit
 

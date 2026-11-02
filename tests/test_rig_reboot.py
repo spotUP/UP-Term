@@ -21,9 +21,12 @@ class RigReboot(unittest.TestCase):
         p("START_ARGS", self.tmp / "start.args")
         p("stop", lambda: self.calls.append("stop"))
         p("fresh_sys_hdf", lambda: self.calls.append("clone"))
-        for name in ("sys_hdf_screenmode", "sys_hdf_no_wasabid", "sys_hdf_no_dopus", "sys_hdf_dopus", "sys_hdf_kit", "sys_hdf_cpu_lib"):
+        for name in ("sys_hdf_screenmode", "sys_hdf_monitors", "sys_hdf_no_wasabid", "sys_hdf_shadows_block", "sys_hdf_no_dopus",
+                     "sys_hdf_dopus", "sys_hdf_kit", "sys_hdf_cpu_lib"):
             p(name, lambda image, _n=name: self.calls.append(_n))
         p("mine", lambda: [])
+        p("gc", lambda: [])   # the start sweep reads the real build/ folders
+        p("refuse_port_clash", lambda port=None: None)   # lsof sees the real machine
         p("setup_config_only", lambda: None)
         p("status", lambda quiet=False: True)
         p("boot_assigns_missing", lambda: [])
@@ -51,7 +54,7 @@ class RigReboot(unittest.TestCase):
     def test_keep_sys_start_boots_the_disk_the_last_run_left(self):
         self.boot(True, ["rig.py", "start", "--keep-sys", "--max"])
         self.assertNotIn("clone", self.calls)
-        self.assertEqual(self.calls, ["sys_hdf_no_wasabid"])   # the stray wasabid block goes; nothing else is rewritten
+        self.assertEqual(self.calls, ["sys_hdf_no_wasabid", "sys_hdf_shadows_block"])   # wasabid and shadow blocks go again; nothing else
         self.assertEqual((self.tmp / "sys.hdf").read_bytes(), b"installed")
         self.assertEqual(json.loads((self.tmp / "start.args").read_text()), ["--max"])   # a later reboot or aga clones again
 

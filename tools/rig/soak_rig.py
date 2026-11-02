@@ -19,7 +19,7 @@ import ami
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = paths.RIG / "vtc"
-OUT = paths.RIG / "shots"
+OUT = paths.REPORTS / "shots"
 
 
 def run(cmd, timeout=120):

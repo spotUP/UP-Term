@@ -124,6 +124,15 @@ If NOT "$unst" EQ ""
       Delete >NIL: T:User-Startup.up-term QUIET
     EndIf
   EndIf
+  ; the RemLib block of S:Startup-Sequence (OS 3.0/3.1, Install's IconLib option; its own output file as below)
+  If EXISTS S:Startup-Sequence
+    Delete >NIL: T:Startup-Sequence.up-term QUIET
+    $unvsh "$unst" "" S:Startup-Sequence
+    If EXISTS T:Startup-Sequence.up-term
+      Copy T:Startup-Sequence.up-term S:Startup-Sequence CLONE QUIET
+      Delete >NIL: T:Startup-Sequence.up-term QUIET
+    EndIf
+  EndIf
   ; the upkg Alias block of S:Shell-Startup (its own output file, so an older
   ; unstartup.sh that ignores the second argument cannot overwrite it)
   If EXISTS S:Shell-Startup
@@ -229,6 +238,10 @@ EndIf
 ; BebboSSH's library, only when Install put it there (its marker)
 If EXISTS ENVARC:up-term/cryptossh
   Delete >NIL: LIBS:libcryptossh.library QUIET
+EndIf
+; SolidWin, only when Install put it there (its marker); the User-Startup block goes with the other UP-Term blocks
+If EXISTS ENVARC:up-term/solidwin
+  Delete >NIL: C:SolidWin QUIET
 EndIf
 ; the Directory Opus filetype, only when Install put it there (its marker) and DOpus5: is assigned
 If EXISTS ENVARC:up-term/dopus-filetype
@@ -404,6 +417,18 @@ If EXISTS "$upixnet.orig"
   Avail >NIL: FLUSH
 EndIf
 Delete >NIL: ENV:upixemul ENV:upixnet QUIET
+; IconLib: the library Install kept before it replaced LIBS:icon.library (the marker is Install's)
+If EXISTS ENVARC:up-term/iconlib
+  If EXISTS LIBS:icon.library.amarchy-backup
+    Copy LIBS:icon.library.amarchy-backup LIBS:icon.library CLONE
+    Delete >NIL: LIBS:icon.library.amarchy-backup QUIET
+    Avail >NIL: FLUSH
+  EndIf
+  ; C:RemLib only when Install put it there (its marker)
+  If EXISTS ENVARC:up-term/remlib
+    Delete >NIL: C:RemLib QUIET
+  EndIf
+EndIf
 UnSet upixemul
 UnSet upixnet
 Delete >NIL: ENVARC:up-term-orig ALL QUIET

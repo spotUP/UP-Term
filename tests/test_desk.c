@@ -7,6 +7,7 @@
 #include <string.h>
 #include "../amarchy/amconf_core.h"
 #include "../amarchy/desk_core.h"
+#include "../amarchy/flat_core.h"
 #include "../handler/be32.h"
 #include "harness.h"
 
@@ -106,7 +107,7 @@ static void test_desk_palette(void)
     CHECK_INT(diff, 0);
     /* the pen lists: R1.19 mapping in both, terminated */
     for (s = 0; s < DK_SLOTS; s++) {
-        CHECK_INT((out[PAL_BODY + 16 + 2 * s] << 8) | out[PAL_BODY + 17 + 2 * s], pens[s]);
+        CHECK_INT((out[PAL_BODY + 16 + 2 * s] << 8) | out[PAL_BODY + 17 + 2 * s], desk_pen_fold(pens[s], 4)); /* FILENAME-PEN: the 4-colour table folds pens >= 4 to DK_BG */
         CHECK_INT((out[PAL_BODY + 80 + 2 * s] << 8) | out[PAL_BODY + 81 + 2 * s], pens[s]);
     }
     CHECK_INT(out[PAL_BODY + 16 + 2 * DK_SLOTS], 0xff);
@@ -152,6 +153,36 @@ static void test_desk_palette(void)
     CHECK_INT(desk_palette(&t, 8, pens, out4, 100), 0);
 }
 
+/* FILENAME-PEN: Workbench draws list-view file names with the fixed DrawInfo pen 1, so pen 1 carries the theme muted colour,
+ * and Amarchy's own dark uses sit on the dark pen. The users are counted from the pen-map builders, not grepped. */
+static void test_desk_filename_pen(void)
+{
+    static unsigned char out[BUF_MAX];
+    unsigned char pens[DK_SLOTS], flat[DK_SLOTS];
+    gtheme t;
+    int s, dark = 0, darkflat = 0, pen1 = 0, pen1flat = 0;
+    probe_theme(&t);
+    desk_pens(pens);
+    desk_pens_flat(flat);
+    CHECK_INT(DK_MUTED, 1);
+    CHECK_INT(DK_DARKER, 5);
+    CHECK_INT(desk_palette(&t, 8, pens, out, sizeof out), DK_PALETTE_SIZE);
+    CHECK(desk_role(&t, 1) == t.muted); /* pen 1 colour is the theme muted colour */
+    CHECK(desk_role(&t, 5) == desk_darker(&t)); /* pen 5 is the dark tone */
+    for (s = 0; s < DK_SLOTS; s++) {
+        dark += pens[s] == DK_DARKER;
+        darkflat += flat[s] == DK_DARKER;
+        pen1 += pens[s] == 1;
+        pen1flat += flat[s] == 1;
+    }
+    CHECK_INT(dark, 3);     /* BLOCK, SHADOW, BARTRIM */
+    CHECK_INT(darkflat, 2); /* the flat map overrides SHADOW with the background */
+    CHECK_INT(pen1, 0);     /* no DrawInfo slot is pen 1: it belongs to Workbench file names */
+    CHECK_INT(pen1flat, 0);
+    CHECK_INT(pens[DK_BLOCK], 5);
+    CHECK_INT(pens[DK_BARTRIM], 5);
+}
+
 /* FLAT-P1-1: the flat pen map differs from the stock one in the shine slot only (shine = background),
  * every slot reaches the PALT pen bytes, and the output equals the goldens made from the two maps */
 static void test_desk_palette_flat(void)
@@ -168,7 +199,6 @@ static void test_desk_palette_flat(void)
     desk_pens(stock);
     desk_pens_flat(flat);
     for (s = 0; s < DK_SLOTS; s++) {
-        CHECK(flat[s] < 4);
         if (s == DK_FILLTEXT) {  /* FLAT-SOLID-FILL: the active title text is bright under the flat map */
             CHECK_INT(flat[s], DK_FG);
             CHECK(stock[s] != flat[s]);
@@ -180,6 +210,19 @@ static void test_desk_palette_flat(void)
             CHECK(stock[s] != flat[s]);
         } else
             CHECK_INT(flat[s], stock[s]);
+    }
+    {   /* FILENAME-PEN: the 4-colour pen map holds pens 0-3 only; the flat map's dark slots (pen 5) fold to DK_BG, in the one builder */
+        long m4 = desk_palette(&t, 4, flat, out, sizeof out);
+        int folded = 0;
+        CHECK_INT(m4, DK_PALETTE_SIZE);
+        for (s = 0; s < DK_SLOTS; s++) {
+            pen = (out[PAL_BODY + 16 + 2 * s] << 8) | out[PAL_BODY + 17 + 2 * s];
+            CHECK(pen < 4);
+            CHECK_INT(pen, flat[s] >= 4 ? DK_BG : flat[s]);
+            if (flat[s] >= 4)
+                folded++;
+        }
+        CHECK(folded > 0); /* BLOCKPEN and BARTRIMPEN are DK_DARKER = 5: the fold really ran */
     }
     {   /* FLAT-SOLID-FILL: under the flat map the inactive glyph pen is visible (!= surface pen) and dim (!= active glyph pen) */
         unsigned char gt, gl, gb;
@@ -203,7 +246,7 @@ static void test_desk_palette_flat(void)
         CHECK(golden_same(out, gold));
         for (s = 0; s < DK_SLOTS; s++) {
             pen = (out[PAL_BODY + 16 + 2 * s] << 8) | out[PAL_BODY + 17 + 2 * s];
-            CHECK_INT(pen, pm[s]);
+            CHECK_INT(pen, desk_pen_fold(pm[s], 4));
             pen = (out[PAL_BODY + 80 + 2 * s] << 8) | out[PAL_BODY + 81 + 2 * s];
             CHECK_INT(pen, pm[s]);
         }
@@ -216,6 +259,39 @@ static void test_desk_palette_flat(void)
  * shine slot, the pen-reset verdict follows the chosen map, and the key alone writes nothing without the palette target. */
 /* FLAT-PENS-LIVE: flat-system-look alone writes the flat pen roles and keeps the user's colours; off restores the stock roles only
  * when the live roles are the flat ones. The reachability twin is the rig (Palette.prefs after the toggle; STATUS flat= rises). */
+static void test_desk_flat_pens_stale_file(void)
+{
+    static unsigned char gold[BUF_MAX], old[BUF_MAX], out[BUF_MAX];
+    unsigned char flat[DK_SLOTS];
+    long n = slurp("tests/data/desk/palette-flat-pen8.prefs", gold, sizeof gold);
+    desk_pens_flat(flat);
+    CHECK(n > 0);
+    CHECK_INT(desk_palette_pens_stale(gold, n, flat), 0);
+    memcpy(old, gold, (size_t)n);
+    old[74] = 0; old[75] = 2;     /* 4-pen table slot 12 (older build: 2), big-endian word at 74 */
+    old[138] = 0; old[139] = 2;   /* 8-pen table slot 12 */
+    CHECK_INT(desk_palette_pens_stale(old, n, flat), 1);
+    CHECK_INT(desk_palette_pens(old, n, flat, out, sizeof out), n);
+    CHECK(!memcmp(out, gold, (size_t)n));
+    CHECK_INT(desk_palette_pens_stale(old, 10, flat), 1);
+}
+
+static void test_desk_flat_start_refresh(void)
+{
+    static unsigned char gold[BUF_MAX], old[BUF_MAX];
+    unsigned char flat[DK_SLOTS];
+    long n = slurp("tests/data/desk/palette-flat-pen8.prefs", gold, sizeof gold);
+    desk_pens_flat(flat);
+    CHECK(n > 0);
+    memcpy(old, gold, (size_t)n);
+    old[74] = 0; old[75] = 2;
+    old[138] = 0; old[139] = 2;
+    CHECK_INT(desk_flat_start_refresh(1, old, n, flat), 1);   /* flat on + stale file: write */
+    CHECK_INT(desk_flat_start_refresh(1, gold, n, flat), 0);  /* flat on + current file: no write */
+    CHECK_INT(desk_flat_start_refresh(0, old, n, flat), 0);   /* flat off: no write */
+    CHECK_INT(desk_flat_start_refresh(1, old, -1, flat), 0);  /* no file read: no write */
+}
+
 static void test_desk_flat_pens_live(void)
 {
     static unsigned char cur[BUF_MAX], out[BUF_MAX], got[BUF_MAX];
@@ -238,15 +314,15 @@ static void test_desk_flat_pens_live(void)
     CHECK_INT(out[26 + 8 + 144 + 8 * 2 + 5], 0x22);  /* colour 2 green 0x2 -> 0x2222 */
     for (i = 0; i < DK_SLOTS; i++)
         live[i] = stock[i];
-    CHECK_INT(desk_pens_sync(1, live, DK_SLOTS, pens), 1);       /* flat on, stock live: write */
+    CHECK_INT(desk_pens_sync(1, live, DK_SLOTS, pens, 3), 1);       /* flat on, stock live: write */
     CHECK(!memcmp(pens, flat, DK_SLOTS));
-    CHECK_INT(desk_pens_sync(0, live, DK_SLOTS, pens), 0);       /* flat off, never flat: leave the system's pens */
+    CHECK_INT(desk_pens_sync(0, live, DK_SLOTS, pens, 3), 0);       /* flat off, never flat: leave the system's pens */
     for (i = 0; i < DK_SLOTS; i++)
         live[i] = flat[i];
-    CHECK_INT(desk_pens_sync(1, live, DK_SLOTS, pens), 0);       /* already flat: no reset */
-    CHECK_INT(desk_pens_sync(0, live, DK_SLOTS, pens), 1);       /* flat off, flat live: restore */
+    CHECK_INT(desk_pens_sync(1, live, DK_SLOTS, pens, 3), 0);       /* already flat: no reset */
+    CHECK_INT(desk_pens_sync(0, live, DK_SLOTS, pens, 3), 1);       /* flat off, flat live: restore */
     CHECK(!memcmp(pens, stock, DK_SLOTS));
-    CHECK_INT(desk_pens_sync(1, 0, 0, pens), 0);
+    CHECK_INT(desk_pens_sync(1, 0, 0, pens, 3), 0);
 }
 
 /* AM-ICON-NOBORDER: flat-system-look sets the WBNC wbp_Borderless of Workbench.prefs to 1 and off puts the saved value back. The reachability twin
@@ -402,8 +478,8 @@ static void test_desk_flat_pens_key(void)
         /* the reset verdict: a live screen holding this map needs no reset, the other map does */
         for (s = 0; s < DK_SLOTS; s++)
             live[s] = want[s];
-        CHECK_INT(desk_pens_reset(live, DK_SLOTS, k == 0), 0);
-        CHECK_INT(desk_pens_reset(live, DK_SLOTS, k != 0), 1);
+        CHECK_INT(desk_pens_reset(live, DK_SLOTS, k == 0, 3), 0);
+        CHECK_INT(desk_pens_reset(live, DK_SLOTS, k != 0, 3), 1);
     }
     {
         am_prefs p;
@@ -454,11 +530,11 @@ static void test_desk_reset_done(void)
         same[i] = want[i];
         other[i] = (unsigned short)(want[i] + 1);
     }
-    CHECK_INT(desk_reset_done(&a, 0, 0, 0, 0), 0);             /* screen closed mid-reset */
-    CHECK_INT(desk_reset_done(&a, 0, other, DK_SLOTS, 0), 0);
-    CHECK_INT(desk_reset_done(&a, &a, other, DK_SLOTS, 0), 0); /* same screen, old pens: not yet */
-    CHECK_INT(desk_reset_done(&a, &a, same, DK_SLOTS, 0), 1);  /* in place, desk pens */
-    CHECK_INT(desk_reset_done(&a, &b, other, DK_SLOTS, 0), 1); /* a new screen (3.1) */
+    CHECK_INT(desk_reset_done(&a, 0, 0, 0, 0, 3), 0);             /* screen closed mid-reset */
+    CHECK_INT(desk_reset_done(&a, 0, other, DK_SLOTS, 0, 3), 0);
+    CHECK_INT(desk_reset_done(&a, &a, other, DK_SLOTS, 0, 3), 0); /* same screen, old pens: not yet */
+    CHECK_INT(desk_reset_done(&a, &a, same, DK_SLOTS, 0, 3), 1);  /* in place, desk pens */
+    CHECK_INT(desk_reset_done(&a, &b, other, DK_SLOTS, 0, 3), 1); /* a new screen (3.1) */
 }
 
 static void test_desk_pens_reset(void)
@@ -469,17 +545,73 @@ static void test_desk_pens_reset(void)
     desk_pens(want);
     for (i = 0; i < DK_SLOTS; i++)
         cur[i] = want[i];
-    CHECK_INT(desk_pens_reset(cur, DK_SLOTS, 0), 0);   /* same pens: colours load live, no reset */
-    CHECK_INT(desk_pens_reset(cur, DK_SLOTS + 2, 0), 0);
+    CHECK_INT(desk_pens_reset(cur, DK_SLOTS, 0, 3), 0);   /* same pens: colours load live, no reset */
+    CHECK_INT(desk_pens_reset(cur, DK_SLOTS + 2, 0, 3), 0);
     for (i = 0; i < DK_SLOTS; i++) {                /* knob: every slot moves the verdict */
         cur[i] ^= 1;
-        CHECK_INT(desk_pens_reset(cur, DK_SLOTS, 0), 1);
+        CHECK_INT(desk_pens_reset(cur, DK_SLOTS, 0, 3), 1);
         if (i > 0)
-            CHECK_INT(desk_pens_reset(cur, i, 0), 0);  /* slots beyond dri_NumPens are not compared */
+            CHECK_INT(desk_pens_reset(cur, i, 0, 3), 0);  /* slots beyond dri_NumPens are not compared */
         cur[i] ^= 1;
     }
-    CHECK_INT(desk_pens_reset(cur, 0, 0), 1);          /* no DrawInfo: unknown, assume a reset */
-    CHECK_INT(desk_pens_reset(0, DK_SLOTS, 0), 1);
+    CHECK_INT(desk_pens_reset(cur, 0, 0, 3), 1);          /* no DrawInfo: unknown, assume a reset */
+    CHECK_INT(desk_pens_reset(0, DK_SLOTS, 0, 3), 1);
+}
+
+/* FILENAME-PEN follow-up: a 4-colour (depth 2) screen holds the folded pen map, so the verdict compares against the folded map */
+static void test_desk_pens_reset_folded(void)
+{
+    int flat;
+    for (flat = 0; flat < 2; flat++) {
+        unsigned char want[DK_SLOTS];
+        unsigned short folded[DK_SLOTS], plain[DK_SLOTS], other[DK_SLOTS];
+        int i;
+        desk_pens_for(flat, want);
+        for (i = 0; i < DK_SLOTS; i++) {
+            folded[i] = (unsigned short)desk_pen_fold(want[i], 4);
+            plain[i] = want[i];
+            other[i] = (unsigned short)(folded[i] + 1);
+        }
+        CHECK_INT(desk_pens_reset(folded, DK_SLOTS, flat, 2), 0);   /* live folded map at depth 2: no reset */
+        CHECK_INT(desk_pens_reset(other, DK_SLOTS, flat, 2), 1);
+        CHECK_INT(desk_reset_done(0, &flat, folded, DK_SLOTS, flat, 2), 1);
+        CHECK_INT(desk_reset_done(&flat, &flat, other, DK_SLOTS, flat, 2), 0);
+        CHECK_INT(desk_pens_reset(plain, DK_SLOTS, flat, 3), 0);    /* depth 3: the map as is */
+        CHECK_INT(desk_pens_reset(plain, DK_SLOTS, flat, 0), 0);    /* unknown depth: no folding */
+        if (flat)
+            CHECK_INT(desk_pens_sync(1, folded, DK_SLOTS, want, 2), 0);   /* already flat on a 4-colour screen: no write */
+    }
+    {
+        unsigned char want[DK_SLOTS];
+        unsigned short plain[DK_SLOTS];
+        int i, diff = 0;
+        desk_pens_for(0, want);
+        for (i = 0; i < DK_SLOTS; i++) {
+            plain[i] = want[i];
+            diff |= want[i] >= 4;
+        }
+        CHECK(diff);                                                /* the map has pens >= 4: the unfolded one is wrong at depth 2 */
+        CHECK_INT(desk_pens_reset(plain, DK_SLOTS, 0, 2), 1);
+    }
+}
+
+/* KNOB-PEN: on every shipped theme the knob mix lies between the surface and the muted text colour per channel and equals neither */
+static void test_knob_colour(void)
+{
+    gtheme all[SHIPPED_MAX];
+    int n = load_all(all, SHIPPED_MAX), i;
+    CHECK(n > 0);
+    for (i = 0; i < n; i++) {
+        unsigned long k = flat_knob_colour(all[i].bg, all[i].muted);
+        int sh;
+        for (sh = 16; sh >= 0; sh -= 8) {
+            int a = (int)((all[i].bg >> sh) & 255), b = (int)((all[i].muted >> sh) & 255), c = (int)((k >> sh) & 255);
+            CHECK(c >= (a < b ? a : b) && c <= (a < b ? b : a));
+        }
+        CHECK(k != all[i].bg && k != all[i].muted);
+        if (!strcmp(all[i].name, "vantablack"))
+            CHECK_INT(k, 0x494949UL);
+    }
 }
 
 static void test_desk_darker(void)
@@ -515,10 +647,11 @@ static void test_flat_colour_pens(void)
     CHECK_INT(n, 23);
     for (depth = 3; depth <= 8; depth++) {
         CHECK(desk_backdrop_pen_at(depth) != DK_MUTED);
+        CHECK(desk_backdrop_pen_at(depth) != DK_DARKER);
         CHECK(desk_backdrop_pen_at(depth) != DK_SELECTION);
         CHECK(desk_backdrop_pen_at(depth) < 8);
     }
-    CHECK_INT(desk_backdrop_pen_at(2), DK_DARKER); /* below 3 planes no pen is free: the shared darker pen holds the same tone */
+    CHECK_INT(desk_backdrop_pen_at(2), DK_BG); /* below 3 planes pen 5 is off the screen: it folds to DK_BG like the 4-colour pen map */
     for (i = 0; i < n; i++) {
         uc_u32 sel = desk_selection(&all[i]);
         if (desk_contrast(all[i].selection, all[i].bg) >= 150)
@@ -560,6 +693,10 @@ static void test_desk_backdrop(void)
                 desk_pens(pens);
                 CHECK_INT(desk_palette(&all[i], nc, pens, f, sizeof f), DK_PALETTE_SIZE);
                 bg = pal_pen(f, DK_BG, bits);
+                if (nc == 4) {  /* FILENAME-PEN: pen 5 is off a 4-colour screen, the pen maps fold it to DK_BG: no separate backdrop colour exists */
+                    CHECK_INT(desk_pen_fold(DK_DARKER, nc), DK_BG);
+                    continue;
+                }
                 dk = pal_pen(f, DK_DARKER, bits);
                 if (dk == bg || (!blk && desk_luma(dk) >= desk_luma(bg)) || (blk && desk_luma(dk) <= desk_luma(bg)))
                     printf("backdrop theme %s colours %d bits %d: bg %06lx backdrop %06lx\n", all[i].name, nc,
@@ -705,18 +842,18 @@ static void test_flat_reopen_keeps_theme_on_pens47(void)
         CHECK_INT((long)c[i], (long)desk_pen_colour(&t, 4 + i, 1));
     }
     CHECK_INT((long)c[3], 0x222222L);            /* pen 7: the backdrop's own pen */
-    CHECK_INT((long)c[1], (long)t.muted);        /* pen 5 keeps the muted text colour */
+    CHECK_INT((long)c[1], 0x222222L);            /* pen 5 keeps the dark tone (DK_DARKER) */
     CHECK((long)c[1] != 0xff00ffL);
     /* the wallpaper is the desktop theme's: pen 5 keeps its role colour */
     CHECK_INT(desk_live_follow(&t, 1, 1u << DT_WBPATTERN, 8, lp, c), 4);
-    CHECK_INT((long)c[1], (long)t.muted);
+    CHECK_INT((long)c[1], 0x222222L);
     /* PEN255: flat on with the desktop-theme WBPattern part (and palette part) also on: the backdrop pen is still the dark tone */
     CHECK_INT(desk_live_follow(&t, 1, 1u << DT_WBPATTERN, 8, lp, c), 4);
     CHECK_INT((long)c[3], 0x222222L);
-    CHECK_INT((long)c[1], (long)t.muted);
+    CHECK_INT((long)c[1], 0x222222L);
     CHECK_INT(desk_live_follow(&t, 1, (1u << DT_WBPATTERN) | (1u << DT_PALETTE), 8, lp, c), 4);
     CHECK_INT((long)c[3], 0x222222L);
-    CHECK_INT((long)c[1], (long)t.muted);
+    CHECK_INT((long)c[1], 0x222222L);
     /* the desktop-theme palette alone also puts the theme on the live pens */
     CHECK_INT(desk_live_follow(&t, 0, 1u << DT_PALETTE, 8, lp, c), 4);
     /* flat off and no theme palette: the new screen keeps the user's colours; depth 3 has no live pens; no theme, nothing */
@@ -765,13 +902,13 @@ static void test_flat_pick_leaves_pen5_magenta_on_deep_workbench(void)
     CHECK_INT(m, n);
     for (p = 0; p < 4; p++)
         CHECK_INT(desk_palette_rgb(out, m, p, 8), (long)desk_role(&t, p));
-    CHECK_INT(desk_palette_rgb(out, m, 1, 8), 0x222222L);
+    CHECK_INT(desk_palette_rgb(out, m, 1, 8), (long)t.muted); /* FILENAME-PEN: pen 1 is the muted text colour */
     for (p = 252; p < 255; p++)
         CHECK_INT(desk_palette_rgb(out, m, p, 8), desk_palette_rgb(cur, n, p, 8));
     CHECK_INT(desk_palette_rgb(out, m, 255, 8), 0x222222L); /* FLAT-VIS-1: the backdrop screen pen takes the theme dark */
     CHECK_INT(desk_pen_colour(&t, desk_backdrop_pen(), 1), 0x222222L);
     CHECK_INT(desk_pen_colour(&t, 4, 1), (long)desk_selection(&t));
-    CHECK_INT(desk_pen_colour(&t, 5, 1), (long)t.muted); /* FLAT-COLOUR-OVERHAUL: the muted pen keeps the muted colour under the own backdrop */
+    CHECK_INT(desk_pen_colour(&t, 5, 1), 0x222222L); /* FILENAME-PEN: pen 5 is the dark tone under the own backdrop */
     CHECK(desk_backdrop_pen() != 5);
     CHECK_INT(desk_pen_colour(&t, desk_backdrop_pen(), 0), (long)t.muted);
     /* depth 3: the same pick reaches pens 4-7 through the file, the backdrop pen gets the theme dark */
@@ -779,7 +916,7 @@ static void test_flat_pick_leaves_pen5_magenta_on_deep_workbench(void)
     m = desk_palette_theme(cur, n, &t, 3, 1, out, sizeof out);
     CHECK_INT(desk_palette_rgb(out, m, desk_backdrop_pen(), 3), 0x222222L);
     CHECK_INT(desk_palette_rgb(out, m, 4, 3), (long)desk_selection(&t));
-    CHECK_INT(desk_palette_rgb(out, m, 5, 3), (long)t.muted);
+    CHECK_INT(desk_palette_rgb(out, m, 5, 3), 0x222222L);
     CHECK_INT(desk_palette_theme(cur, 10, &t, 3, 1, out, sizeof out), 0);
 }
 
@@ -880,7 +1017,7 @@ static void test_desk_font_default(void)
     static unsigned char d[BUF_MAX];
     CHECK_INT(desk_font_default(d, sizeof d), 518);
     CHECK_INT(desk_font_default(d, 100), 0);
-    CHECK_INT(desk_font_pens(d, 518), 1); /* a valid font.prefs with one WBFONT chunk */
+    CHECK_INT(desk_font_pens(d, 518, DK_ICONTEXT_OUTLINE), 1); /* a valid font.prefs with one WBFONT chunk */
     CHECK_STR((const char *)d + 26 + 8 + 28, "topaz.font");
     CHECK_INT(d[26 + 8 + 15], 0);
     CHECK_INT(d[26 + 164 + 8 + 15], 1);
@@ -900,16 +1037,24 @@ static void test_desk_font(void)
             wb = 26 + 8 + k * 164;
     CHECK(wb > 0);
     memcpy(out, gold, (size_t)n);
-    CHECK_INT(desk_font_pens(out, n), 1);
+    CHECK_INT(desk_font_pens(out, n, DK_ICONTEXT_OUTLINE), 1);
     CHECK_INT(out[wb + 16], DK_FG);
     CHECK_INT(out[wb + 17], DK_DARKER);
     CHECK_INT(out[wb + 18], 0);
     CHECK_INT(out[wb + 19], 1);
+    /* FILENAME-PEN: icon-text plain/outline/shadow is FP_SPECIAL 0/1/2; anything else is plain */
+    CHECK_INT(desk_font_pens(out, n, DK_ICONTEXT_PLAIN), 1);
+    CHECK_INT(out[wb + 19], 0);
+    CHECK_INT(desk_font_pens(out, n, DK_ICONTEXT_SHADOW), 1);
+    CHECK_INT(out[wb + 19], 2);
+    CHECK_INT(desk_font_pens(out, n, 9), 1);
+    CHECK_INT(out[wb + 19], 0);
+    CHECK_INT(desk_font_pens(out, n, DK_ICONTEXT_OUTLINE), 1);
     CHECK(out[wb + 16] != out[wb + 17]); /* label pen != backdrop pen */
     for (i = 0; i < n; i++)
         if (out[i] != gold[i])
             CHECK(i >= wb + 16 && i <= wb + 19);
-    CHECK_INT(desk_font_pens(out, 10), -1);
+    CHECK_INT(desk_font_pens(out, 10, DK_ICONTEXT_OUTLINE), -1);
     /* font=: an existing font is written, an unknown one leaves the file untouched */
     memcpy(out, gold, (size_t)n);
     strcpy(t.font, "topaz.font");
@@ -1321,17 +1466,22 @@ void suite_desk(void)
     test_desk_icons_state();
     test_desk_palette();
     test_desk_palette_flat();
+    test_desk_filename_pen();
     test_desk_live_baseline_ignores_menu();
     test_desk_flat_pens_key();
+    test_desk_flat_pens_stale_file();
+    test_desk_flat_start_refresh();
     test_desk_flat_pens_live();
     test_desk_wbborder();
     test_desk_wbborder_absent();
     test_desk_wbborder_keeps_tweaks();
     test_desk_wbgauge();
     test_desk_pens_reset();
+    test_desk_pens_reset_folded();
     test_desk_reset_done();
     test_desk_iprefs_idle();
     test_desk_darker();
+    test_knob_colour();
     test_flat_colour_pens();
     test_desk_backdrop();
     test_desk_wbpattern();

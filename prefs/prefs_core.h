@@ -59,6 +59,7 @@ typedef struct prefs_fields {
     int am_flatgad;                 /* flat-window-gadgets: index of off, on */
     int am_flatsize;                /* flat-border-size: index of stock, thin */
     int am_iconstyle;               /* icon-style: index of filled, outline */
+    int am_icontext;                /* icon-text: index of plain, outline, shadow */
     int am_borderblank;             /* border-blank: index of off, on */
     int am_mode;                    /* menu-style: UC_MENU_* (graphical = drawn, text, minimal) */
     char kcmode[UC_MAX_VALUE]; /* KingCON's FNCMODE letters (W L B C S); blank: W */
@@ -66,6 +67,7 @@ typedef struct prefs_fields {
     int kccache;    /* KingCON's directory cache (DIRCACHE; on by default) */
     int amiga_keys; /* amiga-keys: Shift+Left / Right send Home / End (on by default) */
     int outline_aa; /* outline-antialias: outline glyphs drawn smoothed (on by default) */
+    int blend_dest; /* outline-blend-dest: smoothed outline edges blend with the dithered background behind them (on by default) */
     int dither;     /* dither: few-pen screens dither colours no pen shows closely (W-T9; on by default) */
     int pad_extend; /* padding-color: extend (W-T14) -- the strips beside the grid take the edge cells' colour; background is the default */
     int hlcat;      /* highlight-cat: vsh's cat is hl -p (on by default; see prefs_hlcat_text) */

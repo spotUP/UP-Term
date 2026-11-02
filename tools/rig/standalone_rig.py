@@ -65,7 +65,7 @@ ROOT = paths.VTCON
 RIG = paths.RIG
 VTC = RIG / 'vtc'
 SA = VTC / 'sa'
-OUT = RIG / 'standalone'
+OUT = paths.REPORTS / 'standalone'
 SHOTS = OUT / 'shots'
 RET, ESC, UP, BS = tw.RET, tw.ESC, 0x4C, tw.BS
 CTRL = tw.CTRL
@@ -566,7 +566,7 @@ def type_slowly(s):
 
 class Fixture:
     def __init__(self, delay=0.05):
-        self.dump = RIG / 'standalone_dump'
+        self.dump = paths.reports_dir() / 'standalone_dump'
         shutil.rmtree(self.dump, ignore_errors=True)
         self.dump.mkdir(parents=True)
         self.log = OUT / 'fixture.log'

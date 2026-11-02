@@ -83,6 +83,19 @@ RIG = RIG_HOME / RIG_NAME
 # into the main checkout (2026-10-19: tutorial_rig wrote into a peer's build/rig4).
 RESULTS = VTCON / "build" / RIG_NAME
 
+# Kept output (reports, screenshots, per-script verdicts) is NOT under RIG: `rig.py stop` deletes build/rig<N> for
+# N > 1 (8df99f0b, s50), so a script's evidence written there vanished with the rig. build/rig-reports/rig<N> survives
+# a stop and a clear; RIG holds only the disposable scratch (sys.hdf, vtc/, boot/, configs, emulator logs).
+REPORTS = RIG_HOME / "rig-reports" / RIG_NAME
+
+
+def reports_dir(*parts):
+    """REPORTS (or a subdirectory of it) after creating it. Every script that writes kept output calls this instead
+    of joining REPORTS itself: a rig started before the folder existed has no build/rig-reports/rig<N>/ yet."""
+    d = REPORTS.joinpath(*parts)
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
 # FS-UAE's own log (option logs_dir) goes inside the rig's dir, never into the shared
 # ~/Documents/FS-UAE/Cache/Logs/fs-uae.log.txt: all rigs wrote that one file and it reached 7.9 GB and
 # filled the Mac's disk (2026-10-17). The size cap is enforced by cap_fsuae_log(), called at rig start and

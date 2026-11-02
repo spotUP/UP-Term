@@ -16,7 +16,7 @@ import rig
 
 class StartExit(unittest.TestCase):
     def test_start_exits_non_zero_after_the_last_failed_boot(self):
-        names = ("RIG", "OS", "mine", "START_ARGS", "setup_config_only", "status", "stop", "time", "subprocess")
+        names = ("RIG", "OS", "mine", "START_ARGS", "setup_config_only", "status", "stop", "time", "subprocess", "guard_stale_base", "gc", "refuse_port_clash")
         saved = {n: getattr(rig, n) for n in names}
         saved_paths = (rig.paths.cap_fsuae_log, rig.paths.FSUAE)
         stops = []
@@ -44,6 +44,9 @@ class StartExit(unittest.TestCase):
                 rig.RIG = pathlib.Path(d)
                 rig.OS = "32"   # skips the system disk clone
                 rig.mine = lambda: False
+                rig.guard_stale_base = lambda *a, **k: None   # git checks against the real checkout
+                rig.gc = lambda: []   # the start sweep reads the real build/ folders
+                rig.refuse_port_clash = lambda port=None: None   # lsof sees the real machine
                 rig.START_ARGS = rig.RIG / "start_args.json"
                 rig.setup_config_only = lambda: None
                 rig.status = lambda quiet=False: False   # wasabid never answers

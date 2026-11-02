@@ -5,9 +5,8 @@ the menu; --term gives the full menu. Host-only: python3 tests/test_amarchy_geom
 import pathlib, subprocess, sys, tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-SRC = ['tools/rig/amarchy_geom.c', 'amarchy/menu_geom.c', 'amarchy/menu_core.c', 'amarchy/menu_tree.c',
-       'amarchy/menu_icon.c', 'config/keymap.c', 'config/upconf_rows.c', 'render/emoji.c',
-       'prefs/settings_def.c', 'prefs/prefs_core.c', 'config/upconf.c', 'handler/kcmode.c', 'handler/slash.c', 'amarchy/amconf_keys.c']
+sys.path.insert(0, str(ROOT / 'tools/rig'))
+from amarchy_geom_src import GEOM_SRC as SRC  # noqa: E402
 
 
 def levels(exe, *flag):

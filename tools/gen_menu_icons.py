@@ -11,6 +11,7 @@ all of them are page "E0". The glyph is fitted to the square, centred, whatever 
 
 usage: gen_menu_icons.py <dist/menu-icons> <SymbolsNerdFontMono.ttf> <out.inc>
 The include defines mi_page_data[] (the page file) and mi_ids[] (the node ids, in glyph order)."""
+import math
 import pathlib
 import re
 import sys
@@ -65,17 +66,99 @@ class Flatten(BasePen):
     _endPath = _closePath
 
 
-def raster(font, cp):
-    """(RES, RES, [RGBA]) of the glyph: white, alpha the coverage, fitted and centred."""
+STEM_FLAT = 0.01       # a near-horizontal edge: dy within this fraction of the em (RES)
+STEM_RUN = 0.05        # ... over a run of at least this fraction
+STEM_GAP = 1.5         # a stem is at most this many target pixels high
+
+
+def _inside(polys, x, y):
+    """True when (x, y) is inside the glyph (non-zero winding)."""
+    wind = 0
+    for poly in polys:
+        for a, b in zip(poly, poly[1:] + poly[:1]):
+            if (a[1] <= y < b[1]) or (b[1] <= y < a[1]):
+                if a[0] + (y - a[1]) * (b[0] - a[0]) / (b[1] - a[1]) > x:
+                    wind += 1 if b[1] > a[1] else -1
+    return wind != 0
+
+
+def _snap_centre(v, rows, height):
+    """Centre of a stem of `height` whole target rows nearest to v: a pixel centre for an odd height, a row
+    boundary for an even one; the nearer one is picked by the half of the image v lies in."""
+    off = 0.5 if height % 2 else 0.0
+    return (math.floor(v - off) if v < rows / 2.0 else math.ceil(v - off)) + off
+
+
+def fit_stems_y(polys, rows):
+    """Light autohint, y only, for a glyph baked at RES x RES and then averaged to `rows` rows (rows != RES).
+    polys: outline polygons in raster pixels, y down. A stem is a pair of near-horizontal edges of opposite
+    direction, STEM_GAP target pixels or less apart, with filled glyph between them. Each stem is snapped to whole
+    target rows (height round(height), at least 1; centre per _snap_centre) so a thin bar lands on full-alpha
+    rows instead of two half-alpha ones; every other point follows by piecewise-linear interpolation between the
+    snapped stem edges, so curves stay continuous. x is not touched. Returns new polygons."""
+    k = rows / float(RES)                                 # raster y -> target rows
+    edges = []                                            # (y mean, x lo, x hi, dir, poly, index of a)
+    for pi, poly in enumerate(polys):
+        for i, (a, b) in enumerate(zip(poly, poly[1:] + poly[:1])):
+            if abs(a[1] - b[1]) <= STEM_FLAT * RES and abs(a[0] - b[0]) >= STEM_RUN * RES:
+                edges.append(((a[1] + b[1]) / 2.0, min(a[0], b[0]), max(a[0], b[0]), 1 if b[0] > a[0] else -1, pi, i))
+    stems = {}                                            # (top key, bottom key) -> [top y, bottom y, edge list]
+    for t in edges:
+        for u in edges:
+            gap = (u[0] - t[0]) * k
+            lo, hi = max(t[1], u[1]), min(t[2], u[2])
+            if not 0 < gap <= STEM_GAP or t[3] == u[3] or hi - lo < STEM_RUN * RES / 2:
+                continue
+            if not _inside(polys, (lo + hi) / 2.0, (t[0] + u[0]) / 2.0):
+                continue
+            st = stems.setdefault((round(t[0] * k * 20), round(u[0] * k * 20)), [t[0] * k, u[0] * k, []])
+            st[2] += [t, u]
+    anchors = {0.0: 0.0, float(rows): float(rows)}        # old y -> new y, target rows
+    moved = {}                                            # (poly, point index) -> new y, raster pixels
+    for yt, yb, es in sorted(stems.values()):
+        height = max(1, int((yb - yt) + 0.5))
+        c = _snap_centre((yt + yb) / 2.0, rows, height)
+        nt, nb = c - height / 2.0, c + height / 2.0
+        if yt in anchors or yb in anchors or any(not (a < yt) == (n < nt) or not (a < yb) == (n < nb) for a, n in anchors.items()):
+            continue                                      # would cross or share an earlier stem's edge
+        anchors[yt], anchors[yb] = nt, nb
+        for e in es:
+            ny = (nt if abs(e[0] * k - yt) < abs(e[0] * k - yb) else nb) / k
+            n = len(polys[e[4]])
+            moved[(e[4], e[5])] = moved[(e[4], (e[5] + 1) % n)] = ny
+    if len(anchors) == 2:
+        return polys
+    old = sorted(anchors)
+    new = [anchors[o] for o in old]
+
+    def f(y):
+        y *= k
+        for i in range(len(old) - 1):
+            if y <= old[i + 1]:
+                return (new[i] + (y - old[i]) * (new[i + 1] - new[i]) / (old[i + 1] - old[i])) / k
+        return y / k + (new[-1] - old[-1]) / k
+
+    return [[(x, moved.get((pi, i), f(y))) for i, (x, y) in enumerate(poly)] for pi, poly in enumerate(polys)]
+
+
+def raster(font, cp, fit_rows=None):
+    """(RES, RES, [RGBA]) of the glyph: white, alpha the coverage, fitted and centred. fit_rows: the height the
+    raster will be averaged to when that is not RES (the tall icon variants); the horizontal stems are then
+    snapped to whole target rows (fit_stems_y). None leaves the outline as drawn."""
     gs = font.getGlyphSet()
     name = font.getBestCmap().get(cp)
     if name is None:
         raise SystemExit("U+%04X is not in the font" % cp)
     pen = Flatten(gs)
     gs[name].draw(pen)
-    pts = [p for poly in pen.polys for p in poly]
-    if not pts:
+    if not [p for poly in pen.polys for p in poly]:
         raise SystemExit("U+%04X has no outline" % cp)
+    return raster_polys(pen.polys, fit_rows)
+
+
+def raster_polys(polys, fit_rows=None):
+    """raster() of outline polygons (font units, y up)."""
+    pts = [p for poly in polys for p in poly]
     x0, x1 = min(p[0] for p in pts), max(p[0] for p in pts)
     y0, y1 = min(p[1] for p in pts), max(p[1] for p in pts)
     span = max(x1 - x0, y1 - y0)
@@ -83,10 +166,12 @@ def raster(font, cp):
     ox = (RES - (x1 - x0) * scale) / 2 - x0 * scale
     oy = (RES - (y1 - y0) * scale) / 2 - y0 * scale
     n = RES * SUB
+    q = [[(x * scale + ox, RES - (y * scale + oy)) for x, y in poly] for poly in polys]   # y down
+    if fit_rows:
+        q = fit_stems_y(q, fit_rows)
     edges = []
-    for poly in pen.polys:
-        q = [(x * scale + ox, RES - (y * scale + oy)) for x, y in poly]   # y down
-        for a, b in zip(q, q[1:] + q[:1]):
+    for poly in q:
+        for a, b in zip(poly, poly[1:] + poly[:1]):
             if a[1] != b[1]:
                 edges.append((a, b))
     cover = [0] * (RES * RES)

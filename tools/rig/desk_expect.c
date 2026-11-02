@@ -176,7 +176,7 @@ int main(int argc, char **argv)
             return 3;
     } else if (!strcmp(argv[2], "font") && argc > 4) {
         n = strcmp(argv[3], "-") ? slurp(argv[3], buf, sizeof buf) : desk_font_default(buf, sizeof buf);
-        if (n < 0 || desk_font_pens(buf, n) < 0 || desk_font_name(&th, buf, n, exists, argv[4]) < 0)
+        if (n < 0 || desk_font_pens(buf, n, DK_ICONTEXT_OUTLINE) < 0 || desk_font_name(&th, buf, n, exists, argv[4]) < 0)
             return 3;
     } else
         return 2;

@@ -78,7 +78,7 @@ def make_feed():
 
 def main(argv):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--out', default=str(paths.RIG / 'upkg-browse-launch'))
+    ap.add_argument('--out', default=str(paths.REPORTS / 'upkg-browse-launch'))
     out = pathlib.Path(ap.parse_args(argv).out)
     out.mkdir(parents=True, exist_ok=True)
     for need in (BIN / 'upkg', BIN / 'upkg-ui', BIN / 'nano', PROBE):

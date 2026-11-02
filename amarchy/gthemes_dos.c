@@ -46,7 +46,7 @@ static void wb_pens_apply(const gtheme *th)
     }
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
     GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
-    if (IntuitionBase && GfxBase && (scr = LockPubScreen((STRPTR)"Workbench")) != 0) {
+    if (IntuitionBase && GfxBase && (scr = ipd_lock_wb_screen()) != 0) {
         for (i = 0; i < WB_PENS; i++)
             SetRGB32(&scr->ViewPort, (ULONG)i, ((rgb[i] >> 16) & 255) * 0x01010101UL,
                      ((rgb[i] >> 8) & 255) * 0x01010101UL, (rgb[i] & 255) * 0x01010101UL);
@@ -154,7 +154,7 @@ static void desk_preview_theme(const gtheme *th)
     struct GfxBase *GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
     struct Screen *scr;
     pv_ctx c;
-    if (IntuitionBase && GfxBase && (scr = LockPubScreen((STRPTR)"Workbench")) != 0) {
+    if (IntuitionBase && GfxBase && (scr = ipd_lock_wb_screen()) != 0) {
         int depth = scr->RastPort.BitMap->Depth;
         c.scr = scr;
         c.gfx = GfxBase;

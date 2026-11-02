@@ -18,7 +18,7 @@ import ami, condev_rig as c
 import wasabi as rigwasabi
 import stage_rig, tabstate
 
-OUT = pathlib.Path(paths.RIG) / 'amarchy'
+OUT = pathlib.Path(paths.REPORTS) / 'amarchy'
 LAMIGA = 0x40                       # IEQUALIFIER_LCOMMAND
 LSHIFT = 0x01                       # IEQUALIFIER_LSHIFT
 ALT = 0x10                          # IEQUALIFIER_LALT
@@ -28,7 +28,7 @@ ALT = 0x10                          # IEQUALIFIER_LALT
 TEXT_MENU = LAMIGA
 RAW = {'up': 0x4C, 'down': 0x4D, 'right': 0x4E, 't': 0x14, 'h': 0x25, 'k': 0x27, 'space': 0x40, 'esc': 0x45, 'return': 0x44, 'o': 0x18, 'd': 0x22}
 KEYMAP = pathlib.Path(__file__).resolve().parents[2] / 'dist' / 'keymap'
-TIMING = pathlib.Path(paths.RIG) / 'amarchy' / 'menu-timing.txt'
+TIMING = paths.reports_dir('amarchy') / 'menu-timing.txt'
 
 
 def km_hits():
@@ -2283,7 +2283,7 @@ def ensure_os32_rig():
     rig = [sys.executable, '-I', str(ROOT / 'tools/rig/rig.py')]
     new = os32_start_args(args or ['--max'])
     print('amarchy_menu_rig: restarting rig %d on OS 3.2: rig.py start %s' % (paths.RIG_N, ' '.join(new)), flush=True)
-    subprocess.run(rig + ['stop'], check=True)
+    subprocess.run(rig + ['stop', '--keep'], check=True)
     subprocess.run(rig + ['start'] + new, check=True)
     return '' if is_os32(start_args()) else 'rig %d did not come up on OS 3.2' % paths.RIG_N
 

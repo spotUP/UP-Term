@@ -33,7 +33,7 @@ class UhcCatalogue(unittest.TestCase):
 
     def test_cleanup_removes_assign_and_drawer(self):
         _, undo, _ = self.stage()
-        self.assertEqual(undo[0], "Assign UHC: REMOVE")
+        self.assertEqual(undo[0], "Assign UHC: SYS:UHC REMOVE")
         self.assertTrue(undo[1].startswith("Delete >NIL: SYS:UHC"))
 
 

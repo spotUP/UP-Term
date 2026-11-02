@@ -32,7 +32,15 @@ Nothing below is in any repository (all of it is licensed material or large);
     python3 tools/rig/rig.py start --max    # boots it in the background, waits for wasabid (two retries)
     python3 tools/rig/rig.py status         # is wasabid answering on 127.0.0.1:1234 (rig 1)
     python3 tools/rig/ami.py exec "Version" # a command on the emulated Amiga; the first thing to try
-    python3 tools/rig/rig.py stop           # kills this rig only (matched by its config path)
+    python3 tools/rig/rig.py stop           # kills this rig only (matched by its config path); rig N > 1: then removes build/rig<N>
+    python3 tools/rig/rig.py stop --keep    # stop only, folder kept: for a script that stops and starts again mid-run
+    python3 tools/rig/rig.py gc             # removes idle rig folders (see below)
+
+`stop` of rig 2 and up clears the rig's folder (the same code as `rig.py clear`, rename to `.del`, then rmtree, retried; an
+[ERROR] names a `.del` that would not go). Rig 1 (`build/rig`) is never cleared. A script that stops the rig and starts it
+again passes `--keep`: the folder holds its resumable verdict files. `start` and `gc` sweep every other `build/rig<N>`
+(N > 1) that has no emulator on it, no held `start.lock` and no command for 2 hours, plus any `build/rig*.del`; each removal
+is printed and appended to `build/rig-gc.log` (time, folder, size, reason).
 
 `start` prints the boot log (`build/rig/boot/boot.log`) when wasabid never
 answers. Keep the machine flags the same between `setup` and `start`.
@@ -63,6 +71,8 @@ In a fresh git worktree run `make worktree-ready` first (seeds build/ from the m
 (host folder `build/rig/vtc`); a reboot is needed for DOS to load a new
 handler. `rig.py aga` and `rig.py rtg` choose the Workbench screen mode from the
 next boot.
+
+Kept output (reports, screenshots, verdicts) is written to `build/rig-reports/rig<N>/` (`paths.REPORTS`), never into the rig folder: `rig.py stop` deletes `build/rig<N>` for N > 1. Test: `tests/test_rig_reports_not_in_rig_dir.py`.
 
 Layout of `build/rig/` (gitignored): `sys.hdf` (DH0:), `boot/` (BOOTX:, boots
 first: assigns, mounts XCON:, starts wasabid with key `rigwasabi`), `vtc/`
@@ -239,7 +249,7 @@ Other groups (one line each; docstrings say more):
 | Colours, fonts, screens | `cube_rig`, `colour_check`, `aspect_rig`, `outline_rig`, `ownscreen_rig`, `fullscreen_rig`, `vttest_rig` (vttest screens against the engine) |
 | Window behaviour | `resize_rig`, `winch_rig`, `closecrash_rig`, `autoprobe_rig`, `tabs_rig`, `menus_rig`, `slash_rig`, `pf1_rig`, `prefs_rig`, `mouse_rig`, `snip_rig` |
 | Input, signals | `intr_rig`, `stackext_rig` (gcc 16 library A/B), `ixpipe_rig`, `umask_rig`, `vshpath_rig` |
-| Shell and completion | `kingcon_rig`, `h8_rig`, `userland_rig` (every ported Unix tool against the Mac's output; resumable, verdicts in `build/rig/userland/`) |
+| Shell and completion | `kingcon_rig`, `h8_rig`, `userland_rig` (every ported Unix tool against the Mac's output; resumable, verdicts in `build/rig-reports/rig/userland/`) |
 | console.device | `chainprobe_rig`, `cdprobe_rig`, `cudump_rig`, `dosnode_rig`, `mediumprobe_rig`, `devctl_rig`, `devverify_rig`, `devspeed_rig`, `rkc_rig`, `soak_rig` |
 | Serial login | `getty_rig` (a host pty is the terminal on the cable) |
 | C:Claude against recorded answers (no key, no Anthropic; start `tools/claude_fixture.py` first) | `claude_rig`, `claude_rig2`, `claude_rig3`, `claude_rig4` |

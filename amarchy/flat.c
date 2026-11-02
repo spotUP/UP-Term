@@ -408,8 +408,23 @@ void flat_tx_c(struct RastPort *rp, CONST_STRPTR str, ULONG count)
     if (r->st.enabled && !r->st.held && r->rsw.installed && rp->Layer && rp->Layer->Window) {      /* FLAT-TITLE-ACCENT */
         struct Window *w = (struct Window *)rp->Layer->Window;
         flat_title ft;
+        flat_gadrect gr[8];
+        struct Gadget *g;
+        int ng = 0, sx0, sx1;
+        for (g = w->FirstGadget; g && ng < 8; g = g->NextGadget) {
+            if (!(g->GadgetType & GTYP_SYSGADGET))
+                continue;
+            gr[ng].x = g->LeftEdge; gr[ng].w = g->Width;
+            gr[ng].y = g->TopEdge + ((g->Flags & GFLG_RELBOTTOM) ? w->Height : 0);    /* sizing gadget sits at the bottom */
+            gr[ng].h = g->Height + ((g->Flags & GFLG_RELHEIGHT) ? w->Height : 0);
+            gr[ng].relright = (g->Flags & GFLG_RELRIGHT) != 0;
+            gr[ng].relwidth = (g->Flags & GFLG_RELWIDTH) != 0;
+            gr[ng].drag = (g->GadgetType & GTYP_SYSTYPEMASK) == GTYP_WDRAGGING;
+            ng++;
+        }
+        flat_title_span(gr, ng, w->Width, w->BorderTop, &sx0, &sx1);
         if (flat_title_decide(&r->st, rp->BitMap ? rp->BitMap->Depth : 0, (w->Flags & WFLG_WINDOWACTIVE) != 0, (const char *)w->Title,
-                              w->Width, w->BorderTop, (const char *)str, (int)count, rp->cp_y - (rp->Font ? rp->Font->tf_Baseline : 0), &ft)) {
+                              w->Width, w->BorderTop, (const char *)str, (int)count, rp->cp_y - (rp->Font ? rp->Font->tf_Baseline : 0), sx0, sx1, &ft)) {
             UBYTE fg = rp->FgPen, bg = rp->BgPen, dm = rp->DrawMode;
             WORD cx = rp->cp_x, cy = rp->cp_y;
             r->ttitle++;
@@ -728,6 +743,7 @@ static void print_status(void)
         if (ipd_status_line(line, sizeof line)) {
             int n = (int)strlen(line);
             put_word(line, &n, " dim=");  put_num(line, &n, copy.pen_dim);
+            put_word(line, &n, " knob=");  put_num(line, &n, copy.pen_knob);
             line[n] = 0;
             PutStr((STRPTR)line);
             PutStr((STRPTR)"\n");
@@ -768,7 +784,7 @@ static int is_help(const char *a)
 static uintptr_t *class_slot(int frame)
 {
     struct TagItem t[4];
-    struct Screen *scr = LockPubScreen(NULL);
+    struct Screen *scr = ipd_lock_wb_screen();
     struct DrawInfo *di = scr ? GetScreenDrawInfo(scr) : NULL;
     uintptr_t *slot = 0;
     if (di) {
@@ -1037,16 +1053,35 @@ static int boot_wanted(void)
  * (flat_dim_pen then falls back to the plain button pen). */
 #define DIM_PCT 60
 static LONG g_dim_pen = -1;
+/* KNOB-PEN: the scroller knob pen, obtained the same way from 16 colours up (a 3 plane screen has no free pen: pen_knob stays 0 and
+ * flat_knob_pen answers DK_MUTED). Colour = the surface pen moved FLAT_KNOB_PCT percent toward the muted text pen (flat_knob_colour). */
+static LONG g_knob_pen = -1;
 
 static void dim_refresh(flatshared *r)
 {
-    struct Screen *scr = LockPubScreen(NULL);
+    struct Screen *scr = ipd_lock_wb_screen();
     if (scr) {
         struct ColorMap *cm = scr->ViewPort.ColorMap;
         if (g_dim_pen >= 0) {
             ReleasePen(cm, (ULONG)g_dim_pen);
             g_dim_pen = -1;
             r->st.pen_dim = 0;
+        }
+        if (g_knob_pen >= 0) {
+            ReleasePen(cm, (ULONG)g_knob_pen);
+            g_knob_pen = -1;
+            r->st.pen_knob = 0;
+        }
+        if (cm && scr->RastPort.BitMap && scr->RastPort.BitMap->Depth >= 4 && r->st.pen_dimtext) {
+            ULONG a[3], b[3];
+            uc_u32 c;
+            GetRGB32(cm, (ULONG)r->st.pen_back, 1, a);
+            GetRGB32(cm, (ULONG)r->st.pen_dimtext, 1, b);
+            c = (uc_u32)flat_knob_colour(((a[0] >> 24) << 16) | ((a[1] >> 24) << 8) | (a[2] >> 24), ((b[0] >> 24) << 16) | ((b[1] >> 24) << 8) | (b[2] >> 24));
+            g_knob_pen = ObtainBestPen(cm, ((c >> 16) & 0xff) * 0x01010101UL, ((c >> 8) & 0xff) * 0x01010101UL, (c & 0xff) * 0x01010101UL,
+                                       OBP_Precision, PRECISION_GUI, OBP_FailIfBad, FALSE, TAG_DONE);
+            if (g_knob_pen >= 0)
+                r->st.pen_knob = (UBYTE)g_knob_pen;
         }
         if (cm && scr->RastPort.BitMap && scr->RastPort.BitMap->Depth >= 3) {
             ULONG rgb[3];
@@ -1064,13 +1099,18 @@ static void dim_refresh(flatshared *r)
 
 static void dim_release(flatshared *r)
 {
-    struct Screen *scr = g_dim_pen >= 0 ? LockPubScreen(NULL) : NULL;
+    struct Screen *scr = (g_dim_pen >= 0 || g_knob_pen >= 0) ? ipd_lock_wb_screen() : NULL;
     r->st.pen_dim = 0;
+    r->st.pen_knob = 0;
     if (scr) {
-        ReleasePen(scr->ViewPort.ColorMap, (ULONG)g_dim_pen);
+        if (g_dim_pen >= 0)
+            ReleasePen(scr->ViewPort.ColorMap, (ULONG)g_dim_pen);
+        if (g_knob_pen >= 0)
+            ReleasePen(scr->ViewPort.ColorMap, (ULONG)g_knob_pen);
         UnlockPubScreen(NULL, scr);
     }
     g_dim_pen = -1;
+    g_knob_pen = -1;
 }
 
 int main(void)

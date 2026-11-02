@@ -17,7 +17,7 @@ Needs the up-claude .ipk built with the question: build/dist/up-claude/Files/que
 (`rig.py start --max`, UPTERM_RIG=3 for rig 3). dist/upkg-ask and the upkg-ui binary (upterm-ports pkgs/upkg-ui) are copied
 into UP-Term:bin and left there; upkg-ui is renamed back at the end. A leftover UP-Term:bin/dialog is deleted. The feed is served over http from build/ipk.
 
-  upkg_ask_rig.py [--out DIR] [--only C]     --only C runs pass C alone (no feed, no up-claude .ipk); the report (report.md) and the screenshots go to DIR (default build/<rig>/upkg-ask)
+  upkg_ask_rig.py [--out DIR] [--only C]     --only C runs pass C alone (no feed, no up-claude .ipk); the report (report.md) and the screenshots go to DIR (default build/rig-reports/<rig>/upkg-ask)
 """
 import argparse, os, pathlib, shutil, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -90,7 +90,7 @@ def pass_c(out):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--out', default=str(paths.RIG / 'upkg-ask'))
+    ap.add_argument('--out', default=str(paths.REPORTS / 'upkg-ask'))
     ap.add_argument('--only', choices=['C'])
     a = ap.parse_args()
     out = pathlib.Path(a.out)

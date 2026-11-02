@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "flat_core.h"
+#include "gthemes_core.h"
 #include "../device/romspan.h"
 
 void flat_init(flat_state *s)
@@ -419,11 +420,29 @@ int flat_dim_pen(const flat_state *s, int depth)
     return flat_button_pen(s, depth);
 }
 
+/* pen_dimtext (DK_MUTED) is usable: set, 8+ colours, and a pen of the depth. Shared by the dim text and the scroller knob. */
+static int flat_dimtext_ok(const flat_state *s, int depth)
+{
+    return depth >= 3 && depth <= 8 && s->pen_dimtext && s->pen_dimtext < (1 << depth);
+}
+
 int flat_dimtext_pen(const flat_state *s, int depth)
 {
-    if (depth >= 3 && depth <= 8 && s->pen_dimtext && s->pen_dimtext < (1 << depth))
+    if (flat_dimtext_ok(s, depth))
         return s->pen_dimtext;
     return s->pen_text;
+}
+
+unsigned long flat_knob_colour(unsigned long surface, unsigned long muted)
+{
+    return (unsigned long)gt_scale((uc_u32)surface, 100 - FLAT_KNOB_PCT) + (unsigned long)gt_scale((uc_u32)muted, FLAT_KNOB_PCT);
+}
+
+int flat_knob_pen(const flat_state *s, int depth)
+{
+    if (depth >= 4 && depth <= 8 && s->pen_knob && s->pen_knob < (1 << depth))
+        return s->pen_knob;
+    return flat_dimtext_ok(s, depth) ? s->pen_dimtext : flat_button_pen(s, depth);   /* KNOB-MUTED: the theme muted text pen (DK_MUTED), flat_button_pen under 8 colours */
 }
 
 const flat_gbox *flat_gh_match(const flat_state *s, const flat_gh *g, const void *surf, const void *task, int ptsz, int x0, int y0, int x1, int y1)
@@ -475,6 +494,14 @@ int flat_button_gadget(const void *gadget_render, const void *select_render, con
     return image && gadget_render == image && select_render == image;
 }
 
+/* pen_outline when it is a pen of the depth (non-zero, below 1 << depth), else 0. */
+static int flat_outline_of_depth(const flat_state *s, int depth)
+{
+    if (s->pen_outline && depth >= 1 && depth <= 8 && s->pen_outline < (1 << depth))
+        return s->pen_outline;
+    return 0;
+}
+
 int flat_scroller_pen(const flat_state *s, int depth, int cx, int cy, int cw, int ch, int horiz, int vert,
                       unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody, int x0, int y0, int x1, int y1)
 {
@@ -492,29 +519,51 @@ int flat_scroller_pen(const flat_state *s, int depth, int cx, int cy, int cw, in
         ky = cy + (int)(((unsigned long)vpot * (unsigned long)(ch - kh)) / 0xFFFFUL);
     }
     if (x0 >= kx && x1 < kx + kw && y0 >= ky && y1 < ky + kh)
-        return flat_button_pen(s, depth);
+        return flat_knob_pen(s, depth);
     return s->pen_back;
 }
 
 int flat_frame_pen(const flat_state *s, int depth, int active)
 {
-    if (s->enabled && !s->held && active && s->pen_outline && depth >= 1 && depth <= 8 && s->pen_outline < (1 << depth))
+    if (s->enabled && !s->held && active && flat_outline_of_depth(s, depth))
         return s->pen_outline;
     return -1;
 }
 
-int flat_title_decide(const flat_state *s, int depth, int active, const char *title, int win_w, int bar_h,
-                      const char *str, int count, int cp_y, flat_title *t)
+void flat_title_span(const flat_gadrect *g, int n, int win_w, int bar_h, int *x0, int *x1)
 {
     int i;
-    if (!s->enabled || s->held || !title || !str || count <= 0 || bar_h <= 0 || win_w < 2 || cp_y < 0 || cp_y >= bar_h)
+    *x0 = 0;
+    *x1 = win_w - 1;
+    for (i = 0; i < n; i++) {
+        int l, w, r;
+        if (g[i].drag || g[i].y >= bar_h || g[i].y + g[i].h <= 0)
+            continue;
+        l = g[i].x + (g[i].relright ? win_w : 0);
+        w = g[i].w + (g[i].relwidth ? win_w : 0);
+        if (w <= 0)
+            continue;
+        r = l + w - 1;
+        if (l + r < win_w) {
+            if (r + 1 > *x0) *x0 = r + 1;
+        } else if (l - 1 < *x1) {
+            *x1 = l - 1;
+        }
+    }
+}
+
+int flat_title_decide(const flat_state *s, int depth, int active, const char *title, int win_w, int bar_h,
+                      const char *str, int count, int cp_y, int bx0, int bx1, flat_title *t)
+{
+    int i;
+    if (!s->enabled || s->held || !title || !str || count <= 0 || bar_h <= 0 || win_w < 2 || cp_y < 0 || cp_y >= bar_h || bx0 > bx1)
         return 0;
     for (i = 0; i < count; i++)
         if (!title[i] || title[i] != str[i])
             return 0;
     t->band_pen = -1;
     t->bg_pen = -1;
-    t->bx0 = 0; t->by0 = 0; t->bx1 = win_w - 1; t->by1 = bar_h - 1;
+    t->bx0 = bx0; t->by0 = 0; t->bx1 = bx1; t->by1 = bar_h - 1;
     if (active) {
         t->band_pen = flat_frame_pen(s, depth, 1);
         t->bg_pen = t->band_pen;

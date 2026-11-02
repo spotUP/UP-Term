@@ -126,7 +126,7 @@ def case_mdv():
     vsh_window(t, '0/20/520/500')
     line('VTC:mdv RAM:README.md', 6)
     a = typewin.screen_text()
-    (paths.RIG / 'hlmd-mdv-a.txt').write_text(a)
+    (paths.reports_dir() / 'hlmd-mdv-a.txt').write_text(a)
     ta = table_of(a)
     wa = max([len(l) for l in ta] or [0])
     check(len(ta) >= 3 and len({len(l) for l in ta}) == 1, '4 mdv: the table is whole, every line one length', '%d lines, lengths %s' % (len(ta), sorted({len(l) for l in ta})))

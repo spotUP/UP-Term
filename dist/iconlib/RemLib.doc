@@ -1,0 +1,17 @@
+
+ RemLib is a shell command written by Thomas Rapp.
+
+ It makes it easy to remove a library from the
+ resident list (may also work with other resources).
+
+ If you want to remove your ROM resident icon.library
+ then just make sure that you have an icon.library
+ copied into your Libs: directory and then call:
+
+ RemLib >NIL: icon.library
+
+ from your startup-sequence before SetPatch. No path!
+ This command will not load the new library resident
+ and thus it won't require and cause an extra reboot.
+
+ Many thanks to Thomas Rapp !!

@@ -18,7 +18,7 @@ import ami, condev_rig as c
 import stage_rig, tabstate
 import amarchy_rig as ar
 
-OUT = pathlib.Path(paths.RIG) / 'amarchy'
+OUT = pathlib.Path(paths.REPORTS) / 'amarchy'
 SEG_FROM_RIGHT = 20                 # inside the agents segment, pixels from the screen's right edge
 FONT_ROWS = 10                      # bar height is the font height + 2; a click at the bottom rows lands on it
 

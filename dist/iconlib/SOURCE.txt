@@ -1,0 +1,19 @@
+IconLib 46.4 by Peter Keunecke (freeware), the icon.library replacement.
+Package: IconLib_46.4 (IconLib.guide and IconLib.html are its documentation; the licence is the
+"Important Restrictions" section of IconLib.html).
+
+icon.library.os30  Bonus/Libraries/256ColorPalette/icon.library_68020, $VER icon.library 46.4.595 (68020).
+                   Installed on AmigaOS 3.0 and 3.1 (an unrestricted build).
+icon.library.os32  Libs/icon.library, $VER icon.library 51.4.602 (TC020). Installed on AmigaOS 3.2 only.
+                   The TrueColor (v51) builds may not be shipped in packages sold for more than 10 EUR
+                   or in commercial bundles; Amarchy is free.
+
+Install copies the one for the system to LIBS:icon.library when the "PeterK icon library" option is
+ticked, after keeping the old library as LIBS:icon.library.amarchy-backup (only when no backup exists).
+Uninstall puts the backup back.
+
+RemLib, RemLib.doc  Thomas Rapp's RemLib, unchanged, as shipped in IconLib 46.4 ThirdParty/RemLib
+                   (bundling approved by the author). On AmigaOS 3.0/3.1 Install copies RemLib to C: (only when
+                   there is none) and adds a ";BEGIN UP-Term RemLib" block before SetPatch in S:Startup-Sequence
+                   (made by instremlib.sh) that removes the Kickstart ROM icon.library from the resident list,
+                   so the LIBS:icon.library above gets loaded. Never on 3.2. Uninstall strips the block.

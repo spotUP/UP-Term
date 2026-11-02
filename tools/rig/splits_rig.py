@@ -57,8 +57,8 @@ import tutorial_rig as tr          # counters(), active_title()
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = paths.RIG / 'vtc'
-OUT = paths.RIG / 'splits_rig'
-FAILS = paths.RIG / 'splits'          # fail-<case>-<n>.txt, hang-<case>-<n>.txt, repeat-<case>.log
+OUT = paths.REPORTS / 'splits_rig'
+FAILS = paths.reports_dir('splits')         # fail-<case>-<n>.txt, hang-<case>-<n>.txt, repeat-<case>.log
 CUR = {'case': '?', 'n': 1, 'raw': ''}   # the case running now, its round, the last VTC:inputlist output
 TITLE = 'splitswin'
 BOX = '0/20/600/240'
@@ -208,7 +208,7 @@ def capture_fail(what):
 
 def reboot():
     rig = [sys.executable, str(ROOT / 'tools/rig/rig.py')]
-    subprocess.run(rig + ['stop'], capture_output=True, timeout=120)
+    subprocess.run(rig + ['stop', '--keep'], capture_output=True, timeout=120)
     subprocess.run(rig + ['start'], capture_output=True, timeout=400)
 
 

@@ -24,7 +24,7 @@ import capture
 
 ROOT = U.ROOT
 VTC = U.VTC
-LEDGER = paths.RIG / "userland" / "repeat"
+LEDGER = paths.reports_dir("userland") / "repeat"
 
 
 def stage(area, case, label, text):
@@ -67,7 +67,7 @@ def one_pass(label, limit):
 
 def reboot():
     rig = [sys.executable, str(pathlib.Path(__file__).with_name("rig.py"))]
-    subprocess.run(rig + ["stop"], capture_output=True, timeout=120)
+    subprocess.run(rig + ["stop", "--keep"], capture_output=True, timeout=120)
     subprocess.run(rig + ["start", "--max"], capture_output=True, timeout=400)
 
 

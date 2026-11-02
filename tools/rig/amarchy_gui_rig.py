@@ -41,6 +41,7 @@ and starts that Amarchy); alone (or with only --no-build) it runs only that. --h
 import hashlib, os, re, shlex, shutil, subprocess, sys, tempfile, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths, ami, condev_rig as c, stage_rig, amarchy_window_rig, upkg_rig
+from amarchy_geom_src import GEOM_SRC
 
 LAMIGA, SPACE, ESC, RETURN, DOWN, UP = 0x40, 0x40, 0x45, 0x44, 0x4D, 0x4C
 TITLE = 'Amarchy'
@@ -67,8 +68,7 @@ def check(ok, what):
 
 def build_geom():
     out = os.path.join(tempfile.mkdtemp(prefix='amarchy_geom'), 'geom')
-    src = ['tools/rig/amarchy_geom.c', 'amarchy/menu_geom.c', 'amarchy/menu_core.c', 'amarchy/menu_tree.c',
-           'amarchy/menu_icon.c', 'config/keymap.c', 'config/upconf_rows.c', 'render/emoji.c', 'prefs/settings_def.c', 'prefs/prefs_core.c', 'config/upconf.c', 'handler/kcmode.c', 'handler/slash.c', 'amarchy/amconf_keys.c']
+    src = GEOM_SRC
     r = subprocess.run(['cc', '-std=c99', '-I', 'build/amiga', '-o', out] + src, cwd=REPO, capture_output=True, text=True)
     if r.returncode:
         raise SystemExit('amarchy_geom did not build:\n' + r.stderr[-600:])
@@ -1222,7 +1222,7 @@ PKG_CASES = (('install', case_pkg_install), ('upgrades', case_pkg_upgrades), ('f
 
 
 def pkg_results_file():
-    return os.path.join(paths.RIG, 'amarchy-pkg-all.txt')
+    return os.path.join(paths.reports_dir(), 'amarchy-pkg-all.txt')
 
 
 def pkg_results():

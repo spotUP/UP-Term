@@ -1,0 +1,316 @@
+# branch spike/upkg-wb-ui-r0 tip 16ba28820cc5997020db09432881ac2925c6cbf5
+From 16ba28820cc5997020db09432881ac2925c6cbf5 Mon Sep 17 00:00:00 2001
+From: spotUP <retroranksmail@gmail.com>
+Date: Mon, 26 Oct 2026 01:23:19 +0100
+Subject: [PATCH] tests: ixwbpipe, upkg Workbench UI R0 spike (ix_select on a
+ pipe plus Intuition signals)
+
+---
+ Makefile               |   5 +
+ tests/amiga/ixwbpipe.c | 278 +++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 283 insertions(+)
+ create mode 100644 tests/amiga/ixwbpipe.c
+
+diff --git a/Makefile b/Makefile
+index a6fecc82..f6b7ecb5 100644
+--- a/Makefile
++++ b/Makefile
+@@ -785,6 +785,11 @@ $(BUILD)/amiga/ixfionread: tests/amiga/ixfionread.c
+ 	@mkdir -p $(BUILD)/amiga
+ 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixfionread.c
+ 
++# upkg Workbench UI R0 spike: an Intuition window draining a child's pipe with ix_select (self-reporting R0: lines)
++$(BUILD)/amiga/ixwbpipe: tests/amiga/ixwbpipe.c
++	@mkdir -p $(BUILD)/amiga
++	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixwbpipe.c
++
+ # A create whose name the handler shortens (RAM: keeps 30) fails ENAMETOOLONG (ixemul)
+ $(BUILD)/amiga/ixnamelen: tests/amiga/ixnamelen.c
+ 	@mkdir -p $(BUILD)/amiga
+diff --git a/tests/amiga/ixwbpipe.c b/tests/amiga/ixwbpipe.c
+new file mode 100644
+index 00000000..78ac4377
+--- /dev/null
++++ b/tests/amiga/ixwbpipe.c
+@@ -0,0 +1,278 @@
++/* ixwbpipe -- upkg Workbench UI R0 spike: can an Intuition window's event
++ * loop drain a child's stdout/stderr pipe under ixemul without blocking?
++ *
++ *   VTC:ixwbpipe [popen|fork|silent|idle|all] [close]
++ *
++ * Opens a window (close gadget) on the Workbench screen and runs cases:
++ *   popen   popen("List SYS:C", "r") (ixemul's /bin/sh), drained with ix_select
++ *   fork    pipe + vfork + dup2 onto fd 1 and 2 + execvp("List" ...), drained
++ *   silent  a child that prints nothing for 4 s (CPU while it only waits)
++ *   idle    no child, window only, 3 s (CPU of an idle loop)
++ * Each drain loop waits in ix_select(fd, ..., &mask) with the window's signal bit
++ * in the mask, one call for both the pipe and Intuition. Results go to stdout
++ * and RAM:ixwbpipe.log as lines "R0: ...". With "close" the program stays in
++ * the streaming case until the close gadget is clicked and prints the latency
++ * between the message's timestamp and the moment the loop saw it. */
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <errno.h>
++#include <unistd.h>
++#include <signal.h>
++#include <fcntl.h>
++#include <time.h>
++#include <sys/types.h>
++#include <sys/time.h>
++#include <sys/wait.h>
++#include <sys/ioctl.h>
++#include <sys/resource.h>
++#include <ix.h>
++/* intuition.h pulls in devices/timer.h, whose struct timeval clashes with the BSD one */
++#define timeval amiga_timeval
++#include <exec/types.h>
++#include <intuition/intuition.h>
++#include <utility/tagitem.h>
++#include <proto/exec.h>
++#include <proto/intuition.h>
++#undef timeval
++
++struct IntuitionBase *IntuitionBase;
++static struct Window *win;
++static FILE *logf;
++static int wait_close;
++static int closed;
++static long close_lat_us = -1;
++
++static void say(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
++#include <stdarg.h>
++static void say(const char *fmt, ...)
++{
++    char b[300];
++    va_list ap;
++    va_start(ap, fmt);
++    vsnprintf(b, sizeof b, fmt, ap);
++    va_end(ap);
++    printf("R0: %s\n", b);
++    fflush(stdout);
++    if (logf) {
++        fprintf(logf, "R0: %s\n", b);
++        fflush(logf);
++    }
++}
++
++static long now_us(void)
++{
++    struct timeval tv;
++    gettimeofday(&tv, 0);
++    return (tv.tv_sec % 100000) * 1000000L + tv.tv_usec;
++}
++
++static long cpu_us(void)
++{
++    struct rusage ru;
++    if (getrusage(RUSAGE_SELF, &ru) < 0)
++        return -1;
++    return ru.ru_utime.tv_sec * 1000000L + ru.ru_utime.tv_usec + ru.ru_stime.tv_sec * 1000000L + ru.ru_stime.tv_usec;
++}
++
++/* drain Intuition; returns 1 when the close gadget was seen */
++static void drain_idcmp(void)
++{
++    struct IntuiMessage *m;
++    while ((m = (struct IntuiMessage *)GetMsg(win->UserPort))) {
++        ULONG cls = m->Class;
++        ULONG cs, cm;
++        long lat;
++        CurrentTime(&cs, &cm);
++        lat = ((long)(cs - m->Seconds)) * 1000000L + ((long)cm - (long)m->Micros);
++        ReplyMsg((struct Message *)m);
++        if (cls == IDCMP_CLOSEWINDOW) {
++            closed = 1;
++            close_lat_us = lat;
++            say("close gadget seen, message age %ld us", lat);
++        }
++    }
++}
++
++/* drain one pipe fd until EOF (or the close gadget with wait_close); prints the measurement */
++static void drain(const char *name, int fd, pid_t pid, int max_ms, int fionread_too)
++{
++    long t0 = now_us(), cpu0 = cpu_us(), lastloop = t0, maxgap = 0, tfirst = -1;
++    long polls = 0, reads = 0, bytes = 0, maxread = 0, sigwakes = 0, fdwakes = 0, timeouts = 0, fion_max = 0, fion_bad = 0;
++    long winmask = 1L << win->UserPort->mp_SigBit;
++    int eof = 0;
++    long ncr = 0;
++    char buf[4096];
++    while (!eof && !(closed && wait_close)) {
++        fd_set rf;
++        struct timeval tv;
++        long mask = winmask;
++        tv.tv_sec = 0;
++        tv.tv_usec = 500000;
++        int n;
++        long t = now_us();
++        if (t - lastloop > maxgap)
++            maxgap = t - lastloop;
++        if ((t - t0) / 1000 > max_ms) {
++            say("%s: stopped by the %d ms limit", name, max_ms);
++            break;
++        }
++        FD_ZERO(&rf);
++        if (fd >= 0)
++            FD_SET(fd, &rf);
++        n = ix_select(fd >= 0 ? fd + 1 : 0, fd >= 0 ? &rf : NULL, NULL, NULL, &tv, &mask);
++        polls++;
++        lastloop = now_us();
++        if (n < 0 && errno != EINTR) {
++            say("%s: ix_select failed errno %d", name, errno);
++            break;
++        }
++        if (mask & winmask)
++            sigwakes++;
++        if (n == 0 && !(mask & winmask))
++            timeouts++;
++        drain_idcmp();
++        if (fd >= 0 && n > 0 && FD_ISSET(fd, &rf)) {
++            int avail = -1, got;
++            fdwakes++;
++            if (fionread_too) {
++                if (ioctl(fd, FIONREAD, &avail) < 0)
++                    fion_bad++;
++                else if (avail > fion_max)
++                    fion_max = avail;
++            }
++            got = read(fd, buf, sizeof buf);
++            if (got > 0) {
++                int i;
++                if (tfirst < 0)
++                    tfirst = now_us() - t0;
++                reads++;
++                bytes += got;
++                if (got > maxread)
++                    maxread = got;
++                for (i = 0; i < got; i++)
++                    ncr += buf[i] == '\n';
++            } else {
++                eof = 1;
++            }
++        }
++    }
++    {
++        long wall = now_us() - t0, cpu = cpu_us() - cpu0;
++        say("%s: %ld bytes, %ld lines, %ld reads, max read %ld, avg read %ld, first byte at %ld us", name, bytes, ncr, reads, maxread, reads ? bytes / reads : 0, tfirst);
++        say("%s: eof %d, polls %ld (pipe %ld, window signal %ld, timeout %ld), longest gap between polls %ld us, wall %ld us, cpu %ld us (%ld per mille)", name, eof, polls, fdwakes, sigwakes, timeouts, maxgap, wall, cpu, wall > 0 && cpu >= 0 ? cpu * 1000 / wall : -1L);
++        if (fionread_too)
++            say("%s: FIONREAD max %ld, failures %ld", name, fion_max, fion_bad);
++    }
++    if (pid > 0) {
++        /* a child that has not ended (the close gadget came first): which way ends it? */
++        static const int sigs[] = {0, SIGINT, SIGTERM, SIGKILL};
++        static const char *const nm[] = {"close of the read end only", "SIGINT", "SIGTERM", "SIGKILL"};
++        int i, st = 0;
++        pid_t w = 0;
++        say("%s: child still running, closing the read end", name);
++        if (fd >= 0)
++            close(fd);
++        say("%s: read end closed", name);
++        usleep(1500000);
++        say("%s: usleep survived", name);
++        w = waitpid(pid, &st, WNOHANG);
++        say("%s: first WNOHANG waitpid %d", name, (int)w);
++        w = 0;
++        for (i = 0; i < 4 && w == 0; i++) {
++            long t1 = now_us();
++            say("%s: trying %s", name, nm[i]);
++            if (sigs[i])
++                kill(pid, sigs[i]);
++            while (w == 0 && now_us() - t1 < 2500000L) {
++                w = waitpid(pid, &st, WNOHANG);
++                if (w == 0)
++                    usleep(20000);
++            }
++            say("%s: after %s waitpid %d status %d (%ld ms)", name, nm[i], (int)w, st, (now_us() - t1) / 1000);
++        }
++    }
++}
++
++static void case_popen(void)
++{
++    FILE *p = popen("List SYS:C", "r");
++    if (!p) {
++        say("popen: failed errno %d", errno);
++        return;
++    }
++    say("popen: ok, fileno %d", fileno(p));
++    {
++        /* drain via its fd; pclose after */
++        int fd = fileno(p);
++        drain("popen", fd, -1, 15000, 1);
++        pclose(p);
++    }
++}
++
++static void case_fork(const char *name, char *const argv[], int ms)
++{
++    int pf[2];
++    pid_t pid;
++    if (pipe(pf) < 0) {
++        say("%s: pipe failed errno %d", name, errno);
++        return;
++    }
++    pid = vfork();
++    if (pid < 0) {
++        say("%s: vfork failed errno %d", name, errno);
++        return;
++    }
++    if (pid == 0) {
++        dup2(pf[1], 1);
++        dup2(pf[1], 2);
++        close(pf[0]);
++        close(pf[1]);
++        execvp(argv[0], argv);
++        _exit(127);
++    }
++    close(pf[1]);
++    say("%s: vfork ok, child %d, pipe read fd %d", name, (int)pid, pf[0]);
++    drain(name, pf[0], pid, ms, 1);
++    close(pf[0]);
++}
++
++int main(int argc, char **argv)
++{
++    const char *what = argc > 1 ? argv[1] : "all";
++    int all = !strcmp(what, "all");
++    wait_close = argc > 2 && !strcmp(argv[2], "close");
++    logf = fopen("/RAM/ixwbpipe.log", "w");
++    IntuitionBase = (struct IntuitionBase *)OpenLibrary("intuition.library", 37);
++    if (!IntuitionBase) {
++        say("no intuition.library");
++        return 1;
++    }
++    win = OpenWindowTags(NULL, WA_Left, 20, WA_Top, 40, WA_Width, 300, WA_Height, 80, WA_Title, (ULONG) "R0 pipe spike",
++                         WA_CloseGadget, TRUE, WA_DragBar, TRUE, WA_Activate, TRUE, WA_IDCMP, IDCMP_CLOSEWINDOW, TAG_DONE);
++    if (!win) {
++        say("OpenWindow failed");
++        return 1;
++    }
++    say("window open, sigbit %d", win->UserPort->mp_SigBit);
++    if (all || !strcmp(what, "idle"))
++        drain("idle", -1, -1, 3000, 0);
++    if (all || !strcmp(what, "popen"))
++        case_popen();
++    if (all || !strcmp(what, "fork")) {
++        char *a[] = {"List", "SYS:", "ALL", NULL};
++        do
++            case_fork("fork-list", a, wait_close ? 600000 : 20000);
++        while (wait_close && !closed);
++    }
++    if (all || !strcmp(what, "silent")) {
++        char *a[] = {"Wait", "4", "SECS", NULL};
++        case_fork("silent", a, 10000);
++    }
++    say("done%s", closed ? ", closed" : "");
++    CloseWindow(win);
++    CloseLibrary((struct Library *)IntuitionBase);
++    if (logf)
++        fclose(logf);
++    return 0;
++}
+-- 
+2.50.1 (Apple Git-155)
+

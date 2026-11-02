@@ -77,7 +77,7 @@ def vsh_case():
     ami.key(0x33, 0x08)
     time.sleep(3)
     screen_rig.typeline('echo hi2 >RAM:intr_echo', 3)
-    ami.main(['shot', str(paths.RIG / 'shots/intrvsh.png')])
+    ami.main(['shot', str(paths.reports_dir('shots') / 'intrvsh.png')])
     rc, out = ixpty_rig.run('Type RAM:intr_echo')
     ok = out.strip() == 'hi2'
     print('intrvsh: line after Ctrl-C ran as typed: %s (file %r)' % ('ok' if ok else 'FAIL', out.strip()))

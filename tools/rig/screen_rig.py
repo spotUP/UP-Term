@@ -26,7 +26,7 @@ import ami, cube_rig, ixpty_rig, ptytest_rig, vshwin
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = paths.RIG / "vtc"
-SHOT = paths.RIG / "shots/screen_colors.png"
+SHOT = paths.reports_dir("shots") / "screen_colors.png"
 SCREENRC = """shell /VTC/vsh
 term screen-256color
 setenv IXSTACK 65536

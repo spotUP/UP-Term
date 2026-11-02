@@ -62,6 +62,7 @@ void prefs_defaults(prefs_fields *f)
     f->meta_alt = 1;
     f->dither = 1;
     f->outline_aa = 1;
+    f->blend_dest = 1;
     f->hlcat = 1;
     f->split_restore = PREFS_SPLIT_OFF;
 }
@@ -577,7 +578,7 @@ int prefs_equal(const prefs_fields *a, const prefs_fields *b)
         strcmp(a->am_music, b->am_music) || strcmp(a->am_demo, b->am_demo) ||
         strcmp(a->am_hide, b->am_hide) || strcmp(a->am_font, b->am_font) || strcmp(a->am_gtheme, b->am_gtheme) || a->am_icons != b->am_icons ||
         a->am_mode != b->am_mode || a->am_termmenu != b->am_termmenu ||
-        a->am_flat != b->am_flat || a->am_flatgad != b->am_flatgad || a->am_flatsize != b->am_flatsize || a->am_iconstyle != b->am_iconstyle || a->am_borderblank != b->am_borderblank ||
+        a->am_flat != b->am_flat || a->am_flatgad != b->am_flatgad || a->am_flatsize != b->am_flatsize || a->am_iconstyle != b->am_iconstyle || a->am_icontext != b->am_icontext || a->am_borderblank != b->am_borderblank ||
         strcmp(a->linkopen, b->linkopen) || strcmp(a->kcmode, b->kcmode))
         return 0;
     for (i = 0; i < 16; i++)
@@ -589,7 +590,7 @@ int prefs_equal(const prefs_fields *a, const prefs_fields *b)
            a->completion == b->completion && a->screen == b->screen && a->aspect == b->aspect &&
            a->backspace_bs == b->backspace_bs && a->clipboard == b->clipboard &&
            a->kcinfo == b->kcinfo && a->kccache == b->kccache && a->amiga_keys == b->amiga_keys &&
-           a->dither == b->dither && a->outline_aa == b->outline_aa && a->pad_extend == b->pad_extend && a->hlcat == b->hlcat &&
+           a->dither == b->dither && a->outline_aa == b->outline_aa && a->blend_dest == b->blend_dest && a->pad_extend == b->pad_extend && a->hlcat == b->hlcat &&
            a->split_restore == b->split_restore;
 }
 

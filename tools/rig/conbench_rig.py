@@ -24,7 +24,7 @@ import paths
 import ami, condev_rig as c
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-OUT = paths.RIG / 'conbench'
+OUT = paths.REPORTS / 'conbench'
 FLAGS = paths.rig_flags(['--stock', '--os32'])  # UPTERM_RIG_FLAGS='--max': the owner's rig 2 start
 
 CONSOLES = {
@@ -58,7 +58,7 @@ def typeline(s):
 
 def run_one(label, rows):
     mount, spec = CONSOLES[label]
-    rig('stop')
+    rig('stop', '--keep')
     rig('start')                      # a fresh boot for every run, as creep does
     if mount:
         dev = spec.split(':')[0]

@@ -242,6 +242,8 @@
 (set #unifont "")
 (set #emoji "")
 (set #dopus "")
+(set #iconlib "")
+(set #solidwin "")
 (set #cpu060 (if (= (database "cpu") "68060") "CPU060" ""))
 (set #cpu040 (if (= (database "cpu") "68040") "CPU040" ""))
 (set #nofpu (if (= (database "fpu") "NOFPU") "NOFPU" ""))
@@ -333,6 +335,26 @@
 (if (in #extra 1) (set #emoji "EMOJI"))
 (if (and (in #extra 2) (exists "SYS:System/Shell.info")) (set #shellicon "SHELLICON"))
 
+; PeterK icon library (IconLib, freeware, Files/iconlib): ticked on AmigaOS 3.0/3.1, where it replaces the stock
+; icon.library with the 46.4 build; unticked on 3.2 (exec 47), where the 51.4 build is opt-in.
+(set #iconlibos32 (>= #execmajor 47))
+(set #iconlib
+    (askoptions
+        (prompt "Icon library (LIBS:icon.library):")
+        (help "IconLib by Peter Keunecke (freeware) replaces the system's "
+              "icon.library: PNG and truecolour icons, faster icon loading. "
+              "AmigaOS 3.0 and 3.1 get the 46.4 build; AmigaOS 3.2 gets "
+              "the 51.4 TrueColor build, which is unticked there because "
+              "3.2 has an icon.library of its own.\n\n"
+              "The library you have is kept once as "
+              "LIBS:icon.library.amarchy-backup before it is replaced, and "
+              "Uninstall puts it back. Reboot to use the new library.\n\n"
+              "The licence is the \"Important Restrictions\" section of "
+              "Files/iconlib/IconLib.html.")
+        (choices "PeterK icon library")
+        (default (if #iconlibos32 0 1))))
+(if (in #iconlib 0) (set #iconlib "ICONLIB") (set #iconlib ""))
+
 ; Directory Opus 5: asked only when DOpus5: is assigned (its own installer made the assign);
 ; ticked, since the filetype is the way in from DOpus to an UP-Term window
 (if (exists "DOpus5:Filetypes" (noreq))
@@ -378,6 +400,20 @@
         (default (+ 1 2))))
 (if (in #boot 0) (set #serial "SERIAL"))
 (if (in #boot 1) (set #wasabi "WASABI"))
+
+; SolidWin 1.12 (Thomas Rapp, Files/solidwin): ticked on every AmigaOS version (3.0 to 3.2)
+(set #solidwin
+    (askoptions
+        (prompt "Windows:")
+        (help "SolidWin 1.12 by Thomas Rapp: windows move with their "
+              "contents drawn, instead of an outline you drag. A small "
+              "input.device handler, C:SolidWin, started at every boot by a "
+              "block in S:User-Startup; reboot to use it.\n\n"
+              "Uninstall takes the block out and removes C:SolidWin again "
+              "(only when Install put it there).")
+        (choices "Solid window moving (SolidWin)")
+        (default 1)))
+(if (in #solidwin 0) (set #solidwin "SOLIDWIN") (set #solidwin ""))
 
 ; ---- taking over the system's console: a page of its own -----------------
 
@@ -483,9 +519,11 @@
         (set #ssh (getenv "UPTOPTSSH"))
         (set #bget (getenv "UPTOPTBEBBOGET"))
         (set #wasabi (getenv "UPTOPTWASABI"))
+        (set #solidwin (getenv "UPTOPTSOLIDWIN"))
         (set #unifont (getenv "UPTOPTUNIFONT"))
         (set #emoji (getenv "UPTOPTEMOJI"))
         (set #dopus (getenv "UPTOPTDOPUS"))
+        (set #iconlib (getenv "UPTOPTICONLIB"))
         (set #cpu040 (getenv "UPTOPTCPU040"))
         (set #cpu060 (getenv "UPTOPTCPU060"))
         (set #nofpu (getenv "UPTOPTNOFPU"))
@@ -508,12 +546,14 @@
     (set #name "SSH" #val #ssh) (P_OPT)
     (set #name "BEBBOGET" #val #bget) (P_OPT)
     (set #name "WASABI" #val #wasabi) (P_OPT)
+    (set #name "SOLIDWIN" #val #solidwin) (P_OPT)
     (set #name "CPU040" #val #cpu040) (P_OPT)
     (set #name "CPU060" #val #cpu060) (P_OPT)
     (set #name "NOFPU" #val #nofpu) (P_OPT)
     (set #name "UNIFONT" #val #unifont) (P_OPT)
     (set #name "EMOJI" #val #emoji) (P_OPT)
-    (set #name "DOPUS" #val #dopus) (P_OPT))
+    (set #name "DOPUS" #val #dopus) (P_OPT)
+    (set #name "ICONLIB" #val #iconlib) (P_OPT))
 
 ; P_END: the last page. #done says what went where; then the
 ; Install offers to reboot, since the handlers, XCON: and the
@@ -681,6 +721,7 @@
 (if (exists "ENVARC:up-term/tmp") (set #blocks (cat #blocks ", TMP:")))
 (if #serial (set #blocks (cat #blocks ", serial login")))
 (if #wasabi (set #blocks (cat #blocks ", wasabid")))
+(if #solidwin (set #blocks (cat #blocks ", SolidWin")))
 ; a switch UPConsole refused wrote no block (install.dos: ENV:UPTREFUSED<CON|DEV>)
 (set #refcon (exists "ENV:UPTREFUSEDCON"))
 (set #refdev (exists "ENV:UPTREFUSEDDEV"))

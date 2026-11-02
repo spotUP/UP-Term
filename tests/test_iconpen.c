@@ -35,7 +35,7 @@ static void test_colours_and_fold(void)
             CHECK(p != DK_GREEN && p != DK_RED);
             if (depth == 2) CHECK(p >= 0 && p <= DK_ACCENT);
             if (depth >= 6) CHECK_INT(p, IP_FIRST + slot);
-            if (depth == 4 || depth == 5) CHECK(slot >= 8 ? p == slot : (p >= 0 && p <= DK_MUTED));
+            if (depth == 4 || depth == 5) CHECK(slot >= 8 ? p == slot : (p >= 0 && p <= DK_DARKER));
         }
 }
 
@@ -44,12 +44,13 @@ static void test_plan_no_overlap(void)
     unsigned char pens[DK_SLOTS];
     int depth, i, f, k;
     CHECK_INT(DK_SELECTION, 4);
-    CHECK_INT(DK_MUTED, 5);
+    CHECK_INT(DK_MUTED, 1); /* FILENAME-PEN: Workbench draws list-view file names with fixed pen 1 */
+    CHECK_INT(DK_DARKER, 5);
     for (depth = 2; depth <= 8; depth++) {
         desk_pen_plan p;
         desk_pen_plan_for(depth, &p);
         CHECK_INT(p.button, 4);
-        CHECK_INT(p.backdrop, depth >= 3 ? DK_RED : DK_DARKER); /* FLAT-COLOUR-OVERHAUL: own pen, pen 5 stays muted */
+        CHECK_INT(p.backdrop, depth >= 3 ? DK_RED : DK_BG); /* FLAT-COLOUR-OVERHAUL: own pen at 3+ planes; FILENAME-PEN: below that pen 5 folds to DK_BG */
         CHECK_INT(desk_backdrop_pen_at(depth), p.backdrop); /* L6: the backdrop pen (WBPattern tile, palette write) is the plan's */
         CHECK(p.button != p.backdrop);
         CHECK(p.icon_first + p.icon_count <= (1 << depth));

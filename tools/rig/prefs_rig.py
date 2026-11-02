@@ -129,7 +129,7 @@ def main():
     # the bytes to Type: an ANSI-green word and a plain word, one per line
     put('VTC:prefsa.txt', b'\x1b[32mGGGG\x1b[0m\nHHHH\n')
     put('VTC:prefsb.txt', b'WWWW\nWWWW\n')
-    out = os.path.join(paths.RIG, "shots/prefs_rig.png")
+    out = os.path.join(paths.reports_dir("shots"), "prefs_rig.png")
     x = 20   # inside the window's first column area
     # a background pixel: well right of and below any text the test writes
     # (x=20,y=100 sat on the prompt line once profile b's 16-pixel font
@@ -595,7 +595,7 @@ def ui_run(table):
     # 9. an open UP-Term window takes the new colour after Use, without reopening
     put('ENV:up-term/up-term', b'[profile default]\nbell = beep\n')  # on the Workbench, not the own screen above
     open_win('prefsLive', 'PROFILE default')
-    out = os.path.join(paths.RIG, "shots/prefs_live.png")
+    out = os.path.join(paths.reports_dir("shots"), "prefs_live.png")
     shot(out); _, _, px = pixels(out)
     check("the open window's background starts black", fam(px(BGX, BGY)) == 'b', str(px(BGX, BGY)))
     start_app()

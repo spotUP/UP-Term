@@ -122,6 +122,7 @@ typedef struct cl_repl {
     char *todos;                /* the last todo_write input (/todos) */
     char keybuf[512];           /* a key from /login */
     int await_key;              /* the next line typed is the key (/login) */
+    int hist_shared;            /* line mode: the console was told the prompt history file (line_history_share) */
     struct {                    /* the setup wizard (setup.c): step SETUP_*, the mode chosen (1 remote, 2 key, 3 later) */
         int step, mode;
         char host[200];

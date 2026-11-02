@@ -39,7 +39,12 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   paths.LONG_RUN (ami.py long, install) or within 5 s of a command; never rig 1
                   also cold-restarts (stop + start --keep-sys) a rig whose FS-UAE log gains 10+ "CPU reset"
                   lines in a minute: the 060 post-Guru Kickstart reset loop (RIG-RESET-LOOP)
-  rig.py stop     kill THIS rig only (matched by its config path, at kill time)
+  rig.py stop [--keep]   kill THIS rig only (matched by its config path, at kill time), then, for rig N > 1, remove its
+                  build/rig<N> folder (as `clear`; never rig 1; not while the emulator still runs). --keep leaves the folder: a script
+                  that stops and starts again mid-run passes it, the folder holds its resumable verdict files
+  rig.py gc       sweep: remove every build/rig<N> (N > 1, not this rig's) with no emulator on it, no start.lock held and no command
+                  for 2 hours, and every leftover build/rig*.del; each removal is printed and appended to build/rig-gc.log.
+                  `start` runs the same sweep first
   rig.py reboot   stop and start again with DH0: as the last run left it (a start clones it anew):
                   an install's writes survive. The last start's machine flags, or the ones given
   rig.py install  copy build/amiga/vtcon-handler to the VTC: drawer; the boot then puts
@@ -50,7 +55,7 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   "Instead of Workbench") and record its S:User-Startup block + stamp there; every later
                   clone start then boots 5.104 as the Workbench (default; --no-dopus skips it, no stamp: [WARN], 5.82);
                   --own-screen also writes the saved environment that puts DOpus on its own 1344x1080 screen (DOPUS.1)
-  rig.py clear    remove this rig's build/rig<N> folder; refused while its fs-uae runs (stop it first)
+  rig.py clear    remove this rig's build/rig<N> folder (rig 1 too); refused while its fs-uae runs (stop it first); retried, [ERROR] if it stays
   rig.py status   is it up (wasabid ping)
   rig.py start --mmu   the 68060 with an MMU (slower, no JIT), for MuForce
   rig.py muforce on|off|log   MuForce crash reports on the rig (tools/rig/muforce.py)
@@ -60,6 +65,7 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
   rig.py dbgbreak   SIGUSR1 to this rig's fs-uae: enter the console debugger (needs a debug build, UPTERM_FSUAE=<binary>)
   rig.py wasabi on|off|snoop|debug|guru|ps   call trace, debug output, Guru, tasks (tools/rig/wasabi.py)
 
+Kept output (reports, screenshots, verdicts) lives in build/rig-reports/rig<N>/ (paths.REPORTS), not here: stop deletes this folder.
 Layout under build/rig/ (gitignored): sys.hdf (DH0:), boot/ (BOOTX:, boots
 first: assigns, mounts XCON:, starts wasabid), vtc/ (VTC:, the binaries
 under test), shots/.
@@ -288,6 +294,48 @@ KIT_STAMP_BOOT = """If NOT EXISTS VTC:kit-restore
 EndIf""" % {"stamp": kitstamp.STAMP, "hash": kitstamp.HASH}
 
 
+# RIG-BOOT-STALE-BIN: the kit's S:User-Startup block `Run >NIL: UP-Term:bin/Amarchy` starts Amarchy (and the programs it
+# starts from UP-Term:bin at boot, amarchy-flat BOOT) before BOOTX:go, which runs beside the Startup-Sequence, has copied
+# the build over them: every boot-started program ran the previous build. The UP-Term: shadow pass therefore also runs
+# from a rig-only block in S:User-Startup directly before the kit's Amarchy block (BOOTX:shadows-up); it leaves
+# SHADOWS_UP_DONE, and go then skips its own pass (a rig with no Amarchy block has no such block: go runs the pass).
+# The kit stamp stays in go: it must follow both passes, and go runs the other pass.
+SHADOWS_UP_BLOCK = "rig-upterm-shadows"
+SHADOWS_UP_DONE = "RAM:rig-upterm-shadows-done"
+# AMARCHY-MENU-IXEMUL-BOOT-RACE: the kit's Amarchy block starts amarchy-menu, which needs ixemul v48 from LIBS:; the
+# RIG_LIBS assigns lived only in go (async beside the Startup-Sequence), so the menu opened a "needs ixemul v48"
+# requester and stayed in it. The same early block therefore makes the RIG_LIBS assigns and leaves RIG_LIBS_DONE; go
+# then skips them (a second Assign ADD would list each path twice).
+RIG_LIBS_DONE = "RAM:rig-libs-done"
+KIT_AMARCHY_BLOCK = ";BEGIN UP-Term Amarchy"
+SHADOWS_UP_SCRIPT = """FailAt 21
+Echo >>BOOTX:boot.log "early UP-Term shadows started (before Amarchy)"
+C:Assign >NIL: VTC: EXISTS
+If NOT WARN
+%(shadows_up)s
+  Echo >%(done)s "done"
+  Echo >>BOOTX:boot.log "early UP-Term shadows done (before Amarchy)"
+  If EXISTS VTC:ixp6/ixemul.library
+%(libs)s
+    Echo >%(libs_done)s "done"
+    Echo >>BOOTX:boot.log "early LIBS: assigns done (before Amarchy)"
+  EndIf
+EndIf
+""" % {"shadows_up": "\n".join("  " + l for l in kit_shadow_lines(True).splitlines()), "done": SHADOWS_UP_DONE,
+       "libs": "\n".join("    C:" + l for l in RIG_LIBS), "libs_done": RIG_LIBS_DONE}
+SHADOWS_UP_BLOCK_TEXT = ";BEGIN %s\nExecute BOOTX:shadows-up\n;END %s\n" % (SHADOWS_UP_BLOCK, SHADOWS_UP_BLOCK)
+
+
+def user_startup_with_shadows_block(data):
+    """data (S:User-Startup bytes) with the rig's shadow block directly before the kit's ';BEGIN UP-Term Amarchy' block;
+    an earlier copy of it is removed first. No Amarchy block: no rig block (go runs the pass)."""
+    data = user_startup.strip_upterm_blocks(data, SHADOWS_UP_BLOCK)
+    at = data.find(KIT_AMARCHY_BLOCK.encode("latin-1"))
+    if at < 0:
+        return data
+    return data[:at] + SHADOWS_UP_BLOCK_TEXT.encode("latin-1") + data[at:]
+
+
 # the boot's own UP-Term: assign (a kit's wins); install_rig.py runs it again when it has put the owner's add-ons back
 UPTERM_ASSIGN = """C:Assign >NIL: UP-Term: EXISTS
 If WARN
@@ -332,7 +380,11 @@ If WARN
   Skip envwait BACK
 EndIf
 Echo >>BOOTX:boot.log "env ok"
+If EXISTS %(shadows_up_done)s
+  Echo >>BOOTX:boot.log "UP-Term shadows ran before Amarchy"
+Else
 %(shadows_up)s
+EndIf
 %(kit_stamp)s
 Echo >>BOOTX:boot.log "UP-Term shadows done"
 C:Mount XCON: FROM BOOTX:Mountlist
@@ -340,13 +392,19 @@ Echo >>BOOTX:boot.log "XCON mounted"
 C:Assign >NIL: ETC: VTC:etc
 ; /tmp: the kit puts "Assign TMP: T:" in S:User-Startup; a rig with no kit has it from here
 C:Assign >NIL: TMP: T:
-C:Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD
+If NOT EXISTS %(libs_done)s
+  C:Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD
+EndIf
 ; UP-Term as the owner uses it on the rig: the patched ixemul first in
 ; LIBS: (Classes and MUI stay), PTY: and IXPIPE:, and GG: for /gg/bin/sh
 ; (vsh), as the kit sets it up. VTC: is assigned in BOOTX:s/startup-sequence,
 ; before the system's Startup-Sequence runs anything.
-If EXISTS VTC:ixp6/ixemul.library
+If EXISTS %(libs_done)s
+  Echo >>BOOTX:boot.log "LIBS: assigned before Amarchy"
+Else
+  If EXISTS VTC:ixp6/ixemul.library
 %(libs)s
+  EndIf
 EndIf
 C:Assign >NIL: PTY: EXISTS DEVICES
 If WARN
@@ -410,7 +468,7 @@ Run >NIL: SYS:System/RexxMast
 C:SetEnv wasabi.key %(key)s
 C:Run >NIL: <NIL: BOOTX:wasabid %(port)d name rig%(rign)d
 Echo >>BOOTX:boot.log "wasabid started"
-""" % {"port": paths.WASABI_PORT, "key": paths.WASABI_KEY, "rign": paths.RIG_N, "upterm_assign": UPTERM_ASSIGN, "amarchy_assets": AMARCHY_ASSETS_BOOT, "shadows": kit_shadow_lines(False), "shadows_up": kit_shadow_lines(True), "kit_stamp": KIT_STAMP_BOOT, "libs": "\n".join("  C:" + l for l in RIG_LIBS),
+""" % {"port": paths.WASABI_PORT, "key": paths.WASABI_KEY, "rign": paths.RIG_N, "upterm_assign": UPTERM_ASSIGN, "amarchy_assets": AMARCHY_ASSETS_BOOT, "shadows": kit_shadow_lines(False), "shadows_up": kit_shadow_lines(True), "shadows_up_done": SHADOWS_UP_DONE, "kit_stamp": KIT_STAMP_BOOT, "libs": "\n".join("    C:" + l for l in RIG_LIBS), "libs_done": RIG_LIBS_DONE,
        "shellpath": "\n".join('    Echo >>S:Shell-Startup "%s"' % l for l in SHELL_STARTUP_PATH)}
 # boot.log in the host drawer BOOTX: tells from the Mac how far a boot got
 # (the rig's screen is not visible from here).
@@ -771,6 +829,32 @@ def sys_hdf_kit_upterm(image):
     finally:
         shutil.rmtree(back, ignore_errors=True)
 
+def sys_hdf_shadows_block(image):
+    """RIG-BOOT-STALE-BIN: the rig's shadow block goes into the image's S:User-Startup before the kit's Amarchy block."""
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    us = RIG / "user-startup.tmp"
+    us.unlink(missing_ok=True)
+    if subprocess.run([xdf, str(image), "read", "S/User-Startup", str(us)], capture_output=True).returncode != 0:
+        return
+    data = us.read_bytes()
+    new = user_startup_with_shadows_block(data)
+    if new != data:
+        us.write_bytes(new)
+        subprocess.run([xdf, str(image), "delete", "S/User-Startup"], check=True, capture_output=True)
+        subprocess.run([xdf, str(image), "write", str(us), "S/User-Startup"], check=True, capture_output=True)
+    us.unlink()
+
+def os_tree_shadows_block(tree):
+    """sys_hdf_shadows_block for a host-directory system (--os <name>, --os32); every start, so a kit installed or
+    reinstalled since (its Amarchy block is written at the end of the file) gets the block before it again."""
+    for sub in ("S", "s"):
+        us = pathlib.Path(tree) / sub / "User-Startup"
+        if us.is_file():
+            data = us.read_bytes()
+            new = user_startup_with_shadows_block(data)
+            if new != data:
+                us.write_bytes(new)
+
 def strip_user_startup_blocks(image, name):
     """Remove the ';BEGIN <name>' blocks from the image's S:User-Startup (none: nothing happens)."""
     xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
@@ -1093,6 +1177,7 @@ def setup():
         seed_rig_vtc(paths.RIG_HOME / "rig/vtc", RIG / "vtc")
     stage_rig_vtc(RIG / "vtc")
     (RIG / "shots").mkdir(exist_ok=True)
+    (paths.REPORTS / "shots").mkdir(parents=True, exist_ok=True)   # kept output: scripts write here, rig.py stop leaves it
     if OS32 and not (RIG / "os32").exists():
         print("copying the 3.2 system (168 MB) ...")
         paths.require_input(OS32_SRC, "UPTERM_OS32_TREE", "the AmigaOS 3.2 tree")
@@ -1111,6 +1196,7 @@ def setup():
         tree = RIG / ("os-%s" % OS if OS else "os32")
         # --no-dopus strips the blocks; otherwise the tree gets 5.104 as the clone does (`rig.py dopus` installed it)
         os_tree_no_dopus(tree) if "--no-dopus" in sys.argv else os_tree_dopus(tree)
+        os_tree_shadows_block(tree)
     (RIG / "boot/s").mkdir(exist_ok=True)
     # --060: at host speed the boot shell's window is open (something prints
     # into it) when IPrefs switches the Workbench to the saved RTG mode, and
@@ -1143,6 +1229,7 @@ def setup():
         print("[WARN] %d file(s) in VTC: differ from the build: %s; `rig.py install` puts the build there"
               % (len(stale), ", ".join(stale)))
     (RIG / "boot/go").write_text(GO)
+    (RIG / "boot/shadows-up").write_text(SHADOWS_UP_SCRIPT)
     (RIG / "boot" / kitstamp.LIST).write_text("".join(n + "\n" for n in sorted({x[0] for x in KIT_SHADOWS})))
     kitstamp.check(RIG / "boot", RIG / "vtc")
     (RIG / "boot/Mountlist").write_text(MOUNTLIST)
@@ -1821,10 +1908,37 @@ def start(retries=START_RETRIES):
     finds its emulator in mine() and says "already running"."""
     if not KEEP_SYS:   # a reboot restarts the run the guard already passed
         guard_stale_base(ROOT, sys.argv)
+        gc()   # idle rig folders of other numbers (RULES.md rule 7) go before this rig's own folder is made
     RIG.mkdir(parents=True, exist_ok=True)
     with open(RIG / "start.lock", "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)   # released when the block ends or the process dies
         return _start(retries)
+
+def boot_device_path():
+    """The path of the rig's first hard drive (the boot device), read from CFG: FS-UAE `hard_drive_0 = <path>`, Amiberry
+    `uaehf0=dir,rw,DH0:<volume>:<path>,<pri>` or `uaehf0=hdf,rw,DH0:<path>,...` (amiberry.drive_line). None when the
+    config lists none."""
+    for l in CFG.read_text().splitlines():
+        if AMIBERRY and l.startswith("uaehf0="):
+            kind, _, rest = l.split("=", 1)[1].split(",", 2)
+            dev = rest.split(",")[0]          # DH0:<volume>:<path>  or  DH0:<path>
+            body = dev.split(":", 1)[1]
+            return body.split(":", 1)[1] if kind == "dir" else body
+        if not AMIBERRY and l.startswith("hard_drive_0 ="):
+            return l.split("=", 1)[1].strip()
+    return None
+
+def boot_device_check():
+    """Refuse to launch the emulator without a boot device: the config must exist and its first hard drive must be a
+    present, non-empty directory or file. An emulator with no boot device just sits on the insert-disk screen."""
+    if not CFG.exists():
+        sys.exit("rig: not starting: config %s is missing" % CFG)
+    hd = boot_device_path()
+    if not hd:
+        sys.exit("rig: not starting: %s lists no first hard drive (no boot device)" % CFG)
+    p = pathlib.Path(hd)
+    if not p.exists() or (p.is_dir() and not any(p.iterdir())) or (p.is_file() and p.stat().st_size == 0):
+        sys.exit("rig: not starting: boot device %s is missing or empty" % p)
 
 def _start(retries):
     # before anything is written: a start while the rig runs (or boots, when
@@ -1842,6 +1956,7 @@ def _start(retries):
         sys_hdf_no_wasabid(RIG / "sys.hdf")
         if A500:
             sys_hdf_a500(RIG / "sys.hdf")
+        sys_hdf_shadows_block(RIG / "sys.hdf")
     elif not OS and not OS32:
         fresh_sys_hdf()
         sys_hdf_screenmode(RIG / "sys.hdf")
@@ -1854,6 +1969,7 @@ def _start(retries):
         sys_hdf_kit(RIG / "sys.hdf")
         if A500:
             sys_hdf_a500(RIG / "sys.hdf")
+        sys_hdf_shadows_block(RIG / "sys.hdf")
         sys_hdf_cpu_lib(RIG / "sys.hdf")   # the master image is never touched; this and any other write into DH0: runs after the clone
     RIG.mkdir(parents=True, exist_ok=True)
     START_ARGS.write_text(json.dumps([a for a in sys.argv[2:] if a != "--keep-sys"]))
@@ -1863,6 +1979,7 @@ def _start(retries):
     log = RIG / "boot/boot.log"
     if log.exists():
         log.unlink()
+    boot_device_check()   # no boot device = an emulator on the insert-disk screen; refuse before launching either one
     if AMIBERRY:
         # Amiberry's console log goes where cap_fsuae_log, fsuae_crash and fsuae_reset_count already read
         paths.FSUAE_LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -2213,6 +2330,32 @@ def dopus():
 # reboot, kit-restore, logwatch and watchdog send it nothing. Every other path to a rig (ami.py, the scripts) passes ami.req.
 GATED = ("dbg", "dbgbreak", "wasabi", "muforce", "aga", "aga256", "rtg", "dopus")
 
+CLEAR_TRIES = 4
+GC_IDLE_SECONDS = 2 * 3600   # a rig folder idle this long, with no emulator on it and no start in progress, is stale
+
+def remove_folder(folder):
+    """Rename `folder` to <folder>.del (a slow rmtree must not race the next start of this number), then rmtree it;
+    retried CLEAR_TRIES times. Returns True when nothing is left; on failure prints [ERROR] and returns False, the .del
+    named in the message (never left silently)."""
+    folder = pathlib.Path(folder)
+    gone = folder.with_name(folder.name + ".del")
+    if gone.exists():
+        shutil.rmtree(gone, ignore_errors=True)
+    if folder.exists():
+        folder.rename(gone)
+    err = None
+    for attempt in range(CLEAR_TRIES):
+        try:
+            shutil.rmtree(gone)
+            return True
+        except FileNotFoundError:
+            return True
+        except OSError as e:
+            err = e
+            time.sleep(1 + attempt)
+    print("[ERROR] rig: could not remove %s after %d tries (%s); remove it by hand" % (gone, CLEAR_TRIES, err), file=sys.stderr)
+    return False
+
 def clear():
     """Free this rig's folder (RULES.md rule 7). Refused while this rig's fs-uae runs: rig 9 ran with build/rig9
     deleted under it and build/rig4 vanished the same way (RIG-FOLDER-VANISHED), because the documented
@@ -2222,16 +2365,118 @@ def clear():
     if not RIG.exists():
         print("rig: %s already gone" % RIG)
         return
-    gone = RIG.with_name(RIG.name + ".del")   # renamed first: a slow rmtree must not race the next start of this number
-    shutil.rmtree(gone, ignore_errors=True)
-    RIG.rename(gone)
-    shutil.rmtree(gone)
+    if not remove_folder(RIG):
+        sys.exit(1)
     print("rig: removed", RIG)
+
+def stop_command():
+    """`rig.py stop`: stop() (emulator exit), then, for rig N > 1, clear() the folder so it does not pile up. Not for rig 1
+    (the owner's), not with --keep (a script that stops and starts again mid-run: the folder holds its verdict files),
+    not while the emulator still runs. The internal stop() of reboot, the start retries and the watchdog never clears."""
+    stop()
+    if "--keep" in sys.argv[2:] or paths.RIG_N == 1 or mine():
+        return
+    clear()
+
+def gc_decision(n, has_process, lock_held, newest, now, max_age=GC_IDLE_SECONDS):
+    """(delete, reason) for the folder of rig N. Pure: rig 1 and a missing rig number are never touched; a live emulator, a
+    held start.lock or activity (`newest`, epoch seconds, None = unknown) younger than max_age keep it."""
+    if n <= 1:
+        return False, "rig 1 is the owner's"
+    if has_process:
+        return False, "emulator running"
+    if lock_held:
+        return False, "start in progress"
+    if newest is not None and now - newest < max_age:
+        return False, "active %d min ago" % ((now - newest) // 60)
+    return True, "idle %s, no emulator" % ("%d min" % ((now - newest) // 60) if newest is not None else "unknown time")
+
+def folder_newest(folder):
+    """Newest activity of a rig folder: its last-command stamp, else the newest mtime of its top-level entries."""
+    t = paths.last_command(folder)
+    if t is not None:
+        return t
+    times = []
+    for e in pathlib.Path(folder).iterdir():
+        try:
+            times.append(e.stat().st_mtime)
+        except OSError:
+            pass
+    return max(times) if times else pathlib.Path(folder).stat().st_mtime
+
+def folder_size(folder):
+    total = 0
+    for root, _dirs, files in os.walk(folder):
+        for f in files:
+            try:
+                total += os.lstat(os.path.join(root, f)).st_size
+            except OSError:
+                pass
+    return total
+
+def lock_held(folder):
+    """True when another process holds <folder>/start.lock (a start in progress)."""
+    f = pathlib.Path(folder) / "start.lock"
+    if not f.exists():
+        return False
+    with open(f, "r") as fh:
+        try:
+            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            return True
+        fcntl.flock(fh, fcntl.LOCK_UN)
+    return False
+
+def process_lines():
+    return subprocess.run(["ps", "-eo", "pid,command"], capture_output=True, text=True).stdout.splitlines()
+
+def folder_in_use(folder, lines):
+    """True when an fs-uae or Amiberry command line names a path inside `folder` (the config path, or Amiberry's win/ drawer)."""
+    key = str(folder) + "/"
+    return any(key in l and ("fs-uae" in l.lower() or "amiberry" in l.lower()) for l in lines)
+
+def gc(home=None, own_n=None, lines=None, now=None, remove=None):
+    """Sweep build/rig<N> folders (N > 1, not this rig's own number): remove the idle ones (gc_decision) and every leftover
+    build/rig*.del. Each removal is printed and appended to <home>/rig-gc.log (time, folder, size, reason). Returns the
+    removed folder names."""
+    home = pathlib.Path(home or paths.RIG_HOME)
+    own_n = paths.RIG_N if own_n is None else own_n
+    lines = process_lines() if lines is None else lines
+    now = time.time() if now is None else now
+    remove = remove or remove_folder
+    removed = []
+    if not home.is_dir():
+        return removed
+    def log(folder, size, reason):
+        line = "%s %s %d bytes %s" % (time.strftime("%F %T", time.localtime(now)), folder, size, reason)
+        print("rig gc: removed " + line)
+        with open(home / "rig-gc.log", "a") as fh:
+            fh.write(line + "\n")
+    for d in sorted(home.iterdir()):
+        m = re.fullmatch(r"rig(\d*)(\.del)?", d.name)
+        if not m or not d.is_dir():
+            continue
+        n = int(m.group(1) or 1)
+        if m.group(2):
+            if n > 1 and folder_in_use(d, lines):
+                continue
+            size, reason = folder_size(d), "leftover .del"
+        else:
+            if n == own_n:
+                continue
+            delete, reason = gc_decision(n, folder_in_use(d, lines), lock_held(d), folder_newest(d), now)
+            if not delete:
+                continue
+            size = folder_size(d)
+        if remove(d):
+            removed.append(d.name)
+            log(d, size, reason)
+    return removed
 
 def main(argv):
     """Run the command argv[1]. --help, -h, help and ? (alone or after a command) print this file's usage (rc 0), the command not run; no command or an
     unknown one prints it to stderr (rc 2)."""
-    cmds = {"setup": setup, "start": start, "stop": stop, "clear": clear, "reboot": reboot, "install": install, "kit-restore": kit_restore,
+    cmds = {"setup": setup, "start": start, "stop": stop_command, "clear": clear, "gc": gc, "reboot": reboot, "install": install, "kit-restore": kit_restore,
             "status": status, "logwatch": logwatch, "serialwatch": serialwatch, "muforce": muforce, "dbg": dbg, "dbgbreak": dbgbreak, "watchdog": watchdog, "wasabi": wasabi, "aga": lambda: screenmode("aga"),
             "aga256": lambda: screenmode("aga256"), "rtg": lambda: screenmode("rtg"), "dopus": dopus}
     helps = ("--help", "-h", "help", "?")
