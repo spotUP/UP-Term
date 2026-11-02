@@ -935,14 +935,34 @@ static void k30_text_over_a_picture_below_keeps_it(void)
     vt_free(t);
 }
 
-/* z >= 0 keeps the model of D12: the picture takes the cells */
-static void k30_z_0_and_up_still_takes_the_cells(void)
+/* K40d (O6): a kitty picture with z >= 0 lies over the text as in kitty:
+ * its cells keep their glyph and colours (its translucent pixels show
+ * them) and gain VT_CELL_IMAGE. Text written there later still takes the
+ * cell (D12). A sixel over the same text still blanks its cells. Before
+ * K40d the kitty picture blanked the cells to the default colours too. */
+static void k40d_kitty_front_picture_keeps_the_cells(void)
 {
     vt_term *t = kitty_term(20, 8);
-    h_put(t, "\033[1;1HXY");
-    put_at(t, 1, 1, "i=1,p=1,z=5");
-    CHECK(is_image(t, 0, 0) && !is_under(t, 0, 0));
-    CHECK(h_cell(t, 0, 0)->ch == ' ');
+    vt_image_view v;
+    h_put(t, "\033[1;1H\033[31;44mXY\033[0m");
+    put_at(t, 1, 1, "i=1,p=1,z=5,c=4");
+    CHECK(is_image(t, 0, 0) && is_image(t, 3, 0) && !is_image(t, 4, 0) && !is_under(t, 0, 0));
+    CHECK(h_cell(t, 0, 0)->ch == 'X'); /* the glyph stays */
+    CHECK(h_cell(t, 1, 0)->ch == 'Y');
+    CHECK(h_cell(t, 0, 0)->fg == 1); /* and its colours */
+    CHECK(h_cell(t, 0, 0)->bg == 4);
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT((int)v.z, 5);
+    h_put(t, "\033[1;2Hq"); /* D12: text written over the picture takes that cell */
+    CHECK(h_cell(t, 1, 0)->ch == 'q' && !is_image(t, 1, 0));
+    CHECK(is_image(t, 0, 0) && is_image(t, 2, 0));
+    vt_free(t);
+    /* a sixel over the same text: the cells are blanks in the default colours */
+    t = kitty_term(20, 8);
+    h_put(t, "\033[1;1H\033[31;44mXY\033[0m\033[1;1H\033Pq#0;2;100;0;0#0~~~~~~~~\033\\");
+    CHECK(is_image(t, 0, 0) && is_image(t, 1, 0));
+    CHECK(h_cell(t, 0, 0)->ch == ' ' && h_cell(t, 1, 0)->ch == ' ');
+    CHECK(h_cell(t, 0, 0)->bg == VT_COLOR_DEFAULT);
     vt_free(t);
 }
 
@@ -1472,7 +1492,7 @@ void suite_kitty(void)
     k29_virtual_placements_and_parents();
     k30_row_images_go_by_z_then_id();
     k30_text_over_a_picture_below_keeps_it();
-    k30_z_0_and_up_still_takes_the_cells();
+    k40d_kitty_front_picture_keeps_the_cells();
     k31_placeholder_cells_resolve_to_tiles();
     k31_third_mark_is_the_ids_high_byte();
     k34_frames_build_on_each_other();

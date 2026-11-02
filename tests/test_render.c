@@ -2744,9 +2744,12 @@ static void k40_redraw_order_and_partial_damage(void)
     close_term();
 }
 
-/* Order with text: a z<0 picture is drawn before the glyph, which stays over it. A z>=0 picture owns its cells (no
- * glyph is drawn in them), so it blends with what the rastport holds there: the fake reads the cursor row's
- * pen-painted background as black, and column 0 row 5 is the blend over that. */
+/* Order with text: a z<0 picture is drawn before the glyph, which stays over it. A z>=0 kitty picture lies over its
+ * cells, which keep their text and background (O6, K40d): the glyph and the cell background are drawn first and the
+ * picture blends with what the rastport then holds. Row 0 is the cursor row (pen-painted, the fake reads it as
+ * black); row 1 holds a blank with an RGB blue background (a FillPixelArray, read back as its colour), row 2 an X.
+ * Column 0 (alpha 128), pixel row 12: source (0, 48, 24) over the blue (0, 0, 238). Before K40d the picture blanked
+ * the cells to the default colours and the blend read black there. */
 static void k40_soft_blend_reads_the_text_under_a_front_picture(void)
 {
     static unsigned char px[64 * 64 * 4];
@@ -2761,14 +2764,17 @@ static void k40_soft_blend_reads_the_text_under_a_front_picture(void)
     CHECK(rn.n_img_rgb_soft_blend >= 1);
     close_term();
     k40_open(0);
-    pass("\x1b[1;1HX\x1b[1;1H");
+    pass("\x1b[2;1H\x1b[48;2;0;0;238m \x1b[3;1HX\x1b[0m\x1b[1;1H");
     gf_clear_log();
     k37_send("a=T,f=32,s=64,v=64,i=2,z=1,C=1,c=8,r=8", px, sizeof px);
     gf_clear_log();
     vr_damage(&rn, 0, 0, COLS - 1, ROWS - 1);
     vr_redraw(&rn);
     CHECK(gf_count(GF_CGXREAD) >= 1);
-    /* column 0 (alpha 128), row 5: source (0, 20, 10) blended with the pixel the read returned (black) */
+    CHECK(k40_after(GF_CGXPIX, "X", 1)); /* the glyph under the picture is drawn, before it */
+    CHECK_INT(gf_pixel(0, 12),
+              GF_CGX | (k40_soft(0, 0, 128) << 16) | (k40_soft(48, 0, 128) << 8) | k40_soft(24, 238, 128));
+    /* the cursor row: the blend over what the read returned (black) */
     CHECK_INT(gf_pixel(0, 5), GF_CGX | (k40_soft(0, 0, 128) << 16) | (k40_soft(20, 0, 128) << 8) | k40_soft(10, 0, 128));
     close_term();
     gf_cgx_alpha(1);
