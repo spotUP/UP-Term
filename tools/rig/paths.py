@@ -287,6 +287,20 @@ def ports():
     return pathlib.Path(os.environ.get("UPTERM_PORTS") or repo("upterm-ports"))
 
 
+def coreutils():
+    """{name: file} of the kit's coreutils as the dist ships them: the ports' coreutils 9.12
+    (ports()/build/kit/userland/bin, each with a $STACK cookie), plus the GG 5.2.1 names 9.12 does
+    not build (hostname, pinky, who). Same rule as the Makefile kit recipe (PIPE-FREEZE: GNU wc
+    5.2.1 has no cookie, vsh gave it 16000 bytes of stack and the machine froze)."""
+    gg = pathlib.Path(__file__).resolve().parents[2] / "dist/gg/coreutils-5.2.1/bin"
+    ports_bin = ports() / "build/kit/userland/bin"
+    out = {f.name: f for f in gg.iterdir() if f.is_file()}
+    for f in gg.iterdir():
+        if (ports_bin / f.name).is_file():
+            out[f.name] = ports_bin / f.name
+    return out
+
+
 # The default Kickstart 3.1 (40.68, A1200) ROM; UPTERM_ROM names another file. It lives in the
 # workspace, outside every repository (the repositories are public; a ROM is not ours to
 # publish): a copy of the owner's Dropbox ROM, header 40.68,
