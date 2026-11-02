@@ -6,6 +6,12 @@ box, the red pixels and the pixels of any other colour (the glyphs), and the sam
 PASS: the box holds red and glyph pixels, and the first cell holds both (the M over the picture). Before K30 the
 picture blanked the cells, so the box was red only.
   UPTERM_RIG=<n> python3 tools/rig/kitty_z_rig.py <out-prefix>
+
+Mode "ph" (K32): UPTERM_RIG=<n> python3 tools/rig/kitty_z_rig.py <out-prefix> ph
+Uploads a 2x2 cell virtual placement (U=1, i=7: red green / blue yellow), prints four placeholder cells
+(U+10EEEE, fg 38;5;7, row/column marks) at row 3 column 3 and measures the four colour boxes in the shot.
+PASS: the four boxes exist, red top-left, green top-right, blue bottom-left, yellow bottom-right, each about a
+cell wide and high. Before K32 the cells drew the replacement glyph and no picture.
 """
 import base64, pathlib, struct, sys, time, zlib
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
@@ -34,8 +40,55 @@ def png(w, h, rgb):
             + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b''))
 
 
+def ph_main(out):
+    quarters = {'red': (255, 0, 0), 'green': (0, 255, 0), 'blue': (0, 0, 255), 'yellow': (255, 255, 0)}
+    pic = bytes((255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 0))
+    ph, m0, m1 = '\U0010EEEE'.encode(), '\u0305'.encode(), '\u030d'.encode()
+    stream = (b'\x1b[2J' + apc('a=T,U=1,i=7,f=24,s=2,v=2,c=2,r=2,q=2', pic) + b'\x1b[3;3H\x1b[38;5;7m'
+              + ph + m0 + m0 + ph + m0 + m1 + b'\x1b[4;3H' + ph + m1 + m0 + ph + m1 + m1 + b'\x1b[0m\x1b[8;1H')
+    (VTC / 'kz-stream.bin').write_bytes(stream)
+    c.run('Run >NIL: NewShell "XCON:%d/%d/%d/%d/kz/CLOSE/XTERM"' % (WX, WY, WW, WH))
+    time.sleep(4)
+    kx, ky = ami.pointer_scale()
+    ami.script(('move', int((WX + 200) * kx), int((WY + 100) * ky)), ('wait', 2), ('button', 0, 1),
+               ('wait', 2), ('button', 0, 0), ('wait', 5))
+    time.sleep(1)
+    ami.req(0x08, bytes([4]) + b'Type VTC:kz-stream.bin')
+    time.sleep(0.5)
+    ami.key(0x44)
+    time.sleep(6)
+    b = ami.req(0x07)
+    w, h = struct.unpack('>HH', b[2:6])
+    px = bytes(b[8:8 + w * h * 3])
+    pathlib.Path(out + '.png').write_bytes(png(w, h, px))
+    box = {}
+    for name, col in quarters.items():
+        xs, ys, n = [], [], 0
+        for i in range(0, len(px) - 2, 3):
+            if all(abs(px[i + k] - col[k]) < 40 for k in range(3)):
+                xs.append((i // 3) % w)
+                ys.append((i // 3) // w)
+        box[name] = (min(xs), max(xs), min(ys), max(ys), len(xs)) if xs else None
+        print(name, box[name])
+    ok = all(box.values())
+    if ok:
+        cw = box['red'][1] - box['red'][0] + 1
+        ch = box['red'][3] - box['red'][2] + 1
+        full = lambda n: box[n][4] >= 0.9 * cw * ch and abs(box[n][1] - box[n][0] + 1 - cw) <= 1 and abs(box[n][3] - box[n][2] + 1 - ch) <= 1
+        ok = (cw >= 4 and ch >= 4 and all(full(n) for n in box)
+              and box['green'][0] == box['red'][1] + 1 and box['blue'][2] == box['red'][3] + 1
+              and box['yellow'][0] == box['green'][0] and box['yellow'][2] == box['blue'][2])
+        print('cell', cw, 'x', ch)
+    print('PASS' if ok else 'FAIL')
+    ami.req(0x08, bytes([4]) + b'EndCLI')
+    ami.key(0x44)
+    time.sleep(3)
+
+
 def main():
     out = sys.argv[1]
+    if len(sys.argv) > 2 and sys.argv[2] == 'ph':
+        return ph_main(out)
     pic = bytes((255, 0, 0)) * (64 * 16)
     stream = (b'\x1b[2J\x1b[3;3H'
               + apc('a=T,f=24,s=64,v=16,i=1,p=1,z=-1,C=1,q=2', pic)
