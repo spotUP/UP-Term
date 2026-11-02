@@ -127,9 +127,9 @@ static vt_u32 kit_px(const kit_src *s, long i)
 static int kit_room(vt_term *t, long bytes)
 {
     int i, old;
-    if (bytes > VT_IMAGE_MEMORY)
+    if (bytes > t->img_budget)
         return 0;
-    while (t->img_mem + bytes > VT_IMAGE_MEMORY) {
+    while (t->img_mem + bytes > t->img_budget) {
         old = -1;
         for (i = 0; i < VT_IMG_SLOTS; i++)
             if (t->imgs[i] && t->imgs[i]->pix && t->imgs[i]->kind == 2 &&
@@ -144,20 +144,14 @@ static int kit_room(vt_term *t, long bytes)
     return 1;
 }
 
-/* The part (x0, y0, w, h) of src as an indexed image of tw x th pixels
- * (nearest pixel, dithered), its colours packed to the ones in use.
- * 0 when there is no memory. */
-static int kit_make(vt_term *t, const kit_src *s, int x0, int y0, int w, int h, int tw, int th,
-                    vt_u8 **pix, vt_u32 *pal, int *npal)
+/* The part (x0, y0, w, h) of src as indices into a palette of tw x th
+ * pixels in o (nearest pixel, dithered), its colours packed to the ones in
+ * use. The one maker of index pictures: kit_make and the RGB-off conversion. */
+static void kit_index(const kit_src *s, int x0, int y0, int w, int h, int tw, int th, vt_u8 *o, vt_u32 *pal,
+                      int *npal)
 {
-    vt_u8 *o, map[256];
+    vt_u8 map[256];
     int x, y, n = 1, i;
-    long bytes = (long)tw * th;
-    if (!kit_room(t, bytes))
-        return 0;
-    o = (vt_u8 *)VT_MALLOC(bytes);
-    if (!o)
-        return 0;
     memset(map, 0, sizeof(map));
     for (y = 0; y < th; y++) {
         long sy = y0 + (long)y * h / th;
@@ -173,9 +167,113 @@ static int kit_make(vt_term *t, const kit_src *s, int x0, int y0, int w, int h, 
     for (i = 1; i < 256; i++)
         if (map[i])
             pal[map[i]] = kit_color(i);
-    *pix = o;
     *npal = n;
+}
+
+/* The part (x0, y0, w, h) of src as an indexed image of tw x th pixels.
+ * 0 when there is no memory. */
+static int kit_make(vt_term *t, const kit_src *s, int x0, int y0, int w, int h, int tw, int th,
+                    vt_u8 **pix, vt_u32 *pal, int *npal)
+{
+    vt_u8 *o;
+    long bytes = (long)tw * th;
+    if (!kit_room(t, bytes))
+        return 0;
+    o = (vt_u8 *)VT_MALLOC(bytes);
+    if (!o)
+        return 0;
+    kit_index(s, x0, y0, w, h, tw, th, o, pal, npal);
+    *pix = o;
     return 1;
+}
+
+/* The RGB twin (vt_set_image_rgb on): the same nearest-pixel scale, 4 bytes a
+ * pixel R G B A in memory order with the source's own alpha byte (owner O2:
+ * true alpha). *opaque is 1 when no pixel is below 255. 0 when there is no memory. */
+static int kit_make_rgb(vt_term *t, const kit_src *s, int x0, int y0, int w, int h, int tw, int th,
+                        vt_u8 **pix, int *opaque)
+{
+    vt_u8 *o, *q;
+    int x, y, op = 1;
+    long bytes = (long)tw * th * 4;
+    if (!kit_room(t, bytes))
+        return 0;
+    o = (vt_u8 *)VT_MALLOC(bytes);
+    if (!o)
+        return 0;
+    q = o;
+    for (y = 0; y < th; y++) {
+        long sy = y0 + (long)y * h / th;
+        for (x = 0; x < tw; x++, q += 4) {
+            long sx = x0 + (long)x * w / tw;
+            vt_u32 p = kit_px(s, sy * s->w + sx);
+            q[0] = (vt_u8)(p >> 16);
+            q[1] = (vt_u8)(p >> 8);
+            q[2] = (vt_u8)p;
+            q[3] = (vt_u8)(p >> 24);
+            if (q[3] != 255)
+                op = 0;
+        }
+    }
+    *pix = o;
+    *opaque = op;
+    t->kit_rgb_made++;
+    return 1;
+}
+
+/* Install what kit_make or kit_make_rgb made: the format of the terminal decides. */
+static int kit_picture(vt_term *t, const kit_src *s, int x0, int y0, int w, int h, int tw, int th)
+{
+    vt_u8 *pix;
+    vt_u32 pal[256];
+    int npal, slot, op;
+    if (t->image_rgb) {
+        if (!kit_make_rgb(t, s, x0, y0, w, h, tw, th, &pix, &op))
+            return -1;
+        slot = image_install(t, pix, (long)tw * th * 4, tw, th, 0, pal);
+        if (slot >= 0) {
+            t->imgs[slot]->fmt = 1;
+            t->imgs[slot]->opaque = (vt_u8)op;
+        }
+        return slot;
+    }
+    if (!kit_make(t, s, x0, y0, w, h, tw, th, &pix, pal, &npal))
+        return -1;
+    return image_install(t, pix, (long)tw * th, tw, th, npal, pal);
+}
+
+/* vt_set_image_rgb off: every RGB picture becomes cube indices in place (T6),
+ * at each pixel's own (x, y), the palette packed as kit_make does; img_mem
+ * shrinks by what was freed. A picture with no room for its indices (cannot
+ * happen: they are a quarter of the size) keeps its RGBA. */
+static void kit_to_index(vt_term *t)
+{
+    int i;
+    for (i = 0; i < VT_IMG_SLOTS; i++) {
+        vt_image *im = t->imgs[i];
+        kit_src s;
+        vt_u8 *o;
+        if (!im || !im->pix || im->fmt != 1)
+            continue;
+        o = (vt_u8 *)VT_MALLOC((long)im->w * im->h);
+        if (!o)
+            continue;
+        memset(&s, 0, sizeof(s));
+        s.px = im->pix;
+        s.bpp = 4;
+        s.w = im->w;
+        s.h = im->h;
+        kit_index(&s, 0, 0, im->w, im->h, im->w, im->h, o, im->pal, &im->npal);
+        VT_FREE(im->pix);
+        im->pix = o;
+        t->img_mem -= im->bytes - (long)im->w * im->h;
+        im->bytes = (long)im->w * im->h;
+        im->fmt = 0;
+        im->opaque = 0;
+        if (im->kind)
+            im->pal[0] = vt_default_color(t, 1);
+        im->serial = ++t->img_serial; /* the pen cache sees a new picture */
+    }
 }
 
 /* ---- the chunks ---- */
@@ -542,13 +640,11 @@ static void kit_place_at(vt_term *t, int slot, int col, int row)
 static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_u32 id)
 {
     int x0 = (int)KV(k, 'x'), y0 = (int)KV(k, 'y'), w = (int)KV(k, 'w'), h = (int)KV(k, 'h');
-    int c = (int)KV(k, 'c'), r = (int)KV(k, 'r'), tw, th, npal, slot;
+    int c = (int)KV(k, 'c'), r = (int)KV(k, 'r'), tw, th, slot;
     int cw = t->cell_w > 0 ? t->cell_w : 8, ch = t->cell_h > 0 ? t->cell_h : 16;
     int px0 = (int)KV(k, 'X'), py0 = (int)KV(k, 'Y');
     int left, parent = -1, depth = 0, col = t->cx, row = t->cy;
     int virt = KV(k, 'U') == 1; /* K31: a virtual placement, shown by placeholder cells */
-    vt_u8 *pix;
-    vt_u32 pal[256];
     vt_image *im;
     if (KU(k, 'P')) {
         const char *err = 0;
@@ -605,9 +701,7 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
                 t->imgs[i]->pid == KU(k, 'p'))
                 image_free(t, i);
     }
-    if (!kit_make(t, s, x0, y0, w, h, tw, th, &pix, pal, &npal))
-        return "ENOMEM:no room for the picture";
-    slot = image_install(t, pix, (long)tw * th, tw, th, npal, pal);
+    slot = kit_picture(t, s, x0, y0, w, h, tw, th);
     if (slot < 0)
         return "ENOMEM:no room for the picture";
     im = t->imgs[slot];
@@ -644,17 +738,13 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
 /* The whole picture kept under its id (stored, not on the screen). */
 static const char *kit_store(vt_term *t, const kit_src *s, vt_u32 id, vt_u32 num, int trans)
 {
-    vt_u8 *pix;
-    vt_u32 pal[256];
-    int npal, slot, i;
-    if ((long)s->w * s->h > VT_IMAGE_MEMORY / 2)
+    int slot, i;
+    if ((long)s->w * s->h * (t->image_rgb ? 4 : 1) > t->img_budget / 2)
         return "ENOMEM:too big to keep";
     for (i = 0; i < VT_IMG_SLOTS; i++)
         if (t->imgs[i] && t->imgs[i]->pix && t->imgs[i]->kind && t->imgs[i]->kid == id)
             image_free(t, i); /* the same id again: the new one, and its placements go */
-    if (!kit_make(t, s, 0, 0, s->w, s->h, s->w, s->h, &pix, pal, &npal))
-        return "ENOMEM:no room for the picture";
-    slot = image_install(t, pix, (long)s->w * s->h, s->w, s->h, npal, pal);
+    slot = kit_picture(t, s, 0, 0, s->w, s->h, s->w, s->h);
     if (slot < 0)
         return "ENOMEM:no room for the picture";
     t->imgs[slot]->kind = 2;
@@ -878,7 +968,9 @@ static const char *kit_frame(vt_term *t, const vt_kitty *k, const kit_src *s, vt
         return "ENOENT:no such frame";
     if (!r && n >= VT_ANIM_FRAMES)
         return "ENOSPC:too many frames";
-    if (t->anim_mem + (im->anim ? 0 : per) + (r ? 0 : per) > VT_ANIM_MEMORY)
+    if (im->fmt)
+        return "EINVAL:frames of an RGB picture come with K39";
+    if (t->anim_mem + (im->anim ? 0 : per) + (r ? 0 : per) > t->anim_budget)
         return "ENOSPC:no room for frames";
     if (!im->anim) {
         root = kit_root_canvas(im);
@@ -1162,7 +1254,7 @@ static void kitty_run(vt_term *t, vt_kitty *k)
                 s.px = im->anim->fr[im->anim->cur - 1];
                 s.pal = cube;
             }
-            s.bpp = 1;
+            s.bpp = im->fmt ? 4 : 1; /* an RGBA root reads back through kit_px as it is */
             s.w = im->w;
             s.h = im->h;
             id = im->kid;
@@ -1438,6 +1530,8 @@ int vt_cell_placeholder(const vt_term *t, int row, int col, vt_image_view *v, in
     v->h = im->h;
     v->pal = im->pal;
     v->npal = im->npal;
+    v->fmt = im->fmt;
+    v->opaque = im->opaque;
     v->cw = im->cw;
     v->ch = im->ch;
     v->col0 = 0;
