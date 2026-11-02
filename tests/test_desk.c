@@ -7,6 +7,7 @@
 #include <string.h>
 #include "../amarchy/amconf_core.h"
 #include "../amarchy/desk_core.h"
+#include "../amarchy/flat_core.h"
 #include "../handler/be32.h"
 #include "harness.h"
 
@@ -591,6 +592,25 @@ static void test_desk_pens_reset_folded(void)
         }
         CHECK(diff);                                                /* the map has pens >= 4: the unfolded one is wrong at depth 2 */
         CHECK_INT(desk_pens_reset(plain, DK_SLOTS, 0, 2), 1);
+    }
+}
+
+/* KNOB-PEN: on every shipped theme the knob mix lies between the surface and the muted text colour per channel and equals neither */
+static void test_knob_colour(void)
+{
+    gtheme all[SHIPPED_MAX];
+    int n = load_all(all, SHIPPED_MAX), i;
+    CHECK(n > 0);
+    for (i = 0; i < n; i++) {
+        unsigned long k = flat_knob_colour(all[i].bg, all[i].muted);
+        int sh;
+        for (sh = 16; sh >= 0; sh -= 8) {
+            int a = (int)((all[i].bg >> sh) & 255), b = (int)((all[i].muted >> sh) & 255), c = (int)((k >> sh) & 255);
+            CHECK(c >= (a < b ? a : b) && c <= (a < b ? b : a));
+        }
+        CHECK(k != all[i].bg && k != all[i].muted);
+        if (!strcmp(all[i].name, "vantablack"))
+            CHECK_INT(k, 0x494949UL);
     }
 }
 
@@ -1461,6 +1481,7 @@ void suite_desk(void)
     test_desk_reset_done();
     test_desk_iprefs_idle();
     test_desk_darker();
+    test_knob_colour();
     test_flat_colour_pens();
     test_desk_backdrop();
     test_desk_wbpattern();

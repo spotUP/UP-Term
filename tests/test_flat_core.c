@@ -28,7 +28,8 @@ static void test_layout(void)
     CHECK_INT(offsetof(flat_state, pen_ptext), 21);
     CHECK_INT(offsetof(flat_state, pen_dim), 22);
     CHECK_INT(offsetof(flat_state, pen_dimtext), 23);
-    CHECK_INT(FLAT_STATE_SIZE, 24);
+    CHECK_INT(offsetof(flat_state, pen_knob), 24);
+    CHECK_INT(FLAT_STATE_SIZE, 28);
     CHECK_STR(FLAT_SEM_NAME, "Amarchy.Flat");
     CHECK_INT(FLAT_VERSION, 2);
 }
@@ -41,7 +42,7 @@ static void test_init_check(void)
     flat_init(&s);
     CHECK_INT(s.version, FLAT_VERSION);
     CHECK_INT(s.size, FLAT_STATE_SIZE);
-    CHECK_INT(s.enabled | s.style | s.held | s.still_chained | s.calls | s.pen_text | s.pen_line | s.pen_back | s.pen_outline | s.pen_button | s.pen_ptext | s.pen_dim | s.pen_dimtext, 0);
+    CHECK_INT(s.enabled | s.style | s.held | s.still_chained | s.calls | s.pen_text | s.pen_line | s.pen_back | s.pen_outline | s.pen_button | s.pen_ptext | s.pen_dim | s.pen_dimtext | s.pen_knob, 0);
     CHECK_INT(flat_check(&s, sizeof s), FLAT_OK);
     CHECK_INT(flat_check(&s, sizeof s + 20), FLAT_OK);
     CHECK_INT(flat_check(&s, FLAT_STATE_SIZE - 1), FLAT_ERR_SIZE);      /* fewer readable bytes than the layout */
@@ -989,6 +990,29 @@ static void test_scroller(void)
     CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), -1);
 }
 
+/* KNOB-PEN: the knob has its own pen from 16 colours, a colour between the surface and the muted text on every theme; at 8 colours
+ * or fewer (no free pen) it is DK_MUTED as before. */
+static void test_knob_pen(void)
+{
+    flat_state s;
+    flat_init(&s);
+    desk_flat_state(1, 1, &s);
+    s.pen_knob = 9;
+    CHECK_INT(flat_knob_pen(&s, 4), 9);
+    CHECK_INT(flat_scroller_pen(&s, 4, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), 9);   /* reachable through the scroller entry */
+    CHECK_INT(flat_scroller_pen(&s, 8, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), 9);
+    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), DK_MUTED);   /* 3 planes: no free pen */
+    CHECK_INT(flat_knob_pen(&s, 3), DK_MUTED);
+    s.pen_knob = 0;
+    CHECK_INT(flat_knob_pen(&s, 5), DK_MUTED);
+    s.pen_knob = 20;                                                     /* not a pen of 4 planes */
+    CHECK_INT(flat_knob_pen(&s, 4), DK_MUTED);
+    CHECK_INT(flat_knob_colour(0x000000UL, 0x7A7A7AUL), 0x494949UL);      /* vantablack */
+    /* a light theme: white surface, 666666 muted text: strictly between both */
+    CHECK(flat_knob_colour(0xFFFFFFUL, 0x666666UL) > 0x666666UL && flat_knob_colour(0xFFFFFFUL, 0x666666UL) < 0xFFFFFFUL);
+    CHECK_INT(flat_knob_colour(0xFFFFFFUL, 0x666666UL) & 0xFF, (255 * 40 / 100) + (0x66 * 60 / 100));
+}
+
 /* disabled flat button gets solid dim fill, no dither: a pattern fill over a recorded filled button box takes the dim pen
  * (and the label is handed back for a dim redraw); the same fill over a non-flat area, a pattern-less fill, an unfilled
  * or pressed or secondary frame, a held or off block is not matched (stock). */
@@ -1230,6 +1254,7 @@ void suite_flat_core(void)
     test_glyph_clone();
     test_title_accent();
     test_scroller();
+    test_knob_pen();
     test_desk_flat_state();
     test_kill_switches();
     test_which_from_gtype();
