@@ -86,10 +86,17 @@ static void dk_snapshot(unsigned mask)
     }
 }
 
-/* run one stock editor on a prefs file, USE: ENV: only, no window left behind */
+static unsigned long dk_iprefs_idle_mask(void);
+static void dk_wait_iprefs(unsigned long idle_mask);
+unsigned long desk_dos_editor_waits;
+
+/* run one stock editor on a prefs file, USE: ENV: only, no window left behind. RL15 AMARCHY-WBPREFS-INUSE: a Workbench or WBPattern
+ * USE is followed by the IPrefs idle wait here, the one place every editor run goes through: IPrefs opens ENV:Sys/Workbench.prefs
+ * about 6.7 s later in its Workbench reset, and a second Workbench write in that window failed "object is in use" (Error 202). */
 static void dk_editor(const char *editor, const char *file)
 {
     char cmd[160], prog[80];
+    unsigned long idle = 0;
     BPTR in = Open((STRPTR)"NIL:", MODE_OLDFILE), out = Open((STRPTR)"NIL:", MODE_NEWFILE);
     strcpy(prog, "SYS:Prefs/");
     strcat(prog, editor);
@@ -98,11 +105,17 @@ static void dk_editor(const char *editor, const char *file)
     strcat(cmd, file);
     strcat(cmd, " USE");
     /* its $STACK cookie, floor 32768 (rule 6): under WBStartup the child gets 4096 otherwise */
+    if (desk_editor_waits_iprefs(editor))
+        idle = dk_iprefs_idle_mask(); /* before the editor: the Wait() IPrefs returns to when done */
     SystemTags((STRPTR)cmd, SYS_Input, in, SYS_Output, out, NP_StackSize, pl_stack(prog, 32768), TAG_DONE);
     if (in)
         Close(in);
     if (out)
         Close(out);
+    if (desk_editor_waits_iprefs(editor)) {
+        desk_dos_editor_waits++;
+        dk_wait_iprefs(idle);
+    }
 }
 
 static int dk_screen_depth(void)
@@ -421,9 +434,7 @@ static int dk_apply(const gtheme *th, char *why, int cap)
     if (mask & (1u << DT_WBPATTERN)) {
         plen = dk_read("ENV:Sys/wbpattern.prefs", prev, sizeof prev);
         len = desk_wbpattern(th, depth > 3 ? 3 : depth, plen > 0 ? prev : 0, plen > 0 ? plen : 0, buf, sizeof buf);
-        ok &= dk_put("WBPattern", DK_WORK "/wbpattern.prefs", buf, len);
-        if (old_ws)
-            dk_wait_iprefs(idle);
+        ok &= dk_put("WBPattern", DK_WORK "/wbpattern.prefs", buf, len); /* dk_editor waits for IPrefs */
     }
     if ((mask & (1u << DT_POINTER)) && !dk_pointer_editor_ok()) {
         /* R1.17: the 3.1 editor reset-loops on the 3.2 pointer prefs; leave the pointer alone there */
