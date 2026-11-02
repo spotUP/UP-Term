@@ -396,7 +396,18 @@ static void ua_set(con *c, int on);
  * compile time in the 68k build itself: the build fails when one of
  * these climbs back past its bound. Measured 2026-10-04: con 66126 ->
  * 24402, upconf 56240 -> 17844, a request without lists 11084 -> 852. */
-typedef char con_size_bound[sizeof(con) <= 26000 ? 1 : -1];
+/* A PROF=1 build adds the phase-profile fields (prof_out, prof_writes,
+ * prof_bytes, prof_idle, prof_t0, prof_pk[3], prof_npk[3] = 44 bytes,
+ * measured 2026-11-03: con 25964 plain, 26008 with VTCON_PROF). They
+ * are measurement scaffolding that never ships, so the release bound
+ * stays 26000 and a PROF build gets exactly that allowance (48) on top:
+ * a real window-memory regression still trips both builds. */
+#ifdef VTCON_PROF
+#define CON_PROF_ALLOWANCE 48
+#else
+#define CON_PROF_ALLOWANCE 0
+#endif
+typedef char con_size_bound[sizeof(con) <= 26000 + CON_PROF_ALLOWANCE ? 1 : -1];
 typedef char upconf_size_bound[sizeof(upconf) <= 18500 ? 1 : -1];
 typedef char complete_req_size_bound[sizeof(struct complete_req) <= 1024 ? 1 : -1];
 
