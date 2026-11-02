@@ -124,20 +124,7 @@ def main():
     stream = (b'\x1b[2J\x1b[44m' + fill + b'\x1b[0m\x1b[2;2H' + apc('a=T,f=24,s=%d,v=%d,i=1,q=2' % (PW, PH), pic1)
               + b'\x1b[2;60H' + apc('a=T,f=32,s=%d,v=%d,i=2,z=1,C=1,c=5,r=4,q=2' % (TW, TH), pic2)
               + b'\x1b[2;80H' + apc('a=T,f=32,s=%d,v=%d,i=3,q=2' % (TW, TH), pic2) + b'\x1b[40;1H')
-    (VTC / 'kr-stream.bin').write_bytes(stream)
-    c.run('Run >NIL: NewShell "XCON:%d/%d/%d/%d/kr/CLOSE/XTERM"' % (WX, WY, WW, WH))
-    time.sleep(4)
-    kx, ky = ami.pointer_scale()
-    ami.script(('move', int((WX + 400) * kx), int((WY + 250) * ky)), ('wait', 2), ('button', 0, 1),
-               ('wait', 2), ('button', 0, 0), ('wait', 5))
-    time.sleep(1)
-    ami.req(0x08, bytes([4]) + b'Type VTC:kr-stream.bin')
-    time.sleep(0.5)
-    ami.key(0x44)
-    time.sleep(8)
-    b = ami.req(0x07)
-    w, h = struct.unpack('>HH', b[2:6])
-    px = bytes(b[8:8 + w * h * 3])
+    w, h, px = shoot(stream)
     pathlib.Path(out + '.png').write_bytes(png(w, h, px))
     print('shot', w, h)
     at = lambda x, y: tuple(px[(y * w + x) * 3:(y * w + x) * 3 + 3])
@@ -189,9 +176,7 @@ def main():
     else:
         ok = False
     print('PASS' if ok else 'FAIL')
-    ami.req(0x08, bytes([4]) + b'EndCLI')
-    ami.key(0x44)
-    time.sleep(3)
+    finish()
     sys.exit(0 if ok else 1)
 
 
