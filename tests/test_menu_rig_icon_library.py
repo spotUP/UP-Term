@@ -46,7 +46,7 @@ class Os32Rig(unittest.TestCase):
              mock.patch.object(m.paths, "RIG_N", 8), \
              mock.patch.object(m.subprocess, "run", side_effect=lambda cmd, **k: calls.append(cmd[3:])):
             self.assertEqual(m.ensure_os32_rig(), '')
-        self.assertEqual(calls, [['stop'], ['start', '--max', '--os', '32']])
+        self.assertEqual(calls, [['stop', '--keep'], ['start', '--max', '--os', '32']])
 
     def test_os32_rig_left_alone_and_rig1_never_stopped(self):
         with mock.patch.object(m, "start_args", return_value=['--os32']), mock.patch.object(m.subprocess, "run") as r:
