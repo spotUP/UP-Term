@@ -39,7 +39,7 @@ class A500UserStartup(unittest.TestCase):
         self.assertIn("Assign LIBS: SYS:Libs ADD", clean)
 
     def test_start_strips_on_both_clone_paths(self):
-        src = inspect.getsource(rig.start)
+        src = inspect.getsource(rig._start)   # start() only wraps _start() in start.lock
         self.assertEqual(src.count("if A500:\n            sys_hdf_a500("), 2)
         self.assertLess(src.index("sys_hdf_a500("), src.index("sys_hdf_cpu_lib("))
 

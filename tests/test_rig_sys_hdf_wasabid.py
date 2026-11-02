@@ -45,9 +45,9 @@ class SysHdfNoWasabid(unittest.TestCase):
 
     def test_start_strips_the_clone(self):
         src = (ROOT / "tools/rig/rig.py").read_text()
-        body = src[src.index("def start(retries"):]
+        body = src[src.index("def _start(retries"):]
         body = body[:body.index("\ndef ")]
-        self.assertIn('sys_hdf_no_wasabid(RIG / "sys.hdf")', body, "start() no longer strips the fresh clone")
+        self.assertIn('sys_hdf_no_wasabid(RIG / "sys.hdf")', body, "_start() no longer strips the fresh clone")
 
 @unittest.skipUnless(pathlib.Path(XDF).exists(), "needs amitools' xdftool")
 class SysHdfNoDopus(unittest.TestCase):

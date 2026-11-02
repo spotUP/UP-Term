@@ -18,7 +18,6 @@ import install_rig as ir
 import installer_rig as inst
 import rig
 
-inst.KITWINDOW = re.compile(r'Install DOpus5')   # the Installer window's title is the script's name
 ARCHIVE = paths.VENDOR / "dopus5-5.104" / rig.DOPUS_ARCHIVE   # vendor/ is gitignored: a worktree reads the main checkout's
 TREE = "dopus_install"
 SCRIPT = "dopus_run.script"
@@ -58,6 +57,9 @@ def answer(tree, title, gads):
 
 
 def drive(timeout=900):
+    # The Installer window's title is the script's name. Set when the driver runs, not at import: installer_rig's
+    # KITWINDOW is module state, and importing this file (the host tests do) made every later window_box() judge DOpus titles.
+    inst.KITWINDOW = re.compile(r'Install DOpus5')
     t0, last, log = time.time(), None, []
     seen_end = False
     while time.time() - t0 < timeout:
