@@ -16,6 +16,7 @@ Ledger: thoughts/spot/todos.md (s28 rows). Evidence: thoughts/shared/research/s2
 - Rig 8 (owner view, OS 3.2) runs main amarchy-flat 88102e4c; close + depth/zoom glyphs pixel-proven, also after re-activation. Shots ~/Desktop/upterm-shots/s29-rig8-gadgets-final.png, -reactivated.png.
 - TRAP: rig reboot leaves boot-started programs one build behind (ledger RIG-BOOT-STALE-BIN). Reboot twice before judging a rig check of amarchy-flat or anything Amarchy starts from UP-Term:bin. Fix needs owner decision.
 - Open: gadget fix on 3.1 rig not run; why 3.2 IM_DRAW draws nothing offscreen unknown. Amiberry rigs: wasabid accepts connect but never replies while Amiga busy; suspect boot drawer or DH0 clone, vtcon-ee bisecting on rig 37 (ledger AMIBERRY-RIG-HANG); Amarchy rigs use --emu fsuae.
+- A1200 free again (dctelnet-db done 2026-11-02; leave DH1:Internet/DCTelnet-SSH 444fcea alone). It runs old Amarchy 2c684f70: deploy main after rig checks, then strut check.
 - Waiting on owner: send ~/Desktop/mail-thomas-rapp.txt (branch s29-iconlib d0651c1a, worktree ../vtcon-wt-iconlib, unmerged until answer); OK to delete build/rig36, build/rig26.del, branch s29-formicon32; build/rig27 ownership.
 - Queue: GREY-TOO-DARK, ICON-GRID-FIT, FLAT-SLIDER-LOOK, FLAT-ASPECT-BORDERS, ICONTEXT/SELECTA-AA-ICONTEXT, colour audit 3-8, AM-ICONS-DISK-ALL, F11-31, AMARCHY_WBCLOSES reads 0, 3.2 rig image lacks Run UP-Term:bin/Amarchy.
 
