@@ -55,7 +55,7 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   "Instead of Workbench") and record its S:User-Startup block + stamp there; every later
                   clone start then boots 5.104 as the Workbench (default; --no-dopus skips it, no stamp: [WARN], 5.82);
                   --own-screen also writes the saved environment that puts DOpus on its own 1344x1080 screen (DOPUS.1)
-  rig.py clear    remove this rig's build/rig<N> folder (rig 1 too); refused while its fs-uae runs (stop it first); retried, [ERROR] if it stays
+  rig.py clear    remove this rig's build/rig<N> folder (rig 1 only with --rig1); refused while its fs-uae runs (stop it first); retried, [ERROR] if it stays
   rig.py status   is it up (wasabid ping)
   rig.py start --mmu   the 68060 with an MMU (slower, no JIT), for MuForce
   rig.py muforce on|off|log   MuForce crash reports on the rig (tools/rig/muforce.py)
@@ -2358,7 +2358,12 @@ def remove_folder(folder):
 def clear():
     """Free this rig's folder (RULES.md rule 7). Refused while this rig's fs-uae runs: rig 9 ran with build/rig9
     deleted under it and build/rig4 vanished the same way (RIG-FOLDER-VANISHED), because the documented
-    `mv build/rig<n> build/rig<n>.del && rm -rf` ran with no check. Stop the rig first (`rig.py stop`)."""
+    `mv build/rig<n> build/rig<n>.del && rm -rf` ran with no check. Stop the rig first (`rig.py stop`).
+    Rig 1 (build/rig) is the owner's and is refused unless `--rig1` is given: a `rig.py clear` with UPTERM_RIG unset
+    removed it on 2026-11-02 (rig-gc.log 13:04:21 build/rig.del) and every later start that copies rig 1's VTC: failed."""
+    if paths.RIG_N == 1 and "--rig1" not in sys.argv[2:]:
+        sys.exit("rig: rig 1 (%s) is the owner's; refusing to clear it. Set UPTERM_RIG=<n> for your own rig, or add --rig1 "
+                 "if the owner asked for it" % RIG)
     if mine():
         sys.exit("rig: %s is running (fs-uae on %s); `rig.py stop` it first, folder not removed" % (paths.RIG_NAME, CFG))
     if not RIG.exists():
