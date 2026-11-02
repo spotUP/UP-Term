@@ -372,7 +372,7 @@ commit.
 
 #### Animation (a=f, a=a, a=c)
 
-- [ ] K34 Frames (a=f) in the engine. A stored image gains a frame list:
+- [x] K34 Frames (a=f) in the engine. A stored image gains a frame list:
       frame 1 is the root (the a=t picture), each a=f adds a frame (or
       edits frame r=), built on the canvas of frame c= (default: a
       transparent canvas filled with Y=, RGBA) by writing the sent
@@ -390,6 +390,10 @@ commit.
       with a 1-px rectangle: vt_kitty_frames == 3 and the pixels of frame
       3 are frame 2's plus the rectangle; ENOSPC past the budget. Fails
       before (`EINVAL:not supported`).
+      Evidence 2026-11-02: tests/test_kitty.c k34_* (root + 2 frames,
+      vt_kitty_frames == 3, frame 3 = frame 2 + rectangle, blend/X=1,
+      ENOSPC past VT_ANIM_MEMORY, d=f/d=F): `make test ONLY=kitty` 307
+      checks, 22 failed before (a=f branch off), 0 after; make amiga builds.
 - [ ] K35 Control and compose (a=a, a=c). a=a: s=1 stop, s=2 run and wait
       for frames at the end, s=3 run and loop; v= loops (0 ignored, 1
       forever, n plays n-1 loops; stopping resets the count); c= makes a

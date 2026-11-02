@@ -30,7 +30,7 @@
  * the parent; ENOPARENT, ECYCLE, ETOODEEP past 8 deep); z= draw order (z<0
  * under the text, which stays; z <= -1073741824 also under a non-default
  * cell background). Not supported, each answered with an
- * error: U=1 placeholders, animation,
+ * error: U=1 placeholders, animation control (a=a, a=c; a=f frames are stored, K34),
  * t=s (answered EBADF). t=f/t go to the host's file reader. Included by vtengine.c (one translation unit with the engine).
  */
 #include "inflate.c"
@@ -766,6 +766,20 @@ static void kit_delete(vt_term *t, const vt_kitty *k)
             return;
         lo = 'i';
     }
+    if (lo == 'f') { /* K34: the frames of the picture go; F frees the picture when nothing shows it */
+        int f = kit_find(t, id, num);
+        if (f < 0)
+            return;
+        anim_free(t, t->imgs[f]);
+        if (up) {
+            for (i = 0; i < VT_IMG_SLOTS; i++)
+                if (t->imgs[i] && t->imgs[i]->pix && t->imgs[i]->kind != 2 && t->imgs[i]->kid == t->imgs[f]->kid &&
+                    t->imgs[i]->kind)
+                    return;
+            image_free(t, f);
+        }
+        return;
+    }
     if (lo == 'p' || lo == 'q' || lo == 'x' || lo == 'y' || lo == 'z' || lo == 'r') {
         kit_delete_where(t, k, lo, up);
         return;
@@ -783,6 +797,134 @@ static void kit_delete(vt_term *t, const vt_kitty *k)
         else if (im->kind == 3 && lo == 'i' && im->kid == id && (!KV(k, 'p') || im->pid == KU(k, 'p')))
             image_free(t, i); /* d=a leaves the virtual placements (K31) */
     }
+}
+
+/* ---- K34: animation frames (a=f) ---- */
+
+/* the cube index of a stored picture's packed palette entry */
+static void kit_root_map(const vt_image *im, vt_u8 *map)
+{
+    int i, j;
+    memset(map, 0, 256);
+    for (i = 1; i < im->npal; i++)
+        for (j = 1; j < 256; j++)
+            if (kit_color(j) == im->pal[i]) {
+                map[i] = (vt_u8)j;
+                break;
+            }
+}
+
+/* the root's picture as a cube canvas, or 0 for no memory */
+static vt_u8 *kit_root_canvas(const vt_image *im)
+{
+    vt_u8 map[256], *c;
+    long i, n = (long)im->w * im->h;
+    c = (vt_u8 *)VT_MALLOC(n);
+    if (!c)
+        return 0;
+    kit_root_map(im, map);
+    for (i = 0; i < n; i++)
+        c[i] = map[im->pix[i]];
+    return c;
+}
+
+/* a new canvas: a copy of frame `base` (1-based) or, for 0, filled with Y= */
+static vt_u8 *kit_new_canvas(const vt_image *im, const vt_kitty *k, int base)
+{
+    long n = (long)im->w * im->h;
+    vt_u8 *c = (vt_u8 *)VT_MALLOC(n);
+    if (!c)
+        return 0;
+    if (base) {
+        memcpy(c, im->anim ? im->anim->fr[base - 1] : im->pix, n);
+    } else {
+        vt_u32 y = KU(k, 'Y'); /* RGBA */
+        vt_u32 p = ((y & 255u) << 24) | (y >> 8);
+        memset(c, kit_quant(p, 0, 0), n);
+    }
+    return c;
+}
+
+/* the sent rectangle onto a canvas: X=1 overwrites, else a pixel under half alpha keeps the base (D16) */
+static const char *kit_blit(vt_u8 *c, const vt_image *im, const vt_kitty *k, const kit_src *s)
+{
+    long x0 = KV(k, 'x'), y0 = KV(k, 'y');
+    int x, y;
+    if (x0 < 0 || y0 < 0 || x0 + s->w > im->w || y0 + s->h > im->h)
+        return "EINVAL:frame outside the picture";
+    for (y = 0; y < s->h; y++)
+        for (x = 0; x < s->w; x++) {
+            vt_u32 p = kit_px(s, (long)y * s->w + x);
+            if (KV(k, 'X') == 1 || (p >> 24) >= 128)
+                c[(y0 + y) * im->w + x0 + x] = kit_quant(p, (int)x0 + x, (int)y0 + y);
+        }
+    return 0;
+}
+
+/* a=f: a new frame (r= 0) or an edit of frame r= */
+static const char *kit_frame(vt_term *t, const vt_kitty *k, const kit_src *s, vt_image *im)
+{
+    long r = KV(k, 'r'), c = KV(k, 'c'), z = KV(k, 'z'), per = (long)im->w * im->h;
+    int n = im->anim ? im->anim->n : 1;
+    vt_u8 *root = 0, *cv;
+    const char *err;
+    if (r < 0 || r > n || c < 0 || c > n)
+        return "ENOENT:no such frame";
+    if (!r && n >= VT_ANIM_FRAMES)
+        return "ENOSPC:too many frames";
+    if (t->anim_mem + (im->anim ? 0 : per) + (r ? 0 : per) > VT_ANIM_MEMORY)
+        return "ENOSPC:no room for frames";
+    if (!im->anim) {
+        root = kit_root_canvas(im);
+        if (!root)
+            return "ENOMEM:no room for frames";
+    }
+    if (r && root) { /* editing the root: its canvas is the one written */
+        cv = root;
+    } else if (r) {
+        cv = im->anim->fr[r - 1];
+    } else {
+        cv = kit_new_canvas(im, k, (int)c);
+        if (cv && c && !im->anim) { /* the base is the root: copy its canvas, not its packed indices */
+            memcpy(cv, root, per);
+        }
+    }
+    if (!cv) {
+        if (root)
+            VT_FREE(root);
+        return "ENOMEM:no room for frames";
+    }
+    err = kit_blit(cv, im, k, s);
+    if (err) {
+        if (cv != root && !r)
+            VT_FREE(cv);
+        if (root)
+            VT_FREE(root);
+        return err;
+    }
+    if (root) {
+        im->anim = (vt_anim *)VT_MALLOC(sizeof(vt_anim));
+        if (!im->anim) {
+            VT_FREE(root);
+            if (!r)
+                VT_FREE(cv);
+            return "ENOMEM:no room for frames";
+        }
+        memset(im->anim, 0, sizeof(vt_anim));
+        im->anim->fr[0] = root;
+        im->anim->gap[0] = 40;
+        im->anim->n = 1;
+        t->anim_mem += per;
+    }
+    if (!r) {
+        im->anim->fr[im->anim->n] = cv;
+        im->anim->gap[im->anim->n] = 40;
+        r = ++im->anim->n;
+        t->anim_mem += per;
+    }
+    if (z)
+        im->anim->gap[r - 1] = z;
+    return 0;
 }
 
 /* the picture complete (or the command without data): what the keys ask */
@@ -837,6 +979,17 @@ static void kitty_run(vt_term *t, vt_kitty *k)
             id = im->kid;
             err = kit_show(t, k, &s, id);
         }
+    } else if (a == 'f') {
+        f = kit_find(t, id, num);
+        if (f < 0) {
+            err = "ENOENT:no such image";
+        } else {
+            err = kit_load(t, k, &s);
+            if (!err)
+                err = kit_frame(t, k, &s, t->imgs[f]);
+            kit_src_free(&s);
+            id = t->imgs[f]->kid;
+        }
     } else if (a == 'd') {
         kit_delete(t, k);
         return; /* kitty does not answer a delete */
@@ -887,6 +1040,28 @@ static void kitty_end(vt_term *t)
 unsigned long vt_kitty_placeholders(const vt_term *t)
 {
     return t->kit_ph;
+}
+
+unsigned long vt_kitty_frames(const vt_term *t)
+{
+    unsigned long n = 0;
+    int i;
+    for (i = 0; i < VT_IMG_SLOTS; i++)
+        if (t->imgs[i] && t->imgs[i]->pix && t->imgs[i]->anim)
+            n += (unsigned long)t->imgs[i]->anim->n;
+    return n;
+}
+
+long vt_kitty_frame_px(const vt_term *t, unsigned long id, int frame, int x, int y)
+{
+    int f = kit_find(t, (vt_u32)id, 0);
+    const vt_image *im;
+    if (f < 0)
+        return -1;
+    im = t->imgs[f];
+    if (!im->anim || frame < 1 || frame > im->anim->n || x < 0 || y < 0 || x >= im->w || y >= im->h)
+        return -1;
+    return im->anim->fr[frame - 1][(long)y * im->w + x];
 }
 
 unsigned long vt_kitty_placed(const vt_term *t)

@@ -406,6 +406,9 @@ void     vt_set_file_reader(vt_term *t, vt_file_reader read, vt_file_unlinker un
 #define VT_SIXEL_MAX_W 1024
 #define VT_SIXEL_MAX_H 1024
 #define VT_IMAGE_MEMORY (2048L * 1024L)
+/* Animation frames (kitty a=f) have their own budget, on top of VT_IMAGE_MEMORY (D15). */
+#define VT_ANIM_MEMORY (2048L * 1024L)
+#define VT_ANIM_FRAMES 128 /* frames of one picture, the root included */
 
 /* The palette indices a cell draws with, for this personality: default
  * colours, bold-as-bright (pcansi, and xterm for colours 0-7), iCE blink,
@@ -544,6 +547,10 @@ unsigned long vt_music_smile_blocks(const vt_term *t);
 unsigned long vt_kitty_placed(const vt_term *t);
 /* How many placeholder cells vt_cell_placeholder resolved to a tile (a test sentinel). */
 unsigned long vt_kitty_placeholders(const vt_term *t);
+/* K34: animation frames alive (a picture with a frame list counts its root too). */
+unsigned long vt_kitty_frames(const vt_term *t);
+/* Frame `frame` (1 = root) of kitty image `id`: the 6x6x6 + grey cube index at (x, y), 0 clear, -1 when none. */
+long vt_kitty_frame_px(const vt_term *t, unsigned long id, int frame, int x, int y);
 /* Kitty unicode placeholders (U=1, K31). A cell whose base code point is
  * U+10EEEE shows one tile of a virtual placement: the cell's foreground
  * colour is the image id (256-colour index, or R<<16|G<<8|B), the third
