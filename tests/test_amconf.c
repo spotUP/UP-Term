@@ -38,7 +38,7 @@ static void test_amconf_parse_defaults(void)
     CHECK_INT(amconf_icons(&p), UC_ICONS_GENERIC);
     CHECK_INT(amconf_style(&p), UC_MENU_GRAPHICAL);
     /* the table lists twenty-five keys, each named once */
-    CHECK_INT(AM_NKEYS, 26);
+    CHECK_INT(AM_NKEYS, 27);
     CHECK_STR(p.val[AM_ICONSTYLE], "filled");          /* s28: Filled is the default icon set */
     CHECK_INT(amconf_icon_outline(&p), 0);
     strcpy(p.val[AM_ICONSTYLE], "outline");
@@ -46,6 +46,16 @@ static void test_amconf_parse_defaults(void)
     strcpy(p.val[AM_ICONSTYLE], "bogus");
     CHECK_INT(amconf_icon_outline(&p), 0);
     strcpy(p.val[AM_ICONSTYLE], "filled");
+    /* FILENAME-PEN: icon-text, plain is the default; outline 1, shadow 2, anything else plain */
+    CHECK_STR(p.val[AM_ICONTEXT], "plain");
+    CHECK_INT(amconf_icon_text(&p), 0);
+    strcpy(p.val[AM_ICONTEXT], "outline");
+    CHECK_INT(amconf_icon_text(&p), 1);
+    strcpy(p.val[AM_ICONTEXT], "shadow");
+    CHECK_INT(amconf_icon_text(&p), 2);
+    strcpy(p.val[AM_ICONTEXT], "bogus");
+    CHECK_INT(amconf_icon_text(&p), 0);
+    strcpy(p.val[AM_ICONTEXT], "plain");
     for (k = 0; k < AM_NKEYS; k++) {
         int j;
         for (j = k + 1; j < AM_NKEYS; j++)
@@ -549,13 +559,14 @@ static void test_amconf_save_nodir(void)
  * flat-border-size) through the editor's fields, and reads it back. */
 static void test_amconf_flat_rows_write_their_keys(void)
 {
-    static const struct { int key, gadget; const char *name, *on; } row[4] = {
+    static const struct { int key, gadget; const char *name, *on; } row[5] = {
         { AM_FLAT, PG_AM_FLAT, "flat-system-look", "on" },
         { AM_FLATGAD, PG_AM_FLATGAD, "flat-window-gadgets", "on" },
         { AM_FLATSIZE, PG_AM_FLATSIZE, "flat-border-size", "thin" },
-        { AM_ICONSTYLE, PG_AM_ICONSTYLE, "icon-style", "outline" } };
+        { AM_ICONSTYLE, PG_AM_ICONSTYLE, "icon-style", "outline" },
+        { AM_ICONTEXT, PG_AM_ICONTEXT, "icon-text", "outline" } };
     int i;
-    for (i = 0; i < 4; i++) {
+    for (i = 0; i < 5; i++) {
         am_prefs p, q;
         prefs_fields f;
         static char txt[UC_MAX_FILE + 1];

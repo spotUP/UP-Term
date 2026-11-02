@@ -42,6 +42,7 @@ static const sd_value v_colors[] = { { "", "Not told" }, { "rgb", "Full colour (
 static const sd_value v_icons[] = { { "generic", "Generic" }, { "amiga", "Amiga" }, { "none", "None" } };
 static const sd_value v_flatsize[] = { { "stock", "Stock" }, { "thin", "Thin" } };
 static const sd_value v_iconstyle[] = { { "filled", "Filled" }, { "outline", "Outline" } };
+static const sd_value v_icontext[] = { { "plain", "Plain" }, { "outline", "Outline" }, { "shadow", "Shadow" } };
 static const sd_value v_termmenu[] = { { "text", "Text" }, { "graphical", "Graphical" } };
 static const sd_value v_mode[] = { { "graphical", "Drawn" }, { "text", "Text" }, { "minimal", "Minimal" } };
 
@@ -227,6 +228,10 @@ const sd_setting sd_settings[SDI_COUNT] = {
       "Filled: solid icons. Outline: thin lines. Applies at once; Restore undoes.",
       VALS(v_iconstyle), "filled", SD_AMARCHY, SDF_AMSTR, AO(AM_ICONSTYLE), UC_MAX_VALUE, NORANGE,
       PG_AM_ICONSTYLE, 0, 0, 1, 0 },
+    { SDI_AM_ICONTEXT, "icon-text", 0, PG_PAGE_FLAT, SD_CYCLE, "Icon label _text",
+      "Plain, or an outline or shadow in the backdrop colour.",
+      VALS(v_icontext), "plain", SD_AMARCHY, SDF_AMSTR, AO(AM_ICONTEXT), UC_MAX_VALUE, NORANGE,
+      PG_AM_ICONTEXT, 0, 0, 1, 0 },
     { SDI_AM_BORDERBLANK, "border-blank", 0, PG_PAGE_FLAT, SD_CHECK, "Blac_k screen border",
       "Native screens: black outside the picture, not colour 0. Off: stock border.",
       VALS(v_off_on), "on", SD_AMARCHY, SDF_AMSTR, AO(AM_BORDERBLANK), UC_MAX_VALUE, NORANGE, PG_AM_BORDERBLANK, 0, 0, 1, 0 },

@@ -9,8 +9,10 @@
 #include "gthemes_core.h"
 #include "flat_core.h"
 
-/* the eight palette roles of the flat mapping (OD13): the pen index of a role is its enum value */
-enum { DK_BG, DK_DARKER, DK_FG, DK_ACCENT, DK_SELECTION, DK_MUTED, DK_GREEN, DK_RED, DK_ROLES };
+/* the eight palette roles of the flat mapping (OD13): the pen index of a role is its enum value.
+ * FILENAME-PEN: Workbench draws the list-view file names with the fixed DrawInfo pen 1, so pen 1 holds the muted text colour
+ * (DK_MUTED) and follows every theme; Amarchy's own dark tone (DK_DARKER: BLOCKPEN, BARTRIMPEN, the label backdrop) lives on pen 5. */
+enum { DK_BG, DK_MUTED, DK_FG, DK_ACCENT, DK_SELECTION, DK_DARKER, DK_GREEN, DK_RED, DK_ROLES };
 
 /* the DrawInfo slots of pap_4ColorPens / pap_8ColorPens, in the order of the file */
 enum {
@@ -77,8 +79,10 @@ void desk_pens_for(int flat, unsigned char pens[DK_SLOTS]);
 
 /* R1.17: 1 when a Palette USE of the pens desk_pens_for(flat) gives makes IPrefs reset the Workbench screen. DrawInfo dri_Pens are fixed
  * at screen open, so only a pen array that differs from the live screen's (cur, ncur = dri_NumPens, the first ncur slots are
- * compared) reopens it; colour values alone load live. ncur <= 0 (no DrawInfo): unknown, 1. */
-int desk_pens_reset(const unsigned short *cur, int ncur, int flat);
+ * compared) reopens it; colour values alone load live. ncur <= 0 (no DrawInfo): unknown, 1.
+ * depth = bitplanes of the live screen: the live pens are the map folded to 1 << depth colours (desk_pen_fold, FILENAME-PEN), so the
+ * map is folded the same way before comparing; depth <= 0: unknown, no folding. */
+int desk_pens_reset(const unsigned short *cur, int ncur, int flat, int depth);
 
 /* DESK-31: 1 once the Workbench reset after a Palette USE finished. before = screen address before the write, now = the address
  * the lock gives now (0 while the screen is closed in the middle of the reset), live/nlive = its DrawInfo pens. Done = the screen
@@ -90,7 +94,7 @@ int desk_pens_reset(const unsigned short *cur, int ncur, int flat);
  * other signals, a pending notification shows in recvd. No IPrefs task (have = 0): nothing to wait for. */
 int desk_iprefs_idle(int have, int waiting, unsigned long sigwait, unsigned long recvd, unsigned long idle_mask);
 #define DESK_IPREFS_POLL_TICKS 1
-int desk_reset_done(const void *before, const void *now, const unsigned short *live, int nlive, int flat);
+int desk_reset_done(const void *before, const void *now, const unsigned short *live, int nlive, int flat, int depth);
 
 /* R1.2: the palette.prefs of the theme with ncolors (4 or 8) colours and the pen map pens (desk_pens or desk_pens_flat);
  * returns DK_PALETTE_SIZE, 0 on a bad argument */
@@ -130,6 +134,8 @@ int desk_backdrop_pen_at(int depth);
 int desk_backdrop_screen_pen(int depth);
 long desk_palette_rgb(const unsigned char *cur, long curlen, int pen, int depth);
 long desk_palette_set_rgb(const unsigned char *cur, long curlen, int pen, int depth, uc_u32 c, unsigned char *out, long cap);
+/* FILENAME-PEN: a pen at or above the screen's colour count folds to DK_BG (the one fold rule of the pen maps and the backdrop fallback) */
+int desk_pen_fold(int pen, int ncolors);
 long desk_palette_pens(const unsigned char *cur, long curlen, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap);
 /* FLAT-PENS-STALE-FILE: 1 when the palette file bytes cur differ from a write of pens (either pen table, any slot), or are no palette file */
 int desk_palette_pens_stale(const unsigned char *cur, long curlen, const unsigned char pens[DK_SLOTS]);
@@ -138,8 +144,8 @@ int desk_palette_pens_stale(const unsigned char *cur, long curlen, const unsigne
 int desk_flat_start_refresh(int flat, const unsigned char *cur, long curlen, const unsigned char pens[DK_SLOTS]);
 /* FLAT-PENS-LIVE: the pen write flat-system-look (flat 0/1) asks for. pens gets desk_pens_for(flat). Returns 1 to write it: flat on and
  * the live pens (live/nlive, the Workbench DrawInfo) differ from the flat map; flat off and the live pens ARE the flat map (restore
- * the stock roles); else 0. */
-int desk_pens_sync(int flat, const unsigned short *live, int nlive, unsigned char pens[DK_SLOTS]);
+ * the stock roles); else 0. depth = bitplanes of the live screen, see desk_pens_reset. */
+int desk_pens_sync(int flat, const unsigned short *live, int nlive, unsigned char pens[DK_SLOTS], int depth);
 
 /* R1.3, R1.20: the wbpattern.prefs (ROOT, DRAWER, SCREEN chunks). depth = the screen depth (capped at 3); the root is
  * one solid darker tone, no dots. prev/prevlen = the file now on disk (or 0): its SCREEN chunk is kept.
@@ -153,7 +159,9 @@ long desk_pointer(const gtheme *t, unsigned char *buf, long len);
 
 /* R1.22a: the WBFONT chunk of font.prefs gets the label pen, the backdrop pen, JAM1 and special mode 1 (OD10). Returns
  * the number of chunks changed (0 or 1), -1 when buf is no font.prefs. */
-long desk_font_pens(unsigned char *buf, long len);
+/* icon label text mode = fp_SpecialDrawMode of the WBFONT chunk (prefs/font.h; values from the 2026-10-29 prefs probe, OD10) */
+enum { DK_ICONTEXT_PLAIN = 0, DK_ICONTEXT_OUTLINE = 1, DK_ICONTEXT_SHADOW = 2 };
+long desk_font_pens(unsigned char *buf, long len, int text_mode);
 
 /* FLAT-P1-2: the icontrol.prefs for the window border and title size. cur/curlen = the file now on disk (or 0): every chunk and
  * every ICTL field is kept (IEXC exception chunks byte for byte); ICB_VERSIONED, ic_Version 2, ic_VersionMagic 0 and
