@@ -130,6 +130,18 @@ def stem_verdict(cls):
     return srow, scol, o_stem, verdict
 
 
+def anchor_rows(at, bgc, xs0, y0):
+    """First and last row of the anchor cell. y0 is a row of the anchor's left column known to hold a full pen; the
+    column spans the cell's full height, so the cell runs over every non-background pen of that column in both
+    directions. The top row may be too faint to be a full pen (grey at 2/3 coverage), so it is never found by pen colour."""
+    while at(xs0, y0 - 1) != bgc:
+        y0 -= 1
+    y1 = y0
+    while at(xs0, y1 + 1) != bgc:
+        y1 += 1
+    return y0, y1
+
+
 def analyse(run, w, h, px, geom=None):
     cps = RUNS[run][2]
     if run == 'stress':
@@ -149,9 +161,7 @@ def analyse(run, w, h, px, geom=None):
         return 1
     xs0 = min(x for x, y in fgs)
     y0 = min(y for x, y in fgs if x == xs0)
-    y1 = y0
-    while at(xs0, y1 + 1) != bgc:   # the anchor's left column is its full height
-        y1 += 1
+    y0, y1 = anchor_rows(at, bgc, xs0, y0)
     fgc = collections.Counter(at(x, y) for x, y in fgs if y0 <= y <= y1).most_common(1)[0][0]
     if geom:   # the cell of an earlier jbmono run, for a font without a full-height anchor
         xs0, y0, cw, ch = geom
