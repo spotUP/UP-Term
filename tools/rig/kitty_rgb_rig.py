@@ -9,14 +9,21 @@ PASS case 1: the picture is found in the shot, >= 90% of the source's distinct c
 PASS cases 2, 3 and 4: the blended pixel equals (255*a + bg*(255-a) + 127) / 255 per channel (+-1), bg sampled next to it.
   UPTERM_RIG=<n> python3 tools/rig/kitty_rgb_rig.py <out-prefix>
 Needs the rig on the 800x600x24 RTG screen (`rig.py rtg`); the script prints the shot size.
+
+AGA mode (K41 AGA half): same raw f=32 stream (picture 1 as RGBA with alpha 255, plus the two 50% alpha pictures),
+shot of an aga256 screen (640x256 visible), crop = the XCON window rectangle (0,12,640,240: it holds the picture from the cell origin), written as PNG.
+  UPTERM_RIG=<n> python3 tools/rig/kitty_rgb_rig.py aga save <out.png>             (reference run: build before K38)
+  UPTERM_RIG=<n> python3 tools/rig/kitty_rgb_rig.py aga compare <ref.png> <out.png>  (PASS = pixel-equal and <= 256 colours)
 """
 import base64, pathlib, struct, sys, time, zlib
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import paths
 import ami, condev_rig as c
+from colour_check import pixels as png_pixels   # PNG reader (RGB8), shared with the colour check
 
 VTC = paths.RIG / 'vtc'
 WX, WY, WW, WH = 0, 20, 780, 500
+AX, AY, AW, AH = 0, 12, 640, 240   # AGA window: the aga256 shot is 640x256
 PW, PH = 100, 80      # picture 1
 TW, TH = 40, 32       # picture 2
 ALPHA = 128
@@ -46,20 +53,51 @@ def png(w, h, rgb):
             + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b''))
 
 
-def main():
-    out = sys.argv[1]
-    pic1 = b''.join(bytes(src_px(x, y)) for y in range(PH) for x in range(PW))
+def crop_rgb(px, w, x0, y0, cw, ch):
+    return b''.join(px[((y0 + y) * w + x0) * 3:((y0 + y) * w + x0 + cw) * 3] for y in range(ch))
+
+
+def aga_main(args):
+    mode = args[0]
+    ref = args[1] if mode == 'compare' else None
+    out = args[-1]
+    pic1 = b''.join(bytes(src_px(x, y)) + b'\xff' for y in range(PH) for x in range(PW))
     pic2 = bytes((255, 0, 0, ALPHA)) * (TW * TH)
-    fill = b''.join(b'\x1b[%d;58H' % r + b' ' * 11 + b'\x1b[%d;38H' % r + b' ' * 11 for r in range(2, 7))
-    stream = (b'\x1b[2J\x1b[44m' + fill + b'\x1b[0m\x1b[2;2H' + apc('a=T,f=24,s=%d,v=%d,i=1,q=2' % (PW, PH), pic1)
-              + b'\x1b[2;60H' + apc('a=T,f=32,s=%d,v=%d,i=2,z=1,C=1,c=5,r=4,q=2' % (TW, TH), pic2)
-              + b'\x1b[2;80H' + apc('a=T,f=32,s=%d,v=%d,i=3,q=2' % (TW, TH), pic2)
-              + b'\x1b[2;40H' + apc('a=T,f=32,s=%d,v=%d,i=4,z=-1,C=1,c=5,r=4,q=2' % (TW, TH), pic2) + b'\x1b[40;1H')
+    fill = b''.join(b'\x1b[%d;48H' % r + b' ' * 11 for r in range(2, 7))
+    stream = (b'\x1b[2J\x1b[44m' + fill + b'\x1b[0m\x1b[2;2H' + apc('a=T,f=32,s=%d,v=%d,i=1,q=2' % (PW, PH), pic1)
+              + b'\x1b[2;50H' + apc('a=T,f=32,s=%d,v=%d,i=2,z=1,C=1,c=5,r=4,q=2' % (TW, TH), pic2)
+              + b'\x1b[2;70H' + apc('a=T,f=32,s=%d,v=%d,i=3,q=2' % (TW, TH), pic2) + b'\x1b[30;1H')
+    w, h, px = shoot(stream, (AX, AY, AW, AH))
+    win = crop_rgb(px, w, AX, AY, AW, AH)
+    pathlib.Path(out).write_bytes(png(AW, AH, win))
+    cols = len({win[i:i + 3] for i in range(0, len(win), 3)})
+    print('aga shot', w, h, 'crop', (AX, AY, AW, AH), 'distinct colours', cols, 'saved', out)
+    ok = True
+    if ref:
+        rw, rh, rat = png_pixels(ref)
+        if (rw, rh) != (AW, AH):
+            print('compare FAIL: reference size', rw, rh)
+            ok = False
+        else:
+            diff = [(x, y) for y in range(AH) for x in range(AW) if rat(x, y) != tuple(win[(y * AW + x) * 3:(y * AW + x) * 3 + 3])]
+            print('compare: differing pixels', len(diff), 'of', AW * AH)
+            for x, y in diff[:8]:
+                print('  (%d,%d) ref %s new %s' % (x, y, rat(x, y), tuple(win[(y * AW + x) * 3:(y * AW + x) * 3 + 3])))
+            ok = not diff
+        ok = ok and cols <= 256
+        print('distinct colours %d <= 256: %s' % (cols, cols <= 256))
+    print('PASS' if ok else 'FAIL')
+    finish()
+    sys.exit(0 if ok else 1)
+
+
+def shoot(stream, geom=(WX, WY, WW, WH)):
+    gx, gy, gw, gh = geom
     (VTC / 'kr-stream.bin').write_bytes(stream)
-    c.run('Run >NIL: NewShell "XCON:%d/%d/%d/%d/kr/CLOSE/XTERM"' % (WX, WY, WW, WH))
+    c.run('Run >NIL: NewShell "XCON:%d/%d/%d/%d/kr/CLOSE/XTERM"' % (gx, gy, gw, gh))
     time.sleep(4)
     kx, ky = ami.pointer_scale()
-    ami.script(('move', int((WX + 400) * kx), int((WY + 250) * ky)), ('wait', 2), ('button', 0, 1),
+    ami.script(('move', int((gx + gw // 2) * kx), int((gy + gh // 2) * ky)), ('wait', 2), ('button', 0, 1),
                ('wait', 2), ('button', 0, 0), ('wait', 5))
     time.sleep(1)
     ami.req(0x08, bytes([4]) + b'Type VTC:kr-stream.bin')
@@ -68,7 +106,27 @@ def main():
     time.sleep(8)
     b = ami.req(0x07)
     w, h = struct.unpack('>HH', b[2:6])
-    px = bytes(b[8:8 + w * h * 3])
+    return w, h, bytes(b[8:8 + w * h * 3])
+
+
+def finish():
+    ami.req(0x08, bytes([4]) + b'EndCLI')
+    ami.key(0x44)
+    time.sleep(3)
+
+
+def main():
+    if sys.argv[1] == 'aga':
+        aga_main(sys.argv[2:])
+    out = sys.argv[1]
+    pic1 = b''.join(bytes(src_px(x, y)) for y in range(PH) for x in range(PW))
+    pic2 = bytes((255, 0, 0, ALPHA)) * (TW * TH)
+    fill = b''.join(b'\x1b[%d;58H' % r + b' ' * 11 + b'\x1b[%d;38H' % r + b' ' * 11 for r in range(2, 7))
+    stream = (b'\x1b[2J\x1b[44m' + fill + b'\x1b[0m\x1b[2;2H' + apc('a=T,f=24,s=%d,v=%d,i=1,q=2' % (PW, PH), pic1)
+              + b'\x1b[2;60H' + apc('a=T,f=32,s=%d,v=%d,i=2,z=1,C=1,c=5,r=4,q=2' % (TW, TH), pic2)
+              + b'\x1b[2;80H' + apc('a=T,f=32,s=%d,v=%d,i=3,q=2' % (TW, TH), pic2)
+              + b'\x1b[2;40H' + apc('a=T,f=32,s=%d,v=%d,i=4,z=-1,C=1,c=5,r=4,q=2' % (TW, TH), pic2) + b'\x1b[40;1H')
+    w, h, px = shoot(stream)
     pathlib.Path(out + '.png').write_bytes(png(w, h, px))
     print('shot', w, h)
     at = lambda x, y: tuple(px[(y * w + x) * 3:(y * w + x) * 3 + 3])
@@ -121,9 +179,7 @@ def main():
     else:
         ok = False
     print('PASS' if ok else 'FAIL')
-    ami.req(0x08, bytes([4]) + b'EndCLI')
-    ami.key(0x44)
-    time.sleep(3)
+    finish()
     sys.exit(0 if ok else 1)
 
 
