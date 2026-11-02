@@ -664,12 +664,12 @@ Read 2026-11-02 on a6de061d (what the design rests on):
       nothing, so the version number says nothing about whether the call
       is real. The renderer therefore detects it by the jump targets
       (vr_cgx_has_alpha: the table must reach -228, every slot read must
-      be a JMP abs.l, and -216 must have a target of its own) and on this
-      rig takes the binary 50% fallback (D4's rule, sentinel
-      n_img_rgb_blend_fallback). This settles T2 and D13 for the rig:
-      the R6 rule (no screen read) still holds, and glyph edges over a
-      z < 0 picture follow the fallback. K41's rig proof exercises the
-      fallback, not true alpha; true alpha is only host-tested here.
+      be a JMP abs.l, and -216 must have a target of its own). On this rig
+      it takes the software blend (K40b, O5): ReadPixelArray of the run,
+      per-channel blend, WritePixelArray; sentinel n_img_rgb_soft_blend
+      replaces the binary 50% fallback. K41's rig proof therefore exercises
+      true alpha (translucent pixels blended with text and background); the
+      WritePixelArrayAlpha path itself stays host-tested only.
 - [ ] K41 Rig proof (after K38-K40 merge to main; one build on the rig).
       tools/rig/kitty_truecolor_rig.py, reusing colour_check.py's PNG
       reader for both the source and the shot. Stream: demo.png decoded on
@@ -724,6 +724,12 @@ switch it will ship with.
   host test. R6 (no screen read) is revisited in K40.
 - O3: driver truncation on 15/16-bit screens, no engine dither.
 - O4: frames become RGBA canvases on deep screens (D16 reversed there).
+- O5: R6 (no screen read) is lifted for kitty alpha. Where the driver has no
+  working WritePixelArrayAlpha (the rig's P96 42.7), the renderer blends in
+  software: ReadPixelArray (-120) the run's rectangle from the rastport it
+  draws into, blend per channel (src*a + dst*(255-a) + 127) / 255, write back
+  with WritePixelArray RECTFMT_RGBA (K40b, sentinel n_img_rgb_soft_blend).
+  The binary 50% fallback is gone.
 
 ##### Open questions for the owner (answered above)
 
