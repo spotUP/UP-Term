@@ -18,6 +18,19 @@ class IconsSkipGlue(unittest.TestCase):
         body = body[:body.index("\n}\n")]
         self.assertRegex(body, r"if \(!lock\) \{ ia_skip_note\(c, &c->skipped_io, g_wpath,")
 
+    def test_one_apply_or_restore_at_a_time(self):
+        """ICONS-APPLY-DOUBLE (rig 61): two APPLY copies raced on the manifest. The lock is taken before APPLY/RESTORE reads the
+        manifest and released at out:, so a second copy waits instead of racing."""
+        s = (ROOT / "amarchy/icons.c").read_text()
+        main = s[s.index("int main(void)"):]
+        take = main.index("lock = ia_lock_take();")
+        self.assertLess(take, main.index("if (cmd == IA_CMD_APPLY) {"))
+        self.assertLess(take, main.index("ia_restore(c);"))
+        self.assertIn("if (lock) ReleaseSemaphore(lock);", main[main.index("\nout:"):])
+        helper = s[s.index("static struct SignalSemaphore *ia_lock_take"):s.index("int main(void)")]
+        self.assertRegex(helper, r"Forbid\(\);\s*l = \(struct ia_lock \*\)FindSemaphore")
+        self.assertIn("ObtainSemaphore(&l->ss);", helper)
+
 
 if __name__ == "__main__":
     unittest.main()

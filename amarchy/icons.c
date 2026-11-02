@@ -362,6 +362,39 @@ static void print_counters(const ia_ctx *c)
             (LONG *)v);
 }
 
+/* ICONS-APPLY-DOUBLE: one APPLY or RESTORE at a time, machine wide. Two copies (rig 61: two prefs writers each started one) both
+ * rewrote the manifest per icon and raced on it. The caller's own guard (desk_dos.c dk_icons_sync `last`) is per process, so the
+ * lock lives here, in the one program that writes the manifest. A public semaphore made once and never freed (index.c pattern):
+ * a second copy blocks until the first is done, then runs, so APPLY then RESTORE still end in the order they were asked for.
+ * Find-or-make under one Forbid, so two copies started together share one record. */
+#define IA_LOCK_NAME "amarchy-icons.lock"
+struct ia_lock {
+    struct SignalSemaphore ss;   /* first: AddSemaphore's node is the allocation's start */
+    char name[sizeof IA_LOCK_NAME];
+};
+unsigned long icons_lock_waits;   /* sentinel: this copy found another run holding the lock */
+
+static struct SignalSemaphore *ia_lock_take(void)
+{
+    struct ia_lock *l;
+    Forbid();
+    l = (struct ia_lock *)FindSemaphore((STRPTR)IA_LOCK_NAME);
+    if (!l && (l = (struct ia_lock *)AllocVec(sizeof *l, MEMF_PUBLIC | MEMF_CLEAR))) {
+        memcpy(l->name, IA_LOCK_NAME, sizeof IA_LOCK_NAME);
+        l->ss.ss_Link.ln_Name = l->name;
+        l->ss.ss_Link.ln_Pri = 0;
+        AddSemaphore(&l->ss);    /* never freed: another copy may be waiting on it */
+    }
+    Permit();
+    if (!l) return NULL;
+    if (!AttemptSemaphore(&l->ss)) {
+        icons_lock_waits++;
+        PutStr((STRPTR)"amarchy-icons: another run is busy, waiting\n");
+        ObtainSemaphore(&l->ss);
+    }
+    return &l->ss;
+}
+
 int main(void)
 {
     const char *args = (const char *)GetArgStr();
@@ -372,6 +405,7 @@ int main(void)
     int rc = 0;
     struct Process *me = NULL;
     APTR oldwin = NULL;
+    struct SignalSemaphore *lock = NULL;
     (void)ver;
 
     if (qmark_line(args) || cmd == IA_CMD_HELP) {
@@ -411,6 +445,7 @@ int main(void)
     me = (struct Process *)FindTask(NULL);
     oldwin = me->pr_WindowPtr;
     me->pr_WindowPtr = (APTR)-1L;
+    lock = ia_lock_take();            /* before the manifest is read: the waiting copy sees the first copy's result */
 
     if (cmd == IA_CMD_APPLY) {
         static li_dat d;
@@ -442,6 +477,7 @@ int main(void)
     }
     print_counters(c);
 out:
+    if (lock) ReleaseSemaphore(lock);
     if (me) me->pr_WindowPtr = oldwin;
     if (dat) FreeVec(dat);
     if (IntuitionBase) CloseLibrary((struct Library *)IntuitionBase);
