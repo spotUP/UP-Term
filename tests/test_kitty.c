@@ -1030,6 +1030,185 @@ static void k34_frames_stop_at_the_animation_memory(void)
     vt_free(t);
 }
 
+
+/* ---- K38: the RGBA store (vt_set_image_rgb) ---- */
+
+static void k38_b64(const unsigned char *d, long n, char *o)
+{
+    static const char a[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    long i;
+    for (i = 0; i < n; i += 3) {
+        unsigned long v = (unsigned long)d[i] << 16 | (i + 1 < n ? (unsigned long)d[i + 1] << 8 : 0) |
+                          (i + 2 < n ? d[i + 2] : 0);
+        *o++ = a[v >> 18 & 63];
+        *o++ = a[v >> 12 & 63];
+        *o++ = i + 1 < n ? a[v >> 6 & 63] : '=';
+        *o++ = i + 2 < n ? a[v & 63] : '=';
+    }
+    *o = 0;
+}
+
+/* 64 x 64 RGBA: column 0 clear (one pixel at alpha 127), the others opaque, R from x, G from y, B fixed:
+ * columns 1-63 are 4032 distinct colours */
+static void k38_send_gradient(vt_term *t, const char *keys)
+{
+    static unsigned char px[64 * 64 * 4];
+    static char b64[64 * 64 * 4 / 3 * 4 + 8];
+    char hd[96];
+    int x, y;
+    for (y = 0; y < 64; y++)
+        for (x = 0; x < 64; x++) {
+            unsigned char *q = px + (y * 64 + x) * 4;
+            q[0] = (unsigned char)(x * 4);
+            q[1] = (unsigned char)(y * 4);
+            q[2] = 0x80;
+            q[3] = x ? 255 : (y == 63 ? 127 : 0);
+        }
+    k38_b64(px, sizeof(px), b64);
+    snprintf(hd, sizeof(hd), "\033_G%s;", keys);
+    h_put(t, hd);
+    h_put(t, b64);
+    h_put(t, "\033\\");
+}
+
+static vt_term *k38_term(int rgb)
+{
+    vt_term *t = h_new(20, 10, VT_XTERM);
+    vt_set_cell_pixels(t, 8, 16);
+    vt_set_image_rgb(t, rgb);
+    return t;
+}
+
+static int k38_distinct(const vt_image_view *v, int x0, int x1)
+{
+    static unsigned long seen[4096];
+    int x, y, n = 0, i;
+    for (y = 0; y < v->h; y++)
+        for (x = x0; x < x1; x++) {
+            const unsigned char *q = v->pix + (y * v->w + x) * 4;
+            unsigned long c = (unsigned long)q[0] << 16 | q[1] << 8 | q[2];
+            for (i = 0; i < n && seen[i] != c; i++)
+                ;
+            if (i == n)
+                seen[n++] = c;
+        }
+    return n;
+}
+
+static void k38_rgb_store_keeps_every_colour_and_the_alpha_byte(void)
+{
+    vt_term *t = k38_term(1);
+    vt_image_view v;
+    int x, y, bad = 0;
+    k38_send_gradient(t, "a=T,i=5,f=32,s=64,v=64,C=1");
+    CHECK_INT((long)vt_kitty_rgb_made(t), 2); /* the stored root and the placement */
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(v.fmt, 1);
+    CHECK_INT(v.opaque, 0);
+    CHECK_INT(v.w, 64);
+    for (y = 0; y < 64; y++)
+        for (x = 1; x < 64; x++) {
+            const unsigned char *q = v.pix + (y * 64 + x) * 4;
+            if (q[0] != x * 4 || q[1] != y * 4 || q[2] != 0x80 || q[3] != 255)
+                bad++;
+        }
+    CHECK_INT(bad, 0);
+    CHECK_INT(k38_distinct(&v, 1, 64), 4032);
+    CHECK_INT(v.pix[3], 0);                    /* column 0 clear */
+    CHECK_INT(v.pix[(63 * 64) * 4 + 3], 127);  /* a half-clear pixel keeps its byte (owner O2) */
+    CHECK_INT(v.pix[4 + 3], 255);              /* column 1 opaque */
+    CHECK_INT(vt_image_memory(t), 2 * 16384);
+    vt_free(t);
+}
+
+static void k38_index_mode_is_unchanged(void)
+{
+    vt_term *t = k38_term(0);
+    vt_image_view v;
+    k38_send_gradient(t, "a=T,i=5,f=32,s=64,v=64,C=1");
+    CHECK_INT((long)vt_kitty_rgb_made(t), 0);
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(v.fmt, 0);
+    CHECK(v.npal <= 256);
+    CHECK_INT(vt_image_memory(t), 2 * 4096);
+    vt_free(t);
+}
+
+static void k38_an_opaque_picture_says_so_and_a_placement_scales_the_rgba(void)
+{
+    vt_term *t = k38_term(1);
+    vt_image_view v;
+    h_put(t, "\033_Ga=T,f=24,s=2,v=2;");
+    h_put(t, rgb2x2);
+    h_put(t, "\033\\");
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(v.fmt, 1);
+    CHECK_INT(v.opaque, 1);
+    vt_free(t);
+    /* a=p c=4 (cell 8 wide): 32 x 32, every other source pixel, columns 1-31 distinct */
+    t = k38_term(1);
+    k38_send_gradient(t, "a=t,i=5,f=32,s=64,v=64");
+    h_put(t, "\033[5;1H\033_Ga=p,i=5,c=4,C=1\033\\");
+    CHECK_INT((long)vt_kitty_rgb_made(t), 2);
+    CHECK(vt_row_image(t, 4, 0, &v));
+    CHECK_INT(v.w, 32);
+    CHECK_INT(v.h, 32);
+    CHECK_INT(k38_distinct(&v, 1, 32), 992);
+    vt_free(t);
+}
+
+static void k38_budget_is_x4_with_the_same_pixel_capacity(void)
+{
+    static const char *const mode[2] = { "index", "rgb" };
+    int m;
+    for (m = 0; m < 2; m++) {
+        long n = 1024L * 1025L * 3L;
+        unsigned char *raw = (unsigned char *)calloc(n, 1);
+        char *b = (char *)malloc(n / 3 * 4 + 8);
+        char *msg = (char *)malloc(n / 3 * 4 + 128);
+        vt_term *t = k38_term(m);
+        k38_b64(raw, 1024L * 1024L * 3L, b);
+        snprintf(msg, n / 3 * 4 + 128, "\033_Ga=t,i=9,f=24,s=1024,v=1024;%s\033\\", b);
+        h_reply_clear();
+        h_put(t, msg);
+        if (strcmp(h_reply, "\033_Gi=9;OK\033\\"))
+            h_failures++, printf("[FAIL] %s mode: 1024x1024 reply '%s'\n", mode[m], h_reply);
+        h_checks++;
+        CHECK_INT(vt_image_memory(t), 1024L * 1024L * (m ? 4 : 1));
+        k38_b64(raw, n, b);
+        snprintf(msg, n / 3 * 4 + 128, "\033_Ga=t,i=10,f=24,s=1024,v=1025;%s\033\\", b);
+        h_reply_clear();
+        h_put(t, msg);
+        if (strncmp(h_reply, "\033_Gi=10;ENOMEM", 14))
+            h_failures++, printf("[FAIL] %s mode: 1024x1025 reply '%s'\n", mode[m], h_reply);
+        h_checks++;
+        vt_free(t);
+        free(raw);
+        free(b);
+        free(msg);
+    }
+}
+
+static void k38_switching_off_converts_and_on_leaves_indices(void)
+{
+    vt_term *t = k38_term(1);
+    vt_image_view v;
+    k38_send_gradient(t, "a=T,i=5,f=32,s=64,v=64,C=1");
+    CHECK_INT(vt_image_memory(t), 2 * 16384);
+    vt_set_image_rgb(t, 0);
+    CHECK_INT(vt_image_memory(t), 2 * 4096);
+    CHECK_INT(vt_images(t), 2);
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(v.fmt, 0);
+    CHECK(v.npal <= 256);
+    CHECK_INT(v.w, 64);
+    vt_set_image_rgb(t, 1); /* off -> on: the old picture stays indexed */
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(v.fmt, 0);
+    CHECK_INT(vt_image_memory(t), 2 * 4096);
+    vt_free(t);
+}
+
 /* ---- K35: animation control (a=a), compose (a=c), the clock ---- */
 
 /* a 2 x 2 picture (red green / blue white) with frame 2 = root plus a blue pixel at (0,0) and frame 3 on
@@ -1219,4 +1398,9 @@ void suite_kitty(void)
     k35_loops_wait_and_errors();
     k35_a_c_composes_a_rectangle();
     k35_the_clock_changes_the_placement();
+    k38_rgb_store_keeps_every_colour_and_the_alpha_byte();
+    k38_index_mode_is_unchanged();
+    k38_an_opaque_picture_says_so_and_a_placement_scales_the_rgba();
+    k38_budget_is_x4_with_the_same_pixel_capacity();
+    k38_switching_off_converts_and_on_leaves_indices();
 }
