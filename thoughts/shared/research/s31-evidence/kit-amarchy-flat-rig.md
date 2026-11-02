@@ -36,3 +36,21 @@ Run B (ENV:Amarchy/prefs with flat-system-look = on and flat-window-gadgets = on
 
 State after B: prefs file shows both switches on; Status lists Amarchy (VTCX:Apps/bin/Amarchy), amarchy-gui, amarchy-menu, no amarchy-flat process; VTCX:Apps/bin/amarchy-flat present, 113144 bytes. Not checked: size vs build/amiga/amarchy-flat, and flat=on proof (run stopped at the FAIL, no hunt).
 Likely cause to check (unverified): setup reused the Amarchy started in run A with prefs off, so dk_flat_sync never ran after the prefs changed; run B needs a restart of Amarchy after the prefs are put.
+
+## Run 3 (after c3c6654d)
+
+Rig 55, FS-UAE 060, --os 32. Run A (prefs off), then Run B (prefs on via put_flat_prefs(True)).
+
+Run A (exit 0):
+- ok setup: Amarchy runs from VTCX:Apps/bin, port AMARCHY answers
+- ok setup: flat prefs off, amarchy-flat BOOT left nothing resident, STATUS: flat=absent
+
+Run B (exit 0):
+- ok setup: Amarchy runs from VTCX:Apps/bin, port AMARCHY answers
+- ok setup: amarchy-flat BOOT loaded VTCX:Apps/bin/amarchy-flat, STATUS: flat=on calls=0 chained=0
+
+Resident check (Status): Process 8: Loaded as command: UP-Term:bin/amarchy-flat
+
+Size: rig `List VTCX:Apps/bin/amarchy-flat` = 113168 bytes (UP-Term:bin/amarchy-flat the same); `stat -f %z build/amiga/amarchy-flat` = 113168. Equal. (rig start's 'refreshed amarchy-flat 113144 bytes' line is the start-time copy; --setup restaged the current build.)
+
+No md5 check (no md5sum on the rig); no FAIL lines in either run. Prefs deleted, rig 55 stopped and cleared.
