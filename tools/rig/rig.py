@@ -1220,6 +1220,7 @@ def setup():
         tree = RIG / ("os-%s" % OS if OS else "os32")
         # --no-dopus strips the blocks; otherwise the tree gets 5.104 as the clone does (`rig.py dopus` installed it)
         os_tree_no_dopus(tree) if "--no-dopus" in sys.argv else os_tree_dopus(tree)
+        os_tree_no_wasabid(tree)
         os_tree_shadows_block(tree)
     (RIG / "boot/s").mkdir(exist_ok=True)
     # --060: at host speed the boot shell's window is open (something prints
@@ -1853,6 +1854,19 @@ def os_tree_no_dopus(tree):
             clean = data
             for name in ("DirectoryOpus 5", "DOpus5"):
                 clean = user_startup.strip_upterm_blocks(clean, name)
+            if clean != data:
+                us.write_bytes(clean)
+
+def os_tree_no_wasabid(tree):
+    """sys_hdf_no_wasabid for a host-directory system (--os <name>, --os32), every start. The tree is copied once and
+    keeps what an install wrote, so the kit's ';BEGIN UP-Term wasabi' block (Run >NIL: C:wasabid) of an installed kit
+    started a second wasabid beside BOOTX:wasabid, and through FS-UAE's bsdsocket it bound host port 1234 (rig 1's)
+    (RIG-KIT-WASABID-DUP). Only the rig's copy loses the block; the Installer still writes it for a real machine."""
+    for sub in ("S", "s"):
+        us = pathlib.Path(tree) / sub / "User-Startup"
+        if us.is_file():
+            data = us.read_bytes()
+            clean = user_startup.strip_upterm_blocks(data, "UP-Term wasabi")
             if clean != data:
                 us.write_bytes(clean)
 
