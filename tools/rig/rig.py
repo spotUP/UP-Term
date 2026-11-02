@@ -2478,6 +2478,23 @@ def gc(home=None, own_n=None, lines=None, now=None, remove=None):
             log(d, size, reason)
     return removed
 
+# Options that take the next argument as their value; that value may be a number (--os 32, --ram 128).
+VALUE_OPTIONS = ("--serial", "--os", "--purpose", "--kick", "--ram", "--emu", "--idle-minutes")
+# Commands whose arguments are free text for another tool (debugger lines, muforce and wasabi arguments).
+FREE_ARGS = ("dbg", "muforce", "wasabi")
+
+
+def bare_number_argument(argv):
+    """The first all-digit argument after the command that is not an option's value, else None. The rig is selected
+    by the UPTERM_RIG environment variable only; `rig.py clear 55` once ignored the 55 and deleted rig 1."""
+    if len(argv) < 2 or argv[1] in FREE_ARGS:
+        return None
+    for i in range(2, len(argv)):
+        if argv[i].isdigit() and argv[i - 1] not in VALUE_OPTIONS:
+            return argv[i]
+    return None
+
+
 def main(argv):
     """Run the command argv[1]. --help, -h, help and ? (alone or after a command) print this file's usage (rc 0), the command not run; no command or an
     unknown one prints it to stderr (rc 2)."""
@@ -2491,6 +2508,10 @@ def main(argv):
     if len(argv) < 2 or argv[1] not in cmds:
         print(__doc__, file=sys.stderr)
         print("rig.py: %s" % ("no command" if len(argv) < 2 else "unknown command %r" % argv[1]), file=sys.stderr)
+        return 2
+    number = bare_number_argument(argv)
+    if number is not None:
+        print('rig: "%s" is not an argument; select the rig with UPTERM_RIG=%s python3 tools/rig/rig.py %s' % (number, number, argv[1]), file=sys.stderr)
         return 2
     if argv[1] in GATED:
         ensure_current()
