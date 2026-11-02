@@ -244,6 +244,11 @@ int desk_reset_done(const void *before, const void *now, const unsigned short *l
     return now != before || !desk_pens_reset(live, nlive, flat, depth);
 }
 
+int desk_editor_waits_iprefs(const char *editor)
+{
+    return editor && (!strcmp(editor, "Workbench") || !strcmp(editor, "WBPattern"));
+}
+
 int desk_iprefs_idle(int have, int waiting, unsigned long sigwait, unsigned long recvd, unsigned long idle_mask)
 {
     if (!have)
