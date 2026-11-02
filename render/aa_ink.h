@@ -16,6 +16,9 @@
 #include "aa_ink_rule.h" /* aa_ink_rgb */
 
 #include <exec/types.h>
+#ifndef VR_HOST_TEST
+#include <exec/libraries.h> /* struct Library: lib_NegSize */
+#endif
 
 struct Library;
 struct RastPort;
@@ -50,6 +53,27 @@ ULONG vr_cgx_fill(__reg("a6") struct Library *, __reg("a1") struct RastPort *rp,
  * rectangle as ARGB (alpha byte first), blended with what is on the screen; globalalpha 0xFFFFFFFF = the per-pixel
  * alpha only. Registers from the cybergraphics_lib.fd of the CGX/AMOS and MorphOS SDKs (plan K40). */
 #define VR_RECTFMT_RGBA 1
+/* Does the library really implement WritePixelArrayAlpha (-216)? The rig's P96 (cybergraphics 42.7, NegSize 240,
+ * 2026-11-02, tests/amiga/wpaprobe.c) has the slot but points -204 .. -228 all at one stub that draws nothing, and its
+ * version number says nothing about it: the real export has a jump target of its own. A table shorter than 228 bytes
+ * (older V41) has no such slot, and every slot read must be a JMP abs.l (0x4EF9) before its target means anything.
+ * Pure: the library base and its lib_NegSize, so the host tests it on a fake block. */
+static inline int vr_cgx_slots_have_alpha(const unsigned char *base, unsigned long negsize)
+{
+    static const unsigned short slot[4] = {210, 216, 222, 228};
+    unsigned long t[4];
+    int i;
+    if (negsize < 228)
+        return 0;
+    for (i = 0; i < 4; i++) {
+        const unsigned char *s = base - slot[i];
+        if (s[0] != 0x4E || s[1] != 0xF9)
+            return 0;
+        t[i] = ((unsigned long)s[2] << 24) | ((unsigned long)s[3] << 16) | ((unsigned long)s[4] << 8) | s[5];
+    }
+    return t[1] != t[0] && t[1] != t[2] && t[1] != t[3];
+}
+
 #ifdef VR_HOST_TEST
 LONG vr_cgx_write_pixels(struct Library *, APTR src, UWORD sx, UWORD sy, UWORD smod, struct RastPort *rp, UWORD dx,
                          UWORD dy, UWORD w, UWORD h, UBYTE fmt);
@@ -65,15 +89,9 @@ ULONG vr_cgx_write_alpha(__reg("a6") struct Library *, __reg("a0") APTR src, __r
                          __reg("d1") UWORD sy, __reg("d2") UWORD smod, __reg("a1") struct RastPort *rp,
                          __reg("d3") UWORD dx, __reg("d4") UWORD dy, __reg("d5") UWORD w, __reg("d6") UWORD h,
                          __reg("d7") ULONG globalalpha) = "\tjsr\t-216(a6)";
-/* Does the library really implement -216? The rig's P96 (cybergraphics 42.7, NegSize 240, 2026-11-02, tests/amiga/
- * wpaprobe.c) has the slot but points -204 .. -228 all at one stub that draws nothing, and its version number says
- * nothing about it: the real export has a jump target of its own. */
 static int vr_cgx_has_alpha(struct Library *lib)
 {
-    const unsigned char *b = (const unsigned char *)lib;
-    unsigned long t216 = *(const unsigned long *)(b - 216 + 2), t210 = *(const unsigned long *)(b - 210 + 2),
-                  t222 = *(const unsigned long *)(b - 222 + 2);
-    return t216 != t210 && t216 != t222;
+    return vr_cgx_slots_have_alpha((const unsigned char *)lib, lib->lib_NegSize);
 }
 #endif
 

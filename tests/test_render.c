@@ -2705,6 +2705,53 @@ static void k40_redraw_order_and_partial_damage(void)
     close_term();
 }
 
+/* Scrollback: an opaque RGB picture scrolled three rows into the history redraws exact through the RGB path when the
+ * view goes back (its sixty-four rows come from the history rows and the live ones), with no indexed LUT draw. */
+static void k40_picture_scrolled_into_history_redraws_exact(void)
+{
+    static unsigned char px[64 * 64 * 4];
+    int x, y, bad = 0, runs;
+    k40_open(1);
+    k40_gradient(px, 255);
+    pass("\x1b[1;1H");
+    k37_send("a=T,f=32,s=64,v=64,i=1", px, sizeof px);
+    pass("\x1b[8;1H\r\n\r\n\r\n"); /* the picture moves three rows up, into the history */
+    vr_set_view(&rn, 0);
+    runs = (int)rn.n_img_rgb_runs;
+    gf_clear_log();
+    vr_set_view(&rn, 3); /* the view back: the picture is whole again */
+    CHECK((int)rn.n_img_rgb_runs > runs);
+    CHECK(gf_count(GF_CGXPIX) >= 1);
+    CHECK_INT(gf_count(GF_CGXLUT), 0);
+    for (y = 0; y < 64; y++)
+        for (x = 0; x < 64; x++)
+            if (gf_pixel(x, y) != (GF_CGX | ((4 * x) << 16) | ((4 * y) << 8) | (2 * (x + y))))
+                bad++;
+    CHECK_INT(bad, 0);
+    close_term();
+}
+
+/* vr_cgx_has_alpha's slot check on a fake library block: a short table (older V41) and slots that are not JMPs
+ * give 0 whatever the bytes hold; a -216 with its own target gives 1; the rig's one-stub table gives 0. */
+static void k40_alpha_detection_checks_the_table_size_and_the_jmp_opcodes(void)
+{
+    static unsigned char blk[512];
+    unsigned char *base = blk + 256;
+    int i;
+    for (i = 204; i <= 228; i += 6) { /* every slot a JMP to the same stub */
+        base[-i] = 0x4E; base[-i + 1] = 0xF9;
+        base[-i + 2] = 0x00; base[-i + 3] = 0xC0; base[-i + 4] = 0x00; base[-i + 5] = 0x10;
+    }
+    CHECK_INT(vr_cgx_slots_have_alpha(base, 240), 0);
+    base[-216 + 4] = 0x20; /* -216 has its own target */
+    CHECK_INT(vr_cgx_slots_have_alpha(base, 240), 1);
+    CHECK_INT(vr_cgx_slots_have_alpha(base, 200), 0);
+    CHECK_INT(vr_cgx_slots_have_alpha(base, 227), 0);
+    CHECK_INT(vr_cgx_slots_have_alpha(base, 228), 1);
+    base[-222] = 0; /* a slot that is no JMP */
+    CHECK_INT(vr_cgx_slots_have_alpha(base, 240), 0);
+}
+
 /* An 8-bit screen keeps today's indexed pictures: no RGB picture is made. */
 static void k40_eight_bit_screen_stays_indexed(void)
 {
@@ -2744,6 +2791,8 @@ int main(void)
     k40_translucent_pixels_blend_over_the_background();
     k40_fallback_is_the_binary_rule_with_a_sentinel();
     k40_redraw_order_and_partial_damage();
+    k40_picture_scrolled_into_history_redraws_exact();
+    k40_alpha_detection_checks_the_table_size_and_the_jmp_opcodes();
     k40_eight_bit_screen_stays_indexed();
     the_cursor_pass_counts_its_gfx_calls_and_unchanged_cells();
     scrollback_view_move_blits_and_draws_only_the_exposed_rows();
