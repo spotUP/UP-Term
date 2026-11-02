@@ -946,6 +946,90 @@ static void k30_z_0_and_up_still_takes_the_cells(void)
     vt_free(t);
 }
 
+/* ---- K34: animation frames (a=f) ---- */
+
+/* cube indices of the 2 x 2 picture's colours */
+#define K34_RED 181
+#define K34_GREEN 31
+#define K34_BLUE 6
+#define K34_WHITE 216
+
+static void k34_frames_build_on_each_other(void)
+{
+    vt_term *t = kitty_term(10, 5);
+    unsigned long n0 = vt_kitty_frames(t);
+    h_reply_clear();
+    h_put(t, "\033_Ga=t,i=5,f=24,s=2,v=2;/wAAAP8AAAD/////\033\\");
+    CHECK_INT((long)(vt_kitty_frames(t) - n0), 0); /* a plain picture has no frame list */
+    /* frame 2: the root plus a blue pixel at (0,0) */
+    h_reply_clear();
+    h_put(t, "\033_Ga=f,i=5,c=1,f=24,s=1,v=1,x=0,y=0,z=100;AAD/\033\\");
+    CHECK_STR(h_reply, "\033_Gi=5;OK\033\\");
+    /* frame 3 on frame 2: a red pixel at (1,1) */
+    h_reply_clear();
+    h_put(t, "\033_Ga=f,i=5,c=2,f=24,s=1,v=1,x=1,y=1;/wAA\033\\");
+    CHECK_STR(h_reply, "\033_Gi=5;OK\033\\");
+    CHECK_INT((long)(vt_kitty_frames(t) - n0), 3); /* the sentinel: root and two frames */
+    CHECK_INT(vt_kitty_frame_px(t, 5, 1, 0, 0), K34_RED);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 1, 1, 1), K34_WHITE);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 2, 0, 0), K34_BLUE);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 2, 1, 0), K34_GREEN);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 2, 1, 1), K34_WHITE);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 3, 0, 0), K34_BLUE);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 3, 1, 0), K34_GREEN);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 3, 0, 1), K34_BLUE);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 3, 1, 1), K34_RED); /* frame 2 plus the rectangle */
+    CHECK_INT(vt_kitty_frame_px(t, 5, 4, 0, 0), -1);
+    /* a half-clear rectangle pixel blends (keeps the base), X=1 overwrites with clear */
+    h_reply_clear();
+    h_put(t, "\033_Ga=f,i=5,r=3,f=32,s=1,v=1,x=0,y=0;/wAA/w==\033\\");
+    CHECK_INT(vt_kitty_frame_px(t, 5, 3, 0, 0), K34_RED); /* alpha 255 overwrites */
+    h_put(t, "\033_Ga=f,i=5,r=3,f=32,s=1,v=1,x=1,y=0;/wAAAA==\033\\");
+    CHECK_INT(vt_kitty_frame_px(t, 5, 3, 1, 0), K34_GREEN); /* alpha 0 keeps the base */
+    h_put(t, "\033_Ga=f,i=5,r=3,f=32,s=1,v=1,x=1,y=0,X=1;/wAAAA==\033\\");
+    CHECK_INT(vt_kitty_frame_px(t, 5, 3, 1, 0), 0); /* X=1 writes the clear pixel */
+    /* errors */
+    h_reply_clear();
+    h_put(t, "\033_Ga=f,i=9,f=24,s=1,v=1;AAD/\033\\");
+    CHECK_STR(h_reply, "\033_Gi=9;ENOENT:no such image\033\\");
+    h_reply_clear();
+    h_put(t, "\033_Ga=f,i=5,f=24,s=2,v=1,x=1,y=0;AAD/AAD/\033\\");
+    CHECK_STR(h_reply, "\033_Gi=5;EINVAL:frame outside the picture\033\\");
+    /* d=f drops the frames and keeps the picture; d=F also frees it */
+    h_put(t, "\033_Ga=d,d=f,i=5\033\\");
+    CHECK_INT((long)(vt_kitty_frames(t) - n0), 0);
+    CHECK_INT(vt_images(t), 1);
+    h_put(t, "\033_Ga=f,i=5,f=24,s=1,v=1;AAD/\033\\");
+    CHECK_INT((long)(vt_kitty_frames(t) - n0), 2);
+    h_put(t, "\033_Ga=d,d=F,i=5\033\\");
+    CHECK_INT((long)(vt_kitty_frames(t) - n0), 0);
+    CHECK_INT(vt_images(t), 0);
+    vt_free(t);
+}
+
+static void k34_frames_stop_at_the_animation_memory(void)
+{
+    vt_term *t = kitty_term(10, 5);
+    int j;
+    h_put(t, "\033_Ga=t,i=7,f=24,s=1000,v=1000,o=z;");
+    for (j = 0; black1000_z[j]; j++)
+        h_put(t, black1000_z[j]);
+    h_put(t, "\033\\");
+    h_reply_clear();
+    /* the root's canvas and one frame are 2,000,000 of VT_ANIM_MEMORY (2 MB) */
+    h_put(t, "\033_Ga=f,i=7,f=24,s=1,v=1;AAD/\033\\");
+    CHECK_STR(h_reply, "\033_Gi=7;OK\033\\");
+    h_reply_clear();
+    h_put(t, "\033_Ga=f,i=7,f=24,s=1,v=1;AAD/\033\\");
+    CHECK_STR(h_reply, "\033_Gi=7;ENOSPC:no room for frames\033\\");
+    CHECK_INT((long)vt_kitty_frames(t), 2);
+    h_put(t, "\033_Ga=d,d=f,i=7\033\\");
+    h_reply_clear();
+    h_put(t, "\033_Ga=f,i=7,f=24,s=1,v=1;AAD/\033\\"); /* the budget came back */
+    CHECK_STR(h_reply, "\033_Gi=7;OK\033\\");
+    vt_free(t);
+}
+
 void suite_kitty(void)
 {
     raw_rgb_becomes_an_indexed_image();
@@ -983,4 +1067,6 @@ void suite_kitty(void)
     k30_z_0_and_up_still_takes_the_cells();
     k31_placeholder_cells_resolve_to_tiles();
     k31_third_mark_is_the_ids_high_byte();
+    k34_frames_build_on_each_other();
+    k34_frames_stop_at_the_animation_memory();
 }

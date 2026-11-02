@@ -112,7 +112,17 @@ typedef struct vt_image {
     int px0, py0;       /* kitty's X=, Y=: the picture's offset inside its first cell */
     vt_u32 pkid, ppid;  /* kitty's P=, Q=: the parent placement's i= and p= (0 none) */
     int kdepth;         /* parents above this placement (0 none, at most 8) */
+    struct vt_anim *anim; /* kind 2: the frame list (kitty a=f, K34), 0 for a plain picture */
 } vt_image;
+
+/* The frames of a kitty animation: full w x h canvases of cube indices
+ * (kit_color: 0 clear, 1-216 cube, 217-255 grey), frame 1 the root. gap is
+ * the ms a frame shows (z=; negative: gapless). */
+typedef struct vt_anim {
+    int n;
+    vt_u8 *fr[VT_ANIM_FRAMES];
+    long gap[VT_ANIM_FRAMES];
+} vt_anim;
 
 #define VT_IMG_SLOTS 64 /* images alive at once (the oldest gives way) */
 
@@ -289,6 +299,7 @@ struct vt_term {
     vt_image *imgs[VT_IMG_SLOTS];
     int n_img;
     long img_mem, img_serial;
+    long anim_mem;             /* bytes of animation frames, against VT_ANIM_MEMORY (K34) */
     vt_place *pl;
     long pl_cap;
     vt_u16 pl_free;
@@ -416,11 +427,25 @@ static vt_line *line_new(int cap)
 
 /* ---- images on lines (vt_line.img) --------------------------------------- */
 
+static void anim_free(vt_term *t, vt_image *im)
+{
+    int i;
+    if (!im->anim)
+        return;
+    for (i = 0; i < im->anim->n; i++) {
+        VT_FREE(im->anim->fr[i]);
+        t->anim_mem -= (long)im->w * im->h;
+    }
+    VT_FREE(im->anim);
+    im->anim = 0;
+}
+
 static void image_free(vt_term *t, int slot)
 {
     vt_image *im = t->imgs[slot];
     if (!im || !im->pix)
         return;
+    anim_free(t, im);
     VT_FREE(im->pix);
     im->pix = 0;
     t->img_mem -= im->bytes;
@@ -5342,6 +5367,7 @@ static int image_install(vt_term *t, vt_u8 *pix, long bytes, long w, long h, int
     im->px0 = im->py0 = 0;
     im->pkid = im->ppid = 0;
     im->kdepth = 0;
+    im->anim = 0;
     im->vc = im->vr = 0;
     im->serial = ++t->img_serial;
     for (i = 0; i < npal; i++)
