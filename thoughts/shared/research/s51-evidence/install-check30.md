@@ -18,3 +18,9 @@ Verdict: the PRODUCT was wrong (dist/install-amissl.dos), not the harness check.
   ';BEGIN rig-upterm-shadows' block, the rig's own shadow block, not the kit's).
 - Used a stale build/dist/up-term (12:54, before a4928c9d): refreshed with `python3 tools/mkkit.py base` + copying
   the fixed Files/install-amissl.dos, because `make dist` stops on "kit-stage in upterm-ports" (ports kit has no STAGED-FROM).
+
+## Final on-screen text of the second run (coordinator request)
+NOT read from the screen: rig 85 was already stopped and cleared (rig.py stop, clear) when the request arrived, so wasabi could not be asked.
+The run's own page log (build/rig-reports/rig85/installer/fresh-all.pages.txt) holds only gadget boxes for the last pages, no text.
+The automated verdict of that run is the evidence: `ok 30 AmiSSL installed: LIBS:amisslmaster.library is version 5 or newer`.
+The expected last-page line from P_AMISSL is "AmiSSL installed: LIBS: has it now, usable at once." (unverified on screen).
