@@ -1,0 +1,118 @@
+diff --git a/amarchy/flat.c b/amarchy/flat.c
+index 31c04dae..b6bd47dd 100644
+--- a/amarchy/flat.c
++++ b/amarchy/flat.c
+@@ -124,6 +124,7 @@ static struct BitMap *cl_bm;
+ static struct RastPort cl_rp;
+ static int cl_w, cl_h;
+ static UWORD cl_pens[FLAT_CLONE_MARKS];
++static struct Task *volatile cl_pass;             /* DIAG: the task whose DrawImageState into cl_rp passes straight through */
+ static uint8_t cl_scratch[FLAT_CLONE_SCRATCH];     /* the grids: static (held under cl_ss), not on the stack of whatever task draws */
+ 
+ static int clone_ensure(int w, int h)
+@@ -177,17 +178,32 @@ static int clone_render(void *ctx, unsigned long ids, uint8_t *grid, int w, int
+         m.imp_Offset.X = (WORD)-im->LeftEdge;
+         m.imp_Offset.Y = (WORD)-im->TopEdge;
+         m.imp_DrInfo = &di;
+-        SetRast(&cl_rp, 0);
+-        if (e->reg)
+-            ((oldfn_reg)g_r->sw.saved)(e->h, e->obj, (Msg)&m);
+-        else
+-            ((oldfn_stk)g_r->sw.saved)(e->h, e->obj, (Msg)&m);
+-        WaitBlit();
+-        for (y = 0; y < h; y++)
+-            for (x = 0; x < w; x++) {
+-                LONG p = ReadPixel(&cl_rp, x, y);      /* offscreen bitmap, no layer: not the screen */
+-                grid[y * w + x] = (uint8_t)(p < 0 ? 0 : p);
++        int pass, nz = 0;
++        for (pass = 0; pass < 2 && !nz; pass++) {
++            SetRast(&cl_rp, 0);
++            if (pass == 0) {
++                ULONG rc;
++                if (e->reg)
++                    rc = ((oldfn_reg)g_r->sw.saved)(e->h, e->obj, (Msg)&m);
++                else
++                    rc = ((oldfn_stk)g_r->sw.saved)(e->h, e->obj, (Msg)&m);
++                g_r->crc = rc;
++            } else {
++                cl_pass = FindTask(NULL);
++                DrawImageState(&cl_rp, im, (LONG)-im->LeftEdge, (LONG)-im->TopEdge, m.imp_State, &di);
++                cl_pass = NULL;
+             }
++            WaitBlit();
++            for (y = 0; y < h; y++)
++                for (x = 0; x < w; x++) {
++                    LONG p = ReadPixel(&cl_rp, x, y);      /* offscreen bitmap, no layer: not the screen */
++                    grid[y * w + x] = (uint8_t)(p < 0 ? 0 : p);
++                    nz += p > 0;
++                }
++            if (pass == 0) g_r->cnz_direct = nz; else g_r->cnz_dis = nz;
++        }
++        if (!nz)
++            g_r->cempty++;
+         ok = 1;
+     }
+     ReleaseSemaphore(&cl_ss);
+@@ -202,6 +218,11 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
+     ULONG which = 0xFFFF;
+     int frame_pen = -1, text_pen = -1;
+     r->st.calls++;
++    if (msg->MethodID == FLAT_IM_DRAW && d->imp_RPort == &cl_rp) {
++        r->cnest++;
++        if (cl_pass && cl_pass == FindTask(NULL))
++            return 0;
++    }
+     if (msg->MethodID != FLAT_IM_DRAW || !r->st.enabled || r->st.held || !d->imp_RPort)
+         return 0;
+     /* FLAT-OUTER-EDGE: the window's 1 px outer edge in the accent pen is NOT drawn here. Intuition repaints the four outer
+@@ -667,7 +688,7 @@ static void put_word(char *out, int *n, const char *w)
+ static void print_status(void)
+ {
+     flat_state copy;
+-    char line[96];
++    char line[160];
+     flatshared *r;
+     int found = 0, dfound = 0, dreason = 0, dmask = 0, dinst = 0;
+     unsigned dver = 0, drev = 0;
+@@ -675,7 +696,7 @@ static void print_status(void)
+     int finst = 0, rinst = 0;
+     unsigned long rcalls = 0, rhits = 0, shits = 0, tcalls = 0, thits = 0;
+     int tinst = 0;
+-    unsigned long cdraws = 0, cfall = 0;
++    unsigned long cdraws = 0, cfall = 0, cnest = 0, cempty = 0, cnzd = 0, cnzs = 0, crc = 0;
+     uint32_t dsum[FLAT_EL_COUNT] = { 0, 0 };
+     memset(&copy, 0, sizeof copy);
+     Forbid();
+@@ -690,6 +711,7 @@ static void print_status(void)
+         rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits;
+         tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits;
+         cdraws = r->cdraws; cfall = r->cfall;
++        cnest = r->cnest; cempty = r->cempty; cnzd = r->cnz_direct; cnzs = r->cnz_dis; crc = r->crc;
+     }
+     Permit();
+     if (flat_status_line(&copy, sizeof copy, found, line, sizeof line)) {
+@@ -735,6 +757,11 @@ static void print_status(void)
+         int n = 0;
+         put_word(line, &n, "clone draws=");         put_num(line, &n, cdraws);
+         put_word(line, &n, " fallback=");           put_num(line, &n, cfall);
++        put_word(line, &n, " nest=");               put_num(line, &n, cnest);
++        put_word(line, &n, " empty=");              put_num(line, &n, cempty);
++        put_word(line, &n, " nzdirect=");           put_num(line, &n, cnzd);
++        put_word(line, &n, " nzdis=");              put_num(line, &n, cnzs);
++        put_word(line, &n, " rc=");                 put_num(line, &n, crc);
+         line[n] = 0;
+         PutStr((STRPTR)line);
+         PutStr((STRPTR)"\n");
+diff --git a/amarchy/flat_shared.h b/amarchy/flat_shared.h
+index 0d1ca3e4..0e903209 100644
+--- a/amarchy/flat_shared.h
++++ b/amarchy/flat_shared.h
+@@ -46,6 +46,8 @@ typedef struct flatshared {
+     ULONG ttitle;               /* window titles redrawn by FLAT-TITLE-ACCENT (the sentinel) */
+     ULONG tcalls, thits;        /* every patched Text call / every pressed label recoloured (the sentinels) */
+     ULONG cdraws, cfall;        /* FLAT-GLYPH-OS-SHAPES sentinels: gadgets drawn by cloning the system image / clone attempts that fell back to the block glyph */
++    ULONG cnest, cempty;        /* DIAG: dispatcher entries aimed at the clone rastport / renders that read an all-zero grid */
++    ULONG cnz_direct, cnz_dis, crc; /* DIAG: last nonzero count via the direct saved call, via DrawImageState; last saved rc */
+     /* the icon pens are no longer here: the shared holder record "Amarchy.IconPens" owns them (iconpen_dos.h, F14) */
+ } flatshared;
+ 

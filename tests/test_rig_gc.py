@@ -91,5 +91,33 @@ class RigStopClears(unittest.TestCase):
         self.assertEqual(self.run_stop(["rig.py", "stop"], 3, running=True), ["stop"])
 
 
+
+class ClearRefusesRigOne(unittest.TestCase):
+    """`rig.py clear` with UPTERM_RIG unset targets rig 1 (the owner's); it must refuse unless --rig1 is given."""
+    def run_clear(self, argv, n):
+        removed = []
+        with mock.patch.object(rig.paths, "RIG_N", n), mock.patch.object(sys, "argv", argv), \
+             mock.patch.object(rig, "mine", lambda: False), \
+             mock.patch.object(rig, "RIG", pathlib.Path(tempfile.mkdtemp())), \
+             mock.patch.object(rig, "remove_folder", lambda f: removed.append(f) or True), \
+             contextlib.redirect_stdout(io.StringIO()):
+            try:
+                rig.clear()
+            except SystemExit as e:
+                return removed, str(e)
+        return removed, None
+
+    def test_rig_one_refused(self):
+        removed, err = self.run_clear(["rig.py", "clear"], 1)
+        self.assertEqual(removed, [])
+        self.assertIn("owner's", err)
+
+    def test_rig_one_with_flag_cleared(self):
+        self.assertEqual(len(self.run_clear(["rig.py", "clear", "--rig1"], 1)[0]), 1)
+
+    def test_other_rig_cleared(self):
+        self.assertEqual(len(self.run_clear(["rig.py", "clear"], 7)[0]), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
