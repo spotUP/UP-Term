@@ -228,7 +228,7 @@ const sd_setting sd_settings[SDI_COUNT] = {
       VALS(v_iconstyle), "filled", SD_AMARCHY, SDF_AMSTR, AO(AM_ICONSTYLE), UC_MAX_VALUE, NORANGE,
       PG_AM_ICONSTYLE, 0, 0, 1, 0 },
     { SDI_AM_BORDERBLANK, "border-blank", 0, PG_PAGE_FLAT, SD_CHECK, "Blac_k screen border",
-      "Native screens show black outside the picture instead of colour 0. Off: the stock border.",
+      "Native screens: black outside the picture, not colour 0. Off: stock border.",
       VALS(v_off_on), "on", SD_AMARCHY, SDF_AMSTR, AO(AM_BORDERBLANK), UC_MAX_VALUE, NORANGE, PG_AM_BORDERBLANK, 0, 0, 1, 0 },
     { SDI_AM_FLATSTATUS, 0, 0, PG_PAGE_FLAT, SD_INFO, "Flat st_atus",
       "What amarchy-flat reports: on, off, held, absent. Read only.",
