@@ -489,7 +489,7 @@ and bg), then the 1-bit mask path; no new failure mode. A dither of the shade it
   must be > 0; asserted pixel values from the fake RastPort (gfx_fake.c), exact numbers.
 - [x] R6.A2 Implement the AGA tile-stencil passes in aa_ink_draw; regression: A1 reverted
   fails again.
-- [ ] R6.A3 Rig proof on rig 060, AGA 256 screen, dithered bg (tools/rig/outline_rig.py):
+- [ ] R6.A3 Rig proof on rig 060, AGA 16-pen screen, dithered bg (tools/rig/outline_rig.py):
   screenshot pixel measurement of 5 edge pixels against the expected pen per pixel
   (not by eye); owner told to look only after.
 - [ ] R6.B1 Measure on the host fake and rig 060 / 020 profile: ms per glyph of the
