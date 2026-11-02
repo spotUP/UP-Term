@@ -141,3 +141,44 @@ vsh's Close hung): both runs point at the wc/subshell-exit window, not at a hand
    never returns shows), plus vsh TR around subshell exit/job_free: which task makes the last call.
 3. A non-ixemul last stage (no coreutils): e.g. a small vbcc reader in tools/rig, to split ixemul from vsh.
 4. Fix the latent job_free/pipe_tab use-after-free (Hunt 2) regardless; then retest.
+
+## Hunt 4 (rig 83, 2026-11-02) - cause found: wc overflows its stack
+
+Build: worktree 5a52be83, pty-handler rebuilt WITHOUT DEBUG (13152 bytes), normal vsh. Probe 1 only
+(stack); snoop not needed.
+
+### Result
+- `STACK=262144 vshpipe_rig.py` (new option: puts `Stack 262144` before vsh in each case's .run, so
+  command_stack gives every external command 262144): 3 runs, 7 of 7 OK each, no freeze.
+- Same build, same rig, no Stack line: `[OK] echo_wc`, `[OK] printf_wc`, then "the Amiga took the
+  connection but its daemon did not answer for 150 s - frozen" (machine dead in func_stage).
+
+### Which program
+The stack setting only moves command_stack (shell/vsh.c:1047): the subshell has a fixed VSH_STACK_SUB
+131072, the runner a fixed 8000, vsh main swaps to its own 262144. So it is an external command: wc.
+- dist/gg/coreutils-5.2.1/bin/wc carries no `$STACK:` cookie (strings: none; cat, sort, head, tail:
+  none either) and has no stack extension (no stkext symbols).
+- vsh therefore starts it with max(cli_DefaultStack*4, MIN_COMMAND_STACK 16000) = 16000 on the rig.
+- coreutils-5.2.1 src/wc.c:206: `wc()` has `char buf[BUFFER_SIZE + 1]` with BUFFER_SIZE 16*1024 on the
+  stack: 16385 bytes in one frame, more than the whole 16000-byte stack. Entering wc() puts SP below
+  tc_SPLower; the Read into buf writes over whatever memory lies below the stack (no MMU): the freeze.
+  That matches Hunt 3 (freeze after ParentOfFH, before the first READ: the frame of wc(), entered after
+  the fstat probes) and Hunt 2 (one run later, wc rc 1 and a corrupt system). echo_wc "passing" is luck
+  (what lies below the stack that time).
+Not measured: wc's exact use with wasabi ps FREE (the rig restart after the baseline freeze did not come
+up within 300 s; budget ended). The source frame size alone exceeds the stack, so the cause stands.
+
+### Fix (not applied: the owner layer is the shipped coreutils, outside vsh)
+The handler and vsh are cleared. The program that overflows is the kit's prebuilt GG coreutils 5.2.1,
+which declares no stack (house rule: every Amiga program carries __stack + $STACK). The root-cause fix is
+in that layer, and it already exists: the coreutils 9.12 port (upterm-ports pkgs/coreutils, FP4.6,
+research/2026-10-17_fp46-coreutils.md) is built with $STACK 262144 for all 86 programs; it is not staged
+into the kit yet (`make kit-stage` open, kit drawer and vshpipe_rig COREUTILS still dist/gg). Decision
+for the owner: stage 9.12 into the kit (recommended) and point vshpipe_rig/userland at it, then rig proof
+vshpipe_rig x3. Raising vsh's MIN_COMMAND_STACK would hide this for wc only by guess, and every other
+cookie-less GG tool with a big frame would stay exposed from AmigaShell (default Stack 4096).
+Not host-reachable: the overflow is a 68k stack frame in a prebuilt binary; no host test can drive it.
+A cheap guard worth a row: a dist check that every kit binary in SYS:UP-Term/bin carries a $STACK cookie
+(tests/test_dist_stack.py covers only programs this repo builds).
+
+The job_free/pipe_tab use-after-free (Hunt 2) stays a separate row.
