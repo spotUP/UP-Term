@@ -41,6 +41,18 @@ class AmarchyDocs(unittest.TestCase):
         self.assertIn('Left Amiga + Shift + /', m.group(1), 'the Help chord names its key as "/"')
         self.assertNotIn('SLASH', m.group(1), 'key names are the printed key, not the keymap word')
 
+    def test_welcome_lines_end_whole_sentences(self):
+        # Owner 2026-11-03: the welcome window showed "... action. Press Escape" with no full stop, because a
+        # sentence ran across a line break. Every welcome line is a whole sentence or a "label: key" row.
+        text = (ROOT / 'dist/amarchy.help').read_text()
+        welcome = text.split('[welcome]', 1)[1].split('\n[', 1)[0]
+        for line in welcome.splitlines():
+            line = line.rstrip()
+            if not line or ':' in line:
+                continue
+            self.assertTrue(line.endswith('.'), 'welcome line is not a whole sentence: %r' % line)
+        self.assertIn('Press Escape to close it.', welcome)
+
     def test_man_page_names_snap_focus_float_and_swap_keys(self):
         man = read('man/amarchy.1')
         for w in ('snaps the focused window', 'quarter', 'moves focus', 'swaps the focused tile', 'FLOAT TOGGLE'):

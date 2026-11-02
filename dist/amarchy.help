@@ -14,9 +14,10 @@ Change the theme:   {menu:style.theme}
 Open this help:     {key:gui:help}
 Quit Amarchy:       {key:amarchy:quit}
 
-The menu lists every program, setting and action. Press Escape
-to close it. Every key above can be changed in the keymap file,
-and this text then shows your key.
+The menu lists every program, setting and action.
+Press Escape to close it.
+Every key above can be changed in the keymap file.
+This text then shows your new key.
 
 Tick the box below to stop this window from opening at start.
 
