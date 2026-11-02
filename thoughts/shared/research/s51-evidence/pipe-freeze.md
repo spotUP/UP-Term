@@ -65,3 +65,44 @@ second effect that only the PTY: path (or timing) produces.
 Scratch loop script (not committed): imports tools/rig/vshpipe_rig as v,
 stages vsh + coreutils like main(), runs v.run_case(case) N times, stops at
 first FAIL.
+
+## Hunt 2 (rig 83, 2026-11-02) - not fixed, findings only
+
+### PTY: freeze traced to Close of the last pipe handle
+Trace build (TR in close_stream, subshell start/end, os_wait tick), PTY: pipes:
+func_stage OK, printf_wc OK, then echo_wc froze the whole machine (daemon silent 150 s).
+Sequence for echo_wc:
+1. Subshell stage started, closed its write end (`cs in/close/done`), ended, was waited by os_wait.
+2. wc runner started; main vsh ticked twice in os_wait.
+3. `runcommand back` with rc=1: wc FAILED (abnormal; expected "6").
+4. close_stream on the read end: "cs rd drain ... 0" (writer already gone), "cs close", never "cs done".
+5. Close() of the read end (pty master) never returns; main's os_wait ticks stop: whole machine dead.
+So the hang is inside Close of the last handle of a PTY pipe pair, after the write end closed.
+That Close drives ACTION_END -> end_pair -> free_pair -> handler shutdown (dn_Task=0 under Forbid,
+CloseDevice, DeleteMsgPort, CloseLibrary, return) in handler/pty_handler.c (packet() ~591, END ~660).
+Prime suspects, unproven:
+- handler shuts down / frees the pair while a reply or the closer's packet still references the pair's
+  ports (mport/sport share the handler signal, init_port ~390);
+- wc rc=1 means wc's (ixemul) reads on the master got an unexpected answer first; a pty-handler TR
+  build showing the packet sequence for this pair is the next probe.
+
+### PIPE: forced (probe `if (1 || !mounted)` in pty_pipe, since reverted)
+Trace build: 52 runs (func_stage, echo_wc, printf_wc, three_stages; 3 + 10 rounds) all OK.
+The earlier agent's PIPE: hang did not reproduce with the trace build: timing-sensitive.
+
+### Normal (non-DEBUG) build, PTY:
+Loop of slow_wc (`{ /C/Wait 1; echo hello; } | wc -c`) and true_wc (`true | wc -c`) froze the machine
+on the first rounds again (which case not captured, no trace in that build).
+
+### Orphan-path lead (job_free without clearing pipe_tab writer)
+Real latent use-after-free: job_free (vsh.c ~797) leaves pipe_tab[].writer pointing at the freed job on the
+subshell_proc orphan path (~2297), the runner orphan path (end of runner()) and task_unix_signal (~381, ~392).
+Only os_wait clears it. Fix shape: clear pipe_tab writer==j inside job_free under the same Forbid.
+NOT the cause of these cases: orphan paths run only when mn_ReplyPort == 0 (orphan_jobs at shell end);
+`vsh script` waits for every stage.
+
+### Next probes, in order
+1. pty-handler TR build: packet trace for the pair in echo_wc (which actions wc sends, the END sequence,
+   whether shutdown runs while the master Close is still outstanding).
+2. Same run with a non-ixemul last stage (echo_cat) to split handler bug vs ixemul packet.
+3. Stack 262144 probe (memory rule) not run yet.
