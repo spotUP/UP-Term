@@ -243,6 +243,7 @@
 (set #emoji "")
 (set #dopus "")
 (set #iconlib "")
+(set #solidwin "")
 (set #cpu060 (if (= (database "cpu") "68060") "CPU060" ""))
 (set #cpu040 (if (= (database "cpu") "68040") "CPU040" ""))
 (set #nofpu (if (= (database "fpu") "NOFPU") "NOFPU" ""))
@@ -400,6 +401,20 @@
 (if (in #boot 0) (set #serial "SERIAL"))
 (if (in #boot 1) (set #wasabi "WASABI"))
 
+; SolidWin 1.12 (Thomas Rapp, Files/solidwin): ticked on every AmigaOS version (3.0 to 3.2)
+(set #solidwin
+    (askoptions
+        (prompt "Windows:")
+        (help "SolidWin 1.12 by Thomas Rapp: windows move with their "
+              "contents drawn, instead of an outline you drag. A small "
+              "input.device handler, C:SolidWin, started at every boot by a "
+              "block in S:User-Startup; reboot to use it.\n\n"
+              "Uninstall takes the block out and removes C:SolidWin again "
+              "(only when Install put it there).")
+        (choices "Solid window moving (SolidWin)")
+        (default 1)))
+(if (in #solidwin 0) (set #solidwin "SOLIDWIN") (set #solidwin ""))
+
 ; ---- taking over the system's console: a page of its own -----------------
 
 (set #sys
@@ -504,6 +519,7 @@
         (set #ssh (getenv "UPTOPTSSH"))
         (set #bget (getenv "UPTOPTBEBBOGET"))
         (set #wasabi (getenv "UPTOPTWASABI"))
+        (set #solidwin (getenv "UPTOPTSOLIDWIN"))
         (set #unifont (getenv "UPTOPTUNIFONT"))
         (set #emoji (getenv "UPTOPTEMOJI"))
         (set #dopus (getenv "UPTOPTDOPUS"))
@@ -530,6 +546,7 @@
     (set #name "SSH" #val #ssh) (P_OPT)
     (set #name "BEBBOGET" #val #bget) (P_OPT)
     (set #name "WASABI" #val #wasabi) (P_OPT)
+    (set #name "SOLIDWIN" #val #solidwin) (P_OPT)
     (set #name "CPU040" #val #cpu040) (P_OPT)
     (set #name "CPU060" #val #cpu060) (P_OPT)
     (set #name "NOFPU" #val #nofpu) (P_OPT)
@@ -704,6 +721,7 @@
 (if (exists "ENVARC:up-term/tmp") (set #blocks (cat #blocks ", TMP:")))
 (if #serial (set #blocks (cat #blocks ", serial login")))
 (if #wasabi (set #blocks (cat #blocks ", wasabid")))
+(if #solidwin (set #blocks (cat #blocks ", SolidWin")))
 ; a switch UPConsole refused wrote no block (install.dos: ENV:UPTREFUSED<CON|DEV>)
 (set #refcon (exists "ENV:UPTREFUSEDCON"))
 (set #refdev (exists "ENV:UPTREFUSEDDEV"))

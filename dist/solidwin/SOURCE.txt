@@ -1,0 +1,7 @@
+SolidWin 1.12 (25.10.2025), (c) Thomas Rapp <thomas-rapp@web.de>
+Solid (opaque) window moving: an input.device handler, one argument DELAY.
+Binary and icon are unchanged from the author's archive.
+Source: https://thomas-rapp.hier-im-netz.de/downloads/solidwin.lha
+SolidWin md5: 72960c492bce02d91f557f3e5ef58887
+Redistribution: the author was mailed on 2026-11-02 and the owner of this kit
+approved bundling it; no licence text ships with the archive.

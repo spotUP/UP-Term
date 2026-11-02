@@ -85,6 +85,7 @@ desktop         Files/dopus-filetype
 boot            Files/banner
 boot            Files/vshrc
 boot            Files/wasabi
+boot            Files/solidwin
 libs            Files/libs
 libs            Files/iconlib
 mount           Files/IXPIPE

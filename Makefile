@@ -209,6 +209,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_rig_dopus_screen ]; then python3 tests/test_menu_rig_dopus_screen.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_dopus_own_screen ]; then python3 tests/test_rig_dopus_own_screen.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_installer.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = dist_solidwin ]; then python3 tests/test_dist_solidwin.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_manifest.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = dist_iconlib ]; then python3 tests/test_dist_iconlib.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_safeoff.py; fi
@@ -1830,6 +1831,8 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	mkdir -p $(KIT)/Files/unifont && cp $(UNIFONT_PAGES)/[0-9A-F][0-9A-F] $(UNIFONT_PAGES)/1F[0-9A] dist/unifont/OFL-1.1.txt dist/unifont/SOURCE.txt $(KIT)/Files/unifont/
 	mkdir -p $(KIT)/Files/emoji && cp $(EMOJI_PAGES)/[0-9A-F][0-9A-F] $(EMOJI_PAGES)/1F[0-9A] dist/emoji/CC-BY-4.0.txt dist/emoji/SOURCE.txt $(KIT)/Files/emoji/
 	@# wasabi: LICENSE and SOURCE.txt from dist/wasabi, the daemon and the client from the build (the wasabi stamp, the pin tools/nas/wasabi.rev)
+	@# SolidWin 1.12 (Thomas Rapp): binary, icon and SOURCE.txt; the Install copies it to C: when ticked
+	rm -rf $(KIT)/Files/solidwin && cp -R dist/solidwin $(KIT)/Files/solidwin
 	rm -rf $(KIT)/Files/wasabi && cp -R dist/wasabi $(KIT)/Files/wasabi && rm $(KIT)/Files/wasabi/SOURCE.txt.in
 	$(MAKE) $(WASABI_SOURCE) && cp $(WASABI_SOURCE) $(KIT)/Files/wasabi/SOURCE.txt
 	cp $(BUILD)/wasabi/wasabid $(BUILD)/wasabi/wasabi $(BUILD)/wasabi/wasabi_mcp.py $(BUILD)/wasabi/wasabi_client.py $(BUILD)/amiga/wasabikey $(KIT)/Files/wasabi/
