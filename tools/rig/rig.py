@@ -1143,8 +1143,15 @@ def stage_rig_vtc(vtc):
     """What a rig's VTC: drawer needs to start, for build/rig and build/rigN alike (setup calls it): the ScreenMode
     prefs, and the UP-Term drawer the boot's UP-Term: assign points at, with bin/vsh, the icons and the Prefs launcher
     (stage_upterm, as `rig.py install` makes it), and the Amarchy themes and font (stage_amarchy_assets: a rig that
-    never ran `install` listed no themes). Files already there are kept."""
+    never ran `install` listed no themes), and VTC:etc that the boot's ETC: assign (ixemul's /etc) points at, with
+    the vtcon termcap the boot's TERMCAP=/etc/termcap names (rig 1's etc was made by hand once; when its folder
+    went, every rebuilt or seeded rig lacked ETC: and start failed "the boot lacks the assigns ETC", 2026-11-02).
+    Files already there are kept."""
     vtc.mkdir(parents=True, exist_ok=True)
+    (vtc / "etc").mkdir(exist_ok=True)
+    termcap = vtc / "etc/termcap"
+    if not termcap.exists():
+        shutil.copy2(ROOT / "terminfo/vtcon.termcap", termcap)
     for name, did, w, h, depth in SCREENMODE_PREFS:
         f = vtc / ("screenmode.%s.prefs" % name)
         if not f.exists():
