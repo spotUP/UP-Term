@@ -87,7 +87,7 @@ def man_section(sec, binds, menu):
             cur = []
         else:
             cur.append(ln)
-    for p in paras[1:]:  # the first paragraph is the window title
+    for p in paras:  # the window head carries the title: sections hold none
         if p[0].startswith(("Open the menu", "Snap a window")) or ":" in p[0][:24]:
             out.append(".Bd -literal -offset indent")
             out += [esc(x) for x in p]
@@ -95,7 +95,7 @@ def man_section(sec, binds, menu):
         else:
             out += [esc(x) for x in p]
         out.append(".Pp")
-    hl = render(sec["help"], binds, menu)[1:]
+    hl = render(sec["help"], binds, menu)
     first = True
     for ln in hl:
         if ln.isupper() and ln.strip():
