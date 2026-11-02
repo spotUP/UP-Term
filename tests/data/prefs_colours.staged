@@ -15,6 +15,7 @@ amiga-keys = on
 dither = on
 outline-antialias = on
 padding-color = background
+outline-blend-dest = on
 highlight-cat = on
 split-restore = off
 program-clipboard = write

@@ -478,7 +478,7 @@ and bg), then the 1-bit mask path; no new failure mode. A dither of the shade it
   AGA stencil pass. ce_mix gets exposed once from emoji.h to aa_ink.c (it already is
   shared: aa_ink_build_tab uses it).
 
-### Checklist (R6.x; 4 of 9 done, R6.A3 open, R6.B1-B4 dropped by D1)
+### Checklist (R6.x; 5 of 10 done, R6.A3 open, R6.B1-B4 dropped by D1)
 
 - [x] R6.0 Record the finding above in the plan and get the owner's decision on D1 below.
   Proven by: owner answers 2026-11-01 (s48) under "Owner decisions" below.
@@ -499,7 +499,11 @@ and bg), then the 1-bit mask path; no new failure mode. A dither of the shade it
   path and stays 0 for a flat cell (fail-before: LUT result differs on gradient).
 - [ ] R6.B3 Flat cell keeps the LUT path: n_aa_blend 0, output identical to today (golden).
 - [ ] R6.B4 Rig proof RTG: only if a busy-bg source exists (D1 option 2); pixel measure.
-- [ ] R6.6 Prefs > Advanced switch for outline-blend-dest (D6): saved key moves; layout fits PAL and NTSC.
+- [x] R6.6 Prefs > Advanced switch for outline-blend-dest (D6): saved key moves; layout fits PAL and NTSC.
+  Row "Blend edges" (PG_BLEND_DEST, Advanced row 3 column 2, beside Programs may; the wider labels
+  overflowed the 618 px window). Test advanced_page_has_the_outline_blend_switch in tests/test_prefs.c
+  (row on the Advanced page, staged key on then off, read back; fails before: no row); layout by
+  the_window_fits_an_ntsc_and_a_pal_workbench (NTSC 618x176, PAL 618x232, 11 px font) passes. Commit: 1a87b4a4 (branch s48-blendprefs).
 - [x] R6.5 Knob: profile key outline-blend-dest (on/off) moves the output (on: blend, off:
   today's ramp); the host test toggles it and asserts different pixels.
 

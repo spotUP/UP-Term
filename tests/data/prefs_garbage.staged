@@ -22,5 +22,6 @@ highlight-cat = on
 amiga-keys = on
 font-aspect = on
 outline-antialias = on
+outline-blend-dest = on
 split-restore = off
 ansi-music = on
