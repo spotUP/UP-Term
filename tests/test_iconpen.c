@@ -498,8 +498,39 @@ static void test_theme_switch_recolour(void)
     rcm_other = 0;
 }
 
+/* OWNER-ICON-COLOURS-INVERTED (s31 evidence icon-colours-inverted.md, rig 61, 3.2, depth 8, flat on, vantablack): RAM:iconpens read
+ * pens 32-47 as 555555 bebebe bebebe 8d8d8d 454545 898989 868686 696969 3f3f3f 7a7a7a 505050 1a1a1a 222222 5c5c5c 222222 222222.
+ * bebebe was read as the matte-black foreground and the pens as stale. They are vantablack's own: its #ffffff foreground becomes
+ * GT_DARK_WHITE_FG (bebebe) under the owner rule, and its black ground lifts the backdrop to DK_BLACK_LIFT (222222). This pins the
+ * rig numbers to the theme, so the held pens are proved current and the inverted look has another cause. */
+static void test_icon_colours_inverted_pens_are_vantablack(void)
+{
+    static const char *vb = "mode = \"dark\"\naccent = \"#8d8d8d\"\nselection = \"#1a1a1a\"\nmuted = \"#7a7a7a\"\n"
+                            "background = \"#000000\"\ndark_background = \"#090909\"\ndarker_background = \"#070707\"\n"
+                            "lighter_background = \"#1a1a1a\"\nforeground = \"#ffffff\"\ndark_foreground = \"#505050\"\n"
+                            "light_foreground = \"#ececec\"\nbright_foreground = \"#ffffff\"\n";
+    static const unsigned long rig[16] = { 0x555555UL, 0xbebebeUL, 0xbebebeUL, 0x8d8d8dUL, 0x454545UL, 0x898989UL, 0x868686UL,
+                                           0x696969UL, 0x3f3f3fUL, 0x7a7a7aUL, 0x505050UL, 0x1a1a1aUL, 0x222222UL, 0x5c5c5cUL,
+                                           0x222222UL, 0x222222UL };
+    gtheme t;
+    uint8_t rgb[IP_PENS][3];
+    desk_pen_plan p;
+    int i;
+    memset(&t, 0, sizeof t);
+    gt_parse(vb, (long)strlen(vb), &t);
+    desk_pen_plan_for(8, &p);
+    CHECK_INT(p.icon_first, 32);
+    CHECK_INT(p.icon_count, 16);
+    ip_colours(&t, ip_ground(&t, 1, 0), rgb);
+    for (i = 0; i < p.icon_count; i++) {
+        const uint8_t *c = rgb[p.icon_slot + i];
+        CHECK_INT((long)(((unsigned long)c[0] << 16) | ((unsigned long)c[1] << 8) | c[2]), (long)rig[i]);
+    }
+}
+
 void suite_iconpen(void)
 {
+    test_icon_colours_inverted_pens_are_vantablack();
     test_colours_and_fold();
     test_plan_no_overlap();
     test_holder();
