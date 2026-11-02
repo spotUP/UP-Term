@@ -230,6 +230,10 @@ EndIf
 If EXISTS ENVARC:up-term/cryptossh
   Delete >NIL: LIBS:libcryptossh.library QUIET
 EndIf
+; SolidWin, only when Install put it there (its marker); the User-Startup block goes with the other UP-Term blocks
+If EXISTS ENVARC:up-term/solidwin
+  Delete >NIL: C:SolidWin QUIET
+EndIf
 ; the Directory Opus filetype, only when Install put it there (its marker) and DOpus5: is assigned
 If EXISTS ENVARC:up-term/dopus-filetype
   Assign >NIL: DOpus5: EXISTS

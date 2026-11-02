@@ -1,4 +1,4 @@
-.KEY DIR/A,STEP/K,DEST/K,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SERIAL/S,SSH/S,BEBBOGET/S,WASABI/S,CPU040/S,CPU060/S,NOFPU/S,UNIFONT/S,EMOJI/S,DOPUS/S
+.KEY DIR/A,STEP/K,DEST/K,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SERIAL/S,SSH/S,BEBBOGET/S,WASABI/S,SOLIDWIN/S,CPU040/S,CPU060/S,NOFPU/S,UNIFONT/S,EMOJI/S,DOPUS/S
 .BRA {
 .KET }
 ; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
@@ -12,6 +12,7 @@
 ;     [SERIAL]   (a serial login at every boot: no unless asked)
 ;     [SSH] [BEBBOGET]   (the network tools, each: none unless asked)
 ;     [DOPUS]   (the Directory Opus 5 filetype in DOpus5:Filetypes, when DOpus5: is assigned)
+;     [SOLIDWIN] (Thomas Rapp's SolidWin 1.12 in C:, started at every boot: solid window moving)
 ;     [WASABI]  (wasabid 0.11b2, remote development and Claude Code on another computer, with a
 ;               key: no unless asked; replaces an older wasabid and amiagent of ours)
 ; (Python, Neovim, Claude and amiga-pi are archives of their own: Python3,
@@ -47,6 +48,7 @@ Set optserial "{SERIAL}"
 Set optssh "{SSH}"
 Set optbebboget "{BEBBOGET}"
 Set optwasabi "{WASABI}"
+Set optsolidwin "{SOLIDWIN}"
 Set optcpu040 "{CPU040}"
 Set optcpu060 "{CPU060}"
 Set optnofpu "{NOFPU}"
@@ -83,6 +85,9 @@ If NOT "{STEP}" EQ ""
   EndIf
   If EXISTS ENV:UPTOPTWASABI
     Set optwasabi WASABI
+  EndIf
+  If EXISTS ENV:UPTOPTSOLIDWIN
+    Set optsolidwin SOLIDWIN
   EndIf
   If EXISTS ENV:UPTOPTCPU040
     Set optcpu040 CPU040
@@ -982,6 +987,29 @@ If "$optwasabi" EQ "WASABI"
   Status >NIL: COM C:wasabid
   If WARN
     Run >NIL: C:wasabid
+  EndIf
+EndIf
+;
+; SOLIDWIN: Thomas Rapp's SolidWin 1.12 (solidwin/SOURCE.txt), an input.device handler: windows move opaque instead of
+; as an outline. C:SolidWin is started at every boot by a marked block in S:User-Startup, as wasabid above (the block is
+; stripped by Uninstall's unstartup.sh). ENVARC:up-term/solidwin is Install's marker: Uninstall deletes C:SolidWin only
+; when Install put it there (a SolidWin that was in C: before stays, with its own startup line).
+If "$optsolidwin" EQ "SOLIDWIN"
+  If NOT EXISTS C:SolidWin
+    Echo >ENVARC:up-term/solidwin "installed by UP-Term"
+  EndIf
+  Copy solidwin/SolidWin C:SolidWin CLONE
+  If NOT EXISTS S:User-Startup
+    Echo >S:User-Startup ""
+  EndIf
+  Search >NIL: S:User-Startup "C:SolidWin"
+  If WARN
+    If NOT EXISTS S:User-Startup.before-UP-Term
+      Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+    EndIf
+    Echo >>S:User-Startup ";BEGIN UP-Term SolidWin"
+    Echo >>S:User-Startup "Run >NIL: C:SolidWin"
+    Echo >>S:User-Startup ";END UP-Term SolidWin"
   EndIf
 EndIf
 MakeDir >NIL: ENVARC:vsh
