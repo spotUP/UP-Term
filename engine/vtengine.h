@@ -366,6 +366,8 @@ typedef struct vt_image_view {
     const vt_u32 *pal;  /* 0xRRGGBB; entry 0 is the pixels the image left
                          * unset: draw them in the default background */
     int npal;
+    int fmt;            /* 0 pix holds indices into pal; 1 it holds w x h x 4 bytes R G B A (pal, npal unused) */
+    int opaque;         /* fmt 1: no pixel has an alpha below 255 */
     int cw, ch;         /* the cell size the image was placed with */
     int col0;           /* the grid column of the image's left edge on this
                          * row (negative when a reflow split the image) */
@@ -572,6 +574,14 @@ int vt_cell_placeholder(const vt_term *t, int row, int col, vt_image_view *v, in
 long vt_kitty_last_z(const vt_term *t);
 /* How many of the f=100 pictures the engine's own PNG decoder made (the rest went to the host's). */
 unsigned long vt_kitty_png_own(const vt_term *t);
+/* Deep screens (K38): on, kitty pictures are kept as RGBA, 4 bytes a pixel with the
+ * picture's own alpha byte, no cube or palette, and the image budgets are x4 (the
+ * same pixel capacity). Off (the default): indexed pictures as always. Turning it
+ * off converts the RGBA pictures to indices. Sentinel: RGB pictures made. */
+void vt_set_image_rgb(vt_term *t, int on);
+unsigned long vt_kitty_rgb_made(const vt_term *t);
+/* The bytes the pictures hold now, against the image budget (a test's view of img_mem). */
+long vt_image_memory(const vt_term *t);
 #define VT_KEY_EV_PRESS   1
 #define VT_KEY_EV_REPEAT  2
 #define VT_KEY_EV_RELEASE 3

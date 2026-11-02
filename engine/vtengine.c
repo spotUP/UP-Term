@@ -108,6 +108,8 @@ typedef struct vt_image {
     int vc, vr;         /* kind 3: the picture's size in cells */
     vt_u32 kid, knum, pid; /* kitty's i=, I= and p= */
     long kz;            /* kitty's z= (negative: under the text) */
+    vt_u8 fmt;          /* 0 indices into pal, 1 RGBA (R G B A in memory order; vt_set_image_rgb) */
+    vt_u8 opaque;       /* fmt 1: no pixel has an alpha below 255 */
     vt_u8 ktrans;       /* kitty's N=1 on a stored picture: evicted first */
     int px0, py0;       /* kitty's X=, Y=: the picture's offset inside its first cell */
     vt_u32 pkid, ppid;  /* kitty's P=, Q=: the parent placement's i= and p= (0 none) */
@@ -305,6 +307,9 @@ struct vt_term {
     vt_image *imgs[VT_IMG_SLOTS];
     int n_img;
     long img_mem, img_serial;
+    long img_budget, anim_budget; /* VT_IMAGE_MEMORY / VT_ANIM_MEMORY, times 4 in RGB mode (vt_set_image_rgb) */
+    vt_u8 image_rgb;           /* vt_set_image_rgb */
+    unsigned long kit_rgb_made; /* RGB pictures made (vt_kitty_rgb_made) */
     long anim_mem;             /* bytes of animation frames, against VT_ANIM_MEMORY (K34) */
     vt_place *pl;
     long pl_cap;
@@ -5057,7 +5062,7 @@ static int sixel_room(vt_term *t, vt_sixel *s, long nx, long ny)
         aw = VT_SIXEL_MAX_W;
     if (ah > VT_SIXEL_MAX_H)
         ah = VT_SIXEL_MAX_H;
-    while (t->img_mem + aw * ah > VT_IMAGE_MEMORY)
+    while (t->img_mem + aw * ah > t->img_budget)
         if (!image_evict(t)) {
             s->full = 1;
             return 0;
@@ -5367,6 +5372,7 @@ static int image_install(vt_term *t, vt_u8 *pix, long bytes, long w, long h, int
     im->ch = t->cell_h > 0 ? t->cell_h : 16;
     im->npal = npal;
     im->refs = 0;
+    im->fmt = im->opaque = 0;
     im->kind = 0;
     im->kid = im->knum = im->pid = 0;
     im->kz = 0;
@@ -5561,6 +5567,8 @@ int vt_row_image(const vt_term *t, int row, int i, vt_image_view *v)
         v->h = im->h;
         v->pal = im->pal;
         v->npal = im->npal;
+        v->fmt = im->fmt;
+        v->opaque = im->opaque;
         v->cw = im->cw;
         v->ch = im->ch;
         v->col0 = t->pl[k].col0;
@@ -6070,6 +6078,8 @@ vt_term *vt_new(int cols, int rows, int scrollback, const vt_callbacks *cb, void
     if (!t)
         return 0;
     memset(t, 0, sizeof(*t));
+    t->img_budget = VT_IMAGE_MEMORY;
+    t->anim_budget = VT_ANIM_MEMORY;
     if (cb)
         t->cb = *cb;
     t->user = user;
@@ -6420,6 +6430,28 @@ void vt_set_image_decoder(vt_term *t, vt_image_decoder decode, vt_image_release 
 {
     t->decode = decode;
     t->decode_free = release;
+}
+
+void vt_set_image_rgb(vt_term *t, int on)
+{
+    on = on != 0;
+    if (on == t->image_rgb)
+        return;
+    t->image_rgb = (vt_u8)on;
+    if (!on)
+        kit_to_index(t); /* before the budgets shrink */
+    t->img_budget = VT_IMAGE_MEMORY * (on ? 4 : 1);
+    t->anim_budget = VT_ANIM_MEMORY * (on ? 4 : 1);
+}
+
+long vt_image_memory(const vt_term *t)
+{
+    return t->img_mem;
+}
+
+unsigned long vt_kitty_rgb_made(const vt_term *t)
+{
+    return t->kit_rgb_made;
 }
 
 void vt_set_file_reader(vt_term *t, vt_file_reader read, vt_file_unlinker unlink_file)
