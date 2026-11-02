@@ -1247,11 +1247,73 @@ static void test_glyph_clone(void)
     CHECK_INT(g_render_calls, 0);
 }
 
+/* FLAT-NO-DIVIDERS: the stock images measured on OS 3.2 (rig 55, glyph-clone-probe-run.md, real pens: the 3.2 sysiclass
+ * draws in its own pens whatever DrawInfo we pass). The close image's right columns 18-19 (shadow + shine) are the title bar
+ * separator, the depth image's left columns 0-1 likewise; every full-span edge line must go, the glyph must stay whole. */
+static const char *const g_os32_close[] = {
+    "22222222222222222222", "23333333333333333312", "23333333333333333312", "23333331111133333312",
+    "23333331222133333312", "23333331222133333312", "23333331222133333312", "23333331111133333312",
+    "23333333333333333312", "23333333333333333312", "21111111111111111111" };
+static const char *const g_os32_depth[] = {
+    "222222222222222222222222", "123333333333333333333331", "123331111111111133333331", "123331000000000133333331",
+    "123331000111111111113331", "123331000122222222213331", "123331111122222222213331", "123333333122222222213331",
+    "123333333111111111113331", "123333333333333333333331", "111111111111111111111111" };
+static const char *const *g_grid_rows;
+static int grid_render(void *ctx, unsigned long ids, uint8_t *grid, int w, int h)
+{
+    int x, y;
+    (void)ctx; (void)ids;
+    g_render_calls++;
+    for (y = 0; y < h; y++)
+        for (x = 0; x < w; x++)
+            grid[y * w + x] = (uint8_t)(g_grid_rows[y][x] - '0');
+    return 1;
+}
+
+static void test_clone_no_dividers(void)
+{
+    flat_state st;
+    int x, y, glyph;
+    glyph_state(&st);
+    st.enabled = 1;
+    /* close 20 x 11: glyph = the 5 x 5 square at x 7-11, y 3-7; every other pixel the band pen */
+    cv_clear();
+    g_render_calls = 0;
+    g_grid_rows = g_os32_close;
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 20, 11, 'B', 'T', grid_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
+    CHECK_INT(g_render_calls, 1);
+    glyph = 0;
+    for (y = 0; y < 11; y++)
+        for (x = 0; x < 20; x++) {
+            int in = x >= 7 && x <= 11 && y >= 3 && y <= 7;
+            CHECK(cv[y][x] == (in ? 'T' : 'B'));
+            glyph += cv[y][x] == 'T';
+        }
+    CHECK_INT(glyph, 25);
+    for (y = 1; y < 10; y++)
+        CHECK(cv[y][18] == 'B' && cv[y][19] == 'B');                            /* the separator columns: band pen */
+    /* depth 24 x 11: the left separator (columns 0-1) and the right edge gone, both overlapping boxes kept */
+    cv_clear();
+    g_grid_rows = g_os32_depth;
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_DEPTH, FLAT_IM_DRAW, 0, 0, 0, 24, 11, 'B', 'T', grid_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
+    glyph = 0;
+    for (y = 0; y < 11; y++)
+        for (x = 0; x < 24; x++) {
+            int edge = x < 2 || x > 22 || y == 0 || y == 10;
+            if (edge)
+                CHECK(cv[y][x] == 'B');
+            glyph += cv[y][x] == 'T';
+        }
+    CHECK_INT(glyph, 74);                                                       /* both boxes of the glyph, outline and fill */
+    CHECK(cv[2][5] == 'T' && cv[5][10] == 'T' && cv[4][19] == 'T');
+}
+
 void suite_flat_core(void)
 {
     test_frame_pen();
     test_clone_arrows();
     test_glyph_clone();
+    test_clone_no_dividers();
     test_title_accent();
     test_scroller();
     test_knob_pen();

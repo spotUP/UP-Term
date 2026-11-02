@@ -153,11 +153,25 @@ int flat_clone_route(const flat_state *s, unsigned long which, unsigned long met
     return s && s->enabled && !s->held && method == FLAT_IM_DRAW && flat_glyph_window_gadget(which);
 }
 
+/* FLAT-NO-DIVIDERS: is line k (a column when col, else a row) a stock divider / border line? It is when every pixel of it between
+ * the two outer rings is drawn and none is the gadget's ground: a glyph never spans the whole box, a bevel edge and the 2 px
+ * title bar separator (OS 3.2 close: shadow + shine columns 18-19 of 20, in whatever pens the system used) always do. */
+static int edge_line(const uint8_t *grid, int w, int h, int bgm, int k, int col)
+{
+    int i, n = col ? h : w;
+    for (i = 1; i < n - 1; i++) {
+        int m = col ? grid[i * w + k] : grid[k * w + i];
+        if (m == 0 || m == bgm)
+            return 0;
+    }
+    return 1;
+}
+
 /* ---- FLAT-GLYPH-OS-SHAPES: the clone. The system's own image is drawn offscreen with marker pens; this is the pure part. */
 int flat_clone_map(const uint8_t *grid, int w, int h, uint8_t *out)
 {
     int x, y, n = 0, i, best = 0, cnt[FLAT_CLONE_MARKS + 1];
-    int bgm;
+    int bgm, l, r, t, b;
     if (!grid || !out || w < 3 || h < 3)
         return -1;
     for (i = 0; i <= FLAT_CLONE_MARKS; i++)
@@ -172,12 +186,23 @@ int flat_clone_map(const uint8_t *grid, int w, int h, uint8_t *out)
             best = cnt[i];
             bgm = i;
         }
+    /* FLAT-NO-DIVIDERS: peel the full-span edge lines from each side (at most a third of the box): only the glyph shows */
+    for (l = 0; l < w / 3 && edge_line(grid, w, h, bgm, l, 1); l++)
+        ;
+    for (r = w - 1; r > w - 1 - w / 3 && edge_line(grid, w, h, bgm, r, 1); r--)
+        ;
+    for (t = 0; t < h / 3 && edge_line(grid, w, h, bgm, t, 0); t++)
+        ;
+    for (b = h - 1; b > h - 1 - h / 3 && edge_line(grid, w, h, bgm, b, 0); b--)
+        ;
     for (y = 0; y < h; y++)
         for (x = 0; x < w; x++) {
             int m = grid[y * w + x], ring = x == 0 || y == 0 || x == w - 1 || y == h - 1;
             int glyph;
             if (m == 0 || m == bgm)
                 glyph = 0;                       /* untouched or ground */
+            else if (x < l || x > r || y < t || y > b)
+                glyph = 0;                       /* a divider / border line */
             else if (ring && (m == FLAT_CLONE_SHINE || m == FLAT_CLONE_SHADOW || m == FLAT_CLONE_BACK))
                 glyph = 0;                       /* the bevel ring */
             else
