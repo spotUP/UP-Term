@@ -688,7 +688,22 @@ switch it will ship with.
 - The window-moves-screens case (T6) is rare and only best effort.
 - 15/16-bit RTG bands slightly (no dither); counted as full colour.
 
-##### Open questions for the owner (not decided here)
+##### Owner decisions (2026-11-02)
+
+- O1: x4 budgets on deep screens (8 MB images + 8 MB frames).
+- O2: TRUE ALPHA, not the binary rule. Keep the full alpha byte in the
+  RGBA store (no 50% cut on deep screens). Draw through
+  WritePixelArrayAlpha (cybergraphics V43) so the driver blends the picture
+  with what is under it (text, background, z<0 order). Where V43 or the
+  driver lacks it, fall back to the binary 50% rule and count the fallback
+  in a sentinel. K38/K40 tests change accordingly: a 50%-alpha pixel over a
+  known background gives the blended value (state the expected RGB), and
+  redraw order (text first, z<0 picture under, z>=0 over) is pinned by a
+  host test. R6 (no screen read) is revisited in K40.
+- O3: driver truncation on 15/16-bit screens, no engine dither.
+- O4: frames become RGBA canvases on deep screens (D16 reversed there).
+
+##### Open questions for the owner (answered above)
 
 - O1 RGB memory budgets. Recommended: x4 (8 MB images + 8 MB frames),
   same pixel capacity as 8-bit screens. Other: keep 2 MB + 2 MB (largest
