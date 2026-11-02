@@ -70,4 +70,5 @@ scrollbar = show
 completion = unix
 kingcon-info = hide
 kingcon-cache = on
+outline-blend-dest = on
 split-restore = off

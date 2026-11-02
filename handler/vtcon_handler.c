@@ -1614,7 +1614,7 @@ static void apply_profile(con *c)
         c->w.dither = sd_conf_key_index("dither", c->conf, p); /* few-pen screens dither */
     if (upconf_get(c->conf, p, "outline-antialias"))
         c->w.outline_aa = sd_conf_key_index("outline-antialias", c->conf, p); /* outline glyphs drawn smoothed */
-    if (upconf_get(c->conf, p, "outline-blend-dest")) /* R6.A: a profile-file key, no Preferences row */
+    if (upconf_get(c->conf, p, "outline-blend-dest")) /* R6.A: Prefs > Advanced row (D6) and the profile key */
         c->w.blend_dest = strcmp(upconf_str(c->conf, p, "outline-blend-dest", "on"), "off") != 0;
     if (upconf_get(c->conf, p, "padding-color"))
         c->w.pad_extend = sd_conf_key_index("padding-color", c->conf, p); /* the strips beside the grid: background or extend */
@@ -2217,6 +2217,7 @@ static void window_fields(con *c, prefs_fields *f)
     f->amiga_keys = c->w.amiga_keys != 0;
     f->dither = c->w.dither != 0;
     f->outline_aa = c->w.outline_aa != 0;
+    f->blend_dest = c->w.blend_dest != 0;
     f->pad_extend = c->w.pad_extend != 0;
     f->split_restore = c->split_restore;
     f->clipboard = c->w.clip_access == 0 ? PREFS_CLIP_OFF

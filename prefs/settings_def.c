@@ -181,6 +181,9 @@ const sd_setting sd_settings[SDI_COUNT] = {
     { SDI_SPLIT_RESTORE, "split-restore", 0, PG_PAGE_ADVANCED, SD_CYCLE, "_Keep splits",
       "What a split tab keeps when the window opens again.",
       VALS(v_split), "off", SD_UPTERM, SDF_INT, FO(split_restore), 0, NORANGE, PG_SPLIT_RESTORE, 0, 0, 1, 0 },
+    { SDI_BLEND_DEST, "outline-blend-dest", 0, PG_PAGE_ADVANCED, SD_CHECK, "_Blend edges",
+      "Outline glyph edges blend with the dithered background behind them.",
+      VALS(v_off_on), "on", SD_UPTERM, SDF_INT, FO(blend_dest), 0, NORANGE, PG_BLEND_DEST, 0, 0, 1, 0 },
     /* Amarchy: the keys of ENVARC:Amarchy/prefs, in am_keys[] order of the Prefs page */
     { SDI_AM_MUSIC, "amarchy-music-drawers", 0, PG_PAGE_AMARCHY, SD_STRING, "_Music drawers",
       "More drawers, comma separated, listed under Music in the Amarchy menu.",
@@ -335,7 +338,7 @@ int sd_conf_key_index(const char *key, const upconf *c, const char *p)
 
 const int sd_write_order[] = {
     SDI_FALLBACK, SDI_SCREEN, SDI_SCREEN_MODE, SDI_SCROLLBACK, SDI_ASPECT, SDI_BACKSPACE, SDI_AMIGAKEYS,
-    SDI_DITHER, SDI_OUTLINE_AA, SDI_PADDING, SDI_HLCAT, SDI_SPLIT_RESTORE, SDI_CLIPBOARD, SDI_LINK, SDI_TERM, SDI_COLORS,
+    SDI_DITHER, SDI_OUTLINE_AA, SDI_PADDING, SDI_BLEND_DEST, SDI_HLCAT, SDI_SPLIT_RESTORE, SDI_CLIPBOARD, SDI_LINK, SDI_TERM, SDI_COLORS,
     SDI_CURSOR, SDI_BLINK, SDI_BELL, SDI_BOLD, SDI_META, SDI_COPY, SDI_WHEEL, SDI_REFLOW, SDI_MUSIC, SDI_SCROLLBAR,
     SDI_COMPLETE, SDI_KC_MATCH, SDI_KC_INFO, SDI_KC_CACHE,
     /* the look */
