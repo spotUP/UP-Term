@@ -1339,14 +1339,15 @@ unsigned long desk_dos_start_plans, desk_dos_start_writes;
 
 int desk_dos_start_apply(void)
 {
-    static unsigned char wb[DK_BUF], pat[DK_BUF], out[DK_BUF];
+    static unsigned char wb[DK_BUF], pat[DK_BUF], out[DK_BUF], pal[DK_BUF];
     am_prefs ap;
     gtheme th;
     unsigned mask, plan;
-    unsigned char sv[2];
-    int flat, depth, saved = -1, gsaved = -1, was;
+    unsigned char sv[2], pens[DK_SLOTS];
+    unsigned short live[DK_SLOTS];
+    int flat, depth, saved = -1, gsaved = -1, was, nlive = 0;
     unsigned long idle = 0;
-    long wblen, patlen, len;
+    long wblen, patlen, len, pallen, curlen;
     amconf_load(&ap);
     mask = amconf_desk_mask(&ap);
     flat = amconf_desk_flat_pens(&ap);
@@ -1365,6 +1366,16 @@ int desk_dos_start_apply(void)
         wblen = dk_read("ENVARC:Sys/Workbench.prefs", wb, sizeof wb);
     patlen = dk_read("ENV:Sys/wbpattern.prefs", pat, sizeof pat);
     plan = desk_start_plan(mask, flat, dk_wbborder_editor_ok(), wb, wblen, saved, gsaved, &th, depth, pat, patlen);
+    /* S31-START-PALETTE: the theme colours, as dk_apply's palette part writes them (dk_flat_pens leaves them to it) */
+    pallen = 0;
+    if (((mask >> DT_PALETTE) & 1) && dk_palette_editor_ok()) {
+        desk_pens_for(flat, pens);
+        len = dk_palette_base(0, pens, dk_screen_depth(), out, sizeof out);
+        curlen = dk_read("ENV:Sys/Palette.prefs", wb, sizeof wb);   /* wb is free: desk_start_plan has read it */
+        pallen = desk_start_palette(mask, flat, &th, dk_screen_depth(), out, len, curlen > 0 ? wb : 0, curlen, pal, sizeof pal);
+        if (pallen > 0)
+            plan |= DESK_START_PALETTE;
+    }
     desk_dos_start_plans++;
     am_sentinel("AMARCHY_DESK_START_PLAN", (long)plan);
     dk_live_want = 0;
@@ -1376,6 +1387,20 @@ int desk_dos_start_apply(void)
         idle = dk_iprefs_idle_mask();
         desk_dos_wb_closes++;
         was = dk_windows_close();
+    }
+    if (plan & DESK_START_PALETTE) {
+        struct Screen *before = dk_wb_screen(live, &nlive);
+        dk_orig_save(1u << DT_PALETTE, 0);
+        UnLock(CreateDir((STRPTR)DK_WORK));
+        if (dk_put("Palette", DK_WORK "/palette.prefs", pal, pallen)) {
+            desk_dos_start_writes++;
+            if (desk_pens_reset(live, nlive, flat, dk_screen_depth()))
+                dk_wait_reset(before, flat, dk_screen_depth());
+        }
+        dk_live_want = 1;
+        dk_live_flat = flat;
+        desk_dos_dopus_sends++;
+        dopus_theme_send(&th, dk_dopus_send, 0);
     }
     if (flat)
         dk_flat_pens(&th);   /* idempotent: writes palette / own backdrop only when they differ */

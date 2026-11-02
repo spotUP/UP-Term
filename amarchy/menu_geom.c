@@ -116,24 +116,40 @@ int mg_width(const keymap *k, const char *node, const mg_font *f, int icon_w, in
     return mg_width_t(k, node, f, icon_w, chev_w, text, ctx, s, 1);
 }
 
-void mg_layout(mg_geom *g, const mg_font *f, int w, int n, const mg_screen *s)
+/* One layout, the rows `tail` last ones with the menu's metrics when tail > 0 (m holds the text row values then) */
+static void layout(mg_geom *g, const mg_font *f, int w, int n, int tail, const mg_screen *s)
 {
-    const mg_metrics *m = &g->m;
-    int chrome, room, fit;
-    mg_metrics_for(&g->m, f, s);
+    mg_metrics *m = &g->m;
+    int chrome, room, fit, extra = 0, ntext;
+    mg_metrics_for(m, f, s);
+    g->tail = 0;
+    g->tail_h = m->row_h;
+    g->tail_gap = m->row_gap;
+    g->max_row_h = m->row_h;
+    if (tail >= 0) {                        /* text lines: the font plus a small leading */
+        int leading = m->row_gap;
+        g->tail = imin(tail, n);
+        m->row_h = f->ysize + leading;
+        m->row_gap = 0;
+        m->pitch = m->row_h;
+        extra = g->tail * (g->tail_h + g->tail_gap - m->pitch);
+    }
+    ntext = n - g->tail;
     chrome = 2 * m->by + 2 * m->vpad + m->head_h + m->gap;
     room = imin(s->h - 2 * m->margin_y - chrome, s->h * 7 / 10);
-    fit = imin(imax(1, (room + m->row_gap) / m->pitch), MG_MAX_ROWS);
+    fit = imin(imax(1, (room - extra + m->row_gap) / m->pitch), MG_MAX_ROWS);
     g->n = n;
     if (n > fit) {
         g->peek = m->row_h * 55 / 100;
-        g->visible = imin(imax(1, (room - g->peek) / m->pitch), MG_MAX_ROWS);
-        g->list_h = g->visible * m->pitch + g->peek;
+        g->visible = imin(imax(1, (room - extra - g->peek) / m->pitch), MG_MAX_ROWS);
+        g->list_h = g->visible * m->pitch + g->peek + extra;
     } else {
         g->peek = 0;
         g->visible = n;
-        g->list_h = n > 0 ? n * m->pitch - m->row_gap : 0;
+        g->list_h = n > 0 ? ntext * m->pitch + g->tail * (g->tail_h + g->tail_gap) - (g->tail ? g->tail_gap : m->row_gap) : 0;
     }
+    if (g->tail && g->tail_h > g->max_row_h)
+        g->max_row_h = g->tail_h;
     g->w = w;
     g->h = chrome + g->list_h;
     if (s->anchored) {
@@ -147,6 +163,16 @@ void mg_layout(mg_geom *g, const mg_font *f, int w, int n, const mg_screen *s)
     g->head_w = g->list_w = w - 2 * (m->bx + m->hpad);
     g->head_y = m->by + m->vpad;
     g->list_y = g->head_y + m->head_h + m->gap;
+}
+
+void mg_layout(mg_geom *g, const mg_font *f, int w, int n, const mg_screen *s)
+{
+    layout(g, f, w, n, -1, s);
+}
+
+void mg_layout_text(mg_geom *g, const mg_font *f, int w, int n, int tail, const mg_screen *s)
+{
+    layout(g, f, w, n, tail < 0 ? 0 : tail, s);
 }
 
 int mg_scroll(const mg_geom *g, int sel, int top)
@@ -165,9 +191,24 @@ int mg_more(const mg_geom *g, int top)
     return g->peek > 0 && top + g->visible < g->n;
 }
 
+int mg_row_h_of(const mg_geom *g, int e)
+{
+    return e >= g->n - g->tail ? g->tail_h : g->m.row_h;
+}
+
+int mg_row_y_at(const mg_geom *g, int top, int i)
+{
+    int y = g->list_y, k;
+    for (k = 0; k < i; k++) {
+        int e = top + k;
+        y += e >= g->n - g->tail ? g->tail_h + g->tail_gap : g->m.pitch;
+    }
+    return y;
+}
+
 int mg_row_y(const mg_geom *g, int i)
 {
-    return g->list_y + i * g->m.pitch;
+    return mg_row_y_at(g, 0, i);
 }
 
 int mg_hit(const mg_geom *g, int top, int mx, int my)
@@ -176,12 +217,15 @@ int mg_hit(const mg_geom *g, int top, int mx, int my)
     if (mx < g->list_x || mx >= g->list_x + g->list_w || my < g->list_y
         || my >= g->list_y + g->list_h)
         return -1;
-    i = (my - g->list_y) / g->m.pitch;
-    if (i >= rows || my - mg_row_y(g, i) >= g->m.row_h)
-        return -1;                     /* past the rows, or in the gap below one */
-    return top + i;
+    for (i = 0; i < rows && top + i < g->n; i++) {
+        int y = mg_row_y_at(g, top, i);
+        if (my < y)
+            return -1;                 /* in the gap below the row before */
+        if (my < y + mg_row_h_of(g, top + i))
+            return top + i;
+    }
+    return -1;                         /* past the rows */
 }
-
 int mg_blit_safe(int beam, int top, int h, int frame, int blit)
 {
     int d;

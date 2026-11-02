@@ -71,6 +71,9 @@ typedef struct mg_geom {
     int n;                      /* entries of the level */
     int visible;                /* rows drawn whole */
     int peek;                   /* height of the cut-off row below them when n > visible, else 0 */
+    int tail;                   /* trailing rows laid out with the menu's row height (mg_layout_text), else 0 */
+    int tail_h, tail_gap;       /* their height and the space below one (the menu's, when tail > 0) */
+    int max_row_h;              /* the tallest row of this layout */
 } mg_geom;
 
 /* Height and place of a level of n entries at width w (mg_width): up to MG_MAX_ROWS rows or what
@@ -78,12 +81,22 @@ typedef struct mg_geom {
  * scroll cue). */
 void mg_layout(mg_geom *g, const mg_font *f, int w, int n, const mg_screen *s);
 
+/* Like mg_layout for lines of text (the viewers): the n entries are text lines at the text pitch, the font's
+ * ysize plus a small leading (the menu's row gap), not the menu's row pitch that put huge gaps between lines;
+ * the last `tail` entries (the welcome window's check box and buttons) keep the menu's row height. m.row_h,
+ * m.row_gap and m.pitch hold the text values. */
+void mg_layout_text(mg_geom *g, const mg_font *f, int w, int n, int tail, const mg_screen *s);
+
 /* The first row shown so the selection stays in view, from the previous first row. */
 int mg_scroll(const mg_geom *g, int sel, int top);
 /* 1 when rows below the shown ones exist, so the peek row is drawn. */
 int mg_more(const mg_geom *g, int top);
 /* Window-relative top of the i-th shown row (0 is the row at top). */
 int mg_row_y(const mg_geom *g, int i);
+/* The same when the first row shown is entry top (rows of a text layout differ in height at its tail). */
+int mg_row_y_at(const mg_geom *g, int top, int i);
+/* Height of entry e. */
+int mg_row_h_of(const mg_geom *g, int e);
 /* The entry under a window-relative point, the peek row included; -1 off the rows. */
 int mg_hit(const mg_geom *g, int top, int mx, int my);
 

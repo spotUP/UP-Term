@@ -4,8 +4,6 @@
 ; A line may not start with an opening square bracket (that starts a section). Keep lines under 72 characters.
 
 [welcome]
-Welcome to Amarchy
-
 Amarchy puts the whole Amiga under one key, called Super.
 Super is the Left Amiga key.
 
@@ -23,8 +21,6 @@ and this text then shows your key.
 Tick the box below to stop this window from opening at start.
 
 [help]
-Amarchy Help
-
 THE MENU
 Press {key:menu:root} to open the menu. Use the arrow keys and Return, or
 the mouse. Escape closes a level. Apps open with {key:menu:apps}. The

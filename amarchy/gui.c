@@ -265,7 +265,7 @@ static void put(gui *g, int role, int bgrole, int x, int y, int boxh, const char
  * selection flickered. When the bitmap cannot be had, g->rp stays the window's rastport. */
 static void buffer_fit(gui *g)
 {
-    int w = g->g.w, h = g->g.h + g->g.m.row_h;   /* a row of room below: the peek row's text runs past the list */
+    int w = g->g.w, h = g->g.h + g->g.max_row_h;   /* a row of room below: the peek row's text runs past the list */
     if (g->bb && g->bw >= w && g->bh >= h)
         return;
     if (g->bb) {
@@ -355,7 +355,7 @@ static void paint_end(gui *g, int x0, int y0, int x1, int y1)
     int i, s0, s1;
     if (--g->nest || !g->bb || x1 < x0 || y1 < y0)
         return;
-    for (i = 0; mg_blit_strip(y0, y1, g->g.m.row_h, i, &s0, &s1); i++)
+    for (i = 0; mg_blit_strip(y0, y1, g->g.max_row_h, i, &s0, &s1); i++)
         copy_box(g, x0, s0, x1, s1);
 }
 
@@ -452,7 +452,7 @@ static void draw_icon(gui *g, int role, const mn_item *it, int x, int y, int box
 static void draw_welcome_row(gui *g, int r, int tx, int y, int rbg)
 {
     const mg_geom *q = &g->g;
-    int rh = q->m.row_h;
+    int rh = q->tail_h;                 /* the menu's row height: the welcome rows are the tail of the text layout */
     if (r == 0) {
         int s = rh - 6, bx = tx, by = y + 3;
         const char *t = "Don't show this again";
@@ -483,8 +483,8 @@ static void draw_row(gui *g, int e)
     int i = e - g->top, y, bottom, sel, rbg, tx, tw;
     if (g->await || e < 0 || e >= q->n || i < 0 || i >= shown_rows(g))
         return;
-    y = mg_row_y(q, i);
-    bottom = y + q->m.row_h - 1;
+    y = mg_row_y_at(q, g->top, i);
+    bottom = y + mg_row_h_of(q, e) - 1;
     if (bottom > q->list_y + q->list_h - 1)
         bottom = q->list_y + q->list_h - 1;
     sel = (g->mode == M_LIST && e == g->sel) || g->mode == M_INPUT;
@@ -613,12 +613,22 @@ static void draw_full(gui *g)
 
 /* ---- geometry ----------------------------------------------------------------------------------------- */
 
+/* The layout of n entries; a viewer's lines go at the text pitch (not the menu's row pitch), with the welcome
+ * window's check box and button rows at the end keeping the menu's row height. */
+static void do_layout(gui *g, int n)
+{
+    if (g->mode == M_VIEW)
+        mg_layout_text(&g->g, &g->mf, g->w, g->nlines + (g->welcome == 1 ? 2 : 0), g->welcome == 1 ? 2 : 0, &g->ms);
+    else
+        mg_layout(&g->g, &g->mf, g->w, n, &g->ms);
+}
+
 /* The window takes the layout of n entries: a changed box is sent to Intuition and drawn after its
  * IDCMP_CHANGEWINDOW; an unchanged one is drawn at once. */
 static void relayout(gui *g, int n)
 {
     struct Window *w = g->win;
-    mg_layout(&g->g, &g->mf, g->w, n, &g->ms);
+    do_layout(g, n);
     if (w->LeftEdge != g->g.x || w->TopEdge != g->g.y || w->Width != g->g.w || w->Height != g->g.h) {
         g->await = 1;
         ChangeWindowBox(w, g->g.x, g->g.y, g->g.w, g->g.h);
@@ -1543,7 +1553,7 @@ static void gui_show(void)
         return;
     if (g->mode == M_LIST)
         g->w = mg_width_t(&km, g->node, &g->mf, g->icon_w, g->chev_w, text_len, g->mt, &g->ms, menu_cond);
-    mg_layout(&g->g, &g->mf, g->w, g->mode == M_LIST ? g->count : g->nlines, &g->ms);
+    do_layout(g, g->mode == M_LIST ? g->count : g->nlines);
     g->win = window_open(g);
     wbr_report(SIGBREAKF_CTRL_F, WBR_DISMISS, g->win != 0);
     if (!g->win)
@@ -1726,7 +1736,7 @@ static int gui_open(int viewer, const char *node, int anchored, int ax, int ay)
         if (w > g->ms.w - 2 * m.margin_x)
             w = g->ms.w - 2 * m.margin_x;
         g->w = w;
-        mg_layout(&g->g, &g->mf, g->w, g->nlines + (g->welcome == 1 ? 2 : 0), &g->ms);
+        do_layout(g, g->nlines);
     } else {
         int n;
         mg_metrics m;

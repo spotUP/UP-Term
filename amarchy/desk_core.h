@@ -318,6 +318,14 @@ long desk_confirm_left(const desk_confirm *c, long now);
  * depth) differs from the ENV: bytes pat (patlen < 0: none). 0 when ENV: already matches: a second start writes nothing. */
 #define DESK_START_WB 1u
 #define DESK_START_PATTERN 2u
+/* S31-START-PALETTE (rig 96, 2026-11-02): desktop-theme and desktop-palette on, the start wrote the flat pens and the theme backdrop but
+ * never the theme colours: dk_flat_pens leaves the colours to the palette part of a theme pick (dk_apply) when DT_PALETTE is in the mask,
+ * and the start runs no dk_apply, so the Workbench kept the stock grey/orange palette under the theme pattern. DESK_START_PALETTE:
+ * DT_PALETTE in mask and the theme colours on base (the palette with the pens set, dk_palette_base) differ from the ENV: palette.prefs
+ * bytes cur (curlen < 0: none). desk_start_palette writes the palette to use into out and returns its length, 0 when nothing to write. */
+#define DESK_START_PALETTE 4u
+long desk_start_palette(unsigned mask, int flat, const gtheme *th, int depth, const unsigned char *base, long baselen,
+                        const unsigned char *cur, long curlen, unsigned char *out, long cap);
 /* 1 when two wbpattern.prefs show the same pens (the editor stores an all-pen-0 chunk with depth 1) */
 int desk_wbpattern_same(const unsigned char *a, long alen, const unsigned char *b, long blen);
 unsigned desk_start_plan(unsigned mask, int flat, int wbok, const unsigned char *wb, long wblen, int saved, int gsaved,
