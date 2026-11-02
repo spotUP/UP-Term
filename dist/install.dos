@@ -1132,25 +1132,17 @@ If "$opticonlib" EQ "ICONLIB"
 EndIf
 ; AmiSSL: UP-Term:bin/curl is linked against it and cannot start without LIBS:amisslmaster.library version 5. The kit's
 ; Install (STEP set) offers it as its own page (P_AMISSL); a Shell install without Installer has no page, so this
-; part runs the same Install-AmiSSL through Installer, from the kit's AmiSSL drawer (it reads Libs/ and Certs/ by
-; relative names, so the CD comes first), the way P_AMISSL does. A failed AmiSSL install does not stop the base install.
+; part runs the same Files/install-amissl.dos, which asks nothing (AmiSSL's own Install-AmiSSL asks at every level
+; and stopped a full install). A failed AmiSSL install does not stop the base install.
 If "{STEP}" EQ ""
   Version >NIL: LIBS:amisslmaster.library 5
   If WARN
-    Echo "[INFO] AmiSSL: LIBS:amisslmaster.library version 5 is missing or older, running Install-AmiSSL."
-    CD "{DIR}/AmiSSL"
-    Installer SCRIPT Install-AmiSSL APPNAME AmiSSL MINUSER AVERAGE DEFUSER AVERAGE NOLOG
-    CD "{DIR}"
-    ; Install-AmiSSL only writes "Assign LIBS: AmiSSL:Libs ADD" into S:User-Startup (live after a reboot): add it to this
-    ; session so the re-check and curl see the library at once. Only when the AmiSSL: assign exists.
-    Assign >NIL: AmiSSL: EXISTS
-    If NOT WARN
-      Assign >NIL: LIBS: AmiSSL:Libs ADD
-    EndIf
+    Echo "[INFO] AmiSSL: LIBS:amisslmaster.library version 5 is missing or older, running install-amissl.dos."
+    Execute "{DIR}/install-amissl.dos" DIR "{DIR}" $optcpu060
     Version >NIL: LIBS:amisslmaster.library 5
     If WARN
       Echo "[ERROR] AmiSSL was not installed, https programs (curl) cannot run."
-      Echo "[ERROR] Run Install-AmiSSL from the kit's Files/AmiSSL drawer again."
+      Echo "[ERROR] Run Files/install-amissl.dos again."
     Else
       Echo "[INFO] AmiSSL installed: LIBS: has it now, usable at once."
     EndIf
