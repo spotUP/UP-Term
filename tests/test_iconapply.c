@@ -91,11 +91,11 @@ static long slurp(const char *path, uint8_t *buf, long cap)
 static size_t w16(uint8_t *p, unsigned v) { p[0] = (uint8_t)(v >> 8); p[1] = (uint8_t)v; return 2; }
 static size_t w32(uint8_t *p, uint32_t v) { w16(p, v >> 16); w16(p + 2, v & 0xFFFF); return 4; }
 
-#define NDAT 9
+#define NDAT 10
 /* a lucide.dat with the six defaults, two table paths and one type fallback (sorted by strcmp), variants 32x32 and 32x16, depth 6 */
 static size_t make_dat(uint8_t *d, unsigned bias)
 {
-    static const char *const nm[NDAT] = { "SYS:System", "SYS:System/Shell", "def_RAM", "def_disk", "def_drawer", "def_project", "def_tool", "def_trashcan", "type:disk" };
+    static const char *const nm[NDAT] = { "SYS:System", "SYS:System/Shell", "def_RAM", "def_disk", "def_drawer", "def_project", "def_tool", "def_trashcan", "type:disk", "type:net" };
     size_t pos = 4, sz0 = 6 * 32 * 4, sz1 = 6 * 16 * 4, rec = 4 + 12 + 8 + NDAT * 52, i, k;
     memcpy(d, "LUCI", 4);
     pos += w16(d + pos, 1); pos += w16(d + pos, NDAT); pos += w16(d + pos, 6); pos += w16(d + pos, 2); pos += w32(d + pos, 0);
@@ -564,6 +564,31 @@ static void test_skip_names(void)
     mfs_free(&s);
 }
 
+/* RL11: a network volume's Disk.info gets the type:net icon; classifier is pure */
+static void test_net(void)
+{
+    mfs s;
+    ia_ctx c;
+    mf *m;
+    CK("smb2fs handler is network", ia_vol_is_net("SMB0", "L:smb2fs") == 1);
+    CK("device name alone, any case", ia_vol_is_net("NFS1", NULL) == 1);
+    CK("ftpmount handler", ia_vol_is_net(NULL, "L:FTPMount") == 1);
+    CK("fast file system is not network", ia_vol_is_net("DH0", "L:FastFileSystem") == 0);
+    CK("ram handler is not network", ia_vol_is_net("RAM", NULL) == 0);
+    CK("no names is not network", ia_vol_is_net(NULL, NULL) == 0);
+    setup(&s, &c, 0);
+    ia_walk_begin(&c);
+    CI("net volume without Disk.info writes one", ia_walk_net(&c, "Share:"), 1);
+    m = mf_find(&s, "Share:Disk.info");
+    CK("Disk.info created", m != NULL);
+    CK("the type:net images were spliced in", m && (m->len != (size_t)g_drawer_n || memcmp(m->d, g_drawer, m->len) != 0));
+    CI("sentinel net counted", (int)c.net, 1);
+    CK("manifest records it as absent", ia_man_find(&c.man, "Share:Disk.info") >= 0 && c.man.e[ia_man_find(&c.man, "Share:Disk.info")].absent == 1);
+    ia_restore(&c);
+    CK("RESTORE removes the created Disk.info", mf_find(&s, "Share:Disk.info") == NULL);
+    mfs_free(&s);
+}
+
 /* rig 8: one failing entry stopped RESTORE, so the walked entries behind it were never restored */
 static void test_restore_continues(void)
 {
@@ -622,5 +647,6 @@ void suite_iconapply(void)
     test_walk();
     test_walkfile();
     test_skip_names();
+    test_net();
     test_restore_continues();
 }
