@@ -59,6 +59,13 @@ class InstallDosAmiSSL(unittest.TestCase):
         code = '\n'.join(l for l in SCRIPT.splitlines() if not l.startswith(';'))
         self.assertNotRegex(code, r'Assign\s+\S+:\s*\n')
 
+    def test_script_survives_the_missing_library_check(self):
+        # Version on a missing library ends with rc 20, above Execute's default FailAt 10: without FailAt 21 the script
+        # stops at the check, before the session Assign LIBS: (INSTALL-CHECK30-AMISSL-PREBOOT, 3.2 clean image)
+        code = [l for l in SCRIPT.splitlines() if not l.startswith(';')]
+        self.assertIn('FailAt 21', code)
+        self.assertLess(code.index('FailAt 21'), code.index(CHK))
+
     def test_script_is_in_the_kit(self):
         self.assertIn('cp dist/install-amissl.dos $(KIT)/Files/install-amissl.dos', (ROOT / 'Makefile').read_text())
         self.assertRegex((ROOT / 'dist/parts.txt').read_text(), r'(?m)^-\s+Files/install-amissl\.dos$')

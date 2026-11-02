@@ -17,6 +17,8 @@
 ;                 AmiSSL:Libs ADD, Path AmiSSL: ADD); the same Assigns are made now, so the running session
 ;                 sees LIBS:amisslmaster.library at once
 ; tests/test_install_dos_amissl.py holds the callers to this script.
+; Version ends with rc 20 on a missing library, above the default FailAt 10: it must not end the script
+FailAt 21
 Set upamnew "0"
 Assign >NIL: AmiSSL: EXISTS
 If WARN
