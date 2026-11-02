@@ -408,6 +408,15 @@ long desk_palette_pens(const unsigned char *cur, long curlen, const unsigned cha
     return 0;
 }
 
+/* FLAT-PENS-STALE-FILE: 1 when the palette.prefs bytes in cur do not hold exactly the pens in both pen tables (all DK_SLOTS slots), or
+ * are not a palette file with a PALT chunk; 0 when a write of pens would change no byte. Compared against the file as it is on disk. */
+int desk_palette_pens_stale(const unsigned char *cur, long curlen, const unsigned char pens[DK_SLOTS])
+{
+    static unsigned char out[DK_PALETTE_SIZE * 4];
+    long n = desk_palette_pens(cur, curlen, pens, out, sizeof out);
+    return n != curlen || memcmp(cur, out, (size_t)n);
+}
+
 /* FLAT-BACKDROP-SAME-AS-WINDOW: the pen the ROOT tile is drawn in, a dedicated pen of its own. Chosen by measurement: a WBPattern tile has
  * PT_DEPTH_MAX (3) bitplanes, so it can only name pens 0-7. Pens 0-3 are the stock icon pens (and DK_DARKER = 1 is BLOCKPEN/BARTRIMPEN
  * in the live DrawInfo array, black in stock icons), pen 4 is the flat button fill (DK_SELECTION), and the flat DrawInfo map only ever

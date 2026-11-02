@@ -131,6 +131,8 @@ int desk_backdrop_screen_pen(int depth);
 long desk_palette_rgb(const unsigned char *cur, long curlen, int pen, int depth);
 long desk_palette_set_rgb(const unsigned char *cur, long curlen, int pen, int depth, uc_u32 c, unsigned char *out, long cap);
 long desk_palette_pens(const unsigned char *cur, long curlen, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap);
+/* FLAT-PENS-STALE-FILE: 1 when the palette file bytes cur differ from a write of pens (either pen table, any slot), or are no palette file */
+int desk_palette_pens_stale(const unsigned char *cur, long curlen, const unsigned char pens[DK_SLOTS]);
 /* FLAT-PENS-LIVE: the pen write flat-system-look (flat 0/1) asks for. pens gets desk_pens_for(flat). Returns 1 to write it: flat on and
  * the live pens (live/nlive, the Workbench DrawInfo) differ from the flat map; flat off and the live pens ARE the flat map (restore
  * the stock roles); else 0. */

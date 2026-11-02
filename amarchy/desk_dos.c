@@ -639,6 +639,16 @@ static long dk_palette_base(int restore, const unsigned char pens[DK_SLOTS], int
     return desk_palette_live(rgb4, n, depth, pens, buf, cap);
 }
 
+/* FLAT-PENS-STALE-FILE: 1 when the palette.prefs a reset would read (ENV:, else ENVARC:) does not hold pens exactly */
+static int dk_palette_file_stale(const unsigned char pens[DK_SLOTS])
+{
+    static unsigned char cur[DK_BUF];
+    long len = dk_read("ENV:Sys/Palette.prefs", cur, sizeof cur);
+    if (len < 0)
+        len = dk_read("ENVARC:Sys/Palette.prefs", cur, sizeof cur);
+    return len > 0 && desk_palette_pens_stale(cur, len, pens);
+}
+
 /* FLAT-PENS-LIVE + FLAT-PEN5-MAGENTA. Owner 2026-11-01: with flat on, a theme pick writes the theme colours into the Workbench palette
  * (palette.prefs, every entry that reaches a role pen, plus the role pens no entry reaches, live), unless the desktop theme's palette
  * part writes its own; flat off puts the palette in force before flat went on back. Returns 1 when it wrote the theme colours (the
@@ -666,6 +676,8 @@ static int dk_flat_pens(const gtheme *th)
         return 0;
     if (!sync)
         desk_pens_for(flat, pens);
+    if (flat && !sync && dk_palette_file_stale(pens))
+        sync = 1; /* FLAT-PENS-STALE-FILE: the live pens match but the file on disk (an older build's map) does not */
     depth = dk_screen_depth();
     len = dk_palette_base(restore, pens, depth, buf, sizeof buf);
     UnLock(CreateDir((STRPTR)DK_WORK));
