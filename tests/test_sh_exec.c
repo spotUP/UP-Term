@@ -28,6 +28,8 @@ typedef struct pending {
 } pending;
 static pending jobs[16];
 static int last_owned[16];   /* io.owned each background start was given, in order */
+static int last_wait[16];    /* and the wait it was started with (SH_SPAWN_BG or SH_SPAWN_STAGE) */
+static int last_spawn_wait = -1; /* the wait of the last os.spawn */
 static int n_started;
 
 static fbuf *slot(sh_fh fh)
@@ -328,16 +330,18 @@ static long f_run(void *os, char **argv, const sh_io *io, int wait)
         strcpy(p.argv[i], argv[i]);
     p.argc = i;
     p.io = *io;
-    if (wait && !strcmp(argv[0], "stopper") && sh.os.suspendable)
+    if (wait == SH_SPAWN_FG && !strcmp(argv[0], "stopper") && sh.os.suspendable)
         return f_stop(&p);
-    if (wait)
+    if (wait == SH_SPAWN_FG)
         return run_now(p.argv, p.argc, &p.io);
     if (strcmp(argv[0], "cat") && strcmp(argv[0], "upper") && strcmp(argv[0], "wc") &&
         strcmp(argv[0], "fail") && strcmp(argv[0], "ls") && strcmp(argv[0], "args") &&
         strcmp(argv[0], "stopper") && !is_vshrc_cmd(argv[0]))
         return -1; /* as the real layer: not found, nothing started */
-    if (n_started < 16)
+    if (n_started < 16) {
+        last_wait[n_started] = wait;
         last_owned[n_started++] = io->owned;
+    }
     for (i = 0; i < 16; i++)
         if (!jobs[i].used) {
             jobs[i] = p;
@@ -386,8 +390,9 @@ static long f_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io, 
     int i;
     (void)os;
     n_spawned++;
+    last_spawn_wait = wait;
     child->ctx.pid = 1000 + n_spawned;
-    if (wait)
+    if (wait == SH_SPAWN_FG)
         return run_child(child, tree, io);
     for (i = 0; i < 16; i++)
         if (!jobs[i].used) {
@@ -480,6 +485,8 @@ static void fresh(void)
     memset(fs, 0, sizeof(fs));
     memset(jobs, 0, sizeof(jobs));
     memset(last_owned, 0, sizeof(last_owned));
+    memset(last_wait, 0, sizeof(last_wait));
+    last_spawn_wait = -1;
     n_started = 0;
     strcpy(cwd, "RAM:");
     sh_shell_init(&sh);
@@ -1150,6 +1157,16 @@ static void jobs_aliases_and_dirs(void)
     run("ls | cat");
     CHECK_INT(last_owned[0] & SH_OWN_OUT, SH_OWN_OUT);
     CHECK_INT(last_owned[1] & SH_OWN_IN, SH_OWN_IN);
+    /* a pipeline stage is waited for: the OS layer is told STAGE, so it shares the shell's streams.
+     * Started as a `&` job (BG), its last stage's output was a handle of its own, NIL: on a pipe:
+     * `echo "$(echo abc | sed s/b/X/)"` printed nothing on the rig (release-subst-empty) */
+    CHECK_INT(last_wait[0], SH_SPAWN_STAGE);
+    CHECK_INT(last_wait[1], SH_SPAWN_STAGE);
+    run("ls &");
+    CHECK_INT(last_wait[0], SH_SPAWN_BG); /* a real `&` job keeps its own handles (VSH-JOB-SIGNALS) */
+    /* $( ) is waited for too: a stage, not a background job (its input was NIL:) */
+    run("x=$(echo a); echo $x");
+    CHECK_INT(last_spawn_wait, SH_SPAWN_STAGE);
 }
 
 static void job_notices(void)

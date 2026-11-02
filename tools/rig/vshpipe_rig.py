@@ -39,6 +39,13 @@ CASES = (
     ("last_group_plain", "echo a | { read x; echo got $x; }\n", "gota\n"),
     ("redirect_last_inner", "{ echo c | { read x; echo got $x; }; } >RAM:vshpipe/rl2.txt\ncat RAM:vshpipe/rl2.txt\n",
      "gotc\n"),
+    # an external LAST stage whose output is a pipe the shell did not open for it: inside $( ) (the
+    # capture pipe) or inside a stage of an outer pipeline. Started as a `&` job, it got a handle of
+    # its own (bg_own_stream), NIL: on a PIPE: stream: `echo "$(echo abc | sed s/b/X/)"` printed
+    # "" after a kit install (release-subst-empty). A stage shares the shell's handle.
+    ("subst_last_external", 'echo "[$(echo abc | cat)]"\n', "[abc]\n"),
+    ("subst_two_external", 'x=$(echo abc | cat | cat); echo "[$x]"\n', "[abc]\n"),
+    ("group_pipe_into_pipe", "{ echo grp | cat; } | cat\n", "grp\n"),
 )
 
 
