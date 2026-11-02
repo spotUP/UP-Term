@@ -37,3 +37,30 @@ Rig 83 restart after the crash booted to the vsh prompt on serial, but wasabid n
 Rig stopped and cleared. Next: on a quiet host, `UPTERM_RIG=<n> python3 tools/rig/kitty_z_rig.py <out> phtmux`;
 PASS = four colour boxes, `tmux ls` shows the session. Unproven: that the stack is the whole cause of the
 server death (probe: same run with `Stack 262144` typed first in the bare CLI).
+
+## K33 rig check, rig 85, 2026-11-02 (branch s51-kitty-k33, aec39407)
+
+Host load before start: fs-uae rig 90 103%, two clang 89% and 58%, Defender 70%, WindowServer 42%, Chrome 38%.
+Rig 85 started with --max --allow-stale-base; wasabid answered at boot (no starvation, no retry for that).
+
+`UPTERM_RIG=85 python3 tools/rig/kitty_z_rig.py <prefix> phtmux`: **FAIL**.
+```
+red None
+green None
+blue None
+yellow None
+FAIL
+tmux ls: 0: 1 windows (created Mon Nov  2 19:17:51 2026) (attached)
+```
+tmux ls shows the session; no colour box was found (none of the four).
+
+Second look (same steps, a diagnostic copy of the tool dumping `ami.screen_text()` and the uitree 12 s after the
+command, same FAIL): the "kz" window (400x200 at 0,20) is active; its text is eleven empty rows and the tmux
+status line `[0] 0:Type*        "BMS-MAC001" 19:19 02-Nov-26`. No error text, no replacement glyph, no
+requester in the uitree (windows: kz, Amarchy bar, a 39x15 window, a 800x573 backdrop). So the pane is blank:
+the tmux session starts and the command `Type VTC:kz-stream.bin` runs, but nothing is drawn in the pane and no
+picture is shown through the DCS-tmux passthrough.
+Not hunted further (task: one check, no code change). Next: does the same stream drawn through tmux without
+`allow-passthrough`, or the plain `ph` mode (K32) in the same rig, show the boxes; and does the status line
+`Type*` mean Type was still running (activity flag) with the output held by tmux.
+Shot: ~/Desktop/upterm-shots/k33-tmux-fail-rig85.png. K33 stays unticked.
