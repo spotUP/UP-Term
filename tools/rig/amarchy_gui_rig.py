@@ -53,8 +53,9 @@ bad = 0
 FONTS_OPENED = {}            # screen name -> (font name, ysize) the menu's font code opened (scrprobe)
 FONT_DRAWER = 'amarchy-fonts'
 JBMONO = os.path.join(REPO, 'build/jbmono/out')
-# KIT-AMARCHY-FLAT: amarchy-flat too, so the rig runs the build's resident that Amarchy starts at boot
-# (desk_dos pl_start UP-Term:bin/amarchy-flat BOOT), not the one the kit left loaded
+# KIT-AMARCHY-FLAT: amarchy-flat too, so the rig runs the build's resident, not the one the kit left loaded.
+# The kit's S:User-Startup starts it (install.dos ";BEGIN Amarchy-Flat": Run >NIL: UP-Term:bin/amarchy-flat BOOT);
+# Amarchy itself loads it only when a flat switch flips on while none is resident (desk_dos dk_flat_sync_with).
 SETUP_NAMES = ('Amarchy', 'amarchy-menu', 'amarchy-gui', 'amarchy-flat')
 SETUP_BIN = 'VTCX:Apps/bin'
 
@@ -1210,7 +1211,7 @@ def setup():
             print('setup: md5 of %s not checked (no md5sum on the rig): %s' % (n, out.strip()[:60]), flush=True)
     if not start_amarchy('setup'):
         return False
-    return flat_started('setup')
+    return flat_boot('setup')
 
 
 def flat_prefs_on():
@@ -1219,22 +1220,26 @@ def flat_prefs_on():
     return re.search(r'^\s*flat-(system-look|window-gadgets)\s*=\s*on\b', out, re.M) is not None
 
 
-def flat_started(tag):
-    """Amarchy's start (desk_dos dk_flat_sync) loads amarchy-flat from UP-Term:bin, which resolves to SETUP_BIN first,
-    only while a flat pref is on. Prefs off: the right state is no resident (STATUS flat=absent). Prefs on: the resident
-    answers STATUS with flat=on or flat=off; held or absent means no hook went in."""
+FLAT_BOOT = 'Run >NIL: UP-Term:bin/amarchy-flat BOOT'   # the kit's S:User-Startup line, word for word
+
+
+def flat_boot(tag):
+    """Run the kit's boot line for amarchy-flat. UP-Term:bin resolves to SETUP_BIN first, so the build's binary loads.
+    BOOT returns at once with nothing resident while both flat prefs are off: then the right state is STATUS
+    flat=absent. Prefs on: the resident answers STATUS with flat=on or flat=off; held or absent means no hook went in."""
+    c.run(FLAT_BOOT, 20)
     if not flat_prefs_on():
         out = c.run('%s/amarchy-flat STATUS' % SETUP_BIN, 20)[1]
-        return check('flat=absent' in out, '%s: flat prefs off, Amarchy loaded no amarchy-flat, STATUS: %s'
+        return check('flat=absent' in out, '%s: flat prefs off, amarchy-flat BOOT left nothing resident, STATUS: %s'
                      % (tag, out.strip()[:60]))
     for _ in range(15):
         if process_running('amarchy-flat'):
             break
         time.sleep(1)
     else:
-        return check(False, '%s: Amarchy did not start amarchy-flat in 15 s' % tag)
+        return check(False, '%s: %s left no amarchy-flat process in 15 s' % (tag, FLAT_BOOT))
     out = c.run('%s/amarchy-flat STATUS' % SETUP_BIN, 20)[1]
-    return check(re.search(r'flat=(on|off) ', out) is not None, '%s: Amarchy started %s/amarchy-flat, STATUS: %s'
+    return check(re.search(r'flat=(on|off) ', out) is not None, '%s: amarchy-flat BOOT loaded %s/amarchy-flat, STATUS: %s'
                  % (tag, SETUP_BIN, out.strip()[:60]))
 
 
