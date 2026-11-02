@@ -18,8 +18,8 @@ Ledger rows: HANDLER-ICON-GRID-FIT (todos.md top), GRIDFIT-RIG-FALSE-SOFT (done)
 
 ## Open: Amiberry rigs stop answering after boot
 
-Ledger row AMIBERRY-DEFAULT (todos.md near the top) holds hunts 2 to 6. Research file (untracked, in the
-worktree): ../vtcon-s48-amiberry-default/thoughts/shared/research/2026-11-02-amiberry-assign-hang.md, Steps 1 to 6.
+Ledger row AMIBERRY-DEFAULT (todos.md near the top) holds hunts 2 to 8. Research file (untracked, in the
+worktree): ../vtcon-s48-amiberry-default/thoughts/shared/research/2026-11-02-amiberry-assign-hang.md, Steps 1 to 8.
 
 Ruled out, in order (each was once believed and then disproved, so do not repeat them):
 1. A DOS handler not answering Assign LIST.
@@ -28,22 +28,40 @@ Ruled out, in order (each was once believed and then disproved, so do not repeat
 4. Generated .uae config: equals main 4254f87d's (rig 20, known good in s29) apart from serial and screenshot lines;
    removing those lines did not help.
 
-Current state: wasabid accepts the TCP connect but never replies; the Amiga runs busy (4-7 s CPU per 8 s).
-Hunt 6 (opus) was running at handoff time: boot rig 37 with 4254f87d's tools/rig, then bisect the boot drawer
-(upgetty, vtcon-handler, up-console.device, pty-handler, Amarchy) or the DH0 clone.
+Hunt 6 (rig 37, Amiberry) failed with 4254f87d's tools/rig, with the older 31 Oct sys.hdf as DH0, and with
+KIT_SHADOWS emptied: rig code, DH0 base and kit shadows are ruled out.
+
+Hunt 7 (rig 37, fs-uae): 4 of 4 good boots on current main (--ram 256, --max, AGA, restart). fs-uae is fine; the
+rig 35 auth failure at 07:39 was a one-off. Only Amiberry hangs. `--emu fsuae` is the workaround for everyone.
+
+Hunt 8 (rig 37, Amiberry): JIT off (cachesize=0) is worse (stops at "go started", C:Wait 15 never returns,
+Amiberry at 0.1% CPU). The JIT is not the cause. The "FPU UNIMPLEMENTED INSTRUCTION" line at PC=00f80c96 is
+Kickstart's own FPU probe and appears under fs-uae too.
+
+Next (hunt 9), cheapest first:
+- (b) JIT on with cpu_speed=max and cpu_idle=0 instead of cpu_speed=real (hypothesis: idle throttling stops
+  emulated time).
+- (a) Step 6 boot A in a scratch worktree with build/amiga from the extracted build/up-term.lha (1 Nov 12:46).
+  Never swap main's build/amiga.
+Each Amiberry start clones a 1.5 GB sys.hdf; disk was 2.0 GB free on 2026-11-02, so check df first.
+`rig.py stop` leaves Amiberry processes alive; kill them by hand.
 
 Branch s48-amiberry-default (Amiberry as default emulator) stays unmerged until Amiberry boots answer.
-Workaround for everyone: --emu fsuae. rig 2 belongs to musicplayer-16; never touch it.
+rig 2 belongs to musicplayer-16; never touch it.
+
+## Icon stems
+
+Rig 35 read 6 of 8 icons SOFT. The host hunt (a0aaeb96, research/2026-11-02-icon-stem-soft.md) shows snap_stems
+is correct: rig 35's maps equal the unfitted render, so its mounted XCON: ran a stale handler. gridfit_rig.py also
+drops the top row of each cell (faint E0B0 anchor row). F013 and F1C0 stay SOFT by font design (curves).
+In flight at handoff: gridfit_rig row fix (host) and rig 35 rerun after install plus reboot.
 
 ## Owner decisions still open
 
-- Look at the shots in ~/Desktop/upterm-shots: gridfit-box-glyphs.png, gridfit-powerline-glyphs.png (shaded tips
-  OK?), gridfit-icons.png, r6a3-edge-pens.png, kitty-td-relative.png, kitty-tc-files.png.
 - OK to delete build/rig33 (later rig37/40/41).
 - Whether --a500 / --stock stay blocked under Amiberry.
 
 ## Queue after the hang
 
 Kitty T-E (needs owner D12/D13), Kitty T-F/T-G/T-H, timg port, chafa plus GLib, nnn kitty preview, picture tools
-P3-P5, `make dist` so icat is in the kit, rest of AMIBERRY-RIGS-GAPS, rig 35 rerun of icon stems under the new
-stem_verdict rule.
+P3-P5, `make dist` so icat is in the kit, rest of AMIBERRY-RIGS-GAPS.
