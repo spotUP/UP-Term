@@ -268,8 +268,10 @@ def walk_key(rows, at, steps):
 def open_menu():
     """The hotkey with the desktop active: over a full-width terminal (the condev UP-Term window) the commodity
     opens the text menu inside that terminal instead (cxdesc.c cx_menu_style), so a click on the empty desktop
-    below it comes first, as the demo recording does."""
-    ami.click_px(400, 560)
+    below it comes first, as the demo recording does. The click sits 7/8 down the front screen: a fixed y=560 fell
+    off a 640x512 screen and the hotkey then went to the terminal."""
+    scr = g.screens()[0]
+    ami.click_px(int(scr['width']) * 5 // 8, int(scr['height']) * 7 // 8)
     time.sleep(1)
     ami.key(g.SPACE, g.LAMIGA)
 
