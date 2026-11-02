@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
-"""INSTALL-DOS-NO-AMISSL: the Shell install (dist/install.dos, no STEP) installs AmiSSL like the kit's
-Install does (P_AMISSL in dist/Install.installer): version check, then Install-AmiSSL through Installer
-from the kit's AmiSSL drawer, with the same arguments; a failure is said and the base install goes on."""
+"""INSTALL-DOS-NO-AMISSL / INSTALL-AMISSL-STALL: AmiSSL is installed by Files/install-amissl.dos (dist/install-amissl.dos),
+which asks nothing, from both the kit's Install (P_AMISSL in dist/Install.installer) and the Shell install
+(dist/install.dos, no STEP). AmiSSL's own Install-AmiSSL is an Installer script with a page at every level: nested in
+a full install it stopped the run at its welcome page, so no caller may start it."""
 import pathlib, re, sys, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -10,51 +10,58 @@ import mkinstaller as mi
 
 DOS = mi.build(ROOT / 'dist/install.dos', 'base')
 INSTALLER = (ROOT / 'dist/Install.installer').read_text(encoding='latin-1')
-ARGS = 'Installer SCRIPT Install-AmiSSL APPNAME AmiSSL MINUSER AVERAGE DEFUSER AVERAGE NOLOG'
+SCRIPT = (ROOT / 'dist/install-amissl.dos').read_text(encoding='latin-1')
+CHK = 'Version >NIL: LIBS:amisslmaster.library 5'
 
 
 def libs_part():
     return DOS[DOS.index('Lab libs'):DOS.index('Lab mount')]
 
 
-class InstallDosAmiSSL(unittest.TestCase):
-    def test_same_invocation_as_p_amissl(self):
-        self.assertIn('"Installer SCRIPT Install-AmiSSL APPNAME AmiSSL "', INSTALLER)
-        self.assertIn('"MINUSER AVERAGE DEFUSER AVERAGE NOLOG', INSTALLER)
-        self.assertIn(ARGS, libs_part())
+def p_amissl():
+    i = INSTALLER.index('(procedure P_AMISSL')
+    return INSTALLER[i:INSTALLER.index('(P_AMISSLCHECK)\n', i)]
 
-    def test_version_check_then_run_from_the_kit_drawer_then_recheck(self):
+
+class InstallDosAmiSSL(unittest.TestCase):
+    def test_no_caller_starts_the_interactive_installer(self):
+        for body in (libs_part(), p_amissl()):
+            self.assertNotIn('Installer SCRIPT Install-AmiSSL', body)
+        self.assertNotIn('Installer SCRIPT', SCRIPT)
+
+    def test_shell_install_runs_the_script_between_check_and_recheck(self):
         p = libs_part()
-        chk = 'Version >NIL: LIBS:amisslmaster.library 5'
-        self.assertEqual(p.count(chk), 2)
-        self.assertLess(p.index(chk), p.index('CD "' ))
-        i = p.index(ARGS)
-        self.assertLess(p.index(chk), p.index('/AmiSSL"'))
-        self.assertLess(p.index('/AmiSSL"'), i)
-        self.assertLess(i, p.rindex(chk))
+        run = 'Execute "{DIR}/install-amissl.dos" DIR "{DIR}" $optcpu060'
+        self.assertEqual(p.count(CHK), 2)
+        self.assertLess(p.index(CHK), p.index(run))
+        self.assertLess(p.index(run), p.rindex(CHK))
 
     def test_only_without_step_and_failure_is_reported_not_fatal(self):
         p = libs_part()
         self.assertRegex(p, r'If "\{?STEP\}?" EQ ""|If "" EQ ""')
         self.assertIn('[ERROR] AmiSSL was not installed', p)
-        self.assertIn('Install-AmiSSL', p[p.index('[ERROR] AmiSSL was not installed'):][:300])
-        self.assertNotIn('Quit 20', p[p.index(ARGS):])
+        self.assertNotIn('Quit 20', p[p.index('install-amissl.dos'):])
 
-    def test_libs_assign_added_between_installer_and_recheck(self):
-        p = libs_part()
-        add = 'Assign >NIL: LIBS: AmiSSL:Libs ADD'
-        self.assertIn('Assign >NIL: AmiSSL: EXISTS', p)
-        self.assertLess(p.index(ARGS), p.index(add))
-        self.assertLess(p.index(add), p.rindex('Version >NIL: LIBS:amisslmaster.library 5'))
-        self.assertNotRegex(p, r'Assign\s+\S+:\s*\n')
-
-    def test_installer_p_amissl_adds_assign_before_check(self):
-        run = INSTALLER[INSTALLER.index('(procedure P_AMISSL'):INSTALLER.index('(P_AMISSLCHECK)\n', INSTALLER.index('(procedure P_AMISSL'))]
-        self.assertIn('Assign >NIL: AmiSSL: EXISTS', run)
-        self.assertLess(run.index('Install-AmiSSL'), run.index('Assign >NIL: LIBS: AmiSSL:Libs ADD'))
-        self.assertLess(run.index('Assign >NIL: LIBS: AmiSSL:Libs ADD'), run.index('(execute "T:UPTAMISSL")'))
+    def test_installer_p_amissl_executes_the_script_with_cpu_then_rechecks(self):
+        run = p_amissl()
+        self.assertIn('(tackon #files "install-amissl.dos")', run)
+        self.assertIn('#cpu060', run)
         # AMISSL-SHELL-WINDOW: (run "Execute ...") opens a Shell window, (execute) does not
+        self.assertIn('(execute "T:UPTAMISSL")', run)
         self.assertNotIn('(run "Execute T:UPTAMISSL")', run)
+
+    def test_script_installs_libs_certs_startup_block_and_session_assign(self):
+        for need in ('.KEY DIR/A,CPU060/S', 'amisslmaster.library', 'AmiSSL/68060', 'AmiSSL/68020-40',
+                     '/AmiSSL/Certs', ';BEGIN AmiSSL', ';END AmiSSL', 'Assign LIBS: AmiSSL:Libs ADD',
+                     'Path AmiSSL: ADD'):
+            self.assertIn(need, SCRIPT)
+        self.assertLess(SCRIPT.index('Copy "{DIR}/AmiSSL/Libs/AmigaOS3/amisslmaster.library"'), SCRIPT.index(CHK))
+        code = '\n'.join(l for l in SCRIPT.splitlines() if not l.startswith(';'))
+        self.assertNotRegex(code, r'Assign\s+\S+:\s*\n')
+
+    def test_script_is_in_the_kit(self):
+        self.assertIn('cp dist/install-amissl.dos $(KIT)/Files/install-amissl.dos', (ROOT / 'Makefile').read_text())
+        self.assertRegex((ROOT / 'dist/parts.txt').read_text(), r'(?m)^-\s+Files/install-amissl\.dos$')
 
     def test_installer_p_anx_starts_script_with_execute_not_run(self):
         # P-ANX-RUN-EXECUTE: same fix as AMISSL-SHELL-WINDOW
