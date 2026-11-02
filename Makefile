@@ -92,6 +92,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=desk_rig_pick_waits the rig's desk pick() returns only after Amarchy wrote AMARCHY_WBCLOSES again, so pen reads see the applied theme (tests/test_amarchy_desk_rig_pick_waits.py)
 # ONLY=one_select_level the rig's one_select accepts Style level after a theme pick and checks "(current)" on the reopened theme list (tests/test_amarchy_one_select_level.py)
 # ONLY=rig_installer_free installer_rig sys_free_bytes reads SYS: free space from Info with DH0: (3.1) and DH0 (3.2) (tests/test_installer_rig_free.py)
+# ONLY=rig_real_drawer installer_rig judges the drawer the Installer recorded (ENVARC:up-term/Dir), not UPBigVol's prediction; check 10 only off the SYS: volume (tests/test_installer_rig_real_drawer.py)
 # ONLY=flat_on_hang amarchy-flat passes the library base in a6 on every saved Text/RectFill/DrawBox/FieldBox call, so flat-ON no longer jumps into DOS device data (tests/test_flat_on_hang_wild_call.py)
 # ONLY=rig_install_no_vsh rig.py install without build/amiga/vsh exits with one message naming the file and the make target (tests/test_rig_install_no_vsh.py)
 # ONLY=rig_themes_live rig.py install/start stage the Amarchy themes into the live drawer UP-Term: points at, no boot needed (tests/test_rig_themes_live.py)
@@ -174,6 +175,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_install_no_vsh ]; then python3 -I tests/test_rig_install_no_vsh.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_themes_live ]; then python3 -I tests/test_rig_themes_live.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_installer_free ]; then python3 -I tests/test_installer_rig_free.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_real_drawer ]; then python3 -I tests/test_installer_rig_real_drawer.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = flat_on_hang ]; then python3 -I tests/test_flat_on_hang_wild_call.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rebind ]; then python3 -I tests/test_amarchy_gui_rebind.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = editor_stack ]; then python3 -I tests/test_amarchy_editor_stack.py; fi

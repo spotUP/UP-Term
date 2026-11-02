@@ -587,7 +587,7 @@ def main(dest=None):
 
 def check_dest_leaves_sys_upterm(check, before, what='a non-default DEST leaves SYS:UP-Term as it was'):
     """An Install given another DEST writes nothing into SYS:UP-Term: the drawer is as it was before, not absent
-    (the master image has an empty one, BASEDEST-EMPTY-SYSUPTERM)."""
+    (an earlier run's drawer may be there; an empty one is as it was)."""
     now = run('List SYS:UP-Term ALL')
     check(now == before, what, 'before %r, now %r' % (before, now))
 

@@ -887,6 +887,28 @@ def big_drawer():
     return out.strip() if rc == 0 and out.strip() else 'SYS:UP-Term'
 
 
+def sys_volume_name():
+    """The volume name SYS: resolves to (Assign LIST prints `SYS  <Volume>:`), None when not found."""
+    for l in ir.run('Assign LIST')[1].splitlines():
+        w = l.split(None, 1)
+        if len(w) == 2 and w[0].upper().rstrip(':') == 'SYS':
+            return w[1].strip().rstrip(':').split(':')[0].upper()
+    return None
+
+
+def on_sys_volume(drawer):
+    """True when the drawer is on the volume SYS: is, whether it is named SYS:UP-Term or <Volume>:UP-Term."""
+    vol = drawer.split(':', 1)[0].upper()
+    return vol == 'SYS' or vol == sys_volume_name()
+
+
+def real_drawer():
+    """The drawer the Installer really chose, as it recorded it in ENVARC:up-term/Dir. big_drawer() is only the
+    prediction of a separate UPBigVol run; volumes of equal free space tie-break differently between two runs."""
+    rc, out = ir.run('Type ENVARC:up-term/Dir')
+    return out.strip() if rc == 0 and out.strip() else None
+
+
 def run_bigvol():
     """BIGVOL, through the real Installer: click Proceed to the drawer page (gadgets 89 and 92), read the string
     gadget 92 and Abort. PASS: it shows the drawer big_drawer() reads from ENV:UPTBIGVOL, the volume UPBigVol LIST marks with `*`, not SYS:UP-Term
@@ -1076,7 +1098,7 @@ def run_base_case(case):
     if case == "anx":
         ir.run('Copy >NIL: C:Wait VTC:distkit/Files/tcpprobe')   # no stack found: AmiNetXDuo is offered, ticked
         ir.run('Copy >NIL: S:User-Startup T:UPTANX-startup')
-    sys_upterm_before = ir.run('List SYS:UP-Term ALL')   # the rig's baseline assign UP-Term: may name an empty or stale SYS:UP-Term: compare against it, not against absence
+    sys_upterm_before = ir.run('List SYS:UP-Term ALL')   # a stale or empty SYS:UP-Term may exist: compare against it, not against absence
     ir.run_long('rununinstall')  # a run that stopped half-way left things behind
     ir.run('Delete >NIL: ENVARC:UP-Term.prefs ENVARC:Claude/remote QUIET')
     parent_existed = True
@@ -1152,6 +1174,7 @@ def run_base_case(case):
         ck(st == before, 'LIBS: as it was', 'now %s, before %s' % (st, before))
         print('installer_rig %s: passed %d of %d' % (case, ck.total - len(ck.failed), ck.total))
         return not ck.failed, '; '.join(ck.failed) or 'all %d checks' % ck.total
+    drawer = real_drawer() or drawer   # the Installer's own choice, not the UPBigVol prediction
     # what the Installer's install.dos parts and copyfiles put there
     rc, out = ir.run('Assign LIST')
     al = [l for l in out.splitlines() if l.lower().startswith('up-term')]
@@ -1169,7 +1192,7 @@ def run_base_case(case):
     ck(('Assign UP-Term: "%s"' % drawer).lower() in out.lower(), 'S:User-Startup assigns UP-Term: to %s' % drawer, out[-300:])
     ck(out.find('Assign UP-Term:') >= 0 and (out.find('Assign GG:') < 0 or out.find('Assign UP-Term:') < out.find('Assign GG:')),
        'the UP-Term: block comes before the blocks that use it', out[-300:])
-    if drawer.upper() != 'SYS:UP-TERM':
+    if not on_sys_volume(drawer):
         check_other_disk_leaves_sys_upterm(ck, sys_upterm_before)
     for f in ('"%s/VERSIONS"' % drawer, 'UP-Term:bin/sh', 'UP-Term:bin/ls', 'UP-Term:unifont/00', 'UP-Term:emoji/1F6',
               'C:vsh', 'C:tmux', 'C:UPConsole', 'L:vtcon-handler', 'L:pty-handler', 'DEVS:DOSDrivers/XCON',
