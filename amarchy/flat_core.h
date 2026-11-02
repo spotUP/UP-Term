@@ -31,7 +31,7 @@ typedef struct flat_state {
     uint8_t pen_ptext;          /* 21 label pen of a pressed button, dark on the accent fill (DK_BG) */
     uint8_t pen_dim;            /* 22 FLAT-BUTTON-DISABLED-DIM: solid fill of a disabled button, a dim tone of pen_button; obtained by amarchy-flat itself (ObtainBestPen), 0 = none */
     uint8_t pen_dimtext;        /* 23 label pen of a disabled button (DK_MUTED) */
-    uint8_t pen_knob;           /* 24 KNOB-PEN: scroller knob fill, halfway between the surface and the muted text colour; obtained by amarchy-flat itself (ObtainBestPen), 0 = none */
+    uint8_t pen_knob;           /* 24 KNOB-PEN: scroller knob fill, the surface moved FLAT_KNOB_PCT (60) percent toward the muted text colour; obtained by amarchy-flat itself (ObtainBestPen), 0 = none */
     uint8_t pad[3];             /* 25 reserved, zero (keeps calls 4-byte aligned) */
 } flat_state;                   /* 28 bytes */
 
