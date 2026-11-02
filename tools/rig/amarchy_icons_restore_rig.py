@@ -13,6 +13,7 @@ import ami, condev_rig as c
 
 MD5 = 'RAM:md5sum'
 CHUNK = 10
+RUN_SECS = 1500   # a rig with a big volume (Rushhours, 1.4 GB, on 3.1 rigs) walks for minutes; 300 s killed the run on rig 90
 
 
 def infos(vol):
@@ -64,7 +65,7 @@ def main():
     ami.put(os.path.join(HERE, '..', '..', 'build', 'amiga', 'amarchy-icons'), 'RAM:amarchy-icons')
     c.run('Protect RAM:amarchy-icons +e')
     before = snapshot(files)
-    rc, out = c.run('RAM:amarchy-icons APPLY', 300)
+    rc, out = c.run('RAM:amarchy-icons APPLY', RUN_SECS)
     print('[INFO] APPLY rc %d: %s' % (rc, out.strip()))
     mid = snapshot(files)
     print('[INFO] changed by APPLY: %d' % sum(1 for f in before if before[f] != mid.get(f)))
@@ -73,12 +74,12 @@ def main():
         pf = os.path.join(os.environ.get('TMPDIR', '/tmp'), 'icon-style-prefs')
         open(pf, 'w').write('[profile default]\nicon-style = outline\n')
         ami.put(pf, 'ENV:Amarchy/prefs')
-        rc, out = c.run('RAM:amarchy-icons APPLY', 300)
+        rc, out = c.run('RAM:amarchy-icons APPLY', RUN_SECS)
         print('[INFO] APPLY (Outline) rc %d: %s' % (rc, out.strip()))
         sty = snapshot(files)
         print('[INFO] Outline differs from Filled: %d, from the originals: %d, of %d' % (
             sum(1 for f in before if sty.get(f) != mid.get(f)), sum(1 for f in before if sty.get(f) != before[f]), len(before)))
-    rc, out = c.run('RAM:amarchy-icons RESTORE', 300)
+    rc, out = c.run('RAM:amarchy-icons RESTORE', RUN_SECS)
     print('[INFO] RESTORE rc %d: %s' % (rc, out.strip()))
     after = snapshot(files)
     for w in sys.argv[sys.argv.index('--watch') + 1].split(',') if '--watch' in sys.argv else []:
