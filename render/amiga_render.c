@@ -3511,6 +3511,13 @@ static void pad_flush(vr_render *r)
     pad_extend_now(r);
 }
 
+/* A cell whose base code point is U+10EEEE (kitty's placeholder, K32). */
+static int is_placeholder(const vr_render *r, const vt_cell *c)
+{
+    vt_u32 cp[VT_CLUSTER_CPS];
+    return vt_cell_text(r->t, c, cp) >= 1 && cp[0] == 0x10EEEEUL;
+}
+
 static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1)
 {
     UBYTE run[RUN_MAX];
@@ -3648,6 +3655,28 @@ static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1)
                 c[x].deco != last->deco || c[x].ext != last->ext || r->sel) {
                 cell_style(r, &c[x], selected(r, x, gy), &st);
                 last = &c[x];
+            }
+            if (c[x].ch >= VT_CLUSTER_FIRST && c[x].ch <= VT_CLUSTER_LAST && is_placeholder(r, &c[x])) {
+                /* K32: a kitty placeholder cell shows its tile of the virtual
+                 * placement's picture (img_run), its transparent pixels the
+                 * cell's own background; with no picture it is a blank */
+                vt_image_view pv;
+                int tc, tr;
+                WORD px = (WORD)(r->ox + x * r->cw);
+                flush_run(r, run, n, run_x, py, &run_st);
+                n = 0;
+                last = 0;
+                fill(r, px, py, (WORD)(px + r->cw - 1), (WORD)(py + r->ch - 1), st.bgf);
+                if (vt_cell_placeholder(r->t, gy, x, &pv, &tc, &tr)) {
+                    ULONG sv = r->bg_ink;
+                    pv.col0 = x - tc;
+                    pv.py = tr * pv.ch;
+                    if (!IS_DITH(st.bgf))
+                        r->bg_ink = st.bgf;
+                    img_run(r, &pv, x, x + 1, y);
+                    r->bg_ink = sv;
+                }
+                continue;
             }
             if (c[x].ch < 0x80) {
                 g.kind = VT_GLYPH_FONT; /* ASCII: the font's own character */

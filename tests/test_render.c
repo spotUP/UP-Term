@@ -2054,6 +2054,37 @@ static void k30_text_lies_over_a_picture_below(void)
     close_term();
 }
 
+/* K32: cells of U+10EEEE with fg 38;5;7 (image 7) and the row/column marks
+ * (U+0305 = 0, U+030D = 1) draw the four quarters of a 2 x 2 cell virtual
+ * placement (red green / blue white) in place of a glyph; a placeholder of an
+ * unknown image (fg 8) is a blank. The sentinel vt_kitty_placeholders shows
+ * the engine resolved the four cells for the renderer. Before K32 the cells
+ * drew the replacement glyph. */
+#define K32_PH "\xF4\x8E\xBB\xAE"
+#define K32_M0 "\xCC\x85"
+#define K32_M1 "\xCC\x8D"
+static void k32_placeholder_cells_draw_their_tiles(void)
+{
+    unsigned long n0;
+    k30_open_truecolour();
+    pass("\x1b_Ga=T,U=1,i=7,f=24,s=2,v=2,c=2,r=2;/wAAAP8AAAD/////\x1b\\");
+    n0 = vt_kitty_placeholders(term);
+    gf_clear_log();
+    pass("\x1b[1;1H\x1b[38;5;7m" K32_PH K32_M0 K32_M0 K32_PH K32_M0 K32_M1 "\x1b[2;1H" K32_PH K32_M1 K32_M0 K32_PH K32_M1 K32_M1);
+    CHECK_INT((int)(vt_kitty_placeholders(term) - n0) >= 4, 1);
+    CHECK_INT(gf_pixel(0, 0), GF_CGX | 0xFF0000);
+    CHECK_INT(gf_pixel(CW - 1, CH - 1), GF_CGX | 0xFF0000);
+    CHECK_INT(gf_pixel(CW, 0), GF_CGX | 0x00FF00);
+    CHECK_INT(gf_pixel(2 * CW - 1, CH - 1), GF_CGX | 0x00FF00);
+    CHECK_INT(gf_pixel(0, CH), GF_CGX | 0x0000FF);
+    CHECK_INT(gf_pixel(CW, CH), GF_CGX | 0xFFFFFF);
+    CHECK_INT(gf_pixel(2 * CW - 1, 2 * CH - 1), GF_CGX | 0xFFFFFF);
+    /* no such image: a blank, no glyph and no picture */
+    pass("\x1b[4;1H\x1b[38;5;8m" K32_PH K32_M0 K32_M0);
+    CHECK_INT(gf_pixel(0, 3 * CH) & GF_CGX, 0);
+    close_term();
+}
+
 static void k30_far_below_stays_under_a_coloured_background(void)
 {
     int bg;
@@ -2392,6 +2423,7 @@ int main(void)
     a_kitty_image_draws_its_pixels_on_the_canvas();
     k30_text_lies_over_a_picture_below();
     k30_far_below_stays_under_a_coloured_background();
+    k32_placeholder_cells_draw_their_tiles();
     the_cursor_pass_counts_its_gfx_calls_and_unchanged_cells();
     scrollback_view_move_blits_and_draws_only_the_exposed_rows();
     cursor_glyph_is_drawn_at_the_cursor_cell_from_the_grid_row();

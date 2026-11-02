@@ -348,7 +348,7 @@ commit.
       case (marks only on the first cell); d=a leaves the virtual
       placement. Fail-before: U=1 answers `EINVAL:no unicode
       placeholders` today.
-- [ ] K32 Render. draw_rows: a cell whose base code point is U+10EEEE
+- [x] K32 Render. draw_rows: a cell whose base code point is U+10EEEE
       draws, instead of a glyph, its tile of the virtual placement's
       scaled picture (scaled once per virtual placement and cell size,
       cached under the image's serial like the pen cache; freed with the
