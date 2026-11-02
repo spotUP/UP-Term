@@ -53,7 +53,9 @@ bad = 0
 FONTS_OPENED = {}            # screen name -> (font name, ysize) the menu's font code opened (scrprobe)
 FONT_DRAWER = 'amarchy-fonts'
 JBMONO = os.path.join(REPO, 'build/jbmono/out')
-SETUP_NAMES = ('Amarchy', 'amarchy-menu', 'amarchy-gui')
+# KIT-AMARCHY-FLAT: amarchy-flat too, so the rig runs the build's resident that Amarchy starts at boot
+# (desk_dos pl_start UP-Term:bin/amarchy-flat BOOT), not the one the kit left loaded
+SETUP_NAMES = ('Amarchy', 'amarchy-menu', 'amarchy-gui', 'amarchy-flat')
 SETUP_BIN = 'VTCX:Apps/bin'
 
 
@@ -1183,6 +1185,10 @@ def setup():
         if 'UP-Term:bin/' in l or SETUP_BIN in l:
             c.run('Break %s' % l.split()[1].rstrip(':'), 20)
     time.sleep(2)
+    # Ctrl-C unloads amarchy-flat unless a patch is chained over it; a resident that stays makes the fresh copy say
+    # "already running" and exit, so the rig would test the old one
+    if not check(not process_running('amarchy-flat'), 'setup: the earlier amarchy-flat resident unloaded on Break'):
+        return False
     # Lock("UP-Term:bin") on a multi-directory assign returns only the first match, VTCX:Apps/bin; pl_dup_path puts
     # that one lock on the children's path, so upkg and the rest of the kit must be in it. Kit first, build over it.
     c.run('Copy Rushhours:Tools/UP-Term/bin %s ALL QUIET' % SETUP_BIN, 120)
@@ -1202,7 +1208,23 @@ def setup():
             check(got.group(0) == want, 'setup: %s/%s matches build/amiga/%s' % (SETUP_BIN, n, n))
         else:
             print('setup: md5 of %s not checked (no md5sum on the rig): %s' % (n, out.strip()[:60]), flush=True)
-    return start_amarchy('setup')
+    if not start_amarchy('setup'):
+        return False
+    return flat_started('setup')
+
+
+def flat_started(tag):
+    """Amarchy's start (desk_dos BOOT) loaded amarchy-flat from UP-Term:bin, which resolves to SETUP_BIN first, and
+    the resident answers STATUS with flat=on or flat=off (the prefs pick which); held or absent means no hook went in."""
+    for _ in range(15):
+        if process_running('amarchy-flat'):
+            break
+        time.sleep(1)
+    else:
+        return check(False, '%s: Amarchy did not start amarchy-flat in 15 s' % tag)
+    out = c.run('%s/amarchy-flat STATUS' % SETUP_BIN, 20)[1]
+    return check(re.search(r'flat=(on|off) ', out) is not None, '%s: Amarchy started %s/amarchy-flat, STATUS: %s'
+                 % (tag, SETUP_BIN, out.strip()[:60]))
 
 
 def start_amarchy(tag):

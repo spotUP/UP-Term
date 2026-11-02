@@ -121,6 +121,61 @@ class RequireFresh(unittest.TestCase):
         run.assert_not_called()
         put.assert_not_called()
 
+    # KIT-AMARCHY-FLAT: --setup stages the build's amarchy-flat and proves Amarchy's boot start loaded it
+    def _setup_rig(self, flat_survives_break=False, status_word="on"):
+        """A fake rig: Status lists the kit Amarchy and its amarchy-flat until Break; Run Amarchy brings both back."""
+        procs = {2: "UP-Term:bin/Amarchy", 3: "UP-Term:bin/amarchy-flat BOOT"}
+        cmds = []
+
+        def run(cmd, timeout=None):
+            cmds.append(cmd)
+            if cmd == "Status":
+                return 0, "".join("Process %d: %s\n" % kv for kv in sorted(procs.items()))
+            if cmd.startswith("Break "):
+                n = int(cmd.split()[1])
+                if "amarchy-flat" not in procs.get(n, "") or not flat_survives_break:
+                    procs.pop(n, None)
+            if cmd.startswith("Run >NIL: VTCX:Apps/bin/Amarchy"):
+                procs[4] = "VTCX:Apps/bin/Amarchy"
+                if not any("amarchy-flat" in v for v in procs.values()):
+                    procs[5] = "UP-Term:bin/amarchy-flat BOOT"
+            if cmd.endswith("amarchy-flat STATUS"):
+                return 0, "flat=%s calls=3 chained=0\n" % status_word
+            return 0, ""
+        return run, cmds
+
+    def _run_setup(self, run):
+        import amarchy_gui_rig as g
+        g.bad = 0
+        with mock.patch.object(sys, "argv", ["x", "--setup"]), mock.patch.object(g.stage_rig, "make") as make, \
+                mock.patch.object(g.c, "run", side_effect=run), mock.patch.object(g.ami, "put") as put, \
+                mock.patch.object(g.amarchy_window_rig, "port", return_value=("ok", "")), \
+                mock.patch.object(g.time, "sleep"):
+            ok = g.setup()
+        return g, ok, make, put
+
+    def test_setup_stages_and_proves_fresh_flat(self):
+        run, cmds = self._setup_rig()
+        g, ok, make, put = self._run_setup(run)
+        self.assertIn("amarchy-flat", make.call_args[0][0])
+        self.assertIn("build/amiga/amarchy-flat", stage_rig.TARGETS["amarchy-flat"])
+        self.assertIn("VTCX:Apps/bin/amarchy-flat", [c.args[1] for c in put.call_args_list])
+        self.assertIn("VTCX:Apps/bin/amarchy-flat STATUS", cmds)
+        self.assertTrue(ok)
+        self.assertEqual(g.bad, 0)
+
+    def test_setup_fails_when_old_flat_stays_loaded(self):
+        run, cmds = self._setup_rig(flat_survives_break=True)
+        g, ok, make, put = self._run_setup(run)
+        self.assertFalse(ok)
+        self.assertEqual(g.bad, 1)
+        put.assert_not_called()
+
+    def test_setup_fails_when_flat_held(self):
+        run, cmds = self._setup_rig(status_word="held")
+        g, ok, make, put = self._run_setup(run)
+        self.assertFalse(ok)
+
 
 if __name__ == "__main__":
     unittest.main()
