@@ -207,9 +207,14 @@ def capture_fail(what):
 
 
 def reboot():
+    """stop + start the rig; a start that fails (a RIG-STALE-BASE refusal, a frozen boot) ends the run with
+    rig.py's own reason, never a silent dead rig that the next case reports as a HANG (s51 NS3.3 rerun)"""
     rig = [sys.executable, str(ROOT / 'tools/rig/rig.py')]
     subprocess.run(rig + ['stop', '--keep'], capture_output=True, timeout=120)
-    subprocess.run(rig + ['start'], capture_output=True, timeout=400)
+    r = subprocess.run(rig + ['start'], capture_output=True, text=True, timeout=400)
+    if r.returncode:
+        tail = '\n'.join(((r.stdout or '') + (r.stderr or '')).strip().splitlines()[-5:])
+        sys.exit('[ERROR] splits_rig: rig.py start failed (exit %d), run stopped:\n%s' % (r.returncode, tail))
 
 
 def teardown():
