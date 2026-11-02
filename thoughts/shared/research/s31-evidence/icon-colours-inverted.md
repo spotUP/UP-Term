@@ -125,3 +125,38 @@ icon image that uses pens 1/2 directly (planar icons, or GlowIcons remapped
 onto pens 1/2) swaps its outline and highlight. Fixing this is a product
 choice (Workbench pen 1 is also the text pen, which must stay light on a dark
 ground), so it needs the owner.
+
+## Session 31 rl9: pen 1/2 proof on rig 71 (FS-UAE, OS 3.2, depth 8)
+
+Setup: amarchy_gui_rig.py --setup (flat on), prefs vantablack + desktop-theme on,
+theme re-picked from white back to vantablack through the menu (the picker
+needed the first cursor row; it started on vantablack so one Up/Down pair was
+used). Shot: ~/Desktop/upterm-shots/s31-rl9-vantablack-flat-d8.png.
+
+Measured Workbench palette (RAM:wbpens), vantablack picked:
+
+    RGB 0 000000, RGB 1 7a7a7a, RGB 2 bebebe, RGB 3 8d8d8d
+    DrawInfo pens 0..3: 0 1 2 0 (pen 1 = colour 1, pen 2 = colour 2)
+
+Result for hypothesis a as written: REFUTED in its premise. On the live screen
+colour 1 is the DARKER of the two (7a7a7a) and colour 2 the lighter (bebebe),
+the same order as stock 3.x (1 dark, 2 light), not the reverse. The measured
+values are muted/foreground, not wb_pens_plan's fg/dim (menu_theme.c:205-206
+would give 1 = fg, 2 = dim), so the pens on screen are written by another path
+than wb_pens_plan alone (not traced; desk_pens_sync or the palette prefs).
+
+Icon type: SYS:Utilities.info is 628 bytes, no FORM/ICON chunk (no GlowIcon, no
+NewIcon), classic planar image 57x14 depth 2 (pens 0..3), drawer data present.
+So the stock icons do draw with pens 0-3 directly.
+
+Icon pixels on the screen (first drawer icon, 1:1): outline 000000, body
+7a7a7a, highlight bebebe, ground 222222 (the lifted ground). The outline is
+the darkest value, the highlight the lightest: not swapped at this moment.
+amarchy-icons was not running and SYS:Storage/Icons/Amarchy did not exist
+(APPLY had not run in this rig session), so these are stock icons.
+
+NOT done (budget): the SetRGB32 pen 1/2 swap experiment and a second sample
+.info. The remaining question for the owner's "inverted" look: pen 0 is
+000000 while the ground is 222222, so stock icons that rely on pen 0 as their
+transparent grey body (stock pen 0 = aa) now show black next to a 222222
+ground; compare icon pixel 000000 against ground 222222 before blaming pen 1/2.

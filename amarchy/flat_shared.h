@@ -46,6 +46,11 @@ typedef struct flatshared {
     ULONG ttitle;               /* window titles redrawn by FLAT-TITLE-ACCENT (the sentinel) */
     ULONG tcalls, thits;        /* every patched Text call / every pressed label recoloured (the sentinels) */
     ULONG cdraws, cfall;        /* FLAT-GLYPH-OS-SHAPES sentinels: gadgets drawn by cloning the system image / clone attempts that fell back to the block glyph */
+    /* FLAT-ASPECT-BORDERS: the cached side-line width for one screen (flat.c side_px) */
+    struct Screen *aspect_scr;
+    ULONG aspect_mode;
+    int aspect_px;
+    ULONG aspect_looks;         /* DisplayInfo lookups done (the sentinel: one per screen and mode) */
     /* the icon pens are no longer here: the shared holder record "Amarchy.IconPens" owns them (iconpen_dos.h, F14) */
 } flatshared;
 
