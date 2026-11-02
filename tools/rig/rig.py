@@ -301,6 +301,11 @@ EndIf""" % {"stamp": kitstamp.STAMP, "hash": kitstamp.HASH}
 # The kit stamp stays in go: it must follow both passes, and go runs the other pass.
 SHADOWS_UP_BLOCK = "rig-upterm-shadows"
 SHADOWS_UP_DONE = "RAM:rig-upterm-shadows-done"
+# AMARCHY-MENU-IXEMUL-BOOT-RACE: the kit's Amarchy block starts amarchy-menu, which needs ixemul v48 from LIBS:; the
+# RIG_LIBS assigns lived only in go (async beside the Startup-Sequence), so the menu opened a "needs ixemul v48"
+# requester and stayed in it. The same early block therefore makes the RIG_LIBS assigns and leaves RIG_LIBS_DONE; go
+# then skips them (a second Assign ADD would list each path twice).
+RIG_LIBS_DONE = "RAM:rig-libs-done"
 KIT_AMARCHY_BLOCK = ";BEGIN UP-Term Amarchy"
 SHADOWS_UP_SCRIPT = """FailAt 21
 Echo >>BOOTX:boot.log "early UP-Term shadows started (before Amarchy)"
@@ -309,8 +314,14 @@ If NOT WARN
 %(shadows_up)s
   Echo >%(done)s "done"
   Echo >>BOOTX:boot.log "early UP-Term shadows done (before Amarchy)"
+  If EXISTS VTC:ixp6/ixemul.library
+%(libs)s
+    Echo >%(libs_done)s "done"
+    Echo >>BOOTX:boot.log "early LIBS: assigns done (before Amarchy)"
+  EndIf
 EndIf
-""" % {"shadows_up": "\n".join("  " + l for l in kit_shadow_lines(True).splitlines()), "done": SHADOWS_UP_DONE}
+""" % {"shadows_up": "\n".join("  " + l for l in kit_shadow_lines(True).splitlines()), "done": SHADOWS_UP_DONE,
+       "libs": "\n".join("    C:" + l for l in RIG_LIBS), "libs_done": RIG_LIBS_DONE}
 SHADOWS_UP_BLOCK_TEXT = ";BEGIN %s\nExecute BOOTX:shadows-up\n;END %s\n" % (SHADOWS_UP_BLOCK, SHADOWS_UP_BLOCK)
 
 
@@ -380,13 +391,19 @@ Echo >>BOOTX:boot.log "XCON mounted"
 C:Assign >NIL: ETC: VTC:etc
 ; /tmp: the kit puts "Assign TMP: T:" in S:User-Startup; a rig with no kit has it from here
 C:Assign >NIL: TMP: T:
-C:Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD
+If NOT EXISTS %(libs_done)s
+  C:Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD
+EndIf
 ; UP-Term as the owner uses it on the rig: the patched ixemul first in
 ; LIBS: (Classes and MUI stay), PTY: and IXPIPE:, and GG: for /gg/bin/sh
 ; (vsh), as the kit sets it up. VTC: is assigned in BOOTX:s/startup-sequence,
 ; before the system's Startup-Sequence runs anything.
-If EXISTS VTC:ixp6/ixemul.library
+If EXISTS %(libs_done)s
+  Echo >>BOOTX:boot.log "LIBS: assigned before Amarchy"
+Else
+  If EXISTS VTC:ixp6/ixemul.library
 %(libs)s
+  EndIf
 EndIf
 C:Assign >NIL: PTY: EXISTS DEVICES
 If WARN
@@ -450,7 +467,7 @@ Run >NIL: SYS:System/RexxMast
 C:SetEnv wasabi.key %(key)s
 C:Run >NIL: <NIL: BOOTX:wasabid %(port)d name rig%(rign)d
 Echo >>BOOTX:boot.log "wasabid started"
-""" % {"port": paths.WASABI_PORT, "key": paths.WASABI_KEY, "rign": paths.RIG_N, "upterm_assign": UPTERM_ASSIGN, "amarchy_assets": AMARCHY_ASSETS_BOOT, "shadows": kit_shadow_lines(False), "shadows_up": kit_shadow_lines(True), "shadows_up_done": SHADOWS_UP_DONE, "kit_stamp": KIT_STAMP_BOOT, "libs": "\n".join("  C:" + l for l in RIG_LIBS),
+""" % {"port": paths.WASABI_PORT, "key": paths.WASABI_KEY, "rign": paths.RIG_N, "upterm_assign": UPTERM_ASSIGN, "amarchy_assets": AMARCHY_ASSETS_BOOT, "shadows": kit_shadow_lines(False), "shadows_up": kit_shadow_lines(True), "shadows_up_done": SHADOWS_UP_DONE, "kit_stamp": KIT_STAMP_BOOT, "libs": "\n".join("    C:" + l for l in RIG_LIBS), "libs_done": RIG_LIBS_DONE,
        "shellpath": "\n".join('    Echo >>S:Shell-Startup "%s"' % l for l in SHELL_STARTUP_PATH)}
 # boot.log in the host drawer BOOTX: tells from the Mac how far a boot got
 # (the rig's screen is not visible from here).
