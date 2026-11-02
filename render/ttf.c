@@ -46,6 +46,7 @@ typedef struct rast {
     int w, h, stride;
     long xs, ys;         /* pixels per font unit, 16.16 */
     long ox, by;         /* the origin, 26.6 */
+    int snap;            /* straight stems onto whole pixels (ttf_render_fit) */
 } rast;
 
 static unsigned be16(const unsigned char *p)
@@ -518,6 +519,54 @@ static void add_contour(rast *r, const long *x, const long *y, const unsigned ch
         add_line(r, cx, cy, sx, sy);
 }
 
+/* grid fit for tall-pixel fills (ttf_render_fit): the straight edges of a
+ * glyph (two on-curve points in a row with one coordinate) go to pixel
+ * boundaries, so a stem covers whole pixels rather than two half-covered
+ * ones; distinct edges stay at least 1 px apart. v is one axis of every
+ * point, 26.6. Every point sharing an edge's coordinate moves with it.
+ * Curves, diagonals and the points between are left where the scale put
+ * them. */
+#define SNAP_MAX 32
+unsigned long ttf_snap_runs; /* glyphs the fit touched (tests' sentinel) */
+
+static void snap_axis(long *v, const unsigned char *fl, const unsigned char *g, int nc, long npts)
+{
+    long val[SNAP_MAX], out[SNAP_MAX], t;
+    int n = 0, c, i, j, start = 0;
+    for (c = 0; c < nc; c++) {
+        int end = (int)be16(g + 10 + c * 2);
+        if (end < start || (long)end >= npts)
+            return;
+        for (i = start; i <= end; i++) {
+            int k = i == end ? start : i + 1;
+            if (k != i && (fl[i] & 1) && (fl[k] & 1) && v[i] == v[k]) {
+                for (j = 0; j < n && val[j] != v[i]; j++)
+                    ;
+                if (j == n) {
+                    if (n == SNAP_MAX)
+                        return; /* too many edges: leave the axis as scaled */
+                    for (j = n++; j > 0 && val[j - 1] > v[i]; j--)
+                        val[j] = val[j - 1];
+                    val[j] = v[i];
+                }
+            }
+        }
+        start = end + 1;
+    }
+    for (i = 0; i < n; i++) {
+        t = (val[i] + SUB / 2) & ~(long)(SUB - 1); /* nearest boundary */
+        if (i && t <= out[i - 1])
+            t = out[i - 1] + SUB;
+        out[i] = t;
+    }
+    for (i = 0; i < npts; i++)
+        for (j = 0; j < n; j++)
+            if (v[i] == val[j]) {
+                v[i] = out[j];
+                break;
+            }
+}
+
 static int draw_simple(ttf_font *f, rast *r, const unsigned char *g, unsigned long len, int nc,
                        const xform *t)
 {
@@ -590,6 +639,11 @@ static int draw_simple(ttf_font *f, rast *r, const unsigned char *g, unsigned lo
         }
         x[i] = r->ox + scale(fx, r->xs);
         y[i] = r->by - scale(fy, r->ys);
+    }
+    if (r->snap) {
+        snap_axis(x, fl, g, nc, npts);
+        snap_axis(y, fl, g, nc, npts);
+        ttf_snap_runs++;
     }
     for (c = 0, start = 0; c < nc; c++) {
         int end = (int)be16(g + 10 + c * 2);
@@ -704,6 +758,12 @@ static int draw_glyph(ttf_font *f, rast *r, unsigned gid, const xform *t, int de
 int ttf_render(ttf_font *f, unsigned gid, long xscale, long yscale, int ox, int baseline,
                unsigned char *cov, int w, int h)
 {
+    return ttf_render_fit(f, gid, xscale, yscale, ox, baseline, cov, w, h, 0);
+}
+
+int ttf_render_fit(ttf_font *f, unsigned gid, long xscale, long yscale, int ox, int baseline,
+                   unsigned char *cov, int w, int h, int snap)
+{
     static const xform id = { 16384, 0, 0, 16384, 0, 0 };
     unsigned long need, i;
     rast r;
@@ -728,6 +788,7 @@ int ttf_render(ttf_font *f, unsigned gid, long xscale, long yscale, int ox, int 
     r.stride = w + 2;
     r.xs = xscale;
     r.ys = yscale;
+    r.snap = snap;
     r.ox = (long)ox * SUB;
     r.by = (long)baseline * SUB;
     if ((err = draw_glyph(f, &r, gid, &id, 0)) != TTF_OK)
@@ -820,6 +881,7 @@ void ttf_place(const ttf_font *f, unsigned gid, int how, int w, int h, int base,
     long adv = ttf_advance(f, gid), line = (long)f->asc - f->desc;
     if (adv < 1)
         adv = f->upem;
+    out->snap = how == TTF_FILL && rx != ry;
     if (how == TTF_FILL) {
         /* the advance across the span, the line (ascender to descender)
          * down it: the glyph's design cell on the screen's cell, whatever
