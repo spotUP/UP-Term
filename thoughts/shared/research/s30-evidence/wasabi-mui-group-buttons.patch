@@ -1,0 +1,110 @@
+From 945df75d5e539eead03955bd537b5790cd0e729d Mon Sep 17 00:00:00 2001
+From: spotUP <retroranksmail@gmail.com>
+Date: Wed, 28 Oct 2026 20:37:14 +0100
+Subject: [PATCH] wasabid: list clicked MUI groups as buttons
+
+A Group.mui with an input mode (a framed group holding an image and a
+Text, used as a button) was only walked as a container, so its Text
+showed up as a label and the button itself was missing. Emit the group
+as button/toggle, labelled with its first Text, else MUIA_ShortHelp.
+---
+ CHANGELOG.md |  5 +++++
+ wasabid.c    | 47 +++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 52 insertions(+)
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index d9e6b7f..9c05b25 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -12,6 +12,11 @@ files on the [releases page](https://github.com/creep-ltx/wasabi/releases).
+   is now labelled from its tooltip, so `uitree` lists it as a named
+   `button` or `toggle` instead of an empty one. The tooltip is read
+   with `GetAttr(MUIA_ShortHelp)`, which muimaster 19.31 and 19.35 answer.
++- **MUI buttons made of a group:** a Group.mui that is clicked (a
++  framed group holding an image and a Text, as some programs make their
++  buttons) is now listed as one `button` or `toggle`, labelled with its
++  Text, or its tooltip when it has no Text, instead of only its Text
++  child as a `label`.
+ 
+ ## 0.11b3 - 28 October 2026
+ 
+diff --git a/wasabid.c b/wasabid.c
+index 2479a55..c56781c 100644
+--- a/wasabid.c
++++ b/wasabid.c
+@@ -3695,6 +3695,34 @@ static BOOL ui_aalist_rows(Object *o, ULONG count, struct UiItem *list,
+  */
+ #define AAT_CONTENTS (0x80000000UL + 0x53410001UL)
+ 
++
++/* The text of the first Text.mui inside a group (a button made of a
++ * group holds its label that way, often beside an image). */
++static BOOL ui_mui_group_text(Object *o, int depth, char *out, LONG sz)
++{
++    struct List *l = NULL;
++    struct Node *n;
++    ULONG v = 0;
++    int k = 0;
++
++    if (depth > 4 || !ui_obj_ok(o) || !ui_class_is(o, "Area.mui"))
++        return FALSE;
++    if (ui_class_is(o, "Text.mui")) {
++        if (GetAttr(MUIA_Text_Contents, o, &v))
++            ui_mui_text((const UBYTE *)v, out, sz);
++        return out[0] != '\0';
++    }
++    if (!ui_class_is(o, "Group.mui") ||
++        !GetAttr(MUIA_Group_ChildList, o, (ULONG *)&l) || !ui_readable(l))
++        return FALSE;
++    for (n = l->lh_Head; ui_readable(n) && n->ln_Succ && k < 20;
++         n = n->ln_Succ, k++)
++        if (ui_mui_group_text((Object *)((struct _Object *)n + 1),
++                              depth + 1, out, sz))
++            return TRUE;
++    return FALSE;
++}
++
+ static BOOL ui_mui_walk(Object *o, int depth, struct MuiWalk *mw)
+ {
+     struct UiItem it;
+@@ -3738,11 +3766,29 @@ static BOOL ui_mui_walk(Object *o, int depth, struct MuiWalk *mw)
+     } else if (ui_class_is(o, "Group.mui")) {
+         struct List *l = NULL;
+         struct Node *n;
++        ULONG gmode = 0;
+         int k = 0;
+         if (it.w <= 0 || it.h <= 0)
+             return TRUE;                 /* a page not shown: nor are its
+                                           * children, and they would use
+                                           * up the 400 */
++        if (g_muimaster)
++            gmode = mui3_input_mode(o);
++        else
++            GetAttr(MUIA_InputMode, o, &gmode);
++        if (gmode) {
++            /* A button made of a group (a frame, an image, a Text): the
++             * group is the thing that is clicked, so it is the item and
++             * its children are not. Its label is the Text's, else the
++             * tooltip (an icon-only button has just that). */
++            it.kind = gmode == 3 ? "toggle" : "button";
++            if (!ui_mui_group_text(o, 0, it.label, sizeof(it.label)) &&
++                mui_short_help(o, &v))
++                ui_mui_text((const UBYTE *)v, it.label, sizeof(it.label));
++            if (GetAttr(MUIA_Selected, o, &v) && v)
++                it.selected = TRUE;
++            goto emit;
++        }
+         if (!GetAttr(MUIA_Group_ChildList, o, (ULONG *)&l) ||
+             !ui_readable(l))
+             return TRUE;
+@@ -3787,6 +3833,7 @@ static BOOL ui_mui_walk(Object *o, int depth, struct MuiWalk *mw)
+             return mw_emit(mw, &it);
+         }
+     }
++emit:
+     if (it.w <= 0 || it.h <= 0)
+         return TRUE;                     /* hidden: a page not shown */
+     /* A control MUI lays out after its Label: string, cycle, slider,
+-- 
+2.50.1 (Apple Git-155)
+
