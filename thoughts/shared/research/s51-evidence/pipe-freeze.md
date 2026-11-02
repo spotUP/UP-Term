@@ -106,3 +106,38 @@ NOT the cause of these cases: orphan paths run only when mn_ReplyPort == 0 (orph
    whether shutdown runs while the master Close is still outstanding).
 2. Same run with a non-ixemul last stage (echo_cat) to split handler bug vs ixemul packet.
 3. Stack 262144 probe (memory rule) not run yet.
+
+## Hunt 3 (rig 83, 2026-11-02) - not fixed, handler cleared for this capture
+
+Build: main fe7bdb7c merged (4323352f), pty-handler `make DEBUG=1` (PTY_DEBUG serial TR on every packet and
+reply, plus new TR points `end` (pair|master, masters<<16|slaves), `free`, `freed`, `exit`), normal vsh.
+Run: `vshpipe_rig.py`, first round. Raw handler trace: `pipe-freeze-hunt3-trace.log` (49 lines).
+
+### Result: froze in printf_wc, with the handler idle
+- echo_wc passed: FINDOUTPUT, FINDINPUT, WRITE 5 + WRITE 1 (write end), END write end (masters 1,
+  slaves 0), then on the read end SEEK, EXAMINE_FH, SEEK, SEEK, PARENT_FH (all refused, ixemul fstat
+  probing), READ 6, READ 0, END (masters 0, slaves 0), `free` (no waits, no queued writes), `freed`.
+  No `exit`: the next case's Open was already queued on the handler port (correct).
+- printf_wc: same sequence up to and including the PARENT_FH reply (WRITE 4, END write end, SEEK,
+  EXAMINE_FH, SEEK, SEEK, PARENT_FH). Then nothing: no READ ever reached the handler, the machine froze
+  (wasabid "did not answer for 15 s"), at 22:09.
+- So at the freeze the handler had replied every packet it was sent, had no queued read, write or
+  WAIT_CHAR for this pair, and had not run END, free_pair or the shutdown path for it. The
+  ACTION_END / free_pair / handler-exit race suspected in Hunt 2 is not what froze this run.
+- Code read of the same paths found no reply-after-free, double reply, unbalanced Forbid, or spin:
+  service() only loops when a packet was replied (every reply is traced), END replies before
+  free_pair, free_pair answers waits and stray port messages before FreeVec, and the exit runs
+  only with the port list empty under Forbid.
+
+### Where the freeze is now
+Between wc's (ixemul, dist/gg coreutils) ParentOfFH on its stdin and its first Read: inside wc's
+startup or in another task running at that moment (the printf subshell has just ended its write end
+and is exiting; vsh main is in os_wait). Hunt 2 caught the same pipeline one step later (wc rc 1, then
+vsh's Close hung): both runs point at the wc/subshell-exit window, not at a handler packet.
+
+### Next probes, in order
+1. Stack 262144 run of the same suite (memory rule, still not run).
+2. wasabi `snoop --task` for wc and the vsh subshell across the freeze window (`--entry` so a call that
+   never returns shows), plus vsh TR around subshell exit/job_free: which task makes the last call.
+3. A non-ixemul last stage (no coreutils): e.g. a small vbcc reader in tools/rig, to split ixemul from vsh.
+4. Fix the latent job_free/pipe_tab use-after-free (Hunt 2) regardless; then retest.
