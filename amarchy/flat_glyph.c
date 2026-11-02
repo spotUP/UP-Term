@@ -203,7 +203,9 @@ int flat_clone_draw(const flat_state *s, unsigned long which, unsigned long meth
         return FLAT_CLONE_NO;
     state = flat_glyph_state(ids);
     memset(grid, 0, (size_t)(w * h));
-    if (!render(rctx, ids, grid, w, h) || flat_clone_map(grid, w, h, map) < 0)
+    /* No glyph pixel is a failed clone, not a plain box: OS 3.2's sysiclass returns 1 from IM_DRAW for the window gadgets
+     * yet puts nothing in our offscreen rastport, and drawing that empty map painted the active close/depth/zoom boxes solid. */
+    if (!render(rctx, ids, grid, w, h) || flat_clone_map(grid, w, h, map) <= 0)
         return FLAT_CLONE_FAIL;
     flat_glyph_roles(which, state, &grole, &brole);
     gpen = grole == FLAT_ROLE_TEXT && text_pen >= 0 ? text_pen : flat_clone_pen(s, grole, frame_pen);
