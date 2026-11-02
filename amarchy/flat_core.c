@@ -500,7 +500,7 @@ int flat_scroller_pen(const flat_state *s, int depth, int cx, int cy, int cw, in
         ky = cy + (int)(((unsigned long)vpot * (unsigned long)(ch - kh)) / 0xFFFFUL);
     }
     if (x0 >= kx && x1 < kx + kw && y0 >= ky && y1 < ky + kh)
-        return flat_outline_of_depth(s, depth) ? s->pen_outline : flat_button_pen(s, depth);
+        return (depth >= 3 && depth <= 8 && s->pen_dimtext && s->pen_dimtext < (1 << depth)) ? s->pen_dimtext : flat_button_pen(s, depth);   /* KNOB-MUTED: the theme muted text pen (DK_MUTED), flat_button_pen under 8 colours */
     return s->pen_back;
 }
 
