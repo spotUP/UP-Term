@@ -1319,3 +1319,74 @@ static void dk_orig_off(unsigned desk_mask, int flat)
         dk_orig_forget(env[i]);
     DeleteFile((STRPTR)DK_ORIG);   /* the directory, once empty */
 }
+
+/* S31-START-APPLY (rig 55, 2026-11-02): Amarchy's start makes ENV: match the prefs it starts with, the same writes a theme pick makes
+ * (dk_flat_pens, the theme backdrop of dk_apply, dk_wbborder) but only the parts desk_start_plan finds stale, so a start where ENV: already
+ * matches runs no editor and no IPrefs reset. No confirm requester: nothing changed by hand here, and a timeout must not revert prefs the user
+ * set. The originals are saved first (dk_orig_save), so turning the look off still restores the user's own files. */
+unsigned long desk_dos_start_plans, desk_dos_start_writes;
+
+int desk_dos_start_apply(void)
+{
+    static unsigned char wb[DK_BUF], pat[DK_BUF], out[DK_BUF];
+    am_prefs ap;
+    gtheme th;
+    unsigned mask, plan;
+    unsigned char sv[2];
+    int flat, depth, saved = -1, gsaved = -1, was;
+    unsigned long idle = 0;
+    long wblen, patlen, len;
+    amconf_load(&ap);
+    mask = amconf_desk_mask(&ap);
+    flat = amconf_desk_flat_pens(&ap);
+    if (!mask && !flat)
+        return 0;
+    gt_dos_load_current(&th);
+    depth = dk_screen_depth();
+    if (depth > 3)
+        depth = 3;
+    if (dk_read(DK_WBB_PREV, sv, 2) == 1)
+        saved = sv[0] - '0';
+    if (dk_read(DK_WBG_PREV, sv, 2) == 1)
+        gsaved = sv[0] - '0';
+    wblen = dk_read("ENV:Sys/Workbench.prefs", wb, sizeof wb);
+    if (wblen < 0)
+        wblen = dk_read("ENVARC:Sys/Workbench.prefs", wb, sizeof wb);
+    patlen = dk_read("ENV:Sys/wbpattern.prefs", pat, sizeof pat);
+    plan = desk_start_plan(mask, flat, dk_wbborder_editor_ok(), wb, wblen, saved, gsaved, &th, depth, pat, patlen);
+    desk_dos_start_plans++;
+    am_sentinel("AMARCHY_DESK_START_PLAN", (long)plan);
+    dk_live_want = 0;
+    /* rig 56: the start writes made IPrefs reset the Workbench screen with the bar open ("Intuition is attempting to reset the
+     * Workbench screen. Please close the..."), so our windows close around them, as dk_apply closes them around a reset. With
+     * plan 0 the palette already matches (a fresh ENV: always plans the WB bit when flat), so dk_flat_pens writes nothing. */
+    was = -1;
+    if (plan) {
+        idle = dk_iprefs_idle_mask();
+        desk_dos_wb_closes++;
+        was = dk_windows_close();
+    }
+    if (flat)
+        dk_flat_pens(&th);   /* idempotent: writes palette / own backdrop only when they differ */
+    if (plan & DESK_START_PATTERN) {
+        len = desk_wbpattern(&th, depth, patlen > 0 ? pat : 0, patlen > 0 ? patlen : 0, out, sizeof out);
+        dk_orig_save(1u << DT_WBPATTERN, 0);
+        UnLock(CreateDir((STRPTR)DK_WORK));
+        if (dk_put("WBPattern", DK_WORK "/wbpattern.prefs", out, len))
+            desk_dos_start_writes++;
+    }
+    if (plan & DESK_START_WB) {
+        dk_wbborder();
+        desk_dos_start_writes++;
+        if (!dk_pending_mask())
+            DeleteFile((STRPTR)DK_WBPEND);   /* no confirm owns the Workbench.prefs snapshot */
+    }
+    if (plan) {
+        dk_wait_iprefs(idle);
+        dk_windows_open(was);
+    }
+    if (dk_live_want)
+        dk_live_pens(dk_live_want > 0 ? &th : 0, dk_live_flat);
+    am_sentinel("AMARCHY_DESK_START_WRITES", (long)desk_dos_start_writes);
+    return (int)plan;
+}
