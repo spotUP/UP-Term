@@ -824,8 +824,7 @@ def _main(dest=None):
     rc, out = run('GetEnv TERMINFO')
     check(rc == 0 and out.strip() == terminfo_before, 'after Uninstall: the TERMINFO from before Install is back', out)
     rc, out = run('Type S:User-Startup')
-    judged = lambda t: without_rig_blocks(t.encode('latin-1')).decode('latin-1')   # the rig's own block is not Install's
-    check(judged(out) == judged(startup_before), 'after Uninstall: S:User-Startup as it was, byte for byte',
+    check(rig_blocks_out(out) == rig_blocks_out(startup_before),   # the rig's own block is not Install's 'after Uninstall: S:User-Startup as it was, byte for byte',
           'differs: %r vs %r' % (out[-80:], startup_before[-80:]))
     if not gg_before:
         check(run('Assign >NIL: GG: EXISTS')[0] != 0, 'after Uninstall: no GG: (Install made it)')
