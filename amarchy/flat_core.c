@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "flat_core.h"
+#include "gthemes_core.h"
 #include "../device/romspan.h"
 
 void flat_init(flat_state *s)
@@ -432,6 +433,18 @@ int flat_dimtext_pen(const flat_state *s, int depth)
     return s->pen_text;
 }
 
+unsigned long flat_knob_colour(unsigned long surface, unsigned long muted)
+{
+    return (unsigned long)gt_scale((uc_u32)surface, 100 - FLAT_KNOB_PCT) + (unsigned long)gt_scale((uc_u32)muted, FLAT_KNOB_PCT);
+}
+
+int flat_knob_pen(const flat_state *s, int depth)
+{
+    if (depth >= 4 && depth <= 8 && s->pen_knob && s->pen_knob < (1 << depth))
+        return s->pen_knob;
+    return flat_dimtext_ok(s, depth) ? s->pen_dimtext : flat_button_pen(s, depth);   /* KNOB-MUTED: the theme muted text pen (DK_MUTED), flat_button_pen under 8 colours */
+}
+
 const flat_gbox *flat_gh_match(const flat_state *s, const flat_gh *g, const void *surf, const void *task, int ptsz, int x0, int y0, int x1, int y1)
 {
     int i;
@@ -506,7 +519,7 @@ int flat_scroller_pen(const flat_state *s, int depth, int cx, int cy, int cw, in
         ky = cy + (int)(((unsigned long)vpot * (unsigned long)(ch - kh)) / 0xFFFFUL);
     }
     if (x0 >= kx && x1 < kx + kw && y0 >= ky && y1 < ky + kh)
-        return flat_dimtext_ok(s, depth) ? s->pen_dimtext : flat_button_pen(s, depth);   /* KNOB-MUTED: the theme muted text pen (DK_MUTED), flat_button_pen under 8 colours */
+        return flat_knob_pen(s, depth);
     return s->pen_back;
 }
 

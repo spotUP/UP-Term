@@ -743,6 +743,7 @@ static void print_status(void)
         if (ipd_status_line(line, sizeof line)) {
             int n = (int)strlen(line);
             put_word(line, &n, " dim=");  put_num(line, &n, copy.pen_dim);
+            put_word(line, &n, " knob=");  put_num(line, &n, copy.pen_knob);
             line[n] = 0;
             PutStr((STRPTR)line);
             PutStr((STRPTR)"\n");
@@ -1052,6 +1053,9 @@ static int boot_wanted(void)
  * (flat_dim_pen then falls back to the plain button pen). */
 #define DIM_PCT 60
 static LONG g_dim_pen = -1;
+/* KNOB-PEN: the scroller knob pen, obtained the same way from 16 colours up (a 3 plane screen has no free pen: pen_knob stays 0 and
+ * flat_knob_pen answers DK_MUTED). Colour = the surface pen moved FLAT_KNOB_PCT percent toward the muted text pen (flat_knob_colour). */
+static LONG g_knob_pen = -1;
 
 static void dim_refresh(flatshared *r)
 {
@@ -1062,6 +1066,22 @@ static void dim_refresh(flatshared *r)
             ReleasePen(cm, (ULONG)g_dim_pen);
             g_dim_pen = -1;
             r->st.pen_dim = 0;
+        }
+        if (g_knob_pen >= 0) {
+            ReleasePen(cm, (ULONG)g_knob_pen);
+            g_knob_pen = -1;
+            r->st.pen_knob = 0;
+        }
+        if (cm && scr->RastPort.BitMap && scr->RastPort.BitMap->Depth >= 4 && r->st.pen_dimtext) {
+            ULONG a[3], b[3];
+            uc_u32 c;
+            GetRGB32(cm, (ULONG)r->st.pen_back, 1, a);
+            GetRGB32(cm, (ULONG)r->st.pen_dimtext, 1, b);
+            c = (uc_u32)flat_knob_colour(((a[0] >> 24) << 16) | ((a[1] >> 24) << 8) | (a[2] >> 24), ((b[0] >> 24) << 16) | ((b[1] >> 24) << 8) | (b[2] >> 24));
+            g_knob_pen = ObtainBestPen(cm, ((c >> 16) & 0xff) * 0x01010101UL, ((c >> 8) & 0xff) * 0x01010101UL, (c & 0xff) * 0x01010101UL,
+                                       OBP_Precision, PRECISION_GUI, OBP_FailIfBad, FALSE, TAG_DONE);
+            if (g_knob_pen >= 0)
+                r->st.pen_knob = (UBYTE)g_knob_pen;
         }
         if (cm && scr->RastPort.BitMap && scr->RastPort.BitMap->Depth >= 3) {
             ULONG rgb[3];
@@ -1079,13 +1099,18 @@ static void dim_refresh(flatshared *r)
 
 static void dim_release(flatshared *r)
 {
-    struct Screen *scr = g_dim_pen >= 0 ? ipd_lock_wb_screen() : NULL;
+    struct Screen *scr = (g_dim_pen >= 0 || g_knob_pen >= 0) ? ipd_lock_wb_screen() : NULL;
     r->st.pen_dim = 0;
+    r->st.pen_knob = 0;
     if (scr) {
-        ReleasePen(scr->ViewPort.ColorMap, (ULONG)g_dim_pen);
+        if (g_dim_pen >= 0)
+            ReleasePen(scr->ViewPort.ColorMap, (ULONG)g_dim_pen);
+        if (g_knob_pen >= 0)
+            ReleasePen(scr->ViewPort.ColorMap, (ULONG)g_knob_pen);
         UnlockPubScreen(NULL, scr);
     }
     g_dim_pen = -1;
+    g_knob_pen = -1;
 }
 
 int main(void)
