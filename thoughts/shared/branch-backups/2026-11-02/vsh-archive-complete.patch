@@ -1,0 +1,222 @@
+# branch vsh/archive-complete tip b8a24a48ecdff2d3f2ece1c4f550da6c0c67bcdb
+From 03b1a3e53920beef21024ec480a46cba7d5478a8 Mon Sep 17 00:00:00 2001
+From: spotUP <retroranksmail@gmail.com>
+Date: Mon, 26 Oct 2026 01:53:57 +0100
+Subject: [PATCH 1/2] vshrc: archivers complete only their own archives (-F
+ filter plus -o plusdirs, case-insensitive), so lha x H<Tab> offers the .lha
+ and not the drawer beside it
+
+---
+ Makefile                     |  1 +
+ dist/vshrc                   | 26 ++++++++++++++++++++++
+ tests/test_vshrc_complete.py | 43 ++++++++++++++++++++++++++++++++++++
+ 3 files changed, 70 insertions(+)
+ create mode 100644 tests/test_vshrc_complete.py
+
+diff --git a/Makefile b/Makefile
+index dc0a30e7..3461beed 100644
+--- a/Makefile
++++ b/Makefile
+@@ -161,6 +161,7 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
+ 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = hl ]; then python3 tests/test_hl_plain.py; fi
+ 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = vshrc_net ]; then python3 tests/test_vshrc_net.py; fi
+ 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = vshrc_editor ]; then python3 tests/test_vshrc_editor.py; fi
++	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = vshrc_complete ]; then python3 tests/test_vshrc_complete.py; fi
+ 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = tutorial ]; then python3 tests/test_tutorial.py; fi
+ 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = tutorial ]; then python3 tests/test_tutorial_lessons.py; fi
+ 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = tutorial ]; then python3 tests/test_tutorial_wiring.py; fi
+diff --git a/dist/vshrc b/dist/vshrc
+index de3b56a5..0b2dcae8 100644
+--- a/dist/vshrc
++++ b/dist/vshrc
+@@ -126,6 +126,32 @@ export EDITOR
+ alias ls='ls --color=auto'
+ alias ll='ls -l'
+ 
++# Archivers complete only their own archives (bash's complete -f -X '!pattern'
++# for lha, unzip, tar ...): "lha x H<Tab>" in a drawer holding HiP/ and
++# HiP.lha offers HiP.lha. Drawers stay offered (-o plusdirs) so a Tab can
++# walk into one to reach an archive. The match ignores case (.LHA, .lha).
++# vsh's complete has no -X, so one -F function does the filtering.
++_archive_match() {
++    case $1 in
++    lha) case $2 in *.[lL][hH][aA]|*.[lL][zZ][hH]|*.[lL][zZ][xX]) return 0 ;; esac ;;
++    lzx) case $2 in *.[lL][zZ][xX]) return 0 ;; esac ;;
++    unzip) case $2 in *.[zZ][iI][pP]) return 0 ;; esac ;;
++    tar) case $2 in *.[tT][aA][rR]|*.[tT][gG][zZ]|*.[tT][aA][rR].[gG][zZ]|*.[tT][aA][rR].[bB][zZ]2|*.[tT][aA][rR].[xX][zZ]) return 0 ;; esac ;;
++    gunzip) case $2 in *.[gG][zZ]|*.[tT][gG][zZ]) return 0 ;; esac ;;
++    unxz) case $2 in *.[xX][zZ]|*.[tT][xX][zZ]) return 0 ;; esac ;;
++    esac
++    return 1
++}
++_archive_complete() {
++    local f
++    COMPREPLY=()
++    for f in $(compgen -f -- "$2"); do
++        [ -d "$f" ] && continue
++        _archive_match "$1" "$f" && COMPREPLY[${#COMPREPLY[@]}]=$f
++    done
++}
++complete -F _archive_complete -o plusdirs lha lzx unzip tar gunzip unxz
++
+ # hl and mdv (UP-Term:bin, see the README): a source in colour with
+ # line numbers (hl file.c; to a pipe or a file it is plain cat), Markdown
+ # formatted for the window (mdv README.md). hlp and mdp page them: less -R
+diff --git a/tests/test_vshrc_complete.py b/tests/test_vshrc_complete.py
+new file mode 100644
+index 00000000..8f4c249c
+--- /dev/null
++++ b/tests/test_vshrc_complete.py
+@@ -0,0 +1,43 @@
++#!/usr/bin/env python3
++"""Archive completion rules of dist/vshrc. vsh's complete has no -X, so one -F
++function (_archive_complete) keeps only the archives the command reads, and
++-o plusdirs keeps drawers offered: "lha x H<Tab>" in a drawer holding HiP/ and
++HiP.lha offers only HiP.lha. The real dist/vshrc is sourced by the host vsh
++(build/vsh_host). The rig half: lha x H + Tab on rig 8 (2026-10-26)."""
++import os, subprocess, tempfile, unittest
++
++ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
++VSH = os.path.join(ROOT, 'build', 'vsh_host')
++VSHRC = os.path.join(ROOT, 'dist', 'vshrc')
++CMDS = ('lha', 'lzx', 'unzip', 'tar', 'gunzip', 'unxz')
++
++
++@unittest.skipUnless(os.path.exists(VSH), 'build/vsh_host missing (make build/vsh_host)')
++class ArchiveComplete(unittest.TestCase):
++    def run_vsh(self, script, files=()):
++        with tempfile.TemporaryDirectory() as d:
++            os.mkdir(os.path.join(d, 'HiP-spot-cfec68a'))
++            for f in files:
++                open(os.path.join(d, f), 'w').close()
++            p = subprocess.run([VSH, '-c', '. %s >/dev/null 2>&1; %s' % (VSHRC, script)], cwd=d,
++                               stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30)
++        return p.stdout
++
++    def test_every_archiver_has_the_rule_with_plusdirs(self):
++        out = self.run_vsh('complete -p')
++        for c in CMDS:
++            self.assertIn('complete -o plusdirs -F _archive_complete %s\n' % c, out)
++
++    def test_only_archives_of_the_command_are_offered_in_any_case(self):
++        files = ('HiP-spot-cfec68a.lha', 'Hx.LHA', 'Hz.txt', 'Ht.tar.gz')
++        reply = lambda c: self.run_vsh('_archive_complete %s H x; echo "${COMPREPLY[@]}"' % c, files).split()
++        self.assertEqual(reply('lha'), ['HiP-spot-cfec68a.lha', 'Hx.LHA'])
++        self.assertEqual(reply('tar'), ['Ht.tar.gz'])
++        self.assertEqual(reply('unzip'), [])
++
++    def test_a_command_without_a_rule_keeps_the_default(self):
++        self.assertNotIn('echo', self.run_vsh('complete -p'))
++
++
++if __name__ == '__main__':
++    unittest.main()
+-- 
+2.50.1 (Apple Git-155)
+
+
+From b8a24a48ecdff2d3f2ece1c4f550da6c0c67bcdb Mon Sep 17 00:00:00 2001
+From: spotUP <retroranksmail@gmail.com>
+Date: Mon, 26 Oct 2026 02:02:20 +0100
+Subject: [PATCH 2/2] vshrc: the archive rules offer drawers only when no
+ archive matches, so Tab ends on the .lha; README: auto-cd and the archive
+ completion rules
+
+---
+ dist/README.txt              |  7 +++++++
+ dist/vshrc                   | 11 +++++++----
+ tests/test_vshrc_complete.py |  8 ++++----
+ 3 files changed, 18 insertions(+), 8 deletions(-)
+
+diff --git a/dist/README.txt b/dist/README.txt
+index e85301c9..bd4f7766 100644
+--- a/dist/README.txt
++++ b/dist/README.txt
+@@ -419,6 +419,9 @@ VSH (the shell)
+   compopt as in bash; Tab in an XCON: window asks vsh for the words.
+   COMP_WORDS splits at blanks, " and = only (bash also at :, which would cut
+   an Amiga path in two); -G -X -P -S -D -E -I are not there.
++  The vshrc completes lha, lzx, unzip, tar, gunzip and unxz with their own
++  archives only (any case); drawers appear when none matches. To change a
++  rule, in $HOME/.vshrc:  complete -r lha  and then your own  complete ... lha
+   Keys: bind and an .inputrc ($INPUTRC, else $HOME/.inputrc) set the
+   window's line editor: set editing-mode vi|emacs, and "\C-x" / "\M-x" /
+   Control-x / Meta-x bound to one of the 19 functions bind -l lists (no
+@@ -431,6 +434,10 @@ VSH (the shell)
+   CDPATH is a list of directories in Unix form (/RAM/work:/Work/src), as PATH
+   is: a volume name (RAM:work) holds a colon, which splits the entry, so it
+   cannot be listed. cd and pushd themselves take either form.
++  A bare directory word runs cd on it, as in the AmigaDOS Shell and zsh
++  AUTO_CD: ram:  or  sys:c  or  ..  or  src  alone changes directory. A
++  program, builtin or function of that name wins, and a word that is
++  neither says  vsh: nosuchdir:: not found.
+   Process substitution goes through a file in T: (T:vsh-ps-...; RAM: without
+   T:), which native commands and ixemul programs both open: <(cmd) runs cmd
+   to its end before the command starts, so the two do not run at the same
+diff --git a/dist/vshrc b/dist/vshrc
+index 0b2dcae8..087601d7 100644
+--- a/dist/vshrc
++++ b/dist/vshrc
+@@ -128,9 +128,11 @@ alias ll='ls -l'
+ 
+ # Archivers complete only their own archives (bash's complete -f -X '!pattern'
+ # for lha, unzip, tar ...): "lha x H<Tab>" in a drawer holding HiP/ and
+-# HiP.lha offers HiP.lha. Drawers stay offered (-o plusdirs) so a Tab can
+-# walk into one to reach an archive. The match ignores case (.LHA, .lha).
+-# vsh's complete has no -X, so one -F function does the filtering.
++# HiP.lha offers HiP.lha. Only when no archive matches are the drawers
++# offered, so a Tab can walk into one to reach an archive (bash's -o plusdirs
++# would always add them, and Tab would stop at the drawer's name). The match
++# ignores case (.LHA, .lha). vsh's complete has no -X, so one -F function
++# does the filtering.
+ _archive_match() {
+     case $1 in
+     lha) case $2 in *.[lL][hH][aA]|*.[lL][zZ][hH]|*.[lL][zZ][xX]) return 0 ;; esac ;;
+@@ -149,8 +151,9 @@ _archive_complete() {
+         [ -d "$f" ] && continue
+         _archive_match "$1" "$f" && COMPREPLY[${#COMPREPLY[@]}]=$f
+     done
++    [ ${#COMPREPLY[@]} -eq 0 ] && COMPREPLY=($(compgen -d -- "$2"))
+ }
+-complete -F _archive_complete -o plusdirs lha lzx unzip tar gunzip unxz
++complete -F _archive_complete lha lzx unzip tar gunzip unxz
+ 
+ # hl and mdv (UP-Term:bin, see the README): a source in colour with
+ # line numbers (hl file.c; to a pipe or a file it is plain cat), Markdown
+diff --git a/tests/test_vshrc_complete.py b/tests/test_vshrc_complete.py
+index 8f4c249c..63d6d10d 100644
+--- a/tests/test_vshrc_complete.py
++++ b/tests/test_vshrc_complete.py
+@@ -1,7 +1,7 @@
+ #!/usr/bin/env python3
+ """Archive completion rules of dist/vshrc. vsh's complete has no -X, so one -F
+ function (_archive_complete) keeps only the archives the command reads, and
+--o plusdirs keeps drawers offered: "lha x H<Tab>" in a drawer holding HiP/ and
++the drawers are offered only when no archive matches: "lha x H<Tab>" in a drawer holding HiP/ and
+ HiP.lha offers only HiP.lha. The real dist/vshrc is sourced by the host vsh
+ (build/vsh_host). The rig half: lha x H + Tab on rig 8 (2026-10-26)."""
+ import os, subprocess, tempfile, unittest
+@@ -23,17 +23,17 @@ class ArchiveComplete(unittest.TestCase):
+                                stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30)
+         return p.stdout
+ 
+-    def test_every_archiver_has_the_rule_with_plusdirs(self):
++    def test_every_archiver_has_the_rule(self):
+         out = self.run_vsh('complete -p')
+         for c in CMDS:
+-            self.assertIn('complete -o plusdirs -F _archive_complete %s\n' % c, out)
++            self.assertIn('complete -F _archive_complete %s\n' % c, out)
+ 
+     def test_only_archives_of_the_command_are_offered_in_any_case(self):
+         files = ('HiP-spot-cfec68a.lha', 'Hx.LHA', 'Hz.txt', 'Ht.tar.gz')
+         reply = lambda c: self.run_vsh('_archive_complete %s H x; echo "${COMPREPLY[@]}"' % c, files).split()
+         self.assertEqual(reply('lha'), ['HiP-spot-cfec68a.lha', 'Hx.LHA'])
+         self.assertEqual(reply('tar'), ['Ht.tar.gz'])
+-        self.assertEqual(reply('unzip'), [])
++        self.assertEqual(reply('unzip'), ['HiP-spot-cfec68a'])  # no archive: the drawer, to walk into
+ 
+     def test_a_command_without_a_rule_keeps_the_default(self):
+         self.assertNotIn('echo', self.run_vsh('complete -p'))
+-- 
+2.50.1 (Apple Git-155)
+

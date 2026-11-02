@@ -1,0 +1,1193 @@
+# branch feature/amissl-bundle tip a90d01ba4dba1c48da3d45a1f6954e39d82eea52
+From ca488088e2347fd57b22ac7a9810c3a06fde7616 Mon Sep 17 00:00:00 2001
+From: spotUP <retroranksmail@gmail.com>
+Date: Sun, 11 Oct 2026 19:59:47 +0200
+Subject: [PATCH 01/10] WIP: bundle AmiSSL 5.27 (draft patch applied: dist,
+ Install offer, parts, licences); no rig check yet
+
+---
+ Makefile                           |   6 +
+ dist/Install.installer             |  43 ++++++-
+ dist/LICENSES.txt                  |   7 +-
+ dist/README.txt                    |   3 +-
+ dist/amissl/LICENSE-Apache-2.0.txt | 177 +++++++++++++++++++++++++++++
+ dist/parts.txt                     |   1 +
+ 6 files changed, 229 insertions(+), 8 deletions(-)
+ create mode 100644 dist/amissl/LICENSE-Apache-2.0.txt
+
+diff --git a/Makefile b/Makefile
+index 9ea359b4..6e3e9800 100644
+--- a/Makefile
++++ b/Makefile
+@@ -843,6 +843,8 @@ IXNET_LIB ?= $(dir $(IXEMUL_LIB))../../../../ixnet/68020/amigaos/ixnet.library
+ # into build/UP-Term-src.lha, published next to the kit (plan D2)
+ UPTERM_PORTS ?= $(UPTERM_ROOT)/upterm-ports
+ PORTS_KIT ?= $(UPTERM_PORTS)/build/kit/userland
++# AmiSSL 5's official 68k release, bundled unchanged (Files/amissl)
++AMISSL_OS3 ?= vendor/AmiSSL-5.27-OS3.lha
+ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(EMOJI_PAGES)/stamp
+ 	rm -rf $(BUILD)/dist && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
+ 	cd $(BUILD)/kit-terminfo && cp -R [a-z] [0-9]* $(CURDIR)/$(KIT)/Files/terminfo/
+@@ -879,6 +881,10 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
+ 	mkdir -p $(KIT)/Files/unifont && cp $(UNIFONT_PAGES)/[0-9A-F][0-9A-F] $(UNIFONT_PAGES)/1F[0-9A] dist/unifont/OFL-1.1.txt dist/unifont/SOURCE.txt $(KIT)/Files/unifont/
+ 	mkdir -p $(KIT)/Files/emoji && cp $(EMOJI_PAGES)/[0-9A-F][0-9A-F] $(EMOJI_PAGES)/1F[0-9A] dist/emoji/CC-BY-4.0.txt dist/emoji/SOURCE.txt $(KIT)/Files/emoji/
+ 	rm -rf $(KIT)/Files/wasabi && cp -R dist/wasabi $(KIT)/Files/wasabi
++	@# AmiSSL 5.27, the archive as released (Apache 2.0) with its licence beside it; the Installer offers to run its own Install-AmiSSL
++	@test -f $(AMISSL_OS3) || { echo "dist: no $(AMISSL_OS3): gh release download 5.27 -R jens-maus/amissl -p AmiSSL-5.27-OS3.lha -D vendor"; exit 1; }
++	rm -rf $(KIT)/Files/amissl && mkdir -p $(KIT)/Files/amissl && cd $(KIT)/Files/amissl && lha xq $(CURDIR)/$(AMISSL_OS3)
++	cp dist/amissl/LICENSE-Apache-2.0.txt $(KIT)/Files/amissl/
+ 	cp $(BUILD)/amiga/wasabikey $(KIT)/Files/wasabi/
+ 	cp terminfo/vtcon.termcap $(KIT)/Files/termcap.vtcon
+ 	# the top drawer: Install (the Installer script), Uninstall, README, Files
+diff --git a/dist/Install.installer b/dist/Install.installer
+index 9bebc42d..368d8b06 100644
+--- a/dist/Install.installer
++++ b/dist/Install.installer
+@@ -141,8 +141,41 @@
+ (set #emoji "")
+ (set #cpu060 (if (= (database "cpu") "68060") "CPU060" ""))
+ (set #cpu040 (if (= (database "cpu") "68040") "CPU040" ""))
+-; curl is ticked when AmiSSL is there (curl cannot run without it)
+-(set #amissl (exists "LIBS:amisslmaster.library"))
++; The TLS programs (Claude with an API key, curl) were built against AmiSSL
++; 5.27 and open its amissl_v362.library (AMISSL_CURRENT_VERSION), which is
++; what an older AmiSSL lacks. Missing or older: offer AmiSSL's own installer
++; from the kit (Files/amissl, the 5.27 release unchanged); it picks the CPU
++; variant and sets the AmiSSL: assign. Never run without the answer Yes: the
++; default is No, so the Novice level (which takes defaults) does not run it.
++(procedure P_AMISSL_OK
++    (set #amissl (and (exists "LIBS:amisslmaster.library") (exists "LIBS:AmiSSL/amissl_v362.library"))))
++(P_AMISSL_OK)
++(if (not #amissl)
++    (
++        (if (askbool
++                (prompt "AmiSSL 5.27 is not installed (or an older one is).\n"
++                        "Claude with an API key and curl need it for https.\n\n"
++                        "Run AmiSSL's own installer now?")
++                (help "AmiSSL (Apache 2.0, the AmiSSL Open Source Team) is in the kit "
++                      "unchanged, in Files/amissl, with its readme and licence. Its "
++                      "own installer picks the library for your CPU, copies it to "
++                      "LIBS:, and adds the AmiSSL: assign to S:User-Startup; it "
++                      "asks its own questions.\n\nNo: UP-Term installs without "
++                      "it, and Claude (with an API key) and curl will not run "
++                      "until AmiSSL 5.27 is installed.")
++                (choices "Yes, run the AmiSSL installer" "No, continue without AmiSSL")
++                (default 0))
++            (
++                (run (cat (if (exists "C:Installer") "C:Installer" "SYS:Utilities/Installer")
++                          " SCRIPT \"" (tackon #files "amissl/AmiSSL/Install-AmiSSL")
++                          "\" APPNAME AmiSSL"))
++                (P_AMISSL_OK)))
++        (if (not #amissl)
++            (message "Without AmiSSL 5.27 these programs will not work:\n"
++                     "  Claude (https to Anthropic, with an API key)\n"
++                     "  curl\n\n"
++                     "The rest of UP-Term is not affected. Run Files/amissl/AmiSSL/"
++                     "Install-AmiSSL from the kit any time.")))))
+ 
+ (set #net
+     (askoptions
+@@ -154,12 +187,12 @@
+               "one is there.\n\n"
+               "bebboget: https downloads (GPL v3+), by the same author.\n\n"
+               "curl 8.22.0: downloads and transfers (the curl licence). It needs "
+-              "AmiSSL 5 (Aminet util/libs/AmiSSL-v5-OS3.lha), so it is ticked "
+-              "only when AmiSSL is found.\n\n"
++              "AmiSSL 5.27 (bundled; the Installer offered to install it), so it is "
++              "ticked only when AmiSSL is found.\n\n"
+               "Their licences and sources are in the kit's Files/net drawer.")
+         (choices "ssh and scp (BebboSSH)"
+                  "bebboget (https downloads)"
+-                 (if #amissl "curl (AmiSSL 5 found)" "curl (needs AmiSSL 5, not found)"))
++                 (if #amissl "curl (AmiSSL 5.27 found)" "curl (needs AmiSSL 5.27, not found)"))
+         (default (+ 1 2 (if #amissl 4 0)))))
+ (if (in #net 0) (set #ssh "SSH"))
+ (if (in #net 1) (set #bget "BEBBOGET"))
+diff --git a/dist/LICENSES.txt b/dist/LICENSES.txt
+index 12109b2e..3ac4fb23 100644
+--- a/dist/LICENSES.txt
++++ b/dist/LICENSES.txt
+@@ -77,8 +77,11 @@ tree-sitter, unibilium, ...)  file where one exists            files present)
+ 
+ Notes
+ - GNU Unifont is also offered under GPL v2 or later; the kit uses the OFL.
+-- The Claude and ClaudeCode programs talk to Anthropic's API; AmiSSL 5 (used
+-  at run time) is not part of the kit.
++- The Claude and ClaudeCode programs talk to Anthropic's API; AmiSSL 5.27 (used at
++  run time) is in the kit unchanged, in Files/amissl (Apache License 2.0,
++  copyright the AmiSSL Open Source Team and the OpenSSL Project Authors;
++  the licence text is Files/amissl/LICENSE-Apache-2.0.txt, the notices are
++  in its Doc/AmiSSL.doc). Install offers to run its own installer.
+ - Source for the GPL parts is in the kit as source archives where the table
+   says so; for GNU screen, tmux, Python and Neovim it is in the repositories
+   named, which the upterm meta-repo pins to the commits the kit was built from.
+diff --git a/dist/README.txt b/dist/README.txt
+index 3662b9c2..d5055318 100644
+--- a/dist/README.txt
++++ b/dist/README.txt
+@@ -20,7 +20,8 @@ WHAT YOU NEED
+   use the Install icon; without it, the Shell route below works.
+   Only for the network parts, all optional:
+     a TCP/IP stack running: Roadshow (part of AmigaOS 3.2), Miami or AmiTCP
+-    AmiSSL 5: Aminet util/libs/AmiSSL-v5-OS3.lha; run its own installer
++    AmiSSL 5.27: in the kit (Files/amissl); Install offers to run its own
++      installer when AmiSSL is missing or older
+       (Install ticks curl only when LIBS:amisslmaster.library is found, and
+       Claude with an API key needs it)
+     a computer for Claude Code (see CLAUDE FROM THE AMIGA), or an API key
+diff --git a/dist/amissl/LICENSE-Apache-2.0.txt b/dist/amissl/LICENSE-Apache-2.0.txt
+new file mode 100644
+index 00000000..f433b1a5
+--- /dev/null
++++ b/dist/amissl/LICENSE-Apache-2.0.txt
+@@ -0,0 +1,177 @@
++
++                                 Apache License
++                           Version 2.0, January 2004
++                        http://www.apache.org/licenses/
++
++   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
++
++   1. Definitions.
++
++      "License" shall mean the terms and conditions for use, reproduction,
++      and distribution as defined by Sections 1 through 9 of this document.
++
++      "Licensor" shall mean the copyright owner or entity authorized by
++      the copyright owner that is granting the License.
++
++      "Legal Entity" shall mean the union of the acting entity and all
++      other entities that control, are controlled by, or are under common
++      control with that entity. For the purposes of this definition,
++      "control" means (i) the power, direct or indirect, to cause the
++      direction or management of such entity, whether by contract or
++      otherwise, or (ii) ownership of fifty percent (50%) or more of the
++      outstanding shares, or (iii) beneficial ownership of such entity.
++
++      "You" (or "Your") shall mean an individual or Legal Entity
++      exercising permissions granted by this License.
++
++      "Source" form shall mean the preferred form for making modifications,
++      including but not limited to software source code, documentation
++      source, and configuration files.
++
++      "Object" form shall mean any form resulting from mechanical
++      transformation or translation of a Source form, including but
++      not limited to compiled object code, generated documentation,
++      and conversions to other media types.
++
++      "Work" shall mean the work of authorship, whether in Source or
++      Object form, made available under the License, as indicated by a
++      copyright notice that is included in or attached to the work
++      (an example is provided in the Appendix below).
++
++      "Derivative Works" shall mean any work, whether in Source or Object
++      form, that is based on (or derived from) the Work and for which the
++      editorial revisions, annotations, elaborations, or other modifications
++      represent, as a whole, an original work of authorship. For the purposes
++      of this License, Derivative Works shall not include works that remain
++      separable from, or merely link (or bind by name) to the interfaces of,
++      the Work and Derivative Works thereof.
++
++      "Contribution" shall mean any work of authorship, including
++      the original version of the Work and any modifications or additions
++      to that Work or Derivative Works thereof, that is intentionally
++      submitted to Licensor for inclusion in the Work by the copyright owner
++      or by an individual or Legal Entity authorized to submit on behalf of
++      the copyright owner. For the purposes of this definition, "submitted"
++      means any form of electronic, verbal, or written communication sent
++      to the Licensor or its representatives, including but not limited to
++      communication on electronic mailing lists, source code control systems,
++      and issue tracking systems that are managed by, or on behalf of, the
++      Licensor for the purpose of discussing and improving the Work, but
++      excluding communication that is conspicuously marked or otherwise
++      designated in writing by the copyright owner as "Not a Contribution."
++
++      "Contributor" shall mean Licensor and any individual or Legal Entity
++      on behalf of whom a Contribution has been received by Licensor and
++      subsequently incorporated within the Work.
++
++   2. Grant of Copyright License. Subject to the terms and conditions of
++      this License, each Contributor hereby grants to You a perpetual,
++      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
++      copyright license to reproduce, prepare Derivative Works of,
++      publicly display, publicly perform, sublicense, and distribute the
++      Work and such Derivative Works in Source or Object form.
++
++   3. Grant of Patent License. Subject to the terms and conditions of
++      this License, each Contributor hereby grants to You a perpetual,
++      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
++      (except as stated in this section) patent license to make, have made,
++      use, offer to sell, sell, import, and otherwise transfer the Work,
++      where such license applies only to those patent claims licensable
++      by such Contributor that are necessarily infringed by their
++      Contribution(s) alone or by combination of their Contribution(s)
++      with the Work to which such Contribution(s) was submitted. If You
++      institute patent litigation against any entity (including a
++      cross-claim or counterclaim in a lawsuit) alleging that the Work
++      or a Contribution incorporated within the Work constitutes direct
++      or contributory patent infringement, then any patent licenses
++      granted to You under this License for that Work shall terminate
++      as of the date such litigation is filed.
++
++   4. Redistribution. You may reproduce and distribute copies of the
++      Work or Derivative Works thereof in any medium, with or without
++      modifications, and in Source or Object form, provided that You
++      meet the following conditions:
++
++      (a) You must give any other recipients of the Work or
++          Derivative Works a copy of this License; and
++
++      (b) You must cause any modified files to carry prominent notices
++          stating that You changed the files; and
++
++      (c) You must retain, in the Source form of any Derivative Works
++          that You distribute, all copyright, patent, trademark, and
++          attribution notices from the Source form of the Work,
++          excluding those notices that do not pertain to any part of
++          the Derivative Works; and
++
++      (d) If the Work includes a "NOTICE" text file as part of its
++          distribution, then any Derivative Works that You distribute must
++          include a readable copy of the attribution notices contained
++          within such NOTICE file, excluding those notices that do not
++          pertain to any part of the Derivative Works, in at least one
++          of the following places: within a NOTICE text file distributed
++          as part of the Derivative Works; within the Source form or
++          documentation, if provided along with the Derivative Works; or,
++          within a display generated by the Derivative Works, if and
++          wherever such third-party notices normally appear. The contents
++          of the NOTICE file are for informational purposes only and
++          do not modify the License. You may add Your own attribution
++          notices within Derivative Works that You distribute, alongside
++          or as an addendum to the NOTICE text from the Work, provided
++          that such additional attribution notices cannot be construed
++          as modifying the License.
++
++      You may add Your own copyright statement to Your modifications and
++      may provide additional or different license terms and conditions
++      for use, reproduction, or distribution of Your modifications, or
++      for any such Derivative Works as a whole, provided Your use,
++      reproduction, and distribution of the Work otherwise complies with
++      the conditions stated in this License.
++
++   5. Submission of Contributions. Unless You explicitly state otherwise,
++      any Contribution intentionally submitted for inclusion in the Work
++      by You to the Licensor shall be under the terms and conditions of
++      this License, without any additional terms or conditions.
++      Notwithstanding the above, nothing herein shall supersede or modify
++      the terms of any separate license agreement you may have executed
++      with Licensor regarding such Contributions.
++
++   6. Trademarks. This License does not grant permission to use the trade
++      names, trademarks, service marks, or product names of the Licensor,
++      except as required for reasonable and customary use in describing the
++      origin of the Work and reproducing the content of the NOTICE file.
++
++   7. Disclaimer of Warranty. Unless required by applicable law or
++      agreed to in writing, Licensor provides the Work (and each
++      Contributor provides its Contributions) on an "AS IS" BASIS,
++      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
++      implied, including, without limitation, any warranties or conditions
++      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
++      PARTICULAR PURPOSE. You are solely responsible for determining the
++      appropriateness of using or redistributing the Work and assume any
++      risks associated with Your exercise of permissions under this License.
++
++   8. Limitation of Liability. In no event and under no legal theory,
++      whether in tort (including negligence), contract, or otherwise,
++      unless required by applicable law (such as deliberate and grossly
++      negligent acts) or agreed to in writing, shall any Contributor be
++      liable to You for damages, including any direct, indirect, special,
++      incidental, or consequential damages of any character arising as a
++      result of this License or out of the use or inability to use the
++      Work (including but not limited to damages for loss of goodwill,
++      work stoppage, computer failure or malfunction, or any and all
++      other commercial damages or losses), even if such Contributor
++      has been advised of the possibility of such damages.
++
++   9. Accepting Warranty or Additional Liability. While redistributing
++      the Work or Derivative Works thereof, You may choose to offer,
++      and charge a fee for, acceptance of support, warranty, indemnity,
++      or other liability obligations and/or rights consistent with this
++      License. However, in accepting such obligations, You may act only
++      on Your own behalf and on Your sole responsibility, not on behalf
++      of any other Contributor, and only if You agree to indemnify,
++      defend, and hold each Contributor harmless for any liability
++      incurred by, or claims asserted against, such Contributor by reason
++      of your accepting any such warranty or additional liability.
++
++   END OF TERMS AND CONDITIONS
+diff --git a/dist/parts.txt b/dist/parts.txt
+index aedaa1ce..6fda4035 100644
+--- a/dist/parts.txt
++++ b/dist/parts.txt
+@@ -55,6 +55,7 @@ tools           Files/uptelnet
+ copy-python     Files/python3           Python3
+ copy-nvim       Files/nvim              nvim
+ fonts           Files/fonts
++-               Files/amissl
+ desktop         Files/UP-Term
+ desktop         Files/UP-Term.info
+ desktop         Files/UP-Term-Prefs
+-- 
+2.50.1 (Apple Git-155)
+
+
+From a3d86f0c478571d5b1f373c2699bcd09ca68f68e Mon Sep 17 00:00:00 2001
+From: spotUP <retroranksmail@gmail.com>
+Date: Sun, 11 Oct 2026 20:03:10 +0200
+Subject: [PATCH 02/10] Makefile, rig paths: UPTERM_ROOT in a git worktree is
+ the parent of the main checkout, not the worktrees directory
+
+---
+ Makefile           |  5 ++++-
+ tools/rig/paths.py | 23 ++++++++++++++++++++---
+ 2 files changed, 24 insertions(+), 4 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 6e3e9800..691d7d01 100644
+--- a/Makefile
++++ b/Makefile
+@@ -7,7 +7,10 @@ BUILD   := build
+ # The workspace directory that holds vtcon and the other UP-Term repos side by
+ # side (see the upterm meta-repo); every sibling default below hangs off it.
+ # tools/rig/paths.py reads the same variable, with the same default.
+-UPTERM_ROOT ?= $(abspath ..)
++# In a git worktree the parent is not the workspace: the workspace is the parent
++# of the MAIN checkout, which the shared git directory names (<main>/.git).
++UPTERM_GITDIR := $(shell git rev-parse --git-common-dir 2>/dev/null)
++UPTERM_ROOT ?= $(abspath $(if $(UPTERM_GITDIR),$(UPTERM_GITDIR)/../..,..))
+ 
+ ENGINE  := engine/vtengine.c
+ RENDER  := render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/sbar.c render/otag.c render/painter.c handler/lineedit.c handler/slash.c handler/clipfmt.c handler/complete_core.c render/vtinput.c handler/waitset.c handler/histfile.c
+diff --git a/tools/rig/paths.py b/tools/rig/paths.py
+index 7ab525d0..fb5bd06f 100644
+--- a/tools/rig/paths.py
++++ b/tools/rig/paths.py
+@@ -5,15 +5,32 @@ UPTERM_OS32_TREE, UPTERM_OS32_ROM).
+ 
+ UPTERM_ROOT is the workspace directory that holds vtcon, ixemul-vtcon,
+ tmux-amiga, ... side by side (the meta-repo `upterm` creates it). Default:
+-the parent of this vtcon checkout. The Makefile's default is the same
+-(`UPTERM_ROOT ?= $(abspath ..)`).
++the parent of the main vtcon checkout (for a git worktree: of the checkout
++the worktree belongs to, not of the worktrees directory). The Makefile's
++default is the same.
+ """
+ import os
+ import pathlib
+ import sys
+ 
+ VTCON = pathlib.Path(__file__).resolve().parents[2]
+-UPTERM_ROOT = pathlib.Path(os.environ.get("UPTERM_ROOT") or VTCON.parent)
++
++
++def _main_checkout():
++    """The checkout that owns this tree: VTCON itself, or for a git worktree
++    the main checkout its shared git directory lives in."""
++    git = VTCON / ".git"
++    if git.is_file():
++        for line in git.read_text().splitlines():
++            if line.startswith("gitdir:"):
++                gd = pathlib.Path(line[7:].strip())
++                # <main>/.git/worktrees/<name>
++                if gd.parent.name == "worktrees":
++                    return gd.parent.parent.parent
++    return VTCON
++
++
++UPTERM_ROOT = pathlib.Path(os.environ.get("UPTERM_ROOT") or _main_checkout().parent)
+ 
+ 
+ # Which rig: UPTERM_RIG unset or 1 is the first (build/rig, amiagent port 7846);
+-- 
+2.50.1 (Apple Git-155)
+
+
+From 414fca10cf53624a91486d6cf71fb10112651b6f Mon Sep 17 00:00:00 2001
+From: spotUP <retroranksmail@gmail.com>
+Date: Sun, 11 Oct 2026 20:17:27 +0200
+Subject: [PATCH 03/10] rig: write the config on every start (a fresh --os rig
+ had none) and refuse to launch FS-UAE without a present, non-empty
+ hard_drive_0
+
+---
+ tools/rig/rig.py | 22 +++++++++++++++++++---
+ 1 file changed, 19 insertions(+), 3 deletions(-)
+
+diff --git a/tools/rig/rig.py b/tools/rig/rig.py
+index fd3d9a78..ca398285 100644
+--- a/tools/rig/rig.py
++++ b/tools/rig/rig.py
+@@ -395,9 +395,11 @@ def setup():
+         print("rig ready:", CFG)
+ 
+ def setup_config_only():
+-    """Rewrite just the config, so --rw on or off takes effect."""
+-    if (RIG / "sys.hdf").exists():
+-        setup()
++    """Rewrite the config, so --rw on or off takes effect. Always setup(): it
++    makes what a first start needs (the system disk or the --os copy, the
++    config). Gated on sys.hdf it wrote no config for a fresh --os rig, and
++    start() launched FS-UAE on a config that did not exist: no boot device."""
++    setup()
+ 
+ def install():
+     shutil.copyfile(ROOT / "build/amiga/vtcon-handler", RIG / "vtc/vtcon-handler")
+@@ -435,6 +437,19 @@ def mine():
+     out = subprocess.run(["ps", "-eo", "pid,command"], capture_output=True, text=True).stdout
+     return [l for l in out.splitlines() if str(CFG) in l and "fs-uae" in l.lower()]
+ 
++def boot_device_check():
++    """Refuse to launch UAE without a boot device: the config must exist and
++    its hard_drive_0 must be a present, non-empty directory or file. An
++    emulator with no boot device just sits on the insert-disk screen."""
++    if not CFG.exists():
++        sys.exit("rig: not starting: config %s is missing" % CFG)
++    hd = [l.split("=", 1)[1].strip() for l in CFG.read_text().splitlines() if l.startswith("hard_drive_0 =")]
++    if not hd:
++        sys.exit("rig: not starting: %s lists no hard_drive_0 (no boot device)" % CFG)
++    p = pathlib.Path(hd[0])
++    if not p.exists() or (p.is_dir() and not any(p.iterdir())) or (p.is_file() and p.stat().st_size == 0):
++        sys.exit("rig: not starting: hard_drive_0 %s is missing or empty (no boot device)" % p)
++
+ def start(retries=2):
+     """Boot; a boot that stops right after "go started" (the emulator froze
+     before anything under test loaded: seen 3 times on 2026-09-29, cause not
+@@ -449,6 +464,7 @@ def start(retries=2):
+     log = RIG / "boot/boot.log"
+     if log.exists():
+         log.unlink()
++    boot_device_check()
+     subprocess.run(["open", "-g", "-n", "-a", "/Applications/FS-UAE.app", "--args", str(CFG)], check=True)
+     for i in range(90):
+         time.sleep(2)
+-- 
+2.50.1 (Apple Git-155)
+
+
+From b9d5fc7aca88af2bf8bc166c82a93fb4897c9937 Mon Sep 17 00:00:00 2001
+From: spotUP <retroranksmail@gmail.com>
+Date: Sun, 11 Oct 2026 20:27:54 +0200
+Subject: [PATCH 04/10] Install: remove a stray closing parenthesis in the
+ AmiSSL offer (the Installer quit after the welcome page)
+
+---
+ dist/Install.installer | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/dist/Install.installer b/dist/Install.installer
+index 368d8b06..e0c0a1c8 100644
+--- a/dist/Install.installer
++++ b/dist/Install.installer
+@@ -175,7 +175,7 @@
+                      "  Claude (https to Anthropic, with an API key)\n"
+                      "  curl\n\n"
+                      "The rest of UP-Term is not affected. Run Files/amissl/AmiSSL/"
+-                     "Install-AmiSSL from the kit any time.")))))
++                     "Install-AmiSSL from the kit any time."))))
+ 
+ (set #net
+     (askoptions
+-- 
+2.50.1 (Apple Git-155)
+
+
+From 850f520a6ef913d4869d91e3d2cbfd90d422fa94 Mon Sep 17 00:00:00 2001
+From: spotUP <retroranksmail@gmail.com>
+Date: Sun, 11 Oct 2026 20:53:42 +0200
+Subject: [PATCH 05/10] Install: AmiSSL's installer runs from its own drawer
+ (Run-Install-AmiSSL) and its S:User-Startup block is the proof;
+ installer_rig: amissl and amissl-present cases answer the offer
+
+---
+ Makefile                       |  2 +-
+ dist/Install.installer         | 24 +++++++-----
+ dist/amissl/Run-Install-AmiSSL |  8 ++++
+ tools/rig/installer_rig.py     | 68 ++++++++++++++++++++++++++++++++--
+ 4 files changed, 89 insertions(+), 13 deletions(-)
+ create mode 100644 dist/amissl/Run-Install-AmiSSL
+
+diff --git a/Makefile b/Makefile
+index 691d7d01..d2456fdd 100644
+--- a/Makefile
++++ b/Makefile
+@@ -887,7 +887,7 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
+ 	@# AmiSSL 5.27, the archive as released (Apache 2.0) with its licence beside it; the Installer offers to run its own Install-AmiSSL
+ 	@test -f $(AMISSL_OS3) || { echo "dist: no $(AMISSL_OS3): gh release download 5.27 -R jens-maus/amissl -p AmiSSL-5.27-OS3.lha -D vendor"; exit 1; }
+ 	rm -rf $(KIT)/Files/amissl && mkdir -p $(KIT)/Files/amissl && cd $(KIT)/Files/amissl && lha xq $(CURDIR)/$(AMISSL_OS3)
+-	cp dist/amissl/LICENSE-Apache-2.0.txt $(KIT)/Files/amissl/
++	cp dist/amissl/LICENSE-Apache-2.0.txt dist/amissl/Run-Install-AmiSSL $(KIT)/Files/amissl/
+ 	cp $(BUILD)/amiga/wasabikey $(KIT)/Files/wasabi/
+ 	cp terminfo/vtcon.termcap $(KIT)/Files/termcap.vtcon
+ 	# the top drawer: Install (the Installer script), Uninstall, README, Files
+diff --git a/dist/Install.installer b/dist/Install.installer
+index e0c0a1c8..89b10385 100644
+--- a/dist/Install.installer
++++ b/dist/Install.installer
+@@ -150,6 +150,11 @@
+ (procedure P_AMISSL_OK
+     (set #amissl (and (exists "LIBS:amisslmaster.library") (exists "LIBS:AmiSSL/amissl_v362.library"))))
+ (P_AMISSL_OK)
++; AmiSSL 5 installs into its own drawer (Work:AmiSSL by default, Libs inside)
++; and puts "Assign AmiSSL: <drawer>" and "Assign LIBS: AmiSSL:Libs ADD" into
++; S:User-Startup: LIBS: has it only after the next boot. So after the run the
++; block in S:User-Startup is the proof. Its Install-AmiSSL finds its files
++; relative to the current directory, which Run-Install-AmiSSL sets.
+ (if (not #amissl)
+     (
+         (if (askbool
+@@ -158,24 +163,25 @@
+                         "Run AmiSSL's own installer now?")
+                 (help "AmiSSL (Apache 2.0, the AmiSSL Open Source Team) is in the kit "
+                       "unchanged, in Files/amissl, with its readme and licence. Its "
+-                      "own installer picks the library for your CPU, copies it to "
+-                      "LIBS:, and adds the AmiSSL: assign to S:User-Startup; it "
+-                      "asks its own questions.\n\nNo: UP-Term installs without "
++                      "own installer picks the library for your CPU, copies it into "
++                      "its own drawer (Work:AmiSSL), and adds the AmiSSL: assign to "
++                      "S:User-Startup; it asks its own questions. It takes effect "
++                      "after the next reboot.\n\nNo: UP-Term installs without "
+                       "it, and Claude (with an API key) and curl will not run "
+                       "until AmiSSL 5.27 is installed.")
+                 (choices "Yes, run the AmiSSL installer" "No, continue without AmiSSL")
+                 (default 0))
+             (
+-                (run (cat (if (exists "C:Installer") "C:Installer" "SYS:Utilities/Installer")
+-                          " SCRIPT \"" (tackon #files "amissl/AmiSSL/Install-AmiSSL")
+-                          "\" APPNAME AmiSSL"))
+-                (P_AMISSL_OK)))
++                (run (cat "Execute \"" (tackon #files "amissl/Run-Install-AmiSSL") "\" \""
++                          (tackon #files "amissl/AmiSSL") "\" \""
++                          (if (exists "C:Installer") "C:Installer" "SYS:Utilities/Installer") "\""))
++                (set #amissl (= 0 (run "Search >NIL: S:User-Startup \"Assign AmiSSL:\"")))))
+         (if (not #amissl)
+             (message "Without AmiSSL 5.27 these programs will not work:\n"
+                      "  Claude (https to Anthropic, with an API key)\n"
+                      "  curl\n\n"
+-                     "The rest of UP-Term is not affected. Run Files/amissl/AmiSSL/"
+-                     "Install-AmiSSL from the kit any time."))))
++                     "The rest of UP-Term is not affected. Open Install-AmiSSL in the kit's "
++                     "Files/amissl/AmiSSL drawer any time."))))
+ 
+ (set #net
+     (askoptions
+diff --git a/dist/amissl/Run-Install-AmiSSL b/dist/amissl/Run-Install-AmiSSL
+new file mode 100644
+index 00000000..1a50cb27
+--- /dev/null
++++ b/dist/amissl/Run-Install-AmiSSL
+@@ -0,0 +1,8 @@
++.key dir/A,installer/A
++.bra {
++.ket }
++; AmiSSL's Install-AmiSSL finds its Libs and Certs drawers relative to the
++; current directory, so the Installer must be started from AmiSSL's own drawer.
++; Installer runs this script with the drawer and the Installer program.
++CD "{dir}"
++"{installer}" SCRIPT Install-AmiSSL APPNAME AmiSSL NOLOG
+diff --git a/tools/rig/installer_rig.py b/tools/rig/installer_rig.py
+index 9a5a4cfd..bb18b594 100644
+--- a/tools/rig/installer_rig.py
++++ b/tools/rig/installer_rig.py
+@@ -11,6 +11,9 @@ and clicks them, then checks what landed and runs Uninstall.
+             askdir string gadget)
+   novice    NOVICE: no question asked, only the pages marked (all) -- the
+             welcome and the summary -- and the default drawer
++  amissl    AVERAGE, the AmiSSL offer answered Yes: AmiSSL's own nested Installer runs
++            (needs no AmiSSL on the system); Uninstall leaves AmiSSL
++  amissl-present  AVERAGE with the two files the offer looks for planted: no offer
+   update    AVERAGE as default, then the kit with one file changed
+             (Files/unifont/SOURCE.txt, its MANIFEST made again) and Install
+             again: the first page offers Update (the default), and after it
+@@ -60,7 +63,12 @@ KIT = ir.KIT
+ CLEAN = "--os" in os.environ.get("UPTERM_RIG_FLAGS", "")
+ WORKDEST = "Work:Apps/UP-Term"
+ CASES = {"default": ("AVERAGE", None), "dest": ("AVERAGE", WORKDEST if CLEAN else "VTC:Apps/UP-Term"),
+-         "novice": ("NOVICE", None), "update": ("AVERAGE", WORKDEST if CLEAN else None), "space": ("AVERAGE", None)}
++         "novice": ("NOVICE", None), "amissl-present": ("AVERAGE", None), "amissl": ("AVERAGE", None), "update": ("AVERAGE", WORKDEST if CLEAN else None), "space": ("AVERAGE", None)}
++# The AmiSSL offer (Install.installer: an askbool when LIBS: has no AmiSSL 5.27). It is a page with Yes (id 2,
++# the left button) and No (id 1, the right one) and no Proceed. Per case: 'yes' runs AmiSSL's own nested
++# Installer, 'no' declines, None means no offer may appear (AmiSSL is already there: a stall is a FAIL).
++OFFER = {"amissl": "yes", "amissl-present": None}
++AMISSL_LIBS = ("LIBS:amisslmaster.library", "LIBS:AmiSSL/amissl_v362.library")
+ UPDATED = "Files/unifont/SOURCE.txt"   # the update case changes this file of a copy part (copy-unifont)
+ RAMIGA = 0x0080
+ KEY_X, KEY_RETURN = 0x32, 0x44
+@@ -285,6 +293,7 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
+     t0 = time.time()
+     last_sig, clicked_at, retried, typed, chose = None, None, None, False, set()
+     last_page_at = time.time()
++    offer_at = None
+     work_since, last_pct, dumped_pct = None, None, set()
+ 
+     seen_faults = set()
+@@ -329,6 +338,20 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
+             click(gads[91][0] if 91 in gads else gads[min(gads)][0])
+             time.sleep(5)
+             continue
++        if 90 not in gads and {1, 2, 91} <= set(gads) and 89 not in gads:
++            # the AmiSSL offer (askbool): Yes 2, No 1
++            offer = OFFER.get(case, "no")
++            if offer is None:
++                log.append('UNEXPECTED AmiSSL offer page, ids %s' % sorted(gads))
++                dump(tree, 'unexpected offer')
++                return False, log
++            if offer_at is None:
++                offer_at = time.time()
++                dump(tree, 'AmiSSL offer')
++                click(gads[2 if offer == "yes" else 1][0])
++                log.append('AmiSSL offer answered %s (id %d)' % (offer, 2 if offer == "yes" else 1))
++                time.sleep(3)
++                continue
+         if 90 not in gads:
+             # copying or waiting for the next page: only Abort (or nothing) on it
+             if m and m[-1] == last_pct and last_pct not in dumped_pct:
+@@ -450,6 +473,14 @@ def run_case(case):
+     rig_gg = ir.run('Assign >NIL: GG: EXISTS')[0] == 0
+     if rig_gg:
+         ir.run('Assign GG:')   # as install_rig: Install's own GG: is what gets tested
++    # AmiSSL: absent before every case but amissl-present, which plants the two files the offer looks for
++    amissl_present = lambda: all(ir.run('List >NIL: %s' % f)[0] == 0 for f in AMISSL_LIBS)
++    ir.run('Delete >NIL: LIBS:amisslmaster.library LIBS:AmiSSL ALL QUIET')
++    if case == 'amissl-present':
++        ir.run('MakeDir >NIL: LIBS:AmiSSL')
++        for f in AMISSL_LIBS:
++            ir.run('Echo >%s "planted by installer_rig"' % f)
++    ck(amissl_present() == (case == 'amissl-present'), 'AmiSSL is %s before Install' % ('there' if case == 'amissl-present' else 'absent'))
+     inst = find_installer()
+     if not inst:
+         return False, 'no Installer on the rig (Which Installer, SYS:System, SYS:Utilities, C:)'
+@@ -480,6 +511,27 @@ def run_case(case):
+         ck(st == before, 'LIBS: as it was', 'now %s, before %s' % (st, before))
+         print('installer_rig %s: passed %d of %d' % (case, ck.total - len(ck.failed), ck.total))
+         return not ck.failed, '; '.join(ck.failed) or 'all %d checks' % ck.total
++    # the AmiSSL offer: Yes ran AmiSSL's own installer (real library, AmiSSL: assigned); No and the
++    # planted case left LIBS: without a real AmiSSL (the planted files are the 28-byte echo)
++    ck(any('AmiSSL offer answered' in l for l in log) == (case not in ('amissl-present', 'novice')),
++       'the AmiSSL offer %s' % ('was not shown (AmiSSL present, or the Novice level takes defaults)'
++                                if case in ('amissl-present', 'novice') else 'was shown'))
++    if case == 'amissl':
++        # AmiSSL 5 installs into its own drawer and S:User-Startup assigns it (and adds its Libs to LIBS:) at boot:
++        # the block is what the Installer's offer looks for afterwards. Run those lines as a boot would.
++        out = ir.run('Type S:User-Startup')[1]
++        m = re.search(r'Assign AmiSSL: "?([^"\r\n]+)"?', out)
++        ck(m is not None, 'S:User-Startup assigns AmiSSL: (AmiSSL\'s own installer ran from its drawer)', out[-300:])
++        adir = m.group(1).strip() if m else 'Work:AmiSSL'
++        for f in ('Libs/amisslmaster.library', 'Libs/AmiSSL/amissl_v362.library'):
++            ck(ir.run('List >NIL: "%s"' % (adir + '/' + f))[0] == 0, '%s/%s is there' % (adir, f))
++        block = re.search(r'(Assign AmiSSL:.*?EndIf)', out, re.S)
++        ir.run('\n'.join(block.group(1).splitlines()) if block else 'Assign AmiSSL: %s' % adir)
++        ck(amissl_present(), 'after the boot lines: LIBS: has amisslmaster.library and amissl_v362.library')
++        rc, out = ir.run('UP-Term:bin/curl --version')
++        ck(rc == 0 and re.search(r'AmiSSL[/ ]5', out) is not None, 'curl --version names AmiSSL 5', out[:300])
++    elif case != 'amissl-present':
++        ck(not amissl_present(), 'declining the offer installs no AmiSSL')
+     # what the Installer's install.dos parts and copyfiles put there
+     rc, out = ir.run('Assign LIST')
+     al = [l for l in out.splitlines() if l.lower().startswith('up-term')]
+@@ -525,8 +577,13 @@ def run_case(case):
+     rc, out = ir.run_long('rununinstall')
+     ck(rc == 0, 'Uninstall runs', out)
+     rc, out = ir.run('Type S:User-Startup')
+-    ck(out == startup_before, 'after Uninstall: S:User-Startup as it was, byte for byte',
+-       'differs: %r vs %r' % (out[-80:], startup_before[-80:]))
++    if case == 'amissl':
++        # AmiSSL is a separate product: Uninstall leaves it, and its block in S:User-Startup
++        ck(amissl_present(), 'after Uninstall: AmiSSL is still there (libraries and assign)')
++        ck(ir.run('Search >NIL: S:User-Startup UP-Term')[0] != 0, 'after Uninstall: no UP-Term lines in S:User-Startup', out[-200:])
++    else:
++        ck(out == startup_before, 'after Uninstall: S:User-Startup as it was, byte for byte',
++           'differs: %r vs %r' % (out[-80:], startup_before[-80:]))
+     ck(ir.run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'after Uninstall: no UP-Term: assign')
+     ck(ir.run('List >NIL: "%s"' % drawer)[0] != 0, 'after Uninstall: %s is gone' % drawer)
+     st = ir.lib_state()
+@@ -535,6 +592,11 @@ def run_case(case):
+     ck(st.get('ixnet.library') == before.get('ixnet.library') and 'ixnet.library.orig' not in st,
+        'after Uninstall: the original ixnet back, no .orig', 'now %s, before %s' % (st, before))
+     ir.run('Delete >NIL: ENVARC:UP-Term.prefs ENVARC:Claude/remote QUIET')
++    if case in ('amissl', 'amissl-present'):   # leave the rig without AmiSSL, as the other cases expect it
++        ir.run('Assign >NIL: LIBS: AmiSSL:Libs REMOVE')
++        ir.run('Delete >NIL: LIBS:amisslmaster.library LIBS:AmiSSL ALL QUIET')
++        ir.run('Assign >NIL: AmiSSL: REMOVE')
++        ir.run('Delete >NIL: Work:AmiSSL Work:AmiSSL.info SYS:AmiSSL SYS:AmiSSL.info ALL QUIET')
+     if rig_gg:
+         ir.run('Assign GG: VTC:gg')
+     ir.run('Avail >NIL: FLUSH')
+-- 
+2.50.1 (Apple Git-155)
+
+
+From 4c56dbb31e626407c147efd995b1a007ad95059c Mon Sep 17 00:00:00 2001
+From: spotUP <retroranksmail@gmail.com>
+Date: Sun, 11 Oct 2026 21:11:07 +0200
+Subject: [PATCH 06/10] Install: short labels on the AmiSSL offer buttons (the
+ long ones overran the button and left pixels on later pages)
+
+---
+ dist/Install.installer | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/dist/Install.installer b/dist/Install.installer
+index 89b10385..679700d7 100644
+--- a/dist/Install.installer
++++ b/dist/Install.installer
+@@ -169,7 +169,7 @@
+                       "after the next reboot.\n\nNo: UP-Term installs without "
+                       "it, and Claude (with an API key) and curl will not run "
+                       "until AmiSSL 5.27 is installed.")
+-                (choices "Yes, run the AmiSSL installer" "No, continue without AmiSSL")
++                (choices "Install AmiSSL" "Skip AmiSSL")
+                 (default 0))
+             (
+                 (run (cat "Execute \"" (tackon #files "amissl/Run-Install-AmiSSL") "\" \""
+-- 
+2.50.1 (Apple Git-155)
+
+
+From 2d7a2b19da0cab749d0fd2b59bee4f6e13905108 Mon Sep 17 00:00:00 2001
+From: spotUP <retroranksmail@gmail.com>
+Date: Sun, 11 Oct 2026 22:19:10 +0200
+Subject: [PATCH 07/10] installer_rig: amissl case checks the AmiSSL block, the
+ boot lines and OpenLibrary through LIBS:; the AmiSSL installer's own pages
+ are not layout-checked
+
+---
+ tools/rig/installer_rig.py | 21 ++++++++++++++++-----
+ 1 file changed, 16 insertions(+), 5 deletions(-)
+
+diff --git a/tools/rig/installer_rig.py b/tools/rig/installer_rig.py
+index bb18b594..bfca20ae 100644
+--- a/tools/rig/installer_rig.py
++++ b/tools/rig/installer_rig.py
+@@ -297,11 +297,12 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
+     work_since, last_pct, dumped_pct = None, None, set()
+ 
+     seen_faults = set()
++    nested = [False]   # AmiSSL's own installer is on screen: its pages are not ours
+ 
+     def dump(tree, why):
+         # the Make New Drawer dialog is the Installer's own, drawn over the askdir page (its frames read as a
+         # panel, the drawer list under it as stray text: 3.1 dest, 2026-10-08): only our pages' text is judged
+-        own = why in ('dialog', 'no dialog', 'after Make New Drawer')
++        own = why in ('dialog', 'no dialog', 'after Make New Drawer') or nested[0]
+         faults, bands = ([], []) if own else text_faults(tree)
+         with pages.open('a') as f:
+             f.write('---- %.0f s %s\n%s\ntext: %s\n' % (time.time() - t0, why, tree, ' '.join(bands)))
+@@ -322,6 +323,8 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
+             return False, log
+         title, gads = installer_page(tree)
+         sig = (title, tuple(sorted(gads)), tuple(l for _, l in gads.values()))
++        if nested[0] and (title or '').startswith('VTC:distkit/Install'):
++            nested[0] = False   # back on our own pages
+         if sig != last_sig:
+             dump(tree, 'page')
+             log.append('page [%s] ids %s' % (title, ' '.join(map(str, sorted(gads)))))
+@@ -350,6 +353,7 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
+                 dump(tree, 'AmiSSL offer')
+                 click(gads[2 if offer == "yes" else 1][0])
+                 log.append('AmiSSL offer answered %s (id %d)' % (offer, 2 if offer == "yes" else 1))
++                nested[0] = offer == "yes"
+                 time.sleep(3)
+                 continue
+         if 90 not in gads:
+@@ -526,10 +530,17 @@ def run_case(case):
+         for f in ('Libs/amisslmaster.library', 'Libs/AmiSSL/amissl_v362.library'):
+             ck(ir.run('List >NIL: "%s"' % (adir + '/' + f))[0] == 0, '%s/%s is there' % (adir, f))
+         block = re.search(r'(Assign AmiSSL:.*?EndIf)', out, re.S)
+-        ir.run('\n'.join(block.group(1).splitlines()) if block else 'Assign AmiSSL: %s' % adir)
+-        ck(amissl_present(), 'after the boot lines: LIBS: has amisslmaster.library and amissl_v362.library')
+-        rc, out = ir.run('UP-Term:bin/curl --version')
+-        ck(rc == 0 and re.search(r'AmiSSL[/ ]5', out) is not None, 'curl --version names AmiSSL 5', out[:300])
++        (VTC / 'amisslboot').write_text((block.group(1) if block else 'Assign AmiSSL: %s' % adir).replace('\r', '') + '\n')
++        ir.run('Execute VTC:amisslboot')
++        al = ir.run('Assign LIST')[1]
++        ck(amissl_present(), 'after the boot lines: LIBS: has amisslmaster.library and amissl_v362.library',
++           ' | '.join(['PROBE ' + c + ' => ' + ir.run(c)[1].strip()[:150].replace('\n', ' / ') for c in
++                       ('List LIBS:AmiSSL/amissl_v362.library', 'List LIBS:AmiSSL', 'Assign LIST LIBS:', 'Assign LIST AmiSSL:')]))
++        # what the TLS programs do: OpenLibrary through LIBS: (curl itself needs the TCP/IP stack's usergroup.library, which the clean rig has not)
++        rc, out = ir.run('Version amisslmaster.library')
++        ck(rc == 0 and re.search(r'amisslmaster\.library 5\.', out) is not None, 'amisslmaster.library 5 opens through LIBS:', out[:200])
++        rc, out = ir.run('Version AmiSSL/amissl_v362.library')
++        ck(rc == 0 and re.search(r'amissl_v362\.library 5\.', out) is not None, 'AmiSSL/amissl_v362.library 5 opens through LIBS:', out[:200])
+     elif case != 'amissl-present':
+         ck(not amissl_present(), 'declining the offer installs no AmiSSL')
+     # what the Installer's install.dos parts and copyfiles put there
+-- 
+2.50.1 (Apple Git-155)
+
+
+From 5ffcc3f18933522640ed6c7e7c02c5060cb9ce70 Mon Sep 17 00:00:00 2001
+From: spotUP <retroranksmail@gmail.com>
+Date: Sun, 11 Oct 2026 22:06:34 +0200
+Subject: [PATCH 08/10] upupdate: ud_compare keeps its tables on the heap, not
+ on the Installer's stack
+
+The comparison held 7 KB of locals (the old kit's copy drawers) plus 850
+bytes in emit_copy; run from the Installer on its own stack that overran
+into an address error (Software Failure 80000004) whenever the manifests
+differed. Measured on the rig (68060): 9458 bytes of stack before, 1426
+after; a 4096-byte stack crashed the old binary, the new one runs every
+case. Host test measures the stack the call touches.
+
+Install: stop with a message when a volume named UP-Term is mounted (it
+clashes with the UP-Term: assign).
+---
+ dist/Install.installer |  6 +++++
+ install/updiff.c       | 39 +++++++++++++++++--------------
+ tests/test_updiff.c    | 52 ++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 80 insertions(+), 17 deletions(-)
+
+diff --git a/dist/Install.installer b/dist/Install.installer
+index 679700d7..a26075e3 100644
+--- a/dist/Install.installer
++++ b/dist/Install.installer
+@@ -45,6 +45,12 @@
+ (if (not (exists #script))
+     (abort "The Files drawer is missing: unpack the whole archive and start Install from its drawer."))
+ 
++; A volume named UP-Term (the kit's own disk, mounted by that name) clashes
++; with the UP-Term: assign the install makes: UP-Term: then means the disk.
++(if (<> (getassign "UP-Term" "v") "")
++    (abort "A volume named UP-Term is mounted, and it clashes with the UP-Term: assign.\n"
++           "Rename the disk (or the kit's drawer volume) and start Install again."))
++
+ ; ---- an installed UP-Term: Update or Full install ---------------------------
+ ; (plan 2026-10-08-installer-update) With UP-Term: assigned, its MANIFEST (the
+ ; record part of the last install) and that install's options
+diff --git a/install/updiff.c b/install/updiff.c
+index 4bb92a17..ec55e4f2 100644
+--- a/install/updiff.c
++++ b/install/updiff.c
+@@ -94,10 +94,16 @@ static const char *below(const char *path, const char *from)
+     return (!strncmp(path, from, n) && path[n] == '/') ? path + n + 1 : 0;
+ }
+ 
++/* Everything ud_compare and its helpers need that is bigger than a few
++ * bytes lives here, on the heap: the Installer runs upupdate on its own
++ * stack (about 8 KB), and these tables as locals (7 KB for the old kit's
++ * copy drawers alone) overran it into an address error. */
+ typedef struct {
+     ud_emit emit;
+     void *ctx;
+     char madedir[UD_MAXPARTS][256];
++    char oldfrom[UD_MAXPARTS][UD_DRAWER], olddrawer[UD_MAXPARTS][UD_DRAWER], oldname[UD_MAXPARTS][UD_NAME];
++    char line[600], dir[256];       /* emit_copy, emit_delete */
+ } ud_out;
+ 
+ /* buf = a b c ... joined (0 for the ones not used); 0 when they do not fit */
+@@ -126,20 +132,20 @@ static void say(ud_out *o, const ud_part *p, const char *line)
+ /* the drawers a file needs (each once in a row), then the copy */
+ static void emit_copy(ud_out *o, ud_result *r, ud_part *p, const char *kit, const char *path, const char *rest)
+ {
+-    char line[600], dir[256];
++    char *line = o->line, *dir = o->dir;
+     const char *s;
+     size_t k = strlen(kit);
+     int pi = (int)(p - r->part);
+     for (s = strchr(rest, '/'); s; s = strchr(s + 1, '/')) {
+         size_t n = (size_t)(s - rest);
+-        if (n >= sizeof(dir)) return;
++        if (n >= sizeof(o->dir)) return;
+         memcpy(dir, rest, n);
+         dir[n] = 0;
+         if (!strncmp(o->madedir[pi], dir, n) && (o->madedir[pi][n] == 0 || o->madedir[pi][n] == '/'))
+             continue;   /* made for an earlier file of this drawer */
+-        if (!join(line, sizeof(line), "If NOT EXISTS \"UP-Term:", p->drawer, "/", dir, "\"", 0, 0, 0)) return;
++        if (!join(line, sizeof(o->line), "If NOT EXISTS \"UP-Term:", p->drawer, "/", dir, "\"", 0, 0, 0)) return;
+         say(o, p, line);
+-        join(line, sizeof(line), "  MakeDir \"UP-Term:", p->drawer, "/", dir, "\"", 0, 0, 0);
++        join(line, sizeof(o->line), "  MakeDir \"UP-Term:", p->drawer, "/", dir, "\"", 0, 0, 0);
+         say(o, p, line);
+         say(o, p, "EndIf");
+     }
+@@ -148,9 +154,9 @@ static void emit_copy(ud_out *o, ud_result *r, ud_part *p, const char *kit, cons
+         memcpy(o->madedir[pi], rest, (size_t)(s - rest));
+         o->madedir[pi][s - rest] = 0;
+     }
+-    if (join(line, sizeof(line), "Copy \"", kit, (k && kit[k - 1] != ':' && kit[k - 1] != '/') ? "/" : "",
++    if (join(line, sizeof(o->line), "Copy \"", kit, (k && kit[k - 1] != ':' && kit[k - 1] != '/') ? "/" : "",
+              path, "\" \"UP-Term:", p->drawer, "/", 0) &&
+-        strlen(line) + strlen(rest) + 16 < sizeof(line)) {
++        strlen(line) + strlen(rest) + 16 < sizeof(o->line)) {
+         strcat(line, rest);
+         strcat(line, "\" CLONE QUIET");
+     } else
+@@ -160,10 +166,10 @@ static void emit_copy(ud_out *o, ud_result *r, ud_part *p, const char *kit, cons
+ 
+ static void emit_delete(ud_out *o, ud_part *p, const char *rest)
+ {
+-    char line[600];
+-    if (!join(line, sizeof(line), "If EXISTS \"UP-Term:", p->drawer, "/", rest, "\"", 0, 0, 0)) return;
++    char *line = o->line;
++    if (!join(line, sizeof(o->line), "If EXISTS \"UP-Term:", p->drawer, "/", rest, "\"", 0, 0, 0)) return;
+     say(o, p, line);
+-    join(line, sizeof(line), "  Delete \"UP-Term:", p->drawer, "/", rest, "\" QUIET", 0, 0, 0);
++    join(line, sizeof(o->line), "  Delete \"UP-Term:", p->drawer, "/", rest, "\" QUIET", 0, 0, 0);
+     say(o, p, line);
+     say(o, p, "EndIf");
+ }
+@@ -179,7 +185,6 @@ int ud_compare(char *oldtext, char *newtext, const char *kit, ud_result *r, ud_e
+ {
+     ud_list a, b;
+     ud_out *o;
+-    char oldfrom[UD_MAXPARTS][UD_DRAWER], olddrawer[UD_MAXPARTS][UD_DRAWER], oldname[UD_MAXPARTS][UD_NAME];
+     int nold = 0, i = 0, j = 0, all = 0, rc = -1;
+     char from[UD_DRAWER], drawer[UD_DRAWER];
+     const char *sec;
+@@ -202,8 +207,8 @@ int ud_compare(char *oldtext, char *newtext, const char *kit, ud_result *r, ud_e
+         strcpy(p->drawer, drawer);
+     }
+     for (i = 0; i < a.n && nold < UD_MAXPARTS; i++) {
+-        if (copy_line(a.l[i].path, oldfrom[nold], olddrawer[nold]) == 1 && strlen(a.l[i].part) < UD_NAME)
+-            strcpy(oldname[nold++], a.l[i].part);
++        if (copy_line(a.l[i].path, o->oldfrom[nold], o->olddrawer[nold]) == 1 && strlen(a.l[i].part) < UD_NAME)
++            strcpy(o->oldname[nold++], a.l[i].part);
+     }
+     i = j = 0;
+     while (i < a.n || j < b.n) {
+@@ -213,9 +218,9 @@ int ud_compare(char *oldtext, char *newtext, const char *kit, ud_result *r, ud_e
+             int moved = 0, k;
+             /* a copy part whose drawers moved copies every file again */
+             if (p && p->copy && !strncmp(b.l[j].path, "Files/", 6)) {
+-                for (k = 0; k < nold && strcmp(oldname[k], p->name); k++)
++                for (k = 0; k < nold && strcmp(o->oldname[k], p->name); k++)
+                     ;
+-                moved = k == nold || strcmp(oldfrom[k], p->from) || strcmp(olddrawer[k], p->drawer);
++                moved = k == nold || strcmp(o->oldfrom[k], p->from) || strcmp(o->olddrawer[k], p->drawer);
+             }
+             if (!moved) {
+                 i++, j++;
+@@ -254,12 +259,12 @@ int ud_compare(char *oldtext, char *newtext, const char *kit, ud_result *r, ud_e
+             if (!strcmp(l->part, "-") || !strncmp(l->path, "copy#", 5) || is_section(l->path, &sec)) continue;
+             r->gone++;
+             if (!(p = part_of(r, l->part))) goto out;
+-            for (k = 0; k < nold && strcmp(oldname[k], l->part); k++)
++            for (k = 0; k < nold && strcmp(o->oldname[k], l->part); k++)
+                 ;
+             if (k < nold) {      /* from an old copy part's drawer */
+-                const char *rest = below(l->path, oldfrom[k]);
++                const char *rest = below(l->path, o->oldfrom[k]);
+                 ud_part q = *p;
+-                strcpy(q.drawer, olddrawer[k]);
++                strcpy(q.drawer, o->olddrawer[k]);
+                 if (rest) emit_delete(o, &q, rest);
+                 p->run = 1;
+             } else
+diff --git a/tests/test_updiff.c b/tests/test_updiff.c
+index 8f4aa96c..81280af3 100644
+--- a/tests/test_updiff.c
++++ b/tests/test_updiff.c
+@@ -190,6 +190,57 @@ static void bad_manifests(void)
+     CHECK_INT(ud_compare(a, b, "VTC:distkit", &r, 0, 0), -1);   /* not sorted */
+ }
+ 
++/* The Installer runs upupdate on its own stack, and a stale manifest crashed
++ * it with an address error (Software Failure 80000004): ud_compare kept 7 KB
++ * of tables as locals and the stack ran out. The comparison must stay in a
++ * few KB of stack however many parts and files there are. Measured by
++ * painting the stack below this frame, running the call, and finding the
++ * deepest byte it changed. */
++#define PROBE 24576
++#define STACK_LIMIT 8192   /* host build with the sanitizers: 3.7 and 5.8 KB fixed, 11 and 14 KB before */
++#if defined(__GNUC__)
++#define UD_NOINLINE __attribute__((noinline, no_sanitize_address))
++#else
++#define UD_NOINLINE
++#endif
++
++/* mode 0: paint PROBE bytes below the caller; mode 1: how deep the call in between went */
++static UD_NOINLINE long stack_probe(int mode)
++{
++    volatile unsigned char buf[PROBE];
++    long i;
++    if (mode == 0) {
++        for (i = 0; i < PROBE; i++) buf[i] = 0xA5;
++        return 0;
++    }
++    for (i = 0; i < PROBE && buf[i] == 0xA5; i++)
++        ;
++    return PROBE - i;
++}
++
++/* the update check against a stale manifest: every copy part differs and the old kit is gone */
++static void stack_use(void)
++{
++    static char a[2048], b[2048];
++    static ud_result r;
++    long same, changed;
++    build(a, old_lines);
++    build(b, old_lines);
++    stack_probe(0);
++    CHECK_INT(ud_compare(a, b, "VTC:distkit", &r, 0, 0), 0);
++    same = stack_probe(1);
++    build(a, old_lines);
++    build(b, new_lines);
++    out[0] = 0;
++    stack_probe(0);
++    CHECK_INT(ud_compare(a, b, "VTC:distkit", &r, collect, 0), 0);
++    changed = stack_probe(1);
++    printf("  updiff stack: unchanged %ld bytes, changed %ld bytes\n", same, changed);
++    CHECK(same > 0 && changed > 0);   /* the probe saw the call */
++    CHECK(same < STACK_LIMIT);
++    CHECK(changed < STACK_LIMIT);
++}
++
+ void suite_updiff(void)
+ {
+     same_kit();
+@@ -198,4 +249,5 @@ void suite_updiff(void)
+     script_sections();
+     gone_and_unowned();
+     bad_manifests();
++    stack_use();
+ }
+-- 
+2.50.1 (Apple Git-155)
+
+
+From cd7b4dbc72b4f9e622d8f0b3d171af7030828bf9 Mon Sep 17 00:00:00 2001
+From: spotUP <retroranksmail@gmail.com>
+Date: Sun, 11 Oct 2026 22:59:19 +0200
+Subject: [PATCH 09/10] installer_rig: AmiSSL probes open the file (List cannot
+ see a top-level file of an ADDed LIBS:); fixtures snapshot kept on the host
+ so a run that died does not poison the next
+
+---
+ tools/rig/install_rig.py   | 29 +++++++++++++++++++++++++++--
+ tools/rig/installer_rig.py | 13 ++++++++-----
+ 2 files changed, 35 insertions(+), 7 deletions(-)
+
+diff --git a/tools/rig/install_rig.py b/tools/rig/install_rig.py
+index 849720cd..081d5efc 100644
+--- a/tools/rig/install_rig.py
++++ b/tools/rig/install_rig.py
+@@ -14,7 +14,7 @@ Two passes: the default drawer (SYS:UP-Term) and a non-default one
+   install_rig.py --show-check the watched window (UPTERM_RIG_SHOW=<title>) alone
+   install_rig.py --move       a third pass: Install into the default drawer, then
+                               again with DEST=VTC:Apps/UP-Term (the assign moves)"""
+-import os, pathlib, re, shutil, signal, struct, sys, time
++import base64, json, os, pathlib, re, shutil, signal, struct, sys, time
+ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+ import paths  # before ami: it sets the agent port of UPTERM_RIG
+ import ami
+@@ -328,7 +328,12 @@ class Fixtures:
+         # whose drawer the next run deleted -- "Please insert volume UP-Term:"
+         # at every boot (rig 1, 2026-10-10)
+         signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
++        # A run whose guest died (or whose host was killed hard) never reached restore(): the snapshot it
++        # left on the host is what the disk should hold. Put it back BEFORE taking this run's own, or the
++        # stale block the dead run left in S:User-Startup becomes this run's baseline.
++        self._recover()
+         self.files = {p: ami.read_file(p) for p in self.paths}
++        self._save()
+         rc, out = run('Assign LIST')
+         self.assigns = {}
+         for l in out.splitlines():
+@@ -336,11 +341,31 @@ class Fixtures:
+             if len(f) == 2 and f[0].rstrip(':').upper() in FIXTURE_ASSIGNS:
+                 self.assigns[f[0].rstrip(':').upper()] = f[1].strip()
+ 
++    def _snap(self):
++        return paths.RIG / 'fixtures-snapshot.json'
++
++    def _save(self):
++        self._snap().write_text(json.dumps({p: None if b is None else base64.b64encode(b).decode() for p, b in self.files.items()}))
++
++    def _recover(self):
++        f = self._snap()
++        if not f.exists(): return
++        saved = {p: None if b is None else base64.b64decode(b) for p, b in json.loads(f.read_text()).items()}
++        for p, b in saved.items():
++            if p in self.paths and ami.read_file(p) != b:
++                print('[WARN] a run left %s changed (it did not restore): putting the earlier state back' % p)
++                ami.restore_file(p, b)
++        f.unlink()
++
+     def restore(self):
+         if self.files is None: return
++        clean = True
+         for p, saved in self.files.items():
+             try: ami.restore_file(p, saved)
+-            except BaseException as e: print('[WARN] fixture %s not restored: %s' % (p, e))
++            except BaseException as e:
++                clean = False
++                print('[WARN] fixture %s not restored: %s' % (p, e))
++        if clean: self._snap().unlink(missing_ok=True)   # else the next run's take() recovers from it
+         for name in FIXTURE_ASSIGNS:
+             try:
+                 if name in self.assigns: run('Assign %s: "%s"' % (name, self.assigns[name]))
+diff --git a/tools/rig/installer_rig.py b/tools/rig/installer_rig.py
+index bfca20ae..e1891e03 100644
+--- a/tools/rig/installer_rig.py
++++ b/tools/rig/installer_rig.py
+@@ -478,7 +478,10 @@ def run_case(case):
+     if rig_gg:
+         ir.run('Assign GG:')   # as install_rig: Install's own GG: is what gets tested
+     # AmiSSL: absent before every case but amissl-present, which plants the two files the offer looks for
+-    amissl_present = lambda: all(ir.run('List >NIL: %s' % f)[0] == 0 for f in AMISSL_LIBS)
++    # Open-based, as OpenLibrary's LoadSeg is: List locks the parent drawer, and LIBS: with AmiSSL:Libs ADDed
++    # resolves only the first drawer for a top-level file (List LIBS:amisslmaster.library fails, the file opens;
++    # measured on the rig 2026-10-11), so List is no probe for a file in an ADDed assign
++    amissl_present = lambda: all(ir.run('Copy >NIL: "%s" TO NIL:' % f)[0] == 0 for f in AMISSL_LIBS)
+     ir.run('Delete >NIL: LIBS:amisslmaster.library LIBS:AmiSSL ALL QUIET')
+     if case == 'amissl-present':
+         ir.run('MakeDir >NIL: LIBS:AmiSSL')
+@@ -535,11 +538,11 @@ def run_case(case):
+         al = ir.run('Assign LIST')[1]
+         ck(amissl_present(), 'after the boot lines: LIBS: has amisslmaster.library and amissl_v362.library',
+            ' | '.join(['PROBE ' + c + ' => ' + ir.run(c)[1].strip()[:150].replace('\n', ' / ') for c in
+-                       ('List LIBS:AmiSSL/amissl_v362.library', 'List LIBS:AmiSSL', 'Assign LIST LIBS:', 'Assign LIST AmiSSL:')]))
++                       ('Copy LIBS:amisslmaster.library TO NIL:', 'Copy LIBS:AmiSSL/amissl_v362.library TO NIL:', 'Assign LIST AmiSSL:')]))
+         # what the TLS programs do: OpenLibrary through LIBS: (curl itself needs the TCP/IP stack's usergroup.library, which the clean rig has not)
+-        rc, out = ir.run('Version amisslmaster.library')
++        rc, out = ir.run('Version LIBS:amisslmaster.library FILE')
+         ck(rc == 0 and re.search(r'amisslmaster\.library 5\.', out) is not None, 'amisslmaster.library 5 opens through LIBS:', out[:200])
+-        rc, out = ir.run('Version AmiSSL/amissl_v362.library')
++        rc, out = ir.run('Version LIBS:AmiSSL/amissl_v362.library FILE')
+         ck(rc == 0 and re.search(r'amissl_v362\.library 5\.', out) is not None, 'AmiSSL/amissl_v362.library 5 opens through LIBS:', out[:200])
+     elif case != 'amissl-present':
+         ck(not amissl_present(), 'declining the offer installs no AmiSSL')
+@@ -603,7 +606,7 @@ def run_case(case):
+     ck(st.get('ixnet.library') == before.get('ixnet.library') and 'ixnet.library.orig' not in st,
+        'after Uninstall: the original ixnet back, no .orig', 'now %s, before %s' % (st, before))
+     ir.run('Delete >NIL: ENVARC:UP-Term.prefs ENVARC:Claude/remote QUIET')
+-    if case in ('amissl', 'amissl-present'):   # leave the rig without AmiSSL, as the other cases expect it
++    if case in ('amissl', 'amissl-present') and not os.environ.get('UPTERM_RIG_KEEP_AMISSL'):   # leave the rig without AmiSSL, as the other cases expect it (KEEP: a probe wants it)
+         ir.run('Assign >NIL: LIBS: AmiSSL:Libs REMOVE')
+         ir.run('Delete >NIL: LIBS:amisslmaster.library LIBS:AmiSSL ALL QUIET')
+         ir.run('Assign >NIL: AmiSSL: REMOVE')
+-- 
+2.50.1 (Apple Git-155)
+
+
+From a90d01ba4dba1c48da3d45a1f6954e39d82eea52 Mon Sep 17 00:00:00 2001
+From: spotUP <retroranksmail@gmail.com>
+Date: Sun, 11 Oct 2026 23:15:42 +0200
+Subject: [PATCH 10/10] WIP installer_rig: after-Uninstall AmiSSL check prints
+ its probes (amissl case still failing check 41, cleanup hangs on a volume
+ requester)
+
+---
+ tools/rig/installer_rig.py | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/tools/rig/installer_rig.py b/tools/rig/installer_rig.py
+index e1891e03..6d194daf 100644
+--- a/tools/rig/installer_rig.py
++++ b/tools/rig/installer_rig.py
+@@ -593,7 +593,9 @@ def run_case(case):
+     rc, out = ir.run('Type S:User-Startup')
+     if case == 'amissl':
+         # AmiSSL is a separate product: Uninstall leaves it, and its block in S:User-Startup
+-        ck(amissl_present(), 'after Uninstall: AmiSSL is still there (libraries and assign)')
++        ck(amissl_present(), 'after Uninstall: AmiSSL is still there (libraries and assign)',
++           ' | '.join(['PROBE ' + c + ' => ' + ir.run(c)[1].strip()[:150].replace('\n', ' / ') for c in
++                       ('Assign LIST AmiSSL:', 'Copy LIBS:amisslmaster.library TO NIL:', 'Copy LIBS:AmiSSL/amissl_v362.library TO NIL:')]))
+         ck(ir.run('Search >NIL: S:User-Startup UP-Term')[0] != 0, 'after Uninstall: no UP-Term lines in S:User-Startup', out[-200:])
+     else:
+         ck(out == startup_before, 'after Uninstall: S:User-Startup as it was, byte for byte',
+-- 
+2.50.1 (Apple Git-155)
+

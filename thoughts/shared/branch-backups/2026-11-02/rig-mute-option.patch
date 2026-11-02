@@ -1,0 +1,52 @@
+# branch rig/mute-option tip f1041fd227f25e90c98470e87d74b83de26ec5e3
+From f1041fd227f25e90c98470e87d74b83de26ec5e3 Mon Sep 17 00:00:00 2001
+From: spotUP <retroranksmail@gmail.com>
+Date: Fri, 30 Oct 2026 13:14:02 +0100
+Subject: [PATCH] rig: --mute / RIG_MUTE=1 starts a rig at volume 0
+
+Rigs stay audible by default (owner decision 2026-10-26). The owner
+asked for silent rigs while in a meeting; this gives a switch instead
+of changing that default.
+---
+ tools/rig/README.md | 1 +
+ tools/rig/rig.py    | 5 ++++-
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/tools/rig/README.md b/tools/rig/README.md
+index 2494af1b..37b4ce79 100644
+--- a/tools/rig/README.md
++++ b/tools/rig/README.md
+@@ -52,6 +52,7 @@ Machine flags (on `start`, and `setup` when the config alone changes):
+ | `--os32` | AmigaOS 3.2 tree and ROM (see the table above) |
+ | `--kick <file>` | another Kickstart ROM for this boot |
+ | `--serial <path>` | serial port to a host pty (`getty_rig.py` does this itself) |
++| `--mute` | volume 0 (also `RIG_MUTE=1` in the environment); default is audible |
+ | `--ro` | DH0: read-only (stalls on "write protected" requesters; avoid) |
+ 
+ `dvmatrix.sh <kickstart file> <label>` boots the rig on another ROM and runs the console.device checks on it.
+diff --git a/tools/rig/rig.py b/tools/rig/rig.py
+index efdfeee0..88090bd2 100644
+--- a/tools/rig/rig.py
++++ b/tools/rig/rig.py
+@@ -318,6 +318,9 @@ RW = "--ro" not in sys.argv
+ # --exact: 68020 cycle-exact, no JIT. Emulated time then counts cycles,
+ # not host speed: the only way to benchmark on a loaded host (JIT timings
+ # swung 10x with the owner's other emulators, 2026-09-29).
++# --mute (or RIG_MUTE=1 in the environment): volume 0, for when the owner is in a
++# meeting. Rigs stay audible by default (owner, 2026-10-26).
++MUTE = "--mute" in sys.argv or os.environ.get("RIG_MUTE") == "1"
+ FAST = "--fast" in sys.argv   # the CPU as fast as the host runs it (an accelerator's order of speed, not a model of one)
+ # --stock: creep's conbench machine, his config A1200-Stock-net (ledger S1,
+ # 2026-10-04): amiga_model A1200 at FS-UAE's default accuracy (the model's
+@@ -699,7 +702,7 @@ def setup():
+     ] + (["hard_drive_3 = %s" % (RIG / "work"), "hard_drive_3_label = Work", "hard_drive_3_priority = -128"] if OS else []) + [
+         # audible output on every rig: "interrupts" is emulated with no output and
+         # volume 0 muted it, so no rig made sound (owner, 2026-10-26)
+-        "uae_sound_output = exact", "volume = 100", "initial_input_grab = 0",
++        "uae_sound_output = exact", "volume = %d" % (0 if MUTE else 100), "initial_input_grab = 0",
+         # the Amiga's clipboard.device unit 0 and the Mac's clipboard are one: a copy
+         # in UP-Term pastes on the Mac and back (off without it, 2026-10-12)
+         "clipboard_sharing = 1",
+-- 
+2.50.1 (Apple Git-155)
+
