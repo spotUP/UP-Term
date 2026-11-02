@@ -56,6 +56,8 @@
 #include "../tty/qmark.h"
 #include "keymap_default.inc"
 #include "job_dos.h"
+#include "help_core.h"
+#include "amhelp.inc"          /* amhelp_welcome, amhelp_help: dist/amarchy.help through tools/gen_amarchy_help.py */
 #include "wbreset.h"
 
 /* vbcc's startup runs main on this much, and the cookie is what vsh, the Shell and Workbench read from the
@@ -66,7 +68,7 @@
 long __stack = GUI_STACK;
 const char amarchy_gui_stack_cookie[] = "$STACK: " GUI_STR(GUI_STACK);
 
-#define USAGE "usage: amarchy-gui menu [node [at AX AY]] | viewer | serve\n"
+#define USAGE "usage: amarchy-gui menu [node [at AX AY]] | viewer | welcome | help | serve\n"
 #define MAX_LINES 200
 #define EDIT_MAX 80
 #define PUT_MAX 384          /* the longest label put() cuts */
@@ -129,6 +131,10 @@ typedef struct gui {
     const char *ln[MAX_LINES];
     int ll[MAX_LINES], nlines;
     const char *head;            /* viewer/message/input header text */
+    /* the welcome window (welcome 1) and the Help view (welcome 2): the viewer with the amhelp text; the welcome
+     * adds two rows after the text, the checkbox row and the buttons (key state: hc_welcome_key) */
+    int welcome, wticked, wdone, whelp;
+    int wbx[2][2];               /* the two buttons' x ranges in the window, set by the last draw */
     /* input */
     char edit[EDIT_MAX];
     int elen, edone;
@@ -441,6 +447,36 @@ static void draw_icon(gui *g, int role, const mn_item *it, int x, int y, int box
 }
 
 /* One row of the current mode, entry e (0-based among all entries), when it is shown. */
+/* The welcome window's two rows after the text: row 0 the checkbox, row 1 the buttons Close and Open Help. Theme
+ * roles only (MT_TEXT, MT_BG, MT_SELBOX, MT_ACCENT). */
+static void draw_welcome_row(gui *g, int r, int tx, int y, int rbg)
+{
+    const mg_geom *q = &g->g;
+    int rh = q->m.row_h;
+    if (r == 0) {
+        int s = rh - 6, bx = tx, by = y + 3;
+        const char *t = "Don't show this again";
+        fill(g, MT_TEXT, bx, by, bx + s - 1, by + s - 1);
+        fill(g, MT_BG, bx + 1, by + 1, bx + s - 2, by + s - 2);
+        if (g->wticked)
+            fill(g, MT_ACCENT, bx + 3, by + 3, bx + s - 4, by + s - 4);
+        put(g, MT_TEXT, rbg, bx + s + q->m.row_pad, y, rh, t, (int)strlen(t), q->list_w - 2 * q->m.row_pad - s);
+    } else {
+        static const char *const name[2] = { "Close", "Open Help" };
+        int i, x = tx;
+        for (i = 0; i < 2; i++) {
+            int w = mt_width(g->mt, name[i]) + 2 * q->m.row_pad;
+            fill(g, MT_TEXT, x, y + 1, x + w - 1, y + rh - 2);
+            fill(g, i == 0 ? MT_SELBOX : MT_BG, x + 1, y + 2, x + w - 2, y + rh - 3);
+            put(g, i == 0 ? MT_ACCENT : MT_TEXT, i == 0 ? MT_SELBOX : MT_BG, x + q->m.row_pad, y, rh, name[i],
+                (int)strlen(name[i]), w - 2 * q->m.row_pad);
+            g->wbx[i][0] = x;
+            g->wbx[i][1] = x + w - 1;
+            x += w + q->m.row_pad;
+        }
+    }
+}
+
 static void draw_row(gui *g, int e)
 {
     const mg_geom *q = &g->g;
@@ -525,6 +561,8 @@ static void draw_row(gui *g, int e)
         memcpy(t, g->edit, (size_t)g->elen);
         t[g->elen] = '_';
         put(g, MT_ACCENT, rbg, tx, y, q->m.row_h, t, g->elen + 1, tw);
+    } else if (g->mode == M_VIEW && g->welcome == 1 && e >= g->nlines) {
+        draw_welcome_row(g, e - g->nlines, tx, y, rbg);
     } else
         put(g, MT_TEXT, rbg, tx, y, q->m.row_h, g->ln[e], g->ll[e], tw);
     paint_end(g, q->list_x, y, q->list_x + q->list_w - 1, bottom);
@@ -997,8 +1035,18 @@ static void key_input(gui *g, int k, int ch)
     }
 }
 
-static void key_view(gui *g, int k)
+static void key_view(gui *g, int k, int ch)
 {
+    if (g->welcome == 1) {                 /* the checkbox keys live in hc_welcome_key; this only draws */
+        int c = k == K_ENTER ? '\r' : k == K_ESC ? 27 : k == K_CHAR ? ch : 0;
+        if (c && hc_welcome_key(c, &g->wticked, &g->wdone)) {
+            if (g->wdone)
+                g->quit = g->stop = 1;
+            else
+                draw_list(g);
+            return;
+        }
+    }
     switch (k) {
     case K_ESC:
         g->quit = g->stop = 1;
@@ -1092,7 +1140,7 @@ static void key(gui *g, int k, int ch, int wheel)
         key_job(g, k);
         break;
     default:
-        key_view(g, k);
+        key_view(g, k, ch);
     }
 }
 
@@ -1143,6 +1191,21 @@ static void mouse_button(gui *g, int code, int mx, int my)
         return;
     if (g->mode == M_MSG) {
         g->stop = 1;
+        return;
+    }
+    if (g->mode == M_VIEW && g->welcome == 1) {
+        h = mg_hit(&g->g, g->top, mx, my) - g->nlines;
+        if (h == 0) {
+            g->wticked = !g->wticked;
+            draw_list(g);
+        } else if (h == 1) {
+            if (mx >= g->wbx[0][0] && mx <= g->wbx[0][1])
+                g->quit = g->stop = 1;
+            else if (mx >= g->wbx[1][0] && mx <= g->wbx[1][1]) {
+                g->whelp = 1;
+                g->quit = g->stop = 1;
+            }
+        }
         return;
     }
     if (g->mode != M_LIST)
@@ -1311,7 +1374,7 @@ static struct Window *window_open(gui *g)
 {
     struct TagItem tags[] = {
         { WA_Left, g->g.x }, { WA_Top, g->g.y }, { WA_Width, g->g.w }, { WA_Height, g->g.h },
-        { WA_PubScreen, (ULONG)g->scr }, { WA_Title, (ULONG) "Amarchy" },
+        { WA_PubScreen, (ULONG)g->scr }, { WA_Title, (ULONG) (g->welcome == 1 ? "Welcome to Amarchy" : g->welcome == 2 ? "Amarchy Help" : "Amarchy") },
         { WA_Borderless, TRUE }, { WA_Activate, TRUE }, { WA_RMBTrap, TRUE },
         { WA_WBenchWindow, TRUE },                 /* WBRESET-EXT: IPrefs counts windows lacking this flag and refuses to reset */
         { WA_SmartRefresh, TRUE }, { WA_ReportMouse, TRUE },
@@ -1572,6 +1635,27 @@ static void screen_unbind(gui *g)
  * state reset first, so the warm server (`serve`) and the cold `menu` / `viewer` command lines run the same
  * code (plan 2026-10-27-amarchy-gui-warm.md). Keymap, index, screen, pens, font and icons load per open: a
  * settings or theme change shows at the next press. The libraries stay open (main). Returns the exit code. */
+/* The welcome window closed: a ticked box saves welcome-shown (ENV: and ENVARC:), Open Help starts the Help view. */
+static void welcome_finish(gui *g, const lf_ui *ui)
+{
+    if (g->wticked) {
+        am_prefs p;
+        int failed = 0;
+        amconf_load(&p);
+        hc_mark_shown(&p);
+        (void)amconf_save_with(amconf_dos_io(), &p, 1, &failed);
+    }
+    if (g->whelp) {
+        km_menu m;
+        memset(&m, 0, sizeof m);
+        m.kind = KA_GUI;
+        m.label = "Amarchy Help";
+        m.arg = "help";
+        (void)lf_run(&m, ui);
+    }
+}
+
+/* viewer: 0 the menu, 1 the key viewer, 2 the welcome window, 3 the Help view */
 static int gui_open(int viewer, const char *node, int anchored, int ax, int ay)
 {
     gui *g = &G;
@@ -1620,9 +1704,15 @@ static int gui_open(int viewer, const char *node, int anchored, int ax, int ay)
     if (viewer) {
         int i, w = 0;
         mg_metrics m;
-        mn_viewer_text(&km, view_text, sizeof view_text);
+        if (viewer >= 2) {
+            hc_expand(&km, viewer == 2 ? amhelp_welcome : amhelp_help, view_text, (int)sizeof view_text);
+            g->welcome = viewer == 2 ? 1 : 2;
+            g->head = viewer == 2 ? "Welcome to Amarchy" : "Amarchy Help";
+        } else {
+            mn_viewer_text(&km, view_text, sizeof view_text);
+            g->head = "Key bindings";
+        }
         g->mode = M_VIEW;
-        g->head = "Key bindings";
         lines_split(g, view_text);
         for (i = 0; i < g->nlines; i++) {
             int lw = mt_width_n(g->mt, g->ln[i], g->ll[i]);
@@ -1636,7 +1726,7 @@ static int gui_open(int viewer, const char *node, int anchored, int ax, int ay)
         if (w > g->ms.w - 2 * m.margin_x)
             w = g->ms.w - 2 * m.margin_x;
         g->w = w;
-        mg_layout(&g->g, &g->mf, g->w, g->nlines, &g->ms);
+        mg_layout(&g->g, &g->mf, g->w, g->nlines + (g->welcome == 1 ? 2 : 0), &g->ms);
     } else {
         int n;
         mg_metrics m;
@@ -1718,6 +1808,14 @@ static int gui_open(int viewer, const char *node, int anchored, int ax, int ay)
             list_rebuild_keep(g, keep);
         }
     }
+    if (g->welcome == 1) {
+        lf_ui ui;
+        memset(&ui, 0, sizeof ui);
+        ui.refused = gui_refused;
+        ui.ctx = g;
+        ui.win = g->win;
+        welcome_finish(g, &ui);
+    }
 done:
     desk_dos_own_close = 0;
     desk_dos_own_open = 0;
@@ -1788,11 +1886,12 @@ int main(int argc, char **argv)
     int rc;
 
     lf_init();
-    if (qmark_argv(argc, argv) || (argc > 1 && !strcmp(argv[1], "help"))) {
+    if (qmark_argv(argc, argv)) {
         PutStr((STRPTR) USAGE);
         return 0;
     }
-    if (argc < 2 || (strcmp(argv[1], "menu") && strcmp(argv[1], "viewer") && strcmp(argv[1], "serve"))) {
+    if (argc < 2 || (strcmp(argv[1], "menu") && strcmp(argv[1], "viewer") && strcmp(argv[1], "welcome") &&
+                      strcmp(argv[1], "help") && strcmp(argv[1], "serve"))) {
         PutStr((STRPTR) USAGE);
         return 5;
     }
@@ -1807,7 +1906,7 @@ int main(int argc, char **argv)
         int ax = 0, ay = 0, anchored;
         /* `menu <node> at AX AY`: the cold path of an anchored open (the bar's panel) */
         anchored = ms_anchor_args(argc, argv, 3, &ax, &ay);
-        rc = gui_open(!strcmp(argv[1], "viewer"), argc > 2 && strcmp(argv[2], "root") ? argv[2] : "", anchored, ax, ay);
+        rc = gui_open(!strcmp(argv[1], "viewer") ? 1 : !strcmp(argv[1], "welcome") ? 2 : !strcmp(argv[1], "help") ? 3 : 0, argc > 2 && strcmp(argv[2], "root") ? argv[2] : "", anchored, ax, ay);
     }
     ix_pkg_free(&ixs);
     if (GfxBase)

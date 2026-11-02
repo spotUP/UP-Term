@@ -39,7 +39,7 @@ static const kname knames[] = {
     { "a", 0x20, 0 }, { "s", 0x21, 0 }, { "d", 0x22, 0 }, { "f", 0x23, 0 }, { "g", 0x24, 0 },
     { "h", 0x25, 0 }, { "j", 0x26, 0 }, { "k", 0x27, 0 }, { "l", 0x28, 0 },
     { "z", 0x31, 0 }, { "x", 0x32, 0 }, { "c", 0x33, 0 }, { "v", 0x34, 0 }, { "b", 0x35, 0 },
-    { "n", 0x36, 0 }, { "m", 0x37, 0 }, { "comma", 0x38, ',' }, { "period", 0x39, '.' },
+    { "n", 0x36, 0 }, { "m", 0x37, 0 }, { "comma", 0x38, ',' }, { "period", 0x39, '.' }, { "slash", 0x3A, '/' },
     { "space", 0x40, 0 }, { "backspace", 0x41, 0 }, { "tab", 0x42, 0 }, { "return", 0x44, 0 },
     { "esc", 0x45, 0 }, { "del", 0x46, 0 },
     { "up", 0x4C, 0 }, { "down", 0x4D, 0 }, { "right", 0x4E, 0 }, { "left", 0x4F, 0 },
@@ -131,6 +131,8 @@ int keymap_action_scope(int kind)
     case KA_CAP:
     case KA_SETTINGS:
     case KA_BAR:
+    case KA_GUI:
+    case KA_AMARCHY:
         return KS_COMMODITY;
     case KA_MENU:
     case KA_VIEWER:
@@ -217,7 +219,7 @@ static const prefix prefixes[] = {
     { "menu", KA_MENU }, { "menuid", KA_MENUID }, { "tab", KA_TAB },
     { "slash", KA_SLASH }, { "run", KA_RUN }, { "job", KA_JOB }, { "rexx", KA_REXX }, { "open", KA_OPEN },
     { "detach", KA_DETACH }, { "scan", KA_SCAN },
-    { "win", KA_WIN }, { "gtheme", KA_GTHEME }, { "cap", KA_CAP }, { "settings", KA_SETTINGS }, { "bar", KA_BAR }
+    { "win", KA_WIN }, { "gtheme", KA_GTHEME }, { "cap", KA_CAP }, { "settings", KA_SETTINGS }, { "bar", KA_BAR }, { "gui", KA_GUI }, { "amarchy", KA_AMARCHY }
 };
 
 const char *keymap_kind_name(int kind)
@@ -263,6 +265,11 @@ static int cap_arg_ok(const char *a)
 }
 
 /* bar:<verb>: the commodity's BAR verbs that change the bar (amarchy.c do_row). */
+static int gui_arg_ok(const char *a)
+{
+    return !strcmp(a, "help") || !strcmp(a, "welcome");
+}
+
 static int bar_arg_ok(const char *a)
 {
     return !strcmp(a, "on") || !strcmp(a, "off") || !strcmp(a, "toggle");
@@ -307,6 +314,10 @@ static int action_parse(const char *text, action *a)
     if (a->kind == KA_CAP && !cap_arg_ok(text))
         return 0;
     if (a->kind == KA_BAR && !bar_arg_ok(text))
+        return 0;
+    if (a->kind == KA_GUI && !gui_arg_ok(text))
+        return 0;
+    if (a->kind == KA_AMARCHY && strcmp(text, "quit"))
         return 0;
     if (a->kind == KA_GTHEME && (!*text || strchr(text, '/') || strchr(text, ':')))
         return 0;   /* a theme name, never a path */

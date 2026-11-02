@@ -166,7 +166,7 @@ static void the_shipped_keymap_has_no_super_alt_chord(void)
         if (km.bind[i].qual & KM_Q_CTRL)
             ctrl++;
     }
-    CHECK_INT(ctrl, 43);                /* the 28 former Super+Alt chords, now Super+Ctrl, super+ctrl+help (window shot), and the 14 super+ctrl+shift snap, float and swap keys (P3-D1) */
+    CHECK_INT(ctrl, 44);                /* the 28 former Super+Alt chords, now Super+Ctrl, super+ctrl+help (window shot), and the 14 super+ctrl+shift snap, float and swap keys (P3-D1), and super+ctrl+shift+q (Quit Amarchy) */
 }
 
 static void a_newer_major_is_rejected_whole(void)
@@ -510,6 +510,54 @@ static void bar_actions_parse(void)
             if (km.bind[i].kind == KA_BAR && !strcmp(km.bind[i].arg, "toggle"))
                 found++;
         CHECK_INT(found, 1);
+    }
+}
+
+/* RL16 W11, W11b: gui:<help|welcome> opens an amarchy-gui window, amarchy:quit ends the commodity; both are
+ * commodity actions, the shipped keymap binds them and carries a Help and a Quit Amarchy menu row. */
+static void gui_quit_actions_parse(void)
+{
+    static const char *const bad[] = { "gui:", "gui:viewer", "gui:Help", "gui:help x", "amarchy:", "amarchy:stop",
+                                       "amarchy:quit now" };
+    char row[64];
+    size_t i;
+    CHECK(parse("[bind]\nsuper+shift+slash = gui:help\n") && km.nbind == 1 && km.bind[0].kind == KA_GUI &&
+          !strcmp(km.bind[0].arg, "help") && km.bind[0].code == 0x3A);
+    CHECK(parse("[bind]\nsuper+w = gui:welcome\n") && km.nbind == 1 && km.bind[0].kind == KA_GUI &&
+          !strcmp(km.bind[0].arg, "welcome"));
+    CHECK(parse("[bind]\nsuper+q = amarchy:quit\n") && km.nbind == 1 && km.bind[0].kind == KA_AMARCHY &&
+          !strcmp(km.bind[0].arg, "quit"));
+    for (i = 0; i < sizeof bad / sizeof bad[0]; i++) {
+        snprintf(row, sizeof row, "[bind]\nsuper+w = %s\n", bad[i]);
+        parse(row);
+        CHECK_INT(km.nbind, 0);
+    }
+    CHECK_INT(keymap_action_scope(KA_GUI), KS_COMMODITY);
+    CHECK_INT(keymap_action_scope(KA_AMARCHY), KS_COMMODITY);
+    CHECK_INT((int)lf_plan(KA_GUI), (int)LF_GUI);
+    CHECK_INT((int)lf_plan(KA_AMARCHY), (int)LF_QUIT);
+    {
+        static char file[32768];
+        long n = slurp("dist/keymap", file, sizeof(file));
+        int help_bind = 0, quit_bind = 0, help_row = 0, quit_row = 0;
+        CHECK(n > 0 && keymap_parse(&km, file, n));
+        for (i = 0; i < (size_t)km.nbind; i++) {
+            if (km.bind[i].kind == KA_GUI && !strcmp(km.bind[i].arg, "help"))
+                help_bind++;
+            if (km.bind[i].kind == KA_AMARCHY && !strcmp(km.bind[i].arg, "quit"))
+                quit_bind++;
+        }
+        for (i = 0; i < (size_t)km.nmenu; i++) {
+            if (km.menu[i].kind == KA_GUI && !strcmp(km.menu[i].arg, "help") && !strcmp(km.menu[i].label, "Help"))
+                help_row++;
+            if (km.menu[i].kind == KA_AMARCHY && !strcmp(km.menu[i].arg, "quit") &&
+                !strcmp(km.menu[i].label, "Quit Amarchy"))
+                quit_row++;
+        }
+        CHECK_INT(help_bind, 1);
+        CHECK_INT(quit_bind, 1);
+        CHECK_INT(help_row, 1);
+        CHECK_INT(quit_row, 1);
     }
 }
 
@@ -2115,7 +2163,7 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
     /* the shipped keymap at topaz 8 on 640x256: root 3 groups, apps 6 rows; the widest label of all
      * levels is "Install add-ons" (15 x 8 px): 2 x 4 + 2 x 22 + 2 x 14 + 120 = 200, under min_w 360 */
     CHECK(n > 0 && keymap_parse(&km, file, n));
-    CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 15);   /* with the Capture group (R4.7), the Trigger, Settings, Dopus, Workbench, Screens, Packages, Agents and Network groups (all shown) */
+    CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 17);   /* with the Help and Quit Amarchy rows (RL16 W11, W11b), with the Capture group (R4.7), the Trigger, Settings, Dopus, Workbench, Screens, Packages, Agents and Network groups (all shown) */
     CHECK_INT(mn_children(&km, "apps", items, MN_MAX_ITEMS), 5);
     w = mg_width(&km, "", &topaz, 0, 8, fixed_width, &px8, &pal);
     CHECK_INT(w, 360);
@@ -3374,6 +3422,7 @@ void suite_keymap(void)
     win_actions_parse();
     cap_actions_parse();
     bar_actions_parse();
+    gui_quit_actions_parse();
     win_scope_is_commodity();
     the_shipped_snap_focus_float_and_swap_keys_are_bound_and_clash_free();
     win_defers_in_the_handler();

@@ -18,6 +18,10 @@
 .Cm menu Ar node
 .Nm amarchy-gui
 .Cm viewer
+.Nm amarchy-gui
+.Cm welcome
+.Nm amarchy-gui
+.Cm help
 .Nm amnotify
 .Op Fl t Ar seconds
 .Op Fl f Ar file
@@ -96,8 +100,8 @@ Open the menu:      Super+Space
 Snap a window left: Super+Ctrl+Shift+Left
 Take a screenshot:  Super+Help
 Change the theme:   Style > Amarchy theme
-Open this help:     (unbound)
-Quit Amarchy:       (unbound)
+Open this help:     Super+Shift+Slash
+Quit Amarchy:       Super+Ctrl+Shift+Q
 .Ed
 .Pp
 The menu lists every program, setting and action. Press Escape
@@ -147,7 +151,7 @@ The port AMARCHY takes STATUS, RELOAD, RUN, SHOW and QUIT. The
 manual page lists every command: read it with man amarchy.
 .Pp
 .Ss Quitting
-Quit Amarchy with (unbound). Its keys stop working until you
+Quit Amarchy with Super+Ctrl+Shift+Q. Its keys stop working until you
 start it again.
 .\" END GENERATED amarchy.help
 .Sh FILES
@@ -165,6 +169,17 @@ rereads the files at once.
 A row replaces the row for the same key;
 .Ql super+t = none
 unbinds one.
+.It Pa ENVARC:Amarchy/prefs
+Amarchy's settings. The key
+.Ql welcome-shown
+is
+.Ql on
+once the welcome window was closed with Don't show this again ticked; delete the line to see the welcome window at
+the next start. Open the window again at any time with
+.Ql amarchy-gui welcome ,
+and the Help view with
+.Ql amarchy-gui help
+or the Help row of the menu.
 .It Pa UP-Term:Amarchy/Themes/NAME.theme
 The shipped GUI themes of the drawn menu (the Omarchy colour themes; the default is tokyo-night).
 .It Pa ENVARC:Amarchy/themes/NAME.theme

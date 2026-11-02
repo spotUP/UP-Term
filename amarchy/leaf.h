@@ -47,6 +47,8 @@ typedef enum {
     LF_VIEWER,   /* viewer: the key viewer, the program super+k opens, in its own window */
     LF_WIN,      /* win: a window verb, sent to the commodity (K8 wires the port) */
     LF_SETTING,  /* a settings row of the menu (MN_ROW_SETTING): lf_setting_* below, no [menu] row behind it */
+    LF_GUI,      /* gui: amarchy-gui help or welcome, in its own window like LF_VIEWER */
+    LF_QUIT,     /* amarchy:quit: sent to the commodity as QUIT */
     LF_CAP,      /* cap: a screenshot, sent to the commodity as CAP <kind> */
     LF_GTHEME,   /* gtheme: the drawn menu's theme is saved (gthemes_dos.h gt_dos_select) */
     LF_OPEN_THEN_REQUEST, /* slash: with no terminal window open: open one (as LF_OPEN), then send the request to it */
@@ -158,6 +160,8 @@ int lf_rexx_notice_line(char *out, int cap, const char *script, const char *spec
  * which is stale or missing where UP-Term: is not assigned (the rig): the program is beside us, not on a path.
  * 0 when dir is empty, holds a quote or the line does not fit. */
 int lf_viewer_command(char *out, int cap, const char *dir);
+/* The same for any amarchy-gui mode word ("viewer", "help", "welcome"): the one builder behind lf_viewer_command. */
+int lf_gui_command(char *out, int cap, const char *dir, const char *mode);
 /* The ARexx lines that bring one Directory Opus lister forward: step 0 `dopus front`, 1 `lister set <h> visible off`,
  * 2 `... visible on`. 1 when a line was written, 0 past the last step or when cap is too small. */
 int lf_lister_front_command(char *out, int cap, int step, unsigned long handle);
