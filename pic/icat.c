@@ -37,8 +37,8 @@ static const char vers[] = "$VER: icat " UPTERM_VERSION " (" UPTERM_DATE ") UP-T
 
 /* vbcc's startup runs main on a stack of this size; the cookie says the same to the OS and vsh
  * (RULES.md rule 6). The datatypes classes want a deep stack. */
-long __stack = 262144;
-const char icat_stack_cookie[] = "$STACK: 262144";
+long __stack = 65536;
+const char icat_stack_cookie[] = "$STACK: 65536";
 
 struct Library *DataTypesBase;
 

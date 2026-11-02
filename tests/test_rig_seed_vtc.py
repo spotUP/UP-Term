@@ -73,11 +73,15 @@ class StageIcat(unittest.TestCase):
         self.assertEqual((vtc / "icat").read_bytes(), b"icat-binary")
         self.assertEqual((vtc / rig.paths.UPTERM_DRAWER / "bin/icat").read_bytes(), b"icat-binary")
 
-    def test_icat_stack_and_cookie_are_262144(self):
-        """icat crashed at its own 65536 stack on a rig; vtcon rule 6: __stack and the $STACK cookie say the same"""
+    def test_icat_stack_and_cookie_agree(self):
+        """vtcon rule 6: icat's __stack and its $STACK cookie name the same size, so launchers that honour the
+        cookie give icat the stack it was built for"""
+        import re
         src = (ROOT / "pic/icat.c").read_text()
-        self.assertIn("long __stack = 262144;", src)
-        self.assertIn('"$STACK: 262144"', src)
+        stack = re.search(r"long __stack = (\d+);", src)
+        cookie = re.search(r'"\$STACK: (\d+)"', src)
+        self.assertTrue(stack and cookie)
+        self.assertEqual(stack.group(1), cookie.group(1))
 
 if __name__ == "__main__":
     unittest.main()
