@@ -326,6 +326,15 @@ long desk_confirm_left(const desk_confirm *c, long now);
 #define DESK_START_PALETTE 4u
 long desk_start_palette(unsigned mask, int flat, const gtheme *th, int depth, const unsigned char *base, long baselen,
                         const unsigned char *cur, long curlen, unsigned char *out, long cap);
+/* S31-START-PARTS: pointer, font and icontrol of the theme, also only applied by dk_apply before. DESK_START_POINTER / FONT: desk_start_prefs
+ * (target DT_POINTER or DT_FONT) returns the length of the file to write into out, 0 when nothing to write. DESK_START_ICONTROL:
+ * desk_start_icontrol returns DK_IC_WRITE / DK_IC_RESTORE / DK_IC_NONE (the thin border size, as dk_apply decides it). */
+#define DESK_START_POINTER 8u
+#define DESK_START_FONT 16u
+#define DESK_START_ICONTROL 32u
+long desk_start_prefs(int target, unsigned mask, const gtheme *th, int text_mode, desk_font_exists_fn exists, void *ctx,
+                      const unsigned char *cur, long curlen, unsigned char *out, long cap);
+int desk_start_icontrol(unsigned mask, const unsigned char *cur, long curlen, int have_snap, int *snapshot);
 /* 1 when two wbpattern.prefs show the same pens (the editor stores an all-pen-0 chunk with depth 1) */
 int desk_wbpattern_same(const unsigned char *a, long alen, const unsigned char *b, long blen);
 unsigned desk_start_plan(unsigned mask, int flat, int wbok, const unsigned char *wb, long wblen, int saved, int gsaved,

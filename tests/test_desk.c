@@ -1599,10 +1599,49 @@ static void test_desk_start_prefs_on_writes_theme_palette(void)
     CHECK_INT(desk_start_palette(amconf_desk_mask(&p), 1, &t, 3, base, n, base, n, again, sizeof again), 0);
 }
 
+/* S31-START-PARTS: the pointer, font and icontrol parts of the theme are also planned at start (before, only a theme pick wrote them):
+ * a stock file is rewritten with the theme, a second start finds the result and writes nothing, the part off in the mask writes nothing */
+static void test_desk_start_prefs_on_writes_pointer_font_icontrol(void)
+{
+    static unsigned char gold[BUF_MAX * 2], out[BUF_MAX * 2], again[BUF_MAX * 2], ic[BUF_MAX];
+    gtheme t;
+    long n, m, icn;
+    int snap = 0;
+    unsigned all = (1u << DT_POINTER) | (1u << DT_FONT) | (1u << DT_ICONTROL);
+    probe_theme(&t);
+    /* pointer: the stock file gets the theme RGB table; the result against itself plans nothing */
+    n = slurp(DESK_DATA "pointer-os322.prefs", gold, sizeof gold);
+    m = desk_start_prefs(DT_POINTER, all, &t, 0, 0, 0, gold, n, out, sizeof out);
+    CHECK_INT(m, n);
+    CHECK_INT(out[26 + 8 + 32], 0xff);
+    CHECK_INT(desk_start_prefs(DT_POINTER, all, &t, 0, 0, 0, out, m, again, sizeof again), 0);
+    CHECK_INT(desk_start_prefs(DT_POINTER, all & ~(1u << DT_POINTER), &t, 0, 0, 0, gold, n, again, sizeof again), 0);
+    CHECK_INT(desk_start_prefs(DT_POINTER, all, &t, 0, 0, 0, 0, -1, again, sizeof again), 0);   /* no file: nothing to start from */
+    /* font: no file starts from the default; the label pens are set; a second start writes nothing */
+    m = desk_start_prefs(DT_FONT, all, &t, DK_ICONTEXT_OUTLINE, font_known, (void *)"topaz.font", 0, -1, out, sizeof out);
+    CHECK_INT(m, 518);
+    CHECK_INT(out[26 + 164 + 8 + 15], 1);
+    CHECK_INT(desk_start_prefs(DT_FONT, all, &t, DK_ICONTEXT_OUTLINE, font_known, (void *)"topaz.font", out, m, again, sizeof again), 0);
+    CHECK_INT(desk_start_prefs(DT_FONT, all & ~(1u << DT_FONT), &t, DK_ICONTEXT_OUTLINE, font_known, (void *)"topaz.font", 0, -1, again, sizeof again), 0);
+    /* icontrol: thin and not yet written plans a write with a snapshot; written already plans nothing; off with no snapshot nothing */
+    icn = slurp(DESK_DATA "icontrol-os32.prefs", ic, sizeof ic);
+    CHECK_INT(desk_start_icontrol(all, ic, icn, 0, &snap), DK_IC_WRITE);
+    CHECK_INT(snap, 1);
+    {
+        unsigned char thin[4];
+        desk_geometry(1, thin);
+        m = desk_icontrol(ic, icn, thin, out, sizeof out);
+        CHECK_INT(desk_start_icontrol(all, out, m, 0, &snap), DK_IC_NONE);
+        CHECK_INT(desk_start_icontrol(all & ~(1u << DT_ICONTROL), out, m, 1, &snap), DK_IC_RESTORE);
+    }
+    CHECK_INT(desk_start_icontrol(all & ~(1u << DT_ICONTROL), ic, icn, 0, &snap), DK_IC_NONE);
+}
+
 void suite_desk_start_apply(void)
 {
     test_desk_start_prefs_on_writes_border_gauge_backdrop();
     test_desk_start_prefs_on_writes_theme_palette();
+    test_desk_start_prefs_on_writes_pointer_font_icontrol();
 }
 
 void suite_desk(void)

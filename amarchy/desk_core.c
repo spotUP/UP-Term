@@ -1342,3 +1342,32 @@ long desk_start_palette(unsigned mask, int flat, const gtheme *th, int depth, co
         return 0;
     return n;
 }
+
+/* S31-START-PARTS: the pointer / font parts of a theme pick, planned at start. Same bytes dk_apply feeds the editor; 0 when the part is
+ * off in mask, there is nothing to start from (pointer: no file), the bytes are not a prefs file, or they equal cur (second start). */
+long desk_start_prefs(int target, unsigned mask, const gtheme *th, int text_mode, desk_font_exists_fn exists, void *ctx,
+                      const unsigned char *cur, long curlen, unsigned char *out, long cap)
+{
+    long n;
+    if (!((mask >> target) & 1))
+        return 0;
+    if (cur && curlen > 0 && curlen <= cap)
+        memcpy(out, cur, (size_t)curlen), n = curlen;
+    else if (target == DT_FONT)
+        n = desk_font_default(out, cap);
+    else
+        return 0;
+    if (n <= 0)
+        return 0;
+    if (target == DT_POINTER) {
+        if (desk_pointer(th, out, n) <= 0)
+            return 0;
+    } else if (desk_font_pens(out, n, text_mode) < 0 || desk_font_name(th, out, n, exists, ctx) < 0)
+        return 0;
+    return (cur && n == curlen && !memcmp(out, cur, (size_t)n)) ? 0 : n;
+}
+
+int desk_start_icontrol(unsigned mask, const unsigned char *cur, long curlen, int have_snap, int *snapshot)
+{
+    return desk_icontrol_decide((mask >> DT_ICONTROL) & 1, cur, curlen, have_snap, snapshot);
+}
