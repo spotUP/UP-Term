@@ -1674,6 +1674,9 @@ def _main(fx, only, flags):
         except SystemExit as e:  # the agent or the rig is gone: not a verdict on the kit
             print("[ABORT] %s: %s (no verdict written)" % (case, e))
             return 2
+        except Exception as e:  # a socket timeout, a failed `rig.py reboot`, a wasabi error: the case failed, and an old verdict must not survive it
+            ok, detail = False, "%s raised %s: %s" % (case, type(e).__name__, e)
+            print("[FAIL] %s" % detail)
         record(case, ok, detail)
     bad = STORE.failed([c for c, _ in todo])
     print("installer_rig: %d of %d cases failed: %s" % (len(bad), len(todo), " ".join(bad)))
