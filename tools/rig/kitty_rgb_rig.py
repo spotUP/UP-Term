@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """kitty_rgb_rig.py -- K41: kitty RGB pictures draw in true colour on a deep RTG screen.
 Types a stream into an XCON: window: (1) a 100x80 raw RGB picture (f=24, a=T, no c=/r=, so 1:1 pixels) whose
-8000 pixels are all different colours, (2, 3) a 40x32 RGBA picture, 50% red (alpha 128), over blue-background cells (z=1, C=1: the cells keep their background) and
-over the plain window background (K40b software blend). Takes a screenshot (<out>.png) and measures it in Python.
+8000 pixels are all different colours, (2, 3) a 40x32 RGBA picture, 50% red (alpha 128), over blue-background cells (z=1, C=1: the engine blanks the cells under a z>=0 picture, see D12) and
+over the plain window background (K40b software blend), (4) the same picture at z=-1 over blue cells (the cells
+keep their background; proves ReadPixelArray returns the blue on the real driver). Takes a screenshot (<out>.png) and measures it in Python.
 PASS case 1: the picture is found in the shot, >= 90% of the source's distinct colours appear in its rectangle and
   >= 99% of its pixels equal the source RGB. The 8-bit index path cannot show more than 255 colours.
-PASS cases 2 and 3: the blended pixel equals (255*a + bg*(255-a) + 127) / 255 per channel (+-1), bg sampled next to it.
+PASS cases 2, 3 and 4: the blended pixel equals (255*a + bg*(255-a) + 127) / 255 per channel (+-1), bg sampled next to it.
   UPTERM_RIG=<n> python3 tools/rig/kitty_rgb_rig.py <out-prefix>
 Needs the rig on the 800x600x24 RTG screen (`rig.py rtg`); the script prints the shot size.
 """
@@ -49,10 +50,11 @@ def main():
     out = sys.argv[1]
     pic1 = b''.join(bytes(src_px(x, y)) for y in range(PH) for x in range(PW))
     pic2 = bytes((255, 0, 0, ALPHA)) * (TW * TH)
-    fill = b''.join(b'\x1b[%d;58H' % r + b' ' * 11 for r in range(2, 7))
+    fill = b''.join(b'\x1b[%d;58H' % r + b' ' * 11 + b'\x1b[%d;38H' % r + b' ' * 11 for r in range(2, 7))
     stream = (b'\x1b[2J\x1b[44m' + fill + b'\x1b[0m\x1b[2;2H' + apc('a=T,f=24,s=%d,v=%d,i=1,q=2' % (PW, PH), pic1)
               + b'\x1b[2;60H' + apc('a=T,f=32,s=%d,v=%d,i=2,z=1,C=1,c=5,r=4,q=2' % (TW, TH), pic2)
-              + b'\x1b[2;80H' + apc('a=T,f=32,s=%d,v=%d,i=3,q=2' % (TW, TH), pic2) + b'\x1b[40;1H')
+              + b'\x1b[2;80H' + apc('a=T,f=32,s=%d,v=%d,i=3,q=2' % (TW, TH), pic2)
+              + b'\x1b[2;40H' + apc('a=T,f=32,s=%d,v=%d,i=4,z=-1,C=1,c=5,r=4,q=2' % (TW, TH), pic2) + b'\x1b[40;1H')
     (VTC / 'kr-stream.bin').write_bytes(stream)
     c.run('Run >NIL: NewShell "XCON:%d/%d/%d/%d/kr/CLOSE/XTERM"' % (WX, WY, WW, WH))
     time.sleep(4)
@@ -101,7 +103,8 @@ def main():
     # below by the measured box). Case 2 sits on cells with SGR 44 background (blue), case 3 on the default
     # (black) window background. The expected pixel is the K40b formula; bg is read from a cell beside the picture.
     if org:
-        for name, col, bgdx in (('case 2 (on blue cells)', 60, TW + 4), ('case 3 (on default background)', 80, TW + 4)):
+        for name, col, bgdx in (('case 2 (on blue cells)', 60, TW + 4), ('case 3 (on default background)', 80, TW + 4),
+                                 ('case 4 (z=-1 under the text, on blue cells)', 40, TW + 4)):
             ox = org[0] + (col - 2) * 8
             bg = at(ox + bgdx, org[1] + 2)
             want_px = tuple(((255 if k == 0 else 0) * ALPHA + bg[k] * (255 - ALPHA) + 127) // 255 for k in range(3))
