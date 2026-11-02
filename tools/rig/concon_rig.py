@@ -23,7 +23,7 @@ import ami
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = paths.RIG / "vtc"
-OUT = paths.RIG / "shots"
+OUT = paths.REPORTS / "shots"
 PROBE_WIN = "CON:0/12/656/216/probe"
 lines, failed = [], 0
 

@@ -33,7 +33,7 @@ def verdict(ok, what, seen=''):
     RESULTS.append(ok)
     print('%s %s %s' % ('PASS' if ok else 'FAIL', what, seen), flush=True)
 FILE = 'RAM:amarchy.timing'
-OUT = pathlib.Path(paths.RIG) / 'amarchy' / 'menu-timing.txt'
+OUT = pathlib.Path(paths.REPORTS) / 'amarchy' / 'menu-timing.txt'
 
 
 ORDER = ('hotkey', 'send', 'start', 'terminal', 'ready')

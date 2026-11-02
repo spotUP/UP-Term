@@ -38,7 +38,7 @@ import amarchy_tile_rig as t
 import ami
 import typewin as tw
 
-OUT = pathlib.Path(paths.RIG) / 'amarchy-p2'
+OUT = pathlib.Path(paths.REPORTS) / 'amarchy-p2'
 KEYS_BAR = ['bar', 'draws', 'panels', 'launches', 'raises', 'ticks', 'net']
 
 

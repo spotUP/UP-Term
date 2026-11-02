@@ -18,7 +18,7 @@ import ami, condev_rig as c
 import wasabi as rigwasabi
 import stage_rig, tabstate
 
-OUT = pathlib.Path(paths.RIG) / 'amarchy'
+OUT = pathlib.Path(paths.REPORTS) / 'amarchy'
 LAMIGA = 0x40                       # IEQUALIFIER_LCOMMAND
 LSHIFT = 0x01                       # IEQUALIFIER_LSHIFT
 ALT = 0x10                          # IEQUALIFIER_LALT

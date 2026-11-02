@@ -28,7 +28,7 @@ import ami, condev_rig as c
 import stage_rig
 from amarchy_rig import arexx, status, port_up
 
-OUT = pathlib.Path(paths.RIG) / 'amarchy_clash'
+OUT = pathlib.Path(paths.REPORTS) / 'amarchy_clash'
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 LAMIGA, LSHIFT, LALT, LCTRL = 0x40, 0x01, 0x10, 0x08       # IEQUALIFIER_*
 RAW_LAMIGA = 0x66                                           # the Left Amiga key itself

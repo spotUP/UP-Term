@@ -20,7 +20,7 @@ import ami, vshwin
 from PIL import Image
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-SHOT = paths.RIG / "shots/cube.png"
+SHOT = paths.REPORTS / "shots/cube.png"
 LV = [0, 95, 135, 175, 215, 255]
 
 def expect(i):

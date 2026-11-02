@@ -27,7 +27,7 @@ import ami
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = paths.RIG / "vtc"
-OUT = paths.RIG / "shots"
+OUT = paths.REPORTS / "shots"
 RIG = [sys.executable, str(ROOT / "tools/rig/rig.py")]
 lines, failed = [], 0
 

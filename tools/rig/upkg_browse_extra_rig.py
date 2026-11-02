@@ -22,7 +22,7 @@
 Setup and teardown are upkg_browse_rig's (base from the kit when stale, upkg copied, feed over http,
 conf swapped, rig stopped at the end). Needs the same files as upkg_browse_rig plus build/ipk/up-claude_*.ipk.
 
-  upkg_browse_extra_rig.py [--out DIR] [--only B6]   report.md and screenshots go to DIR (default build/<rig>/upkg-browse-extra);
+  upkg_browse_extra_rig.py [--out DIR] [--only B6]   report.md and screenshots go to DIR (default build/rig-reports/<rig>/upkg-browse-extra);
                                               --only B6 skips B3 to B5
 """
 import argparse, subprocess, re, os, pathlib, sys, tempfile, shutil, time
@@ -81,7 +81,7 @@ def text():
 
 def main(argv):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--out', default=str(paths.RIG / 'upkg-browse-extra'))
+    ap.add_argument('--out', default=str(paths.REPORTS / 'upkg-browse-extra'))
     ap.add_argument('--only', choices=['B6'], default=None)
     a = ap.parse_args(argv)
     full = a.only is None

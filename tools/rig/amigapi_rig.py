@@ -1462,8 +1462,8 @@ def verdicts14():
         return {}
 
 
-VERDICTS14 = paths.RIG / 'amigapi14.verdicts.json'
-VERDICTS = paths.RIG / 'amigapi13.verdicts.json'
+VERDICTS14 = paths.REPORTS / 'amigapi14.verdicts.json'
+VERDICTS = paths.REPORTS / 'amigapi13.verdicts.json'
 STEP13 = {'a': ['13a Steering row', '13a Follow-up row', '13a steering text in request 2 only',
                 '13a follow-up text in request 3', '13a session: three user messages', '13a Ctrl+D twice ends amiga-pi'],
           'b': ['13b Shift+Tab: Thinking level on screen', '13b Shift+Tab: thinking_level_change in session',

@@ -27,7 +27,7 @@ import paths
 import ami, condev_rig as c, ixpty_rig
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-OUT = paths.RIG / 'fullscreen'
+OUT = paths.REPORTS / 'fullscreen'
 RET = 0x44
 
 

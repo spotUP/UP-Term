@@ -78,7 +78,7 @@ def make_feed(versions):
 
 def main(argv):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--out', default=str(paths.RIG / 'upkg-install-all'))
+    ap.add_argument('--out', default=str(paths.REPORTS / 'upkg-install-all'))
     ap.add_argument('--force', action='store_true')
     ap.add_argument('--only', type=int, action='append')
     a = ap.parse_args(argv)

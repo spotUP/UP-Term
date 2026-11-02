@@ -14,7 +14,7 @@ import ami
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 VTC = os.path.join(paths.RIG, "vtc")
-OUT = os.path.join(paths.RIG, "shots/colour_check.png")
+OUT = os.path.join(paths.REPORTS, "shots/colour_check.png")
 
 def pixels(path):
     b = open(path, 'rb').read(); i = 8; idat = b''

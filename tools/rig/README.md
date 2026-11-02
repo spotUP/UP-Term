@@ -72,6 +72,8 @@ In a fresh git worktree run `make worktree-ready` first (seeds build/ from the m
 handler. `rig.py aga` and `rig.py rtg` choose the Workbench screen mode from the
 next boot.
 
+Kept output (reports, screenshots, verdicts) is written to `build/rig-reports/rig<N>/` (`paths.REPORTS`), never into the rig folder: `rig.py stop` deletes `build/rig<N>` for N > 1. Test: `tests/test_rig_reports_not_in_rig_dir.py`.
+
 Layout of `build/rig/` (gitignored): `sys.hdf` (DH0:), `boot/` (BOOTX:, boots
 first: assigns, mounts XCON:, starts wasabid with key `rigwasabi`), `vtc/`
 (VTC:, the binaries under test), `shots/` (screenshots), `serial.log`.
@@ -247,7 +249,7 @@ Other groups (one line each; docstrings say more):
 | Colours, fonts, screens | `cube_rig`, `colour_check`, `aspect_rig`, `outline_rig`, `ownscreen_rig`, `fullscreen_rig`, `vttest_rig` (vttest screens against the engine) |
 | Window behaviour | `resize_rig`, `winch_rig`, `closecrash_rig`, `autoprobe_rig`, `tabs_rig`, `menus_rig`, `slash_rig`, `pf1_rig`, `prefs_rig`, `mouse_rig`, `snip_rig` |
 | Input, signals | `intr_rig`, `stackext_rig` (gcc 16 library A/B), `ixpipe_rig`, `umask_rig`, `vshpath_rig` |
-| Shell and completion | `kingcon_rig`, `h8_rig`, `userland_rig` (every ported Unix tool against the Mac's output; resumable, verdicts in `build/rig/userland/`) |
+| Shell and completion | `kingcon_rig`, `h8_rig`, `userland_rig` (every ported Unix tool against the Mac's output; resumable, verdicts in `build/rig-reports/rig/userland/`) |
 | console.device | `chainprobe_rig`, `cdprobe_rig`, `cudump_rig`, `dosnode_rig`, `mediumprobe_rig`, `devctl_rig`, `devverify_rig`, `devspeed_rig`, `rkc_rig`, `soak_rig` |
 | Serial login | `getty_rig` (a host pty is the terminal on the cable) |
 | C:Claude against recorded answers (no key, no Anthropic; start `tools/claude_fixture.py` first) | `claude_rig`, `claude_rig2`, `claude_rig3`, `claude_rig4` |

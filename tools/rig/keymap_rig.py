@@ -17,7 +17,7 @@ import paths
 import ami, condev_rig as c
 from tabstate import counters, open_host
 
-OUT = pathlib.Path(paths.RIG) / 'keymap'
+OUT = pathlib.Path(paths.REPORTS) / 'keymap'
 ESC = 0x45
 LAMIGA, LSHIFT = 0x40, 0x01        # IEQUALIFIER_LCOMMAND, IEQUALIFIER_LSHIFT
 RAW = {'t': 0x14, 'w': 0x11, 'c': 0x33, 'v': 0x34, 'a': 0x20, 'f': 0x23, 'g': 0x24, 'q': 0x10,

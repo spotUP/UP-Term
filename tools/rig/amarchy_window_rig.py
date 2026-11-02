@@ -21,7 +21,7 @@ import ami, condev_rig as c
 import stage_rig
 
 DIST = pathlib.Path(__file__).resolve().parents[2] / 'dist'
-OUT = pathlib.Path(paths.RIG) / 'amarchy-window'
+OUT = pathlib.Path(paths.REPORTS) / 'amarchy-window'
 TARGET = 'amarchy-target'
 SPEC = 'CON:40/40/320/120/' + TARGET
 STEP = 32                      # win_core.h WIN_STEP

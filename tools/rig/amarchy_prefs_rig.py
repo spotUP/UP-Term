@@ -53,7 +53,7 @@ import menus_rig as mr
 from amarchy_theme_save_rig import wait_stable, step, strangers, shipped_themes, NEED_THEMES, theme_line, PREFS, OPEN_SECS
 from amarchy_menu_rig import screen_text, menu_rows, x9_open_menu, x9_leave, RAW, KEYMAP
 
-OUT = pathlib.Path(paths.RIG) / 'amarchy'
+OUT = pathlib.Path(paths.REPORTS) / 'amarchy'
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SETTINGS_DEF = ROOT / 'prefs' / 'settings_def.c'
 UPTERM_FILES = ('ENV:up-term/up-term', 'ENVARC:up-term/up-term')

@@ -65,6 +65,7 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
   rig.py dbgbreak   SIGUSR1 to this rig's fs-uae: enter the console debugger (needs a debug build, UPTERM_FSUAE=<binary>)
   rig.py wasabi on|off|snoop|debug|guru|ps   call trace, debug output, Guru, tasks (tools/rig/wasabi.py)
 
+Kept output (reports, screenshots, verdicts) lives in build/rig-reports/rig<N>/ (paths.REPORTS), not here: stop deletes this folder.
 Layout under build/rig/ (gitignored): sys.hdf (DH0:), boot/ (BOOTX:, boots
 first: assigns, mounts XCON:, starts wasabid), vtc/ (VTC:, the binaries
 under test), shots/.
@@ -1158,6 +1159,7 @@ def setup():
         seed_rig_vtc(paths.RIG_HOME / "rig/vtc", RIG / "vtc")
     stage_rig_vtc(RIG / "vtc")
     (RIG / "shots").mkdir(exist_ok=True)
+    (paths.REPORTS / "shots").mkdir(parents=True, exist_ok=True)   # kept output: scripts write here, rig.py stop leaves it
     if OS32 and not (RIG / "os32").exists():
         print("copying the 3.2 system (168 MB) ...")
         paths.require_input(OS32_SRC, "UPTERM_OS32_TREE", "the AmigaOS 3.2 tree")

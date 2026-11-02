@@ -13,7 +13,7 @@ import ami
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = paths.RIG / "vtc"
-OUT = paths.RIG / "shots"
+OUT = paths.REPORTS / "shots"
 TAB, UP, DOWN, RETURN, SHIFT = 0x42, 0x4C, 0x4D, 0x44, 0x0001
 
 def run(cmd, timeout=60):

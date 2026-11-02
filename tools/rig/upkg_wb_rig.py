@@ -138,7 +138,7 @@ def main(argv):
     ap.add_argument('--upkg', default=DEFAULT_UPKG, help='the m68k upkg (default: the upterm-ports-wbui build)')
     ap.add_argument('--feed', default=str(DEFAULT_FEED), help='drawer with Packages, Packages.gz and the .ipk files')
     ap.add_argument('--icon', help='host .info file for the upkg icon (default: the rig\'s %s, a stand-in)' % STOCK_ICON)
-    ap.add_argument('--out', default=str(paths.RIG / 'upkg-wb'))
+    ap.add_argument('--out', default=str(paths.REPORTS / 'upkg-wb'))
     ap.add_argument('--install-secs', type=int, default=120, help='how long Install may take before the run calls it a hang')
     ap.add_argument('--wbcd', action='store_true', help='the exit test: zero MuForce hits, no CPU reset (see the header)')
     a = ap.parse_args(argv)

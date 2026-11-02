@@ -42,7 +42,7 @@ import ami, condev_rig as c
 import stage_rig
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
-OUT = pathlib.Path(paths.RIG) / 'amarchy-tile'
+OUT = pathlib.Path(paths.REPORTS) / 'amarchy-tile'
 KEYMAP = REPO / 'dist' / 'keymap'
 ROW_MARK = 'AmTile TOGGLE'      # the Phase 3 row "Tile windows" runs UP-Term:bin/AmTile TOGGLE
 ENV_FILE = 'ENV:Amarchy/tile'

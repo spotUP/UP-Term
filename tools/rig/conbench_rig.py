@@ -24,7 +24,7 @@ import paths
 import ami, condev_rig as c
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-OUT = paths.RIG / 'conbench'
+OUT = paths.REPORTS / 'conbench'
 FLAGS = paths.rig_flags(['--stock', '--os32'])  # UPTERM_RIG_FLAGS='--max': the owner's rig 2 start
 
 CONSOLES = {

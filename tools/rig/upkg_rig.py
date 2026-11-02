@@ -49,7 +49,7 @@ import pkgs
 ROOT = ir.ROOT
 VTC = ir.VTC
 BUILD = ROOT / 'build'
-OUT = paths.RIG / 'upkg'
+OUT = paths.REPORTS / 'upkg'
 NVIM = 'up-nvim'
 CONF = 'T:upkg-rig.conf'
 STATUS = 'UP-Term:pkg/upkg/status'

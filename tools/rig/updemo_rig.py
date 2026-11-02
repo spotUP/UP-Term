@@ -22,7 +22,7 @@ sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import paths
 import condev_rig as c
 
-OUT = paths.RIG / 'updemo'
+OUT = paths.REPORTS / 'updemo'
 SPEC = '0/0/660/400/%s'
 CONSOLES = {
     'upterm':     (None, 'XCON:' + SPEC % 'UPD'),

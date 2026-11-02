@@ -71,7 +71,7 @@ from assign_rig import rig
 
 ROOT = ir.ROOT
 VTC = ir.VTC
-OUT = paths.RIG / "installer"
+OUT = paths.REPORTS / "installer"
 OUT.mkdir(parents=True, exist_ok=True)  # pages are logged before the first verdict is written
 KIT = ir.KIT
 # a clean image (--os) has a 12 MB system partition: the kit goes to its Work: drive

@@ -34,7 +34,7 @@ import install_rig as ir
 
 ROOT = ir.ROOT
 VTC = ir.VTC
-OUT = paths.RIG / "assign"
+OUT = paths.REPORTS / "assign"
 DRAWER = "SYS:UP-Term"
 CASES = ["install", "noassign", "assign", "lazy-vsh", "lazy-handler"]
 WIDE = "\u4e2d"  # U+4E2D, a glyph of Unifont's page 0x4E
