@@ -365,6 +365,9 @@ If NOT EXISTS FONTS:JetBrainsMono.ttf
   EndIf
 EndIf"""
 
+# The stack the boot gives wasabid (RIG-AGA-WASABID-STACK): Run inherits the boot shell's 4096 bytes otherwise.
+WASABID_STACK = 262144
+
 GO = """FailAt 21
 Echo >>BOOTX:boot.log "go started"
 %(shadows)s
@@ -468,9 +471,12 @@ EndIf
 Echo >>BOOTX:boot.log "assigns done"
 Run >NIL: SYS:System/RexxMast
 C:SetEnv wasabi.key %(key)s
+; wasabid needs a real stack: Run gives it the boot shell's 4096 bytes, and on an AGA
+; boot it stopped answering for good (RIG-AGA-WASABID-STACK, 2026-11-02)
+C:Stack %(wasabid_stack)d
 C:Run >NIL: <NIL: BOOTX:wasabid %(port)d name rig%(rign)d
 Echo >>BOOTX:boot.log "wasabid started"
-""" % {"port": paths.WASABI_PORT, "key": paths.WASABI_KEY, "rign": paths.RIG_N, "upterm_assign": UPTERM_ASSIGN, "amarchy_assets": AMARCHY_ASSETS_BOOT, "shadows": kit_shadow_lines(False), "shadows_up": kit_shadow_lines(True), "shadows_up_done": SHADOWS_UP_DONE, "kit_stamp": KIT_STAMP_BOOT, "libs": "\n".join("    C:" + l for l in RIG_LIBS), "libs_done": RIG_LIBS_DONE,
+""" % {"port": paths.WASABI_PORT, "key": paths.WASABI_KEY, "rign": paths.RIG_N, "wasabid_stack": WASABID_STACK, "upterm_assign": UPTERM_ASSIGN, "amarchy_assets": AMARCHY_ASSETS_BOOT, "shadows": kit_shadow_lines(False), "shadows_up": kit_shadow_lines(True), "shadows_up_done": SHADOWS_UP_DONE, "kit_stamp": KIT_STAMP_BOOT, "libs": "\n".join("    C:" + l for l in RIG_LIBS), "libs_done": RIG_LIBS_DONE,
        "shellpath": "\n".join('    Echo >>S:Shell-Startup "%s"' % l for l in SHELL_STARTUP_PATH)}
 # boot.log in the host drawer BOOTX: tells from the Mac how far a boot got
 # (the rig's screen is not visible from here).
