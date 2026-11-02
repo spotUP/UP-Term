@@ -730,6 +730,14 @@ switch it will ship with.
   draws into, blend per channel (src*a + dst*(255-a) + 127) / 255, write back
   with WritePixelArray RECTFMT_RGBA (K40b, sentinel n_img_rgb_soft_blend).
   The binary 50% fallback is gone.
+- O6 (owner 2026-11-02, after K41 case 2 / K40c diagnosis): a kitty z>=0
+  placement keeps the text and cell background under it, as real kitty
+  does; translucent picture pixels show them. It sets VT_CELL_IMAGE without
+  blanking the cells (engine/vtengine.c sixel_place_row ~5332 today writes
+  b.fg = b.bg = VT_COLOR_DEFAULT blanks). Sixel keeps blanking. Changes D12
+  and K30; the host test k40_soft_blend_reads_the_text_under_a_front_picture
+  ("A z>=0 picture owns its cells") is rewritten to the new model. Work item
+  K40d; K41 case 2 then expects (128,0,119) over blue cells.
 
 ##### Open questions for the owner (answered above)
 
