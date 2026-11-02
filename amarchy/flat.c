@@ -414,7 +414,9 @@ void flat_tx_c(struct RastPort *rp, CONST_STRPTR str, ULONG count)
         for (g = w->FirstGadget; g && ng < 8; g = g->NextGadget) {
             if (!(g->GadgetType & GTYP_SYSGADGET))
                 continue;
-            gr[ng].x = g->LeftEdge; gr[ng].y = g->TopEdge; gr[ng].w = g->Width; gr[ng].h = g->Height;
+            gr[ng].x = g->LeftEdge; gr[ng].w = g->Width;
+            gr[ng].y = g->TopEdge + ((g->Flags & GFLG_RELBOTTOM) ? w->Height : 0);    /* sizing gadget sits at the bottom */
+            gr[ng].h = g->Height + ((g->Flags & GFLG_RELHEIGHT) ? w->Height : 0);
             gr[ng].relright = (g->Flags & GFLG_RELRIGHT) != 0;
             gr[ng].relwidth = (g->Flags & GFLG_RELWIDTH) != 0;
             gr[ng].drag = (g->GadgetType & GTYP_SYSTYPEMASK) == GTYP_WDRAGGING;
