@@ -1,7 +1,7 @@
 ---
 date: 2026-11-02
 topic: Inverted Workbench icon colours with flat look on, vantablack, depth 8
-status: open (cause partly found, no fix yet)
+status: open (candidate 1 disproved; cause not found, no fix yet)
 rig: 61 (FS-UAE, OS 3.2, --max)
 ---
 
@@ -84,3 +84,44 @@ they race on manifest.amt and manifest.amo.
    manifest once at the end of the walk, not per icon.
 3. Rig proof: pixels of the icon column after APPLY finishes, flat on versus
    flat off.
+
+## Session 31 follow-up: candidate 1 disproved (2026-11-02)
+
+The held pens measured above are not stale. They are exactly what
+ip_colours produces for vantablack:
+
+- vantablack.theme sets foreground #ffffff. gthemes_core.c:91-93 replaces a
+  dark theme's #ffffff foreground with GT_DARK_WHITE_FG 0xBEBEBE (owner rule
+  2026-10-31). So pen 33 bebebe is vantablack's own foreground, not the
+  matte-black one (matte-black would also give accent e68e0d, not 8d8d8d).
+- The black ground makes desk_darker return DK_BLACK_LIFT 0x222222
+  (desk_core.c:28, 48-50), so ip_ground is 222222.
+- accent 8d8d8d, muted 7a7a7a and selection 1a1a1a are vantablack's.
+
+Code reading agrees: pens_theme (iconpen_dos.c:107-115) rereads prefs with
+amconf_load + gt_load on every call, and a same-screen theme change goes
+through ip_recolour (called by gt_dos_select via ipd_recolour,
+gthemes_dos.c:232). Host test
+test_icon_colours_inverted_pens_are_vantablack (tests/test_iconpen.c, suite
+iconpen) pins all 16 rig pen values to ip_colours(vantablack). It is a
+characterisation test: there is no fix to revert.
+
+## Open hypotheses
+
+a. Stock planar (4-colour) icons draw with pens 1/2 directly. A dark theme
+   sets pen 1 = foreground (light) and pen 2 = dim (dark), the opposite of
+   stock 3.x (pen 1 black outline, pen 2 white highlight), so stock icons
+   look inverted until APPLY replaces them.
+b. The slow, doubled APPLY window (candidates 2 and 3 above).
+
+Next: rig shot of the icon column after amarchy-icons has exited, flat on
+versus flat off, and check whether the remaining icons are planar ones.
+
+Code support for hypothesis a: wb_pens_plan (amarchy/menu_theme.c:202-210)
+sets Workbench pen 1 = theme fg and pen 2 = theme dim, live on the Workbench
+ViewPort (gthemes_dos.c wb_pens_apply). For a dark theme pen 1 turns light
+and pen 2 dark, the reverse of the stock 3.x pen 1 black / pen 2 white. Any
+icon image that uses pens 1/2 directly (planar icons, or GlowIcons remapped
+onto pens 1/2) swaps its outline and highlight. Fixing this is a product
+choice (Workbench pen 1 is also the text pen, which must stay light on a dark
+ground), so it needs the owner.
