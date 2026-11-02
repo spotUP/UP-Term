@@ -54,6 +54,16 @@ static void say(const char *s)
     out_put(0, s, (long)strlen(s));
 }
 
+/* a diagnostic goes to the error stream (pr_CES, else the output), so "2>" sees it and a redirected
+ * stdout does not hide it */
+static void esay(const char *s)
+{
+    struct Process *pr = (struct Process *)FindTask(0);
+    BPTR e = pr->pr_CES ? pr->pr_CES : Output();
+    if (e)
+        Write(e, (APTR)s, (long)strlen(s));
+}
+
 static void say_num(long v)
 {
     char b[16];
@@ -286,12 +296,12 @@ int main(void)
     name = (const char *)opt[0];
     havepos = opt[3] != 0;
     if (havepos && !parse_place((const char *)opt[3], &px, &py)) {
-        say("icat: PLACE is x,y\n");
+        esay("icat: PLACE is x,y\n");
         FreeArgs(rd);
         return 20;
     }
     if (!name && !opt[4]) {
-        say("icat: FILE or CLEAR\n");
+        esay("icat: FILE or CLEAR\n");
         FreeArgs(rd);
         return 20;
     }
@@ -305,9 +315,9 @@ int main(void)
     }
     file = slurp(name, &n);
     if (!file) {
-        say("icat: cannot read ");
-        say(name);
-        say("\n");
+        esay("icat: cannot read ");
+        esay(name);
+        esay("\n");
         FreeArgs(rd);
         return 10;
     }
@@ -337,9 +347,9 @@ int main(void)
             DataTypesBase = 0;
         }
         if (!pix) {
-            say("icat: no datatype reads ");
-            say(name);
-            say(" (picture.datatype and the format's class must be installed: OS 3.2 has them, a 3.1 system may not)\n");
+            esay("icat: no datatype reads ");
+            esay(name);
+            esay(" (picture.datatype and the format's class must be installed: OS 3.2 has them, a 3.1 system may not)\n");
             FreeVec(file);
             FreeArgs(rd);
             return 10;
