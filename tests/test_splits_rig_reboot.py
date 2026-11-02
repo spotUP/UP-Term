@@ -9,9 +9,14 @@ sys.path.insert(0, str(ROOT / "tools/rig"))
 import splits_rig
 
 
+calls = []
+
+
 def fake_run(start_rc, out=""):
     def run(cmd, **kw):
         rc = start_rc if "start" in cmd else 0
+        if "start" in cmd:
+            calls.append(cmd)
         return subprocess.CompletedProcess(cmd, rc, stdout=out, stderr="")
     return run
 
@@ -27,7 +32,17 @@ class Reboot(unittest.TestCase):
     def test_good_start_returns(self):
         with mock.patch.object(splits_rig.subprocess, "run", side_effect=fake_run(0)) as run:
             splits_rig.reboot()
-        self.assertEqual([c.args[0][-1] if c.args[0][-1] != "--keep" else "stop" for c in run.call_args_list], ["stop", "start"])
+        self.assertEqual([c.args[0][2] for c in run.call_args_list], ["stop", "start"])
+
+    def test_mid_run_start_is_not_stopped_by_origin_moving(self):
+        """origin/main moves within minutes; a reboot inside the run reuses the run's build, so it passes
+        --allow-stale-base with a reason (s51 rig 69: round 3 refused after 2 origin commits landed)"""
+        calls.clear()
+        with mock.patch.object(splits_rig.subprocess, "run", side_effect=fake_run(0)):
+            splits_rig.reboot()
+        start = calls[-1]
+        i = start.index("--allow-stale-base")
+        self.assertTrue(start[i + 1].strip())
 
 
 if __name__ == "__main__":

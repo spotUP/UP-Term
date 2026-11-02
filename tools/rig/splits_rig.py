@@ -211,7 +211,10 @@ def reboot():
     rig.py's own reason, never a silent dead rig that the next case reports as a HANG (s51 NS3.3 rerun)"""
     rig = [sys.executable, str(ROOT / 'tools/rig/rig.py')]
     subprocess.run(rig + ['stop', '--keep'], capture_output=True, timeout=120)
-    r = subprocess.run(rig + ['start'], capture_output=True, text=True, timeout=400)
+    # the run's build was checked against origin/main when the rig first started; a reboot inside the run reuses
+    # that build, so origin/main moving mid-run (minutes in this repo) must not stop it (s51 NS3.3 rig 69 round 3)
+    r = subprocess.run(rig + ['start', '--allow-stale-base', 'splits_rig mid-run reboot: same build as the run start'],
+                       capture_output=True, text=True, timeout=400)
     if r.returncode:
         tail = '\n'.join(((r.stdout or '') + (r.stderr or '')).strip().splitlines()[-5:])
         sys.exit('[ERROR] splits_rig: rig.py start failed (exit %d), run stopped:\n%s' % (r.returncode, tail))

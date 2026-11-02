@@ -14,3 +14,12 @@ with output captured, so the guard refuses silently, wasabid is gone, round 1 re
 This HANG is a harness/guard artefact, not a SIGWINCH result. Unblock: merge origin/main into the checkout, then rerun
 `splits_rig.py <rig> --repeat 10 --fresh-boot --only pane_close` and `--only host_exit_cycles`.
 Totals still: pane_close 5/15 PASS, 0 FAIL; host_exit_cycles not run.
+
+## R4 rerun, 2026-11-02, HEAD d8c605f9 (rig 69, splits_rig --repeat 10 --fresh-boot)
+- pane_close: 2/10 PASS, 0 FAIL, 0 HANG. Run stopped before round 3.
+- host_exit_cycles: not run (0/10).
+- Round 2 boot stopped by the guard, not by a test failure. First attempt (round 2 boot) died with wasabi
+  ConnectionResetError (Errno 54) during rig start, host load ~119; retry resumed at round 2, passed it, then:
+  `rig: RIG-STALE-BASE: HEAD d8c605f9 does not contain origin/main 25413f2a (2 origin/main commits missing); rebase or merge origin/main, or pass --allow-stale-base "<reason>"`
+  origin/main moved during the run; the guard was not overridden. Rerun needs main merged with origin/main first.
+- Note: `--repeat` resumes recorded rounds from build/rig-reports/rig69/splits/repeat-<case>.log (rig 69 cleared afterwards).
