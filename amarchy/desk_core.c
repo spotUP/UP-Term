@@ -224,24 +224,24 @@ void desk_pen_plan_for(int depth, desk_pen_plan *p)
     }
 }
 
-int desk_pens_reset(const unsigned short *cur, int ncur, int flat)
+int desk_pens_reset(const unsigned short *cur, int ncur, int flat, int depth)
 {
     unsigned char want[DK_SLOTS];
-    int i;
+    int i, ncolors = depth > 0 ? 1 << depth : 256; /* depth <= 0: unknown, no folding */
     if (!cur || ncur <= 0)
         return 1;
     desk_pens_for(flat, want);
     for (i = 0; i < DK_SLOTS && i < ncur; i++)
-        if (cur[i] != want[i])
+        if (cur[i] != desk_pen_fold(want[i], ncolors)) /* FILENAME-PEN: the live pens of a 4-colour screen are the folded map */
             return 1;
     return 0;
 }
 
-int desk_reset_done(const void *before, const void *now, const unsigned short *live, int nlive, int flat)
+int desk_reset_done(const void *before, const void *now, const unsigned short *live, int nlive, int flat, int depth)
 {
     if (!now || nlive <= 0) /* the screen is closed for about 200 ms in the middle of the reset (rig 7, 3.2): not done, not "a new screen" */
         return 0;
-    return now != before || !desk_pens_reset(live, nlive, flat);
+    return now != before || !desk_pens_reset(live, nlive, flat, depth);
 }
 
 int desk_iprefs_idle(int have, int waiting, unsigned long sigwait, unsigned long recvd, unsigned long idle_mask)
@@ -525,15 +525,15 @@ long desk_palette_theme(const unsigned char *cur, long curlen, const gtheme *t, 
     return curlen;
 }
 
-int desk_pens_sync(int flat, const unsigned short *live, int nlive, unsigned char pens[DK_SLOTS])
+int desk_pens_sync(int flat, const unsigned short *live, int nlive, unsigned char pens[DK_SLOTS], int depth)
 {
     desk_pens_for(flat, pens);
     if (!live || nlive <= 0)
         return 0;
     if (flat)
-        return desk_pens_reset(live, nlive, 1);
+        return desk_pens_reset(live, nlive, 1, depth);
     /* off: undo only what the switch wrote (the live map is the flat one); a system never flat keeps its own pens */
-    return !desk_pens_reset(live, nlive, 1);
+    return !desk_pens_reset(live, nlive, 1, depth);
 }
 
 /* ---- R1.3, R1.20: wbpattern.prefs ---- */

@@ -313,15 +313,15 @@ static void test_desk_flat_pens_live(void)
     CHECK_INT(out[26 + 8 + 144 + 8 * 2 + 5], 0x22);  /* colour 2 green 0x2 -> 0x2222 */
     for (i = 0; i < DK_SLOTS; i++)
         live[i] = stock[i];
-    CHECK_INT(desk_pens_sync(1, live, DK_SLOTS, pens), 1);       /* flat on, stock live: write */
+    CHECK_INT(desk_pens_sync(1, live, DK_SLOTS, pens, 3), 1);       /* flat on, stock live: write */
     CHECK(!memcmp(pens, flat, DK_SLOTS));
-    CHECK_INT(desk_pens_sync(0, live, DK_SLOTS, pens), 0);       /* flat off, never flat: leave the system's pens */
+    CHECK_INT(desk_pens_sync(0, live, DK_SLOTS, pens, 3), 0);       /* flat off, never flat: leave the system's pens */
     for (i = 0; i < DK_SLOTS; i++)
         live[i] = flat[i];
-    CHECK_INT(desk_pens_sync(1, live, DK_SLOTS, pens), 0);       /* already flat: no reset */
-    CHECK_INT(desk_pens_sync(0, live, DK_SLOTS, pens), 1);       /* flat off, flat live: restore */
+    CHECK_INT(desk_pens_sync(1, live, DK_SLOTS, pens, 3), 0);       /* already flat: no reset */
+    CHECK_INT(desk_pens_sync(0, live, DK_SLOTS, pens, 3), 1);       /* flat off, flat live: restore */
     CHECK(!memcmp(pens, stock, DK_SLOTS));
-    CHECK_INT(desk_pens_sync(1, 0, 0, pens), 0);
+    CHECK_INT(desk_pens_sync(1, 0, 0, pens, 3), 0);
 }
 
 /* AM-ICON-NOBORDER: flat-system-look sets the WBNC wbp_Borderless of Workbench.prefs to 1 and off puts the saved value back. The reachability twin
@@ -477,8 +477,8 @@ static void test_desk_flat_pens_key(void)
         /* the reset verdict: a live screen holding this map needs no reset, the other map does */
         for (s = 0; s < DK_SLOTS; s++)
             live[s] = want[s];
-        CHECK_INT(desk_pens_reset(live, DK_SLOTS, k == 0), 0);
-        CHECK_INT(desk_pens_reset(live, DK_SLOTS, k != 0), 1);
+        CHECK_INT(desk_pens_reset(live, DK_SLOTS, k == 0, 3), 0);
+        CHECK_INT(desk_pens_reset(live, DK_SLOTS, k != 0, 3), 1);
     }
     {
         am_prefs p;
@@ -529,11 +529,11 @@ static void test_desk_reset_done(void)
         same[i] = want[i];
         other[i] = (unsigned short)(want[i] + 1);
     }
-    CHECK_INT(desk_reset_done(&a, 0, 0, 0, 0), 0);             /* screen closed mid-reset */
-    CHECK_INT(desk_reset_done(&a, 0, other, DK_SLOTS, 0), 0);
-    CHECK_INT(desk_reset_done(&a, &a, other, DK_SLOTS, 0), 0); /* same screen, old pens: not yet */
-    CHECK_INT(desk_reset_done(&a, &a, same, DK_SLOTS, 0), 1);  /* in place, desk pens */
-    CHECK_INT(desk_reset_done(&a, &b, other, DK_SLOTS, 0), 1); /* a new screen (3.1) */
+    CHECK_INT(desk_reset_done(&a, 0, 0, 0, 0, 3), 0);             /* screen closed mid-reset */
+    CHECK_INT(desk_reset_done(&a, 0, other, DK_SLOTS, 0, 3), 0);
+    CHECK_INT(desk_reset_done(&a, &a, other, DK_SLOTS, 0, 3), 0); /* same screen, old pens: not yet */
+    CHECK_INT(desk_reset_done(&a, &a, same, DK_SLOTS, 0, 3), 1);  /* in place, desk pens */
+    CHECK_INT(desk_reset_done(&a, &b, other, DK_SLOTS, 0, 3), 1); /* a new screen (3.1) */
 }
 
 static void test_desk_pens_reset(void)
@@ -544,17 +544,54 @@ static void test_desk_pens_reset(void)
     desk_pens(want);
     for (i = 0; i < DK_SLOTS; i++)
         cur[i] = want[i];
-    CHECK_INT(desk_pens_reset(cur, DK_SLOTS, 0), 0);   /* same pens: colours load live, no reset */
-    CHECK_INT(desk_pens_reset(cur, DK_SLOTS + 2, 0), 0);
+    CHECK_INT(desk_pens_reset(cur, DK_SLOTS, 0, 3), 0);   /* same pens: colours load live, no reset */
+    CHECK_INT(desk_pens_reset(cur, DK_SLOTS + 2, 0, 3), 0);
     for (i = 0; i < DK_SLOTS; i++) {                /* knob: every slot moves the verdict */
         cur[i] ^= 1;
-        CHECK_INT(desk_pens_reset(cur, DK_SLOTS, 0), 1);
+        CHECK_INT(desk_pens_reset(cur, DK_SLOTS, 0, 3), 1);
         if (i > 0)
-            CHECK_INT(desk_pens_reset(cur, i, 0), 0);  /* slots beyond dri_NumPens are not compared */
+            CHECK_INT(desk_pens_reset(cur, i, 0, 3), 0);  /* slots beyond dri_NumPens are not compared */
         cur[i] ^= 1;
     }
-    CHECK_INT(desk_pens_reset(cur, 0, 0), 1);          /* no DrawInfo: unknown, assume a reset */
-    CHECK_INT(desk_pens_reset(0, DK_SLOTS, 0), 1);
+    CHECK_INT(desk_pens_reset(cur, 0, 0, 3), 1);          /* no DrawInfo: unknown, assume a reset */
+    CHECK_INT(desk_pens_reset(0, DK_SLOTS, 0, 3), 1);
+}
+
+/* FILENAME-PEN follow-up: a 4-colour (depth 2) screen holds the folded pen map, so the verdict compares against the folded map */
+static void test_desk_pens_reset_folded(void)
+{
+    int flat;
+    for (flat = 0; flat < 2; flat++) {
+        unsigned char want[DK_SLOTS];
+        unsigned short folded[DK_SLOTS], plain[DK_SLOTS], other[DK_SLOTS];
+        int i;
+        desk_pens_for(flat, want);
+        for (i = 0; i < DK_SLOTS; i++) {
+            folded[i] = (unsigned short)desk_pen_fold(want[i], 4);
+            plain[i] = want[i];
+            other[i] = (unsigned short)(folded[i] + 1);
+        }
+        CHECK_INT(desk_pens_reset(folded, DK_SLOTS, flat, 2), 0);   /* live folded map at depth 2: no reset */
+        CHECK_INT(desk_pens_reset(other, DK_SLOTS, flat, 2), 1);
+        CHECK_INT(desk_reset_done(0, &flat, folded, DK_SLOTS, flat, 2), 1);
+        CHECK_INT(desk_reset_done(&flat, &flat, other, DK_SLOTS, flat, 2), 0);
+        CHECK_INT(desk_pens_reset(plain, DK_SLOTS, flat, 3), 0);    /* depth 3: the map as is */
+        CHECK_INT(desk_pens_reset(plain, DK_SLOTS, flat, 0), 0);    /* unknown depth: no folding */
+        if (flat)
+            CHECK_INT(desk_pens_sync(1, folded, DK_SLOTS, want, 2), 0);   /* already flat on a 4-colour screen: no write */
+    }
+    {
+        unsigned char want[DK_SLOTS];
+        unsigned short plain[DK_SLOTS];
+        int i, diff = 0;
+        desk_pens_for(0, want);
+        for (i = 0; i < DK_SLOTS; i++) {
+            plain[i] = want[i];
+            diff |= want[i] >= 4;
+        }
+        CHECK(diff);                                                /* the map has pens >= 4: the unfolded one is wrong at depth 2 */
+        CHECK_INT(desk_pens_reset(plain, DK_SLOTS, 0, 2), 1);
+    }
 }
 
 static void test_desk_darker(void)
@@ -1420,6 +1457,7 @@ void suite_desk(void)
     test_desk_wbborder_keeps_tweaks();
     test_desk_wbgauge();
     test_desk_pens_reset();
+    test_desk_pens_reset_folded();
     test_desk_reset_done();
     test_desk_iprefs_idle();
     test_desk_darker();

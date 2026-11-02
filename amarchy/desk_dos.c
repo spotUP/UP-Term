@@ -254,14 +254,14 @@ static void dk_windows_open(int was)
 /* Windows of ours back once IPrefs applied the palette: the live pens equal the desk pens (3.2 resets in place, the screen
  * address stays) or the screen is a new one (at most DK_RESET_SECS: a part that changes nothing resets nothing). */
 #define DK_RESET_SECS 6
-static void dk_wait_reset(struct Screen *before, int flat)
+static void dk_wait_reset(struct Screen *before, int flat, int depth)
 {
     int i;
     for (i = 0; i < DK_RESET_SECS * 4; i++) {
         unsigned short live[DK_SLOTS];
         int n;
         struct Screen *now = dk_wb_screen(live, &n);
-        if (desk_reset_done(before, now, live, n, flat))
+        if (desk_reset_done(before, now, live, n, flat, depth))
             break;
         Delay(12);
     }
@@ -390,7 +390,7 @@ static int dk_apply(const gtheme *th, char *why, int cap)
     depth = dk_screen_depth();
     if (mask & (1u << DT_PALETTE)) {
         wb_before = dk_wb_screen(live, &nlive);
-        reset = desk_pens_reset(live, nlive, flat_pens);
+        reset = desk_pens_reset(live, nlive, flat_pens, depth);
     }
     if (reset || old_ws) {
         desk_dos_wb_closes++;
@@ -411,7 +411,7 @@ static int dk_apply(const gtheme *th, char *why, int cap)
         /* IPrefs resets Workbench for the palette: the other editors run only after it finished (SYS:Prefs/Pointer
          * raised a Program Error requester when started under the running reset) */
         if (reset)
-            dk_wait_reset(wb_before, flat_pens);
+            dk_wait_reset(wb_before, flat_pens, depth);
         dk_live_want = 1;
         dk_live_flat = flat_pens;
         desk_dos_dopus_sends++;
@@ -672,14 +672,14 @@ static int dk_flat_pens(const gtheme *th)
     before = dk_wb_screen(live, &nlive);
     if (!before || !dk_palette_editor_ok())
         return 0;
-    sync = desk_pens_sync(flat, live, nlive, pens);
+    depth = dk_screen_depth();
+    sync = desk_pens_sync(flat, live, nlive, pens, depth);
     if (!sync && !own && !theme && !restore)
         return 0;
     if (!sync)
         desk_pens_for(flat, pens);
     if (flat && !sync && dk_palette_file_stale(flat, pens))
         sync = 1; /* FLAT-PENS-STALE-FILE: the live pens match but the file on disk (an older build's map) does not */
-    depth = dk_screen_depth();
     len = dk_palette_base(restore, pens, depth, buf, sizeof buf);
     UnLock(CreateDir((STRPTR)DK_WORK));
     if ((own || theme) && len > 0) {
@@ -699,7 +699,7 @@ static int dk_flat_pens(const gtheme *th)
         idle = dk_iprefs_idle_mask();
         desk_dos_flat_pens_writes++;
         if (dk_put("Palette", DK_WORK "/palette.prefs", buf, len)) {
-            dk_wait_reset(before, flat);
+            dk_wait_reset(before, flat, depth);
             dk_wait_iprefs(idle);
         }
     }
@@ -1218,7 +1218,7 @@ static void dk_restore_targets(unsigned mask, const char *dir)
         else
             dk_editor(ed[i].editor, name);
         if (ed[i].t == DT_PALETTE)
-            dk_wait_reset(before, amconf_desk_flat_pens(&ap));
+            dk_wait_reset(before, amconf_desk_flat_pens(&ap), dk_screen_depth());
         else if (ed[i].t == DT_FONT || ed[i].t == DT_POINTER)
             dk_wait_iprefs(idle);   /* DESK-PTR-REVERT: IPrefs reads the editor's ENV: write on its notify; a fix copy opened meanwhile fails (object in use) */
         dk_env_fix_file(dir, ed[i].file);
