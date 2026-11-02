@@ -244,7 +244,7 @@ typedef struct vr_render {
     UBYTE img_planes;     /* the planes the last image's pens use */
     ULONG n_img_runs;     /* image runs drawn (the debug build's counter) */
     ULONG n_img_rgb_runs; /* K40: RGB (fmt 1) image runs drawn on a deep screen */
-    ULONG n_img_rgb_blend_fallback; /* K40 sentinel: translucent RGB runs drawn by the binary 50% rule, the library has no working WritePixelArrayAlpha */
+    ULONG n_img_rgb_soft_blend; /* K40b sentinel: translucent RGB runs drawn by the software blend (ReadPixelArray, blend, WritePixelArray), the library has no working WritePixelArrayAlpha */
     int cgx_alpha;        /* the library's WritePixelArrayAlpha is real (vr_cgx_has_alpha) */
     /* A synchronized frame composed off screen (vr_compose_begin, W-T3):
      * made at a window's first such frame (a window's own block stays

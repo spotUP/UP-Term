@@ -2624,7 +2624,7 @@ static void k40_translucent_pixels_blend_over_the_background(void)
     k37_send("a=T,f=32,s=64,v=64,i=1", px, sizeof px);
     CHECK(gf_count(GF_CGXALPHA) >= 1);
     CHECK_INT(gf_count(GF_CGXPIX), 0);
-    CHECK_INT((int)rn.n_img_rgb_blend_fallback, 0);
+    CHECK_INT((int)rn.n_img_rgb_soft_blend, 0);
     CHECK_INT((int)gf_lastpix.ga, (int)0xFFFFFFFFUL);
     for (y = 0; y < 64; y++) {
         int want = GF_CGX | (k40_blend(0, bg >> 16 & 255, 128) << 16 | k40_blend(4 * y, bg >> 8 & 255, 128) << 8
@@ -2641,25 +2641,64 @@ static void k40_translucent_pixels_blend_over_the_background(void)
     close_term();
 }
 
-/* No working WritePixelArrayAlpha (the rig's P96 42.7): the binary 50% rule and the sentinel. Alpha 127 shows the
- * background, 128 and up is drawn solid. */
-static void k40_fallback_is_the_binary_rule_with_a_sentinel(void)
+/* The software blend's per-channel rule, as the renderer states it: (src*a + dst*(255-a) + 127) / 255. */
+static int k40_soft(int s, int d, int a) { return (s * a + d * (255 - a) + 127) / 255; }
+
+/* No working WritePixelArrayAlpha (the rig's P96 42.7): the software blend. Column 0 at alpha 128 over the background
+ * is (src*128 + dst*127 + 127) / 255 per channel, computed here: source (0, 4y, 2y) over 0x204060 at y = 8 gives
+ * r (0*128 + 32*127 + 127) / 255 = 16, g (32*128 + 64*127 + 127) / 255 = 48, b (16*128 + 96*127 + 127) / 255 = 56,
+ * so 0x103038. The run is read once and the alpha call is never made. */
+static void k40_soft_blend_gives_the_exact_blended_pixel(void)
 {
     static unsigned char px[64 * 64 * 4];
-    int y, bad = 0, bg;
+    int y, bad = 0, bg, reads;
     k40_open(0);
     pass("\x1b[1;1H");
+    vr_cgx_fill(0, gf_window()->RPort, 0, 0, 64, 64, 0x204060);
     bg = gf_pixel(0, 0);
+    CHECK_INT(bg, GF_CGX | 0x204060);
+    CHECK_INT(k40_soft(0, 0x20, 128), 0x10);
+    CHECK_INT(k40_soft(32, 0x40, 128), 48);
+    CHECK_INT(k40_soft(16, 0x60, 128), 56);
     gf_clear_log();
-    k40_gradient(px, 127);
+    k40_gradient(px, 128);
     k37_send("a=T,f=32,s=64,v=64,i=1", px, sizeof px);
-    bg = gf_pixel(0, 0);
+    reads = gf_count(GF_CGXREAD);
     CHECK_INT(gf_count(GF_CGXALPHA), 0);
-    CHECK(gf_count(GF_CGXPIX) >= 1);
-    CHECK(rn.n_img_rgb_blend_fallback >= 1);
-    for (y = 0; y < 64; y++)
-        if (gf_pixel(0, y) != bg || gf_pixel(5, y) != (GF_CGX | (20 << 16) | ((4 * y) << 8) | (2 * (5 + y))))
+    CHECK(rn.n_img_rgb_soft_blend >= 1);
+    CHECK_INT(reads, (int)rn.n_img_rgb_soft_blend); /* exactly one read per soft-blended run */
+    CHECK_INT(gf_count(GF_CGXPIX), reads);          /* and one write of it */
+    CHECK_INT(gf_pixel(0, 8), GF_CGX | 0x103038); /* source (0, 32, 16): r 16, g (32*128+64*127+127)/255 = 48, b 56 */
+    for (y = 8; y < 64; y++) { /* row 0..7 is the cursor row, repainted with a pen before the run: the fake reads black */
+        int want = GF_CGX | (k40_soft(0, 0x20, 128) << 16 | k40_soft(4 * y, 0x40, 128) << 8 | k40_soft(2 * y, 0x60, 128));
+        if (gf_pixel(0, y) != want)
             bad++;
+        if (gf_pixel(1, y) != (GF_CGX | (4 << 16) | ((4 * y) << 8) | (2 * (1 + y))))
+            bad++;
+    }
+    CHECK_INT(bad, 0);
+    close_term();
+    gf_cgx_alpha(1);
+}
+
+/* The two ends of the rule: alpha 0 keeps the destination exactly, alpha 255 gives the source exactly. */
+static void k40_soft_blend_ends_are_exact(void)
+{
+    static unsigned char px[64 * 64 * 4];
+    int y, bad = 0;
+    k40_open(0);
+    pass("\x1b[1;1H");
+    vr_cgx_fill(0, gf_window()->RPort, 0, 0, 64, 64, 0x204060);
+    gf_clear_log();
+    k40_gradient(px, 0);
+    k37_send("a=T,f=32,s=64,v=64,i=1", px, sizeof px);
+    CHECK(rn.n_img_rgb_soft_blend >= 1);
+    for (y = 8; y < 64; y++) { /* rows 0..7: the cursor row's pen background reads black, still untouched below */
+        if (gf_pixel(0, y) != (GF_CGX | 0x204060)) /* a = 0: the background, untouched */
+            bad++;
+        if (gf_pixel(7, y) != (GF_CGX | (28 << 16) | ((4 * y) << 8) | (2 * (7 + y)))) /* a = 255: the source */
+            bad++;
+    }
     CHECK_INT(bad, 0);
     close_term();
     gf_cgx_alpha(1);
@@ -2703,6 +2742,36 @@ static void k40_redraw_order_and_partial_damage(void)
     vr_redraw(&rn);
     CHECK(k40_after(GF_CGXALPHA, "X", 1)); /* over: the glyph first */
     close_term();
+}
+
+/* Order with text: a z<0 picture is drawn before the glyph, which stays over it. A z>=0 picture owns its cells (no
+ * glyph is drawn in them), so it blends with what the rastport holds there: the fake reads the cursor row's
+ * pen-painted background as black, and column 0 row 5 is the blend over that. */
+static void k40_soft_blend_reads_the_text_under_a_front_picture(void)
+{
+    static unsigned char px[64 * 64 * 4];
+    k40_open(0);
+    pass("\x1b[1;1HX");
+    k40_gradient(px, 128);
+    pass("\x1b[1;1H");
+    gf_clear_log();
+    k37_send("a=T,f=32,s=64,v=64,i=1,z=-1,C=1,c=8,r=8", px, sizeof px);
+    CHECK(k40_after(GF_CGXPIX, "X", 0));
+    CHECK(!(gf_pixel(5, 5) & GF_CGX)); /* a glyph pixel (the fake paints the glyph code), not the picture's colour */
+    CHECK(rn.n_img_rgb_soft_blend >= 1);
+    close_term();
+    k40_open(0);
+    pass("\x1b[1;1HX\x1b[1;1H");
+    gf_clear_log();
+    k37_send("a=T,f=32,s=64,v=64,i=2,z=1,C=1,c=8,r=8", px, sizeof px);
+    gf_clear_log();
+    vr_damage(&rn, 0, 0, COLS - 1, ROWS - 1);
+    vr_redraw(&rn);
+    CHECK(gf_count(GF_CGXREAD) >= 1);
+    /* column 0 (alpha 128), row 5: source (0, 20, 10) blended with the pixel the read returned (black) */
+    CHECK_INT(gf_pixel(0, 5), GF_CGX | (k40_soft(0, 0, 128) << 16) | (k40_soft(20, 0, 128) << 8) | k40_soft(10, 0, 128));
+    close_term();
+    gf_cgx_alpha(1);
 }
 
 /* Scrollback: an opaque RGB picture scrolled three rows into the history redraws exact through the RGB path when the
@@ -2789,8 +2858,10 @@ int main(void)
     k37_eight_bit_golden();
     k40_opaque_rgb_picture_reaches_the_screen_exact();
     k40_translucent_pixels_blend_over_the_background();
-    k40_fallback_is_the_binary_rule_with_a_sentinel();
+    k40_soft_blend_gives_the_exact_blended_pixel();
+    k40_soft_blend_ends_are_exact();
     k40_redraw_order_and_partial_damage();
+    k40_soft_blend_reads_the_text_under_a_front_picture();
     k40_picture_scrolled_into_history_redraws_exact();
     k40_alpha_detection_checks_the_table_size_and_the_jmp_opcodes();
     k40_eight_bit_screen_stays_indexed();

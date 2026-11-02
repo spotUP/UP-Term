@@ -623,7 +623,7 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->ex = 0;
     r->img_serial = 0;
     r->n_img_runs = 0;
-    r->n_img_rgb_runs = r->n_img_rgb_blend_fallback = 0;
+    r->n_img_rgb_runs = r->n_img_rgb_soft_blend = 0;
     r->cgx_alpha = 0;
     r->back = 0;
     r->front_rp = 0;
@@ -2611,14 +2611,13 @@ static int img_buf_need(vr_render *r, ULONG size)
 
 /* K40: a run of an RGB picture (fmt 1: w x h x 4 bytes R G B A) at source (sx, sy), size (w, h), on screen at
  * (dx, dy). An opaque picture goes to WritePixelArray straight from the view's pixels. Otherwise the driver blends
- * through WritePixelArrayAlpha from an ARGB copy of the run, or, where the library has no working one, the binary
- * 50% rule: alpha below 128 shows the background, the rest is drawn solid (counted, n_img_rgb_blend_fallback). */
+ * through WritePixelArrayAlpha from an ARGB copy of the run, or, where the library has no working one, a software
+ * blend over what ReadPixelArray returns for the run's rectangle (counted, n_img_rgb_soft_blend). */
 static void img_run_rgb(vr_render *r, const vt_image_view *v, LONG sx, LONG sy, LONG w, LONG h, WORD dx, WORD dy)
 {
     const vt_u8 *s;
     UBYTE *d;
     LONG k, j;
-    ULONG bg;
     if (!r->cgx)
         return; /* cannot happen: RGB pictures are made only with the library (vr_init) */
     r->blank = 0;
@@ -2645,20 +2644,18 @@ static void img_run_rgb(vr_render *r, const vt_image_view *v, LONG sx, LONG sy, 
                            (UWORD)h, 0xFFFFFFFFUL);
         return;
     }
-    bg = ink_rgb(r, r->bg_ink);
-    r->n_img_rgb_blend_fallback++;
+    /* No working WritePixelArrayAlpha: read what is under the run (text, background, z < 0 pictures: whatever the
+     * rastport holds), blend per channel and write it back (owner 2026-11-02: R6 lifted for kitty alpha). */
+    r->n_img_rgb_soft_blend++;
+    vr_cgx_read_pixels(r->cgx, r->rp, (UWORD)dx, (UWORD)dy, (APTR)r->img_buf, 0, 0, (UWORD)(w * 4), (UWORD)w,
+                       (UWORD)h, VR_RECTFMT_RGBA);
     for (k = 0; k < h; k++) {
         s = v->pix + ((sy + k) * v->w + sx) * 4;
         for (j = 0; j < w; j++, s += 4, d += 4) {
-            if (s[3] < 128) {
-                d[0] = (UBYTE)(bg >> 16);
-                d[1] = (UBYTE)(bg >> 8);
-                d[2] = (UBYTE)bg;
-            } else {
-                d[0] = s[0];
-                d[1] = s[1];
-                d[2] = s[2];
-            }
+            ULONG a = s[3];
+            d[0] = (UBYTE)((s[0] * a + d[0] * (255 - a) + 127) / 255);
+            d[1] = (UBYTE)((s[1] * a + d[1] * (255 - a) + 127) / 255);
+            d[2] = (UBYTE)((s[2] * a + d[2] * (255 - a) + 127) / 255);
             d[3] = 255;
         }
     }

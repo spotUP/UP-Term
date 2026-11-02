@@ -850,6 +850,26 @@ ULONG vr_cgx_write_alpha(struct Library *l, APTR src, UWORD sx, UWORD sy, UWORD 
         }
     return 0;
 }
+/* ReadPixelArray: the canvas pixels of the rectangle as R G B A bytes (a GF_CGX pixel gives its colour, any other
+ * pixel, glyph codes and untouched ones, reads as black, as the alpha fake treats them). */
+LONG vr_cgx_read_pixels(struct Library *l, struct RastPort *rp, UWORD sx, UWORD sy, APTR dst, UWORD dx, UWORD dy,
+                        UWORD dmod, UWORD w, UWORD h, UBYTE fmt)
+{
+    UBYTE *p = (UBYTE *)dst;
+    int *canvas = canvas_of(rp);
+    long x, y;
+    (void)l; (void)fmt;
+    rec(GF_CGXREAD, sx, sy, w, h);
+    for (y = 0; y < h; y++)
+        for (x = 0; x < w; x++) {
+            UBYTE *d = p + (long)(dy + y) * dmod + (long)(dx + x) * 4;
+            int v = canvas && sx + x < W && sy + y < H ? canvas[(sy + y) * W + sx + x] : 0;
+            if (!(v & GF_CGX))
+                v = 0;
+            d[0] = (UBYTE)(v >> 16); d[1] = (UBYTE)(v >> 8); d[2] = (UBYTE)v; d[3] = 255;
+        }
+    return 0;
+}
 int vr_cgx_has_alpha(struct Library *l) { (void)l; return cgx_alpha_real; }
 ULONG vr_cgx_fill(struct Library *l, struct RastPort *rp, UWORD x, UWORD y, UWORD w, UWORD h, ULONG argb)
 {

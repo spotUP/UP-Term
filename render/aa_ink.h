@@ -79,6 +79,8 @@ LONG vr_cgx_write_pixels(struct Library *, APTR src, UWORD sx, UWORD sy, UWORD s
                          UWORD dy, UWORD w, UWORD h, UBYTE fmt);
 ULONG vr_cgx_write_alpha(struct Library *, APTR src, UWORD sx, UWORD sy, UWORD smod, struct RastPort *rp, UWORD dx,
                          UWORD dy, UWORD w, UWORD h, ULONG globalalpha);
+LONG vr_cgx_read_pixels(struct Library *, struct RastPort *rp, UWORD sx, UWORD sy, APTR dst, UWORD dx, UWORD dy,
+                        UWORD dmod, UWORD w, UWORD h, UBYTE fmt);
 int vr_cgx_has_alpha(struct Library *);
 #else
 LONG vr_cgx_write_pixels(__reg("a6") struct Library *, __reg("a0") APTR src, __reg("d0") UWORD sx,
@@ -89,6 +91,13 @@ ULONG vr_cgx_write_alpha(__reg("a6") struct Library *, __reg("a0") APTR src, __r
                          __reg("d1") UWORD sy, __reg("d2") UWORD smod, __reg("a1") struct RastPort *rp,
                          __reg("d3") UWORD dx, __reg("d4") UWORD dy, __reg("d5") UWORD w, __reg("d6") UWORD h,
                          __reg("d7") ULONG globalalpha) = "\tjsr\t-216(a6)";
+/* ReadPixelArray (LVO -120): destRect a0, DestX d0, DestY d1, DestMod d2, SrcRP a1, SrcX d3, SrcY d4, SizeX d5,
+ * SizeY d6, DestFormat d7 (cybergraphics_lib.fd, AMOS and MorphOS SDK copies agree). The wrapper takes the source
+ * rastport and rectangle first and the destination buffer and its offset after, as vr_cgx_write_pixels reads. */
+LONG vr_cgx_read_pixels(__reg("a6") struct Library *, __reg("a1") struct RastPort *rp, __reg("d3") UWORD sx,
+                        __reg("d4") UWORD sy, __reg("a0") APTR dst, __reg("d0") UWORD dx, __reg("d1") UWORD dy,
+                        __reg("d2") UWORD dmod, __reg("d5") UWORD w, __reg("d6") UWORD h,
+                        __reg("d7") UBYTE fmt) = "\tjsr\t-120(a6)";
 static int vr_cgx_has_alpha(struct Library *lib)
 {
     return vr_cgx_slots_have_alpha((const unsigned char *)lib, lib->lib_NegSize);
