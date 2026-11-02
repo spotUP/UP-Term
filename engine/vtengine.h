@@ -383,6 +383,16 @@ int      vt_row_image(const vt_term *t, int row, int i, vt_image_view *v);
 typedef int (*vt_image_decoder)(const vt_u8 *data, long n, vt_u32 **argb, int *w, int *h);
 typedef void (*vt_image_release)(vt_u32 *argb);
 void     vt_set_image_decoder(vt_term *t, vt_image_decoder decode, vt_image_release release);
+/* Kitty t=f / t=t: the engine has no OS calls, the host reads. read(path, offset,
+ * size, &buf, &n): size 0 is "to the end"; return 1 with a host-owned buffer of n
+ * bytes (freed through the release function given to vt_set_image_decoder, which
+ * must be set too), or 0. unlink(path) removes a t=t file after a good read; the
+ * engine calls it only for a path containing "tty-graphics-protocol", never for
+ * t=f; the host decides whether the place is a temp place. Any failure, no reader
+ * or no release function answers EBADF. t=s answers EBADF always. */
+typedef int (*vt_file_reader)(const char *path, long offset, long size, vt_u8 **buf, long *n);
+typedef int (*vt_file_unlinker)(const char *path);
+void     vt_set_file_reader(vt_term *t, vt_file_reader read, vt_file_unlinker unlink_file);
 /* The largest sixel image, in pixels, and the memory all images share. */
 #define VT_SIXEL_MAX_W 1024
 #define VT_SIXEL_MAX_H 1024

@@ -382,12 +382,119 @@ static void stored_pictures_give_way_to_new_ones(void)
     vt_free(t);
 }
 
-static void files_are_refused(void)
+/* K25-K28: a stand-in file reader that counts its calls and records its arguments. */
+static int rd_calls, ul_calls, rd_fail, rel_calls;
+static long rd_off, rd_size;
+static char rd_path[256], ul_path[256];
+static vt_u8 rd_bytes[12] = { 255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255 }; /* 2x2 RGB */
+static int stand_in_read(const char *path, long off, long size, vt_u8 **buf, long *n)
+{
+    rd_calls++;
+    rd_off = off;
+    rd_size = size;
+    snprintf(rd_path, sizeof(rd_path), "%s", path);
+    if (rd_fail)
+        return 0;
+    *buf = rd_bytes;
+    *n = sizeof(rd_bytes);
+    return 1;
+}
+static int stand_in_unlink(const char *path)
+{
+    ul_calls++;
+    snprintf(ul_path, sizeof(ul_path), "%s", path);
+    return 1;
+}
+static void counting_free(vt_u32 *p) { (void)p; rel_calls++; }
+
+/* base64 of a path, as the client sends it */
+static void kf_send(vt_term *t, const char *keys, const char *path)
+{
+    static const char tb[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    char buf[512], *o = buf;
+    int n = (int)strlen(path), i;
+    o += snprintf(buf, sizeof(buf), "\033_G%s;", keys);
+    for (i = 0; i < n; i += 3) {
+        unsigned v = ((unsigned char)path[i] << 16) | (i + 1 < n ? (unsigned char)path[i + 1] << 8 : 0) |
+                     (i + 2 < n ? (unsigned char)path[i + 2] : 0);
+        *o++ = tb[(v >> 18) & 63];
+        *o++ = tb[(v >> 12) & 63];
+        *o++ = i + 1 < n ? tb[(v >> 6) & 63] : '=';
+        *o++ = i + 2 < n ? tb[v & 63] : '=';
+    }
+    *o = 0;
+    h_put(t, buf);
+    h_put(t, "\033\\");
+}
+
+static vt_term *kf_term(void)
 {
     vt_term *t = kitty_term(10, 5);
+    vt_set_image_decoder(t, stand_in_decode, counting_free);
+    vt_set_file_reader(t, stand_in_read, stand_in_unlink);
+    rd_calls = ul_calls = rd_fail = rel_calls = 0;
+    rd_off = rd_size = -1;
     h_reply_clear();
-    h_put(t, "\033_Ga=T,t=f,i=3,f=24,s=1,v=1;AAAA\033\\");
-    CHECK_STR(h_reply, "\033_Gi=3;ENOTSUP:only direct data (t=d)\033\\");
+    return t;
+}
+
+static void k25_t_f_reads_through_the_host_reader(void)
+{
+    vt_term *t = kf_term();
+    vt_image_view v;
+    kf_send(t, "a=T,t=f,i=3,f=24,s=2,v=2,O=5,S=7", "Work:pics/x.rgb");
+    CHECK_INT(rd_calls, 1);
+    CHECK_STR(rd_path, "Work:pics/x.rgb");
+    CHECK_INT(rd_off, 5);
+    CHECK_INT(rd_size, 7);
+    CHECK_STR(h_reply, "\033_Gi=3;OK\033\\");
+    CHECK_INT(vt_images(t), 2); /* the stored picture and its placement */
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(pixel(&v, 0, 0), 0xFF0000);
+    CHECK_INT(pixel(&v, 1, 1), 0xFFFFFF);
+    CHECK_INT(rel_calls, 1); /* the buffer went back through the release hook */
+    /* no S=: to the end */
+    kf_send(t, "a=T,t=f,i=4,f=24,s=2,v=2", "RAM:y");
+    CHECK_INT(rd_size, 4L * 1024L * 1024L); /* no S=: the engine asks for the most it takes (KIT_RAW_MAX) */
+    CHECK_INT(rd_off, 0);
+    /* a reader failure: exactly the one message */
+    h_reply_clear();
+    rd_fail = 1;
+    kf_send(t, "a=T,t=f,i=5,f=24,s=2,v=2", "RAM:gone");
+    CHECK_STR(h_reply, "\033_Gi=5;EBADF:Failed to read image file\033\\");
+    /* no reader set: the same */
+    vt_set_file_reader(t, 0, 0);
+    h_reply_clear();
+    kf_send(t, "a=T,t=f,i=6,f=24,s=2,v=2", "RAM:y");
+    CHECK_STR(h_reply, "\033_Gi=6;EBADF:Failed to read image file\033\\");
+    CHECK_INT(vt_images(t), 4);
+    vt_free(t);
+}
+
+static void k26_t_t_unlinks_only_kitty_named_files_after_a_good_read(void)
+{
+    vt_term *t = kf_term();
+    kf_send(t, "a=T,t=t,i=1,f=24,s=2,v=2", "T:plain.rgb");
+    CHECK_INT(rd_calls, 1);
+    CHECK_INT(ul_calls, 0); /* no marker in the name */
+    kf_send(t, "a=T,t=t,i=2,f=24,s=2,v=2", "T:tty-graphics-protocol-1.rgb");
+    CHECK_INT(ul_calls, 1);
+    CHECK_STR(ul_path, "T:tty-graphics-protocol-1.rgb");
+    kf_send(t, "a=T,t=f,i=3,f=24,s=2,v=2", "T:tty-graphics-protocol-2.rgb");
+    CHECK_INT(rd_calls, 3);
+    CHECK_INT(ul_calls, 1); /* t=f never deletes */
+    rd_fail = 1;
+    kf_send(t, "a=T,t=t,i=4,f=24,s=2,v=2", "T:tty-graphics-protocol-3.rgb");
+    CHECK_INT(ul_calls, 1); /* a failed read never deletes */
+    vt_free(t);
+}
+
+static void k28_t_s_shared_memory_says_ebadf(void)
+{
+    vt_term *t = kf_term();
+    kf_send(t, "a=T,t=s,i=3,f=24,s=1,v=1", "/vtcon-shm");
+    CHECK_STR(h_reply, "\033_Gi=3;EBADF:Failed to read image file\033\\");
+    CHECK_INT(rd_calls, 0);
     CHECK_INT(vt_images(t), 0);
     vt_free(t);
 }
@@ -588,6 +695,110 @@ static void k24_the_missing_deletes(void)
     }
 }
 
+/* ---- K29: relative placements (P= Q= H= V=) ---- */
+
+static int is_image(vt_term *t, int x, int y)
+{
+    return (h_cell(t, x, y)->pad & VT_CELL_IMAGE) != 0;
+}
+
+/* a one-cell picture with the keys, at the cursor unless they name a parent */
+static void put_rel(vt_term *t, const char *keys)
+{
+    h_put(t, "\033_Ga=T,f=24,s=2,v=2,");
+    h_put(t, keys);
+    h_put(t, ";");
+    h_put(t, rgb2x2);
+    h_put(t, "\033\\");
+}
+
+/* The reachability test: escape bytes in, the child's cells out. The
+ * cell (parent + H, V) can only come from the relative path: before K29
+ * P/Q/H/V were ignored and the child landed at the cursor. */
+static void k29_child_sits_at_the_parent_plus_h_v(void)
+{
+    vt_term *t = kitty_term(20, 8);
+    int x, y;
+    put_at(t, 3, 2, "i=1,p=1"); /* parent at column 2, row 1 (0-based) */
+    CHECK(is_image(t, 2, 1));
+    h_put(t, "\033[7;9H"); /* the cursor far away: column 8, row 6 */
+    h_reply_clear();
+    put_rel(t, "i=2,p=1,P=1,Q=1,H=2,V=1");
+    CHECK_STR(h_reply, "\033_Gi=2,p=1;OK\033\\");
+    CHECK(is_image(t, 4, 2));  /* 2 + 2, 1 + 1 */
+    CHECK(!is_image(t, 8, 6)); /* not at the cursor */
+    vt_cursor(t, &x, &y);      /* C=0, and still the cursor stays */
+    CHECK_INT(x, 8);
+    CHECK_INT(y, 6);
+    put_rel(t, "i=3,p=1,P=2,Q=1,H=-3,V=-2"); /* signed, from the child's cell */
+    CHECK(is_image(t, 1, 0));
+    CHECK_INT(shown(t), 3);
+    vt_free(t);
+}
+
+static void k29_deleting_a_parent_deletes_its_children(void)
+{
+    vt_term *t = kitty_term(20, 8);
+    put_at(t, 1, 1, "i=1,p=1");
+    put_rel(t, "i=2,p=1,P=1,Q=1,H=4");
+    put_rel(t, "i=3,p=1,P=2,Q=1,V=2"); /* a grandchild */
+    put_at(t, 1, 5, "i=4,p=1");          /* unrelated */
+    CHECK_INT(shown(t), 4);
+    CHECK(is_image(t, 4, 2));
+    h_put(t, "\033_Ga=d,d=i,i=1\033\\");
+    CHECK_INT(shown(t), 1);
+    CHECK(is_image(t, 0, 4));
+    vt_free(t);
+}
+
+static void k29_the_error_replies(void)
+{
+    vt_term *t = kitty_term(20, 8);
+    int n;
+    char b[64];
+    h_reply_clear();
+    put_rel(t, "i=2,p=1,P=9,Q=1");
+    CHECK_STR(h_reply, "\033_Gi=2,p=1;ENOPARENT:no such parent placement\033\\");
+    CHECK_INT(shown(t), 0);
+    put_at(t, 1, 1, "i=1,p=1");
+    h_reply_clear();
+    h_put(t, "\033_Ga=p,i=1,p=1,P=1,Q=1\033\\"); /* itself */
+    CHECK_STR(h_reply, "\033_Gi=1,p=1;ECYCLE:the parent chain loops\033\\");
+    put_rel(t, "i=2,p=1,P=1,Q=1,H=1");
+    h_reply_clear();
+    h_put(t, "\033_Ga=p,i=1,p=1,P=2,Q=1\033\\"); /* its parent's parent is the one being placed */
+    CHECK_STR(h_reply, "\033_Gi=1,p=1;ECYCLE:the parent chain loops\033\\");
+    CHECK_INT(shown(t), 2);
+    /* the chain 1 <- 2 <- ... <- 9 is 8 deep; the 10th is one too many */
+    for (n = 3; n <= 10; n++) {
+        static const char *const id[] = { "", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10" };
+        strcpy(b, "i=");
+        strcat(b, id[n]);
+        strcat(b, ",p=1,P=");
+        strcat(b, id[n - 1]);
+        strcat(b, ",Q=1,H=1");
+        h_reply_clear();
+        put_rel(t, b);
+    }
+    CHECK_STR(h_reply, "\033_Gi=10,p=1;ETOODEEP:more than 8 parents deep\033\\");
+    CHECK_INT(shown(t), 9);
+    vt_free(t);
+}
+
+static void k29_virtual_placements_and_parents(void)
+{
+    vt_term *t = kitty_term(20, 8);
+    put_rel(t, "i=5,p=1,U=1"); /* a virtual parent: none until K31 */
+    h_reply_clear();
+    put_rel(t, "i=6,p=1,P=5,Q=1");
+    CHECK_STR(h_reply, "\033_Gi=6,p=1;ENOPARENT:no such parent placement\033\\");
+    put_at(t, 1, 1, "i=1,p=1");
+    h_reply_clear();
+    put_rel(t, "i=7,p=1,U=1,P=1,Q=1");
+    CHECK_STR(h_reply, "\033_Gi=7,p=1;EINVAL:a virtual placement has no parent\033\\");
+    vt_free(t);
+}
+
 void suite_kitty(void)
 {
     raw_rgb_becomes_an_indexed_image();
@@ -604,7 +815,9 @@ void suite_kitty(void)
     putting_an_unknown_id_says_enoent();
     a_picture_over_the_memory_limit_says_enomem();
     stored_pictures_give_way_to_new_ones();
-    files_are_refused();
+    k25_t_f_reads_through_the_host_reader();
+    k26_t_t_unlinks_only_kitty_named_files_after_a_good_read();
+    k28_t_s_shared_memory_says_ebadf();
     c_equals_1_keeps_the_cursor();
     columns_and_rows_scale_the_picture();
     apc_g_is_not_reported_unhandled();
@@ -614,4 +827,8 @@ void suite_kitty(void)
     k22_transient_pictures_are_evicted_first();
     k23_pixel_offset_inside_the_first_cell();
     k24_the_missing_deletes();
+    k29_child_sits_at_the_parent_plus_h_v();
+    k29_deleting_a_parent_deletes_its_children();
+    k29_the_error_replies();
+    k29_virtual_placements_and_parents();
 }

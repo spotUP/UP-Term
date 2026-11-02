@@ -429,6 +429,7 @@ static void setup_in(cl_repl *r, const char **script, const char *root)
     io.ms = c_ms;
     io.log = 0;
     io.upterm = 0;
+    io.history_file = 0;
     net.u = 0;
     net.open = s_open;
     net.send = s_send;
@@ -499,6 +500,49 @@ static void test_banner_upterm(void)
     CHECK(strstr(s, "Claude in UP-Term. Model ") != 0);
     repl_free(&r);
     io.upterm = 0;
+}
+
+/* the console's history file in line mode: the prompt history file of the raw mode, for this project, told on entry
+ * and the earlier name put back on leaving (regression: nothing ever sent VTCON_HIST_FILE, so line and raw mode
+ * recalled different lists) */
+static char hist_told[8][700];
+static int hist_calls;
+static int hist_file_rec(void *u, const char *spec, char *prev, long cap)
+{
+    (void)u;
+    if (hist_calls < 8)
+        cl_copy(hist_told[hist_calls], spec, sizeof(hist_told[0]));
+    hist_calls++;
+    if (prev && cap > 0)
+        cl_copy(prev, "RAM:before", (size_t)cap);
+    return 0;
+}
+
+static void test_line_history_shared(void)
+{
+    static const char *script[] = { "/exit", 0 };
+    static cl_repl r;
+    char want[700];
+    setup(&r, script);
+    io.history_file = hist_file_rec;
+    hist_calls = 0;
+    cl_copy(r.ui.histfile, "UP-Term:var/Claude/history", sizeof(r.ui.histfile));
+    repl_run(&r);
+    cl_copy(want, "UP-Term:var/Claude/history\n", sizeof(want));
+    cl_cat(want, r.tools.root, sizeof(want));
+    CHECK_INT(hist_calls, 2);
+    CHECK_STR(hist_told[0], want);
+    CHECK_STR(hist_told[1], "RAM:before");
+    repl_free(&r);
+    /* no history file: the console is left alone */
+    setup(&r, script);
+    io.history_file = hist_file_rec;
+    hist_calls = 0;
+    r.ui.histfile[0] = 0;
+    repl_run(&r);
+    CHECK_INT(hist_calls, 0);
+    repl_free(&r);
+    io.history_file = 0;
 }
 
 static void test_reach(void)
@@ -6316,6 +6360,7 @@ void suite_claude_repl(void)
     mk_tree();
     test_reach();
     test_banner_upterm();
+    test_line_history_shared();
     test_unfinished();
     test_req_golden();
     test_system_prompt_names_standard_assigns();

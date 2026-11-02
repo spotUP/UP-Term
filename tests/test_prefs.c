@@ -403,6 +403,47 @@ static void the_brightness_slider_gets_a_uword_pen_list_ended_by_ffff(void)
     CHECK(prefs_grad_pens(g, 5, 0xFFFF) == 0 && g[0] == 0xFFFF);
 }
 
+/* R6.6 / D6: Prefs > Advanced carries outline-blend-dest (default on). Driven through the settings table that builds the
+ * window's gadgets: the row is on the Advanced page, its gadget id is a field pointer target, and the staged profile
+ * holds the key after a toggle and reads it back. The sentinel counts the rows found by key and the keys written. */
+static void advanced_page_has_the_outline_blend_switch(void)
+{
+    static upconf conf, work;
+    static char buf[UC_MAX_FILE + 1];
+    prefs_fields f, g;
+    const sd_setting *s = sd_find_key(SD_UPTERM, "outline-blend-dest");
+    const pg_item *it;
+    int found = 0, keys = 0;
+    long len;
+    CHECK(s != 0);
+    if (!s)
+        return;
+    found++;
+    CHECK_INT(s->page, PG_PAGE_ADVANCED);
+    CHECK_INT(s->kind, SD_CHECK);
+    CHECK_STR(s->label, "_Blend edges");
+    it = pg_find(s->gadget);
+    CHECK(it != 0);
+    CHECK_INT(it->page, PG_PAGE_ADVANCED);
+    CHECK_INT(it->kind, PGK_CHECK);
+    CHECK_INT(prefs_load(&conf, "[default]\nfont = x\n", 20, UC_MAX_FILE), PREFS_LOAD_OK);
+    prefs_from_conf(&f, &conf, "default");
+    CHECK_INT(f.blend_dest, 1);
+    len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
+    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
+    CHECK_STR(upconf_str(&conf, "default", "outline-blend-dest", "?"), "on");
+    keys++;
+    f.blend_dest = 0;
+    len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
+    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
+    CHECK_STR(upconf_str(&conf, "default", "outline-blend-dest", "?"), "off");
+    keys++;
+    prefs_from_conf(&g, &conf, "default");
+    CHECK_INT(g.blend_dest, 0);
+    CHECK_INT(found, 1);
+    CHECK_INT(keys, 2);
+}
+
 static void dither_and_padding_color_round_trip(void)
 {
     static upconf conf, work;
@@ -999,7 +1040,7 @@ static void an_edit_of_any_field_makes_the_profile_differ(void)
         MUT_INT(cursor) MUT_INT(bell) MUT_INT(blink) MUT_INT(bold) MUT_INT(meta_alt)
         MUT_INT(copy_sel) MUT_INT(wheel) MUT_INT(reflow) MUT_INT(scrollbar) MUT_INT(completion)
         MUT_INT(screen) MUT_INT(aspect) MUT_INT(backspace_bs) MUT_INT(clipboard) MUT_INT(kcinfo)
-        MUT_INT(kccache) MUT_INT(amiga_keys) MUT_INT(dither) MUT_INT(outline_aa) MUT_INT(pad_extend) MUT_INT(hlcat)
+        MUT_INT(kccache) MUT_INT(amiga_keys) MUT_INT(dither) MUT_INT(outline_aa) MUT_INT(blend_dest) MUT_INT(pad_extend) MUT_INT(hlcat)
         MUT_INT(split_restore)
     }
     for (i = 0; i < 16; i++) {
@@ -1575,6 +1616,7 @@ void suite_prefs(void)
     amiga_keys_and_highlight_cat_round_trip();
     style_stage_sets_only_the_look();
     dither_and_padding_color_round_trip();
+    advanced_page_has_the_outline_blend_switch();
     prefs_stage_leaves_no_amarchy_keys_in_the_upterm_profile();
     the_amarchy_keyword_picks_the_start_page();
     the_brightness_slider_gets_a_uword_pen_list_ended_by_ffff();

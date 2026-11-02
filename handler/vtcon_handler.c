@@ -687,6 +687,156 @@ static void png_release(vt_u32 *argb)
         FreeVec(argb);
 }
 
+/* ---- kitty graphics t=f / t=t: files (K27) ----------------------------------
+ * The engine has no OS calls; vt_set_file_reader gives it these two. The path
+ * is an AmigaDOS path as given (T:x, RAM:x, Work:pics/x.png). One that starts
+ * with '/' is an ixemul program's Unix path: /tmp/x is T:x (D11), /vol/rest is
+ * vol:rest. Anything else without a volume is refused: the handler has no
+ * notion of the client's current directory. Refusals all answer 0 (the engine
+ * says EBADF): a volume that is not a file system (CON:, SER:, PIPE:, XCON:
+ * itself: Open would block or read the user's keyboard), a name that is not a
+ * plain file, a link that does not resolve, a short read. The read runs on the
+ * handler's own process; the buffer is sized from the file and the request
+ * (S=), nothing big sits on the stack. The buffer is freed by png_release
+ * (the engine's release hook). kitty_files_read / kitty_files_deleted are the
+ * rig's sentinel (PROF line "kitty files read/deleted"). */
+ULONG kitty_files_read, kitty_files_deleted;
+#define KFILE_PATH 300
+
+/* in -> out (AmigaDOS); *tmp is set for the ixemul /tmp mapping. 0: refused. */
+static int kfile_path(const char *in, char *out, int *tmp)
+{
+    int n = (int)strlen(in);
+    *tmp = 0;
+    if (n <= 0 || n >= KFILE_PATH - 8)
+        return 0;
+    if (in[0] == '/') {
+        const char *rest = in + 1;
+        const char *sl = strchr(rest, '/');
+        if (!*rest)
+            return 0;
+        if (!strncmp(rest, "tmp/", 4) || !strncmp(rest, "tmp", 4)) {
+            strcpy(out, "T:");
+            strcat(out, rest[3] ? rest + 4 : "");
+            *tmp = 1;
+            return 1;
+        }
+        if (!sl) { /* /vol alone: a volume, not a file */
+            return 0;
+        }
+        memcpy(out, rest, (size_t)(sl - rest));
+        out[sl - rest] = ':';
+        strcpy(out + (sl - rest) + 1, sl + 1);
+        return 1;
+    }
+    if (!strchr(in, ':'))
+        return 0;
+    strcpy(out, in);
+    return 1;
+}
+
+/* a lock on the file only when it is a plain file on a file system; *size set */
+static BPTR kfile_lock(const char *ap, LONG *size)
+{
+    char vol[KFILE_PATH];
+    struct FileInfoBlock *fib;
+    BPTR lock = 0;
+    int i;
+    for (i = 0; ap[i] && ap[i] != ':'; i++)
+        vol[i] = ap[i];
+    vol[i] = ':';
+    vol[i + 1] = 0;
+    if (!ap[i] || !IsFileSystem((STRPTR)vol))
+        return 0;
+    fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
+    if (!fib)
+        return 0;
+    lock = Lock((STRPTR)ap, SHARED_LOCK);
+    if (lock && (!Examine(lock, fib) || fib->fib_DirEntryType >= 0)) {
+        UnLock(lock);
+        lock = 0;
+    }
+    if (lock)
+        *size = fib->fib_Size;
+    FreeDosObject(DOS_FIB, fib);
+    return lock;
+}
+
+static int kfile_read(const char *path, long off, long size, vt_u8 **buf, long *n)
+{
+    char ap[KFILE_PATH];
+    int tmp, ok = 0;
+    LONG fsize = 0;
+    BPTR lock, fh;
+    vt_u8 *b = 0;
+    struct Process *me = (struct Process *)FindTask(0);
+    APTR oldwin = me->pr_WindowPtr;
+    if (!kfile_path(path, ap, &tmp))
+        return 0;
+    me->pr_WindowPtr = (APTR)-1L; /* no "insert volume" requester */
+    lock = kfile_lock(ap, &fsize);
+    if (lock) {
+        long want = size;
+        if (off >= 0 && off < fsize) {
+            if (want <= 0 || want > fsize - off)
+                want = fsize - off;
+            b = (vt_u8 *)AllocVec((ULONG)want, MEMF_ANY);
+            fh = b ? OpenFromLock(lock) : 0;
+            lock = fh ? 0 : lock; /* OpenFromLock took the lock */
+            if (fh) {
+                if (Seek(fh, off, OFFSET_BEGINNING) >= 0 && Read(fh, b, want) == want) {
+                    *buf = b;
+                    *n = want;
+                    ok = 1;
+                    kitty_files_read++;
+                }
+                Close(fh);
+            }
+        }
+        if (lock)
+            UnLock(lock);
+        if (!ok && b)
+            FreeVec(b);
+    }
+    me->pr_WindowPtr = oldwin;
+    return ok;
+}
+
+/* t=t: only a file in T: (or the ixemul /tmp) is removed */
+static int kfile_unlink(const char *path)
+{
+    char ap[KFILE_PATH];
+    int tmp, ok = 0;
+    BPTR lock, par, tl;
+    LONG fsize;
+    struct Process *me = (struct Process *)FindTask(0);
+    APTR oldwin = me->pr_WindowPtr;
+    if (!kfile_path(path, ap, &tmp))
+        return 0;
+    me->pr_WindowPtr = (APTR)-1L;
+    lock = kfile_lock(ap, &fsize);
+    if (lock) {
+        if (tmp) {
+            ok = 1;
+        } else {
+            par = ParentDir(lock);
+            tl = Lock((STRPTR)"T:", SHARED_LOCK);
+            ok = par && tl && SameLock(par, tl) == LOCK_SAME;
+            if (par)
+                UnLock(par);
+            if (tl)
+                UnLock(tl);
+        }
+        UnLock(lock);
+    }
+    if (ok && DeleteFile((STRPTR)ap))
+        kitty_files_deleted++;
+    else
+        ok = 0;
+    me->pr_WindowPtr = oldwin;
+    return ok;
+}
+
 /* ---- engine callbacks ------------------------------------------------------ */
 
 static void in_append(con *c, const vt_u8 *b, int n)
@@ -1464,7 +1614,7 @@ static void apply_profile(con *c)
         c->w.dither = sd_conf_key_index("dither", c->conf, p); /* few-pen screens dither */
     if (upconf_get(c->conf, p, "outline-antialias"))
         c->w.outline_aa = sd_conf_key_index("outline-antialias", c->conf, p); /* outline glyphs drawn smoothed */
-    if (upconf_get(c->conf, p, "outline-blend-dest")) /* R6.A: a profile-file key, no Preferences row */
+    if (upconf_get(c->conf, p, "outline-blend-dest")) /* R6.A: Prefs > Advanced row (D6) and the profile key */
         c->w.blend_dest = strcmp(upconf_str(c->conf, p, "outline-blend-dest", "on"), "off") != 0;
     if (upconf_get(c->conf, p, "padding-color"))
         c->w.pad_extend = sd_conf_key_index("padding-color", c->conf, p); /* the strips beside the grid: background or extend */
@@ -2067,6 +2217,7 @@ static void window_fields(con *c, prefs_fields *f)
     f->amiga_keys = c->w.amiga_keys != 0;
     f->dither = c->w.dither != 0;
     f->outline_aa = c->w.outline_aa != 0;
+    f->blend_dest = c->w.blend_dest != 0;
     f->pad_extend = c->w.pad_extend != 0;
     f->split_restore = c->split_restore;
     f->clipboard = c->w.clip_access == 0 ? PREFS_CLIP_OFF
@@ -3115,6 +3266,7 @@ have_window:
     }
     DBG("vt_new", c->w.t, 0);
     vt_set_image_decoder(c->w.t, png_decode, png_release);
+    vt_set_file_reader(c->w.t, kfile_read, kfile_unlink);
     pens_tell(c);
     menu_add(c, win);
     sbar_apply(c); /* our own sizable window: the scroll bar in its border */
@@ -8019,6 +8171,7 @@ static void packet(con *c, struct DosPacket *p)
             c->prof_npk[0] = c->prof_npk[1] = c->prof_npk[2] = 0;
             PROF_LOG("PROF writes/bytes", c->prof_writes, c->prof_bytes);
             PROF_LOG("PROF kitty decodes/placed", kitty_decodes, vt_kitty_placed(c->w.t));
+            PROF_LOG("PROF kitty files read/deleted", kitty_files_read, kitty_files_deleted);
             PROF_LOG("PROF kitty own png decodes", vt_kitty_png_own(c->w.t), 0);
             c->w.prof_part[0] = c->w.prof_part[1] = c->w.prof_part[2] = 0;
             c->prof_idle = c->prof_out = c->prof_writes = c->prof_bytes = 0;

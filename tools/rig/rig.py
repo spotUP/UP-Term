@@ -287,6 +287,37 @@ KIT_STAMP_BOOT = """If NOT EXISTS VTC:kit-restore
 EndIf""" % {"stamp": kitstamp.STAMP, "hash": kitstamp.HASH}
 
 
+# RIG-BOOT-STALE-BIN: the kit's S:User-Startup block `Run >NIL: UP-Term:bin/Amarchy` starts Amarchy (and the programs it
+# starts from UP-Term:bin at boot, amarchy-flat BOOT) before BOOTX:go, which runs beside the Startup-Sequence, has copied
+# the build over them: every boot-started program ran the previous build. The UP-Term: shadow pass therefore also runs
+# from a rig-only block in S:User-Startup directly before the kit's Amarchy block (BOOTX:shadows-up); it leaves
+# SHADOWS_UP_DONE, and go then skips its own pass (a rig with no Amarchy block has no such block: go runs the pass).
+# The kit stamp stays in go: it must follow both passes, and go runs the other pass.
+SHADOWS_UP_BLOCK = "rig-upterm-shadows"
+SHADOWS_UP_DONE = "RAM:rig-upterm-shadows-done"
+KIT_AMARCHY_BLOCK = ";BEGIN UP-Term Amarchy"
+SHADOWS_UP_SCRIPT = """FailAt 21
+Echo >>BOOTX:boot.log "early UP-Term shadows started (before Amarchy)"
+C:Assign >NIL: VTC: EXISTS
+If NOT WARN
+%(shadows_up)s
+  Echo >%(done)s "done"
+  Echo >>BOOTX:boot.log "early UP-Term shadows done (before Amarchy)"
+EndIf
+""" % {"shadows_up": "\n".join("  " + l for l in kit_shadow_lines(True).splitlines()), "done": SHADOWS_UP_DONE}
+SHADOWS_UP_BLOCK_TEXT = ";BEGIN %s\nExecute BOOTX:shadows-up\n;END %s\n" % (SHADOWS_UP_BLOCK, SHADOWS_UP_BLOCK)
+
+
+def user_startup_with_shadows_block(data):
+    """data (S:User-Startup bytes) with the rig's shadow block directly before the kit's ';BEGIN UP-Term Amarchy' block;
+    an earlier copy of it is removed first. No Amarchy block: no rig block (go runs the pass)."""
+    data = user_startup.strip_upterm_blocks(data, SHADOWS_UP_BLOCK)
+    at = data.find(KIT_AMARCHY_BLOCK.encode("latin-1"))
+    if at < 0:
+        return data
+    return data[:at] + SHADOWS_UP_BLOCK_TEXT.encode("latin-1") + data[at:]
+
+
 # the boot's own UP-Term: assign (a kit's wins); install_rig.py runs it again when it has put the owner's add-ons back
 UPTERM_ASSIGN = """C:Assign >NIL: UP-Term: EXISTS
 If WARN
@@ -331,7 +362,11 @@ If WARN
   Skip envwait BACK
 EndIf
 Echo >>BOOTX:boot.log "env ok"
+If EXISTS %(shadows_up_done)s
+  Echo >>BOOTX:boot.log "UP-Term shadows ran before Amarchy"
+Else
 %(shadows_up)s
+EndIf
 %(kit_stamp)s
 Echo >>BOOTX:boot.log "UP-Term shadows done"
 C:Mount XCON: FROM BOOTX:Mountlist
@@ -409,7 +444,7 @@ Run >NIL: SYS:System/RexxMast
 C:SetEnv wasabi.key %(key)s
 C:Run >NIL: <NIL: BOOTX:wasabid %(port)d name rig%(rign)d
 Echo >>BOOTX:boot.log "wasabid started"
-""" % {"port": paths.WASABI_PORT, "key": paths.WASABI_KEY, "rign": paths.RIG_N, "upterm_assign": UPTERM_ASSIGN, "amarchy_assets": AMARCHY_ASSETS_BOOT, "shadows": kit_shadow_lines(False), "shadows_up": kit_shadow_lines(True), "kit_stamp": KIT_STAMP_BOOT, "libs": "\n".join("  C:" + l for l in RIG_LIBS),
+""" % {"port": paths.WASABI_PORT, "key": paths.WASABI_KEY, "rign": paths.RIG_N, "upterm_assign": UPTERM_ASSIGN, "amarchy_assets": AMARCHY_ASSETS_BOOT, "shadows": kit_shadow_lines(False), "shadows_up": kit_shadow_lines(True), "shadows_up_done": SHADOWS_UP_DONE, "kit_stamp": KIT_STAMP_BOOT, "libs": "\n".join("  C:" + l for l in RIG_LIBS),
        "shellpath": "\n".join('    Echo >>S:Shell-Startup "%s"' % l for l in SHELL_STARTUP_PATH)}
 # boot.log in the host drawer BOOTX: tells from the Mac how far a boot got
 # (the rig's screen is not visible from here).
@@ -770,6 +805,32 @@ def sys_hdf_kit_upterm(image):
     finally:
         shutil.rmtree(back, ignore_errors=True)
 
+def sys_hdf_shadows_block(image):
+    """RIG-BOOT-STALE-BIN: the rig's shadow block goes into the image's S:User-Startup before the kit's Amarchy block."""
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    us = RIG / "user-startup.tmp"
+    us.unlink(missing_ok=True)
+    if subprocess.run([xdf, str(image), "read", "S/User-Startup", str(us)], capture_output=True).returncode != 0:
+        return
+    data = us.read_bytes()
+    new = user_startup_with_shadows_block(data)
+    if new != data:
+        us.write_bytes(new)
+        subprocess.run([xdf, str(image), "delete", "S/User-Startup"], check=True, capture_output=True)
+        subprocess.run([xdf, str(image), "write", str(us), "S/User-Startup"], check=True, capture_output=True)
+    us.unlink()
+
+def os_tree_shadows_block(tree):
+    """sys_hdf_shadows_block for a host-directory system (--os <name>, --os32); every start, so a kit installed or
+    reinstalled since (its Amarchy block is written at the end of the file) gets the block before it again."""
+    for sub in ("S", "s"):
+        us = pathlib.Path(tree) / sub / "User-Startup"
+        if us.is_file():
+            data = us.read_bytes()
+            new = user_startup_with_shadows_block(data)
+            if new != data:
+                us.write_bytes(new)
+
 def strip_user_startup_blocks(image, name):
     """Remove the ';BEGIN <name>' blocks from the image's S:User-Startup (none: nothing happens)."""
     xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
@@ -1110,6 +1171,7 @@ def setup():
         tree = RIG / ("os-%s" % OS if OS else "os32")
         # --no-dopus strips the blocks; otherwise the tree gets 5.104 as the clone does (`rig.py dopus` installed it)
         os_tree_no_dopus(tree) if "--no-dopus" in sys.argv else os_tree_dopus(tree)
+        os_tree_shadows_block(tree)
     (RIG / "boot/s").mkdir(exist_ok=True)
     # --060: at host speed the boot shell's window is open (something prints
     # into it) when IPrefs switches the Workbench to the saved RTG mode, and
@@ -1142,6 +1204,7 @@ def setup():
         print("[WARN] %d file(s) in VTC: differ from the build: %s; `rig.py install` puts the build there"
               % (len(stale), ", ".join(stale)))
     (RIG / "boot/go").write_text(GO)
+    (RIG / "boot/shadows-up").write_text(SHADOWS_UP_SCRIPT)
     (RIG / "boot" / kitstamp.LIST).write_text("".join(n + "\n" for n in sorted({x[0] for x in KIT_SHADOWS})))
     kitstamp.check(RIG / "boot", RIG / "vtc")
     (RIG / "boot/Mountlist").write_text(MOUNTLIST)
@@ -1841,6 +1904,7 @@ def _start(retries):
         sys_hdf_no_wasabid(RIG / "sys.hdf")
         if A500:
             sys_hdf_a500(RIG / "sys.hdf")
+        sys_hdf_shadows_block(RIG / "sys.hdf")
     elif not OS and not OS32:
         fresh_sys_hdf()
         sys_hdf_screenmode(RIG / "sys.hdf")
@@ -1853,6 +1917,7 @@ def _start(retries):
         sys_hdf_kit(RIG / "sys.hdf")
         if A500:
             sys_hdf_a500(RIG / "sys.hdf")
+        sys_hdf_shadows_block(RIG / "sys.hdf")
         sys_hdf_cpu_lib(RIG / "sys.hdf")   # the master image is never touched; this and any other write into DH0: runs after the clone
     RIG.mkdir(parents=True, exist_ok=True)
     START_ARGS.write_text(json.dumps([a for a in sys.argv[2:] if a != "--keep-sys"]))

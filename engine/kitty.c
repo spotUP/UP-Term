@@ -24,15 +24,19 @@
  *
  * Supported: a=t (transmit), a=T (transmit and show), a=p (show by id),
  * a=d (delete: a A i I n N c C), a=q (query); f=24, 32, 100 (PNG through
- * the host's decoder); o=z; m=1 chunks; t=d only (no files); i= I= p=;
- * q=1/2; c= r= x= y= X= Y= w= h= C=1. Not supported, each answered with an
+ * the host's decoder); o=z; m=1 chunks; t=d, t=f, t=t (the host's file reader); i= I= p=;
+ * q=1/2; c= r= x= y= X= Y= w= h= C=1; P= Q= H= V= relative placements (at the
+ * parent's top left plus H columns, V rows; the cursor stays; deleted with
+ * the parent; ENOPARENT, ECYCLE, ETOODEEP past 8 deep). Not supported, each answered with an
  * error: z<0 below the text (drawn on top), U=1 placeholders, animation,
- * t=f/t/s. Included by vtengine.c (one translation unit with the engine).
+ * t=s (answered EBADF). t=f/t go to the host's file reader. Included by vtengine.c (one translation unit with the engine).
  */
 #include "inflate.c"
 
 #define KIT_RAW_MAX (4L * 1024L * 1024L) /* the bytes of one picture, base64 decoded */
 #include "png.c"
+#define KIT_EBADF "EBADF:Failed to read image file" /* the one answer for any unreadable medium */
+#define KIT_PATH_MAX 1024
 #define KIT_KEYS 192                     /* the longest key list */
 #define KV(k, c) ((k)->kv[(c) >= 'a' ? (c) - 'a' + 26 : (c) - 'A'])
 #define KU(k, c) ((vt_u32)KV(k, c)) /* the ids: unsigned, up to 4294967295 */
@@ -59,6 +63,7 @@ typedef struct kit_src {
     vt_u8 *own;      /* the inflated copy, freed with the source */
     vt_u32 *dec;     /* the decoder's buffer */
     vt_image_release dfree;
+    vt_u8 *fbuf;     /* the bytes a file reader gave (t=f, t=t), freed through dfree */
 } kit_src;
 
 static const vt_u8 kit_bayer[16] = { 0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5 };
@@ -343,6 +348,8 @@ static void kit_src_free(kit_src *s)
         VT_FREE(s->own);
     if (s->dec && s->dfree)
         s->dfree(s->dec);
+    if (s->fbuf && s->dfree)
+        s->dfree((vt_u32 *)s->fbuf);
     memset(s, 0, sizeof(*s));
 }
 
@@ -352,18 +359,48 @@ static const char *kit_load(vt_term *t, const vt_kitty *k, kit_src *s)
     int fmt = KV(k, 'f') ? (int)KV(k, 'f') : 32, bpp = fmt == 24 ? 3 : 4;
     int w = (int)KV(k, 's'), h = (int)KV(k, 'v'), z = KV(k, 'o') == 'z';
     long need;
+    const vt_u8 *raw = k->raw;
+    long rlen = k->len;
     memset(s, 0, sizeof(*s));
-    if (KV(k, 't') && KV(k, 't') != 'd')
-        return "ENOTSUP:only direct data (t=d)";
+    if (KV(k, 't') == 's')
+        return KIT_EBADF; /* D10: no named shared memory on AmigaOS or in ixemul */
+    if (KV(k, 't') && KV(k, 't') != 'd' && KV(k, 't') != 'f' && KV(k, 't') != 't')
+        return "ENOTSUP:unknown transmission medium";
+    if (KV(k, 't') == 'f' || KV(k, 't') == 't') {
+        char path[KIT_PATH_MAX];
+        long want = KV(k, 'S'), off = KV(k, 'O');
+        vt_u8 *buf = 0;
+        long n = 0;
+        if (!t->file_read || !t->decode_free || k->full || k->len <= 0 || k->len >= KIT_PATH_MAX || off < 0 ||
+            want < 0)
+            return KIT_EBADF;
+        memcpy(path, k->raw, k->len);
+        path[k->len] = 0;
+        if (want == 0 || want > KIT_RAW_MAX)
+            want = KIT_RAW_MAX;
+        if (!t->file_read(path, off, want, &buf, &n) || !buf)
+            return KIT_EBADF;
+        s->fbuf = buf;
+        s->dfree = t->decode_free;
+        if (n <= 0 || n > KIT_RAW_MAX) {
+            kit_src_free(s);
+            return KIT_EBADF;
+        }
+        /* K26: a temp file is removed once it is read; only when the name says it is kitty's */
+        if (KV(k, 't') == 't' && t->file_unlink && strstr(path, "tty-graphics-protocol"))
+            t->file_unlink(path);
+        raw = buf;
+        rlen = n;
+    }
     if ((fmt != 24 && fmt != 32 && fmt != 100) || (KV(k, 'o') && !z) || (z && fmt == 100))
         return "EINVAL:format not supported";
     if (k->full)
         return "ENOMEM:too big";
-    if (!k->len)
+    if (!rlen)
         return "ENODATA:no data";
     if (fmt == 100) {
         vt_u32 *argb = 0;
-        int own = png_decode(k->raw, k->len, &argb, &w, &h);
+        int own = png_decode(raw, rlen, &argb, &w, &h);
         if (own == 0)
             return "EBADPNG:not a picture"; /* a PNG that is broken: the datatypes cannot do better */
         if (own == -2)
@@ -374,7 +411,7 @@ static const char *kit_load(vt_term *t, const vt_kitty *k, kit_src *s)
         } else {
             if (!t->decode)
                 return "EINVAL:no PNG decoder";
-            if (!t->decode(k->raw, k->len, &argb, &w, &h) || !argb)
+            if (!t->decode(raw, rlen, &argb, &w, &h) || !argb)
                 return "EBADPNG:not a picture";
             s->dec = argb;
             s->dfree = t->decode_free;
@@ -395,15 +432,15 @@ static const char *kit_load(vt_term *t, const vt_kitty *k, kit_src *s)
             s->own = (vt_u8 *)VT_MALLOC(need);
             if (!s->own)
                 return "ENOMEM:too big";
-            if (vt_zinflate(k->raw, k->len, s->own, need) != need) {
+            if (vt_zinflate(raw, rlen, s->own, need) != need) {
                 kit_src_free(s);
                 return "EINVAL:broken zlib data";
             }
             s->px = s->own;
         } else {
-            if (k->len < need)
+            if (rlen < need)
                 return "ENODATA:too little data";
-            s->px = k->raw;
+            s->px = raw;
         }
         s->bpp = bpp;
     }
@@ -414,19 +451,109 @@ static const char *kit_load(vt_term *t, const vt_kitty *k, kit_src *s)
 
 /* ---- showing ---- */
 
+/* The slot of the newest placement i=id, p=pid on the screen, or -1. */
+static int kit_placement(const vt_term *t, vt_u32 id, vt_u32 pid)
+{
+    int i, best = -1;
+    for (i = 0; i < VT_IMG_SLOTS; i++) {
+        const vt_image *im = t->imgs[i];
+        if (im && im->pix && im->kind == 1 && im->kid == id && im->pid == pid &&
+            (best < 0 || im->serial > t->imgs[best]->serial))
+            best = i;
+    }
+    return best;
+}
+
+/* The screen cell of placement `slot`'s top left: its first tile row's
+ * line less that row. 0 when none of it is on the screen. */
+static int kit_corner(const vt_term *t, int slot, int *col, int *row)
+{
+    const vt_image *im = t->imgs[slot];
+    int y;
+    for (y = 0; y < t->rows; y++) {
+        vt_u16 i;
+        for (i = t->scr[y]->img; i; i = t->pl[i].next)
+            if (place_image(t, &t->pl[i]) == im) {
+                *col = t->pl[i].col0;
+                *row = y - t->pl[i].row;
+                return 1;
+            }
+    }
+    return 0;
+}
+
+/* A relative placement's parent (P=, Q=): its slot, and the cell the
+ * child's top left goes to (the parent's top left plus H= columns, V=
+ * rows). -1 and the error text when the parent is missing, the chain
+ * would loop back to the placement being made, or runs past 8 deep. */
+static int kit_parent(const vt_term *t, const vt_kitty *k, vt_u32 id, int *col, int *row, const char **err)
+{
+    vt_u32 pk = KU(k, 'P'), pp = KU(k, 'Q'), p = KU(k, 'p');
+    int slot, at, n;
+    if (id && p && pk == id && pp == p) {
+        *err = "ECYCLE:the parent chain loops";
+        return -1;
+    }
+    slot = kit_placement(t, pk, pp);
+    if (slot < 0 || !kit_corner(t, slot, col, row)) {
+        *err = "ENOPARENT:no such parent placement";
+        return -1;
+    }
+    for (at = slot, n = 0; at >= 0 && t->imgs[at]->pkid && n <= 8; n++) {
+        const vt_image *im = t->imgs[at];
+        if (id && p && im->pkid == id && im->ppid == p) {
+            *err = "ECYCLE:the parent chain loops";
+            return -1;
+        }
+        at = kit_placement(t, im->pkid, im->ppid);
+    }
+    if (t->imgs[slot]->kdepth + 1 > 8) {
+        *err = "ETOODEEP:more than 8 parents deep";
+        return -1;
+    }
+    *col += (int)KV(k, 'H');
+    *row += (int)KV(k, 'V');
+    if (*col < 0)
+        *col = 0; /* left of the screen: its first column */
+    if (*col >= t->cols)
+        *col = t->cols - 1;
+    return slot;
+}
+
+/* Image `slot` with its top left at (col, row), the rows off the screen
+ * cut; no scrolling, the cursor untouched (a relative placement). */
+static void kit_place_at(vt_term *t, int slot, int col, int row)
+{
+    vt_image *im = t->imgs[slot];
+    int rows = (im->py0 + im->h + im->ch - 1) / im->ch, k;
+    for (k = 0; k < rows; k++)
+        if (row + k >= 0 && row + k < t->rows)
+            sixel_place_row(t, slot, row + k, col, k);
+    if (im->pix && !im->refs)
+        image_free(t, slot); /* nowhere on the screen */
+}
+
 /* The part of src the keys ask, as a new image on the screen at the
- * cursor (C=1: the cursor stays), tagged with the picture's ids. NULL, or
- * the error text. */
+ * cursor (C=1: the cursor stays), or relative to a parent placement (P=:
+ * the cursor stays whatever C= says), tagged with the picture's ids. NULL,
+ * or the error text. */
 static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_u32 id)
 {
     int x0 = (int)KV(k, 'x'), y0 = (int)KV(k, 'y'), w = (int)KV(k, 'w'), h = (int)KV(k, 'h');
     int c = (int)KV(k, 'c'), r = (int)KV(k, 'r'), tw, th, npal, slot;
     int cw = t->cell_w > 0 ? t->cell_w : 8, ch = t->cell_h > 0 ? t->cell_h : 16;
     int px0 = (int)KV(k, 'X'), py0 = (int)KV(k, 'Y');
-    int left;
+    int left, parent = -1, depth = 0, col = t->cx, row = t->cy;
     vt_u8 *pix;
     vt_u32 pal[256];
     vt_image *im;
+    if (KU(k, 'P')) {
+        const char *err = 0;
+        parent = kit_parent(t, k, id, &col, &row, &err);
+        if (parent < 0)
+            return err;
+        depth = t->imgs[parent]->kdepth + 1; /* kept: the parent may give way below */
+    }
     if (px0 < 0)
         px0 = 0;
     if (px0 >= cw)
@@ -435,7 +562,7 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
         py0 = 0;
     if (py0 >= ch)
         py0 = ch - 1;
-    left = (t->cols - t->cx) * cw - px0;
+    left = (t->cols - col) * cw - px0;
     if (x0 < 0 || y0 < 0 || x0 >= s->w || y0 >= s->h)
         x0 = y0 = 0;
     if (w <= 0 || w > s->w - x0)
@@ -490,7 +617,14 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
     im->px0 = px0;
     im->py0 = py0;
     t->kit_last_z = KV(k, 'z');
-    image_place(t, slot, KV(k, 'C') == 1 ? 2 : 3);
+    if (parent >= 0) {
+        im->pkid = KU(k, 'P');
+        im->ppid = KU(k, 'Q');
+        im->kdepth = depth;
+        kit_place_at(t, slot, col, row);
+    } else {
+        image_place(t, slot, KV(k, 'C') == 1 ? 2 : 3);
+    }
     t->kit_placed++;
     return 0;
 }
@@ -657,12 +791,17 @@ static void kitty_run(vt_term *t, vt_kitty *k)
         err = "EINVAL:no image id";
         bare = 1; /* the one error that is answered without an id */
         a = 0;
+    } else if (KV(k, 'U') && KU(k, 'P') && (a == 'T' || a == 'p')) {
+        err = "EINVAL:a virtual placement has no parent";
+        a = 0;
     } else if (KV(k, 'U') && (a == 'T' || a == 'p')) {
         err = "EINVAL:no unicode placeholders";
         a = 0;
     }
     if (a == 't' || a == 'T' || a == 'q') {
         err = kit_load(t, k, &s);
+        if (err)
+            kit_src_free(&s); /* a file's bytes read before a later refusal */
         if (!err) {
             if (a == 'q') {
                 /* only asked */

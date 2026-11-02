@@ -216,6 +216,39 @@ static void test_desk_palette_flat(void)
  * shine slot, the pen-reset verdict follows the chosen map, and the key alone writes nothing without the palette target. */
 /* FLAT-PENS-LIVE: flat-system-look alone writes the flat pen roles and keeps the user's colours; off restores the stock roles only
  * when the live roles are the flat ones. The reachability twin is the rig (Palette.prefs after the toggle; STATUS flat= rises). */
+static void test_desk_flat_pens_stale_file(void)
+{
+    static unsigned char gold[BUF_MAX], old[BUF_MAX], out[BUF_MAX];
+    unsigned char flat[DK_SLOTS];
+    long n = slurp("tests/data/desk/palette-flat-pen8.prefs", gold, sizeof gold);
+    desk_pens_flat(flat);
+    CHECK(n > 0);
+    CHECK_INT(desk_palette_pens_stale(gold, n, flat), 0);
+    memcpy(old, gold, (size_t)n);
+    old[74] = 0; old[75] = 2;     /* 4-pen table slot 12 (older build: 2), big-endian word at 74 */
+    old[138] = 0; old[139] = 2;   /* 8-pen table slot 12 */
+    CHECK_INT(desk_palette_pens_stale(old, n, flat), 1);
+    CHECK_INT(desk_palette_pens(old, n, flat, out, sizeof out), n);
+    CHECK(!memcmp(out, gold, (size_t)n));
+    CHECK_INT(desk_palette_pens_stale(old, 10, flat), 1);
+}
+
+static void test_desk_flat_start_refresh(void)
+{
+    static unsigned char gold[BUF_MAX], old[BUF_MAX];
+    unsigned char flat[DK_SLOTS];
+    long n = slurp("tests/data/desk/palette-flat-pen8.prefs", gold, sizeof gold);
+    desk_pens_flat(flat);
+    CHECK(n > 0);
+    memcpy(old, gold, (size_t)n);
+    old[74] = 0; old[75] = 2;
+    old[138] = 0; old[139] = 2;
+    CHECK_INT(desk_flat_start_refresh(1, old, n, flat), 1);   /* flat on + stale file: write */
+    CHECK_INT(desk_flat_start_refresh(1, gold, n, flat), 0);  /* flat on + current file: no write */
+    CHECK_INT(desk_flat_start_refresh(0, old, n, flat), 0);   /* flat off: no write */
+    CHECK_INT(desk_flat_start_refresh(1, old, -1, flat), 0);  /* no file read: no write */
+}
+
 static void test_desk_flat_pens_live(void)
 {
     static unsigned char cur[BUF_MAX], out[BUF_MAX], got[BUF_MAX];
@@ -1323,6 +1356,8 @@ void suite_desk(void)
     test_desk_palette_flat();
     test_desk_live_baseline_ignores_menu();
     test_desk_flat_pens_key();
+    test_desk_flat_pens_stale_file();
+    test_desk_flat_start_refresh();
     test_desk_flat_pens_live();
     test_desk_wbborder();
     test_desk_wbborder_absent();

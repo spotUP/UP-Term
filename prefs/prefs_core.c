@@ -62,6 +62,7 @@ void prefs_defaults(prefs_fields *f)
     f->meta_alt = 1;
     f->dither = 1;
     f->outline_aa = 1;
+    f->blend_dest = 1;
     f->hlcat = 1;
     f->split_restore = PREFS_SPLIT_OFF;
 }
@@ -589,7 +590,7 @@ int prefs_equal(const prefs_fields *a, const prefs_fields *b)
            a->completion == b->completion && a->screen == b->screen && a->aspect == b->aspect &&
            a->backspace_bs == b->backspace_bs && a->clipboard == b->clipboard &&
            a->kcinfo == b->kcinfo && a->kccache == b->kccache && a->amiga_keys == b->amiga_keys &&
-           a->dither == b->dither && a->outline_aa == b->outline_aa && a->pad_extend == b->pad_extend && a->hlcat == b->hlcat &&
+           a->dither == b->dither && a->outline_aa == b->outline_aa && a->blend_dest == b->blend_dest && a->pad_extend == b->pad_extend && a->hlcat == b->hlcat &&
            a->split_restore == b->split_restore;
 }
 

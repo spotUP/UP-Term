@@ -108,6 +108,8 @@ typedef struct vt_image {
     long kz;            /* kitty's z= (negative: under the text) */
     vt_u8 ktrans;       /* kitty's N=1 on a stored picture: evicted first */
     int px0, py0;       /* kitty's X=, Y=: the picture's offset inside its first cell */
+    vt_u32 pkid, ppid;  /* kitty's P=, Q=: the parent placement's i= and p= (0 none) */
+    int kdepth;         /* parents above this placement (0 none, at most 8) */
 } vt_image;
 
 #define VT_IMG_SLOTS 64 /* images alive at once (the oldest gives way) */
@@ -296,6 +298,8 @@ struct vt_term {
     long kit_last_z;           /* z= of the last kitty placement (vt_kitty_last_z) */
     vt_image_decoder decode;   /* vt_set_image_decoder: PNG and the like (f=100) */
     vt_image_release decode_free;
+    vt_file_reader file_read;  /* vt_set_file_reader: t=f, t=t */
+    vt_file_unlinker file_unlink;
     vt_u32 *six_regs;
     vt_u8 sixel_dm;            /* ?80 DECSDM: images at the top left, no scrolling */
     vt_u8 six_private;         /* ?1070: each image its own colour registers (default) */
@@ -421,6 +425,14 @@ static void image_free(vt_term *t, int slot)
     im->refs = 0;
     im->gen++; /* the placements left naming it are stale now */
     t->n_img--;
+    if (im->kind == 1 && im->kid) { /* kitty: its relative placements go with it (K29) */
+        int i;
+        for (i = 0; i < VT_IMG_SLOTS; i++) {
+            const vt_image *c = t->imgs[i];
+            if (c && c->pix && c->kind == 1 && c->pkid == im->kid && c->ppid == im->pid)
+                image_free(t, i); /* and theirs: at most 8 deep */
+        }
+    }
 }
 
 /* The image a placement shows, 0 when it went (evicted, its slot reused). */
@@ -5278,6 +5290,8 @@ static int image_install(vt_term *t, vt_u8 *pix, long bytes, long w, long h, int
     im->kz = 0;
     im->ktrans = 0;
     im->px0 = im->py0 = 0;
+    im->pkid = im->ppid = 0;
+    im->kdepth = 0;
     im->serial = ++t->img_serial;
     for (i = 0; i < npal; i++)
         im->pal[i] = pal[i];
@@ -6301,6 +6315,12 @@ void vt_set_image_decoder(vt_term *t, vt_image_decoder decode, vt_image_release 
 {
     t->decode = decode;
     t->decode_free = release;
+}
+
+void vt_set_file_reader(vt_term *t, vt_file_reader read, vt_file_unlinker unlink_file)
+{
+    t->file_read = read;
+    t->file_unlink = unlink_file;
 }
 
 void vt_set_reflow(vt_term *t, int on)

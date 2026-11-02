@@ -65,6 +65,21 @@ int ttf_num_glyphs(const ttf_font *f);
 int ttf_render(ttf_font *f, unsigned gid, long xscale, long yscale, int ox, int baseline,
                unsigned char *cov, int w, int h);
 
+/* ttf_render with grid fitting when snap is set. TTF_SNAP_EDGES: the
+ * glyph's straight edges (consecutive on-curve points with one coordinate)
+ * go to pixel boundaries per axis, distinct edges at least 1 px apart, so a
+ * thin line of a box-drawing glyph in tall pixels covers whole pixels.
+ * TTF_SNAP_STEMS (icon fonts): the two straight edges of each stem (ink
+ * between them, sides overlapping) are paired and the stem moved whole:
+ * its width rounded to whole pixels (at least 1), its sides on pixel
+ * boundaries; edges with no partner, curves and diagonals stay as scaled.
+ * snap 0 is ttf_render exactly. ttf_snap_runs counts the glyphs fitted,
+ * ttf_stem_pairs the stems TTF_SNAP_STEMS moved. */
+enum { TTF_SNAP_NONE, TTF_SNAP_EDGES, TTF_SNAP_STEMS };
+extern unsigned long ttf_snap_runs, ttf_stem_pairs;
+int ttf_render_fit(ttf_font *f, unsigned gid, long xscale, long yscale, int ox, int baseline,
+                   unsigned char *cov, int w, int h, int snap);
+
 /* coverage to a 1-bit mask (bpr bytes a row, most significant bit the left
  * pixel): a level of 128 or more sets the bit; mask is written whole */
 void ttf_threshold(const unsigned char *cov, int w, int h, unsigned char *mask, int bpr);
@@ -95,12 +110,16 @@ void ttf_fit(long units_w, int upem, int w, int h, int base, int rx, int ry, ttf
  * has no usable line). TTF_FILL (box drawing, blocks, powerline separators): the
  * advance stretched across the span and the font's line (hhea ascender to
  * descender) down the h rows, its baseline from the font, not from base;
- * base only when the font has no usable line. xscale, yscale, baseline as
- * ttf_render takes them; ox its origin's column. */
-enum { TTF_SHAPE, TTF_FILL };
+ * base only when the font has no usable line. TTF_ICON (icon-font glyphs,
+ * the Private Use Areas): placed as TTF_SHAPE, stems grid fitted on
+ * non-square pixels. xscale, yscale, baseline as ttf_render takes them; ox
+ * its origin's column. */
+enum { TTF_SHAPE, TTF_FILL, TTF_ICON };
 typedef struct ttf_place_out {
     long xscale, yscale;
     int ox, baseline;
+    int snap; /* for ttf_render_fit: TTF_SNAP_EDGES (TTF_FILL) or TTF_SNAP_STEMS
+               * (TTF_ICON) on non-square pixels, else TTF_SNAP_NONE */
 } ttf_place_out;
 void ttf_place(const ttf_font *f, unsigned gid, int how, int w, int h, int base, int rx, int ry,
                ttf_place_out *out);

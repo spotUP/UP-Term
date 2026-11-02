@@ -19,6 +19,22 @@ class KitShadowKeymap(unittest.TestCase):
             self.assertIn("C:Copy >NIL: VTC:kit-orig/%s %s CLONE" % (bak, dest), go)   # kit-restore puts the kit's back
         self.assertNotIn("keymap.user", go)
 
+    def test_up_term_shadows_run_before_the_amarchy_block_and_go_skips_then(self):
+        # RIG-BOOT-STALE-BIN: Amarchy (User-Startup) started UP-Term:bin programs before go's shadow Copy
+        kit = (b"; head\n;BEGIN UP-Term assign\nAssign UP-Term: Work:UP\n;END UP-Term assign\n"
+               b";BEGIN UP-Term Amarchy\n  Run >NIL: UP-Term:bin/Amarchy\n;END UP-Term Amarchy\n")
+        out = rig.user_startup_with_shadows_block(kit).decode("latin-1")
+        self.assertLess(out.index(";END UP-Term assign"), out.index(";BEGIN rig-upterm-shadows"))
+        self.assertLess(out.index("Execute BOOTX:shadows-up"), out.index(";BEGIN UP-Term Amarchy"))
+        self.assertEqual(rig.user_startup_with_shadows_block(out.encode("latin-1")).decode("latin-1"), out)   # once
+        self.assertEqual(rig.user_startup_with_shadows_block(b"; no kit\n"), b"; no kit\n")   # go runs the pass
+        script = rig.SHADOWS_UP_SCRIPT
+        self.assertIn("C:Copy >NIL: VTC:amarchy-flat UP-Term:bin/amarchy-flat CLONE", script)
+        self.assertIn("Echo >%s" % rig.SHADOWS_UP_DONE, script)
+        self.assertIn("If EXISTS %s" % rig.SHADOWS_UP_DONE, rig.GO)
+        go_else = rig.GO.split("If EXISTS %s" % rig.SHADOWS_UP_DONE, 1)[1].split('"UP-Term shadows done"', 1)[0]
+        self.assertIn("C:Copy >NIL: VTC:amarchy-flat UP-Term:bin/amarchy-flat CLONE", go_else)   # go still runs it without the marker
+
     def test_boot_never_names_env_or_envarc(self):
         # go is Run before DH0:S/Startup-Sequence assigns ENV: and ENVARC:; naming either opened a
         # System Request and hung every boot (rig 8, 2026-10-27)

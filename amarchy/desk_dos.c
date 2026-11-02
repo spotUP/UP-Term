@@ -11,6 +11,7 @@
 #include <proto/exec.h>
 #include <proto/intuition.h>
 #include "desk_dos.h"
+#include "gthemes_dos.h"
 #include "rexx_host.h"
 #include "desk_core.h"
 #include "menu_theme.h"
@@ -639,6 +640,16 @@ static long dk_palette_base(int restore, const unsigned char pens[DK_SLOTS], int
     return desk_palette_live(rgb4, n, depth, pens, buf, cap);
 }
 
+/* FLAT-PENS-STALE-FILE: 1 when the palette.prefs a reset would read (ENV:, else ENVARC:) does not hold pens exactly */
+static int dk_palette_file_stale(int flat, const unsigned char pens[DK_SLOTS])
+{
+    static unsigned char cur[DK_BUF];
+    long len = dk_read("ENV:Sys/Palette.prefs", cur, sizeof cur);
+    if (len < 0)
+        len = dk_read("ENVARC:Sys/Palette.prefs", cur, sizeof cur);
+    return desk_flat_start_refresh(flat, cur, len, pens);
+}
+
 /* FLAT-PENS-LIVE + FLAT-PEN5-MAGENTA. Owner 2026-11-01: with flat on, a theme pick writes the theme colours into the Workbench palette
  * (palette.prefs, every entry that reaches a role pen, plus the role pens no entry reaches, live), unless the desktop theme's palette
  * part writes its own; flat off puts the palette in force before flat went on back. Returns 1 when it wrote the theme colours (the
@@ -666,6 +677,8 @@ static int dk_flat_pens(const gtheme *th)
         return 0;
     if (!sync)
         desk_pens_for(flat, pens);
+    if (flat && !sync && dk_palette_file_stale(flat, pens))
+        sync = 1; /* FLAT-PENS-STALE-FILE: the live pens match but the file on disk (an older build's map) does not */
     depth = dk_screen_depth();
     len = dk_palette_base(restore, pens, depth, buf, sizeof buf);
     UnLock(CreateDir((STRPTR)DK_WORK));
@@ -977,6 +990,29 @@ static void dk_orig_drop_reverted(unsigned mask, int wbprefs)
             desk_dos_originals_dropped++;
         }
     }
+}
+
+/* FLAT-PENS-STALE-FILE part 2: Amarchy's start. Called from main after the hooks desk_dos_wb_close/own_close are installed, so the write
+ * path (dk_flat_pens: dk_wait_reset, the bar close/reopen around a Workbench reset) is the one a theme pick uses. */
+int desk_dos_flat_pens_refresh(void)
+{
+    am_prefs ap;
+    unsigned char pens[DK_SLOTS];
+    gtheme th;
+    int flat, done;
+    amconf_load(&ap);
+    flat = amconf_desk_flat_pens(&ap);
+    if (!flat || !dk_palette_editor_ok())
+        return 0;
+    desk_pens_for(flat, pens);
+    if (!dk_palette_file_stale(flat, pens))
+        return 0;
+    gt_dos_load_current(&th);
+    dk_live_want = 0;
+    done = dk_flat_pens(&th);
+    if (dk_live_want)
+        dk_live_pens(dk_live_want > 0 ? &th : 0, dk_live_flat);
+    return done;
 }
 
 int desk_dos_apply(const gtheme *th, char *why, int cap)
