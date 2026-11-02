@@ -23,3 +23,9 @@ Totals still: pane_close 5/15 PASS, 0 FAIL; host_exit_cycles not run.
   `rig: RIG-STALE-BASE: HEAD d8c605f9 does not contain origin/main 25413f2a (2 origin/main commits missing); rebase or merge origin/main, or pass --allow-stale-base "<reason>"`
   origin/main moved during the run; the guard was not overridden. Rerun needs main merged with origin/main first.
 - Note: `--repeat` resumes recorded rounds from build/rig-reports/rig69/splits/repeat-<case>.log (rig 69 cleared afterwards).
+
+## R4 repeat, fresh-boot, rig 69 (2026-11-02), HEAD eb18e57a
+Host load at start: busy (fs-uae rig70 95%, node 89%, other session driver 89%, fs-uae rig67 53%); not waited on.
+- pane_close: 10/10 PASS, 0 FAIL, 0 HANG
+- host_exit_cycles: 10/10 PASS, 0 FAIL, 0 HANG
+Each case stopped once on a reboot with "[ERROR] splits_rig: rig.py start failed (exit 1)": wasabi TimeoutError (Amiga daemon silent 25 s / 150 s), not a stale-base guard refusal (pane_close after round 3, host_exit_cycles after round 6). One retry each resumed the repeat log and finished 10/10. No fail-/hang- reports written. Rig 69 stopped and cleared.
