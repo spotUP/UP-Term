@@ -49,7 +49,7 @@ class RigReboot(unittest.TestCase):
              mock.patch.object(rig.sys, "argv", ["rig.py", "reboot"]):
             self.assertEqual(rig.main(["rig.py", "reboot"]), 0)
         self.assertEqual(self.calls, ["stop"])
-        self.assertEqual(ran[0][2:], ["start", "--keep-sys", "--max", "--purpose", "s: t"])
+        self.assertEqual(ran[0][2:], ["start", "--keep-sys", "--max", "--purpose", "s: t", "--emu", rig.paths.EMU])   # a reboot keeps the rig's emulator
 
     def test_keep_sys_start_boots_the_disk_the_last_run_left(self):
         self.boot(True, ["rig.py", "start", "--keep-sys", "--max"])

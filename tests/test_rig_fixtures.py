@@ -399,9 +399,10 @@ class RigMachine(unittest.TestCase):
 
     def test_a500_boots_the_a500_rom(self):
         """--a500 booted the A1200 3.1 (40.68); FS-UAE refused it on a 68000 and exited at once (2026-10-29)."""
-        self.assertEqual(self.kick('--a500')[0], 'True')
+        fs = ('--emu', 'fsuae')   # --a500 is FS-UAE only; Amiberry exits with the gap message
+        self.assertEqual(self.kick('--a500', *fs)[0], 'True')
         self.assertEqual(self.kick()[0], 'False')
-        self.assertEqual(self.kick('--a500', '--kick', '/x/other.rom'), ['False', 'other.rom'])
+        self.assertEqual(self.kick('--a500', '--kick', '/x/other.rom', *fs), ['False', 'other.rom'])
 
     def test_each_rig_window_names_its_rig(self):
         """With several rigs open the owner saw only identical FS-UAE windows (2026-10-24)."""
@@ -423,7 +424,7 @@ class RigMachine(unittest.TestCase):
 
     def test_a1200_asks_for_the_stock_020(self):
         for f in ('--a1200', '--stock', '--exact', '--fast'):
-            self.assertEqual(self.machine(f), ['False', 'False'], f)
+            self.assertEqual(self.machine(f, '--emu', 'fsuae'), ['False', 'False'], f)   # the stock 020 flags are FS-UAE only
 
 
 class ScriptedAmiga:
