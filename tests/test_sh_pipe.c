@@ -61,8 +61,29 @@ static void reader_closing_a_pipe_the_shell_writes_does_not_drain(void)
     CHECK_INT(sp_reader_closed(&p), 1);
 }
 
+/* job_free of an orphaned subshell/runner or a killed task never ran close_stream's
+ * sp_writer_gone: the pipe kept a writer pointer to the freed job (use after free in
+ * sp_reader_closed/job_break). sp_job_gone is what job_free calls. */
+static void freeing_a_job_clears_it_as_writer_of_every_pipe(void)
+{
+    sh_pipe_rec tab[3];
+    static int other_tag;
+    int i;
+    for (i = 0; i < 3; i++)
+        sp_init(&tab[i], &rd_tag, &wr_tag);
+    tab[0].writer = &job_tag;
+    tab[1].writer = &other_tag;
+    tab[2].writer = &job_tag;
+    sp_job_gone(tab, 3, &job_tag);
+    CHECK_INT(tab[0].writer == 0, 1);
+    CHECK_INT(tab[2].writer == 0, 1);
+    CHECK_INT(tab[1].writer == &other_tag, 1); /* another job's pipe is untouched */
+    CHECK_INT(sp_reader_closed(&tab[0]), 0);   /* no drain toward a freed writer */
+}
+
 void suite_sh_pipe(void)
 {
+    freeing_a_job_clears_it_as_writer_of_every_pipe();
     reader_closing_a_pipe_the_shell_writes_does_not_drain();
     writer_that_writes_nothing_is_not_broken_when_the_reader_closes();
     writer_that_writes_to_the_closed_pipe_is_broken_once();
