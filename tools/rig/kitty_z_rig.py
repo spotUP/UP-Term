@@ -19,7 +19,7 @@ in DCS tmux; ... ST (ESC doubled), the placeholder cells are plain pane text. Sa
 import base64, pathlib, struct, sys, time, zlib
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import paths
-import ami, condev_rig as c
+import ami, condev_rig as c, vshwin
 
 VTC = paths.RIG / 'vtc'
 W = H = 16
@@ -53,22 +53,22 @@ def ph_main(out, tmux=False):
     stream = (b'\x1b[2J' + up + b'\x1b[3;3H\x1b[38;5;7m'
               + ph + m0 + m0 + ph + m0 + m1 + b'\x1b[4;3H' + ph + m1 + m0 + ph + m1 + m1 + b'\x1b[0m\x1b[8;1H')
     (VTC / 'kz-stream.bin').write_bytes(stream)
-    c.run('Run >NIL: NewShell "XCON:%d/%d/%d/%d/kz/CLOSE/XTERM"' % (WX, WY, WW, WH))
-    time.sleep(4)
+    if tmux:
+        # tmux runs from vsh, as a user starts it: vsh honours the binary's $STACK cookie (256 KB) and sets
+        # TERM. From the bare AmigaDOS CLI of a NewShell it ran on the CLI's stack: the server died
+        # ("[server exited unexpectedly]") and the next start crashed the rig (Illegal instruction, reset loop).
+        (VTC / 'kz.conf').write_text('source-file /ENV/tmux.conf\nset -g allow-passthrough on\n')
+        vshwin.open_vsh('kz', '%d/%d/%d/%d' % (WX, WY, WW, WH), options='/XTERM', wait=6)
+        # C:Wait, not sleep: the pane's vsh has no PATH to the kit drawer holding sleep ("vsh: sleep: not found")
+        cmd = b'tmux -f VTC:kz.conf new-session "Type VTC:kz-stream.bin; C:Wait 60"'
+    else:
+        c.run('Run >NIL: NewShell "XCON:%d/%d/%d/%d/kz/CLOSE/XTERM"' % (WX, WY, WW, WH))
+        time.sleep(4)
+        cmd = b'Type VTC:kz-stream.bin'
     kx, ky = ami.pointer_scale()
     ami.script(('move', int((WX + 200) * kx), int((WY + 100) * ky)), ('wait', 2), ('button', 0, 1),
                ('wait', 2), ('button', 0, 0), ('wait', 5))
     time.sleep(1)
-    if tmux:
-        (VTC / 'kz.conf').write_text('source-file /ENV/tmux.conf\nset -g allow-passthrough on\n')
-        cmd = b'tmux -f VTC:kz.conf new-session "Type VTC:kz-stream.bin; sleep 60"'
-    else:
-        cmd = b'Type VTC:kz-stream.bin'
-    if tmux:   # a bare NewShell has no TERM; tmux refuses to start without one
-        ami.req(0x08, bytes([4]) + b'Setenv TERM vtcon')
-        time.sleep(0.5)
-        ami.key(0x44)
-        time.sleep(1)
     ami.req(0x08, bytes([4]) + cmd)
     time.sleep(0.5)
     ami.key(0x44)
@@ -96,7 +96,11 @@ def ph_main(out, tmux=False):
               and box['yellow'][0] == box['green'][0] and box['yellow'][2] == box['blue'][2])
         print('cell', cw, 'x', ch)
     print('PASS' if ok else 'FAIL')
-    ami.req(0x08, bytes([4]) + b'EndCLI')
+    if tmux:   # end the session first: keys typed now would go to the pane, not to vsh
+        print('tmux ls:', c.run('System:C/vsh -c "tmux ls; echo rc=$?"', 30)[1].strip())
+        c.run('System:C/vsh -c "tmux kill-server"', 30)
+        time.sleep(5)
+    ami.req(0x08, bytes([4]) + (b'exit' if tmux else b'EndCLI'))
     ami.key(0x44)
     time.sleep(3)
 
