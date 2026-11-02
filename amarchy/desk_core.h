@@ -92,6 +92,9 @@ int desk_pens_reset(const unsigned short *cur, int ncur, int flat, int depth);
  * after the editor exits). It is done when it is back in the Wait() it sat in before the apply (state TS_WAIT, wait mask
  * idle_mask, idle_mask != 0) with none of those signals pending. A Delay, DOS packet or requester inside the reset waits on
  * other signals, a pending notification shows in recvd. No IPrefs task (have = 0): nothing to wait for. */
+/* RL15 AMARCHY-WBPREFS-INUSE: does a stock editor run (USE) need the IPrefs idle wait before anything else writes? Workbench and
+ * WBPattern: IPrefs opens ENV:Sys/Workbench.prefs about 6.7 s after their USE, a second Workbench write in between fails "in use" */
+int desk_editor_waits_iprefs(const char *editor);
 int desk_iprefs_idle(int have, int waiting, unsigned long sigwait, unsigned long recvd, unsigned long idle_mask);
 #define DESK_IPREFS_POLL_TICKS 1
 int desk_reset_done(const void *before, const void *now, const unsigned short *live, int nlive, int flat, int depth);

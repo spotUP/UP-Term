@@ -18,7 +18,7 @@
 ; Format (one row a line, ; starts a comment):
 ;   super[+shift][+ctrl][+rshift]+KEY = action ; label | category
 ; KEY is a lower-case word: space return tab esc help del backspace up down
-; left right f1..f10 comma period minus plus, or a letter or digit. Letters
+; left right f1..f10 comma period minus plus slash, or a letter or digit. Letters
 ; and digits are the key's place on the board, not its character, so the
 ; Swedish keymap does not move them. "1..9" is nine rows; %n is the digit.
 ; Actions:
@@ -40,6 +40,8 @@
 ;                    region: an IFF ILBM file in RAM:Shots and the clipboard (Left Amiga + Alt is the
 ;                    left mouse button, so the window shot uses Left Amiga + Ctrl)
 ;   bar:<on|off|toggle>  the status bar at the bottom of the Workbench screen (ARexx BAR)
+;   gui:<help|welcome>  the Amarchy Help or welcome window (amarchy-gui)
+;   amarchy:quit     shut Amarchy down (as the ARexx QUIT)
 
 [keymap]
 version = 1
@@ -52,6 +54,8 @@ super+shift+space = menu:apps              ; Apps                  | menu
 super+k           = viewer                 ; Key bindings          | menu
 super+h           = slash:/help            ; Help                  | menu
 super+shift+h     = slash:/tutorial        ; Tutorial              | menu
+super+shift+slash = gui:help               ; Amarchy Help          | menu
+super+ctrl+shift+q = amarchy:quit          ; Quit Amarchy          | menu
 
 ; Tabs
 super+t           = tab:new                ; New tab               | window
@@ -337,3 +341,5 @@ packages.installed = Installed             | menu:packages.installed
 packages.upgrades.all = Upgrade all        | job:upkg upgrade
 packages.refresh   = Refresh               | job:upkg update
 trigger.clipboard  = Clipboard history     | menu:trigger.clipboard
+help               = Help                  | gui:help
+quit               = Quit Amarchy          | amarchy:quit

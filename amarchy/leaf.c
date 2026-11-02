@@ -449,9 +449,9 @@ static int run_viewer(const km_menu *m, const lf_ui *ui)
 {
     char dir[128], line[256];
     BPTR l = GetProgramDir();
-    if (!l || !NameFromLock(l, (STRPTR)dir, sizeof dir) || !lf_viewer_command(line, sizeof line, dir)) {
+    if (!l || !NameFromLock(l, (STRPTR)dir, sizeof dir) || !lf_gui_command(line, sizeof line, dir, m->kind == KA_GUI ? m->arg : "viewer")) {
         if (ui && ui->refused)
-            ui->refused(ui->ctx, m->label, UPREQ_FAILED, "the key viewer is not beside this program");
+            ui->refused(ui->ctx, m->label, UPREQ_FAILED, "amarchy-gui is not beside this program");
         return UPREQ_FAILED;
     }
     return start_detached(line, m->label, ui);
@@ -570,7 +570,14 @@ int lf_run(const km_menu *m, const lf_ui *ui)
     case LF_WINDOW:
         return run_in_uterm(m->arg, ui);
     case LF_VIEWER:                     /* the program super+k opens, on its own like detach: */
+    case LF_GUI:                        /* amarchy-gui help | welcome: the same launch with the row's mode word */
         return run_viewer(m, ui);
+    case LF_QUIT: {                     /* amarchy:quit: the commodity's ARexx QUIT, its normal exit path */
+        long rc = rexx_send("AMARCHY", "QUIT", 0, 0);
+        if (rc != 0 && ui && ui->refused)
+            ui->refused(ui->ctx, m->label, UPREQ_FAILED, "the Amarchy commodity is not running");
+        return rc == 0 ? 0 : -1;
+    }
     case LF_REXX: {
         char line[160];
         int rc;

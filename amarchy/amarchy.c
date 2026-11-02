@@ -32,6 +32,7 @@
 #include "../config/keymap_load.h"
 #include "../config/upconf.h"
 #include "amconf_dos.h"
+#include "help_core.h"
 #include "../handler/upactive.h"
 #include "../tty/qmark.h"
 #include "menu_open.h"
@@ -258,6 +259,17 @@ static void start_windows(void)
     g_bts = bar_timer_sigmask();
 }
 
+/* RL16 W10: the welcome window, once, when welcome-shown is not on. A separate amarchy-gui process through the same
+ * launch the Help hotkey uses; the window saves the key itself when the box is ticked. */
+static void welcome_maybe(void)
+{
+    am_prefs p;
+    char line[KM_ID + 160];
+    amconf_load(&p);
+    if (hc_should_welcome(&p) && cx_helper_cmd(line, sizeof line, g_dir, "amarchy-gui", "welcome"))
+        act_run(line);
+}
+
 /* the 1 s tick while held: opens the windows once the Workbench runs the saved mode, or after the timeout */
 static void wb_gate(long now)
 {
@@ -271,6 +283,7 @@ static void wb_gate(long now)
         PutStr((STRPTR)"Amarchy: the Workbench never reached the saved screen mode; opening the windows anyway\n");
     g_wb_hold = 0;
     start_windows();
+    welcome_maybe();   /* W43: no foreign window before the Workbench reset, so the welcome waits for the release */
 }
 
 /* The STATUS reply: hits=N rows=N enabled=N active=N wins=N snaps=N bar=N wbpens=N wbrefused=N shots=N notes=N ticks=N,
@@ -376,6 +389,15 @@ static int do_row(int row)
         ok = bar_port(b->arg, scratch) == 0;
         break;
     }
+    case KA_GUI: {
+        char gl[KM_ID + 160];
+        ok = cx_helper_cmd(gl, sizeof gl, g_dir, "amarchy-gui", b->arg) && act_run(gl);
+        break;
+    }
+    case KA_AMARCHY:
+        g_quit = 1;   /* as the ARexx QUIT: the loop ends and the normal shutdown follows */
+        ok = 1;
+        break;
     case KA_MENU: case KA_VIEWER:
         ok = act_menu_kind(b->kind, b->arg);
         break;
@@ -582,6 +604,8 @@ int main(void)
     desk_dos_flat_pens_refresh();               /* FLAT-PENS-STALE-FILE: after the windows (or the W43 hold) are set up, the hooks above close/reopen them around a reset */
     desk_dos_marker_recover();                  /* FP-3 (R1.9): an apply that never reached Keep or Revert does not stick */
     desk_dos_start_apply();                     /* S31-START-APPLY: after the recover, so a leftover revert runs first; prefs on reach ENV: */
+    if (!g_wb_hold)
+        welcome_maybe();
     while (!g_quit) {
         sigs = Wait(cxs | rxs | nos | nts | lps | wrs | cws | g_bs | g_bts | tks | shot_region_sigmask() | dc_sigmask() | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F);
         if (sigs & SIGBREAKF_CTRL_C)
