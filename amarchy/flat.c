@@ -47,6 +47,7 @@
 #include "flat_shared.h"
 #include "libpatch.h"
 #include "flat_glyph.h"
+#include "menu_font.h"
 #include "taskalive.h"
 #include "poll_timer.h"
 #include "amconf_core.h"
@@ -531,6 +532,26 @@ static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, LO
     return -1;
 }
 
+/* FLAT-ASPECT-BORDERS: the column count of the left and right outer lines on scr (flat_side_px of the screen's DisplayInfo
+ * Resolution, the same lookup the menus use: menu_screen_aspect). Cached per (screen, mode ID), so the DisplayInfo lookup
+ * runs once per screen and not on every border fill; a screen reopened at the same address in another mode misses. */
+static int side_px(flatshared *r, struct Screen *scr)
+{
+    ULONG mode;
+    int rx, ry;
+    if (!scr)
+        return 1;
+    mode = GetVPModeID(&scr->ViewPort);
+    if (scr != r->aspect_scr || mode != r->aspect_mode) {
+        menu_screen_aspect(scr, &rx, &ry);
+        r->aspect_px = flat_side_px(rx, ry);
+        r->aspect_scr = scr;
+        r->aspect_mode = mode;
+        r->aspect_looks++;
+    }
+    return r->aspect_px;
+}
+
 void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG ret)
 {
     flatshared *r = g_r;
@@ -578,14 +599,16 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
         }
     }
     if (r->st.enabled && !r->st.held && r->st.pen_outline && rp && rp->Layer && (w = (struct Window *)rp->Layer->Window) != 0 &&
-        !(w->Flags & WFLG_BORDERLESS) && ret >= r->irom_lo && ret < r->irom_hi &&
-        flat_outer_edge_match(w->Width, w->Height, (int)x0, (int)y0, (int)x1, (int)y1)) {
-        UBYTE fg = rp->FgPen;
-        r->rhits++;
-        SetAPen(rp, r->st.pen_outline);
-        ((rectfn)r->rsw.saved)(rp, x0, y0, x1, y1, (struct Library *)GfxBase);
-        SetAPen(rp, fg);
-        return;
+        !(w->Flags & WFLG_BORDERLESS) && ret >= r->irom_lo && ret < r->irom_hi) {
+        int e[4];
+        if (flat_outer_edge_fill(w->Width, w->Height, (int)x0, (int)y0, (int)x1, (int)y1, side_px(r, w->WScreen), e)) {
+            UBYTE fg = rp->FgPen;
+            r->rhits++;
+            SetAPen(rp, r->st.pen_outline);
+            ((rectfn)r->rsw.saved)(rp, e[0], e[1], e[2], e[3], (struct Library *)GfxBase);
+            SetAPen(rp, fg);
+            return;
+        }
     }
     ((rectfn)r->rsw.saved)(rp, x0, y0, x1, y1, (struct Library *)GfxBase);
 }
@@ -675,7 +698,8 @@ static void print_status(void)
     int finst = 0, rinst = 0;
     unsigned long rcalls = 0, rhits = 0, shits = 0, tcalls = 0, thits = 0;
     int tinst = 0;
-    unsigned long cdraws = 0, cfall = 0;
+    unsigned long cdraws = 0, cfall = 0, alooks = 0;
+    int apx = 0;
     uint32_t dsum[FLAT_EL_COUNT] = { 0, 0 };
     memset(&copy, 0, sizeof copy);
     Forbid();
@@ -690,6 +714,7 @@ static void print_status(void)
         rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits;
         tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits;
         cdraws = r->cdraws; cfall = r->cfall;
+        apx = r->aspect_px; alooks = r->aspect_looks;
     }
     Permit();
     if (flat_status_line(&copy, sizeof copy, found, line, sizeof line)) {
@@ -718,6 +743,8 @@ static void print_status(void)
         put_word(line, &n, " calls=");              put_num(line, &n, rcalls);
         put_word(line, &n, " hits=");               put_num(line, &n, rhits);
         put_word(line, &n, " shits=");              put_num(line, &n, shits);
+        put_word(line, &n, " side=");               put_num(line, &n, (unsigned long)apx);
+        put_word(line, &n, " looks=");              put_num(line, &n, alooks);
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
