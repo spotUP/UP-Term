@@ -10,6 +10,7 @@ the parent of the main vtcon checkout (a git worktree's parent is not it). The M
 """
 import contextlib
 import fcntl
+import itertools
 import os
 import pathlib
 import re
@@ -245,12 +246,14 @@ def last_command(rig_dir=None):
         return None
 
 
-def long_run_active(rig_dir=None):
-    """True while a process that set the long-run flag is alive (a dead holder's flag is stale)."""
-    f = (pathlib.Path(rig_dir) if rig_dir else RIG) / "long-run"
+def _holder_files(d):
+    """Every long-run flag in rig folder d: one `long-run.<pid>.<n>` per holder, plus the legacy single `long-run`."""
+    return list(d.glob("long-run.*")) + [d / "long-run"]
+
+
+def _alive(f):
     try:
-        pid = int(f.read_text().split()[0])
-        os.kill(pid, 0)
+        os.kill(int(f.read_text().split()[0]), 0)
         return True
     except PermissionError:
         return True
@@ -258,15 +261,34 @@ def long_run_active(rig_dir=None):
         return False
 
 
+def long_run_active(rig_dir=None):
+    """True while ANY live process holds a long run (a dead holder's flag is stale and is cleaned)."""
+    d = pathlib.Path(rig_dir) if rig_dir else RIG
+    active = False
+    for f in _holder_files(d):
+        if not f.exists():
+            continue
+        if _alive(f):
+            active = True
+        elif f.name != "long-run":
+            f.unlink(missing_ok=True)
+    return active
+
+
+_holder_seq = itertools.count()
+
+
 @contextlib.contextmanager
 def long_run(rig_dir=None):
-    """Hold the long-run flag for the block (the watchdog will not stop the rig meanwhile); touches the
-    command stamp on the way out, so the idle clock starts after the run."""
+    """Hold a long-run flag for the block (the watchdog will not stop the rig meanwhile); touches the
+    command stamp on the way out, so the idle clock starts after the run. Each holder owns its own flag file
+    and removes only that one, so overlapping holders (a replaced hold, an install during a hold) never
+    clear each other's flag (RIG-HOLD-FLAG-CLOBBER)."""
     d = pathlib.Path(rig_dir) if rig_dir else RIG
-    flag = d / "long-run"
     if not d.is_dir():
         yield
         return
+    flag = d / ("long-run.%d.%d" % (os.getpid(), next(_holder_seq)))
     flag.write_text("%d\n" % os.getpid())
     try:
         yield
