@@ -669,6 +669,9 @@ PICTURES IN THE CONSOLE (icat)
   picture.datatype in SYS:Classes/DataTypes: OS 3.2 has one. The OS 3.1
   picture.datatype is V40 and cannot hand out pixels, so install a V43 one
   there first; without it icat stops with return code 10.
+  Sample media in the kit: icat UP-Term:share/updemo/photo.png shows a
+  24-bit picture; Type UP-Term:share/updemo/kanim-stream.bin plays a
+  four-frame kitty animation (UPDemo's earth.anim lives there too).
 
 VIEWING FILES (hl, mdv)
   hl shows a source file in colour, with line numbers, the language found

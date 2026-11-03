@@ -126,3 +126,13 @@ def test_installed_kit_media_is_md5_checked_on_the_amiga(monkeypatch, capsys, tm
     amiga[path] = d.md5_file(d.ROOT / "dist/updemo/earth.anim")
     d.main(["--build", str(tmp_path)])
     assert "same     share/updemo/earth.anim" in capsys.readouterr().out
+
+
+def test_every_kit_media_file_exists_and_install_dos_copies_it():
+    """KIT-DEMO-MEDIA: each KIT_MEDIA entry (earth.anim, kanim-stream.bin, photo.png) is a shipped file in dist/ and has
+    its own Copy line in install.dos to UP-Term:<its drawer>."""
+    assert {"share/updemo/kanim-stream.bin", "share/updemo/photo.png"} <= set(d.KIT_MEDIA)
+    install = (d.ROOT / "dist/install.dos").read_text()
+    for rel, src in d.KIT_MEDIA.items():
+        assert (d.ROOT / "dist" / src).stat().st_size > 0, src
+        assert "Copy %s UP-Term:%s " % (src, rel.rsplit("/", 1)[0]) in install, src

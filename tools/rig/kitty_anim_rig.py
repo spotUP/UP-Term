@@ -63,15 +63,22 @@ def window_diffs(shots, w, h, rect=(WX, WY, WW, WH)):
             [count(wins[n], wins[0]) for n in range(1, len(wins))])
 
 
+def build_stream(gap=100):
+    """The kitty animation stream the rig types and the kit ships as dist/updemo/kanim-stream.bin
+    (tools/gen_updemo_media.py): four 64x64 frames, `gap` ms each, looping."""
+    stream = b'\x1b[2J\x1b[3;3H' + apc('a=T,f=24,s=%d,v=%d,i=1,p=1,q=2' % (S, S), bytes(COLS[0]) * (S * S))
+    for col in COLS[1:]:
+        stream += apc('a=f,i=1,c=1,f=24,s=%d,v=%d,z=%d,q=2' % (S, S, gap), bytes(col) * (S * S))
+    stream += b'\x1b_Ga=a,i=1,r=1,z=%d,q=2\x1b\\' % gap + b'\x1b_Ga=a,i=1,s=3,q=2\x1b\\' + b'\x1b[12;1H'
+    return stream
+
+
 def main():
     import ami, condev_rig as c
     out, mode = sys.argv[1], sys.argv[2]
     gap = int(sys.argv[3]) if len(sys.argv) > 3 else 100
     nshots, every = (SHOTS, 0.15) if gap <= 100 else (int(SPAN_S / SHOT_EVERY_S) + 1, SHOT_EVERY_S)
-    stream = b'\x1b[2J\x1b[3;3H' + apc('a=T,f=24,s=%d,v=%d,i=1,p=1,q=2' % (S, S), bytes(COLS[0]) * (S * S))
-    for col in COLS[1:]:
-        stream += apc('a=f,i=1,c=1,f=24,s=%d,v=%d,z=%d,q=2' % (S, S, gap), bytes(col) * (S * S))
-    stream += b'\x1b_Ga=a,i=1,r=1,z=%d,q=2\x1b\\' % gap + b'\x1b_Ga=a,i=1,s=3,q=2\x1b\\' + b'\x1b[12;1H'
+    stream = build_stream(gap)
     (VTC / 'kanim-stream.bin').write_bytes(stream)
     had = c.run('Copy ENV:up-term/up-term RAM:kanim.bak QUIET')[0] == 0
     try:
