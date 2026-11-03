@@ -527,7 +527,7 @@ int flat_scroller_knob(int cx, int cy, int cw, int ch, int horiz, int vert, unsi
     return 1;
 }
 
-int flat_scroller_pen(const flat_state *s, int depth, int cx, int cy, int cw, int ch, int horiz, int vert,
+int flat_scroller_pen(const flat_state *s, int depth, int active, int cx, int cy, int cw, int ch, int horiz, int vert,
                       unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody, int x0, int y0, int x1, int y1)
 {
     int kx, ky, kw, kh;
@@ -535,14 +535,32 @@ int flat_scroller_pen(const flat_state *s, int depth, int cx, int cy, int cw, in
         return -1;
     flat_scroller_knob(cx, cy, cw, ch, horiz, vert, hpot, vpot, hbody, vbody, &kx, &ky, &kw, &kh);
     if (x0 >= kx && x1 < kx + kw && y0 >= ky && y1 < ky + kh)
-        return flat_knob_pen(s, depth);
+        return !active && flat_inactive_pen(s, depth) >= 0 ? flat_inactive_pen(s, depth) : flat_knob_pen(s, depth);
     return s->pen_back;
+}
+
+int flat_inactive_pen(const flat_state *s, int depth)
+{
+    if (depth >= 4 && depth <= 8 && s->pen_inbar && s->pen_inbar < (1 << depth))
+        return s->pen_inbar;
+    return flat_dimtext_ok(s, depth) ? s->pen_dimtext : -1;      /* under 16 colours: the muted text pen */
+}
+
+unsigned long flat_inbar_colour(unsigned long surface, unsigned long text)
+{
+    return (unsigned long)gt_mix((uc_u32)surface, (uc_u32)text, GT_INACTIVE_PCT);
+}
+
+int flat_edge_pen(const flat_state *s, int depth, int active)
+{
+    int p = active ? -1 : flat_inactive_pen(s, depth);
+    return p >= 0 ? p : s->pen_outline;
 }
 
 int flat_frame_pen(const flat_state *s, int depth, int active)
 {
-    if (s->enabled && !s->held && active && flat_outline_of_depth(s, depth))
-        return s->pen_outline;
+    if (s->enabled && !s->held)
+        return active ? (flat_outline_of_depth(s, depth) ? s->pen_outline : -1) : flat_inactive_pen(s, depth);
     return -1;
 }
 
@@ -585,7 +603,9 @@ int flat_title_decide(const flat_state *s, int depth, int active, const char *ti
         t->bg_pen = t->band_pen;
         t->text_pen = t->band_pen >= 0 ? s->pen_ptext : -1;
     } else {
-        t->text_pen = flat_dimtext_pen(s, depth);
+        t->band_pen = flat_frame_pen(s, depth, 0);      /* S32-INACTIVE-BAR: a visible dragbar in the inactive tone */
+        t->bg_pen = t->band_pen;
+        t->text_pen = t->band_pen >= 0 ? s->pen_ptext : flat_dimtext_pen(s, depth);
     }
     return 1;
 }

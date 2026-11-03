@@ -151,5 +151,5 @@ int flat_clone_pen(const flat_state *s, int role, int frame_pen);
 int flat_clone_band_rows(int box_top, int h, int border_top);
 int flat_clone_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
                     int w, int h, int frame_pen, int text_pen, int band_rows, int edge_pen, flat_render_fn render, void *rctx, flat_fill_fn fill, void *fctx, uint8_t *scratch);
-/* scratch: FLAT_CLONE_SCRATCH bytes owned by the caller for the call. band_rows: box rows y < band_rows are filled with the frame/box pen, the rest with edge_pen (>= 0; -1 keeps the box pen); band_rows >= h paints the whole box as before. text_pen: >= 0 replaces the pen of the normal (active, unselected) glyph, the pen the title text uses on the band; -1 keeps flat_glyph_pen. */
+/* scratch: FLAT_CLONE_SCRATCH bytes owned by the caller for the call. band_rows: box rows y < band_rows are filled with the frame/box pen, the rest with edge_pen (>= 0; -1 keeps the box pen); band_rows >= h paints the whole box as before. text_pen: >= 0 replaces the pen of every unselected glyph (active, inactive, disabled: S32-INACTIVE-BAR), the pen the title text uses on the band or the inactive tone of an inactive window arrow; -1 keeps flat_glyph_pen. */
 #endif

@@ -755,11 +755,35 @@ static void test_gthemes_picker_pens(void)
  * shipped themes: dark (tokyo-night), black ground (vantablack: backdrop lifts to GT_BLACK_LIFT, white fg capped to bebebe), light
  * (catppuccin-latte, flexoki-light: the selection is pushed darker off the surface). The desktop pens (DK_*), the drawn menu's roles
  * (MT_*) and the flat glyph pens are views of the table, never their own picks. */
+static void test_gthemes_inactive_key(void)
+{
+    gtheme t;
+    gt_roles r;
+    load_shipped("tokyo-night", &t);
+    t.inactive = 0x123456UL;
+    gt_roles_of(&t, &r);
+    CHECK_INT(r.c[GR_INACTIVE], 0x123456UL);                                   /* an explicit `inactive` key wins over the mix */
+    {   /* through the parser: the key, and its absence */
+        const char *with = "background = \"#000000\"\nforeground = \"#c8c8c8\"\ninactive = \"#445566\"\n";
+        const char *none = "background = \"#000000\"\nforeground = \"#c8c8c8\"\n";
+        gt_builtin(&t);
+        gt_parse(with, (long)strlen(with), &t);
+        gt_roles_of(&t, &r);
+        CHECK_INT(r.c[GR_INACTIVE], 0x445566UL);
+        gt_builtin(&t);
+        gt_parse(none, (long)strlen(none), &t);
+        gt_roles_of(&t, &r);
+        CHECK_INT(r.c[GR_INACTIVE], gt_mix(t.bg, t.fg, GT_INACTIVE_PCT));
+    }
+    CHECK_INT(gt_mix(0x000000UL, 0xc8c8c8UL, 50), 0x646464UL);
+    CHECK_INT(gt_mix(0x102030UL, 0x102030UL, 45), 0x102030UL);
+}
+
 static void test_gthemes_role_table(void)
 {
     static const struct {
         const char *name;
-        uc_u32 c[GR_ROLES]; /* BACKGROUND, SURFACE, TEXT, MUTED, ACCENT, SELECTION */
+        uc_u32 c[GR_INACTIVE]; /* BACKGROUND, SURFACE, TEXT, MUTED, ACCENT, SELECTION */
         uc_u32 ok, fail;
     } want[] = {
         { "tokyo-night", { 0x0e0e14UL, 0x1a1b26UL, 0xa9b1d6UL, 0x414868UL, 0x7aa2f7UL, 0x3e4254UL }, 0x9ece6aUL, 0xf7768eUL },
@@ -775,12 +799,14 @@ static void test_gthemes_role_table(void)
         uc_u32 rgb[MT_ROLES];
         load_shipped(want[i].name, &t);
         gt_roles_of(&t, &r);
-        for (k = 0; k < GR_ROLES; k++)
+        for (k = 0; k < GR_INACTIVE; k++)
             CHECK_INT(r.c[k], want[i].c[k]);
+        CHECK_INT(r.c[GR_INACTIVE], gt_mix(t.bg, t.fg, GT_INACTIVE_PCT));      /* S32-INACTIVE-BAR: default = 45 percent from the ground to the text */
+        CHECK(r.c[GR_INACTIVE] != r.c[GR_BACKGROUND] || r.c[GR_INACTIVE] != r.c[GR_TEXT]);
         CHECK_INT(r.ok, want[i].ok);
         CHECK_INT(r.fail, want[i].fail);
         /* the desktop pens are a view: every role sits on its pen, the pen holds the role's colour */
-        for (k = 0; k < GR_ROLES; k++)
+        for (k = 0; k < GR_INACTIVE; k++)
             CHECK_INT(desk_role(&t, desk_pen_of_role(k)), r.c[k]);
         CHECK_INT(desk_role(&t, DK_GREEN), r.ok);
         CHECK_INT(desk_role(&t, DK_BACKDROP), r.fail); /* palette.prefs byte-compatible: pen 7 still writes the fail tone */
@@ -814,6 +840,7 @@ static void test_gthemes_role_table(void)
 void suite_gthemes(void)
 {
     test_gthemes_role_table();
+    test_gthemes_inactive_key();
     test_gthemes_desk_keys();
     test_gthemes_ink_direct();
     test_gthemes_save_text();

@@ -289,15 +289,19 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
     if (d->imp_DrInfo) {
         struct Layer *fl = d->imp_RPort->Layer;
         if (fl && fl->Window) {
-            int band = flat_frame_pen(&r->st, d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0,
-                                      (((struct Window *)fl->Window)->Flags & WFLG_WINDOWACTIVE) != 0);
-            if (band >= 0 && flat_glyph_on_band(which)) {   /* active: the box is the title band; the glyph takes the title text's pen */
+            int wdepth = d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0;
+            int wactive = (((struct Window *)fl->Window)->Flags & WFLG_WINDOWACTIVE) != 0;
+            int band = flat_frame_pen(&r->st, wdepth, wactive);
+            if (band >= 0 && flat_glyph_on_band(which)) {   /* the box is the title band (S32-INACTIVE-BAR: both states); the glyph takes the title text's pen */
                 frame_pen = band;
                 band_rows = flat_clone_band_rows(im->TopEdge + d->imp_Offset.Y, im->Height, ((struct Window *)fl->Window)->BorderTop);
                 edge_pen = d->imp_DrInfo->dri_Pens[BACKGROUNDPEN];
                 text_pen = r->st.pen_ptext;
-            } else
+            } else {
                 frame_pen = d->imp_DrInfo->dri_Pens[BACKGROUNDPEN];     /* FLAT-SOLID-FILL: the frame is the background */
+                if (!wactive && flat_inactive_pen(&r->st, wdepth) >= 0)
+                    text_pen = flat_inactive_pen(&r->st, wdepth);       /* S32-INACTIVE-BAR: the arrows of an inactive window */
+            }
         } else if (fl && d->imp_DrInfo->dri_Version >= 2)
             frame_pen = d->imp_DrInfo->dri_Pens[BARBLOCKPEN];
     }
@@ -607,7 +611,7 @@ static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, LO
         if (x0 < gx || y0 < gy || x1 >= gx + gw || y1 >= gy + gh)
             continue;
         cx = gx + pi->LeftBorder; cy = gy + pi->TopBorder; cw = pi->CWidth; ch = pi->CHeight;
-        pen = flat_scroller_pen(&r->st, (rp->BitMap ? rp->BitMap->Depth : 0), cx, cy, cw, ch, (pi->Flags & FREEHORIZ) != 0, (pi->Flags & FREEVERT) != 0,
+        pen = flat_scroller_pen(&r->st, (rp->BitMap ? rp->BitMap->Depth : 0), (w->Flags & WFLG_WINDOWACTIVE) != 0, cx, cy, cw, ch, (pi->Flags & FREEHORIZ) != 0, (pi->Flags & FREEVERT) != 0,
                                 pi->HorizPot, pi->VertPot, pi->HorizBody, pi->VertBody, (int)x0, (int)y0, (int)x1, (int)y1);
         if (pen >= 0) {
             *ncuts = flat_scroller_cuts(cx, cy, cw, ch, (pi->Flags & FREEHORIZ) != 0, (pi->Flags & FREEVERT) != 0, pi->HorizPot, pi->VertPot,
@@ -712,7 +716,7 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
         if (flat_outer_edge_fill(w->Width, w->Height, (int)x0, (int)y0, (int)x1, (int)y1, side_px(r, w->WScreen), e)) {
             UBYTE fg = rp->FgPen;
             r->rhits++;
-            SetAPen(rp, r->st.pen_outline);
+            SetAPen(rp, (UBYTE)flat_edge_pen(&r->st, rp->BitMap ? rp->BitMap->Depth : 0, (w->Flags & WFLG_WINDOWACTIVE) != 0));   /* S32-INACTIVE-BAR: the inactive ring */
             ((rectfn)r->rsw.saved)(rp, e[0], e[1], e[2], e[3], (struct Library *)GfxBase);
             SetAPen(rp, fg);
             return;
@@ -911,6 +915,7 @@ static void print_status(void)
             int n = (int)strlen(line);
             put_word(line, &n, " dim=");  put_num(line, &n, copy.pen_dim);
             put_word(line, &n, " knob=");  put_num(line, &n, copy.pen_knob);
+            put_word(line, &n, " inbar=");  put_num(line, &n, copy.pen_inbar);
             line[n] = 0;
             PutStr((STRPTR)line);
             PutStr((STRPTR)"\n");
@@ -1223,6 +1228,9 @@ static LONG g_dim_pen = -1;
 /* KNOB-PEN: the scroller knob pen, obtained the same way from 16 colours up (a 3 plane screen has no free pen: pen_knob stays 0 and
  * flat_knob_pen answers DK_MUTED). Colour = the surface pen moved FLAT_KNOB_PCT percent toward the muted text pen (flat_knob_colour). */
 static LONG g_knob_pen = -1;
+/* INBAR-PEN (S32-INACTIVE-BAR): the inactive dragbar / ring / arrow / knob pen, obtained like the knob pen. Colour = the desk's
+ * inbar_rgb (the theme `inactive` key) when set, else the surface pen moved GT_INACTIVE_PCT toward the text pen (flat_inbar_colour). */
+static LONG g_inbar_pen = -1;
 
 static void dim_refresh(flatshared *r)
 {
@@ -1238,6 +1246,26 @@ static void dim_refresh(flatshared *r)
             ReleasePen(cm, (ULONG)g_knob_pen);
             g_knob_pen = -1;
             r->st.pen_knob = 0;
+        }
+        if (g_inbar_pen >= 0) {
+            ReleasePen(cm, (ULONG)g_inbar_pen);
+            g_inbar_pen = -1;
+            r->st.pen_inbar = 0;
+        }
+        if (cm && scr->RastPort.BitMap && scr->RastPort.BitMap->Depth >= 4) {
+            ULONG a[3], b[3];
+            uc_u32 c;
+            if (r->st.inbar_rgb[0] || r->st.inbar_rgb[1] || r->st.inbar_rgb[2])
+                c = ((uc_u32)r->st.inbar_rgb[0] << 16) | ((uc_u32)r->st.inbar_rgb[1] << 8) | r->st.inbar_rgb[2];
+            else {
+                GetRGB32(cm, (ULONG)r->st.pen_back, 1, a);
+                GetRGB32(cm, (ULONG)r->st.pen_text, 1, b);
+                c = (uc_u32)flat_inbar_colour(((a[0] >> 24) << 16) | ((a[1] >> 24) << 8) | (a[2] >> 24), ((b[0] >> 24) << 16) | ((b[1] >> 24) << 8) | (b[2] >> 24));
+            }
+            g_inbar_pen = ObtainBestPen(cm, ((c >> 16) & 0xff) * 0x01010101UL, ((c >> 8) & 0xff) * 0x01010101UL, (c & 0xff) * 0x01010101UL,
+                                        OBP_Precision, PRECISION_GUI, OBP_FailIfBad, FALSE, TAG_DONE);
+            if (g_inbar_pen >= 0)
+                r->st.pen_inbar = (UBYTE)g_inbar_pen;
         }
         if (cm && scr->RastPort.BitMap && scr->RastPort.BitMap->Depth >= 4 && r->st.pen_dimtext) {
             ULONG a[3], b[3];
@@ -1266,10 +1294,13 @@ static void dim_refresh(flatshared *r)
 
 static void dim_release(flatshared *r)
 {
-    struct Screen *scr = (g_dim_pen >= 0 || g_knob_pen >= 0) ? ipd_lock_wb_screen() : NULL;
+    struct Screen *scr = (g_dim_pen >= 0 || g_knob_pen >= 0 || g_inbar_pen >= 0) ? ipd_lock_wb_screen() : NULL;
     r->st.pen_dim = 0;
     r->st.pen_knob = 0;
+    r->st.pen_inbar = 0;
     if (scr) {
+        if (g_inbar_pen >= 0)
+            ReleasePen(scr->ViewPort.ColorMap, (ULONG)g_inbar_pen);
         if (g_dim_pen >= 0)
             ReleasePen(scr->ViewPort.ColorMap, (ULONG)g_dim_pen);
         if (g_knob_pen >= 0)
@@ -1278,6 +1309,7 @@ static void dim_release(flatshared *r)
     }
     g_dim_pen = -1;
     g_knob_pen = -1;
+    g_inbar_pen = -1;
 }
 
 /* The hook and the two patches, the crash marker around them. A FLAT_ERR_NOCLASS result (the Workbench screen not

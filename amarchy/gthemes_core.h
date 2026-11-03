@@ -26,6 +26,7 @@ typedef struct gtheme {
      * A missing key is derived (OD5): dark = bg; darker = dark_background, else bg at 80 % brightness; lighter = bg
      * moved a tenth toward fg; selection = lighter; muted = dim. */
     uc_u32 dark_bg, darker_bg, lighter_bg, selection, muted;
+    uc_u32 inactive;        /* inactive= : the dragbar, gadget boxes, ring, arrows and knob of an inactive window (S32-INACTIVE-BAR); derived: gt_mix(bg, fg, 45) */
     char backdrop[GT_NAME]; /* backdrop= : the drawer name of the theme's backdrops, "" = the theme name */
     char font[GT_NAME];     /* font= : a font file name such as helvetica.font, "" = keep the user's font */
     char wbtitle[GT_TITLE]; /* wbtitle= : a Workbench title format; carried, the title stays stock (OD11) */
@@ -40,8 +41,12 @@ typedef struct gtheme {
  *   GR_MUTED       secondary text: file names, dim labels, the menu's dim header (muted; dark_foreground when the file has none)
  *   GR_ACCENT      the one highlight: selected row box, border, outline, header (accent)
  *   GR_SELECTION   raised fills: buttons, scroller knob (selection, pushed off the surface by gt_selection)
+ *   GR_INACTIVE    S32-INACTIVE-BAR: the bar and frame tone of an inactive window (inactive; background moved GT_INACTIVE_PCT toward the foreground when the file has none)
  * ok and fail are not UI roles: the two status tones of the job view's Done / Failed footers (green, red). */
-enum { GR_BACKGROUND, GR_SURFACE, GR_TEXT, GR_MUTED, GR_ACCENT, GR_SELECTION, GR_ROLES };
+enum { GR_BACKGROUND, GR_SURFACE, GR_TEXT, GR_MUTED, GR_ACCENT, GR_SELECTION, GR_INACTIVE, GR_ROLES };
+#define GT_INACTIVE_PCT 45
+/* a moved pct percent of the way toward b, per channel (0xRRGGBB) */
+uc_u32 gt_mix(uc_u32 a, uc_u32 b, int pct);
 typedef struct gt_roles {
     uc_u32 c[GR_ROLES]; /* 0xRRGGBB per GR_* */
     uc_u32 ok, fail;    /* status tones */

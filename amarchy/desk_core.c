@@ -114,7 +114,7 @@ void desk_pens_flat(unsigned char pens[DK_SLOTS])
  * None may equal the surface pen the frame now takes (shine == shadow == fill == DK_BG), except back. */
 int desk_pen_of_role(int role)
 {
-    static const unsigned char pen[GR_ROLES] = { DK_DARKER, DK_BG, DK_FG, DK_MUTED, DK_ACCENT, DK_SELECTION };
+    static const unsigned char pen[GR_ROLES] = { DK_DARKER, DK_BG, DK_FG, DK_MUTED, DK_ACCENT, DK_SELECTION, DK_MUTED };
     return role >= 0 && role < GR_ROLES ? pen[role] : DK_BG;
 }
 
@@ -145,6 +145,15 @@ void desk_flat_state(int flat, int gadgets, flat_state *s)
     s->pen_button = (unsigned char)desk_pen_of_role(GR_SELECTION);       /* FLAT-BUTTON-FILL: the theme lighter_background; flat.c falls back to pen_back on a screen without pen 4 */
     s->pen_ptext = (unsigned char)desk_pen_of_role(GR_SURFACE);               /* dark label on the accent fill of a pressed button */
     s->pen_dimtext = (unsigned char)desk_pen_of_role(GR_MUTED);          /* FLAT-BUTTON-DISABLED-DIM: dim label; pen_dim is amarchy-flat's own (it obtains it) and is left alone */
+}
+
+void desk_flat_inbar(const gtheme *t, flat_state *s)
+{
+    gt_roles r;
+    gt_roles_of(t, &r);
+    s->inbar_rgb[0] = (unsigned char)(r.c[GR_INACTIVE] >> 16);
+    s->inbar_rgb[1] = (unsigned char)(r.c[GR_INACTIVE] >> 8);
+    s->inbar_rgb[2] = (unsigned char)r.c[GR_INACTIVE];
 }
 
 void desk_pens_for(int flat, unsigned char pens[DK_SLOTS])

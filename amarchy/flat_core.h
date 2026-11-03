@@ -13,7 +13,7 @@
 #include <stdint.h>
 
 #define FLAT_SEM_NAME "Amarchy.Flat"
-#define FLAT_VERSION 2
+#define FLAT_VERSION 3
 
 typedef struct flat_state {
     uint16_t version;           /*  0 FLAT_VERSION; first, so a reader of another layout can refuse before the rest */
@@ -32,10 +32,12 @@ typedef struct flat_state {
     uint8_t pen_dim;            /* 22 FLAT-BUTTON-DISABLED-DIM: solid fill of a disabled button, a dim tone of pen_button; obtained by amarchy-flat itself (ObtainBestPen), 0 = none */
     uint8_t pen_dimtext;        /* 23 label pen of a disabled button (DK_MUTED) */
     uint8_t pen_knob;           /* 24 KNOB-PEN: scroller knob fill, the surface moved FLAT_KNOB_PCT (60) percent toward the muted text colour; obtained by amarchy-flat itself (ObtainBestPen), 0 = none */
-    uint8_t pad[3];             /* 25 reserved, zero (keeps calls 4-byte aligned) */
-} flat_state;                   /* 28 bytes */
+    uint8_t pen_inbar;          /* 25 S32-INACTIVE-BAR: bar, gadget boxes, ring, arrows and knob of an inactive window; obtained by amarchy-flat itself (ObtainBestPen) from inbar_rgb, 0 = none (the muted pen takes over) */
+    uint8_t inbar_rgb[3];       /* 26 the colour of pen_inbar (R, G, B) written by Amarchy from the theme role GR_INACTIVE; all zero = derive it from the screen */
+    uint8_t pad[3];             /* 29 reserved, zero (keeps the block a multiple of 4 bytes) */
+} flat_state;                   /* 32 bytes */
 
-#define FLAT_STATE_SIZE 28
+#define FLAT_STATE_SIZE 32
 
 /* flat_check results */
 enum { FLAT_OK = 0, FLAT_ERR_VERSION = -1, FLAT_ERR_SIZE = -2 };
@@ -249,13 +251,21 @@ int flat_tx_pen(const flat_state *s, flat_tx *t, const void *surf, const void *t
 /* ---- FLAT-TITLE-ACCENT: a window title drawn by Intuition (one Text call on the border rastport) ---------------------
  * flat_title_decide: 1 and *t filled when the call is a window title under flat (enabled, not held, title string prefix
  * match of str/count against the Window title, pen y inside bar_h = BorderTop). Active: band (0,0)-(w-1,bar_h-1) in
- * pen_outline (band_pen -1 = none: pen_outline unset or not a pen of the depth) and the title text in pen_ptext.
+ * pen_outline (band_pen -1 = none: pen_outline unset or not a pen of the depth) and the title text in pen_ptext. Inactive (S32-INACTIVE-BAR): the same
+ * with flat_inactive_pen as the band, text pen_ptext on it, flat_dimtext_pen when no inactive pen exists.
  * bg_pen = band_pen when a band is drawn (the title Text call is JAM2: its cell box repaints BgPen, so BgPen must be the band pen
  * for that call or the band is erased behind the glyphs), else -1 (BgPen untouched). Inactive: no band, title text in flat_dimtext_pen (dark_foreground). 0: not a title, stock Text untouched. */
 typedef struct flat_title { int band_pen, bx0, by0, bx1, by1, text_pen, bg_pen; } flat_title;
 /* flat_frame_pen: the pen of an active window's title band (pen_outline) when flat is on, not held, and pen_outline is a pen of the
  * depth; else -1 (caller uses its stock frame pen). flat_title_decide and the window gadget boxes both take the band from here. */
 int flat_frame_pen(const flat_state *s, int depth, int active);
+/* S32-INACTIVE-BAR: the pen of everything an inactive window shows in the bar tone: pen_inbar when it is a pen of the depth (16+ colours, 4..8 planes),
+ * else the muted text pen (flat_dimtext_ok), else -1 (no inactive look). flat_frame_pen(inactive), the ring, the arrows and the knob take it. */
+int flat_inactive_pen(const flat_state *s, int depth);
+/* The colour of pen_inbar from the screen's surface and text colours (0xRRGGBB): gt_mix(surface, text, GT_INACTIVE_PCT), the default of GR_INACTIVE. */
+unsigned long flat_inbar_colour(unsigned long surface, unsigned long text);
+/* FLAT-OUTER-EDGE: the pen of the window's 1 px ring: pen_outline when active (or when there is no inactive pen), else flat_inactive_pen. */
+int flat_edge_pen(const flat_state *s, int depth, int active);
 /* FLAT-GADGETS-RIG8: the band spans only the title area between the system gadgets (bx0..bx1, from flat_title_span), so it never
  * wipes the close / depth / zoom gadgets Intuition draws once and does not redraw. */
 typedef struct flat_gadrect { int x, y, w, h, relright, relwidth, drag; } flat_gadrect;
@@ -328,7 +338,7 @@ int flat_button_role(const flat_box *self, const flat_box *sib, int n);
  * is laid out as Intuition does: size = body * container / 0xFFFF (at least 1 px), position = pot * (container - size) / 0xFFFF.
  * Returns -1 when flat is off or held, or the fill is not inside the container (the caller leaves the call alone).
  * horiz / vert: the PropInfo FREEHORIZ / FREEVERT flags; depth: the screen depth. */
-int flat_scroller_pen(const flat_state *s, int depth, int cx, int cy, int cw, int ch, int horiz, int vert,
+int flat_scroller_pen(const flat_state *s, int depth, int active, int cx, int cy, int cw, int ch, int horiz, int vert,
                       unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody, int x0, int y0, int x1, int y1);
 /* The knob rectangle (the layout flat_scroller_pen uses) inside container (cx,cy,cw,ch); 0 when the container is empty. */
 int flat_scroller_knob(int cx, int cy, int cw, int ch, int horiz, int vert, unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody,

@@ -294,7 +294,7 @@ int flat_clone_draw(const flat_state *s, unsigned long which, unsigned long meth
     if (!render(rctx, ids, grid, w, h) || flat_clone_map(grid, w, h, map) <= 0)
         return FLAT_CLONE_FAIL;
     flat_glyph_roles(which, state, &grole, &brole);
-    gpen = grole == FLAT_ROLE_TEXT && text_pen >= 0 ? text_pen : flat_clone_pen(s, grole, frame_pen);
+    gpen = (grole == FLAT_ROLE_TEXT || grole == FLAT_ROLE_LINE) && text_pen >= 0 ? text_pen : flat_clone_pen(s, grole, frame_pen);
     bpen = flat_clone_pen(s, brole, frame_pen);
     {
         int br = band_rows < 0 ? 0 : band_rows > h ? h : band_rows;

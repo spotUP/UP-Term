@@ -50,6 +50,10 @@ void desk_flat_glyph_pens(unsigned char *text, unsigned char *line, unsigned cha
  * belong to the resident program and are left alone. desk_flat_state_calls counts calls (the reachability sentinel). */
 void desk_flat_state(int flat, int gadgets, flat_state *s);
 extern unsigned long desk_flat_state_calls;
+/* S32-INACTIVE-BAR: the theme's GR_INACTIVE colour into s->inbar_rgb (amarchy-flat obtains the pen itself, like the knob pen; an all-zero
+ * triple means "not written": flat derives the default from the screen's surface and text colours). Not part of desk_flat_state: that one
+ * has no theme. */
+void desk_flat_inbar(const gtheme *t, flat_state *s);
 /* The icon applier's state: 0 originals (flat off), 1 Filled applied, 2 Outline applied. The desk re-runs amarchy-icons when it changes,
  * so a switch of the icon style while flat is on applies the other set at once. */
 int desk_icons_state(int on, int outline);

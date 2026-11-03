@@ -27,6 +27,17 @@ uc_u32 gt_scale(uc_u32 rgb, int pct)
     return (r << 16) | (g << 8) | b;
 }
 
+uc_u32 gt_mix(uc_u32 a, uc_u32 b, int pct)
+{
+    uc_u32 out = 0;
+    int sh;
+    for (sh = 16; sh >= 0; sh -= 8) {
+        long x = (long)((a >> sh) & 0xff), y = (long)((b >> sh) & 0xff);
+        out |= (uc_u32)(x + (y - x) * pct / 100) << sh;
+    }
+    return out;
+}
+
 /* a moved a tenth of the way toward b, per channel */
 static uc_u32 mix_tenth(uc_u32 a, uc_u32 b)
 {
@@ -114,6 +125,7 @@ void gt_roles_of(const gtheme *t, gt_roles *r)
     r->c[GR_MUTED] = t->muted;
     r->c[GR_ACCENT] = t->accent;
     r->c[GR_SELECTION] = gt_selection(t);
+    r->c[GR_INACTIVE] = t->inactive;
     r->ok = t->ok;
     r->fail = t->fail;
 }
@@ -151,6 +163,7 @@ void gt_builtin(gtheme *out)
     out->lighter_bg = 0x24283bUL;
     out->selection = 0x292e42UL;
     out->muted = 0x414868UL;
+    out->inactive = gt_mix(out->bg, out->fg, GT_INACTIVE_PCT);
 }
 
 void gt_parse(const char *buf, long len, gtheme *out)
@@ -183,6 +196,7 @@ void gt_parse(const char *buf, long len, gtheme *out)
     out->lighter_bg = upconf_rgb(&g_conf, "default", "lighter_background", mix_tenth(out->bg, out->fg));
     out->selection = upconf_rgb(&g_conf, "default", "selection", out->lighter_bg);
     out->muted = upconf_rgb(&g_conf, "default", "muted", out->dim);
+    out->inactive = upconf_rgb(&g_conf, "default", "inactive", gt_mix(out->bg, out->fg, GT_INACTIVE_PCT));
     str_key(out->backdrop, GT_NAME, "backdrop");
     str_key(out->font, GT_NAME, "font");
     str_key(out->wbtitle, GT_TITLE, "wbtitle");

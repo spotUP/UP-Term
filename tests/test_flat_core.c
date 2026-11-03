@@ -1,6 +1,7 @@
 /* The amarchy-flat state block (amarchy/flat_core.c; plan 2026-10-29-amarchy-flat-ui-patch.md FLAT-C0). The block
  * is shared with Amarchy through the public semaphore, so its offsets are a contract: pinned here byte by byte. */
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "../amarchy/flat_core.h"
@@ -29,9 +30,11 @@ static void test_layout(void)
     CHECK_INT(offsetof(flat_state, pen_dim), 22);
     CHECK_INT(offsetof(flat_state, pen_dimtext), 23);
     CHECK_INT(offsetof(flat_state, pen_knob), 24);
-    CHECK_INT(FLAT_STATE_SIZE, 28);
+    CHECK_INT(offsetof(flat_state, pen_inbar), 25);
+    CHECK_INT(offsetof(flat_state, inbar_rgb), 26);
+    CHECK_INT(FLAT_STATE_SIZE, 32);
     CHECK_STR(FLAT_SEM_NAME, "Amarchy.Flat");
-    CHECK_INT(FLAT_VERSION, 2);
+    CHECK_INT(FLAT_VERSION, 3);
 }
 
 static void test_init_check(void)
@@ -42,7 +45,7 @@ static void test_init_check(void)
     flat_init(&s);
     CHECK_INT(s.version, FLAT_VERSION);
     CHECK_INT(s.size, FLAT_STATE_SIZE);
-    CHECK_INT(s.enabled | s.style | s.held | s.still_chained | s.calls | s.pen_text | s.pen_line | s.pen_back | s.pen_outline | s.pen_button | s.pen_ptext | s.pen_dim | s.pen_dimtext | s.pen_knob, 0);
+    CHECK_INT(s.enabled | s.style | s.held | s.still_chained | s.calls | s.pen_text | s.pen_line | s.pen_back | s.pen_outline | s.pen_button | s.pen_ptext | s.pen_dim | s.pen_dimtext | s.pen_knob | s.pen_inbar | s.inbar_rgb[0] | s.inbar_rgb[1] | s.inbar_rgb[2], 0);
     CHECK_INT(flat_check(&s, sizeof s), FLAT_OK);
     CHECK_INT(flat_check(&s, sizeof s + 20), FLAT_OK);
     CHECK_INT(flat_check(&s, FLAT_STATE_SIZE - 1), FLAT_ERR_SIZE);      /* fewer readable bytes than the layout */
@@ -980,11 +983,11 @@ static void test_scroller(void)
     CHECK_INT(s.pen_dimtext, kn);
     CHECK(kn != s.pen_outline);
     /* vertical 16 x 100 container at (10,20), body half: knob height 50 */
-    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), kn);
-    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 70, 25, 119), tr);
-    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0xFFFF, 0, 0x8000, 10, 70, 25, 119), kn);
-    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0xFFFF, 0, 0x8000, 10, 20, 25, 69), tr);
-    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 60, 25, 80), tr);   /* straddles the knob edge */
+    CHECK_INT(flat_scroller_pen(&s, 3, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), kn);
+    CHECK_INT(flat_scroller_pen(&s, 3, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 70, 25, 119), tr);
+    CHECK_INT(flat_scroller_pen(&s, 3, 1, 10, 20, 16, 100, 0, 1, 0, 0xFFFF, 0, 0x8000, 10, 70, 25, 119), kn);
+    CHECK_INT(flat_scroller_pen(&s, 3, 1, 10, 20, 16, 100, 0, 1, 0, 0xFFFF, 0, 0x8000, 10, 20, 25, 69), tr);
+    CHECK_INT(flat_scroller_pen(&s, 3, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 60, 25, 80), tr);   /* straddles the knob edge */
     /* FLAT-SLIDER-ROUND: a fill that is exactly the knob gets the button corner cuts; any other fill gets none */
     {
         int cuts[FLAT_ROUND_MAX][2], n, i, hit = 0;
@@ -1017,31 +1020,31 @@ static void test_scroller(void)
         CHECK_INT(total >= 12, 1);                                                               /* every cut of the whole knob is covered */
     }
     /* a tiny body still gives a 1 px knob */
-    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 1, 10, 20, 25, 20), kn);
-    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 1, 10, 21, 25, 21), tr);
+    CHECK_INT(flat_scroller_pen(&s, 3, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 1, 10, 20, 25, 20), kn);
+    CHECK_INT(flat_scroller_pen(&s, 3, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 1, 10, 21, 25, 21), tr);
     /* horizontal 100 x 10, body a quarter (knob width 25), pot at the end: knob x 75..99 */
-    CHECK_INT(flat_scroller_pen(&s, 3, 0, 0, 100, 10, 1, 0, 0xFFFF, 0, 0x4000, 0, 75, 0, 99, 9), kn);
-    CHECK_INT(flat_scroller_pen(&s, 3, 0, 0, 100, 10, 1, 0, 0xFFFF, 0, 0x4000, 0, 0, 0, 74, 9), tr);
+    CHECK_INT(flat_scroller_pen(&s, 3, 1, 0, 0, 100, 10, 1, 0, 0xFFFF, 0, 0x4000, 0, 75, 0, 99, 9), kn);
+    CHECK_INT(flat_scroller_pen(&s, 3, 1, 0, 0, 100, 10, 1, 0, 0xFFFF, 0, 0x4000, 0, 0, 0, 74, 9), tr);
     /* outside the container, flat held, flat off: -1, the call stays alone */
-    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 9, 20, 25, 69), -1);
-    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 26, 69), -1);
-    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 120), -1);
+    CHECK_INT(flat_scroller_pen(&s, 3, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 9, 20, 25, 69), -1);
+    CHECK_INT(flat_scroller_pen(&s, 3, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 26, 69), -1);
+    CHECK_INT(flat_scroller_pen(&s, 3, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 120), -1);
     s.held = 1;
-    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), -1);
+    CHECK_INT(flat_scroller_pen(&s, 3, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), -1);
     s.held = 0;
     /* under 8 colours the knob takes the accent pen_line (flat_button_pen), never a missing pen */
-    CHECK_INT(flat_scroller_pen(&s, 2, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), s.pen_line);
+    CHECK_INT(flat_scroller_pen(&s, 2, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), s.pen_line);
     /* fallback: pen_dimtext 0 or not a pen of the depth keeps flat_button_pen */
     {
         int keep = s.pen_dimtext;
         s.pen_dimtext = 0;
-        CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), flat_button_pen(&s, 3));
+        CHECK_INT(flat_scroller_pen(&s, 3, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), flat_button_pen(&s, 3));
         s.pen_dimtext = 9;
-        CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), flat_button_pen(&s, 3));
+        CHECK_INT(flat_scroller_pen(&s, 3, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), flat_button_pen(&s, 3));
         s.pen_dimtext = keep;
     }
     s.enabled = 0;
-    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), -1);
+    CHECK_INT(flat_scroller_pen(&s, 3, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), -1);
 }
 
 /* KNOB-PEN: the knob has its own pen from 16 colours, a colour between the surface and the muted text on every theme; at 8 colours
@@ -1053,9 +1056,9 @@ static void test_knob_pen(void)
     desk_flat_state(1, 1, &s);
     s.pen_knob = 9;
     CHECK_INT(flat_knob_pen(&s, 4), 9);
-    CHECK_INT(flat_scroller_pen(&s, 4, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), 9);   /* reachable through the scroller entry */
-    CHECK_INT(flat_scroller_pen(&s, 8, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), 9);
-    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), DK_MUTED);   /* 3 planes: no free pen */
+    CHECK_INT(flat_scroller_pen(&s, 4, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), 9);   /* reachable through the scroller entry */
+    CHECK_INT(flat_scroller_pen(&s, 8, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), 9);
+    CHECK_INT(flat_scroller_pen(&s, 3, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), DK_MUTED);   /* 3 planes: no free pen */
     CHECK_INT(flat_knob_pen(&s, 3), DK_MUTED);
     s.pen_knob = 0;
     CHECK_INT(flat_knob_pen(&s, 5), DK_MUTED);
@@ -1142,11 +1145,23 @@ static void test_title_accent(void)
     }
     CHECK_INT(t.text_pen, 0);
     CHECK_INT(t.bg_pen, 3);          /* JAM2 Text box must repaint the band pen, not pen 0 */
-    /* inactive: no band, text in the dark_foreground pen */
+    /* inactive under 16 colours (no pen_inbar): the band takes the muted pen, the text pen_ptext (S32-INACTIVE-BAR) */
     CHECK_INT(flat_title_decide(&s, 3, 0, "Shell", 200, 11, "Shell", 5, 9, 0, 199, &t), 1);
+    CHECK_INT(t.band_pen, 5);
+    CHECK_INT(t.text_pen, 0);
+    CHECK_INT(t.bg_pen, 5);
+    /* inactive with the inactive pen on a 16 colour screen: band = pen_inbar, text = pen_ptext */
+    s.pen_inbar = 9; s.pen_ptext = 1;
+    CHECK_INT(flat_title_decide(&s, 4, 0, "Shell", 200, 11, "Shell", 5, 9, 0, 199, &t), 1);
+    CHECK_INT(t.band_pen, 9);
+    CHECK_INT(t.bg_pen, 9);
+    CHECK_INT(t.text_pen, 1);
+    /* neither pen: no band, the dim text as before */
+    s.pen_inbar = 0; s.pen_dimtext = 0;
+    CHECK_INT(flat_title_decide(&s, 4, 0, "Shell", 200, 11, "Shell", 5, 9, 0, 199, &t), 1);
     CHECK_INT(t.band_pen, -1);
-    CHECK_INT(t.text_pen, 5);
     CHECK_INT(t.bg_pen, -1);
+    s.pen_dimtext = 5; s.pen_ptext = 0;
     /* a clipped title (prefix) still matches; body text, wrong text, a row below the bar, off/held do not */
     CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "She", 3, 9, 0, 199, &t), 1);
     CHECK_INT(flat_title_decide(&s, 3, 1, "Shell", 200, 11, "Hello", 5, 9, 0, 199, &t), 0);
@@ -1318,13 +1333,54 @@ static void test_frame_pen(void)
     glyph_state(&s);
     s.enabled = 1; s.held = 0; s.pen_outline = 5;
     CHECK_INT(flat_frame_pen(&s, 3, 1), 5);          /* active, pen 5 < 8 */
-    CHECK_INT(flat_frame_pen(&s, 3, 0), -1);         /* inactive: stock frame */
+    s.pen_dimtext = 0;
+    CHECK_INT(flat_frame_pen(&s, 3, 0), -1);         /* inactive, no inactive pen: stock frame */
+    s.pen_inbar = 9;
+    CHECK_INT(flat_frame_pen(&s, 4, 0), 9);          /* inactive: the inactive pen (S32-INACTIVE-BAR) */
+    CHECK_INT(flat_frame_pen(&s, 3, 0), -1);         /* pen 9 is not a pen of 3 planes */
+    s.pen_inbar = 0;
     CHECK_INT(flat_frame_pen(&s, 9, 1), -1);         /* depth > 8 */
     CHECK_INT(flat_frame_pen(&s, 2, 1), -1);         /* pen not of the depth */
     s.pen_outline = 0;
     CHECK_INT(flat_frame_pen(&s, 3, 1), -1);
     s.pen_outline = 5; s.held = 1;
     CHECK_INT(flat_frame_pen(&s, 3, 1), -1);
+}
+
+/* S32-INACTIVE-BAR reachability: the STATUS dump (flat.c, DOS only) prints inbar= next to knob=, from the live block. */
+static void test_inbar_status_dump(void)
+{
+    static char src[400000];
+    size_t n;
+    FILE *f = fopen("amarchy/flat.c", "rb");
+    CHECK(f != 0);
+    if (!f)
+        return;
+    n = fread(src, 1, sizeof src - 1, f);
+    fclose(f);
+    src[n] = 0;
+    CHECK(strstr(src, "\" inbar=\");  put_num(line, &n, copy.pen_inbar)") != 0);
+    CHECK(strstr(src, "r->st.pen_inbar = (UBYTE)g_inbar_pen") != 0);          /* the pen the dump reports is really obtained */
+}
+
+/* S32-INACTIVE-BAR: the outer ring and the scroller knob of an inactive window take the inactive pen; active ones are unchanged */
+static void test_inactive_pens(void)
+{
+    flat_state s;
+    glyph_state(&s);
+    s.enabled = 1; s.pen_outline = 5; s.pen_inbar = 9; s.pen_dimtext = 0;
+    CHECK_INT(flat_edge_pen(&s, 4, 1), 5);           /* active: the accent ring */
+    CHECK_INT(flat_edge_pen(&s, 4, 0), 9);           /* inactive: the inactive ring */
+    s.pen_inbar = 0;
+    CHECK_INT(flat_edge_pen(&s, 4, 0), 5);           /* no inactive pen: the old ring */
+    s.pen_inbar = 9;
+    CHECK_INT(flat_inactive_pen(&s, 4), 9);
+    CHECK_INT(flat_inactive_pen(&s, 3), -1);
+    s.pen_dimtext = 6;
+    CHECK_INT(flat_inactive_pen(&s, 3), 6);          /* under 16 colours: the muted pen */
+    CHECK_INT(flat_inbar_colour(0x000000UL, 0x646464UL), 0x2d2d2dUL);   /* 45 percent */
+    CHECK_INT(flat_scroller_pen(&s, 4, 0, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), 9);   /* inactive knob */
+    CHECK(flat_scroller_pen(&s, 4, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69) != 9);     /* active knob unchanged */
 }
 
 
@@ -1376,6 +1432,10 @@ static void test_glyph_clone(void)
     CHECK_INT(flat_clone_draw(&st, FLAT_W_ZOOM, FLAT_IM_DRAW, 5, 0, 0, 9, 9, 'F', -1, 99, -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
     CHECK_INT(cv[4][4], '+');
     CHECK_INT(cv[0][0], 'F');
+    /* inactive on the band (S32-INACTIVE-BAR): box = band pen, glyph = text_pen */
+    cv_clear();
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_ZOOM, FLAT_IM_DRAW, 5, 0, 0, 9, 9, 'B', 'T', 99, -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
+    CHECK(cv[0][0] == 'B' && cv[4][4] == 'T');
     /* selected: ground is FILLPEN (the dominant inside marker), ring reversed; glyph in back pen on the text-pen box */
     cv_clear();
     CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 1, 0, 0, 9, 9, 'F', -1, 99, -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
@@ -1390,7 +1450,7 @@ static void test_glyph_clone(void)
         CHECK(cv[0][0] == 'B' && cv[4][4] == 'T');
         cv_clear();
         CHECK_INT(flat_clone_draw(&b, FLAT_W_CLOSE, FLAT_IM_DRAW, 2, 0, 0, 9, 9, 'B', 'T', 99, -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
-        CHECK(cv[4][4] == '+');                                                 /* inactive keeps its own glyph pen */
+        CHECK(cv[4][4] == 'T');                                                 /* inactive takes the text pen too (S32-INACTIVE-BAR) */
         cv_clear();
     }
     g_render_calls = 0; g_render_fail = 1;
@@ -1560,6 +1620,8 @@ static void test_clone_no_dividers(void)
 void suite_flat_core(void)
 {
     test_frame_pen();
+    test_inactive_pens();
+    test_inbar_status_dump();
     test_arrow_glyph_pens();
     test_arrow_aspect();
     test_clone_arrows();

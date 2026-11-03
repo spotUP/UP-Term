@@ -502,8 +502,10 @@ static void dk_flat_sync_with(int changed_only)
 {
     am_prefs ap;
     flatshared *r;
+    gtheme th;
     int flat, gad, wrote = 0;
     amconf_load(&ap);
+    gt_dos_load_current(&th);
     flat = amconf_flat_index(&ap, AM_FLAT);
     gad = amconf_flat_index(&ap, AM_FLATGAD);
     dk_icons_sync(flat || gad, amconf_icon_outline(&ap));
@@ -512,8 +514,10 @@ static void dk_flat_sync_with(int changed_only)
     if (r && flat_check(&r->st, sizeof r->st) == FLAT_OK) {
         flat_state next = r->st;
         desk_flat_state(flat, gad, &next);
+        desk_flat_inbar(&th, &next);                /* S32-INACTIVE-BAR: the theme `inactive` colour */
         if (!changed_only || memcmp(&next, &r->st, sizeof next) != 0) {
             desk_flat_state(flat, gad, &r->st);
+            desk_flat_inbar(&th, &r->st);
             if (r->task)
                 Signal(r->task, SIGBREAKF_CTRL_D);  /* LUCIDE L7: amarchy-flat takes or drops the icon pens */
             wrote = 1;
