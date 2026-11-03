@@ -4,6 +4,7 @@
 #include <string.h>
 #include "../amarchy/help_core.h"
 #include "../amarchy/menu_geom.h"
+#include "../amarchy/menu_theme.h"
 #include "harness.h"
 
 static const char km_text[] =
@@ -136,6 +137,18 @@ static void test_welcome_key(void)
     CHECK_INT(ticked, 0);                       /* closing never changes the tick */
 }
 
+/* WELCOME-TICK-REDRAW: the ticked box was filled with MT_SELTEXT, the background colour, so it never looked ticked */
+static void test_tick_visible(void)
+{
+    int ticked = 0, done = 0;
+    CHECK_INT(hc_tick_role(ticked), MT_BG);
+    hc_welcome_key(' ', &ticked, &done);
+    CHECK(hc_tick_role(ticked) != MT_BG);
+    CHECK(hc_tick_role(ticked) != MT_SELTEXT);
+    hc_welcome_key(' ', &ticked, &done);
+    CHECK_INT(hc_tick_role(ticked), MT_BG);
+}
+
 static long help_slurp(const char *path, char *buf, long cap)
 {
     FILE *f = fopen(path, "rb");
@@ -215,6 +228,7 @@ static void test_gui_welcome_wired(void)
     CHECK(strstr(gui, "hc_expand(&km, viewer == 2 ? amhelp_welcome : amhelp_help") != 0);
     CHECK(strstr(gui, "hc_welcome_key(c, &g->wticked, &g->wdone)") != 0);
     CHECK(strstr(gui, "hc_mark_shown(&p)") != 0);
+    CHECK(strstr(gui, "hc_tick_role(g->wticked)") != 0);
     CHECK(strstr(gui, "mg_strip_hit(&g->g, mx, my)") != 0 && strstr(gui, "mg_strip_y(q, r)") != 0);
     CHECK(strstr(gui, "amconf_save_with(amconf_dos_io(), &p, 1, &failed)") != 0);
     CHECK(strstr(gui, "\"Welcome to Amarchy\"") != 0 && strstr(gui, "\"Amarchy Help\"") != 0);
@@ -254,6 +268,7 @@ static void test_welcome_strip_pinned(void)
 void suite_help_core(void)
 {
     test_welcome_strip_pinned();
+    test_tick_visible();
     test_expand();
     test_unbound();
     test_rebound();

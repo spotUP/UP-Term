@@ -7,6 +7,7 @@
 
 #include "../config/keymap.h"
 #include "amconf_core.h"
+#include "menu_theme.h"
 
 #define HC_UNBOUND "(unbound)"
 
@@ -34,5 +35,9 @@ void hc_mark_shown(am_prefs *p);
 /* The welcome window's checkbox row. Space toggles *ticked; Return, Enter or Escape sets *done. Returns 1 when ch was
  * one of those keys, 0 otherwise (the caller keeps it). */
 int hc_welcome_key(int ch, int *ticked, int *done);
+
+/* The theme role the inside of the checkbox is filled with: MT_BG when empty, MT_THEME_ACCENT when ticked. The tick was
+ * once drawn in MT_SELTEXT, which is the background colour, so a ticked box looked empty (WELCOME-TICK-REDRAW). */
+int hc_tick_role(int ticked);
 
 #endif

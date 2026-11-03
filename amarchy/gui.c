@@ -459,7 +459,7 @@ static void draw_welcome_row(gui *g, int r, int tx, int y, int rbg)
         fill(g, MT_TEXT, bx, by, bx + s - 1, by + s - 1);
         fill(g, MT_BG, bx + 1, by + 1, bx + s - 2, by + s - 2);
         if (g->wticked)
-            fill(g, MT_SELTEXT, bx + 3, by + 3, bx + s - 4, by + s - 4);
+            fill(g, hc_tick_role(g->wticked), bx + 3, by + 3, bx + s - 4, by + s - 4);
         put(g, MT_TEXT, rbg, bx + s + q->m.row_pad, y, rh, t, (int)strlen(t), q->list_w - 2 * q->m.row_pad - s);
     } else {
         static const char *const name[2] = { "Close", "Open Help" };

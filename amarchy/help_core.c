@@ -161,3 +161,8 @@ int hc_welcome_key(int ch, int *ticked, int *done)
     }
     return 0;
 }
+
+int hc_tick_role(int ticked)
+{
+    return ticked ? MT_THEME_ACCENT : MT_BG;
+}
