@@ -3615,13 +3615,14 @@ static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1)
 {
     UBYTE run[RUN_MAX];
     dcell dc[DCELL_MAX];
-    int y, x, xe, n, nd, want_direct, tail_ok;
+    int y, x, xe, n, nd, want_direct, tail_ok, has_img;
     ULONG tail_bg;
 #ifdef VTCON_PROF
     vr_pass++;
 #endif
     if (r->hidden)
         return;
+    has_img = vt_images(r->t) != 0; /* the one test a pass pays when there are none */
     want_direct = r->glyphs != 0;
     if (x1 > vis_cols(r))
         x1 = vis_cols(r);
@@ -3718,7 +3719,7 @@ static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1)
             if (x >= xe) {
                 if (r->cursor_drawn && r->cursor_y == y && r->cursor_x >= x0 && r->cursor_x < x1)
                     r->cursor_drawn = 0;
-                continue;
+                goto row_images;
             }
         }
 #endif
@@ -3886,9 +3887,16 @@ static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1)
         }
         if (r->cursor_drawn && r->cursor_y == y && r->cursor_x >= x0 && r->cursor_x < x1)
             r->cursor_drawn = 0; /* the cursor cell was just painted over */
+#ifdef VR_ASM
+    row_images: /* the fast row path above lands here when it drew the whole row */
+#endif
+        /* K36-ANIM-BLINK: the row's images straight after its text, not all rows' text and then all images --
+         * a frame switch repaints every row of the picture, and the window showed the background of all of
+         * them while the images went in top down (the top of the new frame, the rest blank). Now at most the
+         * row being drawn is between its text and its picture. */
+        if (has_img)
+            draw_images(r, x0, y, x1, y + 1);
     }
-    if (vt_images(r->t))
-        draw_images(r, x0, y0, x1, y1); /* the one test a frame pays when there are none */
     r->pad_dirty = r->pad_extend; /* W-T14: the strips follow these cells (pad_flush) */
     r->was_blank = 0;
     if (r->full_pass) {

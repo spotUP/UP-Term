@@ -2844,6 +2844,79 @@ static void k40_eight_bit_screen_stays_indexed(void)
     close_term();
 }
 
+/* K36-ANIM-BLINK: a looping kitty animation switches frames on the clock; the repaint of the picture's rows
+ * must never leave more than the one cell row being drawn showing the background. Before the fix draw_rows_now
+ * painted the text (background) of every damaged row first and only then the images of all of them, top down:
+ * a screen refresh between the two showed the upper rows of the new frame and the rest blank (the owner's
+ * "the picture blinks, only its top fifth drawn"). The log of the redraw is walked: a fill or text over an image
+ * row blanks it, an image write over it draws it; at most one row may be blank at any call. */
+static int k36_max_blank_rows(int img_rows)
+{
+    int blank[16] = { 0 }, i, y, most = 0, n;
+    for (i = 0; i < gf_n; i++) {
+        const gf_call *g = &gf_log[i];
+        long y0, y1;
+        int img = g->kind == GF_CGXLUT || g->kind == GF_CGXPIX;
+        if (g->a >= 16) /* right of the picture's two cells */
+            continue;
+        if (g->kind == GF_RECT) {
+            y0 = g->b;
+            y1 = g->d + 1;
+        } else if (g->kind == GF_CGXFILL || img) {
+            y0 = g->b;
+            y1 = g->b + g->d;
+        } else if (g->kind == GF_TEXT) {
+            y0 = g->b;
+            y1 = g->b + CH;
+        } else {
+            continue;
+        }
+        for (y = 0; y < img_rows; y++)
+            if (y0 < (y + 1) * CH && y1 > y * CH)
+                blank[y] = !img;
+        for (n = 0, y = 0; y < img_rows; y++)
+            n += blank[y];
+        if (n > most)
+            most = n;
+    }
+    return most;
+}
+
+static void k36_a_frame_switch_never_shows_the_picture_half_drawn(void)
+{
+    static unsigned char fr[3][16 * 32 * 3];
+    int f, i, loop, worst = 0;
+    unsigned long sw0;
+    k30_open_truecolour();
+    for (f = 0; f < 3; f++)
+        for (i = 0; i < 16 * 32 * 3; i += 3) {
+            fr[f][i] = (unsigned char)(f == 0 ? 255 : 0);
+            fr[f][i + 1] = (unsigned char)(f == 1 ? 255 : 0);
+            fr[f][i + 2] = (unsigned char)(f == 2 ? 255 : 0);
+        }
+    pass("\x1b[1;1H");
+    k37_send("a=T,f=24,s=16,v=32,i=1,q=2", fr[0], sizeof fr[0]); /* 2 x 4 cells */
+    k37_send("a=f,f=24,s=16,v=32,i=1,q=2", fr[1], sizeof fr[1]);
+    k37_send("a=f,f=24,s=16,v=32,i=1,q=2", fr[2], sizeof fr[2]);
+    pass("\x1b_Ga=a,i=1,r=1,z=90,q=2\x1b\\\x1b_Ga=a,i=1,r=2,z=90,q=2\x1b\\\x1b_Ga=a,i=1,r=3,z=90,q=2\x1b\\");
+    pass("\x1b[6;1H\x1b_Ga=a,i=1,s=3,q=2\x1b\\");
+    sw0 = vt_kitty_frame_switches(term);
+    CHECK_INT(vt_anim_tick(term, 0), 90000);
+    for (loop = 0; loop < 7; loop++) { /* two loops and more, the wraps 3 -> 1 among them */
+        gf_clear_log();
+        vt_anim_tick(term, 90000);
+        pass("");
+        CHECK(gf_count(GF_CGXPIX) + gf_count(GF_CGXLUT) >= 1); /* the new frame was drawn */
+        i = k36_max_blank_rows(4);
+        if (i > worst)
+            worst = i;
+    }
+    CHECK_INT((int)(vt_kitty_frame_switches(term) - sw0), 7); /* the sentinel: the clock switched every time */
+    CHECK_INT(gf_pixel(0, 31), GF_CGX | 0x00FF00); /* 7 switches from frame 1: frame 2, its last row drawn */
+    CHECK_INT(worst, 1);
+    close_term();
+}
+
 int main(void)
 {
     an_inert_renderer_has_no_selection();
@@ -2862,6 +2935,7 @@ int main(void)
     k30_far_below_stays_under_a_coloured_background();
     k32_placeholder_cells_draw_their_tiles();
     k37_eight_bit_golden();
+    k36_a_frame_switch_never_shows_the_picture_half_drawn();
     k40_opaque_rgb_picture_reaches_the_screen_exact();
     k40_translucent_pixels_blend_over_the_background();
     k40_soft_blend_gives_the_exact_blended_pixel();
