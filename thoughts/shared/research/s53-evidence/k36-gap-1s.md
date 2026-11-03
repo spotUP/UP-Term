@@ -24,7 +24,6 @@ Command (from the worktree, PROF=1 handler, under paths.long_run()):
 
 Every changed pair differs by exactly 4096 = 64*64 pixels (the picture only). The 0.5 s sampling makes unchanged
 pairs fall where two shots land in one 1 s frame; the pattern is irregular because the shots are not phase locked.
-Compare the 100 ms proof (562f588e): AGA 68/69, RTG 79/80 over the same window life: the 1 s run is 1/4-1/5 of that
-rate times 10 gap ratio, consistent with 1 switch per second.
+The 100 ms proof (562f588e) counted 68-80 switches over a similar life; at 1 s the same life gives 16, as expected.
 PROF "switches/ticks": ticks column is render time (prof_anim), not a tick count.
 Unverified: no tick-rate (idle wake) measure of "no CPU between frames"; PROF has no wake counter.
