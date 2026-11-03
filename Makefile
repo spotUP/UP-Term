@@ -832,7 +832,7 @@ PI_PROBE_SRC := tests/amiga/pi_llmprobe.c $(LLM_CORE) claude/json.c claude/util.
 $(BUILD)/amiga/pi-llmprobe: $(PI_PROBE_SRC) claude/net_amiga.c $(CLAUDE_HDR) tty/bmsg.h
 	@mkdir -p $(BUILD)/amiga/obj/pi
 	$(VC) -dontwarn=153,65 -I$(VTCON_NETINCLUDE) -c -o $(BUILD)/amiga/obj/pi/net_amiga.o claude/net_amiga.c
-	$(VC) -dontwarn=153,65 -o $@ $(PI_PROBE_SRC) $(BUILD)/amiga/obj/pi/net_amiga.o
+	$(VC) -dontwarn=153,65 -o $@ $(PI_PROBE_SRC) $(BUILD)/amiga/obj/pi/net_amiga.o -lmieee
 
 $(BUILD)/amiga/Claude: $(CLAUDE_PORTABLE) $(UPTERM_VERSION_H) claude/net_amiga.c $(CLAUDE_TLS) $(CLAUDE_HDR) $(VIEW_HDR) tty/ldisc.h tty/bmsg.h handler/vtcon_packets.h $(CLAUDE_FORCE) $(BUILD)/amiga/obj/cpuchk-Claude.o
 	@mkdir -p $(BUILD)/amiga/obj/claude
