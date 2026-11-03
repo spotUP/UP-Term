@@ -691,8 +691,13 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
         c = t->cols;
     if (r > 256)
         r = 256;
+    /* IMAGE-ASPECT-HIRES: a cell count is in screen pixels already; a size taken from the source pixels
+     * (no c=, r=) or from one count keeps the picture's look on tall pixels: heights shrink by rx/ry */
     tw = c ? c * cw : r ? (int)((long)w * r * ch / h) : w;
-    th = r ? r * ch : c ? (int)((long)h * tw / w) : h;
+    if (!c && r && t->px_rx && t->px_ry)
+        tw = (int)((long)tw * t->px_ry / t->px_rx);
+    th = r ? r * ch : c ? vt_aspect_rows((int)((long)h * tw / w), t->px_rx, t->px_ry)
+                         : vt_aspect_rows(h, t->px_rx, t->px_ry);
     if (tw < 1)
         tw = 1;
     if (th < 1)

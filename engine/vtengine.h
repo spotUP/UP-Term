@@ -460,6 +460,13 @@ void     vt_screen_reverse(vt_term *t, int on);
 /* The cell size in pixels, for the size reports programs ask for (CSI 14t,
  * 16t). */
 void     vt_set_cell_pixels(vt_term *t, int w, int h);
+/* IMAGE-ASPECT-HIRES: the screen's pixel in ticks (DisplayInfo Resolution, 44x22 on 640x256 hires: twice as
+ * tall as wide). A kitty picture placed without both cell counts is scaled so its source pixels keep their
+ * look: the height shrinks by rx/ry. 0 or equal: square pixels, nothing changes. */
+void     vt_set_pixel_aspect(vt_term *t, int rx, int ry);
+/* h screen rows of a picture on pixels rx wide by ry tall, rounded to nearest (half up), at least 1;
+ * h unchanged when the pixels are square or unknown. */
+int      vt_aspect_rows(int h, int rx, int ry);
 /* How many colours the screen can show at once (16 pens on a 4-plane AGA
  * screen, 256 on a card): what XTGETTCAP colors (and Co) answers, so a
  * program can pick its palette -- xterm defines that query ("XTGETTCAP",

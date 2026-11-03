@@ -1507,8 +1507,44 @@ static void k39_rgba_frames_keep_exact_bytes_and_alpha(void)
     vt_free(t);
 }
 
+/* IMAGE-ASPECT-HIRES: on 640x256 hires the pixel is twice as tall as wide (rx:ry = 1:2); a picture placed
+ * with no cell counts keeps its look, so its height halves (rounded to nearest, half up, at least 1).
+ * Square pixels (1:1) and an unset aspect leave the size exactly as sent. */
+static int asp_height(int rx, int ry)
+{
+    vt_term *t = h_new(20, 10, VT_XTERM);
+    vt_image_view v;
+    int h = -1, i;
+    char b[160];
+    vt_set_cell_pixels(t, 8, 16);
+    if (rx)
+        vt_set_pixel_aspect(t, rx, ry);
+    for (i = 0; i < 112; i++)
+        b[i] = 'A'; /* 84 zero bytes: a 4 x 7 RGB picture */
+    b[i] = 0;
+    h_put(t, "\033_Ga=T,f=24,s=4,v=7,q=2;");
+    h_put(t, b);
+    h_put(t, "\033\\");
+    if (vt_row_image(t, 0, 0, &v))
+        h = v.h;
+    return h;
+}
+
+static void image_aspect_hires_halves_the_height_on_tall_pixels(void)
+{
+    CHECK(vt_aspect_rows(64, 1, 2) == 32);
+    CHECK(vt_aspect_rows(7, 1, 2) == 4); /* 3.5 rounds up */
+    CHECK(vt_aspect_rows(1, 1, 2) == 1); /* never below one row */
+    CHECK(vt_aspect_rows(64, 1, 1) == 64);
+    CHECK(vt_aspect_rows(64, 0, 0) == 64);
+    CHECK(asp_height(1, 2) == 4); /* through the kitty placement */
+    CHECK(asp_height(1, 1) == 7);
+    CHECK(asp_height(0, 0) == 7);
+}
+
 void suite_kitty(void)
 {
+    image_aspect_hires_halves_the_height_on_tall_pixels();
     raw_rgb_becomes_an_indexed_image();
     rgba_clear_pixels_stay_unset();
     chunks_join_into_one_picture();

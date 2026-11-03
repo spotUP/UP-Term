@@ -877,6 +877,8 @@ void vtwin_set_screen(vtwin *w, struct Screen *scr)
     struct DisplayInfo di;
     ULONG mode;
     w->aspect_known = 0;
+    if (w->t)
+        vt_set_pixel_aspect(w->t, 0, 0);
     if (!scr)
         return;
     mode = GetVPModeID(&scr->ViewPort);
@@ -886,6 +888,8 @@ void vtwin_set_screen(vtwin *w, struct Screen *scr)
     w->square = di.Resolution.x == di.Resolution.y;
     w->res_x = di.Resolution.x;
     w->res_y = di.Resolution.y;
+    if (w->t) /* kitty pictures keep their look on tall pixels (IMAGE-ASPECT-HIRES) */
+        vt_set_pixel_aspect(w->t, w->res_x, w->res_y);
     if (w->outline) /* outline glyphs keep their shape on this screen's pixels (R6.1) */
         vo_set_aspect(w->outline, w->res_x, w->res_y);
     w->square_fits = fontpair_square_fits(scr->Height, scr->BarHeight);

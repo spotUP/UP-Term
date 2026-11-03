@@ -291,6 +291,7 @@ struct vt_term {
     vt_u32 dflt[3];            /* the host's default text, background, cursor */
     vt_u32 dflt_set[3];        /* OSC 10-12: 0x01RRGGBB, 0 = the host's */
     int cell_w, cell_h;        /* pixels, for CSI 14t / 16t */
+    int px_rx, px_ry;          /* the screen's pixel in ticks (IMAGE-ASPECT-HIRES); 0: square */
     int screen_colors;         /* the pens the screen has (vt_set_screen_colors); 0: not told, the entry's 256 */
     vt_u8 cursor_style;        /* DECSCUSR */
     vt_u8 cursor_dflt;         /* the host's DECSCUSR default (vt_set_cursor_style): RIS's */
@@ -6413,6 +6414,21 @@ void vt_set_cell_pixels(vt_term *t, int w, int h)
 {
     t->cell_w = w;
     t->cell_h = h;
+}
+
+void vt_set_pixel_aspect(vt_term *t, int rx, int ry)
+{
+    t->px_rx = rx > 0 && ry > 0 ? rx : 0;
+    t->px_ry = rx > 0 && ry > 0 ? ry : 0;
+}
+
+int vt_aspect_rows(int h, int rx, int ry)
+{
+    long v;
+    if (rx <= 0 || ry <= 0 || rx == ry)
+        return h;
+    v = ((long)h * rx + ry / 2) / ry; /* rounded to nearest, half up */
+    return v < 1 ? 1 : (int)v;
 }
 
 int vt_cursor_style(const vt_term *t)
