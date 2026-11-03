@@ -2917,6 +2917,45 @@ static void k36_a_frame_switch_never_shows_the_picture_half_drawn(void)
     close_term();
 }
 
+/* A z >= 0 kitty picture of several cell rows lies over the text of every row it covers. Each row's slice must
+ * be the last thing drawn in its band: no glyph of a lower row may follow (and cover) the picture. */
+static void a_front_picture_spanning_rows_is_not_overdrawn_by_the_text_of_its_lower_rows(void)
+{
+    static unsigned char px[16 * 32 * 3];
+    int i, y, last_img[4], last_txt[4], drawn = 0, bad = 0;
+    k30_open_truecolour();
+    for (i = 0; i < (int)sizeof px; i += 3) {
+        px[i] = 255;
+        px[i + 1] = px[i + 2] = 0;
+    }
+    pass("\x1b[2;1HAAAA\x1b[3;1HBBBB\x1b[4;1HCCCC\x1b[5;1HDDDD\x1b[2;1H");
+    pass("");
+    k37_send("a=T,f=24,s=16,v=32,i=1,z=1,C=1,c=2,r=4,q=2", px, sizeof px); /* 2 x 4 cells over rows 2..5 */
+    gf_clear_log();
+    vr_damage(&rn, 0, 0, COLS - 1, ROWS - 1);
+    vr_redraw(&rn);
+    for (y = 0; y < 4; y++)
+        last_img[y] = last_txt[y] = -1;
+    for (i = 0; i < gf_n; i++) {
+        const gf_call *g = &gf_log[i];
+        int img = g->kind == GF_CGXLUT || g->kind == GF_CGXPIX;
+        if (g->a >= 16 || (!img && g->kind != GF_TEXT))
+            continue;
+        for (y = 0; y < 4; y++) {
+            long band = (long)(1 + y) * CH;
+            if (g->b >= band && g->b < band + CH)
+                *(img ? &last_img[y] : &last_txt[y]) = i;
+        }
+    }
+    for (y = 0; y < 4; y++) {
+        drawn += last_img[y] >= 0;
+        bad += last_txt[y] > last_img[y];
+    }
+    CHECK_INT(drawn, 4); /* every row of the picture was drawn */
+    CHECK_INT(bad, 0);   /* and none of them was covered by text afterwards */
+    close_term();
+}
+
 int main(void)
 {
     an_inert_renderer_has_no_selection();
@@ -2936,6 +2975,7 @@ int main(void)
     k32_placeholder_cells_draw_their_tiles();
     k37_eight_bit_golden();
     k36_a_frame_switch_never_shows_the_picture_half_drawn();
+    a_front_picture_spanning_rows_is_not_overdrawn_by_the_text_of_its_lower_rows();
     k40_opaque_rgb_picture_reaches_the_screen_exact();
     k40_translucent_pixels_blend_over_the_background();
     k40_soft_blend_gives_the_exact_blended_pixel();

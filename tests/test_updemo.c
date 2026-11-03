@@ -449,6 +449,44 @@ static void the_kitty_zindex_scene_sends_pictures_under_and_over_text(void)
     CHECK(pos > 0);
     CHECK(cap_has("z=-1: the picture is behind the text."));
     CHECK(cap_has("z=1: the picture hides the text."));
+    /* The front picture covers every row of its text: text written into its cells after it took them over (D12), so
+     * the scene must write its text first. Every text cell of the right column pair still shows the picture. */
+    {
+        int y, x, n, over = 0, lost = 0;
+        static vt_callbacks rcb;
+        const char *end = "z=1: the picture hides the text.";
+        long k = (long)strlen(end), upto = 0;
+        vt_term *s;
+        for (i = 0; i + k <= cap_len; i++)
+            if (!memcmp(cap + i, end, (size_t)k))
+                upto = i + k; /* the screen as the scene leaves it, before it clears on the way out */
+        rcb.reply = reply;
+        rcb.layout = layout;
+        s = vt_new(80, 24, 0, &rcb, 0);
+        vt_set_cell_pixels(s, 8, 16);
+        vt_write(s, (const unsigned char *)cap, upto);
+        for (y = 0; y < 24; y++) {
+            const vt_cell *c = vt_row(s, y, &n);
+            vt_image_view v;
+            int xe, k2;
+            for (k2 = 0; vt_row_image(s, y, k2, &v); k2++) {
+                if (v.z < 0)
+                    continue; /* only the front picture */
+                xe = v.col0 + (v.w + v.cw - 1) / v.cw;
+                for (x = v.col0; x < xe && x < n; x++) {
+                    if (c[x].ch >= 'A' && c[x].ch <= 'Z') {
+                        if (c[x].pad & VT_CELL_IMAGE)
+                            over++;
+                        else
+                            lost++;
+                    }
+                }
+            }
+        }
+        CHECK(over > 0);
+        CHECK_INT(lost, 0);
+        vt_free(s);
+    }
 }
 
 /* W-T2 (owner: the styles scene's two blink speeds blink at the same rate): its "rapid blink" line is SGR 5 then 6,
