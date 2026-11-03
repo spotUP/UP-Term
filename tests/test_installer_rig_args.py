@@ -56,6 +56,19 @@ class ParseArgs(unittest.TestCase):
             irg.rig_start()
         rig.assert_called_once_with("start", "--max", "--os", "32", "--purpose", "vtcon-16: proof")
 
+    def test_command_line_os_replaces_the_start_args_os_pair(self):
+        # the old --os value must not survive as a stray word ("32 ... --os 31")
+        self.addCleanup(irg.PURPOSE.clear)
+        self.addCleanup(irg.RIG_FLAGS.clear)
+        irg.PURPOSE.clear()
+        irg.RIG_FLAGS.clear()
+        irg.parse_args(["--os", "31"])
+        with mock.patch.dict("os.environ", {"UPTERM_RIG_FLAGS": ""}), \
+                mock.patch.object(irg.paths, "reboot_args", return_value=["--max", "--os", "32"]), \
+                mock.patch.object(irg, "rig") as rig:
+            irg.rig_start()
+        rig.assert_called_once_with("start", "--max", "--os", "31")
+
     def test_no_dopus_reaches_the_rig_start_before_or_after_purpose(self):
         # --no-dopus before --purpose was wiped when set_purpose replaced the list it shared
         for argv in (["--no-dopus", "--purpose", "vtcon-05: d9"], ["--purpose", "vtcon-05: d9", "--no-dopus"]):

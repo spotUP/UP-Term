@@ -1612,8 +1612,11 @@ def rig_start():
         a = paths.reboot_args([])
         while a:
             w = a.pop(0)
-            if w == "--purpose":
-                a[:1] = []   # this run's PURPOSE replaces the old one
+            if w in ("--purpose", "--os"):   # flags with a value: keep or drop the pair together
+                v = a[:1]
+                a[:1] = []
+                if w == "--os" and "--os" not in RIG_FLAGS:   # the command line's --os wins; PURPOSE replaces --purpose
+                    last += [w] + v
             elif w not in RIG_FLAGS:
                 last.append(w)
     rig("start", *(last + PURPOSE + RIG_FLAGS))
