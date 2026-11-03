@@ -132,6 +132,14 @@ int flat_glyph_window_gadget(unsigned long which);
 int flat_glyph_on_band(unsigned long which);
 /* The clone path's own route: flat on, not held, method OM_DRAW, and a window-border image (flat_glyph_window_gadget). */
 int flat_clone_route(const flat_state *s, unsigned long which, unsigned long method);
+/* S32 CLONE-PRIVATE-IMAGE: OS 3.2 sysiclass (intuition 47) renders its imagery ONCE, at OM_NEW, into private planar data with
+ * the SYSIA_DrawInfo pens of that moment; IM_DRAW only blits that data and never reads imp_DrInfo. The clone therefore draws
+ * a private image made with the marker DrawInfo, one per (which, width, height), kept in a small table. flat_clone_slot finds
+ * the entry for the key: its index, n when it must be appended (n < cap), or -1 when the table is full. */
+#define FLAT_CLONE_OBJS 16
+#define FLAT_CLONE_DEPTH 8          /* the marker DrawInfo's dri_Depth: the private image is baked deep enough for every marker */
+typedef struct flat_clone_key { unsigned long which; int w, h; } flat_clone_key;
+int flat_clone_slot(const flat_clone_key *keys, int n, int cap, unsigned long which, int w, int h);
 int flat_clone_map(const uint8_t *grid, int w, int h, uint8_t *out);
 int flat_clone_pen(const flat_state *s, int role, int frame_pen);
 int flat_clone_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
