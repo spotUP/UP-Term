@@ -1,3 +1,6 @@
 earth.gif: NASA's rotating Earth animation (400 x 400, 44 frames, 90 ms), public domain (NASA media usage guidelines).
 dist/updemo/earth.anim is made from it:
   python3 -I tools/gen_updemo_earth.py demo/media/earth.gif dist/updemo/earth.anim 160
+fjord.jpg: picsum.photos id 1015 (1200 x 750, a fjord), Unsplash licence (free to use).
+dist/updemo/fjord.png is made from it:
+  python3 -I tools/gen_updemo_fjord.py demo/media/fjord.jpg dist/updemo/fjord.png 160 100
