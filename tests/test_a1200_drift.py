@@ -135,4 +135,4 @@ def test_every_kit_media_file_exists_and_install_dos_copies_it():
     install = (d.ROOT / "dist/install.dos").read_text()
     for rel, src in d.KIT_MEDIA.items():
         assert (d.ROOT / "dist" / src).stat().st_size > 0, src
-        assert "Copy %s UP-Term:%s " % (src, rel.rsplit("/", 1)[0]) in install, src
+        assert "Copy share/%s UP-Term:%s " % (src, rel.rsplit("/", 1)[0]) in install, src

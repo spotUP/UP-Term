@@ -1855,7 +1855,7 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/Agent $(BUILD)/amiga/UPDemo $(BUILD)/amiga/Reboot $(BUILD)/amiga/WBPath $(BUILD)/amiga/UPBigVol $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/icat $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/amnotify $(BUILD)/amiga/amarchy-icons $(BUILD)/amiga/AmTile dist/keymap dist/bar.conf $(KIT)/Files/
 	rm -rf $(KIT)/Files/net && cp -R dist/net $(KIT)/Files/net
 	rm -rf $(KIT)/Files/Rexx && cp -R dist/rexx $(KIT)/Files/Rexx
-	rm -rf $(KIT)/Files/updemo && cp -R dist/updemo $(KIT)/Files/updemo
+	rm -rf $(KIT)/Files/share/updemo && mkdir -p $(KIT)/Files/share && cp -R dist/updemo $(KIT)/Files/share/updemo
 	rm -rf $(KIT)/Files/S && cp -R dist/S $(KIT)/Files/S
 	# BebboSSH: our build (make bebbossh) over the drawer's sources, patches and licence; SHA256SUMS and TOOLCHAIN.txt from the build
 	cp $(BUILD)/bebbossh/out/* $(KIT)/Files/net/bebbossh-1.46.1/
@@ -1998,6 +1998,7 @@ dist-check: flat-budget $(BUILD)/amiga/keymap.o $(BUILD)/amiga/amarchy-flat $(BU
 	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/AmTile
 	python3 tests/test_keymap_amiga_alloc.py $(BUILD)/amiga/keymap.o
 	python3 tests/test_dist_userdata.py
+	python3 tests/test_dist_updemo_names.py
 	python3 tests/test_rig_fixtures.py
 	python3 tests/test_rig_verdicts.py
 	@set -e; for a in $$(python3 tools/pkgs.py archives); do \

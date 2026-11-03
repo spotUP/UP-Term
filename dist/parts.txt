@@ -65,7 +65,7 @@ tools           Files/AmTile
 tools           Files/keymap
 tools           Files/bar.conf
 tools           Files/Rexx
-tools           Files/updemo
+tools           Files/share/updemo
 tools           Files/S
 tools           Files/hl
 tools           Files/mdv

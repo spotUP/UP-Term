@@ -17,7 +17,7 @@ hands over to an add-on archive (dist/packages.txt, last column):
 so that an Update over the single kit (before the split) leaves the installed
 copies of those files alone (install/updiff.c). The Amiga compares two manifests (upupdate) and
 hashes nothing itself. A kit file no line of parts.txt claims stops `make dist`."""
-import pathlib, re, sys, zlib
+import os, pathlib, re, sys, zlib
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
@@ -71,7 +71,18 @@ def handed_paths(pkg_id, rows=None):
 def absent(kit, parts):
     """The kit paths parts.txt names that the kit lacks (a kit left over from an older build, or a copy the
     Makefile lost), in parts.txt order."""
-    return [p[1] for p in parts if p[1] not in SKIP and not (kit / p[1]).exists()]
+    return [p[1] for p in parts if p[1] not in SKIP and not exact_exists(kit, p[1])]
+
+
+def exact_exists(kit, rel):
+    """Whether kit/rel exists with every name spelled as given. Path.exists() ignores case on APFS, so a kit that
+    held a drawer updemo made Files/UPDemo look present (DIST-UPDEMO-COLLISION: the program was missing, dist-check green)."""
+    here = pathlib.Path(kit)
+    for name in rel.split('/'):
+        if name not in os.listdir(here) if here.is_dir() else True:
+            return False
+        here = here / name
+    return True
 
 
 def manifest(kit, parts, dos, handed=()):
