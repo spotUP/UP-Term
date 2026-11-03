@@ -25,7 +25,7 @@ enum {
     AM_TILENMASTER, /* tile-nmaster: AmTile's number of master windows (1..AM_TILENM_MAX), no Prefs gadget */
     AM_AGENT,   /* ai-agent: the AI agent super+l opens (claude, pi); the word-to-tab table is handler/tabprog.h, no Prefs gadget */
     AM_SHOTDIR, /* shot-dir: the drawer the screenshots (CAP screen|window|region) land in; empty = RAM:Shots, no Prefs gadget */
-    AM_DESK,    /* desktop-theme: master switch of the native desktop theme (off/on, default off); no Prefs gadget */
+    AM_DESK,    /* desktop-theme: master switch of the native desktop theme (off/on, default on: a fresh install gets pointer.prefs and icontrol.prefs); no Prefs gadget */
     AM_DESKPAL, /* desktop-palette: part switch (default on under the master); these four are in desk_core target order */
     AM_DESKBACK, /* desktop-backdrop */
     AM_DESKPTR, /* desktop-pointer */

@@ -109,7 +109,7 @@ static void test_amconf_shot_dir(void)
     CHECK_STR(amconf_shot_dir(&p), "RAM:Shots");
 }
 
-/* the desktop theme switches: master off by default, the parts on under it, the mask follows desk_core's target order */
+/* the desktop theme switches: master on by default (S32-DESKTOP-THEME-DEFAULT: a fresh install writes pointer.prefs and icontrol.prefs), the parts on under it, the mask follows desk_core's target order */
 static void test_amconf_desk(void)
 {
     static const char on[] = "[profile default]\ndesktop-theme = on\ndesktop-pointer = off\n";
@@ -118,7 +118,8 @@ static void test_amconf_desk(void)
     amconf_parse("", 0, &p);
     CHECK_STR(am_keys[AM_DESK].name, "desktop-theme");
     CHECK_STR(am_keys[AM_DESKLBL].name, "desktop-labels");
-    CHECK_INT(amconf_desk_mask(&p), 0u);
+    CHECK_STR(p.val[AM_DESK], "on");
+    CHECK(amconf_desk_mask(&p) & 0x4u);   /* bit DT_POINTER: the default writes pointer.prefs */
     amconf_parse(on, (long)strlen(on), &p);
     CHECK_INT(amconf_desk_mask(&p), 0xbu); /* palette, wbpattern, font; pointer off */
     CHECK(amconf_serialize(&p, out, sizeof out) > 0);

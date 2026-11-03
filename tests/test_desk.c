@@ -463,7 +463,7 @@ static void test_desk_flat_pens_key(void)
     static const char flat_on[] = "[profile default]\ndesktop-theme = on\nflat-system-look = on\n";
     static const char flat_off[] = "[profile default]\ndesktop-theme = on\nflat-system-look = off\n";
     static const char flat_nopal[] = "[profile default]\ndesktop-theme = on\ndesktop-palette = off\nflat-system-look = on\n";
-    static const char flat_nodesk[] = "[profile default]\nflat-system-look = on\n";
+    static const char flat_nodesk[] = "[profile default]\ndesktop-theme = off\nflat-system-look = on\n";
     static const char *const names[] = {"palette-flat-pen8.prefs", "palette-p1a-pen8.prefs"};
     const char *const txt[] = {flat_on, flat_off};
     gtheme t;
@@ -1523,8 +1523,8 @@ static void test_desk_icons_state(void)
 static void test_desk_start_prefs_on_writes_border_gauge_backdrop(void)
 {
     static const char on[] = "[profile default]\ndesktop-theme = on\nflat-system-look = on\nflat-window-gadgets = on\n";
-    static const char off[] = "[profile default]\nflat-system-look = off\nflat-window-gadgets = off\n";
-    static const char nodesk[] = "[profile default]\nflat-system-look = on\n";
+    static const char off[] = "[profile default]\ndesktop-theme = off\nflat-system-look = off\nflat-window-gadgets = off\n";
+    static const char nodesk[] = "[profile default]\ndesktop-theme = off\nflat-system-look = on\n";
     static unsigned char mid[128], wb[128], pat[1024];
     am_prefs p;
     gtheme t;
