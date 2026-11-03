@@ -208,10 +208,11 @@ If EXISTS "$updest"
   Set updirthere YES
 EndIf
 If EXISTS ENVARC:up-term/Dir
-  Search >NIL: ENVARC:up-term/Dir "$updest"
-  If NOT WARN
+  Copy >NIL: ENVARC:up-term/Dir ENV:updirold CLONE
+  If "$updirold" EQ "$updest"
     Set updirthere KEEP
   EndIf
+  Delete >NIL: ENV:updirold QUIET
 EndIf
 MakeDir >NIL: ENVARC:up-term
 If "$updirthere" EQ "YES"

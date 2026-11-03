@@ -18,8 +18,10 @@ class OldDrawerSurvives(unittest.TestCase):
         pre = INSTALL[:INSTALL.index('MakeDir >NIL: "$updest"')]
         rec = pre.index('Echo >ENVARC:up-term/DirWasThere "$updest"')
         self.assertIn('If EXISTS "$updest"\n  Set updirthere YES', pre)
-        # an Install over our own Install (Dir already names the drawer) keeps the record as it is
-        self.assertIn('Search >NIL: ENVARC:up-term/Dir "$updest"', pre)
+        # an Install over our own Install (Dir names exactly this drawer) keeps the record as it is;
+        # an exact compare, not a substring Search (Dir SYS:UP-Term2 must not match SYS:UP-Term)
+        self.assertIn('Copy >NIL: ENVARC:up-term/Dir ENV:updirold CLONE\n  If "$updirold" EQ "$updest"', pre)
+        self.assertNotIn('Search >NIL: ENVARC:up-term/Dir', pre)
         self.assertIn('Delete >NIL: ENVARC:up-term/DirWasThere QUIET', pre)
         # the Dir record is rewritten only after the check read it
         self.assertLess(rec, INSTALL.index('Echo >ENVARC:up-term/Dir "$updest"'))
