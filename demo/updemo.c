@@ -2028,6 +2028,65 @@ static void sc_kitty_truecolour(long t, int first)
     ps("AGA has no deep screen: there the pictures fall back to 8-bit colour.");
 }
 
+/* Kitty picture: a real photo (dist/updemo/fjord.png, tools/gen_updemo_fjord.py: picsum.photos id 1015, Unsplash
+ * licence) sent as a kitty PNG (f=100) and placed by cell counts, beside a circle the demo draws itself. The screen's
+ * pixels are not square (640 x 256 hires: 1:2); the engine scales a picture's height by the pixel aspect, so both
+ * keep their shape. The photo is 160 x 100: 20 columns of 8 pixels, 6 rows of 8 (50 pixels high at 1:2).
+ * The circle is 64 x 64 image pixels in 8 columns by 4 rows. */
+#define RING 64
+
+static void ring_picture(unsigned char *px)
+{
+    int x, y;
+    for (y = 0; y < RING; y++)
+        for (x = 0; x < RING; x++) {
+            long dx = 2 * x - (RING - 1), dy = 2 * y - (RING - 1), d2 = dx * dx + dy * dy, r2 = (long)(RING - 1) * (RING - 1);
+            unsigned char *q = px + (y * RING + x) * 3;
+            if (d2 > r2) {
+                q[0] = q[1] = q[2] = 0;
+            } else if (d2 > r2 * 80 / 100) { /* the rim */
+                q[0] = 250;
+                q[1] = 220;
+                q[2] = 60;
+            } else { /* a lit disc */
+                q[0] = (unsigned char)(60 + 150 * (r2 - d2) / r2);
+                q[1] = (unsigned char)(90 + 120 * (r2 - d2) / r2);
+                q[2] = 220;
+            }
+        }
+}
+
+static void sc_kitty_picture(long t, int first)
+{
+    static unsigned char px[RING * RING * 3];
+    unsigned char *d;
+    long n = 0;
+    (void)t;
+    if (!first)
+        return;
+    heading("Kitty picture", "a photo scaled to cells; pictures keep their shape on hires screens");
+    ps("\033_Ga=d,d=I,i=4,q=2\033\\\033_Ga=d,d=I,i=5,q=2\033\\");
+    at(4, 6);
+    if (io->load && (d = io->load(io->user, "fjord.png", &n))) {
+        kitty_chunks("a=T,i=4,f=100,c=20,r=6,q=2", d, n);
+        free(d);
+        at(11, 6);
+        ps("A fjord, sent as a PNG (f=100)");
+    } else {
+        at(5, 6);
+        ps("(fjord.png not found: no photo)");
+    }
+    ring_picture(px);
+    at(4, 40);
+    kitty_chunks("a=T,i=5,f=24,s=64,v=64,c=8,r=4,q=2", px, sizeof px);
+    at(9, 40);
+    ps("A circle the demo drew: 64 x 64 pixels");
+    at(13, 6);
+    ps("The screen's pixels are twice as tall as wide, yet the circle is round");
+    at(14, 6);
+    ps("and the photo keeps its 8:5 shape: UP-Term scales a picture by the pixel aspect.");
+}
+
 /* Kitty z-index: z < 0 draws the picture under the text, z >= 0 over it. The same picture twice, side by side. */
 static void sc_kitty_zindex(long t, int first)
 {
@@ -2297,6 +2356,7 @@ static const scene_def scenes[] = {
     { "kitty animation", sc_kitty_anim, 0, 450, "Kitty graphics: an animation the terminal plays", 0, 0, 0 },
     { "kitty truecolour", sc_kitty_truecolour, 0, 450, "Kitty graphics: 24-bit pictures with alpha", 0, 0, 0 },
     { "kitty z-index", sc_kitty_zindex, 0, 450, "Kitty graphics: text over and under a picture", 0, 0, 0 },
+    { "kitty picture", sc_kitty_picture, 0, 450, "Kitty graphics: a photo that keeps its shape on a hires screen", 0, 0, 0 },
     { "glyphs", sc_glyphs, 0, 400, "Glyphs: Powerline, Nerd Font, emoji, box drawing", 0, 0, 0 },
     { "tabs", sc_tabs, 0, 400, "Tabs: several sessions in one window", 0, 0, 0 },
     { "synchronized output", sc_sync, 1, 400, "Synchronized output: frames shown whole", 0, 0, 0 },

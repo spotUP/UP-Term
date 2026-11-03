@@ -610,6 +610,7 @@ Copy UPDemo C:UPDemo CLONE
 ; the media of its kitty animation scene (NASA's rotating Earth); without it the scene shows a coded globe
 MakeDir >NIL: UP-Term:share UP-Term:share/updemo
 Copy share/updemo/earth.anim UP-Term:share/updemo CLONE QUIET
+Copy share/updemo/fjord.png UP-Term:share/updemo CLONE QUIET
 Copy share/updemo/kanim-stream.bin UP-Term:share/updemo CLONE QUIET
 Copy share/updemo/photo.png UP-Term:share/updemo CLONE QUIET
 ; C:Reboot: writes every volume's buffers out, then restarts (the Install's

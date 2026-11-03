@@ -36,6 +36,7 @@ USER_OWNED = ("bar.conf",)
 # drawer -> file in dist/. A rig whose UP-Term: tree predates one of these shows UPDemo's coded fallback, not the media
 # (RIG-DRIFT-MEDIA, rig 91, 2026-11-03: no earth.anim, the kitty scene judged on the wrong picture).
 KIT_MEDIA = {"share/updemo/earth.anim": "updemo/earth.anim",
+             "share/updemo/fjord.png": "updemo/fjord.png",
              "share/updemo/kanim-stream.bin": "updemo/kanim-stream.bin",
              "share/updemo/photo.png": "updemo/photo.png"}
 

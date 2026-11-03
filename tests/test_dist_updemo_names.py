@@ -10,7 +10,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tools"))
 import mkmanifest
 
 KIT = ROOT / "build/dist/up-term"
-MEDIA = ("earth.anim", "kanim-stream.bin", "photo.png")
+MEDIA = ("earth.anim", "fjord.png", "kanim-stream.bin", "photo.png")
 
 
 def case_clashes(paths):
