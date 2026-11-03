@@ -882,7 +882,7 @@ static int hook_install(flatshared *r)
     uintptr_t ours = flat_conv(IntuitionBase->LibNode.lib_Version) == FLAT_CONV_REG ? (uintptr_t)c2_disp_reg : (uintptr_t)c2_disp_stk;
     int rc;
     if (!slot)
-        return -100;
+        return FLAT_ERR_NOCLASS;
     g_r = r;                            /* the dispatcher reads it from its first call on */
     Forbid();
     rc = flat_swap_install(&r->sw, slot, ours);     /* r->sw.saved is the old routine before the first dispatcher call */
@@ -1179,11 +1179,35 @@ static void dim_release(flatshared *r)
     g_knob_pen = -1;
 }
 
+/* The hook and the two patches, the crash marker around them. A FLAT_ERR_NOCLASS result (the Workbench screen not
+ * open yet: amarchy-flat BOOT runs before LoadWB) is retried from the 1 s screen watch (flat_install_due). */
+static int install_all(flatshared *r, poll_timer *tm, int *marker_live)
+{
+    int rc;
+    marker_write();                             /* on disk before the swap, so a crash leaves it */
+    *marker_live = 1;
+    rc = hook_install(r);
+    if (rc != FLAT_OK) {
+        if (rc != FLAT_ERR_NOCLASS)
+            PutStr((STRPTR)"amarchy-flat: sysiclass hook not installed\n");
+        marker_delete();
+        *marker_live = 0;
+        return rc;
+    }
+    if (rf_install(r) != FLAT_OK)
+        PutStr((STRPTR)"amarchy-flat: RectFill patch not installed\n");
+    if (tx_install(r) != FLAT_OK)
+        PutStr((STRPTR)"amarchy-flat: Text patch not installed\n");
+    pt_start(tm, (unsigned long)FLAT_MARKER_SECS * 1000000UL);
+    return rc;
+}
+
 int main(void)
 {
     const char *args = (const char *)GetArgStr();
     flatshared *r;
     poll_timer tm, pen_tm;
+    int install_rc = FLAT_ERR_ARG;                      /* no install tried (held or no libraries) */
     int marker_live = 0;
     (void)ver;
     InitSemaphore(&cl_ss);
@@ -1262,21 +1286,7 @@ int main(void)
             if (why == FLAT_HELD_MARKER)
                 marker_delete();                        /* one inert start per crash, not for ever */
         } else {
-            int rc;
-            marker_write();                             /* on disk before the swap, so a crash leaves it */
-            marker_live = 1;
-            rc = hook_install(r);
-            if (rc != FLAT_OK) {
-                PutStr((STRPTR)"amarchy-flat: sysiclass hook not installed\n");
-                marker_delete();
-                marker_live = 0;
-            } else {
-                if (rf_install(r) != FLAT_OK)
-                    PutStr((STRPTR)"amarchy-flat: RectFill patch not installed\n");
-                if (tx_install(r) != FLAT_OK)
-                    PutStr((STRPTR)"amarchy-flat: Text patch not installed\n");
-                pt_start(&tm, (unsigned long)FLAT_MARKER_SECS * 1000000UL);
-            }
+            install_rc = install_all(r, &tm, &marker_live);
         }
     }
     g_r = r;
@@ -1290,6 +1300,8 @@ int main(void)
     for (;;) {
         ULONG got = Wait(SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D | pt_sigmask(&tm) | pt_sigmask(&pen_tm));
         if (pt_fired(&pen_tm, got)) {                   /* Workbench closed / reopened / mode change */
+            if (IntuitionBase && GfxBase && flat_install_due(r->st.held, install_rc == FLAT_OK, install_rc))
+                install_rc = install_all(r, &tm, &marker_live);     /* S32-START-LOOK: LoadWB opened the screen */
             pens_sync(r, 0);
             pt_start(&pen_tm, 1000000UL);
         }

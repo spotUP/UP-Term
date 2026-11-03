@@ -1308,6 +1308,11 @@ long desk_confirm_left(const desk_confirm *c, long now)
     return c->pending && now < c->deadline ? c->deadline - now : 0;
 }
 
+int desk_start_due(int done, int wb_screen_up, int tick_ok)
+{
+    return !done && (wb_screen_up || !tick_ok);
+}
+
 unsigned desk_start_plan(unsigned mask, int flat, int wbok, const unsigned char *wb, long wblen, int saved, int gsaved,
                          const gtheme *th, int depth, const unsigned char *pat, long patlen)
 {

@@ -337,6 +337,11 @@ long desk_start_prefs(int target, unsigned mask, const gtheme *th, int text_mode
 int desk_start_icontrol(unsigned mask, const unsigned char *cur, long curlen, int have_snap, int *snapshot);
 /* 1 when two wbpattern.prefs show the same pens (the editor stores an all-pen-0 chunk with depth 1) */
 int desk_wbpattern_same(const unsigned char *a, long alen, const unsigned char *b, long blen);
+/* S32-START-LOOK: Amarchy starts from S:User-Startup, before LoadWB opens the Workbench screen, and every start step
+ * (flat pens refresh, marker recover, start apply) needs that screen: without it they wrote nothing, once, for ever.
+ * 1: run the start steps now (not done yet, and the screen is up, or no 1 s tick exists to wait on); 0: wait or done. */
+int desk_start_due(int done, int wb_screen_up, int tick_ok);
+
 unsigned desk_start_plan(unsigned mask, int flat, int wbok, const unsigned char *wb, long wblen, int saved, int gsaved,
                          const gtheme *th, int depth, const unsigned char *pat, long patlen);
 

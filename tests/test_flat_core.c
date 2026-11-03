@@ -1411,6 +1411,16 @@ static int grid_render(void *ctx, unsigned long ids, uint8_t *grid, int w, int h
     return 1;
 }
 
+/* S32-START-LOOK: started before LoadWB, the first install finds no class; the 1 s watch retries it once the screen is up */
+static void test_boot_before_workbench_retries_install(void)
+{
+    CHECK_INT(flat_install_due(0, 0, FLAT_ERR_NOCLASS), 1);
+    CHECK_INT(flat_install_due(0, 1, FLAT_OK), 0);                 /* installed: never twice */
+    CHECK_INT(flat_install_due(FLAT_HELD_MARKER, 0, FLAT_ERR_NOCLASS), 0);   /* a kill switch stays inert */
+    CHECK_INT(flat_install_due(0, 0, FLAT_ERR_DOUBLE), 0);         /* a real swap failure is final */
+    CHECK_INT(flat_install_due(0, 0, -101), 0);                    /* out of memory is final */
+}
+
 static void test_clone_no_dividers(void)
 {
     flat_state st;
@@ -1457,6 +1467,7 @@ void suite_flat_core(void)
     test_clone_arrows();
     test_glyph_clone();
     test_clone_no_dividers();
+    test_boot_before_workbench_retries_install();
     test_title_accent();
     test_scroller();
     test_knob_pen();
