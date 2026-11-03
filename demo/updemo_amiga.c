@@ -16,6 +16,9 @@
 #include "updemo.h"
 #include "../tty/qmark.h"
 #include "../handler/upcmd.h"
+/* the base version and build day (upterm_version.h, written by the Makefile) */
+#include "upterm_version.h"
+static const char vers[] = "$VER: UPDemo " UPTERM_VERSION " (" UPTERM_DATE ") UP-Term";
 
 /* vbcc's startup runs main on a stack of this size whatever the starter gives
  * it; the cookie says the same to AmigaOS 3.2 and to vsh (RULES.md rule 6). */
@@ -130,6 +133,8 @@ int main(int argc, char **argv)
     const char *line = (const char *)GetArgStr();
     (void)argc;
     (void)argv;
+    if (!vers[0])
+        return RETURN_FAIL; /* keeps the version string linked in */
     /* `UPDemo ?` shows the template and ends (owner 2026-10-14: no
      * ReadArgs prompt waiting for the arguments; tty/qmark.h) */
     if (qmark_line(line)) {

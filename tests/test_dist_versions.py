@@ -130,12 +130,12 @@ class BuiltKit(unittest.TestCase):
     def test_base_programs_say_the_base_version(self):
         # "Version UPTerm" or "Version L:vtcon-handler" on the Amiga prints the base's version, the
         # one UP-Term.version holds; they were hand-written and stale (UPTerm 1.0, vtcon-handler 0.1,
-        # sz 1.0, UPConsole 0.1)
+        # sz 1.0, UPConsole 0.1); UPDemo had none at all (UPDEMO-NO-VERSION)
         if ARCHIVE != 'up-term':
             self.skipTest('the base only')
         stamp = open(os.path.join(KIT, 'Files/UP-Term.version'), 'rb').read().split()
         self.assert_ver(('UPTerm', 'vtcon-handler', 'pty-handler', 'vsh', 'hl', 'mdv', 'sz', 'rz',
-                         'uptelnet', 'upgetty', 'UPConsole', 'icat'), stamp[2])
+                         'uptelnet', 'upgetty', 'UPConsole', 'icat', 'UPDemo'), stamp[2])
 
     def test_claude_says_the_add_on_version(self):
         # "Version C:Claude" prints the up-claude row's version (it said 1.0 while the add-on was 1.1)

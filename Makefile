@@ -728,7 +728,7 @@ $(BUILD)/amiga/obj/cpuchk-%.o: tty/cpucheck.c tty/bmsg.h tty/bmsg.c
 
 GITREV  := $(shell git rev-parse --short HEAD 2>/dev/null)$(shell git diff --quiet 2>/dev/null || echo -dirty)
 # The base's version and the build day in the $VER of every base program (C:UPTerm, vtcon-handler,
-# pty-handler, vsh, hl, mdv, icat, sz, rz, uptelnet, upgetty, UPConsole), so "Version UPTerm" says the base it
+# pty-handler, vsh, hl, mdv, icat, sz, rz, uptelnet, upgetty, UPConsole, UPDemo), so "Version UPTerm" says the base it
 # came with: the version from dist/packages.txt (the one tools/mkkit.py writes into UP-Term.version), the
 # day as mkkit.py writes it. C:Claude ships in the up-claude add-on and says that row's version
 # (UPCLAUDE_VERSION). The header is rewritten only when it changes, so the programs rebuild when a
@@ -1291,9 +1291,9 @@ $(BUILD)/amiga/dsrtime: tests/amiga/dsrtime.c
 # W-A3: the commands answering a lone ? (tty/qmark.h, header-only) rebuild when it changes
 $(BUILD)/amiga/UPDemo $(BUILD)/amiga/UPConsole $(BUILD)/amiga/UPTerm $(BUILD)/amiga/upicon $(BUILD)/amiga/upupdate $(BUILD)/amiga/upgetty $(BUILD)/amiga/uptelnet $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/Claude $(BUILD)/amiga/upprefs $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh: tty/qmark.h
 
-$(BUILD)/amiga/UPDemo: demo/updemo.c demo/updemo_amiga.c demo/updemo.h demo/tour_themes.inc $(BUILD)/amiga/obj/cpuchk-UPDemo.o
+$(BUILD)/amiga/UPDemo: demo/updemo.c demo/updemo_amiga.c demo/updemo.h demo/tour_themes.inc $(UPTERM_VERSION_H) $(BUILD)/amiga/obj/cpuchk-UPDemo.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ demo/updemo.c demo/updemo_amiga.c $(BUILD)/amiga/obj/cpuchk-UPDemo.o
+	$(VC) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153,65 -o $@ demo/updemo.c demo/updemo_amiga.c $(BUILD)/amiga/obj/cpuchk-UPDemo.o
 
 demo-host: $(BUILD)/updemo
 $(BUILD)/updemo: demo/updemo.c demo/updemo_posix.c demo/updemo.h demo/tour_themes.inc
