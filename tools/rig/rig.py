@@ -195,9 +195,13 @@ RIG_LIBS = ["Assign >NIL: LIBS: VTC:ixp6",
 # to reset the Workbench screen") when Install CONSOLE DEVICE ran, and
 # wasabid stopped answering until both were closed (2026-10-07).
 # Assign EXISTS never asks for a volume.
+# The drawer is tested too (SHELL-PATH-RC10, 2026-11-03): a rig whose VTC: has no gg/bin (a rig 91 build
+# without the gg tree) still ran the Path line and every new Shell printed "Path failed returncode 10".
 SHELL_STARTUP_PATH = ["Assign >NIL: VTC: EXISTS", "If NOT WARN",
-                      "  Path >NIL: VTC:gg/bin ADD", "EndIf"]
-BARE_SHELL_PATH = "Path >NIL: VTC:gg/bin ADD"
+                      "  If EXISTS VTC:gg/bin", "    Path >NIL: VTC:gg/bin ADD", "  EndIf", "EndIf"]
+# The earlier forms of that block, which guard_shell_startup rewrites to SHELL_STARTUP_PATH.
+OLD_SHELL_PATH_BLOCKS = [["Assign >NIL: VTC: EXISTS", "If NOT WARN", "  Path >NIL: VTC:gg/bin ADD", "EndIf"],
+                         ["Path >NIL: VTC:gg/bin ADD"]]
 
 # The kit's install copies the programs this repo builds into SYS: (L:, C:, DEVS:,
 # UP-Term:bin), and what the system runs is those copies: XCON: is mounted from
@@ -2211,10 +2215,19 @@ def boot_assigns_missing():
     need = BOOT_ASSIGNS + (["GG"] if (RIG / "vtc/gg/bin/sh").exists() else [])
     return [n for n in need if n.upper() not in have]
 
+def upgrade_shell_path(lines):
+    """lines of S:Shell-Startup with an earlier Path block (OLD_SHELL_PATH_BLOCKS) replaced by
+    SHELL_STARTUP_PATH; the same list when there is none."""
+    for old in OLD_SHELL_PATH_BLOCKS:
+        for i in range(len(lines) - len(old) + 1):
+            if lines[i:i + len(old)] == old:
+                return lines[:i] + SHELL_STARTUP_PATH + lines[i + len(old):]
+    return lines
+
 def guard_shell_startup():
-    """An earlier go's bare BARE_SHELL_PATH line in S:Shell-Startup becomes
-    the guarded SHELL_STARTUP_PATH block (the system disk keeps it across
-    setups, so go's own "added once" never rewrites it)."""
+    """An earlier go's Path block in S:Shell-Startup (bare, or guarded on VTC: only) becomes the
+    SHELL_STARTUP_PATH block (the system disk keeps it across setups, so go's own "added once" never
+    rewrites it)."""
     import ami
     tmp = RIG / "shell-startup.tmp"
     try:
@@ -2223,15 +2236,14 @@ def guard_shell_startup():
         print("[WARN] S:Shell-Startup not read:", e)
         return
     lines = tmp.read_text(encoding="latin-1").split("\n")
-    if BARE_SHELL_PATH not in lines:
+    new = upgrade_shell_path(lines)
+    if new == lines:
         tmp.unlink()
         return
-    i = lines.index(BARE_SHELL_PATH)
-    lines[i:i + 1] = SHELL_STARTUP_PATH
-    tmp.write_text("\n".join(lines), encoding="latin-1")
+    tmp.write_text("\n".join(new), encoding="latin-1")
     ami.put(str(tmp), "S:Shell-Startup")
     tmp.unlink()
-    print("S:Shell-Startup: the VTC:gg/bin path line is guarded now")
+    print("S:Shell-Startup: the VTC:gg/bin path line is guarded by the drawer now")
 
 WB_RESET_RETRIES = 3   # Retry clicks before the start fails: Retry never succeeds while windows stay open
 
