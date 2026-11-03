@@ -256,7 +256,7 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
     struct impDraw *d = (struct impDraw *)msg;
     struct Image *im = (struct Image *)obj;
     ULONG which = 0xFFFF, raw_which;
-    int frame_pen = -1, text_pen = -1;
+    int frame_pen = -1, text_pen = -1, band_rows = 9999, edge_pen = -1;
     r->st.calls++;
     if (msg->MethodID != FLAT_IM_DRAW || !r->st.enabled || r->st.held || !d->imp_RPort)
         return 0;
@@ -293,6 +293,8 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
                                       (((struct Window *)fl->Window)->Flags & WFLG_WINDOWACTIVE) != 0);
             if (band >= 0 && flat_glyph_on_band(which)) {   /* active: the box is the title band; the glyph takes the title text's pen */
                 frame_pen = band;
+                band_rows = flat_clone_band_rows(im->TopEdge + d->imp_Offset.Y, im->Height, ((struct Window *)fl->Window)->BorderTop);
+                edge_pen = d->imp_DrInfo->dri_Pens[BACKGROUNDPEN];
                 text_pen = r->st.pen_ptext;
             } else
                 frame_pen = d->imp_DrInfo->dri_Pens[BACKGROUNDPEN];     /* FLAT-SOLID-FILL: the frame is the background */
@@ -305,7 +307,7 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
         env.h = hk; env.obj = obj; env.d = d; env.reg = reg; env.which = raw_which; env.why = CLONE_WHY_NONE;
         got = AttemptSemaphore(&cl_ss);
         rc = !got ? FLAT_CLONE_FAIL : flat_clone_draw(&r->st, which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
-                             im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, frame_pen, text_pen, clone_render, &env, c2_fill, d->imp_RPort, cl_scratch);
+                             im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, frame_pen, text_pen, band_rows, edge_pen, clone_render, &env, c2_fill, d->imp_RPort, cl_scratch);
         if (got && rc == FLAT_CLONE_FAIL && env.why == CLONE_WHY_NONE) {
             int i, nz = 0;
             ULONG mk = 0;

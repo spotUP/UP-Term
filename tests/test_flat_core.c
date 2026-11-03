@@ -1268,7 +1268,7 @@ static void test_arrow_glyph_pens(void)
             for (si = 0; si < 2; si++) {
                 int bw = dims[d][0], bh = dims[d][1], rc;
                 cv_clear();
-                rc = flat_clone_draw(&st, w, FLAT_IM_DRAW, (unsigned long)states[si], 0, 0, bw, bh, st.pen_back, -1, blank_render, 0, cv_fill, 0, g_scr);
+                rc = flat_clone_draw(&st, w, FLAT_IM_DRAW, (unsigned long)states[si], 0, 0, bw, bh, st.pen_back, -1, 99, -1, blank_render, 0, cv_fill, 0, g_scr);
                 CHECK_INT(rc, FLAT_CLONE_FAIL);                  /* the system image gave no pixel */
                 CHECK_INT(flat_glyph_draw(&st, w, FLAT_IM_DRAW, (unsigned long)states[si], 0, 0, bw, bh, st.pen_back, 1, cv_fill, 0), 1);
                 glyph = box = 0;
@@ -1357,7 +1357,7 @@ static void test_glyph_clone(void)
     st.enabled = 1;
     cv_clear();
     g_render_calls = g_render_fail = 0;
-    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 2, 3, 9, 9, 'F', -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 2, 3, 9, 9, 'F', -1, 99, -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
     CHECK_INT(g_render_calls, 1);                                               /* the sentinel: the clone path ran */
     glyph = box = 0;
     for (y = 0; y < 9; y++)
@@ -1373,12 +1373,12 @@ static void test_glyph_clone(void)
     CHECK_INT(cv[2][2], '?');                                                   /* nothing outside the box */
     /* inactive: the glyph takes the line pen, the box stays the frame pen */
     cv_clear();
-    CHECK_INT(flat_clone_draw(&st, FLAT_W_ZOOM, FLAT_IM_DRAW, 5, 0, 0, 9, 9, 'F', -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_ZOOM, FLAT_IM_DRAW, 5, 0, 0, 9, 9, 'F', -1, 99, -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
     CHECK_INT(cv[4][4], '+');
     CHECK_INT(cv[0][0], 'F');
     /* selected: ground is FILLPEN (the dominant inside marker), ring reversed; glyph in back pen on the text-pen box */
     cv_clear();
-    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 1, 0, 0, 9, 9, 'F', -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 1, 0, 0, 9, 9, 'F', -1, 99, -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
     CHECK_INT(cv[0][0], '#');
     CHECK_INT(cv[4][4], '.');
     CHECK_INT(cv[1][1], '#');
@@ -1386,26 +1386,26 @@ static void test_glyph_clone(void)
     {   /* active window: box = band pen, glyph = the title text pen (text_pen overrides the normal glyph only) */
         flat_state b = st;
         cv_clear();
-        CHECK_INT(flat_clone_draw(&b, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 9, 9, 'B', 'T', fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
+        CHECK_INT(flat_clone_draw(&b, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 9, 9, 'B', 'T', 99, -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
         CHECK(cv[0][0] == 'B' && cv[4][4] == 'T');
         cv_clear();
-        CHECK_INT(flat_clone_draw(&b, FLAT_W_CLOSE, FLAT_IM_DRAW, 2, 0, 0, 9, 9, 'B', 'T', fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
+        CHECK_INT(flat_clone_draw(&b, FLAT_W_CLOSE, FLAT_IM_DRAW, 2, 0, 0, 9, 9, 'B', 'T', 99, -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
         CHECK(cv[4][4] == '+');                                                 /* inactive keeps its own glyph pen */
         cv_clear();
     }
     g_render_calls = 0; g_render_fail = 1;
-    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 9, 9, 'F', -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_FAIL);
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 9, 9, 'F', -1, 99, -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_FAIL);
     g_render_fail = 0; g_render_calls = 0;
     cv_clear();                                                                 /* an empty clone is a failure and paints nothing */
-    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 9, 9, 'F', 'T', blank_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_FAIL);
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 9, 9, 'F', 'T', 99, -1, blank_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_FAIL);
     CHECK_INT(g_render_calls, 1);
     CHECK(cv[0][0] == '?' && cv[4][4] == '?');
     g_render_calls = 0;
-    CHECK_INT(flat_clone_draw(&st, FLAT_W_MENUCHECK, FLAT_IM_DRAW, 0, 0, 0, 9, 9, 'F', -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_NO);
-    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, 0x203, 0, 0, 0, 9, 9, 'F', -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_NO);
-    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 6, 9, 'F', -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_NO);
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_MENUCHECK, FLAT_IM_DRAW, 0, 0, 0, 9, 9, 'F', -1, 99, -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_NO);
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, 0x203, 0, 0, 0, 9, 9, 'F', -1, 99, -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_NO);
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 6, 9, 'F', -1, 99, -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_NO);
     st.held = 1;
-    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 9, 9, 'F', -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_NO);
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 9, 9, 'F', -1, 99, -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_NO);
     CHECK_INT(g_render_calls, 0);
 }
 
@@ -1478,7 +1478,7 @@ static void test_clone_clip_depth_marker(void)
     cv_clear();
     g_render_calls = 0;
     g_clip_le = -1;
-    CHECK_INT(flat_clone_draw(&st, FLAT_W_DEPTH, FLAT_IM_DRAW, 0, 0, 0, 24, 11, 'B', 'T', clip_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_DEPTH, FLAT_IM_DRAW, 0, 0, 0, 24, 11, 'B', 'T', 99, -1, clip_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
     CHECK_INT(g_render_calls, 1);
     for (y = 0; y < 11; y++)
         for (x = 0; x < 24; x++) {
@@ -1493,6 +1493,32 @@ static void test_clone_clip_depth_marker(void)
     CHECK_INT(glyph, 74);                                            /* = the real-pen fixture g_os32_depth */
 }
 
+static void test_clone_band_rows_strip(void)
+{
+    flat_state st;
+    int x, y, edge = 0;
+    CHECK_INT(flat_clone_band_rows(0, 11, 11), 10);
+    CHECK_INT(flat_clone_band_rows(2, 11, 11), 8);
+    CHECK_INT(flat_clone_band_rows(0, 11, 30), 11);
+    CHECK_INT(flat_clone_band_rows(12, 11, 11), 0);
+    glyph_state(&st);
+    st.enabled = 1;
+    cv_clear();
+    g_render_calls = 0;
+    g_clip_le = -1;
+    /* S32-TITLE-STRIP: row 10 is the title bar's bottom edge (background), not band */
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_DEPTH, FLAT_IM_DRAW, 0, 0, 0, 24, 11, 'B', 'T', 10, 'E', clip_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
+    for (y = 0; y < 11; y++)
+        for (x = 0; x < 24; x++) {
+            if (y == 10) {
+                CHECK(cv[y][x] == 'E' || cv[y][x] == 'T');
+                edge += cv[y][x] == 'E';
+            } else
+                CHECK(cv[y][x] == 'B' || cv[y][x] == 'T');
+        }
+    CHECK(edge > 0);
+}
+
 static void test_clone_no_dividers(void)
 {
     flat_state st;
@@ -1503,7 +1529,7 @@ static void test_clone_no_dividers(void)
     cv_clear();
     g_render_calls = 0;
     g_grid_rows = g_os32_close;
-    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 20, 11, 'B', 'T', grid_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 20, 11, 'B', 'T', 99, -1, grid_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
     CHECK_INT(g_render_calls, 1);
     glyph = 0;
     for (y = 0; y < 11; y++)
@@ -1518,7 +1544,7 @@ static void test_clone_no_dividers(void)
     /* depth 24 x 11: the left separator (columns 0-1) and the right edge gone, both overlapping boxes kept */
     cv_clear();
     g_grid_rows = g_os32_depth;
-    CHECK_INT(flat_clone_draw(&st, FLAT_W_DEPTH, FLAT_IM_DRAW, 0, 0, 0, 24, 11, 'B', 'T', grid_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_DEPTH, FLAT_IM_DRAW, 0, 0, 0, 24, 11, 'B', 'T', 99, -1, grid_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
     glyph = 0;
     for (y = 0; y < 11; y++)
         for (x = 0; x < 24; x++) {
@@ -1541,6 +1567,7 @@ void suite_flat_core(void)
     test_clone_private_slot();
     test_clone_no_dividers();
     test_clone_clip_depth_marker();
+    test_clone_band_rows_strip();
     test_boot_before_workbench_retries_install();
     test_title_accent();
     test_scroller();

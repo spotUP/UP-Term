@@ -147,7 +147,9 @@ int flat_clone_map(const uint8_t *grid, int w, int h, uint8_t *out);
  * 1 px left and its right bevel became a glyph line (rig 23, s32-evidence/clone-clip-hunt.md). */
 int flat_clone_offset(int edge);
 int flat_clone_pen(const flat_state *s, int role, int frame_pen);
+/* S32-TITLE-STRIP: how many rows of a gadget box (top at window row box_top, height h) lie on the title band, which is window rows 0 .. border_top-2 (the bar's last row is its edge, the background colour): clamp(border_top - 1 - box_top, 0, h). */
+int flat_clone_band_rows(int box_top, int h, int border_top);
 int flat_clone_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
-                    int w, int h, int frame_pen, int text_pen, flat_render_fn render, void *rctx, flat_fill_fn fill, void *fctx, uint8_t *scratch);
-/* scratch: FLAT_CLONE_SCRATCH bytes owned by the caller for the call. text_pen: >= 0 replaces the pen of the normal (active, unselected) glyph, the pen the title text uses on the band; -1 keeps flat_glyph_pen. */
+                    int w, int h, int frame_pen, int text_pen, int band_rows, int edge_pen, flat_render_fn render, void *rctx, flat_fill_fn fill, void *fctx, uint8_t *scratch);
+/* scratch: FLAT_CLONE_SCRATCH bytes owned by the caller for the call. band_rows: box rows y < band_rows are filled with the frame/box pen, the rest with edge_pen (>= 0; -1 keeps the box pen); band_rows >= h paints the whole box as before. text_pen: >= 0 replaces the pen of the normal (active, unselected) glyph, the pen the title text uses on the band; -1 keeps flat_glyph_pen. */
 #endif

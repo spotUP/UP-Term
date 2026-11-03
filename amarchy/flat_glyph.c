@@ -273,8 +273,14 @@ int flat_clone_pen(const flat_state *s, int role, int frame_pen)
     return role == FLAT_ROLE_FRAME && frame_pen >= 0 ? frame_pen : flat_glyph_pen(s, role);
 }
 
+int flat_clone_band_rows(int box_top, int h, int border_top)
+{
+    int n = border_top - 1 - box_top;
+    return n < 0 ? 0 : n > h ? h : n;
+}
+
 int flat_clone_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
-                    int w, int h, int frame_pen, int text_pen, flat_render_fn render, void *rctx, flat_fill_fn fill, void *fctx, uint8_t *scratch)
+                    int w, int h, int frame_pen, int text_pen, int band_rows, int edge_pen, flat_render_fn render, void *rctx, flat_fill_fn fill, void *fctx, uint8_t *scratch)
 {
     uint8_t *grid = scratch, *map = scratch + FLAT_CLONE_MAX * FLAT_CLONE_MAX;
     int state, grole, brole, gpen, bpen, x, y;
@@ -290,7 +296,13 @@ int flat_clone_draw(const flat_state *s, unsigned long which, unsigned long meth
     flat_glyph_roles(which, state, &grole, &brole);
     gpen = grole == FLAT_ROLE_TEXT && text_pen >= 0 ? text_pen : flat_clone_pen(s, grole, frame_pen);
     bpen = flat_clone_pen(s, brole, frame_pen);
-    fill(fctx, ox, oy, ox + w - 1, oy + h - 1, bpen);
+    {
+        int br = band_rows < 0 ? 0 : band_rows > h ? h : band_rows;
+        if (br > 0)
+            fill(fctx, ox, oy, ox + w - 1, oy + br - 1, bpen);
+        if (br < h)
+            fill(fctx, ox, oy + br, ox + w - 1, oy + h - 1, edge_pen >= 0 ? edge_pen : bpen);
+    }
     for (y = 0; y < h; y++)
         for (x = 0; x < w; x++)
             if (map[y * w + x]) {
