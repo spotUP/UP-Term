@@ -436,17 +436,22 @@ void strut_clear(void)
     {
         const struct Screen *scr = rscr;
         for (i = 0; i < g_pub->nr; i++) {
+            /* Find the window and decide under the lock; move it after
+             * UnlockIBase, the same order strut_publish uses. */
+            int go = 0;
+            win_box out;
             ULONG il = LockIBase(0);
             for (w = scr->FirstWindow; w && w != g_pub->r[i].w; w = w->NextWindow)
                 ;
             if (w) {
-                win_box now, out;
+                win_box now;
                 memset(&now, 0, sizeof now);
                 now.left = w->LeftEdge; now.top = w->TopEdge; now.width = w->Width; now.height = w->Height;
-                if (win_strut_restore(&now, &g_pub->r[i].set, &g_pub->r[i].old, &out))
-                    ChangeWindowBox(w, out.left, out.top, out.width, out.height);
+                go = win_strut_restore(&now, &g_pub->r[i].set, &g_pub->r[i].old, &out);
             }
             UnlockIBase(il);
+            if (go)
+                ChangeWindowBox(w, out.left, out.top, out.width, out.height);
         }
         g_pub->nr = 0;
     }
