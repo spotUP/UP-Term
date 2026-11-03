@@ -118,7 +118,9 @@ typedef struct cloneenv {
     Object *obj;
     struct impDraw *d;
     int reg;
+    int why;                    /* CLONE_WHY_*: set by clone_render when it gives up */
 } cloneenv;
+enum { CLONE_WHY_NONE = 0, CLONE_WHY_BUSY, CLONE_WHY_NODRI, CLONE_WHY_NOBM };
 
 static struct SignalSemaphore cl_ss;
 static struct BitMap *cl_bm;
@@ -167,9 +169,17 @@ static int clone_render(void *ctx, unsigned long ids, uint8_t *grid, int w, int 
     struct DrawInfo di;
     int x, y, i, ok = 0;
     (void)ids;
-    if (!e->d->imp_DrInfo || !AttemptSemaphore(&cl_ss))
+    if (!e->d->imp_DrInfo) {
+        e->why = CLONE_WHY_NODRI;
         return 0;
-    if (clone_ensure(w, h)) {
+    }
+    if (!AttemptSemaphore(&cl_ss)) {
+        e->why = CLONE_WHY_BUSY;
+        return 0;
+    }
+    if (!clone_ensure(w, h))
+        e->why = CLONE_WHY_NOBM;
+    else {
         di = *e->d->imp_DrInfo;
         for (i = 0; i < FLAT_CLONE_MARKS; i++)
             cl_pens[i] = (UWORD)FLAT_CLONE_MARK(i);
@@ -244,7 +254,7 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
     if (flat_clone_route(&r->st, which, msg->MethodID)) {
         cloneenv env;
         int rc, got;
-        env.h = hk; env.obj = obj; env.d = d; env.reg = reg;
+        env.h = hk; env.obj = obj; env.d = d; env.reg = reg; env.why = CLONE_WHY_NONE;
         got = AttemptSemaphore(&cl_ss);
         rc = !got ? FLAT_CLONE_FAIL : flat_clone_draw(&r->st, which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
                              im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, frame_pen, text_pen, clone_render, &env, c2_fill, d->imp_RPort, cl_scratch);
@@ -254,8 +264,18 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
             r->cdraws++;
             return 1;
         }
-        if (rc == FLAT_CLONE_FAIL)
-            r->cfall++;                     /* no offscreen bitmap / busy / no DrawInfo: the block glyph below */
+        if (rc == FLAT_CLONE_FAIL) {
+            r->cfall++;                     /* no offscreen bitmap / busy / no DrawInfo / empty image: the block glyph below */
+            if (!got || env.why == CLONE_WHY_BUSY)
+                r->cf_busy++;
+            else if (env.why == CLONE_WHY_NODRI)
+                r->cf_nodri++;
+            else if (env.why == CLONE_WHY_NOBM)
+                r->cf_nobm++;
+            else
+                r->cf_empty++;              /* render ran, the system image put no pixel in the offscreen rastport */
+            r->cf_mask |= 1UL << (which & 31);
+        }
     }
     return flat_glyph_draw(&r->st, which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
                            im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, frame_pen,
@@ -725,7 +745,7 @@ static void print_status(void)
     int finst = 0, rinst = 0;
     unsigned long rcalls = 0, rhits = 0, shits = 0, tcalls = 0, thits = 0;
     int tinst = 0;
-    unsigned long cdraws = 0, cfall = 0, alooks = 0;
+    unsigned long cdraws = 0, cfall = 0, alooks = 0, cfb = 0, cfd = 0, cfm = 0, cfe = 0, cfk = 0;
     int apx = 0, sring[16][9], sn = 0;
     uint32_t dsum[FLAT_EL_COUNT] = { 0, 0 };
     memset(&copy, 0, sizeof copy);
@@ -741,6 +761,7 @@ static void print_status(void)
         rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits;
         tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits;
         cdraws = r->cdraws; cfall = r->cfall;
+        cfb = r->cf_busy; cfd = r->cf_nodri; cfm = r->cf_nobm; cfe = r->cf_empty; cfk = r->cf_mask;
         apx = r->aspect_px; alooks = r->aspect_looks;
         memcpy(sring, r->sring, sizeof sring); sn = (int)(r->sring_n > 16 ? 16 : r->sring_n);
     }
@@ -801,6 +822,15 @@ static void print_status(void)
         int n = 0;
         put_word(line, &n, "clone draws=");         put_num(line, &n, cdraws);
         put_word(line, &n, " fallback=");           put_num(line, &n, cfall);
+        line[n] = 0;
+        PutStr((STRPTR)line);
+        PutStr((STRPTR)"\n");
+        n = 0;
+        put_word(line, &n, "clone fallback busy="); put_num(line, &n, cfb);
+        put_word(line, &n, " nodri=");              put_num(line, &n, cfd);
+        put_word(line, &n, " nobm=");               put_num(line, &n, cfm);
+        put_word(line, &n, " empty=");              put_num(line, &n, cfe);
+        put_word(line, &n, " which=");              put_num(line, &n, cfk);
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");

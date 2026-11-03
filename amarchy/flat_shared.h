@@ -48,6 +48,8 @@ typedef struct flatshared {
     ULONG ttitle;               /* window titles redrawn by FLAT-TITLE-ACCENT (the sentinel) */
     ULONG tcalls, thits;        /* every patched Text call / every pressed label recoloured (the sentinels) */
     ULONG cdraws, cfall;        /* FLAT-GLYPH-OS-SHAPES sentinels: gadgets drawn by cloning the system image / clone attempts that fell back to the block glyph */
+    ULONG cf_busy, cf_nodri, cf_nobm, cf_empty;    /* cfall split by cause: cl_ss held by another task / no DrawInfo / no offscreen bitmap / image drew no pixel */
+    ULONG cf_mask;              /* bit (which & 31) set for every image that fell back (SYSIA_Which after flat_which_alias) */
     /* FLAT-ASPECT-BORDERS: the cached side-line width for one screen (flat.c side_px) */
     struct Screen *aspect_scr;
     ULONG aspect_mode;
