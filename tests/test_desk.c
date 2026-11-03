@@ -1593,7 +1593,7 @@ static void test_desk_start_prefs_on_writes_theme_palette(void)
 {
     static const char on[] = "[profile default]\ndesktop-theme = on\ndesktop-palette = on\nflat-system-look = on\n";
     static const char nopal[] = "[profile default]\ndesktop-theme = on\ndesktop-palette = off\nflat-system-look = on\n";
-    static const char nodesk[] = "[profile default]\nflat-system-look = on\n";
+    static const char nodesk[] = "[profile default]\ndesktop-theme = off\nflat-system-look = on\n";   /* desktop-theme defaults on (295ef667): the master off is spelled out */
     static const unsigned short stock[8] = { 0xaaa, 0x000, 0xfff, 0x68b, 0xe44, 0x5d5, 0x04d, 0xe90 };
     static unsigned char base[1024], out[1024], again[1024];
     unsigned char pens[DK_SLOTS];
