@@ -103,7 +103,7 @@ class StartWaitsForProgress(unittest.TestCase):
                     state["now"] += s
                     # a new boot.log line every 100 s for 10 minutes, wasabid up at 630 s
                     log.write_text("go started\n" + "".join("step %d\n" % i for i in range(int(state["now"] // 100)))
-                                   + ("assigns done\nwasabid started\n" if state["now"] >= 630 else ""))
+                                   + ("assigns done\nUP-Term shadows done\nwasabid started\n" if state["now"] >= 630 else ""))
 
                 @staticmethod
                 def time():

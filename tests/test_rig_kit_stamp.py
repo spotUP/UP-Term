@@ -65,7 +65,7 @@ class Stamp(unittest.TestCase):
 
 class GoScript(unittest.TestCase):
     def lines(self):
-        return [l.strip() for l in rig.GO.splitlines()]
+        return [l.strip() for l in rig.SHADOWS_UP_SCRIPT.splitlines()]
 
     def test_shadow_pass_sits_behind_the_stamp(self):
         g = self.lines()
