@@ -814,6 +814,10 @@ below. Every decision is closed; T-B to T-H need no further input.
   lands on: their text and background stay under the picture and show
   through its translucent pixels (the render draws bg + glyph, then blends
   the picture over them). Sixel placements still blank.
+  Reversed by owner 2026-11-03: text written later into a kitty z >= 0
+  cell no longer takes it; the picture stays over the new glyph as in kitty
+  (cells carry VT_CELL_IMAGE | VT_CELL_FRONT, text_pad keeps both). Sixel
+  cells (VT_CELL_IMAGE alone) are still taken by text.
 - D13 Glyph edges over a z < 0 image. R6 (owner) rules out reading the
   screen back to blend. Recommended: glyphs in cells over an image are
   drawn without antialiasing (hard edges, no fringe). Other: antialiased

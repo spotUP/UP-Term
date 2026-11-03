@@ -2038,8 +2038,7 @@ static void sc_kitty_zindex(long t, int first)
         return;
     heading("Kitty z-index", "z below 0 puts a picture under the text, z of 0 or more over it");
     ps("\033_Ga=d,d=I,i=4,q=2\033\\\033_Ga=d,d=I,i=5,q=2\033\\");
-    /* The text goes first: text written later into a z >= 0 picture's cells takes them over (D12), so the front
-     * picture would lose every row below its first. */
+    /* The text goes first, so the pictures lie over it whichever way the engine treats later text (D12). */
     for (i = 0; i < 4; i++) { /* the same text lines on both pictures */
         at(5 + i, 4);
         ps("TEXT OVER THE PICTURE");

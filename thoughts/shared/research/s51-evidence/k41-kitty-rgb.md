@@ -88,7 +88,7 @@ K40d must differ only inside that picture's rectangle; everything else stays pix
 Owner decision O6: a kitty z >= 0 placement keeps the text and cell background under it, as real kitty does.
 Fix in engine/vtengine.c sixel_place_row: a kitty picture (kind 1) with z >= 0 now only ORs VT_CELL_IMAGE into
 the cells (glyph, fg, bg, attrs and any VT_CELL_UNDER stay); a sixel still blanks them to the default colours.
-Text written later still takes the cell (D12: print clears VT_CELL_IMAGE as before). No render change: draw_rows
+Text written later took the cell when this was written (D12); reversed 2026-11-03: a kitty z >= 0 cell keeps VT_CELL_IMAGE. No render change: draw_rows
 already draws every cell's background and glyph, and draw_images then blends the picture over them (K40b soft blend,
 ReadPixelArray). Other VT_CELL_IMAGE readers checked: reflow copies the cell whole and carries the placement
 (place_carry); scrollback packing stores pad with the cell; row_no_glyphs / cell_plain_blank already treat a pad

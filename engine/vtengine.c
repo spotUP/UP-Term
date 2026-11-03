@@ -624,6 +624,14 @@ static void place_carry(vt_term *t, const vt_line *from, int x, vt_line *to, int
     place_link(t, to, slot, gen, col0, row);
 }
 
+/* The pad of a cell that text is written into: a picture under the text
+ * (VT_CELL_UNDER, K30) stays, and so does a kitty z >= 0 picture over it
+ * (VT_CELL_FRONT, D12); a sixel's cell (VT_CELL_IMAGE alone) is taken. */
+static vt_u8 text_pad(vt_u8 pad)
+{
+    return (vt_u8)(pad & ((pad & VT_CELL_FRONT) ? (VT_CELL_UNDER | VT_CELL_IMAGE | VT_CELL_FRONT) : VT_CELL_UNDER));
+}
+
 static void blank_cell(const vt_term *t, vt_cell *c)
 {
     c->ch = ' ';
@@ -2547,7 +2555,7 @@ static void put_char(vt_term *t, vt_u32 cp)
     c->deco = t->deco;
     c->ext = t->ext;
     c->width = (vt_u8)w;
-    c->pad &= VT_CELL_UNDER; /* text over an image cell; an image under the text (K30) stays */
+    c->pad = text_pad(c->pad); /* a picture over (D12) or under (K30) the text stays */
     if (w == 2) {
         c[1] = c[0];
         c[1].ch = ' ';
@@ -5330,9 +5338,10 @@ static void sixel_place_row(vt_term *t, int slot, int y, int x0, int k)
         /* kitty z >= 0: over the text, which stays under it as in kitty
          * (O6, K40d): the cells keep their glyph and colours and the
          * picture's translucent pixels show them. Text written there
-         * later still takes the cell (D12). */
+         * later keeps the picture over it as in kitty (D12): the cells
+         * carry VT_CELL_FRONT, which a sixel's cells do not. */
         for (x = x0; x < x1; x++)
-            l->c[x].pad |= VT_CELL_IMAGE;
+            l->c[x].pad |= VT_CELL_IMAGE | VT_CELL_FRONT;
         mark(t, x0, y, x1);
         place_add(t, l, slot, x0, k);
         return;
@@ -6569,7 +6578,7 @@ static long put_ascii_run(vt_term *t, const vt_u8 *b, long n, int plain)
                     c->attr = t->attr;
                     c->deco = t->deco;
                     c->ext = t->ext;
-                    c->pad &= VT_CELL_UNDER;
+                    c->pad = text_pad(c->pad);
                     l->chonly = 0;
                     k = 1;
                 }
@@ -6604,7 +6613,7 @@ static long put_ascii_run(vt_term *t, const vt_u8 *b, long n, int plain)
                     c[k].attr = t->attr;
                     c[k].deco = t->deco;
                     c[k].ext = t->ext;
-                    c[k].pad &= VT_CELL_UNDER; /* text over an image cell; one under the text stays (K30) */
+                    c[k].pad = text_pad(c[k].pad); /* a picture over (D12) or under (K30) the text stays */
                 }
               }
                 if (k)
@@ -6651,7 +6660,7 @@ static long put_ascii_run(vt_term *t, const vt_u8 *b, long n, int plain)
             c->attr = t->attr;
             c->deco = t->deco;
             c->ext = t->ext;
-            c->pad &= VT_CELL_UNDER;
+            c->pad = text_pad(c->pad);
             l->chonly = 0;
         }
         if (l->dx0 > x)

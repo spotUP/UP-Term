@@ -937,8 +937,8 @@ static void k30_text_over_a_picture_below_keeps_it(void)
 
 /* K40d (O6): a kitty picture with z >= 0 lies over the text as in kitty:
  * its cells keep their glyph and colours (its translucent pixels show
- * them) and gain VT_CELL_IMAGE. Text written there later still takes the
- * cell (D12). A sixel over the same text still blanks its cells. Before
+ * them) and gain VT_CELL_IMAGE. Text written there later keeps the picture
+ * over it, as in kitty (D12). A sixel over the same text still blanks its cells. Before
  * K40d the kitty picture blanked the cells to the default colours too. */
 static void k40d_kitty_front_picture_keeps_the_cells(void)
 {
@@ -953,9 +953,24 @@ static void k40d_kitty_front_picture_keeps_the_cells(void)
     CHECK(h_cell(t, 0, 0)->bg == 4);
     CHECK(vt_row_image(t, 0, 0, &v));
     CHECK_INT((int)v.z, 5);
-    h_put(t, "\033[1;2Hq"); /* D12: text written over the picture takes that cell */
-    CHECK(h_cell(t, 1, 0)->ch == 'q' && !is_image(t, 1, 0));
+    h_put(t, "\033[1;2Hq"); /* D12: text written over the picture keeps the picture over it */
+    CHECK(h_cell(t, 1, 0)->ch == 'q' && is_image(t, 1, 0));
     CHECK(is_image(t, 0, 0) && is_image(t, 2, 0));
+    vt_free(t);
+    /* text written into a z=1 picture's cells later: the cells keep VT_CELL_IMAGE and store the glyphs
+     * (the one-character, run and put_char paths all keep it) */
+    t = kitty_term(20, 8);
+    put_at(t, 1, 1, "i=1,p=1,z=1,c=6,r=2");
+    CHECK(is_image(t, 0, 0) && is_image(t, 5, 1));
+    h_put(t, "\033[1;1Hab");
+    h_put(t, "\033[2;1H\033[31mc\033[0m\033[2;3H\xe2\x82\xac");
+    CHECK(h_cell(t, 0, 0)->ch == 'a' && is_image(t, 0, 0));
+    CHECK(h_cell(t, 1, 0)->ch == 'b' && is_image(t, 1, 0));
+    CHECK(h_cell(t, 0, 1)->ch == 'c' && is_image(t, 0, 1));
+    CHECK(vt_row_image(t, 0, 0, &v) && v.z == 1);
+    h_put(t, "\033_Ga=d,d=a,q=2\033\\"); /* a=d takes the picture away */
+    CHECK(!vt_row_image(t, 0, 0, &v));
+    CHECK(h_cell(t, 0, 0)->ch == 'a');
     vt_free(t);
     /* a sixel over the same text: the cells are blanks in the default colours */
     t = kitty_term(20, 8);
