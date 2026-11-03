@@ -144,8 +144,13 @@ def put_vsh():
     rig's GG: is the fixture VTCX:gg, so a rig keeps whichever vsh was copied last until this runs. A rig
     without the fixture gets none (rig.py assigns GG: at boot only when VTC:gg/bin/sh is there)."""
     import rig
-    shutil.copyfile(ROOT / "build/amiga/vsh", VTC / "vsh")
-    rig.refresh_kit_shadows(VTC)   # GG:bin/sh among them
+    # every place rig.program_pairs gives vsh: VTC:vsh, the drawer's bin and GG:bin/sh. refresh_kit_shadows held the
+    # GG:bin/sh copy until fb06002e moved it into program_pairs, so put_vsh left the old GG:bin/sh in place since.
+    # A missing GG:bin/sh is still never created (the rig has no fixture GG: then).
+    for src, dst in rig.program_pairs(VTC, ROOT / "build/amiga"):
+        if src.name == "vsh" and (dst == VTC / "vsh" or dst.is_file()):
+            shutil.copyfile(src, dst)
+    rig.refresh_kit_shadows(VTC)
 
 ORIG_SIZE = 166972  # the 3.1 rig's ixemul.library 48.2 as released; main() takes the size the system has before Install (the 3.2 tree's differs)
 
