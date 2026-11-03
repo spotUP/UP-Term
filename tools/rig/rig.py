@@ -384,6 +384,27 @@ WASABID_UP_BLOCK = user_startup.RIG_WASABID_BLOCK
 WASABID_UP_BLOCK_TEXT = ";BEGIN %s\nExecute BOOTX:wasabid-up\n;END %s\n" % (WASABID_UP_BLOCK, WASABID_UP_BLOCK)
 KIT_BLOCK = ";BEGIN UP-Term"
 
+# RIG-SOLIDWIN (owner 2026-11-03: "solid windows works ... now keep it in the rigs"): every rig moves windows opaque, as
+# an installed kit does. The kit's Install starts C:SolidWin from its ';BEGIN UP-Term SolidWin' block and writes that
+# block only when S:User-Startup does not spell "C:SolidWin"; the rig's block runs this script instead (it never spells
+# the name), and the script starts SolidWin only while no such line is there, so an installed kit's block wins and
+# SolidWin never runs twice. C:SolidWin is in the clone (a1200_drift.DIST_SOURCES); an --os tree has only the VTC: copy.
+SOLIDWIN_UP_SCRIPT = """FailAt 21
+C:Search >NIL: S:User-Startup "C:SolidWin"
+If WARN
+  Echo >>BOOTX:boot.log "rig SolidWin start (no kit SolidWin line)"
+  If EXISTS C:SolidWin
+    C:Run >NIL: <NIL: C:SolidWin
+  Else
+    If EXISTS VTC:solidwin/SolidWin
+      C:Run >NIL: <NIL: VTC:solidwin/SolidWin
+    EndIf
+  EndIf
+EndIf
+"""
+SOLIDWIN_UP_BLOCK = user_startup.RIG_SOLIDWIN_BLOCK
+SOLIDWIN_UP_BLOCK_TEXT = ";BEGIN %s\nExecute BOOTX:solidwin-up\n;END %s\n" % (SOLIDWIN_UP_BLOCK, SOLIDWIN_UP_BLOCK)
+
 GO = """FailAt 21
 Echo >>BOOTX:boot.log "go started"
 %(shadows)s
@@ -849,22 +870,29 @@ def sys_hdf_kit_upterm(image):
     finally:
         shutil.rmtree(back, ignore_errors=True)
 
-def user_startup_with_wasabid_block(data):
-    """data (S:User-Startup bytes) with the rig's wasabid block before the first kit ';BEGIN UP-Term' block, or at the
-    end when no kit block is there (a kit installed later appends its blocks after it); an earlier copy is removed
+def user_startup_with_block_before_kit(data, name, text):
+    """data (S:User-Startup bytes) with the rig block <name> (text) before the first kit ';BEGIN UP-Term' block, or at
+    the end when no kit block is there (a kit installed later appends its blocks after it); an earlier copy is removed
     first."""
-    data = user_startup.strip_upterm_blocks(data, WASABID_UP_BLOCK)
+    data = user_startup.strip_upterm_blocks(data, name)
     at = data.find(KIT_BLOCK.encode("latin-1"))
     if at < 0:
         if data and not data.endswith(b"\n"):
             data += b"\n"
-        return data + WASABID_UP_BLOCK_TEXT.encode("latin-1")
-    return data[:at] + WASABID_UP_BLOCK_TEXT.encode("latin-1") + data[at:]
+        return data + text.encode("latin-1")
+    return data[:at] + text.encode("latin-1") + data[at:]
+
+
+def user_startup_with_wasabid_block(data):
+    """data with the rig's wasabid block before the kit's blocks (user_startup_with_block_before_kit)."""
+    return user_startup_with_block_before_kit(data, WASABID_UP_BLOCK, WASABID_UP_BLOCK_TEXT)
 
 
 def user_startup_with_rig_blocks(data):
-    """Every rig-only block in S:User-Startup: the shadow block, then the wasabid block before the kit's blocks."""
-    return user_startup_with_wasabid_block(user_startup_with_shadows_block(data))
+    """Every rig-only block in S:User-Startup: the shadow block, then the wasabid and SolidWin blocks before the kit's
+    blocks."""
+    data = user_startup_with_wasabid_block(user_startup_with_shadows_block(data))
+    return user_startup_with_block_before_kit(data, SOLIDWIN_UP_BLOCK, SOLIDWIN_UP_BLOCK_TEXT)
 
 
 def sys_hdf_shadows_block(image):
@@ -1286,6 +1314,7 @@ def setup():
     (RIG / "boot/go").write_text(GO)
     (RIG / "boot/shadows-up").write_text(SHADOWS_UP_SCRIPT)
     (RIG / "boot/wasabid-up").write_text(WASABID_UP_SCRIPT)
+    (RIG / "boot/solidwin-up").write_text(SOLIDWIN_UP_SCRIPT)
     (RIG / "boot" / kitstamp.LIST).write_text("".join(n + "\n" for n in sorted({x[0] for x in KIT_SHADOWS})))
     kitstamp.check(RIG / "boot", RIG / "vtc")
     (RIG / "boot/Mountlist").write_text(MOUNTLIST)

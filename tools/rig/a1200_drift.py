@@ -23,7 +23,9 @@ CHUNK = 12           # files per md5sum call (command line length)
 MD5 = "UP-Term:bin/md5sum"
 # Files the kit copies from dist/ rather than build/amiga, checked like built programs. keymap is checked whole:
 # the user's own rows live in ENVARC:up-term/keymap.user, so the installed keymap must equal dist/keymap exactly.
-DIST_SOURCES = ("keymap",)
+# solidwin/SolidWin is Thomas Rapp's binary the kit ships unchanged (Copy solidwin/SolidWin C:SolidWin); listing it here
+# puts C:SolidWin in every rig's kit set (kitset.derive, RIG-SOLIDWIN) and in the A1200 drift check.
+DIST_SOURCES = ("keymap", "solidwin/SolidWin")
 # Data the kit lays down, by install.dos source name -> file in dist/. lucide.dat and outline.dat are built into dist/Amarchy
 # (make lucide-dat); bar.conf is the user's once it exists (install.dos copies it only when absent), so it is
 # checked for existence only (USER_OWNED); the theme drawer (`Copy amarchy-themes <dir> ALL`) is DATA_DRAWERS.

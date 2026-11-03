@@ -26,7 +26,11 @@ RIG_SHADOWS_BLOCK = 'rig-upterm-shadows'
 # KIT-WASABI-DOUBLE: the block that starts the rig's own wasabid (BOOTX:wasabid-up) before the kit's blocks, so the rig's
 # daemon wins the race against the kit's `Run >NIL: C:wasabid` on every boot, an Amiga-side reboot included.
 RIG_WASABID_BLOCK = 'rig-wasabid'
-RIG_BLOCKS = (RIG_SHADOWS_BLOCK, RIG_WASABID_BLOCK)
+# RIG-SOLIDWIN (owner 2026-11-03, "keep it in the rigs"): the block that starts SolidWin on every rig, as an installed kit
+# does. It is rig state like the two above; its line never spells "C:SolidWin", so Install's `Search S:User-Startup
+# "C:SolidWin"` still writes the kit's own block, and BOOTX:solidwin-up then leaves the start to it (no second instance).
+RIG_SOLIDWIN_BLOCK = 'rig-solidwin'
+RIG_BLOCKS = (RIG_SHADOWS_BLOCK, RIG_WASABID_BLOCK, RIG_SOLIDWIN_BLOCK)
 
 
 def without_rig_blocks(data):

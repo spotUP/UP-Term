@@ -30,7 +30,7 @@ class WasabidBlock(unittest.TestCase):
 
     def test_no_kit_block_the_block_is_appended(self):
         out = rig.user_startup_with_rig_blocks(b"; plain")
-        self.assertTrue(out.endswith(b";END rig-wasabid\n"))
+        self.assertIn(b";END rig-wasabid\n;BEGIN rig-solidwin", out)   # the SolidWin block follows it (RIG-SOLIDWIN)
         self.assertIn(b"; plain\n;BEGIN rig-wasabid", out)
 
     def test_the_install_check_filter_ignores_both_rig_blocks(self):
