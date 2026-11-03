@@ -34,6 +34,9 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
   rig.py rtg      Workbench back on the graphics card from next boot
   (The screen mode is the Workbench's ScreenMode prefs, not the config: the
   owner's way, 2026-09-29. aga/rtg need the rig up and reboot it.)
+  rig.py hold     [--hours N] [--release] [--foreground]: keep a running rig up for an eye check -- a detached process holds
+                  paths.long_run() for N hours (default 4) so the watchdog below never stops it; ends on time, on
+                  `rig.py stop`, on `hold --release` or when the rig stops; `rig.py status` shows it (hold.pid in the rig folder)
   rig.py watchdog the idle watchdog `start` launches (--idle-minutes N, default 15, 0 = off): stops the rig after N
                   minutes with no ami/typewin/wasabi command (paths.LAST_COMMAND); never while a long run holds
                   paths.LONG_RUN (ami.py long, install) or within 5 s of a command; never rig 1
@@ -2460,6 +2463,9 @@ def status(quiet=False):
         r = ami.req(0x01, timeout=3)
         if not quiet:
             print(r.decode("latin-1"))
+            h = hold_info()
+            if h:
+                print("hold: until %s (pid %d), the idle watchdog stays off" % (time.strftime("%F %T", time.localtime(h[1])), h[0]))
         return True
     except BaseException:
         if not quiet:
@@ -2469,6 +2475,79 @@ def status(quiet=False):
             else:
                 print("down")
         return False
+
+HOLD_HOURS = 4   # `rig.py hold` default: a rig left up for the owner's eye check
+HOLD_POLL = 5    # seconds between two checks of the hold loop
+
+def hold_info(rig_dir=None):
+    """(pid, deadline epoch) of this rig's live hold, None when there is none (no file, dead pid, bad content)."""
+    f = (pathlib.Path(rig_dir) if rig_dir else RIG) / "hold.pid"
+    try:
+        pid, deadline = f.read_text().split()[:2]
+        pid = int(pid)
+        os.kill(pid, 0)
+        return pid, float(deadline)
+    except PermissionError:
+        return pid, float(deadline)
+    except (OSError, ValueError):
+        return None
+
+def hold_run(hours, rig_dir=None, now=time.time, sleep=time.sleep, running=None, poll=HOLD_POLL):
+    """Hold paths.long_run() for `hours`, so the idle watchdog never stops the rig (RIG-EYECHECK-HOLD). Returns when
+    the time is up, the rig stops (running() false), a newer hold or `hold --release` removes hold.pid, or SIGTERM /
+    Ctrl-C arrives; the long-run flag and hold.pid are gone on every exit and the idle clock restarts after it
+    (long_run touches the command stamp). running defaults to mine()."""
+    d = pathlib.Path(rig_dir) if rig_dir else RIG
+    running = running or mine
+    pidf = d / "hold.pid"
+    me = os.getpid()
+    deadline = now() + hours * 3600
+    old = {s: signal.signal(s, lambda *_: sys.exit(0)) for s in (signal.SIGTERM, signal.SIGINT)}
+    try:
+        with paths.long_run(d):
+            pidf.write_text("%d %f\n" % (me, deadline))
+            try:
+                while now() < deadline and running() and pidf.exists() and pidf.read_text().split()[:1] == [str(me)]:
+                    sleep(poll)
+            finally:
+                if pidf.exists() and pidf.read_text().split()[:1] == [str(me)]:
+                    pidf.unlink()
+    finally:
+        for s, h in old.items():
+            signal.signal(s, h)
+
+def hold_release(rig_dir=None):
+    """End this rig's hold: SIGTERM its process (its long-run flag goes with it). True when one was running."""
+    d = pathlib.Path(rig_dir) if rig_dir else RIG
+    info = hold_info(d)
+    (d / "hold.pid").unlink(missing_ok=True)
+    if info:
+        try:
+            os.kill(info[0], signal.SIGTERM)
+        except OSError:
+            return False
+    return info is not None
+
+def hold():
+    """`rig.py hold [--hours N]`: keep the idle watchdog off this rig for N hours (default 4, fractions allowed) while it
+    stays up for an eye check. A detached process holds paths.long_run(); it ends on time, on `rig.py stop`, or on
+    `rig.py hold --release`. --foreground holds in this process (Ctrl-C ends it). Not for a rig that is not running."""
+    a = sys.argv[2:]
+    if "--release" in a:
+        print("hold: released" if hold_release() else "hold: none on %s" % paths.RIG_NAME)
+        return
+    hours = float(a[a.index("--hours") + 1]) if "--hours" in a[:-1] else HOLD_HOURS
+    if hours <= 0:
+        sys.exit("rig: --hours must be above 0")
+    if not mine():
+        sys.exit("rig: %s is not running; nothing to hold" % paths.RIG_NAME)
+    if "--foreground" in a:
+        hold_run(hours)
+        return
+    hold_release()
+    subprocess.Popen([sys.executable, str(pathlib.Path(__file__).resolve()), "hold", "--foreground", "--hours", str(hours)],
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    print("hold: %s kept up for %g h (`rig.py hold --release` or `rig.py stop` ends it)" % (paths.RIG_NAME, hours))
 
 def muforce():
     import muforce as mf
@@ -2535,7 +2614,9 @@ def clear():
 def stop_command():
     """`rig.py stop`: stop() (emulator exit), then, for rig N > 1, clear() the folder so it does not pile up. Not for rig 1
     (the owner's), not with --keep (a script that stops and starts again mid-run: the folder holds its verdict files),
-    not while the emulator still runs. The internal stop() of reboot, the start retries and the watchdog never clears."""
+    not while the emulator still runs. The internal stop() of reboot, the start retries and the watchdog never clears.
+    An eye-check hold (`rig.py hold`) ends first."""
+    hold_release()
     stop()
     if "--keep" in sys.argv[2:] or paths.RIG_N == 1 or mine():
         return
@@ -2657,7 +2738,7 @@ def main(argv):
     """Run the command argv[1]. --help, -h, help and ? (alone or after a command) print this file's usage (rc 0), the command not run; no command or an
     unknown one prints it to stderr (rc 2)."""
     cmds = {"setup": setup, "start": start, "stop": stop_command, "clear": clear, "gc": gc, "reboot": reboot, "install": install, "kit-restore": kit_restore,
-            "status": status, "logwatch": logwatch, "serialwatch": serialwatch, "muforce": muforce, "dbg": dbg, "dbgbreak": dbgbreak, "watchdog": watchdog, "wasabi": wasabi, "aga": lambda: screenmode("aga"),
+            "status": status, "logwatch": logwatch, "serialwatch": serialwatch, "muforce": muforce, "dbg": dbg, "dbgbreak": dbgbreak, "watchdog": watchdog, "hold": hold, "wasabi": wasabi, "aga": lambda: screenmode("aga"),
             "aga256": lambda: screenmode("aga256"), "rtg": lambda: screenmode("rtg"), "dopus": dopus}
     helps = ("--help", "-h", "help", "?")
     if len(argv) > 1 and (argv[1] in helps or (argv[1] in cmds and any(a in helps for a in argv[2:]))):
