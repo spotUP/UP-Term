@@ -15,7 +15,10 @@ import amarchy_menu_rig as r
 
 src = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / 'tools' / 'rig' / 'amarchy_menu_rig.py'
 keys = r.am_key_names()
-assert len(keys) == 10 and {'menu-style', 'amarchy-gui-theme', 'menu-in-terminal'} <= keys, keys
+# the parser must find every SD_AMARCHY row of the settings table: count the rows independently (one store tag per
+# row) instead of pinning a number, so a new Amarchy key does not break the guard
+rows = r.AM_KEYS_C.read_text().count('SD_AMARCHY,')
+assert len(keys) == rows and {'menu-style', 'amarchy-gui-theme', 'menu-in-terminal'} <= keys, (rows, keys)
 bad = [n + 1 for n, l in enumerate(src.read_text().splitlines()) if 'X9_CONF' in l and any(re.search(r'["\s]%s\s*=' % re.escape(k), l) for k in keys)]
 assert not bad, '%s writes an am_keys key to the up-term file at lines %s' % (src.name, bad)
 

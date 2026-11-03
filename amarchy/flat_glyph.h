@@ -58,9 +58,10 @@ typedef void (*flat_fill_fn)(void *ctx, int x0, int y0, int x1, int y1, int pen)
 
 /* The whole dispatcher decision and draw. Returns 1 when the glyph was drawn (the caller returns TRUE and does not
  * call the old hook), 0 when the call must go to the old hook unchanged (route refused, box too small). The box is
- * at (ox, oy); w, h are the image's Width and Height. */
+ * at (ox, oy); w, h are the image's Width and Height. side = flat_side_px of the screen's resolution (1 for square pixels):
+ * the scroller arrows widen with it so they keep their shape on hires. */
 int flat_glyph_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
-                    int w, int h, int frame_pen, flat_fill_fn fill, void *ctx);
+                    int w, int h, int frame_pen, int side, flat_fill_fn fill, void *ctx);
 
 /* FLAT-C8: the flat frame of one frameiclass IM_DRAW / IM_DRAWFRAME call: with fill != 0 the box is one solid fill,
  * NO outline: pen_button (pen_back when 0), pen_line when ids == IDS_SELECTED (1) (FLAT-BUTTON-FILL); with fill == 0 only a
@@ -77,6 +78,11 @@ typedef int (*flat_read_fn)(void *ctx, int x, int y);
 #define FLAT_ROUND_TALL 12
 #define FLAT_ROUND_MAX 12
 int flat_button_corners(int w, int h, int out[][4]);
+/* FLAT-SLIDER-ROUND: the knob gets the button radius. When the fill (x0,y0)-(x1,y1) is exactly the knob rectangle, the cut pixels
+ * (absolute x, y) that take the track pen are written to out (FLAT_ROUND_MAX at most) and their count returned, else 0. The corner
+ * rule is flat_button_corners (the same cuts as a flat button of the knob's size). */
+int flat_scroller_cuts(int cx, int cy, int cw, int ch, int horiz, int vert, unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody,
+                       int x0, int y0, int x1, int y1, int out[][2]);
 /* flat_frame_draw plus rounded corners: the outside pens are read with rd BEFORE the box is painted, then each cut pixel takes its
  * sampled pen (an unreadable pixel is left as drawn). rd null: no rounding, same as flat_frame_draw. */
 int flat_frame_draw_round(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn,
@@ -92,6 +98,17 @@ int flat_outline_rects(const flat_state *s, int w, int h, flat_fill_fn fn, void 
  * Intuition's border redraw fills with RectFill), else 0. Used by the graphics RectFill patch to pick out Intuition's
  * outer-edge fills. */
 int flat_outer_edge_match(int w, int h, int x0, int y0, int x1, int y1);
+
+/* FLAT-ASPECT-BORDERS: the width in pixels of a vertical 1-pixel-looking line on a mode whose DisplayInfo Resolution is
+ * rx x ry ticks per pixel. Non-square modes with taller pixels (PAL/NTSC hires non-interlace 22 x 44, super hires
+ * 11 x 44) give ry / rx rounded (2, 4), so the left and right frame lines look as thick as the 1 px top and bottom
+ * lines. Square modes, wide-pixel modes, RTG and an unknown mode (rx or ry 0) give 1. */
+int flat_side_px(int rx, int ry);
+
+/* The rect the RectFill patch fills for one of Intuition's outer strips: when (x0,y0)-(x1,y1) is exactly one strip
+ * (flat_outer_edge_match), writes it to out[] with the left strip widened rightwards and the right strip widened
+ * leftwards to px columns (px clamped to 1 .. w / 2), top and bottom unchanged, and returns 1; else returns 0. */
+int flat_outer_edge_fill(int w, int h, int x0, int y0, int x1, int y1, int px, int out[4]);
 
 
 /* FLAT-GLYPH-OS-SHAPES: the clone of the system's own gadget image. The OS side draws the stock image offscreen with a private
@@ -115,6 +132,14 @@ int flat_glyph_window_gadget(unsigned long which);
 int flat_glyph_on_band(unsigned long which);
 /* The clone path's own route: flat on, not held, method OM_DRAW, and a window-border image (flat_glyph_window_gadget). */
 int flat_clone_route(const flat_state *s, unsigned long which, unsigned long method);
+/* S32 CLONE-PRIVATE-IMAGE: OS 3.2 sysiclass (intuition 47) renders its imagery ONCE, at OM_NEW, into private planar data with
+ * the SYSIA_DrawInfo pens of that moment; IM_DRAW only blits that data and never reads imp_DrInfo. The clone therefore draws
+ * a private image made with the marker DrawInfo, one per (which, width, height), kept in a small table. flat_clone_slot finds
+ * the entry for the key: its index, n when it must be appended (n < cap), or -1 when the table is full. */
+#define FLAT_CLONE_OBJS 16
+#define FLAT_CLONE_DEPTH 8          /* the marker DrawInfo's dri_Depth: the private image is baked deep enough for every marker */
+typedef struct flat_clone_key { unsigned long which; int w, h; } flat_clone_key;
+int flat_clone_slot(const flat_clone_key *keys, int n, int cap, unsigned long which, int w, int h);
 int flat_clone_map(const uint8_t *grid, int w, int h, uint8_t *out);
 int flat_clone_pen(const flat_state *s, int role, int frame_pen);
 int flat_clone_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,

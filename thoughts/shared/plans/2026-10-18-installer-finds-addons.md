@@ -1,7 +1,7 @@
 ---
 date: 2026-10-18
 topic: base Install finds add-on archives beside it and installs them
-status: open
+status: done 7 of 7 (s52 verified)
 ---
 
 # Base Install finds the add-on archives beside it

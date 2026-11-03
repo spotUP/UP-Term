@@ -24,6 +24,23 @@ static unsigned long vt_pace_next(unsigned long cost_us)
     return n;
 }
 
+/* K36: an animation wakes when its next frame is due, like kitty (kitty/graphics.c scan_active_animations: one
+ * switch per wake, current_frame_shown_at = now, so lateness is dropped and never caught up; child-monitor.c sleeps
+ * to the nearest next_frame_at). The handler arms a timer request of its own for the engine's due time, floored
+ * by the current pace (the render cost), and nothing wakes while no animation plays. */
+static unsigned long vt_anim_arm_us(long due, unsigned long pace_us)
+{
+    unsigned long floor_us = pace_us ? pace_us : VT_PACE_MIN_US;
+    return due > 0 && (unsigned long)due > floor_us ? (unsigned long)due : floor_us;
+}
+
+/* K36: the animation clock stands still while the window is hidden/iconified or scrolled back
+ * (vr_render.hidden, vr_render.view): vtwin_tick does not call vt_anim_tick, so no time passes for it. */
+static int vt_anim_paused(int hidden, int view)
+{
+    return hidden != 0 || view != 0;
+}
+
 /* EClock ticks to microseconds at freq ticks a second, exact in 32 bits
  * (C89: no long long): whole seconds, then milliseconds, then the rest. */
 static unsigned long vt_pace_us(unsigned long ticks, unsigned long freq)

@@ -13,7 +13,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORDS = {'space': 'Space', 'return': 'Return', 'tab': 'Tab', 'esc': 'Esc', 'help': 'Help', 'del': 'Del',
          'backspace': 'Backspace', 'up': 'Up', 'down': 'Down', 'left': 'Left', 'right': 'Right',
-         'comma': ',', 'period': '.', 'minus': '-', 'plus': '+'}
+         'comma': ',', 'period': '.', 'minus': '-', 'plus': '+', 'slash': '/'}
 MODS = {'super': 'Left Amiga', 'shift': 'Shift', 'ctrl': 'Ctrl', 'alt': 'Alt', 'rshift': 'Right Shift'}
 
 

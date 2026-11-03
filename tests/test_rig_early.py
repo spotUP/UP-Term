@@ -88,6 +88,21 @@ class SysHdfKit(unittest.TestCase):
         with self.assertRaises(SystemExit):
             rig.sys_hdf_kit(self.img)
 
+    def test_source_rebuilt_mid_start_still_passes(self):
+        """RIG-START-MAKE-RACE: a make rewrites build/amiga/vtcon-handler between the write into the clone and the
+        read-back; the start installs and checks one snapshot, so it must not fail."""
+        src = self.d / "build/amiga/vtcon-handler"
+        real = subprocess.run
+        def racing(cmd, *a, **k):
+            r = real(cmd, *a, **k)
+            if "write" in cmd and "vtcon-handler" in str(cmd[-2]) or "write" in cmd and str(cmd[-2]).endswith("kit-snap.tmp") and cmd[-1] == "L/vtcon-handler":
+                src.write_bytes(b"rebuilt by make" * 9)
+            return r
+        rig.subprocess.run = racing
+        self.addCleanup(setattr, rig.subprocess, "run", real)
+        rig.sys_hdf_kit(self.img)
+        self.assertNotEqual(src.read_bytes(), self.read("L/vtcon-handler"))   # the clone holds the snapshot, not the rebuild
+
     def test_start_calls_it(self):
         self.assertIn('sys_hdf_kit(RIG / "sys.hdf")', (ROOT / "tools/rig/rig.py").read_text())
 

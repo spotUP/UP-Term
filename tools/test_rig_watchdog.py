@@ -38,6 +38,11 @@ if hasattr(rig, "watchdog_step"):
     check(run(61 * 60, rig_n=1) == (False, 0), "rig 1 is never stopped")
     check(run(10 ** 6, idle=0) == (False, 0), "idle-minutes 0 disables")
     check(run(10 ** 6, last=None) == (False, 0), "no stamp recorded: no stop")
+    saved_argv = sys.argv
+    sys.argv = ["rig.py", "watchdog"]
+    check(rig.idle_minutes() == 15, "default idle limit is 15 minutes (owner 2026-11-03: 60 held a core too long)")
+    sys.argv = saved_argv
+    check(run(16 * 60, idle=rig.idle_minutes()) == (True, 1), "16 idle minutes at the default limit stops the rig")
 
 with tempfile.TemporaryDirectory() as d:
     p = pathlib.Path(d)

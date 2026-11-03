@@ -103,14 +103,34 @@ typedef struct vt_image {
     vt_u32 pal[256];    /* 0xRRGGBB; 0 the unset pixels */
     int w, h, cw, ch, npal, refs;
     vt_u16 gen;
-    vt_u8 kind;         /* 0 sixel, 1 kitty on the screen, 2 kitty stored (not placed) */
+    vt_u8 kind;         /* 0 sixel, 1 kitty on the screen, 2 kitty stored (not placed),
+                         * 3 kitty virtual placement (U=1: shown by placeholder cells, K31) */
+    int vc, vr;         /* kind 3: the picture's size in cells */
     vt_u32 kid, knum, pid; /* kitty's i=, I= and p= */
     long kz;            /* kitty's z= (negative: under the text) */
+    vt_u8 fmt;          /* 0 indices into pal, 1 RGBA (R G B A in memory order; vt_set_image_rgb) */
+    vt_u8 opaque;       /* fmt 1: no pixel has an alpha below 255 */
     vt_u8 ktrans;       /* kitty's N=1 on a stored picture: evicted first */
     int px0, py0;       /* kitty's X=, Y=: the picture's offset inside its first cell */
     vt_u32 pkid, ppid;  /* kitty's P=, Q=: the parent placement's i= and p= (0 none) */
     int kdepth;         /* parents above this placement (0 none, at most 8) */
+    struct vt_anim *anim; /* kind 2: the frame list (kitty a=f, K34), 0 for a plain picture */
+    int sx0, sy0, sw, sh; /* kind 1: the part of the stored picture shown (sw 0: unknown), for K35's rescale */
 } vt_image;
+
+/* The frames of a kitty animation: full w x h canvases of cube indices
+ * (kit_color: 0 clear, 1-216 cube, 217-255 grey), frame 1 the root. gap is
+ * the ms a frame shows (z=; negative: gapless). */
+typedef struct vt_anim {
+    int n;
+    vt_u8 *fr[VT_ANIM_FRAMES];
+    long gap[VT_ANIM_FRAMES];
+    int cur;        /* the frame shown (1-based) */
+    int state;      /* a=a s=: 1 stopped, 2 run and wait at the end, 3 run and loop */
+    long loops;     /* a=a v=: 0 unset (forever), 1 forever, n plays n-1 loops */
+    long done;      /* loops played since the animation started */
+    long elapsed;   /* us the current frame has shown */
+} vt_anim;
 
 #define VT_IMG_SLOTS 64 /* images alive at once (the oldest gives way) */
 
@@ -287,6 +307,11 @@ struct vt_term {
     vt_image *imgs[VT_IMG_SLOTS];
     int n_img;
     long img_mem, img_serial;
+    long img_budget, anim_budget; /* VT_IMAGE_MEMORY / VT_ANIM_MEMORY, times 4 in RGB mode (vt_set_image_rgb) */
+    vt_u8 image_rgb;           /* vt_set_image_rgb */
+    unsigned long kit_rgba_frames; /* RGBA frame canvases made (vt_kitty_rgba_frames, K39) */
+    unsigned long kit_rgb_made; /* RGB pictures made (vt_kitty_rgb_made) */
+    long anim_mem;             /* bytes of animation frames, against VT_ANIM_MEMORY (K34) */
     vt_place *pl;
     long pl_cap;
     vt_u16 pl_free;
@@ -294,8 +319,11 @@ struct vt_term {
     struct vt_kitty *kit;      /* the kitty graphics command being received */
     vt_u32 kit_next;           /* counter for the ids kitty gives by number (I=) */
     vt_u32 kit_png_own;        /* PNG pictures the engine decoded itself (vt_kitty_png_own) */
+    vt_u8 anim_off; /* vt_set_animation(0): the clock plays nothing (profile image-animation = off) */
+    unsigned long kit_switches; /* animation frames switched (vt_kitty_frame_switches) */
     vt_u32 kit_placed;         /* kitty images placed on the screen (vt_kitty_placed) */
     long kit_last_z;           /* z= of the last kitty placement (vt_kitty_last_z) */
+    vt_u32 kit_ph;             /* placeholder cells resolved (vt_kitty_placeholders) */
     vt_image_decoder decode;   /* vt_set_image_decoder: PNG and the like (f=100) */
     vt_image_release decode_free;
     vt_file_reader file_read;  /* vt_set_file_reader: t=f, t=t */
@@ -413,11 +441,25 @@ static vt_line *line_new(int cap)
 
 /* ---- images on lines (vt_line.img) --------------------------------------- */
 
+static void anim_free(vt_term *t, vt_image *im)
+{
+    int i;
+    if (!im->anim)
+        return;
+    for (i = 0; i < im->anim->n; i++) {
+        VT_FREE(im->anim->fr[i]);
+        t->anim_mem -= (long)im->w * im->h * (im->fmt ? 4 : 1);
+    }
+    VT_FREE(im->anim);
+    im->anim = 0;
+}
+
 static void image_free(vt_term *t, int slot)
 {
     vt_image *im = t->imgs[slot];
     if (!im || !im->pix)
         return;
+    anim_free(t, im);
     VT_FREE(im->pix);
     im->pix = 0;
     t->img_mem -= im->bytes;
@@ -548,9 +590,16 @@ static void place_add(vt_term *t, vt_line *l, int slot, int col0, int row)
     place_link(t, l, slot, im->gen, col0, row);
 }
 
+/* A kitty picture placed with z < 0: drawn under the text (K30). */
+static int image_under(const vt_image *im)
+{
+    return im && im->kind == 1 && im->kz < 0;
+}
+
 /* Reflow: the image cell at column x of `from` moved to column nx of `to`;
- * the image tile it shows goes along (once per run of cells). */
-static void place_carry(vt_term *t, const vt_line *from, int x, vt_line *to, int nx)
+ * the image tile it shows goes along (once per run of cells): the one over
+ * the text, or with `under` the one under it (K30). */
+static void place_carry(vt_term *t, const vt_line *from, int x, vt_line *to, int nx, int under)
 {
     vt_u16 i, last = 0;
     int slot = -1, row = 0, col0 = 0;
@@ -558,7 +607,7 @@ static void place_carry(vt_term *t, const vt_line *from, int x, vt_line *to, int
     const vt_image *im;
     for (i = from->img; i; i = t->pl[i].next) {
         im = place_image(t, &t->pl[i]);
-        if (im && x >= t->pl[i].col0 && x < t->pl[i].col0 + image_cols(im)) {
+        if (im && image_under(im) == under && x >= t->pl[i].col0 && x < t->pl[i].col0 + image_cols(im)) {
             slot = t->pl[i].img; /* the newest one covering x: it is on top */
             gen = t->pl[i].gen;
             row = t->pl[i].row;
@@ -573,6 +622,14 @@ static void place_carry(vt_term *t, const vt_line *from, int x, vt_line *to, int
         t->pl[last].col0 == col0)
         return;
     place_link(t, to, slot, gen, col0, row);
+}
+
+/* The pad of a cell that text is written into: a picture under the text
+ * (VT_CELL_UNDER, K30) stays, and so does a kitty z >= 0 picture over it
+ * (VT_CELL_FRONT, D12); a sixel's cell (VT_CELL_IMAGE alone) is taken. */
+static vt_u8 text_pad(vt_u8 pad)
+{
+    return (vt_u8)(pad & ((pad & VT_CELL_FRONT) ? (VT_CELL_UNDER | VT_CELL_IMAGE | VT_CELL_FRONT) : VT_CELL_UNDER));
 }
 
 static void blank_cell(const vt_term *t, vt_cell *c)
@@ -1628,6 +1685,8 @@ static void cut_line_above(vt_term *t)
     }
 }
 
+static void under_mark(vt_term *t, int y, int x0, int x1);
+
 static void erase_cells(vt_term *t, int y, int x0, int x1)
 {
     vt_line *l;
@@ -1687,6 +1746,8 @@ static void erase_cells(vt_term *t, int y, int x0, int x1)
      * the row is unused again (see vt_line.used) */
     if (x1 == t->cols && t->scr[y]->used > x0 && vacated_default(t))
         t->scr[y]->used = (vt_u16)x0;
+    if (t->scr[y]->img)
+        under_mark(t, y, x0, x1); /* an image under the text survives the erase (K30) */
 }
 
 static void erase_rows(vt_term *t, int y0, int y1)
@@ -2494,7 +2555,7 @@ static void put_char(vt_term *t, vt_u32 cp)
     c->deco = t->deco;
     c->ext = t->ext;
     c->width = (vt_u8)w;
-    c->pad = 0; /* text over an image cell */
+    c->pad = text_pad(c->pad); /* a picture over (D12) or under (K30) the text stays */
     if (w == 2) {
         c[1] = c[0];
         c[1].ch = ' ';
@@ -5011,7 +5072,7 @@ static int sixel_room(vt_term *t, vt_sixel *s, long nx, long ny)
         aw = VT_SIXEL_MAX_W;
     if (ah > VT_SIXEL_MAX_H)
         ah = VT_SIXEL_MAX_H;
-    while (t->img_mem + aw * ah > VT_IMAGE_MEMORY)
+    while (t->img_mem + aw * ah > t->img_budget)
         if (!image_evict(t)) {
             s->full = 1;
             return 0;
@@ -5226,8 +5287,36 @@ static void sixel_abort(vt_term *t)
     t->six = 0;
 }
 
-/* The image's cells: blanks marked VT_CELL_IMAGE on line y from x0, its
- * tile row k. */
+/* Erased cells [x0, x1) of row y that an image under the text covers get
+ * VT_CELL_UNDER back: erasing text does not take the picture away (K30). */
+static void under_mark(vt_term *t, int y, int x0, int x1)
+{
+    vt_line *l = t->scr[y];
+    vt_u16 k;
+    int a, b, x, hit0 = x1, hit1 = x0;
+    for (k = l->img; k; k = t->pl[k].next) {
+        const vt_image *im = place_image(t, &t->pl[k]);
+        if (!image_under(im))
+            continue;
+        a = t->pl[k].col0 > x0 ? t->pl[k].col0 : x0;
+        b = t->pl[k].col0 + image_cols(im);
+        if (b > x1)
+            b = x1;
+        for (x = a; x < b; x++)
+            l->c[x].pad |= VT_CELL_UNDER;
+        if (a < b) {
+            if (hit0 > a)
+                hit0 = a;
+            if (hit1 < b)
+                hit1 = b;
+        }
+    }
+    if (hit0 < hit1)
+        mark(t, hit0, y, hit1);
+}
+
+/* The image's cells on line y from x0 (its tile row k): marked VT_CELL_IMAGE (a sixel blanks them, a kitty
+ * picture keeps them, O6), or VT_CELL_UNDER for a kitty z < 0. */
 static void sixel_place_row(vt_term *t, int slot, int y, int x0, int k)
 {
     vt_line *l = t->scr[y];
@@ -5237,6 +5326,27 @@ static void sixel_place_row(vt_term *t, int slot, int y, int x0, int k)
         x1 = t->cols;
     if (x0 >= x1)
         return;
+    if (image_under(t->imgs[slot])) {
+        /* kitty z < 0: under the text, which stays (K30, D13) */
+        for (x = x0; x < x1; x++)
+            l->c[x].pad |= VT_CELL_UNDER;
+        mark(t, x0, y, x1);
+        place_add(t, l, slot, x0, k);
+        return;
+    }
+    if (t->imgs[slot]->kind == 1) {
+        /* kitty z >= 0: over the text, which stays under it as in kitty
+         * (O6, K40d): the cells keep their glyph and colours and the
+         * picture's translucent pixels show them. Text written there
+         * later keeps the picture over it as in kitty (D12): the cells
+         * carry VT_CELL_FRONT, which a sixel's cells do not. */
+        for (x = x0; x < x1; x++)
+            l->c[x].pad |= VT_CELL_IMAGE | VT_CELL_FRONT;
+        mark(t, x0, y, x1);
+        place_add(t, l, slot, x0, k);
+        return;
+    }
+    /* a sixel: its cells become blanks in the default colours */
     unwide(t, x0, y);
     if (x1 < t->cols)
         unwide(t, x1 - 1, y);
@@ -5285,6 +5395,7 @@ static int image_install(vt_term *t, vt_u8 *pix, long bytes, long w, long h, int
     im->ch = t->cell_h > 0 ? t->cell_h : 16;
     im->npal = npal;
     im->refs = 0;
+    im->fmt = im->opaque = 0;
     im->kind = 0;
     im->kid = im->knum = im->pid = 0;
     im->kz = 0;
@@ -5292,6 +5403,8 @@ static int image_install(vt_term *t, vt_u8 *pix, long bytes, long w, long h, int
     im->px0 = im->py0 = 0;
     im->pkid = im->ppid = 0;
     im->kdepth = 0;
+    im->anim = 0;
+    im->vc = im->vr = 0;
     im->serial = ++t->img_serial;
     for (i = 0; i < npal; i++)
         im->pal[i] = pal[i];
@@ -5432,10 +5545,14 @@ int vt_images(const vt_term *t)
     return t->n_img;
 }
 
+/* the draw order of an image: kitty's z= and i=, a sixel 0 and 0 */
+static long image_z(const vt_image *im) { return im->kind == 1 ? im->kz : 0; }
+static vt_u32 image_kid(const vt_image *im) { return im->kind == 1 ? im->kid : 0; }
+
 int vt_row_image(const vt_term *t, int row, int i, vt_image_view *v)
 {
     const vt_image *im;
-    vt_u16 k;
+    vt_u16 k, j, first;
     if (!t->n_img)
         return 0;
     if (row >= 0) {
@@ -5447,15 +5564,34 @@ int vt_row_image(const vt_term *t, int row, int i, vt_image_view *v)
             return 0;
         k = SB_AT(t, row)->img;
     }
-    for (; k; k = t->pl[k].next) {
+    /* the i-th in (z, kitty i=, age) order: the lists are short, so a
+     * count of the placements that go before each one does (K30) */
+    for (first = k; k; k = t->pl[k].next) {
+        int before = 0, ahead = 1;
         im = place_image(t, &t->pl[k]);
-        if (!im || i--)
+        if (!im)
+            continue;
+        for (j = first; j; j = t->pl[j].next) {
+            const vt_image *o = place_image(t, &t->pl[j]);
+            if (j == k) {
+                ahead = 0;
+                continue;
+            }
+            if (o && (image_z(o) < image_z(im)
+                      || (image_z(o) == image_z(im)
+                          && (image_kid(o) < image_kid(im) || (image_kid(o) == image_kid(im) && ahead)))))
+                before++;
+        }
+        if (before != i)
             continue;
         v->pix = im->pix;
+        v->z = image_z(im);
         v->w = im->w;
         v->h = im->h;
         v->pal = im->pal;
         v->npal = im->npal;
+        v->fmt = im->fmt;
+        v->opaque = im->opaque;
         v->cw = im->cw;
         v->ch = im->ch;
         v->col0 = t->pl[k].col0;
@@ -5965,6 +6101,8 @@ vt_term *vt_new(int cols, int rows, int scrollback, const vt_callbacks *cb, void
     if (!t)
         return 0;
     memset(t, 0, sizeof(*t));
+    t->img_budget = VT_IMAGE_MEMORY;
+    t->anim_budget = VT_ANIM_MEMORY;
     if (cb)
         t->cb = *cb;
     t->user = user;
@@ -6317,6 +6455,33 @@ void vt_set_image_decoder(vt_term *t, vt_image_decoder decode, vt_image_release 
     t->decode_free = release;
 }
 
+void vt_set_image_rgb(vt_term *t, int on)
+{
+    on = on != 0;
+    if (on == t->image_rgb)
+        return;
+    t->image_rgb = (vt_u8)on;
+    if (!on)
+        kit_to_index(t); /* before the budgets shrink */
+    t->img_budget = VT_IMAGE_MEMORY * (on ? 4 : 1);
+    t->anim_budget = VT_ANIM_MEMORY * (on ? 4 : 1);
+}
+
+long vt_image_memory(const vt_term *t)
+{
+    return t->img_mem;
+}
+
+unsigned long vt_kitty_rgba_frames(const vt_term *t)
+{
+    return t->kit_rgba_frames;
+}
+
+unsigned long vt_kitty_rgb_made(const vt_term *t)
+{
+    return t->kit_rgb_made;
+}
+
 void vt_set_file_reader(vt_term *t, vt_file_reader read, vt_file_unlinker unlink_file)
 {
     t->file_read = read;
@@ -6413,14 +6578,16 @@ static long put_ascii_run(vt_term *t, const vt_u8 *b, long n, int plain)
                     c->attr = t->attr;
                     c->deco = t->deco;
                     c->ext = t->ext;
-                    c->pad = 0;
+                    c->pad = text_pad(c->pad);
                     l->chonly = 0;
                     k = 1;
                 }
             } else {
 #ifdef VT_ASM
+              if (!l->img) {
                 /* the loop below in assembler (vtengine_68k.s): 14 us a
-                 * character in C on a 14 MHz 68020 (S1) */
+                 * character in C on a 14 MHz 68020 (S1); a row with an
+                 * image takes the C loop, which keeps VT_CELL_UNDER (K30) */
                 vt_cell p;
                 p.fg = t->fg;
                 p.bg = t->bg;
@@ -6431,7 +6598,9 @@ static long put_ascii_run(vt_term *t, const vt_u8 *b, long n, int plain)
                 p.ext = t->ext;
                 p.pad = 0;
                 k = vt_asm_put_run(c, b + done, room, &p);
-#else
+              } else
+#endif
+              {
                 const vt_u8 *q = b + done;
                 for (k = 0; k < room; k++) {
                     if (q[k] < 0x20 || q[k] >= 0x7F)
@@ -6444,9 +6613,9 @@ static long put_ascii_run(vt_term *t, const vt_u8 *b, long n, int plain)
                     c[k].attr = t->attr;
                     c[k].deco = t->deco;
                     c[k].ext = t->ext;
-                    c[k].pad = 0; /* text over an image cell (the assembler copies the proto's 0) */
+                    c[k].pad = text_pad(c[k].pad); /* a picture over (D12) or under (K30) the text stays */
                 }
-#endif
+              }
                 if (k)
                     l->chonly = 0;
             }
@@ -6491,7 +6660,7 @@ static long put_ascii_run(vt_term *t, const vt_u8 *b, long n, int plain)
             c->attr = t->attr;
             c->deco = t->deco;
             c->ext = t->ext;
-            c->pad = 0;
+            c->pad = text_pad(c->pad);
             l->chonly = 0;
         }
         if (l->dx0 > x)
@@ -7001,7 +7170,9 @@ static int rewrap_line(vt_rewrap *w, vt_rfin *in, int s, int e, int oc,
                 o = &w->out[w->ny]->c[w->nx];
                 o[0] = *c;
                 if (c->pad & VT_CELL_IMAGE)
-                    place_carry(w->t, lr, x, w->out[w->ny], w->nx);
+                    place_carry(w->t, lr, x, w->out[w->ny], w->nx, 0);
+                if (c->pad & VT_CELL_UNDER)
+                    place_carry(w->t, lr, x, w->out[w->ny], w->nx, 1);
                 o[0].width = (vt_u8)width;
                 if (width == 2) {
                     o[1] = o[0];

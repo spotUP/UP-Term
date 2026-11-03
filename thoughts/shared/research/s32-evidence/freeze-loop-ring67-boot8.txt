@@ -1,0 +1,1010 @@
+=== INTENA ring dump (SIGUSR2) frame 5566 seq 185618 intena 602c intena_int 602c intreq 0040 stopped 1 pc 10031be6 sr 2000
+seq 185362 frame 5555 v c000 202c->602c pc 1003205c sr 0010 a7 1000a8ac (a7) 00fbb4e6 task 1000985a idn -1 tdn -1 'input.device'
+seq 185363 frame 5555 v 4000 602c->202c pc 00fc1584 sr 0010 a7 1000a878 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185364 frame 5555 v 4000 202c->202c pc 00fbfcf6 sr 0010 a7 1000a874 (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 185365 frame 5555 v c000 202c->602c pc 00fc1602 sr 0010 a7 1000a878 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185366 frame 5555 v 4000 602c->202c pc 00fc15bc sr 0019 a7 1000a870 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185367 frame 5555 v 4000 202c->202c pc 00fbfcf6 sr 0019 a7 1000a86c (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 185368 frame 5555 v c000 202c->602c pc 00fc1602 sr 0019 a7 1000a870 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185369 frame 5555 v 4000 602c->202c pc 00fc1180 sr 0019 a7 1000a89c (a7) 00fc1176 task 1000985a idn -1 tdn -1 'input.device'
+seq 185370 frame 5555 v c000 202c->602c pc 00fc11c8 sr 0019 a7 1000a89c (a7) 00fc1176 task 1000985a idn -1 tdn -1 'input.device'
+seq 185371 frame 5555 v 4000 602c->202c pc 00f82890 sr 0019 a7 1000a8ac (a7) 00fbb4b4 task 1000985a idn -1 tdn -1 'input.device'
+seq 185372 frame 5555 v c000 202c->602c pc 00f828c8 sr 0019 a7 1000a8ac (a7) 00fbb4b4 task 1000985a idn -1 tdn 0 'input.device'
+seq 185373 frame 5555 v c000 602c->602c pc 10031b6a sr 2000 a7 1000227c (a7) 100007da task 1000985a idn -1 tdn -1 'input.device'
+seq 185374 frame 5555 v 4000 602c->202c pc 00fc172c sr 2204 a7 10002248 (a7) 00fbfc52 task 1000985a idn -1 tdn -1 'input.device'
+seq 185375 frame 5555 v c000 202c->602c pc 00fc175c sr 2204 a7 10002248 (a7) 00fbfc52 task 1000985a idn -1 tdn -1 'input.device'
+seq 185376 frame 5556 v 4000 602c->202c pc 00f8f770 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185377 frame 5556 v c000 202c->602c pc 00f8f7a6 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185378 frame 5556 v 4000 602c->202c pc 00fc010e sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 185379 frame 5556 v c000 202c->602c pc 00fc0134 sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 185380 frame 5556 v 4000 602c->202c pc 00fc15bc sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185381 frame 5556 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 10002228 (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 185382 frame 5556 v c000 202c->602c pc 00fc1602 sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185383 frame 5556 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185384 frame 5556 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185385 frame 5556 v 4000 602c->202c pc 00fc1584 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185386 frame 5556 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 1000221c (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 185387 frame 5556 v c000 202c->602c pc 00fc1602 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185388 frame 5556 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185389 frame 5556 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185390 frame 5556 v 4000 602c->202c pc 00fc12b0 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 185391 frame 5556 v c000 202c->602c pc 00fc12d4 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 185392 frame 5557 v 4000 602c->202c pc 00f8f770 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185393 frame 5557 v c000 202c->602c pc 00f8f7a6 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185394 frame 5557 v 4000 602c->202c pc 00fc010e sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 185395 frame 5557 v c000 202c->602c pc 00fc0134 sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 185396 frame 5557 v 4000 602c->202c pc 00fc15bc sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185397 frame 5557 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 10002228 (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 185398 frame 5557 v c000 202c->602c pc 00fc1602 sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185399 frame 5557 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185400 frame 5557 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185401 frame 5557 v 4000 602c->202c pc 00fc1584 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185402 frame 5557 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 1000221c (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 185403 frame 5557 v c000 202c->602c pc 00fc1602 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185404 frame 5557 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185405 frame 5557 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185406 frame 5557 v 4000 602c->202c pc 00fc12b0 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 185407 frame 5557 v c000 202c->602c pc 00fc12d4 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 185408 frame 5558 v 4000 602c->202c pc 00f8f770 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185409 frame 5558 v c000 202c->602c pc 00f8f7a6 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185410 frame 5558 v 4000 602c->202c pc 00fc010e sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 185411 frame 5558 v c000 202c->602c pc 00fc0134 sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 185412 frame 5558 v 4000 602c->202c pc 00fc15bc sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185413 frame 5558 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 10002228 (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 185414 frame 5558 v c000 202c->602c pc 00fc1602 sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185415 frame 5558 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185416 frame 5558 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185417 frame 5558 v 4000 602c->202c pc 00fc1584 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185418 frame 5558 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 1000221c (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 185419 frame 5558 v c000 202c->602c pc 00fc1602 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185420 frame 5558 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185421 frame 5558 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185422 frame 5558 v 4000 602c->202c pc 00fc12b0 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 185423 frame 5558 v c000 202c->602c pc 00fc12d4 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 185424 frame 5559 v 4000 602c->202c pc 00f8f770 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185425 frame 5559 v c000 202c->602c pc 00f8f7a6 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185426 frame 5559 v 4000 602c->202c pc 00fc010e sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 185427 frame 5559 v c000 202c->602c pc 00fc0134 sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 185428 frame 5559 v 4000 602c->202c pc 00fc15bc sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185429 frame 5559 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 10002228 (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 185430 frame 5559 v c000 202c->602c pc 00fc1602 sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185431 frame 5559 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185432 frame 5559 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185433 frame 5559 v 4000 602c->202c pc 00fc1584 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185434 frame 5559 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 1000221c (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 185435 frame 5559 v c000 202c->602c pc 00fc1602 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185436 frame 5559 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185437 frame 5559 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185438 frame 5559 v 4000 602c->202c pc 00fc12b0 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 185439 frame 5559 v c000 202c->602c pc 00fc12d4 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 185440 frame 5559 v 4000 602c->202c pc 00fc172c sr 2204 a7 10002248 (a7) 00fbfc52 task 1000985a idn -1 tdn -1 'input.device'
+seq 185441 frame 5559 v c000 202c->602c pc 00fc175c sr 2204 a7 10002248 (a7) 00fbfc52 task 1000985a idn -1 tdn -1 'input.device'
+seq 185442 frame 5560 v 4000 602c->202c pc 00f8f770 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185443 frame 5560 v c000 202c->602c pc 00f8f7a6 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185444 frame 5560 v 4000 602c->202c pc 00fc010e sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 185445 frame 5560 v c000 202c->602c pc 00fc0134 sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 185446 frame 5560 v 4000 602c->202c pc 00fc15bc sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185447 frame 5560 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 10002228 (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 185448 frame 5560 v c000 202c->602c pc 00fc1602 sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185449 frame 5560 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185450 frame 5560 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185451 frame 5560 v 4000 602c->202c pc 00fc1584 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185452 frame 5560 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 1000221c (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 185453 frame 5560 v c000 202c->602c pc 00fc1602 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185454 frame 5560 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185455 frame 5560 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185456 frame 5560 v 4000 602c->202c pc 00fc12b0 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 185457 frame 5560 v c000 202c->602c pc 00fc12d4 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 185458 frame 5560 v 4000 602c->202c pc 00f824aa sr 2000 a7 10002248 (a7) 00fc100e task 1000985a idn -1 tdn -1 'input.device'
+seq 185459 frame 5560 v c000 202c->602c pc 00f82514 sr 2000 a7 10002248 (a7) 00fc100e task 1000985a idn -1 tdn 0 'input.device'
+seq 185460 frame 5560 v 4000 602c->202c pc 00f8280a sr 2000 a7 10002244 (a7) 00f82528 task 1000985a idn -1 tdn 0 'input.device'
+seq 185461 frame 5560 v c000 202c->602c pc 00f82858 sr 2000 a7 10002240 (a7) 00000000 task 1000985a idn -1 tdn 0 'input.device'
+seq 185462 frame 5560 v 4000 602c->202c pc 00fc12b0 sr 2319 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 185463 frame 5560 v c000 202c->602c pc 00fc12d4 sr 2319 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 185464 frame 5560 v 4000 602c->202c pc 00f828dc sr 0010 a7 100154c0 (a7) 00fc625a task 10015264 idn -1 tdn 0 'trackdisk.device'
+seq 185465 frame 5560 v c000 202c->602c pc 00f82900 sr 0010 a7 100154c0 (a7) 00fc625a task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185466 frame 5560 v 4000 602c->202c pc 1003203c sr 0010 a7 100154bc (a7) 00fc6280 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185467 frame 5560 v c000 202c->602c pc 1003205c sr 0010 a7 100154bc (a7) 00fc6280 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185468 frame 5560 v 4000 602c->202c pc 00fc04ac sr 0010 a7 10015490 (a7) 1000ac64 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185469 frame 5560 v c000 202c->602c pc 00fc04ec sr 0010 a7 10015490 (a7) 1000ac64 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185470 frame 5560 v 4000 602c->202c pc 00fc0508 sr 0010 a7 10015498 (a7) 1000ac64 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185471 frame 5560 v c000 202c->602c pc 00fc0540 sr 0010 a7 10015498 (a7) 1000ac64 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185472 frame 5560 v 4000 602c->202c pc 00fc04ac sr 0010 a7 10015490 (a7) 1000ac64 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185473 frame 5560 v c000 202c->602c pc 00fc04ec sr 0010 a7 10015490 (a7) 1000ac64 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185474 frame 5560 v 4000 602c->202c pc 00fc0508 sr 0010 a7 10015498 (a7) 1000ac64 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185475 frame 5560 v c000 202c->602c pc 00fc0540 sr 0010 a7 10015498 (a7) 1000ac64 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185476 frame 5560 v 4000 602c->202c pc 00fc15bc sr 0010 a7 10015450 (a7) 000000d0 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185477 frame 5560 v 4000 202c->202c pc 00fbfcf6 sr 0010 a7 1001544c (a7) 00fc15d8 task 10015264 idn 0 tdn -1 'trackdisk.device'
+seq 185478 frame 5560 v c000 202c->602c pc 00fc1602 sr 0010 a7 10015450 (a7) 000000d0 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185479 frame 5560 v 4000 602c->202c pc 00fc1180 sr 0010 a7 10015478 (a7) 00fc14f2 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185480 frame 5560 v c000 202c->602c pc 00fc11c8 sr 0010 a7 10015478 (a7) 00fc14f2 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185481 frame 5560 v 4000 602c->202c pc 00fc1562 sr 0010 a7 10015458 (a7) 000000d0 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185482 frame 5560 v 4000 202c->202c pc 00fbfcf6 sr 0010 a7 10015454 (a7) 00fc15d8 task 10015264 idn 1 tdn -1 'trackdisk.device'
+seq 185483 frame 5560 v c000 202c->602c pc 00fc169a sr 0010 a7 10015474 (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185484 frame 5560 v 4000 602c->202c pc 00f80928 sr 0010 a7 10015490 (a7) 00bfd100 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185485 frame 5560 v 4000 202c->202c pc 00f82890 sr 0010 a7 1001548c (a7) 00f80940 task 10015264 idn 0 tdn -1 'trackdisk.device'
+seq 185486 frame 5560 v c000 202c->602c pc 00f828c8 sr 0010 a7 1001548c (a7) 00f80940 task 10015264 idn -1 tdn 0 'trackdisk.device'
+seq 185487 frame 5560 v c000 602c->602c pc 10031b6a sr 2000 a7 1000227c (a7) 100007da task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185488 frame 5560 v 4000 602c->202c pc 00fc15bc sr 2204 a7 10002220 (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185489 frame 5560 v 4000 202c->202c pc 00fbfcf6 sr 2204 a7 1000221c (a7) 00fc15d8 task 10015264 idn 0 tdn -1 'trackdisk.device'
+seq 185490 frame 5560 v c000 202c->602c pc 00fc1602 sr 2204 a7 10002220 (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185491 frame 5560 v 4000 602c->202c pc 00fc123a sr 2204 a7 10002234 (a7) 10004328 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185492 frame 5560 v c000 202c->602c pc 00fc1296 sr 2204 a7 10002234 (a7) 10004328 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185493 frame 5560 v 4000 602c->202c pc 00fc12b0 sr 2204 a7 10002248 (a7) 00fbfc48 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185494 frame 5560 v c000 202c->602c pc 00fc12d4 sr 2204 a7 10002248 (a7) 00fbfc48 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185495 frame 5560 v 4000 602c->202c pc 00f824aa sr 2204 a7 1000223c (a7) 00fc100e task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185496 frame 5560 v c000 202c->602c pc 00f82514 sr 2204 a7 1000223c (a7) 00fc100e task 10015264 idn -1 tdn 0 'trackdisk.device'
+seq 185497 frame 5560 v 4000 602c->202c pc 00f8280a sr 2204 a7 10002238 (a7) 00f82528 task 10015264 idn -1 tdn 0 'trackdisk.device'
+seq 185498 frame 5560 v c000 202c->602c pc 00f82858 sr 2204 a7 10002234 (a7) 00000000 task 10015264 idn -1 tdn 0 'trackdisk.device'
+seq 185499 frame 5560 v 4000 602c->202c pc 00fc12b0 sr 2219 a7 10002248 (a7) 00fbfc48 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185500 frame 5560 v c000 202c->602c pc 00fc12d4 sr 2219 a7 10002248 (a7) 00fbfc48 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185501 frame 5560 v 4000 602c->202c pc 00f828dc sr 0010 a7 1001548c (a7) 00f80940 task 10015264 idn -1 tdn 0 'trackdisk.device'
+seq 185502 frame 5560 v c000 202c->602c pc 00f80954 sr 0010 a7 10015490 (a7) 00bfd100 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185503 frame 5560 v 4000 602c->202c pc 00fc04ac sr 0010 a7 10015490 (a7) 1000ac64 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185504 frame 5560 v c000 202c->602c pc 00fc04ec sr 0010 a7 10015490 (a7) 1000ac64 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185505 frame 5560 v 4000 602c->202c pc 00fc0508 sr 0010 a7 10015498 (a7) 1000ac64 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185506 frame 5560 v c000 202c->602c pc 00fc0540 sr 0010 a7 10015498 (a7) 1000ac64 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185507 frame 5560 v 4000 602c->202c pc 00fc15bc sr 0010 a7 10015478 (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185508 frame 5560 v 4000 202c->202c pc 00fbfcf6 sr 0010 a7 10015474 (a7) 00fc15d8 task 10015264 idn 0 tdn -1 'trackdisk.device'
+seq 185509 frame 5560 v c000 202c->602c pc 00fc1602 sr 0010 a7 10015478 (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185510 frame 5560 v 4000 602c->202c pc 00fc1180 sr 0010 a7 100154a4 (a7) 00fc1176 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185511 frame 5560 v c000 202c->602c pc 00fc11c8 sr 0010 a7 100154a4 (a7) 00fc1176 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185512 frame 5560 v 4000 602c->202c pc 00f82890 sr 0010 a7 100154c0 (a7) 00fc625a task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185513 frame 5560 v c000 202c->602c pc 00f828c8 sr 0010 a7 100154c0 (a7) 00fc625a task 10015264 idn -1 tdn 0 'trackdisk.device'
+seq 185514 frame 5560 v c000 602c->602c pc 10031b6a sr 2000 a7 1000227c (a7) 100007da task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185515 frame 5561 v 4000 602c->202c pc 00f8f770 sr 2000 a7 1000224c (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185516 frame 5561 v c000 202c->602c pc 00f8f7a6 sr 2000 a7 1000224c (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185517 frame 5561 v 4000 602c->202c pc 00fc010e sr 2000 a7 1000224c (a7) 00fbadfa task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185518 frame 5561 v c000 202c->602c pc 00fc0134 sr 2000 a7 1000224c (a7) 00fbadfa task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185519 frame 5561 v 4000 602c->202c pc 00fc15bc sr 2000 a7 1000222c (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185520 frame 5561 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 10002228 (a7) 00fc15d8 task 10015264 idn 0 tdn -1 'trackdisk.device'
+seq 185521 frame 5561 v c000 202c->602c pc 00fc1602 sr 2000 a7 1000222c (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185522 frame 5561 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185523 frame 5561 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185524 frame 5561 v 4000 602c->202c pc 00fc1584 sr 2000 a7 10002220 (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185525 frame 5561 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 1000221c (a7) 00fc15d8 task 10015264 idn 0 tdn -1 'trackdisk.device'
+seq 185526 frame 5561 v c000 202c->602c pc 00fc1602 sr 2000 a7 10002220 (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185527 frame 5561 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185528 frame 5561 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185529 frame 5561 v 4000 602c->202c pc 00fc12b0 sr 2000 a7 10002254 (a7) 00f817c2 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185530 frame 5561 v c000 202c->602c pc 00fc12d4 sr 2000 a7 10002254 (a7) 00f817c2 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185531 frame 5561 v 4000 602c->202c pc 00f824aa sr 2000 a7 10002248 (a7) 00fc100e task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185532 frame 5561 v c000 202c->602c pc 00f82514 sr 2000 a7 10002248 (a7) 00fc100e task 10015264 idn -1 tdn 0 'trackdisk.device'
+seq 185533 frame 5561 v 4000 602c->202c pc 00f8280a sr 2000 a7 10002244 (a7) 00f82528 task 10015264 idn -1 tdn 0 'trackdisk.device'
+seq 185534 frame 5561 v c000 202c->602c pc 00f82858 sr 2000 a7 10002240 (a7) 00000000 task 10015264 idn -1 tdn 0 'trackdisk.device'
+seq 185535 frame 5561 v 4000 602c->202c pc 00fc12b0 sr 2319 a7 10002254 (a7) 00f817c2 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185536 frame 5561 v c000 202c->602c pc 00fc12d4 sr 2319 a7 10002254 (a7) 00f817c2 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 185537 frame 5561 v 4000 602c->202c pc 00f828dc sr 0010 a7 1000a8ac (a7) 00fbb4b4 task 1000985a idn -1 tdn 0 'input.device'
+seq 185538 frame 5561 v c000 202c->602c pc 00f82900 sr 0010 a7 1000a8ac (a7) 00fbb4b4 task 1000985a idn -1 tdn -1 'input.device'
+seq 185539 frame 5561 v 4000 602c->202c pc 1003203c sr 0010 a7 1000a8ac (a7) 00fbb4e6 task 1000985a idn -1 tdn -1 'input.device'
+seq 185540 frame 5561 v c000 202c->602c pc 1003205c sr 0010 a7 1000a8ac (a7) 00fbb4e6 task 1000985a idn -1 tdn -1 'input.device'
+seq 185541 frame 5561 v 4000 602c->202c pc 00fc1584 sr 0010 a7 1000a878 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185542 frame 5561 v 4000 202c->202c pc 00fbfcf6 sr 0010 a7 1000a874 (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 185543 frame 5561 v c000 202c->602c pc 00fc1602 sr 0010 a7 1000a878 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185544 frame 5561 v 4000 602c->202c pc 00fc15bc sr 0019 a7 1000a870 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185545 frame 5561 v 4000 202c->202c pc 00fbfcf6 sr 0019 a7 1000a86c (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 185546 frame 5561 v c000 202c->602c pc 00fc1602 sr 0019 a7 1000a870 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185547 frame 5561 v 4000 602c->202c pc 00fc1180 sr 0019 a7 1000a89c (a7) 00fc1176 task 1000985a idn -1 tdn -1 'input.device'
+seq 185548 frame 5561 v c000 202c->602c pc 00fc11c8 sr 0019 a7 1000a89c (a7) 00fc1176 task 1000985a idn -1 tdn -1 'input.device'
+seq 185549 frame 5561 v 4000 602c->202c pc 00f82890 sr 0019 a7 1000a8ac (a7) 00fbb4b4 task 1000985a idn -1 tdn -1 'input.device'
+seq 185550 frame 5561 v c000 202c->602c pc 00f828c8 sr 0019 a7 1000a8ac (a7) 00fbb4b4 task 1000985a idn -1 tdn 0 'input.device'
+seq 185551 frame 5561 v c000 602c->602c pc 10031b6a sr 2000 a7 1000227c (a7) 100007da task 1000985a idn -1 tdn -1 'input.device'
+seq 185552 frame 5562 v 4000 602c->202c pc 00f8f770 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185553 frame 5562 v c000 202c->602c pc 00f8f7a6 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185554 frame 5562 v 4000 602c->202c pc 00fc010e sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 185555 frame 5562 v c000 202c->602c pc 00fc0134 sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 185556 frame 5562 v 4000 602c->202c pc 00fc15bc sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185557 frame 5562 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 10002228 (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 185558 frame 5562 v c000 202c->602c pc 00fc1602 sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185559 frame 5562 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185560 frame 5562 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185561 frame 5562 v 4000 602c->202c pc 00fc1584 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185562 frame 5562 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 1000221c (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 185563 frame 5562 v c000 202c->602c pc 00fc1602 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185564 frame 5562 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185565 frame 5562 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185566 frame 5562 v 4000 602c->202c pc 00fc12b0 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 185567 frame 5562 v c000 202c->602c pc 00fc12d4 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 185568 frame 5563 v 4000 602c->202c pc 00f8f770 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185569 frame 5563 v c000 202c->602c pc 00f8f7a6 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185570 frame 5563 v 4000 602c->202c pc 00fc010e sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 185571 frame 5563 v c000 202c->602c pc 00fc0134 sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 185572 frame 5563 v 4000 602c->202c pc 00fc15bc sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185573 frame 5563 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 10002228 (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 185574 frame 5563 v c000 202c->602c pc 00fc1602 sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185575 frame 5563 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185576 frame 5563 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185577 frame 5563 v 4000 602c->202c pc 00fc1584 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185578 frame 5563 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 1000221c (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 185579 frame 5563 v c000 202c->602c pc 00fc1602 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185580 frame 5563 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185581 frame 5563 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185582 frame 5563 v 4000 602c->202c pc 00fc12b0 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 185583 frame 5563 v c000 202c->602c pc 00fc12d4 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 185584 frame 5564 v 4000 602c->202c pc 00f8f770 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185585 frame 5564 v c000 202c->602c pc 00f8f7a6 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185586 frame 5564 v 4000 602c->202c pc 00fc010e sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 185587 frame 5564 v c000 202c->602c pc 00fc0134 sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 185588 frame 5564 v 4000 602c->202c pc 00fc15bc sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185589 frame 5564 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 10002228 (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 185590 frame 5564 v c000 202c->602c pc 00fc1602 sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185591 frame 5564 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185592 frame 5564 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185593 frame 5564 v 4000 602c->202c pc 00fc1584 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185594 frame 5564 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 1000221c (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 185595 frame 5564 v c000 202c->602c pc 00fc1602 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185596 frame 5564 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185597 frame 5564 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185598 frame 5564 v 4000 602c->202c pc 00fc12b0 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 185599 frame 5564 v c000 202c->602c pc 00fc12d4 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 185600 frame 5564 v 4000 602c->202c pc 00fc172c sr 2204 a7 10002248 (a7) 00fbfc52 task 1000985a idn -1 tdn -1 'input.device'
+seq 185601 frame 5564 v c000 202c->602c pc 00fc175c sr 2204 a7 10002248 (a7) 00fbfc52 task 1000985a idn -1 tdn -1 'input.device'
+seq 185602 frame 5565 v 4000 602c->202c pc 00f8f770 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185603 frame 5565 v c000 202c->602c pc 00f8f7a6 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185604 frame 5565 v 4000 602c->202c pc 00fc010e sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 185605 frame 5565 v c000 202c->602c pc 00fc0134 sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 185606 frame 5565 v 4000 602c->202c pc 00fc15bc sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185607 frame 5565 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 10002228 (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 185608 frame 5565 v c000 202c->602c pc 00fc1602 sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185609 frame 5565 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185610 frame 5565 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185611 frame 5565 v 4000 602c->202c pc 00fc1584 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185612 frame 5565 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 1000221c (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 185613 frame 5565 v c000 202c->602c pc 00fc1602 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 185614 frame 5565 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185615 frame 5565 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 185616 frame 5565 v 4000 602c->202c pc 00fc12b0 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 185617 frame 5565 v c000 202c->602c pc 00fc12d4 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+thistask 1000985a not a process command ''
+code 00f8f770: 33fc 4000 00df f09a 522e 0126 0829 0002 00a5 6612 3028 0004 6b0c 3028 0004 807c 8000 3140 002a 2142 01cc 2169 0032 0084 532e 0126 6c08 33fc c000 00df f09a 0829
+code 00f8f7a6: 33fc c000 00df f09a 0829 0003 00a5 6710 0829 0000 00ec 6708 0884 000d 3144 01dc 4cdf 0014 4df9 00bf d000 022e 007f 0f00 7000 1d40 0a00 1d40 0900 1d68 0006 0800
+code 00fc010e: 33fc 4000 00df f09a 5228 0126 c36e 0028 806e 0028 33c0 00df f034 4200 3d40 0028 5328 0126 6c08 33fc c000 00df f09a 4e75 0000 4afc 00fc 0140 00fc 02de 0128 0850
+code 00fc0134: 33fc c000 00df f09a 4e75 0000 4afc 00fc 0140 00fc 02de 0128 0850 00fc 015a 00fc 016e 00fc 01d8 4669 6c65 5379 7374 656d 2e72 6573 6f75 7263 6500 6669 6c65 7379
+code 00fc15bc: 33fc 4000 00df f09a 5228 0126 1629 0700 1829 0600 1429 0700 4eae ffe8 0800 0001 6714 43f9 00bf e001 1629 0700 1829 0600 1429 0700 7a00 4cea 0003 0048 206a 0024
+code 00fbfcf6: 33fc 4000 00df f09a 5228 0126 206e 0022 1228 0d00 0881 0007 832e 0029 7200 122e 0029 822e 0084 4a00 6716 0880 0007 660c 4600 c12e 0029 c12e 0084 6004 812e 0029
+code 00fc1602: 33fc c000 00df f09a 2c4a b403 6702 78ff e14a 1404 5242 4442 4a05 6608 d2bc 0001 0000 d185 3202 3245 4cdf 053c 48d0 0003 4e75 206e 0174 0210 00ce 0010 0008 4e75
+code 00fc123a: 33fc 4000 00df f09a 5228 0126 b7eb 0008 6740 2253 2212 b2a9 0020 6608 222a 0004 b2a9 0024 652c 204b 2250 2011 6708 2080 c189 2348 0004 2240 41ee 008c 5888 2028
+code 00fc1296: 33fc c000 00df f09a 4cdf 0400 4e75 4cdf 0800 41ee 008c 226e 0024 33fc 4000 00df f09a 5229 0126 2250 2011 6708 2080 c189 2348 0004 226e 0024 5329 0126 6c08 33fc
+code 00fc1584: 33fc 4000 00df f09a 5228 0126 22aa 0040 236a 0044 0004 43f9 00bf e001 6026 48e7 3ca0 7000 7400 7a01 246e 00c0 cd4a 43f9 00bf e001 206a 0024 33fc 4000 00df f09a
+code 00fc12b0: 33fc 4000 00df f09a 5229 0126 2250 2011 6708 2080 c189 2348 0004 226e 0024 5329 0126 6c08 33fc c000 00df f09a 4a80 6708 2240 6100 fd0e 60c0 41f9 00df f000 4e75
+code 00fc12d4: 33fc c000 00df f09a 4a80 6708 2240 6100 fd0e 60c0 41f9 00df f000 4e75 48e7 0060 41e9 0020 4eae 0150 4eae 016e 246e 0024 33fc 4000 00df f09a 522a 0126 2d50 0040
+--- walk: execbase 10000810
+task this 1000985a 'input.device' type 1 state 4 idn -1 tdn 0 sigalloc c000ffff sigwait c0000000 sigrecvd 00000000 sp 1000a85a lower 100098b8 upper 1000a8b8
+  stk 1000a85a: 00000000 00000000 00000000 00f80c0c 00101000 09b804b6 a4ff4000 00000000
+  stk 1000a87a: 00000000 00000000 00008000 0000c000 00001000 98041000 985a00fe 77e41000
+  stk 1000a89a: a8e81000 caac1000 07da1000 081000f8 28da00fb b4b400f8 26881000 98041000
+task wait 1000db38 'console.device' type 1 state 4 idn -1 tdn 0 sigalloc f000ffff sigwait f0000000 sigrecvd 00000000 sp 1000dad6 lower 1000cb38 upper 1000db38
+  stk 1000dad6: 00000000 00000000 00000000 00f80c0c 00181000 09b80000 00ff0000 00000000
+  stk 1000daf6: 00000000 00000000 00000000 00000000 00001000 c9701000 db380000 00000000
+  stk 1000db16: 00000000 00001000 07da1000 081000f8 28da00fb 095a1000 c97000f8 26881000
+  stk 1000db36: c9701000
+task wait 1000e318 'UAE fs automounter' type 1 state 4 idn -1 tdn 0 sigalloc 0000ffff sigwait 00002000 sigrecvd 00000000 sp 1000eb1a lower 1000e374 upper 1000eb74
+  stk 1000eb1a: 00000000 00000000 00000000 00f80c0c 00181000 09b80000 00ff0000 00000000
+  stk 1000eb3a: 00000000 00000000 00000000 00000000 00000000 00001000 e3180000 00000000
+  stk 1000eb5a: 00000000 00001000 07da1000 081000f8 28da00f0 02c800f8 26880000
+task wait 1001b2a8 'DH1' type 13 state 4 idn -1 tdn 0 sigalloc c000ffff sigwait 40000100 sigrecvd 00000000 sp 1001bc62 lower 1001b38c upper 1001bcec
+  process cli 00000000
+  seg1 hunk 0 00f9f288-098640f5
+  seg2 hunk 0 00fa43e8-4f6f43e0
+  seg3 hunk 0 00fa8240-72fae240
+  stk 1001bc62: 00000000 00000000 00000000 00f80c0c 00181000 09b80000 00ff0000 00000000
+  stk 1001bc82: 00040000 00000000 00001001 ad341001 ad301001 ad501001 b2a81000 318800f9
+  stk 1001bca2: f86a00fa 82441000 07da1000 081000f8 28da00fa a3120000 000000fa 837200fa
+  stk 1001bcc2: 82501000 31880000 00001001 b3ac1001 b04c00f9 f86a00fa 824400f9 f5be00f9
+  stk 1001bce2: f5b200f9 f86a0000 09604448
+task wait 10026218 'CON' type 13 state 4 idn -1 tdn 0 sigalloc 0000ffff sigwait 00000100 sigrecvd 00000000 sp 10026d92 lower 100262fc upper 10026f7c
+  process cli 00000000
+  seg1 hunk 0 00f9f288-098640f5
+  seg2 hunk 0 00fa43e8-4f6f43e0
+  stk 10026d92: 00000000 00000000 00000000 00f80c0c 00181000 09b80000 00ffffff ffff0000
+  stk 10026db2: 00000000 00000000 00000000 03ed1002 62741002 6f701002 62181002 6fb01001
+  stk 10026dd2: 00e40000 00001000 07da1000 081000f8 28da00f9 faa81002 618c1001 04e21001
+  stk 10026df2: 04c81001 00e400fb 87fc0000 00000000 00000000 00000000 00000000 00000000
+  stk 10026e12: 00000000 00000000 00000000 00001002 61d00000 00000000 00001002 80881002
+  stk 10026e32: 62741001 00e40000 00000000 00000000 00000000 03ed0000 0000ffff ffff1001
+  stk 10026e52: 0f5c0000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 10026e72: 00000000 00000000 00000000 00000000 00000000 001e0000 00000000 00000000
+  stk 10026e92: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 10026eb2: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 10026ed2: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 10026ef2: 03ea0000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 10026f12: 00000000 00000000 00000000 00000000 03e90000 00000000 00000000 00000000
+  stk 10026f32: 00000000 00000000 00000000 00000000 00000000 00000000 00001002 6ec01000
+  stk 10026f52: b04c1002 6fb00000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 10026f72: 000000f9 f86a0000 0c80434f
+task wait 10022f00 'ramlib' type 13 state 4 idn -1 tdn 0 sigalloc 0000ffff sigwait 00000010 sigrecvd 00000100 sp 1002377e lower 10022fe4 upper 100237e4
+  process cli 00000000
+  seg1 hunk 0 00f9f288-098640f5
+  seg2 hunk 0 00fa43e8-4f6f43e0
+  stk 1002377e: 00000000 00000000 00000000 00f80c0c 00101000 09b80000 00ff0000 00000000
+  stk 1002379e: 00000000 00000000 00000000 00000000 00001002 2ea01002 2f001002 2ef21002
+  stk 100237be: fc861002 fc861000 07da1000 081000f8 28da00f8 25761002 2f0000fb f39000f9
+  stk 100237de: f86a0000 08007261
+task wait 10012db8 'DF0' type 13 state 4 idn -1 tdn 0 sigalloc c000ffff sigwait 40000100 sigrecvd 00000000 sp 10013772 lower 10012e9c upper 100137fc
+  process cli 00000000
+  seg1 hunk 0 00f9f288-098640f5
+  seg2 hunk 0 00fa43e8-4f6f43e0
+  seg3 hunk 0 00fa8240-72fae240
+  stk 10013772: 00000000 00000000 00000000 00f80c0c 00101000 09b80000 00ff0000 00000000
+  stk 10013792: 00040000 00000000 00001000 31cc1000 31c81001 38001001 2db81000 318800f9
+  stk 100137b2: f86a00fa 82441000 07da1000 081000f8 28da00fa a3120012 033000fa 837200fa
+  stk 100137d2: 82501000 31880000 00001001 2ebc1001 2b5c00f9 f86a00fa 824400f9 f5be00f9
+  stk 100137f2: f5b200f9 f86a0000 09604446
+task wait 10011238 'DH2' type 13 state 4 idn -1 tdn 0 sigalloc c000ffff sigwait 00002100 sigrecvd 00000000 sp 10012a2e lower 1001131c upper 10012a8c
+  process cli 00000000
+  seg1 hunk 0 00f9f288-098640f5
+  seg2 hunk 0 00fa43e8-4f6f43e0
+  stk 10012a2e: 00000000 00000000 00000000 00f80c0c 00101000 09b80000 00ffffff ffff0000
+  stk 10012a4e: 00000000 00000000 00000004 000c1000 2f981001 12941001 12381000 2d541000
+  stk 10012a6e: 2d500000 00001000 07da1000 081000f8 28da00f0 0ca400f9 f86a0000 17704448
+task wait 1002c760 'RAM' type 13 state 4 idn -1 tdn 0 sigalloc c000ffff sigwait c0000100 sigrecvd 00000000 sp 1002ca46 lower 1002c844 upper 1002ccf4
+  process cli 00000000
+  seg1 hunk 0 00f9f288-098640f5
+  seg2 hunk 0 00fa43e8-4f6f43e0
+  stk 1002ca46: 00000000 00000000 00000000 00f80c0c 00101000 09b80000 00ffffff ffff0000
+  stk 1002ca66: 00cd4000 00008000 00001002 df44ffff ffff1002 cce41002 c7600000 00001005
+  stk 1002ca86: 0e401002 a2d81000 07da1000 081000f8 28da00fc 8d6c0000 00000000 00000000
+  stk 1002caa6: 00000000 00000000 00000000 00000000 00001002 9a281000 0810c000 01001002
+  stk 1002cac6: df441004 19640000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cae6: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cb06: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cb26: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cb46: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cb66: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cb86: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cba6: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cbc6: 00000000 00000000 00007a65 6e626f6e 65732d6e 6f726462 6f6e6573 2e636f6e
+  stk 1002cbe6: 6600636f 6e660000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cc06: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cc26: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cc46: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cc66: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cc86: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cca6: 00000000 100104c0 00000000 00000000 00000000 00000000 00000000 000000f8
+  stk 1002ccc6: 29520000 000000f8 1ec60000 00000000 000000f8 1e820000 00540001 00000000
+  stk 1002cce6: 000000fc 8b6000f9 f86a0000 04b05241
+task wait 100104c8 'Initial CLI' type 13 state 4 idn -1 tdn 0 sigalloc 0000ffff sigwait 00000100 sigrecvd 00000004 sp 10050dd2 lower 1004ffc8 upper 10050fc8
+  process cli 100028b8
+  command 'C:Copy'
+  module hunk 0 1004ea58-1004ffc0
+  module hunk 1 10029050-10029058
+  seg1 hunk 0 00f9f288-098640f5
+  seg2 hunk 0 00fa43e8-4f6f43e0
+  seg4 hunk 0 00fcaf98-00fcaf8f
+  stk 10050dd2: 00000000 00000000 00000000 00f80c0c 00101000 09b80000 00ff0000 00521002
+  stk 10050df2: d7681006 fa8c0001 00001004 f8f61001 05241005 0e801001 04c81001 05240000
+  stk 10050e12: 00000000 00521000 07da1000 081000f8 28da00f9 faa80000 10001000 09a61001
+  stk 10050e32: 05241000 081000f9 f1540000 00001001 55480502 10050e50 03eeffff ffff1005
+  stk 10050e52: 0e3c1001 05240000 00521005 0f440000 00001002 d7681006 fa8c0001 00001004
+  stk 10050e72: f8f60000 10001005 0eb000fa 562e0000 00011005 0ec00400 ae7f1001 00e400fa
+  stk 10050e92: 3bc21006 fa8c0001 00000000 00000401 06590400 0c530001 00001001 00e41001
+  stk 10050eb2: 00e41005 0fc01005 0fb800fa 3b721006 fa8c0001 00001004 f8f60000 10001000
+  stk 10050ed2: 23940000 001a0400 b0e30400 98491004 ea541001 022c1004 ea5400f9 f5b21002
+  stk 10050ef2: c480ffff ffffbaa8 100100e4 10000810 04000c53 00000001 00010000 00010001
+  stk 10050f12: 00060400 0c531000 dc541000 e1dc1000 dc541004 fd6e0000 00001002 c4640000
+  stk 10050f32: 00001002 ccfc0400 b1a10400 b7d10400 ae7f1002 c4800001 00001002 baa81002
+  stk 10050f52: baa0ffff ffff0000 00000000 00000000 00000000 00000000 00000000 0000ffff
+  stk 10050f72: ffff0000 00001002 baac1002 ba981006 fa8c1002 99941002 99ec1002 ba780000
+  stk 10050f92: 00000000 00000000 00020000 00010000 00000000 00000000 00000000 00000000
+  stk 10050fb2: 00000000 000000f9 f5be00f9 fdea0000 10001001 0eac0000
+task wait 10021640 'DH1_0' type 13 state 4 idn -1 tdn 0 sigalloc c000ffff sigwait 00002100 sigrecvd 00000000 sp 10022e36 lower 10021724 upper 10022e94
+  process cli 00000000
+  seg1 hunk 0 00f9f288-098640f5
+  seg2 hunk 0 00fa43e8-4f6f43e0
+  stk 10022e36: 00000000 00000000 00000000 00f80c0c 00101000 09b80000 00ffffff ffff0000
+  stk 10022e56: 00000000 00000000 00000004 000b1002 b9a81002 169c1002 16401002 141c1002
+  stk 10022e76: 14180000 00001000 07da1000 081000f8 28da00f0 0ca400f9 f86a0000 17704448
+task wait 1002a4c8 'Background CLI' type 13 state 4 idn -1 tdn 0 sigalloc 0000ffff sigwait 00000100 sigrecvd 00000000 sp 1002ad86 lower 1002a5ac upper 1002b22c
+  process cli 1002a34c
+  command 'C:Copy'
+  seg1 hunk 0 00f9f288-098640f5
+  seg2 hunk 0 00fa43e8-4f6f43e0
+  stk 1002ad86: 00000000 00000000 00000000 00f80c0c 00101000 09b80000 00ff0000 00521004
+  stk 1002ada6: e5c01006 57b80000 040000fa 72341002 a5241002 ae341002 a4c81002 a5240000
+  stk 1002adc6: 00000000 00521000 07da1000 081000f8 28da00f9 faa800fa 71f21000 09a61002
+  stk 1002ade6: a5241000 081000f9 f1540000 00001001 55480502 1002ae04 1002ae08 10021002
+  stk 1002ae06: adf01002 a5240000 00520000 00000000 00001004 e5c01006 57b80000 040000fa
+  stk 1002ae26: 723400fa 71f20000 00520000 00030000 00011002 ae740401 02bd1001 00e400fa
+  stk 1002ae46: 3bc21006 57b80000 04000000 0001ffff ffff0000 00000000 00001002 ae9c1001
+  stk 1002ae66: 00e40000 00001002 af5000fa 3b721006 57b80000 040000fa 723400fa 71f21000
+  stk 1002ae86: 074a1000 073e0000 00001002 a3d51001 00e400fa 70b00000 000000fa 6dc40000
+  stk 1002aea6: 03ed0401 02bd0400 a3ee0400 a5590400 a3ee0000 000f1000 09a61001 54d81002
+  stk 1002aec6: a5240000 00000000 000000f9 fa8c0000 000f00f9 fc0e00f9 fc020000 03ed00f9
+  stk 1002aee6: f17c1002 a53c1002 a5380500 1002aefc 00001002 9a441002 aee81001 55340000
+  stk 1002af06: 03edffff ffff0000 00000401 02bd0400 a3ee0400 a5590400 a3ee0000 000f0401
+  stk 1002af26: 02bd0000 00000000 00001006 57b81002 aea41006 57b81004 0af40000 00000401
+  stk 1002af46: 02bd00fa 3b261000 074a1000 073e0401 02bd0000 00ff0000 0000ffff ffff0000
+  stk 1002af66: 00001002 a3d51001 00e41002 b2f80000 00001002 afdc1001 00e400fa 72a200fa
+  stk 1002af86: 3b261000 074a1000 073e0000 00000400 0bbd1001 00e400fc c1941002 b4040000
+  stk 1002afa6: 00000000 00010000 00000000 00001001 00e41002 a3d51002 a34c0400 0bbd0000
+  stk 1002afc6: 00001002 a4c81002 a3d500fc c7b80000 00001001 00e41002 b03800fc bf7c1002
+  stk 1002afe6: b1b41002 b4040000 00ffffff ffff0000 00010000 00010000 00001002 a3d51002
+  stk 1002b006: b2f81001 00e46963 6b241002 a4c81002 a34c1000 42201002 1002b2f8 1002a3d5
+  stk 1002b026: ee541002 b7040000 00670000 00000000 00001002 b21000fc b8d81002 b1b40000
+  stk 1002b046: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002b066: 00001002 a4c81002 b4041002 a3d51002 b7040400 ae4b1002 a4741002 a4441002
+  stk 1002b086: a3d41002 a3941002 b2f81002 a4c81001 00e40000 00001002 a2f00000 00000000
+  stk 1002b0a6: 000000fc f18000fc f18000fc f18000fc f1f800fc f17800fc f17800fc f17800fc
+  stk 1002b0c6: f20000fc f1f000fc f17800fc f17800fc f21000fc f19800fc f1e800fc f1e000fc
+  stk 1002b0e6: f1d800fc f20800fc f20800fc f18000fc f1d000fc f1a800fc f1a800fc f1c800fc
+  stk 1002b106: f1c000fc f18000fc f18800fc f18000fc f18800fc f1b800fc f19000fc f1a000fc
+  stk 1002b126: f1b000fc f17800fc b02c00fc b03200fc b03800fc b03e00fc b04200fc b04c00fc
+  stk 1002b146: b05200fc b05a00fc b06000fc b06600fc b06e00fc b07200fc b07600fc b08000fc
+  stk 1002b166: b08600fc b08e00fc b09400fc b09e00fc b0a600fc b0aa00fc b0ae00fc b0b600fc
+  stk 1002b186: b0ba00fc b0c000fc b0c800fc b0d000fc b0da00fc b0e000fc b0e800fc b0ee00fc
+  stk 1002b1a6: b0f400fc b0f800fc b0fcffff d8f10000 00000000 00000000 00000000 000000f9
+  stk 1002b1c6: f9e80000 00021002 a34c0000 00000000 00000000 00000000 00000000 00f9f87c
+  stk 1002b1e6: 00000000 00000000 00001000 42200000 00000000 00000000 00000000 00000000
+  stk 1002b206: 00000000 00000000 00000000 000000fc afc40000 000000fc afb41002 a4c800f9
+  stk 1002b226: f86a0000 0c804261
+task wait 100238a8 'UAE clipboard sharing' type 13 state 4 idn -1 tdn 0 sigalloc 0000ffff sigwait 00000100 sigrecvd 00002000 sp 10025f7e lower 1002398c upper 1002609c
+  process cli 00000000
+  seg1 hunk 0 00f9f288-098640f5
+  seg2 hunk 0 00fa43e8-4f6f43e0
+  stk 10025f7e: 00000000 00000000 00000000 00f80c0c 00101000 09b80000 00ff0000 00080400
+  stk 10025f9e: a47e0400 9810ffff fffe0000 00001002 39041002 602c1002 38a81002 39040000
+  stk 10025fbe: 00001002 9a441000 07da1000 081000f8 28da00f9 faa80400 98101000 09a61002
+  stk 10025fde: 39041000 081000f9 f1541001 554c1001 55480500 10025ffc 00001002 9a441002
+  stk 10025ffe: 5fe81002 39040000 00081002 38a81002 60640400 a47e0400 9810ffff fffe0000
+  stk 1002601e: 00000400 981000f8 09400000 00001002 605c1002 60401002 60881001 00e400fa
+  stk 1002603e: 389a1544 4556533a 636c6970 626f6172 642e6465 76696365 00fa3840 000f1002
+  stk 1002605e: 38080000 00081002 60880000 00000000 00000000 00000000 00000000 00000000
+  stk 1002607e: 00000000 000000fa 3b14ffff fffe0000 000000f0 164800f9 f86a0000 27105541
+task wait 100154d8 'DH0' type 13 state 4 idn -1 tdn 0 sigalloc c000ffff sigwait 40000100 sigrecvd 00000000 sp 10015e92 lower 100155bc upper 10015f1c
+  process cli 00000000
+  seg1 hunk 0 00f9f288-098640f5
+  seg2 hunk 0 00fa43e8-4f6f43e0
+  seg3 hunk 0 00fa8240-72fae240
+  stk 10015e92: 00000000 00000000 00000000 00f80c0c 00101000 09b804b3 feff0000 00000000
+  stk 10015eb2: 00040000 00000000 00001000 e0041000 e0001001 5f201001 54d81000 318800f9
+  stk 10015ed2: f86a00fa 82441000 07da1000 081000f8 28da00fa a312001e 018400fa 837200fa
+  stk 10015ef2: 82501000 31880000 00001001 55dc1001 4ddc00f9 f86a00fa 824400f9 f5be00f9
+  stk 10015f12: f5b200f9 f86a0000 09604448
+task wait 10015264 'trackdisk.device' type 1 state 4 idn -1 tdn 0 sigalloc 0000ffff sigwait 00000300 sigrecvd 00000000 sp 1001546e lower 100152d8 upper 100154d8
+  stk 1001546e: 00000000 00000000 00000000 00f80c0c 00101000 09b804b6 a4ff0000 00000000
+  stk 1001548e: 00000000 00000000 00000000 00000000 00001000 ac641001 52641001 51c01001
+  stk 100154ae: 51180000 00001000 07da1000 081000f8 28da00fc 625a1000 ac64ffff ffff1001
+  stk 100154ce: 51181000 ac641001 2db81001
+task wait 1000985a 'input.device' type 1 state 4 idn -1 tdn 0 sigalloc c000ffff sigwait c0000000 sigrecvd 00000000 sp 1000a85a lower 100098b8 upper 1000a8b8
+  stk 1000a85a: 00000000 00000000 00000000 00f80c0c 00101000 09b804b6 a4ff4000 00000000
+  stk 1000a87a: 00000000 00000000 00008000 0000c000 00001000 98041000 985a00fe 77e41000
+  stk 1000a89a: a8e81000 caac1000 07da1000 081000f8 28da00fb b4b400f8 26881000 98041000
+sem 1002bf28 '. SetPatch .' nest 0 queue -1 owner 00000000 firstwaiter 00000000
+lib 10004220 'utility.library' neg 0128 pos 0030 open-vec 4ef9 00fbd50c
+lib 10004b4c 'graphics.library' neg 0434 pos 0220 open-vec 4ef9 00f8f670
+lib 10009300 'layers.library' neg 00d8 pos 002e open-vec 4ef9 00fb1ef2
+lib 1000ab10 'keymap.library' neg 0030 pos 009e open-vec 4ef9 00fc287e
+lib 1000b04c 'intuition.library' neg 033c pos 0c4e open-vec 4ef9 00fd2fe4
+lib 100100e4 'dos.library' neg 0414 pos 03e4 open-vec 4ef9 00f9f516
+lib 10030cc0 'mmu.library' neg 01d0 pos 02dc open-vec 4ef9 10042314
+lib 100296d0 '68060.library' neg 00e0 pos 00c2 open-vec 4ef9 10031638
+lib 100295b8 '68040.library' neg 0018 pos 0038 open-vec 4ef9 100294c8
+lib 00001674 'expansion.library' neg 00a4 pos 0186 open-vec 4ef9 00f8387c
+lib 100003f4 'bsdsocket.library' neg 012c pos 0024 open-vec 4ef9 00f02134
+lib 1000eb9c 'uaegfx.card' neg 0024 pos 112e open-vec 4ef9 00f02306
+lib 10000810 'exec.library' neg 0336 pos 0278 open-vec 4ef9 00f82ce0
+dev 10009354 'gameport.device' neg 0024 pos 0152 open-vec 4ef9 00fbaa4a
+dev 100094ec 'timer.device' neg 0044 pos 017c open-vec 4ef9 00fc0f98
+dev 1000968c 'keyboard.device' neg 0024 pos 0146 open-vec 4ef9 00fba62a
+dev 10009804 'input.device' neg 002c pos 12d9 open-vec 4ef9 00fbb252
+dev 1000abe0 'ramdrive.device' neg 0030 pos 0060 open-vec 4ef9 00fbf5b6
+dev 1000ac64 'trackdisk.device' neg 0024 pos 00a8 open-vec 4ef9 00fc50e8
+dev 1000c970 'console.device' neg 0048 pos 12a4 open-vec 4ef9 00faf6e0
+dev 1000dcd4 'uaehf.device' neg 0024 pos 0100 open-vec 4ef9 00f020b6
+res 10000290 'uae.resource' neg 0008 pos 0032 open-vec 4ef9 00f0203c
+res 100042c4 'potgo.resource' neg 0014 pos 002a open-vec 4ef9 00fc0082
+res 10004328 'ciaa.resource' neg 0018 pos 0088 open-vec 4ef9 00fbfd9a
+res 100043c8 'ciab.resource' neg 0018 pos 0088 open-vec 4ef9 00fbfd9a
+res 10004450 'FileSystem.resource' neg 016e pos 1000 open-vec 42f0 00140000
+res 10004544 'battclock.resource' neg 0024 pos 005e open-vec 4ef9 00fbe04a
+res 100045b4 'misc.resource' neg 000c pos 0032 open-vec 4ef9 00fbff00
+res 1000460c 'disk.resource' neg 0024 pos 0094 open-vec 4ef9 00fc0558
+res 100046b8 'battmem.resource' neg 0018 pos 005a open-vec 4ef9 00fffe8c
+res 1000ab36 'keymap.resource' neg ab52 pos 0000 open-vec 0001 1000ab8e
+res 10029770 'fpsp.resource' neg 0024 pos 0022 open-vec 4ef9 10031638
+=== INTENA ring dump (SIGUSR2) frame 6069 seq 196160 intena 602c intena_int 602c intreq 0040 stopped 1 pc 10031be6 sr 2000
+seq 195904 frame 6059 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 195905 frame 6059 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 195906 frame 6059 v 4000 602c->202c pc 00fc1584 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195907 frame 6059 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 1000221c (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 195908 frame 6059 v c000 202c->602c pc 00fc1602 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195909 frame 6059 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 195910 frame 6059 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 195911 frame 6059 v 4000 602c->202c pc 00fc12b0 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 195912 frame 6059 v c000 202c->602c pc 00fc12d4 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 195913 frame 6060 v 4000 602c->202c pc 00f8f770 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195914 frame 6060 v c000 202c->602c pc 00f8f7a6 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195915 frame 6060 v 4000 602c->202c pc 00fc010e sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 195916 frame 6060 v c000 202c->602c pc 00fc0134 sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 195917 frame 6060 v 4000 602c->202c pc 00fc15bc sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195918 frame 6060 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 10002228 (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 195919 frame 6060 v c000 202c->602c pc 00fc1602 sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195920 frame 6060 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 195921 frame 6060 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 195922 frame 6060 v 4000 602c->202c pc 00fc1584 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195923 frame 6060 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 1000221c (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 195924 frame 6060 v c000 202c->602c pc 00fc1602 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195925 frame 6060 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 195926 frame 6060 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 195927 frame 6060 v 4000 602c->202c pc 00fc12b0 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 195928 frame 6060 v c000 202c->602c pc 00fc12d4 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 195929 frame 6061 v 4000 602c->202c pc 00f8f770 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195930 frame 6061 v c000 202c->602c pc 00f8f7a6 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195931 frame 6061 v 4000 602c->202c pc 00fc010e sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 195932 frame 6061 v c000 202c->602c pc 00fc0134 sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 195933 frame 6061 v 4000 602c->202c pc 00fc15bc sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195934 frame 6061 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 10002228 (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 195935 frame 6061 v c000 202c->602c pc 00fc1602 sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195936 frame 6061 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 195937 frame 6061 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 195938 frame 6061 v 4000 602c->202c pc 00fc1584 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195939 frame 6061 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 1000221c (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 195940 frame 6061 v c000 202c->602c pc 00fc1602 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195941 frame 6061 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 195942 frame 6061 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 195943 frame 6061 v 4000 602c->202c pc 00fc12b0 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 195944 frame 6061 v c000 202c->602c pc 00fc12d4 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 195945 frame 6062 v 4000 602c->202c pc 00f8f770 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195946 frame 6062 v c000 202c->602c pc 00f8f7a6 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195947 frame 6062 v 4000 602c->202c pc 00fc010e sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 195948 frame 6062 v c000 202c->602c pc 00fc0134 sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 195949 frame 6062 v 4000 602c->202c pc 00fc15bc sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195950 frame 6062 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 10002228 (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 195951 frame 6062 v c000 202c->602c pc 00fc1602 sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195952 frame 6062 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 195953 frame 6062 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 195954 frame 6062 v 4000 602c->202c pc 00fc1584 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195955 frame 6062 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 1000221c (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 195956 frame 6062 v c000 202c->602c pc 00fc1602 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195957 frame 6062 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 195958 frame 6062 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 195959 frame 6062 v 4000 602c->202c pc 00fc12b0 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 195960 frame 6062 v c000 202c->602c pc 00fc12d4 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 195961 frame 6062 v 4000 602c->202c pc 00f824aa sr 2000 a7 10002248 (a7) 00fc100e task 1000985a idn -1 tdn -1 'input.device'
+seq 195962 frame 6062 v c000 202c->602c pc 00f82514 sr 2000 a7 10002248 (a7) 00fc100e task 1000985a idn -1 tdn 0 'input.device'
+seq 195963 frame 6062 v 4000 602c->202c pc 00f8280a sr 2000 a7 10002244 (a7) 00f82528 task 1000985a idn -1 tdn 0 'input.device'
+seq 195964 frame 6062 v c000 202c->602c pc 00f82858 sr 2000 a7 10002240 (a7) 00000000 task 1000985a idn -1 tdn 0 'input.device'
+seq 195965 frame 6062 v 4000 602c->202c pc 00fc12b0 sr 2319 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 195966 frame 6062 v c000 202c->602c pc 00fc12d4 sr 2319 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 195967 frame 6062 v 4000 602c->202c pc 00f828dc sr 0010 a7 1000a8ac (a7) 00fbb4b4 task 1000985a idn -1 tdn 0 'input.device'
+seq 195968 frame 6062 v c000 202c->602c pc 00f82900 sr 0010 a7 1000a8ac (a7) 00fbb4b4 task 1000985a idn -1 tdn -1 'input.device'
+seq 195969 frame 6062 v 4000 602c->202c pc 1003203c sr 0010 a7 1000a8ac (a7) 00fbb4e6 task 1000985a idn -1 tdn -1 'input.device'
+seq 195970 frame 6062 v c000 202c->602c pc 1003205c sr 0010 a7 1000a8ac (a7) 00fbb4e6 task 1000985a idn -1 tdn -1 'input.device'
+seq 195971 frame 6062 v 4000 602c->202c pc 00fc1584 sr 0010 a7 1000a878 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195972 frame 6062 v 4000 202c->202c pc 00fbfcf6 sr 0010 a7 1000a874 (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 195973 frame 6062 v c000 202c->602c pc 00fc1602 sr 0010 a7 1000a878 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195974 frame 6062 v 4000 602c->202c pc 00fc15bc sr 0019 a7 1000a870 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195975 frame 6062 v 4000 202c->202c pc 00fbfcf6 sr 0019 a7 1000a86c (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 195976 frame 6062 v c000 202c->602c pc 00fc1602 sr 0019 a7 1000a870 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195977 frame 6062 v 4000 602c->202c pc 00fc1180 sr 0019 a7 1000a89c (a7) 00fc1176 task 1000985a idn -1 tdn -1 'input.device'
+seq 195978 frame 6062 v c000 202c->602c pc 00fc11c8 sr 0019 a7 1000a89c (a7) 00fc1176 task 1000985a idn -1 tdn -1 'input.device'
+seq 195979 frame 6062 v 4000 602c->202c pc 00f82890 sr 0019 a7 1000a8ac (a7) 00fbb4b4 task 1000985a idn -1 tdn -1 'input.device'
+seq 195980 frame 6062 v c000 202c->602c pc 00f828c8 sr 0019 a7 1000a8ac (a7) 00fbb4b4 task 1000985a idn -1 tdn 0 'input.device'
+seq 195981 frame 6062 v c000 602c->602c pc 10031b6a sr 2000 a7 1000227c (a7) 100007da task 1000985a idn -1 tdn -1 'input.device'
+seq 195982 frame 6062 v 4000 602c->202c pc 00fc172c sr 2204 a7 10002248 (a7) 00fbfc52 task 1000985a idn -1 tdn -1 'input.device'
+seq 195983 frame 6062 v c000 202c->602c pc 00fc175c sr 2204 a7 10002248 (a7) 00fbfc52 task 1000985a idn -1 tdn -1 'input.device'
+seq 195984 frame 6063 v 4000 602c->202c pc 00f8f770 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195985 frame 6063 v c000 202c->602c pc 00f8f7a6 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195986 frame 6063 v 4000 602c->202c pc 00fc010e sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 195987 frame 6063 v c000 202c->602c pc 00fc0134 sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 195988 frame 6063 v 4000 602c->202c pc 00fc15bc sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195989 frame 6063 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 10002228 (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 195990 frame 6063 v c000 202c->602c pc 00fc1602 sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195991 frame 6063 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 195992 frame 6063 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 195993 frame 6063 v 4000 602c->202c pc 00fc1584 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195994 frame 6063 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 1000221c (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 195995 frame 6063 v c000 202c->602c pc 00fc1602 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 195996 frame 6063 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 195997 frame 6063 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 195998 frame 6063 v 4000 602c->202c pc 00fc12b0 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 195999 frame 6063 v c000 202c->602c pc 00fc12d4 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 196000 frame 6064 v 4000 602c->202c pc 00f8f770 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 196001 frame 6064 v c000 202c->602c pc 00f8f7a6 sr 2000 a7 1000224c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 196002 frame 6064 v 4000 602c->202c pc 00fc010e sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 196003 frame 6064 v c000 202c->602c pc 00fc0134 sr 2000 a7 1000224c (a7) 00fbadfa task 1000985a idn -1 tdn -1 'input.device'
+seq 196004 frame 6064 v 4000 602c->202c pc 00fc15bc sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 196005 frame 6064 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 10002228 (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 196006 frame 6064 v c000 202c->602c pc 00fc1602 sr 2000 a7 1000222c (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 196007 frame 6064 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 196008 frame 6064 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 196009 frame 6064 v 4000 602c->202c pc 00fc1584 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 196010 frame 6064 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 1000221c (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 196011 frame 6064 v c000 202c->602c pc 00fc1602 sr 2000 a7 10002220 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 196012 frame 6064 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 196013 frame 6064 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 1000985a idn -1 tdn -1 'input.device'
+seq 196014 frame 6064 v 4000 602c->202c pc 00fc12b0 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 196015 frame 6064 v c000 202c->602c pc 00fc12d4 sr 2000 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 196016 frame 6064 v 4000 602c->202c pc 00f824aa sr 2000 a7 10002248 (a7) 00fc100e task 1000985a idn -1 tdn -1 'input.device'
+seq 196017 frame 6064 v c000 202c->602c pc 00f82514 sr 2000 a7 10002248 (a7) 00fc100e task 1000985a idn -1 tdn 0 'input.device'
+seq 196018 frame 6064 v 4000 602c->202c pc 00f8280a sr 2000 a7 10002244 (a7) 00f82528 task 1000985a idn -1 tdn 0 'input.device'
+seq 196019 frame 6064 v c000 202c->602c pc 00f82858 sr 2000 a7 10002240 (a7) 00000000 task 1000985a idn -1 tdn 0 'input.device'
+seq 196020 frame 6064 v 4000 602c->202c pc 00fc12b0 sr 2319 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 196021 frame 6064 v c000 202c->602c pc 00fc12d4 sr 2319 a7 10002254 (a7) 00f817c2 task 1000985a idn -1 tdn -1 'input.device'
+seq 196022 frame 6064 v 4000 602c->202c pc 00f828dc sr 0010 a7 100154c0 (a7) 00fc625a task 10015264 idn -1 tdn 0 'trackdisk.device'
+seq 196023 frame 6064 v c000 202c->602c pc 00f82900 sr 0010 a7 100154c0 (a7) 00fc625a task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196024 frame 6064 v 4000 602c->202c pc 1003203c sr 0010 a7 100154bc (a7) 00fc6280 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196025 frame 6064 v c000 202c->602c pc 1003205c sr 0010 a7 100154bc (a7) 00fc6280 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196026 frame 6064 v 4000 602c->202c pc 00fc04ac sr 0010 a7 10015490 (a7) 1000ac64 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196027 frame 6064 v c000 202c->602c pc 00fc04ec sr 0010 a7 10015490 (a7) 1000ac64 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196028 frame 6064 v 4000 602c->202c pc 00fc0508 sr 0010 a7 10015498 (a7) 1000ac64 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196029 frame 6064 v c000 202c->602c pc 00fc0540 sr 0010 a7 10015498 (a7) 1000ac64 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196030 frame 6064 v 4000 602c->202c pc 00fc04ac sr 0010 a7 10015490 (a7) 1000ac64 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196031 frame 6064 v c000 202c->602c pc 00fc04ec sr 0010 a7 10015490 (a7) 1000ac64 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196032 frame 6064 v 4000 602c->202c pc 00fc0508 sr 0010 a7 10015498 (a7) 1000ac64 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196033 frame 6064 v c000 202c->602c pc 00fc0540 sr 0010 a7 10015498 (a7) 1000ac64 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196034 frame 6064 v 4000 602c->202c pc 00fc15bc sr 0010 a7 10015450 (a7) 000000d0 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196035 frame 6064 v 4000 202c->202c pc 00fbfcf6 sr 0010 a7 1001544c (a7) 00fc15d8 task 10015264 idn 0 tdn -1 'trackdisk.device'
+seq 196036 frame 6064 v c000 202c->602c pc 00fc1602 sr 0010 a7 10015450 (a7) 000000d0 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196037 frame 6064 v 4000 602c->202c pc 00fc1180 sr 0010 a7 10015478 (a7) 00fc14f2 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196038 frame 6064 v c000 202c->602c pc 00fc11c8 sr 0010 a7 10015478 (a7) 00fc14f2 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196039 frame 6064 v 4000 602c->202c pc 00fc1562 sr 0010 a7 10015458 (a7) 000000d0 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196040 frame 6064 v 4000 202c->202c pc 00fbfcf6 sr 0010 a7 10015454 (a7) 00fc15d8 task 10015264 idn 1 tdn -1 'trackdisk.device'
+seq 196041 frame 6064 v c000 202c->602c pc 00fc169a sr 0010 a7 10015474 (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196042 frame 6064 v 4000 602c->202c pc 00f80928 sr 0010 a7 10015490 (a7) 00bfd100 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196043 frame 6064 v 4000 202c->202c pc 00f82890 sr 0010 a7 1001548c (a7) 00f80940 task 10015264 idn 0 tdn -1 'trackdisk.device'
+seq 196044 frame 6064 v c000 202c->602c pc 00f828c8 sr 0010 a7 1001548c (a7) 00f80940 task 10015264 idn -1 tdn 0 'trackdisk.device'
+seq 196045 frame 6064 v c000 602c->602c pc 10031b6a sr 2000 a7 1000227c (a7) 100007da task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196046 frame 6064 v 4000 602c->202c pc 00fc15bc sr 2204 a7 10002220 (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196047 frame 6064 v 4000 202c->202c pc 00fbfcf6 sr 2204 a7 1000221c (a7) 00fc15d8 task 10015264 idn 0 tdn -1 'trackdisk.device'
+seq 196048 frame 6064 v c000 202c->602c pc 00fc1602 sr 2204 a7 10002220 (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196049 frame 6064 v 4000 602c->202c pc 00fc123a sr 2204 a7 10002234 (a7) 10004328 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196050 frame 6064 v c000 202c->602c pc 00fc1296 sr 2204 a7 10002234 (a7) 10004328 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196051 frame 6064 v 4000 602c->202c pc 00fc12b0 sr 2204 a7 10002248 (a7) 00fbfc48 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196052 frame 6064 v c000 202c->602c pc 00fc12d4 sr 2204 a7 10002248 (a7) 00fbfc48 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196053 frame 6064 v 4000 602c->202c pc 00f824aa sr 2204 a7 1000223c (a7) 00fc100e task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196054 frame 6064 v c000 202c->602c pc 00f82514 sr 2204 a7 1000223c (a7) 00fc100e task 10015264 idn -1 tdn 0 'trackdisk.device'
+seq 196055 frame 6064 v 4000 602c->202c pc 00f8280a sr 2204 a7 10002238 (a7) 00f82528 task 10015264 idn -1 tdn 0 'trackdisk.device'
+seq 196056 frame 6064 v c000 202c->602c pc 00f82858 sr 2204 a7 10002234 (a7) 00000000 task 10015264 idn -1 tdn 0 'trackdisk.device'
+seq 196057 frame 6064 v 4000 602c->202c pc 00fc12b0 sr 2219 a7 10002248 (a7) 00fbfc48 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196058 frame 6064 v c000 202c->602c pc 00fc12d4 sr 2219 a7 10002248 (a7) 00fbfc48 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196059 frame 6064 v 4000 602c->202c pc 00f828dc sr 0010 a7 1001548c (a7) 00f80940 task 10015264 idn -1 tdn 0 'trackdisk.device'
+seq 196060 frame 6064 v c000 202c->602c pc 00f80954 sr 0010 a7 10015490 (a7) 00bfd100 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196061 frame 6064 v 4000 602c->202c pc 00fc04ac sr 0010 a7 10015490 (a7) 1000ac64 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196062 frame 6064 v c000 202c->602c pc 00fc04ec sr 0010 a7 10015490 (a7) 1000ac64 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196063 frame 6064 v 4000 602c->202c pc 00fc0508 sr 0010 a7 10015498 (a7) 1000ac64 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196064 frame 6064 v c000 202c->602c pc 00fc0540 sr 0010 a7 10015498 (a7) 1000ac64 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196065 frame 6064 v 4000 602c->202c pc 00fc15bc sr 0010 a7 10015478 (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196066 frame 6064 v 4000 202c->202c pc 00fbfcf6 sr 0010 a7 10015474 (a7) 00fc15d8 task 10015264 idn 0 tdn -1 'trackdisk.device'
+seq 196067 frame 6064 v c000 202c->602c pc 00fc1602 sr 0010 a7 10015478 (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196068 frame 6064 v 4000 602c->202c pc 00fc1180 sr 0010 a7 100154a4 (a7) 00fc1176 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196069 frame 6064 v c000 202c->602c pc 00fc11c8 sr 0010 a7 100154a4 (a7) 00fc1176 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196070 frame 6064 v 4000 602c->202c pc 00f82890 sr 0010 a7 100154c0 (a7) 00fc625a task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196071 frame 6064 v c000 202c->602c pc 00f828c8 sr 0010 a7 100154c0 (a7) 00fc625a task 10015264 idn -1 tdn 0 'trackdisk.device'
+seq 196072 frame 6064 v c000 602c->602c pc 10031b6a sr 2000 a7 1000227c (a7) 100007da task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196073 frame 6065 v 4000 602c->202c pc 00f8f770 sr 2000 a7 1000224c (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196074 frame 6065 v c000 202c->602c pc 00f8f7a6 sr 2000 a7 1000224c (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196075 frame 6065 v 4000 602c->202c pc 00fc010e sr 2000 a7 1000224c (a7) 00fbadfa task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196076 frame 6065 v c000 202c->602c pc 00fc0134 sr 2000 a7 1000224c (a7) 00fbadfa task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196077 frame 6065 v 4000 602c->202c pc 00fc15bc sr 2000 a7 1000222c (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196078 frame 6065 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 10002228 (a7) 00fc15d8 task 10015264 idn 0 tdn -1 'trackdisk.device'
+seq 196079 frame 6065 v c000 202c->602c pc 00fc1602 sr 2000 a7 1000222c (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196080 frame 6065 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196081 frame 6065 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196082 frame 6065 v 4000 602c->202c pc 00fc1584 sr 2000 a7 10002220 (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196083 frame 6065 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 1000221c (a7) 00fc15d8 task 10015264 idn 0 tdn -1 'trackdisk.device'
+seq 196084 frame 6065 v c000 202c->602c pc 00fc1602 sr 2000 a7 10002220 (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196085 frame 6065 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196086 frame 6065 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196087 frame 6065 v 4000 602c->202c pc 00fc12b0 sr 2000 a7 10002254 (a7) 00f817c2 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196088 frame 6065 v c000 202c->602c pc 00fc12d4 sr 2000 a7 10002254 (a7) 00f817c2 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196089 frame 6066 v 4000 602c->202c pc 00f8f770 sr 2000 a7 1000224c (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196090 frame 6066 v c000 202c->602c pc 00f8f7a6 sr 2000 a7 1000224c (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196091 frame 6066 v 4000 602c->202c pc 00fc010e sr 2000 a7 1000224c (a7) 00fbadfa task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196092 frame 6066 v c000 202c->602c pc 00fc0134 sr 2000 a7 1000224c (a7) 00fbadfa task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196093 frame 6066 v 4000 602c->202c pc 00fc15bc sr 2000 a7 1000222c (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196094 frame 6066 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 10002228 (a7) 00fc15d8 task 10015264 idn 0 tdn -1 'trackdisk.device'
+seq 196095 frame 6066 v c000 202c->602c pc 00fc1602 sr 2000 a7 1000222c (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196096 frame 6066 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196097 frame 6066 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196098 frame 6066 v 4000 602c->202c pc 00fc1584 sr 2000 a7 10002220 (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196099 frame 6066 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 1000221c (a7) 00fc15d8 task 10015264 idn 0 tdn -1 'trackdisk.device'
+seq 196100 frame 6066 v c000 202c->602c pc 00fc1602 sr 2000 a7 10002220 (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196101 frame 6066 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196102 frame 6066 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196103 frame 6066 v 4000 602c->202c pc 00fc12b0 sr 2000 a7 10002254 (a7) 00f817c2 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196104 frame 6066 v c000 202c->602c pc 00fc12d4 sr 2000 a7 10002254 (a7) 00f817c2 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196105 frame 6067 v 4000 602c->202c pc 00f8f770 sr 2000 a7 1000224c (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196106 frame 6067 v c000 202c->602c pc 00f8f7a6 sr 2000 a7 1000224c (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196107 frame 6067 v 4000 602c->202c pc 00fc010e sr 2000 a7 1000224c (a7) 00fbadfa task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196108 frame 6067 v c000 202c->602c pc 00fc0134 sr 2000 a7 1000224c (a7) 00fbadfa task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196109 frame 6067 v 4000 602c->202c pc 00fc15bc sr 2000 a7 1000222c (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196110 frame 6067 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 10002228 (a7) 00fc15d8 task 10015264 idn 0 tdn -1 'trackdisk.device'
+seq 196111 frame 6067 v c000 202c->602c pc 00fc1602 sr 2000 a7 1000222c (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196112 frame 6067 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196113 frame 6067 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196114 frame 6067 v 4000 602c->202c pc 00fc1584 sr 2000 a7 10002220 (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196115 frame 6067 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 1000221c (a7) 00fc15d8 task 10015264 idn 0 tdn -1 'trackdisk.device'
+seq 196116 frame 6067 v c000 202c->602c pc 00fc1602 sr 2000 a7 10002220 (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196117 frame 6067 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196118 frame 6067 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196119 frame 6067 v 4000 602c->202c pc 00fc12b0 sr 2000 a7 10002254 (a7) 00f817c2 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196120 frame 6067 v c000 202c->602c pc 00fc12d4 sr 2000 a7 10002254 (a7) 00f817c2 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196121 frame 6067 v 4000 602c->202c pc 00fc172c sr 2204 a7 10002248 (a7) 00fbfc52 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196122 frame 6067 v c000 202c->602c pc 00fc175c sr 2204 a7 10002248 (a7) 00fbfc52 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196123 frame 6068 v 4000 602c->202c pc 00f8f770 sr 2000 a7 1000224c (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196124 frame 6068 v c000 202c->602c pc 00f8f7a6 sr 2000 a7 1000224c (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196125 frame 6068 v 4000 602c->202c pc 00fc010e sr 2000 a7 1000224c (a7) 00fbadfa task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196126 frame 6068 v c000 202c->602c pc 00fc0134 sr 2000 a7 1000224c (a7) 00fbadfa task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196127 frame 6068 v 4000 602c->202c pc 00fc15bc sr 2000 a7 1000222c (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196128 frame 6068 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 10002228 (a7) 00fc15d8 task 10015264 idn 0 tdn -1 'trackdisk.device'
+seq 196129 frame 6068 v c000 202c->602c pc 00fc1602 sr 2000 a7 1000222c (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196130 frame 6068 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196131 frame 6068 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196132 frame 6068 v 4000 602c->202c pc 00fc1584 sr 2000 a7 10002220 (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196133 frame 6068 v 4000 202c->202c pc 00fbfcf6 sr 2000 a7 1000221c (a7) 00fc15d8 task 10015264 idn 0 tdn -1 'trackdisk.device'
+seq 196134 frame 6068 v c000 202c->602c pc 00fc1602 sr 2000 a7 10002220 (a7) 00000000 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196135 frame 6068 v 4000 602c->202c pc 00fc123a sr 2000 a7 10002240 (a7) 100095ca task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196136 frame 6068 v c000 202c->602c pc 00fc1296 sr 2000 a7 10002240 (a7) 100095ca task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196137 frame 6068 v 4000 602c->202c pc 00fc12b0 sr 2000 a7 10002254 (a7) 00f817c2 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196138 frame 6068 v c000 202c->602c pc 00fc12d4 sr 2000 a7 10002254 (a7) 00f817c2 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196139 frame 6068 v 4000 602c->202c pc 00f824aa sr 2000 a7 10002248 (a7) 00fc100e task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196140 frame 6068 v c000 202c->602c pc 00f82514 sr 2000 a7 10002248 (a7) 00fc100e task 10015264 idn -1 tdn 0 'trackdisk.device'
+seq 196141 frame 6068 v 4000 602c->202c pc 00f8280a sr 2000 a7 10002244 (a7) 00f82528 task 10015264 idn -1 tdn 0 'trackdisk.device'
+seq 196142 frame 6068 v c000 202c->602c pc 00f82858 sr 2000 a7 10002240 (a7) 00000000 task 10015264 idn -1 tdn 0 'trackdisk.device'
+seq 196143 frame 6068 v 4000 602c->202c pc 00fc12b0 sr 2319 a7 10002254 (a7) 00f817c2 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196144 frame 6068 v c000 202c->602c pc 00fc12d4 sr 2319 a7 10002254 (a7) 00f817c2 task 10015264 idn -1 tdn -1 'trackdisk.device'
+seq 196145 frame 6068 v 4000 602c->202c pc 00f828dc sr 0010 a7 1000a8ac (a7) 00fbb4b4 task 1000985a idn -1 tdn 0 'input.device'
+seq 196146 frame 6068 v c000 202c->602c pc 00f82900 sr 0010 a7 1000a8ac (a7) 00fbb4b4 task 1000985a idn -1 tdn -1 'input.device'
+seq 196147 frame 6068 v 4000 602c->202c pc 1003203c sr 0010 a7 1000a8ac (a7) 00fbb4e6 task 1000985a idn -1 tdn -1 'input.device'
+seq 196148 frame 6068 v c000 202c->602c pc 1003205c sr 0010 a7 1000a8ac (a7) 00fbb4e6 task 1000985a idn -1 tdn -1 'input.device'
+seq 196149 frame 6068 v 4000 602c->202c pc 00fc1584 sr 0010 a7 1000a878 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 196150 frame 6068 v 4000 202c->202c pc 00fbfcf6 sr 0010 a7 1000a874 (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 196151 frame 6068 v c000 202c->602c pc 00fc1602 sr 0010 a7 1000a878 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 196152 frame 6068 v 4000 602c->202c pc 00fc15bc sr 0019 a7 1000a870 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 196153 frame 6068 v 4000 202c->202c pc 00fbfcf6 sr 0019 a7 1000a86c (a7) 00fc15d8 task 1000985a idn 0 tdn -1 'input.device'
+seq 196154 frame 6068 v c000 202c->602c pc 00fc1602 sr 0019 a7 1000a870 (a7) 40000000 task 1000985a idn -1 tdn -1 'input.device'
+seq 196155 frame 6068 v 4000 602c->202c pc 00fc1180 sr 0019 a7 1000a89c (a7) 00fc1176 task 1000985a idn -1 tdn -1 'input.device'
+seq 196156 frame 6068 v c000 202c->602c pc 00fc11c8 sr 0019 a7 1000a89c (a7) 00fc1176 task 1000985a idn -1 tdn -1 'input.device'
+seq 196157 frame 6068 v 4000 602c->202c pc 00f82890 sr 0019 a7 1000a8ac (a7) 00fbb4b4 task 1000985a idn -1 tdn -1 'input.device'
+seq 196158 frame 6068 v c000 202c->602c pc 00f828c8 sr 0019 a7 1000a8ac (a7) 00fbb4b4 task 1000985a idn -1 tdn 0 'input.device'
+seq 196159 frame 6068 v c000 602c->602c pc 10031b6a sr 2000 a7 1000227c (a7) 100007da task 1000985a idn -1 tdn -1 'input.device'
+thistask 1000985a not a process command ''
+code 00fc12d4: 33fc c000 00df f09a 4a80 6708 2240 6100 fd0e 60c0 41f9 00df f000 4e75 48e7 0060 41e9 0020 4eae 0150 4eae 016e 246e 0024 33fc 4000 00df f09a 522a 0126 2d50 0040
+code 00f828dc: 33fc 4000 00df f09a 1d41 0126 2029 0016 c0a9 001a 67b0 532e 0127 b1a9 001a 4a2e 0126 6c08 33fc c000 00df f09a 4e75 08ee 0007 0124 56c0 4a2e 0127 6c12 4a2e 0126
+code 00f82900: 33fc c000 00df f09a 4e75 08ee 0007 0124 56c0 4a2e 0127 6c12 4a2e 0126 6d2a 4a00 6608 33fc 8004 00df f09c 4e75 522e 0127 4e75 4e71 532e 0127 6c0c 4a2e 0126 6c06
+code 1003203c: 33fc 4000 00df f09a 2250 522e 0126 2011 6708 2080 c189 2348 0004 532e 0126 6c08 33fc c000 00df f09a 4e75 7000 4e75 00f8 137e 2f3a fffa 4a79 00df f01e 4e75 00f8
+code 1003205c: 33fc c000 00df f09a 4e75 7000 4e75 00f8 137e 2f3a fffa 4a79 00df f01e 4e75 00f8 1680 2f3a fffa 48e7 8040 4eae fd84 4cdf 0201 4e75 1000 0810 00fb a268 2f3a fffa
+code 00fc1584: 33fc 4000 00df f09a 5228 0126 22aa 0040 236a 0044 0004 43f9 00bf e001 6026 48e7 3ca0 7000 7400 7a01 246e 00c0 cd4a 43f9 00bf e001 206a 0024 33fc 4000 00df f09a
+code 00fbfcf6: 33fc 4000 00df f09a 5228 0126 206e 0022 1228 0d00 0881 0007 832e 0029 7200 122e 0029 822e 0084 4a00 6716 0880 0007 660c 4600 c12e 0029 c12e 0084 6004 812e 0029
+code 00fc1602: 33fc c000 00df f09a 2c4a b403 6702 78ff e14a 1404 5242 4442 4a05 6608 d2bc 0001 0000 d185 3202 3245 4cdf 053c 48d0 0003 4e75 206e 0174 0210 00ce 0010 0008 4e75
+code 00fc15bc: 33fc 4000 00df f09a 5228 0126 1629 0700 1829 0600 1429 0700 4eae ffe8 0800 0001 6714 43f9 00bf e001 1629 0700 1829 0600 1429 0700 7a00 4cea 0003 0048 206a 0024
+code 00fc1180: 33fc 4000 00df f09a 5228 0126 204b 2013 2448 2040 2010 6714 2228 0020 b2a9 0020 6608 2228 0024 b2a9 0024 63e4 204b 2f09 2f0e 2c6e 0024 4eae ff16 2c5f 225f 206e
+code 00fc11c8: 33fc c000 00df f09a 4e75 206e 0024 33fc 4000 00df f09a 5228 0126 2069 0018 2050 2010 2040 2010 672a b3c8 66f6 48e7 0030 2669 0018 206b 0008 2653 2f09 4e90 225f
+code 00f82890: 33fc 4000 00df f09a c0a9 001a 6658 522e 0127 137c 0004 000f 41ee 01a4 5888 2028 0004 2149 0004 c188 48d1 0101 2089 122e 0126 1d7c 00ff 0126 33fc c000 00df f09a
+code 00f828c8: 33fc c000 00df f09a 204d 4bee ffca 4eae ffe2 2a48 33fc 4000 00df f09a 1d41 0126 2029 0016 c0a9 001a 67b0 532e 0127 b1a9 001a 4a2e 0126 6c08 33fc c000 00df f09a
+code 10031b6a: 33fc c000 00df f09a 2b5f 0034 3b1f 2b1f 548f f325 4a2d 0002 6714 74ff f225 e0ff f225 a400 f225 a800 f225 b000 2b02 286e 0230 266e 0114 3740 0010 274d 0036 082b
+--- walk: execbase 10000810
+task this 1000985a 'input.device' type 1 state 4 idn -1 tdn 0 sigalloc c000ffff sigwait c0000000 sigrecvd 00000000 sp 1000a85a lower 100098b8 upper 1000a8b8
+  stk 1000a85a: 00000000 00000000 00000000 00f80c0c 00101000 09b8053c 98ff4000 00000000
+  stk 1000a87a: 00000000 00000000 00008000 0000c000 00001000 98041000 985a00fe 77e41000
+  stk 1000a89a: a8e81000 caac1000 07da1000 081000f8 28da00fb b4b400f8 26881000 98041000
+task wait 1000db38 'console.device' type 1 state 4 idn -1 tdn 0 sigalloc f000ffff sigwait f0000000 sigrecvd 00000000 sp 1000dad6 lower 1000cb38 upper 1000db38
+  stk 1000dad6: 00000000 00000000 00000000 00f80c0c 00181000 09b80000 00ff0000 00000000
+  stk 1000daf6: 00000000 00000000 00000000 00000000 00001000 c9701000 db380000 00000000
+  stk 1000db16: 00000000 00001000 07da1000 081000f8 28da00fb 095a1000 c97000f8 26881000
+  stk 1000db36: c9701000
+task wait 1000e318 'UAE fs automounter' type 1 state 4 idn -1 tdn 0 sigalloc 0000ffff sigwait 00002000 sigrecvd 00000000 sp 1000eb1a lower 1000e374 upper 1000eb74
+  stk 1000eb1a: 00000000 00000000 00000000 00f80c0c 00181000 09b80000 00ff0000 00000000
+  stk 1000eb3a: 00000000 00000000 00000000 00000000 00000000 00001000 e3180000 00000000
+  stk 1000eb5a: 00000000 00001000 07da1000 081000f8 28da00f0 02c800f8 26880000
+task wait 1001b2a8 'DH1' type 13 state 4 idn -1 tdn 0 sigalloc c000ffff sigwait 40000100 sigrecvd 00000000 sp 1001bc62 lower 1001b38c upper 1001bcec
+  process cli 00000000
+  seg1 hunk 0 00f9f288-098640f5
+  seg2 hunk 0 00fa43e8-4f6f43e0
+  seg3 hunk 0 00fa8240-72fae240
+  stk 1001bc62: 00000000 00000000 00000000 00f80c0c 00181000 09b80000 00ff0000 00000000
+  stk 1001bc82: 00040000 00000000 00001001 ad341001 ad301001 ad501001 b2a81000 318800f9
+  stk 1001bca2: f86a00fa 82441000 07da1000 081000f8 28da00fa a3120000 000000fa 837200fa
+  stk 1001bcc2: 82501000 31880000 00001001 b3ac1001 b04c00f9 f86a00fa 824400f9 f5be00f9
+  stk 1001bce2: f5b200f9 f86a0000 09604448
+task wait 10026218 'CON' type 13 state 4 idn -1 tdn 0 sigalloc 0000ffff sigwait 00000100 sigrecvd 00000000 sp 10026d92 lower 100262fc upper 10026f7c
+  process cli 00000000
+  seg1 hunk 0 00f9f288-098640f5
+  seg2 hunk 0 00fa43e8-4f6f43e0
+  stk 10026d92: 00000000 00000000 00000000 00f80c0c 00181000 09b80000 00ffffff ffff0000
+  stk 10026db2: 00000000 00000000 00000000 03ed1002 62741002 6f701002 62181002 6fb01001
+  stk 10026dd2: 00e40000 00001000 07da1000 081000f8 28da00f9 faa81002 618c1001 04e21001
+  stk 10026df2: 04c81001 00e400fb 87fc0000 00000000 00000000 00000000 00000000 00000000
+  stk 10026e12: 00000000 00000000 00000000 00001002 61d00000 00000000 00001002 80881002
+  stk 10026e32: 62741001 00e40000 00000000 00000000 00000000 03ed0000 0000ffff ffff1001
+  stk 10026e52: 0f5c0000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 10026e72: 00000000 00000000 00000000 00000000 00000000 001e0000 00000000 00000000
+  stk 10026e92: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 10026eb2: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 10026ed2: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 10026ef2: 03ea0000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 10026f12: 00000000 00000000 00000000 00000000 03e90000 00000000 00000000 00000000
+  stk 10026f32: 00000000 00000000 00000000 00000000 00000000 00000000 00001002 6ec01000
+  stk 10026f52: b04c1002 6fb00000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 10026f72: 000000f9 f86a0000 0c80434f
+task wait 10022f00 'ramlib' type 13 state 4 idn -1 tdn 0 sigalloc 0000ffff sigwait 00000010 sigrecvd 00000100 sp 1002377e lower 10022fe4 upper 100237e4
+  process cli 00000000
+  seg1 hunk 0 00f9f288-098640f5
+  seg2 hunk 0 00fa43e8-4f6f43e0
+  stk 1002377e: 00000000 00000000 00000000 00f80c0c 00101000 09b80000 00ff0000 00000000
+  stk 1002379e: 00000000 00000000 00000000 00000000 00001002 2ea01002 2f001002 2ef21002
+  stk 100237be: fc861002 fc861000 07da1000 081000f8 28da00f8 25761002 2f0000fb f39000f9
+  stk 100237de: f86a0000 08007261
+task wait 10012db8 'DF0' type 13 state 4 idn -1 tdn 0 sigalloc c000ffff sigwait 40000100 sigrecvd 00000000 sp 10013772 lower 10012e9c upper 100137fc
+  process cli 00000000
+  seg1 hunk 0 00f9f288-098640f5
+  seg2 hunk 0 00fa43e8-4f6f43e0
+  seg3 hunk 0 00fa8240-72fae240
+  stk 10013772: 00000000 00000000 00000000 00f80c0c 00101000 09b80000 00ff0000 00000000
+  stk 10013792: 00040000 00000000 00001000 31cc1000 31c81001 38001001 2db81000 318800f9
+  stk 100137b2: f86a00fa 82441000 07da1000 081000f8 28da00fa a3120012 033000fa 837200fa
+  stk 100137d2: 82501000 31880000 00001001 2ebc1001 2b5c00f9 f86a00fa 824400f9 f5be00f9
+  stk 100137f2: f5b200f9 f86a0000 09604446
+task wait 10011238 'DH2' type 13 state 4 idn -1 tdn 0 sigalloc c000ffff sigwait 00002100 sigrecvd 00000000 sp 10012a2e lower 1001131c upper 10012a8c
+  process cli 00000000
+  seg1 hunk 0 00f9f288-098640f5
+  seg2 hunk 0 00fa43e8-4f6f43e0
+  stk 10012a2e: 00000000 00000000 00000000 00f80c0c 00101000 09b80000 00ffffff ffff0000
+  stk 10012a4e: 00000000 00000000 00000004 000c1000 2f981001 12941001 12381000 2d541000
+  stk 10012a6e: 2d500000 00001000 07da1000 081000f8 28da00f0 0ca400f9 f86a0000 17704448
+task wait 1002c760 'RAM' type 13 state 4 idn -1 tdn 0 sigalloc c000ffff sigwait c0000100 sigrecvd 00000000 sp 1002ca46 lower 1002c844 upper 1002ccf4
+  process cli 00000000
+  seg1 hunk 0 00f9f288-098640f5
+  seg2 hunk 0 00fa43e8-4f6f43e0
+  stk 1002ca46: 00000000 00000000 00000000 00f80c0c 00101000 09b80000 00ffffff ffff0000
+  stk 1002ca66: 00cd4000 00008000 00001002 df44ffff ffff1002 cce41002 c7600000 00001005
+  stk 1002ca86: 0e401002 a2d81000 07da1000 081000f8 28da00fc 8d6c0000 00000000 00000000
+  stk 1002caa6: 00000000 00000000 00000000 00000000 00001002 9a281000 0810c000 01001002
+  stk 1002cac6: df441004 19640000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cae6: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cb06: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cb26: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cb46: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cb66: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cb86: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cba6: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cbc6: 00000000 00000000 00007a65 6e626f6e 65732d6e 6f726462 6f6e6573 2e636f6e
+  stk 1002cbe6: 6600636f 6e660000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cc06: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cc26: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cc46: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cc66: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cc86: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002cca6: 00000000 100104c0 00000000 00000000 00000000 00000000 00000000 000000f8
+  stk 1002ccc6: 29520000 000000f8 1ec60000 00000000 000000f8 1e820000 00540001 00000000
+  stk 1002cce6: 000000fc 8b6000f9 f86a0000 04b05241
+task wait 100104c8 'Initial CLI' type 13 state 4 idn -1 tdn 0 sigalloc 0000ffff sigwait 00000100 sigrecvd 00000004 sp 10050dd2 lower 1004ffc8 upper 10050fc8
+  process cli 100028b8
+  command 'C:Copy'
+  module hunk 0 1004ea58-1004ffc0
+  module hunk 1 10029050-10029058
+  seg1 hunk 0 00f9f288-098640f5
+  seg2 hunk 0 00fa43e8-4f6f43e0
+  seg4 hunk 0 00fcaf98-00fcaf8f
+  stk 10050dd2: 00000000 00000000 00000000 00f80c0c 00101000 09b80000 00ff0000 00521002
+  stk 10050df2: d7681006 fa8c0001 00001004 f8f61001 05241005 0e801001 04c81001 05240000
+  stk 10050e12: 00000000 00521000 07da1000 081000f8 28da00f9 faa80000 10001000 09a61001
+  stk 10050e32: 05241000 081000f9 f1540000 00001001 55480502 10050e50 03eeffff ffff1005
+  stk 10050e52: 0e3c1001 05240000 00521005 0f440000 00001002 d7681006 fa8c0001 00001004
+  stk 10050e72: f8f60000 10001005 0eb000fa 562e0000 00011005 0ec00400 ae7f1001 00e400fa
+  stk 10050e92: 3bc21006 fa8c0001 00000000 00000401 06590400 0c530001 00001001 00e41001
+  stk 10050eb2: 00e41005 0fc01005 0fb800fa 3b721006 fa8c0001 00001004 f8f60000 10001000
+  stk 10050ed2: 23940000 001a0400 b0e30400 98491004 ea541001 022c1004 ea5400f9 f5b21002
+  stk 10050ef2: c480ffff ffffbaa8 100100e4 10000810 04000c53 00000001 00010000 00010001
+  stk 10050f12: 00060400 0c531000 dc541000 e1dc1000 dc541004 fd6e0000 00001002 c4640000
+  stk 10050f32: 00001002 ccfc0400 b1a10400 b7d10400 ae7f1002 c4800001 00001002 baa81002
+  stk 10050f52: baa0ffff ffff0000 00000000 00000000 00000000 00000000 00000000 0000ffff
+  stk 10050f72: ffff0000 00001002 baac1002 ba981006 fa8c1002 99941002 99ec1002 ba780000
+  stk 10050f92: 00000000 00000000 00020000 00010000 00000000 00000000 00000000 00000000
+  stk 10050fb2: 00000000 000000f9 f5be00f9 fdea0000 10001001 0eac0000
+task wait 10021640 'DH1_0' type 13 state 4 idn -1 tdn 0 sigalloc c000ffff sigwait 00002100 sigrecvd 00000000 sp 10022e36 lower 10021724 upper 10022e94
+  process cli 00000000
+  seg1 hunk 0 00f9f288-098640f5
+  seg2 hunk 0 00fa43e8-4f6f43e0
+  stk 10022e36: 00000000 00000000 00000000 00f80c0c 00101000 09b80000 00ffffff ffff0000
+  stk 10022e56: 00000000 00000000 00000004 000b1002 b9a81002 169c1002 16401002 141c1002
+  stk 10022e76: 14180000 00001000 07da1000 081000f8 28da00f0 0ca400f9 f86a0000 17704448
+task wait 1002a4c8 'Background CLI' type 13 state 4 idn -1 tdn 0 sigalloc 0000ffff sigwait 00000100 sigrecvd 00000000 sp 1002ad86 lower 1002a5ac upper 1002b22c
+  process cli 1002a34c
+  command 'C:Copy'
+  seg1 hunk 0 00f9f288-098640f5
+  seg2 hunk 0 00fa43e8-4f6f43e0
+  stk 1002ad86: 00000000 00000000 00000000 00f80c0c 00101000 09b80000 00ff0000 00521004
+  stk 1002ada6: e5c01006 57b80000 040000fa 72341002 a5241002 ae341002 a4c81002 a5240000
+  stk 1002adc6: 00000000 00521000 07da1000 081000f8 28da00f9 faa800fa 71f21000 09a61002
+  stk 1002ade6: a5241000 081000f9 f1540000 00001001 55480502 1002ae04 1002ae08 10021002
+  stk 1002ae06: adf01002 a5240000 00520000 00000000 00001004 e5c01006 57b80000 040000fa
+  stk 1002ae26: 723400fa 71f20000 00520000 00030000 00011002 ae740401 02bd1001 00e400fa
+  stk 1002ae46: 3bc21006 57b80000 04000000 0001ffff ffff0000 00000000 00001002 ae9c1001
+  stk 1002ae66: 00e40000 00001002 af5000fa 3b721006 57b80000 040000fa 723400fa 71f21000
+  stk 1002ae86: 074a1000 073e0000 00001002 a3d51001 00e400fa 70b00000 000000fa 6dc40000
+  stk 1002aea6: 03ed0401 02bd0400 a3ee0400 a5590400 a3ee0000 000f1000 09a61001 54d81002
+  stk 1002aec6: a5240000 00000000 000000f9 fa8c0000 000f00f9 fc0e00f9 fc020000 03ed00f9
+  stk 1002aee6: f17c1002 a53c1002 a5380500 1002aefc 00001002 9a441002 aee81001 55340000
+  stk 1002af06: 03edffff ffff0000 00000401 02bd0400 a3ee0400 a5590400 a3ee0000 000f0401
+  stk 1002af26: 02bd0000 00000000 00001006 57b81002 aea41006 57b81004 0af40000 00000401
+  stk 1002af46: 02bd00fa 3b261000 074a1000 073e0401 02bd0000 00ff0000 0000ffff ffff0000
+  stk 1002af66: 00001002 a3d51001 00e41002 b2f80000 00001002 afdc1001 00e400fa 72a200fa
+  stk 1002af86: 3b261000 074a1000 073e0000 00000400 0bbd1001 00e400fc c1941002 b4040000
+  stk 1002afa6: 00000000 00010000 00000000 00001001 00e41002 a3d51002 a34c0400 0bbd0000
+  stk 1002afc6: 00001002 a4c81002 a3d500fc c7b80000 00001001 00e41002 b03800fc bf7c1002
+  stk 1002afe6: b1b41002 b4040000 00ffffff ffff0000 00010000 00010000 00001002 a3d51002
+  stk 1002b006: b2f81001 00e46963 6b241002 a4c81002 a34c1000 42201002 1002b2f8 1002a3d5
+  stk 1002b026: ee541002 b7040000 00670000 00000000 00001002 b21000fc b8d81002 b1b40000
+  stk 1002b046: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+  stk 1002b066: 00001002 a4c81002 b4041002 a3d51002 b7040400 ae4b1002 a4741002 a4441002
+  stk 1002b086: a3d41002 a3941002 b2f81002 a4c81001 00e40000 00001002 a2f00000 00000000
+  stk 1002b0a6: 000000fc f18000fc f18000fc f18000fc f1f800fc f17800fc f17800fc f17800fc
+  stk 1002b0c6: f20000fc f1f000fc f17800fc f17800fc f21000fc f19800fc f1e800fc f1e000fc
+  stk 1002b0e6: f1d800fc f20800fc f20800fc f18000fc f1d000fc f1a800fc f1a800fc f1c800fc
+  stk 1002b106: f1c000fc f18000fc f18800fc f18000fc f18800fc f1b800fc f19000fc f1a000fc
+  stk 1002b126: f1b000fc f17800fc b02c00fc b03200fc b03800fc b03e00fc b04200fc b04c00fc
+  stk 1002b146: b05200fc b05a00fc b06000fc b06600fc b06e00fc b07200fc b07600fc b08000fc
+  stk 1002b166: b08600fc b08e00fc b09400fc b09e00fc b0a600fc b0aa00fc b0ae00fc b0b600fc
+  stk 1002b186: b0ba00fc b0c000fc b0c800fc b0d000fc b0da00fc b0e000fc b0e800fc b0ee00fc
+  stk 1002b1a6: b0f400fc b0f800fc b0fcffff d8f10000 00000000 00000000 00000000 000000f9
+  stk 1002b1c6: f9e80000 00021002 a34c0000 00000000 00000000 00000000 00000000 00f9f87c
+  stk 1002b1e6: 00000000 00000000 00001000 42200000 00000000 00000000 00000000 00000000
+  stk 1002b206: 00000000 00000000 00000000 000000fc afc40000 000000fc afb41002 a4c800f9
+  stk 1002b226: f86a0000 0c804261
+task wait 100238a8 'UAE clipboard sharing' type 13 state 4 idn -1 tdn 0 sigalloc 0000ffff sigwait 00000100 sigrecvd 00002000 sp 10025f7e lower 1002398c upper 1002609c
+  process cli 00000000
+  seg1 hunk 0 00f9f288-098640f5
+  seg2 hunk 0 00fa43e8-4f6f43e0
+  stk 10025f7e: 00000000 00000000 00000000 00f80c0c 00101000 09b80000 00ff0000 00080400
+  stk 10025f9e: a47e0400 9810ffff fffe0000 00001002 39041002 602c1002 38a81002 39040000
+  stk 10025fbe: 00001002 9a441000 07da1000 081000f8 28da00f9 faa80400 98101000 09a61002
+  stk 10025fde: 39041000 081000f9 f1541001 554c1001 55480500 10025ffc 00001002 9a441002
+  stk 10025ffe: 5fe81002 39040000 00081002 38a81002 60640400 a47e0400 9810ffff fffe0000
+  stk 1002601e: 00000400 981000f8 09400000 00001002 605c1002 60401002 60881001 00e400fa
+  stk 1002603e: 389a1544 4556533a 636c6970 626f6172 642e6465 76696365 00fa3840 000f1002
+  stk 1002605e: 38080000 00081002 60880000 00000000 00000000 00000000 00000000 00000000
+  stk 1002607e: 00000000 000000fa 3b14ffff fffe0000 000000f0 164800f9 f86a0000 27105541
+task wait 100154d8 'DH0' type 13 state 4 idn -1 tdn 0 sigalloc c000ffff sigwait 40000100 sigrecvd 00000000 sp 10015e92 lower 100155bc upper 10015f1c
+  process cli 00000000
+  seg1 hunk 0 00f9f288-098640f5
+  seg2 hunk 0 00fa43e8-4f6f43e0
+  seg3 hunk 0 00fa8240-72fae240
+  stk 10015e92: 00000000 00000000 00000000 00f80c0c 00101000 09b80521 45ff0000 00000000
+  stk 10015eb2: 00040000 00000000 00001000 e0041000 e0001001 5f201001 54d81000 318800f9
+  stk 10015ed2: f86a00fa 82441000 07da1000 081000f8 28da00fa a312001e 018400fa 837200fa
+  stk 10015ef2: 82501000 31880000 00001001 55dc1001 4ddc00f9 f86a00fa 824400f9 f5be00f9
+  stk 10015f12: f5b200f9 f86a0000 09604448
+task wait 10015264 'trackdisk.device' type 1 state 4 idn -1 tdn 0 sigalloc 0000ffff sigwait 00000300 sigrecvd 00000000 sp 1001546e lower 100152d8 upper 100154d8
+  stk 1001546e: 00000000 00000000 00000000 00f80c0c 00101000 09b80523 0eff0000 00000000
+  stk 1001548e: 00000000 00000000 00000000 00000000 00001000 ac641001 52641001 51c01001
+  stk 100154ae: 51180000 00001000 07da1000 081000f8 28da00fc 625a1000 ac64ffff ffff1001
+  stk 100154ce: 51181000 ac641001 2db81001
+task wait 1000985a 'input.device' type 1 state 4 idn -1 tdn 0 sigalloc c000ffff sigwait c0000000 sigrecvd 00000000 sp 1000a85a lower 100098b8 upper 1000a8b8
+  stk 1000a85a: 00000000 00000000 00000000 00f80c0c 00101000 09b8053c 98ff4000 00000000
+  stk 1000a87a: 00000000 00000000 00008000 0000c000 00001000 98041000 985a00fe 77e41000
+  stk 1000a89a: a8e81000 caac1000 07da1000 081000f8 28da00fb b4b400f8 26881000 98041000
+sem 1002bf28 '. SetPatch .' nest 0 queue -1 owner 00000000 firstwaiter 00000000
+lib 10004220 'utility.library' neg 0128 pos 0030 open-vec 4ef9 00fbd50c
+lib 10004b4c 'graphics.library' neg 0434 pos 0220 open-vec 4ef9 00f8f670
+lib 10009300 'layers.library' neg 00d8 pos 002e open-vec 4ef9 00fb1ef2
+lib 1000ab10 'keymap.library' neg 0030 pos 009e open-vec 4ef9 00fc287e
+lib 1000b04c 'intuition.library' neg 033c pos 0c4e open-vec 4ef9 00fd2fe4
+lib 100100e4 'dos.library' neg 0414 pos 03e4 open-vec 4ef9 00f9f516
+lib 10030cc0 'mmu.library' neg 01d0 pos 02dc open-vec 4ef9 10042314
+lib 100296d0 '68060.library' neg 00e0 pos 00c2 open-vec 4ef9 10031638
+lib 100295b8 '68040.library' neg 0018 pos 0038 open-vec 4ef9 100294c8
+lib 00001674 'expansion.library' neg 00a4 pos 0186 open-vec 4ef9 00f8387c
+lib 100003f4 'bsdsocket.library' neg 012c pos 0024 open-vec 4ef9 00f02134
+lib 1000eb9c 'uaegfx.card' neg 0024 pos 112e open-vec 4ef9 00f02306
+lib 10000810 'exec.library' neg 0336 pos 0278 open-vec 4ef9 00f82ce0
+dev 10009354 'gameport.device' neg 0024 pos 0152 open-vec 4ef9 00fbaa4a
+dev 100094ec 'timer.device' neg 0044 pos 017c open-vec 4ef9 00fc0f98
+dev 1000968c 'keyboard.device' neg 0024 pos 0146 open-vec 4ef9 00fba62a
+dev 10009804 'input.device' neg 002c pos 12d9 open-vec 4ef9 00fbb252
+dev 1000abe0 'ramdrive.device' neg 0030 pos 0060 open-vec 4ef9 00fbf5b6
+dev 1000ac64 'trackdisk.device' neg 0024 pos 00a8 open-vec 4ef9 00fc50e8
+dev 1000c970 'console.device' neg 0048 pos 12a4 open-vec 4ef9 00faf6e0
+dev 1000dcd4 'uaehf.device' neg 0024 pos 0100 open-vec 4ef9 00f020b6
+res 10000290 'uae.resource' neg 0008 pos 0032 open-vec 4ef9 00f0203c
+res 100042c4 'potgo.resource' neg 0014 pos 002a open-vec 4ef9 00fc0082
+res 10004328 'ciaa.resource' neg 0018 pos 0088 open-vec 4ef9 00fbfd9a
+res 100043c8 'ciab.resource' neg 0018 pos 0088 open-vec 4ef9 00fbfd9a
+res 10004450 'FileSystem.resource' neg 016e pos 1000 open-vec 42f0 00140000
+res 10004544 'battclock.resource' neg 0024 pos 005e open-vec 4ef9 00fbe04a
+res 100045b4 'misc.resource' neg 000c pos 0032 open-vec 4ef9 00fbff00
+res 1000460c 'disk.resource' neg 0024 pos 0094 open-vec 4ef9 00fc0558
+res 100046b8 'battmem.resource' neg 0018 pos 005a open-vec 4ef9 00fffe8c
+res 1000ab36 'keymap.resource' neg ab52 pos 0000 open-vec 0001 1000ab8e
+res 10029770 'fpsp.resource' neg 0024 pos 0022 open-vec 4ef9 10031638

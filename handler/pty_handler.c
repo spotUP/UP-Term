@@ -418,6 +418,7 @@ static pair *new_pair(const char *id)
 static void free_pair(pair *p)
 {
     struct Message *m;
+    TR("free", (LONG)p, p->mwait.n | (p->swait.n << 8) | (p->nsw << 16));
     finish_waits(&p->mwait, p->mtimer, &p->mtimer_busy, DOSFALSE);
     finish_waits(&p->swait, p->stimer, &p->stimer_busy, DOSFALSE);
     timer_stop(p->vtimer, &p->vtimer_busy);
@@ -432,6 +433,7 @@ static void free_pair(pair *p)
     while ((m = GetMsg(&p->mport)) || (m = GetMsg(&p->sport)))
         reply((struct DosPacket *)m->mn_Node.ln_Name, DOSFALSE, ERROR_OBJECT_NOT_FOUND);
     FreeVec(p);
+    TR("freed", 0, 0);
 }
 
 /* A handle closed: a master's last close hangs the pair up (slave reads
@@ -675,6 +677,7 @@ static void packet(struct DosPacket *d, pair *via, int side)
                 reply(p->sreads[0], 0, 0);
                 shift(p->sreads, &p->nsr);
             }
+        TR("end", (LONG)p | master, (p->masters << 16) | p->slaves);
         reply(d, DOSTRUE, 0);
         end_pair(p);
         return;
@@ -905,6 +908,7 @@ static LONG handler_main(void)
             }
             Permit();
             if (done) {
+                TR("exit", (LONG)main_port, 0);
                 /* from here on a new instance may run: our copies only */
                 CloseDevice((struct IORequest *)tproto);
                 DeleteIORequest((struct IORequest *)tproto);

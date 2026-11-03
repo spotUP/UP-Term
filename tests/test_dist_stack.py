@@ -20,6 +20,17 @@ MOUNTED = {'vtcon-handler', 'pty-handler', 'ixpipe-handler', 'up-console.device'
 # the set may only shrink.
 AUDIT_PENDING = set()
 
+# DIST-STACK-ALL: bin drawers of the staged dist (KIT=build/dist/<archive>) whose every file
+# must carry a $STACK cookie. Only AmigaOS executables (hunk header 000003F3) count: scripts,
+# icons and the git-* exec stubs have no stack to size. File -> reason, for the ones that cannot.
+DIST_BINS = ('Files/coreutils/bin', 'Files/userland/bin')
+DIST_EXEMPT = {
+    'hostname': 'GNU 5.2.1 (dist/gg): coreutils 9.12 does not build it; no cookie, small program, no big buffers',
+    'pinky': 'GNU 5.2.1 (dist/gg): coreutils 9.12 does not build it',
+    'who': 'GNU 5.2.1 (dist/gg): coreutils 9.12 does not build it',
+}
+DIST_COOKIE = re.compile(rb'\$STACK: *[1-9]')
+
 # "$STACK: 262144", or "$STACK: " STR(MENU_STACK) (amarchy/menu.c, amarchy/gui.c).
 COOKIE = re.compile(r'"\$STACK: *([1-9][0-9]*"|"\s*[A-Za-z_]+\()')
 
@@ -112,6 +123,24 @@ class Stack(unittest.TestCase):
                          'kit programs with no "$STACK: n" cookie (RULES.md rule 6)')
         self.assertEqual(AUDIT_PENDING - missing, set(),
                          'audited since: remove from AUDIT_PENDING')
+
+    def test_every_program_in_the_dist_bin_drawers_has_a_stack_cookie(self):
+        kit = os.environ.get('KIT')
+        if not kit:
+            self.skipTest('KIT=<staged dist/up-term> not set (make dist-check sets it)')
+        missing = set()
+        for d in DIST_BINS:
+            path = os.path.join(kit, d)
+            self.assertTrue(os.path.isdir(path), path)
+            for f in os.listdir(path):
+                with open(os.path.join(path, f), 'rb') as fh:
+                    data = fh.read()
+                if data[:4] == b'\x00\x00\x03\xf3' and not DIST_COOKIE.search(data):
+                    missing.add(f)
+        self.assertEqual(missing - set(DIST_EXEMPT), set(),
+                         'dist programs with no "$STACK: n" cookie (PIPE-FREEZE: vsh gives 16000 bytes)')
+        self.assertEqual(set(DIST_EXEMPT) - missing, set(),
+                         'exempt files that now have a cookie or are gone: remove from DIST_EXEMPT')
 
     def test_a_launcher_never_gives_a_loaded_program_a_fixed_stack(self):
         bad = []

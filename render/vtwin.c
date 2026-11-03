@@ -305,6 +305,7 @@ void vtwin_profile_defaults(vtwin *w)
      * keep the last one's cursor or palette */
     w->cursor_style = 0;
     w->cursor_blink = 0;
+    w->image_animation = 1; /* D14: on */
     w->meta_alt = 1; /* Alt is Meta; Left Amiga is Super (the keymap) */
     w->copy_on_select = 0;
     w->amiga_keys = 1;   /* on by default */
@@ -470,6 +471,12 @@ void vtwin_init(vtwin *w, const vtwin_host *host, void *user)
         if (w->frame && !OpenDevice((STRPTR)TIMERNAME, UNIT_MICROHZ, (struct IORequest *)w->frame, 0)) {
             w->frame_open = 1;
             vtwin_timer = w->frame->tr_node.io_Device;
+            /* the animation clock: a second request on the same port (no new signal), same device and unit */
+            w->anim = (struct timerequest *)CreateIORequest(w->frame_port, sizeof(struct timerequest));
+            if (w->anim) {
+                w->anim->tr_node.io_Device = w->frame->tr_node.io_Device;
+                w->anim->tr_node.io_Unit = w->frame->tr_node.io_Unit;
+            }
         }
     }
 }
@@ -483,9 +490,22 @@ static void frame_stop(vtwin *w)
     }
 }
 
+static void anim_stop(vtwin *w)
+{
+    if (w->anim_busy) {
+        AbortIO((struct IORequest *)w->anim);
+        WaitIO((struct IORequest *)w->anim);
+        w->anim_busy = 0;
+    }
+}
+
 void vtwin_cleanup(vtwin *w)
 {
     frame_stop(w);
+    anim_stop(w);
+    if (w->anim)
+        DeleteIORequest((struct IORequest *)w->anim);
+    w->anim = 0;
     if (w->frame_open)
         CloseDevice((struct IORequest *)w->frame);
     w->frame_open = 0;
@@ -618,6 +638,52 @@ void vtwin_clock(vtwin *w)
     frame_start(w);
 }
 
+/* K36: kitty animations have a clock of their own (pace.h vt_anim_arm_us; kitty graphics.c
+ * scan_active_animations): the request completes when the next frame is due, the tick passes the wait it
+ * armed, one frame switches, the clock re-arms for the next due time. While none runs (due < 0) or the window
+ * is hidden or scrolled back nothing is armed; anim_kick starts it again. */
+static void anim_arm(vtwin *w, long due)
+{
+    if (!w->anim || w->anim_busy || due < 0)
+        return;
+    w->anim->tr_node.io_Command = TR_ADDREQUEST;
+    w->anim_wait = vt_anim_arm_us(due, w->frame_us);
+    w->anim->tr_time.tv_secs = w->anim_wait / 1000000UL;
+    w->anim->tr_time.tv_micro = w->anim_wait % 1000000UL;
+    SendIO((struct IORequest *)w->anim);
+    w->anim_busy = 1;
+}
+
+static void anim_tick(vtwin *w, ULONG waited)
+{
+    unsigned long sw0;
+    long due;
+    struct EClockVal e0, e1;
+    ULONG freq;
+    if (!w->t || !w->win || vt_anim_paused(w->r.hidden, w->r.view))
+        return;
+    sw0 = vt_kitty_frame_switches(w->t);
+    due = vt_anim_tick(w->t, (long)waited);
+    if (vt_kitty_frame_switches(w->t) != sw0) {
+        w->render_pending = 1;
+        freq = vtwin_timer ? ReadEClock(&e0) : 0;
+        vtwin_render(w);
+        if (freq) {
+            ReadEClock(&e1);
+            w->prof_anim += e1.ev_lo - e0.ev_lo;
+        }
+    }
+    anim_arm(w, due);
+}
+
+/* an animation starts or the pause ends: arm the clock when it is idle and something is due */
+static void anim_kick(vtwin *w)
+{
+    if (!w->anim || w->anim_busy)
+        return;
+    anim_tick(w, 0); /* (a switch it makes draws, like one the clock makes) */
+}
+
 ULONG vtwin_tick(vtwin *w)
 {
     ULONG waited = 0;
@@ -637,6 +703,12 @@ ULONG vtwin_tick(vtwin *w)
         note_tick(w, w->frame_wait); /* a notice in the title counts down */
         if (w->t && (vr_flash_tick(&w->r) || vr_blink_tick(&w->r, w->frame_wait)))
             frame_start(w); /* that frame ended a flash or a blink phase */
+        anim_kick(w); /* output may have started an animation, a pause may have ended */
+    }
+    if (w->anim_busy && CheckIO((struct IORequest *)w->anim)) {
+        WaitIO((struct IORequest *)w->anim);
+        w->anim_busy = 0;
+        anim_tick(w, w->anim_wait);
     }
     if (!w->frame_open) {
         vtwin_render(w); /* no frame clock: draw at once */
@@ -892,6 +964,7 @@ static void settings(vtwin *w)
     vt_set_amiga_keys(w->t, w->amiga_keys);
     vt_set_cursor_style(w->t, w->cursor_style);
     vt_set_cursor_blink(w->t, w->cursor_blink);
+    vt_set_animation(w->t, w->image_animation);
     vt_set_clipboard_access(w->t, w->no_clipboard ? 0 : w->clip_access);
     for (i = 0; i < 16; i++)
         if (w->pal16[i] & 0x01000000UL)
@@ -1117,6 +1190,7 @@ void vtwin_show(vtwin *w, int on)
     vr_redraw(&w->r);
     vr_cursor_on(&w->r);
     vtwin_knob_resend(w); /* a tab shown: the window's scroll bar is its now */
+    anim_kick(w); /* shown again: a paused animation plays on */
 }
 
 void vtwin_set_inset(vtwin *w, WORD top)
@@ -1288,6 +1362,7 @@ void vtwin_resize(vtwin *w)
     }
     vtwin_knob_sync(w); /* other rows: another knob size */
     vtwin_raw_report(w, 12); /* IECLASS_SIZEWINDOW */
+    anim_kick(w); /* big enough again: a paused animation plays on */
 }
 
 void vtwin_refresh(vtwin *w)
@@ -2058,6 +2133,7 @@ static void set_view(vtwin *w, int lines)
     if (was && !w->r.view)
         vr_cursor_on(&w->r); /* back on the live screen: its cursor too */
     vtwin_knob_sync(w);
+    anim_kick(w); /* back on the live screen: a paused animation plays on */
 }
 
 /* Cheap: a few integer operations and a compare; the owner's gadget is

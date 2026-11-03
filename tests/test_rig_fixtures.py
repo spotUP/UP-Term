@@ -320,8 +320,10 @@ class InstallCases(unittest.TestCase):
             ir.VTC, ir.KIT, ir.run, ir.SYSVOL, ir.stale_kit = saved
 
     def test_prepare_refuses_a_kit_that_lacks_a_part_before_vtc_is_touched(self):
-        saved = (ir.VTC, ir.KIT)
+        saved = (ir.VTC, ir.KIT, ir.missing_helpers)
         try:
+            # the helper check is the build tree's state (a fresh worktree has no rig-helpers); this case is the kit
+            ir.missing_helpers = lambda root=None: None
             ir.VTC = self.tmp / 'vtc3'; (ir.VTC / 'distkit').mkdir(parents=True)
             ir.KIT = self.tmp / 'oldkit'; (ir.KIT / 'Files').mkdir(parents=True)
             with self.assertRaises(SystemExit) as e:
@@ -329,7 +331,7 @@ class InstallCases(unittest.TestCase):
             self.assertIn('lacks Install, Install.info', str(e.exception))
             self.assertTrue((ir.VTC / 'distkit').exists(), 'the refusal comes before VTC:distkit is replaced')
         finally:
-            ir.VTC, ir.KIT = saved
+            ir.VTC, ir.KIT, ir.missing_helpers = saved
 
     def test_run_long_keeps_its_wrapper_alive_when_the_script_returns_20(self):
         written = {}

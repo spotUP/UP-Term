@@ -29,6 +29,7 @@ class RigReboot(unittest.TestCase):
         p("refuse_port_clash", lambda port=None: None)   # lsof sees the real machine
         p("setup_config_only", lambda: None)
         p("status", lambda quiet=False: True)
+        p("go_assigns_done", lambda text: True)   # the boot.log of a real go (RIG-START-ASSIGN-RACE)
         p("boot_assigns_missing", lambda: [])
         p("guard_shell_startup", lambda: None)
         p("retry_wb_reset", lambda: None)

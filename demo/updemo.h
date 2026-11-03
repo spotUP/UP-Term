@@ -18,6 +18,14 @@ typedef struct updemo_io {
     /* the time in 1/50 s, from any start */
     long (*ticks)(void *user);
     void *user;
+    /* a media file by name ("earth.anim"): its bytes in a malloc'd block the caller frees, length in *len;
+     * 0 when it is not there (or the host has no loader): the scene that wants it shows its fallback.
+     * The pointer itself may be 0. */
+    unsigned char *(*load)(void *user, const char *name, long *len);
+    /* a slash command line ("/tab new") for the terminal window the demo runs in, the line typed there; the terminal's
+     * reply text ("tab: new 3\n"), valid until the next call, or 0 when it did not run it. The pointer may be 0 (a
+     * terminal with no slash commands): the scene that sends one says so. */
+    const char *(*command)(void *user, const char *line);
 } updemo_io;
 
 #define UPDEMO_MIN_COLS 76

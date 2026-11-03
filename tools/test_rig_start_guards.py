@@ -58,3 +58,14 @@ def test_no_dopus_strips_blocks_from_os_tree(tmp_path):
 
 def test_no_dopus_on_clean_tree_is_noop(tmp_path):
     rig.os_tree_no_dopus(tmp_path)
+
+
+def test_os_tree_starts_one_wasabid(tmp_path):
+    """RIG-KIT-WASABID-DUP: an installed kit's S:User-Startup in an --os tree must not start a second wasabid."""
+    (tmp_path / "S").mkdir()
+    us = tmp_path / "S/User-Startup"
+    us.write_bytes(b"; keep\n;BEGIN UP-Term assign\nAssign UP-Term: x\n;END UP-Term assign\n"
+                   b";BEGIN UP-Term wasabi\nRun >NIL: C:wasabid\n;END UP-Term wasabi\n")
+    rig.os_tree_no_wasabid(tmp_path)
+    t = us.read_text()
+    assert t.count("wasabid") == 0 and "Assign UP-Term:" in t and "; keep" in t

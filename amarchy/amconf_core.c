@@ -139,6 +139,11 @@ static int amconf_on(const am_prefs *p, int k)
     return !strcmp(s, "on");
 }
 
+int amconf_desk_master(const am_prefs *p)
+{
+    return amconf_on(p, AM_DESK);
+}
+
 unsigned amconf_desk_mask(const am_prefs *p)
 {
     unsigned m = 0;

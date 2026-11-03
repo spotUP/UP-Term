@@ -166,7 +166,7 @@ static void the_shipped_keymap_has_no_super_alt_chord(void)
         if (km.bind[i].qual & KM_Q_CTRL)
             ctrl++;
     }
-    CHECK_INT(ctrl, 43);                /* the 28 former Super+Alt chords, now Super+Ctrl, super+ctrl+help (window shot), and the 14 super+ctrl+shift snap, float and swap keys (P3-D1) */
+    CHECK_INT(ctrl, 44);                /* the 28 former Super+Alt chords, now Super+Ctrl, super+ctrl+help (window shot), and the 14 super+ctrl+shift snap, float and swap keys (P3-D1), and super+ctrl+shift+q (Quit Amarchy) */
 }
 
 static void a_newer_major_is_rejected_whole(void)
@@ -510,6 +510,54 @@ static void bar_actions_parse(void)
             if (km.bind[i].kind == KA_BAR && !strcmp(km.bind[i].arg, "toggle"))
                 found++;
         CHECK_INT(found, 1);
+    }
+}
+
+/* RL16 W11, W11b: gui:<help|welcome> opens an amarchy-gui window, amarchy:quit ends the commodity; both are
+ * commodity actions, the shipped keymap binds them and carries a Help and a Quit Amarchy menu row. */
+static void gui_quit_actions_parse(void)
+{
+    static const char *const bad[] = { "gui:", "gui:viewer", "gui:Help", "gui:help x", "amarchy:", "amarchy:stop",
+                                       "amarchy:quit now" };
+    char row[64];
+    size_t i;
+    CHECK(parse("[bind]\nsuper+shift+slash = gui:help\n") && km.nbind == 1 && km.bind[0].kind == KA_GUI &&
+          !strcmp(km.bind[0].arg, "help") && km.bind[0].code == 0x3A);
+    CHECK(parse("[bind]\nsuper+w = gui:welcome\n") && km.nbind == 1 && km.bind[0].kind == KA_GUI &&
+          !strcmp(km.bind[0].arg, "welcome"));
+    CHECK(parse("[bind]\nsuper+q = amarchy:quit\n") && km.nbind == 1 && km.bind[0].kind == KA_AMARCHY &&
+          !strcmp(km.bind[0].arg, "quit"));
+    for (i = 0; i < sizeof bad / sizeof bad[0]; i++) {
+        snprintf(row, sizeof row, "[bind]\nsuper+w = %s\n", bad[i]);
+        parse(row);
+        CHECK_INT(km.nbind, 0);
+    }
+    CHECK_INT(keymap_action_scope(KA_GUI), KS_COMMODITY);
+    CHECK_INT(keymap_action_scope(KA_AMARCHY), KS_COMMODITY);
+    CHECK_INT((int)lf_plan(KA_GUI), (int)LF_GUI);
+    CHECK_INT((int)lf_plan(KA_AMARCHY), (int)LF_QUIT);
+    {
+        static char file[32768];
+        long n = slurp("dist/keymap", file, sizeof(file));
+        int help_bind = 0, quit_bind = 0, help_row = 0, quit_row = 0;
+        CHECK(n > 0 && keymap_parse(&km, file, n));
+        for (i = 0; i < (size_t)km.nbind; i++) {
+            if (km.bind[i].kind == KA_GUI && !strcmp(km.bind[i].arg, "help"))
+                help_bind++;
+            if (km.bind[i].kind == KA_AMARCHY && !strcmp(km.bind[i].arg, "quit"))
+                quit_bind++;
+        }
+        for (i = 0; i < (size_t)km.nmenu; i++) {
+            if (km.menu[i].kind == KA_GUI && !strcmp(km.menu[i].arg, "help") && !strcmp(km.menu[i].label, "Help"))
+                help_row++;
+            if (km.menu[i].kind == KA_AMARCHY && !strcmp(km.menu[i].arg, "quit") &&
+                !strcmp(km.menu[i].label, "Quit Amarchy"))
+                quit_row++;
+        }
+        CHECK_INT(help_bind, 1);
+        CHECK_INT(quit_bind, 1);
+        CHECK_INT(help_row, 1);
+        CHECK_INT(quit_row, 1);
     }
 }
 
@@ -2115,7 +2163,7 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
     /* the shipped keymap at topaz 8 on 640x256: root 3 groups, apps 6 rows; the widest label of all
      * levels is "Install add-ons" (15 x 8 px): 2 x 4 + 2 x 22 + 2 x 14 + 120 = 200, under min_w 360 */
     CHECK(n > 0 && keymap_parse(&km, file, n));
-    CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 15);   /* with the Capture group (R4.7), the Trigger, Settings, Dopus, Workbench, Screens, Packages, Agents and Network groups (all shown) */
+    CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 17);   /* with the Help and Quit Amarchy rows (RL16 W11, W11b), with the Capture group (R4.7), the Trigger, Settings, Dopus, Workbench, Screens, Packages, Agents and Network groups (all shown) */
     CHECK_INT(mn_children(&km, "apps", items, MN_MAX_ITEMS), 5);
     w = mg_width(&km, "", &topaz, 0, 8, fixed_width, &px8, &pal);
     CHECK_INT(w, 360);
@@ -3374,6 +3422,7 @@ void suite_keymap(void)
     win_actions_parse();
     cap_actions_parse();
     bar_actions_parse();
+    gui_quit_actions_parse();
     win_scope_is_commodity();
     the_shipped_snap_focus_float_and_swap_keys_are_bound_and_clash_free();
     win_defers_in_the_handler();
@@ -3449,12 +3498,12 @@ static void menu_theme_roles_map_the_palette(void)
     CHECK_INT(menu_theme_index(MT_BG), 0);
     CHECK_INT(menu_theme_index(MT_TEXT), 7);
     CHECK_INT(menu_theme_index(MT_DIM), 8);
-    CHECK_INT(menu_theme_index(MT_ACCENT), 14);
-    CHECK_INT(menu_theme_index(MT_SELBOX), 4);
+    CHECK_INT(menu_theme_index(MT_SELTEXT), 14);
+    CHECK_INT(menu_theme_index(MT_THEME_ACCENT), 4);
     CHECK_INT(menu_theme_index(MT_OK), 10);
     CHECK_INT(menu_theme_index(MT_FAIL), 9);
     /* outline and selected row box are one colour: the border role is the selection box role, not the accent */
-    CHECK_INT(MT_BORDER_ROLE, MT_SELBOX);
+    CHECK_INT(MT_BORDER_ROLE, MT_THEME_ACCENT);
 
     /* a Dracula-like palette remaps 0, 7, 8, 14 and 4; index 1 (no role) is ignored */
     CHECK_INT(upconf_palette_parse("0,282A36,1,FF5555,7,F8F8F2,8,6272A4,14,8BE9FD,4,44475A", pal), 6);
@@ -3462,15 +3511,15 @@ static void menu_theme_roles_map_the_palette(void)
     CHECK_INT((long)rgb[MT_BG], 0x282A36L);
     CHECK_INT((long)rgb[MT_TEXT], 0xF8F8F2L);
     CHECK_INT((long)rgb[MT_DIM], 0x6272A4L);
-    CHECK_INT((long)rgb[MT_ACCENT], 0x8BE9FDL);
-    CHECK_INT((long)rgb[MT_SELBOX], 0x44475AL);
+    CHECK_INT((long)rgb[MT_SELTEXT], 0x8BE9FDL);
+    CHECK_INT((long)rgb[MT_THEME_ACCENT], 0x44475AL);
 
     /* a palette that remaps only the accent leaves the other roles at their defaults */
     CHECK_INT(upconf_palette_parse("14,FFAA00", pal), 1);
     menu_theme_roles(pal, rgb);
-    CHECK_INT((long)rgb[MT_ACCENT], 0xFFAA00L);
+    CHECK_INT((long)rgb[MT_SELTEXT], 0xFFAA00L);
     CHECK_INT((long)rgb[MT_BG], 0x000000L);
-    CHECK_INT((long)rgb[MT_SELBOX], 0x0000EEL);
+    CHECK_INT((long)rgb[MT_THEME_ACCENT], 0x0000EEL);
 }
 
 /* Minimal menu mode, one reachability test: the upconf text selects it, the command builder sends
@@ -3515,9 +3564,9 @@ static void minimal_mode_reaches_the_program(void)
     rgb[MT_BG] = 0x102030UL;
     rgb[MT_TEXT] = 0xA0B0C0UL;
     CHECK_INT(menu_theme_minimal(rgb), 1);
-    CHECK_INT((long)rgb[MT_ACCENT], 0x102030L);
+    CHECK_INT((long)rgb[MT_SELTEXT], 0x102030L);
     CHECK_INT((long)rgb[MT_DIM], 0xA0B0C0L);
-    CHECK_INT((long)rgb[MT_SELBOX], 0xA0B0C0L);
+    CHECK_INT((long)rgb[MT_THEME_ACCENT], 0xA0B0C0L);
     rgb[MT_BG] = rgb[MT_TEXT] = 0x555555UL;
     CHECK_INT(menu_theme_minimal(rgb), 0);       /* equal colours: the caller uses screen pens */
 }
@@ -3534,15 +3583,15 @@ static void the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg(void)
     CHECK_INT((long)rgb[MT_BG], 0x445566L);
     CHECK_INT((long)rgb[MT_TEXT], 0x112233L);
     CHECK_INT((long)rgb[MT_DIM], (long)vt_palette_rgb(0, 8));
-    CHECK_INT((long)rgb[MT_ACCENT], (long)vt_palette_rgb(0, 14));
-    CHECK_INT((long)rgb[MT_SELBOX], (long)vt_palette_rgb(0, 4));
+    CHECK_INT((long)rgb[MT_SELTEXT], (long)vt_palette_rgb(0, 14));
+    CHECK_INT((long)rgb[MT_THEME_ACCENT], (long)vt_palette_rgb(0, 4));
 
     /* they win over a palette that remaps 0 and 7; the palette's accent still counts */
     upconf_palette_parse("0,282A36,7,F8F8F2,14,8BE9FD", pal);
     menu_theme_roles_fb(pal, fg, bg, rgb);
     CHECK_INT((long)rgb[MT_BG], 0x445566L);
     CHECK_INT((long)rgb[MT_TEXT], 0x112233L);
-    CHECK_INT((long)rgb[MT_ACCENT], 0x8BE9FDL);
+    CHECK_INT((long)rgb[MT_SELTEXT], 0x8BE9FDL);
 
     /* only one set: the other keeps the palette */
     menu_theme_roles_fb(pal, 0, bg, rgb);
@@ -3582,9 +3631,9 @@ static void dopus_theme_commands_use_the_theme_directly(void)
                        "dopus refresh lister\n";
     char want[512];
 
-    /* D14: the Directory Opus listers take the theme's own bg/fg/dim/accent, not the menu roles */
+    /* D14: the Directory Opus listers take the theme's own surface/text/muted/accent roles, not the menu roles */
     gt_builtin(&th);
-    snprintf(want, sizeof want, "dopus set palette 0x1a1b26 0xa9b1d6 0x565f89 0x7aa2f7\n%s", pens);
+    snprintf(want, sizeof want, "dopus set palette 0x1a1b26 0xa9b1d6 0x414868 0x7aa2f7\n%s", pens);
     n = dopus_theme_commands(&th, buf, sizeof buf, 1);
     CHECK_INT((long)n, (long)strlen(want));
     CHECK_STR(buf, want);
@@ -3594,7 +3643,7 @@ static void dopus_theme_commands_use_the_theme_directly(void)
     CHECK_STR(buf, pens);
 
     /* a colour above 24 bits (0x01RRGGBB leaked in), a missing theme, too small a buffer: 0 and an empty string */
-    th.dim = 0x01000000UL;
+    th.muted = 0x01000000UL;
     strcpy(buf, "x");
     CHECK_INT((long)dopus_theme_commands(&th, buf, sizeof buf, 1), 0L);
     CHECK_STR(buf, "");
@@ -3644,7 +3693,7 @@ static void dopus_theme_send_goes_to_the_dopus_port(void)
     for (i = 0; i < 13; i++)
         CHECK_STR(r.port[i], "DOPUS.1");
     CHECK_STR(r.line[0], "dopus screen");
-    CHECK_STR(r.line[1], "dopus set palette 0x1a1b26 0xa9b1d6 0x565f89 0x7aa2f7");
+    CHECK_STR(r.line[1], "dopus set palette 0x1a1b26 0xa9b1d6 0x414868 0x7aa2f7");
     CHECK_STR(r.line[2], "dopus set pens icons 1 0 0 1 0 0");
     CHECK_STR(r.line[3], "dopus set pens files 1 0");
     CHECK_STR(r.line[4], "dopus set pens dirs 3 0");
@@ -3673,19 +3722,19 @@ static void dopus_theme_send_goes_to_the_dopus_port(void)
     CHECK_INT((long)r.n, 0L);
 }
 
-/* Workbench pens 0-3 on a theme switch (menu_theme.h wb_pens_plan): WCAG 2.x contrast of pen 0 against pen 1 */
+/* Workbench pens 0-3 on a theme switch (menu_theme.h wb_pens_plan): gt_contrast of pen 0 against pen 1 (floor GT_FLOOR_TEXT) */
 static void wb_pens_contrast_guard(void)
 {
     gtheme th;
     uc_u32 rgb[WB_PENS];
-    CHECK_INT((long)wb_contrast_x100(0x000000, 0xFFFFFF), 2100L);
-    CHECK_INT((long)wb_contrast_x100(0x777777, 0x777777), 100L);
-    CHECK_INT((long)wb_contrast_x100(0xFFFFFF, 0x000000), 2100L);
+    CHECK_INT((long)gt_contrast(0x000000, 0xFFFFFF), 2061L);
+    CHECK_INT((long)gt_contrast(0x777777, 0x777777), 100L);
+    CHECK_INT((long)gt_contrast(0xFFFFFF, 0x000000), 2061L);
     gt_builtin(&th);
     CHECK_INT((long)wb_pens_plan(&th, rgb), 1L);
     CHECK_INT((long)rgb[0], (long)th.bg);
     CHECK_INT((long)rgb[1], (long)th.fg);
-    CHECK_INT((long)rgb[2], (long)th.dim);
+    CHECK_INT((long)rgb[2], (long)th.muted);
     CHECK_INT((long)rgb[3], (long)th.accent);
     /* synthetic weak theme: grey on slightly different grey is refused, rgb still filled */
     th.bg = 0x808080;

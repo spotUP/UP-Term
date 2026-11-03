@@ -16,6 +16,9 @@
 #include "aa_ink_rule.h" /* aa_ink_rgb */
 
 #include <exec/types.h>
+#ifndef VR_HOST_TEST
+#include <exec/libraries.h> /* struct Library: lib_NegSize */
+#endif
 
 struct Library;
 struct RastPort;
@@ -43,6 +46,62 @@ ULONG vr_cgx_fill(struct Library *, struct RastPort *rp, UWORD x, UWORD y, UWORD
 ULONG vr_cgx_fill(__reg("a6") struct Library *, __reg("a1") struct RastPort *rp, __reg("d0") UWORD x,
                   __reg("d1") UWORD y, __reg("d2") UWORD w, __reg("d3") UWORD h,
                   __reg("d4") ULONG argb) = "\tjsr\t-150(a6)";
+#endif
+
+/* cybergraphics.library V41 WritePixelArray (LVO -126): a rectangle of 32-bit pixels in memory order R G B A
+ * (VR_RECTFMT_RGBA), srcmod in bytes; no alpha is applied. WritePixelArrayAlpha (LVO -216, V43): the same
+ * rectangle as ARGB (alpha byte first), blended with what is on the screen; globalalpha 0xFFFFFFFF = the per-pixel
+ * alpha only. Registers from the cybergraphics_lib.fd of the CGX/AMOS and MorphOS SDKs (plan K40). */
+#define VR_RECTFMT_RGBA 1
+/* Does the library really implement WritePixelArrayAlpha (-216)? The rig's P96 (cybergraphics 42.7, NegSize 240,
+ * 2026-11-02, tests/amiga/wpaprobe.c) has the slot but points -204 .. -228 all at one stub that draws nothing, and its
+ * version number says nothing about it: the real export has a jump target of its own. A table shorter than 228 bytes
+ * (older V41) has no such slot, and every slot read must be a JMP abs.l (0x4EF9) before its target means anything.
+ * Pure: the library base and its lib_NegSize, so the host tests it on a fake block. */
+static inline int vr_cgx_slots_have_alpha(const unsigned char *base, unsigned long negsize)
+{
+    static const unsigned short slot[4] = {210, 216, 222, 228};
+    unsigned long t[4];
+    int i;
+    if (negsize < 228)
+        return 0;
+    for (i = 0; i < 4; i++) {
+        const unsigned char *s = base - slot[i];
+        if (s[0] != 0x4E || s[1] != 0xF9)
+            return 0;
+        t[i] = ((unsigned long)s[2] << 24) | ((unsigned long)s[3] << 16) | ((unsigned long)s[4] << 8) | s[5];
+    }
+    return t[1] != t[0] && t[1] != t[2] && t[1] != t[3];
+}
+
+#ifdef VR_HOST_TEST
+LONG vr_cgx_write_pixels(struct Library *, APTR src, UWORD sx, UWORD sy, UWORD smod, struct RastPort *rp, UWORD dx,
+                         UWORD dy, UWORD w, UWORD h, UBYTE fmt);
+ULONG vr_cgx_write_alpha(struct Library *, APTR src, UWORD sx, UWORD sy, UWORD smod, struct RastPort *rp, UWORD dx,
+                         UWORD dy, UWORD w, UWORD h, ULONG globalalpha);
+LONG vr_cgx_read_pixels(struct Library *, struct RastPort *rp, UWORD sx, UWORD sy, APTR dst, UWORD dx, UWORD dy,
+                        UWORD dmod, UWORD w, UWORD h, UBYTE fmt);
+int vr_cgx_has_alpha(struct Library *);
+#else
+LONG vr_cgx_write_pixels(__reg("a6") struct Library *, __reg("a0") APTR src, __reg("d0") UWORD sx,
+                         __reg("d1") UWORD sy, __reg("d2") UWORD smod, __reg("a1") struct RastPort *rp,
+                         __reg("d3") UWORD dx, __reg("d4") UWORD dy, __reg("d5") UWORD w, __reg("d6") UWORD h,
+                         __reg("d7") UBYTE fmt) = "\tjsr\t-126(a6)";
+ULONG vr_cgx_write_alpha(__reg("a6") struct Library *, __reg("a0") APTR src, __reg("d0") UWORD sx,
+                         __reg("d1") UWORD sy, __reg("d2") UWORD smod, __reg("a1") struct RastPort *rp,
+                         __reg("d3") UWORD dx, __reg("d4") UWORD dy, __reg("d5") UWORD w, __reg("d6") UWORD h,
+                         __reg("d7") ULONG globalalpha) = "\tjsr\t-216(a6)";
+/* ReadPixelArray (LVO -120): destRect a0, DestX d0, DestY d1, DestMod d2, SrcRP a1, SrcX d3, SrcY d4, SizeX d5,
+ * SizeY d6, DestFormat d7 (cybergraphics_lib.fd, AMOS and MorphOS SDK copies agree). The wrapper takes the source
+ * rastport and rectangle first and the destination buffer and its offset after, as vr_cgx_write_pixels reads. */
+LONG vr_cgx_read_pixels(__reg("a6") struct Library *, __reg("a1") struct RastPort *rp, __reg("d3") UWORD sx,
+                        __reg("d4") UWORD sy, __reg("a0") APTR dst, __reg("d0") UWORD dx, __reg("d1") UWORD dy,
+                        __reg("d2") UWORD dmod, __reg("d5") UWORD w, __reg("d6") UWORD h,
+                        __reg("d7") UBYTE fmt) = "\tjsr\t-120(a6)";
+static int vr_cgx_has_alpha(struct Library *lib)
+{
+    return vr_cgx_slots_have_alpha((const unsigned char *)lib, lib->lib_NegSize);
+}
 #endif
 
 /* The host's pen services. Every ink is what SetAPen's caller would hand ink_pen: a pen number, or

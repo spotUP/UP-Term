@@ -16,6 +16,7 @@
 #include "act.h"
 #include "win.h"
 #include "gthemes_dos.h"
+#include "desk_core.h"
 #include "desk_dos.h"
 #include "desk_confirm_dos.h"
 #include "leaf.h"
@@ -32,6 +33,7 @@
 #include "../config/keymap_load.h"
 #include "../config/upconf.h"
 #include "amconf_dos.h"
+#include "help_core.h"
 #include "../handler/upactive.h"
 #include "../tty/qmark.h"
 #include "menu_open.h"
@@ -258,6 +260,39 @@ static void start_windows(void)
     g_bts = bar_timer_sigmask();
 }
 
+/* RL16 W10: the welcome window, once, when welcome-shown is not on. A separate amarchy-gui process through the same
+ * launch the Help hotkey uses; the window saves the key itself when the box is ticked. */
+static void welcome_maybe(void)
+{
+    am_prefs p;
+    char line[KM_ID + 160];
+    amconf_load(&p);
+    if (hc_should_welcome(&p) && cx_helper_cmd(line, sizeof line, g_dir, "amarchy-gui", "welcome"))
+        act_run(line);
+}
+
+/* S32-START-LOOK: the start look needs the Workbench screen, and Amarchy starts from S:User-Startup before LoadWB
+ * opens it; ipd_lock_wb_screen never opens a closed Workbench (BOOT-31-WB-DEADLOCK), so these steps found no screen
+ * and wrote nothing. Run once at start when the screen is up, else on the first tick that finds it (desk_start_due). */
+static int g_desk_started, g_tick_ok;
+static void desk_start_gate(long now)
+{
+    struct Screen *scr;
+    (void)now;
+    if (g_desk_started)
+        return;                                 /* the tick hook stays; done costs nothing */
+    scr = ipd_lock_wb_screen();
+    if (scr)
+        UnlockPubScreen(0, scr);
+    if (!desk_start_due(g_desk_started, scr != 0, g_tick_ok))
+        return;
+    g_desk_started = 1;
+    desk_dos_flat_pens_refresh();               /* FLAT-PENS-STALE-FILE: after the windows (or the W43 hold) are set up, the hooks above close/reopen them around a reset */
+    desk_dos_marker_recover();                  /* FP-3 (R1.9): an apply that never reached Keep or Revert does not stick */
+    desk_dos_wb_backdrop();                     /* S32-WB-BACKDROP: frameless Workbench root window */
+    desk_dos_start_apply();                     /* S31-START-APPLY: after the recover, so a leftover revert runs first; prefs on reach ENV: */
+}
+
 /* the 1 s tick while held: opens the windows once the Workbench runs the saved mode, or after the timeout */
 static void wb_gate(long now)
 {
@@ -271,6 +306,7 @@ static void wb_gate(long now)
         PutStr((STRPTR)"Amarchy: the Workbench never reached the saved screen mode; opening the windows anyway\n");
     g_wb_hold = 0;
     start_windows();
+    welcome_maybe();   /* W43: no foreign window before the Workbench reset, so the welcome waits for the release */
 }
 
 /* The STATUS reply: hits=N rows=N enabled=N active=N wins=N snaps=N bar=N wbpens=N wbrefused=N shots=N notes=N ticks=N,
@@ -376,6 +412,15 @@ static int do_row(int row)
         ok = bar_port(b->arg, scratch) == 0;
         break;
     }
+    case KA_GUI: {
+        char gl[KM_ID + 160];
+        ok = cx_helper_cmd(gl, sizeof gl, g_dir, "amarchy-gui", b->arg) && act_run(gl);
+        break;
+    }
+    case KA_AMARCHY:
+        g_quit = 1;   /* as the ARexx QUIT: the loop ends and the normal shutdown follows */
+        ok = 1;
+        break;
     case KA_MENU: case KA_VIEWER:
         ok = act_menu_kind(b->kind, b->arg);
         break;
@@ -563,7 +608,7 @@ int main(void)
     tick_hook(tw_tick);                         /* R2.5b: a theme switch retakes the helper windows' pens */
     tick_hook(iconpens_follow);
     iconpens_follow(0);                         /* at boot, before the tick's first second */
-    tick_open_ok = tick_open();                 /* the 1 s tick, before the bar and running without it */
+    g_tick_ok = tick_open_ok = tick_open();                 /* the 1 s tick, before the bar and running without it */
     dc_init();                                  /* FP-1: the confirm requester and its 15 s timeout ride the tick */
     tks = tick_sigmask();
     /* W43: no window before the Workbench is in its final mode (IPrefs resets it late; the reset cannot run while a
@@ -579,8 +624,11 @@ int main(void)
         start_windows();
     else
         tick_hook(wb_gate);
-    desk_dos_flat_pens_refresh();               /* FLAT-PENS-STALE-FILE: after the windows (or the W43 hold) are set up, the hooks above close/reopen them around a reset */
-    desk_dos_marker_recover();                  /* FP-3 (R1.9): an apply that never reached Keep or Revert does not stick */
+    desk_start_gate(0);                         /* S32-START-LOOK: now if the Workbench screen is up, else from the 1 s tick */
+    if (!g_desk_started)
+        tick_hook(desk_start_gate);
+    if (!g_wb_hold)
+        welcome_maybe();
     while (!g_quit) {
         sigs = Wait(cxs | rxs | nos | nts | lps | wrs | cws | g_bs | g_bts | tks | shot_region_sigmask() | dc_sigmask() | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F);
         if (sigs & SIGBREAKF_CTRL_C)

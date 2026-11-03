@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "../amarchy/amconf_core.h"
+#include "../amarchy/desk_core.h"
 #include "../amarchy/gthemes_core.h"
 #include "../amarchy/menu_core.h"
 #include "../amarchy/menu_theme.h"
@@ -204,9 +205,9 @@ static void test_gthemes_roles(void)
         menu_theme_roles_gui(&t, rgb);
         CHECK_INT(rgb[MT_BG], shipped[i].bg);
         CHECK_INT(rgb[MT_TEXT], shipped[i].fg);
-        CHECK_INT(rgb[MT_DIM], shipped[i].dim);
-        CHECK_INT(rgb[MT_ACCENT], shipped[i].bg);
-        CHECK_INT(rgb[MT_SELBOX], shipped[i].accent);
+        CHECK_INT(rgb[MT_DIM], t.muted); /* RL8: the dim role is GR_MUTED (the theme file's muted), was dark_foreground */
+        CHECK_INT(rgb[MT_SELTEXT], shipped[i].bg);
+        CHECK_INT(rgb[MT_THEME_ACCENT], shipped[i].accent);
         CHECK_INT(rgb[MT_HEAD_ROLE], shipped[i].accent); /* the header follows the theme's accent */
         /* D14: the lister's directory pen (colour 3 = accent) never equals its background pen (colour 0 = bg) */
         {
@@ -215,15 +216,15 @@ static void test_gthemes_roles(void)
             CHECK(t.accent != t.bg);
             CHECK(dopus_theme_commands(&t, out, sizeof out, 1) > 0);
             snprintf(want, sizeof want, "dopus set palette 0x%06lx 0x%06lx 0x%06lx 0x%06lx\n", (unsigned long)t.bg,
-                     (unsigned long)t.fg, (unsigned long)t.dim, (unsigned long)t.accent);
+                     (unsigned long)t.fg, (unsigned long)t.muted, (unsigned long)t.accent);
             CHECK(strstr(out, want) == out);
             CHECK(strstr(out, "dopus set pens dirs 3 0\n") != NULL);
             /* Workbench pens 0-3: the guard's verdict for every shipped theme is the measured ratio against the
              * threshold; the pens are the theme's own */
             {
                 int ok = wb_pens_plan(&t, wb);
-                unsigned cr = wb_contrast_x100(t.bg, t.fg);
-                CHECK_INT(ok, cr >= WB_CONTRAST_MIN_X100);
+                unsigned cr = (unsigned)gt_contrast(t.bg, t.fg);
+                CHECK_INT(ok, cr >= GT_FLOOR_TEXT);
                 CHECK_INT((long)wb[0], (long)t.bg);
                 CHECK_INT((long)wb[3], (long)t.accent);
                 if (!ok)
@@ -244,7 +245,7 @@ static void test_gthemes_roles(void)
             int k, j;
             c[0] = rgb[MT_TEXT];
             c[1] = rgb[MT_BG];
-            c[2] = rgb[MT_SELBOX];
+            c[2] = rgb[MT_THEME_ACCENT];
             for (k = 0; k < 3; k++) {
                 double ch[3], l;
                 for (j = 0; j < 3; j++) {
@@ -303,7 +304,7 @@ static void test_gthemes_roles(void)
     /* few-pen screens: the two new roles fall back to the row text; the five core roles have no fallback role */
     CHECK_INT(menu_theme_fallback_role(MT_OK), MT_TEXT);
     CHECK_INT(menu_theme_fallback_role(MT_FAIL), MT_TEXT);
-    for (i = 0; i <= MT_SELBOX; i++)
+    for (i = 0; i <= MT_THEME_ACCENT; i++)
         CHECK_INT(menu_theme_fallback_role(i), -1);
     /* minimal menu: OK and FAIL are the foreground */
     gt_builtin(&t);
@@ -321,19 +322,19 @@ static void test_gthemes_roles(void)
         u = t;
         u.bg ^= 0x010101;
         menu_theme_roles_gui(&u, rgb);
-        CHECK(rgb[MT_BG] != base[MT_BG] && rgb[MT_ACCENT] != base[MT_ACCENT]);
+        CHECK(rgb[MT_BG] != base[MT_BG] && rgb[MT_SELTEXT] != base[MT_SELTEXT]);
         u = t;
         u.fg ^= 0x010101;
         menu_theme_roles_gui(&u, rgb);
         CHECK(rgb[MT_TEXT] != base[MT_TEXT]);
         u = t;
-        u.dim ^= 0x010101;
+        u.muted ^= 0x010101; /* RL8: MT_DIM follows muted, not dim */
         menu_theme_roles_gui(&u, rgb);
         CHECK(rgb[MT_DIM] != base[MT_DIM]);
         u = t;
         u.accent ^= 0x010101;
         menu_theme_roles_gui(&u, rgb);
-        CHECK(rgb[MT_SELBOX] != base[MT_SELBOX]);
+        CHECK(rgb[MT_THEME_ACCENT] != base[MT_THEME_ACCENT]);
         u = t;
         u.ok ^= 0x010101;
         menu_theme_roles_gui(&u, rgb);
@@ -348,10 +349,10 @@ static void test_gthemes_roles(void)
     menu_theme_roles_gui(&t, rgb);
     CHECK(menu_theme_minimal(rgb) == 1);
     CHECK_INT(rgb[MT_BG], 0x2e3440);
-    CHECK_INT(rgb[MT_ACCENT], 0x2e3440);
+    CHECK_INT(rgb[MT_SELTEXT], 0x2e3440);
     CHECK_INT(rgb[MT_TEXT], 0xd8dee9);
     CHECK_INT(rgb[MT_DIM], 0xd8dee9);
-    CHECK_INT(rgb[MT_SELBOX], 0xd8dee9);
+    CHECK_INT(rgb[MT_THEME_ACCENT], 0xd8dee9);
     /* H6: the terminal's roles are untouched: a set bg and fg still win over the palette */
     menu_theme_roles_fb(NULL, 0x01445566UL, 0x01112233UL, rgb);
     CHECK_INT(rgb[MT_BG], 0x112233);
@@ -733,25 +734,86 @@ static void test_gthemes_picker_pens(void)
         for (pass = 0; pass < 2; pass++) {
             fg = pc_of(&pc, pm_best, 0, rgb[MT_TEXT]);
             bg = pc_of(&pc, pm_best, 0, rgb[MT_BG]);
-            sel = pc_of(&pc, pm_best, 0, rgb[MT_SELBOX]);
+            sel = pc_of(&pc, pm_best, 0, rgb[MT_THEME_ACCENT]);
             CHECK(fg >= 0 && bg >= 0 && sel >= 0);   /* a colour with no pen drew as pen 1 on pen 0 */
             if (fg < 0 || bg < 0 || sel < 0)
                 break;
             /* the pens are the theme's own colours, so the rows read as the theme says */
             CHECK_INT(pm_col[fg], rgb[MT_TEXT]);
             CHECK_INT(pm_col[bg], rgb[MT_BG]);
-            CHECK_INT(pm_col[sel], rgb[MT_SELBOX]);
-            /* normal row: text over the window ground; selected row: the label (MT_ACCENT = bg) over the bar */
-            CHECK(wb_contrast_x100(pm_col[fg], pm_col[bg]) >= 300);
-            CHECK(wb_contrast_x100(pm_col[bg], pm_col[sel]) >= 300);
+            CHECK_INT(pm_col[sel], rgb[MT_THEME_ACCENT]);
+            /* normal row: text over the window ground; selected row: the label (MT_SELTEXT = bg) over the bar */
+            CHECK(gt_contrast(pm_col[fg], pm_col[bg]) >= GT_FLOOR_SEL);
+            CHECK(gt_contrast(pm_col[bg], pm_col[sel]) >= GT_FLOOR_SEL);
         }
         shown++;
     }
     CHECK_INT(shown, NSHIPPED);
 }
 
+/* RL8 FLAT-COLOUR-OVERHAUL step 1: THE role table. Six UI roles, one derivation for every theme (gt_roles_of), pinned on four
+ * shipped themes: dark (tokyo-night), black ground (vantablack: backdrop lifts to GT_BLACK_LIFT, white fg capped to bebebe), light
+ * (catppuccin-latte, flexoki-light: the selection is pushed darker off the surface). The desktop pens (DK_*), the drawn menu's roles
+ * (MT_*) and the flat glyph pens are views of the table, never their own picks. */
+static void test_gthemes_role_table(void)
+{
+    static const struct {
+        const char *name;
+        uc_u32 c[GR_ROLES]; /* BACKGROUND, SURFACE, TEXT, MUTED, ACCENT, SELECTION */
+        uc_u32 ok, fail;
+    } want[] = {
+        { "tokyo-night", { 0x0e0e14UL, 0x1a1b26UL, 0xa9b1d6UL, 0x414868UL, 0x7aa2f7UL, 0x3e4254UL }, 0x9ece6aUL, 0xf7768eUL },
+        { "vantablack", { 0x222222UL, 0x000000UL, 0xbebebeUL, 0x7a7a7aUL, 0x8d8d8dUL, 0x1a1a1aUL }, 0xb6b6b6UL, 0xa4a4a4UL },
+        { "catppuccin-latte", { 0xd7d8dcUL, 0xeff1f5UL, 0x4c4f69UL, 0xacb0beUL, 0x1e66f5UL, 0x8f9299UL }, 0x40a02bUL, 0xd20f39UL },
+        { "flexoki-light", { 0xe5e2d8UL, 0xfffcf0UL, 0x100f0fUL, 0xb7b5acUL, 0x205ea6UL, 0x919089UL }, 0x879a39UL, 0xd14d41UL },
+    };
+    unsigned i;
+    int k;
+    for (i = 0; i < sizeof want / sizeof want[0]; i++) {
+        gtheme t;
+        gt_roles r;
+        uc_u32 rgb[MT_ROLES];
+        load_shipped(want[i].name, &t);
+        gt_roles_of(&t, &r);
+        for (k = 0; k < GR_ROLES; k++)
+            CHECK_INT(r.c[k], want[i].c[k]);
+        CHECK_INT(r.ok, want[i].ok);
+        CHECK_INT(r.fail, want[i].fail);
+        /* the desktop pens are a view: every role sits on its pen, the pen holds the role's colour */
+        for (k = 0; k < GR_ROLES; k++)
+            CHECK_INT(desk_role(&t, desk_pen_of_role(k)), r.c[k]);
+        CHECK_INT(desk_role(&t, DK_GREEN), r.ok);
+        CHECK_INT(desk_role(&t, DK_BACKDROP), r.fail); /* palette.prefs byte-compatible: pen 7 still writes the fail tone */
+        /* the drawn menu is a view */
+        menu_theme_roles_gui(&t, rgb);
+        CHECK_INT(rgb[MT_BG], r.c[GR_SURFACE]);
+        CHECK_INT(rgb[MT_TEXT], r.c[GR_TEXT]);
+        CHECK_INT(rgb[MT_DIM], r.c[GR_MUTED]);
+        CHECK_INT(rgb[MT_SELTEXT], r.c[GR_SURFACE]);
+        CHECK_INT(rgb[MT_THEME_ACCENT], r.c[GR_ACCENT]);
+        CHECK_INT(rgb[MT_OK], r.ok);
+        CHECK_INT(rgb[MT_FAIL], r.fail);
+    }
+    /* the role-to-pen map keeps the pen-index == enum contract (0..7) */
+    CHECK_INT(desk_pen_of_role(GR_BACKGROUND), DK_DARKER);
+    CHECK_INT(desk_pen_of_role(GR_SURFACE), DK_BG);
+    CHECK_INT(desk_pen_of_role(GR_TEXT), DK_FG);
+    CHECK_INT(desk_pen_of_role(GR_MUTED), DK_MUTED);
+    CHECK_INT(desk_pen_of_role(GR_ACCENT), DK_ACCENT);
+    CHECK_INT(desk_pen_of_role(GR_SELECTION), DK_SELECTION);
+    CHECK_INT(DK_BACKDROP, 7);
+    {
+        unsigned char tx, ln, bk;
+        desk_flat_glyph_pens(&tx, &ln, &bk);
+        CHECK_INT(tx, desk_pen_of_role(GR_TEXT));
+        CHECK_INT(ln, desk_pen_of_role(GR_ACCENT));
+        CHECK_INT(bk, desk_pen_of_role(GR_SURFACE));
+    }
+}
+
 void suite_gthemes(void)
 {
+    test_gthemes_role_table();
     test_gthemes_desk_keys();
     test_gthemes_ink_direct();
     test_gthemes_save_text();

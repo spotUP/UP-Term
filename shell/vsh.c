@@ -798,6 +798,7 @@ static void job_free(job *j)
 {
     job **pp;
     Forbid();
+    sp_job_gone(pipe_tab, 32, j); /* no pipe keeps the freed job as its writer (orphan and kill paths) */
     for (pp = &live_jobs; *pp; pp = &(*pp)->next)
         if (*pp == j) {
             *pp = j->next;
@@ -1680,14 +1681,6 @@ static long os_wait(void *os, long id)
         SetSignal(SIGBREAKF_CTRL_C, SIGBREAKF_CTRL_C);
     rc = j->rc;
     ((vproc *)os)->ioerr = j->ioerr;
-    {
-        int i;
-        Forbid();
-        for (i = 0; i < 32; i++)
-            if (pipe_tab[i].writer == j)
-                pipe_tab[i].writer = 0;
-        Permit();
-    }
     bg_reaped(j);
     job_free(j);
     return rc;

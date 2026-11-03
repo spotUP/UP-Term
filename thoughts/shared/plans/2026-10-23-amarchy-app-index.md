@@ -1,7 +1,7 @@
 ---
 date: 2026-10-23
 topic: Amarchy app index (AM-IDX)
-status: reviewed by owner, ready to implement
+status: done (15 of 15 ticked, s52 verified)
 ---
 
 # Amarchy app index

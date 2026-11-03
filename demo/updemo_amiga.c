@@ -15,6 +15,7 @@
 #include <proto/exec.h>
 #include "updemo.h"
 #include "../tty/qmark.h"
+#include "../handler/upcmd.h"
 
 /* vbcc's startup runs main on a stack of this size whatever the starter gives
  * it; the cookie says the same to AmigaOS 3.2 and to vsh (RULES.md rule 6). */
@@ -29,6 +30,14 @@ static void out(void *user, const char *buf, long len)
     Write(con, (APTR)buf, len);
 }
 
+/* a slash command for the window the demo runs in: the packet C:UPTerm sends (handler/upcmd.h) */
+static const char *command(void *user, const char *line)
+{
+    static char ans[256];
+    (void)user;
+    return upterm_window_command(line, ans, sizeof(ans)) == 1 ? ans : 0;
+}
+
 static int key(void *user, int wait_ms)
 {
     unsigned char c;
@@ -36,6 +45,39 @@ static int key(void *user, int wait_ms)
     if (WaitForChar(con, wait_ms > 0 ? (LONG)wait_ms * 1000 : 1) && Read(con, &c, 1) == 1)
         return c;
     return -1;
+}
+
+/* media: UP-Term:share/updemo (the Install puts it there), else the current directory */
+static unsigned char *load(void *user, const char *name, long *len)
+{
+    static const char *const dirs[] = { "UP-Term:share/updemo/", "" };
+    char path[128];
+    int i, j, k;
+    (void)user;
+    for (i = 0; i < 2; i++) {
+        BPTR f;
+        for (j = 0; dirs[i][j]; j++)
+            path[j] = dirs[i][j];
+        for (k = 0; name[k] && j < 126; k++)
+            path[j++] = name[k];
+        path[j] = 0;
+        if ((f = Open((STRPTR)path, MODE_OLDFILE)) != 0) {
+            unsigned char *buf = 0;
+            LONG n;
+            Seek(f, 0, OFFSET_END);
+            n = Seek(f, 0, OFFSET_BEGINNING);
+            if (n > 0 && (buf = malloc((size_t)n)) != 0 && Read(f, buf, n) != n) {
+                free(buf);
+                buf = 0;
+            }
+            Close(f);
+            if (buf) {
+                *len = n;
+                return buf;
+            }
+        }
+    }
+    return 0;
 }
 
 static long ticks(void *user)
@@ -112,6 +154,8 @@ int main(int argc, char **argv)
     io.key = key;
     io.ticks = ticks;
     io.user = 0;
+    io.load = load;
+    io.command = command;
     bench = args.bench;
     updemo_colours(args.colours);
     if (!size(&cols, &rows))

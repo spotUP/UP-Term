@@ -200,6 +200,14 @@ int flat_other_hook(unsigned long entry, unsigned long lo, unsigned long hi);
  * Returns FLAT_HELD_NONE (start) or the reason held. */
 int flat_start_decide(int marker, int lmb, int rmb, int other);
 
+/* hook_install found no sysiclass: the Workbench screen is not open yet (ipd_lock_wb_screen never opens it). */
+enum { FLAT_ERR_NOCLASS = -100 };
+
+/* S32-START-LOOK: amarchy-flat BOOT runs from S:User-Startup, before LoadWB opens the Workbench screen, so the first
+ * hook_install finds no class. 1: retry the install now (not held, not installed, the last try failed only for want
+ * of the class); 0: an installed hook, a kill switch or any other failure (a foreign swap, memory) is final. */
+int flat_install_due(int held, int installed, int last_rc);
+
 /* Seconds the marker still has to live: FLAT_MARKER_SECS minus the age (now and written are seconds on any clock,
  * unsigned arithmetic so a wrapped clock still works), 0 when expired. */
 unsigned flat_marker_remaining(unsigned long written, unsigned long now);
@@ -322,5 +330,8 @@ int flat_button_role(const flat_box *self, const flat_box *sib, int n);
  * horiz / vert: the PropInfo FREEHORIZ / FREEVERT flags; depth: the screen depth. */
 int flat_scroller_pen(const flat_state *s, int depth, int cx, int cy, int cw, int ch, int horiz, int vert,
                       unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody, int x0, int y0, int x1, int y1);
+/* The knob rectangle (the layout flat_scroller_pen uses) inside container (cx,cy,cw,ch); 0 when the container is empty. */
+int flat_scroller_knob(int cx, int cy, int cw, int ch, int horiz, int vert, unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody,
+                       int *kx, int *ky, int *kw, int *kh);
 
 #endif

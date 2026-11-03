@@ -388,7 +388,8 @@ If NOT "{STEP}" EQ ""
   Quit 0
 EndIf
 Lab copy-coreutils
-; The Unix userland: GNU coreutils 5.2.1 (ls, cp, mv, rm, sort, head,
+; The Unix userland: GNU coreutils (the ports' 9.12 come with userland/bin
+; below; this drawer keeps only hostname, pinky and who, GNU 5.2.1) (ls, cp, mv, rm, sort, head,
 ; wc... GPL v2: COPYING is in the kit's coreutils drawer, the complete
 ; source in up-term-src.lha) in UP-Term's own drawer UP-Term:bin, not C::
 ; AmigaDOS names ignore case, so GNU sort, date, join and install would be
@@ -580,6 +581,11 @@ EndIf
 Copy ps top UP-Term:bin CLONE
 ; UPDemo: the terminal's show-off and benchmark (README, DEMO)
 Copy UPDemo C:UPDemo CLONE
+; the media of its kitty animation scene (NASA's rotating Earth); without it the scene shows a coded globe
+MakeDir >NIL: UP-Term:share UP-Term:share/updemo
+Copy updemo/earth.anim UP-Term:share/updemo CLONE QUIET
+Copy updemo/kanim-stream.bin UP-Term:share/updemo CLONE QUIET
+Copy updemo/photo.png UP-Term:share/updemo CLONE QUIET
 ; C:Reboot: writes every volume's buffers out, then restarts (the Install's
 ; last page offers it). OS 3.2 has a C:Reboot of its own: that one stays,
 ; an older one of ours (the "(UP-Term)" in its version) is replaced
@@ -1132,25 +1138,17 @@ If "$opticonlib" EQ "ICONLIB"
 EndIf
 ; AmiSSL: UP-Term:bin/curl is linked against it and cannot start without LIBS:amisslmaster.library version 5. The kit's
 ; Install (STEP set) offers it as its own page (P_AMISSL); a Shell install without Installer has no page, so this
-; part runs the same Install-AmiSSL through Installer, from the kit's AmiSSL drawer (it reads Libs/ and Certs/ by
-; relative names, so the CD comes first), the way P_AMISSL does. A failed AmiSSL install does not stop the base install.
+; part runs the same Files/install-amissl.dos, which asks nothing (AmiSSL's own Install-AmiSSL asks at every level
+; and stopped a full install). A failed AmiSSL install does not stop the base install.
 If "{STEP}" EQ ""
   Version >NIL: LIBS:amisslmaster.library 5
   If WARN
-    Echo "[INFO] AmiSSL: LIBS:amisslmaster.library version 5 is missing or older, running Install-AmiSSL."
-    CD "{DIR}/AmiSSL"
-    Installer SCRIPT Install-AmiSSL APPNAME AmiSSL MINUSER AVERAGE DEFUSER AVERAGE NOLOG
-    CD "{DIR}"
-    ; Install-AmiSSL only writes "Assign LIBS: AmiSSL:Libs ADD" into S:User-Startup (live after a reboot): add it to this
-    ; session so the re-check and curl see the library at once. Only when the AmiSSL: assign exists.
-    Assign >NIL: AmiSSL: EXISTS
-    If NOT WARN
-      Assign >NIL: LIBS: AmiSSL:Libs ADD
-    EndIf
+    Echo "[INFO] AmiSSL: LIBS:amisslmaster.library version 5 is missing or older, running install-amissl.dos."
+    Execute "{DIR}/install-amissl.dos" DIR "{DIR}" $optcpu060
     Version >NIL: LIBS:amisslmaster.library 5
     If WARN
       Echo "[ERROR] AmiSSL was not installed, https programs (curl) cannot run."
-      Echo "[ERROR] Run Install-AmiSSL from the kit's Files/AmiSSL drawer again."
+      Echo "[ERROR] Run Files/install-amissl.dos again."
     Else
       Echo "[INFO] AmiSSL installed: LIBS: has it now, usable at once."
     EndIf

@@ -1237,6 +1237,16 @@ def run_base_case(case):
     rc, out = ir.run('C:UPConsole STATUS')
     ck('kit:' in out, 'UPConsole STATUS prints the kit line (UP-Term:VERSIONS)', out)
     if case == 'fresh-all':
+        # INSTALL-AMISSL-STALL: the AmiSSL step runs Files/install-amissl.dos without a page, so the run reached this
+        # line at all; the libraries must be where curl finds them (LIBS: has AmiSSL:Libs added), Version 5 or newer
+        rc, out = ir.run('Version LIBS:amisslmaster.library')
+        log.append('amisslmaster.library: %s' % ' '.join(out.split()))
+        ck(rc == 0 and re.search(r'amisslmaster\.library\s+(\d+)\.', out) is not None and int(re.search(r'amisslmaster\.library\s+(\d+)\.', out).group(1)) >= 5,
+           'AmiSSL installed: LIBS:amisslmaster.library is version 5 or newer', out)
+        # the rig image already has an AmiSSL on LIBS:, so the Version line alone proves nothing: the script's own
+        # AmiSSL: drawer (assigned by it when none existed) must hold the libraries it copied
+        for f in ('AmiSSL:Libs/amisslmaster.library', 'AmiSSL:Libs/AmiSSL/amissl_v362.library', 'AmiSSL:Certs'):
+            ck(ir.run('List >NIL: %s' % f)[0] == 0, 'install-amissl.dos put %s there' % f)
         reboot_amarchy_check(ck, log)
         if KEEP_INSTALLED:
             print('installer_rig fresh-all: INSTALLER_KEEP set, the kit stays installed (no Uninstall, no fixture restore)')
@@ -1253,7 +1263,9 @@ def run_base_case(case):
     if stand_in:
         if ir.run('List >NIL: C:wasabid')[0] != 0:
             ir.run('Copy >NIL: C:Wait C:wasabid')
-        ir.run('Run >NIL: C:wasabid 600')
+        # the kit's real wasabid is a singleton (the rig's daemon already holds the port): a trial instance
+        # (exempt) stands in; the C:Wait copy takes the plain seconds
+        ir.run('Run >NIL: C:wasabid 600%s' % (' trial' if kit_wasabid else ''))
     # Uninstall gives it all back
     installed_startup = ir.run('Type S:User-Startup')[1]
     rc, out = ir.run_long('rununinstall')
@@ -1593,6 +1605,8 @@ def set_purpose(text):
 
 
 def rig_start():
+    """Every rig start of a run: the command line's options. UPTERM_RIG_FLAGS (--os 32, --max ...) is added once,
+    by assign_rig.rig() itself; adding it here too passed every flag twice (2026-11-03, rig 18 start.args)."""
     rig("start", *(PURPOSE + RIG_FLAGS))
 
 
@@ -1664,6 +1678,9 @@ def _main(fx, only, flags):
         except SystemExit as e:  # the agent or the rig is gone: not a verdict on the kit
             print("[ABORT] %s: %s (no verdict written)" % (case, e))
             return 2
+        except Exception as e:  # a socket timeout, a failed `rig.py reboot`, a wasabi error: the case failed, and an old verdict must not survive it
+            ok, detail = False, "%s raised %s: %s" % (case, type(e).__name__, e)
+            print("[FAIL] %s" % detail)
         record(case, ok, detail)
     bad = STORE.failed([c for c, _ in todo])
     print("installer_rig: %d of %d cases failed: %s" % (len(bad), len(todo), " ".join(bad)))

@@ -12,6 +12,7 @@ typedef struct plan {
     int w, h, fg, bg;
     int frame_pen;              /* pen of FLAT_ROLE_FRAME, -1: none known (pen_back) */
     int ix0, iy0, ix1, iy1;     /* the inner box the glyph lives in */
+    int side;                   /* flat_side_px of the screen: columns per row of visual height (1 square, 2 hires, 4 superhires) */
 } plan;
 
 static void put(plan *g, int x0, int y0, int x1, int y1, int role)
@@ -105,9 +106,41 @@ static void g_menusub(plan *g)
     }
 }
 
+/* The scroller arrows: a solid triangle in the inner box, base on the side the arrow comes from. OS 3.2's sysiclass puts nothing
+ * into the clone's offscreen rastport for LEFTIMAGE..DOWNIMAGE, and the stock draw under flat pens (shine == shadow == background)
+ * leaves glyph and box in one colour, so the arrows get their own block glyph, in the same roles as every window gadget.
+ * S31-ARROW-ASPECT: all four arrows have the same shape on screen, sides at 45 degrees (base twice the length), measured in visual
+ * units where a column is 1 and a row is g->side (flat_side_px: 2 on hires, whose pixels are twice as tall as wide). Left/right
+ * grow g->side columns per row, up/down 2 * g->side columns per row; the triangle is centred in the inner box. Before this, hires
+ * showed left/right half as wide and up/down twice as tall as on a square-pixel screen. */
+static void g_arrow(plan *g, unsigned long which)
+{
+    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1, k;
+    if (which == FLAT_W_LEFT || which == FLAT_W_RIGHT) {
+        int lmax = imin(iw, g->side * ((ih + 1) / 2)), xs = g->ix0 + (iw - lmax) / 2;
+        for (k = 0; k < ih; k++) {
+            int len = imin(lmax, g->side * (imin(k, ih - 1 - k) + 1));
+            if (which == FLAT_W_RIGHT)
+                put(g, xs, g->iy0 + k, xs + len - 1, g->iy0 + k, g->fg);
+            else
+                put(g, xs + lmax - len, g->iy0 + k, xs + lmax - 1, g->iy0 + k, g->fg);
+        }
+    } else {
+        /* Up sits on the bottom of its box, down on the top: the up gadget is above the down gadget, so on hires (fewer
+         * rows) the pair keeps the gap a full-height glyph pair has instead of growing apart (S31-ARROW-GAP). */
+        int n = imin(ih, (iw - 1) / (2 * g->side) + 1), ys = which == FLAT_W_UP ? g->iy1 - n + 1 : g->iy0;
+        for (k = 0; k < n; k++) {
+            int row = which == FLAT_W_UP ? k : n - 1 - k;
+            int len = imin(iw, 2 * g->side * row + 1), x0 = g->ix0 + (iw - len) / 2;
+            put(g, x0, ys + k, x0 + len - 1, ys + k, g->fg);
+        }
+    }
+}
+
 int flat_glyph_known(unsigned long which)
 {
     switch (which) {
+    case FLAT_W_LEFT: case FLAT_W_UP: case FLAT_W_RIGHT: case FLAT_W_DOWN:
     case FLAT_W_DEPTH: case FLAT_W_ZOOM: case FLAT_W_SIZE: case FLAT_W_CLOSE: case FLAT_W_MENUCHECK:
     case FLAT_W_AMIGAKEY: case FLAT_W_ICONIFY: case FLAT_W_MENUSUB:
         return 1;
@@ -148,6 +181,15 @@ int flat_glyph_on_band(unsigned long which)
     return which == FLAT_W_CLOSE || which == FLAT_W_DEPTH || which == FLAT_W_ZOOM || which == FLAT_W_ICONIFY;
 }
 
+int flat_clone_slot(const flat_clone_key *keys, int n, int cap, unsigned long which, int w, int h)
+{
+    int i;
+    for (i = 0; i < n; i++)
+        if (keys[i].which == which && keys[i].w == w && keys[i].h == h)
+            return i;
+    return n < cap ? n : -1;
+}
+
 int flat_clone_route(const flat_state *s, unsigned long which, unsigned long method)
 {
     return s && s->enabled && !s->held && method == FLAT_IM_DRAW && flat_glyph_window_gadget(which);
@@ -168,24 +210,31 @@ static int edge_line(const uint8_t *grid, int w, int h, int bgm, int k, int col)
 }
 
 /* ---- FLAT-GLYPH-OS-SHAPES: the clone. The system's own image is drawn offscreen with marker pens; this is the pure part. */
+/* The pen that fills most of the inside is the gadget's own ground. Counted one marker at a time, not through a
+ * per-marker count array: this runs on the drawing task's stack (FLAT-C3 budget, test_flat_budget.py HELPER_MAX). */
+static int clone_ground(const uint8_t *grid, int w, int h)
+{
+    int x, y, i, c, best = 0, bgm = FLAT_CLONE_BACK;
+    for (i = 0; i <= FLAT_CLONE_MARKS; i++) {
+        c = 0;
+        for (y = 1; y < h - 1; y++)
+            for (x = 1; x < w - 1; x++)
+                c += grid[y * w + x] == i;
+        if (c > best) {
+            best = c;
+            bgm = i;
+        }
+    }
+    return bgm;
+}
+
 int flat_clone_map(const uint8_t *grid, int w, int h, uint8_t *out)
 {
-    int x, y, n = 0, i, best = 0, cnt[FLAT_CLONE_MARKS + 1];
+    int x, y, n = 0;
     int bgm, l, r, t, b;
     if (!grid || !out || w < 3 || h < 3)
         return -1;
-    for (i = 0; i <= FLAT_CLONE_MARKS; i++)
-        cnt[i] = 0;
-    for (y = 1; y < h - 1; y++)
-        for (x = 1; x < w - 1; x++)
-            if (grid[y * w + x] <= FLAT_CLONE_MARKS)
-                cnt[grid[y * w + x]]++;
-    bgm = FLAT_CLONE_BACK;
-    for (i = 0; i <= FLAT_CLONE_MARKS; i++)     /* the pen that fills most of the inside is the gadget's own ground */
-        if (cnt[i] > best) {
-            best = cnt[i];
-            bgm = i;
-        }
+    bgm = clone_ground(grid, w, h);
     /* FLAT-NO-DIVIDERS: peel the full-span edge lines from each side (at most a third of the box): only the glyph shows */
     for (l = 0; l < w / 3 && edge_line(grid, w, h, bgm, l, 1); l++)
         ;
@@ -249,10 +298,10 @@ int flat_clone_draw(const flat_state *s, unsigned long which, unsigned long meth
 }
 
 /* Both entry points run the same generator; g carries either the array or the fill callback. */
-static int plan_run(plan *g, unsigned long which, int w, int h, int state)
+static int plan_run(plan *g, unsigned long which, int w, int h, int state, int side)
 {
     int i;
-    g->n = 0; g->w = w; g->h = h;
+    g->n = 0; g->w = w; g->h = h; g->side = side < 1 ? 1 : side;
     flat_glyph_roles(which, state, &g->fg, &g->bg);
     i = imax(1, imin(w, h) / 4);
     g->ix0 = i; g->iy0 = i; g->ix1 = w - 1 - i; g->iy1 = h - 1 - i;
@@ -266,6 +315,7 @@ static int plan_run(plan *g, unsigned long which, int w, int h, int state)
     case FLAT_W_MENUCHECK: g_check(g); break;
     case FLAT_W_AMIGAKEY: g_amigakey(g); break;
     case FLAT_W_MENUSUB: g_menusub(g); break;
+    case FLAT_W_LEFT: case FLAT_W_UP: case FLAT_W_RIGHT: case FLAT_W_DOWN: g_arrow(g, which); break;
     }
     return g->n;
 }
@@ -276,7 +326,7 @@ int flat_glyph_plan(unsigned long which, int w, int h, int state, flat_prim *out
     if (!out || cap < FLAT_GLYPH_MAX_PRIMS || !flat_glyph_known(which) || w < FLAT_GLYPH_MIN_SIZE || h < FLAT_GLYPH_MIN_SIZE)
         return 0;
     g.p = out; g.cap = cap; g.fill = 0; g.ctx = 0; g.st = 0; g.frame_pen = -1; g.ox = g.oy = 0;
-    return plan_run(&g, which, w, h, state);
+    return plan_run(&g, which, w, h, state, 1);
 }
 
 int flat_glyph_pen(const flat_state *s, int role)
@@ -290,13 +340,13 @@ int flat_glyph_route(const flat_state *s, unsigned long which, unsigned long met
 }
 
 int flat_glyph_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
-                    int w, int h, int frame_pen, flat_fill_fn fill, void *ctx)
+                    int w, int h, int frame_pen, int side, flat_fill_fn fill, void *ctx)
 {
     plan g;
     if (!fill || !flat_glyph_route(s, which, method) || w < FLAT_GLYPH_MIN_SIZE || h < FLAT_GLYPH_MIN_SIZE)
         return 0;
     g.p = 0; g.cap = FLAT_GLYPH_MAX_PRIMS; g.fill = fill; g.ctx = ctx; g.st = s; g.frame_pen = frame_pen; g.ox = ox; g.oy = oy;
-    return plan_run(&g, which, w, h, flat_glyph_state(ids)) > 0;
+    return plan_run(&g, which, w, h, flat_glyph_state(ids), side) > 0;
 }
 
 int flat_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn, void *ctx)
@@ -340,6 +390,24 @@ int flat_button_corners(int w, int h, int out[][4])
         }
     }
     return n;
+}
+
+int flat_scroller_cuts(int cx, int cy, int cw, int ch, int horiz, int vert, unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody,
+                       int x0, int y0, int x1, int y1, int out[][2])
+{
+    int kx, ky, kw, kh, cut[FLAT_ROUND_MAX][4], n, m, i;
+    if (!flat_scroller_knob(cx, cy, cw, ch, horiz, vert, hpot, vpot, hbody, vbody, &kx, &ky, &kw, &kh))
+        return 0;
+    n = flat_button_corners(kw, kh, cut);
+    for (i = 0, m = 0; i < n; i++) {                /* every corner pixel inside THIS fill: 3.2 paints the knob as several fills */
+        int px = kx + cut[i][0], py = ky + cut[i][1];
+        if (px < x0 || px > x1 || py < y0 || py > y1)
+            continue;
+        out[m][0] = px;
+        out[m][1] = py;
+        m++;
+    }
+    return m;
 }
 
 int flat_frame_draw_round(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn,
@@ -393,5 +461,35 @@ int flat_outer_edge_match(int w, int h, int x0, int y0, int x1, int y1)
     for (i = 0; i < 4; i++)
         if (outer_strip(i, w, h, r) && r[0] == x0 && r[1] == y0 && r[2] == x1 && r[3] == y1)
             return 1;
+    return 0;
+}
+
+int flat_side_px(int rx, int ry)
+{
+    int px;
+    if (rx <= 0 || ry <= rx)
+        return 1;
+    px = (ry + rx / 2) / rx;
+    return px < 1 ? 1 : px;
+}
+
+int flat_outer_edge_fill(int w, int h, int x0, int y0, int x1, int y1, int px, int out[4])
+{
+    int i, r[4];
+    if (w < 2 || h < 2)
+        return 0;
+    if (px < 1)
+        px = 1;
+    if (px > w / 2)
+        px = w / 2 < 1 ? 1 : w / 2;
+    for (i = 0; i < 4; i++)
+        if (outer_strip(i, w, h, r) && r[0] == x0 && r[1] == y0 && r[2] == x1 && r[3] == y1) {
+            out[0] = r[0]; out[1] = r[1]; out[2] = r[2]; out[3] = r[3];
+            if (i == 1)
+                out[2] = r[0] + px - 1;
+            else if (i == 2)
+                out[0] = r[2] - px + 1;
+            return 1;
+        }
     return 0;
 }

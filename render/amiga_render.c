@@ -623,6 +623,8 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->ex = 0;
     r->img_serial = 0;
     r->n_img_runs = 0;
+    r->n_img_rgb_runs = r->n_img_rgb_soft_blend = 0;
+    r->cgx_alpha = 0;
     r->back = 0;
     r->front_rp = 0;
     r->sync_seen = vt_sync_frames(t); /* frames before this window are not its to compose */
@@ -633,6 +635,11 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
             CloseLibrary(r->cgx);
         r->cgx = 0;
     }
+    /* K40: pictures hold their exact colours (RGBA) only where the screen is deeper than 8 bits and the
+     * cybergraphics calls are there; everywhere else the engine makes today's indexed pictures */
+    r->cgx_alpha = r->cgx ? vr_cgx_has_alpha(r->cgx) : 0;
+    if (t)
+        vt_set_image_rgb(t, r->cgx != 0);
     /* colour emoji (U4) through the same call; ce_has asks for RTG of 15
      * bits or more and the call, so AGA and 8-bit RTG keep Unifont's glyph */
     r->emoji.tg.rtg = !r->planar;
@@ -2587,6 +2594,75 @@ static void img_colours(vr_render *r, const vt_image_view *v)
 
 /* Cells [a, b) of screen row y show image v: its pixels there, clipped to
  * the image (a cell it does not fill keeps the background the text drew). */
+static int img_buf_need(vr_render *r, ULONG size)
+{
+    if (r->img_buf_size >= size)
+        return 1;
+    if (r->img_buf)
+        FreeVec(r->img_buf);
+    r->img_buf_size = size;
+    r->img_buf = (UBYTE *)AllocVec(size, MEMF_ANY);
+    if (!r->img_buf) {
+        r->img_buf_size = 0;
+        return 0;
+    }
+    return 1;
+}
+
+/* K40: a run of an RGB picture (fmt 1: w x h x 4 bytes R G B A) at source (sx, sy), size (w, h), on screen at
+ * (dx, dy). An opaque picture goes to WritePixelArray straight from the view's pixels. Otherwise the driver blends
+ * through WritePixelArrayAlpha from an ARGB copy of the run, or, where the library has no working one, a software
+ * blend over what ReadPixelArray returns for the run's rectangle (counted, n_img_rgb_soft_blend). */
+static void img_run_rgb(vr_render *r, const vt_image_view *v, LONG sx, LONG sy, LONG w, LONG h, WORD dx, WORD dy)
+{
+    const vt_u8 *s;
+    UBYTE *d;
+    LONG k, j;
+    if (!r->cgx)
+        return; /* cannot happen: RGB pictures are made only with the library (vr_init) */
+    r->blank = 0;
+    r->n_img_rgb_runs++;
+    if (v->opaque) {
+        vr_cgx_write_pixels(r->cgx, (APTR)v->pix, (UWORD)sx, (UWORD)sy, (UWORD)(v->w * 4), r->rp, (UWORD)dx,
+                            (UWORD)dy, (UWORD)w, (UWORD)h, VR_RECTFMT_RGBA);
+        return;
+    }
+    if (!img_buf_need(r, (ULONG)(4 * w * h)))
+        return;
+    d = r->img_buf;
+    if (r->cgx_alpha) {
+        for (k = 0; k < h; k++) {
+            s = v->pix + ((sy + k) * v->w + sx) * 4;
+            for (j = 0; j < w; j++, s += 4, d += 4) {
+                d[0] = s[3];
+                d[1] = s[0];
+                d[2] = s[1];
+                d[3] = s[2];
+            }
+        }
+        vr_cgx_write_alpha(r->cgx, (APTR)r->img_buf, 0, 0, (UWORD)(w * 4), r->rp, (UWORD)dx, (UWORD)dy, (UWORD)w,
+                           (UWORD)h, 0xFFFFFFFFUL);
+        return;
+    }
+    /* No working WritePixelArrayAlpha: read what is under the run (text, background, z < 0 pictures: whatever the
+     * rastport holds), blend per channel and write it back (owner 2026-11-02: R6 lifted for kitty alpha). */
+    r->n_img_rgb_soft_blend++;
+    vr_cgx_read_pixels(r->cgx, r->rp, (UWORD)dx, (UWORD)dy, (APTR)r->img_buf, 0, 0, (UWORD)(w * 4), (UWORD)w,
+                       (UWORD)h, VR_RECTFMT_RGBA);
+    for (k = 0; k < h; k++) {
+        s = v->pix + ((sy + k) * v->w + sx) * 4;
+        for (j = 0; j < w; j++, s += 4, d += 4) {
+            ULONG a = s[3];
+            d[0] = (UBYTE)((s[0] * a + d[0] * (255 - a) + 127) / 255);
+            d[1] = (UBYTE)((s[1] * a + d[1] * (255 - a) + 127) / 255);
+            d[2] = (UBYTE)((s[2] * a + d[2] * (255 - a) + 127) / 255);
+            d[3] = 255;
+        }
+    }
+    vr_cgx_write_pixels(r->cgx, (APTR)r->img_buf, 0, 0, (UWORD)(w * 4), r->rp, (UWORD)dx, (UWORD)dy, (UWORD)w,
+                        (UWORD)h, VR_RECTFMT_RGBA);
+}
+
 static void img_run(vr_render *r, const vt_image_view *v, int a, int b, int y)
 {
     LONG sx = (LONG)(a - v->col0) * v->cw - v->px0, sy = v->py, w = (LONG)(b - a) * r->cw, h = r->ch;
@@ -2612,6 +2688,10 @@ static void img_run(vr_render *r, const vt_image_view *v, int a, int b, int y)
         h = v->h - sy;
     if (w <= 0 || h <= 0)
         return;
+    if (v->fmt == 1) {
+        img_run_rgb(r, v, sx, sy, w, h, dx, dy);
+        return;
+    }
     if (!r->img) {
         /* the window's first image: its colour tables now (vr_images) */
         if (!(r->img = (struct vr_images *)AllocVec(sizeof(struct vr_images), MEMF_ANY | MEMF_CLEAR)))
@@ -2627,16 +2707,8 @@ static void img_run(vr_render *r, const vt_image_view *v, int a, int b, int y)
         return;
     }
     stride = (w + 15) & ~15L; /* WritePixelArray8 wants rows of 16 */
-    if (r->img_buf_size < (ULONG)(stride * h)) {
-        if (r->img_buf)
-            FreeVec(r->img_buf);
-        r->img_buf_size = (ULONG)(stride * h);
-        r->img_buf = (UBYTE *)AllocVec(r->img_buf_size, MEMF_ANY);
-        if (!r->img_buf) {
-            r->img_buf_size = 0;
-            return;
-        }
-    }
+    if (!img_buf_need(r, (ULONG)(stride * h)))
+        return;
     for (k = 0; k < h; k++) {
         src = v->pix + (sy + k) * v->w + sx;
         d = r->img_buf + k * stride;
@@ -2667,32 +2739,83 @@ static void img_run(vr_render *r, const vt_image_view *v, int a, int b, int y)
 /* The images on screen rows [y0, y1), cells [x0, x1): drawn over what
  * draw_rows put there, in the cells still marked as theirs, the oldest
  * first. draw_rows calls it only while the engine has images at all. */
+/* Cell x of a row may take a tile of image v: one over the text in a
+ * VT_CELL_IMAGE cell; one under it (z < 0, K30) in a VT_CELL_UNDER cell,
+ * and with z <= -1073741824 only where the background is the default. */
+static int img_cell(vr_render *r, const vt_image_view *v, const vt_cell *c)
+{
+    vt_color f, b;
+    if (v->z >= 0)
+        return (c->pad & VT_CELL_IMAGE) != 0;
+    if (!(c->pad & VT_CELL_UNDER))
+        return 0;
+    if (v->z > -1073741824L)
+        return 1;
+    vt_resolve_colors(r->t, c, &f, &b);
+    return b == VT_COLOR_DEFAULT_BG;
+}
+
+/* The glyphs of cells [a, b) of row y again, over the image under them
+ * (K30): in JAM1 and plain (D13: no antialiasing, hard edges -- R6: no
+ * read back of the picture to blend with). Printable ASCII only. */
+static void under_text(vr_render *r, const vt_cell *c, int a, int b, int y)
+{
+    vr_style st;
+    UBYTE ch;
+    int x;
+    for (x = a; x < b; x++) {
+        if (!(c[x].pad & VT_CELL_UNDER) || c[x].ch <= ' ' || c[x].ch >= 0x7F || c[x].width != 1)
+            continue;
+        cell_style(r, &c[x], 0, &st);
+        ch = (UBYTE)c[x].ch;
+        ink_a(r, st.fg);
+        SetDrMd(r->rp, JAM1);
+        SetSoftStyle(r->rp, style_of(st.attr) & ~FSF_BOLD, FSF_BOLD | FSF_UNDERLINED | FSF_ITALIC);
+        Move(r->rp, (WORD)(r->ox + x * r->cw), (WORD)(r->oy + y * r->ch + r->base));
+        Text(r->rp, (STRPTR)&ch, 1);
+    }
+    SetSoftStyle(r->rp, 0, FSF_BOLD | FSF_UNDERLINED | FSF_ITALIC);
+}
+
+/* The images of the rows, in vt_row_image's order: those under the text
+ * (z < 0) first, then the row's glyphs over them, then those over the
+ * text. Only rows that hold an image pay for any of it. */
 static void draw_images(vr_render *r, int x0, int y0, int x1, int y1)
 {
     vt_image_view v;
     const vt_cell *c;
-    int y, i, x, a, xe, ncells, gy;
+    int y, i, x, a, xe, ncells, gy, under;
     for (y = y0; y < y1; y++) {
         gy = y - r->view + r->jump;
         c = vt_row(r->t, gy, &ncells);
         if (!c || (!r->view && vt_row_size(r->t, gy)))
             continue; /* a double-size row shows no images */
-        for (i = 0; vt_row_image(r->t, gy, i, &v); i++) {
+        under = 0;
+        for (i = 0;; i++) {
+            int more = vt_row_image(r->t, gy, i, &v);
+            if (under && (!more || v.z >= 0)) {
+                under_text(r, c, x0, x1 < ncells ? x1 : ncells, y);
+                under = 0;
+            }
+            if (!more)
+                break;
             xe = v.col0 + (v.px0 + v.w + v.cw - 1) / v.cw;
             if (xe > x1)
                 xe = x1;
             if (xe > ncells)
                 xe = ncells;
             for (x = v.col0 > x0 ? v.col0 : x0; x < xe;) {
-                if (!(c[x].pad & VT_CELL_IMAGE)) {
+                if (!img_cell(r, &v, &c[x])) {
                     x++;
                     continue;
                 }
-                for (a = x; x < xe && (c[x].pad & VT_CELL_IMAGE); x++)
+                for (a = x; x < xe && img_cell(r, &v, &c[x]); x++)
                     ;
                 if (cpu_refuses(r))
                     return;
                 img_run(r, &v, a, x, y);
+                if (v.z < 0)
+                    under = 1;
             }
         }
     }
@@ -3460,17 +3583,46 @@ static void pad_flush(vr_render *r)
     pad_extend_now(r);
 }
 
+/* K32: the placeholder cell x of grid row gy (screen row y, pixel row py)
+ * shows its tile of the virtual placement's picture (img_run), its
+ * transparent pixels the cell's own background; with no picture it is a
+ * blank in that background. */
+static int placeholder_cell(vr_render *r, const vt_cell *c, int gy, int x, int y, WORD py, const vr_style *st,
+                            UBYTE *run, int *n, WORD run_x, const vr_style *run_st)
+{
+    vt_image_view pv;
+    vt_u32 cp[VT_CLUSTER_CPS];
+    int tc, tr;
+    WORD px = (WORD)(r->ox + x * r->cw);
+    if (c->ch < VT_CLUSTER_FIRST || c->ch > VT_CLUSTER_LAST || vt_cell_text(r->t, c, cp) < 1 || cp[0] != 0x10EEEEUL)
+        return 0;
+    flush_run(r, run, *n, run_x, py, run_st);
+    *n = 0;
+    fill(r, px, py, (WORD)(px + r->cw - 1), (WORD)(py + r->ch - 1), st->bgf);
+    if (vt_cell_placeholder(r->t, gy, x, &pv, &tc, &tr)) {
+        ULONG sv = r->bg_ink;
+        pv.col0 = x - tc;
+        pv.py = tr * pv.ch;
+        if (!IS_DITH(st->bgf))
+            r->bg_ink = st->bgf;
+        img_run(r, &pv, x, x + 1, y);
+        r->bg_ink = sv;
+    }
+    return 1;
+}
+
 static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1)
 {
     UBYTE run[RUN_MAX];
     dcell dc[DCELL_MAX];
-    int y, x, xe, n, nd, want_direct, tail_ok;
+    int y, x, xe, n, nd, want_direct, tail_ok, has_img;
     ULONG tail_bg;
 #ifdef VTCON_PROF
     vr_pass++;
 #endif
     if (r->hidden)
         return;
+    has_img = vt_images(r->t) != 0; /* the one test a pass pays when there are none */
     want_direct = r->glyphs != 0;
     if (x1 > vis_cols(r))
         x1 = vis_cols(r);
@@ -3567,7 +3719,7 @@ static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1)
             if (x >= xe) {
                 if (r->cursor_drawn && r->cursor_y == y && r->cursor_x >= x0 && r->cursor_x < x1)
                     r->cursor_drawn = 0;
-                continue;
+                goto row_images;
             }
         }
 #endif
@@ -3609,6 +3761,10 @@ static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1)
                 /* composed, then the font's own, the outline font,
                  * vt_map_glyph's stand-in, Unifont (an emoji over its two
                  * cells), or the replacement (glyphmap.h) */
+                if (placeholder_cell(r, &c[x], gy, x, y, py, &st, run, &n, run_x, &run_st)) {
+                    last = 0;
+                    continue;
+                }
                 om = vt_cell_glyph(&r->fb, r->t, &c[x], cp, &ncp, &obpr, &g);
                 if (om) {
                     WORD px = (WORD)(r->ox + x * r->cw);
@@ -3731,9 +3887,16 @@ static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1)
         }
         if (r->cursor_drawn && r->cursor_y == y && r->cursor_x >= x0 && r->cursor_x < x1)
             r->cursor_drawn = 0; /* the cursor cell was just painted over */
+#ifdef VR_ASM
+    row_images: /* the fast row path above lands here when it drew the whole row */
+#endif
+        /* K36-ANIM-BLINK: the row's images straight after its text, not all rows' text and then all images --
+         * a frame switch repaints every row of the picture, and the window showed the background of all of
+         * them while the images went in top down (the top of the new frame, the rest blank). Now at most the
+         * row being drawn is between its text and its picture. */
+        if (has_img)
+            draw_images(r, x0, y, x1, y + 1);
     }
-    if (vt_images(r->t))
-        draw_images(r, x0, y0, x1, y1); /* the one test a frame pays when there are none */
     r->pad_dirty = r->pad_extend; /* W-T14: the strips follow these cells (pad_flush) */
     r->was_blank = 0;
     if (r->full_pass) {

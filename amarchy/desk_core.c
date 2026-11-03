@@ -1,96 +1,31 @@
 /* desk_core: see desk_core.h */
 #include "desk_core.h"
+#include "bar_core.h"
 #include "../handler/be32.h"
 
 #include <string.h>
 
-/* ---- colour maths ---- */
-
-int desk_luma(uc_u32 rgb)
-{
-    return (int)((((rgb >> 16) & 0xff) * 77UL + ((rgb >> 8) & 0xff) * 150UL + (rgb & 0xff) * 29UL) >> 8);
-}
-
-int desk_contrast(uc_u32 a, uc_u32 b)
-{
-    int la = desk_luma(a), lb = desk_luma(b), hi = la > lb ? la : lb, lo = la > lb ? lb : la;
-    return (hi + 13) * 100 / (lo + 13);
-}
-
-/* the guard floors, ratio times 100 of desk_contrast; measured over the 23 shipped themes (see test_desk.c) */
-#define DK_FLOOR_TEXT 220 /* text on a ground: measured, the weakest shipped pair is rose-pine at 233 */
+/* the guard floors, ratio times 100 of gt_contrast; measured over the 23 shipped themes (see test_desk.c). The derivation floors
+ * (GT_FLOOR_TEXT, GT_STEP_DARK, GT_FLOOR_SEL) live with the role table in gthemes_core.h. */
 #define DK_FLOOR_FILL 150 /* the title text on the fill, and the fill on the ground */
-#define DK_STEP_DARK 108  /* the darker tone against the background */
-#define DK_FLOOR_SEL 150  /* the selection (button fill, scroller knob) against the surface: shipped light themes sit at 110-130 */
 
 #define PT_DEPTH_MAX 3 /* the planes of a WBPattern tile */
 
-#define DK_BLACK_LIFT 0x222222UL /* the backdrop over a black ground: dark grey, lighter than black */
-
-/* the colour as a 12-bit (OCS) screen holds it: a nibble per channel, replicated. The weakest depth Amarchy runs on. */
-static uc_u32 nib(uc_u32 c)
-{
-    return (((c >> 20) & 0xf) * 0x110000UL) | (((c >> 12) & 0xf) * 0x1100UL) | (((c >> 4) & 0xf) * 0x11UL);
-}
-
-static int qluma(uc_u32 c)
-{
-    return desk_luma(nib(c));
-}
-
-int desk_ground_black(const gtheme *t)
-{
-    return qluma(t->bg) == 0;
-}
-
-/* DESK-BACKDROP-DARKER: never the ground's own colour, on a 24-bit or a 12-bit palette. A ground that is black on the
- * screen keeps it and the backdrop lifts to dark grey; any other ground gets a tone strictly darker after the nibble cut. */
-uc_u32 desk_darker(const gtheme *t)
-{
-    int pct;
-    if (desk_ground_black(t))
-        return DK_BLACK_LIFT;
-    if (desk_luma(t->darker_bg) < desk_luma(t->bg) && qluma(t->darker_bg) < qluma(t->bg) &&
-        desk_contrast(t->darker_bg, t->bg) >= DK_STEP_DARK && desk_contrast(t->darker_bg, t->fg) >= DK_FLOOR_TEXT)
-        return t->darker_bg;
-    for (pct = 80; pct > 0; pct -= 10)
-        if (qluma(gt_scale(t->bg, pct)) < qluma(t->bg))
-            return gt_scale(t->bg, pct);
-    return 0x000000UL;
-}
-
-/* FLAT-COLOUR-OVERHAUL: the selection pen colour. The theme's selection when it stands DK_FLOOR_SEL off the surface (as the nibble-cut
- * screen shows both), else pushed away from the surface in 10 % steps: toward black on a light ground, toward white on a dark one. */
-uc_u32 desk_selection(const gtheme *t)
-{
-    uc_u32 sel = t->selection, goal = desk_luma(t->bg) >= 128 ? 0x000000UL : 0xFFFFFFUL;
-    int pct;
-    for (pct = 0; pct <= 100; pct += 10) {
-        uc_u32 c = pct ? 0 : sel;
-        if (pct) {
-            int sh;
-            for (sh = 16; sh >= 0; sh -= 8) {
-                int a = (int)((sel >> sh) & 255), b = (int)((goal >> sh) & 255);
-                c |= (uc_u32)(a + (b - a) * pct / 100) << sh;
-            }
-        }
-        if (desk_contrast(c, t->bg) >= DK_FLOOR_SEL && desk_contrast(nib(c), nib(t->bg)) >= DK_FLOOR_SEL)
-            return c;
-    }
-    return goal;
-}
-
+/* RL8: the desktop pens are a view of the role table (gt_roles_of); pen index == DK_* enum, 0..7. DK_BACKDROP's palette.prefs colour
+ * stays the fail tone so the written file is byte-identical to before; live, desk_pen_colour gives the backdrop its own colour. */
 uc_u32 desk_role(const gtheme *t, int role)
 {
+    gt_roles r;
+    gt_roles_of(t, &r);
     switch (role) {
-    case DK_BG: return t->bg;
-    case DK_DARKER: return desk_darker(t);
-    case DK_FG: return t->fg;
-    case DK_ACCENT: return t->accent;
-    case DK_SELECTION: return desk_selection(t);
-    case DK_MUTED: return t->muted;
-    case DK_GREEN: return t->ok;
-    default: return t->fail;
+    case DK_BG: return r.c[GR_SURFACE];
+    case DK_DARKER: return r.c[GR_BACKGROUND];
+    case DK_FG: return r.c[GR_TEXT];
+    case DK_ACCENT: return r.c[GR_ACCENT];
+    case DK_SELECTION: return r.c[GR_SELECTION];
+    case DK_MUTED: return r.c[GR_MUTED];
+    case DK_GREEN: return r.ok;
+    default: return r.fail;
     }
 }
 
@@ -146,39 +81,48 @@ static int is_prefs(const unsigned char *buf, long len)
 
 void desk_pens(unsigned char pens[DK_SLOTS])
 {
-    pens[DK_DETAIL] = DK_BG;
-    pens[DK_BLOCK] = DK_DARKER;
-    pens[DK_TEXT] = DK_FG;
-    pens[DK_SHINE] = DK_FG;
-    pens[DK_SHADOW] = DK_DARKER;
-    pens[DK_FILL] = DK_ACCENT;
-    pens[DK_FILLTEXT] = DK_BG;
-    pens[DK_BACKGROUND] = DK_BG;
-    pens[DK_HIGHLIGHTTEXT] = DK_FG;
-    pens[DK_BARDETAIL] = DK_FG;
-    pens[DK_BARBLOCK] = DK_BG;
-    pens[DK_BARTRIM] = DK_DARKER;
-    pens[DK_EXTRA] = DK_FG;
+    /* RL8: every slot names the pen of a role of the table */
+    int surface = desk_pen_of_role(GR_SURFACE), text = desk_pen_of_role(GR_TEXT), ground = desk_pen_of_role(GR_BACKGROUND);
+    pens[DK_DETAIL] = (unsigned char)surface;
+    pens[DK_BLOCK] = (unsigned char)ground;
+    pens[DK_TEXT] = (unsigned char)text;
+    pens[DK_SHINE] = (unsigned char)text;
+    pens[DK_SHADOW] = (unsigned char)ground;
+    pens[DK_FILL] = (unsigned char)desk_pen_of_role(GR_ACCENT);
+    pens[DK_FILLTEXT] = (unsigned char)surface;
+    pens[DK_BACKGROUND] = (unsigned char)surface;
+    pens[DK_HIGHLIGHTTEXT] = (unsigned char)text;
+    pens[DK_BARDETAIL] = (unsigned char)text;
+    pens[DK_BARBLOCK] = (unsigned char)surface;
+    pens[DK_BARTRIM] = (unsigned char)ground;
+    pens[DK_EXTRA] = (unsigned char)text;
 }
 
 void desk_pens_flat(unsigned char pens[DK_SLOTS])
 {
+    int surface = desk_pen_of_role(GR_SURFACE);
     desk_pens(pens);
-    pens[DK_SHINE] = DK_BG;     /* FLAT-SOLID-FILL: highlight, shadow and the active frame fill all take the surface pen, */
-    pens[DK_SHADOW] = DK_BG;    /* so every window is one solid rectangle and only title and glyph colour show focus */
-    pens[DK_FILL] = DK_BG;
+    pens[DK_SHINE] = (unsigned char)surface;    /* FLAT-SOLID-FILL: highlight, shadow and the active frame fill all take the surface pen, */
+    pens[DK_SHADOW] = (unsigned char)surface;   /* so every window is one solid rectangle and only title and glyph colour show focus */
+    pens[DK_FILL] = (unsigned char)surface;
     pens[DK_EXTRA] = pens[DK_BARBLOCK];  /* FLAT-BAR-CONTOUR: slot 12 is BARCONTOURPEN (OS 3.2): the 1 px line along the top of the screen bar, stock FG = a bright "shine" line; the bar background hides it */
-    pens[DK_FILLTEXT] = DK_FG;  /* the active title text is drawn in FILLTEXTPEN on FILLPEN (= DK_BG now): keep it bright */
+    pens[DK_FILLTEXT] = (unsigned char)desk_pen_of_role(GR_TEXT);  /* the active title text is drawn in FILLTEXTPEN on FILLPEN (= surface now): keep it bright */
 }
 
 /* FLAT-SOLID-FILL: the glyph pens of the flat_state block under the flat map: active glyph bright (foreground), inactive
  * glyph dim (accent, a mid grey: the darker slot is too close to the surface to read), box background = surface pen.
  * None may equal the surface pen the frame now takes (shine == shadow == fill == DK_BG), except back. */
+int desk_pen_of_role(int role)
+{
+    static const unsigned char pen[GR_ROLES] = { DK_DARKER, DK_BG, DK_FG, DK_MUTED, DK_ACCENT, DK_SELECTION };
+    return role >= 0 && role < GR_ROLES ? pen[role] : DK_BG;
+}
+
 void desk_flat_glyph_pens(unsigned char *text, unsigned char *line, unsigned char *back)
 {
-    *text = DK_FG;
-    *line = DK_ACCENT;
-    *back = DK_BG;
+    *text = (unsigned char)desk_pen_of_role(GR_TEXT);
+    *line = (unsigned char)desk_pen_of_role(GR_ACCENT);
+    *back = (unsigned char)desk_pen_of_role(GR_SURFACE);
 }
 
 unsigned long desk_flat_state_calls;
@@ -197,10 +141,10 @@ void desk_flat_state(int flat, int gadgets, flat_state *s)
     s->pen_text = t;
     s->pen_line = l;
     s->pen_back = b;
-    s->pen_outline = DK_ACCENT;
-    s->pen_button = DK_SELECTION;       /* FLAT-BUTTON-FILL: the theme lighter_background; flat.c falls back to pen_back on a screen without pen 4 */
-    s->pen_ptext = DK_BG;               /* dark label on the accent fill of a pressed button */
-    s->pen_dimtext = DK_MUTED;          /* FLAT-BUTTON-DISABLED-DIM: dim label; pen_dim is amarchy-flat's own (it obtains it) and is left alone */
+    s->pen_outline = (unsigned char)desk_pen_of_role(GR_ACCENT);
+    s->pen_button = (unsigned char)desk_pen_of_role(GR_SELECTION);       /* FLAT-BUTTON-FILL: the theme lighter_background; flat.c falls back to pen_back on a screen without pen 4 */
+    s->pen_ptext = (unsigned char)desk_pen_of_role(GR_SURFACE);               /* dark label on the accent fill of a pressed button */
+    s->pen_dimtext = (unsigned char)desk_pen_of_role(GR_MUTED);          /* FLAT-BUTTON-DISABLED-DIM: dim label; pen_dim is amarchy-flat's own (it obtains it) and is left alone */
 }
 
 void desk_pens_for(int flat, unsigned char pens[DK_SLOTS])
@@ -214,7 +158,7 @@ void desk_pens_for(int flat, unsigned char pens[DK_SLOTS])
 void desk_pen_plan_for(int depth, desk_pen_plan *p)
 {
     p->button = DK_SELECTION;
-    p->backdrop = depth >= PT_DEPTH_MAX ? DK_RED : desk_pen_fold(DK_DARKER, 1 << (depth > 0 ? depth : 1)); /* FLAT-COLOUR-OVERHAUL: pen 7 is its own backdrop pen; FILENAME-PEN: below 3 planes the shared darker pen (5) is off the screen and folds to DK_BG, the same rule as the 4-colour pen map */
+    p->backdrop = depth >= PT_DEPTH_MAX ? DK_BACKDROP : desk_pen_fold(DK_DARKER, 1 << (depth > 0 ? depth : 1)); /* FLAT-COLOUR-OVERHAUL: pen 7 is its own backdrop pen; FILENAME-PEN: below 3 planes the shared darker pen (5) is off the screen and folds to DK_BG, the same rule as the 4-colour pen map */
     if (depth >= 6) {
         p->icon_first = 32; p->icon_count = 16; p->icon_slot = 0;
     } else if (depth >= 4) {
@@ -242,6 +186,11 @@ int desk_reset_done(const void *before, const void *now, const unsigned short *l
     if (!now || nlive <= 0) /* the screen is closed for about 200 ms in the middle of the reset (rig 7, 3.2): not done, not "a new screen" */
         return 0;
     return now != before || !desk_pens_reset(live, nlive, flat, depth);
+}
+
+int desk_editor_waits_iprefs(const char *editor)
+{
+    return editor && (!strcmp(editor, "Workbench") || !strcmp(editor, "WBPattern"));
 }
 
 int desk_iprefs_idle(int have, int waiting, unsigned long sigwait, unsigned long recvd, unsigned long idle_mask)
@@ -371,7 +320,7 @@ uc_u32 desk_live_baseline(const unsigned char *saved, long savedlen, int pen, in
 uc_u32 desk_pen_colour(const gtheme *t, int pen, int flat_backdrop)
 {
     if (pen == desk_backdrop_pen())
-        return flat_backdrop ? desk_darker(t) : t->muted; /* flat: the dark tone, whether flat or the desktop-theme part writes the tile */
+        return flat_backdrop ? gt_darker(t) : t->muted; /* flat: the dark tone, whether flat or the desktop-theme part writes the tile */
     return desk_role(t, pen);
 }
 
@@ -511,7 +460,10 @@ long desk_palette_theme(const unsigned char *cur, long curlen, const gtheme *t, 
         return 0;
     memcpy(out, cur, (size_t)curlen);
     for (p = 0; p < DK_ROLES; p++) {
-        long e = palette_entry(out, curlen, p, depth);
+        /* WB-TITLE-GREEN: the role pen goes through the entry that reaches it. On a screen deeper than 3 planes IPrefs resolves the
+         * pen map's pen 5 (DK_DARKER: BARTRIMPEN, BLOCKPEN) to screen pen 253, the pen entry 5 sets, so entry 5 holds the dark tone;
+         * left at the user's stock colour it drew a green line under the screen title bar. */
+        long e = palette_entry(out, curlen, desk_palette_pen(p, depth), depth);
         if (e >= 0)
             palette_put_rgb(out + e, desk_pen_colour(t, p, flat_backdrop));
     }
@@ -580,6 +532,36 @@ static const unsigned char *prev_screen(const unsigned char *prev, long prevlen)
         if (!memcmp(id, "PTRN", 4) && size == PT_BODY && get16(prev + body + 16) == 2)
             return prev + body - 8;
     return 0;
+}
+
+/* S31-START-APPLY rig 56: the WBPattern editor stores an all-pen-0 chunk with depth 1 where desk_wbpattern writes depth 3 (and 1 for
+ * the "none" chunk written with depth 0), so a byte compare planned a backdrop write (and a Workbench reset) on every start. Two files
+ * match when the header bytes match and every chunk has the same which/flags and the same pen at every pixel. */
+static int pattern_pen_at(const unsigned char *data, int depth, int x, int y)
+{
+    int p, pen = 0;
+    for (p = 0; p < depth && p < PT_DEPTH_MAX; p++)
+        if (data[p * 32 + y * 2 + (x >> 3)] & (0x80 >> (x & 7)))
+            pen |= 1 << p;
+    return pen;
+}
+
+int desk_wbpattern_same(const unsigned char *a, long alen, const unsigned char *b, long blen)
+{
+    long head = alen - 3 * PT_CHUNK, k;
+    int x, y;
+    if (alen != blen || head < 0 || memcmp(a, b, (size_t)head))
+        return 0;
+    for (k = 0; k < 3; k++) {
+        const unsigned char *ca = a + head + k * PT_CHUNK, *cb = b + head + k * PT_CHUNK;
+        if (memcmp(ca, cb, 8 + 20) || memcmp(ca + 8 + 22, cb + 8 + 22, 2))
+            return 0;
+        for (y = 0; y < 16; y++)
+            for (x = 0; x < 16; x++)
+                if (pattern_pen_at(ca + 8 + 24, ca[8 + 21], x, y) != pattern_pen_at(cb + 8 + 24, cb[8 + 21], x, y))
+                    return 0;
+    }
+    return 1;
 }
 
 long desk_wbpattern(const gtheme *t, int depth, const unsigned char *prev, long prevlen,
@@ -718,15 +700,15 @@ static int refuse(char *why, int cap, const char *msg)
 
 int desk_check(const gtheme *t, char *why, int cap)
 {
-    uc_u32 darker = desk_darker(t);
-    int black = desk_luma(t->bg) == 0;
-    if (desk_contrast(t->fg, t->bg) < DK_FLOOR_TEXT)
+    uc_u32 darker = gt_darker(t);
+    int black = gt_luma(t->bg) == 0;
+    if (gt_contrast(t->fg, t->bg) < GT_FLOOR_TEXT)
         return refuse(why, cap, "The text colour is too close to the background.");
-    if (desk_contrast(t->bg, t->accent) < DK_FLOOR_FILL)
+    if (gt_contrast(t->bg, t->accent) < DK_FLOOR_FILL)
         return refuse(why, cap, "The title bar text is too close to the title bar colour.");
-    if (desk_contrast(t->fg, darker) < DK_FLOOR_TEXT)
+    if (gt_contrast(t->fg, darker) < GT_FLOOR_TEXT)
         return refuse(why, cap, "The icon labels are too close to the backdrop.");
-    if (!black && desk_contrast(darker, t->bg) < DK_STEP_DARK)
+    if (!black && gt_contrast(darker, t->bg) < GT_STEP_DARK)
         return refuse(why, cap, "The backdrop is too close to the window colour.");
     if (cap > 0)
         why[0] = 0;
@@ -1271,4 +1253,83 @@ int desk_confirm_answer(desk_confirm *c, int keep)
 long desk_confirm_left(const desk_confirm *c, long now)
 {
     return c->pending && now < c->deadline ? c->deadline - now : 0;
+}
+
+int desk_start_due(int done, int wb_screen_up, int tick_ok)
+{
+    return !done && (wb_screen_up || !tick_ok);
+}
+
+int desk_wb_backdrop_invoke(int master_on, int have_port, int root_found, unsigned long root_wflags)
+{
+    return master_on && have_port && root_found && (root_wflags & BAR_WFLG_WBENCHWINDOW) != 0 && (root_wflags & BAR_WFLG_BACKDROP) == 0;
+}
+
+int desk_wb_root_wait(int root_state)
+{
+    return root_state == DESK_ROOT_NONE;
+}
+
+unsigned desk_start_plan(unsigned mask, int flat, int wbok, const unsigned char *wb, long wblen, int saved, int gsaved,
+                         const gtheme *th, int depth, const unsigned char *pat, long patlen)
+{
+    static unsigned char mid[1024], out[1024];
+    unsigned plan = 0;
+    int keep, gkeep;
+    long n, g;
+    if (flat && wbok && wblen < (long)sizeof mid) {
+        if (wblen < 0)
+            wblen = 0;
+        n = desk_wbborder(1, wb, wblen, saved, &keep, mid, sizeof mid);
+        g = desk_wbgauge(1, n > 0 ? mid : wb, n > 0 ? n : wblen, gsaved, &gkeep, out, sizeof out);
+        if (n > 0 || g > 0)
+            plan |= DESK_START_WB;
+    }
+    if ((mask >> DT_WBPATTERN) & 1) {
+        n = desk_wbpattern(th, depth, patlen > 0 ? pat : 0, patlen > 0 ? patlen : 0, out, sizeof out);
+        if (n > 0 && !desk_wbpattern_same(out, n, pat, patlen))
+            plan |= DESK_START_PATTERN;
+    }
+    return plan;
+}
+
+long desk_start_palette(unsigned mask, int flat, const gtheme *th, int depth, const unsigned char *base, long baselen,
+                        const unsigned char *cur, long curlen, unsigned char *out, long cap)
+{
+    long n;
+    if (!((mask >> DT_PALETTE) & 1) || !base || baselen <= 0)
+        return 0;
+    n = desk_palette_theme(base, baselen, th, depth, flat, out, cap);
+    if (n <= 0 || (cur && n == curlen && !memcmp(out, cur, (size_t)n)))
+        return 0;
+    return n;
+}
+
+/* S31-START-PARTS: the pointer / font parts of a theme pick, planned at start. Same bytes dk_apply feeds the editor; 0 when the part is
+ * off in mask, there is nothing to start from (pointer: no file), the bytes are not a prefs file, or they equal cur (second start). */
+long desk_start_prefs(int target, unsigned mask, const gtheme *th, int text_mode, desk_font_exists_fn exists, void *ctx,
+                      const unsigned char *cur, long curlen, unsigned char *out, long cap)
+{
+    long n;
+    if (!((mask >> target) & 1))
+        return 0;
+    if (cur && curlen > 0 && curlen <= cap)
+        memcpy(out, cur, (size_t)curlen), n = curlen;
+    else if (target == DT_FONT)
+        n = desk_font_default(out, cap);
+    else
+        return 0;
+    if (n <= 0)
+        return 0;
+    if (target == DT_POINTER) {
+        if (desk_pointer(th, out, n) <= 0)
+            return 0;
+    } else if (desk_font_pens(out, n, text_mode) < 0 || desk_font_name(th, out, n, exists, ctx) < 0)
+        return 0;
+    return (cur && n == curlen && !memcmp(out, cur, (size_t)n)) ? 0 : n;
+}
+
+int desk_start_icontrol(unsigned mask, const unsigned char *cur, long curlen, int have_snap, int *snapshot)
+{
+    return desk_icontrol_decide((mask >> DT_ICONTROL) & 1, cur, curlen, have_snap, snapshot);
 }

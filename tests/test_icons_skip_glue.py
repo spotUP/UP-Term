@@ -18,6 +18,42 @@ class IconsSkipGlue(unittest.TestCase):
         body = body[:body.index("\n}\n")]
         self.assertRegex(body, r"if \(!lock\) \{ ia_skip_note\(c, &c->skipped_io, g_wpath,")
 
+    def test_one_apply_or_restore_at_a_time(self):
+        """ICONS-APPLY-DOUBLE (rig 61): two APPLY copies raced on the manifest. The lock is taken before APPLY/RESTORE reads the
+        manifest and released at out:, so a second copy waits instead of racing."""
+        s = (ROOT / "amarchy/icons.c").read_text()
+        main = s[s.index("int main(void)"):]
+        take = main.index("lock = ia_lock_take();")
+        self.assertLess(take, main.index("if (cmd == IA_CMD_APPLY) {"))
+        self.assertLess(take, main.index("ia_restore(c);"))
+        self.assertIn("if (lock) ReleaseSemaphore(lock);", main[main.index("\nout:"):])
+        helper = s[s.index("static struct SignalSemaphore *ia_lock_take"):s.index("int main(void)")]
+        self.assertRegex(helper, r"Forbid\(\);\s*l = \(struct ia_lock \*\)FindSemaphore")
+        self.assertIn("ObtainSemaphore(&l->ss);", helper)
+
+    def test_links_are_not_walked_as_drawers(self):
+        """RL11 (rig 73): RAM Disk:Disk.info is a soft link (fib_DirEntryType ST_SOFTLINK = 3 > 0); list_dir walked it as a drawer
+        and printed 'skip io (no lock): RAM Disk:Disk.info/'. Links are skipped before the drawer test."""
+        s = (ROOT / "amarchy/icons.c").read_text()
+        body = s[s.index("static int list_dir"):]
+        body = body[:body.index("\n}\n")]
+        skip = re.search(r"if \(fib->fib_DirEntryType == ST_SOFTLINK \|\| fib->fib_DirEntryType == ST_LINKDIR\) continue;", body)
+        self.assertIsNotNone(skip)
+        self.assertLess(skip.start(), body.index("if (fib->fib_DirEntryType > 0) kind = 'D';"))
+
+
+    def test_network_volume_gets_the_net_icon(self):
+        """RL11: walk_volumes classifies each volume with ia_vol_is_net and, for a network volume, applies the type:net icon
+        to its Disk.info through ia_walk_net, which hands apply_one the match type:net (core pin below)."""
+        s = (ROOT / "amarchy/icons.c").read_text()
+        body = s[s.index("static void walk_volumes"):]
+        body = body[:body.index("\n}\n")]
+        self.assertIn("vol_is_net(ports[i])", body)
+        self.assertRegex(body, r"if \(isnet\[i\][^)]*\) ia_walk_net\(c, names\[i\]\);")
+        self.assertIn("ia_vol_is_net(dev, hnd)", s)
+        core = (ROOT / "amarchy/iconapply_core.c").read_text()
+        net = core[core.index("int ia_walk_net"):]
+        self.assertIn('apply_one(c, path, "type:net")', net[:net.index("\n}\n")])
 
 if __name__ == "__main__":
     unittest.main()

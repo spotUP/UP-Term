@@ -38,6 +38,9 @@ class StartRace(unittest.TestCase):
             def Popen(cmd, **k):
                 if any("fs-uae" in str(c) for c in cmd):
                     launched.append(cmd)
+                    # the booted go's lines: start waits for "assigns done" (RIG-START-ASSIGN-RACE)
+                    (rig.RIG / "boot").mkdir(exist_ok=True)
+                    (rig.RIG / "boot/boot.log").write_text("go started\nassigns done\nwasabid started\n")
 
         with tempfile.TemporaryDirectory() as d:
             try:

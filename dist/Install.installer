@@ -54,10 +54,13 @@
 (set #adfail "")
 (set #adpick 0)
 
-; P_AMISSL: run AmiSSL's own Install-AmiSSL (an Installer script) from the kit's AmiSSL drawer.
-; It reads Libs/, Certs/ and the rest by relative names, so it starts with that drawer as the current one
-; (a script in T: does the CD; started with (execute), because (run "Execute ...") without a >NIL: redirect opens a Shell window); then the same version check runs again (P_AMISSLCHECK, dist/common/amissl.installer):
-; still missing or older means it did not install (cancelled or failed), else LIBS: got AmiSSL:Libs added for this session (the User-Startup line serves later boots).
+; P_AMISSL: install the kit's AmiSSL drawer with Files/install-amissl.dos (dist/install-amissl.dos), which asks nothing.
+; AmiSSL's own Install-AmiSSL is an Installer script with a page at every level (welcome, assign, drawer, CPU,
+; certificates, Path line, User-Startup, closing page); run nested it stopped a full install on its first page. The script
+; copies the same files and writes the same S:User-Startup block, and adds LIBS: AmiSSL:Libs to this session.
+; It is started with (execute), because (run "Execute ...") without a >NIL: redirect opens a Shell window.
+; Then the same version check runs again (P_AMISSLCHECK, dist/common/amissl.installer): still missing or older means
+; it did not install, else LIBS: has the library at once (the User-Startup line serves later boots).
 ; #sslnote is the last page's line(s) for it and #sslrows how many (n + rows)
 (procedure P_AMISSL
     (set #sslnote "")
@@ -65,21 +68,14 @@
     (if #amisslins
         (
             (textfile (dest "T:UPTAMISSL")
-                      (append (cat "CD \"" (tackon #files "AmiSSL") "\"\n"
-                                   "Installer SCRIPT Install-AmiSSL APPNAME AmiSSL "
-                                   "MINUSER AVERAGE DEFUSER AVERAGE NOLOG\n"
-                                   ; Install-AmiSSL only writes the LIBS: assign into S:User-Startup: add it to this session
-                                   "Assign >NIL: AmiSSL: EXISTS\n"
-                                   "If NOT WARN\n"
-                                   "  Assign >NIL: LIBS: AmiSSL:Libs ADD\n"
-                                   "EndIf\n")))
+                      (append (cat "Execute \"" (tackon #files "install-amissl.dos") "\" DIR \"" #files "\" " #cpu060 "\n")))
             (execute "T:UPTAMISSL")
             (run "Delete >NIL: T:UPTAMISSL QUIET")
             (P_AMISSLCHECK)
             (if #amissl-need
                 (
                     (set #sslnote (cat "\nAmiSSL was not installed, https programs cannot run.\n"
-                                       "Run " (tackon #files "AmiSSL/Install-AmiSSL") " again."))
+                                       "Run " (tackon #files "install-amissl.dos") " again."))
                     (set #sslrows 2))
                 (
                     (set #sslnote "\nAmiSSL installed: LIBS: has it now, usable at once.")
@@ -251,7 +247,7 @@
 ; @include dist/common/tcpstack.installer
 
 ; AmiSSL 5.27 (Apache 2.0): the kit's own drawer, Files/AmiSSL. Ticked when LIBS: has no
-; amisslmaster.library or an older one; AmiSSL's own Install-AmiSSL does the work (P_AMISSL, after the parts)
+; amisslmaster.library or an older one; Files/install-amissl.dos does the work (P_AMISSL, after the parts)
 (set #amisslins
     (askoptions
         (prompt "AmiSSL 5.27 (the TLS library for https):")
@@ -259,11 +255,11 @@
               "is in the kit's Files/AmiSSL drawer. It is ticked when LIBS: has no "
               "amisslmaster.library, or an older one than the kit's; the same "
               "version or a newer one is already installed and stays.\n\n"
-              "Its own installer, Install-AmiSSL, runs after UP-Term's parts, "
-              "with its own pages: where AmiSSL: goes, your CPU, the "
-              "certificates. UP-Term does nothing to AmiSSL itself, and "
-              "Uninstall leaves it, since other programs use it.\n\n"
-              "Its room is checked on the disk Install-AmiSSL picks first: "
+              "It is installed after UP-Term's parts without a question: into the "
+              "AmiSSL: drawer when that assign exists, else into Work:AmiSSL, "
+              "else SYS:AmiSSL, with the libraries for your CPU and the "
+              "certificates. Uninstall leaves it, since other programs use it.\n\n"
+              "Its room is checked on the disk it goes to first: "
               "the AmiSSL: assign, else Work:, else SYS:.")
         (choices (if #amissl-need
                      (if #amissl "AmiSSL 5.27 (yours is older)" "AmiSSL 5.27 (none found)")
@@ -628,8 +624,8 @@
 
 (set #step "tools" #kb #kb-tools #n 3
      #why (cat "Installing UP-Term's own commands (UPTerm, UPDemo,\n"
-               "upgetty, uptelnet, hl, mdv, icat, ps, top, sz, rz, Amarchy)\n"
-               "and the network tools you chose."))
+               "upgetty, uptelnet, hl, mdv, icat, ps, top, sz, rz,\n"
+               "Amarchy) and the network tools you chose."))
 (P_STEP)
 
 (set #step "fonts" #kb @KBFONTS@ #n 2

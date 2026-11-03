@@ -73,7 +73,6 @@ BASH_DIVERGENCES = ROOT / "tests/bash/divergences.txt"
 VTC = paths.RIG / "vtc"
 VERDICTS = paths.REPORTS / "userland"
 PORTS = paths.ports()
-COREUTILS = ROOT / "dist/gg/coreutils-5.2.1/bin"
 SYSBIN = PORTS / "build/sysroot/UP-Term"
 PTYRUN = PORTS / "build/tools/ptyrun.amiga"
 TERMINFO = PORTS / "build/tools/terminfo"
@@ -462,15 +461,14 @@ def stage_bash(area, wanted):
     pkg = "bash-" + area
     (VTC / "userland").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / "build/amiga/vsh", VTC / "vsh")
-    # the ports built so far (grep) and the kit's coreutils (dist/gg: cat, tr, env, mkdir, wc ...;
+    # the ports built so far (grep) and the kit's coreutils (paths.coreutils(): 9.12 and the 5.2.1 leftovers: cat, tr, env, mkdir, wc ...;
     # the rig's system disk has none), on PATH as /VTC/userland/bin
     (VTC / "userland/bin").mkdir(parents=True, exist_ok=True)
     for tool in ("grep", "egrep", "fgrep"):
         if (SYSBIN / "bin" / tool).exists():
             shutil.copyfile(SYSBIN / "bin" / tool, VTC / "userland/bin" / tool)
-    for f in sorted(COREUTILS.iterdir()):
-        if f.is_file():
-            shutil.copyfile(f, VTC / "userland/bin" / f.name)
+    for name, f in sorted(paths.coreutils().items()):
+        shutil.copyfile(f, VTC / "userland/bin" / name)
     pdest = VTC / "userland/bash" / area
     shutil.rmtree(pdest, ignore_errors=True)
     pdest.mkdir(parents=True)

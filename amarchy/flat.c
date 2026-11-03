@@ -47,6 +47,7 @@
 #include "flat_shared.h"
 #include "libpatch.h"
 #include "flat_glyph.h"
+#include "menu_font.h"
 #include "taskalive.h"
 #include "poll_timer.h"
 #include "amconf_core.h"
@@ -117,7 +118,10 @@ typedef struct cloneenv {
     Object *obj;
     struct impDraw *d;
     int reg;
+    ULONG which;                /* the system image's own SYSIA_Which (before flat_which_alias): the private image's key */
+    int why;                    /* CLONE_WHY_*: set by clone_render when it gives up */
 } cloneenv;
+enum { CLONE_WHY_NONE = 0, CLONE_WHY_BUSY, CLONE_WHY_NODRI, CLONE_WHY_NOBM, CLONE_WHY_NOOBJ };
 
 static struct SignalSemaphore cl_ss;
 static struct BitMap *cl_bm;
@@ -125,6 +129,46 @@ static struct RastPort cl_rp;
 static int cl_w, cl_h;
 static UWORD cl_pens[FLAT_CLONE_MARKS];
 static uint8_t cl_scratch[FLAT_CLONE_SCRATCH];     /* the grids: static (held under cl_ss), not on the stack of whatever task draws */
+/* S32 CLONE-PRIVATE-IMAGE (flat_glyph.h): the private marker images. 3.2 sysiclass keeps the SYSIA_DrawInfo pointer and bakes
+ * its pens at OM_NEW, so the marker DrawInfo is static (it outlives every private image) and dri_Depth is FLAT_CLONE_DEPTH. */
+static struct DrawInfo cl_di;
+static flat_clone_key cl_keys[FLAT_CLONE_OBJS];
+static Object *cl_objs[FLAT_CLONE_OBJS];
+static int cl_nobj;
+static struct Task *cl_task;    /* the task inside the system dispatcher for the clone: its nested image draws go to the system */
+
+static Object *clone_object(const struct DrawInfo *real, ULONG which, int w, int h)
+{
+    int i = flat_clone_slot(cl_keys, cl_nobj, FLAT_CLONE_OBJS, which, w, h);
+    Object *o;
+    if (i < 0)
+        return NULL;
+    if (i < cl_nobj)
+        return cl_objs[i];
+    if (!cl_nobj) {
+        cl_di = *real;
+        for (i = 0; i < FLAT_CLONE_MARKS; i++)
+            cl_pens[i] = (UWORD)FLAT_CLONE_MARK(i);
+        cl_di.dri_Pens = cl_pens;
+        cl_di.dri_Depth = FLAT_CLONE_DEPTH;
+        i = 0;
+    }
+    {
+        struct TagItem t[5];
+        t[0].ti_Tag = SYSIA_DrawInfo; t[0].ti_Data = (ULONG)&cl_di;
+        t[1].ti_Tag = SYSIA_Which; t[1].ti_Data = which;
+        t[2].ti_Tag = IA_Width; t[2].ti_Data = (ULONG)w;
+        t[3].ti_Tag = IA_Height; t[3].ti_Data = (ULONG)h;
+        t[4].ti_Tag = TAG_DONE; t[4].ti_Data = 0;
+        o = (Object *)NewObjectA(NULL, (UBYTE *)"sysiclass", t);
+    }
+    if (!o)
+        return NULL;
+    cl_keys[i].which = which; cl_keys[i].w = w; cl_keys[i].h = h;
+    cl_objs[i] = o;
+    cl_nobj = i + 1;
+    return o;
+}
 
 static int clone_ensure(int w, int h)
 {
@@ -151,6 +195,8 @@ static int clone_ensure(int w, int h)
 
 static void clone_free(void)
 {
+    while (cl_nobj > 0)
+        DisposeObject(cl_objs[--cl_nobj]);
     if (cl_bm) {
         WaitBlit();
         FreeBitMap(cl_bm);
@@ -163,25 +209,34 @@ static int clone_render(void *ctx, unsigned long ids, uint8_t *grid, int w, int 
     cloneenv *e = (cloneenv *)ctx;
     struct Image *im = (struct Image *)e->obj;
     struct impDraw m = *e->d;
-    struct DrawInfo di;
-    int x, y, i, ok = 0;
+    Object *po;
+    int x, y, ok = 0;
     (void)ids;
-    if (!e->d->imp_DrInfo || !AttemptSemaphore(&cl_ss))
+    if (!e->d->imp_DrInfo) {
+        e->why = CLONE_WHY_NODRI;
         return 0;
-    if (clone_ensure(w, h)) {
-        di = *e->d->imp_DrInfo;
-        for (i = 0; i < FLAT_CLONE_MARKS; i++)
-            cl_pens[i] = (UWORD)FLAT_CLONE_MARK(i);
-        di.dri_Pens = cl_pens;
+    }
+    if (!AttemptSemaphore(&cl_ss)) {
+        e->why = CLONE_WHY_BUSY;
+        return 0;
+    }
+    if (!clone_ensure(w, h))
+        e->why = CLONE_WHY_NOBM;
+    else if (cl_task = FindTask(NULL), !(po = clone_object(e->d->imp_DrInfo, e->which, im->Width, im->Height))) {
+        cl_task = NULL;
+        e->why = CLONE_WHY_NOOBJ;
+    } else {
+        /* the private image, baked with the marker pens, drawn by the system dispatcher at 0,0 (its edges are 0) */
         m.imp_RPort = &cl_rp;
-        m.imp_Offset.X = (WORD)-im->LeftEdge;
-        m.imp_Offset.Y = (WORD)-im->TopEdge;
-        m.imp_DrInfo = &di;
+        m.imp_Offset.X = 0;
+        m.imp_Offset.Y = 0;
+        m.imp_DrInfo = &cl_di;
         SetRast(&cl_rp, 0);
         if (e->reg)
-            ((oldfn_reg)g_r->sw.saved)(e->h, e->obj, (Msg)&m);
+            ((oldfn_reg)g_r->sw.saved)(e->h, po, (Msg)&m);
         else
-            ((oldfn_stk)g_r->sw.saved)(e->h, e->obj, (Msg)&m);
+            ((oldfn_stk)g_r->sw.saved)(e->h, po, (Msg)&m);
+        cl_task = NULL;
         WaitBlit();
         for (y = 0; y < h; y++)
             for (x = 0; x < w; x++) {
@@ -199,11 +254,13 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
     flatshared *r = g_r;
     struct impDraw *d = (struct impDraw *)msg;
     struct Image *im = (struct Image *)obj;
-    ULONG which = 0xFFFF;
+    ULONG which = 0xFFFF, raw_which;
     int frame_pen = -1, text_pen = -1;
     r->st.calls++;
     if (msg->MethodID != FLAT_IM_DRAW || !r->st.enabled || r->st.held || !d->imp_RPort)
         return 0;
+    if (cl_task && cl_task == FindTask(NULL))
+        return 0;                   /* a nested image draw inside the clone's own system call: the system draws it */
     /* FLAT-OUTER-EDGE: the window's 1 px outer edge in the accent pen is NOT drawn here. Intuition repaints the four outer
      * border edges last in every frame redraw, as four 1 px RectFill calls through graphics.library, which erases anything
      * drawn from this hook. The ring is painted by the RectFill patch (flat_rf_c, below), which recolours exactly those fills. */
@@ -223,6 +280,7 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
             return 0;
         which = (ULONG)wh;
     }
+    raw_which = which;
     which = flat_which_alias(which);
     /* FLAT-GADGET-BG: the pen of the frame the gadget sits on, so the box shows only the glyph lines. A window gadget
      * sits on the border (the background pen in both states: FLAT-SOLID-FILL); a screen bar gadget on
@@ -243,21 +301,44 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
     if (flat_clone_route(&r->st, which, msg->MethodID)) {
         cloneenv env;
         int rc, got;
-        env.h = hk; env.obj = obj; env.d = d; env.reg = reg;
+        env.h = hk; env.obj = obj; env.d = d; env.reg = reg; env.which = raw_which; env.why = CLONE_WHY_NONE;
         got = AttemptSemaphore(&cl_ss);
         rc = !got ? FLAT_CLONE_FAIL : flat_clone_draw(&r->st, which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
                              im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, frame_pen, text_pen, clone_render, &env, c2_fill, d->imp_RPort, cl_scratch);
+        if (got && rc == FLAT_CLONE_FAIL && env.why == CLONE_WHY_NONE) {
+            int i, nz = 0;
+            ULONG mk = 0;
+            for (i = 0; i < im->Width * im->Height && i < FLAT_CLONE_MAX * FLAT_CLONE_MAX; i++)
+                if (cl_scratch[i]) {
+                    nz++;
+                    mk |= 1UL << (cl_scratch[i] & 31);
+                }
+            r->cf_ids |= 1UL << (d->imp_State & 31);
+            r->cf_lwhich = which; r->cf_lsize = ((ULONG)im->Width << 8) | (ULONG)im->Height; r->cf_lnz = (ULONG)nz; r->cf_lmarks = mk;
+        }
         if (got)
             ReleaseSemaphore(&cl_ss);
         if (rc == FLAT_CLONE_OK) {
             r->cdraws++;
             return 1;
         }
-        if (rc == FLAT_CLONE_FAIL)
-            r->cfall++;                     /* no offscreen bitmap / busy / no DrawInfo: the block glyph below */
+        if (rc == FLAT_CLONE_FAIL) {
+            r->cfall++;                     /* no offscreen bitmap / busy / no DrawInfo / empty image: the block glyph below */
+            if (!got || env.why == CLONE_WHY_BUSY)
+                r->cf_busy++;
+            else if (env.why == CLONE_WHY_NODRI)
+                r->cf_nodri++;
+            else if (env.why == CLONE_WHY_NOBM || env.why == CLONE_WHY_NOOBJ)
+                r->cf_nobm++;               /* no offscreen bitmap, or no private marker image */
+            else
+                r->cf_empty++;              /* render ran, the system image put no pixel in the offscreen rastport */
+            r->cf_mask |= 1UL << (which & 31);
+        }
     }
     return flat_glyph_draw(&r->st, which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
-                           im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, frame_pen, c2_fill, d->imp_RPort);
+                           im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, frame_pen,
+                           d->imp_DrInfo ? flat_side_px(d->imp_DrInfo->dri_Resolution.X, d->imp_DrInfo->dri_Resolution.Y) : 1,
+                           c2_fill, d->imp_RPort);
 }
 
 ULONG c2_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1") Msg msg)
@@ -508,7 +589,7 @@ extern void flat_rf_entry(void);
 
 /* FLAT-SCROLLER: the pen for one Intuition fill inside a window scroller, or -1. Walks the window's prop gadgets (no
  * Intuition call: this runs inside graphics.library, GetScreenDrawInfo here could deadlock) and asks flat_scroller_pen. */
-static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, LONG x0, LONG y0, LONG x1, LONG y1)
+static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, LONG x0, LONG y0, LONG x1, LONG y1, int cuts[][2], int *ncuts)
 {
     struct Gadget *g;
     for (g = w->FirstGadget; g; g = g->NextGadget) {
@@ -525,10 +606,33 @@ static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, LO
         cx = gx + pi->LeftBorder; cy = gy + pi->TopBorder; cw = pi->CWidth; ch = pi->CHeight;
         pen = flat_scroller_pen(&r->st, (rp->BitMap ? rp->BitMap->Depth : 0), cx, cy, cw, ch, (pi->Flags & FREEHORIZ) != 0, (pi->Flags & FREEVERT) != 0,
                                 pi->HorizPot, pi->VertPot, pi->HorizBody, pi->VertBody, (int)x0, (int)y0, (int)x1, (int)y1);
-        if (pen >= 0)
+        if (pen >= 0) {
+            *ncuts = flat_scroller_cuts(cx, cy, cw, ch, (pi->Flags & FREEHORIZ) != 0, (pi->Flags & FREEVERT) != 0, pi->HorizPot, pi->VertPot,
+                                        pi->HorizBody, pi->VertBody, (int)x0, (int)y0, (int)x1, (int)y1, cuts);
             return pen;
+        }
     }
     return -1;
+}
+
+/* FLAT-ASPECT-BORDERS: the column count of the left and right outer lines on scr (flat_side_px of the screen's DisplayInfo
+ * Resolution, the same lookup the menus use: menu_screen_aspect). Cached per (screen, mode ID), so the DisplayInfo lookup
+ * runs once per screen and not on every border fill; a screen reopened at the same address in another mode misses. */
+static int side_px(flatshared *r, struct Screen *scr)
+{
+    ULONG mode;
+    int rx, ry;
+    if (!scr)
+        return 1;
+    mode = GetVPModeID(&scr->ViewPort);
+    if (scr != r->aspect_scr || mode != r->aspect_mode) {
+        menu_screen_aspect(scr, &rx, &ry);
+        r->aspect_px = flat_side_px(rx, ry);
+        r->aspect_scr = scr;
+        r->aspect_mode = mode;
+        r->aspect_looks++;
+    }
+    return r->aspect_px;
 }
 
 void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG ret)
@@ -538,7 +642,7 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
     r->rcalls++;
     if (r->st.enabled && !r->st.held && rp && rp->Layer && (w = (struct Window *)rp->Layer->Window) != 0 && ret >= r->irom_lo &&
         ret < r->irom_hi) {
-        int sp;
+        int sp, cuts[FLAT_ROUND_MAX][2], ncuts = 0, ci;
         const flat_gbox *gb = flat_gh_match(&r->st, &r->gh, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL), rp->AreaPtSz, (int)x0, (int)y0, (int)x1, (int)y1);
         if (gb) {          /* FLAT-BUTTON-DISABLED-DIM: Intuition's dither over a disabled button: solid dim fill, label again in the dim label pen */
             int depth = rp->BitMap ? rp->BitMap->Depth : 0;
@@ -562,15 +666,37 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
             rp->AreaPtrn = pa; rp->AreaPtSz = pt;
             return;
         }
-        sp = scroller_pen(r, rp, w, x0, y0, x1, y1);
+        sp = scroller_pen(r, rp, w, x0, y0, x1, y1, cuts, &ncuts);
         if (sp >= 0) {
             UBYTE fg = rp->FgPen, dm = rp->DrawMode, pt = rp->AreaPtSz;
             UWORD *pa = (UWORD *)rp->AreaPtrn;
             r->shits++;
+            {
+                int *e = r->sring[r->sring_n++ & 15];
+                struct Gadget *g2;
+                e[0] = (int)x0; e[1] = (int)y0; e[2] = (int)x1; e[3] = (int)y1; e[4] = e[5] = e[6] = e[7] = -1; e[8] = ncuts;
+                for (g2 = w->FirstGadget; g2; g2 = g2->NextGadget) {
+                    struct PropInfo *p2;
+                    int gx2, gy2;
+                    if ((g2->GadgetType & GTYP_GTYPEMASK) != GTYP_PROPGADGET || !(p2 = (struct PropInfo *)g2->SpecialInfo))
+                        continue;
+                    gx2 = g2->LeftEdge + ((g2->Flags & GFLG_RELRIGHT) ? w->Width - 1 : 0);
+                    gy2 = g2->TopEdge + ((g2->Flags & GFLG_RELBOTTOM) ? w->Height - 1 : 0);
+                    if (x0 >= gx2 && y0 >= gy2 && flat_scroller_knob(gx2 + p2->LeftBorder, gy2 + p2->TopBorder, p2->CWidth, p2->CHeight,
+                            (p2->Flags & FREEHORIZ) != 0, (p2->Flags & FREEVERT) != 0, p2->HorizPot, p2->VertPot, p2->HorizBody, p2->VertBody,
+                            &e[4], &e[5], &e[6], &e[7]))
+                        break;
+                }
+            }
             rp->AreaPtrn = 0; rp->AreaPtSz = 0;               /* a solid fill: the stock track is a dither */
             SetDrMd(rp, JAM2);
             SetAPen(rp, sp);
             ((rectfn)r->rsw.saved)(rp, x0, y0, x1, y1, (struct Library *)GfxBase);
+            if (ncuts > 0) {                                  /* FLAT-SLIDER-ROUND: the knob corners take the track pen */
+                SetAPen(rp, (UBYTE)r->st.pen_back);
+                for (ci = 0; ci < ncuts; ci++)
+                    ((rectfn)r->rsw.saved)(rp, cuts[ci][0], cuts[ci][1], cuts[ci][0], cuts[ci][1], (struct Library *)GfxBase);
+            }
             SetAPen(rp, fg);
             SetDrMd(rp, dm);
             rp->AreaPtrn = pa; rp->AreaPtSz = pt;
@@ -578,14 +704,16 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
         }
     }
     if (r->st.enabled && !r->st.held && r->st.pen_outline && rp && rp->Layer && (w = (struct Window *)rp->Layer->Window) != 0 &&
-        !(w->Flags & WFLG_BORDERLESS) && ret >= r->irom_lo && ret < r->irom_hi &&
-        flat_outer_edge_match(w->Width, w->Height, (int)x0, (int)y0, (int)x1, (int)y1)) {
-        UBYTE fg = rp->FgPen;
-        r->rhits++;
-        SetAPen(rp, r->st.pen_outline);
-        ((rectfn)r->rsw.saved)(rp, x0, y0, x1, y1, (struct Library *)GfxBase);
-        SetAPen(rp, fg);
-        return;
+        !(w->Flags & WFLG_BORDERLESS) && ret >= r->irom_lo && ret < r->irom_hi) {
+        int e[4];
+        if (flat_outer_edge_fill(w->Width, w->Height, (int)x0, (int)y0, (int)x1, (int)y1, side_px(r, w->WScreen), e)) {
+            UBYTE fg = rp->FgPen;
+            r->rhits++;
+            SetAPen(rp, r->st.pen_outline);
+            ((rectfn)r->rsw.saved)(rp, e[0], e[1], e[2], e[3], (struct Library *)GfxBase);
+            SetAPen(rp, fg);
+            return;
+        }
     }
     ((rectfn)r->rsw.saved)(rp, x0, y0, x1, y1, (struct Library *)GfxBase);
 }
@@ -675,7 +803,8 @@ static void print_status(void)
     int finst = 0, rinst = 0;
     unsigned long rcalls = 0, rhits = 0, shits = 0, tcalls = 0, thits = 0;
     int tinst = 0;
-    unsigned long cdraws = 0, cfall = 0;
+    unsigned long cdraws = 0, cfall = 0, alooks = 0, cfb = 0, cfd = 0, cfm = 0, cfe = 0, cfk = 0, cfi = 0, clw = 0, cls = 0, cln = 0, clm = 0;
+    int apx = 0, sring[16][9], sn = 0;
     uint32_t dsum[FLAT_EL_COUNT] = { 0, 0 };
     memset(&copy, 0, sizeof copy);
     Forbid();
@@ -690,6 +819,10 @@ static void print_status(void)
         rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits;
         tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits;
         cdraws = r->cdraws; cfall = r->cfall;
+        cfb = r->cf_busy; cfd = r->cf_nodri; cfm = r->cf_nobm; cfe = r->cf_empty; cfk = r->cf_mask;
+        cfi = r->cf_ids; clw = r->cf_lwhich; cls = r->cf_lsize; cln = r->cf_lnz; clm = r->cf_lmarks;
+        apx = r->aspect_px; alooks = r->aspect_looks;
+        memcpy(sring, r->sring, sizeof sring); sn = (int)(r->sring_n > 16 ? 16 : r->sring_n);
     }
     Permit();
     if (flat_status_line(&copy, sizeof copy, found, line, sizeof line)) {
@@ -718,9 +851,22 @@ static void print_status(void)
         put_word(line, &n, " calls=");              put_num(line, &n, rcalls);
         put_word(line, &n, " hits=");               put_num(line, &n, rhits);
         put_word(line, &n, " shits=");              put_num(line, &n, shits);
+        put_word(line, &n, " side=");               put_num(line, &n, (unsigned long)apx);
+        put_word(line, &n, " looks=");              put_num(line, &n, alooks);
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
+    }
+    {                                               /* RL6: the last scroller fills: sfill x0 y0 x1 y1 knobx knoby knobw knobh cuts */
+        int si, k;
+        for (si = 0; found && si < sn; si++) {
+            int n = 0, *e = sring[si];
+            put_word(line, &n, "sfill");
+            for (k = 0; k < 9; k++) { put_word(line, &n, " "); put_num(line, &n, (unsigned long)(e[k] < 0 ? 0 : e[k])); }
+            line[n] = 0;
+            PutStr((STRPTR)line);
+            PutStr((STRPTR)"\n");
+        }
     }
     if (found) {                                    /* FLAT-BUTTON-FILL sentinels: calls rising = the stub runs, hits rising = pressed label recoloured */
         int n = 0;
@@ -735,6 +881,24 @@ static void print_status(void)
         int n = 0;
         put_word(line, &n, "clone draws=");         put_num(line, &n, cdraws);
         put_word(line, &n, " fallback=");           put_num(line, &n, cfall);
+        line[n] = 0;
+        PutStr((STRPTR)line);
+        PutStr((STRPTR)"\n");
+        n = 0;
+        put_word(line, &n, "clone fallback busy="); put_num(line, &n, cfb);
+        put_word(line, &n, " nodri=");              put_num(line, &n, cfd);
+        put_word(line, &n, " nobm=");               put_num(line, &n, cfm);
+        put_word(line, &n, " empty=");              put_num(line, &n, cfe);
+        put_word(line, &n, " which=");              put_num(line, &n, cfk);
+        line[n] = 0;
+        PutStr((STRPTR)line);
+        PutStr((STRPTR)"\n");
+        n = 0;
+        put_word(line, &n, "clone empty ids=");     put_num(line, &n, cfi);
+        put_word(line, &n, " last which=");         put_num(line, &n, clw);
+        put_word(line, &n, " size=");               put_num(line, &n, cls);
+        put_word(line, &n, " nonzero=");            put_num(line, &n, cln);
+        put_word(line, &n, " marks=");              put_num(line, &n, clm);
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
@@ -816,7 +980,7 @@ static int hook_install(flatshared *r)
     uintptr_t ours = flat_conv(IntuitionBase->LibNode.lib_Version) == FLAT_CONV_REG ? (uintptr_t)c2_disp_reg : (uintptr_t)c2_disp_stk;
     int rc;
     if (!slot)
-        return -100;
+        return FLAT_ERR_NOCLASS;
     g_r = r;                            /* the dispatcher reads it from its first call on */
     Forbid();
     rc = flat_swap_install(&r->sw, slot, ours);     /* r->sw.saved is the old routine before the first dispatcher call */
@@ -1113,11 +1277,35 @@ static void dim_release(flatshared *r)
     g_knob_pen = -1;
 }
 
+/* The hook and the two patches, the crash marker around them. A FLAT_ERR_NOCLASS result (the Workbench screen not
+ * open yet: amarchy-flat BOOT runs before LoadWB) is retried from the 1 s screen watch (flat_install_due). */
+static int install_all(flatshared *r, poll_timer *tm, int *marker_live)
+{
+    int rc;
+    marker_write();                             /* on disk before the swap, so a crash leaves it */
+    *marker_live = 1;
+    rc = hook_install(r);
+    if (rc != FLAT_OK) {
+        if (rc != FLAT_ERR_NOCLASS)
+            PutStr((STRPTR)"amarchy-flat: sysiclass hook not installed\n");
+        marker_delete();
+        *marker_live = 0;
+        return rc;
+    }
+    if (rf_install(r) != FLAT_OK)
+        PutStr((STRPTR)"amarchy-flat: RectFill patch not installed\n");
+    if (tx_install(r) != FLAT_OK)
+        PutStr((STRPTR)"amarchy-flat: Text patch not installed\n");
+    pt_start(tm, (unsigned long)FLAT_MARKER_SECS * 1000000UL);
+    return rc;
+}
+
 int main(void)
 {
     const char *args = (const char *)GetArgStr();
     flatshared *r;
     poll_timer tm, pen_tm;
+    int install_rc = FLAT_ERR_ARG;                      /* no install tried (held or no libraries) */
     int marker_live = 0;
     (void)ver;
     InitSemaphore(&cl_ss);
@@ -1196,21 +1384,7 @@ int main(void)
             if (why == FLAT_HELD_MARKER)
                 marker_delete();                        /* one inert start per crash, not for ever */
         } else {
-            int rc;
-            marker_write();                             /* on disk before the swap, so a crash leaves it */
-            marker_live = 1;
-            rc = hook_install(r);
-            if (rc != FLAT_OK) {
-                PutStr((STRPTR)"amarchy-flat: sysiclass hook not installed\n");
-                marker_delete();
-                marker_live = 0;
-            } else {
-                if (rf_install(r) != FLAT_OK)
-                    PutStr((STRPTR)"amarchy-flat: RectFill patch not installed\n");
-                if (tx_install(r) != FLAT_OK)
-                    PutStr((STRPTR)"amarchy-flat: Text patch not installed\n");
-                pt_start(&tm, (unsigned long)FLAT_MARKER_SECS * 1000000UL);
-            }
+            install_rc = install_all(r, &tm, &marker_live);
         }
     }
     g_r = r;
@@ -1224,6 +1398,8 @@ int main(void)
     for (;;) {
         ULONG got = Wait(SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D | pt_sigmask(&tm) | pt_sigmask(&pen_tm));
         if (pt_fired(&pen_tm, got)) {                   /* Workbench closed / reopened / mode change */
+            if (IntuitionBase && GfxBase && flat_install_due(r->st.held, install_rc == FLAT_OK, install_rc))
+                install_rc = install_all(r, &tm, &marker_live);     /* S32-START-LOOK: LoadWB opened the screen */
             pens_sync(r, 0);
             pt_start(&pen_tm, 1000000UL);
         }

@@ -32,7 +32,7 @@ static void test_colours_and_fold(void)
     for (depth = 2; depth <= 8; depth++)
         for (slot = 0; slot < IP_PENS; slot++) {
             int p = ip_fold(&t, slot, depth);
-            CHECK(p != DK_GREEN && p != DK_RED);
+            CHECK(p != DK_GREEN && p != DK_BACKDROP);
             if (depth == 2) CHECK(p >= 0 && p <= DK_ACCENT);
             if (depth >= 6) CHECK_INT(p, IP_FIRST + slot);
             if (depth == 4 || depth == 5) CHECK(slot >= 8 ? p == slot : (p >= 0 && p <= DK_DARKER));
@@ -50,7 +50,7 @@ static void test_plan_no_overlap(void)
         desk_pen_plan p;
         desk_pen_plan_for(depth, &p);
         CHECK_INT(p.button, 4);
-        CHECK_INT(p.backdrop, depth >= 3 ? DK_RED : DK_BG); /* FLAT-COLOUR-OVERHAUL: own pen at 3+ planes; FILENAME-PEN: below that pen 5 folds to DK_BG */
+        CHECK_INT(p.backdrop, depth >= 3 ? DK_BACKDROP : DK_BG); /* FLAT-COLOUR-OVERHAUL: own pen at 3+ planes; FILENAME-PEN: below that pen 5 folds to DK_BG */
         CHECK_INT(desk_backdrop_pen_at(depth), p.backdrop); /* L6: the backdrop pen (WBPattern tile, palette write) is the plan's */
         CHECK(p.button != p.backdrop);
         CHECK(p.icon_first + p.icon_count <= (1 << depth));
@@ -476,7 +476,7 @@ static void test_theme_switch_recolour(void)
     rcm_other = 1;
     rcm_theme(&c, &b, &i, (unsigned *)&scr);
     rcm_other = 0;
-    CHECK_INT((long)ip_ground(&a, 1, 1u << DT_WBPATTERN), (long)desk_darker(&a)); /* PEN255: the desktop-theme tile keeps the dark backdrop */
+    CHECK_INT((long)ip_ground(&a, 1, 1u << DT_WBPATTERN), (long)gt_darker(&a)); /* PEN255: the desktop-theme tile keeps the dark backdrop */
     CHECK_INT((long)ip_ground(&a, 1, 1u << DT_WBPATTERN), (long)ip_ground(&a, 1, 0));
     CHECK(ip_ground(&a, 1, 0) != desk_role(&a, DK_BG));              /* the backdrop is not the panel tone */
     CHECK_INT(ip_sync(&h, &o, 1, &scr, 8, 8), IP_SYNC_OBTAIN);
@@ -491,15 +491,46 @@ static void test_theme_switch_recolour(void)
     CHECK_INT(ip_recolour(&h, &o), 16);
     CHECK_INT(c.sets, 16);                                            /* sentinel: every pen 32-47 rewritten */
     CHECK_INT((long)c.rgb[IP_FIRST + IP_SPARE12], (long)ip_ground(&b, 1, 0));
-    CHECK_INT((long)c.rgb[IP_FIRST + IP_SELBG], (long)desk_selection(&b));
+    CHECK_INT((long)c.rgb[IP_FIRST + IP_SELBG], (long)gt_selection(&b));
     CHECK_INT(c.bad_release, 0);
     CHECK_INT(h.held, 16);
     CHECK_INT(ip_recolour(&h, &o), 0);                                /* and only once */
     rcm_other = 0;
 }
 
+/* OWNER-ICON-COLOURS-INVERTED (s31 evidence icon-colours-inverted.md, rig 61, 3.2, depth 8, flat on, vantablack): RAM:iconpens read
+ * pens 32-47 as 555555 bebebe bebebe 8d8d8d 454545 898989 868686 696969 3f3f3f 7a7a7a 505050 1a1a1a 222222 5c5c5c 222222 222222.
+ * bebebe was read as the matte-black foreground and the pens as stale. They are vantablack's own: its #ffffff foreground becomes
+ * GT_DARK_WHITE_FG (bebebe) under the owner rule, and its black ground lifts the backdrop to GT_BLACK_LIFT (222222). This pins the
+ * rig numbers to the theme, so the held pens are proved current and the inverted look has another cause. */
+static void test_icon_colours_inverted_pens_are_vantablack(void)
+{
+    static const char *vb = "mode = \"dark\"\naccent = \"#8d8d8d\"\nselection = \"#1a1a1a\"\nmuted = \"#7a7a7a\"\n"
+                            "background = \"#000000\"\ndark_background = \"#090909\"\ndarker_background = \"#070707\"\n"
+                            "lighter_background = \"#1a1a1a\"\nforeground = \"#ffffff\"\ndark_foreground = \"#505050\"\n"
+                            "light_foreground = \"#ececec\"\nbright_foreground = \"#ffffff\"\n";
+    static const unsigned long rig[16] = { 0x555555UL, 0xbebebeUL, 0xbebebeUL, 0x8d8d8dUL, 0x454545UL, 0x898989UL, 0x868686UL,
+                                           0x696969UL, 0x3f3f3fUL, 0x7a7a7aUL, 0x505050UL, 0x1a1a1aUL, 0x222222UL, 0x5c5c5cUL,
+                                           0x222222UL, 0x222222UL };
+    gtheme t;
+    uint8_t rgb[IP_PENS][3];
+    desk_pen_plan p;
+    int i;
+    memset(&t, 0, sizeof t);
+    gt_parse(vb, (long)strlen(vb), &t);
+    desk_pen_plan_for(8, &p);
+    CHECK_INT(p.icon_first, 32);
+    CHECK_INT(p.icon_count, 16);
+    ip_colours(&t, ip_ground(&t, 1, 0), rgb);
+    for (i = 0; i < p.icon_count; i++) {
+        const uint8_t *c = rgb[p.icon_slot + i];
+        CHECK_INT((long)(((unsigned long)c[0] << 16) | ((unsigned long)c[1] << 8) | c[2]), (long)rig[i]);
+    }
+}
+
 void suite_iconpen(void)
 {
+    test_icon_colours_inverted_pens_are_vantablack();
     test_colours_and_fold();
     test_plan_no_overlap();
     test_holder();

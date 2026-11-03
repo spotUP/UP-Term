@@ -187,6 +187,7 @@ CONFIGURATION (profiles)
      scrollback = 2000         lines to keep (no key = the built-in 500; 0 or less = none)
      cursor = block            block | underline | bar
      cursor-blink = off        on | off
+     image-animation = on      on | off (off: a kitty animation stays on its current frame)
      cursor-color = inverse    inverse (the flipped cell) or RRGGBB
      selection-bg = 87AFD7     the selected cell's background and text
      selection-fg = 262626     colour; blank either keeps the flip
@@ -491,9 +492,9 @@ VSH (the shell)
   Prompt: PS1 takes bash (\w \u \h) and zsh (%~ %n %m %? %F{red}...%f)
   escapes; default %F{cyan}%/%f %#, the full path (SYS:Work %);
   %~ shows HOME as ~.
-  Unix commands: GNU coreutils 5.2.1 (ls cp mv rm mkdir cat sort head tail
-  wc tr cut uniq seq du stat dd tee date and the rest, 86 in all) in
-  UP-Term:bin, first in vsh's $PATH. They are not in C: (AmigaDOS
+  Unix commands: GNU coreutils 9.12 (ls cp mv rm mkdir cat sort head tail
+  wc tr cut uniq seq du stat dd tee date and the rest; hostname, pinky and
+  who are still GNU 5.2.1) in UP-Term:bin, first in vsh's $PATH. They are not in C: (AmigaDOS
   names ignore case: GNU sort would be C:Sort), so the AmigaDOS Shell keeps
   its own commands; it gets only upkg, through an Alias in S:Shell-Startup
   (Install writes it, Uninstall removes it), so its C: commands stay unshadowed.
@@ -639,6 +640,16 @@ TMUX
   panes (ENV:tmux.conf: default-shell, 256 colours). Your own settings go
   in ~/.tmux.conf.
 
+  Kitty pictures under tmux use Unicode placeholders. Put
+  `set -g allow-passthrough on` in ~/.tmux.conf: the program then wraps
+  its picture upload (the APC data) in tmux's passthrough (DCS tmux;
+  ... ST), tmux hands it to UP-Term, and UP-Term itself does not unwrap
+  it. The picture cells (U+10EEEE with their combining marks and the
+  colour that names the image) are ordinary text to tmux, which keeps
+  the marks in its grid and redraws the picture with every pane change.
+  Programs built on ncurses only print those cells. The terminfo entry
+  vtcon has RGB and Tc, so tmux sends 24-bit colour ids unchanged.
+
 TASKS (ps, top)
   ps lists the tasks and processes: CLI number, priority, state, type and
   name (a CLI process shows the command it runs). top shows them by CPU
@@ -658,6 +669,9 @@ PICTURES IN THE CONSOLE (icat)
   picture.datatype in SYS:Classes/DataTypes: OS 3.2 has one. The OS 3.1
   picture.datatype is V40 and cannot hand out pixels, so install a V43 one
   there first; without it icat stops with return code 10.
+  Sample media in the kit: icat UP-Term:share/updemo/photo.png shows a
+  24-bit picture; Type UP-Term:share/updemo/kanim-stream.bin plays a
+  four-frame kitty animation (UPDemo's earth.anim lives there too).
 
 VIEWING FILES (hl, mdv)
   hl shows a source file in colour, with line numbers, the language found
@@ -726,6 +740,8 @@ AMARCHY
   Left Amiga + K                     Key bindings
   Left Amiga + H                     Help
   Left Amiga + Shift + H             Tutorial
+  Left Amiga + Shift + /             Amarchy Help
+  Left Amiga + Ctrl + Shift + Q      Quit Amarchy
   Left Amiga + T                     New tab
   Left Amiga + W                     Close tab
   Left Amiga + Backspace             Close tab

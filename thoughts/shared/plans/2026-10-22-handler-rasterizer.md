@@ -1,7 +1,7 @@
 ---
 date: 2026-10-22
 topic: UP-Term's own TrueType rasterizer in the handler
-status: approved 2026-10-22; R0-R2 done in cb09a4bd (amarchy-a), R3 next
+status: approved 2026-10-22; R0-R5 done, R6 A1-A3/R6.6 done (b829462f, 184fdbb8, 1a87b4a4), open R6.1d, R6.2b A1200, R6.B1-B4
 research: thoughts/shared/research/2026-10-22_handler-rasterizer.md
 branch: amarchy-a (worktree .claude/worktrees/agent-a7edb2573dbabf68d)
 ---

@@ -2,6 +2,8 @@
  * terminal knows, and the screen comes back as it was. The demo
  * reads the terminal's answers (the window's size) and mouse reports:
  * the engine's replies go back in as input here. */
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "harness.h"
 #include "../engine/vtengine.h"
@@ -113,7 +115,52 @@ static long ticks(void *user)
     return now;
 }
 
-static updemo_io io = { out, key, ticks, 0 };
+/* the media loader of a host: dist/updemo/<name> from the repo root (where make test runs) */
+static unsigned char *load_media(void *user, const char *name, long *len)
+{
+    char path[200];
+    FILE *f;
+    unsigned char *buf;
+    long n;
+    (void)user;
+    snprintf(path, sizeof path, "dist/updemo/%s", name);
+    if (!(f = fopen(path, "rb")))
+        return 0;
+    fseek(f, 0, SEEK_END);
+    n = ftell(f);
+    rewind(f);
+    buf = malloc((size_t)n);
+    if (!buf || fread(buf, 1, (size_t)n, f) != (size_t)n) {
+        free(buf);
+        buf = 0;
+    }
+    fclose(f);
+    *len = n;
+    return buf;
+}
+
+static int tab_cmds_new, tab_cmds_close, tab_cmds_other, tab_cmds_active_close;
+static const char *tab_new_reply = "tab: new 3\n"; /* what the fake terminal answers /tab new; 0: it does not run it */
+static char tab_close_line[40];
+
+/* the terminal's slash commands: counted, which is the sentinel that the scene sent them */
+static const char *count_command(void *user, const char *line)
+{
+    (void)user;
+    if (strcmp(line, "/tab new") == 0) {
+        tab_cmds_new++;
+        return tab_new_reply;
+    } else if (strncmp(line, "/tab close ", 11) == 0) {
+        tab_cmds_close++;
+        strncpy(tab_close_line, line, sizeof(tab_close_line) - 1);
+    } else if (strcmp(line, "/tab close") == 0)
+        tab_cmds_active_close++; /* closes whatever tab is active: never the demo's to send */
+    else
+        tab_cmds_other++;
+    return "";
+}
+
+static updemo_io io = { out, key, ticks, 0, load_media, count_command };
 
 static char line[200];
 
@@ -164,17 +211,21 @@ static int scene_index(const char *name)
  * second player, so no second list can hold scenes the first lacks. */
 static void there_is_one_scene_list_with_the_effects_at_its_end(void)
 {
-    CHECK_INT(updemo_scenes(), 25);
+    CHECK_INT(updemo_scenes(), 30);
     CHECK_INT(scene_index("styles"), 1);        /* the tour's scene, in the list a bare UPDemo plays */
-    CHECK_INT(scene_index("copper bars"), 17);  /* the show's scenes follow the tour's */
-    CHECK_INT(scene_index("the end"), 24);
+    CHECK_INT(scene_index("copper bars"), 22);  /* the show's scenes follow the tour's */
+    CHECK_INT(scene_index("the end"), 29);
+    CHECK_INT(scene_index("kitty animation"), 14);
+    CHECK_INT(scene_index("kitty z-index"), 16);
+    CHECK_INT(scene_index("glyphs"), 17);
+    CHECK_INT(scene_index("tabs"), 18);
 }
 
-/* a bare UPDemo plays the whole list from its first scene: the status line shows the caption and "1/24" */
+/* a bare UPDemo plays the whole list from its first scene: the status line shows the caption and "1/30" */
 static void a_bare_run_starts_at_the_first_scene_with_its_caption(void)
 {
     start(80, 24);
-    needle = "Demo 1/25  Text styles, double-size lines, box drawing";
+    needle = "Demo 1/30  Text styles, double-size lines, box drawing";
     CHECK_INT(updemo_run(&io, 80, 24, 0, 6), 0);
     CHECK(saw_text);
     needle = 0;
@@ -185,14 +236,14 @@ static void a_bare_run_starts_at_the_first_scene_with_its_caption(void)
 static void a_start_number_picks_a_scene_of_the_one_list(void)
 {
     start(80, 24);
-    needle = "Demo 2/25  Every text style a program can ask for";
+    needle = "Demo 2/30  Every text style a program can ask for";
     CHECK_INT(updemo_run(&io, 80, 24, 1, 6), 0);
     CHECK(saw_text);
-    needle = "Demo 1/25";
+    needle = "Demo 1/30";
     saw_text = 0;
     vt_free(t);
     start(80, 24);
-    needle = "Demo 1/25";
+    needle = "Demo 1/30";
     CHECK_INT(updemo_run(&io, 80, 24, 1, 6), 0);
     CHECK(!saw_text);   /* scene 1 was skipped */
     needle = 0;
@@ -288,6 +339,231 @@ static void the_unicode_scene_shows_emoji(void)
     CHECK_INT(updemo_run(&io, 80, 24, 0, 90), 0);
     CHECK(saw_text);
     needle = 0;
+    vt_free(t);
+}
+
+static int cap_has(const char *s);
+static void play_alone(int scene, int colours);
+
+/* UPDEMO-NEW-FEATURES (a): the kitty animation scene, run through the one scene runner, plays the real NASA Earth
+ * from earth.anim: the first frame (a=T), 43 more PNG frames (a=f,f=100), a gap for each of the 44 (a=a ... z=), and
+ * the loop command (a=a ... s=3); the engine takes all of it as one image and leaves nothing unhandled. */
+static void the_kitty_animation_scene_sends_frames_gaps_and_the_loop(void)
+{
+    const char *kinds[16];
+    long counts[16], i, nf = 0, ng = 0, nt = 0;
+    play_alone(scene_index("kitty animation"), UPDEMO_AUTO);
+    for (i = 0; i + 13 < cap_len; i++) {
+        if (memcmp(cap + i, "\033_Ga=f,i=1,f=100,", 17) == 0)
+            nf++;
+        if (memcmp(cap + i, "\033_Ga=T,i=1,f=100,", 17) == 0)
+            nt++;
+        if (memcmp(cap + i, "\033_Ga=a,i=1,r=", 13) == 0)
+            ng++;
+    }
+    CHECK_INT(nt, 1);
+    CHECK_INT(nf, 43);
+    CHECK_INT(ng, 44);
+    CHECK(cap_has(",z=90,q=2\033\\"));
+    CHECK(cap_has("\033_Ga=a,i=1,s=3,q=2\033\\"));
+    CHECK(!cap_has("earth.anim not found"));
+    CHECK(saw_image);
+    CHECK_INT(vt_unhandled(t, kinds, counts, 16), 0);
+    vt_free(t);
+}
+
+/* without earth.anim the scene keeps its coded globe (8 raw frames) and says so on screen in one line */
+static void the_kitty_animation_scene_falls_back_to_the_coded_globe_without_the_media(void)
+{
+    const char *kinds[16];
+    long counts[16], i, nf = 0;
+    unsigned char *(*saved)(void *, const char *, long *) = io.load;
+    io.load = 0;
+    play_alone(scene_index("kitty animation"), UPDEMO_AUTO);
+    io.load = saved;
+    for (i = 0; i + 8 < cap_len; i++)
+        if (memcmp(cap + i, "\033_Ga=f,", 7) == 0)
+            nf++;
+    CHECK_INT(nf, 7);
+    CHECK(cap_has("(earth.anim not found: coded globe)"));
+    CHECK(cap_has("\033_Ga=a,i=1,s=3,q=2\033\\"));
+    CHECK(saw_image);
+    CHECK_INT(vt_unhandled(t, kinds, counts, 16), 0);
+    vt_free(t);
+}
+
+/* UPDEMO-NEW-FEATURES (b): the truecolour scene sends f=32 RGBA pictures, one of them with alpha below 255. The
+ * payload is decoded from the capture (chunks follow the first command until m=0). */
+static int b64v(int c)
+{
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    return c == '+' ? 62 : c == '/' ? 63 : -1;
+}
+
+static void the_kitty_truecolour_scene_sends_rgba_with_alpha(void)
+{
+    const char *kinds[16];
+    long counts[16], i, pos = 0, images = 0, translucent = 0, opaque = 0;
+    int in32 = 0;
+    play_alone(scene_index("kitty truecolour"), UPDEMO_AUTO);
+    for (i = 0; i + 3 < cap_len; i++) {
+        long j, acc = 0, nb = 0;
+        int first;
+        if (memcmp(cap + i, "\033_G", 3) != 0)
+            continue;
+        j = i + 3;
+        first = !(cap[j] == 'm');
+        if (first) {
+            in32 = 0;
+            pos = 0;
+        }
+        for (; j < cap_len && cap[j] != ';' && cap[j] != '\033'; j++)
+            if (first && !memcmp(cap + j, "f=32", 4)) {
+                in32 = 1;
+                images++;
+            }
+        if (!in32 || cap[j] != ';')
+            continue;
+        for (j++; j < cap_len && cap[j] != '\033'; j++) {
+            int v = b64v(cap[j]);
+            if (v < 0)
+                continue;
+            acc = acc << 6 | v;
+            if (++nb == 4) {
+                int k;
+                for (k = 0; k < 3; k++, pos++)
+                    if ((pos & 3) == 3) {
+                        unsigned char a = (unsigned char)(acc >> (16 - 8 * k));
+                        if (a < 255)
+                            translucent++;
+                        else
+                            opaque++;
+                    }
+                acc = nb = 0;
+            }
+        }
+    }
+    CHECK_INT(images, 2);
+    CHECK(translucent > 0);
+    CHECK(opaque > 0);
+    CHECK(saw_image);
+    CHECK_INT(vt_unhandled(t, kinds, counts, 16), 0);
+    vt_free(t);
+}
+
+/* UPDEMO-NEW-FEATURES (c): the z-index scene sends one picture under the text (z<0), one over it (z>=0), and says so. */
+static void the_kitty_zindex_scene_sends_pictures_under_and_over_text(void)
+{
+    long i, neg = 0, pos = 0;
+    play_alone(scene_index("kitty z-index"), UPDEMO_AUTO);
+    for (i = 0; i + 3 < cap_len; i++) {
+        long j;
+        if (memcmp(cap + i, "\033_G", 3) != 0 || cap[i + 3] == 'm')
+            continue;
+        for (j = i + 3; j < cap_len && cap[j] != ';' && cap[j] != '\033'; j++)
+            if (!memcmp(cap + j, "z=-1,", 5))
+                neg++;
+            else if (!memcmp(cap + j, "z=1,", 4))
+                pos++;
+    }
+    CHECK(neg > 0);
+    CHECK(pos > 0);
+    CHECK(cap_has("z=-1: the picture is behind the text."));
+    CHECK(cap_has("z=1: the picture hides the text."));
+    /* The front picture covers every row of its text: text written into its cells after it took them over (D12), so
+     * the scene must write its text first. Every text cell of the right column pair still shows the picture. */
+    {
+        int y, x, n, over = 0, lost = 0;
+        static vt_callbacks rcb;
+        const char *end = "z=1: the picture hides the text.";
+        long k = (long)strlen(end), upto = 0;
+        vt_term *s;
+        for (i = 0; i + k <= cap_len; i++)
+            if (!memcmp(cap + i, end, (size_t)k))
+                upto = i + k; /* the screen as the scene leaves it, before it clears on the way out */
+        rcb.reply = reply;
+        rcb.layout = layout;
+        s = vt_new(80, 24, 0, &rcb, 0);
+        vt_set_cell_pixels(s, 8, 16);
+        vt_write(s, (const unsigned char *)cap, upto);
+        for (y = 0; y < 24; y++) {
+            const vt_cell *c = vt_row(s, y, &n);
+            vt_image_view v;
+            int xe, k2;
+            for (k2 = 0; vt_row_image(s, y, k2, &v); k2++) {
+                if (v.z < 0)
+                    continue; /* only the front picture */
+                xe = v.col0 + (v.w + v.cw - 1) / v.cw;
+                for (x = v.col0; x < xe && x < n; x++) {
+                    if (c[x].ch >= 'A' && c[x].ch <= 'Z') {
+                        if (c[x].pad & VT_CELL_IMAGE)
+                            over++;
+                        else
+                            lost++;
+                    }
+                }
+            }
+        }
+        CHECK(over > 0);
+        CHECK_INT(lost, 0);
+        vt_free(s);
+    }
+}
+
+/* UPDEMO-NEW-FEATURES (d): the glyphs scene sends a Powerline arrow, a Nerd Font icon, an emoji and a box corner as UTF-8. */
+static void the_glyphs_scene_sends_powerline_nerd_emoji_and_box_glyphs(void)
+{
+    play_alone(scene_index("glyphs"), UPDEMO_AUTO);
+    CHECK(cap_has("\356\202\260"));
+    CHECK(cap_has("\357\201\273"));
+    CHECK(cap_has("\360\237\232\200"));
+    CHECK(cap_has("\342\224\214"));
+    CHECK(cap_has("Glyphs with no font entry fall back to Unifont"));
+}
+
+/* UPDEMO-NEW-FEATURES (d): the tabs scene draws a tab bar (inverse active tab) and names the menu that opens one. */
+static void the_tabs_scene_draws_a_tab_bar_and_names_the_menu(void)
+{
+    play_alone(scene_index("tabs"), UPDEMO_AUTO);
+    CHECK(cap_has("\033[7m 1 vsh \033[0m"));
+    CHECK(cap_has("Window > New tab opens another session"));
+}
+
+/* UPDEMO-TABS-LIVE (owner 2026-11-03): the tabs scene sends /tab new, then /tab close, to the terminal it runs in
+ * (the commands the menu's New tab and Close tab run in the handler): each once, new before close, nothing else.
+ * Left early (a key before the close is due) it still closes the tab it opened. */
+static void the_tabs_scene_sends_tab_new_then_tab_close(void)
+{
+    tab_cmds_new = tab_cmds_close = tab_cmds_other = tab_cmds_active_close = 0;
+    tab_close_line[0] = 0;
+    start(80, 24);
+    updemo_only(1);
+    CHECK_INT(updemo_run(&io, 80, 24, scene_index("tabs"), 0), 0);
+    updemo_only(0);
+    CHECK_INT(tab_cmds_new, 1);
+    CHECK_INT(tab_cmds_close, 1);
+    CHECK_STR(tab_close_line, "/tab close 3"); /* UPDEMO-TABS-TARGET: the number /tab new answered, not the active tab */
+    CHECK_INT(tab_cmds_active_close, 0);
+    CHECK_INT(tab_cmds_other, 0);
+    vt_free(t);
+
+    /* no number in the reply: nothing to close, so nothing is sent, and the caption says so */
+    tab_cmds_new = tab_cmds_close = tab_cmds_other = tab_cmds_active_close = 0;
+    tab_new_reply = "tab: no room for another tab\n";
+    start(80, 24);
+    capturing = 1;
+    cap_len = 0;
+    updemo_only(1);
+    CHECK_INT(updemo_run(&io, 80, 24, scene_index("tabs"), 0), 0);
+    updemo_only(0);
+    capturing = 0;
+    CHECK_INT(tab_cmds_new, 1);
+    CHECK_INT(tab_cmds_close, 0);
+    CHECK_INT(tab_cmds_active_close, 0);
+    CHECK(cap_has("tab not opened"));
+    tab_new_reply = "tab: new 3\n";
     vt_free(t);
 }
 
@@ -509,7 +785,7 @@ static long fps_of(int s)
  * 12 frames a second on a 68060 that draws one in 22 ms). */
 static void a_frame_the_terminal_draws_in_20_ms_still_comes_25_times_a_second(void)
 {
-    updemo_io slow = { out_slow, key_slow, ticks, 0 };
+    updemo_io slow = { out_slow, key_slow, ticks, 0, 0, 0 };
     start(80, 24);
     draw_ticks = 1;
     CHECK_INT(updemo_run(&slow, 80, 24, scene_index("plasma"), 100), 0); /* plasma onwards, two seconds each */
@@ -594,6 +870,34 @@ static int cap_extended_colour(void)
 {
     static const int bad[3] = { 38, 48, 58 };
     return sgr_has_param_in(bad, 3);
+}
+
+/* The themes scene tours twelve of the kit's themes live: each one's name is on screen while its colours (OSC 4,
+ * 10, 11) are set, and the scene runs long enough to reach the last. */
+static void the_themes_scene_names_twelve_themes_while_each_is_live(void)
+{
+    static const char *const names[] = { "Dracula Default", "Solarized Dark", "Gruvbox Dark", "Nord Default",
+        "Tokyo Night Default", "One Dark", "Tomorrow Night Eighties", "Kanagawa Wave", "Everforest Dark",
+        "Solarized Light", "GitHub Light", "One Light" };
+    long frames, tk, i;
+    int n, osc4 = 0, sc = scene_index("themes");
+    start(80, 24);
+    capturing = 1;
+    cap_len = 0;
+    updemo_colours(UPDEMO_AUTO);
+    updemo_only(1);
+    CHECK_INT(updemo_run(&io, 80, 24, sc, 0), 0); /* the scene's own length */
+    updemo_only(0);
+    capturing = 0;
+    for (n = 0; n < 12; n++)
+        CHECK_STR(cap_has(names[n]) ? names[n] : "", names[n]);
+    for (i = 0; i + 4 <= cap_len; i++)
+        if (!memcmp(cap + i, "\033]4;", 4))
+            osc4++;
+    CHECK_INT(osc4, 12);
+    updemo_stats(sc, &frames, &tk);
+    CHECK(frames > 12);
+    vt_free(t);
 }
 
 static void play_alone(int scene, int colours)
@@ -948,6 +1252,13 @@ void suite_updemo(void)
     a_start_number_picks_a_scene_of_the_one_list();
     bench_picks_the_effect_scenes_of_the_one_list();
     the_unicode_scene_shows_emoji();
+    the_kitty_animation_scene_sends_frames_gaps_and_the_loop();
+    the_kitty_animation_scene_falls_back_to_the_coded_globe_without_the_media();
+    the_kitty_truecolour_scene_sends_rgba_with_alpha();
+    the_kitty_zindex_scene_sends_pictures_under_and_over_text();
+    the_glyphs_scene_sends_powerline_nerd_emoji_and_box_glyphs();
+    the_tabs_scene_draws_a_tab_bar_and_names_the_menu();
+    the_tabs_scene_sends_tab_new_then_tab_close();
     the_styles_scene_shows_slow_and_rapid_blink();
     q_ends_the_demo_and_any_other_key_does_not();
     a_key_goes_to_the_next_scene_and_the_demo_keeps_running();
@@ -960,6 +1271,7 @@ void suite_updemo(void)
     a_resize_in_the_reflow_scene_does_not_end_the_demo();
     a_frame_the_terminal_draws_in_20_ms_still_comes_25_times_a_second();
     palette_cycling_tells_the_renderer_once_a_frame();
+    the_themes_scene_names_twelve_themes_while_each_is_live();
     ansi_mode_sends_only_the_16_colours_in_every_scene();
     ansi_effects_draw_gradients_from_shade_blocks();
     ansi_palette_cycling_changes_colour_indices_not_the_palette();

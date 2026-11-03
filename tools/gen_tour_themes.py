@@ -9,7 +9,10 @@ engine/vtcaps.inc is, so a build needs no Python.
 import pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-THEMES = ["dracula-default", "solarized-dark", "gruvbox-dark", "nord-default"]
+# 12 of the kit's 112, dark and light, retro and modern, no two alike
+THEMES = ["dracula-default", "solarized-dark", "gruvbox-dark", "nord-default",
+          "tokyo-night-default", "one-dark", "tomorrow-night-eighties", "kanagawa-wave",
+          "everforest-dark", "solarized-light", "github-light", "one-light"]
 OUT = ROOT / "demo" / "tour_themes.inc"
 
 

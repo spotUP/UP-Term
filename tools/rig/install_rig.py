@@ -45,7 +45,7 @@ ends, with a fingerprint of the archives it installs; a case that passed with th
 One script per rig: a second one on the same rig stops with the first one's pid (paths.rig_lock)."""
 import os, pathlib, re, shutil, signal, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from user_startup import strip_upterm_blocks
+from user_startup import strip_upterm_blocks, without_rig_blocks
 import paths  # before ami: it sets the agent port of UPTERM_RIG
 import ami
 import verdicts
@@ -144,8 +144,13 @@ def put_vsh():
     rig's GG: is the fixture VTCX:gg, so a rig keeps whichever vsh was copied last until this runs. A rig
     without the fixture gets none (rig.py assigns GG: at boot only when VTC:gg/bin/sh is there)."""
     import rig
-    shutil.copyfile(ROOT / "build/amiga/vsh", VTC / "vsh")
-    rig.refresh_kit_shadows(VTC)   # GG:bin/sh among them
+    # every place rig.program_pairs gives vsh: VTC:vsh, the drawer's bin and GG:bin/sh. refresh_kit_shadows held the
+    # GG:bin/sh copy until fb06002e moved it into program_pairs, so put_vsh left the old GG:bin/sh in place since.
+    # A missing GG:bin/sh is still never created (the rig has no fixture GG: then).
+    for src, dst in rig.program_pairs(VTC, ROOT / "build/amiga"):
+        if src.name == "vsh" and (dst == VTC / "vsh" or dst.is_file()):
+            shutil.copyfile(src, dst)
+    rig.refresh_kit_shadows(VTC)
 
 ORIG_SIZE = 166972  # the 3.1 rig's ixemul.library 48.2 as released; main() takes the size the system has before Install (the 3.2 tree's differs)
 
@@ -824,7 +829,7 @@ def _main(dest=None):
     rc, out = run('GetEnv TERMINFO')
     check(rc == 0 and out.strip() == terminfo_before, 'after Uninstall: the TERMINFO from before Install is back', out)
     rc, out = run('Type S:User-Startup')
-    check(out == startup_before, 'after Uninstall: S:User-Startup as it was, byte for byte',
+    check(rig_blocks_out(out) == rig_blocks_out(startup_before),   # the rig's own block is not Install's 'after Uninstall: S:User-Startup as it was, byte for byte',
           'differs: %r vs %r' % (out[-80:], startup_before[-80:]))
     if not gg_before:
         check(run('Assign >NIL: GG: EXISTS')[0] != 0, 'after Uninstall: no GG: (Install made it)')
@@ -1258,6 +1263,12 @@ def first_difference(now, before):
     return 'identical'
 
 
+def rig_blocks_out(text):
+    """text without the rig's own ';BEGIN rig-upterm-shadows' block: rig.py writes it on every start and a reboot inside
+    a case re-inserts it after Install; Uninstall removes the kit's blocks only."""
+    return without_rig_blocks(text.encode('latin-1')).decode('latin-1')
+
+
 def check_startup_after_uninstall(ck, before_text, installed_text, now_text, leaves=(), what='after base Uninstall'):
     """S:User-Startup after the base Uninstall is as it was, byte for byte. leaves: names of blocks another
     installer wrote that Uninstall leaves in place on purpose (DOpus5: DOpus stays, owner rule); they are
@@ -1265,7 +1276,7 @@ def check_startup_after_uninstall(ck, before_text, installed_text, now_text, lea
     the block is in installed_text (S:User-Startup after the Installs) and was not in before_text. An add-on that
     found its program already there (DOpus5: assigned on a rig that boots its master's Directory Opus 5.82, whose
     block is ;BEGIN DirectoryOpus 5) writes no block, and none is demanded."""
-    a, b = before_text, now_text
+    a, b = rig_blocks_out(before_text), rig_blocks_out(now_text)   # the rig's own block is not Install's (INSTALL-CHECK39)
     for name in leaves:
         a, b = strip_block(a, name), strip_block(b, name)
     ck(b == a, '%s: S:User-Startup as it was, byte for byte' % what, first_difference(b, a))
@@ -1819,26 +1830,30 @@ def case_wasabi(ck):
     ck(rc2 == 0 and key2.strip() == key, 'wasabi: ENV:wasabi.key (what wasabid reads) is the same', '%d %r' % (rc2, key2))
     ck(key != rigkey, 'wasabi: the kit made a key of its own')
     ck(';BEGIN UP-Term wasabi' in run('Type S:User-Startup')[1], 'wasabi: the S:User-Startup block is there')
-    ck(run('Status >NIL: COM C:wasabid')[0] == 0, 'wasabi: Install started wasabid')
-    # restart on a port of its own: WASABI_PORT is held by the rig's wasabid (a second bind there fails and the
-    # ping reaches the rig's daemon, which answers 'bad key'), the Mac's end of 1234 is rig 1's
-    run('Status COM C:wasabid >T:wpid')
-    rc, pid = run('Type T:wpid')
-    pid = pid.split()[0] if pid.split() else ''
-    ck(pid.isdigit(), 'wasabi: found the running wasabid', pid)
-    run('Break %s C' % pid)
-    time.sleep(3)
-    run('Run >NIL: <NIL: C:wasabid %d name rig%d' % (KIT_WASABI_PORT, paths.RIG_N))
+    # One non-trial wasabid per Amiga (KIT-WASABI-DOUBLE): the rig's daemon (BOOTX:wasabid, started by the
+    # rig-wasabid block before the kit's blocks) owns the machine. The kit's C:wasabid, started by Install and at
+    # every boot, finds the port WASABI.daemon taken, prints 'already running' and exits with rc 5; before the
+    # singleton it bound the kit port (1234, rig 1's) beside it.
+    startup = run('Type S:User-Startup')[1]
+    ck(';BEGIN rig-wasabid' in startup and startup.index(';BEGIN rig-wasabid') < startup.index(';BEGIN UP-Term'),
+       'wasabi: the rig-wasabid block comes before the kit blocks in S:User-Startup')
+    ck(run('Status >NIL: COM C:wasabid')[0] != 0, 'wasabi: no C:wasabid daemon runs beside the rig daemon')
+    rc, out = run('C:wasabid')
+    ck(rc == 5 and 'already running' in out, 'wasabi: a second C:wasabid says already running and exits (rc 5)', '%d %r' % (rc, out))
+    # the kit binary still serves: a trial instance (exempt from the singleton) on a port of its own, since
+    # WASABI_PORT is held by the rig's wasabid (the ping would reach it and be answered 'bad key')
+    run('Run >NIL: <NIL: C:wasabid %d trial name rig%d' % (KIT_WASABI_PORT, paths.RIG_N))
     time.sleep(3)
     client = ROOT / 'build/wasabi/wasabi'
     r = subprocess.run([sys.executable, '-I', str(client), '--host', '127.0.0.1', '--port', str(KIT_WASABI_PORT),
                         '--key', key, '--plain', 'ping'], capture_output=True, text=True, timeout=60)
-    ck(r.returncode == 0 and 'wasabid 0.11b2' in (r.stdout + r.stderr), 'wasabi: the Mac client pings the kit-installed wasabid',
+    ck(r.returncode == 0 and 'wasabid 0.11b2' in (r.stdout + r.stderr), 'wasabi: the Mac client pings the kit-installed wasabid (trial)',
        (r.stdout + r.stderr)[:300])
     run('Status COM C:wasabid >T:wpid')
     pid = (run('Type T:wpid')[1].split() or [''])[0]
-    run('Break %s C' % pid)
-    time.sleep(3)
+    if pid.isdigit():
+        run('Break %s C' % pid)
+        time.sleep(3)
     base_uninstall(ck, before)
     ck(run('List >NIL: C:wasabid')[0] != 0, 'wasabi: after Uninstall C:wasabid is gone')
     ck(run('List >NIL: ENVARC:wasabi.key')[0] != 0, 'wasabi: after Uninstall the key is gone')

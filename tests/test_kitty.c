@@ -799,6 +799,714 @@ static void k29_virtual_placements_and_parents(void)
     vt_free(t);
 }
 
+
+/* K31: a=T,U=1 stores a virtual placement and puts nothing on the screen;
+ * cells of U+10EEEE with the row and column marks (U+0305 = 0, U+030D = 1),
+ * fg 38;5;7 = image id 7, each resolve to one tile of the 2 x 2 cell
+ * picture. Before K31 U=1 answered EINVAL:no unicode placeholders. */
+#define PH "\xF4\x8E\xBB\xAE"
+#define M0 "\xCC\x85"
+#define M1 "\xCC\x8D"
+static int ph_tile(vt_term *t, int col, int row, int *tc, int *tr, vt_image_view *v)
+{
+    return vt_cell_placeholder(t, row, col, v, tc, tr);
+}
+
+static void k31_placeholder_cells_resolve_to_tiles(void)
+{
+    vt_term *t = kitty_term(20, 8);
+    vt_image_view v, w;
+    int tc = -1, tr = -1, cx, cy;
+    unsigned long n0;
+    h_reply_clear();
+    h_put(t, "\033_Ga=T,U=1,i=7,f=24,s=2,v=2,c=2,r=2;");
+    h_put(t, rgb2x2);
+    h_put(t, "\033\\");
+    CHECK_STR(h_reply, "\033_Gi=7;OK\033\\");
+    vt_cursor(t, &cx, &cy);
+    CHECK_INT(cx, 0);
+    CHECK_INT(cy, 0);
+    CHECK(!vt_row_image(t, 0, 0, &v)); /* nothing on the cells */
+    h_put(t, "\033[2;1H\033[38;5;7m" PH M0 M0 PH M0 M1 "\033[3;1H" PH M1 M0 PH M1 M1);
+    n0 = vt_kitty_placeholders(t);
+    CHECK(ph_tile(t, 0, 1, &tc, &tr, &v));
+    CHECK_INT(tc, 0);
+    CHECK_INT(tr, 0);
+    CHECK_INT(v.w, 4); /* scaled to 2 x 2 cells of 2 x 6 pixels */
+    CHECK_INT(v.h, 12);
+    CHECK_INT(pixel(&v, 0, 0), 0xFF0000); /* red quarter */
+    CHECK(ph_tile(t, 1, 1, &tc, &tr, &w));
+    CHECK_INT(tc, 1);
+    CHECK_INT(tr, 0);
+    CHECK_INT(pixel(&w, tc * 2, tr * 6), 0x00FF00);
+    CHECK(ph_tile(t, 0, 2, &tc, &tr, &w));
+    CHECK_INT(pixel(&w, tc * 2, tr * 6), 0x0000FF);
+    CHECK(ph_tile(t, 1, 2, &tc, &tr, &w));
+    CHECK_INT(tc, 1);
+    CHECK_INT(tr, 1);
+    CHECK_INT(pixel(&w, tc * 2, tr * 6), 0xFFFFFF);
+    CHECK_INT((long)(vt_kitty_placeholders(t) - n0), 4); /* the sentinel: four cells resolved */
+    /* marks only on the first cell: the next two are column 1, then past the picture */
+    h_put(t, "\033[5;1H" PH M0 M0 PH PH);
+    CHECK(ph_tile(t, 1, 4, &tc, &tr, &w));
+    CHECK_INT(tc, 1);
+    CHECK_INT(tr, 0);
+    CHECK(!ph_tile(t, 2, 4, &tc, &tr, &w));
+    /* another colour is another image: nothing known as 8 */
+    h_put(t, "\033[7;1H\033[38;5;8m" PH M0 M0);
+    CHECK(!ph_tile(t, 0, 6, &tc, &tr, &w));
+    /* d=a leaves the virtual placement; d=i,i=7 takes it */
+    h_put(t, "\033_Ga=d,d=a\033\\");
+    CHECK(ph_tile(t, 0, 1, &tc, &tr, &w));
+    h_put(t, "\033_Ga=d,d=i,i=7\033\\");
+    CHECK(!ph_tile(t, 0, 1, &tc, &tr, &w));
+    vt_free(t);
+}
+
+/* the third mark is the id's high byte: fg RGB 0,0,7 plus U+030D (1) is id 0x01000007 */
+static void k31_third_mark_is_the_ids_high_byte(void)
+{
+    vt_term *t = kitty_term(20, 8);
+    vt_image_view v;
+    int tc, tr;
+    h_put(t, "\033_Ga=T,U=1,i=16777223,f=24,s=2,v=2;");
+    h_put(t, rgb2x2);
+    h_put(t, "\033\\");
+    h_put(t, "\033[2;1H\033[38;2;0;0;7m" PH M0 M0 M1);
+    CHECK(vt_cell_placeholder(t, 1, 0, &v, &tc, &tr));
+    h_put(t, "\033[3;1H" PH M0 M0); /* without it: id 7, unknown */
+    CHECK(!vt_cell_placeholder(t, 2, 0, &v, &tc, &tr));
+    vt_free(t);
+}
+
+/* K30: the images of a row come out by z, then i=, whatever their age.
+ * Before K30 they came in age order (5, 2, 9, 7 here) and had no z. */
+static void k30_row_images_go_by_z_then_id(void)
+{
+    vt_term *t = kitty_term(20, 8);
+    vt_image_view v[4];
+    int i;
+    /* four cells of one row: a picture written over a picture's cell would replace it */
+    put_at(t, 1, 1, "i=5,p=1,z=3");
+    put_at(t, 2, 1, "i=2,p=1,z=3");
+    put_at(t, 3, 1, "i=9,p=1,z=-1");
+    put_at(t, 4, 1, "i=7,p=1");
+    for (i = 0; i < 4; i++)
+        CHECK(vt_row_image(t, 0, i, &v[i]));
+    CHECK_INT((int)v[0].z, -1);
+    CHECK_INT((int)v[1].z, 0);
+    CHECK_INT((int)v[2].z, 3);
+    CHECK_INT((int)v[3].z, 3);
+    CHECK(v[2].serial > v[3].serial); /* i=2 is the newer, yet goes first */
+    vt_free(t);
+}
+
+static int is_under(vt_term *t, int x, int y)
+{
+    return (h_cell(t, x, y)->pad & VT_CELL_UNDER) != 0;
+}
+
+/* K30: a z<0 picture leaves the text in its cells, and text written or
+ * erased over it later keeps the picture under it. Before K30 the
+ * picture blanked the cells and the text took its place. */
+static void k30_text_over_a_picture_below_keeps_it(void)
+{
+    vt_term *t = kitty_term(20, 8);
+    vt_image_view v;
+    h_put(t, "\033[1;1HXY");
+    put_at(t, 1, 1, "i=1,p=1,z=-1,c=6");
+    CHECK(h_cell(t, 0, 0)->ch == 'X'); /* the text stays */
+    CHECK(h_cell(t, 1, 0)->ch == 'Y');
+    CHECK(is_under(t, 0, 0) && is_under(t, 5, 0) && !is_under(t, 6, 0));
+    CHECK(!is_image(t, 0, 0));
+    h_put(t, "\033[1;3Ha\033[31mb\033[0mcdef"); /* one cell, a run, the colour path */
+    CHECK(h_cell(t, 2, 0)->ch == 'a');
+    CHECK(h_cell(t, 3, 0)->ch == 'b');
+    CHECK(is_under(t, 2, 0) && is_under(t, 3, 0) && is_under(t, 5, 0));
+    h_put(t, "\033[1;5H\033[K"); /* erase to the end: the picture stays */
+    CHECK(h_cell(t, 4, 0)->ch == ' ');
+    CHECK(is_under(t, 4, 0) && is_under(t, 5, 0));
+    h_put(t, "\033[1;1H\033[2X"); /* erase characters */
+    CHECK(is_under(t, 0, 0));
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT((int)v.z, -1);
+    h_put(t, "\033[2K"); /* the whole line: the picture goes, as for z>=0 */
+    CHECK(!vt_row_image(t, 0, 0, &v));
+    vt_free(t);
+}
+
+/* K40d (O6): a kitty picture with z >= 0 lies over the text as in kitty:
+ * its cells keep their glyph and colours (its translucent pixels show
+ * them) and gain VT_CELL_IMAGE. Text written there later keeps the picture
+ * over it, as in kitty (D12). A sixel over the same text still blanks its cells. Before
+ * K40d the kitty picture blanked the cells to the default colours too. */
+static void k40d_kitty_front_picture_keeps_the_cells(void)
+{
+    vt_term *t = kitty_term(20, 8);
+    vt_image_view v;
+    h_put(t, "\033[1;1H\033[31;44mXY\033[0m");
+    put_at(t, 1, 1, "i=1,p=1,z=5,c=4");
+    CHECK(is_image(t, 0, 0) && is_image(t, 3, 0) && !is_image(t, 4, 0) && !is_under(t, 0, 0));
+    CHECK(h_cell(t, 0, 0)->ch == 'X'); /* the glyph stays */
+    CHECK(h_cell(t, 1, 0)->ch == 'Y');
+    CHECK(h_cell(t, 0, 0)->fg == 1); /* and its colours */
+    CHECK(h_cell(t, 0, 0)->bg == 4);
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT((int)v.z, 5);
+    h_put(t, "\033[1;2Hq"); /* D12: text written over the picture keeps the picture over it */
+    CHECK(h_cell(t, 1, 0)->ch == 'q' && is_image(t, 1, 0));
+    CHECK(is_image(t, 0, 0) && is_image(t, 2, 0));
+    vt_free(t);
+    /* text written into a z=1 picture's cells later: the cells keep VT_CELL_IMAGE and store the glyphs
+     * (the one-character, run and put_char paths all keep it) */
+    t = kitty_term(20, 8);
+    put_at(t, 1, 1, "i=1,p=1,z=1,c=6,r=2");
+    CHECK(is_image(t, 0, 0) && is_image(t, 5, 1));
+    h_put(t, "\033[1;1Hab");
+    h_put(t, "\033[2;1H\033[31mc\033[0m\033[2;3H\xe2\x82\xac");
+    CHECK(h_cell(t, 0, 0)->ch == 'a' && is_image(t, 0, 0));
+    CHECK(h_cell(t, 1, 0)->ch == 'b' && is_image(t, 1, 0));
+    CHECK(h_cell(t, 0, 1)->ch == 'c' && is_image(t, 0, 1));
+    CHECK(vt_row_image(t, 0, 0, &v) && v.z == 1);
+    h_put(t, "\033_Ga=d,d=a,q=2\033\\"); /* a=d takes the picture away */
+    CHECK(!vt_row_image(t, 0, 0, &v));
+    CHECK(h_cell(t, 0, 0)->ch == 'a');
+    vt_free(t);
+    /* a sixel over the same text: the cells are blanks in the default colours */
+    t = kitty_term(20, 8);
+    h_put(t, "\033[1;1H\033[31;44mXY\033[0m\033[1;1H\033Pq#0;2;100;0;0#0~~~~~~~~\033\\");
+    CHECK(is_image(t, 0, 0) && is_image(t, 1, 0));
+    CHECK(h_cell(t, 0, 0)->ch == ' ' && h_cell(t, 1, 0)->ch == ' ');
+    CHECK(h_cell(t, 0, 0)->bg == VT_COLOR_DEFAULT);
+    vt_free(t);
+}
+
+/* ---- K34: animation frames (a=f) ---- */
+
+/* cube indices of the 2 x 2 picture's colours */
+#define K34_RED 181
+#define K34_GREEN 31
+#define K34_BLUE 6
+#define K34_WHITE 216
+
+static void k34_frames_build_on_each_other(void)
+{
+    vt_term *t = kitty_term(10, 5);
+    unsigned long n0 = vt_kitty_frames(t);
+    h_reply_clear();
+    h_put(t, "\033_Ga=t,i=5,f=24,s=2,v=2;/wAAAP8AAAD/////\033\\");
+    CHECK_INT((long)(vt_kitty_frames(t) - n0), 0); /* a plain picture has no frame list */
+    /* frame 2: the root plus a blue pixel at (0,0) */
+    h_reply_clear();
+    h_put(t, "\033_Ga=f,i=5,c=1,f=24,s=1,v=1,x=0,y=0,z=100;AAD/\033\\");
+    CHECK_STR(h_reply, "\033_Gi=5;OK\033\\");
+    /* frame 3 on frame 2: a red pixel at (1,1) */
+    h_reply_clear();
+    h_put(t, "\033_Ga=f,i=5,c=2,f=24,s=1,v=1,x=1,y=1;/wAA\033\\");
+    CHECK_STR(h_reply, "\033_Gi=5;OK\033\\");
+    CHECK_INT((long)(vt_kitty_frames(t) - n0), 3); /* the sentinel: root and two frames */
+    CHECK_INT(vt_kitty_frame_px(t, 5, 1, 0, 0), K34_RED);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 1, 1, 1), K34_WHITE);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 2, 0, 0), K34_BLUE);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 2, 1, 0), K34_GREEN);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 2, 1, 1), K34_WHITE);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 3, 0, 0), K34_BLUE);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 3, 1, 0), K34_GREEN);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 3, 0, 1), K34_BLUE);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 3, 1, 1), K34_RED); /* frame 2 plus the rectangle */
+    CHECK_INT(vt_kitty_frame_px(t, 5, 4, 0, 0), -1);
+    /* a half-clear rectangle pixel blends (keeps the base), X=1 overwrites with clear */
+    h_reply_clear();
+    h_put(t, "\033_Ga=f,i=5,r=3,f=32,s=1,v=1,x=0,y=0;/wAA/w==\033\\");
+    CHECK_INT(vt_kitty_frame_px(t, 5, 3, 0, 0), K34_RED); /* alpha 255 overwrites */
+    h_put(t, "\033_Ga=f,i=5,r=3,f=32,s=1,v=1,x=1,y=0;/wAAAA==\033\\");
+    CHECK_INT(vt_kitty_frame_px(t, 5, 3, 1, 0), K34_GREEN); /* alpha 0 keeps the base */
+    h_put(t, "\033_Ga=f,i=5,r=3,f=32,s=1,v=1,x=1,y=0,X=1;/wAAAA==\033\\");
+    CHECK_INT(vt_kitty_frame_px(t, 5, 3, 1, 0), 0); /* X=1 writes the clear pixel */
+    /* errors */
+    h_reply_clear();
+    h_put(t, "\033_Ga=f,i=9,f=24,s=1,v=1;AAD/\033\\");
+    CHECK_STR(h_reply, "\033_Gi=9;ENOENT:no such image\033\\");
+    h_reply_clear();
+    h_put(t, "\033_Ga=f,i=5,f=24,s=2,v=1,x=1,y=0;AAD/AAD/\033\\");
+    CHECK_STR(h_reply, "\033_Gi=5;EINVAL:frame outside the picture\033\\");
+    /* d=f drops the frames and keeps the picture; d=F also frees it */
+    h_put(t, "\033_Ga=d,d=f,i=5\033\\");
+    CHECK_INT((long)(vt_kitty_frames(t) - n0), 0);
+    CHECK_INT(vt_images(t), 1);
+    h_put(t, "\033_Ga=f,i=5,f=24,s=1,v=1;AAD/\033\\");
+    CHECK_INT((long)(vt_kitty_frames(t) - n0), 2);
+    h_put(t, "\033_Ga=d,d=F,i=5\033\\");
+    CHECK_INT((long)(vt_kitty_frames(t) - n0), 0);
+    CHECK_INT(vt_images(t), 0);
+    vt_free(t);
+}
+
+static void k34_frames_stop_at_the_animation_memory(void)
+{
+    vt_term *t = kitty_term(10, 5);
+    int j;
+    h_put(t, "\033_Ga=t,i=7,f=24,s=1000,v=1000,o=z;");
+    for (j = 0; black1000_z[j]; j++)
+        h_put(t, black1000_z[j]);
+    h_put(t, "\033\\");
+    h_reply_clear();
+    /* the root's canvas and one frame are 2,000,000 of VT_ANIM_MEMORY (2 MB) */
+    h_put(t, "\033_Ga=f,i=7,f=24,s=1,v=1;AAD/\033\\");
+    CHECK_STR(h_reply, "\033_Gi=7;OK\033\\");
+    h_reply_clear();
+    h_put(t, "\033_Ga=f,i=7,f=24,s=1,v=1;AAD/\033\\");
+    CHECK_STR(h_reply, "\033_Gi=7;ENOSPC:no room for frames\033\\");
+    CHECK_INT((long)vt_kitty_frames(t), 2);
+    h_put(t, "\033_Ga=d,d=f,i=7\033\\");
+    h_reply_clear();
+    h_put(t, "\033_Ga=f,i=7,f=24,s=1,v=1;AAD/\033\\"); /* the budget came back */
+    CHECK_STR(h_reply, "\033_Gi=7;OK\033\\");
+    vt_free(t);
+}
+
+
+/* ---- K38: the RGBA store (vt_set_image_rgb) ---- */
+
+static void k38_b64(const unsigned char *d, long n, char *o)
+{
+    static const char a[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    long i;
+    for (i = 0; i < n; i += 3) {
+        unsigned long v = (unsigned long)d[i] << 16 | (i + 1 < n ? (unsigned long)d[i + 1] << 8 : 0) |
+                          (i + 2 < n ? d[i + 2] : 0);
+        *o++ = a[v >> 18 & 63];
+        *o++ = a[v >> 12 & 63];
+        *o++ = i + 1 < n ? a[v >> 6 & 63] : '=';
+        *o++ = i + 2 < n ? a[v & 63] : '=';
+    }
+    *o = 0;
+}
+
+/* 64 x 64 RGBA: column 0 clear (one pixel at alpha 127), the others opaque, R from x, G from y, B fixed:
+ * columns 1-63 are 4032 distinct colours */
+static void k38_send_gradient(vt_term *t, const char *keys)
+{
+    static unsigned char px[64 * 64 * 4];
+    static char b64[64 * 64 * 4 / 3 * 4 + 8];
+    char hd[96];
+    int x, y;
+    for (y = 0; y < 64; y++)
+        for (x = 0; x < 64; x++) {
+            unsigned char *q = px + (y * 64 + x) * 4;
+            q[0] = (unsigned char)(x * 4);
+            q[1] = (unsigned char)(y * 4);
+            q[2] = 0x80;
+            q[3] = x ? 255 : (y == 63 ? 127 : 0);
+        }
+    k38_b64(px, sizeof(px), b64);
+    snprintf(hd, sizeof(hd), "\033_G%s;", keys);
+    h_put(t, hd);
+    h_put(t, b64);
+    h_put(t, "\033\\");
+}
+
+static vt_term *k38_term(int rgb)
+{
+    vt_term *t = h_new(20, 10, VT_XTERM);
+    vt_set_cell_pixels(t, 8, 16);
+    vt_set_image_rgb(t, rgb);
+    return t;
+}
+
+static int k38_distinct(const vt_image_view *v, int x0, int x1)
+{
+    static unsigned long seen[4096];
+    int x, y, n = 0, i;
+    for (y = 0; y < v->h; y++)
+        for (x = x0; x < x1; x++) {
+            const unsigned char *q = v->pix + (y * v->w + x) * 4;
+            unsigned long c = (unsigned long)q[0] << 16 | q[1] << 8 | q[2];
+            for (i = 0; i < n && seen[i] != c; i++)
+                ;
+            if (i == n)
+                seen[n++] = c;
+        }
+    return n;
+}
+
+static void k38_rgb_store_keeps_every_colour_and_the_alpha_byte(void)
+{
+    vt_term *t = k38_term(1);
+    vt_image_view v;
+    int x, y, bad = 0;
+    k38_send_gradient(t, "a=T,i=5,f=32,s=64,v=64,C=1");
+    CHECK_INT((long)vt_kitty_rgb_made(t), 2); /* the stored root and the placement */
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(v.fmt, 1);
+    CHECK_INT(v.opaque, 0);
+    CHECK_INT(v.w, 64);
+    for (y = 0; y < 64; y++)
+        for (x = 1; x < 64; x++) {
+            const unsigned char *q = v.pix + (y * 64 + x) * 4;
+            if (q[0] != x * 4 || q[1] != y * 4 || q[2] != 0x80 || q[3] != 255)
+                bad++;
+        }
+    CHECK_INT(bad, 0);
+    CHECK_INT(k38_distinct(&v, 1, 64), 4032);
+    CHECK_INT(v.pix[3], 0);                    /* column 0 clear */
+    CHECK_INT(v.pix[(63 * 64) * 4 + 3], 127);  /* a half-clear pixel keeps its byte (owner O2) */
+    CHECK_INT(v.pix[4 + 3], 255);              /* column 1 opaque */
+    CHECK_INT(vt_image_memory(t), 2 * 16384);
+    vt_free(t);
+}
+
+static void k38_index_mode_is_unchanged(void)
+{
+    vt_term *t = k38_term(0);
+    vt_image_view v;
+    k38_send_gradient(t, "a=T,i=5,f=32,s=64,v=64,C=1");
+    CHECK_INT((long)vt_kitty_rgb_made(t), 0);
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(v.fmt, 0);
+    CHECK(v.npal <= 256);
+    CHECK_INT(vt_image_memory(t), 2 * 4096);
+    vt_free(t);
+}
+
+static void k38_an_opaque_picture_says_so_and_a_placement_scales_the_rgba(void)
+{
+    vt_term *t = k38_term(1);
+    vt_image_view v;
+    h_put(t, "\033_Ga=T,f=24,s=2,v=2;");
+    h_put(t, rgb2x2);
+    h_put(t, "\033\\");
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(v.fmt, 1);
+    CHECK_INT(v.opaque, 1);
+    vt_free(t);
+    /* a=p c=4 (cell 8 wide): 32 x 32, every other source pixel, columns 1-31 distinct */
+    t = k38_term(1);
+    k38_send_gradient(t, "a=t,i=5,f=32,s=64,v=64");
+    h_put(t, "\033[5;1H\033_Ga=p,i=5,c=4,C=1\033\\");
+    CHECK_INT((long)vt_kitty_rgb_made(t), 2);
+    CHECK(vt_row_image(t, 4, 0, &v));
+    CHECK_INT(v.w, 32);
+    CHECK_INT(v.h, 32);
+    CHECK_INT(k38_distinct(&v, 1, 32), 992);
+    vt_free(t);
+}
+
+static void k38_budget_is_x4_with_the_same_pixel_capacity(void)
+{
+    static const char *const mode[2] = { "index", "rgb" };
+    int m;
+    for (m = 0; m < 2; m++) {
+        long n = 1024L * 1025L * 3L;
+        unsigned char *raw = (unsigned char *)calloc(n, 1);
+        char *b = (char *)malloc(n / 3 * 4 + 8);
+        char *msg = (char *)malloc(n / 3 * 4 + 128);
+        vt_term *t = k38_term(m);
+        k38_b64(raw, 1024L * 1024L * 3L, b);
+        snprintf(msg, n / 3 * 4 + 128, "\033_Ga=t,i=9,f=24,s=1024,v=1024;%s\033\\", b);
+        h_reply_clear();
+        h_put(t, msg);
+        if (strcmp(h_reply, "\033_Gi=9;OK\033\\"))
+            h_failures++, printf("[FAIL] %s mode: 1024x1024 reply '%s'\n", mode[m], h_reply);
+        h_checks++;
+        CHECK_INT(vt_image_memory(t), 1024L * 1024L * (m ? 4 : 1));
+        k38_b64(raw, n, b);
+        snprintf(msg, n / 3 * 4 + 128, "\033_Ga=t,i=10,f=24,s=1024,v=1025;%s\033\\", b);
+        h_reply_clear();
+        h_put(t, msg);
+        if (strncmp(h_reply, "\033_Gi=10;ENOMEM", 14))
+            h_failures++, printf("[FAIL] %s mode: 1024x1025 reply '%s'\n", mode[m], h_reply);
+        h_checks++;
+        vt_free(t);
+        free(raw);
+        free(b);
+        free(msg);
+    }
+}
+
+static void k38_switching_off_converts_and_on_leaves_indices(void)
+{
+    vt_term *t = k38_term(1);
+    vt_image_view v;
+    k38_send_gradient(t, "a=T,i=5,f=32,s=64,v=64,C=1");
+    CHECK_INT(vt_image_memory(t), 2 * 16384);
+    vt_set_image_rgb(t, 0);
+    CHECK_INT(vt_image_memory(t), 2 * 4096);
+    CHECK_INT(vt_images(t), 2);
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(v.fmt, 0);
+    CHECK(v.npal <= 256);
+    CHECK_INT(v.w, 64);
+    vt_set_image_rgb(t, 1); /* off -> on: the old picture stays indexed */
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(v.fmt, 0);
+    CHECK_INT(vt_image_memory(t), 2 * 4096);
+    vt_free(t);
+}
+
+/* ---- K35: animation control (a=a), compose (a=c), the clock ---- */
+
+/* a 2 x 2 picture (red green / blue white) with frame 2 = root plus a blue pixel at (0,0) and frame 3 on
+ * frame 2 with a red pixel at (1,1); placed on the screen */
+static vt_term *k35_term(void)
+{
+    vt_term *t = kitty_term(10, 5);
+    h_put(t, "\033_Ga=t,i=5,f=24,s=2,v=2;/wAAAP8AAAD/////\033\\");
+    h_put(t, "\033_Ga=f,i=5,c=1,f=24,s=1,v=1,x=0,y=0,z=40;AAD/\033\\");
+    return t;
+}
+
+/* K36: kitty scan_active_animations switches once per wake and sets shown_at = now: a late wake drops the lateness */
+static void k36_a_late_tick_switches_once_and_never_catches_up(void)
+{
+    vt_term *t = k35_term();
+    unsigned long sw0 = vt_kitty_frame_switches(t);
+    h_put(t, "\033_Ga=a,i=5,s=3\033\\");
+    CHECK_INT(vt_anim_tick(t, 0), 40000);
+    CHECK_INT(vt_anim_tick(t, 100000), 40000); /* 100 ms late: one switch, the next frame a whole gap away */
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1);
+    CHECK_INT(vt_anim_tick(t, 0), 40000); /* the lateness is gone, not carried */
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1);
+    vt_free(t);
+}
+
+static void k35_a_a_keys_move_the_state(void)
+{
+    vt_term *t = k35_term();
+    unsigned long sw0 = vt_kitty_frame_switches(t);
+    h_reply_clear();
+    h_put(t, "\033_Ga=a,i=5,s=3\033\\");
+    CHECK_STR(h_reply, "\033_Gi=5;OK\033\\");
+    CHECK_INT(vt_anim_tick(t, 0), 40000);
+    CHECK_INT(vt_anim_tick(t, 40000), 40000); /* frame 2 now, the next due in 40 ms */
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1);
+    CHECK_INT(vt_anim_tick(t, 40000), 40000); /* loops back to frame 1 */
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 2);
+    /* s=1 stops: nothing runs */
+    h_put(t, "\033_Ga=a,i=5,s=1\033\\");
+    CHECK_INT(vt_anim_tick(t, 40000), -1);
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 2);
+    /* r= with z= sets a frame's gap, the root's included */
+    h_put(t, "\033_Ga=a,i=5,s=3,r=1,z=10\033\\");
+    CHECK_INT(vt_anim_tick(t, 0), 10000);
+    CHECK_INT(vt_anim_tick(t, 10000), 40000); /* on frame 2, gap 40 */
+    h_put(t, "\033_Ga=a,i=5,s=1\033\\");
+    /* c= shows a frame at once, no tick, and counts as a switch */
+    sw0 = vt_kitty_frame_switches(t);
+    h_put(t, "\033_Ga=a,i=5,c=1\033\\");
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1); /* the clock left it on frame 2 */
+    h_put(t, "\033_Ga=a,i=5,c=1\033\\");
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1); /* already frame 1: no switch */
+    vt_free(t);
+}
+
+static void k35_loops_wait_and_errors(void)
+{
+    vt_term *t = k35_term();
+    unsigned long sw0 = vt_kitty_frame_switches(t);
+    /* v=2: one loop, then it stops on the last frame */
+    h_put(t, "\033_Ga=a,i=5,s=3,v=2\033\\");
+    vt_anim_tick(t, 40000);
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1);
+    CHECK_INT(vt_anim_tick(t, 40000), -1); /* stopped at the end of its one loop */
+    CHECK_INT(vt_anim_tick(t, 400000), -1);
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1);
+    /* s=2 waits at the last frame and goes on when a frame arrives */
+    h_put(t, "\033_Ga=a,i=5,s=2,c=1\033\\");
+    sw0 = vt_kitty_frame_switches(t);
+    vt_anim_tick(t, 40000);
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1);
+    CHECK_INT(vt_anim_tick(t, 400000), -1); /* at the end: waits */
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1);
+    h_put(t, "\033_Ga=f,i=5,c=2,f=24,s=1,v=1,x=1,y=1;/wAA\033\\");
+    CHECK_INT(vt_anim_tick(t, 1000), -1); /* frame 3 is the last again: waits */
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 2); /* frame 3 shown */
+    /* gapless frames are never shown */
+    h_put(t, "\033_Ga=a,i=5,s=3,c=1,r=2,z=-1\033\\");
+    sw0 = vt_kitty_frame_switches(t);
+    vt_anim_tick(t, 40000);
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1); /* 1 -> 3 */
+    /* errors */
+    h_reply_clear();
+    h_put(t, "\033_Ga=a,i=9,s=3\033\\");
+    CHECK_STR(h_reply, "\033_Gi=9;ENOENT:no such image\033\\");
+    h_reply_clear();
+    h_put(t, "\033_Ga=a,i=5,c=9\033\\");
+    CHECK_STR(h_reply, "\033_Gi=5;ENOENT:no such frame\033\\");
+    h_put(t, "\033_Ga=t,i=6,f=24,s=1,v=1;AAD/\033\\");
+    h_reply_clear();
+    h_put(t, "\033_Ga=a,i=6,s=3\033\\");
+    CHECK_STR(h_reply, "\033_Gi=6;ENOENT:the picture has no frames\033\\");
+    vt_free(t);
+}
+
+static void k35_a_c_composes_a_rectangle(void)
+{
+    vt_term *t = k35_term();
+    h_put(t, "\033_Ga=f,i=5,c=2,f=24,s=1,v=1,x=1,y=1;/wAA\033\\"); /* frame 3 */
+    h_reply_clear();
+    /* frame 3's pixel (1,1) red onto frame 1 at (0,0) */
+    h_put(t, "\033_Ga=c,i=5,r=3,c=1,X=1,Y=1,x=0,y=0,w=1,h=1\033\\");
+    CHECK_STR(h_reply, "\033_Gi=5;OK\033\\");
+    CHECK_INT(vt_kitty_frame_px(t, 5, 1, 0, 0), K34_RED);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 1, 1, 0), K34_GREEN); /* the rest stays */
+    /* frame 2's blue (0,0) onto frame 1's (1,1) */
+    h_put(t, "\033_Ga=c,i=5,r=2,c=1,X=0,Y=0,x=1,y=1,w=1,h=1\033\\");
+    CHECK_INT(vt_kitty_frame_px(t, 5, 1, 1, 1), K34_BLUE);
+    /* errors */
+    h_reply_clear();
+    h_put(t, "\033_Ga=c,i=5,r=2,c=7,w=1,h=1\033\\");
+    CHECK_STR(h_reply, "\033_Gi=5;ENOENT:no such frame\033\\");
+    h_reply_clear();
+    h_put(t, "\033_Ga=c,i=9,r=2,c=1\033\\");
+    CHECK_STR(h_reply, "\033_Gi=9;ENOENT:no such image\033\\");
+    h_reply_clear();
+    h_put(t, "\033_Ga=c,i=5,r=2,c=1,x=1,y=1,w=2,h=2\033\\");
+    CHECK_STR(h_reply, "\033_Gi=5;EINVAL:rectangle outside the picture\033\\");
+    h_reply_clear();
+    h_put(t, "\033_Ga=c,i=5,r=1,c=1,X=0,Y=0,x=1,y=0,w=2,h=1\033\\");
+    CHECK_STR(h_reply, "\033_Gi=5;EINVAL:rectangle outside the picture\033\\");
+    h_reply_clear();
+    h_put(t, "\033_Ga=c,i=5,r=1,c=1,X=0,Y=0,x=1,y=1,w=2,h=2\033\\"); /* overlaps itself (and is out) */
+    CHECK_STR(h_reply, "\033_Gi=5;EINVAL:rectangle outside the picture\033\\");
+    h_reply_clear();
+    h_put(t, "\033_Ga=c,i=5,r=1,c=1,X=0,Y=0,x=0,y=0,w=1,h=2\033\\"); /* the same rectangle: overlap */
+    CHECK_STR(h_reply, "\033_Gi=5;EINVAL:rectangles overlap\033\\");
+    vt_free(t);
+}
+
+/* THE reachability test: the byte stream of a program puts a picture, animates it, and the clock changes
+ * the pixels on the screen and damages its rows */
+static void k35_the_clock_changes_the_placement(void)
+{
+    vt_term *t = k35_term();
+    vt_image_view v;
+    unsigned long sw0 = vt_kitty_frame_switches(t);
+    int d0;
+    h_put(t, "\033_Ga=p,i=5\033\\"); /* placed: root frame, 2 x 2 */
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(pixel(&v, 0, 0), 0xFF0000);
+    h_put(t, "\033_Ga=a,i=5,s=3\033\\");
+    vt_flush(t);
+    d0 = h_damage_calls;
+    vt_anim_tick(t, 40000);
+    vt_flush(t);
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1); /* sentinel: the clock ran */
+    CHECK(h_damage_calls > d0);                              /* the rows of the placement were marked */
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(pixel(&v, 0, 0), 0x0000FF); /* frame 2: blue at (0,0) */
+    CHECK_INT(pixel(&v, 1, 1), 0xFFFFFF);
+    /* editing the root (r=1) while it is shown reaches the placement without a tick */
+    h_put(t, "\033_Ga=a,i=5,s=1,c=1\033\\");
+    h_put(t, "\033_Ga=f,i=5,r=1,f=24,s=1,v=1,x=1,y=0;/wAA\033\\");
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(pixel(&v, 1, 0), 0xFF0000);
+    vt_free(t);
+}
+
+/* K36: the profile key image-animation = off reaches the engine as vt_set_animation(t, 0): the clock
+ * switches nothing and says nothing runs; a client's a=a c= still switches. */
+static void k36_image_animation_off_stops_the_clock(void)
+{
+    vt_term *t = k35_term();
+    unsigned long sw0 = vt_kitty_frame_switches(t);
+    h_put(t, "\033_Ga=a,i=5,s=3\033\\");
+    vt_set_animation(t, 0);
+    CHECK_INT(vt_anim_tick(t, 40000), -1);
+    CHECK_INT(vt_anim_tick(t, 400000), -1);
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 0); /* no frame advanced */
+    h_put(t, "\033_Ga=a,i=5,c=2\033\\");
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1); /* the client still switches */
+    vt_set_animation(t, 1);
+    CHECK_INT(vt_anim_tick(t, 0), 40000);
+    CHECK_INT(vt_anim_tick(t, 40000), 40000);
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 2); /* on again: the sentinel moves */
+    vt_free(t);
+}
+
+/* ---- K39: frames of an RGB picture are RGBA canvases ---- */
+
+/* 200 x 200 canvases: 160,000 B each in RGB mode, 40,000 in index mode, against 8 MB / 2 MB:
+ * 52 canvases (the root's and 51 frames) fit in both modes, the 53rd answers ENOSPC */
+static void k39_frame_canvases_stop_at_the_x4_budget_in_both_modes(void)
+{
+    static const char *const mode[2] = { "index", "rgb" };
+    int m;
+    for (m = 0; m < 2; m++) {
+        unsigned char *raw = (unsigned char *)calloc(200L * 200L * 4L, 1);
+        char *b = (char *)malloc(200L * 200L * 4L / 3 * 4 + 8);
+        char *msg = (char *)malloc(200L * 200L * 4L / 3 * 4 + 128);
+        vt_term *t = k38_term(m);
+        int j, bad = 0;
+        k38_b64(raw, 200L * 200L * 4L, b);
+        snprintf(msg, 200L * 200L * 4L / 3 * 4 + 128, "\033_Ga=t,i=7,f=32,s=200,v=200;%s\033\\", b);
+        h_put(t, msg);
+        for (j = 0; j < 51; j++) { /* frames 2..52 */
+            h_reply_clear();
+            h_put(t, "\033_Ga=f,i=7,f=32,s=1,v=1;EjRW/w==\033\\");
+            if (strcmp(h_reply, "\033_Gi=7;OK\033\\"))
+                bad++;
+        }
+        h_checks++;
+        if (bad)
+            h_failures++, printf("[FAIL] %s mode: %d of 51 frames refused\n", mode[m], bad);
+        CHECK_INT((long)vt_kitty_frames(t), 52);
+        CHECK_INT((long)vt_kitty_rgba_frames(t), m ? 52 : 0); /* sentinel: the root's canvas and 51 frames */
+        h_reply_clear();
+        h_put(t, "\033_Ga=f,i=7,f=32,s=1,v=1;EjRW/w==\033\\"); /* the 53rd canvas */
+        CHECK_STR(h_reply, "\033_Gi=7;ENOSPC:no room for frames\033\\");
+        CHECK_INT((long)vt_kitty_frames(t), 52);
+        CHECK_INT((long)vt_kitty_rgba_frames(t), m ? 52 : 0);
+        vt_free(t);
+        free(raw);
+        free(b);
+        free(msg);
+    }
+}
+
+/* frame 2 = root + a 1-px rectangle in exact RGB with alpha, frame 3 = frame 2 + another (a=f c=2), a=c copies
+ * a rectangle with its alpha; a pixel under half alpha keeps the base; the clock shows frame 2 in the placement */
+static void k39_rgba_frames_keep_exact_bytes_and_alpha(void)
+{
+    vt_term *t = k38_term(1);
+    vt_image_view v;
+    unsigned long sw0, n0;
+    /* root 2x2: 0x112233 FF, 0x445566 80, 0x778899 FF, 0xAABBCC 10 */
+    h_put(t, "\033_Ga=T,i=5,f=32,s=2,v=2,C=1;ESIz/0RVZoB3iJn/qrvMEA==\033\\");
+    n0 = vt_kitty_rgba_frames(t);
+    h_put(t, "\033_Ga=f,i=5,c=1,f=32,s=1,v=1,x=1,y=1,z=40;EjRW/w==\033\\"); /* frame 2: (1,1) = 0x123456 FF */
+    h_put(t, "\033_Ga=f,i=5,c=2,f=32,s=1,v=1,x=0,y=0;AQID7w==\033\\"); /* frame 3 on 2: alpha 0xEF at (0,0) */
+    h_put(t, "\033_Ga=f,i=5,c=2,f=32,s=1,v=1,x=1,y=0;/wAAIA==\033\\"); /* frame 4 on 2: alpha 0x20, base kept */
+    CHECK_INT((long)(vt_kitty_rgba_frames(t) - n0), 4); /* root canvas + frames 2, 3, 4 */
+    CHECK_INT(vt_kitty_frame_px(t, 5, 1, 0, 0), 0xFF112233L);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 1, 1, 1), 0x10AABBCCL);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 2, 1, 1), 0xFF123456L);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 2, 0, 0), 0xFF112233L);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 2, 1, 0), 0x80445566L); /* the base alpha stays exact */
+    CHECK_INT(vt_kitty_frame_px(t, 5, 3, 0, 0), 0xEF010203L);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 3, 1, 1), 0xFF123456L);
+    CHECK_INT(vt_kitty_frame_px(t, 5, 4, 1, 0), 0x80445566L); /* alpha 0x20 under half: the base stays */
+    /* a=c: frame 3's (1,1) onto frame 1's (0,1) */
+    h_put(t, "\033_Ga=c,i=5,r=3,c=1,X=1,Y=1,x=0,y=1,w=1,h=1\033\\");
+    CHECK_INT(vt_kitty_frame_px(t, 5, 1, 0, 1), 0xFF123456L);
+    sw0 = vt_kitty_frame_switches(t);
+    h_put(t, "\033_Ga=a,i=5,s=3\033\\");
+    vt_anim_tick(t, 40000);
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1);
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(v.fmt, 1);
+    CHECK_INT(v.w, 2);
+    CHECK_INT(v.pix[3 * 4], 0x12); /* frame 2, pixel (1,1): R G B A */
+    CHECK_INT(v.pix[3 * 4 + 1], 0x34);
+    CHECK_INT(v.pix[3 * 4 + 2], 0x56);
+    CHECK_INT(v.pix[3 * 4 + 3], 0xFF);
+    CHECK_INT(v.pix[4 + 3], 0x80); /* (1,0) keeps its own alpha */
+    CHECK_INT(v.opaque, 0);
+    vt_set_image_rgb(t, 0); /* off: the canvases are cube indices again, a quarter of the bytes */
+    CHECK_INT(vt_kitty_frame_px(t, 5, 2, 1, 1) >= 0 && vt_kitty_frame_px(t, 5, 2, 1, 1) < 256, 1);
+    vt_free(t);
+}
+
 void suite_kitty(void)
 {
     raw_rgb_becomes_an_indexed_image();
@@ -831,4 +1539,24 @@ void suite_kitty(void)
     k29_deleting_a_parent_deletes_its_children();
     k29_the_error_replies();
     k29_virtual_placements_and_parents();
+    k30_row_images_go_by_z_then_id();
+    k30_text_over_a_picture_below_keeps_it();
+    k40d_kitty_front_picture_keeps_the_cells();
+    k31_placeholder_cells_resolve_to_tiles();
+    k31_third_mark_is_the_ids_high_byte();
+    k34_frames_build_on_each_other();
+    k34_frames_stop_at_the_animation_memory();
+    k35_a_a_keys_move_the_state();
+    k36_a_late_tick_switches_once_and_never_catches_up();
+    k35_loops_wait_and_errors();
+    k35_a_c_composes_a_rectangle();
+    k35_the_clock_changes_the_placement();
+    k36_image_animation_off_stops_the_clock();
+    k38_rgb_store_keeps_every_colour_and_the_alpha_byte();
+    k38_index_mode_is_unchanged();
+    k38_an_opaque_picture_says_so_and_a_placement_scales_the_rgba();
+    k38_budget_is_x4_with_the_same_pixel_capacity();
+    k38_switching_off_converts_and_on_leaves_indices();
+    k39_frame_canvases_stop_at_the_x4_budget_in_both_modes();
+    k39_rgba_frames_keep_exact_bytes_and_alpha();
 }

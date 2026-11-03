@@ -1,0 +1,64 @@
+.KEY DIR/A,CPU060/S
+.BRA {
+.KET }
+; Files/install-amissl.dos: install the kit's AmiSSL 5.27 (Files/AmiSSL, the release drawer of the AmiSSL Open Source
+; Team, Apache 2.0) with no question asked. Run with  Execute <kit>/Files/install-amissl.dos DIR <kit>/Files [CPU060]
+; by Install.installer (P_AMISSL) and by Files/install.dos (a Shell install).
+;
+; Why not AmiSSL's own Install-AmiSSL: it is an Installer script that asks at every level (welcome page, the
+; AmiSSL: assign question, the drawer, the CPU, the certificates, the Path line, the S:User-Startup ask, the
+; closing page), so a full install stopped on it and waited for a click. This script does what that script does
+; for a self-contained AmigaOS 3 install, from the same files, and nothing else:
+;   dest drawer   the AmiSSL: assign when there is one (an upgrade in place), else Work:AmiSSL, else SYS:AmiSSL
+;   Libs          amisslmaster.library, and the CPU's amissl_v*.library into Libs/AmiSSL (68060, else 68020-40)
+;   dest          C/OpenSSL, openssl.cnf and the .pl tools, Doc/AmiSSL.doc and Doc/OpenSSL.doc
+;   Certs         the certificates; UserCerts and Private made
+;   S:User-Startup  for a new drawer, the ;BEGIN AmiSSL block Install-AmiSSL writes (Assign AmiSSL:, Assign LIBS:
+;                 AmiSSL:Libs ADD, Path AmiSSL: ADD); the same Assigns are made now, so the running session
+;                 sees LIBS:amisslmaster.library at once
+; tests/test_install_dos_amissl.py holds the callers to this script.
+; Version ends with rc 20 on a missing library, above the default FailAt 10: it must not end the script
+FailAt 21
+Set upamnew "0"
+Assign >NIL: AmiSSL: EXISTS
+If WARN
+  Set upamnew "1"
+  Set upambase "SYS:AmiSSL"
+  Assign >NIL: Work: EXISTS
+  If NOT WARN
+    Set upambase "Work:AmiSSL"
+  EndIf
+  MakeDir "$upambase"
+  Assign AmiSSL: "$upambase"
+EndIf
+MakeDir "AmiSSL:Libs" "AmiSSL:Libs/AmiSSL" "AmiSSL:Certs" "AmiSSL:UserCerts" "AmiSSL:Private"
+Copy "{DIR}/AmiSSL/Libs/AmigaOS3/amisslmaster.library" TO "AmiSSL:Libs" CLONE QUIET
+If "{CPU060}" EQ "CPU060"
+  Copy "{DIR}/AmiSSL/Libs/AmigaOS3/AmiSSL/68060" TO "AmiSSL:Libs/AmiSSL" ALL CLONE QUIET
+Else
+  Copy "{DIR}/AmiSSL/Libs/AmigaOS3/AmiSSL/68020-40" TO "AmiSSL:Libs/AmiSSL" ALL CLONE QUIET
+EndIf
+Copy "{DIR}/AmiSSL/C/AmigaOS3/OpenSSL" TO "AmiSSL:" CLONE QUIET
+Copy "{DIR}/AmiSSL/C/openssl.cnf" "{DIR}/AmiSSL/C/CA.pl" "{DIR}/AmiSSL/C/tsget.pl" TO "AmiSSL:" CLONE QUIET
+Copy "{DIR}/AmiSSL/Doc/AmiSSL.doc" "{DIR}/AmiSSL/Doc/AmiSSL.doc.info" "{DIR}/AmiSSL/Doc/OpenSSL.doc" "{DIR}/AmiSSL/Doc/OpenSSL.doc.info" TO "AmiSSL:" CLONE QUIET
+Copy "{DIR}/AmiSSL/Certs" TO "AmiSSL:Certs" ALL CLONE QUIET
+If "$upamnew" EQ "1"
+  Search >NIL: S:User-Startup ";BEGIN AmiSSL"
+  If WARN
+    Echo >>S:User-Startup ";BEGIN AmiSSL"
+    Echo >>S:User-Startup "Assign AmiSSL: *"$upambase*""
+    Echo >>S:User-Startup "If Exists AmiSSL:Libs"
+    Echo >>S:User-Startup "  Assign LIBS: AmiSSL:Libs ADD"
+    Echo >>S:User-Startup "EndIf"
+    Echo >>S:User-Startup "Path AmiSSL: ADD"
+    Echo >>S:User-Startup ";END AmiSSL"
+  EndIf
+  Path AmiSSL: ADD
+EndIf
+; the running session: LIBS: gets AmiSSL:Libs once (a second ADD would only repeat it)
+Version >NIL: LIBS:amisslmaster.library 5
+If WARN
+  Assign LIBS: AmiSSL:Libs ADD
+EndIf
+UnSet upamnew
+UnSet upambase

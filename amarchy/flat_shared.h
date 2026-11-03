@@ -36,6 +36,8 @@ typedef struct flatshared {
     flat_swap rsw;
     uintptr_t *rslot;
     uintptr_t irom_lo, irom_hi; /* Intuition's ROM code range (FindResident rt_MatchTag .. rt_EndSkip): the caller gate */
+    int sring[16][9];           /* RL6 diagnostic: last 16 scroller fills: fill x0 y0 x1 y1, knob x y w h, cuts made */
+    ULONG sring_n;              /* scroller fills logged so far (ring index = n % 16) */
     ULONG rcalls, rhits, shits; /* every patched RectFill call / every outer-edge fill recoloured / every scroller fill recoloured (the sentinels) */
     /* FLAT-BUTTON-FILL: the graphics.library Text patch (LVO -60) that draws a pressed button's label in pen_ptext */
     flat_swap tsw;
@@ -46,6 +48,15 @@ typedef struct flatshared {
     ULONG ttitle;               /* window titles redrawn by FLAT-TITLE-ACCENT (the sentinel) */
     ULONG tcalls, thits;        /* every patched Text call / every pressed label recoloured (the sentinels) */
     ULONG cdraws, cfall;        /* FLAT-GLYPH-OS-SHAPES sentinels: gadgets drawn by cloning the system image / clone attempts that fell back to the block glyph */
+    ULONG cf_busy, cf_nodri, cf_nobm, cf_empty;    /* cfall split by cause: cl_ss held by another task / no DrawInfo / no offscreen bitmap / image drew no pixel */
+    ULONG cf_mask;              /* bit (which & 31) set for every image that fell back (SYSIA_Which after flat_which_alias) */
+    ULONG cf_ids;               /* bit (imp_State & 31) set for every empty clone */
+    ULONG cf_lwhich, cf_lsize, cf_lnz, cf_lmarks;   /* the last empty clone: which, w << 8 | h, non-zero grid pixels, bit per mark value seen */
+    /* FLAT-ASPECT-BORDERS: the cached side-line width for one screen (flat.c side_px) */
+    struct Screen *aspect_scr;
+    ULONG aspect_mode;
+    int aspect_px;
+    ULONG aspect_looks;         /* DisplayInfo lookups done (the sentinel: one per screen and mode) */
     /* the icon pens are no longer here: the shared holder record "Amarchy.IconPens" owns them (iconpen_dos.h, F14) */
 } flatshared;
 

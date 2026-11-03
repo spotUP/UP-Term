@@ -81,6 +81,8 @@ enum {
     KA_JOB,         /* job:<command line>  like run:, shown in the commodity's job view when the menu style has one (amarchy/leaf.h run_job); a style without one runs it as run: */
     KA_CAP,         /* cap:<screen|window|region>  a screenshot (amarchy/shot.h), run by the commodity; the file also goes to clipboard unit 0 (D3 a) */
     KA_SETTINGS,    /* settings:<page>  a settings page group of the menu (general colors palette keyboard advanced amarchy): mn_children lists the page's rows from prefs/settings_def.c; no action of its own */
+    KA_GUI,         /* gui:<help|welcome>  the amarchy-gui help or welcome window (amarchy/help_core.h), started by the commodity */
+    KA_AMARCHY,     /* amarchy:quit  the Amarchy commodity shuts down by its normal exit path (as the ARexx QUIT) */
     KA_BAR          /* bar:<on|off|toggle>  the status bar (amarchy/bar.h), run by the commodity as the ARexx BAR verb */
 };
 
@@ -153,6 +155,8 @@ void keymap_set_layout(int (*char_to_raw)(char ch));
 int  keymap_key_code(const char *name);
 /* The key name of a raw code, 0 when it has none (the inverse, for the viewer). */
 const char *keymap_key_name(unsigned code);
+/* The action prefix of a kind ("menu", "win", "viewer" ...), "" for KA_NONE: the inverse of the parser's prefix table. */
+const char *keymap_kind_name(int kind);
 /* KS_* of an action kind. */
 int  keymap_action_scope(int kind);
 

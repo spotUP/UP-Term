@@ -1,0 +1,3 @@
+earth.gif: NASA's rotating Earth animation (400 x 400, 44 frames, 90 ms), public domain (NASA media usage guidelines).
+dist/updemo/earth.anim is made from it:
+  python3 -I tools/gen_updemo_earth.py demo/media/earth.gif dist/updemo/earth.anim 160

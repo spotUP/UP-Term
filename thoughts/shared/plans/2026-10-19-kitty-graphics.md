@@ -1,7 +1,7 @@
 ---
 date: 2026-10-19
 topic: kitty graphics protocol (APC G) in vtcon
-status: K1-K18 done; K19-K36 planned (s48, owner 2026-11-01)
+status: K1-K18 done; K19-K35 planned; K36 done (c63dcb4f, rig proof 6e0e2fe0); K37-K41 truecolor done (a14fe089, ceacf685, eaa21b90, b0a0a42a, cbd9e471; s52 verified)
 source: ~/Code/creep-cterm (github.com/creep-ltx/cterm 51a9ba3, MIT, Tobias Karlsson) src/vt.c 1425-1610, 2191-2480; src/inflate.c; src/pics.c
 research: thoughts/shared/research/2026-10-19_cterm-draw-and-vt-techniques.md
 ---
@@ -294,7 +294,7 @@ commit.
       error replies; cursor unchanged with C=0. All fail before
       (P/Q ignored: the child lands at the cursor). Rig: a parent and
       two children at H=4 and V=2 drawn where expected (pixel check).
-- [ ] K30 z-index. Engine: vt_image gains z (signed). vt_row_image returns
+- [x] K30 z-index (done on branch s51-kitty-te: host tests k30_* in kitty and render, rig check tools/rig/kitty_z_rig.py, evidence thoughts/shared/research/s51-evidence/kitty-te.md). Engine: vt_image gains z (signed). vt_row_image returns
       a row's images ordered by (z, kid), lowest first (the spec: equal z,
       lower id is lower), not by age; sixels keep z = 0 and their age
       order among themselves (kid 0, serial). vt_image_view gains z.
@@ -302,8 +302,10 @@ commit.
       VT_CELL_IMAGE; it sets a new flag VT_CELL_UNDER on them, which text
       writes keep (the one exception to "writing rewrites the cell
       whole": pad bit 0x02 survives print and erase-with-default-bg; ED/EL
-      that blank the line drop the placement as today). z >= 0 keeps
-      today's model (D12). Render: draw_rows learns one more step for
+      that blank the line drop the placement as today). z >= 0: sets
+      VT_CELL_IMAGE; since K40d (O6) a kitty picture keeps the cells' text
+      and colours under it (a sixel still blanks them); text written later
+      takes the cell (D12). Render: draw_rows learns one more step for
       cells with VT_CELL_UNDER: fill the cell background, draw the z<0
       image tiles (z <= -1073741824 only into cells whose bg is the
       default; above that into every cell, drawn over the cell's bg),
@@ -322,7 +324,7 @@ commit.
 
 #### Unicode placeholders (U=1)
 
-- [ ] K31 Engine. a=p,U=1 (or a=T,U=1) makes a virtual placement: a
+- [x] K31 (done on branch s51-kitty-k31: host tests k31_* in ONLY=kitty; virtual placement = vt_image kind 3 with vc, vr; vt_cell_placeholder, vt_kitty_placeholders; diacritic table 297 entries counted twice from gen/rowcolumn-diacritics.txt) Engine. a=p,U=1 (or a=T,U=1) makes a virtual placement: a
       stored image (kind 2) with vc, vr (c=, r=; default from the picture
       size in cells) and a placement id; nothing on the cells, the cursor
       untouched. Placeholder cells are ordinary text: U+10EEEE (not BMP:
@@ -348,7 +350,7 @@ commit.
       case (marks only on the first cell); d=a leaves the virtual
       placement. Fail-before: U=1 answers `EINVAL:no unicode
       placeholders` today.
-- [ ] K32 Render. draw_rows: a cell whose base code point is U+10EEEE
+- [x] K32 Render. draw_rows: a cell whose base code point is U+10EEEE
       draws, instead of a glyph, its tile of the virtual placement's
       scaled picture (scaled once per virtual placement and cell size,
       cached under the image's serial like the pen cache; freed with the
@@ -360,7 +362,7 @@ commit.
       a script doing what tmux would (virtual placement, then the cells
       printed as text, then the screen scrolled by 3 lines with plain
       text): the picture scrolls with the text (pixel check).
-- [ ] K33 What ncurses/tmux programs need, checked, not built: vtcon's
+- [x] K33 What ncurses/tmux programs need, checked, not built: vtcon's
       terminfo already has RGB and Tc (terminfo/vtcon.terminfo:25), so
       tmux passes 24-bit fg ids; tmux needs `allow-passthrough on` for
       the APC upload (DCS tmux; wrapper: confirm vtcon's DCS parser
@@ -369,10 +371,22 @@ commit.
       note in the man page plus one rig run of a tmux build from the
       kit, if the kit has tmux (unverified; if not, the note says so and
       the run is dropped by the owner, not by the agent).
+      PARTIAL 2026-11-02: facts checked (terminfo/vtcon.terminfo:25 has
+      RGB, Tc; engine/vtengine.c dcs_dispatch :4899 handles only $q and
+      +q, any other DCS goes to note_value, so no tmux unwrap), note in
+      dist/README.txt TMUX section, the kit has tmux 3.6a (dist/packages.txt
+      base row). Rig run OPEN: `kitty_z_rig.py <out> phtmux` (rig 82) found
+      no tmux server after the typed command, window text not read; the
+      next step is a screenshot read of that window (error text).
+
+      DONE 2026-11-02 (s51): `kitty_z_rig.py phtmux` PASS on rig 86 (four
+      boxes) with tmux-amiga branch s51-pane-console. Blocker was
+      TMUX-PANE-CONSOLE: native commands in a pane printed nowhere; root
+      cause and fix in thoughts/shared/research/s51-evidence/k33-tmux.md.
 
 #### Animation (a=f, a=a, a=c)
 
-- [ ] K34 Frames (a=f) in the engine. A stored image gains a frame list:
+- [x] K34 Frames (a=f) in the engine. A stored image gains a frame list:
       frame 1 is the root (the a=t picture), each a=f adds a frame (or
       edits frame r=), built on the canvas of frame c= (default: a
       transparent canvas filled with Y=, RGBA) by writing the sent
@@ -390,7 +404,11 @@ commit.
       with a 1-px rectangle: vt_kitty_frames == 3 and the pixels of frame
       3 are frame 2's plus the rectangle; ENOSPC past the budget. Fails
       before (`EINVAL:not supported`).
-- [ ] K35 Control and compose (a=a, a=c). a=a: s=1 stop, s=2 run and wait
+      Evidence 2026-11-02: tests/test_kitty.c k34_* (root + 2 frames,
+      vt_kitty_frames == 3, frame 3 = frame 2 + rectangle, blend/X=1,
+      ENOSPC past VT_ANIM_MEMORY, d=f/d=F): `make test ONLY=kitty` 307
+      checks, 22 failed before (a=f branch off), 0 after; make amiga builds.
+- [x] K35 Control and compose (a=a, a=c). a=a: s=1 stop, s=2 run and wait
       for frames at the end, s=3 run and loop; v= loops (0 ignored, 1
       forever, n plays n-1 loops; stopping resets the count); c= makes a
       frame current (client-driven); r=+z= sets a frame's gap (the root
@@ -411,16 +429,35 @@ commit.
       40000; v=2 stops after one loop; s=2 waits at the last frame and
       goes on when a frame arrives; c=2 shows frame 2 with no tick; a=c
       results and its two errors. All fail before.
-- [ ] K36 Handler timer, CPU and the profile key. The window already has a
+      Evidence 2026-11-02 / DONE (the K35 commit on s51-kitty-k35):
+      tests/test_kitty.c k35_* (every a=a key, loops/wait/gapless/errors,
+      a=c pixels and errors, reachability through the byte stream: a=p,
+      a=a s=3, vt_anim_tick, sentinel +1, damage after vt_flush, placement
+      pixels = frame 2, root edit r=1 reaches the placement): `make test
+      ONLY=kitty` 351 checks, 44 new, all failed before (a=a/a=c answered
+      `EINVAL:not supported`), 0 failed after; make amiga builds.
+      Resolved: a=c copies frame r= onto frame c= as written here; this
+      matches the kitty spec ("source frame r=, destination frame c=",
+      checked 2026-11-02 against sw.kovidgoyal.net graphics-protocol); the
+      root gap stays K34's 40 ms; a=a on a picture without frames answers
+      `ENOENT:the picture has no frames`; c= counts in the sentinel.
+- [x] K36 (done: host part c63dcb4f, AGA and RTG rig proof 6e0e2fe0, evidence thoughts/shared/research/s53-evidence/k36-rig-proof.md) Handler timer, CPU and the profile key. The window already has a
       frame clock: render/vtwin.c frame_start arms a timer.device
       TR_ADDREQUEST for frame_wait us, vtwin_tick runs on its signal and
       re-arms it while vr_blink_tick / vr_flash_tick say something is
       still changing (the cursor blink is driven this way). Animation
-      joins the same clock: vtwin_tick calls vt_anim_tick(t,
-      frame_wait); when it returns >= 0, frame_start re-arms with
-      min(that, the blink's period) instead of a new timer. Nothing runs
-      when no animation plays (no CPU when idle). Paused while the window
-      is hidden/iconified (r->hidden) or scrolled back (r->view): the tick
+      has a timer.device request of its own on the same frame_port (no new
+      signal), scheduled the way kitty does it (kitty/graphics.c
+      scan_active_animations: at most one frame switch per wake and
+      image, current_frame_shown_at = now so lateness is dropped and
+      never caught up; child-monitor.c sleeps to the nearest
+      next_frame_at). vt_anim_tick(t, waited) switches once per call and
+      returns the next frame's gap; the handler arms the request with
+      max(due, the frame clock's pace) (render/pace.h vt_anim_arm_us),
+      and the frame clock no longer re-arms for animation. Nothing runs
+      when no animation plays (no CPU when idle): armed only while
+      due >= 0, kicked when output starts one. Paused while the window
+      is hidden/iconified (r->hidden) or scrolled back (r->view): not armed, the tick
       is not called, so no time passes for it. A gap shorter than the
       frame clock (VT_PACE_MIN_US) is shown for one frame clock. CPU: a
       switch costs the rescale plus a redraw of the image's cells through
@@ -440,6 +477,298 @@ commit.
       apart differ in the measured pixels; PROF switches > 0 and the
       per-switch time quoted; with `image-animation off` in the profile
       the two shots are equal and PROF switches = 0.
+
+#### Truecolor on deep screens
+
+Owner 2026-11-02: kitty pictures in full colour on screens deeper than 8
+bits (RTG 15/16/24/32), in this release; 8-bit screens (AGA, 8-bit RTG)
+exactly as today. Measured today: rig 91 RTG 800x600x24 shows demo.png
+(320 px wide, 29954 source colours) in 18 colours.
+
+Verified 2026-11-02 (two independent cybergraphics_lib.fd copies, CGX/AMOS SDK
+and MorphOS SDK, both agree; their -120/-126/-150/-198 match our proven calls):
+WritePixelArrayAlpha is LVO -216, registers
+(src a0, srcx d0, srcy d1, srcmod d2, rp a1, destx d3, desty d4, width d5,
+height d6, globalalpha d7), source format fixed 32-bit ARGB (alpha byte first),
+globalalpha 0xFFFFFFFF = per-pixel alpha only. BltTemplateAlpha is -222.
+cybergraphics.h: RECTFMT_RGB 0, RECTFMT_RGBA 1, RECTFMT_ARGB 2. -126 is
+WritePixelArray (not the alpha call). Still unproven: that the rig's P96
+cybergraphics.library exports -216 (version >= 43, lib_NegSize >= 216).
+
+Read 2026-11-02 on a6de061d (what the design rests on):
+
+- The colour is lost in the engine, not the renderer. kit_make
+  (engine/kitty.c ~150) runs every pixel through kit_quant (cube + 40
+  greys, 4x4 Bayer) and packs the used entries into a palette. On a deep
+  screen the renderer is already exact: img_colours copies the palette
+  into a 0xRRGGBB table and img_run draws with WriteLUTPixelArray
+  (render/amiga_render.c ~2574-2627), so only cube colours reach it.
+- Deep-screen detection exists: vr_init obtains scratch pens and opens
+  cybergraphics.library V41 only when the screen's BMA_DEPTH > 8, and
+  closes it again when not truecolor (amiga_render.c ~586-635). So
+  `r->cgx != 0` already means "deeper than 8 bits and the cgx API is there"
+  (P96 ships the same library). The cgx calls are declared as vbcc inlines
+  in render/aa_ink.h (WriteLUTPixelArray -198, FillPixelArray -150) with a
+  host fake in tests/render_host/gfx_fake.c (GF_CGXLUT, GF_CGXFILL).
+- a=T makes two pictures: kit_store keeps the root (kind 2, full size) and
+  kit_show places a scaled copy (kind 1) made from the same source. a=p
+  rebuilds the placement from the stored indices (or from the current
+  frame's cube canvas, K34/K35). Frames are cube-index canvases
+  (vt_anim.fr), counted in t->anim_mem against VT_ANIM_MEMORY.
+- Sixel images stay as they are: their palette is at most 256 exact
+  registers and already draws exactly on deep screens.
+
+##### Decisions (T1-T8)
+
+- T1 Where RGB lives. The engine gains a per-terminal picture format,
+  set by the host: `void vt_set_image_rgb(vt_term *t, int on)`. Off (the
+  default, and what DCTelnet and every 8-bit screen get): every line of
+  today's code runs unchanged, so 8-bit output is today's by construction,
+  not by conversion. On: kitty pictures (kinds 1, 2, 3 and every frame)
+  hold 4 bytes a pixel, R G B A in memory order (the f=32 wire order), and
+  no cube, dither or palette is made. Not "RGB always plus lazy indices":
+  that costs 5 bytes a pixel and a second quantiser path to keep
+  byte-equal to today's; one format per terminal is simpler and the
+  host knows the screen before any picture arrives.
+- T2 Alpha stays D4's binary rule: alpha < 128 stores A=0 with R=G=B=0
+  (the pixel the picture leaves unset, drawn in the default background as
+  index 0 is today), alpha >= 128 stores A=255. So z, VT_CELL_IMAGE /
+  VT_CELL_UNDER, D12/D13 and the K30 draw order do not change, and nothing
+  reads the screen back (R6). vt_image gains `vt_u8 fmt` (0 indices, 1
+  RGBA) and `vt_u8 opaque` (no pixel has A=0, set by the maker); the
+  slot-alive test `pix != 0` keeps working because pix holds the RGBA
+  bytes. vt_image_view gains the same two fields; pal/npal are unused for
+  fmt 1.
+- T3 Making a picture in RGB mode: kit_make gets an RGBA twin
+  (kit_make_rgb: the same nearest-pixel scale loop, `kit_px` read, alpha
+  binarised, no kit_quant). a=p reads the stored RGBA root back as a
+  kit_src with bpp 4, which kit_px already reads (R, G, B, A bytes): no new
+  reader. Placement scaling to cells stays in the engine (tw x th as
+  today); the renderer never scales.
+- T4 Frames (K34/K35) in RGB mode: vt_anim.fr[] are RGBA canvases;
+  kit_root_canvas is a memcpy of the root (no kit_root_map), kit_new_canvas
+  fills with Y= as one binarised RGBA value, kit_blit and a=c copy 4-byte
+  pixels with D16's rule (alpha >= 50% overwrites, else the base pixel
+  stays), kit_anim_show rescales 4-byte pixels and skips the "packed
+  palette becomes the cube" step (no palette, no serial bump needed beyond
+  today's damage marks). vt_kitty_frame_px returns 0xAARRGGBB in RGB mode
+  (cube index in index mode, as today).
+- T5 Memory: the budgets scale with the pixel size so the pixel capacity
+  is today's (owner question O1). Today 1 byte a pixel; RGB 4.
+
+  | | today (1 B/px) | RGB, same 2 MB | RGB, budgets x4 (proposed) |
+  |---|---|---|---|
+  | VT_IMAGE_MEMORY | 2 MB = 2,097,152 px | 524,288 px | 8 MB = 2,097,152 px |
+  | largest stored picture (kit_store: half the budget) | 1,048,576 px (1024x1024) | 262,144 px (512x512) | 1,048,576 px |
+  | demo.png 320x200 via a=T (store + placement) | 128,000 B | 512,000 B (24% of budget) | 512,000 B (6%) |
+  | largest placement 1024x1024 | 1 MB | does not fit | 4 MB |
+  | VT_ANIM_MEMORY, 200x200 frames | 2 MB / 40,000 B = 52 | 13 | 8 MB / 160,000 B = 52 |
+
+  Implementation: `t->img_budget` and `t->anim_budget` set by
+  vt_set_image_rgb (VT_IMAGE_MEMORY, VT_ANIM_MEMORY times 1 or 4);
+  kit_room, kit_store's half-budget test and the frame ENOSPC test read
+  them instead of the macros. Sixel keeps counting 1 byte a pixel in the
+  same img_mem. Worst case in RGB mode: 16 MB of fast RAM with both pools
+  full (RTG machines carry it; DCTelnet never turns RGB on).
+- T6 Switching while pictures exist (a window reopened on another screen
+  with the same vt_term): on -> off converts every kitty picture and frame
+  in place to cube indices through kit_quant at each pixel's own (x, y),
+  packing the palette as kit_make does, and divides img_mem/anim_mem by 4;
+  off -> on leaves existing pictures indexed (they stay cube colours until
+  re-sent; the renderer draws fmt 0 through WriteLUTPixelArray as today).
+  Converted pictures are close to, not byte-equal with, a fresh 8-bit
+  upload (K34's Y= fill dithers at (0,0) today); only new uploads are the
+  8-bit guarantee.
+- T7 Renderer, deep path. render/aa_ink.h declares cybergraphics V41
+  WritePixelArray (LVO -126; srcRect a0, SrcX d0, SrcY d1, SrcMod d2,
+  RastPort a1, DestX d3, DestY d4, SizeX d5, SizeY d6, SrcFormat d7) as
+  vr_cgx_write_pixels, beside vr_cgx_write_lut, with VR_RECTFMT_RGBA 1;
+  LVO and format value checked against the AROS cybergraphics.conf / CGX
+  SDK before the build (as the -198 note says). img_run, after its
+  existing clip (first-cell px0, first-row py0, image edges; the layer
+  clips the window): view fmt 1 and r->cgx: opaque picture -> one
+  WritePixelArray straight from v->pix (SrcX sx, SrcY sy, SrcMod v->w*4,
+  no copy); else copy the run's w x h into r->img_buf (grown to 4*w*h;
+  a full-width 800 px run of 16-px cells is 51,200 B) with A=0 pixels
+  replaced by the background's RGB (ink_rgb(r, r->bg_ink), the value
+  img_colours puts in ctab[0] today), then write from it. img_colours is
+  skipped for fmt 1. Partial redraw and scrollback need nothing new: they
+  already call img_run per damaged run with the view's py/col0, and the
+  placeholder path (K32, pv view) goes through the same img_run. Sentinel:
+  `r->n_img_rgb_runs` (PROF/test counter beside n_img_runs).
+- T8 Wiring and fallback. vr_init calls `vt_set_image_rgb(t, r->cgx != 0)`
+  once, after the truecolor decision (one place, both the XCON handler's
+  and vtwin's windows). Fallbacks: depth <= 8 or no cybergraphics.library
+  -> r->cgx is 0 -> RGB off -> today's pens / WriteChunkyPixels /
+  WriteLUTPixelArray paths. A fmt 1 view reaching img_run without r->cgx
+  (cannot happen after T6) draws nothing and counts vr_gc; the renderer
+  never quantises (the engine owns colour, rule 3's spirit). 15/16-bit
+  screens: WritePixelArray's driver conversion truncates to 5-6-5, no
+  dither (O3). K36's AGA c2p cost is unchanged (RGB never on there); an
+  RTG frame switch costs a 4-byte rescale plus one WritePixelArray.
+
+##### Items
+
+- [x] K37 (a14fe089, 5ff4b661) 8-bit golden, first. Host test that pins today's 8-bit output
+      before any change: tests/test_render.c `k37_eight_bit_golden`, run
+      on gf_planar(8) (AGA) and on a chunky 8-bit screen (gf_truecolor(0),
+      not planar): a 64x64 f=32 gradient (r=4x, g=4y, b=2(x+y), column 0
+      alpha 127, column 1 alpha 128; 4096 source colours) by a=T, the same
+      by a=p c=4, an a=f frame with a 4x4 rectangle and a=a c=2, and a
+      4x4 sixel. Asserts an FNV-1a hash of the window's pens and of every
+      WriteChunkyPixels buffer equal constants captured on a6de061d (the
+      captured values written in the test with that commit named). Files:
+      tests/test_render.c (and gfx_fake.c if the chunky buffers are not
+      yet hashable). Passes before and after every later item; a change
+      that moves it fails. Lands before K38.
+- [x] K38 (ceacf685, merge 41acbb56) Engine RGB store (T1, T2, T3, T5, T6). Files: engine/vtengine.h
+      (vt_set_image_rgb, view fmt/opaque, `unsigned long
+      vt_kitty_rgb_made(const vt_term *)` sentinel), engine/vtengine.c
+      (vt_image fmt/opaque, budgets, vt_row_image and vt_cell_placeholder
+      fill the new view fields), engine/kitty.c (kit_make_rgb, kit_store,
+      a=p, kit_room budgets, T6 conversion), tests/test_kitty.c k38_*.
+      Host tests (`make test ONLY=kitty`): the 64x64 gradient by a=T in
+      RGB mode: view fmt 1, the placement's RGBA bytes equal the source for
+      every pixel of columns 1-63 (4032 distinct colours; index mode on
+      the same stream gives npal <= 256), column 0 A=0, column 1 A=255,
+      opaque 0; an all-opaque picture has opaque 1; img_mem after a=T is
+      2 x 16,384 = 32,768 B (8,192 B in index mode); a=p c=4 (cw 8) gives
+      a 32x32 placement with 992 distinct colours; 1024x1024 f=24 stores,
+      1024x1025 answers ENOMEM in both modes (same pixel capacity);
+      vt_kitty_rgb_made +1 per picture in RGB mode, 0 in index mode;
+      switching to off converts: fmt 0, npal <= 256, img_mem divided by 4,
+      vt_images unchanged. Fail before (no vt_set_image_rgb). K37 green.
+- [x] K39 (eaa21b90, merge b0f5c9da) Engine frames in RGB (T4, T5). Files: engine/kitty.c (canvas,
+      blit, compose, kit_anim_show, frame_px), tests/test_kitty.c (the
+      k34_*/k35_* cases run in both modes through one loop; RGB mode
+      checks pixels as 0xAARRGGBB). Numbers: root + 2 frames, frame 3 =
+      frame 2 + the 1-px rectangle in exact RGB (source 0x123456 reads
+      back 0xFF123456; in index mode it is a cube index); 200x200 frames:
+      the 53rd canvas answers ENOSPC in both modes (52 fit: 2 MB and 8 MB
+      at 1 and 4 B/px); vt_anim_tick(40000) switches to frame 2 with
+      vt_kitty_frame_switches +1 and the placement's bytes equal frame 2
+      scaled. Fail before (frames are indices). K37 green.
+- [x] K40 Renderer deep path (T7, T8). Files: render/aa_ink.h
+      (vr_cgx_write_pixels, VR_RECTFMT_RGBA), render/amiga_render.c
+      (img_run fmt 1 branch, img_buf growth, n_img_rgb_runs, vr_init
+      calls vt_set_image_rgb), render/amiga_render.h (counter),
+      tests/render_host/gfx_fake.c/.h (GF_CGXPIX painting RGBA into the
+      canvas, recording src pointer and SrcX/SrcY/SrcMod),
+      tests/test_render.c k40_*. Host tests (`make test ONLY=render`):
+      reachability through the byte stream: gf_truecolor(1), vr_init,
+      pass() the 64x64 gradient a=T -> n_img_rgb_runs >= 1, gf_count(
+      GF_CGXPIX) >= 1, no GF_CGXLUT for the picture, every canvas pixel of
+      columns 1-63 equals GF_CGX | source RGB, column 0 equals the
+      default background, the picture rectangle holds 4033 distinct
+      colours (4032 + background); opaque picture: the recorded src
+      pointer is the view's pix (no copy); partial redraw: damage of the
+      picture's second cell row only -> one GF_CGXPIX with SrcY 16 and
+      SizeY 16; scrollback: 30 lines scrolled, view moved back, the
+      picture's pixels equal the unscrolled ones at their new row; K30 z<0
+      case in RGB mode: picture before text in the call log; vr_init on
+      gf_truecolor(0) leaves RGB off (vt_kitty_rgb_made stays 0). K37
+      green. `make amiga` builds.
+      Probe result (2026-11-02, tests/amiga/wpaprobe.c): the rig's P96
+      cybergraphics.library is 42.7 with NegSize 240; its slots -204 to
+      -228 all jump to one stub, and WritePixelArrayAlpha (-216) draws
+      nothing, so the version number says nothing about whether the call
+      is real. The renderer therefore detects it by the jump targets
+      (vr_cgx_has_alpha: the table must reach -228, every slot read must
+      be a JMP abs.l, and -216 must have a target of its own). On this rig
+      it takes the software blend (K40b, O5): ReadPixelArray of the run,
+      per-channel blend, WritePixelArray; sentinel n_img_rgb_soft_blend
+      replaces the binary 50% fallback. K41's rig proof therefore exercises
+      true alpha (translucent pixels blended with text and background); the
+      WritePixelArrayAlpha path itself stays host-tested only.
+- [x] K41 Rig proof (after K38-K40 merge to main; one build on the rig).
+      tools/rig/kitty_truecolor_rig.py, reusing colour_check.py's PNG
+      reader for both the source and the shot. Stream: demo.png decoded on
+      the host and sent raw (f=32, a=T, no c=/r=, so 1:1 pixels), so the
+      proof does not depend on picture.datatype 40.4 on OS 3.1 or on
+      ICAT-STACK; icat VTC:demo.png (f=100) as a second, optional run once
+      ICAT-STACK is closed. RTG: rig in `rig.py rtg` 800x600x24 (rig 91
+      when free; purpose text "<session>: kitty truecolor proof"), XCON
+      window, stream, screenshot, crop the picture rectangle from the
+      cell origin: distinct colours >= 90% of the source's distinct colours
+      in the shown rectangle (>= 26,959 of 29,954 if fully shown; 100%
+      expected on 24-bit) and >= 99% of pixels equal to the source RGB;
+      today's measure is 18, and the index path cannot exceed 255, so the
+      count itself proves the deep path ran. AGA: same stream on an
+      aga256 rig, shot pixel-equal to a reference shot taken from main
+      a6de061d's kit with the same stream before K38 merges (stored at
+      thoughts/shared/research/s51-evidence/truecolor-aga-ref.png), and
+      distinct colours <= 256. Evidence and shots in
+      thoughts/shared/research/s51-evidence/kitty-truecolor.md and
+      ~/Desktop/upterm-shots. Stop the rig, confirm by ps.
+
+Order: K37, then K38, K39 (engine, one agent), then K40, then K41. K36
+(timer, PROF cost) runs after K40 so its RTG numbers measure the RGB
+switch it will ship with.
+
+##### Risks
+
+- LVO -126 and RECTFMT_RGBA = 1 are from the CGX API as remembered;
+  K40 checks them against the AROS cybergraphics.conf / SDK fd first.
+  If the rig's P96 refuses RECTFMT_RGBA, RECTFMT_ARGB (2) needs the store
+  order A R G B and a bpp branch in kit_px: found in K41's first run,
+  so run a 4x2 picture on the RTG rig before the full proof.
+- Memory: with O1's x4 budgets a full RGB session holds 16 MB; a 4 MB
+  single allocation (1024x1024 placement) may fail on fragmented RAM and
+  answers ENOMEM (no crash path changes).
+- CPU: scaling and frame copies move 4x the bytes on RTG; K36's PROF
+  numbers cover the switch cost.
+- The window-moves-screens case (T6) is rare and only best effort.
+- 15/16-bit RTG bands slightly (no dither); counted as full colour.
+
+##### Owner decisions (2026-11-02)
+
+- O1: x4 budgets on deep screens (8 MB images + 8 MB frames).
+- O2: TRUE ALPHA, not the binary rule. Keep the full alpha byte in the
+  RGBA store (no 50% cut on deep screens). Draw through
+  WritePixelArrayAlpha (cybergraphics V43) so the driver blends the picture
+  with what is under it (text, background, z<0 order). Where V43 or the
+  driver lacks it, fall back to the binary 50% rule and count the fallback
+  in a sentinel. K38/K40 tests change accordingly: a 50%-alpha pixel over a
+  known background gives the blended value (state the expected RGB), and
+  redraw order (text first, z<0 picture under, z>=0 over) is pinned by a
+  host test. R6 (no screen read) is revisited in K40.
+- O3: driver truncation on 15/16-bit screens, no engine dither.
+- O4: frames become RGBA canvases on deep screens (D16 reversed there).
+- O5: R6 (no screen read) is lifted for kitty alpha. Where the driver has no
+  working WritePixelArrayAlpha (the rig's P96 42.7), the renderer blends in
+  software: ReadPixelArray (-120) the run's rectangle from the rastport it
+  draws into, blend per channel (src*a + dst*(255-a) + 127) / 255, write back
+  with WritePixelArray RECTFMT_RGBA (K40b, sentinel n_img_rgb_soft_blend).
+  The binary 50% fallback is gone.
+- O6 (owner 2026-11-02, after K41 case 2 / K40c diagnosis): a kitty z>=0
+  placement keeps the text and cell background under it, as real kitty
+  does; translucent picture pixels show them. It sets VT_CELL_IMAGE without
+  blanking the cells (engine/vtengine.c sixel_place_row ~5332 today writes
+  b.fg = b.bg = VT_COLOR_DEFAULT blanks). Sixel keeps blanking. Changes D12
+  and K30; the host test k40_soft_blend_reads_the_text_under_a_front_picture
+  ("A z>=0 picture owns its cells") is rewritten to the new model. Work item
+  K40d; K41 case 2 then expects (128,0,119) over blue cells.
+  Done on branch s51-k40d: engine/vtengine.c sixel_place_row, host tests
+  k40d_kitty_front_picture_keeps_the_cells (kitty) and
+  k40_soft_blend_reads_the_text_under_a_front_picture (render), rig
+  evidence s51-evidence/k41-kitty-rgb.md "K40d".
+
+##### Open questions for the owner (answered above)
+
+- O1 RGB memory budgets. Recommended: x4 (8 MB images + 8 MB frames),
+  same pixel capacity as 8-bit screens. Other: keep 2 MB + 2 MB (largest
+  stored picture 512x512, 13 frames of 200x200 on deep screens).
+- O2 Alpha on deep screens. Recommended: D4's binary rule (same z/text
+  model, no read of the screen, R6). Other: true alpha through
+  WritePixelArrayAlpha (V43, the driver blends with the screen; edges of
+  semi-transparent pictures exact, but redraw order and R6 to revisit).
+- O3 15/16-bit screens. Recommended: driver truncation, no dither. Other:
+  an ordered dither to 5-6-5 in the engine (needs the depth, not just
+  on/off).
+- O4 D16 on deep screens. Recommended: frames become 4 B/px RGBA canvases
+  on deep screens only (full-colour animation; D16's blend rule kept).
+  Other: frames stay cube indices everywhere (animations in <= 255
+  colours on RTG, still pictures in full colour).
 
 ### Implementer tasks (one agent, one item group, one rig each; in order)
 
@@ -480,6 +809,15 @@ below. Every decision is closed; T-B to T-H need no further input.
   model, the text replaces the image in that cell (same as sixel; no render
   change). Other: kitty's, the image stays on top and hides the text
   (needs VT_CELL_UNDER-like bookkeeping for every image).
+  Amended by O6 / K40d (2026-11-02): the text written later still takes
+  the cell, but a kitty z >= 0 placement no longer blanks the cells it
+  lands on: their text and background stay under the picture and show
+  through its translucent pixels (the render draws bg + glyph, then blends
+  the picture over them). Sixel placements still blank.
+  Reversed by owner 2026-11-03: text written later into a kitty z >= 0
+  cell no longer takes it; the picture stays over the new glyph as in kitty
+  (cells carry VT_CELL_IMAGE | VT_CELL_FRONT, text_pad keeps both). Sixel
+  cells (VT_CELL_IMAGE alone) are still taken by text.
 - D13 Glyph edges over a z < 0 image. R6 (owner) rules out reading the
   screen back to blend. Recommended: glyphs in cells over an image are
   drawn without antialiasing (hard edges, no fringe). Other: antialiased

@@ -56,5 +56,32 @@ class StageEtc(unittest.TestCase):
         rig.stage_rig_vtc(vtc)
         self.assertEqual((vtc / "etc/termcap").read_text(), "mine")
 
+class StageIcat(unittest.TestCase):
+    def test_setup_path_stages_icat_in_vtc_and_the_drawer_bin(self):
+        """ICAT-STACK: a fresh rig had no icat; stage_rig_vtc copies build/amiga/icat to VTC:icat and Apps/bin/icat"""
+        from unittest import mock
+        root = pathlib.Path(tempfile.mkdtemp())
+        (root / "terminfo").mkdir()
+        (root / "terminfo/vtcon.termcap").write_text("t")
+        (root / "build/amiga").mkdir(parents=True)
+        (root / "build/amiga/icat").write_bytes(b"icat-binary")
+        vtc = pathlib.Path(tempfile.mkdtemp())
+        (vtc / rig.paths.UPTERM_DRAWER / "bin").mkdir(parents=True)
+        (vtc / rig.paths.UPTERM_DRAWER / "bin/vsh").write_text("x")
+        with mock.patch.object(rig, "ROOT", root):
+            rig.stage_rig_vtc(vtc)
+        self.assertEqual((vtc / "icat").read_bytes(), b"icat-binary")
+        self.assertEqual((vtc / rig.paths.UPTERM_DRAWER / "bin/icat").read_bytes(), b"icat-binary")
+
+    def test_icat_stack_and_cookie_agree(self):
+        """vtcon rule 6: icat's __stack and its $STACK cookie name the same size, so launchers that honour the
+        cookie give icat the stack it was built for"""
+        import re
+        src = (ROOT / "pic/icat.c").read_text()
+        stack = re.search(r"long __stack = (\d+);", src)
+        cookie = re.search(r'"\$STACK: (\d+)"', src)
+        self.assertTrue(stack and cookie)
+        self.assertEqual(stack.group(1), cookie.group(1))
+
 if __name__ == "__main__":
     unittest.main()

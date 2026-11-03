@@ -361,7 +361,7 @@ static void cv_fill(void *ctx, int x0, int y0, int x1, int y1, int pen)
 static int fake_dispatch(const flat_state *st, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy, int w, int h)
 {
     g_disp_calls++;
-    if (flat_glyph_draw(st, which, method, ids, ox, oy, w, h, g_frame_pen, cv_fill, 0))
+    if (flat_glyph_draw(st, which, method, ids, ox, oy, w, h, g_frame_pen, 1, cv_fill, 0))
         return 1;
     g_old_calls++;                                      /* the saved routine */
     return 0;
@@ -512,7 +512,7 @@ static void test_glyph_solid_and_state_equal(void)
 static void test_glyph_route(void)
 {
     flat_state st;
-    static const unsigned long unknown[] = { 0x04, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x05, 0x1B, 0x2A, 0xFFFF };
+    static const unsigned long unknown[] = { 0x04, 0x0E, 0x0F, 0x05, 0x1B, 0x2A, 0xFFFF };
     static const unsigned long other[] = { 0x101UL /* OM_NEW */, 0x103UL /* OM_GET */, 0x203UL /* IM_HITTEST */,
                                            0x204UL /* IM_ERASE */, 0x206UL /* IM_DRAWFRAME */, 0x207UL /* IM_FRAMEBOX */, 0 };
     unsigned i;
@@ -823,6 +823,29 @@ static void test_which_from_gtype(void)
         }
         CHECK_INT(flat_outer_edge_match(1, 9, 0, 0, 0, 0), 0);                   /* under 2 x 2 */
     }
+    {   /* FLAT-ASPECT-BORDERS: on PAL hires (22 x 44) the window's side lines are 2 px wide, so they look as thick as the top line */
+        int r[4];
+        CHECK_INT(flat_side_px(22, 44), 2);      /* PAL/NTSC hires non-interlace */
+        CHECK_INT(flat_side_px(11, 44), 4);      /* super hires non-interlace */
+        CHECK_INT(flat_side_px(22, 22), 1);      /* hires interlace: square */
+        CHECK_INT(flat_side_px(44, 44), 1);      /* lores: square */
+        CHECK_INT(flat_side_px(44, 22), 1);      /* lores interlace: wide pixels, sides stay 1 */
+        CHECK_INT(flat_side_px(0, 0), 1);        /* unknown mode / RTG without DisplayInfo */
+        CHECK_INT(flat_side_px(30, 44), 1);      /* 1.47 rounds to 1 */
+        CHECK_INT(flat_outer_edge_fill(640, 256, 0, 1, 0, 255, flat_side_px(22, 44), r), 1);       /* left: x 0..1 */
+        CHECK_INT(r[0], 0); CHECK_INT(r[1], 1); CHECK_INT(r[2], 1); CHECK_INT(r[3], 255);
+        CHECK_INT(flat_outer_edge_fill(640, 256, 639, 1, 639, 254, 2, r), 1);   /* right: x 638..639 */
+        CHECK_INT(r[0], 638); CHECK_INT(r[1], 1); CHECK_INT(r[2], 639); CHECK_INT(r[3], 254);
+        CHECK_INT(flat_outer_edge_fill(640, 256, 0, 0, 639, 0, 2, r), 1);       /* top stays 1 px */
+        CHECK_INT(r[0], 0); CHECK_INT(r[1], 0); CHECK_INT(r[2], 639); CHECK_INT(r[3], 0);
+        CHECK_INT(flat_outer_edge_fill(640, 256, 1, 255, 639, 255, 2, r), 1);   /* bottom stays 1 px */
+        CHECK_INT(r[1], 255); CHECK_INT(r[3], 255);
+        CHECK_INT(flat_outer_edge_fill(640, 512, 0, 1, 0, 511, flat_side_px(22, 22), r), 1);       /* interlace: left stays 1 px */
+        CHECK_INT(r[0], 0); CHECK_INT(r[2], 0);
+        CHECK_INT(flat_outer_edge_fill(3, 3, 0, 1, 0, 2, 4, r), 1);             /* px clamps to w / 2 */
+        CHECK_INT(r[2], 0);
+        CHECK_INT(flat_outer_edge_fill(640, 256, 1, 1, 1, 254, 2, r), 0);       /* not an outer strip */
+    }
     CHECK_INT((int)flat_which_alias(5), FLAT_W_DEPTH);
     CHECK_INT((int)flat_which_alias(3), FLAT_W_CLOSE);
 }
@@ -962,6 +985,37 @@ static void test_scroller(void)
     CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0xFFFF, 0, 0x8000, 10, 70, 25, 119), kn);
     CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0xFFFF, 0, 0x8000, 10, 20, 25, 69), tr);
     CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 60, 25, 80), tr);   /* straddles the knob edge */
+    /* FLAT-SLIDER-ROUND: a fill that is exactly the knob gets the button corner cuts; any other fill gets none */
+    {
+        int cuts[FLAT_ROUND_MAX][2], n, i, hit = 0;
+        n = flat_scroller_cuts(10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69, cuts);   /* knob 16 x 50 at (10,20): tall, 12 cuts */
+        CHECK_INT(n, 12);
+        for (i = 0; i < n; i++)
+            if (cuts[i][0] == 10 && cuts[i][1] == 20) hit = 1;
+        CHECK_INT(hit, 1);                                                                       /* top left knob pixel is cut */
+        CHECK_INT(flat_scroller_cuts(10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 11, 22, 24, 67, cuts), 0);
+        CHECK_INT(flat_scroller_cuts(10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 70, 25, 119, cuts), 0);   /* the track */
+        CHECK_INT(flat_scroller_cuts(10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 12, 22, 20, 30, cuts), 0);
+    }
+    /* RL6: 3.2 paints the knob as several fills (frame strips + interior), never one fill equal to the knob: every strip cuts the
+     * corner pixels it contains, the interior cuts none, and across the strips every corner pixel is cut */
+    {
+        int cuts[FLAT_ROUND_MAX][2], all[FLAT_ROUND_MAX][2], n, i, j, total = 0, seen_tl = 0, seen_br = 0;
+        static const int strip[5][4] = { {10, 20, 25, 20}, {10, 69, 25, 69}, {10, 21, 10, 68}, {25, 21, 25, 68}, {11, 21, 24, 68} };
+        for (j = 0; j < 5; j++) {
+            n = flat_scroller_cuts(10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, strip[j][0], strip[j][1], strip[j][2], strip[j][3], cuts);
+            if (j == 4) CHECK_INT(n, 0);                                                         /* the interior has no corner */
+            for (i = 0; i < n; i++) {
+                CHECK_INT(cuts[i][0] >= strip[j][0] && cuts[i][0] <= strip[j][2] && cuts[i][1] >= strip[j][1] && cuts[i][1] <= strip[j][3], 1);
+                all[total][0] = cuts[i][0]; all[total][1] = cuts[i][1]; total++;
+                if (cuts[i][0] == 10 && cuts[i][1] == 20) seen_tl = 1;
+                if (cuts[i][0] == 25 && cuts[i][1] == 69) seen_br = 1;
+            }
+        }
+        CHECK_INT(seen_tl, 1);
+        CHECK_INT(seen_br, 1);
+        CHECK_INT(total >= 12, 1);                                                               /* every cut of the whole knob is covered */
+    }
     /* a tiny body still gives a 1 px knob */
     CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 1, 10, 20, 25, 20), kn);
     CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 1, 10, 21, 25, 21), tr);
@@ -1142,6 +1196,94 @@ static int blank_render(void *ctx, unsigned long ids, uint8_t *grid, int w, int 
     return 1;                                                                   /* OS 3.2 window gadgets: rc 1, nothing drawn */
 }
 
+static uint8_t g_scr[FLAT_CLONE_SCRATCH];
+
+/* S31-ARROW-ASPECT: on hires (flat_side_px 2) the owner saw narrow left/right and too-big up/down arrows. Every arrow must have
+ * the same 45-degree shape in visual units (a row counts side columns): left/right base (rows * side) == 2 * length (columns),
+ * up/down widest row == 2 * side * (rows - 1) + 1; the glyph is centred in its box. Box sizes are the rig's 3.2 hires ones. */
+static void arrow_bbox(const flat_state *st, unsigned long w, int bw, int bh, int side, int *x0, int *x1, int *rows, int *top, int *bot)
+{
+    int x, y, y0 = -1, y1 = -1;
+    cv_clear();
+    *x0 = CV; *x1 = -1;
+    CHECK_INT(flat_glyph_draw(st, w, FLAT_IM_DRAW, 0, 0, 0, bw, bh, st->pen_back, side, cv_fill, 0), 1);
+    for (y = 0; y < bh; y++)
+        for (x = 0; x < bw; x++)
+            if (cv[y][x] == (char)st->pen_text) {
+                if (x < *x0) *x0 = x;
+                if (x > *x1) *x1 = x;
+                if (y0 < 0) y0 = y;
+                y1 = y;
+            }
+    *rows = y1 - y0 + 1;
+    if (top) *top = y0;
+    if (bot) *bot = y1;
+}
+
+static void test_arrow_aspect(void)
+{
+    flat_state st;
+    unsigned long w;
+    int side, x0, x1, rows, top, bot, lw[3] = { 0 }, uh[3] = { 0 }, gap[3] = { 0 };
+    flat_init(&st);
+    desk_flat_state(1, 1, &st);
+    for (side = 1; side <= 2; side++) {
+        for (w = FLAT_W_LEFT; w <= FLAT_W_DOWN; w++) {
+            if (w == FLAT_W_LEFT || w == FLAT_W_RIGHT) {
+                arrow_bbox(&st, w, 16, 10, side, &x0, &x1, &rows, 0, 0);
+                CHECK_INT(rows * side, 2 * (x1 - x0 + 1));        /* base twice the length, in visual units */
+                CHECK(abs(x0 - (16 - 1 - x1)) <= 1);              /* centred */
+                lw[side] = x1 - x0 + 1;
+            } else {
+                arrow_bbox(&st, w, 18, 11, side, &x0, &x1, &rows, &top, &bot);
+                CHECK_INT(x1 - x0 + 1, 2 * side * (rows - 1) + 1);
+                CHECK(abs(x0 - (18 - 1 - x1)) <= 1);
+                uh[side] = rows;
+                if (w == FLAT_W_UP) gap[side] += 11 - 1 - bot;    /* up box sits above the down box */
+                else gap[side] += top;
+            }
+        }
+    }
+    CHECK_INT(lw[2], 2 * lw[1]);                                  /* hires: left/right twice as wide */
+    CHECK(uh[2] < uh[1]);                                         /* hires: up/down fewer rows */
+    /* S31-ARROW-GAP: the shorter hires glyphs sit toward the shared edge, so the empty rows between the up and the down
+     * glyph stay what they are on a square-pixel screen (owner: "the vertical spacing between the arrows are bigger"). */
+    CHECK_INT(gap[2], gap[1]);
+}
+
+/* S31 SCROLLER-ARROWS-INVISIBLE: OS 3.2's sysiclass draws nothing offscreen for the arrow images, so the clone fails and the
+ * block glyph is what shows. Through the same two steps flat.c runs (clone, then glyph draw) with the pens desk_flat_state
+ * gives: the canvas must hold the glyph pen AND a different box pen, for every arrow, state and box size seen on the rig. */
+static void test_arrow_glyph_pens(void)
+{
+    static const int dims[2][2] = { { 16, 10 }, { 18, 11 } };
+    static const int states[2] = { 0, 5 };                       /* IDS_NORMAL, IDS_INACTIVEDISABLED */
+    flat_state st;
+    unsigned long w;
+    int d, si, x, y, glyph, box;
+    flat_init(&st);
+    desk_flat_state(1, 1, &st);
+    for (w = FLAT_W_LEFT; w <= FLAT_W_DOWN; w++)
+        for (d = 0; d < 2; d++)
+            for (si = 0; si < 2; si++) {
+                int bw = dims[d][0], bh = dims[d][1], rc;
+                cv_clear();
+                rc = flat_clone_draw(&st, w, FLAT_IM_DRAW, (unsigned long)states[si], 0, 0, bw, bh, st.pen_back, -1, blank_render, 0, cv_fill, 0, g_scr);
+                CHECK_INT(rc, FLAT_CLONE_FAIL);                  /* the system image gave no pixel */
+                CHECK_INT(flat_glyph_draw(&st, w, FLAT_IM_DRAW, (unsigned long)states[si], 0, 0, bw, bh, st.pen_back, 1, cv_fill, 0), 1);
+                glyph = box = 0;
+                for (y = 0; y < bh; y++)
+                    for (x = 0; x < bw; x++) {
+                        glyph += cv[y][x] == (char)(states[si] ? st.pen_line : st.pen_text);
+                        box += cv[y][x] == (char)st.pen_back;
+                    }
+                CHECK(glyph > 0);                                /* an arrow was drawn */
+                CHECK(box > 0);                                  /* and the box shows around it */
+                CHECK_INT(glyph + box, bw * bh);                 /* nothing else */
+                CHECK((states[si] ? st.pen_line : st.pen_text) != st.pen_back);
+            }
+}
+
 static void test_clone_arrows(void)
 {
     flat_state st;
@@ -1153,7 +1295,7 @@ static void test_clone_arrows(void)
         CHECK_INT(flat_glyph_window_gadget(w), 1);                              /* scroller arrows take the clone path */
         CHECK_INT(flat_clone_route(&st, w, FLAT_IM_DRAW), 1);
         CHECK_INT(flat_glyph_on_band(w), 0);                                    /* they sit in the border, not the title band */
-        CHECK_INT(flat_glyph_known(w), 0);                                      /* no hand-drawn block glyph exists for them */
+        CHECK_INT(flat_glyph_known(w), 1);                                      /* OS 3.2 draws nothing offscreen: the block glyph is the arrow */
         flat_glyph_roles(w, FLAT_G_NORMAL, &g, &b);
         CHECK_INT(b, FLAT_ROLE_FRAME);
         CHECK(g != b);                                                          /* glyph pen differs from box pen */
@@ -1185,7 +1327,27 @@ static void test_frame_pen(void)
     CHECK_INT(flat_frame_pen(&s, 3, 1), -1);
 }
 
-static uint8_t g_scr[FLAT_CLONE_SCRATCH];
+
+/* S32 CLONE-PRIVATE-IMAGE: OS 3.2 sysiclass bakes its pens at OM_NEW and ignores imp_DrInfo at IM_DRAW, so drawing the window's
+ * own image with the marker DrawInfo read back its baked screen pens (all 0 under flat pens: 'empty'). The clone keeps one private
+ * image per (which, width, height), made with the marker DrawInfo; this is its table. The marker DrawInfo is deep enough for
+ * every marker the clone reads back. */
+static void test_clone_private_slot(void)
+{
+    flat_clone_key k[FLAT_CLONE_OBJS];
+    int n = 0, i;
+    CHECK_INT(flat_clone_slot(k, n, FLAT_CLONE_OBJS, FLAT_W_DEPTH, 23, 11), 0);        /* empty table: append */
+    k[n].which = FLAT_W_DEPTH; k[n].w = 23; k[n].h = 11; n++;
+    CHECK_INT(flat_clone_slot(k, n, FLAT_CLONE_OBJS, FLAT_W_DEPTH, 23, 11), 0);        /* the same image: reused, not remade */
+    CHECK_INT(flat_clone_slot(k, n, FLAT_CLONE_OBJS, FLAT_W_DEPTH, 23, 10), 1);        /* another size: its own image */
+    CHECK_INT(flat_clone_slot(k, n, FLAT_CLONE_OBJS, FLAT_W_CLOSE, 23, 11), 1);        /* another gadget: its own image */
+    for (i = n; i < FLAT_CLONE_OBJS; i++) {
+        k[i].which = FLAT_W_CLOSE; k[i].w = 10 + i; k[i].h = 11;
+    }
+    CHECK_INT(flat_clone_slot(k, FLAT_CLONE_OBJS, FLAT_CLONE_OBJS, FLAT_W_ZOOM, 23, 11), -1);   /* full: refused, the block glyph */
+    CHECK_INT(flat_clone_slot(k, FLAT_CLONE_OBJS, FLAT_CLONE_OBJS, FLAT_W_DEPTH, 23, 11), 0);   /* full, but a hit still answers */
+    CHECK_INT((1 << FLAT_CLONE_DEPTH) > FLAT_CLONE_MARK(FLAT_CLONE_MARKS - 1), 1);
+}
 
 static void test_glyph_clone(void)
 {
@@ -1270,6 +1432,16 @@ static int grid_render(void *ctx, unsigned long ids, uint8_t *grid, int w, int h
     return 1;
 }
 
+/* S32-START-LOOK: started before LoadWB, the first install finds no class; the 1 s watch retries it once the screen is up */
+static void test_boot_before_workbench_retries_install(void)
+{
+    CHECK_INT(flat_install_due(0, 0, FLAT_ERR_NOCLASS), 1);
+    CHECK_INT(flat_install_due(0, 1, FLAT_OK), 0);                 /* installed: never twice */
+    CHECK_INT(flat_install_due(FLAT_HELD_MARKER, 0, FLAT_ERR_NOCLASS), 0);   /* a kill switch stays inert */
+    CHECK_INT(flat_install_due(0, 0, FLAT_ERR_DOUBLE), 0);         /* a real swap failure is final */
+    CHECK_INT(flat_install_due(0, 0, -101), 0);                    /* out of memory is final */
+}
+
 static void test_clone_no_dividers(void)
 {
     flat_state st;
@@ -1311,9 +1483,13 @@ static void test_clone_no_dividers(void)
 void suite_flat_core(void)
 {
     test_frame_pen();
+    test_arrow_glyph_pens();
+    test_arrow_aspect();
     test_clone_arrows();
     test_glyph_clone();
+    test_clone_private_slot();
     test_clone_no_dividers();
+    test_boot_before_workbench_retries_install();
     test_title_accent();
     test_scroller();
     test_knob_pen();

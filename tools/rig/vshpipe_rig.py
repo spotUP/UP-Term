@@ -19,10 +19,9 @@ import paths
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DIR = "RAM:vshpipe"
-# wc and cat are the kit's coreutils (dist/gg), staged into this rig's VTC:userland/bin
+# wc and cat are the kit's coreutils (the ports' 9.12, paths.coreutils()), staged into this rig's VTC:userland/bin
 # (the same drawer userland_rig puts on PATH): a rig's system disk has neither on PATH,
 # and a stage that is "not found" ends the Execute script at once (rc 127 > FailAt)
-COREUTILS = ROOT / "dist/gg/coreutils-5.2.1/bin"
 STAGED = ("wc", "cat")
 PATH_LINE = "export PATH=/VTC/userland/bin:$PATH\n"
 
@@ -66,7 +65,9 @@ def run_case(name, script, want):
     base = "%s/%s" % (DIR, name)
     ex('Delete >NIL: "%s.out" "%s.done" QUIET' % (base, base))
     put_text(PATH_LINE + script, base + ".sh")
-    put_text("FailAt 21\n%s/vsh %s.sh >%s.out\nEcho >%s.done $RC\n" % (DIR, base, base, base), base + ".run")
+    # STACK=<bytes> runs vsh (and so the commands it starts, command_stack) under that Stack
+    stack = "Stack %s\n" % os.environ["STACK"] if os.environ.get("STACK") else ""
+    put_text(stack + "FailAt 21\n%s/vsh %s.sh >%s.out\nEcho >%s.done $RC\n" % (DIR, base, base, base), base + ".run")
     ex("Run >NIL: <NIL: Execute %s.run" % base)
     end = time.time() + 20
     while time.time() < end:
@@ -83,7 +84,7 @@ def main():
     bindir = paths.RIG / "vtc/userland/bin"
     bindir.mkdir(parents=True, exist_ok=True)
     for tool in STAGED:
-        shutil.copyfile(COREUTILS / tool, bindir / tool)
+        shutil.copyfile(paths.coreutils()[tool], bindir / tool)
     ami.put(str(vsh), DIR + "/vsh")
     ok = True
     for name, script, want in CASES:

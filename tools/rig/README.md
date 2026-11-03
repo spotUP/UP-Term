@@ -34,6 +34,7 @@ Nothing below is in any repository (all of it is licensed material or large);
     python3 tools/rig/ami.py exec "Version" # a command on the emulated Amiga; the first thing to try
     python3 tools/rig/rig.py stop           # kills this rig only (matched by its config path); rig N > 1: then removes build/rig<N>
     python3 tools/rig/rig.py stop --keep    # stop only, folder kept: for a script that stops and starts again mid-run
+    python3 tools/rig/rig.py hold [--hours N]  # keep this running rig up for an eye check (default 4 h): holds paths.long_run() so the 15 min idle watchdog leaves it; `hold --release`, `stop`, time up or the rig stopping ends it; `status` shows it; host test `make test ONLY=rig_hold`
     python3 tools/rig/rig.py gc             # removes idle rig folders (see below)
 
 `stop` of rig 2 and up clears the rig's folder (the same code as `rig.py clear`, rename to `.del`, then rmtree, retried; an

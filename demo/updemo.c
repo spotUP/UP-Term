@@ -14,6 +14,7 @@
  * shade block) triple: the classic ANSI art gradient, ' ', U+2591-2593 and
  * the full block between two colours. A cell shows one code, so the
  * picture is a row of cells high, not of half cells. */
+#include <stdlib.h>
 #include <string.h>
 #include "updemo.h"
 
@@ -1610,12 +1611,15 @@ static void sc_complete(long t, int first)
 
 #include "tour_themes.inc"
 
+#define TOUR_THEME_TICKS 90 /* each theme stays this long (1/50 s) */
+#define TOUR_THEME_COUNT ((int)(sizeof(tour_themes) / sizeof(tour_themes[0])))
+
 /* the kit's themes, one after the other: OSC 4 for the 16 colours, OSC 10
  * and 11 for the default ones (what Settings > Theme... does to a window) */
 static void sc_themes(long t, int first)
 {
     static int cur;
-    int k = (int)(t / 120) % (int)(sizeof(tour_themes) / sizeof(tour_themes[0])), i;
+    int k = (int)(t / TOUR_THEME_TICKS) % (int)(sizeof(tour_themes) / sizeof(tour_themes[0])), i;
     if (first) {
         cur = -1;
         heading("Themes, switched live", ansi ? "a theme sets the 16 colours; what is on screen follows"
@@ -1811,6 +1815,340 @@ static void sc_sixel(long t, int first)
     ball_sixel((int)last * 4);
 }
 
+/* Kitty graphics animation (APC G a=f / a=a): a globe turns in the text. The
+ * frames are raw RGB computed here (a few KB each, no asset to ship); the
+ * terminal holds them, each with its own gap, and loops the run itself, so
+ * after the first second the scene sends nothing at all. */
+#define GLOBE 48
+#define GLOBE_FRAMES 8
+#define GLOBE_GAP_MS 120
+
+/* one image command, its base64 payload in chunks of 4096 characters (m=1 on all but the last) */
+static void kitty_chunks(const char *ctrl, const unsigned char *d, long n)
+{
+    static const char b64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    long i, col = 0, left = (n + 2) / 3 * 4;
+    int firstchunk = 1;
+    for (i = 0; i < n; i += 3) {
+        long v = (long)d[i] << 16 | (i + 1 < n ? (long)d[i + 1] << 8 : 0) | (i + 2 < n ? d[i + 2] : 0);
+        if (!col) {
+            ps("\033_G");
+            if (firstchunk) {
+                ps(ctrl);
+                pc(',');
+            }
+            ps(left > 4096 ? "m=1;" : "m=0;");
+            firstchunk = 0;
+        }
+        pc(b64[v >> 18 & 63]);
+        pc(b64[v >> 12 & 63]);
+        pc(i + 1 < n ? b64[v >> 6 & 63] : '=');
+        pc(i + 2 < n ? b64[v & 63] : '=');
+        left -= 4;
+        if (++col == 1024 || i + 3 >= n) {
+            ps("\033\\");
+            col = 0;
+        }
+    }
+}
+
+static void globe_frame(unsigned char *px, int phase)
+{
+    int x, y, r2 = (GLOBE / 2) * (GLOBE / 2);
+    for (y = 0; y < GLOBE; y++)
+        for (x = 0; x < GLOBE; x++) {
+            int dx = x - GLOBE / 2, dy = y - GLOBE / 2, d2 = dx * dx + dy * dy, half = 0, u, v, land, lit;
+            unsigned char *q = px + (y * GLOBE + x) * 3;
+            if (d2 >= r2) {
+                q[0] = 8, q[1] = 8, q[2] = 24;
+                continue;
+            }
+            while ((half + 1) * (half + 1) <= r2 - dy * dy)
+                half++;
+            /* longitude: x over the row's half width; the phase turns the globe */
+            u = (dx * 64 / (half + 1) + 256 + phase * (128 / GLOBE_FRAMES)) >> 5;
+            v = (dy + 64) >> 4;
+            land = (u ^ v) & 1;
+            lit = 255 - d2 * 150 / r2;
+            q[0] = (unsigned char)((land ? 40 : 30) * lit / 255);
+            q[1] = (unsigned char)((land ? 170 : 90) * lit / 255);
+            q[2] = (unsigned char)((land ? 60 : 200) * lit / 255);
+        }
+}
+
+/* The real thing: earth.anim (tools/gen_updemo_earth.py: NASA's rotating Earth, public domain) holds the
+ * frames as PNG with their gaps, big endian: "UPANIM1\n", u32 count, then u32 gap in ms, u32 length, PNG.
+ * The kit installs it in UP-Term:share/updemo; the host's loader fetches it by name. */
+static long be32(const unsigned char *p)
+{
+    return (long)p[0] << 24 | (long)p[1] << 16 | (long)p[2] << 8 | p[3];
+}
+
+/* sends the file's frames, their gaps and the loop; 0 when it is missing or not whole */
+static int kitty_earth(void)
+{
+    unsigned char *d;
+    long n = 0, count, i, pos, gap[256], len[256];
+    const unsigned char *png[256];
+    if (!io->load || !(d = io->load(io->user, "earth.anim", &n)))
+        return 0;
+    if (n < 12 || memcmp(d, "UPANIM1\n", 8) != 0 || (count = be32(d + 8)) < 1 || count > 256) {
+        free(d);
+        return 0;
+    }
+    for (i = 0, pos = 12; i < count; i++) {
+        if (pos + 8 > n || (len[i] = be32(d + pos + 4)) < 1 || pos + 8 + len[i] > n) {
+            free(d);
+            return 0;
+        }
+        gap[i] = be32(d + pos);
+        png[i] = d + pos + 8;
+        pos += 8 + len[i];
+    }
+    ps("\033_Ga=d,d=I,i=1,q=2\033\\");
+    at(4, 6);
+    for (i = 0; i < count; i++)
+        kitty_chunks(i ? "a=f,i=1,f=100,q=2" : "a=T,i=1,f=100,q=2", png[i], len[i]);
+    for (i = 0; i < count; i++) {
+        ps("\033_Ga=a,i=1,r=");
+        pn(i + 1);
+        ps(",z=");
+        pn(gap[i]);
+        ps(",q=2\033\\");
+    }
+    ps("\033_Ga=a,i=1,s=3,q=2\033\\");
+    free(d);
+    return 1;
+}
+
+static void sc_kitty_anim(long t, int first)
+{
+    static unsigned char px[GLOBE * GLOBE * 3];
+    int f;
+    (void)t;
+    if (!first)
+        return;
+    heading("Kitty animation", "frames sent once; the terminal plays them, with their gaps, in a loop");
+    at(5, 40);
+    if (kitty_earth()) {
+        ps("The Earth turns by itself:");
+        at(6, 40);
+        ps("the program sent 44 frames,");
+        at(7, 40);
+        ps("their gaps, and one loop command.");
+        return;
+    }
+    ps("The globe turns by itself:");
+    at(6, 40);
+    ps("the program sent 8 frames,");
+    at(7, 40);
+    ps("their gaps, and one loop command.");
+    at(9, 40);
+    ps("(earth.anim not found: coded globe)");
+    ps("\033_Ga=d,d=I,i=1,q=2\033\\");
+    at(4, 6);
+    for (f = 0; f < GLOBE_FRAMES; f++) {
+        globe_frame(px, f);
+        kitty_chunks(f ? "a=f,i=1,f=24,s=48,v=48,q=2" : "a=T,i=1,f=24,s=48,v=48,q=2", px, sizeof px);
+    }
+    for (f = 1; f <= GLOBE_FRAMES; f++) {
+        ps("\033_Ga=a,i=1,r=");
+        pn(f);
+        ps(",z=");
+        pn(GLOBE_GAP_MS);
+        ps(",q=2\033\\");
+    }
+    ps("\033_Ga=a,i=1,s=3,q=2\033\\");
+}
+
+/* Kitty graphics, 24-bit colour with alpha (f=32, RGBA): a shaded sphere and a half transparent glass pane laid
+ * over it and over coloured text, so the blend shows. The pixels are made here. On a deep screen the terminal keeps
+ * them as RGBA and blends; on AGA (no deep screen) it falls back to 8-bit colour. */
+#define TC_W 64
+#define TC_H 48
+
+static void tc_sphere(unsigned char *px)
+{
+    int x, y, r = TC_H / 2 - 1;
+    for (y = 0; y < TC_H; y++)
+        for (x = 0; x < TC_W; x++) {
+            int dx = x - TC_W / 2, dy = y - TC_H / 2, d2 = dx * dx + dy * dy, lit;
+            unsigned char *q = px + (y * TC_W + x) * 4;
+            if (d2 >= r * r) {
+                q[0] = (unsigned char)(x * 255 / TC_W), q[1] = (unsigned char)(y * 255 / TC_H), q[2] = 160, q[3] = 255;
+                continue;
+            }
+            lit = 255 - ((dx + 8) * (dx + 8) + (dy + 8) * (dy + 8)) * 220 / (r * r * 2);
+            if (lit < 30)
+                lit = 30;
+            q[0] = (unsigned char)(240 * lit / 255);
+            q[1] = (unsigned char)(90 * lit / 255);
+            q[2] = (unsigned char)(40 * lit / 255);
+            q[3] = 255;
+        }
+}
+
+/* a pane whose alpha rises from 40 to 220 left to right; its colour is a plain blue-green */
+static void tc_glass(unsigned char *px)
+{
+    int x, y;
+    for (y = 0; y < TC_H; y++)
+        for (x = 0; x < TC_W; x++) {
+            unsigned char *q = px + (y * TC_W + x) * 4;
+            q[0] = 20, q[1] = (unsigned char)(120 + y * 2), q[2] = 230;
+            q[3] = (unsigned char)(40 + x * 180 / TC_W);
+        }
+}
+
+static void sc_kitty_truecolour(long t, int first)
+{
+    static unsigned char px[TC_W * TC_H * 4];
+    int i;
+    (void)t;
+    if (!first)
+        return;
+    heading("Kitty truecolour", "24-bit pictures with alpha; the glass lets the picture and the text show through");
+    ps("\033_Ga=d,d=I,i=2,q=2\033\\\033_Ga=d,d=I,i=3,q=2\033\\");
+    for (i = 0; i < 6; i++) { /* coloured text under the glass */
+        at(4 + i, 30);
+        bg(16 + 36 * (i % 6) + 6 * 2 + (5 - i % 6));
+        fg(231);
+        ps("  alpha 0..255 shows the colour behind  ");
+        sgr0();
+    }
+    tc_sphere(px);
+    at(4, 6);
+    kitty_chunks("a=T,i=2,f=32,s=64,v=48,q=2", px, sizeof px);
+    tc_glass(px);
+    at(6, 22); /* over the sphere's right edge and the text's left end */
+    kitty_chunks("a=T,i=3,f=32,s=64,v=48,z=1,q=2", px, sizeof px);
+    at(12, 6);
+    ps("Left: a sphere in 24-bit colour. Right: a pane with alpha 40 to 220.");
+    at(14, 6);
+    ps("AGA has no deep screen: there the pictures fall back to 8-bit colour.");
+}
+
+/* Kitty z-index: z < 0 draws the picture under the text, z >= 0 over it. The same picture twice, side by side. */
+static void sc_kitty_zindex(long t, int first)
+{
+    static unsigned char px[TC_W * TC_H * 4];
+    int i;
+    (void)t;
+    if (!first)
+        return;
+    heading("Kitty z-index", "z below 0 puts a picture under the text, z of 0 or more over it");
+    ps("\033_Ga=d,d=I,i=4,q=2\033\\\033_Ga=d,d=I,i=5,q=2\033\\");
+    /* The text goes first, so the pictures lie over it whichever way the engine treats later text (D12). */
+    for (i = 0; i < 4; i++) { /* the same text lines on both pictures */
+        at(5 + i, 4);
+        ps("TEXT OVER THE PICTURE");
+        at(5 + i, 44);
+        ps("TEXT UNDER THE PICTURE");
+    }
+    tc_sphere(px);
+    at(4, 4);
+    kitty_chunks("a=T,i=4,f=32,s=64,v=48,z=-1,q=2", px, sizeof px);
+    at(4, 44);
+    kitty_chunks("a=T,i=5,f=32,s=64,v=48,z=1,q=2", px, sizeof px);
+    at(14, 4);
+    ps("z=-1: the picture is behind the text.");
+    at(14, 44);
+    ps("z=1: the picture hides the text.");
+}
+
+/* UPDEMO-NEW-FEATURES (d): glyphs the terminal draws itself (Unifont, the emoji set, grid-fitted Powerline, Nerd Font
+ * and box glyphs): one line each, with its name beside it. */
+static void sc_glyphs(long t, int first)
+{
+    (void)t;
+    if (!first)
+        return;
+    heading("Glyphs", "Powerline, Nerd Font icons, emoji and box drawing are drawn by the terminal");
+    at(4, 4);
+    ps("Powerline   \033[30;44m user \033[34;42m\356\202\260\033[30;42m \356\202\240 main \033[32;49m\356\202\260\033[0m  "
+       "\033[32m\356\202\262\033[30;42m ok \033[0m");
+    at(6, 4);
+    ps("Nerd Font   \357\201\273 folder   \356\202\240 branch   \357\200\225 home   \357\200\256 star");
+    at(8, 4);
+    ps("Emoji       \360\237\230\200  \360\237\232\200  \360\237\220\215  \360\237\216\211  (wide, in colour)");
+    at(10, 4);
+    ps("Box         \342\224\214\342\224\200\342\224\200\342\224\200\342\224\200\342\224\220  "
+       "\342\225\255\342\224\200\342\224\200\342\224\200\342\224\200\342\225\256  \342\226\210\342\226\200\342\226\204\342\226\214");
+    at(11, 4);
+    ps("            \342\224\202    \342\224\202  \342\224\202    \342\224\202");
+    at(12, 4);
+    ps("            \342\224\224\342\224\200\342\224\200\342\224\200\342\224\200\342\224\230  "
+       "\342\225\260\342\224\200\342\224\200\342\224\200\342\224\200\342\225\257");
+    grey_line(14, "Glyphs with no font entry fall back to Unifont, so nothing shows as a hole.");
+}
+
+/* The tab bar is the window's own (Window > New tab), not an escape a program sends, so this scene shows the bar
+ * a window has and names the keys and menu that drive it. */
+/* The tabs scene opens a real tab with /tab new, a moment later closes it with /tab close: the same two
+ * commands the menu's New tab and Close tab run. tabs_open is 1 from the first until the second. */
+static int tabs_open; /* the number of the tab /tab new opened (1-based, the reply's), 0 when none is open */
+static int tabs_tried;
+
+#define TABS_OPEN_AT 120  /* 1/50 s into the scene: /tab new */
+#define TABS_CLOSE_AT 280 /* and /tab close */
+
+/* the tab number in /tab new's reply ("tab: new 3"): the digits after "new"; 0 when there are none */
+static int tabs_number(const char *reply)
+{
+    const char *p = reply ? strstr(reply, "new ") : 0;
+    int n = 0;
+    if (!p)
+        return 0;
+    for (p += 4; *p >= '0' && *p <= '9'; p++)
+        n = n * 10 + (*p - '0');
+    return n;
+}
+
+/* back to the demo's own tab: a scene that ends with the new tab still open closes it. It closes tab N, the
+ * number /tab new answered, never the active tab: the user may have switched back here, and the active tab is
+ * then the demo's own. (Another tab closing in between shifts the numbers; that is accepted.) */
+static void tabs_leave(void)
+{
+    if (tabs_open && io->command) {
+        char line[24] = "/tab close ";
+        int n = (int)strlen(line);
+        if (tabs_open >= 10)
+            line[n++] = (char)('0' + tabs_open / 10 % 10);
+        line[n++] = (char)('0' + tabs_open % 10);
+        line[n] = 0;
+        io->command(io->user, line);
+    }
+    tabs_open = 0;
+    tabs_tried = 0;
+}
+
+static void sc_tabs(long t, int first)
+{
+    if (first) {
+        tabs_open = 0;
+        tabs_tried = 0;
+        heading("Tabs", "several sessions in one window, each with its own profile");
+        at(4, 2);
+        ps("\033[7m 1 vsh \033[0m\033[4m 2 build \033[0m\033[4m 3 Claude \033[0m\033[4m 4 notes \033[0m");
+        at(5, 2);
+        ps("\033[2m~ % make ... the build runs in tab 2 while you type here\033[0m");
+        grey_line(8, "Window > New tab opens another session; Next tab and Previous tab move between them.");
+        grey_line(9, "/ask opens an AI agent in a new tab of its own.");
+        grey_line(10, "A tab can run any program: Claude, pi, UPDemo.");
+    }
+    if (!tabs_tried && t >= TABS_OPEN_AT && t < TABS_CLOSE_AT && io->command) {
+        tabs_tried = 1;
+        tabs_open = tabs_number(io->command(io->user, "/tab new"));
+        if (tabs_open)
+            grey_line(12, "Sending /tab new: a real tab opens beside this one ...");
+        else
+            grey_line(12, "tab not opened");
+    } else if (tabs_open && t >= TABS_CLOSE_AT) {
+        grey_line(13, "Sending /tab close: the new tab closes again.");
+        tabs_leave();
+    }
+}
+
 /* A frame counter in big letters. With mode 2026 the terminal shows each
  * frame whole; every other second the frames go without it, and a slow
  * machine shows them being drawn. */
@@ -1952,10 +2290,15 @@ static const scene_def scenes[] = {
     { "splits", sc_splits, 0, 300, "Split panes: Window menu and keys", 0, 0, 0 },
     { "vsh", sc_vsh, 0, 500, "vsh, the shell of UP-Term windows", 0, 0, 0 },
     { "completion", sc_complete, 0, 450, "Tab completion, Unix style and KingCON style", 0, 0, 0 },
-    { "themes", sc_themes, 0, 480, "Themes switched live (OSC 4, 10, 11)", 0, 0, "Themes: the 16 colours a theme sets" },
+    { "themes", sc_themes, 0, TOUR_THEME_COUNT * TOUR_THEME_TICKS, "Themes switched live (OSC 4, 10, 11)", 0, 0, "Themes: the 16 colours a theme sets" },
     { "mouse", sc_mouse, 0, 600, "Mouse reports: click in the window", 0, 0, 0 },
     { "links", sc_links, 0, 400, "Hyperlinks (OSC 8) and notifications (OSC 9)", 0, 0, 0 },
     { "sixel", sc_sixel, 0, 450, "Sixel images: pictures in the text", 0, 0, 0 },
+    { "kitty animation", sc_kitty_anim, 0, 450, "Kitty graphics: an animation the terminal plays", 0, 0, 0 },
+    { "kitty truecolour", sc_kitty_truecolour, 0, 450, "Kitty graphics: 24-bit pictures with alpha", 0, 0, 0 },
+    { "kitty z-index", sc_kitty_zindex, 0, 450, "Kitty graphics: text over and under a picture", 0, 0, 0 },
+    { "glyphs", sc_glyphs, 0, 400, "Glyphs: Powerline, Nerd Font, emoji, box drawing", 0, 0, 0 },
+    { "tabs", sc_tabs, 0, 400, "Tabs: several sessions in one window", 0, 0, 0 },
     { "synchronized output", sc_sync, 1, 400, "Synchronized output: frames shown whole", 0, 0, 0 },
     { "resize", sc_resize, 0, 400, "A program resizes the window (DECCOLM)", 0, 0, 0 },
     { "reflow", sc_reflow, 0, 750, "Reflow on resize", 1, 0, 0 },
@@ -2163,6 +2506,7 @@ static int play(int first, long scene_ticks)
                 break;
         }
         flush();
+        tabs_leave();
         stat_ticks[s] += io->ticks(io->user) - t0;
         ps("\033[r"); /* the whole screen scrolls again */
         if (!ansi)

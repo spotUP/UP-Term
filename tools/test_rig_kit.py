@@ -219,8 +219,16 @@ with tempfile.TemporaryDirectory() as tmp:
             check((tmp / "vtc/vsh").read_bytes() == b"vsh 237268", "a stale VTC:vsh is replaced by the build")
             check((tmp / "vtc/UPDemo").read_bytes() == b"updemo new", "a missing VTC:UPDemo is added")
             # rig 3, 2026-10-24: VTC:gg/bin/sh (GG:bin/sh, the sh of ixemul programs) was an 8 Oct vsh whose
-            # pipelines gave an ixemul child a non-interactive stdout (upkg-ui tty:programbox exit 3)
-            check((tmp / "vtc/gg/bin/sh").read_bytes() == b"vsh 237268", "a stale VTC:gg/bin/sh is replaced by the build vsh")
+            # pipelines gave an ixemul child a non-interactive stdout (upkg-ui tty:programbox exit 3). Since
+            # fb06002e GG:bin/sh is a program_pairs row, not a kit shadow: install_rig.put_vsh must copy it.
+            import install_rig
+            old_ir = install_rig.ROOT, install_rig.VTC
+            install_rig.ROOT, install_rig.VTC = tmp, tmp / "vtc"
+            try:
+                install_rig.put_vsh()
+            finally:
+                install_rig.ROOT, install_rig.VTC = old_ir
+            check((tmp / "vtc/gg/bin/sh").read_bytes() == b"vsh 237268", "put_vsh replaces a stale VTC:gg/bin/sh with the build vsh")
         else:
             check(False, "rig.refresh_kit_shadows exists")
     finally:

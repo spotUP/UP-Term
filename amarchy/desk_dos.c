@@ -14,6 +14,7 @@
 #include "gthemes_dos.h"
 #include "rexx_host.h"
 #include "desk_core.h"
+#include "bar_core.h"
 #include "menu_theme.h"
 #include "amconf_dos.h"
 #include "flat_shared.h"
@@ -86,10 +87,17 @@ static void dk_snapshot(unsigned mask)
     }
 }
 
-/* run one stock editor on a prefs file, USE: ENV: only, no window left behind */
+static unsigned long dk_iprefs_idle_mask(void);
+static void dk_wait_iprefs(unsigned long idle_mask);
+unsigned long desk_dos_editor_waits;
+
+/* run one stock editor on a prefs file, USE: ENV: only, no window left behind. RL15 AMARCHY-WBPREFS-INUSE: a Workbench or WBPattern
+ * USE is followed by the IPrefs idle wait here, the one place every editor run goes through: IPrefs opens ENV:Sys/Workbench.prefs
+ * about 6.7 s later in its Workbench reset, and a second Workbench write in that window failed "object is in use" (Error 202). */
 static void dk_editor(const char *editor, const char *file)
 {
     char cmd[160], prog[80];
+    unsigned long idle = 0;
     BPTR in = Open((STRPTR)"NIL:", MODE_OLDFILE), out = Open((STRPTR)"NIL:", MODE_NEWFILE);
     strcpy(prog, "SYS:Prefs/");
     strcat(prog, editor);
@@ -98,11 +106,17 @@ static void dk_editor(const char *editor, const char *file)
     strcat(cmd, file);
     strcat(cmd, " USE");
     /* its $STACK cookie, floor 32768 (rule 6): under WBStartup the child gets 4096 otherwise */
+    if (desk_editor_waits_iprefs(editor))
+        idle = dk_iprefs_idle_mask(); /* before the editor: the Wait() IPrefs returns to when done */
     SystemTags((STRPTR)cmd, SYS_Input, in, SYS_Output, out, NP_StackSize, pl_stack(prog, 32768), TAG_DONE);
     if (in)
         Close(in);
     if (out)
         Close(out);
+    if (desk_editor_waits_iprefs(editor)) {
+        desk_dos_editor_waits++;
+        dk_wait_iprefs(idle);
+    }
 }
 
 static int dk_screen_depth(void)
@@ -421,9 +435,7 @@ static int dk_apply(const gtheme *th, char *why, int cap)
     if (mask & (1u << DT_WBPATTERN)) {
         plen = dk_read("ENV:Sys/wbpattern.prefs", prev, sizeof prev);
         len = desk_wbpattern(th, depth > 3 ? 3 : depth, plen > 0 ? prev : 0, plen > 0 ? plen : 0, buf, sizeof buf);
-        ok &= dk_put("WBPattern", DK_WORK "/wbpattern.prefs", buf, len);
-        if (old_ws)
-            dk_wait_iprefs(idle);
+        ok &= dk_put("WBPattern", DK_WORK "/wbpattern.prefs", buf, len); /* dk_editor waits for IPrefs */
     }
     if ((mask & (1u << DT_POINTER)) && !dk_pointer_editor_ok()) {
         /* R1.17: the 3.1 editor reset-loops on the 3.2 pointer prefs; leave the pointer alone there */
@@ -548,7 +560,7 @@ static int dk_exists(const char *file)
 
 /* FLAT-BACKDROP-SAME-AS-WINDOW: flat-system-look puts BACKGROUNDPEN on pen 0, the window colour, so a Workbench with no wbpattern.prefs
  * fills its backdrop with the window colour. Flat on (desktop-theme not writing the pattern itself): the ROOT tile is the solid
- * backdrop pen (desk_backdrop_pen, not BACKGROUNDPEN) and that pen's palette colour is the theme dark (desk_darker). First turn-on
+ * backdrop pen (desk_backdrop_pen, not BACKGROUNDPEN) and that pen's palette colour is the theme dark (gt_darker). First turn-on
  * snapshots the previous palette and pattern (or their absence); flat off puts them back. */
 static void dk_flat_backdrop_take(const unsigned char *pal, long pallen)
 {
@@ -686,7 +698,7 @@ static int dk_flat_pens(const gtheme *th)
     if ((own || theme) && len > 0) {
         dk_flat_backdrop_take(buf, len);
         wlen = theme ? desk_palette_theme(buf, len, th, depth, flat, out, sizeof out)
-                     : desk_palette_set_rgb(buf, len, desk_backdrop_screen_pen(depth), depth, desk_darker(th), out, sizeof out);
+                     : desk_palette_set_rgb(buf, len, desk_backdrop_screen_pen(depth), depth, gt_darker(th), out, sizeof out);
         if (wlen > 0) {
             if (wlen != len || memcmp(buf, out, wlen))
                 sync = 1;
@@ -1318,4 +1330,196 @@ static void dk_orig_off(unsigned desk_mask, int flat)
     for (i = 0; i < n; i++)
         dk_orig_forget(env[i]);
     DeleteFile((STRPTR)DK_ORIG);   /* the directory, once empty */
+}
+
+/* S31-START-APPLY (rig 55, 2026-11-02): Amarchy's start makes ENV: match the prefs it starts with, the same writes a theme pick makes
+ * (dk_flat_pens, the theme backdrop of dk_apply, dk_wbborder) but only the parts desk_start_plan finds stale, so a start where ENV: already
+ * matches runs no editor and no IPrefs reset. No confirm requester: nothing changed by hand here, and a timeout must not revert prefs the user
+ * set. The originals are saved first (dk_orig_save), so turning the look off still restores the user's own files. */
+unsigned long desk_dos_start_plans, desk_dos_start_writes;
+
+/* S32-WB-BACKDROP: the root window's flags (the stock Workbench window spanning the screen, bar_is_desktop), DESK_ROOT_NONE / DESK_ROOT_WB (flags set) / DESK_ROOT_FOREIGN (a desktop window that is not a Workbench window, e.g. Directory Opus). */
+static int dk_wb_root_flags(unsigned long *flags)
+{
+    struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
+    struct Screen *s;
+    int found = DESK_ROOT_NONE;
+    if (!IntuitionBase)
+        return DESK_ROOT_NONE;
+    if ((s = ipd_lock_wb_screen()) != 0) {
+        ULONG il = LockIBase(0);
+        struct Window *w;
+        for (w = s->FirstWindow; w; w = w->NextWindow)
+            if (bar_is_desktop((unsigned long)w->Flags, w->LeftEdge, w->LeftEdge + w->Width - 1, s->Width)) {
+                *flags = (unsigned long)w->Flags;
+                found = (w->Flags & BAR_WFLG_WBENCHWINDOW) ? DESK_ROOT_WB : DESK_ROOT_FOREIGN;
+                if (found == DESK_ROOT_WB)
+                    break;
+            }
+        UnlockIBase(il);
+        UnlockPubScreen(0, s);
+    }
+    CloseLibrary((struct Library *)IntuitionBase);
+    return found;
+}
+
+/* The root window opens a moment after the screen (LoadWB), so look for it for up to 5 s. */
+unsigned long desk_dos_wb_backdrop_invokes;
+
+int desk_dos_wb_backdrop(void)
+{
+    am_prefs ap;
+    unsigned long fl = 0;
+    int i, state = DESK_ROOT_NONE, port;
+    amconf_load(&ap);
+    if (!amconf_desk_master(&ap))
+        return 0;
+    port = rexx_port_exists("WORKBENCH");
+    for (i = 0; port && i < 10 && desk_wb_root_wait(state = dk_wb_root_flags(&fl)); i++)
+        Delay(25);
+    if (!desk_wb_backdrop_invoke(1, port, state == DESK_ROOT_WB, fl))
+        return 0;
+    rexx_send("WORKBENCH", "MENU INVOKE WORKBENCH.BACKDROP", 0, 0);
+    desk_dos_wb_backdrop_invokes++;
+    am_sentinel("AMARCHY_WB_BACKDROP_INVOKE", (long)desk_dos_wb_backdrop_invokes);
+    return 1;
+}
+
+int desk_dos_start_apply(void)
+{
+    static unsigned char wb[DK_BUF], pat[DK_BUF], out[DK_BUF], pal[DK_BUF], pcur[8192], pnew[8192], fcur[DK_BUF], fnew[DK_BUF];
+    am_prefs ap;
+    gtheme th;
+    unsigned mask, plan;
+    unsigned char sv[2], pens[DK_SLOTS];
+    unsigned short live[DK_SLOTS];
+    int flat, depth, saved = -1, gsaved = -1, was, nlive = 0;
+    unsigned long idle = 0;
+    long wblen, patlen, len, pallen, curlen, ptrlen = 0, fontlen = 0, flen;
+    int ic_act = DK_IC_NONE, ic_snap = 0;
+    amconf_load(&ap);
+    mask = amconf_desk_mask(&ap);
+    flat = amconf_desk_flat_pens(&ap);
+    if (!mask && !flat)
+        return 0;
+    gt_dos_load_current(&th);
+    depth = dk_screen_depth();
+    if (depth > 3)
+        depth = 3;
+    if (dk_read(DK_WBB_PREV, sv, 2) == 1)
+        saved = sv[0] - '0';
+    if (dk_read(DK_WBG_PREV, sv, 2) == 1)
+        gsaved = sv[0] - '0';
+    wblen = dk_read("ENV:Sys/Workbench.prefs", wb, sizeof wb);
+    if (wblen < 0)
+        wblen = dk_read("ENVARC:Sys/Workbench.prefs", wb, sizeof wb);
+    patlen = dk_read("ENV:Sys/wbpattern.prefs", pat, sizeof pat);
+    plan = desk_start_plan(mask, flat, dk_wbborder_editor_ok(), wb, wblen, saved, gsaved, &th, depth, pat, patlen);
+    /* S31-START-PALETTE: the theme colours, as dk_apply's palette part writes them (dk_flat_pens leaves them to it) */
+    pallen = 0;
+    if (((mask >> DT_PALETTE) & 1) && dk_palette_editor_ok()) {
+        desk_pens_for(flat, pens);
+        len = dk_palette_base(0, pens, dk_screen_depth(), out, sizeof out);
+        curlen = dk_read("ENV:Sys/Palette.prefs", wb, sizeof wb);   /* wb is free: desk_start_plan has read it */
+        pallen = desk_start_palette(mask, flat, &th, dk_screen_depth(), out, len, curlen > 0 ? wb : 0, curlen, pal, sizeof pal);
+        if (pallen > 0)
+            plan |= DESK_START_PALETTE;
+    }
+    /* S31-START-PARTS: the pointer, font and icontrol parts of a theme pick, planned like the palette (dk_apply wrote them only on a pick) */
+    if (((mask >> DT_POINTER) & 1) && dk_pointer_editor_ok()) {
+        curlen = dk_read("ENV:Sys/pointer.prefs", pcur, sizeof pcur);
+        if (curlen < 0)
+            curlen = dk_read("ENVARC:Sys/Pointer.prefs", pcur, sizeof pcur);
+        ptrlen = desk_start_prefs(DT_POINTER, mask, &th, 0, 0, 0, curlen > 0 ? pcur : 0, curlen, pnew, sizeof pnew);
+        if (ptrlen > 0)
+            plan |= DESK_START_POINTER;
+    }
+    if ((mask >> DT_FONT) & 1) {
+        flen = dk_read("ENV:Sys/font.prefs", fcur, sizeof fcur);
+        if (flen < 0)
+            flen = dk_read("ENVARC:Sys/font.prefs", fcur, sizeof fcur);
+        fontlen = desk_start_prefs(DT_FONT, mask, &th, amconf_icon_text(&ap), dk_font_exists, 0, flen > 0 ? fcur : 0, flen, fnew, sizeof fnew);
+        if (fontlen > 0)
+            plan |= DESK_START_FONT;
+    }
+    if (dk_palette_editor_ok()) {
+        static unsigned char ic_cur[DK_BUF * 8];
+        long ic_len = dk_read("ENV:Sys/icontrol.prefs", ic_cur, sizeof ic_cur);
+        if (ic_len < 0)
+            ic_len = dk_read("ENVARC:Sys/icontrol.prefs", ic_cur, sizeof ic_cur);
+        ic_act = desk_start_icontrol(mask, ic_cur, ic_len, dk_have_icontrol_snapshot(), &ic_snap);
+        if (ic_act != DK_IC_NONE)
+            plan |= DESK_START_ICONTROL;
+    }
+    desk_dos_start_plans++;
+    am_sentinel("AMARCHY_DESK_START_PLAN", (long)plan);
+    dk_live_want = 0;
+    /* rig 56: the start writes made IPrefs reset the Workbench screen with the bar open ("Intuition is attempting to reset the
+     * Workbench screen. Please close the..."), so our windows close around them, as dk_apply closes them around a reset. With
+     * plan 0 the palette already matches (a fresh ENV: always plans the WB bit when flat), so dk_flat_pens writes nothing. */
+    was = -1;
+    if (plan) {
+        idle = dk_iprefs_idle_mask();
+        desk_dos_wb_closes++;
+        was = dk_windows_close();
+    }
+    if (plan & DESK_START_PALETTE) {
+        struct Screen *before = dk_wb_screen(live, &nlive);
+        dk_orig_save(1u << DT_PALETTE, 0);
+        UnLock(CreateDir((STRPTR)DK_WORK));
+        if (dk_put("Palette", DK_WORK "/palette.prefs", pal, pallen)) {
+            desk_dos_start_writes++;
+            if (desk_pens_reset(live, nlive, flat, dk_screen_depth()))
+                dk_wait_reset(before, flat, dk_screen_depth());
+        }
+        dk_live_want = 1;
+        dk_live_flat = flat;
+        desk_dos_dopus_sends++;
+        dopus_theme_send(&th, dk_dopus_send, 0);
+    }
+    if (plan & DESK_START_POINTER) {
+        dk_orig_save(1u << DT_POINTER, 0);
+        UnLock(CreateDir((STRPTR)DK_WORK));
+        if (dk_put("Pointer", DK_WORK "/pointer.prefs", pnew, ptrlen))
+            desk_dos_start_writes++;
+    }
+    if (plan & DESK_START_FONT) {
+        dk_orig_save(1u << DT_FONT, 0);
+        UnLock(CreateDir((STRPTR)DK_WORK));
+        if (dk_put("Font", DK_WORK "/font.prefs", fnew, fontlen))
+            desk_dos_start_writes++;
+        dk_wait_iprefs(idle);   /* the Font editor resets the Workbench screen too */
+    }
+    if (plan & DESK_START_ICONTROL) {
+        dk_orig_save(1u << DT_ICONTROL, 0);
+        if (ic_snap)
+            dk_snapshot(1u << DT_ICONTROL);
+        UnLock(CreateDir((STRPTR)DK_WORK));
+        if (ic_act == DK_IC_RESTORE ? dk_icontrol_restore() : dk_icontrol(1))
+            desk_dos_start_writes++;
+        dk_wait_iprefs(idle);
+    }
+    if (flat)
+        dk_flat_pens(&th);   /* idempotent: writes palette / own backdrop only when they differ */
+    if (plan & DESK_START_PATTERN) {
+        len = desk_wbpattern(&th, depth, patlen > 0 ? pat : 0, patlen > 0 ? patlen : 0, out, sizeof out);
+        dk_orig_save(1u << DT_WBPATTERN, 0);
+        UnLock(CreateDir((STRPTR)DK_WORK));
+        if (dk_put("WBPattern", DK_WORK "/wbpattern.prefs", out, len))
+            desk_dos_start_writes++;
+    }
+    if (plan & DESK_START_WB) {
+        dk_wbborder();
+        desk_dos_start_writes++;
+        if (!dk_pending_mask())
+            DeleteFile((STRPTR)DK_WBPEND);   /* no confirm owns the Workbench.prefs snapshot */
+    }
+    if (plan) {
+        dk_wait_iprefs(idle);
+        dk_windows_open(was);
+    }
+    if (dk_live_want)
+        dk_live_pens(dk_live_want > 0 ? &th : 0, dk_live_flat);
+    am_sentinel("AMARCHY_DESK_START_WRITES", (long)desk_dos_start_writes);
+    return (int)plan;
 }

@@ -23,13 +23,21 @@ CHUNK = 12           # files per md5sum call (command line length)
 MD5 = "UP-Term:bin/md5sum"
 # Files the kit copies from dist/ rather than build/amiga, checked like built programs. keymap is checked whole:
 # the user's own rows live in ENVARC:up-term/keymap.user, so the installed keymap must equal dist/keymap exactly.
-DIST_SOURCES = ("keymap",)
+# solidwin/SolidWin is Thomas Rapp's binary the kit ships unchanged (Copy solidwin/SolidWin C:SolidWin); listing it here
+# puts C:SolidWin in every rig's kit set (kitset.derive, RIG-SOLIDWIN) and in the A1200 drift check.
+DIST_SOURCES = ("keymap", "solidwin/SolidWin")
 # Data the kit lays down, by install.dos source name -> file in dist/. lucide.dat and outline.dat are built into dist/Amarchy
 # (make lucide-dat); bar.conf is the user's once it exists (install.dos copies it only when absent), so it is
 # checked for existence only (USER_OWNED); the theme drawer (`Copy amarchy-themes <dir> ALL`) is DATA_DRAWERS.
 DATA_FILES = {"lucide/lucide.dat": "Amarchy/Icons/lucide.dat", "lucide/outline.dat": "Amarchy/Icons/outline.dat", "bar.conf": "bar.conf"}
 DATA_DRAWERS = {"amarchy-themes": "amarchy-themes"}
 USER_OWNED = ("bar.conf",)
+# Media the kit lays in the UP-Term: drawer (install.dos `Copy updemo/earth.anim UP-Term:share/updemo`), by path in the
+# drawer -> file in dist/. A rig whose UP-Term: tree predates one of these shows UPDemo's coded fallback, not the media
+# (RIG-DRIFT-MEDIA, rig 91, 2026-11-03: no earth.anim, the kitty scene judged on the wrong picture).
+KIT_MEDIA = {"share/updemo/earth.anim": "updemo/earth.anim",
+             "share/updemo/kanim-stream.bin": "updemo/kanim-stream.bin",
+             "share/updemo/photo.png": "updemo/photo.png"}
 
 
 def lib_entries(nofpu=False):
@@ -129,6 +137,14 @@ def verdicts(entries, build, amiga):
             for n, p in entries]
 
 
+def media_entries(dist=None):
+    """([(name, Amiga path)], {name: dist md5}) for KIT_MEDIA at the installed UP-Term: path (RIG-DRIFT-MEDIA-INSTALLED:
+    an Installer run onto another volume is invisible to the host-side tree check in rig.py media_drift)."""
+    dist = dist or ROOT / "dist"
+    entries = [(rel, "UP-Term:" + rel) for rel in KIT_MEDIA]
+    return entries, {rel: md5_file(dist / src) for rel, src in KIT_MEDIA.items()}
+
+
 def main(argv):
     bdir = pathlib.Path(argv[argv.index("--build") + 1]) if "--build" in argv else ROOT / "build/amiga"
     names = [f.name for f in bdir.iterdir() if f.is_file()]
@@ -147,6 +163,9 @@ def main(argv):
             print("%-8s %-28s not checked: no %s" % ("unbuilt", n, src))
             skipped.append(n)
     entries = entries + [(n, p) for n, p, src in data if src.is_file()]
+    m_entries, m_build = media_entries()
+    build.update(m_build)
+    entries = entries + m_entries
     res = verdicts(entries, build, amiga_md5s([p for _, p in entries]))
     for state, n, p in res:
         print("%-8s %-28s %s" % (state, n, p))

@@ -304,6 +304,11 @@ int flat_start_decide(int marker, int lmb, int rmb, int other)
     return other;
 }
 
+int flat_install_due(int held, int installed, int last_rc)
+{
+    return !held && !installed && last_rc == FLAT_ERR_NOCLASS;
+}
+
 unsigned flat_marker_remaining(unsigned long written, unsigned long now)
 {
     unsigned long age = (now - written) & 0xFFFFFFFFul;
@@ -502,12 +507,12 @@ static int flat_outline_of_depth(const flat_state *s, int depth)
     return 0;
 }
 
-int flat_scroller_pen(const flat_state *s, int depth, int cx, int cy, int cw, int ch, int horiz, int vert,
-                      unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody, int x0, int y0, int x1, int y1)
+int flat_scroller_knob(int cx, int cy, int cw, int ch, int horiz, int vert, unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody,
+                      int *kx_out, int *ky_out, int *kw_out, int *kh_out)
 {
     int kx = cx, ky = cy, kw = cw, kh = ch;
-    if (!s->enabled || s->held || cw < 1 || ch < 1 || x0 < cx || y0 < cy || x1 >= cx + cw || y1 >= cy + ch || x1 < x0 || y1 < y0)
-        return -1;
+    if (cw < 1 || ch < 1)
+        return 0;
     if (horiz) {
         kw = (int)(((unsigned long)hbody * (unsigned long)cw) / 0xFFFFUL);
         if (kw < 1) kw = 1;
@@ -518,6 +523,17 @@ int flat_scroller_pen(const flat_state *s, int depth, int cx, int cy, int cw, in
         if (kh < 1) kh = 1;
         ky = cy + (int)(((unsigned long)vpot * (unsigned long)(ch - kh)) / 0xFFFFUL);
     }
+    *kx_out = kx; *ky_out = ky; *kw_out = kw; *kh_out = kh;
+    return 1;
+}
+
+int flat_scroller_pen(const flat_state *s, int depth, int cx, int cy, int cw, int ch, int horiz, int vert,
+                      unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody, int x0, int y0, int x1, int y1)
+{
+    int kx, ky, kw, kh;
+    if (!s->enabled || s->held || cw < 1 || ch < 1 || x0 < cx || y0 < cy || x1 >= cx + cw || y1 >= cy + ch || x1 < x0 || y1 < y0)
+        return -1;
+    flat_scroller_knob(cx, cy, cw, ch, horiz, vert, hpot, vpot, hbody, vbody, &kx, &ky, &kw, &kh);
     if (x0 >= kx && x1 < kx + kw && y0 >= ky && y1 < ky + kh)
         return flat_knob_pen(s, depth);
     return s->pen_back;

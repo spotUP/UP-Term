@@ -25,17 +25,18 @@ enum {
     AM_TILENMASTER, /* tile-nmaster: AmTile's number of master windows (1..AM_TILENM_MAX), no Prefs gadget */
     AM_AGENT,   /* ai-agent: the AI agent super+l opens (claude, pi); the word-to-tab table is handler/tabprog.h, no Prefs gadget */
     AM_SHOTDIR, /* shot-dir: the drawer the screenshots (CAP screen|window|region) land in; empty = RAM:Shots, no Prefs gadget */
-    AM_DESK,    /* desktop-theme: master switch of the native desktop theme (off/on, default off); no Prefs gadget */
+    AM_DESK,    /* desktop-theme: master switch of the native desktop theme (off/on, default on: a fresh install gets pointer.prefs and icontrol.prefs); no Prefs gadget */
     AM_DESKPAL, /* desktop-palette: part switch (default on under the master); these four are in desk_core target order */
     AM_DESKBACK, /* desktop-backdrop */
     AM_DESKPTR, /* desktop-pointer */
     AM_DESKLBL, /* desktop-labels */
-    AM_FLAT,    /* flat-system-look: the flat window frame glyphs (amarchy-flat, off/on, default off) */
-    AM_FLATGAD, /* flat-window-gadgets: the flat window gadgets (off/on, default off) */
+    AM_FLAT,    /* flat-system-look: the flat window frame glyphs (amarchy-flat, off/on, default on: a header-only prefs file after install is the full flat look) */
+    AM_FLATGAD, /* flat-window-gadgets: the flat window gadgets (off/on, default on) */
     AM_FLATSIZE, /* flat-border-size: stock, thin (the window border and title size) */
     AM_ICONSTYLE, /* icon-style: filled (default, Phosphor Fill) or outline (Lucide); the set amarchy-icons APPLY splices */
     AM_ICONTEXT, /* icon-text: the icon label text mode in the WB font prefs, plain (default), outline or shadow (desk_font_pens) */
     AM_BORDERBLANK, /* border-blank: native screens show black outside the picture (off/on, default on); borderblank_patch.c */
+    AM_WELCOME, /* welcome-shown: the first-start welcome window was shown and ticked "don't show again" (off/on, default off); no Prefs gadget */
     AM_NKEYS
 };
 
@@ -79,6 +80,8 @@ const char *amconf_shot_dir(const am_prefs *p);
 /* the desktop targets to write: 0 when desktop-theme is off, else bit t (desk_core target t) for each part switched on; the icontrol
  * bit (4) when flat-border-size is thin */
 unsigned amconf_desk_mask(const am_prefs *p);
+/* 1 when the desktop-theme master switch is on (whatever its parts) */
+int amconf_desk_master(const am_prefs *p);
 /* FLAT-PENS-LIVE: 1 when the palette write carries the flat pen map: flat-system-look on (the old amarchy-flat-pens key is folded
  * into it); else 0, the stock map. Independent of desktop-theme: desk_dos_apply writes the pens itself (desk_pens_sync) */
 int amconf_desk_flat_pens(const am_prefs *p);

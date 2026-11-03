@@ -82,12 +82,23 @@ typedef struct vt_cell {
     vt_u8  ext;     /* 0, or 1 + an entry of the terminal's rare styles:
                      * underline colour and font (vt_cell_underline_color,
                      * vt_cell_font) */
-    vt_u8  pad;     /* VT_CELL_IMAGE, else 0 */
+    vt_u8  pad;     /* VT_CELL_IMAGE, VT_CELL_UNDER, else 0 */
 } vt_cell;
 /* vt_cell.pad: the cell shows a tile of an image placed on its row
- * (vt_row_image); its own text is a blank. Writing or erasing the cell
- * rewrites it whole, so text over an image takes its place. */
+ * (vt_row_image) over its text. A sixel blanks the cell's text; a kitty
+ * picture (z >= 0) keeps it, drawn first and seen through the picture's
+ * translucent pixels (O6). Erasing the cell rewrites it whole; text written
+ * into a sixel's cell takes its place, but not into a kitty z >= 0 cell
+ * (VT_CELL_FRONT), where the picture stays over the new glyph (D12). */
 #define VT_CELL_IMAGE 0x01
+/* vt_cell.pad: a kitty picture placed with z < 0 lies under the cell's
+ * text (K30). The text stays and keeps the bit when it is rewritten or
+ * erased; draw the background, then the picture, then the glyph. */
+#define VT_CELL_UNDER 0x02
+/* vt_cell.pad: set with VT_CELL_IMAGE on the cells of a kitty picture with
+ * z >= 0: text written into the cell keeps both bits (the picture stays over
+ * it, D12). A sixel's cells carry VT_CELL_IMAGE alone. */
+#define VT_CELL_FRONT 0x04
 
 /* A cell's ch in U+D800..U+DFFF (the surrogates, which are never a
  * character of their own) is not a character: it names an entry of the
@@ -362,6 +373,8 @@ typedef struct vt_image_view {
     const vt_u32 *pal;  /* 0xRRGGBB; entry 0 is the pixels the image left
                          * unset: draw them in the default background */
     int npal;
+    int fmt;            /* 0 pix holds indices into pal; 1 it holds w x h x 4 bytes R G B A (pal, npal unused) */
+    int opaque;         /* fmt 1: no pixel has an alpha below 255 */
     int cw, ch;         /* the cell size the image was placed with */
     int col0;           /* the grid column of the image's left edge on this
                          * row (negative when a reflow split the image) */
@@ -370,10 +383,15 @@ typedef struct vt_image_view {
     int py;             /* the image's pixel row at the top of this row
                          * (negative on the first row when py0 > 0) */
     long serial;        /* different for every image (a pen cache's key) */
+    long z;             /* kitty's z= (0 for a sixel): below 0 the image is
+                         * under the text, in the VT_CELL_UNDER cells */
 } vt_image_view;
-/* The i-th image on row `row` (vt_row's numbering), the oldest first, so
- * drawing them in order puts the newest on top. Draw a tile only in the
- * row's cells with VT_CELL_IMAGE set. 0 when there is no i-th. */
+/* The i-th image on row `row` (vt_row's numbering), in draw order: by z,
+ * then kitty i=, then the oldest first, so drawing them in order puts the
+ * top one last. Draw a tile with z >= 0 only in the row's VT_CELL_IMAGE
+ * cells, one with z < 0 only in its VT_CELL_UNDER cells, under the text
+ * (with z <= -1073741824 only in the cells with the default background).
+ * 0 when there is no i-th. */
 int      vt_row_image(const vt_term *t, int row, int i, vt_image_view *v);
 /* Kitty graphics (APC G ... ST): raw RGB / RGBA (f=24, 32), o=z, chunks,
  * a=t T p d q, replies, become the same images. A PNG (f=100) needs the
@@ -397,6 +415,9 @@ void     vt_set_file_reader(vt_term *t, vt_file_reader read, vt_file_unlinker un
 #define VT_SIXEL_MAX_W 1024
 #define VT_SIXEL_MAX_H 1024
 #define VT_IMAGE_MEMORY (2048L * 1024L)
+/* Animation frames (kitty a=f) have their own budget, on top of VT_IMAGE_MEMORY (D15). */
+#define VT_ANIM_MEMORY (2048L * 1024L)
+#define VT_ANIM_FRAMES 128 /* frames of one picture, the root included */
 
 /* The palette indices a cell draws with, for this personality: default
  * colours, bold-as-bright (pcansi, and xterm for colours 0-7), iCE blink,
@@ -533,10 +554,47 @@ int      vt_kitty_flags(const vt_term *t);
 unsigned long vt_music_smile_blocks(const vt_term *t);
 /* How many kitty graphics images were placed on the screen (a test sentinel). */
 unsigned long vt_kitty_placed(const vt_term *t);
+/* How many placeholder cells vt_cell_placeholder resolved to a tile (a test sentinel). */
+unsigned long vt_kitty_placeholders(const vt_term *t);
+/* K34: animation frames alive (a picture with a frame list counts its root too). */
+unsigned long vt_kitty_frames(const vt_term *t);
+/* K35: frame switches made (by the clock or by a=a c=), a test sentinel. */
+unsigned long vt_kitty_frame_switches(const vt_term *t);
+/* K36: the host's switch for terminal-driven playback (profile key image-animation, default on). Off: vt_anim_tick
+ * switches nothing and returns -1; a client's a=a c= still switches. */
+void vt_set_animation(vt_term *t, int on);
+/* K35: advance every running kitty animation by `us` microseconds, switching
+ * frames whose gap ran out (gapless ones skipped) and marking the rows of the
+ * changed pictures. Returns the microseconds to the next due frame, -1 when
+ * nothing runs. */
+long vt_anim_tick(vt_term *t, long us);
+/* Frame `frame` (1 = root) of kitty image `id`: the 6x6x6 + grey cube index at (x, y), 0 clear, -1 when none;
+ * on an RGB picture (vt_set_image_rgb, K39) the exact 0xAARRGGBB. */
+long vt_kitty_frame_px(const vt_term *t, unsigned long id, int frame, int x, int y);
+/* Kitty unicode placeholders (U=1, K31). A cell whose base code point is
+ * U+10EEEE shows one tile of a virtual placement: the cell's foreground
+ * colour is the image id (256-colour index, or R<<16|G<<8|B), the third
+ * combining mark its high byte, the underline colour the placement id (0
+ * = any); the first two marks are the tile's row and column. Missing marks
+ * are inferred from the cell to the left. Returns 1 with the placement's
+ * picture scaled to its cells (cw x ch per cell, col0 = px0 = py0 = py = 0)
+ * and the tile (*tile_col, *tile_row) this cell shows; 0 when the cell is
+ * no placeholder, the image or placement is unknown, or the tile is out of range. */
+int vt_cell_placeholder(const vt_term *t, int row, int col, vt_image_view *v, int *tile_col, int *tile_row);
 /* z= of the newest kitty placement, sign kept (test accessor) */
 long vt_kitty_last_z(const vt_term *t);
 /* How many of the f=100 pictures the engine's own PNG decoder made (the rest went to the host's). */
 unsigned long vt_kitty_png_own(const vt_term *t);
+/* Deep screens (K38): on, kitty pictures are kept as RGBA, 4 bytes a pixel with the
+ * picture's own alpha byte, no cube or palette, and the image budgets are x4 (the
+ * same pixel capacity). Off (the default): indexed pictures as always. Turning it
+ * off converts the RGBA pictures to indices. Sentinel: RGB pictures made. */
+void vt_set_image_rgb(vt_term *t, int on);
+unsigned long vt_kitty_rgb_made(const vt_term *t);
+/* K39: frame canvases made as RGBA (4 bytes a pixel, charged to the x4 frame budget), a test sentinel. */
+unsigned long vt_kitty_rgba_frames(const vt_term *t);
+/* The bytes the pictures hold now, against the image budget (a test's view of img_mem). */
+long vt_image_memory(const vt_term *t);
 #define VT_KEY_EV_PRESS   1
 #define VT_KEY_EV_REPEAT  2
 #define VT_KEY_EV_RELEASE 3

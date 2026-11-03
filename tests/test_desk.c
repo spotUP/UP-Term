@@ -71,7 +71,7 @@ static void probe_theme(gtheme *t)
 #define PAL_BODY 34
 #define PAL_ENTRY(i) (PAL_BODY + 144 + 8 * (i))
 
-/* byte-equal to a golden except the selection colour, which desk_selection() lifts for contrast against the probe's background */
+/* byte-equal to a golden except the selection colour, which gt_selection() lifts for contrast against the probe's background */
 static int golden_same(const unsigned char *out, const unsigned char *gold)
 {
     unsigned char a[DK_PALETTE_SIZE];
@@ -168,7 +168,7 @@ static void test_desk_filename_pen(void)
     CHECK_INT(DK_DARKER, 5);
     CHECK_INT(desk_palette(&t, 8, pens, out, sizeof out), DK_PALETTE_SIZE);
     CHECK(desk_role(&t, 1) == t.muted); /* pen 1 colour is the theme muted colour */
-    CHECK(desk_role(&t, 5) == desk_darker(&t)); /* pen 5 is the dark tone */
+    CHECK(desk_role(&t, 5) == gt_darker(&t)); /* pen 5 is the dark tone */
     for (s = 0; s < DK_SLOTS; s++) {
         dark += pens[s] == DK_DARKER;
         darkflat += flat[s] == DK_DARKER;
@@ -461,9 +461,9 @@ static void test_desk_flat_pens_key(void)
 {
     static unsigned char gold[BUF_MAX], out[BUF_MAX];
     static const char flat_on[] = "[profile default]\ndesktop-theme = on\nflat-system-look = on\n";
-    static const char flat_off[] = "[profile default]\ndesktop-theme = on\n";
+    static const char flat_off[] = "[profile default]\ndesktop-theme = on\nflat-system-look = off\n";
     static const char flat_nopal[] = "[profile default]\ndesktop-theme = on\ndesktop-palette = off\nflat-system-look = on\n";
-    static const char flat_nodesk[] = "[profile default]\nflat-system-look = on\n";
+    static const char flat_nodesk[] = "[profile default]\ndesktop-theme = off\nflat-system-look = on\n";
     static const char *const names[] = {"palette-flat-pen8.prefs", "palette-p1a-pen8.prefs"};
     const char *const txt[] = {flat_on, flat_off};
     gtheme t;
@@ -510,6 +510,40 @@ static void test_desk_flat_pens_key(void)
 /* DESK-31 (3.1, rig 7 Run 10): the windows came back on the first poll whose screen title matched the idle one, which was the
  * fresh screen of IPrefs' first Font reset; its second reset then raised "System Request" (Retry|Cancel). The signal is IPrefs
  * itself: back in its idle Wait() with no notification pending. */
+/* RL15 AMARCHY-WBPREFS-INUSE: every Workbench / WBPattern editor USE is followed by the IPrefs idle wait. The decision is pure; the
+ * wiring is that dk_editor (the only place SYS:Prefs/<editor> is run) calls it before and after the run and waits. */
+static void test_desk_editor_waits_iprefs(void)
+{
+    static unsigned char src[200000];
+    long n = slurp("amarchy/desk_dos.c", src, sizeof src - 1);
+    char *e, *end, *p;
+    int runs = 0;
+    CHECK_INT(desk_editor_waits_iprefs("Workbench"), 1);
+    CHECK_INT(desk_editor_waits_iprefs("WBPattern"), 1);
+    CHECK_INT(desk_editor_waits_iprefs("Palette"), 0); /* waits on the reset itself */
+    CHECK_INT(desk_editor_waits_iprefs("Font"), 0);    /* callers wait with their own mask */
+    CHECK_INT(desk_editor_waits_iprefs(0), 0);
+    CHECK_INT(n > 0, 1);
+    if (n <= 0)
+        return;
+    src[n] = 0;
+    e = strstr((char *)src, "static void dk_editor(const char *editor");
+    CHECK_INT(e != 0, 1);
+    if (!e)
+        return;
+    end = strstr(e, "\n}\n");
+    CHECK_INT(end != 0, 1);
+    if (!end)
+        return;
+    *end = 0;
+    for (p = e; (p = strstr(p, "desk_editor_waits_iprefs(editor)")) != 0; p++)
+        runs++;
+    CHECK_INT(runs, 2);                                   /* mask before the run, wait after it */
+    CHECK_INT(strstr(e, "dk_wait_iprefs(idle)") != 0, 1);
+    *end = '\n';
+    CHECK_INT(strstr(end, "SYS:Prefs/\"") == 0, 1);        /* no second editor-run path past dk_editor */
+}
+
 static void test_desk_iprefs_idle(void)
 {
     unsigned long idle = 0x00010000UL | 0x1000UL; /* notify port signal | SIGBREAKF_CTRL_C */
@@ -627,28 +661,28 @@ static void test_knob_colour(void)
     }
 }
 
-static void test_desk_darker(void)
+static void test_gt_darker(void)
 {
     gtheme all[SHIPPED_MAX], t;
     int n = load_all(all, SHIPPED_MAX), i;
     CHECK_INT(n, 23);
     for (i = 0; i < n; i++) {
-        uc_u32 d = desk_darker(&all[i]);
-        if (desk_ground_black(&all[i])) {
-            CHECK(desk_luma(d) > desk_luma(all[i].bg)); /* black has nothing darker: the backdrop lifts to grey */
+        uc_u32 d = gt_darker(&all[i]);
+        if (gt_ground_black(&all[i])) {
+            CHECK(gt_luma(d) > gt_luma(all[i].bg)); /* black has nothing darker: the backdrop lifts to grey */
             continue;
         }
-        CHECK(desk_luma(d) < desk_luma(all[i].bg));
-        CHECK(desk_contrast(d, all[i].bg) >= 108);
-        CHECK(desk_contrast(d, all[i].fg) >= 220);
+        CHECK(gt_luma(d) < gt_luma(all[i].bg));
+        CHECK(gt_contrast(d, all[i].bg) >= 108);
+        CHECK(gt_contrast(d, all[i].fg) >= 220);
     }
     /* a key that is not darker is replaced by the computed 80 % tone */
     gt_builtin(&t);
     t.bg = 0x202020UL;
     t.darker_bg = 0x303030UL;
-    CHECK_INT(desk_darker(&t), gt_scale(0x202020UL, 80));
+    CHECK_INT(gt_darker(&t), gt_scale(0x202020UL, 80));
     t.darker_bg = 0x101010UL;
-    CHECK_INT(desk_darker(&t), 0x101010UL);
+    CHECK_INT(gt_darker(&t), 0x101010UL);
 }
 
 /* FLAT-COLOUR-OVERHAUL: the backdrop has its own pen, so pen 5 draws the theme muted colour, not the backdrop tone; and the selection
@@ -666,12 +700,12 @@ static void test_flat_colour_pens(void)
     }
     CHECK_INT(desk_backdrop_pen_at(2), DK_BG); /* below 3 planes pen 5 is off the screen: it folds to DK_BG like the 4-colour pen map */
     for (i = 0; i < n; i++) {
-        uc_u32 sel = desk_selection(&all[i]);
-        if (desk_contrast(all[i].selection, all[i].bg) >= 150)
+        uc_u32 sel = gt_selection(&all[i]);
+        if (gt_contrast(all[i].selection, all[i].bg) >= 150)
             CHECK_INT(sel, all[i].selection); /* a good selection is left alone */
-        CHECK(desk_contrast(sel, all[i].bg) >= 150);
+        CHECK(gt_contrast(sel, all[i].bg) >= 150);
         CHECK_INT(desk_pen_colour(&all[i], DK_MUTED, 1), (long)all[i].muted);
-        CHECK(desk_pen_colour(&all[i], desk_backdrop_pen(), 1) == desk_darker(&all[i]));
+        CHECK(desk_pen_colour(&all[i], desk_backdrop_pen(), 1) == gt_darker(&all[i]));
     }
 }
 
@@ -711,14 +745,14 @@ static void test_desk_backdrop(void)
                     continue;
                 }
                 dk = pal_pen(f, DK_DARKER, bits);
-                if (dk == bg || (!blk && desk_luma(dk) >= desk_luma(bg)) || (blk && desk_luma(dk) <= desk_luma(bg)))
+                if (dk == bg || (!blk && gt_luma(dk) >= gt_luma(bg)) || (blk && gt_luma(dk) <= gt_luma(bg)))
                     printf("backdrop theme %s colours %d bits %d: bg %06lx backdrop %06lx\n", all[i].name, nc,
                            bits * 3, (unsigned long)bg, (unsigned long)dk);
                 CHECK(dk != bg);
                 if (!blk)
-                    CHECK(desk_luma(dk) < desk_luma(bg));
+                    CHECK(gt_luma(dk) < gt_luma(bg));
                 else
-                    CHECK(desk_luma(dk) > desk_luma(bg));
+                    CHECK(gt_luma(dk) > gt_luma(bg));
             }
 }
 
@@ -817,17 +851,17 @@ static void test_flat_on_keeps_backdrop_pen_distinct_from_window_background(void
     n = desk_palette(&a, 8, pens, pal, sizeof pal);
     CHECK(n > 0);
     CHECK_INT(desk_palette_rgb(pal, n, 1, depth) >= 0, 1);
-    m = desk_palette_set_rgb(pal, n, desk_backdrop_pen(), depth, desk_darker(&a), out, sizeof out);
+    m = desk_palette_set_rgb(pal, n, desk_backdrop_pen(), depth, gt_darker(&a), out, sizeof out);
     CHECK(m > 0);
-    CHECK_INT(desk_palette_rgb(out, m, desk_backdrop_pen(), depth), desk_darker(&a));
+    CHECK_INT(desk_palette_rgb(out, m, desk_backdrop_pen(), depth), gt_darker(&a));
     CHECK(desk_palette_rgb(out, m, desk_backdrop_pen(), depth) != desk_palette_rgb(out, m, pens[DK_BACKGROUND], depth));
-    m = desk_palette_set_rgb(pal, n, desk_backdrop_pen(), depth, desk_darker(&b), out, sizeof out);
-    CHECK_INT(desk_palette_rgb(out, m, desk_backdrop_pen(), depth), desk_darker(&b));
+    m = desk_palette_set_rgb(pal, n, desk_backdrop_pen(), depth, gt_darker(&b), out, sizeof out);
+    CHECK_INT(desk_palette_rgb(out, m, desk_backdrop_pen(), depth), gt_darker(&b));
     /* pen 1 (BLOCKPEN, stock icon black) keeps its colour; so do all other pens */
     for (p = 0; p < 8; p++)
         if (p != desk_backdrop_pen())
             CHECK_INT(desk_palette_rgb(out, m, p, depth), desk_palette_rgb(pal, n, p, depth));
-    CHECK(desk_darker(&a) != desk_darker(&b));
+    CHECK(gt_darker(&a) != gt_darker(&b));
     CHECK_INT(desk_palette_rgb(pal, 0, desk_backdrop_pen(), depth), -1);
     CHECK_INT(desk_wbpattern(&a, depth, 0, 0, pat, sizeof pat), 410);
     data = ptrn(pat, 0) + 8 + 24;
@@ -901,13 +935,13 @@ static void test_flat_pick_leaves_pen5_magenta_on_deep_workbench(void)
     CHECK(lp[0] == 4 && lp[1] == 5 && lp[2] == 6 && lp[3] == 7);
     CHECK_INT(desk_live_role_pens(3, lp), 0);
     CHECK_INT(desk_live_role_pens(2, lp), 0);
-    /* the live snapshot of a depth-8 screen: entry 5 is pen 253 (0x222), not pen 5 (0xf0f) */
+    /* the live snapshot of a depth-8 screen: entry 5 is pen 253 (0x5d5, the stock green), not pen 5 (0xf0f) */
     for (p = 0; p < 256; p++)
         rgb4[p] = 0x0f0f;
-    rgb4[252] = 0xe44; rgb4[253] = 0x222; rgb4[254] = 0x04d; rgb4[255] = 0xe90;
+    rgb4[252] = 0xe44; rgb4[253] = 0x5d5; rgb4[254] = 0x04d; rgb4[255] = 0xe90;
     n = desk_palette_live(rgb4, 256, 8, flat, cur, sizeof cur);
     CHECK_INT(n, DK_PALETTE_SIZE);
-    CHECK_INT(desk_palette_rgb(cur, n, 253, 8), 0x222222L);
+    CHECK_INT(desk_palette_rgb(cur, n, 253, 8), 0x55DD55L);
     CHECK_INT(desk_palette_rgb(cur, n, 5, 8), -1);
     CHECK_INT(desk_palette_set_rgb(cur, n, desk_backdrop_pen(), 8, 0x123456UL, out, sizeof out), 0);
     /* the flat pick: role pens 0-3 get the theme in the flat map's role order; 252-255 keep the user's colours; 4-7 are live */
@@ -916,11 +950,14 @@ static void test_flat_pick_leaves_pen5_magenta_on_deep_workbench(void)
     for (p = 0; p < 4; p++)
         CHECK_INT(desk_palette_rgb(out, m, p, 8), (long)desk_role(&t, p));
     CHECK_INT(desk_palette_rgb(out, m, 1, 8), (long)t.muted); /* FILENAME-PEN: pen 1 is the muted text colour */
-    for (p = 252; p < 255; p++)
-        CHECK_INT(desk_palette_rgb(out, m, p, 8), desk_palette_rgb(cur, n, p, 8));
+    /* WB-TITLE-GREEN: pens 252-254 are the screen pens the role pens 4-6 resolve to (IPrefs): pen 253 is DK_DARKER, BARTRIMPEN, which drew the stock green under the title bar */
+    for (p = 4; p < 7; p++)
+        CHECK_INT(desk_palette_rgb(out, m, desk_palette_pen(p, 8), 8), (long)desk_pen_colour(&t, p, 1));
+    CHECK_INT(desk_palette_rgb(out, m, 253, 8), 0x222222L);
+    CHECK(desk_palette_rgb(out, m, 253, 8) != desk_palette_rgb(cur, n, 253, 8));
     CHECK_INT(desk_palette_rgb(out, m, 255, 8), 0x222222L); /* FLAT-VIS-1: the backdrop screen pen takes the theme dark */
     CHECK_INT(desk_pen_colour(&t, desk_backdrop_pen(), 1), 0x222222L);
-    CHECK_INT(desk_pen_colour(&t, 4, 1), (long)desk_selection(&t));
+    CHECK_INT(desk_pen_colour(&t, 4, 1), (long)gt_selection(&t));
     CHECK_INT(desk_pen_colour(&t, 5, 1), 0x222222L); /* FILENAME-PEN: pen 5 is the dark tone under the own backdrop */
     CHECK(desk_backdrop_pen() != 5);
     CHECK_INT(desk_pen_colour(&t, desk_backdrop_pen(), 0), (long)t.muted);
@@ -928,7 +965,7 @@ static void test_flat_pick_leaves_pen5_magenta_on_deep_workbench(void)
     n = desk_palette_live(rgb4, 8, 3, flat, cur, sizeof cur);
     m = desk_palette_theme(cur, n, &t, 3, 1, out, sizeof out);
     CHECK_INT(desk_palette_rgb(out, m, desk_backdrop_pen(), 3), 0x222222L);
-    CHECK_INT(desk_palette_rgb(out, m, 4, 3), (long)desk_selection(&t));
+    CHECK_INT(desk_palette_rgb(out, m, 4, 3), (long)gt_selection(&t));
     CHECK_INT(desk_palette_rgb(out, m, 5, 3), 0x222222L);
     CHECK_INT(desk_palette_theme(cur, 10, &t, 3, 1, out, sizeof out), 0);
 }
@@ -957,7 +994,7 @@ static void test_flat_backdrop_screen_pen_deep(void)
     n = desk_palette_live(rgb4, 256, 8, flat, cur, sizeof cur);
     CHECK_INT(desk_palette_rgb(cur, n, 255, 8), 0xEE9900L);
     /* own backdrop (flat only): the single-pen write reaches pen 255 */
-    m = desk_palette_set_rgb(cur, n, desk_backdrop_screen_pen(8), 8, desk_darker(&t), out, sizeof out);
+    m = desk_palette_set_rgb(cur, n, desk_backdrop_screen_pen(8), 8, gt_darker(&t), out, sizeof out);
     CHECK_INT(m, n);
     CHECK_INT(desk_palette_rgb(out, m, 255, 8), 0x222222L);
     CHECK_INT(desk_palette_rgb(out, m, 254, 8), desk_palette_rgb(cur, n, 254, 8));
@@ -981,7 +1018,7 @@ static void test_desk_live_baseline_ignores_menu(void)
     desk_pens_flat(flat);
     for (p = 0; p < 256; p++)
         rgb4[p] = 0x0123; /* the menu's colours on every free pen */
-    rgb4[252] = 0xe44; rgb4[253] = 0x222; rgb4[254] = 0x04d; rgb4[255] = 0xe90;
+    rgb4[252] = 0xe44; rgb4[253] = 0x5d5; rgb4[254] = 0x04d; rgb4[255] = 0xe90;
     n = desk_palette_live(rgb4, 256, 8, flat, saved, sizeof saved);
     CHECK_INT(n, DK_PALETTE_SIZE);
     CHECK_INT(desk_live_baseline(saved, n, 4, 8), 0x0000FFL);
@@ -1358,6 +1395,30 @@ static void test_desk_confirm(void)
 }
 
 /* FP-2 (R1.10, OD14): what Keep copies to ENVARC:, what "off" restores, how the originals are named */
+/* S32-WB-BACKDROP: the start ticks Backdrop (frameless root window) only when it is unticked, on a Workbench with the port */
+static void test_desk_wb_backdrop_invoke(void)
+{
+    CHECK_INT(desk_wb_backdrop_invoke(1, 1, 1, 0x02000000UL), 1);              /* stock root window, unticked: toggle once */
+    CHECK_INT(desk_wb_backdrop_invoke(1, 1, 1, 0x02000100UL), 0);              /* already ticked: a toggle would untick it */
+    CHECK_INT(desk_wb_backdrop_invoke(0, 1, 1, 0x02000000UL), 0);              /* desktop-theme master off */
+    CHECK_INT(desk_wb_backdrop_invoke(1, 0, 1, 0x02000000UL), 0);              /* 3.1: no WORKBENCH port */
+    CHECK_INT(desk_wb_backdrop_invoke(1, 1, 0, 0), 0);                         /* no root window yet */
+    CHECK_INT(desk_wb_backdrop_invoke(1, 1, 1, 0x00000100UL), 0);              /* Directory Opus root: left alone */
+    CHECK_INT(desk_wb_root_wait(DESK_ROOT_NONE), 1);                           /* root not opened yet: keep waiting */
+    CHECK_INT(desk_wb_root_wait(DESK_ROOT_WB), 0);                             /* Workbench root found: decide at once */
+    CHECK_INT(desk_wb_root_wait(DESK_ROOT_FOREIGN), 0);                        /* Directory Opus root: no 5 s wait */
+    CHECK_INT(desk_wb_backdrop_invoke(1, 1, DESK_ROOT_FOREIGN == DESK_ROOT_WB, 0x00000100UL), 0); /* foreign root: no invoke */
+}
+
+/* S32-START-LOOK: Amarchy starts before LoadWB; the start look waits for the Workbench screen, then runs once */
+static void test_desk_start_waits_for_workbench(void)
+{
+    CHECK_INT(desk_start_due(0, 0, 1), 0);     /* boot: no Workbench screen yet, the tick runs: wait */
+    CHECK_INT(desk_start_due(0, 1, 1), 1);     /* the screen opened: apply the look now */
+    CHECK_INT(desk_start_due(1, 1, 1), 0);     /* once only */
+    CHECK_INT(desk_start_due(0, 0, 0), 1);     /* no tick to wait on: the old one-shot */
+}
+
 static void test_desk_persist(void)
 {
     const char *env[8], *arc[8];
@@ -1474,6 +1535,142 @@ static void test_desk_icons_state(void)
     CHECK(desk_icons_state(1, 0) != desk_icons_state(1, 1));
 }
 
+/* S31-START-APPLY (rig 55, 2026-11-02): Amarchy started with desktop-theme, flat-system-look and flat-window-gadgets on, on a fresh 3.2 system
+ * (no ENV:Sys/Workbench.prefs, no wbpattern.prefs), kept the backdrop pattern, the icon frame and the volume gauge: only a theme pick wrote them.
+ * The start plan must name the Workbench.prefs (border + gauge) and the backdrop, and the files those writes make must leave nothing to do. */
+static void test_desk_start_prefs_on_writes_border_gauge_backdrop(void)
+{
+    static const char on[] = "[profile default]\ndesktop-theme = on\nflat-system-look = on\nflat-window-gadgets = on\n";
+    static const char off[] = "[profile default]\ndesktop-theme = off\nflat-system-look = off\nflat-window-gadgets = off\n";
+    static const char nodesk[] = "[profile default]\ndesktop-theme = off\nflat-system-look = on\n";
+    static unsigned char mid[128], wb[128], pat[1024];
+    am_prefs p;
+    gtheme t;
+    unsigned mask;
+    int flat, keep, gkeep;
+    long n, g, plen;
+    gt_builtin(&t);
+    amconf_parse(on, (long)strlen(on), &p);
+    mask = amconf_desk_mask(&p);
+    flat = amconf_desk_flat_pens(&p);
+    CHECK_INT(flat, 1);
+    CHECK(mask & (1u << DT_WBPATTERN));
+    /* fresh rig: nothing in ENV: */
+    CHECK_INT(desk_start_plan(mask, flat, 1, 0, -1, -1, -1, &t, 3, 0, -1), DESK_START_WB | DESK_START_PATTERN);
+    /* the writes the start makes (dk_wbborder, dk_put WBPattern) */
+    n = desk_wbborder(1, 0, 0, -1, &keep, mid, sizeof mid);
+    g = desk_wbgauge(1, mid, n, -1, &gkeep, wb, sizeof wb);
+    if (g <= 0) {
+        memcpy(wb, mid, (size_t)n);
+        g = n;
+    }
+    CHECK_INT(desk_wbborder_value(wb, g), 1);            /* icon frame off */
+    CHECK_INT(desk_wbgauge_value(wb, g), 1);             /* volume gauge off */
+    plen = desk_wbpattern(&t, 3, 0, 0, pat, sizeof pat);
+    CHECK(plen > 0);
+    /* second start: ENV: matches, nothing written */
+    CHECK_INT(desk_start_plan(mask, flat, 1, wb, g, keep, gkeep, &t, 3, pat, plen), 0);
+    CHECK_INT(desk_start_plan(mask, flat, 1, wb, g, -1, -1, &t, 3, pat, plen), 0);   /* after a reboot (T: marks gone) too */
+    /* rig 56: the WBPattern editor stores the all-pen-0 DRAWER and SCREEN chunks with depth 1 (file header 26 bytes, chunks 128):
+     * the same pens, so no write (a byte compare planned a backdrop write and a Workbench reset on every start) */
+    CHECK_INT(plen, 26 + 3 * 128);
+    pat[26 + 128 + 8 + 21] = 1;
+    pat[26 + 256 + 8 + 21] = 1;
+    CHECK_INT(desk_start_plan(mask, flat, 1, wb, g, keep, gkeep, &t, 3, pat, plen), 0);
+    pat[26 + 8 + 24] ^= 0x80;                            /* one ROOT pixel on another pen: a real difference */
+    CHECK_INT(desk_start_plan(mask, flat, 1, wb, g, keep, gkeep, &t, 3, pat, plen), DESK_START_PATTERN);
+    /* no 3.2 Workbench editor: the backdrop only */
+    CHECK_INT(desk_start_plan(mask, flat, 0, 0, -1, -1, -1, &t, 3, 0, -1), DESK_START_PATTERN);
+    /* look off: nothing */
+    amconf_parse(off, (long)strlen(off), &p);
+    CHECK_INT(desk_start_plan(amconf_desk_mask(&p), amconf_desk_flat_pens(&p), 1, 0, -1, -1, -1, &t, 3, 0, -1), 0);
+    /* flat alone (no desktop theme): border + gauge; the backdrop is dk_flat_pens' own (already idempotent) */
+    amconf_parse(nodesk, (long)strlen(nodesk), &p);
+    CHECK_INT(desk_start_plan(amconf_desk_mask(&p), amconf_desk_flat_pens(&p), 1, 0, -1, -1, -1, &t, 3, 0, -1), DESK_START_WB);
+}
+
+/* S31-START-PALETTE (rig 96): desktop-theme + desktop-palette on (the installer's full look), a stock palette in ENV:: the start writes
+ * the theme colours (before, only a theme pick did, and the Workbench kept grey/orange under the theme backdrop); a second start
+ * writes nothing; the palette part off, or the desktop theme off, leaves the colours to dk_flat_pens */
+static void test_desk_start_prefs_on_writes_theme_palette(void)
+{
+    static const char on[] = "[profile default]\ndesktop-theme = on\ndesktop-palette = on\nflat-system-look = on\n";
+    static const char nopal[] = "[profile default]\ndesktop-theme = on\ndesktop-palette = off\nflat-system-look = on\n";
+    static const char nodesk[] = "[profile default]\ndesktop-theme = off\nflat-system-look = on\n";   /* desktop-theme defaults on (295ef667): the master off is spelled out */
+    static const unsigned short stock[8] = { 0xaaa, 0x000, 0xfff, 0x68b, 0xe44, 0x5d5, 0x04d, 0xe90 };
+    static unsigned char base[1024], out[1024], again[1024];
+    unsigned char pens[DK_SLOTS];
+    am_prefs p;
+    gtheme t;
+    unsigned mask;
+    int flat, r;
+    long n, m;
+    gt_builtin(&t);
+    amconf_parse(on, (long)strlen(on), &p);
+    mask = amconf_desk_mask(&p);
+    flat = amconf_desk_flat_pens(&p);
+    CHECK(mask & (1u << DT_PALETTE));
+    desk_pens_for(flat, pens);
+    n = desk_palette_live(stock, 8, 3, pens, base, sizeof base);
+    CHECK(n > 0);
+    m = desk_start_palette(mask, flat, &t, 3, base, n, base, n, out, sizeof out);   /* ENV: holds the stock colours with the pens set */
+    CHECK_INT(m, n);
+    for (r = 0; r < 4; r++)
+        CHECK_INT(desk_palette_rgb(out, m, r, 3), desk_pen_colour(&t, r, flat));
+    CHECK(desk_palette_rgb(out, m, 0, 3) != 0xaaaaaaL);
+    CHECK_INT(desk_start_palette(mask, flat, &t, 3, base, n, 0, -1, again, sizeof again), m);   /* no ENV: file */
+    CHECK_INT(desk_start_palette(mask, flat, &t, 3, base, n, out, m, again, sizeof again), 0);  /* second start: matches */
+    amconf_parse(nopal, (long)strlen(nopal), &p);
+    CHECK_INT(desk_start_palette(amconf_desk_mask(&p), 1, &t, 3, base, n, base, n, again, sizeof again), 0);
+    amconf_parse(nodesk, (long)strlen(nodesk), &p);
+    CHECK_INT(desk_start_palette(amconf_desk_mask(&p), 1, &t, 3, base, n, base, n, again, sizeof again), 0);
+}
+
+/* S31-START-PARTS: the pointer, font and icontrol parts of the theme are also planned at start (before, only a theme pick wrote them):
+ * a stock file is rewritten with the theme, a second start finds the result and writes nothing, the part off in the mask writes nothing */
+static void test_desk_start_prefs_on_writes_pointer_font_icontrol(void)
+{
+    static unsigned char gold[BUF_MAX * 2], out[BUF_MAX * 2], again[BUF_MAX * 2], ic[BUF_MAX];
+    gtheme t;
+    long n, m, icn;
+    int snap = 0;
+    unsigned all = (1u << DT_POINTER) | (1u << DT_FONT) | (1u << DT_ICONTROL);
+    probe_theme(&t);
+    /* pointer: the stock file gets the theme RGB table; the result against itself plans nothing */
+    n = slurp(DESK_DATA "pointer-os322.prefs", gold, sizeof gold);
+    m = desk_start_prefs(DT_POINTER, all, &t, 0, 0, 0, gold, n, out, sizeof out);
+    CHECK_INT(m, n);
+    CHECK_INT(out[26 + 8 + 32], 0xff);
+    CHECK_INT(desk_start_prefs(DT_POINTER, all, &t, 0, 0, 0, out, m, again, sizeof again), 0);
+    CHECK_INT(desk_start_prefs(DT_POINTER, all & ~(1u << DT_POINTER), &t, 0, 0, 0, gold, n, again, sizeof again), 0);
+    CHECK_INT(desk_start_prefs(DT_POINTER, all, &t, 0, 0, 0, 0, -1, again, sizeof again), 0);   /* no file: nothing to start from */
+    /* font: no file starts from the default; the label pens are set; a second start writes nothing */
+    m = desk_start_prefs(DT_FONT, all, &t, DK_ICONTEXT_OUTLINE, font_known, (void *)"topaz.font", 0, -1, out, sizeof out);
+    CHECK_INT(m, 518);
+    CHECK_INT(out[26 + 164 + 8 + 15], 1);
+    CHECK_INT(desk_start_prefs(DT_FONT, all, &t, DK_ICONTEXT_OUTLINE, font_known, (void *)"topaz.font", out, m, again, sizeof again), 0);
+    CHECK_INT(desk_start_prefs(DT_FONT, all & ~(1u << DT_FONT), &t, DK_ICONTEXT_OUTLINE, font_known, (void *)"topaz.font", 0, -1, again, sizeof again), 0);
+    /* icontrol: thin and not yet written plans a write with a snapshot; written already plans nothing; off with no snapshot nothing */
+    icn = slurp(DESK_DATA "icontrol-os32.prefs", ic, sizeof ic);
+    CHECK_INT(desk_start_icontrol(all, ic, icn, 0, &snap), DK_IC_WRITE);
+    CHECK_INT(snap, 1);
+    {
+        unsigned char thin[4];
+        desk_geometry(1, thin);
+        m = desk_icontrol(ic, icn, thin, out, sizeof out);
+        CHECK_INT(desk_start_icontrol(all, out, m, 0, &snap), DK_IC_NONE);
+        CHECK_INT(desk_start_icontrol(all & ~(1u << DT_ICONTROL), out, m, 1, &snap), DK_IC_RESTORE);
+    }
+    CHECK_INT(desk_start_icontrol(all & ~(1u << DT_ICONTROL), ic, icn, 0, &snap), DK_IC_NONE);
+}
+
+void suite_desk_start_apply(void)
+{
+    test_desk_start_prefs_on_writes_border_gauge_backdrop();
+    test_desk_start_prefs_on_writes_theme_palette();
+    test_desk_start_prefs_on_writes_pointer_font_icontrol();
+}
+
 void suite_desk(void)
 {
     test_desk_icons_state();
@@ -1484,6 +1681,7 @@ void suite_desk(void)
     test_desk_flat_pens_key();
     test_desk_flat_pens_stale_file();
     test_desk_flat_start_refresh();
+    test_desk_start_prefs_on_writes_border_gauge_backdrop();
     test_desk_flat_pens_live();
     test_desk_wbborder();
     test_desk_wbborder_absent();
@@ -1494,7 +1692,8 @@ void suite_desk(void)
     test_desk_pens_reset_folded();
     test_desk_reset_done();
     test_desk_iprefs_idle();
-    test_desk_darker();
+    test_desk_editor_waits_iprefs();
+    test_gt_darker();
     test_knob_colour();
     test_flat_colour_pens();
     test_desk_backdrop();
@@ -1517,4 +1716,7 @@ void suite_desk(void)
     test_desk_preview();
     test_desk_confirm();
     test_desk_persist();
+    test_desk_start_waits_for_workbench();
+    test_desk_wb_backdrop_invoke();
 }
+

@@ -50,4 +50,16 @@ static void sp_writer_gone(sh_pipe_rec *p)
     p->writer = 0;
 }
 
+/* A job is freed: no pipe may keep it as its writer. job_free calls this for every job, so the
+ * paths that skip close_stream's sp_writer_gone (an orphaned subshell or runner that ends after
+ * its waiter left, task_unix_signal's kill) cannot leave a pointer to freed memory that
+ * sp_reader_closed / sp_drained / job_break would then use. */
+static void sp_job_gone(sh_pipe_rec *tab, int n, void *job)
+{
+    int i;
+    for (i = 0; i < n; i++)
+        if (tab[i].writer == job)
+            tab[i].writer = 0;
+}
+
 #endif

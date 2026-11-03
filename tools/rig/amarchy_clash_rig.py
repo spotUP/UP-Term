@@ -41,8 +41,10 @@ NAMES = ('Amarchy', 'amarchy-menu', 'lcmdprobe')
 # Raw key codes by key NAME on the Swedish keymap (letters and digits sit at the same place as on the USA map;
 # the row names minus, plus, comma and period are the keys that PRINT them (config/keymap.c keymap_set_layout): on the
 # Swedish map "+" is raw 0x0B (bigger font) and "-" is raw 0x3A (smaller font); 0x0B is no longer minus).
+# "/" is shifted on the Swedish map, and keymap_load.c char_to_raw maps only unshifted characters, so the slash row
+# keeps its USA code 0x3A (super+shift+slash = Help is Left Amiga + Shift + the Swedish "-" key).
 RAW = {'1': 0x01, '2': 0x02, '3': 0x03, '4': 0x04, '5': 0x05, '6': 0x06, '7': 0x07, '8': 0x08, '9': 0x09,
-       '0': 0x0A, 'minus': 0x3A, 'plus': 0x0B, 'period': 0x39, 'comma': 0x38, 'space': 0x40, 'return': 0x44,
+       '0': 0x0A, 'minus': 0x3A, 'slash': 0x3A, 'plus': 0x0B, 'period': 0x39, 'comma': 0x38, 'space': 0x40, 'return': 0x44,
        'backspace': 0x41, 'tab': 0x42, 'esc': 0x45, 'up': 0x4C, 'down': 0x4D, 'right': 0x4E, 'left': 0x4F, 'help': 0x5F}
 RAW.update({'f%d' % n: 0x4F + n for n in range(1, 11)})
 RAW.update({ch: code for ch, code in zip('qwertyuiop', range(0x10, 0x1A))})

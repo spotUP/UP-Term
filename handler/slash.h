@@ -61,6 +61,7 @@ typedef struct slash_cmd {
     long id;
     int on;
     char arg[200];             /* SL_ARG: the rest, blanks trimmed */
+    int index;                 /* /tab close N: N (1..9, the numbers of Right Amiga 1-9); 0: none given */
 } slash_cmd;
 
 enum { SLASH_NOT_OURS = 0, SLASH_OK, SLASH_ERROR };

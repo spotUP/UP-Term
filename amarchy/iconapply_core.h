@@ -88,6 +88,7 @@ typedef struct ia_ctx {
     /* counters (STATUS prints them; the sentinel) */
     unsigned written, skipped_done, skipped_bad, skipped_nodat, skipped_nodefault, skipped_io, restored, restore_failed;
     unsigned skipped_readonly, skipped_locked, skipped_uaem, fallback, skipped_deep;   /* all-volume walk (L12) */
+    unsigned net;               /* network volumes whose Disk.info got the type:net icon */
 } ia_ctx;
 
 /* the Workbench defaults: i-th target, its icon file ("ENVARC:Sys/def_disk.info") and its lucide.dat match ("def_disk"). 0 past the end */
@@ -141,6 +142,15 @@ void ia_walk_volume(ia_ctx *c, const char *vol);
 /* One .info (or .info.uaem) file found by the walk: decide, count, and on WRITE / FALLBACK back it up and rewrite it through the
  * same path ia_apply uses (backup, manifest line, atomic write). Needs ia_walk_begin first. Returns the IA_DO_* decision. */
 int ia_walk_file(ia_ctx *c, const char *path, int vol_readonly, unsigned long prot);
+
+/* RL11: is this volume a network mount? devname = the DosList device entry that serves it ("SMB0"), handler = that entry's
+ * handler file ("L:smb2fs"), either may be NULL. Pure: case-insensitive substring match of either against the known network
+ * handlers (smbfs, smb2fs, smb, samba, nfs, ftpmount, netfs, cifs, webdav, sftp). 1 = network. */
+int ia_vol_is_net(const char *devname, const char *handler);
+/* A network volume's root icon: "<vol>Disk.info" gets the lucide.dat row type:net. A missing Disk.info is created from the
+ * system def_disk object and recorded in the manifest (absent), so RESTORE removes it. Counts c->net. Needs ia_walk_begin first.
+ * Returns 1 when written. */
+int ia_walk_net(ia_ctx *c, const char *vol);
 
 /* the command line: "APPLY", "RESTORE", "STATUS", "?" or "" -> IA_CMD_* */
 enum { IA_CMD_NONE, IA_CMD_APPLY, IA_CMD_RESTORE, IA_CMD_STATUS, IA_CMD_HELP };

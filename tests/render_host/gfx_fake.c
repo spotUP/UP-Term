@@ -39,6 +39,9 @@ static unsigned long fpal[256];
 static int npal;
 int gf_pens_held;
 static struct Library cgx_lib;
+static int cgx_alpha_real = 1;
+gf_pixcall gf_lastpix;
+void gf_cgx_alpha(int on) { cgx_alpha_real = on; }
 /* The one bitmap the window's size or more, a friend of the window's: the renderer's back bitmap
  * (vr_compose_begin). Its own canvas; BltBitMapRastPort copies from it into the window's. */
 static struct BitMap back;
@@ -646,9 +649,22 @@ LONG WritePixelArray8(struct RastPort *rp, ULONG a, ULONG b, ULONG c, ULONG d, U
     (void)rp; (void)a; (void)b; (void)c; (void)d; (void)p; (void)t;
     return 0;
 }
+unsigned long gf_chunky_hash = 2166136261UL;
+int gf_chunky_n;
+static void chunky_fnv(unsigned long v)
+{
+    gf_chunky_hash = ((gf_chunky_hash ^ (v & 0xFFUL)) * 16777619UL) & 0xFFFFFFFFUL;
+}
 VOID WriteChunkyPixels(struct RastPort *rp, ULONG a, ULONG b, ULONG c, ULONG d, UBYTE *p, LONG m)
 {
-    (void)rp; (void)a; (void)b; (void)c; (void)d; (void)p; (void)m;
+    ULONG x, y;
+    (void)rp;
+    gf_chunky_n++;
+    chunky_fnv(a); chunky_fnv(a >> 8); chunky_fnv(b); chunky_fnv(b >> 8);
+    chunky_fnv(c); chunky_fnv(c >> 8); chunky_fnv(d); chunky_fnv(d >> 8);
+    for (y = 0; y <= d - b; y++)
+        for (x = 0; x <= c - a; x++)
+            chunky_fnv(p[y * (ULONG)m + x]); /* the row's w bytes only: the padding to 16 is not the picture */
 }
 ULONG ObtainPen(struct ColorMap *cm, ULONG n, ULONG r, ULONG g, ULONG b, LONG f)
 {
@@ -798,6 +814,63 @@ LONG vr_cgx_write_lut(struct Library *l, APTR src, UWORD sx, UWORD sy, UWORD smo
             paint(rp, dx + x, dy + y, dx + x, dy + y, GF_CGX | (int)(ct[p[(sy + y) * smod + sx + x]] & 0xFFFFFF), 0);
     return 0;
 }
+LONG vr_cgx_write_pixels(struct Library *l, APTR src, UWORD sx, UWORD sy, UWORD smod, struct RastPort *rp, UWORD dx,
+                         UWORD dy, UWORD w, UWORD h, UBYTE fmt)
+{
+    const UBYTE *p = (const UBYTE *)src;
+    long x, y;
+    (void)l;
+    rec(GF_CGXPIX, dx, dy, w, h);
+    gf_lastpix.src = src; gf_lastpix.sx = sx; gf_lastpix.sy = sy; gf_lastpix.smod = smod; gf_lastpix.ga = fmt;
+    for (y = 0; y < h; y++)
+        for (x = 0; x < w; x++) {
+            const UBYTE *s = p + (long)(sy + y) * smod + (long)(sx + x) * 4;
+            paint(rp, dx + x, dy + y, dx + x, dy + y, GF_CGX | (s[0] << 16) | (s[1] << 8) | s[2], 0);
+        }
+    return 0;
+}
+ULONG vr_cgx_write_alpha(struct Library *l, APTR src, UWORD sx, UWORD sy, UWORD smod, struct RastPort *rp, UWORD dx,
+                         UWORD dy, UWORD w, UWORD h, ULONG ga)
+{
+    const UBYTE *p = (const UBYTE *)src;
+    int *canvas = canvas_of(rp);
+    long x, y, c;
+    (void)l;
+    rec(GF_CGXALPHA, dx, dy, w, h);
+    gf_lastpix.src = src; gf_lastpix.sx = sx; gf_lastpix.sy = sy; gf_lastpix.smod = smod; gf_lastpix.ga = ga;
+    for (y = 0; y < h; y++)
+        for (x = 0; x < w; x++) {
+            const UBYTE *s = p + (long)(sy + y) * smod + (long)(sx + x) * 4; /* A R G B */
+            int d = canvas && dx + x < W && dy + y < H ? canvas[(dy + y) * W + dx + x] : 0, v = 0;
+            for (c = 0; c < 3; c++) {
+                int dc = d & GF_CGX ? (d >> (16 - 8 * c)) & 255 : 0;
+                v |= ((s[1 + c] * s[0] + dc * (255 - s[0])) / 255) << (16 - 8 * c);
+            }
+            paint(rp, dx + x, dy + y, dx + x, dy + y, GF_CGX | v, 0);
+        }
+    return 0;
+}
+/* ReadPixelArray: the canvas pixels of the rectangle as R G B A bytes (a GF_CGX pixel gives its colour, any other
+ * pixel, glyph codes and untouched ones, reads as black, as the alpha fake treats them). */
+LONG vr_cgx_read_pixels(struct Library *l, struct RastPort *rp, UWORD sx, UWORD sy, APTR dst, UWORD dx, UWORD dy,
+                        UWORD dmod, UWORD w, UWORD h, UBYTE fmt)
+{
+    UBYTE *p = (UBYTE *)dst;
+    int *canvas = canvas_of(rp);
+    long x, y;
+    (void)l; (void)fmt;
+    rec(GF_CGXREAD, sx, sy, w, h);
+    for (y = 0; y < h; y++)
+        for (x = 0; x < w; x++) {
+            UBYTE *d = p + (long)(dy + y) * dmod + (long)(dx + x) * 4;
+            int v = canvas && sx + x < W && sy + y < H ? canvas[(sy + y) * W + sx + x] : 0;
+            if (!(v & GF_CGX))
+                v = 0;
+            d[0] = (UBYTE)(v >> 16); d[1] = (UBYTE)(v >> 8); d[2] = (UBYTE)v; d[3] = 255;
+        }
+    return 0;
+}
+int vr_cgx_has_alpha(struct Library *l) { (void)l; return cgx_alpha_real; }
 ULONG vr_cgx_fill(struct Library *l, struct RastPort *rp, UWORD x, UWORD y, UWORD w, UWORD h, ULONG argb)
 {
     (void)l;
