@@ -22,6 +22,9 @@ typedef struct updemo_io {
      * 0 when it is not there (or the host has no loader): the scene that wants it shows its fallback.
      * The pointer itself may be 0. */
     unsigned char *(*load)(void *user, const char *name, long *len);
+    /* a slash command line ("/tab new") for the terminal window the demo runs in, the line typed there; 1 when the
+     * terminal ran it. The pointer may be 0 (a terminal with no slash commands): the scene that sends one says so. */
+    int (*command)(void *user, const char *line);
 } updemo_io;
 
 #define UPDEMO_MIN_COLS 76

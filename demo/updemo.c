@@ -2084,19 +2084,48 @@ static void sc_glyphs(long t, int first)
 
 /* The tab bar is the window's own (Window > New tab), not an escape a program sends, so this scene shows the bar
  * a window has and names the keys and menu that drive it. */
+/* The tabs scene opens a real tab with /tab new, a moment later closes it with /tab close: the same two
+ * commands the menu's New tab and Close tab run. tabs_open is 1 from the first until the second. */
+static int tabs_open;
+
+#define TABS_OPEN_AT 120  /* 1/50 s into the scene: /tab new */
+#define TABS_CLOSE_AT 280 /* and /tab close */
+
+static void tabs_send(const char *line)
+{
+    if (io->command)
+        io->command(io->user, line);
+}
+
+/* back to the demo's own tab: a scene that ends with the new tab still open closes it */
+static void tabs_leave(void)
+{
+    if (tabs_open)
+        tabs_send("/tab close");
+    tabs_open = 0;
+}
+
 static void sc_tabs(long t, int first)
 {
-    (void)t;
-    if (!first)
-        return;
-    heading("Tabs", "several sessions in one window, each with its own profile");
-    at(4, 2);
-    ps("\033[7m 1 vsh \033[0m\033[4m 2 build \033[0m\033[4m 3 Claude \033[0m\033[4m 4 notes \033[0m");
-    at(5, 2);
-    ps("\033[2m~ % make ... the build runs in tab 2 while you type here\033[0m");
-    grey_line(8, "Window > New tab opens another session; Next tab and Previous tab move between them.");
-    grey_line(9, "/ask opens an AI agent in a new tab of its own.");
-    grey_line(10, "A tab can run any program: Claude, pi, UPDemo.");
+    if (first) {
+        tabs_open = 0;
+        heading("Tabs", "several sessions in one window, each with its own profile");
+        at(4, 2);
+        ps("\033[7m 1 vsh \033[0m\033[4m 2 build \033[0m\033[4m 3 Claude \033[0m\033[4m 4 notes \033[0m");
+        at(5, 2);
+        ps("\033[2m~ % make ... the build runs in tab 2 while you type here\033[0m");
+        grey_line(8, "Window > New tab opens another session; Next tab and Previous tab move between them.");
+        grey_line(9, "/ask opens an AI agent in a new tab of its own.");
+        grey_line(10, "A tab can run any program: Claude, pi, UPDemo.");
+    }
+    if (!tabs_open && t >= TABS_OPEN_AT && t < TABS_CLOSE_AT && io->command) {
+        grey_line(12, "Sending /tab new: a real tab opens beside this one ...");
+        tabs_send("/tab new");
+        tabs_open = 1;
+    } else if (tabs_open && t >= TABS_CLOSE_AT) {
+        grey_line(13, "Sending /tab close: the new tab closes again.");
+        tabs_leave();
+    }
 }
 
 /* A frame counter in big letters. With mode 2026 the terminal shows each
@@ -2456,6 +2485,7 @@ static int play(int first, long scene_ticks)
                 break;
         }
         flush();
+        tabs_leave();
         stat_ticks[s] += io->ticks(io->user) - t0;
         ps("\033[r"); /* the whole screen scrolls again */
         if (!ansi)

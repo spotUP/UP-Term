@@ -139,7 +139,22 @@ static unsigned char *load_media(void *user, const char *name, long *len)
     return buf;
 }
 
-static updemo_io io = { out, key, ticks, 0, load_media };
+static int tab_cmds_new, tab_cmds_close, tab_cmds_other;
+
+/* the terminal's slash commands: counted, which is the sentinel that the scene sent them */
+static int count_command(void *user, const char *line)
+{
+    (void)user;
+    if (strcmp(line, "/tab new") == 0)
+        tab_cmds_new++;
+    else if (strcmp(line, "/tab close") == 0)
+        tab_cmds_close++;
+    else
+        tab_cmds_other++;
+    return 1;
+}
+
+static updemo_io io = { out, key, ticks, 0, load_media, count_command };
 
 static char line[200];
 
@@ -510,6 +525,22 @@ static void the_tabs_scene_draws_a_tab_bar_and_names_the_menu(void)
     CHECK(cap_has("Window > New tab opens another session"));
 }
 
+/* UPDEMO-TABS-LIVE (owner 2026-11-03): the tabs scene sends /tab new, then /tab close, to the terminal it runs in
+ * (the commands the menu's New tab and Close tab run in the handler): each once, new before close, nothing else.
+ * Left early (a key before the close is due) it still closes the tab it opened. */
+static void the_tabs_scene_sends_tab_new_then_tab_close(void)
+{
+    tab_cmds_new = tab_cmds_close = tab_cmds_other = 0;
+    start(80, 24);
+    updemo_only(1);
+    CHECK_INT(updemo_run(&io, 80, 24, scene_index("tabs"), 0), 0);
+    updemo_only(0);
+    CHECK_INT(tab_cmds_new, 1);
+    CHECK_INT(tab_cmds_close, 1);
+    CHECK_INT(tab_cmds_other, 0);
+    vt_free(t);
+}
+
 /* W-T2 (owner: the styles scene's two blink speeds blink at the same rate): its "rapid blink" line is SGR 5 then 6,
  * so a terminal that knows 6 blinks it fast and one that does not still blinks it. It sent 6;5: the 5 after the 6
  * asked for the slow rate again (ECMA-48 8.3.117: 5 and 6 are alternatives, the last one counts). */
@@ -728,7 +759,7 @@ static long fps_of(int s)
  * 12 frames a second on a 68060 that draws one in 22 ms). */
 static void a_frame_the_terminal_draws_in_20_ms_still_comes_25_times_a_second(void)
 {
-    updemo_io slow = { out_slow, key_slow, ticks, 0, 0 };
+    updemo_io slow = { out_slow, key_slow, ticks, 0, 0, 0 };
     start(80, 24);
     draw_ticks = 1;
     CHECK_INT(updemo_run(&slow, 80, 24, scene_index("plasma"), 100), 0); /* plasma onwards, two seconds each */
@@ -1201,6 +1232,7 @@ void suite_updemo(void)
     the_kitty_zindex_scene_sends_pictures_under_and_over_text();
     the_glyphs_scene_sends_powerline_nerd_emoji_and_box_glyphs();
     the_tabs_scene_draws_a_tab_bar_and_names_the_menu();
+    the_tabs_scene_sends_tab_new_then_tab_close();
     the_styles_scene_shows_slow_and_rapid_blink();
     q_ends_the_demo_and_any_other_key_does_not();
     a_key_goes_to_the_next_scene_and_the_demo_keeps_running();
