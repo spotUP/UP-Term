@@ -80,6 +80,8 @@ const char *amconf_shot_dir(const am_prefs *p);
 /* the desktop targets to write: 0 when desktop-theme is off, else bit t (desk_core target t) for each part switched on; the icontrol
  * bit (4) when flat-border-size is thin */
 unsigned amconf_desk_mask(const am_prefs *p);
+/* 1 when the desktop-theme master switch is on (whatever its parts) */
+int amconf_desk_master(const am_prefs *p);
 /* FLAT-PENS-LIVE: 1 when the palette write carries the flat pen map: flat-system-look on (the old amarchy-flat-pens key is folded
  * into it); else 0, the stock map. Independent of desktop-theme: desk_dos_apply writes the pens itself (desk_pens_sync) */
 int amconf_desk_flat_pens(const am_prefs *p);

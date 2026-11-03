@@ -1371,7 +1371,7 @@ int desk_dos_wb_backdrop(void)
     unsigned long fl = 0;
     int i, found = 0, port;
     amconf_load(&ap);
-    if (!amconf_on(&ap, AM_DESK))
+    if (!amconf_desk_master(&ap))
         return 0;
     port = rexx_port_exists("WORKBENCH");
     for (i = 0; port && i < 10 && !(found = dk_wb_root_flags(&fl)); i++)
