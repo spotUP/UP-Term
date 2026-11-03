@@ -135,6 +135,11 @@ int  upconf_menu_style_value(const char *value);
 int  upconf_term_menu_value(const char *value);
 /* The last value of key in profile, 0 when absent. Case-insensitive. */
 const char *upconf_get(const upconf *c, const char *profile, const char *key);
+/* font-fallback (NERD-FALLBACK-DEFAULT): the outline font for glyphs the bitmap font lacks. Key not set (absent or
+ * empty): UC_FALLBACK_DEFAULT when default_present (FONTS:<it>.ttf exists), else none. A name wins as written;
+ * "none" (any case) is off. out gets the font name, "" for none. */
+#define UC_FALLBACK_DEFAULT "SymbolsNerdFontMono"
+void upconf_font_fallback(const upconf *c, const char *profile, int default_present, char *out, int cap);
 /* upconf_get, or def when the key is absent or its value is empty. */
 const char *upconf_str(const upconf *c, const char *profile, const char *key, const char *def);
 /* upconf_str as a number; def when absent, empty or not a number.

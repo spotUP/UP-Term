@@ -52,7 +52,7 @@ const pg_item pg_items[] = {
       "Choose an outline font (.otag) from FONTS:.",
       2, 1, 0, PGD_NONE },
     { PG_FALLBACK_CLEAR, PG_PAGE_GENERAL, PGK_BUTTON, "Clear",
-      "Use no fallback font.",
+      "Use no fallback font (saves none; unset uses SymbolsNerdFontMono).",
       2, 2, 0, PGD_NONE },
     { PG_SCROLLBACK, PG_PAGE_GENERAL, PGK_INTEGER, NULL,
       NULL,

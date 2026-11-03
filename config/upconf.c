@@ -316,6 +316,23 @@ const char *upconf_str(const upconf *c, const char *profile, const char *key, co
     return v;
 }
 
+void upconf_font_fallback(const upconf *c, const char *profile, int default_present, char *out, int cap)
+{
+    const char *v = upconf_str(c, profile, "font-fallback", 0);
+    int n = 0;
+    if (cap <= 0)
+        return;
+    if (!v)
+        v = default_present ? UC_FALLBACK_DEFAULT : "";
+    else if (uc_ieq(v, "none"))
+        v = "";
+    while (v[n] && n < cap - 1) {
+        out[n] = v[n];
+        n++;
+    }
+    out[n] = 0;
+}
+
 long upconf_int(const upconf *c, const char *profile, const char *key, long def)
 {
     const char *v = upconf_get(c, profile, key);

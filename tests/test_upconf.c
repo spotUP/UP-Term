@@ -21,6 +21,29 @@ static long palette_str_dirty(const uc_u32 *in, char *out, long cap)
     return upconf_palette_str(in, out, cap);
 }
 
+/* NERD-FALLBACK-DEFAULT: font-fallback unset resolves to SymbolsNerdFontMono when FONTS:<it>.ttf exists */
+static void fallback_default(void)
+{
+    static upconf c;
+    char out[UC_MAX_VALUE];
+    const char *none = "[profile default]\nfont = topaz.font:8\n";
+    const char *named = "[profile default]\nfont-fallback = DejaVuSansMono\n";
+    const char *off = "[profile default]\nfont-fallback = None\n";
+    upconf_parse(&c, none, (long)strlen(none));
+    upconf_font_fallback(&c, "default", 1, out, sizeof(out));
+    CHECK_STR(out, "SymbolsNerdFontMono");
+    upconf_font_fallback(&c, "default", 0, out, sizeof(out));
+    CHECK_STR(out, "");
+    upconf_parse(&c, named, (long)strlen(named));
+    upconf_font_fallback(&c, "default", 1, out, sizeof(out));
+    CHECK_STR(out, "DejaVuSansMono");
+    upconf_font_fallback(&c, "default", 0, out, sizeof(out));
+    CHECK_STR(out, "DejaVuSansMono");
+    upconf_parse(&c, off, (long)strlen(off));
+    upconf_font_fallback(&c, "default", 1, out, sizeof(out));
+    CHECK_STR(out, "");
+}
+
 /* Prefs' Use updates open windows live, each only when its own profile
  * changed: the comparison behind it */
 static void profile_equal(void)
@@ -722,6 +745,7 @@ void suite_upconf(void)
         CHECK(!strncmp(out, "00,111111,01,222222,", 20));
         CHECK_STR(out + 150, "15,111111");             /* the last entry whole, nothing after */
     }
+    fallback_default();
     profile_equal();
     theme_beats_profile();
     comments_kept();

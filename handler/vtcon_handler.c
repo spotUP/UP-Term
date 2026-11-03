@@ -959,6 +959,26 @@ static void h_clipped(void *u, int what)
 static const vtwin_host host = { h_reply, h_input, h_key, h_pasted, h_raw, h_resized, h_titled, h_open_link,
                                  h_knob, h_clipped };
 
+/* FONTS:<name>.ttf is there (NERD-FALLBACK-DEFAULT: the font-fallback default is used only when it is) */
+static int fonts_ttf_exists(const char *name)
+{
+    char path[80];
+    BPTR l;
+    int n = 0;
+    const char *pre = "FONTS:", *suf = ".ttf";
+    while (*pre)
+        path[n++] = *pre++;
+    while (*name && n < 70)
+        path[n++] = *name++;
+    while (*suf)
+        path[n++] = *suf++;
+    path[n] = 0;
+    l = Lock((STRPTR)path, SHARED_LOCK);
+    if (l)
+        UnLock(l);
+    return l != 0;
+}
+
 /* ---- the window -------------------------------------------------------------- */
 
 static int str_ieq(const char *a, const char *b)
@@ -1568,8 +1588,7 @@ static void apply_profile(con *c)
     v = upconf_str(c->conf, p, "font-aspect", 0);
     c->w.aspect_off = v && str_ieq(v, "off");
     /* glyphs the bitmap font lacks: an outline font's (F1); "" none */
-    v = upconf_str(c->conf, p, "font-fallback", 0);
-    copy_str(c->w.fallback, v ? v : "", sizeof(c->w.fallback));
+    upconf_font_fallback(c->conf, p, fonts_ttf_exists(UC_FALLBACK_DEFAULT), c->w.fallback, sizeof(c->w.fallback));
     apply_profile_colours(c, p);
     /* no key: the built-in 500 (sb_lines 0); "scrollback = 0": none (-1),
      * as Settings > Scrollback > None saves it */

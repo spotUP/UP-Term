@@ -182,7 +182,9 @@ CONFIGURATION (profiles)
      font = TOPAZ:8.8.font     font name : size
      font-fallback = SymbolsNerdFontMono
                                an installed outline font for what the font
-                               cannot show (see OUTLINE FONTS below)
+                               cannot show (see OUTLINE FONTS below). Not
+                               set: SymbolsNerdFontMono when FONTS: has it;
+                               "none" turns the fallback off
      fg = C0C0C0  bg = 000000  default foreground / background (RRGGBB hex)
      scrollback = 2000         lines to keep (no key = the built-in 500; 0 or less = none)
      cursor = block            block | underline | bar
@@ -271,7 +273,7 @@ OUTLINE FONTS (icons, other scripts)
    Amiga bitmap fonts hold 256 characters. A character outside them (a
    Nerd Font icon in a prompt or a Neovim status line, CJK, symbols) shows
    as '?', or as a near Latin-1 stand-in ('-' for a dash). With
-   font-fallback naming an installed outline font, UP-Term draws those
+   an outline font as fallback, UP-Term draws those
    characters from it, at the size of your font; everything else keeps
    your bitmap font. UP-Term reads TrueType fonts with its own engine; it
    needs no font library. Install puts the icons-only Nerd Font in FONTS:
@@ -281,9 +283,11 @@ OUTLINE FONTS (icons, other scripts)
    copy the .ttf to FONTS:, or install it with a tool that writes a .otag
    for a TrueType file (ttfinstall). Characters above U+FFFF draw too (the
    Nerd Fonts 3 icons at U+F0001 and up, the Material Design set).
-   Put  font-fallback = SymbolsNerdFontMono  (the name of the .ttf or .otag,
-   without the extension) in a profile, or type it in UP-Term Prefs,
-   General page, Fallback font.
+   Every window uses FONTS:SymbolsNerdFontMono.ttf as the fallback by
+   default, with no setting. To use another font, put  font-fallback = Name
+   (the name of the .ttf or .otag, without the extension) in a profile, or
+   choose it in UP-Term Prefs, General page, Fallback font. To turn the
+   fallback off, put  font-fallback = none  in the profile (Prefs: Clear).
    Open windows take it at once.
    What neither font has comes from GNU Unifont, when Install put it in
    (the "Unifont" part: UP-Term:unifont, 1.8 MB, SIL Open Font License

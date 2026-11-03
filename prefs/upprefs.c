@@ -456,7 +456,7 @@ static void show_texts(struct app *a)
     set_attr(a, PG_AM_FONT, GTTX_Text, (ULONG)(a->f.am_font[0] ? a->f.am_font : "Built-in"));
     set_attr(a, PG_AM_GTHEME, GTTX_Text, (ULONG)a->f.am_gtheme);
     set_attr(a, PG_AM_FLATSTATUS, GTTX_Text, (ULONG)flat_prefs_status());
-    set_attr(a, PG_FALLBACK, GTTX_Text, (ULONG)(a->f.fallback[0] ? a->f.fallback : "None"));
+    set_attr(a, PG_FALLBACK, GTTX_Text, (ULONG)(!a->f.fallback[0] ? "Default" : !strcmp(a->f.fallback, "none") ? "None" : a->f.fallback));
     mode_text(a, t, sizeof(t));
     set_attr(a, PG_SCREEN_MODE, GTTX_Text, (ULONG)t);
 }
@@ -1836,7 +1836,7 @@ static int act(struct app *a, int id, int val)
         pick_fallback(a);
         return 0;
     case PG_FALLBACK_CLEAR:
-        a->f.fallback[0] = 0;
+        strcpy(a->f.fallback, "none"); /* unset would mean the SymbolsNerdFontMono default */
         show_texts(a);
         return 0;
     case PG_SCREEN_MODE:

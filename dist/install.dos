@@ -753,7 +753,7 @@ If NOT EXISTS FONTS:IBM.font
   Copy fonts/IBM.font FONTS: CLONE QUIET
 EndIf
 ; The icons-only Nerd Font (fonts/SymbolsNerdFont/SOURCE.txt): UP-Term reads
-; FONTS:SymbolsNerdFontMono.ttf itself (font-fallback = SymbolsNerdFontMono);
+; FONTS:SymbolsNerdFontMono.ttf itself (the font-fallback default when no profile sets it);
 ; a user's own file of that name is kept, ours is replaced by a newer kit's.
 ; Its licences go to UP-Term:fonts/SymbolsNerdFont.
 If NOT EXISTS FONTS:SymbolsNerdFontMono.ttf
