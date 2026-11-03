@@ -23,7 +23,7 @@ status: designed, queued after S32-TITLE-STRIP
 3. flat_frame_pen(s, depth, active): inactive returns pen_inbar when it is a pen of the depth (same validity rule as flat_outline_of_depth).
 4. flat_title_decide inactive: band_pen = bg_pen = flat_frame_pen(s, depth, 0), text_pen = pen_ptext when band >= 0, else dimtext as now.
 5. flat.c gadget pen choice: the on-band branch runs for both states (band from flat_frame_pen with the real active flag); text_pen = pen_ptext. flat_clone_draw: when text_pen >= 0 the glyph takes text_pen for every non-selected state (today only FLAT_ROLE_TEXT, inactive is FLAT_ROLE_LINE).
-6. Outer ring: flat_rf_c recolours to pen_outline when the window is active, pen_inbar when inactive (pen_outline when pen_inbar is 0).
+6. Outer ring: flat_rf_c recolours to pen_outline when the window is active, pen_inbar when inactive (pen_outline when pen_inbar is 0). OWNER CONFIRMED 2026-11-03: "the outline of inactive windows should have the inactive color as well".
 7. Inactive window arrows + knob: arrow glyphs and knob take pen_inbar (owner: all elements). Active unchanged.
 8. S32-TITLE-STRIP band_rows rule applies to both states.
 
