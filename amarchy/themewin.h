@@ -33,7 +33,7 @@ void tw_tick(long now);
  * the role colours asked for and the pen index in use (BAR PENS; theme=- while no helper window is open). */
 void tw_describe(char *out, int cap);
 
-/* The pen of a theme role (MT_BG, MT_TEXT, MT_ACCENT, MT_BORDER_ROLE, MT_OK, MT_FAIL): a role the screen had no pen
+/* The pen of a theme role (MT_BG, MT_TEXT, MT_SELTEXT, MT_BORDER_ROLE, MT_OK, MT_FAIL): a role the screen had no pen
  * for answers a safe fallback. Valid while a helper window is open. */
 long tw_pen(int role);
 

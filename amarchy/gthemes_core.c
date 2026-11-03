@@ -39,6 +39,85 @@ static uc_u32 mix_tenth(uc_u32 a, uc_u32 b)
     return out;
 }
 
+/* ---- colour maths of the role derivation (moved from desk_core) ---- */
+
+int gt_luma(uc_u32 rgb)
+{
+    return (int)((((rgb >> 16) & 0xff) * 77UL + ((rgb >> 8) & 0xff) * 150UL + (rgb & 0xff) * 29UL) >> 8);
+}
+
+int gt_contrast(uc_u32 a, uc_u32 b)
+{
+    int la = gt_luma(a), lb = gt_luma(b), hi = la > lb ? la : lb, lo = la > lb ? lb : la;
+    return (hi + 13) * 100 / (lo + 13);
+}
+
+/* the colour as a 12-bit (OCS) screen holds it: a nibble per channel, replicated. The weakest depth Amarchy runs on. */
+static uc_u32 nib(uc_u32 c)
+{
+    return (((c >> 20) & 0xf) * 0x110000UL) | (((c >> 12) & 0xf) * 0x1100UL) | (((c >> 4) & 0xf) * 0x11UL);
+}
+
+static int qluma(uc_u32 c)
+{
+    return gt_luma(nib(c));
+}
+
+int gt_ground_black(const gtheme *t)
+{
+    return qluma(t->bg) == 0;
+}
+
+/* DESK-BACKDROP-DARKER: never the ground's own colour, on a 24-bit or a 12-bit palette. A ground that is black on the
+ * screen keeps it and the backdrop lifts to dark grey; any other ground gets a tone strictly darker after the nibble cut. */
+uc_u32 gt_darker(const gtheme *t)
+{
+    int pct;
+    if (gt_ground_black(t))
+        return GT_BLACK_LIFT;
+    if (gt_luma(t->darker_bg) < gt_luma(t->bg) && qluma(t->darker_bg) < qluma(t->bg) &&
+        gt_contrast(t->darker_bg, t->bg) >= GT_STEP_DARK && gt_contrast(t->darker_bg, t->fg) >= GT_FLOOR_TEXT)
+        return t->darker_bg;
+    for (pct = 80; pct > 0; pct -= 10)
+        if (qluma(gt_scale(t->bg, pct)) < qluma(t->bg))
+            return gt_scale(t->bg, pct);
+    return 0x000000UL;
+}
+
+/* FLAT-COLOUR-OVERHAUL: the selection pen colour. The theme's selection when it stands GT_FLOOR_SEL off the surface (as the nibble-cut
+ * screen shows both), else pushed away from the surface in 10 % steps: toward black on a light ground, toward white on a dark one. */
+uc_u32 gt_selection(const gtheme *t)
+{
+    uc_u32 sel = t->selection, goal = gt_luma(t->bg) >= 128 ? 0x000000UL : 0xFFFFFFUL;
+    int pct;
+    for (pct = 0; pct <= 100; pct += 10) {
+        uc_u32 c = pct ? 0 : sel;
+        if (pct) {
+            int sh;
+            for (sh = 16; sh >= 0; sh -= 8) {
+                int a = (int)((sel >> sh) & 255), b = (int)((goal >> sh) & 255);
+                c |= (uc_u32)(a + (b - a) * pct / 100) << sh;
+            }
+        }
+        if (gt_contrast(c, t->bg) >= GT_FLOOR_SEL && gt_contrast(nib(c), nib(t->bg)) >= GT_FLOOR_SEL)
+            return c;
+    }
+    return goal;
+}
+
+/* RL8 FLAT-COLOUR-OVERHAUL: the one derivation, the same for every theme (see gthemes_core.h) */
+void gt_roles_of(const gtheme *t, gt_roles *r)
+{
+    r->c[GR_BACKGROUND] = gt_darker(t);
+    r->c[GR_SURFACE] = t->bg;
+    r->c[GR_TEXT] = t->fg;
+    r->c[GR_MUTED] = t->muted;
+    r->c[GR_ACCENT] = t->accent;
+    r->c[GR_SELECTION] = gt_selection(t);
+    r->ok = t->ok;
+    r->fail = t->fail;
+}
+
 /* a quoted or bare text value of the file into dst (cap bytes), "" when the key is absent */
 static void str_key(char *dst, int cap, const char *key)
 {

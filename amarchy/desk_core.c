@@ -5,93 +5,27 @@
 
 #include <string.h>
 
-/* ---- colour maths ---- */
-
-int desk_luma(uc_u32 rgb)
-{
-    return (int)((((rgb >> 16) & 0xff) * 77UL + ((rgb >> 8) & 0xff) * 150UL + (rgb & 0xff) * 29UL) >> 8);
-}
-
-int desk_contrast(uc_u32 a, uc_u32 b)
-{
-    int la = desk_luma(a), lb = desk_luma(b), hi = la > lb ? la : lb, lo = la > lb ? lb : la;
-    return (hi + 13) * 100 / (lo + 13);
-}
-
-/* the guard floors, ratio times 100 of desk_contrast; measured over the 23 shipped themes (see test_desk.c) */
-#define DK_FLOOR_TEXT 220 /* text on a ground: measured, the weakest shipped pair is rose-pine at 233 */
+/* the guard floors, ratio times 100 of gt_contrast; measured over the 23 shipped themes (see test_desk.c). The derivation floors
+ * (GT_FLOOR_TEXT, GT_STEP_DARK, GT_FLOOR_SEL) live with the role table in gthemes_core.h. */
 #define DK_FLOOR_FILL 150 /* the title text on the fill, and the fill on the ground */
-#define DK_STEP_DARK 108  /* the darker tone against the background */
-#define DK_FLOOR_SEL 150  /* the selection (button fill, scroller knob) against the surface: shipped light themes sit at 110-130 */
 
 #define PT_DEPTH_MAX 3 /* the planes of a WBPattern tile */
 
-#define DK_BLACK_LIFT 0x222222UL /* the backdrop over a black ground: dark grey, lighter than black */
-
-/* the colour as a 12-bit (OCS) screen holds it: a nibble per channel, replicated. The weakest depth Amarchy runs on. */
-static uc_u32 nib(uc_u32 c)
-{
-    return (((c >> 20) & 0xf) * 0x110000UL) | (((c >> 12) & 0xf) * 0x1100UL) | (((c >> 4) & 0xf) * 0x11UL);
-}
-
-static int qluma(uc_u32 c)
-{
-    return desk_luma(nib(c));
-}
-
-int desk_ground_black(const gtheme *t)
-{
-    return qluma(t->bg) == 0;
-}
-
-/* DESK-BACKDROP-DARKER: never the ground's own colour, on a 24-bit or a 12-bit palette. A ground that is black on the
- * screen keeps it and the backdrop lifts to dark grey; any other ground gets a tone strictly darker after the nibble cut. */
-uc_u32 desk_darker(const gtheme *t)
-{
-    int pct;
-    if (desk_ground_black(t))
-        return DK_BLACK_LIFT;
-    if (desk_luma(t->darker_bg) < desk_luma(t->bg) && qluma(t->darker_bg) < qluma(t->bg) &&
-        desk_contrast(t->darker_bg, t->bg) >= DK_STEP_DARK && desk_contrast(t->darker_bg, t->fg) >= DK_FLOOR_TEXT)
-        return t->darker_bg;
-    for (pct = 80; pct > 0; pct -= 10)
-        if (qluma(gt_scale(t->bg, pct)) < qluma(t->bg))
-            return gt_scale(t->bg, pct);
-    return 0x000000UL;
-}
-
-/* FLAT-COLOUR-OVERHAUL: the selection pen colour. The theme's selection when it stands DK_FLOOR_SEL off the surface (as the nibble-cut
- * screen shows both), else pushed away from the surface in 10 % steps: toward black on a light ground, toward white on a dark one. */
-uc_u32 desk_selection(const gtheme *t)
-{
-    uc_u32 sel = t->selection, goal = desk_luma(t->bg) >= 128 ? 0x000000UL : 0xFFFFFFUL;
-    int pct;
-    for (pct = 0; pct <= 100; pct += 10) {
-        uc_u32 c = pct ? 0 : sel;
-        if (pct) {
-            int sh;
-            for (sh = 16; sh >= 0; sh -= 8) {
-                int a = (int)((sel >> sh) & 255), b = (int)((goal >> sh) & 255);
-                c |= (uc_u32)(a + (b - a) * pct / 100) << sh;
-            }
-        }
-        if (desk_contrast(c, t->bg) >= DK_FLOOR_SEL && desk_contrast(nib(c), nib(t->bg)) >= DK_FLOOR_SEL)
-            return c;
-    }
-    return goal;
-}
-
+/* RL8: the desktop pens are a view of the role table (gt_roles_of); pen index == DK_* enum, 0..7. DK_BACKDROP's palette.prefs colour
+ * stays the fail tone so the written file is byte-identical to before; live, desk_pen_colour gives the backdrop its own colour. */
 uc_u32 desk_role(const gtheme *t, int role)
 {
+    gt_roles r;
+    gt_roles_of(t, &r);
     switch (role) {
-    case DK_BG: return t->bg;
-    case DK_DARKER: return desk_darker(t);
-    case DK_FG: return t->fg;
-    case DK_ACCENT: return t->accent;
-    case DK_SELECTION: return desk_selection(t);
-    case DK_MUTED: return t->muted;
-    case DK_GREEN: return t->ok;
-    default: return t->fail;
+    case DK_BG: return r.c[GR_SURFACE];
+    case DK_DARKER: return r.c[GR_BACKGROUND];
+    case DK_FG: return r.c[GR_TEXT];
+    case DK_ACCENT: return r.c[GR_ACCENT];
+    case DK_SELECTION: return r.c[GR_SELECTION];
+    case DK_MUTED: return r.c[GR_MUTED];
+    case DK_GREEN: return r.ok;
+    default: return r.fail;
     }
 }
 
@@ -175,11 +109,17 @@ void desk_pens_flat(unsigned char pens[DK_SLOTS])
 /* FLAT-SOLID-FILL: the glyph pens of the flat_state block under the flat map: active glyph bright (foreground), inactive
  * glyph dim (accent, a mid grey: the darker slot is too close to the surface to read), box background = surface pen.
  * None may equal the surface pen the frame now takes (shine == shadow == fill == DK_BG), except back. */
+int desk_pen_of_role(int role)
+{
+    static const unsigned char pen[GR_ROLES] = { DK_DARKER, DK_BG, DK_FG, DK_MUTED, DK_ACCENT, DK_SELECTION };
+    return role >= 0 && role < GR_ROLES ? pen[role] : DK_BG;
+}
+
 void desk_flat_glyph_pens(unsigned char *text, unsigned char *line, unsigned char *back)
 {
-    *text = DK_FG;
-    *line = DK_ACCENT;
-    *back = DK_BG;
+    *text = (unsigned char)desk_pen_of_role(GR_TEXT);
+    *line = (unsigned char)desk_pen_of_role(GR_ACCENT);
+    *back = (unsigned char)desk_pen_of_role(GR_SURFACE);
 }
 
 unsigned long desk_flat_state_calls;
@@ -215,7 +155,7 @@ void desk_pens_for(int flat, unsigned char pens[DK_SLOTS])
 void desk_pen_plan_for(int depth, desk_pen_plan *p)
 {
     p->button = DK_SELECTION;
-    p->backdrop = depth >= PT_DEPTH_MAX ? DK_RED : desk_pen_fold(DK_DARKER, 1 << (depth > 0 ? depth : 1)); /* FLAT-COLOUR-OVERHAUL: pen 7 is its own backdrop pen; FILENAME-PEN: below 3 planes the shared darker pen (5) is off the screen and folds to DK_BG, the same rule as the 4-colour pen map */
+    p->backdrop = depth >= PT_DEPTH_MAX ? DK_BACKDROP : desk_pen_fold(DK_DARKER, 1 << (depth > 0 ? depth : 1)); /* FLAT-COLOUR-OVERHAUL: pen 7 is its own backdrop pen; FILENAME-PEN: below 3 planes the shared darker pen (5) is off the screen and folds to DK_BG, the same rule as the 4-colour pen map */
     if (depth >= 6) {
         p->icon_first = 32; p->icon_count = 16; p->icon_slot = 0;
     } else if (depth >= 4) {
@@ -377,7 +317,7 @@ uc_u32 desk_live_baseline(const unsigned char *saved, long savedlen, int pen, in
 uc_u32 desk_pen_colour(const gtheme *t, int pen, int flat_backdrop)
 {
     if (pen == desk_backdrop_pen())
-        return flat_backdrop ? desk_darker(t) : t->muted; /* flat: the dark tone, whether flat or the desktop-theme part writes the tile */
+        return flat_backdrop ? gt_darker(t) : t->muted; /* flat: the dark tone, whether flat or the desktop-theme part writes the tile */
     return desk_role(t, pen);
 }
 
@@ -754,15 +694,15 @@ static int refuse(char *why, int cap, const char *msg)
 
 int desk_check(const gtheme *t, char *why, int cap)
 {
-    uc_u32 darker = desk_darker(t);
-    int black = desk_luma(t->bg) == 0;
-    if (desk_contrast(t->fg, t->bg) < DK_FLOOR_TEXT)
+    uc_u32 darker = gt_darker(t);
+    int black = gt_luma(t->bg) == 0;
+    if (gt_contrast(t->fg, t->bg) < GT_FLOOR_TEXT)
         return refuse(why, cap, "The text colour is too close to the background.");
-    if (desk_contrast(t->bg, t->accent) < DK_FLOOR_FILL)
+    if (gt_contrast(t->bg, t->accent) < DK_FLOOR_FILL)
         return refuse(why, cap, "The title bar text is too close to the title bar colour.");
-    if (desk_contrast(t->fg, darker) < DK_FLOOR_TEXT)
+    if (gt_contrast(t->fg, darker) < GT_FLOOR_TEXT)
         return refuse(why, cap, "The icon labels are too close to the backdrop.");
-    if (!black && desk_contrast(darker, t->bg) < DK_STEP_DARK)
+    if (!black && gt_contrast(darker, t->bg) < GT_STEP_DARK)
         return refuse(why, cap, "The backdrop is too close to the window colour.");
     if (cap > 0)
         why[0] = 0;

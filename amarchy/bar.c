@@ -151,7 +151,7 @@ static void draw_seg(const bar_seg *s)
     while (n > 0 && text_w(t) > s->w - 2 * g_bar.pad)
         t[--n] = 0;
     tw_fill(g_win, s->x, 0, s->x + s->w - 1, g_win->Height - 1, MT_BG);
-    tw_text(g_win, s->x + g_bar.pad, t, s->accent ? MT_SELBOX : MT_TEXT, MT_BG);
+    tw_text(g_win, s->x + g_bar.pad, t, s->accent ? MT_THEME_ACCENT : MT_TEXT, MT_BG);
     g_draws++;
 }
 
