@@ -11,7 +11,10 @@
  *
  * wbpens WATCH <seconds>: every tick, a line when the Workbench screen address, colours 4-7 or the last four change, or when
  * T:amarchy-revert/flatlive.rgb (F, the flat live-pen write) or ENV:AMARCHY_WBCLOSES (D, the apply returned) appears or goes, stamped with ticks since start:
- *   T 123 SCR 0x1234 4 0000ff 5 ff00ff 6 00ffff 7 ffffff L 0000ff 222222 00ffff ffffff F 1 D 0 */
+ *   T 123 SCR 0x1234 4 0000ff 5 ff00ff 6 00ffff 7 ffffff L 0000ff 222222 00ffff ffffff F 1 D 0
+ *
+ * wbpens RGB <n> [<n> ...]: only the RGB lines of the given colour entries (an allocated pen such as
+ * amarchy-flat STATUS knob=249), same RGB line form. */
 #include <stdio.h>
 #include <intuition/intuition.h>
 #include <intuition/screens.h>
@@ -95,6 +98,16 @@ int main(int argc, char **argv)
     s = LockPubScreen((STRPTR)"Workbench");
     if (!s)
         return 10;
+    if (argc > 2 && !strcmp(argv[1], "RGB")) {
+        for (i = 2; i < argc; i++) {
+            GetRGB32(s->ViewPort.ColorMap, (ULONG)atol(argv[i]), 1, rgb);
+            printf("RGB %ld %02lx %02lx %02lx\n", atol(argv[i]), rgb[0] >> 24, rgb[1] >> 24, rgb[2] >> 24);
+        }
+        UnlockPubScreen(0, s);
+        CloseLibrary((struct Library *)GfxBase);
+        CloseLibrary((struct Library *)IntuitionBase);
+        return 0;
+    }
     printf("DEPTH %d\n", (int)s->RastPort.BitMap->Depth);
     for (i = 0; i < 11; i++) {
         GetRGB32(s->ViewPort.ColorMap, (ULONG)idx[i], 1, rgb);
