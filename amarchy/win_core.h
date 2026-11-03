@@ -80,6 +80,11 @@ win_strut_cls win_strut_class(const win_strut_req *r, const win_screen *s);
  * usable height, never below b->minh. Idempotent. 1 when b changed. */
 int win_strut_clamp(win_strut_cls c, win_box *b, const win_screen *s);
 
+/* BAR-STRIP-RESERVE: a window already open when the strip appears (opened before the bar, across BAR OFF / ON, or a Workbench
+ * reset). Same class and clamp as at open time, but only a bordered window is moved: the desktop has its own pass and the
+ * rest is left alone. 1 when b changed (b is the new box). */
+int win_strut_reflow(const win_strut_req *r, win_box *b, const win_screen *s);
+
 /* win:snap: the box of one zone of the work area. WA_LEFT / WA_RIGHT / WA_UP / WA_DOWN halves, WA_TL / WA_TR / WA_BL /
  * WA_BR quarters (cells split at (size - gap) / 2, the remainder pixel to the right / bottom cell), WA_CENTER keeps the
  * window's size and centres it. Every size goes through win_fit. 1 when the box changed, 0 when not or arg is no zone. */

@@ -11,7 +11,7 @@ Needs the rig up (rig.py start --max --purpose ...), Amarchy and amarchy-gui in 
 behind opens a CON: window over the bottom row: the bar stays behind it (BAR STATUS raises unchanged, the window's layer in front). two_rows: the bar window has no border.
 right_launch holds with another window active (the bar is not the active window); cold_panel restarts Amarchy.
 """
-import argparse, pathlib, struct, sys, time
+import argparse, pathlib, struct, sys, threading, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import paths, verdicts
 import ami, condev_rig as c
@@ -312,10 +312,37 @@ def r_strut_off():
 
 
 
+def r_strut_prebar():
+    # BAR-STRIP-RESERVE gap: a bordered window opened while the bar is OFF (so it is not clamped at open) is reflowed out of the
+    # strip when BAR ON publishes it: its bottom is at or above the bar's top and AMARCHY_STRUT_CLAMPED rose by 1.
+    strut_put()
+    ar.arexx('BAR OFF')
+    time.sleep(3)
+    res = {}
+    t = threading.Thread(target=lambda: res.update(opener('20 40 600 216 sd 14')))   # the opener holds the window open for 14 s
+    t.start()
+    time.sleep(4)
+    c0 = sent('AMARCHY_STRUT_CLAMPED')
+    ar.arexx('BAR ON')
+    time.sleep(3)
+    top, _ = bar_top()
+    with ami._conn() as conn:
+        scr = ami._m().list_windows(conn)[0][0]
+    sc = scr.get('row_scale', 1)
+    wins = [w for w in scr['windows'] if int(w['left']) // sc == 20 and int(w['top']) // sc <= 246]
+    c1 = sent('AMARCHY_STRUT_CLAMPED')
+    t.join()
+    box = res.get('BOX')
+    ends = [(int(w['top']) + int(w['height'])) // sc for w in wins]
+    ok = top is not None and bool(box) and bool(ends) and all(e <= top for e in ends) and c1 == c0 + 1
+    return ok, 'opened %r bar top %r ends %r clamped %d -> %d' % (box, top, ends, c0, c1)
+
+
 ROWS = [('start', r_start), ('left_panel', r_left_panel), ('close_panel', r_close_panel),
         ('right_launch', r_right_launch), ('cold_panel', r_cold_panel), ('behind', r_behind),
         ('two_rows', r_two_rows),
-        ('strut_open', r_strut_open), ('strut_zoom', r_strut_zoom), ('strut_desk', r_strut_desk), ('strut_off', r_strut_off)]
+        ('strut_open', r_strut_open), ('strut_zoom', r_strut_zoom), ('strut_desk', r_strut_desk), ('strut_off', r_strut_off),
+        ('strut_prebar', r_strut_prebar)]
 
 
 def main():

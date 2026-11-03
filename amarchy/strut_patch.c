@@ -367,6 +367,39 @@ void strut_publish(const struct Screen *scr, int height)
         g_pub->d[g_pub->nd].h = oh;
         g_pub->nd++;
     }
+    /* Bordered windows already open (before the bar, across BAR OFF / ON, after a reset) reflow by the open-time rule. */
+    n = 0;
+    {
+        struct Window *lst[DESK_MAX];
+        win_screen ws;
+        ws.width = g_pub->sw; ws.height = g_pub->sh; ws.title = g_pub->title; ws.bottom = height;
+        {
+            ULONG il = LockIBase(0);
+            for (w = scr->FirstWindow; w && n < DESK_MAX; w = w->NextWindow)
+                if (!(w->Title && win_is_amarchy((const char *)w->Title)) &&
+                    !bar_is_desktop((unsigned long)w->Flags, w->LeftEdge, w->LeftEdge + w->Width - 1, scr->Width) &&
+                    w->TopEdge + w->Height > ub)
+                    lst[n++] = w;
+            UnlockIBase(il);
+        }
+        for (i = 0; i < n; i++) {
+            win_strut_req q;
+            win_box b;
+            memset(&q, 0, sizeof q);
+            q.box.left = lst[i]->LeftEdge; q.box.top = lst[i]->TopEdge;
+            q.box.width = lst[i]->Width; q.box.height = lst[i]->Height;
+            q.box.minh = lst[i]->MinHeight;
+            q.backdrop = (lst[i]->Flags & WFLG_BACKDROP) != 0;
+            q.borderless = (lst[i]->Flags & WFLG_BORDERLESS) != 0;
+            q.dragbar = (lst[i]->Flags & WFLG_DRAGBAR) != 0;
+            q.sizegad = (lst[i]->Flags & WFLG_SIZEGADGET) != 0;
+            b = q.box;
+            if (win_strut_reflow(&q, &b, &ws)) {
+                ChangeWindowBox(lst[i], b.left, b.top, b.width, b.height);
+                g_pub->clamped++;
+            }
+        }
+    }
 }
 
 void strut_clear(void)

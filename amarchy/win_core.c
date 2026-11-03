@@ -371,3 +371,9 @@ int win_strut_clamp(win_strut_cls c, win_box *b, const win_screen *s)
     b->height = h;
     return 1;
 }
+
+int win_strut_reflow(const win_strut_req *r, win_box *b, const win_screen *s)
+{
+    win_strut_cls c = win_strut_class(r, s);
+    return c == WSC_BORDERED ? win_strut_clamp(c, b, s) : 0;
+}

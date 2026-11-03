@@ -403,6 +403,33 @@ static void strip_reserve(void)
     CHECK_INT(b.top + b.height, 240);
 }
 
+/* BAR-STRIP-RESERVE gap: windows already open when the strip appears are reflowed by the same rule. */
+static void strip_reflow_existing(void)
+{
+    const win_screen bar = { 640, 256, 11, 10 };      /* strip top 246 */
+    win_strut_req r = req(20, 40, 600, 216, 1, 1);
+    win_box b = r.box;
+    CHECK_INT(win_strut_reflow(&r, &b, &bar), 1);
+    CHECK(b.top + b.height <= 246);
+    CHECK(b.top >= 11);
+    r = req(20, 40, 600, 100, 0, 0);                  /* popup */
+    b = r.box;
+    CHECK_INT(win_strut_reflow(&r, &b, &bar), 0);
+    CHECK_INT(b.top + b.height, 140);
+    r = req(0, 246, 640, 10, 0, 0);                   /* the bar */
+    b = r.box;
+    CHECK_INT(win_strut_reflow(&r, &b, &bar), 0);
+    r = req(0, 0, 640, 256, 0, 0);                    /* fullscreen terminal */
+    r.backdrop = 1; r.borderless = 1;
+    b = r.box;
+    CHECK_INT(win_strut_reflow(&r, &b, &bar), 0);
+    CHECK_INT(b.height, 256);
+    r = req(0, 11, 640, 245, 0, 0);                   /* desktop: its own pass */
+    r.desktop = 1; r.backdrop = 1;
+    b = r.box;
+    CHECK_INT(win_strut_reflow(&r, &b, &bar), 0);
+}
+
 void suite_win(void)
 {
     parse_verbs();
@@ -415,6 +442,7 @@ void suite_win(void)
     ticket_needs_unchanged_box();
     work_area_and_fullscreen();
     strut_and_ours();
+    strip_reflow_existing();
     move_stops_at_bar();
     snap_parse();
     snap_boxes();
