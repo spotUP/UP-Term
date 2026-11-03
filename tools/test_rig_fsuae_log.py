@@ -89,11 +89,18 @@ with tempfile.TemporaryDirectory() as d:
     rig.boot_assigns_missing, rig.guard_shell_startup, rig.M060 = (lambda: []), (lambda: None), False
     rig.time.sleep = lambda s: None
     # the system disk steps (fresh clone of the master, then the edits into it) need the master image: not here
-    sys_steps = ("fresh_sys_hdf", "sys_hdf_screenmode", "sys_hdf_no_wasabid", "sys_hdf_no_dopus", "sys_hdf_kit",
+    sys_steps = ("fresh_sys_hdf", "sys_hdf_screenmode", "sys_hdf_monitors", "sys_hdf_no_wasabid", "sys_hdf_shadows_block",
+                 "sys_hdf_no_dopus", "sys_hdf_dopus", "sys_hdf_kit",
                  "sys_hdf_cpu_lib")
-    saved_sys = {n: getattr(rig, n) for n in sys_steps}
+    # the host-only guards read the real machine (git origin, lsof, build/ folders); the boot loop waits for go's
+    # "assigns done" line in boot.log (RIG-START-ASSIGN-RACE), which no real go writes here
+    host_steps = {"guard_stale_base": lambda *a, **k: None, "refuse_port_clash": lambda *a, **k: None,
+                  "gc": lambda *a, **k: [], "go_assigns_done": lambda text: True}
+    saved_sys = {n: getattr(rig, n) for n in sys_steps + tuple(host_steps)}
     for n in sys_steps:
         setattr(rig, n, lambda *a: None)
+    for n, f in host_steps.items():
+        setattr(rig, n, f)
     paths.FSUAE = pathlib.Path("/usr/bin/true")
     rig.start()
     for n, f in saved_sys.items():

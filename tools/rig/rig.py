@@ -1985,6 +1985,14 @@ BOOT_CAP = 1200     # seconds a boot may take in all, progress or not
 BOOT_NOTE = 60      # a boot older than this prints where it stands, every BOOT_NOTE s
 
 
+def go_assigns_done(text):
+    """BOOTX:go has made the rig's assigns: its own "assigns done" line is in boot.log. go runs beside the
+    Startup-Sequence (Run >NIL: C:Execute BOOTX:go), while the early S:User-Startup block (BOOTX:wasabid-up) starts
+    wasabid on its own, so wasabid can answer before go reaches its assigns. start took that first answer as "up" and
+    failed "the boot lacks the assigns ETC" on a boot whose log said "assigns done" a moment later (rig 68, fresh
+    folder, RIG-START-ASSIGN-RACE 2026-11-03). Exact line: the early-LIBS line also ends in "assigns done"."""
+    return "assigns done" in (l.strip() for l in text.splitlines())
+
 def boot_frozen(text, since_change, elapsed):
     """The boot is dead: BOOTX:go started and boot.log gained nothing for BOOT_STALL s, or BOOT_CAP passed.
     Slow is not dead (RIG-SLOW-BOOT, 2026-10-28): go's shadow copies are ~1000 UAE-filesystem round trips, and under
@@ -2131,7 +2139,8 @@ def _start(retries):
     seen, changed, noted = "", t0, t0
     while True:
         time.sleep(BOOT_POLL)
-        if status(quiet=True):
+        text = log.read_text() if log.exists() else ""
+        if go_assigns_done(text) and status(quiet=True):
             print("up")
             missing = boot_assigns_missing()
             if missing:
@@ -2142,7 +2151,6 @@ def _start(retries):
                 retry_wb_reset()
             return
         now = time.time()
-        text = log.read_text() if log.exists() else ""
         if text != seen:
             seen, changed = text, now
         if now - t0 >= BOOT_NOTE and now - noted >= BOOT_NOTE:
