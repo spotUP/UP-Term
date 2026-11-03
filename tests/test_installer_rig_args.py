@@ -31,6 +31,14 @@ class ParseArgs(unittest.TestCase):
             irg.rig_start()
         rig.assert_called_once_with("start", "--purpose", "vtcon-05: check")
 
+    def test_env_rig_flags_reach_every_rig_start(self):
+        # UPTERM_RIG_FLAGS='--os 32' was dropped: the install reboot came back on 3.1 (2026-11-03, rig 17)
+        self.addCleanup(irg.PURPOSE.clear)
+        irg.parse_args(["--purpose", "vtcon-16: proof"])
+        with mock.patch.dict("os.environ", {"UPTERM_RIG_FLAGS": "--max --os 32"}), mock.patch.object(irg, "rig") as rig:
+            irg.rig_start()
+        rig.assert_called_once_with("start", "--max", "--os", "32", "--purpose", "vtcon-16: proof")
+
     def test_no_dopus_reaches_the_rig_start_before_or_after_purpose(self):
         # --no-dopus before --purpose was wiped when set_purpose replaced the list it shared
         for argv in (["--no-dopus", "--purpose", "vtcon-05: d9"], ["--purpose", "vtcon-05: d9", "--no-dopus"]):

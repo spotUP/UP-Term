@@ -1605,7 +1605,10 @@ def set_purpose(text):
 
 
 def rig_start():
-    rig("start", *(PURPOSE + RIG_FLAGS))
+    """Every rig start of a run. UPTERM_RIG_FLAGS (paths.rig_flags: --os 32, --max ...) goes first, then the command line's
+    options: without it a 3.2 run (--os 32) restarted on sys.hdf, 3.1, and its checks measured the wrong system
+    (2026-11-03, S32 gadget proof on rig 17; CLEAN above already read the same variable)."""
+    rig("start", *(paths.rig_flags() + PURPOSE + RIG_FLAGS))
 
 
 def parse_args(argv):
