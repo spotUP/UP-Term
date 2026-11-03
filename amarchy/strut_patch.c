@@ -22,6 +22,7 @@
 extern struct IntuitionBase *IntuitionBase;
 
 #define DESK_MAX 4
+#define REFLOW_MAX 32           /* bordered windows moved out of the strip, kept for BAR OFF */
 #define STRUT_INJECT_ZOOM 0     /* probe Z0 (s28-evidence/bar-strip-reserve.md): the default alternate box is 60x40 at the window top-left, never in the strip */
 
 typedef struct strut_pub {
@@ -33,6 +34,8 @@ typedef struct strut_pub {
     long opens, clamped, zoom_set;
     int nd;
     struct { struct Window *w; int h; } d[DESK_MAX];
+    int nr;
+    struct { struct Window *w; win_box old, set; } r[REFLOW_MAX];
 } strut_pub;
 
 static strut_pub *g_pub;
@@ -370,12 +373,12 @@ void strut_publish(const struct Screen *scr, int height)
     /* Bordered windows already open (before the bar, across BAR OFF / ON, after a reset) reflow by the open-time rule. */
     n = 0;
     {
-        struct Window *lst[DESK_MAX];
+        struct Window *lst[REFLOW_MAX];
         win_screen ws;
         ws.width = g_pub->sw; ws.height = g_pub->sh; ws.title = g_pub->title; ws.bottom = height;
         {
             ULONG il = LockIBase(0);
-            for (w = scr->FirstWindow; w && n < DESK_MAX; w = w->NextWindow)
+            for (w = scr->FirstWindow; w && n < REFLOW_MAX; w = w->NextWindow)
                 if (!(w->Title && win_is_amarchy((const char *)w->Title)) &&
                     !bar_is_desktop((unsigned long)w->Flags, w->LeftEdge, w->LeftEdge + w->Width - 1, scr->Width) &&
                     w->TopEdge + w->Height > ub)
@@ -394,7 +397,11 @@ void strut_publish(const struct Screen *scr, int height)
             q.dragbar = (lst[i]->Flags & WFLG_DRAGBAR) != 0;
             q.sizegad = (lst[i]->Flags & WFLG_SIZEGADGET) != 0;
             b = q.box;
-            if (win_strut_reflow(&q, &b, &ws)) {
+            if (win_strut_reflow(&q, &b, &ws) && g_pub->nr < REFLOW_MAX) {
+                g_pub->r[g_pub->nr].w = lst[i];
+                g_pub->r[g_pub->nr].old = q.box;
+                g_pub->r[g_pub->nr].set = b;
+                g_pub->nr++;
                 ChangeWindowBox(lst[i], b.left, b.top, b.width, b.height);
                 g_pub->clamped++;
             }
@@ -405,11 +412,13 @@ void strut_publish(const struct Screen *scr, int height)
 void strut_clear(void)
 {
     int i;
+    const struct Screen *rscr = 0;
     struct Window *w;
     if (!g_pub || !g_pub->strip)
         return;
     {
         const struct Screen *scr = g_pub->scr;
+        rscr = scr;
         Forbid();
         g_pub->strip = 0;                   /* the hook passes everything from now on */
         g_pub->scr = 0;
@@ -424,6 +433,23 @@ void strut_clear(void)
         }
     }
     g_pub->nd = 0;
+    {
+        const struct Screen *scr = rscr;
+        for (i = 0; i < g_pub->nr; i++) {
+            ULONG il = LockIBase(0);
+            for (w = scr->FirstWindow; w && w != g_pub->r[i].w; w = w->NextWindow)
+                ;
+            if (w) {
+                win_box now, out;
+                memset(&now, 0, sizeof now);
+                now.left = w->LeftEdge; now.top = w->TopEdge; now.width = w->Width; now.height = w->Height;
+                if (win_strut_restore(&now, &g_pub->r[i].set, &g_pub->r[i].old, &out))
+                    ChangeWindowBox(w, out.left, out.top, out.width, out.height);
+            }
+            UnlockIBase(il);
+        }
+        g_pub->nr = 0;
+    }
 }
 
 void strut_counts(long *opens, long *clamped, long *zoom)

@@ -331,11 +331,20 @@ def r_strut_prebar():
     sc = scr.get('row_scale', 1)
     wins = [w for w in scr['windows'] if int(w['left']) // sc == 20 and int(w['top']) // sc <= 246]
     c1 = sent('AMARCHY_STRUT_CLAMPED')
+    # STRUT-REFLOW-RESTORE: BAR OFF puts the untouched window back in its original box (20 40 600 216).
+    ar.arexx('BAR OFF')
+    time.sleep(3)
+    with ami._conn() as conn:
+        scr2 = ami._m().list_windows(conn)[0][0]
+    sc2 = scr2.get('row_scale', 1)
+    back = [(int(w['left']) // sc2, int(w['top']) // sc2, int(w['width']) // sc2, int(w['height']) // sc2)
+            for w in scr2['windows'] if int(w['left']) // sc2 == 20 and int(w['top']) // sc2 <= 246]
     t.join()
     box = res.get('BOX')
     ends = [(int(w['top']) + int(w['height'])) // sc for w in wins]
-    ok = top is not None and bool(box) and bool(ends) and all(e <= top for e in ends) and c1 == c0 + 1
-    return ok, 'opened %r bar top %r ends %r clamped %d -> %d' % (box, top, ends, c0, c1)
+    restored = bool(back) and (20, 40, 600, 216) in back
+    ok = top is not None and bool(box) and bool(ends) and all(e <= top for e in ends) and c1 == c0 + 1 and restored
+    return ok, 'opened %r bar top %r ends %r clamped %d -> %d; after BAR OFF %r (want 20 40 600 216)' % (box, top, ends, c0, c1, back)
 
 
 ROWS = [('start', r_start), ('left_panel', r_left_panel), ('close_panel', r_close_panel),

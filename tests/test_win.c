@@ -430,6 +430,22 @@ static void strip_reflow_existing(void)
     CHECK_INT(win_strut_reflow(&r, &b, &bar), 0);
 }
 
+/* STRUT-REFLOW-RESTORE: BAR OFF restores only a window still in the box the reflow set. */
+static void strip_restore_unchanged_only(void)
+{
+    win_box old = box(20, 40, 600, 216), set = box(20, 40, 600, 206), now = set, out = box(0, 0, 0, 0);
+    CHECK_INT(win_strut_restore(&now, &set, &old, &out), 1);
+    CHECK_INT(out.top, 40); CHECK_INT(out.height, 216); CHECK_INT(out.width, 600);
+    now = box(50, 40, 600, 206);                      /* moved */
+    out = box(0, 0, 0, 0);
+    CHECK_INT(win_strut_restore(&now, &set, &old, &out), 0);
+    CHECK_INT(out.height, 0);
+    now = box(20, 40, 500, 206);                      /* resized width */
+    CHECK_INT(win_strut_restore(&now, &set, &old, &out), 0);
+    now = box(20, 40, 600, 150);                      /* resized height */
+    CHECK_INT(win_strut_restore(&now, &set, &old, &out), 0);
+}
+
 void suite_win(void)
 {
     parse_verbs();
@@ -443,6 +459,7 @@ void suite_win(void)
     work_area_and_fullscreen();
     strut_and_ours();
     strip_reflow_existing();
+    strip_restore_unchanged_only();
     move_stops_at_bar();
     snap_parse();
     snap_boxes();

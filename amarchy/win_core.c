@@ -377,3 +377,11 @@ int win_strut_reflow(const win_strut_req *r, win_box *b, const win_screen *s)
     win_strut_cls c = win_strut_class(r, s);
     return c == WSC_BORDERED ? win_strut_clamp(c, b, s) : 0;
 }
+
+int win_strut_restore(const win_box *now, const win_box *set, const win_box *old, win_box *out)
+{
+    if (now->left != set->left || now->top != set->top || now->width != set->width || now->height != set->height)
+        return 0;
+    *out = *old;
+    return 1;
+}

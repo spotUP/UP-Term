@@ -85,6 +85,11 @@ int win_strut_clamp(win_strut_cls c, win_box *b, const win_screen *s);
  * rest is left alone. 1 when b changed (b is the new box). */
 int win_strut_reflow(const win_strut_req *r, win_box *b, const win_screen *s);
 
+/* STRUT-REFLOW-RESTORE: BAR OFF puts a reflowed window back. now is its box at BAR OFF, set the box the reflow gave it, old
+ * the box it had before. Only a window the user has not moved or sized since (now equals set in left, top, width, height)
+ * is restored: 1 and *out = old, else 0 and *out untouched. */
+int win_strut_restore(const win_box *now, const win_box *set, const win_box *old, win_box *out);
+
 /* win:snap: the box of one zone of the work area. WA_LEFT / WA_RIGHT / WA_UP / WA_DOWN halves, WA_TL / WA_TR / WA_BL /
  * WA_BR quarters (cells split at (size - gap) / 2, the remainder pixel to the right / bottom cell), WA_CENTER keeps the
  * window's size and centres it. Every size goes through win_fit. 1 when the box changed, 0 when not or arg is no zone. */
