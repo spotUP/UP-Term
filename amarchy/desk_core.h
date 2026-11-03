@@ -11,8 +11,11 @@
 
 /* the eight palette roles of the flat mapping (OD13): the pen index of a role is its enum value.
  * FILENAME-PEN: Workbench draws the list-view file names with the fixed DrawInfo pen 1, so pen 1 holds the muted text colour
- * (DK_MUTED) and follows every theme; Amarchy's own dark tone (DK_DARKER: BLOCKPEN, BARTRIMPEN, the label backdrop) lives on pen 5. */
-enum { DK_BG, DK_MUTED, DK_FG, DK_ACCENT, DK_SELECTION, DK_DARKER, DK_GREEN, DK_RED, DK_ROLES };
+ * (DK_MUTED) and follows every theme; Amarchy's own dark tone (DK_DARKER: BLOCKPEN, BARTRIMPEN, the label backdrop) lives on pen 5.
+ * RL8: a view of the role table (gt_roles_of): BG = GR_SURFACE, MUTED = GR_MUTED, FG = GR_TEXT, ACCENT = GR_ACCENT, SELECTION =
+ * GR_SELECTION, DARKER = GR_BACKGROUND, GREEN = status ok. DK_BACKDROP (pen 7, was DK_RED) is the Workbench backdrop pen at 3+
+ * planes; palette.prefs still writes the fail tone there (byte-compatible), the screen gets desk_pen_colour's backdrop colour. */
+enum { DK_BG, DK_MUTED, DK_FG, DK_ACCENT, DK_SELECTION, DK_DARKER, DK_GREEN, DK_BACKDROP, DK_ROLES };
 
 /* the DrawInfo slots of pap_4ColorPens / pap_8ColorPens, in the order of the file */
 enum {
@@ -23,24 +26,12 @@ enum {
 #define DK_PALETTE_SIZE 434L /* a palette.prefs: FORM + PRHD + PALT of 400 bytes */
 #define DK_WBPATTERN_SIZE 410L /* three PTRN chunks of depth 3 */
 
-/* brightness 0..255 and a contrast ratio times 100 (100 = equal) from it; integer only */
-int desk_luma(uc_u32 rgb);
-int desk_contrast(uc_u32 a, uc_u32 b);
-
-/* the colour of a palette role (0xRRGGBB) */
+/* the colour of a palette role (0xRRGGBB): a view of the role table gt_roles_of (gthemes_core.h); the colour maths (gt_luma,
+ * gt_contrast, gt_darker, gt_selection, gt_ground_black) moved there with it */
 uc_u32 desk_role(const gtheme *t, int role);
-
-/* R1.18a: the darker tone (OD5): the theme's darker_background when it is darker than the background and keeps
- * its distance, else the background at 80 % or less, in every case strictly darker after the 12-bit nibble cut so the
- * backdrop pen never equals the ground pen (DESK-BACKDROP-DARKER). A ground that is black on the screen (desk_ground_black)
- * keeps its colour and the backdrop is dark grey, lighter than black. */
-uc_u32 desk_darker(const gtheme *t);
-/* FLAT-COLOUR-OVERHAUL: the selection role colour: t->selection pushed darker (light ground) or lighter (dark ground) until its contrast
- * against the surface is >= 1.5 */
-uc_u32 desk_selection(const gtheme *t);
-
-/* 1 when the ground is black on a 12-bit screen: all channels below 16 */
-int desk_ground_black(const gtheme *t);
+/* RL8: the desktop pen (DK_*) that carries a role of the table (GR_*): the flat glyph roles (FLAT_ROLE_*) and the icon slots pick
+ * their pens through it */
+int desk_pen_of_role(int role);
 
 /* R1.19: the pen index of every DrawInfo slot (OD13) into pens[DK_SLOTS] */
 void desk_pens(unsigned char pens[DK_SLOTS]);
@@ -64,7 +55,7 @@ extern unsigned long desk_flat_state_calls;
 int desk_icons_state(int on, int outline);
 
 /* Pen plan (lucide icons L6): which screen pens the desktop uses beyond the DrawInfo pens, per screen depth (EHB counts as 5).
- * button = the flat button fill (DK_SELECTION), backdrop = the Workbench backdrop tone (FLAT-COLOUR-OVERHAUL: its own pen DK_RED, nothing draws with it; a WBPattern tile is 3 planes, so its pen is below 8 but it is the SCREEN pen 2^depth-8+pen
+ * button = the flat button fill (DK_SELECTION), backdrop = the Workbench backdrop tone (FLAT-COLOUR-OVERHAUL: its own pen DK_BACKDROP, nothing draws with it; a WBPattern tile is 3 planes, so its pen is below 8 but it is the SCREEN pen 2^depth-8+pen
  * when depth > 3 (desk_backdrop_screen_pen: pen 255 on 8 planes), tile pen == screen pen only at depth <= 3; on a screen below 3 planes no pen is free and it is DK_DARKER, the same tone). DK_MUTED keeps the theme muted text colour. The icon pens are the range icon_first .. icon_first + icon_count - 1 that amarchy-flat holds for icon
  * slots icon_slot ..: depth >= 6 pens 32..47 (slots 0..15), depth 4 and 5 pens 8..15 (slots 8..15), depth 2 and 3 none. The
  * range never overlaps button, backdrop or the eight role pens 0..7. */
@@ -116,7 +107,7 @@ int desk_live_role_pens(int depth, int out[4]);
 /* FLAT-LIVEBASE-SAVED: the colour of role pen at depth under the saved palette.prefs (saved/savedlen, may be 0): its entry's colour,
  * else the graphics default of pens 4-7. The restore baseline of the live pens; never read from the live screen. */
 uc_u32 desk_live_baseline(const unsigned char *saved, long savedlen, int pen, int depth);
-/* the theme colour of role pen 0..7 (desk_role); the backdrop pen is the theme dark (desk_darker) whenever flat is on */
+/* the theme colour of role pen 0..7 (desk_role); the backdrop pen is the theme dark (gt_darker) whenever flat is on */
 uc_u32 desk_pen_colour(const gtheme *t, int pen, int flat_backdrop);
 /* FLAT-PENS47-RESET: what a NEW Workbench screen needs on its live role pens. flat = amconf_desk_flat_pens, mask = amconf_desk_mask (the
  * desktop-theme palette also writes the theme). When either puts the theme in the palette: the pens (desk_live_role_pens at depth) in

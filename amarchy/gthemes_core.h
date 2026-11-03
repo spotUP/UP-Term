@@ -31,6 +31,40 @@ typedef struct gtheme {
     char wbtitle[GT_TITLE]; /* wbtitle= : a Workbench title format; carried, the title stays stock (OD11) */
 } gtheme;
 
+/* RL8 FLAT-COLOUR-OVERHAUL: THE role table. Every Amarchy UI colour is one of these six roles of a gtheme, made by the one
+ * derivation gt_roles_of, the same rule for every theme; the desktop pens (DK_*), the menu roles (MT_*), the icon slots (IP_*) and
+ * the flat glyph roles (FLAT_ROLE_*) are views of it, never their own picks from the gtheme.
+ *   GR_BACKGROUND  the desktop backdrop, the darkest tone (gt_darker)
+ *   GR_SURFACE     windows, panels, the menu and the bar ground (background)
+ *   GR_TEXT        text and active glyphs (foreground)
+ *   GR_MUTED       secondary text: file names, dim labels, the menu's dim header (muted; dark_foreground when the file has none)
+ *   GR_ACCENT      the one highlight: selected row box, border, outline, header (accent)
+ *   GR_SELECTION   raised fills: buttons, scroller knob (selection, pushed off the surface by gt_selection)
+ * ok and fail are not UI roles: the two status tones of the job view's Done / Failed footers (green, red). */
+enum { GR_BACKGROUND, GR_SURFACE, GR_TEXT, GR_MUTED, GR_ACCENT, GR_SELECTION, GR_ROLES };
+typedef struct gt_roles {
+    uc_u32 c[GR_ROLES]; /* 0xRRGGBB per GR_* */
+    uc_u32 ok, fail;    /* status tones */
+} gt_roles;
+void gt_roles_of(const gtheme *t, gt_roles *r);
+
+/* the colour maths of the derivation (moved from desk_core, R1.18a): brightness 0..255, a contrast ratio times 100 (100 = equal) */
+int gt_luma(uc_u32 rgb);
+int gt_contrast(uc_u32 a, uc_u32 b);
+#define GT_FLOOR_TEXT 220 /* text on a ground: measured, the weakest shipped pair is rose-pine at 233 */
+#define GT_STEP_DARK 108  /* the darker tone against the background */
+#define GT_FLOOR_SEL 150  /* the selection (button fill, scroller knob) against the surface: shipped light themes sit at 110-130 */
+#define GT_BLACK_LIFT 0x222222UL /* the backdrop over a black ground: dark grey, lighter than black */
+/* 1 when the ground is black on a 12-bit screen: all channels below 16 */
+int gt_ground_black(const gtheme *t);
+/* GR_BACKGROUND (OD5, DESK-BACKDROP-DARKER): the theme's darker_background when it is darker than the background and keeps its
+ * distance, else the background at 80 % or less, in every case strictly darker after the 12-bit nibble cut so the backdrop pen never
+ * equals the ground pen. A ground that is black on the screen keeps its colour and the backdrop is GT_BLACK_LIFT. */
+uc_u32 gt_darker(const gtheme *t);
+/* GR_SELECTION: t->selection pushed darker (light ground) or lighter (dark ground) in 10 % steps until its contrast against the
+ * surface is >= GT_FLOOR_SEL, on the 24-bit and on the 12-bit screen */
+uc_u32 gt_selection(const gtheme *t);
+
 /* The compiled-in theme (tokyo-night, the default): a bare install without the data drawer still draws. */
 void gt_builtin(gtheme *out);
 

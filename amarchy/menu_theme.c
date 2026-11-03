@@ -11,8 +11,8 @@ static const struct {
     { 0, 0x000000UL },  /* MT_BG:     Black */
     { 7, 0xE5E5E5UL },  /* MT_TEXT:   White */
     { 8, 0x7F7F7FUL },  /* MT_DIM:    Bright Black */
-    { 14, 0x00FFFFUL }, /* MT_ACCENT: Bright Cyan */
-    { 4, 0x0000EEUL },  /* MT_SELBOX: Blue */
+    { 14, 0x00FFFFUL }, /* MT_SELTEXT: Bright Cyan */
+    { 4, 0x0000EEUL },  /* MT_THEME_ACCENT: Blue */
     { 10, 0x00FF00UL }, /* MT_OK:     Bright Green */
     { 9, 0xFF0000UL }   /* MT_FAIL:   Bright Red */
 };
@@ -49,20 +49,22 @@ void menu_theme_roles(const uc_u32 pal16[16], uc_u32 rgb[MT_ROLES])
 
 void menu_theme_roles_gui(const gtheme *t, uc_u32 rgb[MT_ROLES])
 {
-    rgb[MT_BG] = t->bg & 0xFFFFFFUL;
-    rgb[MT_TEXT] = t->fg & 0xFFFFFFUL;
-    rgb[MT_DIM] = t->dim & 0xFFFFFFUL;
-    rgb[MT_ACCENT] = t->bg & 0xFFFFFFUL;
-    rgb[MT_SELBOX] = t->accent & 0xFFFFFFUL;
-    rgb[MT_OK] = t->ok & 0xFFFFFFUL;
-    rgb[MT_FAIL] = t->fail & 0xFFFFFFUL;
+    gt_roles r;
+    gt_roles_of(t, &r);
+    rgb[MT_BG] = r.c[GR_SURFACE] & 0xFFFFFFUL;
+    rgb[MT_TEXT] = r.c[GR_TEXT] & 0xFFFFFFUL;
+    rgb[MT_DIM] = r.c[GR_MUTED] & 0xFFFFFFUL;
+    rgb[MT_SELTEXT] = r.c[GR_SURFACE] & 0xFFFFFFUL;
+    rgb[MT_THEME_ACCENT] = r.c[GR_ACCENT] & 0xFFFFFFUL;
+    rgb[MT_OK] = r.ok & 0xFFFFFFUL;
+    rgb[MT_FAIL] = r.fail & 0xFFFFFFUL;
 }
 
 int menu_theme_minimal(uc_u32 rgb[MT_ROLES])
 {
     uc_u32 bg = rgb[MT_BG], fg = rgb[MT_TEXT];
-    rgb[MT_BG] = rgb[MT_ACCENT] = bg;
-    rgb[MT_TEXT] = rgb[MT_DIM] = rgb[MT_SELBOX] = rgb[MT_OK] = rgb[MT_FAIL] = fg;
+    rgb[MT_BG] = rgb[MT_SELTEXT] = bg;
+    rgb[MT_TEXT] = rgb[MT_DIM] = rgb[MT_THEME_ACCENT] = rgb[MT_OK] = rgb[MT_FAIL] = fg;
     return bg != fg;
 }
 

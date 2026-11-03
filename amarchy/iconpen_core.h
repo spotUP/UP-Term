@@ -31,7 +31,7 @@ uc_u32 ip_ground(const gtheme *t, int flat, unsigned mask);
 /* The screen pen that icon slot (0..15) is drawn with at screen depth `depth` (EHB counts as 5):
  * depth >= 6: IP_FIRST + slot (held); depth 4 and 5: slots 8..15 are pens 8..15 (held), slots 0..7 fold; depth 2 and 3: every
  * slot folds. A fold lands on the theme role pen (DK_BG..DK_MUTED, 0..5; 0..3 on depth 2) whose colour is nearest the
- * slot's colour (ties: the lower pen), never on DK_GREEN / DK_RED. */
+ * slot's colour (ties: the lower pen), never on DK_GREEN / DK_BACKDROP. */
 int ip_fold(const gtheme *t, int slot, int depth);
 
 /* ---- the pen holder (L7) ---- */
