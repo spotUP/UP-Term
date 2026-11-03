@@ -126,6 +126,9 @@ class BuiltKit(unittest.TestCase):
             self.assertNotEqual(i, -1, name)
             ver = data[i:data.index(b'\0', i)].split()
             self.assertEqual(ver[1:3], [name.encode(), version], b' '.join(ver))
+            # VER-DATE-YEAR: the date is (dd.mm.yy), the form the Amiga style guide names; the 3.1 Version
+            # command read (03.11.2026) as 05/29/21
+            self.assertRegex(ver[3], rb'^\(\d\d?\.\d\d?\.\d\d\)$', b' '.join(ver))
 
     def test_base_programs_say_the_base_version(self):
         # "Version UPTerm" or "Version L:vtcon-handler" on the Amiga prints the base's version, the
@@ -134,6 +137,7 @@ class BuiltKit(unittest.TestCase):
         if ARCHIVE != 'up-term':
             self.skipTest('the base only')
         stamp = open(os.path.join(KIT, 'Files/UP-Term.version'), 'rb').read().split()
+        self.assertRegex(stamp[3], rb'^\(\d\d?\.\d\d?\.\d\d\)$', b' '.join(stamp))
         self.assert_ver(('UPTerm', 'vtcon-handler', 'pty-handler', 'vsh', 'hl', 'mdv', 'sz', 'rz',
                          'uptelnet', 'upgetty', 'UPConsole', 'icat', 'UPDemo'), stamp[2])
 

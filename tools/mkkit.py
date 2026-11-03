@@ -69,7 +69,7 @@ def main(argv):
     with open(kit / 'Files/VERSIONS', 'wb') as f:
         run('sh', 'tools/mkversions.sh', '--package', product, version, root, *row['consumes'].split(','), stdout=f)
     if pkg_id == 'base':
-        date = datetime.date.today().strftime('%d.%m.%Y')
+        date = datetime.date.today().strftime('%d.%m.%y')
         write(kit / 'Files/UP-Term.version', '$VER: %s %s (%s)\n' % (product, version, date))
     # every file's mode by one rule (lha carries it to the Amiga as protection bits: a file without
     # u+w cannot be replaced by the next Install or an Update); stops on one left without u+w

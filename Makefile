@@ -735,7 +735,7 @@ GITREV  := $(shell git rev-parse --short HEAD 2>/dev/null)$(shell git diff --qui
 # version or the day moves, not on every make.
 $(UPTERM_VERSION_H): FORCE
 	@mkdir -p $(@D)
-	@printf '#define UPTERM_VERSION "%s"\n#define UPTERM_DATE "%s"\n#define UPCLAUDE_VERSION "%s"\n' "$$(python3 tools/pkgs.py get base version)" "$$(date +%d.%m.%Y)" "$$(python3 tools/pkgs.py get claude version)" > $@.new
+	@printf '#define UPTERM_VERSION "%s"\n#define UPTERM_DATE "%s"\n#define UPCLAUDE_VERSION "%s"\n' "$$(python3 tools/pkgs.py get base version)" "$$(date +%d.%m.%y)" "$$(python3 tools/pkgs.py get claude version)" > $@.new
 	@if cmp -s $@.new $@; then rm $@.new; else mv $@.new $@; fi
 # the engine's hot loops in assembler, for the builds that define VT_ASM (S1)
 ENGINE_68K := engine/vtengine_68k.s
