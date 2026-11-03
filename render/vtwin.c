@@ -1027,6 +1027,9 @@ int vtwin_attach(vtwin *w, struct Window *win)
     if (!w->t)
         return 0;
     w->scroll_base = vt_lines_scrolled(w->t);
+    /* open_window reads the screen (vtwin_set_screen) before the engine exists: hand the pixel
+     * aspect over here, or a new window places kitty pictures square (IMAGE-ASPECT-HIRES) */
+    vt_set_pixel_aspect(w->t, w->aspect_known ? w->res_x : 0, w->aspect_known ? w->res_y : 0);
     vt_set_personality(w->t, w->pers);
     if (w->pers == VT_XTERM)
         vt_set_onlcr(w->t, 1); /* LF out as CR LF, as a Unix tty does */
