@@ -198,6 +198,30 @@ If "{STEP}" EQ ""
     UnSet upssl
   EndIf
 EndIf
+; A drawer that was already there when Install ran (an empty UP-Term drawer on
+; the master disk) is not ours to delete: ENVARC:up-term/DirWasThere says so and
+; Uninstall then empties it and leaves it. An Install over an Install (the Dir
+; record already names this drawer) keeps the record as it was: the drawer is
+; there only because we made it.
+Set updirthere ""
+If EXISTS "$updest"
+  Set updirthere YES
+EndIf
+If EXISTS ENVARC:up-term/Dir
+  Copy >NIL: ENVARC:up-term/Dir ENV:updirold CLONE
+  If "$updirold" EQ "$updest"
+    Set updirthere KEEP
+  EndIf
+  Delete >NIL: ENV:updirold QUIET
+EndIf
+MakeDir >NIL: ENVARC:up-term
+If "$updirthere" EQ "YES"
+  Echo >ENVARC:up-term/DirWasThere "$updest"
+EndIf
+If "$updirthere" EQ ""
+  Delete >NIL: ENVARC:up-term/DirWasThere QUIET
+EndIf
+UnSet updirthere
 MakeDir >NIL: "$updest"
 If NOT EXISTS "$updest"
   Echo "UP-Term: cannot make the drawer $updest (its parent must exist)"

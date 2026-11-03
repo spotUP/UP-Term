@@ -227,7 +227,12 @@ If "$upkeepvar" EQ "YES"
   Delete >NIL: "$updest/~(var|var.info)" ALL QUIET
   Echo "Your data stayed in $updest/var; delete that drawer to remove it."
 Else
-  Delete >NIL: "$updest" ALL QUIET
+  ; A drawer Install found already there (ENVARC:up-term/DirWasThere) stays, emptied
+  If EXISTS ENVARC:up-term/DirWasThere
+    Delete >NIL: "$updest/#?" ALL QUIET
+  Else
+    Delete >NIL: "$updest" ALL QUIET
+  EndIf
 EndIf
 UnSet upkeepvar
 UnSet updest
