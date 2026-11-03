@@ -935,13 +935,13 @@ static void test_flat_pick_leaves_pen5_magenta_on_deep_workbench(void)
     CHECK(lp[0] == 4 && lp[1] == 5 && lp[2] == 6 && lp[3] == 7);
     CHECK_INT(desk_live_role_pens(3, lp), 0);
     CHECK_INT(desk_live_role_pens(2, lp), 0);
-    /* the live snapshot of a depth-8 screen: entry 5 is pen 253 (0x222), not pen 5 (0xf0f) */
+    /* the live snapshot of a depth-8 screen: entry 5 is pen 253 (0x5d5, the stock green), not pen 5 (0xf0f) */
     for (p = 0; p < 256; p++)
         rgb4[p] = 0x0f0f;
-    rgb4[252] = 0xe44; rgb4[253] = 0x222; rgb4[254] = 0x04d; rgb4[255] = 0xe90;
+    rgb4[252] = 0xe44; rgb4[253] = 0x5d5; rgb4[254] = 0x04d; rgb4[255] = 0xe90;
     n = desk_palette_live(rgb4, 256, 8, flat, cur, sizeof cur);
     CHECK_INT(n, DK_PALETTE_SIZE);
-    CHECK_INT(desk_palette_rgb(cur, n, 253, 8), 0x222222L);
+    CHECK_INT(desk_palette_rgb(cur, n, 253, 8), 0x55DD55L);
     CHECK_INT(desk_palette_rgb(cur, n, 5, 8), -1);
     CHECK_INT(desk_palette_set_rgb(cur, n, desk_backdrop_pen(), 8, 0x123456UL, out, sizeof out), 0);
     /* the flat pick: role pens 0-3 get the theme in the flat map's role order; 252-255 keep the user's colours; 4-7 are live */
@@ -950,8 +950,11 @@ static void test_flat_pick_leaves_pen5_magenta_on_deep_workbench(void)
     for (p = 0; p < 4; p++)
         CHECK_INT(desk_palette_rgb(out, m, p, 8), (long)desk_role(&t, p));
     CHECK_INT(desk_palette_rgb(out, m, 1, 8), (long)t.muted); /* FILENAME-PEN: pen 1 is the muted text colour */
-    for (p = 252; p < 255; p++)
-        CHECK_INT(desk_palette_rgb(out, m, p, 8), desk_palette_rgb(cur, n, p, 8));
+    /* WB-TITLE-GREEN: pens 252-254 are the screen pens the role pens 4-6 resolve to (IPrefs): pen 253 is DK_DARKER, BARTRIMPEN, which drew the stock green under the title bar */
+    for (p = 4; p < 7; p++)
+        CHECK_INT(desk_palette_rgb(out, m, desk_palette_pen(p, 8), 8), (long)desk_pen_colour(&t, p, 1));
+    CHECK_INT(desk_palette_rgb(out, m, 253, 8), 0x222222L);
+    CHECK(desk_palette_rgb(out, m, 253, 8) != desk_palette_rgb(cur, n, 253, 8));
     CHECK_INT(desk_palette_rgb(out, m, 255, 8), 0x222222L); /* FLAT-VIS-1: the backdrop screen pen takes the theme dark */
     CHECK_INT(desk_pen_colour(&t, desk_backdrop_pen(), 1), 0x222222L);
     CHECK_INT(desk_pen_colour(&t, 4, 1), (long)gt_selection(&t));
@@ -1015,7 +1018,7 @@ static void test_desk_live_baseline_ignores_menu(void)
     desk_pens_flat(flat);
     for (p = 0; p < 256; p++)
         rgb4[p] = 0x0123; /* the menu's colours on every free pen */
-    rgb4[252] = 0xe44; rgb4[253] = 0x222; rgb4[254] = 0x04d; rgb4[255] = 0xe90;
+    rgb4[252] = 0xe44; rgb4[253] = 0x5d5; rgb4[254] = 0x04d; rgb4[255] = 0xe90;
     n = desk_palette_live(rgb4, 256, 8, flat, saved, sizeof saved);
     CHECK_INT(n, DK_PALETTE_SIZE);
     CHECK_INT(desk_live_baseline(saved, n, 4, 8), 0x0000FFL);

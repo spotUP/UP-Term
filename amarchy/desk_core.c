@@ -460,7 +460,10 @@ long desk_palette_theme(const unsigned char *cur, long curlen, const gtheme *t, 
         return 0;
     memcpy(out, cur, (size_t)curlen);
     for (p = 0; p < DK_ROLES; p++) {
-        long e = palette_entry(out, curlen, p, depth);
+        /* WB-TITLE-GREEN: the role pen goes through the entry that reaches it. On a screen deeper than 3 planes IPrefs resolves the
+         * pen map's pen 5 (DK_DARKER: BARTRIMPEN, BLOCKPEN) to screen pen 253, the pen entry 5 sets, so entry 5 holds the dark tone;
+         * left at the user's stock colour it drew a green line under the screen title bar. */
+        long e = palette_entry(out, curlen, desk_palette_pen(p, depth), depth);
         if (e >= 0)
             palette_put_rgb(out + e, desk_pen_colour(t, p, flat_backdrop));
     }
