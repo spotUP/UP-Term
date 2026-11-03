@@ -562,6 +562,15 @@ static int flat_outline_of_depth(const flat_state *s, int depth)
     return 0;
 }
 
+int flat_knob_state_pen(const flat_state *s, int depth, int active)
+{
+    if (active) {
+        int o = flat_outline_of_depth(s, depth);
+        return o ? o : flat_knob_pen(s, depth);
+    }
+    return flat_inactive_pen(s, depth) >= 0 ? flat_inactive_pen(s, depth) : flat_knob_pen(s, depth);
+}
+
 int flat_scroller_knob(int cx, int cy, int cw, int ch, int horiz, int vert, unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody,
                       int *kx_out, int *ky_out, int *kw_out, int *kh_out)
 {
@@ -590,7 +599,7 @@ int flat_scroller_pen(const flat_state *s, int depth, int active, int cx, int cy
         return -1;
     flat_scroller_knob(cx, cy, cw, ch, horiz, vert, hpot, vpot, hbody, vbody, &kx, &ky, &kw, &kh);
     if (x0 >= kx && x1 < kx + kw && y0 >= ky && y1 < ky + kh)
-        return !active && flat_inactive_pen(s, depth) >= 0 ? flat_inactive_pen(s, depth) : flat_knob_pen(s, depth);
+        return flat_knob_state_pen(s, depth, active);
     return s->pen_back;
 }
 

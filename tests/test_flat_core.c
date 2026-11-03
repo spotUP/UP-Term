@@ -976,12 +976,12 @@ static void test_scroller(void)
     int kn, tr;
     flat_init(&s);
     desk_flat_state(1, 1, &s);
-    kn = DK_MUTED;                                                       /* KNOB-MUTED: the knob is the theme muted text pen, not the selection pen nor the lighter pen_outline */
+    kn = s.pen_outline;                                                  /* S32-KNOB-STATE: the active knob is the accent pen_outline (was the muted pen: invisible on the track) */
     tr = s.pen_back;
     CHECK(kn != tr);
     CHECK(kn != DK_SELECTION);
-    CHECK_INT(s.pen_dimtext, kn);
-    CHECK(kn != s.pen_outline);
+    CHECK(kn != 0);
+    CHECK(kn < 8);
     /* vertical 16 x 100 container at (10,20), body half: knob height 50 */
     CHECK_INT(flat_scroller_pen(&s, 3, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), kn);
     CHECK_INT(flat_scroller_pen(&s, 3, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 70, 25, 119), tr);
@@ -1032,6 +1032,23 @@ static void test_scroller(void)
     s.held = 1;
     CHECK_INT(flat_scroller_pen(&s, 3, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), -1);
     s.held = 0;
+    /* S32-KNOB-STATE: active -> pen_outline, inactive -> pen_inbar, either missing/invalid -> today's knob pen */
+    {
+        int ko = s.pen_outline, ki = s.pen_inbar;
+        s.pen_outline = 5; s.pen_inbar = 6;
+        CHECK_INT(flat_knob_state_pen(&s, 4, 1), 5);
+        CHECK_INT(flat_knob_state_pen(&s, 4, 0), 6);
+        CHECK_INT(flat_scroller_pen(&s, 4, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), 5);   /* through the scroller entry */
+        CHECK_INT(flat_scroller_pen(&s, 4, 0, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), 6);
+        s.pen_outline = 0; s.pen_inbar = 0;
+        CHECK_INT(flat_knob_state_pen(&s, 4, 1), flat_knob_pen(&s, 4));
+        CHECK_INT(flat_knob_state_pen(&s, 4, 0), flat_knob_pen(&s, 4));
+        s.pen_outline = 20; s.pen_inbar = 20;                            /* not pens of 4 planes */
+        CHECK_INT(flat_knob_state_pen(&s, 4, 1), flat_knob_pen(&s, 4));
+        CHECK_INT(flat_knob_state_pen(&s, 4, 0), flat_knob_pen(&s, 4));
+        s.pen_outline = ko; s.pen_inbar = ki;
+    }
+    s.pen_outline = 0;                                                   /* below: the knob fallback chain */
     /* under 8 colours the knob takes the accent pen_line (flat_button_pen), never a missing pen */
     CHECK_INT(flat_scroller_pen(&s, 2, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), s.pen_line);
     /* fallback: pen_dimtext 0 or not a pen of the depth keeps flat_button_pen */
@@ -1054,6 +1071,7 @@ static void test_knob_pen(void)
     flat_state s;
     flat_init(&s);
     desk_flat_state(1, 1, &s);
+    s.pen_outline = 0;                                                   /* the knob pen is the fallback below the S32-KNOB-STATE accent */
     s.pen_knob = 9;
     CHECK_INT(flat_knob_pen(&s, 4), 9);
     CHECK_INT(flat_scroller_pen(&s, 4, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), 9);   /* reachable through the scroller entry */
