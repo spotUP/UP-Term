@@ -10,6 +10,7 @@ from unittest import mock
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools/rig"))
 
+import assign_rig
 import installer_rig as irg
 
 
@@ -31,13 +32,16 @@ class ParseArgs(unittest.TestCase):
             irg.rig_start()
         rig.assert_called_once_with("start", "--purpose", "vtcon-05: check")
 
-    def test_env_rig_flags_reach_every_rig_start(self):
-        # UPTERM_RIG_FLAGS='--os 32' was dropped: the install reboot came back on 3.1 (2026-11-03, rig 17)
+    def test_env_rig_flags_reach_rig_py_once(self):
+        # Through the real assign_rig.rig() down to the rig.py argv: UPTERM_RIG_FLAGS once, then the purpose.
+        # rig_start used to add the env flags as well, and rig 18 started with --max --os 32 twice (2026-11-03).
         self.addCleanup(irg.PURPOSE.clear)
         irg.parse_args(["--purpose", "vtcon-16: proof"])
-        with mock.patch.dict("os.environ", {"UPTERM_RIG_FLAGS": "--max --os 32"}), mock.patch.object(irg, "rig") as rig:
+        with mock.patch.dict("os.environ", {"UPTERM_RIG_FLAGS": "--max --os 32"}), \
+                mock.patch.object(assign_rig.subprocess, "run") as run:
             irg.rig_start()
-        rig.assert_called_once_with("start", "--max", "--os", "32", "--purpose", "vtcon-16: proof")
+        argv = run.call_args[0][0]
+        self.assertEqual(argv[2:], ["start", "--max", "--os", "32", "--purpose", "vtcon-16: proof"])
 
     def test_no_dopus_reaches_the_rig_start_before_or_after_purpose(self):
         # --no-dopus before --purpose was wiped when set_purpose replaced the list it shared
