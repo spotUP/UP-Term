@@ -2038,17 +2038,19 @@ static void sc_kitty_zindex(long t, int first)
         return;
     heading("Kitty z-index", "z below 0 puts a picture under the text, z of 0 or more over it");
     ps("\033_Ga=d,d=I,i=4,q=2\033\\\033_Ga=d,d=I,i=5,q=2\033\\");
-    tc_sphere(px);
-    at(4, 4);
-    kitty_chunks("a=T,i=4,f=32,s=64,v=48,z=-1,q=2", px, sizeof px);
-    at(4, 44);
-    kitty_chunks("a=T,i=5,f=32,s=64,v=48,z=1,q=2", px, sizeof px);
+    /* The text goes first: text written later into a z >= 0 picture's cells takes them over (D12), so the front
+     * picture would lose every row below its first. */
     for (i = 0; i < 4; i++) { /* the same text lines on both pictures */
         at(5 + i, 4);
         ps("TEXT OVER THE PICTURE");
         at(5 + i, 44);
         ps("TEXT UNDER THE PICTURE");
     }
+    tc_sphere(px);
+    at(4, 4);
+    kitty_chunks("a=T,i=4,f=32,s=64,v=48,z=-1,q=2", px, sizeof px);
+    at(4, 44);
+    kitty_chunks("a=T,i=5,f=32,s=64,v=48,z=1,q=2", px, sizeof px);
     at(14, 4);
     ps("z=-1: the picture is behind the text.");
     at(14, 44);
