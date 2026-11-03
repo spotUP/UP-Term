@@ -106,10 +106,14 @@ tldr() {
 # $PATH is in Unix form, the way ixemul programs read it too, and comes
 # before the Shell's own path and C:, so sort here is GNU sort while the
 # AmigaDOS Shell keeps C:Sort. Dir, List, Copy, Delete, Type and the other
-# AmigaDOS commands keep their names. A PATH you set is left alone.
-if [ -z "$PATH" ]; then
-    PATH=/UP-Term/bin:/UP-Term/Python3/bin:/SYS/Python3/bin:/UP-Term/nvim/bin:/gg/bin:/c
-fi
+# AmigaDOS commands keep their names. A PATH you set is left alone. The
+# default a parent hands down is not one you set: tmux gives every pane
+# /usr/bin:/bin (tmux/spawn.c) and ixemul's own default adds :/c, and a pane
+# vsh then found no sleep, so those two count as unset.
+case "$PATH" in
+    ''|/usr/bin:/bin|/usr/bin:/bin:/c)
+    PATH=/UP-Term/bin:/UP-Term/Python3/bin:/SYS/Python3/bin:/UP-Term/nvim/bin:/gg/bin:/c ;;
+esac
 export PATH
 
 # The editor for fc and git commit. Both fall back to vi, which the base
