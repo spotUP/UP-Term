@@ -211,22 +211,23 @@ static int scene_index(const char *name)
  * second player, so no second list can hold scenes the first lacks. */
 static void there_is_one_scene_list_with_the_effects_at_its_end(void)
 {
-    CHECK_INT(updemo_scenes(), 31);
+    CHECK_INT(updemo_scenes(), 32);
     CHECK_INT(scene_index("styles"), 1);        /* the tour's scene, in the list a bare UPDemo plays */
-    CHECK_INT(scene_index("copper bars"), 23);  /* the show's scenes follow the tour's */
-    CHECK_INT(scene_index("the end"), 30);
+    CHECK_INT(scene_index("copper bars"), 24);  /* the show's scenes follow the tour's */
+    CHECK_INT(scene_index("the end"), 31);
     CHECK_INT(scene_index("kitty animation"), 14);
     CHECK_INT(scene_index("kitty z-index"), 16);
     CHECK_INT(scene_index("kitty picture"), 17);
-    CHECK_INT(scene_index("glyphs"), 18);
-    CHECK_INT(scene_index("tabs"), 19);
+    CHECK_INT(scene_index("kitty placement"), 18);
+    CHECK_INT(scene_index("glyphs"), 19);
+    CHECK_INT(scene_index("tabs"), 20);
 }
 
-/* a bare UPDemo plays the whole list from its first scene: the status line shows the caption and "1/31" */
+/* a bare UPDemo plays the whole list from its first scene: the status line shows the caption and "1/32" */
 static void a_bare_run_starts_at_the_first_scene_with_its_caption(void)
 {
     start(80, 24);
-    needle = "Demo 1/31  Text styles, double-size lines, box drawing";
+    needle = "Demo 1/32  Text styles, double-size lines, box drawing";
     CHECK_INT(updemo_run(&io, 80, 24, 0, 6), 0);
     CHECK(saw_text);
     needle = 0;
@@ -237,14 +238,14 @@ static void a_bare_run_starts_at_the_first_scene_with_its_caption(void)
 static void a_start_number_picks_a_scene_of_the_one_list(void)
 {
     start(80, 24);
-    needle = "Demo 2/31  Every text style a program can ask for";
+    needle = "Demo 2/32  Every text style a program can ask for";
     CHECK_INT(updemo_run(&io, 80, 24, 1, 6), 0);
     CHECK(saw_text);
-    needle = "Demo 1/31";
+    needle = "Demo 1/32";
     saw_text = 0;
     vt_free(t);
     start(80, 24);
-    needle = "Demo 1/31";
+    needle = "Demo 1/32";
     CHECK_INT(updemo_run(&io, 80, 24, 1, 6), 0);
     CHECK(!saw_text);   /* scene 1 was skipped */
     needle = 0;
@@ -442,6 +443,37 @@ static void the_kitty_picture_scene_sends_the_photo_as_a_png_beside_the_coded_ci
     CHECK(cap_has("\033_Ga=T,i=5,f=24,s=64,v=64,c=8,q=2"));
     CHECK(!cap_has("fjord.png not found"));
     CHECK(saw_image);
+    CHECK_INT(vt_unhandled(t, kinds, counts, 16), 0);
+    vt_free(t);
+}
+
+/* UD3: the placement scene, run through the one scene runner, sends the image ONCE (a=t), puts it three times (a=p),
+ * moves placement 2 (a=p again, same i= and p=), deletes placement 3 (a=d,d=i) and places a child with P=, Q=, H=, V=,
+ * in that order; the engine takes all of it and leaves nothing unhandled. */
+static void the_kitty_placement_scene_sends_put_move_delete_and_a_relative_child_in_order(void)
+{
+    const char *kinds[16];
+    long counts[16], i, nt = 0, np2 = 0, put1, put3, move, del, child;
+    play_alone(scene_index("kitty placement"), UPDEMO_AUTO);
+    for (i = 0; i + 17 < cap_len; i++) {
+        if (memcmp(cap + i, "\033_Ga=t,i=7,f=24", 15) == 0)
+            nt++;
+        if (memcmp(cap + i, "\033_Ga=p,i=7,p=2,", 15) == 0)
+            np2++;
+    }
+    CHECK_INT(nt, 1);
+    CHECK_INT(np2, 2); /* put, then moved */
+    put1 = cap_find("\033_Ga=p,i=7,p=1,c=6,q=2");
+    put3 = cap_find("\033_Ga=p,i=7,p=3,c=6,q=2");
+    move = cap_find("\033[8;14H\033_Ga=p,i=7,p=2,c=6,q=2");
+    del = cap_find("\033_Ga=d,d=i,i=7,p=3,q=2");
+    child = cap_find("\033_Ga=p,i=7,p=4,P=7,Q=1,H=6,V=1,c=4,q=2");
+    CHECK(cap_find("\033_Ga=t,i=7,f=24") < put1);
+    CHECK(put1 >= 0 && put1 < put3);
+    CHECK(put3 < move);
+    CHECK(move < del);
+    CHECK(del < child);
+    CHECK(cap_has("Step 5: a child of placement 1"));
     CHECK_INT(vt_unhandled(t, kinds, counts, 16), 0);
     vt_free(t);
 }
@@ -1331,6 +1363,7 @@ void suite_updemo(void)
     the_kitty_animation_scene_says_so_when_the_photo_is_missing();
     the_kitty_picture_scene_sends_the_photo_as_a_png_beside_the_coded_circle();
     the_kitty_picture_scene_says_so_when_the_photo_is_missing();
+    the_kitty_placement_scene_sends_put_move_delete_and_a_relative_child_in_order();
     the_kitty_truecolour_scene_sends_rgba_with_alpha();
     the_kitty_zindex_scene_sends_pictures_under_and_over_text();
     the_glyphs_scene_sends_powerline_nerd_emoji_and_box_glyphs();
