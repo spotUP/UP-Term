@@ -394,18 +394,18 @@ static void the_kitty_animation_scene_falls_back_to_the_coded_globe_without_the_
 }
 
 /* UD1 (UPDEMO-NEW-FEATURES): the picture scene, run through the one scene runner, sends fjord.png as ONE kitty PNG
- * (a=T, f=100) placed by cells (c=20,r=6) and the coded circle (f=24, 64 x 64 in 8 x 4 cells); the engine takes both
- * and leaves nothing unhandled. */
+ * (a=T, f=100) placed by columns only (c=20, no r=, so the engine sizes the rows by the pixel aspect) and the coded circle
+ * (f=24, 64 x 64 in 8 columns); the engine takes both and leaves nothing unhandled. */
 static void the_kitty_picture_scene_sends_the_photo_as_a_png_beside_the_coded_circle(void)
 {
     const char *kinds[16];
     long counts[16], i, nt = 0;
     play_alone(scene_index("kitty picture"), UPDEMO_AUTO);
-    for (i = 0; i + 29 < cap_len; i++)
-        if (memcmp(cap + i, "\033_Ga=T,i=4,f=100,c=20,r=6,q=2", 29) == 0)
+    for (i = 0; i + 25 < cap_len; i++)
+        if (memcmp(cap + i, "\033_Ga=T,i=4,f=100,c=20,q=2", 25) == 0)
             nt++;
     CHECK_INT(nt, 1);
-    CHECK(cap_has("\033_Ga=T,i=5,f=24,s=64,v=64,c=8,r=4,q=2"));
+    CHECK(cap_has("\033_Ga=T,i=5,f=24,s=64,v=64,c=8,q=2"));
     CHECK(!cap_has("fjord.png not found"));
     CHECK(saw_image);
     CHECK_INT(vt_unhandled(t, kinds, counts, 16), 0);
@@ -426,7 +426,7 @@ static void the_kitty_picture_scene_says_so_when_the_photo_is_missing(void)
             nt++;
     CHECK_INT(nt, 0);
     CHECK(cap_has("(fjord.png not found: no photo)"));
-    CHECK(cap_has("\033_Ga=T,i=5,f=24,s=64,v=64,c=8,r=4,q=2"));
+    CHECK(cap_has("\033_Ga=T,i=5,f=24,s=64,v=64,c=8,q=2"));
     CHECK(saw_image);
     CHECK_INT(vt_unhandled(t, kinds, counts, 16), 0);
     vt_free(t);

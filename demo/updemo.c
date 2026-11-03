@@ -2031,8 +2031,9 @@ static void sc_kitty_truecolour(long t, int first)
 /* Kitty picture: a real photo (dist/updemo/fjord.png, tools/gen_updemo_fjord.py: picsum.photos id 1015, Unsplash
  * licence) sent as a kitty PNG (f=100) and placed by cell counts, beside a circle the demo draws itself. The screen's
  * pixels are not square (640 x 256 hires: 1:2); the engine scales a picture's height by the pixel aspect, so both
- * keep their shape. The photo is 160 x 100: 20 columns of 8 pixels, 6 rows of 8 (50 pixels high at 1:2).
- * The circle is 64 x 64 image pixels in 8 columns by 4 rows. */
+ * keep their shape. Both are placed by column count only (c=, no r=), so the engine picks the rows from the
+ * pixel aspect: the 160 x 100 photo in 20 columns of 8 is 50 pixels high at 1:2, the 64 x 64 circle in 8 columns
+ * is 32. A fixed r= would bypass that scaling and only fit one font. */
 #define RING 64
 
 static void ring_picture(unsigned char *px)
@@ -2068,7 +2069,7 @@ static void sc_kitty_picture(long t, int first)
     ps("\033_Ga=d,d=I,i=4,q=2\033\\\033_Ga=d,d=I,i=5,q=2\033\\");
     at(4, 6);
     if (io->load && (d = io->load(io->user, "fjord.png", &n))) {
-        kitty_chunks("a=T,i=4,f=100,c=20,r=6,q=2", d, n);
+        kitty_chunks("a=T,i=4,f=100,c=20,q=2", d, n);
         free(d);
         at(11, 6);
         ps("A fjord, sent as a PNG (f=100)");
@@ -2078,7 +2079,7 @@ static void sc_kitty_picture(long t, int first)
     }
     ring_picture(px);
     at(4, 40);
-    kitty_chunks("a=T,i=5,f=24,s=64,v=64,c=8,r=4,q=2", px, sizeof px);
+    kitty_chunks("a=T,i=5,f=24,s=64,v=64,c=8,q=2", px, sizeof px);
     at(9, 40);
     ps("A circle the demo drew: 64 x 64 pixels");
     at(13, 6);
