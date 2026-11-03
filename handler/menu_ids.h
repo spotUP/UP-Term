@@ -42,7 +42,8 @@ enum {
     MENU_ID_LIST(MENU_ID_ENUM)
 #undef MENU_ID_ENUM
     MENU_SET_PROFILE0 = 100, /* + the profile's place in the file */
-    MENU_TAB_GOTO0 = 200     /* + n (1..9): the keymap's tab:goto n */
+    MENU_TAB_GOTO0 = 200,    /* + n (1..9): the keymap's tab:goto n */
+    MENU_TAB_CLOSE0 = 210    /* + n (1..9): close tab n, as Right Amiga n goes to it (/tab close n) */
 };
 
 #endif

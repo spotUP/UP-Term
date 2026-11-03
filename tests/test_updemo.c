@@ -139,7 +139,28 @@ static unsigned char *load_media(void *user, const char *name, long *len)
     return buf;
 }
 
-static updemo_io io = { out, key, ticks, 0, load_media };
+static int tab_cmds_new, tab_cmds_close, tab_cmds_other, tab_cmds_active_close;
+static const char *tab_new_reply = "tab: new 3\n"; /* what the fake terminal answers /tab new; 0: it does not run it */
+static char tab_close_line[40];
+
+/* the terminal's slash commands: counted, which is the sentinel that the scene sent them */
+static const char *count_command(void *user, const char *line)
+{
+    (void)user;
+    if (strcmp(line, "/tab new") == 0) {
+        tab_cmds_new++;
+        return tab_new_reply;
+    } else if (strncmp(line, "/tab close ", 11) == 0) {
+        tab_cmds_close++;
+        strncpy(tab_close_line, line, sizeof(tab_close_line) - 1);
+    } else if (strcmp(line, "/tab close") == 0)
+        tab_cmds_active_close++; /* closes whatever tab is active: never the demo's to send */
+    else
+        tab_cmds_other++;
+    return "";
+}
+
+static updemo_io io = { out, key, ticks, 0, load_media, count_command };
 
 static char line[200];
 
@@ -510,6 +531,42 @@ static void the_tabs_scene_draws_a_tab_bar_and_names_the_menu(void)
     CHECK(cap_has("Window > New tab opens another session"));
 }
 
+/* UPDEMO-TABS-LIVE (owner 2026-11-03): the tabs scene sends /tab new, then /tab close, to the terminal it runs in
+ * (the commands the menu's New tab and Close tab run in the handler): each once, new before close, nothing else.
+ * Left early (a key before the close is due) it still closes the tab it opened. */
+static void the_tabs_scene_sends_tab_new_then_tab_close(void)
+{
+    tab_cmds_new = tab_cmds_close = tab_cmds_other = tab_cmds_active_close = 0;
+    tab_close_line[0] = 0;
+    start(80, 24);
+    updemo_only(1);
+    CHECK_INT(updemo_run(&io, 80, 24, scene_index("tabs"), 0), 0);
+    updemo_only(0);
+    CHECK_INT(tab_cmds_new, 1);
+    CHECK_INT(tab_cmds_close, 1);
+    CHECK_STR(tab_close_line, "/tab close 3"); /* UPDEMO-TABS-TARGET: the number /tab new answered, not the active tab */
+    CHECK_INT(tab_cmds_active_close, 0);
+    CHECK_INT(tab_cmds_other, 0);
+    vt_free(t);
+
+    /* no number in the reply: nothing to close, so nothing is sent, and the caption says so */
+    tab_cmds_new = tab_cmds_close = tab_cmds_other = tab_cmds_active_close = 0;
+    tab_new_reply = "tab: no room for another tab\n";
+    start(80, 24);
+    capturing = 1;
+    cap_len = 0;
+    updemo_only(1);
+    CHECK_INT(updemo_run(&io, 80, 24, scene_index("tabs"), 0), 0);
+    updemo_only(0);
+    capturing = 0;
+    CHECK_INT(tab_cmds_new, 1);
+    CHECK_INT(tab_cmds_close, 0);
+    CHECK_INT(tab_cmds_active_close, 0);
+    CHECK(cap_has("tab not opened"));
+    tab_new_reply = "tab: new 3\n";
+    vt_free(t);
+}
+
 /* W-T2 (owner: the styles scene's two blink speeds blink at the same rate): its "rapid blink" line is SGR 5 then 6,
  * so a terminal that knows 6 blinks it fast and one that does not still blinks it. It sent 6;5: the 5 after the 6
  * asked for the slow rate again (ECMA-48 8.3.117: 5 and 6 are alternatives, the last one counts). */
@@ -728,7 +785,7 @@ static long fps_of(int s)
  * 12 frames a second on a 68060 that draws one in 22 ms). */
 static void a_frame_the_terminal_draws_in_20_ms_still_comes_25_times_a_second(void)
 {
-    updemo_io slow = { out_slow, key_slow, ticks, 0, 0 };
+    updemo_io slow = { out_slow, key_slow, ticks, 0, 0, 0 };
     start(80, 24);
     draw_ticks = 1;
     CHECK_INT(updemo_run(&slow, 80, 24, scene_index("plasma"), 100), 0); /* plasma onwards, two seconds each */
@@ -1201,6 +1258,7 @@ void suite_updemo(void)
     the_kitty_zindex_scene_sends_pictures_under_and_over_text();
     the_glyphs_scene_sends_powerline_nerd_emoji_and_box_glyphs();
     the_tabs_scene_draws_a_tab_bar_and_names_the_menu();
+    the_tabs_scene_sends_tab_new_then_tab_close();
     the_styles_scene_shows_slow_and_rapid_blink();
     q_ends_the_demo_and_any_other_key_does_not();
     a_key_goes_to_the_next_scene_and_the_demo_keeps_running();

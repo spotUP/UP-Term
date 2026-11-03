@@ -132,7 +132,7 @@ static const slash_def table[] = {
     { "split-restore", SL_CHOICE, 0, 0, v_split, "off | layout | programs",
       "what a split tab keeps when the window opens again (programs: each pane's command too)" },
     { "state", SL_ARG, SLASH_STATE, 0, 0, "[KEY]", "what the user did in this window (counters; UPTerm state)" },
-    { "tab", SL_CHOICE, 0, 0, v_tab, "new | next | previous | close", "tabs" },
+    { "tab", SL_CHOICE, 0, 0, v_tab, "new | next | previous | close [1-9]", "tabs (close N: tab N, as Right Amiga N)" },
     { "term", SL_ARG, SLASH_TERM, 1, 0, "NAME | none",
       "TERM for programs vsh starts here (vtcon, xterm-256color, screen-256color)" },
     { "theme", SL_ARG, SLASH_THEME, 0, 0, "[NAME]", "a colour theme (no name: a list, Up/Down and Enter)" },
@@ -206,6 +206,27 @@ int slash_parse(const char *line, int len, slash_cmd *cmd, char *err, int errcap
     cmd->id = d->id;
     cmd->on = 1;
     cmd->arg[0] = 0;
+    cmd->index = 0;
+    if (d->kind == SL_CHOICE && !strcmp(d->name, "tab")) {
+        /* "close" alone closes the active tab; "close N" closes tab N (1..9, as Right Amiga 1-9) */
+        int w = a;
+        while (w < b && !is_blank(line[w]))
+            w++;
+        if (w - a == 5 && !strncmp(line + a, "close", 5) && w < b) {
+            int v;
+            for (v = w; v < b && is_blank(line[v]); v++)
+                ;
+            if (b - v != 1 || line[v] < '1' || line[v] > '9') {
+                say(err, errcap, d->name, ": close [1-9]", 0);
+                return SLASH_ERROR;
+            }
+            cmd->id = MENU_TAB_CLOSE;
+            cmd->on = 1;
+            cmd->index = line[v] - '0';
+            strcpy(cmd->arg, "close"); /* for the answer */
+            return SLASH_OK;
+        }
+    }
     if (d->kind == SL_CHOICE) {
         for (i = 0; d->values[i].word; i++)
             if ((int)strlen(d->values[i].word) == b - a && !strncmp(d->values[i].word, line + a, (size_t)(b - a))) {

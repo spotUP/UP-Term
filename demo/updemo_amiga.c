@@ -15,6 +15,7 @@
 #include <proto/exec.h>
 #include "updemo.h"
 #include "../tty/qmark.h"
+#include "../handler/upcmd.h"
 
 /* vbcc's startup runs main on a stack of this size whatever the starter gives
  * it; the cookie says the same to AmigaOS 3.2 and to vsh (RULES.md rule 6). */
@@ -27,6 +28,14 @@ static void out(void *user, const char *buf, long len)
 {
     (void)user;
     Write(con, (APTR)buf, len);
+}
+
+/* a slash command for the window the demo runs in: the packet C:UPTerm sends (handler/upcmd.h) */
+static const char *command(void *user, const char *line)
+{
+    static char ans[256];
+    (void)user;
+    return upterm_window_command(line, ans, sizeof(ans)) == 1 ? ans : 0;
 }
 
 static int key(void *user, int wait_ms)
@@ -146,6 +155,7 @@ int main(int argc, char **argv)
     io.ticks = ticks;
     io.user = 0;
     io.load = load;
+    io.command = command;
     bench = args.bench;
     updemo_colours(args.colours);
     if (!size(&cols, &rows))
