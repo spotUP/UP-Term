@@ -14,6 +14,7 @@
  * shade block) triple: the classic ANSI art gradient, ' ', U+2591-2593 and
  * the full block between two colours. A cell shows one code, so the
  * picture is a row of cells high, not of half cells. */
+#include <stdlib.h>
 #include <string.h>
 #include "updemo.h"
 
@@ -1872,6 +1873,51 @@ static void globe_frame(unsigned char *px, int phase)
         }
 }
 
+/* The real thing: earth.anim (tools/gen_updemo_earth.py: NASA's rotating Earth, public domain) holds the
+ * frames as PNG with their gaps, big endian: "UPANIM1\n", u32 count, then u32 gap in ms, u32 length, PNG.
+ * The kit installs it in UP-Term:share/updemo; the host's loader fetches it by name. */
+static long be32(const unsigned char *p)
+{
+    return (long)p[0] << 24 | (long)p[1] << 16 | (long)p[2] << 8 | p[3];
+}
+
+/* sends the file's frames, their gaps and the loop; 0 when it is missing or not whole */
+static int kitty_earth(void)
+{
+    unsigned char *d;
+    long n = 0, count, i, pos, gap[256], len[256];
+    const unsigned char *png[256];
+    if (!io->load || !(d = io->load(io->user, "earth.anim", &n)))
+        return 0;
+    if (n < 12 || memcmp(d, "UPANIM1\n", 8) != 0 || (count = be32(d + 8)) < 1 || count > 256) {
+        free(d);
+        return 0;
+    }
+    for (i = 0, pos = 12; i < count; i++) {
+        if (pos + 8 > n || (len[i] = be32(d + pos + 4)) < 1 || pos + 8 + len[i] > n) {
+            free(d);
+            return 0;
+        }
+        gap[i] = be32(d + pos);
+        png[i] = d + pos + 8;
+        pos += 8 + len[i];
+    }
+    ps("\033_Ga=d,d=I,i=1,q=2\033\\");
+    at(4, 6);
+    for (i = 0; i < count; i++)
+        kitty_chunks(i ? "a=f,i=1,f=100,q=2" : "a=T,i=1,f=100,q=2", png[i], len[i]);
+    for (i = 0; i < count; i++) {
+        ps("\033_Ga=a,i=1,r=");
+        pn(i + 1);
+        ps(",z=");
+        pn(gap[i]);
+        ps(",q=2\033\\");
+    }
+    ps("\033_Ga=a,i=1,s=3,q=2\033\\");
+    free(d);
+    return 1;
+}
+
 static void sc_kitty_anim(long t, int first)
 {
     static unsigned char px[GLOBE * GLOBE * 3];
@@ -1881,11 +1927,21 @@ static void sc_kitty_anim(long t, int first)
         return;
     heading("Kitty animation", "frames sent once; the terminal plays them, with their gaps, in a loop");
     at(5, 40);
+    if (kitty_earth()) {
+        ps("The Earth turns by itself:");
+        at(6, 40);
+        ps("the program sent 44 frames,");
+        at(7, 40);
+        ps("their gaps, and one loop command.");
+        return;
+    }
     ps("The globe turns by itself:");
     at(6, 40);
     ps("the program sent 8 frames,");
     at(7, 40);
     ps("their gaps, and one loop command.");
+    at(9, 40);
+    ps("(earth.anim not found: coded globe)");
     ps("\033_Ga=d,d=I,i=1,q=2\033\\");
     at(4, 6);
     for (f = 0; f < GLOBE_FRAMES; f++) {

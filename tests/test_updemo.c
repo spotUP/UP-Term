@@ -2,6 +2,8 @@
  * terminal knows, and the screen comes back as it was. The demo
  * reads the terminal's answers (the window's size) and mouse reports:
  * the engine's replies go back in as input here. */
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "harness.h"
 #include "../engine/vtengine.h"
@@ -113,7 +115,31 @@ static long ticks(void *user)
     return now;
 }
 
-static updemo_io io = { out, key, ticks, 0 };
+/* the media loader of a host: dist/updemo/<name> from the repo root (where make test runs) */
+static unsigned char *load_media(void *user, const char *name, long *len)
+{
+    char path[200];
+    FILE *f;
+    unsigned char *buf;
+    long n;
+    (void)user;
+    snprintf(path, sizeof path, "dist/updemo/%s", name);
+    if (!(f = fopen(path, "rb")))
+        return 0;
+    fseek(f, 0, SEEK_END);
+    n = ftell(f);
+    rewind(f);
+    buf = malloc((size_t)n);
+    if (!buf || fread(buf, 1, (size_t)n, f) != (size_t)n) {
+        free(buf);
+        buf = 0;
+    }
+    fclose(f);
+    *len = n;
+    return buf;
+}
+
+static updemo_io io = { out, key, ticks, 0, load_media };
 
 static char line[200];
 
@@ -295,25 +321,47 @@ static void the_unicode_scene_shows_emoji(void)
 static int cap_has(const char *s);
 static void play_alone(int scene, int colours);
 
-/* UPDEMO-NEW-FEATURES (a): the kitty animation scene, run through the one scene runner, sends the first frame
- * (a=T), seven more frames (a=f), a gap for each of the eight (a=a ... z=), and the loop command (a=a ... s=3);
- * the engine takes all of it as one image with eight frames and leaves nothing unhandled. */
+/* UPDEMO-NEW-FEATURES (a): the kitty animation scene, run through the one scene runner, plays the real NASA Earth
+ * from earth.anim: the first frame (a=T), 43 more PNG frames (a=f,f=100), a gap for each of the 44 (a=a ... z=), and
+ * the loop command (a=a ... s=3); the engine takes all of it as one image and leaves nothing unhandled. */
 static void the_kitty_animation_scene_sends_frames_gaps_and_the_loop(void)
 {
     const char *kinds[16];
     long counts[16], i, nf = 0, ng = 0, nt = 0;
     play_alone(scene_index("kitty animation"), UPDEMO_AUTO);
     for (i = 0; i + 13 < cap_len; i++) {
-        if (memcmp(cap + i, "\033_Ga=f,", 7) == 0)
+        if (memcmp(cap + i, "\033_Ga=f,i=1,f=100,", 17) == 0)
             nf++;
-        if (memcmp(cap + i, "\033_Ga=T,", 7) == 0)
+        if (memcmp(cap + i, "\033_Ga=T,i=1,f=100,", 17) == 0)
             nt++;
         if (memcmp(cap + i, "\033_Ga=a,i=1,r=", 13) == 0)
             ng++;
     }
     CHECK_INT(nt, 1);
+    CHECK_INT(nf, 43);
+    CHECK_INT(ng, 44);
+    CHECK(cap_has(",z=90,q=2\033\\"));
+    CHECK(cap_has("\033_Ga=a,i=1,s=3,q=2\033\\"));
+    CHECK(!cap_has("earth.anim not found"));
+    CHECK(saw_image);
+    CHECK_INT(vt_unhandled(t, kinds, counts, 16), 0);
+    vt_free(t);
+}
+
+/* without earth.anim the scene keeps its coded globe (8 raw frames) and says so on screen in one line */
+static void the_kitty_animation_scene_falls_back_to_the_coded_globe_without_the_media(void)
+{
+    const char *kinds[16];
+    long counts[16], i, nf = 0;
+    unsigned char *(*saved)(void *, const char *, long *) = io.load;
+    io.load = 0;
+    play_alone(scene_index("kitty animation"), UPDEMO_AUTO);
+    io.load = saved;
+    for (i = 0; i + 8 < cap_len; i++)
+        if (memcmp(cap + i, "\033_Ga=f,", 7) == 0)
+            nf++;
     CHECK_INT(nf, 7);
-    CHECK_INT(ng, 8);
+    CHECK(cap_has("(earth.anim not found: coded globe)"));
     CHECK(cap_has("\033_Ga=a,i=1,s=3,q=2\033\\"));
     CHECK(saw_image);
     CHECK_INT(vt_unhandled(t, kinds, counts, 16), 0);
@@ -599,7 +647,7 @@ static long fps_of(int s)
  * 12 frames a second on a 68060 that draws one in 22 ms). */
 static void a_frame_the_terminal_draws_in_20_ms_still_comes_25_times_a_second(void)
 {
-    updemo_io slow = { out_slow, key_slow, ticks, 0 };
+    updemo_io slow = { out_slow, key_slow, ticks, 0, 0 };
     start(80, 24);
     draw_ticks = 1;
     CHECK_INT(updemo_run(&slow, 80, 24, scene_index("plasma"), 100), 0); /* plasma onwards, two seconds each */
@@ -1039,6 +1087,7 @@ void suite_updemo(void)
     bench_picks_the_effect_scenes_of_the_one_list();
     the_unicode_scene_shows_emoji();
     the_kitty_animation_scene_sends_frames_gaps_and_the_loop();
+    the_kitty_animation_scene_falls_back_to_the_coded_globe_without_the_media();
     the_kitty_truecolour_scene_sends_rgba_with_alpha();
     the_styles_scene_shows_slow_and_rapid_blink();
     q_ends_the_demo_and_any_other_key_does_not();

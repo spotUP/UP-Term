@@ -37,6 +37,36 @@ static int key(void *user, int wait_ms)
     return -1;
 }
 
+/* media: from the repo root (make demo-host) or the current directory */
+static unsigned char *load(void *user, const char *name, long *len)
+{
+    static const char *const dirs[] = { "dist/updemo/", "" };
+    char path[256];
+    size_t i;
+    (void)user;
+    for (i = 0; i < sizeof dirs / sizeof dirs[0]; i++) {
+        FILE *f;
+        snprintf(path, sizeof path, "%s%s", dirs[i], name);
+        if ((f = fopen(path, "rb")) != 0) {
+            unsigned char *buf = 0;
+            long n;
+            fseek(f, 0, SEEK_END);
+            n = ftell(f);
+            rewind(f);
+            if (n > 0 && (buf = malloc((size_t)n)) != 0 && fread(buf, 1, (size_t)n, f) != (size_t)n) {
+                free(buf);
+                buf = 0;
+            }
+            fclose(f);
+            if (buf) {
+                *len = n;
+                return buf;
+            }
+        }
+    }
+    return 0;
+}
+
 static long ticks(void *user)
 {
     struct timeval tv;
@@ -65,6 +95,7 @@ int main(int argc, char **argv)
     io.key = key;
     io.ticks = ticks;
     io.user = 0;
+    io.load = load;
     updemo_parse_args(argc, argv, &args);
     updemo_colours(args.colours);
     rc = updemo_run(&io, ws.ws_col, ws.ws_row, args.scene ? args.scene - 1 : 0, 0);

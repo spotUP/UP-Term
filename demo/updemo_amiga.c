@@ -38,6 +38,39 @@ static int key(void *user, int wait_ms)
     return -1;
 }
 
+/* media: UP-Term:share/updemo (the Install puts it there), else the current directory */
+static unsigned char *load(void *user, const char *name, long *len)
+{
+    static const char *const dirs[] = { "UP-Term:share/updemo/", "" };
+    char path[128];
+    int i, j, k;
+    (void)user;
+    for (i = 0; i < 2; i++) {
+        BPTR f;
+        for (j = 0; dirs[i][j]; j++)
+            path[j] = dirs[i][j];
+        for (k = 0; name[k] && j < 126; k++)
+            path[j++] = name[k];
+        path[j] = 0;
+        if ((f = Open((STRPTR)path, MODE_OLDFILE)) != 0) {
+            unsigned char *buf = 0;
+            LONG n;
+            Seek(f, 0, OFFSET_END);
+            n = Seek(f, 0, OFFSET_BEGINNING);
+            if (n > 0 && (buf = malloc((size_t)n)) != 0 && Read(f, buf, n) != n) {
+                free(buf);
+                buf = 0;
+            }
+            Close(f);
+            if (buf) {
+                *len = n;
+                return buf;
+            }
+        }
+    }
+    return 0;
+}
+
 static long ticks(void *user)
 {
     struct DateStamp ds;
@@ -112,6 +145,7 @@ int main(int argc, char **argv)
     io.key = key;
     io.ticks = ticks;
     io.user = 0;
+    io.load = load;
     bench = args.bench;
     updemo_colours(args.colours);
     if (!size(&cols, &rows))
