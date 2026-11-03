@@ -50,6 +50,8 @@ typedef struct flatshared {
     ULONG cdraws, cfall;        /* FLAT-GLYPH-OS-SHAPES sentinels: gadgets drawn by cloning the system image / clone attempts that fell back to the block glyph */
     ULONG cf_busy, cf_nodri, cf_nobm, cf_empty;    /* cfall split by cause: cl_ss held by another task / no DrawInfo / no offscreen bitmap / image drew no pixel */
     ULONG cf_mask;              /* bit (which & 31) set for every image that fell back (SYSIA_Which after flat_which_alias) */
+    ULONG cf_ids;               /* bit (imp_State & 31) set for every empty clone */
+    ULONG cf_lwhich, cf_lsize, cf_lnz, cf_lmarks;   /* the last empty clone: which, w << 8 | h, non-zero grid pixels, bit per mark value seen */
     /* FLAT-ASPECT-BORDERS: the cached side-line width for one screen (flat.c side_px) */
     struct Screen *aspect_scr;
     ULONG aspect_mode;

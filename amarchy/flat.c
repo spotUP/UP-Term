@@ -258,6 +258,17 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
         got = AttemptSemaphore(&cl_ss);
         rc = !got ? FLAT_CLONE_FAIL : flat_clone_draw(&r->st, which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
                              im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, frame_pen, text_pen, clone_render, &env, c2_fill, d->imp_RPort, cl_scratch);
+        if (got && rc == FLAT_CLONE_FAIL && env.why == CLONE_WHY_NONE) {
+            int i, nz = 0;
+            ULONG mk = 0;
+            for (i = 0; i < im->Width * im->Height && i < FLAT_CLONE_MAX * FLAT_CLONE_MAX; i++)
+                if (cl_scratch[i]) {
+                    nz++;
+                    mk |= 1UL << (cl_scratch[i] & 31);
+                }
+            r->cf_ids |= 1UL << (d->imp_State & 31);
+            r->cf_lwhich = which; r->cf_lsize = ((ULONG)im->Width << 8) | (ULONG)im->Height; r->cf_lnz = (ULONG)nz; r->cf_lmarks = mk;
+        }
         if (got)
             ReleaseSemaphore(&cl_ss);
         if (rc == FLAT_CLONE_OK) {
@@ -745,7 +756,7 @@ static void print_status(void)
     int finst = 0, rinst = 0;
     unsigned long rcalls = 0, rhits = 0, shits = 0, tcalls = 0, thits = 0;
     int tinst = 0;
-    unsigned long cdraws = 0, cfall = 0, alooks = 0, cfb = 0, cfd = 0, cfm = 0, cfe = 0, cfk = 0;
+    unsigned long cdraws = 0, cfall = 0, alooks = 0, cfb = 0, cfd = 0, cfm = 0, cfe = 0, cfk = 0, cfi = 0, clw = 0, cls = 0, cln = 0, clm = 0;
     int apx = 0, sring[16][9], sn = 0;
     uint32_t dsum[FLAT_EL_COUNT] = { 0, 0 };
     memset(&copy, 0, sizeof copy);
@@ -762,6 +773,7 @@ static void print_status(void)
         tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits;
         cdraws = r->cdraws; cfall = r->cfall;
         cfb = r->cf_busy; cfd = r->cf_nodri; cfm = r->cf_nobm; cfe = r->cf_empty; cfk = r->cf_mask;
+        cfi = r->cf_ids; clw = r->cf_lwhich; cls = r->cf_lsize; cln = r->cf_lnz; clm = r->cf_lmarks;
         apx = r->aspect_px; alooks = r->aspect_looks;
         memcpy(sring, r->sring, sizeof sring); sn = (int)(r->sring_n > 16 ? 16 : r->sring_n);
     }
@@ -831,6 +843,15 @@ static void print_status(void)
         put_word(line, &n, " nobm=");               put_num(line, &n, cfm);
         put_word(line, &n, " empty=");              put_num(line, &n, cfe);
         put_word(line, &n, " which=");              put_num(line, &n, cfk);
+        line[n] = 0;
+        PutStr((STRPTR)line);
+        PutStr((STRPTR)"\n");
+        n = 0;
+        put_word(line, &n, "clone empty ids=");     put_num(line, &n, cfi);
+        put_word(line, &n, " last which=");         put_num(line, &n, clw);
+        put_word(line, &n, " size=");               put_num(line, &n, cls);
+        put_word(line, &n, " nonzero=");            put_num(line, &n, cln);
+        put_word(line, &n, " marks=");              put_num(line, &n, clm);
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
