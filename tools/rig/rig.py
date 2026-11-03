@@ -755,6 +755,14 @@ def sys_hdf_cpu_lib(image):
             subprocess.run([xdf, str(image), "delete", "Libs/" + name], check=True, capture_output=True)
         subprocess.run([xdf, str(image), "write", str(lib), "Libs/" + name], check=True, capture_output=True)
 
+def kit_snapshot(src, dest):
+    """Copy the host file src to dest once and return the md5 of those bytes. A rig start installs and checks that one
+    copy, never the live build file: a `make` in the main checkout may rebuild src between the write and the read-back
+    (RIG-START-MAKE-RACE)."""
+    data = pathlib.Path(src).read_bytes()
+    pathlib.Path(dest).write_bytes(data)
+    return hashlib.md5(data).hexdigest()
+
 def sys_hdf_kit(image):
     """Every file the kit installs on the system disk equals what the current build would install (RIG-KIT-DERIVE;
     supersedes sys_hdf_ixnet, RIG-SYSHDF-EARLY). The master image holds older copies of files that load before
@@ -772,8 +780,10 @@ def sys_hdf_kit(image):
         if not e.clone:
             continue
         paths.require_input(e.src, "UPTERM_ROOT", e.src.name)
+        snap = RIG / "kit-snap.tmp"
+        want = kit_snapshot(e.src, snap)
         if e.check:
-            e.check(e.src)
+            e.check(snap)
         parts = e.clone.split("/")
         for i in range(1, len(parts)):
             d = "/".join(parts[:i])
@@ -782,17 +792,18 @@ def sys_hdf_kit(image):
         parent, leaf = e.clone.rsplit("/", 1)
         if leaf in {l.split()[0] for l in run("list", parent).stdout.splitlines() if l.split()}:
             run("delete", e.clone)
-        run("write", str(e.src), e.clone)
+        run("write", str(snap), e.clone)
         back = RIG / "kit-check.tmp"
         back.unlink(missing_ok=True)
         run("read", e.clone, str(back))
         try:
             if e.check:
                 e.check(back)
-            if hashlib.md5(back.read_bytes()).hexdigest() != hashlib.md5(e.src.read_bytes()).hexdigest():
+            if hashlib.md5(back.read_bytes()).hexdigest() != want:
                 sys.exit("rig: the clone's %s differs from %s after the write (RIG-KIT-DERIVE)" % (e.clone, e.src))
         finally:
             back.unlink(missing_ok=True)
+            snap.unlink(missing_ok=True)
     sys_hdf_kit_upterm(image)
 
 def clone_upterm_place(image):
@@ -839,14 +850,18 @@ def sys_hdf_kit_upterm(image):
     entries = [e for e in kit_entries(NOFPU, M060) if e.dest.startswith("UP-Term:")]
     if not entries:
         return
+    snaps = RIG / "kit-upterm-snap.tmp"
+    shutil.rmtree(snaps, ignore_errors=True)
+    snaps.mkdir()
+    want = [kit_snapshot(e.src, snaps / str(i)) for i, e in enumerate(entries)]
     listed = {}
     ops = []
-    for e in entries:
+    for i, e in enumerate(entries):
         parent, leaf = amiga(e.dest).rsplit("/", 1)
         if parent not in listed:
             parts = parent.split("/")
-            for i in range(1, len(parts) + 1):
-                d = "/".join(parts[:i])
+            for depth in range(1, len(parts) + 1):
+                d = "/".join(parts[:depth])
                 if d not in listed:
                     r = run("list", d, check=False)
                     if r.returncode != 0:
@@ -854,7 +869,7 @@ def sys_hdf_kit_upterm(image):
                     listed[d] = {l.split()[0] for l in r.stdout.splitlines() if l.split()} if r.returncode == 0 else set()
         if leaf in listed[parent]:
             ops += ["+", "delete", amiga(e.dest)]
-        ops += ["+", "write", str(e.src), amiga(e.dest)]
+        ops += ["+", "write", str(snaps / str(i)), amiga(e.dest)]
     run(*ops[1:])
     back = RIG / "kit-upterm.tmp"
     shutil.rmtree(back, ignore_errors=True)
@@ -865,10 +880,11 @@ def sys_hdf_kit_upterm(image):
             reads += ["+", "read", amiga(e.dest), str(back / str(i))]
         run(*reads[1:])
         for i, e in enumerate(entries):
-            if hashlib.md5((back / str(i)).read_bytes()).hexdigest() != hashlib.md5(e.src.read_bytes()).hexdigest():
+            if hashlib.md5((back / str(i)).read_bytes()).hexdigest() != want[i]:
                 sys.exit("rig: the clone's %s differs from %s after the write (RIG-WARM-SRV-RACE)" % (e.dest, e.src))
     finally:
         shutil.rmtree(back, ignore_errors=True)
+        shutil.rmtree(snaps, ignore_errors=True)
 
 def user_startup_with_block_before_kit(data, name, text):
     """data (S:User-Startup bytes) with the rig block <name> (text) before the first kit ';BEGIN UP-Term' block, or at
