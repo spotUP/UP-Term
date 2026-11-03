@@ -1234,24 +1234,23 @@ long vt_anim_tick(vt_term *t, long us)
     for (i = 0; i < VT_IMG_SLOTS; i++) {
         vt_image *im = t->imgs[i];
         vt_anim *an;
-        int guard = 0;
         if (!im || !im->pix || im->kind != 2 || !im->anim || im->anim->state == 1)
             continue;
         an = im->anim;
         an->elapsed += us;
-        while (an->state != 1 && an->gap[an->cur - 1] >= 0 && an->elapsed >= an->gap[an->cur - 1] * 1000L &&
-               guard++ < 4 * VT_ANIM_FRAMES) {
-            long rest = an->elapsed - an->gap[an->cur - 1] * 1000L;
+        /* kitty scan_active_animations: at most one switch per wake and image (kit_anim_next skips gapless frames),
+         * and the switch time is "now" (current_frame_shown_at), so lateness is dropped, never caught up */
+        if (an->state != 1 && an->gap[an->cur - 1] >= 0 && an->elapsed >= an->gap[an->cur - 1] * 1000L) {
             int f = kit_anim_next(an);
             if (!f) {
                 if (an->state != 1)
                     an->elapsed = an->gap[an->cur - 1] * 1000L; /* waits, ready when a frame arrives */
                 else
                     an->elapsed = 0;
-                break;
+            } else {
+                kit_anim_goto(t, im, f);
+                an->elapsed = 0;
             }
-            kit_anim_goto(t, im, f);
-            an->elapsed = rest;
         }
         if (an->state != 1 && an->cur < an->n + (an->state == 3)) {
             long d = an->gap[an->cur - 1] * 1000L - an->elapsed;

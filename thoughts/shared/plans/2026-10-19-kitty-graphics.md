@@ -446,11 +446,18 @@ commit.
       TR_ADDREQUEST for frame_wait us, vtwin_tick runs on its signal and
       re-arms it while vr_blink_tick / vr_flash_tick say something is
       still changing (the cursor blink is driven this way). Animation
-      joins the same clock: vtwin_tick calls vt_anim_tick(t,
-      frame_wait); when it returns >= 0, frame_start re-arms with
-      min(that, the blink's period) instead of a new timer. Nothing runs
-      when no animation plays (no CPU when idle). Paused while the window
-      is hidden/iconified (r->hidden) or scrolled back (r->view): the tick
+      has a timer.device request of its own on the same frame_port (no new
+      signal), scheduled the way kitty does it (kitty/graphics.c
+      scan_active_animations: at most one frame switch per wake and
+      image, current_frame_shown_at = now so lateness is dropped and
+      never caught up; child-monitor.c sleeps to the nearest
+      next_frame_at). vt_anim_tick(t, waited) switches once per call and
+      returns the next frame's gap; the handler arms the request with
+      max(due, the frame clock's pace) (render/pace.h vt_anim_arm_us),
+      and the frame clock no longer re-arms for animation. Nothing runs
+      when no animation plays (no CPU when idle): armed only while
+      due >= 0, kicked when output starts one. Paused while the window
+      is hidden/iconified (r->hidden) or scrolled back (r->view): not armed, the tick
       is not called, so no time passes for it. A gap shorter than the
       frame clock (VT_PACE_MIN_US) is shown for one frame clock. CPU: a
       switch costs the rescale plus a redraw of the image's cells through
