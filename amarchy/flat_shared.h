@@ -57,6 +57,7 @@ typedef struct flatshared {
     ULONG aspect_mode;
     int aspect_px;
     ULONG aspect_looks;         /* DisplayInfo lookups done (the sentinel: one per screen and mode) */
+    ULONG mhits;                /* S32-GHOST-MENU: menu ghost fills recoloured to the dim label pen (the sentinel) */
     /* the icon pens are no longer here: the shared holder record "Amarchy.IconPens" owns them (iconpen_dos.h, F14) */
 } flatshared;
 

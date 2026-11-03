@@ -1617,8 +1617,80 @@ static void test_clone_no_dividers(void)
     CHECK(cv[2][5] == 'T' && cv[5][10] == 'T' && cv[4][19] == 'T');
 }
 
+/* S32-GHOST-MENU: the 3.2 menu ghost (ROM caller, no Window layer, AreaPtSz 1, {0x4444, 0x1111}) takes the dim label pen; every
+ * other fill, a Window layer, another pattern, a held or off block, a screen under 8 colours or a dim pen equal to the fill: stock. */
+static void test_ghost_menu_pen(void)
+{
+    flat_state s;
+    flat_init(&s);
+    desk_flat_state(1, 1, &s);
+    CHECK(s.pen_dimtext != 0);
+    CHECK_INT(flat_gm_pen(&s, 8, 1, 0, 1, 0x4444, 0x1111, 2), s.pen_dimtext);      /* item: Layer NULL */
+    CHECK_INT(flat_gm_pen(&s, 3, 1, 0, 1, 0x4444, 0x1111, 2), s.pen_dimtext);      /* 8 colours */
+    CHECK_INT(flat_gm_pen(&s, 2, 1, 0, 1, 0x4444, 0x1111, 2), -1);                 /* 4 colours: no dim tone */
+    CHECK_INT(flat_gm_pen(&s, 8, 0, 0, 1, 0x4444, 0x1111, 2), -1);                 /* app caller */
+    CHECK_INT(flat_gm_pen(&s, 8, 1, 1, 1, 0x4444, 0x1111, 2), -1);                 /* a Window layer: the button path */
+    CHECK_INT(flat_gm_pen(&s, 8, 1, 0, 0, 0x4444, 0x1111, 2), -1);
+    CHECK_INT(flat_gm_pen(&s, 8, 1, 0, 2, 0x4444, 0x1111, 2), -1);
+    CHECK_INT(flat_gm_pen(&s, 8, 1, 0, 1, 0x2222, 0x8888, 2), -1);                 /* another pattern */
+    CHECK_INT(flat_gm_pen(&s, 8, 1, 0, 1, 0x4444, 0x1111, s.pen_dimtext), -1);     /* dim = fill: nothing to show */
+    s.held = 1;
+    CHECK_INT(flat_gm_pen(&s, 8, 1, 0, 1, 0x4444, 0x1111, 2), -1);
+    s.held = 0; s.enabled = 0;
+    CHECK_INT(flat_gm_pen(&s, 8, 1, 0, 1, 0x4444, 0x1111, 2), -1);
+}
+
+static int gm_px(uint8_t *const *pl, int depth, int bpr, int x, int y)
+{
+    int p, v = 0;
+    for (p = 0; p < depth; p++)
+        if (pl[p][y * bpr + (x >> 3)] & (0x80 >> (x & 7)))
+            v |= 1 << p;
+    return v;
+}
+
+static void gm_set(uint8_t *const *pl, int depth, int bpr, int x, int y, int pen)
+{
+    int p;
+    for (p = 0; p < depth; p++) {
+        if (pen & (1 << p)) pl[p][y * bpr + (x >> 3)] |= (uint8_t)(0x80 >> (x & 7));
+        else pl[p][y * bpr + (x >> 3)] &= (uint8_t)~(0x80 >> (x & 7));
+    }
+}
+
+/* the recolour core on an interleaved 3-plane bitmap (rig layout: Planes[p] = base + p * row, BytesPerRow = depth * row): label
+ * pixels (pen 1) and a checkmark pixel (pen 5) in the rect become the dim pen 6, background (fill pen 2) stays, pixels outside the
+ * rect stay, a rect mostly not background is refused untouched. */
+static void test_ghost_menu_recolour(void)
+{
+    enum { ROW = 4, D = 3, H = 6 };
+    static uint8_t buf[ROW * D * H];
+    uint8_t *pl[D];
+    int bpr = ROW * D, p, x, y, bad = 0;
+    for (p = 0; p < D; p++) pl[p] = buf + p * ROW;
+    for (y = 0; y < H; y++) for (x = 0; x < ROW * 8; x++) gm_set(pl, D, bpr, x, y, 2);
+    gm_set(pl, D, bpr, 5, 2, 1); gm_set(pl, D, bpr, 6, 2, 1); gm_set(pl, D, bpr, 9, 3, 5);
+    gm_set(pl, D, bpr, 20, 2, 1);                                  /* outside the rect (x 4..15) */
+    CHECK_INT(flat_gm_recolour(pl, D, bpr, ROW * 8, H, 4, 1, 15, 4, 2, 6), 3);
+    CHECK_INT(gm_px(pl, D, bpr, 5, 2), 6);
+    CHECK_INT(gm_px(pl, D, bpr, 6, 2), 6);
+    CHECK_INT(gm_px(pl, D, bpr, 9, 3), 6);
+    CHECK_INT(gm_px(pl, D, bpr, 20, 2), 1);
+    for (y = 1; y <= 4; y++)                                       /* no period-4 holes, no background touched */
+        for (x = 4; x <= 15; x++)
+            if (!((x == 5 || x == 6) && y == 2) && !(x == 9 && y == 3) && gm_px(pl, D, bpr, x, y) != 2) bad++;
+    CHECK_INT(bad, 0);
+    CHECK_INT(flat_gm_recolour(pl, D, bpr, ROW * 8, H, 28, 4, 40, 9, 2, 6), 0);   /* clipped to the bitmap, all background */
+    for (y = 0; y < H; y++) for (x = 0; x < 8; x++) gm_set(pl, D, bpr, x, y, 7);
+    CHECK_INT(flat_gm_recolour(pl, D, bpr, ROW * 8, H, 0, 0, 7, 5, 2, 6), -1);     /* not a menu fill: refused */
+    CHECK_INT(gm_px(pl, D, bpr, 3, 3), 7);
+    CHECK_INT(flat_gm_recolour(pl, D, bpr, ROW * 8, H, 8, 0, 7, 5, 2, 6), -1);     /* empty rect */
+}
+
 void suite_flat_core(void)
 {
+    test_ghost_menu_pen();
+    test_ghost_menu_recolour();
     test_frame_pen();
     test_inactive_pens();
     test_inbar_status_dump();

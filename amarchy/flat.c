@@ -642,11 +642,57 @@ static int side_px(flatshared *r, struct Screen *scr)
     return r->aspect_px;
 }
 
+/* S32-GHOST-MENU: Intuition's 3.2 menu ghost (flat_gm_pen) becomes the dim label pen: every non-background pixel of the rect
+ * (label, shortcut, checkmark, separator line) is recoloured, background pixels stay (flat_gm_recolour). The background is the
+ * ghost's own FgPen: the ROM erases text holes with the menu fill pen, so the fill pen IS the menu background. Items and the
+ * separator bar (rp->Layer NULL, off-screen menu bitmap) are recoloured in place; a disabled title (screen bar layer, no Window)
+ * goes through a scratch bitmap so the layer's clipping holds. Non-planar (RTG) bitmaps, a refused rect or no memory: stock. */
+static int ghost_menu(flatshared *r, struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1)
+{
+    struct BitMap *bm = rp->BitMap;
+    UWORD *pa = (UWORD *)rp->AreaPtrn;
+    int depth, dim;
+    long n = -1;
+    if (!bm || !pa || x1 < x0 || y1 < y0 || !(GetBitMapAttr(bm, BMA_FLAGS) & BMF_STANDARD))
+        return 0;
+    depth = bm->Depth;
+    dim = flat_gm_pen(&r->st, depth, 1, 0, rp->AreaPtSz, pa[0], pa[1], rp->FgPen);
+    if (dim < 0)
+        return 0;
+    if (!rp->Layer) {
+        WaitBlit();                                       /* the item text may still be in the blitter */
+        n = flat_gm_recolour((uint8_t *const *)bm->Planes, depth, bm->BytesPerRow, (int)GetBitMapAttr(bm, BMA_WIDTH), bm->Rows, (int)x0, (int)y0, (int)x1, (int)y1, rp->FgPen, dim);
+    } else {
+        int wd = (int)(x1 - x0 + 1), ht = (int)(y1 - y0 + 1);
+        struct BitMap *tb = AllocBitMap((ULONG)wd, (ULONG)ht, (ULONG)depth, BMF_CLEAR, NULL);
+        struct RastPort trp;
+        if (!tb)
+            return 0;
+        InitRastPort(&trp);
+        trp.BitMap = tb;
+        ClipBlit(rp, (WORD)x0, (WORD)y0, &trp, 0, 0, (WORD)wd, (WORD)ht, 0xC0);
+        WaitBlit();
+        if (GetBitMapAttr(tb, BMA_FLAGS) & BMF_STANDARD)
+            n = flat_gm_recolour((uint8_t *const *)tb->Planes, depth, tb->BytesPerRow, (int)GetBitMapAttr(tb, BMA_WIDTH), tb->Rows, 0, 0, wd - 1, ht - 1, rp->FgPen, dim);
+        if (n >= 0)
+            BltBitMapRastPort(tb, 0, 0, rp, (WORD)x0, (WORD)y0, (WORD)wd, (WORD)ht, 0xC0);
+        WaitBlit();
+        FreeBitMap(tb);
+    }
+    if (n < 0)
+        return 0;
+    r->mhits++;
+    return 1;
+}
+
 void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG ret)
 {
     flatshared *r = g_r;
     struct Window *w;
     r->rcalls++;
+    if (r->st.enabled && !r->st.held && rp && rp->AreaPtSz && ret >= r->irom_lo && ret < r->irom_hi && (!rp->Layer || !rp->Layer->Window) &&
+        ghost_menu(r, rp, x0, y0, x1, y1))
+        return;
     if (r->st.enabled && !r->st.held && rp && rp->Layer && (w = (struct Window *)rp->Layer->Window) != 0 && ret >= r->irom_lo &&
         ret < r->irom_hi) {
         int sp, cuts[FLAT_ROUND_MAX][2], ncuts = 0, ci;
@@ -802,13 +848,13 @@ static void put_word(char *out, int *n, const char *w)
 static void print_status(void)
 {
     flat_state copy;
-    char line[96];
+    char line[128];              /* worst-case rectfill line with mhits is 108 */
     flatshared *r;
     int found = 0, dfound = 0, dreason = 0, dmask = 0, dinst = 0;
     unsigned dver = 0, drev = 0;
     unsigned long dcalls = 0, dflat = 0, fcalls = 0, fflat = 0;
     int finst = 0, rinst = 0;
-    unsigned long rcalls = 0, rhits = 0, shits = 0, tcalls = 0, thits = 0;
+    unsigned long rcalls = 0, rhits = 0, shits = 0, mhits = 0, tcalls = 0, thits = 0;
     int tinst = 0;
     unsigned long cdraws = 0, cfall = 0, alooks = 0, cfb = 0, cfd = 0, cfm = 0, cfe = 0, cfk = 0, cfi = 0, clw = 0, cls = 0, cln = 0, clm = 0;
     int apx = 0, sring[16][9], sn = 0;
@@ -823,7 +869,7 @@ static void print_status(void)
         dinst = r->dsw[0].installed || r->dsw[1].installed; dcalls = r->dcalls; dflat = r->dflat;
         dsum[0] = r->dsum[0]; dsum[1] = r->dsum[1];
         finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat;
-        rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits;
+        rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits; mhits = r->mhits;
         tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits;
         cdraws = r->cdraws; cfall = r->cfall;
         cfb = r->cf_busy; cfd = r->cf_nodri; cfm = r->cf_nobm; cfe = r->cf_empty; cfk = r->cf_mask;
@@ -858,6 +904,7 @@ static void print_status(void)
         put_word(line, &n, " calls=");              put_num(line, &n, rcalls);
         put_word(line, &n, " hits=");               put_num(line, &n, rhits);
         put_word(line, &n, " shits=");              put_num(line, &n, shits);
+        put_word(line, &n, " mhits=");              put_num(line, &n, mhits);
         put_word(line, &n, " side=");               put_num(line, &n, (unsigned long)apx);
         put_word(line, &n, " looks=");              put_num(line, &n, alooks);
         line[n] = 0;

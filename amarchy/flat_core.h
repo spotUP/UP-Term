@@ -312,6 +312,20 @@ int flat_knob_pen(const flat_state *s, int depth);
  * no pattern, no record of that surface and task containing the rect). */
 const flat_gbox *flat_gh_match(const flat_state *s, const flat_gh *g, const void *surf, const void *task, int ptsz, int x0, int y0, int x1, int y1);
 
+/* S32-GHOST-MENU: Intuition's menu ghost on 3.2 (ROM RectFill, AreaPtrn {0x4444, 0x1111}, AreaPtSz 1, JAM1, FgPen = the menu fill pen)
+ * is drawn OVER the finished item text, into the off-screen menu bitmap (rp->Layer NULL) for items and the separator bar, and into
+ * the screen bar layer (Layer->Window NULL) for a disabled title. Instead of the dither every non-background pixel of the rect
+ * (label, shortcut, checkmark, separator line) takes the dim label pen and background pixels stay: no item lookup is needed.
+ * flat_gm_pen: the pen to recolour with, or -1 for the stock dither (not enabled, held, not a ROM caller, a Window layer, another
+ * pattern or size, the dim pen unusable on this depth (flat_dimtext_ok: 8..256 colours) or equal to the fill pen bg). */
+#define FLAT_GM_PAT0 0x4444u
+#define FLAT_GM_PAT1 0x1111u
+int flat_gm_pen(const flat_state *s, int depth, int rom, int window, int ptsz, unsigned pat0, unsigned pat1, int bg);
+/* The recolour core over planar data (standard or interleaved: plane p row y at planes[p] + y * bpr): in (x0,y0)-(x1,y1), clipped
+ * to width by rows (bpr is the row modulo, which spans every plane in an interleaved bitmap), every pixel whose pen is not bg becomes pen dim. Refused (-1, nothing written) when the rect is empty or
+ * fewer than half its pixels are bg (not a menu fill: leave it to the stock call); else the count of pixels recoloured. */
+long flat_gm_recolour(uint8_t *const *planes, int depth, int bpr, int width, int rows, int x0, int y0, int x1, int y1, int bg, int dim);
+
 /* FLAT-BUTTON-FILL: the size of a frame draw. Only IM_DRAWFRAME carries Dimensions (a 0 side falls back to the image's);
  * IM_DRAW has no such field, its message words past the state are junk (3.1: 4096 x -17232). */
 void flat_frame_size(int draw_frame, int dim_w, int dim_h, int img_w, int img_h, int *w, int *h);

@@ -450,6 +450,61 @@ int flat_knob_pen(const flat_state *s, int depth)
     return flat_dimtext_ok(s, depth) ? s->pen_dimtext : flat_button_pen(s, depth);   /* KNOB-MUTED: the theme muted text pen (DK_MUTED), flat_button_pen under 8 colours */
 }
 
+int flat_gm_pen(const flat_state *s, int depth, int rom, int window, int ptsz, unsigned pat0, unsigned pat1, int bg)
+{
+    if (!s->enabled || s->held || !rom || window || ptsz != 1 || (pat0 & 0xFFFFu) != FLAT_GM_PAT0 || (pat1 & 0xFFFFu) != FLAT_GM_PAT1)
+        return -1;
+    if (!flat_dimtext_ok(s, depth) || bg < 0 || bg >= (1 << depth) || s->pen_dimtext == bg)
+        return -1;
+    return s->pen_dimtext;
+}
+
+static int gm_pen_at(uint8_t *const *planes, int depth, int bpr, int x, int y)
+{
+    int p, pen = 0;
+    unsigned off = (unsigned)y * (unsigned)bpr + (unsigned)(x >> 3), bit = 0x80u >> (x & 7);
+    for (p = 0; p < depth; p++)
+        if (planes[p][off] & bit)
+            pen |= 1 << p;
+    return pen;
+}
+
+long flat_gm_recolour(uint8_t *const *planes, int depth, int bpr, int width, int rows, int x0, int y0, int x1, int y1, int bg, int dim)
+{
+    int x, y, p;
+    long total, nbg = 0, done = 0;
+    if (!planes || depth < 1 || depth > 8 || bpr <= 0 || width <= 0 || width > bpr * 8 || rows <= 0)
+        return -1;
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 >= width) x1 = width - 1;     /* bpr is the row modulo: interleaved bitmaps span every plane */
+    if (y1 >= rows) y1 = rows - 1;
+    if (x1 < x0 || y1 < y0)
+        return -1;
+    total = (long)(x1 - x0 + 1) * (long)(y1 - y0 + 1);
+    for (y = y0; y <= y1; y++)
+        for (x = x0; x <= x1; x++)
+            if (gm_pen_at(planes, depth, bpr, x, y) == bg)
+                nbg++;
+    if (nbg * 2 < total)                 /* not a menu fill under the rect: refuse, the caller runs the stock call */
+        return -1;
+    for (y = y0; y <= y1; y++)
+        for (x = x0; x <= x1; x++) {
+            unsigned off = (unsigned)y * (unsigned)bpr + (unsigned)(x >> 3);
+            uint8_t bit = (uint8_t)(0x80u >> (x & 7));
+            if (gm_pen_at(planes, depth, bpr, x, y) == bg)
+                continue;
+            for (p = 0; p < depth; p++) {
+                if (dim & (1 << p))
+                    planes[p][off] |= bit;
+                else
+                    planes[p][off] &= (uint8_t)~bit;
+            }
+            done++;
+        }
+    return done;
+}
+
 const flat_gbox *flat_gh_match(const flat_state *s, const flat_gh *g, const void *surf, const void *task, int ptsz, int x0, int y0, int x1, int y1)
 {
     int i;
