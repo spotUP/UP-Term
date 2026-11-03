@@ -2730,7 +2730,7 @@ def gc(home=None, own_n=None, lines=None, now=None, remove=None):
     return removed
 
 # Options that take the next argument as their value; that value may be a number (--os 32, --ram 128).
-VALUE_OPTIONS = ("--serial", "--os", "--purpose", "--kick", "--ram", "--emu", "--idle-minutes")
+VALUE_OPTIONS = ("--serial", "--os", "--purpose", "--kick", "--ram", "--emu", "--idle-minutes", "--hours")
 # Commands whose arguments are free text for another tool (debugger lines, muforce and wasabi arguments).
 FREE_ARGS = ("dbg", "muforce", "wasabi")
 
