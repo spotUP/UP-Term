@@ -3631,9 +3631,9 @@ static void dopus_theme_commands_use_the_theme_directly(void)
                        "dopus refresh lister\n";
     char want[512];
 
-    /* D14: the Directory Opus listers take the theme's own bg/fg/dim/accent, not the menu roles */
+    /* D14: the Directory Opus listers take the theme's own surface/text/muted/accent roles, not the menu roles */
     gt_builtin(&th);
-    snprintf(want, sizeof want, "dopus set palette 0x1a1b26 0xa9b1d6 0x565f89 0x7aa2f7\n%s", pens);
+    snprintf(want, sizeof want, "dopus set palette 0x1a1b26 0xa9b1d6 0x414868 0x7aa2f7\n%s", pens);
     n = dopus_theme_commands(&th, buf, sizeof buf, 1);
     CHECK_INT((long)n, (long)strlen(want));
     CHECK_STR(buf, want);
@@ -3643,7 +3643,7 @@ static void dopus_theme_commands_use_the_theme_directly(void)
     CHECK_STR(buf, pens);
 
     /* a colour above 24 bits (0x01RRGGBB leaked in), a missing theme, too small a buffer: 0 and an empty string */
-    th.dim = 0x01000000UL;
+    th.muted = 0x01000000UL;
     strcpy(buf, "x");
     CHECK_INT((long)dopus_theme_commands(&th, buf, sizeof buf, 1), 0L);
     CHECK_STR(buf, "");
@@ -3693,7 +3693,7 @@ static void dopus_theme_send_goes_to_the_dopus_port(void)
     for (i = 0; i < 13; i++)
         CHECK_STR(r.port[i], "DOPUS.1");
     CHECK_STR(r.line[0], "dopus screen");
-    CHECK_STR(r.line[1], "dopus set palette 0x1a1b26 0xa9b1d6 0x565f89 0x7aa2f7");
+    CHECK_STR(r.line[1], "dopus set palette 0x1a1b26 0xa9b1d6 0x414868 0x7aa2f7");
     CHECK_STR(r.line[2], "dopus set pens icons 1 0 0 1 0 0");
     CHECK_STR(r.line[3], "dopus set pens files 1 0");
     CHECK_STR(r.line[4], "dopus set pens dirs 3 0");
@@ -3722,19 +3722,19 @@ static void dopus_theme_send_goes_to_the_dopus_port(void)
     CHECK_INT((long)r.n, 0L);
 }
 
-/* Workbench pens 0-3 on a theme switch (menu_theme.h wb_pens_plan): WCAG 2.x contrast of pen 0 against pen 1 */
+/* Workbench pens 0-3 on a theme switch (menu_theme.h wb_pens_plan): gt_contrast of pen 0 against pen 1 (floor GT_FLOOR_TEXT) */
 static void wb_pens_contrast_guard(void)
 {
     gtheme th;
     uc_u32 rgb[WB_PENS];
-    CHECK_INT((long)wb_contrast_x100(0x000000, 0xFFFFFF), 2100L);
-    CHECK_INT((long)wb_contrast_x100(0x777777, 0x777777), 100L);
-    CHECK_INT((long)wb_contrast_x100(0xFFFFFF, 0x000000), 2100L);
+    CHECK_INT((long)gt_contrast(0x000000, 0xFFFFFF), 2061L);
+    CHECK_INT((long)gt_contrast(0x777777, 0x777777), 100L);
+    CHECK_INT((long)gt_contrast(0xFFFFFF, 0x000000), 2061L);
     gt_builtin(&th);
     CHECK_INT((long)wb_pens_plan(&th, rgb), 1L);
     CHECK_INT((long)rgb[0], (long)th.bg);
     CHECK_INT((long)rgb[1], (long)th.fg);
-    CHECK_INT((long)rgb[2], (long)th.dim);
+    CHECK_INT((long)rgb[2], (long)th.muted);
     CHECK_INT((long)rgb[3], (long)th.accent);
     /* synthetic weak theme: grey on slightly different grey is refused, rgb still filled */
     th.bg = 0x808080;

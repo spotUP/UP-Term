@@ -216,15 +216,15 @@ static void test_gthemes_roles(void)
             CHECK(t.accent != t.bg);
             CHECK(dopus_theme_commands(&t, out, sizeof out, 1) > 0);
             snprintf(want, sizeof want, "dopus set palette 0x%06lx 0x%06lx 0x%06lx 0x%06lx\n", (unsigned long)t.bg,
-                     (unsigned long)t.fg, (unsigned long)t.dim, (unsigned long)t.accent);
+                     (unsigned long)t.fg, (unsigned long)t.muted, (unsigned long)t.accent);
             CHECK(strstr(out, want) == out);
             CHECK(strstr(out, "dopus set pens dirs 3 0\n") != NULL);
             /* Workbench pens 0-3: the guard's verdict for every shipped theme is the measured ratio against the
              * threshold; the pens are the theme's own */
             {
                 int ok = wb_pens_plan(&t, wb);
-                unsigned cr = wb_contrast_x100(t.bg, t.fg);
-                CHECK_INT(ok, cr >= WB_CONTRAST_MIN_X100);
+                unsigned cr = (unsigned)gt_contrast(t.bg, t.fg);
+                CHECK_INT(ok, cr >= GT_FLOOR_TEXT);
                 CHECK_INT((long)wb[0], (long)t.bg);
                 CHECK_INT((long)wb[3], (long)t.accent);
                 if (!ok)
@@ -743,8 +743,8 @@ static void test_gthemes_picker_pens(void)
             CHECK_INT(pm_col[bg], rgb[MT_BG]);
             CHECK_INT(pm_col[sel], rgb[MT_THEME_ACCENT]);
             /* normal row: text over the window ground; selected row: the label (MT_SELTEXT = bg) over the bar */
-            CHECK(wb_contrast_x100(pm_col[fg], pm_col[bg]) >= 300);
-            CHECK(wb_contrast_x100(pm_col[bg], pm_col[sel]) >= 300);
+            CHECK(gt_contrast(pm_col[fg], pm_col[bg]) >= GT_FLOOR_SEL);
+            CHECK(gt_contrast(pm_col[bg], pm_col[sel]) >= GT_FLOOR_SEL);
         }
         shown++;
     }
