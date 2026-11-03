@@ -12,7 +12,6 @@ The PROF lines "PROF kitty anim switches/ticks" (handler built with PROF=1) go t
 import base64, pathlib, struct, sys, time, zlib
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import paths
-import ami, condev_rig as c
 
 VTC = paths.RIG / 'vtc'
 S = 64
@@ -43,7 +42,26 @@ def png(w, h, rgb):
             + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b''))
 
 
+def crop_rgb(px, w, x0, y0, cw, ch):
+    return b''.join(px[((y0 + y) * w + x0) * 3:((y0 + y) * w + x0 + cw) * 3] for y in range(ch))
+
+
+def window_diffs(shots, w, h, rect=(WX, WY, WW, WH)):
+    """Pixels that differ inside the terminal window's rectangle only (screen pixels, clamped to the shot), as
+    (neighbour diffs, diffs vs the first shot). Outside the window the pointer and screen repaint leave residue that
+    is not the animation (K36-OFF-DIFF)."""
+    x0, y0 = max(0, rect[0]), max(0, rect[1])
+    cw, ch = min(w, rect[0] + rect[2]) - x0, min(h, rect[1] + rect[3]) - y0
+    wins = [crop_rgb(px, w, x0, y0, cw, ch) for px in shots]
+
+    def count(a, b):
+        return sum(1 for i in range(0, len(a) - 2, 3) if a[i:i + 3] != b[i:i + 3])
+    return ([count(wins[n], wins[n - 1]) for n in range(1, len(wins))],
+            [count(wins[n], wins[0]) for n in range(1, len(wins))])
+
+
 def main():
+    import ami, condev_rig as c
     out, mode = sys.argv[1], sys.argv[2]
     stream = b'\x1b[2J\x1b[3;3H' + apc('a=T,f=24,s=%d,v=%d,i=1,p=1,q=2' % (S, S), bytes(COLS[0]) * (S * S))
     for col in COLS[1:]:
@@ -75,10 +93,7 @@ def main():
             pathlib.Path('%s-%d.png' % (out, n)).write_bytes(png(w, h, px))
             shots.append(px)
             time.sleep(0.15)
-        diffs = []
-        for n in range(1, SHOTS):
-            diffs.append(sum(1 for i in range(0, len(px) - 2, 3) if shots[n][i:i + 3] != shots[n - 1][i:i + 3]))
-        vs_first = [sum(1 for i in range(0, len(px) - 2, 3) if shots[n][i:i + 3] != shots[0][i:i + 3]) for n in range(1, SHOTS)]
+        diffs, vs_first = window_diffs(shots, w, h)
         print('shot', w, h, 'neighbour diffs', diffs, 'vs first', vs_first)
         ok = (all(d == 0 for d in vs_first)) if mode == 'off' else (any(d > 0 for d in diffs))
         print('mode', mode, 'PASS' if ok else 'FAIL')
@@ -94,4 +109,5 @@ def main():
         time.sleep(3)
 
 
-main()
+if __name__ == '__main__':
+    main()
