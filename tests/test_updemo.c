@@ -164,18 +164,19 @@ static int scene_index(const char *name)
  * second player, so no second list can hold scenes the first lacks. */
 static void there_is_one_scene_list_with_the_effects_at_its_end(void)
 {
-    CHECK_INT(updemo_scenes(), 27);
+    CHECK_INT(updemo_scenes(), 28);
     CHECK_INT(scene_index("styles"), 1);        /* the tour's scene, in the list a bare UPDemo plays */
-    CHECK_INT(scene_index("copper bars"), 19);  /* the show's scenes follow the tour's */
-    CHECK_INT(scene_index("the end"), 26);
+    CHECK_INT(scene_index("copper bars"), 20);  /* the show's scenes follow the tour's */
+    CHECK_INT(scene_index("the end"), 27);
     CHECK_INT(scene_index("kitty animation"), 14);
+    CHECK_INT(scene_index("kitty z-index"), 16);
 }
 
-/* a bare UPDemo plays the whole list from its first scene: the status line shows the caption and "1/27" */
+/* a bare UPDemo plays the whole list from its first scene: the status line shows the caption and "1/28" */
 static void a_bare_run_starts_at_the_first_scene_with_its_caption(void)
 {
     start(80, 24);
-    needle = "Demo 1/27  Text styles, double-size lines, box drawing";
+    needle = "Demo 1/28  Text styles, double-size lines, box drawing";
     CHECK_INT(updemo_run(&io, 80, 24, 0, 6), 0);
     CHECK(saw_text);
     needle = 0;
@@ -186,14 +187,14 @@ static void a_bare_run_starts_at_the_first_scene_with_its_caption(void)
 static void a_start_number_picks_a_scene_of_the_one_list(void)
 {
     start(80, 24);
-    needle = "Demo 2/27  Every text style a program can ask for";
+    needle = "Demo 2/28  Every text style a program can ask for";
     CHECK_INT(updemo_run(&io, 80, 24, 1, 6), 0);
     CHECK(saw_text);
-    needle = "Demo 1/27";
+    needle = "Demo 1/28";
     saw_text = 0;
     vt_free(t);
     start(80, 24);
-    needle = "Demo 1/27";
+    needle = "Demo 1/28";
     CHECK_INT(updemo_run(&io, 80, 24, 1, 6), 0);
     CHECK(!saw_text);   /* scene 1 was skipped */
     needle = 0;
@@ -379,6 +380,27 @@ static void the_kitty_truecolour_scene_sends_rgba_with_alpha(void)
     CHECK(saw_image);
     CHECK_INT(vt_unhandled(t, kinds, counts, 16), 0);
     vt_free(t);
+}
+
+/* UPDEMO-NEW-FEATURES (c): the z-index scene sends one picture under the text (z<0), one over it (z>=0), and says so. */
+static void the_kitty_zindex_scene_sends_pictures_under_and_over_text(void)
+{
+    long i, neg = 0, pos = 0;
+    play_alone(scene_index("kitty z-index"), UPDEMO_AUTO);
+    for (i = 0; i + 3 < cap_len; i++) {
+        long j;
+        if (memcmp(cap + i, "\033_G", 3) != 0 || cap[i + 3] == 'm')
+            continue;
+        for (j = i + 3; j < cap_len && cap[j] != ';' && cap[j] != '\033'; j++)
+            if (!memcmp(cap + j, "z=-1,", 5))
+                neg++;
+            else if (!memcmp(cap + j, "z=1,", 4))
+                pos++;
+    }
+    CHECK(neg > 0);
+    CHECK(pos > 0);
+    CHECK(cap_has("z=-1: the picture is behind the text."));
+    CHECK(cap_has("z=1: the picture hides the text."));
 }
 
 /* W-T2 (owner: the styles scene's two blink speeds blink at the same rate): its "rapid blink" line is SGR 5 then 6,
@@ -1040,6 +1062,7 @@ void suite_updemo(void)
     the_unicode_scene_shows_emoji();
     the_kitty_animation_scene_sends_frames_gaps_and_the_loop();
     the_kitty_truecolour_scene_sends_rgba_with_alpha();
+    the_kitty_zindex_scene_sends_pictures_under_and_over_text();
     the_styles_scene_shows_slow_and_rapid_blink();
     q_ends_the_demo_and_any_other_key_does_not();
     a_key_goes_to_the_next_scene_and_the_demo_keeps_running();

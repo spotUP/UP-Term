@@ -1969,6 +1969,33 @@ static void sc_kitty_truecolour(long t, int first)
     ps("AGA has no deep screen: there the pictures fall back to 8-bit colour.");
 }
 
+/* Kitty z-index: z < 0 draws the picture under the text, z >= 0 over it. The same picture twice, side by side. */
+static void sc_kitty_zindex(long t, int first)
+{
+    static unsigned char px[TC_W * TC_H * 4];
+    int i;
+    (void)t;
+    if (!first)
+        return;
+    heading("Kitty z-index", "z below 0 puts a picture under the text, z of 0 or more over it");
+    ps("\033_Ga=d,d=I,i=4,q=2\033\\\033_Ga=d,d=I,i=5,q=2\033\\");
+    tc_sphere(px);
+    at(4, 4);
+    kitty_chunks("a=T,i=4,f=32,s=64,v=48,z=-1,q=2", px, sizeof px);
+    at(4, 44);
+    kitty_chunks("a=T,i=5,f=32,s=64,v=48,z=1,q=2", px, sizeof px);
+    for (i = 0; i < 4; i++) { /* the same text lines on both pictures */
+        at(5 + i, 4);
+        ps("TEXT OVER THE PICTURE");
+        at(5 + i, 44);
+        ps("TEXT UNDER THE PICTURE");
+    }
+    at(14, 4);
+    ps("z=-1: the picture is behind the text.");
+    at(14, 44);
+    ps("z=1: the picture hides the text.");
+}
+
 /* A frame counter in big letters. With mode 2026 the terminal shows each
  * frame whole; every other second the frames go without it, and a slow
  * machine shows them being drawn. */
@@ -2116,6 +2143,7 @@ static const scene_def scenes[] = {
     { "sixel", sc_sixel, 0, 450, "Sixel images: pictures in the text", 0, 0, 0 },
     { "kitty animation", sc_kitty_anim, 0, 450, "Kitty graphics: an animation the terminal plays", 0, 0, 0 },
     { "kitty truecolour", sc_kitty_truecolour, 0, 450, "Kitty graphics: 24-bit pictures with alpha", 0, 0, 0 },
+    { "kitty z-index", sc_kitty_zindex, 0, 450, "Kitty graphics: text over and under a picture", 0, 0, 0 },
     { "synchronized output", sc_sync, 1, 400, "Synchronized output: frames shown whole", 0, 0, 0 },
     { "resize", sc_resize, 0, 400, "A program resizes the window (DECCOLM)", 0, 0, 0 },
     { "reflow", sc_reflow, 0, 750, "Reflow on resize", 1, 0, 0 },
