@@ -1338,6 +1338,8 @@ def setup():
     if stale:
         print("[WARN] %d file(s) in VTC: differ from the build: %s; `rig.py install` puts the build there"
               % (len(stale), ", ".join(stale)))
+    for rel, why in media_drift(RIG / "vtc"):
+        print("[WARN] UP-Term:%s is %s in the rig's UP-Term: tree; `rig.py install` puts the kit's copy there" % (rel, why))
     (RIG / "boot/go").write_text(GO)
     (RIG / "boot/shadows-up").write_text(SHADOWS_UP_SCRIPT)
     (RIG / "boot/wasabid-up").write_text(WASABID_UP_SCRIPT)
@@ -1711,6 +1713,26 @@ def build_drift(vtc):
             stale.append("%s/%s" % (USERLAND_STAGE, name))
     return stale
 
+def media_drift(vtc):
+    """[(drawer path, "missing" or "differs")] for the kit media (a1200_drift.KIT_MEDIA) the rig's UP-Term: drawer lacks
+    or holds a different copy of. UPDemo falls back to a coded picture without its media, and the eye check then judges
+    the fallback (RIG-DRIFT-MEDIA, rig 91, 2026-11-03)."""
+    out = []
+    for rel, src in a1200_drift.KIT_MEDIA.items():
+        dst = vtc / paths.UPTERM_DRAWER / rel
+        if not dst.is_file():
+            out.append((rel, "missing"))
+        elif dst.read_bytes() != (ROOT / "dist" / src).read_bytes():
+            out.append((rel, "differs"))
+    return out
+
+def stage_kit_media(vtc):
+    """The kit media (a1200_drift.KIT_MEDIA) into the rig's UP-Term: drawer, what install.dos copies on a real install."""
+    for rel, src in a1200_drift.KIT_MEDIA.items():
+        dst = vtc / paths.UPTERM_DRAWER / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / "dist" / src, dst)
+
 # A refreshed file the running Amiga holds in memory (a library, device or handler) is not replaced by the copy: the rig
 # runs the old one until it boots again.
 HELD_SUFFIXES = (".library", ".device", ".handler")
@@ -1852,6 +1874,7 @@ def _install():
     refresh_kit_shadows(RIG / "vtc")
     kitstamp.check(RIG / "boot", RIG / "vtc")   # a changed kit file: the next boot shadows it
     stage_amarchy_assets(RIG / "vtc")
+    stage_kit_media(RIG / "vtc")
     # the themes beside the handler: the rig has no kit, so no
     # ENVARC:up-term/themes, and the theme requesters and /theme fall back
     # to VTC:themes (prefs_theme_drawer, W30)

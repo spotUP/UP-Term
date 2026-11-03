@@ -32,6 +32,10 @@ DIST_SOURCES = ("keymap", "solidwin/SolidWin")
 DATA_FILES = {"lucide/lucide.dat": "Amarchy/Icons/lucide.dat", "lucide/outline.dat": "Amarchy/Icons/outline.dat", "bar.conf": "bar.conf"}
 DATA_DRAWERS = {"amarchy-themes": "amarchy-themes"}
 USER_OWNED = ("bar.conf",)
+# Media the kit lays in the UP-Term: drawer (install.dos `Copy updemo/earth.anim UP-Term:share/updemo`), by path in the
+# drawer -> file in dist/. A rig whose UP-Term: tree predates one of these shows UPDemo's coded fallback, not the media
+# (RIG-DRIFT-MEDIA, rig 91, 2026-11-03: no earth.anim, the kitty scene judged on the wrong picture).
+KIT_MEDIA = {"share/updemo/earth.anim": "updemo/earth.anim"}
 
 
 def lib_entries(nofpu=False):
