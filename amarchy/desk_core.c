@@ -81,29 +81,32 @@ static int is_prefs(const unsigned char *buf, long len)
 
 void desk_pens(unsigned char pens[DK_SLOTS])
 {
-    pens[DK_DETAIL] = DK_BG;
-    pens[DK_BLOCK] = DK_DARKER;
-    pens[DK_TEXT] = DK_FG;
-    pens[DK_SHINE] = DK_FG;
-    pens[DK_SHADOW] = DK_DARKER;
-    pens[DK_FILL] = DK_ACCENT;
-    pens[DK_FILLTEXT] = DK_BG;
-    pens[DK_BACKGROUND] = DK_BG;
-    pens[DK_HIGHLIGHTTEXT] = DK_FG;
-    pens[DK_BARDETAIL] = DK_FG;
-    pens[DK_BARBLOCK] = DK_BG;
-    pens[DK_BARTRIM] = DK_DARKER;
-    pens[DK_EXTRA] = DK_FG;
+    /* RL8: every slot names the pen of a role of the table */
+    int surface = desk_pen_of_role(GR_SURFACE), text = desk_pen_of_role(GR_TEXT), ground = desk_pen_of_role(GR_BACKGROUND);
+    pens[DK_DETAIL] = (unsigned char)surface;
+    pens[DK_BLOCK] = (unsigned char)ground;
+    pens[DK_TEXT] = (unsigned char)text;
+    pens[DK_SHINE] = (unsigned char)text;
+    pens[DK_SHADOW] = (unsigned char)ground;
+    pens[DK_FILL] = (unsigned char)desk_pen_of_role(GR_ACCENT);
+    pens[DK_FILLTEXT] = (unsigned char)surface;
+    pens[DK_BACKGROUND] = (unsigned char)surface;
+    pens[DK_HIGHLIGHTTEXT] = (unsigned char)text;
+    pens[DK_BARDETAIL] = (unsigned char)text;
+    pens[DK_BARBLOCK] = (unsigned char)surface;
+    pens[DK_BARTRIM] = (unsigned char)ground;
+    pens[DK_EXTRA] = (unsigned char)text;
 }
 
 void desk_pens_flat(unsigned char pens[DK_SLOTS])
 {
+    int surface = desk_pen_of_role(GR_SURFACE);
     desk_pens(pens);
-    pens[DK_SHINE] = DK_BG;     /* FLAT-SOLID-FILL: highlight, shadow and the active frame fill all take the surface pen, */
-    pens[DK_SHADOW] = DK_BG;    /* so every window is one solid rectangle and only title and glyph colour show focus */
-    pens[DK_FILL] = DK_BG;
+    pens[DK_SHINE] = (unsigned char)surface;    /* FLAT-SOLID-FILL: highlight, shadow and the active frame fill all take the surface pen, */
+    pens[DK_SHADOW] = (unsigned char)surface;   /* so every window is one solid rectangle and only title and glyph colour show focus */
+    pens[DK_FILL] = (unsigned char)surface;
     pens[DK_EXTRA] = pens[DK_BARBLOCK];  /* FLAT-BAR-CONTOUR: slot 12 is BARCONTOURPEN (OS 3.2): the 1 px line along the top of the screen bar, stock FG = a bright "shine" line; the bar background hides it */
-    pens[DK_FILLTEXT] = DK_FG;  /* the active title text is drawn in FILLTEXTPEN on FILLPEN (= DK_BG now): keep it bright */
+    pens[DK_FILLTEXT] = (unsigned char)desk_pen_of_role(GR_TEXT);  /* the active title text is drawn in FILLTEXTPEN on FILLPEN (= surface now): keep it bright */
 }
 
 /* FLAT-SOLID-FILL: the glyph pens of the flat_state block under the flat map: active glyph bright (foreground), inactive
@@ -138,10 +141,10 @@ void desk_flat_state(int flat, int gadgets, flat_state *s)
     s->pen_text = t;
     s->pen_line = l;
     s->pen_back = b;
-    s->pen_outline = DK_ACCENT;
-    s->pen_button = DK_SELECTION;       /* FLAT-BUTTON-FILL: the theme lighter_background; flat.c falls back to pen_back on a screen without pen 4 */
-    s->pen_ptext = DK_BG;               /* dark label on the accent fill of a pressed button */
-    s->pen_dimtext = DK_MUTED;          /* FLAT-BUTTON-DISABLED-DIM: dim label; pen_dim is amarchy-flat's own (it obtains it) and is left alone */
+    s->pen_outline = (unsigned char)desk_pen_of_role(GR_ACCENT);
+    s->pen_button = (unsigned char)desk_pen_of_role(GR_SELECTION);       /* FLAT-BUTTON-FILL: the theme lighter_background; flat.c falls back to pen_back on a screen without pen 4 */
+    s->pen_ptext = (unsigned char)desk_pen_of_role(GR_SURFACE);               /* dark label on the accent fill of a pressed button */
+    s->pen_dimtext = (unsigned char)desk_pen_of_role(GR_MUTED);          /* FLAT-BUTTON-DISABLED-DIM: dim label; pen_dim is amarchy-flat's own (it obtains it) and is left alone */
 }
 
 void desk_pens_for(int flat, unsigned char pens[DK_SLOTS])

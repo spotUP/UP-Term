@@ -90,14 +90,16 @@ unsigned dopus_theme_commands(const gtheme *th, char *out, unsigned cap, int pal
     static const char hex[] = "0123456789abcdef";
     unsigned n = 0, i, k, need = 1;
     uc_u32 col[DOPUS_THEME_COLOURS];
+    gt_roles r;
     if (cap)
         out[0] = 0;
     if (!th || !out)
         return 0;
-    col[0] = th->bg;
-    col[1] = th->fg;
-    col[2] = th->dim;
-    col[3] = th->accent;
+    gt_roles_of(th, &r);    /* RL8: the lister's four colours are roles of the table */
+    col[0] = r.c[GR_SURFACE];
+    col[1] = r.c[GR_TEXT];
+    col[2] = r.c[GR_MUTED];
+    col[3] = r.c[GR_ACCENT];
     for (i = 0; i < DOPUS_THEME_COLOURS; i++)
         if (col[i] > 0xFFFFFFUL)
             return 0;
@@ -169,45 +171,17 @@ int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char
     return sent;
 }
 
-/* sRGB channel -> linear light, x100000 (the WCAG 2.x formula; generated, no libm on the Amiga) */
-static const unsigned long wb_lin[256] = {
-    0, 30, 61, 91, 121, 152, 182, 212, 243, 273, 304, 335, 368, 402, 439, 478,
-    518, 561, 605, 651, 700, 750, 802, 857, 913, 972, 1033, 1096, 1161, 1229, 1298, 1370,
-    1444, 1521, 1600, 1681, 1764, 1850, 1938, 2029, 2122, 2217, 2315, 2416, 2519, 2624, 2732, 2843,
-    2956, 3071, 3190, 3310, 3434, 3560, 3689, 3820, 3955, 4092, 4231, 4374, 4519, 4667, 4817, 4971,
-    5127, 5286, 5448, 5613, 5781, 5951, 6125, 6301, 6480, 6663, 6848, 7036, 7227, 7421, 7619, 7819,
-    8022, 8228, 8438, 8650, 8866, 9084, 9306, 9531, 9759, 9990, 10224, 10462, 10702, 10946, 11193, 11444,
-    11697, 11954, 12214, 12477, 12744, 13014, 13287, 13563, 13843, 14126, 14413, 14703, 14996, 15293, 15593, 15896,
-    16203, 16513, 16827, 17144, 17465, 17789, 18116, 18447, 18782, 19120, 19462, 19807, 20156, 20508, 20864, 21223,
-    21586, 21953, 22323, 22697, 23074, 23455, 23840, 24228, 24620, 25016, 25415, 25818, 26225, 26636, 27050, 27468,
-    27889, 28315, 28744, 29177, 29614, 30054, 30499, 30947, 31399, 31855, 32314, 32778, 33245, 33716, 34191, 34670,
-    35153, 35640, 36131, 36625, 37124, 37626, 38133, 38643, 39157, 39676, 40198, 40724, 41254, 41789, 42327, 42869,
-    43415, 43966, 44520, 45079, 45641, 46208, 46778, 47353, 47932, 48515, 49102, 49693, 50289, 50888, 51492, 52100,
-    52712, 53328, 53948, 54572, 55201, 55834, 56471, 57112, 57758, 58408, 59062, 59720, 60383, 61050, 61721, 62396,
-    63076, 63760, 64448, 65141, 65837, 66539, 67244, 67954, 68669, 69387, 70110, 70838, 71569, 72306, 73046, 73791,
-    74540, 75294, 76052, 76815, 77582, 78354, 79130, 79910, 80695, 81485, 82279, 83077, 83880, 84687, 85499, 86316,
-    87137, 87962, 88792, 89627, 90466, 91310, 92158, 93011, 93869, 94731, 95597, 96469, 97345, 98225, 99110, 100000,
-};
-
-static unsigned long wb_luma(uc_u32 c)
-{
-    /* 0.2126 R + 0.7152 G + 0.0722 B, x1e6 */
-    return (wb_lin[(c >> 16) & 255] * 2126UL + wb_lin[(c >> 8) & 255] * 7152UL + wb_lin[c & 255] * 722UL) / 1000UL;
-}
-
-unsigned wb_contrast_x100(uc_u32 a, uc_u32 b)
-{
-    unsigned long la = wb_luma(a), lb = wb_luma(b), hi = la > lb ? la : lb, lo = la > lb ? lb : la;
-    return (unsigned)(((hi + 50000UL) * 100UL) / (lo + 50000UL));
-}
-
 int wb_pens_plan(const gtheme *th, uc_u32 rgb[WB_PENS])
 {
-    if (!th || th->bg > 0xFFFFFFUL || th->fg > 0xFFFFFFUL || th->dim > 0xFFFFFFUL || th->accent > 0xFFFFFFUL)
+    gt_roles r;
+    if (!th)
         return 0;
-    rgb[0] = th->bg;
-    rgb[1] = th->fg;
-    rgb[2] = th->dim;
-    rgb[3] = th->accent;
-    return wb_contrast_x100(rgb[0], rgb[1]) >= WB_CONTRAST_MIN_X100;
+    gt_roles_of(th, &r);    /* RL8: Workbench pens 0-3 are the surface, text, muted and accent roles */
+    rgb[0] = r.c[GR_SURFACE];
+    rgb[1] = r.c[GR_TEXT];
+    rgb[2] = r.c[GR_MUTED];
+    rgb[3] = r.c[GR_ACCENT];
+    if (rgb[0] > 0xFFFFFFUL || rgb[1] > 0xFFFFFFUL || rgb[2] > 0xFFFFFFUL || rgb[3] > 0xFFFFFFUL)
+        return 0;
+    return gt_contrast(rgb[0], rgb[1]) >= GT_FLOOR_TEXT;
 }

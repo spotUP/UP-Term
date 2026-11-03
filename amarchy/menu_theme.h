@@ -95,12 +95,9 @@ int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char
 
 /* Workbench pens 0-3 take the theme's bg, fg, dim, accent (Directory Opus on the Workbench screen shares them). */
 #define WB_PENS 4
-/* The refusal threshold: WCAG 2.x contrast ratio of pen 0 against pen 1, x100. 450 = 4.5:1, the AA level for body text. */
-#define WB_CONTRAST_MIN_X100 450
-/* WCAG contrast ratio of two 0xRRGGBB colours, x100 (21:1 = 2100; 1:1 = 100). Integer maths, no libm. */
-unsigned wb_contrast_x100(uc_u32 a, uc_u32 b);
+/* The refusal threshold is GT_FLOOR_TEXT (gthemes_core.h): the text-on-ground contrast floor of the role derivation. */
 /* Fills rgb[0..3] with the theme's pens 0-3. Returns 1 when the pens may be set, 0 when th is NULL, a colour is above
- * 0xFFFFFF, or pen 0 / pen 1 contrast is below WB_CONTRAST_MIN_X100 (a Workbench nobody can read: rgb is still filled). */
+ * 0xFFFFFF, or pen 0 / pen 1 gt_contrast is below GT_FLOOR_TEXT (a Workbench nobody can read: rgb is still filled). */
 int wb_pens_plan(const gtheme *th, uc_u32 rgb[WB_PENS]);
 
 #endif
