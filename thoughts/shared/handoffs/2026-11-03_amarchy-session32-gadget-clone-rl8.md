@@ -84,6 +84,17 @@ status: in progress
    fresh 3.2 rig 61 -> s33-evidence/bar-strip-full-install.md. Fix + test, send commit to vtcon-ee (its rig 96
    reinstall waits on this + NERD-FALLBACK-DEFAULT + IMAGE-ASPECT-HIRES). vtcon-ee told both 2026-11-03.
    Also open: AMI-OPEN-CLOSES-WELCOME.
+9g. Session 33 (2026-11-03 late):
+   S32-KNOB-NONE-FRESH: caused by fb6aa600 amarchy-flat (rig 63 repro); main (33d894d8) draws the knob. Fixed on main,
+   confirm on rig 96 reinstall. Test idea (not written): test_flat_core borderless newlook prop full body
+   (s33-evidence/knob-none-fresh.md).
+   BAR-STRIP-RESERVE root cause: strut_publish reflows only desktop windows; windows opened before the bar stay over
+   the strip (s33-evidence/bar-strip-full-install.md). Sonnet worktree agent fixing (reflow + host test + rig row
+   strut_prebar). Merge, push, send hash to vtcon-ee: it holds rig 96 fresh-all for this commit.
+   S33-PREFS-SKIN-FAIL: rig 96 Locale Prefs magenta = palette entry 4 (FF33FF). Lead: clone marker pen leak
+   (FLAT_CLONE_MARK(SHINEPEN)=4). Opus hunt on own fresh 3.2 rig from main -> s33-evidence/prefs-skin-magenta.md.
+   RIG-KEYMAP-SWEDISH closed: owner leaves USA; keymap is the user's own setup.
+   Queue after: S33-SCREEN-DEPTH-TALL, FLAT-MARKER retry, owner guard design, 3.1 Copy crash bisect.
 10. S32-UPDEMO-CDIR: fixed by peer (1b2abd22, proof 78b8a13d). Rig 35 keeps the old C:UPDemo dir until reinstall.
 11. Knob brightness, front box filled vs hollow, pointer, Left Amiga+Space window, RL15 on rig 96.
 12. AMARCHY-THEME-EDITOR gated until Amarchy + flat UI done. Decided: Simple + Advanced (Advanced sets each
