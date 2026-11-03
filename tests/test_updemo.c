@@ -346,13 +346,23 @@ static void the_unicode_scene_shows_emoji(void)
 static int cap_has(const char *s);
 static void play_alone(int scene, int colours);
 
+/* where the needle first appears in the captured output, or -1 */
+static long cap_find(const char *s)
+{
+    long i, k = (long)strlen(s);
+    for (i = 0; i + k <= cap_len; i++)
+        if (!memcmp(cap + i, s, (size_t)k))
+            return i;
+    return -1;
+}
+
 /* UPDEMO-NEW-FEATURES (a): the kitty animation scene, run through the one scene runner, plays the real NASA Earth
  * from earth.anim: the first frame (a=T), 43 more PNG frames (a=f,f=100), a gap for each of the 44 (a=a ... z=), and
  * the loop command (a=a ... s=3); the engine takes all of it as one image and leaves nothing unhandled. */
 static void the_kitty_animation_scene_sends_frames_gaps_and_the_loop(void)
 {
     const char *kinds[16];
-    long counts[16], i, nf = 0, ng = 0, nt = 0;
+    long counts[16], i, nf = 0, ng = 0, nt = 0, photo;
     play_alone(scene_index("kitty animation"), UPDEMO_AUTO);
     for (i = 0; i + 13 < cap_len; i++) {
         if (memcmp(cap + i, "\033_Ga=f,i=1,f=100,", 17) == 0)
@@ -368,6 +378,12 @@ static void the_kitty_animation_scene_sends_frames_gaps_and_the_loop(void)
     CHECK(cap_has(",z=90,q=2\033\\"));
     CHECK(cap_has("\033_Ga=a,i=1,s=3,q=2\033\\"));
     CHECK(!cap_has("earth.anim not found"));
+    /* UD2: the fjord photo goes first, behind the text (z=-1) and placed by columns only (c=, no r=); the globe's
+     * frames follow, and the gaps stay a=a commands (z= with an f=100 transmit is EINVAL) */
+    photo = cap_find("\033_Ga=T,i=6,f=100,c=20,z=-1,q=2");
+    CHECK(photo >= 0);
+    CHECK(photo < cap_find("\033_Ga=T,i=1,f=100,"));
+    CHECK(!cap_has("fjord.png not found"));
     CHECK(saw_image);
     CHECK_INT(vt_unhandled(t, kinds, counts, 16), 0);
     vt_free(t);
@@ -387,6 +403,24 @@ static void the_kitty_animation_scene_falls_back_to_the_coded_globe_without_the_
             nf++;
     CHECK_INT(nf, 7);
     CHECK(cap_has("(earth.anim not found: coded globe)"));
+    CHECK(cap_has("\033_Ga=a,i=1,s=3,q=2\033\\"));
+    CHECK(saw_image);
+    CHECK_INT(vt_unhandled(t, kinds, counts, 16), 0);
+    vt_free(t);
+}
+
+/* UD2: without fjord.png the globe still turns and the scene says on screen that the photo is missing */
+static void the_kitty_animation_scene_says_so_when_the_photo_is_missing(void)
+{
+    const char *kinds[16];
+    long counts[16];
+    unsigned char *(*saved)(void *, const char *, long *) = io.load;
+    io.load = 0;
+    play_alone(scene_index("kitty animation"), UPDEMO_AUTO);
+    io.load = saved;
+    CHECK(!cap_has("\033_Ga=T,i=6,"));
+    CHECK(cap_has("(fjord.png not found: no photo)"));
+    CHECK(cap_has("\033_Ga=T,i=1,f=24,"));
     CHECK(cap_has("\033_Ga=a,i=1,s=3,q=2\033\\"));
     CHECK(saw_image);
     CHECK_INT(vt_unhandled(t, kinds, counts, 16), 0);
@@ -1294,6 +1328,7 @@ void suite_updemo(void)
     the_unicode_scene_shows_emoji();
     the_kitty_animation_scene_sends_frames_gaps_and_the_loop();
     the_kitty_animation_scene_falls_back_to_the_coded_globe_without_the_media();
+    the_kitty_animation_scene_says_so_when_the_photo_is_missing();
     the_kitty_picture_scene_sends_the_photo_as_a_png_beside_the_coded_circle();
     the_kitty_picture_scene_says_so_when_the_photo_is_missing();
     the_kitty_truecolour_scene_sends_rgba_with_alpha();
