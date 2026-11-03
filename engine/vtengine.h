@@ -87,13 +87,18 @@ typedef struct vt_cell {
 /* vt_cell.pad: the cell shows a tile of an image placed on its row
  * (vt_row_image) over its text. A sixel blanks the cell's text; a kitty
  * picture (z >= 0) keeps it, drawn first and seen through the picture's
- * translucent pixels (O6). Writing or erasing the cell rewrites it whole,
- * so text over an image takes its place. */
+ * translucent pixels (O6). Erasing the cell rewrites it whole; text written
+ * into a sixel's cell takes its place, but not into a kitty z >= 0 cell
+ * (VT_CELL_FRONT), where the picture stays over the new glyph (D12). */
 #define VT_CELL_IMAGE 0x01
 /* vt_cell.pad: a kitty picture placed with z < 0 lies under the cell's
  * text (K30). The text stays and keeps the bit when it is rewritten or
  * erased; draw the background, then the picture, then the glyph. */
 #define VT_CELL_UNDER 0x02
+/* vt_cell.pad: set with VT_CELL_IMAGE on the cells of a kitty picture with
+ * z >= 0: text written into the cell keeps both bits (the picture stays over
+ * it, D12). A sixel's cells carry VT_CELL_IMAGE alone. */
+#define VT_CELL_FRONT 0x04
 
 /* A cell's ch in U+D800..U+DFFF (the surrogates, which are never a
  * character of their own) is not a character: it names an entry of the
