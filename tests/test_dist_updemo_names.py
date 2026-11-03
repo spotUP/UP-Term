@@ -44,6 +44,13 @@ class UpdemoNames(unittest.TestCase):
             parts = [("tools", "Files/UPDemo", None)]
             self.assertEqual(mkmanifest.absent(kit, parts), ["Files/UPDemo"])
 
+    def test_install_clears_a_directory_left_at_c_updemo(self):
+        # INSTALL-C-UPDEMO-DIR: a kit from that window installed the media drawer as C:UPDemo; Copy then puts
+        # the program inside it and C:UPDemo stays unrunnable. Install deletes whatever is at C:UPDemo first.
+        lines = [l.strip() for l in (ROOT / "dist/install.dos").read_text().splitlines()]
+        i = lines.index("Copy UPDemo C:UPDemo CLONE")
+        self.assertEqual(lines[i - 1], "Delete >NIL: C:UPDemo ALL QUIET FORCE")
+
     @unittest.skipUnless((KIT / "Files").is_dir(), "no built kit at %s: run make dist" % KIT)
     def test_built_kit_has_program_and_media(self):
         files = os.listdir(KIT / "Files")

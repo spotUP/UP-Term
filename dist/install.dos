@@ -603,7 +603,9 @@ If WARN
 EndIf
 ; ps and top: the tasks, and the tasks by CPU use (sampled at the vertical blank)
 Copy ps top UP-Term:bin CLONE
-; UPDemo: the terminal's show-off and benchmark (README, DEMO)
+; UPDemo: the terminal's show-off and benchmark (README, DEMO). Kits built between ee1ed79a and c41463df
+; installed the media drawer as C:UPDemo; Copy would put the program inside it, so whatever is there goes first
+Delete >NIL: C:UPDemo ALL QUIET FORCE
 Copy UPDemo C:UPDemo CLONE
 ; the media of its kitty animation scene (NASA's rotating Earth); without it the scene shows a coded globe
 MakeDir >NIL: UP-Term:share UP-Term:share/updemo
