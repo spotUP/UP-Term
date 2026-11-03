@@ -13,7 +13,7 @@
 #include <stdint.h>
 
 #define FLAT_SEM_NAME "Amarchy.Flat"
-#define FLAT_VERSION 3
+#define FLAT_VERSION 4
 
 typedef struct flat_state {
     uint16_t version;           /*  0 FLAT_VERSION; first, so a reader of another layout can refuse before the rest */
@@ -34,10 +34,12 @@ typedef struct flat_state {
     uint8_t pen_knob;           /* 24 KNOB-PEN: scroller knob fill, the surface moved FLAT_KNOB_PCT (60) percent toward the muted text colour; obtained by amarchy-flat itself (ObtainBestPen), 0 = none */
     uint8_t pen_inbar;          /* 25 S32-INACTIVE-BAR: bar, gadget boxes, ring, arrows and knob of an inactive window; obtained by amarchy-flat itself (ObtainBestPen) from inbar_rgb, 0 = none (the muted pen takes over) */
     uint8_t inbar_rgb[3];       /* 26 the colour of pen_inbar (R, G, B) written by Amarchy from the theme role GR_INACTIVE; all zero = derive it from the screen */
-    uint8_t pad[3];             /* 29 reserved, zero (keeps the block a multiple of 4 bytes) */
-} flat_state;                   /* 32 bytes */
+    uint8_t pen_sel;            /* 29 S33-PREFS-SKIN-FAIL: the pen holding the button fill; obtained by amarchy-flat itself (ObtainBestPen) from sel_rgb, 0 = none (pen_back takes over). pen_button is only the theme role number and is never drawn with */
+    uint8_t sel_rgb[3];         /* 30 the colour of pen_sel (R, G, B) written by Amarchy from the theme role GR_SELECTION; all zero = no held pen */
+    uint8_t pad[3];             /* 33 reserved, zero (keeps the block a multiple of 4 bytes) */
+} flat_state;                   /* 36 bytes */
 
-#define FLAT_STATE_SIZE 32
+#define FLAT_STATE_SIZE 36
 
 /* flat_check results */
 enum { FLAT_OK = 0, FLAT_ERR_VERSION = -1, FLAT_ERR_SIZE = -2 };
@@ -372,7 +374,7 @@ int flat_scroller_knob(int cx, int cy, int cw, int ch, int horiz, int vert, unsi
 typedef struct flat_pens {
     const void *screen;             /* the screen the pens were obtained on, 0 = none held */
     unsigned epoch;                 /* its ipd_epoch */
-    int dim, knob, inbar;           /* pen numbers, -1 = none */
+    int dim, knob, inbar, sel;      /* pen numbers, -1 = none */
 } flat_pens;
 typedef struct flat_pen_ops {
     void *ctx;

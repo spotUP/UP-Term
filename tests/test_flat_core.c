@@ -32,9 +32,11 @@ static void test_layout(void)
     CHECK_INT(offsetof(flat_state, pen_knob), 24);
     CHECK_INT(offsetof(flat_state, pen_inbar), 25);
     CHECK_INT(offsetof(flat_state, inbar_rgb), 26);
-    CHECK_INT(FLAT_STATE_SIZE, 32);
+    CHECK_INT(offsetof(flat_state, pen_sel), 29);
+    CHECK_INT(offsetof(flat_state, sel_rgb), 30);
+    CHECK_INT(FLAT_STATE_SIZE, 36);
     CHECK_STR(FLAT_SEM_NAME, "Amarchy.Flat");
-    CHECK_INT(FLAT_VERSION, 3);
+    CHECK_INT(FLAT_VERSION, 4);
 }
 
 static void test_init_check(void)
@@ -710,6 +712,7 @@ static void test_which_from_gtype(void)
         CHECK_INT(flat_frame_draw(&fs, 1, 10, 20, 8, 6, 1, FLAT_ROLE_SECONDARY, frame_rec, &f), 1);
         CHECK_INT(f.n == 1 && f.r[0][4] == 3, 1);                            /* pressed secondary gets accent fill */
         CHECK_INT(flat_button_pen(&fs, 2), 3);                               /* 4-colour primary uses accent fill */
+        fs.pen_sel = 4;
         CHECK_INT(flat_button_pen(&fs, 3), 4);                               /* 8 colours: lighter background */
     }
     {   /* FLAT-BUTTON-FILL: the pressed-label arm and the depth-checked fill pen */
@@ -771,9 +774,13 @@ static void test_which_from_gtype(void)
         }
         memset(&bs, 0, sizeof bs);
         bs.pen_back = 0; bs.pen_button = 4;
-        CHECK_INT(flat_button_pen(&bs, 3), 4);                                /* 8 colours: the button pen */
+        CHECK_INT(flat_button_pen(&bs, 3), 0);                                /* S33-PREFS-SKIN-FAIL: the role number is not a held pen: pen_back */
+        bs.pen_sel = 9;
+        CHECK_INT(flat_button_pen(&bs, 3), 0);                                /* 9 is no pen of 3 planes */
+        bs.pen_sel = 4;
+        CHECK_INT(flat_button_pen(&bs, 3), 4);                                /* 8 colours: the held button pen */
         CHECK_INT(flat_button_pen(&bs, 2), 0);                                /* 4 colours, no accent set: pen_back */
-        bs.pen_button = 0;
+        bs.pen_button = 0; bs.pen_sel = 0;
         CHECK_INT(flat_button_pen(&bs, 3), 0);                                /* unset: pen_back */
     }
     {   /* FLAT-OUTER-EDGE: flat_outline_rects paints exactly the outer 1 px ring of a w x h window, each pixel once, nothing inside */
@@ -1107,7 +1114,7 @@ static void test_disabled_button_dim_fill(void)
     int a, b, c1, c2;
     const flat_gbox *m;
     memset(&s, 0, sizeof s); memset(&g, 0, sizeof g);
-    s.enabled = 1; s.pen_back = 0; s.pen_text = 2; s.pen_line = 3; s.pen_button = 4; s.pen_dim = 6; s.pen_dimtext = 5;
+    s.enabled = 1; s.pen_back = 0; s.pen_text = 2; s.pen_line = 3; s.pen_button = 4; s.pen_sel = 4; s.pen_dim = 6; s.pen_dimtext = 5;
     flat_gh_frame(&g, &a, &c1, 0, 1, 0, 10, 20, 49, 39);
     flat_gh_text(&g, &a, &c1, 14, 32, "Use", 3);
     m = flat_gh_match(&s, &g, &a, &c1, 2, 10, 20, 49, 39);
@@ -1507,6 +1514,48 @@ static void wb_screen(wbscr *w, int first)
     w->col[6] = 0x565f89UL;
 }
 
+/* S33-PREFS-SKIN-FAIL: the button fill and the knob fallback are a pen flat holds, never a role number a palette load can recolour */
+static void test_button_pen_held(void)
+{
+    wbscr w;
+    flat_pens p;
+    flat_pen_ops o;
+    flat_state s;
+    int scr, i, n, live[4], d, bp, kp, sel;
+    desk_flat_state(1, 1, &s);
+    CHECK_INT(s.pen_button, DK_SELECTION);                          /* the role number Amarchy writes */
+    s.sel_rgb[0] = 0x28; s.sel_rgb[1] = 0x2c; s.sel_rgb[2] = 0x34;
+    s.pen_knob = 0; s.pen_dimtext = 0;                              /* the knob falls back to the button pen */
+    flat_pens_init(&p);
+    o.obtain = wb_obtain; o.release = wb_release; o.rgb = wb_rgb;
+    wb_screen(&w, 100);
+    o.ctx = &w;
+    flat_pens_refresh(&p, &o, &s, &scr, 1, 8);
+    sel = s.pen_sel;
+    CHECK_INT(sel >= 100, 1);
+    CHECK_INT(w.col[sel], 0x282c34UL);
+    n = desk_live_role_pens(8, live);
+    CHECK_INT(n > 0, 1);
+    bp = flat_button_pen(&s, 8);
+    kp = flat_knob_pen(&s, 8);
+    CHECK_INT(bp, sel);
+    CHECK_INT(kp, sel);
+    for (i = 0; i < n; i++) {
+        CHECK_INT(bp != live[i], 1);                                /* never a pen a palette load or program recolours */
+        CHECK_INT(kp != live[i], 1);
+    }
+    for (d = 3; d <= 8; d++)
+        CHECK_INT(flat_button_pen(&s, d) == (sel < (1 << d) ? sel : s.pen_back), 1);
+    CHECK_INT(flat_button_pen(&s, 2), s.pen_line);                  /* 4 colours: the accent line pen, no obtain */
+    flat_pens_release(&p, &o, &s, &scr, 1);
+    CHECK_INT(s.pen_sel, 0);
+    CHECK_INT(flat_button_pen(&s, 8), s.pen_back);                  /* nothing held: the background, never pen 4 */
+    CHECK_INT(flat_knob_pen(&s, 8), s.pen_back);
+    CHECK_INT(w.bad_releases, 0);
+    flat_pens_refresh(&p, &o, &s, &scr, 2, 2);                       /* 4 colours: no selection pen is obtained */
+    CHECK_INT(s.pen_sel, 0);
+}
+
 static void test_stale_held_pens(void)
 {
     wbscr a, b, c;
@@ -1518,6 +1567,7 @@ static void test_stale_held_pens(void)
     s.pen_back = 0;
     s.pen_text = 2;
     s.pen_button = 5;
+    s.sel_rgb[0] = 0x28; s.sel_rgb[1] = 0x2c; s.sel_rgb[2] = 0x34;
     s.pen_dimtext = 6;
     flat_pens_init(&p);
     o.obtain = wb_obtain;
@@ -1526,16 +1576,16 @@ static void test_stale_held_pens(void)
     wb_screen(&a, 249);
     o.ctx = &a;
     CHECK_INT(flat_pens_follow(&p, &o, &s, 1, &screen_a, 1, 8), 1);
-    CHECK_INT(a.obtains, 3);
+    CHECK_INT(a.obtains, 4);
     CHECK_INT(s.pen_inbar, 249);
     CHECK_INT(flat_pens_follow(&p, &o, &s, 1, &screen_a, 1, 8), 0);       /* same screen, same epoch: nothing */
-    CHECK_INT(a.obtains, 3);
+    CHECK_INT(a.obtains, 4);
     /* Workbench reopened as screen B: other clients own 249..251 there, ours would be 240.. */
     wb_screen(&b, 240);
     o.ctx = &b;
     CHECK_INT(flat_pens_follow(&p, &o, &s, 1, &screen_b, 2, 8), 1);
     CHECK_INT(b.releases, 0);                       /* the old pens were never obtained on B */
-    CHECK_INT(b.obtains, 3);
+    CHECK_INT(b.obtains, 4);
     CHECK_INT(b.col[s.pen_inbar], 0x5A5E75UL);      /* flat_inbar_colour of B's pen 0 and pen 2 */
     CHECK_INT(s.pen_inbar, 240);
     CHECK_INT(s.pen_knob != 0 && s.pen_dim != 0, 1);
@@ -1544,14 +1594,14 @@ static void test_stale_held_pens(void)
     o.ctx = &c;
     CHECK_INT(flat_pens_follow(&p, &o, &s, 1, &screen_b, 3, 8), 1);
     CHECK_INT(c.releases, 0);
-    CHECK_INT(c.obtains, 3);
+    CHECK_INT(c.obtains, 4);
     /* Ctrl-D on the identity they were obtained on releases normally; on another identity it only forgets */
     flat_pens_release(&p, &o, &s, &screen_b, 4);
     CHECK_INT(c.releases, 0);
     CHECK_INT(s.pen_inbar, 0);
     flat_pens_refresh(&p, &o, &s, &screen_b, 4, 8);
     flat_pens_release(&p, &o, &s, &screen_b, 4);
-    CHECK_INT(c.releases, 3);
+    CHECK_INT(c.releases, 4);
     CHECK_INT(c.bad_releases, 0);
     /* the screen going away forgets */
     flat_pens_refresh(&p, &o, &s, &screen_b, 5, 8);
@@ -1871,6 +1921,7 @@ void suite_flat_core(void)
     test_inactive_pens();
     test_inbar_status_dump();
     test_stale_held_pens();
+    test_button_pen_held();
     test_arrow_glyph_pens();
     test_arrow_knob_colour();
     test_arrow_aspect();

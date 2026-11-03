@@ -154,6 +154,9 @@ void desk_flat_inbar(const gtheme *t, flat_state *s)
     s->inbar_rgb[0] = (unsigned char)(r.c[GR_INACTIVE] >> 16);
     s->inbar_rgb[1] = (unsigned char)(r.c[GR_INACTIVE] >> 8);
     s->inbar_rgb[2] = (unsigned char)r.c[GR_INACTIVE];
+    s->sel_rgb[0] = (unsigned char)(r.c[GR_SELECTION] >> 16);      /* S33-PREFS-SKIN-FAIL: amarchy-flat obtains the button fill pen from this */
+    s->sel_rgb[1] = (unsigned char)(r.c[GR_SELECTION] >> 8);
+    s->sel_rgb[2] = (unsigned char)r.c[GR_SELECTION];
 }
 
 void desk_pens_for(int flat, unsigned char pens[DK_SLOTS])

@@ -1598,7 +1598,12 @@ $(BUILD)/amiga/devwho: tests/amiga/devwho.c device/upc_public.h
 # the helper programs install_rig.prepare copies into VTC: (install_rig.HELPERS);
 # dist-base does not build iconprobe, wbrun or conwho, so a fresh worktree needs this first
 .PHONY: rig-helpers
-rig-helpers: $(BUILD)/amiga/ptytest $(BUILD)/amiga/iconprobe $(BUILD)/amiga/wbrun $(BUILD)/amiga/conwho $(BUILD)/amiga/UPConsole $(BUILD)/amiga/wbpens $(BUILD)/amiga/iconpens $(BUILD)/amiga/idleprobe $(BUILD)/amiga/netprobe
+# S33-PREFS-SKIN-FAIL: SetRGB32 one Workbench pen from a rig script (tests/amiga/setpen.c)
+$(BUILD)/amiga/setpen: tests/amiga/setpen.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/setpen.c
+
+rig-helpers: $(BUILD)/amiga/ptytest $(BUILD)/amiga/iconprobe $(BUILD)/amiga/wbrun $(BUILD)/amiga/conwho $(BUILD)/amiga/UPConsole $(BUILD)/amiga/wbpens $(BUILD)/amiga/setpen $(BUILD)/amiga/iconpens $(BUILD)/amiga/idleprobe $(BUILD)/amiga/netprobe
 
 # H5.6's probes (tools/rig/concon_rig.py)
 $(BUILD)/amiga/conwho: tests/amiga/conwho.c handler/vtcon_packets.h

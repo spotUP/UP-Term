@@ -80,7 +80,26 @@ def compare(tag, base, now, g, pens):
     return bad
 
 
+def prefs_magenta():
+    """S33-PREFS-SKIN-FAIL: with flat on and Locale Prefs open, SetRGB32 palette pen 4 to FF33FF (what a palette load or another
+    program does to a pen nobody holds); the skin must draw with pens it holds, so no FF33FF pixel may appear on the screen
+    (the Locale window carries the buttons and knobs). Needs `make build/amiga/setpen`."""
+    ami.put(os.path.join(ROOT, 'build', 'amiga', 'setpen'), 'RAM:setpen')
+    c.run('Run >NIL: <NIL: SYS:Prefs/Locale')
+    time.sleep(4)
+    print('[INFO] setpen: %s' % c.run('RAM:setpen 4 FF33FF')[1].strip(), flush=True)
+    time.sleep(1.5)
+    w, h, rows = ami.grab()
+    want = bytes((0xFF, 0x33, 0xFF))
+    n = sum(r[i:i + 3] == want for r in rows for i in range(0, w * 3, 3))
+    c.run('RAM:setpen 4 0000FF')
+    verdict(n == 0, 'Locale Prefs with pen 4 = FF33FF: %d FF33FF pixels on the screen, want 0' % n)
+
+
 def main():
+    if '--prefs-magenta' in sys.argv:
+        prefs_magenta()
+        return 1 if fails else 0
     ami.put(os.path.join(ROOT, 'build', 'amiga', 'btnbgprobe'), 'RAM:btnbgprobe')
     ami.put(os.path.join(ROOT, 'build', 'amiga', 'wbpens'), 'T:wbpens')
     ami.put(os.path.join(ROOT, 'build', 'amiga', 'amarchy-flat'), 'RAM:amarchy-flat')

@@ -538,9 +538,9 @@ int flat_button_pen(const flat_state *s, int depth)
 {
     if (depth >= 1 && depth < 3 && s->pen_line)
         return s->pen_line;
-    if (!s->pen_button || depth < 1 || depth > 8 || s->pen_button >= (1 << depth))
-        return s->pen_back;
-    return s->pen_button;
+    if (!s->pen_sel || depth < 3 || depth > 8 || s->pen_sel >= (1 << depth))
+        return s->pen_back;                                  /* S33-PREFS-SKIN-FAIL: only the held pen, never the bare role number pen_button */
+    return s->pen_sel;
 }
 
 void flat_frame_size(int draw_frame, int dim_w, int dim_h, int img_w, int img_h, int *w, int *h)
@@ -679,7 +679,7 @@ void flat_pens_init(flat_pens *p)
 {
     p->screen = 0;
     p->epoch = 0;
-    p->dim = p->knob = p->inbar = -1;
+    p->dim = p->knob = p->inbar = p->sel = -1;
 }
 
 static int pens_here(const flat_pens *p, const void *screen, unsigned epoch)
@@ -691,10 +691,11 @@ static void pens_forget(flat_pens *p, flat_state *s)
 {
     p->screen = 0;
     p->epoch = 0;
-    p->dim = p->knob = p->inbar = -1;
+    p->dim = p->knob = p->inbar = p->sel = -1;
     s->pen_dim = 0;
     s->pen_knob = 0;
     s->pen_inbar = 0;
+    s->pen_sel = 0;
 }
 
 void flat_pens_release(flat_pens *p, const flat_pen_ops *o, flat_state *s, const void *screen, unsigned epoch)
@@ -706,6 +707,8 @@ void flat_pens_release(flat_pens *p, const flat_pen_ops *o, flat_state *s, const
             o->release(o->ctx, p->dim);
         if (p->knob >= 0)
             o->release(o->ctx, p->knob);
+        if (p->sel >= 0)
+            o->release(o->ctx, p->sel);
     }
     pens_forget(p, s);
 }
@@ -732,6 +735,11 @@ void flat_pens_refresh(flat_pens *p, const flat_pen_ops *o, flat_state *s, const
         p->knob = o->obtain(o->ctx, c);
         if (p->knob >= 0)
             s->pen_knob = (uint8_t)p->knob;
+    }
+    if (depth >= 3 && (s->sel_rgb[0] || s->sel_rgb[1] || s->sel_rgb[2])) {
+        p->sel = o->obtain(o->ctx, ((unsigned long)s->sel_rgb[0] << 16) | ((unsigned long)s->sel_rgb[1] << 8) | s->sel_rgb[2]);
+        if (p->sel >= 0)
+            s->pen_sel = (uint8_t)p->sel;
     }
     if (depth >= 3) {
         unsigned long c = (unsigned long)gt_scale((uc_u32)o->rgb(o->ctx, flat_button_pen(s, depth)), FLAT_DIM_PCT);
