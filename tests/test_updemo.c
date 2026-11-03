@@ -649,6 +649,10 @@ static void the_glyphs_scene_sends_powerline_nerd_emoji_and_box_glyphs(void)
     play_alone(scene_index("glyphs"), UPDEMO_AUTO);
     CHECK(cap_has("\356\202\260"));
     CHECK(cap_has("\357\201\273"));
+    /* UD6: the scene names the font and sends two rows of 11 + 9 distinct Nerd Font icons (all in SymbolsNerdFontMono 3.5.1) */
+    CHECK(cap_has("drawn by the font SymbolsNerdFontMono"));
+    CHECK(cap_has("\357\201\273  \357\200\225  \357\200\205  \357\204\241  \357\206\210  \357\200\243  \357\200\223  \357\203\247  \357\207\200  \357\200\227  \357\200\255"));
+    CHECK(cap_has("\356\202\240  \356\234\245  \356\230\253  \357\202\233  \357\222\211  \356\251\240  \357\203\242  \357\204\240  \363\260\200\201"));
     CHECK(cap_has("\360\237\232\200"));
     CHECK(cap_has("\342\224\214"));
     CHECK(cap_has("Glyphs with no font entry fall back to Unifont"));
