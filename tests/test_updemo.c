@@ -164,17 +164,18 @@ static int scene_index(const char *name)
  * second player, so no second list can hold scenes the first lacks. */
 static void there_is_one_scene_list_with_the_effects_at_its_end(void)
 {
-    CHECK_INT(updemo_scenes(), 25);
+    CHECK_INT(updemo_scenes(), 26);
     CHECK_INT(scene_index("styles"), 1);        /* the tour's scene, in the list a bare UPDemo plays */
-    CHECK_INT(scene_index("copper bars"), 17);  /* the show's scenes follow the tour's */
-    CHECK_INT(scene_index("the end"), 24);
+    CHECK_INT(scene_index("copper bars"), 18);  /* the show's scenes follow the tour's */
+    CHECK_INT(scene_index("the end"), 25);
+    CHECK_INT(scene_index("kitty animation"), 14);
 }
 
-/* a bare UPDemo plays the whole list from its first scene: the status line shows the caption and "1/24" */
+/* a bare UPDemo plays the whole list from its first scene: the status line shows the caption and "1/26" */
 static void a_bare_run_starts_at_the_first_scene_with_its_caption(void)
 {
     start(80, 24);
-    needle = "Demo 1/25  Text styles, double-size lines, box drawing";
+    needle = "Demo 1/26  Text styles, double-size lines, box drawing";
     CHECK_INT(updemo_run(&io, 80, 24, 0, 6), 0);
     CHECK(saw_text);
     needle = 0;
@@ -185,14 +186,14 @@ static void a_bare_run_starts_at_the_first_scene_with_its_caption(void)
 static void a_start_number_picks_a_scene_of_the_one_list(void)
 {
     start(80, 24);
-    needle = "Demo 2/25  Every text style a program can ask for";
+    needle = "Demo 2/26  Every text style a program can ask for";
     CHECK_INT(updemo_run(&io, 80, 24, 1, 6), 0);
     CHECK(saw_text);
-    needle = "Demo 1/25";
+    needle = "Demo 1/26";
     saw_text = 0;
     vt_free(t);
     start(80, 24);
-    needle = "Demo 1/25";
+    needle = "Demo 1/26";
     CHECK_INT(updemo_run(&io, 80, 24, 1, 6), 0);
     CHECK(!saw_text);   /* scene 1 was skipped */
     needle = 0;
@@ -288,6 +289,34 @@ static void the_unicode_scene_shows_emoji(void)
     CHECK_INT(updemo_run(&io, 80, 24, 0, 90), 0);
     CHECK(saw_text);
     needle = 0;
+    vt_free(t);
+}
+
+static int cap_has(const char *s);
+static void play_alone(int scene, int colours);
+
+/* UPDEMO-NEW-FEATURES (a): the kitty animation scene, run through the one scene runner, sends the first frame
+ * (a=T), seven more frames (a=f), a gap for each of the eight (a=a ... z=), and the loop command (a=a ... s=3);
+ * the engine takes all of it as one image with eight frames and leaves nothing unhandled. */
+static void the_kitty_animation_scene_sends_frames_gaps_and_the_loop(void)
+{
+    const char *kinds[16];
+    long counts[16], i, nf = 0, ng = 0, nt = 0;
+    play_alone(scene_index("kitty animation"), UPDEMO_AUTO);
+    for (i = 0; i + 13 < cap_len; i++) {
+        if (memcmp(cap + i, "\033_Ga=f,", 7) == 0)
+            nf++;
+        if (memcmp(cap + i, "\033_Ga=T,", 7) == 0)
+            nt++;
+        if (memcmp(cap + i, "\033_Ga=a,i=1,r=", 13) == 0)
+            ng++;
+    }
+    CHECK_INT(nt, 1);
+    CHECK_INT(nf, 7);
+    CHECK_INT(ng, 8);
+    CHECK(cap_has("\033_Ga=a,i=1,s=3,q=2\033\\"));
+    CHECK(saw_image);
+    CHECK_INT(vt_unhandled(t, kinds, counts, 16), 0);
     vt_free(t);
 }
 
@@ -948,6 +977,7 @@ void suite_updemo(void)
     a_start_number_picks_a_scene_of_the_one_list();
     bench_picks_the_effect_scenes_of_the_one_list();
     the_unicode_scene_shows_emoji();
+    the_kitty_animation_scene_sends_frames_gaps_and_the_loop();
     the_styles_scene_shows_slow_and_rapid_blink();
     q_ends_the_demo_and_any_other_key_does_not();
     a_key_goes_to_the_next_scene_and_the_demo_keeps_running();

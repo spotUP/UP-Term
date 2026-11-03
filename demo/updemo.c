@@ -1811,6 +1811,97 @@ static void sc_sixel(long t, int first)
     ball_sixel((int)last * 4);
 }
 
+/* Kitty graphics animation (APC G a=f / a=a): a globe turns in the text. The
+ * frames are raw RGB computed here (a few KB each, no asset to ship); the
+ * terminal holds them, each with its own gap, and loops the run itself, so
+ * after the first second the scene sends nothing at all. */
+#define GLOBE 48
+#define GLOBE_FRAMES 8
+#define GLOBE_GAP_MS 120
+
+/* one image command, its base64 payload in chunks of 4096 characters (m=1 on all but the last) */
+static void kitty_chunks(const char *ctrl, const unsigned char *d, long n)
+{
+    static const char b64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    long i, col = 0, left = (n + 2) / 3 * 4;
+    int firstchunk = 1;
+    for (i = 0; i < n; i += 3) {
+        long v = (long)d[i] << 16 | (i + 1 < n ? (long)d[i + 1] << 8 : 0) | (i + 2 < n ? d[i + 2] : 0);
+        if (!col) {
+            ps("\033_G");
+            if (firstchunk) {
+                ps(ctrl);
+                pc(',');
+            }
+            ps(left > 4096 ? "m=1;" : "m=0;");
+            firstchunk = 0;
+        }
+        pc(b64[v >> 18 & 63]);
+        pc(b64[v >> 12 & 63]);
+        pc(i + 1 < n ? b64[v >> 6 & 63] : '=');
+        pc(i + 2 < n ? b64[v & 63] : '=');
+        left -= 4;
+        if (++col == 1024 || i + 3 >= n) {
+            ps("\033\\");
+            col = 0;
+        }
+    }
+}
+
+static void globe_frame(unsigned char *px, int phase)
+{
+    int x, y, r2 = (GLOBE / 2) * (GLOBE / 2);
+    for (y = 0; y < GLOBE; y++)
+        for (x = 0; x < GLOBE; x++) {
+            int dx = x - GLOBE / 2, dy = y - GLOBE / 2, d2 = dx * dx + dy * dy, half = 0, u, v, land, lit;
+            unsigned char *q = px + (y * GLOBE + x) * 3;
+            if (d2 >= r2) {
+                q[0] = 8, q[1] = 8, q[2] = 24;
+                continue;
+            }
+            while ((half + 1) * (half + 1) <= r2 - dy * dy)
+                half++;
+            /* longitude: x over the row's half width; the phase turns the globe */
+            u = (dx * 64 / (half + 1) + 256 + phase * (128 / GLOBE_FRAMES)) >> 5;
+            v = (dy + 64) >> 4;
+            land = (u ^ v) & 1;
+            lit = 255 - d2 * 150 / r2;
+            q[0] = (unsigned char)((land ? 40 : 30) * lit / 255);
+            q[1] = (unsigned char)((land ? 170 : 90) * lit / 255);
+            q[2] = (unsigned char)((land ? 60 : 200) * lit / 255);
+        }
+}
+
+static void sc_kitty_anim(long t, int first)
+{
+    static unsigned char px[GLOBE * GLOBE * 3];
+    int f;
+    (void)t;
+    if (!first)
+        return;
+    heading("Kitty animation", "frames sent once; the terminal plays them, with their gaps, in a loop");
+    at(5, 40);
+    ps("The globe turns by itself:");
+    at(6, 40);
+    ps("the program sent 8 frames,");
+    at(7, 40);
+    ps("their gaps, and one loop command.");
+    ps("\033_Ga=d,d=I,i=1,q=2\033\\");
+    at(4, 6);
+    for (f = 0; f < GLOBE_FRAMES; f++) {
+        globe_frame(px, f);
+        kitty_chunks(f ? "a=f,i=1,f=24,s=48,v=48,q=2" : "a=T,i=1,f=24,s=48,v=48,q=2", px, sizeof px);
+    }
+    for (f = 1; f <= GLOBE_FRAMES; f++) {
+        ps("\033_Ga=a,i=1,r=");
+        pn(f);
+        ps(",z=");
+        pn(GLOBE_GAP_MS);
+        ps(",q=2\033\\");
+    }
+    ps("\033_Ga=a,i=1,s=3,q=2\033\\");
+}
+
 /* A frame counter in big letters. With mode 2026 the terminal shows each
  * frame whole; every other second the frames go without it, and a slow
  * machine shows them being drawn. */
@@ -1956,6 +2047,7 @@ static const scene_def scenes[] = {
     { "mouse", sc_mouse, 0, 600, "Mouse reports: click in the window", 0, 0, 0 },
     { "links", sc_links, 0, 400, "Hyperlinks (OSC 8) and notifications (OSC 9)", 0, 0, 0 },
     { "sixel", sc_sixel, 0, 450, "Sixel images: pictures in the text", 0, 0, 0 },
+    { "kitty animation", sc_kitty_anim, 0, 450, "Kitty graphics: an animation the terminal plays", 0, 0, 0 },
     { "synchronized output", sc_sync, 1, 400, "Synchronized output: frames shown whole", 0, 0, 0 },
     { "resize", sc_resize, 0, 400, "A program resizes the window (DECCOLM)", 0, 0, 0 },
     { "reflow", sc_reflow, 0, 750, "Reflow on resize", 1, 0, 0 },
