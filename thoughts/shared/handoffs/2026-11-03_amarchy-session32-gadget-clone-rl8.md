@@ -85,8 +85,10 @@ status: in progress
    reinstall waits on this + NERD-FALLBACK-DEFAULT + IMAGE-ASPECT-HIRES). vtcon-ee told both 2026-11-03.
    Also open: AMI-OPEN-CLOSES-WELCOME.
 9g. Session 33 (2026-11-03 late):
-   S32-KNOB-NONE-FRESH: caused by fb6aa600 amarchy-flat (rig 63 repro); main (33d894d8) draws the knob. Fixed on main,
-   confirm on rig 96 reinstall. Test idea (not written): test_flat_core borderless newlook prop full body
+   S32-KNOB-NONE-FRESH: CORRECTION - NOT fixed on main. Earlier text here said main (33d894d8) draws the knob; wrong:
+   33d894d8 only changes the arrow/size image path (c2_draw). The XCON prop knob is a propgclass RectFill through the
+   scroller gate (flat.c:708-790), unchanged since fb6aa600. Still open: opus hunt (leads in ledger row), wait for the
+   rig 96 read of drawer knobs vs XCON knob. Test idea (not written): test_flat_core borderless newlook prop full body
    (s33-evidence/knob-none-fresh.md).
    BAR-STRIP-RESERVE root cause: strut_publish reflows only desktop windows; windows opened before the bar stay over
    the strip (s33-evidence/bar-strip-full-install.md). Sonnet worktree agent fixing (reflow + host test + rig row
