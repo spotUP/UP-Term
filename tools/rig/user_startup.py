@@ -23,6 +23,14 @@ def strip_upterm_blocks(data, name='UP-Term'):
 RIG_SHADOWS_BLOCK = 'rig-upterm-shadows'
 
 
+# KIT-WASABI-DOUBLE: the block that starts the rig's own wasabid (BOOTX:wasabid-up) before the kit's blocks, so the rig's
+# daemon wins the race against the kit's `Run >NIL: C:wasabid` on every boot, an Amiga-side reboot included.
+RIG_WASABID_BLOCK = 'rig-wasabid'
+RIG_BLOCKS = (RIG_SHADOWS_BLOCK, RIG_WASABID_BLOCK)
+
+
 def without_rig_blocks(data):
-    """data without the rig's own shadow block (bytes in, bytes out)."""
-    return strip_upterm_blocks(data, RIG_SHADOWS_BLOCK)
+    """data without the rig's own blocks (bytes in, bytes out)."""
+    for name in RIG_BLOCKS:
+        data = strip_upterm_blocks(data, name)
+    return data
