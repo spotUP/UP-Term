@@ -1338,22 +1338,23 @@ static void dk_orig_off(unsigned desk_mask, int flat)
  * set. The originals are saved first (dk_orig_save), so turning the look off still restores the user's own files. */
 unsigned long desk_dos_start_plans, desk_dos_start_writes;
 
-/* S32-WB-BACKDROP: the root window's flags (the stock Workbench window spanning the screen, bar_is_desktop), 0 = none found. */
+/* S32-WB-BACKDROP: the root window's flags (the stock Workbench window spanning the screen, bar_is_desktop), DESK_ROOT_NONE / DESK_ROOT_WB (flags set) / DESK_ROOT_FOREIGN (a desktop window that is not a Workbench window, e.g. Directory Opus). */
 static int dk_wb_root_flags(unsigned long *flags)
 {
     struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
     struct Screen *s;
-    int found = 0;
+    int found = DESK_ROOT_NONE;
     if (!IntuitionBase)
-        return 0;
+        return DESK_ROOT_NONE;
     if ((s = ipd_lock_wb_screen()) != 0) {
         ULONG il = LockIBase(0);
         struct Window *w;
         for (w = s->FirstWindow; w; w = w->NextWindow)
-            if ((w->Flags & BAR_WFLG_WBENCHWINDOW) && bar_is_desktop((unsigned long)w->Flags, w->LeftEdge, w->LeftEdge + w->Width - 1, s->Width)) {
+            if (bar_is_desktop((unsigned long)w->Flags, w->LeftEdge, w->LeftEdge + w->Width - 1, s->Width)) {
                 *flags = (unsigned long)w->Flags;
-                found = 1;
-                break;
+                found = (w->Flags & BAR_WFLG_WBENCHWINDOW) ? DESK_ROOT_WB : DESK_ROOT_FOREIGN;
+                if (found == DESK_ROOT_WB)
+                    break;
             }
         UnlockIBase(il);
         UnlockPubScreen(0, s);
@@ -1369,14 +1370,14 @@ int desk_dos_wb_backdrop(void)
 {
     am_prefs ap;
     unsigned long fl = 0;
-    int i, found = 0, port;
+    int i, state = DESK_ROOT_NONE, port;
     amconf_load(&ap);
     if (!amconf_desk_master(&ap))
         return 0;
     port = rexx_port_exists("WORKBENCH");
-    for (i = 0; port && i < 10 && !(found = dk_wb_root_flags(&fl)); i++)
+    for (i = 0; port && i < 10 && desk_wb_root_wait(state = dk_wb_root_flags(&fl)); i++)
         Delay(25);
-    if (!desk_wb_backdrop_invoke(1, port, found, fl))
+    if (!desk_wb_backdrop_invoke(1, port, state == DESK_ROOT_WB, fl))
         return 0;
     rexx_send("WORKBENCH", "MENU INVOKE WORKBENCH.BACKDROP", 0, 0);
     desk_dos_wb_backdrop_invokes++;

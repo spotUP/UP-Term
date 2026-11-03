@@ -1401,6 +1401,10 @@ static void test_desk_wb_backdrop_invoke(void)
     CHECK_INT(desk_wb_backdrop_invoke(1, 0, 1, 0x02000000UL), 0);              /* 3.1: no WORKBENCH port */
     CHECK_INT(desk_wb_backdrop_invoke(1, 1, 0, 0), 0);                         /* no root window yet */
     CHECK_INT(desk_wb_backdrop_invoke(1, 1, 1, 0x00000100UL), 0);              /* Directory Opus root: left alone */
+    CHECK_INT(desk_wb_root_wait(DESK_ROOT_NONE), 1);                           /* root not opened yet: keep waiting */
+    CHECK_INT(desk_wb_root_wait(DESK_ROOT_WB), 0);                             /* Workbench root found: decide at once */
+    CHECK_INT(desk_wb_root_wait(DESK_ROOT_FOREIGN), 0);                        /* Directory Opus root: no 5 s wait */
+    CHECK_INT(desk_wb_backdrop_invoke(1, 1, DESK_ROOT_FOREIGN == DESK_ROOT_WB, 0x00000100UL), 0); /* foreign root: no invoke */
 }
 
 /* S32-START-LOOK: Amarchy starts before LoadWB; the start look waits for the Workbench screen, then runs once */
