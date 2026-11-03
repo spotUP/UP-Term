@@ -1611,12 +1611,15 @@ static void sc_complete(long t, int first)
 
 #include "tour_themes.inc"
 
+#define TOUR_THEME_TICKS 90 /* each theme stays this long (1/50 s) */
+#define TOUR_THEME_COUNT ((int)(sizeof(tour_themes) / sizeof(tour_themes[0])))
+
 /* the kit's themes, one after the other: OSC 4 for the 16 colours, OSC 10
  * and 11 for the default ones (what Settings > Theme... does to a window) */
 static void sc_themes(long t, int first)
 {
     static int cur;
-    int k = (int)(t / 120) % (int)(sizeof(tour_themes) / sizeof(tour_themes[0])), i;
+    int k = (int)(t / TOUR_THEME_TICKS) % (int)(sizeof(tour_themes) / sizeof(tour_themes[0])), i;
     if (first) {
         cur = -1;
         heading("Themes, switched live", ansi ? "a theme sets the 16 colours; what is on screen follows"
@@ -2236,7 +2239,7 @@ static const scene_def scenes[] = {
     { "splits", sc_splits, 0, 300, "Split panes: Window menu and keys", 0, 0, 0 },
     { "vsh", sc_vsh, 0, 500, "vsh, the shell of UP-Term windows", 0, 0, 0 },
     { "completion", sc_complete, 0, 450, "Tab completion, Unix style and KingCON style", 0, 0, 0 },
-    { "themes", sc_themes, 0, 480, "Themes switched live (OSC 4, 10, 11)", 0, 0, "Themes: the 16 colours a theme sets" },
+    { "themes", sc_themes, 0, TOUR_THEME_COUNT * TOUR_THEME_TICKS, "Themes switched live (OSC 4, 10, 11)", 0, 0, "Themes: the 16 colours a theme sets" },
     { "mouse", sc_mouse, 0, 600, "Mouse reports: click in the window", 0, 0, 0 },
     { "links", sc_links, 0, 400, "Hyperlinks (OSC 8) and notifications (OSC 9)", 0, 0, 0 },
     { "sixel", sc_sixel, 0, 450, "Sixel images: pictures in the text", 0, 0, 0 },

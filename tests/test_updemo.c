@@ -777,6 +777,34 @@ static int cap_extended_colour(void)
     return sgr_has_param_in(bad, 3);
 }
 
+/* The themes scene tours twelve of the kit's themes live: each one's name is on screen while its colours (OSC 4,
+ * 10, 11) are set, and the scene runs long enough to reach the last. */
+static void the_themes_scene_names_twelve_themes_while_each_is_live(void)
+{
+    static const char *const names[] = { "Dracula Default", "Solarized Dark", "Gruvbox Dark", "Nord Default",
+        "Tokyo Night Default", "One Dark", "Tomorrow Night Eighties", "Kanagawa Wave", "Everforest Dark",
+        "Solarized Light", "GitHub Light", "One Light" };
+    long frames, tk, i;
+    int n, osc4 = 0, sc = scene_index("themes");
+    start(80, 24);
+    capturing = 1;
+    cap_len = 0;
+    updemo_colours(UPDEMO_AUTO);
+    updemo_only(1);
+    CHECK_INT(updemo_run(&io, 80, 24, sc, 0), 0); /* the scene's own length */
+    updemo_only(0);
+    capturing = 0;
+    for (n = 0; n < 12; n++)
+        CHECK_STR(cap_has(names[n]) ? names[n] : "", names[n]);
+    for (i = 0; i + 4 <= cap_len; i++)
+        if (!memcmp(cap + i, "\033]4;", 4))
+            osc4++;
+    CHECK_INT(osc4, 12);
+    updemo_stats(sc, &frames, &tk);
+    CHECK(frames > 12);
+    vt_free(t);
+}
+
 static void play_alone(int scene, int colours)
 {
     start(80, 24);
@@ -1147,6 +1175,7 @@ void suite_updemo(void)
     a_resize_in_the_reflow_scene_does_not_end_the_demo();
     a_frame_the_terminal_draws_in_20_ms_still_comes_25_times_a_second();
     palette_cycling_tells_the_renderer_once_a_frame();
+    the_themes_scene_names_twelve_themes_while_each_is_live();
     ansi_mode_sends_only_the_16_colours_in_every_scene();
     ansi_effects_draw_gradients_from_shade_blocks();
     ansi_palette_cycling_changes_colour_indices_not_the_palette();

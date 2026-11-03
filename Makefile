@@ -384,7 +384,7 @@ $(MENU_ICONS_INC): tools/gen_menu_icons.py tools/gen_emoji.py dist/menu-icons $(
 	python3 tools/gen_menu_icons.py dist/menu-icons $(SYMBOLS_TTF) $@
 
 # the themes the UPDemo tour switches between, from themes/ (committed)
-demo/tour_themes.inc: tools/gen_tour_themes.py themes/dracula-default.conf themes/solarized-dark.conf themes/gruvbox-dark.conf themes/nord-default.conf
+demo/tour_themes.inc: tools/gen_tour_themes.py $(addprefix themes/,$(addsuffix .conf,dracula-default solarized-dark gruvbox-dark nord-default tokyo-night-default one-dark tomorrow-night-eighties kanagawa-wave everforest-dark solarized-light github-light one-light))
 	python3 tools/gen_tour_themes.py
 
 # engine/vtwidth.h from the Unicode character database (glibc's wcwidth rules;
