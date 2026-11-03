@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "../amarchy/help_core.h"
+#include "../amarchy/menu_geom.h"
 #include "harness.h"
 
 static const char km_text[] =
@@ -214,13 +215,45 @@ static void test_gui_welcome_wired(void)
     CHECK(strstr(gui, "hc_expand(&km, viewer == 2 ? amhelp_welcome : amhelp_help") != 0);
     CHECK(strstr(gui, "hc_welcome_key(c, &g->wticked, &g->wdone)") != 0);
     CHECK(strstr(gui, "hc_mark_shown(&p)") != 0);
+    CHECK(strstr(gui, "mg_strip_hit(&g->g, mx, my)") != 0 && strstr(gui, "mg_strip_y(q, r)") != 0);
     CHECK(strstr(gui, "amconf_save_with(amconf_dos_io(), &p, 1, &failed)") != 0);
     CHECK(strstr(gui, "\"Welcome to Amarchy\"") != 0 && strstr(gui, "\"Amarchy Help\"") != 0);
     CHECK(strstr(am, "hc_should_welcome(") != 0 && strstr(am, "\"amarchy-gui\", \"welcome\"") != 0);
 }
 
+/* WELCOME-TAIL-HIDDEN: the check box and button rows are a strip pinned below the scrolling text, inside the window,
+ * however long the text; the scroll covers the text lines only. */
+static void test_welcome_strip_pinned(void)
+{
+    mg_geom g;
+    mg_font f;
+    mg_screen s;
+    int lines;
+    memset(&s, 0, sizeof s);
+    f.ysize = 8;
+    f.cw = 8;
+    s.w = 640;
+    s.h = 256;
+    for (lines = 3; lines <= 60; lines += 19) {
+        mg_layout_text(&g, &f, 568, lines, 2, &s);
+        CHECK_INT(g.n, lines);                                  /* the strip is not a scrolled entry */
+        CHECK_INT(g.tail, 2);
+        CHECK(g.visible <= lines);
+        CHECK(g.strip_y >= g.list_y + g.list_h);                /* below the text, never over it */
+        CHECK(mg_strip_y(&g, 1) + g.tail_h <= g.h);             /* the buttons end inside the window */
+        CHECK(g.h <= s.h);
+        CHECK_INT(mg_strip_hit(&g, g.list_x + 2, mg_strip_y(&g, 0) + 1), 0);
+        CHECK_INT(mg_strip_hit(&g, g.list_x + 2, mg_strip_y(&g, 1) + 1), 1);
+        CHECK_INT(mg_strip_hit(&g, g.list_x + 2, g.list_y), -1);
+    }
+    mg_layout_text(&g, &f, 568, 60, 2, &s);
+    CHECK(g.visible < 60);                                      /* long text scrolls ... */
+    CHECK(mg_strip_y(&g, 1) + g.tail_h <= g.h);                 /* ... and the strip is still in the window */
+}
+
 void suite_help_core(void)
 {
+    test_welcome_strip_pinned();
     test_expand();
     test_unbound();
     test_rebound();

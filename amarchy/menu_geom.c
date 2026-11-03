@@ -116,11 +116,13 @@ int mg_width(const keymap *k, const char *node, const mg_font *f, int icon_w, in
     return mg_width_t(k, node, f, icon_w, chev_w, text, ctx, s, 1);
 }
 
-/* One layout, the rows `tail` last ones with the menu's metrics when tail > 0 (m holds the text row values then) */
+/* One layout of n scrolling entries. When tail >= 0 the entries are text lines (the font plus a small leading) and
+ * `tail` rows of the menu's row height are pinned in a strip below them (the welcome window's check box and buttons:
+ * they stay in view, only the text scrolls). The strip's height is taken off the room the text gets. */
 static void layout(mg_geom *g, const mg_font *f, int w, int n, int tail, const mg_screen *s)
 {
     mg_metrics *m = &g->m;
-    int chrome, room, fit, extra = 0, ntext;
+    int chrome, room, fit, strip = 0, ntext;
     mg_metrics_for(m, f, s);
     g->tail = 0;
     g->tail_h = m->row_h;
@@ -128,30 +130,31 @@ static void layout(mg_geom *g, const mg_font *f, int w, int n, int tail, const m
     g->max_row_h = m->row_h;
     if (tail >= 0) {                        /* text lines: the font plus a small leading */
         int leading = m->row_gap;
-        g->tail = imin(tail, n);
+        g->tail = tail;
         m->row_h = f->ysize + leading;
         m->row_gap = 0;
         m->pitch = m->row_h;
-        extra = g->tail * (g->tail_h + g->tail_gap - m->pitch);
+        if (tail > 0)
+            strip = m->gap + tail * (g->tail_h + g->tail_gap) - g->tail_gap;
     }
-    ntext = n - g->tail;
+    ntext = n;
     chrome = 2 * m->by + 2 * m->vpad + m->head_h + m->gap;
-    room = imin(s->h - 2 * m->margin_y - chrome, s->h * 7 / 10);
-    fit = imin(imax(1, (room - extra + m->row_gap) / m->pitch), MG_MAX_ROWS);
+    room = imin(s->h - 2 * m->margin_y - chrome - strip, s->h * 7 / 10 - strip);
+    fit = imin(imax(1, (room + m->row_gap) / m->pitch), MG_MAX_ROWS);
     g->n = n;
     if (n > fit) {
         g->peek = m->row_h * 55 / 100;
-        g->visible = imin(imax(1, (room - extra - g->peek) / m->pitch), MG_MAX_ROWS);
-        g->list_h = g->visible * m->pitch + g->peek + extra;
+        g->visible = imin(imax(1, (room - g->peek) / m->pitch), MG_MAX_ROWS);
+        g->list_h = g->visible * m->pitch + g->peek;
     } else {
         g->peek = 0;
         g->visible = n;
-        g->list_h = n > 0 ? ntext * m->pitch + g->tail * (g->tail_h + g->tail_gap) - (g->tail ? g->tail_gap : m->row_gap) : 0;
+        g->list_h = n > 0 ? ntext * m->pitch - m->row_gap : 0;
     }
     if (g->tail && g->tail_h > g->max_row_h)
         g->max_row_h = g->tail_h;
     g->w = w;
-    g->h = chrome + g->list_h;
+    g->h = chrome + g->list_h + strip;
     if (s->anchored) {
         g->x = imax(0, imin(s->ax - g->w, s->w - g->w));
         g->y = imax(0, imin(s->ay - g->h, s->h - g->h));
@@ -163,6 +166,7 @@ static void layout(mg_geom *g, const mg_font *f, int w, int n, int tail, const m
     g->head_w = g->list_w = w - 2 * (m->bx + m->hpad);
     g->head_y = m->by + m->vpad;
     g->list_y = g->head_y + m->head_h + m->gap;
+    g->strip_y = g->list_y + g->list_h + m->gap;
 }
 
 void mg_layout(mg_geom *g, const mg_font *f, int w, int n, const mg_screen *s)
@@ -191,19 +195,32 @@ int mg_more(const mg_geom *g, int top)
     return g->peek > 0 && top + g->visible < g->n;
 }
 
+int mg_strip_y(const mg_geom *g, int i)
+{
+    return g->strip_y + i * (g->tail_h + g->tail_gap);
+}
+
+int mg_strip_hit(const mg_geom *g, int mx, int my)
+{
+    int i;
+    if (mx < g->list_x || mx >= g->list_x + g->list_w)
+        return -1;
+    for (i = 0; i < g->tail; i++)
+        if (my >= mg_strip_y(g, i) && my < mg_strip_y(g, i) + g->tail_h)
+            return i;
+    return -1;
+}
+
 int mg_row_h_of(const mg_geom *g, int e)
 {
-    return e >= g->n - g->tail ? g->tail_h : g->m.row_h;
+    (void)e;
+    return g->m.row_h;
 }
 
 int mg_row_y_at(const mg_geom *g, int top, int i)
 {
-    int y = g->list_y, k;
-    for (k = 0; k < i; k++) {
-        int e = top + k;
-        y += e >= g->n - g->tail ? g->tail_h + g->tail_gap : g->m.pitch;
-    }
-    return y;
+    (void)top;
+    return g->list_y + i * g->m.pitch;
 }
 
 int mg_row_y(const mg_geom *g, int i)

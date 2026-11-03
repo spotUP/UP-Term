@@ -447,12 +447,12 @@ static void draw_icon(gui *g, int role, const mn_item *it, int x, int y, int box
 }
 
 /* One row of the current mode, entry e (0-based among all entries), when it is shown. */
-/* The welcome window's two rows after the text: row 0 the checkbox, row 1 the buttons Close and Open Help. Theme
- * roles only (MT_TEXT, MT_BG, MT_THEME_ACCENT, MT_SELTEXT). */
+/* The welcome window's two rows of the pinned strip below the text: row 0 the checkbox, row 1 the buttons Close and
+ * Open Help. Theme roles only (MT_TEXT, MT_BG, MT_THEME_ACCENT, MT_SELTEXT). */
 static void draw_welcome_row(gui *g, int r, int tx, int y, int rbg)
 {
     const mg_geom *q = &g->g;
-    int rh = q->tail_h;                 /* the menu's row height: the welcome rows are the tail of the text layout */
+    int rh = q->tail_h;                 /* the menu's row height */
     if (r == 0) {
         int s = rh - 6, bx = tx, by = y + 3;
         const char *t = "Don't show this again";
@@ -561,8 +561,6 @@ static void draw_row(gui *g, int e)
         memcpy(t, g->edit, (size_t)g->elen);
         t[g->elen] = '_';
         put(g, MT_SELTEXT, rbg, tx, y, q->m.row_h, t, g->elen + 1, tw);
-    } else if (g->mode == M_VIEW && g->welcome == 1 && e >= g->nlines) {
-        draw_welcome_row(g, e - g->nlines, tx, y, rbg);
     } else
         put(g, MT_TEXT, rbg, tx, y, q->m.row_h, g->ln[e], g->ll[e], tw);
     paint_end(g, q->list_x, y, q->list_x + q->list_w - 1, bottom);
@@ -581,6 +579,11 @@ static void draw_list(gui *g)
         draw_row(g, e);
     /* the peek row's text runs past the list: put the padding and the border back */
     fill(g, MT_BG, q->m.bx, q->list_y + q->list_h, q->w - q->m.bx - 1, q->h - q->m.by - 1);
+    if (g->mode == M_VIEW && g->welcome == 1) {      /* the pinned strip: always in view, repainted with every list draw */
+        int r;
+        for (r = 0; r < q->tail; r++)
+            draw_welcome_row(g, r, q->list_x + q->m.row_pad, mg_strip_y(q, r), MT_BG);
+    }
     draw_border(g);
     paint_end(g, 0, 0, g->g.w - 1, g->g.h - 1);
     sentinel_cursor(g);
@@ -618,7 +621,7 @@ static void draw_full(gui *g)
 static void do_layout(gui *g, int n)
 {
     if (g->mode == M_VIEW)
-        mg_layout_text(&g->g, &g->mf, g->w, g->nlines + (g->welcome == 1 ? 2 : 0), g->welcome == 1 ? 2 : 0, &g->ms);
+        mg_layout_text(&g->g, &g->mf, g->w, g->nlines, g->welcome == 1 ? 2 : 0, &g->ms);
     else
         mg_layout(&g->g, &g->mf, g->w, n, &g->ms);
 }
@@ -1204,7 +1207,7 @@ static void mouse_button(gui *g, int code, int mx, int my)
         return;
     }
     if (g->mode == M_VIEW && g->welcome == 1) {
-        h = mg_hit(&g->g, g->top, mx, my) - g->nlines;
+        h = mg_strip_hit(&g->g, mx, my);
         if (h == 0) {
             g->wticked = !g->wticked;
             draw_list(g);

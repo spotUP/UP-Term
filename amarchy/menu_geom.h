@@ -71,8 +71,9 @@ typedef struct mg_geom {
     int n;                      /* entries of the level */
     int visible;                /* rows drawn whole */
     int peek;                   /* height of the cut-off row below them when n > visible, else 0 */
-    int tail;                   /* trailing rows laid out with the menu's row height (mg_layout_text), else 0 */
+    int tail;                   /* rows pinned in a strip below the list, at the menu's row height (mg_layout_text), else 0 */
     int tail_h, tail_gap;       /* their height and the space below one (the menu's, when tail > 0) */
+    int strip_y;                /* window-relative top of the strip (below the list, set when tail > 0) */
     int max_row_h;              /* the tallest row of this layout */
 } mg_geom;
 
@@ -83,7 +84,8 @@ void mg_layout(mg_geom *g, const mg_font *f, int w, int n, const mg_screen *s);
 
 /* Like mg_layout for lines of text (the viewers): the n entries are text lines at the text pitch, the font's
  * ysize plus a small leading (the menu's row gap), not the menu's row pitch that put huge gaps between lines;
- * the last `tail` entries (the welcome window's check box and buttons) keep the menu's row height. m.row_h,
+ * `tail` further rows (the welcome window's check box and buttons) are pinned below the scrolling lines in a strip
+ * at the menu's row height: always in view, never part of n or of the scroll (WELCOME-TAIL-HIDDEN). m.row_h,
  * m.row_gap and m.pitch hold the text values. */
 void mg_layout_text(mg_geom *g, const mg_font *f, int w, int n, int tail, const mg_screen *s);
 
@@ -95,6 +97,9 @@ int mg_more(const mg_geom *g, int top);
 int mg_row_y(const mg_geom *g, int i);
 /* The same when the first row shown is entry top (rows of a text layout differ in height at its tail). */
 int mg_row_y_at(const mg_geom *g, int top, int i);
+/* Window-relative top of the i-th pinned strip row, and the strip row under a window-relative point (-1: none). */
+int mg_strip_y(const mg_geom *g, int i);
+int mg_strip_hit(const mg_geom *g, int mx, int my);
 /* Height of entry e. */
 int mg_row_h_of(const mg_geom *g, int e);
 /* The entry under a window-relative point, the peek row included; -1 off the rows. */

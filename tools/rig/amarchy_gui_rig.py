@@ -499,6 +499,32 @@ def case_list_scroll(level='Style'):
     scroll_probe(rows_now())
 
 
+def case_welcome():
+    """WELCOME-TAIL-HIDDEN / WELCOME-TICK-REDRAW (written 2026-11-03, not yet run on a rig): the welcome window shows the
+    checkbox row and the Close / Open Help row inside its box on first view (no scrolling), and one click on the
+    checkbox repaints it ticked. The strip is the bottom two rows of the window's list area: the checkbox row is the
+    upper one. Pixels: the box interior is background when empty and carries the accent colour when ticked."""
+    c.run('Delete >NIL: ENV:Amarchy/prefs ENVARC:Amarchy/prefs')
+    c.run('Run >NIL: %s/amarchy-gui welcome' % paths.UPTERM_BIN)
+    s, w = wait_where('Welcome to Amarchy')
+    check(w is not None, 'welcome: the window opened')
+    if not w:
+        return
+    x, y, ww, hh = box_of(s, w)
+    # bottom strip: two rows of about 14 rows each above the border; grab the bottom 40 rows of the window
+    gw, gh, rows = ami.grab((x + 4, y + hh - 44, ww - 8, 40))
+    bg = tuple(rows[0][0:3])
+    painted = sum(1 for r in rows for i in range(len(r) // 3) if tuple(r[i * 3:i * 3 + 3]) != bg)
+    check(painted > 200, 'welcome: the checkbox and Close / Open Help rows are inside the window on first view (%d painted)' % painted)
+    cx, cy = x + 16, y + hh - 34          # inside the checkbox of the upper strip row
+    before = ami.grab((cx - 4, cy - 4, 9, 9))[2]
+    ami.click_px(cx, cy)
+    time.sleep(1)
+    after = ami.grab((cx - 4, cy - 4, 9, 9))[2]
+    check(before != after, 'welcome: one click on the checkbox changes its pixels (reads ticked)')
+    close_window('Welcome to Amarchy')
+
+
 def case_run_tmux():
     """Apps > Tmux (run:tmux) from a menu with no TERM in ENV: leaves a running tmux and an UP-Term window.
     The leaf program has no shell above it, so TERM is missing unless run_in_uterm sets it; tmux then exits
@@ -1326,6 +1352,8 @@ def main():
         elif '--list-scroll' in sys.argv:  # only Down past the last visible row of a drawn list
             i = sys.argv.index('--list-scroll') + 1
             case_list_scroll(sys.argv[i] if i < len(sys.argv) and not sys.argv[i].startswith('--') else 'Style')
+        elif '--welcome' in sys.argv:   # only the welcome window: strip in view, one click ticks the box
+            case_welcome()
         elif '--pkg-tags' in sys.argv:  # only the [upkg] / [UHC] tags of the Browse rows
             case_pkg_tags()
         elif '--pkg-all' in sys.argv:   # every --pkg-* case on one boot; --only <case>, --failed
