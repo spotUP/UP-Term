@@ -560,7 +560,7 @@ static int dk_exists(const char *file)
 
 /* FLAT-BACKDROP-SAME-AS-WINDOW: flat-system-look puts BACKGROUNDPEN on pen 0, the window colour, so a Workbench with no wbpattern.prefs
  * fills its backdrop with the window colour. Flat on (desktop-theme not writing the pattern itself): the ROOT tile is the solid
- * backdrop pen (desk_backdrop_pen, not BACKGROUNDPEN) and that pen's palette colour is the theme dark (desk_darker). First turn-on
+ * backdrop pen (desk_backdrop_pen, not BACKGROUNDPEN) and that pen's palette colour is the theme dark (gt_darker). First turn-on
  * snapshots the previous palette and pattern (or their absence); flat off puts them back. */
 static void dk_flat_backdrop_take(const unsigned char *pal, long pallen)
 {
@@ -698,7 +698,7 @@ static int dk_flat_pens(const gtheme *th)
     if ((own || theme) && len > 0) {
         dk_flat_backdrop_take(buf, len);
         wlen = theme ? desk_palette_theme(buf, len, th, depth, flat, out, sizeof out)
-                     : desk_palette_set_rgb(buf, len, desk_backdrop_screen_pen(depth), depth, desk_darker(th), out, sizeof out);
+                     : desk_palette_set_rgb(buf, len, desk_backdrop_screen_pen(depth), depth, gt_darker(th), out, sizeof out);
         if (wlen > 0) {
             if (wlen != len || memcmp(buf, out, wlen))
                 sync = 1;

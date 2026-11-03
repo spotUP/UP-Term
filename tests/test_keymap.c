@@ -3498,12 +3498,12 @@ static void menu_theme_roles_map_the_palette(void)
     CHECK_INT(menu_theme_index(MT_BG), 0);
     CHECK_INT(menu_theme_index(MT_TEXT), 7);
     CHECK_INT(menu_theme_index(MT_DIM), 8);
-    CHECK_INT(menu_theme_index(MT_ACCENT), 14);
-    CHECK_INT(menu_theme_index(MT_SELBOX), 4);
+    CHECK_INT(menu_theme_index(MT_SELTEXT), 14);
+    CHECK_INT(menu_theme_index(MT_THEME_ACCENT), 4);
     CHECK_INT(menu_theme_index(MT_OK), 10);
     CHECK_INT(menu_theme_index(MT_FAIL), 9);
     /* outline and selected row box are one colour: the border role is the selection box role, not the accent */
-    CHECK_INT(MT_BORDER_ROLE, MT_SELBOX);
+    CHECK_INT(MT_BORDER_ROLE, MT_THEME_ACCENT);
 
     /* a Dracula-like palette remaps 0, 7, 8, 14 and 4; index 1 (no role) is ignored */
     CHECK_INT(upconf_palette_parse("0,282A36,1,FF5555,7,F8F8F2,8,6272A4,14,8BE9FD,4,44475A", pal), 6);
@@ -3511,15 +3511,15 @@ static void menu_theme_roles_map_the_palette(void)
     CHECK_INT((long)rgb[MT_BG], 0x282A36L);
     CHECK_INT((long)rgb[MT_TEXT], 0xF8F8F2L);
     CHECK_INT((long)rgb[MT_DIM], 0x6272A4L);
-    CHECK_INT((long)rgb[MT_ACCENT], 0x8BE9FDL);
-    CHECK_INT((long)rgb[MT_SELBOX], 0x44475AL);
+    CHECK_INT((long)rgb[MT_SELTEXT], 0x8BE9FDL);
+    CHECK_INT((long)rgb[MT_THEME_ACCENT], 0x44475AL);
 
     /* a palette that remaps only the accent leaves the other roles at their defaults */
     CHECK_INT(upconf_palette_parse("14,FFAA00", pal), 1);
     menu_theme_roles(pal, rgb);
-    CHECK_INT((long)rgb[MT_ACCENT], 0xFFAA00L);
+    CHECK_INT((long)rgb[MT_SELTEXT], 0xFFAA00L);
     CHECK_INT((long)rgb[MT_BG], 0x000000L);
-    CHECK_INT((long)rgb[MT_SELBOX], 0x0000EEL);
+    CHECK_INT((long)rgb[MT_THEME_ACCENT], 0x0000EEL);
 }
 
 /* Minimal menu mode, one reachability test: the upconf text selects it, the command builder sends
@@ -3564,9 +3564,9 @@ static void minimal_mode_reaches_the_program(void)
     rgb[MT_BG] = 0x102030UL;
     rgb[MT_TEXT] = 0xA0B0C0UL;
     CHECK_INT(menu_theme_minimal(rgb), 1);
-    CHECK_INT((long)rgb[MT_ACCENT], 0x102030L);
+    CHECK_INT((long)rgb[MT_SELTEXT], 0x102030L);
     CHECK_INT((long)rgb[MT_DIM], 0xA0B0C0L);
-    CHECK_INT((long)rgb[MT_SELBOX], 0xA0B0C0L);
+    CHECK_INT((long)rgb[MT_THEME_ACCENT], 0xA0B0C0L);
     rgb[MT_BG] = rgb[MT_TEXT] = 0x555555UL;
     CHECK_INT(menu_theme_minimal(rgb), 0);       /* equal colours: the caller uses screen pens */
 }
@@ -3583,15 +3583,15 @@ static void the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg(void)
     CHECK_INT((long)rgb[MT_BG], 0x445566L);
     CHECK_INT((long)rgb[MT_TEXT], 0x112233L);
     CHECK_INT((long)rgb[MT_DIM], (long)vt_palette_rgb(0, 8));
-    CHECK_INT((long)rgb[MT_ACCENT], (long)vt_palette_rgb(0, 14));
-    CHECK_INT((long)rgb[MT_SELBOX], (long)vt_palette_rgb(0, 4));
+    CHECK_INT((long)rgb[MT_SELTEXT], (long)vt_palette_rgb(0, 14));
+    CHECK_INT((long)rgb[MT_THEME_ACCENT], (long)vt_palette_rgb(0, 4));
 
     /* they win over a palette that remaps 0 and 7; the palette's accent still counts */
     upconf_palette_parse("0,282A36,7,F8F8F2,14,8BE9FD", pal);
     menu_theme_roles_fb(pal, fg, bg, rgb);
     CHECK_INT((long)rgb[MT_BG], 0x445566L);
     CHECK_INT((long)rgb[MT_TEXT], 0x112233L);
-    CHECK_INT((long)rgb[MT_ACCENT], 0x8BE9FDL);
+    CHECK_INT((long)rgb[MT_SELTEXT], 0x8BE9FDL);
 
     /* only one set: the other keeps the palette */
     menu_theme_roles_fb(pal, 0, bg, rgb);

@@ -190,19 +190,21 @@ static int scene_index(const char *name)
  * second player, so no second list can hold scenes the first lacks. */
 static void there_is_one_scene_list_with_the_effects_at_its_end(void)
 {
-    CHECK_INT(updemo_scenes(), 28);
+    CHECK_INT(updemo_scenes(), 30);
     CHECK_INT(scene_index("styles"), 1);        /* the tour's scene, in the list a bare UPDemo plays */
-    CHECK_INT(scene_index("copper bars"), 20);  /* the show's scenes follow the tour's */
-    CHECK_INT(scene_index("the end"), 27);
+    CHECK_INT(scene_index("copper bars"), 22);  /* the show's scenes follow the tour's */
+    CHECK_INT(scene_index("the end"), 29);
     CHECK_INT(scene_index("kitty animation"), 14);
     CHECK_INT(scene_index("kitty z-index"), 16);
+    CHECK_INT(scene_index("glyphs"), 17);
+    CHECK_INT(scene_index("tabs"), 18);
 }
 
-/* a bare UPDemo plays the whole list from its first scene: the status line shows the caption and "1/28" */
+/* a bare UPDemo plays the whole list from its first scene: the status line shows the caption and "1/30" */
 static void a_bare_run_starts_at_the_first_scene_with_its_caption(void)
 {
     start(80, 24);
-    needle = "Demo 1/28  Text styles, double-size lines, box drawing";
+    needle = "Demo 1/30  Text styles, double-size lines, box drawing";
     CHECK_INT(updemo_run(&io, 80, 24, 0, 6), 0);
     CHECK(saw_text);
     needle = 0;
@@ -213,14 +215,14 @@ static void a_bare_run_starts_at_the_first_scene_with_its_caption(void)
 static void a_start_number_picks_a_scene_of_the_one_list(void)
 {
     start(80, 24);
-    needle = "Demo 2/28  Every text style a program can ask for";
+    needle = "Demo 2/30  Every text style a program can ask for";
     CHECK_INT(updemo_run(&io, 80, 24, 1, 6), 0);
     CHECK(saw_text);
-    needle = "Demo 1/28";
+    needle = "Demo 1/30";
     saw_text = 0;
     vt_free(t);
     start(80, 24);
-    needle = "Demo 1/28";
+    needle = "Demo 1/30";
     CHECK_INT(updemo_run(&io, 80, 24, 1, 6), 0);
     CHECK(!saw_text);   /* scene 1 was skipped */
     needle = 0;
@@ -449,6 +451,25 @@ static void the_kitty_zindex_scene_sends_pictures_under_and_over_text(void)
     CHECK(pos > 0);
     CHECK(cap_has("z=-1: the picture is behind the text."));
     CHECK(cap_has("z=1: the picture hides the text."));
+}
+
+/* UPDEMO-NEW-FEATURES (d): the glyphs scene sends a Powerline arrow, a Nerd Font icon, an emoji and a box corner as UTF-8. */
+static void the_glyphs_scene_sends_powerline_nerd_emoji_and_box_glyphs(void)
+{
+    play_alone(scene_index("glyphs"), UPDEMO_AUTO);
+    CHECK(cap_has("\356\202\260"));
+    CHECK(cap_has("\357\201\273"));
+    CHECK(cap_has("\360\237\232\200"));
+    CHECK(cap_has("\342\224\214"));
+    CHECK(cap_has("Glyphs with no font entry fall back to Unifont"));
+}
+
+/* UPDEMO-NEW-FEATURES (d): the tabs scene draws a tab bar (inverse active tab) and names the menu that opens one. */
+static void the_tabs_scene_draws_a_tab_bar_and_names_the_menu(void)
+{
+    play_alone(scene_index("tabs"), UPDEMO_AUTO);
+    CHECK(cap_has("\033[7m 1 vsh \033[0m"));
+    CHECK(cap_has("Window > New tab opens another session"));
 }
 
 /* W-T2 (owner: the styles scene's two blink speeds blink at the same rate): its "rapid blink" line is SGR 5 then 6,
@@ -754,6 +775,34 @@ static int cap_extended_colour(void)
 {
     static const int bad[3] = { 38, 48, 58 };
     return sgr_has_param_in(bad, 3);
+}
+
+/* The themes scene tours twelve of the kit's themes live: each one's name is on screen while its colours (OSC 4,
+ * 10, 11) are set, and the scene runs long enough to reach the last. */
+static void the_themes_scene_names_twelve_themes_while_each_is_live(void)
+{
+    static const char *const names[] = { "Dracula Default", "Solarized Dark", "Gruvbox Dark", "Nord Default",
+        "Tokyo Night Default", "One Dark", "Tomorrow Night Eighties", "Kanagawa Wave", "Everforest Dark",
+        "Solarized Light", "GitHub Light", "One Light" };
+    long frames, tk, i;
+    int n, osc4 = 0, sc = scene_index("themes");
+    start(80, 24);
+    capturing = 1;
+    cap_len = 0;
+    updemo_colours(UPDEMO_AUTO);
+    updemo_only(1);
+    CHECK_INT(updemo_run(&io, 80, 24, sc, 0), 0); /* the scene's own length */
+    updemo_only(0);
+    capturing = 0;
+    for (n = 0; n < 12; n++)
+        CHECK_STR(cap_has(names[n]) ? names[n] : "", names[n]);
+    for (i = 0; i + 4 <= cap_len; i++)
+        if (!memcmp(cap + i, "\033]4;", 4))
+            osc4++;
+    CHECK_INT(osc4, 12);
+    updemo_stats(sc, &frames, &tk);
+    CHECK(frames > 12);
+    vt_free(t);
 }
 
 static void play_alone(int scene, int colours)
@@ -1112,6 +1161,8 @@ void suite_updemo(void)
     the_kitty_animation_scene_falls_back_to_the_coded_globe_without_the_media();
     the_kitty_truecolour_scene_sends_rgba_with_alpha();
     the_kitty_zindex_scene_sends_pictures_under_and_over_text();
+    the_glyphs_scene_sends_powerline_nerd_emoji_and_box_glyphs();
+    the_tabs_scene_draws_a_tab_bar_and_names_the_menu();
     the_styles_scene_shows_slow_and_rapid_blink();
     q_ends_the_demo_and_any_other_key_does_not();
     a_key_goes_to_the_next_scene_and_the_demo_keeps_running();
@@ -1124,6 +1175,7 @@ void suite_updemo(void)
     a_resize_in_the_reflow_scene_does_not_end_the_demo();
     a_frame_the_terminal_draws_in_20_ms_still_comes_25_times_a_second();
     palette_cycling_tells_the_renderer_once_a_frame();
+    the_themes_scene_names_twelve_themes_while_each_is_live();
     ansi_mode_sends_only_the_16_colours_in_every_scene();
     ansi_effects_draw_gradients_from_shade_blocks();
     ansi_palette_cycling_changes_colour_indices_not_the_palette();

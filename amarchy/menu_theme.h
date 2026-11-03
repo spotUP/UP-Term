@@ -11,27 +11,27 @@
 #include "gthemes_core.h"
 
 enum {
-    MT_BG,     /* the menu's background */
-    MT_TEXT,   /* row text */
-    MT_DIM,    /* the header's dim text */
-    MT_ACCENT, /* the selected row's text */
-    MT_SELBOX, /* the selected row's box and the border */
-    MT_OK,     /* the job view's Done footer (green-ish) */
-    MT_FAIL,   /* the job view's Failed footer (red-ish) */
+    MT_BG,           /* the menu's background (GR_SURFACE) */
+    MT_TEXT,         /* row text (GR_TEXT) */
+    MT_DIM,          /* dim text (GR_MUTED) */
+    MT_SELTEXT,      /* the selected row's text: the background colour on the accent box (GR_SURFACE; was MT_ACCENT) */
+    MT_THEME_ACCENT, /* the selected row's box, the border and the header (GR_ACCENT; was MT_SELBOX) */
+    MT_OK,           /* the job view's Done footer (status tone ok) */
+    MT_FAIL,         /* the job view's Failed footer (status tone fail) */
     MT_ROLES
 };
 
 /* The role the border is drawn in: the selected row's box role, so outline and selection are one colour (gui.c
- * draw_border reads this; tests/test_keymap.c asserts it equals MT_SELBOX). */
-#define MT_BORDER_ROLE MT_SELBOX
+ * draw_border reads this; tests/test_keymap.c asserts it equals MT_THEME_ACCENT). */
+#define MT_BORDER_ROLE MT_THEME_ACCENT
 
 /* The role the drawn menu's header text is drawn in: the theme's accent, so the header visibly follows a theme
  * switch (owner 2026-10-28; the dim role was a near-grey in every theme). gui.c draw_header reads this;
  * tests/test_gthemes.c asserts it carries each shipped theme's accent. */
-#define MT_HEAD_ROLE MT_SELBOX
+#define MT_HEAD_ROLE MT_THEME_ACCENT
 
 /* Where a role's pen goes when the screen has no pen left for it (a few-colour screen): MT_OK and MT_FAIL draw in
- * the row text's pen (MT_TEXT; MT_ACCENT in the drawn menu is the background colour, invisible on the footer's
+ * the row text's pen (MT_TEXT; MT_SELTEXT in the drawn menu is the background colour, invisible on the footer's
  * ground). The five core roles keep their own fallback (background pen 0, else pen 1); -1 for them. */
 int menu_theme_fallback_role(int role);
 
@@ -45,13 +45,13 @@ void menu_theme_roles(const uc_u32 pal16[16], uc_u32 rgb[MT_ROLES]);
  * A set bg gives MT_BG, a set fg gives MT_TEXT; every other role, and an unset one, comes from the palette. */
 void menu_theme_roles_fb(const uc_u32 pal16[16], uc_u32 fg, uc_u32 bg, uc_u32 rgb[MT_ROLES]);
 
-/* The drawn menu's roles from an Omarchy GUI theme (gthemes_core.h): BG = background, TEXT = foreground, DIM =
- * dark_foreground, ACCENT (the selected row's text) = background, SELBOX (box and border) = accent, OK = green, FAIL = red
- * (the theme file's own green and red keys; a missing key gives accent and foreground, gt_parse). */
+/* The drawn menu's roles from an Omarchy GUI theme: a view of the role table (gt_roles_of, gthemes_core.h). BG = GR_SURFACE,
+ * TEXT = GR_TEXT, DIM = GR_MUTED (RL8: the theme's muted, was dark_foreground), SELTEXT = GR_SURFACE, THEME_ACCENT = GR_ACCENT,
+ * OK and FAIL = the status tones (green, red; a missing key gives accent and foreground, gt_parse). */
 void menu_theme_roles_gui(const gtheme *t, uc_u32 rgb[MT_ROLES]);
 
 /* The minimal menu's two colours: rgb[] from menu_theme_roles_fb is rewritten so only the background and the
- * foreground (MT_TEXT) remain: MT_BG and MT_ACCENT = background, MT_TEXT, MT_DIM, MT_SELBOX, MT_OK and MT_FAIL = foreground
+ * foreground (MT_TEXT) remain: MT_BG and MT_SELTEXT = background, MT_TEXT, MT_DIM, MT_THEME_ACCENT, MT_OK and MT_FAIL = foreground
  * (the selected row is the swap: foreground box, background text). Returns 0 when the two colours are equal: the
  * selection would be invisible, and the caller falls back to the screen's own pens 1 and 0. */
 int menu_theme_minimal(uc_u32 rgb[MT_ROLES]);

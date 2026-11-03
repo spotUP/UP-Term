@@ -448,7 +448,7 @@ static void draw_icon(gui *g, int role, const mn_item *it, int x, int y, int box
 
 /* One row of the current mode, entry e (0-based among all entries), when it is shown. */
 /* The welcome window's two rows after the text: row 0 the checkbox, row 1 the buttons Close and Open Help. Theme
- * roles only (MT_TEXT, MT_BG, MT_SELBOX, MT_ACCENT). */
+ * roles only (MT_TEXT, MT_BG, MT_THEME_ACCENT, MT_SELTEXT). */
 static void draw_welcome_row(gui *g, int r, int tx, int y, int rbg)
 {
     const mg_geom *q = &g->g;
@@ -459,7 +459,7 @@ static void draw_welcome_row(gui *g, int r, int tx, int y, int rbg)
         fill(g, MT_TEXT, bx, by, bx + s - 1, by + s - 1);
         fill(g, MT_BG, bx + 1, by + 1, bx + s - 2, by + s - 2);
         if (g->wticked)
-            fill(g, MT_ACCENT, bx + 3, by + 3, bx + s - 4, by + s - 4);
+            fill(g, MT_SELTEXT, bx + 3, by + 3, bx + s - 4, by + s - 4);
         put(g, MT_TEXT, rbg, bx + s + q->m.row_pad, y, rh, t, (int)strlen(t), q->list_w - 2 * q->m.row_pad - s);
     } else {
         static const char *const name[2] = { "Close", "Open Help" };
@@ -467,8 +467,8 @@ static void draw_welcome_row(gui *g, int r, int tx, int y, int rbg)
         for (i = 0; i < 2; i++) {
             int w = mt_width(g->mt, name[i]) + 2 * q->m.row_pad;
             fill(g, MT_TEXT, x, y + 1, x + w - 1, y + rh - 2);
-            fill(g, i == 0 ? MT_SELBOX : MT_BG, x + 1, y + 2, x + w - 2, y + rh - 3);
-            put(g, i == 0 ? MT_ACCENT : MT_TEXT, i == 0 ? MT_SELBOX : MT_BG, x + q->m.row_pad, y, rh, name[i],
+            fill(g, i == 0 ? MT_THEME_ACCENT : MT_BG, x + 1, y + 2, x + w - 2, y + rh - 3);
+            put(g, i == 0 ? MT_SELTEXT : MT_TEXT, i == 0 ? MT_THEME_ACCENT : MT_BG, x + q->m.row_pad, y, rh, name[i],
                 (int)strlen(name[i]), w - 2 * q->m.row_pad);
             g->wbx[i][0] = x;
             g->wbx[i][1] = x + w - 1;
@@ -488,16 +488,16 @@ static void draw_row(gui *g, int e)
     if (bottom > q->list_y + q->list_h - 1)
         bottom = q->list_y + q->list_h - 1;
     sel = (g->mode == M_LIST && e == g->sel) || g->mode == M_INPUT;
-    rbg = sel ? MT_SELBOX : MT_BG;
+    rbg = sel ? MT_THEME_ACCENT : MT_BG;
     paint_begin(g);
-    fill(g, sel ? MT_SELBOX : MT_BG, q->list_x, y, q->list_x + q->list_w - 1, bottom);
+    fill(g, sel ? MT_THEME_ACCENT : MT_BG, q->list_x, y, q->list_x + q->list_w - 1, bottom);
     tx = q->list_x + q->m.row_pad;
     tw = q->list_w - 2 * q->m.row_pad;
     if (g->mode == M_LIST && e < g->shift) {      /* the scan's status row */
         put(g, MT_DIM, rbg, tx, y, q->m.row_h, g->wt.row, (int)strlen(g->wt.row), tw);
     } else if (g->mode == M_LIST) {
         const mn_item *it = &g->it[g->idx[e - g->shift]];
-        int role = sel ? MT_ACCENT : MT_TEXT;
+        int role = sel ? MT_SELTEXT : MT_TEXT;
         int ic = g->icon_w ? g->icon_w + q->m.icon_gap : 0;
         if (ic) {
             draw_icon(g, role, it, tx, y, q->m.row_h);
@@ -560,7 +560,7 @@ static void draw_row(gui *g, int e)
         char t[EDIT_MAX + 2];
         memcpy(t, g->edit, (size_t)g->elen);
         t[g->elen] = '_';
-        put(g, MT_ACCENT, rbg, tx, y, q->m.row_h, t, g->elen + 1, tw);
+        put(g, MT_SELTEXT, rbg, tx, y, q->m.row_h, t, g->elen + 1, tw);
     } else if (g->mode == M_VIEW && g->welcome == 1 && e >= g->nlines) {
         draw_welcome_row(g, e - g->nlines, tx, y, rbg);
     } else
@@ -1316,7 +1316,7 @@ static void pens_get(gui *g, const char *name)
          * fall back to the screen's own pens (0, 1) */
         themed = menu_theme_minimal(rgb);
         for (r = 0; r < MT_ROLES; r++) {
-            int is_bg = r == MT_BG || r == MT_ACCENT;
+            int is_bg = r == MT_BG || r == MT_SELTEXT;
             long p = themed ? vr_pen_obtain(g->cm, rgb[r]) : -1;
             g->pen_got[r] = p >= 0;
             g->pen[r] = p >= 0 ? p : (is_bg ? 0 : 1);

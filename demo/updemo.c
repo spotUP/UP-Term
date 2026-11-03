@@ -1611,12 +1611,15 @@ static void sc_complete(long t, int first)
 
 #include "tour_themes.inc"
 
+#define TOUR_THEME_TICKS 90 /* each theme stays this long (1/50 s) */
+#define TOUR_THEME_COUNT ((int)(sizeof(tour_themes) / sizeof(tour_themes[0])))
+
 /* the kit's themes, one after the other: OSC 4 for the 16 colours, OSC 10
  * and 11 for the default ones (what Settings > Theme... does to a window) */
 static void sc_themes(long t, int first)
 {
     static int cur;
-    int k = (int)(t / 120) % (int)(sizeof(tour_themes) / sizeof(tour_themes[0])), i;
+    int k = (int)(t / TOUR_THEME_TICKS) % (int)(sizeof(tour_themes) / sizeof(tour_themes[0])), i;
     if (first) {
         cur = -1;
         heading("Themes, switched live", ansi ? "a theme sets the 16 colours; what is on screen follows"
@@ -2052,6 +2055,49 @@ static void sc_kitty_zindex(long t, int first)
     ps("z=1: the picture hides the text.");
 }
 
+/* UPDEMO-NEW-FEATURES (d): glyphs the terminal draws itself (Unifont, the emoji set, grid-fitted Powerline, Nerd Font
+ * and box glyphs): one line each, with its name beside it. */
+static void sc_glyphs(long t, int first)
+{
+    (void)t;
+    if (!first)
+        return;
+    heading("Glyphs", "Powerline, Nerd Font icons, emoji and box drawing are drawn by the terminal");
+    at(4, 4);
+    ps("Powerline   \033[30;44m user \033[34;42m\356\202\260\033[30;42m \356\202\240 main \033[32;49m\356\202\260\033[0m  "
+       "\033[32m\356\202\262\033[30;42m ok \033[0m");
+    at(6, 4);
+    ps("Nerd Font   \357\201\273 folder   \356\202\240 branch   \357\200\225 home   \357\200\256 star");
+    at(8, 4);
+    ps("Emoji       \360\237\230\200  \360\237\232\200  \360\237\220\215  \360\237\216\211  (wide, in colour)");
+    at(10, 4);
+    ps("Box         \342\224\214\342\224\200\342\224\200\342\224\200\342\224\200\342\224\220  "
+       "\342\225\255\342\224\200\342\224\200\342\224\200\342\224\200\342\225\256  \342\226\210\342\226\200\342\226\204\342\226\214");
+    at(11, 4);
+    ps("            \342\224\202    \342\224\202  \342\224\202    \342\224\202");
+    at(12, 4);
+    ps("            \342\224\224\342\224\200\342\224\200\342\224\200\342\224\200\342\224\230  "
+       "\342\225\260\342\224\200\342\224\200\342\224\200\342\224\200\342\225\257");
+    grey_line(14, "Glyphs with no font entry fall back to Unifont, so nothing shows as a hole.");
+}
+
+/* The tab bar is the window's own (Window > New tab), not an escape a program sends, so this scene shows the bar
+ * a window has and names the keys and menu that drive it. */
+static void sc_tabs(long t, int first)
+{
+    (void)t;
+    if (!first)
+        return;
+    heading("Tabs", "several sessions in one window, each with its own profile");
+    at(4, 2);
+    ps("\033[7m 1 vsh \033[0m\033[4m 2 build \033[0m\033[4m 3 Claude \033[0m\033[4m 4 notes \033[0m");
+    at(5, 2);
+    ps("\033[2m~ % make ... the build runs in tab 2 while you type here\033[0m");
+    grey_line(8, "Window > New tab opens another session; Next tab and Previous tab move between them.");
+    grey_line(9, "/ask opens an AI agent in a new tab of its own.");
+    grey_line(10, "A tab can run any program: Claude, pi, UPDemo.");
+}
+
 /* A frame counter in big letters. With mode 2026 the terminal shows each
  * frame whole; every other second the frames go without it, and a slow
  * machine shows them being drawn. */
@@ -2193,13 +2239,15 @@ static const scene_def scenes[] = {
     { "splits", sc_splits, 0, 300, "Split panes: Window menu and keys", 0, 0, 0 },
     { "vsh", sc_vsh, 0, 500, "vsh, the shell of UP-Term windows", 0, 0, 0 },
     { "completion", sc_complete, 0, 450, "Tab completion, Unix style and KingCON style", 0, 0, 0 },
-    { "themes", sc_themes, 0, 480, "Themes switched live (OSC 4, 10, 11)", 0, 0, "Themes: the 16 colours a theme sets" },
+    { "themes", sc_themes, 0, TOUR_THEME_COUNT * TOUR_THEME_TICKS, "Themes switched live (OSC 4, 10, 11)", 0, 0, "Themes: the 16 colours a theme sets" },
     { "mouse", sc_mouse, 0, 600, "Mouse reports: click in the window", 0, 0, 0 },
     { "links", sc_links, 0, 400, "Hyperlinks (OSC 8) and notifications (OSC 9)", 0, 0, 0 },
     { "sixel", sc_sixel, 0, 450, "Sixel images: pictures in the text", 0, 0, 0 },
     { "kitty animation", sc_kitty_anim, 0, 450, "Kitty graphics: an animation the terminal plays", 0, 0, 0 },
     { "kitty truecolour", sc_kitty_truecolour, 0, 450, "Kitty graphics: 24-bit pictures with alpha", 0, 0, 0 },
     { "kitty z-index", sc_kitty_zindex, 0, 450, "Kitty graphics: text over and under a picture", 0, 0, 0 },
+    { "glyphs", sc_glyphs, 0, 400, "Glyphs: Powerline, Nerd Font, emoji, box drawing", 0, 0, 0 },
+    { "tabs", sc_tabs, 0, 400, "Tabs: several sessions in one window", 0, 0, 0 },
     { "synchronized output", sc_sync, 1, 400, "Synchronized output: frames shown whole", 0, 0, 0 },
     { "resize", sc_resize, 0, 400, "A program resizes the window (DECCOLM)", 0, 0, 0 },
     { "reflow", sc_reflow, 0, 750, "Reflow on resize", 1, 0, 0 },
