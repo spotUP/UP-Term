@@ -1606,7 +1606,7 @@ def ensure_built(files, run=None):
     targets = ["build/amiga/" + n for n in names]
     if make("-q", *targets).returncode == 0:
         return []
-    stale = [t for t in targets if make("-q", t).returncode == 1]
+    stale = paths.stale_targets(targets, run, ROOT)
     if not stale:
         return []
     print("[BUILD] stale before push: " + ", ".join(t.rsplit("/", 1)[1] for t in stale))

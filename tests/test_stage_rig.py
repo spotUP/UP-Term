@@ -103,6 +103,14 @@ class RequireFresh(unittest.TestCase):
         self.assertIn("[ERROR] stale: build/amiga/Amarchy", str(e.exception))
         self.assertNotIn("amarchy-gui", str(e.exception))
 
+    def test_helper_maps_rc_0_1_2(self):
+        import paths
+        seen = []
+        run = self.run_q({"a": 0, "b": 1, "c": 2})
+        self.assertEqual(paths.stale_targets(["a", "b", "c"], run), ["b"])
+        self.assertEqual(paths.stale_targets(["a", "b", "c"], run, on_error=lambda t, r: seen.append(t)), ["b"])
+        self.assertEqual(seen, ["c"])
+
     def test_current_passes(self):
         stage_rig.require_fresh(("Amarchy",), self.run_q({"build/amiga/Amarchy": 0}))
 

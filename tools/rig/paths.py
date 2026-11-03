@@ -483,3 +483,18 @@ def rig_flags(default=None):
     import shlex
     raw = os.environ.get('UPTERM_RIG_FLAGS', '')
     return shlex.split(raw) if raw.strip() else list(default or [])
+
+
+def stale_targets(targets, run=subprocess.run, cwd=None, on_error=None):
+    """The make targets of `targets` that make's own graph says are older than their sources: one `make -q <target>`
+    each (runs no recipe). rc 0 = current, rc 1 = stale, anything else (rc 2: no rule or make error) is not stale;
+    on_error(target, result), when given, is called for it (a caller that must not go on raises there)."""
+    stale = []
+    for t in targets:
+        r = run(["make", "-q", t], cwd=str(cwd or VTCON), capture_output=True, text=True,
+                env={**os.environ, "UPTERM_ROOT": str(UPTERM_ROOT)})
+        if r.returncode == 1:
+            stale.append(t)
+        elif r.returncode and on_error:
+            on_error(t, r)
+    return stale

@@ -42,14 +42,9 @@ def make(names, run=subprocess.run):
 def require_fresh(names, run=subprocess.run):
     """No-build guard: `make -q` (runs no recipe) says whether each build/amiga file is older than its sources.
     Raises StageError '[ERROR] stale: <file>' naming every stale one, so a script never copies an old build."""
-    stale = []
-    for n in names:
-        r = run(['make', '-q', TARGETS[n]], cwd=str(paths.VTCON), capture_output=True, text=True,
-                env={**os.environ, 'UPTERM_ROOT': str(paths.UPTERM_ROOT)})
-        if r.returncode == 1:
-            stale.append(TARGETS[n])
-        elif r.returncode:
-            raise StageError('stage_rig: make -q %s failed:\n%s' % (TARGETS[n], (r.stdout + r.stderr)[-800:]))
+    def fail(target, r):
+        raise StageError('stage_rig: make -q %s failed:\n%s' % (target, (r.stdout + r.stderr)[-800:]))
+    stale = paths.stale_targets([TARGETS[n] for n in names], run, paths.VTCON, fail)
     if stale:
         raise StageError('\n'.join('[ERROR] stale: %s' % f for f in stale) + '\nrun make for them, or drop --no-build')
 
