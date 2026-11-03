@@ -31,11 +31,11 @@ static void out(void *user, const char *buf, long len)
 }
 
 /* a slash command for the window the demo runs in: the packet C:UPTerm sends (handler/upcmd.h) */
-static int command(void *user, const char *line)
+static const char *command(void *user, const char *line)
 {
     static char ans[256];
     (void)user;
-    return upterm_window_command(line, ans, sizeof(ans)) == 1;
+    return upterm_window_command(line, ans, sizeof(ans)) == 1 ? ans : 0;
 }
 
 static int key(void *user, int wait_ms)

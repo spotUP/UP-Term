@@ -2086,29 +2086,47 @@ static void sc_glyphs(long t, int first)
  * a window has and names the keys and menu that drive it. */
 /* The tabs scene opens a real tab with /tab new, a moment later closes it with /tab close: the same two
  * commands the menu's New tab and Close tab run. tabs_open is 1 from the first until the second. */
-static int tabs_open;
+static int tabs_open; /* the number of the tab /tab new opened (1-based, the reply's), 0 when none is open */
+static int tabs_tried;
 
 #define TABS_OPEN_AT 120  /* 1/50 s into the scene: /tab new */
 #define TABS_CLOSE_AT 280 /* and /tab close */
 
-static void tabs_send(const char *line)
+/* the tab number in /tab new's reply ("tab: new 3"): the digits after "new"; 0 when there are none */
+static int tabs_number(const char *reply)
 {
-    if (io->command)
-        io->command(io->user, line);
+    const char *p = reply ? strstr(reply, "new ") : 0;
+    int n = 0;
+    if (!p)
+        return 0;
+    for (p += 4; *p >= '0' && *p <= '9'; p++)
+        n = n * 10 + (*p - '0');
+    return n;
 }
 
-/* back to the demo's own tab: a scene that ends with the new tab still open closes it */
+/* back to the demo's own tab: a scene that ends with the new tab still open closes it. It closes tab N, the
+ * number /tab new answered, never the active tab: the user may have switched back here, and the active tab is
+ * then the demo's own. (Another tab closing in between shifts the numbers; that is accepted.) */
 static void tabs_leave(void)
 {
-    if (tabs_open)
-        tabs_send("/tab close");
+    if (tabs_open && io->command) {
+        char line[24] = "/tab close ";
+        int n = (int)strlen(line);
+        if (tabs_open >= 10)
+            line[n++] = (char)('0' + tabs_open / 10 % 10);
+        line[n++] = (char)('0' + tabs_open % 10);
+        line[n] = 0;
+        io->command(io->user, line);
+    }
     tabs_open = 0;
+    tabs_tried = 0;
 }
 
 static void sc_tabs(long t, int first)
 {
     if (first) {
         tabs_open = 0;
+        tabs_tried = 0;
         heading("Tabs", "several sessions in one window, each with its own profile");
         at(4, 2);
         ps("\033[7m 1 vsh \033[0m\033[4m 2 build \033[0m\033[4m 3 Claude \033[0m\033[4m 4 notes \033[0m");
@@ -2118,10 +2136,13 @@ static void sc_tabs(long t, int first)
         grey_line(9, "/ask opens an AI agent in a new tab of its own.");
         grey_line(10, "A tab can run any program: Claude, pi, UPDemo.");
     }
-    if (!tabs_open && t >= TABS_OPEN_AT && t < TABS_CLOSE_AT && io->command) {
-        grey_line(12, "Sending /tab new: a real tab opens beside this one ...");
-        tabs_send("/tab new");
-        tabs_open = 1;
+    if (!tabs_tried && t >= TABS_OPEN_AT && t < TABS_CLOSE_AT && io->command) {
+        tabs_tried = 1;
+        tabs_open = tabs_number(io->command(io->user, "/tab new"));
+        if (tabs_open)
+            grey_line(12, "Sending /tab new: a real tab opens beside this one ...");
+        else
+            grey_line(12, "tab not opened");
     } else if (tabs_open && t >= TABS_CLOSE_AT) {
         grey_line(13, "Sending /tab close: the new tab closes again.");
         tabs_leave();

@@ -57,6 +57,16 @@ static void settings_name_their_menu_items(void)
     CHECK_INT(cmd.id, MENU_TAB_NEW);
     CHECK_INT(parse("/tab close"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_TAB_CLOSE);
+    CHECK_INT(cmd.index, 0); /* plain close: the active tab */
+    CHECK_INT(parse("/tab close 2"), SLASH_OK); /* UPDEMO-TABS-TARGET: close tab N, the numbers of Right Amiga 1-9 */
+    CHECK_INT(cmd.id, MENU_TAB_CLOSE);
+    CHECK_INT(cmd.index, 2);
+    CHECK_INT(parse("/tab close 9"), SLASH_OK);
+    CHECK_INT(cmd.index, 9);
+    CHECK_INT(parse("/tab close 0"), SLASH_ERROR);
+    CHECK_INT(parse("/tab close x"), SLASH_ERROR);
+    CHECK_INT(parse("/tab close 10"), SLASH_ERROR);
+    CHECK_INT(parse("/tab new 2"), SLASH_ERROR);
     CHECK_INT(parse("/tab sideways"), SLASH_ERROR);
     CHECK_INT(parse("/tab previous"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_TAB_PREV);

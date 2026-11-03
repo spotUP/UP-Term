@@ -139,19 +139,25 @@ static unsigned char *load_media(void *user, const char *name, long *len)
     return buf;
 }
 
-static int tab_cmds_new, tab_cmds_close, tab_cmds_other;
+static int tab_cmds_new, tab_cmds_close, tab_cmds_other, tab_cmds_active_close;
+static const char *tab_new_reply = "tab: new 3\n"; /* what the fake terminal answers /tab new; 0: it does not run it */
+static char tab_close_line[40];
 
 /* the terminal's slash commands: counted, which is the sentinel that the scene sent them */
-static int count_command(void *user, const char *line)
+static const char *count_command(void *user, const char *line)
 {
     (void)user;
-    if (strcmp(line, "/tab new") == 0)
+    if (strcmp(line, "/tab new") == 0) {
         tab_cmds_new++;
-    else if (strcmp(line, "/tab close") == 0)
+        return tab_new_reply;
+    } else if (strncmp(line, "/tab close ", 11) == 0) {
         tab_cmds_close++;
+        strncpy(tab_close_line, line, sizeof(tab_close_line) - 1);
+    } else if (strcmp(line, "/tab close") == 0)
+        tab_cmds_active_close++; /* closes whatever tab is active: never the demo's to send */
     else
         tab_cmds_other++;
-    return 1;
+    return "";
 }
 
 static updemo_io io = { out, key, ticks, 0, load_media, count_command };
@@ -530,14 +536,34 @@ static void the_tabs_scene_draws_a_tab_bar_and_names_the_menu(void)
  * Left early (a key before the close is due) it still closes the tab it opened. */
 static void the_tabs_scene_sends_tab_new_then_tab_close(void)
 {
-    tab_cmds_new = tab_cmds_close = tab_cmds_other = 0;
+    tab_cmds_new = tab_cmds_close = tab_cmds_other = tab_cmds_active_close = 0;
+    tab_close_line[0] = 0;
     start(80, 24);
     updemo_only(1);
     CHECK_INT(updemo_run(&io, 80, 24, scene_index("tabs"), 0), 0);
     updemo_only(0);
     CHECK_INT(tab_cmds_new, 1);
     CHECK_INT(tab_cmds_close, 1);
+    CHECK_STR(tab_close_line, "/tab close 3"); /* UPDEMO-TABS-TARGET: the number /tab new answered, not the active tab */
+    CHECK_INT(tab_cmds_active_close, 0);
     CHECK_INT(tab_cmds_other, 0);
+    vt_free(t);
+
+    /* no number in the reply: nothing to close, so nothing is sent, and the caption says so */
+    tab_cmds_new = tab_cmds_close = tab_cmds_other = tab_cmds_active_close = 0;
+    tab_new_reply = "tab: no room for another tab\n";
+    start(80, 24);
+    capturing = 1;
+    cap_len = 0;
+    updemo_only(1);
+    CHECK_INT(updemo_run(&io, 80, 24, scene_index("tabs"), 0), 0);
+    updemo_only(0);
+    capturing = 0;
+    CHECK_INT(tab_cmds_new, 1);
+    CHECK_INT(tab_cmds_close, 0);
+    CHECK_INT(tab_cmds_active_close, 0);
+    CHECK(cap_has("tab not opened"));
+    tab_new_reply = "tab: new 3\n";
     vt_free(t);
 }
 

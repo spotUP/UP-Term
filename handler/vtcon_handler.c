@@ -4985,6 +4985,32 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap, int 
     default:
         break;
     }
+    if (cmd.id == MENU_TAB_CLOSE && cmd.index) {
+        if (!c->is_tab)
+            stat_fill(c);
+        if (cmd.index > c->st.tabs) {
+            cat3(ans, cap, name, ": no such tab", "\n");
+            return 2;
+        }
+        tab_command(c, MENU_TAB_CLOSE0 + cmd.index);
+        return 1;
+    }
+    if (cmd.id == MENU_TAB_NEW) {
+        /* the answer names the new tab's number (the next free place; the host adds it last), which the caller
+         * keeps to close exactly this tab: "tab: new 3". A tab reads the host's pushed count (stat_push). */
+        char num[2];
+        if (!c->is_tab)
+            stat_fill(c);
+        if (c->st.tabs >= TAB_MAX) {
+            cat3(ans, cap, name, ": no room for another tab", "\n");
+            return 2;
+        }
+        num[0] = (char)('0' + c->st.tabs + 1);
+        num[1] = 0;
+        tab_command(c, MENU_TAB_NEW);
+        cat3(ans, cap, "tab: new ", num, "\n");
+        return 1;
+    }
     if (cmd.id == SLASH_KC_MODE)
         m = 2;
     else
@@ -7176,6 +7202,26 @@ static void pane_close(con *c, con *p)
         close_gadget(c);
 }
 
+/* Close tab i (0 = the first): the one body of the menu's Close tab (i = the active tab) and of /tab close N. Every
+ * pane of the tab; each leaves the slot when its process ends, so the list is taken first and the host's own goes last. */
+static void tab_close(con *c, int i)
+{
+    if (i >= 0 && i < c->ntabs) {
+        void *all[LAY_MAX_PANES];
+        int k, own = 0;
+        if (i == 0)
+            splits_save(c); /* the host's first slot opens like this next time */
+        memcpy(all, c->slots[i].pane, sizeof(all));
+        for (k = 0; k < LAY_MAX_PANES; k++)
+            if (all[k] == (void *)c)
+                own = 1;
+            else if (all[k])
+                pane_close(c, (con *)all[k]);
+        if (own)
+            pane_close(c, c);
+    }
+}
+
 /* a New / Next / Previous / Close tab from the host's own menu, or from a tab's */
 static void host_command(con *c, int what, con *from, const char *task)
 {
@@ -7183,6 +7229,10 @@ static void host_command(con *c, int what, con *from, const char *task)
         int n = what - MENU_TAB_GOTO0 - 1; /* the tab's place: 0 is the first */
         if (n < c->ntabs)
             tab_switch(c, n);
+        return;
+    }
+    if (what > MENU_TAB_CLOSE0 && what <= MENU_TAB_CLOSE0 + 9) {
+        tab_close(c, what - MENU_TAB_CLOSE0 - 1); /* /tab close N */
         return;
     }
     switch (what) {
@@ -7237,22 +7287,7 @@ static void host_command(con *c, int what, con *from, const char *task)
         sbar_apply(c);
         break;
     case MENU_TAB_CLOSE:
-        /* every pane of the tab; each leaves the slot when its process
-         * ends, so the list is taken first and the host's own goes last */
-        if (c->active >= 0 && c->active < c->ntabs) {
-            void *all[LAY_MAX_PANES];
-            int k, own = 0;
-            if (c->active == 0)
-                splits_save(c); /* the host's first slot opens like this next time */
-            memcpy(all, c->slots[c->active].pane, sizeof(all));
-            for (k = 0; k < LAY_MAX_PANES; k++)
-                if (all[k] == (void *)c)
-                    own = 1;
-                else if (all[k])
-                    pane_close(c, (con *)all[k]);
-            if (own)
-                pane_close(c, c);
-        }
+        tab_close(c, c->active);
         break;
     case MENU_PANE_CLOSE:
         pane_close(c, from);
