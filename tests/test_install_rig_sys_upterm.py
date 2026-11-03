@@ -54,6 +54,52 @@ class SysUpTerm(unittest.TestCase):
         self.assertFalse(uninstall(ABSENT, EMPTY))
 
 
+AMISSL = ";BEGIN AmiSSL\nAssign AmiSSL: SYS:AmiSSL\n;END AmiSSL\n"
+
+
+def startup_check(before_text, after_uninstall_text, installed_text):
+    """base_uninstall with the S:User-Startup check on: Type S:User-Startup gives installed_text before the
+    Uninstall and after_uninstall_text after it. Returns the check results."""
+    before = types.SimpleNamespace(startup=before_text, sseq="seq", libs={}, sys_upterm=EMPTY)
+    state = {'text': installed_text}
+    def run(line):
+        if line == 'Type S:User-Startup':
+            return 0, state['text']
+        if line == 'List SYS:UP-Term ALL':
+            return EMPTY
+        if line == 'Type S:Startup-Sequence':
+            return 0, "seq"
+        return 5, ""
+    def run_long(line):
+        state['text'] = after_uninstall_text
+        return 0, ""
+    ck = Checks()
+    with mock.patch.object(ir, "run_long", run_long), mock.patch.object(ir, "run", run), \
+            mock.patch.object(ir, "lib_state", return_value={}):
+        ir.base_uninstall(ck, before)
+    return ck.results
+
+
+class AmiSSLBlockStays(unittest.TestCase):
+    """s32 rig 47 wasabi case check 23: the base Uninstall leaves the ;BEGIN AmiSSL block on purpose
+    (dist/Uninstall header), and a case that calls base_uninstall(ck, before) failed byte for byte on it."""
+    BYTE = 'after base Uninstall: S:User-Startup as it was, byte for byte'
+    KEPT = 'after base Uninstall: the AmiSSL block is still in S:User-Startup (it still boots)'
+
+    def test_amissl_block_left_by_the_base_uninstall_passes_with_default_arguments(self):
+        r = startup_check("Run foo\n", "Run foo\n" + AMISSL, "Run foo\nUP-Term block\n" + AMISSL)
+        self.assertTrue(r[self.BYTE])
+        self.assertTrue(r[self.KEPT])
+
+    def test_amissl_block_wrongly_removed_fails(self):
+        r = startup_check("Run foo\n", "Run foo\n", "Run foo\n" + AMISSL)
+        self.assertFalse(r[self.KEPT])
+
+    def test_other_leftover_still_fails(self):
+        r = startup_check("Run foo\n", "Run foo\nUP-Term block\n" + AMISSL, "Run foo\nUP-Term block\n" + AMISSL)
+        self.assertFalse(r[self.BYTE])
+
+
 def dest_check(before_sys, after_sys):
     """base-dest: an Install given DEST=VTC:KitTest/UP-Term, then SYS:UP-Term listed again."""
     ck = Checks()

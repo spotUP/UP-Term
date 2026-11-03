@@ -1288,11 +1288,16 @@ def check_startup_after_uninstall(ck, before_text, installed_text, now_text, lea
 
 def base_uninstall(ck, before, expect_user_startup_clean=True, leaves=(), installed_text=''):
     """Uninstall of the base (which runs the Uninstall of the add-ons that need it) gives the rig back byte for byte
-    (not when a stand-alone archive's block is still there: it is not the base's to take out)."""
+    (not when a stand-alone archive's block is still there: it is not the base's to take out). The base Uninstall
+    always leaves the ;BEGIN AmiSSL block (BASE_STARTUP_LEAVES), so every case compares without it; installed_text
+    defaults to S:User-Startup as it is just before the Uninstall, which is what the Installs left."""
+    if expect_user_startup_clean and not installed_text:
+        installed_text = run('Type S:User-Startup')[1]
     rc, out = run_long('rununinstall')
     ck(rc == 0, 'base Uninstall runs', out)
     if expect_user_startup_clean:
-        check_startup_after_uninstall(ck, before.startup, installed_text, run('Type S:User-Startup')[1], leaves)
+        check_startup_after_uninstall(ck, before.startup, installed_text, run('Type S:User-Startup')[1],
+                                      BASE_STARTUP_LEAVES + tuple(n for n in leaves if n not in BASE_STARTUP_LEAVES))
     ck(run('Type S:Startup-Sequence')[1] == before.sseq, 'after base Uninstall: S:Startup-Sequence as it was')
     ck(run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'after base Uninstall: no UP-Term: assign')
     now = run('List SYS:UP-Term ALL')
