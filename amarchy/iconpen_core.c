@@ -196,10 +196,21 @@ int ip_sync_decide(const ip_holder *h, int hold, const void *screen, int depth)
     return ip_holder_stale(h, screen, depth) ? IP_SYNC_OBTAIN : IP_SYNC_NONE;
 }
 
+int ip_sync_new_identity(const void *old_screen, const void *new_screen, int act, int lost)
+{
+    if (act == IP_SYNC_NONE)
+        return 0;
+    if (old_screen != new_screen)
+        return 1;
+    return act == IP_SYNC_OBTAIN && lost;
+}
+
 int ip_sync(ip_holder *h, const ip_ops *o, int hold, const void *screen, int depth, int planes)
 {
-    int act;
+    int act, lost;
+    const void *old = h->screen;
     ip_holder_verify(h, o, screen, depth);
+    lost = old && !h->screen;            /* verify forgets the pens only when the same address was reopened */
     act = ip_sync_decide(h, hold, screen, depth);
     if (act == IP_SYNC_RELEASE) {
         ip_holder_release(h, o);
@@ -217,6 +228,7 @@ int ip_sync(ip_holder *h, const ip_ops *o, int hold, const void *screen, int dep
         for (k = 0; k < n && o->set_rgb; k++)
             o->set_rgb(o->ctx, lp[k], lc[k]);
     }
+    h->new_identity = ip_sync_new_identity(old, screen, act, lost);
     return act;
 }
 

@@ -146,6 +146,13 @@ static void test_sync(void)
     CHECK_INT(ip_sync_decide(&h, 1, &s1, 8), IP_SYNC_OBTAIN);       /* depth changed */
     CHECK_INT(ip_sync_decide(&h, 1, NULL, 6), IP_SYNC_RELEASE);     /* Workbench closed: drop */
     CHECK_INT(ip_sync_decide(&h, 0, &s1, 6), IP_SYNC_RELEASE);      /* quitting / kill switch held */
+    /* S32-PEN-EPOCH-LEAK: the epoch moves only when the screen identity does */
+    CHECK_INT(ip_sync_new_identity(&s1, &s1, IP_SYNC_RELEASE, 0), 0);   /* hold off, screen still open */
+    CHECK_INT(ip_sync_new_identity(&s1, &s1, IP_SYNC_OBTAIN, 0), 0);    /* recheck on the same screen */
+    CHECK_INT(ip_sync_new_identity(&s1, &s1, IP_SYNC_NONE, 0), 0);
+    CHECK_INT(ip_sync_new_identity(&s1, &s2, IP_SYNC_OBTAIN, 0), 1);    /* screen pointer changed */
+    CHECK_INT(ip_sync_new_identity(&s1, NULL, IP_SYNC_RELEASE, 0), 1);  /* screen gone */
+    CHECK_INT(ip_sync_new_identity(&s1, &s1, IP_SYNC_OBTAIN, 1), 1);    /* same-address reopen: pens lost */
     CHECK_INT(ip_hold_wanted(0, 0, 1), 1);                          /* running: hold, whatever the flat switch says */
     CHECK_INT(ip_hold_wanted(1, 0, 1), 0);                          /* quitting */
     CHECK_INT(ip_hold_wanted(0, 1, 1), 0);                          /* kill switch held */

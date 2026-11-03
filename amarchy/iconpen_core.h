@@ -57,6 +57,7 @@ typedef struct ip_holder {
     int slot0, first, count;     /* the plan the pens were obtained under */
     uint8_t rgb[IP_PENS][3];     /* the colours the held pens carry now (ip_recolour compares against them) */
     int recheck;                 /* ip_holder_verify: a missing pen is free now; the next sync re-obtains */
+    int new_identity;            /* the last ip_sync changed the screen identity (ip_sync_new_identity); survives ip_holder_init */
 } ip_holder;
 
 void ip_holder_init(ip_holder *h);
@@ -94,6 +95,12 @@ int ip_sync_decide(const ip_holder *h, int hold, const void *screen, int depth);
  * ip_holder_verify, ip_sync_decide, then RELEASE: ip_holder_release; OBTAIN (a new Workbench screen or depth): o->theme,
  * ip_colours + ip_holder_obtain, then the live role pens the new screen needs (desk_live_follow at `planes`, FLAT-PENS47-RESET
  * cause 1: a reopened screen starts with graphics-default pens 4-7) through o->set_rgb. Returns the action taken. */
+/* S32-PEN-EPOCH-LEAK: whether a sync changed the identity of the screen the pens live on (the epoch other clients compare).
+ * old_screen = the holder's screen before the sync, new_screen = the Workbench screen now, act = the ip_sync result, lost = 1
+ * when ip_holder_verify found our exclusive pens freed on the same address (a reopen: the ColorMap was rebuilt). 1 when the
+ * screen pointer changed or went away, or act is OBTAIN with the same pointer and lost; 0 for NONE, a RELEASE with the screen
+ * still open (hold switched off) and a recheck OBTAIN on the same screen (those keep the clients' pens valid). */
+int ip_sync_new_identity(const void *old_screen, const void *new_screen, int act, int lost);
 int ip_sync(ip_holder *h, const ip_ops *o, int hold, const void *screen, int depth, int planes);
 /* Whether amarchy-flat holds the icon pens: for its whole run, whatever the flat switch says (L7 cause 2). graphics puts a
  * released pen at the HEAD of the PalExtra free list (rig 10, 3.2: after flat off the free order read 47 46 .. 32 244 ..),

@@ -145,8 +145,9 @@ static void pens_sync(ipd_rec *r)
     c.vp = sc ? &sc->ViewPort : 0;
     c.h = &r->s.h;
     c.sc = sc;
-    if (ip_sync(&r->s.h, &o, hold, sc, depth, sc ? sc->BitMap.Depth : 0) != IP_SYNC_NONE)
-        r->s.epoch++;                   /* S32-STALE-HELD-PENS: a new screen (or none): pens other clients hold on the old one are gone */
+    ip_sync(&r->s.h, &o, hold, sc, depth, sc ? sc->BitMap.Depth : 0);
+    if (r->s.h.new_identity)
+        r->s.epoch++;                   /* S32-STALE-HELD-PENS: a new screen (or none): pens other clients hold on the old one are gone; S32-PEN-EPOCH-LEAK: not on a release or recheck on the same screen */
     UnlockPubScreenList();
 }
 
