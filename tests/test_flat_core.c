@@ -1420,6 +1420,29 @@ static const char *const g_os32_depth[] = {
     "222222222222222222222222", "123333333333333333333331", "123331111111111133333331", "123331000000000133333331",
     "123331000111111111113331", "123331000122222222213331", "123331111122222222213331", "123333333122222222213331",
     "123333333111111111113331", "123333333333333333333331", "111111111111111111111111" };
+/* S32-CLONE-CLIP: the private depth image as rig 23 (3.2, intuition 47.53) drew it with the MARKER pens, dumped 32 wide with
+ * the draw origin at column 4; LeftEdge is -1, so image column 0 is dump column 3 (s32-evidence/clone-clip-hunt.md).
+ * Marker 5 = SHADOW (right bevel at image column 23), 8 = BACKGROUND (inside the back window). */
+#define CLIP_PAD 4
+static const char *const g_os32_depth_marker[] = {
+    "00044444444444444444444444400000", "00054666666666666666666666500000", "00054666555555555556666666500000",
+    "00054666588888888856666666500000", "00054666588855555555555666500000", "00054666588854444444445666500000",
+    "00054666555554444444445666500000", "00054666666654444444445666500000", "00054666666655555555555666500000",
+    "00054666666666666666666666500000", "00055555555555555555555555500000" };
+static int g_clip_le;
+/* what clone_render reads: the image drawn at offset flat_clone_offset(le), so image column j lands at grid column off + le + j */
+static int clip_render(void *ctx, unsigned long ids, uint8_t *grid, int w, int h)
+{
+    int x, y, j, off = flat_clone_offset(g_clip_le);
+    (void)ctx; (void)ids;
+    g_render_calls++;
+    for (y = 0; y < h; y++)
+        for (x = 0; x < w; x++) {
+            j = x - off - g_clip_le;                                    /* image column at grid column x */
+            grid[y * w + x] = (uint8_t)(j < 0 || j >= w ? 0 : g_os32_depth_marker[y][CLIP_PAD + g_clip_le + j] - '0');
+        }
+    return 1;
+}
 static const char *const *g_grid_rows;
 static int grid_render(void *ctx, unsigned long ids, uint8_t *grid, int w, int h)
 {
@@ -1440,6 +1463,34 @@ static void test_boot_before_workbench_retries_install(void)
     CHECK_INT(flat_install_due(FLAT_HELD_MARKER, 0, FLAT_ERR_NOCLASS), 0);   /* a kill switch stays inert */
     CHECK_INT(flat_install_due(0, 0, FLAT_ERR_DOUBLE), 0);         /* a real swap failure is final */
     CHECK_INT(flat_install_due(0, 0, -101), 0);                    /* out of memory is final */
+}
+
+/* S32-CLONE-CLIP: the depth clone on 3.2 (LeftEdge -1, marker pens): the glyph at its stock columns 5-19, the right bevel
+ * (image column 23) never a glyph line at column 22, the back window's BACKGROUND inside a hole, not solid */
+static void test_clone_clip_depth_marker(void)
+{
+    flat_state st;
+    int x, y, glyph = 0;
+    glyph_state(&st);
+    st.enabled = 1;
+    CHECK_INT(flat_clone_offset(-1), 1);
+    CHECK_INT(flat_clone_offset(0), 0);
+    cv_clear();
+    g_render_calls = 0;
+    g_clip_le = -1;
+    CHECK_INT(flat_clone_draw(&st, FLAT_W_DEPTH, FLAT_IM_DRAW, 0, 0, 0, 24, 11, 'B', 'T', clip_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
+    CHECK_INT(g_render_calls, 1);
+    for (y = 0; y < 11; y++)
+        for (x = 0; x < 24; x++) {
+            char m = g_os32_depth_marker[y][CLIP_PAD - 1 + x];
+            int want = x >= 5 && x <= 19 && y >= 2 && y <= 8 && (m == '5' || m == '4');
+            CHECK(cv[y][x] == (want ? 'T' : 'B'));
+            glyph += cv[y][x] == 'T';
+        }
+    for (y = 0; y < 11; y++)
+        CHECK(cv[y][22] == 'B' && cv[y][23] == 'B');                            /* no bevel line on the right */
+    CHECK(cv[3][7] == 'B' && cv[4][8] == 'B' && cv[5][8] == 'B');             /* the back window's inside: a hole */
+    CHECK_INT(glyph, 74);                                            /* = the real-pen fixture g_os32_depth */
 }
 
 static void test_clone_no_dividers(void)
@@ -1489,6 +1540,7 @@ void suite_flat_core(void)
     test_glyph_clone();
     test_clone_private_slot();
     test_clone_no_dividers();
+    test_clone_clip_depth_marker();
     test_boot_before_workbench_retries_install();
     test_title_accent();
     test_scroller();

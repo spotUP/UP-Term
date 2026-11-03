@@ -226,10 +226,11 @@ static int clone_render(void *ctx, unsigned long ids, uint8_t *grid, int w, int 
         cl_task = NULL;
         e->why = CLONE_WHY_NOOBJ;
     } else {
-        /* the private image, baked with the marker pens, drawn by the system dispatcher at 0,0 (its edges are 0) */
+        /* the private image, baked with the marker pens, drawn by the system dispatcher with its column 0 at grid column 0:
+         * 3.2 gives depth and zoom LeftEdge -1 (S32-CLONE-CLIP), and flat_clone_draw paints at the image's true origin */
         m.imp_RPort = &cl_rp;
-        m.imp_Offset.X = 0;
-        m.imp_Offset.Y = 0;
+        m.imp_Offset.X = flat_clone_offset(((struct Image *)po)->LeftEdge);
+        m.imp_Offset.Y = flat_clone_offset(((struct Image *)po)->TopEdge);
         m.imp_DrInfo = &cl_di;
         SetRast(&cl_rp, 0);
         if (e->reg)

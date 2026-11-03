@@ -248,11 +248,12 @@ int flat_clone_map(const uint8_t *grid, int w, int h, uint8_t *out)
         for (x = 0; x < w; x++) {
             int m = grid[y * w + x], ring = x == 0 || y == 0 || x == w - 1 || y == h - 1;
             int glyph;
-            if (m == 0 || m == bgm)
-                glyph = 0;                       /* untouched or ground */
+            if (m == 0 || m == bgm || m == FLAT_CLONE_BACK)
+                glyph = 0;                       /* untouched, ground, or a BACKGROUND hole (S32-CLONE-CLIP: the depth
+                                                  * back window's inside is marker 8 with the marker pens, 0 with real pens) */
             else if (x < l || x > r || y < t || y > b)
                 glyph = 0;                       /* a divider / border line */
-            else if (ring && (m == FLAT_CLONE_SHINE || m == FLAT_CLONE_SHADOW || m == FLAT_CLONE_BACK))
+            else if (ring && (m == FLAT_CLONE_SHINE || m == FLAT_CLONE_SHADOW))
                 glyph = 0;                       /* the bevel ring */
             else
                 glyph = 1;
@@ -260,6 +261,11 @@ int flat_clone_map(const uint8_t *grid, int w, int h, uint8_t *out)
             n += glyph;
         }
     return n;
+}
+
+int flat_clone_offset(int edge)
+{
+    return -edge;
 }
 
 int flat_clone_pen(const flat_state *s, int role, int frame_pen)

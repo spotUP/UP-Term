@@ -113,8 +113,9 @@ int flat_outer_edge_fill(int w, int h, int x0, int y0, int x1, int y1, int px, i
 
 /* FLAT-GLYPH-OS-SHAPES: the clone of the system's own gadget image. The OS side draws the stock image offscreen with a private
  * DrawInfo whose pen i is the marker i + 1 (FLAT_CLONE_MARK(i)); flat_clone_map turns that grid into box (0) and glyph (1):
- * the bevel ring (SHINE / SHADOW / BACKGROUND markers on the outermost 1 px) and the ground (the marker filling most of the
- * inside, 0 = untouched) become the box, every other pixel is one glyph pixel. */
+ * the bevel ring (SHINE / SHADOW / BACKGROUND markers on the outermost 1 px), the ground (the marker filling most of the
+ * inside, 0 = untouched) and every BACKGROUND pixel (a hole, e.g. inside the depth image's back window) become the box,
+ * every other pixel is one glyph pixel. */
 #define FLAT_CLONE_MARK(i) ((i) + 1)
 /* dri_Pens indices (intuition/screens.h): SHINEPEN 3, SHADOWPEN 4, BACKGROUNDPEN 7 */
 #define FLAT_CLONE_BACK FLAT_CLONE_MARK(7)
@@ -141,6 +142,10 @@ int flat_clone_route(const flat_state *s, unsigned long which, unsigned long met
 typedef struct flat_clone_key { unsigned long which; int w, h; } flat_clone_key;
 int flat_clone_slot(const flat_clone_key *keys, int n, int cap, unsigned long which, int w, int h);
 int flat_clone_map(const uint8_t *grid, int w, int h, uint8_t *out);
+/* S32-CLONE-CLIP: the draw offset that puts the private image's column 0 at grid column 0. 3.2 sysiclass gives the depth and
+ * zoom images LeftEdge -1 (close and size 0): drawn at offset 0 the image's first column fell off the bitmap, the glyph sat
+ * 1 px left and its right bevel became a glyph line (rig 23, s32-evidence/clone-clip-hunt.md). */
+int flat_clone_offset(int edge);
 int flat_clone_pen(const flat_state *s, int role, int frame_pen);
 int flat_clone_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
                     int w, int h, int frame_pen, int text_pen, flat_render_fn render, void *rctx, flat_fill_fn fill, void *fctx, uint8_t *scratch);
