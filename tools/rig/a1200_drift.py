@@ -135,6 +135,14 @@ def verdicts(entries, build, amiga):
             for n, p in entries]
 
 
+def media_entries(dist=None):
+    """([(name, Amiga path)], {name: dist md5}) for KIT_MEDIA at the installed UP-Term: path (RIG-DRIFT-MEDIA-INSTALLED:
+    an Installer run onto another volume is invisible to the host-side tree check in rig.py media_drift)."""
+    dist = dist or ROOT / "dist"
+    entries = [(rel, "UP-Term:" + rel) for rel in KIT_MEDIA]
+    return entries, {rel: md5_file(dist / src) for rel, src in KIT_MEDIA.items()}
+
+
 def main(argv):
     bdir = pathlib.Path(argv[argv.index("--build") + 1]) if "--build" in argv else ROOT / "build/amiga"
     names = [f.name for f in bdir.iterdir() if f.is_file()]
@@ -153,6 +161,9 @@ def main(argv):
             print("%-8s %-28s not checked: no %s" % ("unbuilt", n, src))
             skipped.append(n)
     entries = entries + [(n, p) for n, p, src in data if src.is_file()]
+    m_entries, m_build = media_entries()
+    build.update(m_build)
+    entries = entries + m_entries
     res = verdicts(entries, build, amiga_md5s([p for _, p in entries]))
     for state, n, p in res:
         print("%-8s %-28s %s" % (state, n, p))

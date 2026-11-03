@@ -105,3 +105,24 @@ def test_data_the_installer_lays_down_is_checked_and_missing_data_is_drift():
     assert {s for s, _, _ in d.verdicts(entries, build, there)} == {"same"}
     there["UP-Term:Amarchy/Icons/lucide.dat"] = "old"
     assert [n for s, n, _ in d.verdicts(entries, build, there) if s == "DIFF"] == ["lucide/lucide.dat"]
+
+
+def test_installed_kit_media_is_md5_checked_on_the_amiga(monkeypatch, capsys, tmp_path):
+    """RIG-DRIFT-MEDIA-INSTALLED: main() asks the Amiga for UP-Term:share/updemo/earth.anim and reports missing / DIFF."""
+    asked = []
+    amiga = {}
+    monkeypatch.setattr(d, "amiga_md5s", lambda ps: (asked.extend(ps), amiga)[1])
+    monkeypatch.setattr(d, "lib_entries", lambda nofpu=False: [])
+    path = "UP-Term:share/updemo/earth.anim"
+
+    assert d.main(["--build", str(tmp_path)]) == 1
+    assert path in asked
+    assert "missing  share/updemo/earth.anim" in capsys.readouterr().out
+
+    amiga[path] = "0" * 32
+    assert d.main(["--build", str(tmp_path)]) == 1
+    assert "DIFF     share/updemo/earth.anim" in capsys.readouterr().out
+
+    amiga[path] = d.md5_file(d.ROOT / "dist/updemo/earth.anim")
+    d.main(["--build", str(tmp_path)])
+    assert "same     share/updemo/earth.anim" in capsys.readouterr().out
