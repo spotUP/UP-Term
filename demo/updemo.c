@@ -1884,6 +1884,19 @@ static long be32(const unsigned char *p)
     return (long)p[0] << 24 | (long)p[1] << 16 | (long)p[2] << 8 | p[3];
 }
 
+/* sends a media file (by name, through the host's loader) as one kitty PNG command with the given control data;
+ * 0 when the loader is missing or the file is not there */
+static int kitty_png_file(const char *name, const char *ctrl)
+{
+    unsigned char *d;
+    long n = 0;
+    if (!io->load || !(d = io->load(io->user, name, &n)))
+        return 0;
+    kitty_chunks(ctrl, d, n);
+    free(d);
+    return 1;
+}
+
 /* sends the file's frames, their gaps and the loop; 0 when it is missing or not whole */
 static int kitty_earth(void)
 {
@@ -1928,19 +1941,26 @@ static void sc_kitty_anim(long t, int first)
     (void)t;
     if (!first)
         return;
-    heading("Kitty animation", "frames sent once; the terminal plays them, with their gaps, in a loop");
+    heading("Kitty animation", "a globe turns over a fjord photo; the terminal plays the frames in a loop");
+    ps("\033_Ga=d,d=I,i=6,q=2\033\\");
+    at(4, 6);
+    /* the photo first, behind the text (z=-1) and placed by columns only; the globe goes on top at the same spot */
+    if (!kitty_png_file("fjord.png", "a=T,i=6,f=100,c=20,z=-1,q=2")) {
+        at(10, 40);
+        ps("(fjord.png not found: no photo)");
+    }
     at(5, 40);
     if (kitty_earth()) {
-        ps("The Earth turns by itself:");
+        ps("The Earth turns over the fjord:");
         at(6, 40);
-        ps("the program sent 44 frames,");
+        ps("a photo (z=-1), 44 frames,");
         at(7, 40);
         ps("their gaps, and one loop command.");
         return;
     }
-    ps("The globe turns by itself:");
+    ps("The globe turns over the fjord:");
     at(6, 40);
-    ps("the program sent 8 frames,");
+    ps("a photo (z=-1), 8 frames,");
     at(7, 40);
     ps("their gaps, and one loop command.");
     at(9, 40);
@@ -2060,17 +2080,13 @@ static void ring_picture(unsigned char *px)
 static void sc_kitty_picture(long t, int first)
 {
     static unsigned char px[RING * RING * 3];
-    unsigned char *d;
-    long n = 0;
     (void)t;
     if (!first)
         return;
     heading("Kitty picture", "a photo scaled to cells; pictures keep their shape on hires screens");
     ps("\033_Ga=d,d=I,i=4,q=2\033\\\033_Ga=d,d=I,i=5,q=2\033\\");
     at(4, 6);
-    if (io->load && (d = io->load(io->user, "fjord.png", &n))) {
-        kitty_chunks("a=T,i=4,f=100,c=20,q=2", d, n);
-        free(d);
+    if (kitty_png_file("fjord.png", "a=T,i=4,f=100,c=20,q=2")) {
         at(11, 6);
         ps("A fjord, sent as a PNG (f=100)");
     } else {
