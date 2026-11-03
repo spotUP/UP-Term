@@ -238,6 +238,7 @@ int ip_screen_depth(int planes, int ehb)
 void ip_shared_init(ip_shared *s)
 {
     s->owners = 0;
+    s->epoch = 0;
     ip_holder_init(&s->h);
 }
 

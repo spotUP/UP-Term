@@ -1270,93 +1270,71 @@ static int boot_wanted(void)
  * obtained as a shared pen (ObtainBestPen: an exact or nearest colour, no DrawInfo pen is recoloured) and held until the next refresh or
  * exit. Runs on the main task only: ObtainBestPen is never called inside the RectFill hook. Screens under 8 colours keep pen_dim 0
  * (flat_dim_pen then falls back to the plain button pen). */
-#define DIM_PCT 60
-static LONG g_dim_pen = -1;
-/* KNOB-PEN: the scroller knob pen, obtained the same way from 16 colours up (a 3 plane screen has no free pen: pen_knob stays 0 and
- * flat_knob_pen answers DK_MUTED). Colour = the surface pen moved FLAT_KNOB_PCT percent toward the muted text pen (flat_knob_colour). */
-static LONG g_knob_pen = -1;
-/* INBAR-PEN (S32-INACTIVE-BAR): the inactive dragbar / ring / arrow / knob pen, obtained like the knob pen. Colour = the desk's
- * inbar_rgb (the theme `inactive` key) when set, else the surface pen moved GT_INACTIVE_PCT toward the text pen (flat_inbar_colour). */
-static LONG g_inbar_pen = -1;
+/* S32-STALE-HELD-PENS: the three pens (dim, knob, inbar) are flat_pens (flat_core.c): remembered with the screen and its ipd_epoch,
+ * released only on that identity and forgotten, not released, on any other screen. KNOB-PEN: the scroller knob pen, from 16 colours
+ * up (a 3 plane screen has no free pen: pen_knob stays 0 and flat_knob_pen answers DK_MUTED). INBAR-PEN (S32-INACTIVE-BAR): the
+ * inactive dragbar / ring / arrow / knob pen, colour = the desk's inbar_rgb (theme `inactive`) when set, else derived from the screen. */
+static flat_pens g_pens;
+
+typedef struct { struct ColorMap *cm; } pen_cx;
+
+static int fp_obtain(void *ctx, unsigned long c)
+{
+    pen_cx *x = ctx;
+    return (int)ObtainBestPen(x->cm, ((c >> 16) & 0xff) * 0x01010101UL, ((c >> 8) & 0xff) * 0x01010101UL, (c & 0xff) * 0x01010101UL,
+                              OBP_Precision, PRECISION_GUI, OBP_FailIfBad, FALSE, TAG_DONE);
+}
+
+static void fp_release(void *ctx, int pen)
+{
+    pen_cx *x = ctx;
+    ReleasePen(x->cm, (ULONG)pen);
+}
+
+static unsigned long fp_rgb(void *ctx, int pen)
+{
+    pen_cx *x = ctx;
+    ULONG a[3];
+    GetRGB32(x->cm, (ULONG)pen, 1, a);
+    return ((a[0] >> 24) << 16) | ((a[1] >> 24) << 8) | (a[2] >> 24);
+}
+
+/* mode 0: refresh (release on the identity, obtain again), 1: follow the screen (1 s watch), 2: release. Runs under the locked
+ * Workbench screen so its ColorMap cannot close. */
+static void pens_run(flatshared *r, int mode)
+{
+    struct Screen *scr = ipd_lock_wb_screen();
+    pen_cx x;
+    flat_pen_ops o;
+    const void *id = scr;
+    int depth = 0;
+    x.cm = scr ? scr->ViewPort.ColorMap : NULL;
+    o.ctx = &x;
+    o.obtain = fp_obtain;
+    o.release = fp_release;
+    o.rgb = fp_rgb;
+    if (scr && scr->RastPort.BitMap)
+        depth = scr->RastPort.BitMap->Depth;
+    if (!x.cm)
+        id = NULL;
+    if (mode == 0)
+        flat_pens_refresh(&g_pens, &o, &r->st, id, ipd_epoch(), depth);
+    else if (mode == 1)
+        flat_pens_follow(&g_pens, &o, &r->st, !r->st.held, id, ipd_epoch(), depth);
+    else
+        flat_pens_release(&g_pens, &o, &r->st, id, ipd_epoch());
+    if (scr)
+        UnlockPubScreen(NULL, scr);
+}
 
 static void dim_refresh(flatshared *r)
 {
-    struct Screen *scr = ipd_lock_wb_screen();
-    if (scr) {
-        struct ColorMap *cm = scr->ViewPort.ColorMap;
-        if (g_dim_pen >= 0) {
-            ReleasePen(cm, (ULONG)g_dim_pen);
-            g_dim_pen = -1;
-            r->st.pen_dim = 0;
-        }
-        if (g_knob_pen >= 0) {
-            ReleasePen(cm, (ULONG)g_knob_pen);
-            g_knob_pen = -1;
-            r->st.pen_knob = 0;
-        }
-        if (g_inbar_pen >= 0) {
-            ReleasePen(cm, (ULONG)g_inbar_pen);
-            g_inbar_pen = -1;
-            r->st.pen_inbar = 0;
-        }
-        if (cm && scr->RastPort.BitMap && scr->RastPort.BitMap->Depth >= 4) {
-            ULONG a[3], b[3];
-            uc_u32 c;
-            if (r->st.inbar_rgb[0] || r->st.inbar_rgb[1] || r->st.inbar_rgb[2])
-                c = ((uc_u32)r->st.inbar_rgb[0] << 16) | ((uc_u32)r->st.inbar_rgb[1] << 8) | r->st.inbar_rgb[2];
-            else {
-                GetRGB32(cm, (ULONG)r->st.pen_back, 1, a);
-                GetRGB32(cm, (ULONG)r->st.pen_text, 1, b);
-                c = (uc_u32)flat_inbar_colour(((a[0] >> 24) << 16) | ((a[1] >> 24) << 8) | (a[2] >> 24), ((b[0] >> 24) << 16) | ((b[1] >> 24) << 8) | (b[2] >> 24));
-            }
-            g_inbar_pen = ObtainBestPen(cm, ((c >> 16) & 0xff) * 0x01010101UL, ((c >> 8) & 0xff) * 0x01010101UL, (c & 0xff) * 0x01010101UL,
-                                        OBP_Precision, PRECISION_GUI, OBP_FailIfBad, FALSE, TAG_DONE);
-            if (g_inbar_pen >= 0)
-                r->st.pen_inbar = (UBYTE)g_inbar_pen;
-        }
-        if (cm && scr->RastPort.BitMap && scr->RastPort.BitMap->Depth >= 4 && r->st.pen_dimtext) {
-            ULONG a[3], b[3];
-            uc_u32 c;
-            GetRGB32(cm, (ULONG)r->st.pen_back, 1, a);
-            GetRGB32(cm, (ULONG)r->st.pen_dimtext, 1, b);
-            c = (uc_u32)flat_knob_colour(((a[0] >> 24) << 16) | ((a[1] >> 24) << 8) | (a[2] >> 24), ((b[0] >> 24) << 16) | ((b[1] >> 24) << 8) | (b[2] >> 24));
-            g_knob_pen = ObtainBestPen(cm, ((c >> 16) & 0xff) * 0x01010101UL, ((c >> 8) & 0xff) * 0x01010101UL, (c & 0xff) * 0x01010101UL,
-                                       OBP_Precision, PRECISION_GUI, OBP_FailIfBad, FALSE, TAG_DONE);
-            if (g_knob_pen >= 0)
-                r->st.pen_knob = (UBYTE)g_knob_pen;
-        }
-        if (cm && scr->RastPort.BitMap && scr->RastPort.BitMap->Depth >= 3) {
-            ULONG rgb[3];
-            uc_u32 c;
-            GetRGB32(cm, (ULONG)flat_button_pen(&r->st, scr->RastPort.BitMap->Depth), 1, rgb);
-            c = gt_scale(((rgb[0] >> 24) << 16) | ((rgb[1] >> 24) << 8) | (rgb[2] >> 24), DIM_PCT);
-            g_dim_pen = ObtainBestPen(cm, ((c >> 16) & 0xff) * 0x01010101UL, ((c >> 8) & 0xff) * 0x01010101UL, (c & 0xff) * 0x01010101UL,
-                                      OBP_Precision, PRECISION_GUI, OBP_FailIfBad, FALSE, TAG_DONE);
-            if (g_dim_pen >= 0)
-                r->st.pen_dim = (UBYTE)g_dim_pen;
-        }
-        UnlockPubScreen(NULL, scr);
-    }
+    pens_run(r, 0);
 }
 
 static void dim_release(flatshared *r)
 {
-    struct Screen *scr = (g_dim_pen >= 0 || g_knob_pen >= 0 || g_inbar_pen >= 0) ? ipd_lock_wb_screen() : NULL;
-    r->st.pen_dim = 0;
-    r->st.pen_knob = 0;
-    r->st.pen_inbar = 0;
-    if (scr) {
-        if (g_inbar_pen >= 0)
-            ReleasePen(scr->ViewPort.ColorMap, (ULONG)g_inbar_pen);
-        if (g_dim_pen >= 0)
-            ReleasePen(scr->ViewPort.ColorMap, (ULONG)g_dim_pen);
-        if (g_knob_pen >= 0)
-            ReleasePen(scr->ViewPort.ColorMap, (ULONG)g_knob_pen);
-        UnlockPubScreen(NULL, scr);
-    }
-    g_dim_pen = -1;
-    g_knob_pen = -1;
-    g_inbar_pen = -1;
+    pens_run(r, 2);
 }
 
 /* The hook and the two patches, the crash marker around them. A FLAT_ERR_NOCLASS result (the Workbench screen not
@@ -1470,6 +1448,7 @@ int main(void)
         }
     }
     g_r = r;
+    flat_pens_init(&g_pens);
     pens_sync(r, 0);                                    /* the exclusive icon pens first: a shared pen (dim) must not sit on one */
     if (!r->st.held) {
         dopus_scan(r);
@@ -1483,6 +1462,7 @@ int main(void)
             if (IntuitionBase && GfxBase && flat_install_due(r->st.held, install_rc == FLAT_OK, install_rc))
                 install_rc = install_all(r, &tm, &marker_live);     /* S32-START-LOOK: LoadWB opened the screen */
             pens_sync(r, 0);
+            pens_run(r, 1);                             /* S32-STALE-HELD-PENS: a new screen forgets the old pens and obtains on it (icon pens synced first) */
             pt_start(&pen_tm, 1000000UL);
         }
         if (marker_live && pt_fired(&tm, got)) {        /* 60 s without a crash: the start is safe */

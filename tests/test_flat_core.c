@@ -1360,7 +1360,8 @@ static void test_inbar_status_dump(void)
     fclose(f);
     src[n] = 0;
     CHECK(strstr(src, "\" inbar=\");  put_num(line, &n, copy.pen_inbar)") != 0);
-    CHECK(strstr(src, "r->st.pen_inbar = (UBYTE)g_inbar_pen") != 0);          /* the pen the dump reports is really obtained */
+    CHECK(strstr(src, "flat_pens_refresh(&g_pens") != 0);                      /* the pen the dump reports is really obtained */
+    CHECK(strstr(src, "flat_pens_follow(&g_pens") != 0);                       /* and follows the screen on every 1 s watch */
 }
 
 /* S32-INACTIVE-BAR: the outer ring and the scroller knob of an inactive window take the inactive pen; active ones are unchanged */
@@ -1383,6 +1384,98 @@ static void test_inactive_pens(void)
     CHECK(flat_scroller_pen(&s, 4, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69) != 9);     /* active knob unchanged */
 }
 
+
+/* S32-STALE-HELD-PENS: the dim / knob / inbar pens are remembered with the screen and its epoch. After a Workbench reopen (new
+ * address, or the same address with a new epoch) the held numbers belong to the old ColorMap: no ReleasePen on the new one, three
+ * obtains on it, and the inbar colour derived from the NEW screen's pens. The 1 s step (flat_pens_follow) is the product entry. */
+typedef struct { unsigned long col[256]; int mine[256]; int next; int obtains, releases, bad_releases; } wbscr;
+
+static int wb_obtain(void *c, unsigned long rgb)
+{
+    wbscr *w = c;
+    int pen = w->next++;
+    w->col[pen] = rgb;
+    w->mine[pen] = 1;
+    w->obtains++;
+    return pen;
+}
+
+static void wb_release(void *c, int pen)
+{
+    wbscr *w = c;
+    w->releases++;
+    if (!w->mine[pen])
+        w->bad_releases++;
+    w->mine[pen] = 0;
+}
+
+static unsigned long wb_rgb(void *c, int pen)
+{
+    return ((wbscr *)c)->col[pen];
+}
+
+static void wb_screen(wbscr *w, int first)
+{
+    memset(w, 0, sizeof *w);
+    w->next = first;
+    w->col[0] = 0x1a1b26UL;
+    w->col[2] = 0xa9b1d6UL;
+    w->col[5] = 0x414868UL;
+    w->col[6] = 0x565f89UL;
+}
+
+static void test_stale_held_pens(void)
+{
+    wbscr a, b, c;
+    flat_pens p;
+    flat_pen_ops o;
+    flat_state s;
+    int screen_a, screen_b;
+    flat_init(&s);
+    s.pen_back = 0;
+    s.pen_text = 2;
+    s.pen_button = 5;
+    s.pen_dimtext = 6;
+    flat_pens_init(&p);
+    o.obtain = wb_obtain;
+    o.release = wb_release;
+    o.rgb = wb_rgb;
+    wb_screen(&a, 249);
+    o.ctx = &a;
+    CHECK_INT(flat_pens_follow(&p, &o, &s, 1, &screen_a, 1, 8), 1);
+    CHECK_INT(a.obtains, 3);
+    CHECK_INT(s.pen_inbar, 249);
+    CHECK_INT(flat_pens_follow(&p, &o, &s, 1, &screen_a, 1, 8), 0);       /* same screen, same epoch: nothing */
+    CHECK_INT(a.obtains, 3);
+    /* Workbench reopened as screen B: other clients own 249..251 there, ours would be 240.. */
+    wb_screen(&b, 240);
+    o.ctx = &b;
+    CHECK_INT(flat_pens_follow(&p, &o, &s, 1, &screen_b, 2, 8), 1);
+    CHECK_INT(b.releases, 0);                       /* the old pens were never obtained on B */
+    CHECK_INT(b.obtains, 3);
+    CHECK_INT(b.col[s.pen_inbar], 0x5A5E75UL);      /* flat_inbar_colour of B's pen 0 and pen 2 */
+    CHECK_INT(s.pen_inbar, 240);
+    CHECK_INT(s.pen_knob != 0 && s.pen_dim != 0, 1);
+    /* the same address with a new epoch is a reopened screen too */
+    wb_screen(&c, 100);
+    o.ctx = &c;
+    CHECK_INT(flat_pens_follow(&p, &o, &s, 1, &screen_b, 3, 8), 1);
+    CHECK_INT(c.releases, 0);
+    CHECK_INT(c.obtains, 3);
+    /* Ctrl-D on the identity they were obtained on releases normally; on another identity it only forgets */
+    flat_pens_release(&p, &o, &s, &screen_b, 4);
+    CHECK_INT(c.releases, 0);
+    CHECK_INT(s.pen_inbar, 0);
+    flat_pens_refresh(&p, &o, &s, &screen_b, 4, 8);
+    flat_pens_release(&p, &o, &s, &screen_b, 4);
+    CHECK_INT(c.releases, 3);
+    CHECK_INT(c.bad_releases, 0);
+    /* the screen going away forgets */
+    flat_pens_refresh(&p, &o, &s, &screen_b, 5, 8);
+    CHECK_INT(flat_pens_follow(&p, &o, &s, 1, 0, 5, 0), 0);
+    CHECK_INT(c.bad_releases, 0);
+    CHECK_INT(s.pen_dim, 0);
+}
 
 /* S32 CLONE-PRIVATE-IMAGE: OS 3.2 sysiclass bakes its pens at OM_NEW and ignores imp_DrInfo at IM_DRAW, so drawing the window's
  * own image with the marker DrawInfo read back its baked screen pens (all 0 under flat pens: 'empty'). The clone keeps one private
@@ -1694,6 +1787,7 @@ void suite_flat_core(void)
     test_frame_pen();
     test_inactive_pens();
     test_inbar_status_dump();
+    test_stale_held_pens();
     test_arrow_glyph_pens();
     test_arrow_aspect();
     test_clone_arrows();

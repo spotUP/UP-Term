@@ -145,7 +145,8 @@ static void pens_sync(ipd_rec *r)
     c.vp = sc ? &sc->ViewPort : 0;
     c.h = &r->s.h;
     c.sc = sc;
-    ip_sync(&r->s.h, &o, hold, sc, depth, sc ? sc->BitMap.Depth : 0);
+    if (ip_sync(&r->s.h, &o, hold, sc, depth, sc ? sc->BitMap.Depth : 0) != IP_SYNC_NONE)
+        r->s.epoch++;                   /* S32-STALE-HELD-PENS: a new screen (or none): pens other clients hold on the old one are gone */
     UnlockPubScreenList();
 }
 
@@ -195,6 +196,18 @@ int ipd_owner(unsigned owner, int on)
     }
     ReleaseSemaphore(&r->ss);
     return refs;
+}
+
+unsigned ipd_epoch(void)
+{
+    unsigned e = 0;
+    ipd_rec *r;
+    Forbid();
+    r = (ipd_rec *)FindSemaphore((STRPTR)IPD_SEM_NAME);
+    if (r)
+        e = r->s.epoch;
+    Permit();
+    return e;
 }
 
 void ipd_resync(void)

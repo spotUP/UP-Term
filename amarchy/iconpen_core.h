@@ -117,6 +117,7 @@ int ip_main_step(int applied, int owned);
 typedef struct ip_shared {
     unsigned owners;
     ip_holder h;
+    unsigned epoch;     /* S32-STALE-HELD-PENS: counts the syncs that obtained or released (a new Workbench screen); other clients compare it to know their pens on the old screen are gone */
 } ip_shared;
 
 void ip_shared_init(ip_shared *s);

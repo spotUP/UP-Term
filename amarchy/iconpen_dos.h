@@ -26,6 +26,8 @@ struct Screen *ipd_lock_wb_screen(void);
 int ipd_owner(unsigned owner, int on);
 /* The 16 icon slot colours of the current theme (ip_colours on ip_ground): the palette amarchy-icons bakes into the FORM ICON. */
 void ipd_icon_rgb(uint8_t rgb[16][3]);
+/* S32-STALE-HELD-PENS: the screen epoch, changed by every sync that obtained or released the icon pens (Workbench closed, reopened, mode change); 0 without a record. */
+unsigned ipd_epoch(void);
 /* Re-sync without changing owners (screen reopened, theme changed). */
 void ipd_resync(void);
 /* A theme switch: rewrite the held pens 32..47 with SetRGB32 from the new theme (ip_recolour). Does nothing when no record exists. */

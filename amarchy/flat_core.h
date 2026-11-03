@@ -358,4 +358,34 @@ int flat_scroller_pen(const flat_state *s, int depth, int active, int cx, int cy
 int flat_scroller_knob(int cx, int cy, int cw, int ch, int horiz, int vert, unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody,
                        int *kx, int *ky, int *kw, int *kh);
 
+
+/* ---- S32-STALE-HELD-PENS: the three shared pens amarchy-flat obtains itself (dim, knob, inbar) ----
+ * A pen number belongs to the ColorMap it was obtained on. After a Workbench reopen the held numbers name pens of the OLD screen:
+ * on the new one other clients own them (wrong colours in the hook), and ReleasePen on one never obtained there corrupts the
+ * PalExtra free list (iconpen_core.h ip_holder_verify). So the pens remember the screen AND its epoch (ipd_epoch, which also
+ * changes when a reopen lands at the same address) and are released only on that identity; on any other screen they are
+ * forgotten without ReleasePen. */
+#define FLAT_DIM_PCT 60
+typedef struct flat_pens {
+    const void *screen;             /* the screen the pens were obtained on, 0 = none held */
+    unsigned epoch;                 /* its ipd_epoch */
+    int dim, knob, inbar;           /* pen numbers, -1 = none */
+} flat_pens;
+typedef struct flat_pen_ops {
+    void *ctx;
+    int (*obtain)(void *ctx, unsigned long rgb);        /* ObtainBestPen on the screen being synced; -1 = none */
+    void (*release)(void *ctx, int pen);                /* ReleasePen on that screen */
+    unsigned long (*rgb)(void *ctx, int pen);           /* GetRGB32 of a pen, 0xRRGGBB */
+} flat_pen_ops;
+void flat_pens_init(flat_pens *p);
+/* Release (on the identity they were obtained on) and re-obtain the three pens on `screen` at `depth`; stores the pen numbers in
+ * s->pen_dim/pen_knob/pen_inbar. Called with no screen it only forgets. */
+void flat_pens_refresh(flat_pens *p, const flat_pen_ops *o, flat_state *s, const void *screen, unsigned epoch, int depth);
+/* Let go of the pens: ReleasePen only when `screen`/`epoch` is the identity they were obtained on, else forget them. */
+void flat_pens_release(flat_pens *p, const flat_pen_ops *o, flat_state *s, const void *screen, unsigned epoch);
+/* The 1 s Workbench watch step, after the icon pens synced: `want` 0 (held, kill switch) releases/forgets; the screen is gone
+ * (0) or another identity forgets without ReleasePen; a new screen with `want` obtains the three pens on it. Returns 1 when it
+ * obtained. */
+int flat_pens_follow(flat_pens *p, const flat_pen_ops *o, flat_state *s, int want, const void *screen, unsigned epoch, int depth);
+
 #endif

@@ -664,3 +664,83 @@ int flat_title_decide(const flat_state *s, int depth, int active, const char *ti
     }
     return 1;
 }
+
+/* ---- S32-STALE-HELD-PENS (flat_core.h): the dim / knob / inbar pens follow the screen identity ---- */
+void flat_pens_init(flat_pens *p)
+{
+    p->screen = 0;
+    p->epoch = 0;
+    p->dim = p->knob = p->inbar = -1;
+}
+
+static int pens_here(const flat_pens *p, const void *screen, unsigned epoch)
+{
+    return screen && p->screen == screen && p->epoch == epoch;
+}
+
+static void pens_forget(flat_pens *p, flat_state *s)
+{
+    p->screen = 0;
+    p->epoch = 0;
+    p->dim = p->knob = p->inbar = -1;
+    s->pen_dim = 0;
+    s->pen_knob = 0;
+    s->pen_inbar = 0;
+}
+
+void flat_pens_release(flat_pens *p, const flat_pen_ops *o, flat_state *s, const void *screen, unsigned epoch)
+{
+    if (pens_here(p, screen, epoch)) {
+        if (p->inbar >= 0)
+            o->release(o->ctx, p->inbar);
+        if (p->dim >= 0)
+            o->release(o->ctx, p->dim);
+        if (p->knob >= 0)
+            o->release(o->ctx, p->knob);
+    }
+    pens_forget(p, s);
+}
+
+void flat_pens_refresh(flat_pens *p, const flat_pen_ops *o, flat_state *s, const void *screen, unsigned epoch, int depth)
+{
+    flat_pens_release(p, o, s, screen, epoch);
+    if (!screen)
+        return;
+    p->screen = screen;
+    p->epoch = epoch;
+    if (depth >= 4) {
+        unsigned long c;
+        if (s->inbar_rgb[0] || s->inbar_rgb[1] || s->inbar_rgb[2])
+            c = ((unsigned long)s->inbar_rgb[0] << 16) | ((unsigned long)s->inbar_rgb[1] << 8) | s->inbar_rgb[2];
+        else
+            c = flat_inbar_colour(o->rgb(o->ctx, s->pen_back), o->rgb(o->ctx, s->pen_text));
+        p->inbar = o->obtain(o->ctx, c);
+        if (p->inbar >= 0)
+            s->pen_inbar = (uint8_t)p->inbar;
+    }
+    if (depth >= 4 && s->pen_dimtext) {
+        unsigned long c = flat_knob_colour(o->rgb(o->ctx, s->pen_back), o->rgb(o->ctx, s->pen_dimtext));
+        p->knob = o->obtain(o->ctx, c);
+        if (p->knob >= 0)
+            s->pen_knob = (uint8_t)p->knob;
+    }
+    if (depth >= 3) {
+        unsigned long c = (unsigned long)gt_scale((uc_u32)o->rgb(o->ctx, flat_button_pen(s, depth)), FLAT_DIM_PCT);
+        p->dim = o->obtain(o->ctx, c);
+        if (p->dim >= 0)
+            s->pen_dim = (uint8_t)p->dim;
+    }
+}
+
+int flat_pens_follow(flat_pens *p, const flat_pen_ops *o, flat_state *s, int want, const void *screen, unsigned epoch, int depth)
+{
+    if (!want || !screen) {
+        flat_pens_release(p, o, s, screen, epoch);
+        return 0;
+    }
+    if (pens_here(p, screen, epoch))
+        return 0;
+    pens_forget(p, s);                  /* another screen: the pens went with the old ColorMap, nothing to release */
+    flat_pens_refresh(p, o, s, screen, epoch, depth);
+    return 1;
+}
