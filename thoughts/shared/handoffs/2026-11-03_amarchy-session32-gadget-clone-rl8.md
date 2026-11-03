@@ -69,6 +69,21 @@ status: in progress
    that reaches the window edge. Host test fails on revert. Rig 35 proof PASS (ring 206/206 7AA2F7 after arrow clicks,
    inactive 5A5E75; rig35-reproof.md "## Arrow outline (fb6aa600)"). Rig 35 runs all four binaries from main. Owner eye check pending.
    Found: amarchy-flat did not autostart on fresh rig 47 (ledger S32-FLAT-NOAUTOSTART).
+9e. Owner eye check rig 35: knob + arrow outline PASS. New S32-ARROW-KNOB-COLOUR (owner: pressed arrows show white box; arrows + size triangle take knob colour, pressed box = knob pen, glyph pen_back): sonnet worktree agent. RIG96-FRESH-STOCK-LOOK (vtcon-ee: fresh install from fb6aa600 boots stock backdrop/frames): opus hunt rig 47, findings s32-evidence/fresh-stock-look.md; message vtcon-ee when fix is on main.
+9f. S32-ARROW-KNOB-COLOUR DONE 33d894d8 (pushed); owner eye check rig 35 "a b c pass".
+   3.1 palette freeze (rig 48, cleared): owner GUI Save is safe; earlier hang = wasabid snoop stream starving
+   (S32-31-SNOOP-STARVE, fix in creep-ltx/wasabi). Bare `Copy RAM:palette.prefs ENV:Sys/palette.prefs` crashed the
+   guest (IDE1 DATA write without request, FS-UAE exit). Evidence s32-evidence/31-freeze-culprit.md.
+   NEXT: fresh 3.1 rig, Break one program before each Copy (amarchy-menu, amarchy-gui, Amarchy+bar, SolidWin, DOpus5),
+   repeat with GUI-saved file, culprit under --mmu + MuForce (opus agent).
+   "Looks old" on rig 35 = amarchy-flat inert `flat=held why=marker` after reset <60 s from start; 2nd reboot fixed.
+   Ledger FLAT-MARKER-FAST-RESET (likely also S32-KNOB-NONE-FRESH, RIG96-FRESH-STOCK-LOOK, S32-FLAT-NOAUTOSTART).
+   Proof agent (sonnet, rig 62) -> s33-evidence/flat-marker-fast-reset.md. Then owner decides guard design
+   (tell crash from clean reset, e.g. reset handler), fix + test, message vtcon-ee.
+   BAR-STRIP-RESERVE not fixed on full install (vtcon-ee, rig 96: windows drawn behind footer). Opus hunt on own
+   fresh 3.2 rig 61 -> s33-evidence/bar-strip-full-install.md. Fix + test, send commit to vtcon-ee (its rig 96
+   reinstall waits on this + NERD-FALLBACK-DEFAULT + IMAGE-ASPECT-HIRES). vtcon-ee told both 2026-11-03.
+   Also open: AMI-OPEN-CLOSES-WELCOME.
 10. S32-UPDEMO-CDIR: fixed by peer (1b2abd22, proof 78b8a13d). Rig 35 keeps the old C:UPDemo dir until reinstall.
 11. Knob brightness, front box filled vs hollow, pointer, Left Amiga+Space window, RL15 on rig 96.
 12. AMARCHY-THEME-EDITOR gated until Amarchy + flat UI done. Decided: Simple + Advanced (Advanced sets each

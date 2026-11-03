@@ -51,3 +51,13 @@ Setup: binaries from fb6aa600 (amarchy-flat md5 8a574ff2d47074ec31adc473fbc55c2b
 - PASS inactive (click backdrop 600,150; uitree shows window without active flag): ring 206/206 = 5A5E75, 0 other. Knob col 480: 37 px 5A5E75, 19 px 1A1B26 (track), no 7AA2F7. Size gadget area: 62 px 5A5E75, 118 px 1A1B26, no 7AA2F7.
 - Not done: arrow clicks while inactive (a click activates the window first).
 Shots: ~/Desktop/upterm-shots/rig35-arrow-before.png, rig35-arrow-after-clicks-active.png, rig35-arrow-inactive.png. Rig 35 left UP, window re-activated.
+
+## Arrow knob colour (33d894d8)
+
+Result: NOT MEASURED (blocked). Active, pressed and inactive items are all unproven.
+
+- Opened an XCON window with `ami.py open` (window "UP-Term", tree: W 0 0,11 640x235; scroller gadgets 23312 at 626,23 10x190; arrows 23313 at 622,214 18x11 and 23314 at 622,225 18x11; sys:size 622,236 18x10).
+- The front-screen capture (`ami.py shot`, 640x256) does not show that window. Rows 11-19 hold the Amarchy desktop title text (x 31-84), not the UP-Term title bar. Regions 622-640 x 214-246 are 100% 1A1B26 (198/198, 198/198, 180/180 px): no frame, no arrow glyph, no triangle drawn there. Likely the XCON window is covered by another window (tree lists W 2 "" 0,11 640x235 and the Amarchy desktop); sys:depth / drag clicks on UP-Term did not change the capture.
+- Not measured: active glyphs 7AA2F7 (0 px of 7AA2F7 in the arrow regions), pressed fill (no press-hold command in ami.py), inactive 5A5E75.
+- Needs: a window with scrollbars visibly in front on rig 35 (e.g. close/move the covering Amarchy window, or an Amarchy-owned scrolling window), then re-measure.
+- Shots: ~/Desktop/upterm-shots/arrow-knob-active.png, arrow-knob-rig35-front-screen.png
