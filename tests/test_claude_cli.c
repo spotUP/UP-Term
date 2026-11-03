@@ -189,6 +189,15 @@ static void test_amiga(void)
     CHECK_INT(parse("PROMPT \"hi there\""), 0);
     CHECK_STR(prompt(), "hi there");
 
+    /* AGENT-TASK-DASH: a quoted word is never an option, so a task may start with a dash */
+    CHECK_INT(parse("\"-v explain\""), 0);
+    CHECK_INT(c.print, 0);
+    CHECK_STR(prompt(), "-v explain");
+    CHECK_INT(parse("\"--help me\""), 0);
+    CHECK_STR(prompt(), "--help me");
+    CHECK_INT(parse("MODEL \"-odd\""), 0);
+    CHECK_STR(c.model, "-odd");
+
     /* both forms mixed */
     CHECK_INT(parse("-p MODEL=haiku --output-format json hello"), 0);
     CHECK_INT(c.print, 1);

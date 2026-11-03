@@ -665,7 +665,7 @@ static int is_value(int i, int argc, char **argv, const char *quoted, int flags_
     const char *v;
     if (i >= argc)
         return 0;
-    if (flags_on && argv[i][0] == '-' && argv[i][1])
+    if (flags_on && !(quoted && quoted[i]) && argv[i][0] == '-' && argv[i][1])
         return 0;
     return (quoted && quoted[i]) || !keyword(argv[i], &v);
 }
@@ -698,7 +698,7 @@ int cli_parse(cl_cli *c, int argc, char **argv, const char *quoted)
             c->ask_template = 1;
             return 0;
         }
-        if (flags_on && w[0] == '-' && w[1] == '-' && w[2]) {
+        if (flags_on && !q && w[0] == '-' && w[1] == '-' && w[2]) {
             /* --flag, --flag=value, --flag value */
             long n = 2;
             while (w[n] && w[n] != '=')
@@ -720,7 +720,7 @@ int cli_parse(cl_cli *c, int argc, char **argv, const char *quoted)
                     return -1;
             continue;
         }
-        if (flags_on && w[0] == '-' && w[1] && w[1] != '-') {
+        if (flags_on && !q && w[0] == '-' && w[1] && w[1] != '-') {
             /* -p, -pc, -r NAME, -n NAME */
             long k;
             for (k = 1; w[k]; k++) {
