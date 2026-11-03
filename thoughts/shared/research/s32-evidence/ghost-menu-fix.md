@@ -56,3 +56,26 @@ Restored; suite green again.
 ## m68k build
 
 `make build/amiga/amarchy-flat` (vbcc, -warnings-as-errors): clean, 124688 bytes.
+
+## Rig proof (rig 37, OS 3.2.3, 2026-11-03)
+
+Commit 24691a61 build, put to RAM:amarchy-flat, `Run >NIL: RAM:amarchy-flat`, pointer (100,16) grab space,
+right button held, STATUS read while held, screenshot, button up. Started with
+`--allow-stale-base` (branch lacks 2 origin/main commits; only RAM:amarchy-flat is under test).
+Script: scratchpad gm_proof.py (same bands as round 2). Shot: ~/Desktop/upterm-shots/vtcon16-ghostmenu-fixed.png.
+
+    STATUS: rectfill installed=yes calls=60 hits=0 shits=0 mhits=10 side=0 looks=0
+
+mhits=10 = all 10 ghost RectFills of round 2 (9 item/separator rects + the bar title) took the new path
+(so the off-screen menu bitmap does report BMF_STANDARD; the RTG guard did not block it).
+
+Measured (menu bg (255,255,255)):
+- 9 disabled bands (rows 12-18 ... 111-117, separator 121-122): every band has all four x mod 4 residues in its
+  label pixels (round 2: one residue empty = the 0x4444/0x1111 holes). No period-4 pattern left. PASS.
+- Disabled label pixels: one colour only, (0,0,0), 2190 pixels. pen_dimtext is pen 1 (DK_MUTED); this rig runs
+  the stock palette (no Amarchy theme applied), where pen 1 is the black text pen. So the labels are the dim pen
+  colour, but on this palette that colour equals the enabled text colour. PASS for "label = dim pen colour";
+  the visible dimming needs a theme where DK_MUTED differs from text (not measured here; pen 1 RGB read from
+  the enabled text, not from the colour map).
+- 5 enabled bands: (0,0,0) text plus (170,170,170) shortcut/amiga-key pixels, same colours as before. Unchanged. PASS.
+- Disabled bar title (x 159-206, rows 0-9): 138 pixels, one colour (0,0,0), all four residues. PASS (same caveat).
