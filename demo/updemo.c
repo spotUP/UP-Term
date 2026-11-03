@@ -1902,6 +1902,73 @@ static void sc_kitty_anim(long t, int first)
     ps("\033_Ga=a,i=1,s=3,q=2\033\\");
 }
 
+/* Kitty graphics, 24-bit colour with alpha (f=32, RGBA): a shaded sphere and a half transparent glass pane laid
+ * over it and over coloured text, so the blend shows. The pixels are made here. On a deep screen the terminal keeps
+ * them as RGBA and blends; on AGA (no deep screen) it falls back to 8-bit colour. */
+#define TC_W 64
+#define TC_H 48
+
+static void tc_sphere(unsigned char *px)
+{
+    int x, y, r = TC_H / 2 - 1;
+    for (y = 0; y < TC_H; y++)
+        for (x = 0; x < TC_W; x++) {
+            int dx = x - TC_W / 2, dy = y - TC_H / 2, d2 = dx * dx + dy * dy, lit;
+            unsigned char *q = px + (y * TC_W + x) * 4;
+            if (d2 >= r * r) {
+                q[0] = (unsigned char)(x * 255 / TC_W), q[1] = (unsigned char)(y * 255 / TC_H), q[2] = 160, q[3] = 255;
+                continue;
+            }
+            lit = 255 - ((dx + 8) * (dx + 8) + (dy + 8) * (dy + 8)) * 220 / (r * r * 2);
+            if (lit < 30)
+                lit = 30;
+            q[0] = (unsigned char)(240 * lit / 255);
+            q[1] = (unsigned char)(90 * lit / 255);
+            q[2] = (unsigned char)(40 * lit / 255);
+            q[3] = 255;
+        }
+}
+
+/* a pane whose alpha rises from 40 to 220 left to right; its colour is a plain blue-green */
+static void tc_glass(unsigned char *px)
+{
+    int x, y;
+    for (y = 0; y < TC_H; y++)
+        for (x = 0; x < TC_W; x++) {
+            unsigned char *q = px + (y * TC_W + x) * 4;
+            q[0] = 20, q[1] = (unsigned char)(120 + y * 2), q[2] = 230;
+            q[3] = (unsigned char)(40 + x * 180 / TC_W);
+        }
+}
+
+static void sc_kitty_truecolour(long t, int first)
+{
+    static unsigned char px[TC_W * TC_H * 4];
+    int i;
+    (void)t;
+    if (!first)
+        return;
+    heading("Kitty truecolour", "24-bit pictures with alpha; the glass lets the picture and the text show through");
+    ps("\033_Ga=d,d=I,i=2,q=2\033\\\033_Ga=d,d=I,i=3,q=2\033\\");
+    for (i = 0; i < 6; i++) { /* coloured text under the glass */
+        at(4 + i, 30);
+        bg(16 + 36 * (i % 6) + 6 * 2 + (5 - i % 6));
+        fg(231);
+        ps("  alpha 0..255 shows the colour behind  ");
+        sgr0();
+    }
+    tc_sphere(px);
+    at(4, 6);
+    kitty_chunks("a=T,i=2,f=32,s=64,v=48,q=2", px, sizeof px);
+    tc_glass(px);
+    at(6, 22); /* over the sphere's right edge and the text's left end */
+    kitty_chunks("a=T,i=3,f=32,s=64,v=48,z=1,q=2", px, sizeof px);
+    at(12, 6);
+    ps("Left: a sphere in 24-bit colour. Right: a pane with alpha 40 to 220.");
+    at(14, 6);
+    ps("AGA has no deep screen: there the pictures fall back to 8-bit colour.");
+}
+
 /* A frame counter in big letters. With mode 2026 the terminal shows each
  * frame whole; every other second the frames go without it, and a slow
  * machine shows them being drawn. */
@@ -2048,6 +2115,7 @@ static const scene_def scenes[] = {
     { "links", sc_links, 0, 400, "Hyperlinks (OSC 8) and notifications (OSC 9)", 0, 0, 0 },
     { "sixel", sc_sixel, 0, 450, "Sixel images: pictures in the text", 0, 0, 0 },
     { "kitty animation", sc_kitty_anim, 0, 450, "Kitty graphics: an animation the terminal plays", 0, 0, 0 },
+    { "kitty truecolour", sc_kitty_truecolour, 0, 450, "Kitty graphics: 24-bit pictures with alpha", 0, 0, 0 },
     { "synchronized output", sc_sync, 1, 400, "Synchronized output: frames shown whole", 0, 0, 0 },
     { "resize", sc_resize, 0, 400, "A program resizes the window (DECCOLM)", 0, 0, 0 },
     { "reflow", sc_reflow, 0, 750, "Reflow on resize", 1, 0, 0 },
