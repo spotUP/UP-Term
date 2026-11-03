@@ -6518,14 +6518,14 @@ static void bar_draw(con *c)
         label[k++] = (char)('1' + i);
         label[k++] = ' ';
         copy_str(label + k, t->w.title[0] ? t->w.title : "UP-Term", (int)sizeof(label) - k);
-        SetAPen(&rp, pens[i == c->active ? FILLPEN : BACKGROUNDPEN]);
+        SetAPen(&rp, tabbar_pen(pens, TEXTPEN, BACKGROUNDPEN, i == c->active, TABBAR_GROUND));
         RectFill(&rp, a, y0, b, y0 + h - 2);
         SetAPen(&rp, pens[SHADOWPEN]);
         Move(&rp, b, y0);
         Draw(&rp, b, y0 + h - 2);
         n = (int)TextFit(&rp, (STRPTR)label, (UWORD)strlen(label), &te, 0, 1,
                          (UWORD)(b - a - 6 > 0 ? b - a - 6 : 0), (UWORD)h);
-        SetAPen(&rp, pens[i == c->active ? FILLTEXTPEN : TEXTPEN]);
+        SetAPen(&rp, tabbar_pen(pens, TEXTPEN, BACKGROUNDPEN, i == c->active, TABBAR_LETTERS));
         Move(&rp, a + 3, y0 + 2 + tf->tf_Baseline);
         Text(&rp, (STRPTR)label, (UWORD)n);
     }

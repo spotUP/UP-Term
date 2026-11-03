@@ -2,6 +2,8 @@
  * lands in the splitting pane's slot and takes the focus, the maximum and
  * the minimum refuse a split, a pane leaving gives its space and the focus
  * back, the last pane of a slot takes the slot with it. */
+#include <stdio.h>
+#include <stdlib.h>
 #include "harness.h"
 #include "../handler/tabslot.h"
 
@@ -271,6 +273,52 @@ static void first_pane_leaves_after_split_cycles(void)
     CHECK_INT(tabslot_find(T, N, &A, 0), -1);
 }
 
+/* TAB-FILLPEN: the active tab stays distinct when the flat pen map makes FILLPEN == BACKGROUNDPEN */
+static void the_active_tab_differs_under_the_stock_and_the_flat_pen_map(void)
+{
+    enum { TEXT = 2, BACK = 0, FILL = 5, FILLTEXT = 6 };
+    unsigned short stock[8] = { 0, 1, 1, 2, 3, 3, 1, 0 }, flat[8] = { 0, 1, 1, 2, 3, 0, 1, 0 };
+    unsigned short *maps[2];
+    int m;
+    char *src;
+    FILE *f = fopen("handler/vtcon_handler.c", "rb");
+    long n;
+    maps[0] = stock;
+    maps[1] = flat;
+    stock[TEXT] = 1; stock[BACK] = 0; stock[FILL] = 3; stock[FILLTEXT] = 1;
+    flat[TEXT] = 1; flat[BACK] = 0; flat[FILL] = flat[BACK]; flat[FILLTEXT] = 1;
+    for (m = 0; m < 2; m++) {
+        CHECK(tabbar_pen(maps[m], TEXT, BACK, 1, TABBAR_GROUND) != tabbar_pen(maps[m], TEXT, BACK, 0, TABBAR_GROUND));
+        CHECK(tabbar_pen(maps[m], TEXT, BACK, 1, TABBAR_GROUND) != tabbar_pen(maps[m], TEXT, BACK, 1, TABBAR_LETTERS));
+        CHECK(tabbar_pen(maps[m], TEXT, BACK, 0, TABBAR_GROUND) != tabbar_pen(maps[m], TEXT, BACK, 0, TABBAR_LETTERS));
+    }
+    /* wired: bar_draw takes both pens from the helper, not from FILLPEN */
+    CHECK(f != 0);
+    if (!f)
+        return;
+    fseek(f, 0, SEEK_END);
+    n = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    src = (char *)malloc((size_t)n + 1);
+    CHECK(src != 0);
+    if (src) {
+        char *b, *e;
+        n = (long)fread(src, 1, (size_t)n, f);
+        src[n] = 0;
+        b = strstr(src, "static void bar_draw(con *c)\n{");
+        e = b ? strstr(b, "\n}\n") : 0;
+        CHECK(b && e);
+        if (b && e) {
+            *e = 0;
+            CHECK(strstr(b, "tabbar_pen(pens, TEXTPEN, BACKGROUNDPEN, i == c->active, TABBAR_GROUND)") != 0);
+            CHECK(strstr(b, "tabbar_pen(pens, TEXTPEN, BACKGROUNDPEN, i == c->active, TABBAR_LETTERS)") != 0);
+            CHECK(strstr(b, "FILLPEN") == 0);
+        }
+        free(src);
+    }
+    fclose(f);
+}
+
 void suite_tabslot(void)
 {
     first_pane_leaves_after_split_cycles();
@@ -285,4 +333,5 @@ void suite_tabslot(void)
     the_focus_cycles_through_the_panes_in_reading_order();
     a_zoom_shows_only_the_focused_pane_until_the_layout_changes();
     the_pane_under_a_point_is_found_by_its_place();
+    the_active_tab_differs_under_the_stock_and_the_flat_pen_map();
 }
