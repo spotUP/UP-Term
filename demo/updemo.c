@@ -2160,6 +2160,67 @@ static void sc_kitty_placement(long t, int first)
     }
 }
 
+/* icat (UD4): the `icat fjord.png` command putting a picture into the scrollback. UPDemo has no hook to run a program
+ * (io->command takes slash commands of the terminal only), so the scene types the prompt line and then sends the bytes
+ * icat sends for a PNG (pic/icat.c, kout_png): one a=T,f=100 command, quiet (q=2), placed at the cursor with no
+ * cursor move of its own, scaled by cells (c=), then a newline. kitty_png_file is the same chunking the demo's other
+ * pictures use; no encoder is duplicated. Lines of text follow, so the picture scrolls up with the text. */
+#define ICAT_TYPE_AT 10
+#define ICAT_SHOW_AT 60
+#define ICAT_TEXT_AT 100
+#define ICAT_TEXT_GAP 12
+
+static void sc_icat(long t, int first)
+{
+    static int typed, shown, lines;
+    static const char cmd[] = "icat fjord.png";
+    static const char *const text[] = {
+        "The picture above is part of the scrollback.",
+        "It scrolls up with the text, like any line.",
+        "icat sent it with the kitty graphics protocol.",
+        "Scroll the window back to see it again.",
+        "No cursor was moved: it was placed where the cursor stood.",
+        "Each line of text pushes the picture further up.",
+        "When its last row leaves the top, it is gone with it.",
+        "More text, more scrolling.",
+        "And more.",
+        "Still going.",
+        "The picture is nearly out of sight now.",
+        "Gone."
+    };
+    int n = (int)(sizeof(text) / sizeof(text[0]));
+    if (first) {
+        typed = shown = lines = 0;
+        heading("icat", "the icat command prints a picture inline; it scrolls with the text");
+        ps("\033_Ga=d,q=2\033\\");
+        ps("\033[4;");
+        pn(R);
+        pc('r');
+        at(4, 1);
+        ps("\033[?25h\033[36m~\033[0m % ");
+    }
+    while (typed < (int)sizeof(cmd) - 1 && t >= ICAT_TYPE_AT + typed * 2) {
+        if (typed < 4)
+            fg(2);
+        pc(cmd[typed]);
+        if (typed < 4)
+            sgr0();
+        typed++;
+    }
+    if (!shown && typed == (int)sizeof(cmd) - 1 && t >= ICAT_SHOW_AT) {
+        ps("\r\n");
+        if (!kitty_png_file("fjord.png", "a=T,f=100,c=20,q=2"))
+            ps("icat: fjord.png not found");
+        ps("\r\n");
+        shown = 1;
+    }
+    while (shown && lines < n && t >= ICAT_TEXT_AT + lines * ICAT_TEXT_GAP) {
+        ps(text[lines]);
+        ps("\r\n");
+        lines++;
+    }
+}
+
 /* Kitty z-index: z < 0 draws the picture under the text, z >= 0 over it. The same picture twice, side by side. */
 static void sc_kitty_zindex(long t, int first)
 {
@@ -2431,6 +2492,7 @@ static const scene_def scenes[] = {
     { "kitty z-index", sc_kitty_zindex, 0, 450, "Kitty graphics: text over and under a picture", 0, 0, 0 },
     { "kitty picture", sc_kitty_picture, 0, 450, "Kitty graphics: a photo that keeps its shape on a hires screen", 0, 0, 0 },
     { "kitty placement", sc_kitty_placement, 0, 450, "Kitty graphics: place, move, delete and relate placements", 0, 0, 0 },
+    { "icat", sc_icat, 0, 450, "icat: a picture printed inline, scrolling with the text", 0, 0, 0 },
     { "glyphs", sc_glyphs, 0, 400, "Glyphs: Powerline, Nerd Font, emoji, box drawing", 0, 0, 0 },
     { "tabs", sc_tabs, 0, 400, "Tabs: several sessions in one window", 0, 0, 0 },
     { "synchronized output", sc_sync, 1, 400, "Synchronized output: frames shown whole", 0, 0, 0 },
@@ -2447,9 +2509,9 @@ static const scene_def scenes[] = {
 };
 
 #define SCENE_N ((int)(sizeof(scenes) / sizeof(scenes[0])))
-#define STAT_N 32
 
-static long stat_frames[STAT_N], stat_ticks[STAT_N];
+/* Sized from the scene table so a new scene never outgrows the per-scene stats. */
+static long stat_frames[sizeof(scenes) / sizeof(scenes[0])], stat_ticks[sizeof(scenes) / sizeof(scenes[0])];
 
 int updemo_scenes(void)
 {
