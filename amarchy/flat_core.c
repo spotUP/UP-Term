@@ -304,6 +304,11 @@ int flat_start_decide(int marker, int lmb, int rmb, int other)
     return other;
 }
 
+int flat_install_due(int held, int installed, int last_rc)
+{
+    return !held && !installed && last_rc == FLAT_ERR_NOCLASS;
+}
+
 unsigned flat_marker_remaining(unsigned long written, unsigned long now)
 {
     unsigned long age = (now - written) & 0xFFFFFFFFul;
