@@ -5,6 +5,7 @@ import pathlib, shutil, sys, tempfile, unittest
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools/rig"))
 
+import a1200_drift
 import paths
 import rig
 
@@ -18,12 +19,13 @@ class MediaDrift(unittest.TestCase):
         self.addCleanup(setattr, rig, "ROOT", rig.ROOT)
         rig.ROOT = self.d
         (self.d / "dist/updemo").mkdir(parents=True)
-        (self.d / "dist/updemo/earth.anim").write_bytes(b"frames")
+        for src in a1200_drift.KIT_MEDIA.values():
+            (self.d / "dist" / src).write_bytes(b"frames")
         self.vtc = self.d / "vtc"
         (self.vtc / paths.UPTERM_DRAWER).mkdir(parents=True)
 
     def test_missing_media_warns_with_the_file_name(self):
-        self.assertEqual(rig.media_drift(self.vtc), [(REL, "missing")])
+        self.assertEqual(sorted(rig.media_drift(self.vtc)), sorted((rel, "missing") for rel in a1200_drift.KIT_MEDIA))
 
     def test_matching_media_is_quiet(self):
         rig.stage_kit_media(self.vtc)
