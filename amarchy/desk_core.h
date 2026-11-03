@@ -330,8 +330,11 @@ int desk_start_icontrol(unsigned mask, const unsigned char *cur, long curlen, in
 int desk_wbpattern_same(const unsigned char *a, long alen, const unsigned char *b, long blen);
 /* S32-START-LOOK: Amarchy starts from S:User-Startup, before LoadWB opens the Workbench screen, and every start step
  * (flat pens refresh, marker recover, start apply) needs that screen: without it they wrote nothing, once, for ever.
- * 1: run the start steps now (not done yet, and the screen is up, or no 1 s tick exists to wait on); 0: wait or done. */
-int desk_start_due(int done, int wb_screen_up, int tick_ok);
+ * 1: run the start steps now (not done yet, and the screen is up, or no 1 s tick exists to wait on); 0: wait or done.
+ * S32-GREEN-LINE-96: wb_mode_wait (the W43 hold) also waits: before IPrefs resets the Workbench to the saved mode the
+ * screen is the 2-plane boot screen, so the start apply read depth 2, skipped palette entries 4-7 (desk_palette_pen -1)
+ * and the 8-plane screen came up with the stock bar trim (entry 5, 55dd55). */
+int desk_start_due(int done, int wb_screen_up, int tick_ok, int wb_mode_wait);
 
 /* S32-WB-BACKDROP (owner 2026-11-03): the Workbench root window is frameless = the Workbench menu item Backdrop ticked
  * (measured rig 74 --os 32: ticked = WFLG_BACKDROP window, no title bar or border; the stock default is unticked). The menu

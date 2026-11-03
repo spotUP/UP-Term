@@ -1413,10 +1413,13 @@ static void test_desk_wb_backdrop_invoke(void)
 /* S32-START-LOOK: Amarchy starts before LoadWB; the start look waits for the Workbench screen, then runs once */
 static void test_desk_start_waits_for_workbench(void)
 {
-    CHECK_INT(desk_start_due(0, 0, 1), 0);     /* boot: no Workbench screen yet, the tick runs: wait */
-    CHECK_INT(desk_start_due(0, 1, 1), 1);     /* the screen opened: apply the look now */
-    CHECK_INT(desk_start_due(1, 1, 1), 0);     /* once only */
-    CHECK_INT(desk_start_due(0, 0, 0), 1);     /* no tick to wait on: the old one-shot */
+    CHECK_INT(desk_start_due(0, 0, 1, 0), 0);  /* boot: no Workbench screen yet, the tick runs: wait */
+    CHECK_INT(desk_start_due(0, 1, 1, 0), 1);  /* the screen opened in its final mode: apply the look now */
+    CHECK_INT(desk_start_due(1, 1, 1, 0), 0);  /* once only */
+    CHECK_INT(desk_start_due(0, 0, 0, 0), 1);  /* no tick to wait on: the old one-shot */
+    /* S32-GREEN-LINE-96: the 2-plane boot screen is up but IPrefs has not reset it to the saved 8-plane mode yet (W43
+     * hold): applying now reads depth 2 and skips the bar trim pen, so wait for the hold to end */
+    CHECK_INT(desk_start_due(0, 1, 1, 1), 0);
 }
 
 static void test_desk_persist(void)

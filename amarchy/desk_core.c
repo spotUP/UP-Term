@@ -1255,9 +1255,9 @@ long desk_confirm_left(const desk_confirm *c, long now)
     return c->pending && now < c->deadline ? c->deadline - now : 0;
 }
 
-int desk_start_due(int done, int wb_screen_up, int tick_ok)
+int desk_start_due(int done, int wb_screen_up, int tick_ok, int wb_mode_wait)
 {
-    return !done && (wb_screen_up || !tick_ok);
+    return !done && !wb_mode_wait && (wb_screen_up || !tick_ok);
 }
 
 int desk_wb_backdrop_invoke(int master_on, int have_port, int root_found, unsigned long root_wflags)
