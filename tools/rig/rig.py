@@ -1921,13 +1921,8 @@ def screenmode(name):
     subprocess.run([sys.executable, str(pathlib.Path(__file__).resolve()), "start"] + args, check=True)
 
 def reboot_args(given):
-    """The arguments a reboot starts with: the ones given to this command, else the last start's."""
-    if given:
-        return list(given)
-    try:
-        return json.loads(START_ARGS.read_text())
-    except (OSError, ValueError):
-        return []
+    """The arguments a reboot starts with: the ones given to this command, else the last start's (paths.reboot_args)."""
+    return paths.reboot_args(given)
 
 def reboot(given=None):
     """Stop safely (stop() flushes the volumes) and start again on the same sys.hdf. A start clones DH0: from the master,

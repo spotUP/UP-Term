@@ -507,6 +507,18 @@ def rig_flags(default=None):
     return shlex.split(raw) if raw.strip() else list(default or [])
 
 
+def reboot_args(given):
+    """The arguments a reboot starts with: the ones given, else the last start's (<rig>/start.args, a JSON list that
+    rig.py start writes). One parser for rig.py reboot/screenmode and installer_rig's restarts."""
+    import json
+    if given:
+        return list(given)
+    try:
+        return json.loads((RIG / 'start.args').read_text())
+    except (OSError, ValueError):
+        return []
+
+
 def stale_targets(targets, run=subprocess.run, cwd=None, on_error=None):
     """The make targets of `targets` that make's own graph says are older than their sources: one `make -q <target>`
     each (runs no recipe). rc 0 = current, rc 1 = stale, anything else (rc 2: no rule or make error) is not stale;

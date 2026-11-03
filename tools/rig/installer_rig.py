@@ -1607,7 +1607,16 @@ def set_purpose(text):
 def rig_start():
     """Every rig start of a run: the command line's options. UPTERM_RIG_FLAGS (--os 32, --max ...) is added once,
     by assign_rig.rig() itself; adding it here too passed every flag twice (2026-11-03, rig 18 start.args)."""
-    rig("start", *(PURPOSE + RIG_FLAGS))
+    last = []
+    if not paths.rig_flags():   # no env flags: keep the machine the rig was started with (--os 32 was lost, 2026-11-03)
+        a = paths.reboot_args([])
+        while a:
+            w = a.pop(0)
+            if w == "--purpose":
+                a[:1] = []   # this run's PURPOSE replaces the old one
+            elif w not in RIG_FLAGS:
+                last.append(w)
+    rig("start", *(last + PURPOSE + RIG_FLAGS))
 
 
 def parse_args(argv):
@@ -1627,6 +1636,10 @@ def parse_args(argv):
         elif a in ("--no-dopus", "--a500"):   # without Directory Opus (the dopus add-on installs it); a 68000 A500
             if a not in RIG_FLAGS:
                 RIG_FLAGS.append(a)
+        elif a == "--os":   # the OS version of the machine (32 = AmigaOS 3.2), passed to rig.py start
+            if not args:
+                raise SystemExit("installer_rig: --os needs a version")
+            RIG_FLAGS.extend(["--os", args.pop(0)])
         elif a == "--purpose":
             if not args:
                 raise SystemExit("installer_rig: --purpose needs a text")

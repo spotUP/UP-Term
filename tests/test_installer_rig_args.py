@@ -43,6 +43,19 @@ class ParseArgs(unittest.TestCase):
         argv = run.call_args[0][0]
         self.assertEqual(argv[2:], ["start", "--max", "--os", "32", "--purpose", "vtcon-16: proof"])
 
+    def test_start_args_os_survive_a_restart_without_env_flags(self):
+        # RIG-START-OS-FLAGS: a rig started --max --os 32 was restarted on 3.1 when UPTERM_RIG_FLAGS was unset
+        self.addCleanup(irg.PURPOSE.clear)
+        self.addCleanup(irg.RIG_FLAGS.clear)
+        irg.PURPOSE.clear()
+        irg.RIG_FLAGS.clear()
+        irg.parse_args(["--purpose", "vtcon-16: proof"])
+        with mock.patch.dict("os.environ", {"UPTERM_RIG_FLAGS": ""}), \
+                mock.patch.object(irg.paths, "reboot_args", return_value=["--max", "--os", "32", "--purpose", "old"]), \
+                mock.patch.object(irg, "rig") as rig:
+            irg.rig_start()
+        rig.assert_called_once_with("start", "--max", "--os", "32", "--purpose", "vtcon-16: proof")
+
     def test_no_dopus_reaches_the_rig_start_before_or_after_purpose(self):
         # --no-dopus before --purpose was wiped when set_purpose replaced the list it shared
         for argv in (["--no-dopus", "--purpose", "vtcon-05: d9"], ["--purpose", "vtcon-05: d9", "--no-dopus"]):
