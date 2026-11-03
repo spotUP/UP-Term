@@ -2104,6 +2104,62 @@ static void sc_kitty_picture(long t, int first)
     ps("and the photo keeps its 8:5 shape: UP-Term scales a picture by the pixel aspect.");
 }
 
+/* Kitty placement (UD3): one image sent ONCE (a=t, i=7), then shown at several cells by id with a=p, one placement
+ * moved by sending a=p again with the same i= and p=, one deleted with a=d,d=i (the image data stays), and a child
+ * placed relative to a parent with P= (image), Q= (placement), H= (columns) and V= (rows). The steps run on the
+ * scene's clock, each with a caption line, so the viewer sees them one after the other. */
+#define PLACE_STEPS 5
+#define PLACE_GAP 25
+
+static void sc_kitty_placement(long t, int first)
+{
+    static int step;
+    static unsigned char px[RING * RING * 3];
+    if (first) {
+        step = 0;
+        heading("Kitty placement", "send an image once, then put, move, delete and relate placements by id");
+        ps("\033_Ga=d,d=I,i=7,q=2\033\\");
+    }
+    while (step < PLACE_STEPS && t >= step * PLACE_GAP) {
+        switch (step) {
+        case 0:
+            ring_picture(px);
+            kitty_chunks("a=t,i=7,f=24,s=64,v=64,q=2", px, sizeof px);
+            at(13, 4);
+            ps("Step 1: the circle is sent once (a=t) and shows nothing yet.");
+            break;
+        case 1:
+            at(5, 4);
+            ps("\033_Ga=p,i=7,p=1,c=6,q=2\033\\");
+            at(5, 14);
+            ps("\033_Ga=p,i=7,p=2,c=6,q=2\033\\");
+            at(5, 24);
+            ps("\033_Ga=p,i=7,p=3,c=6,q=2\033\\");
+            at(14, 4);
+            ps("Step 2: three placements of that one image (a=p, placements 1, 2 and 3).");
+            break;
+        case 2:
+            at(8, 14);
+            ps("\033_Ga=p,i=7,p=2,c=6,q=2\033\\");
+            at(15, 4);
+            ps("Step 3: placement 2 moves down: a=p again with the same image and placement.");
+            break;
+        case 3:
+            ps("\033_Ga=d,d=i,i=7,p=3,q=2\033\\");
+            at(16, 4);
+            ps("Step 4: placement 3 is deleted (a=d); the other two stay.");
+            break;
+        default:
+            at(5, 4);
+            ps("\033_Ga=p,i=7,p=4,P=7,Q=1,H=6,V=1,c=4,q=2\033\\");
+            at(17, 4);
+            ps("Step 5: a child of placement 1 (P=, Q=), 6 columns right and 1 row down (H=, V=).");
+            break;
+        }
+        step++;
+    }
+}
+
 /* Kitty z-index: z < 0 draws the picture under the text, z >= 0 over it. The same picture twice, side by side. */
 static void sc_kitty_zindex(long t, int first)
 {
@@ -2374,6 +2430,7 @@ static const scene_def scenes[] = {
     { "kitty truecolour", sc_kitty_truecolour, 0, 450, "Kitty graphics: 24-bit pictures with alpha", 0, 0, 0 },
     { "kitty z-index", sc_kitty_zindex, 0, 450, "Kitty graphics: text over and under a picture", 0, 0, 0 },
     { "kitty picture", sc_kitty_picture, 0, 450, "Kitty graphics: a photo that keeps its shape on a hires screen", 0, 0, 0 },
+    { "kitty placement", sc_kitty_placement, 0, 450, "Kitty graphics: place, move, delete and relate placements", 0, 0, 0 },
     { "glyphs", sc_glyphs, 0, 400, "Glyphs: Powerline, Nerd Font, emoji, box drawing", 0, 0, 0 },
     { "tabs", sc_tabs, 0, 400, "Tabs: several sessions in one window", 0, 0, 0 },
     { "synchronized output", sc_sync, 1, 400, "Synchronized output: frames shown whole", 0, 0, 0 },
