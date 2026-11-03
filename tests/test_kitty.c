@@ -1241,6 +1241,20 @@ static vt_term *k35_term(void)
     return t;
 }
 
+/* K36: kitty scan_active_animations switches once per wake and sets shown_at = now: a late wake drops the lateness */
+static void k36_a_late_tick_switches_once_and_never_catches_up(void)
+{
+    vt_term *t = k35_term();
+    unsigned long sw0 = vt_kitty_frame_switches(t);
+    h_put(t, "\033_Ga=a,i=5,s=3\033\\");
+    CHECK_INT(vt_anim_tick(t, 0), 40000);
+    CHECK_INT(vt_anim_tick(t, 100000), 40000); /* 100 ms late: one switch, the next frame a whole gap away */
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1);
+    CHECK_INT(vt_anim_tick(t, 0), 40000); /* the lateness is gone, not carried */
+    CHECK_INT((long)(vt_kitty_frame_switches(t) - sw0), 1);
+    vt_free(t);
+}
+
 static void k35_a_a_keys_move_the_state(void)
 {
     vt_term *t = k35_term();
@@ -1518,6 +1532,7 @@ void suite_kitty(void)
     k34_frames_build_on_each_other();
     k34_frames_stop_at_the_animation_memory();
     k35_a_a_keys_move_the_state();
+    k36_a_late_tick_switches_once_and_never_catches_up();
     k35_loops_wait_and_errors();
     k35_a_c_composes_a_rectangle();
     k35_the_clock_changes_the_placement();
