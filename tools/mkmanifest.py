@@ -79,7 +79,7 @@ def exact_exists(kit, rel):
     held a drawer updemo made Files/UPDemo look present (DIST-UPDEMO-COLLISION: the program was missing, dist-check green)."""
     here = pathlib.Path(kit)
     for name in rel.split('/'):
-        if name not in os.listdir(here) if here.is_dir() else True:
+        if not here.is_dir() or name not in os.listdir(here):
             return False
         here = here / name
     return True
