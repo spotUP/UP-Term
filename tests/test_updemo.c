@@ -164,18 +164,18 @@ static int scene_index(const char *name)
  * second player, so no second list can hold scenes the first lacks. */
 static void there_is_one_scene_list_with_the_effects_at_its_end(void)
 {
-    CHECK_INT(updemo_scenes(), 26);
+    CHECK_INT(updemo_scenes(), 27);
     CHECK_INT(scene_index("styles"), 1);        /* the tour's scene, in the list a bare UPDemo plays */
-    CHECK_INT(scene_index("copper bars"), 18);  /* the show's scenes follow the tour's */
-    CHECK_INT(scene_index("the end"), 25);
+    CHECK_INT(scene_index("copper bars"), 19);  /* the show's scenes follow the tour's */
+    CHECK_INT(scene_index("the end"), 26);
     CHECK_INT(scene_index("kitty animation"), 14);
 }
 
-/* a bare UPDemo plays the whole list from its first scene: the status line shows the caption and "1/26" */
+/* a bare UPDemo plays the whole list from its first scene: the status line shows the caption and "1/27" */
 static void a_bare_run_starts_at_the_first_scene_with_its_caption(void)
 {
     start(80, 24);
-    needle = "Demo 1/26  Text styles, double-size lines, box drawing";
+    needle = "Demo 1/27  Text styles, double-size lines, box drawing";
     CHECK_INT(updemo_run(&io, 80, 24, 0, 6), 0);
     CHECK(saw_text);
     needle = 0;
@@ -186,14 +186,14 @@ static void a_bare_run_starts_at_the_first_scene_with_its_caption(void)
 static void a_start_number_picks_a_scene_of_the_one_list(void)
 {
     start(80, 24);
-    needle = "Demo 2/26  Every text style a program can ask for";
+    needle = "Demo 2/27  Every text style a program can ask for";
     CHECK_INT(updemo_run(&io, 80, 24, 1, 6), 0);
     CHECK(saw_text);
-    needle = "Demo 1/26";
+    needle = "Demo 1/27";
     saw_text = 0;
     vt_free(t);
     start(80, 24);
-    needle = "Demo 1/26";
+    needle = "Demo 1/27";
     CHECK_INT(updemo_run(&io, 80, 24, 1, 6), 0);
     CHECK(!saw_text);   /* scene 1 was skipped */
     needle = 0;
@@ -315,6 +315,67 @@ static void the_kitty_animation_scene_sends_frames_gaps_and_the_loop(void)
     CHECK_INT(nf, 7);
     CHECK_INT(ng, 8);
     CHECK(cap_has("\033_Ga=a,i=1,s=3,q=2\033\\"));
+    CHECK(saw_image);
+    CHECK_INT(vt_unhandled(t, kinds, counts, 16), 0);
+    vt_free(t);
+}
+
+/* UPDEMO-NEW-FEATURES (b): the truecolour scene sends f=32 RGBA pictures, one of them with alpha below 255. The
+ * payload is decoded from the capture (chunks follow the first command until m=0). */
+static int b64v(int c)
+{
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    return c == '+' ? 62 : c == '/' ? 63 : -1;
+}
+
+static void the_kitty_truecolour_scene_sends_rgba_with_alpha(void)
+{
+    const char *kinds[16];
+    long counts[16], i, pos = 0, images = 0, translucent = 0, opaque = 0;
+    int in32 = 0;
+    play_alone(scene_index("kitty truecolour"), UPDEMO_AUTO);
+    for (i = 0; i + 3 < cap_len; i++) {
+        long j, acc = 0, nb = 0;
+        int first;
+        if (memcmp(cap + i, "\033_G", 3) != 0)
+            continue;
+        j = i + 3;
+        first = !(cap[j] == 'm');
+        if (first) {
+            in32 = 0;
+            pos = 0;
+        }
+        for (; j < cap_len && cap[j] != ';' && cap[j] != '\033'; j++)
+            if (first && !memcmp(cap + j, "f=32", 4)) {
+                in32 = 1;
+                images++;
+            }
+        if (!in32 || cap[j] != ';')
+            continue;
+        for (j++; j < cap_len && cap[j] != '\033'; j++) {
+            int v = b64v(cap[j]);
+            if (v < 0)
+                continue;
+            acc = acc << 6 | v;
+            if (++nb == 4) {
+                int k;
+                for (k = 0; k < 3; k++, pos++)
+                    if ((pos & 3) == 3) {
+                        unsigned char a = (unsigned char)(acc >> (16 - 8 * k));
+                        if (a < 255)
+                            translucent++;
+                        else
+                            opaque++;
+                    }
+                acc = nb = 0;
+            }
+        }
+    }
+    CHECK_INT(images, 2);
+    CHECK(translucent > 0);
+    CHECK(opaque > 0);
     CHECK(saw_image);
     CHECK_INT(vt_unhandled(t, kinds, counts, 16), 0);
     vt_free(t);
@@ -978,6 +1039,7 @@ void suite_updemo(void)
     bench_picks_the_effect_scenes_of_the_one_list();
     the_unicode_scene_shows_emoji();
     the_kitty_animation_scene_sends_frames_gaps_and_the_loop();
+    the_kitty_truecolour_scene_sends_rgba_with_alpha();
     the_styles_scene_shows_slow_and_rapid_blink();
     q_ends_the_demo_and_any_other_key_does_not();
     a_key_goes_to_the_next_scene_and_the_demo_keeps_running();
