@@ -69,6 +69,7 @@ const char amarchy_flat_stack_cookie[] = "$STACK: 16384";
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 static flatshared *g_r;
+static int side_px(flatshared *r, struct Screen *scr);
 
 /* ---- FLAT-C2: the sysiclass dispatcher. It replaces the C1 pass-through: count the call, and for IM_DRAW of a
  * SYSIA_Which that flat_glyph.c knows, draw the flat glyph when the switch is on; every other call (other method,
@@ -78,6 +79,9 @@ static flatshared *g_r;
  * from the instance. GetAttr(OM_GET) comes back through this dispatcher with a non-draw method: no recursion. */
 typedef ULONG (*oldfn_reg)(__reg("a0") struct Hook *, __reg("a2") Object *, __reg("a1") Msg);
 typedef ULONG (*oldfn_stk)(struct Hook *, Object *, Msg);
+
+typedef void (*rectfn)(__reg("a1") struct RastPort *, __reg("d0") LONG, __reg("d1") LONG, __reg("d2") LONG, __reg("d3") LONG,
+                       __reg("a6") struct Library *);
 
 static void c2_fill(void *ctx, int x0, int y0, int x1, int y1, int pen)
 {
@@ -326,6 +330,22 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
         if (got)
             ReleaseSemaphore(&cl_ss);
         if (rc == FLAT_CLONE_OK) {
+            /* S32-ARROW-OUTLINE: the box fill ran over the window's outer ring where the gadget reaches the last column or row;
+             * the ring belongs to flat, so refill the overlap with the edge pen through the saved RectFill. */
+            struct Window *rw = d->imp_RPort->Layer ? (struct Window *)d->imp_RPort->Layer->Window : NULL;
+            if (rw && r->st.pen_outline && r->rsw.saved && !(rw->Flags & WFLG_BORDERLESS)) {
+                int ov[4][4], k, n;
+                n = flat_outer_ring_overlap(rw->Width, rw->Height, side_px(r, rw->WScreen), im->LeftEdge + d->imp_Offset.X,
+                        im->TopEdge + d->imp_Offset.Y, im->LeftEdge + d->imp_Offset.X + im->Width - 1,
+                        im->TopEdge + d->imp_Offset.Y + im->Height - 1, ov);
+                if (n > 0) {
+                    UBYTE fg = d->imp_RPort->FgPen;
+                    SetAPen(d->imp_RPort, (UBYTE)flat_edge_pen(&r->st, d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0, (rw->Flags & WFLG_WINDOWACTIVE) != 0));
+                    for (k = 0; k < n; k++)
+                        ((rectfn)r->rsw.saved)(d->imp_RPort, ov[k][0], ov[k][1], ov[k][2], ov[k][3], (struct Library *)GfxBase);
+                    SetAPen(d->imp_RPort, fg);
+                }
+            }
             r->cdraws++;
             return 1;
         }
@@ -482,8 +502,6 @@ static const LONG d4_lvo[FLAT_EL_COUNT] = { FLAT_LVO_DRAWBOX, FLAT_LVO_FIELDBOX 
 /* Every saved library routine (Text, RectFill, the dopus5 ones) is called with its library base in a6, as through its
  * LVO: the ROM code reads its base from a6, and these hooks use a6 as a scratch register and for FindTask (a6 = SysBase).
  * Without it, the stock Text ran with a6 = SysBase and jumped through a garbage base (s28 flat-ON hang). */
-typedef void (*rectfn)(__reg("a1") struct RastPort *, __reg("d0") LONG, __reg("d1") LONG, __reg("d2") LONG, __reg("d3") LONG,
-                       __reg("a6") struct Library *);
 typedef void (*textfn)(__reg("a1") struct RastPort *, __reg("a0") CONST_STRPTR, __reg("d0") ULONG, __reg("a6") struct Library *);
 extern void flat_tx_entry(void);
 

@@ -491,23 +491,49 @@ int flat_side_px(int rx, int ry)
     return px < 1 ? 1 : px;
 }
 
-int flat_outer_edge_fill(int w, int h, int x0, int y0, int x1, int y1, int px, int out[4])
+/* The strip i as the RectFill patch paints it: outer_strip widened to px columns on the left and right strips. 0 when absent. */
+static int outer_ring_strip(int i, int w, int h, int px, int out[4])
 {
-    int i, r[4];
-    if (w < 2 || h < 2)
+    if (!outer_strip(i, w, h, out))
         return 0;
     if (px < 1)
         px = 1;
     if (px > w / 2)
         px = w / 2 < 1 ? 1 : w / 2;
+    if (i == 1)
+        out[2] = out[0] + px - 1;
+    else if (i == 2)
+        out[0] = out[2] - px + 1;
+    return 1;
+}
+
+int flat_outer_edge_fill(int w, int h, int x0, int y0, int x1, int y1, int px, int out[4])
+{
+    int i, r[4];
+    if (w < 2 || h < 2)
+        return 0;
     for (i = 0; i < 4; i++)
-        if (outer_strip(i, w, h, r) && r[0] == x0 && r[1] == y0 && r[2] == x1 && r[3] == y1) {
-            out[0] = r[0]; out[1] = r[1]; out[2] = r[2]; out[3] = r[3];
-            if (i == 1)
-                out[2] = r[0] + px - 1;
-            else if (i == 2)
-                out[0] = r[2] - px + 1;
-            return 1;
-        }
+        if (outer_strip(i, w, h, r) && r[0] == x0 && r[1] == y0 && r[2] == x1 && r[3] == y1)
+            return outer_ring_strip(i, w, h, px, out);
     return 0;
+}
+
+int flat_outer_ring_overlap(int w, int h, int px, int bx0, int by0, int bx1, int by1, int out[4][4])
+{
+    int i, n = 0, r[4];
+    if (w < 2 || h < 2)
+        return 0;
+    for (i = 0; i < 4; i++) {
+        if (!outer_ring_strip(i, w, h, px, r))
+            continue;
+        if (r[0] < bx0) r[0] = bx0;
+        if (r[1] < by0) r[1] = by0;
+        if (r[2] > bx1) r[2] = bx1;
+        if (r[3] > by1) r[3] = by1;
+        if (r[0] > r[2] || r[1] > r[3])
+            continue;
+        out[n][0] = r[0]; out[n][1] = r[1]; out[n][2] = r[2]; out[n][3] = r[3];
+        n++;
+    }
+    return n;
 }

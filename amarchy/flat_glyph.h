@@ -110,6 +110,12 @@ int flat_side_px(int rx, int ry);
  * leftwards to px columns (px clamped to 1 .. w / 2), top and bottom unchanged, and returns 1; else returns 0. */
 int flat_outer_edge_fill(int w, int h, int x0, int y0, int x1, int y1, int px, int out[4]);
 
+/* S32-ARROW-OUTLINE: the parts of the box (bx0,by0)-(bx1,by1) (window-relative, inclusive) that lie on the outer ring of a
+ * w x h window, as the strips flat_outer_edge_fill paints them (left/right strips px columns wide). Writes up to 4 rects to
+ * out[] and returns their count (0 when the box misses the ring). A gadget box reaching the last column or row overlaps the
+ * ring; the caller refills these with the edge pen after the box fill. */
+int flat_outer_ring_overlap(int w, int h, int px, int bx0, int by0, int bx1, int by1, int out[4][4]);
+
 
 /* FLAT-GLYPH-OS-SHAPES: the clone of the system's own gadget image. The OS side draws the stock image offscreen with a private
  * DrawInfo whose pen i is the marker i + 1 (FLAT_CLONE_MARK(i)); flat_clone_map turns that grid into box (0) and glyph (1):

@@ -848,6 +848,15 @@ static void test_which_from_gtype(void)
         CHECK_INT(flat_outer_edge_fill(3, 3, 0, 1, 0, 2, 4, r), 1);             /* px clamps to w / 2 */
         CHECK_INT(r[2], 0);
         CHECK_INT(flat_outer_edge_fill(640, 256, 1, 1, 1, 254, 2, r), 0);       /* not an outer strip */
+        {   /* S32-ARROW-OUTLINE: a gadget box reaching the last column / bottom row overlaps the ring */
+            int ov[4][4];
+            CHECK_INT(flat_outer_ring_overlap(640, 256, 2, 622, 214, 639, 224, ov), 1);     /* up arrow: x 638..639 */
+            CHECK_INT(ov[0][0], 638); CHECK_INT(ov[0][1], 214); CHECK_INT(ov[0][2], 639); CHECK_INT(ov[0][3], 224);
+            CHECK_INT(flat_outer_ring_overlap(640, 256, 2, 622, 236, 639, 255, ov), 2);     /* size gadget: right + bottom */
+            CHECK_INT(ov[0][0], 638); CHECK_INT(ov[0][3], 254);
+            CHECK_INT(ov[1][1], 255); CHECK_INT(ov[1][0], 622); CHECK_INT(ov[1][2], 639);
+            CHECK_INT(flat_outer_ring_overlap(640, 256, 2, 100, 100, 200, 200, ov), 0);     /* away from the edge */
+        }
     }
     CHECK_INT((int)flat_which_alias(5), FLAT_W_DEPTH);
     CHECK_INT((int)flat_which_alias(3), FLAT_W_CLOSE);
