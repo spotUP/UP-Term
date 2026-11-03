@@ -1319,6 +1319,11 @@ int desk_wb_backdrop_invoke(int master_on, int have_port, int root_found, unsign
     return master_on && have_port && root_found && (root_wflags & BAR_WFLG_WBENCHWINDOW) != 0 && (root_wflags & BAR_WFLG_BACKDROP) == 0;
 }
 
+int desk_wb_root_wait(int root_state)
+{
+    return root_state == DESK_ROOT_NONE;
+}
+
 unsigned desk_start_plan(unsigned mask, int flat, int wbok, const unsigned char *wb, long wblen, int saved, int gsaved,
                          const gtheme *th, int depth, const unsigned char *pat, long patlen)
 {

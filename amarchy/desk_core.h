@@ -349,6 +349,10 @@ int desk_start_due(int done, int wb_screen_up, int tick_ok);
  * one (WFLG_WBENCHWINDOW, found) and it is not backdrop yet. A Directory Opus root window is not a Workbench window and is
  * left alone (its Backdrop is ticked by default). A second start finds it ticked and does nothing. */
 int desk_wb_backdrop_invoke(int master_on, int have_port, int root_found, unsigned long root_wflags);
+/* S32-WB-BACKDROP-FOLLOWUPS: what the root-window look found. The wait covers only DESK_ROOT_NONE (root not opened yet); any screen-spanning
+ * desktop window, Workbench's own or a foreign one (Directory Opus), is decided at once. */
+enum { DESK_ROOT_NONE = 0, DESK_ROOT_WB = 1, DESK_ROOT_FOREIGN = 2 };
+int desk_wb_root_wait(int root_state);
 
 unsigned desk_start_plan(unsigned mask, int flat, int wbok, const unsigned char *wb, long wblen, int saved, int gsaved,
                          const gtheme *th, int depth, const unsigned char *pat, long patlen);
