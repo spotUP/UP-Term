@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT / "tools/rig"))
 import rig
 
 GO_EARLY = "go started\nearly LIBS: assigns done (before Amarchy)\nkit shadows done\n"
-GO_DONE = GO_EARLY + "XCON mounted\nassigns done\n"
+GO_DONE = GO_EARLY + "XCON mounted\nUP-Term shadows done\nassigns done\n"
 
 
 class GoAssignsDone(unittest.TestCase):

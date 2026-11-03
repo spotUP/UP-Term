@@ -26,13 +26,10 @@ class KitShadowKeymap(unittest.TestCase):
         self.assertLess(out.index(";END UP-Term assign"), out.index(";BEGIN rig-upterm-shadows"))
         self.assertLess(out.index("Execute BOOTX:shadows-up"), out.index(";BEGIN UP-Term Amarchy"))
         self.assertEqual(rig.user_startup_with_shadows_block(out.encode("latin-1")).decode("latin-1"), out)   # once
-        self.assertEqual(rig.user_startup_with_shadows_block(b"; no kit\n"), b"; no kit\n")   # go runs the pass
+        self.assertEqual(rig.user_startup_with_shadows_block(b"; no kit\n"), b"; no kit\n" + rig.SHADOWS_UP_BLOCK_TEXT.encode())   # never go (RIG-GO-EARLY)
         script = rig.SHADOWS_UP_SCRIPT
         self.assertIn("C:Copy >NIL: VTC:amarchy-flat UP-Term:bin/amarchy-flat CLONE", script)
-        self.assertIn("Echo >%s" % rig.SHADOWS_UP_DONE, script)
-        self.assertIn("If EXISTS %s" % rig.SHADOWS_UP_DONE, rig.GO)
-        go_else = rig.GO.split("If EXISTS %s" % rig.SHADOWS_UP_DONE, 1)[1].split('"UP-Term shadows done"', 1)[0]
-        self.assertIn("C:Copy >NIL: VTC:amarchy-flat UP-Term:bin/amarchy-flat CLONE", go_else)   # go still runs it without the marker
+        self.assertNotIn("amarchy-flat", rig.GO)   # go no longer runs any shadow pass
 
     def test_early_block_assigns_libs_ixp6_before_amarchy_and_go_skips_then(self):
         # AMARCHY-MENU-IXEMUL-BOOT-RACE: amarchy-menu started from User-Startup with no ixemul.library in LIBS:
@@ -40,6 +37,7 @@ class KitShadowKeymap(unittest.TestCase):
         self.assertIn("If EXISTS VTC:ixp6/ixemul.library", script)
         self.assertIn("C:Assign >NIL: LIBS: VTC:ixp6\n", script)
         self.assertIn("Echo >%s" % rig.RIG_LIBS_DONE, script)
+        self.assertIn("If NOT EXISTS %s" % rig.RIG_LIBS_DONE, script)   # a go that assigned first leaves the marker
         kit = b";BEGIN UP-Term Amarchy\n  Run >NIL: UP-Term:bin/Amarchy\n;END UP-Term Amarchy\n"
         out = rig.user_startup_with_shadows_block(kit).decode("latin-1")
         self.assertLess(out.index("Execute BOOTX:shadows-up"), out.index(";BEGIN UP-Term Amarchy"))

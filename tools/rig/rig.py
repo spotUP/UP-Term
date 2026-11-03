@@ -254,6 +254,10 @@ def kit_guard(dest, body):
     return pre + ["If EXISTS %s" % q(dest)] + ["  " + l for l in body] + ["EndIf"] + post
 
 
+def ind(text, n):
+    return "\n".join("  " * n + l for l in text.splitlines())
+
+
 def kit_shadow_lines(upterm):
     """The boot lines of KIT_SHADOWS: shadow, or restore when VTC:kit-restore exists. UP-Term:
     is the kit's assign from its User-Startup block, which has run only after go's Wait:
@@ -303,7 +307,6 @@ EndIf""" % {"stamp": kitstamp.STAMP, "hash": kitstamp.HASH}
 # SHADOWS_UP_DONE, and go then skips its own pass (a rig with no Amarchy block has no such block: go runs the pass).
 # The kit stamp stays in go: it must follow both passes, and go runs the other pass.
 SHADOWS_UP_BLOCK = user_startup.RIG_SHADOWS_BLOCK
-SHADOWS_UP_DONE = "RAM:rig-upterm-shadows-done"
 # AMARCHY-MENU-IXEMUL-BOOT-RACE: the kit's Amarchy block starts amarchy-menu, which needs ixemul v48 from LIBS:; the
 # RIG_LIBS assigns lived only in go (async beside the Startup-Sequence), so the menu opened a "needs ixemul v48"
 # requester and stayed in it. The same early block therefore makes the RIG_LIBS assigns and leaves RIG_LIBS_DONE; go
@@ -314,27 +317,38 @@ SHADOWS_UP_SCRIPT = """FailAt 21
 Echo >>BOOTX:boot.log "early UP-Term shadows started (before Amarchy)"
 C:Assign >NIL: VTC: EXISTS
 If NOT WARN
+%(shadows)s
+  Echo >>BOOTX:boot.log "kit shadows done"
 %(shadows_up)s
-  Echo >%(done)s "done"
   Echo >>BOOTX:boot.log "early UP-Term shadows done (before Amarchy)"
-  If EXISTS VTC:ixp6/ixemul.library
+%(kit_stamp)s
+  If NOT EXISTS %(libs_done)s
+    If EXISTS VTC:ixp6/ixemul.library
 %(libs)s
-    Echo >%(libs_done)s "done"
-    Echo >>BOOTX:boot.log "early LIBS: assigns done (before Amarchy)"
+      Echo >%(libs_done)s "done"
+      Echo >>BOOTX:boot.log "early LIBS: assigns done (before Amarchy)"
+    EndIf
   EndIf
+  ; the handler is a shadowed file (L:vtcon-handler): mounted only after the shadow pass
+  C:Mount XCON: FROM BOOTX:Mountlist
+  Echo >>BOOTX:boot.log "XCON mounted"
+  Echo >>BOOTX:boot.log "UP-Term shadows done"
 EndIf
-""" % {"shadows_up": "\n".join("  " + l for l in kit_shadow_lines(True).splitlines()), "done": SHADOWS_UP_DONE,
-       "libs": "\n".join("    C:" + l for l in RIG_LIBS), "libs_done": RIG_LIBS_DONE}
+""" % {"shadows": ind(kit_shadow_lines(False), 1), "shadows_up": ind(kit_shadow_lines(True), 1),
+       "kit_stamp": ind(KIT_STAMP_BOOT, 1), "libs": "\n".join("      C:" + l for l in RIG_LIBS), "libs_done": RIG_LIBS_DONE}
 SHADOWS_UP_BLOCK_TEXT = ";BEGIN %s\nExecute BOOTX:shadows-up\n;END %s\n" % (SHADOWS_UP_BLOCK, SHADOWS_UP_BLOCK)
 
 
 def user_startup_with_shadows_block(data):
     """data (S:User-Startup bytes) with the rig's shadow block directly before the kit's ';BEGIN UP-Term Amarchy' block;
-    an earlier copy of it is removed first. No Amarchy block: no rig block (go runs the pass)."""
+    an earlier copy of it is removed first. No Amarchy block: appended at the end (the pass is never in go, which runs
+    beside the Startup-Sequence: RIG-GO-EARLY)."""
     data = user_startup.strip_upterm_blocks(data, SHADOWS_UP_BLOCK)
     at = data.find(KIT_AMARCHY_BLOCK.encode("latin-1"))
     if at < 0:
-        return data
+        if data and not data.endswith(b"\n"):
+            data += b"\n"
+        return data + SHADOWS_UP_BLOCK_TEXT.encode("latin-1")
     return data[:at] + SHADOWS_UP_BLOCK_TEXT.encode("latin-1") + data[at:]
 
 
@@ -407,8 +421,6 @@ SOLIDWIN_UP_BLOCK_TEXT = ";BEGIN %s\nExecute BOOTX:solidwin-up\n;END %s\n" % (SO
 
 GO = """FailAt 21
 Echo >>BOOTX:boot.log "go started"
-%(shadows)s
-Echo >>BOOTX:boot.log "kit shadows done"
 C:Wait 15
 Echo >>BOOTX:boot.log "wait done"
 ; BOOTX:s/startup-sequence runs go beside DH0:S/Startup-Sequence, which makes
@@ -422,15 +434,6 @@ If WARN
   Skip envwait BACK
 EndIf
 Echo >>BOOTX:boot.log "env ok"
-If EXISTS %(shadows_up_done)s
-  Echo >>BOOTX:boot.log "UP-Term shadows ran before Amarchy"
-Else
-%(shadows_up)s
-EndIf
-%(kit_stamp)s
-Echo >>BOOTX:boot.log "UP-Term shadows done"
-C:Mount XCON: FROM BOOTX:Mountlist
-Echo >>BOOTX:boot.log "XCON mounted"
 C:Assign >NIL: ETC: VTC:etc
 ; /tmp: the kit puts "Assign TMP: T:" in S:User-Startup; a rig with no kit has it from here
 C:Assign >NIL: TMP: T:
@@ -446,6 +449,7 @@ If EXISTS %(libs_done)s
 Else
   If EXISTS VTC:ixp6/ixemul.library
 %(libs)s
+    Echo >%(libs_done)s "done"
   EndIf
 EndIf
 C:Assign >NIL: PTY: EXISTS DEVICES
@@ -509,7 +513,7 @@ Echo >>BOOTX:boot.log "assigns done"
 Run >NIL: SYS:System/RexxMast
 %(wasabid_start)s
 Echo >>BOOTX:boot.log "wasabid started"
-""" % {"wasabid_start": WASABID_START, "upterm_assign": UPTERM_ASSIGN, "amarchy_assets": AMARCHY_ASSETS_BOOT, "shadows": kit_shadow_lines(False), "shadows_up": kit_shadow_lines(True), "shadows_up_done": SHADOWS_UP_DONE, "kit_stamp": KIT_STAMP_BOOT, "libs": "\n".join("    C:" + l for l in RIG_LIBS), "libs_done": RIG_LIBS_DONE,
+""" % {"wasabid_start": WASABID_START, "upterm_assign": UPTERM_ASSIGN, "amarchy_assets": AMARCHY_ASSETS_BOOT, "libs": "\n".join("    C:" + l for l in RIG_LIBS), "libs_done": RIG_LIBS_DONE,
        "shellpath": "\n".join('    Echo >>S:Shell-Startup "%s"' % l for l in SHELL_STARTUP_PATH)}
 # boot.log in the host drawer BOOTX: tells from the Mac how far a boot got
 # (the rig's screen is not visible from here).
@@ -2007,15 +2011,16 @@ def go_assigns_done(text):
     wasabid on its own, so wasabid can answer before go reaches its assigns. start took that first answer as "up" and
     failed "the boot lacks the assigns ETC" on a boot whose log said "assigns done" a moment later (rig 68, fresh
     folder, RIG-START-ASSIGN-RACE 2026-11-03). Exact line: the early-LIBS line also ends in "assigns done"."""
-    return "assigns done" in (l.strip() for l in text.splitlines())
+    lines = [l.strip() for l in text.splitlines()]
+    return "assigns done" in lines and "UP-Term shadows done" in lines   # the shadow pass (S:User-Startup) mounts XCON: last
 
 def boot_frozen(text, since_change, elapsed):
     """The boot is dead: BOOTX:go started and boot.log gained nothing for BOOT_STALL s, or BOOT_CAP passed.
     Slow is not dead (RIG-SLOW-BOOT, 2026-10-28): go's shadow copies are ~1000 UAE-filesystem round trips, and under
     host load (two other emulators, load 22-40) the kit block ran 36 s instead of 1 s and a whole boot took ~10 minutes;
     a fixed 120 s wait killed such boots as "frozen", `ami.py reboot` gave them up at 240 s, and the kill + retry looked
-    like a reboot loop. go's progress lines (kit shadows done, wait done, env ok, UP-Term shadows done, XCON mounted,
-    assigns done, wasabid started) show a live boot. Before "go started" nothing writes (KS boot, SetPatch, the 060
+    like a reboot loop. the progress lines (go: wait done, env ok, assigns done, wasabid started; the S:User-Startup shadow pass: kit shadows
+    done, UP-Term shadows done, XCON mounted; RIG-GO-EARLY) show a live boot. Before "go started" nothing writes (KS boot, SetPatch, the 060
     library's reset), so that phase only has the cap."""
     if elapsed >= BOOT_CAP:
         return True
