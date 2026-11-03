@@ -1328,6 +1328,27 @@ static void test_frame_pen(void)
 }
 
 
+/* S32 CLONE-PRIVATE-IMAGE: OS 3.2 sysiclass bakes its pens at OM_NEW and ignores imp_DrInfo at IM_DRAW, so drawing the window's
+ * own image with the marker DrawInfo read back its baked screen pens (all 0 under flat pens: 'empty'). The clone keeps one private
+ * image per (which, width, height), made with the marker DrawInfo; this is its table. The marker DrawInfo is deep enough for
+ * every marker the clone reads back. */
+static void test_clone_private_slot(void)
+{
+    flat_clone_key k[FLAT_CLONE_OBJS];
+    int n = 0, i;
+    CHECK_INT(flat_clone_slot(k, n, FLAT_CLONE_OBJS, FLAT_W_DEPTH, 23, 11), 0);        /* empty table: append */
+    k[n].which = FLAT_W_DEPTH; k[n].w = 23; k[n].h = 11; n++;
+    CHECK_INT(flat_clone_slot(k, n, FLAT_CLONE_OBJS, FLAT_W_DEPTH, 23, 11), 0);        /* the same image: reused, not remade */
+    CHECK_INT(flat_clone_slot(k, n, FLAT_CLONE_OBJS, FLAT_W_DEPTH, 23, 10), 1);        /* another size: its own image */
+    CHECK_INT(flat_clone_slot(k, n, FLAT_CLONE_OBJS, FLAT_W_CLOSE, 23, 11), 1);        /* another gadget: its own image */
+    for (i = n; i < FLAT_CLONE_OBJS; i++) {
+        k[i].which = FLAT_W_CLOSE; k[i].w = 10 + i; k[i].h = 11;
+    }
+    CHECK_INT(flat_clone_slot(k, FLAT_CLONE_OBJS, FLAT_CLONE_OBJS, FLAT_W_ZOOM, 23, 11), -1);   /* full: refused, the block glyph */
+    CHECK_INT(flat_clone_slot(k, FLAT_CLONE_OBJS, FLAT_CLONE_OBJS, FLAT_W_DEPTH, 23, 11), 0);   /* full, but a hit still answers */
+    CHECK_INT((1 << FLAT_CLONE_DEPTH) > FLAT_CLONE_MARK(FLAT_CLONE_MARKS - 1), 1);
+}
+
 static void test_glyph_clone(void)
 {
     flat_state st;
@@ -1466,6 +1487,7 @@ void suite_flat_core(void)
     test_arrow_aspect();
     test_clone_arrows();
     test_glyph_clone();
+    test_clone_private_slot();
     test_clone_no_dividers();
     test_boot_before_workbench_retries_install();
     test_title_accent();

@@ -118,7 +118,10 @@ typedef struct cloneenv {
     Object *obj;
     struct impDraw *d;
     int reg;
+    ULONG which;                /* the system image's own SYSIA_Which (before flat_which_alias): the private image's key */
+    int why;                    /* CLONE_WHY_*: set by clone_render when it gives up */
 } cloneenv;
+enum { CLONE_WHY_NONE = 0, CLONE_WHY_BUSY, CLONE_WHY_NODRI, CLONE_WHY_NOBM, CLONE_WHY_NOOBJ };
 
 static struct SignalSemaphore cl_ss;
 static struct BitMap *cl_bm;
@@ -126,6 +129,46 @@ static struct RastPort cl_rp;
 static int cl_w, cl_h;
 static UWORD cl_pens[FLAT_CLONE_MARKS];
 static uint8_t cl_scratch[FLAT_CLONE_SCRATCH];     /* the grids: static (held under cl_ss), not on the stack of whatever task draws */
+/* S32 CLONE-PRIVATE-IMAGE (flat_glyph.h): the private marker images. 3.2 sysiclass keeps the SYSIA_DrawInfo pointer and bakes
+ * its pens at OM_NEW, so the marker DrawInfo is static (it outlives every private image) and dri_Depth is FLAT_CLONE_DEPTH. */
+static struct DrawInfo cl_di;
+static flat_clone_key cl_keys[FLAT_CLONE_OBJS];
+static Object *cl_objs[FLAT_CLONE_OBJS];
+static int cl_nobj;
+static struct Task *cl_task;    /* the task inside the system dispatcher for the clone: its nested image draws go to the system */
+
+static Object *clone_object(const struct DrawInfo *real, ULONG which, int w, int h)
+{
+    int i = flat_clone_slot(cl_keys, cl_nobj, FLAT_CLONE_OBJS, which, w, h);
+    Object *o;
+    if (i < 0)
+        return NULL;
+    if (i < cl_nobj)
+        return cl_objs[i];
+    if (!cl_nobj) {
+        cl_di = *real;
+        for (i = 0; i < FLAT_CLONE_MARKS; i++)
+            cl_pens[i] = (UWORD)FLAT_CLONE_MARK(i);
+        cl_di.dri_Pens = cl_pens;
+        cl_di.dri_Depth = FLAT_CLONE_DEPTH;
+        i = 0;
+    }
+    {
+        struct TagItem t[5];
+        t[0].ti_Tag = SYSIA_DrawInfo; t[0].ti_Data = (ULONG)&cl_di;
+        t[1].ti_Tag = SYSIA_Which; t[1].ti_Data = which;
+        t[2].ti_Tag = IA_Width; t[2].ti_Data = (ULONG)w;
+        t[3].ti_Tag = IA_Height; t[3].ti_Data = (ULONG)h;
+        t[4].ti_Tag = TAG_DONE; t[4].ti_Data = 0;
+        o = (Object *)NewObjectA(NULL, (UBYTE *)"sysiclass", t);
+    }
+    if (!o)
+        return NULL;
+    cl_keys[i].which = which; cl_keys[i].w = w; cl_keys[i].h = h;
+    cl_objs[i] = o;
+    cl_nobj = i + 1;
+    return o;
+}
 
 static int clone_ensure(int w, int h)
 {
@@ -152,6 +195,8 @@ static int clone_ensure(int w, int h)
 
 static void clone_free(void)
 {
+    while (cl_nobj > 0)
+        DisposeObject(cl_objs[--cl_nobj]);
     if (cl_bm) {
         WaitBlit();
         FreeBitMap(cl_bm);
@@ -164,25 +209,34 @@ static int clone_render(void *ctx, unsigned long ids, uint8_t *grid, int w, int 
     cloneenv *e = (cloneenv *)ctx;
     struct Image *im = (struct Image *)e->obj;
     struct impDraw m = *e->d;
-    struct DrawInfo di;
-    int x, y, i, ok = 0;
+    Object *po;
+    int x, y, ok = 0;
     (void)ids;
-    if (!e->d->imp_DrInfo || !AttemptSemaphore(&cl_ss))
+    if (!e->d->imp_DrInfo) {
+        e->why = CLONE_WHY_NODRI;
         return 0;
-    if (clone_ensure(w, h)) {
-        di = *e->d->imp_DrInfo;
-        for (i = 0; i < FLAT_CLONE_MARKS; i++)
-            cl_pens[i] = (UWORD)FLAT_CLONE_MARK(i);
-        di.dri_Pens = cl_pens;
+    }
+    if (!AttemptSemaphore(&cl_ss)) {
+        e->why = CLONE_WHY_BUSY;
+        return 0;
+    }
+    if (!clone_ensure(w, h))
+        e->why = CLONE_WHY_NOBM;
+    else if (cl_task = FindTask(NULL), !(po = clone_object(e->d->imp_DrInfo, e->which, im->Width, im->Height))) {
+        cl_task = NULL;
+        e->why = CLONE_WHY_NOOBJ;
+    } else {
+        /* the private image, baked with the marker pens, drawn by the system dispatcher at 0,0 (its edges are 0) */
         m.imp_RPort = &cl_rp;
-        m.imp_Offset.X = (WORD)-im->LeftEdge;
-        m.imp_Offset.Y = (WORD)-im->TopEdge;
-        m.imp_DrInfo = &di;
+        m.imp_Offset.X = 0;
+        m.imp_Offset.Y = 0;
+        m.imp_DrInfo = &cl_di;
         SetRast(&cl_rp, 0);
         if (e->reg)
-            ((oldfn_reg)g_r->sw.saved)(e->h, e->obj, (Msg)&m);
+            ((oldfn_reg)g_r->sw.saved)(e->h, po, (Msg)&m);
         else
-            ((oldfn_stk)g_r->sw.saved)(e->h, e->obj, (Msg)&m);
+            ((oldfn_stk)g_r->sw.saved)(e->h, po, (Msg)&m);
+        cl_task = NULL;
         WaitBlit();
         for (y = 0; y < h; y++)
             for (x = 0; x < w; x++) {
@@ -200,11 +254,13 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
     flatshared *r = g_r;
     struct impDraw *d = (struct impDraw *)msg;
     struct Image *im = (struct Image *)obj;
-    ULONG which = 0xFFFF;
+    ULONG which = 0xFFFF, raw_which;
     int frame_pen = -1, text_pen = -1;
     r->st.calls++;
     if (msg->MethodID != FLAT_IM_DRAW || !r->st.enabled || r->st.held || !d->imp_RPort)
         return 0;
+    if (cl_task && cl_task == FindTask(NULL))
+        return 0;                   /* a nested image draw inside the clone's own system call: the system draws it */
     /* FLAT-OUTER-EDGE: the window's 1 px outer edge in the accent pen is NOT drawn here. Intuition repaints the four outer
      * border edges last in every frame redraw, as four 1 px RectFill calls through graphics.library, which erases anything
      * drawn from this hook. The ring is painted by the RectFill patch (flat_rf_c, below), which recolours exactly those fills. */
@@ -224,6 +280,7 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
             return 0;
         which = (ULONG)wh;
     }
+    raw_which = which;
     which = flat_which_alias(which);
     /* FLAT-GADGET-BG: the pen of the frame the gadget sits on, so the box shows only the glyph lines. A window gadget
      * sits on the border (the background pen in both states: FLAT-SOLID-FILL); a screen bar gadget on
@@ -244,18 +301,39 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
     if (flat_clone_route(&r->st, which, msg->MethodID)) {
         cloneenv env;
         int rc, got;
-        env.h = hk; env.obj = obj; env.d = d; env.reg = reg;
+        env.h = hk; env.obj = obj; env.d = d; env.reg = reg; env.which = raw_which; env.why = CLONE_WHY_NONE;
         got = AttemptSemaphore(&cl_ss);
         rc = !got ? FLAT_CLONE_FAIL : flat_clone_draw(&r->st, which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
                              im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, frame_pen, text_pen, clone_render, &env, c2_fill, d->imp_RPort, cl_scratch);
+        if (got && rc == FLAT_CLONE_FAIL && env.why == CLONE_WHY_NONE) {
+            int i, nz = 0;
+            ULONG mk = 0;
+            for (i = 0; i < im->Width * im->Height && i < FLAT_CLONE_MAX * FLAT_CLONE_MAX; i++)
+                if (cl_scratch[i]) {
+                    nz++;
+                    mk |= 1UL << (cl_scratch[i] & 31);
+                }
+            r->cf_ids |= 1UL << (d->imp_State & 31);
+            r->cf_lwhich = which; r->cf_lsize = ((ULONG)im->Width << 8) | (ULONG)im->Height; r->cf_lnz = (ULONG)nz; r->cf_lmarks = mk;
+        }
         if (got)
             ReleaseSemaphore(&cl_ss);
         if (rc == FLAT_CLONE_OK) {
             r->cdraws++;
             return 1;
         }
-        if (rc == FLAT_CLONE_FAIL)
-            r->cfall++;                     /* no offscreen bitmap / busy / no DrawInfo: the block glyph below */
+        if (rc == FLAT_CLONE_FAIL) {
+            r->cfall++;                     /* no offscreen bitmap / busy / no DrawInfo / empty image: the block glyph below */
+            if (!got || env.why == CLONE_WHY_BUSY)
+                r->cf_busy++;
+            else if (env.why == CLONE_WHY_NODRI)
+                r->cf_nodri++;
+            else if (env.why == CLONE_WHY_NOBM || env.why == CLONE_WHY_NOOBJ)
+                r->cf_nobm++;               /* no offscreen bitmap, or no private marker image */
+            else
+                r->cf_empty++;              /* render ran, the system image put no pixel in the offscreen rastport */
+            r->cf_mask |= 1UL << (which & 31);
+        }
     }
     return flat_glyph_draw(&r->st, which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
                            im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, frame_pen,
@@ -725,7 +803,7 @@ static void print_status(void)
     int finst = 0, rinst = 0;
     unsigned long rcalls = 0, rhits = 0, shits = 0, tcalls = 0, thits = 0;
     int tinst = 0;
-    unsigned long cdraws = 0, cfall = 0, alooks = 0;
+    unsigned long cdraws = 0, cfall = 0, alooks = 0, cfb = 0, cfd = 0, cfm = 0, cfe = 0, cfk = 0, cfi = 0, clw = 0, cls = 0, cln = 0, clm = 0;
     int apx = 0, sring[16][9], sn = 0;
     uint32_t dsum[FLAT_EL_COUNT] = { 0, 0 };
     memset(&copy, 0, sizeof copy);
@@ -741,6 +819,8 @@ static void print_status(void)
         rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits;
         tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits;
         cdraws = r->cdraws; cfall = r->cfall;
+        cfb = r->cf_busy; cfd = r->cf_nodri; cfm = r->cf_nobm; cfe = r->cf_empty; cfk = r->cf_mask;
+        cfi = r->cf_ids; clw = r->cf_lwhich; cls = r->cf_lsize; cln = r->cf_lnz; clm = r->cf_lmarks;
         apx = r->aspect_px; alooks = r->aspect_looks;
         memcpy(sring, r->sring, sizeof sring); sn = (int)(r->sring_n > 16 ? 16 : r->sring_n);
     }
@@ -801,6 +881,24 @@ static void print_status(void)
         int n = 0;
         put_word(line, &n, "clone draws=");         put_num(line, &n, cdraws);
         put_word(line, &n, " fallback=");           put_num(line, &n, cfall);
+        line[n] = 0;
+        PutStr((STRPTR)line);
+        PutStr((STRPTR)"\n");
+        n = 0;
+        put_word(line, &n, "clone fallback busy="); put_num(line, &n, cfb);
+        put_word(line, &n, " nodri=");              put_num(line, &n, cfd);
+        put_word(line, &n, " nobm=");               put_num(line, &n, cfm);
+        put_word(line, &n, " empty=");              put_num(line, &n, cfe);
+        put_word(line, &n, " which=");              put_num(line, &n, cfk);
+        line[n] = 0;
+        PutStr((STRPTR)line);
+        PutStr((STRPTR)"\n");
+        n = 0;
+        put_word(line, &n, "clone empty ids=");     put_num(line, &n, cfi);
+        put_word(line, &n, " last which=");         put_num(line, &n, clw);
+        put_word(line, &n, " size=");               put_num(line, &n, cls);
+        put_word(line, &n, " nonzero=");            put_num(line, &n, cln);
+        put_word(line, &n, " marks=");              put_num(line, &n, clm);
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");

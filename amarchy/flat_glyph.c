@@ -181,6 +181,15 @@ int flat_glyph_on_band(unsigned long which)
     return which == FLAT_W_CLOSE || which == FLAT_W_DEPTH || which == FLAT_W_ZOOM || which == FLAT_W_ICONIFY;
 }
 
+int flat_clone_slot(const flat_clone_key *keys, int n, int cap, unsigned long which, int w, int h)
+{
+    int i;
+    for (i = 0; i < n; i++)
+        if (keys[i].which == which && keys[i].w == w && keys[i].h == h)
+            return i;
+    return n < cap ? n : -1;
+}
+
 int flat_clone_route(const flat_state *s, unsigned long which, unsigned long method)
 {
     return s && s->enabled && !s->held && method == FLAT_IM_DRAW && flat_glyph_window_gadget(which);
