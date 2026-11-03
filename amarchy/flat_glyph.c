@@ -11,6 +11,7 @@ typedef struct plan {
     int n, cap;
     int w, h, fg, bg;
     int frame_pen;              /* pen of FLAT_ROLE_FRAME, -1: none known (pen_back) */
+    int knob_pen;               /* pen of FLAT_ROLE_KNOB, -1: none known (pen_line) */
     int ix0, iy0, ix1, iy1;     /* the inner box the glyph lives in */
     int side;                   /* flat_side_px of the screen: columns per row of visual height (1 square, 2 hires, 4 superhires) */
 } plan;
@@ -20,7 +21,7 @@ static void put(plan *g, int x0, int y0, int x1, int y1, int role)
     if (g->n >= g->cap || x1 < x0 || y1 < y0)
         return;
     if (!g->p) {                /* streamed in draw order, so the painter's order of the stored plan is kept */
-        g->fill(g->ctx, g->ox + x0, g->oy + y0, g->ox + x1, g->oy + y1, role == FLAT_ROLE_FRAME && g->frame_pen >= 0 ? g->frame_pen : flat_glyph_pen(g->st, role));
+        g->fill(g->ctx, g->ox + x0, g->oy + y0, g->ox + x1, g->oy + y1, flat_clone_pen(g->st, role, g->frame_pen, g->knob_pen));
         g->n++;
         return;
     }
@@ -166,6 +167,10 @@ void flat_glyph_roles(unsigned long which, int state, int *glyph_role, int *box_
     int bg = state == FLAT_G_SELECTED ? FLAT_ROLE_TEXT : FLAT_ROLE_BACK;
     if (state != FLAT_G_SELECTED && flat_glyph_window_gadget(which))
         bg = FLAT_ROLE_FRAME;           /* the gadget box takes the frame's colour: only the glyph lines show */
+    if (flat_glyph_knob_gadget(which)) {            /* S32-ARROW-KNOB-COLOUR: arrows and size: knob pen, never the text pen */
+        fg = state == FLAT_G_SELECTED ? FLAT_ROLE_BACK : FLAT_ROLE_KNOB;
+        bg = state == FLAT_G_SELECTED ? FLAT_ROLE_KNOB : FLAT_ROLE_FRAME;
+    }
     *glyph_role = fg;
     *box_role = bg;
 }
@@ -268,9 +273,23 @@ int flat_clone_offset(int edge)
     return -edge;
 }
 
-int flat_clone_pen(const flat_state *s, int role, int frame_pen)
+int flat_clone_pen(const flat_state *s, int role, int frame_pen, int knob_pen)
 {
+    if (role == FLAT_ROLE_KNOB)
+        return knob_pen >= 0 ? knob_pen : s->pen_line;
     return role == FLAT_ROLE_FRAME && frame_pen >= 0 ? frame_pen : flat_glyph_pen(s, role);
+}
+
+int flat_glyph_box_role(const flat_state *s, int grole, int brole, int frame_pen, int knob_pen)
+{
+    if (grole == FLAT_ROLE_KNOB && s && flat_clone_pen(s, brole, frame_pen, knob_pen) == flat_clone_pen(s, grole, frame_pen, knob_pen))
+        return FLAT_ROLE_BACK;
+    return brole;
+}
+
+int flat_glyph_knob_gadget(unsigned long which)
+{
+    return which == FLAT_W_LEFT || which == FLAT_W_UP || which == FLAT_W_RIGHT || which == FLAT_W_DOWN || which == FLAT_W_SIZE;
 }
 
 int flat_clone_band_rows(int box_top, int h, int border_top)
@@ -280,7 +299,7 @@ int flat_clone_band_rows(int box_top, int h, int border_top)
 }
 
 int flat_clone_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
-                    int w, int h, int frame_pen, int text_pen, int band_rows, int edge_pen, flat_render_fn render, void *rctx, flat_fill_fn fill, void *fctx, uint8_t *scratch)
+                    int w, int h, int frame_pen, int knob_pen, int text_pen, int band_rows, int edge_pen, flat_render_fn render, void *rctx, flat_fill_fn fill, void *fctx, uint8_t *scratch)
 {
     uint8_t *grid = scratch, *map = scratch + FLAT_CLONE_MAX * FLAT_CLONE_MAX;
     int state, grole, brole, gpen, bpen, x, y;
@@ -294,8 +313,8 @@ int flat_clone_draw(const flat_state *s, unsigned long which, unsigned long meth
     if (!render(rctx, ids, grid, w, h) || flat_clone_map(grid, w, h, map) <= 0)
         return FLAT_CLONE_FAIL;
     flat_glyph_roles(which, state, &grole, &brole);
-    gpen = (grole == FLAT_ROLE_TEXT || grole == FLAT_ROLE_LINE) && text_pen >= 0 ? text_pen : flat_clone_pen(s, grole, frame_pen);
-    bpen = flat_clone_pen(s, brole, frame_pen);
+    gpen = (grole == FLAT_ROLE_TEXT || grole == FLAT_ROLE_LINE) && text_pen >= 0 ? text_pen : flat_clone_pen(s, grole, frame_pen, knob_pen);
+    bpen = flat_clone_pen(s, flat_glyph_box_role(s, grole, brole, frame_pen, knob_pen), frame_pen, knob_pen);
     {
         int br = band_rows < 0 ? 0 : band_rows > h ? h : band_rows;
         if (br > 0)
@@ -321,6 +340,7 @@ static int plan_run(plan *g, unsigned long which, int w, int h, int state, int s
     int i;
     g->n = 0; g->w = w; g->h = h; g->side = side < 1 ? 1 : side;
     flat_glyph_roles(which, state, &g->fg, &g->bg);
+    g->bg = flat_glyph_box_role(g->st, g->fg, g->bg, g->frame_pen, g->knob_pen);
     i = imax(1, imin(w, h) / 4);
     g->ix0 = i; g->iy0 = i; g->ix1 = w - 1 - i; g->iy1 = h - 1 - i;
     put(g, 0, 0, w - 1, h - 1, g->bg);
@@ -343,7 +363,7 @@ int flat_glyph_plan(unsigned long which, int w, int h, int state, flat_prim *out
     plan g;
     if (!out || cap < FLAT_GLYPH_MAX_PRIMS || !flat_glyph_known(which) || w < FLAT_GLYPH_MIN_SIZE || h < FLAT_GLYPH_MIN_SIZE)
         return 0;
-    g.p = out; g.cap = cap; g.fill = 0; g.ctx = 0; g.st = 0; g.frame_pen = -1; g.ox = g.oy = 0;
+    g.p = out; g.cap = cap; g.fill = 0; g.ctx = 0; g.st = 0; g.frame_pen = -1; g.knob_pen = -1; g.ox = g.oy = 0;
     return plan_run(&g, which, w, h, state, 1);
 }
 
@@ -358,12 +378,12 @@ int flat_glyph_route(const flat_state *s, unsigned long which, unsigned long met
 }
 
 int flat_glyph_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
-                    int w, int h, int frame_pen, int side, flat_fill_fn fill, void *ctx)
+                    int w, int h, int frame_pen, int knob_pen, int side, flat_fill_fn fill, void *ctx)
 {
     plan g;
     if (!fill || !flat_glyph_route(s, which, method) || w < FLAT_GLYPH_MIN_SIZE || h < FLAT_GLYPH_MIN_SIZE)
         return 0;
-    g.p = 0; g.cap = FLAT_GLYPH_MAX_PRIMS; g.fill = fill; g.ctx = ctx; g.st = s; g.frame_pen = frame_pen; g.ox = ox; g.oy = oy;
+    g.p = 0; g.cap = FLAT_GLYPH_MAX_PRIMS; g.fill = fill; g.ctx = ctx; g.st = s; g.frame_pen = frame_pen; g.knob_pen = knob_pen; g.ox = ox; g.oy = oy;
     return plan_run(&g, which, w, h, flat_glyph_state(ids), side) > 0;
 }
 

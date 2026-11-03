@@ -25,7 +25,9 @@
 #define FLAT_IM_DRAW 0x202UL    /* the only method C2 draws; IM_DRAWFRAME and the rest go to the old hook */
 
 enum { FLAT_G_NORMAL = 0, FLAT_G_SELECTED = 1, FLAT_G_INACTIVE = 2 };
-enum { FLAT_ROLE_BACK = 0, FLAT_ROLE_TEXT = 1, FLAT_ROLE_LINE = 2, FLAT_ROLE_FRAME = 3 };
+enum { FLAT_ROLE_BACK = 0, FLAT_ROLE_TEXT = 1, FLAT_ROLE_LINE = 2, FLAT_ROLE_FRAME = 3, FLAT_ROLE_KNOB = 4 };
+/* FLAT_ROLE_KNOB (S32-ARROW-KNOB-COLOUR): the scroller knob's state pen (flat_knob_state_pen: accent in an active window, inactive bar tone
+ * otherwise), passed in as knob_pen; pen_line when knob_pen < 0. The scroller arrows and the size gadget draw in it, pressed or not. */
 /* FLAT_ROLE_FRAME: the pen of the frame the gadget sits on (window border, inactive border, screen bar block); drawn
  * as pen_back when flat_glyph_draw gets frame_pen < 0. Only the window gadgets use it as their box background. */
 
@@ -61,7 +63,7 @@ typedef void (*flat_fill_fn)(void *ctx, int x0, int y0, int x1, int y1, int pen)
  * at (ox, oy); w, h are the image's Width and Height. side = flat_side_px of the screen's resolution (1 for square pixels):
  * the scroller arrows widen with it so they keep their shape on hires. */
 int flat_glyph_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
-                    int w, int h, int frame_pen, int side, flat_fill_fn fill, void *ctx);
+                    int w, int h, int frame_pen, int knob_pen, int side, flat_fill_fn fill, void *ctx);
 
 /* FLAT-C8: the flat frame of one frameiclass IM_DRAW / IM_DRAWFRAME call: with fill != 0 the box is one solid fill,
  * NO outline: pen_button (pen_back when 0), pen_line when ids == IDS_SELECTED (1) (FLAT-BUTTON-FILL); with fill == 0 only a
@@ -152,10 +154,13 @@ int flat_clone_map(const uint8_t *grid, int w, int h, uint8_t *out);
  * zoom images LeftEdge -1 (close and size 0): drawn at offset 0 the image's first column fell off the bitmap, the glyph sat
  * 1 px left and its right bevel became a glyph line (rig 23, s32-evidence/clone-clip-hunt.md). */
 int flat_clone_offset(int edge);
-int flat_clone_pen(const flat_state *s, int role, int frame_pen);
+int flat_clone_pen(const flat_state *s, int role, int frame_pen, int knob_pen);
+/* S32-ARROW-KNOB-COLOUR: the one place both draw paths settle the box role: a knob-pen glyph on a box of the same pen would vanish, so that box takes pen_back. */
+int flat_glyph_box_role(const flat_state *s, int grole, int brole, int frame_pen, int knob_pen);
+int flat_glyph_knob_gadget(unsigned long which);
 /* S32-TITLE-STRIP: how many rows of a gadget box (top at window row box_top, height h) lie on the title band, which is window rows 0 .. border_top-2 (the bar's last row is its edge, the background colour): clamp(border_top - 1 - box_top, 0, h). */
 int flat_clone_band_rows(int box_top, int h, int border_top);
 int flat_clone_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
-                    int w, int h, int frame_pen, int text_pen, int band_rows, int edge_pen, flat_render_fn render, void *rctx, flat_fill_fn fill, void *fctx, uint8_t *scratch);
+                    int w, int h, int frame_pen, int knob_pen, int text_pen, int band_rows, int edge_pen, flat_render_fn render, void *rctx, flat_fill_fn fill, void *fctx, uint8_t *scratch);
 /* scratch: FLAT_CLONE_SCRATCH bytes owned by the caller for the call. band_rows: box rows y < band_rows are filled with the frame/box pen, the rest with edge_pen (>= 0; -1 keeps the box pen); band_rows >= h paints the whole box as before. text_pen: >= 0 replaces the pen of every unselected glyph (active, inactive, disabled: S32-INACTIVE-BAR), the pen the title text uses on the band or the inactive tone of an inactive window arrow; -1 keeps flat_glyph_pen. */
 #endif

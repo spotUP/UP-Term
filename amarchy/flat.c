@@ -260,7 +260,7 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
     struct impDraw *d = (struct impDraw *)msg;
     struct Image *im = (struct Image *)obj;
     ULONG which = 0xFFFF, raw_which;
-    int frame_pen = -1, text_pen = -1, band_rows = 9999, edge_pen = -1;
+    int frame_pen = -1, knob_pen = -1, text_pen = -1, band_rows = 9999, edge_pen = -1;
     r->st.calls++;
     if (msg->MethodID != FLAT_IM_DRAW || !r->st.enabled || r->st.held || !d->imp_RPort)
         return 0;
@@ -296,6 +296,7 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
             int wdepth = d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0;
             int wactive = (((struct Window *)fl->Window)->Flags & WFLG_WINDOWACTIVE) != 0;
             int band = flat_frame_pen(&r->st, wdepth, wactive);
+            knob_pen = flat_knob_state_pen(&r->st, wdepth, wactive);   /* S32-ARROW-KNOB-COLOUR: arrows and size draw in the scroller knob's pen */
             if (band >= 0 && flat_glyph_on_band(which)) {   /* the box is the title band (S32-INACTIVE-BAR: both states); the glyph takes the title text's pen */
                 frame_pen = band;
                 band_rows = flat_clone_band_rows(im->TopEdge + d->imp_Offset.Y, im->Height, ((struct Window *)fl->Window)->BorderTop);
@@ -315,7 +316,7 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
         env.h = hk; env.obj = obj; env.d = d; env.reg = reg; env.which = raw_which; env.why = CLONE_WHY_NONE;
         got = AttemptSemaphore(&cl_ss);
         rc = !got ? FLAT_CLONE_FAIL : flat_clone_draw(&r->st, which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
-                             im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, frame_pen, text_pen, band_rows, edge_pen, clone_render, &env, c2_fill, d->imp_RPort, cl_scratch);
+                             im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, frame_pen, knob_pen, text_pen, band_rows, edge_pen, clone_render, &env, c2_fill, d->imp_RPort, cl_scratch);
         if (got && rc == FLAT_CLONE_FAIL && env.why == CLONE_WHY_NONE) {
             int i, nz = 0;
             ULONG mk = 0;
@@ -363,7 +364,7 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
         }
     }
     return flat_glyph_draw(&r->st, which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
-                           im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, frame_pen,
+                           im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, frame_pen, knob_pen,
                            d->imp_DrInfo ? flat_side_px(d->imp_DrInfo->dri_Resolution.X, d->imp_DrInfo->dri_Resolution.Y) : 1,
                            c2_fill, d->imp_RPort);
 }
