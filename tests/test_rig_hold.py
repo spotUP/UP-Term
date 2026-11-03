@@ -18,6 +18,35 @@ class Clock:
         return self.t
 
 
+class OverlappingHolders(unittest.TestCase):
+    """RIG-HOLD-FLAG-CLOBBER: one flag per holder; a holder leaving never clears another holder's long run."""
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.d = pathlib.Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+
+    def test_first_holder_exits_while_second_alive(self):
+        first, second = paths.long_run(self.d), paths.long_run(self.d)
+        first.__enter__(); second.__enter__()
+        first.__exit__(None, None, None)
+        self.assertTrue(paths.long_run_active(self.d))
+        second.__exit__(None, None, None)
+        self.assertFalse(paths.long_run_active(self.d))
+
+    def test_replaced_hold_old_exits_after_new_entered(self):
+        old = paths.long_run(self.d); old.__enter__()
+        new = paths.long_run(self.d); new.__enter__()   # `hold` replaced: new writes, then old's finally runs
+        old.__exit__(None, None, None)
+        self.assertTrue(paths.long_run_active(self.d))
+        new.__exit__(None, None, None)
+        self.assertFalse(paths.long_run_active(self.d))
+
+    def test_dead_holder_file_is_stale_and_cleaned(self):
+        (self.d / "long-run.999999999.0").write_text("999999999\n")
+        self.assertFalse(paths.long_run_active(self.d))
+        self.assertFalse((self.d / "long-run.999999999.0").exists())
+
+
 class HoldLoop(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
