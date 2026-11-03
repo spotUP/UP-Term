@@ -2956,8 +2956,48 @@ static void a_front_picture_spanning_rows_is_not_overdrawn_by_the_text_of_its_lo
     close_term();
 }
 
+/* IMAGE-ASPECT-HIRES: handler open_window reads the screen (vtwin_set_screen) before vtwin_attach creates the
+ * engine, so attach must hand the pixel aspect to the new engine. On 640x256 hires (1:2 pixels) a kitty picture
+ * placed with no cell counts halves its height (7 -> 4); an unknown aspect leaves it as sent. */
+static int attach_picture_height(int known)
+{
+    vtwin aw;
+    vt_image_view v;
+    char seq[200];
+    int h = -1, i;
+    memset(&aw, 0, sizeof aw);
+    gf_open(COLS * CW, ROWS * CH, CW, CH, 6);
+    vtwin_init(&aw, &dhost, 0);
+    aw.aspect_known = known;
+    aw.res_x = 22;
+    aw.res_y = 44;
+    aw.font = gf_font();
+    if (vtwin_attach(&aw, gf_window())) {
+        vt_set_cell_pixels(aw.t, 8, 16);
+        strcpy(seq, "\033_Ga=T,f=24,s=4,v=7,q=2;");
+        for (i = 0; i < 112; i++)
+            strcat(seq, "A"); /* 84 zero bytes: a 4 x 7 RGB picture */
+        strcat(seq, "\033\\");
+        vt_feed(aw.t, (const vt_u8 *)seq, (long)strlen(seq));
+        vt_flush(aw.t);
+        if (vt_row_image(aw.t, 0, 0, &v))
+            h = v.h;
+        vr_free(&aw.r);
+        vt_free(aw.t);
+    }
+    gf_close();
+    return h;
+}
+
+static void vtwin_attach_hands_the_screens_pixel_aspect_to_the_new_engine(void)
+{
+    CHECK_INT(attach_picture_height(1), 4);
+    CHECK_INT(attach_picture_height(0), 7);
+}
+
 int main(void)
 {
+    vtwin_attach_hands_the_screens_pixel_aspect_to_the_new_engine();
     an_inert_renderer_has_no_selection();
     the_default_rect_makes_the_calls_the_renderer_always_made();
 #ifndef RECT_ABSENT
