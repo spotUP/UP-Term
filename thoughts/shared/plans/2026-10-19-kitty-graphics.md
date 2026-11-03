@@ -1,7 +1,7 @@
 ---
 date: 2026-10-19
 topic: kitty graphics protocol (APC G) in vtcon
-status: K1-K18 done; K19-K35 planned; K36 host part done (c63dcb4f), AGA/RTG rig proof open; K37-K41 truecolor done (a14fe089, ceacf685, eaa21b90, b0a0a42a, cbd9e471; s52 verified)
+status: K1-K18 done; K19-K35 planned; K36 done (c63dcb4f, rig proof 6e0e2fe0); K37-K41 truecolor done (a14fe089, ceacf685, eaa21b90, b0a0a42a, cbd9e471; s52 verified)
 source: ~/Code/creep-cterm (github.com/creep-ltx/cterm 51a9ba3, MIT, Tobias Karlsson) src/vt.c 1425-1610, 2191-2480; src/inflate.c; src/pics.c
 research: thoughts/shared/research/2026-10-19_cterm-draw-and-vt-techniques.md
 ---
@@ -441,7 +441,7 @@ commit.
       checked 2026-11-02 against sw.kovidgoyal.net graphics-protocol); the
       root gap stays K34's 40 ms; a=a on a picture without frames answers
       `ENOENT:the picture has no frames`; c= counts in the sentinel.
-- [ ] K36 Handler timer, CPU and the profile key. The window already has a
+- [x] K36 (done: host part c63dcb4f, AGA and RTG rig proof 6e0e2fe0, evidence thoughts/shared/research/s53-evidence/k36-rig-proof.md) Handler timer, CPU and the profile key. The window already has a
       frame clock: render/vtwin.c frame_start arms a timer.device
       TR_ADDREQUEST for frame_wait us, vtwin_tick runs on its signal and
       re-arms it while vr_blink_tick / vr_flash_tick say something is
