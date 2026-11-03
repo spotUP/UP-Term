@@ -14,6 +14,8 @@ int desk_dos_apply(const gtheme *th, char *why, int cap);
  * does (current theme); else nothing (no Workbench reset). Returns 1 when it wrote the theme colours. */
 int desk_dos_flat_pens_refresh(void);
 int desk_dos_start_apply(void);   /* S31-START-APPLY: ENV: desk files match the prefs at start */
+int desk_dos_wb_backdrop(void);   /* S32-WB-BACKDROP: Workbench root window frameless (Backdrop ticked) when the desktop theme is on */
+extern unsigned long desk_dos_wb_backdrop_invokes;
 extern unsigned long desk_dos_start_plans, desk_dos_start_writes;
 /* FLAT-PREFS-NOT-NOTIFIED: the prefs file changed: sync the running amarchy-flat (write + redraw only on a change), or start it (BOOT) */
 void desk_dos_flat_sync(void);

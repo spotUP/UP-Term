@@ -1,5 +1,6 @@
 /* desk_core: see desk_core.h */
 #include "desk_core.h"
+#include "bar_core.h"
 #include "../handler/be32.h"
 
 #include <string.h>
@@ -1311,6 +1312,11 @@ long desk_confirm_left(const desk_confirm *c, long now)
 int desk_start_due(int done, int wb_screen_up, int tick_ok)
 {
     return !done && (wb_screen_up || !tick_ok);
+}
+
+int desk_wb_backdrop_invoke(int master_on, int have_port, int root_found, unsigned long root_wflags)
+{
+    return master_on && have_port && root_found && (root_wflags & BAR_WFLG_WBENCHWINDOW) != 0 && (root_wflags & BAR_WFLG_BACKDROP) == 0;
 }
 
 unsigned desk_start_plan(unsigned mask, int flat, int wbok, const unsigned char *wb, long wblen, int saved, int gsaved,

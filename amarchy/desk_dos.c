@@ -14,6 +14,7 @@
 #include "gthemes_dos.h"
 #include "rexx_host.h"
 #include "desk_core.h"
+#include "bar_core.h"
 #include "menu_theme.h"
 #include "amconf_dos.h"
 #include "flat_shared.h"
@@ -1336,6 +1337,52 @@ static void dk_orig_off(unsigned desk_mask, int flat)
  * matches runs no editor and no IPrefs reset. No confirm requester: nothing changed by hand here, and a timeout must not revert prefs the user
  * set. The originals are saved first (dk_orig_save), so turning the look off still restores the user's own files. */
 unsigned long desk_dos_start_plans, desk_dos_start_writes;
+
+/* S32-WB-BACKDROP: the root window's flags (the stock Workbench window spanning the screen, bar_is_desktop), 0 = none found. */
+static int dk_wb_root_flags(unsigned long *flags)
+{
+    struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
+    struct Screen *s;
+    int found = 0;
+    if (!IntuitionBase)
+        return 0;
+    if ((s = ipd_lock_wb_screen()) != 0) {
+        ULONG il = LockIBase(0);
+        struct Window *w;
+        for (w = s->FirstWindow; w; w = w->NextWindow)
+            if ((w->Flags & BAR_WFLG_WBENCHWINDOW) && bar_is_desktop((unsigned long)w->Flags, w->LeftEdge, w->LeftEdge + w->Width - 1, s->Width)) {
+                *flags = (unsigned long)w->Flags;
+                found = 1;
+                break;
+            }
+        UnlockIBase(il);
+        UnlockPubScreen(0, s);
+    }
+    CloseLibrary((struct Library *)IntuitionBase);
+    return found;
+}
+
+/* The root window opens a moment after the screen (LoadWB), so look for it for up to 5 s. */
+unsigned long desk_dos_wb_backdrop_invokes;
+
+int desk_dos_wb_backdrop(void)
+{
+    am_prefs ap;
+    unsigned long fl = 0;
+    int i, found = 0, port;
+    amconf_load(&ap);
+    if (!amconf_desk_master(&ap))
+        return 0;
+    port = rexx_port_exists("WORKBENCH");
+    for (i = 0; port && i < 10 && !(found = dk_wb_root_flags(&fl)); i++)
+        Delay(25);
+    if (!desk_wb_backdrop_invoke(1, port, found, fl))
+        return 0;
+    rexx_send("WORKBENCH", "MENU INVOKE WORKBENCH.BACKDROP", 0, 0);
+    desk_dos_wb_backdrop_invokes++;
+    am_sentinel("AMARCHY_WB_BACKDROP_INVOKE", (long)desk_dos_wb_backdrop_invokes);
+    return 1;
+}
 
 int desk_dos_start_apply(void)
 {

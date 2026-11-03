@@ -1392,6 +1392,17 @@ static void test_desk_confirm(void)
 }
 
 /* FP-2 (R1.10, OD14): what Keep copies to ENVARC:, what "off" restores, how the originals are named */
+/* S32-WB-BACKDROP: the start ticks Backdrop (frameless root window) only when it is unticked, on a Workbench with the port */
+static void test_desk_wb_backdrop_invoke(void)
+{
+    CHECK_INT(desk_wb_backdrop_invoke(1, 1, 1, 0x02000000UL), 1);              /* stock root window, unticked: toggle once */
+    CHECK_INT(desk_wb_backdrop_invoke(1, 1, 1, 0x02000100UL), 0);              /* already ticked: a toggle would untick it */
+    CHECK_INT(desk_wb_backdrop_invoke(0, 1, 1, 0x02000000UL), 0);              /* desktop-theme master off */
+    CHECK_INT(desk_wb_backdrop_invoke(1, 0, 1, 0x02000000UL), 0);              /* 3.1: no WORKBENCH port */
+    CHECK_INT(desk_wb_backdrop_invoke(1, 1, 0, 0), 0);                         /* no root window yet */
+    CHECK_INT(desk_wb_backdrop_invoke(1, 1, 1, 0x00000100UL), 0);              /* Directory Opus root: left alone */
+}
+
 /* S32-START-LOOK: Amarchy starts before LoadWB; the start look waits for the Workbench screen, then runs once */
 static void test_desk_start_waits_for_workbench(void)
 {
@@ -1699,5 +1710,6 @@ void suite_desk(void)
     test_desk_confirm();
     test_desk_persist();
     test_desk_start_waits_for_workbench();
+    test_desk_wb_backdrop_invoke();
 }
 

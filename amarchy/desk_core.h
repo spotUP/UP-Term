@@ -342,6 +342,14 @@ int desk_wbpattern_same(const unsigned char *a, long alen, const unsigned char *
  * 1: run the start steps now (not done yet, and the screen is up, or no 1 s tick exists to wait on); 0: wait or done. */
 int desk_start_due(int done, int wb_screen_up, int tick_ok);
 
+/* S32-WB-BACKDROP (owner 2026-11-03): the Workbench root window is frameless = the Workbench menu item Backdrop ticked
+ * (measured rig 74 --os 32: ticked = WFLG_BACKDROP window, no title bar or border; the stock default is unticked). The menu
+ * item is a toggle (ARexx MENU INVOKE WORKBENCH.BACKDROP), so the start reads the state first: 1 = invoke once. Only when the
+ * desktop-theme master is on, the WORKBENCH port exists (3.2; 3.1 Workbench has none), the root window is the stock Workbench
+ * one (WFLG_WBENCHWINDOW, found) and it is not backdrop yet. A Directory Opus root window is not a Workbench window and is
+ * left alone (its Backdrop is ticked by default). A second start finds it ticked and does nothing. */
+int desk_wb_backdrop_invoke(int master_on, int have_port, int root_found, unsigned long root_wflags);
+
 unsigned desk_start_plan(unsigned mask, int flat, int wbok, const unsigned char *wb, long wblen, int saved, int gsaved,
                          const gtheme *th, int depth, const unsigned char *pat, long patlen);
 
