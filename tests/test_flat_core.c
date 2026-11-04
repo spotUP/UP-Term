@@ -984,6 +984,17 @@ static void test_desk_flat_state(void)
         }
 }
 
+/* S32-KNOB-NONE-FRESH: which gadgets scroller_pen treats as prop gadgets (XCON's knob is a propgclass object, type 0x0005). */
+static void test_gadget_is_prop(void)
+{
+    CHECK_INT(flat_gadget_is_prop(0x0003, 0, 1), 1);                    /* Workbench drawer prop */
+    CHECK_INT(flat_gadget_is_prop(0x0005, 1, 1), 1);                    /* custom gadget, propgclass or subclass */
+    CHECK_INT(flat_gadget_is_prop(0x0005, 0, 1), 0);                    /* custom, other class (strgclass: StringInfo) */
+    CHECK_INT(flat_gadget_is_prop(0x0003, 0, 0), 0);                    /* no SpecialInfo */
+    CHECK_INT(flat_gadget_is_prop(0x0005, 1, 0), 0);
+    CHECK_INT(flat_gadget_is_prop(0x0001, 1, 1), 0);                    /* bool gadget */
+}
+
 /* FLAT-SCROLLER: knob = the lighter pen (pen_button), track = the frame pen (pen_back), nothing outside the container, nothing
  * when flat is off or held. Same rule for every state: the function takes no active flag. */
 static void test_scroller(void)
@@ -1934,6 +1945,7 @@ void suite_flat_core(void)
     test_boot_before_workbench_retries_install();
     test_title_accent();
     test_scroller();
+    test_gadget_is_prop();
     test_knob_pen();
     test_desk_flat_state();
     test_kill_switches();

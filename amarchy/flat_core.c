@@ -761,3 +761,13 @@ int flat_pens_follow(flat_pens *p, const flat_pen_ops *o, flat_state *s, int wan
     flat_pens_refresh(p, o, s, screen, epoch, depth);
     return 1;
 }
+
+/* S32-KNOB-NONE-FRESH: see flat_core.h. */
+int flat_gadget_is_prop(unsigned gadgettype, int is_propgclass, int has_specialinfo)
+{
+    if (!has_specialinfo)
+        return 0;
+    if (gadgettype == 0x0003u)                  /* GTYP_PROPGADGET */
+        return 1;
+    return gadgettype == 0x0005u && is_propgclass;   /* GTYP_CUSTOMGADGET: only a propgclass object has a PropInfo */
+}
