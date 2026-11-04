@@ -1424,33 +1424,50 @@ static void sc_tmux(long t, int first)
     ps("\033[r");
 }
 
-/* native split panes: no escape sequence or command splits a window, so this shows the keys and the menu */
+/* The splits scene drives the window's panes with the slash commands the Window menu's items run: /split right,
+ * then /pane zoom twice (zoom, unzoom). It cannot close the new pane: /pane close closes the pane it is sent
+ * from, which is the demo's own, so the new shell is left for the user (exit closes it). splits_zoomed is 1 from
+ * the first /pane zoom until the second, so a scene left early does not leave the pane zoomed. */
+static int splits_zoomed;
+static int splits_split;
+
+#define SPLITS_SPLIT_AT 40
+#define SPLITS_ZOOM_AT 120
+#define SPLITS_UNZOOM_AT 200
+
+static void splits_leave(void)
+{
+    if (splits_zoomed && io->command)
+        io->command(io->user, "/pane zoom");
+    splits_zoomed = 0;
+    splits_split = 0;
+}
+
 static void sc_splits(long t, int first)
 {
-    static const char *const rows[][2] = {
-        { "Split right", "Right Amiga D" },
-        { "Split down", "Right Amiga Shift D" },
-        { "Previous pane", "Right Amiga [" },
-        { "Next pane", "Right Amiga ]" },
-        { "Zoom pane", "Window menu" },
-        { "Close pane", "Window menu" }
-    };
-    int i, shown = (int)(t / 12) + 1;
     if (first) {
+        splits_zoomed = 0;
+        splits_split = 0;
         heading("Split panes", "UP-Term splits a tab into panes, each with its own shell");
-        grey_line(4, "A tab holds up to 4 panes. Choose from the Window menu:");
+        grey_line(4, "A tab holds up to 4 panes. A program drives them with slash commands:");
+        grey_line(5, "/split right  /split down  /pane zoom  /pane next  /pane previous  /pane close");
+        grey_line(6, "The Window menu and Right Amiga D, Right Amiga Shift D run the same commands.");
     }
-    for (i = 0; i < 6 && i < shown; i++) {
-        if (t / 12 != i && !first)
-            continue;
-        at(6 + i, 4);
-        fg(75);
-        padded(rows[i][0], 16);
-        sgr0();
-        ps(rows[i][1]);
+    if (!io->command)
+        return;
+    if (!splits_split && t >= SPLITS_SPLIT_AT && t < SPLITS_ZOOM_AT) {
+        splits_split = 1;
+        io->command(io->user, "/split right");
+        grey_line(9, "Sent /split right: a new pane with its own shell opens beside this one.");
+    } else if (splits_split && !splits_zoomed && t >= SPLITS_ZOOM_AT && t < SPLITS_UNZOOM_AT) {
+        splits_zoomed = 1;
+        io->command(io->user, "/pane zoom");
+        grey_line(10, "Sent /pane zoom: this pane fills the tab.");
+    } else if (splits_zoomed && t >= SPLITS_UNZOOM_AT) {
+        grey_line(11, "Sent /pane zoom again: both panes are back.");
+        splits_leave();
+        grey_line(13, "Type exit in the new pane to close it.");
     }
-    if (first)
-        grey_line(13, "Unlike tmux, the panes belong to UP-Term: a program cannot split the window itself.");
 }
 
 /* a shell session, typed */
@@ -2346,6 +2363,57 @@ static void sc_tabs(long t, int first)
     }
 }
 
+/* Help (UD7): how a new user gets help. The handler has /help, /tutorial and /ask (handler/slash.c) and no welcome
+ * text, so none is shown. /help NAME is sent for real and the terminal's own reply is printed (the text slash_help
+ * builds). /tutorial and /ask open a tutorial tab and start an AI agent, which a demo must not leave behind (their
+ * reply names no tab number to close), so the scene shows what each opens through its /help line. */
+#define HELP_ASK_AT 20
+#define HELP_TUTORIAL_AT 70
+
+static int help_row;
+
+/* send "/help NAME": the typed prompt line, then the terminal's reply, a line at a time */
+static void help_ask(const char *name)
+{
+    char line[40] = "/help ";
+    const char *r;
+    strcat(line, name);
+    at(help_row++, 2);
+    ps("\033[36m~\033[0m % ");
+    fg(2);
+    ps(line);
+    sgr0();
+    r = io->command ? io->command(io->user, line) : 0;
+    while (r && *r) {
+        at(help_row++, 2);
+        while (*r && *r != '\n')
+            pc(*r++);
+        if (*r == '\n')
+            r++;
+    }
+}
+
+static void sc_help(long t, int first)
+{
+    static int asked, tutorial;
+    if (first) {
+        asked = tutorial = 0;
+        help_row = 8;
+        heading("Help", "three slash commands answer a new user's questions");
+        grey_line(4, "/help lists every UP-Term command; /help NAME describes one.");
+        grey_line(5, "/tutorial opens the shell tutorial in a new tab.");
+        grey_line(6, "/ask TASK starts the AI agent in a new tab, on TASK.");
+    }
+    if (!asked && t >= HELP_ASK_AT) {
+        asked = 1;
+        help_ask("ask");
+    } else if (!tutorial && t >= HELP_TUTORIAL_AT) {
+        tutorial = 1;
+        help_ask("tutorial");
+        grey_line(help_row + 1, "Type /tutorial or /ask yourself: each opens its own tab.");
+    }
+}
+
 /* A frame counter in big letters. With mode 2026 the terminal shows each
  * frame whole; every other second the frames go without it, and a slow
  * machine shows them being drawn. */
@@ -2499,6 +2567,7 @@ static const scene_def scenes[] = {
     { "icat", sc_icat, 0, 450, "icat: a picture printed inline, scrolling with the text", 0, 0, 0 },
     { "glyphs", sc_glyphs, 0, 400, "Glyphs: Powerline, Nerd Font, emoji, box drawing", 0, 0, 0 },
     { "tabs", sc_tabs, 0, 400, "Tabs: several sessions in one window", 0, 0, 0 },
+    { "help", sc_help, 0, 300, "Help: /help, /tutorial and /ask", 0, 0, 0 },
     { "synchronized output", sc_sync, 1, 400, "Synchronized output: frames shown whole", 0, 0, 0 },
     { "resize", sc_resize, 0, 400, "A program resizes the window (DECCOLM)", 0, 0, 0 },
     { "reflow", sc_reflow, 0, 750, "Reflow on resize", 1, 0, 0 },
@@ -2707,6 +2776,7 @@ static int play(int first, long scene_ticks)
         }
         flush();
         tabs_leave();
+        splits_leave();
         stat_ticks[s] += io->ticks(io->user) - t0;
         ps("\033[r"); /* the whole screen scrolls again */
         if (!ansi)

@@ -323,6 +323,7 @@ COMMANDS (/cursor bar)
      /amiga-keys off    /dither off
      /outline-antialias off
      /padding-color extend   /split-restore layout
+     /split right       /split down       /pane zoom         /pane close
      /link-open Run >NIL: OpenURL %s
    They change the window you type in; /save writes them to its profile.
    "/" alone, "//", "/Work" and every other path are the shell's as

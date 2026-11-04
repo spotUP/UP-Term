@@ -68,6 +68,13 @@ static const slash_value v_tab[] = {
     { "new", MENU_TAB_NEW, 1 }, { "next", MENU_TAB_NEXT, 1 }, { "previous", MENU_TAB_PREV, 1 },
     { "close", MENU_TAB_CLOSE, 1 }, { 0, 0, 0 }
 };
+static const slash_value v_splitdir[] = {
+    { "right", MENU_SPLIT_RIGHT, 1 }, { "down", MENU_SPLIT_DOWN, 1 }, { 0, 0, 0 }
+};
+static const slash_value v_pane[] = {
+    { "close", MENU_PANE_CLOSE, 1 }, { "zoom", MENU_PANE_ZOOM, 1 }, { "next", MENU_PANE_NEXT, 1 },
+    { "previous", MENU_PANE_PREV, 1 }, { 0, 0, 0 }
+};
 
 /* Alphabetical: the help lists it in this order, completion offers it so. */
 static const slash_def table[] = {
@@ -110,6 +117,8 @@ static const slash_def table[] = {
       "outline-font glyphs are drawn smoothed on a screen of 16 colours or more (off: hard edges)" },
     { "padding-color", SL_CHOICE, 0, 0, v_padding, "background | extend",
       "the strips beside the character grid: the background, or the colour of the cell next to them" },
+    { "pane", SL_CHOICE, 0, 0, v_pane, "close | zoom | next | previous",
+      "the pane this command runs in: close it, zoom it, or move to the next or previous pane" },
     { "paste", SL_ACTION, MENU_PASTE, 0, 0, "", "type the clipboard in" },
     { "pi", SL_ACTION, MENU_PI, 0, 0, "", "pi, in a new tab" },
     { "prefs", SL_ACTION, MENU_PREFS, 0, 0, "", "open UP-Term Prefs" },
@@ -129,6 +138,7 @@ static const slash_def table[] = {
     { "selection-fg", SL_ARG, SLASH_SEL_FG, 1, 0, "RRGGBB | none", "the selected text's colour" },
     { "setup", SL_ACTION, SLASH_SETUP, 0, 0, "", "what this window has set, and where each came from" },
     { "size", SL_ARG, SLASH_SIZE, 1, 0, "COLSxROWS", "the window sized to the grid (80x24)" },
+    { "split", SL_CHOICE, 0, 0, v_splitdir, "right | down", "split the pane, a new shell beside or below it" },
     { "split-restore", SL_CHOICE, 0, 0, v_split, "off | layout | programs",
       "what a split tab keeps when the window opens again (programs: each pane's command too)" },
     { "state", SL_ARG, SLASH_STATE, 0, 0, "[KEY]", "what the user did in this window (counters; UPTerm state)" },
