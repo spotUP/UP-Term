@@ -52,6 +52,11 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
    brief names the rig number, so the agent stops only its own rig. When the agent
    reports, the session that briefed it runs `ps` for that rig and those servers
    and stops what is left, before it starts the next task.
+9. **Check the test register before any rig, emulator, A1200 or pixel test.**
+   `thoughts/shared/research/test-register.md` lists every run with its verdict.
+   Same build, config and recipe as a logged row = do not rerun; rerun only when a
+   column changed, and say which. Append one row after every run, including runs
+   with no verdict (with the reason). Every brief that starts a rig says this.
 
 ## Commands
 
