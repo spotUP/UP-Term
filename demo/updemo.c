@@ -2836,7 +2836,11 @@ static int play(int first, long scene_ticks)
         tabs_leave();
         splits_leave();
         stat_ticks[s] += io->ticks(io->user) - start;
-        ps("\033[r"); /* the whole screen scrolls again */
+        /* the whole screen scrolls again. Not after a main-screen scene: it sets no region, and DECSTBM homes
+         * the cursor, so the next ?1049h saved row 1 and the shell's prompt came back on the top row over the
+         * scene's text (UPDEMO15-EXIT-PROMPT-TOP; the reflow scene, rig 96) */
+        if (!sc->main_screen)
+            ps("\033[r");
         if (!ansi)
             ps("\033]104\007"); /* the palette is the terminal's */
         /* what a scene may have changed: the width, the mouse, the default
