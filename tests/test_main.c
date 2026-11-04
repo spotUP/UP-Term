@@ -55,6 +55,7 @@ void suite_status_core(void);
 void suite_barconf(void);
 void suite_note_core(void);
 void suite_flat_core(void);
+void suite_iclabel(void);
 void suite_iconfile(void);
 void suite_iconapply(void);
 void suite_iconpen(void);
@@ -162,6 +163,7 @@ static const h_suite suites[] = {
     { "barconf", suite_barconf },
     { "note_core", suite_note_core },
     { "flat_core", suite_flat_core },
+    { "iclabel", suite_iclabel },
     { "iconfile", suite_iconfile },
     { "iconapply", suite_iconapply },
     { "iconpen", suite_iconpen },
