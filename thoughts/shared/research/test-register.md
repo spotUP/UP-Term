@@ -96,3 +96,4 @@ to RAM:palette.prefs, `Copy RAM:palette.prefs ENV:Sys/palette.prefs`, 30 s wait,
 | 2026-11-05 | RL8-DIM | 124 | main | PASS | contrast 260 tokyo-night, 231 white (floor 220); s57-evidence/rig124-release-reads-3.md |
 | 2026-11-05 | RL8-POINTER | 124 | main | PASS (bytes) | pointer.prefs colours text/surface/accent tokyo-night; sprite not in grab; s57-evidence/rig124-release-reads-3.md |
 | 2026-11-05 | RL20 | 124 | main | PASS | blended corners on menu row, Close, Open Help; s57-evidence/rig124-release-reads-3.md |
+| 2026-11-05 (s57) | drag copper-overwrite hunt | rig 125, 3.2, 060 max | worktree-agent-aa88eab09b5b01354 df0c1923 | INCONCLUSIVE: fresh-all install pages ok, then rig.py reboot timed out (wasabi daemon silent 15 s, host CPU about 610%); no drag run, no bisect; rig stopped and cleared | s57-evidence/rig96-drag-freeze.md |

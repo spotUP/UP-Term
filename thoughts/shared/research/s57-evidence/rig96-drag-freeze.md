@@ -70,3 +70,20 @@ gives the writer's PC directly.
 Left up, not rebooted, nothing stopped. Its copper list is corrupt: the display stays
 blank until a reboot. RAM:taskdump, RAM:vpdump and RAM:copdump remain on it (lost on
 reboot).
+
+## Hunt attempt 2026-11-05 (rig 125): writer UNPROVEN
+
+- Rig 125 (3.2, 060 max) fresh-all install reached its last page, then `rig.py reboot` timed out:
+  the wasabi daemon took the connection but did not answer for 15 s. Host CPU was about 610% at the time,
+  so host starvation is not ruled out. No drag, no copper check, no bisect was run.
+- Probe ready for the next run: a copcheck program (opens the Workbench pubscreen, computes the
+  bitmap end with interleave detection, prints the first 16 LOFlist words, flags a MOVE whose register
+  word is even and >= 0x200, exit 5 = CORRUPT). Source to re-add under tests/amiga when the run happens.
+- Static review: flat_rf_c always ends in the layered or saved RectFill; ghost_menu recolour is clamped.
+  Strongest unverified code suspect: vtcon-handler direct-plane writes in render/amiga_render.c
+  (back_copy and target()) place rows from w->TopEdge/LeftEdge and check only the cell area against the
+  single ClipRect, not each copy rect's rows. During a drag the window position can differ from the
+  layer bounds. Invariant to test: every byte written lies inside the locked ClipRect bounds, with the
+  position taken from the layer, not the Window.
+- Next run: quiet host first, rig start, fresh-all, copcheck before and after the drag to top 7, then
+  stop SolidWin / amarchy-flat / Amarchy in turn; memwatch with the debug FS-UAE (--no-jit --debugger).
