@@ -516,7 +516,7 @@ def case_welcome():
     bg = tuple(rows[0][0:3])
     painted = sum(1 for r in rows for i in range(len(r) // 3) if tuple(r[i * 3:i * 3 + 3]) != bg)
     check(painted > 200, 'welcome: the checkbox and Close / Open Help rows are inside the window on first view (%d painted)' % painted)
-    cx, cy = x + 16, y + hh - 34          # inside the checkbox of the upper strip row
+    cx, cy = x + 55, y + hh - 48          # inside the checkbox box (measured on rig 124: box x 40..71, y hh-56..hh-41)
     before = ami.grab((cx - 4, cy - 4, 9, 9))[2]
     ami.click_px(cx, cy)
     time.sleep(1)

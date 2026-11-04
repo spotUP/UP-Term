@@ -86,3 +86,7 @@ to RAM:palette.prefs, `Copy RAM:palette.prefs ENV:Sys/palette.prefs`, 30 s wait,
 | 2026-11-04 | RL21 AA icon labels | worktree-agent-a4a8bc09e147ec27a de5c759d, amarchy-flat | rig 122 (3.1, --max) | tools/rig/amarchy_iclabel_rig.py | INCONCLUSIVE: same output as rig 123 (rig selection unverified); labels=0; Break unload PASS |
 | 2026-11-04 (s57) | rig 96 rebuild 2, assign UP-Term: watch | rig 96, 3.2, 060 max, --keep, idle 0, title kept after reboot | main 7cf4ac17 (worktree vtcon-s57-rig96b) | fresh-all PASS 35 checks; Assign UP-Term: EXISTS rc 0 at 23:46:21 and 23:51:29, requesters empty both times | s57-evidence/rig96-rebuild-2.md |
 | 2026-11-04 (s57 c1) | A7 flat boot + gui_rig --setup | rig 124, 3.2, 060 max, reboot | main 7cf4ac17 + s57-a7-flat-boot | boot flat=on calls=145 (frame=hooked calls=0 is the frameiclass line); setup fixed rc 0 with RAM:amarchy-flat resident; iclabel drawer did not open | s57-evidence/rig124-a7-and-reads.md |
+| 2026-11-05 | RL16 | 124 | b193312c | PASS | checkbox click 200 px changed 1a1b26->7aa2f7; s57-evidence/rig124-release-reads-2.md |
+| 2026-11-05 | FLAT-BUTTON-FILL | 124 | b193312c | FAIL | idle fill 7aa2f7 not 24283b; s57-evidence/rig124-release-reads-2.md |
+| 2026-11-05 | S32-GREEN-LINE-96 | 124 | b193312c | PASS | no green; row 9 7aa2f7 x0..369 only; s57-evidence/rig124-release-reads-2.md |
+| 2026-11-05 | S32-SCROLLBAR-PROP | 124 | b193312c | PASS | knob 7aa2f7 vs track 1a1b26; s57-evidence/rig124-release-reads-2.md |
