@@ -30,3 +30,14 @@ Date 2026-11-04. Verdict: NOT PROVEN by the protocol (fast case, control, repeat
 - Not done: boot reading flat=on at T+0, the T+30 s fast reset with a marker List, control (T+90 s), repeat.
 - Note for the next run: read STATUS and List the marker BEFORE the reset, and run when host load is low (the 3 reboots each cost 3-5 min under load 60).
 - Rig 66 stopped and cleared.
+
+## Run 4 (s54, rig 66) - INCOMPLETE, rig.py reboot never brings wasabid back
+
+Date 2026-11-04 08:36-09:10. Verdict: NOT PROVEN (steps 1-5 not run; no pre-reset marker List taken). One incidental observation again points to CONFIRMED.
+- Fresh `rig.py start --max --os 32` (host load 25-99): wasabid answered. User-Startup block appended on the host (build/rig66/os-32/S/User-Startup lines 15-17); `VTC:amarchy-flat` present.
+- Reboot 1 (`rig.py reboot` 08:41:35, 5:49 total): rc=1, CalledProcessError from the `start --keep-sys` step; start printed `auth failed: the Amiga took the connection but its daemon did not answer for 150 s - frozen, or stuck on something`, then `stopped`. The guest stayed unreachable (ami.py exec timeout) although fs-uae kept running.
+- Stop --keep and a fresh `start --max --os 32 --keep-sys` (08:51:45, up 08:54:30): wasabid answered. First reads 08:54:58-08:55:05: `flat=held calls=0 chained=0 why=marker`; `List ENVARC:Amarchy/flat-starting` -> object not found; ENVARC:Amarchy empty. The marker came from the boot killed by the reboot-1 failure (flat had run < 60 s, reset killed it) and was consumed by this boot (flat.c:1489). Second independent sighting of the held-by-marker read (Run 3 had one too), still without a pre-reset List.
+- Reboot 2 (`rig.py reboot` 08:55:48, rc=1 at 09:02:01): same CalledProcessError and same `auth failed ... 150 s` text; no STATUS in the next 420 s (to 09:09:07). Host load average 99/80/78 at 09:05.
+- First exception, full message: `subprocess.CalledProcessError: Command '[python3.14, tools/rig/rig.py, 'start', '--keep-sys', '--max', '--os', '32', '--purpose', '...']' returned non-zero exit status 1` raised at rig.py:1935 (`reboot`), after the start step's `auth failed: the Amiga took the connection but its daemon did not answer for 150 s`. Before it, a thread `_watch` in ami.py:237 (`_look` -> requesters -> wasabi read_ui `_fill`) died with `TimeoutError: timed out`. Pattern: every `rig.py reboot` (--keep-sys start on a dirty system disk) loses wasabid; every fresh `start` after `stop --keep` works. Suspect: reboot does not stop fs-uae cleanly before the start, or the dirty DH0 (reset mid-boot) delays wasabid past 150 s; not isolated.
+- Driver script used: scratchpad drive.py (STATUS poll, T0+25 s List, reset, STATUS first read, control at T0+90 s); never got past the first boot.
+- Rig 66 stopped and cleared.
