@@ -301,34 +301,42 @@ int flat_clone_band_rows(int box_top, int h, int border_top)
 int flat_clone_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
                     int w, int h, int frame_pen, int knob_pen, int text_pen, int band_rows, int edge_pen, flat_render_fn render, void *rctx, flat_fill_fn fill, void *fctx, uint8_t *scratch)
 {
+    flat_clone_in in;
+    in.which = which; in.method = method; in.ids = ids; in.ox = ox; in.oy = oy; in.w = w; in.h = h;
+    in.frame_pen = frame_pen; in.knob_pen = knob_pen; in.text_pen = text_pen; in.band_rows = band_rows; in.edge_pen = edge_pen;
+    return flat_clone_draw_in(s, &in, render, rctx, fill, fctx, scratch);
+}
+
+int flat_clone_draw_in(const flat_state *s, const flat_clone_in *in, flat_render_fn render, void *rctx, flat_fill_fn fill, void *fctx, uint8_t *scratch)
+{
     uint8_t *grid = scratch, *map = scratch + FLAT_CLONE_MAX * FLAT_CLONE_MAX;
     int state, grole, brole, gpen, bpen, x, y;
-    if (!fill || !render || !scratch || !flat_clone_route(s, which, method) ||
-        w < FLAT_GLYPH_MIN_SIZE || h < FLAT_GLYPH_MIN_SIZE || w > FLAT_CLONE_MAX || h > FLAT_CLONE_MAX)
+    if (!fill || !render || !scratch || !flat_clone_route(s, in->which, in->method) ||
+        in->w < FLAT_GLYPH_MIN_SIZE || in->h < FLAT_GLYPH_MIN_SIZE || in->w > FLAT_CLONE_MAX || in->h > FLAT_CLONE_MAX)
         return FLAT_CLONE_NO;
-    state = flat_glyph_state(ids);
-    memset(grid, 0, (size_t)(w * h));
+    state = flat_glyph_state(in->ids);
+    memset(grid, 0, (size_t)(in->w * in->h));
     /* No glyph pixel is a failed clone, not a plain box: OS 3.2's sysiclass returns 1 from IM_DRAW for the window gadgets
      * yet puts nothing in our offscreen rastport, and drawing that empty map painted the active close/depth/zoom boxes solid. */
-    if (!render(rctx, ids, grid, w, h) || flat_clone_map(grid, w, h, map) <= 0)
+    if (!render(rctx, in->ids, grid, in->w, in->h) || flat_clone_map(grid, in->w, in->h, map) <= 0)
         return FLAT_CLONE_FAIL;
-    flat_glyph_roles(which, state, &grole, &brole);
-    gpen = (grole == FLAT_ROLE_TEXT || grole == FLAT_ROLE_LINE) && text_pen >= 0 ? text_pen : flat_clone_pen(s, grole, frame_pen, knob_pen);
-    bpen = flat_clone_pen(s, flat_glyph_box_role(s, grole, brole, frame_pen, knob_pen), frame_pen, knob_pen);
+    flat_glyph_roles(in->which, state, &grole, &brole);
+    gpen = (grole == FLAT_ROLE_TEXT || grole == FLAT_ROLE_LINE) && in->text_pen >= 0 ? in->text_pen : flat_clone_pen(s, grole, in->frame_pen, in->knob_pen);
+    bpen = flat_clone_pen(s, flat_glyph_box_role(s, grole, brole, in->frame_pen, in->knob_pen), in->frame_pen, in->knob_pen);
     {
-        int br = band_rows < 0 ? 0 : band_rows > h ? h : band_rows;
+        int br = in->band_rows < 0 ? 0 : in->band_rows > in->h ? in->h : in->band_rows;
         if (br > 0)
-            fill(fctx, ox, oy, ox + w - 1, oy + br - 1, bpen);
-        if (br < h)
-            fill(fctx, ox, oy + br, ox + w - 1, oy + h - 1, edge_pen >= 0 ? edge_pen : bpen);
+            fill(fctx, in->ox, in->oy, in->ox + in->w - 1, in->oy + br - 1, bpen);
+        if (br < in->h)
+            fill(fctx, in->ox, in->oy + br, in->ox + in->w - 1, in->oy + in->h - 1, in->edge_pen >= 0 ? in->edge_pen : bpen);
     }
-    for (y = 0; y < h; y++)
-        for (x = 0; x < w; x++)
-            if (map[y * w + x]) {
+    for (y = 0; y < in->h; y++)
+        for (x = 0; x < in->w; x++)
+            if (map[y * in->w + x]) {
                 int x1 = x;
-                while (x1 + 1 < w && map[y * w + x1 + 1])
+                while (x1 + 1 < in->w && map[y * in->w + x1 + 1])
                     x1++;
-                fill(fctx, ox + x, oy + y, ox + x1, oy + y, gpen);
+                fill(fctx, in->ox + x, in->oy + y, in->ox + x1, in->oy + y, gpen);
                 x = x1;
             }
     return FLAT_CLONE_OK;
@@ -557,7 +565,7 @@ int flat_outer_edge_fill(int w, int h, int x0, int y0, int x1, int y1, int px, i
     return 0;
 }
 
-int flat_outer_ring_overlap(int w, int h, int px, int bx0, int by0, int bx1, int by1, int out[4][4])
+int flat_outer_ring_overlap(int w, int h, int px, int bx0, int by0, int bx1, int by1, flat_fill_fn fill, void *ctx, int pen)
 {
     int i, n = 0, r[4];
     if (w < 2 || h < 2)
@@ -571,7 +579,7 @@ int flat_outer_ring_overlap(int w, int h, int px, int bx0, int by0, int bx1, int
         if (r[3] > by1) r[3] = by1;
         if (r[0] > r[2] || r[1] > r[3])
             continue;
-        out[n][0] = r[0]; out[n][1] = r[1]; out[n][2] = r[2]; out[n][3] = r[3];
+        fill(ctx, r[0], r[1], r[2], r[3], pen);
         n++;
     }
     return n;

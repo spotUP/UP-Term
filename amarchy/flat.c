@@ -71,6 +71,7 @@ struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 static flatshared *g_r;
 static int side_px(flatshared *r, struct Screen *scr);
+static void aspect_update(flatshared *r, struct Screen *scr);
 
 /* ---- FLAT-C2: the sysiclass dispatcher. It replaces the C1 pass-through: count the call, and for IM_DRAW of a
  * SYSIA_Which that flat_glyph.c knows, draw the flat glyph when the switch is on; every other call (other method,
@@ -133,6 +134,7 @@ static struct BitMap *cl_bm;
 static struct RastPort cl_rp;
 static int cl_w, cl_h;
 static UWORD cl_pens[FLAT_CLONE_MARKS];
+static flat_clone_in cl_in;                         /* the call arguments, held under cl_ss (flat budget: 7 pushed arguments, not 18) */
 static uint8_t cl_scratch[FLAT_CLONE_SCRATCH];     /* the grids: static (held under cl_ss), not on the stack of whatever task draws */
 /* S32 CLONE-PRIVATE-IMAGE (flat_glyph.h): the private marker images. 3.2 sysiclass keeps the SYSIA_DrawInfo pointer and bakes
  * its pens at OM_NEW, so the marker DrawInfo is static (it outlives every private image) and dri_Depth is FLAT_CLONE_DEPTH. */
@@ -255,13 +257,129 @@ static int clone_render(void *ctx, unsigned long ids, uint8_t *grid, int w, int 
     return ok;
 }
 
+/* FLAT-OUTER-EDGE ring fill: the saved (unpatched) RectFill, so the ring refill is not recoloured by the patch again. */
+static void c2_ring_fill(void *ctx, int x0, int y0, int x1, int y1, int pen)
+{
+    struct RastPort *rp = (struct RastPort *)ctx;
+    SetAPen(rp, (UBYTE)pen);
+    ((rectfn)g_r->rsw.saved)(rp, x0, y0, x1, y1, (struct Library *)GfxBase);
+}
+
+/* S32-ARROW-OUTLINE: the box fill ran over the window's outer ring where the gadget reaches the last column or row;
+ * the ring belongs to flat, so refill the overlap with the edge pen through the saved RectFill. A function of its own, with the
+ * rects handed to c2_ring_fill one by one, so no rect array is part of c2_draw's frame (flat budget). */
+static void c2_ring_refill(flatshared *r, struct impDraw *d, struct Image *im)
+{
+    struct Window *rw = d->imp_RPort->Layer ? (struct Window *)d->imp_RPort->Layer->Window : NULL;
+    if (rw && r->st.pen_outline && r->rsw.saved && !(rw->Flags & WFLG_BORDERLESS)) {
+        UBYTE fg = d->imp_RPort->FgPen;
+        if (flat_outer_ring_overlap(rw->Width, rw->Height, side_px(r, rw->WScreen), im->LeftEdge + d->imp_Offset.X,
+                im->TopEdge + d->imp_Offset.Y, im->LeftEdge + d->imp_Offset.X + im->Width - 1,
+                im->TopEdge + d->imp_Offset.Y + im->Height - 1, c2_ring_fill, d->imp_RPort,
+                flat_edge_pen(&r->st, d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0, (rw->Flags & WFLG_WINDOWACTIVE) != 0)) > 0)
+            SetAPen(d->imp_RPort, fg);
+    }
+}
+
+/* The pens one gadget image draws with (the pen of the frame it sits on, the knob and text pens, the title band rows), short so the
+ * set is 10 bytes on the draw task's stack. */
+typedef struct { short frame, knob, text, band, edge; } c2_pens;
+
+static void c2_get_pens(flatshared *r, struct impDraw *d, struct Image *im, ULONG which, c2_pens *p)
+{
+    p->frame = -1; p->knob = -1; p->text = -1; p->band = 9999; p->edge = -1;
+    /* FLAT-GADGET-BG: the pen of the frame the gadget sits on, so the box shows only the glyph lines. A window gadget
+     * sits on the border (the background pen in both states: FLAT-SOLID-FILL); a screen bar gadget on
+     * the bar block (V39+ DrawInfo has it). */
+    if (d->imp_DrInfo) {
+        struct Layer *fl = d->imp_RPort->Layer;
+        if (fl && fl->Window) {
+            int wdepth = d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0;
+            int wactive = (((struct Window *)fl->Window)->Flags & WFLG_WINDOWACTIVE) != 0;
+            int band = flat_frame_pen(&r->st, wdepth, wactive);
+            p->knob = flat_knob_state_pen(&r->st, wdepth, wactive);   /* S32-ARROW-KNOB-COLOUR: arrows and size draw in the scroller knob's pen */
+            if (band >= 0 && flat_glyph_on_band(which)) {   /* the box is the title band (S32-INACTIVE-BAR: both states); the glyph takes the title text's pen */
+                p->frame = band;
+                p->band = flat_clone_band_rows(im->TopEdge + d->imp_Offset.Y, im->Height, ((struct Window *)fl->Window)->BorderTop);
+                p->edge = d->imp_DrInfo->dri_Pens[BACKGROUNDPEN];
+                p->text = r->st.pen_ptext;
+            } else {
+                p->frame = d->imp_DrInfo->dri_Pens[BACKGROUNDPEN];     /* FLAT-SOLID-FILL: the frame is the background */
+                if (!wactive && flat_inactive_pen(&r->st, wdepth) >= 0)
+                    p->text = flat_inactive_pen(&r->st, wdepth);       /* S32-INACTIVE-BAR: the arrows of an inactive window */
+            }
+        } else if (fl && d->imp_DrInfo->dri_Version >= 2)
+            p->frame = d->imp_DrInfo->dri_Pens[BARBLOCKPEN];
+    }
+}
+
+/* The clone draw of one gadget image: 1 when it was drawn (the caller is done), 0 to fall back to the block glyph. Its own function
+ * so the clone's environment is not part of c2_draw's frame (flat budget). */
+static int c2_clone(struct Hook *hk, Object *obj, Msg msg, int reg, ULONG which, ULONG raw_which, const c2_pens *p)
+{
+    flatshared *r = g_r;
+    struct impDraw *d = (struct impDraw *)msg;
+    struct Image *im = (struct Image *)obj;
+    cloneenv env;
+    int rc, got;
+    env.h = hk; env.obj = obj; env.d = d; env.reg = reg; env.which = raw_which; env.why = CLONE_WHY_NONE;
+    got = AttemptSemaphore(&cl_ss);
+    if (got) {                  /* cl_in is guarded by cl_ss like cl_scratch: off the draw task's stack */
+        cl_in.which = which; cl_in.method = msg->MethodID; cl_in.ids = d->imp_State;
+        cl_in.ox = im->LeftEdge + d->imp_Offset.X; cl_in.oy = im->TopEdge + d->imp_Offset.Y; cl_in.w = im->Width; cl_in.h = im->Height;
+        cl_in.frame_pen = p->frame; cl_in.knob_pen = p->knob; cl_in.text_pen = p->text; cl_in.band_rows = p->band; cl_in.edge_pen = p->edge;
+    }
+    rc = !got ? FLAT_CLONE_FAIL : flat_clone_draw_in(&r->st, &cl_in, clone_render, &env, c2_fill, d->imp_RPort, cl_scratch);
+    if (got && rc == FLAT_CLONE_FAIL && env.why == CLONE_WHY_NONE) {
+        int i, nz = 0;
+        ULONG mk = 0;
+        for (i = 0; i < im->Width * im->Height && i < FLAT_CLONE_MAX * FLAT_CLONE_MAX; i++)
+            if (cl_scratch[i]) {
+                nz++;
+                mk |= 1UL << (cl_scratch[i] & 31);
+            }
+        r->cf_ids |= 1UL << (d->imp_State & 31);
+        r->cf_lwhich = which; r->cf_lsize = ((ULONG)im->Width << 8) | (ULONG)im->Height; r->cf_lnz = (ULONG)nz; r->cf_lmarks = mk;
+    }
+    if (got)
+        ReleaseSemaphore(&cl_ss);
+    if (rc == FLAT_CLONE_OK) {
+        c2_ring_refill(r, d, im);
+        r->cdraws++;
+        return 1;
+    }
+    if (rc == FLAT_CLONE_FAIL) {
+        r->cfall++;                     /* no offscreen bitmap / busy / no DrawInfo / empty image: the block glyph below */
+        if (!got || env.why == CLONE_WHY_BUSY)
+            r->cf_busy++;
+        else if (env.why == CLONE_WHY_NODRI)
+            r->cf_nodri++;
+        else if (env.why == CLONE_WHY_NOBM || env.why == CLONE_WHY_NOOBJ)
+            r->cf_nobm++;               /* no offscreen bitmap, or no private marker image */
+        else
+            r->cf_empty++;              /* render ran, the system image put no pixel in the offscreen rastport */
+        r->cf_mask |= 1UL << (which & 31);
+    }
+    return 0;
+}
+
+static int c2_glyph(Object *obj, Msg msg, ULONG which, const c2_pens *p)
+{
+    flatshared *r = g_r;
+    struct impDraw *d = (struct impDraw *)msg;
+    struct Image *im = (struct Image *)obj;
+    return flat_glyph_draw(&r->st, which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
+                           im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, p->frame, p->knob,
+                           d->imp_DrInfo ? flat_side_px(d->imp_DrInfo->dri_Resolution.X, d->imp_DrInfo->dri_Resolution.Y) : 1,
+                           c2_fill, d->imp_RPort);
+}
 static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
 {
     flatshared *r = g_r;
     struct impDraw *d = (struct impDraw *)msg;
     struct Image *im = (struct Image *)obj;
     ULONG which = 0xFFFF, raw_which;
-    int frame_pen = -1, knob_pen = -1, text_pen = -1, band_rows = 9999, edge_pen = -1;
+    c2_pens pens;
     r->st.calls++;
     if (msg->MethodID != FLAT_IM_DRAW || !r->st.enabled || r->st.held || !d->imp_RPort)
         return 0;
@@ -288,86 +406,10 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
     }
     raw_which = which;
     which = flat_which_alias(which);
-    /* FLAT-GADGET-BG: the pen of the frame the gadget sits on, so the box shows only the glyph lines. A window gadget
-     * sits on the border (the background pen in both states: FLAT-SOLID-FILL); a screen bar gadget on
-     * the bar block (V39+ DrawInfo has it). */
-    if (d->imp_DrInfo) {
-        struct Layer *fl = d->imp_RPort->Layer;
-        if (fl && fl->Window) {
-            int wdepth = d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0;
-            int wactive = (((struct Window *)fl->Window)->Flags & WFLG_WINDOWACTIVE) != 0;
-            int band = flat_frame_pen(&r->st, wdepth, wactive);
-            knob_pen = flat_knob_state_pen(&r->st, wdepth, wactive);   /* S32-ARROW-KNOB-COLOUR: arrows and size draw in the scroller knob's pen */
-            if (band >= 0 && flat_glyph_on_band(which)) {   /* the box is the title band (S32-INACTIVE-BAR: both states); the glyph takes the title text's pen */
-                frame_pen = band;
-                band_rows = flat_clone_band_rows(im->TopEdge + d->imp_Offset.Y, im->Height, ((struct Window *)fl->Window)->BorderTop);
-                edge_pen = d->imp_DrInfo->dri_Pens[BACKGROUNDPEN];
-                text_pen = r->st.pen_ptext;
-            } else {
-                frame_pen = d->imp_DrInfo->dri_Pens[BACKGROUNDPEN];     /* FLAT-SOLID-FILL: the frame is the background */
-                if (!wactive && flat_inactive_pen(&r->st, wdepth) >= 0)
-                    text_pen = flat_inactive_pen(&r->st, wdepth);       /* S32-INACTIVE-BAR: the arrows of an inactive window */
-            }
-        } else if (fl && d->imp_DrInfo->dri_Version >= 2)
-            frame_pen = d->imp_DrInfo->dri_Pens[BARBLOCKPEN];
-    }
-    if (flat_clone_route(&r->st, which, msg->MethodID)) {
-        cloneenv env;
-        int rc, got;
-        env.h = hk; env.obj = obj; env.d = d; env.reg = reg; env.which = raw_which; env.why = CLONE_WHY_NONE;
-        got = AttemptSemaphore(&cl_ss);
-        rc = !got ? FLAT_CLONE_FAIL : flat_clone_draw(&r->st, which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
-                             im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, frame_pen, knob_pen, text_pen, band_rows, edge_pen, clone_render, &env, c2_fill, d->imp_RPort, cl_scratch);
-        if (got && rc == FLAT_CLONE_FAIL && env.why == CLONE_WHY_NONE) {
-            int i, nz = 0;
-            ULONG mk = 0;
-            for (i = 0; i < im->Width * im->Height && i < FLAT_CLONE_MAX * FLAT_CLONE_MAX; i++)
-                if (cl_scratch[i]) {
-                    nz++;
-                    mk |= 1UL << (cl_scratch[i] & 31);
-                }
-            r->cf_ids |= 1UL << (d->imp_State & 31);
-            r->cf_lwhich = which; r->cf_lsize = ((ULONG)im->Width << 8) | (ULONG)im->Height; r->cf_lnz = (ULONG)nz; r->cf_lmarks = mk;
-        }
-        if (got)
-            ReleaseSemaphore(&cl_ss);
-        if (rc == FLAT_CLONE_OK) {
-            /* S32-ARROW-OUTLINE: the box fill ran over the window's outer ring where the gadget reaches the last column or row;
-             * the ring belongs to flat, so refill the overlap with the edge pen through the saved RectFill. */
-            struct Window *rw = d->imp_RPort->Layer ? (struct Window *)d->imp_RPort->Layer->Window : NULL;
-            if (rw && r->st.pen_outline && r->rsw.saved && !(rw->Flags & WFLG_BORDERLESS)) {
-                int ov[4][4], k, n;
-                n = flat_outer_ring_overlap(rw->Width, rw->Height, side_px(r, rw->WScreen), im->LeftEdge + d->imp_Offset.X,
-                        im->TopEdge + d->imp_Offset.Y, im->LeftEdge + d->imp_Offset.X + im->Width - 1,
-                        im->TopEdge + d->imp_Offset.Y + im->Height - 1, ov);
-                if (n > 0) {
-                    UBYTE fg = d->imp_RPort->FgPen;
-                    SetAPen(d->imp_RPort, (UBYTE)flat_edge_pen(&r->st, d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0, (rw->Flags & WFLG_WINDOWACTIVE) != 0));
-                    for (k = 0; k < n; k++)
-                        ((rectfn)r->rsw.saved)(d->imp_RPort, ov[k][0], ov[k][1], ov[k][2], ov[k][3], (struct Library *)GfxBase);
-                    SetAPen(d->imp_RPort, fg);
-                }
-            }
-            r->cdraws++;
-            return 1;
-        }
-        if (rc == FLAT_CLONE_FAIL) {
-            r->cfall++;                     /* no offscreen bitmap / busy / no DrawInfo / empty image: the block glyph below */
-            if (!got || env.why == CLONE_WHY_BUSY)
-                r->cf_busy++;
-            else if (env.why == CLONE_WHY_NODRI)
-                r->cf_nodri++;
-            else if (env.why == CLONE_WHY_NOBM || env.why == CLONE_WHY_NOOBJ)
-                r->cf_nobm++;               /* no offscreen bitmap, or no private marker image */
-            else
-                r->cf_empty++;              /* render ran, the system image put no pixel in the offscreen rastport */
-            r->cf_mask |= 1UL << (which & 31);
-        }
-    }
-    return flat_glyph_draw(&r->st, which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
-                           im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, frame_pen, knob_pen,
-                           d->imp_DrInfo ? flat_side_px(d->imp_DrInfo->dri_Resolution.X, d->imp_DrInfo->dri_Resolution.Y) : 1,
-                           c2_fill, d->imp_RPort);
+    c2_get_pens(r, d, im, which, &pens);
+    if (flat_clone_route(&r->st, which, msg->MethodID) && c2_clone(hk, obj, msg, reg, which, raw_which, &pens))
+        return 1;
+    return c2_glyph(obj, msg, which, &pens);
 }
 
 ULONG c2_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1") Msg msg)
@@ -705,15 +747,21 @@ static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, LO
     return -1;
 }
 
-/* FLAT-ASPECT-BORDERS: the column count of the left and right outer lines on scr (flat_side_px of the screen's DisplayInfo
- * Resolution, the same lookup the menus use: menu_screen_aspect). Cached per (screen, mode ID), so the DisplayInfo lookup
- * runs once per screen and not on every border fill; a screen reopened at the same address in another mode misses. */
+/* FLAT-ASPECT-BORDERS: the column count of the left and right outer lines (flat_side_px of the Workbench screen's DisplayInfo
+ * Resolution, the same lookup the menus use: menu_screen_aspect). The lookup runs on the main task (aspect_update, from pens_run
+ * under the locked screen) and is cached per (screen, mode ID): the draw hook only reads the cached count, so the DisplayInfo
+ * call and its frame stay off the draw-task stack (flat budget). A window on another screen draws the plain one-column line. */
 static int side_px(flatshared *r, struct Screen *scr)
+{
+    return (scr && scr == r->aspect_scr) ? r->aspect_px : 1;
+}
+
+static void aspect_update(flatshared *r, struct Screen *scr)
 {
     ULONG mode;
     int rx, ry;
     if (!scr)
-        return 1;
+        return;
     mode = GetVPModeID(&scr->ViewPort);
     if (scr != r->aspect_scr || mode != r->aspect_mode) {
         menu_screen_aspect(scr, &rx, &ry);
@@ -722,7 +770,6 @@ static int side_px(flatshared *r, struct Screen *scr)
         r->aspect_mode = mode;
         r->aspect_looks++;
     }
-    return r->aspect_px;
 }
 
 /* S32-GHOST-MENU: Intuition's 3.2 menu ghost (flat_gm_pen) becomes the dim label pen: every non-background pixel of the rect
@@ -1408,6 +1455,7 @@ static void pens_run(flatshared *r, int mode)
         depth = scr->RastPort.BitMap->Depth;
     if (!x.cm)
         id = NULL;
+    aspect_update(r, scr);
     if (mode == 0)
         flat_pens_refresh(&g_pens, &o, &r->st, id, ipd_epoch(), depth);
     else if (mode == 1)

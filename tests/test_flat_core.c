@@ -591,6 +591,16 @@ static void frame_rec(void *ctx, int x0, int y0, int x1, int y1, int pen)
     if (f->n < 8) { f->r[f->n][0] = x0; f->r[f->n][1] = y0; f->r[f->n][2] = x1; f->r[f->n][3] = y1; f->r[f->n][4] = pen; f->n++; }
 }
 
+
+typedef struct { int n, pen, r[4][4]; } ring_rec;
+static void ring_rec_fill(void *ctx, int x0, int y0, int x1, int y1, int pen)
+{
+    ring_rec *rr = ctx;
+    rr->r[rr->n][0] = x0; rr->r[rr->n][1] = y0; rr->r[rr->n][2] = x1; rr->r[rr->n][3] = y1;
+    rr->pen = pen;
+    rr->n++;
+}
+
 static void test_which_from_gtype(void)
 {
     CHECK_INT(flat_which_from_gtype(0x8000u | 0x40), FLAT_W_DEPTH);
@@ -896,13 +906,19 @@ static void test_which_from_gtype(void)
         CHECK_INT(r[2], 0);
         CHECK_INT(flat_outer_edge_fill(640, 256, 1, 1, 1, 254, 2, r), 0);       /* not an outer strip */
         {   /* S32-ARROW-OUTLINE: a gadget box reaching the last column / bottom row overlaps the ring */
-            int ov[4][4];
-            CHECK_INT(flat_outer_ring_overlap(640, 256, 2, 622, 214, 639, 224, ov), 1);     /* up arrow: x 638..639 */
-            CHECK_INT(ov[0][0], 638); CHECK_INT(ov[0][1], 214); CHECK_INT(ov[0][2], 639); CHECK_INT(ov[0][3], 224);
-            CHECK_INT(flat_outer_ring_overlap(640, 256, 2, 622, 236, 639, 255, ov), 2);     /* size gadget: right + bottom */
-            CHECK_INT(ov[0][0], 638); CHECK_INT(ov[0][3], 254);
-            CHECK_INT(ov[1][1], 255); CHECK_INT(ov[1][0], 622); CHECK_INT(ov[1][2], 639);
-            CHECK_INT(flat_outer_ring_overlap(640, 256, 2, 100, 100, 200, 200, ov), 0);     /* away from the edge */
+            ring_rec rr;
+            memset(&rr, 0, sizeof rr);
+            CHECK_INT(flat_outer_ring_overlap(640, 256, 2, 622, 214, 639, 224, ring_rec_fill, &rr, 7), 1);     /* up arrow: x 638..639 */
+            CHECK_INT(rr.n, 1); CHECK_INT(rr.pen, 7);
+            CHECK_INT(rr.r[0][0], 638); CHECK_INT(rr.r[0][1], 214); CHECK_INT(rr.r[0][2], 639); CHECK_INT(rr.r[0][3], 224);
+            memset(&rr, 0, sizeof rr);
+            CHECK_INT(flat_outer_ring_overlap(640, 256, 2, 622, 236, 639, 255, ring_rec_fill, &rr, 7), 2);     /* size gadget: right + bottom */
+            CHECK_INT(rr.n, 2);
+            CHECK_INT(rr.r[0][0], 638); CHECK_INT(rr.r[0][3], 254);
+            CHECK_INT(rr.r[1][1], 255); CHECK_INT(rr.r[1][0], 622); CHECK_INT(rr.r[1][2], 639);
+            memset(&rr, 0, sizeof rr);
+            CHECK_INT(flat_outer_ring_overlap(640, 256, 2, 100, 100, 200, 200, ring_rec_fill, &rr, 7), 0);     /* away from the edge */
+            CHECK_INT(rr.n, 0);
         }
     }
     CHECK_INT((int)flat_which_alias(5), FLAT_W_DEPTH);

@@ -115,10 +115,11 @@ int flat_outer_edge_match(int w, int h, int x0, int y0, int x1, int y1);
 int flat_outer_edge_fill(int w, int h, int x0, int y0, int x1, int y1, int px, int out[4]);
 
 /* S32-ARROW-OUTLINE: the parts of the box (bx0,by0)-(bx1,by1) (window-relative, inclusive) that lie on the outer ring of a
- * w x h window, as the strips flat_outer_edge_fill paints them (left/right strips px columns wide). Writes up to 4 rects to
- * out[] and returns their count (0 when the box misses the ring). A gadget box reaching the last column or row overlaps the
- * ring; the caller refills these with the edge pen after the box fill. */
-int flat_outer_ring_overlap(int w, int h, int px, int bx0, int by0, int bx1, int by1, int out[4][4]);
+ * w x h window, as the strips flat_outer_edge_fill paints them (left/right strips px columns wide). Calls fill(ctx, rect, pen)
+ * for each of up to 4 rects and returns their count (0 when the box misses the ring). A gadget box reaching the last column or
+ * row overlaps the ring; the caller refills these with the edge pen after the box fill. The rects go to a callback, not an
+ * array, so the caller's stack frame stays inside the flat budget. */
+int flat_outer_ring_overlap(int w, int h, int px, int bx0, int by0, int bx1, int by1, flat_fill_fn fill, void *ctx, int pen);
 
 
 /* FLAT-GLYPH-OS-SHAPES: the clone of the system's own gadget image. The OS side draws the stock image offscreen with a private
@@ -164,5 +165,13 @@ int flat_glyph_knob_gadget(unsigned long which);
 int flat_clone_band_rows(int box_top, int h, int border_top);
 int flat_clone_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
                     int w, int h, int frame_pen, int knob_pen, int text_pen, int band_rows, int edge_pen, flat_render_fn render, void *rctx, flat_fill_fn fill, void *fctx, uint8_t *scratch);
+/* The arguments of flat_clone_draw as one struct: the draw hook passes a pointer (7 arguments, not 18), because every argument is
+ * pushed on the stack of whatever task draws the window, and the flat budget caps that frame. flat_clone_draw is the same call with
+ * the fields spelled out (the unit tests' form). */
+typedef struct flat_clone_in {
+    unsigned long which, method, ids;
+    int ox, oy, w, h, frame_pen, knob_pen, text_pen, band_rows, edge_pen;
+} flat_clone_in;
+int flat_clone_draw_in(const flat_state *s, const flat_clone_in *in, flat_render_fn render, void *rctx, flat_fill_fn fill, void *fctx, uint8_t *scratch);
 /* scratch: FLAT_CLONE_SCRATCH bytes owned by the caller for the call. band_rows: box rows y < band_rows are filled with the frame/box pen, the rest with edge_pen (>= 0; -1 keeps the box pen); band_rows >= h paints the whole box as before. text_pen: >= 0 replaces the pen of every unselected glyph (active, inactive, disabled: S32-INACTIVE-BAR), the pen the title text uses on the band or the inactive tone of an inactive window arrow; -1 keeps flat_glyph_pen. */
 #endif
