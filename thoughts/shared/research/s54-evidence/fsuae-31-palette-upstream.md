@@ -112,3 +112,21 @@ Owner saw the green screen live on rig 84 in R1 (Kickstart chip-RAM colour, i.e.
 `--- New exception --- Error in compiled code` JIT faults (AARCH64 store to unmapped m68k address bc9e1002 / cdfe1006, pc=00f8198a in ROM, D0=cf3a1002, "dummy_bank store ... ignored"),
 then the log stops at 13:24:17 and the process idles at 0.1 % CPU. The JIT-fault lines were seen in R1 only by log inspection; R2-R5 were judged by wasabi silence (their exception counts in the shared log were not tracked per run: 0,3,3,3,0,0 for R2-R7 as counted, unreliable).
 Reading: the bug is not FS-UAE specific; Amiberry with JIT reproduces a guest crash (5 of 6) after the same Copy. Host process survives there, so the stock FS-UAE host SIGSEGV is a different symptom of the same guest-side event (wild store/jump after the RTG -> native Workbench reset). Unverified: whether it reproduces with JIT off.
+
+## Amiberry JIT-off retest (s56)
+
+NOT ANSWERED: no Copy boot ran. With the JIT off the Amiberry rig never reached a booted guest (0 of 6 Copy boots, no JIT-on control boot).
+
+Command: `UPTERM_RIG=84 python3 tools/rig/rig.py start --max --os 31 --emu amiberry --no-jit --idle-minutes 0 --purpose "vtcon-16 Amarchy session: palette Copy crash, JIT off"`
+(new flag `--no-jit`, commit 5d3f99d0; written build/rig84/vtcon-rig.uae has `cpu_model=68060`, `cachesize=0`, no `mmu_model`; log shows `JIT: cache=0`).
+
+Three starts, each: `boot 60/120/180/... s: (go not started)`, wasabid never answered, Amiberry host at 0.1 % CPU with 1.5-2.4 s total CPU time.
+- Start 1 and 2: log ends right after the P96 mode list (no "Error in compiled code", no exception lines). `sample` of the process: main thread inside
+  `m68k_run_2_020 -> ... -> handle_msgpump -> process_event -> amiberry_inactive -> SDL pthread wait`: Amiberry paused the guest because its window was inactive.
+- Fix tried: amiberry.py now writes `inactive_pause=false`, `minimized_pause=false` (second commit). Start 3: guest got further (12 s CPU, log to 14:36:23, "098%%" lines), then
+  stalled again at 0.1 % CPU; `sample`: main thread in `process_event -> isfullscreen() ->` SDL main-thread wait. So a host window/SDL event stall, not a guest crash.
+  Still no wasabid answer after 180 s.
+Host load averaged 47-52 during the attempts (other sessions' rigs and vitest); a second Amiberry (another session) was running.
+
+Reading: inconclusive. Nothing here shows a JIT effect either way; the JIT-off stall is a window-focus / SDL event pause (the rig window not frontmost), which the JIT-on runs did not hit,
+so a retest needs the rig 84 window frontmost (owner click on it) or a headless/focused Amiberry run. Where to file upstream stays open.

@@ -385,7 +385,8 @@ KEYS
                         a pane focuses it. Amiga with the cursor keys moves
                         the mouse pointer, so they are not used
   Right Amiga Shift W   close the focused pane (Close tab closes every pane
-                        of the tab)
+                        of the tab; /pane close other closes every pane
+                        but the one it is sent from)
   Right Amiga Shift Enter  zoom the focused pane, again to unzoom; a zoom
                         ends when the layout changes (split, focus move,
                         pane closes)

@@ -2944,7 +2944,7 @@ static int menu_run(con *c, LONG id, int on)
     case MENU_PREFS: prefs_launch(); return 1;
     case MENU_CLOSE: close_gadget(c); return 3; /* as the close gadget */
     case MENU_TAB_NEW: case MENU_TAB_NEXT: case MENU_TAB_PREV: case MENU_TAB_CLOSE: case MENU_DEMO: case MENU_CLAUDE: case MENU_PI: case MENU_AGENT: case MENU_SET_AGENT_CLAUDE: case MENU_SET_AGENT_PI: case MENU_TUTORIAL:
-    case MENU_SPLIT_RIGHT: case MENU_SPLIT_DOWN: case MENU_PANE_CLOSE: case MENU_PANE_PREV: case MENU_PANE_NEXT: case MENU_PANE_FOCUS: case MENU_PANE_ZOOM:
+    case MENU_SPLIT_RIGHT: case MENU_SPLIT_DOWN: case MENU_PANE_CLOSE: case MENU_PANE_CLOSE_OTHER: case MENU_PANE_PREV: case MENU_PANE_NEXT: case MENU_PANE_FOCUS: case MENU_PANE_ZOOM:
         tab_command(c, (int)id);
         return 3;
     case MENU_TAB_GOTO0 + 1: case MENU_TAB_GOTO0 + 2: case MENU_TAB_GOTO0 + 3: case MENU_TAB_GOTO0 + 4:
@@ -7323,6 +7323,21 @@ static void pane_close(con *c, con *p)
         close_gadget(c);
 }
 
+/* Close every pane of the sender's tab but the sender's own (/pane close other): each as its close gadget would,
+ * the list taken first because a pane leaves the slot when its process ends. */
+static void pane_close_others(con *c, con *from)
+{
+    int i = tabslot_find(c->slots, c->ntabs, from, 0);
+    if (i >= 0) {
+        void *all[LAY_MAX_PANES];
+        int k;
+        memcpy(all, c->slots[i].pane, sizeof(all));
+        for (k = 0; k < LAY_MAX_PANES; k++)
+            if (all[k] && all[k] != (void *)from)
+                pane_close(c, (con *)all[k]);
+    }
+}
+
 /* Close tab i (0 = the first): the one body of the menu's Close tab (i = the active tab) and of /tab close N. Every
  * pane of the tab; each leaves the slot when its process ends, so the list is taken first and the host's own goes last. */
 static void tab_close(con *c, int i)
@@ -7412,6 +7427,9 @@ static void host_command(con *c, int what, con *from, const char *task)
         break;
     case MENU_PANE_CLOSE:
         pane_close(c, from);
+        break;
+    case MENU_PANE_CLOSE_OTHER:
+        pane_close_others(c, from);
         break;
     case MENU_PANE_PREV:
     case MENU_PANE_NEXT:

@@ -117,8 +117,8 @@ static const slash_def table[] = {
       "outline-font glyphs are drawn smoothed on a screen of 16 colours or more (off: hard edges)" },
     { "padding-color", SL_CHOICE, 0, 0, v_padding, "background | extend",
       "the strips beside the character grid: the background, or the colour of the cell next to them" },
-    { "pane", SL_CHOICE, 0, 0, v_pane, "close | zoom | next | previous | focus",
-      "the pane this command runs in: close it, zoom it, or move to the next or previous pane, or take the keys back to it" },
+    { "pane", SL_CHOICE, 0, 0, v_pane, "close [other] | zoom | next | previous | focus",
+      "the pane this command runs in: close it (close other: every other pane of the tab), zoom it, or move to the next or previous pane, or take the keys back to it" },
     { "paste", SL_ACTION, MENU_PASTE, 0, 0, "", "type the clipboard in" },
     { "pi", SL_ACTION, MENU_PI, 0, 0, "", "pi, in a new tab" },
     { "prefs", SL_ACTION, MENU_PREFS, 0, 0, "", "open UP-Term Prefs" },
@@ -233,6 +233,25 @@ int slash_parse(const char *line, int len, slash_cmd *cmd, char *err, int errcap
             cmd->id = MENU_TAB_CLOSE;
             cmd->on = 1;
             cmd->index = line[v] - '0';
+            strcpy(cmd->arg, "close"); /* for the answer */
+            return SLASH_OK;
+        }
+    }
+    if (d->kind == SL_CHOICE && !strcmp(d->name, "pane")) {
+        /* "close" alone closes the sender's pane; "close other" closes every other pane of its tab */
+        int w = a;
+        while (w < b && !is_blank(line[w]))
+            w++;
+        if (w - a == 5 && !strncmp(line + a, "close", 5) && w < b) {
+            int v;
+            for (v = w; v < b && is_blank(line[v]); v++)
+                ;
+            if (b - v != 5 || strncmp(line + v, "other", 5)) {
+                say(err, errcap, d->name, ": close [other]", 0);
+                return SLASH_ERROR;
+            }
+            cmd->id = MENU_PANE_CLOSE_OTHER;
+            cmd->on = 1;
             strcpy(cmd->arg, "close"); /* for the answer */
             return SLASH_OK;
         }

@@ -35,6 +35,8 @@ def config_lines(m):
         "cpu_cycle_exact=%s" % ("true" if m["cycle_exact"] else "false"),
         "cpu_24bit_addressing=%s" % ("true" if m["cpu"] in ("68000", "68010") else "false"),
         "cachesize=%d" % (8192 if m["jit"] else 0),
+        # a rig window opened behind other apps must keep running: Amiberry pauses the guest in amiberry_inactive otherwise (s56, JIT-off boot sat at 0.1 % CPU)
+        "inactive_pause=false", "minimized_pause=false",
     ]
     if m.get("fpu"):
         l.append("fpu_model=%s" % m["fpu"])

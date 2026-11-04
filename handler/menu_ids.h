@@ -30,7 +30,7 @@
     X(MENU_PI) X(MENU_AGENT) X(MENU_SET_AGENT_CLAUDE) X(MENU_SET_AGENT_PI) \
     X(MENU_SPLIT_RIGHT) X(MENU_SPLIT_DOWN) X(MENU_PANE_CLOSE) X(MENU_PANE_PREV) \
     X(MENU_PANE_NEXT) X(MENU_PANE_ZOOM) X(MENU_SET_SPLIT_OFF) X(MENU_SET_SPLIT_LAYOUT) \
-    X(MENU_SET_SPLIT_PROGRAMS) X(MENU_PANE_FOCUS)
+    X(MENU_SET_SPLIT_PROGRAMS) X(MENU_PANE_FOCUS) X(MENU_PANE_CLOSE_OTHER)
 
 /* The ids count up from 1 in this order (the order is the value: a profile
  * place or a saved id must not move). handler/keymap_act.c builds its name
