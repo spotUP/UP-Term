@@ -223,6 +223,21 @@ def userland_names():
     return sorted(f.name for f in USERLAND_SRC.iterdir()
                   if f.is_file() and re.fullmatch(r"[A-Za-z0-9._+-]+", f.name))
 
+_WARNED_MISSING = set()
+
+def userland_present():
+    """userland_names() whose USERLAND_SRC file exists now. A name can vanish between the listing and the read (a rebuild
+    of build/dist replaces the tree): refresh and build_drift then skip it and print one [WARN] line naming the missing
+    files, instead of dying in read_bytes (RIG-REFRESH-CTAGS: FileNotFoundError .../userland/bin/ctags)."""
+    names = userland_names()
+    missing = [n for n in names if not (USERLAND_SRC / n).is_file()]
+    new = sorted(set(missing) - _WARNED_MISSING)
+    if new:
+        _WARNED_MISSING.update(new)
+        print("[WARN] rig %d: dist file(s) missing, skipped by the refresh: %s"
+              % (paths.RIG_N, ", ".join(str(USERLAND_SRC / n) for n in new)))
+    return [n for n in names if n not in missing]
+
 
 def kit_entries(nofpu=False, m060=False):
     """kitset.derive for this tree and CPU: every file the kit installs, from install.dos, the userland and the staged
@@ -1640,7 +1655,7 @@ def program_pairs(vtc, built):
     # Apps/bin/vsh: rig 10 ran the old vsh (s22, 2026-10-29)
     if (built / "vsh").is_file():
         pairs.append((built / "vsh", vtc / "gg/bin/sh"))
-    for name in userland_names():
+    for name in userland_present():
         if name not in built_names:
             pairs.append((USERLAND_SRC / name, vtc / paths.UPTERM_DRAWER / "bin" / name))
     return pairs
@@ -1710,7 +1725,7 @@ def build_drift(vtc):
         src, dst = ROOT / "dist" / name, vtc / name
         if dst.is_file() and dst.read_bytes() != src.read_bytes():
             stale.append(name)
-    for name in userland_names():   # staged by install for the boot's UP-Term:bin shadows
+    for name in userland_present():   # staged by install for the boot's UP-Term:bin shadows
         dst = vtc / USERLAND_STAGE / name
         if dst.is_file() and dst.read_bytes() != (USERLAND_SRC / name).read_bytes():
             stale.append("%s/%s" % (USERLAND_STAGE, name))
