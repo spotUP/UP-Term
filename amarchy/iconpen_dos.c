@@ -9,6 +9,7 @@
 #include <intuition/intuition.h>
 #include <intuition/screens.h>
 #include <dos/dos.h>
+#include <dos/dosextens.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/intuition.h>
@@ -110,9 +111,13 @@ struct Screen *ipd_lock_wb_screen(void)
 static void pens_theme(void *ctx, gtheme *t, int *flat, unsigned *mask)
 {
     am_prefs ap;
+    struct Process *me = (struct Process *)FindTask(0);
+    APTR oldwin = me->pr_WindowPtr;
     (void)ctx;
+    me->pr_WindowPtr = (APTR)-1;        /* FLAT-BOOT-FREEZE: UP-Term: not assigned yet at boot is an answer, not a requester */
     amconf_load(&ap);
     gt_load(pen_theme_read, 0, ap.val[AM_GTHEME][0] ? ap.val[AM_GTHEME] : GT_DEFAULT, t);
+    me->pr_WindowPtr = oldwin;
     *flat = amconf_desk_flat_pens(&ap);
     *mask = amconf_desk_mask(&ap);
 }

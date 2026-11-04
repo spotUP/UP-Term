@@ -43,6 +43,13 @@ class IpdNoDosUnderList(unittest.TestCase):
         for call in DOS:
             self.assertNotIn(call, body, f"pens_theme_cached calls {call}")
 
+    def test_theme_read_puts_up_no_requester(self):
+        src = SRC.read_text(errors="replace")
+        body = dict(functions(src)).get("pens_theme")
+        self.assertIsNotNone(body, "iconpen_dos.c has no pens_theme")
+        self.assertRegex(body, r"pr_WindowPtr\s*=\s*\(APTR\)\s*-1", "theme read can raise a volume requester (UP-Term: at boot)")
+        self.assertLess(body.index("pr_WindowPtr = (APTR)-1"), body.index("gt_load("))
+
 
 if __name__ == "__main__":
     unittest.main()
