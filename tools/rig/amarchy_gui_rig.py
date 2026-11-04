@@ -1241,9 +1241,13 @@ def setup():
 
 
 def flat_prefs_on():
-    """True when ENV:Amarchy/prefs turns flat-system-look or flat-window-gadgets on (both default off, amconf_core.h)."""
+    """True when the flat look is on in ENV:Amarchy/prefs: flat-system-look and flat-window-gadgets both DEFAULT ON
+    (amconf_core.h AM_FLAT, AM_FLATGAD), so an empty or header-only file means on; only an explicit `off` on both turns it off."""
     out = c.run('Type ENV:Amarchy/prefs', 20)[1]
-    return re.search(r'^\s*flat-(system-look|window-gadgets)\s*=\s*on\b', out, re.M) is not None
+    def val(key):
+        m = re.search(r'^\s*%s\s*=\s*(\w+)' % key, out, re.M)
+        return m.group(1) if m else 'on'
+    return val('flat-system-look') in ('on', 'thin', 'block') or val('flat-window-gadgets') in ('on', 'thin', 'block')
 
 
 FLAT_BOOT = 'Run >NIL: UP-Term:bin/amarchy-flat BOOT'   # the kit's S:User-Startup line, word for word
@@ -1251,7 +1255,7 @@ FLAT_BOOT = 'Run >NIL: UP-Term:bin/amarchy-flat BOOT'   # the kit's S:User-Start
 
 def flat_boot(tag):
     """Run the kit's boot line for amarchy-flat. UP-Term:bin resolves to SETUP_BIN first, so the build's binary loads.
-    BOOT returns at once with nothing resident while both flat prefs are off: then the right state is STATUS
+    BOOT returns at once with nothing resident while both flat prefs are explicitly off (the defaults are on): then the right state is STATUS
     flat=absent. Prefs on: the resident answers STATUS with flat=on or flat=off; held or absent means no hook went in."""
     c.run(FLAT_BOOT, 20)
     if not flat_prefs_on():
