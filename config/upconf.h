@@ -140,6 +140,10 @@ const char *upconf_get(const upconf *c, const char *profile, const char *key);
  * "none" (any case) is off. out gets the font name, "" for none. */
 #define UC_FALLBACK_DEFAULT "SymbolsNerdFontMono"
 void upconf_font_fallback(const upconf *c, const char *profile, int default_present, char *out, int cap);
+/* The profile a window takes (R3C-UD6-NERD-QMARK): want when the file has it, else "default" when it has that, else 0
+ * (no file, or the shipped sample whose sections are all comments). c may be 0. A window with no profile still gets
+ * every built-in default, font-fallback's included: upconf_font_fallback takes profile 0 and c 0. */
+const char *upconf_window_profile(const upconf *c, const char *want);
 /* upconf_get, or def when the key is absent or its value is empty. */
 const char *upconf_str(const upconf *c, const char *profile, const char *key, const char *def);
 /* upconf_str as a number; def when absent, empty or not a number.

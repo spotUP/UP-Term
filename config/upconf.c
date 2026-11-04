@@ -316,9 +316,18 @@ const char *upconf_str(const upconf *c, const char *profile, const char *key, co
     return v;
 }
 
+const char *upconf_window_profile(const upconf *c, const char *want)
+{
+    if (!c)
+        return 0;
+    if (want && *want && prof_find(c, want) >= 0)
+        return want;
+    return prof_find(c, "default") >= 0 ? "default" : 0;
+}
+
 void upconf_font_fallback(const upconf *c, const char *profile, int default_present, char *out, int cap)
 {
-    const char *v = upconf_str(c, profile, "font-fallback", 0);
+    const char *v = c ? upconf_str(c, profile, "font-fallback", 0) : 0;
     int n = 0;
     if (cap <= 0)
         return;

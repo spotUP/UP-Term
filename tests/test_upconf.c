@@ -44,6 +44,29 @@ static void fallback_default(void)
     CHECK_STR(out, "");
 }
 
+/* R3C-UD6-NERD-QMARK: a fresh install's file (the shipped sample: every [profile] a comment) or no file at
+ * all gives a window no profile, and that window still draws Nerd icons from the SymbolsNerdFontMono default */
+static void fallback_without_profile(void)
+{
+    static upconf c;
+    char out[UC_MAX_VALUE];
+    const char *sample = ";   [profile default]\n;   ; font = TOPAZ:8.8.font\n";
+    const char *vim = "[profile vim]\nfont-fallback = DejaVuSansMono\n";
+    upconf_parse(&c, sample, (long)strlen(sample));
+    CHECK(upconf_window_profile(&c, "default") == 0);
+    upconf_font_fallback(&c, upconf_window_profile(&c, "default"), 1, out, sizeof(out));
+    CHECK_STR(out, "SymbolsNerdFontMono");
+    CHECK(upconf_window_profile(0, "default") == 0);
+    upconf_font_fallback(0, 0, 1, out, sizeof(out));
+    CHECK_STR(out, "SymbolsNerdFontMono");
+    upconf_font_fallback(0, 0, 0, out, sizeof(out));
+    CHECK_STR(out, "");
+    /* a window asking for a profile the file has gets it; one asking for another falls to no profile */
+    upconf_parse(&c, vim, (long)strlen(vim));
+    CHECK_STR(upconf_window_profile(&c, "VIM"), "VIM");
+    CHECK(upconf_window_profile(&c, "other") == 0);
+}
+
 /* Prefs' Use updates open windows live, each only when its own profile
  * changed: the comparison behind it */
 static void profile_equal(void)
@@ -746,6 +769,7 @@ void suite_upconf(void)
         CHECK_STR(out + 150, "15,111111");             /* the last entry whole, nothing after */
     }
     fallback_default();
+    fallback_without_profile();
     profile_equal();
     theme_beats_profile();
     comments_kept();
