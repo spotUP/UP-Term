@@ -12,6 +12,7 @@
 #include <intuition/intuition.h>
 #include <intuition/screens.h>
 #include <intuition/imageclass.h>
+#include <intuition/classes.h>
 #include <graphics/gfxbase.h>
 #include <libraries/gadtools.h>
 #include <proto/exec.h>
@@ -100,9 +101,27 @@ static void dumpwin(struct Window *w, const char *name)
     char row[720];
     printf("WIN %s %ld %ld %ld %ld\n", name, (long)w->LeftEdge, (long)w->TopEdge, (long)w->Width, (long)w->Height);
     printf("BORDER left=%ld top=%ld right=%ld bottom=%ld\n", (long)w->BorderLeft, (long)w->BorderTop, (long)w->BorderRight, (long)w->BorderBottom);
-    { struct Gadget *g; for (g = w->FirstGadget, k = 0; g; g = g->NextGadget, k++)
+    { struct Gadget *g; for (g = w->FirstGadget, k = 0; g; g = g->NextGadget, k++) {
         printf("GAD %d type=%04x x=%d y=%d w=%d h=%d\n", k, g->GadgetType, w->LeftEdge + (g->Flags & GFLG_RELRIGHT ? w->Width + g->LeftEdge : g->LeftEdge),
-               w->TopEdge + (g->Flags & GFLG_RELBOTTOM ? w->Height + g->TopEdge : g->TopEdge), g->Width + ((g->Flags & GFLG_RELWIDTH) ? w->Width : 0), g->Height + ((g->Flags & GFLG_RELHEIGHT) ? w->Height : 0)); }
+               w->TopEdge + (g->Flags & GFLG_RELBOTTOM ? w->Height + g->TopEdge : g->TopEdge), g->Width + ((g->Flags & GFLG_RELWIDTH) ? w->Width : 0), g->Height + ((g->Flags & GFLG_RELHEIGHT) ? w->Height : 0));
+        if ((g->GadgetType & GTYP_GTYPEMASK) == GTYP_PROPGADGET && g->SpecialInfo) {   /* the knob inputs flat's scroller_pen reads */
+            struct PropInfo *pi = (struct PropInfo *)g->SpecialInfo;
+            struct Image *im = (g->Flags & GFLG_GADGIMAGE) ? (struct Image *)g->GadgetRender : 0;
+            printf("PROP %d gflags=%04x pflags=%04x lb=%d tb=%d cw=%d ch=%d hpot=%u vpot=%u hbody=%u vbody=%u img=%d,%d,%d,%d\n", k,
+                   (int)g->Flags, (int)pi->Flags, (int)pi->LeftBorder, (int)pi->TopBorder, (int)pi->CWidth, (int)pi->CHeight,
+                   (unsigned)pi->HorizPot, (unsigned)pi->VertPot, (unsigned)pi->HorizBody, (unsigned)pi->VertBody,
+                   im ? (int)im->LeftEdge : -1, im ? (int)im->TopEdge : -1, im ? (int)im->Width : -1, im ? (int)im->Height : -1);
+            if (im && im->NextImage) {   /* SMARTKNOBIMAGE: the BOOPSI knob image hangs off NextImage; its class chain */
+                struct IClass *cl = OCLASS(im->NextImage);
+                struct Image *ki = im->NextImage;
+                printf("KNOBOBJ %d %d,%d %dx%d depth=%d\n", k, (int)ki->LeftEdge, (int)ki->TopEdge, (int)ki->Width, (int)ki->Height, (int)ki->Depth);
+                printf("KNOBCLASS %d", k);
+                for (; cl; cl = cl->cl_Super)
+                    printf(" %s", cl->cl_ID ? (char *)cl->cl_ID : "(private)");
+                printf("\n");
+            }
+        }
+    } }
     for (y = 0; y < w->Height; y++) {
         for (x = 0; x < w->Width && x < 700; x++) {
             long p = ReadPixel(&scr->RastPort, w->LeftEdge + x, w->TopEdge + y);

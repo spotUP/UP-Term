@@ -690,6 +690,46 @@ static void test_which_from_gtype(void)
         (void)bg7;
         free(cv);
     }
+    {   /* S56-LOCALE-CANCEL-CORNER: a tall secondary (outlined) button keeps a closed outline: each corner cut is bridged by the inner
+         * diagonal pixel in pen_text (rig 75 before the fix: Cancel top-left (541,225) pen 0, the outline open at all four corners) */
+        struct round_canvas { int pix[40][60]; } *cv = (struct round_canvas *)calloc(1, sizeof *cv);
+        flat_state fs;
+        int x, y;
+        memset(&fs, 0, sizeof fs);
+        fs.enabled = 1; fs.pen_text = 2; fs.pen_line = 3; fs.pen_back = 0; fs.pen_button = 4;
+        for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 0;
+        CHECK_INT(flat_frame_draw_round(&fs, 0, 10, 10, 30, 14, 1, FLAT_ROLE_SECONDARY, round_fill, round_read, cv), 1);
+        CHECK_INT(cv->pix[10][10] == 0 && cv->pix[10][11] == 0 && cv->pix[11][10] == 0, 1);           /* corner cut stays */
+        CHECK_INT(cv->pix[10][12] == 2 && cv->pix[12][10] == 2, 1);                                   /* outline row and column */
+        CHECK_INT(cv->pix[11][11] == 2 && cv->pix[11][38] == 2 && cv->pix[22][11] == 2 && cv->pix[22][38] == 2, 1);   /* closed */
+        CHECK_INT(cv->pix[12][12] == 0, 1);                                                           /* inside stays pen_back */
+        for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 0;
+        CHECK_INT(flat_frame_draw_round(&fs, 0, 10, 10, 30, 14, 1, FLAT_ROLE_PRIMARY, round_fill, round_read, cv), 1);
+        CHECK_INT(cv->pix[11][11] == 4, 1);                                                           /* primary: body pen, no bridge */
+        free(cv);
+    }
+    {   /* S56-LOCALE-KNOB: a SMARTKNOBIMAGE listview knob (frameiclass IM_DRAWFRAME) paints in the Workbench knob pen with round corners */
+        struct round_canvas { int pix[40][60]; } *cv = (struct round_canvas *)calloc(1, sizeof *cv);
+        flat_state fs;
+        int x, y, on, off, obj = 0, other = 0;
+        memset(&fs, 0, sizeof fs);
+        fs.enabled = 1; fs.pen_text = 2; fs.pen_line = 3; fs.pen_back = 0; fs.pen_outline = 3; fs.pen_button = 4;
+        fs.pen_knob = 249; fs.pen_inbar = 250; fs.pen_sel = 4;
+        on = flat_knob_state_pen(&fs, 8, 1);
+        off = flat_knob_state_pen(&fs, 8, 0);
+        CHECK_INT(on != 0 && off != 0 && on != off, 1);
+        for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 0;
+        CHECK_INT(flat_knob_frame_draw(&fs, 8, 1, 10, 10, 10, 18, round_fill, round_read, cv), 1);
+        CHECK_INT(cv->pix[14][14] == on && cv->pix[10][14] == on && cv->pix[27][14] == on, 1);   /* box: active knob pen */
+        CHECK_INT(cv->pix[10][10] == 0 && cv->pix[27][19] == 0, 1);                               /* corners cut to the track */
+        CHECK_INT(flat_knob_frame_draw(&fs, 8, 0, 10, 10, 10, 18, round_fill, round_read, cv), 1);
+        CHECK_INT(cv->pix[14][14] == off, 1);                                                      /* inactive window: inactive tone */
+        CHECK_INT(flat_smart_knob(1, 0x3d, &obj, &obj), 1);                                       /* Locale listview props: pflags 0x3d */
+        CHECK_INT(flat_smart_knob(1, 0x1d, &obj, &obj), 0);                                       /* no SMARTKNOBIMAGE: RectFill path */
+        CHECK_INT(flat_smart_knob(1, 0x3d, &other, &obj), 0);                                     /* another frame object */
+        CHECK_INT(flat_smart_knob(0, 0x3d, &obj, &obj), 0);
+        free(cv);
+    }
     {   /* BUTTON-ROLES: rightmost of a row is outlined, others and a lone button are filled; fill pen per depth; pressed is accent */
         struct frame_rec_t f;
         flat_state fs;

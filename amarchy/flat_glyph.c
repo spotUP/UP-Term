@@ -470,7 +470,29 @@ int flat_frame_draw_round(const flat_state *s, int ids, int ox, int oy, int w, i
     for (i = 0; i < n; i++)
         if (pen[i] >= 0)
             fn(ctx, ox + cut[i][0], oy + cut[i][1], ox + cut[i][0], oy + cut[i][1], pen[i]);
+    /* S56-LOCALE-CANCEL-CORNER: a tall cut takes three pixels per corner, which opens the secondary button's 1 px outline (its top row
+     * starts two pixels in, its side column two pixels down). The inner diagonal pixel closes it as a rounded outline. */
+    if (n > 4 && fill && ids != 1 && role == FLAT_ROLE_SECONDARY)
+        for (i = 0; i < 4; i++) {
+            int x = (i & 1) ? ox + w - 2 : ox + 1, y = (i & 2) ? oy + h - 2 : oy + 1;
+            fn(ctx, x, y, x, y, s->pen_text);
+        }
     return 1;
+}
+
+int flat_knob_frame_draw(const flat_state *s, int depth, int active, int ox, int oy, int w, int h, flat_fill_fn fn, flat_read_fn rd, void *ctx)
+{
+    flat_state st;
+    if (!s)
+        return 0;
+    st = *s;
+    st.pen_button = (uint8_t)flat_knob_state_pen(s, depth, active);
+    return flat_frame_draw_round(&st, 0, ox, oy, w, h, 1, FLAT_ROLE_PRIMARY, fn, rd, ctx);
+}
+
+int flat_smart_knob(int is_prop, unsigned prop_flags, const void *knob_next, const void *image)
+{
+    return is_prop && image && knob_next == image && (prop_flags & 0x21u) == 0x21u;    /* AUTOKNOB | SMARTKNOBIMAGE */
 }
 
 /* The one definition of the four outer-edge strips (window-relative), in the shapes Intuition's own border redraw uses

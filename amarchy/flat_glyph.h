@@ -91,6 +91,12 @@ int flat_scroller_cuts_box(int kx, int ky, int kw, int kh, int x0, int y0, int x
  * sampled pen (an unreadable pixel is left as drawn). rd null: no rounding, same as flat_frame_draw. */
 int flat_frame_draw_round(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn,
                           flat_read_fn rd, void *ctx);
+/* S56-LOCALE-KNOB: a SMARTKNOBIMAGE prop (3.2 GadTools listview scrollers) draws its knob through a frameiclass IM_DRAWFRAME, not a
+ * RectFill, so scroller_pen never sees it. flat_smart_knob says whether image is that knob: prop gadget, AUTOKNOB and SMARTKNOBIMAGE set,
+ * and image is the BOOPSI frame Intuition hangs off the AUTOKNOB Image's NextImage. flat_knob_frame_draw paints it like a Workbench
+ * window knob: a box in flat_knob_state_pen (accent active, inactive bar tone) with the rounded corners of flat_frame_draw_round. */
+int flat_smart_knob(int is_prop, unsigned prop_flags, const void *knob_next, const void *image);
+int flat_knob_frame_draw(const flat_state *s, int depth, int active, int ox, int oy, int w, int h, flat_fill_fn fn, flat_read_fn rd, void *ctx);
 
 /* FLAT-OUTER-EDGE: the four 1 px strips of the outer edge of a window of size w x h, as fill(ctx, x0, y0, x1, y1, pen)
  * calls in pen_outline: top row y = 0, bottom y = h - 1, left x = 0, right x = w - 1 (window-relative; nothing inside).
