@@ -142,11 +142,16 @@ static unsigned char *load_media(void *user, const char *name, long *len)
 static int tab_cmds_new, tab_cmds_close, tab_cmds_other, tab_cmds_active_close;
 static const char *tab_new_reply = "tab: new 3\n"; /* what the fake terminal answers /tab new; 0: it does not run it */
 static char tab_close_line[40];
+static char cmd_log[200]; /* every command line sent, each followed by "|" */
 
 /* the terminal's slash commands: counted, which is the sentinel that the scene sent them */
 static const char *count_command(void *user, const char *line)
 {
     (void)user;
+    if (strlen(cmd_log) + strlen(line) + 2 < sizeof(cmd_log)) {
+        strcat(cmd_log, line);
+        strcat(cmd_log, "|");
+    }
     if (strcmp(line, "/tab new") == 0) {
         tab_cmds_new++;
         return tab_new_reply;
@@ -664,6 +669,24 @@ static void the_tabs_scene_draws_a_tab_bar_and_names_the_menu(void)
     play_alone(scene_index("tabs"), UPDEMO_AUTO);
     CHECK(cap_has("\033[7m 1 vsh \033[0m"));
     CHECK(cap_has("Window > New tab opens another session"));
+}
+
+/* UPDEMO-NEW-FEATURES UD5: the splits scene splits the window, zooms the pane and unzooms it, with the slash
+ * commands, in that order and nothing else (it cannot close the new pane: /pane close closes the sender's own). */
+static void the_splits_scene_sends_split_then_zoom_then_unzoom(void)
+{
+    cmd_log[0] = 0;
+    start(80, 24);
+    capturing = 1;
+    cap_len = 0;
+    updemo_only(1);
+    CHECK_INT(updemo_run(&io, 80, 24, scene_index("splits"), 0), 0); /* to the scene's end: the tabs test's way */
+    updemo_only(0);
+    capturing = 0;
+    CHECK_STR(cmd_log, "/split right|/pane zoom|/pane zoom|");
+    CHECK(cap_has("Sent /split right"));
+    CHECK(!cap_has("a program cannot split the window itself"));
+    vt_free(t);
 }
 
 /* UPDEMO-TABS-LIVE (owner 2026-11-03): the tabs scene sends /tab new, then /tab close, to the terminal it runs in
@@ -1394,6 +1417,7 @@ void suite_updemo(void)
     the_kitty_picture_scene_says_so_when_the_photo_is_missing();
     the_kitty_placement_scene_sends_put_move_delete_and_a_relative_child_in_order();
     the_icat_scene_types_the_command_then_sends_icat_bytes_and_text_follows();
+    the_splits_scene_sends_split_then_zoom_then_unzoom();
     the_kitty_truecolour_scene_sends_rgba_with_alpha();
     the_kitty_zindex_scene_sends_pictures_under_and_over_text();
     the_glyphs_scene_sends_powerline_nerd_emoji_and_box_glyphs();

@@ -70,6 +70,23 @@ static void settings_name_their_menu_items(void)
     CHECK_INT(parse("/tab sideways"), SLASH_ERROR);
     CHECK_INT(parse("/tab previous"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_TAB_PREV);
+    /* UPDEMO-NEW-FEATURES UD5: a program drives the panes with the ids the Window menu runs */
+    CHECK_INT(parse("/split right"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_SPLIT_RIGHT);
+    CHECK_INT(parse("/split down"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_SPLIT_DOWN);
+    CHECK_INT(parse("/pane close"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_PANE_CLOSE);
+    CHECK_INT(parse("/pane zoom"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_PANE_ZOOM);
+    CHECK_INT(parse("/pane next"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_PANE_NEXT);
+    CHECK_INT(parse("/pane previous"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_PANE_PREV);
+    CHECK_INT(parse("/split sideways"), SLASH_ERROR);
+    CHECK_INT(parse("/split"), SLASH_ERROR);
+    CHECK_INT(parse("/pane new"), SLASH_ERROR);
+    CHECK_INT(parse("/pane zoom 2"), SLASH_ERROR);
     CHECK_INT(parse("/clear scrollback"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_CLEAR_SB);
     CHECK_INT(parse("/demo"), SLASH_OK); /* Help > Demo tour */
