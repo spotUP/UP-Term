@@ -12,3 +12,12 @@ Status 2026-11-04: design only. The agent was stopped because the host disk fill
 8. Chain safety: install and remove are the existing tx_install and tx_remove. When the patch is "still chained", amarchy-flat stays resident and frees nothing.
 9. Sentinels for the rig: STATUS gains `labels=<n>` (labels blended) and `lskip=<n>` (fallbacks). Proof: edge pixels lie strictly between fg and bg, measured from shots; 5 drawer drag/reopen/redraw cycles; Amarchy quit leaves labels=0 calls with stock pixels.
 10. Host test (tests/test_iclabel.c, suite "iclabel" in tests/test_main.c and VTTEST_HOST_SRC): filter accept/reject cases, the JAM1/JAM2 mask, corner coverage values, the RTG blend (exact ce_mix numbers), and pen shade accept/refuse. Each case must fail if the matching function is reverted to stock (cov = mask).
+
+## Implementation and proof run (2026-11-04, commit 9d96af03 + merge de5c759d)
+
+- Code: amarchy/iclabel_core.c/.h (pure core), amarchy/flat.c icl_label() in the existing Text patch (flat_tx_c), STATUS `labels=` / `lskip=`. Pen cache released on unload; buffers static (no stack use in the Workbench/dopus task).
+- Host suite `iclabel` (tests/test_iclabel.c: t_accept, t_mask, t_coverage, t_blend_rgb, t_pens, t_cache): 85 checks, 0 failed. Revert proof: icl_blend_rgb copying `after` instead of ce_mix gives 2 failures (test_iclabel.c:82 out[1] = 0xAAAAAA want 0x6A6A6A; :83 intermediate check); restored: 0 failed.
+- `make build/amiga/amarchy-flat`: builds (needed render/unifont.c beside render/emoji.c for ce_mix's unit), $STACK cookie present. `make flat-budget`: PASS (headroom 76 / 92).
+- Rig recipe: `UPTERM_RIG=123 rig.py start --max --os 32 --purpose "vtcon-c1 RL21: AA icon labels 3.2"`, `UPTERM_RIG=122 rig.py start --max --purpose "vtcon-c1 RL21: AA icon labels 3.1"`, then `UPTERM_RIG=<n> python3 tools/rig/amarchy_iclabel_rig.py --shots ~/Desktop/upterm-shots`, then rig.py stop.
+- Rig result, both rigs: INCONCLUSIVE. STATUS `text installed=yes calls=12 hits=0 labels=0 lskip=0`; the drawer never opened (`rx "ADDRESS WORKBENCH; WINDOW SYS: OPEN"` drew no window; no window found; the screen held 3 colours), so no label was drawn while flat ran. amarchy-flat unloaded on Break (PASS). Pixel diff on/off: 0. The two rigs printed identical STATUS and pixel counts (427688 px): unverified that the second run reached rig 122 and not the same rig.
+- Open: open a drawer by a method that works on these rigs (mouse double-click on the SYS icon via ami.click_px, or check RexxMast runs), then rerun the script; check the rig selection.
