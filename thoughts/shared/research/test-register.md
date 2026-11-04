@@ -90,3 +90,8 @@ to RAM:palette.prefs, `Copy RAM:palette.prefs ENV:Sys/palette.prefs`, 30 s wait,
 | 2026-11-05 | FLAT-BUTTON-FILL | 124 | b193312c | FAIL | idle fill 7aa2f7 not 24283b; s57-evidence/rig124-release-reads-2.md |
 | 2026-11-05 | S32-GREEN-LINE-96 | 124 | b193312c | PASS | no green; row 9 7aa2f7 x0..369 only; s57-evidence/rig124-release-reads-2.md |
 | 2026-11-05 | S32-SCROLLBAR-PROP | 124 | b193312c | PASS | knob 7aa2f7 vs track 1a1b26; s57-evidence/rig124-release-reads-2.md |
+| 2026-11-05 | RL3 | 124 | main | PASS | backdrop 0e0e14 tokyo-night, 222222 vantablack; s57-evidence/rig124-release-reads-3.md |
+| 2026-11-05 | RL15 | 124 | main | PASS | no requester over flat on/off + 3 picks, gap 42 s not 5 s; s57-evidence/rig124-release-reads-3.md |
+| 2026-11-05 | RL8-DIM | 124 | main | PASS | contrast 260 tokyo-night, 231 white (floor 220); s57-evidence/rig124-release-reads-3.md |
+| 2026-11-05 | RL8-POINTER | 124 | main | PASS (bytes) | pointer.prefs colours text/surface/accent tokyo-night; sprite not in grab; s57-evidence/rig124-release-reads-3.md |
+| 2026-11-05 | RL20 | 124 | main | PASS | blended corners on menu row, Close, Open Help; s57-evidence/rig124-release-reads-3.md |
