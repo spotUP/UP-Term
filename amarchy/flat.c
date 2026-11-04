@@ -313,6 +313,36 @@ static void c2_get_pens(flatshared *r, struct impDraw *d, struct Image *im, ULON
     }
 }
 
+/* The record of a clone whose render put no pixel in the offscreen rastport (what the image was, for the diagnostics). Its own function
+ * so its locals are not part of c2_clone's frame (flat budget). Called under cl_ss: it reads cl_scratch. */
+static void c2_clone_note_empty(flatshared *r, struct impDraw *d, struct Image *im, ULONG which)
+{
+    int i, nz = 0;
+    ULONG mk = 0;
+    for (i = 0; i < im->Width * im->Height && i < FLAT_CLONE_MAX * FLAT_CLONE_MAX; i++)
+        if (cl_scratch[i]) {
+            nz++;
+            mk |= 1UL << (cl_scratch[i] & 31);
+        }
+    r->cf_ids |= 1UL << (d->imp_State & 31);
+    r->cf_lwhich = which; r->cf_lsize = ((ULONG)im->Width << 8) | (ULONG)im->Height; r->cf_lnz = (ULONG)nz; r->cf_lmarks = mk;
+}
+
+/* The counters of a failed clone draw, by the reason the environment recorded (flat budget: a function of its own). */
+static void c2_clone_note_fail(flatshared *r, ULONG which, int got, int why)
+{
+    r->cfall++;                     /* no offscreen bitmap / busy / no DrawInfo / empty image: the block glyph below */
+    if (!got || why == CLONE_WHY_BUSY)
+        r->cf_busy++;
+    else if (why == CLONE_WHY_NODRI)
+        r->cf_nodri++;
+    else if (why == CLONE_WHY_NOBM || why == CLONE_WHY_NOOBJ)
+        r->cf_nobm++;               /* no offscreen bitmap, or no private marker image */
+    else
+        r->cf_empty++;              /* render ran, the system image put no pixel in the offscreen rastport */
+    r->cf_mask |= 1UL << (which & 31);
+}
+
 /* The clone draw of one gadget image: 1 when it was drawn (the caller is done), 0 to fall back to the block glyph. Its own function
  * so the clone's environment is not part of c2_draw's frame (flat budget). */
 static int c2_clone(struct Hook *hk, Object *obj, Msg msg, int reg, ULONG which, ULONG raw_which, const c2_pens *p)
@@ -330,17 +360,8 @@ static int c2_clone(struct Hook *hk, Object *obj, Msg msg, int reg, ULONG which,
         cl_in.frame_pen = p->frame; cl_in.knob_pen = p->knob; cl_in.text_pen = p->text; cl_in.band_rows = p->band; cl_in.edge_pen = p->edge;
     }
     rc = !got ? FLAT_CLONE_FAIL : flat_clone_draw_in(&r->st, &cl_in, clone_render, &env, c2_fill, d->imp_RPort, cl_scratch);
-    if (got && rc == FLAT_CLONE_FAIL && env.why == CLONE_WHY_NONE) {
-        int i, nz = 0;
-        ULONG mk = 0;
-        for (i = 0; i < im->Width * im->Height && i < FLAT_CLONE_MAX * FLAT_CLONE_MAX; i++)
-            if (cl_scratch[i]) {
-                nz++;
-                mk |= 1UL << (cl_scratch[i] & 31);
-            }
-        r->cf_ids |= 1UL << (d->imp_State & 31);
-        r->cf_lwhich = which; r->cf_lsize = ((ULONG)im->Width << 8) | (ULONG)im->Height; r->cf_lnz = (ULONG)nz; r->cf_lmarks = mk;
-    }
+    if (got && rc == FLAT_CLONE_FAIL && env.why == CLONE_WHY_NONE)
+        c2_clone_note_empty(r, d, im, which);
     if (got)
         ReleaseSemaphore(&cl_ss);
     if (rc == FLAT_CLONE_OK) {
@@ -348,18 +369,8 @@ static int c2_clone(struct Hook *hk, Object *obj, Msg msg, int reg, ULONG which,
         r->cdraws++;
         return 1;
     }
-    if (rc == FLAT_CLONE_FAIL) {
-        r->cfall++;                     /* no offscreen bitmap / busy / no DrawInfo / empty image: the block glyph below */
-        if (!got || env.why == CLONE_WHY_BUSY)
-            r->cf_busy++;
-        else if (env.why == CLONE_WHY_NODRI)
-            r->cf_nodri++;
-        else if (env.why == CLONE_WHY_NOBM || env.why == CLONE_WHY_NOOBJ)
-            r->cf_nobm++;               /* no offscreen bitmap, or no private marker image */
-        else
-            r->cf_empty++;              /* render ran, the system image put no pixel in the offscreen rastport */
-        r->cf_mask |= 1UL << (which & 31);
-    }
+    if (rc == FLAT_CLONE_FAIL)
+        c2_clone_note_fail(r, which, got, env.why);
     return 0;
 }
 
@@ -373,6 +384,23 @@ static int c2_glyph(Object *obj, Msg msg, ULONG which, const c2_pens *p)
                            d->imp_DrInfo ? flat_side_px(d->imp_DrInfo->dri_Resolution.X, d->imp_DrInfo->dri_Resolution.Y) : 1,
                            c2_fill, d->imp_RPort);
 }
+#define NOWHICH 0xFFFFFFFFUL
+/* Kickstart 3.1 sysiclass does not answer OM_GET: find the window gadget that renders this image. The layer
+ * of the rastport belongs to the window being drawn; reading its gadget list from Intuition's own drawing
+ * context needs no Forbid (the list only changes through Add/RemoveGList by the window's owner). NOWHICH when none does. */
+static ULONG c2_which_31(Object *obj, struct impDraw *d)
+{
+    struct Layer *lay = d->imp_RPort->Layer;
+    struct Window *w = lay ? (struct Window *)lay->Window : NULL;
+    struct Gadget *g;
+    int n = 0, wh = -1;
+    for (g = w ? w->FirstGadget : NULL; g && n < 64 && wh < 0; g = g->NextGadget, n++)
+        wh = flat_gadget_which(g->GadgetType, g->GadgetRender, g->SelectRender, obj);
+    if (wh < 0 && lay && !w)
+        wh = c7_screen_which(lay, obj);
+    return wh < 0 ? NOWHICH : (ULONG)wh;
+}
+
 static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
 {
     flatshared *r = g_r;
@@ -388,22 +416,8 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
     /* FLAT-OUTER-EDGE: the window's 1 px outer edge in the accent pen is NOT drawn here. Intuition repaints the four outer
      * border edges last in every frame redraw, as four 1 px RectFill calls through graphics.library, which erases anything
      * drawn from this hook. The ring is painted by the RectFill patch (flat_rf_c, below), which recolours exactly those fills. */
-    if (GetAttr(SYSIA_Which, obj, &which) == 0) {
-        /* Kickstart 3.1 sysiclass does not answer OM_GET: find the window gadget that renders this image. The layer
-         * of the rastport belongs to the window being drawn; reading its gadget list from Intuition's own drawing
-         * context needs no Forbid (the list only changes through Add/RemoveGList by the window's owner). */
-        struct Layer *lay = d->imp_RPort->Layer;
-        struct Window *w = lay ? (struct Window *)lay->Window : NULL;
-        struct Gadget *g;
-        int n = 0, wh = -1;
-        for (g = w ? w->FirstGadget : NULL; g && n < 64 && wh < 0; g = g->NextGadget, n++)
-            wh = flat_gadget_which(g->GadgetType, g->GadgetRender, g->SelectRender, obj);
-        if (wh < 0 && lay && !w)
-            wh = c7_screen_which(lay, obj);
-        if (wh < 0)
-            return 0;
-        which = (ULONG)wh;
-    }
+    if (GetAttr(SYSIA_Which, obj, &which) == 0 && (which = c2_which_31(obj, d)) == NOWHICH)
+        return 0;
     raw_which = which;
     which = flat_which_alias(which);
     c2_get_pens(r, d, im, which, &pens);

@@ -17,6 +17,7 @@ import re, sys
 ENTRY_MAX = 64
 HELPER_MAX = 80
 CHAIN_MAX = 384
+HEADROOM_MIN = 64          # the deepest chain must leave this many bytes under CHAIN_MAX (S56-FLAT-HEADROOM)
 ENTRIES = ('_c2_disp_reg', '_c2_disp_stk')
 ALLOWED_EXTERN = re.compile(r'^_flat_[a-z0-9_]+$')
 
@@ -104,11 +105,13 @@ def main(paths):
             bad.append('%s own frame %d > %d' % (e, funcs[e][0], ENTRY_MAX))
         if total[e] > CHAIN_MAX:
             bad.append('%s deepest chain %d > %d' % (e, total[e], CHAIN_MAX))
+        elif CHAIN_MAX - total[e] < HEADROOM_MIN:
+            bad.append('%s headroom %d < %d (deepest chain %d of %d)' % (e, CHAIN_MAX - total[e], HEADROOM_MIN, total[e], CHAIN_MAX))
     for f, size in sorted(seen.items()):
         if size > HELPER_MAX:
             bad.append('%s frame %d > %d' % (f, size, HELPER_MAX))
     for e in ENTRIES:
-        print('flat budget: %s own frame %d, deepest chain %d' % (e, funcs[e][0], total[e]))
+        print('flat budget: %s own frame %d, deepest chain %d, headroom %d' % (e, funcs[e][0], total[e], CHAIN_MAX - total[e]))
     print('flat budget: reachable frames %s' % sorted(seen.values(), reverse=True))
     for b in bad:
         print('FAIL: ' + b)
