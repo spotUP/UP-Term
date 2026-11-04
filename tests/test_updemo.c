@@ -725,7 +725,7 @@ static void the_splits_scene_sends_split_then_zoom_then_unzoom(void)
     CHECK_INT(updemo_run(&io, 80, 24, scene_index("splits"), 0), 0); /* to the scene's end: the tabs test's way */
     updemo_only(0);
     capturing = 0;
-    CHECK_STR(cmd_log, "/split right|/pane zoom|/pane zoom|");
+    CHECK_STR(cmd_log, "/split right|/pane focus|/pane zoom|/pane zoom|");
     CHECK(cap_has("Sent /split right"));
     CHECK(!cap_has("a program cannot split the window itself"));
     vt_free(t);

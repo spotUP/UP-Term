@@ -192,6 +192,18 @@ static void the_focus_cycles_through_the_panes_in_reading_order(void)
     CHECK(tabslot_focused(&T[0]) == &A);
 }
 
+/* /pane focus: the sender takes the keys back after a split gave them to the new pane. */
+static void a_pane_takes_the_keys_back_after_a_split(void)
+{
+    fresh();
+    tabslot_add(T, &N, 4, &A);
+    tabslot_split(T, N, &A, &B, LAY_RIGHT, 8, 8, 0, 0, 640, 200);
+    CHECK(tabslot_focused(&T[0]) == &B);
+    CHECK_INT(tabslot_focus(T, N, &A), 0);
+    CHECK(tabslot_focused(&T[0]) == &A);
+    CHECK_INT(tabslot_focus(T, N, &D), -1); /* in no slot */
+}
+
 static void the_pane_under_a_point_is_found_by_its_place(void)
 {
     fresh();
@@ -331,6 +343,7 @@ void suite_tabslot(void)
     the_last_pane_takes_its_slot_and_the_rest_move_down();
     the_shown_slot_stays_shown_when_another_goes();
     the_focus_cycles_through_the_panes_in_reading_order();
+    a_pane_takes_the_keys_back_after_a_split();
     a_zoom_shows_only_the_focused_pane_until_the_layout_changes();
     the_pane_under_a_point_is_found_by_its_place();
     the_active_tab_differs_under_the_stock_and_the_flat_pen_map();

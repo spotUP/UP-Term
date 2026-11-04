@@ -1425,7 +1425,7 @@ static void sc_tmux(long t, int first)
 }
 
 /* The splits scene drives the window's panes with the slash commands the Window menu's items run: /split right,
- * then /pane zoom twice (zoom, unzoom). It cannot close the new pane: /pane close closes the pane it is sent
+ * then /pane focus (the split gave the new pane the keys), then /pane zoom twice (zoom, unzoom). It cannot close the new pane: /pane close closes the pane it is sent
  * from, which is the demo's own, so the new shell is left for the user (exit closes it). splits_zoomed is 1 from
  * the first /pane zoom until the second, so a scene left early does not leave the pane zoomed. */
 static int splits_zoomed;
@@ -1458,6 +1458,7 @@ static void sc_splits(long t, int first)
     if (!splits_split && t >= SPLITS_SPLIT_AT && t < SPLITS_ZOOM_AT) {
         splits_split = 1;
         io->command(io->user, "/split right");
+        io->command(io->user, "/pane focus"); /* the split gave the new pane the keys: take them back */
         grey_line(9, "Sent /split right: a new pane with its own shell opens beside this one.");
     } else if (splits_split && !splits_zoomed && t >= SPLITS_ZOOM_AT && t < SPLITS_UNZOOM_AT) {
         splits_zoomed = 1;

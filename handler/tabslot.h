@@ -141,6 +141,16 @@ static int tabslot_cycle(tab_slot *t, int n, const void *pane, int step)
     return i;
 }
 
+/* Give pane the keys of its slot. Returns the slot, or -1: pane is in no slot. */
+static int tabslot_focus(tab_slot *t, int n, const void *pane)
+{
+    int i, k;
+    if ((i = tabslot_find(t, n, pane, &k)) < 0)
+        return -1;
+    t[i].focus = k;
+    return i;
+}
+
 /* Zoom pane's slot to pane (it has the keys), or back. Returns the slot,
  * or -1: pane is in no slot, or its slot has one pane. */
 static int tabslot_zoom(tab_slot *t, int n, const void *pane)

@@ -2840,7 +2840,7 @@ static int menu_run(con *c, LONG id, int on)
     case MENU_PREFS: prefs_launch(); return 1;
     case MENU_CLOSE: close_gadget(c); return 3; /* as the close gadget */
     case MENU_TAB_NEW: case MENU_TAB_NEXT: case MENU_TAB_PREV: case MENU_TAB_CLOSE: case MENU_DEMO: case MENU_CLAUDE: case MENU_PI: case MENU_AGENT: case MENU_SET_AGENT_CLAUDE: case MENU_SET_AGENT_PI: case MENU_TUTORIAL:
-    case MENU_SPLIT_RIGHT: case MENU_SPLIT_DOWN: case MENU_PANE_CLOSE: case MENU_PANE_PREV: case MENU_PANE_NEXT: case MENU_PANE_ZOOM:
+    case MENU_SPLIT_RIGHT: case MENU_SPLIT_DOWN: case MENU_PANE_CLOSE: case MENU_PANE_PREV: case MENU_PANE_NEXT: case MENU_PANE_FOCUS: case MENU_PANE_ZOOM:
         tab_command(c, (int)id);
         return 3;
     case MENU_TAB_GOTO0 + 1: case MENU_TAB_GOTO0 + 2: case MENU_TAB_GOTO0 + 3: case MENU_TAB_GOTO0 + 4:
@@ -7319,6 +7319,12 @@ static void host_command(con *c, int what, con *from, const char *task)
             if (tabslot_cycle(c->slots, c->ntabs, from, what == MENU_PANE_NEXT ? 1 : -1) >= 0)
                 slot_refocus(c, zoomed);
         }
+        break;
+    case MENU_PANE_FOCUS:
+        /* the sender takes the keys back: a program that split the window keeps its own pane */
+        if (c->active >= 0 && tabslot_find(c->slots, c->ntabs, from, 0) == c->active &&
+            tabslot_focus(c->slots, c->ntabs, from) >= 0)
+            slot_refocus(c, 0);
         break;
     case MENU_PANE_ZOOM:
         if (c->active >= 0 && tabslot_find(c->slots, c->ntabs, from, 0) == c->active &&
