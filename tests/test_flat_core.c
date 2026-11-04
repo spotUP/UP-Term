@@ -781,6 +781,21 @@ static void test_which_from_gtype(void)
             CHECK_INT(flat_tx_pen(&fs, &t, &surf, &task, 20, 16), label[i]);
         }
         CHECK_INT(cv->pix[16][20] != fs.pen_sel, 1);                         /* the lighter-background held pen no longer fills the button */
+        /* S56-CYCLE-PLAIN: a cycle gadget (label outside or none) is role PLAIN: pen_button fill, label never armed, pressed or not;
+         * the push button (label inside) stays primary with the accent */
+        fs.pen_button = 7;
+        CHECK_INT(flat_push_label(1, 12, 3, 60, 14), 1);                     /* button: label inside the box */
+        CHECK_INT(flat_push_label(0, 0, 0, 60, 14), 0);                      /* cycle without label */
+        CHECK_INT(flat_push_label(1, -50, 3, 60, 14), 0);                    /* cycle, label left */
+        CHECK_INT(flat_push_label(1, 12, -10, 60, 14), 0);                   /* cycle, label above */
+        for (pressed = 0; pressed <= 1; pressed++) {
+            memset(&t, 0, sizeof t);
+            CHECK_INT(flat_frame_draw_round(&fs, pressed, 10, 10, 30, 14, 1, FLAT_ROLE_PLAIN, round_fill, round_read, cv), 1);
+            flat_tx_frame(&t, &surf, &task, flat_tx_arm(pressed, 1, FLAT_ROLE_PLAIN), 1, 10, 10, 39, 23);
+            CHECK_INT(cv->pix[16][20], 7);
+            CHECK_INT(t.armed, 0);
+        }
+        CHECK_INT(flat_tx_arm(0, 1, FLAT_ROLE_PRIMARY), 1);
         free(cv);
     }
     {   /* FLAT-BUTTON-FILL: the pressed-label arm and the depth-checked fill pen */

@@ -354,7 +354,10 @@ int flat_button_pen(const flat_state *s, int depth);
 
 /* BUTTON-ROLES: a button box in gadget coordinates. */
 typedef struct { int x, y, w, h; } flat_box;
-enum { FLAT_ROLE_PRIMARY = 0, FLAT_ROLE_SECONDARY = 1, FLAT_ROLE_SCROLLKNOB = 2 };   /* SCROLLKNOB: the scroller knob box, filled with pen_button (not the accent of a primary button) */
+enum { FLAT_ROLE_PRIMARY = 0, FLAT_ROLE_SECONDARY = 1, FLAT_ROLE_PLAIN = 2 };   /* PLAIN: a filled frame that is no push button (scroller knob, cycle gadget): filled with pen_button, stock label, never the accent */
+/* S56-CYCLE-PLAIN: is this boolean frame gadget a push button? A GadTools button's label (GadgetText) sits inside the gadget box
+ * (PLACETEXT_IN); a cycle gadget has none or one placed outside (left, above, right, below). 1 = push button. lx, ly: IntuiText offsets. */
+int flat_push_label(int has_text, int lx, int ly, int w, int h);
 /* Amiga style guide: in a row of buttons the rightmost is secondary (Cancel, drawn as a text-pen outline), every other button
  * primary (filled); a lone button is primary. A row = siblings whose vertical span overlaps this box. sib lists every button of
  * the window, the box itself included (skipped by equal box). */

@@ -455,6 +455,14 @@ static int role_of(struct RastPort *rp, Object *obj)
     for (g = win ? win->FirstGadget : NULL, i = 0; g && i < 64 && n < 32; g = g->NextGadget, i++) {
         if (!g->GadgetRender || g->GadgetRender != g->SelectRender)
             continue;
+        {   /* S56-CYCLE-PLAIN: only push buttons take part in the row; a cycle gadget keeps the plain pen_button fill */
+            struct IntuiText *it = g->GadgetText;
+            if (!flat_push_label(it != NULL, it ? it->LeftEdge : 0, it ? it->TopEdge : 0, g->Width, g->Height)) {
+                if (g->GadgetRender == (APTR)obj)
+                    return FLAT_ROLE_PLAIN;
+                continue;
+            }
+        }
         sib[n].x = g->LeftEdge; sib[n].y = g->TopEdge; sib[n].w = g->Width; sib[n].h = g->Height;
         if (g->GadgetRender == (APTR)obj) { self = sib[n]; found = 1; }
         n++;

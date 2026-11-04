@@ -389,7 +389,7 @@ void flat_tx_frame(flat_tx *t, const void *surf, const void *task, int pressed, 
 
 int flat_tx_arm(int pressed, int fill, int role)
 {
-    return fill && (pressed || role == FLAT_ROLE_PRIMARY);
+    return fill && role != FLAT_ROLE_PLAIN && (pressed || role == FLAT_ROLE_PRIMARY);
 }
 
 int flat_tx_text(flat_tx *t, const void *surf, const void *task, int cx, int cy)
@@ -544,6 +544,11 @@ const flat_gbox *flat_gh_match(const flat_state *s, const flat_gh *g, const void
             return b;
     }
     return 0;
+}
+
+int flat_push_label(int has_text, int lx, int ly, int w, int h)
+{
+    return has_text && lx >= 0 && ly >= 0 && lx < w && ly < h;
 }
 
 int flat_button_role(const flat_box *self, const flat_box *sib, int n)
