@@ -73,7 +73,7 @@ static const slash_value v_splitdir[] = {
 };
 static const slash_value v_pane[] = {
     { "close", MENU_PANE_CLOSE, 1 }, { "zoom", MENU_PANE_ZOOM, 1 }, { "next", MENU_PANE_NEXT, 1 },
-    { "previous", MENU_PANE_PREV, 1 }, { 0, 0, 0 }
+    { "previous", MENU_PANE_PREV, 1 }, { "focus", MENU_PANE_FOCUS, 1 }, { 0, 0, 0 }
 };
 
 /* Alphabetical: the help lists it in this order, completion offers it so. */
@@ -117,8 +117,8 @@ static const slash_def table[] = {
       "outline-font glyphs are drawn smoothed on a screen of 16 colours or more (off: hard edges)" },
     { "padding-color", SL_CHOICE, 0, 0, v_padding, "background | extend",
       "the strips beside the character grid: the background, or the colour of the cell next to them" },
-    { "pane", SL_CHOICE, 0, 0, v_pane, "close | zoom | next | previous",
-      "the pane this command runs in: close it, zoom it, or move to the next or previous pane" },
+    { "pane", SL_CHOICE, 0, 0, v_pane, "close | zoom | next | previous | focus",
+      "the pane this command runs in: close it, zoom it, or move to the next or previous pane, or take the keys back to it" },
     { "paste", SL_ACTION, MENU_PASTE, 0, 0, "", "type the clipboard in" },
     { "pi", SL_ACTION, MENU_PI, 0, 0, "", "pi, in a new tab" },
     { "prefs", SL_ACTION, MENU_PREFS, 0, 0, "", "open UP-Term Prefs" },

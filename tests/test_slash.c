@@ -83,6 +83,8 @@ static void settings_name_their_menu_items(void)
     CHECK_INT(cmd.id, MENU_PANE_NEXT);
     CHECK_INT(parse("/pane previous"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_PANE_PREV);
+    CHECK_INT(parse("/pane focus"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_PANE_FOCUS);
     CHECK_INT(parse("/split sideways"), SLASH_ERROR);
     CHECK_INT(parse("/split"), SLASH_ERROR);
     CHECK_INT(parse("/pane new"), SLASH_ERROR);
