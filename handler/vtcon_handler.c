@@ -1532,11 +1532,13 @@ static void apply_profile(con *c)
     c->link_open[0] = 0; /* none: OpenURL %s (h_open_link) */
     c->term[0] = 0;
     c->colors[0] = 0;
+    p = upconf_window_profile(c->conf, c->profile);
+    /* glyphs the bitmap font lacks: an outline font's (F1); "" none. Before any return: a window with
+     * no profile (no file, or the shipped sample whose sections are all comments) still gets the
+     * SymbolsNerdFontMono default (R3C-UD6-NERD-QMARK: a fresh install drew the Nerd icons as '?') */
+    upconf_font_fallback(c->conf, p, fonts_ttf_exists(UC_FALLBACK_DEFAULT), c->w.fallback, sizeof(c->w.fallback));
     if (!c->conf)
         return;
-    p = c->profile;
-    if (!profile_exists(c->conf, p))
-        p = profile_exists(c->conf, "default") ? "default" : 0;
     if (!p) {
         apply_profile_colours(c, 0); /* no profile in the file: the active theme still colours the window */
         return;
@@ -1587,8 +1589,6 @@ static void apply_profile(con *c)
     /* font-aspect = off: the font as asked on every screen (P2) */
     v = upconf_str(c->conf, p, "font-aspect", 0);
     c->w.aspect_off = v && str_ieq(v, "off");
-    /* glyphs the bitmap font lacks: an outline font's (F1); "" none */
-    upconf_font_fallback(c->conf, p, fonts_ttf_exists(UC_FALLBACK_DEFAULT), c->w.fallback, sizeof(c->w.fallback));
     apply_profile_colours(c, p);
     /* no key: the built-in 500 (sb_lines 0); "scrollback = 0": none (-1),
      * as Settings > Scrollback > None saves it */
@@ -4727,7 +4727,7 @@ static int slash_colour(const char *arg, ULONG *rgb)
 static void setup_text(con *c, char *ans, int cap)
 {
     const char *p = c->conf && profile_exists(c->conf, c->profile) ? c->profile : 0;
-    const char *base = p ? p : (c->conf && profile_exists(c->conf, "default") ? "default" : 0);
+    const char *base = upconf_window_profile(c->conf, c->profile);
     slash_row rows[9];
     const char *pv;
     char font[UC_MAX_VALUE];
