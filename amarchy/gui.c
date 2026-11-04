@@ -1833,6 +1833,7 @@ done:
     desk_dos_own_close = 0;
     desk_dos_own_open = 0;
     cleanup(g);
+    wbr_client_drop();                          /* WBRESET-EXT: free this task's table slot, else WBR_MAX runs fill the table */
     free(g->it);
     free(g->idx);
     free(g->chip);
