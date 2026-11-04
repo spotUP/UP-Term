@@ -1228,17 +1228,26 @@ static int drop_record(flatshared *r)
 }
 
 /* ---- FLAT-C4: the kill switches' inputs. The decision is flat_core.c (host-tested); here only the reads. ---- */
-static int marker_exists(void)
+/* The marker's start count: 0 no file, else flat_marker_parse of its text (unreadable = 1). */
+static int marker_count(void)
 {
-    BPTR l = Lock((STRPTR)FLAT_MARKER_PATH, ACCESS_READ);
-    if (l)
-        UnLock(l);
-    return l != 0;
+    char buf[32];
+    LONG n;
+    BPTR f = Open((STRPTR)FLAT_MARKER_PATH, MODE_OLDFILE);
+    if (!f)
+        return 0;
+    n = Read(f, buf, (LONG)sizeof buf);
+    Close(f);
+    return flat_marker_parse(buf, n > 0 ? (unsigned)n : 0);
 }
 
+static int g_marker_prev;                       /* the count found at boot: this start writes g_marker_prev + 1 */
+
 /* Write the marker and make the handler flush it to the disk: the swap must not start before it is safe. */
-static void marker_write(void)
+static void marker_write(int count)
 {
+    char txt[24];
+    unsigned tl = flat_marker_format(count, txt);
     BPTR l = Lock((STRPTR)"ENVARC:Amarchy", ACCESS_READ), f;
     if (!l)
         l = CreateDir((STRPTR)"ENVARC:Amarchy");
@@ -1246,7 +1255,7 @@ static void marker_write(void)
         UnLock(l);
     f = Open((STRPTR)FLAT_MARKER_PATH, MODE_NEWFILE);
     if (f) {
-        Write(f, (APTR)FLAT_MARKER_HEAD, (LONG)strlen(FLAT_MARKER_HEAD));
+        Write(f, (APTR)txt, (LONG)tl);
         Close(f);
     }
     l = Lock((STRPTR)"ENVARC:", ACCESS_READ);
@@ -1387,7 +1396,7 @@ static void dim_release(flatshared *r)
 static int install_all(flatshared *r, poll_timer *tm, int *marker_live)
 {
     int rc;
-    marker_write();                             /* on disk before the swap, so a crash leaves it */
+    marker_write(g_marker_prev + 1);                             /* on disk before the swap, so a crash leaves it */
     *marker_live = 1;
     rc = hook_install(r);
     if (rc != FLAT_OK) {
@@ -1483,11 +1492,14 @@ int main(void)
     if (IntuitionBase && GfxBase) {
         int lmb, rmb, why;
         buttons(&lmb, &rmb);
-        why = flat_start_decide(marker_exists(), lmb, rmb, other_patcher(sysiclass_slot()));
+        g_marker_prev = marker_count();
+        why = flat_start_decide(g_marker_prev, lmb, rmb, other_patcher(sysiclass_slot()));
         if (why) {                                      /* a kill switch is set: stay resident, inert, say why */
             r->st.held = (uint16_t)why;
-            if (why == FLAT_HELD_MARKER)
-                marker_delete();                        /* one inert start per crash, not for ever */
+            if (why == FLAT_HELD_MARKER) {
+                g_marker_prev = 0;
+                marker_delete();                        /* one inert start per crash run, not for ever */
+            }
         } else {
             install_rc = install_all(r, &tm, &marker_live);
         }

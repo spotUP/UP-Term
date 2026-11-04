@@ -905,13 +905,32 @@ static void test_kill_switches(void)
 
     /* the start decision: marker beats gesture beats other patcher */
     CHECK_INT(flat_start_decide(0, 0, 0, 0), FLAT_HELD_NONE);
-    CHECK_INT(flat_start_decide(1, 0, 0, 0), FLAT_HELD_MARKER);
-    CHECK_INT(flat_start_decide(1, 1, 1, FLAT_HELD_BIRDIE), FLAT_HELD_MARKER);
+    CHECK_INT(flat_start_decide(2, 0, 0, 0), FLAT_HELD_MARKER);
+    CHECK_INT(flat_start_decide(2, 1, 1, FLAT_HELD_BIRDIE), FLAT_HELD_MARKER);
     CHECK_INT(flat_start_decide(0, 1, 1, 0), FLAT_HELD_GESTURE);
     CHECK_INT(flat_start_decide(0, 1, 0, 0), FLAT_HELD_NONE);                                /* one button is not the gesture */
     CHECK_INT(flat_start_decide(0, 0, 1, 0), FLAT_HELD_NONE);
     CHECK_INT(flat_start_decide(0, 1, 1, FLAT_HELD_HOOK), FLAT_HELD_GESTURE);
     CHECK_INT(flat_start_decide(0, 0, 0, FLAT_HELD_VISUALPREFS), FLAT_HELD_VISUALPREFS);
+
+    /* two-strike crash guard: one early death (count 1) still starts, two in a row hold; a damaged marker is one strike */
+    CHECK_INT(flat_start_decide(1, 0, 0, 0), FLAT_HELD_NONE);
+    CHECK_INT(flat_start_decide(flat_marker_parse(0, 0), 0, 0, 0), FLAT_HELD_NONE);                  /* no text read */
+    CHECK_INT(flat_start_decide(flat_marker_parse("flat-starting 1\n", 16), 0, 0, 0), FLAT_HELD_NONE);
+    CHECK_INT(flat_start_decide(flat_marker_parse("flat-starting 2\n", 16), 0, 0, 0), FLAT_HELD_MARKER);
+    CHECK_INT(flat_start_decide(flat_marker_parse("flat-starting 9\n", 16), 0, 0, 0), FLAT_HELD_MARKER);
+    CHECK_INT(flat_start_decide(flat_marker_parse("garbage!garbage!!", 17), 0, 0, 0), FLAT_HELD_NONE);
+    CHECK_INT(flat_start_decide(flat_marker_parse("flat-starting 0\n", 16), 0, 0, 0), FLAT_HELD_NONE);
+    CHECK_INT(flat_start_decide(flat_marker_parse("flat-starting ", 14), 0, 0, 0), FLAT_HELD_NONE);
+    {
+        char mk[24];
+        CHECK_INT(flat_marker_format(1, mk), 16);
+        CHECK_STR(mk, "flat-starting 1\n");
+        flat_marker_format(2, mk);
+        CHECK_INT(flat_marker_parse(mk, 16), 2);
+        flat_marker_format(3, mk);                                                                  /* capped */
+        CHECK_STR(mk, "flat-starting 2\n");
+    }
 
     /* marker -> inert with an injected clock: written at t, alive for FLAT_MARKER_SECS, then gone */
     CHECK_INT(flat_marker_remaining(1000, 1000), FLAT_MARKER_SECS);
@@ -923,7 +942,7 @@ static void test_kill_switches(void)
     /* a held block is inert: kill switch beats the switch, and STATUS names the patch */
     flat_init(&s);
     s.enabled = 1;
-    s.held = (uint16_t)flat_start_decide(1, 0, 0, 0);
+    s.held = (uint16_t)flat_start_decide(2, 0, 0, 0);
     flat_status_line(&s, sizeof s, 1, line, sizeof line);
     CHECK_STR(line, "flat=held calls=0 chained=0 why=marker");
     CHECK_INT(flat_dopus_decide(&s, FLAT_EL_DRAWBOX, 0, 1, 1), FLAT_DRAW_STOCK);
