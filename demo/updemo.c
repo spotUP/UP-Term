@@ -1425,49 +1425,63 @@ static void sc_tmux(long t, int first)
 }
 
 /* The splits scene drives the window's panes with the slash commands the Window menu's items run: /split right,
- * then /pane focus (the split gave the new pane the keys), then /pane zoom twice (zoom, unzoom). It cannot close the new pane: /pane close closes the pane it is sent
- * from, which is the demo's own, so the new shell is left for the user (exit closes it). splits_zoomed is 1 from
- * the first /pane zoom until the second, so a scene left early does not leave the pane zoomed. */
-static int splits_zoomed;
-static int splits_split;
+ * /pane focus (the split gave the new pane the keys), /pane zoom and /pane zoom again, then /pane close other (the
+ * pane it opened: a plain /pane close would close the demo's own) and /pane focus. The tab ends as ONE pane, the
+ * demo's, which fills the window (the demo needs 76 x 20) and has the keys. splits_state is how far the scene got,
+ * so a scene left early (a key, the next scene) finishes the job: unzoom, close the new pane. */
+enum { SPLITS_NONE, SPLITS_SPLIT, SPLITS_ZOOMED, SPLITS_UNZOOMED };
+static int splits_state;
 
 #define SPLITS_SPLIT_AT 40
-#define SPLITS_ZOOM_AT 120
-#define SPLITS_UNZOOM_AT 200
+#define SPLITS_ZOOM_AT 100
+#define SPLITS_UNZOOM_AT 170
+#define SPLITS_CLOSE_AT 240
+
+static void splits_close(void)
+{
+    io->command(io->user, "/pane close other");
+    io->command(io->user, "/pane focus");
+    splits_state = SPLITS_NONE;
+}
 
 static void splits_leave(void)
 {
-    if (splits_zoomed && io->command)
-        io->command(io->user, "/pane zoom");
-    splits_zoomed = 0;
-    splits_split = 0;
+    if (io->command) {
+        if (splits_state == SPLITS_ZOOMED)
+            io->command(io->user, "/pane zoom");
+        if (splits_state != SPLITS_NONE)
+            splits_close();
+    }
+    splits_state = SPLITS_NONE;
 }
 
 static void sc_splits(long t, int first)
 {
     if (first) {
-        splits_zoomed = 0;
-        splits_split = 0;
+        splits_state = SPLITS_NONE;
         heading("Split panes", "UP-Term splits a tab into panes, each with its own shell");
         grey_line(4, "A tab holds up to 4 panes. A program drives them with slash commands:");
-        grey_line(5, "/split right  /split down  /pane zoom  /pane next  /pane previous  /pane close");
+        grey_line(5, "/split right  /split down  /pane zoom  /pane next  /pane previous  /pane close  /pane close other");
         grey_line(6, "The Window menu and Right Amiga D, Right Amiga Shift D run the same commands.");
     }
     if (!io->command)
         return;
-    if (!splits_split && t >= SPLITS_SPLIT_AT && t < SPLITS_ZOOM_AT) {
-        splits_split = 1;
+    if (splits_state == SPLITS_NONE && t >= SPLITS_SPLIT_AT && t < SPLITS_ZOOM_AT) {
+        splits_state = SPLITS_SPLIT;
         io->command(io->user, "/split right");
         io->command(io->user, "/pane focus"); /* the split gave the new pane the keys: take them back */
         grey_line(9, "Sent /split right: a new pane with its own shell opens beside this one.");
-    } else if (splits_split && !splits_zoomed && t >= SPLITS_ZOOM_AT && t < SPLITS_UNZOOM_AT) {
-        splits_zoomed = 1;
+    } else if (splits_state == SPLITS_SPLIT && t >= SPLITS_ZOOM_AT) {
+        splits_state = SPLITS_ZOOMED;
         io->command(io->user, "/pane zoom");
         grey_line(10, "Sent /pane zoom: this pane fills the tab.");
-    } else if (splits_zoomed && t >= SPLITS_UNZOOM_AT) {
+    } else if (splits_state == SPLITS_ZOOMED && t >= SPLITS_UNZOOM_AT) {
+        splits_state = SPLITS_UNZOOMED;
+        io->command(io->user, "/pane zoom");
         grey_line(11, "Sent /pane zoom again: both panes are back.");
-        splits_leave();
-        grey_line(13, "Type exit in the new pane to close it.");
+    } else if (splits_state == SPLITS_UNZOOMED && t >= SPLITS_CLOSE_AT) {
+        splits_close();
+        grey_line(13, "Sent /pane close other: the new pane is closed, this one has the window and the keys.");
     }
 }
 
