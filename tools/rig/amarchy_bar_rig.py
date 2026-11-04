@@ -291,6 +291,7 @@ def r_strut_desk():
 def r_strut_off():
     # BAR OFF: the same open is not clamped (CLAMPED unchanged, the window reaches the strip rows) and the root grows back to the
     # screen bottom; BAR ON clamps again and shortens the root again.
+    strut_put()     # RAM:struttest must be on the rig: without it the opener prints no BOX
     top, h = bar_top()
     ar.arexx('BAR OFF')
     time.sleep(3)
