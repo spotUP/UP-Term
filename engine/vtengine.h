@@ -375,6 +375,7 @@ typedef struct vt_image_view {
     int npal;
     int fmt;            /* 0 pix holds indices into pal; 1 it holds w x h x 4 bytes R G B A (pal, npal unused) */
     int opaque;         /* fmt 1: no pixel has an alpha below 255 */
+    int kitty;          /* a kitty picture: its index 0 (fmt 0) is transparent, draw nothing there; sixel: the background */
     int cw, ch;         /* the cell size the image was placed with */
     int col0;           /* the grid column of the image's left edge on this
                          * row (negative when a reflow split the image) */

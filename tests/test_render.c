@@ -2525,10 +2525,12 @@ static void k37_run(int planar, int which, unsigned long *pens, unsigned long *c
 
 static void k37_eight_bit_golden(void)
 {
-    /* [planar][scene] captured on a6de061d: pens hash, chunky hash */
+    /* [planar][scene] captured on a6de061d: pens hash, chunky hash. The chunky hashes of the kitty scenes 0-2 were
+     * recaptured for S56-UD2-EARTH-OVER-PHOTO: a kitty run now skips its index-0 (transparent) pixels, so the buffers
+     * are written in runs of the painted pixels; the pens hashes are unchanged. */
     static const unsigned long gold[2][4][2] = {
-        { { 1594208197UL, 3479184592UL }, { 3441995717UL, 2929294831UL }, { 1184631749UL, 3938940050UL }, { 584822725UL, 4290872673UL } },
-        { { 2071090437UL, 3479184592UL }, { 3456382213UL, 2929294831UL }, { 987634949UL, 3938940050UL }, { 412095749UL, 4290872673UL } },
+        { { 1594208197UL, 2497176488UL }, { 3441995717UL, 1537239861UL }, { 1184631749UL, 461891154UL }, { 584822725UL, 4290872673UL } },
+        { { 2071090437UL, 2497176488UL }, { 3456382213UL, 1537239861UL }, { 987634949UL, 461891154UL }, { 412095749UL, 4290872673UL } },
     };
     int m, s;
     for (m = 0; m < 2; m++)
@@ -2844,6 +2846,49 @@ static void k40_eight_bit_screen_stays_indexed(void)
     close_term();
 }
 
+/* S56-UD2-EARTH-OVER-PHOTO: on the palette path (no RGB screen) a kitty picture's alpha-0 pixels are index 0, which
+ * painted the background opaque over a z<0 picture beneath (black corners round the UPDemo globe). Kitty composes
+ * over what is beneath: those pixels never paint. A 32x32 red picture with 4x4 transparent corners (z=0) over a 64x64
+ * blue photo (z=-1): the corners keep the photo's pen, the red body is red, the photo outside the picture is blue. */
+static void s56_transparent_kitty_pixels_keep_the_picture_beneath_on_the_palette_path(void)
+{
+    static unsigned char photo[64 * 64 * 4], globe[32 * 32 * 4];
+    int x, y, i;
+    for (i = 0; i < 64 * 64; i++) {
+        photo[i * 4] = 0;
+        photo[i * 4 + 1] = 0;
+        photo[i * 4 + 2] = 255;
+        photo[i * 4 + 3] = 255;
+    }
+    for (y = 0; y < 32; y++)
+        for (x = 0; x < 32; x++) {
+            unsigned char *q = globe + (y * 32 + x) * 4;
+            int corner = (x < 4 || x >= 28) && (y < 4 || y >= 28);
+            q[0] = 255;
+            q[1] = 255;
+            q[2] = 0;
+            q[3] = corner ? 0 : 255;
+        }
+    k40_open(1);
+    vt_set_image_rgb(term, 0); /* the palette path: pictures stored as indices, drawn through the colour table */
+    pass("\x1b[1;1H");
+    k37_send("a=T,f=32,s=64,v=64,i=1,z=-1,C=1,c=8,r=8", photo, sizeof photo);
+    pass("\x1b[3;3H");
+    k37_send("a=T,f=32,s=32,v=32,i=2,z=0,C=1,c=4,r=4", globe, sizeof globe);
+    pass("\x1b[8;20H"); /* the cursor cell away from the corners */
+    CHECK_INT((int)vt_kitty_rgb_made(term), 0); /* the palette path */
+    CHECK(rn.n_img_runs >= 1);
+    CHECK(gf_count(GF_CGXLUT) >= 1);
+    CHECK_INT(gf_pixel(4, 4), gf_pixel(60, 60));   /* the photo, away from the globe */
+    CHECK(gf_pixel(4, 4) != 32);                   /* the photo is painted, not the background */
+    CHECK(gf_pixel(32, 32) != 32);                 /* the globe's body is painted too */
+    CHECK_INT(gf_pixel(16, 16), gf_pixel(4, 4));   /* top left corner: the photo */
+    CHECK_INT(gf_pixel(47, 16), gf_pixel(4, 4));   /* top right */
+    CHECK_INT(gf_pixel(16, 47), gf_pixel(4, 4));   /* bottom left */
+    CHECK_INT(gf_pixel(47, 47), gf_pixel(4, 4));   /* bottom right */
+    close_term();
+}
+
 /* K36-ANIM-BLINK: a looping kitty animation switches frames on the clock; the repaint of the picture's rows
  * must never leave more than the one cell row being drawn showing the background. Before the fix draw_rows_now
  * painted the text (background) of every damaged row first and only then the images of all of them, top down:
@@ -3025,6 +3070,7 @@ int main(void)
     k40_picture_scrolled_into_history_redraws_exact();
     k40_alpha_detection_checks_the_table_size_and_the_jmp_opcodes();
     k40_eight_bit_screen_stays_indexed();
+    s56_transparent_kitty_pixels_keep_the_picture_beneath_on_the_palette_path();
     the_cursor_pass_counts_its_gfx_calls_and_unchanged_cells();
     scrollback_view_move_blits_and_draws_only_the_exposed_rows();
     cursor_glyph_is_drawn_at_the_cursor_cell_from_the_grid_row();
