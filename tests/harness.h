@@ -9,6 +9,13 @@ extern int h_failures, h_checks;
 extern char h_reply[1024];
 extern int h_reply_len;
 extern int h_damage_calls, h_scroll_calls, h_bells, h_layout_which, h_layout_value;
+/* Columns [x0, x1) of each row the damage callback named since h_new or
+ * h_damage_clear (the union per row). */
+#define H_DAMAGE_ROWS 64
+extern int h_damage_x0[H_DAMAGE_ROWS], h_damage_x1[H_DAMAGE_ROWS];
+void h_damage_clear(void);
+/* 1 when row y's damage since the last clear covers columns [x0, x1) */
+int h_damaged(int x0, int y, int x1);
 
 #define CHECK(cond) do { h_checks++; if (!(cond)) { h_failures++; \
     printf("  FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); } } while (0)

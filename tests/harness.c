@@ -5,11 +5,33 @@ int h_failures, h_checks;
 char h_reply[1024];
 int h_reply_len;
 int h_damage_calls, h_scroll_calls, h_bells, h_layout_which, h_layout_value;
+int h_damage_x0[H_DAMAGE_ROWS], h_damage_x1[H_DAMAGE_ROWS];
 
 static void cb_damage(void *u, int x0, int y0, int x1, int y1)
 {
-    (void)u; (void)x0; (void)y0; (void)x1; (void)y1;
+    int y;
+    (void)u;
     h_damage_calls++;
+    for (y = y0; y < y1; y++)
+        if (y >= 0 && y < H_DAMAGE_ROWS && x0 < x1) {
+            if (h_damage_x0[y] >= h_damage_x1[y] || x0 < h_damage_x0[y])
+                h_damage_x0[y] = x0;
+            if (x1 > h_damage_x1[y])
+                h_damage_x1[y] = x1;
+        }
+}
+
+void h_damage_clear(void)
+{
+    int y;
+    h_damage_calls = 0;
+    for (y = 0; y < H_DAMAGE_ROWS; y++)
+        h_damage_x0[y] = h_damage_x1[y] = 0;
+}
+
+int h_damaged(int x0, int y, int x1)
+{
+    return y >= 0 && y < H_DAMAGE_ROWS && h_damage_x0[y] <= x0 && h_damage_x1[y] >= x1 && x0 < x1;
 }
 
 static void cb_scroll(void *u, int top, int bot, int n)
@@ -77,6 +99,7 @@ vt_term *h_new(int cols, int rows, enum vt_personality p)
     }
     vt_set_personality(t, p);
     h_reply_clear();
+    h_damage_clear();
     h_damage_calls = h_scroll_calls = h_bells = 0;
     h_music_calls = h_music_bg = h_note_n = 0;
     return t;
