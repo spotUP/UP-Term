@@ -1,7 +1,7 @@
 """ensure_current: the one gate that brings a rig's VTC: to the build before any command goes to the rig (owner
 2026-10-29: "we have lost a lot of time testing with stale binaries"). Before: only start/install refreshed, so a command
 to a running rig ran against whatever VTC: held. Now rig.py's commands and every ami.req pass the gate."""
-import io, pathlib, shutil, sys, tempfile, unittest
+import io, json, pathlib, shutil, sys, tempfile, unittest
 from contextlib import redirect_stdout
 from unittest import mock
 
@@ -24,6 +24,7 @@ class Base(unittest.TestCase):
         self.vtc = self.d / "rig/vtc"
         self.bin = self.vtc / paths.UPTERM_DRAWER / "bin"
         self.bin.mkdir(parents=True)
+        (self.d / "rig/owner.json").write_text(json.dumps({"root": str(self.d), "purpose": "test"}))   # this checkout started the rig
         self.names = ("vsh", "hl", "ixnet.library")
         for n in self.names:
             (self.d / "build/amiga" / n).write_bytes(b"new " + n.encode())
@@ -125,6 +126,44 @@ class Reachable(Base):
                 ami.req(0x01)
             self.assertEqual(order[0][0], "command")   # no gate for a ping
 
+
+
+class OwnerOnly(Base):
+    """Owner 2026-11-04: only the checkout that started a rig refreshes it; a foreign rig gets one [WARN], no push, no reboot."""
+    def foreign(self, record):
+        f = self.d / "rig/owner.json"
+        if record is None: f.unlink()
+        else: f.write_text(json.dumps({"root": record, "purpose": "other"}))
+
+    def run_gate(self):
+        rig.mine = lambda: ["fs-uae"]
+        rig.held_in_memory = lambda n: True
+        with mock.patch.object(rig, "refresh_programs") as push, mock.patch.object(rig, "reboot") as boot:
+            done, out = self.gate()
+        return done, out, push, boot
+
+    def test_own_rig_refreshes_and_reboots(self):
+        self.stale("hl")
+        rig.mine = lambda: ["fs-uae"]; rig.held_in_memory = lambda n: True
+        with mock.patch.object(rig, "refresh_programs", return_value=["hl"]) as push, mock.patch.object(rig, "reboot") as boot, \
+                mock.patch.object(rig.paths, "long_run_active", lambda: False), mock.patch.object(rig.paths, "last_command", lambda: None):
+            done, out = self.gate()
+        push.assert_called_once(); boot.assert_called_once()
+        self.assertIn("[REFRESH]", out)
+
+    def test_foreign_rig_warns_once_and_pushes_nothing(self):
+        self.foreign("/some/other/checkout"); self.stale("hl")
+        done, out, push, boot = self.run_gate()
+        push.assert_not_called(); boot.assert_not_called()
+        self.assertEqual(done, [])
+        self.assertEqual(out.count("[WARN]"), 1); self.assertNotIn("[REFRESH]", out)
+        self.assertEqual((self.vtc / "hl").read_bytes(), b"old")
+
+    def test_rig_without_owner_record_is_foreign(self):
+        self.foreign(None); self.stale("hl")
+        done, out, push, boot = self.run_gate()
+        push.assert_not_called(); boot.assert_not_called()
+        self.assertIn("[WARN]", out)
 
 if __name__ == "__main__":
     unittest.main()

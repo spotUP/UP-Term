@@ -99,6 +99,7 @@ DBG_LOG = RIG / "debugger.log"
 # rewritten from the arguments on every start, and `rig.py aga` alone once turned an --a1200 rig into the
 # default 060 + 1 GB machine, so a 68020 timing run measured the 060 (2026-10-19).
 START_ARGS = RIG / "start.args"
+OWNER_FILE = RIG / "owner.json"   # who started this rig: {"root": checkout that ran start, "purpose": --purpose text}
 # the owner's system disk (2026-10-03: the rig's copy was taken from it;
 # the old source sat in a session scratchpad that is gone). Only read: the
 # rig works on its own copy, build/rig/sys.hdf.
@@ -1772,13 +1773,25 @@ def gate_signature(vtc):
                 sig.append((str(f), None, None))
     return tuple(sig)
 
+def owns_rig(vtc):
+    """True when this checkout (ROOT) is the one that ran `rig.py start` for the rig whose VTC: is `vtc` (owner.json beside
+    it). No record (a rig started before owners were recorded) or an unreadable one counts as foreign (owner 2026-11-04:
+    a read-only probe from another session pushed a build to rig 91 and rebooted it)."""
+    try:
+        rec = json.loads((pathlib.Path(vtc).parent / OWNER_FILE.name).read_text())
+        return pathlib.Path(rec["root"]).resolve() == pathlib.Path(ROOT).resolve()
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
 def ensure_current(vtc=None):
     """The one gate before every command to a rig: VTC: is hashed against the build (build_drift) and a drifted file is
     refreshed (refresh_programs) before the command runs, so no check tests a stale binary (owner 2026-10-29: "we have lost a
     lot of time testing with stale binaries"). Prints `[REFRESH] rig N: <count> file(s): <names>` on drift, nothing without.
     A held-in-memory file (held_in_memory) needs a boot: a quiet running rig is rebooted (reboot(): stop flushes the
     volumes), one with a command in flight (paths.long_run_active, or a command within WATCHDOG_QUIET s: the watchdog's own
-    guard) only gets a [WARN]. Returns the refreshed names."""
+    guard) only gets a [WARN]. Only the checkout that started the rig refreshes (owns_rig); on a foreign rig, or one with no
+    owner record, a drift prints one `[WARN] rig N: ... not refreshed` line and nothing is pushed or rebooted.
+    Returns the refreshed names."""
     vtc = pathlib.Path(vtc) if vtc else RIG / "vtc"
     if GATE_STATE["busy"] or not vtc.is_dir() or not (ROOT / "build/amiga").is_dir():
         return []
@@ -1788,6 +1801,13 @@ def ensure_current(vtc=None):
         if sig == GATE_STATE["sig"]:
             return []
         done = []
+        if not owns_rig(vtc):
+            drift = build_drift(vtc)
+            if drift:
+                print("[WARN] rig %d: %d file(s) differ from this checkout's build (%s) but the rig was started by another "
+                      "checkout; not refreshed" % (paths.RIG_N, len(drift), ", ".join(drift[:4])))
+            GATE_STATE["sig"] = sig
+            return []
         if build_drift(vtc):
             with contextlib.redirect_stdout(io.StringIO()):
                 done = refresh_programs(vtc, ROOT / "build/amiga")
@@ -2174,6 +2194,7 @@ def _start(retries):
         sys_hdf_cpu_lib(RIG / "sys.hdf")   # the master image is never touched; this and any other write into DH0: runs after the clone
     RIG.mkdir(parents=True, exist_ok=True)
     START_ARGS.write_text(json.dumps([a for a in sys.argv[2:] if a != "--keep-sys"]))
+    OWNER_FILE.write_text(json.dumps({"root": str(ROOT), "purpose": PURPOSE}))
     paths.EMU_FILE.write_text(paths.EMU + "\n")   # stop/status of a later call find this rig's emulator without the flag
     setup_config_only()
     paths.cap_fsuae_log(limit=0)   # a fresh log per start (the tail of the last run stays in <name>.tail)
