@@ -406,6 +406,24 @@ static int role_of(struct RastPort *rp, Object *obj)
     return found ? flat_button_role(&self, sib, n) : FLAT_ROLE_PRIMARY;
 }
 
+static int gadget_has_propinfo(struct Gadget *g);
+
+/* S56-LOCALE-KNOB: 1 when obj is the knob frame of a SMARTKNOBIMAGE prop gadget in rp's window (flat_smart_knob holds the rule). */
+static int smart_knob_of(struct RastPort *rp, Object *obj)
+{
+    struct Layer *lay = rp->Layer;
+    struct Window *win = lay ? (struct Window *)lay->Window : NULL;
+    struct Gadget *g;
+    int i;
+    for (g = win ? win->FirstGadget : NULL, i = 0; g && i < 64; g = g->NextGadget, i++) {
+        struct Image *im = (struct Image *)g->GadgetRender;
+        int prop = gadget_has_propinfo(g) && (g->GadgetType & GTYP_GTYPEMASK) == GTYP_PROPGADGET && (g->Flags & GFLG_GADGIMAGE) && im;
+        if (prop && flat_smart_knob(1, ((struct PropInfo *)g->SpecialInfo)->Flags, im->NextImage, obj))
+            return 1;
+    }
+    return 0;
+}
+
 static int c8_skip(Object *obj, Msg msg)
 {
     flatshared *r = g_r;
@@ -437,6 +455,14 @@ static int c8_skip(Object *obj, Msg msg)
         int ox = im->LeftEdge + d->imp_Offset.X, oy = im->TopEdge + d->imp_Offset.Y;
         int w, h;
         flat_frame_size(msg->MethodID == FLAT_IM_DRAWFRAME, d->imp_Dimensions.Width, d->imp_Dimensions.Height, im->Width, im->Height, &w, &h);
+        if (smart_knob_of(d->imp_RPort, obj)) {      /* S56-LOCALE-KNOB: the listview scroller knob takes the Workbench knob pen */
+            struct Window *kw = (struct Window *)d->imp_RPort->Layer->Window;
+            if (!flat_knob_frame_draw(&r->st, d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0, (kw->Flags & WFLG_WINDOWACTIVE) != 0,
+                                      ox, oy, w, h, c2_fill, c2_read, d->imp_RPort))
+                return 0;
+            r->fflat++;
+            return 1;
+        }
         /* FLAT-BUTTON-FILL: the fill pen must exist on this screen (a 4 colour screen has no pen 4) */
         st.pen_button = (UBYTE)flat_button_pen(&r->st, d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0);
         if (!flat_frame_draw_round(&st, (int)d->imp_State, ox, oy, w, h, fill, role_of(d->imp_RPort, obj), c2_fill, c2_read, d->imp_RPort))
