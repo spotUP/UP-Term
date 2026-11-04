@@ -41,3 +41,12 @@ Date 2026-11-04 08:36-09:10. Verdict: NOT PROVEN (steps 1-5 not run; no pre-rese
 - First exception, full message: `subprocess.CalledProcessError: Command '[python3.14, tools/rig/rig.py, 'start', '--keep-sys', '--max', '--os', '32', '--purpose', '...']' returned non-zero exit status 1` raised at rig.py:1935 (`reboot`), after the start step's `auth failed: the Amiga took the connection but its daemon did not answer for 150 s`. Before it, a thread `_watch` in ami.py:237 (`_look` -> requesters -> wasabi read_ui `_fill`) died with `TimeoutError: timed out`. Pattern: every `rig.py reboot` (--keep-sys start on a dirty system disk) loses wasabid; every fresh `start` after `stop --keep` works. Suspect: reboot does not stop fs-uae cleanly before the start, or the dirty DH0 (reset mid-boot) delays wasabid past 150 s; not isolated.
 - Driver script used: scratchpad drive.py (STATUS poll, T0+25 s List, reset, STATUS first read, control at T0+90 s); never got past the first boot.
 - Rig 66 stopped and cleared.
+
+## Run 5 (s54, rig 66) - NOT PROVEN, `start --keep-sys` after `stop --keep` loses wasabid
+
+Date 2026-11-04 09:11-09:28. Verdict: NOT PROVEN (no STATUS line, no marker List taken; neither CONFIRMED nor REFUTED).
+- 09:11-09:14 fresh `rig.py start --max --os 32 --purpose "Amarchy session: flat marker proof run 5"`: rc=0, wasabid up.
+- 09:14:51 `stop --keep` (5 s quiet first), appended `;BEGIN Amarchy-Flat / Run >NIL: VTC:amarchy-flat BOOT / ;END Amarchy-Flat` to build/rig66/os-32/S/User-Startup, `start --keep-sys --max --os 32` (the planned way to avoid `rig.py reboot`). Output: `up`, `[WARN] S:Shell-Startup not read: auth failed: the Amiga took the connection but its daemon did not answer for 150 s - frozen, or stuck on something`, `[REFRESH] rig 66: 2 file(s): pty-handler, vtcon-handler`, `auth failed ... 150 s`; `rig.py status` = down at 09:21.
+- Driver (scratchpad drive5.py) polled `VTC:amarchy-flat STATUS` for 420 s: `09:27:59 A boot1: no STATUS in 420 s`. Steps A and B not run.
+- Finding: the loss of wasabid is not specific to `rig.py reboot`; a plain `stop --keep` then `start --keep-sys` on this image also failed here (Run 4's fresh `start --keep-sys` worked). Difference to Run 4: this boot ran the new Amarchy-Flat startup line on a user-startup edited after the first boot. Cause not isolated (flat BOOT freezing the guest daemon is one candidate; host load 41-83).
+- Rig 66 stopped and cleared.
