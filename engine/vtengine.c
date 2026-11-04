@@ -597,8 +597,11 @@ static int place_link(vt_term *t, vt_line *l, int slot, vt_u16 gen, int col0, in
 }
 
 /* A new image on line l over the columns [col0, col0 + its width): the
- * line's images it covers whole (and the stale ones) go first, so a
- * program drawing frame after frame in one place keeps one image. */
+ * line's images in its own layer (under the text or over it, K30) that it
+ * covers whole (and the stale ones) go first, so a program drawing frame
+ * after frame in one place keeps one image. A picture in the other layer
+ * stays: a z=0 globe over a z=-1 photo does not replace the photo. */
+static int image_under(const vt_image *im);
 static void place_add(vt_term *t, vt_line *l, int slot, int col0, int row)
 {
     vt_image *im = t->imgs[slot], *o;
@@ -607,7 +610,8 @@ static void place_add(vt_term *t, vt_line *l, int slot, int col0, int row)
     while (*at) {
         i = *at;
         o = place_image(t, &t->pl[i]);
-        if (!o || (t->pl[i].col0 >= col0 && t->pl[i].col0 + image_cols(o) <= c1)) {
+        if (!o || (image_under(o) == image_under(im) && t->pl[i].col0 >= col0 &&
+                   t->pl[i].col0 + image_cols(o) <= c1)) {
             *at = t->pl[i].next;
             place_release(t, i);
         } else {
