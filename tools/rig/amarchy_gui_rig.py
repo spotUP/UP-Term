@@ -1200,6 +1200,35 @@ def case_pkg_notfound():
         rel.close()
 
 
+def setup_break_targets(status):
+    """The process numbers --setup Breaks: every running copy of a SETUP_NAMES program, from ANY path. Matching only
+    UP-Term:bin/ and SETUP_BIN missed RAM:amarchy-flat, the resident amarchy_btnbg_rig.py leaves (S57 A7, rig 124): it
+    stayed, setup failed "the earlier amarchy-flat resident unloaded on Break", and the kit Amarchy was already
+    broken, so the next helper said "the Amarchy commodity is not running"."""
+    out = []
+    for l in status.splitlines():
+        m = re.match(r'\s*Process\s+(\d+):\s+Loaded as command:\s+(\S+)', l)
+        if m and re.split(r'[:/]', m.group(2))[-1].lower() in [n.lower() for n in SETUP_NAMES]:
+            out.append(m.group(1))
+    return out
+
+
+def kit_upterm_dir(exists_out):
+    """The installed kit's UP-Term: directory from `Assign UP-Term: EXISTS`, the first target that is not the rig drawer
+    SETUP_BIN lives in (a second --setup sees VTCX:Apps first). A real install puts it at SYS:UP-Term (3.2 rig 124:
+    Empty-12MB-FFS:UP-Term); only the 3.1 kit rigs have Rushhours:Tools/UP-Term, the old fixed path and the fallback.
+    With the fixed path a 3.2 install copied nothing and lost UP-Term: to VTCX:Apps alone (S57 A7)."""
+    drawer = SETUP_BIN.rsplit('/', 1)[0].lower()
+    for l in exists_out.splitlines():
+        t = l.strip()
+        if t.lower().startswith('up-term'):
+            t = t[len('up-term'):].strip()
+        t = t.lstrip('+').strip()
+        if ':' in t and ' ' not in t.strip('"') and not t.startswith(':') and t.lower() != drawer:
+            return t
+    return 'Rushhours:Tools/UP-Term'
+
+
 def setup():
     """--setup: the rig runs the build's Amarchy from VTCX:Apps/bin with UP-Term: assigned to VTCX:Apps, no hand setup.
     The binaries are made first (stage_rig.make), or with --no-build proven current (stage_rig.require_fresh): a stale
@@ -1208,9 +1237,8 @@ def setup():
         stage_rig.require_fresh(SETUP_NAMES)
     else:
         stage_rig.make(SETUP_NAMES)
-    for l in c.run('Status', 20)[1].splitlines():     # the kit Amarchy (and any earlier copy) must not hold the port
-        if 'UP-Term:bin/' in l or SETUP_BIN in l:
-            c.run('Break %s' % l.split()[1].rstrip(':'), 20)
+    for n in setup_break_targets(c.run('Status', 20)[1]):   # the kit Amarchy (and any earlier copy) must not hold the port
+        c.run('Break %s' % n, 20)
     time.sleep(2)
     # Ctrl-C unloads amarchy-flat unless a patch is chained over it; a resident that stays makes the fresh copy say
     # "already running" and exit, so the rig would test the old one
@@ -1218,14 +1246,15 @@ def setup():
         return False
     # Lock("UP-Term:bin") on a multi-directory assign returns only the first match, VTCX:Apps/bin; pl_dup_path puts
     # that one lock on the children's path, so upkg and the rest of the kit must be in it. Kit first, build over it.
-    c.run('Copy Rushhours:Tools/UP-Term/bin %s ALL QUIET' % SETUP_BIN, 120)
+    kit = kit_upterm_dir(c.run('Assign UP-Term: EXISTS', 20)[1])
+    c.run('Copy %s/bin %s ALL QUIET' % (kit, SETUP_BIN), 120)
     for n in SETUP_NAMES:
         ami.put(os.path.join(REPO, 'build/amiga', n), '%s/%s' % (SETUP_BIN, n))
     # VTCX:Apps first so the fresh build shadows the kit's copies in UP-Term:bin;
     # the kit goes after it so upkg and the rest of the kit still resolve.
     # Always with a target: Assign UP-Term: alone deletes the assign.
     c.run('Assign UP-Term: VTCX:Apps', 20)
-    c.run('Assign UP-Term: Rushhours:Tools/UP-Term ADD', 20)
+    c.run('Assign UP-Term: "%s" ADD' % kit, 20)
     for n in SETUP_NAMES:                             # md5sum is on the rig once UP-Term:bin resolves; absent: unverified
         with open(os.path.join(REPO, 'build/amiga', n), 'rb') as fh:
             want = hashlib.md5(fh.read()).hexdigest()
