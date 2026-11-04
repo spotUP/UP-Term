@@ -1034,7 +1034,7 @@ static void test_desk_pointer(void)
 {
     static unsigned char gold[BUF_MAX * 2], out[BUF_MAX * 2];
     gtheme t;
-    long n = slurp(DESK_DATA "pointer-os322.prefs", gold, sizeof gold), chunks, i, diff = 0, bitmap = 0;
+    long n = slurp(DESK_DATA "pointer-os322.prefs", gold, sizeof gold), chunks, i, diff = 0;
     probe_theme(&t);
     CHECK_INT(n, 6012);
     memcpy(out, gold, (size_t)n);
@@ -1043,12 +1043,23 @@ static void test_desk_pointer(void)
     for (i = 0; i < n; i++)
         if (out[i] != gold[i]) {
             diff++;
-            /* only inside the RGB table: body offset 32..40 of a 146-byte chunk step starting at 26 */
-            if ((i - 26) % 146 < 8 + 32 || (i - 26) % 146 >= 8 + 41)
-                bitmap++;
         }
-    CHECK(diff > 0 && diff <= chunks * 9);
-    CHECK_INT(bitmap, 0);
+    CHECK(diff > 0);
+    /* RL8 step 4, flat: the only bitmap change is the third colour (both planes set) folding into the fill: no pixel of the image
+     * carries colour 3 any more, and every pixel the old image drew still draws (fill or outline) */
+    {
+        long c, left = 0, lost = 0, off = 26 + 8 + 41;
+        for (c = 0; c < chunks; c++, off += 146) {
+            long b;
+            for (b = 0; b < 48; b++) {
+                unsigned char g0 = gold[off + b], g1 = gold[off + 48 + b], o0 = out[off + b], o1 = out[off + 48 + b];
+                left += (o0 & o1) != 0;
+                lost += (unsigned char)((g0 | g1) & ~(o0 | o1)) != 0;
+            }
+        }
+        CHECK_INT(left, 0);
+        CHECK_INT(lost, 0);
+    }
     CHECK_INT(out[26 + 8 + 32], 0xff);      /* triple 1: foreground */
     CHECK_INT(out[26 + 8 + 35], 0x13);      /* triple 2: background */
     CHECK_INT(out[26 + 8 + 38], 0x66);      /* triple 3: accent */

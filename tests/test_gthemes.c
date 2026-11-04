@@ -205,7 +205,11 @@ static void test_gthemes_roles(void)
         menu_theme_roles_gui(&t, rgb);
         CHECK_INT(rgb[MT_BG], shipped[i].bg);
         CHECK_INT(rgb[MT_TEXT], shipped[i].fg);
-        CHECK_INT(rgb[MT_DIM], t.muted); /* RL8: the dim role is GR_MUTED (the theme file's muted), was dark_foreground */
+        /* RL8 step 3: the dim role is GR_MUTED, the theme's muted pushed off the surface until it reads at GT_FLOOR_MUTED (menu dim item,
+         * disabled label); a muted that already reads is kept as is */
+        CHECK(gt_contrast(rgb[MT_DIM], rgb[MT_BG]) >= GT_FLOOR_MUTED);
+        if (gt_contrast(t.muted, t.bg) >= GT_FLOOR_MUTED)
+            CHECK_INT(rgb[MT_DIM], t.muted);
         CHECK_INT(rgb[MT_SELTEXT], shipped[i].bg);
         CHECK_INT(rgb[MT_THEME_ACCENT], shipped[i].accent);
         CHECK_INT(rgb[MT_HEAD_ROLE], shipped[i].accent); /* the header follows the theme's accent */
@@ -814,7 +818,7 @@ static void test_gthemes_role_table(void)
         menu_theme_roles_gui(&t, rgb);
         CHECK_INT(rgb[MT_BG], r.c[GR_SURFACE]);
         CHECK_INT(rgb[MT_TEXT], r.c[GR_TEXT]);
-        CHECK_INT(rgb[MT_DIM], r.c[GR_MUTED]);
+        CHECK_INT(rgb[MT_DIM], r.dim);
         CHECK_INT(rgb[MT_SELTEXT], r.c[GR_SURFACE]);
         CHECK_INT(rgb[MT_THEME_ACCENT], r.c[GR_ACCENT]);
         CHECK_INT(rgb[MT_OK], r.ok);

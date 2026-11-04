@@ -97,23 +97,34 @@ uc_u32 gt_darker(const gtheme *t)
 
 /* FLAT-COLOUR-OVERHAUL: the selection pen colour. The theme's selection when it stands GT_FLOOR_SEL off the surface (as the nibble-cut
  * screen shows both), else pushed away from the surface in 10 % steps: toward black on a light ground, toward white on a dark one. */
-uc_u32 gt_selection(const gtheme *t)
+/* c pushed toward goal in 10 % steps until it stands floor off the ground, on the 24-bit palette and as the nibble-cut screen shows it */
+static uc_u32 push_off(uc_u32 c0, uc_u32 goal, uc_u32 ground, int floor)
 {
-    uc_u32 sel = t->selection, goal = gt_luma(t->bg) >= 128 ? 0x000000UL : 0xFFFFFFUL;
     int pct;
     for (pct = 0; pct <= 100; pct += 10) {
-        uc_u32 c = pct ? 0 : sel;
+        uc_u32 c = pct ? 0 : c0;
         if (pct) {
             int sh;
             for (sh = 16; sh >= 0; sh -= 8) {
-                int a = (int)((sel >> sh) & 255), b = (int)((goal >> sh) & 255);
+                int a = (int)((c0 >> sh) & 255), b = (int)((goal >> sh) & 255);
                 c |= (uc_u32)(a + (b - a) * pct / 100) << sh;
             }
         }
-        if (gt_contrast(c, t->bg) >= GT_FLOOR_SEL && gt_contrast(nib(c), nib(t->bg)) >= GT_FLOOR_SEL)
+        if (gt_contrast(c, ground) >= floor && gt_contrast(nib(c), nib(ground)) >= floor)
             return c;
     }
     return goal;
+}
+
+uc_u32 gt_selection(const gtheme *t)
+{
+    return push_off(t->selection, gt_luma(t->bg) >= 128 ? 0x000000UL : 0xFFFFFFUL, t->bg, GT_FLOOR_SEL);
+}
+
+/* RL8 step 3: the muted tone (the menu dim item) pushed off the surface until it reads at GT_FLOOR_MUTED */
+uc_u32 gt_muted(const gtheme *t)
+{
+    return push_off(t->muted, gt_luma(t->bg) >= 128 ? 0x000000UL : 0xFFFFFFUL, t->bg, GT_FLOOR_MUTED);
 }
 
 /* RL8 FLAT-COLOUR-OVERHAUL: the one derivation, the same for every theme (see gthemes_core.h) */
@@ -123,6 +134,7 @@ void gt_roles_of(const gtheme *t, gt_roles *r)
     r->c[GR_SURFACE] = t->bg;
     r->c[GR_TEXT] = t->fg;
     r->c[GR_MUTED] = t->muted;
+    r->dim = gt_muted(t);
     r->c[GR_ACCENT] = t->accent;
     r->c[GR_SELECTION] = gt_selection(t);
     r->c[GR_INACTIVE] = t->inactive;
