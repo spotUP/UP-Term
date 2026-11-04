@@ -58,6 +58,7 @@
 #include "job_dos.h"
 #include "help_core.h"
 #include "flat_core.h"
+#include "richaa_core.h"
 #include "amhelp.inc"          /* amhelp_welcome, amhelp_help: dist/amarchy.help through tools/gen_amarchy_help.py */
 #include "wbreset.h"
 
@@ -87,6 +88,7 @@ typedef struct gui {
     struct RastPort *rp;
     menu_text *mt;               /* every label's font: TrueType through aa_ink or bitmap (menu_text.c), closed at exit */
     struct ColorMap *cm;
+    int depth, npens;            /* RL20: the screen's depth and palette size (at most 256: rich_put's nearest-pen search) */
     mg_font mf;
     mg_geom g;
     int w;                       /* the window's width, every level */
@@ -224,6 +226,31 @@ static void fill(gui *g, int role, int x0, int y0, int x1, int y1)
         return;
     SetAPen(g->rp, (ULONG)g->pen[role]);
     RectFill(g->rp, x0, y0, x1, y1);
+}
+
+/* RL20: one corner pixel of a rounded box. A true-colour screen draws the mixed colour itself, a pen screen the pen that
+ * looks nearest to it (roundaa_core raa_nearest over the screen's palette). */
+static unsigned long rich_pen_rgb(void *u, int pen)
+{
+    return pen_rgb((const gui *)u, pen);
+}
+
+static void rich_put(void *u, int x, int y, unsigned long rgb)
+{
+    gui *g = (gui *)u;
+    if (mt_fill(g->mt, g->rp, x, y, x, y, (ULONG)rgb))
+        return;
+    SetAPen(g->rp, (ULONG)raa_nearest(rich_pen_rgb, g, g->npens, rgb));
+    RectFill(g->rp, x, y, x, y);
+}
+
+/* The box x0..y1 filled in role with antialiased rounded corners blended over bgrole (the colour around it); depth under
+ * RICH_MIN_DEPTH keeps the square stock box */
+static void fill_round(gui *g, int role, int bgrole, int x0, int y0, int x1, int y1)
+{
+    fill(g, role, x0, y0, x1, y1);
+    if (x1 >= x0 && y1 >= y0)
+        rich_corners(g->depth, x0, y0, x1 - x0 + 1, y1 - y0 + 1, role_rgb(g, role), role_rgb(g, bgrole), rich_put, g);
 }
 
 /* A text in a box of height boxh whose top is y, cut to maxw pixels with an ellipsis, in role over the box's
@@ -468,8 +495,8 @@ static void draw_welcome_row(gui *g, int r, int tx, int y, int rbg)
         int i, x = tx;
         for (i = 0; i < 2; i++) {
             int w = mt_width(g->mt, name[i]) + 2 * q->m.row_pad;
-            fill(g, MT_TEXT, x, y + 1, x + w - 1, y + rh - 2);
-            fill(g, i == 0 ? MT_THEME_ACCENT : MT_BG, x + 1, y + 2, x + w - 2, y + rh - 3);
+            fill_round(g, MT_TEXT, MT_BG, x, y + 1, x + w - 1, y + rh - 2);
+            fill_round(g, i == 0 ? MT_THEME_ACCENT : MT_BG, MT_TEXT, x + 1, y + 2, x + w - 2, y + rh - 3);
             put(g, i == 0 ? MT_SELTEXT : MT_TEXT, i == 0 ? MT_THEME_ACCENT : MT_BG, x + q->m.row_pad, y, rh, name[i],
                 (int)strlen(name[i]), w - 2 * q->m.row_pad);
             g->wbx[i][0] = x;
@@ -492,7 +519,10 @@ static void draw_row(gui *g, int e)
     sel = (g->mode == M_LIST && e == g->sel) || g->mode == M_INPUT;
     rbg = sel ? MT_THEME_ACCENT : MT_BG;
     paint_begin(g);
-    fill(g, sel ? MT_THEME_ACCENT : MT_BG, q->list_x, y, q->list_x + q->list_w - 1, bottom);
+    if (sel)
+        fill_round(g, MT_THEME_ACCENT, MT_BG, q->list_x, y, q->list_x + q->list_w - 1, bottom);
+    else
+        fill(g, MT_BG, q->list_x, y, q->list_x + q->list_w - 1, bottom);
     tx = q->list_x + q->m.row_pad;
     tw = q->list_w - 2 * q->m.row_pad;
     if (g->mode == M_LIST && e < g->shift) {      /* the scan's status row */
@@ -1611,6 +1641,8 @@ static const char *screen_bind(gui *g)
     if (!g->scr)
         return "amarchy-gui: no screen\n";
     g->cm = g->scr->ViewPort.ColorMap;
+    g->depth = (int)GetBitMapAttr(g->scr->RastPort.BitMap, BMA_DEPTH);
+    g->npens = g->depth >= 8 ? 256 : (1 << g->depth);
     pick_font(g);
     at_mark("font");
     if (!g->mt) {
