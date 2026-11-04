@@ -203,6 +203,10 @@ def pick(up=None, keep=True):
     the menu is closed only after that (the apply hides and reopens it: THEME-PICK-MENU-STABLE)."""
     c.run('Delete >NIL: ENV:%s QUIET' % t.APPLY_DONE)
     t.open_menu()
+    time.sleep(4)
+    if t.menu_state()[0] is None:   # the first hotkey after an Amarchy start is lost (measured rig 89: the second one opens it)
+        print('[INFO] menu did not open on the first hotkey, again')
+        t.open_menu()
     st, _ = t.wait_stable(t.OPEN_SECS, what='open menu')
     # the top level differs per rig (3.1: Style is the 4th entry; the 3.2 rig lists Apps, Settings, Style): read where it is
     for _ in range(t.style_downs()):
