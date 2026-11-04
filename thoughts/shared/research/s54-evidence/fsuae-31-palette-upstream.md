@@ -98,3 +98,17 @@ Same fault as the patched build? Probably the same root: the guest executes from
 build that PC ($A6/$7A) is a valid low address and the guest crashes; in stock the fetch lands on an unmapped host page and takes the
 host down. Attempt 4 on the stock binary shows the guest-crash form too, so both outcomes occur on stock. Unverified: the guest PC and
 register values at the fault (not read).
+
+## Amiberry retest (s56)
+
+Rig 84, `rig.py start --max --os 31 --emu amiberry` (/Applications/Amiberry.app, 060 JIT, 8 MB fast, 1 GB Z3, ZorroIII gfx 16 MB), same recipe:
+fresh boot (first run after start, then `rig.py reboot`), 20 s settle, owner's GUI-save bytes (tests/data/desk/palette-gui-save.prefs) put to RAM:palette.prefs,
+`Copy RAM:palette.prefs ENV:Sys/palette.prefs`, 30 s wait. SolidWin was NOT switched off (guest `Status` at Copy time: wasabid x2, SolidWin, Workbench), unlike the FS-UAE stock retest.
+Before the Copy every boot answered wasabi (`Version` rc 0), so no boot-config failure.
+
+Result: Amiberry: guest reset into green screen. After the Copy the Amiberry host process stayed alive in all 7 runs (no host death, unlike stock FS-UAE),
+but in 5 of 6 Copy boots (R1-R5) the guest stopped answering wasabi (`Echo alive` returned nothing / connection error). R6 survived (answered rc 0). Control boot R7 (no Copy): alive and answering.
+Owner saw the green screen live on rig 84 in R1 (Kickstart chip-RAM colour, i.e. the guest was resetting/crashed); R1 log: about 3 s after the Copy (13:24:12.9) three
+`--- New exception --- Error in compiled code` JIT faults (AARCH64 store to unmapped m68k address bc9e1002 / cdfe1006, pc=00f8198a in ROM, D0=cf3a1002, "dummy_bank store ... ignored"),
+then the log stops at 13:24:17 and the process idles at 0.1 % CPU. The JIT-fault lines were seen in R1 only by log inspection; R2-R5 were judged by wasabi silence (their exception counts in the shared log were not tracked per run: 0,3,3,3,0,0 for R2-R7 as counted, unreliable).
+Reading: the bug is not FS-UAE specific; Amiberry with JIT reproduces a guest crash (5 of 6) after the same Copy. Host process survives there, so the stock FS-UAE host SIGSEGV is a different symptom of the same guest-side event (wild store/jump after the RTG -> native Workbench reset). Unverified: whether it reproduces with JIT off.
