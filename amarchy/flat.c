@@ -20,8 +20,9 @@
  * DirectoryOpus program). `amarchy-flat DOPUS` makes the running program look for DOpus again (Ctrl-D signal).
  *
  * FLAT-C4 kill switches (OD-F5, OD-F7; flat_core.h): the program starts INERT (no hook, no DOpus patch, STATUS
- * flat=held why=...) when ENVARC:Amarchy/flat-starting exists (written before the swap, deleted 60 s later by a
- * timer; a start that crashed the machine leaves it, the next start consumes it and stays inert), when both mouse
+ * flat=held why=...) when ENVARC:Amarchy/flat-starting counts FLAT_MARKER_STRIKES starts (written before the swap
+ * with the found count + 1, deleted 60 s later by a timer; two starts in a row that died early leave count 2, the
+ * next start consumes it and stays inert; one early death is forgiven), when both mouse
  * buttons are down at start, or when VisualPrefs / Birdie runs or a foreign hook already sits on the sysiclass slot.
  * Return code: 0 done, 5 another copy is running, 10 no memory. */
 #include <string.h>
