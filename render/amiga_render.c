@@ -2663,35 +2663,12 @@ static void img_run_rgb(vr_render *r, const vt_image_view *v, LONG sx, LONG sy, 
                         (UWORD)h, VR_RECTFMT_RGBA);
 }
 
-static void img_run(vr_render *r, const vt_image_view *v, int a, int b, int y)
+/* A run of an index picture (fmt 0): w x h pixels at source (sx, sy), on screen at (dx, dy). */
+static void img_write_idx(vr_render *r, const vt_image_view *v, LONG sx, LONG sy, LONG w, LONG h, WORD dx, WORD dy)
 {
-    LONG sx = (LONG)(a - v->col0) * v->cw - v->px0, sy = v->py, w = (LONG)(b - a) * r->cw, h = r->ch;
     LONG stride, k, j;
-    WORD dx = (WORD)(r->ox + a * r->cw), dy = (WORD)(r->oy + y * r->ch);
     const vt_u8 *src;
     UBYTE *d;
-    if (sx < 0) { /* the first cell: the image starts px0 pixels in, the rest keeps the background */
-        dx = (WORD)(dx - sx);
-        w += sx;
-        sx = 0;
-    }
-    if (sy < 0) { /* the first row: py0 pixels down */
-        dy = (WORD)(dy - sy);
-        h += sy;
-        sy = 0;
-    }
-    if (sx >= v->w || sy >= v->h)
-        return;
-    if (w > v->w - sx)
-        w = v->w - sx;
-    if (h > v->h - sy)
-        h = v->h - sy;
-    if (w <= 0 || h <= 0)
-        return;
-    if (v->fmt == 1) {
-        img_run_rgb(r, v, sx, sy, w, h, dx, dy);
-        return;
-    }
     if (!r->img) {
         /* the window's first image: its colour tables now (vr_images) */
         if (!(r->img = (struct vr_images *)AllocVec(sizeof(struct vr_images), MEMF_ANY | MEMF_CLEAR)))
@@ -2735,6 +2712,59 @@ static void img_run(vr_render *r, const vt_image_view *v, int a, int b, int y)
         }
     }
 }
+
+/* A kitty picture composes over what is beneath: its index 0 (alpha below 128, kit_quant) never paints, so each
+ * row goes out as runs of the pixels that do (sixel keeps index 0 as the background: P2 semantics). */
+static void img_write_idx_keep(vr_render *r, const vt_image_view *v, LONG sx, LONG sy, LONG w, LONG h, WORD dx,
+                               WORD dy)
+{
+    LONG k, j, j0;
+    for (k = 0; k < h; k++) {
+        const vt_u8 *row = v->pix + (sy + k) * v->w + sx;
+        for (j = 0; j < w;) {
+            while (j < w && !row[j])
+                j++;
+            j0 = j;
+            while (j < w && row[j])
+                j++;
+            if (j > j0)
+                img_write_idx(r, v, sx + j0, sy + k, j - j0, 1, (WORD)(dx + j0), (WORD)(dy + k));
+        }
+    }
+}
+
+static void img_run(vr_render *r, const vt_image_view *v, int a, int b, int y)
+{
+    LONG sx = (LONG)(a - v->col0) * v->cw - v->px0, sy = v->py, w = (LONG)(b - a) * r->cw, h = r->ch;
+    WORD dx = (WORD)(r->ox + a * r->cw), dy = (WORD)(r->oy + y * r->ch);
+    if (sx < 0) { /* the first cell: the image starts px0 pixels in, the rest keeps the background */
+        dx = (WORD)(dx - sx);
+        w += sx;
+        sx = 0;
+    }
+    if (sy < 0) { /* the first row: py0 pixels down */
+        dy = (WORD)(dy - sy);
+        h += sy;
+        sy = 0;
+    }
+    if (sx >= v->w || sy >= v->h)
+        return;
+    if (w > v->w - sx)
+        w = v->w - sx;
+    if (h > v->h - sy)
+        h = v->h - sy;
+    if (w <= 0 || h <= 0)
+        return;
+    if (v->fmt == 1) {
+        img_run_rgb(r, v, sx, sy, w, h, dx, dy);
+        return;
+    }
+    if (v->kitty)
+        img_write_idx_keep(r, v, sx, sy, w, h, dx, dy);
+    else
+        img_write_idx(r, v, sx, sy, w, h, dx, dy);
+}
+
 
 /* The images on screen rows [y0, y1), cells [x0, x1): drawn over what
  * draw_rows put there, in the cells still marked as theirs, the oldest

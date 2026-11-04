@@ -5623,6 +5623,7 @@ int vt_row_image(const vt_term *t, int row, int i, vt_image_view *v)
         v->npal = im->npal;
         v->fmt = im->fmt;
         v->opaque = im->opaque;
+        v->kitty = im->kind != 0;
         v->cw = im->cw;
         v->ch = im->ch;
         v->col0 = t->pl[k].col0;
