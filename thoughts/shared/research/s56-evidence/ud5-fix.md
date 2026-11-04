@@ -19,3 +19,7 @@ Scene: /split right, /pane focus, zoom, unzoom, /pane close other, /pane focus; 
 Tests: tests/test_slash.c (parse + error forms), tests/test_updemo.c scene log.
 Fail before (v1 code, new tests): slash FAIL test_slash.c:71 parse("/pane close other") = 2, want 1 (2 failed);
 updemo FAIL test_updemo.c:769 (1 failed). After: slash 426 checks 0 failed, updemo 8689 checks 0 failed. make amiga rc 0.
+Rig 106 (v2, b7d62363, --allow-stale-base: missing origin/main commit cb830707 is evidence-only): UPDemo 8 ran, q and the
+prompt came back; 8 shots in ~/Desktop/upterm-shots/s56-ud5/ (r1-r8, a-c, d-after-q). Density-map of the window region
+showed no mid-window divider column and no "make the window bigger" text in r4/r8, but the shots did not catch the split
+frame (timing), so the split-and-close sequence is NOT proven on the rig; `/pane close other` by hand NOT run. Open.
