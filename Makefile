@@ -177,6 +177,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_stamp ]; then python3 -I tests/test_amarchy_menu_stamp.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = wb_lock_guard ]; then python3 -I tests/test_wb_lock_guard.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_wbr_drop ]; then python3 -I tests/test_gui_wbr_drop.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_wbr_drop ]; then python3 -I tests/test_menu_wbr_drop.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_install_no_vsh ]; then python3 -I tests/test_rig_install_no_vsh.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_themes_live ]; then python3 -I tests/test_rig_themes_live.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_installer_free ]; then python3 -I tests/test_installer_rig_free.py; fi
