@@ -896,6 +896,32 @@ static void left_and_b_go_back_a_scene(void)
     }
 }
 
+/* UPDEMO15-EXIT-PROMPT-TOP: UPDemo 15 plays to the end through the reflow scene, the one drawn on the main
+ * screen. When the demo ends, the shell's next prompt comes at the start of a row below the last text on the main
+ * screen, never on a row above it (rig 96: the prompt printed on row 1 over the reflow paragraph). */
+static void the_prompt_after_the_demo_comes_below_the_main_screen_text(void)
+{
+    int x, y, last, r, pass;
+    for (pass = 0; pass < 2; pass++) {
+        start(80, 24);
+        if (pass) /* the demo ends in the reflow scene itself, on the main screen */
+            updemo_only(1);
+        CHECK_INT(updemo_run(&io, 80, 24, pass ? scene_index("reflow") : 14, 6), 0);
+        updemo_only(0);
+        CHECK(!(vt_modes(t) & VT_MODE_ALT_SCREEN));
+        CHECK_STR(row_text(0), "Reflow on resize"); /* the scene ran, on the main screen */
+        vt_cursor(t, &x, &y);
+        last = -1;
+        for (r = 0; r < vt_rows(t); r++)
+            if (*row_text(r))
+                last = r;
+        CHECK(last > 0);
+        CHECK(y > last);
+        CHECK_INT(x, 0);
+        vt_free(t);
+    }
+}
+
 static void q_esc_and_ctrl_c_end_the_demo(void)
 {
     const char *seq[] = { "q", "Q", "\033", "\003" };
@@ -1558,6 +1584,7 @@ void suite_updemo(void)
     a_key_goes_to_the_next_scene_and_the_demo_keeps_running();
     left_and_b_go_back_a_scene();
     q_esc_and_ctrl_c_end_the_demo();
+    the_prompt_after_the_demo_comes_below_the_main_screen_text();
     an_arrow_key_sequence_is_not_taken_as_esc_and_a_mouse_report_is_no_key();
     the_mouse_scene_shows_a_click();
     the_resize_scene_leaves_the_width_as_it_was();
