@@ -14,7 +14,7 @@ status: handoff
 
 ## Open (in this order)
 
-1. Palette Copy crash: FS-UAE JIT off still loses the guest 6 of 6 (8d27c275); JIT on kills the host 2 of 2. Cause is guest-side (P96 or the palette prefs path); JIT only turns a wedged guest into a host SIGSEGV. Filing decision with owner: whether to report the host SIGSEGV (emulator should not die on guest code) and whether the next hunt is guest-side (screen + registers after Copy, JIT off). Then remove the worktree `~/Code/Emulators/fs-uae-stock`. Register: test-register.md "Palette Copy crash".
+1. Palette Copy crash: CLOSED. Mechanism found (0edf1639): IPrefs 40.7 applying a 3.2-saved palette.prefs drives ROM intuition into exec AddHead on a NULL-based list, writing $B2 into $4 (ExecBase); next interrupt jumps wild (JIT on = host SIGSEGV). Splits (1f33762b): needs IPrefs + those bytes, not SolidWin, not the RTG screen; a 3.1 Palette editor Save does not trigger it. This is the known DESK-31-CRASH, already gated in Amarchy (desk_palette_editor_ok >= 47). No emulator report (owner s56). fs-uae-stock worktree removed.
 2. Owner eye check on rig 96 (7e51272c): new-shell knob, Locale listview knobs, Cancel corners. Rig 96 [WARN] from the install: DOpus 5.104 not installed, updemo files missing, WB stayed PAL.
 3. S56-LOCALE-SAVE-FILL (unverified): the Save button fill may be pen 0 at depth 8. Check it with one pixel dump on the next shared rig run.
 4. Flat budget has zero headroom. The next frame on the draw path breaks it, so trim before adding.
