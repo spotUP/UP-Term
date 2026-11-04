@@ -422,4 +422,19 @@ int flat_pens_follow(flat_pens *p, const flat_pen_ops *o, flat_state *s, int wan
  * modes, RTG and an unknown mode (rx or ry 0) give 1. Shared by the flat patch and the Amarchy GUI (welcome checkbox). */
 int flat_side_px(int rx, int ry);
 
+/* FLAT-ASPECT-SLOTS: the side-line column count per screen. A small table filled on the main task (which can look at every
+ * screen); the draw hook only reads it (flat_aspect_find), so no DisplayInfo call or frame lands on the draw task's stack. */
+#define FLAT_ASPECT_SLOTS 8
+typedef struct flat_aspect_slot {
+    const void *scr;            /* the screen (compared, never dereferenced); NULL = free */
+    unsigned long mode;         /* its mode ID when px was measured */
+    int px;                     /* flat_side_px of that mode's Resolution */
+} flat_aspect_slot;
+/* px of scr, 1 when scr is NULL or has no slot. */
+int flat_aspect_find(const flat_aspect_slot *t, int n, const void *scr);
+/* 1 when scr has no slot yet or its slot was measured for another mode: the caller then measures and calls flat_aspect_put. */
+int flat_aspect_need(const flat_aspect_slot *t, int n, const void *scr, unsigned long mode);
+/* store px for scr: its own slot, else a free one, else the last (evicted). */
+void flat_aspect_put(flat_aspect_slot *t, int n, const void *scr, unsigned long mode, int px);
+
 #endif

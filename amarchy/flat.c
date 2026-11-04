@@ -747,29 +747,33 @@ static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, LO
     return -1;
 }
 
-/* FLAT-ASPECT-BORDERS: the column count of the left and right outer lines (flat_side_px of the Workbench screen's DisplayInfo
- * Resolution, the same lookup the menus use: menu_screen_aspect). The lookup runs on the main task (aspect_update, from pens_run
- * under the locked screen) and is cached per (screen, mode ID): the draw hook only reads the cached count, so the DisplayInfo
- * call and its frame stay off the draw-task stack (flat budget). A window on another screen draws the plain one-column line. */
+/* FLAT-ASPECT-BORDERS: the column count of the left and right outer lines (flat_side_px of the screen's DisplayInfo Resolution,
+ * the same lookup the menus use: menu_screen_aspect). The lookup runs on the main task (aspect_update, from pens_run, over every
+ * open screen under LockIBase) into a per-screen slot table (flat_aspect_slot, one lookup per screen and mode ID); the draw hook
+ * only reads its slot, so the DisplayInfo call and its frame stay off the draw-task stack (flat budget, and a GetScreenDrawInfo
+ * there could wait on a lock the drawing task already holds). A screen opened since the last update draws one column. */
 static int side_px(flatshared *r, struct Screen *scr)
 {
-    return (scr && scr == r->aspect_scr) ? r->aspect_px : 1;
+    return flat_aspect_find(r->aspect_slot, FLAT_ASPECT_SLOTS, scr);
 }
 
-static void aspect_update(flatshared *r, struct Screen *scr)
+static void aspect_update(flatshared *r, struct Screen *wb)
 {
-    ULONG mode;
-    int rx, ry;
-    if (!scr)
-        return;
-    mode = GetVPModeID(&scr->ViewPort);
-    if (scr != r->aspect_scr || mode != r->aspect_mode) {
-        menu_screen_aspect(scr, &rx, &ry);
-        r->aspect_px = flat_side_px(rx, ry);
-        r->aspect_scr = scr;
-        r->aspect_mode = mode;
-        r->aspect_looks++;
+    ULONG lock = LockIBase(0);
+    struct Screen *sc;
+    int n;
+    for (sc = IntuitionBase->FirstScreen, n = 0; sc && n < FLAT_ASPECT_SLOTS; sc = sc->NextScreen, n++) {
+        ULONG mode = GetVPModeID(&sc->ViewPort);
+        if (flat_aspect_need(r->aspect_slot, FLAT_ASPECT_SLOTS, sc, mode)) {
+            int rx, ry;
+            menu_screen_aspect(sc, &rx, &ry);
+            flat_aspect_put(r->aspect_slot, FLAT_ASPECT_SLOTS, sc, mode, flat_side_px(rx, ry));
+            r->aspect_looks++;
+        }
     }
+    UnlockIBase(lock);
+    if (wb)
+        r->aspect_px = flat_aspect_find(r->aspect_slot, FLAT_ASPECT_SLOTS, wb);
 }
 
 /* S32-GHOST-MENU: Intuition's 3.2 menu ghost (flat_gm_pen) becomes the dim label pen: every non-background pixel of the rect

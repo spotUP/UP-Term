@@ -892,6 +892,29 @@ static void test_which_from_gtype(void)
         CHECK_INT(flat_side_px(44, 22), 1);      /* lores interlace: wide pixels, sides stay 1 */
         CHECK_INT(flat_side_px(0, 0), 1);        /* unknown mode / RTG without DisplayInfo */
         CHECK_INT(flat_side_px(30, 44), 1);      /* 1.47 rounds to 1 */
+        {   /* FLAT-ASPECT-SLOTS: each screen keeps its own count, not only the Workbench one */
+            flat_aspect_slot t[FLAT_ASPECT_SLOTS];
+            int wb, hires, lores, i;     /* addresses only: the table never dereferences them */
+            memset(t, 0, sizeof t);
+            CHECK_INT(flat_aspect_find(t, FLAT_ASPECT_SLOTS, &wb), 1);              /* unknown screen */
+            CHECK_INT(flat_aspect_need(t, FLAT_ASPECT_SLOTS, &wb, 5), 1);
+            flat_aspect_put(t, FLAT_ASPECT_SLOTS, &wb, 5, flat_side_px(44, 44));    /* Workbench: lores, 1 */
+            flat_aspect_put(t, FLAT_ASPECT_SLOTS, &hires, 7, flat_side_px(22, 44)); /* custom hires screen: 2 */
+            flat_aspect_put(t, FLAT_ASPECT_SLOTS, &lores, 9, flat_side_px(11, 44)); /* super hires: 4 */
+            CHECK_INT(flat_aspect_find(t, FLAT_ASPECT_SLOTS, &wb), 1);
+            CHECK_INT(flat_aspect_find(t, FLAT_ASPECT_SLOTS, &hires), 2);
+            CHECK_INT(flat_aspect_find(t, FLAT_ASPECT_SLOTS, &lores), 4);
+            CHECK_INT(flat_aspect_find(t, FLAT_ASPECT_SLOTS, NULL), 1);
+            CHECK_INT(flat_aspect_need(t, FLAT_ASPECT_SLOTS, &hires, 7), 0);        /* same mode: cached */
+            CHECK_INT(flat_aspect_need(t, FLAT_ASPECT_SLOTS, &hires, 8), 1);        /* mode switched: measure again */
+            flat_aspect_put(t, FLAT_ASPECT_SLOTS, &hires, 8, 1);
+            CHECK_INT(flat_aspect_find(t, FLAT_ASPECT_SLOTS, &hires), 1);
+            for (i = 0; i < FLAT_ASPECT_SLOTS + 2; i++) {                            /* overflow evicts the last, keeps the rest */
+                static int more[FLAT_ASPECT_SLOTS + 2];
+                flat_aspect_put(t, FLAT_ASPECT_SLOTS, &more[i], 1, 3);
+            }
+            CHECK_INT(flat_aspect_find(t, FLAT_ASPECT_SLOTS, &lores), 4);
+        }
         CHECK_INT(flat_outer_edge_fill(640, 256, 0, 1, 0, 255, flat_side_px(22, 44), r), 1);       /* left: x 0..1 */
         CHECK_INT(r[0], 0); CHECK_INT(r[1], 1); CHECK_INT(r[2], 1); CHECK_INT(r[3], 255);
         CHECK_INT(flat_outer_edge_fill(640, 256, 639, 1, 639, 254, 2, r), 1);   /* right: x 638..639 */
