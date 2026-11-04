@@ -6,6 +6,7 @@
 #include <string.h>
 #include "../amarchy/flat_core.h"
 #include "../amarchy/flat_glyph.h"
+#include "../amarchy/roundaa_core.h"
 #include "../amarchy/desk_core.h"
 #define ROMSPAN_VEC
 #include "../device/romspan.h"
@@ -512,6 +513,81 @@ static void test_glyph_solid_and_state_equal(void)
             }
         }
     }
+}
+
+/* RL19 SELECTA-AA-ROUND: antialiased corners. Palette: pen 0 background 0x000000, pen 1 box 0xFFFFFF, pens 2..4 greys 0x404040 0x808080 0xC0C0C0 */
+static void round_fill(void *ctx, int x0, int y0, int x1, int y1, int pen);
+static int round_read(void *ctx, int x, int y);
+static const unsigned long raa_test_pal[5] = { 0x000000UL, 0xFFFFFFUL, 0x404040UL, 0x808080UL, 0xC0C0C0UL };
+static unsigned long raa_test_rgb(void *ctx, int pen) { (void)ctx; return raa_test_pal[pen]; }
+static void test_round_aa(void)
+{
+    struct round_canvas { int pix[40][60]; } *cv = (struct round_canvas *)calloc(1, sizeof *cv);
+    flat_state fs;
+    int x, y, blended = 0, mid = 0, stock0, pen_bd;
+    memset(&fs, 0, sizeof fs);
+    fs.enabled = 1; fs.pen_line = 1; fs.pen_back = 0; fs.pen_button = 4; fs.pen_text = 2;
+    /* raa_cover: inside 255, outside 0, the edge between */
+    CHECK_INT(raa_cover(20, 14, 4, 10, 7), 255);
+    CHECK_INT(raa_cover(20, 14, 4, 4, 0), 255);                     /* straight edge beside the corner square */
+    CHECK_INT(raa_cover(20, 14, 4, 0, 0), 0);                       /* the very corner pixel: outside the circle */
+    CHECK_INT(raa_cover(20, 14, 4, 19, 13), 0);
+    CHECK_INT(raa_cover(20, 14, 4, 3, 3), 255);                     /* nearest the circle centre */
+    CHECK_INT(raa_cover(20, 14, 4, 1, 1) > 0 && raa_cover(20, 14, 4, 1, 1) < 255, 1);
+    CHECK_INT(raa_cover(20, 14, 4, 2, 0) > 0 && raa_cover(20, 14, 4, 2, 0) < 255, 1);
+    CHECK_INT(raa_cover(20, 14, 4, 19, 0) == raa_cover(20, 14, 4, 0, 0) && raa_cover(20, 14, 4, 0, 13) == raa_cover(20, 14, 4, 0, 0), 1);   /* mirrored */
+    CHECK_INT(raa_cover(20, 14, 4, 20, 0), 0);                      /* off the box */
+    CHECK_INT(raa_round_inset(20, 14, 4, 0) >= raa_round_inset(20, 14, 4, 1) && raa_round_inset(20, 14, 4, 4), 0);
+    /* raa_radius: 2 under 12 px high, else 4 */
+    CHECK_INT(raa_radius(11), 2);
+    CHECK_INT(raa_radius(12), 4);
+    /* raa_nearest from a known palette */
+    CHECK_INT(raa_nearest(raa_test_rgb, 0, 5, 0x000000UL), 0);
+    CHECK_INT(raa_nearest(raa_test_rgb, 0, 5, 0xFFFFFFUL), 1);
+    CHECK_INT(raa_nearest(raa_test_rgb, 0, 5, 0x7F7F7FUL), 3);
+    CHECK_INT(raa_nearest(raa_test_rgb, 0, 5, 0x454545UL), 2);
+    CHECK_INT(raa_nearest(raa_test_rgb, 0, 5, 0xBBBBBBUL), 4);
+    /* stock corners for the same box, to compare against */
+    for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 0;
+    CHECK_INT(flat_frame_draw_round(&fs, 0, 10, 10, 20, 14, 1, 0, round_fill, round_read, cv), 1);
+    stock0 = cv->pix[11][11];
+    CHECK_INT(stock0 == 1 || stock0 == 0, 1);                       /* stock: hard, one of fill or backdrop */
+    /* the antialiased box: intermediate pens appear in the corners, the middle keeps the fill */
+    for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 0;
+    CHECK_INT(raa_frame_draw(&fs, 0, 10, 10, 20, 14, 1, 0, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);
+    CHECK_INT(cv->pix[17][20], 1);                                  /* body */
+    CHECK_INT(cv->pix[10][10], 0);                                  /* corner pixel: backdrop */
+    for (y = 10; y < 14; y++) for (x = 10; x < 14; x++) if (cv->pix[y][x] >= 2) mid++;
+    CHECK_INT(mid > 0, 1);                                          /* grey pens in the corner: the blend ran */
+    CHECK_INT(blended > 0, 1);
+    pen_bd = cv->pix[10][12];
+    CHECK_INT(pen_bd >= 2 && pen_bd <= 4, 1);                       /* edge pixel (2,0): between box and backdrop */
+    CHECK_INT(cv->pix[10][27] >= 2 && cv->pix[23][29] == 0, 1);     /* other corners alike */
+    /* fallbacks: the stock corners, no blend */
+    for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 0;
+    CHECK_INT(raa_frame_draw(&fs, 0, 10, 10, 20, 14, 1, 0, round_fill, round_read, raa_test_rgb, 0, cv, &blended), 1);
+    CHECK_INT(blended, 0);
+    CHECK_INT(cv->pix[11][11], stock0);
+    CHECK_INT(cv->pix[10][10], 0);                                  /* stock cut still made */
+    CHECK_INT(raa_frame_draw(&fs, 0, 10, 10, 20, 14, 1, 0, round_fill, round_read, raa_test_rgb, 300, cv, &blended) && !blended, 1);
+    CHECK_INT(raa_frame_draw(&fs, 0, 10, 10, 20, 14, 0, 0, round_fill, round_read, raa_test_rgb, 5, cv, &blended) && !blended, 1);   /* unfilled */
+    CHECK_INT(raa_frame_draw(&fs, 0, 10, 10, 20, 14, 1, FLAT_ROLE_SECONDARY, round_fill, round_read, raa_test_rgb, 5, cv, &blended) && !blended, 1);
+    for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 9;       /* pen 9 is not in a 5 pen palette: unreadable */
+    CHECK_INT(raa_frame_draw(&fs, 0, 10, 10, 20, 14, 1, 0, round_fill, round_read, raa_test_rgb, 5, cv, &blended) && !blended, 1);
+    CHECK_INT(cv->pix[10][10], 9);
+    /* the scroller knob takes the same path */
+    memset(&fs, 0, sizeof fs);
+    fs.enabled = 1; fs.pen_text = 2; fs.pen_line = 3; fs.pen_back = 0; fs.pen_outline = 3; fs.pen_button = 4; fs.pen_knob = 1; fs.pen_inbar = 1;
+    for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 0;
+    blended = 0;
+    CHECK_INT(raa_knob_frame_draw(&fs, 8, 1, 10, 10, 10, 18, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);
+    CHECK_INT(blended > 0, 1);
+    CHECK_INT(cv->pix[10][10], 0);
+    CHECK_INT(cv->pix[14][14] == flat_knob_state_pen(&fs, 8, 1), 1);
+    mid = 0;
+    for (y = 10; y < 14; y++) for (x = 10; x < 14; x++) if (cv->pix[y][x] >= 2) mid++;
+    CHECK_INT(mid > 0, 1);
+    free(cv);
 }
 
 static void test_glyph_route(void)
@@ -2118,4 +2194,5 @@ void suite_flat_core(void)
     test_glyph_states();
     test_glyph_frame_bg();
     test_glyph_route();
+    test_round_aa();
 }

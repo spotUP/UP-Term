@@ -297,7 +297,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 # never clash), -MMD/-MP dependency files so a header change rebuilds only the objects that include it, and a link step.
 # Editing one file recompiles one object (HOST-TEST-INCREMENTAL). The generated menu icon page is order-only: it must
 # exist before the first compile, and from then on the .d file names it as an ordinary prerequisite.
-VTTEST_HOST_SRC := handler/brk.c $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(PROC_CORE) $(CONF) $(SPLITS) config/keymap.c amarchy/cxdesc.c amarchy/amconf_core.c amarchy/amconf_keys.c amarchy/menu_core.c amarchy/leaf_core.c amarchy/leaf_pkg.c amarchy/menu_tree.c amarchy/index_core.c amarchy/index_load.c amarchy/clips_core.c amarchy/shot_core.c amarchy/icon_core.c amarchy/menu_geom.c amarchy/menu_icon.c amarchy/menu_theme.c amarchy/win_core.c amarchy/tile_core.c handler/keymap_act.c handler/upmru.c $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) $(TELNET) demo/updemo.c $(VIEW_CORE) $(CLAUDE_CORE) $(TESTS) amarchy/gthemes_core.c amarchy/desk_core.c amarchy/menu_text_core.c amarchy/menusrv_core.c amarchy/pkgs_core.c amarchy/job_core.c amarchy/bar_core.c amarchy/tick_core.c amarchy/wbmode_core.c amarchy/status_core.c amarchy/barconf_core.c amarchy/note_core.c amarchy/flat_core.c amarchy/iconfile_core.c amarchy/iconapply_core.c amarchy/iconpen_core.c amarchy/flat_glyph.c amarchy/wbreset_core.c amarchy/borderblank_core.c amarchy/help_core.c
+VTTEST_HOST_SRC := handler/brk.c $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(PROC_CORE) $(CONF) $(SPLITS) config/keymap.c amarchy/cxdesc.c amarchy/amconf_core.c amarchy/amconf_keys.c amarchy/menu_core.c amarchy/leaf_core.c amarchy/leaf_pkg.c amarchy/menu_tree.c amarchy/index_core.c amarchy/index_load.c amarchy/clips_core.c amarchy/shot_core.c amarchy/icon_core.c amarchy/menu_geom.c amarchy/menu_icon.c amarchy/menu_theme.c amarchy/win_core.c amarchy/tile_core.c handler/keymap_act.c handler/upmru.c $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) $(TELNET) demo/updemo.c $(VIEW_CORE) $(CLAUDE_CORE) $(TESTS) amarchy/gthemes_core.c amarchy/desk_core.c amarchy/menu_text_core.c amarchy/menusrv_core.c amarchy/pkgs_core.c amarchy/job_core.c amarchy/bar_core.c amarchy/tick_core.c amarchy/wbmode_core.c amarchy/status_core.c amarchy/barconf_core.c amarchy/note_core.c amarchy/flat_core.c amarchy/iconfile_core.c amarchy/iconapply_core.c amarchy/iconpen_core.c amarchy/flat_glyph.c amarchy/roundaa_core.c amarchy/wbreset_core.c amarchy/borderblank_core.c amarchy/help_core.c
 VTTEST_HOST_OBJ := $(patsubst %.c,$(BUILD)/host-obj/%.o,$(VTTEST_HOST_SRC))
 
 $(VTTEST_HOST_OBJ): $(BUILD)/host-obj/%.o: %.c | $(MENU_ICONS_INC)
@@ -1036,12 +1036,12 @@ $(BUILD)/amiga/amarchy-index: $(AMARCHY_INDEX_SRC) amarchy/taskalive.h amarchy/i
 # no ixemul; it keeps the public state block "Amarchy.Flat" that Amarchy writes. flat_core.c is host-tested.
 .PHONY: amarchy-flat
 amarchy-flat: $(BUILD)/amiga/amarchy-flat
-$(BUILD)/amiga/amarchy-flat: device/romspan.h amarchy/flat_shared.h amarchy/flat.c amarchy/menu_font.c amarchy/menu_font.h render/fontpair.c render/fontpair.h amarchy/flat_rf.s amarchy/flat_tx.s amarchy/flat_glyph.c amarchy/flat_glyph.h amarchy/flat_core.c amarchy/desk_core.c amarchy/desk_core.h amarchy/gthemes_core.c amarchy/gthemes_core.h amarchy/iconpen_core.c amarchy/iconpen_core.h amarchy/iconpen_dos.c amarchy/iconpen_dos.h handler/be32.c handler/be32.h amarchy/taskalive.c amarchy/flat_core.h amarchy/taskalive.h tty/qmark.h amarchy/poll_timer.c amarchy/poll_timer.h amarchy/amconf_core.h amarchy/amconf_dos.h $(AMARCHY_LEAF_DEPS)
+$(BUILD)/amiga/amarchy-flat: device/romspan.h amarchy/flat_shared.h amarchy/flat.c amarchy/menu_font.c amarchy/menu_font.h render/fontpair.c render/fontpair.h amarchy/flat_rf.s amarchy/flat_tx.s amarchy/flat_glyph.c amarchy/flat_glyph.h amarchy/roundaa_core.c amarchy/roundaa_core.h render/emoji.c render/emoji.h render/unifont.c render/unifont.h render/pen_match.h amarchy/flat_core.c amarchy/desk_core.c amarchy/desk_core.h amarchy/gthemes_core.c amarchy/gthemes_core.h amarchy/iconpen_core.c amarchy/iconpen_core.h amarchy/iconpen_dos.c amarchy/iconpen_dos.h handler/be32.c handler/be32.h amarchy/taskalive.c amarchy/flat_core.h amarchy/taskalive.h tty/qmark.h amarchy/poll_timer.c amarchy/poll_timer.h amarchy/amconf_core.h amarchy/amconf_dos.h $(AMARCHY_LEAF_DEPS)
 	@mkdir -p $(BUILD)/amiga
 	@mkdir -p $(BUILD)/amiga/obj
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_rf.o amarchy/flat_rf.s
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_tx.o amarchy/flat_tx.s
-	$(VC) -dontwarn=153,65 -o $@ amarchy/flat.c $(BUILD)/amiga/obj/flat_rf.o $(BUILD)/amiga/obj/flat_tx.o amarchy/flat_glyph.c amarchy/menu_font.c render/fontpair.c amarchy/flat_core.c amarchy/desk_core.c amarchy/gthemes_core.c amarchy/iconpen_core.c amarchy/iconpen_dos.c handler/be32.c amarchy/taskalive.c amarchy/poll_timer.c $(AMARCHY_LEAF_DEPS)
+	$(VC) -dontwarn=153,65 -o $@ amarchy/flat.c $(BUILD)/amiga/obj/flat_rf.o $(BUILD)/amiga/obj/flat_tx.o amarchy/flat_glyph.c amarchy/roundaa_core.c render/emoji.c render/unifont.c amarchy/menu_font.c render/fontpair.c amarchy/flat_core.c amarchy/desk_core.c amarchy/gthemes_core.c amarchy/iconpen_core.c amarchy/iconpen_dos.c handler/be32.c amarchy/taskalive.c amarchy/poll_timer.c $(AMARCHY_LEAF_DEPS)
 
 # amarchy-icons: filled icons on the Workbench default icons, APPLY and RESTORE (plan 2026-10-31-amarchy-lucide-icons.md L8, L9).
 # A plain vbcc DOS program; every decision is amarchy/iconapply_core.c (host suite iconapply).
@@ -1054,9 +1054,9 @@ $(BUILD)/amiga/amarchy-icons: amarchy/icons.c amarchy/iconapply_core.c amarchy/i
 # FLAT-C3: vbcc's assembly of the dispatcher objects, checked by tests/test_flat_budget.py (entry frames <= 64 bytes, no libc call)
 FLAT_ASM_DIR := $(BUILD)/amiga/flat_asm
 .PHONY: flat-budget
-flat-budget: $(BUILD)/amiga/flat_asm/flat.s $(BUILD)/amiga/flat_asm/flat_glyph.s $(BUILD)/amiga/flat_asm/flat_core.s
-	python3 tests/test_flat_budget.py $(FLAT_ASM_DIR)/flat.s $(FLAT_ASM_DIR)/flat_glyph.s $(FLAT_ASM_DIR)/flat_core.s
-$(FLAT_ASM_DIR)/%.s: amarchy/%.c amarchy/flat_core.h amarchy/flat_glyph.h
+flat-budget: $(BUILD)/amiga/flat_asm/flat.s $(BUILD)/amiga/flat_asm/flat_glyph.s $(BUILD)/amiga/flat_asm/flat_core.s $(BUILD)/amiga/flat_asm/roundaa_core.s
+	python3 tests/test_flat_budget.py $(FLAT_ASM_DIR)/flat.s $(FLAT_ASM_DIR)/flat_glyph.s $(FLAT_ASM_DIR)/flat_core.s $(FLAT_ASM_DIR)/roundaa_core.s
+$(FLAT_ASM_DIR)/%.s: amarchy/%.c amarchy/flat_core.h amarchy/flat_glyph.h amarchy/roundaa_core.h
 	@mkdir -p $(FLAT_ASM_DIR)
 	$(VC) -dontwarn=153,65 -S -o $@ $<
 

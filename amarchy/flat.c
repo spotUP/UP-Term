@@ -48,6 +48,7 @@
 #include "flat_shared.h"
 #include "libpatch.h"
 #include "flat_glyph.h"
+#include "roundaa_core.h"
 #include "menu_font.h"
 #include "taskalive.h"
 #include "poll_timer.h"
@@ -96,6 +97,34 @@ static void c2_fill(void *ctx, int x0, int y0, int x1, int y1, int pen)
 static int c2_read(void *ctx, int x, int y)
 {
     return (int)ReadPixel((struct RastPort *)ctx, x, y);
+}
+
+/* RL19: the screen palette of the frame being drawn, read once per draw (raa_nearest asks for every pen of every corner pixel) */
+#define RAA_PAL RAA_MAX_PENS
+static unsigned long raa_pal[RAA_PAL];
+static unsigned long c2_rgb(void *ctx, int pen)
+{
+    (void)ctx;
+    return raa_pal[pen];
+}
+
+/* RL19: the pens a rastport's screen shows, into raa_pal; the count (0: none known, no antialiased corner) */
+static int raa_load(struct RastPort *rp)
+{
+    struct Layer *lay = rp->Layer;
+    struct Window *win = lay ? (struct Window *)lay->Window : NULL;
+    ULONG rgb[3];
+    int n, i;
+    if (!win || !win->WScreen || !rp->BitMap || rp->BitMap->Depth > 8)
+        return 0;
+    n = 1 << rp->BitMap->Depth;
+    if (n > RAA_PAL)
+        n = RAA_PAL;
+    for (i = 0; i < n; i++) {
+        GetRGB32(win->WScreen->ViewPort.ColorMap, i, 1, rgb);
+        raa_pal[i] = ((rgb[0] >> 24) << 16) | ((rgb[1] >> 24) << 8) | (rgb[2] >> 24);
+    }
+    return n;
 }
 
 /* FLAT-C7: a layer without a window is a screen's title bar: find the screen whose BarLayer it is and look through
@@ -521,13 +550,14 @@ static int c8_skip(Object *obj, Msg msg)
         flat_frame_size(msg->MethodID == FLAT_IM_DRAWFRAME, d->imp_Dimensions.Width, d->imp_Dimensions.Height, im->Width, im->Height, &w, &h);
         if (smart_knob_of(d->imp_RPort, obj)) {      /* S56-LOCALE-KNOB: the listview scroller knob takes the Workbench knob pen */
             struct Window *kw = (struct Window *)d->imp_RPort->Layer->Window;
-            if (!flat_knob_frame_draw(&r->st, d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0, (kw->Flags & WFLG_WINDOWACTIVE) != 0,
-                                      ox, oy, w, h, c2_fill, c2_read, d->imp_RPort))
+            if (!raa_knob_frame_draw(&r->st, d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0, (kw->Flags & WFLG_WINDOWACTIVE) != 0,
+                                     ox, oy, w, h, c2_fill, c2_read, c2_rgb, raa_load(d->imp_RPort), d->imp_RPort, NULL))
                 return 0;
             r->fflat++;
             return 1;
         }
-        if (!flat_frame_draw_round(&st, (int)d->imp_State, ox, oy, w, h, fill, role_of(d->imp_RPort, obj), c2_fill, c2_read, d->imp_RPort))
+        if (!raa_frame_draw(&st, (int)d->imp_State, ox, oy, w, h, fill, role_of(d->imp_RPort, obj), c2_fill, c2_read, c2_rgb,
+                            fill ? raa_load(d->imp_RPort) : 0, d->imp_RPort, NULL))
             return 0;
         flat_gh_frame(&r->gh, flat_tx_surface(d->imp_RPort->Layer, d->imp_RPort->BitMap), FindTask(NULL), d->imp_State == 1, fill,
                       fill && role_of(d->imp_RPort, obj) == FLAT_ROLE_SECONDARY, ox, oy, ox + w - 1, oy + h - 1);
