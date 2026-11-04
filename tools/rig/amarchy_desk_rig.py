@@ -178,9 +178,9 @@ def live_pens_differ():
     """R1.17 trigger: with the bar closed, make the live Workbench pens differ from the desk pens (the stock Palette editor USEs a
     palette whose DrawInfo pens are not the desk ones), so the next desk apply must reset the screen. The bar comes back after."""
     if editor_version('Palette') < 47:
-        # DESK-31-CRASH: on 3.1 (Palette 40.2, IPrefs 40.7) any palette.prefs write freezes the guest, this trigger's too; the desk
-        # apply skips the palette there, so no screen reset follows and none is provoked
-        print('[INFO] trigger: SYS:Prefs/Palette < 47, no stock Palette USE (it freezes IPrefs 40.7)')
+        # S56-PALETTE-31-SAFE: STOCK_PALETTE is a 3.2 file (13 pens per list); IPrefs 40.7 applying it overwrites ExecBase. The desk
+        # apply writes the 3.1-safe form and resets the screen itself (stock pens differ from the desk pens), so no trigger is needed
+        print('[INFO] trigger: SYS:Prefs/Palette < 47, no stock Palette USE (3.2-format file; the stock pens already differ)')
         return
     rc, _ = tile.send('AMARCHY', 'BAR OFF')
     say(rc == 0 and tile.bar_box() is None, 'trigger: bar closed before the stock palette USE', str(rc))
@@ -237,6 +237,22 @@ def pick(up=None, keep=True):
         kt.join(10)
     g.close_menu()
     return rows[sel].split(' (')[0], up
+
+
+def pal_pen_counts(data):
+    """(pens in the 4-colour list, pens in the 8-colour list) of a palette.prefs PALT body: words before the ffff terminator
+    (32 if none). Offsets are desk_core.c PAL_4PENS 16 / PAL_8PENS 80 into the body."""
+    import struct
+    i = data.find(b'PALT')
+    if i < 0 or len(data) < i + 8 + 144:
+        return None
+    body = data[i + 8:]
+    def count(off):
+        for n in range(32):
+            if struct.unpack('>H', body[off + 2 * n:off + 2 * n + 2])[0] == 0xffff:
+                return n
+        return 32
+    return count(16), count(80)
 
 
 def desk_expect_exe():
@@ -422,11 +438,11 @@ def main():
     stop.append(1); th.join(); print('[PROBE] timeline', tl)
     say(bool(name2) and name2 != name1, 'on: picked a second theme', '%s then %s' % (name1, name2))
     say(n_env('AMARCHY_DESKS') == desks0 + 1, 'on: AMARCHY_DESKS +1', 'was %r now %r' % (desks0, t.env('AMARCHY_DESKS')))
-    old_ws = editor_version('Palette') < 47     # desk_gate_mask: no palette part there, the backdrop write asks Intuition for a reset
-    say(t.env('AMARCHY_DESKMASK') == ('14' if old_ws else '15'), 'on: AMARCHY_DESKMASK %s' % ('14' if old_ws else '15'), t.env('AMARCHY_DESKMASK'))
+    # S56-PALETTE-31-SAFE: the palette bit stays on 3.1 (mask 15 everywhere)
+    say(t.env('AMARCHY_DESKMASK') == '15', 'on: AMARCHY_DESKMASK 15', t.env('AMARCHY_DESKMASK'))
     # R1.17: IPrefs resets the Workbench screen after the USE and cannot while the bar is on it ("Please close the following windows: Amarchy bar")
     reset_ok, got_pens, want_pens = watch_reset(scr0)
-    say(reset_ok or old_ws, 'on: IPrefs applied the palette (DrawInfo pens 0..10 == desk pens)',
+    say(reset_ok, 'on: IPrefs applied the palette (DrawInfo pens 0..10 == desk pens)',
         'screen %s -> %s, pens %r want %r' % (scr0, got_pens[1], got_pens[0], want_pens))
     blocked = ['%s | %s' % (ami.describe_requester(r), requester_text(r)) for r in ifaces_blocked()]
     say(not blocked, 'on: no System Request from IPrefs after the desk apply', '; '.join(blocked))
@@ -454,12 +470,11 @@ def main():
     depth = wb_depth()
     ncol = 8 if depth >= 3 else 4
     print('[INFO] Workbench depth %d: palette compared at %d colours' % (depth, ncol))
-    if editor_version('Palette') < 47:      # desk_palette_editor_ok (DESK-31-CRASH): IPrefs 40.7 freezes on a palette.prefs write
-        pal = base_on[('ENV', 'palette')] or base_on[('ENVARC', 'palette')]
-        say(got['palette'] == pal, 'on: SYS:Prefs/Palette < 47, ENV:Sys/palette.prefs not written (equals its baseline)')
-    else:
-        compare('palette', got['palette'], expect(name2, 'palette', [str(ncol)]),
-                'on: ENV:Sys/palette.prefs themed fields equal desk_core output', ncol)
+    compare('palette', got['palette'], expect(name2, 'palette', [str(ncol)]),
+            'on: ENV:Sys/palette.prefs themed fields equal desk_core output', ncol)
+    if editor_version('Palette') < 47:      # S56-PALETTE-31-SAFE: desk_palette_31safe, 12 pens then ffff per list
+        pens31 = pal_pen_counts(got['palette'])
+        say(pens31 == (12, 12), 'on: ENV:Sys/palette.prefs is the 3.1-safe form (12 pens then ffff in both PALT lists)', str(pens31))
     compare('wbpattern', got['wbpattern'], expect(name2, 'wbpattern', [str(min(depth, 3))]),
             'on: ENV:Sys/wbpattern.prefs ROOT and DRAWER fields equal desk_core output')
     ptr = base_on[('ENV', 'pointer')] or base_on[('ENVARC', 'pointer')]
