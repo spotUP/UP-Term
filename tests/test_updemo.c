@@ -754,8 +754,9 @@ static void the_tabs_scene_draws_a_tab_bar_and_names_the_menu(void)
 }
 
 /* UPDEMO-NEW-FEATURES UD5: the splits scene splits the window, zooms the pane and unzooms it, with the slash
- * commands, in that order and nothing else (it cannot close the new pane: /pane close closes the sender's own). */
-static void the_splits_scene_sends_split_then_zoom_then_unzoom(void)
+ * commands, in that order and nothing else, and ends ZOOMED (S56-UD5-SPLIT-SCENE: an odd number of /pane zoom, so the
+ * demo pane fills the window and keeps the keys; it cannot close the new pane: /pane close closes the sender's own). */
+static void the_splits_scene_ends_zoomed_so_the_demo_pane_owns_the_window(void)
 {
     cmd_log[0] = 0;
     start(80, 24);
@@ -765,7 +766,7 @@ static void the_splits_scene_sends_split_then_zoom_then_unzoom(void)
     CHECK_INT(updemo_run(&io, 80, 24, scene_index("splits"), 0), 0); /* to the scene's end: the tabs test's way */
     updemo_only(0);
     capturing = 0;
-    CHECK_STR(cmd_log, "/split right|/pane focus|/pane zoom|/pane zoom|");
+    CHECK_STR(cmd_log, "/split right|/pane focus|/pane zoom|");
     CHECK(cap_has("Sent /split right"));
     CHECK(!cap_has("a program cannot split the window itself"));
     vt_free(t);
@@ -1535,7 +1536,7 @@ void suite_updemo(void)
     the_kitty_picture_scene_says_so_when_the_photo_is_missing();
     the_kitty_placement_scene_sends_put_move_delete_and_a_relative_child_in_order();
     the_icat_scene_types_the_command_then_sends_icat_bytes_and_text_follows();
-    the_splits_scene_sends_split_then_zoom_then_unzoom();
+    the_splits_scene_ends_zoomed_so_the_demo_pane_owns_the_window();
     the_kitty_truecolour_scene_sends_rgba_with_alpha();
     the_kitty_zindex_scene_sends_pictures_under_and_over_text();
     the_glyphs_scene_sends_powerline_nerd_emoji_and_box_glyphs();

@@ -1425,20 +1425,18 @@ static void sc_tmux(long t, int first)
 }
 
 /* The splits scene drives the window's panes with the slash commands the Window menu's items run: /split right,
- * then /pane focus (the split gave the new pane the keys), then /pane zoom twice (zoom, unzoom). It cannot close the new pane: /pane close closes the pane it is sent
- * from, which is the demo's own, so the new shell is left for the user (exit closes it). splits_zoomed is 1 from
- * the first /pane zoom until the second, so a scene left early does not leave the pane zoomed. */
+ * /pane focus (the split gave the new pane the keys), then /pane zoom. It cannot close the new pane: /pane close
+ * closes the pane it is sent from, which is the demo's own. So the scene ends ZOOMED: the demo pane fills the tab
+ * again (the demo needs 76 x 20, a half window is too narrow) and keeps the keys, with the new shell running behind it
+ * (/pane zoom shows it again, exit closes it). An unzoom would hand the keys to the new pane (measured on rig 105). */
 static int splits_zoomed;
 static int splits_split;
 
 #define SPLITS_SPLIT_AT 40
 #define SPLITS_ZOOM_AT 120
-#define SPLITS_UNZOOM_AT 200
 
 static void splits_leave(void)
 {
-    if (splits_zoomed && io->command)
-        io->command(io->user, "/pane zoom");
     splits_zoomed = 0;
     splits_split = 0;
 }
@@ -1460,14 +1458,11 @@ static void sc_splits(long t, int first)
         io->command(io->user, "/split right");
         io->command(io->user, "/pane focus"); /* the split gave the new pane the keys: take them back */
         grey_line(9, "Sent /split right: a new pane with its own shell opens beside this one.");
-    } else if (splits_split && !splits_zoomed && t >= SPLITS_ZOOM_AT && t < SPLITS_UNZOOM_AT) {
+    } else if (splits_split && !splits_zoomed && t >= SPLITS_ZOOM_AT) {
         splits_zoomed = 1;
         io->command(io->user, "/pane zoom");
-        grey_line(10, "Sent /pane zoom: this pane fills the tab.");
-    } else if (splits_zoomed && t >= SPLITS_UNZOOM_AT) {
-        grey_line(11, "Sent /pane zoom again: both panes are back.");
-        splits_leave();
-        grey_line(13, "Type exit in the new pane to close it.");
+        grey_line(10, "Sent /pane zoom: this pane fills the tab again and keeps the keys.");
+        grey_line(12, "The new pane runs behind it: /pane zoom shows both, exit there closes it.");
     }
 }
 
