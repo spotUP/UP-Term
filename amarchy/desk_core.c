@@ -391,6 +391,22 @@ int desk_palette_pens_stale(const unsigned char *cur, long curlen, const unsigne
 /* S56-PALETTE-31-SAFE: one pen list of a PALT body (32 words at off) cut to the DK_PENS_31 pens 3.1 knows, then ffff, the tail zeroed.
  * 0 when the list has no terminator in its 32 words (not a palette we may touch). */
 #define PAL_LIST_WORDS 32
+/* S57-PAL31-PEN5: the 8-colour list names entries 4-7 the way Palette 40.2 stores them, 0xFEFC + (entry - 4) (entry 5 = 0xFEFD, measured
+ * on the editor's own file). IPrefs 40.7 reads a literal 4-7 as that pen number, so a raw pen 5 painted ff00ff magenta at depth 8; the
+ * 0xFExx form resolves to the last four pens, where desk_palette puts the entries. Already-stored 0xFExx words pass unchanged. Slot 11
+ * (BARTRIM, unknown to 3.1) is written 2 in both lists, as Palette 40.2 writes it (rig 87, editor USE of the same pens). */
+#define PAL_PEN_C0 0xfefcu
+#define PAL_PEN_BARTRIM_31 2u
+static void pal_entries_far(unsigned char *body, long off, int n)
+{
+    int i;
+    for (i = 0; i < n; i++) {
+        unsigned v = get16(body + off + 2 * i);
+        if (v >= 4 && v < PAL_ENTRIES)
+            put16(body + off + 2 * i, PAL_PEN_C0 + (v - 4));
+    }
+}
+
 static int pal_list_31(unsigned char *body, long off)
 {
     int n;
@@ -398,6 +414,10 @@ static int pal_list_31(unsigned char *body, long off)
         ;
     if (n == PAL_LIST_WORDS)
         return 0;
+    if (off == PAL_8PENS)
+        pal_entries_far(body, off, n < DK_PENS_31 ? n : DK_PENS_31);
+    if (n >= DK_PENS_31)
+        put16(body + off + 2 * (DK_PENS_31 - 1), PAL_PEN_BARTRIM_31); /* slot 11 is 2 in both lists of Palette 40.2's own file */
     if (n > DK_PENS_31) {
         memset(body + off + 2 * DK_PENS_31, 0, (size_t)(2 * (PAL_LIST_WORDS - DK_PENS_31)));
         put16(body + off + 2 * DK_PENS_31, 0xffff);

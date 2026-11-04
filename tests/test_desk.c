@@ -1359,8 +1359,9 @@ static void test_desk_palette_31safe(void)
     n = desk_palette_31safe(gold, gn, out, sizeof out);
     CHECK_INT(n, gn);
     /* both lists: 12 pens kept, ffff at word 12, the old 13th pen and terminator zero */
-    CHECK_INT(memcmp(out + 0x32, gold + 0x32, 24), 0);
-    CHECK_INT(memcmp(out + 0x72, gold + 0x72, 24), 0);
+    CHECK_INT(memcmp(out + 0x32, gold + 0x32, 22), 0); /* slots 0-10 as they are; slot 11 is written 2 (S57-PAL31-PEN5) */
+    CHECK_INT(memcmp(out + 0x72, gold + 0x72, 22), 0);
+    CHECK_INT(out[0x32 + 23] == 2 && out[0x72 + 23] == 2, 1);
     CHECK_INT(out[0x4a] == 0xff && out[0x4b] == 0xff && out[0x8a] == 0xff && out[0x8b] == 0xff, 1);
     for (i = 0x4c; i < 0x52; i++)
         diff += out[i] != 0 || out[i + 0x40] != 0;
@@ -1387,6 +1388,35 @@ static void test_desk_palette_31safe(void)
     CHECK_INT(desk_palette_31safe(bad, gn, again, sizeof again), 0);
     CHECK_INT(desk_palette_31safe(gold, gn, again, gn - 1), 0);
     CHECK_INT(desk_palette_31safe(0, 0, again, sizeof again), 0);
+}
+
+/* S57-PAL31-PEN5: Amarchy's desk pens `0 5 2 2 5 3 0 0 2 2 0 5` (8-colour list) went raw into ENVARC on 3.1, where IPrefs 40.7 read pen 5 as
+ * the literal pen 5 = ff00ff magenta at depth 8 (rig 87). Palette 40.2 stores entry 5 as 0xFEFD (measured, its own USE file). */
+static void test_desk_palette_31_pen5(void)
+{
+    static unsigned char in[BUF_MAX], out[BUF_MAX], again[BUF_MAX];
+    static const unsigned raw[12] = {0, 5, 2, 2, 5, 3, 4, 6, 2, 7, 0, 5};
+    static const unsigned wide_[12] = {0, 0xfefd, 2, 2, 0xfefd, 3, 0xfefc, 0xfefe, 2, 0xfeff, 0, 2};
+    long n = slurp(DESK_DATA "palette-gui-save.prefs", in, sizeof in), r;
+    int i, bad = 0, bad4 = 0, badw = 0;
+    CHECK_INT(n, DK_PALETTE_SIZE);
+    for (i = 0; i < 12; i++) {
+        in[0x72 + 2 * i] = (unsigned char)(raw[i] >> 8);
+        in[0x73 + 2 * i] = (unsigned char)raw[i];
+    }
+    r = desk_palette_31safe(in, n, out, sizeof out);
+    CHECK_INT(r, n);
+    for (i = 0; i < 12; i++) {
+        bad4 += i < 11 && (out[0x32 + 2 * i] != in[0x32 + 2 * i] || out[0x33 + 2 * i] != in[0x33 + 2 * i]);
+        bad += (out[0x72 + 2 * i] << 8 | out[0x73 + 2 * i]) != (int)wide_[i];
+    }
+    CHECK_INT(bad, 0);
+    CHECK_INT(bad4, 0); /* the 4-colour list is untouched except slot 11 */
+    CHECK_INT(out[0x72 + 23] == 2 && out[0x32 + 23] == 2, 1); /* slot 11 = 2 in both lists, as Palette 40.2 writes it */
+    /* idempotent: a safe file stays byte for byte */
+    CHECK_INT(desk_palette_31safe(out, n, again, sizeof again), n);
+    badw = memcmp(again, out, (size_t)n);
+    CHECK_INT(badw, 0);
 }
 
 /* S56-PALETTE-31-SAFE: the Amarchy-start decision per palette.prefs: 3.1 + a 13-pen file = backup (unless one exists) and rewrite */
@@ -1807,6 +1837,7 @@ void suite_desk(void)
     test_desk_pointer_gate();
     test_desk_palette_gate();
     test_desk_palette_31safe();
+    test_desk_palette_31_pen5();
     test_desk_palette_31_fix_plan();
     test_desk_palette_31_wired();
     test_desk_font();
