@@ -57,6 +57,7 @@
 #include "keymap_default.inc"
 #include "job_dos.h"
 #include "help_core.h"
+#include "flat_core.h"
 #include "amhelp.inc"          /* amhelp_welcome, amhelp_help: dist/amarchy.help through tools/gen_amarchy_help.py */
 #include "wbreset.h"
 
@@ -454,13 +455,14 @@ static void draw_welcome_row(gui *g, int r, int tx, int y, int rbg)
     const mg_geom *q = &g->g;
     int rh = q->tail_h;                 /* the menu's row height */
     if (r == 0) {
-        int s = rh - 6, bx = tx, by = y + 3;
+        int side = flat_side_px(g->ms.rx, g->ms.ry);     /* WELCOME-CHECK-SQUARE: columns per row of visual height */
+        int s = rh - 6, bx = tx, by = y + 3, w = hc_check_w(s, side);
         const char *t = "Don't show this again";
-        fill(g, MT_TEXT, bx, by, bx + s - 1, by + s - 1);
-        fill(g, MT_BG, bx + 1, by + 1, bx + s - 2, by + s - 2);
+        fill(g, MT_TEXT, bx, by, bx + w - 1, by + s - 1);
+        fill(g, MT_BG, bx + side, by + 1, bx + w - side - 1, by + s - 2);
         if (g->wticked)
-            fill(g, hc_tick_role(g->wticked), bx + 3, by + 3, bx + s - 4, by + s - 4);
-        put(g, MT_TEXT, rbg, bx + s + q->m.row_pad, y, rh, t, (int)strlen(t), q->list_w - 2 * q->m.row_pad - s);
+            fill(g, hc_tick_role(g->wticked), bx + 3 * side, by + 3, bx + w - 3 * side - 1, by + s - 4);
+        put(g, MT_TEXT, rbg, bx + w + q->m.row_pad, y, rh, t, (int)strlen(t), q->list_w - 2 * q->m.row_pad - w);
     } else {
         static const char *const name[2] = { "Close", "Open Help" };
         int i, x = tx;

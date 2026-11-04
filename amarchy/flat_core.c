@@ -794,3 +794,12 @@ int flat_gadget_is_prop(unsigned gadgettype, int is_propgclass, int has_speciali
         return 1;
     return gadgettype == 0x0005u && is_propgclass;   /* GTYP_CUSTOMGADGET: only a propgclass object has a PropInfo */
 }
+
+int flat_side_px(int rx, int ry)
+{
+    int px;
+    if (rx <= 0 || ry <= rx)
+        return 1;
+    px = (ry + rx / 2) / rx;
+    return px < 1 ? 1 : px;
+}
