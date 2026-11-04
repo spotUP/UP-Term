@@ -39,6 +39,9 @@ to RAM:palette.prefs, `Copy RAM:palette.prefs ENV:Sys/palette.prefs`, 30 s wait,
 | 2026-11-04 (s56) | FS-UAE debug build, 3.1, 060 JIT OFF, memwatch `w 0 4 4 W`, IPrefs killed (S2), SolidWin on, RTG | rig 84 | P x1 | no $4 write, Echo alive yes: IPrefs needed | fsuae-31-palette-upstream.md "Split runs (s56)" |
 | 2026-11-04 (s56) | FS-UAE debug build, 3.1, 060 JIT OFF, memwatch `w 0 4 4 W`, native screen via `rig.py aga` (S3), uaegfx card still in config | rig 84 | P x1 | $4 region written (long 0 at $6, PC $F81970), guest reset; Echo alive no: RTG screen not needed | fsuae-31-palette-upstream.md "Split runs (s56)" |
 | 2026-11-04 (s56) | FS-UAE debug build, 3.1, 060 JIT OFF, memwatch `w 0 4 4 W`, prefs from Palette editor Save (S4), no Copy | rig 84 | GUI Save x1 + P control | Save: no write, alive; Copy of owner bytes after it: $B2 PC $F8195E, Echo no: the prefs bytes trigger it | fsuae-31-palette-upstream.md "Split runs (s56)" |
+| 2026-11-04 (s56) | FS-UAE debug build, 3.1, 060 JIT OFF, memwatch `w 0 4 4 W`, IPrefs + SolidWin on, RTG | rig 84 | P with file B (golden with the 13th pen word removed from both pen lists: 12 pens then ffff) | $4 not written after Copy in 30 s; `Echo alive` answers: ALIVE (1 boot) | s56-evidence/palette-31-safe-format.md (Field bisect) |
+| 2026-11-04 (s56) | FS-UAE debug build, 3.1, 060 JIT OFF, memwatch `w 0 4 4 W`, IPrefs + SolidWin on, RTG | rig 84 | P with file C (golden with colour words requantised to nibble replication, pens untouched) | $4 written `$000000B2` PC $00F8195E (exec AddHead from IPrefs, same as the golden); `Echo alive` silent: CRASH (1 boot) | s56-evidence/palette-31-safe-format.md (Field bisect) |
+| 2026-11-04 (s56) | same, file A (golden unchanged) | rig 84 | P | NOT RERUN: rows S4/P above already cover the golden on this config (crash) | - |
 
 ## Amarchy flat drawing (pixel checks)
 

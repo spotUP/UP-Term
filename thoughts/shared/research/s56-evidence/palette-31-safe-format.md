@@ -34,3 +34,35 @@ Ledger (thoughts/spot/todos.md): DESK-31-CRASH line 3171 (confirmed IPrefs 40.7 
 3. Route every writer at desk_dos.c:425, 718, 1474 and the original-restore copy through it when the Palette editor major is below 47; then lift the palette gate on 3.1 (desk_gate_mask palette bit stays) and apply colours through the safe file. Also sanitise a 3.2 file found in ENV:/ENVARC: at Amarchy start on 3.1.
 4. Rig checks needed (not host-provable): first the bisect above on one 3.1 rig (recipe from fsuae-31-palette-upstream.md "Split runs": fresh boot, Copy to ENV:Sys/palette.prefs, 30 s wait, check guest alive), golden vs 12-pen variant vs requantised variant; then one 3.1 desk-apply run with the gate lifted via tools/rig/amarchy_desk_rig.py (sentinel: desk_dos_start_writes / desk_dos_flat_pens_writes counters), plus a 3.2 rig run to prove the 3.2 path is unchanged.
 5. Step 1 must not be coded before the bisect names the offending field; the pen-13 theory is a guess.
+
+## Field bisect (s56)
+
+Rig 84, FS-UAE debug build (fs-uae-debug), 3.1, 060 JIT off, IPrefs + SolidWin on, RTG, write memwatch `w 0 4 4 W`, recipe P (fresh boot, Version rc 0, put file to RAM:, Copy to ENV:Sys/palette.prefs, 30 s wait, `Echo alive`). One boot per file. Files made by a script from tests/data/desk/palette-gui-save.prefs (all 434 bytes, chunk sizes untouched). Note: the md5 of that file on main is 172bd3aa9479fab9366e6a41a50a6213, not the 8b977a3adafe1d45f2b8ab95fd70f653 quoted in 2026-10-29-amarchy-p1a-prefs-probe.md; the bytes tested are the ones in the repo.
+
+File A (golden unchanged): not rerun, register rows S4 and P cover it (crash).
+
+File B = pens only: 13th pen word dropped from both lists (12 entries then ffff, tail zero-filled).
+
+```
+00000040: 0000 0002 0001 0002 0001 0002 ffff 0000      golden
+00000040: 0000 0002 0001 0002 0001 ffff 0000 0000      B
+00000080: 0000 0002 0001 0002 0001 0002 ffff 0000      golden
+00000080: 0000 0002 0001 0002 0001 ffff 0000 0000      B
+```
+
+File C = colours only: colour words requantised to nibble replication (top nibble x 0x1111), pens untouched.
+
+```
+000000b0: 0000 0000 1315 a9a9 07c1 0001 5555 dddd      golden
+000000b0: 0000 0000 1111 aaaa 0000 0001 5555 dddd      C
+```
+
+All other colour words were already nibble-replicated, so only entry 0 changed (6 bytes).
+
+Verdicts:
+- B: ALIVE. No write to $4 after the Copy, `Echo alive` answered.
+- C: CRASH. Memwatch hit `$000000B2` at PC $00F8195E (exec AddHead, same as the golden), `Echo alive` silent.
+
+Cause field: the pen lists. Removing the 13th pen word (3.1 knows 12 pens, NUMDRIPENS 12) is enough to stop the $4 overwrite; changing the colour words alone does not. The B+C file was not needed. Caveat: one boot per file, no repeats (earlier splits showed no sometimes-dies pattern). Not tested: 13th pen kept in only one of the two lists, or the 4-colour list vs the 8-colour list individually.
+
+Consequence for Q3: desk_palette_31safe needs to truncate the pen lists to 12; nibble replication is not required for the crash.
