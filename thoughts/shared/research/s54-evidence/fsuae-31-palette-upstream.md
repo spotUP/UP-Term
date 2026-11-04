@@ -24,4 +24,13 @@ The same save through the Workbench Palette prefs program on 3.2 applies cleanly
 
 ## Evidence
 thoughts/shared/research/s54-evidence/31-copy-crash-bisect.md (rounds 1-3, commits 117c7add, 766108d7).
-FS-UAE version and full config: fill in from build/rig67 config before filing.
+FS-UAE version: 3.2.35, built from source at v3.2.35-3-gbf6a7ce72 (github.com/FrodeSolheim/fs-uae). The 3 local commits on top touch FPU Inf handling on native host-double builds, filesys open handles following a rename, and bsdsocket reset on exit; none touches the CPU core, chipset or RTG switching, but the report should say so and offer a retest on plain v3.2.35.
+
+Config (tools/rig/rig.py, `--max` 060 rig, stock 3.1 ROM):
+    amiga_model = A1200
+    cpu = 68060-NOMMU, fpu = 68060, uae_cpu_speed = max, uae_cpu_cycle_exact = false, uae_cpu_compatible = false
+    jit_compiler = 1
+    fast_memory = 8192, zorro_iii_memory = 1048576
+    graphics_card = uaegfx, uae_gfxcard_hardware_sprite = true
+    bsdsocket_library = 1, hard_drive_0..2 = host directories, serial_port = file
+Host: macOS 15 (Darwin 24.6.0), Apple Silicon.
