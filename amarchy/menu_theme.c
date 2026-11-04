@@ -53,7 +53,7 @@ void menu_theme_roles_gui(const gtheme *t, uc_u32 rgb[MT_ROLES])
     gt_roles_of(t, &r);
     rgb[MT_BG] = r.c[GR_SURFACE] & 0xFFFFFFUL;
     rgb[MT_TEXT] = r.c[GR_TEXT] & 0xFFFFFFUL;
-    rgb[MT_DIM] = r.c[GR_MUTED] & 0xFFFFFFUL;
+    rgb[MT_DIM] = r.dim & 0xFFFFFFUL;
     rgb[MT_SELTEXT] = r.c[GR_SURFACE] & 0xFFFFFFUL;
     rgb[MT_THEME_ACCENT] = r.c[GR_ACCENT] & 0xFFFFFFUL;
     rgb[MT_OK] = r.ok & 0xFFFFFFUL;

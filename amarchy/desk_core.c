@@ -659,12 +659,16 @@ static void rgb_put(unsigned char *p, uc_u32 c)
     p[2] = (unsigned char)c;
 }
 
+/* RL8 step 4: the flat pointer. Colours 1..3 of every PNTR chunk come from the role table (text fill, surface outline, accent), and a
+ * two-plane image loses its third colour (the pixels both planes set, the old shading) to the fill: one fill, one outline, nothing else. */
 long desk_pointer(const gtheme *t, unsigned char *buf, long len)
 {
     long pos = DK_HDR, body, size, n = 0;
     char id[4];
+    gt_roles r;
     if (!is_prefs(buf, len))
         return -1;
+    gt_roles_of(t, &r);
     while (next_chunk(buf, len, &pos, id, &body, &size)) {
         unsigned depth, ncol, i;
         uc_u32 col[3];
@@ -676,11 +680,18 @@ long desk_pointer(const gtheme *t, unsigned char *buf, long len)
         ncol = (1u << depth) - 1;
         if (depth > 8 || size < 32 + 3L * (long)ncol)
             return -1;
-        col[0] = t->fg;
-        col[1] = t->bg;
-        col[2] = t->accent;
+        col[0] = r.c[GR_TEXT];
+        col[1] = r.c[GR_SURFACE];
+        col[2] = r.c[GR_ACCENT];
         for (i = 0; i < ncol && i < 3; i++)
             rgb_put(buf + body + 32 + 3 * i, col[i]);
+        if (depth == 2) {
+            long plane = (long)((get16(buf + body + 20) + 15) / 16) * 2 * (long)get16(buf + body + 22), j;
+            unsigned char *p0 = buf + body + 32 + 3 * (long)ncol, *p1 = p0 + plane;
+            if (plane > 0 && 32 + 3L * (long)ncol + 2 * plane <= size)
+                for (j = 0; j < plane; j++)
+                    p1[j] &= (unsigned char)~p0[j];
+        }
         n++;
     }
     return n;

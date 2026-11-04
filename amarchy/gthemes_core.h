@@ -49,6 +49,7 @@ enum { GR_BACKGROUND, GR_SURFACE, GR_TEXT, GR_MUTED, GR_ACCENT, GR_SELECTION, GR
 uc_u32 gt_mix(uc_u32 a, uc_u32 b, int pct);
 typedef struct gt_roles {
     uc_u32 c[GR_ROLES]; /* 0xRRGGBB per GR_* */
+    uc_u32 dim;         /* RL8 step 3: GR_MUTED pushed off the surface to GT_FLOOR_MUTED; the menu's dim item (MT_DIM), the readable disabled tone */
     uc_u32 ok, fail;    /* status tones */
 } gt_roles;
 void gt_roles_of(const gtheme *t, gt_roles *r);
@@ -59,6 +60,7 @@ int gt_contrast(uc_u32 a, uc_u32 b);
 #define GT_FLOOR_TEXT 220 /* text on a ground: measured, the weakest shipped pair is rose-pine at 233 */
 #define GT_STEP_DARK 108  /* the darker tone against the background */
 #define GT_FLOOR_SEL 150  /* the selection (button fill, scroller knob) against the surface: shipped light themes sit at 110-130 */
+#define GT_FLOOR_MUTED 220 /* RL8 step 3: the muted tone (menu dim item, disabled label) against the surface; same floor as text, shipped themes sat at 111-579 */
 #define GT_BLACK_LIFT 0x222222UL /* the backdrop over a black ground: dark grey, lighter than black */
 /* 1 when the ground is black on a 12-bit screen: all channels below 16 */
 int gt_ground_black(const gtheme *t);
@@ -69,6 +71,7 @@ uc_u32 gt_darker(const gtheme *t);
 /* GR_SELECTION: t->selection pushed darker (light ground) or lighter (dark ground) in 10 % steps until its contrast against the
  * surface is >= GT_FLOOR_SEL, on the 24-bit and on the 12-bit screen */
 uc_u32 gt_selection(const gtheme *t);
+uc_u32 gt_muted(const gtheme *t);
 
 /* The compiled-in theme (tokyo-night, the default): a bare install without the data drawer still draws. */
 void gt_builtin(gtheme *out);
