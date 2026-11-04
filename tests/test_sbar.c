@@ -99,8 +99,26 @@ static void the_same_knob_needs_no_update(void)
     CHECK_INT(sbar_equal(&a, &b), 0);
 }
 
+static void sixty_lines_of_scrollback_in_24_rows_is_not_a_full_knob(void)
+{
+    /* XCON-KNOB-FULL-BOX: propgclass body = visible * 0xFFFF / total */
+    unsigned long body;
+    sbar_from_view(&k, 60, 24, 0, 0);
+    CHECK_INT(k.live, 1);
+    CHECK_INT(k.total, 84);
+    CHECK_INT(k.visible, 24);
+    CHECK_INT(k.top, 60);
+    body = (unsigned long)k.visible * 0xFFFFUL / k.total;
+    CHECK_INT(body, 0x4924); /* 28.6% of the track, not 0xFFFF */
+    sbar_from_view(&k, 60, 13, 0, 0); /* the 150 px window of the rig 96 repro */
+    body = (unsigned long)k.visible * 0xFFFFUL / k.total;
+    CHECK_INT(k.total, 73);
+    CHECK_INT(body < 0xFFFFUL, 1);
+}
+
 void suite_sbar(void)
 {
+    sixty_lines_of_scrollback_in_24_rows_is_not_a_full_knob();
     the_live_screen_puts_the_knob_at_the_bottom();
     the_knob_size_is_rows_over_scrollback_plus_rows();
     scrolling_back_moves_the_knob_up();
