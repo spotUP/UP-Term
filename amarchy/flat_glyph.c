@@ -433,9 +433,15 @@ int flat_button_corners(int w, int h, int out[][4])
 int flat_scroller_cuts(int cx, int cy, int cw, int ch, int horiz, int vert, unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody,
                        int x0, int y0, int x1, int y1, int out[][2])
 {
-    int kx, ky, kw, kh, cut[FLAT_ROUND_MAX][4], n, m, i;
+    int kx, ky, kw, kh;
     if (!flat_scroller_knob(cx, cy, cw, ch, horiz, vert, hpot, vpot, hbody, vbody, &kx, &ky, &kw, &kh))
         return 0;
+    return flat_scroller_cuts_box(kx, ky, kw, kh, x0, y0, x1, y1, out);
+}
+
+int flat_scroller_cuts_box(int kx, int ky, int kw, int kh, int x0, int y0, int x1, int y1, int out[][2])
+{
+    int cut[FLAT_ROUND_MAX][4], n, m, i;
     n = flat_button_corners(kw, kh, cut);
     for (i = 0, m = 0; i < n; i++) {                /* every corner pixel inside THIS fill: 3.2 paints the knob as several fills */
         int px = kx + cut[i][0], py = ky + cut[i][1];

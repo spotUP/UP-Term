@@ -614,13 +614,32 @@ int flat_scroller_knob(int cx, int cy, int cw, int ch, int horiz, int vert, unsi
     return 1;
 }
 
+int flat_scroller_knob_img(int cx, int cy, int cw, int ch, int img_ok, int ile, int ite, int iw, int ih, int horiz, int vert,
+                           unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody, int *kx, int *ky, int *kw, int *kh)
+{
+    if (cw < 1 || ch < 1)
+        return 0;
+    if (img_ok && iw >= 1 && ih >= 1 && ile >= 0 && ite >= 0 && ile + iw <= cw && ite + ih <= ch) {
+        *kx = cx + ile; *ky = cy + ite; *kw = iw; *kh = ih;
+        return 1;
+    }
+    return flat_scroller_knob(cx, cy, cw, ch, horiz, vert, hpot, vpot, hbody, vbody, kx, ky, kw, kh);
+}
+
 int flat_scroller_pen(const flat_state *s, int depth, int active, int cx, int cy, int cw, int ch, int horiz, int vert,
                       unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody, int x0, int y0, int x1, int y1)
 {
-    int kx, ky, kw, kh;
+    int kx = cx, ky = cy, kw = cw, kh = ch;
+    if (cw >= 1 && ch >= 1)
+        flat_scroller_knob(cx, cy, cw, ch, horiz, vert, hpot, vpot, hbody, vbody, &kx, &ky, &kw, &kh);
+    return flat_scroller_pen_box(s, depth, active, cx, cy, cw, ch, kx, ky, kw, kh, x0, y0, x1, y1);
+}
+
+int flat_scroller_pen_box(const flat_state *s, int depth, int active, int cx, int cy, int cw, int ch, int kx, int ky, int kw, int kh,
+                          int x0, int y0, int x1, int y1)
+{
     if (!s->enabled || s->held || cw < 1 || ch < 1 || x0 < cx || y0 < cy || x1 >= cx + cw || y1 >= cy + ch || x1 < x0 || y1 < y0)
         return -1;
-    flat_scroller_knob(cx, cy, cw, ch, horiz, vert, hpot, vpot, hbody, vbody, &kx, &ky, &kw, &kh);
     if (x0 >= kx && x1 < kx + kw && y0 >= ky && y1 < ky + kh)
         return flat_knob_state_pen(s, depth, active);
     return s->pen_back;

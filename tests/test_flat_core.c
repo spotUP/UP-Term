@@ -1034,6 +1034,23 @@ static void test_scroller(void)
     CHECK_INT(flat_scroller_pen(&s, 3, 1, 10, 20, 16, 100, 0, 1, 0, 0xFFFF, 0, 0x8000, 10, 70, 25, 119), kn);
     CHECK_INT(flat_scroller_pen(&s, 3, 1, 10, 20, 16, 100, 0, 1, 0, 0xFFFF, 0, 0x8000, 10, 20, 25, 69), tr);
     CHECK_INT(flat_scroller_pen(&s, 3, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 60, 25, 80), tr);   /* straddles the knob edge */
+    /* S56-XCON-KNOB-BOX: rig 74 (3.2) XCON scrollback, container 10 x 195 at (626,12), vpot 0xFFFF, vbody 0x5af2. Intuition's
+     * AUTOKNOB Image says the knob is 10 x 70 at container row 125 (rows 137..206); the body formula says 69 rows at 138. The
+     * knob comes from the Image box, so Intuition's own knob fill takes the knob pen (it straddled the formula box: track pen,
+     * the owner's thin-line knob), and the fill just above it is track. */
+    {
+        int kx, ky, kw, kh;
+        CHECK_INT(flat_scroller_knob_img(626, 12, 10, 195, 1, 0, 125, 10, 70, 0, 1, 0, 0xFFFF, 0, 0x5af2, &kx, &ky, &kw, &kh), 1);
+        CHECK_INT(ky, 137);
+        CHECK_INT(kh, 70);
+        CHECK_INT(flat_scroller_pen_box(&s, 3, 1, 626, 12, 10, 195, kx, ky, kw, kh, 626, 137, 635, 206), kn);
+        CHECK_INT(flat_scroller_pen_box(&s, 3, 1, 626, 12, 10, 195, kx, ky, kw, kh, 626, 12, 635, 136), tr);
+        CHECK_INT(flat_scroller_knob_img(626, 12, 10, 195, 1, 0, 130, 10, 70, 0, 1, 0, 0xFFFF, 0, 0x5af2, &kx, &ky, &kw, &kh), 1);
+        CHECK_INT(ky, 138);                                                                      /* a box leaving the container: the formula */
+        CHECK_INT(kh, 69);
+        CHECK_INT(flat_scroller_knob_img(626, 12, 10, 195, 0, 0, 125, 10, 70, 0, 1, 0, 0xFFFF, 0, 0x5af2, &kx, &ky, &kw, &kh), 1);
+        CHECK_INT(ky, 138);                                                                      /* no AUTOKNOB Image: the formula */
+    }
     /* FLAT-SLIDER-ROUND: a fill that is exactly the knob gets the button corner cuts; any other fill gets none */
     {
         int cuts[FLAT_ROUND_MAX][2], n, i, hit = 0;

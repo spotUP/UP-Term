@@ -638,6 +638,17 @@ static int gadget_has_propinfo(struct Gadget *g)
     return flat_gadget_is_prop(t, t == GTYP_CUSTOMGADGET && gadget_class_is_prop(g), g->SpecialInfo != 0);
 }
 
+/* S56-XCON-KNOB-BOX: the knob rectangle Intuition draws for prop gadget g (container cx,cy,cw,ch): its AUTOKNOB Image box when it
+ * has one, else the pot/body layout. k = kx, ky, kw, kh. 0 when the container is empty. */
+static int prop_knob(struct Gadget *g, struct PropInfo *pi, int cx, int cy, int *k)
+{
+    struct Image *im = (struct Image *)g->GadgetRender;
+    int img_ok = (pi->Flags & AUTOKNOB) && (g->Flags & GFLG_GADGIMAGE) && im;
+    return flat_scroller_knob_img(cx, cy, pi->CWidth, pi->CHeight, img_ok, img_ok ? im->LeftEdge : 0, img_ok ? im->TopEdge : 0,
+                                  img_ok ? im->Width : 0, img_ok ? im->Height : 0, (pi->Flags & FREEHORIZ) != 0, (pi->Flags & FREEVERT) != 0,
+                                  pi->HorizPot, pi->VertPot, pi->HorizBody, pi->VertBody, &k[0], &k[1], &k[2], &k[3]);
+}
+
 /* FLAT-SCROLLER: the pen for one Intuition fill inside a window scroller, or -1. Walks the window's prop gadgets (no
  * Intuition call: this runs inside graphics.library, GetScreenDrawInfo here could deadlock) and asks flat_scroller_pen. */
 static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, LONG x0, LONG y0, LONG x1, LONG y1, int cuts[][2], int *ncuts)
@@ -645,7 +656,7 @@ static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, LO
     struct Gadget *g;
     for (g = w->FirstGadget; g; g = g->NextGadget) {
         struct PropInfo *pi;
-        int gx, gy, gw, gh, cx, cy, cw, ch, pen;
+        int gx, gy, gw, gh, cx, cy, cw, ch, pen, k[4];
         if (!gadget_has_propinfo(g))
             continue;
         pi = (struct PropInfo *)g->SpecialInfo;
@@ -656,11 +667,12 @@ static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, LO
         if (x0 < gx || y0 < gy || x1 >= gx + gw || y1 >= gy + gh)
             continue;
         cx = gx + pi->LeftBorder; cy = gy + pi->TopBorder; cw = pi->CWidth; ch = pi->CHeight;
-        pen = flat_scroller_pen(&r->st, (rp->BitMap ? rp->BitMap->Depth : 0), (w->Flags & WFLG_WINDOWACTIVE) != 0, cx, cy, cw, ch, (pi->Flags & FREEHORIZ) != 0, (pi->Flags & FREEVERT) != 0,
-                                pi->HorizPot, pi->VertPot, pi->HorizBody, pi->VertBody, (int)x0, (int)y0, (int)x1, (int)y1);
+        if (!prop_knob(g, pi, cx, cy, k))
+            continue;
+        pen = flat_scroller_pen_box(&r->st, (rp->BitMap ? rp->BitMap->Depth : 0), (w->Flags & WFLG_WINDOWACTIVE) != 0, cx, cy, cw, ch,
+                                    k[0], k[1], k[2], k[3], (int)x0, (int)y0, (int)x1, (int)y1);
         if (pen >= 0) {
-            *ncuts = flat_scroller_cuts(cx, cy, cw, ch, (pi->Flags & FREEHORIZ) != 0, (pi->Flags & FREEVERT) != 0, pi->HorizPot, pi->VertPot,
-                                        pi->HorizBody, pi->VertBody, (int)x0, (int)y0, (int)x1, (int)y1, cuts);
+            *ncuts = flat_scroller_cuts_box(k[0], k[1], k[2], k[3], (int)x0, (int)y0, (int)x1, (int)y1, cuts);
             return pen;
         }
     }
@@ -781,9 +793,7 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
                     p2 = (struct PropInfo *)g2->SpecialInfo;
                     gx2 = g2->LeftEdge + ((g2->Flags & GFLG_RELRIGHT) ? w->Width - 1 : 0);
                     gy2 = g2->TopEdge + ((g2->Flags & GFLG_RELBOTTOM) ? w->Height - 1 : 0);
-                    if (x0 >= gx2 && y0 >= gy2 && flat_scroller_knob(gx2 + p2->LeftBorder, gy2 + p2->TopBorder, p2->CWidth, p2->CHeight,
-                            (p2->Flags & FREEHORIZ) != 0, (p2->Flags & FREEVERT) != 0, p2->HorizPot, p2->VertPot, p2->HorizBody, p2->VertBody,
-                            &e[4], &e[5], &e[6], &e[7]))
+                    if (x0 >= gx2 && y0 >= gy2 && prop_knob(g2, p2, gx2 + p2->LeftBorder, gy2 + p2->TopBorder, &e[4]))
                         break;
                 }
             }

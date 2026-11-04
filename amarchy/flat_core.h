@@ -372,6 +372,16 @@ int flat_knob_state_pen(const flat_state *s, int depth, int active);
  * Plain GTYP_PROPGADGET (0x0003) with SpecialInfo: yes. GTYP_CUSTOMGADGET (0x0005, a boopsi object such as XCON's propgclass gadget) with
  * SpecialInfo: yes only when is_propgclass (the object's class is propgclass or a subclass); a strgclass SpecialInfo is a StringInfo. */
 int flat_gadget_is_prop(unsigned gadgettype, int is_propgclass, int has_specialinfo);
+/* S56-XCON-KNOB-BOX: flat_scroller_pen with the knob rectangle given (kx,ky,kw,kh, absolute) instead of computed from pots and bodies. */
+int flat_scroller_pen_box(const flat_state *s, int depth, int active, int cx, int cy, int cw, int ch, int kx, int ky, int kw, int kh,
+                          int x0, int y0, int x1, int y1);
+/* S56-XCON-KNOB-BOX: the knob rectangle Intuition itself draws. An AUTOKNOB prop gadget's GadgetRender Image holds the knob box
+ * Intuition laid out (ile,ite relative to the container, iw x ih). 3.2 sizes it differently from body * container / 0xFFFF
+ * (XCON scrollback: body 0x5af2 of 195 rows is a 70 row knob at row 125, the formula says 69 at row 126), so every knob fill
+ * straddled the computed rectangle and took the track pen. img_ok = the gadget has an AUTOKNOB Image; a box that is empty or
+ * leaves the container falls back to flat_scroller_knob. 0 when the container is empty. */
+int flat_scroller_knob_img(int cx, int cy, int cw, int ch, int img_ok, int ile, int ite, int iw, int ih, int horiz, int vert,
+                           unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody, int *kx, int *ky, int *kw, int *kh);
 /* The knob rectangle (the layout flat_scroller_pen uses) inside container (cx,cy,cw,ch); 0 when the container is empty. */
 int flat_scroller_knob(int cx, int cy, int cw, int ch, int horiz, int vert, unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody,
                        int *kx, int *ky, int *kw, int *kh);
