@@ -12,3 +12,6 @@ Golden = tests/data/desk/palette-gui-save.prefs, 434 bytes, md5 172bd3aa9479fab9
 PASS. Golden in ENVARC:Sys, Amarchy started: ENVARC md5 still 172bd3aa..., no .32bak, Echo alive. The PAL31 sentinels do not exist (the 3.1 pass is not entered). ENV:Sys/palette.prefs written by the normal desk start (md5 b44a2999...).
 
 Gate verdict: (a) and the 3.2 no-change row pass; (b) and (c) are not proven. The owner gate should stay until (b) and (c) are run.
+
+## Coordinator question: Workbench reset blocked on rig 84 (NOT ANSWERED)
+The message arrived after rig 84 was stopped and cleared (rig process gone, build/rig84 removed), so the requester text, the window list with owners and `EXISTS LIBS:screennotify.library` were not read. No requester was seen during my runs: I read no screen text, only files and command output; Echo alive answered throughout. The run's only reset-related fact: after the start-apply palette write on 3.1 the Workbench colours changed (IPrefs applied the palette), so a reset did happen without a crash. blocker task/window: unknown; screennotify present: unknown; requester text: unknown. To answer, restart rig 84 on 3.1, run Amarchy with the golden in ENVARC, then run `wasabi windows`, `wasabi ps`, `EXISTS LIBS:screennotify.library`, `Version LIBS:screennotify.library` and read the requester while the rig is still up.
