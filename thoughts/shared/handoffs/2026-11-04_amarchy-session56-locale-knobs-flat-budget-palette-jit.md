@@ -14,7 +14,7 @@ status: handoff
 
 ## Open (in this order)
 
-1. JIT-off retest: Amiberry JIT off gave no verdict (window-inactive pause, f823b10a; `--no-jit` 5d3f99d0, inactive_pause off b958e0b1). Owner chose FS-UAE JIT off: agent on rig 84 at handoff time, read section `## FS-UAE JIT-off retest (s56)` in the evidence file. JIT off survives: file one report to WinUAE upstream (shared JIT), with owner OK on the text. JIT off still crashes: suspect P96 or the guest, and no emulator report. Then remove the worktree `~/Code/Emulators/fs-uae-stock` (`git worktree remove` from ~/Code/Emulators/fs-uae).
+1. Palette Copy crash: FS-UAE JIT off still loses the guest 6 of 6 (8d27c275); JIT on kills the host 2 of 2. Cause is guest-side (P96 or the palette prefs path); JIT only turns a wedged guest into a host SIGSEGV. Filing decision with owner: whether to report the host SIGSEGV (emulator should not die on guest code) and whether the next hunt is guest-side (screen + registers after Copy, JIT off). Then remove the worktree `~/Code/Emulators/fs-uae-stock`. Register: test-register.md "Palette Copy crash".
 2. Owner eye check on rig 96 (7e51272c): new-shell knob, Locale listview knobs, Cancel corners. Rig 96 [WARN] from the install: DOpus 5.104 not installed, updemo files missing, WB stayed PAL.
 3. S56-LOCALE-SAVE-FILL (unverified): the Save button fill may be pen 0 at depth 8. Check it with one pixel dump on the next shared rig run.
 4. Flat budget has zero headroom. The next frame on the draw path breaks it, so trim before adding.
