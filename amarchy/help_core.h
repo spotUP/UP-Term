@@ -40,4 +40,9 @@ int hc_welcome_key(int ch, int *ticked, int *done);
  * once drawn in MT_SELTEXT, which is the background colour, so a ticked box looked empty (WELCOME-TICK-REDRAW). */
 int hc_tick_role(int ticked);
 
+/* WELCOME-CHECK-SQUARE: the checkbox is s rows tall; its width in pixel columns is s times side (flat_side_px of the screen's
+ * Resolution: 2 on PAL hires non-interlace), so it looks square. Every horizontal inset of the box (border 1, tick 3) is
+ * scaled the same way. side < 1 counts as 1. */
+int hc_check_w(int s, int side);
+
 #endif

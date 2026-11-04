@@ -502,15 +502,6 @@ int flat_outer_edge_match(int w, int h, int x0, int y0, int x1, int y1)
     return 0;
 }
 
-int flat_side_px(int rx, int ry)
-{
-    int px;
-    if (rx <= 0 || ry <= rx)
-        return 1;
-    px = (ry + rx / 2) / rx;
-    return px < 1 ? 1 : px;
-}
-
 /* The strip i as the RectFill patch paints it: outer_strip widened to px columns on the left and right strips. 0 when absent. */
 static int outer_ring_strip(int i, int w, int h, int px, int out[4])
 {

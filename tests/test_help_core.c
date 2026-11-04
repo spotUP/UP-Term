@@ -4,6 +4,7 @@
 #include <string.h>
 #include "../amarchy/help_core.h"
 #include "../amarchy/menu_geom.h"
+#include "../amarchy/flat_core.h"
 #include "../amarchy/menu_theme.h"
 #include "harness.h"
 
@@ -207,6 +208,17 @@ static void test_shipped_text_placeholders(void)
 /* RL16 W8/W10: amarchy-gui draws the welcome and Help windows from the amhelp text through hc_expand, keeps the
  * checkbox key state in hc_welcome_key and saves through hc_mark_shown; the commodity starts the welcome after the
  * desktop apply. The pieces are Amiga-only, so the wiring is checked in the sources. */
+/* WELCOME-CHECK-SQUARE: on PAL hires non-interlace (Resolution 22 x 44) a pixel is twice as tall as wide, so the s-row-tall
+ * checkbox is 2 s columns wide; square modes and an unknown mode keep s. */
+static void test_check_square(void)
+{
+    CHECK_INT(hc_check_w(10, flat_side_px(22, 44)), 20);        /* hires 640x256 */
+    CHECK_INT(hc_check_w(10, flat_side_px(11, 44)), 40);        /* super hires */
+    CHECK_INT(hc_check_w(10, flat_side_px(44, 44)), 10);        /* lores */
+    CHECK_INT(hc_check_w(10, flat_side_px(22, 22)), 10);        /* hires interlace */
+    CHECK_INT(hc_check_w(10, flat_side_px(0, 0)), 10);          /* unknown */
+}
+
 static void test_gui_welcome_wired(void)
 {
     static char gui[400000], am[400000];
@@ -229,6 +241,7 @@ static void test_gui_welcome_wired(void)
     CHECK(strstr(gui, "hc_welcome_key(c, &g->wticked, &g->wdone)") != 0);
     CHECK(strstr(gui, "hc_mark_shown(&p)") != 0);
     CHECK(strstr(gui, "hc_tick_role(g->wticked)") != 0);
+    CHECK(strstr(gui, "hc_check_w(s, side)") != 0 && strstr(gui, "flat_side_px(g->ms.rx, g->ms.ry)") != 0);
     CHECK(strstr(gui, "mg_strip_hit(&g->g, mx, my)") != 0 && strstr(gui, "mg_strip_y(q, r)") != 0);
     CHECK(strstr(gui, "amconf_save_with(amconf_dos_io(), &p, 1, &failed)") != 0);
     CHECK(strstr(gui, "\"Welcome to Amarchy\"") != 0 && strstr(gui, "\"Amarchy Help\"") != 0);
@@ -277,5 +290,6 @@ void suite_help_core(void)
     test_key_default_and_roundtrip();
     test_welcome_key();
     test_shipped_text_placeholders();
+    test_check_square();
     test_gui_welcome_wired();
 }

@@ -397,4 +397,10 @@ void flat_pens_release(flat_pens *p, const flat_pen_ops *o, flat_state *s, const
  * obtained. */
 int flat_pens_follow(flat_pens *p, const flat_pen_ops *o, flat_state *s, int want, const void *screen, unsigned epoch, int depth);
 
+/* FLAT-ASPECT-BORDERS: columns per row of visual height on a mode whose DisplayInfo Resolution is rx x ry ticks per pixel
+ * (also the width in pixels of a vertical line that looks as thick as a 1 px horizontal one). Non-square modes with taller
+ * pixels (PAL/NTSC hires non-interlace 22 x 44, super hires 11 x 44) give ry / rx rounded (2, 4). Square modes, wide-pixel
+ * modes, RTG and an unknown mode (rx or ry 0) give 1. Shared by the flat patch and the Amarchy GUI (welcome checkbox). */
+int flat_side_px(int rx, int ry);
+
 #endif
