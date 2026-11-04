@@ -61,6 +61,7 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
   rig.py clear    remove this rig's build/rig<N> folder (rig 1 only with --rig1); refused while its fs-uae runs (stop it first); retried, [ERROR] if it stays
   rig.py status   is it up (wasabid ping)
   rig.py start --mmu   the 68060 with an MMU (slower, no JIT), for MuForce
+  rig.py start --no-jit   the same machine with the JIT compiler off and no MMU added (JIT bug or guest bug?)
   rig.py muforce on|off|log   MuForce crash reports on the rig (tools/rig/muforce.py)
   rig.py start --debugger   FS-UAE's console debugger (console_debugger = 1) on a FIFO: stdout/stderr in
                   build/rig<N>/debugger.log, input from build/rig<N>/debugger.in
@@ -585,6 +586,8 @@ NO060LIB = "--no-060lib" in sys.argv
 KEEP060LIB = tuple(sys.argv[[a.startswith("--keep-060lib=") for a in sys.argv].index(True)].split("=", 1)[1].split(",")) \
     if any(a.startswith("--keep-060lib=") for a in sys.argv) else ()
 MMU = "--mmu" in sys.argv and M060 and not NOFPU
+# --no-jit: the plain machine with the JIT compiler off (FS-UAE jit_compiler = 0, Amiberry cachesize=0), no MMU added: tells a JIT bug from a guest bug
+NOJIT = "--no-jit" in sys.argv
 DEBUGGER = "--debugger" in sys.argv   # FS-UAE's console debugger on a FIFO (debugger_lines, dbg)
 EXACT = "--exact" in sys.argv  # read-only DH0: makes "write protected" requesters that stall the rig
 
@@ -1174,7 +1177,7 @@ def amiberry_machine():
                     fpu=None if NOFPU else ("68060" if M060 else "68882"),
                     mmu="68060" if MMU else None,
                     speed="max" if FAST or M060 else "real", compatible=EXACT, cycle_exact=EXACT,
-                    jit=not (EXACT or MMU), no_unimplemented=M060)
+                    jit=not (EXACT or MMU or NOJIT), no_unimplemented=M060)
     drives = [dict(path=str(RIG / ("os-%s" % OS if OS else "os32" if OS32 else "sys.hdf")), hdf=not (OS or OS32),
                    label=(RIG / ("os-%s.label" % OS)).read_text().strip() if OS else "System",
                    ro=not RW, pri=10 if OS else 0),
@@ -1366,7 +1369,7 @@ def setup():
         # hidden and drawn again around every blit, so it flickered with the
         # blinking cursor (owner 2026-10-03: "the mouse pointer still blinks")
         "uae_gfxcard_hardware_sprite = true",
-        "jit_compiler = %d" % (0 if EXACT or MMU else 1),   # the JIT and the emulated MMU exclude each other
+        "jit_compiler = %d" % (0 if EXACT or MMU or NOJIT else 1),   # the JIT and the emulated MMU exclude each other
         # without this FS-UAE runs the A1200's 68020 at about its real speed
         # (no JIT on an ARM host): UPDemo BENCH and cellbench measured a
         # stock machine, 2026-10-04
