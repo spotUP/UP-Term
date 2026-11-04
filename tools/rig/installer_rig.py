@@ -1080,7 +1080,7 @@ def reboot_amarchy_check(ck, log):
     titled Amarchy)."""
     import tabstate
     time.sleep(10)   # the Installer's last writes and the volume's flush, never a reset mid-write
-    rig("reboot")    # DH0: kept: a stop + start clones it anew from the master and the install is gone
+    rig_reboot()    # DH0: kept: a stop + start clones it anew from the master and the install is gone
     ir._shown = None
     time.sleep(5)
     m = ami._m()
@@ -1604,9 +1604,12 @@ def set_purpose(text):
     PURPOSE[:] = ["--purpose", text]
 
 
-def rig_start():
-    """Every rig start of a run: the command line's options. UPTERM_RIG_FLAGS (--os 32, --max ...) is added once,
-    by assign_rig.rig() itself; adding it here too passed every flag twice (2026-11-03, rig 18 start.args)."""
+def restart_args():
+    """The rig.py options of every restart of a run (rig_start and the reboot check): the machine and window the rig
+    was started with (<rig>/start.args), the command line's options on top. UPTERM_RIG_FLAGS (--os 32, --max ...) is
+    added once, by assign_rig.rig() itself on a start; adding it here too passed every flag twice (2026-11-03, rig 18
+    start.args). The rig's own --purpose stays unless this run was given one (INSTALLER-RIG-REBOOT: a rig started with a
+    purpose came back from the installer's restart with an untitled window)."""
     last = []
     if not paths.rig_flags():   # no env flags: keep the machine the rig was started with (--os 32 was lost, 2026-11-03)
         a = paths.reboot_args([])
@@ -1615,11 +1618,25 @@ def rig_start():
             if w in ("--purpose", "--os"):   # flags with a value: keep or drop the pair together
                 v = a[:1]
                 a[:1] = []
-                if w == "--os" and "--os" not in RIG_FLAGS:   # the command line's --os wins; PURPOSE replaces --purpose
+                if w == "--os" and "--os" not in RIG_FLAGS:   # the command line's --os wins
+                    last += [w] + v
+                if w == "--purpose" and not PURPOSE:   # PURPOSE, when given, replaces it
                     last += [w] + v
             elif w not in RIG_FLAGS:
                 last.append(w)
-    rig("start", *(last + PURPOSE + RIG_FLAGS))
+    return last + PURPOSE + RIG_FLAGS
+
+
+def rig_start():
+    """Every rig start of a run: restart_args()."""
+    rig("start", *restart_args())
+
+
+def rig_reboot():
+    """`rig.py reboot` (DH0: kept) with the same options as rig_start. A bare `reboot` takes start.args as they are, so a
+    purpose given on this run's command line never reached the window, and a rig started without one stayed untitled."""
+    # assign_rig.rig() adds UPTERM_RIG_FLAGS to a start only; a reboot with given arguments uses exactly those, so they go here
+    rig("reboot", *(paths.rig_flags() + restart_args()))
 
 
 def parse_args(argv):
