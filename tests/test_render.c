@@ -2889,6 +2889,93 @@ static void s56_transparent_kitty_pixels_keep_the_picture_beneath_on_the_palette
     close_term();
 }
 
+/* S56-UD2-GLOBE-BAND: UPDemo 15's globe (an RGBA animation, transparent outside its disc) plays over an RGBA photo
+ * placed z=-1. Every globe pixel on screen after every frame switch must be the composite of the current frame over
+ * the photo: the frame's colour where alpha is 255, the photo's where it is 0. */
+static int s56_band_bad(int f, int alpha_real, int *row_out)
+{
+    int x, y, bad = 0;
+    for (y = 0; y < 48; y++)
+        for (x = 0; x < 64; x++) {
+            int dx = x - 32, dy = y - 24, in = dx * dx + dy * dy < 22 * 22;
+            int sx = 48 + x, sy = 16 + y;
+            int want = in ? (GF_CGX | (x * 4) << 16 | (y * 5) << 8 | (f * 5))
+                          : (GF_CGX | (sx) << 16 | (sy * 3) << 8 | 200);
+            if (gf_pixel(sx, sy) != want) {
+                if (!bad && row_out)
+                    *row_out = y;
+                bad++;
+            }
+        }
+    (void)alpha_real;
+    return bad;
+}
+
+static void s56_globe_frames_over_a_photo_composite_exact_every_switch(void)
+{
+    static unsigned char photo[160 * 64 * 4], fr[12][64 * 48 * 4];
+    int f, i, x, y, loop, alpha_real, worst, row;
+    char cmd[96];
+    for (alpha_real = 0; alpha_real < 2; alpha_real++) {
+        k40_open(alpha_real);
+        for (y = 0; y < 64; y++)
+            for (x = 0; x < 160; x++) {
+                unsigned char *p = photo + (y * 160 + x) * 4;
+                p[0] = (unsigned char)x;
+                p[1] = (unsigned char)(y * 3);
+                p[2] = 200;
+                p[3] = 255;
+            }
+        for (f = 0; f < 12; f++)
+            for (y = 0; y < 48; y++)
+                for (x = 0; x < 64; x++) {
+                    unsigned char *p = fr[f] + (y * 64 + x) * 4;
+                    int dx = x - 32, dy = y - 24;
+                    p[0] = (unsigned char)(x * 4);
+                    p[1] = (unsigned char)(y * 5);
+                    p[2] = (unsigned char)((f + 1) * 5);
+                    p[3] = dx * dx + dy * dy < 22 * 22 ? 255 : 0;
+                }
+        pass("\x1b[1;1H");
+        k37_send("a=T,f=32,s=160,v=64,i=6,c=20,z=-1,C=1,q=2", photo, sizeof photo);
+        pass("\x1b[3;7H");
+        for (f = 0; f < 12; f++)
+            k37_send(f ? "a=f,f=32,s=64,v=48,i=1,q=2" : "a=T,f=32,s=64,v=48,i=1,q=2", fr[f], sizeof fr[f]);
+        for (f = 0; f < 12; f++) {
+            snprintf(cmd, sizeof cmd, "\x1b_Ga=a,i=1,r=%d,z=90,q=2\x1b\\", f + 1);
+            pass(cmd);
+        }
+        pass("\x1b[8;20H\x1b_Ga=a,i=1,s=3,q=2\x1b\\");
+        pass("");
+        worst = 0;
+        for (loop = 0; loop < 30; loop++) {
+            int cur;
+            /* UPDemo ends a ?2026 frame on every loop turn, scene output or not; the clock's switch lands
+             * inside one (loop % 3 == 0), just before one (1) or alone (2): composed and in place */
+            if (loop % 3 == 1) {
+                vt_anim_tick(term, 90000);
+                pass("\x1b[?2026h\x1b[?2026l");
+            } else if (loop % 3 == 2) {
+                vt_anim_tick(term, 90000);
+                pass("");
+            } else {
+                pass("\x1b[?2026h");
+                vt_anim_tick(term, 90000);
+                pass("");
+                pass("\x1b[?2026l");
+            }
+            cur = (loop + 1) % 12 + 1;
+            row = -1;
+            i = s56_band_bad(cur, alpha_real, &row);
+            if (i > worst)
+                worst = i;
+        }
+        CHECK_INT(worst, 0);
+        close_term();
+    }
+    gf_cgx_alpha(1);
+}
+
 /* K36-ANIM-BLINK: a looping kitty animation switches frames on the clock; the repaint of the picture's rows
  * must never leave more than the one cell row being drawn showing the background. Before the fix draw_rows_now
  * painted the text (background) of every damaged row first and only then the images of all of them, top down:
@@ -3071,6 +3158,7 @@ int main(void)
     k40_alpha_detection_checks_the_table_size_and_the_jmp_opcodes();
     k40_eight_bit_screen_stays_indexed();
     s56_transparent_kitty_pixels_keep_the_picture_beneath_on_the_palette_path();
+    s56_globe_frames_over_a_photo_composite_exact_every_switch();
     the_cursor_pass_counts_its_gfx_calls_and_unchanged_cells();
     scrollback_view_move_blits_and_draws_only_the_exposed_rows();
     cursor_glyph_is_drawn_at_the_cursor_cell_from_the_grid_row();
