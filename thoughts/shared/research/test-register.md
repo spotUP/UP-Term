@@ -31,7 +31,7 @@ to RAM:palette.prefs, `Copy RAM:palette.prefs ENV:Sys/palette.prefs`, 30 s wait,
 | 2026-11-04 (s56) | FS-UAE stock v3.2.35 under lldb, same config | rig 68 | P x4 | host SIGSEGV EXC_BAD_ACCESS 0x351004000, m68k_run_2 opcode fetch newcpu.cpp:5241; 1 of 4 guest reset loop instead; guest registers NOT read | fsuae-31-palette-upstream.md "lldb on stock v3.2.35 (s56)" (c1d3a362) |
 | 2026-11-04 (s56) | Amiberry (/Applications/Amiberry.app), 3.1, 060 JIT, ZorroIII gfx 16 MB, SolidWin ON | rig 84 | P x6 + control | 5 of 6 guest lost (green screen), host alive; JIT "Error in compiled code" stores pc=00f8198a about 3 s after Copy; control no Copy alive | fsuae-31-palette-upstream.md "Amiberry retest (s56)" (cb830707) |
 | 2026-11-04 (s56) | Amiberry, 3.1, 060 JIT OFF (`--no-jit`, cachesize=0) | rig 84 | none ran | NO VERDICT: guest never booted, Amiberry pauses (amiberry_inactive) or stalls (SDL isfullscreen) with its window in the background, even with inactive_pause=false. Do not retry unless the window is kept frontmost | fsuae-31-palette-upstream.md "Amiberry JIT-off retest (s56)" (f823b10a) |
-| 2026-11-04 (s56) | FS-UAE rig build, 3.1, 060 JIT OFF (`--no-jit`) + 2 JIT-on control boots | rig 84 | P x6 + 2 | RUNNING at time of writing | fsuae-31-palette-upstream.md "FS-UAE JIT-off retest (s56)" |
+| 2026-11-04 (s56) | FS-UAE rig build, 3.1, 060 JIT OFF (`--no-jit`) + 2 JIT-on control boots | rig 84 | P x6 + 2 | JIT off: 6 of 6 guest lost (host alive); JIT on control: 2 of 2 host dead. Not a pure JIT bug | fsuae-31-palette-upstream.md "FS-UAE JIT-off retest (s56)" |
 
 ## Amarchy flat drawing (pixel checks)
 

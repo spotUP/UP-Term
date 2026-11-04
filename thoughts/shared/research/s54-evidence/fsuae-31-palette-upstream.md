@@ -130,3 +130,23 @@ Host load averaged 47-52 during the attempts (other sessions' rigs and vitest); 
 
 Reading: inconclusive. Nothing here shows a JIT effect either way; the JIT-off stall is a window-focus / SDL event pause (the rig window not frontmost), which the JIT-on runs did not hit,
 so a retest needs the rig 84 window frontmost (owner click on it) or a headless/focused Amiberry run. Where to file upstream stays open.
+
+## FS-UAE JIT-off retest (s56)
+
+Rig 84, the rig's normal FS-UAE build (/Users/spot/Code/Emulators/fs-uae/fs-uae, the patched one, not the stock worktree: the stock retest section reports the host SIGSEGV on stock too, so
+the patched build is the comparable control), `rig.py start --max --os 31`. SolidWin not switched off. Recipe as the earlier retests: fresh boot (R1 right after start, R2-R6 after `rig.py reboot`),
+20 s settle, `ami.py exec Version` (rc 0 every boot), `ami.py put tests/data/desk/palette-gui-save.prefs RAM:palette.prefs`, `ami.py exec "Copy RAM:palette.prefs ENV:Sys/palette.prefs"` (rc 0 every boot),
+30 s wait, `ami.py exec "Echo alive"` (40 s timeout), host check by `pgrep -f build/rig84/vtcon-rig`, grep of fs-uae.log.txt / debug.uae / serial.log for guru|software failure|illegal instruction|CPU reset.
+
+Commands: `UPTERM_RIG=84 python3 tools/rig/rig.py start --max --os 31 --no-jit --idle-minutes 0 --purpose "vtcon-16 Amarchy session: palette Copy crash, FS-UAE JIT off"`;
+written vtcon-rig.fs-uae has `cpu = 68060-NOMMU`, `jit_compiler = 0`. Control: `rig.py stop --keep`, then the same start without `--no-jit` and with purpose "...: palette Copy crash, FS-UAE JIT on control"; config `jit_compiler = 1`, same cpu.
+
+| Boot | JIT | Version | Copy | Host fs-uae after 30 s | Guest `Echo alive` | Guru / reset lines |
+|---|---|---|---|---|---|---|
+| R1-R6 | OFF | rc 0 | rc 0 | alive (about 50 % CPU) | NO ANSWER (no output, 40 s timeout) in 6 of 6 | none (0 matches in all three logs) |
+| C1, C2 | ON  | rc 0 | rc 0 | DEAD (process gone) in 2 of 2 | connection error | none in the log (buffered, as in the stock retest) |
+
+Decisive lines: JIT off, after R6 `rig.py status` = down and `ami.py exec "Echo alive" 20` timed out (rc 124) while ps showed fs-uae at 53 % CPU; the log's last guest lines are `SetSwitch() - amiga`
+(the RTG -> native switch) with nothing after. JIT on: the fs-uae process is gone after the Copy, same as stock v3.2.35 (no Guru, no CPU reset line, no serial output).
+Result: JIT off 6 of 6 lose the guest (host survives, guest wedged or in a reset the wasabid never leaves); JIT on 2 of 2 lose the host. The test did not look at the screen, so a Guru or green screen on the display is unchecked.
+Reading: NOT a pure JIT bug. The guest-side failure after the Copy reproduces with the JIT off (6 of 6), so the guest wild jump / reset is independent of the JIT; the JIT only changes the symptom (host SIGSEGV on a bad instruction fetch with JIT on, a wedged guest with it off).
