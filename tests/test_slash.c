@@ -66,6 +66,13 @@ static void settings_name_their_menu_items(void)
     CHECK_INT(parse("/tab close 0"), SLASH_ERROR);
     CHECK_INT(parse("/tab close x"), SLASH_ERROR);
     CHECK_INT(parse("/tab close 10"), SLASH_ERROR);
+    CHECK_INT(parse("/pane close"), SLASH_OK); /* S56-UD5-SPLIT-SCENE: close the sender's pane; "other" the rest of its tab */
+    CHECK_INT(cmd.id, MENU_PANE_CLOSE);
+    CHECK_INT(parse("/pane close other"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_PANE_CLOSE_OTHER);
+    CHECK_INT(parse("/pane close 2"), SLASH_ERROR);
+    CHECK_INT(parse("/pane close other x"), SLASH_ERROR);
+    CHECK_INT(parse("/pane zoom"), SLASH_OK);
     CHECK_INT(parse("/tab new 2"), SLASH_ERROR);
     CHECK_INT(parse("/tab sideways"), SLASH_ERROR);
     CHECK_INT(parse("/tab previous"), SLASH_OK);
