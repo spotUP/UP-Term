@@ -30,6 +30,7 @@ ROOT = os.path.join(HERE, '..', '..')
 sys.path.insert(0, HERE)
 import ami, condev_rig as c
 import amarchy_gui_rig as g
+import amarchy_rig as ar
 import amarchy_theme_save_rig as t
 import amarchy_tile_rig as tile
 
@@ -139,12 +140,9 @@ def wb_pens():
     return pens, scr
 
 
-WB_DEPTH = 8   # the rig Workbench screen is 8 bitplanes deep (253 = 2^8 - 8 + 5)
-
-
 def desk_pen_line(os31=False):
     """The DrawInfo pens the desk palette produces (flat pens when flat-system-look is on). os31: the form IPrefs 40.7 reads (pens31 hunt)."""
-    args = [desk_expect_exe(), '-', 'pens', 'flat' if g.flat_prefs_on() else 'desk'] + (['31', str(WB_DEPTH)] if os31 else [])
+    args = [desk_expect_exe(), '-', 'pens', 'flat' if g.flat_prefs_on() else 'desk'] + (['31', str(wb_depth())] if os31 else [])
     return subprocess.check_output(args).decode().split(':', 1)[1].strip()
 
 
@@ -407,6 +405,15 @@ def main():
     say(re.search(r'^\s*desktop-theme\s*=\s*off\b', prefs, re.M) is not None, 'off: ENV:Amarchy/prefs holds desktop-theme = off before the first pick')
     c.run('Delete T:amarchy-revert ALL QUIET')
     time.sleep(8)           # the prefs notify reaches Amarchy and the flat resident (flat off may restore files): then the baseline
+    # AMARCHY_DESKS and the other counters are per-process (desk_dos_applies) but published as ENV: globals that outlive the process, and
+    # only after a pick: a baseline read here is the previous Amarchy's last value (3), the first pick of a restarted Amarchy publishes 0 and
+    # the next 1. A fresh process with the globals deleted makes the baseline 0 and every published value this run's own.
+    c.run('Delete >NIL: ENV:AMARCHY_DESKS ENV:AMARCHY_DESKMASK ENV:AMARCHY_WBCLOSES ENV:AMARCHY_WBPENS ENV:AMARCHY_WBREFUSED QUIET')
+    ar.arexx('QUIT')
+    time.sleep(3)
+    if not g.start_amarchy('desk rig: fresh Amarchy process for the counters'):
+        return 1
+    time.sleep(8)
     base = snapshot()
     cols0 = wb_colours()
     print('[INFO] baseline Workbench colours %s; ENV:Sys %s' % (cols0, {n: (len(base[('ENV', n)]) if base[('ENV', n)] else None) for n in SYS_FILES}))
