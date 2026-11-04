@@ -1,0 +1,23 @@
+diff --git a/render/amiga_render.c b/render/amiga_render.c
+index c942c7d3..454a0f45 100644
+--- a/render/amiga_render.c
++++ b/render/amiga_render.c
+@@ -2647,6 +2647,9 @@ static void img_run_rgb(vr_render *r, const vt_image_view *v, LONG sx, LONG sy,
+     /* No working WritePixelArrayAlpha: read what is under the run (text, background, z < 0 pictures: whatever the
+      * rastport holds), blend per channel and write it back (owner 2026-11-02: R6 lifted for kitty alpha). */
+     r->n_img_rgb_soft_blend++;
++    for (k = 0; k < 4 * w * h; k += 4) { /* UD2 SENTINEL (debug only): a read that leaves the buffer shows green */
++        d[k] = 0; d[k + 1] = 255; d[k + 2] = 0; d[k + 3] = 255;
++    }
+     vr_cgx_read_pixels(r->cgx, r->rp, (UWORD)dx, (UWORD)dy, (APTR)r->img_buf, 0, 0, (UWORD)(w * 4), (UWORD)w,
+                        (UWORD)h, VR_RECTFMT_RGBA);
+     for (k = 0; k < h; k++) {
+@@ -3289,6 +3292,8 @@ int vr_compose_begin(vr_render *r)
+     k->rp.BitMap = k->bm;
+     SetFont(&k->rp, r->font);
+     k->n = 0;
++    if (r->cgx) /* UD2 SENTINEL (debug only): every pixel not drawn this pass shows magenta */
++        vr_cgx_fill(r->cgx, &k->rp, 0, 0, (UWORD)k->w, (UWORD)k->h, 0xFFFF00FFUL);
+     r->front_rp = r->rp;
+     r->rp = &k->rp;
+     return 1;

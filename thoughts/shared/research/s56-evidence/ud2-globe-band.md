@@ -79,3 +79,20 @@ Rig numbers (screen grab about 1 frame/s, flat-run detector, globe box):
 - The grab is not discriminating: the band is sub-frame and a 1 s grab missed it before the fix too. The 40-frame target was not reached (19). Proof of the fix is the host test; the owner eye check in a live rig decides.
 
 Shots: ~/Desktop/upterm-shots/s56-ud2-band-rig114-before.png, s56-ud2-band-rig114-after.png.
+## Rig hunt 2 (s56, rig 110, sentinel build)
+
+- Build: ab9cc6b9 plus debug sentinels, patch kept at `s56-evidence/ud2-band-sentinel.patch`.
+  - The back bitmap is filled with magenta at every vr_compose_begin, so any presented rect not redrawn in the pass would show magenta.
+  - img_buf is pre-filled with green before every soft-blend ReadPixelArray, so a read that leaves the buffer would show green.
+- Run: `UPDemo 15` in an XCON window. 125 screenshots: 60 mostly later scenes, plus 25 and 40 back to back on scene 15.
+- Result:
+  - magenta 0 and green 0 in all 125 shots;
+  - band detector (per 16 px cell row, pixels in the globe rect that are static in >80% of shots, deviation >30) finds 0 band rows over 63 globe frames.
+- Verdict:
+  - Suspect 1 (undrawn back rect presented) is not seen.
+  - Suspect 2 (failed or short ReadPixelArray) is not seen.
+  - The band itself did not reproduce on rig 110, so the cause is NOT proven.
+- Remaining candidates:
+  - A raw_scroll or to_front mid-pass while the globe updates. raw_scroll scrolls only the window, so the back bitmap is left with old rows, and a later present could copy one stale row.
+  - The owner's band may need a scrolling or jump state (r->jump != 0) that UPDemo 15 alone does not create in a fresh window.
+- Next probe: run the demo after scrolling output in the same window, or repeat the run with the sentinels under the owner's exact window and screen mode.
