@@ -150,5 +150,40 @@ class Addon68000(unittest.TestCase):
         self.assertEqual(self.run_case([]), ["distkit"])
 
 
+class RebootKeepsTheWindowTitle(unittest.TestCase):
+    """INSTALLER-RIG-REBOOT (rig 111, 2026-11-04): reboot_amarchy_check called a bare rig("reboot"), so a --purpose given
+    to installer_rig never reached the window, and the rig's own purpose could be lost by a restart."""
+    def setUp(self):
+        for l in (irg.PURPOSE, irg.RIG_FLAGS):
+            l.clear()
+            self.addCleanup(l.clear)
+
+    def reboot_argv(self, env_flags, start_args, cmdline):
+        irg.parse_args(cmdline)
+        with mock.patch.dict("os.environ", {"UPTERM_RIG_FLAGS": env_flags}), \
+                mock.patch.object(irg.paths, "reboot_args", return_value=start_args), \
+                mock.patch.object(assign_rig.subprocess, "run") as run:
+            irg.rig_reboot()
+        return run.call_args[0][0][2:]
+
+    def test_the_commandline_purpose_reaches_the_reboot(self):
+        self.assertEqual(self.reboot_argv("", ["--max", "--os", "32"], ["--purpose", "vtcon-ee: check"]),
+                         ["reboot", "--max", "--os", "32", "--purpose", "vtcon-ee: check"])
+
+    def test_the_rigs_own_purpose_survives_when_the_run_gives_none(self):
+        self.assertEqual(self.reboot_argv("", ["--max", "--purpose", "vtcon-ee: eye check", "--os", "32"], []),
+                         ["reboot", "--max", "--purpose", "vtcon-ee: eye check", "--os", "32"])
+
+    def test_env_flags_and_purpose_both_reach_the_reboot(self):
+        # a reboot with given arguments replaces start.args, and assign_rig adds the env flags to a start only
+        self.assertEqual(self.reboot_argv("--max --os 32", ["--max", "--os", "32"], ["--purpose", "p: t"]),
+                         ["reboot", "--max", "--os", "32", "--purpose", "p: t"])
+
+    def test_reboot_check_uses_it(self):
+        with mock.patch.object(irg, "rig_reboot", side_effect=RuntimeError("reached")), mock.patch.object(irg.time, "sleep"):
+            with self.assertRaises(RuntimeError):
+                irg.reboot_amarchy_check(mock.Mock(), mock.Mock())
+
+
 if __name__ == "__main__":
     unittest.main()
