@@ -395,7 +395,7 @@ int desk_palette_pens_stale(const unsigned char *cur, long curlen, const unsigne
  * on the editor's own file). IPrefs 40.7 reads a literal 4-7 as that pen number, so a raw pen 5 painted ff00ff magenta at depth 8; the
  * 0xFExx form resolves to the last four pens, where desk_palette puts the entries. Already-stored 0xFExx words pass unchanged. Slot 11
  * (BARTRIM, unknown to 3.1) is written 2 in both lists, as Palette 40.2 writes it (rig 87, editor USE of the same pens). */
-#define PAL_PEN_C0 0xfefcu
+#define PAL_PEN_C3 0xfefcu /* NDK PEN_C3: entry 4; C2 fefd = entry 5 ... C0 feff = entry 7 */
 #define PAL_PEN_BARTRIM_31 2u
 static void pal_entries_far(unsigned char *body, long off, int n)
 {
@@ -403,7 +403,7 @@ static void pal_entries_far(unsigned char *body, long off, int n)
     for (i = 0; i < n; i++) {
         unsigned v = get16(body + off + 2 * i);
         if (v >= 4 && v < PAL_ENTRIES)
-            put16(body + off + 2 * i, PAL_PEN_C0 + (v - 4));
+            put16(body + off + 2 * i, PAL_PEN_C3 + (v - 4));
     }
 }
 
