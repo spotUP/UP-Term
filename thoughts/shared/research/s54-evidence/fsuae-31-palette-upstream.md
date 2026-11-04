@@ -150,3 +150,70 @@ Decisive lines: JIT off, after R6 `rig.py status` = down and `ami.py exec "Echo 
 (the RTG -> native switch) with nothing after. JIT on: the fs-uae process is gone after the Copy, same as stock v3.2.35 (no Guru, no CPU reset line, no serial output).
 Result: JIT off 6 of 6 lose the guest (host survives, guest wedged or in a reset the wasabid never leaves); JIT on 2 of 2 lose the host. The test did not look at the screen, so a Guru or green screen on the display is unchecked.
 Reading: NOT a pure JIT bug. The guest-side failure after the Copy reproduces with the JIT off (6 of 6), so the guest wild jump / reset is independent of the JIT; the JIT only changes the symptom (host SIGSEGV on a bad instruction fetch with JIT on, a wedged guest with it off).
+
+## Guest-side hang hunt (s56)
+
+Goal: name the guest code that hangs after `Copy RAM:palette.prefs ENV:Sys/palette.prefs` (recipe P), with JIT
+off so the host stays alive and guest state can be read from the UAE debugger.
+
+Config, all three runs: rig 84, FS-UAE debug build `/Users/spot/Code/Emulators/fs-uae-debug/fs-uae`
+(661e884dd plus local changes), 3.1 (kick40068-a1200.rom), 060 no MMU, `--no-jit`, uaegfx (P96), IPrefs
+running, SolidWin running, owner prefs bytes tests/data/desk/palette-gui-save.prefs. Started with
+`rig.py start --max --os 31 --no-jit --idle-minutes 0 --debugger`; commands through `rig.py dbg` /
+`rig.py dbgbreak` (debugger.in FIFO, debugger.log output).
+
+### Run 1: break in after the hang
+
+`dbgbreak` 30 s after the Copy. `Echo alive` rc 124, host process alive.
+- PC $190800F8 (unmapped, reads `****`, executes zero words), supervisor mode, IMASK 7.
+- A0 = $DFF000, A1 = A5 = $190800F8, A6 = $000000B2.
+- The guest is in a reset loop: res_initcode count 449 to 478 in 10 s (about 3 resets per second).
+
+### Run 2: PC-range breakpoint `f 1000000 3fffffff` armed before the Copy
+
+Before the hit the guest idles at $4002521E (STOP). The hit is in the exec level-3 interrupt dispatcher:
+- $F811F8 `MOVEA.L $4,A6` gives A6 = $000000B2 (ExecBase pointer is gone).
+- `MOVEM.L $90(A6),A1/A5` reads from $142 (vector table area), then `JMP (A5)` at $F8123A goes to $190800F8.
+
+So the wild PC of run 1 is the VERTB dispatcher using a destroyed ExecBase. The address $4 was overwritten.
+
+### Run 3: write memwatch on address $4 (`w 0 4 4 W`)
+
+Before the Copy, $4 = $40000810 (correct). After the Copy the memwatch hits once:
+
+```
+Memwatch 0: break at 00000004.L W 000000B2 PC=00F8195E
+```
+
+- User mode. A0 = $0, A1 = $B2, A2 = $FFFFFE70, A3 = $0B8400F8, USP $400A166C.
+- Code at $F81954 is exec AddHead (LVO -$F0):
+  `move.l (a0),d0; move.l a1,(a0); movem.l d0/a0,(a1); movea.l d0,a0; move.l a1,4(a0); rts`.
+  The list pointer $0B84032E is unmapped and reads as head 0, so `move.l a1,4(a0)` with A0 = 0 writes the node
+  address $B2 to address $4.
+- ThisTask = $400A0DF8, name at $400A1C88 = `« IPrefs »`.
+- Caller: ROM intuition.library at $FE3846-$FE3860 computes list = A3+$236 and node = A2+$242 and calls
+  $FE7960, an intuition stub that calls exec AddHead. Before that it calls $FE5030 with A0 = $FFFFFDBE.
+- Return addresses on the IPrefs stack (mapped to ROM resident tags from kick40068-a1200.rom): $FD7686,
+  $FD618E, $FD62A8, $FD6380, $FD7DBA, $FD0E5A, $FD3876, $FDF4A2 (intuition.library $FCF498-$FE8508) and
+  $FB23FC (layers.library). $F81954 lies in exec.library ($F800B6-$F83706).
+- A3 = $0B8400F8 matches a misaligned read of the low-memory exception vectors ($00F80Bxx values), so
+  intuition derived both struct pointers from a NULL or near-NULL base.
+
+### Verdict
+
+- Task: IPrefs, applying the new palette prefs.
+- Writer: exec AddHead $F8195E (ROM exec.library 40.x), called by ROM intuition.library 40.x ($FE3860 to
+  $FE7960) with a list and node computed from a NULL-based structure.
+- Effect: AddHead writes $000000B2 to $4 and destroys the ExecBase pointer. The next VERTB interrupt jumps
+  through garbage ($190800F8), the guest resets in a loop. With JIT on the same wild jump crashes the host
+  (the SIGSEGV in m68k_run_2 seen under lldb).
+- Not our code on the stack. Not proven: which structure is NULL. The likely trigger is the Workbench screen
+  close/reopen and RTG-to-native switch that IPrefs starts on a palette change, leaving intuition with a gone
+  screen or a stale pointer.
+- Emulator part: the guest corrupts itself, so the FS-UAE upstream report should be reduced to "host process
+  crashes on a wild guest jump with JIT on"; the guest hang is not an emulator bug.
+
+### Not run (budget)
+
+Splits IPrefs off, native Workbench (no uaegfx) and a Palette-prefs-saved file instead of owner bytes. These
+decide whether P96/uaegfx, SolidWin or the prefs bytes are needed for the NULL pointer.
