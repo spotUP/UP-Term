@@ -1428,6 +1428,13 @@ $(BUILD)/amiga/dopusprobe: tests/amiga/dopusprobe.c amarchy/flat_core.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/dopusprobe.c
 
+# MUI group-button fixture (wasabid "list clicked MUI groups as buttons" proof). Needs MUI 3.8's
+# libraries/mui.h from Aminet dev/mui/mui38dev.lha unpacked at MUI_INC (not vendored).
+MUI_INC ?= $(VENDOR)/mui38dev/MUI/Developer/C/Include
+$(BUILD)/amiga/muigroupbtn: tools/rig/fixtures/mui-group-button/muigroupbtn.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -I$(MUI_INC) -o $@ tools/rig/fixtures/mui-group-button/muigroupbtn.c -lamiga
+
 # Windows with sysiclass gadgets opened in a loop, and a hash of their frame pixels (FLAT-C1 rig, tools/rig/amarchy_flat_rig.py)
 $(BUILD)/amiga/flatwin: tests/amiga/flatwin.c amarchy/flat_core.h
 	@mkdir -p $(BUILD)/amiga
