@@ -612,6 +612,13 @@ def raise_window(title, x=None, y=None):
             m.ui_front(c, w)
     return True
 
+def screen_box(scr, w):
+    """A list_windows window as (left, top, width, height) in Intuition pixels. The listing doubles rows only: top and
+    height are times row_scale, left and width are already screen pixels (window_text, the uitree writer, does the same)."""
+    k = scr.get('row_scale', 1) or 1
+    return (int(w['left']), int(w['top']) // k, int(w['width']), int(w['height']) // k)
+
+
 def window(title, prefix=False):
     # The front screen's window titled exactly `title`, from the uitree:
     # {'box': (x, y, w, h), 'active': bool, 'sys:size': (x, y, w, h), ...}; prefix=True matches a title that starts with `title`

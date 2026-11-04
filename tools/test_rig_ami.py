@@ -285,5 +285,12 @@ finally:
     import shutil
     shutil.rmtree(ROOT, ignore_errors=True)
 
+# screen_box: list_windows doubles rows only (row_scale 2 on 640x256), so left and width stay as listed. r_strut_prebar
+# divided left by row_scale and never found its window at left 20 (rig 96 r2, 3.2).
+check(ami.screen_box({'row_scale': 2}, {'left': 20, 'top': 80, 'width': 600, 'height': 432}) == (20, 40, 600, 216),
+      "screen_box: row_scale 2 halves top and height only")
+check(ami.screen_box({}, {'left': 20, 'top': 40, 'width': 600, 'height': 216}) == (20, 40, 600, 216),
+      "screen_box: no row_scale is 1")
+
 print("rig ami.py over wasabid: %s" % ("%d FAILED" % fails if fails else "all passed"))
 sys.exit(1 if fails else 0)
