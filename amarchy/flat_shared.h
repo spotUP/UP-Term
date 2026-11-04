@@ -53,9 +53,8 @@ typedef struct flatshared {
     ULONG cf_ids;               /* bit (imp_State & 31) set for every empty clone */
     ULONG cf_lwhich, cf_lsize, cf_lnz, cf_lmarks;   /* the last empty clone: which, w << 8 | h, non-zero grid pixels, bit per mark value seen */
     /* FLAT-ASPECT-BORDERS: the cached side-line width for one screen (flat.c side_px) */
-    struct Screen *aspect_scr;
-    ULONG aspect_mode;
-    int aspect_px;
+    flat_aspect_slot aspect_slot[FLAT_ASPECT_SLOTS];
+    int aspect_px;              /* the Workbench screen's count (the status line) */
     ULONG aspect_looks;         /* DisplayInfo lookups done (the sentinel: one per screen and mode) */
     ULONG mhits;                /* S32-GHOST-MENU: menu ghost fills recoloured to the dim label pen (the sentinel) */
     /* the icon pens are no longer here: the shared holder record "Amarchy.IconPens" owns them (iconpen_dos.h, F14) */

@@ -822,3 +822,33 @@ int flat_side_px(int rx, int ry)
     px = (ry + rx / 2) / rx;
     return px < 1 ? 1 : px;
 }
+
+int flat_aspect_find(const flat_aspect_slot *t, int n, const void *scr)
+{
+    int i;
+    if (scr)
+        for (i = 0; i < n; i++)
+            if (t[i].scr == scr)
+                return t[i].px;
+    return 1;
+}
+
+int flat_aspect_need(const flat_aspect_slot *t, int n, const void *scr, unsigned long mode)
+{
+    int i;
+    for (i = 0; i < n; i++)
+        if (t[i].scr == scr)
+            return t[i].mode != mode;
+    return 1;
+}
+
+void flat_aspect_put(flat_aspect_slot *t, int n, const void *scr, unsigned long mode, int px)
+{
+    int i, at = n - 1;
+    for (i = 0; i < n; i++)
+        if (t[i].scr == scr) { at = i; break; }
+    if (at == n - 1)
+        for (i = 0; i < n; i++)
+            if (!t[i].scr) { at = i; break; }
+    t[at].scr = scr; t[at].mode = mode; t[at].px = px;
+}
