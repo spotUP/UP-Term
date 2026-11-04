@@ -613,6 +613,30 @@ static int tx_remove(flatshared *r)
  * Intuition's ROM code. Anything else runs the stock RectFill untouched. ---- */
 extern void flat_rf_entry(void);
 
+/* S32-KNOB-NONE-FRESH: XCON's scroller is a boopsi gadget (GadgetType GTYP_CUSTOMGADGET) of propgclass or a subclass. Walk OCLASS(g)
+ * and cl_Super comparing cl_ID with PROPGCLASS: plain memory reads, no Intuition call (this runs inside graphics.library), depth bounded. */
+static int gadget_class_is_prop(struct Gadget *g)
+{
+    struct IClass *cl = OCLASS(g);
+    int depth;
+    for (depth = 0; cl && depth < 16; depth++, cl = cl->cl_Super) {
+        const char *a = (const char *)cl->cl_ID, *b = PROPGCLASS;
+        if (a) {
+            while (*a && *a == *b) { a++; b++; }
+            if (*a == *b)
+                return 1;
+        }
+    }
+    return 0;
+}
+
+/* The one prop-gadget test for scroller_pen and the sring walk; flat_gadget_is_prop holds the rule. */
+static int gadget_has_propinfo(struct Gadget *g)
+{
+    unsigned t = g->GadgetType & GTYP_GTYPEMASK;
+    return flat_gadget_is_prop(t, t == GTYP_CUSTOMGADGET && gadget_class_is_prop(g), g->SpecialInfo != 0);
+}
+
 /* FLAT-SCROLLER: the pen for one Intuition fill inside a window scroller, or -1. Walks the window's prop gadgets (no
  * Intuition call: this runs inside graphics.library, GetScreenDrawInfo here could deadlock) and asks flat_scroller_pen. */
 static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, LONG x0, LONG y0, LONG x1, LONG y1, int cuts[][2], int *ncuts)
@@ -621,8 +645,9 @@ static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, LO
     for (g = w->FirstGadget; g; g = g->NextGadget) {
         struct PropInfo *pi;
         int gx, gy, gw, gh, cx, cy, cw, ch, pen;
-        if ((g->GadgetType & GTYP_GTYPEMASK) != GTYP_PROPGADGET || !(pi = (struct PropInfo *)g->SpecialInfo))
+        if (!gadget_has_propinfo(g))
             continue;
+        pi = (struct PropInfo *)g->SpecialInfo;
         gx = g->LeftEdge + ((g->Flags & GFLG_RELRIGHT) ? w->Width - 1 : 0);
         gy = g->TopEdge + ((g->Flags & GFLG_RELBOTTOM) ? w->Height - 1 : 0);
         gw = g->Width + ((g->Flags & GFLG_RELWIDTH) ? w->Width : 0);
@@ -750,8 +775,9 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
                 for (g2 = w->FirstGadget; g2; g2 = g2->NextGadget) {
                     struct PropInfo *p2;
                     int gx2, gy2;
-                    if ((g2->GadgetType & GTYP_GTYPEMASK) != GTYP_PROPGADGET || !(p2 = (struct PropInfo *)g2->SpecialInfo))
+                    if (!gadget_has_propinfo(g2))
                         continue;
+                    p2 = (struct PropInfo *)g2->SpecialInfo;
                     gx2 = g2->LeftEdge + ((g2->Flags & GFLG_RELRIGHT) ? w->Width - 1 : 0);
                     gy2 = g2->TopEdge + ((g2->Flags & GFLG_RELBOTTOM) ? w->Height - 1 : 0);
                     if (x0 >= gx2 && y0 >= gy2 && flat_scroller_knob(gx2 + p2->LeftBorder, gy2 + p2->TopBorder, p2->CWidth, p2->CHeight,
