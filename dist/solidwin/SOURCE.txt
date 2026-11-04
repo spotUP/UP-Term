@@ -3,5 +3,6 @@ Solid (opaque) window moving: an input.device handler, one argument DELAY.
 Binary and icon are unchanged from the author's archive.
 Source: https://thomas-rapp.hier-im-netz.de/downloads/solidwin.lha
 SolidWin md5: 72960c492bce02d91f557f3e5ef58887
-Redistribution: the author was mailed on 2026-11-02 and the owner of this kit
-approved bundling it; no licence text ships with the archive.
+Redistribution: Thomas Rapp allowed distributing the binaries with UP-Term by
+mail on 2026-11-04, "as long as it remains free and publicly available".
+No licence text ships with the author's archive.

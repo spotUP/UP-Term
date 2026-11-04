@@ -27,12 +27,15 @@ IconLib 46.4 (Files/iconlib,  Freeware by Peter Keunecke; the  Peter Keunecke; I
 icon.library for LIBS:, only  TrueColor (v51) build may not    IconLib.guide are in the drawer
 when the option is ticked)    be sold with a package over 10   (licence: "Important Restrictions");
                               EUR or in commercial bundles     SOURCE.txt names the two builds
-RemLib (Files/iconlib/        Thomas Rapp; bundled with the    Thomas Rapp, as shipped in IconLib
-RemLib, only on OS 3.0/3.1    author's approval                46.4 ThirdParty/RemLib; RemLib.doc
-with the IconLib option)                                       is in the iconlib drawer
-SolidWin 1.12 (Files/solidwin Freeware by Thomas Rapp; no   Thomas Rapp; SOURCE.txt in the drawer
-in C:, only when the option   licence text ships, the author   names the download (thomas-rapp.hier-
-is ticked)                    was asked for redistribution   im-netz.de/downloads/solidwin.lha)
+RemLib (Files/iconlib/        Thomas Rapp; the author allowed  Thomas Rapp, as shipped in IconLib
+RemLib, only on OS 3.0/3.1    distribution with UP-Term by     46.4 ThirdParty/RemLib; RemLib.doc
+with the IconLib option)      mail 2026-11-04, as long as it   is in the iconlib drawer
+                              stays free and publicly available
+SolidWin 1.12 (Files/solidwin Freeware by Thomas Rapp; the   Thomas Rapp; SOURCE.txt in the drawer
+in C:, only when the option   author allowed distribution with names the download (thomas-rapp.hier-
+is ticked)                    UP-Term by mail 2026-11-04, as   im-netz.de/downloads/solidwin.lha)
+                              long as it stays free and
+                              publicly available
 AmiNetXDuo 1.0.0-rc2 (Files/  MIT, with named exceptions:      aminet.net/package/comm/net/
 AmiNetXDuo, installed by its  ThreadX/NetX Duo MIT; NE2000    AmiNetXDuo-1.0.0-rc2; the licence list
 own Install-AmiNetXDuo only   core BSD-2; Dropbear MIT-style; is in its ReadMe (LICENCE) and the
