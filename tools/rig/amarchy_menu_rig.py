@@ -1016,8 +1016,10 @@ def new_windows(before):
 
 def new_titled(before):
     """Like new_windows, but by window title alone: the screen name flips between "Directory Opus" and "Workbench Screen"
-    with the active window, and the first lister also brings DOpus's own 'menuhost' and untitled helper windows, which
-    are not what a hotkey or a row opens. Returns the titles of the new real windows."""
+    with the active window, and the first lister also brings DOpus's own 'menuhost' window, which is not what a hotkey
+    or a row opens. Untitled windows are filtered too, but DOpus is not their opener: an untitled 296x224 window at
+    252,188 is the Amarchy text quick menu (amarchy/act.c window_spec: XCON NOBORDER hides the title), see
+    thoughts/spot/term-findings/rig4-untitled-windows-s44.md. Returns the titles of the new real windows."""
     import collections
     keep = lambda ws: collections.Counter(t for _s, t in ws if t not in ('', 'menuhost'))
     return list((keep(dopus_windows()) - keep(before)).elements())
@@ -2298,6 +2300,33 @@ def open_requesters(query=None):
     return '; '.join(ami.describe_requester(r) for r in found)
 
 
+TEXT_MENU_SIZE = (296, 224)     # amarchy/act.c window_spec: the text quick menu is an untitled NOBORDER XCON window
+
+
+def text_menu_windows(windows=None):
+    """The untitled 296x224 XCON windows open now: the Amarchy text quick menu (a title-less window cannot be told apart
+    from another except by this size). `windows` is a window list (wbrun_rig.windows() shape), default the rig's."""
+    if windows is None:
+        import wbrun_rig
+        windows = wbrun_rig.windows()
+    return [w for w in windows if not (w.get('title') or '').strip()
+            and (int(w.get('width', 0)), int(w.get('height', 0))) == TEXT_MENU_SIZE]
+
+
+def close_text_menu(windows=None, key=None, settle=1.0):
+    """Esc the text quick menu a row left open, then check no untitled 296x224 window remains. Returns '' when clean, else the
+    failure text. Esc is sent only while such a window exists, so a row that closed its menu costs one window list."""
+    key = key or ami.key
+    for _ in range(3):
+        if not text_menu_windows(windows() if callable(windows) else windows):
+            return ''
+        key(RAW['esc'])
+        time.sleep(settle)
+    left = text_menu_windows(windows() if callable(windows) else windows)
+    return ('%d untitled %dx%d XCON window(s) (the Amarchy text menu) left open after Esc: addr %s'
+            % (len(left), TEXT_MENU_SIZE[0], TEXT_MENU_SIZE[1], ', '.join(str(w.get('addr')) for w in left))) if left else ''
+
+
 def run_row(fn, query=None):
     """One row's (ok, detail). A helper that gives up (ami.py exits when a click cannot make a window active) fails
     this row, not the table: the rows after it still run, and --failed re-runs it. A system requester open before
@@ -2310,6 +2339,13 @@ def run_row(fn, query=None):
         ok, detail = fn()
     except (Exception, SystemExit) as e:
         ok, detail = False, 'aborted: %s' % (e,)
+    finally:
+        try:
+            left = close_text_menu()
+        except (Exception, SystemExit) as e:
+            left = 'text menu leftover check failed: %s' % (e,)
+    if left:
+        ok, detail = False, '%s (row said: %s)' % (left, detail)
     if not ok:
         bad = open_requesters(query)
         if bad:
