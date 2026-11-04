@@ -2363,6 +2363,57 @@ static void sc_tabs(long t, int first)
     }
 }
 
+/* Help (UD7): how a new user gets help. The handler has /help, /tutorial and /ask (handler/slash.c) and no welcome
+ * text, so none is shown. /help NAME is sent for real and the terminal's own reply is printed (the text slash_help
+ * builds). /tutorial and /ask open a tutorial tab and start an AI agent, which a demo must not leave behind (their
+ * reply names no tab number to close), so the scene shows what each opens through its /help line. */
+#define HELP_ASK_AT 20
+#define HELP_TUTORIAL_AT 70
+
+static int help_row;
+
+/* send "/help NAME": the typed prompt line, then the terminal's reply, a line at a time */
+static void help_ask(const char *name)
+{
+    char line[40] = "/help ";
+    const char *r;
+    strcat(line, name);
+    at(help_row++, 2);
+    ps("\033[36m~\033[0m % ");
+    fg(2);
+    ps(line);
+    sgr0();
+    r = io->command ? io->command(io->user, line) : 0;
+    while (r && *r) {
+        at(help_row++, 2);
+        while (*r && *r != '\n')
+            pc(*r++);
+        if (*r == '\n')
+            r++;
+    }
+}
+
+static void sc_help(long t, int first)
+{
+    static int asked, tutorial;
+    if (first) {
+        asked = tutorial = 0;
+        help_row = 8;
+        heading("Help", "three slash commands answer a new user's questions");
+        grey_line(4, "/help lists every UP-Term command; /help NAME describes one.");
+        grey_line(5, "/tutorial opens the shell tutorial in a new tab.");
+        grey_line(6, "/ask TASK starts the AI agent in a new tab, on TASK.");
+    }
+    if (!asked && t >= HELP_ASK_AT) {
+        asked = 1;
+        help_ask("ask");
+    } else if (!tutorial && t >= HELP_TUTORIAL_AT) {
+        tutorial = 1;
+        help_ask("tutorial");
+        grey_line(help_row + 1, "Type /tutorial or /ask yourself: each opens its own tab.");
+    }
+}
+
 /* A frame counter in big letters. With mode 2026 the terminal shows each
  * frame whole; every other second the frames go without it, and a slow
  * machine shows them being drawn. */
@@ -2516,6 +2567,7 @@ static const scene_def scenes[] = {
     { "icat", sc_icat, 0, 450, "icat: a picture printed inline, scrolling with the text", 0, 0, 0 },
     { "glyphs", sc_glyphs, 0, 400, "Glyphs: Powerline, Nerd Font, emoji, box drawing", 0, 0, 0 },
     { "tabs", sc_tabs, 0, 400, "Tabs: several sessions in one window", 0, 0, 0 },
+    { "help", sc_help, 0, 300, "Help: /help, /tutorial and /ask", 0, 0, 0 },
     { "synchronized output", sc_sync, 1, 400, "Synchronized output: frames shown whole", 0, 0, 0 },
     { "resize", sc_resize, 0, 400, "A program resizes the window (DECCOLM)", 0, 0, 0 },
     { "reflow", sc_reflow, 0, 750, "Reflow on resize", 1, 0, 0 },
