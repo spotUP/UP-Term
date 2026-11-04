@@ -198,13 +198,27 @@ static int dk_pointer_editor_ok(void)
     return len > 0 && desk_pointer_editor_ok(img, len);
 }
 
-/* may SYS:Prefs/Palette write ENV:Sys/palette.prefs: version 47+ (desk_palette_editor_ok). On 3.1 (Palette 40.2, IPrefs 40.7)
- * the write freezes the guest (DESK-31-CRASH) */
+/* is SYS:Prefs/Palette 47+ (3.2, desk_palette_editor_ok). Below 47 (3.1: Palette 40.2, IPrefs 40.7) a palette.prefs with a 13th pen word
+ * overwrites ExecBase (DESK-31-CRASH, S56-PALETTE-31-SAFE): every palette.prefs written there is the 3.1-safe form. */
 static int dk_palette_editor_ok(void)
 {
     static unsigned char img[65536];
     long len = dk_read("SYS:Prefs/Palette", img, sizeof img);
     return len > 0 && desk_palette_editor_ok(img, len);
+}
+
+/* S56-PALETTE-31-SAFE: the one way a palette.prefs reaches SYS:Prefs/Palette. Below 47 the bytes go through desk_palette_31safe first; a file
+ * it refuses (no PALT, unterminated pen list) is not written at all. */
+unsigned long desk_dos_pal31_puts;
+static int dk_put_palette(const unsigned char *buf, long len)
+{
+    static unsigned char safe[DK_BUF];
+    if (!dk_palette_editor_ok()) {
+        len = desk_palette_31safe(buf, len, safe, sizeof safe);
+        buf = safe;
+        desk_dos_pal31_puts++;
+    }
+    return dk_put("Palette", DK_WORK "/palette.prefs", buf, len);
 }
 
 int (*desk_dos_wb_close)(void);
@@ -394,7 +408,7 @@ static int dk_apply(const gtheme *th, char *why, int cap)
     if (plan < 0 || (plan == 0 && ic_act == DK_IC_NONE))
         return plan;
     mask = (unsigned)plan | (ic_act != DK_IC_NONE ? 1u << DT_ICONTROL : 0u);
-    mask = desk_gate_mask(mask, dk_palette_editor_ok(), &old_ws); /* the caller sets the colours live when the palette bit goes */
+    mask = desk_gate_mask(mask, dk_palette_editor_ok(), &old_ws); /* the palette bit stays on 3.1: dk_put_palette writes the safe form */
     if (!mask)
         return 0;
     UnLock(CreateDir((STRPTR)DK_WORK));
@@ -422,7 +436,7 @@ static int dk_apply(const gtheme *th, char *why, int cap)
         len = len > 0 ? desk_palette_theme(prev, len, th, depth, flat_pens, buf, sizeof buf) : 0;
         if (len <= 0)
             len = desk_palette(th, depth >= 3 ? 8 : 4, pens, buf, sizeof buf);
-        ok &= dk_put("Palette", DK_WORK "/palette.prefs", buf, len);
+        ok &= dk_put_palette(buf, len);
         /* IPrefs resets Workbench for the palette: the other editors run only after it finished (SYS:Prefs/Pointer
          * raised a Program Error requester when started under the running reset) */
         if (reset)
@@ -715,7 +729,7 @@ static int dk_flat_pens(const gtheme *th)
     if (sync && len > 0) {
         idle = dk_iprefs_idle_mask();
         desk_dos_flat_pens_writes++;
-        if (dk_put("Palette", DK_WORK "/palette.prefs", buf, len)) {
+        if (dk_put_palette(buf, len)) {
             dk_wait_reset(before, flat, depth);
             dk_wait_iprefs(idle);
         }
@@ -886,6 +900,45 @@ static void dk_wbborder(void)
  * (ENVARC: copy, else the ENV: copy) under desk_copy_name(ENV: path); a file that did not exist is recorded by "<name>.absent". Kept until
  * "off" restores that file, so it never saves a theme as the original. */
 #define DK_ORIG "ENVARC:Amarchy/desk-original"
+
+/* S56-PALETTE-31-SAFE: below 47 a palette.prefs on disk that is not the 3.1-safe form (a 3.2 Palette save on a shared disk) is rewritten in
+ * that form, after a copy to <file>.32bak (only when no such backup exists yet: the first 3.2 file stays). desk_palette_31_fix_plan decides. */
+unsigned long desk_dos_pal31_checks, desk_dos_pal31_fixes;
+static void dk_palette_31_fix(const char *file)
+{
+    static unsigned char cur[DK_BUF], out[DK_BUF];
+    char bak[112];
+    long len, n;
+    int plan;
+    desk_dos_pal31_checks++;
+    len = dk_read(file, cur, sizeof cur);
+    strcpy(bak, file);
+    strcat(bak, ".32bak");
+    plan = desk_palette_31_fix_plan(dk_palette_editor_ok(), len > 0 && len < (long)sizeof cur ? cur : 0, len, dk_exists(bak), out, sizeof out, &n);
+    if ((plan & DK_P31_BACKUP) && !dk_write(bak, cur, len))
+        return; /* no backup, no rewrite */
+    if ((plan & DK_P31_WRITE) && dk_write(file, out, n))
+        desk_dos_pal31_fixes++;
+}
+
+/* the saved original of the palette (desk-original/), the copy dk_orig_restore_arc and dk_restore_targets feed back */
+static void dk_palette_31_fix_orig(void)
+{
+    char name[96];
+    desk_copy_name(DK_ORIG, desk_target_get(DT_PALETTE)->files[1], name, sizeof name);
+    dk_palette_31_fix(name);
+}
+
+/* Amarchy start: ENVARC: first (the copy a reboot reads), then ENV:, then the saved original */
+static void dk_palette_31_start(void)
+{
+    const desk_target *t = desk_target_get(DT_PALETTE);
+    dk_palette_31_fix(t->files[0]);
+    dk_palette_31_fix(t->files[1]);
+    dk_palette_31_fix_orig();
+    am_sentinel("AMARCHY_DESK_PAL31_CHECKS", (long)desk_dos_pal31_checks);
+    am_sentinel("AMARCHY_DESK_PAL31_FIXES", (long)desk_dos_pal31_fixes);
+}
 unsigned long desk_dos_persists, desk_dos_originals_saved, desk_dos_originals_restored, desk_dos_originals_dropped;
 unsigned long desk_dos_env_fix_retries, desk_dos_env_fix_fails, desk_dos_env_fix_err;
 
@@ -987,6 +1040,8 @@ static void dk_orig_restore_arc(const char *env, const char *arc)
 {
     char name[96];
     desk_copy_name(DK_ORIG, env, name, sizeof name);
+    if (!strcmp(env, desk_target_get(DT_PALETTE)->files[1]))
+        dk_palette_31_fix(name); /* S56-PALETTE-31-SAFE: a 3.2-saved original goes back to ENVARC: in the safe form */
     if (dk_stream_copy(name, arc) < 0)
         DeleteFile((STRPTR)arc);
     desk_dos_originals_restored++;
@@ -1242,6 +1297,8 @@ static void dk_restore_targets(unsigned mask, const char *dir)
         if (!((mask >> ed[i].t) & 1) || (ed[i].t == DT_POINTER && !dk_pointer_editor_ok()))
             continue;
         desk_copy_name(dir, ed[i].file, name, sizeof name);
+        if (ed[i].t == DT_PALETTE)
+            dk_palette_31_fix(name); /* S56-PALETTE-31-SAFE: the copy the editor and dk_env_fix_file put into ENV: */
         len = dk_read(name, buf, 1);
         if (len < 0)
             DeleteFile((STRPTR)ed[i].file);
@@ -1401,6 +1458,7 @@ int desk_dos_start_apply(void)
     unsigned long idle = 0;
     long wblen, patlen, len, pallen, curlen, ptrlen = 0, fontlen = 0, flen;
     int ic_act = DK_IC_NONE, ic_snap = 0;
+    dk_palette_31_start(); /* S56-PALETTE-31-SAFE: whatever the switches, a 3.2 palette.prefs on 3.1 is made safe first */
     amconf_load(&ap);
     mask = amconf_desk_mask(&ap);
     flat = amconf_desk_flat_pens(&ap);
@@ -1421,7 +1479,7 @@ int desk_dos_start_apply(void)
     plan = desk_start_plan(mask, flat, dk_wbborder_editor_ok(), wb, wblen, saved, gsaved, &th, depth, pat, patlen);
     /* S31-START-PALETTE: the theme colours, as dk_apply's palette part writes them (dk_flat_pens leaves them to it) */
     pallen = 0;
-    if (((mask >> DT_PALETTE) & 1) && dk_palette_editor_ok()) {
+    if ((mask >> DT_PALETTE) & 1) { /* S56-PALETTE-31-SAFE: 3.1 too, dk_put_palette writes the safe form */
         desk_pens_for(flat, pens);
         len = dk_palette_base(0, pens, dk_screen_depth(), out, sizeof out);
         curlen = dk_read("ENV:Sys/Palette.prefs", wb, sizeof wb);   /* wb is free: desk_start_plan has read it */
@@ -1471,7 +1529,7 @@ int desk_dos_start_apply(void)
         struct Screen *before = dk_wb_screen(live, &nlive);
         dk_orig_save(1u << DT_PALETTE, 0);
         UnLock(CreateDir((STRPTR)DK_WORK));
-        if (dk_put("Palette", DK_WORK "/palette.prefs", pal, pallen)) {
+        if (dk_put_palette(pal, pallen)) {
             desk_dos_start_writes++;
             if (desk_pens_reset(live, nlive, flat, dk_screen_depth()))
                 dk_wait_reset(before, flat, dk_screen_depth());

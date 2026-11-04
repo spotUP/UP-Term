@@ -239,16 +239,25 @@ int desk_pending_files(unsigned mask, int wbprefs, const char **list, int cap);
 int desk_ver_major(const unsigned char *bin, long len);
 /* 1 when the editor with this file image may be fed the pointer prefs (major >= 47); 0 below 47 or unknown */
 int desk_pointer_editor_ok(const unsigned char *bin, long len);
-/* Palette editor gate (DESK-31-CRASH): on Kickstart 40.68 (Palette 40.2, IPrefs 40.7) any write of ENV:Sys/palette.prefs
- * freezes the guest a few seconds later (stock file too); the 47.x editor applies it. 1 when the editor with this file image
- * may be run on a palette.prefs (major >= 47); 0 below 47 or unknown. The caller then leaves the file alone and sets the
- * colours live (wb_pens_apply). */
+/* 1 when the Palette editor with this file image is 47+ (3.2); 0 below 47 or unknown. DESK-31-CRASH (3.1, Palette 40.2, IPrefs 40.7) was
+ * a 13th pen word in the written file (S56-PALETTE-31-SAFE): below 47 every palette.prefs goes through desk_palette_31safe first. */
 int desk_palette_editor_ok(const unsigned char *bin, long len);
-/* the targets to write on a Workbench whose Palette editor is (palette_ok) or is not usable: without it the palette bit goes. When a
+/* the targets to write on a Workbench whose Palette editor is (palette_ok, 3.2) or is not 47+ (3.1): the palette bit stays either way (S56-PALETTE-31-SAFE). When a
  * wbpattern write remains (either way), *ws_reset is 1 -- IPrefs (40.7 and 47.x) makes Intuition ask for a Workbench reset on it ("Please close all
  * windows, except drawers"), so the caller closes its windows around that write and waits for the new screen. The icontrol bit stays only with palette_ok (3.2 reads the
  * geometry, 3.1 ignores it) and sets *ws_reset too: a geometry change reopens the Workbench screen */
 unsigned desk_gate_mask(unsigned mask, int palette_ok, int *ws_reset);
+/* S56-PALETTE-31-SAFE: IPrefs 40.7 applying a palette.prefs with a 13th pen word in a pen list (3.2 Palette 47 writes 13) overwrites ExecBase
+ * at $4 (rig 84 field bisect). The 3.1-safe form: both pen lists at most DK_PENS_31 pens, then ffff, tail zero; colours and everything else
+ * as they are. desk_palette_31safe writes that form of in to out: inlen bytes (in unchanged when it is already safe), 0 when in is not a
+ * palette.prefs with a PALT whose two pen lists end in ffff, or does not fit cap. */
+#define DK_PENS_31 12
+long desk_palette_31safe(const unsigned char *in, long inlen, unsigned char *out, long cap);
+/* the Amarchy-start conversion of one palette.prefs (cur, curlen <= 0: none) on a Workbench whose Palette editor is (palette_ok, 3.2) or is
+ * not 47+: DK_P31_WRITE when the file must be rewritten in the safe form (out, *outlen bytes), with DK_P31_BACKUP when no backup exists yet
+ * (copy the file to its .32bak first; an existing backup is never overwritten). DK_P31_NONE on 3.2, for a missing, foreign or already safe file. */
+enum { DK_P31_NONE = 0, DK_P31_WRITE = 1, DK_P31_BACKUP = 2 };
+int desk_palette_31_fix_plan(int palette_ok, const unsigned char *cur, long curlen, int backup_exists, unsigned char *out, long cap, long *outlen);
 /* FLAT-P1-2 icontrol action. thin = the border size switch is thin (and the desktop theme on); cur = the current icontrol.prefs bytes (curlen <= 0: none);
  * have_snap = T:amarchy-revert holds a copy. Thin and not yet written: DK_IC_WRITE and *snapshot = 1 (copy the file first). Thin already written: DK_IC_NONE
  * (no second Workbench reset; the snapshot is not overwritten by our own file). Stock after a thin write with a snapshot: DK_IC_RESTORE (copy the snapshot back, ENVARC: and ENV:). Else DK_IC_NONE. */

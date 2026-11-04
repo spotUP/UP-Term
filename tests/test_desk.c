@@ -1335,16 +1335,113 @@ static void test_desk_palette_gate(void)
         CHECK_INT(ws, 0);
         CHECK_INT(desk_gate_mask(1u << DT_ICONTROL, 1, &ws), 1u << DT_ICONTROL);
         CHECK_INT(ws, 1);
-        /* 3.1: no palette write; the wbpattern write that remains makes Intuition ask for a Workbench reset (second cause) */
-        CHECK_INT(desk_gate_mask(15, 0, &ws), 14);
+        /* 3.1 (S56-PALETTE-31-SAFE): the palette write stays, in the safe form; the wbpattern write makes Intuition ask for a Workbench reset */
+        CHECK_INT(desk_gate_mask(15, 0, &ws), 15);
         CHECK_INT(ws, 1);
-        CHECK_INT(desk_gate_mask(1, 0, &ws), 0);
+        CHECK_INT(desk_gate_mask(1, 0, &ws), 1);
         CHECK_INT(ws, 0);
         CHECK_INT(desk_gate_mask(15, 1, &ws), 15);
         CHECK_INT(ws, 0); /* 3.2 measured: a WBPattern USE with a window open posts no reset requester */
         CHECK_INT(desk_gate_mask(1u << DT_PALETTE, 1, &ws), 1u << DT_PALETTE);
         CHECK_INT(ws, 0);
     }
+}
+
+/* S56-PALETTE-31-SAFE: rig 84 bisect, file B. The 3.2 Palette save (13 pens, then ffff, in both lists) killed 3.1 (IPrefs 40.7 wrote $B2 to
+ * ExecBase); the same file with both lists cut to 12 pens, ffff, tail zero, stayed alive. Colours need no change. */
+static void test_desk_palette_31safe(void)
+{
+    static unsigned char gold[BUF_MAX], out[BUF_MAX], again[BUF_MAX], bad[BUF_MAX];
+    long gn = slurp(DESK_DATA "palette-gui-save.prefs", gold, sizeof gold), n, i;
+    int diff = 0;
+    CHECK_INT(gn, DK_PALETTE_SIZE);
+    CHECK_INT(gold[0x4c] == 0xff && gold[0x4d] == 0xff && gold[0x8c] == 0xff && gold[0x8d] == 0xff, 1); /* the input is the 13-pen form */
+    n = desk_palette_31safe(gold, gn, out, sizeof out);
+    CHECK_INT(n, gn);
+    /* both lists: 12 pens kept, ffff at word 12, the old 13th pen and terminator zero */
+    CHECK_INT(memcmp(out + 0x32, gold + 0x32, 24), 0);
+    CHECK_INT(memcmp(out + 0x72, gold + 0x72, 24), 0);
+    CHECK_INT(out[0x4a] == 0xff && out[0x4b] == 0xff && out[0x8a] == 0xff && out[0x8b] == 0xff, 1);
+    for (i = 0x4c; i < 0x52; i++)
+        diff += out[i] != 0 || out[i + 0x40] != 0;
+    CHECK_INT(diff, 0);
+    /* nothing outside the pen lists moves (header, PRHD, reserved, colours) */
+    diff = 0;
+    for (i = 0; i < gn; i++)
+        if (!((i >= 0x32 && i < 0x72) || (i >= 0x72 && i < 0xb2)))
+            diff += out[i] != gold[i];
+    CHECK_INT(diff, 0);
+    /* already safe: the bytes come back unchanged */
+    CHECK_INT(desk_palette_31safe(out, n, again, sizeof again), n);
+    CHECK_INT(memcmp(again, out, (size_t)n), 0);
+    /* garbage: not a prefs file, a prefs file without PALT, an unterminated pen list, too small a buffer, no input */
+    CHECK_INT(desk_palette_31safe((const unsigned char *)"not a prefs file at all, really not", 36, again, sizeof again), 0);
+    memcpy(bad, gold, (size_t)gn);
+    memcpy(bad + 0x1a, "PALX", 4);
+    CHECK_INT(desk_palette_31safe(bad, gn, again, sizeof again), 0);
+    memcpy(bad, gold, (size_t)gn);
+    for (i = 0x32; i < 0x72; i += 2) {
+        bad[i] = 0;
+        bad[i + 1] = 1;
+    }
+    CHECK_INT(desk_palette_31safe(bad, gn, again, sizeof again), 0);
+    CHECK_INT(desk_palette_31safe(gold, gn, again, gn - 1), 0);
+    CHECK_INT(desk_palette_31safe(0, 0, again, sizeof again), 0);
+}
+
+/* S56-PALETTE-31-SAFE: the Amarchy-start decision per palette.prefs: 3.1 + a 13-pen file = backup (unless one exists) and rewrite */
+static void test_desk_palette_31_fix_plan(void)
+{
+    static unsigned char gold[BUF_MAX], safe[BUF_MAX], out[BUF_MAX];
+    long gn = slurp(DESK_DATA "palette-gui-save.prefs", gold, sizeof gold), sn, n = -1;
+    sn = desk_palette_31safe(gold, gn, safe, sizeof safe);
+    CHECK_INT(sn, gn);
+    CHECK_INT(desk_palette_31_fix_plan(0, gold, gn, 0, out, sizeof out, &n), DK_P31_WRITE | DK_P31_BACKUP);
+    CHECK_INT(n, gn);
+    CHECK_INT(memcmp(out, safe, (size_t)n), 0);
+    CHECK_INT(desk_palette_31_fix_plan(0, gold, gn, 1, out, sizeof out, &n), DK_P31_WRITE); /* the existing backup is kept */
+    CHECK_INT(n, gn);
+    CHECK_INT(desk_palette_31_fix_plan(1, gold, gn, 0, out, sizeof out, &n), DK_P31_NONE);   /* 3.2 reads 13 pens: left alone */
+    CHECK_INT(n, 0);
+    CHECK_INT(desk_palette_31_fix_plan(0, safe, sn, 0, out, sizeof out, &n), DK_P31_NONE);   /* already safe */
+    CHECK_INT(desk_palette_31_fix_plan(0, 0, -1, 0, out, sizeof out, &n), DK_P31_NONE);       /* no file */
+    CHECK_INT(desk_palette_31_fix_plan(0, (const unsigned char *)"garbage garbage garbage garbage!", 32, 0, out, sizeof out, &n), DK_P31_NONE);
+    CHECK_INT(n, 0);
+}
+
+/* S56-PALETTE-31-SAFE wiring (desk_dos.c is Amiga-only; the rig reads AMARCHY_DESK_PAL31_CHECKS): the start path converts before any switch
+ * returns, every palette editor write goes through dk_put_palette, and both original restores convert their source copy. */
+static void test_desk_palette_31_wired(void)
+{
+    static unsigned char src[200000];
+    long n = slurp("amarchy/desk_dos.c", src, sizeof src - 1);
+    char *f, *ret, *p, *put;
+    int puts = 0;
+    CHECK_INT(n > 0, 1);
+    if (n <= 0)
+        return;
+    src[n] = 0;
+    f = strstr((char *)src, "int desk_dos_start_apply(void)\n{");
+    CHECK_INT(f != 0, 1);
+    if (!f)
+        return;
+    p = strstr(f, "dk_palette_31_start();");
+    ret = strstr(f, "if (!mask && !flat)");
+    CHECK_INT(p != 0 && ret != 0 && p < ret, 1);
+    p = strstr((char *)src, "static void dk_palette_31_start(void)");
+    CHECK_INT(p != 0 && strstr(p, "dk_palette_31_fix(t->files[0]);") != 0 && strstr(p, "AMARCHY_DESK_PAL31_CHECKS") != 0, 1);
+    for (p = (char *)src; (p = strstr(p, "dk_put(\"Palette\"")) != 0; p++)
+        puts++;
+    CHECK_INT(puts, 1); /* the one inside dk_put_palette */
+    put = strstr((char *)src, "static int dk_put_palette(");
+    CHECK_INT(put != 0 && strstr(put, "desk_palette_31safe(") != 0, 1);
+    for (puts = 0, p = (char *)src; (p = strstr(p, "dk_put_palette(")) != 0; p++)
+        puts++;
+    CHECK_INT(puts, 4); /* the definition, the theme apply, the flat-pens sync, the start write */
+    p = strstr((char *)src, "static void dk_orig_restore_arc(");
+    CHECK_INT(p != 0 && strstr(p, "dk_palette_31_fix(name)") != 0 && strstr(p, "dk_palette_31_fix(name)") < strstr(p, "dk_stream_copy(name, arc)"), 1);
+    p = strstr((char *)src, "static void dk_restore_targets(");
+    CHECK_INT(p != 0 && strstr(p, "dk_palette_31_fix(name)") != 0 && strstr(p, "dk_palette_31_fix(name)") < strstr(p, "dk_editor(ed[i].editor, name)"), 1);
 }
 
 /* DESK-PREVIEW-PALETTE: the picker's hook (gt_preview_step) drives the Workbench pens: every highlighted theme writes its desk_role
@@ -1709,6 +1806,9 @@ void suite_desk(void)
     test_desk_pointer();
     test_desk_pointer_gate();
     test_desk_palette_gate();
+    test_desk_palette_31safe();
+    test_desk_palette_31_fix_plan();
+    test_desk_palette_31_wired();
     test_desk_font();
     test_desk_font_default();
     test_desk_guard();

@@ -388,6 +388,50 @@ int desk_palette_pens_stale(const unsigned char *cur, long curlen, const unsigne
     return n != curlen || memcmp(cur, out, (size_t)n);
 }
 
+/* S56-PALETTE-31-SAFE: one pen list of a PALT body (32 words at off) cut to the DK_PENS_31 pens 3.1 knows, then ffff, the tail zeroed.
+ * 0 when the list has no terminator in its 32 words (not a palette we may touch). */
+#define PAL_LIST_WORDS 32
+static int pal_list_31(unsigned char *body, long off)
+{
+    int n;
+    for (n = 0; n < PAL_LIST_WORDS && get16(body + off + 2 * n) != 0xffff; n++)
+        ;
+    if (n == PAL_LIST_WORDS)
+        return 0;
+    if (n > DK_PENS_31) {
+        memset(body + off + 2 * DK_PENS_31, 0, (size_t)(2 * (PAL_LIST_WORDS - DK_PENS_31)));
+        put16(body + off + 2 * DK_PENS_31, 0xffff);
+    }
+    return 1;
+}
+
+long desk_palette_31safe(const unsigned char *in, long inlen, unsigned char *out, long cap)
+{
+    long pos = DK_HDR, body, size;
+    char id[4];
+    if (!in || !out || !is_prefs(in, inlen) || inlen > cap)
+        return 0;
+    while (next_chunk(in, inlen, &pos, id, &body, &size))
+        if (!memcmp(id, "PALT", 4) && size >= PAL_COLORS) {
+            memcpy(out, in, (size_t)inlen);
+            return pal_list_31(out + body, PAL_4PENS) && pal_list_31(out + body, PAL_8PENS) ? inlen : 0;
+        }
+    return 0;
+}
+
+int desk_palette_31_fix_plan(int palette_ok, const unsigned char *cur, long curlen, int backup_exists, unsigned char *out, long cap, long *outlen)
+{
+    long n;
+    *outlen = 0;
+    if (palette_ok || !cur || curlen <= 0)
+        return DK_P31_NONE;
+    n = desk_palette_31safe(cur, curlen, out, cap);
+    if (n <= 0 || (n == curlen && !memcmp(cur, out, (size_t)n)))
+        return DK_P31_NONE;
+    *outlen = n;
+    return DK_P31_WRITE | (backup_exists ? 0 : DK_P31_BACKUP);
+}
+
 int desk_flat_start_refresh(int flat, const unsigned char *cur, long curlen, const unsigned char pens[DK_SLOTS])
 {
     return flat && curlen > 0 && desk_palette_pens_stale(cur, curlen, pens);
@@ -1194,8 +1238,7 @@ int desk_palette_editor_ok(const unsigned char *bin, long len)
 
 unsigned desk_gate_mask(unsigned mask, int palette_ok, int *ws_reset)
 {
-    if (!palette_ok)
-        mask &= ~(1u << DT_PALETTE);
+    /* S56-PALETTE-31-SAFE: the palette bit stays on 3.1 too; every palette.prefs written there is 3.1-safe (desk_palette_31safe) */
     /* IControl's ic_GUIGeometry is read on 3.2 only (FLAT-R1: 3.1 accepts the file and changes nothing), so it follows the palette gate; every
      * change reopens the Workbench screen, so the caller closes its windows around it (the same reset as a wbpattern write on 3.1) */
     if (!palette_ok)

@@ -66,3 +66,18 @@ Verdicts:
 Cause field: the pen lists. Removing the 13th pen word (3.1 knows 12 pens, NUMDRIPENS 12) is enough to stop the $4 overwrite; changing the colour words alone does not. The B+C file was not needed. Caveat: one boot per file, no repeats (earlier splits showed no sometimes-dies pattern). Not tested: 13th pen kept in only one of the two lists, or the 4-colour list vs the 8-colour list individually.
 
 Consequence for Q3: desk_palette_31safe needs to truncate the pen lists to 12; nibble replication is not required for the crash.
+
+## Implementation (s56)
+
+- `desk_palette_31safe(in, inlen, out, cap)` (amarchy/desk_core.c): pure. Copies a FORM PREF file with a PALT chunk and cuts each
+  pen list (pap_4ColorPens at body+16, pap_8ColorPens at body+80) longer than 12 pens to 12 pens, ffff at word 12, the rest of the
+  32-word list zero. Colours and every other byte stay. Refuses (returns 0) non-prefs input, no PALT, an unterminated list, a short cap.
+- `desk_palette_31_fix_plan(...)`: pure start decision. 3.2 (Palette 47+), no file or already safe: nothing. Otherwise write the
+  safe form, plus a `.32bak` backup only when none exists (an existing backup is never overwritten).
+- desk_dos.c: every palette editor write goes through `dk_put_palette` (theme apply, flat-pens sync, start apply), which applies the
+  safe form below Palette 47. `dk_palette_31_start()` runs first in `desk_dos_start_apply` and converts ENVARC:Sys/palette.prefs,
+  ENV:Sys/palette.prefs and the desk-original copy; both original restores convert their source copy before the editor reads it.
+  Sentinels AMARCHY_DESK_PAL31_CHECKS / AMARCHY_DESK_PAL31_FIXES count the start pass.
+- Gate: `desk_gate_mask` no longer drops DT_PALETTE on 3.1; the start palette write no longer checks the editor version.
+- Open: rig PASS on 3.1 (owner); whether Palette 40.2 FROM a safe file USE writes a safe ENV file; whether one list alone is enough;
+  the flat-pens gates in dk_flat_pens and the flat start refresh still require Palette 47; .32bak files are never removed.
