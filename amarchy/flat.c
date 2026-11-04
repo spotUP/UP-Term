@@ -57,7 +57,11 @@
 #include "iconpen_core.h"
 #include "iconpen_dos.h"
 #include "gthemes_core.h"
+#include "iclabel_core.h"
+#include "../render/aa_ink.h"
+#include "../render/pen_match.h"
 #include <graphics/view.h>
+#include <utility/tagitem.h>
 
 static const char ver[] = "$VER: amarchy-flat 0.1 (30.10.2026) (UP-Term)";
 
@@ -595,6 +599,206 @@ static const LONG d4_lvo[FLAT_EL_COUNT] = { FLAT_LVO_DRAWBOX, FLAT_LVO_FIELDBOX 
 typedef void (*textfn)(__reg("a1") struct RastPort *, __reg("a0") CONST_STRPTR, __reg("d0") ULONG, __reg("a6") struct Library *);
 extern void flat_tx_entry(void);
 
+/* ---- RL21 SELECTA-AA-ICONTEXT: antialiased Workbench and DOpus icon labels, inside the Text patch (no second patch).
+ * A label call (icl_accept: task Workbench or dopus, JAM1/JAM2, box inside the window's inner area) reads its box
+ * before (JAM1: the backdrop) and after the stock Text, builds the glyph mask and corner coverage (iclabel_core.c), and
+ * writes the edge pixels back blended: ce_mix on a true-colour screen (cybergraphics ReadPixelArray/WritePixelArray),
+ * a cached ObtainBestPen shade on a pen screen (ReadPixelArray8/WritePixelArray8). The buffers are allocated once
+ * (icl_alloc, before tx_install) and used under icl_ss; a busy semaphore or a failed step draws stock Text (lskip).
+ * They are not on the caller's stack: the Text caller's task owns the stack. Freed only after a clean tx_remove. */
+static struct SignalSemaphore icl_ss;
+static struct Library *icl_cgx;          /* cybergraphics, for a true-colour screen; 0 = pen screens only */
+static uint32_t *icl_before, *icl_after, *icl_out;
+static uint8_t *icl_mk, *icl_cv, *icl_p8;
+static struct BitMap *icl_tbm;           /* the one-line bitmap ReadPixelArray8/WritePixelArray8 need */
+static struct RastPort icl_trp;
+static icl_pencache icl_pc;
+static struct ColorMap *icl_cm;          /* the colour map icl_pc's pens were obtained on */
+static int icl_ready;
+
+static void icl_free(void)
+{
+    int i;
+    if (icl_cm)
+        for (i = 0; i < ICL_CACHE; i++)
+            if (icl_pc.e[i].used && icl_pc.e[i].obtained)
+                ReleasePen(icl_cm, (ULONG)icl_pc.e[i].pen);
+    icl_cache_clear(&icl_pc);
+    icl_cm = 0;
+    if (icl_tbm) {
+        icl_tbm->Depth = 8;
+        FreeBitMap(icl_tbm);
+        icl_tbm = 0;
+    }
+    if (icl_before) { FreeVec(icl_before); icl_before = 0; }
+    if (icl_after) { FreeVec(icl_after); icl_after = 0; }
+    if (icl_out) { FreeVec(icl_out); icl_out = 0; }
+    if (icl_mk) { FreeVec(icl_mk); icl_mk = 0; }
+    if (icl_cv) { FreeVec(icl_cv); icl_cv = 0; }
+    if (icl_p8) { FreeVec(icl_p8); icl_p8 = 0; }
+    if (icl_cgx) { CloseLibrary(icl_cgx); icl_cgx = 0; }
+    icl_ready = 0;
+}
+
+static void icl_alloc(void)
+{
+    if (icl_ready)
+        return;
+    icl_cache_clear(&icl_pc);
+    icl_cgx = OpenLibrary((CONST_STRPTR)"cybergraphics.library", 41);
+    icl_before = (uint32_t *)AllocVec(ICL_MAXPX * 4, MEMF_PUBLIC);
+    icl_after = (uint32_t *)AllocVec(ICL_MAXPX * 4, MEMF_PUBLIC);
+    icl_out = (uint32_t *)AllocVec(ICL_MAXPX * 4, MEMF_PUBLIC);
+    icl_mk = (uint8_t *)AllocVec(ICL_MAXPX, MEMF_PUBLIC);
+    icl_cv = (uint8_t *)AllocVec(ICL_MAXPX, MEMF_PUBLIC);
+    icl_p8 = (uint8_t *)AllocVec((ICL_MAXW + 16) * ICL_MAXH, MEMF_PUBLIC);
+    icl_tbm = AllocBitMap(ICL_MAXW + 16, 1, 8, BMF_CLEAR, NULL);
+    if (icl_before && icl_after && icl_out && icl_mk && icl_cv && icl_p8 && icl_tbm)
+        icl_ready = 1;
+    else
+        icl_free();
+}
+
+static uint32_t icl_rgb(struct ColorMap *cm, ULONG pen)
+{
+    ULONG c[3];
+    GetRGB32(cm, pen, 1, c);
+    return ((c[0] >> 24) << 16) | ((c[1] >> 24) << 8) | (c[2] >> 24);
+}
+
+static long icl_dist(uint32_t want, uint32_t c)
+{
+    pm_target t;
+    pm_aim(want, &t);
+    return pm_dist(&t, c);
+}
+
+/* icl_pen_fn: the cached shade, else ObtainBestPen kept only when it shows the shade (icl_pen_choice) */
+static int icl_pen_for(void *u, int fgpen, int bgpen, int k)
+{
+    struct ColorMap *cm = (struct ColorMap *)u;
+    int n = aa_ink_shades_for_depth(8), pen, got, old;
+    uint32_t fr = icl_rgb(cm, (ULONG)fgpen), br = icl_rgb(cm, (ULONG)bgpen), t;
+    if ((pen = icl_cache_find(&icl_pc, fgpen, bgpen, k, fr, br)) >= 0)
+        return pen;
+    t = icl_pen_target(fr, br, k, n);
+    got = (int)ObtainBestPen(cm, (t >> 16 & 0xFF) * 0x01010101UL, (t >> 8 & 0xFF) * 0x01010101UL, (t & 0xFF) * 0x01010101UL,
+                             OBP_Precision, PRECISION_IMAGE, TAG_DONE);
+    pen = got >= 0 ? icl_pen_choice(k, n, got, icl_dist(t, icl_rgb(cm, (ULONG)got)), icl_dist(t, fr), icl_dist(t, br), fgpen, bgpen)
+                   : icl_pen_choice(k, n, -1, 0, 0, 0, fgpen, bgpen);
+    if (got >= 0 && pen != got)
+        ReleasePen(cm, (ULONG)got);
+    if (!icl_cache_put(&icl_pc, fgpen, bgpen, k, fr, br, pen, got >= 0 && pen == got, &old)) {
+        if (got >= 0 && pen == got)
+            ReleasePen(cm, (ULONG)got);
+    } else if (old >= 0)
+        ReleasePen(cm, (ULONG)old);
+    return pen;
+}
+
+static void icl_read(struct RastPort *rp, int rtg, int x, int y, int w, int h, uint32_t *dst)
+{
+    int i, n = w * h;
+    if (rtg) {
+        vr_cgx_read_pixels(icl_cgx, rp, (UWORD)x, (UWORD)y, dst, 0, 0, (UWORD)(w * 4), (UWORD)w, (UWORD)h, VR_RECTFMT_RGBA);
+        for (i = 0; i < n; i++)
+            dst[i] >>= 8;
+    } else {
+        int pw = ((w + 15) >> 4) << 4, xx, yy;
+        ReadPixelArray8(rp, (UWORD)x, (UWORD)y, (UWORD)(x + w - 1), (UWORD)(y + h - 1), icl_p8, &icl_trp);
+        for (yy = 0; yy < h; yy++)
+            for (xx = 0; xx < w; xx++)
+                dst[yy * w + xx] = icl_p8[yy * pw + xx];
+    }
+}
+
+/* 1 = the label was drawn here (stock Text inside, edges blended or not); 0 = the caller draws stock */
+static int icl_label(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG count)
+{
+    struct Window *w;
+    struct Task *me;
+    struct TextExtent te;
+    struct ColorMap *cm;
+    int x, y, bw, bh, il, it, ir, ib, rtg, n, depth, jam2, i;
+    uint32_t fg;
+    if (!icl_ready || !rp->Layer || !rp->Layer->Window || !rp->Font || !rp->BitMap || count == 0)
+        return 0;
+    w = (struct Window *)rp->Layer->Window;
+    me = FindTask(NULL);
+    if (rp != w->RPort || !me->tc_Node.ln_Name)
+        return 0;
+    TextExtent(rp, str, count, &te);
+    x = rp->cp_x + te.te_Extent.MinX;
+    y = rp->cp_y + te.te_Extent.MinY;
+    bw = te.te_Extent.MaxX - te.te_Extent.MinX + 1;
+    bh = te.te_Extent.MaxY - te.te_Extent.MinY + 1;
+    if (w->Flags & WFLG_GIMMEZEROZERO) {
+        il = 0; it = 0; ir = w->GZZWidth - 1; ib = w->GZZHeight - 1;
+    } else {
+        il = w->BorderLeft; it = w->BorderTop; ir = w->Width - w->BorderRight - 1; ib = w->Height - w->BorderBottom - 1;
+    }
+    if (!icl_accept((const char *)me->tc_Node.ln_Name, rp->DrawMode, rp->FgPen, rp->BgPen, x, y, bw, bh, il, it, ir, ib))
+        return 0;
+    depth = (int)GetBitMapAttr(rp->BitMap, BMA_DEPTH);
+    rtg = depth > 8;
+    if (rtg && !icl_cgx)
+        return 0;
+    if (!AttemptSemaphore(&icl_ss)) {
+        r->lskip++;
+        return 0;
+    }
+    cm = w->WScreen->ViewPort.ColorMap;
+    n = bw * bh;
+    jam2 = (rp->DrawMode & JAM2) != 0;
+    if (!rtg) {
+        icl_trp = *rp;
+        icl_trp.Layer = 0;
+        icl_trp.BitMap = icl_tbm;
+        icl_tbm->Depth = (UBYTE)depth;
+    }
+    if (!jam2)
+        icl_read(rp, rtg, x, y, bw, bh, icl_before);
+    ((textfn)r->tsw.saved)(rp, str, count, (struct Library *)GfxBase);
+    icl_read(rp, rtg, x, y, bw, bh, icl_after);
+    if (rtg) {
+        uint32_t ap = icl_rgb(cm, rp->FgPen), bp = icl_rgb(cm, rp->BgPen);
+        icl_mask(jam2, 0, icl_before, icl_after, ap, bp, n, icl_mk);
+    } else {
+        icl_mask(jam2, 1, icl_before, icl_after, rp->FgPen, rp->BgPen, n, icl_mk);
+    }
+    if (!icl_fg(icl_mk, icl_after, n, &fg) || !icl_coverage(icl_mk, bw, bh, icl_cv)) {
+        r->lskip++;
+        ReleaseSemaphore(&icl_ss);
+        return 1;
+    }
+    if (rtg) {
+        if (icl_blend_rgb(icl_cv, icl_after, fg, n, icl_out) > 0) {
+            for (i = 0; i < n; i++)
+                icl_out[i] = (icl_out[i] << 8) | 0xFF;
+            vr_cgx_write_pixels(icl_cgx, icl_out, 0, 0, (UWORD)(bw * 4), rp, (UWORD)x, (UWORD)y, (UWORD)bw, (UWORD)bh, VR_RECTFMT_RGBA);
+        }
+    } else {
+        if (icl_cm && icl_cm != cm) {             /* another screen's colour map: the cached pens are not ours */
+            for (i = 0; i < ICL_CACHE; i++)
+                if (icl_pc.e[i].used && icl_pc.e[i].obtained)
+                    ReleasePen(icl_cm, (ULONG)icl_pc.e[i].pen);
+            icl_cache_clear(&icl_pc);
+        }
+        icl_cm = cm;
+        if (icl_blend_pens(icl_cv, icl_after, (int)fg, aa_ink_shades_for_depth(depth), icl_pen_for, cm, n, icl_out) > 0) {
+            int pw = ((bw + 15) >> 4) << 4, xx, yy;
+            for (yy = 0; yy < bh; yy++)
+                for (xx = 0; xx < bw; xx++)
+                    icl_p8[yy * pw + xx] = (uint8_t)icl_out[yy * bw + xx];
+            WritePixelArray8(rp, (UWORD)x, (UWORD)y, (UWORD)(x + bw - 1), (UWORD)(y + bh - 1), icl_p8, &icl_trp);
+        }
+    }
+    r->labels++;
+    ReleaseSemaphore(&icl_ss);
+    return 1;
+}
+
+
 void flat_tx_c(struct RastPort *rp, CONST_STRPTR str, ULONG count)
 {
     flatshared *r = g_r;
@@ -654,6 +858,8 @@ void flat_tx_c(struct RastPort *rp, CONST_STRPTR str, ULONG count)
         SetAPen(rp, fg);
         return;
     }
+    if (r->st.enabled && !r->st.held && icl_label(r, rp, str, count))       /* RL21 icon label */
+        return;
     ((textfn)r->tsw.saved)(rp, str, count, (struct Library *)GfxBase);
 }
 
@@ -1007,7 +1213,7 @@ static void print_status(void)
     unsigned dver = 0, drev = 0;
     unsigned long dcalls = 0, dflat = 0, fcalls = 0, fflat = 0;
     int finst = 0, rinst = 0;
-    unsigned long rcalls = 0, rhits = 0, shits = 0, mhits = 0, tcalls = 0, thits = 0;
+    unsigned long rcalls = 0, rhits = 0, shits = 0, mhits = 0, tcalls = 0, thits = 0, labels = 0, lskip = 0;
     int tinst = 0;
     unsigned long cdraws = 0, cfall = 0, alooks = 0, cfb = 0, cfd = 0, cfm = 0, cfe = 0, cfk = 0, cfi = 0, clw = 0, cls = 0, cln = 0, clm = 0;
     int apx = 0, sring[16][9], sn = 0;
@@ -1023,7 +1229,7 @@ static void print_status(void)
         dsum[0] = r->dsum[0]; dsum[1] = r->dsum[1];
         finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat;
         rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits; mhits = r->mhits;
-        tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits;
+        tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits; labels = r->labels; lskip = r->lskip;
         cdraws = r->cdraws; cfall = r->cfall;
         cfb = r->cf_busy; cfd = r->cf_nodri; cfm = r->cf_nobm; cfe = r->cf_empty; cfk = r->cf_mask;
         cfi = r->cf_ids; clw = r->cf_lwhich; cls = r->cf_lsize; cln = r->cf_lnz; clm = r->cf_lmarks;
@@ -1080,6 +1286,8 @@ static void print_status(void)
         put_word(line, &n, "text installed=");      put_word(line, &n, tinst ? "yes" : "no");
         put_word(line, &n, " calls=");              put_num(line, &n, tcalls);
         put_word(line, &n, " hits=");               put_num(line, &n, thits);
+        put_word(line, &n, " labels=");             put_num(line, &n, labels);     /* RL21 sentinels */
+        put_word(line, &n, " lskip=");              put_num(line, &n, lskip);
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
@@ -1517,6 +1725,7 @@ static int install_all(flatshared *r, poll_timer *tm, int *marker_live)
     }
     if (rf_install(r) != FLAT_OK)
         PutStr((STRPTR)"amarchy-flat: RectFill patch not installed\n");
+    icl_alloc();
     if (tx_install(r) != FLAT_OK)
         PutStr((STRPTR)"amarchy-flat: Text patch not installed\n");
     pt_start(tm, (unsigned long)FLAT_MARKER_SECS * 1000000UL);
@@ -1532,6 +1741,7 @@ int main(void)
     int marker_live = 0;
     (void)ver;
     InitSemaphore(&cl_ss);
+    InitSemaphore(&icl_ss);
     if (is_help(args)) {
         PutStr((STRPTR)"amarchy-flat [STATUS]: the flat-UI resident program; prints flat=on|off|absent|held. Ctrl-C unloads it\n");
         return 0;
@@ -1667,6 +1877,9 @@ int main(void)
         ObtainSemaphore(&cl_ss);
         clone_free();
         ReleaseSemaphore(&cl_ss);
+        ObtainSemaphore(&icl_ss);                       /* RL21: Text is unchained, no label branch can be inside */
+        icl_free();
+        ReleaseSemaphore(&icl_ss);
         dim_release(r);
         pt_stop(&pen_tm);
         pens_sync(r, 1);                                /* unloading: give the icon pens back */
