@@ -48,3 +48,19 @@ like tabs_leave/splits_leave), plus look at the per-frame cost of vt_anim_tick o
 - Commit 5a0b15bc on branch `fix/updemo-scene-time-after-draw` (worktree `.claude/worktrees/updemo-scene15`), not merged.
 - Test `a_scene_whose_first_frame_draws_slowly_still_gets_its_whole_time` (tests/test_updemo.c): with fix `[OK] updemo: 8689 checks, 0 failed`; fix reverted: FAIL at 1071 (total time) and 1072 (`frames > 1`).
 - Cause 2 (scene 16 frozen, B/Left dead, kitty images i=1/i=6 never deleted) stays unconfirmed; rig steps above.
+
+## Rig check (run 3)
+
+Rig 103, main cbf33128 (>= 765dfd0d), fresh-all install PASS, window XCON 640x400, `UPDemo 15` typed + Return (0x44). Animation ON only; the
+`image-animation off` run was NOT done (not needed: 16 did not freeze; tool budget used). Scene identity read by OCR of screenshots
+(tesseract on dark theme, status line "Demo n/35" unreadable), so scene numbers below come from heading text, not the status line.
+- Scene 15 (heading "a globe turns over a fjord photo", earth turning) is on screen from about 8-10 s after Return (first look at ~5 s showed
+  no text yet) and stays through ~12 s; it no longer skips at once (run 2 left it immediately).
+- By ~20 s the screen shows "pictures with alpha" (scene 16): the demo auto-advanced without a key (run 2: stuck 30+ s). No freeze seen.
+- Space from there -> "photo scaled to cells" scene. B (0x35) 2 s later showed a different scene ("text over the picture", z below), Left (0x4F)
+  returned to "pictures with alpha" (scene 16). Keys are therefore handled (screen changed on every key, nothing dead), but with auto-advance running
+  in parallel the OCR timeline cannot say cleanly that B went back by one; unverified. A clean B/Left check needs the status line read (crop + upscale)
+  or a pause key.
+- 30 s later the demo was on "send an image once, then put, move, delete..." (a later kitty scene): auto-advancing.
+- Verdict: Cause 2 (freeze with keys dead) NOT reproduced with the fix; animation off/on comparison not run.
+Shots: ~/Desktop/upterm-shots/s55-103/an1-*.png
