@@ -452,9 +452,10 @@ static void ser_dbg(const char *what, LONG a, LONG b)
 /* debug builds only: shared by all windows' processes, so trace one window */
 static char dbg_buf[2048];
 static int dbg_len;
-static BPTR dbg_file;
+static int dbg_open; /* the log was written once: later lines flush between packets */
 static struct MsgPort *dbg_port;
 static void dbg_flush(void);
+static int file_write(const char *name, const void *buf, long len, int append);
 
 static void dbg(const char *what, LONG a, LONG b)
 {
@@ -474,14 +475,13 @@ static void dbg(const char *what, LONG a, LONG b)
             dbg_buf[dbg_len++] = "0123456789abcdef"[(x >> k) & 15];
     }
     dbg_buf[dbg_len++] = '\n';
-    if (dbg_file && dbg_port && IsListEmpty(&dbg_port->mp_MsgList))
-        dbg_flush(); /* safe now: no queued packet for the Write to swallow */
+    if (dbg_open && dbg_port && IsListEmpty(&dbg_port->mp_MsgList))
+        dbg_flush(); /* between packets; the file work itself runs on a worker (file_write) */
 }
 
-/* The log file is opened at startup (no Open pending then) and written only
- * from the main loop when our port is empty: a DOS call made by the handler
- * waits for its reply on our own port and would take a queued packet for it
- * (that swallowed the first Open, 2026-09-29). */
+/* The log is appended on a worker process (file_write): a DOS call made by the handler itself
+ * waits for its reply on our own port and would take a queued packet for it (that swallowed the
+ * first Open, 2026-09-29; HANDLER-DOS-IN-PACKET-LOOP). */
 static LONG dbg_total;
 
 static void dbg_flush(void)
@@ -493,13 +493,8 @@ static void dbg_flush(void)
         return;
     }
     dbg_total += dbg_len;
-    if (!dbg_file) {
-        dbg_file = Open((STRPTR)"RAM:vtcon.log", MODE_READWRITE);
-        if (dbg_file)
-            Seek(dbg_file, 0, OFFSET_END);
-    }
-    if (dbg_file)
-        Write(dbg_file, dbg_buf, dbg_len);
+    if (file_write("RAM:vtcon.log", dbg_buf, dbg_len, 1))
+        dbg_open = 1;
     dbg_len = 0;
 }
 #define DBG(w, a, b) dbg(w, (LONG)(a), (LONG)(b))
@@ -565,13 +560,101 @@ ULONG kitty_decodes;
 static struct SignalSemaphore png_sem;
 static int png_ready;
 
+/* DOS work the handler must not do itself: every window, tab and pane is a process serving packets on
+ * its pr_MsgPort, and a DOS call made there does DoPkt on that same port and takes a client packet for
+ * its reply (AN_AsyncPkt 87000004). worker_call runs entry on a worker process and waits for it on a
+ * private signal. A job starts with a struct worker_job (the message PutMsg sends); the worker fetches it
+ * with worker_job_get, does its work and ends with worker_done, which Signals the parent under Forbid so
+ * the job (on the parent's stack) is not touched after. NP_CurrentDir / NP_HomeDir 0: the default
+ * would DupLock on the handler process. */
+struct worker_job {
+    struct Message m;
+    struct Task *parent;
+    ULONG sigmask;
+};
+
+static int worker_call(void (*entry)(void), const char *name, ULONG stack, struct worker_job *j)
+{
+    struct Process *p;
+    LONG sig = AllocSignal(-1);
+    if (sig < 0)
+        return 0;
+    j->parent = FindTask(0);
+    j->sigmask = 1UL << sig;
+    p = CreateNewProcTags(NP_Entry, (ULONG)entry, NP_Name, (ULONG)name, NP_StackSize, stack, NP_Input, 0,
+                          NP_Output, 0, NP_CloseInput, FALSE, NP_CloseOutput, FALSE, NP_ConsoleTask, 0,
+                          NP_CurrentDir, 0, NP_HomeDir, 0, TAG_DONE);
+    if (p) {
+        j->m.mn_Node.ln_Name = (char *)j;
+        j->m.mn_ReplyPort = 0;
+        j->m.mn_Length = sizeof(j->m);
+        PutMsg(&p->pr_MsgPort, &j->m);
+        Wait(j->sigmask);
+    }
+    FreeSignal(sig);
+    return p != 0;
+}
+
+/* the job a worker was started with (worker_call) */
+static struct worker_job *worker_job_get(void)
+{
+    struct Process *me = (struct Process *)FindTask(0);
+    WaitPort(&me->pr_MsgPort);
+    return (struct worker_job *)GetMsg(&me->pr_MsgPort)->mn_Node.ln_Name;
+}
+
+static void worker_done(struct worker_job *j)
+{
+    struct Task *parent = j->parent;
+    ULONG sigmask = j->sigmask;
+    Forbid();
+    Signal(parent, sigmask); /* j is the parent's: not touched after this */
+}
+
+/* a whole file written on a worker: a new file, or appended to the end (the debug log) */
+struct file_write_job {
+    struct worker_job wj;
+    const char *name;
+    const void *buf;
+    long len;
+    int append;
+    int ok;
+};
+
+static void file_write_worker(void)
+{
+    struct file_write_job *j = (struct file_write_job *)worker_job_get();
+    struct Process *me = (struct Process *)FindTask(0);
+    BPTR fh;
+    me->pr_WindowPtr = (APTR)-1L; /* no "insert volume" requester */
+    j->ok = 0;
+    fh = Open((STRPTR)j->name, j->append ? MODE_READWRITE : MODE_NEWFILE);
+    if (fh) {
+        if (j->append)
+            Seek(fh, 0, OFFSET_END);
+        j->ok = Write(fh, (APTR)j->buf, j->len) == j->len;
+        Close(fh);
+    }
+    worker_done(&j->wj);
+}
+
+static int file_write(const char *name, const void *buf, long len, int append)
+{
+    struct file_write_job j;
+    j.name = name;
+    j.buf = buf;
+    j.len = len;
+    j.append = append;
+    j.ok = 0;
+    return worker_call(file_write_worker, "vtcon file write", 8192, &j.wj) && j.ok;
+}
+
 struct png_job {
+    struct worker_job wj;
     const vt_u8 *data;
     long n;
     vt_u32 *out;
     int w, h;
-    struct Task *parent;
-    ULONG sigmask;
 };
 
 static void png_worker(void)
@@ -579,18 +662,12 @@ static void png_worker(void)
     struct png_job *j;
     char name[32];
     ULONG id = (ULONG)FindTask(0);
-    struct Task *parent;
-    ULONG sigmask;
     BPTR fh;
     Object *o;
     struct BitMapHeader *bmh = 0;
     LONG y, i;
     int k;
-    struct Process *me = (struct Process *)FindTask(0);
-    WaitPort(&me->pr_MsgPort);
-    j = (struct png_job *)GetMsg(&me->pr_MsgPort)->mn_Node.ln_Name;
-    parent = j->parent;
-    sigmask = j->sigmask;
+    j = (struct png_job *)worker_job_get();
     j->out = 0;
     ObtainSemaphore(&png_sem);
     DataTypesBase = OpenLibrary((STRPTR)"datatypes.library", 39);
@@ -650,16 +727,12 @@ static void png_worker(void)
     if (j->out)
         kitty_decodes++;
     ReleaseSemaphore(&png_sem);
-    Forbid();
-    Signal(parent, sigmask); /* j is the parent's: not touched after this */
+    worker_done(&j->wj);
 }
 
 static int png_decode(const vt_u8 *data, long n, vt_u32 **argb, int *w, int *h)
 {
     struct png_job j;
-    struct Process *p;
-    struct Message m;
-    LONG sig;
     /* the semaphore, at first use */
     Forbid();
     if (!png_ready) {
@@ -667,25 +740,11 @@ static int png_decode(const vt_u8 *data, long n, vt_u32 **argb, int *w, int *h)
         png_ready = 1;
     }
     Permit();
-    sig = AllocSignal(-1);
-    if (sig < 0)
-        return 0;
     j.data = data;
     j.n = n;
     j.out = 0;
-    j.parent = FindTask(0);
-    j.sigmask = 1UL << sig;
-    p = CreateNewProcTags(NP_Entry, (ULONG)png_worker, NP_Name, (ULONG)"vtcon picture", NP_StackSize, 32000,
-                          NP_Input, 0, NP_Output, 0, NP_CloseInput, FALSE, NP_CloseOutput, FALSE, TAG_DONE);
-    if (p) {
-        m.mn_Node.ln_Name = (char *)&j;
-        m.mn_ReplyPort = 0;
-        m.mn_Length = sizeof(m);
-        PutMsg(&p->pr_MsgPort, &m);
-        Wait(j.sigmask);
-    }
-    FreeSignal(sig);
-    if (!p || !j.out)
+    j.w = j.h = 0;
+    if (!worker_call(png_worker, "vtcon picture", 32000, &j.wj) || !j.out)
         return 0;
     *argb = j.out;
     *w = j.w;
@@ -774,79 +833,115 @@ static BPTR kfile_lock(const char *ap, LONG *size)
     return lock;
 }
 
-static int kfile_read(const char *path, long off, long size, vt_u8 **buf, long *n)
+/* The two hooks the engine calls run on the handler process; their DOS work runs on a worker
+ * (worker_call), whose pr_WindowPtr is -1 (a requester follows the calling process). */
+struct kfile_job {
+    struct worker_job wj;
+    const char *path;
+    long off, size;
+    vt_u8 *buf;
+    long n;
+    int ok;
+};
+
+static void kfile_read_job(void)
 {
+    struct kfile_job *j = (struct kfile_job *)worker_job_get();
+    struct Process *me = (struct Process *)FindTask(0);
     char ap[KFILE_PATH];
-    int tmp, ok = 0;
+    int tmp;
     LONG fsize = 0;
     BPTR lock, fh;
     vt_u8 *b = 0;
-    struct Process *me = (struct Process *)FindTask(0);
-    APTR oldwin = me->pr_WindowPtr;
-    if (!kfile_path(path, ap, &tmp))
-        return 0;
+    long off = j->off, size = j->size;
     me->pr_WindowPtr = (APTR)-1L; /* no "insert volume" requester */
-    lock = kfile_lock(ap, &fsize);
-    if (lock) {
-        long want = size;
-        if (off >= 0 && off < fsize) {
-            if (want <= 0 || want > fsize - off)
-                want = fsize - off;
-            b = (vt_u8 *)AllocVec((ULONG)want, MEMF_ANY);
-            fh = b ? OpenFromLock(lock) : 0;
-            lock = fh ? 0 : lock; /* OpenFromLock took the lock */
-            if (fh) {
-                if (Seek(fh, off, OFFSET_BEGINNING) >= 0 && Read(fh, b, want) == want) {
-                    *buf = b;
-                    *n = want;
-                    ok = 1;
-                    kitty_files_read++;
+    j->ok = 0;
+    if (kfile_path(j->path, ap, &tmp)) {
+        lock = kfile_lock(ap, &fsize);
+        if (lock) {
+            long want = size;
+            if (off >= 0 && off < fsize) {
+                if (want <= 0 || want > fsize - off)
+                    want = fsize - off;
+                b = (vt_u8 *)AllocVec((ULONG)want, MEMF_ANY);
+                fh = b ? OpenFromLock(lock) : 0;
+                lock = fh ? 0 : lock; /* OpenFromLock took the lock */
+                if (fh) {
+                    if (Seek(fh, off, OFFSET_BEGINNING) >= 0 && Read(fh, b, want) == want) {
+                        j->buf = b;
+                        j->n = want;
+                        j->ok = 1;
+                        kitty_files_read++;
+                    }
+                    Close(fh);
                 }
-                Close(fh);
             }
+            if (lock)
+                UnLock(lock);
+            if (!j->ok && b)
+                FreeVec(b);
         }
-        if (lock)
-            UnLock(lock);
-        if (!ok && b)
-            FreeVec(b);
     }
-    me->pr_WindowPtr = oldwin;
-    return ok;
+    worker_done(&j->wj);
+}
+
+static int kfile_read(const char *path, long off, long size, vt_u8 **buf, long *n)
+{
+    struct kfile_job j;
+    j.path = path;
+    j.off = off;
+    j.size = size;
+    j.buf = 0;
+    j.n = 0;
+    j.ok = 0;
+    if (!worker_call(kfile_read_job, "vtcon file read", 16000, &j.wj) || !j.ok)
+        return 0;
+    *buf = j.buf;
+    *n = j.n;
+    return 1;
 }
 
 /* t=t: only a file in T: (or the ixemul /tmp) is removed */
-static int kfile_unlink(const char *path)
+static void kfile_unlink_job(void)
 {
+    struct kfile_job *j = (struct kfile_job *)worker_job_get();
+    struct Process *me = (struct Process *)FindTask(0);
     char ap[KFILE_PATH];
     int tmp, ok = 0;
     BPTR lock, par, tl;
     LONG fsize;
-    struct Process *me = (struct Process *)FindTask(0);
-    APTR oldwin = me->pr_WindowPtr;
-    if (!kfile_path(path, ap, &tmp))
-        return 0;
     me->pr_WindowPtr = (APTR)-1L;
-    lock = kfile_lock(ap, &fsize);
-    if (lock) {
-        if (tmp) {
-            ok = 1;
-        } else {
-            par = ParentDir(lock);
-            tl = Lock((STRPTR)"T:", SHARED_LOCK);
-            ok = par && tl && SameLock(par, tl) == LOCK_SAME;
-            if (par)
-                UnLock(par);
-            if (tl)
-                UnLock(tl);
+    j->ok = 0;
+    if (kfile_path(j->path, ap, &tmp)) {
+        lock = kfile_lock(ap, &fsize);
+        if (lock) {
+            if (tmp) {
+                ok = 1;
+            } else {
+                par = ParentDir(lock);
+                tl = Lock((STRPTR)"T:", SHARED_LOCK);
+                ok = par && tl && SameLock(par, tl) == LOCK_SAME;
+                if (par)
+                    UnLock(par);
+                if (tl)
+                    UnLock(tl);
+            }
+            UnLock(lock);
         }
-        UnLock(lock);
+        if (ok && DeleteFile((STRPTR)ap)) {
+            kitty_files_deleted++;
+            j->ok = 1;
+        }
     }
-    if (ok && DeleteFile((STRPTR)ap))
-        kitty_files_deleted++;
-    else
-        ok = 0;
-    me->pr_WindowPtr = oldwin;
-    return ok;
+    worker_done(&j->wj);
+}
+
+static int kfile_unlink(const char *path)
+{
+    struct kfile_job j;
+    j.path = path;
+    j.ok = 0;
+    return worker_call(kfile_unlink_job, "vtcon file delete", 16000, &j.wj) && j.ok;
 }
 
 /* ---- engine callbacks ------------------------------------------------------ */
@@ -4935,12 +5030,10 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap, int 
          * written whole and closed before the answer, so the sender reads it at once */
         long need = c->w.t ? vt_screen_text(c->w.t, 0, 0) : -1;
         char *buf = need >= 0 ? (char *)AllocVec((ULONG)need + 1, MEMF_ANY) : 0;
-        BPTR fh = buf ? Open((STRPTR)cmd.arg, MODE_NEWFILE) : 0;
         long done = 0;
-        if (fh) {
+        if (buf) { /* the rows are read here; the file is written on a worker */
             vt_screen_text(c->w.t, buf, need + 1);
-            done = Write(fh, buf, need) == need;
-            Close(fh);
+            done = file_write(cmd.arg, buf, need, 0);
         }
         if (buf)
             FreeVec(buf);
