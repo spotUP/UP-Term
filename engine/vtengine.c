@@ -307,6 +307,9 @@ struct vt_term {
      * registers (?1070 off; 0 until used) */
     vt_image *imgs[VT_IMG_SLOTS];
     int n_img;
+    /* nonzero while screens are freed or rebuilt (free_screen, vt_resize):
+     * t->scr may hold freed lines, image_free marks no cells then */
+    int img_nomark;
     long img_mem, img_serial;
     long img_budget, anim_budget; /* VT_IMAGE_MEMORY / VT_ANIM_MEMORY, times 4 in RGB mode (vt_set_image_rgb) */
     vt_u8 image_rgb;           /* vt_set_image_rgb */
@@ -455,11 +458,34 @@ static void anim_free(vt_term *t, vt_image *im)
     im->anim = 0;
 }
 
+static void mark(vt_term *t, int x0, int y, int x1);
+static int image_cols(const vt_image *im);
+
+/* The cells image `slot`'s placements on the screen cover are to be drawn
+ * again: its pixels changed (an animation frame) or it goes. */
+static void image_mark(vt_term *t, int slot)
+{
+    const vt_image *im = t->imgs[slot];
+    int y;
+    vt_u16 e;
+    for (y = 0; y < t->rows; y++)
+        for (e = t->scr[y]->img; e; e = t->pl[e].next)
+            if (t->pl[e].img == slot && t->pl[e].gen == im->gen)
+                mark(t, t->pl[e].col0, y, t->pl[e].col0 + image_cols(im));
+}
+
 static void image_free(vt_term *t, int slot)
 {
     vt_image *im = t->imgs[slot];
     if (!im || !im->pix)
         return;
+    /* R3C-UD3-PLACEMENT-STALE: placements still on the screen (a kitty
+     * delete or move, an eviction) stop drawing it, so their cells are
+     * drawn again or the renderer keeps the old picture there. refs is 0
+     * when the last placement goes with its line (a clear, a resize,
+     * vt_free): that line is drawn anew, or the screen is half freed. */
+    if (im->refs > 0 && !t->img_nomark)
+        image_mark(t, slot);
     anim_free(t, im);
     VT_FREE(im->pix);
     im->pix = 0;
@@ -6087,9 +6113,11 @@ static void free_screen(vt_term *t, vt_line **scr, int rows)
     int y;
     if (!scr)
         return;
+    t->img_nomark++;
     for (y = 0; y < rows; y++)
         if (scr[y])
             line_free(t, scr[y]);
+    t->img_nomark--;
     VT_FREE(scr);
 }
 
@@ -7546,6 +7574,7 @@ void vt_resize(vt_term *t, int cols, int rows)
         t->tabs = tabs;
         t->tabs_cap = cols;
     }
+    t->img_nomark++; /* every row is marked below */
     alt_active = t->scr == t->alt;
     cy = alt_active ? t->sav_1049.y : t->cy;
     if (!alt_active)
@@ -7596,6 +7625,7 @@ void vt_resize(vt_term *t, int cols, int rows)
         t->pri_mem = 0;
         t->pri_spare = 0;
     }
+    t->img_nomark--;
     mark_rows(t, 0, rows);
     flush(t);
     report_size(t);

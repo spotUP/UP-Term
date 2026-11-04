@@ -339,6 +339,34 @@ static void delete_by_id_removes_the_image(void)
     vt_free(t);
 }
 
+/* R3C-UD3-PLACEMENT-STALE: a=p of a placement that is on the screen moves
+ * it, a=d removes it; the renderer must be told to draw the old cells again
+ * or the old picture stays on the screen (rig 96, UPDemo UD3). */
+static void moved_and_deleted_placements_damage_their_old_cells(void)
+{
+    vt_term *t = kitty_term(20, 10);
+    vt_image_view v;
+    h_put(t, "\033_Ga=t,i=7,f=24,s=2,v=2;");
+    h_put(t, rgb2x2);
+    h_put(t, "\033\\");
+    h_put(t, "\033[2;3H\033_Ga=p,i=7,p=2,c=3,r=2,C=1,q=2\033\\"); /* rows 1-2, columns 2-4 */
+    CHECK(vt_row_image(t, 1, 0, &v));
+    h_put(t, "\033[6;3H");
+    h_damage_clear();
+    h_put(t, "\033_Ga=p,i=7,p=2,c=3,r=2,C=1,q=2\033\\"); /* the same placement, rows 5-6 */
+    CHECK(!vt_row_image(t, 1, 0, &v));
+    CHECK(vt_row_image(t, 5, 0, &v));
+    CHECK(h_damaged(2, 1, 5)); /* the old cells: drawn again, the picture gone */
+    CHECK(h_damaged(2, 2, 5));
+    CHECK(h_damaged(2, 5, 5)); /* the new ones */
+    h_damage_clear();
+    h_put(t, "\033_Ga=d,d=i,i=7,p=2\033\\");
+    CHECK(!vt_row_image(t, 5, 0, &v));
+    CHECK(h_damaged(2, 5, 5));
+    CHECK(h_damaged(2, 6, 5));
+    vt_free(t);
+}
+
 static void putting_an_unknown_id_says_enoent(void)
 {
     vt_term *t = kitty_term(10, 5);
@@ -1556,6 +1584,7 @@ void suite_kitty(void)
     query_answers_without_showing();
     quiet_keys_hide_the_replies();
     delete_by_id_removes_the_image();
+    moved_and_deleted_placements_damage_their_old_cells();
     putting_an_unknown_id_says_enoent();
     a_picture_over_the_memory_limit_says_enomem();
     stored_pictures_give_way_to_new_ones();

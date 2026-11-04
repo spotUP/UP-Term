@@ -1128,12 +1128,7 @@ static void kit_anim_show(vt_term *t, vt_image *st)
             for (x = 0; x < p->w; x++)
                 p->pix[(long)y * p->w + x] = src[sy * st->w + p->sx0 + (long)x * p->sw / p->w];
         }
-        for (y = 0; y < t->rows; y++) {
-            vt_u16 e;
-            for (e = t->scr[y]->img; e; e = t->pl[e].next)
-                if (t->pl[e].img == i && t->pl[e].gen == p->gen)
-                    mark(t, t->pl[e].col0, y, t->pl[e].col0 + image_cols(p));
-        }
+        image_mark(t, i);
     }
 }
 
