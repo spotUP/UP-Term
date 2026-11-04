@@ -718,6 +718,7 @@ static int serve(void)
     while ((m = (struct ms_msg *)GetMsg(port)) != 0)
         ReplyMsg(&m->m);
     DeleteMsgPort(port);
+    wbr_client_drop();                          /* WBRESET-EXT: free the server's table slot (serve_one registered it), else WBR_MAX runs fill the table */
     return 0;
 }
 
