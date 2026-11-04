@@ -2716,9 +2716,9 @@ static int play(int first, long scene_ticks)
     ps("\033[22;0t\033]2;UP-Term demo\007"); /* the title, pushed to be put back */
     for (s = first < 0 || first >= SCENE_N ? 0 : first; s < SCENE_N && !ended && (!only_one || s == first); s = s + nav < 0 ? 0 : s + nav) {
         const scene_def *sc = &scenes[s];
-        long t0, dur = scene_ticks ? scene_ticks : sc->ticks;
+        long t0, start, dur = scene_ticks ? scene_ticks : sc->ticks;
         long t;
-        int fresh = 1;
+        int fresh = 1, drawn_first;
         nav = 1; /* the next scene, as the time runs out */
         moved = 0;
         if (bench_only && !sc->bench)
@@ -2737,7 +2737,7 @@ static int play(int first, long scene_ticks)
         }
         nmev = 0;
         ps("\033[?25l");
-        t0 = io->ticks(io->user);
+        t0 = start = io->ticks(io->user);
         ps("\033[r");
         sgr0();
         if (!sc->main_screen)
@@ -2747,6 +2747,7 @@ static int play(int first, long scene_ticks)
             long spent;
             int pass;
             ps("\033[?2026h"); /* a frame: shown whole (synchronized output), not as its writes arrive */
+            drawn_first = fresh;
             sc->fn(t, fresh);
             if (sc->pixels)
                 blit();
@@ -2756,6 +2757,14 @@ static int play(int first, long scene_ticks)
             fresh = 0;
             ps("\033[?2026l");
             flush();
+            /* The scene's time starts once its first frame is in: a console takes a Write in before it answers
+             * it, and the kitty animation's first frame (a megabyte of PNG frames) took a 68060 longer than the
+             * scene's 9 s, so one Space from scene 14 showed 16 (rig 102, s55 recheck 2). */
+            if (drawn_first) {
+                long late = io->ticks(io->user) - t0 - t;
+                if (late > 2)
+                    t0 += late;
+            }
             if (want_size) {
                 want_size = 0;
                 if (ask_size() && sc->main_screen)
@@ -2801,7 +2810,7 @@ static int play(int first, long scene_ticks)
         flush();
         tabs_leave();
         splits_leave();
-        stat_ticks[s] += io->ticks(io->user) - t0;
+        stat_ticks[s] += io->ticks(io->user) - start;
         ps("\033[r"); /* the whole screen scrolls again */
         if (!ansi)
             ps("\033]104\007"); /* the palette is the terminal's */

@@ -1039,6 +1039,41 @@ static void a_frame_the_terminal_draws_in_20_ms_still_comes_25_times_a_second(vo
     vt_free(t);
 }
 
+/* A console takes a Write in before it answers it (vtcon_handler.c ACTION_WRITE: output, then reply), so the
+ * kitty animation scene's first frame -- about a megabyte of base64 PNG frames from earth.anim -- costs the
+ * program as long as the terminal needs to decode it. On a 68060 that was longer than the scene's own 9 s: the
+ * scene's time ran out while its first frame was still going in, and one Space from scene 14 showed scene 16
+ * (rig 102, s55 recheck 2). The scene's time starts once its first frame is drawn. Here a byte costs 1/1000 of a
+ * tick (50 kB a second). */
+static long bytes_cost;
+
+static void out_bytes_cost_time(void *user, const char *buf, long len)
+{
+    (void)user;
+    vt_write(t, (const unsigned char *)buf, len);
+    now += (bytes_cost + len) / 1000 - bytes_cost / 1000; /* small writes add up */
+    bytes_cost += len;
+}
+
+static void a_scene_whose_first_frame_draws_slowly_still_gets_its_whole_time(void)
+{
+    updemo_io slow = { out_bytes_cost_time, key, ticks, 0, load_media, 0 };
+    long frames, tk, t_start;
+    int s = scene_index("kitty animation");
+    start(80, 24);
+    updemo_only(1);
+    t_start = now;
+    bytes_cost = 0;
+    CHECK_INT(updemo_run(&slow, 80, 24, s, 0), 0);
+    updemo_only(0);
+    updemo_stats(s, &frames, &tk);
+    CHECK(bytes_cost / 1000 > 450);                    /* the photo and 44 frames take the console longer than 9 s */
+    CHECK(now - t_start >= bytes_cost / 1000 + 440); /* and the scene stays its 9 s after them (frame writes after t0 count once) */
+    CHECK(frames > 1);
+    CHECK(tk >= 450);
+    vt_free(t);
+}
+
 /* Palette cycling sets 32 colours a frame (OSC 4 each): the renderer
  * hears of it once a frame, not 32 times -- each time it gave its pens
  * back and obtained them again. */
@@ -1519,6 +1554,7 @@ void suite_updemo(void)
     a_window_made_too_small_waits_and_q_ends_it();
     a_resize_in_the_reflow_scene_does_not_end_the_demo();
     a_frame_the_terminal_draws_in_20_ms_still_comes_25_times_a_second();
+    a_scene_whose_first_frame_draws_slowly_still_gets_its_whole_time();
     palette_cycling_tells_the_renderer_once_a_frame();
     the_themes_scene_names_twelve_themes_while_each_is_live();
     ansi_mode_sends_only_the_16_colours_in_every_scene();
