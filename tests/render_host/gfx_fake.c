@@ -665,6 +665,10 @@ VOID WriteChunkyPixels(struct RastPort *rp, ULONG a, ULONG b, ULONG c, ULONG d, 
     for (y = 0; y <= d - b; y++)
         for (x = 0; x <= c - a; x++)
             chunky_fnv(p[y * (ULONG)m + x]); /* the row's w bytes only: the padding to 16 is not the picture */
+    /* a planar window: the pens reach its planes under the write mask, as the library writes them */
+    for (y = 0; pdepth && y <= d - b; y++)
+        for (x = 0; x <= c - a; x++)
+            pset(rp, (long)(a + x), (long)(b + y), p[y * (ULONG)m + x], 0);
 }
 ULONG ObtainPen(struct ColorMap *cm, ULONG n, ULONG r, ULONG g, ULONG b, LONG f)
 {

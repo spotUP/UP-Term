@@ -1090,7 +1090,7 @@ static const char *kit_frame(vt_term *t, const vt_kitty *k, const kit_src *s, vt
  * pixel (kit_make without the quantiser), on the fixed cube palette; their rows are marked */
 static void kit_anim_show(vt_term *t, vt_image *st)
 {
-    int i, y;
+    int i, y, shown = 0;
     const vt_u8 *src;
     if (!st->anim)
         return;
@@ -1129,7 +1129,13 @@ static void kit_anim_show(vt_term *t, vt_image *st)
                 p->pix[(long)y * p->w + x] = src[sy * st->w + p->sx0 + (long)x * p->sw / p->w];
         }
         image_mark(t, i);
+        shown = 1;
     }
+    /* S56-UD2-GLOBE-BAND: the new frame is one picture, a frame of its own unless a ?2026 frame is open (its end
+     * counts it): the host composes it off screen and shows it at once. A clock switch outside a frame was drawn in
+     * place, the rows' background before their pixels -- a band on an AGA screen, a cell row tall. */
+    if (shown && !(t->modes & VT_MODE_SYNC))
+        t->sync_frames++;
 }
 
 /* make frame `f` (1-based) the one shown */

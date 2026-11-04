@@ -2527,10 +2527,14 @@ static void k37_eight_bit_golden(void)
 {
     /* [planar][scene] captured on a6de061d: pens hash, chunky hash. The chunky hashes of the kitty scenes 0-2 were
      * recaptured for S56-UD2-EARTH-OVER-PHOTO: a kitty run now skips its index-0 (transparent) pixels, so the buffers
-     * are written in runs of the painted pixels; the pens hashes are unchanged. */
+     * are written in runs of the painted pixels; the pens hashes are unchanged.
+     * S56-UD2-GLOBE-BAND: the fake now draws WriteChunkyPixels into a planar window's planes (before, the planar pens
+     * hashes held no picture at all), so the planar pens row was recaptured; it is the same with and without the fix.
+     * Scene 2 (a composited frame) now composes in the CPU pass into the back planes, so fewer chunky writes reach the
+     * window: its planar chunky hash was recaptured too. */
     static const unsigned long gold[2][4][2] = {
         { { 1594208197UL, 2497176488UL }, { 3441995717UL, 1537239861UL }, { 1184631749UL, 461891154UL }, { 584822725UL, 4290872673UL } },
-        { { 2071090437UL, 2497176488UL }, { 3456382213UL, 1537239861UL }, { 987634949UL, 461891154UL }, { 412095749UL, 4290872673UL } },
+        { { 2667657136UL, 2497176488UL }, { 2594922047UL, 1537239861UL }, { 3977437005UL, 2690927650UL }, { 2515437413UL, 4290872673UL } },
     };
     int m, s;
     for (m = 0; m < 2; m++)
@@ -2976,6 +2980,100 @@ static void s56_globe_frames_over_a_photo_composite_exact_every_switch(void)
     gf_cgx_alpha(1);
 }
 
+/* S56-UD2-GLOBE-BAND on an AGA screen (owner, rig 111, fresh 3.2 install, 640x256 8-plane screen: "banding is still
+ * there but just over the planet, the only graphics that updates each frame"): the globe's frame switches were drawn
+ * in place, the row's background first and its picture after it, one pixel row per WriteChunkyPixels -- the cell row
+ * between the two showed as a band. Two causes: a switch the clock made outside a ?2026 frame never composed (no
+ * frame ended, vr_compose_begin), and a composed planar pass gave up at the first picture (draw_images refused the
+ * CPU pass) and went in place. Every switch must reach the window in one copy of the CPU's planes, with no picture
+ * write and no fill on the window, and the globe box must then hold what an in-place redraw draws. */
+static void s56_planar_globe_switch_reaches_the_window_in_one_copy(void)
+{
+    static unsigned char photo[160 * 64 * 4], fr[12][64 * 48 * 4];
+    static int got[64 * 48];
+    int f, x, y, loop, worst_writes = 0, worst_diff = 0, few_copies = 0, left;
+    char cmd[96];
+    for (left = 0; left < 2; left++) {
+        planar_depth = 8;
+        planar_left = left ? 13 : 0; /* a window at a bit phase too */
+        test_pal = wb16;
+        test_npal = 16;
+        open_term_in(0, VT_XTERM);
+        vt_set_cell_pixels(term, CW, CH);
+        vt_set_image_rgb(term, 0);
+        pass("\x1b[?25l");
+        for (y = 0; y < 64; y++)
+            for (x = 0; x < 160; x++) {
+                unsigned char *p = photo + (y * 160 + x) * 4;
+                p[0] = (unsigned char)(x * 1.5);
+                p[1] = (unsigned char)(y * 3);
+                p[2] = 200;
+                p[3] = 255;
+            }
+        for (f = 0; f < 12; f++)
+            for (y = 0; y < 48; y++)
+                for (x = 0; x < 64; x++) {
+                    unsigned char *p = fr[f] + (y * 64 + x) * 4;
+                    int dx = x - 32, dy = y - 24;
+                    p[0] = (unsigned char)(x * 4);
+                    p[1] = (unsigned char)((y * 5 + f * 20) & 255);
+                    p[2] = (unsigned char)((f + 1) * 20);
+                    p[3] = dx * dx + dy * dy < 22 * 22 ? 255 : 0;
+                }
+        pass("\x1b[1;1H");
+        k37_send("a=T,f=32,s=160,v=64,i=6,c=20,z=-1,C=1,q=2", photo, sizeof photo);
+        pass("\x1b[3;7H");
+        for (f = 0; f < 12; f++)
+            k37_send(f ? "a=f,f=32,s=64,v=48,i=1,q=2" : "a=T,f=32,s=64,v=48,i=1,q=2", fr[f], sizeof fr[f]);
+        for (f = 0; f < 12; f++) {
+            snprintf(cmd, sizeof cmd, "\x1b_Ga=a,i=1,r=%d,z=90,q=2\x1b\\", f + 1);
+            pass(cmd);
+        }
+        pass("\x1b[8;20H\x1b_Ga=a,i=1,s=3,q=2\x1b\\");
+        pass("");
+        CHECK(rn.n_img_runs >= 1); /* the pictures are drawn, on the index path */
+        for (loop = 0; loop < 30; loop++) {
+            int chunky = gf_chunky_n, diff = 0;
+            unsigned long copies = rn.n_copies;
+            gf_clear_log();
+            /* the clock's switch inside a ?2026 frame (loop % 3 == 0), just before an empty one (1), alone (2) */
+            if (loop % 3 == 1) {
+                vt_anim_tick(term, 90000);
+                pass("\x1b[?2026h\x1b[?2026l");
+            } else if (loop % 3 == 2) {
+                vt_anim_tick(term, 90000);
+                pass("");
+            } else {
+                pass("\x1b[?2026h");
+                vt_anim_tick(term, 90000);
+                pass("\x1b[?2026l");
+            }
+            if (gf_chunky_n - chunky + gf_count(GF_RECT) + gf_count(GF_TEXT) > worst_writes)
+                worst_writes = gf_chunky_n - chunky + gf_count(GF_RECT) + gf_count(GF_TEXT);
+            if (rn.n_copies - copies < 1)
+                few_copies++;
+            for (y = 0; y < 48; y++)
+                for (x = 0; x < 64; x++)
+                    got[y * 64 + x] = gf_pixel(48 + x, 16 + y);
+            vr_redraw(&rn); /* the oracle: the same frame drawn in place */
+            for (y = 0; y < 48; y++)
+                for (x = 0; x < 64; x++)
+                    if (got[y * 64 + x] != gf_pixel(48 + x, 16 + y))
+                        diff++;
+            if (diff > worst_diff)
+                worst_diff = diff;
+        }
+        CHECK(gf_pixel(48 + 32, 16 + 24) != gf_pixel(48 + 1, 16 + 1)); /* the globe differs from the photo */
+        CHECK_INT(worst_writes, 0); /* no picture write, fill or text on the window: composed, every switch */
+        CHECK_INT(few_copies, 0);   /* every switch shown, in a copy */
+        CHECK_INT(worst_diff, 0);   /* the copy holds the in-place pixels */
+        close_term();
+    }
+    planar_depth = 0;
+    planar_left = 0;
+    test_npal = 0;
+}
+
 /* K36-ANIM-BLINK: a looping kitty animation switches frames on the clock; the repaint of the picture's rows
  * must never leave more than the one cell row being drawn showing the background. Before the fix draw_rows_now
  * painted the text (background) of every damaged row first and only then the images of all of them, top down:
@@ -3159,6 +3257,7 @@ int main(void)
     k40_eight_bit_screen_stays_indexed();
     s56_transparent_kitty_pixels_keep_the_picture_beneath_on_the_palette_path();
     s56_globe_frames_over_a_photo_composite_exact_every_switch();
+    s56_planar_globe_switch_reaches_the_window_in_one_copy();
     the_cursor_pass_counts_its_gfx_calls_and_unchanged_cells();
     scrollback_view_move_blits_and_draws_only_the_exposed_rows();
     cursor_glyph_is_drawn_at_the_cursor_cell_from_the_grid_row();

@@ -2663,6 +2663,43 @@ static void img_run_rgb(vr_render *r, const vt_image_view *v, LONG sx, LONG sy, 
                         (UWORD)h, VR_RECTFMT_RGBA);
 }
 
+/* S56-UD2-GLOBE-BAND: pens p (rows of `stride` bytes), w x h, at window pixel (x, y) of a planar composed pass's
+ * planes (target), every plane, at the planes' bit phase -- what WriteChunkyPixels does on the window. Before,
+ * the pass gave up at the first picture and went in place (a band over an animated picture on AGA). */
+static void back_chunky(vr_render *r, WORD x, WORD y, LONG w, LONG h, const UBYTE *p, LONG stride)
+{
+    vr_planes t;
+    LONG j, k, bx;
+    int q;
+    target(r, &t);
+    if (x < 0 || y < 0 || x + w > r->back->w || y + h > r->back->h) {
+        LONG j0 = x < 0 ? -x : 0, k0 = y < 0 ? -y : 0;
+        LONG w1 = x + w > r->back->w ? r->back->w - x : w, h1 = y + h > r->back->h ? r->back->h - y : h;
+        if (w1 <= j0 || h1 <= k0)
+            return;
+        p += k0 * stride + j0;
+        x = (WORD)(x + j0);
+        y = (WORD)(y + k0);
+        w = w1 - j0;
+        h = h1 - k0;
+    }
+    for (k = 0; k < h; k++, p += stride) {
+        LONG row = (t.y0 + y + k) * t.bpr;
+        for (j = 0; j < w; j++) {
+            UBYTE pen = p[j], m;
+            bx = t.x0 + x + j;
+            m = (UBYTE)(0x80 >> (bx & 7));
+            for (q = 0; q < t.depth; q++) {
+                UBYTE *b = t.planes[q] + row + (bx >> 3);
+                if ((pen >> q) & 1)
+                    *b |= m;
+                else
+                    *b &= (UBYTE)~m;
+            }
+        }
+    }
+}
+
 /* A run of an index picture (fmt 0): w x h pixels at source (sx, sy), on screen at (dx, dy). */
 static void img_write_idx(vr_render *r, const vt_image_view *v, LONG sx, LONG sy, LONG w, LONG h, WORD dx, WORD dy)
 {
@@ -2699,6 +2736,10 @@ static void img_write_idx(vr_render *r, const vt_image_view *v, LONG sx, LONG sy
             SetWriteMask(r->rp, r->mask);
     }
     r->seen |= r->img_planes;
+    if (r->cpu) {
+        back_chunky(r, dx, dy, w, h, r->img_buf, stride);
+        return;
+    }
     if (GfxBase->LibNode.lib_Version >= 40) {
         WriteChunkyPixels(r->rp, dx, dy, dx + w - 1, dy + h - 1, r->img_buf, stride);
     } else {
@@ -2796,6 +2837,8 @@ static void under_text(vr_render *r, const vt_cell *c, int a, int b, int y)
     for (x = a; x < b; x++) {
         if (!(c[x].pad & VT_CELL_UNDER) || c[x].ch <= ' ' || c[x].ch >= 0x7F || c[x].width != 1)
             continue;
+        if (cpu_refuses(r))
+            return; /* Text is the library's: a planar composed pass goes in place */
         cell_style(r, &c[x], 0, &st);
         ch = (UBYTE)c[x].ch;
         ink_a(r, st.fg);
@@ -2841,8 +2884,8 @@ static void draw_images(vr_render *r, int x0, int y0, int x1, int y1)
                 }
                 for (a = x; x < xe && img_cell(r, &v, &c[x]); x++)
                     ;
-                if (cpu_refuses(r))
-                    return;
+                if (v.fmt == 1 && cpu_refuses(r))
+                    return; /* an RGB picture: the library's (it is made only on a true-colour screen) */
                 img_run(r, &v, a, x, y);
                 if (v.z < 0)
                     under = 1;
