@@ -242,6 +242,7 @@ typedef struct con {
     char term[32];               /* W46: TERM told to vsh's programs ("": vsh's own, vtcon) */
     char colors[8];              /* W46: rgb | 256 ("": not told) */
     char link_open[UC_MAX_VALUE]; /* the profile's link-open, or /link-open's ("": OpenURL %s) */
+    int nerd_ttf;                /* FONTS:SymbolsNerdFontMono.ttf exists, found by a worker (no DOS call on the handler process) */
     char *theme_text;            /* ENV:up-term/theme-active as read (Amarchy theme), 0 none: beats the profile's colours */
     long theme_len;
     int colours_spec;            /* the spec chose colours (DARK/FG/BG/LIGHT): it beats the profile */
@@ -959,7 +960,9 @@ static void h_clipped(void *u, int what)
 static const vtwin_host host = { h_reply, h_input, h_key, h_pasted, h_raw, h_resized, h_titled, h_open_link,
                                  h_knob, h_clipped };
 
-/* FONTS:<name>.ttf is there (NERD-FALLBACK-DEFAULT: the font-fallback default is used only when it is) */
+/* FONTS:<name>.ttf is there (NERD-FALLBACK-DEFAULT: the font-fallback default is used only when it is).
+ * A DOS call: only config_worker and watch_worker call it. On the handler process a Lock does DoPkt on
+ * pr_MsgPort, the handler's own packet port, and takes a client packet off it (CON-87000004, AN_AsyncPkt). */
 static int fonts_ttf_exists(const char *name)
 {
     char path[80];
@@ -1114,6 +1117,7 @@ struct config_msg {
     keymap *km; /* the shared keymap to fill, or 0 when it is already loaded */
     char *theme; /* the active Amarchy theme's text, read with the profile (0 none) */
     long theme_len;
+    int nerd_ttf; /* FONTS:SymbolsNerdFontMono.ttf is there (read here: no DOS call on the handler process) */
 };
 
 #define SPLITS_FILE_MAX 2304 /* the split file: four panes' URLs and commands */
@@ -1203,6 +1207,7 @@ static void config_worker(void)
     m = (struct config_msg *)GetMsg(&me->pr_MsgPort);
     me->pr_WindowPtr = (APTR)-1; /* no requesters from a file that may be absent */
     read_conf(m->conf);
+    m->nerd_ttf = fonts_ttf_exists(UC_FALLBACK_DEFAULT);
     if (m->rest)
         read_splits(m->rest);
     m->theme = read_active_theme(&m->theme_len);
@@ -1231,6 +1236,7 @@ struct watch_msg {
     char *theme;      /* the text of the theme file (GT_TERM_FILE) when it changed, else 0: the window frees it */
     long theme_len;
     int quit, done;
+    int nerd_ttf; /* FONTS:SymbolsNerdFontMono.ttf is there, as of this table */
 };
 
 /* The file the Amarchy theme switch writes (amarchy/gthemes_core.h GT_TERM_FILE): one profile section holding the new
@@ -1313,6 +1319,7 @@ static void watch_worker(void)
             m->conf = (upconf *)AllocVec(sizeof(upconf), MEMF_ANY | MEMF_CLEAR);
             if (m->conf) { /* no memory: this change is missed, the window keeps its table */
                 read_conf(m->conf);
+                m->nerd_ttf = fonts_ttf_exists(UC_FALLBACK_DEFAULT);
                 have = 0;
                 ReplyMsg(&m->msg);
             }
@@ -1387,6 +1394,7 @@ static void config_load(con *c)
     PutMsg(&w->pr_MsgPort, (struct Message *)m);
     WaitPort(port);
     GetMsg(port);
+    c->nerd_ttf = m->nerd_ttf;
     c->theme_text = m->theme; /* a new tab starts in the active Amarchy theme (apply_profile) */
     c->theme_len = m->theme_len;
     FreeVec(m);
@@ -1536,7 +1544,7 @@ static void apply_profile(con *c)
     /* glyphs the bitmap font lacks: an outline font's (F1); "" none. Before any return: a window with
      * no profile (no file, or the shipped sample whose sections are all comments) still gets the
      * SymbolsNerdFontMono default (R3C-UD6-NERD-QMARK: a fresh install drew the Nerd icons as '?') */
-    upconf_font_fallback(c->conf, p, fonts_ttf_exists(UC_FALLBACK_DEFAULT), c->w.fallback, sizeof(c->w.fallback));
+    upconf_font_fallback(c->conf, p, c->nerd_ttf, c->w.fallback, sizeof(c->w.fallback));
     if (!c->conf)
         return;
     if (!p) {
@@ -2671,6 +2679,7 @@ static void watch_take(con *c)
         FreeVec(c->conf); /* the new table is the window's now: no copy, no second table */
         c->conf = m->conf;
         m->conf = 0;
+        c->nerd_ttf = m->nerd_ttf;
         if (c->w.t && c->w.win) {
             if (changed) {
                 const char *names[UC_MAX_PROFILES + 1];
