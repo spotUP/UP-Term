@@ -784,10 +784,14 @@ static void test_which_from_gtype(void)
         /* S56-CYCLE-PLAIN: a cycle gadget (label outside or none) is role PLAIN: pen_button fill, label never armed, pressed or not;
          * the push button (label inside) stays primary with the accent */
         fs.pen_button = 7;
-        CHECK_INT(flat_push_label(1, 12, 3, 60, 14), 1);                     /* button: label inside the box */
-        CHECK_INT(flat_push_label(0, 0, 0, 60, 14), 0);                      /* cycle without label */
-        CHECK_INT(flat_push_label(1, -50, 3, 60, 14), 0);                    /* cycle, label left */
-        CHECK_INT(flat_push_label(1, 12, -10, 60, 14), 0);                   /* cycle, label above */
+        /* S56-PUSH-ROLE: the values measured on rig 88 (3.2 GadTools). Locale/Sound Save, Use, Cancel: GadgetText NULL, 88x14,
+         * Activation 0001 -> push button (37b5e3d2 took them for cycles: every Save/Use/Cancel drew PLAIN, no accent) */
+        CHECK_INT(flat_push_button(0, 0, 0, 88, 14, 0x0001), 1);              /* Save / Use / Cancel */
+        CHECK_INT(flat_push_button(0, 0, 0, 200, 14, 0x0001), 1);             /* Sound "Test Sound" */
+        CHECK_INT(flat_push_button(1, 12, 3, 60, 14, 0x0001), 1);             /* a GadTools that keeps the label inside the box */
+        CHECK_INT(flat_push_button(1, -96, 3, 180, 14, 0x0001), 0);           /* Sound "Sound Type:" cycle, label left */
+        CHECK_INT(flat_push_button(1, 12, -10, 60, 14, 0x0001), 0);           /* cycle, label above */
+        CHECK_INT(flat_push_button(0, 0, 0, 18, 9, 0x0003), 0);               /* Locale scroller arrow: RELVERIFY|IMMEDIATE */
         for (pressed = 0; pressed <= 1; pressed++) {
             memset(&t, 0, sizeof t);
             CHECK_INT(flat_frame_draw_round(&fs, pressed, 10, 10, 30, 14, 1, FLAT_ROLE_PLAIN, round_fill, round_read, cv), 1);

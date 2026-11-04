@@ -457,7 +457,7 @@ static int role_of(struct RastPort *rp, Object *obj)
             continue;
         {   /* S56-CYCLE-PLAIN: only push buttons take part in the row; a cycle gadget keeps the plain pen_button fill */
             struct IntuiText *it = g->GadgetText;
-            if (!flat_push_label(it != NULL, it ? it->LeftEdge : 0, it ? it->TopEdge : 0, g->Width, g->Height)) {
+            if (!flat_push_button(it != NULL, it ? it->LeftEdge : 0, it ? it->TopEdge : 0, g->Width, g->Height, g->Activation)) {
                 if (g->GadgetRender == (APTR)obj)
                     return FLAT_ROLE_PLAIN;
                 continue;

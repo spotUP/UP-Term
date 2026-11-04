@@ -546,9 +546,11 @@ const flat_gbox *flat_gh_match(const flat_state *s, const flat_gh *g, const void
     return 0;
 }
 
-int flat_push_label(int has_text, int lx, int ly, int w, int h)
+int flat_push_button(int has_text, int lx, int ly, int w, int h, int activation)
 {
-    return has_text && lx >= 0 && ly >= 0 && lx < w && ly < h;
+    if (activation & 0x0002)                     /* GACT_IMMEDIATE: a scroller arrow (act 0003), not a push button */
+        return 0;
+    return !has_text || (lx >= 0 && ly >= 0 && lx < w && ly < h);
 }
 
 int flat_button_role(const flat_box *self, const flat_box *sib, int n)
