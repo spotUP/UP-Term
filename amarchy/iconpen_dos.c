@@ -9,6 +9,7 @@
 #include <intuition/intuition.h>
 #include <intuition/screens.h>
 #include <dos/dos.h>
+#include <dos/dosextens.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/intuition.h>
@@ -31,7 +32,11 @@ typedef struct ipd_rec {
 /* cur: the Workbench screen's colour map now (0 = Workbench closed); vp its viewport; h the holder, sc the screen now: a held pen
  * is released only while h->screen is sc (else its screen is gone and the pens went with it; ip_holder_verify forgets the pens
  * of a screen reopened at the same address before any release) */
-typedef struct pen_ctx { struct ColorMap *cur; struct ViewPort *vp; const ip_holder *h; const void *sc; } pen_ctx;
+/* t/flat/mask: the theme, read from file before the public screen list is locked (FLAT-BOOT-FREEZE, see pens_theme_cached). */
+typedef struct pen_ctx {
+    struct ColorMap *cur; struct ViewPort *vp; const ip_holder *h; const void *sc;
+    gtheme t; int flat; unsigned mask; int have;
+} pen_ctx;
 
 static int pen_obtain(void *ctx, int pen, unsigned r, unsigned g, unsigned b)
 {
@@ -102,16 +107,36 @@ struct Screen *ipd_lock_wb_screen(void)
     return sc;
 }
 
-/* Bring the held pens in line with the owners and the Workbench screen as it is now. The public screen list stays locked for
- * the whole sync, so the screen cannot close under the colour map. The caller holds r->ss. */
+/* The theme and desk prefs, read from file (ENV:, ENVARC:, the theme file). Never call it with the public screen list locked. */
 static void pens_theme(void *ctx, gtheme *t, int *flat, unsigned *mask)
 {
     am_prefs ap;
+    struct Process *me = (struct Process *)FindTask(0);
+    APTR oldwin = me->pr_WindowPtr;
     (void)ctx;
+    me->pr_WindowPtr = (APTR)-1;        /* FLAT-BOOT-FREEZE: UP-Term: not assigned yet at boot is an answer, not a requester */
     amconf_load(&ap);
     gt_load(pen_theme_read, 0, ap.val[AM_GTHEME][0] ? ap.val[AM_GTHEME] : GT_DEFAULT, t);
+    me->pr_WindowPtr = oldwin;
     *flat = amconf_desk_flat_pens(&ap);
     *mask = amconf_desk_mask(&ap);
+}
+
+/* FLAT-BOOT-FREEZE: the theme op ip_sync / ip_recolour call with the public screen list locked. It hands back the theme
+ * pens_theme read before the lock and touches no file: a DOS read there can put up a requester (volume not ready at boot,
+ * when amarchy-flat syncs the first second after LoadWB opens the Workbench), the requester's window needs the public screen
+ * list, and the system stops. */
+static int pens_theme_ready(void *ctx)
+{
+    return ((const pen_ctx *)ctx)->have;
+}
+
+static void pens_theme_cached(void *ctx, gtheme *t, int *flat, unsigned *mask)
+{
+    const pen_ctx *c = (const pen_ctx *)ctx;
+    *t = c->t;
+    *flat = c->flat;
+    *mask = c->mask;
 }
 
 void ipd_icon_rgb(uint8_t rgb[IP_PENS][3])
@@ -123,32 +148,46 @@ void ipd_icon_rgb(uint8_t rgb[IP_PENS][3])
     ip_colours(&t, ip_ground(&t, flat, mask), rgb);
 }
 
+/* Bring the held pens in line with the owners and the Workbench screen as it is now. The public screen list stays locked for
+ * the whole sync, so the screen cannot close under the colour map; the theme is read only when pens are to be obtained (ip_sync NEED_THEME), with the list unlocked. The caller holds r->ss. */
 static void pens_sync(ipd_rec *r)
 {
     pen_ctx c;
     ip_ops o;
     struct List *pl;
     struct Screen *sc;
-    int depth = 0;
+    int depth = 0, pass, act;
     int hold = ip_shared_hold(&r->s, GfxBase && GfxBase->LibNode.lib_Version >= 39);
     o.obtain = pen_obtain;
     o.release = pen_release;
     o.is_free = pen_is_free;
-    o.theme = pens_theme;
+    o.theme = pens_theme_cached;
     o.set_rgb = pen_set_rgb;
+    o.theme_ready = pens_theme_ready;
     o.ctx = &c;
-    pl = LockPubScreenList();
-    sc = ipd_wb_screen_in(pl);
-    if (sc)
-        depth = ip_screen_depth(sc->BitMap.Depth, (sc->ViewPort.Modes & EXTRA_HALFBRITE) != 0);
-    c.cur = sc ? sc->ViewPort.ColorMap : 0;
-    c.vp = sc ? &sc->ViewPort : 0;
-    c.h = &r->s.h;
-    c.sc = sc;
-    ip_sync(&r->s.h, &o, hold, sc, depth, sc ? sc->BitMap.Depth : 0);
-    if (r->s.h.new_identity)
-        r->s.epoch++;                   /* S32-STALE-HELD-PENS: a new screen (or none): pens other clients hold on the old one are gone; S32-PEN-EPOCH-LEAK: not on a release or recheck on the same screen */
-    UnlockPubScreenList();
+    c.have = 0;
+    for (pass = 0; pass < 2; pass++) {
+        pl = LockPubScreenList();
+        sc = ipd_wb_screen_in(pl);
+        depth = 0;
+        if (sc)
+            depth = ip_screen_depth(sc->BitMap.Depth, (sc->ViewPort.Modes & EXTRA_HALFBRITE) != 0);
+        c.cur = sc ? sc->ViewPort.ColorMap : 0;
+        c.vp = sc ? &sc->ViewPort : 0;
+        c.h = &r->s.h;
+        c.sc = sc;
+        act = ip_sync(&r->s.h, &o, hold, sc, depth, sc ? sc->BitMap.Depth : 0);
+        if (act == IP_SYNC_NEED_THEME) {    /* pens must be obtained: read the theme with the list unlocked, then once more */
+            UnlockPubScreenList();
+            pens_theme(0, &c.t, &c.flat, &c.mask);
+            c.have = 1;
+            continue;
+        }
+        if (r->s.h.new_identity)
+            r->s.epoch++;                   /* S32-STALE-HELD-PENS: a new screen (or none): pens other clients hold on the old one are gone; S32-PEN-EPOCH-LEAK: not on a release or recheck on the same screen */
+        UnlockPubScreenList();
+        break;
+    }
 }
 
 /* The record, created when `create`; 0 when absent (or no memory). */
@@ -236,9 +275,11 @@ void ipd_recolour(void)
     o.obtain = pen_obtain;
     o.release = pen_release;
     o.is_free = pen_is_free;
-    o.theme = pens_theme;
+    o.theme = pens_theme_cached;
     o.set_rgb = pen_set_rgb;
     o.ctx = &c;
+    o.theme_ready = 0;
+    pens_theme(0, &c.t, &c.flat, &c.mask);
     pl = LockPubScreenList();
     sc = ipd_wb_screen_in(pl);
     if (sc && sc == r->s.h.screen) {
