@@ -1156,6 +1156,20 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
             SetAPen(rp, fg);
             return;
         }
+        {                                                     /* S57-LOCALE-LIST-NO-SELECT: FILLPEN is the accent; the sides stay dark */
+            int dk[4], sp2 = flat_side_fill_pen(&r->st, rp->FgPen, w->Width, w->Height, w->BorderLeft, w->BorderTop, w->BorderRight,
+                                                w->BorderBottom, (int)x0, (int)y0, (int)x1, (int)y1, dk);
+            if (sp2 >= 0) {
+                UBYTE fg = rp->FgPen;
+                r->rhits++;
+                if (dk[1] > y0)
+                    ((rectfn)r->rsw.saved)(rp, x0, y0, x1, dk[1] - 1, (struct Library *)GfxBase);
+                SetAPen(rp, (UBYTE)sp2);
+                ((rectfn)r->rsw.saved)(rp, dk[0], dk[1], dk[2], dk[3], (struct Library *)GfxBase);
+                SetAPen(rp, fg);
+                return;
+            }
+        }
     }
     ((rectfn)r->rsw.saved)(rp, x0, y0, x1, y1, (struct Library *)GfxBase);
 }

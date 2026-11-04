@@ -199,10 +199,9 @@ static void test_desk_palette_flat(void)
     desk_pens(stock);
     desk_pens_flat(flat);
     for (s = 0; s < DK_SLOTS; s++) {
-        if (s == DK_FILLTEXT) {  /* FLAT-SOLID-FILL: the active title text is bright under the flat map */
-            CHECK_INT(flat[s], DK_FG);
-            CHECK(stock[s] != flat[s]);
-        } else if (s == DK_SHINE || s == DK_SHADOW || s == DK_FILL) {  /* FLAT-SOLID-FILL: one surface pen for highlight, shadow, fill */
+        if (s == DK_FILL || s == DK_FILLTEXT) {  /* S57-LOCALE-LIST-NO-SELECT: the selected list row keeps accent fill, surface text */
+            CHECK_INT(flat[s], stock[s]);
+        } else if (s == DK_SHINE || s == DK_SHADOW) {  /* FLAT-SOLID-FILL: one surface pen for highlight and shadow */
             CHECK_INT(flat[s], DK_BG);
             CHECK(stock[s] != flat[s]);
         } else if (s == DK_EXTRA) {  /* FLAT-BAR-CONTOUR: slot 12 is BARCONTOURPEN (OS 3.2), the 1 px line along the top of the screen bar: bar background */
@@ -231,10 +230,11 @@ static void test_desk_palette_flat(void)
         CHECK(gt != flat[DK_BACKGROUND]);
         CHECK(gl != flat[DK_BACKGROUND]);
         CHECK(gl != gt);
-        CHECK(gl != flat[DK_SHINE] && gl != flat[DK_SHADOW] && gl != flat[DK_FILL]);
+        CHECK(gl != flat[DK_SHINE] && gl != flat[DK_SHADOW]);
         CHECK(gt != flat[DK_FILL]);
-        CHECK(flat[DK_FILLTEXT] != flat[DK_FILL]);  /* FLAT-SOLID-FILL: the active title text is readable on its fill */
-        CHECK_INT(flat[DK_FILLTEXT], DK_FG);
+        CHECK(flat[DK_FILLTEXT] != flat[DK_FILL]);  /* the selected row text is readable on its fill */
+        CHECK_INT(flat[DK_FILL], DK_ACCENT);        /* S57-LOCALE-LIST-NO-SELECT: a surface FILLPEN hid the selected Country row */
+        CHECK_INT(flat[DK_FILLTEXT], DK_BG);
     }
     for (k = 0; k < 4; k++) {
         char path[256];
