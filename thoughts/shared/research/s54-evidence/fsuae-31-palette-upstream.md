@@ -217,3 +217,25 @@ Memwatch 0: break at 00000004.L W 000000B2 PC=00F8195E
 
 Splits IPrefs off, native Workbench (no uaegfx) and a Palette-prefs-saved file instead of owner bytes. These
 decide whether P96/uaegfx, SolidWin or the prefs bytes are needed for the NULL pointer.
+
+## Split runs (s56)
+
+Same config as the hunt (rig 84, fs-uae-debug, 3.1, 060 no MMU, `--no-jit`, `--debugger`, write memwatch `w 0 4 4 W`
+armed at the boot prompt, recipe P with owner bytes tests/data/desk/palette-gui-save.prefs), one change per boot, one
+boot per split (no sometimes-dies pattern seen, so no repeats). Every boot has two memwatch hits during boot (exec init
+writes $4); only hits after the Copy count.
+
+| split | change | $4 written after Copy | `Echo alive` after 30 s |
+|---|---|---|---|
+| S1 | SolidWin not started (a `; C:SolidWin` line in S:User-Startup makes the rig script skip it; ps shows no SolidWin), IPrefs on, RTG 800x600 | yes, `$000000B2`, PC $00F8195E (exec AddHead, same as the hunt) | no (guest halted at the break; after `g` the daemon stays silent) |
+| S2 | IPrefs removed before the Copy (`kill --force`, ps shows no IPrefs), SolidWin on, RTG | no hit in 30 s | yes |
+| S3 | native Workbench screen (`rig.py aga`: 640x256 4 bit PAL, no RTG Workbench; the uaegfx card stays in the config), SolidWin and IPrefs on | yes, but a different write: long `$00000000` at $6 (spans the low half of the ExecBase pointer), PC $00F81970 (next instruction of the same exec list routine, A0 = 0), later reset (connection refused) | no |
+| S4 | prefs written by the Palette editor Save button (clicked via `wasabi ui click Save`, SolidWin and IPrefs on, RTG): no Copy involved | no hit in 30 s | yes |
+
+S4 detail: the editor's Save wrote ENV:Sys/palette.prefs (434 bytes) that differs from tests/data/desk/palette-gui-save.prefs in
+26 bytes. In the same boot, Copy of the owner bytes right after the Save then hit the memwatch ($000000B2, PC $00F8195E)
+and the daemon stopped answering: the prefs bytes are what trigger it, not the Copy path itself.
+
+Conclusions: the $4 overwrite needs IPrefs running (S2) and these particular prefs bytes (S4 + control). It does not need
+SolidWin (S1) and does not need the RTG Workbench screen (S3: native screen still corrupts the ExecBase pointer, through a
+neighbouring write from the same NULL-based list code). The uaegfx card was not removed from the config in S3.

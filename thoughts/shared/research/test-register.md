@@ -35,6 +35,10 @@ to RAM:palette.prefs, `Copy RAM:palette.prefs ENV:Sys/palette.prefs`, 30 s wait,
 | 2026-11-04 (s56) | FS-UAE debug build (fs-uae-debug 661e884dd + local), 3.1, 060 JIT OFF, uaegfx, IPrefs + SolidWin on, `--debugger`, dbgbreak 30 s after Copy | rig 84 | P x1 | guest lost, host alive; PC $190800F8 unmapped, A6=$B2, reset loop about 3 per second | fsuae-31-palette-upstream.md "Guest-side hang hunt (s56)" run 1 |
 | 2026-11-04 (s56) | same, PC-range break `f 1000000 3fffffff` before Copy | rig 84 | P x1 | hit in exec VERTB dispatcher $F811F8: `MOVEA.L $4,A6` reads $B2, JMP (A5) to $190800F8; ExecBase pointer at $4 overwritten | same section, run 2 |
 | 2026-11-04 (s56) | same, write memwatch `w 0 4 4 W` before Copy | rig 84 | P x1 | writer found: task IPrefs, exec AddHead PC $F8195E writes $000000B2 to $4, called from ROM intuition $FE3860/$FE7960 with NULL-based list; not our code. Splits (IPrefs off, native WB, Palette-saved file) NOT run | same section, run 3 |
+| 2026-11-04 (s56) | FS-UAE debug build, 3.1, 060 JIT OFF, memwatch `w 0 4 4 W`, SolidWin off (S1), IPrefs on, RTG | rig 84 | P x1 | $4 written $B2 PC $F8195E; Echo alive no (same as hunt): SolidWin not needed | fsuae-31-palette-upstream.md "Split runs (s56)" |
+| 2026-11-04 (s56) | FS-UAE debug build, 3.1, 060 JIT OFF, memwatch `w 0 4 4 W`, IPrefs killed (S2), SolidWin on, RTG | rig 84 | P x1 | no $4 write, Echo alive yes: IPrefs needed | fsuae-31-palette-upstream.md "Split runs (s56)" |
+| 2026-11-04 (s56) | FS-UAE debug build, 3.1, 060 JIT OFF, memwatch `w 0 4 4 W`, native screen via `rig.py aga` (S3), uaegfx card still in config | rig 84 | P x1 | $4 region written (long 0 at $6, PC $F81970), guest reset; Echo alive no: RTG screen not needed | fsuae-31-palette-upstream.md "Split runs (s56)" |
+| 2026-11-04 (s56) | FS-UAE debug build, 3.1, 060 JIT OFF, memwatch `w 0 4 4 W`, prefs from Palette editor Save (S4), no Copy | rig 84 | GUI Save x1 + P control | Save: no write, alive; Copy of owner bytes after it: $B2 PC $F8195E, Echo no: the prefs bytes trigger it | fsuae-31-palette-upstream.md "Split runs (s56)" |
 
 ## Amarchy flat drawing (pixel checks)
 
