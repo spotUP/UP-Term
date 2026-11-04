@@ -18,6 +18,13 @@
 #ifndef PEN_MATCH_H
 #define PEN_MATCH_H
 
+/* a includer that needs only part of this header (roundaa_core: pm_aim / pm_dist) must not trip -Wunused-function */
+#if defined(__GNUC__) || defined(__clang__)
+#define PM_MAYBE_UNUSED __attribute__((unused))
+#else
+#define PM_MAYBE_UNUSED
+#endif
+
 #define PM_LEVELS 64     /* a pattern level: lev of the 64 pixels of an 8 x 8 tile in pen b, the rest in pen a */
 #define PM_MAXPENS 32    /* the palette sizes this is meant for: few pens */
 #define PM_CHROMA_K 4    /* the price of a step of chroma lost, against redmean's units */
@@ -59,7 +66,7 @@ static const unsigned char pm_bayer[8][8] = {
 };
 
 /* row y of the tile at level lev as a byte, the leftmost pixel the top bit: set where pen b goes */
-static unsigned char pm_pattern(int lev, int y)
+PM_MAYBE_UNUSED static unsigned char pm_pattern(int lev, int y)
 {
     unsigned char v = 0;
     int x;
@@ -168,7 +175,7 @@ typedef struct pm_palette {
 } pm_palette;
 
 /* p made for pal[0..n) (0xRRGGBB): 1; 0 when it already was (nothing done) */
-static int pm_palette_set(pm_palette *p, const unsigned long *pal, int n)
+PM_MAYBE_UNUSED static int pm_palette_set(pm_palette *p, const unsigned long *pal, int n)
 {
     int i, j, c;
     if (n > PM_MAXPENS)
@@ -200,7 +207,7 @@ static int pm_palette_set(pm_palette *p, const unsigned long *pal, int n)
 
 /* Choose for colour t among the palette's pens, only those whose bit is set in `usable`. pick->solid -1: no pen
  * usable. dither 0: the single pen only (lev 0). */
-static void pm_match(const pm_palette *p, unsigned long usable, unsigned long t, int dither, pm_pick *pick)
+PM_MAYBE_UNUSED static void pm_match(const pm_palette *p, unsigned long usable, unsigned long t, int dither, pm_pick *pick)
 {
     const unsigned long *pal = p->pal;
     long best = -1, bestd = -1, d, tl[3];
