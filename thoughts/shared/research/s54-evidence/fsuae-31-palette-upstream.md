@@ -54,3 +54,47 @@ macOS crash report. The log is buffered, so its last lines are what had been flu
 Reading: the Copy-triggered Workbench reset kills plain v3.2.35 every time, so the bug is not in the three local commits.
 It is unverified whether the 6/6 host-process death and the patched build's 2/6 guest crash are the same fault or two
 (the stock process exits without the guest-side jump to $A6); a debugger run (lldb on the stock binary) would tell.
+
+## lldb on stock v3.2.35 (s56)
+
+Setup: rig 80, `rig.py start --max --os 31`, `UPTERM_FSUAE` = a wrapper that starts the stock debug binary (v3.2.35, -g -O2) normally
+and attaches lldb to its pid 4 s later (launching it under lldb hangs in `g_dir_open` of the plugins dir, apparently a macOS file-access
+prompt for the debugserver chain). Recipe as above: boot, put tests/data/desk/palette-gui-save.prefs to RAM:palette.prefs, 15 s settle,
+`Copy RAM:palette.prefs ENV:Sys/palette.prefs`. Stop-hook (`bt 25`, `thread backtrace all`) set so output appears at the stop.
+
+Stop reason: `EXC_BAD_ACCESS (code=2, address=0x351004000)` on thread `emulation`, a host SIGSEGV (protection failure, unmapped host page).
+It is not exit(), _exit() or abort(); the breakpoints on those never fired. Continuing re-faults at the same pc (0x100be5334), so no
+signal handler absorbs it and the process dies. (In an earlier attempt the same fault gave the same address class, 0x35x004000.)
+
+Faulting thread, top frames (stock tag v3.2.35):
+```
+#0  do_get_mem_word(a) at maccess.h:20           (*b << 8) | *(b+1), b = 0x351004000
+#1  get_diword(o=0) at newcpu.h:366
+#2  m68k_run_2() at newcpu.cpp:5241              r->opcode = x_get_iword(0)   (instruction fetch)
+#3  m68k_go(may_quit=1) at newcpu.cpp:5497
+#4  do_start_program() at main.cpp:1039
+#5  start_program() at main.cpp:1055
+#6  real_main2 at main.cpp:1196
+#7  real_main at main.cpp:1212
+#8  amiga_main() at libamiga.cpp:315
+#9  main_function at main.c:750
+#10 emulation_thread at emu.c:413
+#11 g_thread_proxy (libglib)   #12 _pthread_start
+```
+Main thread is idle in `fs_ml_render_iteration` (render.c:656, condition wait), so the render thread is not involved.
+Reading: the 68k instruction fetch in the interpreter loop (`m68k_run_2`, not JIT code) reads through a host pointer that
+`regs.pcp` computed for the new PC, and that page is unmapped. So the guest PC was set to an address whose bank maps to a host
+pointer past a mapped region (the 4 KB page boundary 0x...004000 suggests the end of an allocated block), not a bad store or a libc fault.
+
+Attempts (1 launched under lldb, 4 attached):
+1. launched under lldb: stuck 5 min in g_dir_open, no boot (wrapper changed to attach).
+2. attach, default signals: lldb stopped on the EXC_BAD_ACCESS above, then lldb and fs-uae were gone before `bt` printed.
+3. same, SIGSEGV/SIGBUS pass-through set: same stop, same loss (bt lost; lldb killed with the dying rig).
+4. attach with lldb in its own session: no host death this time; guest went dead (wasabi refused), a reset-loop log was written, fs-uae kept running at 106 % CPU. This is the patched build's guest-crash form.
+5. attach with stop-hook: stop at the same EXC_BAD_ACCESS, full backtrace captured (above).
+Result: host SIGSEGV in 3 of 4 Copy runs (attempts 2, 3, 5), guest reset loop in 1 (attempt 4).
+
+Same fault as the patched build? Probably the same root: the guest executes from a bad PC after the RTG -> native switch. In the patched
+build that PC ($A6/$7A) is a valid low address and the guest crashes; in stock the fetch lands on an unmapped host page and takes the
+host down. Attempt 4 on the stock binary shows the guest-crash form too, so both outcomes occur on stock. Unverified: the guest PC and
+register values at the fault (not read).
