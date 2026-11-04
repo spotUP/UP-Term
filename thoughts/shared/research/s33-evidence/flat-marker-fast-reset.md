@@ -50,3 +50,17 @@ Date 2026-11-04 09:11-09:28. Verdict: NOT PROVEN (no STATUS line, no marker List
 - Driver (scratchpad drive5.py) polled `VTC:amarchy-flat STATUS` for 420 s: `09:27:59 A boot1: no STATUS in 420 s`. Steps A and B not run.
 - Finding: the loss of wasabid is not specific to `rig.py reboot`; a plain `stop --keep` then `start --keep-sys` on this image also failed here (Run 4's fresh `start --keep-sys` worked). Difference to Run 4: this boot ran the new Amarchy-Flat startup line on a user-startup edited after the first boot. Cause not isolated (flat BOOT freezing the guest daemon is one candidate; host load 41-83).
 - Rig 66 stopped and cleared.
+
+## Run 6 (s56, rig 67) - CONFIRMED
+
+Date 2026-11-04 10:50-11:13. Build: `make amiga` from main d873ce13 (contains the FLAT-BOOT-FREEZE fix 5dee7eb5); wasabid 0.11b2 stayed up through every boot (no regression of the freeze). Rig: `UPTERM_RIG=67 rig.py start --max --os 32`, then `stop --keep`, Amarchy-Flat block appended to build/rig67/os-32/S/User-Startup (10:55), `start --keep-sys` for every later boot.
+- Boot 1 (up 10:57:57): `flat=on calls=0 chained=0` at 10:58:05; ENVARC:Amarchy empty already (the start step takes ~2.5 min, so the 60 s window had passed before the first read). Not a usable fast-reset boot.
+- Boot 2 (stop --keep 10:58:32, start 10:58:43; script polled STATUS from the start step in parallel):
+  - 10:59:06 `flat=on calls=18 chained=0`
+  - 10:59:07 `List ENVARC:Amarchy/flat-starting` -> `flat-starting                    16 ----rwed Today     10:59:05` / `1 file - 16 bytes - 2 blocks used` (marker on disk, written 10:59:05, read-only List)
+  - 10:59:07 `rig.py stop --keep` (reset ~2 s after the List, ~25 s after flat started, inside the 60 s window).
+- Boot 3 (start 11:04:45; output said `already running` because the boot-2 start process had brought the rig back up after the stop): first read 11:04:47 `flat=held calls=0 chained=0 why=marker`; `List ENVARC:Amarchy` -> `Directory "ENVARC:Amarchy" is empty` (marker consumed by the held start, flat.c:1490).
+- Control (stop 11:05:12, start 11:05:23): 11:08:05 `flat=on calls=49 chained=0`; `List ENVARC:Amarchy` empty at 11:08:05 and 11:09:42 (marker deleted by the 60 s timer; boot ran > 90 s). Reset 11:09:48 (stop --keep), start 11:09:59: 11:12:43 `flat=on calls=58 chained=0` (no marker -> no hold).
+- Verdict: CONFIRMED. A reset within 60 s leaves ENVARC:Amarchy/flat-starting on disk (listed pre-reset) and the next boot reads `flat=held why=marker`; after a >90 s boot the marker is gone and the next boot reads `flat=on`.
+- Caveat: boot 3 and control were observed after `stop --keep` + `start --keep-sys` (a hard kill of fs-uae), the same kind of reset as a Guru/reboot as far as the disk is concerned.
+- Rig 67 stopped and cleared.
