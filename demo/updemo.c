@@ -2414,6 +2414,28 @@ static void sc_help(long t, int first)
     }
 }
 
+/* vsh's why. It explains the last failure of the shell it is typed in, from that shell's own result code and the
+ * system's fault text; the demo is not that shell and has no hook to one (io->command carries slash commands for the
+ * terminal only), so this scene describes the command and never prints a reply as if why had given it. */
+static void sc_why(long t, int first)
+{
+    (void)t;
+    if (!first)
+        return;
+    heading("Why", "vsh explains why the last command failed");
+    grey_line(4, "A failed command leaves only a number: the return code.");
+    grey_line(5, "Type why in vsh and it says, in words, what went wrong.");
+    grey_line(7, "Try it in a shell tab:");
+    at(8, 2);
+    ps("\033[36m~\033[0m % ");
+    fg(2);
+    ps("type a command that fails, then: why");
+    sgr0();
+    grey_line(10, "If the command left a fault code, why prints:");
+    grey_line(11, "  Last command failed because <the system's text for that code>");
+    grey_line(12, "Otherwise it says the last command did not set a return code.");
+}
+
 /* A frame counter in big letters. With mode 2026 the terminal shows each
  * frame whole; every other second the frames go without it, and a slow
  * machine shows them being drawn. */
@@ -2568,6 +2590,7 @@ static const scene_def scenes[] = {
     { "glyphs", sc_glyphs, 0, 400, "Glyphs: Powerline, Nerd Font, emoji, box drawing", 0, 0, 0 },
     { "tabs", sc_tabs, 0, 400, "Tabs: several sessions in one window", 0, 0, 0 },
     { "help", sc_help, 0, 300, "Help: /help, /tutorial and /ask", 0, 0, 0 },
+    { "why", sc_why, 0, 250, "Why: vsh explains a failed command", 0, 0, 0 },
     { "synchronized output", sc_sync, 1, 400, "Synchronized output: frames shown whole", 0, 0, 0 },
     { "resize", sc_resize, 0, 400, "A program resizes the window (DECCOLM)", 0, 0, 0 },
     { "reflow", sc_reflow, 0, 750, "Reflow on resize", 1, 0, 0 },

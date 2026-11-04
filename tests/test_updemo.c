@@ -223,10 +223,10 @@ static int scene_index(const char *name)
  * second player, so no second list can hold scenes the first lacks. */
 static void there_is_one_scene_list_with_the_effects_at_its_end(void)
 {
-    CHECK_INT(updemo_scenes(), 34);
+    CHECK_INT(updemo_scenes(), 35);
     CHECK_INT(scene_index("styles"), 1);        /* the tour's scene, in the list a bare UPDemo plays */
-    CHECK_INT(scene_index("copper bars"), 26);  /* the show's scenes follow the tour's */
-    CHECK_INT(scene_index("the end"), 33);
+    CHECK_INT(scene_index("copper bars"), 27);  /* the show's scenes follow the tour's */
+    CHECK_INT(scene_index("the end"), 34);
     CHECK_INT(scene_index("kitty animation"), 14);
     CHECK_INT(scene_index("kitty z-index"), 16);
     CHECK_INT(scene_index("kitty picture"), 17);
@@ -235,13 +235,14 @@ static void there_is_one_scene_list_with_the_effects_at_its_end(void)
     CHECK_INT(scene_index("glyphs"), 20);
     CHECK_INT(scene_index("tabs"), 21);
     CHECK_INT(scene_index("help"), 22);
+    CHECK_INT(scene_index("why"), 23);
 }
 
-/* a bare UPDemo plays the whole list from its first scene: the status line shows the caption and "1/34" */
+/* a bare UPDemo plays the whole list from its first scene: the status line shows the caption and "1/35" */
 static void a_bare_run_starts_at_the_first_scene_with_its_caption(void)
 {
     start(80, 24);
-    needle = "Demo 1/34  Text styles, double-size lines, box drawing";
+    needle = "Demo 1/35  Text styles, double-size lines, box drawing";
     CHECK_INT(updemo_run(&io, 80, 24, 0, 6), 0);
     CHECK(saw_text);
     needle = 0;
@@ -252,14 +253,14 @@ static void a_bare_run_starts_at_the_first_scene_with_its_caption(void)
 static void a_start_number_picks_a_scene_of_the_one_list(void)
 {
     start(80, 24);
-    needle = "Demo 2/34  Every text style a program can ask for";
+    needle = "Demo 2/35  Every text style a program can ask for";
     CHECK_INT(updemo_run(&io, 80, 24, 1, 6), 0);
     CHECK(saw_text);
-    needle = "Demo 1/34";
+    needle = "Demo 1/35";
     saw_text = 0;
     vt_free(t);
     start(80, 24);
-    needle = "Demo 1/34";
+    needle = "Demo 1/35";
     CHECK_INT(updemo_run(&io, 80, 24, 1, 6), 0);
     CHECK(!saw_text);   /* scene 1 was skipped */
     needle = 0;
@@ -530,6 +531,21 @@ static void the_help_scene_sends_help_ask_then_help_tutorial_and_prints_the_repl
     ra = cap_find("the AI agent in a new tab, started on TASK");
     rb = cap_find("the shell tutorial, in a new tab");
     CHECK(a >= 0 && a < ra && ra < b && b < rb);
+    CHECK_INT(vt_unhandled(t, kinds, counts, 16), 0);
+    vt_free(t);
+}
+
+/* UD8: the why scene describes vsh's why and sends no command: the demo has no hook into a shell, so printing a reply
+ * would be invented output. */
+static void the_why_scene_describes_why_and_sends_no_command(void)
+{
+    const char *kinds[16];
+    long counts[16];
+    cmd_log[0] = 0;
+    play_alone(scene_index("why"), UPDEMO_AUTO);
+    CHECK_STR(cmd_log, "");
+    CHECK(cap_has("Type why in vsh"));
+    CHECK(cap_has("Last command failed because"));
     CHECK_INT(vt_unhandled(t, kinds, counts, 16), 0);
     vt_free(t);
 }
@@ -1450,6 +1466,7 @@ void suite_updemo(void)
     the_tabs_scene_draws_a_tab_bar_and_names_the_menu();
     the_tabs_scene_sends_tab_new_then_tab_close();
     the_help_scene_sends_help_ask_then_help_tutorial_and_prints_the_replies();
+    the_why_scene_describes_why_and_sends_no_command();
     the_styles_scene_shows_slow_and_rapid_blink();
     q_ends_the_demo_and_any_other_key_does_not();
     a_key_goes_to_the_next_scene_and_the_demo_keeps_running();
