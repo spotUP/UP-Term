@@ -212,6 +212,12 @@ int ip_sync(ip_holder *h, const ip_ops *o, int hold, const void *screen, int dep
     ip_holder_verify(h, o, screen, depth);
     lost = old && !h->screen;            /* verify forgets the pens only when the same address was reopened */
     act = ip_sync_decide(h, hold, screen, depth);
+    if (act == IP_SYNC_OBTAIN && o->theme_ready && !o->theme_ready(o->ctx))
+        return IP_SYNC_NEED_THEME;   /* FLAT-BOOT-FREEZE: nothing obtained, set or flagged yet. The caller loads the theme and calls
+                                      * again. The verify above is idempotent: if it forgot the pens (same-address reopen) the
+                                      * second call sees old == NULL, lost == 0, which ip_sync_new_identity maps to 1 for a
+                                      * non-NULL screen just as old == screen, lost == 1 does. A changed screen or depth gives the
+                                      * same answer from both calls. */
     if (act == IP_SYNC_RELEASE) {
         ip_holder_release(h, o);
     } else if (act == IP_SYNC_OBTAIN) {

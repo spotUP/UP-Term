@@ -45,6 +45,9 @@ typedef struct ip_ops {
     int (*is_free)(void *ctx, int pen);
     /* load the theme and the switches desk_live_follow takes (amconf_desk_flat_pens, amconf_desk_mask) for an obtain */
     void (*theme)(void *ctx, gtheme *t, int *flat, unsigned *mask);
+    /* FLAT-BOOT-FREEZE: optional, 0 = always ready. Asked once ip_sync has decided on an obtain, before anything changes: 0 means
+     * the theme is not loaded yet, ip_sync returns IP_SYNC_NEED_THEME and the caller loads it (outside any lock) and syncs again */
+    int (*theme_ready)(void *ctx);
     /* set one live role pen of the current screen to rgb (0xRRGGBB) */
     void (*set_rgb)(void *ctx, int pen, uc_u32 rgb);
 } ip_ops;
@@ -86,7 +89,7 @@ int ip_holder_release(ip_holder *h, const ip_ops *o);
 int ip_status_line(const ip_holder *h, char *out, size_t cap);
 
 /* ---- the Amiga glue's decisions (amarchy/flat.c pens_sync) ---- */
-enum { IP_SYNC_NONE, IP_SYNC_OBTAIN, IP_SYNC_RELEASE };
+enum { IP_SYNC_NONE, IP_SYNC_OBTAIN, IP_SYNC_RELEASE, IP_SYNC_NEED_THEME };
 /* What a sync does: `hold` 0 (program quitting, kill switch held, graphics < V39) or no Workbench screen -> release what
  * is held (RELEASE only while pens are tied to a screen); `hold` 1 and the screen or its depth is not the one the pens were
  * obtained on (first run, Workbench closed and reopened, mode change) -> obtain; else nothing. */

@@ -36,6 +36,15 @@ class IpdNoDosUnderList(unittest.TestCase):
                 self.assertNotRegex(body, r"\.theme\s*=\s*pens_theme\s*;",
                                     f"{name}: ip ops theme reads files and runs under the list lock")
 
+    def test_theme_read_only_when_pens_are_obtained(self):
+        """No unconditional pre-read: pens_sync reads the theme only after ip_sync answers IP_SYNC_NEED_THEME."""
+        body = dict(functions(SRC.read_text(errors="replace")))["pens_sync"]
+        self.assertIn("theme_ready", body)
+        self.assertIn("IP_SYNC_NEED_THEME", body)
+        first_lock = body.index("LockPubScreenList()")
+        self.assertNotIn("pens_theme(", body[:first_lock], "pens_sync reads the theme before the lock on every call")
+        self.assertGreater(body.index("pens_theme("), body.index("IP_SYNC_NEED_THEME"))
+
     def test_cached_theme_op_reads_no_file(self):
         src = SRC.read_text(errors="replace")
         body = dict(functions(src)).get("pens_theme_cached")

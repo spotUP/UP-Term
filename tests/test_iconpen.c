@@ -464,6 +464,49 @@ static void test_reopen_same_address(void)
     CHECK_INT(c.bad_release, 0);
 }
 
+/* FLAT-BOOT-FREEZE: the theme is asked for only when pens are to be obtained; not loaded yet -> NEED_THEME and nothing changes */
+static int tr_have;
+static int tr_ready(void *ctx) { (void)ctx; return tr_have; }
+static void test_theme_ready(void)
+{
+    static rcm c;
+    ip_holder h;
+    ip_ops o;
+    int scr;
+    memset(&c, 0, sizeof c);
+    memset(&o, 0, sizeof o);
+    o.obtain = rcm_obtain; o.release = rcm_release; o.is_free = rcm_is_free; o.theme = rcm_theme; o.set_rgb = rcm_set;
+    o.theme_ready = tr_ready;
+    o.ctx = &c;
+    ip_holder_init(&h);
+    rcm_open(&c);
+    tr_have = 0;
+    CHECK_INT(ip_sync(&h, &o, 1, &scr, 8, 8), IP_SYNC_NEED_THEME);    /* boot, theme not read: nothing obtained */
+    CHECK_INT(h.held, 0);
+    CHECK_INT(c.sets, 0);
+    CHECK_INT(h.new_identity, 0);
+    tr_have = 1;                                                      /* the caller read it */
+    CHECK_INT(ip_sync(&h, &o, 1, &scr, 8, 8), IP_SYNC_OBTAIN);
+    CHECK_INT(h.held, 16);
+    CHECK_INT(h.new_identity, 1);
+    /* steady state: holder current, the readiness is not even asked, so no read is ever needed */
+    tr_have = 0;
+    CHECK_INT(ip_sync(&h, &o, 1, &scr, 8, 8), IP_SYNC_NONE);
+    CHECK_INT(ip_sync(&h, &o, 0, &scr, 8, 8), IP_SYNC_RELEASE);      /* release needs no theme either */
+    /* same-address reopen: verify forgets the pens on the first call; the retry reports the same new identity */
+    tr_have = 1;
+    ip_holder_init(&h);
+    rcm_open(&c);
+    CHECK_INT(ip_sync(&h, &o, 1, &scr, 8, 8), IP_SYNC_OBTAIN);
+    rcm_open(&c);
+    tr_have = 0;
+    CHECK_INT(ip_sync(&h, &o, 1, &scr, 8, 8), IP_SYNC_NEED_THEME);
+    tr_have = 1;
+    CHECK_INT(ip_sync(&h, &o, 1, &scr, 8, 8), IP_SYNC_OBTAIN);
+    CHECK_INT(h.new_identity, 1);
+    CHECK_INT(c.bad_release, 0);
+}
+
 /* ICON-AA-WRONG-BG + ICONPEN-THEME-SWITCH-RECOLOUR: the ramp starts at the backdrop, and a theme switch on the same screen rewrites 32-47 */
 static void test_theme_switch_recolour(void)
 {
@@ -543,6 +586,7 @@ void suite_iconpen(void)
     test_holder();
     test_free_list_model();
     test_sync();
+    test_theme_ready();
     test_icons_keep_pens_when_flat_stops();
     test_main_takes_pens_at_boot();
     test_reopen_same_address();
