@@ -396,8 +396,17 @@ static void the_kitty_animation_scene_sends_frames_gaps_and_the_loop(void)
     CHECK(!cap_has("earth.anim not found"));
     /* UD2: the fjord photo goes first, behind the text (z=-1) and placed by columns only (c=, no r=); the globe's
      * frames follow, and the gaps stay a=a commands (z= with an f=100 transmit is EINVAL) */
-    photo = cap_find("\033_Ga=T,i=6,f=100,c=20,z=-1,q=2");
+    photo = cap_find("\033_Ga=T,i=6,f=100,c=40,z=-1,q=2");
     CHECK(photo >= 0);
+    /* S56-UD2-EARTH-OVER-PHOTO: the photo sits at row 4, column 2 (40 columns wide), the globe (earth.anim frames are
+     * transparent outside the disc) is centred on it at row 5, column 12, and the scene text starts at row 18, below
+     * the photo, inside the 20 rows; nothing is left at column 40 */
+    CHECK(cap_find("\033[4;2H\033_Ga=T,i=6") >= 0);
+    CHECK(cap_find("\033[5;12H\033_Ga=T,i=1,f=100,") >= 0);
+    CHECK(cap_find("\033[18;2HThe Earth turns over the fjord:") >= 0);
+    CHECK(cap_find("\033[19;2Ha photo (z=-1), 44 frames,") >= 0);
+    CHECK(cap_find("\033[20;2Htheir gaps, and one loop command.") >= 0);
+    CHECK(!cap_has(";40H"));
     CHECK(photo < cap_find("\033_Ga=T,i=1,f=100,"));
     CHECK(!cap_has("fjord.png not found"));
     CHECK(saw_image);

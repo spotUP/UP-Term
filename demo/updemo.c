@@ -1915,6 +1915,15 @@ static int kitty_png_file(const char *name, const char *ctrl)
     return 1;
 }
 
+/* UD2 layout of the kitty animation scene (1-based row, column; it must fit 76 x 20): the fjord photo is 40 columns
+ * wide from column 2 (about 12 rows tall at 8 x 16 cells), the 20 x 10 cell globe sits in its middle, and the scene
+ * text goes below the photo (rows 18 to 20) so nothing overlaps */
+#define ANIM_PHOTO_ROW 4
+#define ANIM_PHOTO_COL 2
+#define ANIM_GLOBE_ROW 5
+#define ANIM_GLOBE_COL 12
+#define ANIM_TEXT_ROW 18
+
 /* sends the file's frames, their gaps and the loop; 0 when it is missing or not whole */
 static int kitty_earth(void)
 {
@@ -1937,7 +1946,7 @@ static int kitty_earth(void)
         pos += 8 + len[i];
     }
     ps("\033_Ga=d,d=I,i=1,q=2\033\\");
-    at(4, 6);
+    at(ANIM_GLOBE_ROW, ANIM_GLOBE_COL);
     for (i = 0; i < count; i++)
         kitty_chunks(i ? "a=f,i=1,f=100,q=2" : "a=T,i=1,f=100,q=2", png[i], len[i]);
     for (i = 0; i < count; i++) {
@@ -1961,30 +1970,32 @@ static void sc_kitty_anim(long t, int first)
         return;
     heading("Kitty animation", "a globe turns over a fjord photo; the terminal plays the frames in a loop");
     ps("\033_Ga=d,d=I,i=6,q=2\033\\");
-    at(4, 6);
-    /* the photo first, behind the text (z=-1) and placed by columns only; the globe goes on top at the same spot */
-    if (!kitty_png_file("fjord.png", "a=T,i=6,f=100,c=20,z=-1,q=2")) {
-        at(10, 40);
+    at(ANIM_PHOTO_ROW, ANIM_PHOTO_COL);
+    /* the photo first, behind the text (z=-1) and placed by columns only; the globe (earth.anim frames are
+     * transparent outside the disc) goes on top, centred on it, so the photo frames it on all sides */
+    if (!kitty_png_file("fjord.png", "a=T,i=6,f=100,c=40,z=-1,q=2")) {
+        at(ANIM_TEXT_ROW - 1, ANIM_PHOTO_COL);
         ps("(fjord.png not found: no photo)");
     }
-    at(5, 40);
     if (kitty_earth()) {
+        at(ANIM_TEXT_ROW, ANIM_PHOTO_COL);
         ps("The Earth turns over the fjord:");
-        at(6, 40);
+        at(ANIM_TEXT_ROW + 1, ANIM_PHOTO_COL);
         ps("a photo (z=-1), 44 frames,");
-        at(7, 40);
+        at(ANIM_TEXT_ROW + 2, ANIM_PHOTO_COL);
         ps("their gaps, and one loop command.");
         return;
     }
+    at(ANIM_TEXT_ROW, ANIM_PHOTO_COL);
     ps("The globe turns over the fjord:");
-    at(6, 40);
+    at(ANIM_TEXT_ROW + 1, ANIM_PHOTO_COL);
     ps("a photo (z=-1), 8 frames,");
-    at(7, 40);
+    at(ANIM_TEXT_ROW + 2, ANIM_PHOTO_COL);
     ps("their gaps, and one loop command.");
-    at(9, 40);
+    at(ANIM_TEXT_ROW - 1, ANIM_PHOTO_COL);
     ps("(earth.anim not found: coded globe)");
     ps("\033_Ga=d,d=I,i=1,q=2\033\\");
-    at(4, 6);
+    at(ANIM_GLOBE_ROW, ANIM_GLOBE_COL);
     for (f = 0; f < GLOBE_FRAMES; f++) {
         globe_frame(px, f);
         kitty_chunks(f ? "a=f,i=1,f=24,s=48,v=48,q=2" : "a=T,i=1,f=24,s=48,v=48,q=2", px, sizeof px);
