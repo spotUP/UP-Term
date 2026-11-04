@@ -185,7 +185,8 @@ unsigned long flat_which_alias(unsigned long which);
  *   3 VisualPrefs or Birdie running, by task name, or a foreign hook already on the sysiclass slot (OD-F5; P1 pens
  *     still apply because they are not part of this program). */
 #define FLAT_MARKER_PATH "ENVARC:Amarchy/flat-starting"
-#define FLAT_MARKER_HEAD "flat-starting 1\n"
+#define FLAT_MARKER_HEAD "flat-starting "       /* + the start count and a newline: "flat-starting 1\n" */
+#define FLAT_MARKER_STRIKES 2                   /* this many early deaths in a row hold the next start inert */
 #define FLAT_MARKER_SECS 60
 
 enum { FLAT_HELD_NONE = 0, FLAT_HELD_MARKER = 1, FLAT_HELD_GESTURE = 2, FLAT_HELD_VISUALPREFS = 3,
@@ -199,7 +200,15 @@ int flat_other_task(const char *name);
  * FLAT_HELD_HOOK, inside is FLAT_HELD_NONE. */
 int flat_other_hook(unsigned long entry, unsigned long lo, unsigned long hi);
 
-/* The start decision. marker: the marker file exists. lmb / rmb: that button is down. other: a FLAT_HELD_* from
+/* The marker's start count from its file text (buf, len bytes, not NUL terminated): "flat-starting N\n" -> N, capped at
+ * FLAT_MARKER_STRIKES. Anything else (empty, garbled, N < 1) counts 1: a damaged marker is one strike, not two. */
+int flat_marker_parse(const char *buf, unsigned len);
+
+/* The marker text for count (1..FLAT_MARKER_STRIKES) into out (>= 24 bytes); returns its length. */
+unsigned flat_marker_format(int count, char *out);
+
+/* The start decision. marker: the start count in the marker file (0 = no file, 1 = one earlier start died before
+ * FLAT_MARKER_SECS, FLAT_MARKER_STRIKES = two in a row: held). lmb / rmb: that button is down. other: a FLAT_HELD_* from
  * flat_other_task / flat_other_hook (a task name wins over the hook; the caller passes the first nonzero).
  * Returns FLAT_HELD_NONE (start) or the reason held. */
 int flat_start_decide(int marker, int lmb, int rmb, int other);

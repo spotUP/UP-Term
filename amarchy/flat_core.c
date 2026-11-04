@@ -295,9 +295,32 @@ int flat_other_hook(unsigned long entry, unsigned long lo, unsigned long hi)
     return rom_addr_outside(entry, lo, hi) ? FLAT_HELD_HOOK : FLAT_HELD_NONE;
 }
 
+int flat_marker_parse(const char *buf, unsigned len)
+{
+    unsigned hl = (unsigned)strlen(FLAT_MARKER_HEAD);
+    int n = 1;
+    if (buf && len > hl && memcmp(buf, FLAT_MARKER_HEAD, hl) == 0 && buf[hl] >= '1' && buf[hl] <= '9')
+        n = buf[hl] - '0';
+    return n > FLAT_MARKER_STRIKES ? FLAT_MARKER_STRIKES : n;
+}
+
+unsigned flat_marker_format(int count, char *out)
+{
+    unsigned hl = (unsigned)strlen(FLAT_MARKER_HEAD);
+    if (count < 1)
+        count = 1;
+    if (count > FLAT_MARKER_STRIKES)
+        count = FLAT_MARKER_STRIKES;
+    memcpy(out, FLAT_MARKER_HEAD, hl);
+    out[hl] = (char)('0' + count);
+    out[hl + 1] = '\n';
+    out[hl + 2] = 0;
+    return hl + 2;
+}
+
 int flat_start_decide(int marker, int lmb, int rmb, int other)
 {
-    if (marker)
+    if (marker >= FLAT_MARKER_STRIKES)
         return FLAT_HELD_MARKER;
     if (lmb && rmb)
         return FLAT_HELD_GESTURE;
