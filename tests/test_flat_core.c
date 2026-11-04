@@ -647,15 +647,15 @@ static void test_which_from_gtype(void)
         struct frame_rec_t f;
         flat_state fs;
         memset(&fs, 0, sizeof fs);
-        fs.enabled = 1; fs.pen_line = 1; fs.pen_back = 0; fs.pen_button = 4;
+        fs.enabled = 1; fs.pen_line = 1; fs.pen_back = 0; fs.pen_button = 4; fs.pen_text = 2;
         memset(&f, 0, sizeof f);
         CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 8, 6, 1, 0, frame_rec, &f), 1);
         CHECK_INT(f.n, 1);                                                     /* FLAT-BUTTON-FILL: one fill, NO outline */
-        CHECK_INT(f.r[0][0] == 10 && f.r[0][1] == 20 && f.r[0][2] == 17 && f.r[0][3] == 25 && f.r[0][4] == 4, 1);   /* pen_button */
+        CHECK_INT(f.r[0][0] == 10 && f.r[0][1] == 20 && f.r[0][2] == 17 && f.r[0][3] == 25 && f.r[0][4] == 1, 1);   /* S56-PRIMARY-ACCENT-FILL: primary = accent pen_line, not pen_button */
         fs.pen_button = 0;
         memset(&f, 0, sizeof f);
         CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 8, 6, 1, 0, frame_rec, &f), 1);
-        CHECK_INT(f.n == 1 && f.r[0][4] == 0, 1);                              /* pen_button 0: pen_back */
+        CHECK_INT(f.n == 1 && f.r[0][4] == 1, 1);                              /* pen_button is no longer the fill: still the accent */
         fs.pen_button = 4;
         memset(&f, 0, sizeof f);
         CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 8, 6, 0, 0, frame_rec, &f), 1);
@@ -664,7 +664,7 @@ static void test_which_from_gtype(void)
         CHECK_INT(f.r[0][0] == 10 && f.r[0][1] == 20 && f.r[0][2] == 17 && f.r[0][3] == 20, 1);
         memset(&f, 0, sizeof f);
         CHECK_INT(flat_frame_draw(&fs, 1, 10, 20, 8, 6, 1, 0, frame_rec, &f), 1);
-        CHECK_INT(f.n == 1 && f.r[0][4] == 1, 1);                              /* pressed: accent (pen_line) fill, no outline */
+        CHECK_INT(f.n == 1 && f.r[0][4] == 2, 1);                              /* pressed: text pen fill (the accent is the unpressed fill), no outline */
         CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 2, 6, 1, 0, frame_rec, &f), 0);   /* too small: stock */
         CHECK_INT(flat_frame_draw(0, 0, 10, 20, 8, 6, 1, 0, frame_rec, &f), 0);
     }
@@ -673,15 +673,15 @@ static void test_which_from_gtype(void)
         flat_state fs;
         int cut[FLAT_ROUND_MAX][4], x, y, n, bg7 = 0, ok = 1;
         memset(&fs, 0, sizeof fs);
-        fs.enabled = 1; fs.pen_line = 1; fs.pen_back = 0; fs.pen_button = 4;
+        fs.enabled = 1; fs.pen_line = 1; fs.pen_back = 0; fs.pen_button = 4; fs.pen_text = 2;
         for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 7;       /* group box pen 7, not pen 0 */
         CHECK_INT(flat_frame_draw_round(&fs, 0, 10, 10, 20, 8, 1, 0, round_fill, round_read, cv), 1);
         CHECK_INT(cv->pix[10][10] == 7 && cv->pix[10][29] == 7 && cv->pix[17][10] == 7 && cv->pix[17][29] == 7, 1);   /* corners: outside pen */
-        CHECK_INT(cv->pix[10][11] == 4 && cv->pix[11][10] == 4 && cv->pix[12][12] == 4, 1);                          /* small: 1 px cut only */
+        CHECK_INT(cv->pix[10][11] == 1 && cv->pix[11][10] == 1 && cv->pix[12][12] == 1, 1);                          /* small: 1 px cut only */
         for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = (x + y) & 3;   /* patterned fill: each corner its own neighbour */
         CHECK_INT(flat_frame_draw_round(&fs, 1, 10, 10, 20, 8, 1, 0, round_fill, round_read, cv), 1);
         CHECK_INT(cv->pix[10][10] == (9 + 9 & 3) && cv->pix[17][29] == (30 + 18 & 3) && cv->pix[10][29] == (30 + 9 & 3), 1);   /* pressed too */
-        CHECK_INT(cv->pix[12][12] == 1, 1);                                                                          /* pressed body: pen_line */
+        CHECK_INT(cv->pix[12][12] == 2, 1);                                                                          /* pressed body: pen_text */
         CHECK_INT(flat_button_corners(20, 8, cut), 4);                                                               /* small: 4 cuts */
         CHECK_INT(cut[0][0] == 0 && cut[0][1] == 0 && cut[0][2] == -1 && cut[0][3] == -1, 1);
         CHECK_INT(cut[3][0] == 19 && cut[3][1] == 7 && cut[3][2] == 20 && cut[3][3] == 8, 1);
@@ -715,7 +715,7 @@ static void test_which_from_gtype(void)
         CHECK_INT(cv->pix[12][12] == 0, 1);                                                           /* inside stays pen_back */
         for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 0;
         CHECK_INT(flat_frame_draw_round(&fs, 0, 10, 10, 30, 14, 1, FLAT_ROLE_PRIMARY, round_fill, round_read, cv), 1);
-        CHECK_INT(cv->pix[11][11] == 4, 1);                                                           /* primary: body pen, no bridge */
+        CHECK_INT(cv->pix[11][11] == 3, 1);                                                           /* primary: accent body pen_line, no bridge */
         free(cv);
     }
     {   /* S56-LOCALE-KNOB: a SMARTKNOBIMAGE listview knob (frameiclass IM_DRAWFRAME) paints in the Workbench knob pen with round corners */
@@ -760,10 +760,28 @@ static void test_which_from_gtype(void)
             CHECK_INT(f.r[i][4], 2);                                         /* secondary: text-pen outline */
         memset(&f, 0, sizeof f);
         CHECK_INT(flat_frame_draw(&fs, 1, 10, 20, 8, 6, 1, FLAT_ROLE_SECONDARY, frame_rec, &f), 1);
-        CHECK_INT(f.n == 1 && f.r[0][4] == 3, 1);                            /* pressed secondary gets accent fill */
+        CHECK_INT(f.n == 1 && f.r[0][4] == 2, 1);                            /* pressed secondary gets the text pen fill */
         CHECK_INT(flat_button_pen(&fs, 2), 3);                               /* 4-colour primary uses accent fill */
         fs.pen_sel = 4;
         CHECK_INT(flat_button_pen(&fs, 3), 4);                               /* 8 colours: lighter background */
+    }
+    {   /* S56-PRIMARY-ACCENT-FILL: a primary button (Save) draws the accent pen and its label in the background pen; pressed keeps the background label;
+         * secondary is an outline with the stock label. Driven through the frame draw and the label arm exactly as flat.c does. */
+        struct round_canvas { int pix[40][60]; } *cv = (struct round_canvas *)calloc(1, sizeof *cv);
+        flat_state fs; flat_tx t; int surf = 1, task = 2, pressed, role, cases[3][2] = { { 0, FLAT_ROLE_PRIMARY }, { 1, FLAT_ROLE_PRIMARY }, { 0, FLAT_ROLE_SECONDARY } };
+        int body[3] = { 5, 6, 0 }, label[3] = { 0, 0, -1 }, i;
+        memset(&fs, 0, sizeof fs);
+        fs.enabled = 1; fs.pen_text = 6; fs.pen_line = 5; fs.pen_back = 0; fs.pen_ptext = 0; fs.pen_sel = 4;
+        for (i = 0; i < 3; i++) {
+            pressed = cases[i][0]; role = cases[i][1];
+            memset(&t, 0, sizeof t);
+            CHECK_INT(flat_frame_draw_round(&fs, pressed, 10, 10, 30, 14, 1, role, round_fill, round_read, cv), 1);
+            flat_tx_frame(&t, &surf, &task, flat_tx_arm(pressed, 1, role), 1, 10, 10, 39, 23);
+            CHECK_INT(cv->pix[16][20], body[i]);
+            CHECK_INT(flat_tx_pen(&fs, &t, &surf, &task, 20, 16), label[i]);
+        }
+        CHECK_INT(cv->pix[16][20] != fs.pen_sel, 1);                         /* the lighter-background held pen no longer fills the button */
+        free(cv);
     }
     {   /* FLAT-BUTTON-FILL: the pressed-label arm and the depth-checked fill pen */
         flat_tx t; flat_state bs; int a, b, c1, c2;

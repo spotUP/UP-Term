@@ -425,8 +425,8 @@ int flat_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, 
         fn(ctx, x1, oy, x1, y1, s->pen_text);
         return 1;
     }
-    if (fill) {                                      /* FLAT-BUTTON-FILL: primary fill (flat_button_pen), accent when pressed, no outline */
-        fn(ctx, ox, oy, x1, y1, ids == 1 ? s->pen_line : (s->pen_button ? s->pen_button : s->pen_back));
+    if (fill) {                                      /* S56-PRIMARY-ACCENT-FILL: primary fill = the theme accent pen (pen_line, a palette pen at every depth), pressed = the text pen; label in pen_ptext (flat_tx_arm); the scroller knob keeps pen_button; no outline */
+        fn(ctx, ox, oy, x1, y1, role == FLAT_ROLE_SCROLLKNOB ? (s->pen_button ? s->pen_button : s->pen_back) : (ids == 1 ? s->pen_text : s->pen_line));
         return 1;
     }
     fn(ctx, ox, oy, x1, oy, s->pen_line);            /* top */
@@ -510,7 +510,7 @@ int flat_knob_frame_draw(const flat_state *s, int depth, int active, int ox, int
         return 0;
     st = *s;
     st.pen_button = (uint8_t)flat_knob_state_pen(s, depth, active);
-    return flat_frame_draw_round(&st, 0, ox, oy, w, h, 1, FLAT_ROLE_PRIMARY, fn, rd, ctx);
+    return flat_frame_draw_round(&st, 0, ox, oy, w, h, 1, FLAT_ROLE_SCROLLKNOB, fn, rd, ctx);
 }
 
 int flat_smart_knob(int is_prop, unsigned prop_flags, const void *knob_next, const void *image)

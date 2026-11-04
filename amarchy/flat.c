@@ -519,15 +519,13 @@ static int c8_skip(Object *obj, Msg msg)
             r->fflat++;
             return 1;
         }
-        /* FLAT-BUTTON-FILL: the fill pen must exist on this screen (a 4 colour screen has no pen 4) */
-        st.pen_button = (UBYTE)flat_button_pen(&r->st, d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0);
         if (!flat_frame_draw_round(&st, (int)d->imp_State, ox, oy, w, h, fill, role_of(d->imp_RPort, obj), c2_fill, c2_read, d->imp_RPort))
             return 0;
         flat_gh_frame(&r->gh, flat_tx_surface(d->imp_RPort->Layer, d->imp_RPort->BitMap), FindTask(NULL), d->imp_State == 1, fill,
                       fill && role_of(d->imp_RPort, obj) == FLAT_ROLE_SECONDARY, ox, oy, ox + w - 1, oy + h - 1);
         /* a pressed filled frame arms the Text patch for its label; any other frame draw on this rastport disarms */
         flat_tx_frame(&r->tx, flat_tx_surface(d->imp_RPort->Layer, d->imp_RPort->BitMap), FindTask(NULL),
-                      d->imp_State == 1, fill, ox, oy, ox + w - 1, oy + h - 1);
+                      flat_tx_arm(d->imp_State == 1, fill, role_of(d->imp_RPort, obj)), fill, ox, oy, ox + w - 1, oy + h - 1);
     }
     r->fflat++;
     return 1;

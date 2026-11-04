@@ -387,6 +387,11 @@ void flat_tx_frame(flat_tx *t, const void *surf, const void *task, int pressed, 
     }
 }
 
+int flat_tx_arm(int pressed, int fill, int role)
+{
+    return fill && (pressed || role == FLAT_ROLE_PRIMARY);
+}
+
 int flat_tx_text(flat_tx *t, const void *surf, const void *task, int cx, int cy)
 {
     if (!t->armed || t->surf != surf || t->task != task)

@@ -249,6 +249,9 @@ const void *flat_tx_surface(const void *layer, const void *bitmap);
 
 /* A frame was drawn on surface surf by task: disarm when surf is the armed one; with pressed && fill, arm for box
  * (x0,y0)-(x1,y1). */
+/* S56-PRIMARY-ACCENT-FILL: does a frame draw arm the Text patch for its label (pen_ptext, the background colour)? A filled button that is
+ * pressed or primary does (accent fill); a filled secondary button is an outline and keeps its stock label. Pass the result as flat_tx_frame's "pressed". */
+int flat_tx_arm(int pressed, int fill, int role);
 void flat_tx_frame(flat_tx *t, const void *surf, const void *task, int pressed, int fill, int x0, int y0, int x1, int y1);
 
 /* Does a Text call at pen position (cx, cy) on surface surf from task get the pressed-label pen? 1 yes; a call on the
@@ -351,7 +354,7 @@ int flat_button_pen(const flat_state *s, int depth);
 
 /* BUTTON-ROLES: a button box in gadget coordinates. */
 typedef struct { int x, y, w, h; } flat_box;
-enum { FLAT_ROLE_PRIMARY = 0, FLAT_ROLE_SECONDARY = 1 };
+enum { FLAT_ROLE_PRIMARY = 0, FLAT_ROLE_SECONDARY = 1, FLAT_ROLE_SCROLLKNOB = 2 };   /* SCROLLKNOB: the scroller knob box, filled with pen_button (not the accent of a primary button) */
 /* Amiga style guide: in a row of buttons the rightmost is secondary (Cancel, drawn as a text-pen outline), every other button
  * primary (filled); a lone button is primary. A row = siblings whose vertical span overlaps this box. sib lists every button of
  * the window, the box itself included (skipped by equal box). */
