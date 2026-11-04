@@ -1,0 +1,31 @@
+# gadprobe rig 96 AmigaOS 3.2 (KS 47.115 / WB 47.2), main ae859c52 install
+## RAM:gadprobe KnobShell
+rc 0
+IROM lo=00fd97c4 hi=00ff5274 ver=47
+WIN 'KnobShell' 20,30 400x150 B l4 t11 r18 b2 flags=2a201017
+ G0 @1010916c type=8015 flags=801c act=8001 le=-17 te=-9 w=18 h=10 si=00000000 id=0
+ G1 @101091e4 type=8045 flags=8014 act=8001 le=-22 te=0 w=24 h=11 si=00000000 id=0
+ G2 @1010bfc4 type=8065 flags=8014 act=8001 le=-45 te=0 w=24 h=11 si=00000000 id=0
+ G3 @1010c114 type=8025 flags=8024 act=8000 le=0 te=0 w=0 h=10 si=00000000 id=0
+ G4 @101242c4 type=0005 flags=8054 act=8010 le=-13 te=12 w=10 h=-45 si=10124330 id=23312
+   PI flags=001d hp=0000 vp=0000 hb=0000 vb=ffff cw=10 ch=105 hpr=0 vpr=65535 lb=0 tb=0
+ G5 @10124374 type=0005 flags=801c act=8010 le=-17 te=-31 w=18 h=11 si=00000000 id=23313
+ G6 @101243ec type=0005 flags=801c act=8010 le=-17 te=-20 w=18 h=11 si=00000000 id=23314
+
+## RAM:gadprobe System
+rc 0
+IROM lo=00fd97c4 hi=00ff5274 ver=47
+WIN 'System' 150,80 361x150 B l4 t11 r18 b10 flags=2220307f
+ G0 @10124df4 type=8015 flags=801c act=8001 le=-17 te=-9 w=18 h=10 si=00000000 id=0
+ G1 @10134854 type=8045 flags=8014 act=8001 le=-22 te=0 w=24 h=11 si=00000000 id=0
+ G2 @101348cc type=8065 flags=8014 act=8001 le=-45 te=0 w=24 h=11 si=00000000 id=0
+ G3 @10344d04 type=8085 flags=8004 act=8001 le=0 te=0 w=20 h=11 si=00000000 id=0
+ G4 @10344d7c type=8025 flags=8024 act=8000 le=0 te=0 w=0 h=10 si=00000000 id=0
+ G5 @1040cdb6 type=0003 flags=002c act=808b le=3 te=-7 w=-55 h=6 si=1040cee6 id=1
+   PI flags=001b hp=ffff vp=ffff hb=f8a9 vb=f8a9 cw=306 ch=6 hpr=65535 vpr=65535 lb=0 tb=0
+ G6 @1040cde2 type=0003 flags=0054 act=801b le=-13 te=12 w=10 h=-45 si=1040cefc id=2
+   PI flags=001d hp=7fff vp=7fff hb=ffff vb=ffff cw=10 ch=105 hpr=65535 vpr=65535 lb=0 tb=0
+ G7 @1040ce0e type=0001 flags=001e act=801b le=-17 te=-31 w=18 h=11 si=00000000 id=3
+ G8 @1040ce3a type=0001 flags=001e act=801b le=-17 te=-20 w=18 h=11 si=00000000 id=4
+ G9 @1040ce66 type=0001 flags=001e act=808b le=-49 te=-9 w=16 h=10 si=00000000 id=5
+ G10 @1040ce92 type=0001 flags=001e act=808b le=-33 te=-9 w=16 h=10 si=00000000 id=6
