@@ -631,6 +631,46 @@ static void the_kitty_truecolour_scene_sends_rgba_with_alpha(void)
     vt_free(t);
 }
 
+/* R3C-UD2-PHOTO-HIDDEN: the animation scene's screen, as the scene leaves it, holds the fjord photo (z=-1) under the
+ * text, in VT_CELL_UNDER cells, and the renderer's image views for those rows include it. */
+static void the_kitty_animation_scene_leaves_the_photo_under_the_text(void)
+{
+    static vt_callbacks rcb;
+    const char *end = "their gaps, and one loop command.";
+    long i, k = (long)strlen(end), upto = 0;
+    int y, x, n, photo_rows = 0, under = 0, globe_rows = 0;
+    vt_term *s;
+    play_alone(scene_index("kitty animation"), UPDEMO_AUTO);
+    for (i = 0; i + k <= cap_len; i++)
+        if (!memcmp(cap + i, end, (size_t)k))
+            upto = i + k;
+    CHECK(upto > 0);
+    rcb.reply = reply;
+    rcb.layout = layout;
+    s = vt_new(80, 24, 0, &rcb, 0);
+    vt_set_cell_pixels(s, 8, 16);
+    vt_write(s, (const unsigned char *)cap, upto);
+    for (y = 0; y < 24; y++) {
+        const vt_cell *c = vt_row(s, y, &n);
+        vt_image_view v;
+        int k2, has = 0;
+        for (k2 = 0; vt_row_image(s, y, k2, &v); k2++) {
+            if (v.z < 0) {
+                has = 1;
+                for (x = v.col0; x < v.col0 + 20 && x < n; x++)
+                    if (c[x].pad & VT_CELL_UNDER)
+                        under++;
+            } else
+                globe_rows++;
+        }
+        photo_rows += has;
+    }
+    CHECK(photo_rows > 0);
+    CHECK(under >= photo_rows * 20);
+    CHECK(globe_rows > 0);
+    vt_free(s);
+}
+
 /* UPDEMO-NEW-FEATURES (c): the z-index scene sends one picture under the text (z<0), one over it (z>=0), and says so. */
 static void the_kitty_zindex_scene_sends_pictures_under_and_over_text(void)
 {
@@ -1453,6 +1493,7 @@ void suite_updemo(void)
     bench_picks_the_effect_scenes_of_the_one_list();
     the_unicode_scene_shows_emoji();
     the_kitty_animation_scene_sends_frames_gaps_and_the_loop();
+    the_kitty_animation_scene_leaves_the_photo_under_the_text();
     the_kitty_animation_scene_falls_back_to_the_coded_globe_without_the_media();
     the_kitty_animation_scene_says_so_when_the_photo_is_missing();
     the_kitty_picture_scene_sends_the_photo_as_a_png_beside_the_coded_circle();
