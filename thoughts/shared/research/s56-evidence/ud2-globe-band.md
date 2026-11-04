@@ -61,3 +61,21 @@ wasabi and count sentinel pixels and band rows inside the globe rectangle in a s
 - Sentinel pixels in the band prove suspect 1.
 - Sheared copies of the previous row prove suspect 2. Log the ReadPixelArray return
   value next to each frame grab.
+
+## Rig hunt 3 (2026-11-04, rig 114, OS 3.2 AGA 060, branch fix/ud2-band-root)
+
+Double buffered? Partly. Planar AGA composes with the CPU into back planes (planar_begin) and back_copy blits them beam-synced. But two paths bypassed it, so the globe switch was drawn in place on the window:
+
+1. engine/vtwin.c:657 anim_tick shows a clock-animation switch outside any ?2026 frame. sync_frames never moves, so vr_compose_begin (render/amiga_render.c ~3255, sync_seen check) skips the compose.
+2. Inside a compose pass, draw_images called cpu_refuses (render/amiga_render.c ~2844) before every image run. On planar that set cpu_fail; compose_abandon (~3157) then drew the rest in place: row fill, then 1-row WriteChunkyPixels runs. The fill/image gap under the beam is the one-cell-row band.
+
+Fix commit bcd7dce9: engine/kitty.c kit_anim_show (~1091) bumps sync_frames for a shown frame outside VT_MODE_SYNC; new back_chunky() writes indexed pens into the planar back planes, img_write_idx uses it in a CPU pass; draw_images refuses CPU only for RGB (fmt 1); under_text still refuses.
+
+Host numbers (test s56_planar_globe_switch_reaches_the_window_in_one_copy): unfixed 97 in-place window writes per switch, 30/30 switches with no back_copy (planar_left 0 and 13); fixed 0 and 0 (739 checks pass); fix reverted 5 failures.
+
+Rig numbers (screen grab about 1 frame/s, flat-run detector, globe box):
+- Before (stock main handler): 0 of 28 globe frames show a band.
+- After (handler md5 5942c128, installed + reboot): 0 of 19 globe frames by the flat-run detector (two UPDemo 15 runs). Static-mask detector flags 1 frame, row 91, top colours ocean blue/black: known ocean false positive.
+- The grab is not discriminating: the band is sub-frame and a 1 s grab missed it before the fix too. The 40-frame target was not reached (19). Proof of the fix is the host test; the owner eye check in a live rig decides.
+
+Shots: ~/Desktop/upterm-shots/s56-ud2-band-rig114-before.png, s56-ud2-band-rig114-after.png.
