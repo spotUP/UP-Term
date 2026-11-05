@@ -23,11 +23,21 @@ class BootConsole(unittest.TestCase):
     def test_clean_boot_passes(self):
         self.assertEqual([], rig.boot_console_errors(CLEAN))
 
-    def test_startup_sequence_output_goes_to_boot_console(self):
-        # the sentinel: the line that runs the system's Startup-Sequence redirects into the host-read file
+    def test_startup_sequence_runs_in_a_cli_whose_output_is_boot_console(self):
+        # BOOT-CONSOLE-CAPTURE: `Execute script >file` captures nothing (0 bytes on rig 150, 2026-11-05): Execute only
+        # hands the script to the calling shell's input and returns, the shell closes the file then and runs the
+        # script's lines with its own output. `Run >file` redirects Run alone. The Startup-Sequence runs through
+        # bootcap, which starts a CLI with SYS_Output = the file; no shell redirect on that line.
         line = next(l for l in rig.STARTUP.splitlines() if "S/Startup-Sequence" in l and "Execute" in l)
-        self.assertIn(">BOOTX:boot.console", line)
-        self.assertNotIn("NIL:", line)
+        self.assertEqual(["BOOTX:bootcap", "BOOTX:boot.console", "C:Execute", "DH0:S/Startup-Sequence"], line.split())
+        self.assertTrue((ROOT / "tools/rig/bootcap.c").is_file())
+
+    def test_marker_tells_capture_from_no_capture(self):
+        self.assertTrue(rig.boot_console_captured("boot console open\nSetPatch 43.6\n"))
+        self.assertTrue(rig.boot_console_captured("boot console open\n"))   # a clean boot prints nothing else
+        self.assertFalse(rig.boot_console_captured(""))                     # the 0-byte file of the Execute redirect
+        self.assertFalse(rig.boot_console_captured("[CLI 3]\n"))           # what `Run >file` captured
+        self.assertIn("boot console open", open(ROOT / "tools/rig/bootcap.c").read())
 
 
 if __name__ == "__main__":
