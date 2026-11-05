@@ -975,7 +975,7 @@ long desk_icontrol(const unsigned char *cur, long curlen, const unsigned char ge
 }
 
 /* 1 when cur is an icontrol.prefs whose GUI geometry is not stock (an earlier thin apply of ours wrote it) */
-static int icontrol_ours(const unsigned char *cur, long len)
+static int icontrol_ours(const unsigned char *cur, long len, unsigned char geom[4])
 {
     long pos = DK_HDR, body, size;
     char id[4];
@@ -983,17 +983,22 @@ static int icontrol_ours(const unsigned char *cur, long len)
         return 0;
     while (next_chunk(cur, len, &pos, id, &body, &size))
         if (!memcmp(id, "ICTL", 4) && size >= IC_GEOM + 4 && body + IC_GEOM + 4 <= len)
-            return (cur[body + IC_GEOM] | cur[body + IC_GEOM + 1] | cur[body + IC_GEOM + 2] | cur[body + IC_GEOM + 3]) != 0;
+        {
+            memcpy(geom, cur + body + IC_GEOM, 4);
+            return (geom[0] | geom[1] | geom[2] | geom[3]) != 0;
+        }
     return 0;
 }
 
-int desk_icontrol_decide(int thin, const unsigned char *cur, long curlen, int have_snap, int *snapshot)
+int desk_icontrol_decide(int thin, int bar_height, const unsigned char *cur, long curlen, int have_snap, int *snapshot)
 {
-    int ours = icontrol_ours(cur, curlen);
+    unsigned char have[4] = { 0, 0, 0, 0 }, want[4];
+    int ours = icontrol_ours(cur, curlen, have);
     *snapshot = 0;
     if (thin) {
+        desk_geometry_bar(1, bar_height, want);
         if (ours)
-            return DK_IC_NONE; /* already written: no second Workbench reset, and the snapshot keeps the pre-thin file */
+            return memcmp(have, want, 4) ? DK_IC_WRITE : DK_IC_NONE; /* same geometry: no second Workbench reset; a changed bar height rewrites, the snapshot keeps the pre-thin file */
         *snapshot = 1;
         return DK_IC_WRITE;
     }
@@ -1485,7 +1490,7 @@ long desk_start_prefs(int target, unsigned mask, const gtheme *th, int text_mode
     return (cur && n == curlen && !memcmp(out, cur, (size_t)n)) ? 0 : n;
 }
 
-int desk_start_icontrol(unsigned mask, const unsigned char *cur, long curlen, int have_snap, int *snapshot)
+int desk_start_icontrol(unsigned mask, const gtheme *th, const unsigned char *cur, long curlen, int have_snap, int *snapshot)
 {
-    return desk_icontrol_decide((mask >> DT_ICONTROL) & 1, cur, curlen, have_snap, snapshot);
+    return desk_icontrol_decide((mask >> DT_ICONTROL) & 1, gt_look_bar_height(th), cur, curlen, have_snap, snapshot);
 }
