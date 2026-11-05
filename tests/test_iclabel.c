@@ -229,6 +229,38 @@ static void t_pens_forget_on_new_identity(void)
     CHECK_INT(used_n(&c), 0);
 }
 
+/* S57-ICL-PINK-SHADE: Workbench reopened at the same Screen address before the epoch moved. The cached pens read free on the new
+ * ColorMap: the cache is forgotten without any release counted and the pens are obtained again. */
+static int fake_free[256], fake_releases;
+static int fake_is_free(void *ctx, int pen)
+{
+    (void)ctx;
+    return fake_free[pen];
+}
+
+static void t_pens_verify_same_address_reopen(void)
+{
+    icl_pencache c;
+    int scr_a, first;
+    obt_n = 0;
+    memset(fake_free, 0, sizeof fake_free);
+    fake_releases = 0;
+    icl_cache_clear(&c);
+    sim_call(&c, &scr_a, 7);
+    first = obt_n;
+    CHECK(first > 0);
+    CHECK_INT(icl_cache_verify(&c, fake_is_free, 0), 0);          /* every pen held: cache kept */
+    CHECK_INT(used_n(&c), first);
+    fake_free[c.e[0].pen] = 1;                                    /* one cached pen reads free, screen and epoch equal */
+    CHECK_INT(icl_cache_verify(&c, fake_is_free, 0), 1);
+    CHECK_INT(used_n(&c), 0);                                     /* forgotten; the verify counts no release (no callback exists) */
+    CHECK_INT(fake_releases, 0);
+    sim_call(&c, &scr_a, 7);                                      /* same identity bind keeps the rebuilt cache, nothing cleared */
+    CHECK_INT(obt_n, 2 * first);                                  /* obtained again */
+    CHECK_INT(used_n(&c), first);
+    CHECK_INT(icl_cache_verify(&c, 0, 0), 0);                     /* no probe: trusted as before */
+}
+
 static void t_pens_release_once_on_live(void)
 {
     icl_pencache c;
@@ -262,4 +294,5 @@ void suite_iclabel(void)
     t_pens_persist();
     t_pens_forget_on_new_identity();
     t_pens_release_once_on_live();
+    t_pens_verify_same_address_reopen();
 }

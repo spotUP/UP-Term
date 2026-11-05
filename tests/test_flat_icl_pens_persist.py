@@ -26,6 +26,14 @@ class FlatIclPensPersist(unittest.TestCase):
         b = body("static int icl_pen_for(")
         self.assertLess(b.index("icl_cache_has_room("), b.index("ObtainBestPen("))
 
+    def test_label_call_verifies_held_pens(self):
+        b = body("static int icl_label(")
+        self.assertLess(b.index("icl_cache_bind("), b.index("icl_cache_verify(&icl_pc, cm_pen_is_free, cm)"))
+
+    def test_watch_step_verifies_flat_pens(self):
+        b = body("static void pens_run(")
+        self.assertLess(b.index("flat_pens_verify(&g_pens"), b.index("flat_pens_follow(&g_pens"))
+
     def test_unload_releases_on_live_identity(self):
         self.assertIn("icl_cache_release(&icl_pc", body("static void icl_pens_release("))
         self.assertIn("icl_pens_release();", body("static void icl_free("))

@@ -433,6 +433,11 @@ void flat_pens_release(flat_pens *p, const flat_pen_ops *o, flat_state *s, const
  * (0) or another identity forgets without ReleasePen; a new screen with `want` obtains the three pens on it. Returns 1 when it
  * obtained. */
 int flat_pens_follow(flat_pens *p, const flat_pen_ops *o, flat_state *s, int want, const void *screen, unsigned epoch, int depth);
+/* S57-ICL-PINK-SHADE: call before flat_pens_follow. Same screen and epoch is not proof that the pens are still ours: a Workbench
+ * reopen at the same address leaves both equal (the epoch moves only in ipd pens_sync, and not at all when ipd holds no pens). Asks
+ * the ColorMap (ip_any_free over the held pens); if any is free the pens are forgotten WITHOUT ReleasePen and 1 is returned, so the
+ * follow step re-obtains. Else 0. */
+int flat_pens_verify(flat_pens *p, flat_state *s, int (*is_free)(void *ctx, int pen), void *ctx, const void *screen, unsigned epoch);
 
 /* S57-BUTTON-ASPECT-BORDERS: the width in pixels of a button's left and right outline lines: side (flat_side_px; below 1 counts 1),
  * never more than a third of the box width w. Top and bottom lines stay 1 px. */

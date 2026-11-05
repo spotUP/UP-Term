@@ -54,15 +54,19 @@ static void pen_release(void *ctx, int pen)
 }
 
 /* The ColorMap's own answer: an exclusive obtain of a pen anyone holds fails; one that succeeds is handed straight back. */
+int ipd_pen_is_free(struct ColorMap *cm, int pen)
+{
+    if (!cm)
+        return 0;
+    if ((LONG)ObtainPen(cm, (ULONG)pen, 0, 0, 0, PENF_EXCLUSIVE | PENF_NO_SETCOLOR) != (LONG)pen)
+        return 0;
+    ReleasePen(cm, (ULONG)pen);
+    return 1;
+}
+
 static int pen_is_free(void *ctx, int pen)
 {
-    pen_ctx *c = (pen_ctx *)ctx;
-    if (!c->cur)
-        return 0;
-    if ((LONG)ObtainPen(c->cur, (ULONG)pen, 0, 0, 0, PENF_EXCLUSIVE | PENF_NO_SETCOLOR) != (LONG)pen)
-        return 0;
-    ReleasePen(c->cur, (ULONG)pen);
-    return 1;
+    return ipd_pen_is_free(((pen_ctx *)ctx)->cur, pen);
 }
 
 static void pen_set_rgb(void *ctx, int pen, uc_u32 rgb)
