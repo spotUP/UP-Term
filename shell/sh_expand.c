@@ -16,18 +16,29 @@ static char *sdup(const char *s)
     return r;
 }
 
-void sh_list_add(sh_list *l, const char *s)
+void sh_list_add_q(sh_list *l, const char *s, int quoted)
 {
     if (l->n + 1 >= l->cap) {
         int cap = l->cap ? l->cap * 2 : 8;
         char **v = (char **)realloc(l->v, cap * sizeof(char *));
+        char *q;
         if (!v)
             return;
         l->v = v;
+        q = (char *)realloc(l->q, cap);
+        if (!q)
+            return;
+        l->q = q;
         l->cap = cap;
     }
+    l->q[l->n] = quoted != 0;
     l->v[l->n++] = sdup(s);
     l->v[l->n] = 0;
+}
+
+void sh_list_add(sh_list *l, const char *s)
+{
+    sh_list_add_q(l, s, 0);
 }
 
 void sh_list_free(sh_list *l)
@@ -36,7 +47,9 @@ void sh_list_free(sh_list *l)
     for (i = 0; i < l->n; i++)
         free(l->v[i]);
     free(l->v);
+    free(l->q);
     l->v = 0;
+    l->q = 0;
     l->n = l->cap = 0;
 }
 
@@ -2995,7 +3008,10 @@ static void add_field(sh_ctx *c, cbuf *b, int from, int to, int flags, sh_list *
             return;
         }
     }
-    sh_list_add(out, plain);
+    for (i = from, m = 0; i < to; i++)
+        if (b->f[i] & (F_QUOTED | F_EMPTY))
+            m = 1;
+    sh_list_add_q(out, plain, m);
     free(plain);
 }
 
@@ -3260,7 +3276,7 @@ static int expand_word(sh_ctx *c, const char *word, int flags, sh_list *out, con
         }
     }
     if (!fields && b.had_quotes && b.force_field >= 0)
-        sh_list_add(out, ""); /* "" and "$empty" are one empty field */
+        sh_list_add_q(out, "", 1); /* "" and "$empty" are one empty field */
     cfree(&b);
     if (c->glob_fail) {
         char *msg = c->errbuf;

@@ -1257,17 +1257,17 @@ static int command_is_ixemul(const char *name, const char *path)
  * that does not load is looked at for a #! line naming /bin/sh or /bin/bash (sh_script_argv), which
  * runs it in this shell; interp 0 on that second start, so it never expands again. Any other file
  * that does not load (an AmigaDOS script) goes to SystemTags. */
-static long os_start(void *os, char **argv, const sh_io *io, int wait, int interp);
+static long os_start(void *os, char **argv, const char *quoted, const sh_io *io, int wait, int interp);
 
-static long os_run(void *os, char **argv, const sh_io *io, int wait)
+static long os_run(void *os, char **argv, const char *quoted, const sh_io *io, int wait)
 {
-    return os_start(os, argv, io, wait, 1);
+    return os_start(os, argv, quoted, io, wait, 1);
 }
 
-static long os_start(void *os, char **argv, const sh_io *io, int wait, int interp)
+static long os_start(void *os, char **argv, const char *quoted, const sh_io *io, int wait, int interp)
 {
     sh_shell *sh = ((vproc *)os)->sh;
-    char *cmd = vsh_command_line(argv), *sp;
+    char *cmd = vsh_command_line(argv, quoted), *sp;
     int ixres, r;
     BPTR home;
     const sh_var *v;
@@ -1299,7 +1299,7 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
             free(cmd);
             if (home)
                 UnLock(home);
-            st = os_start(os, sb, io, wait, 0);
+            st = os_start(os, sb, 0, io, wait, 0);
             free(own);
             free(sb);
             return st;
@@ -1337,7 +1337,7 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
         /* found through $PATH: the command line names that file */
         char *a0 = argv[0], *full;
         argv[0] = found;
-        full = vsh_command_line(argv);
+        full = vsh_command_line(argv, quoted);
         argv[0] = a0;
         if (full) {
             free(cmd);
@@ -1417,7 +1417,7 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
                  command_is_ixemul(argv[1], sh_get(&sh->ctx, "PATH")))
             targ = argv + 1;
         if (targ) {
-            char *line = vsh_command_line(targ + 1);
+            char *line = vsh_command_line(targ + 1, quoted ? quoted + (targ - argv) + 1 : 0);
             long n = line ? ixa_len(line, targ + 1) : 0;
             char *all = line ? job_mem(n + 1) : 0;
             if (all) {

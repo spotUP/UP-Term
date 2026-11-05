@@ -222,13 +222,14 @@ static long reap(pid_t pid, int wait)
     return r == pid ? decode(st) : -2;
 }
 
-static long h_run(void *os, char **argv, const sh_io *io, int wait)
+static long h_run(void *os, char **argv, const char *quoted, const sh_io *io, int wait)
 {
     sh_shell *sh = ((hproc *)os)->sh;
     char exe[1024];
     char **envp;
     pid_t pid;
     int i;
+    (void)quoted;
     if (resolve(sh, argv[0], exe, sizeof(exe)) < 0) {
         close_owned(io);
         return -1;

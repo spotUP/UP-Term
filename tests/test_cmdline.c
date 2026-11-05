@@ -9,7 +9,7 @@ static void one(const char *arg, const char *want)
     char *got;
     argv[0] = (char *)arg;
     argv[1] = 0;
-    got = vsh_command_line(argv);
+    got = vsh_command_line(argv, 0);
     CHECK_STR(got, want);
     free(got);
 }
@@ -47,13 +47,33 @@ static void several(void)
     argv[1] = "URL=https://x?a=1&b=2";
     argv[2] = "QUIET";
     argv[3] = 0;
-    got = vsh_command_line(argv);
+    got = vsh_command_line(argv, 0);
     CHECK_STR(got, "TO=T:t1 URL=\"https://x?a=1&b=2\" QUIET");
+    free(got);
+}
+
+/* S7b-1b: a word quoted in the source is one quoted item, never a bare KEY= keyword (`Echo "rc=0"`) */
+static void quoted_words(void)
+{
+    char *argv[5];
+    char *got;
+    char q[5] = { 0, 1, 0, 1, 0 };
+    argv[0] = "Echo";
+    argv[1] = "rc=0";
+    argv[2] = "TO=T:t1";
+    argv[3] = "URL=https://x";
+    argv[4] = 0;
+    got = vsh_command_line(argv, q);
+    CHECK_STR(got, "Echo \"rc=0\" TO=T:t1 \"URL=https://x\"");
+    free(got);
+    got = vsh_command_line(argv, 0);   /* no flags: every KEY=value stays a keyword */
+    CHECK_STR(got, "Echo rc=0 TO=T:t1 URL=https://x");
     free(got);
 }
 
 void suite_cmdline(void)
 {
+    quoted_words();
     keywords();
     plain();
     several();

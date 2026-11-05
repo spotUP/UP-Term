@@ -26,8 +26,9 @@ static long keyword_len(const char *a)
  * ReadArgs matches a keyword only on an UNQUOTED item, so KEY=value keeps `KEY=` bare and quotes only
  * the value, the way AmigaShell sends it (`aget TO=T:t1 URL="https://x?a=1"`): quoting the whole word
  * made `"TO=T:t1"` a plain value and the command never saw its keyword. A word whose prefix before the
- * first `=` is no keyword (`a b=c`, `=x`) is one quoted item, `=` included. */
-char *vsh_command_line(char **argv)
+ * first `=` is no keyword (`a b=c`, `=x`), or that was quoted in the source (`"rc=0"`: AmigaShell sends
+ * it quoted, and ReadArgs would eat the `=` of a bare keyword), is one quoted item, `=` included. */
+char *vsh_command_line(char **argv, const char *quoted)
 {
     long len = 1;
     int i;
@@ -40,7 +41,7 @@ char *vsh_command_line(char **argv)
     o = s;
     for (i = 0; argv[i]; i++) {
         const char *a = argv[i];
-        long kl = keyword_len(a);
+        long kl = quoted && quoted[i] ? 0 : keyword_len(a);
         int quote;
         if (i)
             *o++ = ' ';
