@@ -31,3 +31,18 @@ Boot rig on aga256 FIRST (rig.py start --max, then aga256), wait for the reboot,
 with a counter on flat_tx_c. Frame the regression test in tests/test_flat_core.c on flat_title_span with a gadget
 list that includes the OS 3.2 zoom/iconify case.
 Scratch grid script: scratchpad/grid.py (not kept). Rig 143 stopped and cleared; shots not copied (none useful).
+
+## Run 3 (depth 8, 640x256, 2026-11-05, rig 143, OS 3.2, 060 max, worktree build of main 7e07580f)
+Rig started with `--max --os 32` (boots aga256 640x256 depth=8 by itself; uitree S line "640x256 depth=8"). VTC:amarchy-flat
+started by hand, STATUS flat=on calls=51 after Locale opened. Palette USE NOT run (stock palette: band pen 6688bb).
+Locale window x0 y11 552x192 active; zoom gadget x506..529, depth x529..553 (uitree).
+- Zoom gadget (x511..523, y13..19): outlined box with inner square, band-coloured fill 6688bb, black glyph lines. NOT black.
+- Depth gadget (x533..548, y13..19): two overlapping boxes drawn in aaaaaa/black glyph on the band. NOT black.
+- Bottom line under them y21: black (000000) straight from x500 to x549, no step, no hole. Title-bar drag/depth top row y10 black.
+- Flat buttons (Save x12 y181 88x14): left edge 2 px (ffffff x12..13 at y188), top edge 1 px (ffffff y181), right 2 px
+  000000 (Cancel x538..539), bottom 1 px 000000 (y194). Matches the expected 2 px sides / 1 px top.
+- Window sides at y100: left x0..1 = 6688bb (2 px), right x550..551 = 6688bb (2 px).
+Verdict: at 640x256x8 the zoom gadget does NOT draw black. Title-gadget-black NOT reproduced at depth 8 either; no fill named,
+no code change. Screenshot: ~/Desktop/upterm-shots/title-gadget-depth8-rig143.png. Caveat: with palette-flat-pen8 USE
+(skipped, it crashes the rig) the pens differ; the two code leads (flat_title_span first-8 scan, c2_get_pens BACKGROUNDPEN
+fallback) stay unproven. Reproduction may need a window with gadgets beyond the 8 scanned or a SetWindowTitles repaint.
