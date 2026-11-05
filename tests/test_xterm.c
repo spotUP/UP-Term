@@ -431,6 +431,18 @@ static void window_reports_and_title_stack(void)
     vt_free(t);
 }
 
+/* the title the window opened with (not from OSC) is what a push keeps and a pop returns */
+static void title_pop_restores_window_open_title(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    vt_set_title(t, "vtcon shell");
+    h_put(t, "\033[22;0t\033]2;UP-Term demo\007");
+    CHECK_INT(strcmp(vt_title(t), "UP-Term demo"), 0);
+    h_put(t, "\033[23;0t");
+    CHECK_INT(strcmp(vt_title(t), "vtcon shell"), 0);
+    vt_free(t);
+}
+
 /* ---- phase A5: modes ---- */
 
 static void modes_of_phase_a5(void)
@@ -1481,6 +1493,7 @@ void suite_xterm(void)
     decrqss_decrqm_and_version();
     xtgettcap_colors_is_the_screens_pen_count();
     window_reports_and_title_stack();
+    title_pop_restores_window_open_title();
     modes_of_phase_a5();
     deccolm_only_when_allowed();
     scheme_updates_when_asked();

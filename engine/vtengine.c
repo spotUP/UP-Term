@@ -7726,6 +7726,16 @@ const char *vt_title(const vt_term *t)
     return t->title;
 }
 
+void vt_set_title(vt_term *t, const char *s)
+{
+    size_t n = s ? strlen(s) : 0;
+    if (n >= VT_STR_MAX)
+        n = VT_STR_MAX - 1;
+    if (n)
+        memcpy(t->title, s, n);
+    t->title[n] = 0;
+}
+
 vt_u32 vt_raw_events(const vt_term *t)
 {
     return t->raw_events;
