@@ -73,3 +73,24 @@ status: open (cause not proven on a rig)
   4154) is the same block: the setup reads the resident list while the start
   apply hangs.
 - Fix only after the measurement names the blocking call.
+
+## Bisect step 1 (RL15 reverted): answered from the register, no rig run (2026-11-05, vtcon-c1)
+
+- Verdict: RL15 (8a704261, dk_flat_pens window bracket) is NOT the cause.
+- `git diff fdb5e99f 69f34ee9` outside thoughts/: the only shipping-code change is 8a704261's 7 lines in
+  amarchy/desk_dos.c. The rest is the palette_closes test target, tests/amiga/copcheck.c and rawdrag.c (CONPROBES, not in
+  the kit), tests/test_flat_core.c and tools/rig/amarchy_roundaa_rig.py. So "main with RL15 reverted" builds the same kit
+  as fdb5e99f.
+- fdb5e99f does not contain 8a704261 (`git merge-base --is-ancestor`: no). Rig 131 ran `installer_rig.py ONLY fresh-all`
+  on it (register row 108, rig96-drag-freeze.md "Hunt attempt 3"): checks 1-33 ok, then FAIL 34 "AMARCHY port: no port", then
+  [ABORT] wasabid silent for 15 s after the post-install reboot. That is the same failure as rigs 128 and 130.
+- Rig 125 (df0c1923, also without RL15, register row 99): the same silent wasabid after the post-install reboot.
+- Register rule 9: the same build, config and recipe means no rerun, so rig 132 was not started.
+- Between the PASS baseline 7cf4ac17 (rows 83 and 87) and fdb5e99f, the only shipping change is RL20 (4ea76673:
+  amarchy/gui.c fill_round/rich_put, richaa_core.c; amarchy-gui links it). RL20 is the remaining code suspect.
+- Confound, not ruled out: every failing run was on a loaded host. Rig 125: host about 610% CPU. Rig 131: rigs
+  96/127/129 plus a node pre-push hook, each at 85-100%. A vitest at 210-280% was also running at this check. The PASS
+  runs' host load was not recorded. A wasabid that stops answering while fs-uae runs at about 110% also fits guest
+  starvation (memory "Rig hang? check host load").
+- Next (needs a new brief): fresh-all on 7cf4ac17 again on a quiet host, and on fdb5e99f with RL20's gui.c reverted,
+  both with host load logged. That separates "RL20" from "host load / intermittent".
