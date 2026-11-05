@@ -304,11 +304,11 @@ Host tests: save text equals the round trip; name refusal; import of a broken fi
 Files: `dist/keymap`, `prefs/prefs_ui.[ch]`, `prefs/settings_def.[ch]`, `amarchy/leaf.h`, `amarchy/leaf_core.c`,
 `amarchy/gui.c` (row kinds), `tests/test_keymap.c`, settings tests.
 
-- [ ] TE-4.1 `[menu]` nodes of section 4; `PG_PAGE_THEME*` and `sd_page_by_name`.
+- [x] TE-4.1 `[menu]` nodes of section 4; `PG_PAGE_THEME*` and `sd_page_by_name`.
 - [ ] TE-4.2 `SD_SWATCH`, `SD_SWATCHREF`, `SD_ELEMENT` kinds and their `lf_setting_*` handlers, reusing the colour picker.
 - [ ] TE-4.3 Edit buffer: the page edits one `gt_model` copy; Revert reloads the file; leaving with changes asks Save /
   Discard / Cancel.
-- [ ] TE-4.4 Mode row hides the Elements page in Simple mode; an override made in Advanced survives a switch to Simple and
+- [x] TE-4.4 Mode row hides the Elements page in Simple mode; an override made in Advanced survives a switch to Simple and
   the Groups page marks the overridden elements.
 - [ ] TE-4.5 Every row of section 4 present, full English labels.
 

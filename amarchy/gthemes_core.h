@@ -310,4 +310,48 @@ extern unsigned long gt_dos_edit_applies;
 int gt_save_edit(const prefs_fs *fs, const char *name, const gt_model *m, const char *current, int (*apply)(const char *name),
                  char *why, int cap);
 
+struct sd_setting; /* settings_def.h includes this header through prefs_ui.h: the rows are named by tag */
+
+/* ---- TE-4: the editor's edit buffer and its rows (plan sections 4 and 6) ----
+ * The Theme Editor pages edit ONE gt_model copy (gt_ed.m); gt_ed.saved is the file as loaded or last saved, so Revert is a copy back
+ * and "unsaved changes" is a compare. The rows are sd_setting entries (kinds SD_SWATCH, SD_SWATCHREF, SD_ELEMENT, SD_GACTION and
+ * store SD_GTHEME) numbered SDI_COUNT and up: gte_row(id) is the one lookup for any row id, sd_settings for the old ones. */
+enum { GTR_OK = 0, GTR_BAD = -1, GTR_IN_USE = -2, GTR_FULL = -3, GTR_EXISTS = -4, GTR_NAME = -5 };
+typedef struct gt_edit {
+    gt_model m, saved;
+    int open;                   /* a theme is loaded into the buffer */
+    int advanced;               /* Mode: Advanced (the Elements page is shown) */
+    char name[GT_NAME];         /* the theme being edited */
+} gt_edit;
+extern gt_edit gt_ed;
+extern unsigned long gte_edits; /* sentinel: every successful change of the buffer */
+void gte_open(const gt_model *m, const char *name);      /* load the buffer; Mode is Advanced when the file has an override */
+int gte_dirty(void);                                      /* the buffer differs from the file */
+void gte_revert(void);                                    /* reload the file's model */
+void gte_saved(void);                                     /* the buffer is now the file (after a save) */
+int gte_swatch_count(void);
+int gte_swatch_users(int sw, char *out, int cap);         /* refs that use swatch sw (groups, elements, nested); names in out */
+int gte_swatch_set(int sw, const char *text);             /* "#rrggbb" */
+int gte_swatch_add(const char *name, uc_u32 rgb);
+int gte_swatch_rename(int sw, const char *name);
+int gte_swatch_remove(int sw, char *why, int cap);        /* GTR_IN_USE while used, with the users named in why */
+int gte_group_set(int group, int state, const char *text);
+int gte_elem_set(int elem, int state, const char *text);  /* empty text clears */
+void gte_elem_clear(int elem);                            /* all states follow the group again */
+int gte_elem_overridden(int elem);
+int gte_group_overridden(int group);                      /* some element of the group has its own colour */
+int gte_ref_step(const gt_ref *cur, int dir, char *out, int cap); /* the next swatch name after cur (Darker/Selection/Muted forms after the swatches) */
+/* the row's text for the menu, and the setting of it */
+const struct sd_setting *gte_row(int id);
+int gte_nrows(void);                                      /* rows numbered SDI_COUNT .. SDI_COUNT + gte_nrows() - 1 */
+int gte_row_visible(const struct sd_setting *s);                 /* a swatch past the count, an element state it does not use, or an Elements page in Simple mode are not */
+int gte_row_text(const struct sd_setting *s, char *out, int n);  /* current value as text */
+int gte_row_set_text(const struct sd_setting *s, const char *text); /* GTR_OK or GTR_BAD, GTR_* */
+int gte_row_step(const struct sd_setting *s);
+/* A cycle row (Mode, the look cycles) to value index. */
+int gte_row_set_index(const struct sd_setting *s, int index);                    /* cycle rows, ref rows (next swatch) */
+int gte_row_label(const struct sd_setting *s, char *out, int n); /* "Label: value" */
+enum { GTA_OPEN = 1, GTA_SAVE, GTA_SAVE_AS, GTA_REVERT, GTA_APPLY, GTA_ADD_SWATCH, GTA_RENAME_SWATCH, GTA_REMOVE_SWATCH,
+       GTA_CLEAR_ELEMENT, GTA_DUPLICATE, GTA_IMPORT, GTA_EXPORT, GTA_RESET_BASE, GTA_DELETE };
+
 #endif

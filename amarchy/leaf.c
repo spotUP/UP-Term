@@ -252,13 +252,130 @@ static int list_enter(const mn_item *it, const sd_setting *s, const lf_ui *ui)
     return 0;
 }
 
+/* TE-4: the Theme Editor rows. Text rows ask for a value; cycles step; action rows run the TE-3 file operations on the edit buffer. */
+static int theme_action(const sd_setting *s, const char *label, const lf_ui *ui)
+{
+    char name[GT_NAME], why[160];
+    int ok = 1;
+    why[0] = 0;
+    name[0] = 0;
+    switch (s->aux) {
+    case GTA_OPEN:
+        gt_dos_current(name, sizeof name);
+        if (!ui->ask_value || !ui->ask_value(ui->ctx, label, "theme name", name, sizeof name))
+            return 0;
+        ok = gt_dos_edit_open(name);
+        if (!ok)
+            strcpy(why, "that theme has no editable model");
+        break;
+    case GTA_SAVE:
+        if (!gt_ed.open)
+            return 0;
+        ok = gt_dos_save(gt_ed.name, &gt_ed.m, why, sizeof why);
+        if (ok)
+            gte_saved();
+        break;
+    case GTA_SAVE_AS:
+    case GTA_DUPLICATE:
+        strcpy(name, gt_ed.name);
+        if (!gt_ed.open || !ui->ask_value || !ui->ask_value(ui->ctx, label, "new theme name", name, sizeof name))
+            return 0;
+        if (s->aux == GTA_DUPLICATE)
+            ok = gt_dos_duplicate(gt_ed.name, name, why, sizeof why);
+        else
+            ok = gt_dos_save_as(name, &gt_ed.m, why, sizeof why);
+        if (ok && s->aux == GTA_SAVE_AS) {
+            strncpy(gt_ed.name, name, GT_NAME - 1);
+            gte_saved();
+        }
+        break;
+    case GTA_REVERT:
+        if (gt_ed.open && !gt_dos_edit_open(gt_ed.name))
+            gte_revert();
+        break;
+    case GTA_APPLY:
+        if (!gt_ed.open)
+            return 0;
+        ok = gt_dos_select(gt_ed.name, why, sizeof why);
+        break;
+    case GTA_IMPORT:
+    case GTA_EXPORT: {
+        char path[256];
+        struct Window *win = (struct Window *)ui->win;
+        path[0] = 0;
+        if (!gt_dos_pick_file(0, win, s->aux == GTA_IMPORT ? "Import theme" : "Export theme", path, sizeof path))
+            return 0;
+        if (s->aux == GTA_IMPORT) {
+            strcpy(name, "Imported");
+            if (!ui->ask_value || !ui->ask_value(ui->ctx, label, "theme name", name, sizeof name))
+                return 0;
+            ok = gt_dos_import(path, name, why, sizeof why);
+        } else
+            ok = gt_dos_export(gt_ed.name, path, why, sizeof why);
+        break;
+    }
+    case GTA_DELETE:
+        ok = gt_ed.open && gt_dos_delete_user(gt_ed.name, why, sizeof why);
+        break;
+    case GTA_RESET_BASE:
+        if (gt_ed.open && gt_ed.m.base[0])
+            ok = gt_dos_edit_open(gt_ed.m.base);
+        break;
+    case GTA_ADD_SWATCH:
+    case GTA_RENAME_SWATCH:
+    case GTA_REMOVE_SWATCH: {
+        int r;
+        strcpy(name, s->aux == GTA_ADD_SWATCH ? "New" : "");
+        if (!ui->ask_value || !ui->ask_value(ui->ctx, label, s->aux == GTA_ADD_SWATCH ? "swatch name" : "swatch name or number", name, sizeof name))
+            return 0;
+        if (s->aux == GTA_ADD_SWATCH)
+            r = gte_swatch_add(name, 0x808080UL);
+        else {
+            int sw = atoi(name);
+            if (s->aux == GTA_REMOVE_SWATCH)
+                r = gte_swatch_remove(sw, why, sizeof why);
+            else {
+                char fresh[48];
+                fresh[0] = 0;
+                if (!ui->ask_value(ui->ctx, label, "new swatch name", fresh, sizeof fresh))
+                    return 0;
+                r = gte_swatch_rename(sw, fresh);
+            }
+        }
+        ok = r == GTR_OK;
+        if (!ok && !why[0])
+            strcpy(why, "refused");
+        break;
+    }
+    case GTA_CLEAR_ELEMENT:
+        gte_elem_clear(s->aux2);
+        break;
+    }
+    if (!ok)
+        ui->refused(ui->ctx, label, LF_SET_INVALID, why);
+    return ok;
+}
+
 int lf_setting_enter(const mn_item *it, const lf_ui *ui)
 {
     const sd_setting *s;
     int failed = 0, r;
     if (!MN_IS_SETTING(it) && !MN_IS_CHOICE(it))
         return 0;
-    s = &sd_settings[it->ix];
+    s = gte_row(it->ix);
+    if (s->kind == SD_GACTION)
+        return theme_action(s, it->label, ui);
+    if (s->store == SD_GTHEME && s->kind != SD_CYCLE) {
+        char value[UC_MAX_VALUE + 2];
+        if (s->kind == SD_INFO || !ui->ask_value || !gte_row_text(s, value, sizeof value))
+            return 0;
+        if (!ui->ask_value(ui->ctx, it->label, "text", value, sizeof value))
+            return 0;
+        r = gte_row_set_text(s, value);
+        if (r != GTR_OK)
+            ui->refused(ui->ctx, it->label, LF_SET_INVALID, "not accepted: check the colour or reference");
+        return r == GTR_OK;
+    }
     if (s->kind == SD_INT || s->kind == SD_STRING) {
         char value[UC_MAX_VALUE + 2], why[80];
         if (!MN_IS_SETTING(it) || !lf_setting_text(amconf_dos_io(), s, value, sizeof value))

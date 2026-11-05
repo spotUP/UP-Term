@@ -9,6 +9,8 @@
 #include "../amarchy/flat_core.h"
 #include "../amarchy/gthemes_core.h"
 #include "../amarchy/iconpen_core.h"
+#include "../amarchy/leaf.h"
+#include "../prefs/settings_def.h"
 #include "../amarchy/menu_core.h"
 #include "../amarchy/menu_theme.h"
 #include "../amarchy/pen_cache.h"
@@ -1319,6 +1321,147 @@ static void test_gthemes_te3_edit_applies(void)
     tm_free(&m);
 }
 
+
+/* TE-4: the editor rows. Find a row by its label, step and set it through lf_setting_*, and read the edit buffer. */
+static const sd_setting *te4_row(const char *label)
+{
+    int i;
+    for (i = 0; i < gte_nrows(); i++) {
+        const sd_setting *s = gte_row(SDI_COUNT + i);
+        if (s->label && !strcmp(s->label, label))
+            return s;
+    }
+    return 0;
+}
+
+static void te4_open_builtin(void)
+{
+    gtheme t;
+    long n = read_file(THEME_DIR "/nord.theme", te_buf, (long)sizeof te_buf);
+    memset(&t, 0, sizeof t);
+    CHECK(gt_model_attach(&t, te_buf, n));
+    gte_open(t.model, "nord");
+    gt_free(&t);
+}
+
+static void test_gthemes_te4_rows(void)
+{
+    const sd_setting *radius, *swatch0 = 0, *remove, *ghost;
+    amconf_io io;
+    int failed = 0, before, n, i, used = -1;
+    char why[160], buf[96];
+    unsigned long e0;
+
+    memset(&io, 0, sizeof io);
+    te4_open_builtin();
+    /* every theme page has rows */
+    for (n = PG_PAGE_THEME; n < PG_NPAGES_ALL; n++) {
+        int rows = 0;
+        for (i = 0; i < gte_nrows(); i++)
+            if (gte_row(SDI_COUNT + i)->page == n)
+                rows++;
+        CHECK(rows > 0);
+    }
+    CHECK_INT(PG_NPAGES, 7);
+    radius = te4_row("Corner Radius");
+    ghost = te4_row("Ghost Style");
+    CHECK(radius && ghost);
+    e0 = gte_edits;
+    CHECK_INT(lf_setting_set(&io, ghost, 2, &failed), 0);         /* SD_CYCLE */
+    CHECK(gte_edits > e0);
+    CHECK_INT(lf_setting_set_text(&io, radius, "7", &failed), 0); /* SD_INT */
+    CHECK_INT(lf_setting_set_text(&io, radius, "999", &failed), LF_SET_INVALID);
+    CHECK(gte_row_label(radius, buf, sizeof buf) > 0 && strstr(buf, "7"));
+    CHECK(gte_dirty());
+    CHECK_INT(lf_setting_step(&io, ghost, &failed), 0);
+    /* SD_SWATCH: the first swatch row takes a colour */
+    for (i = 0; i < gte_nrows(); i++)
+        if (gte_row(SDI_COUNT + i)->kind == SD_SWATCH) {
+            swatch0 = gte_row(SDI_COUNT + i);
+            break;
+        }
+    CHECK(swatch0 != 0);
+    CHECK_INT(lf_setting_set_text(&io, swatch0, "#102030", &failed), 0);
+    CHECK_INT(lf_setting_set_text(&io, swatch0, "nonsense", &failed), LF_SET_INVALID);
+    /* Remove Swatch is refused while a group or element uses it, and the answer names the users */
+    before = gte_swatch_count();
+    for (i = 0; i < before; i++)
+        if (gte_swatch_users(i, why, sizeof why) > 0) {
+            used = i;
+            break;
+        }
+    CHECK(used >= 0);
+    CHECK_INT(gte_swatch_remove(used, why, sizeof why), GTR_IN_USE);
+    CHECK(why[0] != 0);
+    CHECK_INT(gte_swatch_count(), before);
+    /* a new swatch nobody uses can go */
+    CHECK_INT(gte_swatch_add("Spare", 0x123456UL), GTR_OK);
+    CHECK_INT(gte_swatch_remove(gte_swatch_count() - 1, why, sizeof why), GTR_OK);
+    CHECK_INT(gte_swatch_count(), before);
+    remove = te4_row("Remove Swatch...");
+    CHECK(remove && remove->kind == SD_GACTION);
+    /* revert reloads the file's model: the radius edit is gone */
+    gte_revert();
+    CHECK(!gte_dirty());
+    CHECK(gte_row_label(radius, buf, sizeof buf) > 0 && !strstr(buf, ": 7"));
+}
+
+static void test_gthemes_te4_modes(void)
+{
+    const sd_setting *mode, *el = 0;
+    amconf_io io;
+    int failed = 0, i, shown = 0, seen = 0, over = -1, g, marked = 0;
+    char buf[96];
+
+    memset(&io, 0, sizeof io);
+    te4_open_builtin();
+    mode = te4_row("Mode");
+    CHECK(mode != 0);
+    /* Simple: no Elements row is visible */
+    CHECK_INT(lf_setting_set(&io, mode, 0, &failed), 0);
+    CHECK(!gt_ed.advanced);
+    for (i = 0; i < gte_nrows(); i++) {
+        const sd_setting *s = gte_row(SDI_COUNT + i);
+        if (s->page == PG_PAGE_THEME_ELEMENTS && gte_row_visible(s))
+            shown++;
+    }
+    CHECK_INT(shown, 0);
+    /* Advanced: element rows show, an override takes, and the Groups page marks its group */
+    CHECK_INT(lf_setting_set(&io, mode, 1, &failed), 0);
+    CHECK(gt_ed.advanced);
+    for (i = 0; i < gte_nrows(); i++) {
+        const sd_setting *s = gte_row(SDI_COUNT + i);
+        if (s->page == PG_PAGE_THEME_ELEMENTS && s->kind == SD_ELEMENT && gte_row_visible(s)) {
+            seen++;
+            if (!el)
+                el = s;
+        }
+    }
+    CHECK(seen > 0 && el != 0);
+    over = el->aux;
+    CHECK_INT(lf_setting_set_text(&io, el, "#ff00ff", &failed), 0);
+    CHECK(gte_elem_overridden(over));
+    for (g = 0; g < 10; g++)
+        if (gte_group_overridden(g))
+            for (i = 0; i < gte_nrows(); i++) {
+                const sd_setting *s = gte_row(SDI_COUNT + i);
+                if (s->kind == SD_SWATCHREF && s->aux == g && s->aux2 == 0) {
+                    gte_row_label(s, buf, sizeof buf);
+                    marked += strstr(buf, "(elements override)") != 0;
+                }
+            }
+    CHECK_INT(marked, 1);
+    /* back to Simple: the override survives and the Elements page hides again */
+    CHECK_INT(lf_setting_set(&io, mode, 0, &failed), 0);
+    CHECK(gte_elem_overridden(over));
+    for (i = 0; i < gte_nrows(); i++) {
+        const sd_setting *s = gte_row(SDI_COUNT + i);
+        if (s->page == PG_PAGE_THEME_ELEMENTS && gte_row_visible(s))
+            shown++;
+    }
+    CHECK_INT(shown, 0);
+}
+
 static void test_gthemes_te3_import_export_delete(void)
 {
     tm_fs m;
@@ -1357,6 +1500,8 @@ void suite_gthemes(void)
     test_gthemes_te3_save();
     test_gthemes_te3_custom_name();
     test_gthemes_te3_edit_applies();
+    test_gthemes_te4_rows();
+    test_gthemes_te4_modes();
     test_gthemes_te3_import_export_delete();
     test_gthemes_parse_clears_model();
     test_gthemes_te2_baseline();

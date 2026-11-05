@@ -318,3 +318,16 @@ int gt_dos_pick_file(struct Screen *scr, struct Window *win, const char *title, 
         return 0;
     return named;
 }
+
+/* TE-4: load the named theme's model into the editor's edit buffer (gte_open). 1 opened; 0 when the theme has no model. */
+int gt_dos_edit_open(const char *name)
+{
+    gtheme t;
+    memset(&t, 0, sizeof t);
+    gt_load_model(gt_read, 0, name, &t);
+    if (!t.model)
+        return 0;
+    gte_open(t.model, name);
+    gt_free(&t);
+    return 1;
+}

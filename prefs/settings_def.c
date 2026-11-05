@@ -463,14 +463,16 @@ const char *sd_text_reason(int check)
 
 /* ---- menu rows ---- */
 
-static const char *const sd_page_names[PG_NPAGES] = {
-    "general", "colors", "palette", "keyboard", "advanced", "amarchy", "flat"
+static const char *const sd_page_names[PG_NPAGES_ALL] = {
+    "general", "colors", "palette", "keyboard", "advanced", "amarchy", "flat",
+    "theme", "theme-swatches", "theme-groups", "theme-elements", "theme-type", "theme-shape", "theme-states", "theme-desktop",
+    "theme-files"
 };
 
 int sd_page_by_name(const char *name)
 {
     int i;
-    for (i = 0; name && i < PG_NPAGES; i++)
+    for (i = 0; name && i < PG_NPAGES_ALL; i++)
         if (!strcmp(name, sd_page_names[i]))
             return i;
     return -1;
@@ -478,7 +480,7 @@ int sd_page_by_name(const char *name)
 
 const char *sd_page_name(int page)
 {
-    return page >= 0 && page < PG_NPAGES ? sd_page_names[page] : 0;
+    return page >= 0 && page < PG_NPAGES_ALL ? sd_page_names[page] : 0;
 }
 
 int sd_label_plain(const sd_setting *s, char *out, int n)

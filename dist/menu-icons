@@ -74,6 +74,15 @@ settings.amarchy.edit        = U+F044    ; fa-pencil_square_o
 settings.amarchy.agentclaude = U+F0E7    ; fa-flash
 settings.amarchy.agentpi     = U+F121    ; fa-code
 settings.flat                = U+F0C8    ; fa-square
+settings.theme               = U+F1FC    ; fa-paint_brush
+settings.theme.swatches      = U+F043    ; fa-tint
+settings.theme.groups        = U+F009    ; fa-th_large
+settings.theme.elements      = U+F044    ; fa-pencil_square_o
+settings.theme.type          = U+F031    ; fa-font
+settings.theme.shape         = U+F0C8    ; fa-square
+settings.theme.states        = U+F0E7    ; fa-flash
+settings.theme.desktop       = U+F108    ; fa-desktop
+settings.theme.files         = U+F07C    ; fa-folder_open
 ; Window group rows (plan 2026-10-25-amarchy-window-groups.md, 2.1)
 window.next                 = U+F061    ; fa-arrow_right
 window.previous             = U+F060    ; fa-arrow_left

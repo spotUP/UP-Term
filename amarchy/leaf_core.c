@@ -362,6 +362,8 @@ static int lf_set_upterm(const amconf_io *io, const sd_setting *s, int index, co
 int lf_setting_set(const amconf_io *io, const sd_setting *s, int index, int *failed)
 {
     *failed = 0;
+    if (s->store == SD_GTHEME)
+        return gte_row_set_index(s, index) == GTR_OK ? 0 : LF_SET_KIND;
     if (s->kind != SD_CHECK && s->kind != SD_CYCLE)
         return LF_SET_KIND;
     if (index < 0 || index >= s->nvalues)
@@ -378,6 +380,10 @@ int lf_setting_set(const amconf_io *io, const sd_setting *s, int index, int *fai
 int lf_setting_set_text(const amconf_io *io, const sd_setting *s, const char *text, int *failed)
 {
     *failed = 0;
+    if (s->store == SD_GTHEME) {
+        int r = gte_row_set_text(s, text);
+        return r == GTR_OK ? 0 : r == GTR_BAD ? LF_SET_INVALID : LF_SET_KIND;
+    }
     if (sd_text_check(s, text) == SD_TEXT_KIND)
         return LF_SET_KIND;
     if (sd_text_check(s, text))
@@ -551,6 +557,8 @@ int lf_setting_text(const amconf_io *io, const sd_setting *s, char *out, int n)
     if (n < 1)
         return 0;
     out[0] = 0;
+    if (s->store == SD_GTHEME)
+        return gte_row_text(s, out, n);
     if (s->kind != SD_INT && s->kind != SD_STRING)
         return 0;
     if (s->store == SD_AMARCHY) {
@@ -572,8 +580,11 @@ int lf_setting_text(const amconf_io *io, const sd_setting *s, char *out, int n)
 
 int lf_setting_step(const amconf_io *io, const sd_setting *s, int *failed)
 {
-    int next = lf_setting_next(s, lf_current(io, s));
+    int next;
     *failed = 0;
+    if (s->store == SD_GTHEME)
+        return gte_row_step(s) == GTR_OK ? 0 : LF_SET_KIND;
+    next = lf_setting_next(s, lf_current(io, s));
     if (next < 0)
         return LF_SET_KIND;
     return lf_setting_set(io, s, next, failed);
@@ -589,7 +600,12 @@ void lf_setting_labels(const amconf_io *io, mn_item *it, int n)
         const void *store;
         if (!MN_IS_SETTING(&it[i]) && !MN_IS_CHOICE(&it[i]))
             continue;
-        s = &sd_settings[it[i].ix];
+        s = gte_row(it[i].ix);
+        if (s->store == SD_GTHEME) {
+            if (MN_IS_SETTING(&it[i]))
+                gte_row_label(s, it[i].label, MN_LABEL);
+            continue;
+        }
         if (s->store == SD_AMARCHY) {
             if (!have_a++)
                 amconf_load_with(io, &a);
@@ -863,11 +879,11 @@ long lf_row_chip(const amconf_io *io, const mn_item *it)
     const sd_setting *s;
     hex[0] = 0;
     if (MN_IS_SETTING(it)) {
-        s = &sd_settings[it->ix];
+        s = gte_row(it->ix);
         if (s->kind != SD_COLOUR)
             return -1;
         lf_colour_current(io, s, 0, hex);
-    } else if (MN_IS_CHOICE(it) && SD_HAS_PICKER(&sd_settings[it->ix])) {
+    } else if (MN_IS_CHOICE(it) && SD_HAS_PICKER(gte_row(it->ix))) {
         int v = atoi(it->seg);
         if (v < 0 || v > 15)
             return -1;

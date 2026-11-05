@@ -72,9 +72,9 @@ static int settings_row(const keymap *k, const char *node)
 static int setting_rows(const keymap *k, int row, mn_item *out, int max)
 {
     int page = sd_page_by_name(k->menu[row].arg), i, n = 0;
-    for (i = 0; page >= 0 && i < sd_nsettings && n < max; i++) {
-        const sd_setting *s = &sd_settings[i];
-        if (s->page != page)
+    for (i = 0; page >= 0 && i < sd_nsettings + gte_nrows() && n < max; i++) {
+        const sd_setting *s = gte_row(i);
+        if (s->page != page || !gte_row_visible(s))
             continue;
         out[n].row = MN_ROW_SETTING;
         out[n].ix = s->id;
@@ -97,7 +97,7 @@ static const sd_setting *choice_setting(const keymap *k, const char *node)
             continue;
         page = sd_page_by_name(k->menu[i].arg);
         for (j = 0; page >= 0 && j < sd_nsettings; j++) {
-            const sd_setting *s = &sd_settings[j];
+            const sd_setting *s = gte_row(j);
             if (s->page == page && (s->kind == SD_CYCLE || SD_HAS_PICKER(s) || SD_HAS_LIST(s)) && s->key && !strcmp(s->key, node + l + 1))
                 return s;
         }
@@ -269,7 +269,7 @@ int mn_right_enters(const mn_item *it)
     if (MN_IS_GROUP(it))
         return 1;
     if (MN_IS_SETTING(it)) {
-        const sd_setting *s = &sd_settings[it->ix];
+        const sd_setting *s = gte_row(it->ix);
         return s->kind == SD_CYCLE || SD_HAS_PICKER(s) || SD_HAS_LIST(s);
     }
     return 0;

@@ -908,8 +908,8 @@ static void activate_setting(gui *g, const mn_item *it, int right)
     ui.self_in_mru = 0;
     ui.win = g->win;
     ui.run_job = gui_run_job;
-    if (MN_IS_SETTING(it) && (right || SD_HAS_PICKER(&sd_settings[it->ix]) || SD_HAS_LIST(&sd_settings[it->ix]))) {
-        if (sd_settings[it->ix].kind == SD_CYCLE || SD_HAS_PICKER(&sd_settings[it->ix]) || SD_HAS_LIST(&sd_settings[it->ix])) {
+    if (MN_IS_SETTING(it) && (right || SD_HAS_PICKER(gte_row(it->ix)) || SD_HAS_LIST(gte_row(it->ix)))) {
+        if (gte_row(it->ix)->kind == SD_CYCLE || SD_HAS_PICKER(gte_row(it->ix)) || SD_HAS_LIST(gte_row(it->ix))) {
             mn_child_node(g->node, it, g->node, sizeof g->node);
             g->filter[0] = 0;
             list_rebuild(g);

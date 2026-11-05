@@ -50,11 +50,15 @@ enum {
     SD_DYNLIST,     /* one of a list read at run time (the GUI themes, gt_scan); the file text is the chosen name */
     SD_THEME,       /* takes the colours of a theme file; holds no value */
     SD_PROFILE,     /* the profile being edited; holds no value */
-    SD_INFO         /* a read-only text the program fills in at run time; holds no value */
+    SD_INFO,        /* a read-only text the program fills in at run time; holds no value */
+    SD_SWATCH,      /* TE-4: a swatch of the theme being edited (aux = swatch): text "#rrggbb" */
+    SD_SWATCHREF,   /* TE-4: a group state's colour reference (aux = group, aux2 = state): text in the ref grammar */
+    SD_ELEMENT,     /* TE-4: an element state's override (aux = element, aux2 = state): the ref grammar, empty follows the group */
+    SD_GACTION      /* TE-4: an editor action (aux = GTA_*, aux2 = its element when it has one) */
 };
 
 /* which file holds it */
-enum { SD_UPTERM, SD_AMARCHY };
+enum { SD_UPTERM, SD_AMARCHY, SD_GTHEME /* TE-4: the theme edit buffer (gthemes_core.h gte_*) */ };
 
 /* where the value sits, in the store the row names (prefs_fields for SD_UPTERM, am_prefs for SD_AMARCHY) */
 enum {

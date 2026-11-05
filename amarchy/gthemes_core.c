@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "gthemes_core.h"
+#include "../prefs/settings_def.h"
 #include "../prefs/prefs_core.h"
 
 static upconf g_conf;
@@ -1608,4 +1609,612 @@ int gt_save_edit(const prefs_fs *fs, const char *name, const gt_model *m, const 
         apply(name);
     }
     return 1;
+}
+
+/* ---- TE-4: the edit buffer and the editor's rows ---- */
+#include <stddef.h>
+
+gt_edit gt_ed;
+unsigned long gte_edits;
+
+static void ed_touch(void)
+{
+    gte_edits++;
+}
+
+static int any_override(const gt_model *m)
+{
+    int e, s;
+    for (e = 0; e < GTE_COUNT; e++)
+        for (s = 0; s < GT_STATES; s++)
+            if (m->elem[e][s].kind != GT_REF_NONE)
+                return 1;
+    return 0;
+}
+
+void gte_open(const gt_model *m, const char *name)
+{
+    gt_ed.m = *m;
+    gt_ed.saved = *m;
+    gt_ed.open = 1;
+    gt_ed.advanced = any_override(m);
+    strncpy(gt_ed.name, name ? name : "", GT_NAME - 1);
+    gt_ed.name[GT_NAME - 1] = 0;
+}
+
+int gte_dirty(void)
+{
+    return gt_ed.open && memcmp(&gt_ed.m, &gt_ed.saved, sizeof gt_ed.m) != 0;
+}
+
+void gte_revert(void)
+{
+    gt_ed.m = gt_ed.saved;
+    ed_touch();
+}
+
+void gte_saved(void)
+{
+    gt_ed.saved = gt_ed.m;
+}
+
+int gte_swatch_count(void)
+{
+    return gt_ed.m.nswatch;
+}
+
+#define ED_SLOTS (GTG_COUNT * GT_STATES + GTE_COUNT * GT_STATES + GT_NESTED_MAX)
+/* every ref slot of the model in one walk: groups, elements, nested */
+static int ref_slots(gt_model *m, gt_ref **out)
+{
+    int g, e, s, n = 0, i;
+    for (g = 0; g < GTG_COUNT; g++)
+        for (s = 0; s < GT_STATES; s++)
+            out[n++] = &m->group[g][s];
+    for (e = 0; e < GTE_COUNT; e++)
+        for (s = 0; s < GT_STATES; s++)
+            out[n++] = &m->elem[e][s];
+    for (i = 0; i < m->nnested; i++)
+        out[n++] = &m->nested[i];
+    return n;
+}
+
+static const char *const ed_state_name[GT_STATES] = { "Normal", "Hover", "Pressed", "Disabled" };
+
+int gte_swatch_users(int sw, char *out, int cap)
+{
+    gt_model *m = &gt_ed.m;
+    int g, e, s, i, n = 0;
+    if (cap > 0)
+        out[0] = 0;
+    for (g = 0; g < GTG_COUNT; g++)
+        for (s = 0; s < GT_STATES; s++)
+            if (m->group[g][s].kind == GT_REF_SWATCH && m->group[g][s].a == sw) {
+                n++;
+                if ((int)strlen(out) + 48 < cap)
+                    snprintf(out + strlen(out), (size_t)(cap - (int)strlen(out)), "%s%s %s", n > 1 ? ", " : "", gt_group_defs[g].label, ed_state_name[s]);
+            }
+    for (e = 0; e < GTE_COUNT; e++)
+        for (s = 0; s < GT_STATES; s++)
+            if (m->elem[e][s].kind == GT_REF_SWATCH && m->elem[e][s].a == sw) {
+                n++;
+                if ((int)strlen(out) + 48 < cap)
+                    snprintf(out + strlen(out), (size_t)(cap - (int)strlen(out)), "%s%s %s", n > 1 ? ", " : "", gt_elem_defs[e].label, ed_state_name[s]);
+            }
+    for (i = 0; i < m->nnested; i++)
+        if (m->nested[i].kind == GT_REF_SWATCH && m->nested[i].a == sw)
+            n++;
+    return n;
+}
+
+static int hex_parse(const char *t, uc_u32 *v)
+{
+    char *end;
+    unsigned long x;
+    if (*t == '#')
+        t++;
+    if (strlen(t) != 6)
+        return 0;
+    x = strtoul(t, &end, 16);
+    if (*end)
+        return 0;
+    *v = (uc_u32)x;
+    return 1;
+}
+
+int gte_swatch_set(int sw, const char *text)
+{
+    uc_u32 v;
+    if (sw < 0 || sw >= gt_ed.m.nswatch || !hex_parse(text, &v))
+        return GTR_BAD;
+    gt_ed.m.swatch[sw] = v;
+    ed_touch();
+    return GTR_OK;
+}
+
+static int swatch_name_ok(const char *name, int except)
+{
+    int i;
+    if (!*name || strlen(name) >= GT_SWATCH_NAME)
+        return GTR_NAME;
+    for (i = 0; name[i]; i++)
+        if (!is_name(name[i]))
+            return GTR_NAME;
+    for (i = 0; i < gt_ed.m.nswatch; i++)
+        if (i != except && !cmp_ci(gt_ed.m.swatch_name[i], name))
+            return GTR_EXISTS;
+    return GTR_OK;
+}
+
+int gte_swatch_add(const char *name, uc_u32 rgb)
+{
+    int r = swatch_name_ok(name, -1);
+    if (r)
+        return r;
+    if (gt_ed.m.nswatch >= GT_SWATCH_MAX)
+        return GTR_FULL;
+    strcpy(gt_ed.m.swatch_name[gt_ed.m.nswatch], name);
+    gt_ed.m.swatch[gt_ed.m.nswatch++] = rgb;
+    ed_touch();
+    return GTR_OK;
+}
+
+int gte_swatch_rename(int sw, const char *name)
+{
+    int r;
+    if (sw < 0 || sw >= gt_ed.m.nswatch)
+        return GTR_BAD;
+    r = swatch_name_ok(name, sw);
+    if (r)
+        return r;
+    strcpy(gt_ed.m.swatch_name[sw], name);
+    ed_touch();
+    return GTR_OK;
+}
+
+int gte_swatch_remove(int sw, char *why, int cap)
+{
+    gt_ref *slot[ED_SLOTS];
+    char users[240];
+    int n, i;
+    if (sw < 0 || sw >= gt_ed.m.nswatch)
+        return GTR_BAD;
+    if (gte_swatch_users(sw, users, (int)sizeof users)) {
+        if (why && cap > 0)
+            snprintf(why, (size_t)cap, "%s is used by %s", gt_ed.m.swatch_name[sw], users[0] ? users : "a derived colour");
+        return GTR_IN_USE;
+    }
+    for (i = sw; i < gt_ed.m.nswatch - 1; i++) {
+        strcpy(gt_ed.m.swatch_name[i], gt_ed.m.swatch_name[i + 1]);
+        gt_ed.m.swatch[i] = gt_ed.m.swatch[i + 1];
+    }
+    gt_ed.m.nswatch--;
+    gt_ed.m.swatch_name[gt_ed.m.nswatch][0] = 0;
+    gt_ed.m.swatch[gt_ed.m.nswatch] = 0;
+    n = ref_slots(&gt_ed.m, slot);
+    for (i = 0; i < n; i++)
+        if (slot[i]->kind == GT_REF_SWATCH && slot[i]->a > sw)
+            slot[i]->a--;
+    ed_touch();
+    return GTR_OK;
+}
+
+int gte_group_set(int group, int state, const char *text)
+{
+    gt_ref r;
+    if (group < 0 || group >= GTG_COUNT || state < 0 || state >= GT_STATES)
+        return GTR_BAD;
+    if (!gt_ref_parse(&gt_ed.m, text, &r))
+        return GTR_BAD;
+    if (state == GT_ST_NORMAL && r.kind == GT_REF_NONE)
+        return GTR_BAD; /* a group always has its normal colour */
+    gt_ed.m.group[group][state] = r;
+    ed_touch();
+    return GTR_OK;
+}
+
+int gte_elem_set(int elem, int state, const char *text)
+{
+    gt_ref r;
+    if (elem < 0 || elem >= GTE_COUNT || state < 0 || state >= GT_STATES)
+        return GTR_BAD;
+    if (!gt_ref_parse(&gt_ed.m, text, &r))
+        return GTR_BAD;
+    gt_ed.m.elem[elem][state] = r;
+    ed_touch();
+    return GTR_OK;
+}
+
+void gte_elem_clear(int elem)
+{
+    memset(gt_ed.m.elem[elem], 0, sizeof gt_ed.m.elem[elem]);
+    ed_touch();
+}
+
+int gte_elem_overridden(int elem)
+{
+    int s;
+    for (s = 0; s < GT_STATES; s++)
+        if (gt_ed.m.elem[elem][s].kind != GT_REF_NONE)
+            return 1;
+    return 0;
+}
+
+int gte_group_overridden(int group)
+{
+    int e;
+    for (e = 0; e < GTE_COUNT; e++)
+        if (gt_elem_defs[e].group == group && gte_elem_overridden(e))
+            return 1;
+    return 0;
+}
+
+/* the next colour after cur: each swatch by name, then Darker, Selection and Muted of the surface group (a hand edit
+ * of the text gives any other form). dir +1 or -1. */
+int gte_ref_step(const gt_ref *cur, int dir, char *out, int cap)
+{
+    static const char *const fn[3] = { "darker", "selection", "muted" };
+    int n = gt_ed.m.nswatch, total = n + 3, at, next;
+    if (cur->kind == GT_REF_SWATCH)
+        at = cur->a;
+    else if (cur->kind == GT_REF_DARKER)
+        at = n;
+    else if (cur->kind == GT_REF_SELECTION)
+        at = n + 1;
+    else if (cur->kind == GT_REF_MUTED)
+        at = n + 2;
+    else
+        at = dir > 0 ? -1 : 0;
+    next = ((at + dir) % total + total) % total;
+    if (next < n)
+        snprintf(out, (size_t)cap, "%s", gt_ed.m.swatch_name[next]);
+    else
+        snprintf(out, (size_t)cap, "%s(group:%s)", fn[next - n], gt_group_defs[GTG_SURFACE].key);
+    return next;
+}
+
+/* ---- the rows ---- */
+#define ER_MAX 320
+#define ER_LABEL 44
+#define ER_INFO_BASE 1
+#define ER_INFO_CONTRAST 2
+#define ER_INFO_PENS 3
+static sd_setting er_row[ER_MAX];
+static char er_label[ER_MAX][ER_LABEL];
+static char er_key[ER_MAX][24];
+static int er_n;
+
+static const sd_value v_mode[2] = { { "simple", "Simple" }, { "advanced", "Advanced" } };
+static const sd_value v_align[3] = { { "0", "Left" }, { "1", "Centre" }, { "2", "Right" } };
+static const sd_value v_style[2] = { { "0", "Plain" }, { "1", "Bold" } };
+static const sd_value v_shape[2] = { { "0", "Square" }, { "1", "Rounded" } };
+static const sd_value v_order[2] = { { "0", "Left" }, { "1", "Right" } };
+static const sd_value v_ghost[3] = { { "0", "Dim" }, { "1", "Stipple" }, { "2", "Both" } };
+static const sd_value v_hover[2] = { { "0", "Off" }, { "1", "On" } };
+
+typedef struct look_def {
+    const char *key, *label;
+    int page, kind;
+    const sd_value *vals;
+    int nvals;
+    size_t off;
+    long max;
+} look_def;
+#define LD(k, l, pg, kd, v, nv, f, mx) { k, l, pg, kd, v, nv, offsetof(gt_look, f), mx }
+static const look_def look_defs[] = {
+    LD("title-align", "Title Alignment", PG_PAGE_THEME_TYPE, SD_CYCLE, v_align, 3, title_align, 2),
+    LD("title-style", "Title Style", PG_PAGE_THEME_TYPE, SD_CYCLE, v_style, 2, title_style, 1),
+    LD("corner-radius", "Corner Radius", PG_PAGE_THEME_SHAPE, SD_INT, 0, 0, corner_radius, 16),
+    LD("border-width", "Border Width", PG_PAGE_THEME_SHAPE, SD_INT, 0, 0, border_width, 8),
+    LD("title-bar-height", "Title Bar Height", PG_PAGE_THEME_SHAPE, SD_INT, 0, 0, bar_height, 64),
+    LD("gadget-size", "Gadget Size", PG_PAGE_THEME_SHAPE, SD_INT, 0, 0, gadget_size, 64),
+    LD("gadget-pad", "Gadget Padding", PG_PAGE_THEME_SHAPE, SD_INT, 0, 0, gadget_pad, 16),
+    LD("scroll-width", "Scroll Bar Width", PG_PAGE_THEME_SHAPE, SD_INT, 0, 0, scroll_width, 64),
+    LD("knob-min", "Knob Minimum Length", PG_PAGE_THEME_SHAPE, SD_INT, 0, 0, knob_min, 64),
+    LD("knob-shape", "Knob Shape", PG_PAGE_THEME_SHAPE, SD_CYCLE, v_shape, 2, knob_shape, 1),
+    LD("glyph-set", "Gadget Glyph Set", PG_PAGE_THEME_SHAPE, SD_INT, 0, 0, glyph_set, 8),
+    LD("gadget-order", "Gadget Order", PG_PAGE_THEME_SHAPE, SD_CYCLE, v_order, 2, gadget_order, 1),
+    LD("ghost-style", "Ghost Style", PG_PAGE_THEME_STATES, SD_CYCLE, v_ghost, 3, ghost_style, 2),
+    LD("hover", "Hover Highlight", PG_PAGE_THEME_STATES, SD_CYCLE, v_hover, 2, hover_on, 1),
+    LD("inactive-pct", "Inactive Window Dimming", PG_PAGE_THEME_STATES, SD_INT, 0, 0, inactive_pct, 100)
+};
+#define N_LOOK ((int)(sizeof look_defs / sizeof look_defs[0]))
+static const char *const font_label[GT_FONTS] = { "Screen Font", "Window Title Font", "Menu Font", "Icon Font", "Shell Font" };
+
+static sd_setting *er_add(int page, int kind, const char *key, const char *label)
+{
+    sd_setting *s;
+    if (er_n >= ER_MAX)
+        return &er_row[ER_MAX - 1];
+    s = &er_row[er_n];
+    memset(s, 0, sizeof *s);
+    s->id = SDI_COUNT + er_n;
+    s->page = page;
+    s->kind = kind;
+    s->store = SD_GTHEME;
+    s->ftype = SDF_NONE;
+    s->def = "";
+    snprintf(er_key[er_n], sizeof er_key[0], "%s", key);
+    s->key = er_key[er_n];
+    snprintf(er_label[er_n], ER_LABEL, "%s", label);
+    s->label = er_label[er_n];
+    er_n++;
+    return s;
+}
+
+static void er_build(void)
+{
+    int i, g, e, st;
+    char k[24], l[ER_LABEL];
+    sd_setting *s;
+    if (er_n)
+        return;
+    s = er_add(PG_PAGE_THEME, SD_CYCLE, "mode", "Mode");
+    s->values = v_mode;
+    s->nvalues = 2;
+    s->aux = -1;
+    er_add(PG_PAGE_THEME, SD_INFO, "base", "Base Theme")->aux = ER_INFO_BASE;
+    er_add(PG_PAGE_THEME, SD_INFO, "contrast", "Contrast")->aux = ER_INFO_CONTRAST;
+    er_add(PG_PAGE_THEME, SD_INFO, "pens", "Pen Budget")->aux = ER_INFO_PENS;
+    er_add(PG_PAGE_THEME, SD_GACTION, "open", "Edit Theme...")->aux = GTA_OPEN;
+    er_add(PG_PAGE_THEME, SD_GACTION, "save", "Save")->aux = GTA_SAVE;
+    er_add(PG_PAGE_THEME, SD_GACTION, "saveas", "Save As...")->aux = GTA_SAVE_AS;
+    er_add(PG_PAGE_THEME, SD_GACTION, "revert", "Revert")->aux = GTA_REVERT;
+    er_add(PG_PAGE_THEME, SD_GACTION, "apply", "Apply to Desktop")->aux = GTA_APPLY;
+    for (i = 0; i < GT_SWATCH_MAX; i++) {
+        snprintf(k, 24, "swatch%d", i);
+        er_add(PG_PAGE_THEME_SWATCHES, SD_SWATCH, k, "Swatch")->aux = i;
+    }
+    er_add(PG_PAGE_THEME_SWATCHES, SD_GACTION, "addswatch", "Add Swatch...")->aux = GTA_ADD_SWATCH;
+    er_add(PG_PAGE_THEME_SWATCHES, SD_GACTION, "renameswatch", "Rename Swatch...")->aux = GTA_RENAME_SWATCH;
+    er_add(PG_PAGE_THEME_SWATCHES, SD_GACTION, "removeswatch", "Remove Swatch...")->aux = GTA_REMOVE_SWATCH;
+    for (g = 0; g < GTG_COUNT; g++)
+        for (st = 0; st < GT_STATES; st++) {
+            snprintf(k, 24, "group.%d.%d", g, st);
+            snprintf(l, sizeof l, "%s %s", gt_group_defs[g].label, ed_state_name[st]);
+            s = er_add(PG_PAGE_THEME_GROUPS, SD_SWATCHREF, k, l);
+            s->aux = g;
+            s->aux2 = st;
+        }
+    for (e = 0; e < GTE_COUNT; e++) {
+        for (st = 0; st < GT_STATES; st++) {
+            snprintf(k, 24, "elem.%d.%d", e, st);
+            snprintf(l, sizeof l, "%s %s", gt_elem_defs[e].label, ed_state_name[st]);
+            s = er_add(PG_PAGE_THEME_ELEMENTS, SD_ELEMENT, k, l);
+            s->aux = e;
+            s->aux2 = st;
+        }
+        snprintf(k, 24, "clear.%d", e);
+        snprintf(l, sizeof l, "Clear Override: %s", gt_elem_defs[e].label);
+        s = er_add(PG_PAGE_THEME_ELEMENTS, SD_GACTION, k, l);
+        s->aux = GTA_CLEAR_ELEMENT;
+        s->aux2 = e;
+    }
+    for (i = 0; i < GT_FONTS; i++)
+        er_add(PG_PAGE_THEME_TYPE, SD_FONT, gt_fontkey[i], font_label[i])->aux = i + 1;
+    for (i = 0; i < N_LOOK; i++) {
+        s = er_add(look_defs[i].page, look_defs[i].kind, look_defs[i].key, look_defs[i].label);
+        s->values = look_defs[i].vals;
+        s->nvalues = look_defs[i].nvals;
+        s->off = look_defs[i].off;
+        s->max = look_defs[i].max;
+        s->aux = 100 + i;
+    }
+    for (i = 0; i < 3; i++) {
+        snprintf(l, ER_LABEL, "Pointer Colour %d", i + 1);
+        snprintf(k, 24, "pointer%d", i);
+        er_add(PG_PAGE_THEME_DESKTOP, SD_STRING, k, l)->aux = 200 + i;
+    }
+    er_add(PG_PAGE_THEME_FILES, SD_GACTION, "duplicate", "Duplicate Theme...")->aux = GTA_DUPLICATE;
+    er_add(PG_PAGE_THEME_FILES, SD_GACTION, "import", "Import Theme...")->aux = GTA_IMPORT;
+    er_add(PG_PAGE_THEME_FILES, SD_GACTION, "export", "Export Theme...")->aux = GTA_EXPORT;
+    er_add(PG_PAGE_THEME_FILES, SD_GACTION, "resetbase", "Reset to Base")->aux = GTA_RESET_BASE;
+    er_add(PG_PAGE_THEME_FILES, SD_GACTION, "delete", "Delete User Theme")->aux = GTA_DELETE;
+}
+
+const sd_setting *gte_row(int id)
+{
+    if (id < SDI_COUNT)
+        return &sd_settings[id];
+    er_build();
+    return id - SDI_COUNT < er_n ? &er_row[id - SDI_COUNT] : &sd_settings[0];
+}
+
+int gte_nrows(void)
+{
+    er_build();
+    return er_n;
+}
+
+int gte_row_visible(const sd_setting *s)
+{
+    if (s->store != SD_GTHEME)
+        return 1;
+    if (s->page == PG_PAGE_THEME_ELEMENTS && !gt_ed.advanced)
+        return 0;
+    if (s->kind == SD_SWATCH)
+        return s->aux < gt_ed.m.nswatch;
+    if (s->kind == SD_ELEMENT)
+        return (gt_elem_defs[s->aux].states >> s->aux2) & 1;
+    return 1;
+}
+
+static unsigned char *look_byte(const sd_setting *s)
+{
+    return (unsigned char *)&gt_ed.m.look + s->off;
+}
+
+static void ref_label(const gt_ref *r, const gt_ref *fallback, char *out, int n)
+{
+    char t[96];
+    if (r->kind == GT_REF_NONE) {
+        if (fallback && fallback->kind != GT_REF_NONE && gt_ref_text(&gt_ed.m, fallback, t, (int)sizeof t) >= 0)
+            snprintf(out, (size_t)n, "Follows %s", t);
+        else
+            snprintf(out, (size_t)n, "Follows its group");
+    } else if (gt_ref_text(&gt_ed.m, r, t, (int)sizeof t) < 0)
+        snprintf(out, (size_t)n, "too long");
+    else
+        snprintf(out, (size_t)n, "%s", t);
+}
+
+static void info_text(int which, char *out, int n)
+{
+    const gt_model *m = &gt_ed.m;
+    if (which == ER_INFO_BASE)
+        snprintf(out, (size_t)n, "%s", m->base[0] ? m->base : "none");
+    else if (which == ER_INFO_CONTRAST) {
+        int w = (gt_contrast(gt_group_rgb(m, GTG_TEXT, 0), gt_group_rgb(m, GTG_BACKGROUND, 0)) < GT_FLOOR_TEXT) +
+                (gt_contrast(gt_group_rgb(m, GTG_TEXT, 0), gt_group_rgb(m, GTG_SURFACE, 0)) < GT_FLOOR_TEXT) +
+                (gt_contrast(gt_group_rgb(m, GTG_MUTED_TEXT, 0), gt_group_rgb(m, GTG_SURFACE, 0)) < GT_FLOOR_TEXT);
+        snprintf(out, (size_t)n, "%d warning%s", w, w == 1 ? "" : "s");
+    } else {
+        uc_u32 seen[GTE_COUNT];
+        int e, j, d = 0;
+        for (e = 0; e < GTE_COUNT; e++) {
+            uc_u32 c = gt_resolve_rgb(m, e, GT_ST_NORMAL);
+            for (j = 0; j < d && seen[j] != c; j++)
+                ;
+            if (j == d)
+                seen[d++] = c;
+        }
+        snprintf(out, (size_t)n, "%d distinct colours", d);
+    }
+}
+
+int gte_row_text(const sd_setting *s, char *out, int n)
+{
+    char t[96];
+    if (n < 1)
+        return 0;
+    out[0] = 0;
+    switch (s->kind) {
+    case SD_SWATCH:
+        if (s->aux >= gt_ed.m.nswatch)
+            return 0;
+        hex_text(gt_ed.m.swatch[s->aux], t);
+        snprintf(out, (size_t)n, "%s", t);
+        return 1;
+    case SD_SWATCHREF:
+        ref_label(&gt_ed.m.group[s->aux][s->aux2], s->aux2 ? &gt_ed.m.group[s->aux][GT_ST_NORMAL] : 0, out, n);
+        return 1;
+    case SD_ELEMENT:
+        ref_label(&gt_ed.m.elem[s->aux][s->aux2], &gt_ed.m.group[gt_elem_defs[s->aux].group][s->aux2], out, n);
+        return 1;
+    case SD_INT:
+        snprintf(out, (size_t)n, "%d", (int)*look_byte(s));
+        return 1;
+    case SD_FONT:
+        snprintf(out, (size_t)n, "%s", gt_ed.m.look.font[s->aux - 1]);
+        return 1;
+    case SD_STRING:
+        if (gt_ed.m.look.pointer[s->aux - 200]) {
+            hex_text(gt_ed.m.look.pointer[s->aux - 200], t);
+            snprintf(out, (size_t)n, "%s", t);
+        }
+        return 1;
+    case SD_INFO:
+        info_text(s->aux, out, n);
+        return 1;
+    case SD_CYCLE:
+        if (s->aux == -1)
+            snprintf(out, (size_t)n, "%s", v_mode[gt_ed.advanced ? 1 : 0].text);
+        else
+            snprintf(out, (size_t)n, "%s", s->values[*look_byte(s) < s->nvalues ? *look_byte(s) : 0].text);
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+int gte_row_label(const sd_setting *s, char *out, int n)
+{
+    char v[96], nm[GT_SWATCH_NAME + 4];
+    const char *label = s->label;
+    if (s->kind == SD_SWATCH) {
+        snprintf(nm, sizeof nm, "%s", gt_ed.m.swatch_name[s->aux < gt_ed.m.nswatch ? s->aux : 0]);
+        label = nm;
+    }
+    if (s->kind == SD_GACTION) {
+        snprintf(out, (size_t)n, "%s", label);
+        return 1;
+    }
+    gte_row_text(s, v, (int)sizeof v);
+    if (s->kind == SD_SWATCHREF && s->aux2 == GT_ST_NORMAL && gte_group_overridden(s->aux))
+        snprintf(out, (size_t)n, "%s: %s (elements override)", label, v);
+    else
+        snprintf(out, (size_t)n, "%s: %s", label, v);
+    return 1;
+}
+
+int gte_row_set_text(const sd_setting *s, const char *text)
+{
+    int i;
+    uc_u32 c = 0;
+    switch (s->kind) {
+    case SD_SWATCH:
+        return gte_swatch_set(s->aux, text);
+    case SD_SWATCHREF:
+        return gte_group_set(s->aux, s->aux2, text);
+    case SD_ELEMENT:
+        return gte_elem_set(s->aux, s->aux2, text);
+    case SD_INT: {
+        char *end;
+        long v = strtol(text, &end, 10);
+        if (!*text || *end || v < 0 || v > s->max)
+            return GTR_BAD;
+        *look_byte(s) = (unsigned char)v;
+        ed_touch();
+        return GTR_OK;
+    }
+    case SD_FONT:
+        if (strlen(text) >= sizeof gt_ed.m.look.font[0])
+            return GTR_BAD;
+        strcpy(gt_ed.m.look.font[s->aux - 1], text);
+        ed_touch();
+        return GTR_OK;
+    case SD_STRING:
+        i = s->aux - 200;
+        if (*text && !hex_parse(text, &c))
+            return GTR_BAD;
+        gt_ed.m.look.pointer[i] = c;
+        ed_touch();
+        return GTR_OK;
+    default:
+        return GTR_BAD;
+    }
+}
+
+int gte_row_step(const sd_setting *s)
+{
+    char t[96];
+    if (s->kind == SD_CYCLE && s->aux == -1) {
+        gt_ed.advanced = !gt_ed.advanced;
+        ed_touch();
+        return GTR_OK;
+    }
+    if (s->kind == SD_CYCLE) {
+        *look_byte(s) = (unsigned char)((*look_byte(s) + 1) % s->nvalues);
+        ed_touch();
+        return GTR_OK;
+    }
+    if (s->kind == SD_SWATCHREF || s->kind == SD_ELEMENT) {
+        const gt_ref *cur = s->kind == SD_SWATCHREF ? &gt_ed.m.group[s->aux][s->aux2] : &gt_ed.m.elem[s->aux][s->aux2];
+        if (gte_ref_step(cur, 1, t, (int)sizeof t) < 0)
+            return GTR_BAD;
+        return gte_row_set_text(s, t);
+    }
+    return GTR_BAD;
+}
+
+int gte_row_set_index(const sd_setting *s, int index)
+{
+    if (s->store != SD_GTHEME || s->kind != SD_CYCLE || index < 0 || index >= s->nvalues)
+        return GTR_BAD;
+    if (s->aux == -1)
+        gt_ed.advanced = index == 1;
+    else
+        *look_byte(s) = (unsigned char)index;
+    ed_touch();
+    return GTR_OK;
 }

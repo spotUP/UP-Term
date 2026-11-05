@@ -4082,6 +4082,31 @@ static void an_index_row_launches_its_tool_path_and_a_rescan_row_ships_in_the_ap
     CHECK_INT((int)lf_plan(KA_SCAN), (int)LF_SCAN);
     CHECK_INT(keymap_action_scope(KA_DETACH), KS_BOTH);
     CHECK_INT(keymap_action_scope(KA_SCAN), KS_BOTH);
+    /* TE-4.1: the Theme Editor parent and its eight page nodes ship, each opening the page of the same name */
+    {
+        static const char *const pg[] = { "swatches", "groups", "elements", "type", "shape", "states", "desktop", "files" };
+        char id[40], arg[40];
+        int k, found = 0;
+        for (i = 0; i < km.nmenu; i++)
+            if (!strcmp(km.menu[i].id, "settings.theme")) {
+                CHECK_STR(km.menu[i].label, "Theme Editor");
+                CHECK_STR(km.menu[i].arg, "theme");
+                found++;
+            }
+        for (k = 0; k < 8; k++) {
+            strcpy(id, "settings.theme.");
+            strcat(id, pg[k]);
+            strcpy(arg, "theme-");
+            strcat(arg, pg[k]);
+            for (i = 0; i < km.nmenu; i++)
+                if (!strcmp(km.menu[i].id, id)) {
+                    CHECK_STR(km.menu[i].arg, arg);
+                    CHECK(sd_page_by_name(arg) >= 0);
+                    found++;
+                }
+        }
+        CHECK_INT(found, 9);
+    }
 }
 
 static void a_launch_request_for_the_resident_amarchy_carries_the_path_and_refuses_a_bad_one(void)
