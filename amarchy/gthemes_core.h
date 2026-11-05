@@ -332,6 +332,7 @@ typedef struct gt_edit {
     gt_model m, saved;
     int open;                   /* a theme is loaded into the buffer */
     int advanced;               /* Mode: Advanced (the Elements page is shown) */
+    int depth;                  /* TE-8.3: bitplanes of the screen the editor runs on (EHB counts as 5; 15 and up = truecolour); 0 = unknown */
     char name[GT_NAME];         /* the theme being edited */
 } gt_edit;
 extern gt_edit gt_ed;
@@ -378,5 +379,50 @@ enum { GTP_SKIP = 1, GTP_LEAVE = 2, GTP_NAME = 4 };
 int gte_action_plan(int aux, int editor_open);
 /* gt_dos_edit_open's decision: read the named theme through rd and open its model in the buffer. 1 opened; 0 when it has none. */
 int gte_open_from(gt_read_fn rd, void *ctx, const char *name);
+
+/* ---- TE-8: presets, contrast warning, pen budget (plan 2026-11-05-amarchy-theme-editor.md sections 6, 7, D8) ---- */
+/* TE-8.1: a theme as a starting point: the user file, else the shipped file, else (the name is GT_DEFAULT) the built-in tokyo-night.
+ * Parsed into out with out->name = name. 1 found; 0 when no such theme. */
+int gt_preset_model(gt_read_fn rd, void *ctx, const char *name, gt_model *out);
+/* Reset to Base: the edit buffer takes the model of its base theme (gt_preset_model of gt_ed.m.base), keeps its own name and base,
+ * stays dirty against the file and goes live like any edit. 1 reset; 0 when no editor is open, no base is named or it is gone. */
+int gte_reset_to_base(gt_read_fn rd, void *ctx);
+
+/* TE-8.2: one text-on-ground pair. kind is the floor it is held to. below = measured contrast under the floor (D8: shown as a
+ * warning on the row and in the summary; Save stays allowed). */
+enum { GTC_TEXT, GTC_MUTED, GTC_SEL };
+typedef struct gt_cpair {
+    unsigned char text, text_state, ground, ground_state, kind; /* GTE_* / GT_ST_* of the two sides, GTC_* floor */
+    int contrast, floor, below;
+} gt_cpair;
+#define GT_CPAIRS 16
+/* Every pair of the table measured on the resolved colours (gt_contrast against GT_FLOOR_TEXT / GT_FLOOR_MUTED / GT_FLOOR_SEL).
+ * Fills out (room for GT_CPAIRS); returns the pair count. */
+int gt_contrast_pairs(const gt_model *m, gt_cpair out[GT_CPAIRS]);
+/* the number of pairs below their floor; when first >= 0, *first is the index of the first such pair (else -1) */
+int gt_contrast_warnings(const gt_model *m, int *first);
+/* 1 when element elem is the text side of a pair below its floor (the row warning of the Elements page) */
+int gt_contrast_elem_warns(const gt_model *m, int elem);
+
+/* TE-8.3: the pen budget of a model at a screen depth (bitplanes; EHB counts as 5; >= 15 truecolour). Pure: it reads the model and
+ * the depth, never obtains a pen.
+ *   exact     truecolour: colours are drawn directly, no shortage.
+ *   pens      the pens the screen has (1 << depth, 256 for depth >= 8); held = pens the desktop keeps: depth <= 3 the role pens
+ *             (8, 4 on depth 2), depth 4 the 8 role pens and the 8 icon pens (16), depth 5 the same plus pointer 17-19 (19), depth
+ *             >= 6 role 8 + pointer 3 + icon 16 (27); free = pens - held.
+ *   colours   distinct resolved normal-state colours over the 36 elements;  shared = elements - colours (elements that repeat a colour).
+ *   needing   distinct colours no role pen carries (and, from depth 4, no icon element: those use the held icon pens); they take a
+ *             free pen or the nearest one. fold = the part of needing that finds no free pen (depth <= 3: all of it).
+ *   grp_pen   depth <= 3 only: the role pen each group's normal colour folds to (the ip_fold rule: nearest, ties to the lower pen,
+ *             never DK_GREEN / DK_BACKDROP); grp_with[g] = the first group on the same pen (g itself when alone). Else -1 / g. */
+typedef struct gt_budget {
+    int depth, exact, pens, held, free, colours, shared, needing, fold;
+    signed char grp_pen[GTG_COUNT], grp_with[GTG_COUNT];
+} gt_budget;
+void gt_pen_budget(const gt_model *m, int depth, gt_budget *out);
+/* the summary row text, e.g. "Screen 8 colours: 4 elements fold to the nearest pen" / "Truecolour: exact colours" */
+void gt_budget_text(const gt_budget *b, char *out, int n);
+/* the share line of group g ("Text shares a pen with Surface"); 0 and out empty when g is alone or the screen is not shallow */
+int gt_budget_share_text(const gt_budget *b, int g, char *out, int n);
 
 #endif

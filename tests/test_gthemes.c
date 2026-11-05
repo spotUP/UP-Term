@@ -1688,6 +1688,46 @@ static void test_gthemes_te4_modes(void)
     CHECK_INT(shown, 0);
 }
 
+/* ---- TE-8: presets, contrast warning, pen budget ---- */
+static void te8_model(gt_model *m, const char *text)
+{
+    gt_model_parse(text, (long)strlen(text), m);
+}
+static void test_gthemes_te8_budget(void)
+{
+    gt_model m;
+    gt_budget b;
+    char t[160];
+    int g;
+    tm_fs fs;
+    prefs_fs pfs;
+    tm_init(&fs, &pfs);
+    te8_model(&m, tm_theme);                        /* model A: the shipped nord theme */
+    gt_pen_budget(&m, 3, &b);
+    CHECK_INT(b.pens, 8); CHECK_INT(b.held, 8); CHECK_INT(b.free, 0);
+    CHECK_INT(b.exact, 0);
+    CHECK_INT(b.fold, b.needing);                     /* depth 3: nothing is free, all fold */
+    gt_pen_budget(&m, 4, &b);
+    CHECK_INT(b.pens, 16); CHECK_INT(b.held, 16); CHECK_INT(b.free, 0);
+    gt_pen_budget(&m, 8, &b);
+    CHECK_INT(b.pens, 256); CHECK_INT(b.held, 27); CHECK_INT(b.free, 229);
+    CHECK_INT(b.fold, 0);                             /* 36 elements cannot exceed 229 free pens */
+    gt_pen_budget(&m, 24, &b);
+    CHECK_INT(b.exact, 1); CHECK_INT(b.fold, 0);
+    gt_budget_text(&b, t, sizeof t);
+    CHECK(strstr(t, "Truecolour") != 0);
+    printf("PROBE A d3: ");
+    gt_pen_budget(&m, 3, &b);
+    printf("colours=%d shared=%d needing=%d fold=%d\n", b.colours, b.shared, b.needing, b.fold);
+    gt_budget_text(&b, t, sizeof t); printf("PROBE text: %s\n", t);
+    for (g = 0; g < GTG_COUNT; g++) {
+        if (gt_budget_share_text(&b, g, t, sizeof t)) printf("PROBE share %d: %s\n", g, t);
+    }
+    gt_pen_budget(&m, 4, &b);
+    printf("PROBE A d4: colours=%d shared=%d needing=%d fold=%d\n", b.colours, b.shared, b.needing, b.fold);
+    tm_free(&fs);
+}
+
 static void test_gthemes_te3_import_export_delete(void)
 {
     tm_fs m;
@@ -1835,6 +1875,7 @@ void suite_gthemes(void)
     test_gthemes_te4_rows();
     test_gthemes_te4_modes();
     test_gthemes_te3_import_export_delete();
+    test_gthemes_te8_budget();
     test_gthemes_parse_clears_model();
     test_gthemes_te2_baseline();
     test_gthemes_te2_overrides();

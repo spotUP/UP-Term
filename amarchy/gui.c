@@ -33,6 +33,7 @@
 #include "menu_theme.h"
 #include "leaf.h"
 #include "gthemes_dos.h"
+#include "iconpen_core.h"
 #include "desk_dos.h"
 #include "pkgs_dos.h"
 #include "menu_open.h"
@@ -1770,6 +1771,7 @@ static const char *screen_bind(gui *g)
     g->cm = g->scr->ViewPort.ColorMap;
     g->depth = (int)GetBitMapAttr(g->scr->RastPort.BitMap, BMA_DEPTH);
     g->npens = g->depth >= 8 ? 256 : (1 << g->depth);
+    gt_ed.depth = ip_screen_depth(g->depth, (g->scr->ViewPort.Modes & EXTRA_HALFBRITE) != 0);   /* TE-8.3: the pen budget row reads it */
     pick_font(g);
     at_mark("font");
     if (!g->mt) {

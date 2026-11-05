@@ -356,6 +356,12 @@ int gt_dos_pick_file(struct Screen *scr, struct Window *win, const char *title, 
     return named;
 }
 
+/* TE-8.1: Reset to Base: the edit buffer takes its base theme's model. 1 reset. */
+int gt_dos_reset_base(void)
+{
+    return gte_reset_to_base(gt_read, 0);
+}
+
 /* TE-4: load the named theme's model into the editor's edit buffer (gte_open). 1 opened; 0 when the theme has no model. */
 int gt_dos_edit_open(const char *name)
 {
