@@ -2674,6 +2674,35 @@ static void execute_rc_expands_in_scripts(void)
     CHECK_STR(slot(OUT)->data, "<7><7><7><rc=7>\nseven\n");
 }
 
+/* S4: Skip [label] [BACK], Lab and EndSkip. */
+static void execute_skip_and_lab(void)
+{
+    int inc = 0;
+    run("");
+    /* forward over lines, label match is case-insensitive, Lab is a no-op, Skip leaves rc */
+    amiscr_put("RAM:k1",
+               "failat 21\nfail 7\nSkip done\necho skipped\nLab other\necho skipped2\nlab DONE\n"
+               "echo after $RC\nSkip\necho skipped3\nLab any\necho anyok\n");
+    sh_run_text(&sh, "execute RAM:k1", &inc);
+    CHECK_STR(slot(OUT)->data, "after 7\nanyok\n");
+    /* Skip BACK loop: the counter function runs 3 times, the If ends the loop */
+    run("");
+    amiscr_put("RAM:k2", "Lab top\ninc\necho n=$n\nIf $n EQ 3 VAL\nSkip end\nEndIf\nSkip top BACK\nLab end\necho out\n");
+    sh_run_text(&sh, "n=0; inc() { n=$((n+1)); }; execute RAM:k2", &inc);
+    CHECK_STR(slot(OUT)->data, "n=1\nn=2\nn=3\nout\n");
+    /* a missing label: message, rc 10, the script ends */
+    run("");
+    amiscr_put("RAM:k3", "echo a\nSkip nolab\necho b\n");
+    sh_run_text(&sh, "execute RAM:k3; echo rc$?", &inc);
+    CHECK_INT(strstr(slot(OUT)->data, "a\nrc10\n") != 0, 1);
+    CHECK_INT(strstr(slot(ERR)->data, "Label nolab not found") != 0, 1);
+    /* EndSkip reached by a skip sets rc 5; reached in normal flow it is a no-op */
+    run("");
+    amiscr_put("RAM:k4", "Skip\necho no\nEndSkip\necho rc$RC\nfail 0\nEndSkip\necho rc$RC\n");
+    sh_run_text(&sh, "execute RAM:k4", &inc);
+    CHECK_STR(slot(OUT)->data, "rc5\nrc0\n");
+}
+
 void suite_sh_exec(void)
 {
     path_and_run_are_amiga_forms_of_path_and_background();
@@ -2684,6 +2713,7 @@ void suite_sh_exec(void)
     execute_if_else_endif();
     execute_if_condition_flags();
     execute_rc_expands_in_scripts();
+    execute_skip_and_lab();
     setenv_unsetenv_getenv_use_the_system_store();
     fault_prompt_ask_alias_and_echo_keywords();
     bind_and_inputrc_reach_the_console_line_editor();
