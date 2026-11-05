@@ -70,6 +70,7 @@
 #include "keymap_act.h"
 #include "upreq.h"
 #include "frontscr.h"
+#include "pubscr.h"
 #include "upactive.h"
 #include "../config/keymap_load.h"
 #include "slash.h"
@@ -3151,7 +3152,7 @@ static struct Screen *own_screen_open(con *c)
     ULONG mode = c->mode_id, err = 0;
     int depth = c->depth, i, n, k, extra;
     char name[32];
-    wb = LockPubScreen((UBYTE *)"Workbench");
+    wb = ipd_lock_pub_screen("Workbench"); /* FRONTSCR-PUB-LOCK: guarded, a closed or still private Workbench is 0 */
     if (wb && mode == (ULONG)INVALID_ID)
         mode = GetVPModeID(&wb->ViewPort);
     if (mode == (ULONG)INVALID_ID)
@@ -3280,11 +3281,11 @@ static struct Screen *lock_screen(con *c)
     struct Screen *scr = 0;
     DBG("own_screen", c->own_screen, c->myscreen);
     if (c->own_screen && !c->tab_host[0] && !c->foreign && (c->myscreen || own_screen_open(c)))
-        scr = LockPubScreen((UBYTE *)c->pubname); /* ours, locked as any public screen */
+        scr = ipd_lock_pub_screen(c->pubname); /* ours, locked as any public screen */
     if (!scr && c->wopt.front && !c->screen[0])
         scr = lock_front_screen();
-    if (!scr)
-        scr = LockPubScreen(c->screen[0] ? (UBYTE *)c->screen : 0);
+    if (!scr && c->screen[0])
+        scr = ipd_lock_pub_screen(c->screen);
     if (!scr)
         scr = LockPubScreen(0);
     return scr;

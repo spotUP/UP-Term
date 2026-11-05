@@ -7,6 +7,7 @@
 #include <intuition/screens.h>
 #include <proto/intuition.h>
 #include "frontscr.h"
+#include "pubscr.h"
 
 int front_screen_name(char *out, int cap)
 {
@@ -40,5 +41,5 @@ struct Screen *lock_front_screen(void)
     char name[MAXPUBSCREENNAME + 1];
     if (!front_screen_name(name, sizeof name))
         return 0;
-    return LockPubScreen((UBYTE *)name);
+    return ipd_lock_pub_screen(name);
 }
