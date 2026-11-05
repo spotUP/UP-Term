@@ -50,7 +50,8 @@ char *vsh_command_line(char **argv, const char *quoted)
             o += kl + 1;
             a += kl + 1;
         }
-        quote = !*a || strpbrk(a, " \t\";*=\n") != 0;
+        /* < and > too: unquoted they are the Shell's redirection, not text (S7c-1) */
+        quote = !*a || strpbrk(a, " \t\";*=\n<>") != 0;
         o = vsh_put_word(o, a, quote);
     }
     *o = 0;
