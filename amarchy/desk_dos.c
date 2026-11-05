@@ -727,12 +727,19 @@ static int dk_flat_pens(const gtheme *th)
     if (restore)
         sync = 1;
     if (sync && len > 0) {
+        /* RL15-IPREFS-SYSREQ: a pen map change resets the Workbench screen; with our windows open IPrefs' CloseWorkBench fails, its
+         * "System Request" (Retry/Cancel) stays up and every wait below runs to its timeout. Same rule as dk_apply: close first. */
+        int reset = desk_pens_reset(live, nlive, flat, depth), was = 0;
         idle = dk_iprefs_idle_mask();
         desk_dos_flat_pens_writes++;
+        if (reset)
+            was = dk_windows_close();
         if (dk_put_palette(buf, len)) {
             dk_wait_reset(before, flat, depth);
             dk_wait_iprefs(idle);
         }
+        if (reset)
+            dk_windows_open(was);
     }
     if (own || theme) {
         dk_live_want = 1;
