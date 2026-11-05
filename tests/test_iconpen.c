@@ -8,7 +8,6 @@ static void theme(gtheme *t)
 {
     const char *s = "name = ipt\nbackground = #101820\nforeground = #e0e8f0\ndark_foreground = #607080\naccent = #ff8800\n"
                     "selection = #304860\nmuted = #8090a0\n";
-    memset(t, 0, sizeof *t); /* the model pointer (TE-1.6) must start at 0 */
     gt_parse(s, (long)strlen(s), t);
 }
 

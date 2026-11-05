@@ -181,6 +181,9 @@ void gt_parse(const char *buf, long len, gtheme *out)
     gtheme d;
     const char *m;
     gt_builtin(&d);
+    /* TE-2: gt_parse yields a v1 theme without a model; a caller that owns an attached model calls gt_free first. Every
+     * caller (a stack gtheme in gt_term_palette / gt_model_parse, the loaders after gt_builtin) then reads model == 0. */
+    out->model = 0;
     upconf_clear(&g_conf);
     upconf_parse(&g_conf, buf, len);
     /* the mode first: the foreground rule below depends on it, and every colour derived from the foreground (the

@@ -1161,8 +1161,24 @@ static void test_gthemes_model_attach(void)
     CHECK(t.model == 0);
 }
 
+/* TE-2: gt_parse itself leaves no model, whatever the gtheme held before (a stack gtheme starts with garbage); a caller that
+ * reads gt_roles_of / gt_elem_rgb after gt_parse must never follow a stale pointer */
+static void test_gthemes_parse_clears_model(void)
+{
+    gtheme t;
+    gt_roles r;
+    const char *s = "background = #101820\nforeground = #e0e8f0\naccent = #ff8800\n";
+    memset(&t, 0xA5, sizeof t);
+    gt_parse(s, (long)strlen(s), &t);
+    CHECK(t.model == 0);
+    CHECK(gt_elem_rgb(&t, 0, 0x123456UL) == 0x123456UL);
+    gt_roles_of(&t, &r);
+    CHECK(r.c[GR_ACCENT] == 0xff8800UL);
+}
+
 void suite_gthemes(void)
 {
+    test_gthemes_parse_clears_model();
     test_gthemes_te2_baseline();
     test_gthemes_te2_overrides();
     test_gthemes_model_golden();
