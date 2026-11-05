@@ -261,6 +261,11 @@ void gt_model_to_v1(const gt_model *m, gtheme *out);
  * value would pass UC_MAX_VALUE. */
 long gt_model_save_text(const gt_model *m, char *out, long cap);
 
+/* TE-2.2: a role view's element reader. The colour of element elem (normal state) when the theme's model gives that element its own
+ * ref, else fallback (the group value the view derived). A theme without a model, and an element left to follow its group, always
+ * give fallback, so a view's output with no override stays byte-equal to the group derivation. */
+uc_u32 gt_elem_rgb(const gtheme *t, int elem, uc_u32 fallback);
+
 /* TE-1.6: give t a model parsed from text (heap, freed by gt_free), and gt_load that attaches it. gt_load itself never
  * allocates: callers copy gtheme by value. */
 int gt_model_attach(gtheme *t, const char *buf, long len);

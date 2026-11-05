@@ -151,13 +151,31 @@ void desk_flat_state(int flat, int gadgets, flat_state *s)
 void desk_flat_inbar(const gtheme *t, flat_state *s)
 {
     gt_roles r;
+    uc_u32 inbar, sel;
     gt_roles_of(t, &r);
-    s->inbar_rgb[0] = (unsigned char)(r.c[GR_INACTIVE] >> 16);
-    s->inbar_rgb[1] = (unsigned char)(r.c[GR_INACTIVE] >> 8);
-    s->inbar_rgb[2] = (unsigned char)r.c[GR_INACTIVE];
-    s->sel_rgb[0] = (unsigned char)(r.c[GR_SELECTION] >> 16);      /* S33-PREFS-SKIN-FAIL: amarchy-flat obtains the button fill pen from this */
-    s->sel_rgb[1] = (unsigned char)(r.c[GR_SELECTION] >> 8);
-    s->sel_rgb[2] = (unsigned char)r.c[GR_SELECTION];
+    inbar = desk_inbar_rgb(t);
+    sel = gt_elem_rgb(t, GTE_BUTTON_FACE, r.c[GR_SELECTION]);
+    s->inbar_rgb[0] = (unsigned char)(inbar >> 16);
+    s->inbar_rgb[1] = (unsigned char)(inbar >> 8);
+    s->inbar_rgb[2] = (unsigned char)inbar;
+    s->sel_rgb[0] = (unsigned char)(sel >> 16);      /* S33-PREFS-SKIN-FAIL: amarchy-flat obtains the button fill pen from this */
+    s->sel_rgb[1] = (unsigned char)(sel >> 8);
+    s->sel_rgb[2] = (unsigned char)sel;
+}
+
+/* TE-2.3: the Window Title Bar Inactive element (S32-INACTIVE-BAR); the group Inactive when the model gives it no ref */
+uc_u32 desk_inbar_rgb(const gtheme *t)
+{
+    gt_roles r;
+    gt_roles_of(t, &r);
+    return gt_elem_rgb(t, GTE_TITLE_BAR_INACTIVE, r.c[GR_INACTIVE]);
+}
+
+/* TE-2.3: the Scroll Knob element; the group Muted Text when the model gives it no ref. flat_state has no knob colour field yet
+ * (the v5 layout is TE-6), so this is the reader TE-6 writes into the state. */
+uc_u32 desk_knob_rgb(const gtheme *t)
+{
+    return gt_elem_rgb(t, GTE_SCROLL_KNOB, desk_role(t, DK_MUTED));
 }
 
 void desk_pens_for(int flat, unsigned char pens[DK_SLOTS])
@@ -336,8 +354,13 @@ uc_u32 desk_live_baseline(const unsigned char *saved, long savedlen, int pen, in
 
 uc_u32 desk_pen_colour(const gtheme *t, int pen, int flat_backdrop)
 {
+    /* TE-2.2: Desktop Backdrop, Requester Background and Button Face override their pen when the model gives them a ref */
     if (pen == desk_backdrop_pen())
-        return flat_backdrop ? gt_darker(t) : t->muted; /* flat: the dark tone, whether flat or the desktop-theme part writes the tile */
+        return gt_elem_rgb(t, GTE_DESKTOP_BACKDROP, flat_backdrop ? gt_darker(t) : t->muted); /* flat: the dark tone, whether flat or the desktop-theme part writes the tile */
+    if (pen == DK_BG)
+        return gt_elem_rgb(t, GTE_REQUESTER_BACKGROUND, desk_role(t, pen));
+    if (pen == DK_SELECTION)
+        return gt_elem_rgb(t, GTE_BUTTON_FACE, desk_role(t, pen));
     return desk_role(t, pen);
 }
 

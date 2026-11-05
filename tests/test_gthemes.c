@@ -6,7 +6,9 @@
 #include <string.h>
 #include "../amarchy/amconf_core.h"
 #include "../amarchy/desk_core.h"
+#include "../amarchy/flat_core.h"
 #include "../amarchy/gthemes_core.h"
+#include "../amarchy/iconpen_core.h"
 #include "../amarchy/menu_core.h"
 #include "../amarchy/menu_theme.h"
 #include "../amarchy/pen_cache.h"
@@ -895,6 +897,187 @@ static void test_gthemes_model_golden(void)
     }
 }
 
+
+/* ---- TE-2: the role consumers read element refs where an element exists; the group value stays the fallback ----------------
+ * te2_view is every colour the consumers hand out for one theme: the menu roles, the desk roles and pen colours, the icon pen
+ * blends and the two flat_state colours. te2_digest folds it to one number so a whole theme compares in one check. */
+typedef struct te2_view {
+    uc_u32 menu[MT_ROLES];
+    uc_u32 role[DK_ROLES];
+    uc_u32 pen[2][DK_ROLES];
+    uint8_t icon[2][IP_PENS][3];
+    unsigned char inbar[3], sel[3];
+} te2_view;
+
+static void te2_capture(const gtheme *t, te2_view *v)
+{
+    flat_state fs;
+    int i, flat;
+    memset(v, 0, sizeof *v);
+    menu_theme_roles_gui(t, v->menu);
+    for (i = 0; i < DK_ROLES; i++) {
+        v->role[i] = desk_role(t, i);
+        v->pen[0][i] = desk_pen_colour(t, i, 0);
+        v->pen[1][i] = desk_pen_colour(t, i, 1);
+    }
+    for (flat = 0; flat < 2; flat++)
+        ip_colours(t, ip_ground(t, flat, 0), v->icon[flat]);
+    memset(&fs, 0, sizeof fs);
+    desk_flat_inbar(t, &fs);
+    memcpy(v->inbar, fs.inbar_rgb, 3);
+    memcpy(v->sel, fs.sel_rgb, 3);
+}
+
+static unsigned long te2_digest(const te2_view *v)
+{
+    const unsigned char *p = (const unsigned char *)v;
+    unsigned long h = 2166136261UL;
+    size_t i;
+    for (i = 0; i < sizeof *v; i++)
+        h = ((h ^ p[i]) * 16777619UL) & 0xFFFFFFFFUL;
+    return h;
+}
+
+/* captured from main (3e4027bd) before TE-2, in shipped[] order */
+static const unsigned long te2_base[] = {
+    0xbd82649dUL /* catppuccin-latte */,
+    0xd01ab843UL /* catppuccin */,
+    0xe4b792c0UL /* ethereal */,
+    0x361cbeddUL /* everforest */,
+    0x40e65359UL /* flexoki-light */,
+    0x21913d56UL /* gruvbox */,
+    0x1bd4a003UL /* hackerman */,
+    0x1d8ea28eUL /* jade-horse */,
+    0x002d1687UL /* kanagawa */,
+    0x1d476c3dUL /* last-horizon */,
+    0x916023e2UL /* lumon */,
+    0xd1c016fbUL /* lupine */,
+    0x897675d6UL /* matte-black */,
+    0x43d14065UL /* miasma */,
+    0xd3f320eaUL /* nord */,
+    0x75e0c7f0UL /* retro-82 */,
+    0xaaa24214UL /* ristretto */,
+    0xe577544eUL /* rose-pine */,
+    0x34814e92UL /* solitude */,
+    0x07209f4bUL /* starship */,
+    0x3b6c1589UL /* tokyo-night */,
+    0x8b1d1921UL /* vantablack */,
+    0x33fb808eUL /* white */
+};
+
+static void test_gthemes_te2_baseline(void)
+{
+    int i;
+    CHECK_INT((int)(sizeof te2_base / sizeof te2_base[0]), NSHIPPED);
+    for (i = 0; i < NSHIPPED; i++) {
+        gtheme t;
+        te2_view v;
+        load_shipped(shipped[i].name, &t);
+        te2_capture(&t, &v);
+        CHECK(i < (int)(sizeof te2_base / sizeof te2_base[0]) && te2_digest(&v) == te2_base[i]);
+        /* the same theme with its v1 model attached (no element overrides) gives the same view */
+        {
+            char path[200];
+            long n;
+            snprintf(path, sizeof path, THEME_DIR "/%s.theme", shipped[i].name);
+            n = read_file(path, te_buf, (long)sizeof te_buf);
+            CHECK(gt_model_attach(&t, te_buf, n));
+            te2_capture(&t, &v);
+            CHECK(i < (int)(sizeof te2_base / sizeof te2_base[0]) && te2_digest(&v) == te2_base[i]);
+            gt_free(&t);
+        }
+    }
+}
+
+#define TE2_OVER 0x123456UL
+
+/* give element elem the colour TE2_OVER (normal state) on a nord theme with its model attached; base is the view before */
+static void te2_override(gtheme *t, int elem, te2_view *base, te2_view *over)
+{
+    gt_ref r;
+    long n = read_file(THEME_DIR "/nord.theme", te_buf, (long)sizeof te_buf);
+    CHECK(gt_model_attach(t, te_buf, n));
+    te2_capture(t, base);
+    CHECK(gt_ref_parse(t->model, "#123456", &r));
+    t->model->elem[elem][GT_ST_NORMAL] = r;
+    te2_capture(t, over);
+}
+
+/* expect: base patched by the caller must equal over; when icons is set the icon blends must have changed instead */
+static void te2_expect(const te2_view *want, const te2_view *over, int icons)
+{
+    te2_view w = *want;
+    if (icons)
+        CHECK(memcmp(w.icon, over->icon, sizeof w.icon) != 0);
+    memcpy(w.icon, over->icon, sizeof w.icon);
+    CHECK(memcmp(&w, over, sizeof w) == 0);
+}
+
+/* TE-2.2 / TE-2.3: per consumer, an element override changes exactly the slot it names and nothing else */
+static void test_gthemes_te2_overrides(void)
+{
+    gtheme t;
+    te2_view b, o, w;
+    int i, f;
+    static const struct { int elem, slot; } menu[] = {
+        { GTE_MENU_BACKGROUND, MT_BG }, { GTE_MENU_TEXT, MT_TEXT }, { GTE_MENU_SELECTED_TEXT, MT_SELTEXT },
+        { GTE_MENU_HEADER, MT_THEME_ACCENT }, { GTE_SUCCESS_TEXT, MT_OK }, { GTE_FAILURE_TEXT, MT_FAIL } };
+    for (i = 0; i < (int)(sizeof menu / sizeof menu[0]); i++) {
+        gt_builtin(&t);
+        te2_override(&t, menu[i].elem, &b, &o);
+        CHECK(b.menu[menu[i].slot] != TE2_OVER);
+        w = b;
+        w.menu[menu[i].slot] = TE2_OVER;
+        te2_expect(&w, &o, 0);
+        gt_free(&t);
+    }
+    /* desk pen colours: Desktop Backdrop moves the backdrop pen (and the icon ground that is that pen), Requester Background pen DK_BG,
+     * Button Face pen DK_SELECTION and the flat button fill; desk_role, the written-prefs view, never moves */
+    gt_builtin(&t);
+    te2_override(&t, GTE_DESKTOP_BACKDROP, &b, &o);
+    w = b;
+    for (f = 0; f < 2; f++)
+        w.pen[f][desk_backdrop_pen()] = TE2_OVER;
+    te2_expect(&w, &o, 1);
+    gt_free(&t);
+    te2_override(&t, GTE_REQUESTER_BACKGROUND, &b, &o);
+    w = b;
+    for (f = 0; f < 2; f++)
+        w.pen[f][DK_BG] = TE2_OVER;
+    te2_expect(&w, &o, 0);
+    gt_free(&t);
+    te2_override(&t, GTE_BUTTON_FACE, &b, &o);
+    w = b;
+    for (f = 0; f < 2; f++)
+        w.pen[f][DK_SELECTION] = TE2_OVER;
+    w.sel[0] = 0x12; w.sel[1] = 0x34; w.sel[2] = 0x56;
+    te2_expect(&w, &o, 0);
+    gt_free(&t);
+    /* the icon pens: each element moves the blends and nothing else */
+    {
+        static const int el[] = { GTE_ICON_FOREGROUND, GTE_ICON_ACCENT, GTE_ICON_MUTED, GTE_ICON_SELECTION_PLATE };
+        for (i = 0; i < 4; i++) {
+            te2_view o2;
+            te2_override(&t, el[i], &b, &o2);
+            te2_expect(&b, &o2, 1);
+            gt_free(&t);
+        }
+    }
+    /* TE-2.3: Window Title Bar Inactive moves inbar_rgb alone; Scroll Knob has its own reader and moves no view */
+    te2_override(&t, GTE_TITLE_BAR_INACTIVE, &b, &o);
+    CHECK_INT(desk_inbar_rgb(&t), TE2_OVER);
+    w = b;
+    w.inbar[0] = 0x12; w.inbar[1] = 0x34; w.inbar[2] = 0x56;
+    te2_expect(&w, &o, 0);
+    gt_free(&t);
+    te2_override(&t, GTE_SCROLL_KNOB, &b, &o);
+    CHECK_INT(desk_knob_rgb(&t), TE2_OVER);
+    te2_expect(&b, &o, 0);
+    gt_free(&t);
+    gt_builtin(&t);
+    CHECK_INT(desk_knob_rgb(&t), desk_role(&t, DK_MUTED));
+}
+
 /* TE-1.2 / TE-1.3: the ref grammar, the nesting limit and the group cycle refusal */
 static void test_gthemes_model_refs(void)
 {
@@ -980,6 +1163,8 @@ static void test_gthemes_model_attach(void)
 
 void suite_gthemes(void)
 {
+    test_gthemes_te2_baseline();
+    test_gthemes_te2_overrides();
     test_gthemes_model_golden();
     test_gthemes_model_refs();
     test_gthemes_model_cycle();
