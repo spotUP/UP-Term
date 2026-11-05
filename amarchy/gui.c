@@ -1756,7 +1756,7 @@ static void pick_font(gui *g)
     char name[GT_NAME];
     amconf_load(&ap);
     gt_dos_current(name, (int)sizeof name);   /* the saved theme, as pens_get(g, 0) reads it */
-    mt_font_spec_load(gt_dos_read, 0, name, ap.val[AM_FONT], spec, (int)sizeof spec);   /* loaded with the theme editor's model (the Menu Font lives there; gt_dos_load_current attaches none) */   /* the theme's Menu Font, else AM_FONT ("name:size", as the terminal's font key), else built-in */
+    mt_font_spec_load(gt_dos_read, 0, name, ap.val[AM_FONT], spec, (int)sizeof spec);   /* the theme's Menu Font (loaded with the editor's model; gt_dos_load_current attaches none), else AM_FONT ("name:size"), else built-in */
     g->mt = mt_open(g->scr, square, spec);
 }
 
