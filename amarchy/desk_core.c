@@ -203,7 +203,11 @@ int desk_reset_done(const void *before, const void *now, const unsigned short *l
 
 int desk_editor_waits_iprefs(const char *editor)
 {
-    return editor && (!strcmp(editor, "Workbench") || !strcmp(editor, "WBPattern"));
+    /* S57-START-POINTER-HANG: Palette and Pointer too. The start apply ran SYS:Prefs/Pointer USE straight after the Palette USE,
+     * while IPrefs still worked on the palette notification; on 3.2 the Pointer editor then never exited after its ENV: write
+     * (rig 134, 2026-11-05), Amarchy blocked in SystemTags before its port, and at boot the system froze. */
+    return editor && (!strcmp(editor, "Workbench") || !strcmp(editor, "WBPattern") || !strcmp(editor, "Palette") ||
+                      !strcmp(editor, "Pointer"));
 }
 
 int desk_iprefs_idle(int have, int waiting, unsigned long sigwait, unsigned long recvd, unsigned long idle_mask)
