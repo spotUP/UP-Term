@@ -46,3 +46,16 @@ Verdict: at 640x256x8 the zoom gadget does NOT draw black. Title-gadget-black NO
 no code change. Screenshot: ~/Desktop/upterm-shots/title-gadget-depth8-rig143.png. Caveat: with palette-flat-pen8 USE
 (skipped, it crashes the rig) the pens differ; the two code leads (flat_title_span first-8 scan, c2_get_pens BACKGROUNDPEN
 fallback) stay unproven. Reproduction may need a window with gadgets beyond the 8 scanned or a SetWindowTitles repaint.
+
+## Run 4 (UPDemo 15 exit, depth 8, 640x256, 2026-11-05, rig 143, OS 3.2, 060 max, worktree build of 96ef3a03)
+Rig: `--max --os 32 --allow-stale-base` (boots 640x256 depth=8). amarchy-flat started by hand (flat=on). UPDemo assets copied
+to VTCX:Apps/share/updemo (rig had none). XCON shell NewShell XCON:0/11/640/240/UPDemoShell/CLOSE (a 600 px window fails:
+"UPDemo: the window is 72x20, it needs 76x20"). `UPDemo 15` run, title became "UP-Term demo" (OSC 2), then `q`.
+- Before demo: title "UPDemoShell" text aaaaaa on band 6688bb; close, zoom, depth glyphs aaaaaa on 6688bb.
+- After exit: uitree window title is "" (empty string), flat calls 204, flat=on. Title strip = 6688bb only: BLANK TITLE reproduced.
+- Gadgets after exit are pixel-identical to before: close x8..11 y14..18 aaaaaa, zoom x600..611 and depth x620..636 glyphs
+  aaaaaa on 6688bb, bottom line y21 black. NO black block, close gadget NOT missing. Not reproduced at 640x256x8 stock palette.
+- So: the blank title is the window title being "" after UPDemo's title pop (the title string, not a flat fill). Which code
+  restores "" (handler push/pop 22;0t / 23;0t, UPDemo line 2741) is not yet traced; not tested with flat off (call budget).
+  flat_title_span / c2_get_pens leads stay unproven for the black block; gadgets drawn correctly here.
+Shot: ~/Desktop/upterm-shots/title-after-updemo15-rig143.png. Palette USE not run.
