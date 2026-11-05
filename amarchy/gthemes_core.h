@@ -440,4 +440,41 @@ void gt_budget_text(const gt_budget *b, char *out, int n);
 /* the share line of group g ("Text shares a pen with Surface"); 0 and out empty when g is alone or the screen is not shallow */
 int gt_budget_share_text(const gt_budget *b, int g, char *out, int n);
 
+
+/* TE-10.2: the screen rules, ENVARC:Amarchy/screen-themes (ENV: copy). Line 1 "default all|workbench|none", then one rule per line,
+ * in order: "<pattern> = <theme>|exclude [takeover]". Pure: the text comes in and goes out as a buffer. */
+#define GT_SCR_MAX 32    /* rules kept */
+#define GT_SCR_PAT 140   /* a screen name (139) or pattern, with the terminator */
+#define GT_SCR_ALL 0
+#define GT_SCR_WORKBENCH 1
+#define GT_SCR_NONE 2
+typedef struct gt_screen_rule {
+    char pat[GT_SCR_PAT];  /* AmigaDOS pattern (#? ? #c), compared without case */
+    char theme[GT_NAME];   /* theme name; empty when exclude */
+    int exclude;           /* 1 = leave the screen untouched */
+    int takeover;          /* Take Over Palette */
+} gt_screen_rule;
+typedef struct gt_screen_rules {
+    int enabled;           /* the on/off key screen-themes (AM_SCREENTHEMES); 0 = today's behaviour */
+    int def;               /* GT_SCR_* : what a screen with no matching rule gets */
+    int n;
+    gt_screen_rule rule[GT_SCR_MAX];
+} gt_screen_rules;
+/* No text (len 0) gives default workbench and no rules; enabled is set to 1. A theme rule on the exact name Workbench is dropped
+ * (the main theme key AM_GTHEME holds it); an exclude rule on it is kept. Bad lines are skipped. */
+void gt_screen_rules_parse(const char *buf, long len, gt_screen_rules *out);
+/* The file text; exact-name rules first, pattern rules after, each group in its order. Returns the length, -1 when cap is too small. */
+long gt_screen_rules_write(const gt_screen_rules *r, char *buf, long cap);
+/* Append a rule ("exclude" as theme = Exclude); a theme rule on exact Workbench is accepted in memory, not written. 1 ok, 0 full. */
+int gt_screen_rules_add(gt_screen_rules *r, const char *pat, const char *theme, int takeover);
+/* Remove the first rule whose pattern equals pat (no case); 1 when one went. */
+int gt_screen_rules_remove(gt_screen_rules *r, const char *pat);
+/* 1 when pat has no wildcard (an exact name, as a tick in the screen list writes it). */
+int gt_screen_exact(const char *pat);
+/* AmigaDOS pattern match without case: #? any run, ? one char, #c any run of c. 1 on match. */
+int gt_screen_match(const char *pat, const char *name);
+/* The theme for a public screen name. Returns 1 and fills theme (cap bytes; an unusable name becomes GT_DEFAULT) and *takeover,
+ * or 0 when the screen stays untouched. Key off: only Workbench, with main_theme. */
+int gt_screen_theme_of(const gt_screen_rules *r, const char *name, const char *main_theme, char *theme, int cap, int *takeover);
+
 #endif
