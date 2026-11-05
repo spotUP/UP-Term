@@ -781,17 +781,31 @@ static int gui_ask_value(void *ctx, const char *label, const char *usage, char *
 static int gui_run_job(void *ctx, const char *line, const char *title);
 static void gui_refused(void *ctx, const char *label, long rc, const char *answer);
 
+static void gui_ui_fill(gui *g, lf_ui *ui)
+{
+    ui->ask_value = gui_ask_value;
+    ui->refused = gui_refused;
+    ui->ctx = g;
+    ui->self_in_mru = 0;
+    ui->win = g->win;
+    ui->run_job = gui_run_job;
+}
+
+/* TE-4.3: every path that ends the menu (Launch, the hotkey toggled again, Workbench closing) asks Save / Discard / Cancel first
+ * when the Theme Editor holds unsaved changes. 0 = Cancel (or a failed Save): the caller keeps the menu open and drops the exit. */
+static int exit_ok(gui *g)
+{
+    lf_ui ui;
+    gui_ui_fill(g, &ui);
+    return lf_leave_editor(g->node, "", &ui);
+}
+
 static void go_up(gui *g)
 {
     char up[KM_ID * 2];
     lf_ui ui;
     int has_up = mn_parent(g->node, up, sizeof up);
-    ui.ask_value = gui_ask_value;
-    ui.refused = gui_refused;
-    ui.ctx = g;
-    ui.self_in_mru = 0;
-    ui.win = g->win;
-    ui.run_job = gui_run_job;
+    gui_ui_fill(g, &ui);
     if (!lf_leave_editor(g->node, has_up ? up : "", &ui))
         return;                          /* unsaved theme changes: Cancel, or a Save that failed */
     if (has_up) {
@@ -967,6 +981,8 @@ static void activate_pkg(gui *g, const mn_item *it)
     if (row.ix >= 0 && row.seg[0] == PK_ACT_LAUNCH) {
         char path[PK_PATH + 16];
         if (pk_row_path(ixs.pk.r[row.ix].launch, path, (int)sizeof path)) {
+            if (!exit_ok(g))
+                return;                     /* Cancel aborts the launch */
             strncpy(g->ixpath, path, sizeof g->ixpath - 1);
             strncpy(g->ixlabel, ixs.pk.r[row.ix].name, sizeof g->ixlabel - 1);
             g->stop = 1;                    /* lf_open_index starts it, as for an index row */
@@ -991,6 +1007,10 @@ static void activate(gui *g, int right)
     it = &g->it[g->idx[g->sel - g->shift]];
     if (MN_IS_INDEX(it)) {
         if (ix_launch_path(&ixs, it, g->ixpath, sizeof g->ixpath)) {
+            if (!exit_ok(g)) {
+                g->ixpath[0] = 0;           /* Cancel aborts the launch */
+                return;
+            }
             strncpy(g->ixlabel, it->label, sizeof g->ixlabel - 1);
             g->stop = 1;
         }
@@ -1011,6 +1031,8 @@ static void activate(gui *g, int right)
     } else if (lf_plan(km.menu[it->row].kind) == LF_SCAN) {
         start_scan(g, it);
     } else {
+        if (!exit_ok(g))
+            return;                         /* Cancel aborts the launch */
         g->chosen = it->row;
         g->stop = 1;
     }
@@ -1297,6 +1319,8 @@ static void event_loop(gui *g)
             job_tick(g);
         /* MENU-TOGGLE: the menu hotkey pressed again (Ctrl-C); WBRESET-EXT: another program closes the Workbench (Ctrl-F) */
         if (got & (SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F)) {
+            if (!exit_ok(g))
+                continue;                   /* Cancel: the menu stays open */
             g->quit = g->stop = 1;
             break;
         }
@@ -1335,7 +1359,7 @@ static void event_loop(gui *g)
                 g->active_seen = 1;
                 break;
             case IDCMP_INACTIVEWINDOW:      /* a launcher: another window taking the focus closes it */
-                if (g->active_seen)
+                if (g->active_seen && !lf_exit_needs_ask(g->node))   /* unsaved theme edits keep the window open */
                     g->quit = g->stop = 1;
                 break;
             }

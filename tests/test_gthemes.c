@@ -1493,8 +1493,14 @@ static void test_gthemes_te4_leave(void)
     CHECK_INT(lf_leave_decide(""), LF_LEAVE_CANCEL);
     CHECK_INT(lf_leave_decide("x"), LF_LEAVE_CANCEL);
     CHECK_INT(lf_leave_decide(0), LF_LEAVE_CANCEL);
+    /* TE-4.3: Launch and window close end the menu from the node it is on: dirty inside the editor asks, anywhere else never */
+    CHECK_INT(lf_exit_needs_ask("settings.theme"), 1);
+    CHECK_INT(lf_exit_needs_ask("settings.theme.swatches"), 1);
+    CHECK_INT(lf_exit_needs_ask("settings"), 0);
+    CHECK_INT(lf_exit_needs_ask(""), 0);
     gte_revert();                                                  /* Discard is this call: the prompt no longer fires */
     CHECK_INT(lf_leave_needed("settings.theme", ""), 0);
+    CHECK_INT(lf_exit_needs_ask("settings.theme"), 0);             /* clean: close and launch go straight through */
 }
 
 static void test_gthemes_te4_dispatch(void)

@@ -376,8 +376,13 @@ static int menu_levels(const char *start)
         at_mark("ready");
         ui_on_tick(on_tick, 0);
         rc = ui_run();
-        if (closing)
+        if (closing) {
+            if (!lf_leave_editor(node, "", &leaf_ui)) {   /* TE-4.3: unsaved theme edits; Cancel keeps the menu open */
+                closing = 0;
+                continue;
+            }
             return 255;                    /* MENU-TOGGLE: leave from any level, as Escape at the root */
+        }
         if (rc == UI_TICK) {                   /* the status row changed: rebuild, cursor stays */
             int s = ui_selected();
             keep_status = shift && s == 0;
@@ -445,6 +450,8 @@ static int menu_levels(const char *start)
             char path[IX_PATH];
             if (!ix_launch_path(&ixs, &it[i], path, sizeof path))
                 continue;
+            if (!lf_leave_editor(node, "", &leaf_ui))
+                continue;                          /* TE-4.3: Cancel aborts the launch */
             rc = lf_open_index(it[i].label, path, &leaf_ui);
             {   /* a theme pick saved the theme: back out ONE level (the saved theme is the one the closing restore keeps) */
                 char up[KM_ID * 2];
@@ -467,6 +474,8 @@ static int menu_levels(const char *start)
             mn_item row = it[i];                /* the level is rebuilt below */
             int back = lf_pkg_back_levels(&row), k;
             job_ran = 0;
+            if (row.ix >= 0 && row.seg[0] == PK_ACT_LAUNCH && !lf_leave_editor(node, "", &leaf_ui))
+                continue;                           /* TE-4.3: Cancel aborts the launch */
             if (row.ix >= 0 && row.seg[0] && row.seg[0] != PK_ACT_NO) {
                 rc = lf_pkg_action(&ixs, &row, &leaf_ui);
                 if (!job_ran)
@@ -509,6 +518,8 @@ static int menu_levels(const char *start)
             if (lf_plan(km.menu[it[i].row].kind) == LF_SCAN && ix_watcher_adopt_live(&wt, have0, &p0, alive0))
                 continue;                               /* one scanner at a time: show the live one */
             job_ran = 0;
+            if (lf_plan(km.menu[it[i].row].kind) != LF_SCAN && !lf_leave_editor(node, "", &leaf_ui))
+                continue;                           /* TE-4.3: Cancel aborts the launch */
             rc = lf_run(&km.menu[it[i].row], &leaf_ui);
             if (job_ran) {                       /* the job view closed: the menu again, on the same row */
                 if (closing)

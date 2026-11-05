@@ -957,6 +957,11 @@ int lf_leave_needed(const char *from, const char *to)
     return gte_dirty() && in_theme_editor(from) && !in_theme_editor(to);
 }
 
+int lf_exit_needs_ask(const char *node)
+{
+    return lf_leave_needed(node, "");
+}
+
 int lf_leave_decide(const char *answer)
 {
     if (!answer)
