@@ -165,6 +165,7 @@ DH0:C/Assign >NIL: VTC: VTCX:
 Echo >BOOTX:boot.log "boot started"
 C:Run >NIL: C:Execute BOOTX:go
 BOOTX:bootcap BOOTX:boot.console C:Execute DH0:S/Startup-Sequence
+EndCLI >NIL:
 """
 # BOOT-CONSOLE-CAPTURE: the Startup-Sequence runs in a CLI whose standard output is BOOTX:boot.console (bootcap,
 # tools/rig/bootcap.c). `C:Execute DH0:S/Startup-Sequence >BOOTX:boot.console` left the file 0 bytes: Execute only puts
@@ -172,6 +173,10 @@ BOOTX:bootcap BOOTX:boot.console C:Execute DH0:S/Startup-Sequence
 # script's lines with its own output. `Run >file` redirects Run alone (the file held "[CLI 3]", the child printed into
 # a console window that raised IPrefs' screen-reset request; rig 150, 2026-11-05). bootcap writes "boot console open"
 # first (BOOT_CONSOLE_MARKER), so a clean boot's file is not empty and start can tell capture from no capture.
+# RIG-BOOT-SHELL-OPEN: the EndCLI after the bootcap line ends the boot shell. The sequence's own EndCLI ends only
+# bootcap's child CLI; a boot shell left at the end of its script goes interactive and opens its "AmigaDOS" window
+# on the Workbench (rig 146, 2026-11-05: the window stayed on the owner's screen and the install reboot failed on
+# IPrefs' screen-reset request).
 # LIBS: as the rig runs: the patched ixemul first, then the system's (with
 # Classes and MUI), ncurses and AmiSSL's drawer. The boot script uses it, and
 # install_rig.py puts it back after testing Install/Uninstall against the
@@ -656,7 +661,10 @@ OS_HOOKS = "Assign >NIL: VTC: VTCX:\nRun >NIL: C:Execute BOOTX:go\n"
 # the bootcap line there never ran and every --os start failed the "boot console open" gate (rig 96, 2026-11-05).
 # The copy's Startup-Sequence moves to S:Startup-Sequence.os and a one-line wrapper runs it through bootcap.
 OS_STARTUP_ORIG = "Startup-Sequence.os"
-OS_STARTUP_WRAP = "BOOTX:bootcap BOOTX:boot.console C:Execute S:%s\n" % OS_STARTUP_ORIG
+# The boot shell ends itself after the sequence (RIG-BOOT-SHELL-OPEN): bootcap runs the sequence in a child CLI, so
+# the sequence's own EndCLI ends the child only. Without this line the boot shell goes interactive and opens its
+# "AmigaDOS" window on the Workbench, and IPrefs' "reset the Workbench screen" requester then never clears.
+OS_STARTUP_WRAP = "BOOTX:bootcap BOOTX:boot.console C:Execute S:%s\nEndCLI >NIL:\n" % OS_STARTUP_ORIG
 
 
 def os_tree_bootcap(tree):

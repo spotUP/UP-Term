@@ -43,8 +43,26 @@ class BootConsole(unittest.TestCase):
             for _ in range(2):
                 rig.os_tree_bootcap(d)
                 self.assertEqual(["BOOTX:bootcap", "BOOTX:boot.console", "C:Execute", "S:Startup-Sequence.os"],
-                                 (s / "Startup-Sequence").read_text().split())
+                                 (s / "Startup-Sequence").read_text().splitlines()[0].split())
                 self.assertEqual("SetPatch QUIET\nLoadWB\nEndCLI >NIL:\n", (s / "Startup-Sequence.os").read_text())
+
+    def test_boot_shell_ends_after_the_startup_sequence_so_no_amigados_window_stays_open(self):
+        # RIG-BOOT-SHELL-OPEN (rig 146, owner, 2026-11-05): bootcap runs the Startup-Sequence in a child CLI, so the
+        # sequence's own EndCLI ends the child only. The boot shell reached the end of its script, went interactive
+        # and opened its "AmigaDOS" window on the Workbench; with that window open IPrefs' "reset the Workbench
+        # screen" requester stayed and the install reboot failed (RIG-IPREFS-SYSREQ). The boot shell ends itself:
+        # the bootcap line is followed by EndCLI and nothing else, in the plain boot script and in the --os wrapper.
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            s = pathlib.Path(d) / "S"
+            s.mkdir()
+            (s / "Startup-Sequence").write_text("LoadWB\nEndCLI >NIL:\n")
+            rig.os_tree_bootcap(d)
+            for name, script in (("STARTUP", rig.STARTUP), ("--os S:Startup-Sequence", (s / "Startup-Sequence").read_text())):
+                lines = [l.strip() for l in script.splitlines() if l.strip()]
+                at = [n for n, l in enumerate(lines) if l.startswith("BOOTX:bootcap ")]
+                self.assertEqual(1, len(at), name)
+                self.assertEqual(["EndCLI >NIL:"], lines[at[0] + 1:], name)
 
     def test_marker_tells_capture_from_no_capture(self):
         self.assertTrue(rig.boot_console_captured("boot console open\nSetPatch 43.6\n"))
