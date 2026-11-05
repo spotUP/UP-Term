@@ -51,6 +51,7 @@ struct Window;
 int gt_dos_pick_file(struct Screen *scr, struct Window *win, const char *title, char *out, int cap);
 /* TE-4: load the named theme into the editor buffer (gthemes_core.h gte_open). 1 opened, 0 when it has no model. */
 int gt_dos_edit_open(const char *name);
+int gt_dos_reset_base(void);   /* TE-8.1: the edit buffer takes its base theme's model */
 /* fill the Style > Theme rows (ix_add_gthemes) with the current one marked. Call after the other loaders. */
 void gt_dos_load_rows(ix_index *x);
 

@@ -11,24 +11,6 @@
 
 #define PT_DEPTH_MAX 3 /* the planes of a WBPattern tile */
 
-/* RL8: the desktop pens are a view of the role table (gt_roles_of); pen index == DK_* enum, 0..7. DK_BACKDROP's palette.prefs colour
- * stays the fail tone so the written file is byte-identical to before; live, desk_pen_colour gives the backdrop its own colour. */
-uc_u32 desk_role(const gtheme *t, int role)
-{
-    gt_roles r;
-    gt_roles_of(t, &r);
-    switch (role) {
-    case DK_BG: return r.c[GR_SURFACE];
-    case DK_DARKER: return r.c[GR_BACKGROUND];
-    case DK_FG: return r.c[GR_TEXT];
-    case DK_ACCENT: return r.c[GR_ACCENT];
-    case DK_SELECTION: return r.c[GR_SELECTION];
-    case DK_MUTED: return r.c[GR_MUTED];
-    case DK_GREEN: return r.ok;
-    default: return r.fail;
-    }
-}
-
 /* ---- byte helpers ---- */
 
 static void put16(unsigned char *p, unsigned v)

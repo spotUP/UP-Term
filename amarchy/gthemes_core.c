@@ -142,6 +142,42 @@ void gt_roles_of(const gtheme *t, gt_roles *r)
     }
 }
 
+/* RL8: the desktop pens are a view of the role table (gt_roles_of); pen index == DK_* enum, 0..7. DK_BACKDROP's palette.prefs colour
+ * stays the fail tone so the written file is byte-identical to before; live, desk_pen_colour gives the backdrop its own colour. */
+uc_u32 desk_role(const gtheme *t, int role)
+{
+    gt_roles r;
+    gt_roles_of(t, &r);
+    switch (role) {
+    case DK_BG: return r.c[GR_SURFACE];
+    case DK_DARKER: return r.c[GR_BACKGROUND];
+    case DK_FG: return r.c[GR_TEXT];
+    case DK_ACCENT: return r.c[GR_ACCENT];
+    case DK_SELECTION: return r.c[GR_SELECTION];
+    case DK_MUTED: return r.c[GR_MUTED];
+    case DK_GREEN: return r.ok;
+    default: return r.fail;
+    }
+}
+
+/* the nearest role pen: squared RGB distance over the pens DK_BG..last, strict < so a tie keeps the lower pen */
+int gt_nearest_role_pen(const gtheme *t, uc_u32 c, int depth)
+{
+    int pen, best = 0, last = depth <= 2 ? DK_ACCENT : DK_DARKER; /* 3 at depth 2, 5 (DK_DARKER) from depth 3 */
+    unsigned long bd = 0, d;
+    for (pen = 0; pen <= last; pen++) {
+        uc_u32 r = desk_role(t, pen);
+        long dr = (long)((c >> 16) & 255) - (long)((r >> 16) & 255), dg = (long)((c >> 8) & 255) - (long)((r >> 8) & 255),
+             db = (long)(c & 255) - (long)(r & 255);
+        d = (unsigned long)(dr * dr + dg * dg + db * db);
+        if (pen == 0 || d < bd) {
+            bd = d;
+            best = pen;
+        }
+    }
+    return best;
+}
+
 /* a quoted or bare text value of the file into dst (cap bytes), "" when the key is absent */
 static void str_key(char *dst, int cap, const char *key)
 {
@@ -1560,12 +1596,10 @@ static long theme_text(gt_read_fn rd, void *ctx, const char *name, char *buf, lo
 
 int gt_duplicate(const prefs_fs *fs, gt_read_fn rd, void *ctx, const char *from, const char *to, char *why, int cap)
 {
-    long n = gt_name_ok(from) ? theme_text(rd, ctx, from, g_save, (long)sizeof g_save) : -1;
-    if (n < 0) {
+    if (!gt_name_ok(from) || !gt_preset_model(rd, ctx, from, &g_smodel)) {
         why_put(why, cap, GT_SAVE_MISSING);
         return 0;
     }
-    gt_model_parse(g_save, n, &g_smodel);
     strncpy(g_smodel.base, from, GT_NAME - 1);
     g_smodel.base[GT_NAME - 1] = 0;
     return gt_save_as(fs, to, &g_smodel, why, cap);
@@ -1723,6 +1757,175 @@ int gte_open_from(gt_read_fn rd, void *ctx, const char *name)
         return 0;
     gte_open(t.model, name);
     gt_free(&t);
+    return 1;
+}
+
+/* ---- TE-8.1 presets ---- */
+int gt_preset_model(gt_read_fn rd, void *ctx, const char *name, gt_model *out)
+{
+    long n = gt_name_ok(name) ? theme_text(rd, ctx, name, g_save, (long)sizeof g_save) : -1;
+    if (n >= 0)
+        gt_model_parse(g_save, n, out);
+    else if (gt_name_ok(name) && !strcmp(name, GT_DEFAULT)) {
+        static gtheme bt;
+        gt_builtin(&bt);
+        gt_model_from_v1(&bt, out);
+    } else
+        return 0;
+    strncpy(out->name, name, GT_NAME - 1);
+    out->name[GT_NAME - 1] = 0;
+    return 1;
+}
+
+int gte_reset_to_base(gt_read_fn rd, void *ctx)
+{
+    char name[GT_NAME], base[GT_NAME];
+    if (!gt_ed.open || !gt_ed.m.base[0] || !gt_preset_model(rd, ctx, gt_ed.m.base, &g_smodel))
+        return 0;
+    strcpy(name, gt_ed.m.name);
+    strcpy(base, gt_ed.m.base);
+    gt_ed.m = g_smodel;
+    strcpy(gt_ed.m.name, name);
+    strcpy(gt_ed.m.base, base);
+    gt_ed.advanced = any_override(&gt_ed.m);
+    ed_touch();
+    return 1;
+}
+
+/* ---- TE-8.2 contrast pairs: the text side against the element it sits on ---- */
+static const struct { unsigned char text, ts, ground, gs, kind; } gt_cpair_def[] = {
+    { GTE_TITLE_TEXT, GT_ST_NORMAL, GTE_TITLE_BAR, GT_ST_NORMAL, GTC_TEXT },
+    { GTE_TITLE_TEXT_INACTIVE, GT_ST_NORMAL, GTE_TITLE_BAR_INACTIVE, GT_ST_NORMAL, GTC_TEXT },
+    { GTE_MENU_TEXT, GT_ST_NORMAL, GTE_MENU_BACKGROUND, GT_ST_NORMAL, GTC_TEXT },
+    { GTE_MENU_TEXT, GT_ST_DISABLED, GTE_MENU_BACKGROUND, GT_ST_NORMAL, GTC_MUTED },
+    { GTE_MENU_SELECTED_TEXT, GT_ST_NORMAL, GTE_MENU_SELECTION, GT_ST_NORMAL, GTC_TEXT },
+    { GTE_MENU_SELECTION, GT_ST_NORMAL, GTE_MENU_BACKGROUND, GT_ST_NORMAL, GTC_SEL },
+    { GTE_BUTTON_TEXT, GT_ST_NORMAL, GTE_BUTTON_FACE, GT_ST_NORMAL, GTC_TEXT },
+    { GTE_BUTTON_TEXT, GT_ST_DISABLED, GTE_BUTTON_FACE, GT_ST_DISABLED, GTC_MUTED },
+    { GTE_BUTTON_FACE, GT_ST_NORMAL, GTE_REQUESTER_BACKGROUND, GT_ST_NORMAL, GTC_SEL },
+    { GTE_SCROLL_KNOB, GT_ST_NORMAL, GTE_SCROLL_TRACK, GT_ST_NORMAL, GTC_SEL },
+    { GTE_HELPER_TEXT, GT_ST_NORMAL, GTE_HELPER_BACKGROUND, GT_ST_NORMAL, GTC_TEXT },
+    { GTE_TERMINAL_FOREGROUND, GT_ST_NORMAL, GTE_TERMINAL_BACKGROUND, GT_ST_NORMAL, GTC_TEXT },
+    { GTE_ICON_LABEL_TEXT, GT_ST_NORMAL, GTE_DESKTOP_BACKDROP, GT_ST_NORMAL, GTC_TEXT },
+};
+#define GT_NCPAIR ((int)(sizeof gt_cpair_def / sizeof gt_cpair_def[0]))
+
+int gt_contrast_pairs(const gt_model *m, gt_cpair out[GT_CPAIRS])
+{
+    int i;
+    for (i = 0; i < GT_NCPAIR && i < GT_CPAIRS; i++) {
+        gt_cpair *p = &out[i];
+        p->text = gt_cpair_def[i].text;
+        p->text_state = gt_cpair_def[i].ts;
+        p->ground = gt_cpair_def[i].ground;
+        p->ground_state = gt_cpair_def[i].gs;
+        p->kind = gt_cpair_def[i].kind;
+        p->floor = p->kind == GTC_SEL ? GT_FLOOR_SEL : p->kind == GTC_MUTED ? GT_FLOOR_MUTED : GT_FLOOR_TEXT;
+        p->contrast = gt_contrast(gt_resolve_rgb(m, p->text, p->text_state), gt_resolve_rgb(m, p->ground, p->ground_state));
+        p->below = p->contrast < p->floor;
+    }
+    return i;
+}
+
+int gt_contrast_warnings(const gt_model *m, int *first)
+{
+    gt_cpair p[GT_CPAIRS];
+    int i, n = gt_contrast_pairs(m, p), w = 0;
+    if (first)
+        *first = -1;
+    for (i = 0; i < n; i++)
+        if (p[i].below) {
+            if (first && *first < 0)
+                *first = i;
+            w++;
+        }
+    return w;
+}
+
+int gt_contrast_elem_warns(const gt_model *m, int elem)
+{
+    gt_cpair p[GT_CPAIRS];
+    int i, n = gt_contrast_pairs(m, p);
+    for (i = 0; i < n; i++)
+        if (p[i].below && p[i].text == elem)
+            return 1;
+    return 0;
+}
+
+/* ---- TE-8.3 pen budget ---- */
+static int is_icon_elem(int e)
+{
+    return e == GTE_ICON_FOREGROUND || e == GTE_ICON_ACCENT || e == GTE_ICON_MUTED || e == GTE_ICON_SELECTION_PLATE;
+}
+
+void gt_pen_budget(const gt_model *m, int depth, gt_budget *b)
+{
+    static gtheme t;
+    uc_u32 seen[GTE_COUNT];
+    int e, j, g, pen, nseen = 0, nneed = 0;
+    memset(b, 0, sizeof *b);
+    for (g = 0; g < GTG_COUNT; g++) {
+        b->grp_pen[g] = -1;
+        b->grp_with[g] = (signed char)g;
+    }
+    b->depth = depth;
+    gt_model_to_v1(m, &t);
+    for (e = 0; e < GTE_COUNT; e++) {
+        uc_u32 c = gt_resolve_rgb(m, e, GT_ST_NORMAL) & 0xFFFFFFUL;
+        for (j = 0; j < nseen && seen[j] != c; j++)
+            ;
+        if (j < nseen)
+            continue;
+        seen[nseen++] = c;
+        if (depth >= 4 && is_icon_elem(e))
+            continue;               /* held icon pens carry these */
+        for (pen = 0; pen < DK_ROLES; pen++)
+            if (pen != DK_GREEN && pen != DK_BACKDROP && (desk_role(&t, pen) & 0xFFFFFFUL) == c)
+                break;
+        if (pen == DK_ROLES)
+            nneed++;
+    }
+    b->colours = nseen;
+    b->shared = GTE_COUNT - nseen;
+    b->needing = nneed;
+    if (depth >= 15) {
+        b->exact = 1;
+        return;
+    }
+    b->pens = depth >= 8 ? 256 : 1 << (depth < 1 ? 1 : depth);
+    b->held = depth <= 2 ? 4 : depth == 3 ? 8 : depth == 4 ? 16 : depth == 5 ? 19 : 27;
+    b->free = b->pens - b->held;
+    b->fold = depth <= 3 ? nneed : (nneed > b->free ? nneed - b->free : 0);
+    if (depth <= 3)
+        for (g = 0; g < GTG_COUNT; g++) {
+            b->grp_pen[g] = (signed char)gt_nearest_role_pen(&t, gt_group_rgb(m, g, GT_ST_NORMAL), depth);
+            for (j = 0; j < g; j++)
+                if (b->grp_pen[j] == b->grp_pen[g]) {
+                    b->grp_with[g] = (signed char)j;
+                    break;
+                }
+        }
+}
+
+void gt_budget_text(const gt_budget *b, char *out, int n)
+{
+    if (b->exact)
+        snprintf(out, (size_t)n, "Truecolour: exact colours, %d elements share a colour", b->shared);
+    else if (b->depth <= 3)
+        snprintf(out, (size_t)n, "Screen %d colours: %d of %d colours fold to the nearest of %d pens", b->pens, b->needing, b->colours, b->held);
+    else if (b->fold > 0)
+        snprintf(out, (size_t)n, "Screen %d colours: %d of %d free pens, %d take the nearest pen", b->pens, b->needing - b->fold, b->free, b->fold);
+    else
+        snprintf(out, (size_t)n, "Screen %d colours: %d of %d free pens, %d elements share a colour", b->pens, b->needing, b->free, b->shared);
+}
+
+int gt_budget_share_text(const gt_budget *b, int g, char *out, int n)
+{
+    if (n > 0)
+        out[0] = 0;
+    if (g < 0 || g >= GTG_COUNT || b->grp_with[g] == g)
+        return 0;
+    snprintf(out, (size_t)n, "Shares a pen with %s", gt_group_defs[b->grp_with[g]].label);
     return 1;
 }
 
@@ -1979,6 +2182,7 @@ int gte_ref_step(const gt_ref *cur, int dir, char *out, int cap)
 /* ---- the rows ---- */
 #define ER_MAX 320
 #define ER_LABEL 44
+#define ER_INFO_SHARE 100 /* TE-8.3: + group id, the share line of that group on a shallow screen */
 #define ER_INFO_BASE 1
 #define ER_INFO_CONTRAST 2
 #define ER_INFO_PENS 3
@@ -2076,6 +2280,11 @@ static void er_build(void)
     er_add(PG_PAGE_THEME, SD_INFO, "base", "Base Theme")->aux = ER_INFO_BASE;
     er_add(PG_PAGE_THEME, SD_INFO, "contrast", "Contrast")->aux = ER_INFO_CONTRAST;
     er_add(PG_PAGE_THEME, SD_INFO, "pens", "Pen Budget")->aux = ER_INFO_PENS;
+    for (g = 0; g < GTG_COUNT; g++) {
+        snprintf(l, sizeof l, "Pen Share %s", gt_group_defs[g].label);
+        snprintf(k, sizeof k, "penshare-%s", gt_group_defs[g].key);
+        er_add(PG_PAGE_THEME, SD_INFO, k, l)->aux = ER_INFO_SHARE + g;
+    }
     er_add(PG_PAGE_THEME, SD_GACTION, "open", "Edit Theme...")->aux = GTA_OPEN;
     er_add(PG_PAGE_THEME, SD_GACTION, "save", "Save")->aux = GTA_SAVE;
     er_add(PG_PAGE_THEME, SD_GACTION, "saveas", "Save As...")->aux = GTA_SAVE_AS;
@@ -2172,6 +2381,13 @@ int gte_row_visible(const sd_setting *s)
         return 1;
     if (s->page == PG_PAGE_THEME_ELEMENTS && !gt_ed.advanced)
         return 0;
+    if (s->kind == SD_INFO && s->aux >= ER_INFO_SHARE) {   /* TE-8.3: only a group that shares a pen on a shallow screen */
+        gt_budget b;
+        if (gt_ed.depth <= 0 || !gt_ed.open)
+            return 0;
+        gt_pen_budget(&gt_ed.m, gt_ed.depth, &b);
+        return b.grp_with[s->aux - ER_INFO_SHARE] != s->aux - ER_INFO_SHARE;
+    }
     if (s->kind == SD_SWATCH)
         return s->aux < gt_ed.m.nswatch;
     if (s->kind == SD_ELEMENT)
@@ -2204,21 +2420,26 @@ static void info_text(int which, char *out, int n)
     if (which == ER_INFO_BASE)
         snprintf(out, (size_t)n, "%s", m->base[0] ? m->base : "none");
     else if (which == ER_INFO_CONTRAST) {
-        int w = (gt_contrast(gt_group_rgb(m, GTG_TEXT, 0), gt_group_rgb(m, GTG_BACKGROUND, 0)) < GT_FLOOR_TEXT) +
-                (gt_contrast(gt_group_rgb(m, GTG_TEXT, 0), gt_group_rgb(m, GTG_SURFACE, 0)) < GT_FLOOR_TEXT) +
-                (gt_contrast(gt_group_rgb(m, GTG_MUTED_TEXT, 0), gt_group_rgb(m, GTG_SURFACE, 0)) < GT_FLOOR_TEXT);
-        snprintf(out, (size_t)n, "%d warning%s", w, w == 1 ? "" : "s");
+        gt_cpair p[GT_CPAIRS];
+        int first, w = gt_contrast_warnings(m, &first);
+        if (w && first >= 0) {
+            gt_contrast_pairs(m, p);
+            snprintf(out, (size_t)n, "%d warning%s: %s on %s too faint", w, w == 1 ? "" : "s", gt_elem_defs[p[first].text].label,
+                     gt_elem_defs[p[first].ground].label);
+        } else
+            snprintf(out, (size_t)n, "0 warnings");
+    } else if (which >= ER_INFO_SHARE) {
+        gt_budget b;
+        gt_pen_budget(m, gt_ed.depth, &b);
+        gt_budget_share_text(&b, which - ER_INFO_SHARE, out, n);
     } else {
-        uc_u32 seen[GTE_COUNT];
-        int e, j, d = 0;
-        for (e = 0; e < GTE_COUNT; e++) {
-            uc_u32 c = gt_resolve_rgb(m, e, GT_ST_NORMAL);
-            for (j = 0; j < d && seen[j] != c; j++)
-                ;
-            if (j == d)
-                seen[d++] = c;
+        gt_budget b;
+        if (gt_ed.depth <= 0)
+            snprintf(out, (size_t)n, "screen depth unknown");
+        else {
+            gt_pen_budget(m, gt_ed.depth, &b);
+            gt_budget_text(&b, out, n);
         }
-        snprintf(out, (size_t)n, "%d distinct colours", d);
     }
 }
 
@@ -2240,6 +2461,10 @@ int gte_row_text(const sd_setting *s, char *out, int n)
         return 1;
     case SD_ELEMENT:
         ref_label(&gt_ed.m.elem[s->aux][s->aux2], &gt_ed.m.group[gt_elem_defs[s->aux].group][s->aux2], out, n);
+        if (s->aux2 == GT_ST_NORMAL && gt_contrast_elem_warns(&gt_ed.m, s->aux)) {   /* TE-8.2, D8: the warning on the row */
+            size_t l = strlen(out);
+            snprintf(out + l, (size_t)n - l, " (low contrast)");
+        }
         return 1;
     case SD_INT:
         snprintf(out, (size_t)n, "%d", (int)*look_byte(s));

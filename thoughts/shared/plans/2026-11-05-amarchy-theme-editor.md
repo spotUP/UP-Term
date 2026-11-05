@@ -358,10 +358,10 @@ Host tests: the reset decision function returns reset-bound only for the fields 
 
 Files: `amarchy/gthemes_core.[ch]`, `amarchy/gui.c`, `tests/test_gthemes.c`.
 
-- [ ] TE-8.1 Presets: the shipped themes and `gt_builtin` as starting points (Duplicate Theme); Reset to Base.
-- [ ] TE-8.2 Contrast warning: reuse the contrast measure behind `GT_FLOOR_TEXT` / `GT_FLOOR_SEL` / `GT_FLOOR_MUTED`
+- [x] TE-8.1 Presets: the shipped themes and `gt_builtin` as starting points (Duplicate Theme); Reset to Base.
+- [x] TE-8.2 Contrast warning: reuse the contrast measure behind `GT_FLOOR_TEXT` / `GT_FLOOR_SEL` / `GT_FLOOR_MUTED`
   (grep `GT_FLOOR_TEXT` in gthemes_core.c); each text element against the element it sits on; behaviour per D8.
-- [ ] TE-8.3 `gt_pen_budget` per section 6; meter row on the top page and per-group share lines on shallow screens.
+- [x] TE-8.3 `gt_pen_budget` per section 6; meter row on the top page and per-group share lines on shallow screens.
 
 Host tests: budget counts for depth 3, 4, 8 and truecolour on two fixed models with stated numbers (tokyo-night with no
 overrides: depth 3 = 8 of 8, 0 shared beyond the role fold; the test fixes the exact numbers when written); contrast
