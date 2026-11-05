@@ -2758,7 +2758,7 @@ static void scr_name(char *out, int cap, const char *name)
 
 int gt_screen_theme_of(const gt_screen_rules *r, const char *name, const char *main_theme, char *theme, int cap, int *takeover)
 {
-    int i, wb = is_wb_exact(name);
+    int i, pass, wb = is_wb_exact(name);
     if (takeover)
         *takeover = 0;
     if (!r->enabled) {
@@ -2767,16 +2767,21 @@ int gt_screen_theme_of(const gt_screen_rules *r, const char *name, const char *m
         scr_name(theme, cap, main_theme);
         return 1;
     }
-    for (i = 0; i < r->n; i++) {
-        const gt_screen_rule *x = &r->rule[i];
-        if (!gt_screen_match(x->pat, name))
-            continue;
-        if (x->exclude)
-            return 0;
-        if (takeover)
-            *takeover = x->takeover;
-        scr_name(theme, cap, is_wb_exact(x->pat) ? main_theme : x->theme);
-        return 1;
+    /* exact-name rules first, then pattern rules, each in list order: the order gt_screen_rules_write
+       stores them, so a rule list resolves the same before and after a write and parse */
+    for (pass = 0; pass < 2; pass++) {
+        for (i = 0; i < r->n; i++) {
+            const gt_screen_rule *x = &r->rule[i];
+            if (gt_screen_exact(x->pat) != (pass == 0) || !gt_screen_match(x->pat, name))
+                continue;
+            if (x->exclude)
+                return 0;
+            if (takeover)
+                *takeover = x->takeover;
+            /* the Workbench screen always uses the main theme (D10-10) */
+            scr_name(theme, cap, (wb || is_wb_exact(x->pat)) ? main_theme : x->theme);
+            return 1;
+        }
     }
     if (r->def == GT_SCR_NONE || (r->def == GT_SCR_WORKBENCH && !wb))
         return 0;

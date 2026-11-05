@@ -637,6 +637,9 @@ static void test_gthemes_screen_rules(void)
         gt_screen_rules_parse(f, (long)strlen(f), &r);
         CHECK_INT(r.n, 3);
         CHECK_INT(scr_theme(&r, "DOPUS.1", "x", th, &tk), 1);
+        CHECK_STR(th, "gruvbox"); /* exact-name rules beat pattern rules */
+        CHECK_INT(tk, 0);
+        CHECK_INT(scr_theme(&r, "dopus.2", "x", th, &tk), 1);
         CHECK_STR(th, "nord");
         CHECK_INT(tk, 1);
         CHECK_INT(scr_theme(&r, "dopus", "x", th, &tk), 1);
@@ -718,6 +721,56 @@ static void test_gthemes_screen_rules(void)
     CHECK_INT(r2.rule[2].takeover, 0);
     CHECK_INT(r2.rule[4].takeover, 1);
     CHECK_STR(r2.rule[4].theme, "cc");
+
+    /* T1: exact-name rule after a pattern rule in memory still wins */
+    gt_screen_rules_parse("default none\n", 13, &r);
+    gt_screen_rules_add(&r, "DOPUS#?", "A", 0);
+    gt_screen_rules_add(&r, "DOPUS.1", "B", 0);
+    CHECK_INT(scr_theme(&r, "DOPUS.1", "x", th, &tk), 1);
+    CHECK_STR(th, "B");
+    CHECK_INT(scr_theme(&r, "DOPUS.2", "x", th, &tk), 1);
+    CHECK_STR(th, "A");
+    /* T2: resolve(r) == resolve(parse(write(r))) */
+    {
+        static const char *names[3] = {"DOPUS.1", "DOPUS.2", "Other"};
+        gt_screen_rules lists[2];
+        char th2[GT_NAME];
+        int tk2, rv, rv2, k, j;
+        lists[0] = r;
+        gt_screen_rules_parse("default all\n", 12, &lists[1]);
+        gt_screen_rules_add(&lists[1], "X#?", "exclude", 0);
+        gt_screen_rules_add(&lists[1], "X.1", "nord", 1);
+        gt_screen_rules_add(&lists[1], "#?", "cc", 0);
+        names[2] = "Other";
+        for (k = 0; k < 2; k++) {
+            n = gt_screen_rules_write(&lists[k], buf, sizeof buf);
+            gt_screen_rules_parse(buf, n, &r2);
+            for (j = 0; j < 3; j++) {
+                const char *nm = k == 0 ? names[j] : (j == 0 ? "X.1" : j == 1 ? "X.2" : "Other");
+                rv = scr_theme(&lists[k], nm, "m", th, &tk);
+                rv2 = scr_theme(&r2, nm, "m", th2, &tk2);
+                CHECK_INT(rv, rv2);
+                CHECK_INT(tk, tk2);
+                if (rv && rv2)
+                    CHECK_STR(th, th2);
+            }
+        }
+    }
+    /* T3-T5: the Workbench screen always uses the main theme (D10-10) */
+    gt_screen_rules_parse("default none\n", 13, &r);
+    gt_screen_rules_add(&r, "#?", "nord", 0);
+    CHECK_INT(scr_theme(&r, "Workbench", "tokyo-night", th, &tk), 1);
+    CHECK_STR(th, "tokyo-night");
+    CHECK_INT(scr_theme(&r, "Other", "tokyo-night", th, &tk), 1);
+    CHECK_STR(th, "nord");
+    gt_screen_rules_parse("default all\n", 12, &r);
+    gt_screen_rules_add(&r, "#?", "exclude", 0);
+    CHECK_INT(scr_theme(&r, "Workbench", "tokyo-night", th, &tk), 0);
+    gt_screen_rules_parse("default none\n", 13, &r);
+    gt_screen_rules_add(&r, "#?", "nord", 1);
+    CHECK_INT(scr_theme(&r, "Workbench", "tokyo-night", th, &tk), 1);
+    CHECK_INT(tk, 1);
+    CHECK_STR(th, "tokyo-night");
 
     /* Workbench off: an Exclude on the exact name Workbench is stored and leaves the colours alone; the main theme is kept */
     gt_screen_rules_parse("default workbench\n", 18, &r);

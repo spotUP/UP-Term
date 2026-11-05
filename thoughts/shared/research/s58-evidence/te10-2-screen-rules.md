@@ -24,3 +24,12 @@ Files: amarchy/gthemes_core.[ch] (model), amarchy/amconf_core.h + prefs/settings
 ## Open points
 - TE-10.3 wiring: set r.enabled from AM_SCREENTHEMES; read/write the file (ENVARC + ENV copy); installed-theme check.
 - Pattern syntax beyond #? ? #c if the owner wants (a|b), ~.
+
+## Review fixes
+
+Resolver `gt_screen_theme_of`: exact-name rules first, then pattern rules, each in list order (matches the order `gt_screen_rules_write` stores, so resolve(r) == resolve(parse(write(r)))). The Workbench screen always gets the main theme unless an Exclude rule matches (D10-10). The existing hand-written-file check (DOPUS#? before DOPUS.1) now expects the exact rule to win.
+
+- Red/green (tests T1-T5 kept, resolver reverted to d6f7cca8): `RUNTEST gthemes rc=2 [FAIL] gthemes: 6374 checks, 8 failed`; first line `FAIL tests/test_gthemes.c:640`.
+- Green with fix: `RUNTEST gthemes rc=0 [OK] gthemes: 6375 checks, 0 failed` (before restore also 6375 / 0 failed).
+- Other suites: amconf 899 / 0 failed; settings_def 1779 / 0 failed; help_core 160 / 0 failed.
+- m68k build of Amarchy, amarchy-gui, amarchy-menu, amarchy-index, amarchy-icons, amarchy-flat, upprefs: rc=0.
