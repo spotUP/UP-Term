@@ -549,6 +549,11 @@ static int c8_skip(Object *obj, Msg msg)
                 fill = flat_button_gadget(g->GadgetRender, g->SelectRender, obj);
         }
         flat_state st = r->st;
+        {   /* S57-BUTTON-ASPECT-BORDERS: the outline columns of this window's screen (slot table read, no Intuition call) */
+            struct Layer *sl = d->imp_RPort->Layer;
+            struct Window *sw = sl ? (struct Window *)sl->Window : NULL;
+            st.side = (uint8_t)(sw ? side_px(r, sw->WScreen) : 1);
+        }
         int ox = im->LeftEdge + d->imp_Offset.X, oy = im->TopEdge + d->imp_Offset.Y;
         int w, h;
         flat_frame_size(msg->MethodID == FLAT_IM_DRAWFRAME, d->imp_Dimensions.Width, d->imp_Dimensions.Height, im->Width, im->Height, &w, &h);

@@ -877,3 +877,12 @@ void flat_aspect_put(flat_aspect_slot *t, int n, const void *scr, unsigned long 
             if (!t[i].scr) { at = i; break; }
     t[at].scr = scr; t[at].mode = mode; t[at].px = px;
 }
+
+int flat_button_side(int side, int w)
+{
+    if (side < 1)
+        side = 1;
+    if (side > w / 3)
+        side = w / 3;
+    return side < 1 ? 1 : side;
+}
