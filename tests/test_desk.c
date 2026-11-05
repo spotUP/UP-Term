@@ -1131,6 +1131,50 @@ static void test_desk_font(void)
     CHECK(!memcmp(out, gold, (size_t)n));
 }
 
+/* TE-7-FONT-MAP: the theme editor model's look.font and title bar height reach the written font.prefs / icontrol.prefs bytes */
+static void test_desk_model_font_bar(void)
+{
+    static unsigned char gold[BUF_MAX], out[BUF_MAX], ic[BUF_MAX];
+    static gt_model m;
+    gtheme t;
+    long n = slurp(DESK_DATA "font-wbfont-outline.prefs", gold, sizeof gold);
+    int k, wb = -1, scr = -1;
+    unsigned char geom[4];
+    for (k = 0; k < 3; k++) {
+        if (gold[26 + 8 + k * 164 + 15] == 0)
+            wb = 26 + 8 + k * 164;
+        if (gold[26 + 8 + k * 164 + 15] == 2)
+            scr = 26 + 8 + k * 164;
+    }
+    CHECK(wb > 0 && scr > 0);
+    probe_theme(&t);
+    memset(&m, 0, sizeof m);
+    t.model = &m;
+    t.font[0] = 0;
+    /* no model font: nothing changes */
+    memcpy(out, gold, (size_t)n);
+    CHECK_INT(desk_font_name(&t, out, n, font_known, (void *)"topaz.font"), 0);
+    CHECK(!memcmp(out, gold, (size_t)n));
+    /* model fonts: icon font into the WBFONT chunk, screen font into the SCREENFONT chunk, sizes carried */
+    strcpy(m.look.font[GT_FONT_ICON], "topaz.font/9");
+    strcpy(m.look.font[GT_FONT_SCREEN], "topaz.font/11");
+    memcpy(out, gold, (size_t)n);
+    CHECK_INT(desk_font_name(&t, out, n, font_known, (void *)"topaz.font"), 1);
+    CHECK_STR((const char *)out + wb + 28, "topaz.font");
+    CHECK_INT(out[wb + 24] * 256 + out[wb + 25], 9);
+    CHECK_STR((const char *)out + scr + 28, "topaz.font");
+    CHECK_INT(out[scr + 24] * 256 + out[scr + 25], 11);
+    /* the bar height is the geometry byte 1 of icontrol.prefs: written bytes differ per height, 0 keeps the thin switch alone */
+    desk_geometry_bar(1, gt_look_bar_height(&t), geom);
+    CHECK_INT(geom[1], 0xFF);
+    m.look.bar_height = 14;
+    CHECK_INT(gt_look_bar_height(&t), 14);
+    desk_geometry_bar(1, gt_look_bar_height(&t), geom);
+    CHECK_INT(geom[1], 3);
+    CHECK_INT(desk_icontrol(0, 0, geom, ic, sizeof ic) > 0, 1);
+    CHECK_INT(ic[26 + 8 + 34 + 1], 3);
+}
+
 static void test_desk_guard(void)
 {
     gtheme all[SHIPPED_MAX], t;
@@ -1840,6 +1884,7 @@ void suite_desk(void)
     test_desk_palette_31_fix_plan();
     test_desk_palette_31_wired();
     test_desk_font();
+    test_desk_model_font_bar();
     test_desk_font_default();
     test_desk_guard();
     test_desk_plan();

@@ -176,6 +176,10 @@ long desk_icontrol(const unsigned char *cur, long curlen, const unsigned char ge
 /* the geometry bytes of the border and title size: thin = 0 stock (all zero), 1 thin (byte 1 = -1: title bar one pixel
  * lower than stock; measured FLAT-R1, research note section 9; nothing thins the other borders) */
 void desk_geometry(int thin, unsigned char geometry[4]);
+/* TE-7-FONT-MAP: the same with the theme model's title bar height (bar_height pixels of BorderTop, 0 = the thin switch alone): byte 1 is
+ * the signed difference to the stock BorderTop of 3.2 (measured 11, research 2026-10-29 section 9; only -1 is measured). */
+#define DK_STOCK_BORDERTOP 11
+void desk_geometry_bar(int thin, int bar_height, unsigned char geometry[4]);
 
 /* R1.4: the theme's font= names the WBFONT of font.prefs, only when exists(ctx, name) says the font is there. Returns
  * 1 when the file changed, 0 when the key is empty or unknown (file untouched), -1 when buf is no font.prefs. */

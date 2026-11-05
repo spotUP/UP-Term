@@ -264,6 +264,11 @@ void gt_model_parse(const char *buf, long len, gt_model *m);
 void gt_roles_from_model(const gt_model *m, gt_roles *r);
 /* The v1 keys of a model (what an older Amarchy reads), colours resolved from the groups. */
 void gt_model_to_v1(const gt_model *m, gtheme *out);
+/* TE-7-FONT-MAP: the font of slot which (GT_FONT_*) a desk writer applies: the model's look.font "name.font/size" (name and size split;
+ * size 0 when absent), for GT_FONT_ICON the v1 font= key when the model has none. 1 when there is a name, 0 when the theme keeps the user's. */
+int gt_look_font(const gtheme *t, int which, char *name, int cap, int *size);
+/* the model's title bar height in pixels, 0 = stock / no model */
+int gt_look_bar_height(const gtheme *t);
 /* The file text: v1 default keys from the resolved groups, then the v2 sections. Its length; -1 when it does not fit cap or a
  * value would pass UC_MAX_VALUE. */
 long gt_model_save_text(const gt_model *m, char *out, long cap);

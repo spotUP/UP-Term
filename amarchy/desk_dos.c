@@ -147,7 +147,7 @@ static int dk_put(const char *editor, const char *work, const unsigned char *buf
 /* may SYS:Prefs/Pointer be fed the 3.2 pointer prefs: version 47+ (desk_pointer_editor_ok) */
 /* FLAT-P1-2: icontrol.prefs with the geometry of the border size, both copies; a file that does not fit the buffer is left alone */
 #define DK_IC_BUF 8192
-static int dk_icontrol(int thin)
+static int dk_icontrol(int thin, const gtheme *th)
 {
     static unsigned char cur[DK_IC_BUF], out[DK_IC_BUF];
     unsigned char geom[4];
@@ -156,7 +156,7 @@ static int dk_icontrol(int thin)
         len = dk_read("ENVARC:Sys/icontrol.prefs", cur, sizeof cur);
     if (len >= DK_IC_BUF - 64)
         return 0;
-    desk_geometry(thin, geom);
+    desk_geometry_bar(thin, gt_look_bar_height(th), geom);
     n = desk_icontrol(len > 0 ? cur : 0, len > 0 ? len : 0, geom, out, sizeof out);
     return n > 0 && dk_write("ENVARC:Sys/icontrol.prefs", out, n) && dk_write("ENV:Sys/icontrol.prefs", out, n);
 }
@@ -478,7 +478,7 @@ static int dk_apply(const gtheme *th, char *why, int cap)
     if (mask & (1u << DT_ICONTROL)) {
         /* FLAT-P1-2: the file IPrefs watches is written in place, both copies, other fields and IEXC chunks kept (no editor is fed it:
          * SYS:Prefs/IControl would rewrite the exception list); then the same idle wait as the other prefs */
-        ok &= ic_act == DK_IC_RESTORE ? dk_icontrol_restore() : dk_icontrol(1);
+        ok &= ic_act == DK_IC_RESTORE ? dk_icontrol_restore() : dk_icontrol(1, th);
         dk_wait_iprefs(idle);
     }
     if (reset || old_ws)
@@ -1618,7 +1618,7 @@ int desk_dos_start_apply(void)
         if (ic_snap)
             dk_snapshot(1u << DT_ICONTROL);
         UnLock(CreateDir((STRPTR)DK_WORK));
-        if (ic_act == DK_IC_RESTORE ? dk_icontrol_restore() : dk_icontrol(1))
+        if (ic_act == DK_IC_RESTORE ? dk_icontrol_restore() : dk_icontrol(1, &th))
             desk_dos_start_writes++;
         dk_wait_iprefs(idle);
     }
