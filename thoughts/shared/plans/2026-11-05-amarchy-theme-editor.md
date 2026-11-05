@@ -437,3 +437,16 @@ D10. Per-screen theme (brainstorm meta item).
 - Workbench screen only now, ledger row for per-screen themes (Recommended): this plan stays one theme per desktop; other
   public screens keep the Workbench theme.
 - Include a theme per public screen name: matches the brainstorm; needs pen holders per screen and a new prefs key.
+
+### Owner answers (2026-11-05)
+
+- D1: prompt "Reset Workbench Now / Later" (decided earlier in the session, not asked again).
+- D2: "A new theme should be created". Saving an edited shipped theme creates a new user theme with its own name (the editor proposes a name such as "<Theme> Custom" and the user can change it). The shipped theme is never shadowed or overwritten. TE-3 implements this instead of the same-name ENVARC copy.
+- D3: live on every edit, with Revert.
+- D4: preview to the right of the rows when the window is wide enough, else a Preview toggle.
+- D5: all 36 elements.
+- D6: Normal, Hover, Pressed and Disabled for every element; Active and Inactive are separate window elements.
+- D7: fold to the nearest pen and show it in the pen budget meter.
+- D8: warn on the row and in the summary; Save stays allowed.
+- D9: include gadget order and size, laid out by amarchy-flat at window open after a reset.
+- D10: include a theme per public screen name in this plan. This needs pen holders per screen and a new prefs key; the phase list must gain a per-screen phase (TE-10) before TE-9's full run, and TE-9 gets a per-screen case.
