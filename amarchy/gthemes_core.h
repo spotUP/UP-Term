@@ -30,6 +30,7 @@ typedef struct gtheme {
     char backdrop[GT_NAME]; /* backdrop= : the drawer name of the theme's backdrops, "" = the theme name */
     char font[GT_NAME];     /* font= : a font file name such as helvetica.font, "" = keep the user's font */
     char wbtitle[GT_TITLE]; /* wbtitle= : a Workbench title format; carried, the title stays stock (OD11) */
+    struct gt_model *model; /* TE-1.6: the theme editor's model; 0 until gt_model_attach / gt_load_model; freed by gt_free */
 } gtheme;
 
 /* RL8 FLAT-COLOUR-OVERHAUL: THE role table. Every Amarchy UI colour is one of these six roles of a gtheme, made by the one
@@ -158,5 +159,112 @@ int gt_preview_step(const char *row_path, const char *current, char *drawn, int 
  * (0: unknown). Writes e.g. "the theme could not be saved: write ENV:Amarchy/prefs, error 202". */
 #define GT_SAVE_NAME (-200)
 void gt_save_text(int step, int failed, long err, char *out, int cap);
+
+/* ---- Theme file format v2 and the model (plan 2026-11-05-amarchy-theme-editor.md, TE-1) ----
+ * A v2 file keeps every v1 key in the default section (written from the resolved groups, so an older Amarchy reads it as v1)
+ * and adds the sections [profile swatches|groups|elements|look]. The model is what the editor edits; the role views read it.
+ * A file without `amarchy-theme = 2` is v1: gt_model_from_v1 builds the model that reproduces gt_roles_of byte for byte. */
+#define GT_SWATCH_MAX 32
+#define GT_SWATCH_NAME 16
+#define GT_STATES 4
+#define GT_REF_DEPTH 4
+#define GT_NESTED_MAX 192 /* nested ref slots (plan said 64: ten groups with a mix in three states already need 60) */
+#define GT_EXTRA_MAX 1536 /* kept lines: Omarchy keys the v1 reader ignores (the terminal palette reads them) and unknown v2 keys */
+enum { GT_ST_NORMAL, GT_ST_HOVER, GT_ST_PRESSED, GT_ST_DISABLED };
+enum { GT_REF_NONE, GT_REF_SWATCH, GT_REF_RGB, GT_REF_DARKER, GT_REF_SELECTION, GT_REF_MUTED, GT_REF_MIX, GT_REF_GROUP };
+enum { GT_WARN_CYCLE = 1, GT_WARN_OVERFLOW = 2, GT_WARN_UNKNOWN_KEY = 4, GT_WARN_BAD_REF = 8 };
+enum { GT_FONT_SCREEN, GT_FONT_TITLE, GT_FONT_MENU, GT_FONT_ICON, GT_FONT_SHELL, GT_FONTS };
+
+/* the groups: one per current role, so v1 maps 1:1 */
+enum { GTG_BACKGROUND, GTG_SURFACE, GTG_TEXT, GTG_MUTED_TEXT, GTG_ACCENT, GTG_SELECTION, GTG_INACTIVE, GTG_DIM, GTG_SUCCESS,
+       GTG_FAILURE, GTG_COUNT };
+/* the 36 elements (owner answer D5: all of them), the order of gt_elem_defs[] */
+enum { GTE_TITLE_BAR, GTE_TITLE_BAR_INACTIVE, GTE_TITLE_TEXT, GTE_TITLE_TEXT_INACTIVE, GTE_BORDER, GTE_BORDER_INACTIVE,
+       GTE_GADGET_GLYPH, GTE_GADGET_GLYPH_INACTIVE, GTE_SCROLL_TRACK, GTE_SCROLL_KNOB, GTE_MENU_BACKGROUND, GTE_MENU_TEXT,
+       GTE_MENU_SELECTION, GTE_MENU_SELECTED_TEXT, GTE_MENU_HEADER, GTE_MENU_SEPARATOR, GTE_REQUESTER_BACKGROUND,
+       GTE_BUTTON_FACE, GTE_BUTTON_TEXT, GTE_TEXT_FIELD, GTE_TEXT_CURSOR, GTE_DESKTOP_BACKDROP, GTE_ICON_LABEL_TEXT,
+       GTE_ICON_LABEL_SHADOW, GTE_ICON_LABEL_OUTLINE, GTE_ICON_FOREGROUND, GTE_ICON_ACCENT, GTE_ICON_MUTED,
+       GTE_ICON_SELECTION_PLATE, GTE_HELPER_BACKGROUND, GTE_HELPER_TEXT, GTE_TERMINAL_BACKGROUND, GTE_TERMINAL_FOREGROUND,
+       GTE_TERMINAL_CURSOR, GTE_SUCCESS_TEXT, GTE_FAILURE_TEXT, GTE_COUNT };
+
+typedef struct gt_ref {         /* one colour reference */
+    unsigned char kind;         /* GT_REF_* */
+    unsigned char a, b, pct;    /* SWATCH: a = swatch; GROUP: a = group; DARKER/SELECTION/MUTED: a = nested slot; MIX: a, b = nested slots, pct */
+    uc_u32 rgb;                 /* kind RGB */
+} gt_ref;
+
+typedef struct gt_look {        /* type, shape, states, desktop */
+    char font[GT_FONTS][40];    /* "name.font/size" */
+    unsigned char title_align, title_style;
+    unsigned char corner_radius, border_width, bar_height, gadget_size, gadget_pad, scroll_width;
+    unsigned char knob_min, knob_shape, glyph_set, gadget_order;
+    unsigned char ghost_style, hover_on, inactive_pct;
+    uc_u32 pointer[3];
+} gt_look;
+
+typedef struct gt_model {
+    int version;                /* 1 or 2 as read */
+    int nswatch;
+    int nnested;
+    int light;                  /* mode = "light" */
+    char name[GT_NAME];         /* name= key, "" when absent */
+    char swatch_name[GT_SWATCH_MAX][GT_SWATCH_NAME];
+    uc_u32 swatch[GT_SWATCH_MAX];
+    gt_ref group[GTG_COUNT][GT_STATES];
+    gt_ref elem[GTE_COUNT][GT_STATES]; /* kind NONE = follows its group */
+    gt_ref nested[GT_NESTED_MAX];
+    gt_look look;
+    char base[GT_NAME];         /* the theme this one was duplicated from */
+    char backdrop[GT_NAME];     /* the v1 backdrop=, font=, wbtitle= keys, carried */
+    char font[GT_NAME];
+    char wbtitle[GT_TITLE];
+    unsigned warn;              /* GT_WARN_* */
+    int extralen;
+    char extra[GT_EXTRA_MAX];   /* kept lines "<section letter><key> = <value>\n": D default, S swatches, G groups, E elements, L look */
+} gt_model;
+
+typedef struct gt_group_def {
+    const char *key, *label, *def; /* def: the v1 ref text, over the swatch names of gt_model_from_v1 */
+} gt_group_def;
+typedef struct gt_elem_def {
+    const char *key, *label;
+    unsigned char group;        /* default group */
+    unsigned char states;       /* bit per GT_ST_* the element uses */
+    const char *consumer;       /* menu role, desk pen, DrawInfo slot, flat role, icon slot or terminal */
+} gt_elem_def;
+extern const gt_group_def gt_group_defs[GTG_COUNT];
+extern const gt_elem_def gt_elem_defs[GTE_COUNT];
+
+/* One colour reference from text (grammar of the plan, section 2.2). 1 and *out set; 0 and warn bits on a bad text (unknown
+ * swatch or group, depth over GT_REF_DEPTH, pool full). Empty text gives kind NONE and 1. */
+int gt_ref_parse(gt_model *m, const char *text, gt_ref *out);
+/* The text of a ref into out: its length, -1 when it does not fit cap. */
+int gt_ref_text(const gt_model *m, const gt_ref *r, char *out, int cap);
+/* A ref's colour for a state (group refs read that group's same state; a cycle was cut at load). */
+uc_u32 gt_ref_rgb(const gt_model *m, const gt_ref *r, int state);
+
+/* The element's own ref if set, else its group's ref of that state, else the group's normal state. */
+gt_ref gt_resolve(const gt_model *m, int elem, int state);
+uc_u32 gt_resolve_rgb(const gt_model *m, int elem, int state);
+/* Group colour of a state (an unset state falls back to normal). */
+uc_u32 gt_group_rgb(const gt_model *m, int group, int state);
+
+/* v1 gtheme -> model: one swatch per v1 colour, every group at its v1 ref. */
+void gt_model_from_v1(const gtheme *t, gt_model *m);
+/* Parse theme text of either version into m (v1 text goes through gt_parse and gt_model_from_v1). */
+void gt_model_parse(const char *buf, long len, gt_model *m);
+/* Every GR_* role is the resolved normal state of its group: equals gt_roles_of for a v1 file. */
+void gt_roles_from_model(const gt_model *m, gt_roles *r);
+/* The v1 keys of a model (what an older Amarchy reads), colours resolved from the groups. */
+void gt_model_to_v1(const gt_model *m, gtheme *out);
+/* The file text: v1 default keys from the resolved groups, then the v2 sections. Its length; -1 when it does not fit cap or a
+ * value would pass UC_MAX_VALUE. */
+long gt_model_save_text(const gt_model *m, char *out, long cap);
+
+/* TE-1.6: give t a model parsed from text (heap, freed by gt_free), and gt_load that attaches it. gt_load itself never
+ * allocates: callers copy gtheme by value. */
+int gt_model_attach(gtheme *t, const char *buf, long len);
+void gt_load_model(gt_read_fn rd, void *ctx, const char *name, gtheme *out);
+void gt_free(gtheme *t);
 
 #endif

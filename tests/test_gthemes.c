@@ -841,8 +841,150 @@ static void test_gthemes_role_table(void)
     }
 }
 
+/* ---- TE-1: theme file v2 and the model ---- */
+static gt_model te_m, te_m2;
+static char te_buf[UC_MAX_FILE], te_out[UC_MAX_FILE], te_out2[UC_MAX_FILE];
+
+static int roles_equal(const gt_roles *a, const gt_roles *b)
+{
+    int i;
+    for (i = 0; i < GR_ROLES; i++)
+        if (a->c[i] != b->c[i])
+            return 0;
+    return a->dim == b->dim && a->ok == b->ok && a->fail == b->fail;
+}
+
+/* TE-1.5 golden: every shipped theme, read as v1, gives byte-equal roles through the model; saved as v2 and read again
+ * (by the model reader and by the v1 gt_parse) the roles stay equal, and a second save is identical text */
+static void test_gthemes_model_golden(void)
+{
+    int i;
+    CHECK(GTE_COUNT <= UC_MAX_KEYS);
+    for (i = 0; i < NSHIPPED; i++) {
+        gtheme t, t2;
+        gt_roles want, got;
+        char path[200];
+        long n, len, len2;
+        snprintf(path, sizeof path, THEME_DIR "/%s.theme", shipped[i].name);
+        n = read_file(path, te_buf, (long)sizeof te_buf);
+        CHECK(n > 0);
+        gt_builtin(&t);
+        gt_parse(te_buf, n, &t);
+        gt_roles_of(&t, &want);
+        gt_model_parse(te_buf, n, &te_m);
+        CHECK_INT(te_m.version, 1);
+        gt_roles_from_model(&te_m, &got);
+        CHECK(roles_equal(&want, &got));
+        gt_model_from_v1(&t, &te_m2);
+        gt_roles_from_model(&te_m2, &got);
+        CHECK(roles_equal(&want, &got));
+        len = gt_model_save_text(&te_m, te_out, (long)sizeof te_out);
+        CHECK(len > 0);
+        gt_model_parse(te_out, len, &te_m2);
+        CHECK_INT(te_m2.version, 2);
+        CHECK_INT(te_m2.warn, 0);
+        gt_roles_from_model(&te_m2, &got);
+        CHECK(roles_equal(&want, &got));
+        len2 = gt_model_save_text(&te_m2, te_out2, (long)sizeof te_out2);
+        CHECK_INT(len2, len);
+        CHECK(len2 == len && !memcmp(te_out, te_out2, (size_t)len));
+        gt_builtin(&t2);
+        gt_parse(te_out, len, &t2);
+        gt_roles_of(&t2, &got);
+        CHECK(roles_equal(&want, &got));
+    }
+}
+
+/* TE-1.2 / TE-1.3: the ref grammar, the nesting limit and the group cycle refusal */
+static void test_gthemes_model_refs(void)
+{
+    gt_ref r;
+    gtheme t;
+    char txt[160];
+    gt_builtin(&t);
+    t.bg = 0x102030;
+    t.fg = 0xE0E0E0;
+    t.accent = 0x336699;
+    gt_model_from_v1(&t, &te_m);
+    CHECK(gt_ref_parse(&te_m, "mix(accent;#ffffff;50)", &r));
+    CHECK_INT(r.kind, GT_REF_MIX);
+    CHECK_INT(gt_ref_text(&te_m, &r, txt, (int)sizeof txt) > 0, 1);
+    CHECK_STR(txt, "mix(accent;#ffffff;50)");
+    CHECK_INT(gt_ref_rgb(&te_m, &r, GT_ST_NORMAL), gt_mix(0x336699, 0xFFFFFF, 50));
+    /* four nested functions parse, five are refused */
+    CHECK(gt_ref_parse(&te_m, "darker(darker(darker(darker(accent))))", &r));
+    CHECK_INT(te_m.warn & GT_WARN_BAD_REF, 0);
+    CHECK(!gt_ref_parse(&te_m, "darker(darker(darker(darker(darker(accent)))))", &r));
+    CHECK(te_m.warn & GT_WARN_BAD_REF);
+    CHECK_INT(r.kind, GT_REF_NONE);
+    CHECK(!gt_ref_parse(&te_m, "nosuchswatch", &r));
+    CHECK(!gt_ref_parse(&te_m, "#12345", &r));
+    CHECK(gt_ref_parse(&te_m, "group:accent", &r));
+    CHECK_INT(gt_ref_rgb(&te_m, &r, GT_ST_NORMAL), 0x336699);
+}
+
+static void test_gthemes_model_cycle(void)
+{
+    static const char text[] = "amarchy-theme = 2\nname = \"cyc\"\n[profile swatches]\nbackground = #101010\nforeground = #eeeeee\n"
+                               "accent = #336699\n[profile groups]\ntext = group:accent\naccent = group:text\n";
+    gt_roles r;
+    gt_model_parse(text, (long)sizeof text - 1, &te_m);
+    CHECK(te_m.warn & GT_WARN_CYCLE);
+    gt_roles_from_model(&te_m, &r);
+    CHECK_INT(r.c[GR_TEXT], 0xEEEEEE);
+    CHECK_INT(r.c[GR_ACCENT], 0x336699);
+}
+
+/* TE-1.1 / TE-1.4: all 36 elements set fits the key cap; unknown keys warn and survive a save; Omarchy extras survive */
+static void test_gthemes_model_full_and_extras(void)
+{
+    static char text[UC_MAX_FILE];
+    long n = 0, len;
+    int i;
+    n += snprintf(text + n, sizeof text - (size_t)n, "amarchy-theme = 2\nname = \"full\"\nmode = \"dark\"\nomarchy_extra = \"keepme\"\n");
+    n += snprintf(text + n, sizeof text - (size_t)n, "[profile swatches]\nbackground = #101010\nforeground = #eeeeee\naccent = #336699\n");
+    n += snprintf(text + n, sizeof text - (size_t)n, "[profile groups]\nbogus-group = #010203\n[profile elements]\n");
+    for (i = 0; i < GTE_COUNT; i++)
+        n += snprintf(text + n, sizeof text - (size_t)n, "%s = accent,foreground,#111111,mix(accent;foreground;30)\n", gt_elem_defs[i].key);
+    n += snprintf(text + n, sizeof text - (size_t)n, "no-such-element = accent\n[profile look]\ncorner-radius = 4\ntitle-font = \"topaz.font\"\n");
+    gt_model_parse(text, n, &te_m);
+    CHECK_INT(te_m.warn & GT_WARN_OVERFLOW, 0);
+    CHECK(te_m.warn & GT_WARN_UNKNOWN_KEY);
+    CHECK_INT(te_m.look.corner_radius, 4);
+    CHECK_STR(te_m.look.font[GT_FONT_TITLE], "topaz.font");
+    CHECK_INT(gt_resolve_rgb(&te_m, GTE_COUNT - 1, GT_ST_NORMAL), 0x336699);
+    CHECK_INT(gt_resolve_rgb(&te_m, 0, GT_ST_PRESSED), 0x111111);
+    len = gt_model_save_text(&te_m, te_out, (long)sizeof te_out);
+    CHECK(len > 0);
+    CHECK(strstr(te_out, "omarchy_extra = \"keepme\"") != 0);
+    CHECK(strstr(te_out, "bogus-group = #010203") != 0);
+    CHECK(strstr(te_out, "no-such-element = accent") != 0);
+    CHECK(strstr(te_out, "corner-radius = 4") != 0);
+    gt_model_parse(te_out, len, &te_m2);
+    CHECK_INT(te_m2.warn & GT_WARN_OVERFLOW, 0);
+    CHECK_INT(gt_resolve_rgb(&te_m2, 0, GT_ST_PRESSED), 0x111111);
+}
+
+/* TE-1.6: the model hangs off a gtheme only through attach, and gt_free releases it */
+static void test_gthemes_model_attach(void)
+{
+    gtheme t;
+    long n = read_file(THEME_DIR "/nord.theme", te_buf, (long)sizeof te_buf);
+    gt_builtin(&t);
+    CHECK(t.model == 0);
+    CHECK(gt_model_attach(&t, te_buf, n));
+    CHECK(t.model != 0);
+    gt_free(&t);
+    CHECK(t.model == 0);
+}
+
 void suite_gthemes(void)
 {
+    test_gthemes_model_golden();
+    test_gthemes_model_refs();
+    test_gthemes_model_cycle();
+    test_gthemes_model_full_and_extras();
+    test_gthemes_model_attach();
     test_gthemes_role_table();
     test_gthemes_inactive_key();
     test_gthemes_desk_keys();
