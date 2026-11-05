@@ -1,6 +1,7 @@
 /* vsh's AmigaDOS script mode: lexer and line runner. See sh_amiscript.h. */
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include "sh_amiscript.h"
 #include "sh_hits.h"
 
@@ -262,10 +263,96 @@ static long run_tokens(sh_shell *sh, line_toks *t, const sh_io *io)
     return st;
 }
 
+/* AmigaDOS names ignore case */
+static int word_is(const char *a, const char *b)
+{
+    for (; *a && *b; a++, b++)
+        if (tolower((unsigned char)*a) != tolower((unsigned char)*b))
+            return 0;
+    return !*a && !*b;
+}
+
+static void say_io(sh_shell *sh, sh_fh fh, const char *s)
+{
+    sh->os.write(sh->os.data, fh, s, (long)strlen(s));
+}
+
+static void say_num(sh_shell *sh, sh_fh fh, long n)
+{
+    char num[32];
+    int i = (int)sizeof(num) - 1;
+    unsigned long u = n < 0 ? 0UL - (unsigned long)n : (unsigned long)n;
+    num[i] = 0;
+    num[--i] = '\n';
+    do {
+        num[--i] = (char)('0' + (int)(u % 10));
+        u /= 10;
+    } while (u);
+    if (n < 0)
+        num[--i] = '-';
+    say_io(sh, fh, num + i);
+}
+
+/* The interpreter's own words. Returns 1 when t's first token is one and sets *st to its result code;
+ * *failat is this call's limit and *quit is set by Quit (the script then ends with *st). */
+static int script_word(sh_shell *sh, line_toks *t, const sh_io *io, long *st, long *failat, int *quit)
+{
+    const char *w = t->v[0];
+    if (t->redir[0])
+        return 0;
+    if (word_is(w, "quit")) {
+        *st = t->n > 1 ? strtol(t->v[1], 0, 10) : 0;
+        *quit = 1;
+        return 1;
+    }
+    if (word_is(w, "failat")) {
+        if (t->n > 1)
+            *failat = strtol(t->v[1], 0, 10);
+        else
+            say_num(sh, io->out, *failat);
+        *st = 0;
+        return 1;
+    }
+    /* D1: inside a script Set, Unset and Get are AmigaDOS local variables, not the bash builtins */
+    if (word_is(w, "set")) {
+        *st = 0;
+        if (t->n > 1) {
+            buf v;
+            int i;
+            memset(&v, 0, sizeof(v));
+            for (i = 2; i < t->n; i++) {
+                if (i > 2)
+                    buf_add(&v, ' ');
+                buf_adds(&v, t->v[i]);
+            }
+            if (sh_set(&sh->ctx, t->v[1], v.s ? v.s : ""))
+                *st = 20;
+            free(v.s);
+        }
+        return 1;
+    }
+    if (word_is(w, "unset")) {
+        *st = t->n > 1 && sh_unset(&sh->ctx, t->v[1]) ? 20 : 0;
+        return 1;
+    }
+    if (word_is(w, "get")) {
+        const char *v = t->n > 1 ? sh_get(&sh->ctx, t->v[1]) : 0;
+        if (v) {
+            say_io(sh, io->out, v);
+            say_io(sh, io->out, "\n");
+        }
+        *st = 0;
+        return 1;
+    }
+    return 0;
+}
+
 long sh_amiga_execute(sh_shell *sh, const char *text, const char *file, int argc, char **argv, const sh_io *io)
 {
     const char *p = text;
     long st = sh->ctx.status;
+    long failat = 10;   /* this call's limit: a nested Execute starts at 10 and this one survives it */
+    int quit = 0;
     (void)file;
     (void)argc;
     (void)argv;
@@ -279,10 +366,19 @@ long sh_amiga_execute(sh_shell *sh, const char *text, const char *file, int argc
         if (len && ln[len - 1] == '\r')
             ln[len - 1] = 0;
         memset(&t, 0, sizeof(t));
-        if (!lex_line(sh, ln, &t) && t.n)
+        if (!lex_line(sh, ln, &t) && t.n && !script_word(sh, &t, io, &st, &failat, &quit)) {
             st = run_tokens(sh, &t, io);
+            if (st >= failat) {
+                say_io(sh, io->err, t.v[0]);
+                say_io(sh, io->err, " failed returncode ");
+                say_num(sh, io->err, st);
+                quit = 1;
+            }
+        }
         toks_free(&t);
         free(ln);
+        if (quit)
+            break;
         p += len + (e ? 1 : 0);
     }
     sh->ctx.status = st;
