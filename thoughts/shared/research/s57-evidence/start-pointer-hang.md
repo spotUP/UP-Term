@@ -94,3 +94,21 @@ status: open (cause not proven on a rig)
   starvation (memory "Rig hang? check host load").
 - Next (needs a new brief): fresh-all on 7cf4ac17 again on a quiet host, and on fdb5e99f with RL20's gui.c reverted,
   both with host load logged. That separates "RL20" from "host load / intermittent".
+
+## A/B fresh-all (rig 133, 2026-11-05, vtcon-c1)
+
+Recipe both runs: `rig.py start --max --os 32 --idle-minutes 0 --allow-stale-base ...`, then
+`INSTALLER_KEEP=1 installer_rig.py ONLY fresh-all`; build = make worktree-ready/wasabi/amiga, `make dist` via kit-main.
+Host load logged every 60 s (`ps -Ao pcpu,command | sort -rn | head -5`).
+
+| Build | Verdict | Failing step text | Max non-fs-uae host CPU |
+|---|---|---|---|
+| A 7cf4ac17 | FAIL | 34 "after the reboot: the AMARCHY ARexx port answers STATUS: no port"; then [ABORT] wasabid silent 15 s | 94% (Defender epsext, clang); rig 96 fs-uae about 110% |
+| B fdb5e99f minus RL20 (git revert -n 4ea76673, clean) | FAIL | same text, same abort | 114% (Spotlight mdworker); clang about 96% before start |
+
+- Conclusion: RL20 is NOT the cause. The build recorded as PASS (7cf4ac17, rows 83/87) now fails identically, so the
+  failure is not a code change between 7cf4ac17 and fdb5e99f. Remaining suspects: host load/state (the PASS runs were
+  on a rig 96 with a different history) or an environment difference (the earlier PASS runs used --keep rigs that were
+  not fresh-started the same way). Host load here was moderate (under 120% non-fs-uae), so heavy load alone is not
+  needed to fail.
+- No ps/windows (wasabid silent) and no screenshot (rig already down after the abort). Not dug further, per brief.
