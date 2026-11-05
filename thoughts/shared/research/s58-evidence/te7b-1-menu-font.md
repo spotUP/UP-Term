@@ -20,3 +20,9 @@ make build/amiga/{Amarchy,amarchy-gui,amarchy-menu,amarchy-index,amarchy-icons,a
 
 ## Later rig pixel check
 Set Menu Font in the theme editor (or `look` font[GT_FONT_MENU], e.g. `topaz.font/8`) on the active theme, open the drawn menu, measure the row glyph height: topaz 8 gives 8 px glyph rows, against JetBrainsMono 16 (default, 16 px). Then clear Menu Font and confirm the AM_FONT / built-in height returns.
+
+## Model loader fix
+Defect: pick_font loaded the theme with gt_dos_load_current -> gt_load, which attaches no model; gt_look_font reads t->model->look.font, so the Menu Font was never read in the product (the unit test set t->model by hand). Fix: mt_font_spec_load (menu_fontspec_core) loads with gt_load_model; pick_font calls it through the new exported gt_dos_read.
+- RED (gt_load_model swapped to gt_load inside mt_font_spec_load): `RUNTEST menu_fontspec rc=2 [FAIL] menu_fontspec: 22 checks, 2 failed`; first FAIL `tests/test_menu_fontspec.c:37: used = 0, want 1`.
+- GREEN: `RUNTEST menu_fontspec rc=0 [OK] menu_fontspec: 22 checks, 0 failed`; `RUNTEST gthemes rc=0 [OK] gthemes: 6279 checks, 0 failed`.
+- m68k build (Amarchy, amarchy-gui, amarchy-menu, amarchy-index, amarchy-icons, amarchy-flat, upprefs): rc=0. Makefile unchanged (gthemes_core.c and gthemes_dos.c already in AMARCHY_GUI_SRC).

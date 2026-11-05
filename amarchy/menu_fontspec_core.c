@@ -22,3 +22,14 @@ int mt_font_spec(const gtheme *t, const char *am_font, char *out, int outsize)
     }
     return used;
 }
+
+int mt_font_spec_load(gt_read_fn rd, void *ctx, const char *theme, const char *am_font, char *out, int outsize)
+{
+    gtheme t;
+    int used;
+    memset(&t, 0, sizeof t);
+    gt_load_model(rd, ctx, theme, &t);
+    used = mt_font_spec(&t, am_font, out, outsize);
+    gt_free(&t);
+    return used;
+}

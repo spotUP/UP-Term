@@ -14,6 +14,40 @@ static void theme_with(gtheme *t, const char *menu_font)
     t->model = &mdl;
 }
 
+/* mt_font_spec_load through a fake reader serving real theme text: the model loader must carry the Menu Font in */
+static const char *file_body;
+
+static long fake_theme_read(void *ctx, const char *path, char *buf, long cap)
+{
+    (void)ctx;
+    (void)path;
+    if (!file_body || (long)strlen(file_body) > cap)
+        return -1;
+    memcpy(buf, file_body, strlen(file_body));
+    return (long)strlen(file_body);
+}
+
+static void test_fontspec_load(void)
+{
+    char out[64];
+    int used;
+
+    file_body = "amarchy-theme = 2\nname = \"mf\"\n[profile look]\nmenu-font = \"topaz.font/8\"\n";
+    used = mt_font_spec_load(fake_theme_read, 0, "mf", "JetBrainsMono.font:16", out, (int)sizeof out);
+    CHECK_INT(used, 1);
+    CHECK_STR(out, "topaz.font:8");
+
+    file_body = "amarchy-theme = 2\nname = \"nf\"\n[profile look]\ntitle-font = \"topaz.font\"\n";
+    used = mt_font_spec_load(fake_theme_read, 0, "nf", "JetBrainsMono.font:16", out, (int)sizeof out);
+    CHECK_INT(used, 0);
+    CHECK_STR(out, "JetBrainsMono.font:16");
+
+    file_body = 0;   /* every path missing */
+    used = mt_font_spec_load(fake_theme_read, 0, "gone", "JetBrainsMono.font:16", out, (int)sizeof out);
+    CHECK_INT(used, 0);
+    CHECK_STR(out, "JetBrainsMono.font:16");
+}
+
 void suite_menu_fontspec(void)
 {
     gtheme t;
@@ -65,4 +99,6 @@ void suite_menu_fontspec(void)
     mt_font_spec(&t, "AAAAAAAAAAAAAAAA", tiny, 6);
     CHECK_INT((int)strlen(tiny), 5);
     CHECK(tiny[6] == 'Z');
+
+    test_fontspec_load();
 }

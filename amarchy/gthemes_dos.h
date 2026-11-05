@@ -12,6 +12,8 @@
 void gt_dos_current(char *out, int cap);
 /* load the theme the settings name (user drawer, shipped drawer, built-in: gt_load) */
 void gt_dos_load_current(gtheme *out);
+/* the file reader gt_load takes (gt_read_fn): length read, -1 when the file cannot be opened */
+long gt_dos_read(void *ctx, const char *path, char *buf, long cap);
 /* load a theme by name */
 void gt_dos_load(const char *name, gtheme *out);
 /* make name the drawn menu's theme: AM_GTHEME is saved to ENVARC: and ENV:, then Directory Opus (if running) gets its colours (menu_theme.h). 1 saved, 0 refused or failed */

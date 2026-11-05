@@ -11,4 +11,8 @@
  * t and am_font may be 0. Returns 1 when the theme's Menu Font was used, 0 otherwise. */
 int mt_font_spec(const gtheme *t, const char *am_font, char *out, int outsize);
 
+/* The drawn menu's entry: loads theme with gt_load_model (not gt_load: gt_load attaches no model, and the Menu Font lives in the model's look
+ * block, so mt_font_spec would always fall back to am_font), runs mt_font_spec, frees the theme. Same return and out as mt_font_spec. */
+int mt_font_spec_load(gt_read_fn rd, void *ctx, const char *theme, const char *am_font, char *out, int outsize);
+
 #endif

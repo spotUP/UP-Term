@@ -1753,10 +1753,10 @@ static void pick_font(gui *g)
     int square = menu_screen_aspect(g->scr, &g->ms.rx, &g->ms.ry);
     char spec[128];
     am_prefs ap;
-    gtheme th;
+    char name[GT_NAME];
     amconf_load(&ap);
-    gt_dos_load_current(&th);   /* the saved theme, as pens_get(g, 0) reads it */
-    mt_font_spec(&th, ap.val[AM_FONT], spec, (int)sizeof spec);   /* the theme's Menu Font, else AM_FONT ("name:size", as the terminal's font key), else built-in */
+    gt_dos_current(name, (int)sizeof name);   /* the saved theme, as pens_get(g, 0) reads it */
+    mt_font_spec_load(gt_dos_read, 0, name, ap.val[AM_FONT], spec, (int)sizeof spec);   /* loaded with the theme editor's model (the Menu Font lives there; gt_dos_load_current attaches none) */   /* the theme's Menu Font, else AM_FONT ("name:size", as the terminal's font key), else built-in */
     g->mt = mt_open(g->scr, square, spec);
 }
 
