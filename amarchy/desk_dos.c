@@ -637,8 +637,9 @@ static void dk_live_pens(const gtheme *th, int flat)
         }
         for (i = 0; i < n; i++) {
             uc_u32 c = th ? desk_pen_colour(th, pens[i], flat) : desk_live_baseline(slen > 0 ? saved : 0, slen, pens[i], depth);
-            SetRGB32(&scr->ViewPort, (ULONG)pens[i], ((c >> 16) & 255) * 0x01010101UL, ((c >> 8) & 255) * 0x01010101UL,
-                     (c & 255) * 0x01010101UL);
+            if (ipd_role_write(pens[i], c) < 0)      /* S57-PENS47-UNOWNED: the holder owns 4-7; no holder running = the old direct write */
+                SetRGB32(&scr->ViewPort, (ULONG)pens[i], ((c >> 16) & 255) * 0x01010101UL, ((c >> 8) & 255) * 0x01010101UL,
+                         (c & 255) * 0x01010101UL);
         }
         if (n > 0)
             desk_dos_live_pens++;
