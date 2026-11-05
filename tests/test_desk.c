@@ -1882,12 +1882,41 @@ static void test_model_font_or_bar_height_change_replans_font_and_icontrol(void)
     CHECK_INT(desk_start_icontrol(all & ~(1u << DT_ICONTROL), &t, ia, ian, 0, &snap), DK_IC_NONE);   /* part off, nothing to restore */
 }
 
+/* TE-7-SCREENFONT-TEST: font.prefs built for model fonts A is stale when ONLY the screen font differs, stale when ONLY the icon font differs,
+ * and current when neither does; the title, menu and shell slots have no font.prefs chunk (TE-7-TITLE-FONT) and get no case */
+static void test_screen_font_alone_and_icon_font_alone_each_replan_font_prefs(void)
+{
+    static unsigned char fa[BUF_MAX * 2], out[BUF_MAX * 2];
+    gtheme t;
+    gt_model m;
+    long na;
+    unsigned all = (1u << DT_FONT);
+    probe_theme(&t);
+    memset(&m, 0, sizeof m);
+    t.model = &m;
+    t.font[0] = 0;
+    strcpy(m.look.font[GT_FONT_ICON], "topaz.font/9");
+    strcpy(m.look.font[GT_FONT_SCREEN], "topaz.font/11");
+    na = desk_start_prefs(DT_FONT, all, &t, 0, font_known, (void *)"topaz.font", 0, -1, fa, sizeof fa);
+    CHECK_INT(na, 518);
+    /* (c) nothing differs: not stale */
+    CHECK_INT(desk_start_prefs(DT_FONT, all, &t, 0, font_known, (void *)"topaz.font", fa, na, out, sizeof out), 0);
+    /* (a) screen font alone differs: stale */
+    strcpy(m.look.font[GT_FONT_SCREEN], "topaz.font/13");
+    CHECK_INT(desk_start_prefs(DT_FONT, all, &t, 0, font_known, (void *)"topaz.font", fa, na, out, sizeof out), 518);
+    strcpy(m.look.font[GT_FONT_SCREEN], "topaz.font/11");
+    /* (b) icon font alone differs: stale */
+    strcpy(m.look.font[GT_FONT_ICON], "topaz.font/8");
+    CHECK_INT(desk_start_prefs(DT_FONT, all, &t, 0, font_known, (void *)"topaz.font", fa, na, out, sizeof out), 518);
+}
+
 void suite_desk_start_apply(void)
 {
     test_desk_start_prefs_on_writes_border_gauge_backdrop();
     test_desk_start_prefs_on_writes_theme_palette();
     test_desk_start_prefs_on_writes_pointer_font_icontrol();
     test_model_font_or_bar_height_change_replans_font_and_icontrol();
+    test_screen_font_alone_and_icon_font_alone_each_replan_font_prefs();
 }
 
 void suite_desk(void)
