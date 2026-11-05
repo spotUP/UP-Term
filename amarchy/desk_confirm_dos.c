@@ -8,11 +8,14 @@
 #include "desk_dos.h"
 #include "sentinel_dos.h"
 #include "tick.h"
+#include "wbreset_core.h"
 
 unsigned long dc_shown, dc_keeps, dc_reverts_user, dc_reverts_timeout;
 
 static desk_confirm st;
 static struct Window *req;
+static struct Window *rreq;   /* TE-7: the "Reset Workbench Now / Later" requester (no timer, no revert) */
+unsigned long dc_reset_shown, dc_reset_nows;
 
 static void publish(void)
 {
@@ -68,8 +71,30 @@ static void act(int verdict)
     }
 }
 
+/* TE-7.1 (D1): Save changed a reset-bound field; the files are written, Workbench only needs the reset. Later keeps the files. */
+static void rreq_open(void)
+{
+    static struct EasyStruct es = {
+        sizeof(struct EasyStruct), 0, (UBYTE *)"Amarchy theme",
+        (UBYTE *)"The theme was saved.\n"
+                  "Fonts, title bar height and gadget size\n"
+                  "apply after a Workbench reset.\n"
+                  "Reset Workbench now? It closes open windows.",
+        (UBYTE *)"Reset Workbench Now|Later" };
+    if (!rreq && IntuitionBase)
+        rreq = BuildEasyRequestArgs(0, &es, 0, 0);
+    if (rreq) {
+        dc_reset_shown++;
+        am_sentinel("AMARCHY_CONFIRM_RESET_SHOWN", (long)dc_reset_shown);
+    }
+}
+
 void dc_begin(unsigned mask)
 {
+    if (mask & WBR_ASK_MASK) {
+        rreq_open();
+        return;
+    }
     desk_confirm_begin(&st, tick_now(), mask);
     if (!req) {
         dc_shown++;
@@ -88,13 +113,26 @@ static void dc_tick(long now)
 
 unsigned long dc_sigmask(void)
 {
-    return req ? 1UL << req->UserPort->mp_SigBit : 0;
+    return (req ? 1UL << req->UserPort->mp_SigBit : 0) | (rreq ? 1UL << rreq->UserPort->mp_SigBit : 0);
 }
 
 void dc_serve(void)
 {
     LONG r;
     ULONG idcmp = 0;
+    if (rreq) {
+        r = SysReqHandler(rreq, &idcmp, FALSE);
+        if (r != -2) {
+            FreeSysRequest(rreq);
+            rreq = 0;
+            if (r == 1) {          /* Reset Workbench Now: the patched CloseWorkBench hides the clients first (wbreset.c) */
+                dc_reset_nows++;
+                am_sentinel("AMARCHY_CONFIRM_RESET_NOWS", (long)dc_reset_nows);
+                if (CloseWorkBench())
+                    OpenWorkBench();
+            }
+        }
+    }
     if (!req)
         return;
     r = SysReqHandler(req, &idcmp, FALSE);

@@ -10,6 +10,7 @@
 #include "../amarchy/flat_core.h"
 #include "../amarchy/gthemes_core.h"
 #include "../amarchy/iconpen_core.h"
+#include "../amarchy/wbreset_core.h"
 #include "../amarchy/leaf.h"
 #include "../prefs/settings_def.h"
 #include "../amarchy/menu_core.h"
@@ -1775,8 +1776,54 @@ static void test_gthemes_te6_live(void)
     gte_live = 0;
 }
 
+/* ---- TE-7.1 (D1): the editor's Save asks for the Workbench reset only when a reset-bound field changed. Real entry points: the row
+ * edit (lf_setting_set_text) and gt_save_editor, with the sentinel gt_dos_reset_prompts. ---- */
+static unsigned te7_asked_mask;
+static int te7_asks;
+static void te7_ask(unsigned mask) { te7_asked_mask = mask; te7_asks++; }
+
+static void test_gthemes_te7_reset_prompt(void)
+{
+    tm_fs m;
+    prefs_fs fs;
+    amconf_io io;
+    char why[96];
+    int failed = 0;
+    unsigned long p0;
+    const sd_setting *radius, *bar;
+    memset(&io, 0, sizeof io);
+    tm_init(&m, &fs);
+    te4_open_builtin();
+    radius = te4_row("Corner Radius");
+    bar = te4_row("Title Bar Height");
+    CHECK(radius != 0 && bar != 0);
+    p0 = gt_dos_reset_prompts;
+    /* a live field: saved and applied, no prompt */
+    CHECK_INT(lf_setting_set_text(&io, radius, "7", &failed), 0);
+    CHECK(gt_save_editor(&fs, "nord", &gt_ed.m, "nord", tm_apply, wbr_bound_mask, te7_ask, why, sizeof why));
+    CHECK_INT(te7_asks, 0);
+    CHECK_INT((int)(gt_dos_reset_prompts - p0), 0);
+    gte_saved();
+    /* a reset-bound field: the prompt, with exactly that field in the mask */
+    CHECK_INT(lf_setting_set_text(&io, bar, "30", &failed), 0);
+    CHECK(gt_save_editor(&fs, "nord", &gt_ed.m, "nord", tm_apply, wbr_bound_mask, te7_ask, why, sizeof why));
+    CHECK_INT(te7_asks, 1);
+    CHECK_INT((int)te7_asked_mask, WBR_B_BAR_HEIGHT);
+    CHECK_INT((int)(gt_dos_reset_prompts - p0), 1);          /* the sentinel: the ask ran once through Save */
+    gte_saved();
+    /* saved again unchanged: nothing new to reset */
+    CHECK(gt_save_editor(&fs, "nord", &gt_ed.m, "nord", tm_apply, wbr_bound_mask, te7_ask, why, sizeof why));
+    CHECK_INT(te7_asks, 1);
+    /* a reset-bound edit saved while another theme is the current one: nothing running changes */
+    CHECK_INT(lf_setting_set_text(&io, bar, "31", &failed), 0);
+    CHECK(gt_save_editor(&fs, "nord", &gt_ed.m, "other", tm_apply, wbr_bound_mask, te7_ask, why, sizeof why));
+    CHECK_INT(te7_asks, 1);
+    tm_free(&m);
+}
+
 void suite_gthemes(void)
 {
+    test_gthemes_te7_reset_prompt();
     test_gthemes_te6_live();
     test_gthemes_te3_save();
     test_gthemes_te3_custom_name();

@@ -343,11 +343,14 @@ Host tests: flat_state v5 layout offsets; a v4 reader refuses v5; preview then r
 
 Files: `amarchy/gthemes_dos.c`, `amarchy/wbreset_core.[ch]`, `amarchy/desk_confirm_dos.c`, `tests/test_wbreset.c`.
 
-- [ ] TE-7.1 Save compares reset-bound fields (section 5 table) with the running ones; when any changed, write font.prefs
+- [x] TE-7.1 Save compares reset-bound fields (section 5 table) with the running ones; when any changed, write font.prefs
   and IControl prefs and show the prompt per D1 through the existing confirm machinery.
-- [ ] TE-7.2 Icon font: check on the rig whether Workbench redraws without reset (3.1 and 3.2); record the answer in the
+  Done: `wbr_bound_mask` (wbreset_core), `gt_save_editor` (gthemes_core), requester in desk_confirm_dos.c via DESK CONFIRM
+  with `WBR_ASK_MASK`. The font.prefs / IControl bytes still come from the existing desk apply (th.font); the model's
+  `look.font` and bar height are not yet mapped into those writers (open).
+- [ ] TE-7.2 (rig check queued; icon row stays live until it runs) Icon font: check on the rig whether Workbench redraws without reset (3.1 and 3.2); record the answer in the
   test register; set its row live or reset-bound from that.
-- [ ] TE-7.3 Sentinel `gt_dos_reset_prompts`.
+- [x] TE-7.3 Sentinel `gt_dos_reset_prompts`.
 
 Host tests: the reset decision function returns reset-bound only for the fields of the table.
 
