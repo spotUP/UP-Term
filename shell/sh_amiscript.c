@@ -50,11 +50,28 @@ static void buf_adds(buf *b, const char *s)
             return;
 }
 
-/* the value of $name: a shell variable, else ENV: */
+static int word_is(const char *a, const char *b);
+
+/* the value of $name: RC and ? are the last return code, else a shell variable, else ENV: */
 static void var_value(sh_shell *sh, const char *name, buf *out)
 {
-    const char *v = sh_get(&sh->ctx, name);
+    const char *v;
     char tmp[512];
+    if (!strcmp(name, "?") || word_is(name, "rc")) {
+        long n = sh->ctx.status;
+        int i = (int)sizeof(tmp) - 1;
+        unsigned long u = n < 0 ? 0UL - (unsigned long)n : (unsigned long)n;
+        tmp[i] = 0;
+        do {
+            tmp[--i] = (char)('0' + (int)(u % 10));
+            u /= 10;
+        } while (u);
+        if (n < 0)
+            tmp[--i] = '-';
+        buf_adds(out, tmp + i);
+        return;
+    }
+    v = sh_get(&sh->ctx, name);
     if (!v && sh->os.getenv && sh->os.getenv(sh->os.data, name, tmp, sizeof(tmp)))
         v = tmp;
     buf_adds(out, v);
@@ -76,6 +93,10 @@ static size_t dollar(sh_shell *sh, const char *s, buf *out)
         name[e - (s + 2)] = 0;
         var_value(sh, name, out);
         return (size_t)(e - s) + 1;
+    }
+    if (s[1] == '?') {
+        var_value(sh, "?", out);
+        return 2;
     }
     while (i < sizeof(name) - 1 && (s[1 + i] == '_' || (s[1 + i] >= '0' && s[1 + i] <= '9') ||
                                      (s[1 + i] >= 'a' && s[1 + i] <= 'z') || (s[1 + i] >= 'A' && s[1 + i] <= 'Z'))) {
@@ -347,6 +368,89 @@ static int script_word(sh_shell *sh, line_toks *t, const sh_io *io, long *st, lo
     return 0;
 }
 
+/* the first word of the line at p, lower-cased into w (comment and quotes not interpreted) */
+static void first_word(const char *p, char *w, size_t cap)
+{
+    size_t i = 0;
+    while (*p == ' ' || *p == '\t')
+        p++;
+    while (*p && *p != ' ' && *p != '\t' && *p != ';' && *p != '\n' && *p != '\r' && i + 1 < cap)
+        w[i++] = (char)tolower((unsigned char)*p++);
+    w[i] = 0;
+}
+
+/* Textual skip over an If block, from the start of the line at p: the pointer after the EndIf that
+ * matches (or, with stop_at_else, after an Else at the same depth); 0 at the end of the text. No If
+ * stack is kept; only the first word of each line counts, so `echo If` does not. */
+static const char *skip_if(const char *p, int stop_at_else)
+{
+    int depth = 0;
+    while (*p) {
+        char w[16];
+        const char *e = strchr(p, '\n');
+        first_word(p, w, sizeof(w));
+        p = e ? e + 1 : p + strlen(p);
+        if (!strcmp(w, "if"))
+            depth++;
+        else if (!strcmp(w, "endif")) {
+            if (!depth)
+                return p;
+            depth--;
+        } else if (!strcmp(w, "else") && !depth && stop_at_else)
+            return p;
+    }
+    return 0;
+}
+
+static int cmp_word(const char *a, const char *b)
+{
+    for (; *a && *b; a++, b++)
+        if (tolower((unsigned char)*a) != tolower((unsigned char)*b))
+            return tolower((unsigned char)*a) - tolower((unsigned char)*b);
+    return tolower((unsigned char)*a) - tolower((unsigned char)*b);
+}
+
+/* If's condition: NOT, WARN, ERROR, FAIL (the last rc), a EQ|GT|GE b [VAL], EXISTS name; several are
+ * ANDed and NOT inverts the whole (the design's choice, UNVERIFIED against C:If) */
+static int if_true(sh_shell *sh, line_toks *t)
+{
+    int i, neg = 0, val = 0, ok = 1;
+    long rc = sh->ctx.status;
+    for (i = 1; i < t->n; i++)
+        if (word_is(t->v[i], "val"))
+            val = 1;
+    for (i = 1; i < t->n; i++) {
+        const char *w = t->v[i];
+        if (word_is(w, "not"))
+            neg = !neg;
+        else if (word_is(w, "val"))
+            continue;
+        else if (word_is(w, "warn"))
+            ok = ok && rc >= 5;
+        else if (word_is(w, "error"))
+            ok = ok && rc >= 10;
+        else if (word_is(w, "fail"))
+            ok = ok && rc >= 20;
+        else if (word_is(w, "exists") && i + 1 < t->n) {
+            sh_stat sb;
+            ok = ok && sh->os.stat && sh->os.stat(sh->os.data, t->v[++i], &sb, 0) == 0;
+        } else if (i + 2 < t->n && (word_is(t->v[i + 1], "eq") || word_is(t->v[i + 1], "gt") ||
+                                    word_is(t->v[i + 1], "ge"))) {
+            int c;
+            char op = (char)tolower((unsigned char)t->v[i + 1][1]);
+            if (val) {
+                long a = strtol(w, 0, 10), b = strtol(t->v[i + 2], 0, 10);
+                c = a < b ? -1 : a > b;
+            } else
+                c = cmp_word(w, t->v[i + 2]);
+            ok = ok && (op == 'q' ? c == 0 : op == 't' ? c > 0 : c >= 0);
+            i += 2;
+        } else
+            ok = 0;
+    }
+    return neg ? !ok : ok;
+}
+
 long sh_amiga_execute(sh_shell *sh, const char *text, const char *file, int argc, char **argv, const sh_io *io)
 {
     const char *p = text;
@@ -359,6 +463,7 @@ long sh_amiga_execute(sh_shell *sh, const char *text, const char *file, int argc
     while (*p && !sh->intr && !sh->exiting) {
         const char *e = strchr(p, '\n');
         size_t len = e ? (size_t)(e - p) : strlen(p);
+        const char *next = p + len + (e ? 1 : 0);
         char *ln = dup_n(p, len);
         line_toks t;
         if (!ln)
@@ -366,7 +471,22 @@ long sh_amiga_execute(sh_shell *sh, const char *text, const char *file, int argc
         if (len && ln[len - 1] == '\r')
             ln[len - 1] = 0;
         memset(&t, 0, sizeof(t));
-        if (!lex_line(sh, ln, &t) && t.n && !script_word(sh, &t, io, &st, &failat, &quit)) {
+        sh->ctx.status = st;   /* $RC and If see the last return code */
+        if (lex_line(sh, ln, &t)) {
+            /* an unlexable line is skipped */
+        } else if (t.n && !t.redir[0] && word_is(t.v[0], "if")) {
+            if (!if_true(sh, &t)) {
+                next = skip_if(next, 1);
+                if (!next)
+                    quit = 1;
+            }
+        } else if (t.n && !t.redir[0] && word_is(t.v[0], "else")) {
+            next = skip_if(next, 0);
+            if (!next)
+                quit = 1;
+        } else if (t.n && !t.redir[0] && word_is(t.v[0], "endif")) {
+            /* the end of a block that ran: nothing to do */
+        } else if (t.n && !script_word(sh, &t, io, &st, &failat, &quit)) {
             st = run_tokens(sh, &t, io);
             if (st >= failat) {
                 say_io(sh, io->err, t.v[0]);
@@ -379,7 +499,7 @@ long sh_amiga_execute(sh_shell *sh, const char *text, const char *file, int argc
         free(ln);
         if (quit)
             break;
-        p += len + (e ? 1 : 0);
+        p = next;
     }
     sh->ctx.status = st;
     return st;

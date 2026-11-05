@@ -2566,6 +2566,114 @@ static void execute_set_unset_get_are_amiga_locals(void)
     CHECK_STR(run("set -- a b; echo $#"), "2\n");
 }
 
+/* S3: If / Else / EndIf: textual skipping with a depth count, no If stack. */
+static void execute_if_else_endif(void)
+{
+    int inc = 0;
+    run("");
+    amiscr_put("RAM:i1",
+               "If \"a\" EQ \"A\"\n"
+               "echo eq-true\n"
+               "Else\n"
+               "echo eq-else\n"
+               "EndIf\n"
+               "If a EQ b\n"
+               "echo no1\n"
+               "Else\n"
+               "echo else1\n"
+               "EndIf\n"
+               "If NOT a EQ b\n"
+               "echo not-true\n"
+               "EndIf\n"
+               "If 10 GT 9 VAL\n"
+               "echo gt-val\n"
+               "EndIf\n"
+               "If 10 GT 9\n"
+               "echo str-gt-no\n"
+               "EndIf\n"
+               "If 9 GE 9 VAL\n"
+               "echo ge-val\n"
+               "EndIf\n"
+               "If NOT 3 GE 4 VAL\n"
+               "echo ge-not\n"
+               "EndIf\n");
+    amiscr_put("RAM:i1b",
+               "If a EQ b\n"
+               "If a EQ a\n"
+               "echo nested-no\n"
+               "Else\n"
+               "echo nested-else-no\n"
+               "EndIf\n"
+               "echo outer-no\n"
+               "Else\n"
+               "echo outer-else\n"
+               "EndIf\n");
+    amiscr_put("RAM:i1c",
+               "If a EQ a\n"
+               "If a EQ b\n"
+               "echo x\n"
+               "Else\n"
+               "echo inner-else\n"
+               "EndIf\n"
+               "Else\n"
+               "If a EQ a\n"
+               "echo skipped\n"
+               "EndIf\n"
+               "echo skipped2\n"
+               "EndIf\n"
+               "If a EQ b\n"
+               "echo If\n"
+               "echo EndIf ; EndIf\n"
+               "EndIf\n"
+               "echo done\n");
+    sh_run_text(&sh, "execute RAM:i1; execute RAM:i1b; execute RAM:i1c; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data,
+              "eq-true\nelse1\nnot-true\ngt-val\nge-val\nge-not\nouter-else\ninner-else\ndone\nrc0\n");
+    /* an If with no EndIf: a false one runs to the end of the file and ends the script */
+    run("");
+    amiscr_put("RAM:i2", "echo a\nIf a EQ b\necho b\n");
+    sh_run_text(&sh, "execute RAM:i2; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "a\nrc0\n");
+}
+
+/* S3: WARN / ERROR / FAIL test the last return code; EXISTS tests a name. */
+static void execute_if_condition_flags(void)
+{
+    int inc = 0;
+    run("");
+    amiscr_put("RAM:c1",
+               "failat 21\n"
+               "fail 4\n"
+               "If WARN\necho w4\nEndIf\n"
+               "fail 5\n"
+               "If WARN\necho w5\nEndIf\n"
+               "If ERROR\necho e5\nEndIf\n"
+               "fail 10\n"
+               "If ERROR\necho e10\nEndIf\n"
+               "If FAIL\necho f10\nEndIf\n"
+               "fail 20\n"
+               "If FAIL\necho f20\nEndIf\n"
+               "If NOT FAIL\necho nf20\nEndIf\n"
+               "echo ok\n"
+               "If NOT WARN\necho nw0\nEndIf\n"
+               "If EXISTS RAM:c1\necho ex\nEndIf\n"
+               "If EXISTS RAM:nope\necho exno\nEndIf\n"
+               "If NOT EXISTS RAM:nope\necho nex\nEndIf\n"
+               "If EXISTS RAM:c1 NOT EXISTS RAM:nope\necho both\nEndIf\n");
+    sh_run_text(&sh, "execute RAM:c1", &inc);
+    CHECK_STR(slot(OUT)->data, "w5\ne10\nf20\nnf20\nok\nnw0\nex\nnex\nboth\n");
+}
+
+/* S3: $RC and $? in script lines are the last return code, and If sees the same value. */
+static void execute_rc_expands_in_scripts(void)
+{
+    int inc = 0;
+    run("");
+    amiscr_put("RAM:r1", "failat 21\nfail 7\nargs $RC $? ${rc} \"rc=$RC\"\nfail 7\nIf $RC EQ 7 VAL\necho seven\nEndIf\n");
+    sh_run_text(&sh, "execute RAM:r1", &inc);
+    CHECK_STR(slot(OUT)->data, "<7><7><7><rc=7>\nseven\n");
+}
+
 void suite_sh_exec(void)
 {
     path_and_run_are_amiga_forms_of_path_and_background();
@@ -2573,6 +2681,9 @@ void suite_sh_exec(void)
     execute_quit_sets_rc();
     execute_failat_aborts();
     execute_set_unset_get_are_amiga_locals();
+    execute_if_else_endif();
+    execute_if_condition_flags();
+    execute_rc_expands_in_scripts();
     setenv_unsetenv_getenv_use_the_system_store();
     fault_prompt_ask_alias_and_echo_keywords();
     bind_and_inputrc_reach_the_console_line_editor();
