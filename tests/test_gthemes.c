@@ -1421,7 +1421,7 @@ static void test_gthemes_te4_rows(void)
         { "Pen Budget", PG_PAGE_THEME }, { "Add Swatch...", PG_PAGE_THEME_SWATCHES },
         { "Rename Swatch...", PG_PAGE_THEME_SWATCHES }, { "Remove Swatch...", PG_PAGE_THEME_SWATCHES },
         { "Terminal Palette", PG_PAGE_THEME_SWATCHES }, { "Screen Font", PG_PAGE_THEME_TYPE },
-        { "Window Title Font", PG_PAGE_THEME_TYPE }, { "Menu Font", PG_PAGE_THEME_TYPE }, { "Icon Font", PG_PAGE_THEME_TYPE },
+        { "Menu Font", PG_PAGE_THEME_TYPE }, { "Icon Font", PG_PAGE_THEME_TYPE },
         { "Shell Font", PG_PAGE_THEME_TYPE }, { "Title Alignment", PG_PAGE_THEME_TYPE }, { "Title Style", PG_PAGE_THEME_TYPE },
         { "Corner Radius", PG_PAGE_THEME_SHAPE }, { "Border Width", PG_PAGE_THEME_SHAPE }, { "Title Bar Height", PG_PAGE_THEME_SHAPE },
         { "Gadget Size", PG_PAGE_THEME_SHAPE }, { "Gadget Padding", PG_PAGE_THEME_SHAPE }, { "Scroll Bar Width", PG_PAGE_THEME_SHAPE },
@@ -1472,6 +1472,33 @@ static void test_gthemes_te4_rows(void)
         CHECK(amconf_load_with(&io, &am) != AMCONF_DEFAULTS);
         CHECK_STR(am.val[AM_ICONTEXT], "outline");
     }
+}
+
+/* TE-7-TITLE-FONT: font.prefs has no title-font chunk, so the Theme Type page offers no Window Title Font row; every other font
+ * row still edits its own slot, and a theme file carrying title-font loads and keeps the value on save (no format change). */
+static void test_gthemes_te7_no_title_font_row(void)
+{
+    static const struct { const char *label; int slot; } rows[] = {
+        { "Screen Font", GT_FONT_SCREEN }, { "Menu Font", GT_FONT_MENU }, { "Icon Font", GT_FONT_ICON }, { "Shell Font", GT_FONT_SHELL }
+    };
+    char text[256];
+    long n, len;
+    int i;
+    te4_open_builtin();
+    CHECK(te4_row("Window Title Font") == 0);
+    for (i = 0; i < (int)(sizeof rows / sizeof rows[0]); i++) {
+        const sd_setting *r = te4_row(rows[i].label);
+        CHECK(r && r->kind == SD_FONT);
+        if (r)
+            CHECK_INT(r->aux, rows[i].slot + 1);
+    }
+    n = snprintf(text, sizeof text, "amarchy-theme = 2\nname = \"tf\"\n[profile look]\ntitle-font = \"topaz.font\"\n");
+    gt_model_parse(text, n, &te_m);
+    CHECK_STR(te_m.look.font[GT_FONT_TITLE], "topaz.font");
+    len = gt_model_save_text(&te_m, te_out, (long)sizeof te_out);
+    CHECK(len > 0);
+    gt_model_parse(te_out, len, &te_m2);
+    CHECK_STR(te_m2.look.font[GT_FONT_TITLE], "topaz.font");
 }
 
 /* TE-4.3: the decision to ask when the menu leaves the editor with unsaved changes, and how the answer reads. */
@@ -1985,7 +2012,7 @@ static void test_gthemes_te8_rows(void)
         if (s->kind == SD_INFO && !strncmp(s->label, "Pen Share ", 10)) share_all++;
     }
     CHECK_INT(share_all, GTG_COUNT);                                   /* one Pen Share row per group, all built */
-    CHECK_INT(total, 310);                                             /* the true row count with the TE-8 rows, counted from the builder */
+    CHECK_INT(total, 309);                                             /* the true row count with the TE-8 rows and no Window Title Font row, counted from the builder */
     gt_ed.depth = 3;
     share_vis = 0;
     for (i = 0; i < total; i++) {
@@ -2148,6 +2175,7 @@ void suite_gthemes(void)
     test_gthemes_te4_dispatch();
     test_gthemes_te4_leave();
     test_gthemes_te4_rows();
+    test_gthemes_te7_no_title_font_row();
     test_gthemes_te4_modes();
     test_gthemes_te3_import_export_delete();
     test_gthemes_nearest_role_pen_ties_low_and_caps_at_depth();
