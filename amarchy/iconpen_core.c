@@ -248,6 +248,11 @@ int ip_screen_depth(int planes, int ehb)
     return (ehb && planes == 6) ? 5 : planes;
 }
 
+int ip_wb_lockable(int listed, int has_screen, unsigned flags)
+{
+    return listed && has_screen && !(flags & IP_PSN_PRIVATE);
+}
+
 void ip_shared_init(ip_shared *s)
 {
     s->owners = 0;

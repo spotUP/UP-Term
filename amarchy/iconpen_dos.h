@@ -20,10 +20,12 @@ struct ColorMap;
  * succeeds is handed straight back). The probe ip_holder_verify uses, shared with the icl shade cache and flat_pens. 0 for no map.
  * PalExtra is taken inside ObtainPen/ReleasePen only: a leaf lock, no new order. */
 int ipd_pen_is_free(struct ColorMap *cm, int pen);
-/* The Workbench screen found in the public screen list the caller has locked (LockPubScreenList); 0 when it is closed. */
+/* The Workbench screen found in the public screen list the caller has locked (LockPubScreenList); 0 when it is closed.
+ * The screen may still be private (LoadWB is opening it): read it under the list lock, never LockPubScreen it from here. */
 struct Screen *ipd_wb_screen_in(struct List *pl);
-/* The Workbench screen, locked (the caller UnlockPubScreen(0, scr)), or 0 when the Workbench is closed. NEVER call
- * LockPubScreen("Workbench") elsewhere: on OS 3.1 it reopens a closed Workbench and deadlocks against IPrefs (BOOT-31-WB-DEADLOCK). */
+/* The Workbench screen, locked (the caller UnlockPubScreen(0, scr)), or 0 when the Workbench is closed or still opening
+ * (ask again later). NEVER call LockPubScreen("Workbench") elsewhere: Intuition reopens a Workbench it does not find, and
+ * that deadlocks against IPrefs closing it (BOOT-31-WB-DEADLOCK) or LoadWB opening it (S57-FREEZE-2IN9). */
 struct Screen *ipd_lock_wb_screen(void);
 
 /* Add (on 1) or drop (on 0) `owner`, then bring the held pens in line with the owners and the Workbench screen as it is now.

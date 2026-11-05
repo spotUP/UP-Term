@@ -578,8 +578,21 @@ static void test_icon_colours_inverted_pens_are_vantablack(void)
     }
 }
 
+/* S57-FREEZE-2IN9: 2 boots in 9 froze. Amarchy asked for the Workbench lock while LoadWB was still opening the screen
+ * (node listed, screen set, PSNF_PRIVATE); Intuition then reopens the Workbench under the list lock Amarchy holds. */
+static void test_workbench_still_opening_is_not_locked(void)
+{
+    CHECK_INT(ip_wb_lockable(1, 1, IP_PSN_PRIVATE), 0);         /* the freeze: listed, has a screen, still private */
+    CHECK_INT(ip_wb_lockable(1, 1, IP_PSN_PRIVATE | 0x0010), 0);
+    CHECK_INT(ip_wb_lockable(1, 1, 0), 1);                      /* open and public: the lock is asked for */
+    CHECK_INT(ip_wb_lockable(1, 1, 0x0010), 1);                 /* other flag bits do not hide it */
+    CHECK_INT(ip_wb_lockable(1, 0, 0), 0);                      /* a node with no screen */
+    CHECK_INT(ip_wb_lockable(0, 0, 0), 0);                      /* BOOT-31-WB-DEADLOCK: the Workbench is closed */
+}
+
 void suite_iconpen(void)
 {
+    test_workbench_still_opening_is_not_locked();
     test_icon_colours_inverted_pens_are_vantablack();
     test_colours_and_fold();
     test_plan_no_overlap();
