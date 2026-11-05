@@ -969,6 +969,32 @@ void gt_model_to_v1(const gt_model *m, gtheme *t)
     strncpy(t->wbtitle, m->wbtitle, GT_TITLE - 1);
 }
 
+int gt_look_font(const gtheme *t, int which, char *name, int cap, int *size)
+{
+    const char *spec = t->model ? t->model->look.font[which] : "";
+    const char *slash;
+    size_t n;
+    *size = 0;
+    if (!spec[0] && which == GT_FONT_ICON)
+        spec = t->font;
+    if (!spec[0])
+        return 0;
+    slash = strchr(spec, '/');
+    n = slash ? (size_t)(slash - spec) : strlen(spec);
+    if (n == 0 || n >= (size_t)cap)
+        return 0;
+    memcpy(name, spec, n);
+    name[n] = 0;
+    if (slash)
+        *size = atoi(slash + 1);
+    return 1;
+}
+
+int gt_look_bar_height(const gtheme *t)
+{
+    return t->model ? t->model->look.bar_height : 0;
+}
+
 /* ---- the v2 reader ---- */
 static const char *const gt_managed[] = { "mode", "name", "background", "foreground", "dark_foreground", "dark_background", "accent",
     "green", "red", "darker_background", "lighter_background", "selection", "muted", "inactive", "backdrop", "font", "wbtitle",

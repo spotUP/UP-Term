@@ -752,18 +752,25 @@ long desk_pointer(const gtheme *t, unsigned char *buf, long len)
 #define FP_NAMESIZE 128
 #define FP_BODY 156
 #define FP_WBFONT 0
+#define FP_SCREENFONT 2
+#define FP_YSIZE 24
 
 /* the body offset of the WBFONT chunk, -1 when none, -2 when buf is no font.prefs */
-static long wbfont_body(const unsigned char *buf, long len)
+static long font_body(const unsigned char *buf, long len, unsigned type)
 {
     long pos = DK_HDR, body, size;
     char id[4];
     if (!is_prefs(buf, len))
         return -2;
     while (next_chunk(buf, len, &pos, id, &body, &size))
-        if (!memcmp(id, "FONT", 4) && size == FP_BODY && get16(buf + body + FP_TYPE) == FP_WBFONT)
+        if (!memcmp(id, "FONT", 4) && size == FP_BODY && get16(buf + body + FP_TYPE) == type)
             return body;
     return -1;
+}
+
+static long wbfont_body(const unsigned char *buf, long len)
+{
+    return font_body(buf, len, FP_WBFONT);
 }
 
 /* text_mode: fp_SpecialDrawMode, 0 plain, 1 outline, 2 shadow in BackPen (prefs/font.h names the byte, no values; the values were measured
@@ -782,17 +789,40 @@ long desk_font_pens(unsigned char *buf, long len, int text_mode)
     return 1;
 }
 
-long desk_font_name(const gtheme *t, unsigned char *buf, long len, desk_font_exists_fn exists, void *ctx)
+/* TE-7-FONT-MAP: one FONT chunk gets the name (and the size when the model gives one). 1 changed, 0 untouched, -2 no prefs */
+static int font_chunk_set(unsigned char *buf, long len, unsigned type, const char *name, int size, desk_font_exists_fn exists, void *ctx)
 {
-    long b = wbfont_body(buf, len);
-    size_t n = strlen(t->font);
+    long b = font_body(buf, len, type);
+    size_t n = strlen(name);
     if (b == -2)
-        return -1;
-    if (b < 0 || n == 0 || n >= FP_NAMESIZE || !exists || !exists(ctx, t->font))
+        return -2;
+    if (b < 0 || n == 0 || n >= FP_NAMESIZE || !exists || !exists(ctx, name))
         return 0;
     memset(buf + b + FP_NAME, 0, FP_NAMESIZE);
-    memcpy(buf + b + FP_NAME, t->font, n);
+    memcpy(buf + b + FP_NAME, name, n);
+    if (size > 0) {
+        buf[b + FP_YSIZE] = (unsigned char)(size >> 8);
+        buf[b + FP_YSIZE + 1] = (unsigned char)size;
+    }
     return 1;
+}
+
+/* The WBFONT chunk follows the icon font and the SCREENFONT chunk the screen font of the theme model (gt_look_font), the v1 font= key
+ * names the icon font of a theme without a model. Returns 1 when the file changed, 0 when nothing did, -1 when buf is no font.prefs. */
+long desk_font_name(const gtheme *t, unsigned char *buf, long len, desk_font_exists_fn exists, void *ctx)
+{
+    char name[GT_NAME];
+    int size, r, changed = 0;
+    if (gt_look_font(t, GT_FONT_ICON, name, (int)sizeof name, &size)) {
+        r = font_chunk_set(buf, len, FP_WBFONT, name, size, exists, ctx);
+        if (r == -2)
+            return -1;
+        changed |= r;
+    } else if (!is_prefs(buf, len))
+        return -1;
+    if (gt_look_font(t, GT_FONT_SCREEN, name, (int)sizeof name, &size))
+        changed |= font_chunk_set(buf, len, FP_SCREENFONT, name, size, exists, ctx) == 1;
+    return changed;
 }
 
 /* ---- R1.6: contrast guard ---- */
@@ -868,6 +898,15 @@ long desk_font_default(unsigned char *out, long cap)
 #define IC_VERSION 28L /* ic_Version (UWORD), ic_VersionMagic (UWORD) at 30 */
 #define IC_GEOM 34L    /* ic_GUIGeometry[4] */
 #define IC_VERSIONED 0x80000000UL /* ICB_VERSIONED */
+
+void desk_geometry_bar(int thin, int bar_height, unsigned char geometry[4])
+{
+    desk_geometry(thin, geometry);
+    if (bar_height > 0) {
+        int d = bar_height - DK_STOCK_BORDERTOP;
+        geometry[1] = (unsigned char)(signed char)(d < -128 ? -128 : d > 127 ? 127 : d);
+    }
+}
 
 void desk_geometry(int thin, unsigned char geometry[4])
 {
