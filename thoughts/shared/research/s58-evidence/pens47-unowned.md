@@ -36,3 +36,20 @@ tests/test_iconpen.c test_pens47_owned (make test ONLY=iconpen).
   / is_free probe on pens 4-7, then pixel-check the role colours after theme apply. If the obtain fails there, decide fallback
   (write anyway) - design choice, not made here.
 - Held role pens keep old colours if the flat/palette gate turns off; ip_status_line does not list role pens.
+
+## Merged onto main 80014d07
+
+Merge 957a8e23 (merge, not rebase). No textual conflicts; iconpen_core.c/.h, iconpen_dos.c/.h and tests/test_iconpen.c auto-merged and kept both sides: `ip_wb_lockable` is still used by `ipd_lock_wb_screen` (iconpen_dos.c:126), the test `test_workbench_still_opening_is_not_locked` is present, the pens 4-7 holder code and tests are present.
+
+Makefile check (MAIN-LINK-AMARCHY-INDEX): the branch makes desk_dos.c call `ipd_role_write` (iconpen_dos.c). desk_dos.c is linked by AMARCHY_SRC, AMARCHY_MENU_SRC and AMARCHY_GUI_SRC (Makefile lines 957, 1023, 1037); all three also list amarchy/iconpen_dos.c and iconpen_core.c. No other target lists desk_dos.c.
+
+Host suites (machine-wide lock helper):
+- green: RUNTEST iconpen rc=0 [OK] iconpen: 2195 checks, 0 failed (main alone: 2160)
+- green: RUNTEST wb_lock_guard rc=0
+- green: RUNTEST desk rc=0 [OK] desk: 2311 checks, 0 failed
+- red (iconpen_core.c:271 obtain forced to rhave = 0): RUNTEST iconpen rc=2 [FAIL] iconpen: 2195 checks, 28 failed
+- restored with git checkout, rerun: RUNTEST iconpen rc=0 [OK] iconpen: 2195 checks, 0 failed
+
+m68k: make build/amiga/Amarchy amarchy-gui amarchy-menu amarchy-index amarchy-icons amarchy-flat upprefs, rc=0.
+
+Finding, obtaining pens 4-7 fails (another client owns one): iconpen_core.c:271 sets `h->rhave[k]` to 1 only when `obtain` returns exactly that pen, and only then calls `set_rgb` (line 272), so a pen another client owns is silently skipped and left at its current colour. Later `ipd_role_write` (iconpen_dos.c) returns 0 for it (`ip_role_claim` fails, no SetRGB32), and desk_dos.c:639 falls back to the direct SetRGB32 only when it returns < 0 (no holder running), so that pen is never written by Amarchy; no retry, no log, no error surfaced.
