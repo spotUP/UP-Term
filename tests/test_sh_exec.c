@@ -2572,7 +2572,7 @@ static void execute_failat_aborts(void)
     run("");
     amiscr_put("RAM:f2", "failat 21\nfail 20\necho two\nfailat\nfailat 5\nfail 5\necho three\n");
     sh_run_text(&sh, "execute RAM:f2; echo rc$?", &inc);
-    CHECK_STR(slot(OUT)->data, "two\n21\nrc5\n");
+    CHECK_STR(slot(OUT)->data, "two\nFail limit: 21\nrc5\n");
     CHECK_STR(slot(ERR)->data, "fail failed returncode 5\n");
     /* the limit is per call: the inner script starts at 10, the outer keeps its 21 afterwards */
     run("");
