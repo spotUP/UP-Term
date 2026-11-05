@@ -415,6 +415,18 @@ void gt_save_text(int step, int failed, long err, char *out, int cap)
         verb = "check the name of";
         what = "the theme";
         break;
+    case GT_SAVE_SHIPPED:
+        snprintf(out, (size_t)cap, "that name belongs to a shipped theme: save the copy under a new name");
+        return;
+    case GT_SAVE_EXISTS:
+        snprintf(out, (size_t)cap, "a theme of that name already exists");
+        return;
+    case GT_SAVE_MISSING:
+        snprintf(out, (size_t)cap, "there is no such user theme");
+        return;
+    case GT_SAVE_WRITE:
+        snprintf(out, (size_t)cap, "the theme could not be written");
+        return;
     case PREFS_SAVE_NODIR:
         verb = "make the drawer";
         what = p->dir[t];
@@ -1378,4 +1390,222 @@ void gt_free(gtheme *t)
     if (t->model)
         GT_FREE(t->model);
     t->model = 0;
+}
+
+
+/* ====== TE-3: Save, Save As, Duplicate, Import, Export, Delete ====== */
+unsigned long gt_dos_edit_applies;
+
+static char g_save[UC_MAX_FILE];
+static gt_model g_smodel;
+
+static void why_put(char *why, int cap, int step)
+{
+    if (why && cap > 0)
+        gt_save_text(step, 0, 0, why, cap);
+}
+
+static void why_msg(char *why, int cap, const char *msg)
+{
+    if (why && cap > 0)
+        snprintf(why, (size_t)cap, "the file is not a theme: %s", msg);
+}
+
+static int gt_file_path(int env, const char *name, char *out, int cap)
+{
+    return gt_path(env ? GT_ENV_DIR : GT_USER_DIR, name, out, cap);
+}
+
+void gt_custom_name(const char *base, int (*taken)(void *ctx, const char *name), void *ctx, char *out, int cap)
+{
+    char b[GT_NAME];
+    int n;
+    strncpy(b, base, sizeof b - 1);
+    b[sizeof b - 1] = 0;
+    if ((int)strlen(b) > GT_NAME - 1 - 11)  /* room for " Custom 99" */
+        b[GT_NAME - 1 - 11] = 0;
+    snprintf(out, (size_t)cap, "%s Custom", b);
+    for (n = 2; taken && taken(ctx, out) && n < 100; n++)
+        snprintf(out, (size_t)cap, "%s Custom %d", b, n);
+}
+
+int gt_check_text(const char *buf, long len, char *msg, int cap)
+{
+    const char *why = 0;
+    long i;
+    int eq = 0;
+    if (len <= 0)
+        why = "it is empty";
+    for (i = 0; !why && i < len; i++)
+        if (buf[i] == '=')
+            eq = 1;
+    if (!why && !eq)
+        why = "it has no key = value line";
+    if (!why) {
+        gt_model_parse(buf, len, &g_smodel);
+        if (g_smodel.warn & GT_WARN_BAD_REF)
+            why = "a colour reference names an unknown swatch or group";
+        else if (g_smodel.warn & GT_WARN_CYCLE)
+            why = "groups refer to each other in a loop";
+        else if (g_smodel.warn & GT_WARN_OVERFLOW)
+            why = "it holds more swatches or references than a theme may";
+    }
+    if (why && msg && cap > 0) {
+        strncpy(msg, why, (size_t)cap - 1);
+        msg[cap - 1] = 0;
+    }
+    return why == 0;
+}
+
+static int user_has(const prefs_fs *fs, const char *name)
+{
+    char p[160];
+    return gt_file_path(0, name, p, sizeof p) && fs->exists(fs->ctx, p);
+}
+
+static int shipped_has(const prefs_fs *fs, const char *name)
+{
+    char p[160];
+    return gt_path(GT_SHIPPED_DIR, name, p, sizeof p) && fs->exists(fs->ctx, p);
+}
+
+/* the text into the user file, then the ENV: copy (the ENVARC: file is the one that must succeed) */
+static int put_text(const prefs_fs *fs, const char *name, const char *text, long len, char *why, int cap)
+{
+    char p[160];
+    int env;
+    for (env = 0; env < 2; env++) {
+        if (!gt_file_path(env, name, p, sizeof p) || !fs->write_file(fs->ctx, p, text, len)) {
+            if (!env) {
+                why_put(why, cap, GT_SAVE_WRITE);
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+int gt_save(const prefs_fs *fs, const char *name, const gt_model *m, char *why, int cap)
+{
+    long n;
+    if (!gt_name_ok(name)) {
+        why_put(why, cap, GT_SAVE_NAME);
+        return 0;
+    }
+    if (shipped_has(fs, name) && !user_has(fs, name)) {
+        why_put(why, cap, GT_SAVE_SHIPPED);
+        return 0;
+    }
+    n = gt_model_save_text(m, g_save, (long)sizeof g_save);
+    if (n < 0) {
+        why_put(why, cap, GT_SAVE_WRITE);
+        return 0;
+    }
+    return put_text(fs, name, g_save, n, why, cap);
+}
+
+int gt_save_as(const prefs_fs *fs, const char *name, const gt_model *m, char *why, int cap)
+{
+    if (gt_name_ok(name) && (user_has(fs, name) || shipped_has(fs, name))) {
+        why_put(why, cap, shipped_has(fs, name) && !user_has(fs, name) ? GT_SAVE_SHIPPED : GT_SAVE_EXISTS);
+        return 0;
+    }
+    return gt_save(fs, name, m, why, cap);
+}
+
+/* the file text of theme name: the user's file, else the shipped one; -1 when neither */
+static long theme_text(gt_read_fn rd, void *ctx, const char *name, char *buf, long cap)
+{
+    static const char *const dirs[2] = { GT_USER_DIR, GT_SHIPPED_DIR };
+    char p[160];
+    int d;
+    for (d = 0; d < 2; d++) {
+        long n;
+        if (!gt_path(dirs[d], name, p, sizeof p))
+            return -1;
+        n = rd(ctx, p, buf, cap);
+        if (n >= 0)
+            return n;
+    }
+    return -1;
+}
+
+int gt_duplicate(const prefs_fs *fs, gt_read_fn rd, void *ctx, const char *from, const char *to, char *why, int cap)
+{
+    long n = gt_name_ok(from) ? theme_text(rd, ctx, from, g_save, (long)sizeof g_save) : -1;
+    if (n < 0) {
+        why_put(why, cap, GT_SAVE_MISSING);
+        return 0;
+    }
+    gt_model_parse(g_save, n, &g_smodel);
+    strncpy(g_smodel.base, from, GT_NAME - 1);
+    g_smodel.base[GT_NAME - 1] = 0;
+    return gt_save_as(fs, to, &g_smodel, why, cap);
+}
+
+int gt_import(const prefs_fs *fs, gt_read_fn rd, void *ctx, const char *src, const char *name, char *why, int cap)
+{
+    char msg[80];
+    long n;
+    if (!gt_name_ok(name)) {
+        why_put(why, cap, GT_SAVE_NAME);
+        return 0;
+    }
+    n = rd(ctx, src, g_save, (long)sizeof g_save);
+    if (n < 0) {
+        why_msg(why, cap, "it could not be read");
+        return 0;
+    }
+    if (!gt_check_text(g_save, n, msg, sizeof msg)) {
+        why_msg(why, cap, msg);
+        return 0;
+    }
+    if (user_has(fs, name) || shipped_has(fs, name)) {
+        why_put(why, cap, shipped_has(fs, name) && !user_has(fs, name) ? GT_SAVE_SHIPPED : GT_SAVE_EXISTS);
+        return 0;
+    }
+    return put_text(fs, name, g_save, n, why, cap);
+}
+
+int gt_export(const prefs_fs *fs, gt_read_fn rd, void *ctx, const char *name, const char *dst, char *why, int cap)
+{
+    long n = gt_name_ok(name) ? theme_text(rd, ctx, name, g_save, (long)sizeof g_save) : -1;
+    if (n < 0) {
+        why_put(why, cap, GT_SAVE_MISSING);
+        return 0;
+    }
+    if (!fs->write_file(fs->ctx, dst, g_save, n)) {
+        why_put(why, cap, GT_SAVE_WRITE);
+        return 0;
+    }
+    return 1;
+}
+
+int gt_delete_user(const prefs_fs *fs, const char *name, char *why, int cap)
+{
+    char p[160];
+    if (!gt_name_ok(name) || !user_has(fs, name)) {
+        why_put(why, cap, GT_SAVE_MISSING);
+        return 0;
+    }
+    gt_file_path(0, name, p, sizeof p);
+    if (!fs->remove(fs->ctx, p)) {
+        why_put(why, cap, GT_SAVE_WRITE);
+        return 0;
+    }
+    if (gt_file_path(1, name, p, sizeof p))
+        fs->remove(fs->ctx, p);
+    return 1;
+}
+
+int gt_save_edit(const prefs_fs *fs, const char *name, const gt_model *m, const char *current, int (*apply)(const char *name),
+                 char *why, int cap)
+{
+    if (!gt_save(fs, name, m, why, cap))
+        return 0;
+    if (current && !cmp_ci(name, current) && apply) {
+        gt_dos_edit_applies++;
+        apply(name);
+    }
+    return 1;
 }

@@ -1,4 +1,5 @@
 /* gthemes_dos: see gthemes_dos.h. */
+#include "../prefs/prefs_asl.h"
 #include <string.h>
 #include <dos/dos.h>
 #include <dos/dosextens.h>
@@ -203,6 +204,27 @@ void gt_dos_term_boot(void)
     gt_boot_term(ap.val[AM_GTHEME], gt_dos_term_send);
 }
 
+/* What follows the save of the chosen theme's name: the preview's colours go, then consoles, desktop pens, Directory Opus and the
+ * held icon pens follow the file now on disk. Also what saving an edit of the current theme runs (gt_save_edit). */
+static int gt_dos_apply_saved(const char *name)
+{
+    gtheme th;
+    int d;
+    gt_dos_desk_restore();      /* the preview's colours go before the real apply */
+    gt_dos_load(name, &th);
+    gt_dos_term_send(name);
+    /* the native desktop theme (desk_dos.h) sets pens 0-3 through the Palette editor; the SetRGB32 mapping is the fallback when it is off or refused */
+    d = desk_dos_apply(&th, 0, 0);
+    if (d <= 0 || !(d & (1 << DT_PALETTE))) {
+        /* desk_dos_apply hands the theme to DOpus itself after its Palette write (FLAT-D2); otherwise it goes here */
+        gt_dos_dopus_sends++;
+        dopus_theme_send(&th, gt_dopus_send, 0);
+        wb_pens_apply(&th);
+    }
+    ipd_recolour();             /* ICON-AA-WRONG-BG: the held icon pens 32-47 follow the new theme live */
+    return 1;
+}
+
 int gt_dos_select(const char *name, char *why, int cap)
 {
     am_prefs ap;
@@ -216,20 +238,7 @@ int gt_dos_select(const char *name, char *why, int cap)
     strcpy(ap.val[AM_GTHEME], name);
     r = amconf_save(&ap, 1, &failed);
     if (r == PREFS_INSTALL_OK) {
-        gtheme th;
-        int d;
-        gt_dos_desk_restore();      /* the preview's colours go before the real apply */
-        gt_dos_load(name, &th);
-        gt_dos_term_send(name);
-        /* the native desktop theme (desk_dos.h) sets pens 0-3 through the Palette editor; the SetRGB32 mapping is the fallback when it is off or refused */
-        d = desk_dos_apply(&th, 0, 0);
-        if (d <= 0 || !(d & (1 << DT_PALETTE))) {
-            /* desk_dos_apply hands the theme to DOpus itself after its Palette write (FLAT-D2); otherwise it goes here */
-            gt_dos_dopus_sends++;
-            dopus_theme_send(&th, gt_dopus_send, 0);
-            wb_pens_apply(&th);
-        }
-        ipd_recolour();             /* ICON-AA-WRONG-BG: the held icon pens 32-47 follow the new theme live */
+        gt_dos_apply_saved(name);
         return 1;
     }
     if (why)
@@ -252,4 +261,60 @@ void gt_dos_load_rows(ix_index *x)
         names[i] = l.name[i];
     }
     ix_add_gthemes(x, labels, names, l.n);
+}
+
+/* ---- TE-3 ---- */
+static void gt_dos_drawers(void)
+{
+    static const char *const dirs[] = { "ENVARC:Amarchy", GT_USER_DIR, "ENV:Amarchy", GT_ENV_DIR };
+    int i;
+    for (i = 0; i < 4; i++) {
+        BPTR l = CreateDir((STRPTR)dirs[i]);   /* fails when it exists: fine */
+        if (l)
+            UnLock(l);
+    }
+}
+
+int gt_dos_save(const char *name, const gt_model *m, char *why, int cap)
+{
+    char cur[GT_NAME];
+    gt_dos_drawers();
+    gt_dos_current(cur, (int)sizeof cur);
+    return gt_save_edit(&prefs_dos_fs, name, m, cur, gt_dos_apply_saved, why, cap);
+}
+
+int gt_dos_save_as(const char *name, const gt_model *m, char *why, int cap)
+{
+    gt_dos_drawers();
+    return gt_save_as(&prefs_dos_fs, name, m, why, cap);
+}
+
+int gt_dos_duplicate(const char *from, const char *to, char *why, int cap)
+{
+    gt_dos_drawers();
+    return gt_duplicate(&prefs_dos_fs, gt_read, 0, from, to, why, cap);
+}
+
+int gt_dos_import(const char *src_path, const char *name, char *why, int cap)
+{
+    gt_dos_drawers();
+    return gt_import(&prefs_dos_fs, gt_read, 0, src_path, name, why, cap);
+}
+
+int gt_dos_export(const char *name, const char *dst_path, char *why, int cap)
+{
+    return gt_export(&prefs_dos_fs, gt_read, 0, name, dst_path, why, cap);
+}
+
+int gt_dos_delete_user(const char *name, char *why, int cap)
+{
+    return gt_delete_user(&prefs_dos_fs, name, why, cap);
+}
+
+int gt_dos_pick_file(struct Screen *scr, struct Window *win, const char *title, char *out, int cap)
+{
+    int named = 0;
+    if (!asl_pick_file(scr, win, title, "RAM:", "#?.theme", 1, out, cap, &named))
+        return 0;
+    return named;
 }
