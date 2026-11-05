@@ -1368,7 +1368,7 @@ def setup():
     if stale:
         print("[WARN] %d file(s) in VTC: differ from the build: %s; `rig.py install` puts the build there"
               % (len(stale), ", ".join(stale)))
-    for rel, why in media_drift(RIG / "vtc"):
+    for rel, why in start_media_drift(RIG / "vtc", RIG / "sys.hdf"):
         print("[WARN] UP-Term:%s is %s in the rig's UP-Term: tree; `rig.py install` puts the kit's copy there" % (rel, why))
     (RIG / "boot/go").write_text(GO)
     (RIG / "boot/shadows-up").write_text(SHADOWS_UP_SCRIPT)
@@ -1755,6 +1755,15 @@ def media_drift(vtc):
         elif dst.read_bytes() != (ROOT / "dist" / src).read_bytes():
             out.append((rel, "differs"))
     return out
+
+def start_media_drift(vtc, image):
+    """media_drift for a start, only when the rig's UP-Term: is the host drawer VTC:Apps. A kit installed in the image
+    assigns UP-Term: to its own volume (clone_upterm_place), where media_drift's host tree is not the one UPDemo reads:
+    the check then warned "missing" for files `List UP-Term:share/updemo` showed (RIG-REBOOT-FALSE-MISSING, rig 96).
+    That rig's media is checked inside the Amiga by a1200_drift.py (media_entries)."""
+    if clone_upterm_place(image):
+        return []
+    return media_drift(vtc)
 
 def stage_kit_media(vtc):
     """The kit media (a1200_drift.KIT_MEDIA) into the rig's UP-Term: drawer, what install.dos copies on a real install."""
