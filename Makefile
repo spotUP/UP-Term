@@ -120,6 +120,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=rig_wasabimcp tools/rig/wasabimcp.py picks the wasabid target from the environment (tools/test_rig_wasabimcp.py)
 # ONLY=rig_ami tools/rig/ami.py over wasabid, every function against wasabi's mock daemon (tools/test_rig_ami.py; needs `make wasabi`)
 # ONLY=rig_fsuae_log FS-UAE log in the rig dir, capped (tools/test_rig_fsuae_log.py)
+# ONLY=rig_boot_console the Startup-Sequence output lands in BOOTX:boot.console and the boot shell ends after it, so no AmigaDOS window stays open (tests/test_rig_boot_console_blind.py)
 # ONLY=rig_iprefs_sysreq the rig clone drops the Replay monitor driver whose boot output made IPrefs ask to close windows; Retry is bounded (tests/test_rig_iprefs_sysreq.py)
 # ONLY=rig_screennotify every rig start stages the pinned screennotify.library in VTC:ixp6 (tests/test_rig_screennotify.py)
 # ONLY=rig_clone_new a rig number that never ran gets its sys.hdf clone (tools/test_rig_clone_new.py)
@@ -159,7 +160,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 TEST_ONLY_NAMES := $(shell grep -o '"$$(ONLY)" = [a-z_0-9]*' $(firstword $(MAKEFILE_LIST)) | sed 's/.* //' | sort -u)
 # ONLY= rows that run python3 on files alone: no C binary below is built or run for them (a worktree without the vendor NDK
 # cannot build render_host, and pkg_rows needs none). Add a name only after checking its script starts no $(BUILD) binary.
-TEST_PY_ONLY := gen_lucide_icons icon_grid_fit pkg_rows worktree_ready rig_handler_fallback rig_amarchy_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free flat_on_hang icat_stderr help_man_sync ipd_no_dos_under_list
+TEST_PY_ONLY := gen_lucide_icons icon_grid_fit pkg_rows worktree_ready rig_handler_fallback rig_amarchy_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq rig_boot_console gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free flat_on_hang icat_stderr help_man_sync ipd_no_dos_under_list
 TEST_BINS := $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host $(BUILD)/upgetty_host
 test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -n "$(ONLY)" ] && [ -z "$(filter $(ONLY),$(TEST_ONLY_NAMES))" ] && ! ./$(BUILD)/vttest_host --has $(ONLY); then echo "[ERROR] make test: no suite named $(ONLY)"; exit 2; fi
@@ -176,6 +177,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_wasabi ]; then python3 -I tools/test_rig_wasabi.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_fsuae_log ]; then python3 -I tools/test_rig_fsuae_log.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_iprefs_sysreq ]; then python3 tests/test_rig_iprefs_sysreq.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_boot_console ]; then python3 tests/test_rig_boot_console_blind.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_stale_base ]; then python3 tests/test_rig_stale_base.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_screennotify ]; then python3 tests/test_rig_screennotify.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_clone_new ]; then python3 -I tools/test_rig_clone_new.py; fi
