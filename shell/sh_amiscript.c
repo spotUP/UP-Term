@@ -818,6 +818,38 @@ static char *template_load(sh_shell *sh, const char *text, int argc, char **argv
     return out.s;
 }
 
+/* `cmd` in a script line: run cmd through the shell's own $( ) capture (ctx.subst) and put its output in the
+ * line, trailing newlines dropped, inner newlines turned into spaces. Done before the line is lexed, so it
+ * works inside double quotes too.
+ * UNVERIFIED against the real Shell (S7 R-checks): (1) substitution inside double quotes, (2) an unclosed
+ * backtick stays literal, (3) inner newlines become single spaces. Returns the new line (malloc). */
+static char *line_backticks(sh_shell *sh, const char *ln)
+{
+    buf out;
+    size_t i, n = strlen(ln);
+    memset(&out, 0, sizeof(out));
+    for (i = 0; i < n; i++) {
+        const char *close = ln[i] == '`' ? (const char *)memchr(ln + i + 1, '`', n - i - 1) : 0;
+        if (close && sh->ctx.subst) {
+            char *cmd = dup_n(ln + i + 1, (size_t)(close - ln) - i - 1);
+            char *res = cmd ? sh->ctx.subst(&sh->ctx, cmd) : 0;
+            size_t l = res ? strlen(res) : 0, k;
+            free(cmd);
+            while (l && res[l - 1] == '\n')
+                l--;
+            for (k = 0; k < l; k++)
+                buf_add(&out, res[k] == '\n' ? ' ' : res[k]);
+            free(res);
+            i = (size_t)(close - ln);
+            continue;
+        }
+        buf_add(&out, ln[i]);
+    }
+    if (!out.s)
+        return dup_n("", 0);
+    return out.s;
+}
+
 long sh_amiga_execute(sh_shell *sh, const char *text0, const char *file, int argc, char **argv, const sh_io *io)
 {
     char *loaded = template_load(sh, text0, argc, argv, io);
@@ -841,6 +873,13 @@ long sh_amiga_execute(sh_shell *sh, const char *text0, const char *file, int arg
             break;
         if (len && ln[len - 1] == '\r')
             ln[len - 1] = 0;
+        if (strchr(ln, '`')) {
+            char *sub = line_backticks(sh, ln);
+            free(ln);
+            ln = sub;
+            if (!ln)
+                break;
+        }
         memset(&t, 0, sizeof(t));
         sh->ctx.status = st;   /* $RC and If see the last return code */
         if (lex_line(sh, ln, &t)) {

@@ -2739,6 +2739,16 @@ static void execute_key_template_args(void)
     CHECK_STR(slot(OUT)->data, "hi\n");
 }
 
+/* S5b: `cmd` in a script line is replaced by the command's output. */
+static void execute_backticks(void)
+{
+    int inc = 0;
+    run("");
+    amiscr_put("RAM:b1", "args `echo one` x\nargs \"a `echo b c` d\"\nargs `printf 'p\\nq\\n\\n'` z\nargs `echo` e\nargs `echo hi\n");
+    sh_run_text(&sh, "execute RAM:b1", &inc);
+    CHECK_STR(slot(OUT)->data, "<one><x>\n<a b c d>\n<p><q><z>\n<e>\n<`echo><hi>\n");
+}
+
 /* S5: .bra .ket .dot .dollar .default/.def, comments and directives are dropped, a lone < stays. */
 static void execute_key_dot_directives(void)
 {
@@ -2775,6 +2785,7 @@ void suite_sh_exec(void)
     execute_skip_and_lab();
     execute_key_template_args();
     execute_key_dot_directives();
+    execute_backticks();
     setenv_unsetenv_getenv_use_the_system_store();
     fault_prompt_ask_alias_and_echo_keywords();
     bind_and_inputrc_reach_the_console_line_editor();
