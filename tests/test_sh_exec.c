@@ -2443,8 +2443,51 @@ static void fault_prompt_ask_alias_and_echo_keywords(void)
     CHECK_STR(run("echo -e 'a\\tb' len 1"), "a\tb len 1\n");
 }
 
+/* VSH-AMIGA-SCRIPT-MODE S1: execute FILE runs an AmigaDOS script line by line in the shell. */
+static void amiscr_put(const char *name, const char *text)
+{
+    sh_fh fh = f_open(0, name, SH_OPEN_WRITE);
+    f_write(0, fh, text, (long)strlen(text));
+    f_close(0, fh);
+}
+
+static void execute_runs_lines_literally(void)
+{
+    int inc = 0;
+    run("");
+    amiscr_put("RAM:s",
+             "; a comment line\n"
+             "\n"
+             "args #?.info \"a*\"b\" tail\n"
+             "args hi >RAM:o\n"
+             "cat <RAM:o\n"
+             "args $x *$x \"v=$x\" ; trailing comment\n"
+             "args \"\" 'q'\n"
+             "f\n");
+    sh_run_text(&sh, "x=5; f() { echo fn; }; execute RAM:s; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "<#?.info><a\"b><tail>\n<hi>\n<5><$x><v=5>\n<><'q'>\nfn\nrc0\n");
+    /* the keyword is case-insensitive, like AmigaDOS names */
+    sh_run_text(&sh, "EXECUTE RAM:s", &inc);
+    CHECK_INT(strstr(slot(OUT)->data, "fn\nrc0\n<#?.info>") != 0, 1);
+    /* a function named execute wins; C:Execute spelled with its path is not the builtin word */
+    sh_run_text(&sh, "execute() { echo func; }; execute RAM:s", &inc);
+    CHECK_INT(strstr(slot(OUT)->data, "func\n") != 0, 1);
+    CHECK_STR(run("c:execute RAM:s; echo rc$?"), "rc127\n");
+    /* the last command's status is the script's; a missing file is an error */
+    run("");
+    amiscr_put("RAM:t", "fail 3\n");
+    sh_run_text(&sh, "execute RAM:t; echo rc$?; execute RAM:nope; echo rc$?", &inc);
+    CHECK_INT(strstr(slot(OUT)->data, "rc3\nrc20\n") != 0, 1);
+    /* the file-read loop is shared: source still works */
+    run("");
+    amiscr_put("RAM:u", "echo sourced\n");
+    sh_run_text(&sh, "source RAM:u; . RAM:u", &inc);
+    CHECK_STR(slot(OUT)->data, "sourced\nsourced\n");
+}
+
 void suite_sh_exec(void)
 {
+    execute_runs_lines_literally();
     setenv_unsetenv_getenv_use_the_system_store();
     fault_prompt_ask_alias_and_echo_keywords();
     bind_and_inputrc_reach_the_console_line_editor();

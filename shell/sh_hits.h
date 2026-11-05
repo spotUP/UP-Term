@@ -60,7 +60,8 @@
     X(VAR_COPY_UP) /* a subshell copied one of its parent's variables before writing it */ \
     X(FUNC_SHARED) /* a subshell read its parent's functions and aliases in place (sh_shell_clone, share) */ \
     X(QUIT_SIGNAL) /* the OS layer reported a QUIT (Amiga: break bit E) */ \
-    X(TERM_SIGNAL) /* the OS layer reported a TERM (Amiga: break bit D) */
+    X(TERM_SIGNAL) /* the OS layer reported a TERM (Amiga: break bit D) */ \
+    X(AMISCRIPT_LINE) /* the AmigaDOS script runner executed one line of an Execute file */
 
 #ifdef SH_HITS
 #define SH_HIT_ENUM(n) SH_HIT_##n,

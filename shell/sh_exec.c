@@ -7,6 +7,7 @@
 #include "../claude/regex.h"
 #include "sh_hits.h"
 #include "sh_float.h"
+#include "sh_amiscript.h"
 #include "../tty/bmsg.h"
 #include "../handler/le_fns.h"
 #if LE_BINDS != 32
@@ -4634,6 +4635,7 @@ static long b_kill(sh_shell *sh, int argc, char **argv, const sh_io *io)
 }
 
 static long b_source(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_execute(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_type(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_export(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_unset(sh_shell *sh, int argc, char **argv, const sh_io *io);
@@ -4886,7 +4888,7 @@ static const struct {
     { "set", b_set }, { "shift", b_shift }, { "exit", b_exit }, { "endcli", b_exit }, { "endshell", b_exit }, { "return", b_return },
     { "break", b_break }, { "continue", b_continue }, { "read", b_read }, { "alias", b_alias },
     { "unalias", b_unalias }, { "test", b_test }, { "[", b_test }, { "jobs", b_jobs },
-    { "wait", b_wait }, { "disown", b_disown }, { "pushd", b_pushd }, { "popd", b_popd }, { "dirs", b_dirs }, { "fg", b_wait }, { "bg", b_bg }, { "stack", b_stack }, { "source", b_source }, { ".", b_source },
+    { "wait", b_wait }, { "disown", b_disown }, { "pushd", b_pushd }, { "popd", b_popd }, { "dirs", b_dirs }, { "fg", b_wait }, { "bg", b_bg }, { "stack", b_stack }, { "source", b_source }, { ".", b_source }, { "execute", b_execute },
     { "eval", b_eval }, { "exec", b_exec }, { "trap", b_trap }, { "shopt", b_shopt }, { "local", b_local },
     { "getopts", b_getopts }, { "umask", b_umask }, { "let", b_let },
     { "which", b_type }, { "type", b_type }, { "readonly", b_readonly }, { "declare", b_declare },
@@ -7108,7 +7110,7 @@ done:
     return n;
 }
 
-static const char *const amiga_internals[] = { "endcli", "endshell", "why", "setenv", "unsetenv", "getenv", "fault", "prompt", "ask", 0 };
+static const char *const amiga_internals[] = { "endcli", "endshell", "why", "setenv", "unsetenv", "getenv", "fault", "prompt", "ask", "execute", 0 };
 
 static builtin_fn find_builtin(const char *name)
 {
@@ -7171,14 +7173,34 @@ static int find_command_file(sh_shell *sh, const char *name, char *out, long max
     return sh_exists(sh, out, 0);
 }
 
+/* The whole text of an open file, line by line (shared by source and execute); the handle is closed
+ * unless borrowed (a /dev/fd/N the shell does not own). 0 for an empty file. */
+static char *read_fh_text(sh_shell *sh, sh_fh fh, int borrowed)
+{
+    char line[1024];
+    char *text = 0;
+    long len = 0, n;
+    while ((n = sh->os.read_line(sh->os.data, fh, line, sizeof(line))) >= 0) {
+        char *t = (char *)realloc(text, len + n + 1);
+        if (!t)
+            break;
+        text = t;
+        memcpy(text + len, line, n);
+        len += n;
+        text[len] = 0;
+    }
+    if (!borrowed)
+        sh->os.close(sh->os.data, fh);
+    return text;
+}
+
 static long b_source(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     int ran_main = 0;
     sh_fh fh;
     int borrowed;
-    char line[1024];
     char *text = 0;
-    long len = 0, n, st = 0;
+    long st = 0;
     int incomplete = 0;
     char found[512];
     const char *file;
@@ -7197,17 +7219,7 @@ static long b_source(sh_shell *sh, int argc, char **argv, const sh_io *io)
         posix_fatal(sh, 1);
         return 1;
     }
-    while ((n = sh->os.read_line(sh->os.data, fh, line, sizeof(line))) >= 0) {
-        char *t = (char *)realloc(text, len + n + 1);
-        if (!t)
-            break;
-        text = t;
-        memcpy(text + len, line, n);
-        len += n;
-        text[len] = 0;
-    }
-    if (!borrowed)
-        sh->os.close(sh->os.data, fh);
+    text = read_fh_text(sh, fh, borrowed);
     if (swap) {
         int k;
         saved_args = sh->ctx.args;
@@ -7241,6 +7253,39 @@ static long b_source(sh_shell *sh, int argc, char **argv, const sh_io *io)
         sh->returning = 0;
         st = sh->ctx.status;
     }
+    return st;
+}
+
+/* execute FILE [args]: FILE is an AmigaDOS script, run in this shell by the line interpreter (sh_amiscript.c) so
+ * cd, variables and functions behave as in an AmigaDOS Shell. A function or alias named execute wins (it is
+ * found before the builtin), and C:Execute spelled with its path is not this word and stays the real command. */
+static long b_execute(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    sh_fh fh;
+    char *text;
+    long st;
+    int pushed;
+    const char *outer_src;
+    if (argc < 2) {
+        err2(sh, io, "execute", "required argument missing");
+        return 20;
+    }
+    fh = sh->os.open(sh->os.data, argv[1], SH_OPEN_READ);
+    if (!fh) {
+        err2(sh, io, argv[1], "cannot open");
+        return 20;
+    }
+    text = read_fh_text(sh, fh, 0);
+    if (!text)
+        return sh->ctx.status;
+    outer_src = sh->cur_src;
+    pushed = frame_push(sh, "execute", argv[1]) == 0;
+    sh->cur_src = argv[1];
+    st = sh_amiga_execute(sh, text, argv[1], argc - 1, argv + 1, io);
+    sh->cur_src = outer_src;
+    if (pushed)
+        frame_pop(sh);
+    free(text);
     return st;
 }
 
