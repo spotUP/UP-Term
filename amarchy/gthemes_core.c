@@ -1759,6 +1759,25 @@ int gte_swatch_add(const char *name, uc_u32 rgb)
     return GTR_OK;
 }
 
+int gte_swatch_find(const char *name)
+{
+    int i;
+    for (i = 0; i < gt_ed.m.nswatch; i++)
+        if (!cmp_ci(gt_ed.m.swatch_name[i], name))
+            return i;
+    return -1;
+}
+
+int gte_swatch_rename_name(const char *old, const char *name)
+{
+    return gte_swatch_rename(gte_swatch_find(old), name);
+}
+
+int gte_swatch_remove_name(const char *old, char *why, int cap)
+{
+    return gte_swatch_remove(gte_swatch_find(old), why, cap);
+}
+
 int gte_swatch_rename(int sw, const char *name)
 {
     int r;

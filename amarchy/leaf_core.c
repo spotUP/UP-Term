@@ -424,7 +424,11 @@ void lf_colour_current(const amconf_io *io, const sd_setting *s, int entry, char
     out[0] = 0;
     if (s->kind == SD_PALETTE)
         lf_palette_hex(io, entry, out);
-    else if (s->kind == SD_COLOUR)
+    else if (s->kind == SD_SWATCH) {
+        char t[16];
+        if (gte_row_text(s, t, sizeof t))
+            snprintf(out, 8, "%s", t[0] == '#' ? t + 1 : t);
+    } else if (s->kind == SD_COLOUR)
         lf_setting_text_raw(io, s, out, 8);
 }
 
@@ -433,6 +437,29 @@ int lf_setting_set_colour(const amconf_io *io, const sd_setting *s, int entry, c
     char hex[16];
     uc_u32 rgb;
     *failed = 0;
+    if (SD_IS_THEME_COLOUR(s) && s->store == SD_GTHEME) {
+        /* TE-4: a palette entry becomes a literal colour; Custom takes a colour, and on a reference row any reference
+         * (a swatch name, Darker(...), Mix(...)); an element row accepts empty (follows its group) */
+        int r;
+        if (entry == SD_PICK_CUSTOM) {
+            if (!text)
+                return LF_SET_KIND;
+            if (s->kind == SD_SWATCH) {
+                if (!prefs_hex_parse(text, &rgb))
+                    return LF_SET_INVALID;
+                prefs_hex_format(rgb, hex + 1);
+                hex[0] = '#';
+                r = gte_row_set_text(s, hex);
+            } else
+                r = gte_row_set_text(s, text);
+        } else if (entry >= 0 && entry < 16) {
+            lf_palette_hex(io, entry, hex + 1);
+            hex[0] = '#';
+            r = gte_row_set_text(s, hex);
+        } else
+            return LF_SET_KIND;
+        return r == GTR_OK ? LF_SET_OK : LF_SET_INVALID;
+    }
     if (!SD_HAS_PICKER(s) || s->store != SD_UPTERM)
         return LF_SET_KIND;
     if (s->kind == SD_PALETTE && (entry < 0 || entry > 15 || !text))
@@ -602,8 +629,20 @@ void lf_setting_labels(const amconf_io *io, mn_item *it, int n)
             continue;
         s = gte_row(it[i].ix);
         if (s->store == SD_GTHEME) {
-            if (MN_IS_SETTING(&it[i]))
+            if (MN_IS_SETTING(&it[i])) {
                 gte_row_label(s, it[i].label, MN_LABEL);
+                continue;
+            }
+            if (SD_HAS_PICKER(s)) {
+                int v = atoi(it[i].seg);
+                if (v == SD_PICK_CUSTOM)
+                    strcpy(it[i].label, "Custom...");
+                else if (v >= 0 && v < 16) {
+                    char hex[16];
+                    lf_palette_hex(io, v, hex);
+                    snprintf(it[i].label, MN_LABEL, "%s: #%s", prefs_pal_name(v), hex);
+                }
+            }
             continue;
         }
         if (s->store == SD_AMARCHY) {
@@ -880,7 +919,7 @@ long lf_row_chip(const amconf_io *io, const mn_item *it)
     hex[0] = 0;
     if (MN_IS_SETTING(it)) {
         s = gte_row(it->ix);
-        if (s->kind != SD_COLOUR)
+        if (s->kind != SD_COLOUR && s->kind != SD_SWATCH)
             return -1;
         lf_colour_current(io, s, 0, hex);
     } else if (MN_IS_CHOICE(it) && SD_HAS_PICKER(gte_row(it->ix))) {

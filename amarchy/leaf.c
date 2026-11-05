@@ -326,20 +326,19 @@ static int theme_action(const sd_setting *s, const char *label, const lf_ui *ui)
     case GTA_REMOVE_SWATCH: {
         int r;
         strcpy(name, s->aux == GTA_ADD_SWATCH ? "New" : "");
-        if (!ui->ask_value || !ui->ask_value(ui->ctx, label, s->aux == GTA_ADD_SWATCH ? "swatch name" : "swatch name or number", name, sizeof name))
+        if (!ui->ask_value || !ui->ask_value(ui->ctx, label, s->aux == GTA_ADD_SWATCH ? "swatch name" : "swatch name", name, sizeof name))
             return 0;
         if (s->aux == GTA_ADD_SWATCH)
             r = gte_swatch_add(name, 0x808080UL);
         else {
-            int sw = atoi(name);
             if (s->aux == GTA_REMOVE_SWATCH)
-                r = gte_swatch_remove(sw, why, sizeof why);
+                r = gte_swatch_remove_name(name, why, sizeof why);
             else {
                 char fresh[48];
                 fresh[0] = 0;
                 if (!ui->ask_value(ui->ctx, label, "new swatch name", fresh, sizeof fresh))
                     return 0;
-                r = gte_swatch_rename(sw, fresh);
+                r = gte_swatch_rename_name(name, fresh);
             }
         }
         ok = r == GTR_OK;
@@ -365,7 +364,7 @@ int lf_setting_enter(const mn_item *it, const lf_ui *ui)
     s = gte_row(it->ix);
     if (s->kind == SD_GACTION)
         return theme_action(s, it->label, ui);
-    if (s->store == SD_GTHEME && s->kind != SD_CYCLE) {
+    if (s->store == SD_GTHEME && s->kind != SD_CYCLE && !SD_HAS_PICKER(s)) {
         char value[UC_MAX_VALUE + 2];
         if (s->kind == SD_INFO || !ui->ask_value || !gte_row_text(s, value, sizeof value))
             return 0;
@@ -423,7 +422,7 @@ int lf_setting_enter(const mn_item *it, const lf_ui *ui)
             return 0;                   /* the row opens its picker level: the menu does that */
         if (s->kind == SD_PALETTE || entry == SD_PICK_CUSTOM) {
             lf_colour_current(amconf_dos_io(), s, entry, value);
-            if (!ui->ask_value || !ui->ask_value(ui->ctx, it->label, "RRGGBB", value, sizeof value))
+            if (!ui->ask_value || !ui->ask_value(ui->ctx, it->label, SD_IS_THEME_COLOUR(s) && s->kind != SD_SWATCH ? "colour or reference" : "RRGGBB", value, sizeof value))
                 return 0;               /* cancelled */
             text = value;
         }

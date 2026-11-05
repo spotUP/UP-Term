@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include "../amarchy/amconf_core.h"
 #include "../amarchy/desk_core.h"
 #include "../amarchy/flat_core.h"
@@ -15,6 +16,7 @@
 #include "../amarchy/menu_theme.h"
 #include "../amarchy/pen_cache.h"
 #include "harness.h"
+#include "memfs.h"
 
 #define THEME_DIR "dist/amarchy-themes"
 
@@ -1406,6 +1408,91 @@ static void test_gthemes_te4_rows(void)
     CHECK(gte_row_label(radius, buf, sizeof buf) > 0 && !strstr(buf, ": 7"));
 }
 
+/* TE-4.2: swatch, swatch-reference and element rows open the colour picker (palette entry or Custom) and step/set through the
+ * lf_setting_* handlers, writing the edit buffer. TE-4 item 2: Rename/Remove Swatch look the swatch up by name. */
+static void test_gthemes_te4_pickers(void)
+{
+    const sd_setting *sw = 0, *ref = 0, *el = 0;
+    memfs mfs;
+    prefs_fs pfs;
+    amconf_io io;
+    mn_item it[3];
+    long chip[3];
+    int failed = 0, i, n, before;
+    char buf[96], hex[16], why[160];
+    mf_init(&mfs, &pfs);
+    io.fs = &pfs;
+    io.read = mf_read;
+    io.dir = mf_dir;
+    mf_put(&mfs, "ENVARC:up-term/up-term", "");
+    CHECK(mf_get(&mfs, "ENVARC:up-term/up-term") != 0);
+    te4_open_builtin();
+    gte_edits = 0;
+    CHECK_INT(lf_setting_set(&io, gte_row(SDI_COUNT), 1, &failed), 0);   /* the Mode row: Advanced shows Elements */
+    for (i = 0; i < gte_nrows(); i++) {
+        const sd_setting *s = gte_row(SDI_COUNT + i);
+        if (!sw && s->kind == SD_SWATCH)
+            sw = s;
+        if (!ref && s->kind == SD_SWATCHREF)
+            ref = s;
+        if (!el && s->kind == SD_ELEMENT && gte_row_visible(s))
+            el = s;
+    }
+    CHECK(sw && ref && el);
+    CHECK(SD_HAS_PICKER(sw) && SD_HAS_PICKER(ref) && SD_HAS_PICKER(el));
+    /* swatch: palette entry 1 is a literal colour; Custom takes hex, refuses a bad one */
+    lf_palette_hex(&io, 1, hex);
+    CHECK_INT(lf_setting_set_colour(&io, sw, 1, 0, &failed), LF_SET_OK);
+    gte_row_text(sw, buf, sizeof buf);
+    CHECK(buf[0] == '#' && strlen(buf) == 7 && strncasecmp(buf + 1, hex, 6) == 0);
+    CHECK_INT(lf_setting_set_colour(&io, sw, SD_PICK_CUSTOM, "0a0b0c", &failed), LF_SET_OK);
+    gte_row_text(sw, buf, sizeof buf);
+    CHECK_STR(buf, "#0a0b0c");
+    lf_colour_current(&io, sw, 0, hex);
+    CHECK_STR(hex, "0a0b0c");
+    CHECK_INT(lf_setting_set_colour(&io, sw, SD_PICK_CUSTOM, "nothex", &failed), LF_SET_INVALID);
+    CHECK_INT(lf_setting_set_colour(&io, sw, 17, 0, &failed), LF_SET_KIND);
+    /* reference rows: a palette entry becomes a literal, Custom takes any reference */
+    CHECK_INT(lf_setting_set_colour(&io, ref, 2, 0, &failed), LF_SET_OK);
+    gte_row_text(ref, buf, sizeof buf);
+    CHECK(buf[0] == '#');
+    CHECK_INT(lf_setting_set_colour(&io, ref, SD_PICK_CUSTOM, "no-such-swatch(", &failed), LF_SET_INVALID);
+    CHECK_INT(lf_setting_step(&io, ref, &failed), LF_SET_OK);      /* next swatch name */
+    gte_row_text(ref, buf, sizeof buf);
+    CHECK(gte_swatch_find(buf) >= 0 || strchr(buf, '('));
+    CHECK_INT(lf_setting_set_colour(&io, el, 3, 0, &failed), LF_SET_OK);
+    gte_row_text(el, buf, sizeof buf);
+    CHECK(buf[0] == '#');
+    CHECK_INT(lf_setting_step(&io, el, &failed), LF_SET_OK);
+    CHECK_INT(lf_setting_set_colour(&io, el, SD_PICK_CUSTOM, "", &failed), LF_SET_OK);   /* empty: follows its group */
+    CHECK(!gte_elem_overridden(el->aux));
+    CHECK(gte_edits > 0);
+    /* the picker level's rows are labelled and chipped like the existing colour rows */
+    memset(it, 0, sizeof it);
+    it[0].row = MN_ROW_CHOICE; it[0].ix = sw->id; strcpy(it[0].seg, "5");
+    it[1].row = MN_ROW_CHOICE; it[1].ix = ref->id; strcpy(it[1].seg, "16");
+    it[2].row = MN_ROW_SETTING; it[2].ix = sw->id;
+    lf_setting_labels(&io, it, 3);
+    CHECK(strchr(it[0].label, '#') != 0);
+    CHECK_STR(it[1].label, "Custom...");
+    lf_setting_chips(&io, it, 3, chip);
+    CHECK(chip[0] >= 0 && chip[1] == -1 && chip[2] == 0x0a0b0cL);
+    /* rename by name; an unknown name is refused and changes nothing */
+    gte_swatch_add("Spare", 0x123456UL);
+    before = gte_swatch_count();
+    CHECK(gte_swatch_find("spare") == before - 1);                  /* case blind */
+    CHECK_INT(gte_swatch_rename_name("Spare", "Renamed"), GTR_OK);
+    CHECK_INT(gte_swatch_find("Spare"), -1);
+    CHECK_INT(gte_swatch_find("Renamed"), before - 1);
+    CHECK_INT(gte_swatch_rename_name("Nobody", "Other"), GTR_BAD);
+    CHECK_INT(gte_swatch_find("Other"), -1);
+    CHECK_INT(gte_swatch_remove_name("Nobody", why, sizeof why), GTR_BAD);
+    CHECK_INT(gte_swatch_count(), before);
+    CHECK_INT(gte_swatch_remove_name("Renamed", why, sizeof why), GTR_OK);
+    n = gte_swatch_count();
+    CHECK_INT(n, before - 1);
+}
+
 static void test_gthemes_te4_modes(void)
 {
     const sd_setting *mode, *el = 0;
@@ -1501,6 +1588,7 @@ void suite_gthemes(void)
     test_gthemes_te3_custom_name();
     test_gthemes_te3_edit_applies();
     test_gthemes_te4_rows();
+    test_gthemes_te4_pickers();
     test_gthemes_te4_modes();
     test_gthemes_te3_import_export_delete();
     test_gthemes_parse_clears_model();

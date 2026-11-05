@@ -149,7 +149,9 @@ const char *sd_text_reason(int check);
 /* A row that opens a picker level of its own (the 16 palette entries, plus Custom for a swatch). */
 /* Theme and Profile rows open a list of names with New / Rename / Delete rows (seg "N", "R", "D") */
 #define SD_HAS_LIST(s) ((s)->kind == SD_THEME || (s)->kind == SD_PROFILE)
-#define SD_HAS_PICKER(s) ((s)->kind == SD_COLOUR || (s)->kind == SD_PALETTE)
+/* TE-4: the editor'"'"'s colour rows open the same picker; they write the theme being edited, not a prefs file. */
+#define SD_IS_THEME_COLOUR(s) ((s)->kind == SD_SWATCH || (s)->kind == SD_SWATCHREF || (s)->kind == SD_ELEMENT)
+#define SD_HAS_PICKER(s) ((s)->kind == SD_COLOUR || (s)->kind == SD_PALETTE || SD_IS_THEME_COLOUR(s))
 /* Entry numbers of the picker's rows (seg of a MN_ROW_CHOICE row): 0..15 the palette entries, then this. */
 #define SD_PICK_CUSTOM 16
 

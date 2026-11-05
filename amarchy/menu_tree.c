@@ -153,7 +153,7 @@ static int choice_rows(const sd_setting *s, mn_item *out, int max)
     if (SD_HAS_LIST(s))
         return list_rows(s, out, max);
     if (SD_HAS_PICKER(s))
-        nv = s->kind == SD_COLOUR ? SD_PICK_CUSTOM + 1 : 16;   /* the 16 palette entries, and Custom for a swatch */
+        nv = s->kind != SD_PALETTE ? SD_PICK_CUSTOM + 1 : 16;   /* the 16 palette entries, and Custom for a swatch */
     for (v = 0; v < nv && n < max; v++, n++) {
         out[n].row = MN_ROW_CHOICE;
         out[n].ix = s->id;
