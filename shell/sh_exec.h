@@ -95,7 +95,9 @@ typedef struct sh_os {
      * a STAGE shares them: the last stage of `a | b` inside $( ) or in a
      * stage of an outer pipeline writes to a pipe, which has no lock to
      * duplicate, and a BG handle there was NIL: */
-    long  (*run)(void *os, char **argv, const sh_io *io, int wait);
+    long  (*run)(void *os, char **argv, const char *quoted, const sh_io *io, int wait);
+    /* quoted: 0, or per argv word nonzero when the word had a quoted part in the source (sh_list.q); the OS
+     * layer sends such a word to a command quoted whole, so "rc=0" stays one item, not a KEY=value keyword */
     long  (*wait)(void *os, long job);            /* its exit status */
     int   (*done)(void *os, long job);            /* 1: it has ended (wait returns at once) */
     /* Run a subshell: tree in a process of its own with child, a clone of
@@ -279,6 +281,7 @@ typedef struct sh_shell {
     sh_list disabled;      /* enable -n: the builtins switched off */
     sh_list env_hidden;    /* names the script unset: the system's variable of that name (ENV:) stays hidden from $name */
     int exiting;           /* exit ran: stop */
+    const char *cmd_q;     /* the running builtin's argv quoted flags (sh_list.q), for exec; 0 outside a builtin */
     long exit_status;
     int breaking;          /* break / continue levels pending */
     int continuing;

@@ -320,11 +320,12 @@ static int f_cont(void *os, long job)
     return 0;
 }
 
-static long f_run(void *os, char **argv, const sh_io *io, int wait)
+static long f_run(void *os, char **argv, const char *quoted, const sh_io *io, int wait)
 {
     pending p;
     int i;
     (void)os;
+    (void)quoted;
     memset(&p, 0, sizeof(p));
     for (i = 0; argv[i] && i < 8; i++)
         strcpy(p.argv[i], argv[i]);
@@ -1729,6 +1730,8 @@ static long f_read_counted(void *os, sh_fh fh, char *buf, long max)
     return f_read(os, fh, buf, max);
 }
 
+static char last_run_q[8]; /* the per-word quoted flags the last os.run call was given */
+
 static void record(char **argv)
 {
     int i;
@@ -1737,10 +1740,14 @@ static void record(char **argv)
     seen_n = i;
 }
 
-static long f_run_record(void *os, char **argv, const sh_io *io, int wait)
+static long f_run_record(void *os, char **argv, const char *quoted, const sh_io *io, int wait)
 {
     char **sb;
+    int qi;
     (void)os;
+    memset(last_run_q, 0, sizeof(last_run_q));
+    for (qi = 0; qi < 8 && argv[qi]; qi++)
+        last_run_q[qi] = quoted ? quoted[qi] : 0; /* what the OS layer is told per word */
     (void)io;
     if (!fake_loads(argv[0]) && (sb = sh_script_argv(&sh, argv)) != 0) {
         record(sb);
@@ -1798,6 +1805,22 @@ static const char *started(const char *text)
         strcat(line, seen[i]);
     }
     return line;
+}
+
+/* S7b-1b: the expander tells the OS layer which words had a quoted part, so `Echo "rc=$RC"` keeps its `=` */
+static void a_quoted_word_reaches_the_os_layer_flagged(void)
+{
+    char flags[16];
+    int i;
+    started("RC=0; foo TO=T:t1 \"rc=$RC\" 'x y' plain");
+    for (i = 0; i < seen_n; i++)
+        flags[i] = last_run_q[i] ? 'Q' : '-';
+    flags[i] = 0;
+    CHECK_STR(flags, "--QQ-"); /* foo, TO=T:t1 bare; "rc=$RC" and 'x y' quoted; plain bare */
+    started("command foo \"x=1\" y=2");
+    CHECK_INT(last_run_q[0], 0);
+    CHECK_INT(last_run_q[1], 1);
+    CHECK_INT(last_run_q[2], 0);
 }
 
 static void a_bin_sh_and_bin_bash_are_the_shell_and_no_other_path_is(void)
@@ -2847,6 +2870,7 @@ void suite_sh_exec(void)
     a_doubled_leading_slash_is_the_same_unix_name();
     a_slash_after_the_volume_colon_is_counted();
     a_unix_relative_name_is_the_amiga_one();
+    a_quoted_word_reaches_the_os_layer_flagged();
     a_bin_sh_and_bin_bash_are_the_shell_and_no_other_path_is();
     printf_builtin();
     prompts();

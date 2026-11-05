@@ -7742,7 +7742,7 @@ static long b_eval(sh_shell *sh, int argc, char **argv, const sh_io *io)
  * command that is not found leaves the shell running (status 127). Without
  * a command, exec would make its redirections permanent: the core closes a
  * command's redirections when it ends, so that form does nothing. */
-static long start_program(sh_shell *sh, char **argv, const sh_io *io, int wait);
+static long start_program(sh_shell *sh, char **argv, const char *quoted, const sh_io *io, int wait);
 
 static long b_exec(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
@@ -7753,7 +7753,7 @@ static long b_exec(sh_shell *sh, int argc, char **argv, const sh_io *io)
     if ((b = find_bi(sh, argv[1])) != 0)
         st = b(sh, argc - 1, argv + 1, io);
     else {
-        st = start_program(sh, argv + 1, io, 1);
+        st = start_program(sh, argv + 1, sh->cmd_q ? sh->cmd_q + 1 : 0, io, 1);
         if (st < 0) {
             err_not_found(sh, io, argv[1]);
             /* bash: a shell that is not interactive ends here with 127, posix mode or not
@@ -8361,18 +8361,18 @@ build:
 /* Start a program: /bin/sh and /bin/bash are the shell itself. Every way a command is started (a
  * command word, exec, a hashed path) comes here. A script naming one of them on its #! line is the
  * OS layer's to find, once it has failed to load the file (sh_script_argv). */
-static long start_program(sh_shell *sh, char **argv, const sh_io *io, int wait)
+static long start_program(sh_shell *sh, char **argv, const char *quoted, const sh_io *io, int wait)
 {
     const char *self = shell_path_alias(sh, argv[0]);
     char *saved = argv[0];
     long st;
     if (self) {
         argv[0] = (char *)self;
-        st = sh->os.run(sh->os.data, argv, io, wait);
+        st = sh->os.run(sh->os.data, argv, quoted, io, wait);
         argv[0] = saved;
         return st;
     }
-    st = sh->os.run(sh->os.data, argv, io, wait);
+    st = sh->os.run(sh->os.data, argv, quoted, io, wait);
     if (st == SH_RUN_AMIGA_SCRIPT) {
         /* the OS layer found a script of AmigaDOS (S bit or .key, no #! line) and started nothing: it runs here,
          * as `execute` runs it, so cd and variables stay with this shell (D3) */
@@ -8396,7 +8396,7 @@ static long run_program(sh_shell *sh, sh_list *argv, const sh_io *io, int wait)
     long st;
     if (hash_note_run(sh, name0, hp, sizeof(hp)))
         argv->v[0] = hp;
-    st = start_program(sh, argv->v, io, wait);
+    st = start_program(sh, argv->v, argv->q, io, wait);
     argv->v[0] = name0;
     return st;
 }
@@ -8467,6 +8467,8 @@ static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int w
         while (ck--) {
             free(argv.v[0]);
             memmove(argv.v, argv.v + 1, (size_t)argv.n * sizeof(char *)); /* and the NULL */
+            if (argv.q)
+                memmove(argv.q, argv.q + 1, (size_t)argv.n - 1);
             argv.n--;
         }
         if (!argv.n) {
@@ -8551,7 +8553,9 @@ static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int w
         } else {
             unsigned long errs0 = sh->bi_errs;
             sh->wfail = 0;
+            sh->cmd_q = argv.q;
             st = b(sh, argv.n, argv.v, &io);
+            sh->cmd_q = 0;
             if (sh->wfail && !st)
                 st = 1; /* it wrote to a closed stream */
             sh->wfail = 0;

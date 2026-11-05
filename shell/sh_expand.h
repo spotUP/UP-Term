@@ -9,10 +9,12 @@
 /* A list of strings (fields, directory names). */
 typedef struct sh_list {
     char **v;
+    char *q;    /* parallel to v: q[i] nonzero = field i had a quoted part in the source (0 when never set) */
     int n, cap;
 } sh_list;
 
 void sh_list_add(sh_list *l, const char *s);
+void sh_list_add_q(sh_list *l, const char *s, int quoted);
 void sh_list_free(sh_list *l);
 
 /* 64-bit integers (V61: vbcc takes long long under the vsh flags) */
