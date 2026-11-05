@@ -183,3 +183,22 @@ int icl_cache_drain(icl_pencache *c, int *out)
     icl_cache_clear(c);
     return n;
 }
+
+int icl_cache_bind(icl_pencache *c, const void *screen, unsigned epoch)
+{
+    if (screen && c->screen == screen && c->epoch == epoch)
+        return 0;
+    icl_cache_clear(c);                 /* another identity: forget, never release */
+    c->screen = screen;
+    c->epoch = epoch;
+    return 1;
+}
+
+int icl_cache_release(icl_pencache *c, const void *screen, unsigned epoch, int *out)
+{
+    int n = 0;
+    if (screen && c->screen == screen && c->epoch == epoch)
+        n = icl_cache_drain(c, out);
+    icl_cache_clear(c);
+    return n;
+}

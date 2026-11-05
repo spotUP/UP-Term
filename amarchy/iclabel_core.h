@@ -71,6 +71,8 @@ typedef struct icl_pen_entry {
 } icl_pen_entry;
 typedef struct icl_pencache {
     icl_pen_entry e[ICL_CACHE];
+    const void *screen;             /* S57-ICL-PEN-RECOLOUR: the screen the obtained pens belong to, 0 = none (as flat_pens) */
+    unsigned epoch;                 /* its ipd_epoch */
 } icl_pencache;
 
 void icl_cache_clear(icl_pencache *c);
@@ -81,9 +83,16 @@ int icl_cache_find(const icl_pencache *c, int fgpen, int bgpen, int k, uint32_t 
 int icl_cache_put(icl_pencache *c, int fgpen, int bgpen, int k, uint32_t fg_rgb, uint32_t bg_rgb, int pen, int obtained,
                   int *old_pen);
 
-/* Per-call release: write the pens that came from ObtainBestPen into out[ICL_CACHE] (each exactly once) and empty the
- * cache. Returns their count. The caller releases them on the SAME colour map in the same Text call: nothing pen-related
- * may outlive the call, because the map's screen can close between two calls (IPrefs reopening Workbench). */
+/* S57-ICL-PEN-RECOLOUR: the shade pens stay obtained across Text calls, so no other client is handed (and recolours) a pen number
+ * that glyph pixels already on screen use. Like flat_pens they belong to one screen identity (screen pointer + ipd_epoch).
+ * Bind at the start of a label call: on another identity the cache is forgotten WITHOUT any ReleasePen (the pens went with the
+ * old ColorMap; ReleasePen on a freed map waits for ever on its dead PalExtra semaphore, s57 boot hang). Returns 1 when forgotten. */
+int icl_cache_bind(icl_pencache *c, const void *screen, unsigned epoch);
+/* Give the pens back (shutdown): write the obtained pens into out[ICL_CACHE] (each once) and empty the cache, but only when
+ * `screen`/`epoch` is the identity they were obtained on (the caller releases them on that screen's map); on any other identity,
+ * or no screen (0), they are forgotten and 0 is returned. */
+int icl_cache_release(icl_pencache *c, const void *screen, unsigned epoch, int *out);
+/* The obtained pens into out[] (each once), cache emptied. Only for a caller that holds the live map. */
 int icl_cache_drain(icl_pencache *c, int *out);
 
 #endif

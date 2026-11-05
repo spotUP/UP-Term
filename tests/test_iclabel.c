@@ -139,8 +139,9 @@ static void t_cache(void)
     CHECK(!icl_cache_put(&c, 3, 3, 3, 0, 0, 21, 1, &old));
 }
 
-/* A simulated label draw: pen_for obtains through the cache like icl_pen_for; the drain after the draw hands back every
- * obtained pen exactly once and leaves the cache empty, so no pen survives to a later call on a closed screen's map. */
+/* S57-ICL-PEN-RECOLOUR: a simulated label call = bind to the screen identity, then blend through the cache (like icl_label). The
+ * pens stay obtained across calls (no per-call drain), are forgotten without release on another identity, and are handed back once,
+ * on the live identity, at shutdown. */
 static int obt_n;
 static int sim_pen_for(void *u, int fgpen, int bgpen, int k)
 {
@@ -154,25 +155,83 @@ static int sim_pen_for(void *u, int fgpen, int bgpen, int k)
     return pen;
 }
 
-static void t_release_per_call(void)
+static void sim_call(icl_pencache *c, const void *scr, unsigned epoch)
+{
+    uint8_t cov[4] = { 64, 128, 160, 96 };
+    uint32_t after[4] = { 0x10, 0x20, 0x30, 0x40 }, out[4];
+    icl_cache_bind(c, scr, epoch);
+    icl_blend_pens(cov, after, 1, 4, sim_pen_for, c, 4, out);
+}
+
+static int used_n(const icl_pencache *c)
+{
+    int i, n = 0;
+    for (i = 0; i < ICL_CACHE; i++)
+        n += c->e[i].used;
+    return n;
+}
+
+static void t_pens_persist(void)
 {
     icl_pencache c;
-    uint8_t cov[4] = { 64, 128, 160, 96 };
-    uint32_t after[4] = { 0x101010, 0x202020, 0x303030, 0x404040 }, out[4];
-    int rel[ICL_CACHE], n, i, j;
+    int scr_a, first;
     obt_n = 0;
     icl_cache_clear(&c);
-    icl_blend_pens(cov, after, 1, 4, sim_pen_for, &c, 4, out);
-    CHECK(obt_n > 0);
-    n = icl_cache_drain(&c, rel);
+    sim_call(&c, &scr_a, 7);
+    first = obt_n;
+    CHECK(first > 0);
+    CHECK_INT(used_n(&c), first);                  /* still held after call 1: no other client can be handed these numbers */
+    sim_call(&c, &scr_a, 7);
+    CHECK_INT(obt_n, first);                       /* call 2 on the same identity obtained nothing new, reused the held pens */
+    CHECK_INT(used_n(&c), first);
+}
+
+static void t_pens_forget_on_new_identity(void)
+{
+    icl_pencache c;
+    int scr_a, scr_b, rel[ICL_CACHE], first;
+    obt_n = 0;
+    icl_cache_clear(&c);
+    sim_call(&c, &scr_a, 7);
+    first = obt_n;
+    CHECK(first > 0);
+    /* epoch change at the same address (IPrefs reopen landing on the same screen pointer): forgotten, nothing to release */
+    CHECK_INT(icl_cache_bind(&c, &scr_a, 8), 1);
+    CHECK_INT(used_n(&c), 0);
+    CHECK_INT(icl_cache_release(&c, &scr_a, 7, rel), 0);          /* the old identity is not live any more: no ReleasePen */
+    sim_call(&c, &scr_a, 8);
+    CHECK_INT(obt_n, 2 * first);                                  /* re-obtained on the new identity */
+    /* screen change: forgotten, never released */
+    CHECK_INT(icl_cache_bind(&c, &scr_b, 8), 1);
+    CHECK_INT(used_n(&c), 0);
+    CHECK_INT(icl_cache_release(&c, &scr_a, 8, rel), 0);          /* a stale identity hands back nothing */
+    /* shutdown where the live screen is another identity than the one that obtained the pens: nothing released */
+    sim_call(&c, &scr_a, 7);
+    CHECK_INT(icl_cache_release(&c, &scr_a, 8, rel), 0);          /* same address, new epoch */
+    sim_call(&c, &scr_a, 7);
+    CHECK_INT(icl_cache_release(&c, &scr_b, 7, rel), 0);          /* other screen */
+    CHECK_INT(used_n(&c), 0);
+}
+
+static void t_pens_release_once_on_live(void)
+{
+    icl_pencache c;
+    int scr_a, rel[ICL_CACHE], n, i, j;
+    obt_n = 0;
+    icl_cache_clear(&c);
+    sim_call(&c, &scr_a, 7);
+    sim_call(&c, &scr_a, 7);
+    n = icl_cache_release(&c, &scr_a, 7, rel);                    /* shutdown on the live identity */
     CHECK_INT(n, obt_n);
     for (i = 0; i < n; i++)
         for (j = 0; j < n; j++)
             if (i != j)
                 CHECK(rel[i] != rel[j]);
-    for (i = 0; i < ICL_CACHE; i++)
-        CHECK(!c.e[i].used);
-    CHECK_INT(icl_cache_drain(&c, rel), 0);
+    CHECK_INT(used_n(&c), 0);
+    CHECK_INT(icl_cache_release(&c, &scr_a, 7, rel), 0);          /* released once, not twice */
+    sim_call(&c, &scr_a, 7);
+    CHECK_INT(icl_cache_release(&c, 0, 0, rel), 0);               /* no live screen: forgotten, no release */
+    CHECK_INT(used_n(&c), 0);
 }
 
 void suite_iclabel(void)
@@ -183,5 +242,7 @@ void suite_iclabel(void)
     t_blend_rgb();
     t_pens();
     t_cache();
-    t_release_per_call();
+    t_pens_persist();
+    t_pens_forget_on_new_identity();
+    t_pens_release_once_on_live();
 }
