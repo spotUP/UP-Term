@@ -3,6 +3,9 @@
  * that was there before (tools/rig/amarchy_btnbg_rig.py).
  *   btnbgprobe NOGAD   pattern only, window stays open until Ctrl-C
  *   btnbgprobe GAD     the same pattern, then one 80x14 button added over it (AddGList + RefreshGList), until Ctrl-C
+ *   btnbgprobe NOGAD|GAD SOLID   pen 2 everywhere instead of the checker (RL19: the corner blend reads ONE backdrop pen
+ *                      diagonally outside each corner; on the checker the pixel outside both right corners is a pen-3 tile,
+ *                      which under vantablack is the button fill, so a correct blend there is fill over fill)
  * Prints "WIN left top w h" and "GAD x y w h" in screen coordinates, "DEPTH n", "READY". */
 #include <stdio.h>
 #include <string.h>
@@ -34,7 +37,7 @@ int main(int argc, char **argv)
     struct NewGadget ng;
     void *vi;
     struct TagItem t[10];
-    int i = 0, x, y, wantgad = argc > 1 && !strcmp(argv[1], "GAD");
+    int i = 0, x, y, wantgad = argc > 1 && !strcmp(argv[1], "GAD"), solid = argc > 2 && !strcmp(argv[2], "SOLID");
     if (argv && argv[0] == NULL)
         return 5;
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 36);
@@ -62,7 +65,7 @@ int main(int argc, char **argv)
     if (!w) { printf("NOWIN\n"); return 10; }
     for (y = w->BorderTop; y < w->Height - w->BorderBottom; y++)
         for (x = w->BorderLeft; x < w->Width - w->BorderRight; x++) {
-            SetAPen(w->RPort, ((x >> 1) + (y >> 1)) & 1 ? 2 : 3);
+            SetAPen(w->RPort, solid || ((x >> 1) + (y >> 1)) & 1 ? 2 : 3);
             WritePixel(w->RPort, x, y);
         }
     if (wantgad) {
