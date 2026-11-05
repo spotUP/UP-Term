@@ -30,6 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths  # noqa: E402
 import ami  # noqa: E402
 import condev_rig as c  # noqa: E402
+import install_rig as ir  # noqa: E402
 
 ROOT = paths.VTCON
 VTC = paths.RIG / 'vtc'
@@ -117,6 +118,8 @@ def main():
     fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(a.port),
                            '--delay', '0'], stdout=open(log, 'w'), stderr=subprocess.STDOUT)
     time.sleep(1)
+    keep = ir.keep_upterm_assign(run)   # the steps drop and re-make UP-Term:; it ends as it was (RIG96-ASSIGN-LOST)
+    keep.__enter__()
     try:
         # 0. no kit: no UP-Term: assign. C:Claude must not ask for the volume
         # (no "Please insert volume UP-Term:" requester) and keeps everything
@@ -156,6 +159,7 @@ def main():
         run('Delete VTC:%s QUIET' % KIT.name)
         run('Delete ENVARC:Claude ENV:Claude RAM:dd-done VTC:dd-check.dos ALL QUIET')
         fx.terminate()
+        keep.__exit__(None, None, None)
     print('claude_datadir_rig: %s' % ('PASS' if not fails else 'FAIL: ' + ', '.join(fails)))
     return 1 if fails else 0
 
