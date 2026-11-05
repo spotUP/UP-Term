@@ -1346,7 +1346,7 @@ static void te4_open_builtin(void)
     gt_free(&t);
 }
 
-static void test_gthemes_te4_rows(void)
+static void test_gthemes_te4_section4(void)
 {
     const sd_setting *radius, *swatch0 = 0, *remove, *ghost;
     amconf_io io;
@@ -1410,6 +1410,69 @@ static void test_gthemes_te4_rows(void)
 
 /* TE-4.2: swatch, swatch-reference and element rows open the colour picker (palette entry or Custom) and step/set through the
  * lf_setting_* handlers, writing the edit buffer. TE-4 item 2: Rename/Remove Swatch look the swatch up by name. */
+/* TE-4.5: every row of plan section 4 exists on its page with its full English label, and the reused rows (Desktop switches, Icon
+ * Label Style, Terminal Palette) write the store of the row they copy; Icon Label Colour is an element row visible in Simple mode. */
+static void test_gthemes_te4_rows(void)
+{
+    static const struct { const char *label; int page; } want[] = {
+        { "Mode", PG_PAGE_THEME }, { "Base Theme", PG_PAGE_THEME }, { "Save", PG_PAGE_THEME }, { "Save As...", PG_PAGE_THEME },
+        { "Revert", PG_PAGE_THEME }, { "Apply to Desktop", PG_PAGE_THEME }, { "Contrast", PG_PAGE_THEME },
+        { "Pen Budget", PG_PAGE_THEME }, { "Add Swatch...", PG_PAGE_THEME_SWATCHES },
+        { "Rename Swatch...", PG_PAGE_THEME_SWATCHES }, { "Remove Swatch...", PG_PAGE_THEME_SWATCHES },
+        { "Terminal Palette", PG_PAGE_THEME_SWATCHES }, { "Screen Font", PG_PAGE_THEME_TYPE },
+        { "Window Title Font", PG_PAGE_THEME_TYPE }, { "Menu Font", PG_PAGE_THEME_TYPE }, { "Icon Font", PG_PAGE_THEME_TYPE },
+        { "Shell Font", PG_PAGE_THEME_TYPE }, { "Title Alignment", PG_PAGE_THEME_TYPE }, { "Title Style", PG_PAGE_THEME_TYPE },
+        { "Corner Radius", PG_PAGE_THEME_SHAPE }, { "Border Width", PG_PAGE_THEME_SHAPE }, { "Title Bar Height", PG_PAGE_THEME_SHAPE },
+        { "Gadget Size", PG_PAGE_THEME_SHAPE }, { "Gadget Padding", PG_PAGE_THEME_SHAPE }, { "Scroll Bar Width", PG_PAGE_THEME_SHAPE },
+        { "Knob Minimum Length", PG_PAGE_THEME_SHAPE }, { "Knob Shape", PG_PAGE_THEME_SHAPE },
+        { "Gadget Glyph Set", PG_PAGE_THEME_SHAPE }, { "Gadget Order", PG_PAGE_THEME_SHAPE },
+        { "Ghost Style", PG_PAGE_THEME_STATES }, { "Hover Highlight", PG_PAGE_THEME_STATES },
+        { "Inactive Window Dimming", PG_PAGE_THEME_STATES }, { "Theme the Desktop", PG_PAGE_THEME_DESKTOP },
+        { "Desktop Palette", PG_PAGE_THEME_DESKTOP }, { "Desktop Backdrop", PG_PAGE_THEME_DESKTOP },
+        { "Desktop Pointer", PG_PAGE_THEME_DESKTOP }, { "Desktop Icon Labels", PG_PAGE_THEME_DESKTOP },
+        { "Pointer Colour 1", PG_PAGE_THEME_DESKTOP }, { "Pointer Colour 3", PG_PAGE_THEME_DESKTOP },
+        { "Icon Label Style", PG_PAGE_THEME_DESKTOP }, { "Icon Label Colour", PG_PAGE_THEME_DESKTOP },
+        { "Duplicate Theme...", PG_PAGE_THEME_FILES }, { "Import Theme...", PG_PAGE_THEME_FILES },
+        { "Export Theme...", PG_PAGE_THEME_FILES }, { "Reset to Base", PG_PAGE_THEME_FILES },
+        { "Delete User Theme", PG_PAGE_THEME_FILES }
+    };
+    memfs mfs;
+    prefs_fs pfs;
+    amconf_io io;
+    am_prefs am;
+    const sd_setting *r;
+    int i, failed = 0;
+    mf_init(&mfs, &pfs);
+    io.fs = &pfs;
+    io.read = mf_read;
+    io.dir = mf_dir;
+    te4_open_builtin();
+    for (i = 0; i < (int)(sizeof want / sizeof want[0]); i++) {
+        r = te4_row(want[i].label);
+        CHECK(r != 0);
+        if (r)
+            CHECK_INT(r->page, want[i].page);
+    }
+    r = te4_row("Icon Label Colour");
+    CHECK(r && r->kind == SD_ELEMENT && gte_row_visible(r));          /* a shortcut: shown in Simple mode too */
+    r = te4_row("Terminal Palette");
+    CHECK(r && r->kind == SD_PALETTE && r->store == SD_UPTERM);
+    r = te4_row("Desktop Backdrop");
+    CHECK(r && r->kind == SD_CYCLE && r->store == SD_AMARCHY && r->nvalues == 2);
+    if (r) {
+        CHECK_INT(lf_setting_set(&io, r, 0, &failed), LF_SET_OK);       /* writes the real desktop-backdrop key */
+        CHECK(amconf_load_with(&io, &am) != AMCONF_DEFAULTS);
+        CHECK_STR(am.val[AM_DESKBACK], "off");
+    }
+    r = te4_row("Icon Label Style");
+    CHECK(r && r->store == SD_AMARCHY && r->nvalues == 3);
+    if (r) {
+        CHECK_INT(lf_setting_set(&io, r, 1, &failed), LF_SET_OK);
+        CHECK(amconf_load_with(&io, &am) != AMCONF_DEFAULTS);
+        CHECK_STR(am.val[AM_ICONTEXT], "outline");
+    }
+}
+
 /* TE-4.3: the decision to ask when the menu leaves the editor with unsaved changes, and how the answer reads. */
 static void test_gthemes_te4_leave(void)
 {
@@ -1611,9 +1674,10 @@ void suite_gthemes(void)
     test_gthemes_te3_save();
     test_gthemes_te3_custom_name();
     test_gthemes_te3_edit_applies();
-    test_gthemes_te4_rows();
+    test_gthemes_te4_section4();
     test_gthemes_te4_pickers();
     test_gthemes_te4_leave();
+    test_gthemes_te4_rows();
     test_gthemes_te4_modes();
     test_gthemes_te3_import_export_delete();
     test_gthemes_parse_clears_model();

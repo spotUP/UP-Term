@@ -4,6 +4,7 @@
 #include "gthemes_core.h"
 #include "../prefs/settings_def.h"
 #include "../prefs/prefs_core.h"
+#include "amconf_core.h"
 
 static upconf g_conf;
 
@@ -1961,6 +1962,23 @@ static sd_setting *er_add(int page, int kind, const char *key, const char *label
     return s;
 }
 
+/* TE-4.5: a row that already exists (Amarchy prefs, Prefs palette) shown again on a theme page. The copy keeps the store, the
+ * field and the values, so its edits go the way the original row's do; only the id, page, label and help are its own. */
+static sd_setting *er_reuse(int page, const sd_setting *src, const char *label, const char *help)
+{
+    sd_setting *s = er_add(page, src->kind, src->key ? src->key : "", label);
+    int id = s->id;
+    const char *key = s->key, *lab = s->label;
+    *s = *src;
+    s->id = id;
+    s->page = page;
+    s->key = key;
+    s->label = lab;
+    if (help)
+        s->help = help;
+    return s;
+}
+
 static void er_build(void)
 {
     int i, g, e, st;
@@ -2018,6 +2036,26 @@ static void er_build(void)
         s->off = look_defs[i].off;
         s->max = look_defs[i].max;
         s->aux = 100 + i;
+    }
+    er_reuse(PG_PAGE_THEME_SWATCHES, &sd_settings[SDI_PALETTE], "Terminal Palette", 0);
+    {
+        static const struct { int am; const char *label; const char *help; } desk[] = {
+            { AM_DESK, "Theme the Desktop", "Master switch: off leaves every desktop part below alone." },
+            { AM_DESKPAL, "Desktop Palette", "Write the theme colours to the Workbench palette." },
+            { AM_DESKBACK, "Desktop Backdrop", "Write the theme backdrop pattern and colour." },
+            { AM_DESKPTR, "Desktop Pointer", "Write the theme pointer colours." },
+            { AM_DESKLBL, "Desktop Icon Labels", "Write the theme icon label settings." }
+        };
+        for (i = 0; i < (int)(sizeof desk / sizeof desk[0]); i++) {
+            s = er_reuse(PG_PAGE_THEME_DESKTOP, sd_amarchy_key(desk[i].am), desk[i].label, desk[i].help);
+            s->kind = SD_CYCLE;
+            s->values = sd_settings[SDI_AM_BORDERBLANK].values;
+            s->nvalues = sd_settings[SDI_AM_BORDERBLANK].nvalues;
+        }
+        er_reuse(PG_PAGE_THEME_DESKTOP, &sd_settings[SDI_AM_ICONTEXT], "Icon Label Style", 0);
+        s = er_add(PG_PAGE_THEME_DESKTOP, SD_ELEMENT, "icon-label-colour", "Icon Label Colour");
+        s->aux = GTE_ICON_LABEL_TEXT;
+        s->aux2 = 0;
     }
     for (i = 0; i < 3; i++) {
         snprintf(l, ER_LABEL, "Pointer Colour %d", i + 1);
