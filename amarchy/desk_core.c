@@ -997,9 +997,9 @@ int desk_icontrol_decide(int thin, int bar_height, const unsigned char *cur, lon
     *snapshot = 0;
     if (thin) {
         desk_geometry_bar(1, bar_height, want);
-        if (ours)
-            return memcmp(have, want, 4) ? DK_IC_WRITE : DK_IC_NONE; /* same geometry: no second Workbench reset; a changed bar height rewrites, the snapshot keeps the pre-thin file */
-        *snapshot = 1;
+        if (!memcmp(have, want, 4))
+            return DK_IC_NONE; /* the wanted geometry is there already (also stock, when the bar height equals the stock BorderTop): no second Workbench reset */
+        *snapshot = !have_snap; /* a saved pre-thin file is never overwritten by a later apply; a changed bar height rewrites without a new snapshot */
         return DK_IC_WRITE;
     }
     return ours && have_snap ? DK_IC_RESTORE : DK_IC_NONE;

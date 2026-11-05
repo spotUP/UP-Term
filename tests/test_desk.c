@@ -1882,12 +1882,54 @@ static void test_model_font_or_bar_height_change_replans_font_and_icontrol(void)
     CHECK_INT(desk_start_icontrol(all & ~(1u << DT_ICONTROL), &t, ia, ian, 0, &snap), DK_IC_NONE);   /* part off, nothing to restore */
 }
 
+/* TE-7-BAR-STOCK-EDGE: thin with a title bar height equal to the stock BorderTop writes geometry that is all zero; the next start must still
+ * find its own file (no rewrite, no new snapshot over the saved pre-thin file), and a stock file of the user is still snapshotted */
+static void test_thin_with_stock_bar_height_does_not_rewrite_or_resnapshot(void)
+{
+    static unsigned char ic[BUF_MAX], w[BUF_MAX * 2];
+    gtheme t;
+    gt_model m;
+    long icn, wn;
+    int snap = -1;
+    unsigned char geom[4];
+    unsigned all = (1u << DT_POINTER) | (1u << DT_FONT) | (1u << DT_ICONTROL);
+    probe_theme(&t);
+    memset(&m, 0, sizeof m);
+    t.model = &m;
+    icn = slurp(DESK_DATA "icontrol-os32.prefs", ic, sizeof ic);
+    /* (c) a real stock file: thin on with a bar height of 14 writes with a snapshot; with the stock height there is nothing to change */
+    m.look.bar_height = 14;
+    CHECK_INT(desk_start_icontrol(all, &t, ic, icn, 0, &snap), DK_IC_WRITE);
+    CHECK_INT(snap, 1);
+    m.look.bar_height = DK_STOCK_BORDERTOP;
+    CHECK_INT(desk_start_icontrol(all, &t, ic, icn, 0, &snap), DK_IC_NONE);
+    CHECK_INT(snap, 0);
+    /* (a) the file our writer produces for bar height 11, decided again with the same inputs */
+    desk_geometry_bar(1, gt_look_bar_height(&t), geom);
+    wn = desk_icontrol(ic, icn, geom, w, sizeof w);
+    CHECK(wn > 0);
+    snap = -1;
+    CHECK_INT(desk_start_icontrol(all, &t, w, wn, 1, &snap), DK_IC_NONE);
+    CHECK_INT(snap, 0);
+    /* (b) the bar height changed to 14: rewritten, the saved snapshot kept */
+    m.look.bar_height = 14;
+    snap = -1;
+    CHECK_INT(desk_start_icontrol(all, &t, w, wn, 1, &snap), DK_IC_WRITE);
+    CHECK_INT(snap, 0);
+    /* (d) thin off with our file (bar height 14) and a snapshot: restore; no snapshot: nothing */
+    desk_geometry_bar(1, gt_look_bar_height(&t), geom);
+    wn = desk_icontrol(ic, icn, geom, w, sizeof w);
+    CHECK_INT(desk_start_icontrol(all & ~(1u << DT_ICONTROL), &t, w, wn, 1, &snap), DK_IC_RESTORE);
+    CHECK_INT(desk_start_icontrol(all & ~(1u << DT_ICONTROL), &t, w, wn, 0, &snap), DK_IC_NONE);
+}
+
 void suite_desk_start_apply(void)
 {
     test_desk_start_prefs_on_writes_border_gauge_backdrop();
     test_desk_start_prefs_on_writes_theme_palette();
     test_desk_start_prefs_on_writes_pointer_font_icontrol();
     test_model_font_or_bar_height_change_replans_font_and_icontrol();
+    test_thin_with_stock_bar_height_does_not_rewrite_or_resnapshot();
 }
 
 void suite_desk(void)
