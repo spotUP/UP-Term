@@ -689,7 +689,7 @@ static void sc_region(long t, int first)
     int v = rnd() % 5, w = rnd() % 8, ok = rnd() % 12;
     if (first) {
         at(1, 1);
-        ps("\033[1mScroll regions\033[0m: the two lines above the rule stay, the log scrolls under them.");
+        ps("\033[1mScroll regions\033[0m: the two lines above the rule stay; the log scrolls below.");
         at(2, 1);
         fg(244);
         ps("Programs like vim, less and tmux move text this way instead of redrawing it.");
@@ -1361,8 +1361,7 @@ static void sc_unicode(long t, int first)
             ps(rows[shown][1]);
         shown++;
         if (shown == n)
-            grey_line(4 + gap * n, "What your font lacks comes from an outline font (/font-fallback NAME) "
-                                   "or the Unifont pages");
+            grey_line(4 + gap * n, "Missing glyphs come from an outline font (/font-fallback NAME) or Unifont.");
     }
 }
 
@@ -1461,8 +1460,9 @@ static void sc_splits(long t, int first)
         splits_state = SPLITS_NONE;
         heading("Split panes", "UP-Term splits a tab into panes, each with its own shell");
         grey_line(4, "A tab holds up to 4 panes. A program drives them with slash commands:");
-        grey_line(5, "/split right  /split down  /pane zoom  /pane next  /pane previous  /pane close  /pane close other");
-        grey_line(6, "The Window menu and Right Amiga D, Right Amiga Shift D run the same commands.");
+        grey_line(5, "/split right  /split down  /pane zoom  /pane next  /pane previous");
+        grey_line(6, "/pane close  /pane close other");
+        grey_line(7, "The Window menu, Right Amiga D and Right Amiga Shift D run the same.");
     }
     if (!io->command)
         return;
@@ -1481,7 +1481,7 @@ static void sc_splits(long t, int first)
         grey_line(11, "Sent /pane zoom again: both panes are back.");
     } else if (splits_state == SPLITS_UNZOOMED && t >= SPLITS_CLOSE_AT) {
         splits_close();
-        grey_line(13, "Sent /pane close other: the new pane is closed, this one has the window and the keys.");
+        grey_line(13, "Sent /pane close other: the new pane closes, this one keeps the window.");
     }
 }
 
@@ -1751,7 +1751,7 @@ static void sc_links(long t, int first)
     if (first) {
         told = 0;
         heading("Hyperlinks and notifications", "OSC 8 makes text a link, OSC 9 tells you something");
-        grey_line(4, "Ctrl + click a link to open it (link-open in the profile; OpenURL by default):");
+        grey_line(4, "Ctrl + click a link to open it (link-open in the profile; default OpenURL):");
         at(6, 4);
         ps("\033]8;;https://aminet.net/\033\\\033[4;");
         ps(ansi ? "96" : "38;5;75");
@@ -1767,7 +1767,7 @@ static void sc_links(long t, int first)
     if (!told && t >= 100) {
         ps("\033]9;UP-Term demo: a notification from a program\007");
         at(11, 2);
-        ps("A program's notification (OSC 9: a build finished...) shows in the title bar.");
+        ps("A notification from a program (OSC 9) shows in the title bar.");
         told = 1;
     }
 }
@@ -2070,7 +2070,7 @@ static void sc_kitty_truecolour(long t, int first)
     (void)t;
     if (!first)
         return;
-    heading("Kitty truecolour", "24-bit pictures with alpha; the glass lets the picture and the text show through");
+    heading("Kitty truecolour", "24-bit pictures with alpha: the glass shows the picture and text through");
     ps("\033_Ga=d,d=I,i=2,q=2\033\\\033_Ga=d,d=I,i=3,q=2\033\\");
     for (i = 0; i < 6; i++) { /* coloured text under the glass */
         at(4 + i, 30);
@@ -2140,11 +2140,11 @@ static void sc_kitty_picture(long t, int first)
     at(4, 40);
     kitty_chunks("a=T,i=5,f=24,s=64,v=64,c=8,q=2", px, sizeof px);
     at(9, 40);
-    ps("A circle the demo drew: 64 x 64 pixels");
+    ps("Demo-drawn circle: 64 x 64 pixels");
     at(13, 6);
     ps("The screen's pixels are twice as tall as wide, yet the circle is round");
     at(14, 6);
-    ps("and the photo keeps its 8:5 shape: UP-Term scales a picture by the pixel aspect.");
+    ps("and the photo keeps its 8:5 shape: the pixel aspect scales it.");
 }
 
 /* Kitty placement (UD3): one image sent ONCE (a=t, i=7), then shown at several cells by id with a=p, one placement
@@ -2185,7 +2185,7 @@ static void sc_kitty_placement(long t, int first)
             at(8, 14);
             ps("\033_Ga=p,i=7,p=2,c=6,q=2\033\\");
             at(15, 4);
-            ps("Step 3: placement 2 moves down: a=p again with the same image and placement.");
+            ps("Step 3: placement 2 moves down (a=p, same image, same placement).");
             break;
         case 3:
             ps("\033_Ga=d,d=i,i=7,p=3,q=2\033\\");
@@ -2196,7 +2196,7 @@ static void sc_kitty_placement(long t, int first)
             at(5, 4);
             ps("\033_Ga=p,i=7,p=4,P=7,Q=1,H=6,V=1,c=4,q=2\033\\");
             at(17, 4);
-            ps("Step 5: a child of placement 1 (P=, Q=), 6 columns right and 1 row down (H=, V=).");
+            ps("Step 5: child of placement 1 (P=, Q=), 6 right and 1 down (H=, V=).");
             break;
         }
         step++;
@@ -2372,7 +2372,7 @@ static void sc_tabs(long t, int first)
         ps("\033[7m 1 vsh \033[0m\033[4m 2 build \033[0m\033[4m 3 Claude \033[0m\033[4m 4 notes \033[0m");
         at(5, 2);
         ps("\033[2m~ % make ... the build runs in tab 2 while you type here\033[0m");
-        grey_line(8, "Window > New tab opens another session; Next tab and Previous tab move between them.");
+        grey_line(8, "Window > New tab opens a session; Next tab and Previous tab switch.");
         grey_line(9, "/ask opens an AI agent in a new tab of its own.");
         grey_line(10, "A tab can run any program: Claude, pi, UPDemo.");
     }
@@ -2411,7 +2411,7 @@ static void help_ask(const char *name)
     sgr0();
     r = io->command ? io->command(io->user, line) : 0;
     while (r && *r) {
-        at(help_row++, 2);
+        at(help_row++, 1); /* the handler's reply is 76 columns wide with its own indent */
         while (*r && *r != '\n')
             pc(*r++);
         if (*r == '\n')

@@ -22,10 +22,37 @@ static const char *needle;            /* saw_text: the output had it */
 static char cap[4 << 20];             /* capturing: everything the demo wrote */
 static long cap_len;
 static int capturing;
+static int fake_cols;                 /* > 0: the terminal is wider than the window the demo is told about (see wide_probe) */
+static unsigned long over_rows;       /* the rows that got a cell at or past fake_cols (a bit each) */
+static const char *over_scene;
 
 static void scan(void)
 {
     int y, x, n;
+    if (fake_cols) {
+        for (y = 0; y < vt_rows(t); y++) {
+            const vt_cell *c = vt_row(t, y, &n);
+            int ts = n, k;      /* an erase to the end of the line fills to the 200 columns: that tail is no write of the demo's */
+            char text[120];
+            while (ts > 0 && c[ts - 1].ch == 0x20 && c[ts - 1].bg == c[n - 1].bg && c[ts - 1].attr == c[n - 1].attr)
+                ts--;
+            for (x = fake_cols - 1; x < n && x < ts; x++) {
+                int blank = c[x].ch == 0x20 && c[x].bg >= VT_COLOR_DEFAULT && c[x].bg <= VT_COLOR_DEFAULT_BG &&
+                            !(c[x].attr & VT_ATTR_INVERSE);
+                if (c[x].width == 0 || blank || c[x].pad || x + c[x].width <= fake_cols)
+                    continue; /* a wide glyph that starts at W - 1 spills over too */
+                if (!(over_rows & (1UL << y))) {
+                    over_rows |= 1UL << y;
+                    for (k = 0; k < 119 && k < n; k++)
+                        text[k] = c[k].ch > 31 && c[k].ch < 127 ? (char)c[k].ch : '?';
+                    text[k] = 0;
+                    if (getenv("UPDEMO_COLS_LOG"))
+                        fprintf(stderr, "[COLS] %d scene '%s' row %d col %d: |%s|\n", fake_cols, over_scene, y + 1, x + 1, text);
+                }
+                break;
+            }
+        }
+    }
     if (vt_images(t))
         saw_image = 1;
     for (y = 0; y < vt_rows(t); y++) {
@@ -65,7 +92,12 @@ static void out(void *user, const char *buf, long len)
 
 static void reply(void *user, const vt_u8 *buf, long len)
 {
+    char sz[32];
     (void)user;
+    if (fake_cols && len > 4 && !memcmp(buf, "\033[8;", 4)) { /* the window size the demo lays out for */
+        len = snprintf(sz, sizeof sz, "\033[8;%d;%dt", vt_rows(t), fake_cols);
+        buf = (const vt_u8 *)sz;
+    }
     if (back_pos == back_len)
         back_pos = back_len = 0;
     if (back_len + len <= (long)sizeof(back)) {
@@ -497,7 +529,7 @@ static void the_kitty_placement_scene_sends_put_move_delete_and_a_relative_child
     CHECK(put3 < move);
     CHECK(move < del);
     CHECK(del < child);
-    CHECK(cap_has("Step 5: a child of placement 1"));
+    CHECK(cap_has("Step 5: child of placement 1"));
     CHECK_INT(vt_unhandled(t, kinds, counts, 16), 0);
     vt_free(t);
 }
@@ -759,7 +791,7 @@ static void the_tabs_scene_draws_a_tab_bar_and_names_the_menu(void)
 {
     play_alone(scene_index("tabs"), UPDEMO_AUTO);
     CHECK(cap_has("\033[7m 1 vsh \033[0m"));
-    CHECK(cap_has("Window > New tab opens another session"));
+    CHECK(cap_has("Window > New tab opens a session"));
 }
 
 /* UPDEMO-NEW-FEATURES UD5: the splits scene splits the window, zooms the pane and unzooms it, with the slash
@@ -1553,8 +1585,47 @@ static void the_16_colour_captions_say_so(void)
     vt_free(t);
 }
 
+/* The demo lays every scene out for the width the window reports (CSI 18 t) and never writes past it: a character
+ * past the last column autowraps in a real window ("some demos had text after column 80, so we got ugly line
+ * breaks", owner 2026-11-05, rig 96, a 640 pixel Workbench: the console is 80 columns or fewer). The probe: the
+ * engine is 200 columns wide so nothing wraps, its size reply says W, and every cell found at column W or beyond
+ * (text, or a coloured blank) is a character the real window would have wrapped. 80, 79 and 78 are the widths
+ * the Amiga console can report at 640 pixels; UPDEMO_MIN_COLS is the narrowest the demo takes. */
+static void wide_probe(int w, int mode)
+{
+    int s;
+    for (s = 0; s < updemo_scenes(); s++) {
+        char what[96];
+        start(200, 24);
+        fake_cols = w;
+        over_rows = 0;
+        over_scene = updemo_scene_name(s);
+        updemo_colours(mode);
+        updemo_only(1);
+        CHECK_INT(updemo_run(&io, w, 24, s, 0), 0);
+        updemo_only(0);
+        snprintf(what, sizeof what, "no cell past column %d in scene '%s'", w, over_scene);
+        /* reflow is a deliberate autowrap paragraph on the main screen: wrapping is the thing it shows */
+        if (strcmp(over_scene, "reflow") != 0)
+            CHECK_STR(over_rows ? "a cell past the last column" : what, what);
+        fake_cols = 0;
+        vt_free(t);
+    }
+}
+
+static void no_scene_writes_past_the_window_width_at_80_79_78_and_the_minimum(void)
+{
+    static const int widths[] = { 80, 79, 78, UPDEMO_MIN_COLS };
+    int i;
+    for (i = 0; i < 4; i++) {
+        wide_probe(widths[i], UPDEMO_FULL);
+        wide_probe(widths[i], UPDEMO_ANSI);
+    }
+}
+
 void suite_updemo(void)
 {
+    no_scene_writes_past_the_window_width_at_80_79_78_and_the_minimum();
     big_windows_are_drawn_within_bounds();
     a_small_window_is_refused_untouched();
     the_demo_plays_every_scene_and_puts_the_terminal_back();
