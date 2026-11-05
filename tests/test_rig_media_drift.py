@@ -36,6 +36,15 @@ class MediaDrift(unittest.TestCase):
         (self.vtc / paths.UPTERM_DRAWER / REL).write_bytes(b"old")
         self.assertEqual(rig.media_drift(self.vtc), [(REL, "differs")])
 
+    def test_installed_kit_place_is_not_judged_by_the_host_drawer(self):
+        """RIG-REBOOT-FALSE-MISSING: a kit in the image assigns UP-Term: elsewhere; the empty host drawer says nothing."""
+        self.addCleanup(setattr, rig, "clone_upterm_place", rig.clone_upterm_place)
+        rig.clone_upterm_place = lambda image: ("DH1", "Tools/UP-Term")
+        self.assertEqual(rig.start_media_drift(self.vtc, self.d / "sys.hdf"), [])
+        rig.clone_upterm_place = lambda image: None
+        self.assertEqual(sorted(rig.start_media_drift(self.vtc, self.d / "sys.hdf")),
+                         sorted((rel, "missing") for rel in a1200_drift.KIT_MEDIA))
+
 
 if __name__ == "__main__":
     unittest.main()
