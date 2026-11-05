@@ -149,3 +149,30 @@ running. A memory watchpoint on 0x2BD40-0x2BFFF gives the writer's PC.
 - Next run: start the debug build with the memwatch already in place before "g" at the boot stop (one FIFO round, no
   second dbgbreak), open `NewShell WINDOW=XCON:0/7/640/249/DragTest`, then RAM:rawdrag on its title bar (dy negative)
   with SolidWin running, then with SolidWin stopped. A hit line names the PC (CPU) or the blit (BLTD).
+
+## Hunt attempt 4, 2026-11-05 (rig 137)
+
+Verdict: INCONCLUSIVE. No drag ran. The guest froze right after the DragTest shell opened, so the writer is still unknown.
+
+- Build: origin/main 6b2aeb09 (wasabi made, dist via kit-main). fresh-all with INSTALLER_KEEP=1: checks 1-33 OK, step 34
+  fails (AMARCHY port: no port), as expected.
+- Debug reboot: fs-uae-debug `--max --os 32 --no-jit --debugger --idle-minutes 0`, purpose "vtcon-8c: drag freeze
+  memwatch hunt". At the Kickstart stop (PC 00F800D2) two watches were armed in one FIFO round, then g (no second
+  dbgbreak): `w 0 2bd40 80 W CPUDW` and `w 1 2bd40 80 W BLTD` (the mask is only parsed as the last token, so CPU and
+  blitter need separate watches). Every hit breaks; scratchpad autog.py logged each hit and sent g.
+- Boot completed. copcheck: `pl0=00003d40 bpr=640 rows=256 depth=8 end=0002bd40 lof=0002cee0 off=4512 verdict=OK`,
+  windows `[- 0,11 640x245][- 0,10 640x246]`. The watched range starts at the bitmap end.
+- Boot baseline (204 hits, all before the shell opened, last at 07:55:40; RAM below the bitmap end is free during boot):
+  CPU 400B484A x68, 400B4900 x8, 00F8200C x20, 00F8200E x20, 00F81F24 x2, 00F81EE6/00F81EEE (exec clear);
+  blitter D 00F86AA6 x34, 00F86AA8 x13, 00F86AE2 x7, 00F895D6 x10, 00F895DC x7. These are boot-time users of that
+  memory, not the drag writer.
+- Process list after boot: SYS:Prefs/Pointer still running (the S57 start hang from vtcon-c1), plus Amarchy,
+  amarchy-flat, amarchy-gui, SolidWin, amarchy-menu, Workbench.
+- `Run >NIL: NewShell WINDOW=XCON:0/7/640/249/DragTest` returned rc 0. The next exec (RAM:copcheck) never returned
+  and wasabid stayed silent ("daemon did not answer for 150 s"), also after a dbgbreak + g. The debugger showed the CPU
+  idle in STOP at PC 40061A8E (S=1, STP=1, IMASK=0): no task ready, all waiting. No memwatch hit in this phase, so
+  the freeze is not a write past the bitmap end; it looks like a lock/wait deadlock, possibly tied to the still-running
+  Prefs/Pointer start hang. The `T` (task list) command gave no output.
+- Next run: first clear the Prefs/Pointer start hang (or boot with Pointer prefs not run) so the shell can open
+  without the deadlock, then repeat the same watch and drag recipe. Alternative: open the DragTest shell before the
+  debug reboot is idle (from S:User-Startup) to see whether the deadlock is the shell open itself.
