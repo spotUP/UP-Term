@@ -180,15 +180,12 @@ static int dk_icontrol_restore(void)
     return ok;
 }
 
-static int dk_have_icontrol_snapshot(void)
+/* the saved pre-thin icontrol.prefs (T:amarchy-revert copy of ENVARC:Sys/icontrol.prefs): its length, -1 when there is none */
+static long dk_read_icontrol_snapshot(unsigned char *buf, long size)
 {
     char name[96];
-    BPTR l;
     dk_copy_name("ENVARC:Sys/icontrol.prefs", name);
-    l = Lock((STRPTR)name, ACCESS_READ);
-    if (l)
-        UnLock(l);
-    return l != 0;
+    return dk_read(name, buf, size);
 }
 
 static int dk_pointer_editor_ok(void)
@@ -396,14 +393,16 @@ static int dk_apply(const gtheme *th, char *why, int cap)
     unsigned short live[DK_SLOTS];
     int nlive = 0, was = 0, reset = 0, ic_act, ic_snap = 0;
     static unsigned char ic_cur[DK_BUF];
-    long ic_len;
+    static unsigned char ic_snap_buf[DK_IC_BUF];
+    long ic_len, ic_snap_len;
     amconf_load(&ap);
     flat_pens = amconf_desk_flat_pens(&ap);
     /* FLAT-P1-2: the border size acts on its own (thin once, stock restores the snapshot), whatever else the switches enable */
     ic_len = dk_read("ENV:Sys/icontrol.prefs", ic_cur, sizeof ic_cur);
     if (ic_len < 0)
         ic_len = dk_read("ENVARC:Sys/icontrol.prefs", ic_cur, sizeof ic_cur);
-    ic_act = desk_icontrol_decide((amconf_desk_mask(&ap) >> DT_ICONTROL) & 1, gt_look_bar_height(th), ic_cur, ic_len, dk_have_icontrol_snapshot(), &ic_snap);
+    ic_snap_len = dk_read_icontrol_snapshot(ic_snap_buf, sizeof ic_snap_buf);
+    ic_act = desk_icontrol_decide((amconf_desk_mask(&ap) >> DT_ICONTROL) & 1, gt_look_bar_height(th), ic_cur, ic_len, ic_snap_buf, ic_snap_len, &ic_snap);
     plan = desk_plan(amconf_desk_mask(&ap) & ~(1u << DT_ICONTROL), th, why, cap);
     if (plan < 0 || (plan == 0 && ic_act == DK_IC_NONE))
         return plan;
@@ -1566,11 +1565,12 @@ int desk_dos_start_apply(void)
             plan |= DESK_START_FONT;
     }
     if (dk_palette_editor_ok()) {
-        static unsigned char ic_cur[DK_BUF * 8];
-        long ic_len = dk_read("ENV:Sys/icontrol.prefs", ic_cur, sizeof ic_cur);
+        static unsigned char ic_cur[DK_BUF * 8], ic_snap_buf[DK_IC_BUF];
+        long ic_len = dk_read("ENV:Sys/icontrol.prefs", ic_cur, sizeof ic_cur), ic_snap_len;
         if (ic_len < 0)
             ic_len = dk_read("ENVARC:Sys/icontrol.prefs", ic_cur, sizeof ic_cur);
-        ic_act = desk_start_icontrol(mask, &th, ic_cur, ic_len, dk_have_icontrol_snapshot(), &ic_snap);
+        ic_snap_len = dk_read_icontrol_snapshot(ic_snap_buf, sizeof ic_snap_buf);
+        ic_act = desk_start_icontrol(mask, &th, ic_cur, ic_len, ic_snap_buf, ic_snap_len, &ic_snap);
         if (ic_act != DK_IC_NONE)
             plan |= DESK_START_ICONTROL;
     }
