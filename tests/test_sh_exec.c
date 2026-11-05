@@ -2811,6 +2811,23 @@ static void execute_key_dot_directives(void)
 }
 
 /* S7b-6 (real 3.2): R2 .KEY only on line 1; R17 a nested FailAt leaks to the outer script; R6 `?` with an empty reply. */
+/* S7b-2 X2: an upper-case CD (AmigaDOS names ignore case) inside a script is kept by the calling shell,
+ * by `execute` and by name. */
+static void execute_cd_kept_by_caller(void)
+{
+    int inc = 0;
+    run("");
+    amiscr_put("RAM:cdx", "CD RAM:sub\n");
+    sh_run_text(&sh, "cd RAM:; execute RAM:cdx; pwd", &inc);
+    CHECK_STR(slot(OUT)->data, "RAM:sub\n");
+    /* by name: the same executor, the same word */
+    fresh();
+    sh.os.run = f_run_record;
+    put_file("RAM:abscd", "CD tmpdir\n", 10);
+    sh_run_text(&sh, "RAM:abscd; pwd", &inc);
+    CHECK_STR(slot(OUT)->data, "tmpdir\n");
+}
+
 static void execute_3_2_quirks(void)
 {
     int inc = 0;
@@ -2887,6 +2904,7 @@ void suite_sh_exec(void)
     execute_key_template_args();
     execute_key_dot_directives();
     execute_3_2_quirks();
+    execute_cd_kept_by_caller();
     execute_backticks();
     setenv_unsetenv_getenv_use_the_system_store();
     fault_prompt_ask_alias_and_echo_keywords();
