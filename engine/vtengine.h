@@ -311,6 +311,9 @@ void     vt_cursor(const vt_term *t, int *x, int *y);
 int      vt_wrap_pending(const vt_term *t);
 vt_u32   vt_modes(const vt_term *t);
 const char *vt_title(const vt_term *t);
+/* The title the host's window already shows (its open string), so CSI 22 t
+ * pushes it and CSI 23 t brings it back; no title callback. */
+void     vt_set_title(vt_term *t, const char *s);
 /* Amiga raw input event classes the host asked for (CSI n {), bit n. */
 vt_u32   vt_raw_events(const vt_term *t);
 
