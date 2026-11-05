@@ -651,6 +651,12 @@ static icl_pencache icl_pc;
 static int icl_rel[ICL_CACHE];           /* pens icl_pens_release hands back (under icl_ss) */
 static int icl_ready;
 
+/* S57-ICL-PINK-SHADE: the ColorMap's free probe (ipd_pen_is_free, as ip_holder_verify), for icl_cache_verify and flat_pens_verify */
+static int cm_pen_is_free(void *cm, int pen)
+{
+    return ipd_pen_is_free((struct ColorMap *)cm, pen);
+}
+
 /* S57-ICL-PEN-RECOLOUR: unload gives the shade pens back, on the Workbench ColorMap of the identity that obtained them, locked so it
  * cannot close; on any other screen (or none) they are forgotten without ReleasePen (dead PalExtra semaphore, s57 hang). */
 static void icl_pens_release(void)
@@ -792,6 +798,8 @@ static int icl_label(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG
     }
     cm = w->WScreen->ViewPort.ColorMap;
     icl_cache_bind(&icl_pc, w->WScreen, ipd_epoch());   /* another screen identity: forget the old pens, no ReleasePen */
+    /* S57-ICL-PINK-SHADE: same identity is not proof (a Workbench reopen at the same address keeps both): ask the ColorMap */
+    icl_cache_verify(&icl_pc, cm_pen_is_free, cm);
     n = bw * bh;
     jam2 = (rp->DrawMode & JAM2) != 0;
     if (!rtg) {
@@ -1743,9 +1751,10 @@ static void pens_run(flatshared *r, int mode)
     aspect_update(r, scr);
     if (mode == 0)
         flat_pens_refresh(&g_pens, &o, &r->st, id, ipd_epoch(), depth);
-    else if (mode == 1)
+    else if (mode == 1) {
+        flat_pens_verify(&g_pens, &r->st, cm_pen_is_free, x.cm, id, ipd_epoch());   /* S57-ICL-PINK-SHADE: same address reopen */
         flat_pens_follow(&g_pens, &o, &r->st, !r->st.held, id, ipd_epoch(), depth);
-    else
+    } else
         flat_pens_release(&g_pens, &o, &r->st, id, ipd_epoch());
     if (scr)
         UnlockPubScreen(NULL, scr);

@@ -79,6 +79,11 @@ int ip_holder_stale(const ip_holder *h, const void *screen, int depth);
  * - the same address at another depth is a reopened screen too: forget, returns 1.
  * Else 0 (also with no o->is_free, another screen, or nothing obtained). */
 int ip_holder_verify(ip_holder *h, const ip_ops *o, const void *screen, int depth);
+/* S57-ICL-PINK-SHADE: the same question for pens kept outside an ip_holder (the icl shade cache, flat_pens), which trust
+ * "same screen + same ipd epoch" and so miss a Workbench reopen at the same address before the next pens_sync. 1 when any of the
+ * n pens we believe we hold is free on the ColorMap (is_free(ctx, pen)): the screen was reopened, the pens went with the old map and
+ * the caller forgets them WITHOUT ReleasePen. 0 when all are held, n is 0 or is_free is 0. */
+int ip_any_free(int (*is_free)(void *ctx, int pen), void *ctx, const int *pens, int n);
 /* ICON-AA-WRONG-BG / ICONPEN-THEME-SWITCH-RECOLOUR: a theme switch on the same screen. Re-reads the theme (o->theme), and every held pen
  * whose colour changed is rewritten with o->set_rgb (SetRGB32); no release, no obtain. Returns the pens rewritten, 0 when nothing is
  * held or the colours are the same. */

@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "flat_core.h"
+#include "iconpen_core.h"
 #include "gthemes_core.h"
 #include "../device/romspan.h"
 
@@ -826,6 +827,21 @@ int flat_pens_follow(flat_pens *p, const flat_pen_ops *o, flat_state *s, int wan
         return 0;
     pens_forget(p, s);                  /* another screen: the pens went with the old ColorMap, nothing to release */
     flat_pens_refresh(p, o, s, screen, epoch, depth);
+    return 1;
+}
+
+int flat_pens_verify(flat_pens *p, flat_state *s, int (*is_free)(void *ctx, int pen), void *ctx, const void *screen, unsigned epoch)
+{
+    int pens[4], n = 0;
+    if (!pens_here(p, screen, epoch))
+        return 0;
+    if (p->dim >= 0) pens[n++] = p->dim;
+    if (p->knob >= 0) pens[n++] = p->knob;
+    if (p->inbar >= 0) pens[n++] = p->inbar;
+    if (p->sel >= 0) pens[n++] = p->sel;
+    if (!ip_any_free(is_free, ctx, pens, n))
+        return 0;
+    pens_forget(p, s);                  /* the pens went with the old ColorMap */
     return 1;
 }
 
