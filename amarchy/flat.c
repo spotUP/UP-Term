@@ -648,12 +648,25 @@ static uint8_t *icl_mk, *icl_cv, *icl_p8;
 static struct BitMap *icl_tbm;           /* the one-line bitmap ReadPixelArray8/WritePixelArray8 need */
 static struct RastPort icl_trp;
 static icl_pencache icl_pc;
-static int icl_rel[ICL_CACHE];           /* pens to release at the end of one label call (under icl_ss) */
+static int icl_rel[ICL_CACHE];           /* pens icl_pens_release hands back (under icl_ss) */
 static int icl_ready;
+
+/* S57-ICL-PEN-RECOLOUR: unload gives the shade pens back, on the Workbench ColorMap of the identity that obtained them, locked so it
+ * cannot close; on any other screen (or none) they are forgotten without ReleasePen (dead PalExtra semaphore, s57 hang). */
+static void icl_pens_release(void)
+{
+    struct Screen *scr = ipd_lock_wb_screen();
+    struct ColorMap *cm = scr ? scr->ViewPort.ColorMap : NULL;
+    int n = icl_cache_release(&icl_pc, cm ? (const void *)scr : NULL, ipd_epoch(), icl_rel), i;
+    for (i = 0; i < n; i++)
+        ReleasePen(cm, (ULONG)icl_rel[i]);
+    if (scr)
+        UnlockPubScreen(NULL, scr);
+}
 
 static void icl_free(void)
 {
-    icl_cache_clear(&icl_pc);                   /* no pen outlives a label call (released per call), nothing to give back */
+    icl_pens_release();                         /* the shade pens outlive label calls: give them back on the live map */
     if (icl_tbm) {
         icl_tbm->Depth = 8;
         FreeBitMap(icl_tbm);
@@ -711,7 +724,8 @@ static int icl_pen_for(void *u, int fgpen, int bgpen, int k)
     if ((pen = icl_cache_find(&icl_pc, fgpen, bgpen, k, fr, br)) >= 0)
         return pen;
     t = icl_pen_target(fr, br, k, n);
-    got = (int)ObtainBestPen(cm, (t >> 16 & 0xFF) * 0x01010101UL, (t >> 8 & 0xFF) * 0x01010101UL, (t & 0xFF) * 0x01010101UL,
+    /* no free slot: never obtain (a pen that cannot be kept would be released while drawn); nearest of fg/bg instead */
+    got = !icl_cache_has_room(&icl_pc, fgpen, bgpen, k) ? -1 : (int)ObtainBestPen(cm, (t >> 16 & 0xFF) * 0x01010101UL, (t >> 8 & 0xFF) * 0x01010101UL, (t & 0xFF) * 0x01010101UL,
                              OBP_Precision, PRECISION_IMAGE, TAG_DONE);
     pen = got >= 0 ? icl_pen_choice(k, n, got, icl_dist(t, icl_rgb(cm, (ULONG)got)), icl_dist(t, fr), icl_dist(t, br), fgpen, bgpen)
                    : icl_pen_choice(k, n, -1, 0, 0, 0, fgpen, bgpen);
@@ -777,6 +791,7 @@ static int icl_label(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG
         return 0;
     }
     cm = w->WScreen->ViewPort.ColorMap;
+    icl_cache_bind(&icl_pc, w->WScreen, ipd_epoch());   /* another screen identity: forget the old pens, no ReleasePen */
     n = bw * bh;
     jam2 = (rp->DrawMode & JAM2) != 0;
     if (!rtg) {
@@ -807,7 +822,6 @@ static int icl_label(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG
             vr_cgx_write_pixels(icl_cgx, icl_out, 0, 0, (UWORD)(bw * 4), rp, (UWORD)x, (UWORD)y, (UWORD)bw, (UWORD)bh, VR_RECTFMT_RGBA);
         }
     } else {
-        int nrel;
         if (icl_blend_pens(icl_cv, icl_after, (int)fg, aa_ink_shades_for_depth(depth), icl_pen_for, cm, n, icl_out) > 0) {
             int pw = ((bw + 15) >> 4) << 4, xx, yy;
             for (yy = 0; yy < bh; yy++)
@@ -815,11 +829,8 @@ static int icl_label(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG
                     icl_p8[yy * pw + xx] = (uint8_t)icl_out[yy * bw + xx];
             WritePixelArray8(rp, (UWORD)x, (UWORD)y, (UWORD)(x + bw - 1), (UWORD)(y + bh - 1), icl_p8, &icl_trp);
         }
-        /* Release every pen obtained in this call, on this call's map: the screen may close before the next call, and
-         * ReleasePen on a freed ColorMap waits for ever on its dead PalExtra semaphore (boot hang, s57). */
-        nrel = icl_cache_drain(&icl_pc, icl_rel);
-        for (i = 0; i < nrel; i++)
-            ReleasePen(cm, (ULONG)icl_rel[i]);
+        /* The shade pens stay obtained (icl_pc, bound to this screen identity): a pen freed here would go to the next client,
+         * which recolours it under the glyph pixels already drawn (red in the grey antialias). */
     }
     r->labels++;
     ReleaseSemaphore(&icl_ss);

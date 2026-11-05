@@ -145,6 +145,15 @@ int icl_cache_find(const icl_pencache *c, int fgpen, int bgpen, int k, uint32_t 
     return -1;
 }
 
+int icl_cache_has_room(const icl_pencache *c, int fgpen, int bgpen, int k)
+{
+    int i;
+    for (i = 0; i < ICL_CACHE; i++)
+        if (!c->e[i].used || (c->e[i].fgpen == fgpen && c->e[i].bgpen == bgpen && c->e[i].k == k))
+            return 1;
+    return 0;
+}
+
 int icl_cache_put(icl_pencache *c, int fgpen, int bgpen, int k, uint32_t fg_rgb, uint32_t bg_rgb, int pen, int obtained,
                   int *old_pen)
 {
@@ -180,6 +189,25 @@ int icl_cache_drain(icl_pencache *c, int *out)
     for (i = 0; i < ICL_CACHE; i++)
         if (c->e[i].used && c->e[i].obtained)
             out[n++] = c->e[i].pen;
+    icl_cache_clear(c);
+    return n;
+}
+
+int icl_cache_bind(icl_pencache *c, const void *screen, unsigned epoch)
+{
+    if (screen && c->screen == screen && c->epoch == epoch)
+        return 0;
+    icl_cache_clear(c);                 /* another identity: forget, never release */
+    c->screen = screen;
+    c->epoch = epoch;
+    return 1;
+}
+
+int icl_cache_release(icl_pencache *c, const void *screen, unsigned epoch, int *out)
+{
+    int n = 0;
+    if (screen && c->screen == screen && c->epoch == epoch)
+        n = icl_cache_drain(c, out);
     icl_cache_clear(c);
     return n;
 }

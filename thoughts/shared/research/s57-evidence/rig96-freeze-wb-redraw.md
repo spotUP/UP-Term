@@ -91,3 +91,23 @@ fs-uae debugger route (rig started with `--debugger`, as the S57-BOOT5-HANG rig 
 
 Confidence: red-in-AA cause high (pixel positions + code path). Freeze cause: unknown, matches S57-BOOT5-HANG by
 signature only; low confidence on any lock.
+
+## Fix run (S57-ICL-PEN-RECOLOUR, commit 703365f0 on top of df369b89)
+
+- Hole closed: icl_pen_for no longer calls ObtainBestPen when the 32-slot cache has no room for the key (new
+  icl_cache_has_room); it takes the non-obtained choice (nearest of fg/bg), so no drawn pen is ever released. Host test
+  t_cache_full_no_obtain (tests/test_iclabel.c) + wiring test in tests/test_flat_icl_pens_persist.py. `make test ONLY=iclabel`:
+  184 checks, 0 failed; ONLY=flat_icl_pens OK. `make build/amiga/Amarchy` and `build/amiga/amarchy-flat` (vc -warnings-as-errors) rc=0.
+- RGB-changed same-key path (icl_cache_put hands back old_pen, caller releases it): CAN in principle recolour, because pixels
+  drawn with the old pen may still be on screen after a palette change and the released pen can be reallocated. It needs a
+  palette change of the fg/bg pen first, and the labels are repainted by the redraw that follows a palette change. NOT fixed
+  here (no repro; a fix would hold the old pen until the next bind, i.e. a deliberate leak): open question for the owner.
+- Rig 144 (OS 3.2, 060 max, 640x256x8, base-staleness override), Amarchy + amarchy-flat (flat-system-look on, labels=30 AA drawn),
+  Workbench drawer open/close, grab. Exact (247,118,142) pixels: boot0 0, boot1 0, boot2 0 (INVALID: flat=held, labels=0, no AA
+  drawn), boot3 0. Boot hangs: 0 of 3 reboots (wasabid answered each time).
+- Caveat, unverified as proof: this rig has no client that allocates the theme red, so 0 is weak evidence (the before-fix 38
+  came from rig 96 full install). Boot1 showed the two AA shade pens (93 px and 14 px) as pink (255,119,238)/(255,85,170)
+  instead of grey (83,87,108)/(112,117,144) seen on boot0 and boot3: the shade pens were recoloured by another client in that
+  boot although held. Cause not investigated (budget). Needs a hunt: who SetRGBs pens 4+ after the labels (Amarchy palette
+  apply?) and why ObtainBestPen shares an existing pen that a client then recolours.
+- Shots: ~/Desktop/upterm-shots/s57-icl-fix-rig144-boot{0,1,2,3}.png. Rig 144 stopped and cleared.
