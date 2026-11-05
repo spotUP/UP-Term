@@ -15,8 +15,8 @@ status: open
 ## Open, in order
 1. RIG96-DRAG-COPPER (todos.md): run hunt attempt 4 on a QUIET host only (attempt 3 on rig 131 starved: rigs 96/127/129 + pre-push hook). Recipe in rig96-drag-freeze.md "Hunt attempt 3" / next run: debug fs-uae (`--no-jit --debugger`), send memwatch together with the first "g" at the Kickstart stop, watch the bitmap END (0x2BD40), not LOFlist (its offset differs per rig: 0x168 on rig 96, 0x11A0 on rig 131). Drag NewShell XCON:0/7/640/249 with RAM:rawdrag dy<0, SolidWin running then stopped. Opus agent. Candidates: SolidWin, 3.2 Intuition frame redraw.
 2. Owner eye check on rig 96 rebuilt from main (full install, --keep, --idle-minutes 0): UPDemo 15 exit prompt below text. Drag recheck only after item 1 lands a fix (or confirm still reproducible).
-3. Item 3 of the 2026-11-04 handoff: wait for "AMARCHY READY <commit>" from vtcon-c1 (3 Amarchy blockers), then re-pin repos.lock, kit build + dist checks; upload needs owner OK.
-4. INSTALLER-RIG-REBOOT: close only after a clean fresh-all. Attempt 3 fresh-all on rig 131 (origin/main fdb5e99f) failed check 34 (AMARCHY port: no port) after wasabid did not answer 15 s post-reboot under host load; rig 125 same. Not clean.
+3. Item 3 of the 2026-11-04 handoff: wait for "AMARCHY READY <commit>" from vtcon-c1 (final combined pixel proof RL15, RL19 depth 8, Locale, GADGET-BLACK running on rig 135; do not re-pin before READY), then re-pin repos.lock, kit build + dist checks; upload needs owner OK.
+4. INSTALLER-RIG-REBOOT: close only after a clean fresh-all. vtcon-c1 (2026-11-05): the check 34 fail on rigs 131 and 125 was the S57 start hang, NOT host load: Pointer editor USE ran while IPrefs still handled the Palette write and hung 3.2 boot; fixed on main 500984a1; fresh-all PASS on rig 134. Check whether that PASS satisfies this row before running another.
 5. S57-LOCALE-GADGET-BLACK / XCON title black square: owned by vtcon-c1.
 
 ## Constraints
