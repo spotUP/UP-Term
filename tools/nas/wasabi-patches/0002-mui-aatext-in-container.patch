@@ -1,0 +1,45 @@
+diff --git a/wasabid.c b/wasabid.c
+--- a/wasabid.c
++++ b/wasabid.c
+@@ -3730,11 +3730,8 @@
+         return out[0] != '\0';
+     }
+     /* Selecta's AAText: its text is the label (I1092d). */
+-    if (!ui_class_is(o, "Group.mui") && GetAttr(AAT_CONTENTS, o, &v) &&
+-        ui_readable_text((void *)v)) {
+-        ui_mui_text((const UBYTE *)v, out, sz);
+-        return out[0] != '\0';
+-    }
++    /* (patch 0002: not used for a group button, see ui_mui_walk: an AAText
++     * inside a group does not make the group a button.) */
+     if (!ui_class_is(o, "Group.mui") ||
+         !GetAttr(MUIA_Group_ChildList, o, (ULONG *)&l) || !ui_readable(l))
+         return FALSE;
+@@ -3850,6 +3847,7 @@
+         return ui_aalist_rows(o, v, &it, mw);
+     } else {
+         ULONG mode = 0;
++        BOOL aat = FALSE;
+         if (g_muimaster)
+             mode = mui3_input_mode(o);
+         else
+@@ -3865,6 +3863,7 @@
+             ui_readable_text((void *)v)) {
+             ui_mui_text((const UBYTE *)v, it.label, sizeof(it.label));
+             mode = 0;
++            aat = TRUE;
+         }
+         /* A button that draws its own text (a custom Area subclass, as
+          * Selecta's buttons are) has no Text.mui to read: its tooltip is
+@@ -3876,8 +3875,9 @@
+         if (mode && GetAttr(MUIA_Selected, o, &v) && v)
+             it.selected = TRUE;
+         if (!mode) {                     /* a label: remember it */
+-            if (mw->in_btn)          /* the text of a group button: it is the
+-                                      * button's label already */
++            if (mw->in_btn && !aat)  /* the text of a group button: it is the
++                                      * button's label already; an AAText is
++                                      * always a label of its own (0002) */
+                 return TRUE;
+             if (it.label[0]) {
+                 copystr(mw->pending, sizeof(mw->pending), it.label);
