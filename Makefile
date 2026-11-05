@@ -94,6 +94,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=worktree_ready make worktree-ready dates a source that differs from main newer than the seeded binaries (tools/test_worktree_ready.py)
 # ONLY=menu_stamp the Amarchy hotkey press path reaches ms_binary_changed (act_menu_open -> ms_open, stamp and quit hooks set) (tests/test_amarchy_menu_stamp.py)
 # ONLY=wb_lock_guard no amarchy/*.c locks the Workbench by name (LockPubScreen "Workbench" reopens a closed one on OS 3.1: BOOT-31-WB-DEADLOCK); ipd_lock_wb_screen only (tests/test_wb_lock_guard.py)
+# ONLY=ibase_lock_guard no amarchy/*.c calls DOS or a blocking Intuition call between LockIBase and UnlockIBase (AMARCHY-WIN-IBASE-DOS; tests/test_ibase_lock_guard.py)
 # ONLY=gui_rig_setup_breaks the rig's --setup Breaks every running Amarchy program copy from any path (RAM:amarchy-flat a pixel helper left), so its fresh copy is the one tested (tests/test_gui_rig_setup_breaks_any_copy.py)
 # ONLY=gui_rig_open_menu the rig's open_menu() closes a menu an earlier step left open before the toggle hotkey, so it never closes it instead (tests/test_amarchy_gui_rig_open_menu.py)
 # ONLY=desk_rig_pick_waits the rig's desk pick() returns only after Amarchy wrote AMARCHY_WBCLOSES again, so pen reads see the applied theme (tests/test_amarchy_desk_rig_pick_waits.py)
@@ -182,6 +183,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = userland_expected ]; then python3 -I tests/test_userland_rig_expected.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_stamp ]; then python3 -I tests/test_amarchy_menu_stamp.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = wb_lock_guard ]; then python3 -I tests/test_wb_lock_guard.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ibase_lock_guard ]; then python3 -I tests/test_ibase_lock_guard.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_wbr_drop ]; then python3 -I tests/test_gui_wbr_drop.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ipd_no_dos_under_list ]; then python3 -I tests/test_ipd_no_dos_under_list.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_wbr_drop ]; then python3 -I tests/test_menu_wbr_drop.py; fi

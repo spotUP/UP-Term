@@ -3,7 +3,8 @@
  *
  * Lock discipline (plan 1.3, K6): the lookup, the membership check (walking Screen->FirstWindow) and the calls
  * that only queue a request to Intuition (ChangeWindowBox, ZipWindow, WindowToFront, WindowToBack) run with
- * IBase locked, so the window cannot die between the check and the call. ActivateWindow, the Screen* calls,
+ * IBase locked, so the window cannot die between the check and the call. DOS reads (the amconf load) run before
+ * LockIBase; tests/test_ibase_lock_guard.py fails on a DOS or blocking call inside any lock span. ActivateWindow, the Screen* calls,
  * ShowTitle, pubscreen lookups and workbench.library calls run after UnlockIBase. A foreign window is never
  * closed. */
 #include <exec/types.h>
@@ -239,6 +240,7 @@ static int win_exec(const char *arg, int via_port)
     int ok = 0, n, me, pick, snapped = 0;
     win_box sb;
     struct Window *sw = 0;
+    int tile_gap = 0;
     if (!win_parse(arg, &c))
         return -1;
     if (!IntuitionBase)
@@ -250,6 +252,12 @@ static int win_exec(const char *arg, int via_port)
     else if (c.verb == WV_CLOSEDRAWERS)
         ok = close_drawers();
     else {
+        if (c.verb == WV_SNAP) {
+            /* DOS read: before the lock, never under it (AMARCHY-WIN-IBASE-DOS) */
+            am_prefs p;
+            amconf_load(&p);                           /* the tile-gap, read at each snap: snapped and tiled windows line up (D3) */
+            tile_gap = amconf_tile_gap(&p);
+        }
         lock = LockIBase(0);
         aw = IntuitionBase->ActiveWindow;
         if (via_port && aw && is_ours(aw) && member(aw) && ticket_valid())
@@ -269,9 +277,7 @@ static int win_exec(const char *arg, int via_port)
             case WV_FULLWIDTH:  if (win_fullwidth(&b, &scr)) win_apply_box(w, &b); break;
             case WV_FULLSCREEN: if (win_fullscreen(&b, &scr)) win_apply_box(w, &b); break;
             case WV_SNAP: {
-                am_prefs p;
-                amconf_load(&p);                       /* the tile-gap, read at each snap: snapped and tiled windows line up (D3) */
-                if (win_snap(&b, c.arg, amconf_tile_gap(&p), &scr)) {
+                if (win_snap(&b, c.arg, tile_gap, &scr)) {
                     sb = b;
                     sw = w;
                     snapped = 1;
