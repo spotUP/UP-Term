@@ -61,7 +61,7 @@ static void wb_pens_apply(const gtheme *th)
         CloseLibrary((struct Library *)IntuitionBase);
 }
 
-static long gt_read(void *ctx, const char *path, char *buf, long cap)
+long gt_dos_read(void *ctx, const char *path, char *buf, long cap)
 {
     BPTR f = Open((STRPTR)path, MODE_OLDFILE);
     LONG got;
@@ -75,7 +75,7 @@ static long gt_read(void *ctx, const char *path, char *buf, long cap)
 
 void gt_dos_load(const char *name, gtheme *out)
 {
-    gt_load(gt_read, 0, name, out);
+    gt_load(gt_dos_read, 0, name, out);
 }
 
 void gt_dos_current(char *out, int cap)
@@ -120,7 +120,7 @@ static void gt_dos_term_put(const char *text, int n)
 void gt_dos_term_send(const char *name)
 {
     static char text[1024];
-    int n = gt_load_term(gt_read, 0, name, text, (int)sizeof text);
+    int n = gt_load_term(gt_dos_read, 0, name, text, (int)sizeof text);
     if (n > 0)
         gt_dos_term_put(text, n);
 }
@@ -329,18 +329,18 @@ int gt_dos_save_as(const char *name, const gt_model *m, char *why, int cap)
 int gt_dos_duplicate(const char *from, const char *to, char *why, int cap)
 {
     gt_dos_drawers();
-    return gt_duplicate(&prefs_dos_fs, gt_read, 0, from, to, why, cap);
+    return gt_duplicate(&prefs_dos_fs, gt_dos_read, 0, from, to, why, cap);
 }
 
 int gt_dos_import(const char *src_path, const char *name, char *why, int cap)
 {
     gt_dos_drawers();
-    return gt_import(&prefs_dos_fs, gt_read, 0, src_path, name, why, cap);
+    return gt_import(&prefs_dos_fs, gt_dos_read, 0, src_path, name, why, cap);
 }
 
 int gt_dos_export(const char *name, const char *dst_path, char *why, int cap)
 {
-    return gt_export(&prefs_dos_fs, gt_read, 0, name, dst_path, why, cap);
+    return gt_export(&prefs_dos_fs, gt_dos_read, 0, name, dst_path, why, cap);
 }
 
 int gt_dos_delete_user(const char *name, char *why, int cap)
@@ -359,12 +359,12 @@ int gt_dos_pick_file(struct Screen *scr, struct Window *win, const char *title, 
 /* TE-8.1: Reset to Base: the edit buffer takes its base theme's model. 1 reset. */
 int gt_dos_reset_base(void)
 {
-    return gte_reset_to_base(gt_read, 0);
+    return gte_reset_to_base(gt_dos_read, 0);
 }
 
 /* TE-4: load the named theme's model into the editor's edit buffer (gte_open). 1 opened; 0 when the theme has no model. */
 int gt_dos_edit_open(const char *name)
 {
     gte_live = gt_dos_preview_model;    /* TE-6.3: every edit of the buffer shows on the desktop */
-    return gte_open_from(gt_read, 0, name);
+    return gte_open_from(gt_dos_read, 0, name);
 }
