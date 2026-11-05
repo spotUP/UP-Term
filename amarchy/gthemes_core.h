@@ -56,6 +56,20 @@ typedef struct gt_roles {
 } gt_roles;
 void gt_roles_of(const gtheme *t, gt_roles *r);
 
+/* the role pens and desk_role live here, not in desk_core, because the theme editor (gt_pen_budget) needs them and amarchy-index
+ * links this file without desk_core.c; desk_core.h includes this header so every desktop user still sees them */
+/* the eight palette roles of the flat mapping (OD13): the pen index of a role is its enum value.
+ * FILENAME-PEN: Workbench draws the list-view file names with the fixed DrawInfo pen 1, so pen 1 holds the muted text colour
+ * (DK_MUTED) and follows every theme; Amarchy's own dark tone (DK_DARKER: BLOCKPEN, BARTRIMPEN, the label backdrop) lives on pen 5.
+ * RL8: a view of the role table (gt_roles_of): BG = GR_SURFACE, MUTED = GR_MUTED, FG = GR_TEXT, ACCENT = GR_ACCENT, SELECTION =
+ * GR_SELECTION, DARKER = GR_BACKGROUND, GREEN = status ok. DK_BACKDROP (pen 7, was DK_RED) is the Workbench backdrop pen at 3+
+ * planes; palette.prefs still writes the fail tone there (byte-compatible), the screen gets desk_pen_colour's backdrop colour. */
+enum { DK_BG, DK_MUTED, DK_FG, DK_ACCENT, DK_SELECTION, DK_DARKER, DK_GREEN, DK_BACKDROP, DK_ROLES };
+uc_u32 desk_role(const gtheme *t, int role);
+/* the role pen (DK_BG..DK_DARKER; DK_ACCENT at most on depth <= 2) nearest to rgb 0xRRGGBB at a screen depth: squared RGB distance,
+ * ties to the lower pen. The one rule behind ip_fold and the pen budget. */
+int gt_nearest_role_pen(const gtheme *t, uc_u32 rgb, int depth);
+
 /* the colour maths of the derivation (moved from desk_core, R1.18a): brightness 0..255, a contrast ratio times 100 (100 = equal) */
 int gt_luma(uc_u32 rgb);
 int gt_contrast(uc_u32 a, uc_u32 b);

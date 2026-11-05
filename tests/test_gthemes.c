@@ -1726,6 +1726,41 @@ static void te8_texts(void)
     }
 }
 
+static void test_gthemes_nearest_role_pen_ties_low_and_caps_at_depth(void)
+{
+    gtheme t;
+    uint8_t rgb[IP_PENS][3];
+    int pen, slot, depth;
+    uc_u32 c;
+    gt_builtin(&t);
+    for (pen = 0; pen <= DK_DARKER; pen++)                     /* a colour equal to a role pen maps to a pen of that exact colour */
+        CHECK(desk_role(&t, gt_nearest_role_pen(&t, desk_role(&t, pen), 3)) == desk_role(&t, pen));
+    for (depth = 1; depth <= 3; depth++)                       /* depth 2 never returns a pen above DK_ACCENT */
+        for (pen = 0; pen < DK_ROLES; pen++)
+            CHECK(depth > 2 || gt_nearest_role_pen(&t, desk_role(&t, pen), depth) <= DK_ACCENT);
+    for (c = 0; c < 0x1000000UL; c += 0x10F1UL) {              /* the first pen at the minimum distance wins: a tie goes to the lower pen */
+        int want = 0, last = DK_DARKER;
+        unsigned long bd = 0;
+        for (pen = 0; pen <= last; pen++) {
+            uc_u32 r = desk_role(&t, pen);
+            long dr = (long)((c >> 16) & 255) - (long)((r >> 16) & 255), dg = (long)((c >> 8) & 255) - (long)((r >> 8) & 255),
+                 db = (long)(c & 255) - (long)(r & 255);
+            unsigned long d = (unsigned long)(dr * dr + dg * dg + db * db);
+            if (pen == 0 || d < bd) {
+                bd = d;
+                want = pen;
+            }
+        }
+        CHECK_INT(gt_nearest_role_pen(&t, c, 3), want);
+    }
+    gt_builtin(&t);                                            /* ip_fold is this same rule over the icon slot colours */
+    ip_colours(&t, desk_role(&t, DK_BG), rgb);
+    for (depth = 2; depth <= 3; depth++)
+        for (slot = 0; slot < IP_PENS; slot++)
+            CHECK_INT(ip_fold(&t, slot, depth), gt_nearest_role_pen(&t,
+                ((uc_u32)rgb[slot][0] << 16) | ((uc_u32)rgb[slot][1] << 8) | rgb[slot][2], depth));
+}
+
 static void test_gthemes_te8_budget(void)
 {
     gt_model m, g;
@@ -2115,6 +2150,7 @@ void suite_gthemes(void)
     test_gthemes_te4_rows();
     test_gthemes_te4_modes();
     test_gthemes_te3_import_export_delete();
+    test_gthemes_nearest_role_pen_ties_low_and_caps_at_depth();
     test_gthemes_te8_budget();
     test_gthemes_te8_contrast();
     test_gthemes_te8_presets();

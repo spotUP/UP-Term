@@ -5,7 +5,6 @@
 #include "../prefs/settings_def.h"
 #include "../prefs/prefs_core.h"
 #include "amconf_core.h"
-#include "desk_core.h"
 
 static upconf g_conf;
 
@@ -141,6 +140,42 @@ void gt_roles_of(const gtheme *t, gt_roles *r)
         gt_model_from_v1(t, &m);
         gt_roles_from_model(&m, r);
     }
+}
+
+/* RL8: the desktop pens are a view of the role table (gt_roles_of); pen index == DK_* enum, 0..7. DK_BACKDROP's palette.prefs colour
+ * stays the fail tone so the written file is byte-identical to before; live, desk_pen_colour gives the backdrop its own colour. */
+uc_u32 desk_role(const gtheme *t, int role)
+{
+    gt_roles r;
+    gt_roles_of(t, &r);
+    switch (role) {
+    case DK_BG: return r.c[GR_SURFACE];
+    case DK_DARKER: return r.c[GR_BACKGROUND];
+    case DK_FG: return r.c[GR_TEXT];
+    case DK_ACCENT: return r.c[GR_ACCENT];
+    case DK_SELECTION: return r.c[GR_SELECTION];
+    case DK_MUTED: return r.c[GR_MUTED];
+    case DK_GREEN: return r.ok;
+    default: return r.fail;
+    }
+}
+
+/* the nearest role pen: squared RGB distance over the pens DK_BG..last, strict < so a tie keeps the lower pen */
+int gt_nearest_role_pen(const gtheme *t, uc_u32 c, int depth)
+{
+    int pen, best = 0, last = depth <= 2 ? DK_ACCENT : DK_DARKER; /* 3 at depth 2, 5 (DK_DARKER) from depth 3 */
+    unsigned long bd = 0, d;
+    for (pen = 0; pen <= last; pen++) {
+        uc_u32 r = desk_role(t, pen);
+        long dr = (long)((c >> 16) & 255) - (long)((r >> 16) & 255), dg = (long)((c >> 8) & 255) - (long)((r >> 8) & 255),
+             db = (long)(c & 255) - (long)(r & 255);
+        d = (unsigned long)(dr * dr + dg * dg + db * db);
+        if (pen == 0 || d < bd) {
+            bd = d;
+            best = pen;
+        }
+    }
+    return best;
 }
 
 /* a quoted or bare text value of the file into dst (cap bytes), "" when the key is absent */
@@ -1818,28 +1853,6 @@ int gt_contrast_elem_warns(const gt_model *m, int elem)
 }
 
 /* ---- TE-8.3 pen budget ---- */
-static unsigned long rgb_dist(uc_u32 a, uc_u32 b)
-{
-    long dr = (long)((a >> 16) & 255) - (long)((b >> 16) & 255), dg = (long)((a >> 8) & 255) - (long)((b >> 8) & 255),
-         db = (long)(a & 255) - (long)(b & 255);
-    return (unsigned long)(dr * dr + dg * dg + db * db);
-}
-
-/* the ip_fold rule over the role pens DK_BG..DK_DARKER (DK_ACCENT at most on depth 2): nearest, ties to the lower pen */
-static int fold_pen(const gtheme *t, uc_u32 c, int depth)
-{
-    int pen, best = 0, last = depth <= 2 ? DK_ACCENT : DK_DARKER;
-    unsigned long bd = 0, d;
-    for (pen = 0; pen <= last; pen++) {
-        d = rgb_dist(c, desk_role(t, pen));
-        if (pen == 0 || d < bd) {
-            bd = d;
-            best = pen;
-        }
-    }
-    return best;
-}
-
 static int is_icon_elem(int e)
 {
     return e == GTE_ICON_FOREGROUND || e == GTE_ICON_ACCENT || e == GTE_ICON_MUTED || e == GTE_ICON_SELECTION_PLATE;
@@ -1885,7 +1898,7 @@ void gt_pen_budget(const gt_model *m, int depth, gt_budget *b)
     b->fold = depth <= 3 ? nneed : (nneed > b->free ? nneed - b->free : 0);
     if (depth <= 3)
         for (g = 0; g < GTG_COUNT; g++) {
-            b->grp_pen[g] = (signed char)fold_pen(&t, gt_group_rgb(m, g, GT_ST_NORMAL), depth);
+            b->grp_pen[g] = (signed char)gt_nearest_role_pen(&t, gt_group_rgb(m, g, GT_ST_NORMAL), depth);
             for (j = 0; j < g; j++)
                 if (b->grp_pen[j] == b->grp_pen[g]) {
                     b->grp_with[g] = (signed char)j;

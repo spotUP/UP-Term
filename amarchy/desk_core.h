@@ -9,13 +9,6 @@
 #include "gthemes_core.h"
 #include "flat_core.h"
 
-/* the eight palette roles of the flat mapping (OD13): the pen index of a role is its enum value.
- * FILENAME-PEN: Workbench draws the list-view file names with the fixed DrawInfo pen 1, so pen 1 holds the muted text colour
- * (DK_MUTED) and follows every theme; Amarchy's own dark tone (DK_DARKER: BLOCKPEN, BARTRIMPEN, the label backdrop) lives on pen 5.
- * RL8: a view of the role table (gt_roles_of): BG = GR_SURFACE, MUTED = GR_MUTED, FG = GR_TEXT, ACCENT = GR_ACCENT, SELECTION =
- * GR_SELECTION, DARKER = GR_BACKGROUND, GREEN = status ok. DK_BACKDROP (pen 7, was DK_RED) is the Workbench backdrop pen at 3+
- * planes; palette.prefs still writes the fail tone there (byte-compatible), the screen gets desk_pen_colour's backdrop colour. */
-enum { DK_BG, DK_MUTED, DK_FG, DK_ACCENT, DK_SELECTION, DK_DARKER, DK_GREEN, DK_BACKDROP, DK_ROLES };
 
 /* the DrawInfo slots of pap_4ColorPens / pap_8ColorPens, in the order of the file */
 enum {
@@ -26,9 +19,7 @@ enum {
 #define DK_PALETTE_SIZE 434L /* a palette.prefs: FORM + PRHD + PALT of 400 bytes */
 #define DK_WBPATTERN_SIZE 410L /* three PTRN chunks of depth 3 */
 
-/* the colour of a palette role (0xRRGGBB): a view of the role table gt_roles_of (gthemes_core.h); the colour maths (gt_luma,
- * gt_contrast, gt_darker, gt_selection, gt_ground_black) moved there with it */
-uc_u32 desk_role(const gtheme *t, int role);
+/* the role pens (DK_BG..DK_ROLES) and desk_role live in gthemes_core.h, which this header includes */
 /* RL8: the desktop pen (DK_*) that carries a role of the table (GR_*): the flat glyph roles (FLAT_ROLE_*) and the icon slots pick
  * their pens through it */
 int desk_pen_of_role(int role);
