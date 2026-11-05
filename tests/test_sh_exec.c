@@ -2512,10 +2512,67 @@ static void execute_runs_lines_literally(void)
     CHECK_STR(slot(OUT)->data, "sourced\nsourced\n");
 }
 
+/* S2: Quit [rc] ends the script with rc; only the inner script of a nested Execute. */
+static void execute_quit_sets_rc(void)
+{
+    int inc = 0;
+    run("");
+    amiscr_put("RAM:q1", "echo before\nQUIT 7\necho after\n");
+    sh_run_text(&sh, "execute RAM:q1; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "before\nrc7\n");
+    run("");
+    amiscr_put("RAM:q2", "echo a\nquit\necho b\n");
+    sh_run_text(&sh, "false; execute RAM:q2; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "a\nrc0\n");
+    /* Quit in a nested script ends only the inner one */
+    run("");
+    amiscr_put("RAM:q3", "echo in\nquit 4\necho never\n");
+    amiscr_put("RAM:q4", "execute RAM:q3\necho out\n");
+    sh_run_text(&sh, "execute RAM:q4", &inc);
+    CHECK_STR(slot(OUT)->data, "in\nout\n");
+}
+
+/* S2: FailAt sets the limit, a command at or above it ends the script with a message, per call. */
+static void execute_failat_aborts(void)
+{
+    int inc = 0;
+    run("");
+    amiscr_put("RAM:f1", "echo one\nfail 10\necho two\n");
+    sh_run_text(&sh, "execute RAM:f1; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "one\nrc10\n");
+    CHECK_STR(slot(ERR)->data, "fail failed returncode 10\n");
+    run("");
+    amiscr_put("RAM:f2", "failat 21\nfail 20\necho two\nfailat\nfailat 5\nfail 5\necho three\n");
+    sh_run_text(&sh, "execute RAM:f2; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "two\n21\nrc5\n");
+    CHECK_STR(slot(ERR)->data, "fail failed returncode 5\n");
+    /* the limit is per call: the inner script starts at 10, the outer keeps its 21 afterwards */
+    run("");
+    amiscr_put("RAM:f3", "fail 12\necho inner-not-reached\n");
+    amiscr_put("RAM:f4", "failat 21\nexecute RAM:f3\necho outer\nfail 15\necho outer2\n");
+    sh_run_text(&sh, "execute RAM:f4", &inc);
+    CHECK_STR(slot(OUT)->data, "outer\nouter2\n");
+}
+
+/* S2 (D1): inside a script Set, Unset and Get are AmigaDOS local variables; aliases still expand. */
+static void execute_set_unset_get_are_amiga_locals(void)
+{
+    int inc = 0;
+    run("");
+    amiscr_put("RAM:v1", "Set greeting hello big world\nget greeting\necho $greeting\nUNSET greeting\nget greeting\necho [$greeting]\nsay_hi\n");
+    sh_run_text(&sh, "shopt -s expand_aliases; alias say_hi='echo aliased'; execute RAM:v1; shopt -u expand_aliases", &inc);
+    CHECK_STR(slot(OUT)->data, "hello big world\nhello big world\n[]\naliased\n");
+    /* outside a script set is still the bash builtin */
+    CHECK_STR(run("set -- a b; echo $#"), "2\n");
+}
+
 void suite_sh_exec(void)
 {
     path_and_run_are_amiga_forms_of_path_and_background();
     execute_runs_lines_literally();
+    execute_quit_sets_rc();
+    execute_failat_aborts();
+    execute_set_unset_get_are_amiga_locals();
     setenv_unsetenv_getenv_use_the_system_store();
     fault_prompt_ask_alias_and_echo_keywords();
     bind_and_inputrc_reach_the_console_line_editor();
