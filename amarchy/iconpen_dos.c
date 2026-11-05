@@ -139,6 +139,17 @@ struct Screen *ipd_lock_pub_screen(const char *name)
     return sc;
 }
 
+/* The default public screen, locked through the same guard: its name comes from GetDefaultPubScreen (a name copy under
+ * Intuition's list lock, no screen lock, no open), then ipd_lock_pub_screen decides whether Intuition will find it. A closed or
+ * still-private Workbench reads as 0 instead of making Intuition reopen it (BOOT-31-WB-DEADLOCK, S57-FREEZE-2IN9). */
+struct Screen *ipd_lock_default_pub_screen(void)
+{
+    char name[MAXPUBSCREENNAME + 1];
+    name[0] = 0;
+    GetDefaultPubScreen((UBYTE *)name);
+    return ipd_lock_pub_screen(name);
+}
+
 struct Screen *ipd_lock_wb_screen(void)
 {
     return ipd_lock_pub_screen("Workbench");

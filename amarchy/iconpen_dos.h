@@ -33,6 +33,9 @@ struct Screen *ipd_lock_pub_screen(const char *name);
  * (ask again later). NEVER call LockPubScreen("Workbench") elsewhere: Intuition reopens a Workbench it does not find, and
  * that deadlocks against IPrefs closing it (BOOT-31-WB-DEADLOCK) or LoadWB opening it (S57-FREEZE-2IN9). */
 struct Screen *ipd_lock_wb_screen(void);
+/* The default public screen, locked (the caller UnlockPubScreen(0, scr)), or 0 when it is closed, still opening or private.
+ * Use it where LockPubScreen(0) was: that call reopens a closed default Workbench on OS 3.1 (BOOT-31-WB-DEADLOCK). */
+struct Screen *ipd_lock_default_pub_screen(void);
 
 /* Add (on 1) or drop (on 0) `owner`, then bring the held pens in line with the owners and the Workbench screen as it is now.
  * Returns the reference count after. The record is freed with the last owner. */
