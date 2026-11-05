@@ -2787,6 +2787,42 @@ static void execute_key_dot_directives(void)
     CHECK_STR(slot(OUT)->data, "<7><a[b>\n");
 }
 
+/* S7b-6 (real 3.2): R2 .KEY only on line 1; R17 a nested FailAt leaks to the outer script; R6 `?` with an empty reply. */
+static void execute_3_2_quirks(void)
+{
+    int inc = 0;
+    run("");
+    amiscr_put("RAM:q2", "echo a\n.KEY x\necho \"<x>\"\n");
+    sh_run_text(&sh, "execute RAM:q2 val; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "a\n<x>\nrc0\n");
+    run("");
+    amiscr_put("RAM:q17b", "failat 30\nfail 10\necho inner\n");
+    amiscr_put("RAM:q17", "failat 3\nexecute RAM:q17b\nfail 5\necho back\n");
+    sh_run_text(&sh, "execute RAM:q17; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "inner\nback\nrc0\n");
+    run("");
+    amiscr_put("RAM:q6", ".KEY w/A\necho \"got <w>\"\n");
+    sh_run_text(&sh, "execute RAM:q6 ?; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "rc0\n");
+    CHECK_STR(slot(ERR)->data, "");
+}
+
+/* S7b-6 R24: a .key file without the S bit started by name is refused as on 3.2; `execute` runs it. */
+static void keyed_file_without_s_bit_is_refused_by_name(void)
+{
+    int inc = 0;
+    fresh();
+    sh.os.run = f_run_record;
+    put_file("RAM:k24", ".key a\necho \"k24 <a>\"\n", 22);
+    sh_run_text(&sh, "RAM:k24 foo; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "rc10\n");
+    CHECK_INT(strstr(slot(ERR)->data, "RAM:k24: file is not executable") != 0, 1);
+    run("");
+    amiscr_put("RAM:k24", ".key a\necho \"k24 <a>\"\n");
+    sh_run_text(&sh, "execute RAM:k24 foo", &inc);
+    CHECK_STR(slot(OUT)->data, "k24 foo\n");
+}
+
 /* S6: an AmigaDOS script (S bit, no #! line) run by name runs in this shell, through the OS layer's answer
  * SH_RUN_AMIGA_SCRIPT (the recording layer answers as vsh.c os_start). cd in it stays with the shell. */
 static void amiga_script_by_name_runs_in_shell(void)
@@ -2812,6 +2848,7 @@ static void sh_files_keep_bash_if(void)
 
 void suite_sh_exec(void)
 {
+    keyed_file_without_s_bit_is_refused_by_name();
     amiga_script_by_name_runs_in_shell();
     sh_files_keep_bash_if();
     path_and_run_are_amiga_forms_of_path_and_background();
@@ -2826,6 +2863,7 @@ void suite_sh_exec(void)
     execute_skip_and_lab();
     execute_key_template_args();
     execute_key_dot_directives();
+    execute_3_2_quirks();
     execute_backticks();
     setenv_unsetenv_getenv_use_the_system_store();
     fault_prompt_ask_alias_and_echo_keywords();
