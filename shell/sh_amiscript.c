@@ -410,6 +410,41 @@ static int cmp_word(const char *a, const char *b)
     return tolower((unsigned char)*a) - tolower((unsigned char)*b);
 }
 
+/* Skip: from p, the pointer after the first `Lab <label>` (any Lab when label is empty) or EndSkip,
+ * 0 when there is none. *endskip says it was an EndSkip. Only the first words of a line count. */
+static const char *skip_find(const char *p, const char *label, int *endskip)
+{
+    while (*p) {
+        char w[16];
+        const char *e = strchr(p, '\n');
+        const char *q = p;
+        first_word(p, w, sizeof(w));
+        if (!strcmp(w, "endskip")) {
+            *endskip = 1;
+            return e ? e + 1 : p + strlen(p);
+        }
+        if (!strcmp(w, "lab")) {
+            size_t n = 0;
+            char a[64];
+            while (*q == ' ' || *q == '\t')
+                q++;
+            while (*q && *q != ' ' && *q != '\t' && *q != '\n')
+                q++;
+            while (*q == ' ' || *q == '\t')
+                q++;
+            while (*q && *q != ' ' && *q != '\t' && *q != ';' && *q != '\n' && *q != '\r' && n + 1 < sizeof(a))
+                a[n++] = *q++;
+            a[n] = 0;
+            if (!*label || !cmp_word(a, label)) {
+                *endskip = 0;
+                return e ? e + 1 : p + strlen(p);
+            }
+        }
+        p = e ? e + 1 : p + strlen(p);
+    }
+    return 0;
+}
+
 /* If's condition: NOT, WARN, ERROR, FAIL (the last rc), a EQ|GT|GE b [VAL], EXISTS name; several are
  * ANDed and NOT inverts the whole (the design's choice, UNVERIFIED against C:If) */
 static int if_true(sh_shell *sh, line_toks *t)
@@ -484,8 +519,30 @@ long sh_amiga_execute(sh_shell *sh, const char *text, const char *file, int argc
             next = skip_if(next, 0);
             if (!next)
                 quit = 1;
-        } else if (t.n && !t.redir[0] && word_is(t.v[0], "endif")) {
-            /* the end of a block that ran: nothing to do */
+        } else if (t.n && !t.redir[0] && (word_is(t.v[0], "endif") || word_is(t.v[0], "lab") || word_is(t.v[0], "endskip"))) {
+            /* the end of a block that ran, a label, or an EndSkip reached in normal flow: nothing to do */
+        } else if (t.n && !t.redir[0] && word_is(t.v[0], "skip")) {
+            const char *label = "";
+            int back = 0, endskip = 0, i;
+            const char *to;
+            for (i = 1; i < t.n; i++) {
+                if (word_is(t.v[i], "back"))
+                    back = 1;
+                else
+                    label = t.v[i];
+            }
+            to = skip_find(back ? text : next, label, &endskip);
+            if (to) {
+                next = to;
+                if (endskip)
+                    st = 5;
+            } else {
+                say_io(sh, io->err, "Label ");
+                say_io(sh, io->err, label);
+                say_io(sh, io->err, " not found\n");
+                st = 10;
+                quit = 1;
+            }
         } else if (t.n && !script_word(sh, &t, io, &st, &failat, &quit)) {
             st = run_tokens(sh, &t, io);
             if (st >= failat) {
