@@ -101,3 +101,4 @@ to RAM:palette.prefs, `Copy RAM:palette.prefs ENV:Sys/palette.prefs`, 30 s wait,
 | 2026-11-05 | RL19 | 124 | main | knob PASS, button FAIL | knob corners blended; button 4 of 12, left corners only; s57-evidence/rig124-release-reads-4.md |
 | 2026-11-05 | RL15 | 124 | main | FAIL | IPrefs Retry/Cancel requester after flat-off pick, persists; Retry then froze daemon; gap under 5 s not achievable; s57-evidence/rig124-release-reads-4.md |
 | 2026-11-05 | RL8-POINTER | 124 | main | NOT MEASURABLE | no tool gives sprite pixels; s57-evidence/rig124-release-reads-4.md |
+| 2026-11-05 | RL15 | 128 | s57-rl15 (b8c7844f + dk_flat_pens window bracket) | NOT VERIFIED | fresh-all install: boot hangs in Amarchy start on SYS:Prefs/Pointer USE (process 1 waits), so no pick could run; fix covered by host test only; s57-evidence/rl15-iprefs-requester.md |
