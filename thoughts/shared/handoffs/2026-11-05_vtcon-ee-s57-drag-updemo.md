@@ -23,3 +23,9 @@ status: open
 - Never touch rigs 1, 66, 68, 70, 91, 121, 122, 123, 127, 128 without owner/their session. Rig 96 is owner's; logwatch worktree /Users/spot/Code/UP-Term/vtcon-s57-rig96b (branch s57-rig96b) stays while rig 96 is up.
 - Do not touch worktrees agent-a902c663e11eb5541, agent-a4a8bc09e147ec27a, MusicPlayer folders 2461f1e9, d530c48f.
 - Leave thoughts/shared/research/s31-evidence/installer-check10.md modification alone (not ours).
+
+## Update, vtcon-8c (later 2026-11-05)
+- Item 1: hunt attempt 4 on rig 137 (61b6295e on main): no drag ran. The guest froze right after NewShell DragTest; SYS:Prefs/Pointer was still running from the S57 start hang; no memwatch hit past the bitmap end. Data point sent to vtcon-c1 (their start-hang agent on rig 141). Attempt 5 = same recipe, only after the start-hang fix lands.
+- Item 2: owner decision: rebuild rig 96 only after the start-hang fix, once, for the UPDemo eye check and the drag recheck together. Rig 96 stays up until then.
+- Item 4: INSTALLER-RIG-REBOOT closed in todos.md (reboot clean on rigs 124, 134, 135, 136).
+- Waiting on: vtcon-c1 message to vtcon-8c with the start-hang fix commit, then AMARCHY READY (item 3).
