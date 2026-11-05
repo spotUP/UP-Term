@@ -278,13 +278,16 @@ static int g_desk_started, g_tick_ok;
 static void desk_start_gate(long now)
 {
     struct Screen *scr;
-    (void)now;
+    int ready;
     if (g_desk_started)
         return;                                 /* the tick hook stays; done costs nothing */
     scr = ipd_lock_wb_screen();
     if (scr)
         UnlockPubScreen(0, scr);
-    if (!desk_start_due(g_desk_started, scr != 0, g_tick_ok, g_wb_hold))
+    /* S57-START-POINTER-HANG: the screen is up at the start of LoadWB; no editor runs until Workbench has finished it.
+     * Asked only when everything else is due: the round-trip waits for Workbench's reply. */
+    ready = scr && g_tick_ok && !g_wb_hold ? desk_dos_wb_ready(now) != DESK_WBR_WAIT : 1;
+    if (!desk_start_due(g_desk_started, scr != 0, g_tick_ok, g_wb_hold, ready))
         return;                                 /* S32-GREEN-LINE-96: wb_gate runs first on the tick and ends the hold */
     g_desk_started = 1;
     desk_dos_flat_pens_refresh();               /* FLAT-PENS-STALE-FILE: after the windows (or the W43 hold) are set up, the hooks above close/reopen them around a reset */

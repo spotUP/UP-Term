@@ -1326,9 +1326,16 @@ long desk_confirm_left(const desk_confirm *c, long now)
     return c->pending && now < c->deadline ? c->deadline - now : 0;
 }
 
-int desk_start_due(int done, int wb_screen_up, int tick_ok, int wb_mode_wait)
+int desk_start_due(int done, int wb_screen_up, int tick_ok, int wb_mode_wait, int wb_ready)
 {
-    return !done && !wb_mode_wait && (wb_screen_up || !tick_ok);
+    return !done && !wb_mode_wait && ((wb_screen_up && wb_ready) || !tick_ok);
+}
+
+int desk_wb_ready_state(int wb_version, int answered, int idle_ticks, long elapsed_ticks, long timeout_ticks)
+{
+    if (wb_version >= DESK_WB_AREXX_VERSION ? answered : idle_ticks >= DESK_WB_IDLE_TICKS)
+        return DESK_WBR_READY;
+    return elapsed_ticks >= timeout_ticks ? DESK_WBR_TIMEOUT : DESK_WBR_WAIT;
 }
 
 int desk_wb_backdrop_invoke(int master_on, int have_port, int root_found, unsigned long root_wflags)

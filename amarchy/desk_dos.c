@@ -1431,6 +1431,46 @@ static int dk_wb_root_flags(unsigned long *flags)
     return found;
 }
 
+/* S57-START-POINTER-HANG: Workbench serves its ARexx port from its main loop, so an answer to a round-trip means LoadWB's
+ * startup pass (icons read under icon.library's lock, windows drawn under the layer locks) is over. No Workbench task:
+ * nothing to collide with (another program opened the screen). No rexxsyslib.library: no way to ask, so do not wait for ever.
+ * The round-trip waits for the reply (REXX_SEND_SECS at most); a busy Workbench answers -1 and the next tick asks again. */
+unsigned long desk_dos_wb_ready_asks;
+
+static int g_wb_idle_ticks;                     /* OS 3.1 path: 1 s ticks in a row the Workbench sat idle */
+
+int desk_dos_wb_ready(long now)
+{
+    struct Library *lib;
+    struct Task *wb;
+    unsigned long fl = 0;
+    int ver = 0, answered = 0, idle, r;
+    Forbid();
+    wb = FindTask((STRPTR)"Workbench");
+    idle = wb && wb->tc_State == TS_WAIT && !(wb->tc_SigWait & SIGF_SINGLE);
+    Permit();
+    if (!wb)
+        return DESK_WBR_READY;
+    if ((lib = OpenLibrary((STRPTR)"workbench.library", 0))) {
+        ver = lib->lib_Version;
+        CloseLibrary(lib);
+    }
+    if (ver >= DESK_WB_AREXX_VERSION) {
+        if ((lib = OpenLibrary((STRPTR)"rexxsyslib.library", 0))) {
+            CloseLibrary(lib);
+            desk_dos_wb_ready_asks++;
+            am_sentinel("AMARCHY_WB_READY_ASK", (long)desk_dos_wb_ready_asks);
+            answered = rexx_port_exists("WORKBENCH") && rexx_send("WORKBENCH", "GETATTR application.version", 0, 0) >= 0;
+        } else
+            ver = 0;                            /* no rexxsyslib: no way to ask, use the idle signal */
+    }
+    g_wb_idle_ticks = idle && dk_wb_root_flags(&fl) == DESK_ROOT_WB ? g_wb_idle_ticks + 1 : 0;
+    r = desk_wb_ready_state(ver, answered, g_wb_idle_ticks, now, DESK_WB_READY_TICKS);
+    if (r == DESK_WBR_TIMEOUT)
+        PutStr((STRPTR)"Amarchy: the Workbench did not finish its start in 30 s; applying the start prefs anyway\n");
+    return r;
+}
+
 /* The root window opens a moment after the screen (LoadWB), so look for it for up to 5 s. */
 unsigned long desk_dos_wb_backdrop_invokes;
 

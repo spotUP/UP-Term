@@ -197,3 +197,141 @@ Next step (not done): read the Pointer editor's tc_SigWait and the Workbench pro
 fully up (the "WORKBENCH" port present and the Workbench process idle) instead of on the screen only.
 reboot_amarchy_check still probes STATUS once after a fixed 5 s; with two 8-bit Palette resets the start apply
 takes about 20 s even when nothing hangs.
+
+## Pointer wait probe (rig 141)
+
+vtcon-c1 opus agent, 2026-11-05. Rig 141 (060, OS 3.2, PAL 640x256x8), fresh-all install, then a reboot. The hang
+was live during the probe: the busy pointer never clears (the owner watched it). That makes this a deadlock, not a
+slow start. Tool: `tests/amiga/taskdump.c`, extended with a semaphore-wait walk, `SEM <hex>` and `LAYERS`. All
+probes were read-only.
+
+### Step 1: who waits on what, during the live hang
+
+| Task | Waits | On | Held by |
+|---|---|---|---|
+| Workbench 105be990 | SIGF_SINGLE (00000010), in a graphics.library frame (sp+100) | not found yet (see below) | - |
+| IPrefs 10089798 | SIGF_SINGLE | WB screen LayerInfo.Lock 10054cb8 | Workbench (nest 1, queue 1 = one waiter, IPrefs) |
+| SYS:Prefs/Pointer 10899bc0 | SIGF_SINGLE | icon.library base+6c (10058d70) | shared (owner 0, nest 1, queue 2 = 1 holder + 2 waiters) |
+| amarchy-index 10108b20 | SIGF_SINGLE | the same icon.library lock 10058d70 | shared |
+| Amarchy main 10103128 | SIGF_DOS (00000100) | the synchronous SystemTags child (dk_editor running Pointer) | - |
+
+- The icon.library base 10058d04 is on Workbench's stack 4 times, so Workbench is the likely shared holder of the
+  icon lock (unverified: a shared holder is not recorded).
+- Workbench holds the root-window layer lock 10101510 of layer 101014c8 (window 10102aa4) with nest 2 and queue 1.
+  Exec raises QueueCount on every obtain, so nest 2 and queue 1 mean no waiter on that layer.
+- The SemaphoreRequest on Workbench's stack is at sp+2e. Its pred is 10101568, a heap address 0xa0 into that
+  layer. The address 16 bytes before it is not a valid semaphore. Workbench's wait target is still open. The step 2
+  snoop follows.
+- The blitter is free: GfxBase BlitOwner 0, BlitLock -1. SIGB_BLIT is bit 4, the same bit as SIGF_SINGLE, so this
+  had to be checked.
+- Busy pointer: amarchy has no WA_BusyPointer, SetWindowPointer, SetPointer or WA_Pointer (grep, 0 hits). The
+  window Pointer field on the WB layers is 0. The busy pointer is Workbench's own wait pointer during LoadWB.
+- Amarchy starts from User-Startup, before LoadWB. Its start gate sends `MENU INVOKE WORKBENCH.BACKDROP` and then
+  runs the prefs editors while LoadWB is still opening its windows.
+
+### Disk-state check (the owner's lead: "maybe it tries to write")
+
+- `Info` at the hang shows every volume Read/Write and 0 errors: DH0 Empty-12MB-FFS, DH1 VTCX, DH2 BOOTX, DH3 Work
+  and RAM. No volume is Validating or Write Protected. DF0 has no disk.
+- No stuck task waits on a DOS packet. Workbench, IPrefs, Pointer and amarchy-index wait on SIGF_SINGLE (a
+  semaphore), not on SIGF_DOS. Only Amarchy main waits on SIGF_DOS, and that wait is for its SystemTags child.
+- The filesystem tasks are idle. DH0 waits 00002100 with 0 messages on its port, RAM waits c0000100 with 0
+  messages, and DF0 waits 40000100. No packet is queued, so no write is blocked in a handler.
+- Result: this is not a blocked write. It is a semaphore cycle between Workbench, IPrefs and icon.library users.
+
+### Step 2: full-boot snoop (rig 141, 2026-11-05 08:29:58 on)
+
+wasabi snoop of DOS and icon.library calls for all tasks, from S:User-Startup until the hang
+(682 events lost at 08:30:59; the tail of each task is intact):
+
+| Task | Last call | Returns |
+|---|---|---|
+| Workbench | 08:30:47.985 FindTask(NULL) | ok, then silent (SIGF_SINGLE wait in a graphics frame) |
+| IPrefs | 08:30:47.986 FindTask(NULL) | ok, then silent (waits on WB screen LayerInfo, held by Workbench) |
+| amarchy-index | 08:30:47.994 GetDiskObject("Empty-12MB-FFS:WBStartup") | never |
+| Amarchy main | 08:30:59.488 SetVar("Result2") | ok, then SystemTags(Pointer) |
+| SYS:Prefs/Pointer | 08:30:59.520 GetDiskObject("SYS:Prefs/Pointer") | never |
+
+Workbench, IPrefs and the icon.library lock all freeze within 10 ms at 08:30:47.98, 11 s before
+Pointer starts. Pointer blocks in its first GetDiskObject, before it opens any prefs file. It is a
+victim of a hang that starts in the Workbench icon pass, not its cause.
+
+The snoop has a gap from 08:30:17 to 08:30:47.160, so the last calls before
+47.160 are not covered. The sequence it does cover:
+
+- 47.18: Amarchy runs SYS:Prefs/Palette USE. Palette writes
+  ENV:Sys/Palette.prefs at 47.211 and exits.
+- 47.507: IPrefs reads the new Palette.prefs and starts to apply it. At 47.508
+  it opens workbench.library.
+- 47.626: Workbench opens locale.library. Workbench is still in its LoadWB
+  startup pass.
+- 47.98: every task stops making calls. In the step 1 dump of the hang,
+  IPrefs waits on the WB screen LayerInfo, owned by Workbench (nest 1, queue 1;
+  the WB window layer has nest 2). Workbench waits with SIGF_SINGLE
+  (ObtainSemaphore) in a graphics frame. Workbench also holds the icon.library
+  lock shared.
+- Every later GetDiskObject blocks on the icon lock. That includes
+  amarchy-index and Pointer, which Amarchy runs next. Pointer only shows the
+  hang; it does not cause it.
+
+### Cause
+
+Violated invariant: Amarchy must not run the stock prefs editors until
+Workbench has finished its LoadWB startup pass. Amarchy starts from
+S:User-Startup, before LoadWB. desk_start_gate ran desk_dos_start_apply as
+soon as the WB screen existed. At that point the WORKBENCH ARexx port was not
+up, so desk_dos_wb_backdrop skipped its wait. Palette USE then made IPrefs
+apply the palette while Workbench held its screen layer lock. The IPrefs and
+Workbench lock waits close a cycle. The run by hand works because Workbench
+is idle by then.
+
+Not confirmed: the exact semaphore that Workbench waits on (PalExtra or IBase).
+Rig 141 went down before the read-only check could run.
+
+### XCON: double mount (owner lead)
+
+This is not in the chain, as far as the snoop shows. vtcon-8c found that the
+rig harness ran a second `Mount XCON:`, which failed with "already mounted".
+The handler has no ACTIVATE. No vtcon-handler task is among the tasks blocked
+at 47.98. The fix is on main as 0598658c. The live DEVS dump could not run,
+because rig 141 was down.
+
+### Fix
+
+desk_start_due() takes a new `wb_ready` argument. desk_start_gate checks
+readiness on each 1 s tick, once the WB screen is up and the tick works.
+desk_dos_wb_ready(now) returns a verdict from desk_wb_ready_state(). The fix
+uses no timing sleep.
+
+- workbench.library 45+ (OS 3.1.4, 3.2): readiness means the WORKBENCH ARexx
+  port answered `GETATTR application.version`. Workbench serves that port
+  from its main loop, so an answer means the LoadWB pass is over. That is an
+  OS guarantee.
+- workbench.library below 45 (OS 3.1, no ARexx port): readiness means the
+  Workbench root window is open and the Workbench task sat in Wait outside a
+  semaphore wait (not SIGF_SINGLE) on 2 ticks in a row.
+- Both paths have the same bound: 30 ticks of 1 s, so 30 s, with a log line
+  on timeout. The slowest measured pass at 8-bit lasts seconds.
+- With no Workbench task at all, the gate opens at once. With no Workbench
+  tick, the existing one-shot fallback still runs.
+
+Regression test: test_desk_start_waits_for_workbench. The gate holds while
+the WB screen is up but Workbench is not ready. The verdict cases cover a port
+that answers at once, a port that appears late, a port that never appears
+(timeout at 30 s), and the OS 3.1 idle path, including its timeout.
+
+### Readiness signal: options weighed (coordinator review)
+
+- (a) WBStartup ordering. Workbench runs SYS:WBStartup items after its own
+  first pass. This would be one signal for every OS version. But the step 2
+  snoop froze at 47.98, before any WBStartup item ran, so these timestamps
+  cannot prove the order. Using it also means moving the apply out of
+  User-Startup into a new WBStartup entry, which changes the install. Not
+  chosen; it stays the candidate to unify both paths once a rig snoop shows
+  that WBStartup items start after the icon pass on 3.1 and 3.2.
+- (b) The WORKBENCH ARexx port answers. This is an OS guarantee (the port is
+  served from the main loop), but only on 3.1.4 and later. Chosen for v45+.
+- (c) Root window open and the Workbench task idle. This is a proxy: one
+  sample could catch a DOS packet wait in the middle of the pass, so the fix
+  takes 2 ticks in a row. It is used only where (b) does not exist (OS 3.1).
+  The fix does not prove it on a 3.1 rig. Proof on --os 32 covers path (b) only.
