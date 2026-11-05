@@ -152,3 +152,48 @@ Proof: fresh-all on rig 134 (stopped + cleared first, fresh start, 3.2, 060 max,
 
 Open: why 7cf4ac17 passed on rig 96 on 11-04 is timing only (same input files); the race window depends on how long IPrefs
 takes on the palette notification. reboot_amarchy_check still probes STATUS once after a fixed 5 s; not changed here.
+
+## Residual hang (rig 136)
+
+2026-11-05, vtcon-c1 agent, rig 136 (3.2, 060 max, idle watchdog off), build from a83eceb7 (fix 9f9ea2dd in).
+Status: cause narrowed, NOT fixed. Agent budget ran out before a fix; the next brief starts from here.
+
+Baseline: fresh-all with INSTALLER_KEEP=1 on rig 136 reproduces rig 135: "FAIL 34 after the reboot: the AMARCHY
+ARexx port answers STATUS: no port", then "[ABORT] daemon silent 15 s".
+
+Config difference the 9f9ea2dd proof missed: the rig 134 PASS ran with an 800x600x24 Workbench (first `S` line of
+build/rig-reports/rig134/installer/fresh-all.pages.txt). Rigs 133, 135 and 136 run PAL 640x256x8. On the 8-bit
+screen every Palette USE is a Workbench reset (desk_pens_reset), so the fix was never proven in the failing config.
+
+Step numbers 34 vs 35: no recipe or code difference (installer_rig.py and amarchy/ are identical apart from the fix).
+The numbering moves with conditional checks at run time: the room-page block (3 checks) and
+check_other_disk_leaves_sys_upterm (1 check, only when the drawer is not on the system volume).
+
+Capture A, autostart held (S:User-Startup line `Run >NIL: UP-Term:bin/Amarchy` commented out), rig rebooted, then
+`ami.py exec "Run >NIL: UP-Term:bin/Amarchy"` about 1 minute after boot. Snoop shows every editor finishes:
+  05:05:55.992 LoadSeg SYS:Prefs/Palette   05:06:02.752 Pointer   05:06:03.908 Font
+  05:06:05.028 Palette (second)            05:06:11.483 WBPattern 05:06:12.102 Workbench
+AREXX AMARCHY STATUS then answers: hits=0 rows=71 enabled=1 active=0 wins=0 ... bar=1 ticks=38.
+Note: each 8-bit Palette USE takes 6 to 7 s and the start apply runs two of them.
+
+Capture B, autostart restored, plain `rig.py reboot`, `wasabi ps` every 3 s from 05:10:07 for 60 s:
+  0x10a4d848 proc 0 wait 32768 31666 1  Background CLI (SYS:Prefs/Pointer)     (never leaves wait)
+  0x10100118 proc 0 wait 262144 256346 4 Background CLI (UP-Term:bin/Amarchy)   (blocked in dk_editor)
+  0x10586300 proc 1 wait 8000 6658 12   Workbench                              (LoadWB already started)
+  0x10089798 proc 0 wait 8192 6350 -    IPrefs
+No requester open (`ami.py requesters` empty). The Pointer editor shows no snoop call in 60 s.
+
+Hypotheses:
+- (c) fix not in the binary: ruled out. Same binary, same disk completes all editors when started by hand.
+- (b) a later editor hangs: ruled out for this failure. It is still the Pointer editor; Font, WBPattern and
+  Workbench are never reached.
+- (a) the idle check reads idle too early: not proven or ruled out. The hang needs the boot-time start.
+  S:User-Startup runs (Startup-Sequence line 87) before LoadWB (line 90). Amarchy's start gate runs the
+  start apply on the first tick that sees the Workbench screen, which is before or while LoadWB starts the Workbench
+  process. The Pointer USE then waits on something the starting Workbench or IPrefs holds.
+
+Next step (not done): read the Pointer editor's tc_SigWait and the Workbench process state while it hangs
+(wasabi ps has no signal column, so add a probe), and test gating desk_dos_start_apply on the Workbench being
+fully up (the "WORKBENCH" port present and the Workbench process idle) instead of on the screen only.
+reboot_amarchy_check still probes STATUS once after a fixed 5 s; with two 8-bit Palette resets the start apply
+takes about 20 s even when nothing hangs.
