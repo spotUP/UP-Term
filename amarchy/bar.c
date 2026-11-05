@@ -610,7 +610,7 @@ static void act_screen_front(int i)
     struct Screen *sc;
     if (i < 0 || i >= BAR_MAX_SCREENS || !g_scrname[i][0])
         return;
-    sc = LockPubScreen((STRPTR)g_scrname[i]);
+    sc = ipd_lock_pub_screen(g_scrname[i]);
     if (!sc)
         return;
     ScreenToFront(sc);

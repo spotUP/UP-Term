@@ -118,10 +118,12 @@ static int on_bar_screen(const strut_pub *p, const req *r)
         return r->scr == p->scr;
     /* The Workbench by flag or name is looked up, never opened (BOOT-31-WB-DEADLOCK). Another name or the default screen is the
      * caller's own OpenWindow target: the system opens it for that caller anyway, so locking it here adds no new open. */
-    if (r->wbench || (r->name && !strcmp(r->name, "Workbench")))
+    if (r->wbench)
         s = ipd_lock_wb_screen();
+    else if (r->name && *r->name)
+        s = ipd_lock_pub_screen(r->name);
     else
-        s = LockPubScreen((STRPTR)r->name);
+        s = LockPubScreen(0);
     if (!s)
         return 0;
     same = s == p->scr;
