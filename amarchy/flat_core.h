@@ -280,6 +280,13 @@ int flat_inactive_pen(const flat_state *s, int depth);
 unsigned long flat_inbar_colour(unsigned long surface, unsigned long text);
 /* FLAT-OUTER-EDGE: the pen of the window's 1 px ring: pen_outline when active (or when there is no inactive pen), else flat_inactive_pen. */
 int flat_edge_pen(const flat_state *s, int depth, int active);
+/* flat_side_fill_pen: S57-LOCALE-LIST-NO-SELECT. The flat DrawInfo map now keeps FILLPEN = the accent so ListBrowser and GadTools
+ * listviews show a selected row. Intuition also fills an active window's left, right and bottom border strips with FILLPEN, and the
+ * owner rule FLAT-TITLE-ACCENT keeps those sides dark. For a fill in pen fg == pen_outline that lies wholly in the left, right or
+ * bottom border strip (window ww x wh, borders bl/bt/br/bb) and reaches below the title bar, returns pen_back and sets out to the
+ * rows of it below the title bar (a full-height strip keeps its title rows in the accent); else -1 (draw as asked). */
+int flat_side_fill_pen(const flat_state *s, int fg, int ww, int wh, int bl, int bt, int br, int bb, int x0, int y0, int x1, int y1,
+                       int out[4]);
 /* FLAT-GADGETS-RIG8: the band spans only the title area between the system gadgets (bx0..bx1, from flat_title_span), so it never
  * wipes the close / depth / zoom gadgets Intuition draws once and does not redraw. */
 typedef struct flat_gadrect { int x, y, w, h, relright, relwidth, drag; } flat_gadrect;

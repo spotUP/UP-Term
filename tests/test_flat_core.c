@@ -1703,6 +1703,23 @@ static void test_inactive_pens(void)
     CHECK_INT(flat_edge_pen(&s, 4, 0), 9);           /* inactive: the inactive ring */
     s.pen_inbar = 0;
     CHECK_INT(flat_edge_pen(&s, 4, 0), 5);           /* no inactive pen: the old ring */
+    {   /* S57-LOCALE-LIST-NO-SELECT: FILLPEN is the accent; the ROM's side and bottom border fills in it take the surface */
+        int o[4];
+        s.pen_back = 2;
+        CHECK_INT(flat_side_fill_pen(&s, 5, 200, 100, 4, 11, 4, 2, 1, 11, 2, 97, o), 2);      /* left side */
+        CHECK_INT(o[0], 1); CHECK_INT(o[1], 11); CHECK_INT(o[2], 2); CHECK_INT(o[3], 97);
+        CHECK_INT(flat_side_fill_pen(&s, 5, 200, 100, 4, 11, 4, 2, 0, 0, 3, 99, o), 2);       /* full-height strip: title rows stay */
+        CHECK_INT(o[1], 11); CHECK_INT(o[3], 99);
+        CHECK_INT(flat_side_fill_pen(&s, 5, 200, 100, 4, 11, 4, 2, 196, 11, 199, 97, o), 2);  /* right side */
+        CHECK_INT(flat_side_fill_pen(&s, 5, 200, 100, 4, 11, 4, 2, 0, 98, 199, 99, o), 2);    /* bottom */
+        CHECK_INT(flat_side_fill_pen(&s, 5, 200, 100, 4, 11, 4, 2, 0, 0, 199, 10, o), -1);    /* title band stays the accent */
+        CHECK_INT(flat_side_fill_pen(&s, 5, 200, 100, 4, 11, 4, 2, 4, 20, 100, 30, o), -1);   /* interior: a selected row */
+        CHECK_INT(flat_side_fill_pen(&s, 3, 200, 100, 4, 11, 4, 2, 0, 11, 3, 97, o), -1);     /* another pen */
+        CHECK_INT(flat_side_fill_pen(&s, 5, 200, 100, 4, 11, 4, 2, 0, 11, 3, 100, o), -1);    /* past the window: untouched */
+        s.held = 1;
+        CHECK_INT(flat_side_fill_pen(&s, 5, 200, 100, 4, 11, 4, 2, 0, 11, 3, 97, o), -1);
+        s.held = 0;
+    }
     s.pen_inbar = 9;
     CHECK_INT(flat_inactive_pen(&s, 4), 9);
     CHECK_INT(flat_inactive_pen(&s, 3), -1);

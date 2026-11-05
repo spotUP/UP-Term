@@ -675,6 +675,19 @@ int flat_edge_pen(const flat_state *s, int depth, int active)
     return p >= 0 ? p : s->pen_outline;
 }
 
+int flat_side_fill_pen(const flat_state *s, int fg, int ww, int wh, int bl, int bt, int br, int bb, int x0, int y0, int x1, int y1,
+                       int out[4])
+{
+    if (!s->enabled || s->held || !s->pen_outline || fg != s->pen_outline)
+        return -1;
+    if (x0 > x1 || y0 > y1 || x0 < 0 || y0 < 0 || x1 >= ww || y1 >= wh || y1 < bt)
+        return -1;
+    if (!(x1 < bl || x0 >= ww - br || y0 >= wh - bb))
+        return -1;
+    out[0] = x0; out[1] = y0 > bt ? y0 : bt; out[2] = x1; out[3] = y1;   /* the part below the title bar: the strip's title rows stay accent */
+    return s->pen_back;
+}
+
 int flat_frame_pen(const flat_state *s, int depth, int active)
 {
     if (s->enabled && !s->held)

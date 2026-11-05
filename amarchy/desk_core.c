@@ -104,9 +104,10 @@ void desk_pens_flat(unsigned char pens[DK_SLOTS])
     desk_pens(pens);
     pens[DK_SHINE] = (unsigned char)surface;    /* FLAT-SOLID-FILL: highlight, shadow and the active frame fill all take the surface pen, */
     pens[DK_SHADOW] = (unsigned char)surface;   /* so every window is one solid rectangle and only title and glyph colour show focus */
-    pens[DK_FILL] = (unsigned char)surface;
     pens[DK_EXTRA] = pens[DK_BARBLOCK];  /* FLAT-BAR-CONTOUR: slot 12 is BARCONTOURPEN (OS 3.2): the 1 px line along the top of the screen bar, stock FG = a bright "shine" line; the bar background hides it */
-    pens[DK_FILLTEXT] = (unsigned char)desk_pen_of_role(GR_TEXT);  /* the active title text is drawn in FILLTEXTPEN on FILLPEN (= surface now): keep it bright */
+    /* S57-LOCALE-LIST-NO-SELECT: FILLPEN stays the accent and FILLTEXTPEN the surface (desk_pens). ListBrowser and GadTools listviews
+     * draw the selected row in them; a surface FILLPEN left the Locale Country list with no selected row. Intuition's active border
+     * fill takes FILLPEN too: flat_side_fill_pen repaints the sides in the surface (FLAT-TITLE-ACCENT), the title band stays accent. */
 }
 
 /* FLAT-SOLID-FILL: the glyph pens of the flat_state block under the flat map: active glyph bright (foreground), inactive
