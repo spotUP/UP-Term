@@ -1038,10 +1038,10 @@ $(BUILD)/amiga/amarchy-gui: $(AMARCHY_GUI_SRC) amarchy/iconpen_dos.h amarchy/ico
 
 # amarchy-index: the app index scanner (plan 2026-10-23-amarchy-app-index.md, X2). A plain vbcc DOS program,
 # no ixemul; it writes ENVARC:Amarchy/apps, which Amarchy reads (it never scans itself).
-AMARCHY_INDEX_SRC := amarchy/taskalive.c amarchy/index.c install/hardvol.c amarchy/index_core.c amarchy/pkgs_core.c amarchy/ixwatch.c amarchy/menu_tree.c config/upconf.c config/upconf_rows.c amarchy/amconf_core.c amarchy/amconf_keys.c amarchy/amconf_dos.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c handler/kcmode.c handler/slash.c
+AMARCHY_INDEX_SRC := amarchy/taskalive.c amarchy/index.c install/hardvol.c amarchy/index_core.c amarchy/pkgs_core.c amarchy/ixwatch.c amarchy/menu_tree.c config/upconf.c config/upconf_rows.c amarchy/amconf_core.c amarchy/amconf_keys.c amarchy/amconf_dos.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c handler/kcmode.c handler/slash.c amarchy/gthemes_core.c
 .PHONY: amarchy-index
 amarchy-index: $(BUILD)/amiga/amarchy-index
-$(BUILD)/amiga/amarchy-index: $(AMARCHY_INDEX_SRC) amarchy/taskalive.h amarchy/index_core.h amarchy/pkgs_core.h amarchy/ixwatch.h amarchy/menu_core.h config/upconf.h tty/qmark.h install/hardvol.h install/fssm.h amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h
+$(BUILD)/amiga/amarchy-index: $(AMARCHY_INDEX_SRC) amarchy/taskalive.h amarchy/index_core.h amarchy/pkgs_core.h amarchy/ixwatch.h amarchy/menu_core.h config/upconf.h tty/qmark.h install/hardvol.h install/fssm.h amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h amarchy/gthemes_core.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -o $@ $(AMARCHY_INDEX_SRC)
 
