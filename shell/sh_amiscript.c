@@ -339,10 +339,17 @@ static int script_word(sh_shell *sh, line_toks *t, const sh_io *io, long *st, lo
         *st = 0;
         if (t->n > 1) {
             buf v;
-            int i;
+            int i, have = 0;
+            char *eq = strchr(t->v[1], '=');
             memset(&v, 0, sizeof(v));
+            /* Set name=value is Set name value: the text after the first '=' leads the value */
+            if (eq) {
+                *eq = 0;
+                buf_adds(&v, eq + 1);
+                have = *(eq + 1) != 0;
+            }
             for (i = 2; i < t->n; i++) {
-                if (i > 2)
+                if (i > 2 || have)
                     buf_add(&v, ' ');
                 buf_adds(&v, t->v[i]);
             }
