@@ -353,9 +353,20 @@ If NOT WARN
       Echo >>BOOTX:boot.log "early LIBS: assigns done (before Amarchy)"
     EndIf
   EndIf
-  ; the handler is a shadowed file (L:vtcon-handler): mounted only after the shadow pass
-  C:Mount XCON: FROM BOOTX:Mountlist
-  Echo >>BOOTX:boot.log "XCON mounted"
+  ; the handler is a shadowed file (L:vtcon-handler): mounted only after the shadow pass.
+  ; RIG-XCON-DOUBLE-MOUNT: an installed kit's DEVS:DOSDrivers/XCON is already mounted by the Startup-Sequence
+  ; (its handler is loaded on first open, after this pass); a second Mount printed "device XCON: is already mounted"
+  ; before the Workbench opened. Mount only when no DOSDrivers entry exists, and log a failed Mount.
+  If EXISTS DEVS:DOSDrivers/XCON
+    Echo >>BOOTX:boot.log "XCON mounted (DOSDrivers)"
+  Else
+    C:Mount >NIL: XCON: FROM BOOTX:Mountlist
+    If WARN
+      Echo >>BOOTX:boot.log "XCON mount FAILED"
+    Else
+      Echo >>BOOTX:boot.log "XCON mounted"
+    EndIf
+  EndIf
   Echo >>BOOTX:boot.log "UP-Term shadows done"
 EndIf
 """ % {"shadows": ind(kit_shadow_lines(False), 1), "shadows_up": ind(kit_shadow_lines(True), 1),
