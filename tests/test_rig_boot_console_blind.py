@@ -32,6 +32,20 @@ class BootConsole(unittest.TestCase):
         self.assertEqual(["BOOTX:bootcap", "BOOTX:boot.console", "C:Execute", "DH0:S/Startup-Sequence"], line.split())
         self.assertTrue((ROOT / "tools/rig/bootcap.c").is_file())
 
+    def test_os_image_startup_sequence_runs_through_bootcap(self):
+        # BOOT-CONSOLE-OS: an --os rig boots the image copy's own S:Startup-Sequence; without the wrapper every
+        # --os start failed the marker gate (rig 96, 2026-11-05). Idempotent: a second start keeps the original.
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            s = pathlib.Path(d) / "S"
+            s.mkdir()
+            (s / "Startup-Sequence").write_text("SetPatch QUIET\nLoadWB\nEndCLI >NIL:\n")
+            for _ in range(2):
+                rig.os_tree_bootcap(d)
+                self.assertEqual(["BOOTX:bootcap", "BOOTX:boot.console", "C:Execute", "S:Startup-Sequence.os"],
+                                 (s / "Startup-Sequence").read_text().split())
+                self.assertEqual("SetPatch QUIET\nLoadWB\nEndCLI >NIL:\n", (s / "Startup-Sequence.os").read_text())
+
     def test_marker_tells_capture_from_no_capture(self):
         self.assertTrue(rig.boot_console_captured("boot console open\nSetPatch 43.6\n"))
         self.assertTrue(rig.boot_console_captured("boot console open\n"))   # a clean boot prints nothing else

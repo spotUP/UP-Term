@@ -652,6 +652,24 @@ def os32_hd_layout():
 
 OS_HOOKS = "Assign >NIL: VTC: VTCX:\nRun >NIL: C:Execute BOOTX:go\n"
 
+# BOOT-CONSOLE-OS: an --os rig boots the copy's own S:Startup-Sequence, not BOOTX:s/startup-sequence (STARTUP), so
+# the bootcap line there never ran and every --os start failed the "boot console open" gate (rig 96, 2026-11-05).
+# The copy's Startup-Sequence moves to S:Startup-Sequence.os and a one-line wrapper runs it through bootcap.
+OS_STARTUP_ORIG = "Startup-Sequence.os"
+OS_STARTUP_WRAP = "BOOTX:bootcap BOOTX:boot.console C:Execute S:%s\n" % OS_STARTUP_ORIG
+
+
+def os_tree_bootcap(tree):
+    """The --os copy's S:Startup-Sequence runs through BOOTX:bootcap, every start (copies made before
+    BOOT-CONSOLE-OS get it too); the image's own sequence is kept as S:Startup-Sequence.os."""
+    s = pathlib.Path(tree) / "S"
+    seq, orig = s / "Startup-Sequence", s / OS_STARTUP_ORIG
+    if not orig.exists():
+        if not seq.exists():
+            sys.exit("rig: %s has no S:Startup-Sequence" % tree)
+        seq.rename(orig)
+    seq.write_text(OS_STARTUP_WRAP)
+
 RIG_MUTE_FLAG = pathlib.Path.home() / ".config" / "upterm" / "rig-mute"
 
 
@@ -1335,6 +1353,7 @@ def setup():
         # drive, Work:, as on an Amiga with System and Work partitions
         (RIG / "work").mkdir(exist_ok=True)
         os_image_copy()
+        os_tree_bootcap(RIG / ("os-%s" % OS))
     elif not OS32 and not (RIG / "sys.hdf").exists():
         fresh_sys_hdf()
     if OS or OS32:
