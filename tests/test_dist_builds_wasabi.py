@@ -24,3 +24,20 @@ for target in ("dist-base", "dist-claude"):
     assert target in rules, target + ": no rule in make -p"
     assert STAMP in rules[target], target + " does not build " + STAMP + ": " + " ".join(rules[target])
 print("[OK] dist-base and dist-claude build wasabi " + STAMP.rsplit("-", 1)[1])
+
+# Local wasabi fixes (tools/nas/wasabi-patches) survive a re-clone: the stamp rebuilds when a patch changes, and the
+# recipe applies every patch after the checkout. A re-clone without them lost the MUI AAText labels (Selecta I1092d).
+MAKEFILE = os.environ.get("WASABI_TEST_MAKEFILE", "Makefile")
+PATCHES = sorted("tools/nas/wasabi-patches/" + n for n in os.listdir(os.path.join(ROOT, "tools", "nas", "wasabi-patches"))
+                 if n.endswith(".patch"))
+assert PATCHES, "no wasabi patches found"
+r = subprocess.run(["make", "-pq", "-f", MAKEFILE, "-C", ROOT, "--no-print-directory", STAMP], capture_output=True, text=True, env=ENV)
+deps = next((l.split(":", 1)[1].split() for l in r.stdout.splitlines() if l.startswith(STAMP + ":")), [])
+for p in PATCHES:
+    assert p in deps, STAMP + " does not depend on " + p + ": " + " ".join(deps)
+r = subprocess.run(["make", "-n", "-B", "-f", MAKEFILE, "-C", ROOT, "--no-print-directory", STAMP, "AMISSL_SDK=/nonexistent"],
+                   capture_output=True, text=True, env=ENV)
+checkout_at = r.stdout.find("checkout -q")
+apply_at = r.stdout.find(" apply ", checkout_at)
+assert checkout_at >= 0 and apply_at > checkout_at, "the wasabi recipe applies no patch after the checkout:\n" + r.stdout
+print("[OK] wasabi applies %d local patch(es) after the checkout" % len(PATCHES))
