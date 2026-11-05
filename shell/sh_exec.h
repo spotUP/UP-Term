@@ -63,6 +63,9 @@ typedef struct sh_stat {
 /* run(wait) and wait: the command was suspended (^Z) and still exists;
  * sh_os.stopped holds its job id (see sh_os.cont). */
 #define SH_STOPPED (-1000L)
+/* os.run(wait SH_SPAWN_FG) of a file that does not load and is an AmigaDOS script (sh_amiga_script_file): nothing
+ * was started and no stream was touched; the executor runs the script in this shell (start_program) */
+#define SH_RUN_AMIGA_SCRIPT (-1001L)
 /* $? of a suspended command: 128 + SIGTSTP (18, as ixemul numbers it) */
 #define SH_STATUS_STOPPED 146
 
@@ -410,6 +413,7 @@ int sh_unix_root(const char *in, char *out, long max);
  * when its #! (or ;!) line names /bin/sh or /bin/bash (ixemul's rule; sh_exec.c), else 0. Malloc'ed;
  * out[1] is malloc'ed too when it is not argv[0] (the interpreter's argument). */
 char **sh_script_argv(struct sh_shell *sh, char **argv);
+int sh_amiga_script_file(struct sh_shell *sh, char **argv);
 
 /* A signal reached the shell (2 = INT, 15 = TERM): run its trap action. 1 =
  * a trap took it (the action ran, or the signal is ignored with trap '' SIG),

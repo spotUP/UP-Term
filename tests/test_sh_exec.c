@@ -448,7 +448,7 @@ static int f_stat(void *os, const char *path, sh_stat *st, int nofollow)
             st->type = SH_ST_FILE;
             st->size = 1;
             st->ino = i + 1;
-            if (!strcmp(path, "RAM:s7"))
+            if (!strcmp(path, "RAM:s7") || !strncmp(path, "RAM:abs", 7))
                 st->access = 7; /* the S bit: an AmigaDOS script, runnable as it is */
             /* test -N: the times of four files, set by the name */
             if (!strcmp(path, "nmod")) {        /* modified after the read */
@@ -1742,7 +1742,6 @@ static long f_run_record(void *os, char **argv, const sh_io *io, int wait)
     char **sb;
     (void)os;
     (void)io;
-    (void)wait;
     if (!fake_loads(argv[0]) && (sb = sh_script_argv(&sh, argv)) != 0) {
         record(sb);
         if (sb[1] != argv[0])
@@ -1750,6 +1749,9 @@ static long f_run_record(void *os, char **argv, const sh_io *io, int wait)
         free(sb);
         return 0;
     }
+    /* as vsh.c os_start: a foreground start of an AmigaDOS script by name is the executor's (D3) */
+    if (!fake_loads(argv[0]) && wait == SH_SPAWN_FG && sh_amiga_script_file(&sh, argv))
+        return SH_RUN_AMIGA_SCRIPT;
     record(argv);
     return strcmp(argv[0], "/bin/foo") ? 0 : -1;
 }
@@ -1780,6 +1782,9 @@ static const char *started(const char *text)
     put_file("RAM:s8", ".key a/m\necho ok\n", 17);
     put_file("RAM:s9", "ab\0cd\n", 6);
     put_file("RAM:prog", "\0\0\3\363#!/bin/sh\n", 14);
+    put_file("RAM:sh1", "#!/bin/sh\nif true; then echo bash; fi\n", 38);
+    put_file("RAM:sh2", "if true; then echo plain; fi\n", 29);
+    put_file("RAM:abs2", "#!/bin/sh\nif true; then echo bash; fi\n", 38);
     put_file("/tmp/opkg-ab/preinst", "#!/bin/sh\necho ok\n", 18);
     watched_io = 0;
     {
@@ -1809,8 +1814,8 @@ static void a_bin_sh_and_bin_bash_are_the_shell_and_no_other_path_is(void)
     /* no #! line and no S bit: POSIX ENOEXEC, a script of this shell with its arguments (the tutorial
      * and upkg-ask in PATH were "file is not executable") */
     CHECK_STR(started("RAM:s6 x y"), "VTC:vsh|RAM:s6|x|y");
-    CHECK_STR(started("RAM:s7 x"), "RAM:s7|x");           /* the S bit: an AmigaDOS script, the OS layer's */
-    CHECK_STR(started("RAM:s8 x"), "RAM:s8|x");           /* a .key line: an AmigaDOS script too */
+    CHECK_STR(started("RAM:s7 x"), "");                   /* the S bit: an AmigaDOS script, run in the shell (D3) */
+    CHECK_STR(started("RAM:s8 x"), "");                   /* a .key line: an AmigaDOS script too */
     CHECK_STR(started("RAM:s9 x"), "RAM:s9|x");           /* a NUL byte: binary, not a script */
     /* opkg's maintainer script: an absolute Unix path, no E bit (the fake has none), a #!/bin/sh line */
     CHECK_STR(started("/tmp/opkg-ab/preinst install"), "VTC:vsh|/tmp/opkg-ab/preinst|install");
@@ -2772,8 +2777,33 @@ static void execute_key_dot_directives(void)
     CHECK_STR(slot(OUT)->data, "<7><a[b>\n");
 }
 
+/* S6: an AmigaDOS script (S bit, no #! line) run by name runs in this shell, through the OS layer's answer
+ * SH_RUN_AMIGA_SCRIPT (the recording layer answers as vsh.c os_start). cd in it stays with the shell. */
+static void amiga_script_by_name_runs_in_shell(void)
+{
+    int inc = 0;
+    fresh();
+    sh.os.run = f_run_record;
+    put_file("RAM:abs1", "echo one two\ncd tmpdir\n", 22);
+    seen_n = 0;
+    sh_run_text(&sh, "RAM:abs1 x y; echo rc$?; pwd", &inc);
+    CHECK_STR(slot(OUT)->data, "one two\nrc0\ntmpdir\n");
+    CHECK_INT(seen_n, 0); /* the OS layer started nothing */
+}
+
+/* S6: a file with a #!/bin/sh line, or none and no S bit, is bash even when it has an `if` line; the S bit
+ * does not make it an AmigaDOS script when the #! line is there. */
+static void sh_files_keep_bash_if(void)
+{
+    CHECK_STR(started("RAM:sh1"), "VTC:vsh|RAM:sh1");
+    CHECK_STR(started("RAM:sh2"), "VTC:vsh|RAM:sh2");
+    CHECK_STR(started("RAM:abs2"), "VTC:vsh|RAM:abs2");
+}
+
 void suite_sh_exec(void)
 {
+    amiga_script_by_name_runs_in_shell();
+    sh_files_keep_bash_if();
     path_and_run_are_amiga_forms_of_path_and_background();
     execute_runs_lines_literally();
     execute_quit_sets_rc();
