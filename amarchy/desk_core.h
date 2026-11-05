@@ -54,6 +54,8 @@ extern unsigned long desk_flat_state_calls;
  * triple means "not written": flat derives the default from the screen's surface and text colours). Not part of desk_flat_state: that one
  * has no theme. */
 void desk_flat_inbar(const gtheme *t, flat_state *s);
+/* TE-6.1: the version-5 fields from the theme's model (look keys, knob colour); a theme without a model writes zeros. */
+void desk_flat_look(const gtheme *t, flat_state *s);
 /* TE-2.3: the colour of an inactive window's bar (element Window Title Bar Inactive) and of the scroller knob (element Scroll Knob) */
 uc_u32 desk_inbar_rgb(const gtheme *t);
 uc_u32 desk_knob_rgb(const gtheme *t);

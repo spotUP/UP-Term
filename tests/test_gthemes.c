@@ -1720,8 +1720,64 @@ static void test_gthemes_te3_import_export_delete(void)
     tm_free(&m);
 }
 
+/* ---- TE-6: live apply. The editor's real entry point (lf_setting_set_text on a Theme row) reaches the live hook with the in-memory
+ * model (sentinel gte_live_sends), the preview writes pens and the version-5 flat fields, Revert puts the pens back. ---- */
+static uc_u32 te6_pen[8];
+static desk_pv te6_pv;
+static flat_state te6_flat;
+static int te6_hook_calls, te6_model_ok;
+static void te6_get(void *c, int pen, uc_u32 *rgb) { (void)c; *rgb = te6_pen[pen]; }
+static void te6_set(void *c, int pen, uc_u32 rgb) { (void)c; te6_pen[pen] = rgb; }
+static void te6_live(const gt_model *m)       /* what gt_dos_preview_model does, minus the Amiga calls */
+{
+    gtheme th;
+    te6_hook_calls++;
+    te6_model_ok = m == &gt_ed.m;
+    gt_model_to_v1(m, &th);
+    th.model = (gt_model *)m;
+    desk_preview(&te6_pv, &th);
+    desk_flat_look(&th, &te6_flat);
+}
+
+static void test_gthemes_te6_live(void)
+{
+    amconf_io io;
+    int failed = 0, i;
+    uc_u32 before[8];
+    unsigned long sends0;
+    const sd_setting *radius;
+    memset(&io, 0, sizeof io);
+    te4_open_builtin();
+    radius = te4_row("Corner Radius");
+    CHECK(radius != 0);
+    for (i = 0; i < 8; i++)
+        te6_pen[i] = before[i] = 0x101010u * (unsigned)(i + 1);
+    memset(&te6_pv, 0, sizeof te6_pv);
+    te6_pv.get = te6_get;
+    te6_pv.set = te6_set;
+    te6_pv.npens = 8;
+    memset(&te6_flat, 0, sizeof te6_flat);
+    gte_live = te6_live;
+    sends0 = gte_live_sends;
+    CHECK_INT(lf_setting_set_text(&io, radius, "9", &failed), 0);
+    CHECK_INT(gte_live_sends - sends0, 1);          /* the sentinel: the edit ran the live hook once */
+    CHECK_INT(te6_hook_calls, 1);
+    CHECK(te6_model_ok);                            /* it got the in-memory buffer, not a file */
+    CHECK_INT(te6_flat.corner_radius, 9);           /* the number the edit set reached the v5 field */
+    CHECK(te6_pv.have);
+    CHECK(memcmp(te6_pen, before, sizeof before) != 0);   /* the preview moved the pens */
+    /* Revert: the model reloads and the desk restore puts the pens back */
+    gte_revert();
+    CHECK_INT(te6_hook_calls, 2);                   /* revert shows the reloaded model too */
+    CHECK(desk_preview(&te6_pv, 0));
+    CHECK(memcmp(te6_pen, before, sizeof before) == 0);
+    CHECK(te6_flat.corner_radius != 9);
+    gte_live = 0;
+}
+
 void suite_gthemes(void)
 {
+    test_gthemes_te6_live();
     test_gthemes_te3_save();
     test_gthemes_te3_custom_name();
     test_gthemes_te3_edit_applies();

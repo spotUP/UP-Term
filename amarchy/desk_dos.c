@@ -512,14 +512,13 @@ static void dk_icons_sync(int on, int outline)
 
 /* changed_only: the prefs-file notify path (desk_dos_flat_sync): write and redraw only when the block's fields differ, so a keymap edit
  * or the commodity's own save after a desk apply redraws nothing. */
-static void dk_flat_sync_with(int changed_only)
+static void dk_flat_sync_theme(const gtheme *thp, int changed_only)
 {
     am_prefs ap;
     flatshared *r;
-    gtheme th;
+    const gtheme *th = thp;
     int flat, gad, wrote = 0;
     amconf_load(&ap);
-    gt_dos_load_current(&th);
     flat = amconf_flat_index(&ap, AM_FLAT);
     gad = amconf_flat_index(&ap, AM_FLATGAD);
     dk_icons_sync(flat || gad, amconf_icon_outline(&ap));
@@ -528,10 +527,12 @@ static void dk_flat_sync_with(int changed_only)
     if (r && flat_check(&r->st, sizeof r->st) == FLAT_OK) {
         flat_state next = r->st;
         desk_flat_state(flat, gad, &next);
-        desk_flat_inbar(&th, &next);                /* S32-INACTIVE-BAR: the theme `inactive` colour */
+        desk_flat_inbar(th, &next);                 /* S32-INACTIVE-BAR: the theme `inactive` colour */
+        desk_flat_look(th, &next);                  /* TE-6.1: the version-5 look fields and knob colour */
         if (!changed_only || memcmp(&next, &r->st, sizeof next) != 0) {
             desk_flat_state(flat, gad, &r->st);
-            desk_flat_inbar(&th, &r->st);
+            desk_flat_inbar(th, &r->st);
+            desk_flat_look(th, &r->st);
             if (r->task)
                 Signal(r->task, SIGBREAKF_CTRL_D);  /* LUCIDE L7: amarchy-flat takes or drops the icon pens */
             wrote = 1;
@@ -546,9 +547,22 @@ static void dk_flat_sync_with(int changed_only)
     }
 }
 
+static void dk_flat_sync_with(int changed_only)
+{
+    gtheme th;
+    gt_dos_load_current(&th);
+    dk_flat_sync_theme(&th, changed_only);
+}
+
 static void dk_flat_sync(void)
 {
     dk_flat_sync_with(0);
+}
+
+/* TE-6.2: the editor's in-memory theme reaches the running amarchy-flat (changed fields only); desk_dos_flat_sync puts the saved theme back */
+void desk_dos_flat_preview(const gtheme *th)
+{
+    dk_flat_sync_theme(th, 1);
 }
 
 /* FLAT-PREFS-NOT-NOTIFIED: ENV:Amarchy/prefs changed under the commodity (its notify, RELOAD): a flat switch flipped by any writer

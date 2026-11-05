@@ -99,14 +99,10 @@ void gt_dos_load_current(gtheme *out)
  * drawer ENV:up-term exists on any install that has run the console; made here when it does not. */
 unsigned long gt_dos_term_writes;
 
-void gt_dos_term_send(const char *name)
+/* The console tabs' file: GT_TERM_FILE gets text (n bytes) */
+static void gt_dos_term_put(const char *text, int n)
 {
-    static char text[1024];
-    BPTR f;
-    int n = gt_load_term(gt_read, 0, name, text, (int)sizeof text);
-    if (n <= 0)
-        return;
-    f = Open((STRPTR)GT_TERM_FILE, MODE_NEWFILE);
+    BPTR f = Open((STRPTR)GT_TERM_FILE, MODE_NEWFILE);
     if (!f) {
         BPTR l = CreateDir((STRPTR) "ENV:up-term");
         if (l)
@@ -115,9 +111,17 @@ void gt_dos_term_send(const char *name)
     }
     if (!f)
         return;
-    Write(f, text, n);
+    Write(f, (APTR)text, n);
     Close(f);
     gt_dos_term_writes++;
+}
+
+void gt_dos_term_send(const char *name)
+{
+    static char text[1024];
+    int n = gt_load_term(gt_read, 0, name, text, (int)sizeof text);
+    if (n > 0)
+        gt_dos_term_put(text, n);
 }
 
 /* DESK-PREVIEW-PALETTE: the picker's highlight previews the Workbench colours (desk_preview, desk_core.h) straight on the Workbench
@@ -179,8 +183,25 @@ static void desk_preview_theme(const gtheme *th)
 
 void gt_dos_desk_restore(void)
 {
-    if (gt_pv.have)
+    if (gt_pv.have) {
         desk_preview_theme(0);
+        desk_dos_flat_sync();   /* TE-6.2: the flat look and colours of the saved theme go back too */
+    }
+}
+
+/* TE-6.2: the term bridge text of an in-memory model, the Workbench pens and the flat state; the editor's edit hook */
+void gt_dos_preview_model(const gt_model *m)
+{
+    static char buf[UC_MAX_FILE], text[1024];
+    long n = gt_model_save_text(m, buf, (long)sizeof buf);
+    int t;
+    gtheme th;
+    if (n > 0 && (t = gt_term_text(buf, n, m->name, text, (int)sizeof text)) > 0)
+        gt_dos_term_put(text, t);
+    gt_model_to_v1(m, &th);
+    th.model = (gt_model *)m;
+    desk_preview_theme(&th);
+    desk_dos_flat_preview(&th);
 }
 
 void gt_dos_preview_send(const char *name)
@@ -278,9 +299,12 @@ static void gt_dos_drawers(void)
 int gt_dos_save(const char *name, const gt_model *m, char *why, int cap)
 {
     char cur[GT_NAME];
+    int r;
     gt_dos_drawers();
     gt_dos_current(cur, (int)sizeof cur);
-    return gt_save_edit(&prefs_dos_fs, name, m, cur, gt_dos_apply_saved, why, cap);
+    r = gt_save_edit(&prefs_dos_fs, name, m, cur, gt_dos_apply_saved, why, cap);
+    gt_dos_desk_restore();      /* TE-6.2: a saved edit of another theme leaves no preview on the desktop */
+    return r;
 }
 
 int gt_dos_save_as(const char *name, const gt_model *m, char *why, int cap)
@@ -322,5 +346,6 @@ int gt_dos_pick_file(struct Screen *scr, struct Window *win, const char *title, 
 /* TE-4: load the named theme's model into the editor's edit buffer (gte_open). 1 opened; 0 when the theme has no model. */
 int gt_dos_edit_open(const char *name)
 {
+    gte_live = gt_dos_preview_model;    /* TE-6.3: every edit of the buffer shows on the desktop */
     return gte_open_from(gt_read, 0, name);
 }

@@ -35,15 +35,33 @@ static void test_layout(void)
     CHECK_INT(offsetof(flat_state, inbar_rgb), 26);
     CHECK_INT(offsetof(flat_state, pen_sel), 29);
     CHECK_INT(offsetof(flat_state, sel_rgb), 30);
-    CHECK_INT(FLAT_STATE_SIZE, 36);
+    CHECK_INT(offsetof(flat_state, side), 33);
+    CHECK_INT(offsetof(flat_state, corner_radius), 36);
+    CHECK_INT(offsetof(flat_state, border_width), 37);
+    CHECK_INT(offsetof(flat_state, knob_shape), 38);
+    CHECK_INT(offsetof(flat_state, knob_min), 39);
+    CHECK_INT(offsetof(flat_state, glyph_set), 40);
+    CHECK_INT(offsetof(flat_state, ghost_style), 41);
+    CHECK_INT(offsetof(flat_state, hover), 42);
+    CHECK_INT(offsetof(flat_state, knob_rgb), 44);
+    CHECK_INT(FLAT_STATE_SIZE, 48);
     CHECK_STR(FLAT_SEM_NAME, "Amarchy.Flat");
-    CHECK_INT(FLAT_VERSION, 4);
+    CHECK_INT(FLAT_VERSION, 5);
+    {   /* a version-4 reader (the check as it was: version word 4 and a 36-byte block) refuses a v5 block before the rest */
+        flat_state v5;
+        flat_init(&v5);
+        CHECK(v5.version != 4);
+        CHECK(v5.size != 36);
+        v5.version = 4;                              /* and the v5 reader refuses a v4 block the same way */
+        v5.size = 36;
+        CHECK_INT(flat_check(&v5, 36), FLAT_ERR_VERSION);
+    }
 }
 
 static void test_init_check(void)
 {
     flat_state s;
-    unsigned char raw[40];
+    unsigned char raw[FLAT_STATE_SIZE + 4];
     memset(&s, 0xAA, sizeof s);
     flat_init(&s);
     CHECK_INT(s.version, FLAT_VERSION);

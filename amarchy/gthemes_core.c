@@ -1617,10 +1617,16 @@ int gt_save_edit(const prefs_fs *fs, const char *name, const gt_model *m, const 
 
 gt_edit gt_ed;
 unsigned long gte_edits;
+void (*gte_live)(const gt_model *m);
+unsigned long gte_live_sends;
 
 static void ed_touch(void)
 {
     gte_edits++;
+    if (gte_live && gt_ed.open) {
+        gte_live_sends++;
+        gte_live(&gt_ed.m);
+    }
 }
 
 static int any_override(const gt_model *m)

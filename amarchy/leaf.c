@@ -274,6 +274,7 @@ int lf_leave_editor(const char *from, const char *to, const lf_ui *ui)
         return 0;
     case LF_LEAVE_DISCARD:
         gte_revert();
+        gt_dos_desk_restore();      /* TE-6.2: the previewed colours go back to the saved theme */
         return 1;
     }
     return 0;
@@ -322,6 +323,7 @@ static int theme_action(const sd_setting *s, const char *label, const lf_ui *ui)
     case GTA_REVERT:
         if (gt_ed.open && !gt_dos_edit_open(gt_ed.name))
             gte_revert();
+        gt_dos_desk_restore();      /* TE-6.2: Revert puts the desktop back to the saved theme */
         break;
     case GTA_APPLY:
         ok = gt_dos_select(gt_ed.name, why, sizeof why);

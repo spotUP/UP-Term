@@ -20,6 +20,8 @@ extern unsigned long desk_dos_wb_backdrop_invokes;
 extern unsigned long desk_dos_start_plans, desk_dos_start_writes;
 /* FLAT-PREFS-NOT-NOTIFIED: the prefs file changed: sync the running amarchy-flat (write + redraw only on a change), or start it (BOOT) */
 void desk_dos_flat_sync(void);
+/* TE-6.2: write the version-5 flat_state fields of a theme that is not saved (the editor's live preview) */
+void desk_dos_flat_preview(const struct gtheme *th);
 /* R1.17: IPrefs resets the Workbench screen after a Palette/WBPattern/Pointer/Font USE and cannot while any window of ours is on it
  * ("Please close the following windows: Amarchy bar"). A Palette USE resets it only when the live DrawInfo pens differ from the chosen pen map (desk_pens_for, desk_pens_reset); then the apply closes the windows first and reopens them when the new screen is up.
  * The main process installs direct hooks (it cannot send ARexx to itself); every other process leaves them 0 and the apply sends BAR STATUS, and BAR OFF / BAR ON when the bar was open. */
