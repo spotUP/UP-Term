@@ -42,9 +42,18 @@ class BootConsole(unittest.TestCase):
             (s / "Startup-Sequence").write_text("SetPatch QUIET\nLoadWB\nEndCLI >NIL:\n")
             for _ in range(2):
                 rig.os_tree_bootcap(d)
-                self.assertEqual(["BOOTX:bootcap", "BOOTX:boot.console", "C:Execute", "S:Startup-Sequence.os"],
-                                 (s / "Startup-Sequence").read_text().split())
+                self.assertEqual(["BOOTX:bootcap BOOTX:boot.console C:Execute S:Startup-Sequence.os", "EndCLI >NIL:"],
+                                 (s / "Startup-Sequence").read_text().splitlines())
                 self.assertEqual("SetPatch QUIET\nLoadWB\nEndCLI >NIL:\n", (s / "Startup-Sequence.os").read_text())
+
+    def test_boot_shell_ends_after_bootcap_so_no_amigados_window_holds_the_iprefs_request(self):
+        # RIG-IPREFS-SYSREQ: the Startup-Sequence's EndCLI ends bootcap's child CLI only. The boot shell must end
+        # itself right after bootcap, on both boot paths, or it opens an "AmigaDOS" window and IPrefs' screen-reset
+        # request stays up and `rig.py reboot` fails (rig 146, 2026-11-05).
+        for script in (rig.STARTUP, rig.OS_STARTUP_WRAP):
+            lines = [l.strip() for l in script.splitlines() if l.strip()]
+            i = next(n for n, l in enumerate(lines) if l.startswith("BOOTX:bootcap"))
+            self.assertEqual(["EndCLI >NIL:"], lines[i + 1:], script)
 
     def test_marker_tells_capture_from_no_capture(self):
         self.assertTrue(rig.boot_console_captured("boot console open\nSetPatch 43.6\n"))
