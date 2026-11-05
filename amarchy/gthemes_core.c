@@ -2592,3 +2592,199 @@ int gte_row_set_index(const sd_setting *s, int index)
     ed_touch();
     return GTR_OK;
 }
+
+
+/* ---- TE-10.2: screen rules (searched the tree first: shell/sh_expand.c sh_match is a Unix glob without #?, handler/complete.c and
+ * gthemes_dos.c call dos.library; no pure AmigaDOS matcher exists, so this one is small and local) ---- */
+static int lc(int c)
+{
+    return (c >= 'A' && c <= 'Z') ? c + 32 : c;
+}
+
+int gt_screen_match(const char *p, const char *s)
+{
+    while (*p) {
+        if (*p == '#' && p[1]) {
+            int any = (p[1] == '?');
+            int ch = lc((unsigned char)p[1]);
+            p += 2;
+            for (;;) {
+                if (gt_screen_match(p, s))
+                    return 1;
+                if (!*s || !(any || lc((unsigned char)*s) == ch))
+                    return 0;
+                s++;
+            }
+        }
+        if (!*s)
+            return 0;
+        if (*p != '?' && lc((unsigned char)*p) != lc((unsigned char)*s))
+            return 0;
+        p++;
+        s++;
+    }
+    return !*s;
+}
+
+int gt_screen_exact(const char *pat)
+{
+    return pat && !strchr(pat, '#') && !strchr(pat, '?');
+}
+
+static int is_wb_exact(const char *pat)
+{
+    return cmp_ci(pat, "Workbench") == 0;
+}
+
+void gt_screen_rules_parse(const char *buf, long len, gt_screen_rules *out)
+{
+    long i = 0;
+    int first = 1;
+    memset(out, 0, sizeof *out);
+    out->enabled = 1;
+    out->def = GT_SCR_WORKBENCH;
+    while (buf && i < len) {
+        long b = i, e, eq;
+        char pat[GT_SCR_PAT], th[GT_NAME];
+        int tk = 0;
+        long pl, tl;
+        while (i < len && buf[i] != '\n')
+            i++;
+        e = i;
+        if (i < len)
+            i++;
+        if (e > b && buf[e - 1] == '\r')
+            e--;
+        while (b < e && (buf[b] == ' ' || buf[b] == '\t'))
+            b++;
+        if (b >= e || buf[b] == ';')
+            continue;
+        if (first) {
+            first = 0;
+            if (e - b >= 8 && !strncmp(buf + b, "default ", 8)) {
+                const char *v = buf + b + 8;
+                long vl = e - b - 8;
+                if (vl == 3 && !strncmp(v, "all", 3))
+                    out->def = GT_SCR_ALL;
+                else if (vl == 4 && !strncmp(v, "none", 4))
+                    out->def = GT_SCR_NONE;
+                continue;
+            }
+        }
+        for (eq = b; eq + 2 < e && strncmp(buf + eq, " = ", 3); eq++)
+            ;
+        if (eq + 2 >= e)
+            continue;
+        pl = eq - b;
+        if (pl < 1 || pl >= GT_SCR_PAT)
+            continue;
+        memcpy(pat, buf + b, (size_t)pl);
+        pat[pl] = 0;
+        b = eq + 3;
+        while (b < e && buf[b] == ' ')
+            b++;
+        while (e > b && buf[e - 1] == ' ')
+            e--;
+        if (e - b > 9 && !strncmp(buf + e - 9, " takeover", 9)) {
+            tk = 1;
+            e -= 9;
+            while (e > b && buf[e - 1] == ' ')
+                e--;
+        }
+        tl = e - b;
+        if (tl < 1 || tl >= GT_NAME)
+            continue;
+        memcpy(th, buf + b, (size_t)tl);
+        th[tl] = 0;
+        if (out->n < GT_SCR_MAX && !(is_wb_exact(pat) && cmp_ci(th, "exclude") != 0))
+            gt_screen_rules_add(out, pat, th, tk);
+    }
+}
+
+int gt_screen_rules_add(gt_screen_rules *r, const char *pat, const char *theme, int takeover)
+{
+    gt_screen_rule *x;
+    if (r->n >= GT_SCR_MAX || !pat || !*pat || strlen(pat) >= GT_SCR_PAT || !theme || strlen(theme) >= GT_NAME)
+        return 0;
+    x = &r->rule[r->n++];
+    strcpy(x->pat, pat);
+    x->exclude = cmp_ci(theme, "exclude") == 0;
+    strcpy(x->theme, x->exclude ? "" : theme);
+    x->takeover = takeover != 0;
+    return 1;
+}
+
+int gt_screen_rules_remove(gt_screen_rules *r, const char *pat)
+{
+    int i;
+    for (i = 0; i < r->n; i++)
+        if (cmp_ci(r->rule[i].pat, pat) == 0) {
+            memmove(&r->rule[i], &r->rule[i + 1], (size_t)(r->n - i - 1) * sizeof r->rule[0]);
+            r->n--;
+            return 1;
+        }
+    return 0;
+}
+
+long gt_screen_rules_write(const gt_screen_rules *r, char *buf, long cap)
+{
+    static const char *const dn[] = { "all", "workbench", "none" };
+    long n = 0;
+    int pass, i;
+    n = snprintf(buf, (size_t)cap, "default %s\n", dn[r->def >= 0 && r->def <= 2 ? r->def : 1]);
+    if (n < 0 || n >= cap)
+        return -1;
+    for (pass = 0; pass < 2; pass++)
+        for (i = 0; i < r->n; i++) {
+            const gt_screen_rule *x = &r->rule[i];
+            int w;
+            if (gt_screen_exact(x->pat) != (pass == 0) || (is_wb_exact(x->pat) && !x->exclude))
+                continue;
+            w = snprintf(buf + n, (size_t)(cap - n), "%s = %s%s\n", x->pat, x->exclude ? "exclude" : x->theme,
+                         x->takeover ? " takeover" : "");
+            if (w < 0 || w >= cap - n)
+                return -1;
+            n += w;
+        }
+    return n;
+}
+
+static void scr_name(char *out, int cap, const char *name)
+{
+    if (!gt_name_ok(name) || (int)strlen(name) >= cap)
+        name = GT_DEFAULT;
+    strcpy(out, name);
+}
+
+int gt_screen_theme_of(const gt_screen_rules *r, const char *name, const char *main_theme, char *theme, int cap, int *takeover)
+{
+    int i, pass, wb = is_wb_exact(name);
+    if (takeover)
+        *takeover = 0;
+    if (!r->enabled) {
+        if (!wb)
+            return 0;
+        scr_name(theme, cap, main_theme);
+        return 1;
+    }
+    /* exact-name rules first, then pattern rules, each in list order: the order gt_screen_rules_write
+       stores them, so a rule list resolves the same before and after a write and parse */
+    for (pass = 0; pass < 2; pass++) {
+        for (i = 0; i < r->n; i++) {
+            const gt_screen_rule *x = &r->rule[i];
+            if (gt_screen_exact(x->pat) != (pass == 0) || !gt_screen_match(x->pat, name))
+                continue;
+            if (x->exclude)
+                return 0;
+            if (takeover)
+                *takeover = x->takeover;
+            /* the Workbench screen always uses the main theme (D10-10) */
+            scr_name(theme, cap, (wb || is_wb_exact(x->pat)) ? main_theme : x->theme);
+            return 1;
+        }
+    }
+    if (r->def == GT_SCR_NONE || (r->def == GT_SCR_WORKBENCH && !wb))
+        return 0;
+    scr_name(theme, cap, main_theme);
+    return 1;
+}
