@@ -636,14 +636,19 @@ nas-deploy:
 	python3 -I tools/nas/deploy.py $(NAS_DEPLOY_ARGS)
 nas-deploy-dry:
 	python3 -I tools/nas/deploy.py --dry-run $(NAS_DEPLOY_ARGS)
+# Local fixes not yet upstream: every tools/nas/wasabi-patches/*.patch is applied in name order after the checkout, so a
+# re-clone keeps them. A changed or added patch rebuilds (the patches are prerequisites of the stamp). A patch that no
+# longer applies stops the build with git apply's own error; drop it once upstream has the fix and the pin moves past it.
+WASABI_PATCHES := $(sort $(wildcard tools/nas/wasabi-patches/*.patch))
 wasabi: $(BUILD)/wasabi/.stamp-$(WASABI_REV)
 	@echo "[OK] wasabi $(WASABI_REV) built: $(BUILD)/wasabi/wasabid and the client $(BUILD)/wasabi/wasabi."
-$(BUILD)/wasabi/.stamp-$(WASABI_REV):
+$(BUILD)/wasabi/.stamp-$(WASABI_REV): $(WASABI_PATCHES)
 	@test -d "$(AMISSL_SDK)/include" || { echo "[ERROR] wasabi needs the AmiSSL 5.27 SDK: AMISSL_SDK=<its Developer directory>"; exit 1; }
 	rm -rf $(BUILD)/wasabi
 	mkdir -p $(BUILD)/wasabi
 	git clone -q $(WASABI_REPO) $(BUILD)/wasabi/src
 	git -C $(BUILD)/wasabi/src checkout -q $(WASABI_REV)
+	for p in $(WASABI_PATCHES); do git -C $(BUILD)/wasabi/src apply "$(CURDIR)/$$p" || exit 1; echo "[OK] wasabi patch $$p"; done
 	$(MAKE) -C $(BUILD)/wasabi/src wasabid CC=$(AGCC) SSL=$(AMISSL_SDK) \
 	  CFLAGS="-O2 -fbbb=- -noixemul -fomit-frame-pointer -Wall -Wno-pointer-sign -Iinclude"
 	cp $(BUILD)/wasabi/src/wasabid $(BUILD)/wasabi/src/wasabi $(BUILD)/wasabi/src/wasabi_*.py $(BUILD)/wasabi/src/LICENSE $(BUILD)/wasabi/
