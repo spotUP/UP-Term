@@ -263,12 +263,12 @@ the same way `gt_dos_wb_pens` is today (grep its print site).
 Files: `amarchy/gthemes_core.h`, `amarchy/gthemes_core.c`, `tests/test_gthemes.c`, `tools/rig/amarchy_theme_editor_rig.py`
 (skeleton: start, open the page, read sentinels).
 
-- [ ] TE-1.1 `gt_model`, `gt_ref`, `gt_look`, `gt_group_def[]`, `gt_elem_def[]` as section 3.
-- [ ] TE-1.2 Ref grammar parser and writer (section 2.2), depth cap 4, cycle warning.
-- [ ] TE-1.3 v2 reader for `[profile swatches|groups|elements|look]`; unknown keys set `GT_WARN_UNKNOWN_KEY`, kept on write.
-- [ ] TE-1.4 v1 to model derivation (section 2.3).
-- [ ] TE-1.5 Writer `gt_model_save_text`: v1 default keys from the resolved groups, then the v2 sections.
-- [ ] TE-1.6 `gtheme.model` pointer, `gt_free`; measure `sizeof(gtheme)` before and after.
+- [x] TE-1.1 (d10f1b46) `gt_model`, `gt_ref`, `gt_look`, `gt_group_def[]`, `gt_elem_def[]` as section 3.
+- [x] TE-1.2 (d10f1b46) Ref grammar parser and writer (section 2.2), depth cap 4, cycle warning.
+- [x] TE-1.3 (d10f1b46) v2 reader for `[profile swatches|groups|elements|look]`; unknown keys set `GT_WARN_UNKNOWN_KEY`, kept on write.
+- [x] TE-1.4 (d10f1b46) v1 to model derivation (section 2.3).
+- [x] TE-1.5 (d10f1b46) Writer `gt_model_save_text`: v1 default keys from the resolved groups, then the v2 sections.
+- [x] TE-1.6 (d10f1b46) `gtheme.model` pointer, `gt_free`; measure `sizeof(gtheme)` before and after. Delta is one pointer (8 bytes host, 4 on m68k), measured by construction, not by a host print.
 
 Host tests (fail before, pass after): golden test over all 23 shipped themes, model roles byte-equal to old `gt_roles_of`;
 round trip parse, write, parse equal; v2 file loaded by the v1 reader gives the resolved colours; cycle and depth refusal;
