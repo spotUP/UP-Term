@@ -276,10 +276,10 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_tty_mask ]; then python3 -I tools/test_rig_tty_mask.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = terminfo_amiga ]; then python3 tests/test_terminfo_amiga.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = emoji ]; then python3 tests/test_gen_emoji.py; fi
-	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gen_lucide_icons ]; then python3 -I tests/test_gen_lucide_icons.py; python3 -I tests/test_preview_lucide_icons.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gen_lucide_icons ]; then python3 -I tests/test_gen_lucide_icons.py && python3 -I tests/test_preview_lucide_icons.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = icon_grid_fit ]; then python3 -I tests/test_icon_grid_fit.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_delete_on_error.py; fi
-	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_only.py; python3 -I tests/test_make_link_lists.py; python3 -I tests/test_handler_deps.py; python3 -I tests/test_handler_rows.py; python3 -I tests/test_handler_fallback_order.py; python3 -I tests/test_handler_no_dos_on_handler.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_only.py && python3 -I tests/test_make_link_lists.py && python3 -I tests/test_handler_deps.py && python3 -I tests/test_handler_rows.py && python3 -I tests/test_handler_fallback_order.py && python3 -I tests/test_handler_no_dos_on_handler.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_netinclude_in_tree.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_dist_builds_wasabi.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = hl ]; then python3 tests/test_hl_plain.py; fi
