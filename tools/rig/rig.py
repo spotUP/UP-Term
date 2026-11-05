@@ -2242,6 +2242,7 @@ def _start(retries):
             if missing:
                 sys.exit("rig: the boot lacks the assigns %s (BOOTX:go or the boot hook did not run)" % " ".join(missing))
             guard_shell_startup()
+            rigwasabi.warn_guru()
             start_watchdog()
             if M060:
                 retry_wb_reset()
@@ -2698,6 +2699,7 @@ def stop_command():
     An eye-check hold (`rig.py hold`) ends first."""
     hold_release()
     stop()
+    rigwasabi.stop_stream("debug")   # the Guru capture reconnects forever; a stopped rig ends it (start restarts it)
     if "--keep" in sys.argv[2:] or paths.RIG_N == 1 or mine():
         return
     clear()

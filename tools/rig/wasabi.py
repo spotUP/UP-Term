@@ -212,19 +212,38 @@ def off():
         print("[ERROR] wasabid still answers" if alive() else "wasabid off")
 
 
+def stream_alive(name):
+    p = pid_path(name)
+    try:
+        os.kill(int(p.read_text()), 0)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def start_stream(name, extra=()):
+    """Start the wasabi client streaming `name` to its log. The debug stream is the Guru capture: it reconnects
+    after a guest reset (the client retries forever; wasabid replays the previous life's guru to its first
+    subscriber) and appends, so one log holds every boot of the rig. snoop stays a one-shot, truncated trace."""
+    stop_stream(name)
+    out_dir().mkdir(parents=True, exist_ok=True)
+    lp = log_path(name)
+    keep = name == "debug"
+    if not keep:
+        lp.write_text("")
+    once = [] if keep else ["--once"]
+    p = subprocess.Popen(client_cmd(name, *once, "--log", str(lp), *extra), stdout=subprocess.DEVNULL,
+                         stderr=(out_dir() / (name + ".err")).open("a" if keep else "w"), start_new_session=True)
+    pid_path(name).write_text(str(p.pid))
+    return lp
+
+
 def stream(name, opts):
     sub = opts["sub"]
     if sub == "start":
         if not alive():
             raise SystemExit("rig wasabi: wasabid is not running (wasabi on first)")
-        stop_stream(name)
-        out_dir().mkdir(parents=True, exist_ok=True)
-        lp = log_path(name)
-        lp.write_text("")
-        extra = ["--task", opts["task"]] if opts["task"] else []
-        p = subprocess.Popen(client_cmd(name, "--once", "--log", str(lp), *extra), stdout=subprocess.DEVNULL,
-                             stderr=(out_dir() / (name + ".err")).open("w"), start_new_session=True)
-        pid_path(name).write_text(str(p.pid))
+        lp = start_stream(name, ["--task", opts["task"]] if opts["task"] else [])
         print("%s streaming to %s" % (name, lp))
     elif sub == "stop":
         print("%s stopped" % name if stop_stream(name) else "%s was not streaming" % name)
@@ -271,3 +290,54 @@ def main(argv):
         ps(opts)
     else:
         stream(cmd, opts)
+
+
+# --- Guru capture on the host --------------------------------------------------------------------------------
+# A Guru resets the guest and T:lastguru may go with it. wasabid's debug stream carries the alert (live when the
+# scheduler still runs, else replayed as "last guru: ..." to the first subscriber of the next life). The reconnecting
+# debug stream appends to debug.log; rig start prints what arrived since the last report.
+
+ALERT_LINE = re.compile(r"ALERT #[0-9a-fA-F]{8}")
+
+
+def reported_path(rig=None):
+    return out_dir(rig) / "debug.reported"
+
+
+def new_alerts(text, offset):
+    """(alert lines after character `offset` of a debug.log, the new offset). A debug.log line is
+    `<date> <time> debug | <wasabi line>`; client bookkeeping lines never match."""
+    lines = [l for l in text[offset:].splitlines() if " debug | " in l and ALERT_LINE.search(l)]
+    return lines, len(text)
+
+
+def stream_reconnected(text):
+    """True when the last client line of a debug.log says the stream is open (no reconnect still pending)."""
+    last = [l for l in text.splitlines() if " client | " in l]
+    return bool(last) and "stream open" in last[-1]
+
+
+def warn_guru(timeout=30, sleep=time.sleep):
+    """After a (re)boot: print `[WARN] Guru before reset: <line>` for every alert line the debug stream logged since
+    the last report. Waits (up to `timeout` s) for a stream that is still reconnecting. Starts the stream when the
+    rig has none. Returns the lines printed."""
+    lp = log_path("debug")
+    if not stream_alive("debug") and alive():
+        start_stream("debug")
+    for _ in range(max(1, int(timeout))):
+        text = lp.read_text(encoding="latin-1") if lp.is_file() else ""
+        if stream_reconnected(text) or not stream_alive("debug"):
+            break
+        sleep(1)
+    text = lp.read_text(encoding="latin-1") if lp.is_file() else ""
+    rp = reported_path()
+    try:
+        off = int(rp.read_text())
+    except (OSError, ValueError):
+        off = 0
+    lines, off = new_alerts(text, off if off <= len(text) else 0)
+    rp.parent.mkdir(parents=True, exist_ok=True)
+    rp.write_text(str(off))
+    for l in lines:
+        print("[WARN] Guru before reset: %s" % l.split(" debug | ", 1)[1])
+    return lines
