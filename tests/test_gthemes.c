@@ -1798,9 +1798,9 @@ static void test_gthemes_te8_budget(void)
     gt_pen_budget(&m, 3, &b);
     CHECK_INT(b.pens, 8); CHECK_INT(b.held, 8); CHECK_INT(b.free, 0);
     CHECK_INT(b.exact, 0);
-    CHECK_INT(b.colours, 9); CHECK_INT(b.shared, 27); CHECK_INT(b.needing, 3); CHECK_INT(b.fold, 3);
+    CHECK_INT(b.colours, 10); CHECK_INT(b.shared, 26); CHECK_INT(b.needing, 4); CHECK_INT(b.fold, 4);
     gt_budget_text(&b, t, sizeof t);
-    CHECK_STR(t, "Screen 8 colours: 3 of 9 colours fold to the nearest of 8 pens");
+    CHECK_STR(t, "Screen 8 colours: 4 of 10 colours fold to the nearest of 8 pens");
     for (grp = 0; grp < GTG_COUNT; grp++) {
         int has = gt_budget_share_text(&b, grp, t, sizeof t);
         CHECK_INT(has, grp >= 6 && grp <= 9);                       /* only the groups sharing a role pen get a line */
@@ -1813,7 +1813,7 @@ static void test_gthemes_te8_budget(void)
     gt_budget_share_text(&b, 9, t, sizeof t); CHECK_STR(t, "Shares a pen with Selection");
     gt_pen_budget(&m, 4, &b);
     CHECK_INT(b.pens, 16); CHECK_INT(b.held, 16); CHECK_INT(b.free, 0);
-    CHECK_INT(b.colours, 9); CHECK_INT(b.shared, 27); CHECK_INT(b.needing, 3); CHECK_INT(b.fold, 3);
+    CHECK_INT(b.colours, 10); CHECK_INT(b.shared, 26); CHECK_INT(b.needing, 4); CHECK_INT(b.fold, 4);
     gt_pen_budget(&m, 8, &b);
     CHECK_INT(b.pens, 256); CHECK_INT(b.held, 27); CHECK_INT(b.free, 229);
     CHECK_INT(b.fold, 0);
@@ -1822,14 +1822,14 @@ static void test_gthemes_te8_budget(void)
     CHECK_INT(b.exact, 1); CHECK_INT(b.fold, 0);
     gt_budget_text(&b, t, sizeof t);
     CHECK(strstr(t, "Truecolour") != 0);
-    /* second fixed model: jade-horse, whose colours repeat more than nord's (8 distinct, 2 needing a pen) */
+    /* second fixed model: jade-horse, whose colours repeat more than nord's (9 distinct, 3 needing a pen: the pushed inactive title text is one of them) */
     te8_load(&g, "jade-horse");
     gt_pen_budget(&g, 3, &b);
     gt_pen_budget(&g, 3, &b);
     CHECK_INT(b.pens, 8); CHECK_INT(b.free, 0);
-    CHECK_INT(b.colours, 8); CHECK_INT(b.shared, 28); CHECK_INT(b.needing, 2); CHECK_INT(b.fold, 2);
+    CHECK_INT(b.colours, 9); CHECK_INT(b.shared, 27); CHECK_INT(b.needing, 3); CHECK_INT(b.fold, 3);
     gt_budget_text(&b, t, sizeof t);
-    CHECK_STR(t, "Screen 8 colours: 2 of 8 colours fold to the nearest of 8 pens");
+    CHECK_STR(t, "Screen 8 colours: 3 of 9 colours fold to the nearest of 8 pens");
     for (grp = 0; grp < GTG_COUNT; grp++)
         CHECK_INT(gt_budget_share_text(&b, grp, t, sizeof t), grp >= 6 && grp <= 9);
     gt_budget_share_text(&b, 6, t, sizeof t); CHECK_STR(t, "Shares a pen with Muted Text");
@@ -1838,7 +1838,7 @@ static void test_gthemes_te8_budget(void)
     gt_budget_share_text(&b, 9, t, sizeof t); CHECK_STR(t, "Shares a pen with Accent");
     gt_pen_budget(&g, 8, &b);
     CHECK_INT(b.held, 27); CHECK_INT(b.free, 229);
-    CHECK_INT(b.colours, 8); CHECK_INT(b.shared, 28); CHECK_INT(b.needing, 2); CHECK_INT(b.fold, 0);
+    CHECK_INT(b.colours, 9); CHECK_INT(b.shared, 27); CHECK_INT(b.needing, 3); CHECK_INT(b.fold, 0);
 }
 
 /* nord as shipped measures 1 warning (Inactive title text 142 under 220: the runtime pushes it off the surface, the raw colours are
@@ -1879,6 +1879,40 @@ static void test_gthemes_te8_button_face_equals_requester_gets_no_warning(void)
         CHECK_INT(p[first].text, GTE_BUTTON_TEXT);
 }
 
+/* TE-8-STOCK-CONTRAST P1: the inactive title text is dimmed on purpose, so its floor is GT_FLOOR_DIM (150), and the default value
+ * is pushed off the inactive bar until it reads there. */
+static void test_gthemes_te8_stock_inactive_title_text_reads_150_on_its_bar(void)
+{
+    gt_model m;
+    gt_cpair p[GT_CPAIRS];
+    gt_ref c, bar;
+    int i, j, np;
+    for (i = 0; i < NSHIPPED; i++) {
+        te8_load(&m, shipped[i].name);
+        CHECK(gt_contrast(gt_resolve_rgb(&m, GTE_TITLE_TEXT_INACTIVE, GT_ST_NORMAL), gt_resolve_rgb(&m, GTE_TITLE_BAR_INACTIVE, GT_ST_NORMAL)) >= GT_FLOOR_DIM);
+        CHECK_INT(gt_contrast_elem_warns(&m, GTE_TITLE_TEXT_INACTIVE), 0);
+        np = gt_contrast_pairs(&m, p);
+        for (j = 0; j < np; j++)
+            if (p[j].text == GTE_TITLE_TEXT_INACTIVE) {
+                CHECK_INT(p[j].floor, GT_FLOOR_DIM);
+                CHECK_INT(p[j].below, 0);
+            }
+    }
+    /* a value the user sets is kept as set; only the floor (150, not 220) decides the warning */
+    te8_load(&m, "nord");
+    CHECK(gt_ref_parse(&m, "#404040", &bar));
+    m.elem[GTE_TITLE_BAR_INACTIVE][GT_ST_NORMAL] = bar;
+    CHECK(gt_ref_parse(&m, "#232323", &c));
+    m.elem[GTE_TITLE_TEXT_INACTIVE][GT_ST_NORMAL] = c;
+    CHECK_INT((int)gt_resolve_rgb(&m, GTE_TITLE_TEXT_INACTIVE, GT_ST_NORMAL), 0x232323);
+    CHECK(gt_contrast(0x232323UL, 0x404040UL) >= GT_FLOOR_DIM && gt_contrast(0x232323UL, 0x404040UL) < GT_FLOOR_TEXT);
+    CHECK_INT(gt_contrast_elem_warns(&m, GTE_TITLE_TEXT_INACTIVE), 0);   /* 160: above 150, below 220 */
+    CHECK(gt_ref_parse(&m, "#303030", &c));
+    m.elem[GTE_TITLE_TEXT_INACTIVE][GT_ST_NORMAL] = c;
+    CHECK_INT((int)gt_resolve_rgb(&m, GTE_TITLE_TEXT_INACTIVE, GT_ST_NORMAL), 0x303030);
+    CHECK_INT(gt_contrast_elem_warns(&m, GTE_TITLE_TEXT_INACTIVE), 1);
+}
+
 static void test_gthemes_te8_contrast(void)
 {
     gt_model m;
@@ -1888,11 +1922,7 @@ static void test_gthemes_te8_contrast(void)
     int first = 0, w, np, i;
     const sd_setting *row;
     te8_load(&m, "nord");
-    CHECK_INT(gt_contrast_warnings(&m, &first), 1);                 /* the shipped nord theme as measured */
-    gt_contrast_pairs(&m, p);
-    CHECK(first >= 0);
-    if (first >= 0)
-        CHECK_INT(p[first].text, GTE_TITLE_TEXT_INACTIVE);
+    CHECK_INT(gt_contrast_warnings(&m, &first), 0);                 /* the shipped nord theme as measured: its inactive title text default reads 150 */
     te8_clean(&m);
     CHECK_INT(gt_contrast_warnings(&m, &first), 0);                 /* above every floor: no warning */
     CHECK_INT(first, -1);
@@ -2206,6 +2236,7 @@ void suite_gthemes(void)
     test_gthemes_nearest_role_pen_ties_low_and_caps_at_depth();
     test_gthemes_te8_budget();
     test_gthemes_te8_contrast();
+    test_gthemes_te8_stock_inactive_title_text_reads_150_on_its_bar();
     test_gthemes_te8_button_face_equals_requester_gets_no_warning();
     test_gthemes_te8_presets();
     test_gthemes_te8_reset_base();

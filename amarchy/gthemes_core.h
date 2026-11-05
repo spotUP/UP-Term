@@ -77,6 +77,7 @@ int gt_contrast(uc_u32 a, uc_u32 b);
 #define GT_STEP_DARK 108  /* the darker tone against the background */
 #define GT_FLOOR_SEL 150  /* the selection (button fill, scroller knob) against the surface: shipped light themes sit at 110-130 */
 #define GT_FLOOR_MUTED 220 /* RL8 step 3: the muted tone (menu dim item, disabled label) against the surface; same floor as text, shipped themes sat at 111-579 */
+#define GT_FLOOR_DIM 150 /* TE-8 P1: text dimmed on purpose (the inactive window title) against its ground; the default value is pushed to it */
 #define GT_BLACK_LIFT 0x222222UL /* the backdrop over a black ground: dark grey, lighter than black */
 /* 1 when the ground is black on a 12-bit screen: all channels below 16 */
 int gt_ground_black(const gtheme *t);
@@ -404,13 +405,13 @@ int gte_reset_to_base(gt_read_fn rd, void *ctx);
 
 /* TE-8.2: one text-on-ground pair. kind is the floor it is held to. below = measured contrast under the floor (D8: shown as a
  * warning on the row and in the summary; Save stays allowed). */
-enum { GTC_TEXT, GTC_MUTED, GTC_SEL };
+enum { GTC_TEXT, GTC_MUTED, GTC_SEL, GTC_DIM };
 typedef struct gt_cpair {
     unsigned char text, text_state, ground, ground_state, kind; /* GTE_* / GT_ST_* of the two sides, GTC_* floor */
     int contrast, floor, below;
 } gt_cpair;
 #define GT_CPAIRS 16
-/* Every pair of the table measured on the resolved colours (gt_contrast against GT_FLOOR_TEXT / GT_FLOOR_MUTED / GT_FLOOR_SEL).
+/* Every pair of the table measured on the resolved colours (gt_contrast against GT_FLOOR_TEXT / GT_FLOOR_MUTED / GT_FLOOR_SEL / GT_FLOOR_DIM).
  * Fills out (room for GT_CPAIRS); returns the pair count. */
 int gt_contrast_pairs(const gt_model *m, gt_cpair out[GT_CPAIRS]);
 /* the number of pairs below their floor; when first >= 0, *first is the index of the first such pair (else -1) */
