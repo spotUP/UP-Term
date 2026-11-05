@@ -1,7 +1,7 @@
 ---
 date: 2026-11-05
 topic: rig 96 "freeze" after dragging a VTC:vsh XCON window into the screen title bar
-status: UNPROVEN (mechanism found, writer not identified)
+status: UNPROVEN (mechanism found, writer not identified; vtcon-handler direct-plane lead dead 2026-11-05)
 rig: 96 (AmigaOS 3.2, main 7cf4ac17, flat mode, Amarchy + amarchy-flat at boot), started from ../vtcon-s57-rig96b
 ---
 
@@ -87,3 +87,44 @@ reboot).
   position taken from the layer, not the Window.
 - Next run: quiet host first, rig start, fresh-all, copcheck before and after the drag to top 7, then
   stop SolidWin / amarchy-flat / Amarchy in turn; memwatch with the debug FS-UAE (--no-jit --debugger).
+
+## Host test 2026-11-05: vtcon-handler direct-plane lead DEAD
+
+Test: `direct_plane_writes_stay_inside_the_bitmap_at_its_bottom_edge` in tests/test_render.c (run by
+`make test ONLY=render`). gf_planar now allocates 4 guard rows (0xA5) after every plane of the fake
+interleaved bitmap, and `gf_guard_hits()` counts changed guard bytes. Each case uses a 640-wide window
+on an 8-plane screen, scrolls rows+4 coloured lines and runs synchronized-output frames that clear and
+redraw the last row. It then asserts 0 guard hits and that back_copy ran (`rn.n_copies` grew).
+
+Six cases pass with 0 guard hits:
+- top 7, height 249 (the rig 96 geometry: bottom = row 256 = bitmap end)
+- top 0, height 256
+- top 7, height 249, with borders of 2
+- top 7, height 249, with the Window TopEdge one row below the layer (stale geometry during a drag)
+- the two bottom-edge geometries with a "race" hook: TopEdge moves down 1 row at a WaitBlit inside
+  back_copy's locked section (Intuition's input task running while the handler holds the lock)
+
+The test can fail. A mutation that writes back_copy rows at `TopEdge + y + 1` gives 560 guard hits
+per case (32 failures).
+
+Why the lead is dead:
+- Every direct-plane path (planar text, direct cells, planar_begin plus back_copy) checks
+  screen_planes_ok and writes under the same LockLayer, with the same w->TopEdge read.
+- Rows are clipped to vis_rows, and the check requires the cell area to lie inside the single,
+  unobscured ClipRect. The ClipRect lies inside the screen, so no row at y >= 256 passes the check.
+- A stale TopEdge makes the check fail, so the handler falls back to the layered calls. Graphics clips
+  those calls.
+- Remaining caveat (unproven either way): a downward TopEdge change between the check and the write,
+  inside the locked section. The race hook covered only the first WaitBlits of each pass. Intuition
+  moves a window only after it locks the layers, so the handler's lock blocks this case on a real system.
+- Side note (not this bug): planar_begin reads LeftEdge for the phase after its unlock. A LeftEdge
+  change between planar_begin and back_copy can shift the copy by at most 4 bytes horizontally.
+  This can not reach row 256.
+
+Next candidates, in order:
+1. SolidWin: a solid window drag that draws the window image into the screen RastPort with no layer
+   (see tests/amiga/rawdrag.c). Graphics does not clip a rectangle that ends at y = 256 there.
+2. A 3.2 Intuition frame redraw for a window whose top sits in the title bar area (top 7).
+
+Prove on a rig: copcheck before and after the drag to top 7, with SolidWin stopped, then with it
+running. A memory watchpoint on 0x2BD40-0x2BFFF gives the writer's PC.

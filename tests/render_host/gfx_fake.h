@@ -74,6 +74,13 @@ int gf_border_hits(void);
 /* Another window over part of this one (a second ClipRect): the layer must clip, nothing may write the
  * planes directly. */
 void gf_cover(int on);
+/* Bytes changed in the guard rows past the end of every plane of gf_planar's bitmap: a write below the
+ * bitmap's last row (rig 96: the live copper list sits right after the screen bitmap). */
+int gf_guard_hits(void);
+/* At the nth WaitBlit from now the Window's TopEdge changes by dy (the layer stays): Intuition's input task
+ * runs while the handler holds the layer lock. gf_waitblit_moves counts the moves made. */
+void gf_move_at_waitblit(int dy, int nth);
+extern int gf_waitblit_moves;
 /* The raster line VBeamPos reports (WaitTOF records GF_TOF and sets it to 0, the top of the next frame). The
  * View starts the display at line 44, the screen at its top, not interlaced. */
 extern long gf_beam;
