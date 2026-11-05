@@ -1814,9 +1814,8 @@ static void test_gthemes_te8_budget(void)
     CHECK_INT(b.colours, 8); CHECK_INT(b.shared, 28); CHECK_INT(b.needing, 2); CHECK_INT(b.fold, 0);
 }
 
-/* nord as shipped measures 2 warnings (Inactive title text 142 under 220, Button Face on the requester ground 100 under 150: the
- * runtime pushes those two off the surface, the raw colours are what the editor measures). te8_clean sets both pairs to black/white
- * so a test starts from a model with none. */
+/* nord as shipped measures 1 warning (Inactive title text 142 under 220: the runtime pushes it off the surface, the raw colours are
+ * what the editor measures). te8_clean sets that pair to black/white so a test starts from a model with none. */
 static void te8_clean(gt_model *m)
 {
     gt_ref w, k;
@@ -1824,7 +1823,33 @@ static void te8_clean(gt_model *m)
     CHECK(gt_ref_parse(m, "#000000", &k));
     m->elem[GTE_TITLE_TEXT_INACTIVE][GT_ST_NORMAL] = w;
     m->elem[GTE_TITLE_BAR_INACTIVE][GT_ST_NORMAL] = k;
-    m->elem[GTE_REQUESTER_BACKGROUND][GT_ST_NORMAL] = k;
+}
+
+/* TE-8-STOCK-CONTRAST P8: every stock theme gives the button the requester background, so that pair never warns */
+static void test_gthemes_te8_button_face_equals_requester_gets_no_warning(void)
+{
+    gt_model m;
+    gt_cpair p[GT_CPAIRS];
+    gt_ref c;
+    int np, i, first = 0;
+    te8_load(&m, "nord");
+    te8_clean(&m);
+    CHECK(gt_ref_parse(&m, "#303030", &c));
+    m.elem[GTE_BUTTON_FACE][GT_ST_NORMAL] = c;
+    m.elem[GTE_REQUESTER_BACKGROUND][GT_ST_NORMAL] = c;
+    CHECK(gt_ref_parse(&m, "#f0f0f0", &c));
+    m.elem[GTE_BUTTON_TEXT][GT_ST_NORMAL] = c;
+    np = gt_contrast_pairs(&m, p);
+    CHECK(np > 0);
+    for (i = 0; i < np; i++)
+        CHECK(!(p[i].text == GTE_BUTTON_FACE && p[i].ground == GTE_REQUESTER_BACKGROUND));
+    CHECK_INT(gt_contrast_warnings(&m, &first), 0);
+    m.elem[GTE_BUTTON_TEXT][GT_ST_NORMAL] = m.elem[GTE_BUTTON_FACE][GT_ST_NORMAL];  /* the other pairs still warn */
+    CHECK_INT(gt_contrast_warnings(&m, &first), 2);                 /* the text pair and the disabled pair that follows it */
+    np = gt_contrast_pairs(&m, p);
+    CHECK(first >= 0 && np > first);
+    if (first >= 0 && np > first)
+        CHECK_INT(p[first].text, GTE_BUTTON_TEXT);
 }
 
 static void test_gthemes_te8_contrast(void)
@@ -1836,7 +1861,7 @@ static void test_gthemes_te8_contrast(void)
     int first = 0, w, np, i;
     const sd_setting *row;
     te8_load(&m, "nord");
-    CHECK_INT(gt_contrast_warnings(&m, &first), 2);                 /* the shipped nord theme as measured */
+    CHECK_INT(gt_contrast_warnings(&m, &first), 1);                 /* the shipped nord theme as measured */
     gt_contrast_pairs(&m, p);
     CHECK(first >= 0);
     if (first >= 0)
@@ -2153,6 +2178,7 @@ void suite_gthemes(void)
     test_gthemes_nearest_role_pen_ties_low_and_caps_at_depth();
     test_gthemes_te8_budget();
     test_gthemes_te8_contrast();
+    test_gthemes_te8_button_face_equals_requester_gets_no_warning();
     test_gthemes_te8_presets();
     test_gthemes_te8_reset_base();
     test_gthemes_te8_rows();
