@@ -3,6 +3,9 @@
 On OS 3.1 LockPubScreen("Workbench") with the Workbench closed makes Intuition reopen it, and that deadlocks against IPrefs
 closing it for the boot RTG switch. Amarchy gets the Workbench lock only through ipd_lock_wb_screen() (iconpen_dos.c), which
 looks the screen up in the public screen list first. No other amarchy/*.c may name the Workbench in a LockPubScreen call.
+
+S57-FREEZE-2IN9 (evidence: thoughts/shared/research/s57-evidence/freeze-9boot-rig145.md): the same reopen path runs for a
+Workbench node that is listed but still private (LoadWB is opening it), so the helper must also read psn_Flags.
 """
 import pathlib, re, unittest
 
@@ -26,7 +29,11 @@ class WbLockGuard(unittest.TestCase):
         src = (AMARCHY / "iconpen_dos.c").read_text()
         body = src[src.index("struct Screen *ipd_lock_wb_screen(void)"):]
         body = body[:body.index("\n}\n")]
-        self.assertLess(body.index("ipd_wb_screen_in"), body.index('LockPubScreen((STRPTR)"Workbench")'))
+        lock = body.index('LockPubScreen((STRPTR)"Workbench")')
+        self.assertLess(body.index("wb_node_in"), lock)
+        # S57-FREEZE-2IN9: "listed" is not enough, the node must pass Intuition's own test (public) before the call
+        self.assertLess(body.index("ip_wb_lockable"), lock)
+        self.assertIn("psn_Flags", body[:lock])
 
 
 if __name__ == "__main__":

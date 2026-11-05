@@ -88,24 +88,42 @@ static long pen_theme_read(void *ctx, const char *path, char *buf, long cap)
     return got < 0 ? 0 : got;
 }
 
-/* The Workbench screen, found in the public screen list (the caller holds its lock). 0 when the Workbench is closed. */
-struct Screen *ipd_wb_screen_in(struct List *pl)
+/* The Workbench node in the public screen list (the caller holds its lock). 0 when the Workbench is not listed. */
+static struct PubScreenNode *wb_node_in(struct List *pl)
 {
     struct PubScreenNode *n;
     for (n = (struct PubScreenNode *)pl->lh_Head; n->psn_Node.ln_Succ; n = (struct PubScreenNode *)n->psn_Node.ln_Succ)
         if (n->psn_Node.ln_Name && !strcmp(n->psn_Node.ln_Name, "Workbench"))
-            return n->psn_Screen;
+            return n;
     return 0;
 }
 
+/* The Workbench screen, found in the public screen list (the caller holds its lock). 0 when the Workbench is closed.
+ * For readers under the list lock: the screen exists, public or not. It does NOT say LockPubScreen will find it. */
+struct Screen *ipd_wb_screen_in(struct List *pl)
+{
+    struct PubScreenNode *n = wb_node_in(pl);
+    return n ? n->psn_Screen : 0;
+}
+
+#if PSNF_PRIVATE != IP_PSN_PRIVATE
+#error IP_PSN_PRIVATE must equal PSNF_PRIVATE from intuition/screens.h
+#endif
+
 /* BOOT-31-WB-DEADLOCK: LockPubScreen("Workbench") on a closed Workbench makes Intuition reopen it (OS 3.1), which deadlocks
- * against IPrefs closing it for the boot RTG switch. This is the only place that asks for the Workbench lock: it looks the
- * screen up in the list first and calls LockPubScreen only when it is open (the list lock is held, so it cannot close between). */
+ * against IPrefs closing it for the boot RTG switch. This is the only place that asks for the Workbench lock: it reads the
+ * node in the list first and calls LockPubScreen only when Intuition will find it (the list lock is held, so it cannot
+ * change between).
+ * S57-FREEZE-2IN9: "listed with a screen" is not enough. While LoadWB opens the Workbench the node is listed but private;
+ * Intuition counts it as absent and takes the same reopen path, which waits for the opening task while that task waits
+ * for the list lock held here (2 boots in 9 froze). ip_wb_lockable is Intuition's own test; a Workbench that is still
+ * opening reads as "not open yet", and the callers ask again on their next tick. */
 struct Screen *ipd_lock_wb_screen(void)
 {
     struct List *pl = LockPubScreenList();
+    struct PubScreenNode *n = wb_node_in(pl);
     struct Screen *sc = 0;
-    if (ipd_wb_screen_in(pl))
+    if (ip_wb_lockable(n != 0, n && n->psn_Screen, n ? n->psn_Flags : 0))
         sc = LockPubScreen((STRPTR)"Workbench");
     UnlockPubScreenList();
     return sc;
