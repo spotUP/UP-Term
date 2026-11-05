@@ -1,0 +1,35 @@
+diff --git a/wasabid.c b/wasabid.c
+index 00b69f8..da5a20e 100644
+--- a/wasabid.c
++++ b/wasabid.c
+@@ -3729,6 +3729,12 @@ static BOOL ui_mui_group_text(Object *o, int depth, char *out, LONG sz)
+             ui_mui_text((const UBYTE *)v, out, sz);
+         return out[0] != '\0';
+     }
++    /* Selecta's AAText: its text is the label (I1092d). */
++    if (!ui_class_is(o, "Group.mui") && GetAttr(AAT_CONTENTS, o, &v) &&
++        ui_readable_text((void *)v)) {
++        ui_mui_text((const UBYTE *)v, out, sz);
++        return out[0] != '\0';
++    }
+     if (!ui_class_is(o, "Group.mui") ||
+         !GetAttr(MUIA_Group_ChildList, o, (ULONG *)&l) || !ui_readable(l))
+         return FALSE;
+@@ -3851,9 +3857,15 @@ static BOOL ui_mui_walk(Object *o, int depth, struct MuiWalk *mw)
+         if (ui_class_is(o, "Text.mui") &&
+             GetAttr(MUIA_Text_Contents, o, &v))
+             ui_mui_text((const UBYTE *)v, it.label, sizeof(it.label));
+-        if (!mode && !it.label[0] && GetAttr(AAT_CONTENTS, o, &v) &&
+-            ui_readable((void *)v))
++        /* An AAText answers AAT_Contents and has no input mode: whatever
++         * mui3_input_mode guessed from its IDCMP bits, it is a label. Its
++         * text lives inside the object and may start at an odd address,
++         * so ui_readable (which wants even) is not the test. */
++        if (!it.label[0] && GetAttr(AAT_CONTENTS, o, &v) &&
++            ui_readable_text((void *)v)) {
+             ui_mui_text((const UBYTE *)v, it.label, sizeof(it.label));
++            mode = 0;
++        }
+         /* A button that draws its own text (a custom Area subclass, as
+          * Selecta's buttons are) has no Text.mui to read: its tooltip is
+          * the one name it carries. */
