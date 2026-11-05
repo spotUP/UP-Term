@@ -1688,44 +1688,284 @@ static void test_gthemes_te4_modes(void)
     CHECK_INT(shown, 0);
 }
 
-/* ---- TE-8: presets, contrast warning, pen budget ---- */
-static void te8_model(gt_model *m, const char *text)
+/* ---- TE-8: presets, contrast warning, pen budget. Reused: tm_fs/tm_init (memory theme files), te4_open_builtin/te4_row (editor rows),
+ * read_file + THEME_DIR (shipped themes as fixtures); searched gthemes_core.h and this file for existing contrast/budget helpers: none. */
+static void te8_load(gt_model *m, const char *name)
 {
-    gt_model_parse(text, (long)strlen(text), m);
+    char *buf = (char *)malloc(UC_MAX_FILE);
+    long n;
+    char path[96];
+    snprintf(path, sizeof path, THEME_DIR "/%s.theme", name);
+    n = read_file(path, buf, UC_MAX_FILE - 1);
+    CHECK(n > 0);
+    gt_model_parse(buf, n, m);
+    free(buf);
 }
+/* every element in every state resolves to the same colour in both models */
+static int te8_same(const gt_model *a, const gt_model *b)
+{
+    int e, s, same = 1;
+    for (e = 0; e < GTE_COUNT; e++)
+        for (s = 0; s <= GT_ST_DISABLED; s++)
+            if (gt_resolve_rgb(a, e, s) != gt_resolve_rgb(b, e, s))
+                same = 0;
+    return same;
+}
+static void te8_put(tm_fs *fs, const char *dir, const char *name, const char *text)
+{
+    char p[160];
+    snprintf(p, sizeof p, "%s/%s.theme", dir, name);
+    CHECK(tm_write(fs, p, text, (long)strlen(text)));
+}
+static char te8_nord[UC_MAX_FILE], te8_gruv[UC_MAX_FILE];
+static void te8_texts(void)
+{
+    if (!te8_nord[0]) {
+        read_file(THEME_DIR "/nord.theme", te8_nord, (long)sizeof te8_nord - 1);
+        read_file(THEME_DIR "/gruvbox.theme", te8_gruv, (long)sizeof te8_gruv - 1);
+    }
+}
+
 static void test_gthemes_te8_budget(void)
 {
-    gt_model m;
+    gt_model m, g;
     gt_budget b;
     char t[160];
-    int g;
-    tm_fs fs;
-    prefs_fs pfs;
-    tm_init(&fs, &pfs);
-    te8_model(&m, tm_theme);                        /* model A: the shipped nord theme */
+    int grp;
+    te8_load(&m, "nord");
     gt_pen_budget(&m, 3, &b);
     CHECK_INT(b.pens, 8); CHECK_INT(b.held, 8); CHECK_INT(b.free, 0);
     CHECK_INT(b.exact, 0);
-    CHECK_INT(b.fold, b.needing);                     /* depth 3: nothing is free, all fold */
+    CHECK_INT(b.colours, 9); CHECK_INT(b.shared, 27); CHECK_INT(b.needing, 3); CHECK_INT(b.fold, 3);
+    gt_budget_text(&b, t, sizeof t);
+    CHECK_STR(t, "Screen 8 colours: 3 of 9 colours fold to the nearest of 8 pens");
+    for (grp = 0; grp < GTG_COUNT; grp++) {
+        int has = gt_budget_share_text(&b, grp, t, sizeof t);
+        CHECK_INT(has, grp >= 6 && grp <= 9);                       /* only the groups sharing a role pen get a line */
+        if (!has)
+            CHECK_STR(t, "");
+    }
+    gt_budget_share_text(&b, 6, t, sizeof t); CHECK_STR(t, "Shares a pen with Selection");
+    gt_budget_share_text(&b, 7, t, sizeof t); CHECK_STR(t, "Shares a pen with Accent");
+    gt_budget_share_text(&b, 8, t, sizeof t); CHECK_STR(t, "Shares a pen with Accent");
+    gt_budget_share_text(&b, 9, t, sizeof t); CHECK_STR(t, "Shares a pen with Selection");
     gt_pen_budget(&m, 4, &b);
     CHECK_INT(b.pens, 16); CHECK_INT(b.held, 16); CHECK_INT(b.free, 0);
+    CHECK_INT(b.colours, 9); CHECK_INT(b.shared, 27); CHECK_INT(b.needing, 3); CHECK_INT(b.fold, 3);
     gt_pen_budget(&m, 8, &b);
     CHECK_INT(b.pens, 256); CHECK_INT(b.held, 27); CHECK_INT(b.free, 229);
-    CHECK_INT(b.fold, 0);                             /* 36 elements cannot exceed 229 free pens */
+    CHECK_INT(b.fold, 0);
+    CHECK_INT(gt_budget_share_text(&b, 7, t, sizeof t), 0);          /* a deep screen has no share lines */
     gt_pen_budget(&m, 24, &b);
     CHECK_INT(b.exact, 1); CHECK_INT(b.fold, 0);
     gt_budget_text(&b, t, sizeof t);
     CHECK(strstr(t, "Truecolour") != 0);
-    printf("PROBE A d3: ");
-    gt_pen_budget(&m, 3, &b);
-    printf("colours=%d shared=%d needing=%d fold=%d\n", b.colours, b.shared, b.needing, b.fold);
-    gt_budget_text(&b, t, sizeof t); printf("PROBE text: %s\n", t);
-    for (g = 0; g < GTG_COUNT; g++) {
-        if (gt_budget_share_text(&b, g, t, sizeof t)) printf("PROBE share %d: %s\n", g, t);
+    /* second fixed model: jade-horse, whose colours repeat more than nord's (8 distinct, 2 needing a pen) */
+    te8_load(&g, "jade-horse");
+    gt_pen_budget(&g, 3, &b);
+    gt_pen_budget(&g, 3, &b);
+    CHECK_INT(b.pens, 8); CHECK_INT(b.free, 0);
+    CHECK_INT(b.colours, 8); CHECK_INT(b.shared, 28); CHECK_INT(b.needing, 2); CHECK_INT(b.fold, 2);
+    gt_budget_text(&b, t, sizeof t);
+    CHECK_STR(t, "Screen 8 colours: 2 of 8 colours fold to the nearest of 8 pens");
+    for (grp = 0; grp < GTG_COUNT; grp++)
+        CHECK_INT(gt_budget_share_text(&b, grp, t, sizeof t), grp >= 6 && grp <= 9);
+    gt_budget_share_text(&b, 6, t, sizeof t); CHECK_STR(t, "Shares a pen with Muted Text");
+    gt_budget_share_text(&b, 7, t, sizeof t); CHECK_STR(t, "Shares a pen with Muted Text");
+    gt_budget_share_text(&b, 8, t, sizeof t); CHECK_STR(t, "Shares a pen with Accent");
+    gt_budget_share_text(&b, 9, t, sizeof t); CHECK_STR(t, "Shares a pen with Accent");
+    gt_pen_budget(&g, 8, &b);
+    CHECK_INT(b.held, 27); CHECK_INT(b.free, 229);
+    CHECK_INT(b.colours, 8); CHECK_INT(b.shared, 28); CHECK_INT(b.needing, 2); CHECK_INT(b.fold, 0);
+}
+
+/* nord as shipped measures 2 warnings (Inactive title text 142 under 220, Button Face on the requester ground 100 under 150: the
+ * runtime pushes those two off the surface, the raw colours are what the editor measures). te8_clean sets both pairs to black/white
+ * so a test starts from a model with none. */
+static void te8_clean(gt_model *m)
+{
+    gt_ref w, k;
+    CHECK(gt_ref_parse(m, "#ffffff", &w));
+    CHECK(gt_ref_parse(m, "#000000", &k));
+    m->elem[GTE_TITLE_TEXT_INACTIVE][GT_ST_NORMAL] = w;
+    m->elem[GTE_TITLE_BAR_INACTIVE][GT_ST_NORMAL] = k;
+    m->elem[GTE_REQUESTER_BACKGROUND][GT_ST_NORMAL] = k;
+}
+
+static void test_gthemes_te8_contrast(void)
+{
+    gt_model m;
+    gt_cpair p[GT_CPAIRS];
+    char buf[160];
+    gt_ref lo, bg;
+    int first = 0, w, np, i;
+    const sd_setting *row;
+    te8_load(&m, "nord");
+    CHECK_INT(gt_contrast_warnings(&m, &first), 2);                 /* the shipped nord theme as measured */
+    gt_contrast_pairs(&m, p);
+    CHECK(first >= 0);
+    if (first >= 0)
+        CHECK_INT(p[first].text, GTE_TITLE_TEXT_INACTIVE);
+    te8_clean(&m);
+    CHECK_INT(gt_contrast_warnings(&m, &first), 0);                 /* above every floor: no warning */
+    CHECK_INT(first, -1);
+    CHECK_INT(gt_contrast_elem_warns(&m, GTE_TITLE_TEXT), 0);
+    np = gt_contrast_pairs(&m, p);
+    CHECK(np > 0);
+    for (i = 0; i < np; i++)
+        CHECK_INT(p[i].below, 0);
+    CHECK(gt_ref_parse(&m, "#303030", &bg));
+    CHECK(gt_ref_parse(&m, "#383838", &lo));
+    m.elem[GTE_TITLE_BAR][GT_ST_NORMAL] = bg;                       /* text barely off its ground: under GT_FLOOR_TEXT */
+    m.elem[GTE_TITLE_TEXT][GT_ST_NORMAL] = lo;
+    w = gt_contrast_warnings(&m, &first);
+    CHECK_INT(w, 1);
+    gt_contrast_pairs(&m, p);
+    CHECK(first >= 0);
+    if (first >= 0) {
+        CHECK_INT(p[first].text, GTE_TITLE_TEXT);
+        CHECK_INT(p[first].ground, GTE_TITLE_BAR);
+        CHECK_INT(p[first].below, 1);
+        CHECK(p[first].contrast < p[first].floor);
     }
-    gt_pen_budget(&m, 4, &b);
-    printf("PROBE A d4: colours=%d shared=%d needing=%d fold=%d\n", b.colours, b.shared, b.needing, b.fold);
+    CHECK_INT(gt_contrast_elem_warns(&m, GTE_TITLE_TEXT), 1);
+    CHECK_INT(gt_contrast_elem_warns(&m, GTE_TITLE_TEXT_INACTIVE), 0);
+    CHECK_INT(gt_contrast_elem_warns(&m, GTE_MENU_TEXT), 0);
+    /* the visible rows: the summary and the Elements row suffix */
+    te4_open_builtin();
+    gt_ed.m = m;
+    gt_ed.advanced = 1;
+    row = te4_row("Contrast");
+    CHECK(row != 0);
+    if (row) {
+        gte_row_text(row, buf, sizeof buf);
+        CHECK_STR(buf, "1 warning: Title Text on Title Bar too faint");
+    }
+    {
+        int faint = 0, good = 0;
+        for (i = 0; i < gte_nrows(); i++) {
+            const sd_setting *s = gte_row(SDI_COUNT + i);
+            if (s->kind == SD_ELEMENT && s->aux2 == GT_ST_NORMAL && gte_row_visible(s)) {
+                gte_row_text(s, buf, sizeof buf);
+                if (s->aux == GTE_TITLE_TEXT) { faint++; CHECK(strstr(buf, "(low contrast)") != 0); }
+                if (s->aux == GTE_MENU_TEXT) { good++; CHECK(strstr(buf, "(low contrast)") == 0); }
+            }
+        }
+        CHECK_INT(faint, 1);
+        CHECK_INT(good, 1);
+    }
+    /* the same pair above its floor: no warning, no suffix */
+    CHECK(gt_ref_parse(&m, "#f0f0f0", &lo));
+    m.elem[GTE_TITLE_TEXT][GT_ST_NORMAL] = lo;
+    CHECK_INT(gt_contrast_warnings(&m, &first), 0);
+    gt_ed.m = m;
+    row = te4_row("Contrast");
+    if (row) {
+        gte_row_text(row, buf, sizeof buf);
+        CHECK_STR(buf, "0 warnings");
+    }
+}
+
+static void test_gthemes_te8_presets(void)
+{
+    tm_fs fs;
+    prefs_fs pfs;
+    gt_model got, want;
+    gtheme bt;
+    char why[96];
+    int ok;
+    tm_init(&fs, &pfs);
+    te8_texts();
+    CHECK_INT(gt_preset_model(tm_read, &fs, "Probe", &got), 0);       /* no file, not the built-in name */
+    ok = gt_preset_model(tm_read, &fs, GT_DEFAULT, &got);             /* neither file: the built-in */
+    CHECK_INT(ok, 1);
+    memset(&bt, 0, sizeof bt);
+    gt_builtin(&bt);
+    gt_model_from_v1(&bt, &want);
+    CHECK(te8_same(&got, &want));
+    CHECK_STR(got.name, GT_DEFAULT);
+    te8_put(&fs, GT_SHIPPED_DIR, GT_DEFAULT, te8_nord);               /* a shipped file wins over the built-in */
+    CHECK_INT(gt_preset_model(tm_read, &fs, GT_DEFAULT, &got), 1);
+    gt_model_parse(te8_nord, (long)strlen(te8_nord), &want);
+    CHECK(te8_same(&got, &want));
+    te8_put(&fs, GT_USER_DIR, GT_DEFAULT, te8_gruv);                  /* the user file wins over the shipped one */
+    CHECK_INT(gt_preset_model(tm_read, &fs, GT_DEFAULT, &got), 1);
+    gt_model_parse(te8_gruv, (long)strlen(te8_gruv), &want);
+    CHECK(te8_same(&got, &want));
+    /* Duplicate Theme starts from the preset */
+    te8_put(&fs, GT_SHIPPED_DIR, "Probe", te8_nord);
+    CHECK(gt_duplicate(&pfs, tm_read, &fs, "Probe", "Probe Copy", why, sizeof why));
+    CHECK_INT(gt_preset_model(tm_read, &fs, "Probe Copy", &got), 1);
+    gt_model_parse(te8_nord, (long)strlen(te8_nord), &want);
+    CHECK(te8_same(&got, &want));
+    CHECK_STR(got.base, "Probe");
+    CHECK(tm_exists(&fs, GT_USER_DIR "/Probe Copy.theme"));
     tm_free(&fs);
+}
+
+static void test_gthemes_te8_reset_base(void)
+{
+    tm_fs fs;
+    prefs_fs pfs;
+    gt_model base, mine;
+    unsigned long e0;
+    tm_init(&fs, &pfs);
+    te8_texts();
+    te8_put(&fs, GT_SHIPPED_DIR, "nord", te8_nord);
+    gt_model_parse(te8_nord, (long)strlen(te8_nord), &base);
+    gt_model_parse(te8_gruv, (long)strlen(te8_gruv), &mine);        /* a different theme, based on nord */
+    strcpy(mine.base, "nord");
+    strcpy(mine.name, "Mine");
+    gte_open(&mine, "Mine");
+    CHECK(!te8_same(&gt_ed.m, &base));
+    e0 = gte_edits;
+    CHECK_INT(gte_reset_to_base(tm_read, &fs), 1);
+    CHECK(te8_same(&gt_ed.m, &base));                               /* the base theme's values are back */
+    CHECK_STR(gt_ed.m.name, "Mine");                                /* it keeps its own name and base */
+    CHECK_STR(gt_ed.m.base, "nord");
+    CHECK(gte_edits > e0);                                          /* and goes live like an edit */
+    CHECK(gte_dirty());
+    gte_open(&gt_ed.m, "Mine");                                     /* an unedited copy of its base: unchanged */
+    {
+        gt_model before = gt_ed.m;
+        CHECK_INT(gte_reset_to_base(tm_read, &fs), 1);
+        CHECK(te8_same(&gt_ed.m, &before));
+    }
+    strcpy(gt_ed.m.base, "gone");                                   /* a base that no longer exists: refused, buffer kept */
+    CHECK_INT(gte_reset_to_base(tm_read, &fs), 0);
+    CHECK(te8_same(&gt_ed.m, &base));
+    gt_ed.m.base[0] = 0;
+    CHECK_INT(gte_reset_to_base(tm_read, &fs), 0);                  /* no base named */
+    tm_free(&fs);
+}
+
+/* the rows the budget adds: counted from the builder (gte_nrows) and by visibility on a shallow and a deep screen */
+static void test_gthemes_te8_rows(void)
+{
+    int i, share_all = 0, share_vis, total;
+    te4_open_builtin();
+    total = gte_nrows();
+    for (i = 0; i < total; i++) {
+        const sd_setting *s = gte_row(SDI_COUNT + i);
+        if (s->kind == SD_INFO && !strncmp(s->label, "Pen Share ", 10)) share_all++;
+    }
+    CHECK_INT(share_all, GTG_COUNT);                                   /* one Pen Share row per group, all built */
+    CHECK_INT(total, 310);                                             /* the true row count with the TE-8 rows, counted from the builder */
+    gt_ed.depth = 3;
+    share_vis = 0;
+    for (i = 0; i < total; i++) {
+        const sd_setting *s = gte_row(SDI_COUNT + i);
+        if (s->kind == SD_INFO && !strncmp(s->label, "Pen Share ", 10) && gte_row_visible(s)) share_vis++;
+    }
+    CHECK_INT(share_vis, 4);                                           /* nord at depth 3: groups 6 to 9 */
+    gt_ed.depth = 8;
+    share_vis = 0;
+    for (i = 0; i < total; i++) {
+        const sd_setting *s = gte_row(SDI_COUNT + i);
+        if (s->kind == SD_INFO && !strncmp(s->label, "Pen Share ", 10) && gte_row_visible(s)) share_vis++;
+    }
+    CHECK_INT(share_vis, 0);
+    gt_ed.depth = 0;
 }
 
 static void test_gthemes_te3_import_export_delete(void)
@@ -1876,6 +2116,10 @@ void suite_gthemes(void)
     test_gthemes_te4_modes();
     test_gthemes_te3_import_export_delete();
     test_gthemes_te8_budget();
+    test_gthemes_te8_contrast();
+    test_gthemes_te8_presets();
+    test_gthemes_te8_reset_base();
+    test_gthemes_te8_rows();
     test_gthemes_parse_clears_model();
     test_gthemes_te2_baseline();
     test_gthemes_te2_overrides();
