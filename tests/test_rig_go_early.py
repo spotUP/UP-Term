@@ -30,7 +30,7 @@ class GoHasNoShadowCopy(unittest.TestCase):
 
     def test_handler_mount_follows_the_shadow_pass(self):
         s = rig.SHADOWS_UP_SCRIPT
-        self.assertLess(s.rindex("CLONE"), s.index("C:Mount XCON:"))
+        self.assertLess(s.rindex("CLONE"), s.index("C:Mount >NIL: XCON:"))
         self.assertNotIn("Mount XCON", rig.GO)
 
     def test_boot_ready_needs_the_shadow_pass(self):
