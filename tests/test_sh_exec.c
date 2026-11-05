@@ -2571,6 +2571,16 @@ static void execute_set_unset_get_are_amiga_locals(void)
     CHECK_STR(run("set -- a b; echo $#"), "2\n");
 }
 
+/* S7b-1: Set v hi / Set v=hi make $v visible to Echo; Echo "rc=$RC" keeps its '=' */
+static void execute_set_forms_and_equals_kept(void)
+{
+    int inc = 0;
+    run("");
+    amiscr_put("RAM:e1", "Set v hi\necho $v\nSet w=yo\necho \"q:$w\"\necho u:$w\necho \"rc=$RC\"\necho a=b\nSet z=a b\necho $z\n");
+    sh_run_text(&sh, "execute RAM:e1", &inc);
+    CHECK_STR(slot(OUT)->data, "hi\nq:yo\nu:yo\nrc=0\na=b\na b\n");
+}
+
 /* S3: If / Else / EndIf: textual skipping with a depth count, no If stack. */
 static void execute_if_else_endif(void)
 {
@@ -2809,6 +2819,7 @@ void suite_sh_exec(void)
     execute_quit_sets_rc();
     execute_failat_aborts();
     execute_set_unset_get_are_amiga_locals();
+    execute_set_forms_and_equals_kept();
     execute_if_else_endif();
     execute_if_condition_flags();
     execute_rc_expands_in_scripts();
