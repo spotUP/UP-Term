@@ -33,6 +33,7 @@ SHIPPED = 'UP-Term:Amarchy/Themes'
 PREFS = ('ENV:Amarchy/prefs', 'ENVARC:Amarchy/prefs')
 APPLY_DONE = 'AMARCHY_WBCLOSES'   # lf_gt_select (amarchy/leaf.c) writes it once gt_dos_select, desk_dos_apply included, returned
 APPLY_SECS = 60
+KEEP_SECS = 12   # the FP-1 requester reverts the apply after 15 s; click Keep within this
 
 
 def menu_state():
@@ -306,6 +307,7 @@ def one_select(n, allowed):
     dopus_pens_reset()
     c.run('Delete >NIL: ENV:%s QUIET' % APPLY_DONE)
     open_menu()
+    picked_at = kept = False
     try:
         st, open_wait = wait_stable(OPEN_SECS, what='open menu')
         for _ in range(style_downs()):
@@ -318,16 +320,23 @@ def one_select(n, allowed):
             st, _ = step(key, '%s in theme list' % word)
         rows_before, sel_before = env('AMARCHY_ROWS').split('|'), env('AMARCHY_SEL')
         ami.key(g.RETURN)
+        picked_at = True
+        # The apply hides the menu window (gui_hide) and blocks on the FP-1 requester, so the menu state cannot settle
+        # before Keep is answered: answer it first, inside the 15 s window (THEME-SAVE-RIG-SELECTS-FAIL).
+        kept = keep_requester(KEEP_SECS)
         wait_stable(STEP_SECS, differ_from=st, what='recoloured theme list')
     except TimeoutError as e:
+        kept = (keep_requester(2) if picked_at else False) or kept
+        note = ' (Keep answered)' if kept else '' if not picked_at else ' (FP-1 requester not answered: the apply was left to revert)'
         if not g.where(g.TITLE)[1]:
-            return False, 'the menu closed on the pick (it must stay open and recolour)', 0.0
+            return False, 'no menu window after the pick%s: %s' % (note, e), 0.0
         g.close_menu()
-        return False, str(e), 0.0
+        return False, str(e) + note, 0.0
     if not wait_apply_done():
         g.close_menu()
+        keep_requester(2)
         return False, 'the theme apply did not finish within %d s (%s never written)' % (APPLY_SECS, APPLY_DONE), open_wait
-    keep_requester()
+    keep_requester(2)
     if not g.where(g.TITLE)[1]:
         return False, 'the menu closed on the pick (it must stay open and recolour)', open_wait
     after = {}
