@@ -91,3 +91,4 @@ to RAM:palette.prefs, `Copy RAM:palette.prefs ENV:Sys/palette.prefs`, 30 s wait,
 | 2026-11-05 | S32-GREEN-LINE-96 | 124 | b193312c | PASS | no green; row 9 7aa2f7 x0..369 only; s57-evidence/rig124-release-reads-2.md |
 | 2026-11-05 | S32-SCROLLBAR-PROP | 124 | b193312c | PASS | knob 7aa2f7 vs track 1a1b26; s57-evidence/rig124-release-reads-2.md |
 | 2026-11-05 | rig 127 (OS 3.2, 060 max) | s57-locale-flat build | Locale prefs, flat on, palette-flat-pen8 | Country selected row accent 6688bb visible; side borders still accent x0..2 (open); iconify gadget glyph, no solid block | vtcon-c1 agent |
+| 2026-11-05 | rig 127 (OS 3.2, 060 max) | s57-locale-flat 2e28bdd5 + dfill diagnostic | Locale prefs, flat on, palette-flat-pen8, window box 88,54 552x192 | sides x90..91 / x636..637 and bottom y244 = pen_back; x88..89, x638..639, y245 = 2 px accent ring; shits=4; earlier "accent x0..2" read was off-window; s57-evidence/locale-side-fill.md | vtcon-c1 agent |
