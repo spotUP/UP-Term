@@ -95,6 +95,15 @@ int lf_setting_text(const amconf_io *io, const sd_setting *s, char *out, int n);
  * of palette entry `entry` (text 0) or the typed hex (entry SD_PICK_CUSTOM); the palette row sets entry
  * `entry` to the typed hex (text "" puts it back to the built-in). Hex is RRGGBB with an optional "#"; bad
  * input is LF_SET_INVALID with the files untouched. Both files are written like lf_setting_set. */
+/* TE-4.3: leaving the Theme Editor with unsaved changes. lf_leave_needed: 1 when the buffer is dirty and the menu moves from a node
+ * inside "settings.theme" to one outside it (`to` may be "" when the menu closes). lf_leave_decide reads the answer to the
+ * "Save, Discard or Cancel" prompt by its first letter, case-blind; anything else is Cancel, so a stray key never loses edits. */
+enum { LF_LEAVE_CANCEL, LF_LEAVE_SAVE, LF_LEAVE_DISCARD };
+int lf_leave_needed(const char *from, const char *to);
+int lf_leave_decide(const char *answer);
+struct lf_ui;
+/* 1 when the menu may leave: nothing to ask, Save worked, or Discard; 0 on Cancel or a failed Save (the menu stays, ui->refused says why) */
+int lf_leave_editor(const char *from, const char *to, const struct lf_ui *ui);
 int lf_setting_set_colour(const amconf_io *io, const sd_setting *s, int entry, const char *text, int *failed);
 /* The "RRGGBB" palette entry n has now (the file's, else xterm's built-in), and the current hex of row s
  * (the swatch's own, or the palette entry `entry`) for the Custom prompt's prefill. */

@@ -397,8 +397,9 @@ static int menu_levels(const char *start)
             if (act == MN_BACK_CLEAR_FILTER) {
                 filter[0] = 0;
             } else if (act == MN_BACK_UP && mn_parent(node, up, sizeof up)) {
-                strcpy(node, up);
-            } else
+                if (lf_leave_editor(node, up, &leaf_ui))
+                    strcpy(node, up);
+            } else if (lf_leave_editor(node, "", &leaf_ui))
                 return 0;
             continue;
         }
@@ -426,9 +427,10 @@ static int menu_levels(const char *start)
                     continue;               /* a held Backspace repeating past the empty query */
                 if (act == MN_BACK_DROP_CHAR)
                     filter[l - 1] = 0;
-                else if (act == MN_BACK_UP && mn_parent(node, up, sizeof up))
-                    strcpy(node, up);
-                else
+                else if (act == MN_BACK_UP && mn_parent(node, up, sizeof up)) {
+                    if (lf_leave_editor(node, up, &leaf_ui))
+                        strcpy(node, up);
+                } else if (lf_leave_editor(node, "", &leaf_ui))
                     return 0;               /* root, no filter: closes as Escape */
             } else if (l < (int)sizeof filter - 1) {
                 filter[l] = (char)i;

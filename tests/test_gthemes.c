@@ -1410,6 +1410,30 @@ static void test_gthemes_te4_rows(void)
 
 /* TE-4.2: swatch, swatch-reference and element rows open the colour picker (palette entry or Custom) and step/set through the
  * lf_setting_* handlers, writing the edit buffer. TE-4 item 2: Rename/Remove Swatch look the swatch up by name. */
+/* TE-4.3: the decision to ask when the menu leaves the editor with unsaved changes, and how the answer reads. */
+static void test_gthemes_te4_leave(void)
+{
+    te4_open_builtin();
+    CHECK(!gte_dirty());
+    CHECK_INT(lf_leave_needed("settings.theme", ""), 0);          /* clean buffer: never asks */
+    gte_edits = 0;
+    gt_ed.m.base[0] = 'X';                                         /* any edit makes the buffer differ from the file */
+    CHECK(gte_dirty());
+    CHECK_INT(lf_leave_needed("settings.theme", "settings"), 1);   /* up out of the editor */
+    CHECK_INT(lf_leave_needed("settings.theme", ""), 1);           /* the menu closes */
+    CHECK_INT(lf_leave_needed("settings.theme.swatches", "settings.theme"), 0);   /* still inside */
+    CHECK_INT(lf_leave_needed("settings.themex", "settings"), 0);  /* a sibling id is not the editor */
+    CHECK_INT(lf_leave_needed("settings", ""), 0);
+    CHECK_INT(lf_leave_decide("Save"), LF_LEAVE_SAVE);
+    CHECK_INT(lf_leave_decide(" d"), LF_LEAVE_DISCARD);
+    CHECK_INT(lf_leave_decide("Cancel"), LF_LEAVE_CANCEL);
+    CHECK_INT(lf_leave_decide(""), LF_LEAVE_CANCEL);
+    CHECK_INT(lf_leave_decide("x"), LF_LEAVE_CANCEL);
+    CHECK_INT(lf_leave_decide(0), LF_LEAVE_CANCEL);
+    gte_revert();                                                  /* Discard is this call: the prompt no longer fires */
+    CHECK_INT(lf_leave_needed("settings.theme", ""), 0);
+}
+
 static void test_gthemes_te4_pickers(void)
 {
     const sd_setting *sw = 0, *ref = 0, *el = 0;
@@ -1589,6 +1613,7 @@ void suite_gthemes(void)
     test_gthemes_te3_edit_applies();
     test_gthemes_te4_rows();
     test_gthemes_te4_pickers();
+    test_gthemes_te4_leave();
     test_gthemes_te4_modes();
     test_gthemes_te3_import_export_delete();
     test_gthemes_parse_clears_model();

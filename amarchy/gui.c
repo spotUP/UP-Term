@@ -777,10 +777,24 @@ static void scroll_lines(gui *g, int d)
 
 /* ---- events ------------------------------------------------------------------------------------------- */
 
+static int gui_ask_value(void *ctx, const char *label, const char *usage, char *out, int n);
+static int gui_run_job(void *ctx, const char *line, const char *title);
+static void gui_refused(void *ctx, const char *label, long rc, const char *answer);
+
 static void go_up(gui *g)
 {
     char up[KM_ID * 2];
-    if (mn_parent(g->node, up, sizeof up)) {
+    lf_ui ui;
+    int has_up = mn_parent(g->node, up, sizeof up);
+    ui.ask_value = gui_ask_value;
+    ui.refused = gui_refused;
+    ui.ctx = g;
+    ui.self_in_mru = 0;
+    ui.win = g->win;
+    ui.run_job = gui_run_job;
+    if (!lf_leave_editor(g->node, has_up ? up : "", &ui))
+        return;                          /* unsaved theme changes: Cancel, or a Save that failed */
+    if (has_up) {
         strcpy(g->node, up);
         g->filter[0] = 0;
         list_rebuild(g);

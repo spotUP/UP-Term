@@ -938,3 +938,27 @@ void lf_setting_chips(const amconf_io *io, const mn_item *it, int n, long *out)
     for (i = 0; i < n; i++)
         out[i] = lf_row_chip(io, &it[i]);
 }
+
+/* TE-4.3: the editor lives under "settings.theme" (dist/keymap); a node is inside it when it is that id or one of its children */
+static int in_theme_editor(const char *node)
+{
+    return node && (strcmp(node, "settings.theme") == 0 || strncmp(node, "settings.theme.", 15) == 0);
+}
+
+int lf_leave_needed(const char *from, const char *to)
+{
+    return gte_dirty() && in_theme_editor(from) && !in_theme_editor(to);
+}
+
+int lf_leave_decide(const char *answer)
+{
+    if (!answer)
+        return LF_LEAVE_CANCEL;
+    while (*answer == ' ')
+        answer++;
+    if (*answer == 's' || *answer == 'S')
+        return LF_LEAVE_SAVE;
+    if (*answer == 'd' || *answer == 'D')
+        return LF_LEAVE_DISCARD;
+    return LF_LEAVE_CANCEL;
+}

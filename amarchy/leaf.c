@@ -252,6 +252,33 @@ static int list_enter(const mn_item *it, const sd_setting *s, const lf_ui *ui)
     return 0;
 }
 
+/* TE-4.3: the menu leaves the Theme Editor with unsaved changes: ask Save, Discard or Cancel through the style's value prompt (the
+ * same ui->ask_value every other menu question uses). Save writes the theme (gt_dos_save); Discard reloads the saved model. */
+int lf_leave_editor(const char *from, const char *to, const lf_ui *ui)
+{
+    char ans[16], why[160];
+    why[0] = 0;
+    if (!lf_leave_needed(from, to))
+        return 1;
+    strcpy(ans, "Save");
+    if (!ui || !ui->ask_value || !ui->ask_value(ui->ctx, "Unsaved theme changes", "Save, Discard or Cancel", ans, sizeof ans))
+        return 0;
+    switch (lf_leave_decide(ans)) {
+    case LF_LEAVE_SAVE:
+        if (gt_dos_save(gt_ed.name, &gt_ed.m, why, sizeof why)) {
+            gte_saved();
+            return 1;
+        }
+        if (ui->refused)
+            ui->refused(ui->ctx, "Save", -1L, why);
+        return 0;
+    case LF_LEAVE_DISCARD:
+        gte_revert();
+        return 1;
+    }
+    return 0;
+}
+
 /* TE-4: the Theme Editor rows. Text rows ask for a value; cycles step; action rows run the TE-3 file operations on the edit buffer. */
 static int theme_action(const sd_setting *s, const char *label, const lf_ui *ui)
 {
@@ -261,6 +288,8 @@ static int theme_action(const sd_setting *s, const char *label, const lf_ui *ui)
     name[0] = 0;
     switch (s->aux) {
     case GTA_OPEN:
+        if (!lf_leave_editor("settings.theme", "", ui))     /* opening another theme replaces the buffer */
+            return 0;
         gt_dos_current(name, sizeof name);
         if (!ui->ask_value || !ui->ask_value(ui->ctx, label, "theme name", name, sizeof name))
             return 0;
@@ -318,6 +347,8 @@ static int theme_action(const sd_setting *s, const char *label, const lf_ui *ui)
         ok = gt_ed.open && gt_dos_delete_user(gt_ed.name, why, sizeof why);
         break;
     case GTA_RESET_BASE:
+        if (!lf_leave_editor("settings.theme", "", ui))
+            return 0;
         if (gt_ed.open && gt_ed.m.base[0])
             ok = gt_dos_edit_open(gt_ed.m.base);
         break;
