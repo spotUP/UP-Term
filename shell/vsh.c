@@ -2496,6 +2496,15 @@ static int os_getenv(void *os, const char *name, char *buf, long max)
     return GetVar((STRPTR)name, (STRPTR)buf, max, GVF_GLOBAL_ONLY) >= 0;
 }
 
+/* SetEnv / UnsetEnv: the global variable table (ENV:), the one os_getenv reads */
+static int os_setenv(void *os, const char *name, const char *value)
+{
+    (void)os;
+    if (!value)
+        return DeleteVar((STRPTR)name, GVF_GLOBAL_ONLY) != 0;
+    return SetVar((STRPTR)name, (STRPTR)value, -1, GVF_GLOBAL_ONLY) != 0;
+}
+
 static long os_hist(void *os, int op, long arg, char *buf, long max)
 {
     struct FileHandle *fh = (struct FileHandle *)BADDR(Input());
@@ -2674,6 +2683,7 @@ static int vsh_main(int argc, char **argv)
     sh.os.read_line = os_read_line;
     sh.os.hist = os_hist;
     sh.os.getenv = os_getenv;
+    sh.os.setenv = os_setenv;
     sh.os.chdir = os_chdir;
     sh.os.cwd = os_cwd;
     sh.os.realpath = os_realpath;
