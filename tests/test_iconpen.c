@@ -599,6 +599,184 @@ static void test_pub_lockable_generic_rule(void)
     CHECK_INT(ip_pub_lockable(1, 1, 0), 1);                /* listed, public */
 }
 
+/* ---- TE-10.3: holder table and diff ---- */
+static void snap_set(ip_snap *s, int i, const char *name, const void *scr, unsigned flags, int depth)
+{
+    snprintf(s->e[i].name, sizeof s->e[i].name, "%s", name);
+    s->e[i].screen = scr; s->e[i].flags = flags; s->e[i].depth = depth; s->e[i].ehb = 0;
+    if (s->count <= i) s->count = i + 1;
+}
+
+static int diff_kind(const ip_diff *d, const char *name)
+{
+    int i;
+    for (i = 0; i < d->count; i++)
+        if (!strcmp(d->e[i].name, name)) return d->e[i].kind;
+    return -1;
+}
+
+/* a table with Workbench plus "Pub" and "Other", the Pub slot holding 16 pens through the fake ops */
+static void table_with_pens(ip_screens *t, fake *f, ip_ops *o)
+{
+    uint8_t rgb[IP_PENS][3];
+    memset(rgb, 0, sizeof rgb);
+    memset(f, 0, sizeof *f);
+    memset(o, 0, sizeof *o);
+    o->obtain = f_obtain; o->release = f_release; o->ctx = f;
+    ip_screens_init(t);
+    ip_screens_add(t, "Pub");
+    ip_screens_add(t, "Other");
+    ip_shared_set(&t->slot[1].sh, IP_OWNER_MAIN, 1);
+    ip_holder_obtain(&t->slot[1].sh.h, o, (const void *)0x100, 6, rgb);
+}
+
+static void test_screens_table(void)
+{
+    ip_screens t;
+    char nm[IP_PSN_NAME + 8];
+    int i;
+    ip_screens_init(&t);
+    CHECK_INT(t.count, 1);
+    CHECK_STR(t.slot[0].name, "Workbench");
+    CHECK_INT(ip_screens_find(&t, "workbench"), 0);              /* names compare case-insensitively */
+    CHECK_INT(ip_screens_add(&t, "Pub"), 1);
+    CHECK_INT(ip_screens_add(&t, "PUB"), 1);                     /* same name: the existing slot */
+    CHECK_INT(t.count, 2);
+    CHECK_INT(ip_screens_find(&t, "pub"), 1);
+    CHECK_INT(ip_screens_find(&t, "Nope"), -1);
+    CHECK_INT(ip_screens_drop(&t, "Workbench"), -1);             /* slot 0 refused */
+    CHECK_INT(t.count, 2);
+    CHECK_INT(ip_screens_drop(&t, "Pub"), 1);
+    CHECK_INT(ip_screens_drop(&t, "Pub"), 0);
+    CHECK_INT(t.count, 1);
+    /* fill to the limit: 1 + 32 rules fit, and a full table refuses without changing */
+    for (i = 1; i < IP_SCREENS; i++) { snprintf(nm, sizeof nm, "S%d", i); CHECK_INT(ip_screens_add(&t, nm), i); }
+    CHECK_INT(t.count, IP_SCREENS);
+    CHECK(IP_SCREENS >= 1 + 32);
+    {
+        ip_screens before = t;
+        CHECK_INT(ip_screens_add(&t, "OneTooMany"), -1);
+        CHECK(memcmp(&before, &t, sizeof t) == 0);
+        CHECK_INT(ip_screens_find(&t, "OneTooMany"), -1);
+    }
+    memset(nm, 'x', 139); nm[139] = 0;
+    ip_screens_init(&t);
+    CHECK_INT(ip_screens_add(&t, nm), 1);                        /* a 139-character name fits */
+    memset(nm, 'y', 140); nm[140] = 0;
+    CHECK_INT(ip_screens_add(&t, nm), -1);
+}
+
+static void test_screens_diff_and_apply(void)
+{
+    ip_screens t;
+    fake f;
+    ip_ops o;
+    ip_snap a, b;
+    ip_diff d;
+    ip_screens before;
+
+    /* T6 identical snapshots: only SAME */
+    memset(&a, 0, sizeof a); memset(&b, 0, sizeof b);
+    snap_set(&a, 0, "Workbench", (void *)0x1, 0, 6); snap_set(&a, 1, "Pub", (void *)0x100, 0, 6);
+    b = a;
+    ip_screens_diff(&a, &b, &d);
+    CHECK_INT(d.count, 2);
+    CHECK_INT(diff_kind(&d, "Workbench"), IP_DIFF_SAME);
+    CHECK_INT(diff_kind(&d, "Pub"), IP_DIFF_SAME);
+
+    /* the four kinds, depth change, case-insensitive match */
+    snap_set(&b, 1, "PUB", (void *)0x100, 0, 4);
+    snap_set(&b, 2, "New", (void *)0x200, 0, 6);
+    b.e[0] = b.e[2]; b.count = 2; b.e[0].screen = (void *)0x1; snprintf(b.e[0].name, sizeof b.e[0].name, "Workbench");
+    snap_set(&b, 1, "PUB", (void *)0x100, 0, 4);
+    ip_screens_diff(&a, &b, &d);
+    CHECK_INT(diff_kind(&d, "PUB"), IP_DIFF_REOPENED);           /* depth changed */
+    snap_set(&b, 1, "New", (void *)0x200, 0, 6);
+    ip_screens_diff(&a, &b, &d);
+    CHECK_INT(diff_kind(&d, "New"), IP_DIFF_APPEARED);
+    CHECK_INT(diff_kind(&d, "Pub"), IP_DIFF_GONE);
+    CHECK_INT(diff_kind(&d, "Workbench"), IP_DIFF_SAME);
+
+    /* T1 Workbench is slot 0 and no diff changes it, also when Workbench is GONE or REOPENED */
+    table_with_pens(&t, &f, &o);
+    ip_shared_set(&t.slot[0].sh, IP_OWNER_FLAT | IP_OWNER_ICONS, 1);
+    t.slot[0].sh.epoch = 7;
+    before = t;
+    memset(&b, 0, sizeof b);                                     /* new snapshot: nothing, Workbench GONE */
+    ip_screens_diff(&a, &b, &d);
+    CHECK_INT(diff_kind(&d, "Workbench"), IP_DIFF_GONE);
+    ip_screens_apply(&t, &d);
+    CHECK_STR(t.slot[0].name, "Workbench");
+    CHECK(memcmp(&t.slot[0], &before.slot[0], sizeof t.slot[0]) == 0);
+    CHECK_INT(ip_shared_refs(&t.slot[0].sh), 2);
+    snap_set(&b, 0, "Workbench", (void *)0x999, 0, 8);           /* Workbench REOPENED */
+    ip_screens_diff(&a, &b, &d);
+    CHECK_INT(diff_kind(&d, "Workbench"), IP_DIFF_REOPENED);
+    ip_screens_apply(&t, &d);
+    CHECK(memcmp(&t.slot[0], &before.slot[0], sizeof t.slot[0]) == 0);
+
+    /* T2 GONE: the slot forgets its pens, no release call */
+    table_with_pens(&t, &f, &o);
+    CHECK_INT(t.slot[1].sh.h.held, 16);
+    memset(&a, 0, sizeof a); memset(&b, 0, sizeof b);
+    snap_set(&a, 0, "Pub", (void *)0x100, 0, 6); snap_set(&a, 1, "Other", (void *)0x300, 0, 6);
+    snap_set(&b, 0, "Other", (void *)0x300, 0, 6);
+    ip_screens_diff(&a, &b, &d);
+    CHECK_INT(diff_kind(&d, "Pub"), IP_DIFF_GONE);
+    f.releases = 0;
+    CHECK_INT(ip_screens_apply(&t, &d), 1);
+    CHECK_INT(t.slot[1].sh.h.held, 0);
+    CHECK_INT(f.releases, 0);
+    CHECK_INT(ip_screens_find(&t, "Pub"), 1);                    /* the slot stays, for a later reopen */
+
+    /* T3 REOPENED: pointer changed, then depth changed; only that slot's epoch moves */
+    {
+        int pass;
+        for (pass = 0; pass < 2; pass++) {
+            table_with_pens(&t, &f, &o);
+            t.slot[0].sh.epoch = 3; t.slot[2].epoch = 5;
+            memset(&a, 0, sizeof a); memset(&b, 0, sizeof b);
+            snap_set(&a, 0, "Pub", (void *)0x100, 0, 6); snap_set(&a, 1, "Other", (void *)0x300, 0, 6);
+            b = a;
+            if (pass == 0) b.e[0].screen = (void *)0x180; else b.e[0].depth = 8;
+            ip_screens_diff(&a, &b, &d);
+            CHECK_INT(diff_kind(&d, "Pub"), IP_DIFF_REOPENED);
+            CHECK_INT(diff_kind(&d, "Other"), IP_DIFF_SAME);
+            f.releases = 0;
+            ip_screens_apply(&t, &d);
+            CHECK_INT(t.slot[1].epoch, 1);
+            CHECK_INT(t.slot[2].epoch, 5);
+            CHECK_INT(t.slot[0].epoch, 0);
+            CHECK_INT(t.slot[0].sh.epoch, 3);
+            CHECK_INT(f.releases, 0);                            /* the old ColorMap is gone: nothing to release */
+        }
+    }
+
+    /* T4 a PRIVATE node keeps its slot, pens and epoch (Workbench-opening shape: the node is listed but private) */
+    table_with_pens(&t, &f, &o);
+    memset(&a, 0, sizeof a); memset(&b, 0, sizeof b);
+    snap_set(&a, 0, "Pub", (void *)0x100, 0, 6);
+    snap_set(&b, 0, "Pub", (void *)0x180, IP_PSN_PRIVATE, 6);
+    ip_screens_diff(&a, &b, &d);
+    before = t;
+    ip_screens_apply(&t, &d);
+    CHECK(memcmp(&before, &t, sizeof t) == 0);
+    CHECK_INT(ip_screens_find(&t, "Pub"), 1);
+    snap_set(&b, 1, "Fresh", (void *)0x400, IP_PSN_PRIVATE, 6);  /* a private APPEARED adds nothing */
+    ip_screens_diff(&a, &b, &d);
+    ip_screens_apply(&t, &d);
+    CHECK_INT(ip_screens_find(&t, "Fresh"), -1);
+
+    /* T5 APPEARED adds a slot with a fresh holder */
+    memset(&a, 0, sizeof a); memset(&b, 0, sizeof b);
+    snap_set(&b, 0, "Fresh", (void *)0x400, 0, 6);
+    ip_screens_diff(&a, &b, &d);
+    CHECK_INT(ip_screens_apply(&t, &d), 1);
+    CHECK_INT(ip_screens_find(&t, "Fresh"), 3);
+    CHECK_INT(t.slot[3].sh.h.held, 0);
+    CHECK_INT(t.slot[3].epoch, 0);
+}
+
 void suite_iconpen(void)
 {
     test_workbench_still_opening_is_not_locked();
@@ -614,4 +792,6 @@ void suite_iconpen(void)
     test_main_takes_pens_at_boot();
     test_reopen_same_address();
     test_theme_switch_recolour();
+    test_screens_table();
+    test_screens_diff_and_apply();
 }

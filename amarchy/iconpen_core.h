@@ -156,4 +156,68 @@ int ip_screen_depth(int planes, int ehb);
  * lock to make the screen public, so both wait for ever (evidence: s57-evidence/freeze-9boot-rig145.md). */
 int ip_pub_lockable(int listed, int has_screen, unsigned flags);
 
+/* ---- TE-10.3: the pen holder per public screen (design s58 te10-design.md 2.2 and 5) ----
+ * Slot 0 is always "Workbench" and is the ip_shared the Workbench path already uses; the diff never changes it. A slot of
+ * another public screen holds its own ip_shared. Public screen names compare CASE-INSENSITIVELY (ASCII), as Intuition's
+ * LockPubScreen does. Limit: IP_SCREENS slots (the Workbench plus 32 rules plus spare); a full table refuses an add and stays
+ * unchanged, the caller then simply has no slot for that screen. */
+#define IP_PSN_NAME 140      /* MAXPUBSCREENNAME (139) + 1; the OS constant is not visible on the host */
+#define IP_SCREENS 40
+
+typedef struct ip_screen_slot {
+    char name[IP_PSN_NAME];
+    ip_shared sh;
+    unsigned epoch;          /* bumped when the screen of this name is reopened (new identity); slot 0 keeps sh.epoch */
+} ip_screen_slot;
+
+typedef struct ip_screens {
+    int count;
+    ip_screen_slot slot[IP_SCREENS];
+} ip_screens;
+
+/* count 1, slot 0 "Workbench" with a fresh ip_shared */
+void ip_screens_init(ip_screens *t);
+/* slot index of `name` (case-insensitive), -1 when absent */
+int ip_screens_find(const ip_screens *t, const char *name);
+/* index of the new slot (or of the existing one); -1 when the table is full or the name is empty or longer than 139 */
+int ip_screens_add(ip_screens *t, const char *name);
+/* removes the slot and shifts the rest down; 1 done, 0 absent, -1 slot 0 (refused) */
+int ip_screens_drop(ip_screens *t, const char *name);
+
+/* one public screen of the list snapshot taken under LockPubScreenList */
+typedef struct ip_snap_entry {
+    char name[IP_PSN_NAME];
+    const void *screen;
+    unsigned flags;          /* psn_Flags; IP_PSN_PRIVATE */
+    int depth;
+    int ehb;
+} ip_snap_entry;
+
+typedef struct ip_snap {
+    int count;
+    ip_snap_entry e[IP_SCREENS];
+} ip_snap;
+
+enum { IP_DIFF_SAME, IP_DIFF_APPEARED, IP_DIFF_GONE, IP_DIFF_REOPENED };
+
+typedef struct ip_diff_entry {
+    char name[IP_PSN_NAME];
+    int kind;
+    unsigned flags;          /* of the new entry (of the old one for GONE) */
+} ip_diff_entry;
+
+typedef struct ip_diff {
+    int count;
+    ip_diff_entry e[2 * IP_SCREENS];
+} ip_diff;
+
+/* Pure. Per name (case-insensitive): in new only APPEARED, in old only GONE, in both with another screen pointer or depth
+ * REOPENED, else SAME. Order: the new snapshot's names, then the GONE ones. */
+void ip_screens_diff(const ip_snap *old_s, const ip_snap *new_s, ip_diff *out);
+/* Folds a diff into the table. Slot 0 is never touched. APPEARED adds a slot (a PRIVATE node adds none; a name that already
+ * has a slot counts as a reopen). GONE forgets the slot's pens WITHOUT any release (the ColorMap went with the screen) and
+ * keeps the slot. REOPENED forgets the pens the same way and bumps ONLY that slot's epoch. A PRIVATE node keeps its slot as it
+ * is (no forget, no epoch). Returns the number of slots changed. */
+int ip_screens_apply(ip_screens *t, const ip_diff *d);
+
 #endif
