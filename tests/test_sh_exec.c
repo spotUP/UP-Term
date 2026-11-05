@@ -2815,6 +2815,16 @@ static void execute_backticks(void)
     amiscr_put("RAM:b1", "args `echo one` x\nargs \"a `echo b c` d\"\nargs `printf 'p\\nq\\n\\n'` z\nargs `echo` e\nargs `echo hi\n");
     sh_run_text(&sh, "execute RAM:b1", &inc);
     CHECK_STR(slot(OUT)->data, "<one><x>\n<a b c d>\n<p><q><z>\n<e>\n<`echo><hi>\n");
+    /* S7c-2 (R23): a file of three lines captured by `cat f` inside a script line, inside [ ] */
+    run("");
+    amiscr_put("RAM:b2data", "l1\nl2\nl3\n");
+    amiscr_put("RAM:b2", "echo [`cat <RAM:b2data`]\nargs `cat <RAM:b2data` z\n");
+    sh_run_text(&sh, "execute RAM:b2", &inc);
+    CHECK_STR(slot(OUT)->data, "[l1 l2 l3]\n<l1><l2><l3><z>\n");
+    run("");
+    amiscr_put("RAM:b3", "echo [a b c]\nargs [x y]\n");
+    sh_run_text(&sh, "execute RAM:b3", &inc);
+    CHECK_STR(slot(OUT)->data, "[a b c]\n<[x><y]>\n");
 }
 
 /* S5: .bra .ket .dot .dollar .default/.def, comments and directives are dropped, a lone < stays. */
