@@ -184,6 +184,9 @@ typedef struct sh_os {
     /* set (value) or delete (value 0) the system's variable of this name (vsh: ENV:), as the AmigaDOS Shell's
      * SetEnv and UnsetEnv; 1 when done; 0 in the table: no store, setenv/unsetenv refuse */
     int   (*setenv)(void *os, const char *name, const char *value);
+    /* the CLI number of a background job's process (AmigaDOS Run's `[CLI n]` banner; the Amiga: its pr_TaskNum); 0 or
+     * 0 in the table: none known, Run prints no banner */
+    long  (*cli_num)(void *os, long job);
     void *data;
 } sh_os;
 #define SH_HIST_COUNT 0   /* the number of lines */
@@ -283,6 +286,7 @@ typedef struct sh_shell {
     int exiting;           /* exit ran: stop */
     int failat_leak;       /* a finished script called FailAt: the script that ran it takes failat_leak_val */
     long failat_leak_val;
+    int run_banner;        /* the background job being added is AmigaDOS Run's: add_job prints no `[n] pid` line */
     int amiscr_reported;   /* the running script already printed its "X failed returncode" line */
     int amiscr_load_rc;    /* rc when the .key binding refuses the call (20, or 10 for a missing /A) */
     const char *cmd_q;     /* the running builtin's argv quoted flags (sh_list.q), for exec; 0 outside a builtin */
