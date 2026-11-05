@@ -947,14 +947,14 @@ void lf_setting_chips(const amconf_io *io, const mn_item *it, int n, long *out)
 }
 
 /* TE-4.3: the editor lives under "settings.theme" (dist/keymap); a node is inside it when it is that id or one of its children */
-static int in_theme_editor(const char *node)
+int lf_in_theme_editor(const char *node)
 {
     return node && (strcmp(node, "settings.theme") == 0 || strncmp(node, "settings.theme.", 15) == 0);
 }
 
 int lf_leave_needed(const char *from, const char *to)
 {
-    return gte_dirty() && in_theme_editor(from) && !in_theme_editor(to);
+    return gte_dirty() && lf_in_theme_editor(from) && !lf_in_theme_editor(to);
 }
 
 int lf_exit_needs_ask(const char *node)

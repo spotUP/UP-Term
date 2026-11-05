@@ -103,6 +103,8 @@ int lf_leave_needed(const char *from, const char *to);
 int lf_leave_decide(const char *answer);
 /* 1 when ending the menu from `node` (Launch, window close) must first ask Save / Discard / Cancel. */
 int lf_exit_needs_ask(const char *node);
+/* TE-5: 1 when node is settings.theme or one of its pages (the Theme Editor, which shows the preview pane) */
+int lf_in_theme_editor(const char *node);
 struct lf_ui;
 /* 1 when the menu may leave: nothing to ask, Save worked, or Discard; 0 on Cancel or a failed Save (the menu stays, ui->refused says why) */
 int lf_leave_editor(const char *from, const char *to, const struct lf_ui *ui);
