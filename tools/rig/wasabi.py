@@ -314,7 +314,7 @@ def new_alerts(text, offset):
 def stream_reconnected(text):
     """True when the last client line of a debug.log says the stream is open (no reconnect still pending)."""
     last = [l for l in text.splitlines() if " client | " in l]
-    return bool(last) and "stream open" in last[-1]
+    return bool(last) and ("stream open" in last[-1] or "reconnected" in last[-1])
 
 
 def warn_guru(timeout=30, sleep=time.sleep):

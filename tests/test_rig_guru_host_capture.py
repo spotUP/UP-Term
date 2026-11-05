@@ -10,7 +10,9 @@ import wasabi as wb
 OPEN = "2026-11-05 10:00:00.000 client | debug stream open to 127.0.0.1:1383 (wasabid 0.11b2), --x"
 GURU = ("2026-11-05 10:00:00.001 debug | [wasabi: last guru: DEADEND ALERT #80000008 (CPU: privilege violation) in "
         "task 'RAM:bbprobe' (0x1013d268) - from before the last reboot (seen 05-Nov-26 09:56:35)]")
-CLOSED = "2026-11-05 10:00:09.000 client | debug stream closed: connection closed by the Amiga"
+CLOSED = ("2026-11-05 10:00:09.000 client | debug: connection lost (connection closed by the Amiga) - reconnecting "
+          "until the Amiga returns; Ctrl-C to stop")
+BACK = "2026-11-05 10:00:33.000 client | debug: reconnected after 24 s - wasabid 0.11b2"
 
 
 class Parser(unittest.TestCase):
@@ -29,7 +31,7 @@ class Parser(unittest.TestCase):
 
     def test_reconnect_state(self):
         self.assertFalse(wb.stream_reconnected(OPEN + "\n" + CLOSED + "\n"))
-        self.assertTrue(wb.stream_reconnected(CLOSED + "\n" + OPEN + "\n"))
+        self.assertTrue(wb.stream_reconnected(CLOSED + "\n" + BACK + "\n"))
 
 
 class Capture(unittest.TestCase):
@@ -62,7 +64,7 @@ class Capture(unittest.TestCase):
 
         def sleep(_):
             ticks.append(1)
-            log.write_text(OPEN + "\n" + CLOSED + "\n" + OPEN + "\n" + GURU + "\n")
+            log.write_text(OPEN + "\n" + CLOSED + "\n" + BACK + "\n" + GURU + "\n")
 
         buf = io.StringIO()
         with mock.patch.object(wb, "stream_alive", return_value=True), contextlib.redirect_stdout(buf):
