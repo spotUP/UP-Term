@@ -100,6 +100,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=rig_installer_free installer_rig sys_free_bytes reads SYS: free space from Info with DH0: (3.1) and DH0 (3.2) (tests/test_installer_rig_free.py)
 # ONLY=icat_stderr icat prints its error lines (no datatype reads, cannot read) on the error stream and returns 10 (tests/test_icat_stderr.py)
 # ONLY=rig_real_drawer installer_rig judges the drawer the Installer recorded (ENVARC:up-term/Dir), not UPBigVol's prediction; check 10 only off the SYS: volume (tests/test_installer_rig_real_drawer.py)
+# ONLY=flat_icl_pens amarchy-flat releases icon-label shade pens inside the Text call and keeps no ColorMap across calls (tests/test_flat_icl_no_cross_call_pens.py)
 # ONLY=flat_on_hang amarchy-flat passes the library base in a6 on every saved Text/RectFill/DrawBox/FieldBox call, so flat-ON no longer jumps into DOS device data (tests/test_flat_on_hang_wild_call.py)
 # ONLY=rig_install_no_vsh rig.py install without build/amiga/vsh exits with one message naming the file and the make target (tests/test_rig_install_no_vsh.py)
 # ONLY=rig_themes_live rig.py install/start stage the Amarchy themes into the live drawer UP-Term: points at, no boot needed (tests/test_rig_themes_live.py)
@@ -190,6 +191,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = help_man_sync ]; then python3 -I tests/test_help_man_sync.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_real_drawer ]; then python3 -I tests/test_installer_rig_real_drawer.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = flat_on_hang ]; then python3 -I tests/test_flat_on_hang_wild_call.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = flat_icl_pens ]; then python3 -I tests/test_flat_icl_no_cross_call_pens.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rebind ]; then python3 -I tests/test_amarchy_gui_rebind.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = editor_stack ]; then python3 -I tests/test_amarchy_editor_stack.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = wb_absent ]; then python3 -I tests/test_wb_absent_restore.py; fi

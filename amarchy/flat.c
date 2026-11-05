@@ -648,18 +648,12 @@ static uint8_t *icl_mk, *icl_cv, *icl_p8;
 static struct BitMap *icl_tbm;           /* the one-line bitmap ReadPixelArray8/WritePixelArray8 need */
 static struct RastPort icl_trp;
 static icl_pencache icl_pc;
-static struct ColorMap *icl_cm;          /* the colour map icl_pc's pens were obtained on */
+static int icl_rel[ICL_CACHE];           /* pens to release at the end of one label call (under icl_ss) */
 static int icl_ready;
 
 static void icl_free(void)
 {
-    int i;
-    if (icl_cm)
-        for (i = 0; i < ICL_CACHE; i++)
-            if (icl_pc.e[i].used && icl_pc.e[i].obtained)
-                ReleasePen(icl_cm, (ULONG)icl_pc.e[i].pen);
-    icl_cache_clear(&icl_pc);
-    icl_cm = 0;
+    icl_cache_clear(&icl_pc);                   /* no pen outlives a label call (released per call), nothing to give back */
     if (icl_tbm) {
         icl_tbm->Depth = 8;
         FreeBitMap(icl_tbm);
@@ -813,13 +807,7 @@ static int icl_label(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG
             vr_cgx_write_pixels(icl_cgx, icl_out, 0, 0, (UWORD)(bw * 4), rp, (UWORD)x, (UWORD)y, (UWORD)bw, (UWORD)bh, VR_RECTFMT_RGBA);
         }
     } else {
-        if (icl_cm && icl_cm != cm) {             /* another screen's colour map: the cached pens are not ours */
-            for (i = 0; i < ICL_CACHE; i++)
-                if (icl_pc.e[i].used && icl_pc.e[i].obtained)
-                    ReleasePen(icl_cm, (ULONG)icl_pc.e[i].pen);
-            icl_cache_clear(&icl_pc);
-        }
-        icl_cm = cm;
+        int nrel;
         if (icl_blend_pens(icl_cv, icl_after, (int)fg, aa_ink_shades_for_depth(depth), icl_pen_for, cm, n, icl_out) > 0) {
             int pw = ((bw + 15) >> 4) << 4, xx, yy;
             for (yy = 0; yy < bh; yy++)
@@ -827,6 +815,11 @@ static int icl_label(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG
                     icl_p8[yy * pw + xx] = (uint8_t)icl_out[yy * bw + xx];
             WritePixelArray8(rp, (UWORD)x, (UWORD)y, (UWORD)(x + bw - 1), (UWORD)(y + bh - 1), icl_p8, &icl_trp);
         }
+        /* Release every pen obtained in this call, on this call's map: the screen may close before the next call, and
+         * ReleasePen on a freed ColorMap waits for ever on its dead PalExtra semaphore (boot hang, s57). */
+        nrel = icl_cache_drain(&icl_pc, icl_rel);
+        for (i = 0; i < nrel; i++)
+            ReleasePen(cm, (ULONG)icl_rel[i]);
     }
     r->labels++;
     ReleaseSemaphore(&icl_ss);
