@@ -56,6 +56,20 @@ typedef struct gt_roles {
 } gt_roles;
 void gt_roles_of(const gtheme *t, gt_roles *r);
 
+/* the role pens and desk_role live here, not in desk_core, because the theme editor (gt_pen_budget) needs them and amarchy-index
+ * links this file without desk_core.c; desk_core.h includes this header so every desktop user still sees them */
+/* the eight palette roles of the flat mapping (OD13): the pen index of a role is its enum value.
+ * FILENAME-PEN: Workbench draws the list-view file names with the fixed DrawInfo pen 1, so pen 1 holds the muted text colour
+ * (DK_MUTED) and follows every theme; Amarchy's own dark tone (DK_DARKER: BLOCKPEN, BARTRIMPEN, the label backdrop) lives on pen 5.
+ * RL8: a view of the role table (gt_roles_of): BG = GR_SURFACE, MUTED = GR_MUTED, FG = GR_TEXT, ACCENT = GR_ACCENT, SELECTION =
+ * GR_SELECTION, DARKER = GR_BACKGROUND, GREEN = status ok. DK_BACKDROP (pen 7, was DK_RED) is the Workbench backdrop pen at 3+
+ * planes; palette.prefs still writes the fail tone there (byte-compatible), the screen gets desk_pen_colour's backdrop colour. */
+enum { DK_BG, DK_MUTED, DK_FG, DK_ACCENT, DK_SELECTION, DK_DARKER, DK_GREEN, DK_BACKDROP, DK_ROLES };
+uc_u32 desk_role(const gtheme *t, int role);
+/* the role pen (DK_BG..DK_DARKER; DK_ACCENT at most on depth <= 2) nearest to rgb 0xRRGGBB at a screen depth: squared RGB distance,
+ * ties to the lower pen. The one rule behind ip_fold and the pen budget. */
+int gt_nearest_role_pen(const gtheme *t, uc_u32 rgb, int depth);
+
 /* the colour maths of the derivation (moved from desk_core, R1.18a): brightness 0..255, a contrast ratio times 100 (100 = equal) */
 int gt_luma(uc_u32 rgb);
 int gt_contrast(uc_u32 a, uc_u32 b);
@@ -264,6 +278,11 @@ void gt_model_parse(const char *buf, long len, gt_model *m);
 void gt_roles_from_model(const gt_model *m, gt_roles *r);
 /* The v1 keys of a model (what an older Amarchy reads), colours resolved from the groups. */
 void gt_model_to_v1(const gt_model *m, gtheme *out);
+/* TE-7-FONT-MAP: the font of slot which (GT_FONT_*) a desk writer applies: the model's look.font "name.font/size" (name and size split;
+ * size 0 when absent), for GT_FONT_ICON the v1 font= key when the model has none. 1 when there is a name, 0 when the theme keeps the user's. */
+int gt_look_font(const gtheme *t, int which, char *name, int cap, int *size);
+/* the model's title bar height in pixels, 0 = stock / no model */
+int gt_look_bar_height(const gtheme *t);
 /* The file text: v1 default keys from the resolved groups, then the v2 sections. Its length; -1 when it does not fit cap or a
  * value would pass UC_MAX_VALUE. */
 long gt_model_save_text(const gt_model *m, char *out, long cap);
@@ -327,6 +346,7 @@ typedef struct gt_edit {
     gt_model m, saved;
     int open;                   /* a theme is loaded into the buffer */
     int advanced;               /* Mode: Advanced (the Elements page is shown) */
+    int depth;                  /* TE-8.3: bitplanes of the screen the editor runs on (EHB counts as 5; 15 and up = truecolour); 0 = unknown */
     char name[GT_NAME];         /* the theme being edited */
 } gt_edit;
 extern gt_edit gt_ed;
@@ -373,5 +393,50 @@ enum { GTP_SKIP = 1, GTP_LEAVE = 2, GTP_NAME = 4 };
 int gte_action_plan(int aux, int editor_open);
 /* gt_dos_edit_open's decision: read the named theme through rd and open its model in the buffer. 1 opened; 0 when it has none. */
 int gte_open_from(gt_read_fn rd, void *ctx, const char *name);
+
+/* ---- TE-8: presets, contrast warning, pen budget (plan 2026-11-05-amarchy-theme-editor.md sections 6, 7, D8) ---- */
+/* TE-8.1: a theme as a starting point: the user file, else the shipped file, else (the name is GT_DEFAULT) the built-in tokyo-night.
+ * Parsed into out with out->name = name. 1 found; 0 when no such theme. */
+int gt_preset_model(gt_read_fn rd, void *ctx, const char *name, gt_model *out);
+/* Reset to Base: the edit buffer takes the model of its base theme (gt_preset_model of gt_ed.m.base), keeps its own name and base,
+ * stays dirty against the file and goes live like any edit. 1 reset; 0 when no editor is open, no base is named or it is gone. */
+int gte_reset_to_base(gt_read_fn rd, void *ctx);
+
+/* TE-8.2: one text-on-ground pair. kind is the floor it is held to. below = measured contrast under the floor (D8: shown as a
+ * warning on the row and in the summary; Save stays allowed). */
+enum { GTC_TEXT, GTC_MUTED, GTC_SEL };
+typedef struct gt_cpair {
+    unsigned char text, text_state, ground, ground_state, kind; /* GTE_* / GT_ST_* of the two sides, GTC_* floor */
+    int contrast, floor, below;
+} gt_cpair;
+#define GT_CPAIRS 16
+/* Every pair of the table measured on the resolved colours (gt_contrast against GT_FLOOR_TEXT / GT_FLOOR_MUTED / GT_FLOOR_SEL).
+ * Fills out (room for GT_CPAIRS); returns the pair count. */
+int gt_contrast_pairs(const gt_model *m, gt_cpair out[GT_CPAIRS]);
+/* the number of pairs below their floor; when first >= 0, *first is the index of the first such pair (else -1) */
+int gt_contrast_warnings(const gt_model *m, int *first);
+/* 1 when element elem is the text side of a pair below its floor (the row warning of the Elements page) */
+int gt_contrast_elem_warns(const gt_model *m, int elem);
+
+/* TE-8.3: the pen budget of a model at a screen depth (bitplanes; EHB counts as 5; >= 15 truecolour). Pure: it reads the model and
+ * the depth, never obtains a pen.
+ *   exact     truecolour: colours are drawn directly, no shortage.
+ *   pens      the pens the screen has (1 << depth, 256 for depth >= 8); held = pens the desktop keeps: depth <= 3 the role pens
+ *             (8, 4 on depth 2), depth 4 the 8 role pens and the 8 icon pens (16), depth 5 the same plus pointer 17-19 (19), depth
+ *             >= 6 role 8 + pointer 3 + icon 16 (27); free = pens - held.
+ *   colours   distinct resolved normal-state colours over the 36 elements;  shared = elements - colours (elements that repeat a colour).
+ *   needing   distinct colours no role pen carries (and, from depth 4, no icon element: those use the held icon pens); they take a
+ *             free pen or the nearest one. fold = the part of needing that finds no free pen (depth <= 3: all of it).
+ *   grp_pen   depth <= 3 only: the role pen each group's normal colour folds to (the ip_fold rule: nearest, ties to the lower pen,
+ *             never DK_GREEN / DK_BACKDROP); grp_with[g] = the first group on the same pen (g itself when alone). Else -1 / g. */
+typedef struct gt_budget {
+    int depth, exact, pens, held, free, colours, shared, needing, fold;
+    signed char grp_pen[GTG_COUNT], grp_with[GTG_COUNT];
+} gt_budget;
+void gt_pen_budget(const gt_model *m, int depth, gt_budget *out);
+/* the summary row text, e.g. "Screen 8 colours: 4 elements fold to the nearest pen" / "Truecolour: exact colours" */
+void gt_budget_text(const gt_budget *b, char *out, int n);
+/* the share line of group g ("Text shares a pen with Surface"); 0 and out empty when g is alone or the screen is not shallow */
+int gt_budget_share_text(const gt_budget *b, int g, char *out, int n);
 
 #endif

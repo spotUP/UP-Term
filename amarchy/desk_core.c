@@ -11,24 +11,6 @@
 
 #define PT_DEPTH_MAX 3 /* the planes of a WBPattern tile */
 
-/* RL8: the desktop pens are a view of the role table (gt_roles_of); pen index == DK_* enum, 0..7. DK_BACKDROP's palette.prefs colour
- * stays the fail tone so the written file is byte-identical to before; live, desk_pen_colour gives the backdrop its own colour. */
-uc_u32 desk_role(const gtheme *t, int role)
-{
-    gt_roles r;
-    gt_roles_of(t, &r);
-    switch (role) {
-    case DK_BG: return r.c[GR_SURFACE];
-    case DK_DARKER: return r.c[GR_BACKGROUND];
-    case DK_FG: return r.c[GR_TEXT];
-    case DK_ACCENT: return r.c[GR_ACCENT];
-    case DK_SELECTION: return r.c[GR_SELECTION];
-    case DK_MUTED: return r.c[GR_MUTED];
-    case DK_GREEN: return r.ok;
-    default: return r.fail;
-    }
-}
-
 /* ---- byte helpers ---- */
 
 static void put16(unsigned char *p, unsigned v)
@@ -752,18 +734,25 @@ long desk_pointer(const gtheme *t, unsigned char *buf, long len)
 #define FP_NAMESIZE 128
 #define FP_BODY 156
 #define FP_WBFONT 0
+#define FP_SCREENFONT 2
+#define FP_YSIZE 24
 
 /* the body offset of the WBFONT chunk, -1 when none, -2 when buf is no font.prefs */
-static long wbfont_body(const unsigned char *buf, long len)
+static long font_body(const unsigned char *buf, long len, unsigned type)
 {
     long pos = DK_HDR, body, size;
     char id[4];
     if (!is_prefs(buf, len))
         return -2;
     while (next_chunk(buf, len, &pos, id, &body, &size))
-        if (!memcmp(id, "FONT", 4) && size == FP_BODY && get16(buf + body + FP_TYPE) == FP_WBFONT)
+        if (!memcmp(id, "FONT", 4) && size == FP_BODY && get16(buf + body + FP_TYPE) == type)
             return body;
     return -1;
+}
+
+static long wbfont_body(const unsigned char *buf, long len)
+{
+    return font_body(buf, len, FP_WBFONT);
 }
 
 /* text_mode: fp_SpecialDrawMode, 0 plain, 1 outline, 2 shadow in BackPen (prefs/font.h names the byte, no values; the values were measured
@@ -782,17 +771,40 @@ long desk_font_pens(unsigned char *buf, long len, int text_mode)
     return 1;
 }
 
-long desk_font_name(const gtheme *t, unsigned char *buf, long len, desk_font_exists_fn exists, void *ctx)
+/* TE-7-FONT-MAP: one FONT chunk gets the name (and the size when the model gives one). 1 changed, 0 untouched, -2 no prefs */
+static int font_chunk_set(unsigned char *buf, long len, unsigned type, const char *name, int size, desk_font_exists_fn exists, void *ctx)
 {
-    long b = wbfont_body(buf, len);
-    size_t n = strlen(t->font);
+    long b = font_body(buf, len, type);
+    size_t n = strlen(name);
     if (b == -2)
-        return -1;
-    if (b < 0 || n == 0 || n >= FP_NAMESIZE || !exists || !exists(ctx, t->font))
+        return -2;
+    if (b < 0 || n == 0 || n >= FP_NAMESIZE || !exists || !exists(ctx, name))
         return 0;
     memset(buf + b + FP_NAME, 0, FP_NAMESIZE);
-    memcpy(buf + b + FP_NAME, t->font, n);
+    memcpy(buf + b + FP_NAME, name, n);
+    if (size > 0) {
+        buf[b + FP_YSIZE] = (unsigned char)(size >> 8);
+        buf[b + FP_YSIZE + 1] = (unsigned char)size;
+    }
     return 1;
+}
+
+/* The WBFONT chunk follows the icon font and the SCREENFONT chunk the screen font of the theme model (gt_look_font), the v1 font= key
+ * names the icon font of a theme without a model. Returns 1 when the file changed, 0 when nothing did, -1 when buf is no font.prefs. */
+long desk_font_name(const gtheme *t, unsigned char *buf, long len, desk_font_exists_fn exists, void *ctx)
+{
+    char name[GT_NAME];
+    int size, r, changed = 0;
+    if (gt_look_font(t, GT_FONT_ICON, name, (int)sizeof name, &size)) {
+        r = font_chunk_set(buf, len, FP_WBFONT, name, size, exists, ctx);
+        if (r == -2)
+            return -1;
+        changed |= r;
+    } else if (!is_prefs(buf, len))
+        return -1;
+    if (gt_look_font(t, GT_FONT_SCREEN, name, (int)sizeof name, &size))
+        changed |= font_chunk_set(buf, len, FP_SCREENFONT, name, size, exists, ctx) == 1;
+    return changed;
 }
 
 /* ---- R1.6: contrast guard ---- */
@@ -869,6 +881,15 @@ long desk_font_default(unsigned char *out, long cap)
 #define IC_GEOM 34L    /* ic_GUIGeometry[4] */
 #define IC_VERSIONED 0x80000000UL /* ICB_VERSIONED */
 
+void desk_geometry_bar(int thin, int bar_height, unsigned char geometry[4])
+{
+    desk_geometry(thin, geometry);
+    if (bar_height > 0) {
+        int d = bar_height - DK_STOCK_BORDERTOP;
+        geometry[1] = (unsigned char)(signed char)(d < -128 ? -128 : d > 127 ? 127 : d);
+    }
+}
+
 void desk_geometry(int thin, unsigned char geometry[4])
 {
     memset(geometry, 0, 4);
@@ -935,8 +956,8 @@ long desk_icontrol(const unsigned char *cur, long curlen, const unsigned char ge
     return n;
 }
 
-/* 1 when cur is an icontrol.prefs whose GUI geometry is not stock (an earlier thin apply of ours wrote it) */
-static int icontrol_ours(const unsigned char *cur, long len)
+/* 1 when cur is an icontrol.prefs with an ICTL chunk; geom gets its GUI geometry bytes */
+static int icontrol_geometry(const unsigned char *cur, long len, unsigned char geom[4])
 {
     long pos = DK_HDR, body, size;
     char id[4];
@@ -944,21 +965,43 @@ static int icontrol_ours(const unsigned char *cur, long len)
         return 0;
     while (next_chunk(cur, len, &pos, id, &body, &size))
         if (!memcmp(id, "ICTL", 4) && size >= IC_GEOM + 4 && body + IC_GEOM + 4 <= len)
-            return (cur[body + IC_GEOM] | cur[body + IC_GEOM + 1] | cur[body + IC_GEOM + 2] | cur[body + IC_GEOM + 3]) != 0;
+        {
+            memcpy(geom, cur + body + IC_GEOM, 4);
+            return 1;
+        }
     return 0;
 }
 
-int desk_icontrol_decide(int thin, const unsigned char *cur, long curlen, int have_snap, int *snapshot)
+/* Invariant: the live file is our thin write exactly when it is byte for byte what the writer desk_icontrol makes from the saved pre-thin file
+ * (snap) with the live file's own geometry bytes, and it is not the saved file itself. The geometry bytes alone cannot say it: a thin write with
+ * a stock-height bar has all-zero geometry, and a user's own file may carry non-zero geometry. */
+int desk_icontrol_is_ours(const unsigned char *cur, long curlen, const unsigned char *snap, long snaplen)
 {
-    int ours = icontrol_ours(cur, curlen);
+    static unsigned char tmp[8192 + 64];
+    unsigned char geom[4];
+    long n;
+    if (!snap || snaplen <= 0 || !cur || curlen <= 0 || !icontrol_geometry(cur, curlen, geom))
+        return 0;
+    if (snaplen + 4 * DK_ICTL_SIZE > (long)sizeof tmp)
+        return 0;
+    n = desk_icontrol(snap, snaplen, geom, tmp, sizeof tmp);
+    return n == curlen && !memcmp(tmp, cur, (size_t)n) && !(curlen == snaplen && !memcmp(cur, snap, (size_t)curlen));
+}
+
+int desk_icontrol_decide(int thin, int bar_height, const unsigned char *cur, long curlen, const unsigned char *snap, long snaplen, int *snapshot)
+{
+    unsigned char have[4] = { 0, 0, 0, 0 }, want[4];
+    int have_snap = snaplen >= 0;
+    icontrol_geometry(cur, curlen, have);
     *snapshot = 0;
     if (thin) {
-        if (ours)
-            return DK_IC_NONE; /* already written: no second Workbench reset, and the snapshot keeps the pre-thin file */
-        *snapshot = 1;
+        desk_geometry_bar(1, bar_height, want);
+        if (!memcmp(have, want, 4))
+            return DK_IC_NONE; /* the wanted geometry is there already (also stock, when the bar height equals the stock BorderTop): no second Workbench reset */
+        *snapshot = !have_snap; /* a saved pre-thin file is never overwritten by a later apply; a changed bar height rewrites without a new snapshot */
         return DK_IC_WRITE;
     }
-    return ours && have_snap ? DK_IC_RESTORE : DK_IC_NONE;
+    return desk_icontrol_is_ours(cur, curlen, snap, snaplen) ? DK_IC_RESTORE : DK_IC_NONE;
 }
 
 
@@ -1446,7 +1489,7 @@ long desk_start_prefs(int target, unsigned mask, const gtheme *th, int text_mode
     return (cur && n == curlen && !memcmp(out, cur, (size_t)n)) ? 0 : n;
 }
 
-int desk_start_icontrol(unsigned mask, const unsigned char *cur, long curlen, int have_snap, int *snapshot)
+int desk_start_icontrol(unsigned mask, const gtheme *th, const unsigned char *cur, long curlen, const unsigned char *snap, long snaplen, int *snapshot)
 {
-    return desk_icontrol_decide((mask >> DT_ICONTROL) & 1, cur, curlen, have_snap, snapshot);
+    return desk_icontrol_decide((mask >> DT_ICONTROL) & 1, gt_look_bar_height(th), cur, curlen, snap, snaplen, snapshot);
 }

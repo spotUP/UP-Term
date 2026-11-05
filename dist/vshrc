@@ -112,7 +112,7 @@ tldr() {
 # vsh then found no sleep, so those two count as unset.
 case "$PATH" in
     ''|/usr/bin:/bin|/usr/bin:/bin:/c)
-    PATH=/UP-Term/bin:/UP-Term/Python3/bin:/SYS/Python3/bin:/UP-Term/nvim/bin:/gg/bin:/c ;;
+    path reset ;;
 esac
 export PATH
 

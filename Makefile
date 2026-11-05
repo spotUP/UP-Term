@@ -33,7 +33,7 @@ AMIEXPRESS_ROOT ?= $(CODE_ROOT)/AmiExpress
 
 ENGINE  := engine/vtengine.c
 RENDER  := render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/sbar.c render/layout.c render/otag.c render/ttf.c render/painter.c handler/lineedit.c handler/kcmode.c handler/slash.c handler/winspec.c handler/clipfmt.c handler/be32.c handler/complete_core.c render/vtinput.c handler/waitset.c handler/histfile.c
-SHELL_CORE := shell/sh_parse.c shell/sh_expand.c shell/sh_exec.c shell/sh_float.c shell/sh_path.c shell/vsh_cmdline.c
+SHELL_CORE := shell/sh_parse.c shell/sh_expand.c shell/sh_exec.c shell/sh_amiscript.c shell/sh_float.c shell/sh_path.c shell/vsh_cmdline.c
 TTY     := tty/ldisc.c tty/bmsg.c
 DEVICE_CORE := device/upc_core.c
 PROC_CORE := proc/proc_core.c
@@ -94,6 +94,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=worktree_ready make worktree-ready dates a source that differs from main newer than the seeded binaries (tools/test_worktree_ready.py)
 # ONLY=menu_stamp the Amarchy hotkey press path reaches ms_binary_changed (act_menu_open -> ms_open, stamp and quit hooks set) (tests/test_amarchy_menu_stamp.py)
 # ONLY=wb_lock_guard no amarchy/*.c locks the Workbench by name (LockPubScreen "Workbench" reopens a closed one on OS 3.1: BOOT-31-WB-DEADLOCK); ipd_lock_wb_screen only (tests/test_wb_lock_guard.py)
+# ONLY=ibase_lock_guard no amarchy/*.c calls DOS or a blocking Intuition call between LockIBase and UnlockIBase (AMARCHY-WIN-IBASE-DOS; tests/test_ibase_lock_guard.py)
 # ONLY=gui_rig_setup_breaks the rig's --setup Breaks every running Amarchy program copy from any path (RAM:amarchy-flat a pixel helper left), so its fresh copy is the one tested (tests/test_gui_rig_setup_breaks_any_copy.py)
 # ONLY=gui_rig_open_menu the rig's open_menu() closes a menu an earlier step left open before the toggle hotkey, so it never closes it instead (tests/test_amarchy_gui_rig_open_menu.py)
 # ONLY=desk_rig_pick_waits the rig's desk pick() returns only after Amarchy wrote AMARCHY_WBCLOSES again, so pen reads see the applied theme (tests/test_amarchy_desk_rig_pick_waits.py)
@@ -119,6 +120,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=rig_wasabimcp tools/rig/wasabimcp.py picks the wasabid target from the environment (tools/test_rig_wasabimcp.py)
 # ONLY=rig_ami tools/rig/ami.py over wasabid, every function against wasabi's mock daemon (tools/test_rig_ami.py; needs `make wasabi`)
 # ONLY=rig_fsuae_log FS-UAE log in the rig dir, capped (tools/test_rig_fsuae_log.py)
+# ONLY=rig_boot_console the Startup-Sequence output lands in BOOTX:boot.console and the boot shell ends after it, so no AmigaDOS window stays open (tests/test_rig_boot_console_blind.py)
 # ONLY=rig_iprefs_sysreq the rig clone drops the Replay monitor driver whose boot output made IPrefs ask to close windows; Retry is bounded (tests/test_rig_iprefs_sysreq.py)
 # ONLY=rig_screennotify every rig start stages the pinned screennotify.library in VTC:ixp6 (tests/test_rig_screennotify.py)
 # ONLY=rig_clone_new a rig number that never ran gets its sys.hdf clone (tools/test_rig_clone_new.py)
@@ -158,7 +160,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 TEST_ONLY_NAMES := $(shell grep -o '"$$(ONLY)" = [a-z_0-9]*' $(firstword $(MAKEFILE_LIST)) | sed 's/.* //' | sort -u)
 # ONLY= rows that run python3 on files alone: no C binary below is built or run for them (a worktree without the vendor NDK
 # cannot build render_host, and pkg_rows needs none). Add a name only after checking its script starts no $(BUILD) binary.
-TEST_PY_ONLY := gen_lucide_icons icon_grid_fit pkg_rows worktree_ready rig_handler_fallback rig_amarchy_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free flat_on_hang icat_stderr help_man_sync ipd_no_dos_under_list
+TEST_PY_ONLY := gen_lucide_icons icon_grid_fit pkg_rows worktree_ready rig_handler_fallback rig_amarchy_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq rig_boot_console gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free flat_on_hang icat_stderr help_man_sync ipd_no_dos_under_list
 TEST_BINS := $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host $(BUILD)/upgetty_host
 test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -n "$(ONLY)" ] && [ -z "$(filter $(ONLY),$(TEST_ONLY_NAMES))" ] && ! ./$(BUILD)/vttest_host --has $(ONLY); then echo "[ERROR] make test: no suite named $(ONLY)"; exit 2; fi
@@ -175,6 +177,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_wasabi ]; then python3 -I tools/test_rig_wasabi.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_fsuae_log ]; then python3 -I tools/test_rig_fsuae_log.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_iprefs_sysreq ]; then python3 tests/test_rig_iprefs_sysreq.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_boot_console ]; then python3 tests/test_rig_boot_console_blind.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_stale_base ]; then python3 tests/test_rig_stale_base.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_screennotify ]; then python3 tests/test_rig_screennotify.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_clone_new ]; then python3 -I tools/test_rig_clone_new.py; fi
@@ -182,6 +185,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = userland_expected ]; then python3 -I tests/test_userland_rig_expected.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_stamp ]; then python3 -I tests/test_amarchy_menu_stamp.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = wb_lock_guard ]; then python3 -I tests/test_wb_lock_guard.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ibase_lock_guard ]; then python3 -I tests/test_ibase_lock_guard.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_wbr_drop ]; then python3 -I tests/test_gui_wbr_drop.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ipd_no_dos_under_list ]; then python3 -I tests/test_ipd_no_dos_under_list.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_wbr_drop ]; then python3 -I tests/test_menu_wbr_drop.py; fi
@@ -353,12 +357,12 @@ $(BUILD)/updiff_kit_drv: tests/updiff_kit_drv.c install/updiff.c install/updiff.
 # vsh's shell core on the host behind a POSIX sh_os (tests/vsh_host.c), and the
 # differential run of tests/bash/probes against bash 5 (tools/bashdiff.py;
 # ONLY=<area> runs one area, PROBE=<name> one probe, FAILED=1 the failing ones)
-$(BUILD)/vsh_host: $(HOST_HDR) tests/vsh_host.c $(SHELL_CORE) tty/bmsg.c tty/bmsg.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h shell/sh_path.h shell/sh_hits.h shell/sh_float.h
+$(BUILD)/vsh_host: $(HOST_HDR) tests/vsh_host.c $(SHELL_CORE) tty/bmsg.c tty/bmsg.h shell/sh_amiscript.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h shell/sh_path.h shell/sh_hits.h shell/sh_float.h
 	@mkdir -p $(BUILD)
 	$(HOSTCC) $(HOSTCFLAGS) -DSH_HITS -o $@ tests/vsh_host.c $(SHELL_CORE) claude/regex.c tty/bmsg.c
 # the same host shell with a counting allocator (tests/vh_alloc.c) instead of the sanitizers: the leak
 # gate (tools/bashdiff.py --leak) runs it and fails when a ratchet probe leaves a block live (V44)
-$(BUILD)/vsh_host_leak: $(HOST_HDR) tests/vsh_host.c tests/vh_alloc.c $(SHELL_CORE) tty/bmsg.c tty/bmsg.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h shell/sh_path.h shell/sh_hits.h shell/sh_float.h
+$(BUILD)/vsh_host_leak: $(HOST_HDR) tests/vsh_host.c tests/vh_alloc.c $(SHELL_CORE) tty/bmsg.c tty/bmsg.h shell/sh_amiscript.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h shell/sh_path.h shell/sh_hits.h shell/sh_float.h
 	@mkdir -p $(BUILD)
 	$(HOSTCC) -std=c89 -pedantic -Wall -Wextra -Werror -O1 -g -c -o $(BUILD)/vh_alloc.o tests/vh_alloc.c
 	$(HOSTCC) -std=c89 -pedantic -Wno-long-long -Wall -Wextra -Werror -O1 -g -DSH_HITS -DVH_COUNT -Dmalloc=vh_malloc -Dcalloc=vh_calloc -Drealloc=vh_realloc -Dfree=vh_free -o $@ tests/vsh_host.c $(SHELL_CORE) claude/regex.c tty/bmsg.c $(BUILD)/vh_alloc.o
@@ -893,8 +897,8 @@ $(BUILD)/amiga/reach: tests/amiga/reach.c
 # and -O2 grow vsh); -D__NOINLINE__ stops vbcc's string.h from inlining
 # strcmp/strlen/strcpy at every call (another 3.5 KB). Measured 2026-10-07.
 VSH_OPT := -O=1 -size -D__NOINLINE__
-VSH_SRC := shell/vsh.c shell/vsh_cmdline.c shell/vsh_mem.c shell/sh_exec.c shell/sh_path.c shell/sh_expand.c shell/sh_parse.c shell/sh_float.c claude/regex.c config/termurl.c tty/bmsg.c
-$(BUILD)/amiga/vsh: $(VSH_SRC) $(UPTERM_VERSION_H) config/termurl.h config/cmdpath.h shell/sh_exec.h shell/sh_path.h shell/sh_expand.h shell/sh_parse.h shell/vsh_quote.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-vsh.o
+VSH_SRC := shell/vsh.c shell/vsh_cmdline.c shell/vsh_mem.c shell/sh_exec.c shell/sh_amiscript.c shell/sh_path.c shell/sh_expand.c shell/sh_parse.c shell/sh_float.c claude/regex.c config/termurl.c tty/bmsg.c
+$(BUILD)/amiga/vsh: $(VSH_SRC) $(UPTERM_VERSION_H) config/termurl.h config/cmdpath.h shell/sh_exec.h shell/sh_amiscript.h shell/sh_path.h shell/sh_expand.h shell/sh_parse.h shell/vsh_quote.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-vsh.o
 	@mkdir -p $(BUILD)/amiga
 	$(subst -O2,$(VSH_OPT),$(VC)) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153,65,79 $(if $(DEBUG),-DVSH_DEBUG) -o $@ $(VSH_SRC) $(BUILD)/amiga/obj/cpuchk-vsh.o
 

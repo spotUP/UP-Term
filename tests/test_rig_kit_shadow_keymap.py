@@ -6,7 +6,15 @@ import contextlib, io, pathlib, sys, tempfile, unittest
 from unittest import mock
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools/rig"))
-import paths, rig
+import a1200_drift, paths, rig
+
+
+def kit_media(root):
+    """The dist media rig.stage_kit_media copies on every install (a1200_drift.KIT_MEDIA)."""
+    for src in a1200_drift.KIT_MEDIA.values():
+        dst = root / "dist" / src
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_bytes(b"frames")
 
 
 class KitShadowKeymap(unittest.TestCase):
@@ -60,6 +68,7 @@ class KitShadowKeymap(unittest.TestCase):
         (root / "build/amiga").mkdir(parents=True)
         (root / "build/amiga/vsh").write_bytes(b"vsh")   # rig install refuses a build without vsh
         (root / "dist").mkdir()
+        kit_media(root)
         (root / "dist/keymap").write_text("[bind]\nnew.row = A-x\n")
         (root / "build/amiga/vtcon-handler").write_bytes(b"handler-new")
         (root / "build/amiga/md5sum").write_bytes(b"md5sum-new")
@@ -83,6 +92,7 @@ class KitShadowKeymap(unittest.TestCase):
         (root / "build/amiga").mkdir(parents=True)
         (root / "build/amiga/vsh").write_bytes(b"vsh")   # rig install refuses a build without vsh
         (root / "dist").mkdir()
+        kit_media(root)
         (root / "build/amiga/vtcon-handler").write_bytes(b"handler-new")
         (root / "build/amiga/UPTerm").write_bytes(b"upterm-new")
         (vtc / paths.UPTERM_DRAWER / "bin").mkdir(parents=True)
@@ -114,6 +124,7 @@ class KitShadowKeymap(unittest.TestCase):
         (root / "build/amiga/vsh").write_bytes(b"vsh")   # rig install refuses a build without vsh
         (root / "build/jbmono").mkdir(parents=True)
         (root / "dist/amarchy-themes").mkdir(parents=True)
+        kit_media(root)
         (root / "build/amiga/vtcon-handler").write_bytes(b"handler-new")
         (root / "dist/amarchy-themes/nord.theme").write_text("name=nord\n")
         (root / "build/jbmono/JetBrainsMono-Regular.ttf").write_bytes(b"ttf")

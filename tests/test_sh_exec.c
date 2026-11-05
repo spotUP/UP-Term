@@ -2375,8 +2375,408 @@ static void why_explains_the_last_failure_of_this_shell(void)
     CHECK_STR(run("fail; false; Why"), "The last command did not set a return code\n");
 }
 
+/* AMIGA-IN-VSH small built-ins: SetEnv, UnsetEnv, GetEnv (the ENV: store behind $name), Fault (the os.fault text),
+ * Prompt (PS1), Ask (5 on yes), Amiga-form alias and the Echo keywords. Every name matches in any case; the bash
+ * forms (alias n=v, echo -n/-e, a plain echo of the same words) are unchanged. */
+static int f_setenv(void *os, const char *name, const char *value)
+{
+    (void)os;
+    if (strlen(name) >= sizeof(sysenv_name) || (value && strlen(value) >= sizeof(sysenv_val)))
+        return 0;
+    if (value) {
+        strcpy(sysenv_name, name);
+        strcpy(sysenv_val, value);
+    } else if (!strcmp(name, sysenv_name)) {
+        sysenv_name[0] = 0;
+        sysenv_val[0] = 0;
+    }
+    return 1;
+}
+
+static void setenv_unsetenv_getenv_use_the_system_store(void)
+{
+    int inc = 0;
+    sysenv_name[0] = sysenv_val[0] = 0;
+    run("");
+    sh.os.getenv = f_getenv;
+    sh.os.setenv = f_setenv;
+    sh_run_text(&sh, "setenv MYVAR two words; echo \"[$MYVAR]\"; getenv MYVAR; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "[two words]\ntwo words\nrc0\n");
+    CHECK_STR(sysenv_val, "two words");
+    sh_run_text(&sh, "SETENV MYVAR x; GetEnv MYVAR", &inc);
+    CHECK_STR(sysenv_val, "x");
+    sh_run_text(&sh, "unset MYVAR; echo \"a[$MYVAR]\"; setenv MYVAR back; echo \"b[$MYVAR]\"", &inc);
+    CHECK_INT(strstr(slot(OUT)->data, "a[]\nb[back]\n") != 0, 1);
+    sh_run_text(&sh, "echo \"c[$MYVAR]\"; UnsetEnv MYVAR; echo \"d[$MYVAR]\"; getenv MYVAR; echo rc$?", &inc);
+    CHECK_INT(sysenv_name[0], 0);
+    CHECK_INT(strstr(slot(OUT)->data, "c[back]\nd[]\nrc5\n") != 0, 1);
+    /* no store: refused with 20 */
+    sh.os.setenv = 0;
+    sh_run_text(&sh, "setenv Q 1; echo rc$?", &inc);
+    CHECK_INT(strstr(slot(OUT)->data, "rc20\n") != 0, 1);
+    sh.os.getenv = 0;
+    sh.os.setenv = 0;
+    sysenv_asked = 0;
+    sysenv_name[0] = sysenv_val[0] = 0;
+}
+
+static void fault_prompt_ask_alias_and_echo_keywords(void)
+{
+    CHECK_STR(run("fault 205; Fault 9999"), "Fault 205: object not found\nFault 9999: Unknown error\n");
+    CHECK_INT(fault_calls, 2);
+    CHECK_STR(run("prompt \"%N.%S> \"; echo \"$PS1\""), "1.\\w> \n");
+    CHECK_STR(run("PROMPT 'x %R %% y'; echo \"$PS1\""), "x $? % y\n");
+    CHECK_STR(run("prompt; echo \"$PS1\""), "1.\\w> \n");
+    CHECK_STR(run("echo y | ask 'go? '; echo \" rc$?\""), "go?  rc5\n");
+    CHECK_STR(run("echo n | Ask 'go? '; echo \" rc$?\""), "go?  rc0\n");
+    /* alias: the Amiga form defines, the bash forms are unchanged */
+    CHECK_STR(run("alias ll ls -l; alias ll"), "ll=ls -l\n");
+    CHECK_STR(run("alias ll=\"ls -l\"; alias ll"), "ll=ls -l\n");
+    CHECK_STR(run("alias a=b; alias c=d; alias a c"), "a=b\nc=d\n");
+    /* echo: the keywords only as trailing words after text */
+    CHECK_STR(run("echo hello NOLINE; echo !"), "hello!\n");
+    CHECK_STR(run("echo abcdef FIRST 1 LEN 3"), "bcd\n");
+    CHECK_STR(run("echo abcdef len 2 first 4 noline; echo"), "ef\n");
+    CHECK_STR(run("echo noline"), "noline\n");
+    CHECK_STR(run("echo first 1"), "first 1\n");
+    CHECK_STR(run("echo -n a; echo b"), "ab\n");
+    CHECK_STR(run("echo -e 'a\\tb' len 1"), "a\tb len 1\n");
+}
+
+/* AMIGA-IN-VSH Path and Run. `path` is a built-in on vsh's own $PATH (no C:Path call): show, add, remove, reset, the
+ * keyword first or last (AmigaDOS puts ADD after the dirs), any case. `run cmd` is `cmd &`. A bash PATH=... and a
+ * plain `cmd &` are unchanged. */
+static void path_and_run_are_amiga_forms_of_path_and_background(void)
+{
+    CHECK_STR(run("PATH=/a:/b; path"), "/a\n/b\n");
+    CHECK_STR(run("PATH=/a:/b; PATH show"), "/a\n/b\n");
+    CHECK_STR(run("PATH=/a:/b; path /c add; echo $PATH"), "/a:/b:/c\n");
+    CHECK_STR(run("PATH=/a; path ADD /c /a /d; echo $PATH"), "/a:/c:/d\n");   /* duplicates skipped */
+    CHECK_STR(run("PATH=/a:/b:/c; path /b remove; echo $PATH"), "/a:/c\n");
+    CHECK_STR(run("PATH=/a:/b:/c; Path Remove /a /c; echo $PATH"), "/b\n");
+    CHECK_STR(run("PATH=/a; path reset; echo $PATH"), "/UP-Term/bin:/UP-Term/Python3/bin:/SYS/Python3/bin:/UP-Term/nvim/bin:/gg/bin:/c\n");
+    CHECK_STR(run("PATH=/a; path reset /x; echo $PATH"), "/UP-Term/bin:/UP-Term/Python3/bin:/SYS/Python3/bin:/UP-Term/nvim/bin:/gg/bin:/c:/x\n");
+    CHECK_STR(run("PATH=/p:/q; echo $PATH"), "/p:/q\n");   /* the bash assignment stands */
+    /* run cmd args is cmd args & : a background job, notified like one */
+    run("run args a b");
+    CHECK_INT(last_wait[0], SH_SPAWN_BG);
+    sh_notify(&sh);
+    CHECK_STR(slot(ERR)->data, "[1]+  Done                       args a b\n");
+    run("RUN fail 3");
+    sh_notify(&sh);
+    CHECK_STR(slot(ERR)->data, "[1]+  Exit 3                     fail 3\n");
+    run("ls &");   /* the bash form is the same job */
+    CHECK_INT(last_wait[0], SH_SPAWN_BG);
+    CHECK_STR(run("run() { echo mine; }; run x"), "mine\n");   /* a function of that name wins */
+}
+
+/* VSH-AMIGA-SCRIPT-MODE S1: execute FILE runs an AmigaDOS script line by line in the shell. */
+static void amiscr_put(const char *name, const char *text)
+{
+    sh_fh fh = f_open(0, name, SH_OPEN_WRITE);
+    f_write(0, fh, text, (long)strlen(text));
+    f_close(0, fh);
+}
+
+static void execute_runs_lines_literally(void)
+{
+    int inc = 0;
+    run("");
+    amiscr_put("RAM:s",
+             "; a comment line\n"
+             "\n"
+             "args #?.info \"a*\"b\" tail\n"
+             "args hi >RAM:o\n"
+             "cat <RAM:o\n"
+             "args $x *$x \"v=$x\" ; trailing comment\n"
+             "args \"\" 'q'\n"
+             "f\n");
+    sh_run_text(&sh, "x=5; f() { echo fn; }; execute RAM:s; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "<#?.info><a\"b><tail>\n<hi>\n<5><$x><v=5>\n<><'q'>\nfn\nrc0\n");
+    /* the keyword is case-insensitive, like AmigaDOS names */
+    sh_run_text(&sh, "EXECUTE RAM:s", &inc);
+    CHECK_INT(strstr(slot(OUT)->data, "fn\nrc0\n<#?.info>") != 0, 1);
+    /* a function named execute wins; C:Execute spelled with its path is not the builtin word */
+    sh_run_text(&sh, "execute() { echo func; }; execute RAM:s", &inc);
+    CHECK_INT(strstr(slot(OUT)->data, "func\n") != 0, 1);
+    CHECK_STR(run("c:execute RAM:s; echo rc$?"), "rc127\n");
+    /* the last command's status is the script's; a missing file is an error */
+    run("");
+    amiscr_put("RAM:t", "fail 3\n");
+    sh_run_text(&sh, "execute RAM:t; echo rc$?; execute RAM:nope; echo rc$?", &inc);
+    CHECK_INT(strstr(slot(OUT)->data, "rc3\nrc20\n") != 0, 1);
+    /* the file-read loop is shared: source still works */
+    run("");
+    amiscr_put("RAM:u", "echo sourced\n");
+    sh_run_text(&sh, "source RAM:u; . RAM:u", &inc);
+    CHECK_STR(slot(OUT)->data, "sourced\nsourced\n");
+}
+
+/* S2: Quit [rc] ends the script with rc; only the inner script of a nested Execute. */
+static void execute_quit_sets_rc(void)
+{
+    int inc = 0;
+    run("");
+    amiscr_put("RAM:q1", "echo before\nQUIT 7\necho after\n");
+    sh_run_text(&sh, "execute RAM:q1; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "before\nrc7\n");
+    run("");
+    amiscr_put("RAM:q2", "echo a\nquit\necho b\n");
+    sh_run_text(&sh, "false; execute RAM:q2; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "a\nrc0\n");
+    /* Quit in a nested script ends only the inner one */
+    run("");
+    amiscr_put("RAM:q3", "echo in\nquit 4\necho never\n");
+    amiscr_put("RAM:q4", "execute RAM:q3\necho out\n");
+    sh_run_text(&sh, "execute RAM:q4", &inc);
+    CHECK_STR(slot(OUT)->data, "in\nout\n");
+}
+
+/* S2: FailAt sets the limit, a command at or above it ends the script with a message, per call. */
+static void execute_failat_aborts(void)
+{
+    int inc = 0;
+    run("");
+    amiscr_put("RAM:f1", "echo one\nfail 10\necho two\n");
+    sh_run_text(&sh, "execute RAM:f1; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "one\nrc10\n");
+    CHECK_STR(slot(ERR)->data, "fail failed returncode 10\n");
+    run("");
+    amiscr_put("RAM:f2", "failat 21\nfail 20\necho two\nfailat\nfailat 5\nfail 5\necho three\n");
+    sh_run_text(&sh, "execute RAM:f2; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "two\n21\nrc5\n");
+    CHECK_STR(slot(ERR)->data, "fail failed returncode 5\n");
+    /* the limit is per call: the inner script starts at 10, the outer keeps its 21 afterwards */
+    run("");
+    amiscr_put("RAM:f3", "fail 12\necho inner-not-reached\n");
+    amiscr_put("RAM:f4", "failat 21\nexecute RAM:f3\necho outer\nfail 15\necho outer2\n");
+    sh_run_text(&sh, "execute RAM:f4", &inc);
+    CHECK_STR(slot(OUT)->data, "outer\nouter2\n");
+}
+
+/* S2 (D1): inside a script Set, Unset and Get are AmigaDOS local variables; aliases still expand. */
+static void execute_set_unset_get_are_amiga_locals(void)
+{
+    int inc = 0;
+    run("");
+    amiscr_put("RAM:v1", "Set greeting hello big world\nget greeting\necho $greeting\nUNSET greeting\nget greeting\necho [$greeting]\nsay_hi\n");
+    sh_run_text(&sh, "shopt -s expand_aliases; alias say_hi='echo aliased'; execute RAM:v1; shopt -u expand_aliases", &inc);
+    CHECK_STR(slot(OUT)->data, "hello big world\nhello big world\n[]\naliased\n");
+    /* outside a script set is still the bash builtin */
+    CHECK_STR(run("set -- a b; echo $#"), "2\n");
+}
+
+/* S3: If / Else / EndIf: textual skipping with a depth count, no If stack. */
+static void execute_if_else_endif(void)
+{
+    int inc = 0;
+    run("");
+    amiscr_put("RAM:i1",
+               "If \"a\" EQ \"A\"\n"
+               "echo eq-true\n"
+               "Else\n"
+               "echo eq-else\n"
+               "EndIf\n"
+               "If a EQ b\n"
+               "echo no1\n"
+               "Else\n"
+               "echo else1\n"
+               "EndIf\n"
+               "If NOT a EQ b\n"
+               "echo not-true\n"
+               "EndIf\n"
+               "If 10 GT 9 VAL\n"
+               "echo gt-val\n"
+               "EndIf\n"
+               "If 10 GT 9\n"
+               "echo str-gt-no\n"
+               "EndIf\n"
+               "If 9 GE 9 VAL\n"
+               "echo ge-val\n"
+               "EndIf\n"
+               "If NOT 3 GE 4 VAL\n"
+               "echo ge-not\n"
+               "EndIf\n");
+    amiscr_put("RAM:i1b",
+               "If a EQ b\n"
+               "If a EQ a\n"
+               "echo nested-no\n"
+               "Else\n"
+               "echo nested-else-no\n"
+               "EndIf\n"
+               "echo outer-no\n"
+               "Else\n"
+               "echo outer-else\n"
+               "EndIf\n");
+    amiscr_put("RAM:i1c",
+               "If a EQ a\n"
+               "If a EQ b\n"
+               "echo x\n"
+               "Else\n"
+               "echo inner-else\n"
+               "EndIf\n"
+               "Else\n"
+               "If a EQ a\n"
+               "echo skipped\n"
+               "EndIf\n"
+               "echo skipped2\n"
+               "EndIf\n"
+               "If a EQ b\n"
+               "echo If\n"
+               "echo EndIf ; EndIf\n"
+               "EndIf\n"
+               "echo done\n");
+    sh_run_text(&sh, "execute RAM:i1; execute RAM:i1b; execute RAM:i1c; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data,
+              "eq-true\nelse1\nnot-true\ngt-val\nge-val\nge-not\nouter-else\ninner-else\ndone\nrc0\n");
+    /* an If with no EndIf: a false one runs to the end of the file and ends the script */
+    run("");
+    amiscr_put("RAM:i2", "echo a\nIf a EQ b\necho b\n");
+    sh_run_text(&sh, "execute RAM:i2; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "a\nrc0\n");
+}
+
+/* S3: WARN / ERROR / FAIL test the last return code; EXISTS tests a name. */
+static void execute_if_condition_flags(void)
+{
+    int inc = 0;
+    run("");
+    amiscr_put("RAM:c1",
+               "failat 21\n"
+               "fail 4\n"
+               "If WARN\necho w4\nEndIf\n"
+               "fail 5\n"
+               "If WARN\necho w5\nEndIf\n"
+               "If ERROR\necho e5\nEndIf\n"
+               "fail 10\n"
+               "If ERROR\necho e10\nEndIf\n"
+               "If FAIL\necho f10\nEndIf\n"
+               "fail 20\n"
+               "If FAIL\necho f20\nEndIf\n"
+               "If NOT FAIL\necho nf20\nEndIf\n"
+               "echo ok\n"
+               "If NOT WARN\necho nw0\nEndIf\n"
+               "If EXISTS RAM:c1\necho ex\nEndIf\n"
+               "If EXISTS RAM:nope\necho exno\nEndIf\n"
+               "If NOT EXISTS RAM:nope\necho nex\nEndIf\n"
+               "If EXISTS RAM:c1 NOT EXISTS RAM:nope\necho both\nEndIf\n");
+    sh_run_text(&sh, "execute RAM:c1", &inc);
+    CHECK_STR(slot(OUT)->data, "w5\ne10\nf20\nnf20\nok\nnw0\nex\nnex\nboth\n");
+}
+
+/* S3: $RC and $? in script lines are the last return code, and If sees the same value. */
+static void execute_rc_expands_in_scripts(void)
+{
+    int inc = 0;
+    run("");
+    amiscr_put("RAM:r1", "failat 21\nfail 7\nargs $RC $? ${rc} \"rc=$RC\"\nfail 7\nIf $RC EQ 7 VAL\necho seven\nEndIf\n");
+    sh_run_text(&sh, "execute RAM:r1", &inc);
+    CHECK_STR(slot(OUT)->data, "<7><7><7><rc=7>\nseven\n");
+}
+
+/* S4: Skip [label] [BACK], Lab and EndSkip. */
+static void execute_skip_and_lab(void)
+{
+    int inc = 0;
+    run("");
+    /* forward over lines, label match is case-insensitive, Lab is a no-op, Skip leaves rc */
+    amiscr_put("RAM:k1",
+               "failat 21\nfail 7\nSkip done\necho skipped\nLab other\necho skipped2\nlab DONE\n"
+               "echo after $RC\nSkip\necho skipped3\nLab any\necho anyok\n");
+    sh_run_text(&sh, "execute RAM:k1", &inc);
+    CHECK_STR(slot(OUT)->data, "after 7\nanyok\n");
+    /* Skip BACK loop: the counter function runs 3 times, the If ends the loop */
+    run("");
+    amiscr_put("RAM:k2", "Lab top\ninc\necho n=$n\nIf $n EQ 3 VAL\nSkip end\nEndIf\nSkip top BACK\nLab end\necho out\n");
+    sh_run_text(&sh, "n=0; inc() { n=$((n+1)); }; execute RAM:k2", &inc);
+    CHECK_STR(slot(OUT)->data, "n=1\nn=2\nn=3\nout\n");
+    /* a missing label: message, rc 10, the script ends */
+    run("");
+    amiscr_put("RAM:k3", "echo a\nSkip nolab\necho b\n");
+    sh_run_text(&sh, "execute RAM:k3; echo rc$?", &inc);
+    CHECK_INT(strstr(slot(OUT)->data, "a\nrc10\n") != 0, 1);
+    CHECK_INT(strstr(slot(ERR)->data, "Label nolab not found") != 0, 1);
+    /* EndSkip reached by a skip sets rc 5; reached in normal flow it is a no-op */
+    run("");
+    amiscr_put("RAM:k4", "Skip\necho no\nEndSkip\necho rc$RC\nfail 0\nEndSkip\necho rc$RC\n");
+    sh_run_text(&sh, "execute RAM:k4", &inc);
+    CHECK_STR(slot(OUT)->data, "rc5\nrc0\n");
+}
+
+/* S5: .key/.k binds the Execute arguments (mini ReadArgs) and <key>, <key$def>, <$$> are replaced. */
+static void execute_key_template_args(void)
+{
+    int inc = 0;
+    run("");
+    /* positional, keyword (KEY value, KEY=value, alias, any case), /S, /N, /M, /F, defaults */
+    amiscr_put("RAM:y1", ".key from/a,to/k,all/s,n/n,rest/m\nargs \"<from>\" \"<to>\" \"<all>\" \"<n>\" \"<rest>\" \"<to$dd>\" \"<zz$dd>\"\n");
+    sh_run_text(&sh, "execute RAM:y1 a.txt TO b.txt ALL 5 x y z; execute RAM:y1 to=t from=f", &inc);
+    CHECK_STR(slot(OUT)->data, "<a.txt><b.txt><all><5><x y z><b.txt><dd>\n<f><t><><><><t><dd>\n");
+    run("");
+    amiscr_put("RAM:y2", ".k name=nm/a,txt/f\nargs \"<nm>\" \"<txt>\"\n");
+    sh_run_text(&sh, "execute RAM:y2 NM=joe hello big world", &inc);
+    CHECK_STR(slot(OUT)->data, "<joe><hello big world>\n");
+    /* a missing /A, a /N that is no number, too many arguments, a keyword without its value: message, rc 20, nothing ran */
+    run("");
+    amiscr_put("RAM:y3", ".key a/a,n/n\necho ran\n");
+    sh_run_text(&sh, "execute RAM:y3; echo rc$?; execute RAM:y3 x y; echo rc$?; execute RAM:y3 x 1 z; echo rc$?; execute RAM:y3 x n; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "rc20\nrc20\nrc20\nrc20\n");
+    CHECK_INT(strstr(slot(ERR)->data, "required argument missing") != 0, 1);
+    CHECK_INT(strstr(slot(ERR)->data, "Bad arguments") != 0, 1);
+    /* <$$> is the CLI number: the same digits as $$ */
+    run("");
+    amiscr_put("RAM:y4", ".key x\necho <$$>\n");
+    sh_run_text(&sh, "execute RAM:y4; echo $$", &inc);
+    {
+        const char *o = slot(OUT)->data;
+        size_t n = strlen(o);
+        CHECK_INT(n >= 4 && n % 2 == 0 && !strncmp(o, o + n / 2, n / 2), 1);
+    }
+    /* without a .key line nothing is replaced: < stays a redirection */
+    run("");
+    amiscr_put("RAM:y5", "echo hi >RAM:y5o\ncat <RAM:y5o\n");
+    sh_run_text(&sh, "execute RAM:y5 a b", &inc);
+    CHECK_STR(slot(OUT)->data, "hi\n");
+}
+
+/* S5: .bra .ket .dot .dollar .default/.def, comments and directives are dropped, a lone < stays. */
+static void execute_key_dot_directives(void)
+{
+    int inc = 0;
+    run("");
+    amiscr_put("RAM:z1",
+               ".key a,b\n. a comment\n.\n.bra {\n.ket }\n.dollar #\n.def a fallback\n.default b second one\n"
+               "args \"{a}\" \"{b}\" \"{a#x}\" \"{b#y}\" \"{zz}\"\n");
+    sh_run_text(&sh, "execute RAM:z1; execute RAM:z1 given", &inc);
+    /* a unset: .def; {a#x} the inline default; then a given */
+    CHECK_STR(slot(OUT)->data, "<fallback><second one><x><y><>\n<given><second one><given><y><>\n");
+    /* .dot moves the directive character */
+    run("");
+    amiscr_put("RAM:z2", ".key v\n.dot ~\n~def v dv\n~ a comment\nargs \"<v>\"\n");
+    sh_run_text(&sh, "execute RAM:z2", &inc);
+    CHECK_STR(slot(OUT)->data, "<dv>\n");
+    /* directives in any case; a < with no closing > is left alone */
+    run("");
+    amiscr_put("RAM:z3", ".KEY q\n.BRA [\n.KET ]\nargs \"[q]\" \"a[b\"\n");
+    sh_run_text(&sh, "execute RAM:z3 Q=7", &inc);
+    CHECK_STR(slot(OUT)->data, "<7><a[b>\n");
+}
+
 void suite_sh_exec(void)
 {
+    path_and_run_are_amiga_forms_of_path_and_background();
+    execute_runs_lines_literally();
+    execute_quit_sets_rc();
+    execute_failat_aborts();
+    execute_set_unset_get_are_amiga_locals();
+    execute_if_else_endif();
+    execute_if_condition_flags();
+    execute_rc_expands_in_scripts();
+    execute_skip_and_lab();
+    execute_key_template_args();
+    execute_key_dot_directives();
+    setenv_unsetenv_getenv_use_the_system_store();
+    fault_prompt_ask_alias_and_echo_keywords();
     bind_and_inputrc_reach_the_console_line_editor();
     a_subshell_s_set_o_and_shopt_leave_the_shell_s_alone();
     a_shared_subshell_reads_the_shell_s_variables_and_changes_none();

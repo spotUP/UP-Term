@@ -176,6 +176,9 @@ typedef struct sh_os {
     /* the system's text for a secondary result (AmigaDOS Fault), copied into buf (max bytes, NUL ended); 1 when
      * there is one; 0 in the table: no text */
     int   (*fault)(void *os, long code, char *buf, long max);
+    /* set (value) or delete (value 0) the system's variable of this name (vsh: ENV:), as the AmigaDOS Shell's
+     * SetEnv and UnsetEnv; 1 when done; 0 in the table: no store, setenv/unsetenv refuse */
+    int   (*setenv)(void *os, const char *name, const char *value);
     void *data;
 } sh_os;
 #define SH_HIST_COUNT 0   /* the number of lines */

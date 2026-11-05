@@ -284,6 +284,7 @@ struct vt_term {
     int pend_n, pend_top, pend_bot;
 
     char title[VT_STR_MAX];
+    char title_dflt[VT_STR_MAX]; /* the host's open title (vt_set_title): RIS's */
     char title_stack[4][VT_STR_MAX]; /* CSI 22 t / 23 t */
     int n_titles;
     vt_u8 str_bel;             /* the string ended with BEL: answer with BEL */
@@ -6282,7 +6283,9 @@ void vt_reset(vt_term *t)
     t->six_private = 1;
     if (t->six_regs)
         sixel_default_regs(t, t->six_regs);
-    t->title[0] = 0;
+    /* the title goes back to the host's open string, as the window still
+     * shows it (xterm's RIS does not touch the window title) */
+    memcpy(t->title, t->title_dflt, VT_STR_MAX);
     /* what programs set that a full reset takes back (xterm's RIS): the
      * key encoding, the pushed titles, the cursor shape (to the host's) */
     t->n_titles = 0;
@@ -7724,6 +7727,17 @@ vt_u32 vt_modes(const vt_term *t)
 const char *vt_title(const vt_term *t)
 {
     return t->title;
+}
+
+void vt_set_title(vt_term *t, const char *s)
+{
+    size_t n = s ? strlen(s) : 0;
+    if (n >= VT_STR_MAX)
+        n = VT_STR_MAX - 1;
+    if (n)
+        memcpy(t->title, s, n);
+    t->title[n] = 0;
+    memcpy(t->title_dflt, t->title, VT_STR_MAX);
 }
 
 vt_u32 vt_raw_events(const vt_term *t)

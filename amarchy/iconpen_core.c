@@ -45,19 +45,9 @@ void ip_colours(const gtheme *t, uc_u32 ground, uint8_t rgb[IP_PENS][3])
     blend(rgb[IP_SELBG], sel, sel, 0);
 }
 
-static unsigned long dist(const uint8_t c[3], uc_u32 role)
-{
-    long dr = (long)c[0] - (long)((role >> 16) & 255);
-    long dg = (long)c[1] - (long)((role >> 8) & 255);
-    long db = (long)c[2] - (long)(role & 255);
-    return (unsigned long)(dr * dr + dg * dg + db * db);
-}
-
 int ip_fold(const gtheme *t, int slot, int depth)
 {
     uint8_t rgb[IP_PENS][3];
-    int pen, best = 0, last;
-    unsigned long bd = 0, d;
     if (slot < 0 || slot >= IP_PENS)
         return 0;
     if (depth >= 6)
@@ -65,15 +55,7 @@ int ip_fold(const gtheme *t, int slot, int depth)
     if (depth >= 4 && slot >= 8)
         return slot;
     ip_colours(t, desk_role(t, DK_BG), rgb);   /* the fold picks among the role pens, which are drawn on the panel tone */
-    last = depth <= 2 ? DK_ACCENT : DK_DARKER; /* the highest low role pen: 3 at depth 2, 5 (DK_DARKER) from depth 3 */
-    for (pen = 0; pen <= last; pen++) {
-        d = dist(rgb[slot], desk_role(t, pen));
-        if (pen == 0 || d < bd) {
-            bd = d;
-            best = pen;
-        }
-    }
-    return best;
+    return gt_nearest_role_pen(t, ((uc_u32)rgb[slot][0] << 16) | ((uc_u32)rgb[slot][1] << 8) | rgb[slot][2], depth);
 }
 
 void ip_holder_init(ip_holder *h)
@@ -308,6 +290,11 @@ unsigned long ip_scale32(unsigned c)
 int ip_screen_depth(int planes, int ehb)
 {
     return (ehb && planes == 6) ? 5 : planes;
+}
+
+int ip_wb_lockable(int listed, int has_screen, unsigned flags)
+{
+    return listed && has_screen && !(flags & IP_PSN_PRIVATE);
 }
 
 void ip_shared_init(ip_shared *s)

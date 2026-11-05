@@ -1131,6 +1131,50 @@ static void test_desk_font(void)
     CHECK(!memcmp(out, gold, (size_t)n));
 }
 
+/* TE-7-FONT-MAP: the theme editor model's look.font and title bar height reach the written font.prefs / icontrol.prefs bytes */
+static void test_desk_model_font_bar(void)
+{
+    static unsigned char gold[BUF_MAX], out[BUF_MAX], ic[BUF_MAX];
+    static gt_model m;
+    gtheme t;
+    long n = slurp(DESK_DATA "font-wbfont-outline.prefs", gold, sizeof gold);
+    int k, wb = -1, scr = -1;
+    unsigned char geom[4];
+    for (k = 0; k < 3; k++) {
+        if (gold[26 + 8 + k * 164 + 15] == 0)
+            wb = 26 + 8 + k * 164;
+        if (gold[26 + 8 + k * 164 + 15] == 2)
+            scr = 26 + 8 + k * 164;
+    }
+    CHECK(wb > 0 && scr > 0);
+    probe_theme(&t);
+    memset(&m, 0, sizeof m);
+    t.model = &m;
+    t.font[0] = 0;
+    /* no model font: nothing changes */
+    memcpy(out, gold, (size_t)n);
+    CHECK_INT(desk_font_name(&t, out, n, font_known, (void *)"topaz.font"), 0);
+    CHECK(!memcmp(out, gold, (size_t)n));
+    /* model fonts: icon font into the WBFONT chunk, screen font into the SCREENFONT chunk, sizes carried */
+    strcpy(m.look.font[GT_FONT_ICON], "topaz.font/9");
+    strcpy(m.look.font[GT_FONT_SCREEN], "topaz.font/11");
+    memcpy(out, gold, (size_t)n);
+    CHECK_INT(desk_font_name(&t, out, n, font_known, (void *)"topaz.font"), 1);
+    CHECK_STR((const char *)out + wb + 28, "topaz.font");
+    CHECK_INT(out[wb + 24] * 256 + out[wb + 25], 9);
+    CHECK_STR((const char *)out + scr + 28, "topaz.font");
+    CHECK_INT(out[scr + 24] * 256 + out[scr + 25], 11);
+    /* the bar height is the geometry byte 1 of icontrol.prefs: written bytes differ per height, 0 keeps the thin switch alone */
+    desk_geometry_bar(1, gt_look_bar_height(&t), geom);
+    CHECK_INT(geom[1], 0xFF);
+    m.look.bar_height = 14;
+    CHECK_INT(gt_look_bar_height(&t), 14);
+    desk_geometry_bar(1, gt_look_bar_height(&t), geom);
+    CHECK_INT(geom[1], 3);
+    CHECK_INT(desk_icontrol(0, 0, geom, ic, sizeof ic) > 0, 1);
+    CHECK_INT(ic[26 + 8 + 34 + 1], 3);
+}
+
 static void test_desk_guard(void)
 {
     gtheme all[SHIPPED_MAX], t;
@@ -1253,16 +1297,16 @@ static void test_desk_icontrol(void)
     {
         int snap = -1;
         n = desk_icontrol(gold, gn, thin, out, sizeof out);
-        CHECK_INT(desk_icontrol_decide(1, gold, gn, 0, &snap), DK_IC_WRITE);
+        CHECK_INT(desk_icontrol_decide(1, 0, gold, gn, 0, -1, &snap), DK_IC_WRITE);
         CHECK_INT(snap, 1);
-        CHECK_INT(desk_icontrol_decide(1, 0, 0, 0, &snap), DK_IC_WRITE);
-        CHECK_INT(desk_icontrol_decide(1, out, n, 1, &snap), DK_IC_NONE);
+        CHECK_INT(desk_icontrol_decide(1, 0, 0, 0, 0, -1, &snap), DK_IC_WRITE);
+        CHECK_INT(desk_icontrol_decide(1, 0, out, n, gold, gn, &snap), DK_IC_NONE);
         CHECK_INT(snap, 0);
-        CHECK_INT(desk_icontrol_decide(0, out, n, 1, &snap), DK_IC_RESTORE);
+        CHECK_INT(desk_icontrol_decide(0, 0, out, n, gold, gn, &snap), DK_IC_RESTORE);
         CHECK_INT(snap, 0);
-        CHECK_INT(desk_icontrol_decide(0, out, n, 0, &snap), DK_IC_NONE);
-        CHECK_INT(desk_icontrol_decide(0, gold, gn, 1, &snap), DK_IC_NONE);
-        CHECK_INT(desk_icontrol_decide(0, 0, 0, 1, &snap), DK_IC_NONE);
+        CHECK_INT(desk_icontrol_decide(0, 0, out, n, 0, -1, &snap), DK_IC_NONE);
+        CHECK_INT(desk_icontrol_decide(0, 0, gold, gn, gold, gn, &snap), DK_IC_NONE);
+        CHECK_INT(desk_icontrol_decide(0, 0, 0, 0, gold, gn, &snap), DK_IC_NONE);
     }
 }
 
@@ -1782,23 +1826,171 @@ static void test_desk_start_prefs_on_writes_pointer_font_icontrol(void)
     CHECK_INT(desk_start_prefs(DT_FONT, all & ~(1u << DT_FONT), &t, DK_ICONTEXT_OUTLINE, font_known, (void *)"topaz.font", 0, -1, again, sizeof again), 0);
     /* icontrol: thin and not yet written plans a write with a snapshot; written already plans nothing; off with no snapshot nothing */
     icn = slurp(DESK_DATA "icontrol-os32.prefs", ic, sizeof ic);
-    CHECK_INT(desk_start_icontrol(all, ic, icn, 0, &snap), DK_IC_WRITE);
+    CHECK_INT(desk_start_icontrol(all, &t, ic, icn, 0, -1, &snap), DK_IC_WRITE);
     CHECK_INT(snap, 1);
     {
         unsigned char thin[4];
         desk_geometry(1, thin);
         m = desk_icontrol(ic, icn, thin, out, sizeof out);
-        CHECK_INT(desk_start_icontrol(all, out, m, 0, &snap), DK_IC_NONE);
-        CHECK_INT(desk_start_icontrol(all & ~(1u << DT_ICONTROL), out, m, 1, &snap), DK_IC_RESTORE);
+        CHECK_INT(desk_start_icontrol(all, &t, out, m, 0, -1, &snap), DK_IC_NONE);
+        CHECK_INT(desk_start_icontrol(all & ~(1u << DT_ICONTROL), &t, out, m, ic, icn, &snap), DK_IC_RESTORE);
     }
-    CHECK_INT(desk_start_icontrol(all & ~(1u << DT_ICONTROL), ic, icn, 0, &snap), DK_IC_NONE);
+    CHECK_INT(desk_start_icontrol(all & ~(1u << DT_ICONTROL), &t, ic, icn, 0, -1, &snap), DK_IC_NONE);
+}
+
+/* TE-7-APPLY-TEST: two themes that differ only in the model's fonts, or only in its title bar height, plan the part again when the ENV
+ * holds the other theme's bytes, and plan nothing when it holds their own (a second start writes nothing); the part off in the mask plans nothing */
+static void test_model_font_or_bar_height_change_replans_font_and_icontrol(void)
+{
+    static unsigned char fa[BUF_MAX * 2], fb[BUF_MAX * 2], out[BUF_MAX * 2], ic[BUF_MAX], ia[BUF_MAX], ib[BUF_MAX];
+    gtheme t;
+    gt_model m;
+    long na, nb, icn, ian, ibn;
+    int snap = -1;
+    unsigned char geom[4];
+    unsigned all = (1u << DT_POINTER) | (1u << DT_FONT) | (1u << DT_ICONTROL);
+    probe_theme(&t);
+    memset(&m, 0, sizeof m);
+    t.model = &m;
+    t.font[0] = 0;
+    /* (a) fonts: theme A topaz 9 / 11, theme B topaz 8 / 13, same colours and bar height */
+    strcpy(m.look.font[GT_FONT_ICON], "topaz.font/9");
+    strcpy(m.look.font[GT_FONT_SCREEN], "topaz.font/11");
+    na = desk_start_prefs(DT_FONT, all, &t, 0, font_known, (void *)"topaz.font", 0, -1, fa, sizeof fa);
+    CHECK_INT(na, 518);
+    strcpy(m.look.font[GT_FONT_ICON], "topaz.font/8");
+    strcpy(m.look.font[GT_FONT_SCREEN], "topaz.font/13");
+    nb = desk_start_prefs(DT_FONT, all, &t, 0, font_known, (void *)"topaz.font", 0, -1, fb, sizeof fb);
+    CHECK_INT(nb, 518);
+    CHECK(memcmp(fa, fb, 518) != 0);
+    CHECK_INT(desk_start_prefs(DT_FONT, all, &t, 0, font_known, (void *)"topaz.font", fa, na, out, sizeof out), 518);   /* B over A's file: stale */
+    CHECK(!memcmp(out, fb, 518));
+    CHECK_INT(desk_start_prefs(DT_FONT, all, &t, 0, font_known, (void *)"topaz.font", fb, nb, out, sizeof out), 0);     /* B over its own: nothing */
+    CHECK_INT(desk_start_prefs(DT_FONT, all & ~(1u << DT_FONT), &t, 0, font_known, (void *)"topaz.font", fa, na, out, sizeof out), 0);
+    /* (b) bar height: 14 against 18, same fonts, thin border size */
+    icn = slurp(DESK_DATA "icontrol-os32.prefs", ic, sizeof ic);
+    m.look.bar_height = 14;
+    desk_geometry_bar(1, gt_look_bar_height(&t), geom);
+    ian = desk_icontrol(ic, icn, geom, ia, sizeof ia);
+    m.look.bar_height = 18;
+    desk_geometry_bar(1, gt_look_bar_height(&t), geom);
+    ibn = desk_icontrol(ic, icn, geom, ib, sizeof ib);
+    CHECK(ian > 0 && ian == ibn && memcmp(ia, ib, (size_t)ian) != 0);
+    CHECK_INT(desk_start_icontrol(all, &t, ia, ian, ic, icn, &snap), DK_IC_WRITE);   /* 18 over the file written for 14: stale */
+    CHECK_INT(snap, 0);                                                         /* the pre-thin snapshot is kept */
+    CHECK_INT(desk_start_icontrol(all, &t, ib, ibn, ic, icn, &snap), DK_IC_NONE);    /* 18 over its own bytes: nothing */
+    CHECK_INT(desk_start_icontrol(all & ~(1u << DT_ICONTROL), &t, ia, ian, 0, -1, &snap), DK_IC_NONE);   /* part off, nothing to restore */
+}
+
+/* TE-7-SCREENFONT-TEST: font.prefs built for model fonts A is stale when ONLY the screen font differs, stale when ONLY the icon font differs,
+ * and current when neither does; the title, menu and shell slots have no font.prefs chunk (TE-7-TITLE-FONT) and get no case */
+static void test_screen_font_alone_and_icon_font_alone_each_replan_font_prefs(void)
+{
+    static unsigned char fa[BUF_MAX * 2], out[BUF_MAX * 2];
+    gtheme t;
+    gt_model m;
+    long na;
+    unsigned all = (1u << DT_FONT);
+    probe_theme(&t);
+    memset(&m, 0, sizeof m);
+    t.model = &m;
+    t.font[0] = 0;
+    strcpy(m.look.font[GT_FONT_ICON], "topaz.font/9");
+    strcpy(m.look.font[GT_FONT_SCREEN], "topaz.font/11");
+    na = desk_start_prefs(DT_FONT, all, &t, 0, font_known, (void *)"topaz.font", 0, -1, fa, sizeof fa);
+    CHECK_INT(na, 518);
+    /* (c) nothing differs: not stale */
+    CHECK_INT(desk_start_prefs(DT_FONT, all, &t, 0, font_known, (void *)"topaz.font", fa, na, out, sizeof out), 0);
+    /* (a) screen font alone differs: stale */
+    strcpy(m.look.font[GT_FONT_SCREEN], "topaz.font/13");
+    CHECK_INT(desk_start_prefs(DT_FONT, all, &t, 0, font_known, (void *)"topaz.font", fa, na, out, sizeof out), 518);
+    strcpy(m.look.font[GT_FONT_SCREEN], "topaz.font/11");
+    /* (b) icon font alone differs: stale */
+    strcpy(m.look.font[GT_FONT_ICON], "topaz.font/8");
+    CHECK_INT(desk_start_prefs(DT_FONT, all, &t, 0, font_known, (void *)"topaz.font", fa, na, out, sizeof out), 518);
+}
+
+/* TE-7-BAR-STOCK-EDGE: thin with a title bar height equal to the stock BorderTop writes geometry that is all zero; the next start must still
+ * find its own file (no rewrite, no new snapshot over the saved pre-thin file), and a stock file of the user is still snapshotted */
+static void test_thin_with_stock_bar_height_does_not_rewrite_or_resnapshot(void)
+{
+    static unsigned char ic[BUF_MAX], w[BUF_MAX * 2];
+    gtheme t;
+    gt_model m;
+    long icn, wn;
+    int snap = -1;
+    unsigned char geom[4];
+    unsigned all = (1u << DT_POINTER) | (1u << DT_FONT) | (1u << DT_ICONTROL);
+    probe_theme(&t);
+    memset(&m, 0, sizeof m);
+    t.model = &m;
+    icn = slurp(DESK_DATA "icontrol-os32.prefs", ic, sizeof ic);
+    /* (c) a real stock file: thin on with a bar height of 14 writes with a snapshot; with the stock height there is nothing to change */
+    m.look.bar_height = 14;
+    CHECK_INT(desk_start_icontrol(all, &t, ic, icn, 0, -1, &snap), DK_IC_WRITE);
+    CHECK_INT(snap, 1);
+    m.look.bar_height = DK_STOCK_BORDERTOP;
+    CHECK_INT(desk_start_icontrol(all, &t, ic, icn, 0, -1, &snap), DK_IC_NONE);
+    CHECK_INT(snap, 0);
+    /* (a) the file our writer produces for bar height 11, decided again with the same inputs */
+    desk_geometry_bar(1, gt_look_bar_height(&t), geom);
+    wn = desk_icontrol(ic, icn, geom, w, sizeof w);
+    CHECK(wn > 0);
+    snap = -1;
+    CHECK_INT(desk_start_icontrol(all, &t, w, wn, ic, icn, &snap), DK_IC_NONE);
+    CHECK_INT(snap, 0);
+    /* (b) the bar height changed to 14: rewritten, the saved snapshot kept */
+    m.look.bar_height = 14;
+    snap = -1;
+    CHECK_INT(desk_start_icontrol(all, &t, w, wn, ic, icn, &snap), DK_IC_WRITE);
+    CHECK_INT(snap, 0);
+    /* (d) thin off with our file (bar height 14) and a snapshot: restore; no snapshot: nothing */
+    desk_geometry_bar(1, gt_look_bar_height(&t), geom);
+    wn = desk_icontrol(ic, icn, geom, w, sizeof w);
+    CHECK_INT(desk_start_icontrol(all & ~(1u << DT_ICONTROL), &t, w, wn, ic, icn, &snap), DK_IC_RESTORE);
+    CHECK_INT(desk_start_icontrol(all & ~(1u << DT_ICONTROL), &t, w, wn, 0, -1, &snap), DK_IC_NONE);
+}
+
+/* TE-7-BAR-THINOFF-ZERO-SNAP: thin off restores the saved pre-thin file exactly when the live file is our write over it; the geometry bytes
+ * (zero for a stock-height bar, non-zero in a user's own file) do not decide it */
+static void test_thin_off_restores_only_our_own_write_over_the_snapshot(void)
+{
+    static unsigned char gold[BUF_MAX], user[BUF_MAX], live[BUF_MAX], other[BUF_MAX];
+    unsigned char zero[4] = { 0, 0, 0, 0 }, ug[4] = { 0, 5, 0, 0 }, thin[4];
+    long gn = slurp(DESK_DATA "icontrol-os32.prefs", gold, sizeof gold), un, ln, on;
+    int snap = -1;
+    CHECK(gn > 0);
+    un = desk_icontrol(gold, gn, ug, user, sizeof user);
+    CHECK(un > 0);
+    /* 1: our thin write had stock (zero) geometry over the user's own file */
+    ln = desk_icontrol(user, un, zero, live, sizeof live);
+    CHECK(ln > 0 && (ln != un || memcmp(live, user, (size_t)un) != 0));
+    CHECK_INT(desk_icontrol_decide(0, 0, live, ln, user, un, &snap), DK_IC_RESTORE);
+    /* 2: the live file is the snapshot already (non-zero user geometry): nothing, every start */
+    CHECK_INT(desk_icontrol_decide(0, 0, user, un, user, un, &snap), DK_IC_NONE);
+    /* 3: the user changed the file elsewhere than the geometry */
+    memcpy(other, live, (size_t)ln);
+    other[26 + 8 + 10] ^= 0x5A;
+    on = ln;
+    CHECK_INT(desk_icontrol_decide(0, 0, other, on, user, un, &snap), DK_IC_NONE);
+    /* 4: no snapshot, zero and non-zero geometry */
+    CHECK_INT(desk_icontrol_decide(0, 0, live, ln, 0, -1, &snap), DK_IC_NONE);
+    desk_geometry(1, thin);
+    ln = desk_icontrol(gold, gn, thin, live, sizeof live);
+    CHECK_INT(desk_icontrol_decide(0, 0, live, ln, 0, -1, &snap), DK_IC_NONE);
+    /* 5: a stock gold snapshot and our thin write over it */
+    CHECK_INT(desk_icontrol_decide(0, 0, live, ln, gold, gn, &snap), DK_IC_RESTORE);
 }
 
 void suite_desk_start_apply(void)
 {
+    test_thin_off_restores_only_our_own_write_over_the_snapshot();
     test_desk_start_prefs_on_writes_border_gauge_backdrop();
     test_desk_start_prefs_on_writes_theme_palette();
     test_desk_start_prefs_on_writes_pointer_font_icontrol();
+    test_model_font_or_bar_height_change_replans_font_and_icontrol();
+    test_screen_font_alone_and_icon_font_alone_each_replan_font_prefs();
+    test_thin_with_stock_bar_height_does_not_rewrite_or_resnapshot();
 }
 
 void suite_desk(void)
@@ -1840,6 +2032,7 @@ void suite_desk(void)
     test_desk_palette_31_fix_plan();
     test_desk_palette_31_wired();
     test_desk_font();
+    test_desk_model_font_bar();
     test_desk_font_default();
     test_desk_guard();
     test_desk_plan();

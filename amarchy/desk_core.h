@@ -9,13 +9,6 @@
 #include "gthemes_core.h"
 #include "flat_core.h"
 
-/* the eight palette roles of the flat mapping (OD13): the pen index of a role is its enum value.
- * FILENAME-PEN: Workbench draws the list-view file names with the fixed DrawInfo pen 1, so pen 1 holds the muted text colour
- * (DK_MUTED) and follows every theme; Amarchy's own dark tone (DK_DARKER: BLOCKPEN, BARTRIMPEN, the label backdrop) lives on pen 5.
- * RL8: a view of the role table (gt_roles_of): BG = GR_SURFACE, MUTED = GR_MUTED, FG = GR_TEXT, ACCENT = GR_ACCENT, SELECTION =
- * GR_SELECTION, DARKER = GR_BACKGROUND, GREEN = status ok. DK_BACKDROP (pen 7, was DK_RED) is the Workbench backdrop pen at 3+
- * planes; palette.prefs still writes the fail tone there (byte-compatible), the screen gets desk_pen_colour's backdrop colour. */
-enum { DK_BG, DK_MUTED, DK_FG, DK_ACCENT, DK_SELECTION, DK_DARKER, DK_GREEN, DK_BACKDROP, DK_ROLES };
 
 /* the DrawInfo slots of pap_4ColorPens / pap_8ColorPens, in the order of the file */
 enum {
@@ -26,9 +19,7 @@ enum {
 #define DK_PALETTE_SIZE 434L /* a palette.prefs: FORM + PRHD + PALT of 400 bytes */
 #define DK_WBPATTERN_SIZE 410L /* three PTRN chunks of depth 3 */
 
-/* the colour of a palette role (0xRRGGBB): a view of the role table gt_roles_of (gthemes_core.h); the colour maths (gt_luma,
- * gt_contrast, gt_darker, gt_selection, gt_ground_black) moved there with it */
-uc_u32 desk_role(const gtheme *t, int role);
+/* the role pens (DK_BG..DK_ROLES) and desk_role live in gthemes_core.h, which this header includes */
 /* RL8: the desktop pen (DK_*) that carries a role of the table (GR_*): the flat glyph roles (FLAT_ROLE_*) and the icon slots pick
  * their pens through it */
 int desk_pen_of_role(int role);
@@ -176,6 +167,10 @@ long desk_icontrol(const unsigned char *cur, long curlen, const unsigned char ge
 /* the geometry bytes of the border and title size: thin = 0 stock (all zero), 1 thin (byte 1 = -1: title bar one pixel
  * lower than stock; measured FLAT-R1, research note section 9; nothing thins the other borders) */
 void desk_geometry(int thin, unsigned char geometry[4]);
+/* TE-7-FONT-MAP: the same with the theme model's title bar height (bar_height pixels of BorderTop, 0 = the thin switch alone): byte 1 is
+ * the signed difference to the stock BorderTop of 3.2 (measured 11, research 2026-10-29 section 9; only -1 is measured). */
+#define DK_STOCK_BORDERTOP 11
+void desk_geometry_bar(int thin, int bar_height, unsigned char geometry[4]);
 
 /* R1.4: the theme's font= names the WBFONT of font.prefs, only when exists(ctx, name) says the font is there. Returns
  * 1 when the file changed, 0 when the key is empty or unknown (file untouched), -1 when buf is no font.prefs. */
@@ -265,10 +260,12 @@ long desk_palette_31safe(const unsigned char *in, long inlen, unsigned char *out
 enum { DK_P31_NONE = 0, DK_P31_WRITE = 1, DK_P31_BACKUP = 2 };
 int desk_palette_31_fix_plan(int palette_ok, const unsigned char *cur, long curlen, int backup_exists, unsigned char *out, long cap, long *outlen);
 /* FLAT-P1-2 icontrol action. thin = the border size switch is thin (and the desktop theme on); cur = the current icontrol.prefs bytes (curlen <= 0: none);
- * have_snap = T:amarchy-revert holds a copy. Thin and not yet written: DK_IC_WRITE and *snapshot = 1 (copy the file first). Thin already written: DK_IC_NONE
- * (no second Workbench reset; the snapshot is not overwritten by our own file). Stock after a thin write with a snapshot: DK_IC_RESTORE (copy the snapshot back, ENVARC: and ENV:). Else DK_IC_NONE. */
+ * snap, snaplen = the saved pre-thin file T:amarchy-revert holds (snaplen < 0 or snap NULL: none). Thin and not yet written: DK_IC_WRITE and *snapshot = 1 (copy the file first). Thin already written with the geometry of bar_height (desk_geometry_bar): DK_IC_NONE, with another geometry DK_IC_WRITE and no snapshot
+ * (no second Workbench reset; the snapshot is not overwritten by our own file). Stock while the live file is our thin write (desk_icontrol_is_ours): DK_IC_RESTORE (copy the snapshot back, ENVARC: and ENV:). Else DK_IC_NONE. */
 enum { DK_IC_NONE, DK_IC_WRITE, DK_IC_RESTORE };
-int desk_icontrol_decide(int thin, const unsigned char *cur, long curlen, int have_snap, int *snapshot);
+int desk_icontrol_decide(int thin, int bar_height, const unsigned char *cur, long curlen, const unsigned char *snap, long snaplen, int *snapshot);
+/* 1 when cur is byte for byte the writer desk_icontrol applied to snap with cur's own geometry bytes, and cur differs from snap */
+int desk_icontrol_is_ours(const unsigned char *cur, long curlen, const unsigned char *snap, long snaplen);
 /* AM-ICON-NOBORDER: the Workbench icon border is the BOOL wbp_Borderless of the WBNC chunk in ENV:Sys/Workbench.prefs (NDK 3.2
  * prefs/workbench.h:27-37; the 3.2 Prefs/Workbench editor "Border Size" cycle, "No Border"). desk_wbborder_value: 1 no border, 0 border, -1 no WBNC chunk
  * (3.1 has none). desk_wbborder: the file flat-system-look wants (flat 1 = no border, 0 = the saved value back). saved = the value kept when we changed it
@@ -344,7 +341,7 @@ long desk_start_palette(unsigned mask, int flat, const gtheme *th, int depth, co
 #define DESK_START_ICONTROL 32u
 long desk_start_prefs(int target, unsigned mask, const gtheme *th, int text_mode, desk_font_exists_fn exists, void *ctx,
                       const unsigned char *cur, long curlen, unsigned char *out, long cap);
-int desk_start_icontrol(unsigned mask, const unsigned char *cur, long curlen, int have_snap, int *snapshot);
+int desk_start_icontrol(unsigned mask, const gtheme *th, const unsigned char *cur, long curlen, const unsigned char *snap, long snaplen, int *snapshot);
 /* 1 when two wbpattern.prefs show the same pens (the editor stores an all-pen-0 chunk with depth 1) */
 int desk_wbpattern_same(const unsigned char *a, long alen, const unsigned char *b, long blen);
 /* S32-START-LOOK: Amarchy starts from S:User-Startup, before LoadWB opens the Workbench screen, and every start step

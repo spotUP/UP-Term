@@ -348,8 +348,7 @@ static int theme_action(const sd_setting *s, const char *label, const lf_ui *ui)
         ok = gt_ed.open && gt_dos_delete_user(gt_ed.name, why, sizeof why);
         break;
     case GTA_RESET_BASE:
-        if (gt_ed.open && gt_ed.m.base[0])
-            ok = gt_dos_edit_open(gt_ed.m.base);
+        ok = gt_dos_reset_base();
         break;
     case GTA_ADD_SWATCH:
     case GTA_RENAME_SWATCH:
