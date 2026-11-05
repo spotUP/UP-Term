@@ -283,6 +283,8 @@ typedef struct sh_shell {
     int exiting;           /* exit ran: stop */
     int failat_leak;       /* a finished script called FailAt: the script that ran it takes failat_leak_val */
     long failat_leak_val;
+    int amiscr_reported;   /* the running script already printed its "X failed returncode" line */
+    int amiscr_load_rc;    /* rc when the .key binding refuses the call (20, or 10 for a missing /A) */
     const char *cmd_q;     /* the running builtin's argv quoted flags (sh_list.q), for exec; 0 outside a builtin */
     long exit_status;
     int breaking;          /* break / continue levels pending */

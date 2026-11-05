@@ -322,16 +322,29 @@ static int script_word(sh_shell *sh, line_toks *t, const sh_io *io, long *st, lo
     if (t->redir[0])
         return 0;
     if (word_is(w, "quit")) {
-        *st = t->n > 1 ? strtol(t->v[1], 0, 10) : 0;
+        const char *a = t->n > 1 ? t->v[1] : "0";
+        const char *d = (*a == '-' || *a == '+') ? a + 1 : a;
         *quit = 1;
+        if (!*d || strspn(d, "0123456789") != strlen(d)) {   /* S7b-5 R19 */
+            say_io(sh, io->err, "bad number\n");
+            *st = 10;
+        } else
+            *st = strtol(a, 0, 10);
+        if (*st >= *failat) {   /* S7b-5 R9: the failing command is named */
+            say_io(sh, io->err, "Quit failed returncode ");
+            say_num(sh, io->err, *st);
+            sh->amiscr_reported = 1;
+        }
         return 1;
     }
     if (word_is(w, "failat")) {
         if (t->n > 1) {
             *failat = strtol(t->v[1], 0, 10);
             *failat_set = 1;
-        } else
+        } else {
+            say_io(sh, io->out, "Fail limit: ");   /* S7b-5 R16 */
             say_num(sh, io->out, *failat);
+        }
         *st = 0;
         return 1;
     }
@@ -477,6 +490,8 @@ static int if_true(sh_shell *sh, line_toks *t)
         else if (word_is(w, "exists") && i + 1 < t->n) {
             sh_stat sb;
             ok = ok && sh->os.stat && sh->os.stat(sh->os.data, t->v[++i], &sb, 0) == 0;
+            if (i + 1 < t->n && word_is(t->v[i + 1], "val"))   /* S7b-5 R11: EXISTS x VAL 1 takes the 1 */
+                i += i + 2 < t->n ? 2 : 1;
         } else if (i + 2 < t->n && (word_is(t->v[i + 1], "eq") || word_is(t->v[i + 1], "gt") ||
                                     word_is(t->v[i + 1], "ge"))) {
             int c;
@@ -500,7 +515,7 @@ static int if_true(sh_shell *sh, line_toks *t)
 #define MAXDEF 32
 
 typedef struct {
-    char *name, *alias;
+    char *name, *alias, *raw;   /* raw: the item as written in .key, for the error text */
     int a, k, s, n, m, f;   /* the /A /K /S /N /M /F flags */
     int set;
     buf val;
@@ -537,6 +552,7 @@ static void tmpl_free(tmpl *t)
     for (i = 0; i < t->n; i++) {
         free(t->it[i].name);
         free(t->it[i].alias);
+        free(t->it[i].raw);
         free(t->it[i].val.s);
     }
     for (i = 0; i < t->ndef; i++) {
@@ -556,6 +572,7 @@ static void tmpl_parse(tmpl *t, const char *s)
         if (!item)
             return;
         memset(k, 0, sizeof(*k));
+        k->raw = dup_n(item, strlen(item));
         sl = strchr(item, '/');
         for (p = sl; p && *p; p++) {
             switch (lc(*p)) {
@@ -665,7 +682,10 @@ static int tmpl_bind(sh_shell *sh, tmpl *t, char **a, int na, const sh_io *io)
     }
     for (j = 0; j < t->n; j++)
         if (t->it[j].a && !t->it[j].set) {
-            say_io(sh, io->err, "execute: required argument missing\n");
+            say_io(sh, io->err, "EXECUTE: Parameters unsuitable for key \"");   /* S7b-5 R3 */
+            say_io(sh, io->err, t->it[j].raw ? t->it[j].raw : t->it[j].name);
+            say_io(sh, io->err, "\"\nrequired argument missing\nExecute failed returncode 10\n");
+            sh->amiscr_load_rc = 10;
             return 1;
         }
     return 0;
@@ -870,6 +890,7 @@ long sh_amiga_execute(sh_shell *sh, const char *text0, const char *file, int arg
     int quit = 0, failat_set = 0;
     (void)file;
     sh->failat_leak = 0;
+    sh->amiscr_load_rc = 20;
     if (argc == 2 && !strcmp(argv[1], "?") && (text0[0] == '.' && (text0[1] == 'k' || text0[1] == 'K'))) {
         /* `Execute file ?` on 3.2 (S7b-6 R6): the template is asked for and an empty reply (NIL: input) ends the
          * call quietly, rc 0, the script not run. UNVERIFIED: a non-empty reply from a console. */
@@ -880,8 +901,8 @@ long sh_amiga_execute(sh_shell *sh, const char *text0, const char *file, int arg
     text = loaded;
     p = text;
     if (!loaded) {
-        sh->ctx.status = 20;   /* bad arguments against the .key template: nothing ran */
-        return 20;
+        sh->ctx.status = sh->amiscr_load_rc;   /* bad arguments against the .key template: nothing ran */
+        return sh->amiscr_load_rc;
     }
     while (*p && !sh->intr && !sh->exiting) {
         const char *e = strchr(p, '\n');
@@ -932,20 +953,22 @@ long sh_amiga_execute(sh_shell *sh, const char *text0, const char *file, int arg
                 if (endskip)
                     st = 5;
             } else {
-                say_io(sh, io->err, "Label ");
-                say_io(sh, io->err, label);
-                say_io(sh, io->err, " not found\n");
+                say_io(sh, io->err, "object not found\nSkip failed returncode 10\n");   /* S7b-5 R13/R14 */
+                sh->amiscr_reported = 1;
                 st = 10;
                 quit = 1;
             }
         } else if (t.n && !script_word(sh, &t, io, &st, &failat, &quit, &failat_set)) {
+            sh->amiscr_reported = 0;
             st = run_tokens(sh, &t, io);
             if (sh->failat_leak) {   /* a nested script's FailAt leaks to this one, as on 3.2 (S7b-6 R17) */
                 failat = sh->failat_leak_val;
                 failat_set = 1;
                 sh->failat_leak = 0;
             }
-            if (st >= failat) {
+            if (st >= failat && sh->amiscr_reported)
+                quit = 1;   /* a nested script already named the failing command (S7b-5 R9) */
+            else if (st >= failat) {
                 say_io(sh, io->err, t.v[0]);
                 say_io(sh, io->err, " failed returncode ");
                 say_num(sh, io->err, st);
