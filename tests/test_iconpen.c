@@ -582,17 +582,27 @@ static void test_icon_colours_inverted_pens_are_vantablack(void)
  * (node listed, screen set, PSNF_PRIVATE); Intuition then reopens the Workbench under the list lock Amarchy holds. */
 static void test_workbench_still_opening_is_not_locked(void)
 {
-    CHECK_INT(ip_wb_lockable(1, 1, IP_PSN_PRIVATE), 0);         /* the freeze: listed, has a screen, still private */
-    CHECK_INT(ip_wb_lockable(1, 1, IP_PSN_PRIVATE | 0x0010), 0);
-    CHECK_INT(ip_wb_lockable(1, 1, 0), 1);                      /* open and public: the lock is asked for */
-    CHECK_INT(ip_wb_lockable(1, 1, 0x0010), 1);                 /* other flag bits do not hide it */
-    CHECK_INT(ip_wb_lockable(1, 0, 0), 0);                      /* a node with no screen */
-    CHECK_INT(ip_wb_lockable(0, 0, 0), 0);                      /* BOOT-31-WB-DEADLOCK: the Workbench is closed */
+    CHECK_INT(ip_pub_lockable(1, 1, IP_PSN_PRIVATE), 0);         /* the freeze: listed, has a screen, still private */
+    CHECK_INT(ip_pub_lockable(1, 1, IP_PSN_PRIVATE | 0x0010), 0);
+    CHECK_INT(ip_pub_lockable(1, 1, 0), 1);                      /* open and public: the lock is asked for */
+    CHECK_INT(ip_pub_lockable(1, 1, 0x0010), 1);                 /* other flag bits do not hide it */
+    CHECK_INT(ip_pub_lockable(1, 0, 0), 0);                      /* a node with no screen */
+    CHECK_INT(ip_pub_lockable(0, 0, 0), 0);                      /* BOOT-31-WB-DEADLOCK: the Workbench is closed */
+}
+
+/* The generic rule for any public screen name (TE-10.1): locked only when listed, with a screen, and public. */
+static void test_pub_lockable_generic_rule(void)
+{
+    CHECK_INT(ip_pub_lockable(0, 0, 0), 0);                /* not listed */
+    CHECK_INT(ip_pub_lockable(1, 0, 0), 0);                /* listed without a screen */
+    CHECK_INT(ip_pub_lockable(1, 1, IP_PSN_PRIVATE), 0);   /* listed, private */
+    CHECK_INT(ip_pub_lockable(1, 1, 0), 1);                /* listed, public */
 }
 
 void suite_iconpen(void)
 {
     test_workbench_still_opening_is_not_locked();
+    test_pub_lockable_generic_rule();
     test_icon_colours_inverted_pens_are_vantablack();
     test_colours_and_fold();
     test_plan_no_overlap();
