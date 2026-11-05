@@ -4865,6 +4865,7 @@ static long b_getenv(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_fault(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_prompt(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_ask(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_path(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_complete(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_bind(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_compgen(sh_shell *sh, int argc, char **argv, const sh_io *io);
@@ -4893,7 +4894,7 @@ static const struct {
     { "typeset", b_declare }, { "mapfile", b_mapfile }, { "readarray", b_mapfile }, { "builtin", b_builtin }, { "kill", b_kill },
     { "hash", b_hash }, { "history", b_history }, { "fc", b_fc }, { "enable", b_enable }, { "times", b_times }, { "caller", b_caller }, { "ulimit", b_ulimit }, { "help", b_help }, { "logout", b_logout },
     { "why", b_why }, { "setenv", b_setenv }, { "unsetenv", b_unsetenv }, { "getenv", b_getenv }, { "fault", b_fault },
-    { "prompt", b_prompt }, { "ask", b_ask }, { "bind", b_bind }, { "complete", b_complete }, { "compgen", b_compgen }, { "compopt", b_compopt }, { 0, 0 }
+    { "prompt", b_prompt }, { "ask", b_ask }, { "path", b_path }, { "bind", b_bind }, { "complete", b_complete }, { "compgen", b_compgen }, { "compopt", b_compopt }, { 0, 0 }
 };
 
 /* ---- hash, enable, times, caller, ulimit, help ---------------------------------- */
@@ -6169,6 +6170,91 @@ static long b_prompt(sh_shell *sh, int argc, char **argv, const sh_io *io)
 
 /* Ask "question": prints it as given (no "(y/n)" added), reads a line from standard input; a line starting with Y or y
  * gives 5 (WARN), anything else, an empty line or end of input gives 0, as the AmigaDOS command. */
+/* The default $PATH of vsh (dist/vshrc runs `path reset` for it): the single place it is written. */
+#define VSH_DEFAULT_PATH "/UP-Term/bin:/UP-Term/Python3/bin:/SYS/Python3/bin:/UP-Term/nvim/bin:/gg/bin:/c"
+
+static int path_has(const char *path, const char *dir, size_t dn)
+{
+    const char *p = path;
+    while (p && *p) {
+        const char *e = strchr(p, ':');
+        size_t n = e ? (size_t)(e - p) : strlen(p);
+        if (n == dn && !strncmp(p, dir, dn))
+            return 1;
+        p = e ? e + 1 : 0;
+    }
+    return 0;
+}
+
+/* Path (AmigaDOS Shell) on vsh's own $PATH: `path` / `path show` list it one entry per line, `path DIR... add` and
+ * `path add DIR...` append (a dir already there is skipped), `remove` drops, `reset [DIR...]` goes back to the default
+ * and adds. The keyword may stand first or last, in any case; dirs alone mean add, as in AmigaDOS. */
+static long b_path(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    int i, first = 1, last = argc, mode = 0; /* 0 add, 1 show, 2 remove, 3 reset */
+    static const char *const kw[] = { "add", "show", "remove", "reset" };
+    pbuf out = { 0, 0, 0 };
+    const char *cur = sh_get(&sh->ctx, "PATH");
+    for (i = 0; i < 4 && argc > 1; i++)
+        if (!echo_kw(argv[1], kw[i])) {
+            mode = i;
+            first = 2;
+            break;
+        }
+    if (first == 1 && argc > 1)
+        for (i = 0; i < 4; i++)
+            if (!echo_kw(argv[argc - 1], kw[i])) {
+                mode = i;
+                last = argc - 1;
+                break;
+            }
+    if (argc == 1)
+        mode = 1;
+    if (mode == 3)
+        cur = VSH_DEFAULT_PATH;
+    if (mode == 1) {
+        const char *p = cur;
+        while (p && *p) {
+            const char *e = strchr(p, ':');
+            size_t n = e ? (size_t)(e - p) : strlen(p);
+            sh->os.write(sh->os.data, io->out, p, (long)n);
+            say(sh, io->out, "\n");
+            p = e ? e + 1 : 0;
+        }
+        return 0;
+    }
+    if (mode == 2) {
+        const char *p = cur;
+        while (p && *p) {
+            const char *e = strchr(p, ':');
+            size_t n = e ? (size_t)(e - p) : strlen(p);
+            int drop = 0;
+            for (i = first; i < last; i++)
+                if (strlen(argv[i]) == n && !strncmp(argv[i], p, n))
+                    drop = 1;
+            if (!drop) {
+                if (out.s && *out.s)
+                    pb_add(&out, ":", 1);
+                pb_add(&out, p, (long)n);
+            }
+            p = e ? e + 1 : 0;
+        }
+    } else {
+        pb_add(&out, cur ? cur : "", cur ? (long)strlen(cur) : 0);
+        for (i = first; i < last; i++) {
+            if (out.s && path_has(out.s, argv[i], strlen(argv[i])))
+                continue;
+            if (out.s && *out.s)
+                pb_add(&out, ":", 1);
+            pb_add(&out, argv[i], (long)strlen(argv[i]));
+        }
+    }
+    sh_set(&sh->ctx, "PATH", out.s ? out.s : "");
+    sh_export(&sh->ctx, "PATH");
+    free(out.s);
+    return 0;
+}
+
 static long b_ask(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     char *rd[3];
@@ -7108,7 +7194,7 @@ done:
     return n;
 }
 
-static const char *const amiga_internals[] = { "endcli", "endshell", "why", "setenv", "unsetenv", "getenv", "fault", "prompt", "ask", 0 };
+static const char *const amiga_internals[] = { "endcli", "endshell", "why", "setenv", "unsetenv", "getenv", "fault", "prompt", "ask", "path", 0 };
 
 static builtin_fn find_builtin(const char *name)
 {
@@ -9316,6 +9402,35 @@ static long exec_compound(sh_shell *sh, const sh_node *n, const sh_io *io)
     }
 }
 
+/* `cmd &`: start n in the background (an external command as its own job, else a subshell, else here) */
+static void bg_start(sh_shell *sh, const sh_node *a, const sh_io *io)
+{
+    long job = 0;
+    if (a && a->kind == SH_CMD)
+        debug_trap(sh, a, io); /* bash runs DEBUG in the shell, before the fork */
+    if (a && is_external(sh, a))
+        exec_cmd(sh, a, io, 0, &job);
+    else if (a && sh->os.spawn) {
+        sh_io bio = *io;
+        bio.owned = 0;
+        subshell(sh, a, &bio, 0, &job);
+    } else {
+        sh->debug_done = a && a->kind == SH_CMD && sh->traps[TRAP_DEBUG] && !sh->trap_busy;
+        exec_node(sh, a, io); /* no subshell processes: it runs now */
+        sh->debug_done = 0;
+    }
+    if (job)
+        sh->ctx.last_bg = add_job(sh, job, node_text(a), io);
+}
+
+/* AmigaDOS `Run cmd args`: the same as `cmd args &`. Only the literal word run (any case) with a command after it,
+ * and no function or alias of that name; a bare `run` stays C:Run. */
+static int amiga_run(sh_shell *sh, const sh_node *n)
+{
+    const char *w = n->words ? n->words->text : 0;
+    return w && n->words->next && !echo_kw(w, "run") && !find_func(sh, "run") && !alias_entry(sh, "run", 3);
+}
+
 static long exec_node1(sh_shell *sh, const sh_node *n, const sh_io *io)
 {
     long st = 0;
@@ -9341,6 +9456,13 @@ static long exec_node1(sh_shell *sh, const sh_node *n, const sh_io *io)
         debug_trap(sh, n, io);
     switch (n->kind) {
     case SH_CMD:
+        if (amiga_run(sh, n)) {
+            sh_node c = *n;
+            c.words = n->words->next;
+            bg_start(sh, &c, io);
+            st = 0;
+            break;
+        }
         st = exec_cmd(sh, n, io, 1, 0);
         sh_pstat(&sh->ctx, &st, 1);
         /* the secondary result of this command, for why: only a failure keeps one */
@@ -9355,30 +9477,13 @@ static long exec_node1(sh_shell *sh, const sh_node *n, const sh_io *io)
         if (!sh->exiting && !sh->breaking && !sh->continuing && !sh->returning && !sh->intr && n->b)
             st = exec_node(sh, n->b, io);
         break;
-    case SH_BG: {
-        long job = 0;
-        if (n->a && n->a->kind == SH_CMD)
-            debug_trap(sh, n->a, io); /* bash runs DEBUG in the shell, before the fork */
-        if (n->a && is_external(sh, n->a))
-            exec_cmd(sh, n->a, io, 0, &job);
-        else if (n->a && sh->os.spawn) {
-            sh_io bio = *io;
-            bio.owned = 0;
-            subshell(sh, n->a, &bio, 0, &job);
-        } else {
-            sh->debug_done = n->a && n->a->kind == SH_CMD && sh->traps[TRAP_DEBUG] && !sh->trap_busy;
-            exec_node(sh, n->a, io); /* no subshell processes: it runs now */
-            sh->debug_done = 0;
-        }
-        if (job) {
-            sh->ctx.last_bg = add_job(sh, job, node_text(n->a), io);
-        }
+    case SH_BG:
+        bg_start(sh, n->a, io);
         st = 0;
         sh->ctx.status = st;
         if (n->b)
             st = exec_node(sh, n->b, io);
         break;
-    }
     case SH_AND:
         sh->cond_depth++;
         st = exec_node(sh, n->a, io);

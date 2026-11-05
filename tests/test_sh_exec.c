@@ -2443,8 +2443,36 @@ static void fault_prompt_ask_alias_and_echo_keywords(void)
     CHECK_STR(run("echo -e 'a\\tb' len 1"), "a\tb len 1\n");
 }
 
+/* AMIGA-IN-VSH Path and Run. `path` is a built-in on vsh's own $PATH (no C:Path call): show, add, remove, reset, the
+ * keyword first or last (AmigaDOS puts ADD after the dirs), any case. `run cmd` is `cmd &`. A bash PATH=... and a
+ * plain `cmd &` are unchanged. */
+static void path_and_run_are_amiga_forms_of_path_and_background(void)
+{
+    CHECK_STR(run("PATH=/a:/b; path"), "/a\n/b\n");
+    CHECK_STR(run("PATH=/a:/b; PATH show"), "/a\n/b\n");
+    CHECK_STR(run("PATH=/a:/b; path /c add; echo $PATH"), "/a:/b:/c\n");
+    CHECK_STR(run("PATH=/a; path ADD /c /a /d; echo $PATH"), "/a:/c:/d\n");   /* duplicates skipped */
+    CHECK_STR(run("PATH=/a:/b:/c; path /b remove; echo $PATH"), "/a:/c\n");
+    CHECK_STR(run("PATH=/a:/b:/c; Path Remove /a /c; echo $PATH"), "/b\n");
+    CHECK_STR(run("PATH=/a; path reset; echo $PATH"), "/UP-Term/bin:/UP-Term/Python3/bin:/SYS/Python3/bin:/UP-Term/nvim/bin:/gg/bin:/c\n");
+    CHECK_STR(run("PATH=/a; path reset /x; echo $PATH"), "/UP-Term/bin:/UP-Term/Python3/bin:/SYS/Python3/bin:/UP-Term/nvim/bin:/gg/bin:/c:/x\n");
+    CHECK_STR(run("PATH=/p:/q; echo $PATH"), "/p:/q\n");   /* the bash assignment stands */
+    /* run cmd args is cmd args & : a background job, notified like one */
+    run("run args a b");
+    CHECK_INT(last_wait[0], SH_SPAWN_BG);
+    sh_notify(&sh);
+    CHECK_STR(slot(ERR)->data, "[1]+  Done                       args a b\n");
+    run("RUN fail 3");
+    sh_notify(&sh);
+    CHECK_STR(slot(ERR)->data, "[1]+  Exit 3                     fail 3\n");
+    run("ls &");   /* the bash form is the same job */
+    CHECK_INT(last_wait[0], SH_SPAWN_BG);
+    CHECK_STR(run("run() { echo mine; }; run x"), "mine\n");   /* a function of that name wins */
+}
+
 void suite_sh_exec(void)
 {
+    path_and_run_are_amiga_forms_of_path_and_background();
     setenv_unsetenv_getenv_use_the_system_store();
     fault_prompt_ask_alias_and_echo_keywords();
     bind_and_inputrc_reach_the_console_line_editor();
