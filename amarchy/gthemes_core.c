@@ -127,19 +127,17 @@ uc_u32 gt_muted(const gtheme *t)
     return push_off(t->muted, gt_luma(t->bg) >= 128 ? 0x000000UL : 0xFFFFFFUL, t->bg, GT_FLOOR_MUTED);
 }
 
-/* RL8 FLAT-COLOUR-OVERHAUL: the one derivation, the same for every theme (see gthemes_core.h) */
+/* RL8 FLAT-COLOUR-OVERHAUL / TE-2.1: the role table is the model's groups resolved (gt_roles_from_model); a theme without a model
+ * gets the v1 model, whose group refs run gt_darker / gt_selection / gt_muted over the swatches. There is no second derivation. */
 void gt_roles_of(const gtheme *t, gt_roles *r)
 {
-    r->c[GR_BACKGROUND] = gt_darker(t);
-    r->c[GR_SURFACE] = t->bg;
-    r->c[GR_TEXT] = t->fg;
-    r->c[GR_MUTED] = t->muted;
-    r->dim = gt_muted(t);
-    r->c[GR_ACCENT] = t->accent;
-    r->c[GR_SELECTION] = gt_selection(t);
-    r->c[GR_INACTIVE] = t->inactive;
-    r->ok = t->ok;
-    r->fail = t->fail;
+    if (t->model) {
+        gt_roles_from_model(t->model, r);
+    } else {
+        gt_model m;
+        gt_model_from_v1(t, &m);
+        gt_roles_from_model(&m, r);
+    }
 }
 
 /* a quoted or bare text value of the file into dst (cap bytes), "" when the key is absent */
@@ -183,6 +181,9 @@ void gt_parse(const char *buf, long len, gtheme *out)
     gtheme d;
     const char *m;
     gt_builtin(&d);
+    /* TE-2: gt_parse yields a v1 theme without a model; a caller that owns an attached model calls gt_free first. Every
+     * caller (a stack gtheme in gt_term_palette / gt_model_parse, the loaders after gt_builtin) then reads model == 0. */
+    out->model = 0;
     upconf_clear(&g_conf);
     upconf_parse(&g_conf, buf, len);
     /* the mode first: the foreground rule below depends on it, and every colour derived from the foreground (the
@@ -869,6 +870,13 @@ void gt_roles_from_model(const gt_model *m, gt_roles *r)
     r->c[GR_INACTIVE] = gt_group_rgb(m, GTG_INACTIVE, GT_ST_NORMAL);
     r->ok = gt_group_rgb(m, GTG_SUCCESS, GT_ST_NORMAL);
     r->fail = gt_group_rgb(m, GTG_FAILURE, GT_ST_NORMAL);
+}
+
+uc_u32 gt_elem_rgb(const gtheme *t, int elem, uc_u32 fallback)
+{
+    if (!t || !t->model || elem < 0 || elem >= GTE_COUNT || t->model->elem[elem][GT_ST_NORMAL].kind == GT_REF_NONE)
+        return fallback;
+    return gt_resolve_rgb(t->model, elem, GT_ST_NORMAL);
 }
 
 /* ---- v1 -> model ---- */

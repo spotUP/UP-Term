@@ -23,8 +23,10 @@ uc_u32 ip_ground(const gtheme *t, int flat, unsigned mask)
 
 void ip_colours(const gtheme *t, uc_u32 ground, uint8_t rgb[IP_PENS][3])
 {
-    uc_u32 bg = ground, fg = desk_role(t, DK_FG), ac = desk_role(t, DK_ACCENT);
-    uc_u32 mu = desk_role(t, DK_MUTED), sel = desk_role(t, DK_SELECTION);
+    /* TE-2.2: Icon Foreground, Icon Accent, Icon Muted and Icon Selection Plate override their slot colour when the model gives them a ref */
+    uc_u32 bg = ground, fg = gt_elem_rgb(t, GTE_ICON_FOREGROUND, desk_role(t, DK_FG));
+    uc_u32 ac = gt_elem_rgb(t, GTE_ICON_ACCENT, desk_role(t, DK_ACCENT));
+    uc_u32 mu = gt_elem_rgb(t, GTE_ICON_MUTED, desk_role(t, DK_MUTED)), sel = gt_elem_rgb(t, GTE_ICON_SELECTION_PLATE, desk_role(t, DK_SELECTION));
     int i;
     for (i = 0; i < IP_PENS; i++)
         blend(rgb[i], bg, bg, 0);

@@ -278,10 +278,10 @@ round trip parse, write, parse equal; v2 file loaded by the v1 reader gives the 
 
 Files: `amarchy/gthemes_core.c`, `menu_theme.c`, `desk_core.c`, `iconpen_core.c`, `flat_core.c`, tests for each.
 
-- [ ] TE-2.1 `gt_roles_of` calls `gt_roles_from_model`; old code paths removed (no second source).
-- [ ] TE-2.2 `menu_theme_roles_gui`, `desk_pens`, `ip_colours`, `tw_pen` read element refs where an element exists for
-  their role (Menu Header, Icon Label Shadow and so on); the group value stays the fallback.
-- [ ] TE-2.3 New element readers: Window Title Bar Inactive (S32-INACTIVE-BAR), Scroll Knob.
+- [x] TE-2.1 `gt_roles_of` calls `gt_roles_from_model`; old code paths removed (no second source). (3923cdd5)
+- [x] TE-2.2 `menu_theme_roles_gui`, `desk_pens`, `ip_colours`, `tw_pen` read element refs where an element exists for
+  their role (Menu Header, Icon Label Shadow and so on); the group value stays the fallback. (3923cdd5; Icon Label Shadow, Outline, Text open: no colour slot)
+- [x] TE-2.3 New element readers: Window Title Bar Inactive (S32-INACTIVE-BAR), Scroll Knob. (3923cdd5)
 
 Host tests: an element override changes exactly the view slot it names and no other (one case per consumer); with no
 overrides every view's output is byte-equal to today's for all 23 themes.

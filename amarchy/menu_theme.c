@@ -51,13 +51,14 @@ void menu_theme_roles_gui(const gtheme *t, uc_u32 rgb[MT_ROLES])
 {
     gt_roles r;
     gt_roles_of(t, &r);
-    rgb[MT_BG] = r.c[GR_SURFACE] & 0xFFFFFFUL;
-    rgb[MT_TEXT] = r.c[GR_TEXT] & 0xFFFFFFUL;
+    /* TE-2.2: an element of the theme model that has its own ref takes its role; the group value is the fallback. MT_DIM has no element. */
+    rgb[MT_BG] = gt_elem_rgb(t, GTE_MENU_BACKGROUND, r.c[GR_SURFACE]) & 0xFFFFFFUL;
+    rgb[MT_TEXT] = gt_elem_rgb(t, GTE_MENU_TEXT, r.c[GR_TEXT]) & 0xFFFFFFUL;
     rgb[MT_DIM] = r.dim & 0xFFFFFFUL;
-    rgb[MT_SELTEXT] = r.c[GR_SURFACE] & 0xFFFFFFUL;
-    rgb[MT_THEME_ACCENT] = r.c[GR_ACCENT] & 0xFFFFFFUL;
-    rgb[MT_OK] = r.ok & 0xFFFFFFUL;
-    rgb[MT_FAIL] = r.fail & 0xFFFFFFUL;
+    rgb[MT_SELTEXT] = gt_elem_rgb(t, GTE_MENU_SELECTED_TEXT, r.c[GR_SURFACE]) & 0xFFFFFFUL;
+    rgb[MT_THEME_ACCENT] = gt_elem_rgb(t, GTE_MENU_HEADER, r.c[GR_ACCENT]) & 0xFFFFFFUL;
+    rgb[MT_OK] = gt_elem_rgb(t, GTE_SUCCESS_TEXT, r.ok) & 0xFFFFFFUL;
+    rgb[MT_FAIL] = gt_elem_rgb(t, GTE_FAILURE_TEXT, r.fail) & 0xFFFFFFUL;
 }
 
 int menu_theme_minimal(uc_u32 rgb[MT_ROLES])
