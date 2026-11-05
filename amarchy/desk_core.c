@@ -956,8 +956,8 @@ long desk_icontrol(const unsigned char *cur, long curlen, const unsigned char ge
     return n;
 }
 
-/* 1 when cur is an icontrol.prefs whose GUI geometry is not stock (an earlier thin apply of ours wrote it) */
-static int icontrol_ours(const unsigned char *cur, long len, unsigned char geom[4])
+/* 1 when cur is an icontrol.prefs with an ICTL chunk; geom gets its GUI geometry bytes */
+static int icontrol_geometry(const unsigned char *cur, long len, unsigned char geom[4])
 {
     long pos = DK_HDR, body, size;
     char id[4];
@@ -967,15 +967,32 @@ static int icontrol_ours(const unsigned char *cur, long len, unsigned char geom[
         if (!memcmp(id, "ICTL", 4) && size >= IC_GEOM + 4 && body + IC_GEOM + 4 <= len)
         {
             memcpy(geom, cur + body + IC_GEOM, 4);
-            return (geom[0] | geom[1] | geom[2] | geom[3]) != 0;
+            return 1;
         }
     return 0;
 }
 
-int desk_icontrol_decide(int thin, int bar_height, const unsigned char *cur, long curlen, int have_snap, int *snapshot)
+/* Invariant: the live file is our thin write exactly when it is byte for byte what the writer desk_icontrol makes from the saved pre-thin file
+ * (snap) with the live file's own geometry bytes, and it is not the saved file itself. The geometry bytes alone cannot say it: a thin write with
+ * a stock-height bar has all-zero geometry, and a user's own file may carry non-zero geometry. */
+int desk_icontrol_is_ours(const unsigned char *cur, long curlen, const unsigned char *snap, long snaplen)
+{
+    static unsigned char tmp[8192 + 64];
+    unsigned char geom[4];
+    long n;
+    if (!snap || snaplen <= 0 || !cur || curlen <= 0 || !icontrol_geometry(cur, curlen, geom))
+        return 0;
+    if (snaplen + 4 * DK_ICTL_SIZE > (long)sizeof tmp)
+        return 0;
+    n = desk_icontrol(snap, snaplen, geom, tmp, sizeof tmp);
+    return n == curlen && !memcmp(tmp, cur, (size_t)n) && !(curlen == snaplen && !memcmp(cur, snap, (size_t)curlen));
+}
+
+int desk_icontrol_decide(int thin, int bar_height, const unsigned char *cur, long curlen, const unsigned char *snap, long snaplen, int *snapshot)
 {
     unsigned char have[4] = { 0, 0, 0, 0 }, want[4];
-    int ours = icontrol_ours(cur, curlen, have);
+    int have_snap = snaplen >= 0;
+    icontrol_geometry(cur, curlen, have);
     *snapshot = 0;
     if (thin) {
         desk_geometry_bar(1, bar_height, want);
@@ -984,7 +1001,7 @@ int desk_icontrol_decide(int thin, int bar_height, const unsigned char *cur, lon
         *snapshot = !have_snap; /* a saved pre-thin file is never overwritten by a later apply; a changed bar height rewrites without a new snapshot */
         return DK_IC_WRITE;
     }
-    return ours && have_snap ? DK_IC_RESTORE : DK_IC_NONE;
+    return desk_icontrol_is_ours(cur, curlen, snap, snaplen) ? DK_IC_RESTORE : DK_IC_NONE;
 }
 
 
@@ -1472,7 +1489,7 @@ long desk_start_prefs(int target, unsigned mask, const gtheme *th, int text_mode
     return (cur && n == curlen && !memcmp(out, cur, (size_t)n)) ? 0 : n;
 }
 
-int desk_start_icontrol(unsigned mask, const gtheme *th, const unsigned char *cur, long curlen, int have_snap, int *snapshot)
+int desk_start_icontrol(unsigned mask, const gtheme *th, const unsigned char *cur, long curlen, const unsigned char *snap, long snaplen, int *snapshot)
 {
-    return desk_icontrol_decide((mask >> DT_ICONTROL) & 1, gt_look_bar_height(th), cur, curlen, have_snap, snapshot);
+    return desk_icontrol_decide((mask >> DT_ICONTROL) & 1, gt_look_bar_height(th), cur, curlen, snap, snaplen, snapshot);
 }
