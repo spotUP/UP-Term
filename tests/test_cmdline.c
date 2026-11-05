@@ -71,8 +71,18 @@ static void quoted_words(void)
     free(got);
 }
 
+/* S7c-1: `Echo "<x>"` must reach C:Echo as text; an unquoted < or > on the command line is the Shell's redirection
+ * ("Echo: unable to open redirection file"). */
+static void angle_brackets_stay_text(void)
+{
+    one("<x>", "\"<x>\"");
+    one(">y", "\">y\"");
+    one("a>b", "\"a>b\"");
+}
+
 void suite_cmdline(void)
 {
+    angle_brackets_stay_text();
     quoted_words();
     keywords();
     plain();
