@@ -1802,7 +1802,6 @@ static const struct { unsigned char text, ts, ground, gs, kind; } gt_cpair_def[]
     { GTE_MENU_SELECTION, GT_ST_NORMAL, GTE_MENU_BACKGROUND, GT_ST_NORMAL, GTC_SEL },
     { GTE_BUTTON_TEXT, GT_ST_NORMAL, GTE_BUTTON_FACE, GT_ST_NORMAL, GTC_TEXT },
     { GTE_BUTTON_TEXT, GT_ST_DISABLED, GTE_BUTTON_FACE, GT_ST_DISABLED, GTC_MUTED },
-    { GTE_BUTTON_FACE, GT_ST_NORMAL, GTE_REQUESTER_BACKGROUND, GT_ST_NORMAL, GTC_SEL },
     { GTE_SCROLL_KNOB, GT_ST_NORMAL, GTE_SCROLL_TRACK, GT_ST_NORMAL, GTC_SEL },
     { GTE_HELPER_TEXT, GT_ST_NORMAL, GTE_HELPER_BACKGROUND, GT_ST_NORMAL, GTC_TEXT },
     { GTE_TERMINAL_FOREGROUND, GT_ST_NORMAL, GTE_TERMINAL_BACKGROUND, GT_ST_NORMAL, GTC_TEXT },
@@ -2226,7 +2225,8 @@ static const look_def look_defs[] = {
     LD("inactive-pct", "Inactive Window Dimming", PG_PAGE_THEME_STATES, SD_INT, 0, 0, inactive_pct, 100)
 };
 #define N_LOOK ((int)(sizeof look_defs / sizeof look_defs[0]))
-static const char *const font_label[GT_FONTS] = { "Screen Font", "Window Title Font", "Menu Font", "Icon Font", "Shell Font" };
+/* No label = no editor row: font.prefs has no title-font chunk, so the title slot (kept in the model, theme file and wbreset) is not offered. */
+static const char *const font_label[GT_FONTS] = { "Screen Font", 0, "Menu Font", "Icon Font", "Shell Font" };
 
 static sd_setting *er_add(int page, int kind, const char *key, const char *label)
 {
@@ -2320,7 +2320,8 @@ static void er_build(void)
         s->aux2 = e;
     }
     for (i = 0; i < GT_FONTS; i++)
-        er_add(PG_PAGE_THEME_TYPE, SD_FONT, gt_fontkey[i], font_label[i])->aux = i + 1;
+        if (font_label[i])
+            er_add(PG_PAGE_THEME_TYPE, SD_FONT, gt_fontkey[i], font_label[i])->aux = i + 1;
     for (i = 0; i < N_LOOK; i++) {
         s = er_add(look_defs[i].page, look_defs[i].kind, look_defs[i].key, look_defs[i].label);
         s->values = look_defs[i].vals;

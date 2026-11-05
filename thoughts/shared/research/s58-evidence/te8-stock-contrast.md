@@ -57,3 +57,12 @@ None. Next most frequent: P9 in 4 of 23 (catppuccin-latte 121, flexoki-light 123
 - (a) P8: remove the pair or redefine it against a ground that can differ (button face vs menu/window background). As defined it is a tautology in every stock theme, so it produces a permanent warning with nothing the user can fix by editing a palette.
 - (a) P1: decide whether the inactive title is meant to be legible text. If yes, fix the inactive-group default (palette), if it is deliberately dimmed, give it a lower floor (about 100, since the minimum measured is 101) rather than 220.
 - (c) P4 and P9: leave the pairs; they flag real light-theme or rose-pine weaknesses. If they should stay quiet for stock themes, lower GT_FLOOR_SEL for P9 to about 100 (min measured 107) and accept P4 as a true warning on three themes.
+
+## P8 removed
+
+Removed the `{ GTE_BUTTON_FACE, NORMAL, GTE_REQUESTER_BACKGROUND, NORMAL, GTC_SEL }` entry from `gt_cpair_def[]` in amarchy/gthemes_core.c (table now 12 pairs; GT_NCPAIR derives from the size, GT_CPAIRS 16 unchanged). No index-coupled consumer: info_text and gt_contrast_warnings use the `first` index returned by the same call; the only other users are tests/test_gthemes.c, which assert by element, not by number.
+Tests (tests/test_gthemes.c): new `test_gthemes_te8_button_face_equals_requester_gets_no_warning`; nord now measures 1 warning (was 2); te8_clean no longer needs to blacken the requester background.
+- RED (pair present, tests updated): `[FAIL] gthemes: 6146 checks, 11 failed`
+- GREEN (pair removed): `RUNTEST gthemes rc=0 [OK] gthemes: 6146 checks, 0 failed`
+- m68k: make of Amarchy amarchy-gui amarchy-menu amarchy-index amarchy-icons amarchy-flat upprefs: rc=0
+- Per-theme failing count: no survey tool exists; each of the 23 stock themes drops by exactly 1 (P8 failed in all 23).
