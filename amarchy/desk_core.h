@@ -347,8 +347,27 @@ int desk_wbpattern_same(const unsigned char *a, long alen, const unsigned char *
  * 1: run the start steps now (not done yet, and the screen is up, or no 1 s tick exists to wait on); 0: wait or done.
  * S32-GREEN-LINE-96: wb_mode_wait (the W43 hold) also waits: before IPrefs resets the Workbench to the saved mode the
  * screen is the 2-plane boot screen, so the start apply read depth 2, skipped palette entries 4-7 (desk_palette_pen -1)
- * and the 8-plane screen came up with the stock bar trim (entry 5, 55dd55). */
-int desk_start_due(int done, int wb_screen_up, int tick_ok, int wb_mode_wait);
+ * and the 8-plane screen came up with the stock bar trim (entry 5, 55dd55).
+ * S57-START-POINTER-HANG: wb_ready is 1 once the Workbench task has finished its LoadWB startup pass (it answered an ARexx
+ * round-trip, desk_dos_wb_ready), or no Workbench task runs. The screen opens at the start of that pass; a prefs editor
+ * run then makes IPrefs apply the change while Workbench still holds the screen's layer lock and icon.library's lock:
+ * IPrefs and Workbench deadlock, and every later GetDiskObject (the Pointer editor, amarchy-index) waits for ever. */
+int desk_start_due(int done, int wb_screen_up, int tick_ok, int wb_mode_wait, int wb_ready);
+
+/* S57-START-POINTER-HANG readiness: is the LoadWB startup pass over?
+ * workbench.library 45+ (OS 3.1.4, 3.2): the WORKBENCH ARexx port answered a round-trip. Workbench serves that port from
+ * its main loop, so an answer means the startup pass (icons, WBStartup) is done.
+ * Older Workbench (OS 3.1, v40) has no ARexx port: the Workbench root window is open and the Workbench task sat in Wait
+ * on its own ports (not in a semaphore wait, SIGF_SINGLE) on DESK_WB_IDLE_TICKS 1 s ticks in a row.
+ * Either way the wait ends after timeout_ticks (1 s ticks, well above the slowest measured 8-bit pass) as DESK_WBR_TIMEOUT,
+ * which the caller logs. The gate starts on any verdict but DESK_WBR_WAIT. */
+#define DESK_WB_AREXX_VERSION 45
+#define DESK_WB_IDLE_TICKS 2
+#define DESK_WB_READY_TICKS 30L
+#define DESK_WBR_WAIT 0
+#define DESK_WBR_READY 1
+#define DESK_WBR_TIMEOUT 2
+int desk_wb_ready_state(int wb_version, int answered, int idle_ticks, long elapsed_ticks, long timeout_ticks);
 
 /* S32-WB-BACKDROP (owner 2026-11-03): the Workbench root window is frameless = the Workbench menu item Backdrop ticked
  * (measured rig 74 --os 32: ticked = WFLG_BACKDROP window, no title bar or border; the stock default is unticked). The menu
