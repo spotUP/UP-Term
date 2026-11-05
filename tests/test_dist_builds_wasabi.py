@@ -41,3 +41,12 @@ checkout_at = r.stdout.find("checkout -q")
 apply_at = r.stdout.find(" apply ", checkout_at)
 assert checkout_at >= 0 and apply_at > checkout_at, "the wasabi recipe applies no patch after the checkout:\n" + r.stdout
 print("[OK] wasabi applies %d local patch(es) after the checkout" % len(PATCHES))
+
+# Patch 0002 (Selecta I1092d): an AAText inside a container group is a label, not a dropped child of a "group button".
+# It must exist, apply on a copy of the pinned source after 0001, and keep its marker.
+P2 = "tools/nas/wasabi-patches/0002-mui-aatext-in-container.patch"
+assert P2 in PATCHES, "patch 0002 missing"
+assert PATCHES.index(P2) > PATCHES.index("tools/nas/wasabi-patches/0001-mui-aatext-label.patch"), "0002 must sort after 0001"
+with open(os.path.join(ROOT, P2)) as f:
+    assert "aat = TRUE;" in f.read(), "patch 0002 lost its AAText label marker"
+print("[OK] patch 0002 present, ordered after 0001")
