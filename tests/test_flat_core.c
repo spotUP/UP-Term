@@ -563,6 +563,30 @@ static void test_round_aa(void)
     pen_bd = cv->pix[10][12];
     CHECK_INT(pen_bd >= 2 && pen_bd <= 4, 1);                       /* edge pixel (2,0): between box and backdrop */
     CHECK_INT(cv->pix[10][27] >= 2 && cv->pix[23][29] == 0, 1);     /* other corners alike */
+    /* RL19 right corners: a wide button (40x14, the rig's is 80x14) blends all four corners alike, mirrored, on a plain backdrop */
+    for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 0;
+    CHECK_INT(raa_frame_draw(&fs, 0, 10, 10, 40, 14, 1, 0, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);
+    for (y = 0, mid = 0; y < 4; y++)
+        for (x = 0; x < 4; x++) {
+            int tl = cv->pix[10 + y][10 + x];
+            CHECK_INT(cv->pix[10 + y][49 - x], tl);
+            CHECK_INT(cv->pix[23 - y][10 + x], tl);
+            CHECK_INT(cv->pix[23 - y][49 - x], tl);
+            mid += tl >= 2;
+        }
+    CHECK_INT(mid > 0, 1);
+    /* RL19 rig reading: on the btnbgprobe 2x2 checker the blend mixes the ONE pen diagonally outside each corner. Where that tile
+     * has the fill colour (here pen 1 = pen_line, outside both right corners) a correct blend is fill over fill: no step shows. */
+    for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = ((x >> 1) + (y >> 1)) & 1 ? 1 : 0;
+    CHECK_INT(cv->pix[9][9] == 0 && cv->pix[9][50] == 1 && cv->pix[24][9] == 0 && cv->pix[24][50] == 1, 1);   /* the rig's phase */
+    CHECK_INT(raa_frame_draw(&fs, 0, 10, 10, 40, 14, 1, 0, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);
+    for (y = 0; y < 4; y++)
+        for (x = 0; x < 4; x++) {
+            CHECK_INT(cv->pix[10 + y][10 + x], cv->pix[23 - y][10 + x]);                /* left corners: blended with pen 0 */
+            CHECK_INT(cv->pix[10 + y][49 - x], 1);                                      /* right corners: fill over fill */
+            CHECK_INT(cv->pix[23 - y][49 - x], 1);
+        }
+    CHECK_INT(cv->pix[10][12] >= 2 && cv->pix[10][12] <= 4, 1);                         /* left edge pixel still between */
     /* fallbacks: the stock corners, no blend */
     for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 0;
     CHECK_INT(raa_frame_draw(&fs, 0, 10, 10, 20, 14, 1, 0, round_fill, round_read, raa_test_rgb, 0, cv, &blended), 1);
