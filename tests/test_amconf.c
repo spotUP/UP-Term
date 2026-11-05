@@ -38,7 +38,9 @@ static void test_amconf_parse_defaults(void)
     CHECK_INT(amconf_icons(&p), UC_ICONS_GENERIC);
     CHECK_INT(amconf_style(&p), UC_MENU_GRAPHICAL);
     /* the table lists twenty-five keys, each named once */
-    CHECK_INT(AM_NKEYS, 28);
+    CHECK_INT(AM_NKEYS, 29);
+    CHECK_STR(am_keys[AM_SCREENTHEMES].name, "screen-themes");   /* hidden: no Prefs gadget, default on */
+    CHECK_STR(am_keys[AM_SCREENTHEMES].def, "on");
     CHECK_STR(am_keys[AM_WELCOME].name, "welcome-shown");   /* hidden: no Prefs gadget, default off */
     CHECK_STR(am_keys[AM_WELCOME].def, "off");
     CHECK_STR(p.val[AM_ICONSTYLE], "filled");          /* s28: Filled is the default icon set */

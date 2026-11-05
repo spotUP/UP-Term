@@ -597,6 +597,149 @@ static void test_gthemes_fallback(void)
     CHECK_INT((long)d.bg, 0x1a1b26L);
 }
 
+/* TE-10.2: the screen rules (ENVARC:Amarchy/screen-themes): parse, write, resolve one public screen name */
+static int scr_theme(const gt_screen_rules *r, const char *name, const char *main_theme, char *th, int *take)
+{
+    return gt_screen_theme_of(r, name, main_theme, th, GT_NAME, take);
+}
+
+static void test_gthemes_screen_rules(void)
+{
+    gt_screen_rules r, r2;
+    char th[GT_NAME], buf[8192], longname[160];
+    int tk, i;
+    long n;
+
+    /* no file: default workbench, no rules; Workbench gets the main theme, nothing else */
+    gt_screen_rules_parse(0, 0, &r);
+    CHECK_INT(r.def, GT_SCR_WORKBENCH);
+    CHECK_INT(r.n, 0);
+    CHECK_INT(scr_theme(&r, "Workbench", "gruvbox", th, &tk), 1);
+    CHECK_STR(th, "gruvbox");
+    CHECK_INT(scr_theme(&r, "DOPUS.1", "gruvbox", th, &tk), 0);
+
+    /* the three Default values on an unmatched name */
+    gt_screen_rules_parse("default all\n", 12, &r);
+    CHECK_INT(r.def, GT_SCR_ALL);
+    CHECK_INT(scr_theme(&r, "MUIPrefs", "gruvbox", th, &tk), 1);
+    CHECK_STR(th, "gruvbox");
+    gt_screen_rules_parse("default none\n", 13, &r);
+    CHECK_INT(r.def, GT_SCR_NONE);
+    CHECK_INT(scr_theme(&r, "MUIPrefs", "gruvbox", th, &tk), 0);
+    CHECK_INT(scr_theme(&r, "Workbench", "gruvbox", th, &tk), 0);
+    gt_screen_rules_parse("default workbench\n", 18, &r);
+    CHECK_INT(scr_theme(&r, "workbench", "gruvbox", th, &tk), 1);
+    CHECK_INT(scr_theme(&r, "MUIPrefs", "gruvbox", th, &tk), 0);
+
+    /* pattern: DOPUS#? matches DOPUS.1 not MUIPrefs; case-insensitive; first match wins; takeover flag */
+    {
+        const char *f = "default none\nDOPUS#? = nord takeover\nDOPUS.1 = gruvbox\n#? = catppuccin\n";
+        gt_screen_rules_parse(f, (long)strlen(f), &r);
+        CHECK_INT(r.n, 3);
+        CHECK_INT(scr_theme(&r, "DOPUS.1", "x", th, &tk), 1);
+        CHECK_STR(th, "nord");
+        CHECK_INT(tk, 1);
+        CHECK_INT(scr_theme(&r, "dopus", "x", th, &tk), 1);
+        CHECK_INT(scr_theme(&r, "MUIPrefs", "x", th, &tk), 1);
+        CHECK_STR(th, "catppuccin");
+        CHECK_INT(tk, 0);
+        CHECK_INT(gt_screen_match("DOPUS#?", "DOPUS.1"), 1);
+        CHECK_INT(gt_screen_match("DOPUS#?", "MUIPrefs"), 0);
+        CHECK_INT(gt_screen_match("TE1?", "TE10"), 1);
+        CHECK_INT(gt_screen_match("TE1?", "TE1"), 0);
+        CHECK_INT(gt_screen_match("#?", ""), 1);
+        CHECK_INT(gt_screen_match("Work bench", "work BENCH"), 1);
+    }
+
+    /* Exclude beats Default All */
+    {
+        const char *f = "default all\nTE1#? = exclude\n";
+        gt_screen_rules_parse(f, (long)strlen(f), &r);
+        CHECK_INT(scr_theme(&r, "TE10", "gruvbox", th, &tk), 0);
+        CHECK_INT(scr_theme(&r, "Other", "gruvbox", th, &tk), 1);
+    }
+
+    /* key off = today's behaviour, whatever the rules say */
+    {
+        const char *f = "default all\nTE1#? = nord\n";
+        gt_screen_rules_parse(f, (long)strlen(f), &r);
+        r.enabled = 0;
+        CHECK_INT(scr_theme(&r, "Workbench", "gruvbox", th, &tk), 1);
+        CHECK_STR(th, "gruvbox");
+        CHECK_INT(scr_theme(&r, "TE10", "gruvbox", th, &tk), 0);
+        CHECK_INT(scr_theme(&r, "Other", "gruvbox", th, &tk), 0);
+    }
+
+    /* an unknown or unusable theme name falls back to GT_DEFAULT */
+    {
+        const char *f = "default none\nA = bad/name\nB = \n";
+        gt_screen_rules_parse(f, (long)strlen(f), &r);
+        CHECK_INT(scr_theme(&r, "A", "gruvbox", th, &tk), 1);
+        CHECK_STR(th, GT_DEFAULT);
+        gt_screen_rules_parse("default all\n", 12, &r);
+        CHECK_INT(scr_theme(&r, "X", "", th, &tk), 1);
+        CHECK_STR(th, GT_DEFAULT);
+    }
+
+    /* a 139-character screen name round-trips */
+    for (i = 0; i < 139; i++)
+        longname[i] = (char)('a' + i % 26);
+    longname[139] = 0;
+    memset(&r, 0, sizeof r);
+    gt_screen_rules_parse(0, 0, &r);
+    CHECK_INT(gt_screen_rules_add(&r, longname, "nord", 1), 1);
+    n = gt_screen_rules_write(&r, buf, sizeof buf);
+    CHECK(n > 0);
+    gt_screen_rules_parse(buf, n, &r2);
+    CHECK_INT(r2.n, 1);
+    CHECK_STR(r2.rule[0].pat, longname);
+    CHECK_STR(r2.rule[0].theme, "nord");
+    CHECK_INT(r2.rule[0].takeover, 1);
+    CHECK_INT(scr_theme(&r2, longname, "x", th, &tk), 1);
+
+    /* rule order survives write then parse; exact-name rules sort above pattern rules; takeover per rule */
+    gt_screen_rules_parse("default all\n", 12, &r);
+    gt_screen_rules_add(&r, "A#?", "aa", 0);
+    gt_screen_rules_add(&r, "Exact One", "bb", 1);
+    gt_screen_rules_add(&r, "B#?", "exclude", 0);
+    gt_screen_rules_add(&r, "Exact Two", "exclude", 0);
+    gt_screen_rules_add(&r, "C?", "cc", 1);
+    n = gt_screen_rules_write(&r, buf, sizeof buf);
+    CHECK(strncmp(buf, "default all\n", 12) == 0);
+    gt_screen_rules_parse(buf, n, &r2);
+    CHECK_INT(r2.n, 5);
+    CHECK_STR(r2.rule[0].pat, "Exact One");
+    CHECK_STR(r2.rule[1].pat, "Exact Two");
+    CHECK_STR(r2.rule[2].pat, "A#?");
+    CHECK_STR(r2.rule[3].pat, "B#?");
+    CHECK_STR(r2.rule[4].pat, "C?");
+    CHECK_INT(r2.rule[0].takeover, 1);
+    CHECK_INT(r2.rule[1].exclude, 1);
+    CHECK_INT(r2.rule[2].takeover, 0);
+    CHECK_INT(r2.rule[4].takeover, 1);
+    CHECK_STR(r2.rule[4].theme, "cc");
+
+    /* Workbench off: an Exclude on the exact name Workbench is stored and leaves the colours alone; the main theme is kept */
+    gt_screen_rules_parse("default workbench\n", 18, &r);
+    gt_screen_rules_add(&r, "Workbench", "exclude", 0);
+    n = gt_screen_rules_write(&r, buf, sizeof buf);
+    CHECK(strstr(buf, "Workbench = exclude") != 0);
+    gt_screen_rules_parse(buf, n, &r2);
+    CHECK_INT(r2.n, 1);
+    CHECK_INT(scr_theme(&r2, "Workbench", "gruvbox", th, &tk), 0);
+    CHECK_INT(gt_screen_rules_remove(&r2, "workbench"), 1);
+    CHECK_INT(r2.n, 0);
+    CHECK_INT(scr_theme(&r2, "Workbench", "gruvbox", th, &tk), 1);
+    CHECK_STR(th, "gruvbox");
+    /* a theme rule on the exact name Workbench is not stored: the main theme key holds it */
+    gt_screen_rules_parse("default none\n", 13, &r);
+    gt_screen_rules_add(&r, "Workbench", "nord", 0);
+    n = gt_screen_rules_write(&r, buf, sizeof buf);
+    CHECK(strstr(buf, "Workbench") == 0);
+    gt_screen_rules_parse("default none\nWorkbench = nord\n", 30, &r2);
+    CHECK_INT(r2.n, 0);
+}
+
 /* a failed theme save says which step and which file, with the DOS error */
 static void test_gthemes_save_text(void)
 {
@@ -2269,4 +2412,5 @@ void suite_gthemes(void)
     test_gthemes_amconf();
     test_gthemes_scan();
     test_gthemes_picker_pens();
+    test_gthemes_screen_rules();
 }
