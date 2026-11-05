@@ -1737,6 +1737,17 @@ static long os_job_pid(void *os, long id)
     return (long)(t ? t : j->task);
 }
 
+/* The CLI number of a job's process: its pr_TaskNum, what AmigaDOS Run prints as `[CLI n]`; 0 when it has none
+ * (a runner without a CLI) or has ended. */
+static long os_cli_num(void *os, long id)
+{
+    struct Task *t = job_process((job *)id);
+    (void)os;
+    if (t && t->tc_Node.ln_Type == NT_PROCESS && ((struct Process *)t)->pr_CLI)
+        return (long)((struct Process *)t)->pr_TaskNum;
+    return 0;
+}
+
 /* Is t a vsh: a process whose CLI command is a program named like this one (the command's last path
  * component, "vsh" when this process has no CLI)? A vsh polls Ctrl-D as TERM (os_interrupted); another
  * program takes Ctrl-D as nothing or as an end of file. Call under Forbid. */
@@ -2696,6 +2707,7 @@ static int vsh_main(int argc, char **argv)
     sh.os.interrupted = os_interrupted;
     sh.os.signal = os_signal;
     sh.os.job_pid = os_job_pid;
+    sh.os.cli_num = os_cli_num;
     sh.os.write = os_write;
     sh.os.read_line = os_read_line;
     sh.os.hist = os_hist;

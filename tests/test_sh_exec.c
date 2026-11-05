@@ -2474,6 +2474,36 @@ static void fault_prompt_ask_alias_and_echo_keywords(void)
 /* AMIGA-IN-VSH Path and Run. `path` is a built-in on vsh's own $PATH (no C:Path call): show, add, remove, reset, the
  * keyword first or last (AmigaDOS puts ADD after the dirs), any case. `run cmd` is `cmd &`. A bash PATH=... and a
  * plain `cmd &` are unchanged. */
+static long cli_asked;
+static long f_cli_num(void *os, long job)
+{
+    (void)os;
+    cli_asked++;
+    return 3 + job * 0;
+}
+
+/* R27: AmigaDOS 3.2 Run prints `[CLI n]` (the new process's CLI number) on the shell's own output; the command's
+ * >file does not get it, `cmd &` prints none, and an OS layer with no number prints none. */
+static const char *run_cli(const char *text, int with_num)
+{
+    int inc = 0;
+    fresh();
+    sh.os.cli_num = with_num ? f_cli_num : 0;
+    sh_run_text(&sh, text, &inc);
+    return slot(OUT)->data;
+}
+
+static void run_prints_the_cli_banner(void)
+{
+    cli_asked = 0;
+    CHECK_STR(run_cli("Run args a", 1), "[CLI 3]\n");
+    CHECK_INT(cli_asked, 1);                 /* the banner came from the OS layer's number */
+    CHECK_STR(run_cli("args a &", 1), "");
+    CHECK_INT(cli_asked, 1);
+    CHECK_STR(run_cli("run args a >RAM:r27out", 1), "[CLI 3]\n");
+    CHECK_STR(run_cli("Run args a", 0), "");
+}
+
 static void path_and_run_are_amiga_forms_of_path_and_background(void)
 {
     CHECK_STR(run("PATH=/a:/b; path"), "/a\n/b\n");
@@ -2935,6 +2965,7 @@ void suite_sh_exec(void)
     amiga_script_by_name_runs_in_shell();
     sh_files_keep_bash_if();
     path_and_run_are_amiga_forms_of_path_and_background();
+    run_prints_the_cli_banner();
     execute_runs_lines_literally();
     execute_quit_sets_rc();
     execute_failat_aborts();

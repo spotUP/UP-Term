@@ -8754,7 +8754,7 @@ static long add_job(sh_shell *sh, long job, char *text, const sh_io *io)
     sh->job_seq[i] = ++sh->job_seqno;
     free(sh->job_text[i]);
     sh->job_text[i] = text;
-    if (!(sh->opts & SO_INTERACTIVE)) /* bash: only an interactive shell announces a job */
+    if (sh->run_banner || !(sh->opts & SO_INTERACTIVE)) /* Run prints its own banner; bash: only an interactive shell announces a job */
         return pid ? pid : job;
     num(nb, i + 1);
     sayl(sh, io->err, "[", nb, "] ", NULL);
@@ -9519,7 +9519,7 @@ static long exec_compound(sh_shell *sh, const sh_node *n, const sh_io *io)
 }
 
 /* `cmd &`: start n in the background (an external command as its own job, else a subshell, else here) */
-static void bg_start(sh_shell *sh, const sh_node *a, const sh_io *io)
+static long bg_start(sh_shell *sh, const sh_node *a, const sh_io *io)
 {
     long job = 0;
     if (a && a->kind == SH_CMD)
@@ -9537,6 +9537,7 @@ static void bg_start(sh_shell *sh, const sh_node *a, const sh_io *io)
     }
     if (job)
         sh->ctx.last_bg = add_job(sh, job, node_text(a), io);
+    return job;
 }
 
 /* AmigaDOS `Run cmd args`: the same as `cmd args &`. Only the literal word run (any case) with a command after it,
@@ -9574,8 +9575,20 @@ static long exec_node1(sh_shell *sh, const sh_node *n, const sh_io *io)
     case SH_CMD:
         if (amiga_run(sh, n)) {
             sh_node c = *n;
+            long rj;
             c.words = n->words->next;
-            bg_start(sh, &c, io);
+            sh->run_banner = 1;
+            rj = bg_start(sh, &c, io);
+            sh->run_banner = 0;
+            if (rj && sh->os.cli_num) {
+                /* AmigaDOS 3.2 Run: `[CLI n]` on the shell's own output (not the command's >file) */
+                char nb[16];
+                long cn = sh->os.cli_num(sh->os.data, rj);
+                if (cn > 0) {
+                    num(nb, cn);
+                    sayl(sh, io->out, "[CLI ", nb, "]\n", NULL);
+                }
+            }
             st = 0;
             break;
         }
