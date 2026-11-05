@@ -43,7 +43,7 @@ ends, with a fingerprint of the archives it installs; a case that passed with th
   install_rig.py --show-check     the watched window (UPTERM_RIG_SHOW=<title>) alone
   --default --dest --move --var --libs   the old pass flags: --only base, base-dest, base-move, base-var, base-libs
 One script per rig: a second one on the same rig stops with the first one's pid (paths.rig_lock)."""
-import os, pathlib, re, shutil, signal, struct, sys, time
+import contextlib, os, pathlib, re, shutil, signal, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from user_startup import strip_upterm_blocks, without_rig_blocks
 import paths  # before ami: it sets the agent port of UPTERM_RIG
@@ -159,6 +159,70 @@ def run(cmd, timeout=60):
         return show(cmd, timeout)
     b = ami.req(0x02, struct.pack('>H', timeout) + cmd.encode('latin-1'), timeout + 30)
     return struct.unpack('>I', b[:4])[0], b[4:].decode('latin-1')
+
+# The UP-Term: assign and the checks that drop it (S57-INSTALL-CHECK-ASSIGN / RIG96-ASSIGN-LOST). On AmigaOS a bare
+# `Assign X:` and `Assign X: LIST` REMOVE the assign, so the target is read with `Assign UP-Term: EXISTS` only. A check
+# that drops the assign goes through drop_upterm_assign() (or the keep_upterm_assign() block): the first drop records
+# what the assign was, restore_upterm_assign() puts that back and fails loudly when UP-Term: is still gone after it.
+_UPTERM_WAS = None
+
+
+def upterm_targets(out):
+    """The directories of `Assign UP-Term: EXISTS` output (first one is the assign, the rest were ADDed)."""
+    found = []
+    for l in out.splitlines():
+        t = l.strip()
+        if t.lower().startswith('up-term'):
+            t = t[len('up-term'):].lstrip(': \t')
+        t = t.lstrip('+').strip()
+        if t and ':' in t.strip('"') and ' ' not in t.strip('"'):
+            found.append(t.strip('"'))
+    return found
+
+
+def upterm_assign_state(run_fn=None):
+    """The targets UP-Term: has now ([] when there is no assign), read without touching it."""
+    rc, out = (run_fn or run)('Assign UP-Term: EXISTS')
+    return upterm_targets(out) if rc == 0 else []
+
+
+def drop_upterm_assign(run_fn=None):
+    """Remove the UP-Term: assign for a check, remembering (once) what it was."""
+    global _UPTERM_WAS
+    r = run_fn or run
+    if _UPTERM_WAS is None:
+        _UPTERM_WAS = upterm_assign_state(r)
+    r('Assign UP-Term:')
+
+
+def restore_upterm_assign(run_fn=None):
+    """Put the UP-Term: assign back to what drop_upterm_assign() found; AssertionError when it is still not there."""
+    global _UPTERM_WAS
+    r = run_fn or run
+    was, _UPTERM_WAS = _UPTERM_WAS, None
+    if was:
+        r('Assign UP-Term: "%s"' % was[0])
+        for t in was[1:]:
+            r('Assign UP-Term: "%s" ADD' % t)
+    require_upterm_assign(r, 'after the checks that drop it')
+
+
+def require_upterm_assign(run_fn=None, when='at the end of the run'):
+    if (run_fn or run)('Assign >NIL: UP-Term: EXISTS')[0] != 0:
+        raise AssertionError('the UP-Term: assign is gone %s' % when)
+
+
+@contextlib.contextmanager
+def keep_upterm_assign(run_fn=None):
+    """Whatever the block does to UP-Term:, it is as it was after it, an exception included."""
+    state = upterm_assign_state(run_fn)
+    try:
+        yield
+    finally:
+        global _UPTERM_WAS
+        _UPTERM_WAS = state
+        restore_upterm_assign(run_fn)
+
 
 # UPTERM_RIG_SHOW=<title>: the commands run in a window on the Workbench
 # screen the owner can watch, titled <title>, instead of inside the agent: a
@@ -657,7 +721,7 @@ def _main(dest=None):
     # the assign is back, the kit line is printed, and no requester is up.
     rc, out = run('Type ENVARC:up-term/Dir')
     check(rc == 0 and out.strip().lower() == drawer.lower(), 'ENVARC:up-term/Dir names %s' % drawer, out)
-    run('Assign UP-Term:')
+    drop_upterm_assign()
     check(run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'the rig lost the UP-Term: assign', '')
     rc, out = run('VTC:UPConsole STATUS')
     check('kit:' in out, 'UPConsole STATUS finds UP-Term:VERSIONS with no assign (it made it from Dir)', out)
@@ -1023,7 +1087,7 @@ def _move():
     check(gg and gg[0].lower().rstrip().endswith(NEW_TAIL),
           'move: GG: (ours) follows UP-Term: to %s' % NEW, aout)
     # the block's own line, as a boot runs it
-    run('Assign UP-Term:')
+    drop_upterm_assign()
     line = [l for l in startup_moved.splitlines() if l.startswith('Assign UP-Term:')][0]
     (VTC / "upline").write_text(line + "\n")   # the block's own line ...
     run('Execute VTC:upline', 30)   # ... run as a boot runs it
@@ -1493,7 +1557,7 @@ def case_bare(ck, pkg):
     prepare(None, [pkg])
     before = Before()
     plant(pkg)
-    run('Assign UP-Term:')
+    drop_upterm_assign()
     ck(run('Assign >NIL: UP-Term: EXISTS')[0] != 0, '%s-bare: there is no UP-Term: assign' % pkg)
     addon_absent(ck, pkg, 'before its Install')
     if pkg == 'claude':
@@ -1517,7 +1581,7 @@ def case_python_ixemul(ck):
     without ixemul and is a hand step of the plan (K2-12)."""
     prepare(None, ['python'])
     before = Before()
-    run('Assign UP-Term:')
+    drop_upterm_assign()
     sig = run('List LIBS:ixemul.library LFORMAT "%L %D %T"')[1].strip()
     ck(bool(sig), 'python-ixemul: the rig has an ixemul.library in LIBS:')
     addon_install(ck, 'python', with_base=False)
@@ -1611,7 +1675,7 @@ def case_nobase(ck):
     ids = based_ids()
     prepare(None, ids)
     before = Before()
-    run('Assign UP-Term:')
+    drop_upterm_assign()
     for pkg in ids:
         run('Delete >NIL: ENV:UPTCHECK QUIET')
         rc, out = run_long('runinstall-' + pkg)
@@ -1987,8 +2051,12 @@ def run_case(name, fn):
             fx.take()
         fn(ck)
     finally:
-        if fx:
-            fx.restore()
+        try:
+            if _UPTERM_WAS is not None:
+                restore_upterm_assign()
+        finally:
+            if fx:
+                fx.restore()
     print('install_rig %s: passed %d of %d' % (name, ck.total - len(ck.failed), ck.total))
     return not ck.failed, '; '.join(ck.failed) or 'all %d checks' % ck.total
 

@@ -1249,6 +1249,7 @@ def run_base_case(case):
             ck(ir.run('List >NIL: %s' % f)[0] == 0, 'install-amissl.dos put %s there' % f)
         reboot_amarchy_check(ck, log)
         if KEEP_INSTALLED:
+            ir.require_upterm_assign(ir.run, 'at the end of fresh-all (kit kept)')
             print('installer_rig fresh-all: INSTALLER_KEEP set, the kit stays installed (no Uninstall, no fixture restore)')
             return not ck.failed, '; '.join(ck.failed) or 'all %d checks (kit kept)' % ck.total
     if case in ('update', 'update-noopts'):
