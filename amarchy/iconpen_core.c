@@ -141,6 +141,17 @@ int ip_recolour(ip_holder *h, const ip_ops *o)
     return n;
 }
 
+int ip_any_free(int (*is_free)(void *ctx, int pen), void *ctx, const int *pens, int n)
+{
+    int i;
+    if (!is_free)
+        return 0;
+    for (i = 0; i < n; i++)
+        if (is_free(ctx, pens[i]))
+            return 1;
+    return 0;
+}
+
 int ip_holder_stale(const ip_holder *h, const void *screen, int depth)
 {
     return h->screen != screen || h->depth != depth || h->recheck;

@@ -1,6 +1,7 @@
 /* iclabel_core -- see iclabel_core.h. C89, no OS calls. */
 #include <string.h>
 #include "iclabel_core.h"
+#include "iconpen_core.h"
 #include "../render/aa_ink_rule.h"
 
 int icl_accept(const char *task, int mode, int apen, int bpen, int x, int y, int w, int h, int il, int it, int ir, int ib)
@@ -198,6 +199,22 @@ int icl_cache_bind(icl_pencache *c, const void *screen, unsigned epoch)
     if (screen && c->screen == screen && c->epoch == epoch)
         return 0;
     icl_cache_clear(c);                 /* another identity: forget, never release */
+    c->screen = screen;
+    c->epoch = epoch;
+    return 1;
+}
+
+int icl_cache_verify(icl_pencache *c, int (*is_free)(void *ctx, int pen), void *ctx)
+{
+    int pens[ICL_CACHE], i, n = 0;
+    const void *screen = c->screen;
+    unsigned epoch = c->epoch;
+    for (i = 0; i < ICL_CACHE; i++)
+        if (c->e[i].used && c->e[i].obtained)       /* a fg/bg pen the entry merely names is not ours to probe */
+            pens[n++] = c->e[i].pen;
+    if (!ip_any_free(is_free, ctx, pens, n))
+        return 0;
+    icl_cache_clear(c);                 /* the pens went with the old ColorMap: forget, never release */
     c->screen = screen;
     c->epoch = epoch;
     return 1;

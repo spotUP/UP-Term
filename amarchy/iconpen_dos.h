@@ -15,6 +15,11 @@
 
 struct List;
 struct Screen;
+struct ColorMap;
+/* S57-ICL-PINK-SHADE: the ColorMap's own answer whether `pen` is free on it (an exclusive obtain of a pen anyone holds fails; one that
+ * succeeds is handed straight back). The probe ip_holder_verify uses, shared with the icl shade cache and flat_pens. 0 for no map.
+ * PalExtra is taken inside ObtainPen/ReleasePen only: a leaf lock, no new order. */
+int ipd_pen_is_free(struct ColorMap *cm, int pen);
 /* The Workbench screen found in the public screen list the caller has locked (LockPubScreenList); 0 when it is closed. */
 struct Screen *ipd_wb_screen_in(struct List *pl);
 /* The Workbench screen, locked (the caller UnlockPubScreen(0, scr)), or 0 when the Workbench is closed. NEVER call

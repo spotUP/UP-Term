@@ -91,6 +91,11 @@ int icl_cache_put(icl_pencache *c, int fgpen, int bgpen, int k, uint32_t fg_rgb,
  * Bind at the start of a label call: on another identity the cache is forgotten WITHOUT any ReleasePen (the pens went with the
  * old ColorMap; ReleasePen on a freed map waits for ever on its dead PalExtra semaphore, s57 boot hang). Returns 1 when forgotten. */
 int icl_cache_bind(icl_pencache *c, const void *screen, unsigned epoch);
+/* S57-ICL-PINK-SHADE: after icl_cache_bind said "same identity", ask the ColorMap whether the obtained pens are still held
+ * (ip_any_free). A Workbench reopen at the same Screen address before the next pens_sync keeps screen and epoch equal, yet the
+ * cached numbers name pens of the OLD map: free on the new one, showing its default colours (pink). If any is free the cache is
+ * forgotten WITHOUT ReleasePen (identity kept, so the next bind does not clear pens obtained afterwards). Returns 1 when forgotten. */
+int icl_cache_verify(icl_pencache *c, int (*is_free)(void *ctx, int pen), void *ctx);
 /* Give the pens back (shutdown): write the obtained pens into out[ICL_CACHE] (each once) and empty the cache, but only when
  * `screen`/`epoch` is the identity they were obtained on (the caller releases them on that screen's map); on any other identity,
  * or no screen (0), they are forgotten and 0 is returned. */

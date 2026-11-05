@@ -1915,6 +1915,41 @@ static void test_stale_held_pens(void)
     CHECK_INT(s.pen_dim, 0);
 }
 
+/* S57-ICL-PINK-SHADE: Workbench reopened at the SAME screen address before the epoch moved: the held pens read free on the new
+ * ColorMap. flat_pens_verify forgets them without ReleasePen; the follow step then re-obtains. */
+static int wb_is_free(void *c, int pen)
+{
+    return !((wbscr *)c)->mine[pen];
+}
+
+static void test_pens_verify_same_address_reopen(void)
+{
+    wbscr a;
+    flat_pens p;
+    flat_pen_ops o;
+    flat_state s;
+    int screen_a, rel, held;
+    flat_init(&s);
+    s.pen_back = 0; s.pen_text = 2; s.pen_button = 5; s.pen_dimtext = 6;
+    flat_pens_init(&p);
+    o.obtain = wb_obtain; o.release = wb_release; o.rgb = wb_rgb;
+    wb_screen(&a, 249);
+    o.ctx = &a;
+    CHECK_INT(flat_pens_follow(&p, &o, &s, 1, &screen_a, 1, 8), 1);
+    held = a.obtains;
+    CHECK(held > 0);
+    CHECK_INT(flat_pens_verify(&p, &s, wb_is_free, &a, &screen_a, 1), 0);   /* pens still held: kept */
+    CHECK_INT(flat_pens_follow(&p, &o, &s, 1, &screen_a, 1, 8), 0);
+    a.mine[s.pen_dim] = 0;                                                    /* reopen: same address, same epoch, pen free now */
+    rel = a.releases;
+    CHECK_INT(flat_pens_verify(&p, &s, wb_is_free, &a, &screen_a, 1), 1);
+    CHECK_INT(a.releases, rel);                                               /* forgotten, no ReleasePen */
+    CHECK_INT(s.pen_dim, 0);
+    CHECK_INT(flat_pens_follow(&p, &o, &s, 1, &screen_a, 1, 8), 1);          /* obtained again */
+    CHECK_INT(a.obtains, 2 * held);
+    CHECK_INT(a.bad_releases, 0);
+}
+
 /* S32 CLONE-PRIVATE-IMAGE: OS 3.2 sysiclass bakes its pens at OM_NEW and ignores imp_DrInfo at IM_DRAW, so drawing the window's
  * own image with the marker DrawInfo read back its baked screen pens (all 0 under flat pens: 'empty'). The clone keeps one private
  * image per (which, width, height), made with the marker DrawInfo; this is its table. The marker DrawInfo is deep enough for
@@ -2226,6 +2261,7 @@ void suite_flat_core(void)
     test_inactive_pens();
     test_inbar_status_dump();
     test_stale_held_pens();
+    test_pens_verify_same_address_reopen();
     test_button_pen_held();
     test_arrow_glyph_pens();
     test_arrow_knob_colour();
