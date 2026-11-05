@@ -1543,9 +1543,65 @@ static long b_false(sh_shell *sh, int argc, char **argv, const sh_io *io)
 
 static int pf_escape(pbuf *b, const char **pp, int is_b);
 
+static int echo_kw(const char *a, const char *kw)
+{
+    for (; *a && *kw; a++, kw++)
+        if (tolower((unsigned char)*a) != *kw)
+            return 1;
+    return *a || *kw;
+}
+
+/* AmigaDOS Echo keywords NOLINE, FIRST n and LEN n, when they stand as the LAST words (in any order and case) after at
+ * least one text word: `echo hello NOLINE`, `echo hello FIRST 1 LEN 3`. A word that is not at the end is text, as in
+ * bash; `echo -n`, `-e`, `-E` are not touched. Returns 1 when the keywords were used (output done). */
+static int echo_amiga(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    int end = argc, noline = 0, found = 0, i;
+    long first = 0, len = -1;
+    pbuf t = { 0, 0, 0 };
+    long n;
+    for (;;) {
+        const char *w = argv[end - 1];
+        if (end > 2 && !echo_kw(w, "noline")) {
+            noline = 1;
+            end--;
+        } else if (end > 3 && (!echo_kw(argv[end - 2], "first") || !echo_kw(argv[end - 2], "len")) &&
+                   w[0] && strspn(w, "0123456789") == strlen(w)) {
+            if (!echo_kw(argv[end - 2], "first"))
+                first = atol(w);
+            else
+                len = atol(w);
+            end -= 2;
+        } else {
+            break;
+        }
+        found = 1;
+    }
+    if (!found || (argv[1][0] == '-' && argv[1][1]))
+        return 0;
+    for (i = 1; i < end; i++) {
+        if (i > 1)
+            pb_add(&t, " ", 1);
+        pb_add(&t, argv[i], (long)strlen(argv[i]));
+    }
+    n = t.s ? (long)strlen(t.s) : 0;
+    if (first > n)
+        first = n;
+    if (len < 0 || first + len > n)
+        len = n - first;
+    if (t.s)
+        sh->os.write(sh->os.data, io->out, t.s + first, len);
+    free(t.s);
+    if (!noline)
+        say(sh, io->out, "\n");
+    return 1;
+}
+
 static long b_echo(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     int i = 1, nl = 1, esc = shopt_get(sh, "xpg_echo"), stop = 0;
+    if (argc > 2 && echo_amiga(sh, argc, argv, io))
+        return 0;
     for (; i < argc; i++) {
         const char *a = argv[i];
         int k;
@@ -2659,6 +2715,36 @@ static long b_alias(sh_shell *sh, int argc, char **argv, const sh_io *io)
         for (k = 0; (e = alias_next(sh, &k)) != 0;)
             sayl(sh, io->out, "alias ", e, "\n", NULL);
         return 0;
+    }
+    /* AmigaDOS form `alias name value...`: no word has an `=` and the second is not itself an alias (that stays
+     * bash's query of several names) */
+    if (argc >= 3) {
+        int amiga = 1;
+        for (i = 1; i < argc; i++)
+            if (strchr(argv[i], '='))
+                amiga = 0;
+        if (amiga && alias_entry(sh, argv[2], strlen(argv[2])))
+            amiga = 0;
+        if (amiga) {
+            pbuf d = { 0, 0, 0 };
+            char *nv;
+            pb_add(&d, argv[1], (long)strlen(argv[1]));
+            pb_add(&d, "=", 1);
+            for (i = 2; i < argc; i++) {
+                if (i > 2)
+                    pb_add(&d, " ", 1);
+                pb_add(&d, argv[i], (long)strlen(argv[i]));
+            }
+            nv = d.s;
+            if ((k = alias_index(&sh->aliases, argv[1], strlen(argv[1]), 1)) >= 0) {
+                free(sh->aliases.v[k]);
+                sh->aliases.v[k] = sdup(nv);
+            } else {
+                sh_list_add(&sh->aliases, nv);
+            }
+            free(d.s);
+            return 0;
+        }
     }
     for (i = 1; i < argc; i++) {
         const char *eq = strchr(argv[i], '=');
@@ -4773,6 +4859,12 @@ static long b_ulimit(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_help(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_logout(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_why(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_setenv(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_unsetenv(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_getenv(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_fault(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_prompt(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_ask(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_complete(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_bind(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_compgen(sh_shell *sh, int argc, char **argv, const sh_io *io);
@@ -4800,7 +4892,8 @@ static const struct {
     { "which", b_type }, { "type", b_type }, { "readonly", b_readonly }, { "declare", b_declare },
     { "typeset", b_declare }, { "mapfile", b_mapfile }, { "readarray", b_mapfile }, { "builtin", b_builtin }, { "kill", b_kill },
     { "hash", b_hash }, { "history", b_history }, { "fc", b_fc }, { "enable", b_enable }, { "times", b_times }, { "caller", b_caller }, { "ulimit", b_ulimit }, { "help", b_help }, { "logout", b_logout },
-    { "why", b_why }, { "bind", b_bind }, { "complete", b_complete }, { "compgen", b_compgen }, { "compopt", b_compopt }, { 0, 0 }
+    { "why", b_why }, { "setenv", b_setenv }, { "unsetenv", b_unsetenv }, { "getenv", b_getenv }, { "fault", b_fault },
+    { "prompt", b_prompt }, { "ask", b_ask }, { "bind", b_bind }, { "complete", b_complete }, { "compgen", b_compgen }, { "compopt", b_compopt }, { 0, 0 }
 };
 
 /* ---- hash, enable, times, caller, ulimit, help ---------------------------------- */
@@ -5958,6 +6051,148 @@ static long b_why(sh_shell *sh, int argc, char **argv, const sh_io *io)
     return 0;
 }
 
+/* SetEnv NAME VALUE, UnsetEnv NAME, GetEnv NAME (AmigaDOS Shell): the system's variable table (ENV:), the one `$name`
+ * reads through os.getenv. SetEnv joins the rest of the words as the value. The hidden-name mark from
+ * `unset NAME` is lifted by a SetEnv, and a stale copy of the variable is dropped by an UnsetEnv. */
+static long b_setenv(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    pbuf v = { 0, 0, 0 };
+    int i, ok;
+    if (argc < 2) {
+        err2(sh, io, "setenv", "usage: setenv NAME VALUE");
+        return 2;
+    }
+    for (i = 2; i < argc; i++) {
+        if (i > 2)
+            pb_add(&v, " ", 1);
+        pb_add(&v, argv[i], strlen(argv[i]));
+    }
+    ok = sh->os.setenv && sh->os.setenv(sh->os.data, argv[1], v.s ? v.s : "");
+    free(v.s);
+    if (!ok) {
+        err2(sh, io, argv[1], "cannot set the system variable");
+        return 20;
+    }
+    for (i = 0; i < sh->env_hidden.n; i++)
+        if (!strcmp(sh->env_hidden.v[i], argv[1])) {
+            free(sh->env_hidden.v[i]);
+            sh->env_hidden.v[i] = sdup("");
+        }
+    return 0;
+}
+
+static long b_unsetenv(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    if (argc < 2) {
+        err2(sh, io, "unsetenv", "usage: unsetenv NAME");
+        return 2;
+    }
+    if (!sh->os.setenv || !sh->os.setenv(sh->os.data, argv[1], 0)) {
+        err2(sh, io, argv[1], "cannot unset the system variable");
+        return 20;
+    }
+    if (sh_lookup_raw(&sh->ctx, argv[1]) && (sh_attr(&sh->ctx, argv[1]) & SH_ATTR_ENVCOPY))
+        sh_unset(&sh->ctx, argv[1]);
+    return 0;
+}
+
+/* GetEnv prints the value; a name that is not set prints nothing and gives 5 (WARN), as the AmigaDOS command */
+static long b_getenv(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    char v[512];
+    if (argc < 2) {
+        err2(sh, io, "getenv", "usage: getenv NAME");
+        return 2;
+    }
+    if (!sh->os.getenv || !sh->os.getenv(sh->os.data, argv[1], v, sizeof(v)))
+        return 5;
+    sayl(sh, io->out, v, "\n", NULL);
+    return 0;
+}
+
+/* Fault N...: "Fault N: text" for each secondary result, from the same os.fault hook as Why */
+static long b_fault(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    char text[128];
+    int i;
+    if (argc < 2) {
+        err2(sh, io, "fault", "usage: fault N");
+        return 2;
+    }
+    for (i = 1; i < argc; i++) {
+        if (sh->os.fault && sh->os.fault(sh->os.data, atol(argv[i]), text, (long)sizeof(text)))
+            sayl(sh, io->out, "Fault ", argv[i], ": ", text, "\n", NULL);
+        else
+            sayl(sh, io->out, "Fault ", argv[i], ": Unknown error\n", NULL);
+    }
+    return 0;
+}
+
+/* Prompt STRING: sets PS1. AmigaDOS %S (the current directory) becomes \w, %R (the last return code) becomes $?,
+ * %N (the CLI number; vsh has none) becomes 1, %% a percent sign. No argument restores the AmigaDOS default
+ * "%N.%S> ". The words are joined with spaces. */
+static long b_prompt(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    pbuf v = { 0, 0, 0 };
+    int i;
+    const char *p;
+    (void)io;
+    if (argc < 2) {
+        sh_set(&sh->ctx, "PS1", "1.\\w> ");
+        return 0;
+    }
+    for (i = 1; i < argc; i++) {
+        if (i > 1)
+            pb_add(&v, " ", 1);
+        for (p = argv[i]; *p; p++) {
+            if (*p == '%' && (p[1] == 'N' || p[1] == 'n')) {
+                pb_add(&v, "1", 1);
+                p++;
+            } else if (*p == '%' && (p[1] == 'S' || p[1] == 's')) {
+                pb_add(&v, "\\w", 2);
+                p++;
+            } else if (*p == '%' && (p[1] == 'R' || p[1] == 'r')) {
+                pb_add(&v, "$?", 2);
+                p++;
+            } else if (*p == '%' && p[1] == '%') {
+                pb_add(&v, "%", 1);
+                p++;
+            } else {
+                pb_add(&v, p, 1);
+            }
+        }
+    }
+    sh_set(&sh->ctx, "PS1", v.s ? v.s : "");
+    free(v.s);
+    return 0;
+}
+
+/* Ask "question": prints it as given (no "(y/n)" added), reads a line from standard input; a line starting with Y or y
+ * gives 5 (WARN), anything else, an empty line or end of input gives 0, as the AmigaDOS command. */
+static long b_ask(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    char *rd[3];
+    const char *r;
+    pbuf q = { 0, 0, 0 };
+    int i;
+    for (i = 1; i < argc; i++) {
+        if (i > 1)
+            pb_add(&q, " ", 1);
+        pb_add(&q, argv[i], strlen(argv[i]));
+    }
+    if (q.s)
+        say(sh, io->out, q.s);
+    free(q.s);
+    sh_unset(&sh->ctx, "REPLY");
+    rd[0] = (char *)"read";
+    rd[1] = (char *)"REPLY";
+    rd[2] = 0;
+    if (b_read(sh, 2, rd, io) != 0)
+        return 0;
+    r = sh_get(&sh->ctx, "REPLY");
+    return r && (*r == 'y' || *r == 'Y') ? 5 : 0;
+}
+
 static long b_help(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     int k, a, found = 0;
@@ -6873,7 +7108,7 @@ done:
     return n;
 }
 
-static const char *const amiga_internals[] = { "endcli", "endshell", "why", 0 };
+static const char *const amiga_internals[] = { "endcli", "endshell", "why", "setenv", "unsetenv", "getenv", "fault", "prompt", "ask", 0 };
 
 static builtin_fn find_builtin(const char *name)
 {
@@ -6881,7 +7116,7 @@ static builtin_fn find_builtin(const char *name)
     for (i = 0; builtins[i].name; i++)
         if (!strcmp(builtins[i].name, name))
             return builtins[i].fn;
-    /* EndCLI, EndShell and Why are AmigaDOS Shell internals, and AmigaDOS names ignore case: only these do */
+    /* EndCLI, EndShell, Why, SetEnv, UnsetEnv, GetEnv, Fault, Prompt and Ask are AmigaDOS Shell internals, and AmigaDOS names ignore case: only these do */
     for (i = 0; amiga_internals[i]; i++) {
         const char *a = amiga_internals[i], *b = name;
         while (*a && *b && *a == tolower((unsigned char)*b)) {

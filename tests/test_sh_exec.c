@@ -2375,8 +2375,78 @@ static void why_explains_the_last_failure_of_this_shell(void)
     CHECK_STR(run("fail; false; Why"), "The last command did not set a return code\n");
 }
 
+/* AMIGA-IN-VSH small built-ins: SetEnv, UnsetEnv, GetEnv (the ENV: store behind $name), Fault (the os.fault text),
+ * Prompt (PS1), Ask (5 on yes), Amiga-form alias and the Echo keywords. Every name matches in any case; the bash
+ * forms (alias n=v, echo -n/-e, a plain echo of the same words) are unchanged. */
+static int f_setenv(void *os, const char *name, const char *value)
+{
+    (void)os;
+    if (strlen(name) >= sizeof(sysenv_name) || (value && strlen(value) >= sizeof(sysenv_val)))
+        return 0;
+    if (value) {
+        strcpy(sysenv_name, name);
+        strcpy(sysenv_val, value);
+    } else if (!strcmp(name, sysenv_name)) {
+        sysenv_name[0] = 0;
+        sysenv_val[0] = 0;
+    }
+    return 1;
+}
+
+static void setenv_unsetenv_getenv_use_the_system_store(void)
+{
+    int inc = 0;
+    sysenv_name[0] = sysenv_val[0] = 0;
+    run("");
+    sh.os.getenv = f_getenv;
+    sh.os.setenv = f_setenv;
+    sh_run_text(&sh, "setenv MYVAR two words; echo \"[$MYVAR]\"; getenv MYVAR; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "[two words]\ntwo words\nrc0\n");
+    CHECK_STR(sysenv_val, "two words");
+    sh_run_text(&sh, "SETENV MYVAR x; GetEnv MYVAR", &inc);
+    CHECK_STR(sysenv_val, "x");
+    sh_run_text(&sh, "unset MYVAR; echo \"a[$MYVAR]\"; setenv MYVAR back; echo \"b[$MYVAR]\"", &inc);
+    CHECK_INT(strstr(slot(OUT)->data, "a[]\nb[back]\n") != 0, 1);
+    sh_run_text(&sh, "echo \"c[$MYVAR]\"; UnsetEnv MYVAR; echo \"d[$MYVAR]\"; getenv MYVAR; echo rc$?", &inc);
+    CHECK_INT(sysenv_name[0], 0);
+    CHECK_INT(strstr(slot(OUT)->data, "c[back]\nd[]\nrc5\n") != 0, 1);
+    /* no store: refused with 20 */
+    sh.os.setenv = 0;
+    sh_run_text(&sh, "setenv Q 1; echo rc$?", &inc);
+    CHECK_INT(strstr(slot(OUT)->data, "rc20\n") != 0, 1);
+    sh.os.getenv = 0;
+    sh.os.setenv = 0;
+    sysenv_asked = 0;
+    sysenv_name[0] = sysenv_val[0] = 0;
+}
+
+static void fault_prompt_ask_alias_and_echo_keywords(void)
+{
+    CHECK_STR(run("fault 205; Fault 9999"), "Fault 205: object not found\nFault 9999: Unknown error\n");
+    CHECK_INT(fault_calls, 2);
+    CHECK_STR(run("prompt \"%N.%S> \"; echo \"$PS1\""), "1.\\w> \n");
+    CHECK_STR(run("PROMPT 'x %R %% y'; echo \"$PS1\""), "x $? % y\n");
+    CHECK_STR(run("prompt; echo \"$PS1\""), "1.\\w> \n");
+    CHECK_STR(run("echo y | ask 'go? '; echo \" rc$?\""), "go?  rc5\n");
+    CHECK_STR(run("echo n | Ask 'go? '; echo \" rc$?\""), "go?  rc0\n");
+    /* alias: the Amiga form defines, the bash forms are unchanged */
+    CHECK_STR(run("alias ll ls -l; alias ll"), "ll=ls -l\n");
+    CHECK_STR(run("alias ll=\"ls -l\"; alias ll"), "ll=ls -l\n");
+    CHECK_STR(run("alias a=b; alias c=d; alias a c"), "a=b\nc=d\n");
+    /* echo: the keywords only as trailing words after text */
+    CHECK_STR(run("echo hello NOLINE; echo !"), "hello!\n");
+    CHECK_STR(run("echo abcdef FIRST 1 LEN 3"), "bcd\n");
+    CHECK_STR(run("echo abcdef len 2 first 4 noline; echo"), "ef\n");
+    CHECK_STR(run("echo noline"), "noline\n");
+    CHECK_STR(run("echo first 1"), "first 1\n");
+    CHECK_STR(run("echo -n a; echo b"), "ab\n");
+    CHECK_STR(run("echo -e 'a\\tb' len 1"), "a\tb len 1\n");
+}
+
 void suite_sh_exec(void)
 {
+    setenv_unsetenv_getenv_use_the_system_store();
+    fault_prompt_ask_alias_and_echo_keywords();
     bind_and_inputrc_reach_the_console_line_editor();
     a_subshell_s_set_o_and_shopt_leave_the_shell_s_alone();
     a_shared_subshell_reads_the_shell_s_variables_and_changes_none();
