@@ -419,6 +419,13 @@ void lf_palette_hex(const amconf_io *io, int n, char *out)
         prefs_hex_format((uc_u32)lf_ansi_rgb[n], out);
 }
 
+const char *lf_picker_prompt(const sd_setting *s, int entry)
+{
+    if (!SD_HAS_PICKER(s) || (s->kind != SD_PALETTE && entry != SD_PICK_CUSTOM))
+        return 0;                       /* a built-in palette entry or a swatch pick sets without asking */
+    return SD_IS_THEME_COLOUR(s) && s->kind != SD_SWATCH ? "colour or reference" : "RRGGBB";
+}
+
 void lf_colour_current(const amconf_io *io, const sd_setting *s, int entry, char *out)
 {
     out[0] = 0;

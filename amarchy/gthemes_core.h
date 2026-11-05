@@ -356,5 +356,12 @@ int gte_row_set_index(const struct sd_setting *s, int index);                   
 int gte_row_label(const struct sd_setting *s, char *out, int n); /* "Label: value" */
 enum { GTA_OPEN = 1, GTA_SAVE, GTA_SAVE_AS, GTA_REVERT, GTA_APPLY, GTA_ADD_SWATCH, GTA_RENAME_SWATCH, GTA_REMOVE_SWATCH,
        GTA_CLEAR_ELEMENT, GTA_DUPLICATE, GTA_IMPORT, GTA_EXPORT, GTA_RESET_BASE, GTA_DELETE };
+/* What an editor action does before it touches a file (the menu's theme_action follows this, the host tests assert it):
+ * GTP_SKIP nothing to act on (no theme open), GTP_LEAVE ask Save/Discard/Cancel first (the buffer is replaced),
+ * GTP_NAME ask for a name. */
+enum { GTP_SKIP = 1, GTP_LEAVE = 2, GTP_NAME = 4 };
+int gte_action_plan(int aux, int editor_open);
+/* gt_dos_edit_open's decision: read the named theme through rd and open its model in the buffer. 1 opened; 0 when it has none. */
+int gte_open_from(gt_read_fn rd, void *ctx, const char *name);
 
 #endif

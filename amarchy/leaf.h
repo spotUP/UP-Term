@@ -108,6 +108,8 @@ int lf_setting_set_colour(const amconf_io *io, const sd_setting *s, int entry, c
 /* The "RRGGBB" palette entry n has now (the file's, else xterm's built-in), and the current hex of row s
  * (the swatch's own, or the palette entry `entry`) for the Custom prompt's prefill. */
 void lf_palette_hex(const amconf_io *io, int n, char *out);
+/* The hint of the value prompt a picker choice opens, or 0 when the choice sets without asking (the lf_setting_enter decision). */
+const char *lf_picker_prompt(const sd_setting *s, int entry);
 void lf_colour_current(const amconf_io *io, const sd_setting *s, int entry, char *out);
 /* The font, fallback font (an .otag file) and screen mode rows: the requester is asked
  * through `asl` (the Amiga layer wraps asl.library; a test passes a fake), starting on the row's current value.

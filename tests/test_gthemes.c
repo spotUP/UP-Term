@@ -1497,6 +1497,51 @@ static void test_gthemes_te4_leave(void)
     CHECK_INT(lf_leave_needed("settings.theme", ""), 0);
 }
 
+static void test_gthemes_te4_dispatch(void)
+{
+    const sd_setting *sw = 0, *el = 0, *pal = 0;
+    rd_ctx rc;
+    int i;
+    rc.calls = 0;
+    /* theme_action: what each action does before it touches a file */
+    CHECK_INT(gte_action_plan(GTA_OPEN, 0), GTP_LEAVE | GTP_NAME);
+    CHECK_INT(gte_action_plan(GTA_RESET_BASE, 1), GTP_LEAVE);
+    CHECK_INT(gte_action_plan(GTA_SAVE, 0), GTP_SKIP);
+    CHECK_INT(gte_action_plan(GTA_SAVE, 1), 0);
+    CHECK_INT(gte_action_plan(GTA_APPLY, 0), GTP_SKIP);
+    CHECK_INT(gte_action_plan(GTA_SAVE_AS, 0), GTP_SKIP);
+    CHECK_INT(gte_action_plan(GTA_DUPLICATE, 1), GTP_NAME);
+    CHECK_INT(gte_action_plan(GTA_ADD_SWATCH, 0), GTP_NAME);
+    CHECK_INT(gte_action_plan(GTA_IMPORT, 0), GTP_NAME);
+    CHECK_INT(gte_action_plan(GTA_REVERT, 0), 0);
+    CHECK_INT(gte_action_plan(GTA_CLEAR_ELEMENT, 1), 0);
+    /* gt_dos_edit_open: a theme with a file opens in the buffer; an unknown one leaves the buffer alone */
+    te4_open_builtin();
+    strcpy(gt_ed.name, "before");
+    CHECK_INT(gte_open_from(fake_read, &rc, "nowhere"), 0);
+    CHECK(!strcmp(gt_ed.name, "before"));
+    CHECK_INT(gte_open_from(fake_read, &rc, "solo"), 1);
+    CHECK(!strcmp(gt_ed.name, "solo"));
+    CHECK(gt_ed.open && !gte_dirty());
+    CHECK(rc.calls > 0);
+    /* lf_setting_enter, picker branch: which choices ask a value */
+    te4_open_builtin();
+    gt_ed.advanced = 1;
+    for (i = 0; i < gte_nrows(); i++) {
+        const sd_setting *r = gte_row(SDI_COUNT + i);
+        if (!sw && r->kind == SD_SWATCH)
+            sw = r;
+        if (!el && r->kind == SD_ELEMENT && gte_row_visible(r))
+            el = r;
+    }
+    pal = te4_row("Terminal Palette");
+    CHECK(sw && el && pal);
+    CHECK(lf_picker_prompt(sw, 1) == 0);
+    CHECK(!strcmp(lf_picker_prompt(sw, SD_PICK_CUSTOM), "RRGGBB"));
+    CHECK(!strcmp(lf_picker_prompt(el, SD_PICK_CUSTOM), "colour or reference"));
+    CHECK(!strcmp(lf_picker_prompt(pal, 3), "RRGGBB"));
+}
+
 static void test_gthemes_te4_pickers(void)
 {
     const sd_setting *sw = 0, *ref = 0, *el = 0;
@@ -1676,6 +1721,7 @@ void suite_gthemes(void)
     test_gthemes_te3_edit_applies();
     test_gthemes_te4_section4();
     test_gthemes_te4_pickers();
+    test_gthemes_te4_dispatch();
     test_gthemes_te4_leave();
     test_gthemes_te4_rows();
     test_gthemes_te4_modes();

@@ -1643,6 +1643,40 @@ void gte_open(const gt_model *m, const char *name)
     gt_ed.name[GT_NAME - 1] = 0;
 }
 
+int gte_action_plan(int aux, int editor_open)
+{
+    switch (aux) {
+    case GTA_OPEN:
+        return GTP_LEAVE | GTP_NAME;
+    case GTA_RESET_BASE:
+        return GTP_LEAVE;
+    case GTA_SAVE:
+    case GTA_APPLY:
+        return editor_open ? 0 : GTP_SKIP;
+    case GTA_SAVE_AS:
+    case GTA_DUPLICATE:
+        return editor_open ? GTP_NAME : GTP_SKIP;
+    case GTA_ADD_SWATCH:
+    case GTA_RENAME_SWATCH:
+    case GTA_REMOVE_SWATCH:
+    case GTA_IMPORT:
+        return GTP_NAME;
+    }
+    return 0;
+}
+
+int gte_open_from(gt_read_fn rd, void *ctx, const char *name)
+{
+    gtheme t;
+    memset(&t, 0, sizeof t);
+    gt_load_model(rd, ctx, name, &t);
+    if (!t.model)
+        return 0;
+    gte_open(t.model, name);
+    gt_free(&t);
+    return 1;
+}
+
 int gte_dirty(void)
 {
     return gt_ed.open && memcmp(&gt_ed.m, &gt_ed.saved, sizeof gt_ed.m) != 0;

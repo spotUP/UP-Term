@@ -284,12 +284,15 @@ static int theme_action(const sd_setting *s, const char *label, const lf_ui *ui)
 {
     char name[GT_NAME], why[160];
     int ok = 1;
+    int plan = gte_action_plan(s->aux, gt_ed.open);
     why[0] = 0;
     name[0] = 0;
+    if (plan & GTP_SKIP)
+        return 0;
+    if ((plan & GTP_LEAVE) && !lf_leave_editor("settings.theme", "", ui))     /* the action replaces the buffer */
+        return 0;
     switch (s->aux) {
     case GTA_OPEN:
-        if (!lf_leave_editor("settings.theme", "", ui))     /* opening another theme replaces the buffer */
-            return 0;
         gt_dos_current(name, sizeof name);
         if (!ui->ask_value || !ui->ask_value(ui->ctx, label, "theme name", name, sizeof name))
             return 0;
@@ -298,8 +301,6 @@ static int theme_action(const sd_setting *s, const char *label, const lf_ui *ui)
             strcpy(why, "that theme has no editable model");
         break;
     case GTA_SAVE:
-        if (!gt_ed.open)
-            return 0;
         ok = gt_dos_save(gt_ed.name, &gt_ed.m, why, sizeof why);
         if (ok)
             gte_saved();
@@ -307,7 +308,7 @@ static int theme_action(const sd_setting *s, const char *label, const lf_ui *ui)
     case GTA_SAVE_AS:
     case GTA_DUPLICATE:
         strcpy(name, gt_ed.name);
-        if (!gt_ed.open || !ui->ask_value || !ui->ask_value(ui->ctx, label, "new theme name", name, sizeof name))
+        if (!ui->ask_value || !ui->ask_value(ui->ctx, label, "new theme name", name, sizeof name))
             return 0;
         if (s->aux == GTA_DUPLICATE)
             ok = gt_dos_duplicate(gt_ed.name, name, why, sizeof why);
@@ -323,8 +324,6 @@ static int theme_action(const sd_setting *s, const char *label, const lf_ui *ui)
             gte_revert();
         break;
     case GTA_APPLY:
-        if (!gt_ed.open)
-            return 0;
         ok = gt_dos_select(gt_ed.name, why, sizeof why);
         break;
     case GTA_IMPORT:
@@ -347,8 +346,6 @@ static int theme_action(const sd_setting *s, const char *label, const lf_ui *ui)
         ok = gt_ed.open && gt_dos_delete_user(gt_ed.name, why, sizeof why);
         break;
     case GTA_RESET_BASE:
-        if (!lf_leave_editor("settings.theme", "", ui))
-            return 0;
         if (gt_ed.open && gt_ed.m.base[0])
             ok = gt_dos_edit_open(gt_ed.m.base);
         break;
@@ -451,9 +448,9 @@ int lf_setting_enter(const mn_item *it, const lf_ui *ui)
         char value[UC_MAX_VALUE + 2], why[80];
         if (!MN_IS_CHOICE(it))
             return 0;                   /* the row opens its picker level: the menu does that */
-        if (s->kind == SD_PALETTE || entry == SD_PICK_CUSTOM) {
+        if (lf_picker_prompt(s, entry)) {
             lf_colour_current(amconf_dos_io(), s, entry, value);
-            if (!ui->ask_value || !ui->ask_value(ui->ctx, it->label, SD_IS_THEME_COLOUR(s) && s->kind != SD_SWATCH ? "colour or reference" : "RRGGBB", value, sizeof value))
+            if (!ui->ask_value || !ui->ask_value(ui->ctx, it->label, lf_picker_prompt(s, entry), value, sizeof value))
                 return 0;               /* cancelled */
             text = value;
         }
