@@ -1,0 +1,38 @@
+ADDR       KIND  PRI STATE    STACK    FREE  CLI  NAME
+0x100fa0f8 proc    0 wait     32768   31666    1  Background CLI (SYS:Prefs/Font)
+0x1013d188 proc    1 run     262144  260087    3  Background CLI (BOOTX:wasabid)
+0x100ffda8 proc    0 wait    262144  256342    4  Background CLI (UP-Term:bin/Amarchy)
+0x1012b5f0 proc    0 wait    262144  257406    6  Background CLI (UP-Term:bin/amarchy-flat)
+0x10131548 proc    0 wait    262144  260950    7  Background CLI (C:upgetty)
+0x10134a28 proc    0 wait    262144  261990    8  Background CLI (C:SolidWin)
+0x1049f500 proc    0 wait    262144  261614    9  amarchy-gui (Empty-12MB-FFS:UP-Term/bin/amarchy-gui)
+0x108abac8 proc    0 wait    262144  260322   10  upgetty shell (C:upgetty)
+0x105652b8 proc    0 wait    262144  261386   11  amarchy-menu (Empty-12MB-FFS:UP-Term/bin/amarchy-menu)
+0x10581120 proc    1 wait      8000    6658   12  Workbench
+0x109e66f8 proc    0 wait      4096    3934    -  << AssignWedge >>
+0x10a1d9c8 proc    0 wait      4932    4738    -  AsyncWB
+0x10a1f6b8 proc    5 wait     16000   15666    -  CON
+0x10a29ba0 proc    0 wait      4000    3822    -  datatypes.library
+0x109f9b30 proc    0 wait      4096    3654    -  DefIcons
+0x10012748 proc   10 wait      2400    2262    -  DF0
+0x10010ef0 proc   10 wait      6000    5906    -  DH0
+0x10014ea0 proc   10 wait      6000    5906    -  DH1
+0x100166f8 proc   10 wait      6000    5906    -  DH2
+0x100180b0 proc   10 wait      6000    5906    -  DH3
+0x100d12a0 proc    0 wait      4000    3786    -  Picasso96
+0x105e4508 proc    5 wait      8000    7846    -  PTY
+0x1005cf38 proc   10 wait      4096    3950    -  RAM
+0x1004f0c0 proc    0 wait      4096    3882    -  ramlib
+0x109e7be8 proc    0 wait      4096    3902    -  RAWBInfo
+0x10098bd0 proc    4 wait      2048    1878    -  RexxMaster
+0x100501b0 proc  -10 wait     10000    9906    -  UAE clipboard sharing
+0x10a42590 proc    5 wait      8192    7894    -  vtcon watch
+0x10564218 proc    0 wait      4000    3846    -  Workbench Clipboard Server
+0x100ec790 proc    0 wait      3000    2790    -  « ConClip »
+0x10089798 proc    0 wait      8192    6350    -  « IPrefs »
+0x100ee648 task    5 wait      4096    3998    -  console.device
+0x10009c92 task   20 wait      4096    4002    -  input.device
+0x10058580 task    9 wait      2048    1950    -  ixemul task switcher
+0x1000b520 task   11 wait      1000     890    -  scsi.device
+0x10013d34 task    5 wait       512     406    -  trackdisk.device
+0x1000df50 task   10 wait      2048    1958    -  UAE fs automounter

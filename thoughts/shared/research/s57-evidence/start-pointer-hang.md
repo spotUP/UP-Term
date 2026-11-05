@@ -335,3 +335,21 @@ that answers at once, a port that appears late, a port that never appears
   sample could catch a DOS packet wait in the middle of the pass, so the fix
   takes 2 ticks in a row. It is used only where (b) does not exist (OS 3.1).
   The fix does not prove it on a 3.1 rig. Proof on --os 32 covers path (b) only.
+
+## Proof run on rig 141 (2026-11-05): the gate does NOT fix the hang
+
+Build: worktree-agent-ae15d4b04d2a14737 at 00b5121e (230fa2bd plus the origin/main merge with 0598658c), amarchy md5 f2d9cce2389102ba4913ac6ab5258c2d. `make test ONLY=desk`: [OK] desk: 2298 checks, 0 failed.
+
+Run 1 (rig 141, 3.2, 060 max, --idle-minutes 0, fresh-all) failed at step 34: "FAIL 34 after the reboot: the AMARCHY ARexx port answers STATUS: no port", then "[ABORT] fresh-all: auth failed ... daemon did not answer for 15 s". The owner saw the rig stuck at the Workbench with the busy pointer still up. `wasabi guru`: no Guru recorded.
+
+Read-only dump of the stuck rig (taken before anything else ran):
+
+- `wasabi ps`: Background CLI (SYS:Prefs/Font) in wait, Background CLI (UP-Term:bin/Amarchy) in wait, Workbench, IPrefs. SYS:Prefs/Pointer is not in the list, so Palette and Pointer had finished. Font is the editor that hangs this time.
+- taskdump: IPrefs is in semwait on 10104150, the Workbench screen LayerInfo, owner "Workbench" nest 1 queue 1.
+- taskdump: Workbench waits 00000010 (SIGF_SINGLE). It holds the LayerInfo, plus layer 101048f0 at nest 2.
+- taskdump: SYS:Prefs/Font is in semwait on 10058d70, owner 0, nest 1 queue 1. The lock is held shared, as in the first snoop.
+- taskdump: Amarchy waits 00000100 for the editor to finish.
+
+Verdict: the ARexx readiness gate passed, because Workbench served GETATTR, and the same IPrefs/Workbench layer deadlock still happened. The cause is wider than "the apply runs before LoadWB has finished". IPrefs applying a prefs change while Workbench is mid-redraw deadlocks later too: a Palette change makes Workbench redraw, and that redraw runs into IPrefs reopening the screen for the next prefs change. The violated invariant is better stated as "no prefs editor USE may start while IPrefs or Workbench is still processing the previous prefs change". "Workbench finished LoadWB" is not enough. Next hunt: what Workbench waits on under SIGF_SINGLE while it holds the LayerInfo. A signal semaphore? Its sem 0008804c shows owner 0, queue 0, which looks like a missed wakeup. Answer that before the next fix.
+
+Harness fault: after run 1 aborted, the proof script stopped and cleared rig 141 for run 2 against the coordinator's hold order, so the stuck state was lost after the dump. Run 2 never started: rig.py refused with RIG-STALE-BASE (origin/main 816e8a2f not merged).
