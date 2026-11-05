@@ -1642,7 +1642,7 @@ $(BUILD)/amiga/romprobe: tests/amiga/romprobe.c
 
 # Phase DP of the console.device plan: DP1 input chain, DP3 DosList, DP4 ROM
 # commands (run by tools/rig/<name>_rig.py)
-CONPROBES := chainprobe dosnode cdprobe mediumprobe medshell autoprobe
+CONPROBES := chainprobe dosnode cdprobe mediumprobe medshell autoprobe copcheck rawdrag
 $(CONPROBES:%=$(BUILD)/amiga/%): $(BUILD)/amiga/%: tests/amiga/%.c tests/amiga/probeout.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/$*.c

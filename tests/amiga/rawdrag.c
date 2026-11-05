@@ -13,6 +13,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+long __stack = 16384;
+const char rawdrag_stack_cookie[] = "$STACK: 16384";
 static struct IOStdReq *io;
 
 static void send(UWORD code, UWORD qual, WORD dx, WORD dy)

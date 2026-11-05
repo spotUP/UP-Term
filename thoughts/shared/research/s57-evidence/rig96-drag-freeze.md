@@ -128,3 +128,24 @@ Next candidates, in order:
 
 Prove on a rig: copcheck before and after the drag to top 7, with SolidWin stopped, then with it
 running. A memory watchpoint on 0x2BD40-0x2BFFF gives the writer's PC.
+
+## Hunt attempt 3, 2026-11-05 (rig 131): writer UNPROVEN, no drag run
+
+- Build: worktree drag-copper-hunt at origin/main fdb5e99f (make worktree-ready, wasabi 959c33bd, amiga, dist via kit-main).
+  `installer_rig.py ONLY fresh-all` with INSTALLER_KEEP=1: checks 1-33 ok, then FAIL 34 (AMARCHY port: no port) and
+  [ABORT]: after the post-install reboot wasabid took the connection but did not answer for 15 s. This is the same stop
+  as rig 125. Host at the time: rigs 96, 127, 129 plus a node pre-push hook, each about 85-100% CPU.
+- `rig.py reboot --max --os 32 --no-jit --debugger` with UPTERM_FSUAE=fs-uae-debug: the console debugger stops at the
+  Kickstart entry (PC 00F800D2) on start, so `rig.py reboot` times out until `rig.py dbg "g"` is sent. After "g" the
+  machine booted fully (Amarchy, amarchy-flat, amarchy-menu, SolidWin, Workbench up).
+- copcheck (now tests/amiga/copcheck.c, CONPROBES) on the clean boot, before any drag:
+  `pl0=00003d40 pl1=00003d90 bpr=640 rows=256 depth=8 end=0002bd40 lof=0002cee0 off=4512 verdict=OK`.
+  Same bitmap address and end as rig 96, but LOFlist sits 0x11A0 past the end here (rig 96: 0x168), so where the copper
+  list lands depends on allocation order. A copcheck OK says nothing unless off is small; watch the bitmap end, not LOFlist.
+- Memwatch armed `w 0 2BD40 50 W CPUDW BLTD` (plane 0 of row 256, the first bytes any row-256 writer hits; CPU data
+  writes and blitter D). After the second dbgbreak + w + g the guest never answered again (wasabi: no answer, later
+  connect timeout; fs-uae 110% CPU; debugger.log ends at the `>` prompt with no memwatch hit line). Unknown whether "g"
+  was not taken from the FIFO or the no-JIT guest was starved. No drag, no SolidWin split was run.
+- Next run: start the debug build with the memwatch already in place before "g" at the boot stop (one FIFO round, no
+  second dbgbreak), open `NewShell WINDOW=XCON:0/7/640/249/DragTest`, then RAM:rawdrag on its title bar (dy negative)
+  with SolidWin running, then with SolidWin stopped. A hit line names the PC (CPU) or the blit (BLTD).
