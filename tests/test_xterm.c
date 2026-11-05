@@ -443,6 +443,23 @@ static void title_pop_restores_window_open_title(void)
     vt_free(t);
 }
 
+/* RIS leaves the title at the host's open string (the window keeps showing it), and a push
+ * after it keeps that string; with no host title it stays empty */
+static void ris_keeps_window_open_title(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    vt_set_title(t, "vtcon shell");
+    h_put(t, "\033]2;changed\007\033c");
+    CHECK_INT(strcmp(vt_title(t), "vtcon shell"), 0);
+    h_put(t, "\033[22;0t\033]2;x\007\033[23;0t");
+    CHECK_INT(strcmp(vt_title(t), "vtcon shell"), 0);
+    vt_free(t);
+    t = h_new(80, 24, VT_XTERM);
+    h_put(t, "\033]2;changed\007\033c");
+    CHECK_INT(vt_title(t)[0], 0);
+    vt_free(t);
+}
+
 /* ---- phase A5: modes ---- */
 
 static void modes_of_phase_a5(void)
@@ -1494,6 +1511,7 @@ void suite_xterm(void)
     xtgettcap_colors_is_the_screens_pen_count();
     window_reports_and_title_stack();
     title_pop_restores_window_open_title();
+    ris_keeps_window_open_title();
     modes_of_phase_a5();
     deccolm_only_when_allowed();
     scheme_updates_when_asked();
