@@ -81,4 +81,9 @@ int icl_cache_find(const icl_pencache *c, int fgpen, int bgpen, int k, uint32_t 
 int icl_cache_put(icl_pencache *c, int fgpen, int bgpen, int k, uint32_t fg_rgb, uint32_t bg_rgb, int pen, int obtained,
                   int *old_pen);
 
+/* Per-call release: write the pens that came from ObtainBestPen into out[ICL_CACHE] (each exactly once) and empty the
+ * cache. Returns their count. The caller releases them on the SAME colour map in the same Text call: nothing pen-related
+ * may outlive the call, because the map's screen can close between two calls (IPrefs reopening Workbench). */
+int icl_cache_drain(icl_pencache *c, int *out);
+
 #endif

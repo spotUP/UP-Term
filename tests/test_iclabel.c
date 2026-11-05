@@ -139,6 +139,42 @@ static void t_cache(void)
     CHECK(!icl_cache_put(&c, 3, 3, 3, 0, 0, 21, 1, &old));
 }
 
+/* A simulated label draw: pen_for obtains through the cache like icl_pen_for; the drain after the draw hands back every
+ * obtained pen exactly once and leaves the cache empty, so no pen survives to a later call on a closed screen's map. */
+static int obt_n;
+static int sim_pen_for(void *u, int fgpen, int bgpen, int k)
+{
+    icl_pencache *c = (icl_pencache *)u;
+    int pen = icl_cache_find(c, fgpen, bgpen, k, 1, 2), old;
+    if (pen >= 0)
+        return pen;
+    pen = 100 + obt_n;
+    obt_n++;
+    icl_cache_put(c, fgpen, bgpen, k, 1, 2, pen, 1, &old);
+    return pen;
+}
+
+static void t_release_per_call(void)
+{
+    icl_pencache c;
+    uint8_t cov[4] = { 64, 128, 160, 96 };
+    uint32_t after[4] = { 0x101010, 0x202020, 0x303030, 0x404040 }, out[4];
+    int rel[ICL_CACHE], n, i, j;
+    obt_n = 0;
+    icl_cache_clear(&c);
+    icl_blend_pens(cov, after, 1, 4, sim_pen_for, &c, 4, out);
+    CHECK(obt_n > 0);
+    n = icl_cache_drain(&c, rel);
+    CHECK_INT(n, obt_n);
+    for (i = 0; i < n; i++)
+        for (j = 0; j < n; j++)
+            if (i != j)
+                CHECK(rel[i] != rel[j]);
+    for (i = 0; i < ICL_CACHE; i++)
+        CHECK(!c.e[i].used);
+    CHECK_INT(icl_cache_drain(&c, rel), 0);
+}
+
 void suite_iclabel(void)
 {
     t_accept();
@@ -147,4 +183,5 @@ void suite_iclabel(void)
     t_blend_rgb();
     t_pens();
     t_cache();
+    t_release_per_call();
 }

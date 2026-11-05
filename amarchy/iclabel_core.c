@@ -173,3 +173,13 @@ int icl_cache_put(icl_pencache *c, int fgpen, int bgpen, int k, uint32_t fg_rgb,
     c->e[slot].used = 1;
     return 1;
 }
+
+int icl_cache_drain(icl_pencache *c, int *out)
+{
+    int i, n = 0;
+    for (i = 0; i < ICL_CACHE; i++)
+        if (c->e[i].used && c->e[i].obtained)
+            out[n++] = c->e[i].pen;
+    icl_cache_clear(c);
+    return n;
+}
