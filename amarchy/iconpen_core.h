@@ -8,6 +8,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "gthemes_core.h"
+#include "../handler/pubscr_core.h"
 #include "desk_core.h"
 
 #define IP_PENS 16
@@ -147,13 +148,5 @@ unsigned long ip_scale32(unsigned c);
 /* the depth ip_fold / desk_pen_plan_for take: the bitmap's planes, EHB (6 planes) counts as 5 */
 int ip_screen_depth(int planes, int ehb);
 
-/* S57-FREEZE-2IN9: the psn_Flags bit of a public screen node that is not public (yet): intuition's PSNF_PRIVATE. */
-#define IP_PSN_PRIVATE 0x0001
-/* Whether LockPubScreen(name) will FIND the public screen (any name, the Workbench included), from its node read under the public screen list lock:
- * the node is listed, has a screen and is not private. While LoadWB opens the Workbench the node is listed but still
- * private; Intuition then treats it as absent and takes its "reopen the Workbench" path, which waits for the task
- * that is opening it. A caller that holds the list lock must not make that call: the opening task needs the list
- * lock to make the screen public, so both wait for ever (evidence: s57-evidence/freeze-9boot-rig145.md). */
-int ip_pub_lockable(int listed, int has_screen, unsigned flags);
 
 #endif

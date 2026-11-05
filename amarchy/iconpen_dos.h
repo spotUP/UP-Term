@@ -10,6 +10,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "iconpen_core.h"
+#include "../handler/pubscr.h"
 
 #define IPD_SEM_NAME "Amarchy.IconPens"
 
@@ -25,10 +26,6 @@ int ipd_pen_is_free(struct ColorMap *cm, int pen);
 struct Screen *ipd_wb_screen_in(struct List *pl);
 /* The same for any public screen name (strcmp); 0 for a null or empty name or a screen that is not listed. */
 struct Screen *ipd_pub_screen_in(struct List *pl, const char *name);
-/* The public screen `name`, locked (the caller UnlockPubScreen(0, scr)), or 0 when it is not listed, still private, or the
- * name is null or empty. The ONLY place in amarchy/ that calls LockPubScreen (tests/test_wb_lock_guard.py): Intuition reopens
- * a Workbench it does not find, and that deadlocks (BOOT-31-WB-DEADLOCK, S57-FREEZE-2IN9). */
-struct Screen *ipd_lock_pub_screen(const char *name);
 /* The Workbench screen, locked (the caller UnlockPubScreen(0, scr)), or 0 when the Workbench is closed or still opening
  * (ask again later). NEVER call LockPubScreen("Workbench") elsewhere: Intuition reopens a Workbench it does not find, and
  * that deadlocks against IPrefs closing it (BOOT-31-WB-DEADLOCK) or LoadWB opening it (S57-FREEZE-2IN9). */
