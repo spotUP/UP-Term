@@ -1304,6 +1304,23 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
             free(sb);
             return st;
         }
+        if (wait == SH_SPAWN_FG) {
+            /* an AmigaDOS script run by name (S bit or .key, no #! line) runs in this shell (D3): nothing is
+             * started here and no stream touched; the executor runs it (start_program). Background and
+             * pipeline stages keep the Shell process below. */
+            char *a0b = argv[0];
+            int is;
+            if (found[0])
+                argv[0] = found;
+            is = sh_amiga_script_file(sh, argv);
+            argv[0] = a0b;
+            if (is) {
+                free(cmd);
+                if (home)
+                    UnLock(home);
+                return SH_RUN_AMIGA_SCRIPT;
+            }
+        }
     }
     if (seg && same_name((const char *)FilePart((STRPTR)argv[0]), "execute")) {
         /* AmigaDOS Execute only queues its script as the Shell's next input: run here by

@@ -7345,34 +7345,39 @@ static long b_source(sh_shell *sh, int argc, char **argv, const sh_io *io)
 /* execute FILE [args]: FILE is an AmigaDOS script, run in this shell by the line interpreter (sh_amiscript.c) so
  * cd, variables and functions behave as in an AmigaDOS Shell. A function or alias named execute wins (it is
  * found before the builtin), and C:Execute spelled with its path is not this word and stays the real command. */
-static long b_execute(sh_shell *sh, int argc, char **argv, const sh_io *io)
+static long execute_file(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     sh_fh fh;
     char *text;
     long st;
     int pushed;
     const char *outer_src;
-    if (argc < 2) {
-        err2(sh, io, "execute", "required argument missing");
-        return 20;
-    }
-    fh = sh->os.open(sh->os.data, argv[1], SH_OPEN_READ);
+    fh = sh->os.open(sh->os.data, argv[0], SH_OPEN_READ);
     if (!fh) {
-        err2(sh, io, argv[1], "cannot open");
+        err2(sh, io, argv[0], "cannot open");
         return 20;
     }
     text = read_fh_text(sh, fh, 0);
     if (!text)
         return sh->ctx.status;
     outer_src = sh->cur_src;
-    pushed = frame_push(sh, "execute", argv[1]) == 0;
-    sh->cur_src = argv[1];
-    st = sh_amiga_execute(sh, text, argv[1], argc - 1, argv + 1, io);
+    pushed = frame_push(sh, "execute", argv[0]) == 0;
+    sh->cur_src = argv[0];
+    st = sh_amiga_execute(sh, text, argv[0], argc, argv, io);
     sh->cur_src = outer_src;
     if (pushed)
         frame_pop(sh);
     free(text);
     return st;
+}
+
+static long b_execute(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    if (argc < 2) {
+        err2(sh, io, "execute", "required argument missing");
+        return 20;
+    }
+    return execute_file(sh, argc - 1, argv + 1, io);
 }
 
 /* ---- commands ----------------------------------------------------------------- */
@@ -8216,6 +8221,67 @@ static const char *shell_path_alias(sh_shell *sh, const char *name)
     return self && *self ? self : 0;
 }
 
+/* The first bytes of the file a command word names: its path in file, the text in line (NUL ended, n bytes), p the
+ * start of the line that counts (past a first line beginning .key, any case), keyed (1: a .key line was skipped,
+ * 2: it was the whole text), plain (no execute/S bit). 0 when the word is no regular file here or cannot be
+ * read. Shared by sh_script_argv and sh_amiga_script_file so both read a file the same way. */
+static int script_head(sh_shell *sh, char **argv, char *file, long fmax, char *line, long lmax, char **pp, long *np,
+                       int *keyed, int *plain)
+{
+    char *p;
+    sh_stat st;
+    sh_fh fh;
+    long n;
+    *keyed = 0;
+    if (!argv[0][0] || !sh->os.read || !find_command_file(sh, argv[0], file, fmax))
+        return 0;
+    if (sh->os.stat(sh->os.data, file, &st, 0) || st.type != SH_ST_FILE)
+        return 0;
+    *plain = !(st.access & 1);
+    fh = sh->os.open(sh->os.data, file, SH_OPEN_READ);
+    if (fh == SH_NOFH)
+        return 0;
+    n = sh->os.read(sh->os.data, fh, line, lmax - 1);
+    sh->os.close(sh->os.data, fh);
+    if (n < 0)
+        n = 0;
+    line[n] = 0;
+    p = line;
+    if (n >= 4 && p[0] == '.' && (p[1] == 'k' || p[1] == 'K') && (p[2] == 'e' || p[2] == 'E') &&
+        (p[3] == 'y' || p[3] == 'Y')) {
+        p = strchr(p, '\n');
+        if (!p) {
+            *keyed = 2;
+            *pp = line + n;
+            *np = n;
+            return 1;
+        }
+        p++;
+        *keyed = 1;
+    }
+    *pp = p;
+    *np = n;
+    return 1;
+}
+
+/* Is argv[0] an AmigaDOS script to run by name: a regular file with no #!/;! line (after a .key line) that has the S
+ * bit or a .key line, and no NUL byte? The OS layer asks this for a file it could not load, after sh_script_argv
+ * said no, and answers SH_RUN_AMIGA_SCRIPT for a foreground start (D3: it runs in this shell).
+ * UNVERIFIED against real AmigaDOS: that a .key file without the S bit is meant to be started by name (S7 R-checks). */
+int sh_amiga_script_file(sh_shell *sh, char **argv)
+{
+    char file[512], line[256], *p;
+    long n;
+    int keyed, plain;
+    if (!script_head(sh, argv, file, sizeof(file), line, sizeof(line), &p, &n, &keyed, &plain))
+        return 0;
+    if ((p[0] == '#' || p[0] == ';') && p[1] == '!')
+        return 0;
+    if (memchr(line, 0, (size_t)n))
+        return 0;
+    return plain ? keyed != 0 : 1;
+}
+
 /* A file that is not a load file, whose first line is `#!/bin/sh [arg]` or `#!/bin/bash [arg]`, runs
  * in this shell: interpreter, its one argument, the script's name, the script's arguments. The rule
  * is ixemul's (library/__load_seg.c, load_seg_or_script) so a script starts the same from vsh and from
@@ -8230,33 +8296,13 @@ char **sh_script_argv(sh_shell *sh, char **argv)
 {
     char file[512], line[256], *p, *interp, *arg = 0;
     const char *self;
-    sh_stat st;
-    sh_fh fh;
     long n;
-    int na = 0, i, keyed = 0, plain;
+    int na = 0, i, keyed, plain;
     char **out;
-    if (!argv[0][0] || !sh->os.read || !find_command_file(sh, argv[0], file, sizeof(file)))
+    if (!script_head(sh, argv, file, sizeof(file), line, sizeof(line), &p, &n, &keyed, &plain))
         return 0;
-    if (sh->os.stat(sh->os.data, file, &st, 0) || st.type != SH_ST_FILE)
+    if (keyed == 2)
         return 0;
-    plain = !(st.access & 1);
-    fh = sh->os.open(sh->os.data, file, SH_OPEN_READ);
-    if (fh == SH_NOFH)
-        return 0;
-    n = sh->os.read(sh->os.data, fh, line, (long)sizeof(line) - 1);
-    sh->os.close(sh->os.data, fh);
-    if (n < 0)
-        n = 0;
-    line[n] = 0;
-    p = line;
-    if (n >= 4 && p[0] == '.' && (p[1] == 'k' || p[1] == 'K') && (p[2] == 'e' || p[2] == 'E') &&
-        (p[3] == 'y' || p[3] == 'Y')) {
-        p = strchr(p, '\n');
-        if (!p)
-            return 0;
-        p++;
-        keyed = 1;
-    }
     if ((p[0] != '#' && p[0] != ';') || p[1] != '!') {
         /* POSIX execve's ENOEXEC: a file that does not load, has no #! line and no S bit runs as a
          * script of this shell, $0 the path (an AmigaDOS script has the S bit or a .key line, a binary
@@ -8326,7 +8372,22 @@ static long start_program(sh_shell *sh, char **argv, const sh_io *io, int wait)
         argv[0] = saved;
         return st;
     }
-    return sh->os.run(sh->os.data, argv, io, wait);
+    st = sh->os.run(sh->os.data, argv, io, wait);
+    if (st == SH_RUN_AMIGA_SCRIPT) {
+        /* the OS layer found a script of AmigaDOS (S bit or .key, no #! line) and started nothing: it runs here,
+         * as `execute` runs it, so cd and variables stay with this shell (D3) */
+        char file[512];
+        int argc = 0;
+        SH_HIT(AMISCRIPT_BYNAME);
+        while (argv[argc])
+            argc++;
+        if (!find_command_file(sh, argv[0], file, sizeof(file)))
+            return -1;
+        argv[0] = file;
+        st = execute_file(sh, argc, argv, io);
+        argv[0] = saved;
+    }
+    return st;
 }
 
 static long run_program(sh_shell *sh, sh_list *argv, const sh_io *io, int wait)
