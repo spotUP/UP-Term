@@ -39,6 +39,7 @@
 #include "taskalive.h"
 #include "atiming.h"
 #include "menu_icon.h"
+#include "themeprev_core.h"
 #include "menu_font.h"
 #include "menu_text.h"
 #include "../prefs/prefs_core.h"
@@ -106,6 +107,8 @@ typedef struct gui {
     int stop;                    /* the running event loop ends */
     int quit;                    /* the window is going: every loop ends */
     long draws;
+    int pv_w;                    /* TE-5: width of the preview pane beside the rows, 0 when none */
+    int pv_full;                 /* TE-5: the preview shows in place of the rows (narrow screen, toggled with Tab) */
     struct BitMap *bb;           /* the back buffer every draw goes to, else 0 (g->rp is the window's) */
     struct RastPort brp;         /* its rastport */
     int bw, bh;                  /* its size */
@@ -598,6 +601,72 @@ static void draw_row(gui *g, int e)
     paint_end(g, q->list_x, y, q->list_x + q->list_w - 1, bottom);
 }
 
+/* ---- TE-5 theme preview ------------------------------------------------------------------------------- */
+
+long gui_preview_draws;          /* sentinel: preview panes drawn (AMARCHY_PREVIEW_DRAWS) */
+
+/* A box in an exact colour of the edited model: the direct fill, else a pen obtained for it and released after */
+static void fill_rgb(gui *g, uc_u32 rgb, int x0, int y0, int x1, int y1)
+{
+    long p;
+    if (x1 < x0 || y1 < y0 || mt_fill(g->mt, g->rp, x0, y0, x1, y1, rgb))
+        return;
+    p = vr_pen_obtain(g->cm, rgb);
+    if (p < 0)
+        return;
+    SetAPen(g->rp, (ULONG)p);
+    RectFill(g->rp, x0, y0, x1, y1);
+    ReleasePen(g->cm, (ULONG)p);
+}
+
+/* The mock desktop of the model being edited (gt_ed.m) in the pane x, y, w, h: the boxes of themeprev_layout, each in its
+ * element's colour from gt_resolve (themeprev_rgb), rounded with the look's corner radius, texts through menu_text. */
+static void theme_preview_view(gui *g, int x, int y, int w, int h)
+{
+    themeprev pv;
+    uc_u32 desk;
+    int i;
+    themeprev_layout(&gt_ed.m.look, w, h, &pv);
+    desk = themeprev_rgb(&gt_ed.m, &pv.it[TPV_DESKTOP]);
+    for (i = 0; i < TPV_COUNT; i++) {
+        const tpv_item *t = &pv.it[i];
+        uc_u32 c;
+        if (t->w <= 0 || t->h <= 0)
+            continue;
+        c = themeprev_rgb(&gt_ed.m, t);
+        if (t->text) {
+            char out[PUT_MAX];
+            mt_fit_tail(g->mt, t->label, -1, t->w, out, sizeof out);
+            mt_draw(g->mt, g->rp, x + t->x, y + t->y + (t->h - mt_height(g->mt)) / 2, out, c,
+                    themeprev_rgb(&gt_ed.m, &pv.it[i == TPV_ACT_TITLE ? TPV_ACT_BAR : i == TPV_INA_TITLE ? TPV_INA_BAR : TPV_DESKTOP]));
+            SetDrMd(g->rp, JAM1);
+            continue;
+        }
+        fill_rgb(g, c, x + t->x, y + t->y, x + t->x + t->w - 1, y + t->y + t->h - 1);
+        if (t->radius)
+            rich_corners(g->depth, x + t->x, y + t->y, t->w, t->h, c, desk, rich_put, g);
+    }
+    gui_preview_draws++;
+    sentinel_publish("AMARCHY_PREVIEW_DRAWS", gui_preview_draws);
+}
+
+/* The pane beside the rows, or the full view in their place (TE-5.3, D4) when this level is a Theme Editor page */
+static int preview_active(const gui *g)
+{
+    return g->mode == M_LIST && gt_ed.open && lf_in_theme_editor(g->node);
+}
+
+static void draw_preview(gui *g)
+{
+    const mg_geom *q = &g->g;
+    if (!preview_active(g))
+        return;
+    if (g->pv_full)
+        theme_preview_view(g, q->list_x, q->list_y, q->list_w, q->list_h);
+    else if (g->pv_w > 0)
+        theme_preview_view(g, q->list_x + q->list_w + TPV_MARGIN, q->list_y, g->pv_w - TPV_MARGIN, q->list_h);
+}
+
 /* The rows area (not a full draw: the sentinel counts those). */
 static void draw_list(gui *g)
 {
@@ -607,8 +676,9 @@ static void draw_list(gui *g)
         return;
     paint_begin(g);
     fill(g, MT_BG, q->list_x, q->list_y, q->list_x + q->list_w - 1, q->list_y + q->list_h - 1);
-    for (e = g->top; e < g->top + shown_rows(g); e++)
-        draw_row(g, e);
+    if (!(preview_active(g) && g->pv_full))
+        for (e = g->top; e < g->top + shown_rows(g); e++)
+            draw_row(g, e);
     /* the peek row's text runs past the list: put the padding and the border back */
     fill(g, MT_BG, q->m.bx, q->list_y + q->list_h, q->w - q->m.bx - 1, q->h - q->m.by - 1);
     if (g->mode == M_VIEW && g->welcome == 1) {      /* the pinned strip: always in view, repainted with every list draw */
@@ -616,6 +686,7 @@ static void draw_list(gui *g)
         for (r = 0; r < q->tail; r++)
             draw_welcome_row(g, r, q->list_x + q->m.row_pad, mg_strip_y(q, r), MT_BG);
     }
+    draw_preview(g);
     draw_border(g);
     paint_end(g, 0, 0, g->g.w - 1, g->g.h - 1);
     sentinel_cursor(g);
@@ -654,8 +725,21 @@ static void do_layout(gui *g, int n)
 {
     if (g->mode == M_VIEW)
         mg_layout_text(&g->g, &g->mf, g->w, g->nlines, g->welcome == 1 ? 2 : 0, &g->ms);
-    else
+    else {
         mg_layout(&g->g, &g->mf, g->w, n, &g->ms);
+        /* TE-5.3 (D4): the Theme Editor's preview pane sits right of the rows when the screen holds both, else Tab shows it in
+         * place of the rows */
+        g->pv_w = 0;
+        if (preview_active(g)) {
+            if (themeprev_placement(g->ms.w, g->g.w) == TPV_BESIDE) {
+                g->pv_w = TPV_WIDTH + TPV_MARGIN;
+                g->g.w += g->pv_w;
+                if (!g->ms.anchored)
+                    g->g.x = (g->ms.w - g->g.w) / 2;
+            } else
+                g->pv_full = 0;
+        }
+    }
 }
 
 /* The window takes the layout of n entries: a changed box is sent to Intuition and drawn after its
@@ -1081,6 +1165,11 @@ static void key_list(gui *g, int k, int ch)
             go_up(g);                       /* no filter, fresh press: back, as Escape */
         break;
     case K_CHAR:
+        if (ch == 9 && preview_active(g) && !g->pv_w) {     /* Tab: the preview in place of the rows, and back */
+            g->pv_full = !g->pv_full;
+            draw_list(g);
+            break;
+        }
         if (l < (int)sizeof g->filter - 1) {
             g->filter[l] = (char)ch;
             g->filter[l + 1] = 0;

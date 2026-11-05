@@ -320,10 +320,10 @@ refused while used.
 Files: `amarchy/gui.c`, a pure layout helper `amarchy/themeprev_core.[ch]`, `tests/test_themeprev.c`, the render fake
 (`tests/render_host/gfx_fake.c`) if the draw calls go through it.
 
-- [ ] TE-5.1 `themeprev_layout` (pure): boxes of the mock desktop from the look (bar height, radius, gadget size, order).
-- [ ] TE-5.2 `theme_preview_view` draws it with `fill`, `fill_round`, `put`, pens from `pens_get`; sentinel
-  `gui_preview_draws`.
-- [ ] TE-5.3 Pane placement per D4.
+- [x] TE-5.1 `themeprev_layout` (pure): boxes of the mock desktop from the look (bar height, radius, gadget size, order).
+- [x] TE-5.2 `theme_preview_view` draws it with `fill`, `fill_round`, `put`, pens from `pens_get`; sentinel
+  `gui_preview_draws`. (Boxes fill in the exact RGB of gt_resolve via mt_fill or a vr_pen_obtain pen, since the 7 MT_ roles cannot cover the preview elements; corners via rich_corners. Rig proof: AMARCHY_PREVIEW_DRAWS, not run on a rig.)
+- [x] TE-5.3 Pane placement per D4.
 
 Host tests: layout boxes for stock and thin bar heights and for radius 0 and 6; colours taken from `gt_resolve`.
 
