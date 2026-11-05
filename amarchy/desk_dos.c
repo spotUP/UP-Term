@@ -403,7 +403,7 @@ static int dk_apply(const gtheme *th, char *why, int cap)
     ic_len = dk_read("ENV:Sys/icontrol.prefs", ic_cur, sizeof ic_cur);
     if (ic_len < 0)
         ic_len = dk_read("ENVARC:Sys/icontrol.prefs", ic_cur, sizeof ic_cur);
-    ic_act = desk_icontrol_decide((amconf_desk_mask(&ap) >> DT_ICONTROL) & 1, ic_cur, ic_len, dk_have_icontrol_snapshot(), &ic_snap);
+    ic_act = desk_icontrol_decide((amconf_desk_mask(&ap) >> DT_ICONTROL) & 1, gt_look_bar_height(th), ic_cur, ic_len, dk_have_icontrol_snapshot(), &ic_snap);
     plan = desk_plan(amconf_desk_mask(&ap) & ~(1u << DT_ICONTROL), th, why, cap);
     if (plan < 0 || (plan == 0 && ic_act == DK_IC_NONE))
         return plan;
@@ -1570,7 +1570,7 @@ int desk_dos_start_apply(void)
         long ic_len = dk_read("ENV:Sys/icontrol.prefs", ic_cur, sizeof ic_cur);
         if (ic_len < 0)
             ic_len = dk_read("ENVARC:Sys/icontrol.prefs", ic_cur, sizeof ic_cur);
-        ic_act = desk_start_icontrol(mask, ic_cur, ic_len, dk_have_icontrol_snapshot(), &ic_snap);
+        ic_act = desk_start_icontrol(mask, &th, ic_cur, ic_len, dk_have_icontrol_snapshot(), &ic_snap);
         if (ic_act != DK_IC_NONE)
             plan |= DESK_START_ICONTROL;
     }

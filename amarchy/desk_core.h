@@ -269,10 +269,10 @@ long desk_palette_31safe(const unsigned char *in, long inlen, unsigned char *out
 enum { DK_P31_NONE = 0, DK_P31_WRITE = 1, DK_P31_BACKUP = 2 };
 int desk_palette_31_fix_plan(int palette_ok, const unsigned char *cur, long curlen, int backup_exists, unsigned char *out, long cap, long *outlen);
 /* FLAT-P1-2 icontrol action. thin = the border size switch is thin (and the desktop theme on); cur = the current icontrol.prefs bytes (curlen <= 0: none);
- * have_snap = T:amarchy-revert holds a copy. Thin and not yet written: DK_IC_WRITE and *snapshot = 1 (copy the file first). Thin already written: DK_IC_NONE
+ * have_snap = T:amarchy-revert holds a copy. Thin and not yet written: DK_IC_WRITE and *snapshot = 1 (copy the file first). Thin already written with the geometry of bar_height (desk_geometry_bar): DK_IC_NONE, with another geometry DK_IC_WRITE and no snapshot
  * (no second Workbench reset; the snapshot is not overwritten by our own file). Stock after a thin write with a snapshot: DK_IC_RESTORE (copy the snapshot back, ENVARC: and ENV:). Else DK_IC_NONE. */
 enum { DK_IC_NONE, DK_IC_WRITE, DK_IC_RESTORE };
-int desk_icontrol_decide(int thin, const unsigned char *cur, long curlen, int have_snap, int *snapshot);
+int desk_icontrol_decide(int thin, int bar_height, const unsigned char *cur, long curlen, int have_snap, int *snapshot);
 /* AM-ICON-NOBORDER: the Workbench icon border is the BOOL wbp_Borderless of the WBNC chunk in ENV:Sys/Workbench.prefs (NDK 3.2
  * prefs/workbench.h:27-37; the 3.2 Prefs/Workbench editor "Border Size" cycle, "No Border"). desk_wbborder_value: 1 no border, 0 border, -1 no WBNC chunk
  * (3.1 has none). desk_wbborder: the file flat-system-look wants (flat 1 = no border, 0 = the saved value back). saved = the value kept when we changed it
@@ -348,7 +348,7 @@ long desk_start_palette(unsigned mask, int flat, const gtheme *th, int depth, co
 #define DESK_START_ICONTROL 32u
 long desk_start_prefs(int target, unsigned mask, const gtheme *th, int text_mode, desk_font_exists_fn exists, void *ctx,
                       const unsigned char *cur, long curlen, unsigned char *out, long cap);
-int desk_start_icontrol(unsigned mask, const unsigned char *cur, long curlen, int have_snap, int *snapshot);
+int desk_start_icontrol(unsigned mask, const gtheme *th, const unsigned char *cur, long curlen, int have_snap, int *snapshot);
 /* 1 when two wbpattern.prefs show the same pens (the editor stores an all-pen-0 chunk with depth 1) */
 int desk_wbpattern_same(const unsigned char *a, long alen, const unsigned char *b, long blen);
 /* S32-START-LOOK: Amarchy starts from S:User-Startup, before LoadWB opens the Workbench screen, and every start step
