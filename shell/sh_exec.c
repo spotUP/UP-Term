@@ -8279,6 +8279,8 @@ int sh_amiga_script_file(sh_shell *sh, char **argv)
         return 0;
     if (memchr(line, 0, (size_t)n))
         return 0;
+    if (plain && keyed)
+        return 2;   /* 3.2 refuses a .key file without the S bit started by name (S7b-6 R24); `execute` still runs it */
     return plain ? keyed != 0 : 1;
 }
 
@@ -8378,6 +8380,10 @@ static long start_program(sh_shell *sh, char **argv, const sh_io *io, int wait)
          * as `execute` runs it, so cd and variables stay with this shell (D3) */
         char file[512];
         int argc = 0;
+        if (sh_amiga_script_file(sh, argv) == 2) {
+            sayl(sh, io->err, argv[0], ": file is not executable\n", NULL);
+            return 10;
+        }
         SH_HIT(AMISCRIPT_BYNAME);
         while (argv[argc])
             argc++;

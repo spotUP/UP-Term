@@ -316,7 +316,7 @@ static void say_num(sh_shell *sh, sh_fh fh, long n)
 
 /* The interpreter's own words. Returns 1 when t's first token is one and sets *st to its result code;
  * *failat is this call's limit and *quit is set by Quit (the script then ends with *st). */
-static int script_word(sh_shell *sh, line_toks *t, const sh_io *io, long *st, long *failat, int *quit)
+static int script_word(sh_shell *sh, line_toks *t, const sh_io *io, long *st, long *failat, int *quit, int *failat_set)
 {
     const char *w = t->v[0];
     if (t->redir[0])
@@ -327,9 +327,10 @@ static int script_word(sh_shell *sh, line_toks *t, const sh_io *io, long *st, lo
         return 1;
     }
     if (word_is(w, "failat")) {
-        if (t->n > 1)
+        if (t->n > 1) {
             *failat = strtol(t->v[1], 0, 10);
-        else
+            *failat_set = 1;
+        } else
             say_num(sh, io->out, *failat);
         *st = 0;
         return 1;
@@ -675,7 +676,7 @@ bad:
 
 /* One line starting with the dot character (p, len without the line end). Returns 1 when it is a directive
  * or a comment (the line is dropped), 0 for an ordinary line such as ./prog. */
-static int directive(tmpl *t, const char *p, size_t len)
+static int directive(tmpl *t, const char *p, size_t len, int first)
 {
     const char *w = p + 1, *end = p + len, *arg, *ne, *v;
     size_t wl;
@@ -687,12 +688,14 @@ static int directive(tmpl *t, const char *p, size_t len)
     while (arg < end && (*arg == ' ' || *arg == '\t'))
         arg++;
     if (ieq_n(w, wl, "key") || ieq_n(w, wl, "k")) {
-        char *s = dup_n(arg, (size_t)(end - arg));
+        /* real 3.2 honours .KEY on line 1 only (S7b-6 R2); on a later line the line is dropped, nothing bound */
+        char *s = first ? dup_n(arg, (size_t)(end - arg)) : 0;
         if (s) {
             tmpl_parse(t, s);
             free(s);
         }
-        t->have = 1;
+        if (first)
+            t->have = 1;
     } else if (ieq_n(w, wl, "bra")) {
         if (arg < end)
             t->bra = *arg;
@@ -788,7 +791,7 @@ static char *template_load(sh_shell *sh, const char *text, int argc, char **argv
         size_t len = e ? (size_t)(e - p) : strlen(p), dl = len;
         if (dl && p[dl - 1] == '\r')
             dl--;
-        if (*p == t.dot && directive(&t, p, dl))
+        if (*p == t.dot && directive(&t, p, dl, li == 0))
             isdir[li] = 1;
         p += len + (e ? 1 : 0);
     }
@@ -859,13 +862,23 @@ static char *line_backticks(sh_shell *sh, const char *ln)
 
 long sh_amiga_execute(sh_shell *sh, const char *text0, const char *file, int argc, char **argv, const sh_io *io)
 {
-    char *loaded = template_load(sh, text0, argc, argv, io);
-    const char *text = loaded;
-    const char *p = text;
+    char *loaded;
+    const char *text;
+    const char *p;
     long st = sh->ctx.status;
     long failat = 10;   /* this call's limit: a nested Execute starts at 10 and this one survives it */
-    int quit = 0;
+    int quit = 0, failat_set = 0;
     (void)file;
+    sh->failat_leak = 0;
+    if (argc == 2 && !strcmp(argv[1], "?") && (text0[0] == '.' && (text0[1] == 'k' || text0[1] == 'K'))) {
+        /* `Execute file ?` on 3.2 (S7b-6 R6): the template is asked for and an empty reply (NIL: input) ends the
+         * call quietly, rc 0, the script not run. UNVERIFIED: a non-empty reply from a console. */
+        sh->ctx.status = 0;
+        return 0;
+    }
+    loaded = template_load(sh, text0, argc, argv, io);
+    text = loaded;
+    p = text;
     if (!loaded) {
         sh->ctx.status = 20;   /* bad arguments against the .key template: nothing ran */
         return 20;
@@ -925,8 +938,13 @@ long sh_amiga_execute(sh_shell *sh, const char *text0, const char *file, int arg
                 st = 10;
                 quit = 1;
             }
-        } else if (t.n && !script_word(sh, &t, io, &st, &failat, &quit)) {
+        } else if (t.n && !script_word(sh, &t, io, &st, &failat, &quit, &failat_set)) {
             st = run_tokens(sh, &t, io);
+            if (sh->failat_leak) {   /* a nested script's FailAt leaks to this one, as on 3.2 (S7b-6 R17) */
+                failat = sh->failat_leak_val;
+                failat_set = 1;
+                sh->failat_leak = 0;
+            }
             if (st >= failat) {
                 say_io(sh, io->err, t.v[0]);
                 say_io(sh, io->err, " failed returncode ");
@@ -941,6 +959,10 @@ long sh_amiga_execute(sh_shell *sh, const char *text0, const char *file, int arg
         p = next;
     }
     free(loaded);
+    if (failat_set) {
+        sh->failat_leak = 1;
+        sh->failat_leak_val = failat;
+    }
     sh->ctx.status = st;
     return st;
 }

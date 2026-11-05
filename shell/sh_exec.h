@@ -279,6 +279,8 @@ typedef struct sh_shell {
     sh_list disabled;      /* enable -n: the builtins switched off */
     sh_list env_hidden;    /* names the script unset: the system's variable of that name (ENV:) stays hidden from $name */
     int exiting;           /* exit ran: stop */
+    int failat_leak;       /* a finished script called FailAt: the script that ran it takes failat_leak_val */
+    long failat_leak_val;
     long exit_status;
     int breaking;          /* break / continue levels pending */
     int continuing;
