@@ -22,6 +22,10 @@ class FlatIclPensPersist(unittest.TestCase):
         self.assertIsNone(re.search(r"^static\s+struct\s+ColorMap\s*\*", SRC, re.M), "a ColorMap pointer outlives a call")
         self.assertNotIn("ReleasePen(icl_", SRC)
 
+    def test_full_cache_never_obtains(self):
+        b = body("static int icl_pen_for(")
+        self.assertLess(b.index("icl_cache_has_room("), b.index("ObtainBestPen("))
+
     def test_unload_releases_on_live_identity(self):
         self.assertIn("icl_cache_release(&icl_pc", body("static void icl_pens_release("))
         self.assertIn("icl_pens_release();", body("static void icl_free("))

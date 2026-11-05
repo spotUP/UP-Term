@@ -78,6 +78,9 @@ typedef struct icl_pencache {
 void icl_cache_clear(icl_pencache *c);
 /* the cached pen, -1 on a miss (absent, or made for other colours) */
 int icl_cache_find(const icl_pencache *c, int fgpen, int bgpen, int k, uint32_t fg_rgb, uint32_t bg_rgb);
+/* 1 when icl_cache_put for this key can store (same key present, or a free slot). With 0 the caller must not ObtainBestPen:
+ * an obtained pen that cannot be cached would be released while its pixels are drawn (S57-ICL-PEN-RECOLOUR). */
+int icl_cache_has_room(const icl_pencache *c, int fgpen, int bgpen, int k);
 /* Store a result. An entry of the same pens and step is replaced: *old_pen gets its pen when that one was obtained
  * (the caller releases it), else -1. Returns 0 when the cache is full (the caller releases pen itself). */
 int icl_cache_put(icl_pencache *c, int fgpen, int bgpen, int k, uint32_t fg_rgb, uint32_t bg_rgb, int pen, int obtained,

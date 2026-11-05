@@ -724,7 +724,8 @@ static int icl_pen_for(void *u, int fgpen, int bgpen, int k)
     if ((pen = icl_cache_find(&icl_pc, fgpen, bgpen, k, fr, br)) >= 0)
         return pen;
     t = icl_pen_target(fr, br, k, n);
-    got = (int)ObtainBestPen(cm, (t >> 16 & 0xFF) * 0x01010101UL, (t >> 8 & 0xFF) * 0x01010101UL, (t & 0xFF) * 0x01010101UL,
+    /* no free slot: never obtain (a pen that cannot be kept would be released while drawn); nearest of fg/bg instead */
+    got = !icl_cache_has_room(&icl_pc, fgpen, bgpen, k) ? -1 : (int)ObtainBestPen(cm, (t >> 16 & 0xFF) * 0x01010101UL, (t >> 8 & 0xFF) * 0x01010101UL, (t & 0xFF) * 0x01010101UL,
                              OBP_Precision, PRECISION_IMAGE, TAG_DONE);
     pen = got >= 0 ? icl_pen_choice(k, n, got, icl_dist(t, icl_rgb(cm, (ULONG)got)), icl_dist(t, fr), icl_dist(t, br), fgpen, bgpen)
                    : icl_pen_choice(k, n, -1, 0, 0, 0, fgpen, bgpen);

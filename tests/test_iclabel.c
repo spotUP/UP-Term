@@ -139,6 +139,22 @@ static void t_cache(void)
     CHECK(!icl_cache_put(&c, 3, 3, 3, 0, 0, 21, 1, &old));
 }
 
+/* S57-ICL-PEN-RECOLOUR: a full cache must refuse a new key BEFORE any pen is obtained (an obtained pen that cannot be cached
+ * is released and then drawn, the red bug); existing keys and free slots still have room. */
+static void t_cache_full_no_obtain(void)
+{
+    icl_pencache c;
+    int old, i;
+    icl_cache_clear(&c);
+    CHECK(icl_cache_has_room(&c, 9, 9, 1));
+    for (i = 0; i < ICL_CACHE; i++) {
+        CHECK(icl_cache_has_room(&c, 2, i, 1));
+        CHECK(icl_cache_put(&c, 2, i, 1, 0, 0, 20 + i, 1, &old));
+    }
+    CHECK(!icl_cache_has_room(&c, 3, 3, 3));
+    CHECK(icl_cache_has_room(&c, 2, 5, 1));
+}
+
 /* S57-ICL-PEN-RECOLOUR: a simulated label call = bind to the screen identity, then blend through the cache (like icl_label). The
  * pens stay obtained across calls (no per-call drain), are forgotten without release on another identity, and are handed back once,
  * on the live identity, at shutdown. */
@@ -242,6 +258,7 @@ void suite_iclabel(void)
     t_blend_rgb();
     t_pens();
     t_cache();
+    t_cache_full_no_obtain();
     t_pens_persist();
     t_pens_forget_on_new_identity();
     t_pens_release_once_on_live();
