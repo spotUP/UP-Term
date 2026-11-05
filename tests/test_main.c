@@ -60,6 +60,7 @@ void suite_richaa(void);
 void suite_iconfile(void);
 void suite_iconapply(void);
 void suite_iconpen(void);
+void suite_menu_fontspec(void);
 void suite_wbreset(void);
 void suite_borderblank(void);
 void suite_help_core(void);
@@ -170,6 +171,7 @@ static const h_suite suites[] = {
     { "iconfile", suite_iconfile },
     { "iconapply", suite_iconapply },
     { "iconpen", suite_iconpen },
+    { "menu_fontspec", suite_menu_fontspec },
     { "wbreset", suite_wbreset },
     { "borderblank", suite_borderblank },
     { "help_core", suite_help_core },

@@ -42,6 +42,7 @@
 #include "menu_icon.h"
 #include "themeprev_core.h"
 #include "menu_font.h"
+#include "menu_fontspec_core.h"
 #include "menu_text.h"
 #include "../prefs/prefs_core.h"
 #include "icon_core.h"
@@ -1750,10 +1751,12 @@ static void cleanup(gui *g)
 static void pick_font(gui *g)
 {
     int square = menu_screen_aspect(g->scr, &g->ms.rx, &g->ms.ry);
-    const char *spec;
+    char spec[128];
     am_prefs ap;
+    gtheme th;
     amconf_load(&ap);
-    spec = ap.val[AM_FONT];   /* "name:size", as the terminal's font key */
+    gt_dos_load_current(&th);   /* the saved theme, as pens_get(g, 0) reads it */
+    mt_font_spec(&th, ap.val[AM_FONT], spec, (int)sizeof spec);   /* the theme's Menu Font, else AM_FONT ("name:size", as the terminal's font key), else built-in */
     g->mt = mt_open(g->scr, square, spec);
 }
 
