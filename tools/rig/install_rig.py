@@ -204,7 +204,7 @@ def restore_upterm_assign(run_fn=None):
         r('Assign UP-Term: "%s"' % was[0])
         for t in was[1:]:
             r('Assign UP-Term: "%s" ADD' % t)
-    require_upterm_assign(r, 'after the checks that drop it')
+        require_upterm_assign(r, 'after the checks that drop it')
 
 
 def require_upterm_assign(run_fn=None, when='at the end of the run'):

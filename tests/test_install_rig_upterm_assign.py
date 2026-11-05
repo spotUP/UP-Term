@@ -82,5 +82,20 @@ class UptermAssign(unittest.TestCase):
             ir.require_upterm_assign()
 
 
+
+class NoAssignBefore(unittest.TestCase):
+    def test_restore_leaves_a_rig_without_the_assign_alone(self):
+        """A rig with no UP-Term: before the drop ends with none, and the restore does not fail the run."""
+        sh = FakeShell([])
+        ir._UPTERM_WAS = None
+        with ir.keep_upterm_assign(sh):
+            sh('Assign UP-Term: "RAM:"')
+        self.assertEqual(sh.t, ['RAM:'])
+        sh = FakeShell([])
+        ir._UPTERM_WAS = None
+        ir.drop_upterm_assign(sh)
+        ir.restore_upterm_assign(sh)
+        self.assertEqual(sh.t, [])
+
 if __name__ == '__main__':
     unittest.main()
