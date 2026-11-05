@@ -49,6 +49,13 @@ static int *bcanvas, *bbgc, back_on;
 /* the planar screen (gf_planar): its planes, the window's place on it, the window's layer */
 static int pdepth, pleft, ptop, pbpr, prows;
 static UBYTE *pmem;
+/* guard rows past the end of every plane (gf_guard_hits): a write past a plane's last row lands there, not in
+ * the next plane's first rows */
+#define GF_GUARD_ROWS 4
+#define GF_GUARD 0xA5
+static int pstride; /* bytes from one plane to the next: its rows and its guard rows */
+static int waitblit_dy, waitblit_nth; /* gf_move_at_waitblit: TopEdge's change, at which WaitBlit from now */
+int gf_waitblit_moves;
 static struct Layer layer;
 static struct ClipRect clip, clip2;
 static struct View view;
@@ -174,12 +181,16 @@ void gf_planar(int depth, int left, int top)
     ptop = top;
     pbpr = ((left + W + 63) / 64) * 8; /* AGA rows: a multiple of 8 bytes */
     prows = top + H;
-    pmem = (UBYTE *)calloc((size_t)(pbpr * prows * depth), 1);
+    pstride = pbpr * (prows + GF_GUARD_ROWS);
+    pmem = (UBYTE *)calloc((size_t)(pstride * depth), 1);
     bm.BytesPerRow = (UWORD)pbpr;
     bm.Rows = (UWORD)prows;
     bm.Depth = (UBYTE)depth;
-    for (p = 0; p < depth; p++)
-        bm.Planes[p] = pmem + p * pbpr * prows;
+    for (p = 0; p < depth; p++) {
+        bm.Planes[p] = pmem + p * pstride;
+        memset(bm.Planes[p] + pbpr * prows, GF_GUARD, (size_t)(pbpr * GF_GUARD_ROWS));
+    }
+    waitblit_dy = 0;
     win.LeftEdge = (WORD)left;
     win.TopEdge = (WORD)top;
     memset(&layer, 0, sizeof(layer));
@@ -190,6 +201,7 @@ void gf_planar(int depth, int left, int top)
     clip.bounds.MaxX = (WORD)(left + W - 1);
     clip.bounds.MaxY = (WORD)(top + H - 1);
     layer.ClipRect = &clip;
+    layer.bounds = clip.bounds;
     win.WLayer = &layer;
     for (c = 0; c < 256; c++) {
         floc[c] = ((ULONG)(c * 8) << 16) | 8;
@@ -201,6 +213,21 @@ void gf_planar(int depth, int left, int top)
     font.tf_Modulo = 256;
     font.tf_LoChar = 0;
     font.tf_HiChar = 255;
+}
+
+int gf_guard_hits(void)
+{
+    int p, i, n = 0;
+    for (p = 0; pmem && p < pdepth; p++)
+        for (i = 0; i < pbpr * GF_GUARD_ROWS; i++)
+            n += bm.Planes[p][pbpr * prows + i] != GF_GUARD;
+    return n;
+}
+
+void gf_move_at_waitblit(int dy, int nth)
+{
+    waitblit_dy = dy;
+    waitblit_nth = nth;
 }
 
 void gf_cover(int on) { clip.Next = on ? &clip2 : 0; }
@@ -563,7 +590,16 @@ ULONG GetBitMapAttr(CONST struct BitMap *b, ULONG a)
     return a == BMA_DEPTH ? (truecolor ? 24 : 8) : 0; /* 8 bits, not BMF_STANDARD: the chunky path, no planar tricks */
 }
 
-VOID WaitBlit(VOID) { }
+VOID WaitBlit(VOID)
+{
+    /* Intuition's input task runs ahead of the handler: the window's TopEdge changes while the handler
+     * holds the layer lock (gf_move_at_waitblit) */
+    if (waitblit_dy && --waitblit_nth <= 0) {
+        win.TopEdge = (WORD)(win.TopEdge + waitblit_dy);
+        waitblit_dy = 0;
+        gf_waitblit_moves++;
+    }
+}
 VOID Draw(struct RastPort *rp, LONG x, LONG y)
 {
     long n, i, dx = x - rp->cp_x, dy = y - rp->cp_y;
@@ -800,7 +836,7 @@ VOID ObtainSemaphore(struct SignalSemaphore *s) { (void)s; }
 VOID ReleaseSemaphore(struct SignalSemaphore *s) { (void)s; }
 ULONG TypeOfMem(CONST_APTR a)
 {
-    return pmem && (const UBYTE *)a >= pmem && (const UBYTE *)a < pmem + pbpr * prows * pdepth ? MEMF_CHIP : 0;
+    return pmem && (const UBYTE *)a >= pmem && (const UBYTE *)a < pmem + pstride * pdepth ? MEMF_CHIP : 0;
 }
 ULONG ReadEClock(struct EClockVal *e) { (void)e; return 0; }
 

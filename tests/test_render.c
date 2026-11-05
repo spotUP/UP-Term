@@ -3225,8 +3225,68 @@ static void vtwin_attach_hands_the_screens_pixel_aspect_to_the_new_engine(void)
     CHECK_INT(attach_picture_height(0), 7);
 }
 
+/* Rig 96 (s57, thoughts/shared/research/s57-evidence/rig96-drag-freeze.md): an XCON window dragged to top 7,
+ * height 249 on a 640x256x8 screen -- its bottom row the bitmap's last -- and the live copper list right
+ * after the bitmap was overwritten with pixel rows. Every direct-plane path (planar text, fills, raw
+ * scrolls, the composed pass's copy) must write only inside the bitmap's rows: here the window sits at the
+ * bitmap's bottom edge, and guard rows past every plane catch a write below it. `stale`: the layer was moved
+ * one row up and the Window's TopEdge not yet (Intuition mid-drag); `race`: TopEdge moves one row down while
+ * the handler holds the layer lock (the input task runs between the check and the copy). */
+static void direct_plane_writes_stay_inside_the_bitmap_at_its_bottom_edge(int top, int h, int border, int stale,
+                                                                         int race)
+{
+    vt_callbacks cb;
+    vt_term *t;
+    char buf[96];
+    int i, moves, rows = (h - 2 * border) / CH;
+    ULONG n0;
+    memset(&cb, 0, sizeof(cb));
+    cb.damage = cb_damage;
+    cb.scroll = cb_scroll;
+    gf_open(640, h, CW, CH, 6);
+    gf_planar(8, 0, top);
+    if (border)
+        gf_borders(border, border, border, border);
+    gf_window()->TopEdge = (WORD)(top + stale); /* the layer stays at top */
+    t = vt_new(80 - (2 * border + CW - 1) / CW, rows, 100, &cb, &rn);
+    vr_init(&rn, gf_window(), gf_font(), t, VT_ENC_LATIN1);
+    vr_redraw(&rn);
+    term = t;
+    for (i = 0; i < rows + 4; i++) {
+        snprintf(buf, sizeof(buf), "\x1b[4%dmline %02d xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\x1b[m\r\n", i & 7, i);
+        pass(buf);
+    }
+    n0 = rn.n_copies;
+    moves = gf_waitblit_moves;
+    for (i = 0; i < (race ? 24 : 8); i++) {
+        snprintf(buf, sizeof(buf), "\x1b[?2026h\x1b[4%dm\x1b[2J\x1b[%dH frame %d \x1b[K\x1b[m\r\nnext\x1b[?2026l",
+                 i & 7, rows, i);
+        if (race)
+            gf_move_at_waitblit(1, i + 1); /* the nth WaitBlit in the pass; only the first few land (a pass has few) */
+        pass(buf);
+        if (race) {
+            gf_move_at_waitblit(0, 0);
+            gf_window()->TopEdge = (WORD)(top + stale);
+        } /* the move did not land: the Window is back */
+    }
+    pass("\x1b[?2026h\x1b[2J\x1b[H\x1b[44mfull\x1b[J\x1b[m\x1b[?2026l");
+    CHECK_INT(gf_guard_hits(), 0);
+    CHECK_INT(rn.n_copies > n0, 1); /* the composed pass's copy ran (back_copy) */
+    if (race)
+        CHECK_INT(gf_waitblit_moves > moves, 1);
+    vr_free(&rn);
+    vt_free(t);
+    gf_close();
+}
+
 int main(void)
 {
+    direct_plane_writes_stay_inside_the_bitmap_at_its_bottom_edge(7, 249, 0, 0, 0);
+    direct_plane_writes_stay_inside_the_bitmap_at_its_bottom_edge(0, 256, 0, 0, 0);
+    direct_plane_writes_stay_inside_the_bitmap_at_its_bottom_edge(7, 249, 2, 0, 0);
+    direct_plane_writes_stay_inside_the_bitmap_at_its_bottom_edge(7, 249, 0, 1, 0);
+    direct_plane_writes_stay_inside_the_bitmap_at_its_bottom_edge(7, 249, 0, 0, 1);
+    direct_plane_writes_stay_inside_the_bitmap_at_its_bottom_edge(0, 256, 0, 0, 1);
     vtwin_attach_hands_the_screens_pixel_aspect_to_the_new_engine();
     an_inert_renderer_has_no_selection();
     the_default_rect_makes_the_calls_the_renderer_always_made();
