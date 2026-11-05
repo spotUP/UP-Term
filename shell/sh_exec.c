@@ -7196,7 +7196,7 @@ done:
     return n;
 }
 
-static const char *const amiga_internals[] = { "endcli", "endshell", "why", "setenv", "unsetenv", "getenv", "fault", "prompt", "ask", "path", "execute", 0 };
+static const char *const amiga_internals[] = { "endcli", "endshell", "why", "setenv", "unsetenv", "getenv", "fault", "prompt", "ask", "path", "execute", "cd", 0 };
 
 static builtin_fn find_builtin(const char *name)
 {
@@ -7204,7 +7204,7 @@ static builtin_fn find_builtin(const char *name)
     for (i = 0; builtins[i].name; i++)
         if (!strcmp(builtins[i].name, name))
             return builtins[i].fn;
-    /* EndCLI, EndShell, Why, SetEnv, UnsetEnv, GetEnv, Fault, Prompt and Ask are AmigaDOS Shell internals, and AmigaDOS names ignore case: only these do */
+    /* CD, EndCLI, EndShell, Why, SetEnv, UnsetEnv, GetEnv, Fault, Prompt and Ask are AmigaDOS Shell internals, and AmigaDOS names ignore case: only these do */
     for (i = 0; amiga_internals[i]; i++) {
         const char *a = amiga_internals[i], *b = name;
         while (*a && *b && *a == tolower((unsigned char)*b)) {
