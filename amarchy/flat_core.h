@@ -13,7 +13,7 @@
 #include <stdint.h>
 
 #define FLAT_SEM_NAME "Amarchy.Flat"
-#define FLAT_VERSION 4
+#define FLAT_VERSION 5
 
 typedef struct flat_state {
     uint16_t version;           /*  0 FLAT_VERSION; first, so a reader of another layout can refuse before the rest */
@@ -37,10 +37,23 @@ typedef struct flat_state {
     uint8_t pen_sel;            /* 29 S33-PREFS-SKIN-FAIL: the pen holding the button fill; obtained by amarchy-flat itself (ObtainBestPen) from sel_rgb, 0 = none (pen_back takes over). pen_button is only the theme role number and is never drawn with */
     uint8_t sel_rgb[3];         /* 30 the colour of pen_sel (R, G, B) written by Amarchy from the theme role GR_SELECTION; all zero = no held pen */
     uint8_t side;               /* 33 S57-BUTTON-ASPECT-BORDERS: columns of a button's left and right outline lines (flat_side_px of the screen); 0 or 1 = 1 px. Set by amarchy-flat on its draw copy, never written by Amarchy */
-    uint8_t pad[2];             /* 34 reserved, zero (keeps the block a multiple of 4 bytes) */
-} flat_state;                   /* 36 bytes */
+    uint8_t pad[2];             /* 34 reserved, zero */
+    /* TE-6.1 (version 5): the theme look and the colours the editor previews live. All written by Amarchy from the theme model
+     * (desk_flat_look); 0 = the theme does not say, so amarchy-flat keeps its built-in value. A reader of version 4 refuses this
+     * block by its version word (flat_check) before it reads anything else. */
+    uint8_t corner_radius;      /* 36 gt_look corner_radius, px */
+    uint8_t border_width;       /* 37 gt_look border_width, px */
+    uint8_t knob_shape;         /* 38 gt_look knob_shape */
+    uint8_t knob_min;           /* 39 gt_look knob_min, px */
+    uint8_t glyph_set;          /* 40 gt_look glyph_set */
+    uint8_t ghost_style;        /* 41 gt_look ghost_style */
+    uint8_t hover;              /* 42 gt_look hover_on */
+    uint8_t pad5;               /* 43 reserved, zero */
+    uint8_t knob_rgb[3];        /* 44 the Scroll Knob colour (R, G, B) from the theme element GTE_SCROLL_KNOB; all zero = derive it */
+    uint8_t pad6;               /* 47 reserved, zero (keeps the block a multiple of 4 bytes) */
+} flat_state;                   /* 48 bytes */
 
-#define FLAT_STATE_SIZE 36
+#define FLAT_STATE_SIZE 48
 
 /* flat_check results */
 enum { FLAT_OK = 0, FLAT_ERR_VERSION = -1, FLAT_ERR_SIZE = -2 };

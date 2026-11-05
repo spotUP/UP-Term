@@ -325,6 +325,10 @@ typedef struct gt_edit {
 } gt_edit;
 extern gt_edit gt_ed;
 extern unsigned long gte_edits; /* sentinel: every successful change of the buffer */
+/* TE-6.3 (D3): live on every edit. gte_live is called with the buffer after each change and after a revert; the DOS side sets it
+ * (gt_dos_edit_open) to the model preview. gte_live_sends counts the calls (the reachability sentinel). */
+extern void (*gte_live)(const gt_model *m);
+extern unsigned long gte_live_sends;
 void gte_open(const gt_model *m, const char *name);      /* load the buffer; Mode is Advanced when the file has an override */
 int gte_dirty(void);                                      /* the buffer differs from the file */
 void gte_revert(void);                                    /* reload the file's model */

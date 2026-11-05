@@ -163,6 +163,22 @@ void desk_flat_inbar(const gtheme *t, flat_state *s)
     s->sel_rgb[2] = (unsigned char)sel;
 }
 
+void desk_flat_look(const gtheme *t, flat_state *s)
+{
+    uc_u32 k = desk_knob_rgb(t);
+    const gt_look *l = t->model ? &t->model->look : 0;
+    s->corner_radius = l ? l->corner_radius : 0;
+    s->border_width = l ? l->border_width : 0;
+    s->knob_shape = l ? l->knob_shape : 0;
+    s->knob_min = l ? l->knob_min : 0;
+    s->glyph_set = l ? l->glyph_set : 0;
+    s->ghost_style = l ? l->ghost_style : 0;
+    s->hover = l ? l->hover_on : 0;
+    s->knob_rgb[0] = (unsigned char)(k >> 16);
+    s->knob_rgb[1] = (unsigned char)(k >> 8);
+    s->knob_rgb[2] = (unsigned char)k;
+}
+
 /* TE-2.3: the Window Title Bar Inactive element (S32-INACTIVE-BAR); the group Inactive when the model gives it no ref */
 uc_u32 desk_inbar_rgb(const gtheme *t)
 {
@@ -171,8 +187,8 @@ uc_u32 desk_inbar_rgb(const gtheme *t)
     return gt_elem_rgb(t, GTE_TITLE_BAR_INACTIVE, r.c[GR_INACTIVE]);
 }
 
-/* TE-2.3: the Scroll Knob element; the group Muted Text when the model gives it no ref. flat_state has no knob colour field yet
- * (the v5 layout is TE-6), so this is the reader TE-6 writes into the state. */
+/* TE-2.3: the Scroll Knob element; the group Muted Text when the model gives it no ref. desk_flat_look writes it into the
+ * version-5 flat_state (knob_rgb). */
 uc_u32 desk_knob_rgb(const gtheme *t)
 {
     return gt_elem_rgb(t, GTE_SCROLL_KNOB, desk_role(t, DK_MUTED));

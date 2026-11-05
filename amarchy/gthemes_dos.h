@@ -20,6 +20,9 @@ void gt_dos_load(const char *name, gtheme *out);
  * counters: previews written / restores done (reachability sentinels). */
 void gt_dos_preview_send(const char *name);
 void gt_dos_desk_restore(void);
+/* TE-6.2: the same preview from the editor's in-memory model (nothing on disk): console tabs, Workbench pens, the flat look. The
+ * editor's edit hook (gte_live) is this; Revert and Discard call gt_dos_desk_restore. */
+void gt_dos_preview_model(const gt_model *m);
 extern unsigned long gt_dos_desk_previews, gt_dos_desk_restores;
 void gt_dos_term_send(const char *name); /* the console tabs' colours: GT_TERM_FILE (gthemes_core.h) */
 extern unsigned long gt_dos_term_writes;

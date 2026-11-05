@@ -332,10 +332,10 @@ Host tests: layout boxes for stock and thin bar heights and for radius 0 and 6; 
 Files: `amarchy/flat_core.h`, `amarchy/flat.c`, `amarchy/gthemes_dos.c`, `amarchy/gui.c` (`preview_sync`,
 `theme_live`), `tests/test_flat_core.c`.
 
-- [ ] TE-6.1 `FLAT_VERSION` 5: corner radius, border width, knob shape and minimum, glyph set, ghost style, hover, the
+- [x] TE-6.1 `FLAT_VERSION` 5: corner radius, border width, knob shape and minimum, glyph set, ghost style, hover, the
   inactive bar and knob colours; readers of version 4 refuse version 5 cleanly (existing version check).
-- [ ] TE-6.2 Preview path takes the in-memory model (`gt_dos_preview_send`), Revert calls `gt_dos_desk_restore`.
-- [ ] TE-6.3 Live timing per D3.
+- [x] TE-6.2 Preview path takes the in-memory model (`gt_dos_preview_send`), Revert calls `gt_dos_desk_restore`. Done as `gt_dos_preview_model` (desk pens, flat v5 fields, terminal tabs), fed by the `gte_live` hook from `ed_touch`.
+- [x] TE-6.3 Live timing per D3.
 
 Host tests: flat_state v5 layout offsets; a v4 reader refuses v5; preview then restore leaves pens as before.
 
