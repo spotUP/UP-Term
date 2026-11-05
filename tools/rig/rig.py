@@ -164,8 +164,14 @@ DH0:C/Assign >NIL: FONTS: DH0:Fonts
 DH0:C/Assign >NIL: VTC: VTCX:
 Echo >BOOTX:boot.log "boot started"
 C:Run >NIL: C:Execute BOOTX:go
-C:Execute DH0:S/Startup-Sequence
+BOOTX:bootcap BOOTX:boot.console C:Execute DH0:S/Startup-Sequence
 """
+# BOOT-CONSOLE-CAPTURE: the Startup-Sequence runs in a CLI whose standard output is BOOTX:boot.console (bootcap,
+# tools/rig/bootcap.c). `C:Execute DH0:S/Startup-Sequence >BOOTX:boot.console` left the file 0 bytes: Execute only puts
+# the script in front of the calling shell's input and returns, the shell closes the redirect then and runs the
+# script's lines with its own output. `Run >file` redirects Run alone (the file held "[CLI 3]", the child printed into
+# a console window that raised IPrefs' screen-reset request; rig 150, 2026-11-05). bootcap writes "boot console open"
+# first (BOOT_CONSOLE_MARKER), so a clean boot's file is not empty and start can tell capture from no capture.
 # LIBS: as the rig runs: the patched ixemul first, then the system's (with
 # Classes and MUI), ncurses and AmiSSL's drawer. The boot script uses it, and
 # install_rig.py puts it back after testing Install/Uninstall against the
@@ -1343,9 +1349,9 @@ def setup():
     # Intuition cannot reset the screen ("Please close all windows"): the
     # Workbench stays PAL on some boots (2026-10-05, twice). The system's
     # Startup-Sequence runs with its output to NIL: there.
-    (RIG / "boot/s/startup-sequence").write_text(
-        STARTUP.replace("C:Execute DH0:S/Startup-Sequence", "C:Execute DH0:S/Startup-Sequence >NIL:")
-        if M060 else STARTUP)
+    # RIG-BOOT-CONSOLE-BLIND: the output goes to BOOTX:boot.console for every machine (it went to the boot shell's
+    # window, or to NIL: on --060), so start reads what the boot printed (boot_console_errors) instead of the owner by eye.
+    (RIG / "boot/s/startup-sequence").write_text(STARTUP)
     # --stock: creep's Workbench prints topaz 8, 77 columns in a 640-wide
     # window. The rig boots from BOOTX:, which had no Devs/system-configuration,
     # so Intuition took its built-in 60-column topaz (61 columns measured,
@@ -1359,6 +1365,7 @@ def setup():
         sysconf.unlink()
     # the pinned wasabid (`make wasabi`), every start; one daemon, no other agent in the boot
     shutil.copyfile(rigwasabi.build_dir() / "wasabid", RIG / "boot/wasabid")
+    stage_bootcap(RIG / "boot")
     stage_amissl(RIG / "vtc", M060)
     stage_ixemul(RIG / "vtc", NOFPU)
     stage_screennotify(RIG / "vtc")
@@ -1633,6 +1640,12 @@ def stage_ixemul(vtc, nofpu):
         if not (dst.is_file() and dst.read_bytes() == src.read_bytes()):
             shutil.copyfile(src, dst)
             print("refreshed ixp6/%s" % name, dst.stat().st_size, "bytes")
+
+def stage_bootcap(boot):
+    """BOOTX:bootcap, every start: the boot script runs S:Startup-Sequence through it so its output lands in
+    BOOTX:boot.console (BOOT-CONSOLE-CAPTURE, STARTUP)."""
+    subprocess.run(["make", "-s", "build/amiga/bootcap"], cwd=ROOT, check=True)
+    shutil.copyfile(ROOT / "build/amiga/bootcap", boot / "bootcap")
 
 def stage_screennotify(vtc):
     """VTC:ixp6/screennotify.library (first in LIBS:, RIG_LIBS), every start: the pinned Aminet 1.0 (`make
@@ -2088,6 +2101,24 @@ BOOT_CAP = 1200     # seconds a boot may take in all, progress or not
 BOOT_NOTE = 60      # a boot older than this prints where it stands, every BOOT_NOTE s
 
 
+# What AmigaDOS and its commands print when a boot command fails: one list, matched case-insensitively.
+BOOT_CONSOLE_ERRORS = ("is already mounted", "object not found", "failed returncode", "unknown command",
+                       "not a valid dos disk", "can't open", "cannot open", "can't find", "not found",
+                       "no such device", "device not mounted", "error in", "requested to", "not a directory",
+                       "object in use", "failed to", "bad program", "no free store", "could not")
+
+BOOT_CONSOLE_MARKER = "boot console open"   # bootcap's first line, before the Startup-Sequence runs
+
+def boot_console_captured(text):
+    """bootcap ran and opened BOOTX:boot.console: its marker is the first line. Without it the error check reads
+    nothing (the 0-byte file of the Execute redirect, BOOT-CONSOLE-CAPTURE) and a clean result proves nothing."""
+    return BOOT_CONSOLE_MARKER in [l.strip() for l in text.splitlines()[:1]]
+
+def boot_console_errors(text):
+    """The lines of the boot console (BOOTX:boot.console: what the Startup-Sequence and S:User-Startup printed before
+    the Workbench opened) that are AmigaDOS error shapes (BOOT_CONSOLE_ERRORS)."""
+    return [l.strip() for l in text.splitlines() if any(e in l.lower() for e in BOOT_CONSOLE_ERRORS)]
+
 def go_assigns_done(text):
     """BOOTX:go has made the rig's assigns: its own "assigns done" line is in boot.log. go runs beside the
     Startup-Sequence (Run >NIL: C:Execute BOOTX:go), while the early S:User-Startup block (BOOTX:wasabid-up) starts
@@ -2221,6 +2252,7 @@ def _start(retries):
     log = RIG / "boot/boot.log"
     if log.exists():
         log.unlink()
+    (RIG / "boot/boot.console").unlink(missing_ok=True)
     boot_device_check()   # no boot device = an emulator on the insert-disk screen; refuse before launching either one
     if AMIBERRY:
         # Amiberry's console log goes where cap_fsuae_log, fsuae_crash and fsuae_reset_count already read
@@ -2250,6 +2282,16 @@ def _start(retries):
             missing = boot_assigns_missing()
             if missing:
                 sys.exit("rig: the boot lacks the assigns %s (BOOTX:go or the boot hook did not run)" % " ".join(missing))
+            console = RIG / "boot/boot.console"
+            ctext = console.read_text(errors="replace") if console.exists() else ""
+            if not boot_console_captured(ctext):
+                sys.exit("rig: the boot console was not captured (no %r line in boot.console; BOOTX:bootcap did not run)"
+                         % BOOT_CONSOLE_MARKER)
+            bad = boot_console_errors(ctext)
+            if bad:
+                for l in bad:
+                    print("[ERROR] rig: boot console: %s" % l)
+                sys.exit("rig: the boot printed %d error line(s) (see boot.console in the rig's boot drawer)" % len(bad))
             guard_shell_startup()
             rigwasabi.warn_guru()
             start_watchdog()

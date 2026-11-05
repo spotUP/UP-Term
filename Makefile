@@ -1090,6 +1090,11 @@ $(BUILD)/amiga/deafport: tests/amiga/deafport.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/deafport.c
 
+# bootcap: the rig boot runs S:Startup-Sequence in a CLI whose output is BOOTX:boot.console (BOOT-CONSOLE-CAPTURE)
+$(BUILD)/amiga/bootcap: tools/rig/bootcap.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tools/rig/bootcap.c
+
 # renameopen: rename a file with an open handle, then close (s43 FS-UAE filesys rename crash)
 $(BUILD)/amiga/renameopen: tools/rig/renameopen.c
 	@mkdir -p $(BUILD)/amiga
