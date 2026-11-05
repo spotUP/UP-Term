@@ -861,6 +861,31 @@ static void test_which_from_gtype(void)
         memset(&f, 0, sizeof f);
         CHECK_INT(flat_frame_draw(&fs, 1, 10, 20, 8, 6, 1, FLAT_ROLE_SECONDARY, frame_rec, &f), 1);
         CHECK_INT(f.n == 1 && f.r[0][4] == 2, 1);                            /* pressed secondary gets the text pen fill */
+        {   /* S57-BUTTON-ASPECT-BORDERS: a button outline is flat_side_px columns wide left and right, 1 px top and bottom */
+            int modes[3][2] = { { 22, 44 }, { 22, 22 }, { 11, 44 } };   /* 640x256 hires, 640x512 interlace, super hires */
+            int want[3] = { 2, 1, 4 }, m, k;
+            for (m = 0; m < 3; m++) {
+                for (k = 0; k < 2; k++) {                                /* 0 = secondary (filled role), 1 = edges-only frame */
+                    fs.side = (uint8_t)flat_side_px(modes[m][0], modes[m][1]);
+                    memset(&f, 0, sizeof f);
+                    CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 60, 12, k == 0, FLAT_ROLE_SECONDARY, frame_rec, &f), 1);
+                    CHECK_INT(f.n, k == 0 ? 5 : 4);
+                    {   int o = f.n - 4;                                  /* top, bottom, left, right */
+                        CHECK_INT(f.r[o][1] == 20 && f.r[o][3] == 20, 1);              /* top: 1 px */
+                        CHECK_INT(f.r[o + 1][1] == 31 && f.r[o + 1][3] == 31, 1);      /* bottom: 1 px */
+                        CHECK_INT(f.r[o + 2][0] == 10 && f.r[o + 2][2] == 10 + want[m] - 1, 1);   /* left: side px */
+                        CHECK_INT(f.r[o + 3][0] == 69 - want[m] + 1 && f.r[o + 3][2] == 69, 1);   /* right: side px */
+                    }
+                }
+            }
+            fs.side = 0;                                                  /* an unset side stays 1 px */
+            memset(&f, 0, sizeof f);
+            CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 60, 12, 0, 0, frame_rec, &f), 1);
+            CHECK_INT(f.r[2][0] == 10 && f.r[2][2] == 10 && f.r[3][0] == 69 && f.r[3][2] == 69, 1);
+            CHECK_INT(flat_button_side(4, 6), 2);                         /* never more than a third of a narrow box */
+            CHECK_INT(flat_button_side(0, 60), 1);
+            fs.side = 0;
+        }
         CHECK_INT(flat_button_pen(&fs, 2), 3);                               /* 4-colour primary uses accent fill */
         fs.pen_sel = 4;
         CHECK_INT(flat_button_pen(&fs, 3), 4);                               /* 8 colours: lighter background */

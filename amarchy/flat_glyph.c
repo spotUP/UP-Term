@@ -412,17 +412,18 @@ int flat_glyph_draw(const flat_state *s, unsigned long which, unsigned long meth
 
 int flat_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn, void *ctx)
 {
-    int x1, y1;
+    int x1, y1, sw;
     if (!s || !fn || w < 3 || h < 3)
         return 0;
     x1 = ox + w - 1;
     y1 = oy + h - 1;
+    sw = flat_button_side(s->side, w);
     if (fill && ids != 1 && role == FLAT_ROLE_SECONDARY) {   /* BUTTON-ROLES: the secondary button is a 1 px text-pen outline, no fill */
         fn(ctx, ox, oy, x1, y1, s->pen_back);        /* clears a previous pressed fill */
         fn(ctx, ox, oy, x1, oy, s->pen_text);
         fn(ctx, ox, y1, x1, y1, s->pen_text);
-        fn(ctx, ox, oy, ox, y1, s->pen_text);
-        fn(ctx, x1, oy, x1, y1, s->pen_text);
+        fn(ctx, ox, oy, ox + sw - 1, y1, s->pen_text);
+        fn(ctx, x1 - sw + 1, oy, x1, y1, s->pen_text);
         return 1;
     }
     if (fill) {                                      /* S56-PRIMARY-ACCENT-FILL: primary fill = the theme accent pen (pen_line, a palette pen at every depth), pressed = the text pen; label in pen_ptext (flat_tx_arm); the scroller knob and cycle gadget keep pen_button; no outline */
@@ -431,8 +432,8 @@ int flat_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, 
     }
     fn(ctx, ox, oy, x1, oy, s->pen_line);            /* top */
     fn(ctx, ox, y1, x1, y1, s->pen_line);            /* bottom */
-    fn(ctx, ox, oy, ox, y1, s->pen_line);            /* left */
-    fn(ctx, x1, oy, x1, y1, s->pen_line);            /* right */
+    fn(ctx, ox, oy, ox + sw - 1, y1, s->pen_line);   /* left */
+    fn(ctx, x1 - sw + 1, oy, x1, y1, s->pen_line);   /* right */
     return 1;
 }
 

@@ -36,7 +36,8 @@ typedef struct flat_state {
     uint8_t inbar_rgb[3];       /* 26 the colour of pen_inbar (R, G, B) written by Amarchy from the theme role GR_INACTIVE; all zero = derive it from the screen */
     uint8_t pen_sel;            /* 29 S33-PREFS-SKIN-FAIL: the pen holding the button fill; obtained by amarchy-flat itself (ObtainBestPen) from sel_rgb, 0 = none (pen_back takes over). pen_button is only the theme role number and is never drawn with */
     uint8_t sel_rgb[3];         /* 30 the colour of pen_sel (R, G, B) written by Amarchy from the theme role GR_SELECTION; all zero = no held pen */
-    uint8_t pad[3];             /* 33 reserved, zero (keeps the block a multiple of 4 bytes) */
+    uint8_t side;               /* 33 S57-BUTTON-ASPECT-BORDERS: columns of a button's left and right outline lines (flat_side_px of the screen); 0 or 1 = 1 px. Set by amarchy-flat on its draw copy, never written by Amarchy */
+    uint8_t pad[2];             /* 34 reserved, zero (keeps the block a multiple of 4 bytes) */
 } flat_state;                   /* 36 bytes */
 
 #define FLAT_STATE_SIZE 36
@@ -432,6 +433,10 @@ void flat_pens_release(flat_pens *p, const flat_pen_ops *o, flat_state *s, const
  * (0) or another identity forgets without ReleasePen; a new screen with `want` obtains the three pens on it. Returns 1 when it
  * obtained. */
 int flat_pens_follow(flat_pens *p, const flat_pen_ops *o, flat_state *s, int want, const void *screen, unsigned epoch, int depth);
+
+/* S57-BUTTON-ASPECT-BORDERS: the width in pixels of a button's left and right outline lines: side (flat_side_px; below 1 counts 1),
+ * never more than a third of the box width w. Top and bottom lines stay 1 px. */
+int flat_button_side(int side, int w);
 
 /* FLAT-ASPECT-BORDERS: columns per row of visual height on a mode whose DisplayInfo Resolution is rx x ry ticks per pixel
  * (also the width in pixels of a vertical line that looks as thick as a 1 px horizontal one). Non-square modes with taller
