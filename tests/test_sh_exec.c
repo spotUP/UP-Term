@@ -2703,6 +2703,65 @@ static void execute_skip_and_lab(void)
     CHECK_STR(slot(OUT)->data, "rc5\nrc0\n");
 }
 
+/* S5: .key/.k binds the Execute arguments (mini ReadArgs) and <key>, <key$def>, <$$> are replaced. */
+static void execute_key_template_args(void)
+{
+    int inc = 0;
+    run("");
+    /* positional, keyword (KEY value, KEY=value, alias, any case), /S, /N, /M, /F, defaults */
+    amiscr_put("RAM:y1", ".key from/a,to/k,all/s,n/n,rest/m\nargs \"<from>\" \"<to>\" \"<all>\" \"<n>\" \"<rest>\" \"<to$dd>\" \"<zz$dd>\"\n");
+    sh_run_text(&sh, "execute RAM:y1 a.txt TO b.txt ALL 5 x y z; execute RAM:y1 to=t from=f", &inc);
+    CHECK_STR(slot(OUT)->data, "<a.txt><b.txt><all><5><x y z><b.txt><dd>\n<f><t><><><><t><dd>\n");
+    run("");
+    amiscr_put("RAM:y2", ".k name=nm/a,txt/f\nargs \"<nm>\" \"<txt>\"\n");
+    sh_run_text(&sh, "execute RAM:y2 NM=joe hello big world", &inc);
+    CHECK_STR(slot(OUT)->data, "<joe><hello big world>\n");
+    /* a missing /A, a /N that is no number, too many arguments, a keyword without its value: message, rc 20, nothing ran */
+    run("");
+    amiscr_put("RAM:y3", ".key a/a,n/n\necho ran\n");
+    sh_run_text(&sh, "execute RAM:y3; echo rc$?; execute RAM:y3 x y; echo rc$?; execute RAM:y3 x 1 z; echo rc$?; execute RAM:y3 x n; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "rc20\nrc20\nrc20\nrc20\n");
+    CHECK_INT(strstr(slot(ERR)->data, "required argument missing") != 0, 1);
+    CHECK_INT(strstr(slot(ERR)->data, "Bad arguments") != 0, 1);
+    /* <$$> is the CLI number: the same digits as $$ */
+    run("");
+    amiscr_put("RAM:y4", ".key x\necho <$$>\n");
+    sh_run_text(&sh, "execute RAM:y4; echo $$", &inc);
+    {
+        const char *o = slot(OUT)->data;
+        size_t n = strlen(o);
+        CHECK_INT(n >= 4 && n % 2 == 0 && !strncmp(o, o + n / 2, n / 2), 1);
+    }
+    /* without a .key line nothing is replaced: < stays a redirection */
+    run("");
+    amiscr_put("RAM:y5", "echo hi >RAM:y5o\ncat <RAM:y5o\n");
+    sh_run_text(&sh, "execute RAM:y5 a b", &inc);
+    CHECK_STR(slot(OUT)->data, "hi\n");
+}
+
+/* S5: .bra .ket .dot .dollar .default/.def, comments and directives are dropped, a lone < stays. */
+static void execute_key_dot_directives(void)
+{
+    int inc = 0;
+    run("");
+    amiscr_put("RAM:z1",
+               ".key a,b\n. a comment\n.\n.bra {\n.ket }\n.dollar #\n.def a fallback\n.default b second one\n"
+               "args \"{a}\" \"{b}\" \"{a#x}\" \"{b#y}\" \"{zz}\"\n");
+    sh_run_text(&sh, "execute RAM:z1; execute RAM:z1 given", &inc);
+    /* a unset: .def; {a#x} the inline default; then a given */
+    CHECK_STR(slot(OUT)->data, "<fallback><second one><x><y><>\n<given><second one><given><y><>\n");
+    /* .dot moves the directive character */
+    run("");
+    amiscr_put("RAM:z2", ".key v\n.dot ~\n~def v dv\n~ a comment\nargs \"<v>\"\n");
+    sh_run_text(&sh, "execute RAM:z2", &inc);
+    CHECK_STR(slot(OUT)->data, "<dv>\n");
+    /* directives in any case; a < with no closing > is left alone */
+    run("");
+    amiscr_put("RAM:z3", ".KEY q\n.BRA [\n.KET ]\nargs \"[q]\" \"a[b\"\n");
+    sh_run_text(&sh, "execute RAM:z3 Q=7", &inc);
+    CHECK_STR(slot(OUT)->data, "<7><a[b>\n");
+}
+
 void suite_sh_exec(void)
 {
     path_and_run_are_amiga_forms_of_path_and_background();
@@ -2714,6 +2773,8 @@ void suite_sh_exec(void)
     execute_if_condition_flags();
     execute_rc_expands_in_scripts();
     execute_skip_and_lab();
+    execute_key_template_args();
+    execute_key_dot_directives();
     setenv_unsetenv_getenv_use_the_system_store();
     fault_prompt_ask_alias_and_echo_keywords();
     bind_and_inputrc_reach_the_console_line_editor();

@@ -486,15 +486,351 @@ static int if_true(sh_shell *sh, line_toks *t)
     return neg ? !ok : ok;
 }
 
-long sh_amiga_execute(sh_shell *sh, const char *text, const char *file, int argc, char **argv, const sh_io *io)
+/* ---- .key templates and the dot directives (design section 3, loading) ------------------------------- */
+
+#define MAXITEM 32
+#define MAXDEF 32
+
+typedef struct {
+    char *name, *alias;
+    int a, k, s, n, m, f;   /* the /A /K /S /N /M /F flags */
+    int set;
+    buf val;
+} key_item;
+
+typedef struct {
+    key_item it[MAXITEM];
+    int n;
+    int have;               /* a .key line was seen: only then are <...> replaced */
+    char bra, ket, dot, dollar;
+    char *defname[MAXDEF], *defval[MAXDEF];
+    int ndef;
+} tmpl;
+
+static char lc(char c)
 {
+    return (char)tolower((unsigned char)c);
+}
+
+static int ieq_n(const char *a, size_t n, const char *b)
+{
+    size_t i;
+    if (strlen(b) != n)
+        return 0;
+    for (i = 0; i < n; i++)
+        if (lc(a[i]) != lc(b[i]))
+            return 0;
+    return 1;
+}
+
+static void tmpl_free(tmpl *t)
+{
+    int i;
+    for (i = 0; i < t->n; i++) {
+        free(t->it[i].name);
+        free(t->it[i].alias);
+        free(t->it[i].val.s);
+    }
+    for (i = 0; i < t->ndef; i++) {
+        free(t->defname[i]);
+        free(t->defval[i]);
+    }
+}
+
+/* TEMPLATE: comma separated NAME[=ALIAS][/A][/K][/S][/N][/M][/F] items */
+static void tmpl_parse(tmpl *t, const char *s)
+{
+    while (*s && t->n < MAXITEM) {
+        const char *e = strchr(s, ',');
+        size_t len = e ? (size_t)(e - s) : strlen(s);
+        key_item *k = &t->it[t->n];
+        char *item = dup_n(s, len), *sl, *eq, *p;
+        if (!item)
+            return;
+        memset(k, 0, sizeof(*k));
+        sl = strchr(item, '/');
+        for (p = sl; p && *p; p++) {
+            switch (lc(*p)) {
+            case 'a': k->a = 1; break;
+            case 'k': k->k = 1; break;
+            case 's': k->s = 1; break;
+            case 'n': k->n = 1; break;
+            case 'm': k->m = 1; break;
+            case 'f': k->f = 1; break;
+            default: break;
+            }
+        }
+        if (sl)
+            *sl = 0;
+        eq = strchr(item, '=');
+        if (eq) {
+            *eq = 0;
+            k->alias = dup_n(eq + 1, strlen(eq + 1));
+        }
+        k->name = dup_n(item, strlen(item));
+        free(item);
+        t->n++;
+        s += len + (e ? 1 : 0);
+    }
+}
+
+static key_item *tmpl_find(tmpl *t, const char *w, size_t n)
+{
+    int i;
+    for (i = 0; i < t->n; i++)
+        if (ieq_n(w, n, t->it[i].name) || (t->it[i].alias && ieq_n(w, n, t->it[i].alias)))
+            return &t->it[i];
+    return 0;
+}
+
+/* store one value (a /M item appends); 0 when a /N item gets something that is no number */
+static int item_put(key_item *k, const char *v, size_t n)
+{
+    size_t i;
+    if (k->n) {
+        i = (n && (*v == '-' || *v == '+')) ? 1 : 0;
+        if (i >= n)
+            return 0;
+        for (; i < n; i++)
+            if (!isdigit((unsigned char)v[i]))
+                return 0;
+    }
+    if (k->m && k->set)
+        buf_add(&k->val, ' ');
+    for (i = 0; i < n; i++)
+        buf_add(&k->val, v[i]);
+    k->set = 1;
+    return 1;
+}
+
+/* a /F item takes first and every argument after it, joined with spaces */
+static int item_put_rest(key_item *k, char **a, int i, int na, const char *first)
+{
+    buf j;
+    int ok;
+    memset(&j, 0, sizeof(j));
+    buf_adds(&j, first);
+    for (i++; i < na; i++) {
+        buf_add(&j, ' ');
+        buf_adds(&j, a[i]);
+    }
+    ok = item_put(k, j.s ? j.s : "", j.n);
+    free(j.s);
+    return ok;
+}
+
+/* Bind the Execute arguments against the template (mini ReadArgs). Returns 0, or 1 after saying why not. */
+static int tmpl_bind(sh_shell *sh, tmpl *t, char **a, int na, const sh_io *io)
+{
+    int i, j;
+    for (i = 0; i < na; i++) {
+        const char *eq = strchr(a[i], '=');
+        key_item *k = tmpl_find(t, a[i], eq ? (size_t)(eq - a[i]) : strlen(a[i]));
+        if (k && k->s) {
+            k->set = 1;
+        } else if (k) {
+            const char *v;
+            if (eq)
+                v = eq + 1;
+            else if (i + 1 < na)
+                v = a[++i];
+            else
+                goto bad;
+            if (k->f ? !item_put_rest(k, a, i, na, v) : !item_put(k, v, strlen(v)))
+                goto bad;
+            if (k->f)
+                break;
+        } else {
+            key_item *slot = 0;
+            for (j = 0; j < t->n && !slot; j++) {
+                key_item *c = &t->it[j];
+                if (!c->k && !c->s && (!c->set || c->m))
+                    slot = c;
+            }
+            if (!slot)
+                goto bad;
+            if (slot->f ? !item_put_rest(slot, a, i, na, a[i]) : !item_put(slot, a[i], strlen(a[i])))
+                goto bad;
+            if (slot->f)
+                break;
+        }
+    }
+    for (j = 0; j < t->n; j++)
+        if (t->it[j].a && !t->it[j].set) {
+            say_io(sh, io->err, "execute: required argument missing\n");
+            return 1;
+        }
+    return 0;
+bad:
+    say_io(sh, io->err, "execute: Bad arguments\n");
+    return 1;
+}
+
+/* One line starting with the dot character (p, len without the line end). Returns 1 when it is a directive
+ * or a comment (the line is dropped), 0 for an ordinary line such as ./prog. */
+static int directive(tmpl *t, const char *p, size_t len)
+{
+    const char *w = p + 1, *end = p + len, *arg, *ne, *v;
+    size_t wl;
+    if (w >= end || *w == ' ' || *w == '\t')
+        return 1;   /* a dot alone or followed by a space: a comment */
+    for (wl = 0; w + wl < end && w[wl] != ' ' && w[wl] != '\t'; wl++)
+        ;
+    arg = w + wl;
+    while (arg < end && (*arg == ' ' || *arg == '\t'))
+        arg++;
+    if (ieq_n(w, wl, "key") || ieq_n(w, wl, "k")) {
+        char *s = dup_n(arg, (size_t)(end - arg));
+        if (s) {
+            tmpl_parse(t, s);
+            free(s);
+        }
+        t->have = 1;
+    } else if (ieq_n(w, wl, "bra")) {
+        if (arg < end)
+            t->bra = *arg;
+    } else if (ieq_n(w, wl, "ket")) {
+        if (arg < end)
+            t->ket = *arg;
+    } else if (ieq_n(w, wl, "dot")) {
+        if (arg < end)
+            t->dot = *arg;
+    } else if (ieq_n(w, wl, "dollar") || ieq_n(w, wl, "dol")) {
+        if (arg < end)
+            t->dollar = *arg;
+    } else if (ieq_n(w, wl, "default") || ieq_n(w, wl, "def")) {
+        for (ne = arg; ne < end && *ne != ' ' && *ne != '\t'; ne++)
+            ;
+        for (v = ne; v < end && (*v == ' ' || *v == '\t'); v++)
+            ;
+        if (ne > arg && t->ndef < MAXDEF) {
+            t->defname[t->ndef] = dup_n(arg, (size_t)(ne - arg));
+            t->defval[t->ndef] = dup_n(v, (size_t)(end - v));
+            t->ndef++;
+        }
+    } else {
+        return 0;
+    }
+    return 1;
+}
+
+/* the replacement for <in>: in/n is the text between bra and ket */
+static void tmpl_subst(sh_shell *sh, tmpl *t, const char *in, size_t n, buf *out)
+{
+    size_t d, j;
+    int i;
+    for (d = 0; d < n && in[d] != t->dollar; d++)
+        ;
+    if (n == 2 && in[0] == t->dollar && in[1] == t->dollar) {   /* <$$>: the CLI number */
+        char num[32];
+        long v = sh->ctx.top_pid ? sh->ctx.top_pid : sh->ctx.pid;
+        int p = (int)sizeof(num) - 1;
+        unsigned long u = v < 0 ? 0UL - (unsigned long)v : (unsigned long)v;
+        num[p] = 0;
+        do {
+            num[--p] = (char)('0' + (int)(u % 10));
+            u /= 10;
+        } while (u);
+        if (v < 0)
+            num[--p] = '-';
+        buf_adds(out, num + p);
+        return;
+    }
+    for (i = 0; i < t->n; i++) {
+        key_item *k = &t->it[i];
+        if (k->set && (ieq_n(in, d, k->name) || (k->alias && ieq_n(in, d, k->alias)))) {
+            buf_adds(out, k->s ? k->name : k->val.s);
+            return;
+        }
+    }
+    if (d < n) {   /* <name$default> */
+        for (j = d + 1; j < n; j++)
+            buf_add(out, in[j]);
+        return;
+    }
+    for (i = 0; i < t->ndef; i++)
+        if (ieq_n(in, n, t->defname[i])) {
+            buf_adds(out, t->defval[i]);
+            return;
+        }
+}
+
+/* Directives are collected over the whole file and dropped; with a .key line the arguments are bound and
+ * every <name>, <name$default> and <$$> is replaced. Returns the new text, or 0 after saying why (rc 20). */
+static char *template_load(sh_shell *sh, const char *text, int argc, char **argv, const sh_io *io)
+{
+    tmpl t;
+    buf out;
+    const char *p;
+    size_t nl = 1, li;
+    char *isdir;
+    memset(&t, 0, sizeof(t));
+    memset(&out, 0, sizeof(out));
+    t.bra = '<';
+    t.ket = '>';
+    t.dot = '.';
+    t.dollar = '$';
+    for (p = text; *p; p++)
+        if (*p == '\n')
+            nl++;
+    isdir = (char *)calloc(nl + 1, 1);
+    if (!isdir)
+        return 0;
+    for (p = text, li = 0; *p; li++) {
+        const char *e = strchr(p, '\n');
+        size_t len = e ? (size_t)(e - p) : strlen(p), dl = len;
+        if (dl && p[dl - 1] == '\r')
+            dl--;
+        if (*p == t.dot && directive(&t, p, dl))
+            isdir[li] = 1;
+        p += len + (e ? 1 : 0);
+    }
+    if (t.have && tmpl_bind(sh, &t, argv + 1, argc - 1, io)) {
+        free(isdir);
+        tmpl_free(&t);
+        return 0;
+    }
+    for (p = text, li = 0; *p; li++) {
+        const char *e = strchr(p, '\n');
+        size_t len = e ? (size_t)(e - p) : strlen(p), i;
+        if (!isdir[li]) {
+            for (i = 0; i < len; i++) {
+                if (t.have && p[i] == t.bra) {
+                    size_t j = i + 1;
+                    while (j < len && p[j] != t.ket && p[j] != t.bra && p[j] != ' ' && p[j] != '\t' && p[j] != ';')
+                        j++;
+                    if (j < len && p[j] == t.ket) {
+                        tmpl_subst(sh, &t, p + i + 1, j - i - 1, &out);
+                        i = j;
+                        continue;
+                    }
+                }
+                buf_add(&out, p[i]);
+            }
+            buf_add(&out, '\n');
+        }
+        p += len + (e ? 1 : 0);
+    }
+    if (!out.s)
+        buf_add(&out, '\n');
+    free(isdir);
+    tmpl_free(&t);
+    return out.s;
+}
+
+long sh_amiga_execute(sh_shell *sh, const char *text0, const char *file, int argc, char **argv, const sh_io *io)
+{
+    char *loaded = template_load(sh, text0, argc, argv, io);
+    const char *text = loaded;
     const char *p = text;
     long st = sh->ctx.status;
     long failat = 10;   /* this call's limit: a nested Execute starts at 10 and this one survives it */
     int quit = 0;
     (void)file;
-    (void)argc;
-    (void)argv;
+    if (!loaded) {
+        sh->ctx.status = 20;   /* bad arguments against the .key template: nothing ran */
+        return 20;
+    }
     while (*p && !sh->intr && !sh->exiting) {
         const char *e = strchr(p, '\n');
         size_t len = e ? (size_t)(e - p) : strlen(p);
@@ -558,6 +894,7 @@ long sh_amiga_execute(sh_shell *sh, const char *text, const char *file, int argc
             break;
         p = next;
     }
+    free(loaded);
     sh->ctx.status = st;
     return st;
 }
