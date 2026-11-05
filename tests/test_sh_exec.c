@@ -2733,7 +2733,7 @@ static void execute_skip_and_lab(void)
     amiscr_put("RAM:k3", "echo a\nSkip nolab\necho b\n");
     sh_run_text(&sh, "execute RAM:k3; echo rc$?", &inc);
     CHECK_INT(strstr(slot(OUT)->data, "a\nrc10\n") != 0, 1);
-    CHECK_INT(strstr(slot(ERR)->data, "Label nolab not found") != 0, 1);
+    CHECK_INT(strstr(slot(ERR)->data, "object not found\nSkip failed returncode 10\n") != 0, 1);
     /* EndSkip reached by a skip sets rc 5; reached in normal flow it is a no-op */
     run("");
     amiscr_put("RAM:k4", "Skip\necho no\nEndSkip\necho rc$RC\nfail 0\nEndSkip\necho rc$RC\n");
@@ -2758,8 +2758,8 @@ static void execute_key_template_args(void)
     run("");
     amiscr_put("RAM:y3", ".key a/a,n/n\necho ran\n");
     sh_run_text(&sh, "execute RAM:y3; echo rc$?; execute RAM:y3 x y; echo rc$?; execute RAM:y3 x 1 z; echo rc$?; execute RAM:y3 x n; echo rc$?", &inc);
-    CHECK_STR(slot(OUT)->data, "rc20\nrc20\nrc20\nrc20\n");
-    CHECK_INT(strstr(slot(ERR)->data, "required argument missing") != 0, 1);
+    CHECK_STR(slot(OUT)->data, "rc10\nrc20\nrc20\nrc20\n");
+    CHECK_INT(strstr(slot(ERR)->data, "Parameters unsuitable for key \"a/a\"\nrequired argument missing\nExecute failed returncode 10") != 0, 1);
     CHECK_INT(strstr(slot(ERR)->data, "Bad arguments") != 0, 1);
     /* <$$> is the CLI number: the same digits as $$ */
     run("");
@@ -2830,6 +2830,41 @@ static void execute_3_2_quirks(void)
     CHECK_STR(slot(ERR)->data, "");
 }
 
+/* S7b-5 (real 3.2 text): R3 missing /A, R9 failing command named once, R13 Skip, R16 FailAt, R19 Quit abc, R11 EXISTS x VAL 1. */
+static void execute_3_2_messages(void)
+{
+    int inc = 0;
+    run("");
+    amiscr_put("RAM:m3", ".KEY w/A\necho x\n");
+    sh_run_text(&sh, "execute RAM:m3; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "rc10\n");
+    CHECK_STR(slot(ERR)->data, "EXECUTE: Parameters unsuitable for key \"w/A\"\nrequired argument missing\nExecute failed returncode 10\n");
+    run("");
+    amiscr_put("RAM:m9b", "quit 10\n");
+    amiscr_put("RAM:m9", "failat 5\nexecute RAM:m9b\necho no\n");
+    sh_run_text(&sh, "execute RAM:m9; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "rc10\n");
+    CHECK_STR(slot(ERR)->data, "Quit failed returncode 10\n");
+    run("");
+    amiscr_put("RAM:m13", "skip\necho no\n");
+    sh_run_text(&sh, "execute RAM:m13; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "rc10\n");
+    CHECK_STR(slot(ERR)->data, "object not found\nSkip failed returncode 10\n");
+    run("");
+    amiscr_put("RAM:m16", "failat\necho x\n");
+    sh_run_text(&sh, "execute RAM:m16", &inc);
+    CHECK_STR(slot(OUT)->data, "Fail limit: 10\nx\n");
+    run("");
+    amiscr_put("RAM:m19", "quit abc\necho no\n");
+    sh_run_text(&sh, "execute RAM:m19; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "rc10\n");
+    CHECK_STR(slot(ERR)->data, "bad number\nQuit failed returncode 10\n");
+    run("");
+    amiscr_put("RAM:m11", "if exists RAM:m11 val 1\necho c5\nendif\n");
+    sh_run_text(&sh, "execute RAM:m11", &inc);
+    CHECK_STR(slot(OUT)->data, "c5\n");
+}
+
 /* S7b-6 R24: a .key file without the S bit started by name is refused as on 3.2; `execute` runs it. */
 static void keyed_file_without_s_bit_is_refused_by_name(void)
 {
@@ -2887,6 +2922,7 @@ void suite_sh_exec(void)
     execute_key_template_args();
     execute_key_dot_directives();
     execute_3_2_quirks();
+    execute_3_2_messages();
     execute_backticks();
     setenv_unsetenv_getenv_use_the_system_store();
     fault_prompt_ask_alias_and_echo_keywords();
