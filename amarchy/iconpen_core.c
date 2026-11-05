@@ -248,7 +248,7 @@ int ip_screen_depth(int planes, int ehb)
     return (ehb && planes == 6) ? 5 : planes;
 }
 
-int ip_wb_lockable(int listed, int has_screen, unsigned flags)
+int ip_pub_lockable(int listed, int has_screen, unsigned flags)
 {
     return listed && has_screen && !(flags & IP_PSN_PRIVATE);
 }
