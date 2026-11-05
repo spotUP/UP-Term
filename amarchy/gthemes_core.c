@@ -905,7 +905,15 @@ gt_ref gt_resolve(const gt_model *m, int elem, int state)
 uc_u32 gt_resolve_rgb(const gt_model *m, int elem, int state)
 {
     gt_ref r = gt_resolve(m, elem, state);
-    return ref_d(m, &r, state, 0);
+    uc_u32 c = ref_d(m, &r, state, 0);
+    /* TE-8 P1: the DEFAULT of the inactive title text (no own ref in the model, so it is the group's muted tone) is pushed off the
+     * inactive title bar until the pair reads GT_FLOOR_DIM. A value the model sets itself is returned as set (it only warns). */
+    if (elem == GTE_TITLE_TEXT_INACTIVE && m->elem[elem][state].kind == GT_REF_NONE && m->elem[elem][GT_ST_NORMAL].kind == GT_REF_NONE) {
+        gt_ref gr = gt_resolve(m, GTE_TITLE_BAR_INACTIVE, state);
+        uc_u32 ground = ref_d(m, &gr, state, 0);
+        c = push_off(c, gt_luma(ground) >= 128 ? 0x000000UL : 0xFFFFFFUL, ground, GT_FLOOR_DIM);
+    }
+    return c;
 }
 
 void gt_roles_from_model(const gt_model *m, gt_roles *r)
@@ -1795,7 +1803,7 @@ int gte_reset_to_base(gt_read_fn rd, void *ctx)
 /* ---- TE-8.2 contrast pairs: the text side against the element it sits on ---- */
 static const struct { unsigned char text, ts, ground, gs, kind; } gt_cpair_def[] = {
     { GTE_TITLE_TEXT, GT_ST_NORMAL, GTE_TITLE_BAR, GT_ST_NORMAL, GTC_TEXT },
-    { GTE_TITLE_TEXT_INACTIVE, GT_ST_NORMAL, GTE_TITLE_BAR_INACTIVE, GT_ST_NORMAL, GTC_TEXT },
+    { GTE_TITLE_TEXT_INACTIVE, GT_ST_NORMAL, GTE_TITLE_BAR_INACTIVE, GT_ST_NORMAL, GTC_DIM },
     { GTE_MENU_TEXT, GT_ST_NORMAL, GTE_MENU_BACKGROUND, GT_ST_NORMAL, GTC_TEXT },
     { GTE_MENU_TEXT, GT_ST_DISABLED, GTE_MENU_BACKGROUND, GT_ST_NORMAL, GTC_MUTED },
     { GTE_MENU_SELECTED_TEXT, GT_ST_NORMAL, GTE_MENU_SELECTION, GT_ST_NORMAL, GTC_TEXT },
@@ -1819,7 +1827,7 @@ int gt_contrast_pairs(const gt_model *m, gt_cpair out[GT_CPAIRS])
         p->ground = gt_cpair_def[i].ground;
         p->ground_state = gt_cpair_def[i].gs;
         p->kind = gt_cpair_def[i].kind;
-        p->floor = p->kind == GTC_SEL ? GT_FLOOR_SEL : p->kind == GTC_MUTED ? GT_FLOOR_MUTED : GT_FLOOR_TEXT;
+        p->floor = p->kind == GTC_SEL ? GT_FLOOR_SEL : p->kind == GTC_MUTED ? GT_FLOOR_MUTED : p->kind == GTC_DIM ? GT_FLOOR_DIM : GT_FLOOR_TEXT;
         p->contrast = gt_contrast(gt_resolve_rgb(m, p->text, p->text_state), gt_resolve_rgb(m, p->ground, p->ground_state));
         p->below = p->contrast < p->floor;
     }
