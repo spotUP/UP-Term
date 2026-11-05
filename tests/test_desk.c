@@ -520,7 +520,8 @@ static void test_desk_editor_waits_iprefs(void)
     int runs = 0;
     CHECK_INT(desk_editor_waits_iprefs("Workbench"), 1);
     CHECK_INT(desk_editor_waits_iprefs("WBPattern"), 1);
-    CHECK_INT(desk_editor_waits_iprefs("Palette"), 0); /* waits on the reset itself */
+    CHECK_INT(desk_editor_waits_iprefs("Palette"), 1); /* S57-START-POINTER-HANG: the next editor starts with IPrefs idle */
+    CHECK_INT(desk_editor_waits_iprefs("Pointer"), 1); /* S57-START-POINTER-HANG: hung on 3.2 when run under the palette work */
     CHECK_INT(desk_editor_waits_iprefs("Font"), 0);    /* callers wait with their own mask */
     CHECK_INT(desk_editor_waits_iprefs(0), 0);
     CHECK_INT(n > 0, 1);

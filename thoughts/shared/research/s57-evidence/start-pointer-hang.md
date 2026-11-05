@@ -112,3 +112,43 @@ Host load logged every 60 s (`ps -Ao pcpu,command | sort -rn | head -5`).
   not fresh-started the same way). Host load here was moderate (under 120% non-fs-uae), so heavy load alone is not
   needed to fail.
 - No ps/windows (wasabid silent) and no screenshot (rig already down after the abort). Not dug further, per brief.
+
+## Capture on rig 134 and root fix (vtcon-ee agent, 2026-11-05)
+
+Reproduction on main (rig 134, 3.2, 060 max, fresh-all, 03:22): FAIL 34 "no port", then [ABORT] auth failed after 15 s.
+Host load stayed modest the whole run: fs-uae for rigs 134 and 96 at about 115% each, every other process under 60%
+(scratchpad load134.log). CPU starvation is not needed for the failure, so the 15 s wasabid timeout is not the cause.
+The fixed `sleep 5` + single STATUS probe in reboot_amarchy_check is also not the cause: the system was frozen, not slow.
+
+Evidence after the failed boot: Env-Archive/Amarchy/desk-original held ENV-Sys-palette.prefs.absent and
+ENV-Sys-pointer.prefs (03:22) and nothing later, so Amarchy's start apply ran the Palette and Pointer steps and stopped.
+On rig 96 (PASS, 11-04) the same folder also holds the Workbench/font/wbpattern files, so the apply went further there.
+ENVARC Pointer.prefs and the desk-original copy are byte-identical between rig 96 and rig 134 (md5 4da47600...), and
+S:User-Startup is identical, so the input is the same; the difference is timing.
+
+Capture (Amarchy autostart held in the rig's host S:User-Startup, then `Run UP-Term:bin/Amarchy` by hand, snoop + debug on):
+- Snoop order: Palette editor runs and exits; `SYS:Prefs/Pointer FROM T:amarchy-desk/pointer.prefs USE` loads, opens the
+  work file, Open("ENV:Sys/Pointer.prefs", new) ok, SetProtection, CurrentDir, then no further DOS call.
+- ps for 80+ s: "Background CLI (SYS:Prefs/Pointer)" in wait, Amarchy in wait inside SystemTags, IPrefs in wait. No windows.
+  wasabid stayed responsive (by hand, outside the boot); at boot the same block froze the system and silenced wasabid.
+- Control: on a fresh reboot the same Pointer USE run alone (`Run SYS:Prefs/Pointer FROM ENVARC:Sys/Pointer.prefs USE`)
+  exits within 8 s. The editor hangs only when it starts while IPrefs still works on the Palette write.
+
+Cause: desk_dos_start_apply ran the Pointer USE straight after the Palette USE with no IPrefs idle wait. dk_wait_reset
+(only when desk_pens_reset) returns when the new screen is up, not when IPrefs is done. dk_apply already notes the same
+hazard ("SYS:Prefs/Pointer raised a Program Error requester when started under the running reset"); the revert path waits
+for IPrefs after Pointer (DESK-PTR-REVERT). The start path had neither wait.
+
+Invariant: no stock editor USE starts while IPrefs still handles an earlier prefs write.
+
+Fix: desk_editor_waits_iprefs (amarchy/desk_core.c) now also returns 1 for Palette and Pointer, so dk_editor (the only
+editor-run path) takes the IPrefs idle mask before those runs and waits for IPrefs idle after them. This covers the start
+apply, dk_apply and the revert. Regression test: tests/test_desk.c test_desk_editor_waits_iprefs expects Palette and
+Pointer = 1 (fails with the old function).
+
+Proof: fresh-all on rig 134 (stopped + cleared first, fresh start, 3.2, 060 max, INSTALLER_KEEP=1), build = this branch
+(make amiga + make dist via kit-main): [PASS] fresh-all. "ok 35 after the reboot: the AMARCHY ARexx port answers STATUS"
+(STATUS bar=1 ticks=32), "ok 36 Left Amiga + Space opens the Amarchy menu window". Max non-fs-uae host CPU 93% (XProtect, clang).
+
+Open: why 7cf4ac17 passed on rig 96 on 11-04 is timing only (same input files); the race window depends on how long IPrefs
+takes on the palette notification. reboot_amarchy_check still probes STATUS once after a fixed 5 s; not changed here.
