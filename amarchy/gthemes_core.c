@@ -1612,6 +1612,23 @@ int gt_save_edit(const prefs_fs *fs, const char *name, const gt_model *m, const 
     return 1;
 }
 
+unsigned long gt_dos_reset_prompts;
+
+int gt_save_editor(const prefs_fs *fs, const char *name, const gt_model *m, const char *current, int (*apply)(const char *name),
+                   unsigned (*bound)(const gt_model *running, const gt_model *neu), void (*ask)(unsigned mask), char *why, int cap)
+{
+    unsigned mask = 0;
+    if (current && !cmp_ci(name, current) && bound && gt_ed.open && !cmp_ci(name, gt_ed.name))
+        mask = bound(&gt_ed.saved, m);       /* before gt_save: the file on disk is still the running one */
+    if (!gt_save_edit(fs, name, m, current, apply, why, cap))
+        return 0;
+    if (mask && ask) {
+        gt_dos_reset_prompts++;
+        ask(mask);
+    }
+    return 1;
+}
+
 /* ---- TE-4: the edit buffer and the editor's rows ---- */
 #include <stddef.h>
 

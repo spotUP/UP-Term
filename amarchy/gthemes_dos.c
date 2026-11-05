@@ -20,6 +20,7 @@
 #include "../prefs/prefs_dos.h"
 #include "menu_theme.h"
 #include "rexx_host.h"
+#include "wbreset_core.h"
 
 unsigned long gt_dos_dopus_sends;
 unsigned long gt_dos_wb_pens, gt_dos_wb_refused;
@@ -296,13 +297,25 @@ static void gt_dos_drawers(void)
     }
 }
 
+/* TE-7.1 (D1): the reset-bound fields changed. The requester lives in the commodity (desk_confirm_dos.c): DESK CONFIRM with
+ * WBR_ASK_MASK, as every other process asks for the Keep / Revert one. */
+static void gt_dos_reset_ask(unsigned mask)
+{
+    char res[32];
+    (void)mask;
+    if (desk_dos_confirm_begin)
+        desk_dos_confirm_begin(WBR_ASK_MASK);
+    else
+        rexx_send("AMARCHY", "DESK CONFIRM 1073741824", res, sizeof res);
+}
+
 int gt_dos_save(const char *name, const gt_model *m, char *why, int cap)
 {
     char cur[GT_NAME];
     int r;
     gt_dos_drawers();
     gt_dos_current(cur, (int)sizeof cur);
-    r = gt_save_edit(&prefs_dos_fs, name, m, cur, gt_dos_apply_saved, why, cap);
+    r = gt_save_editor(&prefs_dos_fs, name, m, cur, gt_dos_apply_saved, wbr_bound_mask, gt_dos_reset_ask, why, cap);
     gt_dos_desk_restore();      /* TE-6.2: a saved edit of another theme leaves no preview on the desktop */
     return r;
 }

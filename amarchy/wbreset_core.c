@@ -155,3 +155,25 @@ void wbr_gate_build(unsigned char *out, uint32_t hook, uint32_t saved)
     put32(out + WBR_GATE_HOOK, hook);
     put32(out + WBR_GATE_SAVED, saved);
 }
+
+unsigned wbr_bound_mask(const gt_model *a, const gt_model *b)
+{
+    unsigned m = 0;
+    if (!a || !b)
+        return 0;
+    if (strcmp(a->look.font[GT_FONT_SCREEN], b->look.font[GT_FONT_SCREEN]))
+        m |= WBR_B_SCREEN_FONT;
+    if (strcmp(a->look.font[GT_FONT_TITLE], b->look.font[GT_FONT_TITLE]))
+        m |= WBR_B_TITLE_FONT;
+    if (a->look.bar_height != b->look.bar_height)
+        m |= WBR_B_BAR_HEIGHT;
+    if (a->look.gadget_size != b->look.gadget_size)
+        m |= WBR_B_GADGET_SIZE;
+    if (a->look.gadget_pad != b->look.gadget_pad)
+        m |= WBR_B_GADGET_PAD;
+    if (a->look.gadget_order != b->look.gadget_order)
+        m |= WBR_B_GADGET_ORDER;
+    if (a->look.scroll_width != b->look.scroll_width)
+        m |= WBR_B_SCROLL_WIDTH;
+    return m;
+}

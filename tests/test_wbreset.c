@@ -194,8 +194,43 @@ static void test_wb_window_flag(void)
     CHECK_INT(count_in("amarchy/bar.c", "OpenWindow"), 0);      /* the bar opens only through tw_open */
 }
 
+/* TE-7: reset-bound only for the fields of the plan's section 5 table; every live field leaves the mask 0. */
+static void test_reset_bound_table(void)
+{
+    gt_model a, b;
+    memset(&a, 0, sizeof a);
+    b = a;
+    CHECK_INT((int)wbr_bound_mask(&a, &b), 0);
+    CHECK_INT((int)wbr_bound_mask(0, &b), 0);
+    strcpy(b.look.font[GT_FONT_SCREEN], "helvetica.font/13");
+    CHECK_INT((int)wbr_bound_mask(&a, &b), WBR_B_SCREEN_FONT);
+    b = a;
+    strcpy(b.look.font[GT_FONT_TITLE], "topaz.font/9");
+    CHECK_INT((int)wbr_bound_mask(&a, &b), WBR_B_TITLE_FONT);
+    b = a; b.look.bar_height = 20;
+    CHECK_INT((int)wbr_bound_mask(&a, &b), WBR_B_BAR_HEIGHT);
+    b = a; b.look.gadget_size = 18;
+    CHECK_INT((int)wbr_bound_mask(&a, &b), WBR_B_GADGET_SIZE);
+    b = a; b.look.gadget_pad = 3;
+    CHECK_INT((int)wbr_bound_mask(&a, &b), WBR_B_GADGET_PAD);
+    b = a; b.look.gadget_order = 1;
+    CHECK_INT((int)wbr_bound_mask(&a, &b), WBR_B_GADGET_ORDER);
+    b = a; b.look.scroll_width = 16;
+    CHECK_INT((int)wbr_bound_mask(&a, &b), WBR_B_SCROLL_WIDTH);
+    /* the live fields of the table: colours, radius, border, knob, glyphs, ghost, hover, menu / icon / shell font, pointer */
+    b = a;
+    b.look.corner_radius = 9; b.look.border_width = 2; b.look.knob_min = 8; b.look.knob_shape = 1; b.look.glyph_set = 1;
+    b.look.ghost_style = 1; b.look.hover_on = 1; b.look.inactive_pct = 50; b.look.pointer[0] = 0x123456u;
+    strcpy(b.look.font[GT_FONT_MENU], "m.font/9");
+    strcpy(b.look.font[GT_FONT_ICON], "i.font/9");
+    strcpy(b.look.font[GT_FONT_SHELL], "s.font/9");
+    b.swatch[0] = 0xabcdefu;
+    CHECK_INT((int)wbr_bound_mask(&a, &b), 0);
+}
+
 void suite_wbreset(void)
 {
+    test_reset_bound_table();
     test_external_reset();
     test_failed_close();
     test_retry_while_reopening();

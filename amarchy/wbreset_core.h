@@ -7,6 +7,7 @@
 #define AMARCHY_WBRESET_CORE_H
 
 #include <stdint.h>
+#include "gthemes_core.h"
 
 #define WBR_SEM_NAME "Amarchy.WBReset"
 #define WBR_MAX 8
@@ -76,5 +77,16 @@ int wbr_client_step(wbr_rec *r, void *task);
 #define WBR_GATE_HOOK 14
 #define WBR_GATE_SAVED 18
 void wbr_gate_build(unsigned char *out, uint32_t hook, uint32_t saved);
+
+
+/* TE-7 (plan section 5, decision D1): the theme fields that only a Workbench reset applies. The pure decision: which of them differ
+ * between the running model and the one being saved. Screen font, window title font, title bar height, gadget size, gadget padding,
+ * gadget order, scroll bar width. Everything else (colours, radius, border width, knob, glyph set, ghost, hover, menu / shell / icon
+ * font, pointer) is live and never in this mask. */
+enum { WBR_B_SCREEN_FONT = 1, WBR_B_TITLE_FONT = 2, WBR_B_BAR_HEIGHT = 4, WBR_B_GADGET_SIZE = 8, WBR_B_GADGET_PAD = 16,
+       WBR_B_GADGET_ORDER = 32, WBR_B_SCROLL_WIDTH = 64 };
+unsigned wbr_bound_mask(const gt_model *running, const gt_model *neu);
+/* the "Reset Workbench Now / Later" requester rides the DESK CONFIRM verb (desk_confirm_dos.c); a positive int in the verb's number */
+#define WBR_ASK_MASK 0x40000000u   /* the DESK CONFIRM mask that means "ask for the reset" instead of a Keep / Revert apply */
 
 #endif

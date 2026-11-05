@@ -309,6 +309,12 @@ int gt_delete_user(const prefs_fs *fs, const char *name, char *why, int cap);
 extern unsigned long gt_dos_edit_applies;
 int gt_save_edit(const prefs_fs *fs, const char *name, const gt_model *m, const char *current, int (*apply)(const char *name),
                  char *why, int cap);
+/* TE-7.1 (D1): the editor's Save. gt_save_edit, then, when the saved theme is the current one and bound(running, saved) is not 0,
+ * the reset-bound fields changed (wbr_bound_mask): ask(mask) shows the "Reset Workbench Now / Later" prompt. The running model is
+ * the file as loaded or last saved (gt_ed.saved) when the buffer holds this theme. Sentinel gt_dos_reset_prompts counts the asks. */
+extern unsigned long gt_dos_reset_prompts;
+int gt_save_editor(const prefs_fs *fs, const char *name, const gt_model *m, const char *current, int (*apply)(const char *name),
+                   unsigned (*bound)(const gt_model *running, const gt_model *neu), void (*ask)(unsigned mask), char *why, int cap);
 
 struct sd_setting; /* settings_def.h includes this header through prefs_ui.h: the rows are named by tag */
 
