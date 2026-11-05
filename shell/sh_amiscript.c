@@ -524,6 +524,7 @@ typedef struct {
 typedef struct {
     key_item it[MAXITEM];
     int n;
+    char *keytxt;           /* the .key line's template text, asked back by `Execute file ?` */
     int have;               /* a .key line was seen: only then are <...> replaced */
     char bra, ket, dot, dollar;
     char *defname[MAXDEF], *defval[MAXDEF];
@@ -555,6 +556,7 @@ static void tmpl_free(tmpl *t)
         free(t->it[i].raw);
         free(t->it[i].val.s);
     }
+    free(t->keytxt);
     for (i = 0; i < t->ndef; i++) {
         free(t->defname[i]);
         free(t->defval[i]);
@@ -714,8 +716,10 @@ static int directive(tmpl *t, const char *p, size_t len, int first)
             tmpl_parse(t, s);
             free(s);
         }
-        if (first)
+        if (first) {
             t->have = 1;
+            t->keytxt = dup_n(arg, (size_t)(end - arg));
+        }
     } else if (ieq_n(w, wl, "bra")) {
         if (arg < end)
             t->bra = *arg;
@@ -815,7 +819,28 @@ static char *template_load(sh_shell *sh, const char *text, int argc, char **argv
             isdir[li] = 1;
         p += len + (e ? 1 : 0);
     }
-    if (t.have && tmpl_bind(sh, &t, argv + 1, argc - 1, io)) {
+    if (t.have && argc == 2 && !strcmp(argv[1], "?")) {
+        /* `Execute file ?` on 3.2 (S7b-6 R6): the template is printed, one reply line is read from the input and
+         * bound like command-line arguments. No reply (input ended) binds nothing. */
+        char line[512];
+        long n;
+        line_toks rt;
+        int bad;
+        memset(&rt, 0, sizeof(rt));
+        say_io(sh, io->out, t.keytxt ? t.keytxt : "");
+        say_io(sh, io->out, ": ");
+        n = sh->os.read_line(sh->os.data, io->in, line, (long)sizeof(line));
+        while (n > 0 && (line[n - 1] == '\n' || line[n - 1] == '\r'))
+            n--;
+        line[n < 0 ? 0 : n] = 0;
+        bad = lex_line(sh, line, &rt) || tmpl_bind(sh, &t, rt.v, rt.n, io);
+        toks_free(&rt);
+        if (bad) {
+            free(isdir);
+            tmpl_free(&t);
+            return 0;
+        }
+    } else if (t.have && tmpl_bind(sh, &t, argv + 1, argc - 1, io)) {
         free(isdir);
         tmpl_free(&t);
         return 0;
@@ -891,12 +916,6 @@ long sh_amiga_execute(sh_shell *sh, const char *text0, const char *file, int arg
     (void)file;
     sh->failat_leak = 0;
     sh->amiscr_load_rc = 20;
-    if (argc == 2 && !strcmp(argv[1], "?") && (text0[0] == '.' && (text0[1] == 'k' || text0[1] == 'K'))) {
-        /* `Execute file ?` on 3.2 (S7b-6 R6): the template is asked for and an empty reply (NIL: input) ends the
-         * call quietly, rc 0, the script not run. UNVERIFIED: a non-empty reply from a console. */
-        sh->ctx.status = 0;
-        return 0;
-    }
     loaded = template_load(sh, text0, argc, argv, io);
     text = loaded;
     p = text;

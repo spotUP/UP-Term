@@ -2841,10 +2841,18 @@ static void execute_3_2_quirks(void)
     sh_run_text(&sh, "execute RAM:q17; echo rc$?", &inc);
     CHECK_STR(slot(OUT)->data, "inner\nback\nrc0\n");
     run("");
-    amiscr_put("RAM:q6", ".KEY w/A\necho \"got <w>\"\n");
+    /* S7b-6 R6: `execute file ?` prints the template, reads one reply line and binds it like arguments */
+    amiscr_put("RAM:q6", ".KEY name/A,count/N\necho \"got <name> <count>\"\n");
+    f_write(0, IN, "bob 3\n", 6);
     sh_run_text(&sh, "execute RAM:q6 ?; echo rc$?", &inc);
-    CHECK_STR(slot(OUT)->data, "rc0\n");
+    CHECK_STR(slot(OUT)->data, "name/A,count/N: got bob 3\nrc0\n");
     CHECK_STR(slot(ERR)->data, "");
+    run("");
+    amiscr_put("RAM:q6", ".KEY name/A,count/N\necho \"got <name> <count>\"\n");
+    f_write(0, IN, "\n", 1);
+    sh_run_text(&sh, "execute RAM:q6 ?; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "name/A,count/N: rc10\n");
+    CHECK(strstr(slot(ERR)->data, "required argument missing") != 0);
 }
 
 /* S7b-5 (real 3.2 text): R3 missing /A, R9 failing command named once, R13 Skip, R16 FailAt, R19 Quit abc, R11 EXISTS x VAL 1. */
