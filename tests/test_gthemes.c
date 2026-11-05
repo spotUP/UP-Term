@@ -1176,8 +1176,188 @@ static void test_gthemes_parse_clears_model(void)
     CHECK(r.c[GR_ACCENT] == 0xff8800UL);
 }
 
+/* ---- TE-3: Save, Save As, Duplicate, Import, Export, Delete on a memory file system ---- */
+#define TM_MAX 16
+static char tm_theme[UC_MAX_FILE];
+typedef struct { char path[160]; char *data; long len; } tm_file;
+typedef struct { tm_file f[TM_MAX]; int n; } tm_fs;
+
+static tm_file *tm_find(tm_fs *m, const char *path)
+{
+    int i;
+    for (i = 0; i < m->n; i++)
+        if (!strcmp(m->f[i].path, path))
+            return &m->f[i];
+    return 0;
+}
+static int tm_write(void *c, const char *path, const char *buf, long len)
+{
+    tm_fs *m = (tm_fs *)c;
+    tm_file *f = tm_find(m, path);
+    if (!f) {
+        if (m->n >= TM_MAX)
+            return 0;
+        f = &m->f[m->n++];
+        snprintf(f->path, sizeof f->path, "%s", path);
+        f->data = 0;
+    }
+    free(f->data);
+    f->data = (char *)malloc((size_t)len + 1);
+    memcpy(f->data, buf, (size_t)len);
+    f->data[len] = 0;
+    f->len = len;
+    return 1;
+}
+static int tm_exists(void *c, const char *path) { return tm_find((tm_fs *)c, path) != 0; }
+static int tm_remove(void *c, const char *path)
+{
+    tm_fs *m = (tm_fs *)c;
+    tm_file *f = tm_find(m, path);
+    if (f) {
+        free(f->data);
+        *f = m->f[--m->n];
+    }
+    return 1;
+}
+static int tm_rename(void *c, const char *a, const char *b) { (void)c; (void)a; (void)b; return 0; }
+static long tm_read(void *c, const char *path, char *buf, long cap)
+{
+    tm_file *f = tm_find((tm_fs *)c, path);
+    if (!f || f->len > cap)
+        return -1;
+    memcpy(buf, f->data, (size_t)f->len);
+    return f->len;
+}
+static void tm_init(tm_fs *m, prefs_fs *fs)
+{
+    memset(m, 0, sizeof *m);
+    if (!tm_theme[0])
+        read_file(THEME_DIR "/nord.theme", tm_theme, (long)sizeof tm_theme - 1);
+    fs->ctx = m;
+    fs->write_file = tm_write;
+    fs->exists = tm_exists;
+    fs->remove = tm_remove;
+    fs->rename = tm_rename;
+}
+static void tm_free(tm_fs *m)
+{
+    while (m->n)
+        tm_remove(m, m->f[0].path);
+}
+static int tm_applied;
+static int tm_apply(const char *name) { (void)name; tm_applied++; return 1; }
+
+static void test_gthemes_te3_save(void)
+{
+    tm_fs m;
+    prefs_fs fs;
+    gt_model mod;
+    char why[96], out[4096];
+    tm_file *u, *e;
+    long n;
+    tm_init(&m, &fs);
+    gt_model_parse(tm_theme, (long)strlen(tm_theme), &mod);
+    n = gt_model_save_text(&mod, out, (long)sizeof out);
+    CHECK(gt_save(&fs, "Mine", &mod, why, sizeof why));
+    u = tm_find(&m, "ENVARC:Amarchy/themes/Mine.theme");
+    e = tm_find(&m, "ENV:Amarchy/themes/Mine.theme");
+    CHECK(u && e);
+    CHECK(u && u->len == n && !memcmp(u->data, out, (size_t)n));     /* save text equals the round trip */
+    CHECK(e && e->len == n && !memcmp(e->data, out, (size_t)n));
+    CHECK(!gt_save(&fs, "bad/name", &mod, why, sizeof why));        /* name refusal */
+    CHECK(strstr(why, "name") != 0);
+    CHECK(!gt_save(&fs, "", &mod, why, sizeof why));
+    /* D2: a shipped theme's name is never saved over, not even as a user copy */
+    tm_write(&m, "UP-Term:Amarchy/Themes/Nord.theme", tm_theme, (long)strlen(tm_theme));
+    CHECK(!gt_save(&fs, "Nord", &mod, why, sizeof why));
+    CHECK(tm_find(&m, "ENVARC:Amarchy/themes/Nord.theme") == 0);
+    CHECK(!gt_save_as(&fs, "Mine", &mod, why, sizeof why));         /* taken */
+    CHECK(!gt_save_as(&fs, "Nord", &mod, why, sizeof why));
+    CHECK(gt_save_as(&fs, "Nord Custom", &mod, why, sizeof why));
+    tm_free(&m);
+}
+
+static int tm_taken(void *c, const char *name)
+{
+    char p[160];
+    snprintf(p, sizeof p, "ENVARC:Amarchy/themes/%s.theme", name);
+    return tm_exists(c, p);
+}
+static void test_gthemes_te3_custom_name(void)
+{
+    tm_fs m;
+    prefs_fs fs;
+    char nm[GT_NAME];
+    tm_init(&m, &fs);
+    gt_custom_name("Nord", tm_taken, &m, nm, sizeof nm);
+    CHECK_STR(nm, "Nord Custom");
+    tm_write(&m, "ENVARC:Amarchy/themes/Nord Custom.theme", "x", 1);
+    gt_custom_name("Nord", tm_taken, &m, nm, sizeof nm);
+    CHECK_STR(nm, "Nord Custom 2");
+    tm_free(&m);
+}
+
+static void test_gthemes_te3_edit_applies(void)
+{
+    tm_fs m;
+    prefs_fs fs;
+    gt_model mod;
+    char why[96];
+    unsigned long before;
+    tm_init(&m, &fs);
+    gt_model_parse(tm_theme, (long)strlen(tm_theme), &mod);
+    tm_applied = 0;
+    before = gt_dos_edit_applies;
+    CHECK(gt_save_edit(&fs, "Mine", &mod, "Other", tm_apply, why, sizeof why));
+    CHECK_INT((int)(gt_dos_edit_applies - before), 0);               /* not the current one: no re-apply */
+    CHECK_INT(tm_applied, 0);
+    CHECK(gt_save_edit(&fs, "Mine", &mod, "mine", tm_apply, why, sizeof why));
+    CHECK_INT((int)(gt_dos_edit_applies - before), 1);               /* current, file changed: applied (sentinel) */
+    CHECK_INT(tm_applied, 1);
+    CHECK(!gt_save_edit(&fs, "bad/n", &mod, "bad/n", tm_apply, why, sizeof why));
+    CHECK_INT(tm_applied, 1);                                        /* a refused save applies nothing */
+    tm_free(&m);
+}
+
+static void test_gthemes_te3_import_export_delete(void)
+{
+    tm_fs m;
+    prefs_fs fs;
+    char why[96], buf[2048];
+    tm_file *f;
+    tm_init(&m, &fs);
+    tm_write(&m, "RAM:ok.theme", tm_theme, (long)strlen(tm_theme));
+    tm_write(&m, "RAM:bad.theme", "this is not a theme\n", 20);
+    CHECK(!gt_import(&fs, tm_read, &m, "RAM:bad.theme", "Bad", why, sizeof why));
+    CHECK(strstr(why, "no key = value") != 0);                       /* the parser's message */
+    CHECK(tm_find(&m, "ENVARC:Amarchy/themes/Bad.theme") == 0);      /* nothing copied */
+    CHECK(!gt_import(&fs, tm_read, &m, "RAM:missing.theme", "Bad", why, sizeof why));
+    CHECK(gt_import(&fs, tm_read, &m, "RAM:ok.theme", "Imp", why, sizeof why));
+    f = tm_find(&m, "ENVARC:Amarchy/themes/Imp.theme");
+    CHECK(f && f->len == (long)strlen(tm_theme) && !memcmp(f->data, tm_theme, (size_t)f->len));   /* byte for byte */
+    CHECK(tm_find(&m, "ENV:Amarchy/themes/Imp.theme") != 0);
+    CHECK(!gt_import(&fs, tm_read, &m, "RAM:ok.theme", "Imp", why, sizeof why));   /* taken */
+    CHECK(gt_export(&fs, tm_read, &m, "Imp", "RAM:out.theme", why, sizeof why));
+    CHECK_INT((int)tm_read(&m, "RAM:out.theme", buf, sizeof buf), (int)strlen(tm_theme));
+    CHECK(gt_duplicate(&fs, tm_read, &m, "Imp", "Imp Two", why, sizeof why));
+    CHECK(tm_find(&m, "ENVARC:Amarchy/themes/Imp Two.theme") != 0);
+    CHECK(!gt_duplicate(&fs, tm_read, &m, "Nothing", "X", why, sizeof why));
+    /* Delete User Theme: a shipped theme of that name shows again, the shipped file is never touched */
+    tm_write(&m, "UP-Term:Amarchy/Themes/Imp.theme", tm_theme, (long)strlen(tm_theme));
+    CHECK(gt_delete_user(&fs, "Imp", why, sizeof why));
+    CHECK(tm_find(&m, "ENVARC:Amarchy/themes/Imp.theme") == 0);
+    CHECK(tm_find(&m, "ENV:Amarchy/themes/Imp.theme") == 0);
+    CHECK(tm_find(&m, "UP-Term:Amarchy/Themes/Imp.theme") != 0);
+    CHECK(!gt_delete_user(&fs, "Imp", why, sizeof why));             /* only the shipped one is left: nothing to delete */
+    tm_free(&m);
+}
+
 void suite_gthemes(void)
 {
+    test_gthemes_te3_save();
+    test_gthemes_te3_custom_name();
+    test_gthemes_te3_edit_applies();
+    test_gthemes_te3_import_export_delete();
     test_gthemes_parse_clears_model();
     test_gthemes_te2_baseline();
     test_gthemes_te2_overrides();

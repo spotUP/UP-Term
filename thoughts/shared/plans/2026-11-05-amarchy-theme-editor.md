@@ -290,12 +290,12 @@ overrides every view's output is byte-equal to today's for all 23 themes.
 
 Files: `amarchy/gthemes_dos.[ch]`, `amarchy/gthemes_core.c`, `tests/test_gthemes.c`.
 
-- [ ] TE-3.1 Save writes `ENVARC:Amarchy/themes/<name>.theme` (user dir wins over shipped, as today; D2) and `ENV:` copy.
-- [ ] TE-3.2 `gt_dos_select` re-applies when the name is the current one and the file changed (today it may skip; check
+- [x] TE-3.1 Save writes `ENVARC:Amarchy/themes/<name>.theme` (user dir wins over shipped, as today; D2) and `ENV:` copy.
+- [x] TE-3.2 `gt_dos_select` re-applies when the name is the current one and the file changed (today it may skip; check
   and test). Sentinel `gt_dos_edit_applies`.
-- [ ] TE-3.3 Save As and Duplicate with `gt_name_ok`; Import and Export copy through ASL (`lf_setting_pick`), validated
+- [x] TE-3.3 Save As and Duplicate with `gt_name_ok`; Import and Export copy through ASL (`lf_setting_pick`), validated
   by the parser before the copy.
-- [ ] TE-3.4 Delete User Theme removes the user file only; a shipped theme of that name shows again.
+- [x] TE-3.4 Delete User Theme removes the user file only; a shipped theme of that name shows again.
 
 Host tests: save text equals the round trip; name refusal; import of a broken file refused with the parser's message.
 

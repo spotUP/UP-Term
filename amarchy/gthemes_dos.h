@@ -32,6 +32,20 @@ extern unsigned long gt_dos_dopus_sends;
 /* how many times gt_dos_select set Workbench pens 0-3 to the theme (wb_pens_apply), and how many times it refused for weak
  * pen 0 / pen 1 contrast (menu_theme.h wb_pens_plan): the reachability sentinels */
 extern unsigned long gt_dos_wb_pens, gt_dos_wb_refused;
+/* TE-3: the editor's file operations on the DOS file system (gthemes_core.h gt_save ... gt_delete_user). They make the drawers
+ * ENVARC:Amarchy/themes and ENV:Amarchy/themes first. 1 done; 0 with why filled. Save: gt_save_edit with gt_dos_apply_saved,
+ * so saving the current theme re-applies it (gt_dos_edit_applies). */
+int gt_dos_save(const char *name, const gt_model *m, char *why, int cap);
+int gt_dos_save_as(const char *name, const gt_model *m, char *why, int cap);
+int gt_dos_duplicate(const char *from, const char *to, char *why, int cap);
+int gt_dos_import(const char *src_path, const char *name, char *why, int cap);
+int gt_dos_export(const char *name, const char *dst_path, char *why, int cap);
+int gt_dos_delete_user(const char *name, char *why, int cap);
+/* TE-3.3: the ASL file requester (prefs_asl.h asl_pick_file, "#?.theme", icons rejected) for Import and Export; the picked path in out.
+ * 1 a file was named, 0 cancelled. */
+struct Screen;
+struct Window;
+int gt_dos_pick_file(struct Screen *scr, struct Window *win, const char *title, char *out, int cap);
 /* fill the Style > Theme rows (ix_add_gthemes) with the current one marked. Call after the other loaders. */
 void gt_dos_load_rows(ix_index *x);
 

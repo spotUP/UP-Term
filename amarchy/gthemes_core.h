@@ -8,6 +8,7 @@
 #define GTHEMES_CORE_H
 
 #include "../config/upconf.h"
+#include "../prefs/prefs_core.h"
 
 #define GT_NAME 40
 #define GT_MAX 64
@@ -158,6 +159,12 @@ int gt_preview_step(const char *row_path, const char *current, char *drawn, int 
  * (PREFS_SAVE_NODIR, PREFS_INSTALL_WRITE / BACKUP / PLACE / STRANDED); failed: the PREFS_T_ target; err: the DOS error
  * (0: unknown). Writes e.g. "the theme could not be saved: write ENV:Amarchy/prefs, error 202". */
 #define GT_SAVE_NAME (-200)
+/* TE-3 refusals, the same text path: the name is a shipped theme's (D2: a shipped theme is never shadowed), the name is taken,
+ * no such user theme, a write failed. (A file that is no theme gets the message of gt_check_text.) */
+#define GT_SAVE_SHIPPED (-201)
+#define GT_SAVE_EXISTS (-202)
+#define GT_SAVE_MISSING (-203)
+#define GT_SAVE_WRITE (-205)
 void gt_save_text(int step, int failed, long err, char *out, int cap);
 
 /* ---- Theme file format v2 and the model (plan 2026-11-05-amarchy-theme-editor.md, TE-1) ----
@@ -271,5 +278,36 @@ uc_u32 gt_elem_rgb(const gtheme *t, int elem, uc_u32 fallback);
 int gt_model_attach(gtheme *t, const char *buf, long len);
 void gt_load_model(gt_read_fn rd, void *ctx, const char *name, gtheme *out);
 void gt_free(gtheme *t);
+
+/* ---- TE-3: Save, Save As, Duplicate, Import, Export, Delete (plan TE-3; the DOS side is gthemes_dos.h) ----
+ * All of it runs over a prefs_fs, so a host test drives it on a memory file system. The user file is GT_USER_DIR/<name>.theme with
+ * the copy in GT_ENV_DIR; the drawers must exist (gthemes_dos makes them). D2: an edited shipped theme is saved under a new name,
+ * never over the shipped file and never as a same-name user copy. */
+#define GT_ENV_DIR "ENV:Amarchy/themes"
+/* The editor's proposed name for a copy of base: "<base> Custom", then "<base> Custom 2" and so on until taken(ctx, name) is 0.
+ * Cut to fit GT_NAME. taken may be 0 (never taken). */
+void gt_custom_name(const char *base, int (*taken)(void *ctx, const char *name), void *ctx, char *out, int cap);
+/* 1 when the theme text parses as a theme; else 0 and msg says why (empty, no keys, a bad reference, a group cycle, too many
+ * references). msg may be 0. */
+int gt_check_text(const char *buf, long len, char *msg, int cap);
+/* Save the model as the user theme name (both files). 1 saved; 0 with why filled (gt_save_text). Refused: a bad name, a shipped
+ * theme's name that has no user file (D2). */
+int gt_save(const prefs_fs *fs, const char *name, const gt_model *m, char *why, int cap);
+/* Save As: gt_save under a new name; refused (GT_SAVE_EXISTS) when the user or the shipped drawer holds it. */
+int gt_save_as(const prefs_fs *fs, const char *name, const gt_model *m, char *why, int cap);
+/* Duplicate: theme from (the user's file, else the shipped one) written as the new user theme to (a v2 file). */
+int gt_duplicate(const prefs_fs *fs, gt_read_fn rd, void *ctx, const char *from, const char *to, char *why, int cap);
+/* Import: the file at src (read through rd) is checked by gt_check_text and copied byte for byte as the user theme name.
+ * Export: theme name copied to the path dst. Both 0 with why filled on a refusal. */
+int gt_import(const prefs_fs *fs, gt_read_fn rd, void *ctx, const char *src, const char *name, char *why, int cap);
+int gt_export(const prefs_fs *fs, gt_read_fn rd, void *ctx, const char *name, const char *dst, char *why, int cap);
+/* Delete User Theme: the user file and its ENV: copy go, the shipped file of that name (if any) is untouched and shows again.
+ * GT_SAVE_MISSING when the user holds no such file. */
+int gt_delete_user(const prefs_fs *fs, const char *name, char *why, int cap);
+/* TE-3.2: save the edited theme, and when it is the current one (name compared without case) call apply(name): the file changed
+ * under the same name, so the drawn desktop must be re-applied. The sentinel counts every apply call. 1 saved. */
+extern unsigned long gt_dos_edit_applies;
+int gt_save_edit(const prefs_fs *fs, const char *name, const gt_model *m, const char *current, int (*apply)(const char *name),
+                 char *why, int cap);
 
 #endif
