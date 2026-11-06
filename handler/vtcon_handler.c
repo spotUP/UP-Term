@@ -297,6 +297,7 @@ typedef struct con {
     char hist_queue[512];        /* lines waiting for the file, '\n'-ended */
     int hist_queue_len;
     int comp_busy, check_busy;
+    int cd_gated;                /* a read waits for a lookup's DupLock (comp_start) */
     int style_save;              /* STYLE_SAVE_*: a look chosen in the menu, for the profile (style_save_run) */
     /* W21: ghost text from completion candidates, looked up off the key
      * path: the request (its names stay as the directory's listing), the
@@ -960,6 +961,7 @@ static void in_append(con *c, const vt_u8 *b, int n)
 }
 
 static int tty_active(con *c);
+static int answer_read(con *c);
 static void service_reads(con *c);
 static void rtimer_start(con *c, ULONG tenths);
 
@@ -1345,6 +1347,7 @@ struct watch_msg {
     upconf *conf;
     char *theme;      /* the text of the theme file (GT_TERM_FILE) when it changed, else 0: the window frees it */
     long theme_len;
+    int theme_changed; /* the theme file was re-read for this message: theme 0 then means it is gone (upconf_theme_report) */
     int quit, done;
     int nerd_ttf; /* FONTS:SymbolsNerdFontMono.ttf is there, as of this table */
 };
@@ -1420,8 +1423,10 @@ static void watch_worker(void)
                 FreeVec(m->theme);
                 m->theme = 0;
             }
+            m->theme_changed = 0;
             if (theme_pend) {
                 m->theme = read_active_theme(&m->theme_len);
+                m->theme_changed = 1;
                 theme_pend = 0;
             }
             if (m->conf)
@@ -2840,7 +2845,8 @@ static void watch_take(con *c)
             menu_remove(c, c->w.win);
             menu_add(c, c->w.win);
         }
-        if (m->theme) {
+        switch (upconf_theme_report(m->theme_changed, m->theme)) {
+        case 1:
             if (c->w.t && c->w.win)
                 theme_apply(c, m->theme, m->theme_len);
             if (c->theme_text)
@@ -2849,6 +2855,23 @@ static void watch_take(con *c)
             c->theme_len = m->theme_len;
             m->theme = 0;
             theme_font_live(c);
+            break;
+        case 2: /* the file is gone: no theme, the window shows its profile's colours and font (a profile switch to its own profile) */
+            if (c->theme_text) {
+                const char *names[UC_MAX_PROFILES + 1];
+                int n, k;
+                FreeVec(c->theme_text);
+                c->theme_text = 0;
+                c->theme_len = 0;
+                n = c->conf ? upconf_profiles(c->conf, names) : 0;
+                for (k = 0; k < n && !str_ieq(names[k], c->profile); k++)
+                    ;
+                if (k < n)
+                    profile_switch(c, k);
+                else
+                    theme_font_live(c);
+            }
+            break;
         }
         c->watch_held = 0;
         PutMsg(&c->watch_task->pr_MsgPort, &m->msg); /* back: the next change */
@@ -4005,7 +4028,7 @@ static void tty_enter(con *c, struct Task *owner)
 static void tty_reads(con *c)
 {
     int k;
-    while ((k = next_read(c)) >= 0) {
+    while ((k = answer_read(c)) >= 0) {
         struct DosPacket *p = c->reads[k];
         long n = 0;
         int eof, arm;
@@ -4035,7 +4058,7 @@ static void service_reads(con *c)
         return;
     }
     int k;
-    while ((k = next_read(c)) >= 0) {
+    while ((k = answer_read(c)) >= 0) {
         struct DosPacket *p = c->reads[k];
         LONG want = p->dp_Arg3, n;
         int i;
@@ -4162,8 +4185,57 @@ static struct Process *opener(con *c)
  * at the window's first Open (never the opener's own list: it may end) */
 static int comp_start(con *c, struct complete_req *q)
 {
+    struct Process *o = opener(c);
+    int k;
     q->path = c->path;
-    return complete_start(q, c->comp_port, opener(c));
+    /* s61: the worker DupLocks the opener's current directory, a lock the
+     * opener UnLocks at its next CD or its end. Only when the opener is
+     * provably blocked: one of its synchronous Reads waits here (termios
+     * clients read async and are never trusted). cd_taking then keeps that
+     * opener's reads unanswered (answer_read) until the worker has its own
+     * lock, so the opener cannot run in between. */
+    q->cd_from = 0;
+    q->cd_taking = 0;
+    if (o && !tty_active(c) && o->pr_Task.tc_Node.ln_Type == NT_PROCESS)
+        for (k = 0; k < c->nreads && !q->cd_from; k++) {
+            struct MsgPort *port = c->reads[k]->dp_Port;
+            if (port && cc_cd_blocked(o, port->mp_SigTask, port, &o->pr_MsgPort))
+                q->cd_from = o;
+        }
+    q->cd_taking = q->cd_from != 0;
+    return complete_start(q, c->comp_port, o);
+}
+
+/* s61: does read k wait for a lookup's DupLock of its sender's current
+ * directory (comp_start)? Answering it would let the sender CD or end
+ * while the worker's DupLock reads the lock. */
+static int cd_read_waits(con *c, int k)
+{
+    struct complete_req *q[5];
+    const void *from[5];
+    int taking[5], i;
+    struct MsgPort *port = c->reads[k]->dp_Port;
+    q[0] = c->comp;
+    q[1] = c->check;
+    q[2] = c->hist;
+    q[3] = c->ghost;
+    q[4] = c->splits;
+    for (i = 0; i < 5; i++) {
+        from[i] = q[i] ? (const void *)q[i]->cd_from : 0;
+        taking[i] = q[i] ? q[i]->cd_taking : 0;
+    }
+    if (!port || !cc_cd_read_waits(port->mp_SigTask, from, taking, 5))
+        return 0;
+    c->cd_gated = 1; /* finish_completion serves the reads again */
+    return 1;
+}
+
+/* the next read the answer paths may reply: next_read's, unless a lookup
+ * still takes its sender's directory (then none: the order stays) */
+static int answer_read(con *c)
+{
+    int k = next_read(c);
+    return k >= 0 && cd_read_waits(c, k) ? -1 : k;
 }
 
 static void forget_words(con *c)
@@ -4635,6 +4707,10 @@ static void partial_refine(con *c)
 static void finish_completion(con *c)
 {
     struct complete_req *q;
+    if (c->cd_gated) { /* a worker may have its DupLock now (comp_start) */
+        c->cd_gated = 0;
+        service_reads(c);
+    }
     while ((q = (struct complete_req *)GetMsg(c->comp_port)) != 0) {
         if (q == c->hist) {
             c->hist_busy = 0;

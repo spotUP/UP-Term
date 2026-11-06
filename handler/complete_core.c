@@ -81,6 +81,22 @@ long cc_path_next(const cc_path *p, int *at)
     return p && *at < p->n ? p->lock[(*at)++] : 0;
 }
 
+int cc_cd_blocked(const void *opener, const void *sender, const void *reply_port,
+                  const void *opener_port)
+{
+    /* an async read (SendPkt to another port) leaves its sender running */
+    return opener && sender == opener && reply_port && reply_port == opener_port;
+}
+
+int cc_cd_read_waits(const void *reader, const void *const *from, const volatile int *taking, int n)
+{
+    int i;
+    for (i = 0; i < n; i++)
+        if (taking[i] && from[i] && from[i] == reader)
+            return 1;
+    return 0;
+}
+
 /* ---- W22: the command-name cache (see complete_core.h) -------------------- */
 
 static int cc_lower(int c)
