@@ -2302,7 +2302,21 @@ static void subshell_proc(void)
         j->sub->os.data = &vp;
         j->sub->ctx.pid = (long)me;
         j->sub->stack_limit = stack_limit_here();
-        j->rc = sh_run_child(j->sub, j->tree, &j->io);
+        {
+            /* the subshell's own Input() and Output() are its streams, as a forked Unix subshell
+             * has its parent's descriptors: a foreground command takes the shell's Input() as its
+             * CLI standard input (the runner), and the NIL: CreateNewProc put here was not the
+             * input it got. C:Type 47.x then took its input as redirected and its template without
+             * FROM: Echo [`Type file`] in an Execute script printed [] with rc 10 (S7c-2, OS 3.2
+             * rig). Put back before the process ends: its end closes the NIL: it opened. */
+            BPTR oin = j->io.in ? SelectInput((BPTR)j->io.in) : 0;
+            BPTR oout = j->io.out ? SelectOutput((BPTR)j->io.out) : 0;
+            j->rc = sh_run_child(j->sub, j->tree, &j->io);
+            if (oin)
+                SelectInput(oin);
+            if (oout)
+                SelectOutput(oout);
+        }
         DeleteMsgPort(vp.port);
     } else {
         /* cannot run: its streams and memory go all the same */
