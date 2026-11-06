@@ -2601,29 +2601,45 @@ static int lc(int c)
     return (c >= 'A' && c <= 'Z') ? c + 32 : c;
 }
 
+unsigned long gt_screen_match_steps;
+
+/* Non-recursive state-set (NFA) match, O(pattern length * name length), no malloc, fixed stack (2 * GT_SCR_PAT + 2 bytes).
+ * The pattern is tokenised on the fly: a token starts at offset i and is "#c" (repeat c, or any char when c is '?') when
+ * p[i] is '#' and p[i+1] exists, else one literal / '?' character. A lone trailing '#' is a literal. reach[i] = 1 when the
+ * name read so far can leave the matcher about to read the token that starts at offset i; reach[plen] = whole pattern consumed.
+ * A repeat token may be skipped (closure to i + 2). A pattern longer than GT_SCR_PAT - 1 returns 0: the rule parser
+ * cannot produce one. */
 int gt_screen_match(const char *p, const char *s)
 {
-    while (*p) {
-        if (*p == '#' && p[1]) {
-            int any = (p[1] == '?');
-            int ch = lc((unsigned char)p[1]);
-            p += 2;
-            for (;;) {
-                if (gt_screen_match(p, s))
-                    return 1;
-                if (!*s || !(any || lc((unsigned char)*s) == ch))
-                    return 0;
-                s++;
-            }
-        }
+    unsigned char a[GT_SCR_PAT + 2], b[GT_SCR_PAT + 2];
+    unsigned char *cur = a, *nxt = b, *t;
+    size_t plen = strlen(p), i;
+
+    if (plen > GT_SCR_PAT - 1)
+        return 0;
+    memset(cur, 0, plen + 2);
+    cur[0] = 1;
+    for (;;) {
+        for (i = 0; i < plen; i++) /* closure: repeat tokens may match nothing */
+            if (cur[i] && p[i] == '#' && p[i + 1])
+                cur[i + 2] = 1;
         if (!*s)
-            return 0;
-        if (*p != '?' && lc((unsigned char)*p) != lc((unsigned char)*s))
-            return 0;
-        p++;
+            return cur[plen];
+        memset(nxt, 0, plen + 2);
+        for (i = 0; i < plen; i++) {
+            gt_screen_match_steps++;
+            if (!cur[i])
+                continue;
+            if (p[i] == '#' && p[i + 1]) {
+                if (p[i + 1] == '?' || lc((unsigned char)p[i + 1]) == lc((unsigned char)*s))
+                    nxt[i] = 1;
+                i++; /* the char after '#' is part of this token; positions inside a token are never reachable */
+            } else if (p[i] == '?' || lc((unsigned char)p[i]) == lc((unsigned char)*s))
+                nxt[i + 1] = 1;
+        }
+        t = cur; cur = nxt; nxt = t;
         s++;
     }
-    return !*s;
 }
 
 int gt_screen_exact(const char *pat)
