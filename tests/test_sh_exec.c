@@ -2928,6 +2928,14 @@ static void execute_3_2_quirks(void)
     amiscr_put("RAM:r15", "execute RAM:q1\nskip end\necho skipped\nlab end\nendskip\necho \"rc=$RC\"\n");
     sh_run_text(&sh, "execute RAM:r15", &inc);
     CHECK_STR(slot(OUT)->data, "rc=0\n");
+    /* S7c-7 (c): Lab, EndIf, Else and EndSkip are commands that succeed, so each resets $RC after a failed one */
+    run("");
+    amiscr_put("RAM:q5c", "quit 5\n");
+    amiscr_put("RAM:r7c", "failat 21\nexecute RAM:q5c\nlab e\necho a$RC\nexecute RAM:q5c\nIf 1 EQ 1\nEndIf\necho b$RC\n"
+               "execute RAM:q5c\nIf 1 EQ 2\nElse\necho c$RC\nEndIf\nexecute RAM:q5c\nIf 1 EQ 1\nElse\nEndIf\necho d$RC\n"
+               "execute RAM:q5c\nEndSkip\necho e$RC\n");
+    sh_run_text(&sh, "execute RAM:r7c", &inc);
+    CHECK_STR(slot(OUT)->data, "a0\nb0\nc0\nd0\ne0\n");
     run("");
     /* S7b-6 R6: `execute file ?` prints the template, reads one reply line and binds it like arguments */
     amiscr_put("RAM:q6", ".KEY name/A,count/N\necho \"got <name> <count>\"\n");
