@@ -69,6 +69,8 @@ uc_u32 desk_role(const gtheme *t, int role);
 /* the role pen (DK_BG..DK_DARKER; DK_ACCENT at most on depth <= 2) nearest to rgb 0xRRGGBB at a screen depth: squared RGB distance,
  * ties to the lower pen. The one rule behind ip_fold and the pen budget. */
 int gt_nearest_role_pen(const gtheme *t, uc_u32 rgb, int depth);
+/* squared RGB distance of two 0xRRGGBB colours: the one distance behind gt_nearest_role_pen and the flat role pens (flat_role_core) */
+unsigned long gt_rgb_dist2(uc_u32 a, uc_u32 b);
 
 /* the colour maths of the derivation (moved from desk_core, R1.18a): brightness 0..255, a contrast ratio times 100 (100 = equal) */
 int gt_luma(uc_u32 rgb);
