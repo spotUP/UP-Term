@@ -1,5 +1,5 @@
 /* iconpen_dos: the OS half of the shared icon pen holder (plan 2026-11-01-amarchy-filled-icon-set.md F14, H1).
- * One public record ("Amarchy.IconPens.3" semaphore, ip_shared) lives in memory for as long as an owner wants the 16 icon pens.
+ * One public record ("Amarchy.IconPens.4" semaphore, ip_shared) lives in memory for as long as an owner wants the 16 icon pens.
  * ObtainPen pens belong to the screen's colour map, not to a task, so the record outlives the amarchy-icons process that
  * created it; amarchy-flat's 1 s tick re-obtains them when the Workbench screen is reopened. The decisions are
  * iconpen_core.c (host-tested). The program defines struct IntuitionBase *IntuitionBase and struct GfxBase *GfxBase and opens
@@ -15,7 +15,7 @@
 
 /* The name carries the record layout: ".3" adds the plan pens to the holder (TE-10.5b); ".2" was the per-screen table (TE-10.4). A binary still running from before an update looks
  * for the old name and never reads this layout. 18 characters, fits ipd_rec.name[20]. */
-#define IPD_SEM_NAME "Amarchy.IconPens.3"
+#define IPD_SEM_NAME "Amarchy.IconPens.4"
 
 /* The public record. Public so tests/amiga/iconpens.c reads the real layout; nobody else touches it. Everything big lives here
  * (AllocVec in find_rec), never on a stack. */
