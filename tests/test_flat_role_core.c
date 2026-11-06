@@ -12,61 +12,61 @@
 static void dri_fill(short *dri)
 {
     int i;
-    for (i = 0; i < FLAT_ROLE_DRI_PENS; i++)
+    for (i = 0; i < FLAT_RP_DRI_PENS; i++)
         dri[i] = (short)(100 + i);
 }
 
 static void rgb_all(uc_u32 *rgb, uc_u32 c)
 {
     int i;
-    for (i = 0; i < FLAT_ROLE_COUNT; i++)
+    for (i = 0; i < FLAT_RP_COUNT; i++)
         rgb[i] = c;
 }
 
 /* R1: a held plan pen with the row's colour wins, over a ColorMap pen with the same colour too */
 static void r1_held_exact(void)
 {
-    uc_u32 rgb[FLAT_ROLE_COUNT], cmap[8] = { 0x000000, 0x111111, 0x222222, 0x333333, 0x444444, 0x555555, 0x666666, 0xABCDEF };
-    short held[2] = { 20, 21 }, dri[FLAT_ROLE_DRI_PENS];
+    uc_u32 rgb[FLAT_RP_COUNT], cmap[8] = { 0x000000, 0x111111, 0x222222, 0x333333, 0x444444, 0x555555, 0x666666, 0xABCDEF };
+    short held[2] = { 20, 21 }, dri[FLAT_RP_DRI_PENS];
     uc_u32 hrgb[2] = { 0xABCDEF, 0x123456 };
     flat_role_pens out;
     rgb_all(rgb, 0x999999);
-    rgb[FLAT_ROLE_BUTTON] = 0xABCDEF;
-    rgb[FLAT_ROLE_OUTLINE] = 0x123456;
+    rgb[FLAT_RP_BUTTON] = 0xABCDEF;
+    rgb[FLAT_RP_OUTLINE] = 0x123456;
     dri_fill(dri);
     flat_role_resolve(rgb, held, hrgb, 2, cmap, 8, dri, &out);
-    CHECK_INT(out.pen[FLAT_ROLE_BUTTON], 20);     /* held pen 20, not ColorMap pen 7 */
-    CHECK_INT(out.pen[FLAT_ROLE_OUTLINE], 21);
+    CHECK_INT(out.pen[FLAT_RP_BUTTON], 20);     /* held pen 20, not ColorMap pen 7 */
+    CHECK_INT(out.pen[FLAT_RP_OUTLINE], 21);
     CHECK_INT(out.ok, 1);
 }
 
 /* R2: no held match: the exact ColorMap pen, even when another pen is closer to nothing else */
 static void r2_cmap_exact(void)
 {
-    uc_u32 rgb[FLAT_ROLE_COUNT], cmap[8] = { 0x000000, 0x101010, 0x202020, 0x303030, 0x404040, 0x505050, 0x606060, 0x707070 };
-    short dri[FLAT_ROLE_DRI_PENS];
+    uc_u32 rgb[FLAT_RP_COUNT], cmap[8] = { 0x000000, 0x101010, 0x202020, 0x303030, 0x404040, 0x505050, 0x606060, 0x707070 };
+    short dri[FLAT_RP_DRI_PENS];
     flat_role_pens out;
     rgb_all(rgb, 0x000000);
-    rgb[FLAT_ROLE_PTEXT] = 0x505050;
-    rgb[FLAT_ROLE_DIMTEXT] = 0x707070;
-    rgb[FLAT_ROLE_TEXT] = 0x303030;               /* a DrawInfo row with an exact match takes the match, not TEXTPEN */
+    rgb[FLAT_RP_PTEXT] = 0x505050;
+    rgb[FLAT_RP_DIMTEXT] = 0x707070;
+    rgb[FLAT_RP_TEXT] = 0x303030;               /* a DrawInfo row with an exact match takes the match, not TEXTPEN */
     dri_fill(dri);
     flat_role_resolve(rgb, 0, 0, 0, cmap, 8, dri, &out);
-    CHECK_INT(out.pen[FLAT_ROLE_PTEXT], 5);
-    CHECK_INT(out.pen[FLAT_ROLE_DIMTEXT], 7);
-    CHECK_INT(out.pen[FLAT_ROLE_TEXT], 3);
+    CHECK_INT(out.pen[FLAT_RP_PTEXT], 5);
+    CHECK_INT(out.pen[FLAT_RP_DIMTEXT], 7);
+    CHECK_INT(out.pen[FLAT_RP_TEXT], 3);
     /* a held pen is also found when the ColorMap lacks the colour, and exact beats the first of two equal cmap pens */
     cmap[2] = cmap[5] = 0x505050;
     flat_role_resolve(rgb, 0, 0, 0, cmap, 8, dri, &out);
-    CHECK_INT(out.pen[FLAT_ROLE_PTEXT], 2);       /* lowest pen of equal colours */
+    CHECK_INT(out.pen[FLAT_RP_PTEXT], 2);       /* lowest pen of equal colours */
 }
 
 /* R3: nearest by the gthemes distance (squared RGB, ties to the lower pen). Target 0: pen 1 (30,30,30) is nearer by squared
  * distance (2700 against 3600) but farther by a Manhattan sum (90 against 60), so a second formula would pick pen 2. */
 static void r3_nearest_gthemes_distance(void)
 {
-    uc_u32 rgb[FLAT_ROLE_COUNT], cmap[3] = { 0xFFFFFF, RGB(30, 30, 30), RGB(0, 0, 60) };
-    short dri[FLAT_ROLE_DRI_PENS];
+    uc_u32 rgb[FLAT_RP_COUNT], cmap[3] = { 0xFFFFFF, RGB(30, 30, 30), RGB(0, 0, 60) };
+    short dri[FLAT_RP_DRI_PENS];
     flat_role_pens out;
     int i, best = 0;
     rgb_all(rgb, RGB(0, 0, 0));
@@ -76,37 +76,37 @@ static void r3_nearest_gthemes_distance(void)
         if (gt_rgb_dist2(rgb[0], cmap[i]) < gt_rgb_dist2(rgb[0], cmap[best]))
             best = i;
     CHECK_INT(best, 1);
-    CHECK_INT(out.pen[FLAT_ROLE_OUTLINE], best);
-    CHECK_INT(out.pen[FLAT_ROLE_BUTTON], best);
-    CHECK_INT(out.pen[FLAT_ROLE_PTEXT], best);
-    CHECK_INT(out.pen[FLAT_ROLE_DIMTEXT], best);
+    CHECK_INT(out.pen[FLAT_RP_OUTLINE], best);
+    CHECK_INT(out.pen[FLAT_RP_BUTTON], best);
+    CHECK_INT(out.pen[FLAT_RP_PTEXT], best);
+    CHECK_INT(out.pen[FLAT_RP_DIMTEXT], best);
     /* tie keeps the lower pen, as gt_nearest_role_pen */
     cmap[1] = RGB(10, 0, 0);
     cmap[2] = RGB(0, 10, 0);
     flat_role_resolve(rgb, 0, 0, 0, cmap, 3, dri, &out);
-    CHECK_INT(out.pen[FLAT_ROLE_OUTLINE], 1);
+    CHECK_INT(out.pen[FLAT_RP_OUTLINE], 1);
     CHECK_INT(gt_rgb_dist2(RGB(0, 0, 0), RGB(3, 4, 0)), 25);
 }
 
 /* R4: the three DrawInfo rows take TEXTPEN / SHADOWPEN / BACKGROUNDPEN when nothing matches exactly; the nearest rows never do */
 static void r4_dri_rows(void)
 {
-    uc_u32 rgb[FLAT_ROLE_COUNT], cmap[2] = { 0x000000, 0xFFFFFF };
-    short dri[FLAT_ROLE_DRI_PENS];
+    uc_u32 rgb[FLAT_RP_COUNT], cmap[2] = { 0x000000, 0xFFFFFF };
+    short dri[FLAT_RP_DRI_PENS];
     flat_role_pens out;
     rgb_all(rgb, 0x808080);
     dri_fill(dri);
     flat_role_resolve(rgb, 0, 0, 0, cmap, 2, dri, &out);
-    CHECK_INT(out.pen[FLAT_ROLE_TEXT], dri[FLAT_ROLE_DRI_TEXT]);
-    CHECK_INT(out.pen[FLAT_ROLE_LINE], dri[FLAT_ROLE_DRI_SHADOW]);
-    CHECK_INT(out.pen[FLAT_ROLE_BACK], dri[FLAT_ROLE_DRI_BACKGROUND]);
-    CHECK(out.pen[FLAT_ROLE_BUTTON] == 0 || out.pen[FLAT_ROLE_BUTTON] == 1);   /* nearest of the ColorMap, never "stock" */
-    CHECK_INT(FLAT_ROLE_DRI_TEXT, 2);             /* the Intuition constants, pinned: no OS header here */
-    CHECK_INT(FLAT_ROLE_DRI_SHADOW, 4);
-    CHECK_INT(FLAT_ROLE_DRI_BACKGROUND, 7);
+    CHECK_INT(out.pen[FLAT_RP_TEXT], dri[FLAT_RP_DRI_TEXT]);
+    CHECK_INT(out.pen[FLAT_RP_LINE], dri[FLAT_RP_DRI_SHADOW]);
+    CHECK_INT(out.pen[FLAT_RP_BACK], dri[FLAT_RP_DRI_BACKGROUND]);
+    CHECK(out.pen[FLAT_RP_BUTTON] == 0 || out.pen[FLAT_RP_BUTTON] == 1);   /* nearest of the ColorMap, never "stock" */
+    CHECK_INT(FLAT_RP_DRI_TEXT, 2);             /* the Intuition constants, pinned: no OS header here */
+    CHECK_INT(FLAT_RP_DRI_SHADOW, 4);
+    CHECK_INT(FLAT_RP_DRI_BACKGROUND, 7);
     /* no DrawInfo: the rows stay 0 */
     flat_role_resolve(rgb, 0, 0, 0, cmap, 2, 0, &out);
-    CHECK_INT(out.pen[FLAT_ROLE_TEXT], 0);
+    CHECK_INT(out.pen[FLAT_RP_TEXT], 0);
 }
 
 /* R5: apply writes the seven fields and nothing else */
@@ -117,7 +117,7 @@ static void r5_apply(void)
     int i;
     memset(&st, 0xA5, sizeof st);
     before = st;
-    for (i = 0; i < FLAT_ROLE_COUNT; i++)
+    for (i = 0; i < FLAT_RP_COUNT; i++)
         p.pen[i] = (short)(10 + i);
     p.ok = 1;
     flat_role_apply(&st, &p);
@@ -144,8 +144,8 @@ static void r5_apply(void)
 static void r6_workbench_parity(void)
 {
     gtheme t;
-    uc_u32 rgb[FLAT_ROLE_COUNT], cmap[DK_ROLES];
-    short dri[FLAT_ROLE_DRI_PENS];
+    uc_u32 rgb[FLAT_RP_COUNT], cmap[DK_ROLES];
+    short dri[FLAT_RP_DRI_PENS];
     flat_role_pens out;
     flat_state want, got;
     int i, distinct = 1, j;
@@ -172,20 +172,20 @@ static void r6_workbench_parity(void)
     CHECK_INT(got.pen_line, want.pen_line);       /* the Workbench rule: line = GR_ACCENT (desk_flat_glyph_pens), not the border element's own group */
     CHECK_INT(got.pen_back, want.pen_back);
     /* the table is the one source: seven rows, in the field order of the enum */
-    for (i = 0; i < FLAT_ROLE_COUNT; i++)
+    for (i = 0; i < FLAT_RP_COUNT; i++)
         CHECK_INT(flat_role_row_of(i)->field, i);
-    CHECK(flat_role_row_of(FLAT_ROLE_COUNT) == 0);
-    CHECK_INT(flat_role_row_of(FLAT_ROLE_LINE)->fallback, GR_ACCENT);
+    CHECK(flat_role_row_of(FLAT_RP_COUNT) == 0);
+    CHECK_INT(flat_role_row_of(FLAT_RP_LINE)->fallback, GR_ACCENT);
 }
 
 /* TE-10.6c brief 3: the draw table slot carries the themed flag (enabled), the role pens and the side border of its screen.
- * Lives here, not in test_flat_core.c: flat_glyph.h (included there) and flat_role_core.h both define FLAT_ROLE_BACK. */
+ * Lives here, not in test_flat_core.c: flat_glyph.h (included there) kept FLAT_ROLE_BACK before the role pens became FLAT_RP_*. */
 static flat_draw_tab g_dt;
 
 static void roles_fill(flat_role_pens *r, int base, uint8_t ok)
 {
     int i;
-    for (i = 0; i < FLAT_ROLE_COUNT; i++) r->pen[i] = (short)(base + i);
+    for (i = 0; i < FLAT_RP_COUNT; i++) r->pen[i] = (short)(base + i);
     r->ok = ok;
 }
 

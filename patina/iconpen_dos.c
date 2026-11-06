@@ -22,9 +22,6 @@
 #include "desk_core.h"
 #include "flat_role_core.h"
 
-/* the record holds IPD_ROLE_COUNT colours per slot: a different FLAT_ROLE_COUNT makes this array size negative */
-typedef char ipd_role_count_matches[(IPD_ROLE_COUNT == FLAT_ROLE_COUNT) ? 1 : -1];
-
 extern struct IntuitionBase *IntuitionBase;
 extern struct GfxBase *GfxBase;
 
