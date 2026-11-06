@@ -1486,6 +1486,66 @@ static void test_gthemes_picker_pens(void)
     CHECK_INT(shown, NSHIPPED);
 }
 
+/* TE-COLOUR-LIST-ALL-SWATCHES: the colour chips of one drawn menu frame. A pen released right after its RectFill is free for
+ * the next chip's colour, and the same pen number then recolours every chip already drawn with it (rig 172: seven chips,
+ * one colour). The frame holds each chip pen until the next full redraw (gui.c chip_pens), through pen_cache. */
+static int cp_releases[PM_N];
+static void cp_release(void *u, long pen)
+{
+    (void)u;
+    cp_releases[pen]++;
+    pm_used[pen] = 0;
+}
+
+static long cp_seq(void *u, unsigned long rgb, int exact)
+{
+    static long next;
+    (void)rgb; (void)exact;
+    if (u)
+        next = 0;
+    return u ? 0 : next++;
+}
+
+static void test_gthemes_chip_pens_held_per_frame(void)
+{
+    static pen_cache pc;
+    unsigned long cols[5] = { 0x000000UL, 0xCD0000UL, 0x00CD00UL, 0xCDCD00UL, 0x0000EEUL };
+    long pen[5], again;
+    int i;
+    memset(pm_used, 0, sizeof pm_used);
+    memset(&pc, 0, sizeof pc);
+    memset(cp_releases, 0, sizeof cp_releases);
+    /* the old pattern: obtain, draw, release at once -> every colour lands on one pen number */
+    for (i = 0; i < 5; i++) {
+        pen[i] = vr_obtain_rule(pm_best, 0, cols[i]);
+        pm_release(0, pen[i]);
+    }
+    CHECK_INT(pen[0], pen[4]);
+    /* held: five colours, five pens, each pen carries its colour when the frame is done */
+    for (i = 0; i < 5; i++)
+        pen[i] = pc_of(&pc, pm_best, 0, cols[i]);
+    for (i = 0; i < 5; i++) {
+        int j;
+        CHECK(pen[i] >= 0);
+        CHECK_INT(pm_col[pen[i]], cols[i]);
+        for (j = 0; j < i; j++)
+            CHECK(pen[i] != pen[j]);
+    }
+    again = pc_of(&pc, pm_best, 0, cols[2]);          /* the same rgb twice is one entry */
+    CHECK_INT(again, pen[2]);
+    CHECK_INT(pc.n, 5);
+    pc_theme_changed(&pc, cp_release, 0);             /* the next full redraw: every pen back exactly once */
+    for (i = 0; i < 5; i++)
+        CHECK_INT(cp_releases[pen[i]], 1);
+    CHECK_INT(pc.n, 0);
+    /* the bound: PC_MAX distinct colours get a pen, the next gets -1 (no chip) and nothing leaks */
+    cp_seq((void *)1, 0, 0);
+    for (i = 0; i < PC_MAX; i++)
+        CHECK(pc_of(&pc, cp_seq, 0, 0x100000UL + (unsigned long)i) >= 0);
+    CHECK_INT(pc_of(&pc, cp_seq, 0, 0x200000UL), -1);
+    CHECK_INT(pc.n, PC_MAX);
+}
+
 /* RL8 FLAT-COLOUR-OVERHAUL step 1: THE role table. Six UI roles, one derivation for every theme (gt_roles_of), pinned on four
  * shipped themes: dark (tokyo-night), black ground (vantablack: backdrop lifts to GT_BLACK_LIFT, white fg capped to bebebe), light
  * (catppuccin-latte, flexoki-light: the selection is pushed darker off the surface). The desktop pens (DK_*), the drawn menu's roles
@@ -3399,6 +3459,7 @@ void suite_gthemes(void)
     test_gthemes_amconf();
     test_gthemes_scan();
     test_gthemes_picker_pens();
+    test_gthemes_chip_pens_held_per_frame();
     test_gthemes_screen_rules();
     test_gthemes_screen_rows_fresh_rules_list_workbench_then_open_screens();
     test_gthemes_screen_main_token_carries_the_main_theme_for_a_named_screen();

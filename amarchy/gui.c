@@ -28,6 +28,7 @@
 #include <string.h>
 #include "menu_core.h"
 #include "iconpen_dos.h"
+#include "pen_cache.h"
 #include "index_core.h"
 #include "ixwatch.h"
 #include "menu_geom.h"
@@ -100,6 +101,8 @@ typedef struct gui {
     int chev_w;
     int icon_w, icon_h;          /* the icon column's width and the icon's height, 0 for none */
     long pen[MT_ROLES];
+    pen_cache chip_pens;         /* the pens of this frame's colour chips, held until the next full redraw (a released pen is recoloured by the next chip) */
+    pen_cache prev_pens;         /* the same for the boxes of the theme preview */
     uc_u32 ink[MT_ROLES];        /* the colour each role draws in (menu_theme_ink) */
     char drawn[GT_NAME];         /* the theme the pens are from: the saved one, or the Style > Theme row previewed */
     int pens;                    /* distinct pens obtained (2 in the minimal mode) */
@@ -556,12 +559,11 @@ static void draw_row(gui *g, int e)
                     fill(g, MT_TEXT, cx - 1, y + 1, cx + cs, y + 2 + cs);      /* border in the text colour */
                     mt_fill(g->mt, g->rp, cx, y + 2, cx + cs - 1, y + 1 + cs, (ULONG)rgb);
                 } else {
-                    long p = vr_pen_obtain(g->cm, (unsigned long)rgb);
+                    long p = pc_of(&g->chip_pens, vr_pen_best, g->cm, (unsigned long)rgb);
                     if (p >= 0) {
                         fill(g, MT_TEXT, cx - 1, y + 1, cx + cs, y + 2 + cs);
                         SetAPen(g->rp, (ULONG)p);
                         RectFill(g->rp, cx, y + 2, cx + cs - 1, y + 1 + cs);
-                        ReleasePen(g->cm, (ULONG)p);
                     }
                 }
                 tw -= mg_chip_w(&q->m);
@@ -608,18 +610,17 @@ static void draw_row(gui *g, int e)
 
 long gui_preview_draws;          /* sentinel: preview panes drawn (AMARCHY_PREVIEW_DRAWS) */
 
-/* A box in an exact colour of the edited model: the direct fill, else a pen obtained for it and released after */
+/* A box in an exact colour of the edited model: the direct fill, else a pen held for the frame (draw_full releases them) */
 static void fill_rgb(gui *g, uc_u32 rgb, int x0, int y0, int x1, int y1)
 {
     long p;
     if (x1 < x0 || y1 < y0 || mt_fill(g->mt, g->rp, x0, y0, x1, y1, rgb))
         return;
-    p = vr_pen_obtain(g->cm, rgb);
+    p = pc_of(&g->prev_pens, vr_pen_best, g->cm, rgb);
     if (p < 0)
         return;
     SetAPen(g->rp, (ULONG)p);
     RectFill(g->rp, x0, y0, x1, y1);
-    ReleasePen(g->cm, (ULONG)p);
 }
 
 /* The mock desktop of the model being edited (gt_ed.m) in the pane x, y, w, h: the boxes of themeprev_layout, each in its
@@ -695,11 +696,24 @@ static void draw_list(gui *g)
     sentinel_cursor(g);
 }
 
+/* The chip and preview pens of the frame on screen go back: the whole window is repainted next, so no drawn pixel keeps one */
+static void chip_release_fn(void *cm, long pen)
+{
+    ReleasePen((struct ColorMap *)cm, (ULONG)pen);
+}
+
+static void chip_pens_release(gui *g)
+{
+    pc_theme_changed(&g->chip_pens, chip_release_fn, g->cm);
+    pc_theme_changed(&g->prev_pens, chip_release_fn, g->cm);
+}
+
 static void draw_full(gui *g)
 {
     if (g->await)
         return;
     paint_begin(g);
+    chip_pens_release(g);
     fill(g, MT_BG, 0, 0, g->g.w - 1, g->g.h - 1);
     draw_border(g);
     draw_header(g);
@@ -1529,6 +1543,7 @@ static void pens_get(gui *g, const char *name)
 static void pens_release(gui *g)
 {
     int r;
+    chip_pens_release(g);
     mt_theme_changed(g->mt);
     for (r = 0; r < MT_ROLES; r++)
         if (g->pen_got[r])
