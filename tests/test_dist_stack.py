@@ -8,7 +8,7 @@ asks for 262144, from its seglist with a fixed NP_StackSize of 16000, and it set
 no stack of its own. The program list comes from the Makefile's kit recipe (each
 $(BUILD)/amiga/<name> copied into $(KIT)/Files), the source from that target's
 rule, so a new program cannot slip into the kit without a stack."""
-import os, re, unittest
+import os, re, shutil, sys, tempfile, unittest
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
@@ -20,9 +20,13 @@ MOUNTED = {'vtcon-handler', 'pty-handler', 'ixpipe-handler', 'up-console.device'
 # the set may only shrink.
 AUDIT_PENDING = set()
 
-# DIST-STACK-ALL: bin drawers of the staged dist (KIT=build/dist/<archive>) whose every file
-# must carry a $STACK cookie. Only AmigaOS executables (hunk header 000003F3) count: scripts,
-# icons and the git-* exec stubs have no stack to size. File -> reason, for the ones that cannot.
+# DIST-STACK-ALL: every file in a bin drawer (Files/<drawer>/bin) of the staged dist
+# (KIT=build/dist/<archive>) must carry a $STACK cookie. Only AmigaOS executables (hunk header
+# 000003F3) count: scripts, icons and the git-* exec stubs have no stack to size. dist-check
+# runs this for every archive: the base kit must ship both DIST_BINS drawers, an add-on is
+# judged by the bin drawers it has (up-nvim, up-python) and may have none (up-claude).
+# DIST_EXEMPT is file -> reason for the base kit programs that cannot carry a cookie.
+DIST_BASE = 'up-term'
 DIST_BINS = ('Files/coreutils/bin', 'Files/userland/bin')
 DIST_EXEMPT = {
     'hostname': 'GNU 5.2.1 (dist/gg): coreutils 9.12 does not build it; no cookie, small program, no big buffers',
@@ -33,6 +37,46 @@ DIST_COOKIE = re.compile(rb'\$STACK: *[1-9]')
 
 # "$STACK: 262144", or "$STACK: " STR(MENU_STACK) (amarchy/menu.c, amarchy/gui.c).
 COOKIE = re.compile(r'"\$STACK: *([1-9][0-9]*"|"\s*[A-Za-z_]+\()')
+
+
+# Synthetic kit files for the cases below: an AmigaOS executable with no cookie, and a base
+# kit that is fine (one program with a cookie, the exempt ones without, both drawers).
+HUNK = b'\x00\x00\x03\xf3' + b'\x00' * 32
+BASE_OK = {'Files/coreutils/bin/ls': HUNK + b'$STACK: 65536\x00',
+           'Files/userland/bin/sh.info': b'icon'}
+BASE_OK.update(('Files/coreutils/bin/' + f, HUNK) for f in DIST_EXEMPT)
+
+
+def dist_bin_drawers(kit):
+    """The bin drawers of a staged kit, kit-relative: every Files/<drawer>/bin."""
+    files = os.path.join(kit, 'Files')
+    if not os.path.isdir(files):
+        return []
+    return sorted('Files/%s/bin' % d for d in os.listdir(files)
+                  if os.path.isdir(os.path.join(files, d, 'bin')))
+
+
+def dist_stack_problems(kit, is_base):
+    """What is wrong with the stack cookies of a staged kit, one line each; [] when fine."""
+    drawers = dist_bin_drawers(kit)
+    problems = ['%s: drawer missing from the base kit' % d
+                for d in (DIST_BINS if is_base else ()) if d not in drawers]
+    missing = set()
+    for d in drawers:
+        for f in os.listdir(os.path.join(kit, d)):
+            path = os.path.join(kit, d, f)
+            if not os.path.isfile(path):
+                continue
+            with open(path, 'rb') as fh:
+                data = fh.read()
+            if data[:4] == b'\x00\x00\x03\xf3' and not DIST_COOKIE.search(data):
+                missing.add(f)
+    exempt = set(DIST_EXEMPT) if is_base else set()
+    problems += ['%s: no "$STACK: n" cookie (PIPE-FREEZE: vsh gives 16000 bytes)' % f
+                 for f in sorted(missing - exempt)]
+    problems += ['%s: exempt, but it now has a cookie or is gone: remove from DIST_EXEMPT' % f
+                 for f in sorted(exempt - missing)]
+    return problems
 
 
 def makefile():
@@ -127,20 +171,43 @@ class Stack(unittest.TestCase):
     def test_every_program_in_the_dist_bin_drawers_has_a_stack_cookie(self):
         kit = os.environ.get('KIT')
         if not kit:
-            self.skipTest('KIT=<staged dist/up-term> not set (make dist-check sets it)')
-        missing = set()
-        for d in DIST_BINS:
-            path = os.path.join(kit, d)
-            self.assertTrue(os.path.isdir(path), path)
-            for f in os.listdir(path):
-                with open(os.path.join(path, f), 'rb') as fh:
-                    data = fh.read()
-                if data[:4] == b'\x00\x00\x03\xf3' and not DIST_COOKIE.search(data):
-                    missing.add(f)
-        self.assertEqual(missing - set(DIST_EXEMPT), set(),
-                         'dist programs with no "$STACK: n" cookie (PIPE-FREEZE: vsh gives 16000 bytes)')
-        self.assertEqual(set(DIST_EXEMPT) - missing, set(),
-                         'exempt files that now have a cookie or are gone: remove from DIST_EXEMPT')
+            self.skipTest('KIT=<staged dist/<archive>> not set (make dist-check sets it)')
+        is_base = os.path.basename(os.path.normpath(kit)) == DIST_BASE
+        self.assertEqual(dist_stack_problems(kit, is_base), [])
+
+    def _kit(self, files):
+        """A staged kit in a temporary drawer: {kit-relative path: bytes}."""
+        kit = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, kit)
+        for rel, data in files.items():
+            path = os.path.join(kit, rel)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, 'wb') as fh:
+                fh.write(data)
+        return kit
+
+    def test_an_addon_kit_with_no_bin_drawer_passes(self):
+        # dist-check stopped at up-claude: the base kit's drawers were demanded of every archive
+        kit = self._kit({'Files/Claude': HUNK, 'Files/install.dos': b'x'})
+        self.assertEqual(dist_stack_problems(kit, False), [])
+
+    def test_an_addon_kit_program_with_no_cookie_is_reported(self):
+        kit = self._kit({'Files/nvim/bin/nvim': HUNK,
+                         'Files/nvim/bin/readme': b'text',
+                         'Files/python3/bin/python3': HUNK + b'$STACK: 1048576\x00'})
+        self.assertEqual(dist_stack_problems(kit, False),
+                         ['nvim: no "$STACK: n" cookie (PIPE-FREEZE: vsh gives 16000 bytes)'])
+
+    def test_the_base_kit_must_ship_both_bin_drawers(self):
+        self.assertEqual(dist_stack_problems(self._kit(BASE_OK), True), [])
+        lacks = {k: v for k, v in BASE_OK.items() if not k.startswith('Files/userland/')}
+        self.assertEqual(dist_stack_problems(self._kit(lacks), True),
+                         ['Files/userland/bin: drawer missing from the base kit'])
+
+    def test_the_base_name_is_the_package_table_base(self):
+        sys.path.insert(0, os.path.join(ROOT, 'tools'))
+        import pkgs
+        self.assertEqual(pkgs.get('base', 'archive'), DIST_BASE)
 
     def test_a_launcher_never_gives_a_loaded_program_a_fixed_stack(self):
         bad = []
