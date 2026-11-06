@@ -44,6 +44,10 @@ enum complete_mode {
 struct complete_req {
     struct Message msg;
     struct Process *opener;       /* whose current directory counts */
+    struct Process *cd_from;      /* the opener, blocked in a Read this console holds
+                                   * (cc_cd_blocked); 0: its directory is not read */
+    volatile int cd_taking;       /* set by the handler, cleared by the worker once it
+                                   * has DupLocked cd_from's directory (s61) */
     struct complete_path *path;   /* the window's copy of its opener's path
                                    * (complete_open), 0: C: alone */
     int mode;                     /* enum complete_mode */

@@ -1132,15 +1132,22 @@ static void worker(void)
     q->partial = 0;
 
     /* the opener's current directory (read without its cooperation, as
-     * console-side completion must; it is the Shell's, still alive) */
-    {
-        BPTR cd = 0;
-        Forbid(); /* the opener may have ended since the request was made */
-        if (task_alive(&q->opener->pr_Task) && q->opener->pr_Task.tc_Node.ln_Type == NT_PROCESS)
-            cd = q->opener->pr_CurrentDir;
-        Permit();
+     * console-side completion must). The lock is the opener's: its next CD
+     * or its end UnLocks it, and a DupLock of a freed lock reads freed
+     * memory (s61). comp_start set cd_from only when the opener is blocked
+     * in a synchronous Read the handler holds, and the handler answers none
+     * of cd_from's reads while cd_taking is set (cc_cd_read_waits), so the
+     * opener runs nothing -- no CD, no end -- until the DupLock below has
+     * returned and we clear cd_taking. No cd_from: no current directory
+     * (the opener is not provably blocked; its lock may go at any time). */
+    if (q->cd_from) {
+        BPTR cd = q->cd_from->pr_CurrentDir;
         if (cd)
             dir = DupLock(cd);
+        Forbid(); /* the handler may answer the opener's read from here on */
+        q->cd_taking = 0;
+        Signal(q->msg.mn_ReplyPort->mp_SigTask, 1UL << q->msg.mn_ReplyPort->mp_SigBit);
+        Permit();
     }
     if (dir)
         old = CurrentDir(dir);
@@ -1246,8 +1253,10 @@ int complete_start(struct complete_req *q, struct MsgPort *reply, struct Process
     w = CreateNewProcTags(NP_Entry, (ULONG)worker, NP_Name, (ULONG)"vtcon completion",
                           NP_StackSize, 16000, NP_Input, 0, NP_Output, 0, NP_CloseInput, FALSE,
                           NP_CloseOutput, FALSE, NP_ConsoleTask, 0, TAG_DONE);
-    if (!w)
+    if (!w) {
+        q->cd_taking = 0; /* no worker: nothing holds the opener's reads */
         return 0;
+    }
     PutMsg(&w->pr_MsgPort, &q->msg);
     return 1;
 }
