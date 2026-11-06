@@ -32,6 +32,9 @@ typedef struct pen_ctx {
     ipd_rec *r;
     struct ColorMap *cur; struct ViewPort *vp; const ip_holder *h; const void *sc;
     gtheme t; int flat; unsigned mask; int have;
+    int slot;                       /* TE-10.5b2b: the slot pens_select chose (the plan op counts applies for slots >= 1) */
+    int takeover;                   /* the chosen slot's rule: Take Over Palette */
+    int take[IP_SCREENS];           /* the rule's Take Over Palette per slot, set by pens_sync's hold loop */
 } pen_ctx;
 
 static int pen_obtain(void *ctx, int pen, unsigned r, unsigned g, unsigned b)
@@ -103,14 +106,17 @@ struct Screen *ipd_lock_wb_screen(void)
 }
 
 /* The theme and desk prefs, read from file (ENV:, ENVARC:, the theme file). Never call it with the public screen list locked. */
-static void pens_theme_named(const char *name, gtheme *t, int *flat, unsigned *mask)
+static void pens_theme_named(const char *name, gtheme *t, int *flat, unsigned *mask, int model)
 {
     am_prefs ap;
     struct Process *me = (struct Process *)FindTask(0);
     APTR oldwin = me->pr_WindowPtr;
     me->pr_WindowPtr = (APTR)-1;        /* FLAT-BOOT-FREEZE: UP-Term: not assigned yet at boot is an answer, not a requester */
     amconf_load(&ap);
-    gt_load(pen_theme_read, 0, name && *name ? name : ap.val[AM_GTHEME][0] ? ap.val[AM_GTHEME] : GT_DEFAULT, t);
+    if (model)                          /* TE-10.5b2b: the pen plan reads the theme's model (heap memory of THIS process) */
+        gt_load_model(pen_theme_read, 0, name && *name ? name : ap.val[AM_GTHEME][0] ? ap.val[AM_GTHEME] : GT_DEFAULT, t);
+    else
+        gt_load(pen_theme_read, 0, name && *name ? name : ap.val[AM_GTHEME][0] ? ap.val[AM_GTHEME] : GT_DEFAULT, t);
     me->pr_WindowPtr = oldwin;
     *flat = amconf_desk_flat_pens(&ap);
     *mask = amconf_desk_mask(&ap);
@@ -120,7 +126,7 @@ static void pens_theme_named(const char *name, gtheme *t, int *flat, unsigned *m
 static void pens_theme(void *ctx, gtheme *t, int *flat, unsigned *mask)
 {
     (void)ctx;
-    pens_theme_named(0, t, flat, mask);
+    pens_theme_named(0, t, flat, mask, 0);
 }
 
 /* TE-10.4: the screen rules and the main theme name, from file. The caller has the public screen list unlocked. */
@@ -225,6 +231,25 @@ static void take_snap(ip_snap *out, struct List *pl)
     }
 }
 
+/* TE-10.5b2b: the plan op ip_sync_plan calls with the public screen list locked: no DOS call, no allocation, no wait. The pens of the
+ * chosen slot's theme plan on its screen: every pen the ColorMap reports free plus the pens this holder already holds. 0 entries when
+ * the slot has no model (the theme was not loaded with one). The sentinel counts a plan for a slot >= 1. */
+static int pens_plan(void *ctx, int depth, gt_plan_pen *out, int cap)
+{
+    pen_ctx *c = (pen_ctx *)ctx;
+    ip_ops fo;
+    uc_u32 mask[GT_MASK_WORDS];
+    int n;
+    memset(&fo, 0, sizeof fo);
+    fo.is_free = pen_is_free;
+    fo.ctx = c;
+    ip_plan_free_mask(c->h, &fo, depth, mask);
+    n = gt_screen_apply_plan(c->t.model, depth, mask, c->takeover, out, cap);
+    if (n > 0 && c->slot >= 1)
+        c->r->screen_applies++;
+    return n;
+}
+
 /* ip_screens_sync's select: point the ops' context at slot i's screen, holder and theme */
 static void pens_select(void *ctx, int slot, const ip_snap_entry *e)
 {
@@ -239,6 +264,8 @@ static void pens_select(void *ctx, int slot, const ip_snap_entry *e)
     c->flat = st->flat;
     c->mask = st->mask;
     c->have = st->have;
+    c->slot = slot;
+    c->takeover = slot > 0 ? c->take[slot] : 0;
 }
 
 /* Passes of one sync: the first, plus one per round of theme reads. A pass that finds slots needing a theme reads ALL of them
@@ -257,6 +284,8 @@ static void pens_sync(ipd_rec *r)
     ip_ops o;
     int hold[IP_SCREENS], need[IP_SCREENS], pass, i, owner;
     int v39 = GfxBase && GfxBase->LibNode.lib_Version >= 39;
+    memset(&o, 0, sizeof o);
+    o.plan = pens_plan;
     o.obtain = pen_obtain;
     o.release = pen_release;
     o.is_free = pen_is_free;
@@ -269,9 +298,12 @@ static void pens_sync(ipd_rec *r)
     if (r->rules_dirty) {                   /* cleared first: a change during the read marks it again */
         r->rules_dirty = 0;
         rules_read(&r->rules, r->main_theme);
+        ip_screens_recheck_plans(&r->t);    /* a rule or theme change: the themed screens re-plan at this sync */
     }
-    for (i = 0; i < IP_SCREENS; i++)
+    for (i = 0; i < IP_SCREENS; i++) {
         r->st[i].have = 0;
+        r->st[i].t.model = 0;               /* a pointer found here is from a broken earlier call (maybe another process): never freed */
+    }
     for (pass = 0; pass < IPD_PASSES; pass++) {
         struct List *pl = LockPubScreenList();
         int n;
@@ -284,6 +316,7 @@ static void pens_sync(ipd_rec *r)
             int takeover = 0;
             hold[i] = owner && gt_screen_theme_of(&r->rules, i == 0 ? "Workbench" : r->t.slot[i].name, r->main_theme,
                                                   r->st[i].name, GT_NAME, &takeover);
+            c.take[i] = i > 0 && takeover;
         }
         n = ip_screens_sync(&r->t, &r->snap, &o, hold, pens_select, &c, need);
         UnlockPubScreenList();
@@ -291,10 +324,13 @@ static void pens_sync(ipd_rec *r)
             break;
         for (i = 0; i < r->t.count; i++)    /* pens must be obtained: read those themes with the list unlocked */
             if (need[i]) {
-                pens_theme_named(i == 0 ? 0 : r->st[i].name, &r->st[i].t, &r->st[i].flat, &r->st[i].mask);
+                gt_free(&r->st[i].t);           /* read twice in one call: our own model from the pass before */
+                pens_theme_named(i == 0 ? 0 : r->st[i].name, &r->st[i].t, &r->st[i].flat, &r->st[i].mask, i > 0);
                 r->st[i].have = 1;
             }
     }
+    for (i = 0; i < IP_SCREENS; i++)        /* the models are this process's heap: none stays in the shared record */
+        gt_free(&r->st[i].t);
 }
 
 /* The record, created when `create`; 0 when absent (or no memory). */
@@ -398,6 +434,8 @@ void ipd_recolour(void)
     struct Screen *sc;
     if (!r)
         return;
+    memset(&o, 0, sizeof o);            /* plan = 0: the recolour never plans */
+    memset(&c, 0, sizeof c);
     ObtainSemaphore(&r->ss);
     r->rules_dirty = 1;                 /* the main theme may have changed: the rules' answers with it */
     o.obtain = pen_obtain;
@@ -446,18 +484,20 @@ int ipd_status_line(char *out, size_t cap)
     ip_shared s;
     ipd_rec *r;
     int n, w, screens = 0;
+    unsigned long applies = 0;
     ip_shared_init(&s);
     Forbid();
     r = (ipd_rec *)FindSemaphore((STRPTR)IPD_SEM_NAME);
     if (r) {
         s = r->t.slot[0].sh;
         screens = ip_screens_held(&r->t);
+        applies = r->screen_applies;
     }
     Permit();
     n = ip_status_line(&s.h, out, cap);
     if (n <= 0)
         return 0;
-    w = snprintf(out + n, cap - (size_t)n, " refs=%d screens=%d", ip_shared_refs(&s), screens);
+    w = snprintf(out + n, cap - (size_t)n, " refs=%d screens=%d applies=%lu", ip_shared_refs(&s), screens, applies);
     if (w <= 0 || (size_t)(n + w) >= cap)
         return 0;
     return n + w;

@@ -116,6 +116,10 @@ int ip_plan_sync(ip_holder *h, const ip_ops *o, const gt_plan_pen *plan, int n);
 /* TE-10.5b2: ORs the pens of the holder's own plan (ppen[0..pcount)) into a 256-bit free mask (pen p = bit p & 31 of word
  * p >> 5), so a re-plan can offer the pens the holder already holds instead of releasing and re-obtaining them. */
 void ip_holder_plan_mask(const ip_holder *h, uc_u32 mask[GT_MASK_WORDS]);
+/* TE-10.5b2b: the free mask of one screen for gt_screen_apply_plan. mask is CLEARED, then gets bit p (word p >> 5, bit p & 31) for every
+ * pen p < (1 << depth) (at most 256) that o->is_free reports free on the screen's ColorMap (no is_free = none free), plus the pens the
+ * holder already holds for its plan (ip_holder_plan_mask), so a re-plan can keep them. No bit at or above 1 << depth. */
+void ip_plan_free_mask(const ip_holder *h, const ip_ops *o, int depth, uc_u32 mask[GT_MASK_WORDS]);
 /* "pens-held N"; returns the length, 0 when cap is too small */
 int ip_status_line(const ip_holder *h, char *out, size_t cap);
 
@@ -276,6 +280,11 @@ typedef void (*ip_slot_ctx_fn)(void *ctx, int slot, const ip_snap_entry *e);
  * int per slot) is 1 for a slot that answered IP_SYNC_NEED_THEME, else 0. Returns the number of slots that need a theme. */
 int ip_screens_sync(ip_screens *t, const ip_snap *snap, const ip_ops *o, const int *hold, ip_slot_ctx_fn select, void *ctx, int *need);
 /* The slots other than Workbench that hold pens now (the "screens=<n>" of the status line). */
+/* TE-10.5b2b: ask every slot >= 1 for a re-plan at its next sync (recheck = 1 on its holder; slot 0 is untouched). The DOS half calls
+ * it when the screen rules or the main theme were reread. A holder that holds nothing yet obtains at its next sync anyway (decide
+ * says OBTAIN for hold 1); with hold 0 and nothing held decide says NONE and the flag is harmless; a slot whose screen is not open is
+ * skipped by ip_screens_sync and keeps the flag until it opens. */
+void ip_screens_recheck_plans(ip_screens *t);
 int ip_screens_held(const ip_screens *t);
 /* The epoch of the slot named `name` (no case); slot 0's is its ip_shared epoch; 0 when there is no such slot. */
 unsigned ip_screens_epoch(const ip_screens *t, const char *name);

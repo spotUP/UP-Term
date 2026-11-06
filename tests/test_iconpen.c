@@ -1415,6 +1415,156 @@ static void test_screens_held_count(void)
     CHECK_INT(ip_screens_held(&t), 2);
 }
 
+/* ---- TE-10.5b2b: the free mask, the re-plan request, the DOS wiring ---- */
+static int fm_free[300];
+static int fm_is_free(void *ctx, int pen) { (void)ctx; return pen >= 0 && pen < 300 && fm_free[pen]; }
+
+static int fm_bit(const uc_u32 *m, int p) { return (int)((m[p >> 5] >> (p & 31)) & 1); }
+
+static void test_plan_free_mask(void)
+{
+    ip_ops o;
+    ip_holder h;
+    uc_u32 mask[GT_MASK_WORDS];
+    int p, bits;
+    memset(&o, 0, sizeof o);
+    o.is_free = fm_is_free;
+    ip_holder_init(&h);
+    for (p = 0; p < 300; p++) fm_free[p] = 1;
+    fm_free[10] = 0;                                             /* taken by somebody */
+    memset(mask, 0xff, sizeof mask);                             /* the mask is cleared first */
+    ip_plan_free_mask(&h, &o, 8, mask);
+    for (p = 0, bits = 0; p < 256; p++) bits += fm_bit(mask, p);
+    CHECK_INT(bits, 255);                                        /* depth 8: every pen to 255 except the taken one */
+    CHECK_INT(fm_bit(mask, 10), 0);
+    CHECK_INT(fm_bit(mask, 255), 1);
+    CHECK_INT(fm_bit(mask, 0), 1);
+    memset(mask, 0, sizeof mask);
+    ip_plan_free_mask(&h, &o, 2, mask);                          /* depth 2 touches only pens 0-3 */
+    for (p = 0, bits = 0; p < 256; p++) bits += fm_bit(mask, p);
+    CHECK_INT(bits, 4);
+    CHECK_INT(fm_bit(mask, 3), 1);
+    CHECK_INT(fm_bit(mask, 4), 0);
+    /* a held plan pen has its bit although the ColorMap reports it taken (it is ours); one outside the depth gets none */
+    h.pcount = 2; h.ppen[0] = 10; h.ppen[1] = 200;
+    ip_plan_free_mask(&h, &o, 5, mask);
+    CHECK_INT(fm_bit(mask, 10), 1);
+    CHECK_INT(fm_bit(mask, 200), 0);
+    for (p = 0, bits = 0; p < 256; p++) bits += fm_bit(mask, p);
+    CHECK_INT(bits, 32);
+    /* no is_free op: nothing is free but the held pens */
+    o.is_free = 0;
+    h.pcount = 1; h.ppen[0] = 7;
+    ip_plan_free_mask(&h, &o, 8, mask);
+    for (p = 0, bits = 0; p < 256; p++) bits += fm_bit(mask, p);
+    CHECK_INT(bits, 1);
+    CHECK_INT(fm_bit(mask, 7), 1);
+}
+
+static void test_recheck_plans(void)
+{
+    static ip_screens t;
+    int i;
+    ip_screens_init(&t);
+    ip_screens_recheck_plans(&t);                                /* an empty table (Workbench only) is fine */
+    CHECK_INT(t.slot[0].sh.h.recheck, 0);
+    ip_screens_add(&t, "Pub");
+    ip_screens_add(&t, "Other");
+    for (i = 0; i < 3; i++) t.slot[i].sh.h.recheck = 0;
+    ip_screens_recheck_plans(&t);
+    CHECK_INT(t.slot[0].sh.h.recheck, 0);
+    CHECK_INT(t.slot[1].sh.h.recheck, 1);
+    CHECK_INT(t.slot[2].sh.h.recheck, 1);
+}
+
+/* End to end on the host fakes: the rule or theme change sets the re-plan request, and the NEXT ip_screens_sync asks the plan op
+ * again for the held themed slot and rewrites the changed colour; before the request an unchanged tick asks nothing. */
+static void test_recheck_replans_held_slot(void)
+{
+    static pm m;
+    static ip_screens t;
+    ip_ops o;
+    ip_snap sn;
+    int hold[IP_SCREENS] = {1, 1, 0}, need[IP_SCREENS];
+    memset(&sn, 0, sizeof sn);
+    snap_set(&sn, 0, "Workbench", (void *)0x1, 0, 6);
+    snap_set(&sn, 1, "Pub", (void *)0x100, 0, 6);
+    pm_init(&m, &o, &t);
+    pm_nplan = 2;
+    pm_sync(&m, &t, &sn, hold, need);
+    CHECK_INT(t.slot[1].sh.h.pcount, 2);
+    pm_plan_calls = 0;
+    pm_sync(&m, &t, &sn, hold, need);
+    CHECK_INT(pm_plan_calls, 0);
+    pf_plan(pm_plan_v, 0, 100, 0x778899UL, 1);                   /* the theme's colour changed */
+    m.f[1].sets = 0;
+    ip_screens_recheck_plans(&t);
+    pm_sync(&m, &t, &sn, hold, need);
+    CHECK_INT(pm_plan_calls, 1);
+    CHECK_INT(m.f[1].sets, 1);
+    CHECK_INT(m.f[1].last_set, 100);
+    CHECK_INT((long)m.f[1].last_set_rgb, 0x778899L);
+    CHECK_INT(t.slot[1].sh.h.recheck, 0);
+}
+
+/* The DOS wiring (amarchy/iconpen_dos.c is Amiga-only): the source carries each call that makes the invariant true. */
+static const char *src_fn(const char *big, const char *head)
+{
+    const char *p = strstr(big, head);
+    return p;
+}
+
+static void test_dos_wiring_source(void)
+{
+    static char big[131072];
+    size_t n = 0;
+    const char *ps, *pp, *sl;
+    FILE *f = fopen("amarchy/iconpen_dos.c", "rb");
+    CHECK(f != 0);
+    if (f) { n = fread(big, 1, sizeof big - 1, f); fclose(f); }
+    big[n] = 0;
+    ps = src_fn(big, "static void pens_sync(ipd_rec *r)\n{");
+    pp = src_fn(big, "static int pens_plan(void *ctx, int depth, gt_plan_pen *out, int cap)\n{");
+    sl = src_fn(big, "int ipd_status_line(char *out, size_t cap)\n{");
+    CHECK(ps != 0 && pp != 0 && sl != 0);
+    if (ps && pp && sl) {
+        const char *pe = strstr(ps, "\n}\n");
+        char body[8192];
+        size_t len = pe ? (size_t)(pe - ps) : 0;
+        CHECK(len > 0 && len < sizeof body);
+        if (len > 0 && len < sizeof body) {
+            memcpy(body, ps, len); body[len] = 0;
+            CHECK(strstr(body, "o.plan = pens_plan") != 0);
+            CHECK(strstr(body, "memset(&o, 0, sizeof o)") != 0);
+            CHECK(strstr(body, "gt_free(&r->st[i].t)") != 0);
+            CHECK(strstr(body, "ip_screens_recheck_plans(&r->t)") != 0);
+            CHECK(strstr(body, "c.take[i]") != 0);
+        }
+        pe = strstr(pp, "\n}\n");
+        len = pe ? (size_t)(pe - pp) : 0;
+        if (len > 0 && len < sizeof body) {
+            memcpy(body, pp, len); body[len] = 0;
+            CHECK(strstr(body, "ip_plan_free_mask(") != 0);
+            CHECK(strstr(body, "gt_screen_apply_plan(c->t.model") != 0);
+            CHECK(strstr(body, "screen_applies++") != 0);
+            CHECK(strstr(body, "Delay") == 0 && strstr(body, "Open(") == 0 && strstr(body, "AllocVec") == 0);
+        } else CHECK(0);
+        pe = strstr(sl, "\n}\n");
+        len = pe ? (size_t)(pe - sl) : 0;
+        if (len > 0 && len < sizeof body) {
+            memcpy(body, sl, len); body[len] = 0;
+            CHECK(strstr(body, "applies=") != 0);
+        } else CHECK(0);
+    }
+    f = fopen("amarchy/iconpen_dos.h", "rb");
+    CHECK(f != 0);
+    if (f) {
+        n = fread(big, 1, sizeof big - 1, f); fclose(f); big[n] = 0;
+        CHECK(strstr(big, "#define IPD_SEM_NAME \"Amarchy.IconPens.5\"") != 0);
+        CHECK(strstr(big, "unsigned long screen_applies;") != 0);
+    }
+}
+
 void suite_iconpen(void)
 {
     test_workbench_still_opening_is_not_locked();
@@ -1437,4 +1587,8 @@ void suite_iconpen(void)
     test_screens_sync();
     test_screens_held_count();
     test_plan_only_slots();
+    test_plan_free_mask();
+    test_recheck_plans();
+    test_recheck_replans_held_slot();
+    test_dos_wiring_source();
 }

@@ -347,6 +347,25 @@ void ip_holder_plan_mask(const ip_holder *h, uc_u32 mask[GT_MASK_WORDS])
     }
 }
 
+void ip_plan_free_mask(const ip_holder *h, const ip_ops *o, int depth, uc_u32 mask[GT_MASK_WORDS])
+{
+    int p, n = depth >= 8 ? 256 : depth > 0 ? (1 << depth) : 0;
+    memset(mask, 0, sizeof(uc_u32) * GT_MASK_WORDS);
+    for (p = 0; p < n; p++)
+        if (o->is_free && o->is_free(o->ctx, p))
+            mask[p >> 5] |= (uc_u32)1 << (p & 31);
+    ip_holder_plan_mask(h, mask);
+    for (p = n; p < GT_MASK_WORDS * 32; p++)     /* a held pen cannot lie outside the depth; keep the guarantee anyway */
+        mask[p >> 5] &= ~((uc_u32)1 << (p & 31));
+}
+
+void ip_screens_recheck_plans(ip_screens *t)
+{
+    int i;
+    for (i = 1; i < t->count; i++)
+        t->slot[i].sh.h.recheck = 1;
+}
+
 int ip_sync_plan(ip_holder *h, const ip_ops *o, int hold, const void *screen, int depth)
 {
     int act, lost;

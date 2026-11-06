@@ -1,5 +1,5 @@
 /* iconpen_dos: the OS half of the shared icon pen holder (plan 2026-11-01-amarchy-filled-icon-set.md F14, H1).
- * One public record ("Amarchy.IconPens.4" semaphore, ip_shared) lives in memory for as long as an owner wants the 16 icon pens.
+ * One public record ("Amarchy.IconPens.5" semaphore, ip_shared) lives in memory for as long as an owner wants the 16 icon pens.
  * ObtainPen pens belong to the screen's colour map, not to a task, so the record outlives the amarchy-icons process that
  * created it; amarchy-flat's 1 s tick re-obtains them when the Workbench screen is reopened. The decisions are
  * iconpen_core.c (host-tested). The program defines struct IntuitionBase *IntuitionBase and struct GfxBase *GfxBase and opens
@@ -13,9 +13,9 @@
 #include "iconpen_core.h"
 #include "../handler/pubscr.h"
 
-/* The name carries the record layout: ".3" adds the plan pens to the holder (TE-10.5b); ".2" was the per-screen table (TE-10.4). A binary still running from before an update looks
+/* The name carries the record layout: ".5" adds screen_applies; ".4" was the record before it; ".3" adds the plan pens to the holder (TE-10.5b); ".2" was the per-screen table (TE-10.4). A binary still running from before an update looks
  * for the old name and never reads this layout. 18 characters, fits ipd_rec.name[20]. */
-#define IPD_SEM_NAME "Amarchy.IconPens.4"
+#define IPD_SEM_NAME "Amarchy.IconPens.5"
 
 /* The public record. Public so tests/amiga/iconpens.c reads the real layout; nobody else touches it. Everything big lives here
  * (AllocVec in find_rec), never on a stack. */
@@ -38,6 +38,7 @@ typedef struct ipd_rec {
     char main_theme[GT_NAME];    /* the main theme name (AM_GTHEME), read with the rules */
     int rules_dirty;             /* reread rules and main theme at the next sync (starts 1; ipd_rules_changed) */
     ipd_stheme st[IP_SCREENS];
+    unsigned long screen_applies; /* TE-10.5b2b sentinel: +1 each time the plan op returned a plan for a slot >= 1 (the sync may run in any program) */
 } ipd_rec;
 
 struct List;
@@ -87,7 +88,7 @@ void ipd_recolour(void);
 /* S57-PENS47-UNOWNED: write a live role pen (4-7) through the holder: 1 written (the holder owns it), 0 not ours or not on the
  * Workbench screen the pens are held on (skipped), -1 no holder runs (the caller writes it directly, as before) */
 int ipd_role_write(int pen, uc_u32 rgb);
-/* "pens-held N refs=M screens=K" (K = other screens holding pens) from the record; no record reads "pens-held 0 refs=0 screens=0". Needs no library. Returns the length. */
+/* "pens-held N refs=M screens=K applies=A" (K = other screens holding pens, A = plans applied to them) from the record; no record reads "pens-held 0 refs=0 screens=0 applies=0". Needs no library. Returns the length. */
 int ipd_status_line(char *out, size_t cap);
 
 #endif
