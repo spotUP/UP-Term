@@ -56,6 +56,48 @@ class FlatPensPerScreen(unittest.TestCase):
             else:
                 self.assertFalse(locked, "ipd_screen_roles called under the public screen list lock")
 
+    # ---- TE-10.6c brief 4c-1: hook gates read the per-screen state pointer ----
+    GATED = ("c2_ring_refill", "c2_draw", "c2_get_pens", "c8_skip", "flat_tx_c", "flat_rf_c")
+    HOOKS = GATED + ("ghost_menu", "d4_flat")
+
+    @staticmethod
+    def _body(name):
+        m = re.search(r"^(?:static )?[A-Za-z_][\w \*]*?\b" + name + r"\([^;{]*\)\s*\n\{", SRC, re.M)
+        assert m, name
+        return SRC[m.start():SRC.index("\n}\n", m.start())]
+
+    def test_g1_gates_read_per_screen_state(self):
+        for n in self.GATED:
+            b = self._body(n)
+            self.assertNotIn("r->st.enabled", b, n)
+            self.assertNotRegex(b, r"r->st\.pen_", n)
+
+    def test_g2_no_flat_state_local(self):
+        for n in self.HOOKS:
+            b = self._body(n)
+            self.assertIsNone(re.search(r"\bflat_state\s+\w+\s*(=|;)", b), n)
+
+    def test_g3_no_iconpen_or_intuition_reads_in_hooks(self):
+        for n in self.HOOKS:
+            b = self._body(n)
+            for bad in ("ipd_", "GetScreenDrawInfo", "GetRGB32"):
+                self.assertNotIn(bad, b, n)
+        calls = [m.start() for m in re.finditer(r"ipd_screen_roles\(", SRC)]
+        d0 = SRC.index("static void draw_sync(flatshared *r)")
+        d1 = SRC.index("\n}\n", d0)
+        for c in calls:
+            self.assertTrue(d0 <= c < d1, "ipd_screen_roles( outside draw_sync")
+
+    # G4 (no ObtainPen on a non-Workbench ColorMap) cannot be a source check: icl_pen_fn takes the ColorMap as a parameter.
+
+    def test_g5_no_role_table_names_in_flat_objects(self):
+        base = pathlib.Path(__file__).resolve().parent.parent / "amarchy"
+        for f in ("flat.c", "flat_core.c", "flat_glyph.c"):
+            self.assertNotIn("GTE_", (base / f).read_text(), f)
+
+    def test_g7_colour_count_clamped_to_colormap(self):
+        self.assertIn("cm->Count", self._body("draw_screen_colours"))
+
 
 if __name__ == "__main__":
     unittest.main()
