@@ -8,6 +8,7 @@
 #include "../amarchy/flat_glyph.h"
 #include "../amarchy/roundaa_core.h"
 #include "../amarchy/desk_core.h"
+#include "../amarchy/iconpen_core.h"
 #define ROMSPAN_VEC
 #include "../device/romspan.h"
 #include "harness.h"
@@ -2271,8 +2272,183 @@ static void test_ghost_menu_recolour(void)
     CHECK_INT(flat_gm_recolour(pl, D, bpr, ROW * 8, H, 8, 0, 7, 5, 2, 6), -1);     /* empty rect */
 }
 
+/* ---- TE-10.6a: pens per screen slot ---- */
+typedef char flat_slots_equal_ip_screens[(FLAT_PENS_SLOTS == IP_SCREENS) ? 1 : -1];
+
+static int tab_is_open(void *ctx, const void *screen, unsigned epoch)
+{
+    (void)epoch;
+    return screen == ctx;
+}
+
+static void tab_obtain_on(flat_pens_tab *t, const flat_pen_ops *o, const flat_state *look, const void *scr, unsigned epoch)
+{
+    flat_pens *p = flat_pens_tab_for(t, scr, epoch);
+    if (p && p->screen != scr)
+        flat_pens_refresh_on(p, o, look, 0, scr, epoch, 8);
+}
+
+static int wb_is_free_none(void *ctx, int pen)
+{
+    (void)ctx; (void)pen;
+    return 0;
+}
+
+static void test_pens_tab_never_cross_screens(void)
+{
+    wbscr w;
+    flat_pens_tab t;
+    flat_pen_ops o;
+    flat_state s;
+    int scr_a, scr_b;
+    const flat_pens *pa, *pb;
+    desk_flat_state(1, 1, &s);
+    flat_pens_tab_init(&t);
+    o.obtain = wb_obtain; o.release = wb_release; o.rgb = wb_rgb;
+    wb_screen(&w, 100);
+    o.ctx = &w;
+    tab_obtain_on(&t, &o, &s, &scr_a, 1);
+    tab_obtain_on(&t, &o, &s, &scr_b, 1);
+    pa = flat_pens_tab_find(&t, &scr_a, 1);
+    pb = flat_pens_tab_find(&t, &scr_b, 1);
+    CHECK(pa != 0 && pb != 0 && pa != pb);
+    CHECK(pa->dim != pb->dim);                                       /* A's pens are never returned for B */
+    CHECK(flat_pens_tab_find(&t, &w, 1) == 0);                        /* an unknown screen holds nothing */
+}
+
+static void test_pens_tab_switch_releases_nothing(void)
+{
+    wbscr w;
+    flat_pens_tab t;
+    flat_pen_ops o;
+    flat_state s;
+    int scr_a, scr_b, obtains, dim_a;
+    desk_flat_state(1, 1, &s);
+    flat_pens_tab_init(&t);
+    o.obtain = wb_obtain; o.release = wb_release; o.rgb = wb_rgb;
+    wb_screen(&w, 100);
+    o.ctx = &w;
+    tab_obtain_on(&t, &o, &s, &scr_a, 1);
+    dim_a = flat_pens_tab_find(&t, &scr_a, 1)->dim;
+    obtains = w.obtains;
+    CHECK(obtains > 0);
+    tab_obtain_on(&t, &o, &s, &scr_b, 1);                            /* a window on B */
+    tab_obtain_on(&t, &o, &s, &scr_a, 1);                            /* and back on A */
+    CHECK_INT(w.releases, 0);
+    CHECK_INT(w.obtains, 2 * obtains);                               /* B obtained once, A not again */
+    CHECK_INT(flat_pens_tab_find(&t, &scr_a, 1)->dim, dim_a);
+}
+
+static void test_pens_tab_new_epoch_not_old_pens(void)
+{
+    wbscr w;
+    flat_pens_tab t;
+    flat_pen_ops o;
+    flat_state s;
+    int scr_a;
+    desk_flat_state(1, 1, &s);
+    flat_pens_tab_init(&t);
+    o.obtain = wb_obtain; o.release = wb_release; o.rgb = wb_rgb;
+    wb_screen(&w, 100);
+    o.ctx = &w;
+    tab_obtain_on(&t, &o, &s, &scr_a, 1);
+    CHECK(flat_pens_tab_find(&t, &scr_a, 2) == 0);                   /* same address, reopened: the old pens are not handed out */
+    CHECK(flat_pens_tab_for(&t, &scr_a, 2) != flat_pens_tab_find(&t, &scr_a, 1));
+    CHECK_INT(w.releases, 0);                                        /* nothing released for the old identity */
+    CHECK(flat_pens_tab_find(&t, &scr_a, 1) != 0);                   /* and it stays until the reap */
+}
+
+static void test_pens_tab_full_obtains_nothing(void)
+{
+    wbscr w;
+    flat_pens_tab t;
+    flat_pen_ops o;
+    flat_state s;
+    static int scr[FLAT_PENS_SLOTS + 1];
+    int i, obtains;
+    desk_flat_state(1, 1, &s);
+    flat_pens_tab_init(&t);
+    o.obtain = wb_obtain; o.release = wb_release; o.rgb = wb_rgb;
+    wb_screen(&w, 100);
+    o.ctx = &w;
+    for (i = 0; i < FLAT_PENS_SLOTS; i++) {
+        flat_pens *p = flat_pens_tab_for(&t, &scr[i], 1);
+        CHECK(p != 0);
+        p->screen = &scr[i];
+        p->epoch = 1;
+    }
+    obtains = w.obtains;
+    CHECK(flat_pens_tab_for(&t, &scr[FLAT_PENS_SLOTS], 1) == 0);
+    tab_obtain_on(&t, &o, &s, &scr[FLAT_PENS_SLOTS], 1);
+    CHECK_INT(w.obtains, obtains);                                   /* a full table obtains nothing */
+    CHECK(flat_pens_tab_for(&t, &scr[3], 1) != 0);                   /* a held identity is still served */
+    CHECK(flat_pens_tab_for(&t, 0, 0) == 0);
+}
+
+static void test_pens_tab_reap_forgets_closed_only(void)
+{
+    wbscr w;
+    flat_pens_tab t;
+    flat_pen_ops o;
+    flat_state s;
+    int scr_a, scr_b, scr_c;
+    desk_flat_state(1, 1, &s);
+    flat_pens_tab_init(&t);
+    o.obtain = wb_obtain; o.release = wb_release; o.rgb = wb_rgb;
+    wb_screen(&w, 100);
+    o.ctx = &w;
+    tab_obtain_on(&t, &o, &s, &scr_a, 1);
+    tab_obtain_on(&t, &o, &s, &scr_b, 1);
+    CHECK_INT(flat_pens_tab_reap(&t, tab_is_open, &scr_a), 1);        /* B closed */
+    CHECK_INT(w.releases, 0);
+    CHECK(flat_pens_tab_find(&t, &scr_a, 1) != 0);
+    CHECK(flat_pens_tab_find(&t, &scr_b, 1) == 0);
+    CHECK_INT(flat_pens_tab_reap(&t, tab_is_open, &scr_a), 0);
+    tab_obtain_on(&t, &o, &s, &scr_c, 1);                            /* the freed slot is reusable */
+    CHECK(flat_pens_tab_find(&t, &scr_c, 1) != 0);
+    CHECK_INT(w.releases, 0);
+}
+
+static void test_pens_non_workbench_slot_keeps_flat_state(void)
+{
+    wbscr w;
+    flat_pens p;
+    flat_pen_ops o;
+    flat_state s;
+    int scr;
+    desk_flat_state(1, 1, &s);
+    s.sel_rgb[0] = 0x28; s.sel_rgb[1] = 0x2c; s.sel_rgb[2] = 0x34;
+    s.pen_dim = 11; s.pen_knob = 12; s.pen_inbar = 13; s.pen_sel = 14;     /* the Workbench's numbers */
+    flat_pens_init(&p);
+    o.obtain = wb_obtain; o.release = wb_release; o.rgb = wb_rgb;
+    wb_screen(&w, 100);
+    o.ctx = &w;
+    flat_pens_refresh_on(&p, &o, &s, 0, &scr, 1, 8);
+    CHECK(p.dim >= 100);
+    CHECK_INT(s.pen_dim, 11);
+    CHECK_INT(s.pen_knob, 12);
+    CHECK_INT(s.pen_inbar, 13);
+    CHECK_INT(s.pen_sel, 14);
+    CHECK_INT(flat_pens_follow_on(&p, &o, &s, 0, 1, &scr, 1, 8), 0);   /* same identity: nothing */
+    flat_pens_release(&p, &o, 0, &scr, 1);
+    CHECK_INT(w.releases > 0, 1);
+    CHECK_INT(s.pen_dim, 11);                                        /* release with no store leaves them too */
+    flat_pens_refresh_on(&p, &o, &s, 0, &scr, 2, 8);
+    CHECK_INT(flat_pens_verify(&p, 0, wb_is_free_none, 0, &scr, 2), 0);
+    CHECK_INT(s.pen_sel, 14);
+    /* the Workbench path still stores */
+    flat_pens_refresh(&p, &o, &s, &scr, 3, 8);
+    CHECK(s.pen_dim >= 100);
+}
+
 void suite_flat_core(void)
 {
+    test_pens_tab_never_cross_screens();
+    test_pens_tab_switch_releases_nothing();
+    test_pens_tab_new_epoch_not_old_pens();
+    test_pens_tab_full_obtains_nothing();
+    test_pens_tab_reap_forgets_closed_only();
+    test_pens_non_workbench_slot_keeps_flat_state();
     test_ghost_menu_pen();
     test_ghost_menu_recolour();
     test_frame_pen();
