@@ -2961,7 +2961,7 @@ static void execute_3_2_quirks(void)
     run("");
     amiscr_put("RAM:q7a", ".KEY w/A\necho \"got <w>\"\n");
     sh_run_text(&sh, "execute RAM:q7a ?; echo rc$?", &inc);
-    CHECK(strstr(slot(OUT)->data, "rc0\n") != 0);
+    CHECK_STR(slot(OUT)->data, "w/A: rc0\n");   /* S7c-7 d (rig 98): 3.2 runs no line of the script */
     CHECK_STR(slot(ERR)->data, "");
     /* S7c-7 b (rig): a double-quoted "?" is a plain argument bound to the template; only a bare ? asks */
     run("");
