@@ -845,8 +845,11 @@ static char *template_load(sh_shell *sh, const char *text, int argc, char **argv
         while (n > 0 && (line[n - 1] == '\n' || line[n - 1] == '\r'))
             n--;
         line[n < 0 ? 0 : n] = 0;
-        /* Input ended before any reply (NIL:): Execute runs with nothing bound and does not fail /A (S7c-7 a). A blank line is a reply. */
-        bad = eof ? 0 : lex_line(sh, line, &rt) || tmpl_bind(sh, &t, rt.v, rt.n, io);
+        /* Input ended before any reply (NIL:): 3.2 runs no line of the script and Execute returns 0, /A is not
+         * reported (S7c-7 a, d: rig 98). A blank line is a reply. */
+        if (eof)
+            sh->amiscr_load_rc = 0;
+        bad = eof || lex_line(sh, line, &rt) || tmpl_bind(sh, &t, rt.v, rt.n, io);
         toks_free(&rt);
         if (bad) {
             free(isdir);
