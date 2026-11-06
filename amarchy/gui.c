@@ -564,7 +564,7 @@ static void draw_row(gui *g, int e)
                         ReleasePen(g->cm, (ULONG)p);
                     }
                 }
-                tw -= cs + 4 + q->m.row_pad;
+                tw -= mg_chip_w(&q->m);
             }
             {
                 const char *sep = MN_IS_SETTING(it) ? strstr(it->label, ": ") : 0;   /* the value is not what is cut */
@@ -2067,6 +2067,8 @@ int main(int argc, char **argv)
     int rc;
 
     lf_init();
+    mg_relabel = lf_setting_relabel;       /* the window is sized from the text the rows paint */
+    mg_rechip = lf_setting_rechip;
     if (qmark_argv(argc, argv)) {
         PutStr((STRPTR) USAGE);
         return 0;
