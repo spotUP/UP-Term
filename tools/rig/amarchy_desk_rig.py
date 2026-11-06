@@ -222,7 +222,7 @@ def pick(up=None, keep=True):
     kept = []
     if keep:   # FP-1: the apply asks "Keep?" for 15 s and reverts otherwise; the waits below can take longer, so a thread clicks it as it appears
         import threading
-        kt = threading.Thread(target=lambda: kept.append(t.keep_requester(t.APPLY_SECS)), daemon=True)
+        kt = threading.Thread(target=lambda: kept.append(t.keep_requester(t.APPLY_SECS, None, t.apply_settled)), daemon=True)
         kt.start()
     ami.key(g.RETURN)
     try:

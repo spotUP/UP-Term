@@ -206,6 +206,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rig_setup_breaks ]; then python3 -I tests/test_gui_rig_setup_breaks_any_copy.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = desk_rig_pick_waits ]; then python3 -I tests/test_amarchy_desk_rig_pick_waits.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = one_select_level ]; then python3 -I tests/test_amarchy_one_select_level.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = keep_wait ]; then python3 -I tests/test_amarchy_keep_wait.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_ami ]; then if [ -f "$(BUILD)/wasabi/src/tests/mock-wasabid.py" ] || [ -f "$(CURDIR)/../../$(BUILD)/wasabi/src/tests/mock-wasabid.py" ] || [ -n "$(ONLY)" ]; then python3 -I tools/test_rig_ami.py; else echo "[SKIP] rig_ami: wasabi is not built (make wasabi)"; fi; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_claude_import ]; then python3 -I tools/test_rig_claude_import.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_stdin ]; then python3 -I tools/test_rig_stdin.py; fi
