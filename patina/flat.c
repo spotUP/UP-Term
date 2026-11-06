@@ -26,6 +26,7 @@
  * next start consumes it and stays inert; one early death is forgiven), when both mouse
  * buttons are down at start, or when VisualPrefs / Birdie runs or a foreign hook already sits on the sysiclass slot.
  * Return code: 0 done, 5 another copy is running, 10 no memory. */
+#include <stddef.h>
 #include <string.h>
 #include <exec/memory.h>
 #include <exec/semaphores.h>
@@ -359,7 +360,12 @@ static const flat_state *st_scr(flatshared *r, const struct Screen *scr)
 static const flat_state *st_rp(flatshared *r, const struct RastPort *rp)
 {
     struct Window *w = rp && rp->Layer ? (struct Window *)rp->Layer->Window : NULL;
-    return st_scr(r, w ? w->WScreen : NULL);
+    if (w)
+        return st_scr(r, w->WScreen);
+    /* screen bar layer (no Window): the Screen that embeds this LayerInfo, as a compare key only (never dereferenced) */
+    if (rp && rp->Layer)
+        return st_scr(r, (const struct Screen *)((const char *)rp->Layer->LayerInfo - offsetof(struct Screen, LayerInfo)));
+    return st_scr(r, NULL);
 }
 
 /* FLAT-SPACING: side_px of the screen the rastport draws on, 1 without a window (the inset of flat_inset) */
@@ -1250,13 +1256,13 @@ static long d4_rgb(struct RastPort *rp, ULONG pen)
  * window's screen pens and outline columns (S57-BUTTON-ASPECT-BORDERS, as c8_skip); drawing nothing left every DOpus
  * button and field without a border (owner, DOpus Environment, rig 63). The owner reversed the border for fields on
  * 2026-11-10 (s71): FieldBox gets no ring either (flat_dopus_ring 0), like a raised DrawBox. */
-static int d4_flat_pens(int el, struct RastPort *rp, ULONG shine, ULONG back, int x0, int y0, int x1, int y1, LONG recessed)
+static int d4_flat_pens(const void *dri, int el, struct RastPort *rp, ULONG shine, ULONG back, int x0, int y0, int x1, int y1, LONG recessed)
 {
     flatshared *r = g_r;
     r->dcalls++;
     if (el == FLAT_EL_BEVEL)
         r->dbevel++;
-    if (flat_dopus_decide(&r->st, el, recessed ? 1 : 0, (int)shine, (int)back,
+    if (flat_dopus_decide(flat_draw_state_dri(&g_draw, &r->st, dri), el, recessed ? 1 : 0, (int)shine, (int)back,
                           shine == back ? -1 : d4_rgb(rp, shine), shine == back ? -1 : d4_rgb(rp, back)) != FLAT_DRAW_SKIP)
         return 0;
     if (el == FLAT_EL_BEVEL && rp) {
@@ -1310,7 +1316,7 @@ static int d4_flat(int el, struct RastPort *rp, struct Rectangle *rect, struct D
         g_r->dcalls++;
         return 0;
     }
-    return d4_flat_pens(el, rp, info->dri_Pens[SHINEPEN], info->dri_Pens[BACKGROUNDPEN], rect->MinX, rect->MinY,
+    return d4_flat_pens(info, el, rp, info->dri_Pens[SHINEPEN], info->dri_Pens[BACKGROUNDPEN], rect->MinX, rect->MinY,
                         rect->MaxX, rect->MaxY, recessed);
 }
 
@@ -1352,7 +1358,7 @@ typedef void (*bevelbodyfn)(ULONG, struct RastPort *, UWORD *, WORD *, ULONG, UL
 
 static void d4_bevelbody(void *caller_return, ULONG a, struct RastPort *rp, UWORD *pens, WORD *rect, ULONG recessed, ULONG thin)
 {
-    if (!pens || !rect || !d4_flat_pens(FLAT_EL_BEVEL, rp, pens[SHINEPEN], pens[BACKGROUNDPEN], rect[0], rect[1],
+    if (!pens || !rect || !d4_flat_pens((const char *)pens - offsetof(struct DrawInfo, dri_Pens), FLAT_EL_BEVEL, rp, pens[SHINEPEN], pens[BACKGROUNDPEN], rect[0], rect[1],
                                          rect[0] + rect[2] - 1, rect[1] + rect[3] - 1, (LONG)(recessed == 1)))
         ((bevelbodyfn)g_r->dsw[FLAT_EL_BEVEL].saved)(a, rp, pens, rect, recessed, thin);
 }
@@ -2046,6 +2052,8 @@ static int ghost_menu(flatshared *r, const flat_state *ps, struct RastPort *rp, 
     UWORD *pa = (UWORD *)rp->AreaPtrn;
     int depth, dim;
     long n;
+    if (!ps->enabled)
+        return 0;
     if (!bm || !pa || b[2] < b[0] || b[3] < b[1] || !(GetBitMapAttr(bm, BMA_FLAGS) & BMF_STANDARD))
         return 0;
     depth = bm->Depth;
@@ -2433,7 +2441,7 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
     b[0] = x0; b[1] = y0; b[2] = x1; b[3] = y1;
     if (on && rp->Layer)
         w = (struct Window *)rp->Layer->Window;
-    if (on && rp->AreaPtSz && rom && !w && ghost_menu(r, ps, rp, b))
+    if (on && rp->AreaPtSz && rom && !w && ghost_menu(r, rp->Layer ? ps : st_scr(r, IntuitionBase->ActiveScreen), rp, b))
         return;
     /* INSTALLER-BORDER-BUTTON (owner 2026-11-08): the erase of a Border-render push button (exact box, border_button_at) becomes the
      * rounded flat fill of the frame draw; its label comes next and the IM_DRAWFRAME after it draws no ring (c8_skip). No ROM gate:
@@ -3591,8 +3599,19 @@ static int draw_screen_colours(struct Screen *scr)
     return n;
 }
 
+/* the screen's DrawInfo pointer as a compare key for the Directory Opus hook (never held, never dereferenced); public screen list locked */
+static const void *draw_dri_key(struct Screen *scr)
+{
+    struct DrawInfo *di = GetScreenDrawInfo(scr);
+    const void *key = di;
+    if (di)
+        FreeScreenDrawInfo(scr, di);
+    return key;
+}
+
 static void draw_sync(flatshared *r)
 {
+    const void *wb_dri = 0;
     struct List *pl;
     struct Node *nd;
     int n = 0, i;
@@ -3617,11 +3636,13 @@ static void draw_sync(flatshared *r)
     for (i = 0; i < n; i++) {
         struct Screen *scr = pl ? ipd_screen_in(pl, g_draw_list[i].screen) : NULL;
         g_draw_list[i].roles = 0;
+        g_draw_list[i].dri = 0;
         if (!scr) {
             g_draw_list[i].side = 1;
             continue;
         }
         g_draw_list[i].side = (uint8_t)side_px(r, scr);
+        g_draw_list[i].dri = draw_dri_key(scr);
         if (g_roles_themed[i]) {
             int nc = draw_screen_colours(scr);
             flat_role_resolve(g_roles_in[i].role, g_roles_in[i].pen, g_roles_in[i].rgb, g_roles_in[i].nheld, g_draw_cmap, nc,
@@ -3630,11 +3651,16 @@ static void draw_sync(flatshared *r)
                 g_draw_list[i].roles = &g_roles_out[i];
         }
     }
+    if (pl && g_wb_scr) {
+        struct Screen *ws = ipd_screen_in(pl, g_wb_scr);
+        if (ws)
+            wb_dri = draw_dri_key(ws);
+    }
     UnlockPubScreenList();
     if (g_wb_scr)       /* the Workbench slot is the live record: its outline columns come from here (main task), never from a hook */
         r->st.side = (uint8_t)side_px(r, (struct Screen *)g_wb_scr);
     Forbid();
-    flat_draw_sync(&g_draw, &r->st, &g_pens, g_draw_list, n, g_wb_scr, wbep);
+    flat_draw_sync_dri(&g_draw, &r->st, &g_pens, g_draw_list, n, g_wb_scr, wbep, wb_dri);
     Permit();
 }
 

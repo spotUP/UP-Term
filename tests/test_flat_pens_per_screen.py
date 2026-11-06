@@ -17,7 +17,7 @@ class FlatPensPerScreen(unittest.TestCase):
         self.assertIn("static flat_draw_tab g_draw;", SRC)
         self.assertIn("return flat_draw_state(&g_draw, &r->st, scr);", SRC)
         self.assertGreaterEqual(SRC.count("st_rp(") + SRC.count("st_scr("), 6)
-        self.assertIn("flat_draw_sync(&g_draw, &r->st, &g_pens,", SRC)
+        self.assertIn("flat_draw_sync_dri(&g_draw, &r->st, &g_pens,", SRC)
 
     def test_hooks_copy_no_state_and_call_no_iconpen(self):
         # FLAT-C3: no flat_state stack buffer handed to st_scr / st_rp, no st_pens, no ipd_ call from a hook helper
@@ -71,6 +71,11 @@ class FlatPensPerScreen(unittest.TestCase):
             b = self._body(n)
             self.assertNotIn("r->st.enabled", b, n)
             self.assertNotRegex(b, r"r->st\.pen_", n)
+        for n in ("ghost_menu", "d4_flat"):      # TE-10.6c 4c-2: no live record, no &r->st handed to the decide functions
+            b = self._body(n)
+            self.assertNotIn("r->st.enabled", b, n)
+            self.assertNotRegex(b, r"r->st\.pen_", n)
+            self.assertNotRegex(b, r"(flat_gm_pen|flat_dopus_decide)\(\s*&r->st", n)
 
     def test_g2_no_flat_state_local(self):
         for n in self.HOOKS:
