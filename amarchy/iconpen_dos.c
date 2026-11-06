@@ -400,6 +400,26 @@ void ipd_recolour(void)
     ReleaseSemaphore(&r->ss);
 }
 
+int ipd_role_write(int pen, uc_u32 rgb)
+{
+    ipd_rec *r = find_rec(0);
+    struct List *pl;
+    struct Screen *sc;
+    int ok = 0;
+    if (!r)
+        return -1;
+    ObtainSemaphore(&r->ss);
+    pl = LockPubScreenList();
+    sc = ipd_wb_screen_in(pl);
+    if (sc && sc == r->t.slot[0].sh.h.screen && ip_role_claim(&r->t.slot[0].sh.h, pen, rgb)) {
+        SetRGB32(&sc->ViewPort, (ULONG)pen, ip_scale32((unsigned)(rgb >> 16)), ip_scale32((unsigned)(rgb >> 8)), ip_scale32((unsigned)rgb));
+        ok = 1;
+    }
+    UnlockPubScreenList();
+    ReleaseSemaphore(&r->ss);
+    return ok;
+}
+
 int ipd_status_line(char *out, size_t cap)
 {
     ip_shared s;

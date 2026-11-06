@@ -464,6 +464,66 @@ static void test_reopen_same_address(void)
     CHECK_INT(c.bad_release, 0);
 }
 
+/* S57-PENS47-UNOWNED: pens 4-7 (the live role pens) are written by the sync, so the holder must own them first. The model ColorMap
+ * records who allocated a pen; set_rgb here asserts the pen is allocated (by the holder) at the moment it is written. */
+static int po_unowned_writes;
+static void po_set(void *ctx, int pen, uc_u32 rgb)
+{
+    rcm *c = (rcm *)ctx;
+    if (!c->alloc[pen])
+        po_unowned_writes++;
+    rcm_set(ctx, pen, rgb);
+}
+static void test_pens47_owned(void)
+{
+    static rcm c;
+    ip_holder h;
+    ip_ops o;
+    int scr, i;
+    memset(&c, 0, sizeof c);
+    memset(&o, 0, sizeof o);
+    o.obtain = rcm_obtain; o.release = rcm_release; o.is_free = rcm_is_free; o.theme = rcm_theme; o.set_rgb = po_set;
+    o.ctx = &c;
+    ip_holder_init(&h);
+    rcm_open(&c);
+    po_unowned_writes = 0;
+    CHECK_INT(ip_sync(&h, &o, 1, &scr, 8, 8), IP_SYNC_OBTAIN);
+    for (i = 4; i < 8; i++)
+        CHECK_INT(c.alloc[i], 1);                        /* 4-7 are obtained exclusive, like 32-47 */
+    CHECK_INT(po_unowned_writes, 0);                     /* and were owned when written */
+    check_theme_pens47(&c);
+    CHECK_INT(ip_role_claim(&h, 5, 0x123456UL), 1);
+    CHECK_INT(ip_role_claim(&h, 9, 0x123456UL), 0);      /* not a role pen: not claimable */
+    rcm_open(&c);                                        /* Workbench reopen at the same address: the new ColorMap has them free */
+    CHECK_INT(ip_sync(&h, &o, 1, &scr, 8, 8), IP_SYNC_OBTAIN);
+    CHECK_INT(c.alloc[4] + c.alloc[7], 2);
+    CHECK_INT(c.bad_release, 0);
+    CHECK_INT(ip_sync(&h, &o, 0, &scr, 8, 8), IP_SYNC_RELEASE);   /* last owner gone: released where 32-47 are */
+    for (i = 4; i < 8; i++)
+        CHECK_INT(c.alloc[i], 0);
+    CHECK_INT(c.bad_release, 0);
+    /* another client holds pen 6: the holder neither takes nor writes it */
+    rcm_open(&c);
+    ip_holder_init(&h);
+    c.alloc[6] = 1;
+    c.rgb[6] = 0xabcdefUL;
+    po_unowned_writes = 0;
+    CHECK_INT(ip_sync(&h, &o, 1, &scr, 8, 8), IP_SYNC_OBTAIN);
+    CHECK_INT((long)c.rgb[6], 0xabcdefL);
+    CHECK_INT(ip_role_claim(&h, 6, 0), 0);
+    CHECK_INT(po_unowned_writes, 0);
+    CHECK_INT(ip_sync(&h, &o, 1, &scr, 8, 8), IP_SYNC_NONE);
+    CHECK_INT(ip_sync(&h, &o, 0, &scr, 8, 8), IP_SYNC_RELEASE);
+    CHECK_INT(c.alloc[6], 1);                            /* not ours: not released */
+    CHECK_INT(c.bad_release, 0);
+    /* fewer than 8 planes: the same rule (desk_live_role_pens), 3 planes have no role pens and take none */
+    rcm_open(&c);
+    ip_holder_init(&h);
+    CHECK_INT(ip_sync(&h, &o, 1, &scr, 3, 3), IP_SYNC_OBTAIN);
+    for (i = 4; i < 8; i++)
+        CHECK_INT(c.alloc[i], 0);
+}
+
 /* FLAT-BOOT-FREEZE: the theme is asked for only when pens are to be obtained; not loaded yet -> NEED_THEME and nothing changes */
 static int tr_have;
 static int tr_ready(void *ctx) { (void)ctx; return tr_have; }
@@ -538,8 +598,8 @@ static void test_theme_switch_recolour(void)
     CHECK_INT(c.sets, 0);
     rcm_other = 1;                                                    /* switch to theme B, same screen */
     CHECK_INT(ip_sync(&h, &o, 1, &scr, 8, 8), IP_SYNC_NONE);          /* the holder alone sees no change */
-    CHECK_INT(ip_recolour(&h, &o), 16);
-    CHECK_INT(c.sets, 16);                                            /* sentinel: every pen 32-47 rewritten */
+    CHECK_INT(ip_recolour(&h, &o), 20);                               /* 16 icon pens + 4 held role pens 4-7 */
+    CHECK_INT(c.sets, 20);                                            /* sentinel: every pen 32-47 and 4-7 rewritten */
     CHECK_INT((long)c.rgb[IP_FIRST + IP_SPARE12], (long)ip_ground(&b, 1, 0));
     CHECK_INT((long)c.rgb[IP_FIRST + IP_SELBG], (long)gt_selection(&b));
     CHECK_INT(c.bad_release, 0);
@@ -1026,6 +1086,7 @@ void suite_iconpen(void)
     test_icons_keep_pens_when_flat_stops();
     test_main_takes_pens_at_boot();
     test_reopen_same_address();
+    test_pens47_owned();
     test_theme_switch_recolour();
     test_screens_table();
     test_screens_diff_and_apply();
