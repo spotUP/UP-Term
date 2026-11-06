@@ -281,6 +281,16 @@ int gt_term_text(const char *buf, long len, const char *name, char *out, int cap
         n += snprintf(out + n, (size_t)(cap - n), "%s%d,%06lX", i ? "," : "", i, (unsigned long)p[i]);
     if (n > 0 && n < cap - 1)
         n += snprintf(out + n, (size_t)(cap - n), "\n");
+    /* TE-7b.2: the theme's Shell Font as the profile key "font = NAME:SIZE" (the handler turns ':' into ' ' and parse_font reads
+     * it; NAME keeps its ".font"). Read from the look slot through the model parser, the one parser of "name.font/size". No
+     * Shell Font, or a size missing or 0: no line, the terminal keeps its own font. */
+    if (n > 0 && n < cap && gt_model_attach(&t, buf, len)) {
+        char fname[GT_NAME];
+        int fsize;
+        if (gt_look_font(&t, GT_FONT_SHELL, fname, (int)sizeof fname, &fsize) && fsize > 0)
+            n += snprintf(out + n, (size_t)(cap - n), "font = %s:%d\n", fname, fsize);
+        gt_free(&t);
+    }
     return n > 0 && n < cap ? n : 0;
 }
 

@@ -135,6 +135,51 @@ static void test_gthemes_term_text(void)
     CHECK_INT(gt_term_text(buf, n, "nord", out, 20), 0);
 }
 
+/* TE-7b.2: the Shell Font reaches the terminal text as one "font = NAME:SIZE" line in the same profile section */
+static void test_gthemes_term_font(void)
+{
+    static char buf[4096], out[1024], plain[1024];
+    static upconf u;
+    char name[GT_NAME];
+    int len, plen, i;
+    const char *p;
+    long n = read_file(THEME_DIR "/gruvbox.theme", buf, (long)sizeof buf);
+    CHECK(n > 0);
+    plen = gt_term_text(buf, n, "gruvbox", plain, (int)sizeof plain);
+    CHECK(plen > 0);
+    CHECK(strstr(plain, "font") == 0); /* (b) no Shell Font: no font line */
+    n += snprintf(buf + n, sizeof buf - (size_t)n, "\n[profile look]\nshell-font = \"XEN.font/9\"\n");
+    len = gt_term_text(buf, n, "gruvbox", out, (int)sizeof out);
+    CHECK(len > 0);
+    p = strstr(out, "font = ");
+    CHECK(p != 0);
+    for (i = 0, p = out; (p = strstr(p, "font = ")) != 0; p++)
+        i++;
+    CHECK_INT(i, 1); /* (a) exactly one line */
+    CHECK(strstr(out, "palette = ") < strstr(out, "font = ")); /* in the profile section, after the palette line */
+    CHECK(strncmp(out, plain, (size_t)plen) == 0); /* (c) the old lines byte for byte */
+    CHECK_INT(len, plen + 18);
+    upconf_clear(&u);
+    upconf_parse(&u, out, len);
+    CHECK_STR(upconf_get(&u, "gruvbox", "font"), "XEN.font:9");
+    /* a size of 0 or none: no line */
+    n = read_file(THEME_DIR "/gruvbox.theme", buf, (long)sizeof buf);
+    n += snprintf(buf + n, sizeof buf - (size_t)n, "\n[profile look]\nshell-font = \"XEN.font/0\"\n");
+    CHECK_INT(gt_term_text(buf, n, "gruvbox", out, (int)sizeof out), plen);
+    n = read_file(THEME_DIR "/gruvbox.theme", buf, (long)sizeof buf);
+    n += snprintf(buf + n, sizeof buf - (size_t)n, "\n[profile look]\nshell-font = \"XEN.font\"\n");
+    CHECK_INT(gt_term_text(buf, n, "gruvbox", out, (int)sizeof out), plen);
+    /* (d) the longest font name and a 3-digit size still fit the 1024 bytes of every caller */
+    for (i = 0; i < GT_NAME - 1 - 5; i++)
+        name[i] = 'a' + i % 26;
+    memcpy(name + i, ".font", 6);
+    n = read_file(THEME_DIR "/gruvbox.theme", buf, (long)sizeof buf);
+    n += snprintf(buf + n, sizeof buf - (size_t)n, "\n[profile look]\nshell-font = \"%s/999\"\n", name);
+    len = gt_term_text(buf, n, "a-long-theme-name-of-thirty-nine-chr", out, (int)sizeof out);
+    CHECK(len > 0 && len < 1024);
+    CHECK(strstr(out, ":999\n") != 0);
+}
+
 static char boot_name[64];
 static int boot_calls;
 static void boot_send(const char *name)
@@ -2555,6 +2600,7 @@ void suite_gthemes(void)
     test_gthemes_fallback();
     test_gthemes_parse();
     test_gthemes_term_text();
+    test_gthemes_term_font();
     test_gthemes_boot_term();
     test_gthemes_text_grey();
     test_gthemes_roles();
