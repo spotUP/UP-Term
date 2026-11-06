@@ -2301,6 +2301,58 @@ static void test_gthemes_te4_dispatch(void)
     CHECK(!strcmp(lf_picker_prompt(pal, 3), "RRGGBB"));
 }
 
+/* TE-SWATCH-BUGS: the colour picked in a swatch row's level reaches the swatch (a built-in one and an added one), and the
+ * Terminal Palette row stores to the same place as the Settings palette row (SD_UPTERM, the profile file). */
+static const sd_setting *te4_swatch_row(int sw)
+{
+    int i;
+    for (i = 0; i < gte_nrows(); i++) {
+        const sd_setting *s = gte_row(SDI_COUNT + i);
+        if (s->kind == SD_SWATCH && s->aux == sw)
+            return s;
+    }
+    return 0;
+}
+
+static void test_gthemes_swatch_and_palette_rows_apply(void)
+{
+    memfs mfs;
+    prefs_fs pfs;
+    amconf_io io;
+    const sd_setting *row, *pal = te4_row("Terminal Palette");
+    int failed = 0, added;
+    char hex[16], buf[32];
+    mf_init(&mfs, &pfs);
+    io.fs = &pfs;
+    io.read = mf_read;
+    io.dir = mf_dir;
+    mf_put(&mfs, "ENVARC:up-term/up-term", "");
+    te4_open_builtin();
+    row = te4_swatch_row(0);
+    CHECK(row != 0);
+    CHECK_INT(lf_setting_set_colour(&io, row, SD_PICK_CUSTOM, "112233", &failed), LF_SET_OK);
+    gte_row_text(row, buf, sizeof buf);
+    CHECK_STR(buf, "#112233");
+    added = gte_swatch_add("added", 0x808080UL);
+    CHECK(added >= 0);
+    row = te4_swatch_row(added);
+    CHECK(row != 0);
+    CHECK_INT(lf_setting_set_colour(&io, row, SD_PICK_CUSTOM, "445566", &failed), LF_SET_OK);
+    gte_row_text(row, buf, sizeof buf);
+    CHECK_STR(buf, "#445566");
+    /* the Terminal Palette row is the Settings palette row: same store, same slot, same file */
+    CHECK(pal != 0 && pal->kind == SD_PALETTE && pal->store == SD_UPTERM);
+    CHECK(pal->store == sd_settings[SDI_PALETTE].store && pal->off == sd_settings[SDI_PALETTE].off);
+    CHECK_INT(lf_setting_set_colour(&io, pal, 5, "aa11bb", &failed), LF_SET_OK);
+    lf_palette_hex(&io, 5, hex);
+    CHECK_STR(hex, "AA11BB");
+    CHECK_INT(lf_setting_set_colour(&io, &sd_settings[SDI_PALETTE], 6, "010203", &failed), LF_SET_OK);
+    lf_palette_hex(&io, 5, hex);
+    CHECK_STR(hex, "AA11BB");                  /* the other row leaves slot 5 alone, and its slot 6 is in the same file */
+    lf_palette_hex(&io, 6, hex);
+    CHECK_STR(hex, "010203");
+}
+
 static void test_gthemes_te4_pickers(void)
 {
     const sd_setting *sw = 0, *ref = 0, *el = 0;
@@ -3302,6 +3354,7 @@ void suite_gthemes(void)
     test_gthemes_te3_edit_applies();
     test_gthemes_te4_section4();
     test_gthemes_te4_pickers();
+    test_gthemes_swatch_and_palette_rows_apply();
     test_gthemes_te4_dispatch();
     test_gthemes_te4_leave();
     test_gthemes_te4_rows();

@@ -48,3 +48,13 @@ BASEDEST-EMPTY-SYSUPTERM" only holds for the 3.1 master). now: full kit tree. No
 ## Fix
 
 Checks 4, 5, 8, 11 and the check-10 gate now use the drawer the Installer recorded in ENVARC:up-term/Dir (real_drawer), and check 10 runs only when that drawer is off the SYS: volume (on_sys_volume resolves the SYS: volume name). Commit: 4e01e26a. Test: tests/test_installer_rig_real_drawer.py (make ONLY=rig_real_drawer).
+
+## Rig verify after 4e01e26a
+
+Run: rig 57, Amiberry, --os 32, `installer_rig.py ONLY default FORCE`; log build scratchpad check10-verify.log. Boot ~420 s.
+- Real drawer chosen by the Installer: Empty-12MB-FFS:UP-Term (the SYS: volume).
+- ok 4 UP-Term: assigned to Empty-12MB-FFS:UP-Term; ok 5 ENVARC:up-term/Dir names Empty-12MB-FFS:UP-Term; ok 8 S:User-Startup assigns it; ok 10 (log numbering) VERSIONS there; ok 11 UP-Term:bin/sh there. Logged checks 1-29 all ok.
+- Run ended `[ABORT] default: ERR: the Amiga stopped answering while Execute was running (nothing for 25 s, and a ping got no reply) (no verdict written)`, exit 2, after ok 29 (UPConsole STATUS). Rig answered ami.py exec afterwards, so likely a harness/emulator stall, not a product fail.
+- Not reached: the other-disk check (check 10 gate, installer_rig.py:1226 `if not on_sys_volume(drawer)`), so skip-vs-fail is UNVERIFIED by this run; `[FAIL] default ole >NIL: CON ON` did not appear.
+- `Assign LIST` line for SYS (exact): `SYS            Empty-12MB-FFS:`  -- no `SYS  <Volume>:` pair beyond whitespace; sys_volume_name() splits on whitespace into ["SYS","Empty-12MB-FFS:"] and returns EMPTY-12MB-FFS, which matches the drawer's volume, so on_sys_volume is True (matches the assumption).
+- Correction: the gate sits between "UP-Term: block comes before..." (ok 9) and the file checks (ok 10 = VERSIONS) at installer_rig.py:1226. The log goes ok 9 -> ok 10 with no other-disk line, so check 10 was SKIPPED (not failed) on the SYS: volume. Verified from the log sequence.

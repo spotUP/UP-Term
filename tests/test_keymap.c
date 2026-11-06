@@ -3254,6 +3254,35 @@ static void both_menu_styles_publish_the_shown_rows_through_one_join(void)
     CHECK_STR(big, "");
 }
 
+/* TE-ROWS-255-CUT: a page of MN_MAX_ITEMS rows with realistic labels joins to more than 255 bytes; a MN_ROWS_MAX buffer
+ * holds the last label whole, and the constant covers the worst case (every row a full MN_LABEL - 1 label). */
+static void the_rows_join_buffer_holds_a_full_page_whole(void)
+{
+    static mn_item it[MN_MAX_ITEMS];
+    static int idx[MN_MAX_ITEMS];
+    static char out[MN_ROWS_MAX];
+    int i, n;
+    for (i = 0; i < MN_MAX_ITEMS; i++) {
+        idx[i] = i;
+        strcpy(it[i].label, "Row 00 with a realistic setting label: value");
+        it[i].label[4] = (char)('0' + i / 10);
+        it[i].label[5] = (char)('0' + i % 10);
+    }
+    strcpy(it[MN_MAX_ITEMS - 1].label, "Shape: Square LAST");
+    mn_rows_join(it, idx, MN_MAX_ITEMS, out, sizeof out);
+    n = (int)strlen(out);
+    CHECK(n > 255);
+    CHECK(strstr(out, "|Shape: Square LAST") == out + n - 19);
+    /* worst case: all labels at the MN_LABEL - 1 limit still fit whole */
+    for (i = 0; i < MN_MAX_ITEMS; i++) {
+        memset(it[i].label, 'x', MN_LABEL - 1);
+        it[i].label[MN_LABEL - 1] = 0;
+    }
+    mn_rows_join(it, idx, MN_MAX_ITEMS, out, sizeof out);
+    CHECK((int)strlen(out) == MN_MAX_ITEMS * (MN_LABEL - 1) + (MN_MAX_ITEMS - 1));
+    CHECK(MN_ROWS_MAX >= MN_MAX_ITEMS * (MN_LABEL - 1) + (MN_MAX_ITEMS - 1) + 1);
+}
+
 static void the_theme_list_opens_with_the_cursor_on_the_saved_theme_not_row_0(void)
 {
     mn_item it[3];
@@ -3436,6 +3465,40 @@ static void tw_open_editor(void)
     gte_open(t.model, "nord");
     gt_free(&t);
     CHECK_INT(lf_setting_set(&tw_io, gte_row(SDI_COUNT), 1, &failed), 0);   /* Mode: Advanced shows the Elements page */
+}
+
+/* TE-SWATCH-BUGS (S61 hunt): Right on a picker row of the Swatches page opens its colour list. A swatch row lists the
+ * picker entries (the theme colours and Custom), the Terminal Palette row lists its 16 entries. Fails on purpose until
+ * choice_setting searches the editor rows too. */
+/* Owner bug A (s61): no swatch can be recoloured. Every picker row on the
+ * Swatches page must open its colour list, a built-in swatch (swatch0 =
+ * "background") as well as one added with Add Swatch. Fails on main on
+ * purpose: choice_setting (amarchy/menu_tree.c) only searches ids below
+ * sd_nsettings, so editor rows never get a list. */
+static void every_swatch_row_opens_its_colour_list(void)
+{
+    mn_item it[MN_MAX_ITEMS];
+    int nb, na;
+    CHECK(parse("[menu]\nsettings.theme = Theme Editor | settings:theme\nsettings.theme.swatches = Swatches | settings:theme-swatches\n"));
+    tw_open_editor();
+    nb = mn_children(&km, "settings.theme.swatches.swatch0", it, MN_MAX_ITEMS);
+    CHECK_INT(nb, SD_PICK_CUSTOM + 1);
+    CHECK(gte_swatch_add("added", 0x808080UL) >= 0);
+    na = mn_children(&km, "settings.theme.swatches.swatch12", it, MN_MAX_ITEMS);
+    CHECK_INT(na, SD_PICK_CUSTOM + 1);
+}
+
+/* Owner bug C (s61): "Terminal Palette" on the Swatches page shows one entry
+ * named "palette". Plan line 192: it is the 16 v1 terminal colours, reused rows.
+ * Fails on main on purpose, same cause as every_swatch_row_opens_its_colour_list. */
+static void terminal_palette_row_lists_its_16_colours(void)
+{
+    mn_item it[MN_MAX_ITEMS];
+    int np;
+    CHECK(parse("[menu]\nsettings.theme = Theme Editor | settings:theme\nsettings.theme.swatches = Swatches | settings:theme-swatches\n"));
+    tw_open_editor();
+    np = mn_children(&km, "settings.theme.swatches.palette", it, MN_MAX_ITEMS);
+    CHECK_INT(np, 16);
 }
 
 static void the_theme_editor_window_fits_its_rows(void)
@@ -3626,6 +3689,7 @@ void suite_keymap(void)
     the_theme_list_opens_with_the_cursor_on_the_saved_theme_not_row_0();
     the_cursor_stays_on_the_same_entry_when_the_status_row_shifts_the_level();
     both_menu_styles_publish_the_shown_rows_through_one_join();
+    the_rows_join_buffer_holds_a_full_page_whole();
     a_volume_without_a_handler_task_matches_no_device();
     menu_theme_roles_map_the_palette();
     dopus_theme_commands_use_the_theme_directly();
@@ -3679,6 +3743,8 @@ void suite_keymap(void)
     osd_size_counts_the_reachable_levels();
     drawn_menu_geometry_follows_the_font_and_screen();
     the_theme_editor_window_fits_its_rows();
+    every_swatch_row_opens_its_colour_list();
+    terminal_palette_row_lists_its_16_colours();
     an_open_window_widens_when_a_value_grows();
     blit_starts_where_the_beam_cannot_cross_it();
     a_slow_blit_keeps_the_estimate_up_so_the_bar_does_not_tear();

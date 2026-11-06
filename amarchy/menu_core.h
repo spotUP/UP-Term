@@ -27,6 +27,11 @@ extern int (*mn_net_hook)(char names[][KM_LABEL], int max);   /* the network pan
  * keymap label (KM_LABEL), and its value must not be cut off by the buffer. */
 #define MN_LABEL 96
 
+/* The buffer AMARCHY_ROWS is joined into (mn_rows_join): MN_MAX_ITEMS rows of at most MN_LABEL - 1 characters, '|' between
+ * them, the NUL, and 1 spare (mn_rows_join keeps room for label + separator + NUL before it copies). Both menu programs size
+ * their buffer with it; a literal here cut the value at 255 characters. */
+#define MN_ROWS_MAX (MN_MAX_ITEMS * MN_LABEL + 2)
+
 typedef struct mn_item {
     int  row;                   /* index into keymap.menu, MN_ROW_GROUP for a group (a node with children),
                                  * MN_ROW_INDEX for an app index row (amarchy/index_core.h),

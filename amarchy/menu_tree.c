@@ -68,14 +68,26 @@ static int settings_row(const keymap *k, const char *node)
     return -1;
 }
 
+/* the next visible row of settings page `page` at or after row id *i (the old table, then the Theme Editor rows), else 0; *i is left past it.
+ * The one walk over those rows: setting_rows lists them, choice_setting finds a picker or list among them. */
+static const sd_setting *next_page_row(int page, int *i)
+{
+    for (; page >= 0 && *i < sd_nsettings + gte_nrows(); (*i)++) {
+        const sd_setting *s = gte_row(*i);
+        if (s->page == page && gte_row_visible(s)) {
+            (*i)++;
+            return s;
+        }
+    }
+    return 0;
+}
+
 /* the page's settings in table order: the rows the Prefs window shows on that page */
 static int setting_rows(const keymap *k, int row, mn_item *out, int max)
 {
-    int page = sd_page_by_name(k->menu[row].arg), i, n = 0;
-    for (i = 0; page >= 0 && i < sd_nsettings + gte_nrows() && n < max; i++) {
-        const sd_setting *s = gte_row(i);
-        if (s->page != page || !gte_row_visible(s))
-            continue;
+    int page = sd_page_by_name(k->menu[row].arg), i = 0, n = 0;
+    const sd_setting *s;
+    while (n < max && (s = next_page_row(page, &i)) != 0) {
         out[n].row = MN_ROW_SETTING;
         out[n].ix = s->id;
         cpy(out[n].seg, s->key ? s->key : "", KM_ID);
@@ -92,13 +104,13 @@ static const sd_setting *choice_setting(const keymap *k, const char *node)
     for (i = 0; i < k->nmenu; i++) {
         const char *id = k->menu[i].id;
         size_t l = strlen(id);
-        int j;
+        int j = 0;
+        const sd_setting *s;
         if (k->menu[i].kind != KA_SETTINGS || strncmp(node, id, l) || node[l] != '.')
             continue;
         page = sd_page_by_name(k->menu[i].arg);
-        for (j = 0; page >= 0 && j < sd_nsettings; j++) {
-            const sd_setting *s = gte_row(j);
-            if (s->page == page && (s->kind == SD_CYCLE || SD_HAS_PICKER(s) || SD_HAS_LIST(s)) && s->key && !strcmp(s->key, node + l + 1))
+        while ((s = next_page_row(page, &j)) != 0) {
+            if ((s->kind == SD_CYCLE || SD_HAS_PICKER(s) || SD_HAS_LIST(s)) && s->key && !strcmp(s->key, node + l + 1))
                 return s;
         }
     }
