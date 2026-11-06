@@ -286,6 +286,8 @@ typedef struct sh_shell {
     int exiting;           /* exit ran: stop */
     int failat_leak;       /* a finished script called FailAt: the script that ran it takes failat_leak_val */
     long failat_leak_val;
+    int amiscr_depth;     /* AmigaDOS scripts running inside run_tokens: a nested one starts at amiscr_failat */
+    long amiscr_failat;
     int run_banner;        /* the background job being added is AmigaDOS Run's: add_job prints no `[n] pid` line */
     int amiscr_reported;   /* the running script already printed its "X failed returncode" line */
     int amiscr_load_rc;    /* rc when the .key binding refuses the call (20, or 10 for a missing /A) */
