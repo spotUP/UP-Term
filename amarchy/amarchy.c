@@ -60,9 +60,17 @@ static int starts(const char *cmd, const char *word)
     return 1;
 }
 /* vbcc's startup runs main on a stack of this size whatever the starter gives
- * it; the cookie says the same to AmigaOS 3.2 and to vsh (RULES.md rule 6). */
-long __stack = 16384;
-const char amarchy_stack_cookie[] = "$STACK: 16384";
+ * it; the cookie says the same to AmigaOS 3.2 and to vsh (RULES.md rule 6).
+ * The size comes from a measurement. A restart (Break, then Run) used 16780 bytes on rig 177
+ * (thoughts/shared/research/s61-evidence/restart-crash-stack-measure.md), 396 more than the 16384 this
+ * was. The stack block lies directly above the BSS hunk, and the end of that hunk holds the saved
+ * vectors of the system patches (wbreset, strut, borderblank): the overrun wrote stack frames over
+ * them and the next patched call jumped through the damage (Exception 3 a few seconds after Run,
+ * about every second restart). 65536 also leaves room for the menu and settings paths, which the
+ * measurement did not walk and which hold frames up to 8.8 KB (am_prefs alone is 4.6 KB per frame);
+ * amarchy-gui runs the same code on the same size. tests/test_amarchy_stack.py pins the minimum. */
+long __stack = 65536;
+const char amarchy_stack_cookie[] = "$STACK: 65536";
 
 #define NNOTIFY PREFS_NNOTIFY_AMARCHY /* the ENV: copies only: prefs_core.h says why */
 static struct NotifyRequest nr[NNOTIFY];
