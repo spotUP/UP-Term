@@ -2650,8 +2650,57 @@ static void test_gthemes_te7_reset_prompt(void)
     tm_free(&m);
 }
 
+/* TE-10.7: the drawn menu and the theme windows used the main theme on every screen */
+static void test_drawn_windows_take_their_screens_theme(void)
+{
+    gt_screen_rules r;
+    static char big[131072];
+    char out[GT_NAME], small[5];
+    const char *f = "default workbench\nDOPUS.1 = nord\nSkipme = exclude\n";
+    long n;
+    gt_screen_rules_parse(f, (long)strlen(f), &r);
+    gt_screen_draw_theme(&r, "DOPUS.1", "gruvbox", out, (int)sizeof out);
+    CHECK_STR(out, "nord");
+    gt_screen_draw_theme(&r, "Workbench", "gruvbox", out, (int)sizeof out);
+    CHECK_STR(out, "gruvbox");
+    gt_screen_draw_theme(&r, "Skipme", "gruvbox", out, (int)sizeof out);
+    CHECK_STR(out, "gruvbox");
+    gt_screen_draw_theme(&r, "Unlisted", "gruvbox", out, (int)sizeof out);
+    CHECK_STR(out, "gruvbox");
+    gt_screen_draw_theme(&r, 0, "gruvbox", out, (int)sizeof out);
+    CHECK_STR(out, "gruvbox");
+    gt_screen_draw_theme(&r, "", "gruvbox", out, (int)sizeof out);
+    CHECK_STR(out, "gruvbox");
+    memset(small, 'x', sizeof small);
+    gt_screen_draw_theme(&r, "DOPUS.1", "gruvbox", small, 5);
+    CHECK((int)strlen(small) < 5);
+    /* the callers: both windows ask the DOS side for their screen's theme; the drawn menu no longer reads the main theme */
+    n = read_file("amarchy/gui.c", big, (long)sizeof big - 1);
+    CHECK(n > 0);
+    if (n > 0) {
+        char *pg;
+        big[n] = 0;
+        CHECK(strstr(big, "ipd_screen_theme_name(") != 0);
+        pg = strstr(big, "static void pens_get(gui *g, const char *name)\n{");
+        CHECK(pg != 0);
+        if (pg) {
+            char *end = strstr(pg, "\n}\n");
+            if (end)
+                *end = 0;
+            CHECK(strstr(pg, "gt_dos_load_current") == 0);
+        }
+    }
+    n = read_file("amarchy/themewin.c", big, (long)sizeof big - 1);
+    CHECK(n > 0);
+    if (n > 0) {
+        big[n] = 0;
+        CHECK(strstr(big, "ipd_screen_theme_name(") != 0);
+    }
+}
+
 void suite_gthemes(void)
 {
+    test_drawn_windows_take_their_screens_theme();
     test_gthemes_te7_reset_prompt();
     test_gthemes_te6_live();
     test_gthemes_te3_save();

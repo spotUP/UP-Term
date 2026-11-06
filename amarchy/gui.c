@@ -774,7 +774,7 @@ static void preview_sync(gui *g)
         if (MN_IS_INDEX(it) && ix_launch_path(&ixs, it, path, (int)sizeof path))
             row = path;
     }
-    gt_dos_current(cur, (int)sizeof cur);
+    ipd_screen_theme_name(g->scr, cur, (int)sizeof cur);   /* TE-10.7: what pens_get(g, 0) draws on this screen, not the main theme */
     if (!gt_preview_term(row, cur, g->drawn, want, (int)sizeof want, gt_dos_preview_send))  /* menu pens and every console tab */
         return;
     pens_release(g);
@@ -1477,12 +1477,15 @@ static void pens_get(gui *g, const char *name)
 {
     uc_u32 rgb[MT_ROLES], got[MT_ROLES];
     gtheme th;
+    char screen_theme[GT_NAME];
     int r, themed = 1;
-    /* the drawn menu's colours are the Omarchy GUI theme (Style > Theme, AM_GTHEME), not the terminal's */
-    if (name)
-        gt_dos_load(name, &th);
-    else
-        gt_dos_load_current(&th);
+    /* the drawn menu's colours are the Omarchy GUI theme (Style > Theme, AM_GTHEME), not the terminal's; on a screen with its own
+     * theme entry (TE-10.7) that screen's theme */
+    if (!name) {
+        ipd_screen_theme_name(g->scr, screen_theme, (int)sizeof screen_theme);
+        name = screen_theme;
+    }
+    gt_dos_load(name, &th);
     strncpy(g->drawn, th.name, sizeof g->drawn - 1);
     g->drawn[sizeof g->drawn - 1] = 0;
     menu_theme_roles_gui(&th, rgb);

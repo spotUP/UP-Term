@@ -494,5 +494,9 @@ extern unsigned long gt_screen_match_steps; /* work counter: one per matcher ste
 /* The theme for a public screen name. Returns 1 and fills theme (cap bytes; an unusable name becomes GT_DEFAULT) and *takeover,
  * or 0 when the screen stays untouched. Key off: only Workbench, with main_theme. */
 int gt_screen_theme_of(const gt_screen_rules *r, const char *name, const char *main_theme, char *theme, int cap, int *takeover);
+/* TE-10.7: the theme a window Amarchy draws itself (the drawn menu, the theme windows) takes on the public screen screen_name:
+ * the theme the screen rules give it, else main_theme (an excluded or untouched screen, a screen with no public name: 0 or empty).
+ * out is always NUL-terminated within cap (cap > 0). */
+void gt_screen_draw_theme(const gt_screen_rules *r, const char *screen_name, const char *main_theme, char *out, int cap);
 
 #endif

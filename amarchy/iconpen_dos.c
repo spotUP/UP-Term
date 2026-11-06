@@ -153,6 +153,38 @@ void ipd_screen_rules_load(gt_screen_rules *out)
     rules_read(out, main_theme);
 }
 
+void ipd_pub_screen_name_of(struct Screen *scr, char *out, int cap)
+{
+    struct List *pl;
+    struct Node *nd;
+    if (cap <= 0)
+        return;
+    out[0] = 0;
+    if (!scr)
+        return;
+    pl = LockPubScreenList();
+    for (nd = pl ? pl->lh_Head : 0; nd && nd->ln_Succ; nd = nd->ln_Succ) {
+        if (((struct PubScreenNode *)nd)->psn_Screen == scr) {
+            strncpy(out, nd->ln_Name ? nd->ln_Name : "", (size_t)cap - 1);
+            out[cap - 1] = 0;
+            break;
+        }
+    }
+    UnlockPubScreenList();
+}
+
+unsigned long ipd_screen_theme_asks;
+
+void ipd_screen_theme_name(struct Screen *scr, char *out, int cap)
+{
+    char name[GT_NAME + 64], main_theme[GT_NAME];
+    gt_screen_rules rules;
+    ipd_screen_theme_asks++;
+    ipd_pub_screen_name_of(scr, name, (int)sizeof name);   /* the list is unlocked again: the DOS reads below can put up a requester */
+    rules_read(&rules, main_theme);   /* the rules and the main theme (AM_GTHEME) in one read, as the icon pens take them */
+    gt_screen_draw_theme(&rules, name, main_theme, out, cap);
+}
+
 /* FLAT-BOOT-FREEZE: the theme op ip_sync / ip_recolour call with the public screen list locked. It hands back the theme
  * pens_theme read before the lock and touches no file: a DOS read there can put up a requester (volume not ready at boot,
  * when amarchy-flat syncs the first second after LoadWB opens the Workbench), the requester's window needs the public screen
