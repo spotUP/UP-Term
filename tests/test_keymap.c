@@ -3467,6 +3467,40 @@ static void tw_open_editor(void)
     CHECK_INT(lf_setting_set(&tw_io, gte_row(SDI_COUNT), 1, &failed), 0);   /* Mode: Advanced shows the Elements page */
 }
 
+/* TE-SWATCH-BUGS (S61 hunt): Right on a picker row of the Swatches page opens its colour list. A swatch row lists the
+ * picker entries (the theme colours and Custom), the Terminal Palette row lists its 16 entries. Fails on purpose until
+ * choice_setting searches the editor rows too. */
+/* Owner bug A (s61): no swatch can be recoloured. Every picker row on the
+ * Swatches page must open its colour list, a built-in swatch (swatch0 =
+ * "background") as well as one added with Add Swatch. Fails on main on
+ * purpose: choice_setting (amarchy/menu_tree.c) only searches ids below
+ * sd_nsettings, so editor rows never get a list. */
+static void every_swatch_row_opens_its_colour_list(void)
+{
+    mn_item it[MN_MAX_ITEMS];
+    int nb, na;
+    CHECK(parse("[menu]\nsettings.theme = Theme Editor | settings:theme\nsettings.theme.swatches = Swatches | settings:theme-swatches\n"));
+    tw_open_editor();
+    nb = mn_children(&km, "settings.theme.swatches.swatch0", it, MN_MAX_ITEMS);
+    CHECK_INT(nb, SD_PICK_CUSTOM + 1);
+    CHECK(gte_swatch_add("added", 0x808080UL) >= 0);
+    na = mn_children(&km, "settings.theme.swatches.swatch12", it, MN_MAX_ITEMS);
+    CHECK_INT(na, SD_PICK_CUSTOM + 1);
+}
+
+/* Owner bug C (s61): "Terminal Palette" on the Swatches page shows one entry
+ * named "palette". Plan line 192: it is the 16 v1 terminal colours, reused rows.
+ * Fails on main on purpose, same cause as every_swatch_row_opens_its_colour_list. */
+static void terminal_palette_row_lists_its_16_colours(void)
+{
+    mn_item it[MN_MAX_ITEMS];
+    int np;
+    CHECK(parse("[menu]\nsettings.theme = Theme Editor | settings:theme\nsettings.theme.swatches = Swatches | settings:theme-swatches\n"));
+    tw_open_editor();
+    np = mn_children(&km, "settings.theme.swatches.palette", it, MN_MAX_ITEMS);
+    CHECK_INT(np, 16);
+}
+
 static void the_theme_editor_window_fits_its_rows(void)
 {
     static const char *const part[] = {
@@ -3709,6 +3743,8 @@ void suite_keymap(void)
     osd_size_counts_the_reachable_levels();
     drawn_menu_geometry_follows_the_font_and_screen();
     the_theme_editor_window_fits_its_rows();
+    every_swatch_row_opens_its_colour_list();
+    terminal_palette_row_lists_its_16_colours();
     an_open_window_widens_when_a_value_grows();
     blit_starts_where_the_beam_cannot_cross_it();
     a_slow_blit_keeps_the_estimate_up_so_the_bar_does_not_tear();
