@@ -1265,8 +1265,9 @@ HOST_KEYS = [
     # both Cmd keys are Right-Amiga, so Cmd+C/Cmd+V copy and paste from either
     # side as on the Mac. FS-UAE's own modifier was the left Cmd (its log: "Using
     # default modifier key LSUPER") and took those keys; it moves to the right
-    # Ctrl. The F12 menu is unchanged.
-    "modifier_key = rctrl",
+    # Ctrl, and from 2026-11-06 to the Menu key, which a Mac keyboard lacks: the right Ctrl key is now
+    # Left-Amiga (below). The F12 menu is unchanged and still opens FS-UAE's own menu.
+    "modifier_key = menu",
     "keyboard_key_lsuper = action_key_amiga_right",
     "keyboard_key_rsuper = action_key_amiga_right",
     # so no Cmd key is Left-Amiga, which Amarchy's bindings need (Super is
@@ -1274,6 +1275,9 @@ HOST_KEYS = [
     # Option key is Left-Amiga (Right Option+Space opens the menu). The left Option
     # key stays the Amiga's Left Alt.
     "keyboard_key_ralt = action_key_amiga_left",
+    # The owner's Mac takes Right Option+Space for its own shortcut (s59 eye check, 2026-11-06), so the right
+    # Ctrl key is Left-Amiga too: Right Ctrl+Space opens the Amarchy menu with nothing on the Mac in the way.
+    "keyboard_key_rctrl = action_key_amiga_left",
 ]
 
 
