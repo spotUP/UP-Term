@@ -3203,6 +3203,17 @@ static struct {
     int dirty;
 } gt_se;
 
+void (*gt_se_loader)(void);
+static int se_loaded;
+
+static void se_ensure(void)
+{
+    if (!se_loaded && gt_se_loader) {
+        se_loaded = 1;      /* before the call: the loader calls gt_se_load */
+        gt_se_loader();
+    }
+}
+
 void gt_se_set_themes(const char *const *names, int n)
 {
     int i;
@@ -3215,6 +3226,7 @@ void gt_se_set_themes(const char *const *names, int n)
 void gt_se_load(const char *buf, long len, const char *const *open, int nopen)
 {
     int i;
+    se_loaded = 1;
     gt_screen_rules_parse(buf, len, &gt_se.r);
     gt_se.nopen = 0;
     for (i = 0; i < nopen && gt_se.nopen < GT_SE_ROWS - 1; i++)
@@ -3289,6 +3301,7 @@ int gt_se_add_rule(const char *pat)
 static int se_visible(const sd_setting *s)
 {
     gt_screen_row rows[GT_SE_ROWS];
+    se_ensure();
     switch (s->aux) {
     case GTSE_TICK: case GTSE_THEME: case GTSE_TAKE:
         return s->aux2 < se_rows(rows);
