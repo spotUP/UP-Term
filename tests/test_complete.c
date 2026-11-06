@@ -156,6 +156,66 @@ static void path_walk_reads_only_its_copy_after_the_shell_ends(void)
     CHECK_INT((int)cc_path_next(0, &sh_copy_at), 0); /* no copy: C: alone */
 }
 
+/* s62 TAB-SINGLE-INLINE: in vsh, "Type tabprobe_z" + Tab in RAM: (the only
+ * match tabprobe_zzz) inserted nothing. vsh answers the marker line with
+ * VTCON_COMP_DEFAULT from inside its ACTION_VTCON_COMPLETE packet; the
+ * handler started its lookup right there, when no Read of the shell was held,
+ * so comp_start's cd gate gave the worker no directory and the relative word
+ * matched nothing. The fake handler below starts a lookup when
+ * cc_default_step says so, and the lookup gets the shell's directory only if
+ * cc_cd_blocked holds for a Read it holds at that moment. */
+static int lookup_had_dir;
+static int lookups;
+static void fake_lookup(const void *shell_task, const void *shell_port,
+                        const void *const *held_sender, int nheld)
+{
+    int k;
+    lookups++;
+    lookup_had_dir = 0;
+    for (k = 0; k < nheld; k++)
+        if (cc_cd_blocked(shell_task, held_sender[k], shell_port, shell_port))
+            lookup_had_dir = 1;
+}
+
+static void single_match_tab_in_vsh_gets_the_shells_directory(void)
+{
+    static int shell_task, shell_port, prog_task;
+    const void *held[1];
+    int pending = 0;
+
+    /* the DEFAULT answer: vsh waits in the COMPLETE packet, no Read held */
+    lookups = 0;
+    if (cc_default_step(&pending, 1, 0, 1))
+        fake_lookup(&shell_task, &shell_port, held, 0);
+    CHECK_INT(lookups, 0);            /* no lookup without a directory */
+    CHECK_INT(pending, 1);
+
+    /* a Read from another task proves nothing: still waiting */
+    held[0] = &prog_task;
+    if (cc_default_step(&pending, 0, 0, 1))
+        fake_lookup(&shell_task, &shell_port, held, 1);
+    CHECK_INT(lookups, 0);
+    CHECK_INT(pending, 1);
+
+    /* vsh's next synchronous Read arrives, line unchanged: the lookup runs
+     * and has RAM: as its directory, so tabprobe_z finds tabprobe_zzz */
+    held[0] = &shell_task;
+    if (cc_default_step(&pending, 0, 1, 1))
+        fake_lookup(&shell_task, &shell_port, held, 1);
+    CHECK_INT(lookups, 1);
+    CHECK_INT(lookup_had_dir, 1);
+    CHECK_INT(pending, 0);
+
+    /* once only: the Read after that starts nothing */
+    CHECK_INT(cc_default_step(&pending, 0, 1, 1), 0);
+
+    /* a key typed before vsh read again: the answer is dropped, not run */
+    cc_default_step(&pending, 1, 0, 1);
+    CHECK_INT(cc_default_step(&pending, 0, 1, 0), 0);
+    CHECK_INT(pending, 0);
+    CHECK_INT(cc_default_step(&pending, 0, 1, 1), 0);
+}
+
 /* s61: a Tab's worker DupLocked the opener's pr_CurrentDir after the
  * handler had started it; if the handler answered the opener's Read first
  * (Return typed during the lookup), the Shell ran `cd x`, UnLocked the old
@@ -673,6 +733,7 @@ void suite_complete(void)
     command_list_searches_every_directory_of_a_multi_assigned_c();
     path_walk_reads_only_its_copy_after_the_shell_ends();
     cd_dup_never_reads_a_lock_the_shell_cd_away_from();
+    single_match_tab_in_vsh_gets_the_shells_directory();
     command_list_skips_directories_and_files_without_e_or_s();
     command_list_skips_system_and_disabled_residents();
 }

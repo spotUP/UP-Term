@@ -97,6 +97,22 @@ int cc_cd_read_waits(const void *reader, const void *const *from, const volatile
     return 0;
 }
 
+int cc_default_step(int *pending, int asked, int read_held, int line_same)
+{
+    if (asked)
+        *pending = 1;
+    if (!*pending)
+        return 0;
+    if (!line_same) {
+        *pending = 0; /* a key since: the answer is for no word now */
+        return 0;
+    }
+    if (!read_held)
+        return 0; /* the shell is not provably blocked: no directory yet */
+    *pending = 0;
+    return 1;
+}
+
 /* ---- W22: the command-name cache (see complete_core.h) -------------------- */
 
 static int cc_lower(int c)

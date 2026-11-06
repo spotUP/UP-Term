@@ -80,6 +80,19 @@ int cc_cd_blocked(const void *opener, const void *sender, const void *reply_port
                   const void *opener_port);
 int cc_cd_read_waits(const void *reader, const void *const *from, const volatile int *taking, int n);
 
+/* V93: a shell answered a Tab's marker line with VTCON_COMP_DEFAULT (no
+ * `complete` spec for the word): the console's own lookup runs, and it needs
+ * the shell's current directory. The shell is then blocked in that
+ * ACTION_VTCON_COMPLETE packet, which the handler answers at once, not in a
+ * Read the console holds -- so a lookup started there gets no directory
+ * (cc_cd_blocked) and finds nothing in a relative word (s62: "Type
+ * tabprobe_z" + Tab in RAM:, the only match tabprobe_zzz, inserted nothing).
+ * The lookup waits for the shell's next Read instead. cc_default_step runs at
+ * the answer (asked 1) and at each Read after it; *pending holds the wait.
+ * read_held: a Read the console holds proves the shell blocked; line_same:
+ * no key changed the line since the Tab. 1: start the lookup now. */
+int cc_default_step(int *pending, int asked, int read_held, int line_same);
+
 /* ---- W22: the command-name cache ------------------------------------------
  *
  * What a command directory holds (the names cc_is_command takes), kept per

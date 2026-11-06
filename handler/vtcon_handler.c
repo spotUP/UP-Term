@@ -324,6 +324,7 @@ typedef struct con {
                                   * selection window (research/2026-10-02_kingcon-completion.md) */
     unsigned long edits;         /* keys that changed the line so far */
     unsigned long comp_edits;    /* edits when the running completion started */
+    int comp_default;            /* V93: the shell said DEFAULT; the lookup waits for its next Read (cc_default_step) */
     int comp_partial;            /* W22: the last command completion was partial (1 unix,
                                   * 2 kingcon): asked again when the warm-up ends */
     unsigned long partial_edits; /* edits after its answer: a key since drops the refine */
@@ -4365,6 +4366,15 @@ static void start_completion(con *c)
             return; /* the shell is still at it */
         c->marker_out = c->comp_busy = 0; /* it ended without an answer */
     }
+    if (c->comp_default) {
+        int alive;
+        Forbid();
+        alive = task_alive(c->comp_armed);
+        Permit();
+        if (alive && c->edits == c->comp_edits)
+            return; /* the shell's DEFAULT answer waits for its next Read */
+        c->comp_default = 0; /* the line changed or the shell went */
+    }
     if (!c->comp_busy && !comp_marker(c, word_start(&c->le)))
         default_completion(c);
 }
@@ -4902,7 +4912,9 @@ static void comp_words(con *c, struct DosPacket *p)
     if (!c->w.t || c->raw || c->edits != c->comp_edits)
         return; /* the line moved on meanwhile */
     if (p->dp_Arg4 & VTCON_COMP_DEFAULT) {
-        default_completion(c);
+        /* Not now: the shell waits in this packet, so the lookup would get no
+         * current directory (comp_start's cd gate). Its next Read starts it. */
+        cc_default_step(&c->comp_default, 1, 0, 1);
         return;
     }
     if (!w || len < 0)
@@ -8544,6 +8556,10 @@ static void packet(con *c, struct DosPacket *p)
             dbg("READ task/nreads", (LONG)p->dp_Port->mp_SigTask, c->nreads);
 #endif
             ahead_feed(c); /* the keys typed while nobody read: after the prompt it wrote */
+            if (cc_default_step(&c->comp_default, 0,
+                                p->dp_Port && (struct Task *)p->dp_Port->mp_SigTask == c->comp_armed,
+                                c->w.t && !c->raw && c->edits == c->comp_edits))
+                default_completion(c); /* the shell's own Read is held: the lookup gets its directory */
             service_reads(c);
         } else {
             reply(p, -1, ERROR_NO_FREE_STORE);
