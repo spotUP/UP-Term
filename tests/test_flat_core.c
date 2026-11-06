@@ -1757,8 +1757,8 @@ static void test_inbar_status_dump(void)
     fclose(f);
     src[n] = 0;
     CHECK(strstr(src, "\" inbar=\");  put_num(line, &n, copy.pen_inbar)") != 0);
-    CHECK(strstr(src, "flat_pens_refresh(&g_pens") != 0);                      /* the pen the dump reports is really obtained */
-    CHECK(strstr(src, "flat_pens_follow(&g_pens") != 0);                       /* and follows the screen on every 1 s watch */
+    CHECK(strstr(src, "flat_pens_refresh_on(sl") != 0);                      /* the pen the dump reports is really obtained */
+    CHECK(strstr(src, "flat_pens_follow_on(sl") != 0);                       /* and follows the screen on every 1 s watch */
 }
 
 /* S32-INACTIVE-BAR: the outer ring and the scroller knob of an inactive window take the inactive pen; active ones are unchanged */
@@ -2441,8 +2441,158 @@ static void test_pens_non_workbench_slot_keeps_flat_state(void)
     CHECK(s.pen_dim >= 100);
 }
 
+/* TE-10.6b: what the draw hook reads for a window: the global look plus the pens of the window's own screen slot */
+static void test_state_for_screen_pens(void)
+{
+    wbscr w;
+    flat_pens_tab t;
+    flat_pen_ops o;
+    flat_state look, a, b, c;
+    int scr_a, scr_b, scr_c;
+    desk_flat_state(1, 1, &look);
+    look.sel_rgb[0] = 0x28; look.sel_rgb[1] = 0x2c; look.sel_rgb[2] = 0x34;
+    look.pen_dim = 77; look.pen_knob = 78; look.pen_inbar = 79; look.pen_sel = 80;   /* stale numbers in the look block */
+    flat_pens_tab_init(&t);
+    o.obtain = wb_obtain; o.release = wb_release; o.rgb = wb_rgb;
+    wb_screen(&w, 100);
+    o.ctx = &w;
+    tab_obtain_on(&t, &o, &look, &scr_a, 1);
+    tab_obtain_on(&t, &o, &look, &scr_b, 1);
+    CHECK_INT(flat_state_for(&look, &t, &scr_a, 1, &a), 1);
+    CHECK_INT(flat_state_for(&look, &t, &scr_b, 1, &b), 1);
+    CHECK(a.pen_dim >= 100 && b.pen_dim >= 100 && a.pen_dim != b.pen_dim);           /* B's pens are never A's */
+    CHECK_INT(a.pen_dim, flat_pens_tab_find(&t, &scr_a, 1)->dim);
+    CHECK_INT(b.pen_sel, flat_pens_tab_find(&t, &scr_b, 1)->sel);
+    CHECK_INT(a.pen_back, look.pen_back);                                           /* the look stays global */
+    CHECK_INT(memcmp(a.sel_rgb, look.sel_rgb, 3), 0);
+    CHECK_INT(flat_state_for(&look, &t, &scr_c, 1, &c), 0);                          /* no slot: no pens at all */
+    CHECK_INT(c.pen_dim, 0); CHECK_INT(c.pen_knob, 0); CHECK_INT(c.pen_inbar, 0); CHECK_INT(c.pen_sel, 0);
+    CHECK_INT(c.pen_back, look.pen_back);
+    CHECK_INT(flat_state_for(&look, &t, &scr_a, 2, &c), 0);                          /* another epoch of A: the old pens are gone */
+    CHECK_INT(c.pen_dim, 0);
+}
+
+/* TE-10.6b budget fix: the draw table the main task keeps and the hooks only look up (no copy, no iconpen call in a hook) */
+static flat_draw_tab g_dt;
+
+static void draw_setup(flat_state *look, flat_pens_tab *t, int *sa, int *sb)
+{
+    wbscr w;
+    flat_pen_ops o;
+    desk_flat_state(1, 1, look);
+    look->pen_dim = 77; look->pen_knob = 78; look->pen_inbar = 79; look->pen_sel = 80;
+    flat_pens_tab_init(t);
+    o.obtain = wb_obtain; o.release = wb_release; o.rgb = wb_rgb;
+    wb_screen(&w, 100);
+    o.ctx = &w;
+    tab_obtain_on(t, &o, look, sa, 1);
+    (void)sb;
+}
+
+static void test_draw_state_lookup(void)
+{
+    flat_state look, live, st;
+    flat_pens_tab t;
+    flat_draw_scr l[2];
+    int wb, sa, sb, un;
+    const flat_state *p;
+    draw_setup(&look, &t, &sa, &sb);
+    live = look; live.pen_dim = 5;
+    flat_draw_init(&g_dt);
+    l[0].screen = &sa; l[0].epoch = 1;
+    l[1].screen = &sb; l[1].epoch = 1;                                   /* listed, no pens slot */
+    flat_draw_sync(&g_dt, &look, &t, l, 2, &wb, 9);
+    CHECK(flat_draw_state(&g_dt, &live, 0) == &live);                   /* 1: no screen = live */
+    CHECK(flat_draw_state(&g_dt, &live, &wb) == &live);                 /* 2: the Workbench = live */
+    p = flat_draw_state(&g_dt, &live, &sa);                              /* 3 */
+    flat_state_for(&look, &t, &sa, 1, &st);
+    CHECK(p != &live && p->pen_dim == st.pen_dim && p->pen_dim >= 100);
+    CHECK_INT(p->pen_knob, st.pen_knob); CHECK_INT(p->pen_inbar, st.pen_inbar); CHECK_INT(p->pen_sel, st.pen_sel);
+    CHECK_INT(p->pen_back, look.pen_back); CHECK_INT(memcmp(p->sel_rgb, look.sel_rgb, 3), 0);
+    p = flat_draw_state(&g_dt, &live, &sb);                              /* 4 */
+    CHECK(p != &live);
+    CHECK_INT(p->pen_dim, 0); CHECK_INT(p->pen_knob, 0); CHECK_INT(p->pen_inbar, 0); CHECK_INT(p->pen_sel, 0);
+    CHECK_INT(p->pen_back, look.pen_back);
+    CHECK(flat_draw_state(&g_dt, &live, &un) == &g_dt.plain);            /* 5 */
+    CHECK_INT(g_dt.plain.pen_dim, 0); CHECK_INT(g_dt.plain.pen_back, look.pen_back);
+}
+
+static void test_draw_sync_look_and_drop(void)
+{
+    flat_state look, live;
+    flat_pens_tab t;
+    flat_draw_scr l[2];
+    int wb, sa, sb, un;
+    draw_setup(&look, &t, &sa, &sb);
+    live = look;
+    flat_draw_init(&g_dt);
+    l[0].screen = &sa; l[0].epoch = 1;
+    l[1].screen = &sb; l[1].epoch = 1;
+    flat_draw_sync(&g_dt, &look, &t, l, 2, &wb, 9);
+    look.pen_back = (uint8_t)(look.pen_back + 3);                        /* 6: a look change reaches every slot and plain */
+    flat_draw_sync(&g_dt, &look, &t, l, 2, &wb, 9);
+    CHECK_INT(flat_draw_state(&g_dt, &live, &sa)->pen_back, look.pen_back);
+    CHECK_INT(flat_draw_state(&g_dt, &live, &sb)->pen_back, look.pen_back);
+    CHECK_INT(flat_draw_state(&g_dt, &live, &un)->pen_back, look.pen_back);
+    flat_draw_sync(&g_dt, &look, &t, &l[1], 1, &wb, 9);                  /* 7: A no longer listed reads plain */
+    CHECK(flat_draw_state(&g_dt, &live, &sa) == &g_dt.plain);
+    CHECK(flat_draw_state(&g_dt, &live, &sb) != &g_dt.plain);
+}
+
+static void test_draw_slot_keeps_address(void)
+{
+    flat_state look, live;
+    flat_pens_tab t;
+    flat_draw_scr l[3];
+    int wb, sa, sb, sc, i;
+    const flat_state *pa, *pb;
+    draw_setup(&look, &t, &sa, &sb);
+    live = look;
+    flat_draw_init(&g_dt);
+    l[0].screen = &sa; l[0].epoch = 1;
+    l[1].screen = &sb; l[1].epoch = 1;
+    flat_draw_sync(&g_dt, &look, &t, l, 2, &wb, 9);
+    pa = flat_draw_state(&g_dt, &live, &sa);
+    pb = flat_draw_state(&g_dt, &live, &sb);
+    l[0].screen = &sc; l[0].epoch = 1;                                   /* 8: B and C come and go around A */
+    l[1].screen = &sa; l[1].epoch = 1;
+    flat_draw_sync(&g_dt, &look, &t, l, 2, &wb, 9);
+    CHECK(flat_draw_state(&g_dt, &live, &sa) == pa);
+    CHECK(flat_draw_state(&g_dt, &live, &sb) == &g_dt.plain);
+    CHECK(flat_draw_state(&g_dt, &live, &sc) != &g_dt.plain);
+    for (i = 0; i < 3; i++) {
+        l[0].screen = &sb; l[0].epoch = 1;
+        l[1].screen = &sa; l[1].epoch = 1;
+        l[2].screen = &sc; l[2].epoch = 1;
+        flat_draw_sync(&g_dt, &look, &t, l, 3, &wb, 9);
+        CHECK(flat_draw_state(&g_dt, &live, &sa) == pa);
+    }
+    (void)pb;
+}
+
+static void test_draw_epoch(void)
+{
+    flat_state look;
+    flat_pens_tab t;
+    flat_draw_scr l[1];
+    int wb, sa, sb, un;
+    draw_setup(&look, &t, &sa, &sb);
+    flat_draw_init(&g_dt);
+    l[0].screen = &sa; l[0].epoch = 4;
+    flat_draw_sync(&g_dt, &look, &t, l, 1, &wb, 9);
+    CHECK_INT(flat_draw_epoch(&g_dt, &wb), 9);                           /* 9 */
+    CHECK_INT(flat_draw_epoch(&g_dt, &sa), 4);
+    CHECK_INT(flat_draw_epoch(&g_dt, &un), 0);
+    CHECK_INT(flat_draw_epoch(&g_dt, 0), 0);
+}
+
 void suite_flat_core(void)
 {
+    test_draw_state_lookup();
+    test_draw_sync_look_and_drop();
+    test_draw_slot_keeps_address();
+    test_draw_epoch();
+    test_state_for_screen_pens();
     test_pens_tab_never_cross_screens();
     test_pens_tab_switch_releases_nothing();
     test_pens_tab_new_epoch_not_old_pens();

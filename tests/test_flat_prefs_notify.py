@@ -26,7 +26,10 @@ class FlatPrefsNotify(unittest.TestCase):
         src = (ROOT / "amarchy/desk_dos.c").read_text()
         b = body(src, "void desk_dos_flat_sync(void)")
         self.assertIn("dk_flat_sync_with(1)", b)
-        w = body(src, "static void dk_flat_sync_with(int changed_only)")
+        # TE-6 moved the write into dk_flat_sync_theme (the theme editor's live apply passes its own theme); dk_flat_sync_with
+        # loads the current theme and hands changed_only on
+        self.assertIn("dk_flat_sync_theme(&th, changed_only);", body(src, "static void dk_flat_sync_with(int changed_only)"))
+        w = body(src, "static void dk_flat_sync_theme(const gtheme *thp, int changed_only)")
         self.assertRegex(w, r"!changed_only \|\| memcmp\(&next, &r->st, sizeof next\) != 0")
         self.assertIn('pl_start(PL_BIN_DIR "/amarchy-flat BOOT"', w)
         self.assertIn("void desk_dos_flat_sync(void);", (ROOT / "amarchy/desk_dos.h").read_text())

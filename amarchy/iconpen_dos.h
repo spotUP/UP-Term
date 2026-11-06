@@ -66,6 +66,9 @@ int ipd_owner(unsigned owner, int on);
 void ipd_icon_rgb(uint8_t rgb[16][3]);
 /* S32-STALE-HELD-PENS: the screen epoch, changed by every sync that obtained or released the icon pens (Workbench closed, reopened, mode change); 0 without a record. */
 unsigned ipd_epoch(void);
+/* TE-10.6b: by screen pointer. ipd_screen_in: the Screen when listed (caller holds the list lock), else 0. */
+unsigned ipd_epoch_of_screen(const void *scr);
+struct Screen *ipd_screen_in(struct List *pl, const void *scr);
 /* TE-10.4: the epoch of the pens on the public screen `name` (no case): "Workbench" gives ipd_epoch(); 0 for a screen with no slot or without a record. */
 unsigned ipd_epoch_of(const char *name);
 /* TE-10.4: reads ENV:Amarchy/screen-themes and the screen-themes key into *out (default "workbench" and no rules when the file is

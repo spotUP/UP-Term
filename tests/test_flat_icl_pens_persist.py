@@ -16,7 +16,7 @@ class FlatIclPensPersist(unittest.TestCase):
         self.assertNotIn("icl_cache_drain", SRC)
 
     def test_label_call_binds_identity(self):
-        self.assertIn("icl_cache_bind(&icl_pc, w->WScreen, ipd_epoch())", body("static int icl_label("))
+        self.assertIn("icl_tab_for(&icl_pc, w->WScreen, flat_draw_epoch(&g_draw, w->WScreen))", body("static int icl_label("))
 
     def test_no_static_colormap_pointer(self):
         self.assertIsNone(re.search(r"^static\s+struct\s+ColorMap\s*\*", SRC, re.M), "a ColorMap pointer outlives a call")
@@ -28,14 +28,17 @@ class FlatIclPensPersist(unittest.TestCase):
 
     def test_label_call_verifies_held_pens(self):
         b = body("static int icl_label(")
-        self.assertLess(b.index("icl_cache_bind("), b.index("icl_cache_verify(&icl_pc, cm_pen_is_free, cm)"))
+        self.assertLess(b.index("icl_tab_for("), b.index("icl_cache_verify(icx.pc, cm_pen_is_free, cm)"))
 
     def test_watch_step_verifies_flat_pens(self):
         b = body("static void pens_run(")
-        self.assertLess(b.index("flat_pens_verify(&g_pens"), b.index("flat_pens_follow(&g_pens"))
+        self.assertLess(b.index("flat_pens_verify(sl"), b.index("flat_pens_follow_on(sl"))
 
     def test_unload_releases_on_live_identity(self):
-        self.assertIn("icl_cache_release(&icl_pc", body("static void icl_pens_release("))
+        b = body("static void icl_pens_release(")
+        self.assertIn("icl_cache_release(c, cm ? c->screen : NULL, c->epoch", b)   # TE-10.6b: each slot, on its own screen's map
+        self.assertIn("LockPubScreenList()", b)
+        self.assertIn("flat_pens_tab_reap(&g_pens", body("static void pens_reap("))
         self.assertIn("icl_pens_release();", body("static void icl_free("))
 
 
