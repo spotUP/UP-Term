@@ -66,6 +66,10 @@ extern void (*mg_rechip)(const mn_item *it, int n, long *out);
  * margins. */
 int mg_width(const keymap *k, const char *node, const mg_font *f, int icon_w, int chev_w,
              mg_text_fn text, void *ctx, const mg_screen *s);
+/* A level measured again while its window is open (a row's value grew): the window at x, width w must hold `need`
+ * (mg_width_t). Returns 1 and sets *nx, *nw when it has to widen (never wider than the screen, moved left so the right
+ * edge stays on the screen), 0 and no change when need <= w: an open window never shrinks. */
+int mg_grow(int x, int w, int need, int screen_w, int *nx, int *nw);
 /* mg_width over the rows shown with (term) or without an UP-Term window under the menu */
 int mg_width_t(const keymap *k, const char *node, const mg_font *f, int icon_w, int chev_w,
              mg_text_fn text, void *ctx, const mg_screen *s, int cond);
