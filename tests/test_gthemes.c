@@ -732,8 +732,6 @@ static void test_gthemes_screen_rules(void)
             /* the 139-character worst case runs only once the crafted case proved linear (the old matcher would not finish) */
             if (w <= 4UL * (strlen(crafted) + 1) * (strlen(name) + 1)) {
                 for (i = 0; i < 46; i++) { big[3 * i] = '#'; big[3 * i + 1] = '?'; big[3 * i + 2] = 'a'; }
-                big[138] = 'a';
-                big[139 - 1] = 0;
                 big[138] = 0;
                 for (i = 0; i < 138; i++) name[i] = 'a';
                 name[138] = 0;
