@@ -1,5 +1,5 @@
 /* iconpen_dos: the OS half of the shared icon pen holder (plan 2026-11-01-amarchy-filled-icon-set.md F14, H1).
- * One public record ("Amarchy.IconPens.5" semaphore, ip_shared) lives in memory for as long as an owner wants the 16 icon pens.
+ * One public record ("Amarchy.IconPens.6" semaphore, ip_shared) lives in memory for as long as an owner wants the 16 icon pens.
  * ObtainPen pens belong to the screen's colour map, not to a task, so the record outlives the amarchy-icons process that
  * created it; amarchy-flat's 1 s tick re-obtains them when the Workbench screen is reopened. The decisions are
  * iconpen_core.c (host-tested). The program defines struct IntuitionBase *IntuitionBase and struct GfxBase *GfxBase and opens
@@ -13,9 +13,9 @@
 #include "iconpen_core.h"
 #include "../handler/pubscr.h"
 
-/* The name carries the record layout: ".5" adds screen_applies; ".4" was the record before it; ".3" adds the plan pens to the holder (TE-10.5b); ".2" was the per-screen table (TE-10.4). A binary still running from before an update looks
+/* The name carries the record layout: ".6" adds the per-slot role colours (TE-10.6c); ".5" adds screen_applies; ".4" was the record before it; ".3" adds the plan pens to the holder (TE-10.5b); ".2" was the per-screen table (TE-10.4). A binary still running from before an update looks
  * for the old name and never reads this layout. 18 characters, fits ipd_rec.name[20]. */
-#define IPD_SEM_NAME "Amarchy.IconPens.5"
+#define IPD_SEM_NAME "Amarchy.IconPens.6"
 
 /* The public record. Public so tests/amiga/iconpens.c reads the real layout; nobody else touches it. Everything big lives here
  * (AllocVec in find_rec), never on a stack. */
@@ -26,6 +26,17 @@ typedef struct ipd_stheme {      /* the theme of one slot, read from file with t
     int have;
     char name[GT_NAME];          /* the theme the screen rules give this slot's screen */
 } ipd_stheme;
+
+/* The seven flat roles. flat_role_core.h is not included here: its FLAT_ROLE_* names collide with flat_glyph.h's in flat.c.
+ * iconpen_dos.c checks this count against FLAT_ROLE_COUNT at compile time. */
+#define IPD_ROLE_COUNT 7
+
+typedef struct ipd_slot_roles {  /* TE-10.6c: what the last theme read of a slot gave; durable (st[] is freed at the end of every sync) */
+    int ok;                      /* 1 = role[] was computed from theme `name` for the screen `screen` */
+    const void *screen;          /* the slot's holder screen at that read (compared, never dereferenced) */
+    char name[GT_NAME];
+    uc_u32 role[IPD_ROLE_COUNT];
+} ipd_slot_roles;
 
 typedef struct ipd_rec {
     struct SignalSemaphore ss;   /* first: AddSemaphore's node is the allocation's start */
@@ -38,6 +49,7 @@ typedef struct ipd_rec {
     char main_theme[GT_NAME];    /* the main theme name (AM_GTHEME), read with the rules */
     int rules_dirty;             /* reread rules and main theme at the next sync (starts 1; ipd_rules_changed) */
     ipd_stheme st[IP_SCREENS];
+    ipd_slot_roles roles[IP_SCREENS];
     unsigned long screen_applies; /* TE-10.5b2b sentinel: +1 each time the plan op returned a plan for a slot >= 1 (the sync may run in any program) */
 } ipd_rec;
 
@@ -69,6 +81,18 @@ unsigned ipd_epoch(void);
 /* TE-10.6b: by screen pointer. ipd_screen_in: the Screen when listed (caller holds the list lock), else 0. */
 unsigned ipd_epoch_of_screen(const void *scr);
 struct Screen *ipd_screen_in(struct List *pl, const void *scr);
+/* TE-10.6c: what amarchy-flat needs to draw flat gadgets on one screen. */
+typedef struct ipd_roles {
+    int themed;                       /* 1 = the rules give this screen a theme AND its role colours are known for this screen and theme */
+    unsigned epoch;                   /* the slot epoch (same value ipd_epoch_of_screen gives) */
+    int nheld;                        /* held plan pens */
+    short pen[GTE_COUNT];
+    uc_u32 rgb[GTE_COUNT];
+    uc_u32 role[IPD_ROLE_COUNT];     /* flat_role_rgb_of the slot theme at its last read */
+} ipd_roles;
+/* Main task only (never from a patched hook). 0 = no record, unknown screen, or the Workbench slot; else 1 with *out filled.
+ * Obtains no pen, writes no ColorMap, reads no file. */
+int ipd_screen_roles(const void *scr, ipd_roles *out);
 /* TE-10.4: the epoch of the pens on the public screen `name` (no case): "Workbench" gives ipd_epoch(); 0 for a screen with no slot or without a record. */
 unsigned ipd_epoch_of(const char *name);
 /* TE-10.4: reads ENV:Amarchy/screen-themes and the screen-themes key into *out (default "workbench" and no rules when the file is

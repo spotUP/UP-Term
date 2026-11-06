@@ -634,13 +634,31 @@ unsigned ip_screens_epoch(const ip_screens *t, const char *name)
     return i == 0 ? t->slot[0].sh.epoch : t->slot[i].epoch;
 }
 
-unsigned ip_screens_epoch_of_screen(const ip_screens *t, const void *screen)
+int ip_screens_slot_of_screen(const ip_screens *t, const void *screen)
 {
     int i;
     if (!screen)
-        return 0;
+        return -1;
     for (i = 0; i < t->count; i++)
         if (t->slot[i].sh.h.screen == screen)
-            return i == 0 ? t->slot[0].sh.epoch : t->slot[i].epoch;
-    return 0;
+            return i;
+    return -1;
+}
+
+unsigned ip_screens_epoch_of_screen(const ip_screens *t, const void *screen)
+{
+    int i = ip_screens_slot_of_screen(t, screen);
+    if (i < 0)
+        return 0;
+    return i == 0 ? t->slot[0].sh.epoch : t->slot[i].epoch;
+}
+
+int ip_holder_plan_copy(const ip_holder *h, short *pen, uc_u32 *rgb, int cap)
+{
+    int i, n = h->pcount < cap ? h->pcount : cap;
+    for (i = 0; i < n; i++) {
+        pen[i] = h->ppen[i];
+        rgb[i] = h->prgb[i];
+    }
+    return n < 0 ? 0 : n;
 }
