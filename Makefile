@@ -803,6 +803,10 @@ $(BUILD)/amiga/shotprobe: tests/amiga/shotprobe.c amarchy/shot_core.c amarchy/sh
 $(BUILD)/amiga/shotscreen: tests/amiga/shotscreen.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -o $@ tests/amiga/shotscreen.c
+# A named public screen with GadTools gadgets and a menu at fixed coordinates (TE-9.6 per-screen theming rig); a test helper, not in dist or kit
+$(BUILD)/amiga/pubscreen: tests/amiga/pubscreen.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/pubscreen.c
 $(BUILD)/amiga/shotfill: tests/amiga/shotfill.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -o $@ tests/amiga/shotfill.c

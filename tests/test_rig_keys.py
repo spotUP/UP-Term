@@ -15,11 +15,12 @@ def mapped(action):
 class HostKeys(unittest.TestCase):
     def test_amarchy_super_key_is_reachable_without_cmd(self):
         keys = mapped("action_key_amiga_left")
-        self.assertEqual(sorted(keys), ["keyboard_key_ralt", "keyboard_key_rctrl"])
+        self.assertEqual(sorted(keys), ["keyboard_key_lalt"])
 
     def test_fsuae_modifier_is_not_the_left_amiga_key(self):
-        # Right Option+Space is taken on the owner's Mac (2026-11-06): right Ctrl must reach the Amiga as
-        # Left-Amiga, so FS-UAE's own modifier key must not be right Ctrl.
+        # FS-UAE's own modifier key must not be a key the Amiga needs: the Menu key, which a Mac lacks.
+        # Left Option is Left-Amiga (s61 2026-11-06): the right Option key reaches FS-UAE as Cmd on the
+        # owner's Mac and there is no right Ctrl key.
         mods = [l.split("=")[-1].strip() for l in rig.HOST_KEYS if l.split("=")[0].strip() == "modifier_key"]
         self.assertEqual(mods, ["menu"])
 

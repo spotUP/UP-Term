@@ -1359,7 +1359,8 @@ static void w_num(gt_w *w, const char *key, unsigned v)
     w_kv(w, key, s);
 }
 
-long gt_model_save_text(const gt_model *m, char *out, long cap)
+/* the text of m under the theme name `name`: the file name is the identity, never the model's own name */
+static long model_save_named(const gt_model *m, const char *name, char *out, long cap)
 {
     gt_w w;
     gtheme t;
@@ -1373,8 +1374,8 @@ long gt_model_save_text(const gt_model *m, char *out, long cap)
         out[0] = 0;
     gt_model_to_v1(m, &t);
     w_text(&w, "mode", m->light ? "light" : "dark");
-    if (m->name[0])
-        w_text(&w, "name", m->name);
+    if (name[0])
+        w_text(&w, "name", name);
     w_color(&w, "background", t.bg);
     w_color(&w, "foreground", t.fg);
     w_color(&w, "dark_foreground", t.dim);
@@ -1434,6 +1435,11 @@ long gt_model_save_text(const gt_model *m, char *out, long cap)
     if (w.bad || w.n >= UC_MAX_FILE)
         return -1;
     return w.n;
+}
+
+long gt_model_save_text(const gt_model *m, char *out, long cap)
+{
+    return model_save_named(m, m->name, out, cap);
 }
 
 /* ---- TE-1.6: the model on a gtheme ---- */
@@ -1583,7 +1589,7 @@ int gt_save(const prefs_fs *fs, const char *name, const gt_model *m, char *why, 
         why_put(why, cap, GT_SAVE_SHIPPED);
         return 0;
     }
-    n = gt_model_save_text(m, g_save, (long)sizeof g_save);
+    n = model_save_named(m, name, g_save, (long)sizeof g_save);
     if (n < 0) {
         why_put(why, cap, GT_SAVE_WRITE);
         return 0;

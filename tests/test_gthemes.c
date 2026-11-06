@@ -1986,6 +1986,7 @@ static void test_gthemes_te3_save(void)
     long n;
     tm_init(&m, &fs);
     gt_model_parse(tm_theme, (long)strlen(tm_theme), &mod);
+    strcpy(mod.name, "Mine");                     /* gt_save writes the target name: the round trip is of the model named Mine */
     n = gt_model_save_text(&mod, out, (long)sizeof out);
     CHECK(gt_save(&fs, "Mine", &mod, why, sizeof why));
     u = tm_find(&m, "ENVARC:Amarchy/themes/Mine.theme");
@@ -2826,6 +2827,18 @@ static void test_gthemes_te8_presets(void)
     CHECK(te8_same(&got, &want));
     CHECK_STR(got.base, "Probe");
     CHECK(tm_exists(&fs, GT_USER_DIR "/Probe Copy.theme"));
+    {   /* the saved text carries the copy's name, not the source's */
+        static char txt[65536];
+        long tn = tm_read(&fs, GT_USER_DIR "/Probe Copy.theme", txt, (long)sizeof txt);
+        CHECK(tn > 0);
+        CHECK(tn > 0 && strstr(txt, "name = \"Probe Copy\"") != NULL);
+        CHECK(tn > 0 && strstr(txt, "name = \"Probe\"") == NULL);
+        /* Save As from a model that carries another theme's name */
+        CHECK(gt_save_as(&pfs, "Other Copy", &got, why, sizeof why));
+        tn = tm_read(&fs, GT_USER_DIR "/Other Copy.theme", txt, (long)sizeof txt);
+        CHECK(tn > 0 && strstr(txt, "name = \"Other Copy\"") != NULL);
+        CHECK(tn > 0 && strstr(txt, "name = \"Probe Copy\"") == NULL);
+    }
     tm_free(&fs);
 }
 
