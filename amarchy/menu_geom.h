@@ -49,6 +49,17 @@ typedef struct mg_metrics {
 
 void mg_metrics_for(mg_metrics *m, const mg_font *f, const mg_screen *s);
 
+/* The room a colour row's chip takes at the right edge of its row: the square (row height less 4), the gap
+ * left of it (4) and the row inset. The row painter cuts its text by this much and mg_width_t counts it. */
+int mg_chip_w(const mg_metrics *m);
+
+/* The rows paint more than the keymap's label: a setting row its current value ("Name: value") and a colour
+ * row a chip. The window is sized before any row is painted, so mg_width_t asks these two hooks (set by the
+ * program that paints; null measures the plain label) to fill a level's labels with the values and to say
+ * which rows carry a chip. They are the same functions the painter's refresh calls, so both see one text. */
+extern void (*mg_relabel)(mn_item *it, int n);
+extern void (*mg_rechip)(const mn_item *it, int n, long *out);
+
 /* The window's width for a menu opened at node: the widest row (icon column when icon_w > 0, label,
  * chevron on groups) or header over every level reachable from node (mn_levels), so the window
  * keeps its width while the user walks the levels; at least min_w, at most the screen minus its

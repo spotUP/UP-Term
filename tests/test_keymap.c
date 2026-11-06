@@ -20,6 +20,9 @@
 #include "../render/emoji.h"
 #include "../engine/vtengine.h"
 #include "harness.h"
+#include "memfs.h"
+#include "../amarchy/gthemes_core.h"
+#include "../amarchy/amconf_core.h"
 
 #define RAW_K     0x27
 #define RAW_T     0x14
@@ -3366,6 +3369,125 @@ static void the_network_panel_lists_info_rows_then_up_and_down(void)
     CHECK_INT(mn_children_t(&km, "agents", it, MN_MAX_ITEMS, 1) > 0 && net_hook_calls == 1, 1);
 }
 
+/* ---- TE-WINDOW-TOO-NARROW: the window is wide enough for every row of every level, value and chip included ---- */
+static amconf_io tw_io;
+static memfs tw_mfs;
+static prefs_fs tw_pfs;
+
+static void tw_relabel(mn_item *it, int n)
+{
+    lf_setting_labels(&tw_io, it, n);
+}
+
+static void tw_rechip(const mn_item *it, int n, long *out)
+{
+    lf_setting_chips(&tw_io, it, n, out);
+}
+
+/* rows of a level that paint wider than the room the window gives them; prints each */
+typedef struct tw_acc {
+    const mg_metrics *m;
+    int avail, px, bad;
+    int *worst;
+} tw_acc;
+
+static void tw_level(const mn_item *src, int n, void *ctx)
+{
+    tw_acc *a = (tw_acc *)ctx;
+    mn_item it[MN_MAX_ITEMS];
+    long chip[MN_MAX_ITEMS];
+    int i;
+    memcpy(it, src, (size_t)n * sizeof it[0]);
+    lf_setting_labels(&tw_io, it, n);
+    lf_setting_chips(&tw_io, it, n, chip);
+    for (i = 0; i < n; i++) {
+        int need = (int)strlen(it[i].label) * a->px;
+        if (MN_IS_SETTING(&it[i]) && chip[i] >= 0)
+            need += mg_chip_w(a->m);
+        if (MN_IS_GROUP(&it[i]))
+            need += a->m->chev_gap + 8;
+        if (need > a->avail) {
+            a->bad++;
+            printf("  TE-WIDTH row cut: '%s' needs %d, room %d (short by %d)\n", it[i].label, need, a->avail, need - a->avail);
+        }
+        if (need > *a->worst)
+            *a->worst = need;
+    }
+}
+
+static void tw_open_editor(void)
+{
+    static char buf[UC_MAX_FILE];
+    FILE *f = fopen("dist/amarchy-themes/nord.theme", "rb");
+    long n = f ? (long)fread(buf, 1, sizeof buf, f) : -1;
+    gtheme t;
+    int failed = 0;
+    if (f)
+        fclose(f);
+    memset(&tw_io, 0, sizeof tw_io);
+    mf_init(&tw_mfs, &tw_pfs);
+    tw_io.fs = &tw_pfs;
+    tw_io.read = mf_read;
+    tw_io.dir = mf_dir;
+    mf_put(&tw_mfs, "ENVARC:up-term/up-term", "");
+    CHECK(strcmp(mf_get(&tw_mfs, "ENVARC:up-term/up-term"), "<absent>") != 0);
+    memset(&t, 0, sizeof t);
+    CHECK(n > 0 && gt_model_attach(&t, buf, n));
+    gte_open(t.model, "nord");
+    gt_free(&t);
+    CHECK_INT(lf_setting_set(&tw_io, gte_row(SDI_COUNT), 1, &failed), 0);   /* Mode: Advanced shows the Elements page */
+}
+
+static void the_theme_editor_window_fits_its_rows(void)
+{
+    static const char *const part[] = {
+        "[menu]\nsettings.theme = Theme Editor | settings:theme\nsettings.theme.swatches = Swatches | settings:theme-swatches\n",
+        "settings.theme.groups = Groups | settings:theme-groups\nsettings.theme.elements = Elements | settings:theme-elements\n",
+        "settings.theme.type = Type | settings:theme-type\nsettings.theme.shape = Shape | settings:theme-shape\n",
+        "settings.theme.states = States | settings:theme-states\nsettings.theme.desktop = Desktop | settings:theme-desktop\n",
+        "settings.theme.files = Presets and Files | settings:theme-files\n",
+        "apps.upkg = Install | run:a\napps.tools.zzz = A much longer label here | run:z\n"
+    };
+    char tree[900];
+    int ti;
+    mg_font topaz = { 8, 8 };
+    mg_screen wide = { 1280, 512, 22, 44, 0, 0, 0, 0 }, pal = { 640, 256, 22, 44, 0, 0, 0, 0 };
+    mg_metrics m;
+    int px = 8, w, wp, apps, root, worst = 0;
+    tw_acc a;
+    tree[0] = 0;
+    for (ti = 0; ti < 6; ti++) strcat(tree, part[ti]);
+    CHECK(parse(tree));
+    tw_open_editor();
+    mg_metrics_for(&m, &topaz, &wide);
+    apps = mg_width(&km, "apps", &topaz, 0, 8, fixed_width, &px, &wide);
+    root = mg_width(&km, "", &topaz, 0, 8, fixed_width, &px, &wide);
+    /* label-only levels keep the width they had with no hooks set */
+    mg_relabel = tw_relabel;
+    mg_rechip = tw_rechip;
+    CHECK_INT(mg_width(&km, "apps", &topaz, 0, 8, fixed_width, &px, &wide), apps);
+    w = mg_width(&km, "settings.theme", &topaz, 0, 8, fixed_width, &px, &wide);
+    memset(&a, 0, sizeof a);
+    a.m = &m;
+    a.px = px;
+    a.worst = &worst;
+    a.avail = w - 2 * m.bx - 2 * m.hpad - 2 * m.row_pad;
+    mn_levels_t(&km, "settings.theme", tw_level, &a, 1);
+    printf("  TE-WIDTH wide screen: window %d, widest row %d, rows cut %d\n", w, worst, a.bad);
+    CHECK_INT(a.bad, 0);
+    /* a 640 pixel screen: it fits as far as the screen allows; the rest is named, not hidden */
+    wp = mg_width(&km, "settings.theme", &topaz, 0, 8, fixed_width, &px, &pal);
+    CHECK_INT(wp, (w < 640 - 2 * m.margin_x ? w : 640 - 2 * m.margin_x));
+    a.avail = wp - 2 * m.bx - 2 * m.hpad - 2 * m.row_pad;
+    a.bad = 0;
+    worst = 0;
+    mn_levels_t(&km, "settings.theme", tw_level, &a, 1);
+    printf("  TE-WIDTH 640 screen: window %d, widest row %d, rows cut %d\n", wp, worst, a.bad);
+    mg_relabel = 0;
+    mg_rechip = 0;
+    CHECK_INT(mg_width(&km, "", &topaz, 0, 8, fixed_width, &px, &wide), root);
+}
+
 void suite_keymap(void)
 {
     style_theme_lists_the_gui_theme_rows();
@@ -3447,6 +3569,7 @@ void suite_keymap(void)
     menu_size_follows_the_filtered_rows();
     osd_size_counts_the_reachable_levels();
     drawn_menu_geometry_follows_the_font_and_screen();
+    the_theme_editor_window_fits_its_rows();
     blit_starts_where_the_beam_cannot_cross_it();
     a_slow_blit_keeps_the_estimate_up_so_the_bar_does_not_tear();
     a_tall_copy_goes_a_row_at_a_time();

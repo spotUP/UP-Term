@@ -64,6 +64,14 @@ void mg_header(const char *node, char *out, int n)
         out[0] = (char)(out[0] - 'a' + 'A');
 }
 
+void (*mg_relabel)(struct mn_item *it, int n);
+void (*mg_rechip)(const struct mn_item *it, int n, long *out);
+
+int mg_chip_w(const mg_metrics *m)
+{
+    return (m->row_h - 4) + 4 + m->row_pad;
+}
+
 typedef struct width_acc {
     const mg_metrics *m;
     int icon_w, chev_w, maxw;
@@ -76,10 +84,20 @@ static void width_level(const mn_item *it, int n, void *ctx)
 {
     width_acc *a = (width_acc *)ctx;
     int i;
+    /* The item buffer is walker scratch, rewritten on every callback, so the painter's own
+     * "Label: value" text goes in place: the window is sized from what the row will show. */
+    if (mg_relabel)
+        mg_relabel((mn_item *)it, n);
     for (i = 0; i < n; i++) {
         int w = a->text(it[i].label, a->ctx);
         if (a->icon_w > 0)
             w += a->icon_w + a->m->icon_gap;
+        if (MN_IS_SETTING(&it[i]) && mg_rechip) {
+            long rgb = -1;
+            mg_rechip(&it[i], 1, &rgb);
+            if (rgb >= 0)
+                w += mg_chip_w(a->m);
+        }
         if (MN_IS_GROUP(&it[i]))
             w += a->m->chev_gap + a->chev_w;
         if (w > a->maxw)
