@@ -377,6 +377,17 @@ static int script_word(sh_shell *sh, line_toks *t, const sh_io *io, long *st, lo
         *st = t->n > 1 && sh_unset(&sh->ctx, t->v[1]) ? 20 : 0;
         return 1;
     }
+    if (word_is(w, "cd") && t->n == 1) {
+        /* AmigaDOS CD with no argument prints the current directory (3.1/3.2 Shell); bash's cd goes home (S7c-5 X2) */
+        char *d = sh->os.cwd ? sh->os.cwd(sh->os.data) : 0;
+        if (d) {
+            say_io(sh, io->out, d);
+            say_io(sh, io->out, "\n");
+            free(d);
+        }
+        *st = 0;
+        return 1;
+    }
     if (word_is(w, "get")) {
         const char *v = t->n > 1 ? sh_get(&sh->ctx, t->v[1]) : 0;
         if (v) {

@@ -2868,6 +2868,18 @@ static void execute_cd_kept_by_caller(void)
     CHECK_STR(slot(OUT)->data, "tmpdir\n");
 }
 
+/* S7c-5 X2 (3.2 rig): a bare CD in a script prints the current directory (it does not go home), after an
+ * executed script's CD was kept by the caller. */
+static void execute_bare_cd_prints_cwd(void)
+{
+    int inc = 0;
+    run("");
+    amiscr_put("RAM:cdx5", "CD RAM:sub\n");
+    amiscr_put("RAM:cdd5", "CD RAM:\nExecute RAM:cdx5\nCD\n");
+    sh_run_text(&sh, "execute RAM:cdd5; pwd", &inc);
+    CHECK_STR(slot(OUT)->data, "RAM:sub\nRAM:sub\n");
+}
+
 static int list_one_char(sh_ctx *c, const char *dir, sh_list *out)
 {
     (void)c;
@@ -3025,6 +3037,7 @@ void suite_sh_exec(void)
     execute_key_template_args();
     execute_key_dot_directives();
     execute_3_2_quirks();
+    execute_bare_cd_prints_cwd();
     execute_3_2_messages();
     execute_cd_kept_by_caller();
     execute_backticks();

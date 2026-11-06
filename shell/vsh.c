@@ -1743,6 +1743,8 @@ static long os_cli_num(void *os, long id)
 {
     struct Task *t = job_process((job *)id);
     (void)os;
+    if (!t && !((job *)id)->done)
+        t = ((job *)id)->task;   /* a script's Shell child (has_child) is not up yet when Run prints: the runner is a CLI too (S7c-5 R27b) */
     if (t && t->tc_Node.ln_Type == NT_PROCESS && ((struct Process *)t)->pr_CLI)
         return (long)((struct Process *)t)->pr_TaskNum;
     return 0;
