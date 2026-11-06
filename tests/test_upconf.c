@@ -450,6 +450,27 @@ static void theme_beats_profile(void)
     CHECK(src == &prof && is_theme == 0);
 }
 
+/* The Shell Font: the theme's font line beats the profile's; no theme font leaves the profile's (TE-7b.2). */
+static void theme_font_source(void)
+{
+    static upconf prof, tfont, tnone, pnone;
+    static const char pt[] = "[profile default]\nfont = topaz.font:8\n";
+    static const char tf[] = "[profile amarchy]\nfg = AABBCC\nfont = ruby.font:12\n";
+    static const char tn[] = "[profile amarchy]\nfg = AABBCC\n";
+    static const char pn[] = "[profile default]\nfg = 112233\n";
+    upconf_parse(&prof, pt, (long)strlen(pt));
+    upconf_parse(&tfont, tf, (long)strlen(tf));
+    upconf_parse(&tnone, tn, (long)strlen(tn));
+    upconf_parse(&pnone, pn, (long)strlen(pn));
+    CHECK_STR(upconf_font_source(&prof, "default", &tfont), "ruby.font:12");
+    CHECK_STR(upconf_font_source(&prof, "default", &tnone), "topaz.font:8");
+    CHECK_STR(upconf_font_source(&prof, "default", 0), "topaz.font:8");
+    CHECK(upconf_font_source(&pnone, "default", &tnone) == 0);
+    CHECK(upconf_font_source(&pnone, "default", 0) == 0);
+    CHECK_STR(upconf_font_source(0, 0, &tfont), "ruby.font:12");
+    CHECK(upconf_font_source(&prof, 0, 0) == 0);
+}
+
 void suite_upconf(void)
 {
     upconf c;
@@ -772,6 +793,7 @@ void suite_upconf(void)
     fallback_without_profile();
     profile_equal();
     theme_beats_profile();
+    theme_font_source();
     comments_kept();
     packed_table();
     rows_in_file_order();

@@ -574,6 +574,14 @@ const upconf *upconf_colour_source(const upconf *prof, const char *p, const upco
     return prof;
 }
 
+const char *upconf_font_source(const upconf *prof, const char *p, const upconf *theme)
+{
+    const char *v;
+    if (theme && theme->nprof > 0 && (v = upconf_str(theme, theme->prof[0], "font", 0)) != 0)
+        return v;
+    return prof && p ? upconf_str(prof, p, "font", 0) : 0;
+}
+
 int upconf_profiles(const upconf *c, const char **names)
 {
     int i;

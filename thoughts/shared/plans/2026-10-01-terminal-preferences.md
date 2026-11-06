@@ -56,7 +56,7 @@ cursor = bar
 bell = none
 ```
 
-**Precedence (low→high):** built-in defaults < profile < window-spec options (`XCON:.../DARK`) < runtime (OSC 4/10/11/12, DECSCUSR). No file → byte-identical to current behaviour.
+**Precedence (low→high):** built-in defaults < profile < window-spec options (`XCON:.../DARK`) < runtime (OSC 4/10/11/12, DECSCUSR). No file → byte-identical to current behaviour. Amended 2026-11-06 (TE-7b.2): the active Amarchy theme (ENV:up-term/theme-active) sits between profile and window spec for colours and the font (`font = NAME:SIZE`), live in open tabs; the spec FONT or a slash /font beats it (`upconf_font_source`).
 
 ## Modules
 1. `config/upconf.[ch]` — portable C89 parser/merger, no OS calls. API: `upconf_parse(buf,len)`, `upconf_get(conf, prof, key)`, `upconf_save(conf, path)`. Host-testable. Read in `handler_main` **before the first `GetMsg`** (idle, safe).

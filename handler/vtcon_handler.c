@@ -246,6 +246,7 @@ typedef struct con {
     int nerd_ttf;                /* FONTS:SymbolsNerdFontMono.ttf exists, found by a worker (no DOS call on the handler process) */
     char *theme_text;            /* ENV:up-term/theme-active as read (Amarchy theme), 0 none: beats the profile's colours */
     long theme_len;
+    int font_spec;               /* the spec's FONT or a slash /font chose the font: the Amarchy theme's Shell Font does not replace it */
     int colours_spec;            /* the spec chose colours (DARK/FG/BG/LIGHT): it beats the profile */
     ULONG spec_fg, spec_bg;      /* the colours before any profile (a profile switch starts there) */
     upconf *save_work;           /* Save settings to profile: the table once the file is written
@@ -1162,6 +1163,18 @@ static void parse_font(const char *rest, char *name, int max, WORD *size)
     *size = (WORD)sz;
 }
 
+/* A config value "NAME:SIZE" (profile or Amarchy theme font line): the spec's "NAME SIZE" form, parsed by parse_font. */
+static void parse_conf_font(const char *v, char *name, int max, WORD *size)
+{
+    char f[UC_MAX_VALUE];
+    int i;
+    copy_str(f, v, sizeof(f));
+    for (i = 0; f[i]; i++)
+        if (f[i] == ':')
+            f[i] = ' ';
+    parse_font(f, name, max, size);
+}
+
 /* Is our DOS device node named `want` (case-insensitive)? The CON:/RAW:
  * swap (console plan DD19, H5) points those entries at this handler; it
  * then serves them in the Amiga personality, RAW: starting raw. */
@@ -1607,24 +1620,36 @@ static void apply_colours(con *c, const upconf *cf, const char *p, int theme)
 
 /* The colours: the active Amarchy theme beats the profile's (upconf_colour_source); the window spec beats both.
  * p is the profile section, 0 when the file has none: the theme still applies then. */
-static void apply_profile_colours(con *c, const char *p)
+static void apply_profile_colours(con *c, const char *p, const upconf *t)
 {
-    upconf *t = c->theme_text ? (upconf *)AllocVec(sizeof(upconf), MEMF_ANY | MEMF_CLEAR) : 0;
     const upconf *src = c->conf;
     const char *sec = p;
     int is_theme = 0;
-    if (t) {
-        upconf_parse(t, c->theme_text, c->theme_len);
+    if (t)
         src = upconf_colour_source(c->conf, p, t, &sec, &is_theme);
-    }
     if (sec) {
         if (!c->colours_spec)
             apply_colours(c, src, sec, is_theme);
         else
             apply_colours_rest(c, src, sec, is_theme);
     }
+}
+
+/* The active Amarchy theme (c->theme_text) parsed once: 0 when there is none (or no memory). Free with FreeVec. */
+static upconf *theme_table(con *c)
+{
+    upconf *t = c->theme_text ? (upconf *)AllocVec(sizeof(upconf), MEMF_ANY | MEMF_CLEAR) : 0;
     if (t)
-        FreeVec(t);
+        upconf_parse(t, c->theme_text, c->theme_len);
+    return t;
+}
+
+/* The font of profile p under the theme (upconf_font_source), when the window has none yet. */
+static void apply_profile_font(con *c, const char *p, const upconf *t)
+{
+    const char *v = upconf_font_source(c->conf, p, t);
+    if (v && !c->w.fontname[0])
+        parse_conf_font(v, c->w.fontname, sizeof(c->w.fontname), &c->w.fontsize);
 }
 
 /* The profile's values for every knob the spec did not set (precedence:
@@ -1633,6 +1658,7 @@ static void apply_profile_colours(con *c, const char *p)
 static void apply_profile(con *c)
 {
     const char *p, *v;
+    upconf *t;
     c->link_open[0] = 0; /* none: OpenURL %s (h_open_link) */
     c->term[0] = 0;
     c->colors[0] = 0;
@@ -1643,8 +1669,12 @@ static void apply_profile(con *c)
     upconf_font_fallback(c->conf, p, c->nerd_ttf, c->w.fallback, sizeof(c->w.fallback));
     if (!c->conf)
         return;
+    t = theme_table(c);
     if (!p) {
-        apply_profile_colours(c, 0); /* no profile in the file: the active theme still colours the window */
+        apply_profile_font(c, 0, t);
+        apply_profile_colours(c, 0, t); /* no profile in the file: the active theme still colours the window */
+        if (t)
+            FreeVec(t);
         return;
     }
     /* OSC 8: the command a Ctrl + clicked link runs, %s the URL */
@@ -1655,16 +1685,7 @@ static void apply_profile(con *c)
     v = upconf_str(c->conf, p, "colors", "");
     if (slash_colors_ok(v))
         copy_str(c->colors, v, sizeof(c->colors));
-    v = upconf_str(c->conf, p, "font", 0);
-    if (v && !c->w.fontname[0]) {
-        char f[UC_MAX_VALUE];
-        int i;
-        copy_str(f, v, sizeof(f));
-        for (i = 0; f[i]; i++)
-            if (f[i] == ':')
-                f[i] = ' '; /* the profile's "NAME:SIZE" is the spec's "NAME SIZE" */
-        parse_font(f, c->w.fontname, sizeof(c->w.fontname), &c->w.fontsize);
-    }
+    apply_profile_font(c, p, t); /* the theme's Shell Font beats the profile's; the spec's beats both */
     /* a screen of its own (P1): screen = workbench | own | fullscreen,
      * screen-mode = 0xID, screen-depth = n -- under the window's own
      * OWNSCREEN / FULLSCREEN / PUBSCREEN / SCREENMODE / DEPTH */
@@ -1693,7 +1714,9 @@ static void apply_profile(con *c)
     /* font-aspect = off: the font as asked on every screen (P2) */
     v = upconf_str(c->conf, p, "font-aspect", 0);
     c->w.aspect_off = v && str_ieq(v, "off");
-    apply_profile_colours(c, p);
+    apply_profile_colours(c, p, t);
+    if (t)
+        FreeVec(t);
     /* no key: the built-in 500 (sb_lines 0); "scrollback = 0": none (-1),
      * as Settings > Scrollback > None saves it */
     if (upconf_get(c->conf, p, "scrollback")) {
@@ -1919,6 +1942,7 @@ static void parse_spec(con *c, const char *s)
         } else if (str_ipre(field, "FONT", &rest)) {
             /* FONT name.font size */
             parse_font(rest, c->w.fontname, sizeof(c->w.fontname), &c->w.fontsize);
+            c->font_spec = 1;
         } else if (str_ipre(field, "TAB", &rest)) {
             /* TAB port: a tab in that host's window (UP-Term > New tab) */
             copy_str(c->tab_host, rest, sizeof(c->tab_host));
@@ -2720,6 +2744,44 @@ static void theme_menu_wait(con *c, ULONG us)
         vtwin_clock(&c->w); /* still counting: the clock keeps running */
 }
 
+/* The font apply_profile left in c->w.fontname goes on the window, live (vtwin_set_font re-measures the cell and the grid
+ * follows); oldname/oldsize are the font the window has. Unchanged or not there (DisplayBeep): the old one stays. */
+static void font_live(con *c, const char *oldname, WORD oldsize)
+{
+    if (c->w.fontname[0] && (strcmp(c->w.fontname, oldname) || c->w.fontsize != oldsize)) {
+        char want[40];
+        WORD wsize = c->w.fontsize;
+        copy_str(want, c->w.fontname, sizeof(want));
+        copy_str(c->w.fontname, oldname, sizeof(c->w.fontname));
+        c->w.fontsize = oldsize;
+        if (!vtwin_set_font(&c->w, want, wsize))
+            DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* the profile's or theme's font is not there */
+        else
+            slot_font_share(c);
+    } else {
+        copy_str(c->w.fontname, oldname, sizeof(c->w.fontname));
+        c->w.fontsize = oldsize;
+    }
+}
+
+/* A new Amarchy theme text is in c->theme_text: its Shell Font (else the profile's) on the window, live. Not when the spec's
+ * FONT or a slash /font owns the font. */
+static void theme_font_live(con *c)
+{
+    char oldname[40];
+    WORD oldsize = c->w.fontsize;
+    upconf *t;
+    if (!c->conf || c->font_spec || !c->w.t)
+        return;
+    copy_str(oldname, c->w.fontname, sizeof(oldname));
+    c->w.fontname[0] = 0;
+    t = theme_table(c);
+    apply_profile_font(c, upconf_window_profile(c->conf, c->profile), t);
+    if (t)
+        FreeVec(t);
+    font_live(c, oldname, oldsize);
+}
+
 /* Settings > Profile: the window takes the file's k-th profile, live --
  * the built-in look first, then the profile, as a window opening with it
  * gets (what the window's own spec set, its colours, still wins); its font
@@ -2745,20 +2807,7 @@ static void profile_switch(con *c, int k)
     apply_profile(c);
     if (!c->is_tab)
         sbar_apply(c); /* the profile's scroll bar, live (a tab's window is its host's) */
-    if (c->w.fontname[0] && (strcmp(c->w.fontname, oldname) || c->w.fontsize != oldsize)) {
-        char want[40];
-        WORD wsize = c->w.fontsize;
-        copy_str(want, c->w.fontname, sizeof(want));
-        copy_str(c->w.fontname, oldname, sizeof(c->w.fontname));
-        c->w.fontsize = oldsize;
-        if (!vtwin_set_font(&c->w, want, wsize))
-            DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* the profile's font is not there */
-        else
-            slot_font_share(c);
-    } else {
-        copy_str(c->w.fontname, oldname, sizeof(c->w.fontname));
-        c->w.fontsize = oldsize;
-    }
+    font_live(c, oldname, oldsize);
     if (sb_size(c) != sb_was)
         vtwin_set_scrollback(&c->w, sb_size(c)); /* the profile's scrollback, live too */
     vtwin_apply_settings(&c->w);
@@ -2796,6 +2845,7 @@ static void watch_take(con *c)
             c->theme_text = m->theme; /* kept: a profile switch or a later tab-profile reload stays in the theme */
             c->theme_len = m->theme_len;
             m->theme = 0;
+            theme_font_live(c);
         }
         c->watch_held = 0;
         PutMsg(&c->watch_task->pr_MsgPort, &m->msg); /* back: the next change */
@@ -4957,6 +5007,7 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap, int 
                 return 2;
             }
             slot_font_share(c);
+            c->font_spec = 1;
         }
         return 1;
     case SLASH_FALLBACK:

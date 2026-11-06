@@ -104,6 +104,9 @@ int  upconf_profile_equal(const upconf *a, const upconf *b, const char *profile)
  * when it is one, else the profile P of PROF. Sets *sec to the section; *is_theme is 1 for the theme (a theme replaces every
  * colour, a profile only the ones it sets). Owner 2026-10-29: the active Amarchy theme beats the up-term profile's. */
 const upconf *upconf_colour_source(const upconf *prof, const char *p, const upconf *theme, const char **sec, int *is_theme);
+/* The "NAME:SIZE" font a window takes: the theme's (its one profile section, ENV:up-term/theme-active) when it has a font line,
+ * else profile P's of PROF, else 0. Sits beside upconf_colour_source: built-in < profile < Amarchy theme (TE-7b.2). */
+const char *upconf_font_source(const upconf *prof, const char *p, const upconf *theme);
 /* The rows of one section, in file order, duplicate keys included: upconf's
  * table keeps one value per key, a keymap needs every line. Reads the raw
  * text through the same line rules as upconf_parse (comments, CRLF, the
