@@ -331,7 +331,10 @@ static const unsigned char *hist_suggestion(const le_line *le)
 static const unsigned char *suggestion(const le_line *le)
 {
     const unsigned char *s;
-    int ghost = le->suggest && le->ghost_n && !le->searching && le->len && le->pos == le->len &&
+    int ghost;
+    if (le->sug_off && le->sug_off == line_key(le))
+        return 0; /* Esc dropped it */
+    ghost = le->suggest && le->ghost_n && !le->searching && le->len && le->pos == le->len &&
                 le->ghost_key == line_key(le);
     if (ghost && le->ghost_file)
         return le->ghost;
@@ -783,6 +786,7 @@ void le_unbind(le_line *le)
 void le_reset(le_line *le)
 {
     le_ghost_clear(le);
+    le->sug_off = 0;
     le->len = 0;
     le->pos = 0;
     le->started = 0;
@@ -1218,6 +1222,10 @@ int le_key(le_line *le, long key, int mods, const unsigned char *b, int n)
     if (le->searching && !search_key(le, key, b, n))
         return 0;
     if (key == VT_KEY_RETURN || key == VT_KEY_KP_ENTER) {
+        if (le->pos == le->len && !le->searching && suggestion(le)) {
+            const unsigned char *s = suggestion(le); /* Return takes the shown suggestion, then runs the line */
+            insert(le, s, (int)strlen((const char *)s), 0);
+        }
         le->pos = le->len;
         le->searching = 0;
         le->cmd_rest_us = 0; /* the line is finished: the word's colour now */
@@ -1247,6 +1255,10 @@ int le_key(le_line *le, long key, int mods, const unsigned char *b, int n)
     if (le->vi && vi_key(le, key, mods, b, n))
         return 0;
     if (key == VT_KEY_ESCAPE && !mods) {
+        if (le->pos == le->len && suggestion(le)) {
+            le->sug_off = line_key(le); /* drop the shown suggestion: Return runs the typed text */
+            redraw_from(le, 0);
+        }
         le->esc = 1; /* emacs: a Meta prefix for the next key (Esc b is M-b) */
         return 0;
     }

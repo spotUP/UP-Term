@@ -633,3 +633,14 @@ unsigned ip_screens_epoch(const ip_screens *t, const char *name)
     if (i < 0) return 0;
     return i == 0 ? t->slot[0].sh.epoch : t->slot[i].epoch;
 }
+
+unsigned ip_screens_epoch_of_screen(const ip_screens *t, const void *screen)
+{
+    int i;
+    if (!screen)
+        return 0;
+    for (i = 0; i < t->count; i++)
+        if (t->slot[i].sh.h.screen == screen)
+            return i == 0 ? t->slot[0].sh.epoch : t->slot[i].epoch;
+    return 0;
+}

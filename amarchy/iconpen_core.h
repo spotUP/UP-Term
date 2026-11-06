@@ -288,5 +288,8 @@ void ip_screens_recheck_plans(ip_screens *t);
 int ip_screens_held(const ip_screens *t);
 /* The epoch of the slot named `name` (no case); slot 0's is its ip_shared epoch; 0 when there is no such slot. */
 unsigned ip_screens_epoch(const ip_screens *t, const char *name);
+/* TE-10.6b: the same for the slot whose holder holds its pens on `screen` (the pointer, for a draw hook that has no name); 0 when no
+ * slot holds pens on that screen or screen is 0. */
+unsigned ip_screens_epoch_of_screen(const ip_screens *t, const void *screen);
 
 #endif

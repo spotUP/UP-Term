@@ -230,6 +230,31 @@ static void suggestion_shows_grey_and_right_takes_it(void)
     vt_free(t);
 }
 
+static void return_takes_the_shown_suggestion_and_escape_drops_it(void)
+{
+    vt_term *t = start(40, 6, "> ");
+    int from = -1, kind = 0;
+    unsigned long gk = 0;
+    run("list SYS:Prefs");
+    type("li"); /* the history's grey tail */
+    CHECK(key(VT_KEY_RETURN, 0));
+    CHECK_STR(line(), "list SYS:Prefs\n"); /* Return took it, then ran the line */
+    le_reset(&le);
+    h_put(t, "> ");
+    type("li");
+    key(VT_KEY_ESCAPE, 0); /* Esc drops the tail */
+    CHECK(key(VT_KEY_RETURN, 0));
+    CHECK_STR(line(), "li\n"); /* exactly what was typed */
+    le_reset(&le);
+    h_put(t, "> ");
+    type("Type tabprobe_z"); /* a file word's completion ghost, as in vsh */
+    CHECK_INT(le_ghost_want(&le, &from, &kind, &gk), 1);
+    le_ghost_offer(&le, gk, (const unsigned char *)"zz", 2);
+    CHECK(key(VT_KEY_RETURN, 0));
+    CHECK_STR(line(), "Type tabprobe_zzz\n");
+    vt_free(t);
+}
+
 static void completion_ghost_shows_when_no_history_fits_and_right_takes_it(void)
 {
     vt_term *t = start(40, 6, "> ");
@@ -328,17 +353,6 @@ static void a_file_word_suggests_the_current_directory_before_history(void)
     h_put(le.t, "> ");
     type("r");
     CHECK_INT(le_ghost_want(&le, &from, &kind, &gk), 0); /* a command word: history has it */
-    vt_free(t);
-}
-
-static void return_does_not_run_the_suggestion(void)
-{
-    vt_term *t = start(40, 6, "> ");
-    run("echo long command");
-    type("ec");
-    CHECK(key(VT_KEY_RETURN, 0));
-    CHECK_STR(line(), "ec\n");
-    CHECK_STR(h_row(t, 1), "> ec"); /* the grey tail was wiped */
     vt_free(t);
 }
 
@@ -1466,11 +1480,11 @@ void suite_lineedit(void)
     kingcon_list_has_19_char_columns_and_cuts_long_names();
     replace_word_for_menu_cycling();
     suggestion_shows_grey_and_right_takes_it();
+    return_takes_the_shown_suggestion_and_escape_drops_it();
     completion_ghost_shows_when_no_history_fits_and_right_takes_it();
     completion_ghost_for_an_old_line_is_dropped();
     completion_ghost_is_asked_only_for_a_plain_word_without_a_history_hit();
     a_file_word_suggests_the_current_directory_before_history();
-    return_does_not_run_the_suggestion();
     ctrl_r_searches_history();
     ctrl_r_cancel_restores();
     word_motions_and_undo();

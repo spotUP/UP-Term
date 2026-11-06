@@ -59,6 +59,7 @@ typedef struct le_line {
     unsigned char ghost[96];
     int ghost_n;
     unsigned long ghost_key, ghost_asked;
+    unsigned long sug_off; /* Esc dropped the suggestion of the line with this key: Return runs what was typed */
     int ghost_file, ghost_asked_file; /* the ghost (the look-up) is a file word's: it goes before history */
     unsigned char *hist;    /* the lines, each NUL-terminated, oldest first (LE_MALLOC) */
     long hist_used, hist_cap;
