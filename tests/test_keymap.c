@@ -3488,6 +3488,67 @@ static void the_theme_editor_window_fits_its_rows(void)
     CHECK_INT(mg_width(&km, "", &topaz, 0, 8, fixed_width, &px, &wide), root);
 }
 
+/* TE-WINDOW-REMEASURE: a row's value grows while the window is open; the level measured again needs more, and the
+ * decision to widen (mg_grow) never shrinks, stays on the screen and stops at the screen width */
+static void an_open_window_widens_when_a_value_grows(void)
+{
+    static const char *const part[] = {
+        "[menu]\nsettings.theme = Theme Editor | settings:theme\nsettings.theme.type = Type | settings:theme-type\n"
+    };
+    mg_font topaz = { 8, 8 };
+    mg_screen wide = { 1280, 512, 22, 44, 0, 0, 0, 0 };
+    mg_metrics m;
+    int px = 8, before, after, i, row = -1, nx = -1, nw = -1, worst = 0;
+    char lab[200];
+    tw_acc a;
+    CHECK(parse(part[0]));
+    tw_open_editor();
+    mg_relabel = tw_relabel;
+    mg_rechip = tw_rechip;
+    mg_metrics_for(&m, &topaz, &wide);
+    for (i = SDI_COUNT; i < SDI_COUNT + gte_nrows(); i++) {
+        const sd_setting *r = gte_row(i);
+        if (r && gte_row_label(r, lab, (int)sizeof lab) && strncmp(lab, "Screen Font", 11) == 0) {
+            row = i;
+            break;
+        }
+    }
+    CHECK(row >= 0);
+    before = mg_width(&km, "settings.theme", &topaz, 0, 8, fixed_width, &px, &wide);
+    CHECK_INT(gte_row_set_text(gte_row(row), "a-long-font-name-that-grows-it.font/11"), GTR_OK);
+    after = mg_width(&km, "settings.theme", &topaz, 0, 8, fixed_width, &px, &wide);
+    printf("  TE-REMEASURE window %d -> %d\n", before, after);
+    CHECK(after > before);
+    memset(&a, 0, sizeof a);
+    a.m = &m;
+    a.px = px;
+    a.worst = &worst;
+    a.avail = after - 2 * m.bx - 2 * m.hpad - 2 * m.row_pad;
+    mn_levels_t(&km, "settings.theme", tw_level, &a, 1);
+    CHECK_INT(a.bad, 0);
+    a.avail = before - 2 * m.bx - 2 * m.hpad - 2 * m.row_pad;     /* at the old width the grown row is cut */
+    a.bad = 0;
+    mn_levels_t(&km, "settings.theme", tw_level, &a, 1);
+    CHECK(a.bad > 0);
+    mg_relabel = 0;
+    mg_rechip = 0;
+    /* the pure decision */
+    CHECK_INT(mg_grow(100, 400, 500, 1280, &nx, &nw), 1);
+    CHECK_INT(nw, 500);
+    CHECK_INT(nx, 100);
+    CHECK_INT(mg_grow(1000, 200, 500, 1280, &nx, &nw), 1);         /* the right edge would pass the screen: move left */
+    CHECK_INT(nx, 780);
+    CHECK_INT(nw, 500);
+    CHECK_INT(mg_grow(100, 400, 5000, 1280, &nx, &nw), 1);         /* never wider than the screen */
+    CHECK_INT(nw, 1280);
+    CHECK_INT(nx, 0);
+    nx = nw = -7;
+    CHECK_INT(mg_grow(100, 500, 300, 1280, &nx, &nw), 0);          /* shorter: no change, outputs untouched */
+    CHECK_INT(mg_grow(100, 500, 500, 1280, &nx, &nw), 0);
+    CHECK_INT(nx, -7);
+    CHECK_INT(nw, -7);
+}
+
 void suite_keymap(void)
 {
     style_theme_lists_the_gui_theme_rows();
@@ -3570,6 +3631,7 @@ void suite_keymap(void)
     osd_size_counts_the_reachable_levels();
     drawn_menu_geometry_follows_the_font_and_screen();
     the_theme_editor_window_fits_its_rows();
+    an_open_window_widens_when_a_value_grows();
     blit_starts_where_the_beam_cannot_cross_it();
     a_slow_blit_keeps_the_estimate_up_so_the_bar_does_not_tear();
     a_tall_copy_goes_a_row_at_a_time();

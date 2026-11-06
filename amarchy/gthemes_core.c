@@ -281,6 +281,16 @@ int gt_term_text(const char *buf, long len, const char *name, char *out, int cap
         n += snprintf(out + n, (size_t)(cap - n), "%s%d,%06lX", i ? "," : "", i, (unsigned long)p[i]);
     if (n > 0 && n < cap - 1)
         n += snprintf(out + n, (size_t)(cap - n), "\n");
+    /* TE-7b.2: the theme's Shell Font as the profile key "font = NAME:SIZE" (the handler turns ':' into ' ' and parse_font reads
+     * it; NAME keeps its ".font"). Read from the look slot through the model parser, the one parser of "name.font/size". No
+     * Shell Font, or a size missing or 0: no line, the terminal keeps its own font. */
+    if (n > 0 && n < cap && gt_model_attach(&t, buf, len)) {
+        char fname[GT_NAME];
+        int fsize;
+        if (gt_look_font(&t, GT_FONT_SHELL, fname, (int)sizeof fname, &fsize) && fsize > 0)
+            n += snprintf(out + n, (size_t)(cap - n), "font = %s:%d\n", fname, fsize);
+        gt_free(&t);
+    }
     return n > 0 && n < cap ? n : 0;
 }
 
@@ -1865,18 +1875,12 @@ static int is_icon_elem(int e)
     return e == GTE_ICON_FOREGROUND || e == GTE_ICON_ACCENT || e == GTE_ICON_MUTED || e == GTE_ICON_SELECTION_PLATE;
 }
 
-void gt_pen_budget(const gt_model *m, int depth, gt_budget *b)
+/* the walk behind the budget and the apply plan (one source): the distinct normal-state colours of the 36 elements, and of those the
+ * ones no role pen carries (and, from depth 4, no icon element) in need[]. Returns the distinct count in *nseen, the needing count. */
+static int needing_colours(const gt_model *m, int depth, const gtheme *t, uc_u32 *need, int *nseen_out)
 {
-    static gtheme t;
     uc_u32 seen[GTE_COUNT];
-    int e, j, g, pen, nseen = 0, nneed = 0;
-    memset(b, 0, sizeof *b);
-    for (g = 0; g < GTG_COUNT; g++) {
-        b->grp_pen[g] = -1;
-        b->grp_with[g] = (signed char)g;
-    }
-    b->depth = depth;
-    gt_model_to_v1(m, &t);
+    int e, j, pen, nseen = 0, nneed = 0;
     for (e = 0; e < GTE_COUNT; e++) {
         uc_u32 c = gt_resolve_rgb(m, e, GT_ST_NORMAL) & 0xFFFFFFUL;
         for (j = 0; j < nseen && seen[j] != c; j++)
@@ -1887,11 +1891,28 @@ void gt_pen_budget(const gt_model *m, int depth, gt_budget *b)
         if (depth >= 4 && is_icon_elem(e))
             continue;               /* held icon pens carry these */
         for (pen = 0; pen < DK_ROLES; pen++)
-            if (pen != DK_GREEN && pen != DK_BACKDROP && (desk_role(&t, pen) & 0xFFFFFFUL) == c)
+            if (pen != DK_GREEN && pen != DK_BACKDROP && (desk_role(t, pen) & 0xFFFFFFUL) == c)
                 break;
         if (pen == DK_ROLES)
-            nneed++;
+            need[nneed++] = c;
     }
+    *nseen_out = nseen;
+    return nneed;
+}
+
+void gt_pen_budget(const gt_model *m, int depth, gt_budget *b)
+{
+    static gtheme t;
+    uc_u32 need[GTE_COUNT];
+    int j, g, nseen = 0, nneed;
+    memset(b, 0, sizeof *b);
+    for (g = 0; g < GTG_COUNT; g++) {
+        b->grp_pen[g] = -1;
+        b->grp_with[g] = (signed char)g;
+    }
+    b->depth = depth;
+    gt_model_to_v1(m, &t);
+    nneed = needing_colours(m, depth, &t, need, &nseen);
     b->colours = nseen;
     b->shared = GTE_COUNT - nseen;
     b->needing = nneed;
@@ -2803,4 +2824,48 @@ int gt_screen_theme_of(const gt_screen_rules *r, const char *name, const char *m
         return 0;
     scr_name(theme, cap, main_theme);
     return 1;
+}
+
+static int mask_has(const uc_u32 *mask, int pen)
+{
+    return (int)((mask[pen >> 5] >> (pen & 31)) & 1UL);
+}
+
+int gt_screen_apply_plan(const gt_model *m, int depth, const uc_u32 *free_mask, int allow_owner_pens, gt_plan_pen *out, int cap)
+{
+    static gtheme t;
+    uc_u32 need[GTE_COUNT];
+    gt_budget b;
+    int nseen = 0, nneed, i, n = 0, pass = 0, next = 0;
+    gt_pen_budget(m, depth, &b);
+    if (b.exact || cap <= 0)
+        return 0;
+    gt_model_to_v1(m, &t);
+    nneed = needing_colours(m, depth, &t, need, &nseen);
+    /* exclusive candidates: pass 0 the free pens, pass 1 (Take Over Palette only) the owner's pens; both from the held count up */
+    next = b.held;
+    for (i = 0; i < nneed && n < cap; i++) {
+        int pen = -1;
+        while (pass < (allow_owner_pens ? 2 : 1)) {
+            for (; next < b.pens; next++)
+                if (mask_has(free_mask, next) == (pass == 0))
+                    break;
+            if (next < b.pens) {
+                pen = next++;
+                break;
+            }
+            pass++;
+            next = b.held;
+        }
+        out[n].rgb = need[i];
+        if (pen >= 0) {
+            out[n].pen = (short)pen;
+            out[n].exclusive = 1;
+        } else {
+            out[n].pen = (short)gt_nearest_role_pen(&t, need[i], depth);
+            out[n].exclusive = 0;
+        }
+        n++;
+    }
+    return n;
 }

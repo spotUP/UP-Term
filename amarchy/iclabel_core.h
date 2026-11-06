@@ -103,4 +103,18 @@ int icl_cache_release(icl_pencache *c, const void *screen, unsigned epoch, int *
 /* The obtained pens into out[] (each once), cache emptied. Only for a caller that holds the live map. */
 int icl_cache_drain(icl_pencache *c, int *out);
 
+/* TE-10.6a: one pen cache per screen slot (same lookup rule as flat_pens_tab, flat_ident_slot). Switching windows between screens
+ * binds another slot instead of forgetting the first screen's obtained pens. Equal to IP_SCREENS (checked in tests/test_iclabel.c). */
+#define ICL_TAB_SLOTS 40
+typedef struct icl_pentab {
+    icl_pencache slot[ICL_TAB_SLOTS];
+} icl_pentab;
+void icl_tab_init(icl_pentab *t);
+/* The cache to use for (screen, epoch): its own, else a free one bound to the identity; 0 when full or screen is 0. */
+icl_pencache *icl_tab_for(icl_pentab *t, const void *screen, unsigned epoch);
+/* The cache holding exactly that identity, else 0. */
+const icl_pencache *icl_tab_find(const icl_pentab *t, const void *screen, unsigned epoch);
+/* Forget (WITHOUT release) every slot whose identity is_open says is gone; returns the count. */
+int icl_tab_reap(icl_pentab *t, int (*is_open)(void *ctx, const void *screen, unsigned epoch), void *ctx);
+
 #endif
