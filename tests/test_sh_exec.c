@@ -2957,6 +2957,18 @@ static void execute_3_2_quirks(void)
     sh_run_text(&sh, "cd RAM:; execute RAM:q6 ?; echo rc$?", &inc);
     CHECK_STR(slot(OUT)->data, "name/A: got bob\nrc0\n");
     CHECK_STR(slot(ERR)->data, "");
+    /* S7c-7 a (rig): the reply input ends at once (NIL:) - Execute runs with nothing bound and does not fail /A */
+    run("");
+    amiscr_put("RAM:q7a", ".KEY w/A\necho \"got <w>\"\n");
+    sh_run_text(&sh, "execute RAM:q7a ?; echo rc$?", &inc);
+    CHECK(strstr(slot(OUT)->data, "rc0\n") != 0);
+    CHECK_STR(slot(ERR)->data, "");
+    /* S7c-7 b (rig): a double-quoted "?" is a plain argument bound to the template; only a bare ? asks */
+    run("");
+    amiscr_put("RAM:q7b", ".KEY w/A\necho \"got <w>\"\n");
+    sh_run_text(&sh, "execute RAM:q7b \"?\"; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "got ?\nrc0\n");
+    CHECK_STR(slot(ERR)->data, "");
     /* any command, not only execute: a lone trailing ? stays literal, a ? mid-line still globs */
     run("");
     sh.ctx.listdir = list_one_char;
