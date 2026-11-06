@@ -1345,6 +1345,7 @@ struct watch_msg {
     upconf *conf;
     char *theme;      /* the text of the theme file (GT_TERM_FILE) when it changed, else 0: the window frees it */
     long theme_len;
+    int theme_changed; /* the theme file was re-read for this message: theme 0 then means it is gone (upconf_theme_report) */
     int quit, done;
     int nerd_ttf; /* FONTS:SymbolsNerdFontMono.ttf is there, as of this table */
 };
@@ -1420,8 +1421,10 @@ static void watch_worker(void)
                 FreeVec(m->theme);
                 m->theme = 0;
             }
+            m->theme_changed = 0;
             if (theme_pend) {
                 m->theme = read_active_theme(&m->theme_len);
+                m->theme_changed = 1;
                 theme_pend = 0;
             }
             if (m->conf)
@@ -2840,7 +2843,8 @@ static void watch_take(con *c)
             menu_remove(c, c->w.win);
             menu_add(c, c->w.win);
         }
-        if (m->theme) {
+        switch (upconf_theme_report(m->theme_changed, m->theme)) {
+        case 1:
             if (c->w.t && c->w.win)
                 theme_apply(c, m->theme, m->theme_len);
             if (c->theme_text)
@@ -2849,6 +2853,23 @@ static void watch_take(con *c)
             c->theme_len = m->theme_len;
             m->theme = 0;
             theme_font_live(c);
+            break;
+        case 2: /* the file is gone: no theme, the window shows its profile's colours and font (a profile switch to its own profile) */
+            if (c->theme_text) {
+                const char *names[UC_MAX_PROFILES + 1];
+                int n, k;
+                FreeVec(c->theme_text);
+                c->theme_text = 0;
+                c->theme_len = 0;
+                n = c->conf ? upconf_profiles(c->conf, names) : 0;
+                for (k = 0; k < n && !str_ieq(names[k], c->profile); k++)
+                    ;
+                if (k < n)
+                    profile_switch(c, k);
+                else
+                    theme_font_live(c);
+            }
+            break;
         }
         c->watch_held = 0;
         PutMsg(&c->watch_task->pr_MsgPort, &m->msg); /* back: the next change */

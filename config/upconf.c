@@ -574,6 +574,13 @@ const upconf *upconf_colour_source(const upconf *prof, const char *p, const upco
     return prof;
 }
 
+int upconf_theme_report(int changed, const char *text)
+{
+    if (!changed)
+        return 0;
+    return text ? 1 : 2;
+}
+
 const char *upconf_font_source(const upconf *prof, const char *p, const upconf *theme)
 {
     const char *v;
