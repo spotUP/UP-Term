@@ -2438,6 +2438,7 @@ static void er_build(void)
     }
     er_add(PG_PAGE_THEME_SCREENS, SD_GACTION, "scr-add", "Add Rule")->aux = GTA_SCR_ADD;
     er_add(PG_PAGE_THEME_SCREENS, SD_GACTION, "scr-save", "Save Screen Themes")->aux = GTA_SCR_SAVE;
+    er_add(PG_PAGE_THEME_SCREENS, SD_GACTION, "scr-restore", "Restore Original")->aux = GTA_SCR_RESTORE;
 }
 
 const sd_setting *gte_row(int id)
@@ -3293,6 +3294,9 @@ int gt_se_action(int aux, int index)
     case GTA_SCR_UP:     return se_done(gt_screen_pat_move(&gt_se.r, index, -1));
     case GTA_SCR_DOWN:   return se_done(gt_screen_pat_move(&gt_se.r, index, 1));
     case GTA_SCR_REMOVE: return se_done(gt_screen_pat_remove(&gt_se.r, index));
+    case GTA_SCR_RESTORE:
+        gt_screen_rules_parse("default workbench\n", 18, &gt_se.r);   /* the stock file: no rule, Workbench only */
+        return se_done(1);
     default:             return GTR_BAD;
     }
 }

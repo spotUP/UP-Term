@@ -2876,7 +2876,7 @@ static void test_gthemes_te8_rows(void)
         if (s->kind == SD_INFO && !strncmp(s->label, "Pen Share ", 10)) share_all++;
     }
     CHECK_INT(share_all, GTG_COUNT);                                   /* one Pen Share row per group, all built */
-    CHECK_INT(total, 483);                                             /* the true row count counted from the builder: 309 earlier rows + 174 Screens page rows (TE-10.8b) */
+    CHECK_INT(total, 484);                                             /* the true row count counted from the builder: 309 earlier rows + 174 Screens page rows (TE-10.8b) + 1 Restore Original (TE-10.9) */
     gt_ed.depth = 3;
     share_vis = 0;
     for (i = 0; i < total; i++) {
@@ -3217,6 +3217,36 @@ static void test_gthemes_screens_page_pattern_rules_add_move_edit_remove(void)
     CHECK_INT(gt_se_action(GTA_SCR_REMOVE, 5), GTR_BAD);
 }
 
+/* TE-10.9: Restore Original puts the rules model back to "no rule, default Workbench only" (the stock file), whatever was there */
+static void test_gthemes_screens_restore_original_clears_every_rule(void)
+{
+    const char *o[2];
+    const sd_setting *s;
+    char t[96], buf[1024], stock[1024];
+    int th = 0;
+    o[0] = "DOPUS.1";
+    o[1] = "Term";
+    scr_load("default workbench\n", o, 2);
+    gt_se_text(stock, sizeof stock);
+    CHECK_STR(stock, "default workbench\n");
+    scr_load("default all\nDOPUS.1 = nord\nTerm = gruvbox takeover\n", o, 2);
+    CHECK_INT(gt_se_add_rule("DOPUS#?"), GTR_OK);
+    CHECK_INT(gt_se_add_rule("Cli#?"), GTR_OK);
+    CHECK_INT(gt_se_enabled(), 1);
+    s = scr_row(GTA_SCR_RESTORE, 0);
+    CHECK(s != 0 && s->kind == SD_GACTION);
+    scr_label(s, t);
+    CHECK_STR(t, "Restore Original");
+    CHECK_INT(gt_se_action(GTA_SCR_RESTORE, 0), GTR_OK);
+    gt_se_text(buf, sizeof buf);
+    CHECK_STR(buf, stock);
+    CHECK_INT(gt_se_enabled(), 0);
+    CHECK_INT(gt_screen_pat_count(gt_se_rules()), 0);
+    CHECK_INT(gt_screen_theme_of(gt_se_rules(), "DOPUS.1", "nord", t, sizeof t, &th), 0);   /* no screen but the Workbench is themed */
+    CHECK_INT(gt_screen_theme_of(gt_se_rules(), "Term", "nord", t, sizeof t, &th), 0);
+    CHECK_INT(gt_screen_theme_of(gt_se_rules(), "Workbench", "nord", t, sizeof t, &th), 1);
+}
+
 static int scr_reloads;
 static void scr_reloader(void)
 {
@@ -3316,5 +3346,6 @@ void suite_gthemes(void)
     test_gthemes_screens_page_rows_follow_the_open_screens_and_edit_the_rules();
     test_gthemes_screens_page_default_buttons_and_closed_rules();
     test_gthemes_screens_page_pattern_rules_add_move_edit_remove();
+    test_gthemes_screens_restore_original_clears_every_rule();
     test_gthemes_screens_page_reloads_when_stale_and_keeps_unsaved_edits();
 }
