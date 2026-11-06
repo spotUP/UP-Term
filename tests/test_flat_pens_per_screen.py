@@ -37,6 +37,25 @@ class FlatPensPerScreen(unittest.TestCase):
     def test_no_bare_lock_pub_screen(self):
         self.assertIsNone(re.search(r"(?<![A-Za-z_])LockPubScreen\s*\(", SRC))
 
+    def test_draw_sync_reads_roles_outside_list_lock(self):
+        # G6 (TE-10.6c brief 4b): ipd_screen_roles takes the pen record semaphore, which the record sync takes BEFORE the public
+        # screen list lock; so draw_sync must never call it while it holds that lock.
+        start = SRC.index("static void draw_sync(flatshared *r)")
+        body = SRC[start:SRC.index("\n}\n", start)]
+        self.assertIn("ipd_screen_roles(", body)
+        self.assertIn("flat_role_resolve(", body)
+        self.assertRegex(SRC, r"static\s+ipd_roles\s+g_roles_in\s*\[")
+        self.assertRegex(SRC, r"static\s+flat_role_pens\s+g_roles_out\s*\[")
+        locked = False
+        for m in re.finditer(r"LockPubScreenList\s*\(|UnlockPubScreenList\s*\(|ipd_screen_roles\s*\(", body):
+            t = m.group(0)
+            if t.startswith("Unlock"):
+                locked = False
+            elif t.startswith("Lock"):
+                locked = True
+            else:
+                self.assertFalse(locked, "ipd_screen_roles called under the public screen list lock")
+
 
 if __name__ == "__main__":
     unittest.main()
