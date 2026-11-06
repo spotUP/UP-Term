@@ -1057,11 +1057,19 @@ static void msx_select(void *ctx, int slot, const ip_snap_entry *e)
     (void)e;
     m->o->ctx = &m->f[slot];                    /* every slot has its own ColorMap: its own fake */
 }
+static int msx_plan(void *c, int depth, gt_plan_pen *out, int cap)
+{
+    (void)c; (void)depth;
+    if (cap < 2) return 0;
+    out[0].pen = 50; out[0].rgb = 0x112233UL; out[0].exclusive = 1;
+    out[1].pen = 51; out[1].rgb = 0x445566UL; out[1].exclusive = 1;
+    return 2;
+}
 static void msx_init(msx *m, ip_ops *o, ip_screens *t)
 {
     memset(m, 0, sizeof *m);
     memset(o, 0, sizeof *o);
-    o->obtain = f_obtain; o->release = f_release; o->theme = msx_theme; o->ctx = &m->f[0];
+    o->obtain = f_obtain; o->release = f_release; o->theme = msx_theme; o->plan = msx_plan; o->ctx = &m->f[0];
     m->o = o;
     ip_screens_init(t);
     ip_screens_add(t, "Pub");
@@ -1090,8 +1098,9 @@ static void test_screens_sync(void)
     snap_set(&sn, 2, "Other", (void *)0x200, 0, 6);
     CHECK_INT(msx_sync(&m, &t, &sn, hold), 0);
     CHECK_INT(t.slot[0].sh.h.held, 16);
-    CHECK_INT(t.slot[1].sh.h.held, 16);
-    CHECK_INT(t.slot[2].sh.h.held, 16);
+    CHECK_INT(t.slot[1].sh.h.pcount, 2);
+    CHECK_INT(t.slot[2].sh.h.pcount, 2);
+    CHECK_INT(t.slot[1].sh.h.held, 0);             /* TE-10.5b2: no icon pens off the Workbench */
     CHECK_INT(ip_screens_held(&t), 2);
     sn2 = sn;
     sn2.count = 2;                                               /* "Other" closed */
@@ -1100,8 +1109,8 @@ static void test_screens_sync(void)
     hold[2] = 1;
     msx_sync(&m, &t, &sn2, hold);
     CHECK_INT(m.f[1].releases, 0);                               /* the first screen is untouched */
-    CHECK_INT(t.slot[1].sh.h.held, 16);
-    CHECK_INT(t.slot[2].sh.h.held, 0);                           /* the gone screen forgot, without a release call */
+    CHECK_INT(t.slot[1].sh.h.pcount, 2);
+    CHECK_INT(t.slot[2].sh.h.pcount, 0);                           /* the gone screen forgot, without a release call */
     CHECK_INT(m.f[2].releases, 0);
     CHECK_INT(ip_screens_held(&t), 1);
 
@@ -1109,9 +1118,9 @@ static void test_screens_sync(void)
     msx_init(&m, &o, &t);
     hold[0] = 1; hold[1] = 0; hold[2] = 1;
     msx_sync(&m, &t, &sn, hold);
-    CHECK_INT(t.slot[1].sh.h.held, 0);
+    CHECK_INT(t.slot[1].sh.h.pcount, 0);
     CHECK_INT(t.slot[0].sh.h.held, 16);
-    CHECK_INT(t.slot[2].sh.h.held, 16);
+    CHECK_INT(t.slot[2].sh.h.pcount, 2);
     { int k, any = 0; for (k = 0; k < 64; k++) any |= m.f[1].mine[k]; CHECK_INT(any, 0); }
 
     /* a private node: no obtain, no release, the slot is kept; public later: obtains */
@@ -1119,20 +1128,20 @@ static void test_screens_sync(void)
     hold[1] = 1;
     snap_set(&sn, 1, "Pub", (void *)0x100, IP_PSN_PRIVATE, 6);
     msx_sync(&m, &t, &sn, hold);
-    CHECK_INT(t.slot[1].sh.h.held, 0);
+    CHECK_INT(t.slot[1].sh.h.pcount, 0);
     CHECK_INT(m.f[1].releases, 0);
     CHECK_INT(ip_screens_find(&t, "Pub"), 1);
     snap_set(&sn, 1, "Pub", (void *)0x100, 0, 6);
     msx_sync(&m, &t, &sn, hold);
-    CHECK_INT(t.slot[1].sh.h.held, 16);
+    CHECK_INT(t.slot[1].sh.h.pcount, 2);
 
     /* slot 0 hold 0 releases its pens, the others keep theirs */
     hold[0] = 0;
     msx_sync(&m, &t, &sn, hold);
     CHECK_INT(t.slot[0].sh.h.held, 0);
     CHECK_INT(m.f[0].releases, 16);
-    CHECK_INT(t.slot[1].sh.h.held, 16);
-    CHECK_INT(t.slot[2].sh.h.held, 16);
+    CHECK_INT(t.slot[1].sh.h.pcount, 2);
+    CHECK_INT(t.slot[2].sh.h.pcount, 2);
     CHECK_INT(m.f[1].releases + m.f[2].releases, 0);
 
     /* exit: all holds 0 with one slot private: release for the public slots only */
@@ -1143,10 +1152,10 @@ static void test_screens_sync(void)
     for (i = 0; i < IP_SCREENS; i++) hold[i] = 0;
     msx_sync(&m, &t, &sn, hold);
     CHECK_INT(t.slot[0].sh.h.held, 0);
-    CHECK_INT(t.slot[1].sh.h.held, 0);
-    CHECK_INT(t.slot[2].sh.h.held, 16);                          /* private: kept (accepted gap) */
+    CHECK_INT(t.slot[1].sh.h.pcount, 0);
+    CHECK_INT(t.slot[2].sh.h.pcount, 2);                          /* private: kept (accepted gap) */
     CHECK_INT(m.f[0].releases, 16);
-    CHECK_INT(m.f[1].releases, 16);
+    CHECK_INT(m.f[1].releases, 2);
     CHECK_INT(m.f[2].releases, 0);
 
     /* a reopened screen: that slot's epoch +1, slot 0's does not move */
@@ -1164,8 +1173,225 @@ static void test_screens_sync(void)
         msx_sync(&m, &t, &sn2, hold);
         CHECK_INT((int)(ip_screens_epoch(&t, "Pub") - e1), 1);
         CHECK_INT((int)(ip_screens_epoch(&t, "Workbench") - e0), 0);
-        CHECK_INT(t.slot[1].sh.h.held, 16);
+        CHECK_INT(t.slot[1].sh.h.pcount, 2);
         CHECK_INT(ip_screens_epoch(&t, "Nope"), 0);
+    }
+}
+
+/* ---- TE-10.5b2: a non-Workbench slot holds only the pen plan's pens ---- */
+typedef struct pm { pf f[IP_SCREENS]; ip_ops *o; } pm;
+static int pm_plan_calls, pm_theme_calls, pm_ready, pm_nplan, pm_free_calls;
+static gt_plan_pen pm_plan_v[GTE_COUNT];
+static int pm_is_free(void *c, int pen) { pf *f = c; pm_free_calls++; return !(f->taken[pen] || f->mine[pen]); }
+static void pm_theme(void *c, gtheme *t, int *flat, unsigned *mask) { (void)c; pm_theme_calls++; theme(t); *flat = 1; *mask = 0; }
+static int pm_theme_ready(void *c) { (void)c; return pm_ready; }
+static int pm_plan(void *c, int depth, gt_plan_pen *out, int cap)
+{
+    int i;
+    (void)c; (void)depth;
+    pm_plan_calls++;
+    for (i = 0; i < pm_nplan && i < cap; i++) out[i] = pm_plan_v[i];
+    return i;
+}
+static void pm_select(void *ctx, int slot, const ip_snap_entry *e) { pm *m = ctx; (void)e; m->o->ctx = &m->f[slot]; }
+static void pm_init(pm *m, ip_ops *o, ip_screens *t)
+{
+    memset(m, 0, sizeof *m);
+    memset(o, 0, sizeof *o);
+    o->obtain = pf_obtain; o->release = pf_release; o->set_rgb = pf_set; o->is_free = pm_is_free; o->theme = pm_theme;
+    o->theme_ready = pm_theme_ready; o->plan = pm_plan; o->ctx = &m->f[0];
+    m->o = o;
+    pm_ready = 1; pm_plan_calls = pm_theme_calls = pm_free_calls = 0;
+    pm_nplan = 2;
+    pf_plan(pm_plan_v, 0, 100, 0x112233UL, 1); pf_plan(pm_plan_v, 1, 101, 0x445566UL, 1);
+    ip_screens_init(t);
+    ip_screens_add(t, "Pub");
+}
+static int pm_sync(pm *m, ip_screens *t, const ip_snap *sn, const int *hold, int *need)
+{
+    return ip_screens_sync(t, sn, m->o, hold, pm_select, m, need);
+}
+static int pm_range_mine(const pf *f, int lo, int hi)
+{
+    int i, n = 0;
+    for (i = lo; i <= hi; i++) n += f->mine[i];
+    return n;
+}
+
+static void test_plan_only_slots(void)
+{
+    static pm m;
+    static ip_screens t;
+    ip_ops o;
+    ip_snap sn, sn2;
+    ip_diff d;
+    int hold[IP_SCREENS] = {1, 1, 0}, need[IP_SCREENS];
+    uc_u32 mask[GT_MASK_WORDS];
+    int i, sum;
+    ip_holder *h;
+
+    memset(&sn, 0, sizeof sn);
+    snap_set(&sn, 0, "Workbench", (void *)0x1, 0, 6);
+    snap_set(&sn, 1, "Pub", (void *)0x100, 0, 6);
+
+    /* a themed public screen obtains no icon pen and no role pen unless the plan names it exclusive; it holds the plan's pens */
+    pm_init(&m, &o, &t);
+    CHECK_INT(pm_sync(&m, &t, &sn, hold, need), 0);
+    h = &t.slot[1].sh.h;
+    CHECK_INT(pm_range_mine(&m.f[1], IP_FIRST, IP_FIRST + 15), 0);
+    CHECK_INT(pm_range_mine(&m.f[1], 4, 7), 0);
+    CHECK_INT(h->held + h->count + h->rcount, 0);
+    CHECK_INT(h->pcount, 2);
+    CHECK_INT(m.f[1].mine[100] + m.f[1].mine[101], 2);
+    CHECK_INT(h->screen == (void *)0x100, 1);
+    CHECK_INT(ip_screens_held(&t), 1);
+    /* slot 0 is what it was: 16 icon pens and the role pens */
+    CHECK_INT(t.slot[0].sh.h.held, 16);
+    CHECK_INT(pm_range_mine(&m.f[0], IP_FIRST, IP_FIRST + 15), 16);
+    CHECK(t.slot[0].sh.h.rcount > 0);
+    CHECK_INT(pm_range_mine(&m.f[0], 100, 101), 0);
+
+    /* a plan that names a role pen exclusive gets it */
+    pm_init(&m, &o, &t);
+    pf_plan(pm_plan_v, 0, 5, 0x123456UL, 1);
+    pm_sync(&m, &t, &sn, hold, need);
+    CHECK_INT(m.f[1].mine[5], 1);
+    CHECK_INT(pm_range_mine(&m.f[1], IP_FIRST, IP_FIRST + 15), 0);
+    CHECK_INT(pm_range_mine(&m.f[1], 4, 7), 1);
+
+    /* a refused pen is skipped, and retried on the next sync */
+    pm_init(&m, &o, &t);
+    m.f[1].taken[101] = 1;
+    pm_sync(&m, &t, &sn, hold, need);
+    CHECK_INT(t.slot[1].sh.h.pcount, 1);
+    CHECK_INT(m.f[1].mine[100], 1);
+    m.f[1].taken[101] = 0;
+    pm_sync(&m, &t, &sn, hold, need);
+    CHECK_INT(t.slot[1].sh.h.pcount, 2);
+    CHECK_INT(m.f[1].mine[101], 1);
+
+    /* hold 0 releases the plan pens */
+    hold[1] = 0;
+    pm_sync(&m, &t, &sn, hold, need);
+    CHECK_INT(t.slot[1].sh.h.pcount, 0);
+    CHECK_INT(m.f[1].releases, 2);
+    CHECK_INT(m.f[1].mine[100] + m.f[1].mine[101], 0);
+    CHECK_INT(t.slot[1].sh.h.screen == 0, 1);
+    hold[1] = 1;
+
+    /* the screen is gone: the holder forgets without a release; the same name reopened is a new identity, epoch +1 */
+    pm_init(&m, &o, &t);
+    pm_sync(&m, &t, &sn, hold, need);
+    sn2 = sn;
+    sn2.count = 1;
+    ip_screens_diff(&sn, &sn2, &d);
+    ip_screens_apply(&t, &d);
+    CHECK_INT(t.slot[1].sh.h.pcount, 0);
+    CHECK_INT(m.f[1].releases, 0);
+    {
+        unsigned e1 = ip_screens_epoch(&t, "Pub"), e0 = ip_screens_epoch(&t, "Workbench");
+        snap_set(&sn2, 1, "Pub", (void *)0x900, 0, 6);
+        ip_screens_diff(&sn, &sn2, &d);
+        ip_screens_apply(&t, &d);
+        memset(&m.f[1], 0, sizeof m.f[1]);
+        pm_sync(&m, &t, &sn2, hold, need);
+        CHECK_INT((int)(ip_screens_epoch(&t, "Pub") - e1), 1);
+        CHECK_INT((int)(ip_screens_epoch(&t, "Workbench") - e0), 0);
+        CHECK_INT(t.slot[1].sh.h.pcount, 2);
+    }
+
+    /* the theme is not ready: nothing changes, need[1] is set; once ready the plan is taken */
+    pm_init(&m, &o, &t);
+    pm_ready = 0;
+    pm_plan_calls = 0;
+    hold[0] = 0;                                                 /* slot 0 is not the subject */
+    CHECK_INT(pm_sync(&m, &t, &sn, hold, need), 1);
+    CHECK_INT(need[1], 1);
+    CHECK_INT(t.slot[1].sh.h.pcount, 0);
+    CHECK(t.slot[1].sh.h.screen == 0);
+    CHECK_INT(pm_plan_calls, 0);
+    CHECK_INT(pm_range_mine(&m.f[1], 0, 63) + m.f[1].obtains, 0);
+    pm_ready = 1;
+    CHECK_INT(pm_sync(&m, &t, &sn, hold, need), 0);
+    CHECK_INT(need[1], 0);
+    CHECK_INT(t.slot[1].sh.h.pcount, 2);
+    hold[0] = 1;
+
+    /* an unchanged tick calls obtain, release, set_rgb, plan and theme 0 times */
+    pm_init(&m, &o, &t);
+    pm_sync(&m, &t, &sn, hold, need);
+    m.f[0].obtains = m.f[0].releases = m.f[0].sets = 0;
+    m.f[1].obtains = m.f[1].releases = m.f[1].sets = 0;
+    pm_plan_calls = pm_theme_calls = 0;
+    pm_sync(&m, &t, &sn, hold, need);
+    CHECK_INT(m.f[1].obtains + m.f[1].releases + m.f[1].sets, 0);
+    CHECK_INT(pm_plan_calls, 0);
+    CHECK_INT(pm_theme_calls, 0);
+
+    /* recheck = 1 re-plans: a changed colour is rewritten, a pen no longer planned is released */
+    t.slot[1].sh.h.recheck = 1;
+    pf_plan(pm_plan_v, 0, 100, 0xaabbccUL, 1);
+    pm_nplan = 1;
+    pm_plan_calls = 0;
+    m.f[1].obtains = m.f[1].releases = m.f[1].sets = 0;
+    pm_sync(&m, &t, &sn, hold, need);
+    CHECK_INT(pm_plan_calls, 1);
+    CHECK_INT(m.f[1].sets, 1);
+    CHECK_INT(m.f[1].last_set, 100);
+    CHECK_INT((long)m.f[1].last_set_rgb, 0xaabbccL);
+    CHECK_INT(m.f[1].releases, 1);
+    CHECK_INT(m.f[1].last_release, 101);
+    CHECK_INT(m.f[1].obtains, 0);
+    CHECK_INT(t.slot[1].sh.h.pcount, 1);
+    CHECK_INT(t.slot[1].sh.h.recheck, 0);
+
+    /* ip_holder_plan_mask sets exactly the held plan pens' bits */
+    pm_nplan = 2;
+    pf_plan(pm_plan_v, 1, 201, 0x445566UL, 1);
+    t.slot[1].sh.h.recheck = 1;
+    pm_sync(&m, &t, &sn, hold, need);
+    memset(mask, 0, sizeof mask);
+    mask[0] = 0x80000000UL;                                      /* a bit the caller already had stays */
+    ip_holder_plan_mask(&t.slot[1].sh.h, mask);
+    CHECK_INT(mask[0], (long)0x80000000UL);
+    CHECK_INT(mask[100 >> 5], (long)(1UL << (100 & 31)));
+    CHECK_INT(mask[201 >> 5], (long)(1UL << (201 & 31)));
+    for (i = 0; i < GT_MASK_WORDS; i++) {
+        int b;
+        for (b = 0, sum = 0; b < 32; b++) sum += (int)((mask[i] >> b) & 1);
+        if (i == 0) CHECK_INT(sum, 1);
+        else if (i == (100 >> 5) && i == (201 >> 5)) CHECK_INT(sum, 2);
+        else if (i == (100 >> 5) || i == (201 >> 5)) CHECK_INT(sum, 1);
+        else CHECK_INT(sum, 0);
+    }
+
+    /* a plan pen the ColorMap reports free (the screen reopened at the same address): the holder forgets everything, no release;
+     * the same sync takes the plan again on the new ColorMap and the slot epoch goes up once */
+    pm_init(&m, &o, &t);
+    pm_sync(&m, &t, &sn, hold, need);
+    {
+        unsigned e1 = ip_screens_epoch(&t, "Pub");
+        memset(&m.f[1], 0, sizeof m.f[1]);                       /* a fresh ColorMap at the same address */
+        pm_sync(&m, &t, &sn, hold, need);
+        CHECK_INT(m.f[1].releases, 0);
+        CHECK_INT(t.slot[1].sh.h.pcount, 2);
+        CHECK_INT(m.f[1].mine[100] + m.f[1].mine[101], 2);
+        CHECK_INT((int)(ip_screens_epoch(&t, "Pub") - e1), 1);
+    }
+    /* the same, while the theme is not ready: the bump is owed and paid once the plan is taken */
+    pm_init(&m, &o, &t);
+    pm_sync(&m, &t, &sn, hold, need);
+    {
+        unsigned e1 = ip_screens_epoch(&t, "Pub");
+        memset(&m.f[1], 0, sizeof m.f[1]);
+        pm_ready = 0;
+        CHECK_INT(pm_sync(&m, &t, &sn, hold, need), 1);
+        CHECK_INT((int)(ip_screens_epoch(&t, "Pub") - e1), 0);
+        pm_ready = 1;
+        pm_sync(&m, &t, &sn, hold, need);
+        CHECK_INT((int)(ip_screens_epoch(&t, "Pub") - e1), 1);
+        pm_sync(&m, &t, &sn, hold, need);
+        CHECK_INT((int)(ip_screens_epoch(&t, "Pub") - e1), 1);
     }
 }
 
@@ -1210,4 +1436,5 @@ void suite_iconpen(void)
     test_screens_diff_and_apply();
     test_screens_sync();
     test_screens_held_count();
+    test_plan_only_slots();
 }

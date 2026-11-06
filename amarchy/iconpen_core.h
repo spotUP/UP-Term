@@ -51,6 +51,9 @@ typedef struct ip_ops {
     int (*theme_ready)(void *ctx);
     /* set one live role pen of the current screen to rgb (0xRRGGBB) */
     void (*set_rgb)(void *ctx, int pen, uc_u32 rgb);
+    /* TE-10.5b2: optional, 0 = absent (the plan is empty). Used by ip_sync_plan only: the pen plan (gt_screen_apply_plan) of the screen
+     * the select callback chose, written into out[0..cap); returns the entries written. */
+    int (*plan)(void *ctx, int depth, gt_plan_pen *out, int cap);
 } ip_ops;
 
 typedef struct ip_holder {
@@ -110,6 +113,9 @@ int ip_holder_release(ip_holder *h, const ip_ops *o);
  * exclusive or absent is released. exclusive = 0 entries do nothing. A pen the holder already holds as icon or role pen is skipped.
  * Returns the plan pens held after the call. */
 int ip_plan_sync(ip_holder *h, const ip_ops *o, const gt_plan_pen *plan, int n);
+/* TE-10.5b2: ORs the pens of the holder's own plan (ppen[0..pcount)) into a 256-bit free mask (pen p = bit p & 31 of word
+ * p >> 5), so a re-plan can offer the pens the holder already holds instead of releasing and re-obtaining them. */
+void ip_holder_plan_mask(const ip_holder *h, uc_u32 mask[GT_MASK_WORDS]);
 /* "pens-held N"; returns the length, 0 when cap is too small */
 int ip_status_line(const ip_holder *h, char *out, size_t cap);
 
@@ -130,6 +136,16 @@ int ip_sync_decide(const ip_holder *h, int hold, const void *screen, int depth);
  * still open (hold switched off) and a recheck OBTAIN on the same screen (those keep the clients' pens valid). */
 int ip_sync_new_identity(const void *old_screen, const void *new_screen, int act, int lost);
 int ip_sync(ip_holder *h, const ip_ops *o, int hold, const void *screen, int depth, int planes);
+/* TE-10.5b2: the sync of a screen other than the Workbench (slots >= 1 of ip_screens_sync). Such a holder holds ONLY the pens of
+ * the theme's pen plan (o->plan, exclusive entries): never the 16 icon pens, never role pens 4-7 on its own (h->count, h->held and
+ * h->rcount stay 0). Same IP_SYNC_* codes as ip_sync: ip_holder_verify (a plan pen the ColorMap reports free = the screen was
+ * reopened at the same address: forget, no release), ip_sync_decide, then RELEASE = ip_holder_release; OBTAIN = IP_SYNC_NEED_THEME
+ * with nothing changed while o->theme_ready says 0, else o->plan and ip_plan_sync, and the identity is recorded like ip_sync does
+ * (h->screen, h->depth, h->new_identity). A tick where nothing is stale calls no op but the is_free checks of verify.
+ * Re-plan request: set h->recheck = 1 on a held plan holder (the DOS half does it on a theme or rule change); the next sync re-runs
+ * the plan: a changed colour is rewritten, a pen no longer planned exclusive is released, a missing one is obtained. A plan pen the
+ * ColorMap refused is skipped and leaves h->recheck = 1, so the next sync retries it. */
+int ip_sync_plan(ip_holder *h, const ip_ops *o, int hold, const void *screen, int depth);
 /* Whether amarchy-flat holds the icon pens: for its whole run, whatever the flat switch says (L7 cause 2). graphics puts a
  * released pen at the HEAD of the PalExtra free list (rig 10, 3.2: after flat off the free order read 47 46 .. 32 244 ..),
  * so the next ObtainBestPen of any client (the dim pen, Amarchy's own theme pens, colour icons) took 47, then 46, and
@@ -180,6 +196,7 @@ typedef struct ip_screen_slot {
     char name[IP_PSN_NAME];
     ip_shared sh;
     unsigned epoch;          /* bumped when the screen of this name is reopened (new identity); slot 0 keeps sh.epoch */
+    int owed;                /* TE-10.5b2: a same-address reopen was forgotten but its sync answered NEED_THEME; the epoch bump is owed */
 } ip_screen_slot;
 
 typedef struct ip_screens {

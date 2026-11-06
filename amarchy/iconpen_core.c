@@ -246,6 +246,10 @@ int ip_holder_verify(ip_holder *h, const ip_ops *o, const void *screen, int dept
             else if (fr)
                 gained = 1;
         }
+    if (h->depth == depth)
+        for (i = 0; i < h->pcount; i++)  /* TE-10.5b2: a plan pen free on the ColorMap is lost too */
+            if (o->is_free(o->ctx, h->ppen[i]))
+                lost = 1;
     if (h->depth != depth || lost) {     /* reopened at the same address: our pens went with the old ColorMap */
         ip_holder_init(h);
         return 1;
@@ -328,6 +332,45 @@ int ip_sync(ip_holder *h, const ip_ops *o, int hold, const void *screen, int dep
             if (h->rhave[k] && o->set_rgb)
                 o->set_rgb(o->ctx, lp[k], lc[k]);
         }
+    }
+    h->new_identity = ip_sync_new_identity(old, screen, act, lost);
+    return act;
+}
+
+void ip_holder_plan_mask(const ip_holder *h, uc_u32 mask[GT_MASK_WORDS])
+{
+    int i;
+    for (i = 0; i < h->pcount; i++) {
+        int p = h->ppen[i];
+        if (p >= 0 && p < GT_MASK_WORDS * 32)
+            mask[p >> 5] |= (uc_u32)1 << (p & 31);
+    }
+}
+
+int ip_sync_plan(ip_holder *h, const ip_ops *o, int hold, const void *screen, int depth)
+{
+    int act, lost;
+    const void *old = h->screen;
+    ip_holder_verify(h, o, screen, depth);
+    lost = old && !h->screen;            /* verify forgets the pens only when the same address was reopened */
+    act = ip_sync_decide(h, hold, screen, depth);
+    if (act == IP_SYNC_OBTAIN && o->theme_ready && !o->theme_ready(o->ctx))
+        return IP_SYNC_NEED_THEME;       /* nothing obtained or flagged yet; the caller loads the theme and syncs again (as ip_sync) */
+    if (act == IP_SYNC_RELEASE) {
+        ip_holder_release(h, o);
+    } else if (act == IP_SYNC_OBTAIN) {
+        gt_plan_pen plan[GTE_COUNT];
+        int n = o->plan ? o->plan(o->ctx, depth, plan, GTE_COUNT) : 0, i, want = 0;
+        if (n < 0)
+            n = 0;
+        if (h->screen != screen || h->depth != depth)
+            ip_holder_release(h, o);     /* another screen or depth (the holder was not forgotten): release what it holds first */
+        ip_plan_sync(h, o, plan, n);
+        for (i = 0; i < n; i++)
+            want += plan[i].exclusive != 0;
+        h->screen = screen;
+        h->depth = depth;
+        h->recheck = h->pcount < want;   /* a refused pen is retried by the next sync */
     }
     h->new_identity = ip_sync_new_identity(old, screen, act, lost);
     return act;
@@ -488,6 +531,7 @@ int ip_screens_apply(ip_screens *t, const ip_diff *d)
         if (e->kind == IP_DIFF_GONE) {                           /* closed, private or not: the pens went with it */
             if (s < 0) continue;
             ip_holder_init(&t->slot[s].sh.h);
+            t->slot[s].owed = 0;
             changed++;
             continue;
         }
@@ -500,6 +544,7 @@ int ip_screens_apply(ip_screens *t, const ip_diff *d)
         if (h->screen ? (h->screen == e->screen && h->depth == e->depth) : e->kind == IP_DIFF_SAME) continue;
         ip_holder_init(h);                                       /* the pens went with the ColorMap: forget, never release */
         t->slot[s].epoch++;
+        t->slot[s].owed = 0;
         changed++;
     }
     return changed;
@@ -527,10 +572,25 @@ int ip_screens_sync(ip_screens *t, const ip_snap *snap, const ip_ops *o, const i
         int j = ips_snap_find(snap, sl->name), act, planes;
         const ip_snap_entry *e = j >= 0 ? &snap->e[j] : 0;
         if (need) need[i] = 0;
-        if (i > 0 && (!e || (e->flags & IP_PSN_PRIVATE))) continue;   /* not open yet, or gone (already forgotten) */
+        if (i > 0 && (!e || (e->flags & IP_PSN_PRIVATE))) {   /* not open yet, or gone (already forgotten) */
+            sl->owed = 0;
+            continue;
+        }
         if (select) select(ctx, i, e);
         planes = e ? ((e->ehb && e->depth == 5) ? 6 : e->depth) : 0;
-        act = ip_sync(&sl->sh.h, o, hold[i], e ? e->screen : 0, e ? e->depth : 0, planes);
+        if (i == 0) {
+            act = ip_sync(&sl->sh.h, o, hold[i], e ? e->screen : 0, e ? e->depth : 0, planes);
+        } else {                                                  /* TE-10.5b2: another screen holds only its pen plan */
+            const void *old = sl->sh.h.screen;
+            act = ip_sync_plan(&sl->sh.h, o, hold[i], e->screen, e->depth);
+            if (act == IP_SYNC_NEED_THEME) {
+                if (old && old == e->screen && !sl->sh.h.screen)
+                    sl->owed = 1;                                 /* the same-address reopen was forgotten; ip_screens_apply did not see it */
+            } else if (sl->sh.h.new_identity && ((old && old == e->screen) || sl->owed)) {
+                sl->epoch++;                                      /* apply bumps a changed screen; the sync bumps only a reopen at the same address */
+                sl->owed = 0;
+            }
+        }
         if (act == IP_SYNC_NEED_THEME) {
             if (need) need[i] = 1;
             needs++;
@@ -544,7 +604,7 @@ int ip_screens_held(const ip_screens *t)
 {
     int i, n = 0;
     for (i = 1; i < t->count; i++)
-        if (t->slot[i].sh.h.held > 0) n++;
+        if (t->slot[i].sh.h.held > 0 || t->slot[i].sh.h.pcount > 0) n++;
     return n;
 }
 
