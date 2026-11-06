@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "menu_core.h"
+#include "iconpen_dos.h"
 #include "index_core.h"
 #include "ixwatch.h"
 #include "menu_geom.h"
@@ -1768,7 +1769,7 @@ static const char *screen_bind(gui *g)
 {
     g->scr = lock_front_screen();
     if (!g->scr)
-        g->scr = LockPubScreen(0); /* interactive window, user-started: the default screen is the user's own target, not a boot-time lookup */
+        g->scr = ipd_lock_default_pub_screen(); /* 0 while the default screen is closed or opening: "no screen", the caller asks again */
     if (!g->scr)
         return "amarchy-gui: no screen\n";
     g->cm = g->scr->ViewPort.ColorMap;

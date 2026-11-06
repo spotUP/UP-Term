@@ -10,6 +10,7 @@
 #include <proto/intuition.h>
 #include <rexx/storage.h>
 #include "leaf.h"
+#include "iconpen_dos.h"
 #include "rexx_host.h"
 #include "../prefs/prefs_asl.h"
 #include "amconf_dos.h"
@@ -431,7 +432,7 @@ int lf_setting_enter(const mn_item *it, const lf_ui *ui)
         if (!where.win)
             where.scr = lock_front_screen();
         if (!where.win && !where.scr)
-            where.scr = LockPubScreen(0); /* user clicked a menu entry: the default screen is the user's own target, not a boot-time lookup */
+            where.scr = ipd_lock_default_pub_screen(); /* 0: the requester opens with no screen, as when no front screen is listed */
         r = lf_setting_pick(amconf_dos_io(), s, &asl, &failed);
         if (where.scr)
             UnlockPubScreen(0, where.scr);

@@ -116,14 +116,14 @@ static int on_bar_screen(const strut_pub *p, const req *r)
     int same;
     if (r->scr)
         return r->scr == p->scr;
-    /* The Workbench by flag or name is looked up, never opened (BOOT-31-WB-DEADLOCK). Another name or the default screen is the
-     * caller's own OpenWindow target: the system opens it for that caller anyway, so locking it here adds no new open. */
+    /* The Workbench by flag or name is looked up, never opened (BOOT-31-WB-DEADLOCK). Another name or the default screen is looked up
+     * the same way: a screen Intuition would not find reads as "not the bar's screen". */
     if (r->wbench)
         s = ipd_lock_wb_screen();
     else if (r->name && *r->name)
         s = ipd_lock_pub_screen(r->name);
     else
-        s = LockPubScreen(0);
+        s = ipd_lock_default_pub_screen();
     if (!s)
         return 0;
     same = s == p->scr;

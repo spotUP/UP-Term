@@ -473,6 +473,7 @@ int gt_screen_rules_remove(gt_screen_rules *r, const char *pat);
 int gt_screen_exact(const char *pat);
 /* AmigaDOS pattern match without case: #? any run, ? one char, #c any run of c. 1 on match. */
 int gt_screen_match(const char *pat, const char *name);
+extern unsigned long gt_screen_match_steps; /* work counter: one per matcher step (bound test sentinel) */
 /* The theme for a public screen name. Returns 1 and fills theme (cap bytes; an unusable name becomes GT_DEFAULT) and *takeover,
  * or 0 when the screen stays untouched. Key off: only Workbench, with main_theme. */
 int gt_screen_theme_of(const gt_screen_rules *r, const char *name, const char *main_theme, char *theme, int cap, int *takeover);

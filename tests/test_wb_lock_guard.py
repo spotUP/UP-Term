@@ -2,8 +2,9 @@
 
 On OS 3.1 LockPubScreen("Workbench") with the Workbench closed makes Intuition reopen it, and that deadlocks against IPrefs
 closing it for the boot RTG switch. TE-10.1: the guard is generic. Amarchy and the handler lock a public screen by name only through ipd_lock_pub_screen() (handler/pubscr.c;
-ipd_lock_wb_screen() wraps it), which looks the screen up in the public screen list first. No other amarchy/*.c may call
-LockPubScreen( with any argument but 0/NULL (the default screen).
+ipd_lock_wb_screen() and ipd_lock_default_pub_screen() wrap it), which looks the screen up in the public screen list first.
+No other amarchy/*.c may call LockPubScreen( at all, with any argument, 0 and NULL (the default screen) included: on a closed or
+private default Workbench that call takes the same reopen path (LOCKPUB-DEFAULT-SCREEN). No other handler/*.c may call it with a name.
 
 S57-FREEZE-2IN9 (evidence: thoughts/shared/research/s57-evidence/freeze-9boot-rig145.md): the same reopen path runs for a
 Workbench node that is listed but still private (LoadWB is opening it), so the helper must also read psn_Flags.
@@ -14,9 +15,12 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 AMARCHY = ROOT / "amarchy"
 HANDLER = ROOT / "handler"
 PUBSCR = HANDLER / "pubscr.c"
-# LockPubScreen(0) / LockPubScreen(NULL) is the default-screen lookup of an interactive caller (gui.c, leaf.c, strut_patch.c),
-# not a lookup by name; every call with a name or a variable goes through ipd_lock_pub_screen().
-CALL = re.compile(r'\bLockPubScreen\s*\(\s*(?!(?:0|NULL)\s*\))', re.I)
+# amarchy/: every LockPubScreen( call counts, the default-screen form LockPubScreen(0) / LockPubScreen(NULL) included
+# (LOCKPUB-DEFAULT-SCREEN): callers use ipd_lock_pub_screen() or ipd_lock_default_pub_screen().
+CALL = re.compile(r'\bLockPubScreen\s*\(', re.I)
+# handler/: a call with a name or a variable counts; the default-screen form is still open there
+# (handler/vtcon_handler.c, ledger row HANDLER-LOCKPUB-DEFAULT).
+CALL_NAMED = re.compile(r'\bLockPubScreen\s*\(\s*(?!(?:0|NULL)\s*\))', re.I)
 ALLOWED = {"pubscr.c"}
 
 
@@ -28,7 +32,7 @@ class WbLockGuard(unittest.TestCase):
             if f.name in ALLOWED:
                 continue
             for n, line in enumerate(f.read_text(errors="replace").splitlines(), 1):
-                if CALL.search(line):
+                if (CALL if f.parent == AMARCHY else CALL_NAMED).search(line):
                     bad.append(f"{f.parent.name}/{f.name}:{n}")
         self.assertEqual(bad, [], "use ipd_lock_pub_screen(name); a bare LockPubScreen reopens a closed Workbench")
 
