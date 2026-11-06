@@ -1660,6 +1660,82 @@ static void test_desk_env_fix_retry(void)
     CHECK_INT(ef.dels, 1);
 }
 
+/* FP1-REVERT-THEME-LINE (rig 149): Revert after a pick put pens 0-3 back but left the picked name in the prefs theme line and set pens 4-7
+ * from the stock baseline. The snapshot now carries the previous theme's name; the revert sets pens 4-7 from that theme. */
+static void test_revert_puts_previous_theme_line_and_pens47_back(void)
+{
+    gtheme all[SHIPPED_MAX], *tokyo = 0;
+    int n = load_all(all, SHIPPED_MAX), i, lp[4];
+    uc_u32 c[4];
+    char text[96], name[GT_NAME];
+    static const long want[4] = { 0x3e4254L, 0x0e0e14L, 0x9ece6aL, 0x0e0e14L };
+    for (i = 0; i < n; i++)
+        if (!strcmp(all[i].name, "tokyo-night"))
+            tokyo = &all[i];
+    CHECK(tokyo != 0);
+    if (!tokyo)
+        return;
+    /* flat on, depth 8: the previous theme's four role pens */
+    CHECK_INT(desk_revert_role_pens(tokyo, 1, 0, 8, lp, c), 4);
+    for (i = 0; i < 4; i++) {
+        CHECK_INT(lp[i], 4 + i);
+        CHECK_INT((long)c[i], want[i]);
+    }
+    CHECK_INT(desk_revert_role_pens(tokyo, 0, 1, 8, lp, c), 4);   /* the palette part alone is enough */
+    /* flat off and palette part off: the stock baseline decides (-1); no previous theme: the same */
+    CHECK_INT(desk_revert_role_pens(tokyo, 0, 0, 8, lp, c), -1);
+    CHECK_INT(desk_revert_role_pens(0, 1, 1, 8, lp, c), -1);
+    /* too shallow for pens 4-7: nothing is written */
+    CHECK_INT(desk_revert_role_pens(tokyo, 1, 1, 3, lp, c), 0);
+    /* the snapshot text: the recorded name round-trips, so the revert writes "tokyo-night" over the picked "starship" */
+    CHECK(desk_revert_theme_make("tokyo-night", text, sizeof text) > 0);
+    memset(name, 0, sizeof name);
+    CHECK_INT(desk_revert_theme_parse(text, (long)strlen(text), name, (int)sizeof name), 1);
+    CHECK_STR(name, "tokyo-night");
+    /* a snapshot of an older build has no name: "no name", no failure, nothing for the caller to write */
+    memset(name, 0, sizeof name);
+    CHECK_INT(desk_revert_theme_parse("", 0, name, (int)sizeof name), 0);
+    CHECK_INT(desk_revert_theme_parse("desk-pending 1\nfont\n", 20, name, (int)sizeof name), 0);
+    CHECK_INT(desk_revert_theme_parse("revert-theme 1\n", 15, name, (int)sizeof name), 0);
+    CHECK_INT(name[0], 0);
+    CHECK_INT(desk_revert_theme_make("x", text, 4), 0);   /* does not fit */
+}
+
+/* FP1 follow-up: pick A->B, pick B->C while the requester is pending; the "B" held by the second pick must not name a later snapshot. */
+static void test_a_pick_while_pending_does_not_leak_its_name_to_a_later_snapshot(void)
+{
+    static unsigned char src[200000];
+    char held[96], text[160], want[160];
+    long n = slurp("amarchy/desk_dos.c", src, sizeof src - 1);
+    char *e, *end;
+    strcpy(held, "B");
+    CHECK_INT(desk_revert_theme_take(held, 1, text, (int)sizeof text), -1);   /* pending: file left alone */
+    CHECK_INT(held[0], 0);                                                     /* but the name is consumed */
+    CHECK_INT(desk_revert_theme_take(held, 0, text, (int)sizeof text), 0);    /* later snapshot: delete, not a text naming B */
+    strcpy(held, "A");
+    CHECK(desk_revert_theme_make("A", want, sizeof want) > 0);
+    CHECK_INT(desk_revert_theme_take(held, 0, text, (int)sizeof text), desk_revert_theme_make("A", want, sizeof want));
+    CHECK_STR(text, want);
+    CHECK_INT(held[0], 0);
+    strcpy(held, "x");
+    CHECK_INT(desk_revert_theme_take(held, 0, text, 4), desk_revert_theme_make("x", text, 4));   /* does not fit: 0 */
+    CHECK_INT(held[0], 0);
+    CHECK_INT(n > 0, 1);
+    if (n <= 0)
+        return;
+    src[n] = 0;
+    e = strstr((char *)src, "static void dk_snapshot_theme(void)\n{");
+    CHECK_INT(e != 0, 1);
+    if (!e)
+        return;
+    end = strstr(e, "\n}\n");
+    CHECK_INT(end != 0, 1);
+    if (!end)
+        return;
+    *end = 0;
+    CHECK_INT(strstr(e, "desk_revert_theme_take(") != 0, 1);
+}
+
 static void test_desk_preview(void)
 {
     char drawn[GT_NAME], row[GT_NAME + 8];
@@ -2000,6 +2076,7 @@ void suite_desk(void)
     test_desk_palette_flat();
     test_desk_filename_pen();
     test_desk_live_baseline_ignores_menu();
+    test_revert_puts_previous_theme_line_and_pens47_back();
     test_desk_flat_pens_key();
     test_desk_flat_pens_stale_file();
     test_desk_flat_start_refresh();
@@ -2015,6 +2092,7 @@ void suite_desk(void)
     test_desk_reset_done();
     test_desk_iprefs_idle();
     test_desk_editor_waits_iprefs();
+    test_a_pick_while_pending_does_not_leak_its_name_to_a_later_snapshot();
     test_gt_darker();
     test_knob_colour();
     test_flat_colour_pens();

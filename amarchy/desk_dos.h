@@ -48,6 +48,8 @@ extern void (*desk_dos_confirm_begin)(unsigned mask);
 void desk_dos_confirmed(void);
 /* Revert (button or timeout): the snapshot in T:amarchy-revert/ goes back through the stock editors */
 void desk_dos_revert(void);
+/* FP1-REVERT-THEME-LINE: the name of the theme in force before a pick, handed over before desk_dos_apply; its first snapshot records it so a Revert puts the theme line back */
+void desk_dos_prev_theme(const char *name);
 /* FP-3 (R1.9): at Amarchy start, reverts an apply that never reached Keep or Revert (marker in ENVARC:Amarchy). 1 when it did. */
 int desk_dos_marker_recover(void);
 extern unsigned long desk_dos_marker_reverts;

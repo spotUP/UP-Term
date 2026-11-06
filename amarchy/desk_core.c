@@ -1276,6 +1276,61 @@ long desk_marker_make(unsigned mask, char *out, long cap)
     return n;
 }
 
+#define REVERT_THEME_HEAD "revert-theme 1\n"
+
+long desk_revert_theme_make(const char *name, char *out, long cap)
+{
+    long hl = (long)strlen(REVERT_THEME_HEAD), nl;
+    if (!name || !name[0] || !out)
+        return 0;
+    nl = (long)strlen(name);
+    if (hl + nl + 1 + 1 > cap)
+        return 0;
+    memcpy(out, REVERT_THEME_HEAD, (size_t)hl);
+    memcpy(out + hl, name, (size_t)nl);
+    out[hl + nl] = '\n';
+    out[hl + nl + 1] = 0;
+    return hl + nl + 1;
+}
+
+/* One desk_dos_prev_theme hand-over belongs to exactly one snapshot: it is consumed there, written or not. */
+long desk_revert_theme_take(char *held, int pending, char *out, int cap)
+{
+    char name[96];
+    size_t l = held ? strlen(held) : 0;
+    if (l >= sizeof name)
+        l = sizeof name - 1;
+    if (held) {
+        memcpy(name, held, l);
+        held[0] = 0;                    /* consumed here, whichever way the snapshot goes */
+    }
+    name[l] = 0;
+    if (pending)
+        return -1;                      /* FP-1: the first snapshot of an unconfirmed apply stays */
+    return name[0] ? desk_revert_theme_make(name, out, cap) : 0;
+}
+
+int desk_revert_theme_parse(const char *buf, long len, char *name, int cap)
+{
+    long hl = (long)strlen(REVERT_THEME_HEAD), nl = 0;
+    if (!buf || !name || cap < 1 || len <= hl || memcmp(buf, REVERT_THEME_HEAD, (size_t)hl))
+        return 0;
+    while (hl + nl < len && buf[hl + nl] != '\n' && buf[hl + nl] != '\r' && buf[hl + nl])
+        nl++;
+    if (nl < 1 || nl >= cap)
+        return 0;
+    memcpy(name, buf + hl, (size_t)nl);
+    name[nl] = 0;
+    return 1;
+}
+
+int desk_revert_role_pens(const gtheme *prev, int flat, int palette, int depth, int pens[4], uc_u32 rgb[4])
+{
+    if (!prev || !(flat || palette))
+        return -1;
+    return desk_live_follow(prev, flat, (unsigned)palette << DT_PALETTE, depth, pens, rgb);
+}
+
 unsigned desk_marker_parse(const char *buf, long len)
 {
     long hl = (long)strlen(MARKER_HEAD), pos;

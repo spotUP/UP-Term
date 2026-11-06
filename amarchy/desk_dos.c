@@ -70,6 +70,17 @@ static void dk_copy_name(const char *file, char *out)
     desk_copy_name(DK_REVERT, file, out, 96);
 }
 
+/* FP1-REVERT-THEME-LINE: the theme in force before the pick (gt_dos_select hands it over); the first snapshot of an unconfirmed apply records it */
+#define DK_PREVTHEME DK_REVERT "/prevtheme"
+static char dk_prev_theme[GT_NAME];
+void desk_dos_prev_theme(const char *name)
+{
+    strncpy(dk_prev_theme, name ? name : "", GT_NAME - 1);
+    dk_prev_theme[GT_NAME - 1] = 0;
+}
+
+static void dk_snapshot_theme(void);
+static unsigned dk_pending_mask(void);
 static void dk_snapshot(unsigned mask)
 {
     static unsigned char buf[8192];
@@ -85,6 +96,21 @@ static void dk_snapshot(unsigned mask)
         else
             dk_write(name, buf, len);
     }
+    dk_snapshot_theme();
+}
+
+static void dk_snapshot_theme(void)
+{
+    char text[GT_NAME + 24];
+    long n;
+    /* FP-1: an unconfirmed apply keeps its first snapshot, name included; the held name is consumed either way */
+    n = desk_revert_theme_take(dk_prev_theme, dk_pending_mask() != 0, text, (int)sizeof text);
+    if (n < 0)
+        return;
+    if (n > 0)
+        dk_write(DK_PREVTHEME, (const unsigned char *)text, n);
+    else
+        DeleteFile((STRPTR)DK_PREVTHEME);   /* no name known: a stale one must not stand for it */
 }
 
 static unsigned long dk_iprefs_idle_mask(void);
@@ -364,6 +390,7 @@ static void dk_confirm_ask(unsigned mask);
 /* the live role pens (FLAT-PEN5-MAGENTA) are set last, in desk_dos_apply: every Workbench reset of this apply (palette, wbpattern,
  * wbborder USE) reopens the screen with the graphics defaults on pens 4-7. 1 = theme colours, -1 = restore the kept ones, 0 = leave. */
 static int dk_live_want, dk_live_flat;
+static const gtheme *dk_rv_theme;   /* FP1-REVERT-THEME-LINE: the previous theme while desk_dos_revert restores; 0 = the stock baseline */
 static long dk_palette_base(int restore, const unsigned char pens[DK_SLOTS], int depth, unsigned char *buf, long cap);
 
 /* FP-1 (R1.8): the unconfirmed-apply marker T:amarchy-revert/pending holds the mask of targets whose snapshot is waiting for Keep or
@@ -1182,7 +1209,7 @@ static long dk_num(unsigned v, unsigned char *out)
 #define DK_MARK "ENVARC:Amarchy/pending-revert"
 #define DK_MARK_DIR "ENVARC:Amarchy/pending-revert.d"
 unsigned long desk_dos_marker_reverts;
-static const char *const dk_mark_extra[3] = { "wbpending", "wbborder.snap", "wbgauge.snap" };
+static const char *const dk_mark_extra[4] = { "wbpending", "wbborder.snap", "wbgauge.snap", "prevtheme" };
 
 /* copy every member of the set between the T: snapshot dir and the marker dir; absent source = absent copy (a missing snapshot means "did not exist") */
 static void dk_marker_copy(unsigned mask, int to_marker)
@@ -1190,7 +1217,7 @@ static void dk_marker_copy(unsigned mask, int to_marker)
     const char *list[16];
     char a[96], b[96];
     int i, n = desk_pending_files(mask, 1, list, 16);
-    for (i = 0; i < n + 3; i++) {
+    for (i = 0; i < n + 4; i++) {
         if (i < n) {
             desk_copy_name(DK_REVERT, list[i], a, sizeof a);
             desk_copy_name(DK_MARK_DIR, list[i], b, sizeof b);
@@ -1230,7 +1257,7 @@ static void dk_marker_clear(void)
     int i, n;
     DeleteFile((STRPTR)DK_MARK);   /* first: a crash while deleting leaves no marker that points at half a set */
     n = desk_pending_files(mask, 1, list, 16);
-    for (i = 0; i < n + 3; i++) {
+    for (i = 0; i < n + 4; i++) {
         desk_copy_name(DK_MARK_DIR, i < n ? list[i] : dk_mark_extra[i - n], b, sizeof b);
         DeleteFile((STRPTR)b);
     }
@@ -1268,6 +1295,7 @@ void desk_dos_confirmed(void)
     dk_marker_clear();
     DeleteFile((STRPTR)DK_PENDING);
     DeleteFile((STRPTR)DK_WBPEND);
+    DeleteFile((STRPTR)DK_PREVTHEME);
     DeleteFile((STRPTR)DK_WBB_SNAP);
     DeleteFile((STRPTR)DK_WBG_SNAP);
     desk_dos_keeps++;
@@ -1341,20 +1369,46 @@ static void dk_restore_targets(unsigned mask, const char *dir)
         dk_wait_iprefs(idle);
     }
     if (pal) {
-        dk_live_pens(0, 0);
+        int rp[4], use = -1;
+        uc_u32 rc[4];
+        if (dk_rv_theme)   /* a Revert: pens 4-7 come from the previous theme (desk_revert_role_pens), the baseline only when it says so */
+            use = desk_revert_role_pens(dk_rv_theme, amconf_desk_flat_pens(&ap), (amconf_desk_mask(&ap) >> DT_PALETTE) & 1, dk_screen_depth(), rp, rc);
+        dk_live_pens(use >= 0 ? dk_rv_theme : 0, use >= 0 ? amconf_desk_flat_pens(&ap) : 0);
         dk_windows_open(was);
     }
+}
+
+/* the recorded previous theme name of the snapshot (T:amarchy-revert/prevtheme); 0 when there is none (an older build's snapshot) */
+static int dk_revert_theme_name(char *name, int cap)
+{
+    unsigned char b[GT_NAME + 24];
+    long n = dk_read(DK_PREVTHEME, b, sizeof b);
+    return n > 0 && desk_revert_theme_parse((const char *)b, n, name, cap);
 }
 
 void desk_dos_revert(void)
 {
     unsigned mask = dk_pending_mask();
     int wb;
+    gtheme prev;
+    char name[GT_NAME];
     desk_dos_reverts++;
     DeleteFile((STRPTR)DK_PENDING);
     wb = dk_wb_restore();
+    if (dk_revert_theme_name(name, sizeof name)) {   /* the prefs theme line goes back first: the pens below follow the previous theme */
+        am_prefs ap;
+        int failed = 0;
+        amconf_load(&ap);
+        if (strcmp(ap.val[AM_GTHEME], name)) {
+            strcpy(ap.val[AM_GTHEME], name);
+            amconf_save(&ap, 1, &failed);     /* the writer the pick uses: ENV: and ENVARC: */
+        }
+        gt_dos_load(name, &prev);
+        dk_rv_theme = &prev;
+    }
     if (mask)
         dk_restore_targets(mask, DK_REVERT);
+    dk_rv_theme = 0;
     if (mask || wb)
         dk_orig_drop_reverted(mask, wb);
     dk_marker_clear();   /* last: a crash during the revert leaves the marker for the next start */
