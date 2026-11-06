@@ -187,7 +187,7 @@ static void sentinel_aa(const gui *g)
  * rows were drawn (a menu's text is pixels, no uitree gadget). */
 static void sentinel_rows(const gui *g)
 {
-    char b[256];
+    static char b[MN_ROWS_MAX];   /* static: 6 KB off the 64 KB stack; one task calls this, never re-entered */
     mn_rows_join(g->it, g->idx, g->count - g->shift, b, sizeof b);
     SetVar((STRPTR) "AMARCHY_ROWS", (STRPTR)b, -1, GVF_GLOBAL_ONLY);
 }
