@@ -101,7 +101,7 @@ typedef struct gui {
     int chev_w;
     int icon_w, icon_h;          /* the icon column's width and the icon's height, 0 for none */
     long pen[MT_ROLES];
-    pen_cache chip_pens;         /* the pens of this frame's colour chips, held until the next full redraw (a released pen is recoloured by the next chip) */
+    pen_cache chip_pens;         /* the pens of this frame's colour chips, held until the next list draw (a released pen is recoloured by the next chip) */
     pen_cache prev_pens;         /* the same for the boxes of the theme preview */
     uc_u32 ink[MT_ROLES];        /* the colour each role draws in (menu_theme_ink) */
     char drawn[GT_NAME];         /* the theme the pens are from: the saved one, or the Style > Theme row previewed */
@@ -610,7 +610,7 @@ static void draw_row(gui *g, int e)
 
 long gui_preview_draws;          /* sentinel: preview panes drawn (AMARCHY_PREVIEW_DRAWS) */
 
-/* A box in an exact colour of the edited model: the direct fill, else a pen held for the frame (draw_full releases them) */
+/* A box in an exact colour of the edited model: the direct fill, else a pen held for the frame (draw_list releases them) */
 static void fill_rgb(gui *g, uc_u32 rgb, int x0, int y0, int x1, int y1)
 {
     long p;
@@ -671,6 +671,19 @@ static void draw_preview(gui *g)
         theme_preview_view(g, q->list_x + q->list_w + TPV_MARGIN, q->list_y, g->pv_w - TPV_MARGIN, q->list_h);
 }
 
+/* The chip and preview pens of the frame on screen go back at the start of the next list draw (the rows area and the preview
+ * are repainted whole, so no drawn pixel keeps one) and when the pens or the screen go (pens_release). A scroll draws the list only. */
+static void chip_release_fn(void *cm, long pen)
+{
+    ReleasePen((struct ColorMap *)cm, (ULONG)pen);
+}
+
+static void chip_pens_release(gui *g)
+{
+    pc_theme_changed(&g->chip_pens, chip_release_fn, g->cm);
+    pc_theme_changed(&g->prev_pens, chip_release_fn, g->cm);
+}
+
 /* The rows area (not a full draw: the sentinel counts those). */
 static void draw_list(gui *g)
 {
@@ -679,6 +692,7 @@ static void draw_list(gui *g)
     if (g->await)
         return;
     paint_begin(g);
+    chip_pens_release(g);
     fill(g, MT_BG, q->list_x, q->list_y, q->list_x + q->list_w - 1, q->list_y + q->list_h - 1);
     if (!(preview_active(g) && g->pv_full))
         for (e = g->top; e < g->top + shown_rows(g); e++)
@@ -696,24 +710,11 @@ static void draw_list(gui *g)
     sentinel_cursor(g);
 }
 
-/* The chip and preview pens of the frame on screen go back: the whole window is repainted next, so no drawn pixel keeps one */
-static void chip_release_fn(void *cm, long pen)
-{
-    ReleasePen((struct ColorMap *)cm, (ULONG)pen);
-}
-
-static void chip_pens_release(gui *g)
-{
-    pc_theme_changed(&g->chip_pens, chip_release_fn, g->cm);
-    pc_theme_changed(&g->prev_pens, chip_release_fn, g->cm);
-}
-
 static void draw_full(gui *g)
 {
     if (g->await)
         return;
     paint_begin(g);
-    chip_pens_release(g);
     fill(g, MT_BG, 0, 0, g->g.w - 1, g->g.h - 1);
     draw_border(g);
     draw_header(g);

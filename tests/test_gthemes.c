@@ -1546,6 +1546,40 @@ static void test_gthemes_chip_pens_held_per_frame(void)
     CHECK_INT(pc.n, PC_MAX);
 }
 
+/* TE-COLOUR-LIST-ALL-SWATCHES follow-up: a scroll repaints the list (gui.c draw_list) without a full redraw. Frames of
+ * MN_OSD_MAX_ENTRIES rows through more than PC_MAX distinct colours: with the release at each frame every chip gets a pen;
+ * without it the cache fills and the chips stop (the defect). */
+static void test_gthemes_chip_pens_scroll_frames(void)
+{
+    static pen_cache pc;
+    int top, row, rows = 10, total = PC_MAX + 8;
+    int missing_held = 0, missing_released = 0;
+    memset(&pc, 0, sizeof pc);
+    cp_seq((void *)1, 0, 0);
+    for (top = 0; top + rows <= total; top++)           /* no release: the cache of 3b903f8d on a scroll */
+        for (row = top; row < top + rows; row++)
+            if (pc_of(&pc, cp_seq, 0, 0x300000UL + (unsigned long)row) < 0)
+                missing_held++;
+    CHECK(missing_held > 0);
+    memset(&pc, 0, sizeof pc);
+    memset(cp_releases, 0, sizeof cp_releases);
+    for (top = 0; top + rows <= total; top++) {
+        long seen[10];
+        pc_theme_changed(&pc, cp_release, 0);           /* the frame start (draw_list): the pens go back, the numbers are free again */
+        cp_seq((void *)1, 0, 0);
+        for (row = top; row < top + rows; row++) {
+            int j;
+            seen[row - top] = pc_of(&pc, cp_seq, 0, 0x300000UL + (unsigned long)row);
+            if (seen[row - top] < 0)
+                missing_released++;
+            for (j = 0; j < row - top; j++)
+                CHECK(seen[j] != seen[row - top]);      /* no pen twice within one frame */
+        }
+        CHECK_INT(pc.n, rows);
+    }
+    CHECK_INT(missing_released, 0);
+}
+
 /* RL8 FLAT-COLOUR-OVERHAUL step 1: THE role table. Six UI roles, one derivation for every theme (gt_roles_of), pinned on four
  * shipped themes: dark (tokyo-night), black ground (vantablack: backdrop lifts to GT_BLACK_LIFT, white fg capped to bebebe), light
  * (catppuccin-latte, flexoki-light: the selection is pushed darker off the surface). The desktop pens (DK_*), the drawn menu's roles
@@ -3460,6 +3494,7 @@ void suite_gthemes(void)
     test_gthemes_scan();
     test_gthemes_picker_pens();
     test_gthemes_chip_pens_held_per_frame();
+    test_gthemes_chip_pens_scroll_frames();
     test_gthemes_screen_rules();
     test_gthemes_screen_rows_fresh_rules_list_workbench_then_open_screens();
     test_gthemes_screen_main_token_carries_the_main_theme_for_a_named_screen();
