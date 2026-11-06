@@ -163,7 +163,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 TEST_ONLY_NAMES := $(shell grep -o '"$$(ONLY)" = [a-z_0-9]*' $(firstword $(MAKEFILE_LIST)) | sed 's/.* //' | sort -u)
 # ONLY= rows that run python3 on files alone: no C binary below is built or run for them (a worktree without the vendor NDK
 # cannot build render_host, and pkg_rows needs none). Add a name only after checking its script starts no $(BUILD) binary.
-TEST_PY_ONLY := gen_lucide_icons icon_grid_fit pkg_rows worktree_ready rig_handler_fallback rig_amarchy_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq rig_boot_console gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free flat_on_hang icat_stderr help_man_sync ipd_no_dos_under_list flat_role_enum_names
+TEST_PY_ONLY := gen_lucide_icons icon_grid_fit pkg_rows worktree_ready rig_handler_fallback rig_amarchy_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq rig_boot_console gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free flat_on_hang icat_stderr help_man_sync ipd_no_dos_under_list flat_role_enum_names flat_pens_per_screen
 TEST_BINS := $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host $(BUILD)/upgetty_host
 test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -n "$(ONLY)" ] && [ -z "$(filter $(ONLY),$(TEST_ONLY_NAMES))" ] && ! ./$(BUILD)/vttest_host --has $(ONLY); then echo "[ERROR] make test: no suite named $(ONLY)"; exit 2; fi
@@ -193,6 +193,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_wbr_drop ]; then python3 -I tests/test_gui_wbr_drop.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ipd_no_dos_under_list ]; then python3 -I tests/test_ipd_no_dos_under_list.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = flat_role_enum_names ]; then python3 -I tests/test_flat_role_enum_names.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = flat_pens_per_screen ]; then python3 -I tests/test_flat_pens_per_screen.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_wbr_drop ]; then python3 -I tests/test_menu_wbr_drop.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_install_no_vsh ]; then python3 -I tests/test_rig_install_no_vsh.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_themes_live ]; then python3 -I tests/test_rig_themes_live.py; fi

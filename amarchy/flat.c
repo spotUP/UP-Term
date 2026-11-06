@@ -1805,16 +1805,50 @@ static void pens_reap(void)
     UnlockPubScreenList();
 }
 
-/* TE-10.6b budget fix: main task. Collect (screen, epoch) of every open public screen except the Workbench under the list lock (the
- * epoch lookups are iconpen_dos calls, allowed here), then write g_draw under Forbid (the hooks run in other tasks). Sync points: the
- * end of every pens_run (start, CTRL_D refresh, 1 s watch) and the held branches that skip pens_run. */
-static flat_draw_scr g_draw_list[FLAT_PENS_SLOTS];   /* static = zero: roles 0 and side 0 until TE-10.6c brief 4 fills them (every non-Workbench slot is then not themed) */
+/* TE-10.6b/c: main task. Four passes, so that ipd_screen_roles (which takes the pen record semaphore) is never called while the public
+ * screen list is locked (the pen record sync takes that semaphore FIRST and the list lock SECOND):
+ *   1. under the list lock: collect (screen, epoch) of every open public screen except the Workbench;
+ *   2. no lock: read each screen's role record (the pointer is only a compare key there);
+ *   3. under the list lock again: for a themed screen still listed, find the pens that carry its role colours (flat_role_resolve
+ *      over its ColorMap and DrawInfo) and its side width; a screen gone or not themed gets roles 0 (draws stock);
+ *   4. write g_draw under Forbid (the hooks run in other tasks).
+ * Sync points: the end of every pens_run (start, CTRL_D refresh, 1 s watch) and the held branches that skip pens_run. All buffers are
+ * static: ipd_roles holds two GTE_COUNT arrays and the colour map is 256 words. */
+#define DRAW_CMAP_MAX 256
+static flat_draw_scr g_draw_list[FLAT_PENS_SLOTS];
+static ipd_roles g_roles_in[FLAT_PENS_SLOTS];
+static flat_role_pens g_roles_out[FLAT_PENS_SLOTS];
+static uc_u32 g_draw_cmap[DRAW_CMAP_MAX];
+static short g_draw_dri[FLAT_RP_DRI_PENS];
+static unsigned char g_roles_themed[FLAT_PENS_SLOTS];
+
+/* the screen's ColorMap as 0xRRGGBB (read only) and the DrawInfo pens flat_role_resolve needs; returns the colour count */
+static int draw_screen_colours(struct Screen *scr)
+{
+    struct ColorMap *cm = scr->ViewPort.ColorMap;
+    int depth = scr->BitMap.Depth;
+    int n = depth >= 8 ? DRAW_CMAP_MAX : (1 << depth);
+    int i;
+    struct DrawInfo *di;
+    if (!cm || n < 1)
+        return 0;
+    for (i = 0; i < n; i++)
+        g_draw_cmap[i] = icl_rgb(cm, (ULONG)i);
+    memset(g_draw_dri, 0, sizeof g_draw_dri);
+    di = GetScreenDrawInfo(scr);
+    if (di) {
+        for (i = 0; i < FLAT_RP_DRI_PENS && i < di->dri_NumPens; i++)
+            g_draw_dri[i] = (short)di->dri_Pens[i];
+        FreeScreenDrawInfo(scr, di);
+    }
+    return n;
+}
 
 static void draw_sync(flatshared *r)
 {
     struct List *pl = LockPubScreenList();
     struct Node *nd;
-    int n = 0;
+    int n = 0, i;
     unsigned wbep = ipd_epoch();
     if (pl) {
         for (nd = pl->lh_Head; nd->ln_Succ && n < FLAT_PENS_SLOTS; nd = nd->ln_Succ) {
@@ -1824,6 +1858,26 @@ static void draw_sync(flatshared *r)
             g_draw_list[n].screen = sc;
             g_draw_list[n].epoch = ipd_epoch_of_screen(sc);
             n++;
+        }
+    }
+    UnlockPubScreenList();
+    for (i = 0; i < n; i++)
+        g_roles_themed[i] = (unsigned char)(ipd_screen_roles(g_draw_list[i].screen, &g_roles_in[i]) && g_roles_in[i].themed);
+    pl = LockPubScreenList();
+    for (i = 0; i < n; i++) {
+        struct Screen *scr = pl ? ipd_screen_in(pl, g_draw_list[i].screen) : NULL;
+        g_draw_list[i].roles = 0;
+        if (!scr) {
+            g_draw_list[i].side = 1;
+            continue;
+        }
+        g_draw_list[i].side = (uint8_t)side_px(r, scr);
+        if (g_roles_themed[i]) {
+            int nc = draw_screen_colours(scr);
+            flat_role_resolve(g_roles_in[i].role, g_roles_in[i].pen, g_roles_in[i].rgb, g_roles_in[i].nheld, g_draw_cmap, nc,
+                              g_draw_dri, &g_roles_out[i]);
+            if (g_roles_out[i].ok)
+                g_draw_list[i].roles = &g_roles_out[i];
         }
     }
     UnlockPubScreenList();
