@@ -452,6 +452,34 @@ int flat_pens_follow(flat_pens *p, const flat_pen_ops *o, flat_state *s, int wan
  * follow step re-obtains. Else 0. */
 int flat_pens_verify(flat_pens *p, flat_state *s, int (*is_free)(void *ctx, int pen), void *ctx, const void *screen, unsigned epoch);
 
+/* TE-10.6a: pens per screen slot. Colours per screen, look global (D10-7): `s` is the one look block (pen roles, rgb overrides), the
+ * pen numbers a refresh obtains go to `store` when it is not 0 (the Workbench slot passes the flat_state the draw hook reads) and
+ * are only kept in the flat_pens otherwise. flat_pens_release and flat_pens_verify take s == 0 as "store nothing"; flat_pens_refresh
+ * and flat_pens_follow above are the _on form with store == s. */
+void flat_pens_refresh_on(flat_pens *p, const flat_pen_ops *o, const flat_state *s, flat_state *store, const void *screen, unsigned epoch,
+                          int depth);
+int flat_pens_follow_on(flat_pens *p, const flat_pen_ops *o, const flat_state *s, flat_state *store, int want, const void *screen,
+                        unsigned epoch, int depth);
+
+/* The ONE lookup rule of every per-screen table (flat_pens_tab, icl_pentab): in n records of `stride` bytes whose screen pointer
+ * sits at scr_off and whose epoch (unsigned) at epoch_off, the index of the record holding (screen, epoch); else, with
+ * allow_free, the first record that holds no screen; else -1 (also for screen 0). It never releases or forgets anything. */
+int flat_ident_slot(const void *base, size_t stride, size_t scr_off, size_t epoch_off, int n, const void *screen, unsigned epoch,
+                    int allow_free);
+
+/* Equal to IP_SCREENS (iconpen_core.h, the pen holder table of Amarchy main); tests/test_flat_core.c checks it. */
+#define FLAT_PENS_SLOTS 40
+typedef struct flat_pens_tab {
+    flat_pens slot[FLAT_PENS_SLOTS];
+} flat_pens_tab;
+void flat_pens_tab_init(flat_pens_tab *t);
+/* The slot to obtain / refresh on: the one holding (screen, epoch), else a free one; 0 when the table is full or screen is 0. */
+flat_pens *flat_pens_tab_for(flat_pens_tab *t, const void *screen, unsigned epoch);
+/* What the draw hook reads: the slot holding exactly that identity, else 0. */
+const flat_pens *flat_pens_tab_find(const flat_pens_tab *t, const void *screen, unsigned epoch);
+/* Forget (WITHOUT release: the ColorMap went with the screen) every slot whose identity is_open says is gone; returns the count. */
+int flat_pens_tab_reap(flat_pens_tab *t, int (*is_open)(void *ctx, const void *screen, unsigned epoch), void *ctx);
+
 /* S57-BUTTON-ASPECT-BORDERS: the width in pixels of a button's left and right outline lines: side (flat_side_px; below 1 counts 1),
  * never more than a third of the box width w. Top and bottom lines stay 1 px. */
 int flat_button_side(int side, int w);

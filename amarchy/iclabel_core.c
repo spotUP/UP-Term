@@ -1,7 +1,9 @@
 /* iclabel_core -- see iclabel_core.h. C89, no OS calls. */
 #include <string.h>
+#include <stddef.h>
 #include "iclabel_core.h"
 #include "iconpen_core.h"
+#include "flat_core.h"
 #include "../render/aa_ink_rule.h"
 
 int icl_accept(const char *task, int mode, int apen, int bpen, int x, int y, int w, int h, int il, int it, int ir, int ib)
@@ -226,5 +228,48 @@ int icl_cache_release(icl_pencache *c, const void *screen, unsigned epoch, int *
     if (screen && c->screen == screen && c->epoch == epoch)
         n = icl_cache_drain(c, out);
     icl_cache_clear(c);
+    return n;
+}
+
+/* ---- TE-10.6a: per-screen pen caches ---- */
+static void slot_reset(icl_pencache *c)
+{
+    icl_cache_clear(c);
+    c->screen = 0;
+    c->epoch = 0;
+}
+
+void icl_tab_init(icl_pentab *t)
+{
+    int i;
+    for (i = 0; i < ICL_TAB_SLOTS; i++)
+        slot_reset(&t->slot[i]);
+}
+
+icl_pencache *icl_tab_for(icl_pentab *t, const void *screen, unsigned epoch)
+{
+    int i = flat_ident_slot(t->slot, sizeof t->slot[0], offsetof(icl_pencache, screen), offsetof(icl_pencache, epoch), ICL_TAB_SLOTS,
+                            screen, epoch, 1);
+    if (i < 0)
+        return 0;
+    icl_cache_bind(&t->slot[i], screen, epoch);     /* a free slot takes the identity; the slot of that identity is unchanged */
+    return &t->slot[i];
+}
+
+const icl_pencache *icl_tab_find(const icl_pentab *t, const void *screen, unsigned epoch)
+{
+    int i = flat_ident_slot(t->slot, sizeof t->slot[0], offsetof(icl_pencache, screen), offsetof(icl_pencache, epoch), ICL_TAB_SLOTS,
+                            screen, epoch, 0);
+    return i < 0 ? 0 : &t->slot[i];
+}
+
+int icl_tab_reap(icl_pentab *t, int (*is_open)(void *ctx, const void *screen, unsigned epoch), void *ctx)
+{
+    int i, n = 0;
+    for (i = 0; i < ICL_TAB_SLOTS; i++)
+        if (t->slot[i].screen && !is_open(ctx, t->slot[i].screen, t->slot[i].epoch)) {
+            slot_reset(&t->slot[i]);
+            n++;
+        }
     return n;
 }

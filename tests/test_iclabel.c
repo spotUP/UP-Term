@@ -2,8 +2,10 @@
  * and pen blends, shade pen cache. */
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "harness.h"
 #include "../amarchy/iclabel_core.h"
+#include "../amarchy/iconpen_core.h"
 #include "../render/aa_ink_rule.h"
 
 static void t_accept(void)
@@ -282,6 +284,109 @@ static void t_pens_release_once_on_live(void)
     CHECK_INT(used_n(&c), 0);
 }
 
+/* ---- TE-10.6a: one pen cache per screen slot ---- */
+typedef char icl_slots_equal_ip_screens[(ICL_TAB_SLOTS == IP_SCREENS) ? 1 : -1];
+
+static int tab_open_only(void *ctx, const void *screen, unsigned epoch)
+{
+    (void)epoch;
+    return screen == ctx;
+}
+
+static icl_pencache *tab_call(icl_pentab *t, const void *scr, unsigned epoch)
+{
+    icl_pencache *c = icl_tab_for(t, scr, epoch);
+    if (c)
+        sim_call(c, scr, epoch);
+    return c;
+}
+
+static void t_tab_pens_never_cross_screens(void)
+{
+    icl_pentab *t = calloc(1, sizeof *t);
+    int scr_a, scr_b;
+    icl_pencache *a, *b;
+    obt_n = 0;
+    icl_tab_init(t);
+    a = tab_call(t, &scr_a, 1);
+    b = tab_call(t, &scr_b, 1);
+    CHECK(a != 0 && b != 0 && a != b);
+    CHECK(icl_tab_find(t, &scr_a, 1) == a);
+    CHECK(icl_tab_find(t, &scr_b, 1) == b);
+    CHECK(a->e[0].pen != b->e[0].pen);                            /* A's pens are never returned for B */
+    CHECK(icl_tab_find(t, &scr_a, 2) == 0);                       /* same address, another epoch: no old pens */
+    free(t);
+}
+
+static void t_tab_switch_releases_nothing(void)
+{
+    icl_pentab *t = calloc(1, sizeof *t);
+    int scr_a, scr_b, first, rel[ICL_CACHE];
+    icl_pencache *a;
+    obt_n = 0;
+    icl_tab_init(t);
+    a = tab_call(t, &scr_a, 1);
+    first = obt_n;
+    CHECK(first > 0);
+    tab_call(t, &scr_b, 1);
+    CHECK_INT(obt_n, 2 * first);
+    CHECK(tab_call(t, &scr_a, 1) == a);                           /* back on A */
+    CHECK_INT(obt_n, 2 * first);                                  /* nothing obtained again */
+    CHECK_INT(used_n(a), first);                                  /* and A kept every pen (not forgotten: no leak) */
+    CHECK_INT(icl_cache_release(a, &scr_a, 1, rel), first);       /* still releasable on its own live map */
+    free(t);
+}
+
+static void t_tab_new_epoch_forgets_nothing(void)
+{
+    icl_pentab *t = calloc(1, sizeof *t);
+    int scr_a, first;
+    icl_pencache *a, *a2;
+    obt_n = 0;
+    icl_tab_init(t);
+    a = tab_call(t, &scr_a, 1);
+    first = obt_n;
+    a2 = tab_call(t, &scr_a, 2);
+    CHECK(a2 != a);
+    CHECK_INT(used_n(a), first);                                  /* the old identity's pens are not touched by the new one */
+    CHECK_INT(obt_n, 2 * first);
+    free(t);
+}
+
+static void t_tab_full_returns_zero(void)
+{
+    icl_pentab *t = calloc(1, sizeof *t);
+    static int scr[ICL_TAB_SLOTS + 1];
+    int i, before;
+    obt_n = 0;
+    icl_tab_init(t);
+    for (i = 0; i < ICL_TAB_SLOTS; i++)
+        CHECK(tab_call(t, &scr[i], 1) != 0);
+    before = obt_n;
+    CHECK(tab_call(t, &scr[ICL_TAB_SLOTS], 1) == 0);
+    CHECK_INT(obt_n, before);                                     /* a full table obtains nothing */
+    CHECK(icl_tab_for(t, &scr[5], 1) != 0);
+    CHECK(icl_tab_for(t, 0, 0) == 0);
+    free(t);
+}
+
+static void t_tab_reap_closed_only(void)
+{
+    icl_pentab *t = calloc(1, sizeof *t);
+    int scr_a, scr_b, scr_c, first;
+    obt_n = 0;
+    icl_tab_init(t);
+    tab_call(t, &scr_a, 1);
+    first = obt_n;
+    tab_call(t, &scr_b, 1);
+    CHECK_INT(icl_tab_reap(t, tab_open_only, &scr_a), 1);
+    CHECK(icl_tab_find(t, &scr_b, 1) == 0);
+    CHECK_INT(used_n(icl_tab_find(t, &scr_a, 1)), first);         /* A untouched */
+    CHECK_INT(icl_tab_reap(t, tab_open_only, &scr_a), 0);
+    CHECK(tab_call(t, &scr_c, 1) != 0);                           /* the freed slot is reusable */
+    free(t);
+}
+
 void suite_iclabel(void)
 {
     t_accept();
@@ -295,4 +400,9 @@ void suite_iclabel(void)
     t_pens_forget_on_new_identity();
     t_pens_release_once_on_live();
     t_pens_verify_same_address_reopen();
+    t_tab_pens_never_cross_screens();
+    t_tab_switch_releases_nothing();
+    t_tab_new_epoch_forgets_nothing();
+    t_tab_full_returns_zero();
+    t_tab_reap_closed_only();
 }
