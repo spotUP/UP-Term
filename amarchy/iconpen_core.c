@@ -404,3 +404,53 @@ int ip_screens_apply(ip_screens *t, const ip_diff *d)
     }
     return changed;
 }
+
+/* ---- TE-10.4: the per-screen sync ---- */
+int ip_snap_add(ip_snap *s, const char *name, const void *screen, unsigned flags, int depth, int ehb)
+{
+    ip_snap_entry *e;
+    if (!name || !name[0] || strlen(name) >= IP_PSN_NAME || s->count >= IP_SCREENS) return 0;
+    e = &s->e[s->count++];
+    ips_set_name(e->name, name);
+    e->screen = screen;
+    e->flags = flags;
+    e->depth = depth;
+    e->ehb = ehb;
+    return 1;
+}
+
+int ip_screens_sync(ip_screens *t, const ip_snap *snap, const ip_ops *o, const int *hold, ip_slot_ctx_fn select, void *ctx, int *need)
+{
+    int i, needs = 0;
+    for (i = 0; i < t->count; i++) {
+        ip_screen_slot *sl = &t->slot[i];
+        int j = ips_snap_find(snap, sl->name), act, planes;
+        const ip_snap_entry *e = j >= 0 ? &snap->e[j] : 0;
+        if (need) need[i] = 0;
+        if (i > 0 && (!e || (e->flags & IP_PSN_PRIVATE))) continue;   /* not open yet, or gone (already forgotten) */
+        if (select) select(ctx, i, e);
+        planes = e ? ((e->ehb && e->depth == 5) ? 6 : e->depth) : 0;
+        act = ip_sync(&sl->sh.h, o, hold[i], e ? e->screen : 0, e ? e->depth : 0, planes);
+        if (act == IP_SYNC_NEED_THEME) {
+            if (need) need[i] = 1;
+            needs++;
+        } else if (i == 0 && sl->sh.h.new_identity)
+            sl->sh.epoch++;
+    }
+    return needs;
+}
+
+int ip_screens_held(const ip_screens *t)
+{
+    int i, n = 0;
+    for (i = 1; i < t->count; i++)
+        if (t->slot[i].sh.h.held > 0) n++;
+    return n;
+}
+
+unsigned ip_screens_epoch(const ip_screens *t, const char *name)
+{
+    int i = ip_screens_find(t, name);
+    if (i < 0) return 0;
+    return i == 0 ? t->slot[0].sh.epoch : t->slot[i].epoch;
+}

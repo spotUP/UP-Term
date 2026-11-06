@@ -866,6 +866,152 @@ static void test_screens_diff_and_apply(void)
     CHECK_INT(ip_screens_find(&t, "Pub"), 1);
 }
 
+/* ---- TE-10.4: ip_screens_sync, the multi-slot sync ---- */
+typedef struct msx { ip_ops *o; fake f[IP_SCREENS]; int need_after; } msx;
+static void msx_theme(void *c, gtheme *t, int *flat, unsigned *mask)
+{
+    (void)c;
+    theme(t);
+    *flat = 0; *mask = 0;
+}
+static void msx_select(void *ctx, int slot, const ip_snap_entry *e)
+{
+    msx *m = ctx;
+    (void)e;
+    m->o->ctx = &m->f[slot];                    /* every slot has its own ColorMap: its own fake */
+}
+static void msx_init(msx *m, ip_ops *o, ip_screens *t)
+{
+    memset(m, 0, sizeof *m);
+    memset(o, 0, sizeof *o);
+    o->obtain = f_obtain; o->release = f_release; o->theme = msx_theme; o->ctx = &m->f[0];
+    m->o = o;
+    ip_screens_init(t);
+    ip_screens_add(t, "Pub");
+    ip_screens_add(t, "Other");
+}
+static int msx_sync(msx *m, ip_screens *t, const ip_snap *sn, const int *hold)
+{
+    int need[IP_SCREENS];
+    return ip_screens_sync(t, sn, m->o, hold, msx_select, m, need);
+}
+static void test_screens_sync(void)
+{
+    ip_screens t;
+    ip_ops o;
+    msx m;
+    ip_snap sn, sn2;
+    ip_diff d;
+    int hold[IP_SCREENS] = {1, 1, 1, 0, 0, 0, 0, 0};
+    int i;
+
+    /* two public screens both get pens; the second closing does not release the first */
+    msx_init(&m, &o, &t);
+    memset(&sn, 0, sizeof sn);
+    snap_set(&sn, 0, "Workbench", (void *)0x1, 0, 6);
+    snap_set(&sn, 1, "Pub", (void *)0x100, 0, 6);
+    snap_set(&sn, 2, "Other", (void *)0x200, 0, 6);
+    CHECK_INT(msx_sync(&m, &t, &sn, hold), 0);
+    CHECK_INT(t.slot[0].sh.h.held, 16);
+    CHECK_INT(t.slot[1].sh.h.held, 16);
+    CHECK_INT(t.slot[2].sh.h.held, 16);
+    CHECK_INT(ip_screens_held(&t), 2);
+    sn2 = sn;
+    sn2.count = 2;                                               /* "Other" closed */
+    ip_screens_diff(&sn, &sn2, &d);
+    ip_screens_apply(&t, &d);
+    hold[2] = 1;
+    msx_sync(&m, &t, &sn2, hold);
+    CHECK_INT(m.f[1].releases, 0);                               /* the first screen is untouched */
+    CHECK_INT(t.slot[1].sh.h.held, 16);
+    CHECK_INT(t.slot[2].sh.h.held, 0);                           /* the gone screen forgot, without a release call */
+    CHECK_INT(m.f[2].releases, 0);
+    CHECK_INT(ip_screens_held(&t), 1);
+
+    /* hold 0 on a slot: no obtain */
+    msx_init(&m, &o, &t);
+    hold[0] = 1; hold[1] = 0; hold[2] = 1;
+    msx_sync(&m, &t, &sn, hold);
+    CHECK_INT(t.slot[1].sh.h.held, 0);
+    CHECK_INT(t.slot[0].sh.h.held, 16);
+    CHECK_INT(t.slot[2].sh.h.held, 16);
+    { int k, any = 0; for (k = 0; k < 64; k++) any |= m.f[1].mine[k]; CHECK_INT(any, 0); }
+
+    /* a private node: no obtain, no release, the slot is kept; public later: obtains */
+    msx_init(&m, &o, &t);
+    hold[1] = 1;
+    snap_set(&sn, 1, "Pub", (void *)0x100, IP_PSN_PRIVATE, 6);
+    msx_sync(&m, &t, &sn, hold);
+    CHECK_INT(t.slot[1].sh.h.held, 0);
+    CHECK_INT(m.f[1].releases, 0);
+    CHECK_INT(ip_screens_find(&t, "Pub"), 1);
+    snap_set(&sn, 1, "Pub", (void *)0x100, 0, 6);
+    msx_sync(&m, &t, &sn, hold);
+    CHECK_INT(t.slot[1].sh.h.held, 16);
+
+    /* slot 0 hold 0 releases its pens, the others keep theirs */
+    hold[0] = 0;
+    msx_sync(&m, &t, &sn, hold);
+    CHECK_INT(t.slot[0].sh.h.held, 0);
+    CHECK_INT(m.f[0].releases, 16);
+    CHECK_INT(t.slot[1].sh.h.held, 16);
+    CHECK_INT(t.slot[2].sh.h.held, 16);
+    CHECK_INT(m.f[1].releases + m.f[2].releases, 0);
+
+    /* exit: all holds 0 with one slot private: release for the public slots only */
+    hold[0] = 1;
+    msx_sync(&m, &t, &sn, hold);
+    for (i = 0; i < IP_SCREENS; i++) m.f[i].releases = 0;
+    snap_set(&sn, 2, "Other", (void *)0x200, IP_PSN_PRIVATE, 6);
+    for (i = 0; i < IP_SCREENS; i++) hold[i] = 0;
+    msx_sync(&m, &t, &sn, hold);
+    CHECK_INT(t.slot[0].sh.h.held, 0);
+    CHECK_INT(t.slot[1].sh.h.held, 0);
+    CHECK_INT(t.slot[2].sh.h.held, 16);                          /* private: kept (accepted gap) */
+    CHECK_INT(m.f[0].releases, 16);
+    CHECK_INT(m.f[1].releases, 16);
+    CHECK_INT(m.f[2].releases, 0);
+
+    /* a reopened screen: that slot's epoch +1, slot 0's does not move */
+    msx_init(&m, &o, &t);
+    hold[0] = hold[1] = hold[2] = 1;
+    snap_set(&sn, 2, "Other", (void *)0x200, 0, 6);
+    msx_sync(&m, &t, &sn, hold);
+    {
+        unsigned e0 = ip_screens_epoch(&t, "Workbench"), e1 = ip_screens_epoch(&t, "Pub");
+        sn2 = sn;
+        snap_set(&sn2, 1, "Pub", (void *)0x900, 0, 6);           /* same name, new identity */
+        ip_screens_diff(&sn, &sn2, &d);
+        ip_screens_apply(&t, &d);
+        memset(&m.f[1], 0, sizeof m.f[1]);                       /* the new screen has a fresh ColorMap */
+        msx_sync(&m, &t, &sn2, hold);
+        CHECK_INT((int)(ip_screens_epoch(&t, "Pub") - e1), 1);
+        CHECK_INT((int)(ip_screens_epoch(&t, "Workbench") - e0), 0);
+        CHECK_INT(t.slot[1].sh.h.held, 16);
+        CHECK_INT(ip_screens_epoch(&t, "Nope"), 0);
+    }
+}
+
+static void test_screens_held_count(void)
+{
+    ip_screens t;
+    fake f;
+    ip_ops o;
+    uint8_t rgb[IP_PENS][3];
+    memset(rgb, 0, sizeof rgb);
+    table_with_pens(&t, &f, &o);                                 /* Pub holds 16 */
+    CHECK_INT(ip_screens_held(&t), 1);
+    ip_holder_release(&t.slot[1].sh.h, &o);
+    CHECK_INT(ip_screens_held(&t), 0);
+    ip_holder_obtain(&t.slot[1].sh.h, &o, (const void *)0x100, 6, rgb);
+    f.mine[IP_FIRST] = 0;
+    memset(f.mine, 0, sizeof f.mine);
+    ip_holder_obtain(&t.slot[2].sh.h, &o, (const void *)0x200, 6, rgb);
+    CHECK_INT(ip_screens_held(&t), 2);
+    ip_holder_init(&t.slot[0].sh.h);                             /* slot 0 is not counted */
+    CHECK_INT(ip_screens_held(&t), 2);
+}
+
 void suite_iconpen(void)
 {
     test_workbench_still_opening_is_not_locked();
@@ -883,4 +1029,6 @@ void suite_iconpen(void)
     test_theme_switch_recolour();
     test_screens_table();
     test_screens_diff_and_apply();
+    test_screens_sync();
+    test_screens_held_count();
 }
