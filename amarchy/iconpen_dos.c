@@ -20,6 +20,10 @@
 #include "amconf_dos.h"
 #include "gthemes_core.h"
 #include "desk_core.h"
+#include "flat_role_core.h"
+
+/* the record holds IPD_ROLE_COUNT colours per slot: a different FLAT_ROLE_COUNT makes this array size negative */
+typedef char ipd_role_count_matches[(IPD_ROLE_COUNT == FLAT_ROLE_COUNT) ? 1 : -1];
 
 extern struct IntuitionBase *IntuitionBase;
 extern struct GfxBase *GfxBase;
@@ -361,6 +365,14 @@ static void pens_sync(ipd_rec *r)
                 gt_free(&r->st[i].t);           /* read twice in one call: our own model from the pass before */
                 pens_theme_named(i == 0 ? 0 : r->st[i].name, &r->st[i].t, &r->st[i].flat, &r->st[i].mask, i > 0);
                 r->st[i].have = 1;
+                if (i > 0) {                    /* TE-10.6c: keep the role colours past this sync (st[] is freed below) */
+                    ipd_slot_roles *sr = &r->roles[i];
+                    flat_role_rgb_of(&r->st[i].t, sr->role);    /* needs no t.model; pens_theme_named always fills t */
+                    sr->screen = r->t.slot[i].sh.h.screen;
+                    strncpy(sr->name, r->st[i].name, GT_NAME - 1);
+                    sr->name[GT_NAME - 1] = 0;
+                    sr->ok = 1;
+                }
             }
     }
     for (i = 0; i < IP_SCREENS; i++)        /* the models are this process's heap: none stays in the shared record */
@@ -439,6 +451,31 @@ unsigned ipd_epoch_of_screen(const void *scr)
         e = ip_screens_epoch_of_screen(&r->t, scr);
     Permit();
     return e;
+}
+
+/* Takes r->ss like ipd_role_write: the sync holds it across its DOS calls, so Forbid alone could see a half-updated slot. The record is
+ * freed only by the last ipd_owner(off), which also takes r->ss, so it stays allocated while we hold it. No DOS, no list lock. */
+int ipd_screen_roles(const void *scr, ipd_roles *out)
+{
+    ipd_rec *r = find_rec(0);
+    int i, got = 0;
+    if (!r || !scr)
+        return 0;
+    ObtainSemaphore(&r->ss);
+    i = ip_screens_slot_of_screen(&r->t, scr);
+    if (i > 0) {
+        char theme[GT_NAME];
+        int takeover = 0, rules = gt_screen_theme_of(&r->rules, r->t.slot[i].name, r->main_theme, theme, GT_NAME, &takeover);
+        const ipd_slot_roles *sr = &r->roles[i];
+        memset(out, 0, sizeof *out);
+        out->themed = rules && sr->ok && sr->screen == scr && strcmp(sr->name, theme) == 0;
+        out->epoch = ip_screens_epoch_of_screen(&r->t, scr);
+        out->nheld = ip_holder_plan_copy(&r->t.slot[i].sh.h, out->pen, out->rgb, GTE_COUNT);
+        memcpy(out->role, sr->role, sizeof out->role);
+        got = 1;
+    }
+    ReleaseSemaphore(&r->ss);
+    return got;
 }
 
 unsigned ipd_epoch_of(const char *name)

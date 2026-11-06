@@ -291,5 +291,9 @@ unsigned ip_screens_epoch(const ip_screens *t, const char *name);
 /* TE-10.6b: the same for the slot whose holder holds its pens on `screen` (the pointer, for a draw hook that has no name); 0 when no
  * slot holds pens on that screen or screen is 0. */
 unsigned ip_screens_epoch_of_screen(const ip_screens *t, const void *screen);
+/* TE-10.6c: the index of the slot whose holder holds its pens on `screen`; -1 for 0 or an unknown pointer. */
+int ip_screens_slot_of_screen(const ip_screens *t, const void *screen);
+/* TE-10.6c: copies the held plan pens (number and colour) into pen/rgb, at most cap of them; returns the count copied. */
+int ip_holder_plan_copy(const ip_holder *h, short *pen, uc_u32 *rgb, int cap);
 
 #endif
