@@ -1082,15 +1082,15 @@ static int decl_assign(const char *t)
 static int expand_words(sh_shell *sh, const sh_word *w, sh_list *out, const sh_io *io)
 {
     static const char *const decl[] = { "declare", "typeset", "local", "readonly", "export", 0 };
-    int isdecl = 0, k, idx = 0, isexec = w && !strcmp(w->text, "execute");
+    int isdecl = 0, k, idx = 0;
     for (k = 0; w && decl[k]; k++)
         if (!strcmp(w->text, decl[k]))
             isdecl = 1;
     for (; w; w = w->next, idx++) {
         const char *err = 0;
-        if (isexec && idx == 2 && !w->next && !strcmp(w->text, "?")) {
-            /* `execute file ?` asks for the .KEY arguments (S7c-3 R6): the lone ? is the question mark, not a
-             * glob that a directory with one-character names turns into those names */
+        if (idx >= 1 && !w->next && !strcmp(w->text, "?")) {
+            /* A lone trailing ? is the AmigaDOS template request (`cmd ?`, `execute file ?`), never a glob, for
+             * any command: a directory of one-character names must not turn it into those names (S7c-3 R6). */
             sh_list_add(out, "?");
             continue;
         }

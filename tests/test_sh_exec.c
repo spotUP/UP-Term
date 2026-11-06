@@ -2910,6 +2910,11 @@ static void execute_3_2_quirks(void)
     sh_run_text(&sh, "cd RAM:; execute RAM:q6 ?; echo rc$?", &inc);
     CHECK_STR(slot(OUT)->data, "name/A: got bob\nrc0\n");
     CHECK_STR(slot(ERR)->data, "");
+    /* any command, not only execute: a lone trailing ? stays literal, a ? mid-line still globs */
+    run("");
+    sh.ctx.listdir = list_one_char;
+    sh_run_text(&sh, "cd RAM:; echo ?; echo a ? b", &inc);
+    CHECK_STR(slot(OUT)->data, "?\na C L b\n");
 }
 
 /* S7b-5 (real 3.2 text): R3 missing /A, R9 failing command named once, R13 Skip, R16 FailAt, R19 Quit abc, R11 EXISTS x VAL 1. */
