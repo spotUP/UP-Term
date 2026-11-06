@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include "../amarchy/themeprev_core.h"
+#include "../amarchy/pen_cache.h"
 #include "harness.h"
 
 #define THEME_DIR "dist/amarchy-themes"
@@ -185,8 +186,26 @@ static void test_themeprev_reaches_gui(void)
     CHECK(strstr(src, "ch == 9 && preview_active(g)") != 0);
 }
 
+/* The preview holds one pen per distinct box colour (fill_rgb, prev_pens); text items draw through menu_text. The boxes of
+ * the enum must fit the cache whatever the model: the filled items are counted from themeprev_layout, not from a spelling. */
+static void test_themeprev_boxes_fit_the_pen_cache(void)
+{
+    themeprev pv;
+    gt_model m;
+    int i, boxes = 0;
+    (void)pc_of; (void)pc_theme_changed;               /* the header's statics: only PC_MAX is wanted here */
+    memset(&m, 0, sizeof m);
+    themeprev_layout(&m.look, 400, 300, &pv);
+    for (i = 0; i < TPV_COUNT; i++)
+        if (pv.it[i].w > 0 && pv.it[i].h > 0 && !pv.it[i].text)
+            boxes++;
+    CHECK(boxes > 0);
+    CHECK(boxes <= PC_MAX);
+}
+
 void suite_themeprev(void)
 {
+    test_themeprev_boxes_fit_the_pen_cache();
     test_themeprev_stock_and_thin();
     test_themeprev_radius_and_order();
     test_themeprev_small_pane();
