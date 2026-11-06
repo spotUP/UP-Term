@@ -72,6 +72,13 @@ int ip_holder_release(ip_holder *h, const ip_ops *o)
             h->have[i] = 0;
             n++;
         }
+    for (i = 0; i < h->rcount; i++)      /* S57-PENS47-UNOWNED: the role pens go where the icon pens go */
+        if (h->rhave[i]) {
+            o->release(o->ctx, h->rpen[i]);
+            h->rhave[i] = 0;
+            n++;
+        }
+    h->rcount = 0;
     h->held = 0;
     h->recheck = 0;
     h->screen = NULL;            /* nothing is obtained on any screen now: the next sync obtains again */
@@ -120,7 +127,30 @@ int ip_recolour(ip_holder *h, const ip_ops *o)
         o->set_rgb(o->ctx, h->first + i, ((uc_u32)c[0] << 16) | ((uc_u32)c[1] << 8) | c[2]);
         n++;
     }
+    if (h->rcount > 0 && (flat || ((mask >> DT_PALETTE) & 1))) {   /* the held role pens follow the theme (desk_live_follow's gate) */
+        for (i = 0; i < h->rcount; i++) {
+            uc_u32 c = desk_pen_colour(&th, h->rpen[i], flat);
+            if (!h->rhave[i] || h->rrgb[i] == c)
+                continue;
+            h->rrgb[i] = c;
+            o->set_rgb(o->ctx, h->rpen[i], c);
+            n++;
+        }
+    }
     return n;
+}
+
+int ip_role_claim(ip_holder *h, int pen, uc_u32 rgb)
+{
+    int i;
+    if (!h->screen)
+        return 0;
+    for (i = 0; i < h->rcount; i++)
+        if (h->rpen[i] == pen && h->rhave[i]) {
+            h->rrgb[i] = rgb;
+            return 1;
+        }
+    return 0;
 }
 
 int ip_any_free(int (*is_free)(void *ctx, int pen), void *ctx, const int *pens, int n)
@@ -148,6 +178,14 @@ int ip_holder_verify(ip_holder *h, const ip_ops *o, const void *screen, int dept
         for (i = 0; i < h->count; i++) {
             int fr = o->is_free(o->ctx, h->first + i);
             if (fr && h->have[i])
+                lost = 1;
+            else if (fr)
+                gained = 1;
+        }
+    if (h->depth == depth)
+        for (i = 0; i < h->rcount; i++) {
+            int fr = o->is_free(o->ctx, h->rpen[i]);
+            if (fr && h->rhave[i])
                 lost = 1;
             else if (fr)
                 gained = 1;
@@ -226,8 +264,14 @@ int ip_sync(ip_holder *h, const ip_ops *o, int hold, const void *screen, int dep
         ip_colours(&th, ip_ground(&th, flat, mask), rgb);
         ip_holder_obtain(h, o, screen, depth, rgb);   /* releases the old ones first */
         n = desk_live_follow(&th, flat, mask, planes, lp, lc);
-        for (k = 0; k < n && o->set_rgb; k++)
-            o->set_rgb(o->ctx, lp[k], lc[k]);
+        h->rcount = n;                   /* S57-PENS47-UNOWNED: own the role pens before writing them (a pen another client holds is skipped) */
+        for (k = 0; k < n; k++) {
+            h->rpen[k] = lp[k];
+            h->rrgb[k] = lc[k];
+            h->rhave[k] = (uint8_t)(o->obtain(o->ctx, lp[k], (lc[k] >> 16) & 255, (lc[k] >> 8) & 255, lc[k] & 255) == lp[k]);
+            if (h->rhave[k] && o->set_rgb)
+                o->set_rgb(o->ctx, lp[k], lc[k]);
+        }
     }
     h->new_identity = ip_sync_new_identity(old, screen, act, lost);
     return act;

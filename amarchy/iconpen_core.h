@@ -62,6 +62,12 @@ typedef struct ip_holder {
     uint8_t rgb[IP_PENS][3];     /* the colours the held pens carry now (ip_recolour compares against them) */
     int recheck;                 /* ip_holder_verify: a missing pen is free now; the next sync re-obtains */
     int new_identity;            /* the last ip_sync changed the screen identity (ip_sync_new_identity); survives ip_holder_init */
+    /* S57-PENS47-UNOWNED: the live role pens (desk_live_role_pens: 4-7 on a screen deeper than 3 planes) the sync writes the theme
+     * onto are obtained exclusive like the icon pens, held and released with them (rhave[i] = 1 when rpen[i] is held) */
+    int rcount;
+    int rpen[4];
+    uint8_t rhave[4];
+    uc_u32 rrgb[4];              /* the colour each role pen carries now (ip_recolour compares against it) */
 } ip_holder;
 
 void ip_holder_init(ip_holder *h);
@@ -89,6 +95,9 @@ int ip_any_free(int (*is_free)(void *ctx, int pen), void *ctx, const int *pens, 
  * whose colour changed is rewritten with o->set_rgb (SetRGB32); no release, no obtain. Returns the pens rewritten, 0 when nothing is
  * held or the colours are the same. */
 int ip_recolour(ip_holder *h, const ip_ops *o);
+/* S57-PENS47-UNOWNED: 1 when `pen` is a role pen the holder holds on its screen (the caller may write it; rrgb takes `rgb`), else 0: the
+ * pen is not ours and must not be written */
+int ip_role_claim(ip_holder *h, int pen, uc_u32 rgb);
 /* Release every held pen (flat off, program exit). Returns the number released. */
 int ip_holder_release(ip_holder *h, const ip_ops *o);
 /* "pens-held N"; returns the length, 0 when cap is too small */
