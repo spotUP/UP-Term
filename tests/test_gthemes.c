@@ -2081,6 +2081,91 @@ static void test_gthemes_nearest_role_pen_ties_low_and_caps_at_depth(void)
                 ((uc_u32)rgb[slot][0] << 16) | ((uc_u32)rgb[slot][1] << 8) | rgb[slot][2], depth));
 }
 
+static int plan_excl_outside(const gt_plan_pen *p, int n, const uc_u32 *mask)
+{
+    int i, bad = 0;
+    for (i = 0; i < n; i++)
+        if (p[i].exclusive && !((mask[p[i].pen >> 5] >> (p[i].pen & 31)) & 1))
+            bad++;
+    return bad;
+}
+
+static int plan_excl_dups(const gt_plan_pen *p, int n)
+{
+    int i, j, d = 0;
+    for (i = 0; i < n; i++)
+        for (j = 0; j < i; j++)
+            if (p[i].exclusive && p[j].exclusive && p[i].pen == p[j].pen)
+                d++;
+    return d;
+}
+
+static int plan_excl_count(const gt_plan_pen *p, int n)
+{
+    int i, c = 0;
+    for (i = 0; i < n; i++)
+        c += p[i].exclusive;
+    return c;
+}
+
+static void test_gthemes_te105_plan(void)
+{
+    static const char *names[] = { "nord", "tokyo-night", "gruvbox" };
+    static const int depths[] = { 3, 4, 8, 24 };
+    gt_model m;
+    gt_budget b;
+    gt_plan_pen p[GTE_COUNT + 4], q[GTE_COUNT + 4], tiny[2];
+    uc_u32 none[GT_MASK_WORDS], sparse[GT_MASK_WORDS], full[GT_MASK_WORDS];
+    const uc_u32 *masks[3];
+    int ni, di, mi, n, n2, i, guard_ok = 1, any_excl = 0;
+    memset(none, 0, sizeof none);
+    memset(full, 0xFF, sizeof full);
+    memset(sparse, 0, sizeof sparse);
+    sparse[0] = 0x00F0F000UL; sparse[1] = 0x0000FFFFUL; sparse[5] = 0xAAAAAAAAUL;
+    masks[0] = none; masks[1] = sparse; masks[2] = full;
+    for (ni = 0; ni < 3; ni++) {
+        te8_load(&m, names[ni]);
+        for (di = 0; di < 4; di++) {
+            gt_pen_budget(&m, depths[di], &b);
+            for (mi = 0; mi < 3; mi++) {
+                n = gt_screen_apply_plan(&m, depths[di], masks[mi], 0, p, GTE_COUNT + 4);
+                CHECK_INT(n, b.exact ? 0 : b.needing);               /* the count is the budget's */
+                CHECK_INT(plan_excl_outside(p, n, masks[mi]), 0);    /* never a colour write on an owned pen */
+                CHECK_INT(plan_excl_dups(p, n), 0);
+                n2 = gt_screen_apply_plan(&m, depths[di], masks[mi], 0, q, GTE_COUNT + 4);
+                CHECK_INT(n2, n);
+                CHECK_INT(n == 0 || memcmp(p, q, (size_t)n * sizeof p[0]) == 0, 1); /* deterministic */
+                n = gt_screen_apply_plan(&m, depths[di], masks[mi], 1, p, GTE_COUNT + 4);
+                CHECK_INT(n, b.exact ? 0 : b.needing);
+                CHECK_INT(plan_excl_dups(p, n), 0);
+            }
+        }
+    }
+    /* take over with an empty mask on a deep screen: the owner's pens are taken */
+    te8_load(&m, "nord");
+    gt_pen_budget(&m, 8, &b);
+    n = gt_screen_apply_plan(&m, 8, none, 1, p, GTE_COUNT + 4);
+    CHECK_INT(n > 0 && plan_excl_count(p, n) == n, 1);
+    for (i = 0; i < n; i++)
+        if (p[i].pen < b.held || p[i].pen >= b.pens)
+            guard_ok = 0;
+    CHECK_INT(guard_ok, 1);
+    n = gt_screen_apply_plan(&m, 8, none, 0, p, GTE_COUNT + 4);
+    CHECK_INT(plan_excl_count(p, n), 0);                                 /* all best */
+    n = gt_screen_apply_plan(&m, 8, full, 0, p, GTE_COUNT + 4);
+    any_excl = plan_excl_count(p, n);
+    CHECK_INT(any_excl, n);                                              /* a free screen: every colour gets its own pen */
+    /* capacity: cut off, never past the end */
+    tiny[0].pen = tiny[1].pen = -7;
+    memset(p, 0x5A, sizeof p);
+    n = gt_screen_apply_plan(&m, 8, full, 0, p, 1);
+    CHECK_INT(n, 1);
+    CHECK_INT(p[1].pen, 0x5A5A);                                         /* untouched past cap */
+    n = gt_screen_apply_plan(&m, 8, full, 0, tiny, 0);
+    CHECK_INT(n, 0);
+    CHECK_INT(tiny[0].pen, -7);
+}
+
 static void test_gthemes_te8_budget(void)
 {
     gt_model m, g;
@@ -2528,6 +2613,7 @@ void suite_gthemes(void)
     test_gthemes_te3_import_export_delete();
     test_gthemes_nearest_role_pen_ties_low_and_caps_at_depth();
     test_gthemes_te8_budget();
+    test_gthemes_te105_plan();
     test_gthemes_te8_contrast();
     test_gthemes_te8_stock_inactive_title_text_reads_150_on_its_bar();
     test_gthemes_te8_button_face_equals_requester_gets_no_warning();
