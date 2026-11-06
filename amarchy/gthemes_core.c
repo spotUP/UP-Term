@@ -2869,3 +2869,11 @@ int gt_screen_apply_plan(const gt_model *m, int depth, const uc_u32 *free_mask, 
     }
     return n;
 }
+
+void gt_screen_draw_theme(const gt_screen_rules *r, const char *screen_name, const char *main_theme, char *out, int cap)
+{
+    if (cap <= 0)
+        return;
+    if (!screen_name || !*screen_name || !gt_screen_theme_of(r, screen_name, main_theme, out, cap, 0))
+        scr_name(out, cap, main_theme);
+}

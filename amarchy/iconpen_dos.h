@@ -70,6 +70,14 @@ unsigned ipd_epoch_of(const char *name);
 /* TE-10.4: reads ENV:Amarchy/screen-themes and the screen-themes key into *out (default "workbench" and no rules when the file is
  * missing). DOS I/O: never with the public screen list locked. */
 void ipd_screen_rules_load(gt_screen_rules *out);
+/* TE-10.7: the public name of the screen `scr` copied into out (cap bytes), "" when it is no public screen. Takes the public screen
+ * list lock itself and unlocks before it returns. */
+void ipd_pub_screen_name_of(struct Screen *scr, char *out, int cap);
+/* TE-10.7: the theme a window Amarchy draws itself (the drawn menu, the theme windows) takes on `scr`: the screen rules' theme for
+ * that screen, else the main theme. DOS I/O: never with the public screen list locked. */
+void ipd_screen_theme_name(struct Screen *scr, char *out, int cap);
+/* TE-10.7: calls of ipd_screen_theme_name (reachability counter). */
+extern unsigned long ipd_screen_theme_asks;
 /* TE-10.4: the rules (or the main theme) changed: the next sync rereads them. Does nothing without a record. */
 void ipd_rules_changed(void);
 /* Re-sync without changing owners (screen reopened, theme changed). */

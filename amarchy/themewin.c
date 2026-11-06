@@ -15,6 +15,7 @@
 #include "status_core.h"
 #include "themewin.h"
 #include "gthemes_dos.h"
+#include "iconpen_dos.h"
 #include "../render/pens_amiga.h"
 
 struct GfxBase *GfxBase;
@@ -23,6 +24,7 @@ static int g_gfx_refs, g_have_gfx;
 static struct MsgPort *g_port;
 static int g_wins;                       /* open helper windows */
 static struct ColorMap *g_cm;
+static struct Screen *g_scr;             /* the screen of the first window: the screen rules give its pens' theme (TE-10.7) */
 static long g_pen[MT_ROLES];
 static int g_pen_got[MT_ROLES];
 static uc_u32 g_rgb[MT_ROLES];           /* the theme's colour of each role the pens were taken for */
@@ -52,12 +54,13 @@ void tw_libs_close(void)
     }
 }
 
-static void pens_get(struct ColorMap *cm)
+static void pens_get(struct Screen *scr)
 {
     gtheme th;
     int r;
-    g_cm = cm;
-    gt_dos_current(g_theme, (int)sizeof g_theme);
+    g_scr = scr;
+    g_cm = scr->ViewPort.ColorMap;
+    ipd_screen_theme_name(g_scr, g_theme, (int)sizeof g_theme);
     gt_dos_load(g_theme, &th);
     menu_theme_roles_gui(&th, g_rgb);
     for (r = 0; r < MT_ROLES; r++) {
@@ -96,7 +99,7 @@ struct Window *tw_open(struct Screen *scr, int x, int y, int w, int h, const cha
         made_port = 1;
     }
     if (g_wins == 0)
-        pens_get(scr->ViewPort.ColorMap);
+        pens_get(scr);
     /* no IDCMP at open: the window gets the shared port below, then its classes */
     win = OpenWindowTags(0, WA_Left, x, WA_Top, y, WA_Width, w, WA_Height, h, WA_Borderless, TRUE, WA_Backdrop, (flags & TW_OPEN_BACKDROP) != 0,
                          WA_Activate, FALSE, WA_SimpleRefresh, TRUE, WA_RMBTrap, TRUE, WA_PubScreen, scr,
@@ -204,11 +207,11 @@ void tw_tick(long now)
     (void)now;
     if (g_wins == 0)
         return;
-    gt_dos_current(cur, (int)sizeof cur);
+    ipd_screen_theme_name(g_scr, cur, (int)sizeof cur);
     if (!tw_theme_changed(g_theme, cur))
         return;
     pens_release();
-    pens_get(g_cm);
+    pens_get(g_scr);
     g_recolours++;
     for (i = 0; i < TW_MAX; i++)
         if (g_slot[i].win && g_slot[i].fn)
