@@ -70,6 +70,17 @@ int mg_width(const keymap *k, const char *node, const mg_font *f, int icon_w, in
  * (mg_width_t). Returns 1 and sets *nx, *nw when it has to widen (never wider than the screen, moved left so the right
  * edge stays on the screen), 0 and no change when need <= w: an open window never shrinks. */
 int mg_grow(int x, int w, int need, int screen_w, int *nx, int *nw);
+/* THEME-PICK-MENU-GONE: the focus rule of a launcher menu. Another program taking the focus closes it; the confirm requester
+ * that a pick of this very menu started (Style > Theme: Keep or Revert) is not another program. */
+typedef struct mg_focus {
+    int active_seen;    /* the window has been active since it opened */
+    int own_confirm;    /* a pick of this menu asked a confirm requester that has not taken the focus yet */
+} mg_focus;
+void mg_focus_init(mg_focus *f);
+void mg_focus_active(mg_focus *f);                      /* IDCMP_ACTIVEWINDOW */
+void mg_focus_confirm_asked(mg_focus *f);               /* a pick of this menu started a confirm requester */
+void mg_focus_tick(mg_focus *f, int confirm_pending);   /* window active and no confirm pending: drop a latch no requester used */
+int mg_focus_inactive(mg_focus *f, int needs_ask);      /* IDCMP_INACTIVEWINDOW: 1 = close the menu */
 /* mg_width over the rows shown with (term) or without an UP-Term window under the menu */
 int mg_width_t(const keymap *k, const char *node, const mg_font *f, int icon_w, int chev_w,
              mg_text_fn text, void *ctx, const mg_screen *s, int cond);

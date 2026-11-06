@@ -379,6 +379,11 @@ static unsigned dk_pending_mask(void)
     return m;
 }
 
+int desk_dos_confirm_pending(void)
+{
+    return dk_pending_mask() != 0;
+}
+
 static void dk_orig_off(unsigned desk_mask, int flat);
 static void dk_orig_save(unsigned mask, int wbprefs);
 static int dk_apply(const gtheme *th, char *why, int cap)

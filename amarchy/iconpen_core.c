@@ -79,11 +79,67 @@ int ip_holder_release(ip_holder *h, const ip_ops *o)
             n++;
         }
     h->rcount = 0;
+    for (i = 0; i < h->pcount; i++) {    /* TE-10.5b: and the plan pens */
+        o->release(o->ctx, h->ppen[i]);
+        n++;
+    }
+    h->pcount = 0;
     h->held = 0;
     h->recheck = 0;
     h->screen = NULL;            /* nothing is obtained on any screen now: the next sync obtains again */
     h->depth = 0;
     return n;
+}
+
+static int ip_pen_is_ours(const ip_holder *h, int pen)
+{
+    int i;
+    if (pen >= h->first && pen < h->first + h->count && h->have[pen - h->first])
+        return 1;
+    for (i = 0; i < h->rcount; i++)
+        if (h->rpen[i] == pen && h->rhave[i])
+            return 1;
+    return 0;
+}
+
+int ip_plan_sync(ip_holder *h, const ip_ops *o, const gt_plan_pen *plan, int n)
+{
+    int i, j, k;
+    for (i = 0; i < h->pcount; ) {       /* release what the plan no longer holds exclusive */
+        int keep = 0;
+        for (j = 0; j < n && !keep; j++)
+            keep = plan[j].exclusive && plan[j].pen == h->ppen[i];
+        if (keep) {
+            i++;
+            continue;
+        }
+        o->release(o->ctx, h->ppen[i]);
+        for (k = i + 1; k < h->pcount; k++) {
+            h->ppen[k - 1] = h->ppen[k];
+            h->prgb[k - 1] = h->prgb[k];
+        }
+        h->pcount--;
+    }
+    for (j = 0; j < n; j++) {
+        uc_u32 c = plan[j].rgb;
+        if (!plan[j].exclusive || ip_pen_is_ours(h, plan[j].pen))
+            continue;
+        for (i = 0; i < h->pcount && h->ppen[i] != plan[j].pen; i++)
+            ;
+        if (i < h->pcount) {
+            if (h->prgb[i] != c) {
+                h->prgb[i] = c;
+                if (o->set_rgb)
+                    o->set_rgb(o->ctx, plan[j].pen, c);
+            }
+        } else if (h->pcount < GTE_COUNT &&
+                   o->obtain(o->ctx, plan[j].pen, (c >> 16) & 255, (c >> 8) & 255, c & 255) == plan[j].pen) {
+            h->ppen[h->pcount] = plan[j].pen;
+            h->prgb[h->pcount] = c;
+            h->pcount++;
+        }
+    }
+    return h->pcount;
 }
 
 int ip_holder_obtain(ip_holder *h, const ip_ops *o, const void *screen, int depth, const uint8_t rgb[IP_PENS][3])

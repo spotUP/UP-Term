@@ -106,7 +106,7 @@ typedef struct gui {
     char pen_got[MT_ROLES];
     int mode;
     int await;                   /* ChangeWindowBox sent, IDCMP_CHANGEWINDOW not yet seen */
-    int active_seen;
+    mg_focus focus;              /* the launcher's focus rule: another program taking the focus closes the menu */
     int stop;                    /* the running event loop ends */
     int quit;                    /* the window is going: every loop ends */
     long draws;
@@ -1450,16 +1450,19 @@ static void event_loop(gui *g)
                 }
                 break;
             case IDCMP_INTUITICKS:          /* about 10 a second: poll the scan every 10th */
+                if (g->focus.own_confirm)   /* only while a confirm we asked may still be open: the check reads a file */
+                    mg_focus_tick(&g->focus, desk_dos_confirm_pending());
                 if (g->wt.on && ++g->ticks >= 10) {
                     g->ticks = 0;
                     watch_poll(g);
                 }
                 break;
             case IDCMP_ACTIVEWINDOW:
-                g->active_seen = 1;
+                mg_focus_active(&g->focus);
                 break;
             case IDCMP_INACTIVEWINDOW:      /* a launcher: another window taking the focus closes it */
-                if (g->active_seen && !lf_exit_needs_ask(g->node))   /* unsaved theme edits keep the window open */
+                /* unsaved theme edits keep the window open; so does the confirm requester this menu's own pick started */
+                if (mg_focus_inactive(&g->focus, lf_exit_needs_ask(g->node)))
                     g->quit = g->stop = 1;
                 break;
             }
@@ -1851,6 +1854,7 @@ static int gui_open(int viewer, const char *node, int anchored, int ax, int ay)
 
     at_mark("start");
     memset(g, 0, sizeof *g);
+    mg_focus_init(&g->focus);
     keep_setting = -1;
     lf_reset();
     mo_register();   /* MENU-TOGGLE: the menu hotkey again ends this menu; clears a stale Ctrl-C */
@@ -1962,6 +1966,7 @@ static int gui_open(int viewer, const char *node, int anchored, int ax, int ay)
         {
             lf_ui ui;
             char keep[MN_LABEL];
+            unsigned long asks;
             ui.ask_value = gui_ask_value;
             ui.refused = gui_refused;
             ui.ctx = g;
@@ -1982,7 +1987,10 @@ static int gui_open(int viewer, const char *node, int anchored, int ax, int ay)
                 cleanup(g);
                 g->rp = 0;
             }
+            asks = desk_dos_confirm_asks;
             rc = g->ixpath[0] ? lf_open_index(g->ixlabel, g->ixpath, &ui) : lf_run(&km.menu[g->chosen], &ui);
+            if (desk_dos_confirm_asks != asks)      /* the pick asked a Keep/Revert requester: it takes the focus, the menu stays */
+                mg_focus_confirm_asked(&g->focus);
             if (!rc && g->ixpath[0] && !g->quit && gt_path_name(g->ixpath, keep, (int)sizeof keep)) {
                 theme_live(g, keep);
                 continue;
