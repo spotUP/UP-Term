@@ -480,6 +480,11 @@ const flat_pens *flat_pens_tab_find(const flat_pens_tab *t, const void *screen, 
 /* Forget (WITHOUT release: the ColorMap went with the screen) every slot whose identity is_open says is gone; returns the count. */
 int flat_pens_tab_reap(flat_pens_tab *t, int (*is_open)(void *ctx, const void *screen, unsigned epoch), void *ctx);
 
+/* TE-10.6b: the state a draw hook works with for a window on `screen` (epoch = that screen's slot epoch): *out is the global look `look`
+ * with the pen numbers (dim, knob, inbar, sel) of the slot holding exactly (screen, epoch); a screen with no slot or other epoch has
+ * no pens (all four 0, the "none" the pen functions already fall back from). Returns 1 when a slot was found. Never obtains. */
+int flat_state_for(const flat_state *look, const flat_pens_tab *t, const void *screen, unsigned epoch, flat_state *out);
+
 /* S57-BUTTON-ASPECT-BORDERS: the width in pixels of a button's left and right outline lines: side (flat_side_px; below 1 counts 1),
  * never more than a third of the box width w. Top and bottom lines stay 1 px. */
 int flat_button_side(int side, int w);

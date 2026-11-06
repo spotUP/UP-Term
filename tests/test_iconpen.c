@@ -1175,6 +1175,12 @@ static void test_screens_sync(void)
         CHECK_INT((int)(ip_screens_epoch(&t, "Workbench") - e0), 0);
         CHECK_INT(t.slot[1].sh.h.pcount, 2);
         CHECK_INT(ip_screens_epoch(&t, "Nope"), 0);
+        /* TE-10.6b: the epoch of a screen found by its pointer (the draw hook has no name) */
+        CHECK_INT((int)(ip_screens_epoch_of_screen(&t, t.slot[1].sh.h.screen) - ip_screens_epoch(&t, "Pub")), 0);
+        CHECK(ip_screens_epoch_of_screen(&t, t.slot[1].sh.h.screen) != 0);
+        CHECK_INT((int)(ip_screens_epoch_of_screen(&t, t.slot[0].sh.h.screen) - ip_screens_epoch(&t, "Workbench")), 0);
+        CHECK_INT(ip_screens_epoch_of_screen(&t, (void *)0x1234), 0);
+        CHECK_INT(ip_screens_epoch_of_screen(&t, 0), 0);
     }
 }
 

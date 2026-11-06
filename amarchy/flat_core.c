@@ -968,3 +968,17 @@ int flat_pens_tab_reap(flat_pens_tab *t, int (*is_open)(void *ctx, const void *s
         }
     return n;
 }
+
+int flat_state_for(const flat_state *look, const flat_pens_tab *t, const void *screen, unsigned epoch, flat_state *out)
+{
+    const flat_pens *p = flat_pens_tab_find(t, screen, epoch);
+    *out = *look;
+    out->pen_dim = out->pen_knob = out->pen_inbar = out->pen_sel = 0;
+    if (!p)
+        return 0;
+    if (p->dim >= 0) out->pen_dim = (uint8_t)p->dim;
+    if (p->knob >= 0) out->pen_knob = (uint8_t)p->knob;
+    if (p->inbar >= 0) out->pen_inbar = (uint8_t)p->inbar;
+    if (p->sel >= 0) out->pen_sel = (uint8_t)p->sel;
+    return 1;
+}

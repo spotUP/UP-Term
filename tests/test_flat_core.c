@@ -1757,8 +1757,8 @@ static void test_inbar_status_dump(void)
     fclose(f);
     src[n] = 0;
     CHECK(strstr(src, "\" inbar=\");  put_num(line, &n, copy.pen_inbar)") != 0);
-    CHECK(strstr(src, "flat_pens_refresh(&g_pens") != 0);                      /* the pen the dump reports is really obtained */
-    CHECK(strstr(src, "flat_pens_follow(&g_pens") != 0);                       /* and follows the screen on every 1 s watch */
+    CHECK(strstr(src, "flat_pens_refresh_on(sl") != 0);                      /* the pen the dump reports is really obtained */
+    CHECK(strstr(src, "flat_pens_follow_on(sl") != 0);                       /* and follows the screen on every 1 s watch */
 }
 
 /* S32-INACTIVE-BAR: the outer ring and the scroller knob of an inactive window take the inactive pen; active ones are unchanged */
@@ -2441,8 +2441,40 @@ static void test_pens_non_workbench_slot_keeps_flat_state(void)
     CHECK(s.pen_dim >= 100);
 }
 
+/* TE-10.6b: what the draw hook reads for a window: the global look plus the pens of the window's own screen slot */
+static void test_state_for_screen_pens(void)
+{
+    wbscr w;
+    flat_pens_tab t;
+    flat_pen_ops o;
+    flat_state look, a, b, c;
+    int scr_a, scr_b, scr_c;
+    desk_flat_state(1, 1, &look);
+    look.sel_rgb[0] = 0x28; look.sel_rgb[1] = 0x2c; look.sel_rgb[2] = 0x34;
+    look.pen_dim = 77; look.pen_knob = 78; look.pen_inbar = 79; look.pen_sel = 80;   /* stale numbers in the look block */
+    flat_pens_tab_init(&t);
+    o.obtain = wb_obtain; o.release = wb_release; o.rgb = wb_rgb;
+    wb_screen(&w, 100);
+    o.ctx = &w;
+    tab_obtain_on(&t, &o, &look, &scr_a, 1);
+    tab_obtain_on(&t, &o, &look, &scr_b, 1);
+    CHECK_INT(flat_state_for(&look, &t, &scr_a, 1, &a), 1);
+    CHECK_INT(flat_state_for(&look, &t, &scr_b, 1, &b), 1);
+    CHECK(a.pen_dim >= 100 && b.pen_dim >= 100 && a.pen_dim != b.pen_dim);           /* B's pens are never A's */
+    CHECK_INT(a.pen_dim, flat_pens_tab_find(&t, &scr_a, 1)->dim);
+    CHECK_INT(b.pen_sel, flat_pens_tab_find(&t, &scr_b, 1)->sel);
+    CHECK_INT(a.pen_back, look.pen_back);                                           /* the look stays global */
+    CHECK_INT(memcmp(a.sel_rgb, look.sel_rgb, 3), 0);
+    CHECK_INT(flat_state_for(&look, &t, &scr_c, 1, &c), 0);                          /* no slot: no pens at all */
+    CHECK_INT(c.pen_dim, 0); CHECK_INT(c.pen_knob, 0); CHECK_INT(c.pen_inbar, 0); CHECK_INT(c.pen_sel, 0);
+    CHECK_INT(c.pen_back, look.pen_back);
+    CHECK_INT(flat_state_for(&look, &t, &scr_a, 2, &c), 0);                          /* another epoch of A: the old pens are gone */
+    CHECK_INT(c.pen_dim, 0);
+}
+
 void suite_flat_core(void)
 {
+    test_state_for_screen_pens();
     test_pens_tab_never_cross_screens();
     test_pens_tab_switch_releases_nothing();
     test_pens_tab_new_epoch_not_old_pens();

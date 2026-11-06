@@ -95,6 +95,18 @@ struct Screen *ipd_pub_screen_in(struct List *pl, const char *name)
     return n ? n->psn_Screen : 0;
 }
 
+/* TE-10.6b: the Screen at pointer `scr` when it is in the locked public screen list, else 0. */
+struct Screen *ipd_screen_in(struct List *pl, const void *scr)
+{
+    struct Node *n;
+    if (!pl || !scr)
+        return 0;
+    for (n = pl->lh_Head; n->ln_Succ; n = n->ln_Succ)
+        if (((struct PubScreenNode *)n)->psn_Screen == (const struct Screen *)scr)
+            return ((struct PubScreenNode *)n)->psn_Screen;
+    return 0;
+}
+
 struct Screen *ipd_wb_screen_in(struct List *pl)
 {
     return ipd_pub_screen_in(pl, "Workbench");
@@ -390,6 +402,19 @@ unsigned ipd_epoch(void)
     r = (ipd_rec *)FindSemaphore((STRPTR)IPD_SEM_NAME);
     if (r)
         e = r->t.slot[0].sh.epoch;
+    Permit();
+    return e;
+}
+
+/* TE-10.6b: the epoch of the pens held for the screen at pointer `scr`; 0 for an unknown screen. */
+unsigned ipd_epoch_of_screen(const void *scr)
+{
+    unsigned e = 0;
+    ipd_rec *r;
+    Forbid();
+    r = (ipd_rec *)FindSemaphore((STRPTR)IPD_SEM_NAME);
+    if (r)
+        e = ip_screens_epoch_of_screen(&r->t, scr);
     Permit();
     return e;
 }
