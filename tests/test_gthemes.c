@@ -2711,6 +2711,8 @@ static void test_drawn_windows_take_their_screens_theme(void)
             if (end)
                 *end = 0;
             CHECK(strstr(fn, "char name[IP_PSN_NAME]") != 0);
+            /* the rules (32 x 188 bytes) stay off the stack: themewin.c calls this in the Amarchy main program (16384 bytes) */
+            CHECK(strstr(fn, "static gt_screen_rules rules;") != 0);
         }
     }
 }
