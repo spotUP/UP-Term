@@ -18,4 +18,8 @@ struct PubScreenNode *pubscr_node_in(struct List *pl, const char *name);
  * (BOOT-31-WB-DEADLOCK, S57-FREEZE-2IN9, FRONTSCR-PUB-LOCK). Needs IntuitionBase open and iconpen_core.c linked. */
 struct Screen *ipd_lock_pub_screen(const char *name);
 
+/* The default public screen, locked (the caller UnlockPubScreen(0, scr)), or 0 when it is closed, still opening or private.
+ * Use it where LockPubScreen(0) was: that call reopens a closed default Workbench on OS 3.1 (BOOT-31-WB-DEADLOCK). */
+struct Screen *ipd_lock_default_pub_screen(void);
+
 #endif

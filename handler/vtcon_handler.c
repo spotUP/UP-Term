@@ -3287,7 +3287,7 @@ static struct Screen *lock_screen(con *c)
     if (!scr && c->screen[0])
         scr = ipd_lock_pub_screen(c->screen);
     if (!scr)
-        scr = LockPubScreen(0);
+        scr = ipd_lock_default_pub_screen(); /* 0 while the default screen is closed or opening: no screen, never a Workbench reopen */
     return scr;
 }
 
