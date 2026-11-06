@@ -344,7 +344,7 @@ static int menu_levels(const char *start)
             ent[i + shift].item = MN_IS_GROUP(&it[idx[i]]) ? ">" : "";
         }
         {   /* the rows shown (not the status row), the same value the drawn menu publishes */
-            char rows[256];
+            static char rows[MN_ROWS_MAX];   /* static: off the stack; the menu loop is one task, never re-entered */
             mn_rows_join(it, idx, c, rows, sizeof rows);
             am_sentinel_str("AMARCHY_ROWS", rows);
         }
