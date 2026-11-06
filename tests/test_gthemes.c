@@ -19,6 +19,38 @@
 #include "harness.h"
 #include "memfs.h"
 
+/* Reference oracle for the differential test: the recursive matcher as it was before TE10-MATCH-BACKTRACK. */
+static int ref_lc(int c)
+{
+    return (c >= 'A' && c <= 'Z') ? c + 32 : c;
+}
+
+static int ref_screen_match(const char *p, const char *s)
+{
+    while (*p) {
+        if (*p == '#' && p[1]) {
+            int any = (p[1] == '?');
+            int ch = ref_lc((unsigned char)p[1]);
+            p += 2;
+            for (;;) {
+                if (ref_screen_match(p, s))
+                    return 1;
+                if (!*s || !(any || ref_lc((unsigned char)*s) == ch))
+                    return 0;
+                s++;
+            }
+        }
+        if (!*s)
+            return 0;
+        if (*p != '?' && ref_lc((unsigned char)*p) != ref_lc((unsigned char)*s))
+            return 0;
+        p++;
+        s++;
+    }
+    return !*s;
+}
+
+
 #define THEME_DIR "dist/amarchy-themes"
 
 /* name, mode, background, foreground, dark_foreground, accent: the plan's table, from Omarchy's colors.toml */
@@ -652,6 +684,71 @@ static void test_gthemes_screen_rules(void)
         CHECK_INT(gt_screen_match("TE1?", "TE1"), 0);
         CHECK_INT(gt_screen_match("#?", ""), 1);
         CHECK_INT(gt_screen_match("Work bench", "work BENCH"), 1);
+        {
+            /* TE10-MATCH-BACKTRACK: differential test against the old recursive matcher, every pattern 0..5 over a b ? #,
+             * every name 0..4 over a b A */
+            const char pa[] = "ab?#", na[] = "abA";
+            char pat[8], nm[8];
+            long pn, nn, pi, ni, diff = 0, pairs = 0;
+            int pl, nl, k;
+            for (pl = 0; pl <= 5; pl++) {
+                pn = 1;
+                for (k = 0; k < pl; k++) pn *= 4;
+                for (pi = 0; pi < pn; pi++) {
+                    long v = pi;
+                    for (k = 0; k < pl; k++) { pat[k] = pa[v % 4]; v /= 4; }
+                    pat[pl] = 0;
+                    for (nl = 0; nl <= 4; nl++) {
+                        nn = 1;
+                        for (k = 0; k < nl; k++) nn *= 3;
+                        for (ni = 0; ni < nn; ni++) {
+                            long w = ni;
+                            for (k = 0; k < nl; k++) { nm[k] = na[w % 3]; w /= 3; }
+                            nm[nl] = 0;
+                            pairs++;
+                            if (gt_screen_match(pat, nm) != ref_screen_match(pat, nm)) {
+                                diff++;
+                                if (diff < 5) printf("match differs: pat '%s' name '%s'\n", pat, nm);
+                            }
+                        }
+                    }
+                }
+            }
+            CHECK_INT(diff, 0);
+            CHECK_INT(pairs, 1365L * 121L);
+        }
+        {
+            /* bound: work <= 4 * (pattern length + 1) * (name length + 1) */
+            const char *crafted = "#?a#?a#?a#?a#?a#?ab";
+            char name[160], big[160];
+            int i;
+            unsigned long w;
+            for (i = 0; i < 24; i++) name[i] = 'a';
+            name[24] = 0;
+            gt_screen_match_steps = 0;
+            CHECK_INT(gt_screen_match(crafted, name), 0);
+            w = gt_screen_match_steps;
+            CHECK_INT(w <= 4UL * (strlen(crafted) + 1) * (strlen(name) + 1), 1);
+            /* the 139-character worst case runs only once the crafted case proved linear (the old matcher would not finish) */
+            if (w <= 4UL * (strlen(crafted) + 1) * (strlen(name) + 1)) {
+                for (i = 0; i < 46; i++) { big[3 * i] = '#'; big[3 * i + 1] = '?'; big[3 * i + 2] = 'a'; }
+                big[138] = 0;
+                for (i = 0; i < 138; i++) name[i] = 'a';
+                name[138] = 0;
+                gt_screen_match_steps = 0;
+                CHECK_INT(gt_screen_match(big, name), 1);
+                w = gt_screen_match_steps;
+                CHECK_INT(w <= 4UL * (strlen(big) + 1) * (strlen(name) + 1), 1);
+                big[138] = 'b';
+                big[139] = 0;
+                name[138] = 'a';
+                name[139] = 0;
+                gt_screen_match_steps = 0;
+                CHECK_INT(gt_screen_match(big, name), 0);
+                w = gt_screen_match_steps;
+                CHECK_INT(w <= 4UL * (strlen(big) + 1) * (strlen(name) + 1), 1);
+            }
+        }
     }
 
     /* Exclude beats Default All */
