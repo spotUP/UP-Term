@@ -177,7 +177,7 @@ unsigned long ipd_screen_theme_asks;
 
 void ipd_screen_theme_name(struct Screen *scr, char *out, int cap)
 {
-    char name[GT_NAME + 64], main_theme[GT_NAME];
+    char name[IP_PSN_NAME], main_theme[GT_NAME];   /* a public screen name is up to 139 characters: a shorter buffer cuts it and the rule no longer matches */
     gt_screen_rules rules;
     ipd_screen_theme_asks++;
     ipd_pub_screen_name_of(scr, name, (int)sizeof name);   /* the list is unlocked again: the DOS reads below can put up a requester */

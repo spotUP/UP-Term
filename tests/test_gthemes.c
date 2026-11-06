@@ -2696,6 +2696,23 @@ static void test_drawn_windows_take_their_screens_theme(void)
         big[n] = 0;
         CHECK(strstr(big, "ipd_screen_theme_name(") != 0);
     }
+    /* a public screen name is up to 139 characters (IP_PSN_NAME 140, as the rule pattern GT_SCR_PAT): a shorter name buffer
+     * cuts the name and the screen's exact-name rule no longer matches */
+    CHECK_INT(IP_PSN_NAME >= GT_SCR_PAT, 1);
+    n = read_file("amarchy/iconpen_dos.c", big, (long)sizeof big - 1);
+    CHECK(n > 0);
+    if (n > 0) {
+        char *fn;
+        big[n] = 0;
+        fn = strstr(big, "void ipd_screen_theme_name(struct Screen *scr, char *out, int cap)\n{");
+        CHECK(fn != 0);
+        if (fn) {
+            char *end = strstr(fn, "\n}\n");
+            if (end)
+                *end = 0;
+            CHECK(strstr(fn, "char name[IP_PSN_NAME]") != 0);
+        }
+    }
 }
 
 void suite_gthemes(void)
