@@ -107,6 +107,10 @@ const upconf *upconf_colour_source(const upconf *prof, const char *p, const upco
 /* The "NAME:SIZE" font a window takes: the theme's (its one profile section, ENV:up-term/theme-active) when it has a font line,
  * else profile P's of PROF, else 0. Sits beside upconf_colour_source: built-in < profile < Amarchy theme (TE-7b.2). */
 const char *upconf_font_source(const upconf *prof, const char *p, const upconf *theme);
+/* What a live font change does when the layers (theme Shell Font, profile font) now give newname/newsize and the window has
+ * oldname/oldsize: 0 keep, 1 open the named font, 2 no layer names one any more -> the built-in font (what a window opened with
+ * an empty fontname gets). A window whose spec set the font (font_spec) never falls back (TE-7b.2 follow-up). */
+int upconf_font_change(const char *oldname, long oldsize, const char *newname, long newsize, int font_spec);
 /* The rows of one section, in file order, duplicate keys included: upconf's
  * table keeps one value per key, a keymap needs every line. Reads the raw
  * text through the same line rules as upconf_parse (comments, CRLF, the

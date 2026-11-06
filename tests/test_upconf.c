@@ -468,6 +468,13 @@ static void theme_font_source(void)
     CHECK(upconf_font_source(&pnone, "default", &tnone) == 0);
     CHECK(upconf_font_source(&pnone, "default", 0) == 0);
     CHECK_STR(upconf_font_source(0, 0, &tfont), "ruby.font:12");
+    /* theme font removed, profile names none: the built-in font (2), not "keep" */
+    CHECK_INT(upconf_font_change("ruby.font", 12, "", 0, 0), 2);
+    CHECK_INT(upconf_font_change("", 0, "", 0, 0), 0);
+    CHECK_INT(upconf_font_change("ruby.font", 12, "", 0, 1), 0); /* the spec's font stays */
+    CHECK_INT(upconf_font_change("ruby.font", 12, "ruby.font", 12, 0), 0);
+    CHECK_INT(upconf_font_change("ruby.font", 12, "ruby.font", 8, 0), 1);
+    CHECK_INT(upconf_font_change("", 0, "topaz.font", 8, 0), 1);
     CHECK(upconf_font_source(&prof, 0, 0) == 0);
 }
 

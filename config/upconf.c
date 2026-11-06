@@ -582,6 +582,13 @@ const char *upconf_font_source(const upconf *prof, const char *p, const upconf *
     return prof && p ? upconf_str(prof, p, "font", 0) : 0;
 }
 
+int upconf_font_change(const char *oldname, long oldsize, const char *newname, long newsize, int font_spec)
+{
+    if (newname && *newname)
+        return (!oldname || strcmp(newname, oldname) || newsize != oldsize) ? 1 : 0;
+    return (!font_spec && oldname && *oldname) ? 2 : 0;
+}
+
 int upconf_profiles(const upconf *c, const char **names)
 {
     int i;

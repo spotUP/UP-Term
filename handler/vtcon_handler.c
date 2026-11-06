@@ -1667,9 +1667,7 @@ static void apply_profile(con *c)
      * no profile (no file, or the shipped sample whose sections are all comments) still gets the
      * SymbolsNerdFontMono default (R3C-UD6-NERD-QMARK: a fresh install drew the Nerd icons as '?') */
     upconf_font_fallback(c->conf, p, c->nerd_ttf, c->w.fallback, sizeof(c->w.fallback));
-    if (!c->conf)
-        return;
-    t = theme_table(c);
+    t = theme_table(c); /* a null c->conf (no memory) is no profile: the theme still applies, the rest stays built-in */
     if (!p) {
         apply_profile_font(c, 0, t);
         apply_profile_colours(c, 0, t); /* no profile in the file: the active theme still colours the window */
@@ -2748,10 +2746,13 @@ static void theme_menu_wait(con *c, ULONG us)
  * follows); oldname/oldsize are the font the window has. Unchanged or not there (DisplayBeep): the old one stays. */
 static void font_live(con *c, const char *oldname, WORD oldsize)
 {
-    if (c->w.fontname[0] && (strcmp(c->w.fontname, oldname) || c->w.fontsize != oldsize)) {
+    int how = upconf_font_change(oldname, oldsize, c->w.fontname, c->w.fontsize, c->font_spec);
+    if (how) {
         char want[40];
         WORD wsize = c->w.fontsize;
-        copy_str(want, c->w.fontname, sizeof(want));
+        copy_str(want, how == 2 ? "" : c->w.fontname, sizeof(want)); /* 2: no layer names a font: the built-in one */
+        if (how == 2)
+            wsize = 0;
         copy_str(c->w.fontname, oldname, sizeof(c->w.fontname));
         c->w.fontsize = oldsize;
         if (!vtwin_set_font(&c->w, want, wsize))
@@ -2771,7 +2772,7 @@ static void theme_font_live(con *c)
     char oldname[40];
     WORD oldsize = c->w.fontsize;
     upconf *t;
-    if (!c->conf || c->font_spec || !c->w.t)
+    if (c->font_spec || !c->w.t)
         return;
     copy_str(oldname, c->w.fontname, sizeof(oldname));
     c->w.fontname[0] = 0;
