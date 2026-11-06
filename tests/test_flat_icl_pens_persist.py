@@ -16,7 +16,7 @@ class FlatIclPensPersist(unittest.TestCase):
         self.assertNotIn("icl_cache_drain", SRC)
 
     def test_label_call_binds_identity(self):
-        self.assertIn("icl_tab_for(&icl_pc, w->WScreen, scr_epoch(w->WScreen))", body("static int icl_label("))
+        self.assertIn("icl_tab_for(&icl_pc, w->WScreen, flat_draw_epoch(&g_draw, w->WScreen))", body("static int icl_label("))
 
     def test_no_static_colormap_pointer(self):
         self.assertIsNone(re.search(r"^static\s+struct\s+ColorMap\s*\*", SRC, re.M), "a ColorMap pointer outlives a call")
