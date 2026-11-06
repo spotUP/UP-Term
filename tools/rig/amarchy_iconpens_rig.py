@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""s28 F15: do the 16 icon pens (32..47) hold the theme RGB, and what do the "Amarchy.IconPens" owner bits read, in each state:
+"""s28 F15: do the 16 icon pens (32..47) hold the theme RGB, and what do the "Amarchy.IconPens.2" owner bits read, in each state:
   1 icons APPLY done, flat not running   2 amarchy-flat running, switch ON   3 switch OFF, amarchy-flat still running
   4 amarchy-flat quit (Ctrl-C)           5 icons RESTORE (expect owners 0, record freed)
   UPTERM_RIG=<n> tools/rig/rig.py start --max --os 32 --purpose "<session>: F15 icon pens"; rig.py aga256

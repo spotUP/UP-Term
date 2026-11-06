@@ -222,4 +222,26 @@ void ip_screens_diff(const ip_snap *old_s, const ip_snap *new_s, ip_diff *out);
  * Returns the number of slots changed. */
 int ip_screens_apply(ip_screens *t, const ip_diff *d);
 
+/* ---- TE-10.4: the per-screen sync ----
+ * The public screen list snapshot is taken by the OS half; this is its pure part. */
+/* Appends one screen to a snapshot (names longer than 139 or an empty name, and a full snapshot, are refused). depth is
+ * ip_screen_depth's answer, ehb the screen's half-brite mode. 1 added, 0 refused. */
+int ip_snap_add(ip_snap *s, const char *name, const void *screen, unsigned flags, int depth, int ehb);
+
+/* Called by ip_screens_sync before slot `slot`'s ip_sync: the caller points the ops' context at that slot's screen (`e`, 0 when
+ * the screen is not in the snapshot: only slot 0, the Workbench), its holder and its theme. */
+typedef void (*ip_slot_ctx_fn)(void *ctx, int slot, const ip_snap_entry *e);
+
+/* One ip_sync per slot over the table `t` and the snapshot `snap` the table was just brought in line with (ip_screens_diff +
+ * ip_screens_apply). hold[i] is slot i's `hold` input. Slot 0 (the Workbench) is synced as ever, also with no screen (closed).
+ * Another slot is synced only when its screen is in the snapshot and PUBLIC: a private node is "not open yet", it gets no
+ * pen call, and a slot whose screen left the snapshot was already forgotten by ip_screens_apply (never a release). Slot 0's
+ * epoch (sh.epoch) goes up when its identity changed; the other slots' epochs are ip_screens_apply's. need[i] (optional, one
+ * int per slot) is 1 for a slot that answered IP_SYNC_NEED_THEME, else 0. Returns the number of slots that need a theme. */
+int ip_screens_sync(ip_screens *t, const ip_snap *snap, const ip_ops *o, const int *hold, ip_slot_ctx_fn select, void *ctx, int *need);
+/* The slots other than Workbench that hold pens now (the "screens=<n>" of the status line). */
+int ip_screens_held(const ip_screens *t);
+/* The epoch of the slot named `name` (no case); slot 0's is its ip_shared epoch; 0 when there is no such slot. */
+unsigned ip_screens_epoch(const ip_screens *t, const char *name);
+
 #endif

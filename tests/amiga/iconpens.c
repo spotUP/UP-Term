@@ -4,7 +4,7 @@
  *   HOLDER owners=<bits> held=<n> refs=<n> slot0=<n> first=<n> count=<n> screen=<hex>   or  HOLDER none (record freed)
  *   HAVE <16 digits>                    have[i] of the record
  *   PEN <n> <rrggbb>                    GetRGB32 of pens 32..47 (the stored icon pens; depth >= 6)
- * The record layout is amarchy/iconpen_dos.c ipd_rec (private there): semaphore, 20 name bytes, ip_shared. */
+ * The record layout is ipd_rec of amarchy/iconpen_dos.h (the real struct): semaphore, 20 name bytes, the per-screen table (slot 0 = Workbench). */
 #include <stdio.h>
 #include <exec/semaphores.h>
 #include <intuition/intuition.h>
@@ -13,20 +13,18 @@
 #include <proto/exec.h>
 #include <proto/intuition.h>
 #include <proto/graphics.h>
-#include "../../amarchy/iconpen_core.h"
+#include "../../amarchy/iconpen_dos.h"
 
 long __stack = 8192;
 const char iconpens_stack_cookie[] = "$STACK: 8192";
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 
-typedef struct rec { struct SignalSemaphore ss; char name[20]; ip_shared s; } rec;
-
 int main(void)
 {
     struct Screen *sc;
     ip_shared s;
-    rec *r;
+    ipd_rec *r;
     int have = 0, i, depth;
     ULONG rgb[3];
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
@@ -34,8 +32,8 @@ int main(void)
     if (!IntuitionBase || !GfxBase)
         return 20;
     Forbid();
-    r = (rec *)FindSemaphore((STRPTR)"Amarchy.IconPens");
-    if (r) { s = r->s; have = 1; }
+    r = (ipd_rec *)FindSemaphore((STRPTR)IPD_SEM_NAME);
+    if (r) { s = r->t.slot[0].sh; have = 1; }
     Permit();
     sc = LockPubScreen((STRPTR)"Workbench");
     if (!sc) { printf("no Workbench\n"); return 10; }

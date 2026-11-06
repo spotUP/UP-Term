@@ -1,5 +1,5 @@
 /* iconpen_dos: the OS half of the shared icon pen holder (plan 2026-11-01-amarchy-filled-icon-set.md F14, H1).
- * One public record ("Amarchy.IconPens" semaphore, ip_shared) lives in memory for as long as an owner wants the 16 icon pens.
+ * One public record ("Amarchy.IconPens.2" semaphore, ip_shared) lives in memory for as long as an owner wants the 16 icon pens.
  * ObtainPen pens belong to the screen's colour map, not to a task, so the record outlives the amarchy-icons process that
  * created it; amarchy-flat's 1 s tick re-obtains them when the Workbench screen is reopened. The decisions are
  * iconpen_core.c (host-tested). The program defines struct IntuitionBase *IntuitionBase and struct GfxBase *GfxBase and opens
@@ -9,10 +9,36 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <exec/semaphores.h>
 #include "iconpen_core.h"
 #include "../handler/pubscr.h"
 
-#define IPD_SEM_NAME "Amarchy.IconPens"
+/* The name carries the record layout: ".2" is the per-screen table (TE-10.4). A binary still running from before an update looks
+ * for the old name and never reads this layout. 18 characters, fits ipd_rec.name[20]. */
+#define IPD_SEM_NAME "Amarchy.IconPens.2"
+
+/* The public record. Public so tests/amiga/iconpens.c reads the real layout; nobody else touches it. Everything big lives here
+ * (AllocVec in find_rec), never on a stack. */
+typedef struct ipd_stheme {      /* the theme of one slot, read from file with the list unlocked; valid for one sync (have) */
+    gtheme t;
+    int flat;
+    unsigned mask;
+    int have;
+    char name[GT_NAME];          /* the theme the screen rules give this slot's screen */
+} ipd_stheme;
+
+typedef struct ipd_rec {
+    struct SignalSemaphore ss;   /* first: AddSemaphore's node is the allocation's start */
+    char name[20];
+    ip_screens t;                /* slot 0 = Workbench; t.slot[0].sh is the ip_shared of the single-screen days */
+    ip_snap snap;                /* the public screen list as the last sync saw it */
+    ip_snap cur;                 /* work: the list now */
+    ip_diff diff;                /* work: snap -> cur */
+    gt_screen_rules rules;       /* ENV:Amarchy/screen-themes + the screen-themes key */
+    char main_theme[GT_NAME];    /* the main theme name (AM_GTHEME), read with the rules */
+    int rules_dirty;             /* reread rules and main theme at the next sync (starts 1; ipd_rules_changed) */
+    ipd_stheme st[IP_SCREENS];
+} ipd_rec;
 
 struct List;
 struct Screen;
@@ -41,11 +67,18 @@ int ipd_owner(unsigned owner, int on);
 void ipd_icon_rgb(uint8_t rgb[16][3]);
 /* S32-STALE-HELD-PENS: the screen epoch, changed by every sync that obtained or released the icon pens (Workbench closed, reopened, mode change); 0 without a record. */
 unsigned ipd_epoch(void);
+/* TE-10.4: the epoch of the pens on the public screen `name` (no case): "Workbench" gives ipd_epoch(); 0 for a screen with no slot or without a record. */
+unsigned ipd_epoch_of(const char *name);
+/* TE-10.4: reads ENV:Amarchy/screen-themes and the screen-themes key into *out (default "workbench" and no rules when the file is
+ * missing). DOS I/O: never with the public screen list locked. */
+void ipd_screen_rules_load(gt_screen_rules *out);
+/* TE-10.4: the rules (or the main theme) changed: the next sync rereads them. Does nothing without a record. */
+void ipd_rules_changed(void);
 /* Re-sync without changing owners (screen reopened, theme changed). */
 void ipd_resync(void);
 /* A theme switch: rewrite the held pens 32..47 with SetRGB32 from the new theme (ip_recolour). Does nothing when no record exists. */
 void ipd_recolour(void);
-/* "pens-held N refs=M" from the record; no record reads "pens-held 0 refs=0". Needs no library. Returns the length. */
+/* "pens-held N refs=M screens=K" (K = other screens holding pens) from the record; no record reads "pens-held 0 refs=0 screens=0". Needs no library. Returns the length. */
 int ipd_status_line(char *out, size_t cap);
 
 #endif

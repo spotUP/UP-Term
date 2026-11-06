@@ -24,17 +24,12 @@
 extern struct IntuitionBase *IntuitionBase;
 extern struct GfxBase *GfxBase;
 
-typedef struct ipd_rec {
-    struct SignalSemaphore ss;   /* first: AddSemaphore's node is the allocation's start */
-    char name[20];
-    ip_shared s;
-} ipd_rec;
-
 /* cur: the Workbench screen's colour map now (0 = Workbench closed); vp its viewport; h the holder, sc the screen now: a held pen
  * is released only while h->screen is sc (else its screen is gone and the pens went with it; ip_holder_verify forgets the pens
  * of a screen reopened at the same address before any release) */
 /* t/flat/mask: the theme, read from file before the public screen list is locked (FLAT-BOOT-FREEZE, see pens_theme_cached). */
 typedef struct pen_ctx {
+    ipd_rec *r;
     struct ColorMap *cur; struct ViewPort *vp; const ip_holder *h; const void *sc;
     gtheme t; int flat; unsigned mask; int have;
 } pen_ctx;
@@ -119,18 +114,54 @@ struct Screen *ipd_lock_wb_screen(void)
 }
 
 /* The theme and desk prefs, read from file (ENV:, ENVARC:, the theme file). Never call it with the public screen list locked. */
-static void pens_theme(void *ctx, gtheme *t, int *flat, unsigned *mask)
+static void pens_theme_named(const char *name, gtheme *t, int *flat, unsigned *mask)
 {
     am_prefs ap;
     struct Process *me = (struct Process *)FindTask(0);
     APTR oldwin = me->pr_WindowPtr;
-    (void)ctx;
     me->pr_WindowPtr = (APTR)-1;        /* FLAT-BOOT-FREEZE: UP-Term: not assigned yet at boot is an answer, not a requester */
     amconf_load(&ap);
-    gt_load(pen_theme_read, 0, ap.val[AM_GTHEME][0] ? ap.val[AM_GTHEME] : GT_DEFAULT, t);
+    gt_load(pen_theme_read, 0, name && *name ? name : ap.val[AM_GTHEME][0] ? ap.val[AM_GTHEME] : GT_DEFAULT, t);
     me->pr_WindowPtr = oldwin;
     *flat = amconf_desk_flat_pens(&ap);
     *mask = amconf_desk_mask(&ap);
+}
+
+/* name: the theme of a screen rule; 0 = the main theme (AM_GTHEME) */
+static void pens_theme(void *ctx, gtheme *t, int *flat, unsigned *mask)
+{
+    (void)ctx;
+    pens_theme_named(0, t, flat, mask);
+}
+
+/* TE-10.4: the screen rules and the main theme name, from file. The caller has the public screen list unlocked. */
+static void rules_read(gt_screen_rules *out, char *main_theme)
+{
+    am_prefs ap;
+    struct Process *me = (struct Process *)FindTask(0);
+    APTR oldwin = me->pr_WindowPtr;
+    long len = 0;
+    char *buf = (char *)AllocVec(8192, MEMF_PUBLIC);
+    me->pr_WindowPtr = (APTR)-1;        /* a volume not there is an answer, not a requester */
+    if (buf) {
+        len = pen_theme_read(0, "ENV:Amarchy/screen-themes", buf, 8192);
+        if (len < 0)
+            len = 0;
+    }
+    gt_screen_rules_parse(buf ? buf : "", len, out);
+    amconf_load(&ap);
+    me->pr_WindowPtr = oldwin;
+    if (buf)
+        FreeVec(buf);
+    out->enabled = amconf_flat_index(&ap, AM_SCREENTHEMES);   /* "on" (the default) or off */
+    strncpy(main_theme, ap.val[AM_GTHEME][0] ? ap.val[AM_GTHEME] : GT_DEFAULT, GT_NAME - 1);
+    main_theme[GT_NAME - 1] = 0;
+}
+
+void ipd_screen_rules_load(gt_screen_rules *out)
+{
+    char main_theme[GT_NAME];
+    rules_read(out, main_theme);
 }
 
 /* FLAT-BOOT-FREEZE: the theme op ip_sync / ip_recolour call with the public screen list locked. It hands back the theme
@@ -159,16 +190,52 @@ void ipd_icon_rgb(uint8_t rgb[IP_PENS][3])
     ip_colours(&t, ip_ground(&t, flat, mask), rgb);
 }
 
-/* Bring the held pens in line with the owners and the Workbench screen as it is now. The public screen list stays locked for
- * the whole sync, so the screen cannot close under the colour map; the theme is read only when pens are to be obtained (ip_sync NEED_THEME), with the list unlocked. The caller holds r->ss. */
+/* The public screen list as a snapshot (the caller holds its lock): name, screen, flags, depth, half-brite. */
+static void take_snap(ip_snap *out, struct List *pl)
+{
+    struct Node *nd;
+    out->count = 0;
+    for (nd = pl ? pl->lh_Head : 0; nd && nd->ln_Succ; nd = nd->ln_Succ) {
+        struct PubScreenNode *psn = (struct PubScreenNode *)nd;
+        struct Screen *sc = psn->psn_Screen;
+        int ehb = sc && (sc->ViewPort.Modes & EXTRA_HALFBRITE) != 0;
+        ip_snap_add(out, nd->ln_Name ? nd->ln_Name : "", sc, (unsigned)psn->psn_Flags,
+                    sc ? ip_screen_depth(sc->BitMap.Depth, ehb) : 0, ehb);
+    }
+}
+
+/* ip_screens_sync's select: point the ops' context at slot i's screen, holder and theme */
+static void pens_select(void *ctx, int slot, const ip_snap_entry *e)
+{
+    pen_ctx *c = (pen_ctx *)ctx;
+    struct Screen *sc = e ? (struct Screen *)e->screen : 0;
+    const ipd_stheme *st = &c->r->st[slot];
+    c->cur = sc ? sc->ViewPort.ColorMap : 0;
+    c->vp = sc ? &sc->ViewPort : 0;
+    c->h = &c->r->t.slot[slot].sh.h;
+    c->sc = sc;
+    c->t = st->t;
+    c->flat = st->flat;
+    c->mask = st->mask;
+    c->have = st->have;
+}
+
+/* Passes of one sync: the first, plus one per round of theme reads. A pass that finds slots needing a theme reads ALL of them
+ * with the list unlocked, so the next pass finishes unless the screen list changed meanwhile; three passes bound a list that
+ * changes on every pass (the loop is a for over a constant). A slot left unsynced is picked up by the next 1 s tick: the
+ * holder, not the diff, says an obtain is due. */
+#define IPD_PASSES 3
+
+/* Bring the held pens in line with the owners and every public screen the rules theme, as they are now. Under ONE public screen
+ * list lock: snapshot, diff, apply, then ip_sync per slot (ip_screens_sync). The theme files and the rules are read only with the
+ * list unlocked. A tick where nothing changed reads nothing from DOS. The caller holds r->ss (lock order: the holder semaphore
+ * first, the list lock second). No LockPubScreen, no Wait/Delay under the list lock. */
 static void pens_sync(ipd_rec *r)
 {
     pen_ctx c;
     ip_ops o;
-    struct List *pl;
-    struct Screen *sc;
-    int depth = 0, pass, act;
-    int hold = ip_shared_hold(&r->s, GfxBase && GfxBase->LibNode.lib_Version >= 39);
+    int hold[IP_SCREENS], need[IP_SCREENS], pass, i, owner;
+    int v39 = GfxBase && GfxBase->LibNode.lib_Version >= 39;
     o.obtain = pen_obtain;
     o.release = pen_release;
     o.is_free = pen_is_free;
@@ -176,28 +243,36 @@ static void pens_sync(ipd_rec *r)
     o.set_rgb = pen_set_rgb;
     o.theme_ready = pens_theme_ready;
     o.ctx = &c;
-    c.have = 0;
-    for (pass = 0; pass < 2; pass++) {
-        pl = LockPubScreenList();
-        sc = ipd_wb_screen_in(pl);
-        depth = 0;
-        if (sc)
-            depth = ip_screen_depth(sc->BitMap.Depth, (sc->ViewPort.Modes & EXTRA_HALFBRITE) != 0);
-        c.cur = sc ? sc->ViewPort.ColorMap : 0;
-        c.vp = sc ? &sc->ViewPort : 0;
-        c.h = &r->s.h;
-        c.sc = sc;
-        act = ip_sync(&r->s.h, &o, hold, sc, depth, sc ? sc->BitMap.Depth : 0);
-        if (act == IP_SYNC_NEED_THEME) {    /* pens must be obtained: read the theme with the list unlocked, then once more */
-            UnlockPubScreenList();
-            pens_theme(0, &c.t, &c.flat, &c.mask);
-            c.have = 1;
-            continue;
+    memset(&c, 0, sizeof c);
+    c.r = r;
+    if (r->rules_dirty) {                   /* cleared first: a change during the read marks it again */
+        r->rules_dirty = 0;
+        rules_read(&r->rules, r->main_theme);
+    }
+    for (i = 0; i < IP_SCREENS; i++)
+        r->st[i].have = 0;
+    for (pass = 0; pass < IPD_PASSES; pass++) {
+        struct List *pl = LockPubScreenList();
+        int n;
+        take_snap(&r->cur, pl);
+        ip_screens_diff(&r->snap, &r->cur, &r->diff);
+        ip_screens_apply(&r->t, &r->diff);
+        r->snap = r->cur;
+        owner = ip_shared_hold(&r->t.slot[0].sh, v39);
+        for (i = 0; i < r->t.count; i++) {
+            int takeover = 0;
+            hold[i] = owner && gt_screen_theme_of(&r->rules, i == 0 ? "Workbench" : r->t.slot[i].name, r->main_theme,
+                                                  r->st[i].name, GT_NAME, &takeover);
         }
-        if (r->s.h.new_identity)
-            r->s.epoch++;                   /* S32-STALE-HELD-PENS: a new screen (or none): pens other clients hold on the old one are gone; S32-PEN-EPOCH-LEAK: not on a release or recheck on the same screen */
+        n = ip_screens_sync(&r->t, &r->snap, &o, hold, pens_select, &c, need);
         UnlockPubScreenList();
-        break;
+        if (n == 0)
+            break;
+        for (i = 0; i < r->t.count; i++)    /* pens must be obtained: read those themes with the list unlocked */
+            if (need[i]) {
+                pens_theme_named(i == 0 ? 0 : r->st[i].name, &r->st[i].t, &r->st[i].flat, &r->st[i].mask);
+                r->st[i].have = 1;
+            }
     }
 }
 
@@ -214,7 +289,8 @@ static ipd_rec *find_rec(int create)
             for (i = 0; IPD_SEM_NAME[i] && i < (int)sizeof r->name - 1; i++)
                 r->name[i] = IPD_SEM_NAME[i];
             r->ss.ss_Link.ln_Name = r->name;
-            ip_shared_init(&r->s);
+            ip_screens_init(&r->t);
+            r->rules_dirty = 1;
             AddSemaphore(&r->ss);
         }
     }
@@ -229,7 +305,7 @@ int ipd_owner(unsigned owner, int on)
     if (!r)
         return 0;
     ObtainSemaphore(&r->ss);
-    refs = ip_shared_set(&r->s, owner, on);
+    refs = ip_shared_set(&r->t.slot[0].sh, owner, on);
     pens_sync(r);
     if (refs == 0) {                    /* last owner gone: the record goes too (pens_sync just released the pens) */
         int ok = 0;
@@ -256,9 +332,28 @@ unsigned ipd_epoch(void)
     Forbid();
     r = (ipd_rec *)FindSemaphore((STRPTR)IPD_SEM_NAME);
     if (r)
-        e = r->s.epoch;
+        e = r->t.slot[0].sh.epoch;
     Permit();
     return e;
+}
+
+unsigned ipd_epoch_of(const char *name)
+{
+    unsigned e = 0;
+    ipd_rec *r;
+    Forbid();
+    r = (ipd_rec *)FindSemaphore((STRPTR)IPD_SEM_NAME);
+    if (r)
+        e = ip_screens_epoch(&r->t, name);
+    Permit();
+    return e;
+}
+
+void ipd_rules_changed(void)
+{
+    ipd_rec *r = find_rec(0);
+    if (r)
+        r->rules_dirty = 1;
 }
 
 void ipd_resync(void)
@@ -283,6 +378,7 @@ void ipd_recolour(void)
     if (!r)
         return;
     ObtainSemaphore(&r->ss);
+    r->rules_dirty = 1;                 /* the main theme may have changed: the rules' answers with it */
     o.obtain = pen_obtain;
     o.release = pen_release;
     o.is_free = pen_is_free;
@@ -293,12 +389,12 @@ void ipd_recolour(void)
     pens_theme(0, &c.t, &c.flat, &c.mask);
     pl = LockPubScreenList();
     sc = ipd_wb_screen_in(pl);
-    if (sc && sc == r->s.h.screen) {
+    if (sc && sc == r->t.slot[0].sh.h.screen) {
         c.cur = sc->ViewPort.ColorMap;
         c.vp = &sc->ViewPort;
-        c.h = &r->s.h;
+        c.h = &r->t.slot[0].sh.h;
         c.sc = sc;
-        ip_recolour(&r->s.h, &o);
+        ip_recolour(&r->t.slot[0].sh.h, &o);
     }
     UnlockPubScreenList();
     ReleaseSemaphore(&r->ss);
@@ -308,17 +404,19 @@ int ipd_status_line(char *out, size_t cap)
 {
     ip_shared s;
     ipd_rec *r;
-    int n, w;
+    int n, w, screens = 0;
     ip_shared_init(&s);
     Forbid();
     r = (ipd_rec *)FindSemaphore((STRPTR)IPD_SEM_NAME);
-    if (r)
-        s = r->s;
+    if (r) {
+        s = r->t.slot[0].sh;
+        screens = ip_screens_held(&r->t);
+    }
     Permit();
     n = ip_status_line(&s.h, out, cap);
     if (n <= 0)
         return 0;
-    w = snprintf(out + n, cap - (size_t)n, " refs=%d", ip_shared_refs(&s));
+    w = snprintf(out + n, cap - (size_t)n, " refs=%d screens=%d", ip_shared_refs(&s), screens);
     if (w <= 0 || (size_t)(n + w) >= cap)
         return 0;
     return n + w;
