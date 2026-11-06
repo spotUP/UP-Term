@@ -251,15 +251,19 @@ int gt_dos_select(const char *name, char *why, int cap)
 {
     am_prefs ap;
     int failed = 0, r;
+    char prev[GT_NAME];
     if (!gt_name_ok(name)) {
         if (why)
             gt_save_text(GT_SAVE_NAME, 0, 0, why, cap);
         return 0;
     }
     amconf_load(&ap);
+    strncpy(prev, ap.val[AM_GTHEME], GT_NAME - 1);
+    prev[GT_NAME - 1] = 0;
     strcpy(ap.val[AM_GTHEME], name);
     r = amconf_save(&ap, 1, &failed);
     if (r == PREFS_INSTALL_OK) {
+        desk_dos_prev_theme(prev);      /* FP1-REVERT-THEME-LINE: a Revert of this pick writes it back */
         gt_dos_apply_saved(name);
         return 1;
     }

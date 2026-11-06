@@ -230,6 +230,13 @@ int desk_restore(unsigned mask, const char **list, int cap);
 /* the pending marker: written before the first write, removed after the last. Its text names the targets, so a
  * crashed run restores what it had touched even when the switches changed since. Returns the length. */
 long desk_marker_make(unsigned mask, char *out, long cap);
+/* FP1-REVERT-THEME-LINE: a Revert puts the previous theme back completely. The snapshot records the name of the theme in force before the
+ * pick (file text "revert-theme 1\n<name>\n"); desk_revert_theme_parse reads it back (1 + name, or 0 for no name: an older build's snapshot, which
+ * keeps the old behaviour). desk_revert_role_pens: the role pens 4-7 of the previous theme (desk_live_follow's gate and depth rules; returns the
+ * count and fills pens/rgb), or -1 = "use the stock baseline" (no previous theme, or flat and the palette part both off). */
+long desk_revert_theme_make(const char *name, char *out, long cap);
+int desk_revert_theme_parse(const char *buf, long len, char *name, int cap);
+int desk_revert_role_pens(const gtheme *prev, int flat, int palette, int depth, int pens[4], uc_u32 rgb[4]);
 /* FP-3 (R1.9): the files whose T:amarchy-revert snapshot copies the on-disk marker ENVARC:Amarchy/pending-revert keeps, so a reboot (T: is gone) can still
  * revert an unconfirmed apply: the desk_snapshot list of mask, plus ENV:Sys/Workbench.prefs when wbprefs (the border/gauge write). Returns the count. */
 int desk_pending_files(unsigned mask, int wbprefs, const char **list, int cap);
