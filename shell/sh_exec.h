@@ -291,6 +291,7 @@ typedef struct sh_shell {
     int run_banner;        /* the background job being added is AmigaDOS Run's: add_job prints no `[n] pid` line */
     int amiscr_reported;   /* the running script already printed its "X failed returncode" line */
     int amiscr_load_rc;    /* rc when the .key binding refuses the call (20, or 10 for a missing /A) */
+    int amiscr_q1;         /* execute: the first script argument was quoted, so a "?" there is a plain argument, not the template request (S7c-7 b) */
     const char *cmd_q;     /* the running builtin's argv quoted flags (sh_list.q), for exec; 0 outside a builtin */
     long exit_status;
     int breaking;          /* break / continue levels pending */

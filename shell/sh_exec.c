@@ -7383,6 +7383,7 @@ static long b_execute(sh_shell *sh, int argc, char **argv, const sh_io *io)
         err2(sh, io, "execute", "required argument missing");
         return 20;
     }
+    sh->amiscr_q1 = sh->cmd_q && argc > 2 && sh->cmd_q[2];
     return execute_file(sh, argc - 1, argv + 1, io);
 }
 
@@ -8396,6 +8397,7 @@ static long start_program(sh_shell *sh, char **argv, const char *quoted, const s
         if (!find_command_file(sh, argv[0], file, sizeof(file)))
             return -1;
         argv[0] = file;
+        sh->amiscr_q1 = 0;
         st = execute_file(sh, argc, argv, io);
         argv[0] = saved;
     }

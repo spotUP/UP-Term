@@ -830,21 +830,23 @@ static char *template_load(sh_shell *sh, const char *text, int argc, char **argv
             isdir[li] = 1;
         p += len + (e ? 1 : 0);
     }
-    if (t.have && argc == 2 && !strcmp(argv[1], "?")) {
+    if (t.have && argc == 2 && !strcmp(argv[1], "?") && !sh->amiscr_q1) {
         /* `Execute file ?` on 3.2 (S7b-6 R6): the template is printed, one reply line is read from the input and
          * bound like command-line arguments. No reply (input ended) binds nothing. */
         char line[512];
         long n;
         line_toks rt;
-        int bad;
+        int bad, eof;
         memset(&rt, 0, sizeof(rt));
         say_io(sh, io->out, t.keytxt ? t.keytxt : "");
         say_io(sh, io->out, ": ");
         n = sh->os.read_line(sh->os.data, io->in, line, (long)sizeof(line));
+        eof = n <= 0;
         while (n > 0 && (line[n - 1] == '\n' || line[n - 1] == '\r'))
             n--;
         line[n < 0 ? 0 : n] = 0;
-        bad = lex_line(sh, line, &rt) || tmpl_bind(sh, &t, rt.v, rt.n, io);
+        /* Input ended before any reply (NIL:): Execute runs with nothing bound and does not fail /A (S7c-7 a). A blank line is a reply. */
+        bad = eof ? 0 : lex_line(sh, line, &rt) || tmpl_bind(sh, &t, rt.v, rt.n, io);
         toks_free(&rt);
         if (bad) {
             free(isdir);
