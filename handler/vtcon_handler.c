@@ -284,6 +284,7 @@ typedef struct con {
     struct Window *foreign;      /* WINDOW 0xaddr: not ours to open or close */
     struct MsgPort *comp_port;   /* Tab completion and command lookups answer here */
     struct complete_req *comp;   /* Tab */
+    struct complete_path *path;  /* s61: the opener's path, copied at the first Open (0: C: alone) */
     struct complete_req *check;  /* is the first word a command */
     struct complete_req *hist;   /* history file: load at open, append per line */
     int hist_busy;
@@ -2320,6 +2321,7 @@ static void prefs_launch(void)
 #define WORK_SPLITS 16 /* the split file's write (splits_write) */
 static int ensure_worker(con *c, int want);
 static struct Process *opener(con *c);
+static int comp_start(con *c, struct complete_req *q);
 static void splits_write(con *c, char *buf, int len);
 
 /* Settings > Font...: the ASL font requester, in the completion worker (it
@@ -2334,7 +2336,7 @@ static void font_ask(con *c)
     c->comp->mode = COMPLETE_FONT;
     c->comp->kingcon = 0;
     c->comp->screen = c->w.win->WScreen;
-    if (complete_start(c->comp, c->comp_port, opener(c)))
+    if (comp_start(c, c->comp))
         c->comp_busy = 1;
 }
 
@@ -2485,7 +2487,7 @@ static void profile_save(con *c, int style)
     c->comp->mode = CONFIG_SAVE;
     c->comp->hlcat = f.hlcat;
     c->comp->kingcon = 0;
-    if (complete_start(c->comp, c->comp_port, opener(c)))
+    if (comp_start(c, c->comp))
         c->comp_busy = 1;
     else
         comp_data_done(c);
@@ -2551,7 +2553,7 @@ static int theme_req(con *c, int mode, const char *name)
     q->mode = mode;
     q->kingcon = 0;
     q->screen = c->w.win->WScreen;
-    if (complete_start(q, c->comp_port, opener(c))) {
+    if (comp_start(c, q)) {
         c->comp_busy = 1;
         return 1;
     }
@@ -4156,6 +4158,14 @@ static struct Process *opener(con *c)
     return (struct Process *)t;
 }
 
+/* a lookup's start: the opener's current directory, and the path copied
+ * at the window's first Open (never the opener's own list: it may end) */
+static int comp_start(con *c, struct complete_req *q)
+{
+    q->path = c->path;
+    return complete_start(q, c->comp_port, opener(c));
+}
+
 static void forget_words(con *c)
 {
     int k;
@@ -4318,7 +4328,7 @@ static void default_completion(con *c)
     }
     copy_latin1(le, a, le->pos, c->comp->word, COMPLETE_MAX);
     c->comp_edits = c->edits;
-    if (complete_start(c->comp, c->comp_port, opener(c)))
+    if (comp_start(c, c->comp))
         c->comp_busy = 1;
 }
 
@@ -4386,7 +4396,7 @@ static void check_command(con *c)
     }
     strcpy(c->checked, (const char *)w);
     c->check->mode = CHECK_COMMAND;
-    if (complete_start(c->check, c->comp_port, opener(c)))
+    if (comp_start(c, c->check))
         c->check_busy = 1;
 }
 
@@ -4445,7 +4455,7 @@ static void ghost_check(con *c)
     c->ghost->ghost = 1;
     c->ghost->extra_len = 0;
     c->ghost->screen = 0;
-    if (complete_start(c->ghost, c->comp_port, opener(c)))
+    if (comp_start(c, c->ghost))
         c->ghost_busy = 1;
 }
 
@@ -4526,7 +4536,7 @@ static void history_next(con *c)
     c->hist_queue_len -= i;
     c->hist->mode = HISTORY_APPEND;
     c->hist->hist_file = c->hist_file ? c->hist_file : "";
-    if (complete_start(c->hist, c->comp_port, opener(c)))
+    if (comp_start(c, c->hist))
         c->hist_busy = 1;
 }
 
@@ -4553,7 +4563,7 @@ static void history_load(con *c)
     c->hist->data_max = c->hist->keep * 2 * 256;
     c->hist->mode = HISTORY_LOAD;
     c->hist->hist_file = c->hist_file ? c->hist_file : "";
-    if (complete_start(c->hist, c->comp_port, opener(c)))
+    if (comp_start(c, c->hist))
         c->hist_busy = 1;
 }
 
@@ -4600,7 +4610,7 @@ static void partial_answer(con *c, struct complete_req *q)
     c->partial_edits = c->edits;
     c->partial_gen = q->warm_gen;
     c->partial_now = complete_warm_wait(FindTask(0), 1UL << c->comp_port->mp_SigBit, q->warm_gen,
-                                        opener(c));
+                                        c->path);
 }
 
 /* the warm-up ended (its signal is the completion port's): the Tab again,
@@ -5536,7 +5546,7 @@ static void kc_tab(con *c, int mode)
         c->comp->extra_len = n;
     }
     c->comp_edits = c->edits;
-    if (complete_start(c->comp, c->comp_port, opener(c)))
+    if (comp_start(c, c->comp))
         c->comp_busy = 1;
 }
 
@@ -7355,7 +7365,7 @@ static void splits_write(con *c, char *buf, int len)
     q->data = buf;
     q->data_len = buf ? len : 0;
     q->data_max = buf ? len + 1 : 0;
-    if (complete_start(q, c->comp_port, opener(c)))
+    if (comp_start(c, q))
         c->splits_busy = 1;
     else {
         if (buf)
@@ -8281,8 +8291,23 @@ static void packet(con *c, struct DosPacket *p)
         fh->fh_Port = (struct MsgPort *)DOSTRUE; /* interactive */
         fh->fh_Arg1 = (LONG)c;
         c->opens++;
-        if (!c->ever_opened)
-            complete_warm(opener(c)); /* W22: the command cache read before the first Tab */
+        if (!c->ever_opened) {
+            /* s61: the opener's path copied while it waits for this reply
+             * (it may end right after: echo hi >XCON:.../CLOSE), then the
+             * W22 command cache read before the first Tab. The copy's
+             * DupLocks are the worker's: no DOS call here, DOS holds the
+             * DosList while it waits. The worker signals on every way out,
+             * and no worker means no wait. */
+            BYTE s = AllocSignal(-1);
+            if (s >= 0) {
+                SetSignal(0, 1UL << s);
+                if (complete_open(opener(c), FindTask(0), 1UL << s, &c->path))
+                    Wait(1UL << s);
+                FreeSignal(s);
+            }
+            if (!c->path)
+                complete_warm(0); /* no copy: C: alone */
+        }
         c->ever_opened = 1;
         reply(p, DOSTRUE, 0);
         return;
@@ -9155,6 +9180,8 @@ static LONG handler_main(void)
     if (c->hist_file_next)
         FreeVec(c->hist_file_next);
     complete_warm_forget(FindTask(0)); /* its signal is the port's */
+    complete_path_end(c->path); /* every lookup has ended: a warm-up may still hold it */
+    c->path = 0;
     if (c->comp_port)
         DeleteMsgPort(c->comp_port);
     /* a WAIT_CHAR still held is answered, and its timer stopped, before

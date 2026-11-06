@@ -48,6 +48,25 @@ typedef struct cc_dirs_os {
 /* Walk them; returns what the visit that ended the walk returned, or 0. */
 int cc_walk_command_dirs(const cc_dirs_os *os, void *u);
 
+/* A Shell's command path copied into locks of our own (s61). The path
+ * list (CLI cli_CommandDir) and its locks belong to the Shell, which frees
+ * and UnLocks them when it ends; the handler's workers outlive the process
+ * that opened the window (echo hi >XCON:... ends at once), so they never
+ * read that list after the copy: cc_path_copy runs while the Shell is
+ * blocked (inside its Open), reads every node then, and the walks use only
+ * the copy. next() gives the Shell's next lock (0: no more), dup() a lock
+ * of our own for it (0: failed, skipped); drop() gives each copy back. */
+#define CC_PATH_MAX 32
+typedef struct cc_path {
+    int n;
+    long lock[CC_PATH_MAX];
+} cc_path;
+
+int cc_path_copy(cc_path *p, long (*next)(void *u), long (*dup)(long lock), void *u);
+void cc_path_free(cc_path *p, void (*drop)(long lock));
+/* the walk's p_next over the copy: lock *at, then the next; 0: no more */
+long cc_path_next(const cc_path *p, int *at);
+
 /* ---- W22: the command-name cache ------------------------------------------
  *
  * What a command directory holds (the names cc_is_command takes), kept per

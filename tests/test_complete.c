@@ -82,6 +82,80 @@ static const char *visits(const fake_dos *f)
     return b;
 }
 
+/* s61: a Shell's path as its CLI keeps it, {next, lock} nodes the Shell
+ * frees and UnLocks when it ends (echo hi >XCON:... ends as soon as its
+ * Open returns). Reads of a freed node and live locks are counted. */
+typedef struct fake_shell {
+    int next[8];      /* node index + 1, 0: the last */
+    long lock[8];     /* the Shell's lock (dir 1..9 in % 100) */
+    int at, ended;    /* the walk's node; the Shell has ended */
+    int late_reads;   /* nodes read after the Shell ended */
+    int dups;         /* our copies not yet dropped */
+} fake_shell;
+static fake_shell *sh;
+static long sh_next(void *u)
+{
+    fake_shell *s = (fake_shell *)u;
+    long l;
+    if (!s->at)
+        return 0;
+    if (s->ended)
+        s->late_reads++;
+    l = s->lock[s->at - 1];
+    s->at = s->next[s->at - 1];
+    return l;
+}
+static long sh_dup(long l) { sh->dups++; return l + 5000; } /* same dir, our own lock */
+static void sh_drop(long l) { (void)l; sh->dups--; }
+static const cc_path *sh_copy;
+static int sh_copy_at;
+static long sh_p_next(void *u) { (void)u; return cc_path_next(sh_copy, &sh_copy_at); }
+static int sh_visit_own(void *u, long lock)
+{
+    if (((fake_dos *)u)->c_ended) /* past C:, the path */
+        CHECK(lock > 5000);       /* never a lock the ended Shell UnLocked */
+    return fk_visit(u, lock);
+}
+static const cc_dirs_os copy_os = { fk_c_next, fk_c_end, sh_p_next, fk_same, fk_drop, sh_visit_own };
+
+/* s61 (MuForce: LONG READ from 00000040, "UP-Term command cache"): the
+ * warm-up walked the opener's path list after the opener had ended. The
+ * path is copied while the opener waits in its Open; the walks read only
+ * the copy and its locks, never the Shell's list or locks. */
+static void path_walk_reads_only_its_copy_after_the_shell_ends(void)
+{
+    static const int c_dirs[] = { 1, 0 }, none[] = { 0 };
+    fake_shell s;
+    cc_path p;
+    fake_dos f;
+    memset(&s, 0, sizeof(s));
+    sh = &s;
+    s.lock[0] = 103; s.next[0] = 2;  /* dir 3 */
+    s.lock[1] = 204; s.next[1] = 3;  /* dir 4 */
+    s.lock[2] = 301; s.next[2] = 0;  /* dir 1, C:'s again */
+    s.at = 1;
+    CHECK_INT(cc_path_copy(&p, sh_next, sh_dup, &s), 3);
+    CHECK_INT(s.dups, 3);
+    s.ended = 1;                     /* the Shell ends: nodes freed, locks UnLocked */
+    s.at = 1;
+    memset(s.lock, 0, sizeof(s.lock));
+
+    fk = &f;
+    memset(&f, 0, sizeof(f));
+    f.c_dirs = c_dirs;
+    f.p_dirs = none;
+    sh_copy = &p;
+    sh_copy_at = 0;
+    CHECK_INT(cc_walk_command_dirs(&copy_os, &f), 0);
+    CHECK_STR(visits(&f), "1 3 4");  /* C:, then the copied path */
+    CHECK_INT(s.late_reads, 0);
+    cc_path_free(&p, sh_drop);
+    CHECK_INT(s.dups, 0);            /* every copy given back */
+    CHECK_INT(p.n, 0);
+    sh_copy_at = 0;
+    CHECK_INT((int)cc_path_next(0, &sh_copy_at), 0); /* no copy: C: alone */
+}
+
 /* H8.3: Alt+Tab searches every directory of a multi-assigned C: (KingCON's
  * GetDeviceProc loop), not only the first; a directory met again (the
  * path naming one of C:'s) is searched once */
@@ -551,6 +625,7 @@ void suite_complete(void)
     chip_only_machine_keeps_the_cache_on_disk();
     reset_cache_reads_every_directory_again();
     command_list_searches_every_directory_of_a_multi_assigned_c();
+    path_walk_reads_only_its_copy_after_the_shell_ends();
     command_list_skips_directories_and_files_without_e_or_s();
     command_list_skips_system_and_disabled_residents();
 }
