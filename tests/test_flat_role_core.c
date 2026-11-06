@@ -178,8 +178,91 @@ static void r6_workbench_parity(void)
     CHECK_INT(flat_role_row_of(FLAT_ROLE_LINE)->fallback, GR_ACCENT);
 }
 
+/* TE-10.6c brief 3: the draw table slot carries the themed flag (enabled), the role pens and the side border of its screen.
+ * Lives here, not in test_flat_core.c: flat_glyph.h (included there) and flat_role_core.h both define FLAT_ROLE_BACK. */
+static flat_draw_tab g_dt;
+
+static void roles_fill(flat_role_pens *r, int base, uint8_t ok)
+{
+    int i;
+    for (i = 0; i < FLAT_ROLE_COUNT; i++) r->pen[i] = (short)(base + i);
+    r->ok = ok;
+}
+
+static int roles_equal(const flat_state *a, const flat_state *b)
+{
+    return a->pen_outline == b->pen_outline && a->pen_button == b->pen_button && a->pen_ptext == b->pen_ptext &&
+           a->pen_dimtext == b->pen_dimtext && a->pen_text == b->pen_text && a->pen_line == b->pen_line && a->pen_back == b->pen_back;
+}
+
+static void test_draw_slot_themed(void)
+{
+    flat_state look, live, livecopy, want, base;
+    flat_pens_tab t;
+    flat_pens *hp;
+    flat_draw_scr l[1];
+    flat_role_pens ra, rb, rbad;
+    int wb, sa, un;
+    const flat_state *p, *p1;
+    desk_flat_state(1, 1, &look);
+    look.enabled = 1; look.side = 4;
+    flat_pens_tab_init(&t);
+    hp = flat_pens_tab_for(&t, &sa, 1);
+    hp->screen = &sa; hp->epoch = 1; hp->dim = 77; hp->knob = 78; hp->inbar = 79; hp->sel = 80;
+    live = look; live.pen_dim = 5;
+    livecopy = live;
+    roles_fill(&ra, 20, 1); roles_fill(&rb, 90, 1); roles_fill(&rbad, 50, 0);
+    flat_draw_init(&g_dt);
+    l[0].screen = &sa; l[0].epoch = 1; l[0].roles = 0; l[0].side = 7;
+    flat_draw_sync(&g_dt, &look, &t, l, 1, &wb, 9);
+    p = flat_draw_state(&g_dt, &live, &sa);                              /* D1a: listed, not themed */
+    flat_state_for(&look, &t, &sa, 1, &want);
+    want.enabled = 0; want.side = 7;
+    CHECK_INT(memcmp(p, &want, sizeof want), 0);
+    CHECK_INT(p->enabled, 0);
+    CHECK_INT(g_dt.plain.enabled, 0);                                    /* D1b */
+    CHECK(flat_draw_state(&g_dt, &live, &un) == &g_dt.plain);
+    CHECK_INT(flat_draw_state(&g_dt, &live, &un)->enabled, 0);
+    l[0].roles = &ra;                                                    /* D1c */
+    flat_draw_sync(&g_dt, &look, &t, l, 1, &wb, 9);
+    p1 = p = flat_draw_state(&g_dt, &live, &sa);
+    CHECK_INT(p->enabled, look.enabled);
+    flat_state_for(&look, &t, &sa, 1, &base);
+    want = base; flat_role_apply(&want, &ra);
+    CHECK(roles_equal(p, &want));
+    CHECK_INT(p->pen_dim, 77); CHECK_INT(p->pen_knob, 78); CHECK_INT(p->pen_inbar, 79); CHECK_INT(p->pen_sel, 80);
+    CHECK_INT(p->pen_outline, 20);
+    look.enabled = 0;                                                    /* D1d */
+    flat_draw_sync(&g_dt, &look, &t, l, 1, &wb, 9);
+    CHECK_INT(flat_draw_state(&g_dt, &live, &sa)->enabled, 0);
+    look.enabled = 1;
+    CHECK(flat_draw_state(&g_dt, &live, 0) == &live);                    /* D1e */
+    CHECK(flat_draw_state(&g_dt, &live, &wb) == &live);
+    CHECK_INT(memcmp(&live, &livecopy, sizeof live), 0);
+    l[0].roles = &rb;                                                    /* D2 */
+    flat_draw_sync(&g_dt, &look, &t, l, 1, &wb, 9);
+    p = flat_draw_state(&g_dt, &live, &sa);
+    CHECK(p == p1);
+    CHECK_INT(p->pen_outline, 90); CHECK_INT(p->enabled, 1);
+    l[0].roles = 0;
+    flat_draw_sync(&g_dt, &look, &t, l, 1, &wb, 9);
+    CHECK(flat_draw_state(&g_dt, &live, &sa) == p1);
+    CHECK_INT(p1->enabled, 0);
+    l[0].roles = &rbad;                                                  /* ok = 0 behaves as not themed */
+    flat_draw_sync(&g_dt, &look, &t, l, 1, &wb, 9);
+    CHECK_INT(p1->enabled, 0);
+    l[0].roles = &ra; l[0].side = 3;                                     /* D3 */
+    flat_draw_sync(&g_dt, &look, &t, l, 1, &wb, 9);
+    CHECK_INT(p1->side, 3);
+    l[0].side = 9;
+    flat_draw_sync(&g_dt, &look, &t, l, 1, &wb, 9);
+    CHECK_INT(p1->side, 9);
+    CHECK_INT(g_dt.plain.side, look.side);
+}
+
 void suite_flat_role_core(void)
 {
+    test_draw_slot_themed();
     r1_held_exact();
     r2_cmap_exact();
     r3_nearest_gthemes_distance();

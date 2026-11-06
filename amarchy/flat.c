@@ -1807,7 +1807,7 @@ static void pens_reap(void)
 /* TE-10.6b budget fix: main task. Collect (screen, epoch) of every open public screen except the Workbench under the list lock (the
  * epoch lookups are iconpen_dos calls, allowed here), then write g_draw under Forbid (the hooks run in other tasks). Sync points: the
  * end of every pens_run (start, CTRL_D refresh, 1 s watch) and the held branches that skip pens_run. */
-static flat_draw_scr g_draw_list[FLAT_PENS_SLOTS];
+static flat_draw_scr g_draw_list[FLAT_PENS_SLOTS];   /* static = zero: roles 0 and side 0 until TE-10.6c brief 4 fills them (every non-Workbench slot is then not themed) */
 
 static void draw_sync(flatshared *r)
 {

@@ -490,22 +490,30 @@ int flat_state_for(const flat_state *look, const flat_pens_tab *t, const void *s
 typedef struct flat_draw_slot {
     const void *screen;   /* 0 = free */
     unsigned epoch;       /* the pen record epoch of the screen at the last sync */
-    flat_state st;        /* the look with the four own pens of this screen (0 when it holds none) */
+    flat_state st;        /* the look with the four own pens of this screen (0 when it holds none), the seven role pens of its theme and
+                           * its side border; enabled = 0 when the screen is not themed (the hooks then draw stock) */
 } flat_draw_slot;
 
 typedef struct flat_draw_tab {
     const void *wb;       /* the Workbench screen at the last sync, 0 = unknown */
     unsigned wb_epoch;
-    flat_state plain;     /* the look with the four own pens 0: a screen the table does not list */
+    flat_state plain;     /* the look with the four own pens 0 and enabled 0: a screen the table does not list never draws flat */
     flat_draw_slot slot[FLAT_PENS_SLOTS];
 } flat_draw_tab;
 
-typedef struct flat_draw_scr { const void *screen; unsigned epoch; } flat_draw_scr;
+struct flat_role_pens;   /* flat_role_core.h includes this header, so only a pointer type is known here */
+typedef struct flat_draw_scr {
+    const void *screen;
+    unsigned epoch;
+    const struct flat_role_pens *roles;   /* 0 = the screen is not themed (rules exclude it, or its role colours are unknown) */
+    uint8_t side;                         /* the screen's side border width in pixels (flat_state.side) */
+} flat_draw_scr;
 
 void flat_draw_init(flat_draw_tab *d);
-/* Main task, hooks excluded by the caller (Forbid): plain = look with the four pens 0; one slot per listed screen (not the Workbench),
- * st = flat_state_for(look, pens, screen, epoch). A screen already in the table keeps its slot (a hook may hold the pointer); a
- * screen not listed frees its slot. */
+/* Main task, hooks excluded by the caller (Forbid), on EVERY sync (a theme change does not move the epoch): plain = look with the four
+ * pens 0 and enabled 0; one slot per listed screen (not the Workbench), st = flat_state_for(look, pens, screen, epoch) with side = the
+ * entry's side, and either the role pens applied (roles usable: roles != 0 and roles->ok) or enabled = 0 (not themed). A screen already
+ * in the table keeps its slot (a hook may hold the pointer); a screen not listed frees its slot. */
 void flat_draw_sync(flat_draw_tab *d, const flat_state *look, const flat_pens_tab *pens, const flat_draw_scr *list, int n, const void *wb,
                     unsigned wb_epoch);
 /* Hook: screen 0 or the Workbench screen = live (the shared state, no lag on the Workbench); a listed screen = its slot state; any other

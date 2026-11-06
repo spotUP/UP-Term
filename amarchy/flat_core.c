@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "flat_core.h"
+#include "flat_role_core.h"
 #include "iconpen_core.h"
 #include "gthemes_core.h"
 #include "../device/romspan.h"
@@ -1006,6 +1007,7 @@ void flat_draw_sync(flat_draw_tab *d, const flat_state *look, const flat_pens_ta
     d->wb_epoch = wb_epoch;
     d->plain = *look;
     d->plain.pen_dim = d->plain.pen_knob = d->plain.pen_inbar = d->plain.pen_sel = 0;
+    d->plain.enabled = 0;   /* a screen the table does not list is not themed: it never draws flat */
     for (k = 0; k < FLAT_PENS_SLOTS; k++)
         if (d->slot[k].screen && (d->slot[k].screen == wb || !draw_listed(list, n, d->slot[k].screen, d->slot[k].epoch)))
             d->slot[k].screen = 0;
@@ -1019,6 +1021,11 @@ void flat_draw_sync(flat_draw_tab *d, const flat_state *look, const flat_pens_ta
         d->slot[k].screen = list[i].screen;
         d->slot[k].epoch = list[i].epoch;
         flat_state_for(look, pens, list[i].screen, list[i].epoch, &d->slot[k].st);
+        if (list[i].roles && list[i].roles->ok)
+            flat_role_apply(&d->slot[k].st, list[i].roles);
+        else
+            d->slot[k].st.enabled = 0;   /* rules exclude the screen, or its colours are unknown: draws stock */
+        d->slot[k].st.side = list[i].side;
     }
 }
 

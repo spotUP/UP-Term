@@ -2497,6 +2497,7 @@ static void test_draw_state_lookup(void)
     int wb, sa, sb, un;
     const flat_state *p;
     draw_setup(&look, &t, &sa, &sb);
+    memset(l, 0, sizeof l);                                              /* roles 0, side 0: not themed */
     live = look; live.pen_dim = 5;
     flat_draw_init(&g_dt);
     l[0].screen = &sa; l[0].epoch = 1;
@@ -2524,6 +2525,7 @@ static void test_draw_sync_look_and_drop(void)
     flat_draw_scr l[2];
     int wb, sa, sb, un;
     draw_setup(&look, &t, &sa, &sb);
+    memset(l, 0, sizeof l);                                              /* roles 0, side 0: not themed */
     live = look;
     flat_draw_init(&g_dt);
     l[0].screen = &sa; l[0].epoch = 1;
@@ -2547,6 +2549,7 @@ static void test_draw_slot_keeps_address(void)
     int wb, sa, sb, sc, i;
     const flat_state *pa, *pb;
     draw_setup(&look, &t, &sa, &sb);
+    memset(l, 0, sizeof l);                                              /* roles 0, side 0: not themed */
     live = look;
     flat_draw_init(&g_dt);
     l[0].screen = &sa; l[0].epoch = 1;
@@ -2577,6 +2580,7 @@ static void test_draw_epoch(void)
     flat_draw_scr l[1];
     int wb, sa, sb, un;
     draw_setup(&look, &t, &sa, &sb);
+    memset(l, 0, sizeof l);                                              /* roles 0, side 0: not themed */
     flat_draw_init(&g_dt);
     l[0].screen = &sa; l[0].epoch = 4;
     flat_draw_sync(&g_dt, &look, &t, l, 1, &wb, 9);
