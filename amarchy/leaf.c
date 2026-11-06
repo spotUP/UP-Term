@@ -395,6 +395,9 @@ static int theme_action(const sd_setting *s, const char *label, const lf_ui *ui)
     case GTA_SCR_SAVE:
         ok = gt_dos_screens_save(why, sizeof why);
         break;
+    case GTA_SCR_RESTORE:       /* TE-10.9: clear every rule and save at once (files, on/off key, pens released at the next sync) */
+        ok = gt_se_action(GTA_SCR_RESTORE, 0) == GTR_OK && gt_dos_screens_save(why, sizeof why);
+        break;
     }
     if (!ok)
         ui->refused(ui->ctx, label, LF_SET_INVALID, why);

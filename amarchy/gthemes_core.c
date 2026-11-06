@@ -160,16 +160,21 @@ uc_u32 desk_role(const gtheme *t, int role)
     }
 }
 
-/* the nearest role pen: squared RGB distance over the pens DK_BG..last, strict < so a tie keeps the lower pen */
+/* the one colour distance of every "nearest pen" choice (gt_nearest_role_pen, the flat role pens): squared RGB over 0xRRGGBB */
+unsigned long gt_rgb_dist2(uc_u32 a, uc_u32 b)
+{
+    long dr = (long)((a >> 16) & 255) - (long)((b >> 16) & 255), dg = (long)((a >> 8) & 255) - (long)((b >> 8) & 255),
+         db = (long)(a & 255) - (long)(b & 255);
+    return (unsigned long)(dr * dr + dg * dg + db * db);
+}
+
+/* the nearest role pen: gt_rgb_dist2 over the pens DK_BG..last, strict < so a tie keeps the lower pen */
 int gt_nearest_role_pen(const gtheme *t, uc_u32 c, int depth)
 {
     int pen, best = 0, last = depth <= 2 ? DK_ACCENT : DK_DARKER; /* 3 at depth 2, 5 (DK_DARKER) from depth 3 */
     unsigned long bd = 0, d;
     for (pen = 0; pen <= last; pen++) {
-        uc_u32 r = desk_role(t, pen);
-        long dr = (long)((c >> 16) & 255) - (long)((r >> 16) & 255), dg = (long)((c >> 8) & 255) - (long)((r >> 8) & 255),
-             db = (long)(c & 255) - (long)(r & 255);
-        d = (unsigned long)(dr * dr + dg * dg + db * db);
+        d = gt_rgb_dist2(c, desk_role(t, pen));
         if (pen == 0 || d < bd) {
             bd = d;
             best = pen;
@@ -1354,7 +1359,8 @@ static void w_num(gt_w *w, const char *key, unsigned v)
     w_kv(w, key, s);
 }
 
-long gt_model_save_text(const gt_model *m, char *out, long cap)
+/* the text of m under the theme name `name`: the file name is the identity, never the model's own name */
+static long model_save_named(const gt_model *m, const char *name, char *out, long cap)
 {
     gt_w w;
     gtheme t;
@@ -1368,8 +1374,8 @@ long gt_model_save_text(const gt_model *m, char *out, long cap)
         out[0] = 0;
     gt_model_to_v1(m, &t);
     w_text(&w, "mode", m->light ? "light" : "dark");
-    if (m->name[0])
-        w_text(&w, "name", m->name);
+    if (name[0])
+        w_text(&w, "name", name);
     w_color(&w, "background", t.bg);
     w_color(&w, "foreground", t.fg);
     w_color(&w, "dark_foreground", t.dim);
@@ -1429,6 +1435,11 @@ long gt_model_save_text(const gt_model *m, char *out, long cap)
     if (w.bad || w.n >= UC_MAX_FILE)
         return -1;
     return w.n;
+}
+
+long gt_model_save_text(const gt_model *m, char *out, long cap)
+{
+    return model_save_named(m, m->name, out, cap);
 }
 
 /* ---- TE-1.6: the model on a gtheme ---- */
@@ -1578,7 +1589,7 @@ int gt_save(const prefs_fs *fs, const char *name, const gt_model *m, char *why, 
         why_put(why, cap, GT_SAVE_SHIPPED);
         return 0;
     }
-    n = gt_model_save_text(m, g_save, (long)sizeof g_save);
+    n = model_save_named(m, name, g_save, (long)sizeof g_save);
     if (n < 0) {
         why_put(why, cap, GT_SAVE_WRITE);
         return 0;
@@ -2438,6 +2449,7 @@ static void er_build(void)
     }
     er_add(PG_PAGE_THEME_SCREENS, SD_GACTION, "scr-add", "Add Rule")->aux = GTA_SCR_ADD;
     er_add(PG_PAGE_THEME_SCREENS, SD_GACTION, "scr-save", "Save Screen Themes")->aux = GTA_SCR_SAVE;
+    er_add(PG_PAGE_THEME_SCREENS, SD_GACTION, "scr-restore", "Restore Original")->aux = GTA_SCR_RESTORE;
 }
 
 const sd_setting *gte_row(int id)
@@ -3293,6 +3305,9 @@ int gt_se_action(int aux, int index)
     case GTA_SCR_UP:     return se_done(gt_screen_pat_move(&gt_se.r, index, -1));
     case GTA_SCR_DOWN:   return se_done(gt_screen_pat_move(&gt_se.r, index, 1));
     case GTA_SCR_REMOVE: return se_done(gt_screen_pat_remove(&gt_se.r, index));
+    case GTA_SCR_RESTORE:
+        gt_screen_rules_parse("default workbench\n", 18, &gt_se.r);   /* the stock file: no rule, Workbench only */
+        return se_done(1);
     default:             return GTR_BAD;
     }
 }

@@ -1181,6 +1181,24 @@ static void test_screens_sync(void)
         CHECK_INT((int)(ip_screens_epoch_of_screen(&t, t.slot[0].sh.h.screen) - ip_screens_epoch(&t, "Workbench")), 0);
         CHECK_INT(ip_screens_epoch_of_screen(&t, (void *)0x1234), 0);
         CHECK_INT(ip_screens_epoch_of_screen(&t, 0), 0);
+        /* TE-10.6c: the slot by pointer, and the held plan pens copied out */
+        CHECK_INT(ip_screens_slot_of_screen(&t, t.slot[1].sh.h.screen), 1);
+        CHECK_INT(ip_screens_slot_of_screen(&t, t.slot[0].sh.h.screen), 0);
+        CHECK_INT(ip_screens_slot_of_screen(&t, (void *)0x1234), -1);
+        CHECK_INT(ip_screens_slot_of_screen(&t, 0), -1);
+        {
+            short pn[GTE_COUNT];
+            uc_u32 rg[GTE_COUNT];
+            int n = ip_holder_plan_copy(&t.slot[1].sh.h, pn, rg, GTE_COUNT);
+            int k;
+            CHECK_INT(n, t.slot[1].sh.h.pcount);
+            for (k = 0; k < n; k++) {
+                CHECK_INT(pn[k], t.slot[1].sh.h.ppen[k]);
+                CHECK(rg[k] == t.slot[1].sh.h.prgb[k]);
+            }
+            CHECK_INT(ip_holder_plan_copy(&t.slot[1].sh.h, pn, rg, 1), 1);
+            CHECK_INT(ip_holder_plan_copy(&t.slot[1].sh.h, pn, rg, 0), 0);
+        }
     }
 }
 
@@ -1421,6 +1439,49 @@ static void test_screens_held_count(void)
     CHECK_INT(ip_screens_held(&t), 2);
 }
 
+/* TE-10.9: after Restore Original (rules "default workbench", no rule) the next sync releases every pen held on the non-Workbench
+ * slots, one release per held pen per slot, and the Workbench slot keeps its pens. hold[] is built the way pens_sync builds it. */
+static void test_restore_original_releases_every_screen(void)
+{
+    ip_screens t;
+    ip_ops o;
+    msx m;
+    ip_snap sn;
+    gt_screen_rules rules;
+    const char *stock = "default workbench\n";
+    const char *before = "default all\nPub = :main takeover\n";
+    char th[64];
+    int hold[IP_SCREENS], tk, i;
+
+    msx_init(&m, &o, &t);
+    memset(&sn, 0, sizeof sn);
+    snap_set(&sn, 0, "Workbench", (void *)0x1, 0, 6);
+    snap_set(&sn, 1, "Pub", (void *)0x100, 0, 6);
+    snap_set(&sn, 2, "Other", (void *)0x200, 0, 6);
+    gt_screen_rules_parse(before, (long)strlen(before), &rules);
+    memset(hold, 0, sizeof hold);
+    for (i = 0; i < 3; i++)
+        hold[i] = gt_screen_theme_of(&rules, i == 0 ? "Workbench" : t.slot[i].name, "nord", th, sizeof th, &tk);
+    CHECK_INT(msx_sync(&m, &t, &sn, hold), 0);
+    CHECK_INT(t.slot[1].sh.h.pcount, 2);                       /* both screens hold their two plan pens */
+    CHECK_INT(t.slot[2].sh.h.pcount, 2);
+    CHECK_INT(t.slot[0].sh.h.held, 16);
+    CHECK_INT(m.f[1].releases + m.f[2].releases, 0);
+
+    gt_screen_rules_parse(stock, (long)strlen(stock), &rules);
+    for (i = 0; i < 3; i++)
+        hold[i] = gt_screen_theme_of(&rules, i == 0 ? "Workbench" : t.slot[i].name, "nord", th, sizeof th, &tk);
+    CHECK_INT(hold[0], 1);
+    CHECK_INT(hold[1] + hold[2], 0);
+    msx_sync(&m, &t, &sn, hold);
+    CHECK_INT(m.f[1].releases, 2);                             /* exactly one release per held pen, per slot */
+    CHECK_INT(m.f[2].releases, 2);
+    CHECK_INT(t.slot[1].sh.h.pcount, 0);
+    CHECK_INT(t.slot[2].sh.h.pcount, 0);
+    CHECK_INT(t.slot[0].sh.h.held, 16);                        /* the Workbench keeps its pens */
+    CHECK_INT(m.f[0].releases, 0);
+}
+
 /* ---- TE-10.5b2b: the free mask, the re-plan request, the DOS wiring ---- */
 static int fm_free[300];
 static int fm_is_free(void *ctx, int pen) { (void)ctx; return pen >= 0 && pen < 300 && fm_free[pen]; }
@@ -1566,8 +1627,9 @@ static void test_dos_wiring_source(void)
     CHECK(f != 0);
     if (f) {
         n = fread(big, 1, sizeof big - 1, f); fclose(f); big[n] = 0;
-        CHECK(strstr(big, "#define IPD_SEM_NAME \"Amarchy.IconPens.5\"") != 0);
+        CHECK(strstr(big, "#define IPD_SEM_NAME \"Amarchy.IconPens.6\"") != 0);
         CHECK(strstr(big, "unsigned long screen_applies;") != 0);
+        CHECK(strstr(big, "int ipd_screen_roles(const void *scr, ipd_roles *out);") != 0);
     }
 }
 
@@ -1592,6 +1654,7 @@ void suite_iconpen(void)
     test_screens_diff_and_apply();
     test_screens_sync();
     test_screens_held_count();
+    test_restore_original_releases_every_screen();
     test_plan_only_slots();
     test_plan_free_mask();
     test_recheck_plans();

@@ -69,6 +69,8 @@ uc_u32 desk_role(const gtheme *t, int role);
 /* the role pen (DK_BG..DK_DARKER; DK_ACCENT at most on depth <= 2) nearest to rgb 0xRRGGBB at a screen depth: squared RGB distance,
  * ties to the lower pen. The one rule behind ip_fold and the pen budget. */
 int gt_nearest_role_pen(const gtheme *t, uc_u32 rgb, int depth);
+/* squared RGB distance of two 0xRRGGBB colours: the one distance behind gt_nearest_role_pen and the flat role pens (flat_role_core) */
+unsigned long gt_rgb_dist2(uc_u32 a, uc_u32 b);
 
 /* the colour maths of the derivation (moved from desk_core, R1.18a): brightness 0..255, a contrast ratio times 100 (100 = equal) */
 int gt_luma(uc_u32 rgb);
@@ -387,7 +389,7 @@ int gte_row_set_index(const struct sd_setting *s, int index);                   
 int gte_row_label(const struct sd_setting *s, char *out, int n); /* "Label: value" */
 enum { GTA_OPEN = 1, GTA_SAVE, GTA_SAVE_AS, GTA_REVERT, GTA_APPLY, GTA_ADD_SWATCH, GTA_RENAME_SWATCH, GTA_REMOVE_SWATCH,
        GTA_CLEAR_ELEMENT, GTA_DUPLICATE, GTA_IMPORT, GTA_EXPORT, GTA_RESET_BASE, GTA_DELETE,
-       GTA_SCR_ALL, GTA_SCR_NONE, GTA_SCR_INVERT, GTA_SCR_ADD, GTA_SCR_SAVE, GTA_SCR_UP, GTA_SCR_DOWN, GTA_SCR_REMOVE };
+       GTA_SCR_ALL, GTA_SCR_NONE, GTA_SCR_INVERT, GTA_SCR_ADD, GTA_SCR_SAVE, GTA_SCR_UP, GTA_SCR_DOWN, GTA_SCR_REMOVE, GTA_SCR_RESTORE };
 /* What an editor action does before it touches a file (the menu's theme_action follows this, the host tests assert it):
  * GTP_SKIP nothing to act on (no theme open), GTP_LEAVE ask Save/Discard/Cancel first (the buffer is replaced),
  * GTP_NAME ask for a name. */
@@ -551,7 +553,7 @@ int gt_se_enabled(void);                                               /* value 
 int gt_se_dirty(void);                                                 /* changed since gt_se_load */
 void gt_se_stale(void);                                                /* the open screens may have changed: reload at the next row, unless edits are unsaved */
 const gt_screen_rules *gt_se_rules(void);
-int gt_se_action(int aux, int index);                                  /* GTA_SCR_ALL .. REMOVE: GTR_OK or GTR_BAD */
+int gt_se_action(int aux, int index);                                  /* GTA_SCR_ALL .. RESTORE: GTR_OK or GTR_BAD; RESTORE = no rule, Default Workbench Only (TE-10.9) */
 int gt_se_add_rule(const char *pat);                                   /* Add Rule: GTR_OK, GTR_BAD (no wildcard) or GTR_FULL */
 
 #endif
