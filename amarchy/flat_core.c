@@ -1002,9 +1002,16 @@ static int draw_listed(const flat_draw_scr *list, int n, const void *screen, uns
 void flat_draw_sync(flat_draw_tab *d, const flat_state *look, const flat_pens_tab *pens, const flat_draw_scr *list, int n, const void *wb,
                     unsigned wb_epoch)
 {
+    flat_draw_sync_dri(d, look, pens, list, n, wb, wb_epoch, 0);
+}
+
+void flat_draw_sync_dri(flat_draw_tab *d, const flat_state *look, const flat_pens_tab *pens, const flat_draw_scr *list, int n, const void *wb,
+                        unsigned wb_epoch, const void *wb_dri)
+{
     int i, k;
     d->wb = wb;
     d->wb_epoch = wb_epoch;
+    d->wb_dri = wb_dri;
     d->plain = *look;
     d->plain.pen_dim = d->plain.pen_knob = d->plain.pen_inbar = d->plain.pen_sel = 0;
     d->plain.enabled = 0;   /* a screen the table does not list is not themed: it never draws flat */
@@ -1020,6 +1027,7 @@ void flat_draw_sync(flat_draw_tab *d, const flat_state *look, const flat_pens_ta
             continue;
         d->slot[k].screen = list[i].screen;
         d->slot[k].epoch = list[i].epoch;
+        d->slot[k].dri = list[i].dri;
         flat_state_for(look, pens, list[i].screen, list[i].epoch, &d->slot[k].st);
         if (list[i].roles && list[i].roles->ok)
             flat_role_apply(&d->slot[k].st, list[i].roles);
@@ -1045,6 +1053,17 @@ const flat_state *flat_draw_state(const flat_draw_tab *d, const flat_state *live
         return live;
     s = draw_find(d, screen);
     return s ? &s->st : &d->plain;
+}
+
+const flat_state *flat_draw_state_dri(const flat_draw_tab *d, const flat_state *live, const void *dri)
+{
+    int k;
+    if (!dri || dri == d->wb_dri)
+        return live;
+    for (k = 0; k < FLAT_PENS_SLOTS; k++)
+        if (d->slot[k].screen && d->slot[k].dri == dri)
+            return &d->slot[k].st;
+    return &d->plain;
 }
 
 unsigned flat_draw_epoch(const flat_draw_tab *d, const void *screen)

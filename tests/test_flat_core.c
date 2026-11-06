@@ -2489,6 +2489,37 @@ static void draw_setup(flat_state *look, flat_pens_tab *t, int *sa, int *sb)
     (void)sb;
 }
 
+/* TE-10.6c 4c-2: the DrawInfo pointer (compare key only) maps to a slot for the Directory Opus patch. */
+static void test_draw_state_dri(void)
+{
+    flat_state look, live;
+    flat_pens_tab t;
+    flat_draw_scr l[2];
+    int wb, sa, sb, un, da, db, dw, dx;
+    const flat_state *p;
+    draw_setup(&look, &t, &sa, &sb);
+    memset(l, 0, sizeof l);
+    live = look; live.pen_dim = 5;
+    flat_draw_init(&g_dt);
+    l[0].screen = &sa; l[0].epoch = 1; l[0].dri = &da;
+    l[1].screen = &sb; l[1].epoch = 1; l[1].dri = &db;
+    flat_draw_sync_dri(&g_dt, &look, &t, l, 2, &wb, 9, &dw);
+    CHECK(g_dt.wb_dri == &dw);                                            /* dri copy: table */
+    CHECK(flat_draw_state_dri(&g_dt, &live, 0) == &live);                 /* 1: NULL = live */
+    CHECK(flat_draw_state_dri(&g_dt, &live, &dw) == &live);               /* 2: the Workbench DrawInfo = live */
+    p = flat_draw_state_dri(&g_dt, &live, &da);                           /* 3: a slot's DrawInfo = that slot */
+    CHECK(p == flat_draw_state(&g_dt, &live, &sa) && p != &live);
+    CHECK(flat_draw_state_dri(&g_dt, &live, &db) == flat_draw_state(&g_dt, &live, &sb));
+    CHECK(flat_draw_state_dri(&g_dt, &live, &dx) == &g_dt.plain);         /* 4: unknown = plain */
+    flat_draw_sync_dri(&g_dt, &look, &t, &l[1], 1, &wb, 9, &dw);
+    CHECK(flat_draw_state_dri(&g_dt, &live, &da) == &g_dt.plain);         /* 5: after a sync without that screen = plain */
+    l[1].dri = &dx;
+    flat_draw_sync_dri(&g_dt, &look, &t, &l[1], 1, &wb, 9, &dw);          /* 6: the slot's dri is replaced on every sync */
+    CHECK(flat_draw_state_dri(&g_dt, &live, &db) == &g_dt.plain);
+    CHECK(flat_draw_state_dri(&g_dt, &live, &dx) == flat_draw_state(&g_dt, &live, &sb));
+    (void)un;
+}
+
 static void test_draw_state_lookup(void)
 {
     flat_state look, live, st;
@@ -2593,6 +2624,7 @@ static void test_draw_epoch(void)
 void suite_flat_core(void)
 {
     test_draw_state_lookup();
+    test_draw_state_dri();
     test_draw_sync_look_and_drop();
     test_draw_slot_keeps_address();
     test_draw_epoch();

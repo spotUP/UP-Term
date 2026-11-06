@@ -25,6 +25,7 @@
  * next start consumes it and stays inert; one early death is forgiven), when both mouse
  * buttons are down at start, or when VisualPrefs / Birdie runs or a foreign hook already sits on the sysiclass slot.
  * Return code: 0 done, 5 another copy is running, 10 no memory. */
+#include <stddef.h>
 #include <string.h>
 #include <exec/memory.h>
 #include <exec/semaphores.h>
@@ -327,7 +328,12 @@ static const flat_state *st_scr(flatshared *r, const struct Screen *scr)
 static const flat_state *st_rp(flatshared *r, const struct RastPort *rp)
 {
     struct Window *w = rp && rp->Layer ? (struct Window *)rp->Layer->Window : NULL;
-    return st_scr(r, w ? w->WScreen : NULL);
+    if (w)
+        return st_scr(r, w->WScreen);
+    /* screen bar layer (no Window): the Screen that embeds this LayerInfo, as a compare key only (never dereferenced) */
+    if (rp && rp->Layer)
+        return st_scr(r, (const struct Screen *)((const char *)rp->Layer->LayerInfo - offsetof(struct Screen, LayerInfo)));
+    return st_scr(r, NULL);
 }
 
 /* S32-ARROW-OUTLINE: the box fill ran over the window's outer ring where the gadget reaches the last column or row;
@@ -636,7 +642,7 @@ static int d4_flat(int el, struct DrawInfo *info, LONG recessed)
 {
     flatshared *r = g_r;
     r->dcalls++;
-    if (flat_dopus_decide(&r->st, el, recessed ? 1 : 0, info->dri_Pens[SHINEPEN], info->dri_Pens[BACKGROUNDPEN]) != FLAT_DRAW_SKIP)
+    if (flat_dopus_decide(flat_draw_state_dri(&g_draw, &r->st, info), el, recessed ? 1 : 0, info->dri_Pens[SHINEPEN], info->dri_Pens[BACKGROUNDPEN]) != FLAT_DRAW_SKIP)
         return 0;
     r->dflat++;
     return 1;
@@ -1122,10 +1128,14 @@ static int ghost_menu(flatshared *r, struct RastPort *rp, LONG x0, LONG y0, LONG
     UWORD *pa = (UWORD *)rp->AreaPtrn;
     int depth, dim;
     long n = -1;
+    /* Layer NULL (off-screen menu bitmap): the active screen is the key (pointer read only, a race picks plain or the Workbench) */
+    const flat_state *ps = rp->Layer ? st_rp(r, rp) : st_scr(r, IntuitionBase->ActiveScreen);
+    if (!ps->enabled)
+        return 0;
     if (!bm || !pa || x1 < x0 || y1 < y0 || !(GetBitMapAttr(bm, BMA_FLAGS) & BMF_STANDARD))
         return 0;
     depth = bm->Depth;
-    dim = flat_gm_pen(&r->st, depth, 1, 0, rp->AreaPtSz, pa[0], pa[1], rp->FgPen);
+    dim = flat_gm_pen(ps, depth, 1, 0, rp->AreaPtSz, pa[0], pa[1], rp->FgPen);
     if (dim < 0)
         return 0;
     if (!rp->Layer) {
@@ -1848,8 +1858,19 @@ static int draw_screen_colours(struct Screen *scr)
     return n;
 }
 
+/* the screen's DrawInfo pointer as a compare key for the Directory Opus hook (never held, never dereferenced); public screen list locked */
+static const void *draw_dri_key(struct Screen *scr)
+{
+    struct DrawInfo *di = GetScreenDrawInfo(scr);
+    const void *key = di;
+    if (di)
+        FreeScreenDrawInfo(scr, di);
+    return key;
+}
+
 static void draw_sync(flatshared *r)
 {
+    const void *wb_dri = 0;
     struct List *pl = LockPubScreenList();
     struct Node *nd;
     int n = 0, i;
@@ -1871,11 +1892,13 @@ static void draw_sync(flatshared *r)
     for (i = 0; i < n; i++) {
         struct Screen *scr = pl ? ipd_screen_in(pl, g_draw_list[i].screen) : NULL;
         g_draw_list[i].roles = 0;
+        g_draw_list[i].dri = 0;
         if (!scr) {
             g_draw_list[i].side = 1;
             continue;
         }
         g_draw_list[i].side = (uint8_t)side_px(r, scr);
+        g_draw_list[i].dri = draw_dri_key(scr);
         if (g_roles_themed[i]) {
             int nc = draw_screen_colours(scr);
             flat_role_resolve(g_roles_in[i].role, g_roles_in[i].pen, g_roles_in[i].rgb, g_roles_in[i].nheld, g_draw_cmap, nc,
@@ -1884,11 +1907,16 @@ static void draw_sync(flatshared *r)
                 g_draw_list[i].roles = &g_roles_out[i];
         }
     }
+    if (pl && g_wb_scr) {
+        struct Screen *ws = ipd_screen_in(pl, g_wb_scr);
+        if (ws)
+            wb_dri = draw_dri_key(ws);
+    }
     UnlockPubScreenList();
     if (g_wb_scr)       /* the Workbench slot is the live record: its outline columns come from here (main task), never from a hook */
         r->st.side = (uint8_t)side_px(r, (struct Screen *)g_wb_scr);
     Forbid();
-    flat_draw_sync(&g_draw, &r->st, &g_pens, g_draw_list, n, g_wb_scr, wbep);
+    flat_draw_sync_dri(&g_draw, &r->st, &g_pens, g_draw_list, n, g_wb_scr, wbep, wb_dri);
     Permit();
 }
 
