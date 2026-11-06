@@ -53,6 +53,8 @@ int desk_dos_marker_recover(void);
 extern unsigned long desk_dos_marker_reverts;
 /* counters (the reachability sentinels): applies that asked, keeps, reverts */
 extern unsigned long desk_dos_confirm_asks, desk_dos_keeps, desk_dos_reverts;
+/* 1 while an applied theme waits for Keep or Revert (the marker T:amarchy-revert/pending holds a mask) */
+int desk_dos_confirm_pending(void);
 /* FP-2: files Keep copied to ENVARC:, originals saved before a first write, originals put back by "off" */
 extern unsigned long desk_dos_persists, desk_dos_originals_saved, desk_dos_originals_restored, desk_dos_originals_dropped;
 /* DESK-STALE-ORIG: ENV: fix actions repeated after a refused one (IPrefs still reading), fixes that never landed, the last refused open's IoErr */

@@ -3549,8 +3549,54 @@ static void an_open_window_widens_when_a_value_grows(void)
     CHECK_INT(nw, -7);
 }
 
+/* THEME-PICK-MENU-GONE: a theme pick asks the Keep/Revert requester, which takes the focus from the menu; the menu must
+ * stay. Another program taking the focus still closes it. */
+static void the_menu_stays_open_when_its_own_confirm_takes_the_focus(void)
+{
+    static char gui[400000];
+    mg_focus f;
+    long n;
+    /* the pick asked a confirm: one forgiven focus loss, the next real one closes */
+    mg_focus_init(&f);
+    mg_focus_active(&f);
+    mg_focus_confirm_asked(&f);
+    CHECK_INT(mg_focus_inactive(&f, 0), 0);
+    mg_focus_active(&f);
+    CHECK_INT(mg_focus_inactive(&f, 0), 1);
+    /* no confirm asked: the launcher rule */
+    mg_focus_init(&f);
+    mg_focus_active(&f);
+    CHECK_INT(mg_focus_inactive(&f, 0), 1);
+    /* never active: stays */
+    mg_focus_init(&f);
+    CHECK_INT(mg_focus_inactive(&f, 0), 0);
+    /* unsaved edits keep it and do not consume the latch */
+    mg_focus_init(&f);
+    mg_focus_active(&f);
+    mg_focus_confirm_asked(&f);
+    CHECK_INT(mg_focus_inactive(&f, 1), 0);
+    CHECK_INT(mg_focus_inactive(&f, 0), 0);
+    CHECK_INT(mg_focus_inactive(&f, 0), 1);
+    /* a latch no requester used (pick of the active theme) is dropped by a tick with nothing pending */
+    mg_focus_init(&f);
+    mg_focus_active(&f);
+    mg_focus_confirm_asked(&f);
+    mg_focus_tick(&f, 1);
+    CHECK_INT(f.own_confirm, 1);
+    mg_focus_tick(&f, 0);
+    CHECK_INT(f.own_confirm, 0);
+    CHECK_INT(mg_focus_inactive(&f, 0), 1);
+    /* the wiring: gui.c uses the state, the pick sets the latch, the old bare flag is gone */
+    n = slurp("amarchy/gui.c", gui, (long)sizeof gui);
+    CHECK_INT(n > 0, 1);
+    CHECK_INT(strstr(gui, "mg_focus_inactive(") != 0, 1);
+    CHECK_INT(strstr(gui, "mg_focus_confirm_asked(") != 0, 1);
+    CHECK_INT(strstr(gui, "g->active_seen &&") == 0, 1);
+}
+
 void suite_keymap(void)
 {
+    the_menu_stays_open_when_its_own_confirm_takes_the_focus();
     style_theme_lists_the_gui_theme_rows();
     packages_group_lists_its_rows_and_drops_the_old_node();
     a_picked_package_offers_only_its_fitting_actions();

@@ -138,6 +138,39 @@ int mg_grow(int x, int w, int need, int screen_w, int *nx, int *nw)
     return 1;
 }
 
+void mg_focus_init(mg_focus *f)
+{
+    f->active_seen = 0;
+    f->own_confirm = 0;
+}
+
+void mg_focus_active(mg_focus *f)
+{
+    f->active_seen = 1;
+}
+
+void mg_focus_confirm_asked(mg_focus *f)
+{
+    f->own_confirm = 1;
+}
+
+void mg_focus_tick(mg_focus *f, int confirm_pending)
+{
+    if (!confirm_pending)
+        f->own_confirm = 0;
+}
+
+int mg_focus_inactive(mg_focus *f, int needs_ask)
+{
+    if (!f->active_seen || needs_ask)
+        return 0;
+    if (f->own_confirm) {       /* one forgiven focus loss per asked confirm */
+        f->own_confirm = 0;
+        return 0;
+    }
+    return 1;
+}
+
 int mg_width(const keymap *k, const char *node, const mg_font *f, int icon_w, int chev_w,
              mg_text_fn text, void *ctx, const mg_screen *s)
 {
