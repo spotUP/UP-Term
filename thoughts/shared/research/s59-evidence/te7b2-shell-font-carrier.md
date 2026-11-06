@@ -17,3 +17,10 @@ Red/green and the m68k build were run by the main session at merge time (the age
 
 ## Handler half (not in this change)
 TE-7b.2-HANDLER (UP-Term session): the live reload path makes open tabs follow the `font` key. Precedence agreed: built-in < profile < Amarchy theme < window spec / slash font.
+
+## Test rewrite and proof (final)
+- First test version appended `[profile look]` to the v1 gruvbox.theme: `FAIL tests/test_gthemes.c:155: p != 0` (then a null strstr SEGV at :159). Cause: without `amarchy-theme = 2` gt_model_parse takes the v1 path (gt_model_from_v1) and ignores the look section, so a v1 file never has a Shell Font. The test now builds a v2 text (term_font_text).
+- Second run: `FAIL :189 strstr(out, ":999\n") != 0`. look.font is char[40] ("name.font/size"), so a 39-char name cannot keep "/999"; worst case is a 35-char name + "/999".
+- GREEN: `RUNTEST gthemes rc=0 [OK] gthemes: 6397 checks, 0 failed`
+- RED (fix disabled by `if (0 && ...)`): `RUNTEST gthemes rc=2` with `FAIL tests/test_gthemes.c:164: cnt = 0, want 1`, `:166: p != 0`, `:172: len = 219, want 237`, then the run aborted (ASAN) on the font read; terminated, no hang.
+- m68k compile proof: done in the first commit acfbfb69's session? Open: not re-run in this follow-up (core unchanged).

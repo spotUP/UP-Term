@@ -136,45 +136,54 @@ static void test_gthemes_term_text(void)
 }
 
 /* TE-7b.2: the Shell Font reaches the terminal text as one "font = NAME:SIZE" line in the same profile section */
+static long term_font_text(char *buf, long cap, const char *shell_font)
+{
+    long n = snprintf(buf, (size_t)cap, "amarchy-theme = 2\nname = \"tf\"\nmode = \"dark\"\n"
+                      "[profile swatches]\nbackground = #101010\nforeground = #eeeeee\naccent = #336699\n[profile look]\ncorner-radius = 4\n");
+    if (shell_font)
+        n += snprintf(buf + n, (size_t)(cap - n), "shell-font = \"%s\"\n", shell_font);
+    return n;
+}
+
 static void test_gthemes_term_font(void)
 {
     static char buf[4096], out[1024], plain[1024];
     static upconf u;
     char name[GT_NAME];
-    int len, plen, i;
+    int len, plen, i, cnt;
     const char *p;
-    long n = read_file(THEME_DIR "/gruvbox.theme", buf, (long)sizeof buf);
-    CHECK(n > 0);
-    plen = gt_term_text(buf, n, "gruvbox", plain, (int)sizeof plain);
+    long n = term_font_text(buf, (long)sizeof buf, 0);
+    plen = gt_term_text(buf, n, "tf", plain, (int)sizeof plain);
     CHECK(plen > 0);
     CHECK(strstr(plain, "font") == 0); /* (b) no Shell Font: no font line */
-    n += snprintf(buf + n, sizeof buf - (size_t)n, "\n[profile look]\nshell-font = \"XEN.font/9\"\n");
-    len = gt_term_text(buf, n, "gruvbox", out, (int)sizeof out);
+    n = term_font_text(buf, (long)sizeof buf, "XEN.font/9");
+    len = gt_term_text(buf, n, "tf", out, (int)sizeof out);
     CHECK(len > 0);
+    for (cnt = 0, p = out; (p = strstr(p, "font = ")) != 0; p++)
+        cnt++;
+    CHECK_INT(cnt, 1); /* (a) exactly one line */
     p = strstr(out, "font = ");
     CHECK(p != 0);
-    for (i = 0, p = out; (p = strstr(p, "font = ")) != 0; p++)
-        i++;
-    CHECK_INT(i, 1); /* (a) exactly one line */
-    CHECK(strstr(out, "palette = ") < strstr(out, "font = ")); /* in the profile section, after the palette line */
+    if (p) {
+        CHECK(strstr(out, "palette = ") < p); /* inside the profile section, after the palette line */
+        CHECK_STR(p, "font = XEN.font:9\n");
+    }
     CHECK(strncmp(out, plain, (size_t)plen) == 0); /* (c) the old lines byte for byte */
     CHECK_INT(len, plen + 18);
     upconf_clear(&u);
     upconf_parse(&u, out, len);
-    CHECK_STR(upconf_get(&u, "gruvbox", "font"), "XEN.font:9");
+    CHECK_STR(upconf_get(&u, "tf", "font"), "XEN.font:9");
     /* a size of 0 or none: no line */
-    n = read_file(THEME_DIR "/gruvbox.theme", buf, (long)sizeof buf);
-    n += snprintf(buf + n, sizeof buf - (size_t)n, "\n[profile look]\nshell-font = \"XEN.font/0\"\n");
-    CHECK_INT(gt_term_text(buf, n, "gruvbox", out, (int)sizeof out), plen);
-    n = read_file(THEME_DIR "/gruvbox.theme", buf, (long)sizeof buf);
-    n += snprintf(buf + n, sizeof buf - (size_t)n, "\n[profile look]\nshell-font = \"XEN.font\"\n");
-    CHECK_INT(gt_term_text(buf, n, "gruvbox", out, (int)sizeof out), plen);
-    /* (d) the longest font name and a 3-digit size still fit the 1024 bytes of every caller */
-    for (i = 0; i < GT_NAME - 1 - 5; i++)
-        name[i] = 'a' + i % 26;
+    n = term_font_text(buf, (long)sizeof buf, "XEN.font/0");
+    CHECK_INT(gt_term_text(buf, n, "tf", out, (int)sizeof out), plen);
+    n = term_font_text(buf, (long)sizeof buf, "XEN.font");
+    CHECK_INT(gt_term_text(buf, n, "tf", out, (int)sizeof out), plen);
+    /* (d) the longest font spec the model stores (look.font is 40 bytes: a 35-char name, "/999") fits the 1024 bytes of every caller */
+    for (i = 0; i < 30; i++)
+        name[i] = (char)('a' + i % 26);
     memcpy(name + i, ".font", 6);
-    n = read_file(THEME_DIR "/gruvbox.theme", buf, (long)sizeof buf);
-    n += snprintf(buf + n, sizeof buf - (size_t)n, "\n[profile look]\nshell-font = \"%s/999\"\n", name);
+    snprintf(out, sizeof out, "%s/999", name);
+    n = term_font_text(buf, (long)sizeof buf, out);
     len = gt_term_text(buf, n, "a-long-theme-name-of-thirty-nine-chr", out, (int)sizeof out);
     CHECK(len > 0 && len < 1024);
     CHECK(strstr(out, ":999\n") != 0);
