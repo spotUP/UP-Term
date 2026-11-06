@@ -911,7 +911,7 @@ long sh_amiga_execute(sh_shell *sh, const char *text0, const char *file, int arg
     const char *text;
     const char *p;
     long st = sh->ctx.status;
-    long failat = 10;   /* this call's limit: a nested Execute starts at 10 and this one survives it */
+    long failat = sh->amiscr_depth ? sh->amiscr_failat : 10;   /* S7c-3 R17: the fail limit belongs to the CLI, so a nested Execute starts at the caller's current limit */
     int quit = 0, failat_set = 0;
     (void)file;
     sh->failat_leak = 0;
@@ -969,8 +969,7 @@ long sh_amiga_execute(sh_shell *sh, const char *text0, const char *file, int arg
             to = skip_find(back ? text : next, label, &endskip);
             if (to) {
                 next = to;
-                if (endskip)
-                    st = 5;
+                st = endskip ? 5 : 0;   /* S7c-3 R15: a Skip that finds its label succeeds, so $RC reads 0 */
             } else {
                 say_io(sh, io->err, "object not found\nSkip failed returncode 10\n");   /* S7b-5 R13/R14 */
                 sh->amiscr_reported = 1;
@@ -979,7 +978,10 @@ long sh_amiga_execute(sh_shell *sh, const char *text0, const char *file, int arg
             }
         } else if (t.n && !script_word(sh, &t, io, &st, &failat, &quit, &failat_set)) {
             sh->amiscr_reported = 0;
+            sh->amiscr_failat = failat;
+            sh->amiscr_depth++;
             st = run_tokens(sh, &t, io);
+            sh->amiscr_depth--;
             if (sh->failat_leak) {   /* a nested script's FailAt leaks to this one, as on 3.2 (S7b-6 R17) */
                 failat = sh->failat_leak_val;
                 failat_set = 1;

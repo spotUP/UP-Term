@@ -2604,12 +2604,12 @@ static void execute_failat_aborts(void)
     sh_run_text(&sh, "execute RAM:f2; echo rc$?", &inc);
     CHECK_STR(slot(OUT)->data, "two\nFail limit: 21\nrc5\n");
     CHECK_STR(slot(ERR)->data, "fail failed returncode 5\n");
-    /* the limit is per call: the inner script starts at 10, the outer keeps its 21 afterwards */
+    /* S7c-3 R17: the limit is the CLI's, so the inner script starts at the caller's 21 (3.2 rig run) */
     run("");
     amiscr_put("RAM:f3", "fail 12\necho inner-not-reached\n");
     amiscr_put("RAM:f4", "failat 21\nexecute RAM:f3\necho outer\nfail 15\necho outer2\n");
     sh_run_text(&sh, "execute RAM:f4", &inc);
-    CHECK_STR(slot(OUT)->data, "outer\nouter2\n");
+    CHECK_STR(slot(OUT)->data, "inner-not-reached\nouter\nouter2\n");
 }
 
 /* S2 (D1): inside a script Set, Unset and Get are AmigaDOS local variables; aliases still expand. */
@@ -2747,12 +2747,12 @@ static void execute_skip_and_lab(void)
 {
     int inc = 0;
     run("");
-    /* forward over lines, label match is case-insensitive, Lab is a no-op, Skip leaves rc */
+    /* forward over lines, label match is case-insensitive, Lab is a no-op, a found Skip sets rc 0 (S7c-3 R15) */
     amiscr_put("RAM:k1",
                "failat 21\nfail 7\nSkip done\necho skipped\nLab other\necho skipped2\nlab DONE\n"
                "echo after $RC\nSkip\necho skipped3\nLab any\necho anyok\n");
     sh_run_text(&sh, "execute RAM:k1", &inc);
-    CHECK_STR(slot(OUT)->data, "after 7\nanyok\n");
+    CHECK_STR(slot(OUT)->data, "after 0\nanyok\n");
     /* Skip BACK loop: the counter function runs 3 times, the If ends the loop */
     run("");
     amiscr_put("RAM:k2", "Lab top\ninc\necho n=$n\nIf $n EQ 3 VAL\nSkip end\nEndIf\nSkip top BACK\nLab end\necho out\n");
@@ -2889,6 +2889,21 @@ static void execute_3_2_quirks(void)
     amiscr_put("RAM:q17", "failat 3\nexecute RAM:q17b\nfail 5\necho back\n");
     sh_run_text(&sh, "execute RAM:q17; echo rc$?", &inc);
     CHECK_STR(slot(OUT)->data, "inner\nback\nrc0\n");
+    run("");
+    /* S7c-3 R17 (rig): the nested script's Quit 10 runs under the caller's limit 30, so no "Quit failed" line */
+    amiscr_put("RAM:q10", "quit 10\n");
+    amiscr_put("RAM:q5", "quit 5\n");
+    amiscr_put("RAM:r17b", "failat 30\nexecute RAM:q10\necho inner\n");
+    amiscr_put("RAM:r17", "failat 3\nexecute RAM:r17b\nexecute RAM:q5\necho back\n");
+    sh_run_text(&sh, "execute RAM:r17; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "inner\nback\nrc0\n");
+    CHECK_STR(slot(ERR)->data, "");
+    run("");
+    /* S7c-3 R15 (rig): a Skip that finds its label leaves rc 0 */
+    amiscr_put("RAM:q1", "quit 1\n");
+    amiscr_put("RAM:r15", "execute RAM:q1\nskip end\necho skipped\nlab end\nendskip\necho \"rc=$RC\"\n");
+    sh_run_text(&sh, "execute RAM:r15", &inc);
+    CHECK_STR(slot(OUT)->data, "rc=0\n");
     run("");
     /* S7b-6 R6: `execute file ?` prints the template, reads one reply line and binds it like arguments */
     amiscr_put("RAM:q6", ".KEY name/A,count/N\necho \"got <name> <count>\"\n");
