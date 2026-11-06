@@ -3251,6 +3251,14 @@ int gt_se_dirty(void)
     return gt_se.dirty;
 }
 
+/* The open screens may have changed (a menu open): the next row asked for runs the loader again. Unsaved edits win: a dirty
+ * page keeps its rows until Save or a restart, a reload would throw the edits away. */
+void gt_se_stale(void)
+{
+    if (!gt_se.dirty)
+        se_loaded = 0;
+}
+
 const gt_screen_rules *gt_se_rules(void)
 {
     return &gt_se.r;

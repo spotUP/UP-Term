@@ -3217,6 +3217,38 @@ static void test_gthemes_screens_page_pattern_rules_add_move_edit_remove(void)
     CHECK_INT(gt_se_action(GTA_SCR_REMOVE, 5), GTR_BAD);
 }
 
+static int scr_reloads;
+static void scr_reloader(void)
+{
+    static const char *const o[] = { "DOPUS.1", "TE10" };
+    scr_reloads++;
+    scr_load(0, o, 2);
+}
+
+/* A screen opened after the page loaded shows at the next menu open (gt_se_stale), and that reload never throws away unsaved edits. */
+static void test_gthemes_screens_page_reloads_when_stale_and_keeps_unsaved_edits(void)
+{
+    const char *o[1];
+    o[0] = "DOPUS.1";
+    scr_load(0, o, 1);
+    gt_se_loader = scr_reloader;
+    scr_reloads = 0;
+    CHECK(!gte_row_visible(scr_row(GTSE_TICK, 2)));
+    CHECK_INT(scr_reloads, 0);
+    gt_se_stale();
+    CHECK(gte_row_visible(scr_row(GTSE_TICK, 2)));                      /* Workbench, DOPUS.1 and now TE10 */
+    CHECK_INT(scr_reloads, 1);
+    CHECK(gte_row_visible(scr_row(GTSE_TICK, 2)));
+    CHECK_INT(scr_reloads, 1);                                          /* one reload per stale mark, not one per row */
+    CHECK_INT(gte_row_set_index(scr_row(GTSE_TICK, 1), 1), GTR_OK);     /* an unsaved edit */
+    gt_se_stale();
+    CHECK(gte_row_visible(scr_row(GTSE_TICK, 2)));
+    CHECK_INT(scr_reloads, 1);
+    CHECK(gt_se_dirty());
+    gt_se_loader = 0;
+}
+
+
 void suite_gthemes(void)
 {
     test_drawn_windows_take_their_screens_theme();
@@ -3284,4 +3316,5 @@ void suite_gthemes(void)
     test_gthemes_screens_page_rows_follow_the_open_screens_and_edit_the_rules();
     test_gthemes_screens_page_default_buttons_and_closed_rules();
     test_gthemes_screens_page_pattern_rules_add_move_edit_remove();
+    test_gthemes_screens_page_reloads_when_stale_and_keeps_unsaved_edits();
 }

@@ -543,12 +543,13 @@ int gt_screen_pat_remove(gt_screen_rules *r, int p);
 #define GT_SE_ROWS 24   /* screen rows the page has */
 #define GT_SE_PATS 16   /* pattern rules the page has */
 enum { GTSE_TICK = 1, GTSE_THEME, GTSE_TAKE, GTSE_DEFAULT, GTSE_PAT, GTSE_PTHEME, GTSE_PTAKE };  /* aux of the page rows; aux2 = index */
-extern void (*gt_se_loader)(void);                                     /* DOS glue: called once, before the first row shows, to gt_se_load */
+extern void (*gt_se_loader)(void);                                     /* DOS glue: called before the first row shows, and again after gt_se_stale, to gt_se_load */
 void gt_se_set_themes(const char *const *names, int n);               /* the theme names the theme cycles offer */
 void gt_se_load(const char *buf, long len, const char *const *open, int nopen); /* rule file text (len 0 = none) and the open public screens */
 long gt_se_text(char *buf, long cap);                                  /* the rule file text, as gt_screen_rules_write */
 int gt_se_enabled(void);                                               /* value of the on/off key: 0 only when the rules are today's default */
 int gt_se_dirty(void);                                                 /* changed since gt_se_load */
+void gt_se_stale(void);                                                /* the open screens may have changed: reload at the next row, unless edits are unsaved */
 const gt_screen_rules *gt_se_rules(void);
 int gt_se_action(int aux, int index);                                  /* GTA_SCR_ALL .. REMOVE: GTR_OK or GTR_BAD */
 int gt_se_add_rule(const char *pat);                                   /* Add Rule: GTR_OK, GTR_BAD (no wildcard) or GTR_FULL */

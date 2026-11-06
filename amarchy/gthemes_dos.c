@@ -276,12 +276,13 @@ static void gt_dos_screens_load(void);
 
 void gt_dos_load_rows(ix_index *x)
 {
-    gt_se_loader = gt_dos_screens_load;
     static gt_list l;
     static char lab[GT_MAX][GT_NAME + 16];
     const char *labels[GT_MAX], *names[GT_MAX];
     char cur[GT_NAME];
     int i;
+    gt_se_loader = gt_dos_screens_load;
+    gt_se_stale();                      /* each menu open samples the open screens again; unsaved edits stay */
     gt_dos_scan(&l);
     gt_dos_current(cur, sizeof cur);
     for (i = 0; i < l.n; i++) {
@@ -296,16 +297,15 @@ void gt_dos_load_rows(ix_index *x)
 #define SCR_FILE_ENV "ENV:Amarchy/screen-themes"
 #define SCR_FILE_ARC "ENVARC:Amarchy/screen-themes"
 #define SCR_BUF 8192
-#define SCR_NAME 32
 
 static void gt_dos_drawers(void);
 
 /* the page's loader (gt_se_loader): the rule file (ENV: copy first), the open public screens (ipd_pub_screens, the bar's sampler) and
- * the theme names (gt_dos_scan). Runs once, before the first row of the page shows. */
+ * the theme names (gt_dos_scan). Runs before the first row of the page shows, and again after each gt_se_stale. */
 static void gt_dos_screens_load(void)
 {
     static gt_list l;
-    static char open[GT_SE_ROWS][SCR_NAME];
+    static char open[GT_SE_ROWS][GT_SCR_PAT];    /* a public screen name at full length (139 + terminator) */
     const char *op[GT_SE_ROWS], *tn[GT_MAX];
     struct Process *me = (struct Process *)FindTask(0);
     APTR oldwin = me->pr_WindowPtr;
@@ -325,7 +325,7 @@ static void gt_dos_screens_load(void)
     for (i = 0; i < l.n; i++)
         tn[i] = l.name[i];
     gt_se_set_themes(tn, l.n);
-    n = ipd_pub_screens(open[0], SCR_NAME, GT_SE_ROWS, 0);
+    n = ipd_pub_screens(open[0], GT_SCR_PAT, GT_SE_ROWS, 0);
     for (i = 0; i < n; i++)
         op[i] = open[i];
     gt_se_load(buf ? buf : "", len, op, n);
