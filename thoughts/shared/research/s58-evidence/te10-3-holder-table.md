@@ -29,3 +29,28 @@ T1 (slot 0 unchanged by GONE and REOPENED Workbench diffs), T2 (GONE: pens forgo
 - Overlapping the s58-pens47 branch in the same three files is expected; additions are in a block at the end of each file.
 - Wiring (snapshot walk under LockPubScreenList, ipd_epoch_of, exit release) is TE-10.4.
 - The IP_SCREENS table is a plain array of ~40 slots of about 1 KB each (ip_holder is large); TE-10.4 must allocate it as the one "Amarchy.IconPens" record, not on a stack.
+
+## Review fix (main session, 2026-11-06)
+Defects found in review of 5a3b234b (all in `ip_screens_apply`):
+1. A screen first seen PRIVATE, then public on the same address, never got a slot (the diff says SAME, apply skipped SAME).
+2. A reopen across a private phase was lost (old snapshot PRIVATE at one address, new public at another: slot missed, or pens kept).
+3. REOPENED for a name with no slot was skipped (no slot added).
+4. GONE with the PRIVATE flag was skipped (pens kept for a closed screen).
+
+Rules now (apply decides from the slot's own holder identity, not from the diff kind alone):
+- Slot 0 (Workbench) is never touched.
+- GONE: slot kept, pens forgotten with `ip_holder_init`, never released; private or not.
+- New entry PRIVATE: no slot added, an existing slot stays exactly as it is (design section 5 rule 5: "not open yet", never "gone").
+- New entry public, no slot: add the slot, whatever the diff kind.
+- New entry public, slot holds pens: same screen address and depth as the holder = nothing; else forget pens, epoch +1.
+- New entry public, slot holds no pens: SAME = nothing; any other kind = epoch +1.
+`ip_diff_entry` carries `screen` and `depth` of the new entry (of the old entry for GONE) for this.
+
+Accepted gap: a slot with no holder identity does not bump its epoch on a reopen hidden by a private phase. Harmless: no pens are held, the next sync obtains from the live screen. Same-address reuse between two polls is the job of `ip_holder_verify`.
+
+Proof:
+- Red (tests T7-T12 added, apply as delivered): `[FAIL] iconpen: 2295 checks, 13 failed`; lines 792, 793, 805, 806, 823, 824, 825, 847, 848, 852, 853, 862, 863 of tests/test_iconpen.c.
+- Green (apply fixed): `RUNTEST iconpen rc=0 [OK] iconpen: 2295 checks, 0 failed` (delivered 2263, +32).
+- m68k: built in the stacked merge validation before the push (see the merge commit).
+
+Tests added: T7 (private first, then public on the same address: slot added once), T8 (private at one address, public at another: slot added), T9 (public at 0x100 with pens, private at 0x180, public at 0x180: the private step keeps the pens, the public step forgets them without a release and bumps that slot's epoch only), T10 (private to public on the holder's own address: unchanged), T11 (APPEARED and REOPENED matching the holder's address and depth: unchanged), T12 (GONE of a private entry: pens forgotten, no release, slot kept).

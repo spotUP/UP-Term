@@ -204,6 +204,8 @@ typedef struct ip_diff_entry {
     char name[IP_PSN_NAME];
     int kind;
     unsigned flags;          /* of the new entry (of the old one for GONE) */
+    const void *screen;      /* identity of the new entry (of the old one for GONE) */
+    int depth;
 } ip_diff_entry;
 
 typedef struct ip_diff {
@@ -214,10 +216,17 @@ typedef struct ip_diff {
 /* Pure. Per name (case-insensitive): in new only APPEARED, in old only GONE, in both with another screen pointer or depth
  * REOPENED, else SAME. Order: the new snapshot's names, then the GONE ones. */
 void ip_screens_diff(const ip_snap *old_s, const ip_snap *new_s, ip_diff *out);
-/* Folds a diff into the table. Slot 0 is never touched. APPEARED adds a slot (a PRIVATE node adds none; a name that already
- * has a slot counts as a reopen). GONE forgets the slot's pens WITHOUT any release (the ColorMap went with the screen) and
- * keeps the slot. REOPENED forgets the pens the same way and bumps ONLY that slot's epoch. A PRIVATE node keeps its slot as it
- * is (no forget, no epoch). Returns the number of slots changed. */
+/* Folds a diff into the table. Slot 0 is never touched. The rules, in order:
+ *   GONE              forgets the slot's pens WITHOUT any release (the ColorMap went with the screen) and keeps the slot,
+ *                     private node or not. No epoch change: the reopen bumps it.
+ *   PRIVATE, listed   keeps its slot as it is (no forget, no epoch) and adds none: "not open yet", never "gone".
+ *   public, no slot   adds a slot, whatever the diff kind. A screen is listed PRIVATE first and made public later on the
+ *                     same address, so its first public sighting is SAME, not APPEARED.
+ *   public, slot      the holder's own identity decides when it has one (pens obtained on a screen): the same screen and
+ *                     depth changes nothing (no leak when a diff calls a held screen APPEARED), another one forgets the pens
+ *                     without a release and bumps ONLY that slot's epoch (a reopen is seen also across a private phase).
+ *                     With no identity the diff kind decides: SAME changes nothing, APPEARED and REOPENED bump the epoch.
+ * Returns the number of slots changed. */
 int ip_screens_apply(ip_screens *t, const ip_diff *d);
 
 #endif

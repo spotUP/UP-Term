@@ -363,6 +363,8 @@ void ip_screens_diff(const ip_snap *old_s, const ip_snap *new_s, ip_diff *out)
         j = ips_snap_find(old_s, n->name);
         ips_set_name(d->name, n->name);
         d->flags = n->flags;
+        d->screen = n->screen;
+        d->depth = n->depth;
         if (j < 0) d->kind = IP_DIFF_APPEARED;
         else if (old_s->e[j].screen != n->screen || old_s->e[j].depth != n->depth) d->kind = IP_DIFF_REOPENED;
         else d->kind = IP_DIFF_SAME;
@@ -372,6 +374,8 @@ void ip_screens_diff(const ip_snap *old_s, const ip_snap *new_s, ip_diff *out)
         ips_set_name(out->e[out->count].name, old_s->e[i].name);
         out->e[out->count].kind = IP_DIFF_GONE;
         out->e[out->count].flags = old_s->e[i].flags;
+        out->e[out->count].screen = old_s->e[i].screen;
+        out->e[out->count].depth = old_s->e[i].depth;
         out->count++;
     }
 }
@@ -379,18 +383,28 @@ void ip_screens_diff(const ip_snap *old_s, const ip_snap *new_s, ip_diff *out)
 int ip_screens_apply(ip_screens *t, const ip_diff *d)
 {
     int i, changed = 0;
+
     for (i = 0; i < d->count; i++) {
         const ip_diff_entry *e = &d->e[i];
         int s = ip_screens_find(t, e->name);
-        if (s == 0 || e->kind == IP_DIFF_SAME) continue;
-        if (e->flags & IP_PSN_PRIVATE) continue;
-        if (e->kind == IP_DIFF_APPEARED && s < 0) {
+        ip_holder *h;
+
+        if (s == 0) continue;                                    /* Workbench has its own path */
+        if (e->kind == IP_DIFF_GONE) {                           /* closed, private or not: the pens went with it */
+            if (s < 0) continue;
+            ip_holder_init(&t->slot[s].sh.h);
+            changed++;
+            continue;
+        }
+        if (e->flags & IP_PSN_PRIVATE) continue;                 /* not open yet: no slot, and a slot stays as it is */
+        if (s < 0) {                                             /* first public sighting, whatever the diff calls it */
             if (ip_screens_add(t, e->name) >= 0) changed++;
             continue;
         }
-        if (s < 0) continue;
-        ip_holder_init(&t->slot[s].sh.h);           /* the pens went with the ColorMap: forget, never release */
-        if (e->kind != IP_DIFF_GONE) t->slot[s].epoch++;
+        h = &t->slot[s].sh.h;
+        if (h->screen ? (h->screen == e->screen && h->depth == e->depth) : e->kind == IP_DIFF_SAME) continue;
+        ip_holder_init(h);                                       /* the pens went with the ColorMap: forget, never release */
+        t->slot[s].epoch++;
         changed++;
     }
     return changed;

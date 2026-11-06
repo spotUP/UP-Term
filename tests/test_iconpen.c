@@ -775,6 +775,95 @@ static void test_screens_diff_and_apply(void)
     CHECK_INT(ip_screens_find(&t, "Fresh"), 3);
     CHECK_INT(t.slot[3].sh.h.held, 0);
     CHECK_INT(t.slot[3].epoch, 0);
+
+    /* T7 a screen first seen PRIVATE gets its slot when it turns public. OpenScreen lists every public screen private first,
+     * the program then makes it public: same address, same depth, so the diff says SAME. Without the slot the screen is
+     * never themed. */
+    ip_screens_init(&t);
+    memset(&a, 0, sizeof a); memset(&b, 0, sizeof b);
+    snap_set(&b, 0, "Late", (void *)0x500, IP_PSN_PRIVATE, 6);
+    ip_screens_diff(&a, &b, &d);
+    CHECK_INT(ip_screens_apply(&t, &d), 0);
+    CHECK_INT(ip_screens_find(&t, "Late"), -1);
+    a = b;
+    snap_set(&b, 0, "Late", (void *)0x500, 0, 6);
+    ip_screens_diff(&a, &b, &d);
+    CHECK_INT(diff_kind(&d, "Late"), IP_DIFF_SAME);
+    CHECK_INT(ip_screens_apply(&t, &d), 1);
+    CHECK_INT(ip_screens_find(&t, "Late"), 1);
+    CHECK_INT(t.slot[1].sh.h.held, 0);
+    CHECK_INT(ip_screens_apply(&t, &d), 0);                      /* the slot is there: the same diff changes nothing more */
+
+    /* T8 the same for a screen that was private at one address and is public at another (closed and reopened between two
+     * polls): REOPENED with no slot adds the slot */
+    ip_screens_init(&t);
+    memset(&a, 0, sizeof a); memset(&b, 0, sizeof b);
+    snap_set(&a, 0, "Late", (void *)0x500, IP_PSN_PRIVATE, 6);
+    snap_set(&b, 0, "Late", (void *)0x600, 0, 6);
+    ip_screens_diff(&a, &b, &d);
+    CHECK_INT(diff_kind(&d, "Late"), IP_DIFF_REOPENED);
+    CHECK_INT(ip_screens_apply(&t, &d), 1);
+    CHECK_INT(ip_screens_find(&t, "Late"), 1);
+
+    /* T9 a reopen that passes through the private state is not lost: public at 0x100 with pens, private at 0x180 (the slot
+     * stays as it is, T4), public at 0x180. The last diff says SAME, the holder still names 0x100: the pens are forgotten
+     * without a release and the epoch moves. */
+    table_with_pens(&t, &f, &o);
+    memset(&a, 0, sizeof a); memset(&b, 0, sizeof b);
+    snap_set(&a, 0, "Pub", (void *)0x100, 0, 6);
+    snap_set(&b, 0, "Pub", (void *)0x180, IP_PSN_PRIVATE, 6);
+    ip_screens_diff(&a, &b, &d);
+    CHECK_INT(ip_screens_apply(&t, &d), 0);
+    CHECK_INT(t.slot[1].sh.h.held, 16);
+    a = b;
+    snap_set(&b, 0, "Pub", (void *)0x180, 0, 6);
+    ip_screens_diff(&a, &b, &d);
+    CHECK_INT(diff_kind(&d, "Pub"), IP_DIFF_SAME);
+    f.releases = 0;
+    CHECK_INT(ip_screens_apply(&t, &d), 1);
+    CHECK_INT(t.slot[1].sh.h.held, 0);
+    CHECK_INT(t.slot[1].epoch, 1);
+    CHECK_INT(f.releases, 0);
+    CHECK_INT(t.slot[2].epoch, 0);
+
+    /* T10 private and public again on the SAME screen (PubScreenStatus toggled, nothing closed): pens and epoch stay */
+    table_with_pens(&t, &f, &o);
+    memset(&a, 0, sizeof a); memset(&b, 0, sizeof b);
+    snap_set(&a, 0, "Pub", (void *)0x100, IP_PSN_PRIVATE, 6);
+    snap_set(&b, 0, "Pub", (void *)0x100, 0, 6);
+    ip_screens_diff(&a, &b, &d);
+    before = t;
+    CHECK_INT(ip_screens_apply(&t, &d), 0);
+    CHECK(memcmp(&before, &t, sizeof t) == 0);
+
+    /* T11 pens held on the very screen a diff calls APPEARED or REOPENED stay (the first poll of a run sees every screen as
+     * APPEARED while the shared record still holds the pens of the run before): forgetting them would leak them */
+    table_with_pens(&t, &f, &o);
+    memset(&a, 0, sizeof a); memset(&b, 0, sizeof b);
+    snap_set(&b, 0, "Pub", (void *)0x100, 0, 6);
+    ip_screens_diff(&a, &b, &d);
+    CHECK_INT(diff_kind(&d, "Pub"), IP_DIFF_APPEARED);
+    before = t;
+    CHECK_INT(ip_screens_apply(&t, &d), 0);
+    CHECK(memcmp(&before, &t, sizeof t) == 0);
+    snap_set(&a, 0, "Pub", (void *)0x0f0, 0, 6);
+    ip_screens_diff(&a, &b, &d);
+    CHECK_INT(diff_kind(&d, "Pub"), IP_DIFF_REOPENED);
+    CHECK_INT(ip_screens_apply(&t, &d), 0);
+    CHECK(memcmp(&before, &t, sizeof t) == 0);
+
+    /* T12 GONE forgets the pens also when the node was private when it left the list: the screen is closed either way */
+    table_with_pens(&t, &f, &o);
+    memset(&a, 0, sizeof a); memset(&b, 0, sizeof b);
+    snap_set(&a, 0, "Pub", (void *)0x100, IP_PSN_PRIVATE, 6);
+    ip_screens_diff(&a, &b, &d);
+    CHECK_INT(diff_kind(&d, "Pub"), IP_DIFF_GONE);
+    f.releases = 0;
+    CHECK_INT(ip_screens_apply(&t, &d), 1);
+    CHECK_INT(t.slot[1].sh.h.held, 0);
+    CHECK_INT(t.slot[1].epoch, 0);
+    CHECK_INT(f.releases, 0);
+    CHECK_INT(ip_screens_find(&t, "Pub"), 1);
 }
 
 void suite_iconpen(void)
