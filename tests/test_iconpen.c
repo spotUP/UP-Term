@@ -568,6 +568,123 @@ static void test_theme_ready(void)
 }
 
 /* ICON-AA-WRONG-BG + ICONPEN-THEME-SWITCH-RECOLOUR: the ramp starts at the backdrop, and a theme switch on the same screen rewrites 32-47 */
+/* TE-10.5b: the per-screen holder owns the pen plan's exclusive pens (ip_plan_sync) */
+typedef struct pf { int taken[256]; int mine[256]; int obtains, releases, sets; int last_obtain, last_release, last_set; uc_u32 last_rgb, last_set_rgb; } pf;
+static int pf_obtain(void *c, int pen, unsigned r, unsigned g, unsigned b)
+{
+    pf *f = c;
+    if (f->taken[pen] || f->mine[pen]) return -1;
+    f->mine[pen] = 1;
+    f->obtains++;
+    f->last_obtain = pen;
+    f->last_rgb = ((uc_u32)r << 16) | ((uc_u32)g << 8) | b;
+    return pen;
+}
+static void pf_release(void *c, int pen)
+{
+    pf *f = c;
+    f->releases++;
+    f->last_release = pen;
+    f->mine[pen] = 0;
+}
+static void pf_set(void *c, int pen, uc_u32 rgb)
+{
+    pf *f = c;
+    f->sets++;
+    f->last_set = pen;
+    f->last_set_rgb = rgb;
+}
+static void pf_plan(gt_plan_pen *p, int i, int pen, uc_u32 rgb, int ex)
+{
+    p[i].pen = (short)pen; p[i].rgb = rgb; p[i].exclusive = (short)ex;
+}
+
+static void test_plan_pens_held_by_the_screen_holder(void)
+{
+    static pf f;
+    ip_ops o;
+    ip_holder h;
+    gt_plan_pen p[3];
+    uint8_t rgb[IP_PENS][3];
+    gtheme t;
+    int s1, s2 = 0;
+    memset(&f, 0, sizeof f);
+    memset(&o, 0, sizeof o);
+    o.obtain = pf_obtain; o.release = pf_release; o.set_rgb = pf_set; o.ctx = &f;
+    ip_holder_init(&h);
+    pf_plan(p, 0, 100, 0x112233UL, 1); pf_plan(p, 1, 101, 0x445566UL, 1); pf_plan(p, 2, 102, 0x778899UL, 1);
+    CHECK_INT(ip_plan_sync(&h, &o, p, 3), 3);                 /* 1 */
+    CHECK_INT(f.obtains, 3);
+    CHECK_INT(f.mine[100] + f.mine[101] + f.mine[102], 3);
+    CHECK_INT(f.last_obtain, 102);
+    CHECK_INT((long)f.last_rgb, 0x778899L);
+    CHECK_INT(ip_plan_sync(&h, &o, p, 3), 3);                 /* 2 */
+    CHECK_INT(f.obtains, 3); CHECK_INT(f.releases, 0); CHECK_INT(f.sets, 0);
+    pf_plan(p, 1, 101, 0xaabbccUL, 1);                        /* 3 */
+    CHECK_INT(ip_plan_sync(&h, &o, p, 3), 3);
+    CHECK_INT(f.sets, 1); CHECK_INT(f.last_set, 101); CHECK_INT((long)f.last_set_rgb, 0xaabbccL);
+    CHECK_INT(f.obtains, 3); CHECK_INT(f.releases, 0);
+    CHECK_INT(ip_plan_sync(&h, &o, p, 1), 1);                 /* 4 */
+    CHECK_INT(f.releases, 2);
+    CHECK_INT(f.mine[100], 1); CHECK_INT(f.mine[101] + f.mine[102], 0);
+    f.taken[101] = 1;                                         /* 5 */
+    CHECK_INT(ip_plan_sync(&h, &o, p, 3), 2);
+    CHECK_INT(f.mine[101], 0); CHECK_INT(f.mine[102], 1);
+    f.taken[101] = 0;
+    CHECK_INT(ip_plan_sync(&h, &o, p, 3), 3);
+    CHECK_INT(f.mine[101], 1);
+    f.obtains = 0;                                            /* 6 */
+    pf_plan(p, 2, 102, 0x778899UL, 0);
+    CHECK_INT(ip_plan_sync(&h, &o, p, 3), 2);                 /* 102 no longer exclusive: released, not obtained */
+    CHECK_INT(f.mine[102], 0); CHECK_INT(f.obtains, 0);
+    pf_plan(p, 2, 103, 0x010203UL, 0);
+    CHECK_INT(ip_plan_sync(&h, &o, p, 3), 2);
+    CHECK_INT(f.obtains, 0); CHECK_INT(f.mine[103], 0);
+    f.releases = 0;                                           /* 7 */
+    CHECK_INT(ip_plan_sync(&h, &o, p, 0), 0);
+    CHECK_INT(f.releases, 2);
+    CHECK_INT(f.mine[100] + f.mine[101], 0);
+    pf_plan(p, 0, 100, 0x112233UL, 1); pf_plan(p, 1, 101, 0x445566UL, 1);   /* 8 */
+    theme(&t);
+    ip_colours(&t, desk_role(&t, DK_BG), rgb);
+    CHECK_INT(ip_holder_obtain(&h, &o, &s1, 6, rgb), 16);
+    CHECK_INT(ip_plan_sync(&h, &o, p, 2), 2);
+    f.releases = 0;
+    CHECK_INT(ip_holder_release(&h, &o), 18);
+    CHECK_INT(f.releases, 18);
+    CHECK_INT(f.mine[100] + f.mine[101], 0);
+    CHECK_INT(ip_holder_obtain(&h, &o, &s1, 6, rgb), 16);     /* 9 */
+    CHECK_INT(ip_plan_sync(&h, &o, p, 2), 2);
+    f.releases = 0;
+    ip_holder_init(&h);                                       /* the identity changed: the pens went with the ColorMap */
+    CHECK_INT(f.releases, 0);
+    CHECK_INT(h.pcount, 0);
+    memset(f.mine, 0, sizeof f.mine);                         /* 10 */
+    CHECK_INT(ip_holder_obtain(&h, &o, &s2, 6, rgb), 16);
+    f.obtains = 0;
+    pf_plan(p, 0, 33, 0x111111UL, 1);                         /* an icon pen */
+    pf_plan(p, 1, 100, 0x222222UL, 1);
+    CHECK_INT(ip_plan_sync(&h, &o, p, 2), 1);
+    CHECK_INT(f.obtains, 1);
+    CHECK_INT(f.last_obtain, 100);
+    {
+        ip_holder r;
+        static rcm c;
+        int scr;
+        ip_ops ro;
+        memset(&c, 0, sizeof c);
+        memset(&ro, 0, sizeof ro);
+        ro.obtain = rcm_obtain; ro.release = rcm_release; ro.is_free = rcm_is_free; ro.theme = rcm_theme; ro.set_rgb = rcm_set;
+        ro.ctx = &c;
+        ip_holder_init(&r);
+        rcm_open(&c);
+        CHECK_INT(ip_sync(&r, &ro, 1, &scr, 8, 8), IP_SYNC_OBTAIN);
+        pf_plan(p, 0, 5, 0x333333UL, 1);                      /* a role pen (4-7 at depth 8) */
+        CHECK_INT(ip_plan_sync(&r, &ro, p, 1), 0);
+        CHECK_INT(r.pcount, 0);
+    }
+}
+
 static void test_theme_switch_recolour(void)
 {
     static rcm c;
@@ -1087,6 +1204,7 @@ void suite_iconpen(void)
     test_main_takes_pens_at_boot();
     test_reopen_same_address();
     test_pens47_owned();
+    test_plan_pens_held_by_the_screen_holder();
     test_theme_switch_recolour();
     test_screens_table();
     test_screens_diff_and_apply();

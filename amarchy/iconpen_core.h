@@ -68,6 +68,11 @@ typedef struct ip_holder {
     int rpen[4];
     uint8_t rhave[4];
     uc_u32 rrgb[4];              /* the colour each role pen carries now (ip_recolour compares against it) */
+    /* TE-10.5b: the exclusive pens of the screen's pen plan (gt_screen_apply_plan), held and released with the others. Only HELD
+     * entries are stored (pcount of them); capacity = the most entries the plan can return (one per element, GTE_COUNT) */
+    int pcount;
+    short ppen[GTE_COUNT];
+    uc_u32 prgb[GTE_COUNT];      /* the colour each plan pen carries now (ip_plan_sync recolours when the plan changes it) */
 } ip_holder;
 
 void ip_holder_init(ip_holder *h);
@@ -100,6 +105,11 @@ int ip_recolour(ip_holder *h, const ip_ops *o);
 int ip_role_claim(ip_holder *h, int pen, uc_u32 rgb);
 /* Release every held pen (flat off, program exit). Returns the number released. */
 int ip_holder_release(ip_holder *h, const ip_ops *o);
+/* TE-10.5b: make the held plan pens match plan[0..n) (n = 0 releases them all). An exclusive entry not held is obtained (a refused
+ * pen is skipped and retried next sync); a held one whose colour changed is recoloured with o->set_rgb; a held one no longer
+ * exclusive or absent is released. exclusive = 0 entries do nothing. A pen the holder already holds as icon or role pen is skipped.
+ * Returns the plan pens held after the call. */
+int ip_plan_sync(ip_holder *h, const ip_ops *o, const gt_plan_pen *plan, int n);
 /* "pens-held N"; returns the length, 0 when cap is too small */
 int ip_status_line(const ip_holder *h, char *out, size_t cap);
 
