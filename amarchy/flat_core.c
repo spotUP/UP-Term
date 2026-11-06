@@ -982,3 +982,71 @@ int flat_state_for(const flat_state *look, const flat_pens_tab *t, const void *s
     if (p->sel >= 0) out->pen_sel = (uint8_t)p->sel;
     return 1;
 }
+
+/* TE-10.6b budget fix: the draw table (flat_core.h). The exact (screen, epoch) match is the shared flat_ident_slot rule. */
+void flat_draw_init(flat_draw_tab *d)
+{
+    memset(d, 0, sizeof *d);
+}
+
+static int draw_listed(const flat_draw_scr *list, int n, const void *screen, unsigned epoch)
+{
+    int i;
+    for (i = 0; i < n; i++)
+        if (list[i].screen == screen && list[i].epoch == epoch)
+            return 1;
+    return 0;
+}
+
+void flat_draw_sync(flat_draw_tab *d, const flat_state *look, const flat_pens_tab *pens, const flat_draw_scr *list, int n, const void *wb,
+                    unsigned wb_epoch)
+{
+    int i, k;
+    d->wb = wb;
+    d->wb_epoch = wb_epoch;
+    d->plain = *look;
+    d->plain.pen_dim = d->plain.pen_knob = d->plain.pen_inbar = d->plain.pen_sel = 0;
+    for (k = 0; k < FLAT_PENS_SLOTS; k++)
+        if (d->slot[k].screen && (d->slot[k].screen == wb || !draw_listed(list, n, d->slot[k].screen, d->slot[k].epoch)))
+            d->slot[k].screen = 0;
+    for (i = 0; i < n; i++) {
+        if (!list[i].screen || list[i].screen == wb)
+            continue;
+        k = flat_ident_slot(d->slot, sizeof d->slot[0], offsetof(flat_draw_slot, screen), offsetof(flat_draw_slot, epoch), FLAT_PENS_SLOTS,
+                            list[i].screen, list[i].epoch, 1);
+        if (k < 0)
+            continue;
+        d->slot[k].screen = list[i].screen;
+        d->slot[k].epoch = list[i].epoch;
+        flat_state_for(look, pens, list[i].screen, list[i].epoch, &d->slot[k].st);
+    }
+}
+
+static const flat_draw_slot *draw_find(const flat_draw_tab *d, const void *screen)
+{
+    int k;
+    for (k = 0; k < FLAT_PENS_SLOTS; k++)
+        if (d->slot[k].screen == screen)
+            return &d->slot[k];
+    return 0;
+}
+
+const flat_state *flat_draw_state(const flat_draw_tab *d, const flat_state *live, const void *screen)
+{
+    const flat_draw_slot *s;
+    if (!screen || screen == d->wb)
+        return live;
+    s = draw_find(d, screen);
+    return s ? &s->st : &d->plain;
+}
+
+unsigned flat_draw_epoch(const flat_draw_tab *d, const void *screen)
+{
+    const flat_draw_slot *s;
+    if (!screen)
+        return 0;
+    if (screen == d->wb)
+        return d->wb_epoch;
+    s = draw_find(d, screen);
+    return s ? s->epoch : 0;
+}

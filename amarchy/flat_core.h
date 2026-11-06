@@ -485,6 +485,35 @@ int flat_pens_tab_reap(flat_pens_tab *t, int (*is_open)(void *ctx, const void *s
  * no pens (all four 0, the "none" the pen functions already fall back from). Returns 1 when a slot was found. Never obtains. */
 int flat_state_for(const flat_state *look, const flat_pens_tab *t, const void *screen, unsigned epoch, flat_state *out);
 
+/* TE-10.6b budget fix: the draw table. The main task of amarchy-flat keeps it; a draw hook (any task, on its own small stack) only looks
+ * up a pointer into it: no flat_state copy on the hook's stack and no iconpen call (FLAT-C3, tests/test_flat_budget.py). */
+typedef struct flat_draw_slot {
+    const void *screen;   /* 0 = free */
+    unsigned epoch;       /* the pen record epoch of the screen at the last sync */
+    flat_state st;        /* the look with the four own pens of this screen (0 when it holds none) */
+} flat_draw_slot;
+
+typedef struct flat_draw_tab {
+    const void *wb;       /* the Workbench screen at the last sync, 0 = unknown */
+    unsigned wb_epoch;
+    flat_state plain;     /* the look with the four own pens 0: a screen the table does not list */
+    flat_draw_slot slot[FLAT_PENS_SLOTS];
+} flat_draw_tab;
+
+typedef struct flat_draw_scr { const void *screen; unsigned epoch; } flat_draw_scr;
+
+void flat_draw_init(flat_draw_tab *d);
+/* Main task, hooks excluded by the caller (Forbid): plain = look with the four pens 0; one slot per listed screen (not the Workbench),
+ * st = flat_state_for(look, pens, screen, epoch). A screen already in the table keeps its slot (a hook may hold the pointer); a
+ * screen not listed frees its slot. */
+void flat_draw_sync(flat_draw_tab *d, const flat_state *look, const flat_pens_tab *pens, const flat_draw_scr *list, int n, const void *wb,
+                    unsigned wb_epoch);
+/* Hook: screen 0 or the Workbench screen = live (the shared state, no lag on the Workbench); a listed screen = its slot state; any other
+ * screen = plain. Pointer compares only, no copy. */
+const flat_state *flat_draw_state(const flat_draw_tab *d, const flat_state *live, const void *screen);
+/* Hook, label path: the mirrored epoch (Workbench = wb_epoch, a listed screen = its epoch, any other = 0). */
+unsigned flat_draw_epoch(const flat_draw_tab *d, const void *screen);
+
 /* S57-BUTTON-ASPECT-BORDERS: the width in pixels of a button's left and right outline lines: side (flat_side_px; below 1 counts 1),
  * never more than a third of the box width w. Top and bottom lines stay 1 px. */
 int flat_button_side(int side, int w);

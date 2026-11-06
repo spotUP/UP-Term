@@ -300,7 +300,7 @@ static void c2_ring_fill(void *ctx, int x0, int y0, int x1, int y1, int pen)
 
 /* TE-10.6b: pens per screen. g_pens holds the three/four pen numbers of each screen that has any (identity = screen pointer + that
  * slot's epoch, flat_pens_tab); the look block r->st stays global. A hook takes the pens of the screen of the window it draws in
- * (st_scr / st_rp / st_pens), never another screen's: a screen with no slot has no pens (0) and the pen functions fall back from that.
+ * (st_scr / st_rp, through g_draw below), never another screen's: a screen with no slot has no pens (0) and the pen functions fall back from that.
  * The Workbench slot also stores into r->st (the status line and the gate checks read it), so Workbench output is what it was.
  * No window (a menu or screen bar rastport): the Workbench pens in r->st, as before. g_wb_scr = the Workbench screen of the last pens_run
  * (only the main task writes it): the epoch of that screen is ipd_epoch(), of any other ipd_epoch_of_screen(). */
@@ -312,26 +312,21 @@ static unsigned scr_epoch(const void *scr)
     return scr && scr == g_wb_scr ? ipd_epoch() : ipd_epoch_of_screen(scr);
 }
 
-static void st_pens(flatshared *r, flat_state *st, const struct Screen *scr)
+/* TE-10.6b budget fix (FLAT-C3): the hooks run on the stack of whichever task draws, so they copy no flat_state and call no
+ * iconpen function. The main task keeps g_draw (flat_draw_tab: one flat_state per listed non-Workbench screen, written by draw_sync
+ * under Forbid) and a hook only gets a pointer: the Workbench screen and no window = &r->st (live, as on main), a listed screen =
+ * its slot, any other screen = the look with the four own pens 0. */
+static flat_draw_tab g_draw;
+
+static const flat_state *st_scr(flatshared *r, const struct Screen *scr)
 {
-    flat_state o;
-    if (!scr)
-        return;
-    flat_state_for(&r->st, &g_pens, scr, scr_epoch(scr), &o);
-    st->pen_dim = o.pen_dim; st->pen_knob = o.pen_knob; st->pen_inbar = o.pen_inbar; st->pen_sel = o.pen_sel;
+    return flat_draw_state(&g_draw, &r->st, scr);
 }
 
-static const flat_state *st_scr(flatshared *r, flat_state *buf, const struct Screen *scr)
-{
-    *buf = r->st;
-    st_pens(r, buf, scr);
-    return buf;
-}
-
-static const flat_state *st_rp(flatshared *r, flat_state *buf, const struct RastPort *rp)
+static const flat_state *st_rp(flatshared *r, const struct RastPort *rp)
 {
     struct Window *w = rp && rp->Layer ? (struct Window *)rp->Layer->Window : NULL;
-    return st_scr(r, buf, w ? w->WScreen : NULL);
+    return st_scr(r, w ? w->WScreen : NULL);
 }
 
 /* S32-ARROW-OUTLINE: the box fill ran over the window's outer ring where the gadget reaches the last column or row;
@@ -340,13 +335,12 @@ static const flat_state *st_rp(flatshared *r, flat_state *buf, const struct Rast
 static void c2_ring_refill(flatshared *r, struct impDraw *d, struct Image *im)
 {
     struct Window *rw = d->imp_RPort->Layer ? (struct Window *)d->imp_RPort->Layer->Window : NULL;
-    flat_state sb;
     if (rw && r->st.pen_outline && r->rsw.saved && !(rw->Flags & WFLG_BORDERLESS)) {
         UBYTE fg = d->imp_RPort->FgPen;
         if (flat_outer_ring_overlap(rw->Width, rw->Height, side_px(r, rw->WScreen), im->LeftEdge + d->imp_Offset.X,
                 im->TopEdge + d->imp_Offset.Y, im->LeftEdge + d->imp_Offset.X + im->Width - 1,
                 im->TopEdge + d->imp_Offset.Y + im->Height - 1, c2_ring_fill, d->imp_RPort,
-                flat_edge_pen(st_scr(r, &sb, rw->WScreen), d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0, (rw->Flags & WFLG_WINDOWACTIVE) != 0)) > 0)
+                flat_edge_pen(st_scr(r, rw->WScreen), d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0, (rw->Flags & WFLG_WINDOWACTIVE) != 0)) > 0)
             SetAPen(d->imp_RPort, fg);
     }
 }
@@ -366,8 +360,7 @@ static void c2_get_pens(flatshared *r, struct impDraw *d, struct Image *im, ULON
         if (fl && fl->Window) {
             int wdepth = d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0;
             int wactive = (((struct Window *)fl->Window)->Flags & WFLG_WINDOWACTIVE) != 0;
-            flat_state sb;
-            const flat_state *ps = st_rp(r, &sb, d->imp_RPort);
+            const flat_state *ps = st_rp(r, d->imp_RPort);
             int band = flat_frame_pen(ps, wdepth, wactive);
             p->knob = flat_knob_state_pen(ps, wdepth, wactive);   /* S32-ARROW-KNOB-COLOUR: arrows and size draw in the scroller knob's pen */
             if (band >= 0 && flat_glyph_on_band(which)) {   /* the box is the title band (S32-INACTIVE-BAR: both states); the glyph takes the title text's pen */
@@ -423,7 +416,6 @@ static int c2_clone(struct Hook *hk, Object *obj, Msg msg, int reg, ULONG which,
     struct impDraw *d = (struct impDraw *)msg;
     struct Image *im = (struct Image *)obj;
     cloneenv env;
-    flat_state sb;
     int rc, got;
     env.h = hk; env.obj = obj; env.d = d; env.reg = reg; env.which = raw_which; env.why = CLONE_WHY_NONE;
     got = AttemptSemaphore(&cl_ss);
@@ -432,7 +424,7 @@ static int c2_clone(struct Hook *hk, Object *obj, Msg msg, int reg, ULONG which,
         cl_in.ox = im->LeftEdge + d->imp_Offset.X; cl_in.oy = im->TopEdge + d->imp_Offset.Y; cl_in.w = im->Width; cl_in.h = im->Height;
         cl_in.frame_pen = p->frame; cl_in.knob_pen = p->knob; cl_in.text_pen = p->text; cl_in.band_rows = p->band; cl_in.edge_pen = p->edge;
     }
-    rc = !got ? FLAT_CLONE_FAIL : flat_clone_draw_in(st_rp(r, &sb, d->imp_RPort), &cl_in, clone_render, &env, c2_fill, d->imp_RPort, cl_scratch);
+    rc = !got ? FLAT_CLONE_FAIL : flat_clone_draw_in(st_rp(r, d->imp_RPort), &cl_in, clone_render, &env, c2_fill, d->imp_RPort, cl_scratch);
     if (got && rc == FLAT_CLONE_FAIL && env.why == CLONE_WHY_NONE)
         c2_clone_note_empty(r, d, im, which);
     if (got)
@@ -452,8 +444,7 @@ static int c2_glyph(Object *obj, Msg msg, ULONG which, const c2_pens *p)
     flatshared *r = g_r;
     struct impDraw *d = (struct impDraw *)msg;
     struct Image *im = (struct Image *)obj;
-    flat_state sb;
-    return flat_glyph_draw(st_rp(r, &sb, d->imp_RPort), which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
+    return flat_glyph_draw(st_rp(r, d->imp_RPort), which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
                            im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, p->frame, p->knob,
                            d->imp_DrInfo ? flat_side_px(d->imp_DrInfo->dri_Resolution.X, d->imp_DrInfo->dri_Resolution.Y) : 1,
                            c2_fill, d->imp_RPort);
@@ -593,16 +584,16 @@ static int c8_skip(Object *obj, Msg msg)
         {   /* S57-BUTTON-ASPECT-BORDERS: the outline columns of this window's screen (slot table read, no Intuition call) */
             struct Layer *sl = d->imp_RPort->Layer;
             struct Window *sw = sl ? (struct Window *)sl->Window : NULL;
+            const flat_state *ps = st_scr(r, sw ? sw->WScreen : NULL);
             st.side = (uint8_t)(sw ? side_px(r, sw->WScreen) : 1);
-            st_pens(r, &st, sw ? sw->WScreen : NULL);
+            st.pen_dim = ps->pen_dim; st.pen_knob = ps->pen_knob; st.pen_inbar = ps->pen_inbar; st.pen_sel = ps->pen_sel;
         }
         int ox = im->LeftEdge + d->imp_Offset.X, oy = im->TopEdge + d->imp_Offset.Y;
         int w, h;
         flat_frame_size(msg->MethodID == FLAT_IM_DRAWFRAME, d->imp_Dimensions.Width, d->imp_Dimensions.Height, im->Width, im->Height, &w, &h);
         if (smart_knob_of(d->imp_RPort, obj)) {      /* S56-LOCALE-KNOB: the listview scroller knob takes the Workbench knob pen */
             struct Window *kw = (struct Window *)d->imp_RPort->Layer->Window;
-            flat_state kb;
-            if (!raa_knob_frame_draw(st_scr(r, &kb, kw->WScreen), d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0, (kw->Flags & WFLG_WINDOWACTIVE) != 0,
+            if (!raa_knob_frame_draw(st_scr(r, kw->WScreen), d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0, (kw->Flags & WFLG_WINDOWACTIVE) != 0,
                                      ox, oy, w, h, c2_fill, c2_read, c2_rgb, raa_load(d->imp_RPort), d->imp_RPort, NULL))
                 return 0;
             r->fflat++;
@@ -862,7 +853,7 @@ static int icl_label(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG
     icx.cm = cm;
     icx.pc = NULL;
     if (!rtg) {         /* TE-10.6b: this screen's own shade cache (a screen at a new epoch gets a fresh slot, the old one is reaped) */
-        icx.pc = icl_tab_for(&icl_pc, w->WScreen, scr_epoch(w->WScreen));
+        icx.pc = icl_tab_for(&icl_pc, w->WScreen, flat_draw_epoch(&g_draw, w->WScreen));
         if (!icx.pc) {  /* all slots taken by other screens: stock Text, never another screen's pens */
             r->lskip++;
             ReleaseSemaphore(&icl_ss);
@@ -920,7 +911,6 @@ static int icl_label(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG
 void flat_tx_c(struct RastPort *rp, CONST_STRPTR str, ULONG count)
 {
     flatshared *r = g_r;
-    flat_state tsb;
     r->tcalls++;
     int pen;
     flat_gh_text(&r->gh, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL), rp->cp_x, rp->cp_y, (const char *)str, (int)count);
@@ -942,7 +932,7 @@ void flat_tx_c(struct RastPort *rp, CONST_STRPTR str, ULONG count)
             ng++;
         }
         flat_title_span(gr, ng, w->Width, w->BorderTop, &sx0, &sx1);
-        if (flat_title_decide(st_rp(r, &tsb, rp), rp->BitMap ? rp->BitMap->Depth : 0, (w->Flags & WFLG_WINDOWACTIVE) != 0, (const char *)w->Title,
+        if (flat_title_decide(st_rp(r, rp), rp->BitMap ? rp->BitMap->Depth : 0, (w->Flags & WFLG_WINDOWACTIVE) != 0, (const char *)w->Title,
                               w->Width, w->BorderTop, (const char *)str, (int)count, rp->cp_y - (rp->Font ? rp->Font->tf_Baseline : 0), sx0, sx1, &ft)) {
             UBYTE fg = rp->FgPen, bg = rp->BgPen, dm = rp->DrawMode;
             WORD cx = rp->cp_x, cy = rp->cp_y;
@@ -968,7 +958,7 @@ void flat_tx_c(struct RastPort *rp, CONST_STRPTR str, ULONG count)
             return;
         }
     }
-    if (r->tx.armed && (pen = flat_tx_pen(st_rp(r, &tsb, rp), &r->tx, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL),
+    if (r->tx.armed && (pen = flat_tx_pen(st_rp(r, rp), &r->tx, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL),
                                            rp->cp_x, rp->cp_y)) >= 0) {
         UBYTE fg = rp->FgPen;
         r->thits++;
@@ -1067,7 +1057,6 @@ static int prop_knob(struct Gadget *g, struct PropInfo *pi, int cx, int cy, int 
 static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, LONG x0, LONG y0, LONG x1, LONG y1, int cuts[][2], int *ncuts)
 {
     struct Gadget *g;
-    flat_state sb;
     for (g = w->FirstGadget; g; g = g->NextGadget) {
         struct PropInfo *pi;
         int gx, gy, gw, gh, cx, cy, cw, ch, pen, k[4];
@@ -1083,7 +1072,7 @@ static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, LO
         cx = gx + pi->LeftBorder; cy = gy + pi->TopBorder; cw = pi->CWidth; ch = pi->CHeight;
         if (!prop_knob(g, pi, cx, cy, k))
             continue;
-        pen = flat_scroller_pen_box(st_scr(r, &sb, w->WScreen), (rp->BitMap ? rp->BitMap->Depth : 0), (w->Flags & WFLG_WINDOWACTIVE) != 0, cx, cy, cw, ch,
+        pen = flat_scroller_pen_box(st_scr(r, w->WScreen), (rp->BitMap ? rp->BitMap->Depth : 0), (w->Flags & WFLG_WINDOWACTIVE) != 0, cx, cy, cw, ch,
                                     k[0], k[1], k[2], k[3], (int)x0, (int)y0, (int)x1, (int)y1);
         if (pen >= 0) {
             *ncuts = flat_scroller_cuts_box(k[0], k[1], k[2], k[3], (int)x0, (int)y0, (int)x1, (int)y1, cuts);
@@ -1169,7 +1158,6 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
 {
     flatshared *r = g_r;
     struct Window *w;
-    flat_state rsb;
     r->rcalls++;
     if (r->st.enabled && !r->st.held && rp && rp->AreaPtSz && ret >= r->irom_lo && ret < r->irom_hi && (!rp->Layer || !rp->Layer->Window) &&
         ghost_menu(r, rp, x0, y0, x1, y1))
@@ -1186,11 +1174,11 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
             r->ghits++;
             rp->AreaPtrn = 0; rp->AreaPtSz = 0;
             SetDrMd(rp, JAM2);
-            SetAPen(rp, (UBYTE)flat_dim_pen(st_scr(r, &rsb, w->WScreen), depth));
+            SetAPen(rp, (UBYTE)flat_dim_pen(st_scr(r, w->WScreen), depth));
             ((rectfn)r->rsw.saved)(rp, gb->x0, gb->y0, gb->x1, gb->y1, (struct Library *)GfxBase);
             if (gb->str) {
                 SetDrMd(rp, JAM1);
-                SetAPen(rp, (UBYTE)flat_dimtext_pen(st_scr(r, &rsb, w->WScreen), depth));
+                SetAPen(rp, (UBYTE)flat_dimtext_pen(st_scr(r, w->WScreen), depth));
                 Move(rp, gb->lx, gb->ly);
                 ((textfn)r->tsw.saved)(rp, gb->str, gb->count, (struct Library *)GfxBase);
             }
@@ -1242,13 +1230,13 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
         if (flat_outer_edge_fill(w->Width, w->Height, (int)x0, (int)y0, (int)x1, (int)y1, side_px(r, w->WScreen), e)) {
             UBYTE fg = rp->FgPen;
             r->rhits++;
-            SetAPen(rp, (UBYTE)flat_edge_pen(st_scr(r, &rsb, w->WScreen), rp->BitMap ? rp->BitMap->Depth : 0, (w->Flags & WFLG_WINDOWACTIVE) != 0));   /* S32-INACTIVE-BAR: the inactive ring */
+            SetAPen(rp, (UBYTE)flat_edge_pen(st_scr(r, w->WScreen), rp->BitMap ? rp->BitMap->Depth : 0, (w->Flags & WFLG_WINDOWACTIVE) != 0));   /* S32-INACTIVE-BAR: the inactive ring */
             ((rectfn)r->rsw.saved)(rp, e[0], e[1], e[2], e[3], (struct Library *)GfxBase);
             SetAPen(rp, fg);
             return;
         }
         {                                                     /* S57-LOCALE-LIST-NO-SELECT: FILLPEN is the accent; the sides stay dark */
-            int dk[4], sp2 = flat_side_fill_pen(st_scr(r, &rsb, w->WScreen), rp->FgPen, w->Width, w->Height, w->BorderLeft, w->BorderTop, w->BorderRight,
+            int dk[4], sp2 = flat_side_fill_pen(st_scr(r, w->WScreen), rp->FgPen, w->Width, w->Height, w->BorderLeft, w->BorderTop, w->BorderRight,
                                                 w->BorderBottom, (int)x0, (int)y0, (int)x1, (int)y1, dk);
             if (sp2 >= 0) {
                 UBYTE fg = rp->FgPen;
@@ -1816,6 +1804,33 @@ static void pens_reap(void)
     UnlockPubScreenList();
 }
 
+/* TE-10.6b budget fix: main task. Collect (screen, epoch) of every open public screen except the Workbench under the list lock (the
+ * epoch lookups are iconpen_dos calls, allowed here), then write g_draw under Forbid (the hooks run in other tasks). Sync points: the
+ * end of every pens_run (start, CTRL_D refresh, 1 s watch) and the held branches that skip pens_run. */
+static flat_draw_scr g_draw_list[FLAT_PENS_SLOTS];
+
+static void draw_sync(flatshared *r)
+{
+    struct List *pl = LockPubScreenList();
+    struct Node *nd;
+    int n = 0;
+    unsigned wbep = ipd_epoch();
+    if (pl) {
+        for (nd = pl->lh_Head; nd->ln_Succ && n < FLAT_PENS_SLOTS; nd = nd->ln_Succ) {
+            const struct Screen *sc = ((struct PubScreenNode *)nd)->psn_Screen;
+            if (!sc || sc == (const struct Screen *)g_wb_scr)
+                continue;
+            g_draw_list[n].screen = sc;
+            g_draw_list[n].epoch = ipd_epoch_of_screen(sc);
+            n++;
+        }
+    }
+    UnlockPubScreenList();
+    Forbid();
+    flat_draw_sync(&g_draw, &r->st, &g_pens, g_draw_list, n, g_wb_scr, wbep);
+    Permit();
+}
+
 /* mode 0: refresh (release on the identity, obtain again), 1: follow the screen (1 s watch), 2: release. Runs under the locked
  * Workbench screen so its ColorMap cannot close. TE-10.6b: the Workbench screen's slot of g_pens; its numbers are also stored into
  * r->st. Other screens obtain no pens here (their hooks draw with the stock fallbacks). */
@@ -1851,6 +1866,7 @@ static void pens_run(flatshared *r, int mode)
         flat_pens_release(sl, &o, &r->st, id, ep);
     if (scr)
         UnlockPubScreen(NULL, scr);
+    draw_sync(r);
     if (mode == 1)
         pens_reap();
 }
@@ -1982,11 +1998,13 @@ int main(void)
     }
     g_r = r;
     flat_pens_tab_init(&g_pens);
+    flat_draw_init(&g_draw);
     pens_sync(r, 0);                                    /* the exclusive icon pens first: a shared pen (dim) must not sit on one */
     if (!r->st.held) {
         dopus_scan(r);
         dim_refresh(r);
-    }
+    } else
+        draw_sync(r);
     pt_start(&pen_tm, 1000000UL);                       /* the Workbench screen watch (pens_sync) */
     print_status();
     for (;;) {
@@ -2010,7 +2028,8 @@ int main(void)
                 dopus_scan(r);
                 dim_refresh(r);
                 print_status();
-            }
+            } else
+                draw_sync(r);
         }
         if (!(got & SIGBREAKF_CTRL_C))
             continue;
