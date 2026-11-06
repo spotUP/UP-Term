@@ -8413,6 +8413,22 @@ static long run_program(sh_shell *sh, sh_list *argv, const sh_io *io, int wait)
     return st;
 }
 
+/* `type` is bash's builtin (shared with `which`) and AmigaDOS C:Type. When any argument that is not a flag
+ * names a file (it holds ':' or '/', or exists in the current directory) the command is Type with every
+ * argument as written; bare command names and the flags -a -t -p -P -f stay bash type. */
+static int type_names_file(sh_shell *sh, const sh_list *argv)
+{
+    int i;
+    for (i = 1; i < argv->n; i++) {
+        const char *a = argv->v[i];
+        if (!a[0] || (a[0] == '-' && a[1]))
+            continue;
+        if (strchr(a, ':') || strchr(a, '/') || sh_exists(sh, a, 0))
+            return 1;
+    }
+    return 0;
+}
+
 static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int wait, long *job, char **last)
 {
     /* wait SH_SPAWN_STAGE: a pipeline stage, started without a wait as a `&` job is, but the OS layer
@@ -8521,6 +8537,11 @@ static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int w
             sh_list_free(&argv);
             return 1;
         }
+    }
+    if (!cmd_mode && !strcmp(argv.v[0], "type") && find_bi(sh, "type") && (nofunc || !find_func(sh, "type")) &&
+        type_names_file(sh, &argv)) {
+        free(argv.v[0]);   /* the external AmigaDOS Type, found as any program is */
+        argv.v[0] = sdup("Type");
     }
     if (cmd_mode) {
         int q;

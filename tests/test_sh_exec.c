@@ -2504,6 +2504,18 @@ static void run_prints_the_cli_banner(void)
     CHECK_STR(run_cli("Run args a", 0), "");
 }
 
+/* S7c-6 VSH-TYPE-CLASH: `type` with an argument that names a file runs the external Type with every
+ * argument unchanged; bare names and bash flags stay bash type. */
+static void type_with_a_file_runs_external_type(void)
+{
+    CHECK_STR(run("type RAM:s.txt"), "<Type><RAM:s.txt>\n");
+    CHECK_STR(run("echo x > loc.txt; type loc.txt"), "<Type><loc.txt>\n");
+    CHECK_STR(run("type -t echo RAM:s.txt"), "<Type><-t><echo><RAM:s.txt>\n");
+    CHECK_STR(run("type -t echo"), "builtin\n");
+    CHECK_STR(run("which echo"), "echo is a shell builtin\n");
+    CHECK_STR(run("which RAM:s.txt; echo rc$?"), "rc1\n");
+}
+
 static void path_and_run_are_amiga_forms_of_path_and_background(void)
 {
     CHECK_STR(run("PATH=/a:/b; path"), "/a\n/b\n");
@@ -3012,6 +3024,7 @@ void suite_sh_exec(void)
     amiga_script_by_name_runs_in_shell();
     sh_files_keep_bash_if();
     path_and_run_are_amiga_forms_of_path_and_background();
+    type_with_a_file_runs_external_type();
     run_prints_the_cli_banner();
     execute_runs_lines_literally();
     execute_quit_sets_rc();
