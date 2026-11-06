@@ -440,6 +440,23 @@ void gt_budget_text(const gt_budget *b, char *out, int n);
 /* the share line of group g ("Text shares a pen with Surface"); 0 and out empty when g is alone or the screen is not shallow */
 int gt_budget_share_text(const gt_budget *b, int g, char *out, int n);
 
+/* TE-10.5a: the pen plan of one public screen. Pure: reads the model, the depth and the masks; never obtains or writes a pen.
+ * One entry per colour the budget calls "needing" (gt_pen_budget .needing: distinct colours no role pen carries, no icon element
+ * from depth 4), so the count equals that field; truecolour (exact) plans nothing. The colours come from the same walk as the budget.
+ *   free_mask  256 bits, pen p is bit (p & 31) of word p >> 5: the pens of the screen's colour map its owner does not use.
+ *   exclusive  1: Amarchy writes rgb to pen (SetRGB32). 0 = best: pen is the nearest role pen, nothing is written.
+ *   Exclusive pens are only pens >= the budget's held count (the desktop keeps the low ones). In ascending order first the pens in
+ *   free_mask, then, only when allow_owner_pens (the rule's Take Over Palette), the owner's pens. A colour that finds none is best.
+ *   Each pen is planned exclusive at most once. cap = capacity of out; more entries than cap are cut off (the return value is the
+ *   number written, never more than cap). Returns the number of entries. */
+typedef struct gt_plan_pen {
+    short pen;
+    uc_u32 rgb;      /* 0xRRGGBB */
+    short exclusive; /* 1 = write the colour to pen; 0 = best match, no write */
+} gt_plan_pen;
+#define GT_MASK_WORDS 8
+int gt_screen_apply_plan(const gt_model *m, int depth, const uc_u32 *free_mask, int allow_owner_pens, gt_plan_pen *out, int cap);
+
 
 /* TE-10.2: the screen rules, ENVARC:Amarchy/screen-themes (ENV: copy). Line 1 "default all|workbench|none", then one rule per line,
  * in order: "<pattern> = <theme>|exclude [takeover]". Pure: the text comes in and goes out as a buffer. */

@@ -128,6 +128,16 @@ int mg_width_t(const keymap *k, const char *node, const mg_font *f, int icon_w, 
     return imin(w, s->w - 2 * m.margin_x);
 }
 
+int mg_grow(int x, int w, int need, int screen_w, int *nx, int *nw)
+{
+    int w2 = imin(need, screen_w);
+    if (w2 <= w)
+        return 0;
+    *nw = w2;
+    *nx = imax(0, imin(x, screen_w - w2));
+    return 1;
+}
+
 int mg_width(const keymap *k, const char *node, const mg_font *f, int icon_w, int chev_w,
              mg_text_fn text, void *ctx, const mg_screen *s)
 {

@@ -760,10 +760,12 @@ static void pens_forget(flat_pens *p, flat_state *s)
     p->screen = 0;
     p->epoch = 0;
     p->dim = p->knob = p->inbar = p->sel = -1;
-    s->pen_dim = 0;
-    s->pen_knob = 0;
-    s->pen_inbar = 0;
-    s->pen_sel = 0;
+    if (s) {                            /* TE-10.6a: a non-Workbench slot has no flat_state numbers to clear */
+        s->pen_dim = 0;
+        s->pen_knob = 0;
+        s->pen_inbar = 0;
+        s->pen_sel = 0;
+    }
 }
 
 void flat_pens_release(flat_pens *p, const flat_pen_ops *o, flat_state *s, const void *screen, unsigned epoch)
@@ -781,9 +783,10 @@ void flat_pens_release(flat_pens *p, const flat_pen_ops *o, flat_state *s, const
     pens_forget(p, s);
 }
 
-void flat_pens_refresh(flat_pens *p, const flat_pen_ops *o, flat_state *s, const void *screen, unsigned epoch, int depth)
+void flat_pens_refresh_on(flat_pens *p, const flat_pen_ops *o, const flat_state *s, flat_state *store, const void *screen, unsigned epoch,
+                          int depth)
 {
-    flat_pens_release(p, o, s, screen, epoch);
+    flat_pens_release(p, o, store, screen, epoch);
     if (!screen)
         return;
     p->screen = screen;
@@ -795,39 +798,50 @@ void flat_pens_refresh(flat_pens *p, const flat_pen_ops *o, flat_state *s, const
         else
             c = flat_inbar_colour(o->rgb(o->ctx, s->pen_back), o->rgb(o->ctx, s->pen_text));
         p->inbar = o->obtain(o->ctx, c);
-        if (p->inbar >= 0)
-            s->pen_inbar = (uint8_t)p->inbar;
+        if (p->inbar >= 0 && store)
+            store->pen_inbar = (uint8_t)p->inbar;
     }
     if (depth >= 4 && s->pen_dimtext) {
         unsigned long c = flat_knob_colour(o->rgb(o->ctx, s->pen_back), o->rgb(o->ctx, s->pen_dimtext));
         p->knob = o->obtain(o->ctx, c);
-        if (p->knob >= 0)
-            s->pen_knob = (uint8_t)p->knob;
+        if (p->knob >= 0 && store)
+            store->pen_knob = (uint8_t)p->knob;
     }
     if (depth >= 3 && (s->sel_rgb[0] || s->sel_rgb[1] || s->sel_rgb[2])) {
         p->sel = o->obtain(o->ctx, ((unsigned long)s->sel_rgb[0] << 16) | ((unsigned long)s->sel_rgb[1] << 8) | s->sel_rgb[2]);
-        if (p->sel >= 0)
-            s->pen_sel = (uint8_t)p->sel;
+        if (p->sel >= 0 && store)
+            store->pen_sel = (uint8_t)p->sel;
     }
     if (depth >= 3) {
         unsigned long c = (unsigned long)gt_scale((uc_u32)o->rgb(o->ctx, flat_button_pen(s, depth)), FLAT_DIM_PCT);
         p->dim = o->obtain(o->ctx, c);
-        if (p->dim >= 0)
-            s->pen_dim = (uint8_t)p->dim;
+        if (p->dim >= 0 && store)
+            store->pen_dim = (uint8_t)p->dim;
     }
 }
 
-int flat_pens_follow(flat_pens *p, const flat_pen_ops *o, flat_state *s, int want, const void *screen, unsigned epoch, int depth)
+void flat_pens_refresh(flat_pens *p, const flat_pen_ops *o, flat_state *s, const void *screen, unsigned epoch, int depth)
+{
+    flat_pens_refresh_on(p, o, s, s, screen, epoch, depth);
+}
+
+int flat_pens_follow_on(flat_pens *p, const flat_pen_ops *o, const flat_state *s, flat_state *store, int want, const void *screen,
+                        unsigned epoch, int depth)
 {
     if (!want || !screen) {
-        flat_pens_release(p, o, s, screen, epoch);
+        flat_pens_release(p, o, store, screen, epoch);
         return 0;
     }
     if (pens_here(p, screen, epoch))
         return 0;
-    pens_forget(p, s);                  /* another screen: the pens went with the old ColorMap, nothing to release */
-    flat_pens_refresh(p, o, s, screen, epoch, depth);
+    pens_forget(p, store);              /* another screen: the pens went with the old ColorMap, nothing to release */
+    flat_pens_refresh_on(p, o, s, store, screen, epoch, depth);
     return 1;
+}
+
+int flat_pens_follow(flat_pens *p, const flat_pen_ops *o, flat_state *s, int want, const void *screen, unsigned epoch, int depth)
+{
+    return flat_pens_follow_on(p, o, s, s, want, screen, epoch, depth);
 }
 
 int flat_pens_verify(flat_pens *p, flat_state *s, int (*is_free)(void *ctx, int pen), void *ctx, const void *screen, unsigned epoch)
@@ -901,4 +915,56 @@ int flat_button_side(int side, int w)
     if (side > w / 3)
         side = w / 3;
     return side < 1 ? 1 : side;
+}
+
+
+/* ---- TE-10.6a: per-screen pen tables ---- */
+int flat_ident_slot(const void *base, size_t stride, size_t scr_off, size_t epoch_off, int n, const void *screen, unsigned epoch,
+                    int allow_free)
+{
+    const char *b = base;
+    int i, freeslot = -1;
+    if (!screen)
+        return -1;
+    for (i = 0; i < n; i++) {
+        const void *sc = *(const void *const *)(b + (size_t)i * stride + scr_off);
+        unsigned ep = *(const unsigned *)(b + (size_t)i * stride + epoch_off);
+        if (sc == screen && ep == epoch)
+            return i;
+        if (!sc && freeslot < 0)
+            freeslot = i;
+    }
+    return allow_free ? freeslot : -1;
+}
+
+void flat_pens_tab_init(flat_pens_tab *t)
+{
+    int i;
+    for (i = 0; i < FLAT_PENS_SLOTS; i++)
+        flat_pens_init(&t->slot[i]);
+}
+
+flat_pens *flat_pens_tab_for(flat_pens_tab *t, const void *screen, unsigned epoch)
+{
+    int i = flat_ident_slot(t->slot, sizeof t->slot[0], offsetof(flat_pens, screen), offsetof(flat_pens, epoch), FLAT_PENS_SLOTS, screen,
+                            epoch, 1);
+    return i < 0 ? 0 : &t->slot[i];
+}
+
+const flat_pens *flat_pens_tab_find(const flat_pens_tab *t, const void *screen, unsigned epoch)
+{
+    int i = flat_ident_slot(t->slot, sizeof t->slot[0], offsetof(flat_pens, screen), offsetof(flat_pens, epoch), FLAT_PENS_SLOTS, screen,
+                            epoch, 0);
+    return i < 0 ? 0 : &t->slot[i];
+}
+
+int flat_pens_tab_reap(flat_pens_tab *t, int (*is_open)(void *ctx, const void *screen, unsigned epoch), void *ctx)
+{
+    int i, n = 0;
+    for (i = 0; i < FLAT_PENS_SLOTS; i++)
+        if (t->slot[i].screen && !is_open(ctx, t->slot[i].screen, t->slot[i].epoch)) {
+            pens_forget(&t->slot[i], 0);
+            n++;
+        }
+    return n;
 }
