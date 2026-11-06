@@ -43,7 +43,9 @@ enum complete_mode {
 
 struct complete_req {
     struct Message msg;
-    struct Process *opener;       /* whose current directory and path count */
+    struct Process *opener;       /* whose current directory counts */
+    struct complete_path *path;   /* the window's copy of its opener's path
+                                   * (complete_open), 0: C: alone */
     int mode;                     /* enum complete_mode */
     int kingcon;                  /* in: KingCON's rules (research/2026-10-02_kingcon-completion.md):
                                    * names carry their suffix (dir "/", file " ", device ":"),
@@ -108,18 +110,33 @@ struct complete_req *complete_req_new(int lists);
 void complete_cache_reset(void);
 void complete_cache_purge(void);
 
-/* W22: the warm-up -- a low-priority process reads C: (every directory of
- * a multi-assign) and opener's path into the command cache, only what
- * changed since the cache file was written, then writes the file. One at a
- * time (0 when it could not start). */
-int complete_warm(struct Process *opener);
+/* A copy of a Shell's command path, locks of our own (s61): the walks
+ * never read the opener's own list, which it frees when it ends. */
+struct complete_path;
+
+/* The window's first Open, while opener waits in it: a process copies
+ * opener's path (its list stays put while opener is blocked), sets *out to
+ * the window's copy and signals t with sig; then, when no warm-up runs, it
+ * warms the cache (W22: C: and the copied path, only what changed since
+ * the cache file was written, then the file). 1: sig will come and *out
+ * is set by then (the Open's reply waits for it); 0: no process, *out
+ * stays 0 (C: alone). */
+int complete_open(struct Process *opener, struct Task *t, ULONG sig, struct complete_path **out);
+
+/* The window is done with its copy (exec calls only: safe in the handler;
+ * the locks go back in a process of its own). 0 is fine. */
+void complete_path_end(struct complete_path *p);
+
+/* W22: a warm-up of C: and path (the window's copy, 0: C: alone). One at
+ * a time (0 when it could not start). */
+int complete_warm(struct complete_path *path);
 
 /* Warm-ups finished so far. */
 unsigned long complete_warm_gen(void);
 
-/* t gets sig when a warm-up ends (one is started for opener when none
+/* t gets sig when a warm-up ends (one is started with path when none
  * runs). 1 instead when one has ended since gen (ask again now). */
-int complete_warm_wait(struct Task *t, ULONG sig, unsigned long gen, struct Process *opener);
+int complete_warm_wait(struct Task *t, ULONG sig, unsigned long gen, struct complete_path *path);
 
 /* t waits no more (its window closes). */
 void complete_warm_forget(struct Task *t);

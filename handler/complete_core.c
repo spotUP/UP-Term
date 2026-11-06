@@ -60,6 +60,27 @@ int cc_walk_command_dirs(const cc_dirs_os *os, void *u)
     return r;
 }
 
+int cc_path_copy(cc_path *p, long (*next)(void *u), long (*dup)(long lock), void *u)
+{
+    long l, d;
+    p->n = 0;
+    while ((l = next(u)) != 0) /* every node now: the Shell may end after */
+        if (p->n < CC_PATH_MAX && (d = dup(l)) != 0)
+            p->lock[p->n++] = d;
+    return p->n;
+}
+
+void cc_path_free(cc_path *p, void (*drop)(long lock))
+{
+    while (p->n > 0)
+        drop(p->lock[--p->n]);
+}
+
+long cc_path_next(const cc_path *p, int *at)
+{
+    return p && *at < p->n ? p->lock[(*at)++] : 0;
+}
+
 /* ---- W22: the command-name cache (see complete_core.h) -------------------- */
 
 static int cc_lower(int c)

@@ -299,9 +299,18 @@ typedef struct cmd_walk {
     int find;                    /* or find: is q->word in one */
     struct DevProc *dp;          /* where the C: walk stands */
     int c_done;
-    BPTR *path;                  /* the path's next node */
+    const cc_path *path;         /* the path: the window's copy, 0: none */
+    int path_at;                 /* its next lock */
     struct FileInfoBlock *fib;   /* the command cache's Examines (W22), 0: none */
 } cmd_walk;
+
+/* s61: the window's copy of its opener's path (complete.h). The window
+ * holds a reference, a warm-up walking it another; refs change under
+ * Forbid, and the last one gives the locks back. */
+struct complete_path {
+    int refs;
+    cc_path path;
+};
 
 static long cw_c_next(void *u)
 {
@@ -333,13 +342,7 @@ static void cw_c_end(void *u)
 static long cw_p_next(void *u)
 {
     cmd_walk *w = (cmd_walk *)u;
-    while (w->path) {
-        BPTR *node = w->path;
-        w->path = (BPTR *)BADDR(node[0]);
-        if (node[1])
-            return (long)node[1];
-    }
-    return 0;
+    return cc_path_next(w->path, &w->path_at); /* our copy, never the Shell's list */
 }
 
 static int cw_same(long a, long b)
@@ -372,8 +375,8 @@ static int cw_visit(void *u, long lock)
 
 static const cc_dirs_os cmd_dirs_os = { cw_c_next, cw_c_end, cw_p_next, cw_same, cw_drop, cw_visit };
 
-/* C: and opener's path (0: C: alone). Under Forbid when opener may end. */
-static void walk_init(cmd_walk *w, struct complete_req *q, struct Process *opener,
+/* C: and the window's copy of its path (0: C: alone) */
+static void walk_init(cmd_walk *w, struct complete_req *q, const struct complete_path *path,
                       const char *prefix, int find)
 {
     w->q = q;
@@ -381,16 +384,15 @@ static void walk_init(cmd_walk *w, struct complete_req *q, struct Process *opene
     w->find = find;
     w->dp = 0;
     w->c_done = 0;
-    w->path = 0;
+    w->path = path ? &path->path : 0;
+    w->path_at = 0;
     w->fib = 0;
-    if (opener && opener->pr_CLI)
-        w->path = (BPTR *)BADDR(((struct CommandLineInterface *)BADDR(opener->pr_CLI))->cli_CommandDir);
 }
 
 static int walk_command_dirs(struct complete_req *q, const char *prefix, int find)
 {
     cmd_walk w;
-    walk_init(&w, q, q->opener, prefix, find);
+    walk_init(&w, q, q->path, prefix, find);
     return cc_walk_command_dirs(&cmd_dirs_os, &w);
 }
 
@@ -582,7 +584,12 @@ static struct {
 
 struct warm_msg {
     struct Message msg;
-    struct Process *opener;
+    struct Process *opener;       /* complete_open: copy its path ... */
+    struct Task *held;            /* ... then signal it (0: no copy to make) */
+    ULONG sig;
+    struct complete_path **out;   /* the window's copy, set before the signal */
+    struct complete_path *path;   /* complete_warm, path_freer: a reference of ours */
+    int warm;                     /* warm_running is ours */
 };
 
 /* a Tab's names that start with the word (the cached walk's emit) */
@@ -607,7 +614,7 @@ static void command_names(struct complete_req *q, const char *prefix)
     Forbid();
     q->warm_gen = warm_gen; /* a warm-up ending after this refines the answer */
     Permit();
-    walk_init(&w, q, q->opener, prefix, 0);
+    walk_init(&w, q, q->path, prefix, 0);
     w.fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
     q->partial = cc_command_names(&cache, &cache_os, &cmd_dirs_os, &w, q->cold, cw_emit, &w);
     cc_cache_end(&cache, &cache_os);
@@ -615,30 +622,105 @@ static void command_names(struct complete_req *q, const char *prefix)
         FreeDosObject(DOS_FIB, w.fib);
 }
 
-/* The warm-up's body: its own process, at low priority. */
+/* The Shell's path list, {next, lock} nodes (cli_CommandDir): read only
+ * while the Shell waits in its Open (cc_path_copy) */
+static long cp_next(void *u)
+{
+    BPTR **at = (BPTR **)u;
+    while (*at) {
+        BPTR *node = *at;
+        *at = (BPTR *)BADDR(node[0]);
+        if (node[1])
+            return (long)node[1];
+    }
+    return 0;
+}
+
+static long cp_dup(long lock)
+{
+    return (long)DupLock((BPTR)lock);
+}
+
+static void cp_drop(long lock)
+{
+    UnLock((BPTR)lock);
+}
+
+/* a reference given back, in a process (the last one UnLocks) */
+static void path_put(struct complete_path *p)
+{
+    int last;
+    if (!p)
+        return;
+    Forbid();
+    last = --p->refs == 0;
+    Permit();
+    if (last) {
+        cc_path_free(&p->path, cp_drop);
+        FreeVec(p);
+    }
+}
+
+static struct Process *warm_proc(void (*entry)(void), const char *name)
+{
+    return CreateNewProcTags(NP_Entry, (ULONG)entry, NP_Name, (ULONG)name, NP_Priority, -1,
+                             NP_StackSize, 12000, NP_Input, 0, NP_Output, 0, NP_CloseInput, FALSE,
+                             NP_CloseOutput, FALSE, NP_ConsoleTask, 0, TAG_DONE);
+}
+
+/* The warm-up's body: its own process, at low priority. From
+ * complete_open it first copies the opener's path: the opener is blocked
+ * in its Open until the handler replies, and the handler waits for our
+ * signal, so its list and locks stay put until the copy is made. After
+ * the signal the opener may end at once (echo hi >XCON:...): nothing of
+ * its is read again (MuForce, s61: LONG READ from 00000040 here). */
 static void warm_worker(void)
 {
     struct Process *me = (struct Process *)FindTask(0);
     struct warm_msg *m;
-    struct Process *opener;
+    struct complete_path *path;
     cmd_walk w;
-    int i;
+    int i, warm;
     WaitPort(&me->pr_MsgPort);
     m = (struct warm_msg *)GetMsg(&me->pr_MsgPort);
-    opener = m->opener;
-    FreeVec(m);
     me->pr_WindowPtr = (APTR)-1; /* no requesters (a path naming a volume not in a drive) */
-    Forbid();
-    if (!opener || !task_alive(&opener->pr_Task) || opener->pr_Task.tc_Node.ln_Type != NT_PROCESS)
-        opener = 0; /* gone: C: alone */
-    walk_init(&w, 0, opener, 0, 0);
-    Permit();
-    w.fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
-    if (w.fib) {
-        cc_cache_warm(&cache, &cache_os, &cmd_dirs_os, &w);
-        FreeDosObject(DOS_FIB, w.fib);
+    path = m->path;
+    warm = m->warm;
+    if (m->held) {
+        struct Process *o = m->opener;
+        struct complete_path *p = (struct complete_path *)AllocVec(sizeof(*p), MEMF_PUBLIC | MEMF_CLEAR);
+        if (p) {
+            BPTR *at = 0;
+            if (o && o->pr_Task.tc_Node.ln_Type == NT_PROCESS && o->pr_CLI)
+                at = (BPTR *)BADDR(((struct CommandLineInterface *)BADDR(o->pr_CLI))->cli_CommandDir);
+            cc_path_copy(&p->path, cp_next, cp_dup, &at);
+            p->refs = 1; /* the window's */
+        }
+        Forbid();
+        if (!warm_running) { /* the warm-up is ours, with the copy */
+            warm_running = warm = 1;
+            if (p) {
+                p->refs++;
+                path = p;
+            }
+        }
+        *m->out = p;
+        Signal(m->held, m->sig); /* the Open is replied: the opener may end now */
+        Permit();
     }
+    FreeVec(m);
+    if (warm) {
+        walk_init(&w, 0, path, 0, 0);
+        w.fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
+        if (w.fib) {
+            cc_cache_warm(&cache, &cache_os, &cmd_dirs_os, &w);
+            FreeDosObject(DOS_FIB, w.fib);
+        }
+    }
+    path_put(path);
     Forbid(); /* the waiters woken and our end, before anything can go */
+    if (!warm)
+        return;
     warm_running = 0;
     warm_gen++;
     for (i = 0; i < WARM_WAITERS; i++)
@@ -648,7 +730,75 @@ static void warm_worker(void)
         }
 }
 
-int complete_warm(struct Process *opener)
+int complete_open(struct Process *opener, struct Task *t, ULONG sig, struct complete_path **out)
+{
+    struct warm_msg *m;
+    struct Process *p;
+    cache_init();
+    *out = 0;
+    m = (struct warm_msg *)AllocVec(sizeof(*m), MEMF_PUBLIC | MEMF_CLEAR);
+    if (!m)
+        return 0;
+    m->msg.mn_Length = sizeof(*m);
+    m->opener = opener;
+    m->held = t;
+    m->sig = sig;
+    m->out = out;
+    p = warm_proc(warm_worker, "UP-Term command cache");
+    if (p) {
+        PutMsg(&p->pr_MsgPort, &m->msg);
+        return 1;
+    }
+    FreeVec(m);
+    return 0;
+}
+
+/* the last reference was the handler's: its locks go back here */
+static void path_freer(void)
+{
+    struct Process *me = (struct Process *)FindTask(0);
+    struct warm_msg *m;
+    struct complete_path *p;
+    WaitPort(&me->pr_MsgPort);
+    m = (struct warm_msg *)GetMsg(&me->pr_MsgPort);
+    p = m->path;
+    FreeVec(m);
+    cc_path_free(&p->path, cp_drop);
+    FreeVec(p);
+    Forbid(); /* our end, before anything can go */
+}
+
+void complete_path_end(struct complete_path *p)
+{
+    struct warm_msg *m;
+    struct Process *proc;
+    int last;
+    if (!p)
+        return;
+    Forbid();
+    last = --p->refs == 0;
+    Permit();
+    if (!last)
+        return; /* a warm-up still walks it: it gives the locks back */
+    if (p->path.n) {
+        m = (struct warm_msg *)AllocVec(sizeof(*m), MEMF_PUBLIC | MEMF_CLEAR);
+        if (m) {
+            m->msg.mn_Length = sizeof(*m);
+            m->path = p;
+            proc = warm_proc(path_freer, "UP-Term path free");
+            if (proc) {
+                PutMsg(&proc->pr_MsgPort, &m->msg);
+                return;
+            }
+            FreeVec(m);
+        }
+        /* no process: the locks stay held (UnLock is a DOS call, never
+         * made in the handler) */
+    }
+    FreeVec(p);
+}
+
+int complete_warm(struct complete_path *path)
 {
     struct warm_msg *m;
     struct Process *p;
@@ -659,14 +809,15 @@ int complete_warm(struct Process *opener)
         return 1; /* one at a time: it wakes every waiter */
     }
     warm_running = 1;
+    if (path)
+        path->refs++; /* the warm-up's: the window may close while it walks */
     Permit();
     m = (struct warm_msg *)AllocVec(sizeof(*m), MEMF_PUBLIC | MEMF_CLEAR);
     if (m) {
         m->msg.mn_Length = sizeof(*m);
-        m->opener = opener;
-        p = CreateNewProcTags(NP_Entry, (ULONG)warm_worker, NP_Name, (ULONG)"UP-Term command cache",
-                              NP_Priority, -1, NP_StackSize, 12000, NP_Input, 0, NP_Output, 0,
-                              NP_CloseInput, FALSE, NP_CloseOutput, FALSE, NP_ConsoleTask, 0, TAG_DONE);
+        m->path = path;
+        m->warm = 1;
+        p = warm_proc(warm_worker, "UP-Term command cache");
         if (p) {
             PutMsg(&p->pr_MsgPort, &m->msg);
             return 1;
@@ -675,6 +826,8 @@ int complete_warm(struct Process *opener)
     }
     Forbid();
     warm_running = 0;
+    if (path)
+        path->refs--; /* never the last: the caller's window holds one */
     Permit();
     return 0;
 }
@@ -684,7 +837,7 @@ unsigned long complete_warm_gen(void)
     return warm_gen;
 }
 
-int complete_warm_wait(struct Task *t, ULONG sig, unsigned long gen, struct Process *opener)
+int complete_warm_wait(struct Task *t, ULONG sig, unsigned long gen, struct complete_path *path)
 {
     int i, done;
     Forbid();
@@ -700,7 +853,7 @@ int complete_warm_wait(struct Task *t, ULONG sig, unsigned long gen, struct Proc
         }
     }
     Permit();
-    if (!done && !complete_warm(opener)) {
+    if (!done && !complete_warm(path)) {
         complete_warm_forget(t); /* no warm-up to wait for: ask again now */
         done = 1;
     }
