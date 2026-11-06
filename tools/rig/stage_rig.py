@@ -18,7 +18,7 @@ TARGETS = {'Amarchy': 'build/amiga/Amarchy', 'amarchy-menu': 'build/amiga/amarch
            'amarchy-gui': 'build/amiga/amarchy-gui', 'amarchy-index': 'build/amiga/amarchy-index',
            'wbfake': 'build/amiga/wbfake', 'scrprobe': 'build/amiga/scrprobe',
            'lcmdprobe': 'build/amiga/lcmdprobe', 'AmTile': 'build/amiga/AmTile',
-           'amarchy-flat': 'build/amiga/amarchy-flat'}
+           'amarchy-flat': 'build/amiga/amarchy-flat', 'pubscreen': 'build/amiga/pubscreen'}
 
 # staged when a rig script names nothing: amarchy-gui is the menu Amarchy draws, amarchy-menu its text fallback
 DEFAULT = ('Amarchy', 'amarchy-menu', 'amarchy-gui', 'amarchy-index')
