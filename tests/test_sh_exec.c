@@ -2868,6 +2868,15 @@ static void execute_cd_kept_by_caller(void)
     CHECK_STR(slot(OUT)->data, "tmpdir\n");
 }
 
+static int list_one_char(sh_ctx *c, const char *dir, sh_list *out)
+{
+    (void)c;
+    (void)dir;
+    sh_list_add(out, "C");
+    sh_list_add(out, "L");
+    return 0;
+}
+
 static void execute_3_2_quirks(void)
 {
     int inc = 0;
@@ -2893,6 +2902,19 @@ static void execute_3_2_quirks(void)
     sh_run_text(&sh, "execute RAM:q6 ?; echo rc$?", &inc);
     CHECK_STR(slot(OUT)->data, "name/A,count/N: rc10\n");
     CHECK(strstr(slot(ERR)->data, "required argument missing") != 0);
+    /* S7c-3 R6: in a directory holding one-character names the lone ? is still the question, not a glob */
+    run("");
+    amiscr_put("RAM:q6", ".KEY name/A\necho \"got <name>\"\n");
+    sh.ctx.listdir = list_one_char;
+    f_write(0, IN, "bob\n", 4);
+    sh_run_text(&sh, "cd RAM:; execute RAM:q6 ?; echo rc$?", &inc);
+    CHECK_STR(slot(OUT)->data, "name/A: got bob\nrc0\n");
+    CHECK_STR(slot(ERR)->data, "");
+    /* any command, not only execute: a lone trailing ? stays literal, a ? mid-line still globs */
+    run("");
+    sh.ctx.listdir = list_one_char;
+    sh_run_text(&sh, "cd RAM:; echo ?; echo a ? b", &inc);
+    CHECK_STR(slot(OUT)->data, "?\na C L b\n");
 }
 
 /* S7b-5 (real 3.2 text): R3 missing /A, R9 failing command named once, R13 Skip, R16 FailAt, R19 Quit abc, R11 EXISTS x VAL 1. */
