@@ -796,6 +796,14 @@ static void list_rebuild_keep(gui *g, const char *keep)
     n = ix_level_t(&km, &ixs, g->node, g->filter, g->it, g->cap, menu_cond);
     lf_setting_relabel(g->it, n);       /* a settings row shows its value */
     lf_setting_rechip(g->it, n, g->chip);
+    /* TE-WINDOW-REMEASURE: a value that grew while the window is open (a longer font name) is measured again with the
+     * opening measure (same hooks, same chip width); the window only widens. mg_layout places the wider window. */
+    if (g->mode == M_LIST && g->win) {
+        int nx, nw;
+        if (mg_grow(g->g.x, g->w, mg_width_t(&km, g->node, &g->mf, g->icon_w, g->chev_w, text_len, g->mt, &g->ms, menu_cond),
+                    g->ms.w, &nx, &nw))
+            g->w = nw;
+    }
     g->shift = g->wt.row[0] ? 1 : 0;
     g->count = mn_filter(g->it, n, g->filter, g->idx, g->cap) + g->shift;
     gt_dos_current(cur, (int)sizeof cur);
