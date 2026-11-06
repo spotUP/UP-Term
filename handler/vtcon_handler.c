@@ -5414,6 +5414,7 @@ static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods)
     }
     if (key == VT_KEY_TAB) {
         c->tabs++;
+        le_tab_key(&c->le); /* a ghost shown now is the Tab's: Return may take it */
         if (c->tabs >= 2 && c->menu_n > 1)
             menu_tab(c);
         else

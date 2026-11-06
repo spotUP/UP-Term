@@ -332,7 +332,7 @@ static const unsigned char *suggestion(const le_line *le)
 {
     const unsigned char *s;
     int ghost;
-    if (le->sug_off && le->sug_off == line_key(le))
+    if (le->sug_mode == LE_SUG_OFF && le->sug_key == line_key(le))
         return 0; /* Esc dropped it */
     ghost = le->suggest && le->ghost_n && !le->searching && le->len && le->pos == le->len &&
                 le->ghost_key == line_key(le);
@@ -786,7 +786,7 @@ void le_unbind(le_line *le)
 void le_reset(le_line *le)
 {
     le_ghost_clear(le);
-    le->sug_off = 0;
+    le->sug_mode = 0;
     le->len = 0;
     le->pos = 0;
     le->started = 0;
@@ -1219,11 +1219,13 @@ int le_key(le_line *le, long key, int mods, const unsigned char *b, int n)
         mods |= VT_MOD_ALT;
     }
     meta = (mods & VT_MOD_ALT) != 0;
+    if (le->sug_mode == LE_SUG_TAB && key != VT_KEY_RETURN && key != VT_KEY_KP_ENTER)
+        le->sug_mode = 0; /* any key but Return spends the Tab's candidate */
     if (le->searching && !search_key(le, key, b, n))
         return 0;
     if (key == VT_KEY_RETURN || key == VT_KEY_KP_ENTER) {
-        if (le->pos == le->len && !le->searching && suggestion(le)) {
-            const unsigned char *s = suggestion(le); /* Return takes the shown suggestion, then runs the line */
+        if (le->pos == le->len && !le->searching && le->sug_mode == LE_SUG_TAB && le->sug_key == line_key(le) && suggestion(le)) {
+            const unsigned char *s = suggestion(le); /* Return takes the candidate Tab showed, then runs the line; a passive ghost never */
             insert(le, s, (int)strlen((const char *)s), 0);
         }
         le->pos = le->len;
@@ -1256,7 +1258,8 @@ int le_key(le_line *le, long key, int mods, const unsigned char *b, int n)
         return 0;
     if (key == VT_KEY_ESCAPE && !mods) {
         if (le->pos == le->len && suggestion(le)) {
-            le->sug_off = line_key(le); /* drop the shown suggestion: Return runs the typed text */
+            le->sug_mode = LE_SUG_OFF;
+            le->sug_key = line_key(le); /* drop the shown suggestion: Return runs the typed text */
             redraw_from(le, 0);
         }
         le->esc = 1; /* emacs: a Meta prefix for the next key (Esc b is M-b) */
@@ -1860,6 +1863,14 @@ void le_ghost_offer(le_line *le, unsigned long key, const unsigned char *tail, i
     le->ghost_key = key;
     le->ghost_file = le->ghost_asked_file;
     redraw_from(le, le->pos);
+}
+
+void le_tab_key(le_line *le)
+{
+    if (le->pos == le->len && suggestion(le)) {
+        le->sug_mode = LE_SUG_TAB;
+        le->sug_key = line_key(le);
+    }
 }
 
 void le_ghost_clear(le_line *le)

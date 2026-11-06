@@ -405,9 +405,9 @@ KEYS
     Up/Down, Shift+Up/Down                     history; history by prefix
     Ctrl-R                                     search history as you type
     grey text after the cursor                 a suggestion from history:
-                                               Right or End takes it, and
-                                               so does Return (it then runs
-                                               the line); Esc drops it
+                                               Right or End takes it; Return
+                                               takes it only after Tab showed
+                                               it; Esc drops it
     Tab                                        complete (commands for the
                                                first word, else files);
                                                Tab again lists, then cycles

@@ -230,26 +230,48 @@ static void suggestion_shows_grey_and_right_takes_it(void)
     vt_free(t);
 }
 
-static void return_takes_the_shown_suggestion_and_escape_drops_it(void)
+static void return_takes_a_ghost_only_when_tab_showed_it(void)
 {
     vt_term *t = start(40, 6, "> ");
     int from = -1, kind = 0;
     unsigned long gk = 0;
     run("list SYS:Prefs");
-    type("li"); /* the history's grey tail */
+    type("li"); /* a passive history ghost, no Tab */
     CHECK(key(VT_KEY_RETURN, 0));
-    CHECK_STR(line(), "list SYS:Prefs\n"); /* Return took it, then ran the line */
+    CHECK_STR(line(), "li\n"); /* Return runs the typed text */
     le_reset(&le);
     h_put(t, "> ");
     type("li");
-    key(VT_KEY_ESCAPE, 0); /* Esc drops the tail */
+    le_tab_key(&le); /* Tab pressed with the ghost shown */
     CHECK(key(VT_KEY_RETURN, 0));
-    CHECK_STR(line(), "li\n"); /* exactly what was typed */
+    CHECK_STR(line(), "list SYS:Prefs\n"); /* Return takes the Tab-shown candidate */
     le_reset(&le);
     h_put(t, "> ");
-    type("Type tabprobe_z"); /* a file word's completion ghost, as in vsh */
+    type("li");
+    le_tab_key(&le);
+    type("s"); /* a key after Tab: the Tab is spent */
+    CHECK(key(VT_KEY_RETURN, 0));
+    CHECK_STR(line(), "lis\n");
+    le_reset(&le);
+    h_put(t, "> ");
+    type("li");
+    le_tab_key(&le);
+    key(VT_KEY_ESCAPE, 0); /* Esc drops it */
+    CHECK(key(VT_KEY_RETURN, 0));
+    CHECK_STR(line(), "li\n");
+    le_reset(&le);
+    h_put(t, "> ");
+    type("Type tabprobe_z"); /* a passive file word ghost, as in vsh */
     CHECK_INT(le_ghost_want(&le, &from, &kind, &gk), 1);
     le_ghost_offer(&le, gk, (const unsigned char *)"zz", 2);
+    CHECK(key(VT_KEY_RETURN, 0));
+    CHECK_STR(line(), "Type tabprobe_z\n");
+    le_reset(&le);
+    h_put(t, "> ");
+    type("Type tabprobe_z");
+    CHECK_INT(le_ghost_want(&le, &from, &kind, &gk), 1);
+    le_ghost_offer(&le, gk, (const unsigned char *)"zz", 2);
+    le_tab_key(&le);
     CHECK(key(VT_KEY_RETURN, 0));
     CHECK_STR(line(), "Type tabprobe_zzz\n");
     vt_free(t);
@@ -1480,7 +1502,7 @@ void suite_lineedit(void)
     kingcon_list_has_19_char_columns_and_cuts_long_names();
     replace_word_for_menu_cycling();
     suggestion_shows_grey_and_right_takes_it();
-    return_takes_the_shown_suggestion_and_escape_drops_it();
+    return_takes_a_ghost_only_when_tab_showed_it();
     completion_ghost_shows_when_no_history_fits_and_right_takes_it();
     completion_ghost_for_an_old_line_is_dropped();
     completion_ghost_is_asked_only_for_a_plain_word_without_a_history_hit();

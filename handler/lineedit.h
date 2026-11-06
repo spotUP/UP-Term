@@ -43,6 +43,9 @@ typedef struct le_snap {
     int len, pos;
 } le_snap;
 
+#define LE_SUG_OFF 1
+#define LE_SUG_TAB 2
+
 typedef struct le_line {
     vt_term *t;
     unsigned char buf[LE_MAX];
@@ -59,8 +62,11 @@ typedef struct le_line {
     unsigned char ghost[96];
     int ghost_n;
     unsigned long ghost_key, ghost_asked;
-    unsigned long sug_off; /* Esc dropped the suggestion of the line with this key: Return runs what was typed */
-    int ghost_file, ghost_asked_file; /* the ghost (the look-up) is a file word's: it goes before history */
+    /* sug_key names the line the suggestion note below is about: LE_SUG_OFF, Esc dropped
+     * the suggestion (Return runs what was typed); LE_SUG_TAB, Tab was pressed with it
+     * shown (only then does Return take it; any other key spends it) */
+    unsigned long sug_key;
+    unsigned char sug_mode, ghost_file, ghost_asked_file; /* the ghost (the look-up) is a file word's: it goes before history */
     unsigned char *hist;    /* the lines, each NUL-terminated, oldest first (LE_MALLOC) */
     long hist_used, hist_cap;
     unsigned long *hist_at; /* where line i starts in hist (LE_MALLOC, hist_at_cap entries) */
@@ -178,6 +184,9 @@ void le_kc_show_list(le_line *le, const char *names, int len);
  * take it as a history suggestion. */
 int  le_ghost_want(le_line *le, int *from, int *key_kind, unsigned long *key);
 void le_ghost_offer(le_line *le, unsigned long key, const unsigned char *tail, int n);
+/* Tab was pressed: a ghost shown now is a Tab-shown candidate, which Return takes
+ * (a passive ghost is never taken by Return); any other key spends it. */
+void le_tab_key(le_line *le);
 /* Forget the ghost and what was asked (a line was run, the directory may differ). */
 void le_ghost_clear(le_line *le);
 /* Replace the word ending at the cursor (from `from`) with `s`. */
