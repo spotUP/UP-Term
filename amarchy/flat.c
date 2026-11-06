@@ -45,6 +45,7 @@
 #include <proto/graphics.h>
 #include "../tty/qmark.h"
 #include "flat_core.h"
+#include "flat_role_core.h"
 #include "flat_shared.h"
 #include "libpatch.h"
 #include "flat_glyph.h"

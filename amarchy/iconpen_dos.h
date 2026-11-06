@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <exec/semaphores.h>
 #include "iconpen_core.h"
+#include "flat_role_core.h"
 #include "../handler/pubscr.h"
 
 /* The name carries the record layout: ".6" adds the per-slot role colours (TE-10.6c); ".5" adds screen_applies; ".4" was the record before it; ".3" adds the plan pens to the holder (TE-10.5b); ".2" was the per-screen table (TE-10.4). A binary still running from before an update looks
@@ -27,15 +28,13 @@ typedef struct ipd_stheme {      /* the theme of one slot, read from file with t
     char name[GT_NAME];          /* the theme the screen rules give this slot's screen */
 } ipd_stheme;
 
-/* The seven flat roles. flat_role_core.h is not included here: its FLAT_ROLE_* names collide with flat_glyph.h's in flat.c.
- * iconpen_dos.c checks this count against FLAT_ROLE_COUNT at compile time. */
-#define IPD_ROLE_COUNT 7
+/* The flat roles: FLAT_RP_COUNT of flat_role_core.h. */
 
 typedef struct ipd_slot_roles {  /* TE-10.6c: what the last theme read of a slot gave; durable (st[] is freed at the end of every sync) */
     int ok;                      /* 1 = role[] was computed from theme `name` for the screen `screen` */
     const void *screen;          /* the slot's holder screen at that read (compared, never dereferenced) */
     char name[GT_NAME];
-    uc_u32 role[IPD_ROLE_COUNT];
+    uc_u32 role[FLAT_RP_COUNT];
 } ipd_slot_roles;
 
 typedef struct ipd_rec {
@@ -88,7 +87,7 @@ typedef struct ipd_roles {
     int nheld;                        /* held plan pens */
     short pen[GTE_COUNT];
     uc_u32 rgb[GTE_COUNT];
-    uc_u32 role[IPD_ROLE_COUNT];     /* flat_role_rgb_of the slot theme at its last read */
+    uc_u32 role[FLAT_RP_COUNT];     /* flat_role_rgb_of the slot theme at its last read */
 } ipd_roles;
 /* Main task only (never from a patched hook). 0 = no record, unknown screen, or the Workbench slot; else 1 with *out filled.
  * Obtains no pen, writes no ColorMap, reads no file. */
