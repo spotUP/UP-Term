@@ -284,3 +284,123 @@ int ip_main_step(int applied, int owned)
         return owned ? IP_MAIN_SYNC : IP_MAIN_TAKE;
     return owned ? IP_MAIN_DROP : IP_MAIN_NONE;
 }
+
+/* ---- TE-10.3: the pen holder per public screen ---- */
+static int ips_lower(int c)
+{
+    return (c >= 'A' && c <= 'Z') ? c + 32 : c;
+}
+
+static int ips_eq(const char *a, const char *b)
+{
+    while (*a && ips_lower((unsigned char)*a) == ips_lower((unsigned char)*b)) { a++; b++; }
+    return ips_lower((unsigned char)*a) == ips_lower((unsigned char)*b);
+}
+
+static void ips_set_name(char *dst, const char *src)
+{
+    strncpy(dst, src, IP_PSN_NAME - 1);
+    dst[IP_PSN_NAME - 1] = 0;
+}
+
+void ip_screens_init(ip_screens *t)
+{
+    memset(t, 0, sizeof *t);
+    t->count = 1;
+    ips_set_name(t->slot[0].name, "Workbench");
+    ip_shared_init(&t->slot[0].sh);
+}
+
+int ip_screens_find(const ip_screens *t, const char *name)
+{
+    int i;
+    for (i = 0; i < t->count; i++)
+        if (ips_eq(t->slot[i].name, name)) return i;
+    return -1;
+}
+
+int ip_screens_add(ip_screens *t, const char *name)
+{
+    int i = ip_screens_find(t, name);
+    if (i >= 0) return i;
+    if (!name[0] || strlen(name) >= IP_PSN_NAME || t->count >= IP_SCREENS) return -1;
+    memset(&t->slot[t->count], 0, sizeof t->slot[0]);
+    ips_set_name(t->slot[t->count].name, name);
+    ip_shared_init(&t->slot[t->count].sh);
+    return t->count++;
+}
+
+int ip_screens_drop(ip_screens *t, const char *name)
+{
+    int i = ip_screens_find(t, name);
+    if (i < 0) return 0;
+    if (i == 0) return -1;
+    for (; i + 1 < t->count; i++) t->slot[i] = t->slot[i + 1];
+    t->count--;
+    return 1;
+}
+
+static int ips_snap_find(const ip_snap *s, const char *name)
+{
+    int i;
+    for (i = 0; i < s->count; i++)
+        if (ips_eq(s->e[i].name, name)) return i;
+    return -1;
+}
+
+void ip_screens_diff(const ip_snap *old_s, const ip_snap *new_s, ip_diff *out)
+{
+    int i, j;
+    out->count = 0;
+    for (i = 0; i < new_s->count; i++) {
+        const ip_snap_entry *n = &new_s->e[i];
+        ip_diff_entry *d = &out->e[out->count++];
+        j = ips_snap_find(old_s, n->name);
+        ips_set_name(d->name, n->name);
+        d->flags = n->flags;
+        d->screen = n->screen;
+        d->depth = n->depth;
+        if (j < 0) d->kind = IP_DIFF_APPEARED;
+        else if (old_s->e[j].screen != n->screen || old_s->e[j].depth != n->depth) d->kind = IP_DIFF_REOPENED;
+        else d->kind = IP_DIFF_SAME;
+    }
+    for (i = 0; i < old_s->count; i++) {
+        if (ips_snap_find(new_s, old_s->e[i].name) >= 0) continue;
+        ips_set_name(out->e[out->count].name, old_s->e[i].name);
+        out->e[out->count].kind = IP_DIFF_GONE;
+        out->e[out->count].flags = old_s->e[i].flags;
+        out->e[out->count].screen = old_s->e[i].screen;
+        out->e[out->count].depth = old_s->e[i].depth;
+        out->count++;
+    }
+}
+
+int ip_screens_apply(ip_screens *t, const ip_diff *d)
+{
+    int i, changed = 0;
+
+    for (i = 0; i < d->count; i++) {
+        const ip_diff_entry *e = &d->e[i];
+        int s = ip_screens_find(t, e->name);
+        ip_holder *h;
+
+        if (s == 0) continue;                                    /* Workbench has its own path */
+        if (e->kind == IP_DIFF_GONE) {                           /* closed, private or not: the pens went with it */
+            if (s < 0) continue;
+            ip_holder_init(&t->slot[s].sh.h);
+            changed++;
+            continue;
+        }
+        if (e->flags & IP_PSN_PRIVATE) continue;                 /* not open yet: no slot, and a slot stays as it is */
+        if (s < 0) {                                             /* first public sighting, whatever the diff calls it */
+            if (ip_screens_add(t, e->name) >= 0) changed++;
+            continue;
+        }
+        h = &t->slot[s].sh.h;
+        if (h->screen ? (h->screen == e->screen && h->depth == e->depth) : e->kind == IP_DIFF_SAME) continue;
+        ip_holder_init(h);                                       /* the pens went with the ColorMap: forget, never release */
+        t->slot[s].epoch++;
+        changed++;
+    }
+    return changed;
+}
