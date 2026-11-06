@@ -468,7 +468,7 @@ const char *sd_text_reason(int check)
 static const char *const sd_page_names[PG_NPAGES_ALL] = {
     "general", "colors", "palette", "keyboard", "advanced", "amarchy", "flat",
     "theme", "theme-swatches", "theme-groups", "theme-elements", "theme-type", "theme-shape", "theme-states", "theme-desktop",
-    "theme-files"
+    "theme-files", "theme-screens"
 };
 
 int sd_page_by_name(const char *name)

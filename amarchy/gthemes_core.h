@@ -386,7 +386,8 @@ int gte_row_step(const struct sd_setting *s);
 int gte_row_set_index(const struct sd_setting *s, int index);                    /* cycle rows, ref rows (next swatch) */
 int gte_row_label(const struct sd_setting *s, char *out, int n); /* "Label: value" */
 enum { GTA_OPEN = 1, GTA_SAVE, GTA_SAVE_AS, GTA_REVERT, GTA_APPLY, GTA_ADD_SWATCH, GTA_RENAME_SWATCH, GTA_REMOVE_SWATCH,
-       GTA_CLEAR_ELEMENT, GTA_DUPLICATE, GTA_IMPORT, GTA_EXPORT, GTA_RESET_BASE, GTA_DELETE };
+       GTA_CLEAR_ELEMENT, GTA_DUPLICATE, GTA_IMPORT, GTA_EXPORT, GTA_RESET_BASE, GTA_DELETE,
+       GTA_SCR_ALL, GTA_SCR_NONE, GTA_SCR_INVERT, GTA_SCR_ADD, GTA_SCR_SAVE, GTA_SCR_UP, GTA_SCR_DOWN, GTA_SCR_REMOVE };
 /* What an editor action does before it touches a file (the menu's theme_action follows this, the host tests assert it):
  * GTP_SKIP nothing to act on (no theme open), GTP_LEAVE ask Save/Discard/Cancel first (the buffer is replaced),
  * GTP_NAME ask for a name. */
@@ -526,5 +527,31 @@ int gt_screen_row_takeover(gt_screen_rules *r, const char *name, int on);
 int gt_screen_rows_all(gt_screen_rules *r, const char *const *open, int nopen);
 int gt_screen_rows_none(gt_screen_rules *r, const char *const *open, int nopen);
 int gt_screen_rows_invert(gt_screen_rules *r, const char *const *open, int nopen);
+
+/* TE-10.8b: the pattern rules (the rules whose pattern has a wildcard), numbered p = 0.. in file order. Pure edits of r in place;
+ * 1 = done, 0 = not possible and r unchanged. */
+int gt_screen_pat_count(const gt_screen_rules *r);
+int gt_screen_pat_add(gt_screen_rules *r, const char *pat);            /* theme = main theme, no takeover; the pattern needs a wildcard */
+int gt_screen_pat_set(gt_screen_rules *r, int p, const char *pat);
+int gt_screen_pat_theme(gt_screen_rules *r, int p, const char *theme); /* "" or GT_SCR_MAIN = main theme, "exclude" = Exclude */
+int gt_screen_pat_takeover(gt_screen_rules *r, int p, int on);         /* an exclude has none: 0 */
+int gt_screen_pat_move(gt_screen_rules *r, int p, int dir);            /* dir -1 up, +1 down; 0 at the edge */
+int gt_screen_pat_remove(gt_screen_rules *r, int p);
+
+/* TE-10.8b: the state behind the Theme Editor Screens page. The page rows (page PG_PAGE_THEME_SCREENS) read and edit this one copy
+ * through the gte_row_* functions; the DOS side loads it (gt_se_load), and writes gt_se_text back on Save. */
+#define GT_SE_ROWS 24   /* screen rows the page has */
+#define GT_SE_PATS 16   /* pattern rules the page has */
+enum { GTSE_TICK = 1, GTSE_THEME, GTSE_TAKE, GTSE_DEFAULT, GTSE_PAT, GTSE_PTHEME, GTSE_PTAKE };  /* aux of the page rows; aux2 = index */
+extern void (*gt_se_loader)(void);                                     /* DOS glue: called before the first row shows, and again after gt_se_stale, to gt_se_load */
+void gt_se_set_themes(const char *const *names, int n);               /* the theme names the theme cycles offer */
+void gt_se_load(const char *buf, long len, const char *const *open, int nopen); /* rule file text (len 0 = none) and the open public screens */
+long gt_se_text(char *buf, long cap);                                  /* the rule file text, as gt_screen_rules_write */
+int gt_se_enabled(void);                                               /* value of the on/off key: 0 only when the rules are today's default */
+int gt_se_dirty(void);                                                 /* changed since gt_se_load */
+void gt_se_stale(void);                                                /* the open screens may have changed: reload at the next row, unless edits are unsaved */
+const gt_screen_rules *gt_se_rules(void);
+int gt_se_action(int aux, int index);                                  /* GTA_SCR_ALL .. REMOVE: GTR_OK or GTR_BAD */
+int gt_se_add_rule(const char *pat);                                   /* Add Rule: GTR_OK, GTR_BAD (no wildcard) or GTR_FULL */
 
 #endif

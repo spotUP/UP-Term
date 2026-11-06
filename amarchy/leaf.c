@@ -379,6 +379,20 @@ static int theme_action(const sd_setting *s, const char *label, const lf_ui *ui)
     case GTA_CLEAR_ELEMENT:
         gte_elem_clear(s->aux2);
         break;
+    case GTA_SCR_ALL: case GTA_SCR_NONE: case GTA_SCR_INVERT:
+    case GTA_SCR_UP: case GTA_SCR_DOWN: case GTA_SCR_REMOVE:
+        ok = gt_se_action(s->aux, s->aux2) == GTR_OK;
+        break;
+    case GTA_SCR_ADD:
+        if (!ui->ask_value || !ui->ask_value(ui->ctx, label, "screen name pattern", name, sizeof name))
+            return 0;
+        ok = gt_se_add_rule(name) == GTR_OK;
+        if (!ok)
+            strcpy(why, "a rule needs a wildcard such as #? and at most 16 rules fit");
+        break;
+    case GTA_SCR_SAVE:
+        ok = gt_dos_screens_save(why, sizeof why);
+        break;
     }
     if (!ok)
         ui->refused(ui->ctx, label, LF_SET_INVALID, why);

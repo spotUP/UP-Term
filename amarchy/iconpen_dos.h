@@ -74,6 +74,7 @@ unsigned ipd_epoch_of(const char *name);
 /* TE-10.4: reads ENV:Amarchy/screen-themes and the screen-themes key into *out (default "workbench" and no rules when the file is
  * missing). DOS I/O: never with the public screen list locked. */
 void ipd_screen_rules_load(gt_screen_rules *out);
+int ipd_pub_screens(char *names, int stride, int max, int *front);   /* the open public screens: count, name slots, front index */
 /* TE-10.7: the public name of the screen `scr` copied into out (cap bytes), "" when it is no public screen. Takes the public screen
  * list lock itself and unlocks before it returns. */
 void ipd_pub_screen_name_of(struct Screen *scr, char *out, int cap);

@@ -2208,7 +2208,7 @@ int gte_ref_step(const gt_ref *cur, int dir, char *out, int cap)
 }
 
 /* ---- the rows ---- */
-#define ER_MAX 320
+#define ER_MAX 512
 #define ER_LABEL 44
 #define ER_INFO_SHARE 100 /* TE-8.3: + group id, the share line of that group on a shallow screen */
 #define ER_INFO_BASE 1
@@ -2226,6 +2226,7 @@ static const sd_value v_shape[2] = { { "0", "Square" }, { "1", "Rounded" } };
 static const sd_value v_order[2] = { { "0", "Left" }, { "1", "Right" } };
 static const sd_value v_ghost[3] = { { "0", "Dim" }, { "1", "Stipple" }, { "2", "Both" } };
 static const sd_value v_hover[2] = { { "0", "Off" }, { "1", "On" } };
+static const sd_value v_scrdef[3] = { { "all", "All Screens" }, { "workbench", "Workbench Only" }, { "none", "None" } };
 
 typedef struct look_def {
     const char *key, *label;
@@ -2389,6 +2390,54 @@ static void er_build(void)
     er_add(PG_PAGE_THEME_FILES, SD_GACTION, "export", "Export Theme...")->aux = GTA_EXPORT;
     er_add(PG_PAGE_THEME_FILES, SD_GACTION, "resetbase", "Reset to Base")->aux = GTA_RESET_BASE;
     er_add(PG_PAGE_THEME_FILES, SD_GACTION, "delete", "Delete User Theme")->aux = GTA_DELETE;
+    /* TE-10.8b: the Screens page. Rows are static, so every slot exists and gte_row_visible hides the unused ones. */
+    for (i = 0; i < GT_SE_ROWS; i++) {
+        char k[24];
+        sd_setting *r;
+        snprintf(k, sizeof k, "scr-tick%d", i);
+        r = er_add(PG_PAGE_THEME_SCREENS, SD_CYCLE, k, "Screen");
+        r->aux = GTSE_TICK; r->aux2 = i; r->values = v_hover; r->nvalues = 2;
+        snprintf(k, sizeof k, "scr-theme%d", i);
+        r = er_add(PG_PAGE_THEME_SCREENS, SD_STRING, k, "Theme");
+        r->aux = GTSE_THEME; r->aux2 = i;
+        snprintf(k, sizeof k, "scr-take%d", i);
+        r = er_add(PG_PAGE_THEME_SCREENS, SD_CYCLE, k, "Take Over Palette");
+        r->aux = GTSE_TAKE; r->aux2 = i; r->values = v_hover; r->nvalues = 2;
+    }
+    er_add(PG_PAGE_THEME_SCREENS, SD_GACTION, "scr-all", "All")->aux = GTA_SCR_ALL;
+    er_add(PG_PAGE_THEME_SCREENS, SD_GACTION, "scr-none", "None")->aux = GTA_SCR_NONE;
+    er_add(PG_PAGE_THEME_SCREENS, SD_GACTION, "scr-invert", "Invert")->aux = GTA_SCR_INVERT;
+    {
+        sd_setting *r = er_add(PG_PAGE_THEME_SCREENS, SD_CYCLE, "scr-default", "Default");
+        r->aux = GTSE_DEFAULT; r->values = v_scrdef; r->nvalues = 3;
+    }
+    for (i = 0; i < GT_SE_PATS; i++) {
+        char k[24], l[ER_LABEL];
+        sd_setting *r;
+        snprintf(k, sizeof k, "scr-pat%d", i);
+        r = er_add(PG_PAGE_THEME_SCREENS, SD_STRING, k, "Rule Pattern");
+        r->aux = GTSE_PAT; r->aux2 = i;
+        snprintf(k, sizeof k, "scr-ptheme%d", i);
+        r = er_add(PG_PAGE_THEME_SCREENS, SD_STRING, k, "Rule Theme");
+        r->aux = GTSE_PTHEME; r->aux2 = i;
+        snprintf(k, sizeof k, "scr-ptake%d", i);
+        r = er_add(PG_PAGE_THEME_SCREENS, SD_CYCLE, k, "Rule Take Over Palette");
+        r->aux = GTSE_PTAKE; r->aux2 = i; r->values = v_hover; r->nvalues = 2;
+        snprintf(k, sizeof k, "scr-up%d", i);
+        snprintf(l, sizeof l, "Rule %d Move Up", i + 1);
+        r = er_add(PG_PAGE_THEME_SCREENS, SD_GACTION, k, l);
+        r->aux = GTA_SCR_UP; r->aux2 = i;
+        snprintf(k, sizeof k, "scr-down%d", i);
+        snprintf(l, sizeof l, "Rule %d Move Down", i + 1);
+        r = er_add(PG_PAGE_THEME_SCREENS, SD_GACTION, k, l);
+        r->aux = GTA_SCR_DOWN; r->aux2 = i;
+        snprintf(k, sizeof k, "scr-rm%d", i);
+        snprintf(l, sizeof l, "Rule %d Remove", i + 1);
+        r = er_add(PG_PAGE_THEME_SCREENS, SD_GACTION, k, l);
+        r->aux = GTA_SCR_REMOVE; r->aux2 = i;
+    }
+    er_add(PG_PAGE_THEME_SCREENS, SD_GACTION, "scr-add", "Add Rule")->aux = GTA_SCR_ADD;
+    er_add(PG_PAGE_THEME_SCREENS, SD_GACTION, "scr-save", "Save Screen Themes")->aux = GTA_SCR_SAVE;
 }
 
 const sd_setting *gte_row(int id)
@@ -2405,10 +2454,19 @@ int gte_nrows(void)
     return er_n;
 }
 
+static int se_visible(const sd_setting *s);
+static int se_text(const sd_setting *s, char *out, int n);
+static int se_label(const sd_setting *s, char *out, int n);
+static int se_set_text(const sd_setting *s, const char *text);
+static int se_step(const sd_setting *s);
+static int se_set_index(const sd_setting *s, int index);
+
 int gte_row_visible(const sd_setting *s)
 {
     if (s->store != SD_GTHEME)
         return 1;
+    if (s->page == PG_PAGE_THEME_SCREENS)
+        return se_visible(s);
     if (s->page == PG_PAGE_THEME_ELEMENTS && !gt_ed.advanced)
         return 0;
     if (s->kind == SD_INFO && s->aux >= ER_INFO_SHARE) {   /* TE-8.3: only a group that shares a pen on a shallow screen */
@@ -2479,6 +2537,8 @@ int gte_row_text(const sd_setting *s, char *out, int n)
     if (n < 1)
         return 0;
     out[0] = 0;
+    if (s->store == SD_GTHEME && s->page == PG_PAGE_THEME_SCREENS)
+        return se_text(s, out, n);
     switch (s->kind) {
     case SD_SWATCH:
         if (s->aux >= gt_ed.m.nswatch)
@@ -2526,6 +2586,8 @@ int gte_row_label(const sd_setting *s, char *out, int n)
 {
     char v[96], nm[GT_SWATCH_NAME + 4];
     const char *label = s->label;
+    if (s->store == SD_GTHEME && s->page == PG_PAGE_THEME_SCREENS)
+        return se_label(s, out, n);
     if (s->kind == SD_SWATCH) {
         snprintf(nm, sizeof nm, "%s", gt_ed.m.swatch_name[s->aux < gt_ed.m.nswatch ? s->aux : 0]);
         label = nm;
@@ -2546,6 +2608,8 @@ int gte_row_set_text(const sd_setting *s, const char *text)
 {
     int i;
     uc_u32 c = 0;
+    if (s->store == SD_GTHEME && s->page == PG_PAGE_THEME_SCREENS)
+        return se_set_text(s, text);
     switch (s->kind) {
     case SD_SWATCH:
         return gte_swatch_set(s->aux, text);
@@ -2583,6 +2647,8 @@ int gte_row_set_text(const sd_setting *s, const char *text)
 int gte_row_step(const sd_setting *s)
 {
     char t[96];
+    if (s->store == SD_GTHEME && s->page == PG_PAGE_THEME_SCREENS)
+        return se_step(s);
     if (s->kind == SD_CYCLE && s->aux == -1) {
         gt_ed.advanced = !gt_ed.advanced;
         ed_touch();
@@ -2604,6 +2670,8 @@ int gte_row_step(const sd_setting *s)
 
 int gte_row_set_index(const sd_setting *s, int index)
 {
+    if (s->store == SD_GTHEME && s->page == PG_PAGE_THEME_SCREENS)
+        return se_set_index(s, index);
     if (s->store != SD_GTHEME || s->kind != SD_CYCLE || index < 0 || index >= s->nvalues)
         return GTR_BAD;
     if (s->aux == -1)
@@ -3031,3 +3099,386 @@ static int rows_each(gt_screen_rules *r, const char *const *open, int nopen, int
 int gt_screen_rows_all(gt_screen_rules *r, const char *const *open, int nopen) { return rows_each(r, open, nopen, 1); }
 int gt_screen_rows_none(gt_screen_rules *r, const char *const *open, int nopen) { return rows_each(r, open, nopen, 0); }
 int gt_screen_rows_invert(gt_screen_rules *r, const char *const *open, int nopen) { return rows_each(r, open, nopen, 2); }
+
+/* ---- TE-10.8b: pattern rules and the state of the Screens page ---- */
+static int pat_rule(const gt_screen_rules *r, int p)
+{
+    int i, k = 0;
+    for (i = 0; i < r->n; i++)
+        if (!gt_screen_exact(r->rule[i].pat)) {
+            if (k == p)
+                return i;
+            k++;
+        }
+    return -1;
+}
+
+int gt_screen_pat_count(const gt_screen_rules *r)
+{
+    int i, k = 0;
+    for (i = 0; i < r->n; i++)
+        k += !gt_screen_exact(r->rule[i].pat);
+    return k;
+}
+
+static int pat_ok(const char *pat)
+{
+    size_t l = pat ? strlen(pat) : 0;
+    return l > 0 && l < GT_SCR_PAT && !gt_screen_exact(pat) && pat[0] != ' ' && pat[l - 1] != ' ' && !strpbrk(pat, "=\n\r\t;");
+}
+
+int gt_screen_pat_add(gt_screen_rules *r, const char *pat)
+{
+    return pat_ok(pat) && gt_screen_rules_add(r, pat, GT_SCR_MAIN, 0);
+}
+
+int gt_screen_pat_set(gt_screen_rules *r, int p, const char *pat)
+{
+    int i = pat_rule(r, p);
+    if (i < 0 || !pat_ok(pat))
+        return 0;
+    strcpy(r->rule[i].pat, pat);
+    return 1;
+}
+
+int gt_screen_pat_theme(gt_screen_rules *r, int p, const char *theme)
+{
+    int i = pat_rule(r, p);
+    if (i < 0 || !theme)
+        return 0;
+    if (cmp_ci(theme, "exclude") == 0) {
+        r->rule[i].exclude = 1;
+        r->rule[i].theme[0] = 0;
+        r->rule[i].takeover = 0;
+        return 1;
+    }
+    if (!*theme)
+        theme = GT_SCR_MAIN;
+    if (strcmp(theme, GT_SCR_MAIN) && !gt_name_ok(theme))
+        return 0;
+    r->rule[i].exclude = 0;
+    strcpy(r->rule[i].theme, theme);
+    return 1;
+}
+
+int gt_screen_pat_takeover(gt_screen_rules *r, int p, int on)
+{
+    int i = pat_rule(r, p);
+    if (i < 0 || r->rule[i].exclude)
+        return 0;
+    r->rule[i].takeover = on != 0;
+    return 1;
+}
+
+int gt_screen_pat_move(gt_screen_rules *r, int p, int dir)
+{
+    int i = pat_rule(r, p), j = pat_rule(r, p + (dir < 0 ? -1 : 1));
+    gt_screen_rule t;
+    if (i < 0 || j < 0)
+        return 0;
+    t = r->rule[i];
+    r->rule[i] = r->rule[j];
+    r->rule[j] = t;
+    return 1;
+}
+
+int gt_screen_pat_remove(gt_screen_rules *r, int p)
+{
+    int i = pat_rule(r, p);
+    if (i < 0)
+        return 0;
+    for (; i + 1 < r->n; i++)
+        r->rule[i] = r->rule[i + 1];
+    r->n--;
+    return 1;
+}
+
+#define SE_THEMES 64
+static struct {
+    gt_screen_rules r;
+    char open[GT_SE_ROWS][GT_SCR_PAT];
+    int nopen;
+    char theme[SE_THEMES][GT_NAME];
+    int nthemes;
+    int dirty;
+} gt_se;
+
+void (*gt_se_loader)(void);
+static int se_loaded;
+
+static void se_ensure(void)
+{
+    if (!se_loaded && gt_se_loader) {
+        se_loaded = 1;      /* before the call: the loader calls gt_se_load */
+        gt_se_loader();
+    }
+}
+
+void gt_se_set_themes(const char *const *names, int n)
+{
+    int i;
+    gt_se.nthemes = 0;
+    for (i = 0; i < n && gt_se.nthemes < SE_THEMES; i++)
+        if (names[i] && strlen(names[i]) < GT_NAME)
+            strcpy(gt_se.theme[gt_se.nthemes++], names[i]);
+}
+
+void gt_se_load(const char *buf, long len, const char *const *open, int nopen)
+{
+    int i;
+    se_loaded = 1;
+    gt_screen_rules_parse(buf, len, &gt_se.r);
+    gt_se.nopen = 0;
+    for (i = 0; i < nopen && gt_se.nopen < GT_SE_ROWS - 1; i++)
+        if (open[i] && strlen(open[i]) < GT_SCR_PAT)
+            strcpy(gt_se.open[gt_se.nopen++], open[i]);
+    gt_se.dirty = 0;
+}
+
+long gt_se_text(char *buf, long cap)
+{
+    gt_se.r.enabled = 1;
+    return gt_screen_rules_write(&gt_se.r, buf, cap);
+}
+
+int gt_se_enabled(void)
+{
+    return !(gt_se.r.def == GT_SCR_WORKBENCH && gt_se.r.n == 0);
+}
+
+int gt_se_dirty(void)
+{
+    return gt_se.dirty;
+}
+
+/* The open screens may have changed (a menu open): the next row asked for runs the loader again. Unsaved edits win: a dirty
+ * page keeps its rows until Save or a restart, a reload would throw the edits away. */
+void gt_se_stale(void)
+{
+    if (!gt_se.dirty)
+        se_loaded = 0;
+}
+
+const gt_screen_rules *gt_se_rules(void)
+{
+    return &gt_se.r;
+}
+
+static int se_rows(gt_screen_row *rows)
+{
+    const char *op[GT_SE_ROWS];
+    int i;
+    for (i = 0; i < gt_se.nopen; i++)
+        op[i] = gt_se.open[i];
+    return gt_screen_rows(&gt_se.r, op, gt_se.nopen, rows, GT_SE_ROWS);
+}
+
+static int se_done(int ok)
+{
+    if (ok)
+        gt_se.dirty = 1;
+    return ok ? GTR_OK : GTR_BAD;
+}
+
+int gt_se_action(int aux, int index)
+{
+    const char *op[GT_SE_ROWS];
+    int i;
+    for (i = 0; i < gt_se.nopen; i++)
+        op[i] = gt_se.open[i];
+    switch (aux) {
+    case GTA_SCR_ALL:    gt_screen_rows_all(&gt_se.r, op, gt_se.nopen); return se_done(1);
+    case GTA_SCR_NONE:   gt_screen_rows_none(&gt_se.r, op, gt_se.nopen); return se_done(1);
+    case GTA_SCR_INVERT: gt_screen_rows_invert(&gt_se.r, op, gt_se.nopen); return se_done(1);
+    case GTA_SCR_UP:     return se_done(gt_screen_pat_move(&gt_se.r, index, -1));
+    case GTA_SCR_DOWN:   return se_done(gt_screen_pat_move(&gt_se.r, index, 1));
+    case GTA_SCR_REMOVE: return se_done(gt_screen_pat_remove(&gt_se.r, index));
+    default:             return GTR_BAD;
+    }
+}
+
+int gt_se_add_rule(const char *pat)
+{
+    if (!pat_ok(pat))
+        return GTR_BAD;
+    if (gt_se.r.n >= GT_SCR_MAX || gt_screen_pat_count(&gt_se.r) >= GT_SE_PATS)
+        return GTR_FULL;
+    return se_done(gt_screen_pat_add(&gt_se.r, pat));
+}
+
+static int se_visible(const sd_setting *s)
+{
+    gt_screen_row rows[GT_SE_ROWS];
+    se_ensure();
+    switch (s->aux) {
+    case GTSE_TICK: case GTSE_THEME: case GTSE_TAKE:
+        return s->aux2 < se_rows(rows);
+    case GTSE_PAT: case GTSE_PTHEME: case GTSE_PTAKE:
+    case GTA_SCR_UP: case GTA_SCR_DOWN: case GTA_SCR_REMOVE:
+        return s->aux2 < gt_screen_pat_count(&gt_se.r);
+    default:
+        return 1;
+    }
+}
+
+/* the theme cycle: Main Theme, the themes, and for a pattern rule Exclude last */
+static const char *se_theme_name(int i, int exclude_too, int *count)
+{
+    int n = 1 + gt_se.nthemes + (exclude_too ? 1 : 0);
+    *count = n;
+    if (i == 0)
+        return "Main Theme";
+    if (i <= gt_se.nthemes)
+        return gt_se.theme[i - 1];
+    return "Exclude";
+}
+
+static int se_theme_find(const char *text, int exclude_too)
+{
+    int i, n;
+    for (i = 0; i < 1 + gt_se.nthemes + (exclude_too ? 1 : 0); i++)
+        if (cmp_ci(se_theme_name(i, exclude_too, &n), text) == 0)
+            return i;
+    return *text ? -1 : 0;
+}
+
+static const char *se_row_theme_text(const gt_screen_row *w, char *tmp)
+{
+    (void)tmp;
+    return w->theme[0] && strcmp(w->theme, GT_SCR_MAIN) ? w->theme : "Main Theme";
+}
+
+static const char *se_pat_theme_text(const gt_screen_rule *u)
+{
+    if (u->exclude)
+        return "Exclude";
+    return u->theme[0] && strcmp(u->theme, GT_SCR_MAIN) ? u->theme : "Main Theme";
+}
+
+static int se_text(const sd_setting *s, char *out, int n)
+{
+    gt_screen_row rows[GT_SE_ROWS];
+    int nr = se_rows(rows), i = s->aux2, q;
+    switch (s->aux) {
+    case GTSE_TICK:
+        snprintf(out, (size_t)n, "%s", i < nr && rows[i].on ? "On" : "Off");
+        return 1;
+    case GTSE_THEME:
+        snprintf(out, (size_t)n, "%s", i < nr ? se_row_theme_text(&rows[i], out) : "");
+        return 1;
+    case GTSE_TAKE:
+        snprintf(out, (size_t)n, "%s", i < nr && rows[i].takeover ? "On" : "Off");
+        return 1;
+    case GTSE_DEFAULT:
+        snprintf(out, (size_t)n, "%s", v_scrdef[gt_se.r.def >= 0 && gt_se.r.def < 3 ? gt_se.r.def : 1].text);
+        return 1;
+    case GTSE_PAT: case GTSE_PTHEME: case GTSE_PTAKE:
+        q = pat_rule(&gt_se.r, i);
+        if (q < 0)
+            return 1;
+        if (s->aux == GTSE_PAT)
+            snprintf(out, (size_t)n, "%s", gt_se.r.rule[q].pat);
+        else if (s->aux == GTSE_PTHEME)
+            snprintf(out, (size_t)n, "%s", se_pat_theme_text(&gt_se.r.rule[q]));
+        else
+            snprintf(out, (size_t)n, "%s", gt_se.r.rule[q].takeover ? "On" : "Off");
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+static int se_label(const sd_setting *s, char *out, int n)
+{
+    gt_screen_row rows[GT_SE_ROWS];
+    char v[GT_SCR_PAT + 8];
+    int nr = se_rows(rows), i = s->aux2;
+    se_text(s, v, (int)sizeof v);
+    switch (s->aux) {
+    case GTSE_TICK:
+        snprintf(out, (size_t)n, "%s%s: %s", i < nr ? rows[i].name : "", i < nr && !rows[i].open ? " (not open)" : "", v);
+        break;
+    case GTSE_THEME:
+        snprintf(out, (size_t)n, "%s Theme: %s", i < nr ? rows[i].name : "", v);
+        break;
+    case GTSE_TAKE:
+        snprintf(out, (size_t)n, "%s Take Over Palette: %s", i < nr ? rows[i].name : "", v);
+        break;
+    case GTSE_DEFAULT:
+        snprintf(out, (size_t)n, "Default: %s", v);
+        break;
+    case GTSE_PAT:
+        snprintf(out, (size_t)n, "Rule %d Pattern: %s", i + 1, v);
+        break;
+    case GTSE_PTHEME:
+        snprintf(out, (size_t)n, "Rule %d Theme: %s", i + 1, v);
+        break;
+    case GTSE_PTAKE:
+        snprintf(out, (size_t)n, "Rule %d Take Over Palette: %s", i + 1, v);
+        break;
+    default:
+        snprintf(out, (size_t)n, "%s", s->label);
+        break;
+    }
+    return 1;
+}
+
+static int se_set_theme(const sd_setting *s, const char *text)
+{
+    gt_screen_row rows[GT_SE_ROWS];
+    int nr = se_rows(rows), i = s->aux2, k = se_theme_find(text, s->aux == GTSE_PTHEME), cnt;
+    const char *name;
+    if (k < 0)
+        return GTR_BAD;
+    name = se_theme_name(k, s->aux == GTSE_PTHEME, &cnt);
+    if (s->aux == GTSE_PTHEME)
+        return se_done(gt_screen_pat_theme(&gt_se.r, i, k == 0 ? "" : name));
+    return se_done(i < nr && gt_screen_row_theme(&gt_se.r, rows[i].name, k == 0 ? "" : name));
+}
+
+static int se_set_index(const sd_setting *s, int index)
+{
+    gt_screen_row rows[GT_SE_ROWS];
+    int nr = se_rows(rows), i = s->aux2;
+    if (s->kind != SD_CYCLE || index < 0 || index >= s->nvalues)
+        return GTR_BAD;
+    switch (s->aux) {
+    case GTSE_TICK:    return se_done(i < nr && gt_screen_row_tick(&gt_se.r, rows[i].name, index));
+    case GTSE_TAKE:    return se_done(i < nr && gt_screen_row_takeover(&gt_se.r, rows[i].name, index));
+    case GTSE_PTAKE:   return se_done(gt_screen_pat_takeover(&gt_se.r, i, index));
+    case GTSE_DEFAULT: gt_se.r.def = index; return se_done(1);
+    default:           return GTR_BAD;
+    }
+}
+
+static int se_step(const sd_setting *s)
+{
+    gt_screen_row rows[GT_SE_ROWS];
+    char cur[GT_SCR_PAT + 8];
+    int nr = se_rows(rows), i = s->aux2, k, cnt, pat = s->aux == GTSE_PTHEME;
+    if (s->kind == SD_CYCLE) {
+        se_text(s, cur, (int)sizeof cur);
+        k = s->aux == GTSE_DEFAULT ? gt_se.r.def : strcmp(cur, "On") == 0;
+        return se_set_index(s, (k + 1) % s->nvalues);
+    }
+    if (s->aux != GTSE_THEME && !pat)
+        return GTR_BAD;
+    if (!pat && i >= nr)
+        return GTR_BAD;
+    se_text(s, cur, (int)sizeof cur);
+    k = se_theme_find(cur, pat);
+    se_theme_name(0, pat, &cnt);
+    return se_set_theme(s, se_theme_name(((k < 0 ? 0 : k) + 1) % cnt, pat, &cnt));
+}
+
+static int se_set_text(const sd_setting *s, const char *text)
+{
+    switch (s->aux) {
+    case GTSE_THEME: case GTSE_PTHEME:
+        return se_set_theme(s, text);
+    case GTSE_PAT:
+        return se_done(gt_screen_pat_set(&gt_se.r, s->aux2, text));
+    default:
+        return GTR_BAD;
+    }
+}

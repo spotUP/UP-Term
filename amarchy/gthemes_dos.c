@@ -272,6 +272,8 @@ int gt_dos_select(const char *name, char *why, int cap)
     return 0;
 }
 
+static void gt_dos_screens_load(void);
+
 void gt_dos_load_rows(ix_index *x)
 {
     static gt_list l;
@@ -279,6 +281,8 @@ void gt_dos_load_rows(ix_index *x)
     const char *labels[GT_MAX], *names[GT_MAX];
     char cur[GT_NAME];
     int i;
+    gt_se_loader = gt_dos_screens_load;
+    gt_se_stale();                      /* each menu open samples the open screens again; unsaved edits stay */
     gt_dos_scan(&l);
     gt_dos_current(cur, sizeof cur);
     for (i = 0; i < l.n; i++) {
@@ -289,7 +293,80 @@ void gt_dos_load_rows(ix_index *x)
     ix_add_gthemes(x, labels, names, l.n);
 }
 
-/* ---- TE-3 ---- */
+/* ---- TE-10.8b: the Screens page ---- */
+#define SCR_FILE_ENV "ENV:Amarchy/screen-themes"
+#define SCR_FILE_ARC "ENVARC:Amarchy/screen-themes"
+#define SCR_BUF 8192
+
+static void gt_dos_drawers(void);
+
+/* the page's loader (gt_se_loader): the rule file (ENV: copy first), the open public screens (ipd_pub_screens, the bar's sampler) and
+ * the theme names (gt_dos_scan). Runs before the first row of the page shows, and again after each gt_se_stale. */
+static void gt_dos_screens_load(void)
+{
+    static gt_list l;
+    static char open[GT_SE_ROWS][GT_SCR_PAT];    /* a public screen name at full length (139 + terminator) */
+    const char *op[GT_SE_ROWS], *tn[GT_MAX];
+    struct Process *me = (struct Process *)FindTask(0);
+    APTR oldwin = me->pr_WindowPtr;
+    char *buf = (char *)AllocVec(SCR_BUF, MEMF_PUBLIC);
+    long len = 0;
+    int i, n;
+    me->pr_WindowPtr = (APTR)-1;        /* a volume not there is an answer, not a requester */
+    if (buf) {
+        len = gt_dos_read(0, SCR_FILE_ENV, buf, SCR_BUF);
+        if (len < 0)
+            len = gt_dos_read(0, SCR_FILE_ARC, buf, SCR_BUF);
+        if (len < 0)
+            len = 0;
+    }
+    me->pr_WindowPtr = oldwin;
+    gt_dos_scan(&l);
+    for (i = 0; i < l.n; i++)
+        tn[i] = l.name[i];
+    gt_se_set_themes(tn, l.n);
+    n = ipd_pub_screens(open[0], GT_SCR_PAT, GT_SE_ROWS, 0);
+    for (i = 0; i < n; i++)
+        op[i] = open[i];
+    gt_se_load(buf ? buf : "", len, op, n);
+    if (buf)
+        FreeVec(buf);
+}
+
+/* Save Screen Themes: the rule file to ENVARC: and ENV:, the on/off key to match, then the pen holder is told to reread
+ * (ipd_rules_changed sets rules_dirty; its next sync runs rules_read on ENV:Amarchy/screen-themes and AM_SCREENTHEMES). 1 saved. */
+int gt_dos_screens_save(char *why, int cap)
+{
+    am_prefs ap;
+    char *buf = (char *)AllocVec(SCR_BUF, MEMF_PUBLIC);
+    const char *want = gt_se_enabled() ? "on" : "off";
+    long len;
+    int ok = 0, failed = 0, r;
+    if (!buf) {
+        if (why)
+            strncpy(why, "out of memory", (size_t)cap - 1);
+        return 0;
+    }
+    gt_dos_drawers();
+    len = gt_se_text(buf, SCR_BUF);
+    if (len > 0 && prefs_dos_fs.write_file(0, SCR_FILE_ARC, buf, len) && prefs_dos_fs.write_file(0, SCR_FILE_ENV, buf, len)) {
+        ok = 1;
+        amconf_load(&ap);
+        if (strcmp(ap.val[AM_SCREENTHEMES], want) != 0) {
+            strcpy(ap.val[AM_SCREENTHEMES], want);
+            r = amconf_save(&ap, 1, &failed);
+            ok = r == PREFS_INSTALL_OK;
+        }
+    }
+    if (ok)
+        ipd_rules_changed();
+    else if (why)
+        strncpy(why, "cannot write the screen themes", (size_t)cap - 1);
+    FreeVec(buf);
+    return ok;
+}
+
+/* TE-3 */
 static void gt_dos_drawers(void)
 {
     static const char *const dirs[] = { "ENVARC:Amarchy", GT_USER_DIR, "ENV:Amarchy", GT_ENV_DIR };

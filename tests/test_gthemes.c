@@ -2876,7 +2876,7 @@ static void test_gthemes_te8_rows(void)
         if (s->kind == SD_INFO && !strncmp(s->label, "Pen Share ", 10)) share_all++;
     }
     CHECK_INT(share_all, GTG_COUNT);                                   /* one Pen Share row per group, all built */
-    CHECK_INT(total, 309);                                             /* the true row count with the TE-8 rows and no Window Title Font row, counted from the builder */
+    CHECK_INT(total, 483);                                             /* the true row count counted from the builder: 309 earlier rows + 174 Screens page rows (TE-10.8b) */
     gt_ed.depth = 3;
     share_vis = 0;
     for (i = 0; i < total; i++) {
@@ -3094,6 +3094,161 @@ static void test_drawn_windows_take_their_screens_theme(void)
     }
 }
 
+/* ---- TE-10.8b: the Screens page of the Theme Editor ---- */
+static const sd_setting *scr_row(int aux, int idx)
+{
+    int i;
+    for (i = SDI_COUNT; i < SDI_COUNT + gte_nrows(); i++) {
+        const sd_setting *s = gte_row(i);
+        if (s->page == PG_PAGE_THEME_SCREENS && s->aux == aux && s->aux2 == idx)
+            return s;
+    }
+    return 0;
+}
+
+static void scr_load(const char *text, const char *const *open, int nopen)
+{
+    static const char *const themes[] = { "nord", "gruvbox" };
+    gt_se_set_themes(themes, 2);
+    gt_se_load(text, text ? (long)strlen(text) : 0, open, nopen);
+}
+
+static void scr_label(const sd_setting *s, char *out)
+{
+    out[0] = 0;
+    if (s)
+        gte_row_label(s, out, 96);
+}
+
+static void test_gthemes_screens_page_rows_follow_the_open_screens_and_edit_the_rules(void)
+{
+    const char *o[1];
+    const sd_setting *s;
+    char t[96], buf[1024];
+    o[0] = "DOPUS.1";
+    scr_load(0, o, 1);
+    s = scr_row(GTSE_TICK, 0);
+    CHECK(s != 0 && gte_row_visible(s));
+    scr_label(s, t);
+    CHECK_STR(t, "Workbench: On");
+    s = scr_row(GTSE_TICK, 1);
+    CHECK(s != 0 && gte_row_visible(s));
+    scr_label(s, t);
+    CHECK_STR(t, "DOPUS.1: Off");
+    CHECK(scr_row(GTSE_TICK, 2) != 0 && !gte_row_visible(scr_row(GTSE_TICK, 2)));
+    CHECK(!gte_row_visible(scr_row(GTSE_THEME, 2)));
+    CHECK_INT(gte_row_step(s), GTR_OK);
+    scr_label(s, t);
+    CHECK_STR(t, "DOPUS.1: On");
+    CHECK(gt_se_text(buf, sizeof buf) > 0);
+    CHECK_STR(buf, "default workbench\nDOPUS.1 = :main\n");
+    CHECK_INT(gte_row_set_text(scr_row(GTSE_THEME, 1), "Nord"), GTR_OK);
+    CHECK_INT(gte_row_step(scr_row(GTSE_TAKE, 1)), GTR_OK);
+    gt_se_text(buf, sizeof buf);
+    CHECK_STR(buf, "default workbench\nDOPUS.1 = nord takeover\n");
+    CHECK_INT(gte_row_set_text(scr_row(GTSE_THEME, 1), "nosuch"), GTR_BAD);
+    CHECK_INT(gte_row_set_text(scr_row(GTSE_THEME, 0), "nord"), GTR_BAD);
+    CHECK_INT(gte_row_step(scr_row(GTSE_TAKE, 0)), GTR_BAD);
+    CHECK(gt_se_dirty());
+}
+
+static void test_gthemes_screens_page_default_buttons_and_closed_rules(void)
+{
+    const char *o[2];
+    const sd_setting *d;
+    char t[96], buf[1024];
+    o[0] = "DOPUS.1";
+    o[1] = "Term";
+    scr_load("default none\nGone = nord\n", o, 2);
+    d = scr_row(GTSE_DEFAULT, 0);
+    CHECK(d != 0);
+    scr_label(d, t);
+    CHECK_STR(t, "Default: None");
+    scr_label(scr_row(GTSE_TICK, 3), t);
+    CHECK_STR(t, "Gone (not open): On");
+    CHECK_INT(gt_se_action(GTA_SCR_ALL, 0), GTR_OK);
+    gt_se_text(buf, sizeof buf);
+    CHECK(strstr(buf, "DOPUS.1 = :main") != 0 && strstr(buf, "Term = :main") != 0 && strstr(buf, "Gone = nord") != 0);
+    CHECK_INT(gt_se_action(GTA_SCR_INVERT, 0), GTR_OK);
+    gt_se_text(buf, sizeof buf);
+    CHECK(strstr(buf, "DOPUS.1 = :main") == 0);
+    CHECK_INT(gte_row_step(d), GTR_OK);
+    scr_label(d, t);
+    CHECK_STR(t, "Default: All Screens");
+    CHECK_INT(gte_row_step(d), GTR_OK);
+    scr_label(d, t);
+    CHECK_STR(t, "Default: Workbench Only");
+    CHECK_INT(gt_se_action(GTA_SCR_NONE, 0), GTR_OK);
+    gt_se_text(buf, sizeof buf);
+    CHECK(strstr(buf, "Term = :main") == 0);
+}
+
+static void test_gthemes_screens_page_pattern_rules_add_move_edit_remove(void)
+{
+    const char *o[1];
+    const sd_setting *s;
+    char t[96], buf[1024];
+    o[0] = "Term";
+    scr_load("default workbench\n", o, 1);
+    CHECK(scr_row(GTSE_PAT, 0) != 0 && !gte_row_visible(scr_row(GTSE_PAT, 0)));
+    CHECK_INT(gt_se_add_rule("DOPUS#?"), GTR_OK);
+    CHECK_INT(gt_se_add_rule("NoWildcard"), GTR_BAD);
+    CHECK_INT(gt_se_add_rule("Cli#?"), GTR_OK);
+    CHECK(gte_row_visible(scr_row(GTSE_PAT, 1)) && !gte_row_visible(scr_row(GTSE_PAT, 2)));
+    gt_se_text(buf, sizeof buf);
+    CHECK_STR(buf, "default workbench\nDOPUS#? = :main\nCli#? = :main\n");
+    CHECK_INT(gt_se_action(GTA_SCR_DOWN, 0), GTR_OK);
+    gt_se_text(buf, sizeof buf);
+    CHECK_STR(buf, "default workbench\nCli#? = :main\nDOPUS#? = :main\n");
+    CHECK_INT(gt_se_action(GTA_SCR_UP, 0), GTR_BAD);
+    CHECK_INT(gte_row_set_text(scr_row(GTSE_PTHEME, 0), "Exclude"), GTR_OK);
+    CHECK_INT(gte_row_step(scr_row(GTSE_PTAKE, 0)), GTR_BAD);
+    CHECK_INT(gte_row_set_text(scr_row(GTSE_PTHEME, 0), "gruvbox"), GTR_OK);
+    CHECK_INT(gte_row_step(scr_row(GTSE_PTAKE, 0)), GTR_OK);
+    CHECK_INT(gte_row_set_text(scr_row(GTSE_PAT, 1), "Dir#?"), GTR_OK);
+    s = scr_row(GTSE_PAT, 1);
+    scr_label(s, t);
+    CHECK_STR(t, "Rule 2 Pattern: Dir#?");
+    gt_se_text(buf, sizeof buf);
+    CHECK_STR(buf, "default workbench\nCli#? = gruvbox takeover\nDir#? = :main\n");
+    CHECK_INT(gt_se_action(GTA_SCR_REMOVE, 0), GTR_OK);
+    gt_se_text(buf, sizeof buf);
+    CHECK_STR(buf, "default workbench\nDir#? = :main\n");
+    CHECK_INT(gt_se_action(GTA_SCR_REMOVE, 5), GTR_BAD);
+}
+
+static int scr_reloads;
+static void scr_reloader(void)
+{
+    static const char *const o[] = { "DOPUS.1", "TE10" };
+    scr_reloads++;
+    scr_load(0, o, 2);
+}
+
+/* A screen opened after the page loaded shows at the next menu open (gt_se_stale), and that reload never throws away unsaved edits. */
+static void test_gthemes_screens_page_reloads_when_stale_and_keeps_unsaved_edits(void)
+{
+    const char *o[1];
+    o[0] = "DOPUS.1";
+    scr_load(0, o, 1);
+    gt_se_loader = scr_reloader;
+    scr_reloads = 0;
+    CHECK(!gte_row_visible(scr_row(GTSE_TICK, 2)));
+    CHECK_INT(scr_reloads, 0);
+    gt_se_stale();
+    CHECK(gte_row_visible(scr_row(GTSE_TICK, 2)));                      /* Workbench, DOPUS.1 and now TE10 */
+    CHECK_INT(scr_reloads, 1);
+    CHECK(gte_row_visible(scr_row(GTSE_TICK, 2)));
+    CHECK_INT(scr_reloads, 1);                                          /* one reload per stale mark, not one per row */
+    CHECK_INT(gte_row_set_index(scr_row(GTSE_TICK, 1), 1), GTR_OK);     /* an unsaved edit */
+    gt_se_stale();
+    CHECK(gte_row_visible(scr_row(GTSE_TICK, 2)));
+    CHECK_INT(scr_reloads, 1);
+    CHECK(gt_se_dirty());
+    gt_se_loader = 0;
+}
+
+
 void suite_gthemes(void)
 {
     test_drawn_windows_take_their_screens_theme();
@@ -3158,4 +3313,8 @@ void suite_gthemes(void)
     test_gthemes_screen_rows_list_rules_of_closed_screens_after_the_open_ones();
     test_gthemes_screen_rows_a_full_rule_table_refuses_and_changes_nothing();
     test_gthemes_screen_rows_survive_write_and_parse();
+    test_gthemes_screens_page_rows_follow_the_open_screens_and_edit_the_rules();
+    test_gthemes_screens_page_default_buttons_and_closed_rules();
+    test_gthemes_screens_page_pattern_rules_add_move_edit_remove();
+    test_gthemes_screens_page_reloads_when_stale_and_keeps_unsaved_edits();
 }

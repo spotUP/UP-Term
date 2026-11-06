@@ -191,6 +191,28 @@ void ipd_pub_screen_name_of(struct Screen *scr, char *out, int cap)
     UnlockPubScreenList();
 }
 
+/* The open public screens, in list order: names are `max` slots of `stride` bytes. Returns the count; *front (if given) = the index
+ * of the front screen or -1. The one sampler: the bar and the Theme Editor Screens page both read the list through it. */
+int ipd_pub_screens(char *names, int stride, int max, int *front)
+{
+    struct List *l = LockPubScreenList();
+    struct Node *nd;
+    struct Screen *fs = IntuitionBase->FirstScreen;
+    int n = 0;
+    if (front)
+        *front = -1;
+    for (nd = l ? l->lh_Head : 0; nd && nd->ln_Succ && n < max; nd = nd->ln_Succ) {
+        struct PubScreenNode *psn = (struct PubScreenNode *)nd;
+        strncpy(names + (long)n * stride, nd->ln_Name ? nd->ln_Name : "", (size_t)stride - 1);
+        names[(long)n * stride + stride - 1] = 0;
+        if (front && psn->psn_Screen == fs)
+            *front = n;
+        n++;
+    }
+    UnlockPubScreenList();
+    return n;
+}
+
 unsigned long ipd_screen_theme_asks;
 
 void ipd_screen_theme_name(struct Screen *scr, char *out, int cap)

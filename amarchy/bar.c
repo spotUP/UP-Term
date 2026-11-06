@@ -357,19 +357,8 @@ static int sample_screens_on(void)
 {
     char shortn[BAR_MAX_SCREENS][BAR_TEXT];
     const char *names[BAR_MAX_SCREENS];
-    int tw[BAR_MAX_SCREENS], n = 0, front = -1, i;
-    struct List *l = LockPubScreenList();
-    struct Node *nd;
-    struct Screen *fs = IntuitionBase->FirstScreen;
-    for (nd = l ? l->lh_Head : 0; nd && nd->ln_Succ && n < BAR_MAX_SCREENS; nd = nd->ln_Succ) {
-        struct PubScreenNode *psn = (struct PubScreenNode *)nd;
-        strncpy(g_scrname[n], nd->ln_Name ? nd->ln_Name : "", sizeof g_scrname[n] - 1);
-        g_scrname[n][sizeof g_scrname[n] - 1] = 0;
-        if (psn->psn_Screen == fs)
-            front = n;
-        n++;
-    }
-    UnlockPubScreenList();
+    int tw[BAR_MAX_SCREENS], front = -1, i;
+    int n = ipd_pub_screens(g_scrname[0], (int)sizeof g_scrname[0], BAR_MAX_SCREENS, &front);
     for (i = 0; i < n; i++) {
         bar_fmt_screen(shortn[i], sizeof shortn[i], g_scrname[i]);
         names[i] = shortn[i];

@@ -212,6 +212,7 @@ settings.theme.shape    = Shape                 | settings:theme-shape
 settings.theme.states   = States                | settings:theme-states
 settings.theme.desktop  = Desktop               | settings:theme-desktop
 settings.theme.files    = Presets and Files     | settings:theme-files
+settings.theme.screens  = Screens               | settings:theme-screens
 settings.flat = Flat Look | settings:flat
 # The agents panel the Amarchy bar's agents segment opens (amarchy/bar.c opens node "agents" hung from the bar).
 # The limit meters and token use (OMARCHY-AI part E) get a row here when part E exists (BAR_AGENT_LIMITS_ROW).

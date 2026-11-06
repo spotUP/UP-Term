@@ -56,5 +56,7 @@ int gt_dos_edit_open(const char *name);
 int gt_dos_reset_base(void);   /* TE-8.1: the edit buffer takes its base theme's model */
 /* fill the Style > Theme rows (ix_add_gthemes) with the current one marked. Call after the other loaders. */
 void gt_dos_load_rows(ix_index *x);
+/* TE-10.8b: Save Screen Themes (ENVARC: and ENV: files, the on/off key, ipd_rules_changed). 1 saved, 0 with why filled. */
+int gt_dos_screens_save(char *why, int cap);
 
 #endif
