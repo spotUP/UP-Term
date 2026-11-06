@@ -3515,7 +3515,7 @@ static void an_open_window_widens_when_a_value_grows(void)
     }
     CHECK(row >= 0);
     before = mg_width(&km, "settings.theme", &topaz, 0, 8, fixed_width, &px, &wide);
-    CHECK_INT(gte_row_set_text(gte_row(row), "a-rather-long-font-family-name-that-grows-the-row.font 11"), GTR_OK);
+    CHECK_INT(gte_row_set_text(gte_row(row), "a-long-font-name-that-grows-it.font/11"), GTR_OK);
     after = mg_width(&km, "settings.theme", &topaz, 0, 8, fixed_width, &px, &wide);
     printf("  TE-REMEASURE window %d -> %d\n", before, after);
     CHECK(after > before);
