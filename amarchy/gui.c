@@ -1450,7 +1450,8 @@ static void event_loop(gui *g)
                 }
                 break;
             case IDCMP_INTUITICKS:          /* about 10 a second: poll the scan every 10th */
-                mg_focus_tick(&g->focus, desk_dos_confirm_pending());
+                if (g->focus.own_confirm)   /* only while a confirm we asked may still be open: the check reads a file */
+                    mg_focus_tick(&g->focus, desk_dos_confirm_pending());
                 if (g->wt.on && ++g->ticks >= 10) {
                     g->ticks = 0;
                     watch_poll(g);

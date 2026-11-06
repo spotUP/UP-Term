@@ -3592,6 +3592,8 @@ static void the_menu_stays_open_when_its_own_confirm_takes_the_focus(void)
     CHECK_INT(strstr(gui, "mg_focus_inactive(") != 0, 1);
     CHECK_INT(strstr(gui, "mg_focus_confirm_asked(") != 0, 1);
     CHECK_INT(strstr(gui, "g->active_seen &&") == 0, 1);
+    /* the pending check reads a file: the 10-a-second tick asks only while the latch is set */
+    CHECK_INT(strstr(gui, "if (g->focus.own_confirm)") != 0, 1);
 }
 
 void suite_keymap(void)
