@@ -1701,6 +1701,41 @@ static void test_revert_puts_previous_theme_line_and_pens47_back(void)
     CHECK_INT(desk_revert_theme_make("x", text, 4), 0);   /* does not fit */
 }
 
+/* FP1 follow-up: pick A->B, pick B->C while the requester is pending; the "B" held by the second pick must not name a later snapshot. */
+static void test_a_pick_while_pending_does_not_leak_its_name_to_a_later_snapshot(void)
+{
+    static unsigned char src[200000];
+    char held[96], text[160], want[160];
+    long n = slurp("amarchy/desk_dos.c", src, sizeof src - 1);
+    char *e, *end;
+    strcpy(held, "B");
+    CHECK_INT(desk_revert_theme_take(held, 1, text, (int)sizeof text), -1);   /* pending: file left alone */
+    CHECK_INT(held[0], 0);                                                     /* but the name is consumed */
+    CHECK_INT(desk_revert_theme_take(held, 0, text, (int)sizeof text), 0);    /* later snapshot: delete, not a text naming B */
+    strcpy(held, "A");
+    CHECK(desk_revert_theme_make("A", want, sizeof want) > 0);
+    CHECK_INT(desk_revert_theme_take(held, 0, text, (int)sizeof text), desk_revert_theme_make("A", want, sizeof want));
+    CHECK_STR(text, want);
+    CHECK_INT(held[0], 0);
+    strcpy(held, "x");
+    CHECK_INT(desk_revert_theme_take(held, 0, text, 4), desk_revert_theme_make("x", text, 4));   /* does not fit: 0 */
+    CHECK_INT(held[0], 0);
+    CHECK_INT(n > 0, 1);
+    if (n <= 0)
+        return;
+    src[n] = 0;
+    e = strstr((char *)src, "static void dk_snapshot_theme(void)\n{");
+    CHECK_INT(e != 0, 1);
+    if (!e)
+        return;
+    end = strstr(e, "\n}\n");
+    CHECK_INT(end != 0, 1);
+    if (!end)
+        return;
+    *end = 0;
+    CHECK_INT(strstr(e, "desk_revert_theme_take(") != 0, 1);
+}
+
 static void test_desk_preview(void)
 {
     char drawn[GT_NAME], row[GT_NAME + 8];
@@ -2057,6 +2092,7 @@ void suite_desk(void)
     test_desk_reset_done();
     test_desk_iprefs_idle();
     test_desk_editor_waits_iprefs();
+    test_a_pick_while_pending_does_not_leak_its_name_to_a_later_snapshot();
     test_gt_darker();
     test_knob_colour();
     test_flat_colour_pens();

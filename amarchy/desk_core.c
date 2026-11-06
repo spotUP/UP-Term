@@ -1293,6 +1293,23 @@ long desk_revert_theme_make(const char *name, char *out, long cap)
     return hl + nl + 1;
 }
 
+/* One desk_dos_prev_theme hand-over belongs to exactly one snapshot: it is consumed there, written or not. */
+long desk_revert_theme_take(char *held, int pending, char *out, int cap)
+{
+    char name[96];
+    size_t l = held ? strlen(held) : 0;
+    if (l >= sizeof name)
+        l = sizeof name - 1;
+    if (held) {
+        memcpy(name, held, l);
+        held[0] = 0;                    /* consumed here, whichever way the snapshot goes */
+    }
+    name[l] = 0;
+    if (pending)
+        return -1;                      /* FP-1: the first snapshot of an unconfirmed apply stays */
+    return name[0] ? desk_revert_theme_make(name, out, cap) : 0;
+}
+
 int desk_revert_theme_parse(const char *buf, long len, char *name, int cap)
 {
     long hl = (long)strlen(REVERT_THEME_HEAD), nl = 0;

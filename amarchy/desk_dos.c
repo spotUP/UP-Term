@@ -103,14 +103,14 @@ static void dk_snapshot_theme(void)
 {
     char text[GT_NAME + 24];
     long n;
-    if (dk_pending_mask())
-        return;                 /* FP-1: an unconfirmed apply keeps its first snapshot, name included */
-    n = dk_prev_theme[0] ? desk_revert_theme_make(dk_prev_theme, text, sizeof text) : 0;
+    /* FP-1: an unconfirmed apply keeps its first snapshot, name included; the held name is consumed either way */
+    n = desk_revert_theme_take(dk_prev_theme, dk_pending_mask() != 0, text, (int)sizeof text);
+    if (n < 0)
+        return;
     if (n > 0)
         dk_write(DK_PREVTHEME, (const unsigned char *)text, n);
     else
         DeleteFile((STRPTR)DK_PREVTHEME);   /* no name known: a stale one must not stand for it */
-    dk_prev_theme[0] = 0;
 }
 
 static unsigned long dk_iprefs_idle_mask(void);

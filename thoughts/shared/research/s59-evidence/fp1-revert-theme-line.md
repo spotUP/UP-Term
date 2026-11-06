@@ -32,3 +32,17 @@ m68k: seven-target build rc=0 (first compile of the DOS side; no warning in desk
 Pick a theme, leave the Keep/Revert requester unanswered for 15 s. Measure: `ENV:Amarchy/prefs` and `ENVARC:Amarchy/prefs` theme line = the
 previous theme; pens 4-7 of the Workbench screen on a deep screen = the previous theme's role colours (tokyo-night, flat: 3e4254 0e0e14
 9ece6a 0e0e14), not 0000ff ff00ff 00ffff ffffff. Also: pick, reboot before answering, start Amarchy: same result via the marker set.
+
+## Follow-up: stale name
+Invariant: one `desk_dos_prev_theme(name)` hand-over belongs to exactly one snapshot; it is consumed there, written or not.
+Bug: `dk_snapshot_theme` returned early while an apply was pending without clearing `dk_prev_theme`; a later snapshot (a desktop toggle with no
+theme change) wrote the stale name B, and its Revert put theme line B over the current theme C.
+Fix: `desk_revert_theme_take(held, pending, out, cap)` (desk_core.c): always clears held; pending gives -1 (file left alone); name held gives the
+`desk_revert_theme_make` length; no name gives 0 (delete). `dk_snapshot_theme` acts on the result.
+Test: `test_a_pick_while_pending_does_not_leak_its_name_to_a_later_snapshot` (+ source check that dk_snapshot_theme calls it).
+RED (clear line left out): `RUNTEST desk rc=2 [FAIL] desk: 2346 checks, 5 failed`
+GREEN: `RUNTEST desk rc=0 [OK] desk: 2346 checks, 0 failed`
+(an intermediate run failed 1 check: the source check matched the forward declaration; anchored on the definition `...(void)\n{`.)
+m68k: seven-target build rc=0; `tests/test_make_link_lists.py` OK.
+Rig check: pick A->B, pick B->C before answering the requester, Keep; toggle a desktop switch only, Revert it; the theme line in ENV:Amarchy/prefs
+must still be C, and `T:amarchy-revert/prevtheme` must not exist after the toggle snapshot.
