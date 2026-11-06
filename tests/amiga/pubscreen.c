@@ -1,7 +1,7 @@
 /* pubscreen: a named custom PUBLIC screen with one window of GadTools gadgets at fixed coordinates and a menu strip, a rig
  * helper for the per-screen theming proof (TE-9.6). Not part of the release dist or kit.
  *
- *   pubscreen NAME/A,DEPTH/N,TITLE/K,SECONDS/N
+ *   pubscreen NAME/A,DEPTH/N,TITLE/K,SECONDS/N,SHAREPENS/S
  *
  * Opens the public screen NAME (depth DEPTH, default 4, a hires screen cloned from the Workbench where V39 allows, the standard
  * 3D pen list so the DrawInfo is new-look), one window "TITLE" (default NAME) with drag bar, depth, close and size gadgets and
@@ -12,7 +12,8 @@
  *   checkbox 120,80  (GadTools size)
  *   cycle    120,100 120x14   Alpha / Beta / Gamma
  * and a one-item menu "Project / Quit". The window is 300x150 at 40,30.
- * Prints one "pubscreen ready ..." line, then waits for CTRL-C, the close gadget or SECONDS. Exit: 0 ok, 5 screen still has
+ * SHAREPENS opens the screen with SA_SharePens, so its pens are free in the ColorMap (without it Intuition holds every pen and a
+ * theme can only pick the nearest pen). Prints one "pubscreen ready ..." line, then waits for CTRL-C, the close gadget or SECONDS. Exit: 0 ok, 5 screen still has
  * visitors, 20 failure. */
 #include <stdio.h>
 #include <string.h>
@@ -69,8 +70,8 @@ static struct Gadget *mk(ULONG kind, struct Gadget *prev, void *vi, struct TextA
 int main(int argc, char **argv)
 {
     static UWORD pens[] = {(UWORD)~0};
-    struct RDArgs *rda;
-    LONG args[4] = {0, 0, 0, 0};
+    struct RDArgs *rda = NULL;
+    LONG args[5] = {0, 0, 0, 0, 0};
     const char *name, *title;
     long depth = 4, secs = 0, ticks = 0, i;
     struct Screen *scr = NULL;
@@ -78,7 +79,7 @@ int main(int argc, char **argv)
     struct Gadget *gl = NULL, *g, *gb, *gs, *gc, *gk, *gy;
     struct Menu *menus = NULL;
     void *vi = NULL;
-    struct TagItem t[16];
+    struct TagItem t[18];
     int n, done = 0, rc = 20;
     if (argc < 1 || (argv && argv[0] == NULL))
         return 5;
@@ -89,9 +90,9 @@ int main(int argc, char **argv)
         printf("pubscreen: need intuition, graphics and gadtools V39\n");
         goto out;
     }
-    rda = ReadArgs((STRPTR)"NAME/A,DEPTH/N,TITLE/K,SECONDS/N", args, NULL);
+    rda = ReadArgs((STRPTR)"NAME/A,DEPTH/N,TITLE/K,SECONDS/N,SHAREPENS/S", args, NULL);
     if (!rda) {
-        printf("pubscreen: usage: pubscreen NAME/A,DEPTH/N,TITLE/K,SECONDS/N\n");
+        printf("pubscreen: usage: pubscreen NAME/A,DEPTH/N,TITLE/K,SECONDS/N,SHAREPENS/S\n");
         goto out;
     }
     name = (const char *)args[0];
@@ -100,7 +101,6 @@ int main(int argc, char **argv)
     if (args[3]) secs = *(LONG *)args[3];
     if (depth < 1 || depth > 8) {
         printf("pubscreen: DEPTH must be 1..8\n");
-        FreeArgs(rda);
         goto out;
     }
     n = 0;
@@ -110,6 +110,7 @@ int main(int argc, char **argv)
     t[n].ti_Tag = SA_PubName; t[n++].ti_Data = (ULONG)name;
     t[n].ti_Tag = SA_Type; t[n++].ti_Data = PUBLICSCREEN;
     t[n].ti_Tag = SA_Pens; t[n++].ti_Data = (ULONG)pens;
+    if (args[4]) { t[n].ti_Tag = SA_SharePens; t[n++].ti_Data = TRUE; }
     t[n].ti_Tag = TAG_DONE;
     scr = OpenScreenTagList(NULL, t);
     if (!scr) { /* fallback: a plain hires screen */
@@ -122,10 +123,10 @@ int main(int argc, char **argv)
         t[n].ti_Tag = SA_PubName; t[n++].ti_Data = (ULONG)name;
         t[n].ti_Tag = SA_Type; t[n++].ti_Data = PUBLICSCREEN;
         t[n].ti_Tag = SA_Pens; t[n++].ti_Data = (ULONG)pens;
+        if (args[4]) { t[n].ti_Tag = SA_SharePens; t[n++].ti_Data = TRUE; }
         t[n].ti_Tag = TAG_DONE;
         scr = OpenScreenTagList(NULL, t);
     }
-    FreeArgs(rda); /* name/title are copied by Intuition; the strings are not needed any more */
     if (!scr) {
         printf("pubscreen: cannot open screen (name already taken?)\n");
         goto out;
@@ -220,6 +221,8 @@ out:
             Delay(25);
         }
     }
+    /* Intuition keeps the SA_Title / SA_PubName pointers (it does not copy them), so the ReadArgs buffer lives until the screen is closed */
+    if (rda) FreeArgs(rda);
     if (GadToolsBase) CloseLibrary(GadToolsBase);
     if (GfxBase) CloseLibrary((struct Library *)GfxBase);
     if (IntuitionBase) CloseLibrary((struct Library *)IntuitionBase);
