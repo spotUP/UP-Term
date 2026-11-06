@@ -67,6 +67,19 @@ void cc_path_free(cc_path *p, void (*drop)(long lock));
 /* the walk's p_next over the copy: lock *at, then the next; 0: no more */
 long cc_path_next(const cc_path *p, int *at);
 
+/* The opener's current directory (s61). A lookup DupLocks the opener's
+ * pr_CurrentDir in its worker process, after the handler has started it;
+ * the opener's CD (or its end) UnLocks that lock. The lock is read only
+ * while the opener is provably blocked: it sent a Read this console still
+ * holds, synchronously (DoPkt: the reply comes to its own process port, so
+ * it runs nothing until we answer). cc_cd_blocked says whether one held
+ * read proves that. While a lookup has not yet made its DupLock
+ * (taking[i] set, from[i] the opener), cc_cd_read_waits keeps that
+ * opener's reads unanswered; the worker clears taking and signals. */
+int cc_cd_blocked(const void *opener, const void *sender, const void *reply_port,
+                  const void *opener_port);
+int cc_cd_read_waits(const void *reader, const void *const *from, const volatile int *taking, int n);
+
 /* ---- W22: the command-name cache ------------------------------------------
  *
  * What a command directory holds (the names cc_is_command takes), kept per

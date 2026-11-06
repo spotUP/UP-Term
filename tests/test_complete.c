@@ -156,6 +156,52 @@ static void path_walk_reads_only_its_copy_after_the_shell_ends(void)
     CHECK_INT((int)cc_path_next(0, &sh_copy_at), 0); /* no copy: C: alone */
 }
 
+/* s61: a Tab's worker DupLocked the opener's pr_CurrentDir after the
+ * handler had started it; if the handler answered the opener's Read first
+ * (Return typed during the lookup), the Shell ran `cd x`, UnLocked the old
+ * directory, and the DupLock read a freed lock. The fake Shell (same
+ * fake_shell: its lock, its end) CDs as soon as its Read is answered; the
+ * handler answers only what cc_cd_read_waits allows, and the worker's
+ * DupLock must find the Shell's lock still live. */
+static void cd_dup_never_reads_a_lock_the_shell_cd_away_from(void)
+{
+    static int shell_task, shell_port, other_port, prog_task;
+    const void *from[2];
+    volatile int taking[2];
+    fake_shell s;
+    long mine;
+    memset(&s, 0, sizeof(s));
+    sh = &s;
+    s.lock[0] = 107;                  /* the Shell's current directory */
+
+    /* the Shell waits in a synchronous Read (reply to its own port): blocked */
+    CHECK_INT(cc_cd_blocked(&shell_task, &shell_task, &shell_port, &shell_port), 1);
+    /* an async read (another port), another process's read, no opener: not */
+    CHECK_INT(cc_cd_blocked(&shell_task, &shell_task, &other_port, &shell_port), 0);
+    CHECK_INT(cc_cd_blocked(&shell_task, &prog_task, &shell_port, &shell_port), 0);
+    CHECK_INT(cc_cd_blocked(0, 0, &shell_port, &shell_port), 0);
+
+    /* comp_start: the Tab takes the Shell's directory; the check runs idle */
+    from[0] = &shell_task; taking[0] = 1;
+    from[1] = 0;           taking[1] = 0;
+    /* Return typed before the worker ran: the handler tries the Read */
+    if (!cc_cd_read_waits(&shell_task, from, taking, 2)) {
+        s.lock[0] = 0;                /* answered: the Shell CDs, UnLocks 107 */
+        s.ended = 1;
+    }
+    /* the worker's DupLock of pr_CurrentDir as it reads it now */
+    if (s.ended)
+        s.late_reads++;
+    mine = s.lock[0] ? sh_dup(s.lock[0]) : 0;
+    CHECK_INT(s.late_reads, 0);       /* never a lock the Shell gave back */
+    CHECK_INT((int)mine, 5107);
+    taking[0] = 0;                    /* the worker cleared it and signalled */
+    CHECK_INT(cc_cd_read_waits(&shell_task, from, taking, 2), 0); /* the Read goes now */
+    CHECK_INT(cc_cd_read_waits(&prog_task, from, (taking[0] = 1, taking), 2), 0); /* others' reads never wait */
+    sh_drop(mine);
+    CHECK_INT(s.dups, 0);
+}
+
 /* H8.3: Alt+Tab searches every directory of a multi-assigned C: (KingCON's
  * GetDeviceProc loop), not only the first; a directory met again (the
  * path naming one of C:'s) is searched once */
@@ -626,6 +672,7 @@ void suite_complete(void)
     reset_cache_reads_every_directory_again();
     command_list_searches_every_directory_of_a_multi_assigned_c();
     path_walk_reads_only_its_copy_after_the_shell_ends();
+    cd_dup_never_reads_a_lock_the_shell_cd_away_from();
     command_list_skips_directories_and_files_without_e_or_s();
     command_list_skips_system_and_disabled_residents();
 }

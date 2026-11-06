@@ -796,6 +796,11 @@ void suite_upconf(void)
         CHECK(!strncmp(out, "00,111111,01,222222,", 20));
         CHECK_STR(out + 150, "15,111111");             /* the last entry whole, nothing after */
     }
+    /* deleting the theme file reports "changed, no text": the windows drop the theme (not "unchanged") */
+    CHECK_INT(upconf_theme_report(0, 0), 0);
+    CHECK_INT(upconf_theme_report(0, "x"), 0);
+    CHECK_INT(upconf_theme_report(1, "x"), 1);
+    CHECK_INT(upconf_theme_report(1, 0), 2);
     fallback_default();
     fallback_without_profile();
     profile_equal();
