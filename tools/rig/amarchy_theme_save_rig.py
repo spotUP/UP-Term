@@ -33,7 +33,8 @@ SHIPPED = 'UP-Term:Amarchy/Themes'
 PREFS = ('ENV:Amarchy/prefs', 'ENVARC:Amarchy/prefs')
 APPLY_DONE = 'AMARCHY_WBCLOSES'   # lf_gt_select (amarchy/leaf.c) writes it once gt_dos_select, desk_dos_apply included, returned
 APPLY_SECS = 60
-KEEP_SECS = 12   # the FP-1 requester reverts the apply after 15 s; click Keep within this
+KEEP_SECS = 60   # upper bound of the wait for the FP-1 requester; the wait ends earlier on a measured signal (apply_settled)
+PENDING = 'T:amarchy-revert/pending'   # desk_dos.c DK_PENDING: holds a mask while an applied theme waits for Keep or Revert
 
 
 def menu_state():
@@ -91,6 +92,14 @@ def wait_apply_done(secs=None):
     return False
 
 
+def apply_settled():
+    """True when the pick's apply finished (APPLY_DONE written, deleted before the pick) and nothing waits for Keep or Revert
+    (PENDING absent). desk_dos_confirm_ask writes PENDING inside the apply, before the requester opens, so a finished apply
+    with no marker is a pick that asks nothing: no requester will come."""
+    return (c.run('GetEnv >NIL: %s' % APPLY_DONE)[0] == 0
+            and c.run('Type >NIL: %s' % PENDING)[0] != 0)
+
+
 REQUESTER = 'Amarchy desktop theme'
 LAST_KEEP = {}   # what the last keep_requester call measured: seen_at, kept_at (seconds from t0, None = never), gone
 
@@ -100,10 +109,12 @@ def requester_open():
     return g.where(REQUESTER)[1] is not None
 
 
-def keep_requester(secs=5, t0=None):
+def keep_requester(secs=5, t0=None, settled=None):
     """FP-1: every desktop theme apply opens the 15 s requester "Amarchy desktop theme"; unanswered it reverts the apply. Click Keep
     (wasabi ui_click) so the picked theme stays. True when Keep was clicked; False when no requester came within secs (an apply that
-    changed no desktop part asks nothing). The one place that clicks it: the other rig scripts call this.
+    changed no desktop part asks nothing). With `settled` (a callable, apply_settled for a pick) the wait also ends False as soon as
+    it returns True and no requester window exists: the apply is done and asked nothing. Without it the wait runs the full secs.
+    The one place that clicks it: the other rig scripts call this.
     Measures as it goes into LAST_KEEP (seconds from t0, default the call): when the requester window was first seen, when the
     click returned, and whether the window was gone 2 s after the click."""
     t0 = time.time() if t0 is None else t0
@@ -123,6 +134,8 @@ def keep_requester(secs=5, t0=None):
         except AttributeError:
             return False   # a stub ami (the unit test of the pick order) has no wasabi connection
         except Exception:
+            if settled is not None and settled() and not requester_open():
+                return False
             time.sleep(0.5)
     return False
 
@@ -351,9 +364,10 @@ def one_select(n, allowed):
         ami.key(g.RETURN)
         t_ret = time.time()
         picked_at = True
-        # The apply hides the menu window (gui_hide) and blocks on the FP-1 requester, so the menu state cannot settle
-        # before Keep is answered: answer it first, inside the 15 s window (THEME-SAVE-RIG-SELECTS-FAIL).
-        kept = keep_requester(KEEP_SECS, t_ret)
+        # The apply returns, the menu window comes back, and only then the FP-1 requester opens and takes the focus (measured
+        # rig 149; on a fresh rig the first one can take longer than 12 s). Answer it before the menu state is read, inside its
+        # 15 s window (THEME-SAVE-RIG-SELECTS-FAIL). The wait ends on the requester, or on apply_settled (nothing will be asked).
+        kept = keep_requester(KEEP_SECS, t_ret, apply_settled)
         if LAST_KEEP:
             print(keep_line(rows_before[int(sel_before)].split(' (')[0] if sel_before.isdigit() and int(sel_before) < len(rows_before) else 'row %s' % n), flush=True)
         wait_stable(STEP_SECS, differ_from=st, what='recoloured theme list')
