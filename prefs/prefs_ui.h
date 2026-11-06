@@ -59,7 +59,7 @@ enum { PG_PAGE_GENERAL, PG_PAGE_COLORS, PG_PAGE_PALETTE, PG_PAGE_KEYBOARD, PG_PA
 /* TE-4: the Theme Editor pages of the Amarchy menu. They follow PG_NPAGES on purpose: the Prefs window loops over PG_NPAGES pages
  * and draws a gadget per row, and these pages have rows (swatches, groups, elements) with no gadget. Only the menu shows them. */
 enum { PG_PAGE_THEME = PG_NPAGES, PG_PAGE_THEME_SWATCHES, PG_PAGE_THEME_GROUPS, PG_PAGE_THEME_ELEMENTS, PG_PAGE_THEME_TYPE,
-       PG_PAGE_THEME_SHAPE, PG_PAGE_THEME_STATES, PG_PAGE_THEME_DESKTOP, PG_PAGE_THEME_FILES, PG_NPAGES_ALL };
+       PG_PAGE_THEME_SHAPE, PG_PAGE_THEME_STATES, PG_PAGE_THEME_DESKTOP, PG_PAGE_THEME_FILES, PG_PAGE_THEME_SCREENS, PG_NPAGES_ALL };
 #define PG_COMMON (-1)   /* in every page */
 
 /* the controls; a swatch is a gadget the program draws */
