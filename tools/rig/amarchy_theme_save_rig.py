@@ -91,21 +91,50 @@ def wait_apply_done(secs=None):
     return False
 
 
-def keep_requester(secs=5):
+REQUESTER = 'Amarchy desktop theme'
+LAST_KEEP = {}   # what the last keep_requester call measured: seen_at, kept_at (seconds from t0, None = never), gone
+
+
+def requester_open():
+    """True while a window titled REQUESTER exists on any screen (`ami.py requesters` does not list it, the window list does)."""
+    return g.where(REQUESTER)[1] is not None
+
+
+def keep_requester(secs=5, t0=None):
     """FP-1: every desktop theme apply opens the 15 s requester "Amarchy desktop theme"; unanswered it reverts the apply. Click Keep
     (wasabi ui_click) so the picked theme stays. True when Keep was clicked; False when no requester came within secs (an apply that
-    changed no desktop part asks nothing). The one place that clicks it: the other rig scripts call this."""
+    changed no desktop part asks nothing). The one place that clicks it: the other rig scripts call this.
+    Measures as it goes into LAST_KEEP (seconds from t0, default the call): when the requester window was first seen, when the
+    click returned, and whether the window was gone 2 s after the click."""
+    t0 = time.time() if t0 is None else t0
+    LAST_KEEP.clear()
+    LAST_KEEP.update(seen_at=None, kept_at=None, gone=None)
     end = time.time() + secs
     while time.time() < end:
         try:
+            if LAST_KEEP['seen_at'] is None and requester_open():
+                LAST_KEEP['seen_at'] = time.time() - t0
             with ami._conn(30) as cn:
-                ami._m().ui_click(cn, 'Keep', 'Amarchy desktop theme', nth=1)
+                ami._m().ui_click(cn, 'Keep', REQUESTER, nth=1)
+            LAST_KEEP['kept_at'] = time.time() - t0
+            time.sleep(2)
+            LAST_KEEP['gone'] = not requester_open()
             return True
         except AttributeError:
             return False   # a stub ami (the unit test of the pick order) has no wasabi connection
         except Exception:
             time.sleep(0.5)
     return False
+
+
+def keep_line(name):
+    """One line per pick: was the requester seen and when, did the Keep click return and when, was the requester gone 2 s after."""
+    k = LAST_KEEP
+    def at(v):
+        return 'no' if v is None else 'yes at %.1f s' % v
+    return 'keep %s: requester seen %s | Keep returned %s | requester gone %s' % (
+        name, at(k.get('seen_at')), 'False' if k.get('kept_at') is None else 'True at %.1f s' % k['kept_at'],
+        {None: 'unknown', True: 'yes', False: 'no'}[k.get('gone')])
 
 
 def theme_line(path):
@@ -320,10 +349,13 @@ def one_select(n, allowed):
             st, _ = step(key, '%s in theme list' % word)
         rows_before, sel_before = env('AMARCHY_ROWS').split('|'), env('AMARCHY_SEL')
         ami.key(g.RETURN)
+        t_ret = time.time()
         picked_at = True
         # The apply hides the menu window (gui_hide) and blocks on the FP-1 requester, so the menu state cannot settle
         # before Keep is answered: answer it first, inside the 15 s window (THEME-SAVE-RIG-SELECTS-FAIL).
-        kept = keep_requester(KEEP_SECS)
+        kept = keep_requester(KEEP_SECS, t_ret)
+        if LAST_KEEP:
+            print(keep_line(rows_before[int(sel_before)].split(' (')[0] if sel_before.isdigit() and int(sel_before) < len(rows_before) else 'row %s' % n), flush=True)
         wait_stable(STEP_SECS, differ_from=st, what='recoloured theme list')
     except TimeoutError as e:
         kept = (keep_requester(2) if picked_at else False) or kept
