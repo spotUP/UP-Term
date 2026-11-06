@@ -2793,36 +2793,49 @@ static void scr_name(char *out, int cap, const char *name)
     strcpy(out, name);
 }
 
-int gt_screen_theme_of(const gt_screen_rules *r, const char *name, const char *main_theme, char *theme, int cap, int *takeover)
+/* TE-10.8: the Screens page rows. One decision for a screen name: scr_pick, shared by gt_screen_theme_of and the row model. */
+static int scr_pick(const gt_screen_rules *r, const char *name, int skip, const gt_screen_rule **hit)
 {
     int i, pass, wb = is_wb_exact(name);
-    if (takeover)
-        *takeover = 0;
-    if (!r->enabled) {
-        if (!wb)
-            return 0;
-        scr_name(theme, cap, main_theme);
-        return 1;
-    }
+    *hit = 0;
     /* exact-name rules first, then pattern rules, each in list order: the order gt_screen_rules_write
        stores them, so a rule list resolves the same before and after a write and parse */
     for (pass = 0; pass < 2; pass++) {
         for (i = 0; i < r->n; i++) {
             const gt_screen_rule *x = &r->rule[i];
-            if (gt_screen_exact(x->pat) != (pass == 0) || !gt_screen_match(x->pat, name))
+            if (i == skip || gt_screen_exact(x->pat) != (pass == 0) || !gt_screen_match(x->pat, name))
                 continue;
             if (x->exclude)
                 return 0;
-            if (takeover)
-                *takeover = x->takeover;
-            /* the Workbench screen always uses the main theme (D10-10) */
-            scr_name(theme, cap, (wb || is_wb_exact(x->pat)) ? main_theme : x->theme);
+            *hit = x;
             return 1;
         }
     }
-    if (r->def == GT_SCR_NONE || (r->def == GT_SCR_WORKBENCH && !wb))
+    return !(r->def == GT_SCR_NONE || (r->def == GT_SCR_WORKBENCH && !wb));
+}
+
+/* 1 when the decision takes the main theme: Workbench always (D10-10), the default, or a rule saying GT_SCR_MAIN */
+static int scr_is_main(const char *name, const gt_screen_rule *hit)
+{
+    return is_wb_exact(name) || !hit || !strcmp(hit->theme, GT_SCR_MAIN);
+}
+
+int gt_screen_theme_of(const gt_screen_rules *r, const char *name, const char *main_theme, char *theme, int cap, int *takeover)
+{
+    const gt_screen_rule *hit;
+    if (takeover)
+        *takeover = 0;
+    if (!r->enabled) {
+        if (!is_wb_exact(name))
+            return 0;
+        scr_name(theme, cap, main_theme);
+        return 1;
+    }
+    if (!scr_pick(r, name, -1, &hit))
         return 0;
-    scr_name(theme, cap, main_theme);
+    if (takeover && hit)
+        *takeover = hit->takeover;
+    scr_name(theme, cap, scr_is_main(name, hit) ? main_theme : hit->theme);
     return 1;
 }
 
@@ -2877,3 +2890,144 @@ void gt_screen_draw_theme(const gt_screen_rules *r, const char *screen_name, con
     if (!screen_name || !*screen_name || !gt_screen_theme_of(r, screen_name, main_theme, out, cap, 0))
         scr_name(out, cap, main_theme);
 }
+
+/* TE-10.8: the row model and its operations. The rules count as switched on here (enabled is the page's own switch). */
+static int scr_name_ok(const char *name)
+{
+    return name && *name && strlen(name) < GT_SCR_PAT && gt_screen_exact(name);
+}
+
+static int scr_exact_idx(const gt_screen_rules *r, const char *name)
+{
+    int i;
+    for (i = 0; i < r->n; i++)
+        if (gt_screen_exact(r->rule[i].pat) && cmp_ci(r->rule[i].pat, name) == 0)
+            return i;
+    return -1;
+}
+
+/* an exact "name = :main" without takeover is dropped when the screen is themed the same way without it */
+static void scr_normalise(gt_screen_rules *r, const char *name)
+{
+    const gt_screen_rule *hit;
+    int i = scr_exact_idx(r, name);
+    if (i < 0 || r->rule[i].exclude || r->rule[i].takeover || strcmp(r->rule[i].theme, GT_SCR_MAIN))
+        return;
+    if (scr_pick(r, name, i, &hit) && scr_is_main(name, hit) && !(hit && hit->takeover))
+        gt_screen_rules_remove(r, name);
+}
+
+static void row_fill(const gt_screen_rules *r, const char *name, int open, gt_screen_row *o)
+{
+    const gt_screen_rule *hit;
+    strcpy(o->name, name);
+    o->open = open;
+    o->on = scr_pick(r, name, -1, &hit);
+    o->theme[0] = 0;
+    if (o->on && !scr_is_main(name, hit))
+        strcpy(o->theme, hit->theme);
+    o->takeover = (o->on && hit) ? hit->takeover : 0;
+}
+
+static int row_has(const gt_screen_row *out, int n, const char *name)
+{
+    int i;
+    for (i = 0; i < n; i++)
+        if (cmp_ci(out[i].name, name) == 0)
+            return 1;
+    return 0;
+}
+
+int gt_screen_rows(const gt_screen_rules *r, const char *const *open, int nopen, gt_screen_row *out, int cap)
+{
+    int n = 0, i;
+    if (cap <= 0)
+        return 0;
+    row_fill(r, "Workbench", 1, &out[n++]);
+    for (i = 0; i < nopen && n < cap; i++)
+        if (open[i] && *open[i] && strlen(open[i]) < GT_SCR_PAT && !row_has(out, n, open[i]))
+            row_fill(r, open[i], 1, &out[n++]);
+    for (i = 0; i < r->n && n < cap; i++)
+        if (gt_screen_exact(r->rule[i].pat) && !row_has(out, n, r->rule[i].pat))
+            row_fill(r, r->rule[i].pat, 0, &out[n++]);
+    return n;
+}
+
+int gt_screen_row_tick(gt_screen_rules *r, const char *name, int on)
+{
+    const gt_screen_rule *hit;
+    int i;
+    if (!scr_name_ok(name))
+        return 0;
+    if (on) {
+        if (is_wb_exact(name) && r->def == GT_SCR_NONE)
+            return 0; /* Workbench is themed by the default or by nothing: none cannot tick it */
+        /* a removal frees a slot, so the add below cannot fail after one */
+        while ((i = scr_exact_idx(r, name)) >= 0 && r->rule[i].exclude)
+            gt_screen_rules_remove(r, name);
+        return scr_pick(r, name, -1, &hit) ? 1 : gt_screen_rules_add(r, name, GT_SCR_MAIN, 0);
+    }
+    while ((i = scr_exact_idx(r, name)) >= 0 && !r->rule[i].exclude)
+        gt_screen_rules_remove(r, name);
+    return scr_pick(r, name, -1, &hit) ? gt_screen_rules_add(r, name, "exclude", 0) : 1;
+}
+
+int gt_screen_row_theme(gt_screen_rules *r, const char *name, const char *theme)
+{
+    int i;
+    if (!scr_name_ok(name) || is_wb_exact(name) || !theme)
+        return 0;
+    if (!*theme)
+        theme = GT_SCR_MAIN;
+    if ((strcmp(theme, GT_SCR_MAIN) && !gt_name_ok(theme)) || cmp_ci(theme, "exclude") == 0)
+        return 0;
+    i = scr_exact_idx(r, name);
+    if (i >= 0) {
+        r->rule[i].exclude = 0;
+        strcpy(r->rule[i].theme, theme);
+    } else if (!gt_screen_rules_add(r, name, theme, 0))
+        return 0;
+    scr_normalise(r, name);
+    return 1;
+}
+
+int gt_screen_row_takeover(gt_screen_rules *r, const char *name, int on)
+{
+    const gt_screen_rule *hit;
+    int i;
+    if (!scr_name_ok(name) || is_wb_exact(name) || !scr_pick(r, name, -1, &hit))
+        return 0;
+    on = on != 0;
+    if ((hit ? hit->takeover : 0) == on)
+        return 1;
+    i = scr_exact_idx(r, name);
+    if (i >= 0)
+        r->rule[i].takeover = on;
+    else if (!gt_screen_rules_add(r, name, hit ? hit->theme : GT_SCR_MAIN, on))
+        return 0;
+    scr_normalise(r, name);
+    return 1;
+}
+
+/* mode 0 = none, 1 = all, 2 = invert; Workbench first, a listed name once */
+static int rows_each(gt_screen_rules *r, const char *const *open, int nopen, int mode)
+{
+    const gt_screen_rule *hit;
+    int fails = 0, i, j;
+    for (i = -1; i < nopen; i++) {
+        const char *nm = i < 0 ? "Workbench" : open[i];
+        int dup = 0;
+        if (!nm || (i >= 0 && is_wb_exact(nm)))
+            continue;
+        for (j = 0; j < i; j++)
+            if (open[j] && cmp_ci(open[j], nm) == 0)
+                dup = 1;
+        if (!dup && !gt_screen_row_tick(r, nm, mode == 2 ? !scr_pick(r, nm, -1, &hit) : mode))
+            fails++;
+    }
+    return fails;
+}
+
+int gt_screen_rows_all(gt_screen_rules *r, const char *const *open, int nopen) { return rows_each(r, open, nopen, 1); }
+int gt_screen_rows_none(gt_screen_rules *r, const char *const *open, int nopen) { return rows_each(r, open, nopen, 0); }
+int gt_screen_rows_invert(gt_screen_rules *r, const char *const *open, int nopen) { return rows_each(r, open, nopen, 2); }

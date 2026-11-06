@@ -499,4 +499,32 @@ int gt_screen_theme_of(const gt_screen_rules *r, const char *name, const char *m
  * out is always NUL-terminated within cap (cap > 0). */
 void gt_screen_draw_theme(const gt_screen_rules *r, const char *screen_name, const char *main_theme, char *out, int cap);
 
+/* TE-10.8: the rows of the Theme Editor Screens page, an editing view of the same rule list. The token GT_SCR_MAIN as a rule's theme
+ * means "this screen takes the main theme, whatever it is" (a colon can never be in a theme name); parse and write carry it unchanged. */
+#define GT_SCR_MAIN ":main"
+#define GT_SCR_ROWS 40
+typedef struct gt_screen_row {
+    char name[GT_SCR_PAT];
+    int on;                 /* ticked: the screen is themed */
+    int open;               /* 1 = in the open-screen list, 0 = a rule for a screen that is not open */
+    char theme[GT_NAME];    /* "" = main theme */
+    int takeover;
+} gt_screen_row;
+/* Workbench first (open = 1), then the names of open in the given order (no second Workbench), then every exact-name rule whose
+ * screen is not listed (open = 0), while cap has room. Pattern rules give no row. The rules count as switched on (enabled ignored).
+ * Returns the row count. */
+int gt_screen_rows(const gt_screen_rules *r, const char *const *open, int nopen, gt_screen_row *out, int cap);
+/* Row operations edit r in place with the rules switched on. 1 = done, 0 = not possible, r unchanged. A name that is not exact, empty
+ * or too long gives 0; a full rule table gives 0 with r as before. Rules that say nothing (an exact ":main" without takeover that the
+ * default or a pattern gives anyway) are not kept. */
+int gt_screen_row_tick(gt_screen_rules *r, const char *name, int on);
+/* theme "" or GT_SCR_MAIN = main theme. Replaces an exact exclude rule (the row becomes ticked), keeps the takeover flag. Workbench: 0. */
+int gt_screen_row_theme(gt_screen_rules *r, const char *name, const char *theme);
+/* Needs a themed screen (else 0). Without an exact rule one is added with the theme the screen has now. Workbench: 0. */
+int gt_screen_row_takeover(gt_screen_rules *r, const char *name, int on);
+/* Workbench plus the listed open screens through the tick operation; Default stays. Return the number of screens that could not change. */
+int gt_screen_rows_all(gt_screen_rules *r, const char *const *open, int nopen);
+int gt_screen_rows_none(gt_screen_rules *r, const char *const *open, int nopen);
+int gt_screen_rows_invert(gt_screen_rules *r, const char *const *open, int nopen);
+
 #endif

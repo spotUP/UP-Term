@@ -944,6 +944,383 @@ static void test_gthemes_screen_rules(void)
     CHECK_INT(r2.n, 0);
 }
 
+/* TE-10.8: the rows of the Screens page edit the same rule list. Helpers: parse a text, read a rule list back as text, one row. */
+static void te_parse(gt_screen_rules *r, const char *f)
+{
+    gt_screen_rules_parse(f, (long)strlen(f), r);
+}
+
+static const char *te_text(const gt_screen_rules *r)
+{
+    static char buf[4096];
+    if (gt_screen_rules_write(r, buf, (long)sizeof buf) < 0)
+        strcpy(buf, "?overflow");
+    return buf;
+}
+
+static gt_screen_row te_row(const gt_screen_rules *r, const char *n)
+{
+    gt_screen_row rows[GT_SCR_ROWS], z;
+    const char *o[1];
+    int i, k;
+    o[0] = n;
+    k = gt_screen_rows(r, o, 1, rows, GT_SCR_ROWS);
+    for (i = 0; i < k; i++)
+        if (!strcasecmp(rows[i].name, n))
+            return rows[i];
+    memset(&z, 0, sizeof z);
+    strcpy(z.name, "?missing");
+    return z;
+}
+
+static const char *te_theme(const gt_screen_rules *r, const char *n)
+{
+    static char t[GT_NAME];
+    gt_screen_row w = te_row(r, n);
+    strcpy(t, w.theme);
+    return t;
+}
+
+static int te_on(const gt_screen_rules *r, const char *n)
+{
+    char th[GT_NAME];
+    int tk;
+    return gt_screen_theme_of(r, n, "main", th, GT_NAME, &tk);
+}
+
+static void test_gthemes_screen_rows_fresh_rules_list_workbench_then_open_screens(void)
+{
+    gt_screen_rules r;
+    gt_screen_row rows[GT_SCR_ROWS];
+    const char *o[1];
+    int n;
+    o[0] = "DOPUS.1";
+    gt_screen_rules_parse(0, 0, &r);
+    n = gt_screen_rows(&r, o, 1, rows, GT_SCR_ROWS);
+    CHECK_INT(n, 2);
+    CHECK_STR(rows[0].name, "Workbench");
+    CHECK_INT(rows[0].on, 1);
+    CHECK_INT(rows[0].open, 1);
+    CHECK_STR(rows[0].theme, "");
+    CHECK_STR(rows[1].name, "DOPUS.1");
+    CHECK_INT(rows[1].on, 0);
+    CHECK_INT(rows[1].open, 1);
+    CHECK_STR(te_text(&r), "default workbench\n");
+}
+
+static void test_gthemes_screen_main_token_carries_the_main_theme_for_a_named_screen(void)
+{
+    gt_screen_rules r;
+    char th[GT_NAME], out[GT_NAME];
+    int tk;
+    const char *f = "default none\nX = :main\nY = :main takeover\n";
+    te_parse(&r, f);
+    CHECK_INT(r.n, 2);
+    CHECK_STR(te_text(&r), f);
+    CHECK_INT(gt_screen_theme_of(&r, "X", "gruvbox", th, GT_NAME, &tk), 1);
+    CHECK_STR(th, "gruvbox");
+    CHECK_INT(tk, 0);
+    CHECK_INT(gt_screen_theme_of(&r, "x", "nord", th, GT_NAME, &tk), 1);
+    CHECK_STR(th, "nord");
+    CHECK_INT(gt_screen_theme_of(&r, "Y", "nord", th, GT_NAME, &tk), 1);
+    CHECK_STR(th, "nord");
+    CHECK_INT(tk, 1);
+    gt_screen_draw_theme(&r, "X", "gruvbox", out, GT_NAME);
+    CHECK_STR(out, "gruvbox");
+    gt_screen_draw_theme(&r, "X", "nord", out, GT_NAME);
+    CHECK_STR(out, "nord");
+}
+
+static void test_gthemes_screen_row_tick_on_off_under_each_default_and_rule(void)
+{
+    gt_screen_rules r;
+    const char *start;
+    char keep[512];
+
+    /* default Workbench Only */
+    te_parse(&r, "default workbench\n");
+    CHECK_INT(gt_screen_row_tick(&r, "DOPUS", 1), 1);
+    CHECK_STR(te_text(&r), "default workbench\nDOPUS = :main\n");
+    CHECK_INT(te_on(&r, "DOPUS"), 1);
+    CHECK_INT(gt_screen_row_tick(&r, "DOPUS", 0), 1);
+    CHECK_STR(te_text(&r), "default workbench\n");
+    CHECK_INT(te_on(&r, "DOPUS"), 0);
+
+    /* default All */
+    te_parse(&r, "default all\n");
+    CHECK_INT(gt_screen_row_tick(&r, "DOPUS", 0), 1);
+    CHECK_STR(te_text(&r), "default all\nDOPUS = exclude\n");
+    CHECK_INT(te_on(&r, "DOPUS"), 0);
+    CHECK_INT(gt_screen_row_tick(&r, "DOPUS", 1), 1);
+    CHECK_STR(te_text(&r), "default all\n");
+    CHECK_INT(te_on(&r, "DOPUS"), 1);
+
+    /* a pattern Exclude rule: the exact rule wins, off again restores the start */
+    start = "default all\nDOPUS#? = exclude\n";
+    te_parse(&r, start);
+    CHECK_INT(te_on(&r, "DOPUS.1"), 0);
+    CHECK_INT(gt_screen_row_tick(&r, "DOPUS.1", 1), 1);
+    CHECK_STR(te_text(&r), "default all\nDOPUS.1 = :main\nDOPUS#? = exclude\n");
+    CHECK_INT(te_on(&r, "DOPUS.1"), 1);
+    CHECK_INT(gt_screen_row_tick(&r, "DOPUS.1", 0), 1);
+    CHECK_STR(te_text(&r), start);
+
+    /* a pattern theme rule: off writes an Exclude, on removes it, the pattern's theme and takeover come back */
+    start = "default none\nDOPUS#? = nord takeover\n";
+    te_parse(&r, start);
+    CHECK_INT(gt_screen_row_tick(&r, "DOPUS.1", 0), 1);
+    CHECK_STR(te_text(&r), "default none\nDOPUS.1 = exclude\nDOPUS#? = nord takeover\n");
+    CHECK_INT(te_on(&r, "DOPUS.1"), 0);
+    CHECK_INT(gt_screen_row_tick(&r, "DOPUS.1", 1), 1);
+    CHECK_STR(te_text(&r), start);
+    CHECK_STR(te_theme(&r, "DOPUS.1"), "nord");
+    CHECK_INT(te_row(&r, "DOPUS.1").takeover, 1);
+
+    /* Workbench: off is an exact Exclude rule, on removes it; under Default None it cannot be ticked */
+    te_parse(&r, "default workbench\n");
+    CHECK_INT(gt_screen_row_tick(&r, "Workbench", 0), 1);
+    CHECK_STR(te_text(&r), "default workbench\nWorkbench = exclude\n");
+    CHECK_INT(te_on(&r, "Workbench"), 0);
+    CHECK_INT(gt_screen_row_tick(&r, "Workbench", 1), 1);
+    CHECK_STR(te_text(&r), "default workbench\n");
+    CHECK_INT(te_on(&r, "Workbench"), 1);
+    te_parse(&r, "default none\n");
+    strcpy(keep, te_text(&r));
+    CHECK_INT(gt_screen_row_tick(&r, "Workbench", 1), 0);
+    CHECK_STR(te_text(&r), keep);
+
+    /* names that are no exact screen name */
+    CHECK_INT(gt_screen_row_tick(&r, "", 1), 0);
+    CHECK_INT(gt_screen_row_tick(&r, "DOPUS#?", 1), 0);
+    CHECK_INT(gt_screen_row_tick(&r, "A?B", 1), 0);
+    CHECK_INT(gt_screen_row_tick(&r, "0123456789012345678901234567890123456789012345678901234567890123456789"
+                                      "0123456789012345678901234567890123456789012345678901234567890123456789", 1), 0);
+    CHECK_STR(te_text(&r), keep);
+}
+
+static void test_gthemes_screen_row_theme_and_takeover_edit_the_exact_rule(void)
+{
+    gt_screen_rules r;
+    gt_screen_row w;
+
+    te_parse(&r, "default workbench\n");
+    CHECK_INT(gt_screen_row_theme(&r, "DOPUS", "nord"), 1);
+    CHECK_STR(te_text(&r), "default workbench\nDOPUS = nord\n");
+    w = te_row(&r, "DOPUS");
+    CHECK_INT(w.on, 1);
+    CHECK_STR(w.theme, "nord");
+    CHECK_INT(gt_screen_row_theme(&r, "DOPUS", ""), 1);
+    CHECK_STR(te_text(&r), "default workbench\nDOPUS = :main\n"); /* still needed: the default does not theme it */
+    CHECK_STR(te_theme(&r, "DOPUS"), "");
+    CHECK_INT(te_row(&r, "DOPUS").on, 1);
+    CHECK_INT(gt_screen_row_theme(&r, "DOPUS", GT_SCR_MAIN), 1);
+    CHECK_STR(te_text(&r), "default workbench\nDOPUS = :main\n");
+
+    /* Default All: going back to main leaves no rule that says nothing */
+    te_parse(&r, "default all\n");
+    CHECK_INT(gt_screen_row_theme(&r, "DOPUS", "nord"), 1);
+    CHECK_INT(gt_screen_row_theme(&r, "DOPUS", ""), 1);
+    CHECK_STR(te_text(&r), "default all\n");
+
+    /* an excluded row becomes ticked; the takeover flag of the replaced rule stays */
+    te_parse(&r, "default all\nDOPUS = exclude\nGONE = gruvbox takeover\n");
+    CHECK_INT(gt_screen_row_theme(&r, "DOPUS", "nord"), 1);
+    CHECK_INT(te_row(&r, "DOPUS").on, 1);
+    CHECK_STR(te_theme(&r, "DOPUS"), "nord");
+    CHECK_INT(gt_screen_row_theme(&r, "GONE", "dracula"), 1);
+    CHECK_STR(te_theme(&r, "GONE"), "dracula");
+    CHECK_INT(te_row(&r, "GONE").takeover, 1);
+
+    /* refused: Workbench, a bad theme name */
+    CHECK_INT(gt_screen_row_theme(&r, "Workbench", "nord"), 0);
+    CHECK_INT(gt_screen_row_theme(&r, "workbench", ""), 0);
+    CHECK_INT(gt_screen_row_theme(&r, "DOPUS", "a:b"), 0);
+    CHECK_INT(gt_screen_row_theme(&r, "DOPUS", "a/b"), 0);
+    CHECK_STR(te_theme(&r, "DOPUS"), "nord");
+
+    /* takeover on a default-themed screen adds ":main takeover"; off again removes the rule */
+    te_parse(&r, "default all\n");
+    CHECK_INT(gt_screen_row_takeover(&r, "DOPUS", 1), 1);
+    CHECK_STR(te_text(&r), "default all\nDOPUS = :main takeover\n");
+    CHECK_INT(te_row(&r, "DOPUS").takeover, 1);
+    CHECK_INT(gt_screen_row_takeover(&r, "DOPUS", 0), 1);
+    CHECK_STR(te_text(&r), "default all\n");
+    CHECK_INT(te_row(&r, "DOPUS").takeover, 0);
+
+    /* takeover on a screen a pattern themes keeps the pattern's theme */
+    te_parse(&r, "default none\nDOPUS#? = nord\n");
+    CHECK_INT(gt_screen_row_takeover(&r, "DOPUS.1", 1), 1);
+    CHECK_STR(te_theme(&r, "DOPUS.1"), "nord");
+    CHECK_INT(te_row(&r, "DOPUS.1").takeover, 1);
+    CHECK_INT(gt_screen_row_takeover(&r, "DOPUS.1", 0), 1);
+    CHECK_STR(te_theme(&r, "DOPUS.1"), "nord");
+    CHECK_INT(te_row(&r, "DOPUS.1").takeover, 0);
+
+    /* refused: not themed, Workbench */
+    te_parse(&r, "default workbench\nOFF = exclude\n");
+    CHECK_INT(gt_screen_row_takeover(&r, "DOPUS", 1), 0);
+    CHECK_INT(gt_screen_row_takeover(&r, "OFF", 1), 0);
+    CHECK_INT(gt_screen_row_takeover(&r, "Workbench", 1), 0);
+    CHECK_STR(te_text(&r), "default workbench\nOFF = exclude\n");
+}
+
+static void test_gthemes_screen_row_exact_rule_beats_a_pattern_rule_that_stands_first(void)
+{
+    gt_screen_rules r;
+    te_parse(&r, "default none\n#? = exclude\n");
+    CHECK_INT(gt_screen_row_tick(&r, "DOPUS", 1), 1);
+    CHECK_STR(r.rule[0].pat, "#?");
+    CHECK_STR(r.rule[1].pat, "DOPUS");
+    CHECK_INT(te_on(&r, "DOPUS"), 1);
+    CHECK_INT(te_on(&r, "OTHER"), 0);
+    te_parse(&r, "default none\n#? = nord\n");
+    CHECK_INT(gt_screen_row_tick(&r, "DOPUS", 0), 1);
+    CHECK_INT(te_on(&r, "DOPUS"), 0);
+    CHECK_INT(te_on(&r, "OTHER"), 1);
+}
+
+static void test_gthemes_screen_rows_all_none_invert_flip_the_listed_screens_only(void)
+{
+    gt_screen_rules r;
+    const char *start = "default workbench\nA = :main\nB = exclude\nOLD = nord\n";
+    const char *o[3];
+    const char *dup[2];
+    o[0] = "A";
+    o[1] = "B";
+    o[2] = "C";
+    dup[0] = "A";
+    dup[1] = "a";
+
+    te_parse(&r, start);
+    CHECK_INT(gt_screen_rows_all(&r, o, 3), 0);
+    CHECK_INT(te_on(&r, "Workbench") && te_on(&r, "A") && te_on(&r, "B") && te_on(&r, "C"), 1);
+    CHECK_INT(r.def, GT_SCR_WORKBENCH);
+    CHECK_STR(te_theme(&r, "OLD"), "nord");
+
+    te_parse(&r, start);
+    CHECK_INT(gt_screen_rows_none(&r, o, 3), 0);
+    CHECK_INT(te_on(&r, "Workbench") || te_on(&r, "A") || te_on(&r, "B") || te_on(&r, "C"), 0);
+    CHECK_INT(r.def, GT_SCR_WORKBENCH);
+    CHECK_INT(te_on(&r, "OLD"), 1);
+    CHECK_STR(te_theme(&r, "OLD"), "nord");
+
+    te_parse(&r, start);
+    CHECK_INT(gt_screen_rows_invert(&r, o, 3), 0);
+    CHECK_INT(te_on(&r, "Workbench"), 0);
+    CHECK_INT(te_on(&r, "A"), 0);
+    CHECK_INT(te_on(&r, "B"), 1);
+    CHECK_INT(te_on(&r, "C"), 1);
+    CHECK_INT(r.def, GT_SCR_WORKBENCH);
+    CHECK_STR(te_theme(&r, "OLD"), "nord");
+    CHECK_INT(gt_screen_rows_invert(&r, o, 3), 0);
+    CHECK_INT(te_on(&r, "Workbench"), 1);
+    CHECK_INT(te_on(&r, "A"), 1);
+    CHECK_INT(te_on(&r, "B"), 0);
+    CHECK_INT(te_on(&r, "C"), 0);
+
+    /* a screen listed twice flips once */
+    te_parse(&r, start);
+    CHECK_INT(gt_screen_rows_invert(&r, dup, 2), 0);
+    CHECK_INT(te_on(&r, "A"), 0);
+}
+
+static void test_gthemes_screen_rows_list_rules_of_closed_screens_after_the_open_ones(void)
+{
+    gt_screen_rules r;
+    gt_screen_row rows[GT_SCR_ROWS];
+    const char *o[3];
+    int n;
+    o[0] = "A";
+    o[1] = "B";
+    o[2] = "workbench";
+    te_parse(&r, "default workbench\nA = :main\nOLD = nord\nGONE = exclude\n#? = gruvbox\nB = exclude\n");
+    n = gt_screen_rows(&r, o, 3, rows, GT_SCR_ROWS);
+    CHECK_INT(n, 5);
+    CHECK_STR(rows[0].name, "Workbench");
+    CHECK_STR(rows[1].name, "A");
+    CHECK_INT(rows[1].on, 1);
+    CHECK_STR(rows[2].name, "B");
+    CHECK_INT(rows[2].on, 0);
+    CHECK_STR(rows[3].name, "OLD");
+    CHECK_INT(rows[3].open, 0);
+    CHECK_INT(rows[3].on, 1);
+    CHECK_STR(rows[3].theme, "nord");
+    CHECK_STR(rows[4].name, "GONE");
+    CHECK_INT(rows[4].open, 0);
+    CHECK_INT(rows[4].on, 0);
+    CHECK_INT(gt_screen_rows(&r, o, 3, rows, 4), 4);
+    CHECK_INT(gt_screen_rows(&r, o, 3, rows, 1), 1);
+}
+
+static void test_gthemes_screen_rows_a_full_rule_table_refuses_and_changes_nothing(void)
+{
+    gt_screen_rules r;
+    char f[2048], keep[2048];
+    const char *o[2];
+    int i;
+    o[0] = "NEW1";
+    o[1] = "NEW2";
+    strcpy(f, "default none\n");
+    for (i = 0; i < GT_SCR_MAX; i++)
+        snprintf(f + strlen(f), 32, "P%d = nord\n", i);
+    te_parse(&r, f);
+    CHECK_INT(r.n, GT_SCR_MAX);
+    strcpy(keep, te_text(&r));
+    CHECK_INT(gt_screen_row_tick(&r, "NEW1", 1), 0);
+    CHECK_STR(te_text(&r), keep);
+    CHECK_INT(gt_screen_row_theme(&r, "NEW1", "nord"), 0);
+    CHECK_INT(gt_screen_row_takeover(&r, "NEW1", 1), 0);
+    CHECK_INT(gt_screen_rows_all(&r, o, 2), 3);
+    CHECK_STR(te_text(&r), keep);
+
+    strcpy(f, "default all\n");
+    for (i = 0; i < GT_SCR_MAX; i++)
+        snprintf(f + strlen(f), 32, "P%d = nord\n", i);
+    te_parse(&r, f);
+    strcpy(keep, te_text(&r));
+    CHECK_INT(gt_screen_row_tick(&r, "NEW1", 0), 0);
+    CHECK_STR(te_text(&r), keep);
+    CHECK_INT(gt_screen_row_tick(&r, "P3", 0), 1); /* removes its rule, adds the exclude: fits */
+    CHECK_INT(te_on(&r, "P3"), 0);
+}
+
+static void test_gthemes_screen_rows_survive_write_and_parse(void)
+{
+    gt_screen_rules r, r2;
+    gt_screen_row a[GT_SCR_ROWS], b[GT_SCR_ROWS];
+    const char *o[4];
+    int i, na, nb;
+    o[0] = "A";
+    o[1] = "B";
+    o[2] = "C";
+    o[3] = "D";
+    gt_screen_rules_parse(0, 0, &r);
+    CHECK_INT(gt_screen_row_tick(&r, "A", 1), 1);
+    CHECK_INT(gt_screen_row_theme(&r, "B", "nord"), 1);
+    CHECK_INT(gt_screen_row_takeover(&r, "A", 1), 1);
+    CHECK_INT(gt_screen_row_tick(&r, "Workbench", 0), 1);
+    CHECK_INT(gt_screen_row_tick(&r, "C", 1), 1);
+    CHECK_INT(gt_screen_row_tick(&r, "C", 0), 1);
+    CHECK_INT(gt_screen_row_theme(&r, "D", "gruvbox"), 1);
+    te_parse(&r2, te_text(&r));
+    na = gt_screen_rows(&r, o, 4, a, GT_SCR_ROWS);
+    nb = gt_screen_rows(&r2, o, 4, b, GT_SCR_ROWS);
+    CHECK_INT(na, 5);
+    CHECK_INT(nb, na);
+    for (i = 0; i < na && i < nb; i++) {
+        CHECK_STR(b[i].name, a[i].name);
+        CHECK_INT(b[i].on, a[i].on);
+        CHECK_INT(b[i].open, a[i].open);
+        CHECK_STR(b[i].theme, a[i].theme);
+        CHECK_INT(b[i].takeover, a[i].takeover);
+    }
+    CHECK_INT(a[0].on, 0);
+    CHECK_INT(a[1].on && a[1].takeover, 1);
+    CHECK_STR(a[2].theme, "nord");
+    CHECK_INT(a[3].on, 0);
+    CHECK_STR(a[4].theme, "gruvbox");
+}
+
 /* a failed theme save says which step and which file, with the DOS error */
 static void test_gthemes_save_text(void)
 {
@@ -2772,4 +3149,13 @@ void suite_gthemes(void)
     test_gthemes_scan();
     test_gthemes_picker_pens();
     test_gthemes_screen_rules();
+    test_gthemes_screen_rows_fresh_rules_list_workbench_then_open_screens();
+    test_gthemes_screen_main_token_carries_the_main_theme_for_a_named_screen();
+    test_gthemes_screen_row_tick_on_off_under_each_default_and_rule();
+    test_gthemes_screen_row_theme_and_takeover_edit_the_exact_rule();
+    test_gthemes_screen_row_exact_rule_beats_a_pattern_rule_that_stands_first();
+    test_gthemes_screen_rows_all_none_invert_flip_the_listed_screens_only();
+    test_gthemes_screen_rows_list_rules_of_closed_screens_after_the_open_ones();
+    test_gthemes_screen_rows_a_full_rule_table_refuses_and_changes_nothing();
+    test_gthemes_screen_rows_survive_write_and_parse();
 }
