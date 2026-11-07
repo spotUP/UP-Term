@@ -44,6 +44,16 @@ def target(args):
     return "%s tree build/%s/%s" % (tree.name, paths.RIG_NAME, tree.name), tree
 
 
+# "Modify Startup-Sequence File" (88%): gadget 92 is a string holding the file the Installer edits, which it takes from the
+# BOOT volume. On the sys.hdf clone that is the rig's wrapper BOOTX:s/startup-sequence (priority 10 boot drive), and
+# Proceed on it ends the Installer at once ("Problem with file Startup-Sequence in line 540", no DOS call traced) with no
+# ;BEGIN DOpus5 block written. The system's real sequence is S:Startup-Sequence (DH0:S, assigned by the wrapper); it
+# already runs S:User-Startup, so the Installer finds nothing to change there. Gadget 91 is Abort Install, not Skip.
+# The ids are the page's, without the askdir page's 89, 93, 94.
+STARTUP_SEQUENCE = "S:Startup-Sequence"
+STARTUP_PAGE = {1, 2, 90, 91, 92, 96, 97, 98, 99, 100}
+
+
 def page():
     tree = ami.req(0x0D).decode('latin-1')
     title, gads = inst.installer_page(tree)
@@ -53,6 +63,10 @@ def page():
 def answer(tree, title, gads):
     """The gadget ids to click on this page, by its ids (the Installer's custom gadgets carry no labels), or None."""
     ids = set(gads) - {0}
+    if STARTUP_PAGE <= ids and not {89, 93, 94} & ids:   # Modify Startup-Sequence File: point it at S:Startup-Sequence
+        if not inst.type_into(gads[92][0], 92, STARTUP_SEQUENCE):
+            sys.exit("dopus: could not type %s into the Startup-Sequence page" % STARTUP_SEQUENCE)
+        return [90]
     if 92 in ids:   # askdir: the parent of the DOpus5 drawer
         if not inst.type_into(gads[92][0], 92, "VTCX:"):
             sys.exit("dopus: could not type VTCX: into the drawer page")

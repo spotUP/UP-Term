@@ -91,6 +91,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=menu_rig_dopus_absent the amarchy_menu_rig dopus_absent row starts the commodity before the root menu (tests/test_menu_rig_dopus_absent_commodity.py)
 # ONLY=menu_rig_dopus_quit the dopus_quit row starts DOpus again with C:LoadWB at its end, also on a raise (tests/test_menu_rig_dopus_quit_restore.py)
 # ONLY=rig_only_list `--only a,b` in the amarchy rig scripts runs those rows; an unknown row exits naming it (tests/test_rig_only_list.py)
+# ONLY=rig_dopus_startup_page rig.py dopus answers the Installer's Modify Startup-Sequence page with S:Startup-Sequence, not the BOOTX wrapper (tests/test_rig_dopus_startup_page.py)
 # ONLY=rig_dopus_own_screen rig.py dopus --own-screen writes the DOpus environment that opens DOpus on its own screen (tests/test_rig_dopus_own_screen.py)
 # ONLY=menu_rig_dopus_screen dopus_present checks that Open UP-Term here and the drawn menu open on DOpus's own screen (tests/test_menu_rig_dopus_screen.py)
 # ONLY=claude_fixture the fake Messages API's routes (tools/test_claude_fixture.py)
@@ -251,6 +252,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_only_list ]; then python3 tests/test_rig_only_list.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_rig_dopus_screen ]; then python3 tests/test_menu_rig_dopus_screen.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_dopus_own_screen ]; then python3 tests/test_rig_dopus_own_screen.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_dopus_startup_page ]; then python3 tests/test_rig_dopus_startup_page.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_installer.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = dist_solidwin ]; then python3 tests/test_dist_solidwin.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = rig_solidwin ]; then python3 tests/test_rig_solidwin.py; fi
