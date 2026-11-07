@@ -120,14 +120,16 @@ class IpkTest(unittest.TestCase):
         self.assertNotIn('Depends', text)
         post = ctl.extractfile('./postinst').read().decode()
         self.assertIn('Execute T:upkg-stage/up-nvim/Files/install.dos T:upkg-stage/up-nvim/Files\n', post)
-        self.assertIn('rm -rf T:upkg-stage/up-nvim\n', post)
+        # vsh runs the script and has no rm: the staged tree goes with the AmigaDOS Delete
+        self.assertIn('Delete >NIL: T:upkg-stage/up-nvim ALL QUIET\n', post)
+        self.assertNotIn('rm -rf', post)
         pre = ctl.extractfile('./preinst').read().decode()
         self.assertIn('head -n 1 UP-Term:VERSIONS', pre)
         self.assertIn('if older "$base" 1.0; then', pre)
         self.assertIn('exit 1', pre)
         prerm = ctl.extractfile('./prerm').read().decode()
         # the Uninstall deletes its own record drawer, so it runs from a copy: a running script holds its file open
-        self.assertIn('Copy UP-Term:pkg/up-nvim/Uninstall T:up-nvim.Uninstall CLONE QUIET\n', prerm)
+        self.assertIn('Copy UPTREAL:pkg/up-nvim/Uninstall T:up-nvim.Uninstall CLONE QUIET\n', prerm)
         self.assertIn('Execute T:up-nvim.Uninstall\n', prerm)
         self.assertIn('Delete >NIL: T:up-nvim.Uninstall QUIET\n', prerm)
         self.assertNotIn('Execute UP-Term:pkg/up-nvim/Uninstall', prerm)
@@ -179,7 +181,8 @@ class IpkTest(unittest.TestCase):
 
     def test_prerm_warns_and_continues_when_the_uninstall_record_is_missing(self):
         # an add-on installed before the Uninstall copy was fixed has no record: the prerm must not fail the upgrade
-        for ipk, rec in (('up-nvim_2.1_m68k-amigaos.ipk', 'UP-Term:pkg/up-nvim/Uninstall'),
+        # a record below UP-Term: is read through UPTREAL: (the one real drawer of a multi-directory assign)
+        for ipk, rec in (('up-nvim_2.1_m68k-amigaos.ipk', 'UPTREAL:pkg/up-nvim/Uninstall'),
                          ('Claude_1.1_m68k-amigaos.ipk', None)):
             m = dict(split_ar((self.out / ipk).read_bytes()))
             prerm = tarfile.open(fileobj=io.BytesIO(m['control.tar.gz'])).extractfile('./prerm').read().decode()
@@ -189,6 +192,13 @@ class IpkTest(unittest.TestCase):
             self.assertLess(lines.index('if [ -f %s ]; then' % rec), next(i for i, l in enumerate(lines) if l.startswith('    Copy ' + rec + ' ')))
             self.assertTrue(any(l.lstrip().startswith('echo "warning: ' + rec) for l in lines))
             self.assertEqual(lines[-1], 'exit 0')
+            if rec.startswith('UPTREAL:'):
+                # Copy opens a path below the first directory of an assign only: never the record through UP-Term:
+                self.assertFalse([l for l in lines if 'UP-Term:pkg/' in l])
+                made = lines.index('Assign >NIL: UPTREAL: UP-Term:')
+                self.assertLess(made, lines.index('if [ -f %s ]; then' % rec))
+                self.assertIn('    if [ -d "$d" ]; then Assign >NIL: UPTREAL: "$d"; fi', lines)
+                self.assertEqual(lines[-2], 'Assign >NIL: UPTREAL:')
 
     def test_the_base_is_not_a_package(self):
         self.assertFalse(list(self.out.glob('UP-Term_*')))
