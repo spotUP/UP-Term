@@ -143,17 +143,22 @@ static void put32(unsigned char *p, uint32_t v)
     p[3] = (unsigned char)v;
 }
 
-void wbr_gate_build(unsigned char *out, uint32_t hook, uint32_t saved)
+void wbr_gate_build(unsigned char *out, uint32_t hook, uint32_t saved, uint32_t self)
 {
-    put16(out + 0, 0x2F3A);             /* move.l hook(pc),-(sp): extension word at 2, hook at 14 */
-    put16(out + 2, WBR_GATE_HOOK - 2);
-    put16(out + 4, 0x6606);             /* bne.s go (12 - 6) */
-    put16(out + 6, 0x588F);             /* addq.l #4,sp */
-    put16(out + 8, 0x2F3A);             /* move.l saved(pc),-(sp): extension word at 10, saved at 18 */
-    put16(out + 10, WBR_GATE_SAVED - 10);
-    put16(out + 12, 0x4E75);            /* rts */
+    put16(out + 0, 0x52B9);             /* addq.l #1,busy.l */
+    put32(out + 2, self + WBR_GATE_BUSY);
+    put16(out + 6, 0x2F3A);             /* move.l hook(pc),-(sp): extension word at 8 */
+    put16(out + 8, WBR_GATE_HOOK - 8);
+    put16(out + 10, 0x6600 | (24 - 12)); /* bne.s go (24 - (10 + 2)) */
+    put16(out + 12, 0x53B9);            /* subq.l #1,busy.l */
+    put32(out + 14, self + WBR_GATE_BUSY);
+    put16(out + 18, 0x588F);            /* addq.l #4,sp */
+    put16(out + 20, 0x2F3A);            /* move.l saved(pc),-(sp): extension word at 22 */
+    put16(out + 22, WBR_GATE_SAVED - 22);
+    put16(out + 24, 0x4E75);            /* rts */
     put32(out + WBR_GATE_HOOK, hook);
     put32(out + WBR_GATE_SAVED, saved);
+    put32(out + WBR_GATE_BUSY, 0);
 }
 
 unsigned wbr_bound_mask(const gt_model *a, const gt_model *b)

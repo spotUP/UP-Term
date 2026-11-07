@@ -30,7 +30,6 @@ typedef struct strut_pub {
     char name[20];
     const struct Screen *scr;   /* only compared, never dereferenced */
     int sw, sh, title, strip;   /* screen size, title bar height, strip height; strip 0 = nothing published */
-    long busy;
     long opens, clamped, zoom_set;
     int nd;
     struct { struct Window *w; int h; } d[DESK_MAX];
@@ -223,9 +222,6 @@ static struct Window *tags_hook(__reg("a0") struct NewWindow *nw, __reg("a1") st
     plan pl;
     struct TagItem *mine = 0;
     int act = 0, planned = 0;
-    Forbid();
-    p->busy++;
-    Permit();
     parse(&r, nw, tags);
     if (p->strip > 0 && on_bar_screen(p, &r)) {
         p->opens++;
@@ -242,9 +238,7 @@ static struct Window *tags_hook(__reg("a0") struct NewWindow *nw, __reg("a1") st
     }
     if (planned && w && r.inner)
         after_open(p, &pl, w);
-    Forbid();
-    p->busy--;
-    Permit();
+    ipatch_leave(&g_pt);
     return w;
 }
 
@@ -255,9 +249,6 @@ static struct Window *plain_hook(__reg("a0") struct NewWindow *nw, __reg("a1") s
     struct NewWindow copy;
     req r;
     plan pl;
-    Forbid();
-    p->busy++;
-    Permit();
     parse(&r, nw, 0);
     if (nw && p->strip > 0 && on_bar_screen(p, &r)) {
         p->opens++;
@@ -270,9 +261,7 @@ static struct Window *plain_hook(__reg("a0") struct NewWindow *nw, __reg("a1") s
         }
     }
     w = ((openfn)ipatch_saved(&g_pw))(nw, tags, ib);
-    Forbid();
-    p->busy--;
-    Permit();
+    ipatch_leave(&g_pw);
     return w;
 }
 
@@ -286,7 +275,7 @@ int strut_patch_install(void)
         return rc1;
     rc1 = ipatch_alloc(&g_pt, STRUT_LVO_OPENWINDOWTAGLIST);
     if (rc1) {
-        ipatch_free(&g_pw, 0);
+        ipatch_forget(&g_pw);
         return rc1;
     }
     Forbid();
@@ -294,8 +283,8 @@ int strut_patch_install(void)
     Permit();
     g_pub = rc1 ? 0 : (strut_pub *)AllocMem(sizeof *g_pub, MEMF_PUBLIC | MEMF_CLEAR);
     if (!g_pub) {
-        ipatch_free(&g_pw, 0);
-        ipatch_free(&g_pt, 0);
+        ipatch_forget(&g_pw);
+        ipatch_forget(&g_pt);
         return rc1 ? -3 : -4;
     }
     strcpy(g_pub->name, STRUT_SEM_NAME);
@@ -333,13 +322,14 @@ void strut_patch_remove(void)
     RemSemaphore(&g_pub->ss);
     Permit();
     Delay(5);
-    for (i = 0; i < 300 && g_pub->busy; i++)
-        Delay(2);
+    for (i = 0; ipatch_busy(&g_pw) + ipatch_busy(&g_pt); i++) {
+        if (i && i % 50 == 0)          /* ~10 s a round: a hook that never returns stays visible on the rig */
+            am_sentinel("AMARCHY_STRUT_BUSY_WAIT", i / 5);
+        Delay(10);                      /* a caller is inside: stay resident, a Guru under a live hook is worse */
+    }
     am_sentinel("AMARCHY_STRUT_INSTALLED", 0);
-    if (g_pub->busy)
-        return;                     /* a caller is still inside: leak rather than free under it */
-    ipatch_free(&g_pw, rc1);
-    ipatch_free(&g_pt, rc2);
+    ipatch_forget(&g_pw);
+    ipatch_forget(&g_pt);
     FreeMem(g_pub, sizeof *g_pub);
     g_pub = 0;
 }

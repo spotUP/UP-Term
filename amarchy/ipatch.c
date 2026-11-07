@@ -27,7 +27,7 @@ int ipatch_alloc(ipatch *p, long lvo)
 int ipatch_arm(ipatch *p, void *hook)
 {
     int rc;
-    wbr_gate_build(p->gate, (uint32_t)hook, flat_jmp_target(p->entry));
+    wbr_gate_build(p->gate, (uint32_t)hook, flat_jmp_target(p->entry), (uint32_t)p->gate);
     CacheClearU();
     p->slot = (uintptr_t *)(p->entry + 2);
     rc = flat_swap_install(&p->sw, p->slot, (uintptr_t)p->gate);
@@ -56,9 +56,27 @@ uint32_t ipatch_saved(const ipatch *p)
            ((uint32_t)g[WBR_GATE_SAVED + 2] << 8) | g[WBR_GATE_SAVED + 3];
 }
 
-void ipatch_free(ipatch *p, int rc)
+long ipatch_busy(const ipatch *p)
 {
-    if (p->gate && rc != FLAT_STILL_CHAINED)
-        FreeMem(p->gate, WBR_GATE_SIZE);
+    const unsigned char *g;
+    if (!p->gate)
+        return 0;
+    g = p->gate + WBR_GATE_BUSY;
+    return (long)(((uint32_t)g[0] << 24) | ((uint32_t)g[1] << 16) | ((uint32_t)g[2] << 8) | g[3]);
+}
+
+void ipatch_leave(ipatch *p)
+{
+    Forbid();
+    --*(volatile long *)(p->gate + WBR_GATE_BUSY);
+    Permit();
+}
+
+/* The gate is never freed: a task can sit between the library's JMP and the gate's first instruction for any time,
+ * and no counter sees it. A gate with hook word 0 is safe forever (it counts, uncounts, jumps to the original). */
+void ipatch_forget(ipatch *p)
+{
     p->gate = 0;
+    p->entry = 0;
+    p->slot = 0;
 }

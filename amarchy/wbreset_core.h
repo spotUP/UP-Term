@@ -30,7 +30,7 @@ typedef struct wbr_client {
 
 typedef struct wbr_rec {
     uint16_t phase;
-    uint16_t busy;                  /* callers inside the patch (Amarchy's exit waits for 0) */
+    uint16_t pad;                   /* (the in-flight counter lives in the gates, see WBR_GATE_BUSY) */
     uint32_t closes, opens, failed, timeouts;
     int16_t diag_vis, diag_wins;    /* diagnostic: Workbench visitors / windows just before the original CloseWorkBench */
     int32_t diag_ok;                /* diagnostic: what the original CloseWorkBench returned */
@@ -64,19 +64,26 @@ int wbr_open_end(wbr_rec *r, int ok, wbr_sig *out);
  * windows and reports has_win 0 through wbr_set. DO_SHOW clears hidden; the client reopens. */
 int wbr_client_step(wbr_rec *r, void *task);
 
-/* The gate stub the JMP operand points at (68000, position independent, big-endian):
- *   0  2F3A 000C   move.l  hook(pc),-(sp)
- *   4  6606        bne.s   go
- *   6  588F        addq.l  #4,sp
- *   8  2F3A 0008   move.l  saved(pc),-(sp)
- *  12  4E75   go:  rts
- *  14  hook  (0 = pass straight to saved)
- *  18  saved
- * Every register and the stack reach hook or saved as the caller left them. */
-#define WBR_GATE_SIZE 22
-#define WBR_GATE_HOOK 14
-#define WBR_GATE_SAVED 18
-void wbr_gate_build(unsigned char *out, uint32_t hook, uint32_t saved);
+/* The gate stub the JMP operand points at (68000, big-endian; the counter is addressed absolutely, so the stub is
+ * built for the address `self` it runs at):
+ *   0  52B9 <self+34>  addq.l  #1,busy.l     the caller is counted BEFORE the hook word is read
+ *   6  2F3A 0012       move.l  hook(pc),-(sp)
+ *  10  660C            bne.s   go
+ *  12  53B9 <self+34>  subq.l  #1,busy.l     pass-through uncounts itself
+ *  18  588F            addq.l  #4,sp
+ *  20  2F3A 0008       move.l  saved(pc),-(sp)
+ *  24  4E75       go:  rts
+ *  26  hook  (0 = pass straight to saved)
+ *  30  saved
+ *  34  busy  (callers between the gate's first instruction and the hook's ipatch_leave)
+ * addq/subq to memory is one instruction, so no task switch splits it. Every register and the stack reach hook or
+ * saved as the caller left them. A remover that zeroes the hook word reads busy afterwards: a caller that read a
+ * non-zero hook word is already counted. */
+#define WBR_GATE_SIZE 38
+#define WBR_GATE_HOOK 26
+#define WBR_GATE_SAVED 30
+#define WBR_GATE_BUSY 34
+void wbr_gate_build(unsigned char *out, uint32_t hook, uint32_t saved, uint32_t self);
 
 
 /* TE-7 (plan section 5, decision D1): the theme fields that only a Workbench reset applies. The pure decision: which of them differ

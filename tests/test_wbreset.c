@@ -132,16 +132,95 @@ static void test_table(void)
 static void test_gate(void)
 {
     static const unsigned char want[WBR_GATE_SIZE] = {
-        0x2F, 0x3A, 0x00, 0x0C, 0x66, 0x06, 0x58, 0x8F, 0x2F, 0x3A, 0x00, 0x08, 0x4E, 0x75,
-        0x00, 0x12, 0x34, 0x56, 0x00, 0xF8, 0x1A, 0x2C
+        0x52, 0xB9, 0x00, 0x40, 0x00, 0x22,                 /* addq.l #1,($400022).l */
+        0x2F, 0x3A, 0x00, 0x12, 0x66, 0x0C,                 /* move.l hook(pc),-(sp); bne.s go */
+        0x53, 0xB9, 0x00, 0x40, 0x00, 0x22,                 /* subq.l #1,($400022).l */
+        0x58, 0x8F, 0x2F, 0x3A, 0x00, 0x08, 0x4E, 0x75,     /* addq.l #4,sp; move.l saved(pc),-(sp); go: rts */
+        0x00, 0x12, 0x34, 0x56, 0x00, 0xF8, 0x1A, 0x2C,     /* hook, saved */
+        0x00, 0x00, 0x00, 0x00                              /* busy */
     };
     unsigned char g[WBR_GATE_SIZE];
     memset(g, 0xEE, sizeof g);
-    wbr_gate_build(g, 0x00123456UL, 0x00F81A2CUL);
+    wbr_gate_build(g, 0x00123456UL, 0x00F81A2CUL, 0x00400000UL);
     CHECK_INT(memcmp(g, want, sizeof g), 0);
-    /* PC-relative operands: the extension word sits at 2 / 10 and PC there is the extension word's address */
-    CHECK_INT(2 + ((g[2] << 8) | g[3]), WBR_GATE_HOOK);
-    CHECK_INT(10 + ((g[10] << 8) | g[11]), WBR_GATE_SAVED);
+    /* PC-relative operands: the extension word sits at 8 / 22 and PC there is the extension word's address */
+    CHECK_INT(8 + ((g[8] << 8) | g[9]), WBR_GATE_HOOK);
+    CHECK_INT(22 + ((g[22] << 8) | g[23]), WBR_GATE_SAVED);
+    CHECK_INT(WBR_GATE_BUSY + 4, WBR_GATE_SIZE);
+}
+
+/* Tiny 68000 stepper for exactly the gate's six opcodes. mem[] is the gate at SELF; stack is one slot (the gate
+ * pushes once and rts pops it). Z follows the last move/addq/subq, as the CPU's does. */
+#define SELF 0x00400000UL
+#define HOOK_T 0x00123456UL
+#define SAVED_T 0x00F81A2CUL
+typedef struct { unsigned char m[WBR_GATE_SIZE]; unsigned pc; int z, done; uint32_t sp, target; } gstep;
+
+static uint32_t rd32(const unsigned char *p) { return ((uint32_t)p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3]; }
+static unsigned rd16(const unsigned char *p) { return (p[0] << 8) | p[1]; }
+static void wr32(unsigned char *p, uint32_t v) { p[0] = v >> 24; p[1] = v >> 16; p[2] = v >> 8; p[3] = v; }
+
+static void gstep_one(gstep *g)
+{
+    unsigned op = rd16(g->m + g->pc);
+    if (op == 0x52B9 || op == 0x53B9) {         /* addq.l / subq.l #1,abs.l: one indivisible step */
+        unsigned char *busy = g->m + (rd32(g->m + g->pc + 2) - SELF);
+        wr32(busy, rd32(busy) + (op == 0x52B9 ? 1 : (uint32_t)-1));
+        g->z = rd32(busy) == 0;
+        g->pc += 6;
+    } else if (op == 0x2F3A) {                  /* move.l d16(pc),-(sp) */
+        int d = (short)rd16(g->m + g->pc + 2);
+        g->sp = rd32(g->m + g->pc + 2 + d);
+        g->z = g->sp == 0;
+        g->pc += 4;
+    } else if ((op >> 8) == 0x66) {             /* bne.s */
+        g->pc = g->z ? g->pc + 2 : g->pc + 2 + (op & 0xFF);
+    } else if (op == 0x588F) {                  /* addq.l #4,sp: drops the hook word */
+        g->sp = 0;
+        g->pc += 2;
+    } else if (op == 0x4E75) {                  /* rts: the jump target is what is on the stack */
+        g->target = g->sp;
+        g->done = 1;
+    } else {
+        CHECK(!"gate holds an opcode the stepper does not know");
+        g->done = 1;
+    }
+}
+
+/* AMARCHY-IPATCH-GATE: a caller pre-empted at ANY instruction boundary of the gate, with the remover then zeroing the
+ * hook word and reading the counter, is either counted (the remover waits for it) or goes to saved (never into the
+ * hook). The old gate read the hook word first and counted in the C hook: a caller between the two was invisible. */
+static void test_gate_counts_before_it_reads_the_hook(void)
+{
+    int k, n = 0;
+    gstep full;
+    memset(&full, 0, sizeof full);
+    wbr_gate_build(full.m, HOOK_T, SAVED_T, SELF);
+    while (!full.done && n < 20) { gstep_one(&full); n++; }
+    CHECK_INT(full.target, HOOK_T);
+    CHECK_INT(rd32(full.m + WBR_GATE_BUSY), 1);             /* hook path: counted, the hook uncounts on exit */
+    for (k = 0; k <= n; k++) {
+        gstep g;
+        int i;
+        uint32_t seen;
+        memset(&g, 0, sizeof g);
+        wbr_gate_build(g.m, HOOK_T, SAVED_T, SELF);
+        for (i = 0; i < k && !g.done; i++)
+            gstep_one(&g);
+        wr32(g.m + WBR_GATE_HOOK, 0);                       /* the remover: passthru, then read busy */
+        seen = rd32(g.m + WBR_GATE_BUSY);
+        for (i = 0; i < 20 && !g.done; i++)
+            gstep_one(&g);
+        if (!(seen > 0 || g.target == SAVED_T))
+            printf("  boundary %d: hook entered with busy 0\n", k);
+        CHECK(seen > 0 || g.target == SAVED_T);
+    }
+    memset(&full, 0, sizeof full);
+    wbr_gate_build(full.m, 0, SAVED_T, SELF);               /* pass-through run */
+    for (n = 0; !full.done && n < 20; n++)
+        gstep_one(&full);
+    CHECK_INT(full.target, SAVED_T);
+    CHECK_INT(rd32(full.m + WBR_GATE_BUSY), 0);             /* uncounted itself */
 }
 
 /* Source lint: the host cannot run Intuition, so the two rules that keep the reset working are pinned on the text
@@ -237,6 +316,7 @@ void suite_wbreset(void)
     test_self_and_idle();
     test_table();
     test_gate();
+    test_gate_counts_before_it_reads_the_hook();
     test_hand_patch_finish();
     test_wb_window_flag();
 }

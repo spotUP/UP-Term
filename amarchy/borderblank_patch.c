@@ -27,7 +27,6 @@ typedef struct bb_pub {
     struct SignalSemaphore ss;  /* named BB_SEM_NAME: a second Amarchy does not patch twice */
     char name[24];
     struct GfxBase *gfx;
-    long busy;
     long blanked;               /* screens blanked over the run, for the sentinel */
     bb_table t;                 /* guarded by Forbid */
 } bb_pub;
@@ -103,13 +102,8 @@ static struct Screen *tags_hook(__reg("a0") struct NewScreen *ns, __reg("a1") st
 {
     bb_pub *p = g_pub;
     struct Screen *s;
-    Forbid();
-    p->busy++;
-    Permit();
     s = after_open(p, ((openfn)ipatch_saved(&g_pt))(ns, tags, ib));
-    Forbid();
-    p->busy--;
-    Permit();
+    ipatch_leave(&g_pt);
     return s;
 }
 
@@ -117,13 +111,8 @@ static struct Screen *plain_hook(__reg("a0") struct NewScreen *ns, __reg("a1") s
 {
     bb_pub *p = g_pub;
     struct Screen *s;
-    Forbid();
-    p->busy++;
-    Permit();
     s = after_open(p, ((openfn)ipatch_saved(&g_po))(ns, tags, ib));
-    Forbid();
-    p->busy--;
-    Permit();
+    ipatch_leave(&g_po);
     return s;
 }
 
@@ -169,7 +158,7 @@ int borderblank_install(void)
     }
     rc1 = ipatch_alloc(&g_pt, BB_LVO_OPENSCREENTAGLIST);
     if (rc1) {
-        ipatch_free(&g_po, 0);
+        ipatch_forget(&g_po);
         CloseLibrary((struct Library *)gfx);
         return rc1;
     }
@@ -178,8 +167,8 @@ int borderblank_install(void)
     Permit();
     g_pub = rc1 ? 0 : (bb_pub *)AllocMem(sizeof *g_pub, MEMF_PUBLIC | MEMF_CLEAR);
     if (!g_pub) {
-        ipatch_free(&g_po, 0);
-        ipatch_free(&g_pt, 0);
+        ipatch_forget(&g_po);
+        ipatch_forget(&g_pt);
         CloseLibrary((struct Library *)gfx);
         return rc1 ? -3 : -4;
     }
@@ -246,14 +235,15 @@ void borderblank_remove(void)
     RemSemaphore(&g_pub->ss);
     Permit();
     Delay(5);
-    for (i = 0; i < 300 && g_pub->busy; i++)
-        Delay(2);
+    for (i = 0; ipatch_busy(&g_po) + ipatch_busy(&g_pt); i++) {
+        if (i && i % 50 == 0)          /* ~10 s a round: a hook that never returns stays visible on the rig */
+            am_sentinel("AMARCHY_BORDERBLANK_BUSY_WAIT", i / 5);
+        Delay(10);                      /* a caller is inside: stay resident, a Guru under a live hook is worse */
+    }
     clear_recorded(g_pub);
     am_sentinel("AMARCHY_BORDERBLANK_INSTALLED", 0);
-    if (g_pub->busy)
-        return;                     /* a caller is still inside: leak rather than free under it */
-    ipatch_free(&g_po, rc1);
-    ipatch_free(&g_pt, rc2);
+    ipatch_forget(&g_po);
+    ipatch_forget(&g_pt);
     CloseLibrary((struct Library *)g_pub->gfx);
     FreeMem(g_pub, sizeof *g_pub);
     g_pub = 0;

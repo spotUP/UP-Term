@@ -17,6 +17,7 @@
 #include "flat_core.h"
 #include "libpatch.h"
 #include "ipatch.h"
+#include "sentinel_dos.h"
 
 extern struct IntuitionBase *IntuitionBase;
 
@@ -58,7 +59,6 @@ static LONG close_hook(__reg("a6") struct Library *ib)
     int n, t, timed = 0;
     LONG ok;
     Forbid();
-    g_pub->rec.busy++;
     n = wbr_close_begin(&g_pub->rec, me, s);
     signal_all(s, n);
     Permit();
@@ -79,8 +79,8 @@ static LONG close_hook(__reg("a6") struct Library *ib)
     Forbid();
     n = wbr_close_end(&g_pub->rec, ok != 0, timed, s);
     signal_all(s, n);
-    g_pub->rec.busy--;
     Permit();
+    ipatch_leave(&g_pc);
     return ok;
 }
 
@@ -89,15 +89,12 @@ static LONG open_hook(__reg("a6") struct Library *ib)
     wbr_sig s[WBR_MAX];
     LONG scr;
     int n;
-    Forbid();
-    g_pub->rec.busy++;
-    Permit();
     scr = ((wbfn)ipatch_saved(&g_po))(ib);
     Forbid();
     n = wbr_open_end(&g_pub->rec, scr != 0, s);
     signal_all(s, n);
-    g_pub->rec.busy--;
     Permit();
+    ipatch_leave(&g_po);
     return scr;
 }
 
@@ -111,21 +108,21 @@ int wbr_patch_install(void)
         return rc1;
     rc1 = ipatch_alloc(&g_po, WBR_LVO_OPENWB);
     if (rc1) {
-        ipatch_free(&g_pc, 0);
+        ipatch_forget(&g_pc);
         return rc1;
     }
     Forbid();
     rc1 = FindSemaphore((STRPTR)WBR_SEM_NAME) != 0;
     Permit();
     if (rc1) {
-        ipatch_free(&g_pc, 0);
-        ipatch_free(&g_po, 0);
+        ipatch_forget(&g_pc);
+        ipatch_forget(&g_po);
         return -3;                  /* another Amarchy holds the patch */
     }
     g_pub = (wbr_pub *)AllocMem(sizeof *g_pub, MEMF_PUBLIC | MEMF_CLEAR);
     if (!g_pub) {
-        ipatch_free(&g_pc, 0);
-        ipatch_free(&g_po, 0);
+        ipatch_forget(&g_pc);
+        ipatch_forget(&g_po);
         return -4;
     }
     wbr_init(&g_pub->rec);
@@ -158,13 +155,14 @@ void wbr_patch_remove(void)
     libpatch_done((struct Library *)IntuitionBase);
     RemSemaphore(&g_pub->ss);
     Permit();
-    Delay(5);                               /* a caller past the gate but not yet counted gets in */
-    for (i = 0; i < 2 * WBR_WAIT_TICKS && g_pub->rec.busy; i++)
-        Delay(2);
-    if (g_pub->rec.busy)
-        return;                             /* a caller is still inside: leak rather than free under it */
-    ipatch_free(&g_pc, rc1);
-    ipatch_free(&g_po, rc2);
+    Delay(5);
+    for (i = 0; ipatch_busy(&g_pc) + ipatch_busy(&g_po); i++) {
+        if (i && i % 50 == 0)          /* ~10 s a round: a hook that never returns stays visible on the rig */
+            am_sentinel("AMARCHY_WBRESET_BUSY_WAIT", i / 5);
+        Delay(10);                      /* a caller is inside: stay resident, a Guru under a live hook is worse */
+    }
+    ipatch_forget(&g_pc);
+    ipatch_forget(&g_po);
     FreeMem(g_pub, sizeof *g_pub);
     g_pub = 0;
 }

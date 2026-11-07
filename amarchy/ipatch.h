@@ -1,7 +1,9 @@
 /* ipatch.h - one intuition.library jump-table patch (Amiga build only): the gate stub (wbr_gate_build) whose JMP
- * operand swap is the flat_swap model (restore only if ours, leak the gate when a foreign patcher chained on it).
- * wbreset_patch.c (CloseWorkBench, OpenWorkBench) and strut_patch.c (OpenWindowTagList, OpenWindow) use it; the
- * install / remove order of each caller is its own. */
+ * operand swap is the flat_swap model (restore only if ours). The gate counts every caller in its own memory before
+ * it reads the hook word; the hook leaves with ipatch_leave. A gate is NEVER freed (a task can sit between the
+ * library's JMP and the gate's first instruction for any time, unseen by any counter; a gate with hook word 0 passes
+ * straight to the original forever). wbreset_patch.c (CloseWorkBench, OpenWorkBench), strut_patch.c (OpenWindowTagList,
+ * OpenWindow) and borderblank_patch.c use it; the install / remove order of each caller is its own. */
 #ifndef AMARCHY_IPATCH_H
 #define AMARCHY_IPATCH_H
 
@@ -26,7 +28,11 @@ void ipatch_passthru(ipatch *p);
 int ipatch_unarm(ipatch *p);
 /* The original routine behind the gate. */
 uint32_t ipatch_saved(const ipatch *p);
-/* After no caller can be inside: free the gate unless rc (ipatch_unarm) says it is still chained. */
-void ipatch_free(ipatch *p, int rc);
+/* Callers currently between the gate's first instruction and ipatch_leave (0 when forgotten). */
+long ipatch_busy(const ipatch *p);
+/* The last thing a hook does, on the ipatch it was entered through: uncounts the caller the gate counted. */
+void ipatch_leave(ipatch *p);
+/* After ipatch_busy of every gate is 0: drop the pointers. The gate memory stays allocated on purpose. */
+void ipatch_forget(ipatch *p);
 
 #endif
