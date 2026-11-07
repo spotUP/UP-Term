@@ -12,6 +12,7 @@
 #include <proto/intuition.h>
 #include <string.h>
 #include "cx.h"
+#include "demo.h"
 #include "cxdesc.h"
 #include "act.h"
 #include "win.h"
@@ -482,6 +483,8 @@ static long rexx_cmd(void *ud, const char *cmd, char *out)
         status_text(out, REXX_HOST_OUT, 0);
     else if (starts(cmd, "BAR") && (cmd[3] == ' ' || cmd[3] == '\t'))
         rc = bar_port(cmd + 3, out);
+    else if (starts(cmd, "DEMO") && (cmd[4] == 0 || cmd[4] == ' ' || cmd[4] == '\t'))
+        rc = demo_port(cmd + 4, out, REXX_HOST_OUT);
     else if (starts(cmd, "DESK CONFIRM"))   /* FP-1: an apply in another process; the verb carries the mask */
         dc_begin((unsigned)parse_int(cmd + 12));
     else if (starts(cmd, "RELOAD"))
@@ -557,6 +560,38 @@ static void launch_replied(void)
 /* act.c reads the front screen (AMB3) from it */
 struct IntuitionBase *IntuitionBase;
 
+/* `Amarchy demo [stop|status|<n>]`: the CLI form of the DEMO verb, the same code path as the menu row (rexx_cmd).
+ * Returns -1 when the line is not a demo line, else the program's return code. */
+static int demo_cli(const char *a)
+{
+    static char out[REXX_HOST_OUT];
+    char cmd[40];
+    int n = 0;
+    while (*a == ' ' || *a == '\t')
+        a++;
+    if (!starts(a, "DEMO") || (a[4] != 0 && a[4] != ' ' && a[4] != '\t' && a[4] != '\n'))
+        return -1;
+    a += 4;
+    while (*a == ' ' || *a == '\t')
+        a++;
+    strcpy(cmd, "DEMO ");
+    n = 5;
+    while (*a && *a != '\n' && n < (int)sizeof cmd - 1)
+        cmd[n++] = *a++;
+    cmd[n] = 0;
+    while (n > 5 && cmd[n - 1] == ' ')
+        cmd[--n] = 0;
+    if (!FindPort((STRPTR)"AMARCHY")) {
+        PutStr((STRPTR)"Amarchy is not running\n");
+        return 5;
+    }
+    out[0] = 0;
+    n = (int)rexx_send("AMARCHY", cmd, out, (int)sizeof out);
+    PutStr((STRPTR)out);
+    PutStr((STRPTR)"\n");
+    return n == 0 ? 0 : 10;
+}
+
 int main(void)
 {
     ULONG sigs, cxs, rxs, nos, nts, lps, wrs, cws, tks;
@@ -565,8 +600,10 @@ int main(void)
     struct RDArgs *rda;
     LONG args[1] = { 0 };
     int pri = 0;
+    if ((ev = demo_cli((const char *)GetArgStr())) >= 0)
+        return ev;
     if (qmark_line((const char *)GetArgStr())) { /* `Amarchy ?` shows the template and ends */
-        PutStr((STRPTR)"CX_PRIORITY/K/N\n");
+        PutStr((STRPTR)"CX_PRIORITY/K/N  |  DEMO [STOP|STATUS|n]\n");
         return 0;
     }
     if ((rda = ReadArgs((STRPTR)"CX_PRIORITY/K/N", args, 0))) {
@@ -617,6 +654,8 @@ int main(void)
     cw_start();                                 /* the clipboard history (Trigger > Clipboard history) */
     cws = cw_sigmask();
     tick_hook(note_expire);
+    demo_set_bar(bar_port);
+    tick_hook(demo_tick);
     tick_hook(bar_tick);
     tick_hook(tw_tick);                         /* R2.5b: a theme switch retakes the helper windows' pens */
     tick_hook(iconpens_follow);
@@ -687,6 +726,7 @@ int main(void)
         }
         wbr_report(SIGBREAKF_CTRL_F, WBR_HIDE, bar_is_open());   /* BAR ON / OFF, the hold, a reload: all end here */
     }
+    demo_shutdown();
     bar_close();
     iconpens_stop();
     wbr_client_drop();

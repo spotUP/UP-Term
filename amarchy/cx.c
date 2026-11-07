@@ -141,6 +141,7 @@ int cx_open(int priority)
 void cx_close(void)
 {
     CxMsg *m;
+    cx_watch_input(0);                            /* the demo's filters leave the broker before DeleteCxObjAll */
     if (g_broker)
         DeleteCxObjAll(g_broker);
     g_broker = 0;
@@ -214,3 +215,75 @@ int cx_next(int *row)
 int cx_enabled(void) { return g_enabled; }
 const km_bind *cx_row(int row) { return g_km && row >= 0 && row < g_km->nbind && cx_row_installed(&g_km->bind[row]) ? &g_km->bind[row] : 0; }
 int cx_nrows(void) { return g_nrows; }
+
+/* The demo tour's end-on-input watch (demo.c): while on, two more filters sit in front of the hotkey ones (priority 1),
+ * one for every raw key and one for every raw mouse event, each with a CxCustom that only records that a key went down
+ * or a button was pressed. Nothing is translated, sent or swallowed: the event goes on to its window. The callback runs
+ * on the input.device task, so it sets one flag and does nothing else. */
+static CxObj *g_wk, *g_wm;
+static volatile int g_seen;
+static volatile long g_info;                      /* class * 1000 + code of the event that ended the demo */
+
+static void watch(__reg("a0") CxMsg *msg, __reg("a1") CxObj *co)
+{
+    const struct InputEvent *ie = (const struct InputEvent *)CxMsgData(msg);
+    (void)co;
+    if (ie->ie_Qualifier & IEQUALIFIER_REPEAT)
+        return;                                   /* a held key (the one that started the demo) is not a new press */
+    if (ie->ie_Class == IECLASS_RAWKEY) {
+        if (!(ie->ie_Code & IECODE_UP_PREFIX))
+            { g_seen = 1; g_info = 1000L + ie->ie_Code; }
+    } else if (ie->ie_Class == IECLASS_RAWMOUSE) {
+        if (ie->ie_Code == IECODE_LBUTTON || ie->ie_Code == IECODE_RBUTTON)
+            { g_seen = 1; g_info = 2000L + ie->ie_Code; }
+    }
+}
+
+static CxObj *watch_filter(UBYTE cls)
+{
+    /* the string is a ParseIX description, so it must parse: an arbitrary name leaves CxObjError set */
+    CxObj *f = CxFilter((STRPTR)(cls == IECLASS_RAWKEY ? "rawkey" : "rawmouse")), *c = CxCustom((APTR)watch, 0);
+    IX ix;
+    if (!f || !c || CxObjError(f)) {
+        DeleteCxObj(c);
+        DeleteCxObj(f);
+        return 0;
+    }
+    ix.ix_Version = IX_VERSION;
+    ix.ix_Class = cls;
+    ix.ix_Code = 0;
+    ix.ix_CodeMask = 0;                           /* every code: the callback picks key downs and button presses */
+    ix.ix_Qualifier = 0;
+    ix.ix_QualMask = 0;
+    ix.ix_QualSame = 0;
+    SetFilterIX(f, &ix);
+    AttachCxObj(f, c);
+    SetCxObjPri(f, 1);
+    EnqueueCxObj(g_broker, f);
+    return f;
+}
+
+void cx_watch_input(int on)
+{
+    if (on) {
+        if (!g_broker || g_wk || g_wm)
+            return;
+        g_seen = 0;
+        g_wk = watch_filter(IECLASS_RAWKEY);
+        g_wm = watch_filter(IECLASS_RAWMOUSE);
+        return;
+    }
+    if (g_wk) {
+        RemoveCxObj(g_wk);
+        DeleteCxObjAll(g_wk);                     /* the filter and the custom behind it */
+        g_wk = 0;
+    }
+    if (g_wm) {
+        RemoveCxObj(g_wm);
+        DeleteCxObjAll(g_wm);
+        g_wm = 0;
+    }
+}
+
+int cx_input_seen(void) { return g_seen; }
+long cx_input_info(void) { return g_info; }

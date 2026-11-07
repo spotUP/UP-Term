@@ -23,4 +23,9 @@ int  cx_next(int *row);
 int  cx_enabled(void);
 const km_bind *cx_row(int row);
 int  cx_nrows(void);
+/* The demo tour (demo.c) ends on any key press or mouse click: while on, extra filters note one into cx_input_seen
+ * (a flag; nothing is swallowed). Off removes them. cx_watch_input(1) clears the flag. */
+void cx_watch_input(int on);
+int  cx_input_seen(void);
+long cx_input_info(void);   /* what ended the demo: 1000 + key code, 2000 + mouse code */
 #endif

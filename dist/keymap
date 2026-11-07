@@ -333,6 +333,7 @@ learn.keys         = Key bindings          | viewer
 learn.tutorial     = Tutorial              | menuid:MENU_TUTORIAL
 learn.help         = Slash command help    | menuid:MENU_HELP_SLASH
 learn.demo         = Demo tour             | slash:/demo
+learn.amarchydemo = Amarchy demo         | rexx:address AMARCHY DEMO
 system.safeoff     = Safe to switch off    | detach:Execute UP-Term:S/safe-off
 system.reboot      = Reboot                | detach:Reboot
 system.workbench   = Workbench screen      | slash:/screen workbench

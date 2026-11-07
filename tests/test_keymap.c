@@ -1168,6 +1168,7 @@ static void the_shipped_menu_has_learn_system_and_install_groups(void)
     check_row("learn.tutorial", KA_MENUID, "MENU_TUTORIAL");
     check_row("learn.help", KA_MENUID, "MENU_HELP_SLASH");
     check_row("learn.demo", KA_SLASH, "/demo");
+    check_row("learn.amarchydemo", KA_REXX, "address AMARCHY DEMO");
     check_row("system.reboot", KA_DETACH, "Reboot");  /* run:Reboot opened an UP-Term window (A1200 2026-10-26) */
     CHECK_INT((int)lf_plan(KA_DETACH), (int)LF_DETACH);  /* detach: NIL: in and out, no window */
     check_row("system.workbench", KA_SLASH, "/screen workbench");
@@ -1201,15 +1202,17 @@ static void the_shipped_menu_has_learn_system_and_install_groups(void)
     /* without a terminal window the menuid and slash rows hide; Learn keeps the viewer, System keeps Reboot */
     {
         mn_item it[MN_MAX_ITEMS];
-        int i, nn = mn_children_t(&km, "learn", it, MN_MAX_ITEMS, 0), keys = 0, demo = 0;
+        int i, nn = mn_children_t(&km, "learn", it, MN_MAX_ITEMS, 0), keys = 0, demo = 0, amdemo = 0;
         for (i = 0; i < nn; i++) {
             keys += !strcmp(it[i].label, "Key bindings");
             demo += !strcmp(it[i].label, "Demo tour");
+            amdemo += !strcmp(it[i].label, "Amarchy demo");
         }
+        CHECK_INT(amdemo, 1);
         CHECK_INT(keys, 1);
         CHECK_INT(demo, 0);
         nn = mn_children_t(&km, "learn", it, MN_MAX_ITEMS, 1);
-        CHECK_INT(nn, 4);
+        CHECK_INT(nn, 5);   /* keys, tutorial, help, demo tour, Amarchy demo (a rexx row: needs no terminal) */
     }
 }
 /* ---- end Omarchy groups ---- */

@@ -50,6 +50,7 @@ void suite_pkgs(void);
 void suite_job(void);
 void suite_bar(void);
 void suite_tick(void);
+void suite_demo_core(void);
 void suite_wbmode(void);
 void suite_status_core(void);
 void suite_barconf(void);
@@ -162,6 +163,7 @@ static const h_suite suites[] = {
     { "job", suite_job },
     { "bar", suite_bar },
     { "tick", suite_tick },
+    { "demo_core", suite_demo_core },
     { "wbmode", suite_wbmode },
     { "status_core", suite_status_core },
     { "barconf", suite_barconf },
