@@ -25,9 +25,23 @@ PURPOSE = "vtcon-05: DOpus 5.104 install into the rig's VTC:"
 
 
 def system_args():
-    """The system the install boots on: the same --os <name> / --os32 the dopus command was given (none: the sys.hdf
-    clone), so an --os 32 rig's tree is the one the Installer ran in."""
-    return (["--os", rig.OS] if rig.OS else []) + (["--os32"] if rig.OS32 else [])
+    """The system the install boots on: the --os <name> / --os32 the dopus command was given; none given: the one the
+    rig was last started with (rig.start_system_args, the START_ARGS record); no record either: the sys.hdf clone.
+    An --os 32 rig's tree is the one the Installer runs in (RIG-DOPUS-OS-DEFAULT: without this the command ran on a
+    sys.hdf clone and the eye-check still reported DOpus missing in the os-32 tree)."""
+    given = (["--os", rig.OS] if rig.OS else []) + (["--os32"] if rig.OS32 else [])
+    return given or rig.start_system_args()
+
+
+def target(args):
+    """(label, tree) for system_args(): tree is the host drawer the Installer writes into, None for the sys.hdf clone."""
+    if "--os" in args:
+        tree = rig.RIG / ("os-%s" % args[args.index("--os") + 1])
+    elif "--os32" in args:
+        tree = rig.RIG / "os32"
+    else:
+        return "sys.hdf clone", None
+    return "%s tree build/%s/%s" % (tree.name, paths.RIG_NAME, tree.name), tree
 
 
 def page():
@@ -96,10 +110,10 @@ def drive(timeout=900):
     sys.exit("dopus: the Installer did not finish in %d s; pages:\n  %s" % (timeout, "\n  ".join(log)))
 
 
-def block_of(data):
+def block_of(data, where="S:User-Startup"):
     m = re.search(rb';BEGIN DOpus5\n.*?;END DOpus5\n', data, re.S)
     if not m:
-        sys.exit("dopus: no ';BEGIN DOpus5' block in S:User-Startup after the install")
+        sys.exit("dopus: no ';BEGIN DOpus5' block in %s after the install" % where)
     return m.group(0)
 
 
@@ -129,6 +143,8 @@ def own_screen(vtc):
 
 
 def main():
+    label, _ = target(system_args())
+    print("[DOPUS] target: " + label)
     vtc = rig.RIG / "vtc"
     md5 = rig.dopus_archive_md5()
     if "--own-screen" in sys.argv and "--force" not in sys.argv and (vtc / rig.DOPUS_STAMP).exists() \
@@ -166,7 +182,7 @@ def main():
         ir.run('Copy RAM:dopus5-envarc VTCX:%s ALL' % rig.DOPUS_ENVARC)
         ir.run('Delete >NIL: RAM:dopus5-us RAM:dopus5-envarc ALL QUIET')
         us = vtc / "dopus5-us.tmp"
-        (vtc / rig.DOPUS_BLOCK).write_bytes(block_of(us.read_bytes()))
+        (vtc / rig.DOPUS_BLOCK).write_bytes(block_of(us.read_bytes(), "S:User-Startup of the %s" % label))
         us.unlink()
         if not (vtc / "DOpus5/DirectoryOpus").exists():
             sys.exit("dopus: the Installer left no VTCX:DOpus5/DirectoryOpus")

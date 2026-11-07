@@ -1541,6 +1541,22 @@ def setup():
     if "start" not in sys.argv:
         print("rig ready:", CFG)
 
+def start_system_args(start_file=None):
+    """The system flags (--os <name> / --os32) of the rig's last `start`, from START_ARGS (written by start()), as the
+    argument list a later start takes; [] when the record is missing or names none (the sys.hdf clone). The same rule
+    as OS / OS32 above, applied to the recorded list: a command that boots this rig again (`rig.py dopus`) uses the
+    system the rig was started with unless its own argv names one."""
+    try:
+        args = json.loads(pathlib.Path(start_file or START_ARGS).read_text())
+    except (OSError, ValueError):
+        return []
+    out = []
+    if "--os" in args[:-1]:
+        out += ["--os", args[args.index("--os") + 1]]
+    if "--os32" in args:
+        out.append("--os32")
+    return out
+
 def debugger_lines():
     """--debugger: the UAE console debugger reads the FIFO DBG_IN and writes DBG_LOG (see launch_fsuae)."""
     # use_debugger: the debugger prompt comes up at boot, before the Amiga runs; set breaks there and `g`. The
