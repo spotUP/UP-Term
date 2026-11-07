@@ -134,6 +134,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=rig_wasabi rig.py wasabi: arguments, the port per rig, the log paths, the process list parser (tools/test_rig_wasabi.py)
 # ONLY=rig_muforce rig.py muforce: the MuForce report parser and argument handling (tools/test_rig_muforce.py)
 # ONLY=rig_screenmode rig.py aga/aga256/rtg reboot with the last start's machine flags (tools/test_rig_screenmode.py)
+# ONLY=rig_dopus_os_default rig.py dopus takes the system from the start.args record when argv names none (tools/test_rig_dopus_os_default.py)
 # ONLY=rig_claude_import importing tools/rig/claude_rig.py runs nothing (tools/test_rig_claude_import.py)
 # ONLY=rig_stdin amiga-pi in a rig window script gets <NIL: (tools/test_rig_stdin.py)
 # ONLY=pkg_rows tools/pkg_rows.py emit bitchx against the committed rows, through main(argv); needs upterm-ports (the workspace's upterm-ports, UPTERM_PORTS= to move it; skips when absent) (tests/test_pkg_rows.py)
@@ -179,6 +180,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_muforce ]; then python3 -I tools/test_rig_muforce.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_amarchy_conf ]; then python3 -I tools/test_rig_amarchy_conf.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_screenmode ]; then python3 -I tools/test_rig_screenmode.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_dopus_os_default ]; then python3 -I tools/test_rig_dopus_os_default.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_wasabi ]; then python3 -I tools/test_rig_wasabi.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_fsuae_log ]; then python3 -I tools/test_rig_fsuae_log.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_iprefs_sysreq ]; then python3 tests/test_rig_iprefs_sysreq.py; fi
