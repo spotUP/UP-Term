@@ -67,3 +67,44 @@ the Makefile dist-check (it would fail on those); wire it in part 3.
 
 ## Host tests (ASan build)
 amconf 899 checks 0 failed; gthemes 8083/0; keymap 21387/0; iconapply 166/0; iconfile 170/0; iconpen 2554/0; flat_role_core 48/0; desk 2346/0.
+
+# Part 3 (B5c): the mn_item arrays, Makefile wiring, fail-before
+
+## Invariant
+No function holds a full menu (mn_item[MN_MAX_ITEMS], 8704 bytes) by value.
+
+## Re-entrancy (checked before choosing)
+- mn_levels_t callers: mn_levels (menu_tree.c), mn_osd_size_t (callback osd_level), mg_width_t in menu_geom.c (callback width_level),
+  tests/test_keymap.c (count_level). Every callback only accumulates maxima over `it`; none calls mn_levels_t or mn_children.
+- ix_drop_shadowed: one caller (index_core.c ix_build loop, per kind) and test_keymap.c; mn_children calls nothing back.
+- (a) one static scratch per function: not re-entered today, but it would be one shared 8.7 KB buffer for any second task
+  that reaches the same code (amarchy-gui serve and the commodity share the module source, not memory; Amarchy runs bar.c and
+  menu code in different Processes, cf. the am_prefs finding in Part 2). It hides a latent race and costs 8.7 KB of BSS each.
+- (b) heap per call: no sharing question, the same malloc/free index_core.c already uses; chosen. menu_tree.c gained <stdlib.h>.
+  Allocation failure: mn_levels_t visits no level; ix_drop_shadowed returns n (drops nothing: keeping every row is the safe
+  reading of "no menu to shadow them"; returning 0 would delete the Applications rows). Brief said "no rows": deviation, flagged.
+  One exit per function (single free / single return after the loop).
+
+## Fail-before (scanner on the pre-part-3 Amarchy, saved copy)
+[FAIL] Amarchy.pre3: frame 8804 at offset hunk 0+0x1b878
+[FAIL] Amarchy.pre3: frame 8708 at offset hunk 0+0x2e18c
+amarchy_frames: 2 over 4096 bytes
+
+## After (rebuilt, scanner per binary; each prints `amarchy_frames: 0 over 4096 bytes`)
+Amarchy, amarchy-gui, amarchy-index, amarchy-flat, amarchy-icons, AmTile: all 0 over 4096. amnotify: 0 over 4096 (wired too).
+amarchy-menu (curses viewer, not a vbcc program): 37 frames over 4096 (32772, 32792, ...): scanner does not suit it, NOT wired.
+flat/icons/AmTile were "up to date" (they link neither file).
+
+## Makefile
+dist-check: seven `python3 tests/test_amarchy_frames.py $(BUILD)/amiga/<prog>` lines after the AmTile stack line (Amarchy, amarchy-gui,
+amarchy-index, amarchy-flat, amarchy-icons, AmTile, amnotify). `make -n dist-check | grep -c test_amarchy_frames` = 7; the seven
+printed commands run: all 0 over 4096. (The stack lines have no ONLY= form; ONLY= names belong to `make test`.)
+
+## Host suites (ASan/UBSan build)
+keymap (links menu_tree.c, index_core.c, leaf_core.c; ix_drop_shadowed and mn_levels cases): 21387 checks, 0 failed.
+menusrv 64/0, menu_text 77/0, menudef 9/0.
+
+## Deepest-chain estimate (not a traced chain)
+Amarchy has no symbol hunk, so frames carry offsets only. The five largest frames now: 4040, 3308, 3248, 3180, 3148 = 16924 bytes;
+that is an upper bound if all five nested, not a traced chain. Live headroom needs `wasabi ps` FREE on a rig: not measured.
+Recommendation: keep 65536 (3.9x the bound, room for dos/intuition/ixemul-free vbcc library frames); the owner decides.

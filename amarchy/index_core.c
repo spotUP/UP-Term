@@ -189,10 +189,16 @@ void ix_sort_dedupe(ix_row *rows, int n)
     }
 }
 
+/* Rows whose label a menu entry under node already shows are dropped. The menu level (8.7 KB) is held on
+ * the heap, not in the frame; ix_drop_shadowed is not re-entered (mn_children calls nothing back). No
+ * memory: nothing is dropped, the rows stay as they were. */
 int ix_drop_shadowed(const keymap *k, const char *node, ix_row *rows, int n)
 {
-    mn_item it[MN_MAX_ITEMS];
-    int have = mn_children(k, node, it, MN_MAX_ITEMS), i, j, out = 0;
+    mn_item *it = (mn_item *)malloc(MN_MAX_ITEMS * sizeof *it);
+    int have, i, j, out = 0;
+    if (!it)
+        return n;
+    have = mn_children(k, node, it, MN_MAX_ITEMS);
     for (i = 0; i < n; i++) {
         int hit = 0;
         for (j = 0; j < have && !hit; j++)
@@ -200,6 +206,7 @@ int ix_drop_shadowed(const keymap *k, const char *node, ix_row *rows, int n)
         if (!hit)
             rows[out++] = rows[i];
     }
+    free(it);
     return out;
 }
 

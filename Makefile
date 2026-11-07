@@ -2080,6 +2080,13 @@ dist-check: flat-budget $(BUILD)/amiga/keymap.o $(BUILD)/amiga/Amarchy $(BUILD)/
 	python3 tests/test_nobreak.py $(CHKABORT_PROGRAMS:%=$(BUILD)/amiga/%)
 	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/AmTile
 	python3 tests/test_keymap_amiga_alloc.py $(BUILD)/amiga/keymap.o
+	python3 tests/test_amarchy_frames.py $(BUILD)/amiga/Amarchy
+	python3 tests/test_amarchy_frames.py $(BUILD)/amiga/amarchy-gui
+	python3 tests/test_amarchy_frames.py $(BUILD)/amiga/amarchy-index
+	python3 tests/test_amarchy_frames.py $(BUILD)/amiga/amarchy-flat
+	python3 tests/test_amarchy_frames.py $(BUILD)/amiga/amarchy-icons
+	python3 tests/test_amarchy_frames.py $(BUILD)/amiga/AmTile
+	python3 tests/test_amarchy_frames.py $(BUILD)/amiga/amnotify
 	python3 tests/test_dist_userdata.py
 	python3 tests/test_dist_updemo_names.py
 	python3 tests/test_rig_fixtures.py

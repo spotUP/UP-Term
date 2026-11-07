@@ -1,6 +1,7 @@
 /* menu_tree.c -- the node paths of the [menu] table: a node's entries, a child's path and the
  * OSD size. Its own file so the Amarchy commodity links only these; amarchy-menu links it
  * with menu_core.c. */
+#include <stdlib.h>
 #include <string.h>
 #include "menu_core.h"
 #include "bar_core.h"
@@ -298,14 +299,19 @@ void mn_child_node(const char *node, const mn_item *it, char *out, int n)
 }
 
 /* `node` and every group below it, each level once, through fn: each id under node names its groups
- * by its prefixes up to a dot. Not recursive, one item buffer: the commodity calls this on its own
- * small stack. A group whose segment mn_children would skip (KM_ID or longer) is not reachable and is
- * left out, as there. A level shared by two ids is visited once per id; the callers keep maxima. */
+ * by its prefixes up to a dot. Not recursive, one item buffer on the heap (a full menu is 8.7 KB and the
+ * commodity calls this on its own small stack, tests/test_amarchy_frames.py). The fn callbacks (osd_level,
+ * width_level, the test counters) only accumulate and never call back into mn_levels_t or mn_children, so
+ * the one buffer is not shared. No memory: no levels. A group whose segment mn_children would skip (KM_ID
+ * or longer) is not reachable and is left out, as there. A level shared by two ids is visited once per id;
+ * the callers keep maxima. */
 void mn_levels_t(const keymap *k, const char *node, mn_level_fn fn, void *ctx, int cond)
 {
-    mn_item it[MN_MAX_ITEMS];
+    mn_item *it = (mn_item *)malloc(MN_MAX_ITEMS * sizeof *it);
     char g[KM_ID * 2];
     int i, nl = (int)strlen(node);
+    if (!it)
+        return;
     fn(it, mn_children_t(k, node, it, MN_MAX_ITEMS, cond), ctx);
     for (i = 0; i < k->nmenu; i++) {
         const char *id = k->menu[i].id, *seg, *dot;
@@ -321,6 +327,7 @@ void mn_levels_t(const keymap *k, const char *node, mn_level_fn fn, void *ctx, i
         if (k->menu[i].kind == KA_SETTINGS)
             fn(it, mn_children_t(k, id, it, MN_MAX_ITEMS, cond), ctx);
     }
+    free(it);
 }
 
 void mn_levels(const keymap *k, const char *node, mn_level_fn fn, void *ctx)
