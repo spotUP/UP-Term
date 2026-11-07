@@ -85,8 +85,11 @@ unsigned dopus_theme_commands(const gtheme *th, char *out, unsigned cap, int pal
                                        "dopus set pens dirs 3 0\n", "dopus set pens selfiles 0 3\n",
                                        "dopus set pens seldirs 0 3\n", "dopus set pens devices 1 0\n",
                                        "dopus set pens assigns 1 0\n", "dopus set pens source 0 3\n",
-                                       "dopus set pens dest 1 2\n", "dopus set pens gauge 3 0\n",
-                                       "dopus refresh lister\n" };
+                                       "dopus set pens dest 1 2\n", "dopus set pens gauge 3 0\n" };
+    /* `set palette` and `set pens` only write the environment; an own screen loads its palette in display_open, which
+     * `refresh all` reruns (dopus5 rexx_dopus.c:948, main_reset.c:40, display.c:267). `refresh lister` only redraws
+     * (rexx_dopus.c:960): right for the Workbench screen, where a reopen would flicker every window. */
+    const char *const refresh = palette ? "dopus refresh all\n" : "dopus refresh lister\n";
     static const char head[] = "dopus set palette";
     static const char hex[] = "0123456789abcdef";
     unsigned n = 0, i, k, need = 1;
@@ -106,6 +109,7 @@ unsigned dopus_theme_commands(const gtheme *th, char *out, unsigned cap, int pal
             return 0;
     for (i = 0; i < sizeof pens / sizeof pens[0]; i++)
         need += (unsigned)strlen(pens[i]);
+    need += (unsigned)strlen(refresh);
     if (palette)
         need += sizeof head - 1 + DOPUS_THEME_COLOURS * 9 + 1;
     if (cap < need)
@@ -126,6 +130,8 @@ unsigned dopus_theme_commands(const gtheme *th, char *out, unsigned cap, int pal
     for (i = 0; i < sizeof pens / sizeof pens[0]; i++)
         for (k = 0; pens[i][k]; k++)
             out[n++] = pens[i][k];
+    for (k = 0; refresh[k]; k++)
+        out[n++] = refresh[k];
     out[n] = 0;
     return n;
 }

@@ -3931,20 +3931,23 @@ static void dopus_theme_commands_use_the_theme_directly(void)
                        "dopus set pens assigns 1 0\n"
                        "dopus set pens source 0 3\n"
                        "dopus set pens dest 1 2\n"
-                       "dopus set pens gauge 3 0\n"
-                       "dopus refresh lister\n";
+                       "dopus set pens gauge 3 0\n";
+    /* B8b: an own screen reopens the display (rexx_dopus.c:948 CONFIG_CHANGE_DISPLAY -> display_open loads the palette,
+     * display.c:267); the Workbench screen only redraws the listers (:960) */
+    const char *own_end = "dopus refresh all\n", *wb_end = "dopus refresh lister\n";
     char want[512];
 
     /* D14: the Directory Opus listers take the theme's own surface/text/muted/accent roles, not the menu roles */
     gt_builtin(&th);
-    snprintf(want, sizeof want, "dopus set palette 0x1a1b26 0xa9b1d6 0x414868 0x7aa2f7\n%s", pens);
+    snprintf(want, sizeof want, "dopus set palette 0x1a1b26 0xa9b1d6 0x414868 0x7aa2f7\n%s%s", pens, own_end);
     n = dopus_theme_commands(&th, buf, sizeof buf, 1);
     CHECK_INT((long)n, (long)strlen(want));
     CHECK_STR(buf, want);
     /* without the palette (Opus on the Workbench screen): the pens only, one key per line */
     n = dopus_theme_commands(&th, buf, sizeof buf, 0);
-    CHECK_INT((long)n, (long)strlen(pens));
-    CHECK_STR(buf, pens);
+    snprintf(want, sizeof want, "%s%s", pens, wb_end);
+    CHECK_INT((long)n, (long)strlen(want));
+    CHECK_STR(buf, want);
 
     /* a colour above 24 bits (0x01RRGGBB leaked in), a missing theme, too small a buffer: 0 and an empty string */
     th.muted = 0x01000000UL;
@@ -4004,6 +4007,7 @@ static void dopus_theme_send_goes_to_the_dopus_port(void)
     CHECK_STR(r.line[5], "dopus set pens selfiles 0 3");
     CHECK_STR(r.line[6], "dopus set pens seldirs 0 3");
     CHECK_STR(r.line[7], "dopus set pens devices 1 0");
+    CHECK_STR(r.line[12], "dopus refresh all");
 
     /* Opus on the Workbench screen: no palette line (set palette only recolours Opus's own screen) */
     memset(&r, 0, sizeof r);
