@@ -21,7 +21,13 @@ import rig
 ARCHIVE = paths.VENDOR / "dopus5-5.104" / rig.DOPUS_ARCHIVE   # vendor/ is gitignored: a worktree reads the main checkout's
 TREE = "dopus_install"
 SCRIPT = "dopus_run.script"
-PURPOSE = "vtcon-05: DOpus 5.104 install into the rig's VTC:"
+PURPOSE = "vtcon-05: DOpus 5.104 install into the rig's VTC:"   # fallback only: see purpose()
+
+
+def purpose():
+    """The install rig's window-title purpose: the caller's `rig.py dopus --purpose "<who: what>"` (rig.PURPOSE), else
+    PURPOSE. A constant alone named an old session on every install window (RIG-DOPUS-PURPOSE, rig 96 2026-11-07)."""
+    return rig.PURPOSE or PURPOSE
 
 
 def system_args():
@@ -180,7 +186,7 @@ def main():
     subprocess.run(["lha", "xq", str(ARCHIVE)], cwd=vtc / TREE, check=True)
     (vtc / SCRIPT).write_text('CD VTCX:%s\nInstaller "Install DOpus5" NOLOG\n' % TREE)
     try:
-        subprocess.run([sys.executable, str(pathlib.Path(rig.__file__)), "start", "--max", "--no-dopus", "--purpose", PURPOSE] + system_args(), check=True)
+        subprocess.run([sys.executable, str(pathlib.Path(rig.__file__)), "start", "--max", "--no-dopus", "--purpose", purpose()] + system_args(), check=True)
         if ir.run('Assign >NIL: DOpus5: EXISTS')[0] == 0:
             sys.exit("dopus: DOpus5: is assigned on the boot; the Installer would offer an upgrade of it")
         ir.run('Run >NIL: Execute VTCX:%s' % SCRIPT)
