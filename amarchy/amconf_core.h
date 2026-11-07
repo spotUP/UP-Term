@@ -121,6 +121,9 @@ typedef struct amconf_io {
     /* every file name in drawer dir, each handed to add(ud, name); 1 when the drawer was read. 0 (unset)
      * where nothing lists drawers: the theme list is then empty. */
     int (*list)(const char *dir, void (*add)(void *ud, const char *file), void *ud);
+    /* the memory of a borrowed am_prefs (amconf_borrow_with): the DOS side fills AllocVec / FreeVec; left 0, malloc / free */
+    void *(*alloc)(unsigned long n);
+    void (*release)(void *p);
 } amconf_io;
 
 /* where the values came from */
@@ -136,6 +139,15 @@ int amconf_save_with(const amconf_io *io, const am_prefs *p, int keep, int *fail
  * file (the save of that file drops them, so they must already be in their store). On success *cur and *src
  * are what the files now hold. A prefs_save_at result. Call it BEFORE saving the UP-Term file. */
 int amconf_save_fields_with(const amconf_io *io, am_prefs *cur, int *src, const prefs_fields *f, int keep, int *failed);
+
+/* An am_prefs is 4640 bytes; a function holding one by value keeps a 4.6 KB frame while it runs and the frames add up
+ * along a call chain (a restart overran a 16 KB stack, rig 177). Invariant: no function holds a settings struct by
+ * value. A caller borrows a loaded copy from the heap and gives it back on every path out (one exit, or return before
+ * the work that follows): p = amconf_borrow_with(io); ... amconf_return_with(io, p);
+ * Never NULL: when no memory is left the defaults come back in a shared static (read it, do not rely on a write
+ * surviving). A borrow is private to its caller. amconf_return_with(io, 0) is a no-op. */
+am_prefs *amconf_borrow_with(const amconf_io *io);
+void amconf_return_with(const amconf_io *io, am_prefs *p);
 
 enum { AMCONF_MIG_NONE, AMCONF_MIG_DONE, AMCONF_MIG_FAILED };
 /* Startup migration: the ENVARC: file absent: the legacy keys (or defaults) written to it and to ENV:, the

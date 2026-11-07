@@ -1,6 +1,7 @@
 /* gthemes_core (see gthemes_core.h). */
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "gthemes_core.h"
 #include "../prefs/settings_def.h"
 #include "../prefs/prefs_core.h"
@@ -136,9 +137,15 @@ void gt_roles_of(const gtheme *t, gt_roles *r)
     if (t->model) {
         gt_roles_from_model(t->model, r);
     } else {
-        gt_model m;
-        gt_model_from_v1(t, &m);
-        gt_roles_from_model(&m, r);
+        /* the model is ~4.6 KB: heap, not this frame (B5, frames stay under 4096). Out of memory: all-black roles, never a crash. */
+        gt_model *m = (gt_model *)malloc(sizeof *m);
+        if (!m) {
+            memset(r, 0, sizeof *r);
+            return;
+        }
+        gt_model_from_v1(t, m);
+        gt_roles_from_model(m, r);
+        free(m);
     }
 }
 
@@ -3276,6 +3283,10 @@ const gt_screen_rules *gt_se_rules(void)
     return &gt_se.r;
 }
 
+/* The Screens page rows live in one scratch table, not in each caller's frame (24 rows are 4.6 KB; six callers each held a copy). gt_se
+ * is already the page's single static state; se_rows rebuilds the table from it, so a nested call refills the same bytes. */
+static gt_screen_row se_scratch[GT_SE_ROWS];
+
 static int se_rows(gt_screen_row *rows)
 {
     const char *op[GT_SE_ROWS];
@@ -3323,7 +3334,7 @@ int gt_se_add_rule(const char *pat)
 
 static int se_visible(const sd_setting *s)
 {
-    gt_screen_row rows[GT_SE_ROWS];
+    gt_screen_row *rows = se_scratch;
     se_ensure();
     switch (s->aux) {
     case GTSE_TICK: case GTSE_THEME: case GTSE_TAKE:
@@ -3372,7 +3383,7 @@ static const char *se_pat_theme_text(const gt_screen_rule *u)
 
 static int se_text(const sd_setting *s, char *out, int n)
 {
-    gt_screen_row rows[GT_SE_ROWS];
+    gt_screen_row *rows = se_scratch;
     int nr = se_rows(rows), i = s->aux2, q;
     switch (s->aux) {
     case GTSE_TICK:
@@ -3405,7 +3416,7 @@ static int se_text(const sd_setting *s, char *out, int n)
 
 static int se_label(const sd_setting *s, char *out, int n)
 {
-    gt_screen_row rows[GT_SE_ROWS];
+    gt_screen_row *rows = se_scratch;
     char v[GT_SCR_PAT + 8];
     int nr = se_rows(rows), i = s->aux2;
     se_text(s, v, (int)sizeof v);
@@ -3440,7 +3451,7 @@ static int se_label(const sd_setting *s, char *out, int n)
 
 static int se_set_theme(const sd_setting *s, const char *text)
 {
-    gt_screen_row rows[GT_SE_ROWS];
+    gt_screen_row *rows = se_scratch;
     int nr = se_rows(rows), i = s->aux2, k = se_theme_find(text, s->aux == GTSE_PTHEME), cnt;
     const char *name;
     if (k < 0)
@@ -3453,7 +3464,7 @@ static int se_set_theme(const sd_setting *s, const char *text)
 
 static int se_set_index(const sd_setting *s, int index)
 {
-    gt_screen_row rows[GT_SE_ROWS];
+    gt_screen_row *rows = se_scratch;
     int nr = se_rows(rows), i = s->aux2;
     if (s->kind != SD_CYCLE || index < 0 || index >= s->nvalues)
         return GTR_BAD;
@@ -3468,7 +3479,7 @@ static int se_set_index(const sd_setting *s, int index)
 
 static int se_step(const sd_setting *s)
 {
-    gt_screen_row rows[GT_SE_ROWS];
+    gt_screen_row *rows = se_scratch;
     char cur[GT_SCR_PAT + 8];
     int nr = se_rows(rows), i = s->aux2, k, cnt, pat = s->aux == GTSE_PTHEME;
     if (s->kind == SD_CYCLE) {

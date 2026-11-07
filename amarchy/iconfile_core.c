@@ -205,7 +205,10 @@ static void put32(wr *w, uint32_t v)
     put(w, b, 4);
 }
 
-typedef struct ent { const li_file *f; int i; } ent;
+/* A tooltype entry of the output list: index into src, or (LI_FROM_INS | index) into e->ins_src. 2 bytes, not a pointer plus an int:
+ * the list is 2 * LI_MAXTT entries and sat in li_splice's frame (B5, frames stay under 4096). */
+#define LI_FROM_INS 0x8000u
+typedef uint16_t ent;
 
 size_t li_splice(const li_file *src, const li_edit *e, uint8_t *out, size_t cap)
 {
@@ -218,7 +221,7 @@ size_t li_splice(const li_file *src, const li_edit *e, uint8_t *out, size_t cap)
 
     w.out = out; w.cap = cap; w.pos = 0; w.over = 0;
     for (i = 0; i < src->ntt; i++)
-        if (!(e->strip_newicon && is_newicon(src, i))) { list[n].f = src; list[n].i = i; n++; }
+        if (!(e->strip_newicon && is_newicon(src, i))) { list[n++] = (ent)i; }
     if (e->ins_src) {
         /* each NewIcon line goes back to the index it had in ins_src (ascending, so earlier insertions
          * already shifted the list the way the original had it) */
@@ -227,8 +230,7 @@ size_t li_splice(const li_file *src, const li_edit *e, uint8_t *out, size_t cap)
                 if (n + 1 > 2 * LI_MAXTT) return 0;
                 ins = i > n ? n : i;
                 for (k = n - 1; k >= ins; k--) list[k + 1] = list[k];
-                list[ins].f = e->ins_src;
-                list[ins].i = i;
+                list[ins] = (ent)(LI_FROM_INS | (unsigned)i);
                 n++;
             }
     }
@@ -263,8 +265,9 @@ size_t li_splice(const li_file *src, const li_edit *e, uint8_t *out, size_t cap)
     if (n > 0 || src->ntt == 0) {
         put32(&w, (uint32_t)(n + 1) * 4);
         for (k = 0; k < n; k++) {
-            const li_tt *t = &list[k].f->tt[list[k].i];
-            put(&w, list[k].f->buf + t->off, 4 + t->len);
+            const li_file *lf = (list[k] & LI_FROM_INS) ? e->ins_src : src;
+            const li_tt *t = &lf->tt[list[k] & ~LI_FROM_INS];
+            put(&w, lf->buf + t->off, 4 + t->len);
         }
     }
     tail_start = src->form_len ? src->form_off : src->len;

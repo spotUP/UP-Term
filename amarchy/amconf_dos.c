@@ -44,11 +44,31 @@ static int dos_list(const char *dir, void (*add)(void *ud, const char *file), vo
     return ok;
 }
 
-static const amconf_io dos_io = { &prefs_dos_fs, dos_read, dos_dir, dos_list };
+static void *dos_alloc(unsigned long n)
+{
+    return AllocVec(n, MEMF_ANY);
+}
+
+static void dos_release(void *p)
+{
+    FreeVec(p);
+}
+
+static const amconf_io dos_io = { &prefs_dos_fs, dos_read, dos_dir, dos_list, dos_alloc, dos_release };
 
 const amconf_io *amconf_dos_io(void)
 {
     return &dos_io;
+}
+
+am_prefs *amconf_borrow(void)
+{
+    return amconf_borrow_with(&dos_io);
+}
+
+void amconf_return(am_prefs *p)
+{
+    amconf_return_with(&dos_io, p);
 }
 
 int amconf_load(am_prefs *out)

@@ -369,10 +369,12 @@ int lf_setting_set(const amconf_io *io, const sd_setting *s, int index, int *fai
     if (index < 0 || index >= s->nvalues)
         return LF_SET_KIND;
     if (s->store == SD_AMARCHY) {
-        am_prefs a;
-        amconf_load_with(io, &a);
-        sd_set_index(s, &a, index);
-        return amconf_save_with(io, &a, 1, failed);
+        am_prefs *a = amconf_borrow_with(io);
+        int r;
+        sd_set_index(s, a, index);
+        r = amconf_save_with(io, a, 1, failed);
+        amconf_return_with(io, a);
+        return r;
     }
     return lf_set_upterm(io, s, index, 0, 0, 0, failed);
 }
@@ -389,10 +391,12 @@ int lf_setting_set_text(const amconf_io *io, const sd_setting *s, const char *te
     if (sd_text_check(s, text))
         return LF_SET_INVALID;
     if (s->store == SD_AMARCHY) {
-        am_prefs a;
-        amconf_load_with(io, &a);
-        strcpy(sd_string(s, &a, 0), text);
-        return amconf_save_with(io, &a, 1, failed);
+        am_prefs *a = amconf_borrow_with(io);
+        int r;
+        strcpy(sd_string(s, a, 0), text);
+        r = amconf_save_with(io, a, 1, failed);
+        amconf_return_with(io, a);
+        return r;
     }
     return lf_set_upterm(io, s, -1, text, 0, 0, failed);
 }
@@ -497,10 +501,10 @@ static void lf_current_str(const amconf_io *io, const sd_setting *s, char *out, 
     if (out2)
         out2[0] = 0;
     if (s->store == SD_AMARCHY) {
-        am_prefs a;
-        amconf_load_with(io, &a);
-        t = sd_string(s, &a, 0);
+        am_prefs *a = amconf_borrow_with(io);
+        t = sd_string(s, a, 0);
         snprintf(out, (size_t)n, "%s", t ? t : "");
+        amconf_return_with(io, a);
     } else {
         prefs_fields f;
         lf_load_upterm(io);
@@ -529,10 +533,12 @@ int lf_setting_pick(const amconf_io *io, const sd_setting *s, const lf_asl *asl,
         if (!prefs_font_compose(name, size, spec, sizeof spec))
             return LF_SET_INVALID;      /* a colon in the name: not usable */
         if (s->store == SD_AMARCHY) {
-            am_prefs a;
-            amconf_load_with(io, &a);
-            strcpy(sd_string(s, &a, 0), spec);
-            return amconf_save_with(io, &a, 1, failed);
+            am_prefs *a = amconf_borrow_with(io);
+            int r;
+            strcpy(sd_string(s, a, 0), spec);
+            r = amconf_save_with(io, a, 1, failed);
+            amconf_return_with(io, a);
+            return r;
         }
         return lf_set_upterm(io, s, -1, spec, 0, 0, failed);
     }
@@ -564,9 +570,10 @@ int lf_setting_pick(const amconf_io *io, const sd_setting *s, const lf_asl *asl,
 static int lf_current(const amconf_io *io, const sd_setting *s)
 {
     if (s->store == SD_AMARCHY) {
-        am_prefs a;
-        amconf_load_with(io, &a);
-        return sd_index(s, &a);
+        am_prefs *a = amconf_borrow_with(io);
+        int idx = sd_index(s, a);
+        amconf_return_with(io, a);
+        return idx;
     } else {
         prefs_fields f;
         lf_load_upterm(io);
@@ -596,11 +603,12 @@ int lf_setting_text(const amconf_io *io, const sd_setting *s, char *out, int n)
     if (s->kind != SD_INT && s->kind != SD_STRING)
         return 0;
     if (s->store == SD_AMARCHY) {
-        am_prefs a;
-        amconf_load_with(io, &a);
-        t = sd_string(s, &a, 0);
+        am_prefs *a = amconf_borrow_with(io);
+        t = sd_string(s, a, 0);
         if (t)
             snprintf(out, (size_t)n, "%s", t);
+        amconf_return_with(io, a);
+        t = t ? out : 0;                /* t pointed into the returned copy: only whether there was one is used below */
     } else {
         prefs_fields f;
         lf_load_upterm(io);
@@ -627,8 +635,8 @@ int lf_setting_step(const amconf_io *io, const sd_setting *s, int *failed)
 void lf_setting_labels(const amconf_io *io, mn_item *it, int n)
 {
     prefs_fields f;
-    am_prefs a;
-    int i, have_u = 0, have_a = 0;
+    am_prefs *a = 0;                    /* borrowed on the first settings row, returned after the loop */
+    int i, have_u = 0;
     for (i = 0; i < n; i++) {
         const sd_setting *s;
         const void *store;
@@ -653,9 +661,9 @@ void lf_setting_labels(const amconf_io *io, mn_item *it, int n)
             continue;
         }
         if (s->store == SD_AMARCHY) {
-            if (!have_a++)
-                amconf_load_with(io, &a);
-            store = &a;
+            if (!a)
+                a = amconf_borrow_with(io);
+            store = a;
         } else {
             if (!have_u++) {
                 lf_load_upterm(io);
@@ -685,6 +693,7 @@ void lf_setting_labels(const amconf_io *io, mn_item *it, int n)
             strcat(it[i].label, txt);
         }
     }
+    amconf_return_with(io, a);
 }
 
 /* ---- M7: profiles and themes ---- */

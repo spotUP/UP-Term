@@ -416,9 +416,9 @@ static void dk_orig_save(unsigned mask, int wbprefs);
 static int dk_apply(const gtheme *th, char *why, int cap)
 {
     static unsigned char buf[DK_BUF], prev[DK_BUF], big[8192];
-    am_prefs ap;
-    unsigned mask;
-    int depth, plan, ok = 1, old_ws = 0, flat_pens;
+    am_prefs *ap;
+    unsigned mask, dmask;
+    int depth, plan, ok = 1, old_ws = 0, flat_pens, icon_text;
     long len, plen;
     struct Screen *wb_before = 0;
     unsigned long idle = 0;
@@ -427,15 +427,18 @@ static int dk_apply(const gtheme *th, char *why, int cap)
     static unsigned char ic_cur[DK_BUF];
     static unsigned char ic_snap_buf[DK_IC_BUF];
     long ic_len, ic_snap_len;
-    amconf_load(&ap);
-    flat_pens = amconf_desk_flat_pens(&ap);
+    ap = amconf_borrow();
+    flat_pens = amconf_desk_flat_pens(ap);
+    dmask = amconf_desk_mask(ap);
+    icon_text = amconf_icon_text(ap);
+    amconf_return(ap);                  /* the three values are all dk_apply reads: no exit below holds the borrow */
     /* FLAT-P1-2: the border size acts on its own (thin once, stock restores the snapshot), whatever else the switches enable */
     ic_len = dk_read("ENV:Sys/icontrol.prefs", ic_cur, sizeof ic_cur);
     if (ic_len < 0)
         ic_len = dk_read("ENVARC:Sys/icontrol.prefs", ic_cur, sizeof ic_cur);
     ic_snap_len = dk_read_icontrol_snapshot(ic_snap_buf, sizeof ic_snap_buf);
-    ic_act = desk_icontrol_decide((amconf_desk_mask(&ap) >> DT_ICONTROL) & 1, gt_look_bar_height(th), ic_cur, ic_len, ic_snap_buf, ic_snap_len, &ic_snap);
-    plan = desk_plan(amconf_desk_mask(&ap) & ~(1u << DT_ICONTROL), th, why, cap);
+    ic_act = desk_icontrol_decide((dmask >> DT_ICONTROL) & 1, gt_look_bar_height(th), ic_cur, ic_len, ic_snap_buf, ic_snap_len, &ic_snap);
+    plan = desk_plan(dmask & ~(1u << DT_ICONTROL), th, why, cap);
     if (plan < 0 || (plan == 0 && ic_act == DK_IC_NONE))
         return plan;
     mask = (unsigned)plan | (ic_act != DK_IC_NONE ? 1u << DT_ICONTROL : 0u);
@@ -499,7 +502,7 @@ static int dk_apply(const gtheme *th, char *why, int cap)
             len = dk_read("ENVARC:Sys/font.prefs", buf, sizeof buf);
         if (len <= 0)
             len = desk_font_default(buf, sizeof buf);
-        if (len > 0 && desk_font_pens(buf, len, amconf_icon_text(&ap)) >= 0 && desk_font_name(th, buf, len, dk_font_exists, 0) >= 0) {
+        if (len > 0 && desk_font_pens(buf, len, icon_text) >= 0 && desk_font_name(th, buf, len, dk_font_exists, 0) >= 0) {
             ok &= dk_put("Font", DK_WORK "/font.prefs", buf, len);
             if (reset || old_ws)
                 dk_wait_iprefs(idle); /* the Font editor resets the Workbench screen too (3.1: twice): the windows return after it */
@@ -545,14 +548,14 @@ static void dk_icons_sync(int on, int outline)
  * or the commodity's own save after a desk apply redraws nothing. */
 static void dk_flat_sync_theme(const gtheme *thp, int changed_only)
 {
-    am_prefs ap;
+    am_prefs *ap;
     flatshared *r;
     const gtheme *th = thp;
     int flat, gad, wrote = 0;
-    amconf_load(&ap);
-    flat = amconf_flat_index(&ap, AM_FLAT);
-    gad = amconf_flat_index(&ap, AM_FLATGAD);
-    dk_icons_sync(flat || gad, amconf_icon_outline(&ap));
+    ap = amconf_borrow();
+    flat = amconf_flat_index(ap, AM_FLAT);
+    gad = amconf_flat_index(ap, AM_FLATGAD);
+    dk_icons_sync(flat || gad, amconf_icon_outline(ap));
     Forbid();
     r = (flatshared *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
     if (r && flat_check(&r->st, sizeof r->st) == FLAT_OK) {
@@ -576,6 +579,7 @@ static void dk_flat_sync_theme(const gtheme *thp, int changed_only)
     } else if (!r && (flat || gad)) {
         pl_start(PL_BIN_DIR "/amarchy-flat BOOT", PL_BIN_DIR "/amarchy-flat", 32768, "amarchy-flat");   /* its $STACK cookie (rule 6) */
     }
+    amconf_return(ap);
 }
 
 static void dk_flat_sync_with(int changed_only)
@@ -734,17 +738,18 @@ static int dk_palette_file_stale(int flat, const unsigned char pens[DK_SLOTS])
 static int dk_flat_pens(const gtheme *th)
 {
     static unsigned char buf[DK_BUF], out[DK_BUF], prev[DK_BUF];
-    am_prefs ap;
+    am_prefs *ap;
     unsigned char pens[DK_SLOTS];
     unsigned short live[DK_SLOTS];
     struct Screen *before;
     int nlive = 0, flat, own, theme, restore, sync, depth;
     unsigned long idle = 0;
     long len, wlen, plen;
-    amconf_load(&ap);
-    flat = amconf_desk_flat_pens(&ap);
-    own = flat && !((amconf_desk_mask(&ap) >> DT_WBPATTERN) & 1);
-    theme = flat && !((amconf_desk_mask(&ap) >> DT_PALETTE) & 1);
+    ap = amconf_borrow();
+    flat = amconf_desk_flat_pens(ap);
+    own = flat && !((amconf_desk_mask(ap) >> DT_WBPATTERN) & 1);
+    theme = flat && !((amconf_desk_mask(ap) >> DT_PALETTE) & 1);
+    amconf_return(ap);                  /* flat, own and theme are all it reads */
     restore = !flat && dk_exists(DK_FLAT_TAKEN);
     before = dk_wb_screen(live, &nlive);
     if (!before || !dk_palette_editor_ok())
@@ -913,12 +918,13 @@ static int dk_wb_restore(void)
 static void dk_wbborder(void)
 {
     static unsigned char cur[DK_BUF], mid[DK_BUF], out[DK_BUF];
-    am_prefs ap;
+    am_prefs *ap;
     unsigned char sv[2];
     int flat, saved = -1, keep, gsaved = -1, gkeep;
     long len, n, g;
-    amconf_load(&ap);
-    flat = amconf_desk_flat_pens(&ap);
+    ap = amconf_borrow();
+    flat = amconf_desk_flat_pens(ap);
+    amconf_return(ap);                  /* flat is all it reads */
     if (!dk_wbborder_editor_ok())
         return;
     if (dk_read(DK_WBB_PREV, sv, 2) == 1)
@@ -1134,12 +1140,13 @@ static void dk_orig_drop_reverted(unsigned mask, int wbprefs)
  * path (dk_flat_pens: dk_wait_reset, the bar close/reopen around a Workbench reset) is the one a theme pick uses. */
 int desk_dos_flat_pens_refresh(void)
 {
-    am_prefs ap;
+    am_prefs *ap;
     unsigned char pens[DK_SLOTS];
     gtheme th;
     int flat, done;
-    amconf_load(&ap);
-    flat = amconf_desk_flat_pens(&ap);
+    ap = amconf_borrow();
+    flat = amconf_desk_flat_pens(ap);
+    amconf_return(ap);                  /* flat is all it reads */
     if (!flat || !dk_palette_editor_ok())
         return 0;
     desk_pens_for(flat, pens);
@@ -1163,9 +1170,10 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
     if (r >= 0) {
         /* after dk_flat_pens: its flat-off palette restore writes palette.prefs from the live screen when the original is gone, and the
          * originals must have the last word on the ENV: files (FP-2) */
-        am_prefs ap;
-        amconf_load(&ap);
-        dk_orig_off(amconf_desk_mask(&ap), amconf_desk_flat_pens(&ap));
+        am_prefs *ap;
+        ap = amconf_borrow();
+        dk_orig_off(amconf_desk_mask(ap), amconf_desk_flat_pens(ap));
+        amconf_return(ap);
     }
     dk_wbborder();
     if (r <= 0 && !dk_pending_mask())
@@ -1334,12 +1342,16 @@ static void dk_restore_targets(unsigned mask, const char *dir)
         { DT_FONT, "Font", "ENV:Sys/font.prefs" }, { DT_POINTER, "Pointer", "ENV:Sys/pointer.prefs" },
         { DT_WBPATTERN, "WBPattern", "ENV:Sys/wbpattern.prefs" }, { DT_PALETTE, "Palette", "ENV:Sys/palette.prefs" } };
     static unsigned char buf[8192];
-    am_prefs ap;
+    am_prefs *ap;
     unsigned long idle = 0;
     struct Screen *before = 0;
-    int i, was = 0, pal = (mask >> DT_PALETTE) & 1;
+    int i, was = 0, pal = (mask >> DT_PALETTE) & 1, flat_pens;
+    unsigned dmask;
     char name[96];
-    amconf_load(&ap);
+    ap = amconf_borrow();
+    flat_pens = amconf_desk_flat_pens(ap);
+    dmask = amconf_desk_mask(ap);
+    amconf_return(ap);                  /* both values read once: the restore below is long DOS work */
     if (mask & ((1u << DT_FONT) | (1u << DT_POINTER) | (1u << DT_ICONTROL)))
         idle = dk_iprefs_idle_mask();
     if (pal) {
@@ -1359,7 +1371,7 @@ static void dk_restore_targets(unsigned mask, const char *dir)
         else
             dk_editor(ed[i].editor, name);
         if (ed[i].t == DT_PALETTE)
-            dk_wait_reset(before, amconf_desk_flat_pens(&ap), dk_screen_depth());
+            dk_wait_reset(before, flat_pens, dk_screen_depth());
         else if (ed[i].t == DT_FONT || ed[i].t == DT_POINTER)
             dk_wait_iprefs(idle);   /* DESK-PTR-REVERT: IPrefs reads the editor's ENV: write on its notify; a fix copy opened meanwhile fails (object in use) */
         dk_env_fix_file(dir, ed[i].file);
@@ -1372,8 +1384,8 @@ static void dk_restore_targets(unsigned mask, const char *dir)
         int rp[4], use = -1;
         uc_u32 rc[4];
         if (dk_rv_theme)   /* a Revert: pens 4-7 come from the previous theme (desk_revert_role_pens), the baseline only when it says so */
-            use = desk_revert_role_pens(dk_rv_theme, amconf_desk_flat_pens(&ap), (amconf_desk_mask(&ap) >> DT_PALETTE) & 1, dk_screen_depth(), rp, rc);
-        dk_live_pens(use >= 0 ? dk_rv_theme : 0, use >= 0 ? amconf_desk_flat_pens(&ap) : 0);
+            use = desk_revert_role_pens(dk_rv_theme, flat_pens, (dmask >> DT_PALETTE) & 1, dk_screen_depth(), rp, rc);
+        dk_live_pens(use >= 0 ? dk_rv_theme : 0, use >= 0 ? flat_pens : 0);
         dk_windows_open(was);
     }
 }
@@ -1396,15 +1408,16 @@ void desk_dos_revert(void)
     DeleteFile((STRPTR)DK_PENDING);
     wb = dk_wb_restore();
     if (dk_revert_theme_name(name, sizeof name)) {   /* the prefs theme line goes back first: the pens below follow the previous theme */
-        am_prefs ap;
+        am_prefs *ap;
         int failed = 0;
-        amconf_load(&ap);
-        if (strcmp(ap.val[AM_GTHEME], name)) {
-            strcpy(ap.val[AM_GTHEME], name);
-            amconf_save(&ap, 1, &failed);     /* the writer the pick uses: ENV: and ENVARC: */
+        ap = amconf_borrow();
+        if (strcmp(ap->val[AM_GTHEME], name)) {
+            strcpy(ap->val[AM_GTHEME], name);
+            amconf_save(ap, 1, &failed);     /* the writer the pick uses: ENV: and ENVARC: */
         }
         gt_dos_load(name, &prev);
         dk_rv_theme = &prev;
+        amconf_return(ap);
     }
     if (mask)
         dk_restore_targets(mask, DK_REVERT);
@@ -1549,11 +1562,13 @@ unsigned long desk_dos_wb_backdrop_invokes;
 
 int desk_dos_wb_backdrop(void)
 {
-    am_prefs ap;
+    am_prefs *ap;
     unsigned long fl = 0;
-    int i, state = DESK_ROOT_NONE, port;
-    amconf_load(&ap);
-    if (!amconf_desk_master(&ap))
+    int i, state = DESK_ROOT_NONE, port, master;
+    ap = amconf_borrow();
+    master = amconf_desk_master(ap);
+    amconf_return(ap);
+    if (!master)
         return 0;
     port = rexx_port_exists("WORKBENCH");
     for (i = 0; port && i < 10 && desk_wb_root_wait(state = dk_wb_root_flags(&fl)); i++)
@@ -1569,19 +1584,21 @@ int desk_dos_wb_backdrop(void)
 int desk_dos_start_apply(void)
 {
     static unsigned char wb[DK_BUF], pat[DK_BUF], out[DK_BUF], pal[DK_BUF], pcur[8192], pnew[8192], fcur[DK_BUF], fnew[DK_BUF];
-    am_prefs ap;
+    am_prefs *ap;
     gtheme th;
     unsigned mask, plan;
     unsigned char sv[2], pens[DK_SLOTS];
     unsigned short live[DK_SLOTS];
-    int flat, depth, saved = -1, gsaved = -1, was, nlive = 0;
+    int flat, depth, saved = -1, gsaved = -1, was, nlive = 0, icon_text;
     unsigned long idle = 0;
     long wblen, patlen, len, pallen, curlen, ptrlen = 0, fontlen = 0, flen;
     int ic_act = DK_IC_NONE, ic_snap = 0;
     dk_palette_31_start(); /* S56-PALETTE-31-SAFE: whatever the switches, a 3.2 palette.prefs on 3.1 is made safe first */
-    amconf_load(&ap);
-    mask = amconf_desk_mask(&ap);
-    flat = amconf_desk_flat_pens(&ap);
+    ap = amconf_borrow();
+    mask = amconf_desk_mask(ap);
+    flat = amconf_desk_flat_pens(ap);
+    icon_text = amconf_icon_text(ap);
+    amconf_return(ap);                  /* mask, flat and icon_text are all it reads */
     if (!mask && !flat)
         return 0;
     gt_dos_load_current(&th);
@@ -1620,7 +1637,7 @@ int desk_dos_start_apply(void)
         flen = dk_read("ENV:Sys/font.prefs", fcur, sizeof fcur);
         if (flen < 0)
             flen = dk_read("ENVARC:Sys/font.prefs", fcur, sizeof fcur);
-        fontlen = desk_start_prefs(DT_FONT, mask, &th, amconf_icon_text(&ap), dk_font_exists, 0, flen > 0 ? fcur : 0, flen, fnew, sizeof fnew);
+        fontlen = desk_start_prefs(DT_FONT, mask, &th, icon_text, dk_font_exists, 0, flen > 0 ? fcur : 0, flen, fnew, sizeof fnew);
         if (fontlen > 0)
             plan |= DESK_START_FONT;
     }

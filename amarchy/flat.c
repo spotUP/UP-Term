@@ -1754,9 +1754,12 @@ static int is_boot(const char *a)
 /* BOOT: is any flat feature switched on in the Amarchy prefs? */
 static int boot_wanted(void)
 {
-    am_prefs p;
-    amconf_load(&p);
-    return amconf_flat_index(&p, AM_FLAT) || amconf_flat_index(&p, AM_FLATGAD);
+    am_prefs *p;
+    int on;
+    p = amconf_borrow();
+    on = amconf_flat_index(p, AM_FLAT) || amconf_flat_index(p, AM_FLATGAD);
+    amconf_return(p);
+    return on;
 }
 
 /* FLAT-BUTTON-DISABLED-DIM: the dim fill pen. The colour of the button fill pen on the Workbench screen scaled to DIM_PCT percent,
@@ -1959,9 +1962,10 @@ int main(void)
         r->ss.ss_Link.ln_Name = r->name;
         flat_init(&r->st);
         {   /* FLAT-C9: the switch and pens from the prefs (the one mapping desk apply uses too) */
-            am_prefs bp;
-            amconf_load(&bp);
-            desk_flat_state(amconf_flat_index(&bp, AM_FLAT), amconf_flat_index(&bp, AM_FLATGAD), &r->st);
+            am_prefs *bp;
+            bp = amconf_borrow();
+            desk_flat_state(amconf_flat_index(bp, AM_FLAT), amconf_flat_index(bp, AM_FLATGAD), &r->st);
+            amconf_return(bp);
         }
         r->task = me;
         if (me->tc_Node.ln_Name) {

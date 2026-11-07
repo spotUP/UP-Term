@@ -61,10 +61,11 @@ static int sink_patch32(void *ud, long off, unsigned long v)
 const char *shot_default_dir(void)
 {
     static char dir[UC_MAX_VALUE];
-    am_prefs p;
-    amconf_load(&p);
-    strncpy(dir, amconf_shot_dir(&p), sizeof dir - 1);
+    am_prefs *p;
+    p = amconf_borrow();
+    strncpy(dir, amconf_shot_dir(p), sizeof dir - 1);
     dir[sizeof dir - 1] = 0;
+    amconf_return(p);
     return dir;
 }
 long shot_count(void) { return g_count; }

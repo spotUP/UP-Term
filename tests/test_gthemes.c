@@ -2266,6 +2266,8 @@ static void test_gthemes_te4_rows(void)
     io.fs = &pfs;
     io.read = mf_read;
     io.dir = mf_dir;
+    io.alloc = mf_prefs_alloc;
+    io.release = mf_prefs_release;
     te4_open_builtin();
     for (i = 0; i < (int)(sizeof want / sizeof want[0]); i++) {
         r = te4_row(want[i].label);
@@ -2420,6 +2422,8 @@ static void test_gthemes_swatch_and_palette_rows_apply(void)
     io.fs = &pfs;
     io.read = mf_read;
     io.dir = mf_dir;
+    io.alloc = mf_prefs_alloc;
+    io.release = mf_prefs_release;
     mf_put(&mfs, "ENVARC:up-term/up-term", "");
     te4_open_builtin();
     row = te4_swatch_row(0);
@@ -2461,6 +2465,8 @@ static void test_gthemes_te4_pickers(void)
     io.fs = &pfs;
     io.read = mf_read;
     io.dir = mf_dir;
+    io.alloc = mf_prefs_alloc;
+    io.release = mf_prefs_release;
     mf_put(&mfs, "ENVARC:up-term/up-term", "");
     CHECK(mf_get(&mfs, "ENVARC:up-term/up-term") != 0);
     te4_open_builtin();

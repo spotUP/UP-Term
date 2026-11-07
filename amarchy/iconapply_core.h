@@ -81,6 +81,7 @@ typedef struct ia_ctx {
     int      variant;           /* li_pick_variant of the Workbench screen */
     uint8_t *cur, *out, *bak;   /* three IA_FILECAP byte buffers */
     ia_manifest man;
+    li_file  lf_a, lf_b;        /* parsed-file scratch of apply_one and ia_restore (two li_file are ~4 KB: kept out of their frames) */
     /* OS 3.2+: the 16 icon slot colours (ip_colours of the current theme); then APPLY also writes our FORM ICON tail
      * (transparent ground). NULL on OS 3.1: classic planar image only. */
     const uint8_t (*form_rgb)[3];

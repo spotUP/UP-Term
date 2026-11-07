@@ -233,7 +233,7 @@ static int apply_one(ia_ctx *c, const char *path, const char *match)
     char bpath[IA_MAXPATH + 40];
     long n = c->io->read(c->io->ctx, path, c->cur, IA_FILECAP);
     int absent = 0, e_i, own;
-    li_file src, wr;
+    li_file *src = &c->lf_a, *wr = &c->lf_b;   /* the ctx's scratch: two parsed files are ~4 KB, not this frame's */
     li_edit ed;
     li_image nrm, sel;
     size_t outn;
@@ -246,21 +246,21 @@ static int apply_one(ia_ctx *c, const char *path, const char *match)
         if (n <= 0) { return ia_skip_note(c, &c->skipped_nodefault, path, "nodefault"); }
         absent = 1;
     } else if (n <= 0) { return ia_skip_note(c, &c->skipped_io, path, "io"); }
-    if (li_parse(c->cur, (size_t)n, &src) != 0) { return ia_skip_note(c, &c->skipped_bad, path, "bad"); }
+    if (li_parse(c->cur, (size_t)n, src) != 0) { return ia_skip_note(c, &c->skipped_bad, path, "bad"); }
     e_i = ia_man_find(&c->man, path);
-    own = !absent && e_i >= 0 && ia_imgcrc(&src) == c->man.e[e_i].wcrc;     /* carries an image we wrote: done, or the other icon set */
+    own = !absent && e_i >= 0 && ia_imgcrc(src) == c->man.e[e_i].wcrc;     /* carries an image we wrote: done, or the other icon set */
     if (li_dat_find(c->dat, match, c->variant, &nrm, &sel) != 0) { return ia_skip_note(c, &c->skipped_nodat, path, "nodat"); }
     if (e_i < 0 && c->man.n >= IA_MAXENT) { return ia_skip_note(c, &c->skipped_io, path, "io"); }    /* no manifest line, no write: RESTORE must cover it */
-    li_edit_apply(&ed, &src, &nrm, &sel);
+    li_edit_apply(&ed, src, &nrm, &sel);
     if (c->form_rgb) {
         size_t fn = li_form_build(&nrm, &sel, c->form_rgb, c->form, sizeof c->form);
         if (!fn) { return ia_skip_note(c, &c->skipped_bad, path, "bad"); }
         ed.form_new = c->form;
         ed.form_new_len = fn;
     }
-    outn = li_splice(&src, &ed, c->out, IA_FILECAP);
-    if (!outn || li_parse(c->out, outn, &wr) != 0) { return ia_skip_note(c, &c->skipped_bad, path, "bad"); }
-    if (own && ia_imgcrc(&wr) == c->man.e[e_i].wcrc) { c->skipped_done++; return 0; }
+    outn = li_splice(src, &ed, c->out, IA_FILECAP);
+    if (!outn || li_parse(c->out, outn, wr) != 0) { return ia_skip_note(c, &c->skipped_bad, path, "bad"); }
+    if (own && ia_imgcrc(wr) == c->man.e[e_i].wcrc) { c->skipped_done++; return 0; }
 
     memset(&ne, 0, sizeof ne);
     strcpy(ne.path, path);
@@ -271,7 +271,7 @@ static int apply_one(ia_ctx *c, const char *path, const char *match)
         ne.absent = absent;
         ne.ocrc = absent ? 0 : ia_crc32(c->cur, (size_t)n);
     }
-    ne.wcrc = ia_imgcrc(&wr);
+    ne.wcrc = ia_imgcrc(wr);
     if (!absent && !own) {
         if (li_backup_path(path, bpath, sizeof bpath) != 0 || c->io->write(c->io->ctx, bpath, c->cur, (size_t)n) != 0) {
             return ia_skip_note(c, &c->skipped_io, path, "io");
@@ -461,21 +461,21 @@ int ia_restore(ia_ctx *c)
         ia_entry e = c->man.e[i];
         char bpath[IA_MAXPATH + 40];
         long n = c->io->read(c->io->ctx, e.path, c->cur, IA_FILECAP), bn = 0;
-        li_file cur, back;
+        li_file *cur = &c->lf_a, *back = &c->lf_b;   /* ctx scratch, see apply_one */
         li_edit ed;
         size_t outn = 0;
         int ok = 0;
 
         if (e.absent) {
             /* the file did not exist before APPLY: delete it unless the user changed it since */
-            if (n > 0 && li_parse(c->cur, (size_t)n, &cur) == 0 && ia_imgcrc(&cur) == e.wcrc) ok = c->io->remove(c->io->ctx, e.path) == 0;
+            if (n > 0 && li_parse(c->cur, (size_t)n, cur) == 0 && ia_imgcrc(cur) == e.wcrc) ok = c->io->remove(c->io->ctx, e.path) == 0;
             else ok = 1;                    /* gone, unreadable (APPLY's write never landed: dir missing) or the user's own file: nothing of ours to remove, drop the entry */
         } else if (li_backup_path(e.path, bpath, sizeof bpath) == 0 &&
                    (bn = c->io->read(c->io->ctx, bpath, c->bak, IA_FILECAP)) > 0 &&
-                   li_parse(c->bak, (size_t)bn, &back) == 0) {
-            if (n > 0 && li_parse(c->cur, (size_t)n, &cur) == 0) {
-                li_edit_restore(&ed, &cur, &back);          /* images only: later Snapshot / Information edits survive */
-                outn = li_splice(&cur, &ed, c->out, IA_FILECAP);
+                   li_parse(c->bak, (size_t)bn, back) == 0) {
+            if (n > 0 && li_parse(c->cur, (size_t)n, cur) == 0) {
+                li_edit_restore(&ed, cur, back);          /* images only: later Snapshot / Information edits survive */
+                outn = li_splice(cur, &ed, c->out, IA_FILECAP);
             }
             if (!outn) {                                    /* the current file does not parse: whole-file copy */
                 memcpy(c->out, c->bak, (size_t)bn);

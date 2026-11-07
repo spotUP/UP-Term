@@ -21,6 +21,8 @@ static amconf_io io_of(memfs *m, prefs_fs *fs)
     io.fs = fs;
     io.read = mf_read;
     io.dir = mf_dir;
+    io.alloc = mf_prefs_alloc;
+    io.release = mf_prefs_release;
     return io;
 }
 

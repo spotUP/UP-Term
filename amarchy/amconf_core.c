@@ -244,6 +244,28 @@ int amconf_load_with(const amconf_io *io, am_prefs *out)
     return AMCONF_DEFAULTS;
 }
 
+static am_prefs borrow_fallback;
+am_prefs *amconf_borrow_with(const amconf_io *io)
+{
+    am_prefs *p = (am_prefs *)(io->alloc ? io->alloc(sizeof *p) : malloc(sizeof *p));
+    if (!p) {
+        amconf_defaults(&borrow_fallback);
+        return &borrow_fallback;
+    }
+    amconf_load_with(io, p);
+    return p;
+}
+
+void amconf_return_with(const amconf_io *io, am_prefs *p)
+{
+    if (!p || p == &borrow_fallback)
+        return;
+    if (io->release)
+        io->release(p);
+    else
+        free(p);
+}
+
 int amconf_save_with(const amconf_io *io, const am_prefs *p, int keep, int *failed)
 {
     static char out[UC_MAX_FILE];
@@ -257,26 +279,34 @@ int amconf_save_with(const amconf_io *io, const am_prefs *p, int keep, int *fail
 
 int amconf_save_fields_with(const amconf_io *io, am_prefs *cur, int *src, const prefs_fields *f, int keep, int *failed)
 {
-    am_prefs next = *cur;
+    am_prefs *next = (am_prefs *)(io->alloc ? io->alloc(sizeof *next) : malloc(sizeof *next));
     int r;
-    amconf_from_fields(&next, f);
-    if (memcmp(&next, cur, sizeof next) == 0 && *src < AMCONF_LEGACY_ENV)
-        return PREFS_INSTALL_OK;
-    r = amconf_save_with(io, &next, keep, failed);
-    if (r == PREFS_INSTALL_OK) {
-        *cur = next;
-        *src = keep ? AMCONF_ENVARC : AMCONF_ENV;
+    if (!next)
+        return PREFS_INSTALL_WRITE;
+    *next = *cur;
+    amconf_from_fields(next, f);
+    if (memcmp(next, cur, sizeof *next) == 0 && *src < AMCONF_LEGACY_ENV) {
+        r = PREFS_INSTALL_OK;
+    } else {
+        r = amconf_save_with(io, next, keep, failed);
+        if (r == PREFS_INSTALL_OK) {
+            *cur = *next;
+            *src = keep ? AMCONF_ENVARC : AMCONF_ENV;
+        }
     }
+    amconf_return_with(io, next);
     return r;
 }
 
 int amconf_migrate_with(const amconf_io *io)
 {
-    am_prefs p;
-    int failed;
+    am_prefs *p;
+    int failed, r;
     if (!amconf_need_migrate(io->fs->exists(io->fs->ctx, prefs_paths_amarchy.path[PREFS_T_ENVARC])))
         return AMCONF_MIG_NONE;
-    amconf_load_with(io, &p); /* nothing of the new name exists yet: the legacy keys, or the defaults */
-    return amconf_save_with(io, &p, 1, &failed) == PREFS_INSTALL_OK ? AMCONF_MIG_DONE : AMCONF_MIG_FAILED;
+    p = amconf_borrow_with(io); /* nothing of the new name exists yet: the legacy keys, or the defaults */
+    r = amconf_save_with(io, p, 1, &failed);
+    amconf_return_with(io, p);
+    return r == PREFS_INSTALL_OK ? AMCONF_MIG_DONE : AMCONF_MIG_FAILED;
 }
 

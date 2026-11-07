@@ -104,11 +104,12 @@ static int g_borderblank; /* AM-BORDERBLANK: border-blank = on (the default) */
 
 static void style_load(void)
 {
-    am_prefs p;
-    amconf_load(&p);
-    g_style = amconf_style(&p);
-    g_term_menu = amconf_term_menu(&p);
-    g_borderblank = amconf_flat_index(&p, AM_BORDERBLANK) != 0;
+    am_prefs *p;
+    p = amconf_borrow();
+    g_style = amconf_style(p);
+    g_term_menu = amconf_term_menu(p);
+    g_borderblank = amconf_flat_index(p, AM_BORDERBLANK) != 0;
+    amconf_return(p);
 }
 
 /* AM-BORDERBLANK: the patch follows the setting (boot and every reload). An install error leaves the stock border. */
@@ -272,11 +273,12 @@ static void start_windows(void)
  * launch the Help hotkey uses; the window saves the key itself when the box is ticked. */
 static void welcome_maybe(void)
 {
-    am_prefs p;
+    am_prefs *p;
     char line[KM_ID + 160];
-    amconf_load(&p);
-    if (hc_should_welcome(&p) && cx_helper_cmd(line, sizeof line, g_dir, "amarchy-gui", "welcome"))
+    p = amconf_borrow();
+    if (hc_should_welcome(p) && cx_helper_cmd(line, sizeof line, g_dir, "amarchy-gui", "welcome"))
         act_run(line);
+    amconf_return(p);
 }
 
 /* S32-START-LOOK: the start look needs the Workbench screen, and Amarchy starts from S:User-Startup before LoadWB

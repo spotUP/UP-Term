@@ -944,12 +944,13 @@ static void watch_idcmp(gui *g)
 /* The extra music and demo drawer names of Amarchy's file (ix_row_kind), set before every index load. */
 static void index_drawers(void)
 {
-    am_prefs ap;
-    amconf_load(&ap);
-    ix_set_drawers(ap.val[AM_MUSIC], ap.val[AM_DEMO]);
-    ix_set_hidden_drawers(ap.val[AM_HIDE]);
-    app_icons = amconf_icons(&ap);
-    minimal = amconf_style(&ap) == UC_MENU_MINIMAL;
+    am_prefs *ap;
+    ap = amconf_borrow();
+    ix_set_drawers(ap->val[AM_MUSIC], ap->val[AM_DEMO]);
+    ix_set_hidden_drawers(ap->val[AM_HIDE]);
+    app_icons = amconf_icons(ap);
+    minimal = amconf_style(ap) == UC_MENU_MINIMAL;
+    amconf_return(ap);
 }
 
 /* Size the level buffers for the index as it is now (ix_level_cap). 0 when memory ran out. */
@@ -1783,12 +1784,13 @@ static void pick_font(gui *g)
 {
     int square = menu_screen_aspect(g->scr, &g->ms.rx, &g->ms.ry);
     char spec[128];
-    am_prefs ap;
+    am_prefs *ap;
     char name[GT_NAME];
-    amconf_load(&ap);
+    ap = amconf_borrow();
     gt_dos_current(name, (int)sizeof name);   /* the saved theme, as pens_get(g, 0) reads it */
-    mt_font_spec_load(gt_dos_read, 0, name, ap.val[AM_FONT], spec, (int)sizeof spec);   /* the theme's Menu Font (loaded with the editor's model; gt_dos_load_current attaches none), else AM_FONT ("name:size"), else built-in */
+    mt_font_spec_load(gt_dos_read, 0, name, ap->val[AM_FONT], spec, (int)sizeof spec);   /* the theme's Menu Font (loaded with the editor's model; gt_dos_load_current attaches none), else AM_FONT ("name:size"), else built-in */
     g->mt = mt_open(g->scr, square, spec);
+    amconf_return(ap);
 }
 
 /* Everything drawn from the front screen: its lock, colour map, pens, menu font, icon bitmaps and the font's text
@@ -1849,11 +1851,12 @@ static void screen_unbind(gui *g)
 static void welcome_finish(gui *g, const lf_ui *ui)
 {
     if (g->wticked) {
-        am_prefs p;
+        am_prefs *p;
         int failed = 0;
-        amconf_load(&p);
-        hc_mark_shown(&p);
-        (void)amconf_save_with(amconf_dos_io(), &p, 1, &failed);
+        p = amconf_borrow();
+        hc_mark_shown(p);
+        (void)amconf_save_with(amconf_dos_io(), p, 1, &failed);
+        amconf_return(p);
     }
     if (g->whelp) {
         km_menu m;

@@ -80,13 +80,14 @@ void gt_dos_load(const char *name, gtheme *out)
 
 void gt_dos_current(char *out, int cap)
 {
-    am_prefs ap;
+    am_prefs *ap;
     const char *v;
-    amconf_load(&ap);
-    v = ap.val[AM_GTHEME];
+    ap = amconf_borrow();
+    v = ap->val[AM_GTHEME];
     if (!*v || (int)strlen(v) >= cap)
         v = GT_DEFAULT;
     strcpy(out, v);
+    amconf_return(ap);
 }
 
 void gt_dos_load_current(gtheme *out)
@@ -221,9 +222,10 @@ void gt_dos_preview_send(const char *name)
 
 void gt_dos_term_boot(void)
 {
-    am_prefs ap;
-    amconf_load(&ap);
-    gt_boot_term(ap.val[AM_GTHEME], gt_dos_term_send);
+    am_prefs *ap;
+    ap = amconf_borrow();
+    gt_boot_term(ap->val[AM_GTHEME], gt_dos_term_send);
+    amconf_return(ap);
 }
 
 /* What follows the save of the chosen theme's name: the preview's colours go, then consoles, desktop pens, Directory Opus and the
@@ -249,7 +251,7 @@ static int gt_dos_apply_saved(const char *name)
 
 int gt_dos_select(const char *name, char *why, int cap)
 {
-    am_prefs ap;
+    am_prefs *ap;
     int failed = 0, r;
     char prev[GT_NAME];
     if (!gt_name_ok(name)) {
@@ -257,11 +259,12 @@ int gt_dos_select(const char *name, char *why, int cap)
             gt_save_text(GT_SAVE_NAME, 0, 0, why, cap);
         return 0;
     }
-    amconf_load(&ap);
-    strncpy(prev, ap.val[AM_GTHEME], GT_NAME - 1);
+    ap = amconf_borrow();
+    strncpy(prev, ap->val[AM_GTHEME], GT_NAME - 1);
     prev[GT_NAME - 1] = 0;
-    strcpy(ap.val[AM_GTHEME], name);
-    r = amconf_save(&ap, 1, &failed);
+    strcpy(ap->val[AM_GTHEME], name);
+    r = amconf_save(ap, 1, &failed);
+    amconf_return(ap);                  /* the saved copy is not read again below */
     if (r == PREFS_INSTALL_OK) {
         desk_dos_prev_theme(prev);      /* FP1-REVERT-THEME-LINE: a Revert of this pick writes it back */
         gt_dos_apply_saved(name);
@@ -337,7 +340,7 @@ static void gt_dos_screens_load(void)
  * (ipd_rules_changed sets rules_dirty; its next sync runs rules_read on ENV:Amarchy/screen-themes and AM_SCREENTHEMES). 1 saved. */
 int gt_dos_screens_save(char *why, int cap)
 {
-    am_prefs ap;
+    am_prefs *ap = 0;   /* borrowed only when the files were written; amconf_return takes 0 */
     char *buf = (char *)AllocVec(SCR_BUF, MEMF_PUBLIC);
     const char *want = gt_se_enabled() ? "on" : "off";
     long len;
@@ -351,10 +354,10 @@ int gt_dos_screens_save(char *why, int cap)
     len = gt_se_text(buf, SCR_BUF);
     if (len > 0 && prefs_dos_fs.write_file(0, SCR_FILE_ARC, buf, len) && prefs_dos_fs.write_file(0, SCR_FILE_ENV, buf, len)) {
         ok = 1;
-        amconf_load(&ap);
-        if (strcmp(ap.val[AM_SCREENTHEMES], want) != 0) {
-            strcpy(ap.val[AM_SCREENTHEMES], want);
-            r = amconf_save(&ap, 1, &failed);
+        ap = amconf_borrow();
+        if (strcmp(ap->val[AM_SCREENTHEMES], want) != 0) {
+            strcpy(ap->val[AM_SCREENTHEMES], want);
+            r = amconf_save(ap, 1, &failed);
             ok = r == PREFS_INSTALL_OK;
         }
     }
@@ -363,6 +366,7 @@ int gt_dos_screens_save(char *why, int cap)
     else if (why)
         strncpy(why, "cannot write the screen themes", (size_t)cap - 1);
     FreeVec(buf);
+    amconf_return(ap);
     return ok;
 }
 

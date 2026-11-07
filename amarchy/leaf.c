@@ -653,11 +653,14 @@ void lf_load_listers(ix_index *x)
 {
     char ans[256], path[IX_PATH];
     unsigned long h[LISTER_MAX];
-    ix_row rows[LISTER_MAX];
+    ix_row *rows;                                           /* 16 rows are ~6 KB: heap, not this frame (B5) */
     int n, i, got = 0;
     if (!upactive_dopus_present())
         return;                                             /* no DOpus: no rows, no wait */
     if (rexx_send("DOPUS.1", "lister query all", ans, sizeof ans) != 0)
+        return;
+    rows = (ix_row *)malloc(LISTER_MAX * sizeof *rows);
+    if (!rows)
         return;
     n = ix_lister_handles(ans, h, LISTER_MAX);
     for (i = 0; i < n; i++) {
@@ -668,6 +671,7 @@ void lf_load_listers(ix_index *x)
             got++;
     }
     ix_add_listers(x, rows, got);
+    free(rows);
 }
 
 /* A lister row: bring that lister to the front (handle from `lister query all`). UNVERIFIED on a rig: needs DOpus v5.104. */

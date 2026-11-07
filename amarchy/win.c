@@ -254,9 +254,10 @@ static int win_exec(const char *arg, int via_port)
     else {
         if (c.verb == WV_SNAP) {
             /* DOS read: before the lock, never under it (AMARCHY-WIN-IBASE-DOS) */
-            am_prefs p;
-            amconf_load(&p);                           /* the tile-gap, read at each snap: snapped and tiled windows line up (D3) */
-            tile_gap = amconf_tile_gap(&p);
+            am_prefs *p;
+            p = amconf_borrow();                           /* the tile-gap, read at each snap: snapped and tiled windows line up (D3) */
+            tile_gap = amconf_tile_gap(p);
+            amconf_return(p);
         }
         lock = LockIBase(0);
         aw = IntuitionBase->ActiveWindow;

@@ -239,31 +239,33 @@ static void conf_load(void)
  * the next RETILE (or start), which reads the file again; LAYOUT, RATIO and NMASTER write through (cfg_save). */
 static void cfg_load(void)
 {
-    am_prefs p;
+    am_prefs *p;
     int k;
-    amconf_load(&p);
-    g_gap = amconf_tile_gap(&p);
-    g_ratio = amconf_tile_ratio(&p);
-    g_nmaster = amconf_tile_nmaster(&p);
-    g_layout = tile_layout_parse(amconf_tile_layout(&p), &k) ? k : TL_DWINDLE;
+    p = amconf_borrow();
+    g_gap = amconf_tile_gap(p);
+    g_ratio = amconf_tile_ratio(p);
+    g_nmaster = amconf_tile_nmaster(p);
+    g_layout = tile_layout_parse(amconf_tile_layout(p), &k) ? k : TL_DWINDLE;
     conf_load();
+    amconf_return(p);
 }
 
 /* The only write path: the layout, ratio and nmaster into ENVARC: then ENV: (gthemes_dos.c's gt_dos_select pattern).
  * A failed save is logged and does not fail the command. */
 static void cfg_save(void)
 {
-    am_prefs p;
+    am_prefs *p;
     int failed = 0;
     char *e;
-    amconf_load(&p);
-    strcpy(p.val[AM_TILELAYOUT], tile_layout_name(g_layout));
-    e = put_num(p.val[AM_TILERATIO], g_ratio);
+    p = amconf_borrow();
+    strcpy(p->val[AM_TILELAYOUT], tile_layout_name(g_layout));
+    e = put_num(p->val[AM_TILERATIO], g_ratio);
     *e = 0;
-    e = put_num(p.val[AM_TILENMASTER], g_nmaster);
+    e = put_num(p->val[AM_TILENMASTER], g_nmaster);
     *e = 0;
-    if (amconf_save(&p, 1, &failed) != PREFS_INSTALL_OK)
+    if (amconf_save(p, 1, &failed) != PREFS_INSTALL_OK)
         PutStr((STRPTR)"AmTile: could not save the layout settings\n");
+    amconf_return(p);
 }
 
 /* The active window's id (the same read as win.c), 0 when none. */

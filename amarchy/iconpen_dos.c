@@ -124,18 +124,19 @@ struct Screen *ipd_lock_wb_screen(void)
 /* The theme and desk prefs, read from file (ENV:, ENVARC:, the theme file). Never call it with the public screen list locked. */
 static void pens_theme_named(const char *name, gtheme *t, int *flat, unsigned *mask, int model)
 {
-    am_prefs ap;
+    am_prefs *ap;
     struct Process *me = (struct Process *)FindTask(0);
     APTR oldwin = me->pr_WindowPtr;
     me->pr_WindowPtr = (APTR)-1;        /* FLAT-BOOT-FREEZE: UP-Term: not assigned yet at boot is an answer, not a requester */
-    amconf_load(&ap);
+    ap = amconf_borrow();
     if (model)                          /* TE-10.5b2b: the pen plan reads the theme's model (heap memory of THIS process) */
-        gt_load_model(pen_theme_read, 0, name && *name ? name : ap.val[AM_GTHEME][0] ? ap.val[AM_GTHEME] : GT_DEFAULT, t);
+        gt_load_model(pen_theme_read, 0, name && *name ? name : ap->val[AM_GTHEME][0] ? ap->val[AM_GTHEME] : GT_DEFAULT, t);
     else
-        gt_load(pen_theme_read, 0, name && *name ? name : ap.val[AM_GTHEME][0] ? ap.val[AM_GTHEME] : GT_DEFAULT, t);
+        gt_load(pen_theme_read, 0, name && *name ? name : ap->val[AM_GTHEME][0] ? ap->val[AM_GTHEME] : GT_DEFAULT, t);
     me->pr_WindowPtr = oldwin;
-    *flat = amconf_desk_flat_pens(&ap);
-    *mask = amconf_desk_mask(&ap);
+    *flat = amconf_desk_flat_pens(ap);
+    *mask = amconf_desk_mask(ap);
+    amconf_return(ap);
 }
 
 /* name: the theme of a screen rule; 0 = the main theme (AM_GTHEME) */
@@ -148,7 +149,7 @@ static void pens_theme(void *ctx, gtheme *t, int *flat, unsigned *mask)
 /* TE-10.4: the screen rules and the main theme name, from file. The caller has the public screen list unlocked. */
 static void rules_read(gt_screen_rules *out, char *main_theme)
 {
-    am_prefs ap;
+    am_prefs *ap;
     struct Process *me = (struct Process *)FindTask(0);
     APTR oldwin = me->pr_WindowPtr;
     long len = 0;
@@ -160,13 +161,14 @@ static void rules_read(gt_screen_rules *out, char *main_theme)
             len = 0;
     }
     gt_screen_rules_parse(buf ? buf : "", len, out);
-    amconf_load(&ap);
+    ap = amconf_borrow();
     me->pr_WindowPtr = oldwin;
     if (buf)
         FreeVec(buf);
-    out->enabled = amconf_flat_index(&ap, AM_SCREENTHEMES);   /* "on" (the default) or off */
-    strncpy(main_theme, ap.val[AM_GTHEME][0] ? ap.val[AM_GTHEME] : GT_DEFAULT, GT_NAME - 1);
+    out->enabled = amconf_flat_index(ap, AM_SCREENTHEMES);   /* "on" (the default) or off */
+    strncpy(main_theme, ap->val[AM_GTHEME][0] ? ap->val[AM_GTHEME] : GT_DEFAULT, GT_NAME - 1);
     main_theme[GT_NAME - 1] = 0;
+    amconf_return(ap);
 }
 
 void ipd_screen_rules_load(gt_screen_rules *out)

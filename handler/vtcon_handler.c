@@ -7542,19 +7542,21 @@ static void host_command(con *c, int what, con *from, const char *task)
             DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
         break;
     case MENU_AGENT: { /* super+l: the agent of the ai-agent preference, in a new tab */
-        am_prefs ap;
-        amconf_load(&ap);
-        if (!tab_spawn(c, from->profile, from, tabprog_agent_tab(amconf_agent(&ap)), 0, 0, task))
+        am_prefs *ap;
+        ap = amconf_borrow();
+        if (!tab_spawn(c, from->profile, from, tabprog_agent_tab(amconf_agent(ap)), 0, 0, task))
             DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
+        amconf_return(ap);
         break;
     }
     case MENU_SET_AGENT_CLAUDE: case MENU_SET_AGENT_PI: { /* /agent: the preference, for the next super+l */
-        am_prefs ap;
+        am_prefs *ap;
         int failed = 0;
-        amconf_load(&ap);
-        strcpy(ap.val[AM_AGENT], what == MENU_SET_AGENT_PI ? "pi" : "claude");
-        if (amconf_save(&ap, 1, &failed) != PREFS_INSTALL_OK)
+        ap = amconf_borrow();
+        strcpy(ap->val[AM_AGENT], what == MENU_SET_AGENT_PI ? "pi" : "claude");
+        if (amconf_save(ap, 1, &failed) != PREFS_INSTALL_OK)
             DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
+        amconf_return(ap);
         break;
     }
     case MENU_TUTORIAL:

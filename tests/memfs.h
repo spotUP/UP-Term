@@ -3,6 +3,7 @@
 #ifndef TESTS_MEMFS_H
 #define TESTS_MEMFS_H
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "../prefs/prefs_core.h"
 
@@ -135,6 +136,17 @@ __attribute__((unused)) static int mf_dir(const prefs_paths *p, int t)
     (void)p;
     (void)t;
     return 1;
+}
+
+/* the memory of a borrowed am_prefs (amconf_io.alloc / .release) */
+__attribute__((unused)) static void *mf_prefs_alloc(unsigned long n)
+{
+    return malloc(n);
+}
+
+__attribute__((unused)) static void mf_prefs_release(void *p)
+{
+    free(p);
 }
 
 #endif

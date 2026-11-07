@@ -3458,6 +3458,8 @@ static void tw_open_editor(void)
     tw_io.fs = &tw_pfs;
     tw_io.read = mf_read;
     tw_io.dir = mf_dir;
+    tw_io.alloc = mf_prefs_alloc;
+    tw_io.release = mf_prefs_release;
     mf_put(&tw_mfs, "ENVARC:up-term/up-term", "");
     CHECK(strcmp(mf_get(&tw_mfs, "ENVARC:up-term/up-term"), "<absent>") != 0);
     memset(&t, 0, sizeof t);
