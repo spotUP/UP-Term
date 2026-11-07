@@ -101,6 +101,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=ibase_lock_guard no amarchy/*.c calls DOS or a blocking Intuition call between LockIBase and UnlockIBase (AMARCHY-WIN-IBASE-DOS; tests/test_ibase_lock_guard.py)
 # ONLY=ipatch_guard the intuition patch gate counts callers itself, hooks leave through it, gates are never freed (tests/test_ipatch_guard.py)
 # ONLY=gui_rig_setup_breaks the rig's --setup Breaks every running Amarchy program copy from any path (RAM:amarchy-flat a pixel helper left), so its fresh copy is the one tested (tests/test_gui_rig_setup_breaks_any_copy.py)
+# ONLY=gui_rig_flat_default the rig helper reads the flat prefs with both keys default on (a header-only prefs file is flat on), off only when both say off (tests/test_gui_rig_flat_prefs_default.py)
 # ONLY=gui_chip_pens the Amarchy colour chips and theme preview hold their pens until the next full redraw, so no chip releases the pen it just drew with (tests/test_gui_chip_pens.py)
 # ONLY=gui_rig_open_menu the rig's open_menu() closes a menu an earlier step left open before the toggle hotkey, so it never closes it instead (tests/test_amarchy_gui_rig_open_menu.py)
 # ONLY=desk_rig_pick_waits the rig's desk pick() returns only after Amarchy wrote AMARCHY_WBCLOSES again, so pen reads see the applied theme (tests/test_amarchy_desk_rig_pick_waits.py)
@@ -215,6 +216,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rig_open_menu ]; then python3 -I tests/test_amarchy_gui_rig_open_menu.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_chip_pens ]; then python3 -I tests/test_gui_chip_pens.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rig_setup_breaks ]; then python3 -I tests/test_gui_rig_setup_breaks_any_copy.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rig_flat_default ]; then python3 -I tests/test_gui_rig_flat_prefs_default.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = desk_rig_pick_waits ]; then python3 -I tests/test_amarchy_desk_rig_pick_waits.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = one_select_level ]; then python3 -I tests/test_amarchy_one_select_level.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = keep_wait ]; then python3 -I tests/test_amarchy_keep_wait.py; fi

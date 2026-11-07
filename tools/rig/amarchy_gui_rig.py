@@ -1269,10 +1269,20 @@ def setup():
     return flat_boot('setup')
 
 
+def flat_prefs_text_on(text):
+    """True when a prefs text leaves flat-system-look or flat-window-gadgets on. Both keys default ON (amconf_core.h,
+    INSTALLER-FLAT-OFF: a header-only prefs file is the full flat look), so a key counts as off only when the file says
+    `off`; a missing key, file or empty text is on."""
+    for key in ('flat-system-look', 'flat-window-gadgets'):
+        m = re.search(r'^\s*%s\s*=\s*(\w+)' % key, text, re.M)
+        if m is None or m.group(1) != 'off':
+            return True
+    return False
+
+
 def flat_prefs_on():
-    """True when ENV:Amarchy/prefs turns flat-system-look or flat-window-gadgets on (both default off, amconf_core.h)."""
-    out = c.run('Type ENV:Amarchy/prefs', 20)[1]
-    return re.search(r'^\s*flat-(system-look|window-gadgets)\s*=\s*on\b', out, re.M) is not None
+    """True when ENV:Amarchy/prefs leaves a flat switch on (flat_prefs_text_on)."""
+    return flat_prefs_text_on(c.run('Type ENV:Amarchy/prefs', 20)[1])
 
 
 FLAT_BOOT = 'Run >NIL: UP-Term:bin/amarchy-flat BOOT'   # the kit's S:User-Startup line, word for word
