@@ -11,6 +11,7 @@ import io, os, pathlib, subprocess, sys, tarfile, tempfile, unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 sys.path.insert(0, str(ROOT / 'tools/rig'))
+sys.path.insert(0, str(ROOT / 'tests'))   # the sibling import below must also work under `python3 -I` (no script dir on the path)
 import pkgs, slim, paths
 
 from test_dist_ipk import split_ar
