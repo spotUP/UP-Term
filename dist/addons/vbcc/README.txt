@@ -2,7 +2,7 @@ up-vbcc: the vbcc C compiler for AmigaOS 68k, for UP-Term
 
 Contents: vbcc 0.9h patch2 (vc, vbccm68k, vasm, vlink, the m68k-amigaos target), unmodified from
 phoenix.owl.de, with UP-Term's configuration config/upterm68k. It installs in UP-Term:vbcc.
-Licence: redistributable unmodified, non-commercial use; see LICENSES.txt.
+Licence: vbcc, vasm, vlink: redistributable unmodified, non-commercial use (commercial use of m68k AmigaOS output allowed); see LICENSES.txt.
 
 Needs up-term.lha installed first (version 1.0 or newer). Install adds VBCC: (assign), the path
 VBCC:bin and the environment variable VBCC to S:User-Startup, and sets them for the current session.

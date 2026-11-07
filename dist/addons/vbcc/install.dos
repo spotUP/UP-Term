@@ -20,8 +20,8 @@ EndIf
 ; @include dist/common/@CHECKFRAG@
 Lab copy-vbcc
 ; The drawer userland/vbcc (the author's archives, unmodified, plus UP-Term's config/upterm68k) goes to
-; UP-Term:vbcc, the path config/upterm68k and startup.txt name. userland holds what dist/slim.txt names;
-; Copy of a drawer copies what is in it.
+; UP-Term:vbcc, the path config/upterm68k and startup.txt name.
+; userland holds what dist/slim.txt names; Copy of a drawer copies what is in it.
 MakeDir >NIL: UPTREAL:licenses
 Copy userland UPTREAL: ALL CLONE QUIET
 If WARN
@@ -68,4 +68,4 @@ If NOT "{STEP}" EQ ""
   Quit 0
 EndIf
 ; @include dist/common/record.dos
-Echo "VBCC installed: in an UP-Term window  vc +upterm68k hello.c -o hello  (NDKINC: needs the NDK headers, see README.txt)."
+Echo "VBCC installed: type  vc +upterm68k hello.c -o hello  in an UP-Term window (vsh)."

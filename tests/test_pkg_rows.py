@@ -11,9 +11,9 @@ sys.path.insert(0, str(ROOT / 'tools' / 'rig'))
 import paths
 import pkg_rows, pkgs, slim
 
-# Packages whose recipe does not yet say what it installs (no _BINS/_DATA; the vbcc compiler tree): `check` cannot hold them
-# to the generator, so they are named here, not skipped silently. Remove an id when its recipe gains the fields.
-HAND_WRITTEN = ('vbcc',)
+# Packages whose recipe does not yet say what it installs: `check` cannot hold them to the generator, so they are named
+# here, not skipped silently. Remove an id when its recipe gains the fields. None now (vbcc is generated).
+HAND_WRITTEN = ()
 
 PORTS = pathlib.Path(os.environ.get('UPTERM_PORTS') or paths.repo('upterm-ports'))
 

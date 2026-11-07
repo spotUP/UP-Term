@@ -1,10 +1,8 @@
 up-vbcc: parts, licences and where the source is
 
-Part                          Licence                          Source
-----------------------------  -------------------------------  --------------------------------------------
-vbcc, vasm, vlink, target     redistributable unmodified,      the author's archives, unmodified:
-(vbcc/)                       non-commercial use               phoenix.owl.de/vbcc/current (upterm-ports pkgs/vbcc)
-                              (licenses/vbcc)
+Part                                Licence                                                                                                                             Source
+----------------------------------  ----------------------------------------------------------------------------------------------------------------------------------  --------------------------------------------------------------------------------
+vbcc, vasm, vlink, target (vbcc/)   vbcc, vasm, vlink: redistributable unmodified, non-commercial use (commercial use of m68k AmigaOS output allowed) (licenses/vbcc)   the author's archives, unmodified: phoenix.owl.de/vbcc/current (upterm-ports pkgs/vbcc)
 
 Notes
 - The two lha archives (SHA-256 pinned) are in up-term-src.lha, published next to up-term.lha. Their

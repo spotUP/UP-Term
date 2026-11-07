@@ -8,4 +8,4 @@
 -               Files/install.dos
 -               Files/upupdate
 record          Files/VERSIONS
-copy-vbcc       Files/userland
+copy-vbcc          Files/userland

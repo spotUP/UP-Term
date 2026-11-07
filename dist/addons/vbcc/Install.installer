@@ -9,6 +9,7 @@
     "It goes into UP-Term:vbcc; the VBCC: assign\n"
     "and path go into S:User-Startup.\n"
     "Needs up-term.lha installed first.\n"
+    "Needs up-term.lha installed first.\n"
     (all))
 (set #kb-vbcc @KBCOPYVBCC@)
 (set #totalkb @KBTOTAL@)

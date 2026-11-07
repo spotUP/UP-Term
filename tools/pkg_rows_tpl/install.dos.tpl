@@ -23,7 +23,7 @@ Lab copy-{{PKG}}
 If WARN
   Quit 20
 EndIf
-If NOT "{STEP}" EQ ""
+{{INSTALL_EXTRA}}If NOT "{STEP}" EQ ""
   Quit 0
 EndIf
 ; @include dist/common/record.dos

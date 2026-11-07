@@ -19,7 +19,8 @@ installs under $(SYSROOT)$(PREFIX): an installed path no _BINS/_DATA covers (fig
 What the recipe cannot say (prose of the Installer, README, the man page row) comes from tools/pkg_rows_prose/<pkg>.json
 (or --prose FILE; key man lists the man page rows; drawers the UP-Term: drawers install.dos makes, default bin lib licenses;
 cmd the command line the finish text and README show, default the first _BINS name; licenses_notes the bullets under Notes
-of LICENSES.txt, default the source-archive note; readme_use starting with ';' continues the sentence after the version) and falls back to text built from _SUMMARY; --man PATH adds a slim row,
+of LICENSES.txt, default the source-archive note; install_extra the install.dos lines after the copies (before the
+finish line), uninstall_extra the lines placed before the generated uninstall body, both default none; readme_use starting with ';' continues the sentence after the version) and falls back to text built from _SUMMARY; --man PATH adds a slim row,
 --pkg-version, --base-version, --ixemul set the packages.txt columns (defaults 1.0, 1.0, 80).
 """
 import argparse, json, os, pathlib, re, subprocess, sys, tempfile, textwrap
@@ -106,6 +107,8 @@ def generate(pkg, ports, a):
            'WELCOME': ''.join('    "%s\\n"\n' % l for l in welcome),
            'WHY': pr.get('why', 'Copying %s to UP-Term.' % name),
            'MAKEDIRS': ''.join('MakeDir >NIL: UPTREAL:%s\n' % d for d in pr.get('drawers', ['bin', 'lib', 'licenses'])),
+           'INSTALL_EXTRA': ''.join(l + '\n' for l in pr.get('install_extra', [])),
+           'UNINSTALL_EXTRA': ''.join(l + '\n' for l in pr.get('uninstall_extra', [])),
            'COPYROW': 'copy-%s' % pkg + ' ' * max(2, 19 - len('copy-' + pkg)) + 'Files/userland'}
     add = {}
     for f in ('install.dos', 'Install.installer', 'parts.txt', 'uninstall-body.dos'):
