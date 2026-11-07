@@ -80,4 +80,5 @@ zip     bin/zip
 zip     share/man/man1/zip.1
 zip     licenses/zip
 sqlite  bin/sqlite3
+sqlite  share/man/man1/sqlite3.1
 sqlite  licenses/sqlite

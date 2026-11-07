@@ -1,3 +1,6 @@
 {
- "launch": "UP-Term:bin/sqlite3"
+ "launch": "UP-Term:bin/sqlite3",
+ "man": [
+  "share/man/man1/sqlite3.1"
+ ]
 }
