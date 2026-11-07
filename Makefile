@@ -1835,6 +1835,9 @@ IXNET_LIB ?= $(dir $(IXEMUL_LIB))../../../../ixnet/68020/amigaos/ixnet.library
 # tools/pkgs.py reads a ports package's Description from its recipe there
 export UPTERM_PORTS
 PORTS_KIT ?= $(UPTERM_PORTS)/build/kit/userland
+# tests/test_dist_slim.py reads the staged kit from PORTS_KIT; without the export a UPTERM_PORTS override moved
+# make dist but not make dist-check, which then read the workspace checkout's stale kit (2026-11-07)
+export PORTS_KIT
 # a package's build/state/<p>.checked newer than the staged SOURCES.txt means the ports were rebuilt after the last
 # kit-stage: the kit would ship the old programs (v1.2 feed build of 2026-10-20 carried the old upkg)
 PORTS_STATE ?= $(UPTERM_PORTS)/build/state

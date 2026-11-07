@@ -65,6 +65,20 @@ class Table(unittest.TestCase):
                              cwd=str(ROOT / 'tests'), env=env, capture_output=True, text=True, check=True)
         self.assertEqual(got.stdout.strip(), '/nowhere/ws/upterm-ports/build/kit/userland')
 
+    def test_make_hands_the_ports_kit_it_resolved_to_this_test(self):
+        """2026-11-07: make dist-check UPTERM_PORTS=<ports worktree> reached this test, which then read the
+        kit of the workspace's own upterm-ports checkout (20 stale programs) and stopped with "slim: git:
+        bin/git matches nothing in .../upterm-ports/build/kit/userland": the Makefile resolved PORTS_KIT
+        from UPTERM_PORTS but never exported it, so the knob moved make dist and not make dist-check."""
+        with tempfile.TemporaryDirectory() as d:
+            probe = pathlib.Path(d) / 'probe.mk'
+            probe.write_text('_probe_ports_kit:\n\t@python3 -c \'import os; print(os.environ.get("PORTS_KIT", ""))\'\n')
+            env = {k: v for k, v in os.environ.items() if k != 'PORTS_KIT'}
+            got = subprocess.run(['make', '-s', '-C', str(ROOT), '-f', 'Makefile', '-f', str(probe),
+                                  'UPTERM_PORTS=/nowhere/ports', '_probe_ports_kit'],
+                                 env=env, capture_output=True, text=True, check=True)
+            self.assertEqual(got.stdout.strip(), '/nowhere/ports/build/kit/userland')
+
 
     def test_each_package_stages_into_the_drawer_of_its_archive(self):
         """2026-10-26: make dist failed at dist-sqlite with FileExistsError on
@@ -111,7 +125,8 @@ class Packages(unittest.TestCase):
     def expected(self, i):
         """what the package holds: each owned path with its parents and whatever is under it, and the SOURCES.txt row"""
         need(self, PORTS / 'SOURCES.txt')
-        out = {'licenses/%s' % i, 'licenses/%s/SOURCES.txt' % i}
+        # licenses itself: a package with no licence file of its own (nc) still gets its SOURCES.txt row drawer
+        out = {'licenses', 'licenses/%s' % i, 'licenses/%s/SOURCES.txt' % i}
         for rel in slim.paths(i, PORTS):
             out |= {str(q) for q in pathlib.Path(rel).parents if str(q) != '.'} | {rel}
             out |= {str(q.relative_to(PORTS)) for q in (PORTS / rel).rglob('*')}
