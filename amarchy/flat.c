@@ -61,14 +61,15 @@
 #include "iclabel_core.h"
 #include "../render/aa_ink.h"
 #include "../render/pen_match.h"
+#include "stkprobe.h"
 #include <graphics/view.h>
 #include <utility/tagitem.h>
 
 static const char ver[] = "$VER: amarchy-flat 0.1 (30.10.2026) (UP-Term)";
 
 /* RULES.md rule 6: the stack the program asks for, and the cookie the Shell and Workbench read. */
-long __stack = 16384;
-const char amarchy_flat_stack_cookie[] = "$STACK: 16384";
+long __stack = STK_BYTES(16384);
+const char amarchy_flat_stack_cookie[] = STK_COOKIE(16384);
 
 
 
@@ -1916,6 +1917,7 @@ int main(void)
     int install_rc = FLAT_ERR_ARG;                      /* no install tried (held or no libraries) */
     int marker_live = 0;
     (void)ver;
+    stk_probe_init("AMFLT");
     InitSemaphore(&cl_ss);
     InitSemaphore(&icl_ss);
     if (is_help(args)) {
@@ -2013,6 +2015,7 @@ int main(void)
     print_status();
     for (;;) {
         ULONG got = Wait(SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D | pt_sigmask(&tm) | pt_sigmask(&pen_tm));
+        stk_probe();
         if (pt_fired(&pen_tm, got)) {                   /* Workbench closed / reopened / mode change */
             if (IntuitionBase && GfxBase && flat_install_due(r->st.held, install_rc == FLAT_OK, install_rc))
                 install_rc = install_all(r, &tm, &marker_live);     /* S32-START-LOOK: LoadWB opened the screen */
@@ -2076,6 +2079,7 @@ int main(void)
                 marker_delete();
             pt_close(&tm);
             pt_close(&pen_tm);
+            stk_probe();
             return 0;
         }
         PutStr((STRPTR)"amarchy-flat: the state block is in use, not unloading\n");

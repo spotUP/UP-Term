@@ -13,7 +13,13 @@ MIN = 262144
 NO_SYMBOLS = ('amarchy-gui', 'Amarchy', 'amarchy-index', 'AmTile', 'amnotify', 'amarchy-flat', 'amarchy-icons')
 MIN_BY_NAME = {'amarchy-gui': 65536,       # the vbcc programs have no curses: set by `long __stack` and their cookie
                'Amarchy': 65536,           # a restart used 16780 bytes (rig 177): on 16384 the overrun hit the patch vectors, Exception 3
-               'amarchy-index': 16384, 'AmTile': 16384, 'amnotify': 8192, 'amarchy-flat': 16384, 'amarchy-icons': 16384}
+               # measured stack high-water (make STKPROBE=1, rig 96, thoughts/shared/s61-evidence/b6-stack-sibling-audit.md);
+               # each is under 8192, so 16384 keeps 2x headroom
+               'amarchy-index': 16384,     # measured 3812 bytes
+               'AmTile': 16384,            # measured 4212 bytes
+               'amnotify': 8192,
+               'amarchy-flat': 16384,      # measured 2656 bytes (own task only; patched Text/RectFill run on the caller's stack)
+               'amarchy-icons': 16384}     # measured 7276 bytes (APPLY on 223 icons); 2x is 14552, still under 16384
 
 
 def stack_symbol(d):

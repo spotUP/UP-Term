@@ -27,9 +27,10 @@
 #include "amconf_dos.h"
 #include "iconpen_dos.h"
 #include "../tty/qmark.h"
+#include "stkprobe.h"
 
-long __stack = 16384;
-const char amarchy_icons_stack_cookie[] = "$STACK: 16384";
+long __stack = STK_BYTES(16384);
+const char amarchy_icons_stack_cookie[] = STK_COOKIE(16384);
 static const char ver[] = "$VER: amarchy-icons 1.0 (1.11.2026)";
 
 struct Library *IconBase;
@@ -175,6 +176,7 @@ static int io_remove(void *ctx, const char *p)
 static void io_note(void *ctx, const char *line)
 {
     (void)ctx;
+    stk_probe();                      /* once per walked volume and skipped file */
     PutStr((STRPTR)line);
     PutStr((STRPTR)"\n");
 }
@@ -438,6 +440,7 @@ int main(void)
     APTR oldwin = NULL;
     struct SignalSemaphore *lock = NULL;
     (void)ver;
+    stk_probe_init("AMICO");
 
     if (qmark_line(args) || cmd == IA_CMD_HELP) {
         PutStr((STRPTR)TEMPLATE_TEXT);
@@ -508,6 +511,7 @@ int main(void)
     }
     print_counters(c);
 out:
+    stk_probe();
     if (lock) ReleaseSemaphore(lock);
     if (me) me->pr_WindowPtr = oldwin;
     if (dat) FreeVec(dat);

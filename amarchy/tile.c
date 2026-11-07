@@ -35,6 +35,7 @@
 #include "amconf_core.h"
 #include "../handler/frontscr.h"
 #include "../tty/qmark.h"
+#include "stkprobe.h"
 
 #define PORT_NAME      "AMTILE"
 #define TILE_POLL_MICROS 250000UL
@@ -48,8 +49,8 @@
 
 /* vbcc's startup runs main on a stack of this size whatever the starter gives
  * it; the cookie says the same to AmigaOS 3.2 and to vsh (RULES.md rule 6). */
-long __stack = 16384;
-const char amtile_stack_cookie[] = "$STACK: 16384";
+long __stack = STK_BYTES(16384);
+const char amtile_stack_cookie[] = STK_COOKIE(16384);
 
 struct Library *CxBase;
 struct IntuitionBase *IntuitionBase;
@@ -620,6 +621,7 @@ int main(int argc, char **argv)
 {
     char line[64], result[REXX_HOST_OUT];
     int i;
+    stk_probe_init("AMTIL");
     if (qmark_argv(argc, argv)) {
         PutStr((STRPTR)"AmTile [ON|OFF|TOGGLE|RETILE|GAP n|STATUS|QUIT|LAYOUT name|NEXT|PREV|RATIO n|NMASTER n|CYCLE NEXT|PREV|PROMOTE|FLOAT ON|OFF|TOGGLE [id]|SWAP LEFT|RIGHT|UP|DOWN]\n");
         return 0;
@@ -651,6 +653,7 @@ int main(int argc, char **argv)
     while (!g_quit) {
         ULONG rx = rexx_host_sigmask(&rexx), cx = 1UL << cx_port->mp_SigBit, tm = pt_sigmask(&g_poll);
         ULONG sigs = Wait(rx | cx | tm | SIGBREAKF_CTRL_C);
+        stk_probe();
         if (sigs & SIGBREAKF_CTRL_C)
             break;
         if (sigs & cx)
@@ -662,6 +665,7 @@ int main(int argc, char **argv)
             pt_start(&g_poll, TILE_POLL_MICROS);
         }
     }
+    stk_probe();
     shutdown();
     return 0;
 }

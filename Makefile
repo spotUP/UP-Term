@@ -975,6 +975,15 @@ AMARCHY_LEAF_DEPS := handler/kcmode.c handler/slash.c config/upconf.c config/upc
 # $(AMARCHY_NOBREAK) (empty _chkabort) and tests/test_nobreak.py checks exactly these (make chkabort-check)
 AMARCHY_NOBREAK := amarchy/nobreak.c
 CHKABORT_PROGRAMS := Amarchy amarchy-gui amarchy-flat amarchy-icons upprefs upgetty top allocwatch patchcon lvoprobe frameprobe sizewatch
+# Stack high-water probe (amarchy/stkprobe.h), a measuring tool and off by default. `make STKPROBE=1 BUILD=build/stkprobe
+# build/stkprobe/amiga/amarchy-index ...` links it into amarchy-index, amarchy-icons, amarchy-flat and AmTile with a 131072-byte
+# stack and publishes <PREFIX>_STK_USED (GetEnv). Use a separate BUILD directory: make does not see the knob as a dependency.
+STKPROBE_SRC :=
+STKPROBE_FLAGS :=
+ifeq ($(STKPROBE),1)
+STKPROBE_SRC := amarchy/stkprobe.c amarchy/sentinel_dos.c
+STKPROBE_FLAGS := -DAMDBG_STK
+endif
 AMARCHY_SRC := amarchy/menu_core.c amarchy/desk_confirm_dos.c amarchy/sentinel_dos.c amarchy/iconpen_core.c handler/pubscr_core.c amarchy/iconpen_dos.c amarchy/flat_role_core.c amarchy/note.c amarchy/note_core.c amarchy/shot.c amarchy/shot_core.c amarchy/rexx_host.c amarchy/taskalive.c amarchy/menusrv_core.c amarchy/termenv.c claude/util.c handler/frontscr.c handler/pubscr.c amarchy/leaf_core.c amarchy/leaf_pkg.c amarchy/wblaunch.c amarchy/menu_open.c amarchy/amarchy.c amarchy/demo.c amarchy/demo_core.c amarchy/cx.c amarchy/act.c amarchy/win.c amarchy/win_apply.c amarchy/bar_usable.c amarchy/win_core.c amarchy/tile_core.c amarchy/cxdesc.c amarchy/menu_tree.c config/keymap.c config/keymap_load.c $(AMARCHY_LEAF_DEPS) handler/upactive.c handler/upmru.c amarchy/clipwatch.c amarchy/clips_core.c handler/clip.c handler/clipfmt.c handler/be32.c amarchy/index_core.c amarchy/pkgs_core.c amarchy/gthemes_core.c amarchy/gthemes_dos.c prefs/prefs_asl.c amarchy/desk_dos.c amarchy/win_refresh.c amarchy/flat_core.c amarchy/desk_core.c amarchy/gthemes_scan_dos.c amarchy/proclaunch.c amarchy/poll_timer.c amarchy/tick.c amarchy/tick_core.c amarchy/wbmode_core.c amarchy/wbmode.c amarchy/status_core.c amarchy/barconf_core.c amarchy/barconf_dos.c amarchy/themewin.c amarchy/bar.c amarchy/bar_core.c amarchy/menu_theme.c render/pens_amiga.c handler/upreq.c handler/keymap_act.c amarchy/wbreset_core.c amarchy/wbreset.c amarchy/wbreset_patch.c amarchy/ipatch.c amarchy/strut_patch.c amarchy/borderblank_core.c amarchy/help_core.c amarchy/borderblank_patch.c $(AMARCHY_NOBREAK)
 $(BUILD)/amiga/Amarchy: $(AMARCHY_SRC) amarchy/win_refresh.h amarchy/flat_shared.h amarchy/flat_core.h amarchy/note.h amarchy/note_core.h amarchy/shot.h amarchy/shot_core.h amarchy/rexx_host.h amarchy/taskalive.h amarchy/menusrv_core.h amarchy/menu_open.h config/segstack.h config/cmdpath.h amarchy/clipwatch.h amarchy/clips_core.h handler/clip.h amarchy/wblaunch.h amarchy/act.h amarchy/leaf.h amarchy/win.h amarchy/demo.h amarchy/demo_core.h amarchy/win_apply.h amarchy/bar_usable.h amarchy/win_core.h amarchy/tile_core.h handler/frontscr.h amarchy/cx.h amarchy/cxdesc.h amarchy/menu_core.h claude/util.h config/keymap.h config/keymap_load.h handler/upactive.h handler/keymap_act.h config/upconf.h config/upconf_lex.h $(KEYMAP_DEFAULT_INC) amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h amarchy/index_core.h amarchy/pkgs_core.h amarchy/gthemes_core.h amarchy/gthemes_dos.h amarchy/desk_dos.h amarchy/desk_core.h amarchy/gthemes_scan_dos.h amarchy/proclaunch.h amarchy/poll_timer.h amarchy/tick.h amarchy/tick_core.h amarchy/wbmode_core.h amarchy/wbmode.h amarchy/status_core.h amarchy/barconf_core.h amarchy/barconf_dos.h amarchy/themewin.h amarchy/bar.h amarchy/bar_core.h amarchy/menu_theme.h render/pens_amiga.h handler/upreq.h
 	@mkdir -p $(BUILD)/amiga
@@ -1067,20 +1076,20 @@ $(BUILD)/amiga/amarchy-gui: $(AMARCHY_GUI_SRC) amarchy/iconpen_dos.h amarchy/ico
 AMARCHY_INDEX_SRC := amarchy/taskalive.c amarchy/index.c install/hardvol.c amarchy/index_core.c amarchy/pkgs_core.c amarchy/ixwatch.c amarchy/menu_tree.c config/upconf.c config/upconf_rows.c amarchy/amconf_core.c amarchy/amconf_keys.c amarchy/amconf_dos.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c handler/kcmode.c handler/slash.c amarchy/gthemes_core.c
 .PHONY: amarchy-index
 amarchy-index: $(BUILD)/amiga/amarchy-index
-$(BUILD)/amiga/amarchy-index: $(AMARCHY_INDEX_SRC) amarchy/taskalive.h amarchy/index_core.h amarchy/pkgs_core.h amarchy/ixwatch.h amarchy/menu_core.h config/upconf.h tty/qmark.h install/hardvol.h install/fssm.h amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h amarchy/gthemes_core.h
+$(BUILD)/amiga/amarchy-index: $(AMARCHY_INDEX_SRC) amarchy/stkprobe.h amarchy/stkprobe.c amarchy/taskalive.h amarchy/index_core.h amarchy/pkgs_core.h amarchy/ixwatch.h amarchy/menu_core.h config/upconf.h tty/qmark.h install/hardvol.h install/fssm.h amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h amarchy/gthemes_core.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 -o $@ $(AMARCHY_INDEX_SRC)
+	$(VC) -dontwarn=153,65 $(STKPROBE_FLAGS) -o $@ $(AMARCHY_INDEX_SRC) $(STKPROBE_SRC)
 
 # amarchy-flat: the resident flat-UI program (plan 2026-10-29-amarchy-flat-ui-patch.md FLAT-C0). A plain vbcc DOS program,
 # no ixemul; it keeps the public state block "Amarchy.Flat" that Amarchy writes. flat_core.c is host-tested.
 .PHONY: amarchy-flat
 amarchy-flat: $(BUILD)/amiga/amarchy-flat
-$(BUILD)/amiga/amarchy-flat: device/romspan.h amarchy/flat_shared.h amarchy/flat.c $(AMARCHY_NOBREAK) amarchy/iclabel_core.c amarchy/iclabel_core.h render/aa_ink.h render/aa_ink_rule.h amarchy/menu_font.c amarchy/menu_font.h render/fontpair.c render/fontpair.h amarchy/flat_rf.s amarchy/flat_tx.s amarchy/flat_glyph.c amarchy/flat_glyph.h amarchy/roundaa_core.c amarchy/roundaa_core.h render/emoji.c render/emoji.h render/unifont.c render/unifont.h render/pen_match.h amarchy/flat_core.c amarchy/desk_core.c amarchy/desk_core.h amarchy/gthemes_core.c amarchy/gthemes_core.h amarchy/iconpen_core.c handler/pubscr_core.c amarchy/iconpen_core.h amarchy/iconpen_dos.c amarchy/flat_role_core.c amarchy/flat_role_core.h amarchy/iconpen_dos.h handler/pubscr.c handler/pubscr.h handler/be32.c handler/be32.h amarchy/taskalive.c amarchy/flat_core.h amarchy/taskalive.h tty/qmark.h amarchy/poll_timer.c amarchy/poll_timer.h amarchy/amconf_core.h amarchy/amconf_dos.h $(AMARCHY_LEAF_DEPS)
+$(BUILD)/amiga/amarchy-flat: device/romspan.h amarchy/stkprobe.h amarchy/flat_shared.h amarchy/flat.c $(AMARCHY_NOBREAK) amarchy/iclabel_core.c amarchy/iclabel_core.h render/aa_ink.h render/aa_ink_rule.h amarchy/menu_font.c amarchy/menu_font.h render/fontpair.c render/fontpair.h amarchy/flat_rf.s amarchy/flat_tx.s amarchy/flat_glyph.c amarchy/flat_glyph.h amarchy/roundaa_core.c amarchy/roundaa_core.h render/emoji.c render/emoji.h render/unifont.c render/unifont.h render/pen_match.h amarchy/flat_core.c amarchy/desk_core.c amarchy/desk_core.h amarchy/gthemes_core.c amarchy/gthemes_core.h amarchy/iconpen_core.c handler/pubscr_core.c amarchy/iconpen_core.h amarchy/iconpen_dos.c amarchy/flat_role_core.c amarchy/flat_role_core.h amarchy/iconpen_dos.h handler/pubscr.c handler/pubscr.h handler/be32.c handler/be32.h amarchy/taskalive.c amarchy/flat_core.h amarchy/taskalive.h tty/qmark.h amarchy/poll_timer.c amarchy/poll_timer.h amarchy/amconf_core.h amarchy/amconf_dos.h $(AMARCHY_LEAF_DEPS)
 	@mkdir -p $(BUILD)/amiga
 	@mkdir -p $(BUILD)/amiga/obj
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_rf.o amarchy/flat_rf.s
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_tx.o amarchy/flat_tx.s
-	$(VC) -dontwarn=153,65 -o $@ amarchy/flat.c $(AMARCHY_NOBREAK) $(BUILD)/amiga/obj/flat_rf.o $(BUILD)/amiga/obj/flat_tx.o amarchy/flat_glyph.c amarchy/roundaa_core.c amarchy/iclabel_core.c render/emoji.c render/unifont.c amarchy/menu_font.c render/fontpair.c amarchy/flat_core.c amarchy/desk_core.c amarchy/gthemes_core.c amarchy/iconpen_core.c handler/pubscr_core.c amarchy/iconpen_dos.c amarchy/flat_role_core.c handler/pubscr.c handler/be32.c amarchy/taskalive.c amarchy/poll_timer.c $(AMARCHY_LEAF_DEPS)
+	$(VC) -dontwarn=153,65 $(STKPROBE_FLAGS) -o $@ amarchy/flat.c $(STKPROBE_SRC) $(AMARCHY_NOBREAK) $(BUILD)/amiga/obj/flat_rf.o $(BUILD)/amiga/obj/flat_tx.o amarchy/flat_glyph.c amarchy/roundaa_core.c amarchy/iclabel_core.c render/emoji.c render/unifont.c amarchy/menu_font.c render/fontpair.c amarchy/flat_core.c amarchy/desk_core.c amarchy/gthemes_core.c amarchy/iconpen_core.c handler/pubscr_core.c amarchy/iconpen_dos.c amarchy/flat_role_core.c handler/pubscr.c handler/be32.c amarchy/taskalive.c amarchy/poll_timer.c $(AMARCHY_LEAF_DEPS)
 
 # amarchy-icons: filled icons on the Workbench default icons, APPLY and RESTORE (plan 2026-10-31-amarchy-lucide-icons.md L8, L9).
 # A plain vbcc DOS program; every decision is amarchy/iconapply_core.c (host suite iconapply).
@@ -1092,9 +1101,9 @@ chkabort-check: $(CHKABORT_PROGRAMS:%=$(BUILD)/amiga/%)
 	python3 tests/test_nobreak.py $(CHKABORT_PROGRAMS:%=$(BUILD)/amiga/%)
 	python3 tests/test_chkabort_suite.py
 amarchy-icons: $(BUILD)/amiga/amarchy-icons
-$(BUILD)/amiga/amarchy-icons: amarchy/icons.c amarchy/iconapply_core.c amarchy/iconapply_core.h amarchy/iconfile_core.c amarchy/iconfile_core.h amarchy/iconpen_core.c handler/pubscr_core.c amarchy/iconpen_core.h amarchy/iconpen_dos.c amarchy/flat_role_core.c amarchy/flat_role_core.h amarchy/iconpen_dos.h handler/pubscr.c handler/pubscr.h amarchy/gthemes_core.c amarchy/gthemes_core.h amarchy/desk_core.c amarchy/desk_core.h amarchy/amconf_core.h amarchy/amconf_dos.h handler/be32.c handler/be32.h tty/qmark.h $(AMARCHY_LEAF_DEPS)
+$(BUILD)/amiga/amarchy-icons: amarchy/icons.c amarchy/stkprobe.h amarchy/iconapply_core.c amarchy/iconapply_core.h amarchy/iconfile_core.c amarchy/iconfile_core.h amarchy/iconpen_core.c handler/pubscr_core.c amarchy/iconpen_core.h amarchy/iconpen_dos.c amarchy/flat_role_core.c amarchy/flat_role_core.h amarchy/iconpen_dos.h handler/pubscr.c handler/pubscr.h amarchy/gthemes_core.c amarchy/gthemes_core.h amarchy/desk_core.c amarchy/desk_core.h amarchy/amconf_core.h amarchy/amconf_dos.h handler/be32.c handler/be32.h tty/qmark.h $(AMARCHY_LEAF_DEPS)
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 -o $@ $(AMARCHY_NOBREAK) amarchy/icons.c amarchy/iconfile_core.c amarchy/iconapply_core.c amarchy/iconpen_core.c handler/pubscr_core.c amarchy/iconpen_dos.c amarchy/flat_role_core.c handler/pubscr.c amarchy/gthemes_core.c amarchy/desk_core.c handler/be32.c $(AMARCHY_LEAF_DEPS)
+	$(VC) -dontwarn=153,65 $(STKPROBE_FLAGS) -o $@ $(AMARCHY_NOBREAK) $(STKPROBE_SRC) amarchy/icons.c amarchy/iconfile_core.c amarchy/iconapply_core.c amarchy/iconpen_core.c handler/pubscr_core.c amarchy/iconpen_dos.c amarchy/flat_role_core.c handler/pubscr.c amarchy/gthemes_core.c amarchy/desk_core.c handler/be32.c $(AMARCHY_LEAF_DEPS)
 
 # FLAT-C3: vbcc's assembly of the dispatcher objects, checked by tests/test_flat_budget.py (entry frames <= 64 bytes, no libc call)
 FLAT_ASM_DIR := $(BUILD)/amiga/flat_asm
@@ -1136,9 +1145,9 @@ $(BUILD)/amiga/renameopen: tools/rig/renameopen.c
 AMTILE_SRC := handler/frontscr.c handler/pubscr.c handler/pubscr_core.c amarchy/poll_timer.c amarchy/tile.c amarchy/tile_core.c amarchy/win_core.c amarchy/win_apply.c amarchy/win_refresh.c amarchy/bar_usable.c amarchy/rexx_host.c $(AMARCHY_LEAF_DEPS)
 .PHONY: AmTile
 AmTile: $(BUILD)/amiga/AmTile
-$(BUILD)/amiga/AmTile: $(AMTILE_SRC) tty/qmark.h amarchy/win_refresh.h amarchy/poll_timer.h amarchy/rexx_host.h amarchy/tile_core.h amarchy/win_core.h amarchy/win_apply.h amarchy/bar_usable.h amarchy/bar_core.h amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h
+$(BUILD)/amiga/AmTile: $(AMTILE_SRC) amarchy/stkprobe.h tty/qmark.h amarchy/win_refresh.h amarchy/poll_timer.h amarchy/rexx_host.h amarchy/tile_core.h amarchy/win_core.h amarchy/win_apply.h amarchy/bar_usable.h amarchy/bar_core.h amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 -o $@ $(AMTILE_SRC)
+	$(VC) -dontwarn=153,65 $(STKPROBE_FLAGS) -o $@ $(AMTILE_SRC) $(STKPROBE_SRC)
 
 # ixemul programs: bebbo's gcc (thoughts plan: TOOLCHAIN), linked against
 # Aminet's ixemul SDK (-m68020 is safe since the driver names ixemul/lib/crt0.o by path,

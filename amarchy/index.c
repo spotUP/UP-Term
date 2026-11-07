@@ -27,6 +27,7 @@
 #include "../install/hardvol.h"
 #include "amconf_dos.h"
 #include "../tty/qmark.h"
+#include "stkprobe.h"
 
 static const char ver[] = "$VER: amarchy-index 1.0 (23.10.2026) (UP-Term)";
 
@@ -35,8 +36,8 @@ static const char ver[] = "$VER: amarchy-index 1.0 (23.10.2026) (UP-Term)";
  * same to AmigaOS 3.2 and to vsh (RULES.md rule 6). A full scan measured under
  * 1700 bytes on icon.library 40.1 and 47.5; the rest is room for other icon
  * libraries' GetDiskObject. */
-long __stack = 16384;
-const char amarchy_index_stack_cookie[] = "$STACK: 16384";
+long __stack = STK_BYTES(16384);
+const char amarchy_index_stack_cookie[] = STK_COOKIE(16384);
 
 #define IX_DEPTH    6
 #define IX_MAXROWS  3000
@@ -268,6 +269,7 @@ static void walk(const char *dir, int depth)
         return;
     if (broken())
         return;
+    stk_probe();                        /* the deepest recursion is a directory walk: measure on every directory */
     note(IX_ST_WALK, dir);
     if (!(lock = Lock((STRPTR)dir, ACCESS_READ)))
         return;
@@ -371,6 +373,7 @@ int main(void)
     char names[IX_MAXVOLS][IX_VOL];
     int nv, i, napps = 0, ngames = 0;
     const char *args = (const char *)GetArgStr();
+    stk_probe_init("AMIDX");
     if (qmark_line(args) || word_is(args, "help", 0)) {
         PutStr((STRPTR) "amarchy-index: scans the hard disks for apps and WHDLoad games and writes " IX_DEST "\n"
                "amarchy-index --where (-w): the stage and path of the running or last scan, and whether the scanner task still exists\n");
@@ -405,6 +408,7 @@ int main(void)
         if (sh)
             ix_prog_stopped(&sh->p);
         PutStr((STRPTR) "amarchy-index: stopped by Ctrl-C, no cache written\n");
+        stk_probe();
         FreeVec(rows);
         CloseLibrary(IconBase);
         return RETURN_WARN;
@@ -422,6 +426,7 @@ int main(void)
         PutStr((STRPTR) "amarchy-index: cannot write " IX_DEST "\n");
     else
         Printf((STRPTR) "amarchy-index: %ld apps, %ld games on %ld volumes\n", (LONG)napps, (LONG)ngames, (LONG)nv);
+    stk_probe();
     FreeVec(rows);
     CloseLibrary(IconBase);
     return i;
