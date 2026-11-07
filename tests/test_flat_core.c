@@ -243,6 +243,15 @@ static void test_dopus_gate(void)
     sums[0] = 0x780fd46bu; sums[1] = 0xba2cf172u;
     CHECK_INT(flat_dopus_gate(flat_dopus_table(&n), n, 73, 8, sums, &why), 3);
     CHECK_INT(why, FLAT_GATE_OK);
+    /* Directory Opus 5.82 (Magellan II, dopus5.library 68.16), sums measured on rig 95: the bevel patch must engage on it */
+    sums[0] = 0x05a329c5u; sums[1] = 0xaa2c535eu;
+    CHECK_INT(flat_dopus_gate(flat_dopus_table(&n), n, 68, 16, sums, &why), 3);
+    CHECK_INT(why, FLAT_GATE_OK);
+    CHECK_INT(flat_dopus_gate(flat_dopus_table(&n), n, 68, 15, sums, &why), 0);   /* another 5.82 revision stays inert */
+    CHECK_INT(why, FLAT_GATE_UNKNOWN);
+    sums[0] ^= 1; sums[1] ^= 1;
+    CHECK_INT(flat_dopus_gate(flat_dopus_table(&n), n, 68, 16, sums, &why), 0);   /* same version, other routine bytes: inert */
+    CHECK_INT(why, FLAT_GATE_SUM);
     /* sum and jump parsing */
     CHECK_INT(flat_sum(fn, 8), 3);
     CHECK_INT(flat_sum(fn, 3), 1);                                      /* never 0 */

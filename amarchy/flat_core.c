@@ -121,6 +121,7 @@ int flat_conv(unsigned intuition_version)
 /* ---- FLAT-D4 ---- */
 static const flat_dopus_build dopus_table[] = {
     { 73, 8, { 0x780fd46bu, 0xba2cf172u } },   /* DOpus 5.104 (LIB_VERSION 73, LIB_REVISION 8), measured on rig 5 (OS 3.2) by STATUS "sums=" (flat_sum_reloc, same at two load addresses) */
+    { 68, 16, { 0x05a329c5u, 0xaa2c535eu } },  /* DOpus 5.82 (Magellan II; LIB_VERSION 68, LIB_REVISION 16), measured on rig 95 (OS 3.1 master) by STATUS "sums=" (flat_sum_reloc, same after a second boot, see thoughts/shared/s61-evidence/b8-dopus-582-flat.md) */
 };
 
 const flat_dopus_build *flat_dopus_table(int *n)
