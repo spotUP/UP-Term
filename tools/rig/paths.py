@@ -507,14 +507,15 @@ def rig_flags(default=None):
     return shlex.split(raw) if raw.strip() else list(default or [])
 
 
-def reboot_args(given):
+def reboot_args(given, start_file=None):
     """The arguments a reboot starts with: the ones given, else the last start's (<rig>/start.args, a JSON list that
-    rig.py start writes). One parser for rig.py reboot/screenmode and installer_rig's restarts."""
+    rig.py start writes; `start_file` names another record, rig.START_ARGS). One parser for rig.py reboot/screenmode
+    and installer_rig's restarts."""
     import json
     if given:
         return list(given)
     try:
-        return json.loads((RIG / 'start.args').read_text())
+        return json.loads(pathlib.Path(start_file or RIG / 'start.args').read_text())
     except (OSError, ValueError):
         return []
 

@@ -2085,7 +2085,7 @@ def screenmode(name):
 
 def reboot_args(given):
     """The arguments a reboot starts with: the ones given to this command, else the last start's (paths.reboot_args)."""
-    return paths.reboot_args(given)
+    return paths.reboot_args(given, START_ARGS)
 
 def reboot(given=None):
     """Stop safely (stop() flushes the volumes) and start again on the same sys.hdf. A start clones DH0: from the master,
