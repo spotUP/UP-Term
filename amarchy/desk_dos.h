@@ -20,6 +20,8 @@ extern unsigned long desk_dos_wb_backdrop_invokes;
 extern unsigned long desk_dos_start_plans, desk_dos_start_writes;
 /* FLAT-PREFS-NOT-NOTIFIED: the prefs file changed: sync the running amarchy-flat (write + redraw only on a change), or start it (BOOT) */
 void desk_dos_flat_sync(void);
+int desk_dos_flat_ensure(void);           /* FLAT-ABSENT-AT-BOOT: start amarchy-flat when a flat switch is on and none runs */
+extern unsigned long desk_dos_flat_starts;
 /* TE-6.2: write the version-5 flat_state fields of a theme that is not saved (the editor's live preview) */
 void desk_dos_flat_preview(const struct gtheme *th);
 /* R1.17: IPrefs resets the Workbench screen after a Palette/WBPattern/Pointer/Font USE and cannot while any window of ours is on it

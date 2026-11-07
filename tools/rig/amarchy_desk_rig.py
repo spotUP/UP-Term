@@ -23,6 +23,9 @@ Run: UPTERM_RIG=3 python3 tools/rig/amarchy_desk_rig.py
 FLAT-C9 case (the theme pick reaches the flat_state block of a running amarchy-flat; no flatwin, no desktop-theme needed):
   make amarchy-flat build/amiga/Amarchy; python3 tools/rig/amarchy_gui_rig.py --setup
   UPTERM_RIG=<n> python3 tools/rig/amarchy_desk_rig.py --flat
+FLAT-ABSENT-AT-BOOT case (the Amarchy start makes amarchy-flat resident when a flat switch is on and none runs):
+  make amarchy-flat build/amiga/Amarchy; python3 tools/rig/amarchy_gui_rig.py --setup
+  UPTERM_RIG=<n> python3 tools/rig/amarchy_desk_rig.py --flat-ensure
 Exit status 1 on any [FAIL]."""
 import os, re, subprocess, sys, tempfile, time
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -355,9 +358,81 @@ def flat_case():
     return 1 if failed else 0
 
 
+def flat_start_count():
+    """AMARCHY_FLAT_START (dk_flat_start, am_sentinel): the times this Amarchy started amarchy-flat; 0 when unset."""
+    rc, out = c.run('GetEnv AMARCHY_FLAT_START')
+    return int(out.strip()) if rc == 0 and out.strip().isdigit() else 0
+
+
+def amarchy_restart(tag):
+    """QUIT the running Amarchy and start the build's again: the start gate (desk_start_gate) runs on the new one."""
+    port = g.amarchy_window_rig.port
+    port('QUIT', 10)
+    for _ in range(20):
+        if port('STATUS', 5)[0] is None:
+            break
+        time.sleep(0.5)
+    else:
+        return say(False, '%s: port AMARCHY still up 10 s after QUIT' % tag)
+    c.run('Delete >NIL: ENV:AMARCHY_FLAT_START')   # each Amarchy counts from 0; the old value must not pass for a new start
+    return g.start_amarchy(tag)
+
+
+def flat_procs():
+    return re.findall(r'Process\s+(\d+):.*amarchy-flat', c.run('Status')[1])
+
+
+def flat_ensure_case():
+    """FLAT-ABSENT-AT-BOOT reachability (owner 2026-11-07, rig 93/94: Installer buttons and window bottom without borders).
+    A system with flat prefs on and no amarchy-flat running (no S:User-Startup BOOT line: a rig, an older master) gets flat
+    pens but nothing redraws the bevels. The real entry point is the Amarchy start: desk_start_gate -> desk_dos_flat_ensure.
+      1. prefs on, amarchy-flat gone, Amarchy restarted: one amarchy-flat resident, STATUS flat=on|off, AMARCHY_FLAT_START >= 1.
+      2. prefs on, amarchy-flat already resident, Amarchy restarted: AMARCHY_FLAT_START stays 0, still one process.
+      3. prefs off, amarchy-flat gone, Amarchy restarted: nothing resident, AMARCHY_FLAT_START 0 (the switch moves the output).
+    Before the fix step 1 failed: STATUS flat=absent after the Amarchy start (rig 93, installer-borders-rig-measure.md)."""
+    if not g.process_running('Amarchy'):
+        print('[FAIL] the Amarchy commodity is not running')
+        return 1
+    g.close_menu()
+    ami.put(os.path.join(ROOT, 'build', 'amiga', 'amarchy-flat'), 'RAM:amarchy-flat')   # STATUS probe of flat_stop / flat_pens
+    c.run('Protect RAM:amarchy-flat +e')
+    c.run('MakeDir >NIL: ENV:Amarchy')
+    print('[INFO] UP-Term:bin/amarchy-flat (what Amarchy starts): %s' % c.run('List UP-Term:bin/amarchy-flat LFORMAT "%p%n %l %d %t"')[1].strip())
+    put_flat_prefs(True)
+    if not say(flat_stop(), 'step 1: no amarchy-flat resident before the restart'):
+        return 1
+    amarchy_restart('step 1')
+    for _ in range(15):
+        if flat_procs():
+            break
+        time.sleep(1)
+    w, n, pens, raw = flat_pens()
+    print('[INFO] step 1 STATUS: %s' % raw)
+    say(w in ('on', 'off'), 'step 1: flat prefs on, the Amarchy start left amarchy-flat resident (STATUS flat=on|off)', raw)
+    say(len(flat_procs()) == 1, 'step 1: exactly one amarchy-flat process', str(flat_procs()))
+    say(flat_start_count() >= 1, 'step 1: AMARCHY_FLAT_START >= 1 (desk_dos_flat_ensure started it)', str(flat_start_count()))
+    amarchy_restart('step 2')
+    time.sleep(3)
+    say(flat_start_count() == 0, 'step 2: amarchy-flat already resident, the start gate started none (AMARCHY_FLAT_START 0)', str(flat_start_count()))
+    say(len(flat_procs()) == 1, 'step 2: still exactly one amarchy-flat process', str(flat_procs()))
+    put_flat_prefs(False)
+    say(flat_stop(), 'step 3: amarchy-flat stopped before the restart', c.run('RAM:amarchy-flat STATUS')[1].strip())
+    amarchy_restart('step 3')
+    time.sleep(5)
+    say(not flat_procs() and 'flat=absent' in c.run('RAM:amarchy-flat STATUS')[1],
+        'step 3: flat prefs off, the Amarchy start left nothing resident', str(flat_procs()))
+    say(flat_start_count() == 0, 'step 3: AMARCHY_FLAT_START 0', str(flat_start_count()))
+    put_flat_prefs(True)                       # the default (settings_def.c): leave the rig as a kit boot has it
+    c.run('Run >NIL: UP-Term:bin/amarchy-flat BOOT')
+    print('[%s] %d failed' % ('OK' if not failed else 'FAIL', failed))
+    return 1 if failed else 0
+
+
 def main():
     if '--flat' in sys.argv:
         return flat_case()
+    if '--flat-ensure' in sys.argv:
+        return flat_ensure_case()
     if not g.process_running('Amarchy'):
         print('[FAIL] the Amarchy commodity is not running')
         return 1

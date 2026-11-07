@@ -301,6 +301,7 @@ static void desk_start_gate(long now)
     if (!desk_start_due(g_desk_started, scr != 0, g_tick_ok, g_wb_hold, ready))
         return;                                 /* S32-GREEN-LINE-96: wb_gate runs first on the tick and ends the hold */
     g_desk_started = 1;
+    desk_dos_flat_ensure();                     /* FLAT-ABSENT-AT-BOOT: flat on means amarchy-flat runs before any flat pen reaches the screen here */
     desk_dos_flat_pens_refresh();               /* FLAT-PENS-STALE-FILE: after the windows (or the W43 hold) are set up, the hooks above close/reopen them around a reset */
     desk_dos_marker_recover();                  /* FP-3 (R1.9): an apply that never reached Keep or Revert does not stick */
     desk_dos_wb_backdrop();                     /* S32-WB-BACKDROP: frameless Workbench root window */

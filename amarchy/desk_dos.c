@@ -546,6 +546,19 @@ static void dk_icons_sync(int on, int outline)
 
 /* changed_only: the prefs-file notify path (desk_dos_flat_sync): write and redraw only when the block's fields differ, so a keymap edit
  * or the commodity's own save after a desk apply redraws nothing. */
+/* FLAT-ABSENT-AT-BOOT: no Amarchy.Flat record and a flat switch on: start amarchy-flat (BOOT form: resident only when a switch is on;
+ * it writes the theme fields itself). The one place Amarchy starts it, for a desk apply and for the start gate alike. */
+unsigned long desk_dos_flat_starts;
+
+static void dk_flat_start(int flat, int gad)
+{
+    if (!flat && !gad)
+        return;
+    desk_dos_flat_starts++;
+    am_sentinel("AMARCHY_FLAT_START", (long)desk_dos_flat_starts);
+    pl_start(PL_BIN_DIR "/amarchy-flat BOOT", PL_BIN_DIR "/amarchy-flat", 32768, "amarchy-flat");   /* its $STACK cookie (rule 6) */
+}
+
 static void dk_flat_sync_theme(const gtheme *thp, int changed_only)
 {
     am_prefs *ap;
@@ -576,8 +589,8 @@ static void dk_flat_sync_theme(const gtheme *thp, int changed_only)
     if (wrote) {
         desk_dos_flat_writes++;
         win_refresh_frames();
-    } else if (!r && (flat || gad)) {
-        pl_start(PL_BIN_DIR "/amarchy-flat BOOT", PL_BIN_DIR "/amarchy-flat", 32768, "amarchy-flat");   /* its $STACK cookie (rule 6) */
+    } else if (!r) {
+        dk_flat_start(flat, gad);
     }
     amconf_return(ap);
 }
@@ -605,6 +618,28 @@ void desk_dos_flat_preview(const gtheme *th)
 void desk_dos_flat_sync(void)
 {
     dk_flat_sync_with(1);
+}
+
+/* FLAT-ABSENT-AT-BOOT (owner 2026-11-07, rig 93/94): the flat pens (SHINE = SHADOW = BACKGROUND) reach the screen from Palette.prefs
+ * and the start steps whether amarchy-flat runs or not, and without it every bevel it does not redraw vanishes (Installer buttons,
+ * the window bottom ring). S:User-Startup's BOOT line was the only start; a system without it (a master image installed before the
+ * Amarchy-Flat block, a failed Run) booted flat pens with no flat program. Invariant: a flat switch on means amarchy-flat is resident
+ * once the start gate has run. */
+int desk_dos_flat_ensure(void)
+{
+    am_prefs *ap;
+    int flat, gad, absent;
+    ap = amconf_borrow();
+    flat = amconf_flat_index(ap, AM_FLAT);
+    gad = amconf_flat_index(ap, AM_FLATGAD);
+    amconf_return(ap);
+    Forbid();
+    absent = FindSemaphore((STRPTR)FLAT_SEM_NAME) == 0;
+    Permit();
+    if (!absent || (!flat && !gad))
+        return 0;
+    dk_flat_start(flat, gad);
+    return 1;
 }
 
 /* FLAT-PENS-LIVE: flat-system-look writes the flat pen roles itself (dk_apply carries them only on a desktop palette write). The user's
