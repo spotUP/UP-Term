@@ -801,7 +801,7 @@ $(BUILD)/amiga/ps: proc/ps_amiga.c proc/tasks_amiga.c proc/tasks_amiga.h $(PROC_
 $(BUILD)/amiga/top: proc/top_amiga.c proc/tasks_amiga.c proc/tasks_amiga.h proc/vbsample.s $(PROC_CORE) proc/proc_core.h handler/vtcon_packets.h tty/ldisc.h $(BUILD)/amiga/obj/cpuchk-top.o
 	@mkdir -p $(BUILD)/amiga/obj
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/vbsample.o proc/vbsample.s
-	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ proc/top_amiga.c proc/tasks_amiga.c $(PROC_CORE) $(BUILD)/amiga/obj/vbsample.o $(BUILD)/amiga/obj/cpuchk-top.o
+	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ $(AMARCHY_NOBREAK) proc/top_amiga.c proc/tasks_amiga.c $(PROC_CORE) $(BUILD)/amiga/obj/vbsample.o $(BUILD)/amiga/obj/cpuchk-top.o
 $(BUILD)/amiga/shotprobe: tests/amiga/shotprobe.c amarchy/shot_core.c amarchy/shot_core.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -o $@ tests/amiga/shotprobe.c amarchy/shot_core.c
@@ -931,7 +931,7 @@ $(BUILD)/amiga/winbox: tests/amiga/winbox.c
 
 $(BUILD)/amiga/sizewatch: tests/amiga/sizewatch.c
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -o $@ tests/amiga/sizewatch.c
+	$(VC) -o $@ $(AMARCHY_NOBREAK) tests/amiga/sizewatch.c
 
 # muhit: one illegal access on purpose, for MuForce (rig.py muforce, tools/rig/muforce.py)
 $(BUILD)/amiga/muhit: tests/amiga/muhit.c
@@ -962,7 +962,7 @@ $(BUILD)/amiga/breakport: tests/amiga/breakport.c
 # The kit ships it as Files/upprefs; Install copies it to C:UP-Term-Prefs.
 $(BUILD)/amiga/upprefs: prefs/upprefs.c prefs/prefs_merge.c prefs/prefs_merge.h prefs/prefs_core.c prefs/settings_def.c prefs/settings_def.h prefs/prefs_core.h prefs/prefs_dos.c prefs/prefs_dos.h prefs/prefs_asl.c prefs/prefs_asl.h prefs/prefs_ui.c prefs/prefs_ui.h prefs/pick_list.c prefs/pick_list.h prefs/pick_list_gt.c handler/kcmode.c handler/kcmode.h handler/slash.c handler/slash.h config/upconf.c config/upconf_rows.c config/upconf.h amarchy/amconf_core.c amarchy/amconf_core.h amarchy/amconf_dos.c amarchy/amconf_dos.h amarchy/amconf_keys.c amarchy/gthemes_core.c amarchy/gthemes_core.h amarchy/gthemes_scan_dos.c amarchy/gthemes_scan_dos.h amarchy/flat_core.c amarchy/iconpen_core.c handler/pubscr_core.c amarchy/desk_core.c handler/be32.c amarchy/flat_core.h amarchy/flat_shared.h device/romspan.h $(BUILD)/amiga/obj/cpuchk-upprefs.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ prefs/upprefs.c prefs/prefs_merge.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c prefs/prefs_asl.c prefs/prefs_ui.c prefs/pick_list.c prefs/pick_list_gt.c handler/kcmode.c handler/slash.c config/upconf.c config/upconf_rows.c amarchy/amconf_core.c amarchy/amconf_dos.c amarchy/amconf_keys.c amarchy/gthemes_core.c amarchy/gthemes_scan_dos.c amarchy/flat_core.c amarchy/iconpen_core.c handler/pubscr_core.c amarchy/desk_core.c handler/be32.c $(BUILD)/amiga/obj/cpuchk-upprefs.o
+	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ $(AMARCHY_NOBREAK) prefs/upprefs.c prefs/prefs_merge.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c prefs/prefs_asl.c prefs/prefs_ui.c prefs/pick_list.c prefs/pick_list_gt.c handler/kcmode.c handler/slash.c config/upconf.c config/upconf_rows.c amarchy/amconf_core.c amarchy/amconf_dos.c amarchy/amconf_keys.c amarchy/gthemes_core.c amarchy/gthemes_scan_dos.c amarchy/flat_core.c amarchy/iconpen_core.c handler/pubscr_core.c amarchy/desk_core.c handler/be32.c $(BUILD)/amiga/obj/cpuchk-upprefs.o
 
 # Amarchy: the Super-key commodity (plan 2026-10-22-amarchy-commodity.md, Phase C). A plain
 # vbcc CLI/WBStartup program, no ixemul. Parser, loader and semaphore reader are the handler's.
@@ -971,7 +971,7 @@ AMARCHY_LEAF_DEPS := handler/kcmode.c handler/slash.c config/upconf.c config/upc
 # CHKABORT_PROGRAMS: the Amarchy-family programs that handle Ctrl-C in their own Wait and hold system state; each links
 # $(AMARCHY_NOBREAK) (empty _chkabort) and tests/test_nobreak.py checks exactly these (make chkabort-check)
 AMARCHY_NOBREAK := amarchy/nobreak.c
-CHKABORT_PROGRAMS := Amarchy amarchy-gui amarchy-flat
+CHKABORT_PROGRAMS := Amarchy amarchy-gui amarchy-flat amarchy-icons upprefs upgetty top allocwatch patchcon lvoprobe frameprobe sizewatch
 AMARCHY_SRC := amarchy/menu_core.c amarchy/desk_confirm_dos.c amarchy/sentinel_dos.c amarchy/iconpen_core.c handler/pubscr_core.c amarchy/iconpen_dos.c amarchy/flat_role_core.c amarchy/note.c amarchy/note_core.c amarchy/shot.c amarchy/shot_core.c amarchy/rexx_host.c amarchy/taskalive.c amarchy/menusrv_core.c amarchy/termenv.c claude/util.c handler/frontscr.c handler/pubscr.c amarchy/leaf_core.c amarchy/leaf_pkg.c amarchy/wblaunch.c amarchy/menu_open.c amarchy/amarchy.c amarchy/cx.c amarchy/act.c amarchy/win.c amarchy/win_apply.c amarchy/bar_usable.c amarchy/win_core.c amarchy/tile_core.c amarchy/cxdesc.c amarchy/menu_tree.c config/keymap.c config/keymap_load.c $(AMARCHY_LEAF_DEPS) handler/upactive.c handler/upmru.c amarchy/clipwatch.c amarchy/clips_core.c handler/clip.c handler/clipfmt.c handler/be32.c amarchy/index_core.c amarchy/pkgs_core.c amarchy/gthemes_core.c amarchy/gthemes_dos.c prefs/prefs_asl.c amarchy/desk_dos.c amarchy/win_refresh.c amarchy/flat_core.c amarchy/desk_core.c amarchy/gthemes_scan_dos.c amarchy/proclaunch.c amarchy/poll_timer.c amarchy/tick.c amarchy/tick_core.c amarchy/wbmode_core.c amarchy/wbmode.c amarchy/status_core.c amarchy/barconf_core.c amarchy/barconf_dos.c amarchy/themewin.c amarchy/bar.c amarchy/bar_core.c amarchy/menu_theme.c render/pens_amiga.c handler/upreq.c handler/keymap_act.c amarchy/wbreset_core.c amarchy/wbreset.c amarchy/wbreset_patch.c amarchy/ipatch.c amarchy/strut_patch.c amarchy/borderblank_core.c amarchy/help_core.c amarchy/borderblank_patch.c $(AMARCHY_NOBREAK)
 $(BUILD)/amiga/Amarchy: $(AMARCHY_SRC) amarchy/win_refresh.h amarchy/flat_shared.h amarchy/flat_core.h amarchy/note.h amarchy/note_core.h amarchy/shot.h amarchy/shot_core.h amarchy/rexx_host.h amarchy/taskalive.h amarchy/menusrv_core.h amarchy/menu_open.h config/segstack.h config/cmdpath.h amarchy/clipwatch.h amarchy/clips_core.h handler/clip.h amarchy/wblaunch.h amarchy/act.h amarchy/leaf.h amarchy/win.h amarchy/win_apply.h amarchy/bar_usable.h amarchy/win_core.h amarchy/tile_core.h handler/frontscr.h amarchy/cx.h amarchy/cxdesc.h amarchy/menu_core.h claude/util.h config/keymap.h config/keymap_load.h handler/upactive.h handler/keymap_act.h config/upconf.h config/upconf_lex.h $(KEYMAP_DEFAULT_INC) amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h amarchy/index_core.h amarchy/pkgs_core.h amarchy/gthemes_core.h amarchy/gthemes_dos.h amarchy/desk_dos.h amarchy/desk_core.h amarchy/gthemes_scan_dos.h amarchy/proclaunch.h amarchy/poll_timer.h amarchy/tick.h amarchy/tick_core.h amarchy/wbmode_core.h amarchy/wbmode.h amarchy/status_core.h amarchy/barconf_core.h amarchy/barconf_dos.h amarchy/themewin.h amarchy/bar.h amarchy/bar_core.h amarchy/menu_theme.h render/pens_amiga.h handler/upreq.h
 	@mkdir -p $(BUILD)/amiga
@@ -1087,10 +1087,11 @@ $(BUILD)/amiga/amarchy-flat: device/romspan.h amarchy/flat_shared.h amarchy/flat
 .PHONY: chkabort-check
 chkabort-check: $(CHKABORT_PROGRAMS:%=$(BUILD)/amiga/%)
 	python3 tests/test_nobreak.py $(CHKABORT_PROGRAMS:%=$(BUILD)/amiga/%)
+	python3 tests/test_chkabort_suite.py
 amarchy-icons: $(BUILD)/amiga/amarchy-icons
 $(BUILD)/amiga/amarchy-icons: amarchy/icons.c amarchy/iconapply_core.c amarchy/iconapply_core.h amarchy/iconfile_core.c amarchy/iconfile_core.h amarchy/iconpen_core.c handler/pubscr_core.c amarchy/iconpen_core.h amarchy/iconpen_dos.c amarchy/flat_role_core.c amarchy/flat_role_core.h amarchy/iconpen_dos.h handler/pubscr.c handler/pubscr.h amarchy/gthemes_core.c amarchy/gthemes_core.h amarchy/desk_core.c amarchy/desk_core.h amarchy/amconf_core.h amarchy/amconf_dos.h handler/be32.c handler/be32.h tty/qmark.h $(AMARCHY_LEAF_DEPS)
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 -o $@ amarchy/icons.c amarchy/iconfile_core.c amarchy/iconapply_core.c amarchy/iconpen_core.c handler/pubscr_core.c amarchy/iconpen_dos.c amarchy/flat_role_core.c handler/pubscr.c amarchy/gthemes_core.c amarchy/desk_core.c handler/be32.c $(AMARCHY_LEAF_DEPS)
+	$(VC) -dontwarn=153,65 -o $@ $(AMARCHY_NOBREAK) amarchy/icons.c amarchy/iconfile_core.c amarchy/iconapply_core.c amarchy/iconpen_core.c handler/pubscr_core.c amarchy/iconpen_dos.c amarchy/flat_role_core.c handler/pubscr.c amarchy/gthemes_core.c amarchy/desk_core.c handler/be32.c $(AMARCHY_LEAF_DEPS)
 
 # FLAT-C3: vbcc's assembly of the dispatcher objects, checked by tests/test_flat_budget.py (entry frames <= 64 bytes, no libc call)
 FLAT_ASM_DIR := $(BUILD)/amiga/flat_asm
@@ -1467,7 +1468,7 @@ $(BUILD)/amiga/sysiprobe: tests/amiga/sysiprobe.c
 # Counts frameiclass dispatcher calls while a GadTools window opens (FLAT-C8 Q2)
 $(BUILD)/amiga/frameprobe: tests/amiga/frameprobe.c
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -o $@ tests/amiga/frameprobe.c
+	$(VC) -o $@ $(AMARCHY_NOBREAK) tests/amiga/frameprobe.c
 
 # dopus5.library jump-table entries and the flat enable switch (FLAT-D4 rig)
 $(BUILD)/amiga/dopusprobe: tests/amiga/dopusprobe.c amarchy/flat_core.h
@@ -1583,7 +1584,7 @@ $(BUILD)/upgetty_host: tests/test_upgetty_serial.c device/upgetty_serial.h
 # C:upgetty: a shell over the serial port through a PTY: pair (ledger T4)
 $(BUILD)/amiga/upgetty: device/upgetty.c device/upgetty_serial.h $(UPTERM_VERSION_H) handler/vtcon_packets.h $(BUILD)/amiga/obj/cpuchk-upgetty.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153 -o $@ device/upgetty.c $(BUILD)/amiga/obj/cpuchk-upgetty.o
+	$(VC) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153 -o $@ $(AMARCHY_NOBREAK) device/upgetty.c $(BUILD)/amiga/obj/cpuchk-upgetty.o
 
 # C:UPConsole: CON:/RAW: to UP-Term and back (console plan H5.4)
 $(BUILD)/amiga/UPConsole: device/upconsole.c $(UPTERM_VERSION_H) device/upc_public.h device/romspan.h $(BUILD)/amiga/obj/cpuchk-UPConsole.o
@@ -1612,17 +1613,17 @@ $(BUILD)/amiga/closeread: tests/amiga/closeread.c
 
 $(BUILD)/amiga/allocwatch: tests/amiga/allocwatch.c
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -o $@ tests/amiga/allocwatch.c
+	$(VC) -o $@ $(AMARCHY_NOBREAK) tests/amiga/allocwatch.c
 
 # D4.3's patch (tools/rig/devctl_rig.py; test only)
 $(BUILD)/amiga/patchcon: tests/amiga/patchcon.c
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -o $@ tests/amiga/patchcon.c
+	$(VC) -o $@ $(AMARCHY_NOBREAK) tests/amiga/patchcon.c
 
 # WBRESET-EXT step 1: counting probe on every intuition vector (test only)
 $(BUILD)/amiga/lvoprobe: tests/amiga/lvoprobe.c
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -o $@ tests/amiga/lvoprobe.c
+	$(VC) -o $@ $(AMARCHY_NOBREAK) tests/amiga/lvoprobe.c
 
 # D1.3's copy probe (tools/rig/snip_rig.py)
 $(BUILD)/amiga/snipprobe: tests/amiga/snipprobe.c handler/clip.c handler/clip.h handler/clipfmt.c handler/be32.c handler/clipfmt.h
