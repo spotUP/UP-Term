@@ -961,15 +961,13 @@ AMARCHY
     SetEnv EDITOR nvim
     Copy ENV:EDITOR ENVARC:
 
-  Flat Directory Opus button banks: a flat theme looks best when the buttons
-  of a bank have no bevel of their own. The kit installs no button bank
-  files (the DOpus add-on is upstream's archive, unmodified), so the flag is
-  set per bank inside Directory Opus. Open the bank, choose
-    Settings > Buttons > Edit
-  (the lister toolbar: Lister > Edit Toolbar), and in the Appearance section of
-  the Button Bank Editor tick  Borderless Buttons . Then save the bank with
-  Settings > Buttons > Save. Repeat for each bank. Upstream's MagicWB image
-  set already ships its Toolbar and FTP banks borderless.
+  Flat Directory Opus toolbar: the DOpus add-on installs a flat toolbar bank
+  (DOpus5:Buttons/Amarchy-toolbar, line glyphs in DOpus5:Images/Amarchy, buttons
+  without bevels). Applying a theme switches every lister that still uses
+  upstream's default toolbar to it; a toolbar of your own is never touched.
+  A bank of your own: open it (Lister > Edit Toolbar, or Settings > Buttons >
+  Edit) and in the Appearance section of the Button Bank Editor tick
+  Borderless Buttons , then save the bank.
 
   Window, Screens and Workbench groups: rows of the form  win:<verb>  act on
   windows of any program. Verbs: cycle, front, back, zip, fullwidth,

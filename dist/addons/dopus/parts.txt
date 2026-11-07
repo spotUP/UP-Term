@@ -13,3 +13,4 @@
 record          Files/VERSIONS
 dopus           Files/os3
 dopus           Files/os3-68000
+dopus           Files/toolbar

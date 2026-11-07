@@ -167,7 +167,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 TEST_ONLY_NAMES := $(shell grep -o '"$$(ONLY)" = [a-z_0-9]*' $(firstword $(MAKEFILE_LIST)) | sed 's/.* //' | sort -u)
 # ONLY= rows that run python3 on files alone: no C binary below is built or run for them (a worktree without the vendor NDK
 # cannot build render_host, and pkg_rows needs none). Add a name only after checking its script starts no $(BUILD) binary.
-TEST_PY_ONLY := gui_chip_pens gen_lucide_icons icon_grid_fit pkg_rows worktree_ready rig_handler_fallback rig_amarchy_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq rig_boot_console gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free flat_on_hang icat_stderr help_man_sync ipd_no_dos_under_list amarchy_rows_buffer
+TEST_PY_ONLY := gui_chip_pens gen_lucide_icons icon_grid_fit pkg_rows worktree_ready rig_handler_fallback rig_amarchy_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq rig_boot_console gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free dopus_toolbar flat_on_hang icat_stderr help_man_sync ipd_no_dos_under_list amarchy_rows_buffer
 TEST_BINS := $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host $(BUILD)/upgetty_host
 test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -n "$(ONLY)" ] && [ -z "$(filter $(ONLY),$(TEST_ONLY_NAMES))" ] && ! ./$(BUILD)/vttest_host --has $(ONLY); then echo "[ERROR] make test: no suite named $(ONLY)"; exit 2; fi
@@ -290,6 +290,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = terminfo_amiga ]; then python3 tests/test_terminfo_amiga.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = emoji ]; then python3 tests/test_gen_emoji.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gen_lucide_icons ]; then python3 -I tests/test_gen_lucide_icons.py && python3 -I tests/test_preview_lucide_icons.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = dopus_toolbar ]; then python3 -I tests/test_dopus_toolbar.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = icon_grid_fit ]; then python3 -I tests/test_icon_grid_fit.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_delete_on_error.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_only.py && python3 -I tests/test_make_link_lists.py && python3 -I tests/test_handler_deps.py && python3 -I tests/test_handler_rows.py && python3 -I tests/test_handler_fallback_order.py && python3 -I tests/test_handler_no_dos_on_handler.py; fi
@@ -2018,6 +2019,16 @@ dist-python: $(BUILD)/amiga/upupdate
 	cp $(IXNET_LIB) $(KIT_python)/Files/libs/ixnet.library
 	$(call LAUNCHER,$(KIT_python),dist/addons/python/launch/Python 3,Python 3,640/400)
 	python3 tools/mkkit.py python
+# B7 flat lister toolbar for Directory Opus 5.104: Lucide glyphs (dist/dopus-toolbar.txt) as 24x24 ILBM brushes in
+# Images/Amarchy plus Buttons/Amarchy-toolbar, upstream's default bank with those image paths and Borderless Buttons;
+# the bank is rewritten from the Buttons/Toolbar of the md5-checked os3 archive (upstream/ holds that one file)
+DOPUS_TOOLBAR_DIR := $(BUILD)/dopus-toolbar
+$(DOPUS_TOOLBAR_DIR)/Buttons/Amarchy-toolbar: tools/gen_dopus_toolbar.py tools/gen_lucide_icons.py tools/gen_menu_icons.py tools/gen_emoji.py tools/mkicon.py dist/dopus-toolbar.txt $(LUCIDE_TTF)
+	mkdir -p $(DOPUS_TOOLBAR_DIR)/upstream
+	[ "$$(md5 -q $(VENDOR)/dopus5-5.104/DOpus5_104_os3.lha 2>/dev/null || md5sum < $(VENDOR)/dopus5-5.104/DOpus5_104_os3.lha | cut -d' ' -f1)" = "0800b7b3bf02c83bd45a84d038ee483e" ] || { echo "[ERROR] DOpus5_104_os3.lha: md5 mismatch"; exit 1; }
+	lha -xqfw=$(DOPUS_TOOLBAR_DIR)/upstream $(VENDOR)/dopus5-5.104/DOpus5_104_os3.lha DOpus5/Buttons/Toolbar
+	python3 tools/gen_dopus_toolbar.py dist/dopus-toolbar.txt $(LUCIDE_TTF) $(DOPUS_TOOLBAR_DIR)/upstream/DOpus5/Buttons/Toolbar $(DOPUS_TOOLBAR_DIR)
+dopus-toolbar: $(DOPUS_TOOLBAR_DIR)/Buttons/Amarchy-toolbar
 # up-dopus: the unmodified upstream Directory Opus 5 68k archives (dist/addons/dopus/archives.txt), each checked
 # against its md5 in vendor/dopus5-5.104/ (download URLs: dist/addons/dopus/SOURCE.txt) and unpacked into its
 # drawer of Files; Install runs upstream's own "Install DOpus5" from the drawer that fits the CPU
@@ -2028,6 +2039,8 @@ dist-dopus: $(BUILD)/amiga/upupdate
 	  [ "$$(md5 -q $(VENDOR)/dopus5-5.104/$$a 2>/dev/null || md5sum < $(VENDOR)/dopus5-5.104/$$a | cut -d' ' -f1)" = "$$md5" ] || { echo "[ERROR] $$a: md5 is not $$md5"; exit 1; }; \
 	  mkdir -p $(KIT_dopus)/Files/$$drawer && lha -xqw=$(KIT_dopus)/Files/$$drawer $(VENDOR)/dopus5-5.104/$$a || exit 1; \
 	done
+	$(MAKE) $(DOPUS_TOOLBAR_DIR)/Buttons/Amarchy-toolbar
+	mkdir -p $(KIT_dopus)/Files/toolbar && cp -R $(DOPUS_TOOLBAR_DIR)/Images $(DOPUS_TOOLBAR_DIR)/Buttons $(KIT_dopus)/Files/toolbar/
 	python3 tools/mkkit.py dopus
 # up-uhc: no UHC files (owner decision 2026-10-27): install.dos downloads the author's installer uhcinstall on the
 # user's machine and runs it. The kit holds only unstartup-uhc.sh (dist/unstartup.sh, copied), which takes the legacy

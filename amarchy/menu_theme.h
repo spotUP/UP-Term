@@ -84,9 +84,13 @@ unsigned dopus_theme_commands(const gtheme *th, char *out, unsigned cap, int pal
 
 /* Directory Opus's ARexx port */
 #define DOPUS_PORT "DOPUS.1"
+/* The flat Lucide toolbar bank the up-dopus add-on installs (dist/dopus-toolbar.txt, tools/gen_dopus_toolbar.py) */
+#define DOPUS_TOOLBAR_FLAT "DOpus5:Buttons/Amarchy-toolbar"
 
-/* Asks DOPUS_PORT "dopus screen" first (send(port, line, result, cap, ud); result NULL = no reply wanted), then sends
- * dopus_theme_commands' lines one at a time (line has no newline), the palette line only when the reply does not
+/* Asks DOPUS_PORT "dopus screen" first (send(port, line, result, cap, ud); result NULL = no reply wanted), then switches every lister whose
+ * `lister query <handle> toolbar` is upstream's default (PROGDIR:Buttons/Toolbar or DOpus5:Buttons/Toolbar) to
+ * DOPUS_TOOLBAR_FLAT with `lister set <handle> toolbar` (a lister that loses its toolbar by it gets the old path back),
+ * then sends dopus_theme_commands' lines one at a time (line has no newline), the palette line only when the reply does not
  * start with "Workbench". send returns -1 when the port is absent (Directory Opus not running: normal, not an
  * error), and sending stops at that line. Returns the number of lines handed to send (including the screen query and
  * a refused one); 0 when th or send is NULL. */

@@ -2976,6 +2976,7 @@ static void the_commodity_keymap_of_dist_keymap_is_exact_and_small(void)
 static void menu_theme_roles_map_the_palette(void);
 static void dopus_theme_commands_use_the_theme_directly(void);
 static void dopus_theme_send_goes_to_the_dopus_port(void);
+static void dopus_theme_send_switches_only_a_default_toolbar(void);
 static void wb_pens_contrast_guard(void);
 static void minimal_mode_reaches_the_program(void);
 static void the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg(void);
@@ -3699,6 +3700,7 @@ void suite_keymap(void)
     menu_theme_roles_map_the_palette();
     dopus_theme_commands_use_the_theme_directly();
     dopus_theme_send_goes_to_the_dopus_port();
+    dopus_theme_send_switches_only_a_default_toolbar();
     wb_pens_contrast_guard();
     minimal_mode_reaches_the_program();
     the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg();
@@ -3965,21 +3967,34 @@ static void dopus_theme_commands_use_the_theme_directly(void)
 typedef struct {
     int n, absent;
     const char *screen;   /* the reply to "dopus screen" */
-    char port[16][16], line[16][128];
+    const char *all;      /* the reply to "lister query all": the handles, "1 2 3" */
+    char tb[4][64];       /* toolbar path of handle 1..3 (index 1..3); "lister set N toolbar P" stores P */
+    int bank_missing;     /* a set of the flat bank empties the toolbar path, as lister_new_toolbar does */
+    char port[32][16], line[32][128];
 } dopus_rec;
 
 static long dopus_fake_send(const char *port, const char *line, char *result, int cap, void *ud)
 {
     dopus_rec *r = (dopus_rec *)ud;
-    if (r->n < 16) {
+    const char *reply = r->screen ? r->screen : "";
+    int h;
+    if (r->n < 32) {
         strcpy(r->port[r->n], port);
         strcpy(r->line[r->n], line);
     }
     r->n++;
     if (r->absent)
         return -1;
+    if (strcmp(line, "lister query all") == 0)
+        reply = r->all ? r->all : "";
+    else if (sscanf(line, "lister query %d toolbar", &h) == 1 && h >= 1 && h <= 3)
+        reply = r->tb[h];
+    else if (sscanf(line, "lister set %d toolbar ", &h) == 1 && h >= 1 && h <= 3) {
+        strcpy(r->tb[h], r->bank_missing && strstr(line, "Amarchy") ? "" : line + strlen("lister set 1 toolbar "));
+        reply = "";
+    }
     if (result && cap > 0) {
-        strncpy(result, r->screen ? r->screen : "", (size_t)cap - 1);
+        strncpy(result, reply, (size_t)cap - 1);
         result[cap - 1] = 0;
     }
     return 0;
@@ -3992,31 +4007,33 @@ static void dopus_theme_send_goes_to_the_dopus_port(void)
     int i;
 
     gt_builtin(&th);
-    /* Opus on its own screen: query, palette, four pens, refresh */
+    /* Opus on its own screen: screen query, toolbar handle query, palette, ten pens, refresh */
     memset(&r, 0, sizeof r);
     r.screen = "DOpus5 800 600 4";
-    CHECK_INT((long)dopus_theme_send(&th, dopus_fake_send, &r), 13L);
-    CHECK_INT((long)r.n, 13L);
-    for (i = 0; i < 13; i++)
+    CHECK_INT((long)dopus_theme_send(&th, dopus_fake_send, &r), 14L);
+    CHECK_INT((long)r.n, 14L);
+    for (i = 0; i < 14; i++)
         CHECK_STR(r.port[i], "DOPUS.1");
     CHECK_STR(r.line[0], "dopus screen");
-    CHECK_STR(r.line[1], "dopus set palette 0x1a1b26 0xa9b1d6 0x414868 0x7aa2f7");
-    CHECK_STR(r.line[2], "dopus set pens icons 1 0 0 1 0 0");
-    CHECK_STR(r.line[3], "dopus set pens files 1 0");
-    CHECK_STR(r.line[4], "dopus set pens dirs 3 0");
-    CHECK_STR(r.line[5], "dopus set pens selfiles 0 3");
-    CHECK_STR(r.line[6], "dopus set pens seldirs 0 3");
-    CHECK_STR(r.line[7], "dopus set pens devices 1 0");
-    CHECK_STR(r.line[12], "dopus refresh all");
+    CHECK_STR(r.line[1], "lister query all");
+    CHECK_STR(r.line[2], "dopus set palette 0x1a1b26 0xa9b1d6 0x414868 0x7aa2f7");
+    CHECK_STR(r.line[3], "dopus set pens icons 1 0 0 1 0 0");
+    CHECK_STR(r.line[4], "dopus set pens files 1 0");
+    CHECK_STR(r.line[5], "dopus set pens dirs 3 0");
+    CHECK_STR(r.line[6], "dopus set pens selfiles 0 3");
+    CHECK_STR(r.line[7], "dopus set pens seldirs 0 3");
+    CHECK_STR(r.line[8], "dopus set pens devices 1 0");
+    CHECK_STR(r.line[13], "dopus refresh all");
 
     /* Opus on the Workbench screen: no palette line (set palette only recolours Opus's own screen) */
     memset(&r, 0, sizeof r);
     r.screen = "Workbench 800 600 4 0";
-    CHECK_INT((long)dopus_theme_send(&th, dopus_fake_send, &r), 12L);
+    CHECK_INT((long)dopus_theme_send(&th, dopus_fake_send, &r), 13L);
     CHECK_STR(r.line[0], "dopus screen");
-    CHECK_STR(r.line[1], "dopus set pens icons 1 0 0 1 0 0");
-    CHECK_STR(r.line[11], "dopus refresh lister");
-    for (i = 0; i < 12; i++)
+    CHECK_STR(r.line[1], "lister query all");
+    CHECK_STR(r.line[2], "dopus set pens icons 1 0 0 1 0 0");
+    CHECK_STR(r.line[12], "dopus refresh lister");
+    for (i = 0; i < 13; i++)
         CHECK(strstr(r.line[i], "palette") == 0);
 
     /* Directory Opus not running: one attempt, then stop */
@@ -4028,6 +4045,55 @@ static void dopus_theme_send_goes_to_the_dopus_port(void)
     memset(&r, 0, sizeof r);
     CHECK_INT((long)dopus_theme_send(0, dopus_fake_send, &r), 0L);
     CHECK_INT((long)r.n, 0L);
+}
+
+/* B7 FLAT-D2: only a lister on upstream's default toolbar is switched to the flat bank, before the refresh line */
+static void dopus_theme_send_switches_only_a_default_toolbar(void)
+{
+    gtheme th;
+    dopus_rec r;
+    int i, sets = 0, last;
+
+    gt_builtin(&th);
+    memset(&r, 0, sizeof r);
+    r.screen = "Workbench 800 600 4 0";
+    r.all = "1 2 3";
+    strcpy(r.tb[1], "PROGDIR:Buttons/Toolbar");     /* default, as the env reports it */
+    strcpy(r.tb[2], "SYS:My/Own-bank");            /* the user's own bank: never touched */
+    strcpy(r.tb[3], "dopus5:buttons/toolbar");     /* default spelled with DOpus5:, any case */
+    dopus_theme_send(&th, dopus_fake_send, &r);
+    CHECK_STR(r.tb[1], DOPUS_TOOLBAR_FLAT);
+    CHECK_STR(r.tb[2], "SYS:My/Own-bank");
+    CHECK_STR(r.tb[3], DOPUS_TOOLBAR_FLAT);
+    for (i = 0; i < r.n && i < 32; i++)
+        if (strncmp(r.line[i], "lister set ", 11) == 0) {
+            sets++;
+            CHECK(strstr(r.line[i], " 2 ") == 0);
+        }
+    CHECK_INT((long)sets, 2L);
+    last = r.n - 1;
+    CHECK_STR(r.line[last], "dopus refresh lister");
+    for (i = 0; i < last; i++)
+        if (strncmp(r.line[i], "lister set ", 11) == 0)
+            CHECK(i < last - 10);                  /* the switch is before the pens and the refresh */
+
+    /* the flat bank missing on disk: the lister lost its toolbar by the set, the old path is put back */
+    memset(&r, 0, sizeof r);
+    r.screen = "Workbench 800 600 4 0";
+    r.all = "1";
+    r.bank_missing = 1;
+    strcpy(r.tb[1], "PROGDIR:Buttons/Toolbar");
+    dopus_theme_send(&th, dopus_fake_send, &r);
+    CHECK_STR(r.tb[1], "PROGDIR:Buttons/Toolbar");
+
+    /* already switched: no set at all */
+    memset(&r, 0, sizeof r);
+    r.screen = "Workbench 800 600 4 0";
+    r.all = "1";
+    strcpy(r.tb[1], DOPUS_TOOLBAR_FLAT);
+    dopus_theme_send(&th, dopus_fake_send, &r);
+    for (i = 0; i < r.n && i < 32; i++)
+        CHECK(strncmp(r.line[i], "lister set ", 11) != 0);
 }
 
 /* Workbench pens 0-3 on a theme switch (menu_theme.h wb_pens_plan): gt_contrast of pen 0 against pen 1 (floor GT_FLOOR_TEXT) */

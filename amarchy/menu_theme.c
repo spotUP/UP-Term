@@ -151,6 +151,89 @@ static int dopus_on_workbench(const char *reply)
     return 1;
 }
 
+/* case-insensitive equality of a reply with a path; a trailing newline or blank of the reply is ignored */
+static int dopus_same_path(const char *reply, const char *path)
+{
+    unsigned k = 0;
+    for (;; k++) {
+        char a = reply[k], b = path[k];
+        if (a >= 'A' && a <= 'Z')
+            a = (char)(a + 32);
+        if (b >= 'A' && b <= 'Z')
+            b = (char)(b + 32);
+        if (!b) {
+            while (reply[k] == ' ' || reply[k] == '\n' || reply[k] == '\r')
+                k++;
+            return reply[k] == 0;
+        }
+        if (a != b)
+            return 0;
+    }
+}
+
+/* line = a ... b ... c ... (NULL ends), truncated to cap-1 */
+static void dopus_line(char *line, unsigned cap, const char *a, const char *b, const char *c, const char *d)
+{
+    const char *part[4];
+    unsigned n = 0, i, k;
+    part[0] = a; part[1] = b; part[2] = c; part[3] = d;
+    for (i = 0; i < 4 && part[i]; i++)
+        for (k = 0; part[i][k] && n + 1 < cap; k++)
+            line[n++] = part[i][k];
+    line[n] = 0;
+}
+
+/* B7: the listers still on upstream's default toolbar get the flat bank (DOPUS_TOOLBAR_FLAT). A lister's toolbar is
+ * its own `toolbar_path` (dopus5 rexx_lister.c:613 query, :1269 set; `lister query all` lists the handles, `all` is
+ * not allowed for set). Any other path, a user's own bank or one already switched, is left alone. A lister that cannot
+ * open the new bank loses its toolbar (lister_toolbar.c lister_new_toolbar clears the path): the re-query catches that
+ * and puts the old path back. Returns the number of lines handed to send. */
+static int dopus_toolbar_flat(long (*send)(const char *port, const char *line, char *result, int cap, void *ud),
+                              void *ud)
+{
+    static const char *const upstream[] = { "PROGDIR:Buttons/Toolbar", "DOpus5:Buttons/Toolbar" };
+    char handles[160], line[160], path[160], hnd[24];
+    unsigned i = 0, k, d;
+    int sent = 1;
+    handles[0] = 0;
+    if (send(DOPUS_PORT, "lister query all", handles, (int)sizeof handles, ud) == -1)
+        return sent;
+    while (handles[i]) {
+        while (handles[i] == ' ' || handles[i] == '\n' || handles[i] == '\r')
+            i++;
+        for (k = 0; handles[i] > ' ' && k < sizeof hnd - 1; i++)
+            hnd[k++] = handles[i];
+        hnd[k] = 0;
+        if (!k)
+            break;
+        dopus_line(line, sizeof line, "lister query ", hnd, " toolbar", 0);
+        path[0] = 0;
+        sent++;
+        if (send(DOPUS_PORT, line, path, (int)sizeof path, ud) == -1)
+            return sent;
+        for (d = 0; d < sizeof upstream / sizeof upstream[0] && !dopus_same_path(path, upstream[d]); d++)
+            ;
+        if (d == sizeof upstream / sizeof upstream[0])
+            continue;
+        dopus_line(line, sizeof line, "lister set ", hnd, " toolbar ", DOPUS_TOOLBAR_FLAT);
+        sent++;
+        if (send(DOPUS_PORT, line, 0, 0, ud) == -1)
+            return sent;
+        dopus_line(line, sizeof line, "lister query ", hnd, " toolbar", 0);
+        path[0] = 0;
+        sent++;
+        if (send(DOPUS_PORT, line, path, (int)sizeof path, ud) == -1)
+            return sent;
+        if (!dopus_same_path(path, DOPUS_TOOLBAR_FLAT)) {
+            dopus_line(line, sizeof line, "lister set ", hnd, " toolbar ", upstream[d]);
+            sent++;
+            if (send(DOPUS_PORT, line, 0, 0, ud) == -1)
+                return sent;
+        }
+    }
+    return sent;
+}
+
 int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char *line, char *result, int cap, void *ud),
                      void *ud)
 {
@@ -164,6 +247,7 @@ int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char
     if (send(DOPUS_PORT, "dopus screen", reply, (int)sizeof reply, ud) == -1)
         return sent;
     on_wb = dopus_on_workbench(reply);
+    sent += dopus_toolbar_flat(send, ud);   /* before the refresh, the last line of dopus_theme_commands */
     n = dopus_theme_commands(th, cmds, sizeof cmds, !on_wb);
     while (i < n) {
         for (k = 0; i < n && cmds[i] != '\n'; i++)

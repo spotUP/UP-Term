@@ -44,6 +44,36 @@ Else
     Delete >NIL: T:updopus-live QUIET
   EndIf
 EndIf
+; the flat Lucide toolbar (B7): image drawer DOpus5:Images/Amarchy and bank DOpus5:Buttons/Amarchy-toolbar. Only
+; added files: nothing of upstream's or the user's is changed. A bank of that name that differs in size from ours is
+; the user's own: it is kept and a note says so (Amarchy then finds no bank to switch to and leaves the toolbar alone).
+Assign >NIL: DOpus5: EXISTS
+If NOT WARN
+  If EXISTS toolbar/Buttons/Amarchy-toolbar
+    MakeDir >NIL: DOpus5:Images/Amarchy
+    Copy >NIL: toolbar/Images/ DOpus5:Images/Amarchy/ ALL CLONE QUIET
+    If WARN
+      Quit 20
+    EndIf
+    If EXISTS DOpus5:Buttons/Amarchy-toolbar
+      List >T:uptb-old DOpus5:Buttons/Amarchy-toolbar LFORMAT "Set uptbold %L"
+      List >T:uptb-new toolbar/Buttons/Amarchy-toolbar LFORMAT "Set uptbnew %L"
+      Execute T:uptb-old
+      Execute T:uptb-new
+      Delete >NIL: T:uptb-old T:uptb-new QUIET
+      If NOT "$uptbold" EQ "$uptbnew"
+        Echo "DOpus5:Buttons/Amarchy-toolbar is not ours (other size): left as it is."
+      EndIf
+      UnSet uptbold
+      UnSet uptbnew
+    Else
+      Copy >NIL: toolbar/Buttons/Amarchy-toolbar DOpus5:Buttons/ CLONE QUIET
+      If WARN
+        Quit 20
+      EndIf
+    EndIf
+  EndIf
+EndIf
 If NOT "{STEP}" EQ ""
   Quit 0
 EndIf

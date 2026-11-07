@@ -1,0 +1,25 @@
+; Flat Directory Opus 5.104 lister toolbar (task B7): <upstream image name> <Lucide glyph>, one row per image
+; the upstream default toolbar (Buttons/Toolbar) names. tools/gen_dopus_toolbar.py draws each glyph at the
+; upstream brush size into Images/Amarchy/<name> and rewrites the bank's image paths to that drawer.
+Root.small       chevrons-up
+World.small      globe
+Parent.small     arrow-up
+All.small        square-check-big
+All_s.small      square
+Select.small     list-checks
+Toggle.small     arrow-left-right
+Makedir.small    folder-plus
+Makefile.small   file-plus
+Assign.small     link
+Copy.small       copy
+CopyAs.small     copy-plus
+Move.small       move-right
+MoveAs.small     forward
+Rename.small     pencil
+Delete.small     trash-2
+Show.small       eye
+Read.small       book-open
+Play.small       play
+Protect.small    shield
+Comment.small    message-square
+Datestamp.small  calendar-clock
