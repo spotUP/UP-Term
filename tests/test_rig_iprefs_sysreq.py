@@ -4,7 +4,7 @@ and a start that still meets it fails after a bounded number of Retry clicks.
 Old clone: the A1200 master's DEVS:Monitors/REPLAY (FPGA Replay P96 driver) failed on FS-UAE and printed to the boot
 console before C:IPrefs; that opened the 'AmigaDOS' window on the PAL Workbench screen, so IPrefs' reset to the RTG
 screenmode.prefs found a window open, and DOpus' backdrop and the Amarchy bar kept every Retry failing."""
-import pathlib, sys, tempfile, types, unittest
+import contextlib, io, pathlib, sys, tempfile, types, unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools/rig"))
 import rig
@@ -33,6 +33,43 @@ class NoBoardMonitors(unittest.TestCase):
         src = (ROOT / "tools/rig/rig.py").read_text()
         a = src.index("    elif not OS and not OS32:\n        fresh_sys_hdf()")
         self.assertIn("sys_hdf_monitors(RIG / \"sys.hdf\")", src[a:a + 900])
+
+
+HEAD = "464f524d000000365052454650524844000000060000000000005343524d0000001c" + "00" * 16
+AGA16 = bytes.fromhex(HEAD + "00029000" + "02800100" + "0400" + "0001")
+AGA256 = bytes.fromhex(HEAD + "00029000" + "02800100" + "0800" + "0001")
+RTG = bytes.fromhex(HEAD + "50041303" + "ffffffff" + "0018" + "0001")
+RTG360 = bytes.fromhex(HEAD + "50041303" + "02800168" + "0018" + "0001")
+
+
+class NativeScreenMode(unittest.TestCase):
+    """W43-NATIVE-SCREENMODE: a saved chipset ScreenMode (--os, rig.py aga|aga256) has no RTG switch to wait for."""
+
+    def test_display_id_and_nativeness(self):
+        self.assertEqual(rig.screenmode_display_id(AGA16), 0x00029000)
+        self.assertEqual(rig.screenmode_display_id(RTG), 0x50041303)
+        self.assertIsNone(rig.screenmode_display_id(b"FORM"))
+        self.assertTrue(rig.screenmode_is_native(AGA16) and rig.screenmode_is_native(AGA256))
+        self.assertFalse(rig.screenmode_is_native(RTG) or rig.screenmode_is_native(RTG360))
+
+    def test_os_rig_with_native_prefs_does_not_hunt_for_rtg(self):
+        saved = (sys.modules.get("ami"), rig.RIG, rig.OS, rig.time.sleep)
+        sys.modules["ami"] = types.SimpleNamespace(req=lambda op: self.fail("polled the screen"))
+        rig.RIG = pathlib.Path(tempfile.mkdtemp())
+        rig.OS = "32"
+        rig.time.sleep = lambda s: None
+        prefs = rig.RIG / "os-32/Prefs/Env-Archive/Sys/screenmode.prefs"
+        prefs.parent.mkdir(parents=True)
+        prefs.write_bytes(AGA256)
+        out = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out):
+                rig.retry_wb_reset()
+        finally:
+            log = (rig.RIG / "retry.log").read_text()
+            sys.modules["ami"], rig.RIG, rig.OS, rig.time.sleep = saved
+        self.assertIn("native", log)
+        self.assertNotIn("W43", out.getvalue())
 
 
 class Bounded(unittest.TestCase):

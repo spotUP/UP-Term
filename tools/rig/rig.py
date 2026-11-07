@@ -1185,12 +1185,45 @@ def sys_hdf_dopus(image):
 
 SCREENMODE_NAME = RIG / "screenmode.name"   # the last `rig.py aga|aga256|rtg`: a start re-applies it to the fresh sys.hdf
 
+def screenmode_prefs_name():
+    """The name in `vtc/screenmode.<name>.prefs` of the last `rig.py aga|aga256|rtg` (aga is the 16-colour aga16), or None."""
+    if not SCREENMODE_NAME.exists():
+        return None
+    name = SCREENMODE_NAME.read_text().strip()
+    return {"aga": "aga16"}.get(name, name)
+
+def screenmode_display_id(data):
+    """DisplayID of the SCRM chunk in a ScreenMode prefs file (IFF FORM PREF), or None when absent or short."""
+    pos = 12
+    while pos + 8 <= len(data):
+        size = int.from_bytes(data[pos + 4:pos + 8], "big")
+        if data[pos:pos + 4] == b"SCRM":
+            body = data[pos + 8:pos + 8 + size]
+            return int.from_bytes(body[16:20], "big") if len(body) >= 20 else None
+        pos += 8 + size + (size & 1)
+    return None
+
+def screenmode_is_native(data):
+    """True when the saved mode is a chipset one (monitor part of the DisplayID below 0x10: default, NTSC, PAL ... DblPAL),
+    False for RTG (uaegfx 0x5004....) and for unreadable prefs."""
+    display_id = screenmode_display_id(data)
+    return display_id is not None and (display_id >> 16) < 0x10
+
+def saved_screenmode_prefs():
+    """Path of the ScreenMode prefs the rig boots with: the --os tree's own copy, else the last aga|aga256|rtg choice, else None."""
+    if OS:
+        f = RIG / ("os-%s" % OS) / "Prefs/Env-Archive/Sys/screenmode.prefs"
+    else:
+        name = screenmode_prefs_name()
+        f = RIG / ("vtc/screenmode.%s.prefs" % name) if name else None
+    return f if f and f.exists() else None
+
 def sys_hdf_screenmode(image):
     """`rig.py aga|aga256|rtg` writes ENVARC:Sys/screenmode.prefs and reboots; the reboot clones sys.hdf anew, so the
     chosen mode is put into the fresh image from the host here (it persists as RIG/screenmode.name, not in the disk)."""
     if not SCREENMODE_NAME.exists():
         return
-    src = RIG / ("vtc/screenmode.%s.prefs" % {"aga": "aga16"}.get(SCREENMODE_NAME.read_text().strip(), SCREENMODE_NAME.read_text().strip()))
+    src = RIG / ("vtc/screenmode.%s.prefs" % screenmode_prefs_name())
     paths.require_input(src, "UPTERM_RIG", "the ScreenMode prefs of `rig.py %s`" % SCREENMODE_NAME.read_text().strip())
     xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
     dst = "Prefs/Env-Archive/Sys/screenmode.prefs"
@@ -2453,10 +2486,16 @@ def retry_wb_reset():
     succeeds (the owner, 2026-10-05). The requester shows a while after
     wasabid answers, so wait for it (up to two minutes) and click the
     gadget labelled Retry.
+    A saved native (chipset) ScreenMode has no RTG switch to wait for: it returns at once.
     What it saw goes to build/rig/retry.log."""
     sys.path.insert(0, str(ROOT / "tools/rig"))
     import ami
     log = open(RIG / "retry.log", "a")
+    saved = saved_screenmode_prefs()
+    if saved and screenmode_is_native(saved.read_bytes()):
+        log.write("saved ScreenMode is native (DisplayID 0x%08x): no RTG switch to wait for\n" % screenmode_display_id(saved.read_bytes()))
+        log.close()
+        return
     t0 = time.time()
     clicks = 0
     while time.time() - t0 < 120:
