@@ -45,6 +45,28 @@ class MediaDrift(unittest.TestCase):
         self.assertEqual(sorted(rig.start_media_drift(self.vtc, self.d / "sys.hdf")),
                          sorted((rel, "missing") for rel in a1200_drift.KIT_MEDIA))
 
+    def test_os_rig_judges_the_booting_trees_assign_not_sys_hdf(self):
+        """MEDIA-DRIFT-OS-TREE: an --os rig boots RIG/os-<OS>, whose User-Startup holds the installer's assign to
+        another volume; with no sys.hdf the host drawer must still not be judged."""
+        for name in ("RIG", "OS"):
+            self.addCleanup(setattr, rig, name, getattr(rig, name))
+        rig.RIG = self.d / "rig"
+        rig.OS = "32"
+        us = rig.RIG / "os-32/S/User-Startup"
+        us.parent.mkdir(parents=True)
+        us.write_text(';BEGIN UP-Term assign\nIf EXISTS "Empty-12MB-FFS:UP-Term"\n  Assign UP-Term: "Empty-12MB-FFS:UP-Term"\n'
+                      'EndIf\n;END UP-Term assign\n')
+        self.assertEqual(rig.start_media_drift(self.vtc, self.d / "sys.hdf"), [])
+
+    def test_no_os_and_no_image_still_judges_the_host_drawer(self):
+        for name in ("RIG", "OS"):
+            self.addCleanup(setattr, rig, name, getattr(rig, name))
+        rig.RIG = self.d / "rig"
+        rig.RIG.mkdir()
+        rig.OS = None
+        self.assertEqual(sorted(rig.start_media_drift(self.vtc, self.d / "sys.hdf")),
+                         sorted((rel, "missing") for rel in a1200_drift.KIT_MEDIA))
+
 
 if __name__ == "__main__":
     unittest.main()

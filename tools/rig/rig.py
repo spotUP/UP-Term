@@ -875,10 +875,12 @@ def sys_hdf_kit(image):
             snap.unlink(missing_ok=True)
     sys_hdf_kit_upterm(image)
 
-def clone_upterm_place(image):
-    """(partition, directory) of UP-Term: in the clone, or None. The kit's ';BEGIN UP-Term assign' block in
-    S:User-Startup names a volume path ("Rushhours:Tools/UP-Term"); the volume is the RDB partition with that disk
-    name (DH1 on the master image). A clone with no such block or no such partition has no UP-Term: of its own."""
+def system_user_startup(image):
+    """S/User-Startup text of the system the rig boots, or None. An `--os <OS>` rig boots the host tree
+    RIG/os-<OS> (its User-Startup carries the installer's UP-Term: assign), every other rig boots `image`."""
+    if OS:
+        f = RIG / ("os-%s" % OS) / "S/User-Startup"
+        return f.read_text(errors="replace") if f.exists() else None
     xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
     us = RIG / "user-startup.tmp"
     us.unlink(missing_ok=True)
@@ -886,10 +888,22 @@ def clone_upterm_place(image):
         return None
     text = us.read_text(errors="replace")
     us.unlink()
-    m = re.search(r'^\s*Assign\s+UP-Term:\s+"?([^:"\s]+):([^"\s]*)"?', text, re.M | re.I)
-    if not m:
+    return text
+
+def upterm_assign(text):
+    """(volume, directory) of the kit's `Assign UP-Term: "<vol>:<dir>"` line in a User-Startup text, or None."""
+    m = re.search(r'^\s*Assign\s+UP-Term:\s+"?([^:"\s]+):([^"\s]*)"?', text or "", re.M | re.I)
+    return (m.group(1), m.group(2).strip("/")) if m else None
+
+def clone_upterm_place(image):
+    """(partition, directory) of UP-Term: in the clone, or None. The kit's ';BEGIN UP-Term assign' block in
+    S:User-Startup names a volume path ("Rushhours:Tools/UP-Term"); the volume is the RDB partition with that disk
+    name (DH1 on the master image). A clone with no such block or no such partition has no UP-Term: of its own."""
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    a = upterm_assign(system_user_startup(image))
+    if not a:
         return None
-    vol, d = m.group(1).lower(), m.group(2).strip("/")
+    vol, d = a[0].lower(), a[1]
     rdb = shutil.which("rdbtool") or str(pathlib.Path.home() / ".local/bin/rdbtool")
     info = subprocess.run([rdb, str(image), "info"], capture_output=True, text=True).stdout
     for part in re.findall(r"^Partition: #\d+ '([^']+)'", info, re.M):
@@ -1801,6 +1815,9 @@ def start_media_drift(vtc, image):
     the check then warned "missing" for files `List UP-Term:share/updemo` showed (RIG-REBOOT-FALSE-MISSING, rig 96).
     That rig's media is checked inside the Amiga by a1200_drift.py (media_entries)."""
     if clone_upterm_place(image):
+        return []
+    a = upterm_assign(system_user_startup(image))   # an --os rig's volume is no partition of sys.hdf: the assign line is enough
+    if a and a[0].lower() != "vtc":
         return []
     return media_drift(vtc)
 
