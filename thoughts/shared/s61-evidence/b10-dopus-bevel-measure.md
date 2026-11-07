@@ -76,3 +76,31 @@ colours and also does not skip; (b) skips on the clone anyway because it is not 
 Needed to continue: either a fixed `rig.py dopus` for the current clone image (the Startup-Sequence modify step), or a
 rig folder that still holds a good DOpus install (stamp + dopus5-user-startup.txt) to copy into build/rig94/vtc.
 Rig 94 stopped, build/rig94 removed.
+
+## Part 2 (clone mode) -- MEASURED 2026-11-07 (supersedes the "NOT MEASURED" section above)
+
+Rig 94, purpose "up-term-49: B10 part 2 DOpus clone-mode bevel measure", main 9882dbdd (the `rig.py dopus` fix; the install now exits 0).
+`rig.py dopus --own-screen` ran, then DOpus5/Environment/workbench bytes 20..23 (screen_mode ULONG) were set from 50F91303 to
+00000002 (MODE_WORKBENCHCLONE) in build/rig94/vtc only, rig started, tokyo-night theme active (Amarchy at boot, as in part 1).
+Probe: throwaway C program (IntuitionBase->FirstScreen chain, GetScreenDrawInfo, GetRGB32), not committed.
+
+| screen | SHINEPEN | BACKGROUNDPEN | SHINE rgb | BACK rgb | SHADOW | FILL | TEXT |
+|---|---|---|---|---|---|---|---|
+| DOpus clone screen (800x600, depth 8) | 0 | 0 | 1A1B26 | 1A1B26 | 0 | 3 | 2 |
+| Workbench Screen (800x600, depth 4) | 0 | 0 | 1A1B26 | 1A1B26 | 0 | 3 | 2 |
+
+`dopus screen` replied `DOPUS.1 800 600 8 ...`: the screen is a clone of the Workbench mode size (depth 8 vs Workbench 4), and the
+pens are copied unchanged (display.c:155-175 confirmed by the read).
+`amarchy-flat STATUS` dopus5 field, fresh boot: calls=0 flat=0 -> (lister 1) calls=8 flat=8 -> (lister 2) calls=16 flat=16.
+Same as the explicit-mode run: every DrawBox is flat-skipped (global flat=on calls=24 -> 101 -> 175).
+A first boot of the same session reproduced 0/0 -> 8/8 (lister 1) and then the rig daemon stopped answering after lister 2
+(150 s, retry.log shows a 1344x1080 <-> 800x600 RTG switch); a stop/start (DH0 kept) and the run above passed. Unverified cause.
+
+### Answer
+Do (a) RGB compare and (b) skip-on-non-Workbench give DIFFERENT results in clone mode? NO, not under the tokyo-night theme:
+pens 0/0 and RGB 1A1B26/1A1B26 on the clone screen, so (a) SKIP and (b) SKIP and the measured behaviour (all DrawBox flat) is the
+same for both. They could differ only on a clone of a stock-look Workbench (SHINEPEN 2, BACKGROUNDPEN 0, different RGB): the pen
+test says STOCK, (a) compares two different colours and also says STOCK, (b) says SKIP. That case was NOT measured: this rig has
+no stock Workbench pens (Amarchy applies the theme at boot, ENVARC:Sys has no palette.prefs; reaching SHINEPEN 2 needs a
+Workbench without Amarchy's pen map, not built here). Source-only expectation: (b) flattens a stock-look clone's DOpus bevels
+where (a) leaves them stock. Decision stays with the owner.
