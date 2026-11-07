@@ -44,3 +44,35 @@ so on this rig it would read the same pens as the Workbench row above (0/0). Unv
 ## Left over
 
 Rig 94 stopped at end (see commit message of the reply). Env file of rig 94 untouched in this run (still the explicit 50F91303 bytes).
+
+## Part 2 (clone mode and stock look): NOT MEASURED, blocked on the DOpus install
+
+Rig 94, purpose "up-term-49: B10 part 2 DOpus clone-mode bevel measure", main checkout df96b38e. No number below was read.
+
+`rig.py dopus --own-screen` (part 1's rig.py stop removed build/rig94, so the install had to run again) fails on the sys.hdf
+clone, three times (twice via rig.py, once by driving dopus_rig.drive by hand): the Installer reaches the
+"How should Directory Opus 5 start?" page (85%), the answer "Instead of Workbench" (gadget 4) leads to the page
+"Modify Startup-Sequence File" (88%) showing the clone's own startup sequence (BOOTX lines: `Assign >NIL: VTC: VTCX:`,
+`Echo >BOOTX boot log`, `C:Run >NIL: C:Execute BOOTX:go`, `EndCLI >NIL: BOOTX:s/startup-sequence`), the driver clicks
+gadget 90 ("Proceed with Changes"), and the Installer shows "Sorry... an Error Has Occured! STARTUP: Problem with file
+Startup-Sequence in line 540. DOS Error Type: Cause of disk-related error unknown." and exits. Result: no `;BEGIN DOpus5` block in
+S:User-Startup, ENVARC:DOpus5 empty, no dopus5.library, `rig.py dopus` aborts with "no ';BEGIN DOpus5' block".
+Not caused by this session's edits (no source changed). Part 1 passed this step only because an earlier install already stood in
+build/rig94/vtc; a fresh install on the current clone image does not work (rig tooling regression, probably the clone's
+startup-sequence changed since the 2026-10-21 DOpus install code; unverified which commit).
+The `--os32` route is also closed: the 3.2 tree `/Users/spot/Downloads/AmigaOS-3.2-full (1)` is not on this machine
+(UPTERM_OS32_TREE unset).
+
+Not attempted: hand-editing the Startup-Sequence page (Skip This Part) or the sys.hdf, since the task limits edits to the
+workbench environment file. Consequently the screen_mode byte 23 edit, the tokyo-night clone read, the stock-look reads and the
+calls/flat deltas were not done.
+
+What the source alone says (display.c:143-175 and flat_core.c:193-201, no measurement): a clone copies the Workbench dri_Pens,
+so clone mode under tokyo-night would read 0/0 like part 1's Workbench row (a and b both SKIP), and under a stock look the clone
+would read Workbench's SHINEPEN 2 vs BACKGROUNDPEN 0 (pen test STOCK, i.e. DrawBox is not skipped, (a) compares RGB of two different
+colours and also does not skip; (b) skips on the clone anyway because it is not the Workbench screen, hence the clone case is where
+(a) and (b) differ). Unverified.
+
+Needed to continue: either a fixed `rig.py dopus` for the current clone image (the Startup-Sequence modify step), or a
+rig folder that still holds a good DOpus install (stamp + dopus5-user-startup.txt) to copy into build/rig94/vtc.
+Rig 94 stopped, build/rig94 removed.
