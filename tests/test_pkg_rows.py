@@ -9,7 +9,11 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 sys.path.insert(0, str(ROOT / 'tools' / 'rig'))
 import paths
-import pkg_rows, pkgs
+import pkg_rows, pkgs, slim
+
+# Packages whose recipe does not yet say what it installs (no _BINS/_DATA; the vbcc compiler tree): `check` cannot hold them
+# to the generator, so they are named here, not skipped silently. Remove an id when its recipe gains the fields.
+HAND_WRITTEN = ('vbcc',)
 
 PORTS = pathlib.Path(os.environ.get('UPTERM_PORTS') or paths.repo('upterm-ports'))
 
@@ -72,12 +76,33 @@ class PkgRows(unittest.TestCase):
             self.assertIn('no feed rows', out)
             self.assertEqual(list(pathlib.Path(d).iterdir()), [])
 
+    def require_feed_recipes(self):
+        """A ports checkout without _FEED_ID makes `check` exit 0 without comparing anything: skip, never pass vacuously."""
+        _, _, calls = self.run_main(['check', 'bitchx', '--ports', str(PORTS)])
+        if not any(p == 'bitchx' and f == 'FEED_ID' and v for p, f, v in calls):
+            self.skipTest('the recipes have no _FEED_ID at %s: set UPTERM_PORTS to a checkout with the feed recipes' % PORTS)
+
     def test_check_exits_zero_on_the_committed_tree_and_one_on_drift(self):
+        self.require_feed_recipes()
         self.assertEqual(self.run_main(['check', 'bitchx', '--ports', str(PORTS)])[0], 0)
         rc, out, _ = self.run_main(['check', 'bitchx', '--ports', str(PORTS)],
                                    mutate=lambda p, f, v: v + 'x' if f == 'LICENSE' else v)
         self.assertEqual(rc, 1)
         self.assertIn('dist/addons/bitchx/', out)
+
+    def test_check_exits_zero_for_every_generated_package(self):
+        """The templates and prose files are the source of every generated package: none of them may have drifted."""
+        self.require_feed_recipes()
+        failures, compared = [], 0
+        for pkg in [i for i in slim.ids() if i not in HAND_WRITTEN]:
+            rc, out, calls = self.run_main(['check', pkg, '--ports', str(PORTS)])
+            if not any(p == pkg and f == 'FEED_ID' and v for p, f, v in calls):
+                continue  # a base-kit program: no feed rows
+            compared += 1
+            if rc != 0:
+                failures.append('%s: %s' % (pkg, out.strip().replace('\n', ' | ')))
+        self.assertGreater(compared, 0)
+        self.assertEqual([], failures)
 
 
 MOCK_MAKEFILE = """SYSROOT := /sys

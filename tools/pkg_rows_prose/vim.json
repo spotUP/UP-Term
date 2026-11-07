@@ -1,0 +1,33 @@
+{
+ "launch": "UP-Term:bin/vim",
+ "name": "Vim",
+ "cmd": "vim file.txt",
+ "drawers": [
+  "bin",
+  "share",
+  "licenses"
+ ],
+ "man": [
+  "share/man/man1/vim.1"
+ ],
+ "about": "Vim 9.2.1202 and its runtime, at the paths the base up-term.lha used to carry",
+ "copy_comment": [
+  "; Vim 9.2.1202 and its runtime (bin/vim, the runtime in share/vim and its manual page): the same",
+  "; paths in UP-Term: the base put them at (bin, share, licenses; vsh finds the program on its path)."
+ ],
+ "welcome": [
+  "Vim 9.2.1202, for an UP-Term window.",
+  "It goes into UP-Term:bin and UP-Term:share,",
+  "where the base had it."
+ ],
+ "why": "Copying Vim to UP-Term:bin and UP-Term:share.",
+ "readme_title": "Vim 9.2.1202 and its runtime for UP-Term",
+ "readme_contents": "bin/vim, the runtime in share/vim and its manual page.",
+ "readme_use": "; these files were part of it before the\nslim base. It installs them at the same paths in UP-Term: (bin, share, licenses): no new drawer, no\nchange of the path. In an UP-Term window, in vsh:\n  vim file.txt",
+ "part_label": "Vim 9.2.1202 and runtime (bin/vim, share/vim, vim.1)",
+ "source": "upterm-ports (pkgs/vim; vim v9.2.1202)",
+ "licenses_notes": [
+  "These files were part of up-term.lha until the slim base (P9); the package installs them at the\n  same paths in UP-Term:. Its row of SOURCES.txt is in UP-Term:licenses/vim/SOURCES.txt.",
+  "The complete source with UP-Term's patches and build recipes is up-term-src.lha, published next to\n  up-term.lha."
+ ]
+}

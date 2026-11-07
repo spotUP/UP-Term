@@ -1,0 +1,30 @@
+{
+ "launch": "-",
+ "name": "Perl",
+ "cmd": "perl -v",
+ "drawers": [
+  "bin",
+  "share",
+  "licenses"
+ ],
+ "about": "Perl 5.42.3, at the paths the base up-term.lha used to carry",
+ "copy_comment": [
+  "; Perl 5.42.3 (bin/perl (a static build with no module tree)): the same",
+  "; paths in UP-Term: the base put them at (bin, share, licenses; vsh finds the program on its path)."
+ ],
+ "welcome": [
+  "Perl 5.42.3, for an UP-Term window.",
+  "It goes into UP-Term:bin and UP-Term:share,",
+  "where the base had it."
+ ],
+ "why": "Copying Perl to UP-Term:bin and UP-Term:share.",
+ "readme_title": "Perl 5.42.3 for UP-Term",
+ "readme_contents": "bin/perl (a static build with no module tree).",
+ "readme_use": "; these files were part of it before the\nslim base. It installs them at the same paths in UP-Term: (bin, share, licenses): no new drawer, no\nchange of the path. In an UP-Term window, in vsh:\n  perl -v",
+ "part_label": "Perl 5.42.3 (bin/perl)",
+ "source": "upterm-ports (pkgs/perl; perl-5.42.3.tar.gz)",
+ "licenses_notes": [
+  "These files were part of up-term.lha until the slim base (P9); the package installs them at the\n  same paths in UP-Term:. Its row of SOURCES.txt is in UP-Term:licenses/perl/SOURCES.txt.",
+  "The complete source with UP-Term's patches and build recipes is up-term-src.lha, published next to\n  up-term.lha."
+ ]
+}

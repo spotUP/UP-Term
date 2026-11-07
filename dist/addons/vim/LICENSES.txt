@@ -1,8 +1,8 @@
 up-vim: parts, licences and where the source is
 
-Part                          Licence                          Source
-----------------------------  -------------------------------  --------------------------------------------
-Vim 9.2.1202 and runtime (bin/vim, share/vim, vim.1) Vim licence (licenses/vim/LICENSE) upterm-ports (pkgs/vim; vim v9.2.1202)
+Part                                                   Licence              Source
+-----------------------------------------------------  -------------------  -------------------------------
+Vim 9.2.1202 and runtime (bin/vim, share/vim, vim.1)   Vim (licenses/vim)   upterm-ports (pkgs/vim; vim v9.2.1202)
 
 Notes
 - These files were part of up-term.lha until the slim base (P9); the package installs them at the

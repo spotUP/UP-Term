@@ -17,7 +17,9 @@ installs under $(SYSROOT)$(PREFIX): an installed path no _BINS/_DATA covers (fig
 `_DATA := share/figlet`) would be left out of the package, so emit stops and check fails naming it.
 `check` regenerates and diffs against the committed rows, exits 1 naming the file and row that drifted.
 What the recipe cannot say (prose of the Installer, README, the man page row) comes from tools/pkg_rows_prose/<pkg>.json
-(or --prose FILE; key man lists the man page rows) and falls back to text built from _SUMMARY; --man PATH adds a slim row,
+(or --prose FILE; key man lists the man page rows; drawers the UP-Term: drawers install.dos makes, default bin lib licenses;
+cmd the command line the finish text and README show, default the first _BINS name; licenses_notes the bullets under Notes
+of LICENSES.txt, default the source-archive note; readme_use starting with ';' continues the sentence after the version) and falls back to text built from _SUMMARY; --man PATH adds a slim row,
 --pkg-version, --base-version, --ixemul set the packages.txt columns (defaults 1.0, 1.0, 80).
 """
 import argparse, json, os, pathlib, re, subprocess, sys, tempfile, textwrap
@@ -94,7 +96,7 @@ def generate(pkg, ports, a):
     cols = (pkg, fid, a.pkg_version, minbase, a.ixemul, 'UP-Term:pkg/' + fid, handed)
     row = ''.join(c.ljust(max(w, len(c) + 2)) for c, w in zip(cols, WIDTHS)) + 'upterm-ports,ixemul-vtcon  ' + pr.get('launch', '-')
     name = pr.get('name', pkg)
-    cmd = pathlib.PurePosixPath(bins[0]).name if bins else name
+    cmd = pr.get('cmd') or (pathlib.PurePosixPath(bins[0]).name if bins else name)
     about = pr.get('about', summary)
     cc = pr.get('copy_comment', ['; %s: %s' % (name, summary)])
     # the welcome page is 56 characters wide (tests/test_dist_addons.py): a _SUMMARY is one long line
@@ -103,6 +105,7 @@ def generate(pkg, ports, a):
            'COPY_COMMENT': '\n'.join(cc) + '\n', 'TITLE': pr.get('title', ' '.join(name.upper())),
            'WELCOME': ''.join('    "%s\\n"\n' % l for l in welcome),
            'WHY': pr.get('why', 'Copying %s to UP-Term.' % name),
+           'MAKEDIRS': ''.join('MakeDir >NIL: UPTREAL:%s\n' % d for d in pr.get('drawers', ['bin', 'lib', 'licenses'])),
            'COPYROW': 'copy-%s' % pkg + ' ' * max(2, 19 - len('copy-' + pkg)) + 'Files/userland'}
     add = {}
     for f in ('install.dos', 'Install.installer', 'parts.txt', 'uninstall-body.dos'):
@@ -114,20 +117,22 @@ def generate(pkg, ports, a):
     use = pr.get('readme_use', 'In an UP-Term window, in vsh:\n  %s' % cmd)
     add['README.txt'] = (
         '%s: %s\n\nContents: %s\nLicence: %s; see LICENSES.txt.\n\n'
-        'Needs up-term.lha installed first (version %s or newer). %s\n\n'
+        'Needs up-term.lha installed first (version %s or newer)%s\n\n'
         'Install: run Install (Installer) or, with upkg, install %s. Uninstall takes the package out\n'
         'again; the UP-Term Uninstall runs it first.\n'
-        % (fid, pr.get('readme_title', summary), contents, lic, minbase, use, fid))
+        % (fid, pr.get('readme_title', summary), contents, lic, minbase, use if use.startswith(';') else '. ' + use, fid))
     label = pr.get('part_label', name)
     lcol = '%s (licenses/%s)' % (lic, pkg)
     src = pr.get('source', 'upterm-ports (pkgs/%s)' % pkg)
     w1, w2, w3 = max(len(label), 4) + 1, max(len(lcol), 7) + 1, len(src) - 7
+    notes = ''.join('- %s\n' % b for b in pr.get('licenses_notes', [
+        "The complete source with UP-Term's patches and build recipes is up-term-src.lha, published next to\n"
+        "  up-term.lha. Its row of SOURCES.txt is in UP-Term:licenses/%s/SOURCES.txt." % pkg]))
     ln = lambda x, y, z: '%s  %s  %s\n' % (x.ljust(w1), y.ljust(w2), z)
     add['LICENSES.txt'] = (
         '%s: parts, licences and where the source is\n\n' % fid + ln('Part', 'Licence', 'Source')
         + ln('-' * w1, '-' * w2, '-' * w3) + ln(label, lcol, src)
-        + '\nNotes\n- The complete source with UP-Term\'s patches and build recipes is up-term-src.lha, published next to\n'
-          '  up-term.lha. Its row of SOURCES.txt is in UP-Term:licenses/%s/SOURCES.txt.\n' % pkg)
+        + '\nNotes\n' + notes)
     return {'packages': row, 'slim': slim_rows, 'addons': add, 'uncovered': uncovered_installs(ports, pkg, bins, data)}
 
 

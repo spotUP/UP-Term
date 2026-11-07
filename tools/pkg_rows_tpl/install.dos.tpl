@@ -11,16 +11,15 @@
 FailAt 21
 ; the archive's Files drawer: every name below is relative to it
 CD "{DIR}"
+; every write into UP-Term: goes through UPTREAL: (UP-Term: may be a multi-directory assign: it writes to the first one)
+; @include dist/common/@RECORDRESOLVE@
 If NOT "{STEP}" EQ ""
   Skip {STEP}
 EndIf
 ; @include dist/common/@CHECKFRAG@
 Lab copy-{{PKG}}
 {{COPY_COMMENT}}; userland holds what dist/slim.txt names; Copy of a drawer copies what is in it.
-MakeDir >NIL: UP-Term:bin
-MakeDir >NIL: UP-Term:lib
-MakeDir >NIL: UP-Term:licenses
-Copy userland UP-Term: ALL CLONE QUIET
+{{MAKEDIRS}}Copy userland UPTREAL: ALL CLONE QUIET
 If WARN
   Quit 20
 EndIf
