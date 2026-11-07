@@ -634,11 +634,26 @@ typedef void (*boxfn)(__reg("a0") struct RastPort *, __reg("a1") struct Rectangl
 typedef void (*fieldfn)(__reg("a0") struct RastPort *, __reg("a1") struct Rectangle *, __reg("a2") struct DrawInfo *,
                         __reg("a6") struct Library *);
 
-static int d4_flat(int el, struct DrawInfo *info, LONG recessed)
+static uint32_t icl_rgb(struct ColorMap *cm, ULONG pen);
+
+/* B10 (a): the colour of a pen on the screen behind rp, 0xRRGGBB, or -1 when it cannot be known (no layer or window:
+ * an offscreen buffer; a pen past the colour map). */
+static long d4_rgb(struct RastPort *rp, ULONG pen)
+{
+    struct Window *w = rp && rp->Layer ? (struct Window *)rp->Layer->Window : NULL;
+    struct ColorMap *cm = w && w->WScreen ? w->WScreen->ViewPort.ColorMap : NULL;
+    if (!cm || pen >= (ULONG)cm->Count)
+        return -1;
+    return (long)icl_rgb(cm, pen);
+}
+
+static int d4_flat(int el, struct RastPort *rp, struct DrawInfo *info, LONG recessed)
 {
     flatshared *r = g_r;
+    ULONG shine = info->dri_Pens[SHINEPEN], back = info->dri_Pens[BACKGROUNDPEN];
     r->dcalls++;
-    if (flat_dopus_decide(&r->st, el, recessed ? 1 : 0, info->dri_Pens[SHINEPEN], info->dri_Pens[BACKGROUNDPEN]) != FLAT_DRAW_SKIP)
+    if (flat_dopus_decide(&r->st, el, recessed ? 1 : 0, (int)shine, (int)back,
+                          shine == back ? -1 : d4_rgb(rp, shine), shine == back ? -1 : d4_rgb(rp, back)) != FLAT_DRAW_SKIP)
         return 0;
     r->dflat++;
     return 1;
@@ -647,13 +662,13 @@ static int d4_flat(int el, struct DrawInfo *info, LONG recessed)
 static void d4_drawbox(__reg("a0") struct RastPort *rp, __reg("a1") struct Rectangle *rect, __reg("a2") struct DrawInfo *info,
                        __reg("d0") LONG recessed)
 {
-    if (!d4_flat(FLAT_EL_DRAWBOX, info, recessed))
+    if (!d4_flat(FLAT_EL_DRAWBOX, rp, info, recessed))
         ((boxfn)g_r->dsw[FLAT_EL_DRAWBOX].saved)(rp, rect, info, recessed, g_r->dlib);
 }
 
 static void d4_fieldbox(__reg("a0") struct RastPort *rp, __reg("a1") struct Rectangle *rect, __reg("a2") struct DrawInfo *info)
 {
-    if (!d4_flat(FLAT_EL_FIELDBOX, info, 0))
+    if (!d4_flat(FLAT_EL_FIELDBOX, rp, info, 0))
         ((fieldfn)g_r->dsw[FLAT_EL_FIELDBOX].saved)(rp, rect, info, g_r->dlib);
 }
 

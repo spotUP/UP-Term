@@ -191,14 +191,20 @@ int flat_dopus_gate(const flat_dopus_build *tab, int n, unsigned version, unsign
     return mask;
 }
 
-int flat_dopus_decide(const flat_state *s, int element, int recessed, int pen_shine, int pen_back)
+int flat_dopus_decide(const flat_state *s, int element, int recessed, int pen_shine, int pen_back,
+                      long rgb_shine, long rgb_back)
 {
     (void)recessed;                         /* a recessed box swaps the two halves; the shadow half is the L either way */
     if (!s || element < 0 || element >= FLAT_EL_COUNT)
         return FLAT_DRAW_STOCK;
     if (!s->enabled || s->held)
         return FLAT_DRAW_STOCK;
-    return pen_shine == pen_back ? FLAT_DRAW_SKIP : FLAT_DRAW_STOCK;
+    if (pen_shine == pen_back)
+        return FLAT_DRAW_SKIP;
+    /* B10 (a): different pens, same colour is flat too; an unknown colour (-1) leaves the pen numbers to decide */
+    if (rgb_shine >= 0 && rgb_back >= 0 && rgb_shine == rgb_back)
+        return FLAT_DRAW_SKIP;
+    return FLAT_DRAW_STOCK;
 }
 
 int flat_frame_decide(const flat_state *s, unsigned long method, int pen_shine, int pen_back)

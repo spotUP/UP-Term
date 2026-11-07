@@ -160,9 +160,13 @@ int flat_dopus_gate(const flat_dopus_build *tab, int n, unsigned version, unsign
 /* The flat-draw decision for one call of a patched element. FLAT_DRAW_SKIP: draw nothing (under flat pens the shine
  * half equals the background and the shadow half would remain as a right/bottom L; owner 2026-10-30: draw flat, no
  * shadow L). FLAT_DRAW_STOCK: call the saved routine. Skip only when the switch is on, not held, and the screen pens
- * really are flat (SHINEPEN == BACKGROUNDPEN, the flat signal of OD-F4); otherwise stock pens keep stock bevels. */
+ * really are flat; otherwise stock pens keep stock bevels. Flat means SHINEPEN == BACKGROUNDPEN (the flat signal of
+ * OD-F4) or, B10 (a) owner 2026-11-07, two different pens that carry the same colour: DOpus clones a screen whose
+ * pen numbers differ while the theme gives both one colour. rgb_shine/rgb_back are 0xRRGGBB, or -1 when the colour
+ * map is unknown; then only the pen numbers decide. */
 enum { FLAT_DRAW_STOCK = 0, FLAT_DRAW_SKIP = 1 };
-int flat_dopus_decide(const flat_state *s, int element, int recessed, int pen_shine, int pen_back);
+int flat_dopus_decide(const flat_state *s, int element, int recessed, int pen_shine, int pen_back,
+                      long rgb_shine, long rgb_back);
 
 /* FLAT-C8: frameiclass (every GadTools bevel and ridge: buttons, strings, checkboxes, cycles, listviews, DrawBevelBox).
  * The same decision for one method call of the class: SKIP only for IM_DRAW (0x202) and IM_DRAWFRAME (0x206), when the
