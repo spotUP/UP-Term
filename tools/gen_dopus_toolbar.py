@@ -1,18 +1,24 @@
 #!/usr/bin/env python3
-"""Flat Lucide toolbar bank for Directory Opus 5.104 (task B7).
+"""Flat toolbar banks for Directory Opus 5.104 (task B7), in two icon families (DT-9).
 
-usage: gen_dopus_toolbar.py <table> <lucide-static.tgz> <upstream Buttons/Toolbar> <out dir>
+usage: gen_dopus_toolbar.py <table> <lucide-static.tgz> <Phosphor-Fill.ttf> <upstream Buttons/Toolbar> <out dir>
 
-Writes <out>/Images/<set>/<name> (IFF ILBM brushes, FORM ILBM / BMHD / CMAP of 8 pens / BODY, pens 0-6, drawn from the
-Lucide SVG source (package/icons/<glyph>.svg in the lucide-static tarball) by tools/svg_raster.py on the pixel grid
-(DT-8: design grid to whole pixels, stroke STROKE_PX, straight strokes whole pixels), levels by gen_lucide_icons.level) and <out>/Buttons/Amarchy-toolbar-<set> (one per size set 16, 16t, 24, 24t, 32, 32t): the upstream default
-toolbar bank with only two differences, the image paths (dopus5:images/X -> dopus5:images/Amarchy/<set>/X) and the
-Borderless Buttons flag (BTNWF_BORDERLESS, dopus5.h CFG_BTNW flags). The glyph map is the table file
-(`<image name> <lucide glyph>` per line), nothing is named here.
+Writes <out>/Images/<set>/<name> (IFF ILBM brushes, FORM ILBM / BMHD / CMAP of 8 pens / BODY, pens 0-6) and
+<out>/Buttons/Amarchy-toolbar-<set>, one per set. A set is a family and a size: "outline-16" ... "outline-32t" and
+"filled-16" ... "filled-32t" (sizes 16, 24, 32, each square and tall; amarchy/dopustb_core.c dt_set_name makes the same
+names). Both families are drawn by tools/svg_raster.py on the pixel grid (DT-8: design grid to whole pixels, straight
+edges whole pixels), levels by gen_lucide_icons.level:
+  outline  the Lucide SVG source (package/icons/<glyph>.svg in the lucide-static tarball), stroke STROKE_PX;
+  filled   the Phosphor Fill glyph (codepoints.json beside the font names its code point), its outline turned into an SVG
+           path on the font's 1024 em square (y = ascent 960 - font y) and filled, the default family (icon-style filled).
+The bank is the upstream default toolbar bank with only two differences, the image paths
+(dopus5:images/X -> dopus5:images/Amarchy/<set>/X) and the Borderless Buttons flag (BTNWF_BORDERLESS, dopus5.h CFG_BTNW
+flags). The glyph map is the table file (`<image name> <lucide glyph> <phosphor glyph>` per line), nothing is named here.
 
 Bank format (dopus5 source include/dopus/dopus5.h CFG_BTNW, config/): FORM EPUS { BTNW, then BUTN and FUNC chunks }.
 BUTN chunks carry NUL terminated strings (image path, button name); only the image paths change, so each BUTN
 size and the FORM size are recomputed (chunks stay padded to even)."""
+import json
 import pathlib
 import re
 import struct
@@ -22,11 +28,15 @@ import tarfile
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import gen_lucide_icons as gl  # noqa: E402
 import svg_raster  # noqa: E402
+from fontTools.pens.svgPathPen import SVGPathPen  # noqa: E402
+from fontTools.pens.transformPen import TransformPen  # noqa: E402
+from fontTools.ttLib import TTFont  # noqa: E402
 
 # DT-1: size sets. SIZES are the brush widths (upstream's is 24, measured on DOpus5/Images/*.small); each set is square
 # (width x width) or tall pixel (width x width/2, for a 2:1 pixel aspect, as gen_lucide_icons.VARIANTS (32, 16)).
 # Theme apply picks the set (amarchy/dopustb_core.c dt_pick_set, which mirrors set_name below).
 SIZES = (16, 24, 32)
+FAMILIES = ("outline", "filled")   # DT-9: Lucide strokes, Phosphor Fill (the default, dopustb_core dt_set.outline 0)
 DEPTH = 3                      # 8 pens
 # DT-8 (owner 2026-11-08): the pen in target columns per width; tall sets get half as many rows (svg_raster.coverage).
 STROKE_PX = {16: 1, 24: 2, 32: 2}
@@ -47,7 +57,7 @@ def parse_map(path):
     for line in pathlib.Path(path).read_text().splitlines():
         line = line.split(";", 1)[0].strip()
         if line:
-            m = re.fullmatch(r"(\S+)\s+([a-z0-9-]+)", line)
+            m = re.fullmatch(r"(\S+)\s+([a-z0-9-]+)\s+([a-z0-9-]+)", line)
             if not m:
                 raise SystemExit("%s: bad line: %s" % (path, line))
             rows.append(m.groups())
@@ -56,13 +66,22 @@ def parse_map(path):
     return rows
 
 
-def set_name(width, tall):
-    return "%d%s" % (width, "t" if tall else "")
+def set_name(family, width, tall):
+    return "%s-%d%s" % (family, width, "t" if tall else "")
 
 
 def sets():
-    """[(set name, width, height)]: 16, 16t, 24, 24t, 32, 32t."""
-    return [(set_name(w, t), w, w // 2 if t else w) for w in SIZES for t in (False, True)]
+    """[(set name, family, width, height)]: outline-16, outline-16t, ... filled-32t."""
+    return [(set_name(f, w, t), f, w, w // 2 if t else w) for f in FAMILIES for w in SIZES for t in (False, True)]
+
+
+def phosphor_svg(font, cp):
+    """The Phosphor Fill glyph of code point cp as an SVG document on the 1024 em square (font y up, SVG y down)."""
+    gs = font.getGlyphSet()
+    pen = SVGPathPen(gs)
+    gs[font.getBestCmap()[cp]].draw(TransformPen(pen, (1, 0, 0, -1, 0, font["hhea"].ascent)))
+    em = font["head"].unitsPerEm
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %d %d"><path d="%s"/></svg>' % (em, em, pen.getCommands())
 
 
 def chunk(tag, data):
@@ -109,24 +128,30 @@ def rewrite_bank(src, name):
 
 
 def main():
-    if len(sys.argv) != 5:
+    if len(sys.argv) != 6:
         raise SystemExit(__doc__)
-    table, tgz, bank, dest = sys.argv[1:]
+    table, tgz, ttf, bank, dest = sys.argv[1:]
     with tarfile.open(tgz) as tf:
         by_name = {pathlib.PurePosixPath(m.name).stem: m for m in tf.getmembers()
                    if m.isfile() and re.fullmatch(r"package/icons/[a-z0-9-]+\.svg", m.name)}
         rows = parse_map(table)
-        for name, g in rows:
+        for name, g, _ in rows:
             if g not in by_name:
                 raise SystemExit("%s: unknown Lucide glyph: %s" % (table, g))
-        svgs = {g: tf.extractfile(by_name[g]).read().decode() for _, g in rows}
+        svgs = {"outline": {name: tf.extractfile(by_name[g]).read().decode() for name, g, _ in rows}}
+    font = TTFont(ttf)
+    cps = json.loads((pathlib.Path(ttf).parent / "codepoints.json").read_text())
+    for name, _, g in rows:
+        if g not in cps:
+            raise SystemExit("%s: unknown Phosphor glyph: %s" % (table, g))
+    svgs["filled"] = {name: phosphor_svg(font, cps[g]) for name, _, g in rows}
     dest = pathlib.Path(dest)
     (dest / "Buttons").mkdir(parents=True, exist_ok=True)
     upstream = pathlib.Path(bank).read_bytes()
-    for sname, w, h in sets():
+    for sname, fam, w, h in sets():
         (dest / "Images" / sname).mkdir(parents=True, exist_ok=True)
-        for name, g in rows:
-            (dest / "Images" / sname / name).write_bytes(glyph(svgs[g], w, h))
+        for name, _, _ in rows:
+            (dest / "Images" / sname / name).write_bytes(glyph(svgs[fam][name], w, h))
         (dest / "Buttons" / ("Amarchy-toolbar-" + sname)).write_bytes(rewrite_bank(upstream, sname))
     print("[OK] %d images x %d sets and Buttons/Amarchy-toolbar-<set> in %s" % (len(rows), len(sets()), dest))
 

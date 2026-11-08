@@ -26,7 +26,7 @@ import amarchy_desk_rig as d
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TB = os.path.join(ROOT, 'build', 'dopus-toolbar')
 CUSTOM = 'DOpus5:Buttons/Custom-bank'
-SETS = ['16', '16t', '24', '24t', '32', '32t']
+SETS = ['%s-%s' % (f, z) for f in ('filled', 'outline') for z in ('16', '16t', '24', '24t', '32', '32t')]   # DT-9: family-size
 BRUSH = 'Copy.small'      # one brush of every set: its CMAP is read back
 FAILS = []
 
@@ -55,7 +55,7 @@ def verdict(ok, what, seen=''):
 
 
 def install_sets():
-    """The way dist/addons/dopus/install.dos does: every set's drawer, every set's bank, the first version's single bank gone."""
+    """The way dist/addons/dopus/install.dos does: every set's drawer, every set's bank, the older banks and drawers gone."""
     for s in SETS:
         c.run('MakeDir >NIL: DOpus5:Images/Amarchy')
         c.run('MakeDir >NIL: DOpus5:Images/Amarchy/%s' % s)
@@ -63,6 +63,8 @@ def install_sets():
             ami.put(os.path.join(TB, 'Images', s, n), 'DOpus5:Images/Amarchy/%s/%s' % (s, n))
         ami.put(os.path.join(TB, 'Buttons', 'Amarchy-toolbar-' + s), 'DOpus5:Buttons/Amarchy-toolbar-' + s)
     c.run('Delete >NIL: DOpus5:Buttons/Amarchy-toolbar QUIET')
+    c.run('Delete >NIL: DOpus5:Buttons/Amarchy-toolbar-(16|24|32)(t|%) QUIET')
+    c.run('Delete >NIL: DOpus5:Images/Amarchy/(16|24|32)(t|%) ALL QUIET FORCE')
     print('installed sets:', c.run('List DOpus5:Images/Amarchy LFORMAT %N')[1].split(), '| banks:',
           [l.split()[0] for l in c.run('List DOpus5:Buttons')[1].splitlines() if l.startswith('Amarchy-toolbar')])
 

@@ -9,7 +9,10 @@ DT-8: glyphs come from the Lucide SVG source on the pixel grid (tools/svg_raster
 (levels 1-2 over all glyph pixels) of every set's images stays under its ceiling (font-outline baseline measured
 2026-11-08: 16 0.56, 16t 0.66, 24 0.34, 24t 0.47, 32 0.36, 32t 0.43; SVG path 0.35, 0.35, 0.20, 0.31, 0.20, 0.31), and
 a straight horizontal or vertical stroke is full level only, its round caps aside.
-Run: python3 -I tests/test_dopus_toolbar.py   (skips when the vendored archive or build/lucide is absent)"""
+DT-9: two families, "outline-<size>" from Lucide and "filled-<size>" from Phosphor Fill (the default), twelve sets and
+banks; the filled share measured 2026-11-08: 16 0.10, 16t 0.15, 24 0.08, 24t 0.12, 32 0.07, 32t 0.09. The default bank
+checked byte for byte against upstream is DOPUS_TOOLBAR_SET (amarchy/menu_theme.h), filled-24.
+Run: python3 -I tests/test_dopus_toolbar.py   (skips when the vendored archive, build/lucide or build/phosphor is absent)"""
 import hashlib, pathlib, re, struct, subprocess, sys, tempfile, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -20,8 +23,11 @@ import ilbm_decode, paths, svg_raster, gen_lucide_icons
 ARCHIVE = pathlib.Path(paths.VENDOR) / 'dopus5-5.104' / 'DOpus5_104_os3.lha'
 MD5 = '0800b7b3bf02c83bd45a84d038ee483e'
 TGZ = ROOT / 'build' / 'lucide' / 'lucide-static-1.66.0.tgz'
+TTF = ROOT / 'build' / 'phosphor' / 'Phosphor-Fill.ttf'
 TABLE = ROOT / 'dist' / 'dopus-toolbar.txt'
-CEILING = {'16': 0.40, '16t': 0.40, '24': 0.25, '24t': 0.36, '32': 0.25, '32t': 0.36}
+CEILING = {'outline-16': 0.40, 'outline-16t': 0.40, 'outline-24': 0.25, 'outline-24t': 0.36, 'outline-32': 0.25, 'outline-32t': 0.36,
+           'filled-16': 0.15, 'filled-16t': 0.20, 'filled-24': 0.12, 'filled-24t': 0.17, 'filled-32': 0.12, 'filled-32t': 0.14}
+DEFAULT = re.search(r'#define DOPUS_TOOLBAR_SET "([^"]+)"', (ROOT / 'amarchy' / 'menu_theme.h').read_text()).group(1)
 FLAGS_OFF = 12 + 8 + 128   # FORM header, BTNW chunk header, CFG_BTNW flags (dopus5.h)
 
 
@@ -34,7 +40,8 @@ def chunks(buf):
     return out
 
 
-@unittest.skipUnless(ARCHIVE.exists() and TGZ.exists(), 'vendored DOpus archive or build/lucide missing (make lucide)')
+@unittest.skipUnless(ARCHIVE.exists() and TGZ.exists() and TTF.exists(),
+                     'vendored DOpus archive, build/lucide or build/phosphor missing (make lucide phosphor)')
 class DopusToolbar(unittest.TestCase):
     def test_generated_bank_is_complete_and_flat(self):
         self.assertEqual(hashlib.md5(ARCHIVE.read_bytes()).hexdigest(), MD5)
@@ -42,10 +49,11 @@ class DopusToolbar(unittest.TestCase):
             t = pathlib.Path(t)
             subprocess.run(['lha', '-xqw=' + str(t / 'up'), str(ARCHIVE), 'DOpus5/Buttons/Toolbar'], check=True)
             up = (t / 'up' / 'DOpus5' / 'Buttons' / 'Toolbar').read_bytes()
-            subprocess.run([sys.executable, '-I', str(ROOT / 'tools' / 'gen_dopus_toolbar.py'), str(TABLE), str(TGZ),
+            subprocess.run([sys.executable, '-I', str(ROOT / 'tools' / 'gen_dopus_toolbar.py'), str(TABLE), str(TGZ), str(TTF),
                             str(t / 'up' / 'DOpus5' / 'Buttons' / 'Toolbar'), str(t / 'out')], check=True)
-            bank = (t / 'out' / 'Buttons' / 'Amarchy-toolbar-24').read_bytes()
-            drawer = t / 'out' / 'Images' / '24'
+            self.assertEqual(DEFAULT, 'filled-24')
+            bank = (t / 'out' / 'Buttons' / ('Amarchy-toolbar-' + DEFAULT)).read_bytes()
+            drawer = t / 'out' / 'Images' / DEFAULT
 
             # every image the bank names exists, decodes at the upstream size and carries glyph pixels
             paths_in_bank = set()
@@ -54,7 +62,7 @@ class DopusToolbar(unittest.TestCase):
                     paths_in_bank |= set(re.findall(rb'dopus5:images/[^\0]+', data, re.I))
             self.assertEqual(len(paths_in_bank), 22)
             for p in paths_in_bank:
-                self.assertTrue(p.lower().startswith(b'dopus5:images/amarchy/24/'), p)
+                self.assertTrue(p.lower().startswith(('dopus5:images/amarchy/%s/' % DEFAULT).encode()), p)
                 f = drawer / p.decode().split('/')[-1]
                 self.assertTrue(f.exists(), f)
                 w, h, depth, _, cmap, rows = ilbm_decode.decode(f.read_bytes())
@@ -65,8 +73,13 @@ class DopusToolbar(unittest.TestCase):
                 self.assertTrue(any(v == 3 for r in rows for v in r), f)   # levels map 1:1 to pens: full glyph is pen 3
                 self.assertTrue(set(v for r in rows for v in r) <= {0, 1, 2, 3}, f)   # no accent pen in the glyph levels
 
-            # DT-1: every size set exists, square and tall pixel (half the height), one bank per set, bank paths name the set
-            for name, w, h in [('16', 16, 16), ('16t', 16, 8), ('24', 24, 24), ('24t', 24, 12), ('32', 32, 32), ('32t', 32, 16)]:
+            # DT-1 / DT-9: every size set of both families exists, square and tall pixel (half the height), one bank per
+            # set, bank paths name the set, and nothing else is written
+            want = [(f + '-' + s, w, h) for f in ('outline', 'filled')
+                    for s, w, h in [('16', 16, 16), ('16t', 16, 8), ('24', 24, 24), ('24t', 24, 12), ('32', 32, 32), ('32t', 32, 16)]]
+            self.assertEqual(sorted(p.name for p in (t / 'out' / 'Images').iterdir()), sorted(n for n, _, _ in want))
+            self.assertEqual(sorted(p.name for p in (t / 'out' / 'Buttons').iterdir()), sorted('Amarchy-toolbar-' + n for n, _, _ in want))
+            for name, w, h in want:
                 b = (t / 'out' / 'Buttons' / ('Amarchy-toolbar-' + name)).read_bytes()
                 self.assertIn(('dopus5:images/Amarchy/%s/' % name).encode(), b)
                 w2, h2, d2, _, _, rows2 = ilbm_decode.decode((t / 'out' / 'Images' / name / 'Directory').read_bytes() if (t / 'out' / 'Images' / name / 'Directory').exists() else next((t / 'out' / 'Images' / name).iterdir()).read_bytes())
@@ -90,7 +103,7 @@ class DopusToolbar(unittest.TestCase):
             for (tag, ud), (_, bd) in zip(uc, bc):
                 if tag == b'BTNW':
                     ud = ud[:128] + struct.pack('>L', struct.unpack('>L', ud[128:132])[0] | 0x10) + ud[132:]
-                self.assertEqual(bd.replace(b'dopus5:images/Amarchy/24/', b'dopus5:images/'), ud)
+                self.assertEqual(bd.replace(('dopus5:images/Amarchy/%s/' % DEFAULT).encode(), b'dopus5:images/'), ud)
 
 
 class StraightStrokes(unittest.TestCase):
@@ -109,7 +122,9 @@ class StraightStrokes(unittest.TestCase):
 
     def test_straight_strokes_full_level(self):
         import gen_dopus_toolbar as gd
-        for name, w, h in gd.sets():
+        for name, fam, w, h in gd.sets():
+            if fam != 'outline':   # only the Lucide family is stroked
+                continue
             pen = gd.STROKE_PX[w]
             rows = self.check('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 12h16"/></svg>', w, h, pen, True)
             cols = self.check('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 4v16"/></svg>', w, h, pen, False)
@@ -118,15 +133,15 @@ class StraightStrokes(unittest.TestCase):
 
 
 class InstallScript(unittest.TestCase):
-    """dist/addons/dopus/install.dos carries one installer body: one CHECKFRAG include, one Lab dopus, and the single-bank
-    name Amarchy-toolbar (no set) only in the Delete of the old bank."""
+    """dist/addons/dopus/install.dos carries one installer body: one CHECKFRAG include, one Lab dopus, and the old bank
+    names (Amarchy-toolbar with no set, and the DT-1 sets 16 ... 32t with no family) only in Deletes of the old banks."""
     def test_body_once_and_old_bank_only_deleted(self):
         t = (ROOT / 'dist' / 'addons' / 'dopus' / 'install.dos').read_text()
         self.assertEqual(t.count('@include dist/common/@CHECKFRAG@'), 1)
         self.assertEqual(t.count('Lab dopus'), 1)
         self.assertEqual(t.count('record.dos'), 1)
         for line in t.splitlines():
-            if re.search(r'Amarchy-toolbar(?![-\w])', line) and not line.lstrip().startswith(';'):
+            if re.search(r'Amarchy-toolbar(-\d+t?)?(?![-\w])|Amarchy/\d+t?(?![-\w])', line) and not line.lstrip().startswith(';'):
                 self.assertIn('Delete', line, line)
 
 

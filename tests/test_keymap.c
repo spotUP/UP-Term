@@ -4099,7 +4099,8 @@ static void dopus_theme_send_switches_only_a_default_toolbar(void)
         CHECK(strncmp(r.line[i], "lister set ", 11) != 0);
 }
 
-typedef struct { unsigned font_h; int rx, ry, changed, screens, recolours; char set[8]; unsigned char rgb[8][3]; } dopus_tbrec;
+typedef struct { unsigned font_h; int rx, ry, changed, screens, recolours, outlines; char set[DT_SET_NAME_MAX]; unsigned char rgb[8][3];
+                 const am_prefs *prefs; } dopus_tbrec;
 
 static int dopus_tb_screen(unsigned *font_h, int *rx, int *ry, void *ud)
 {
@@ -4111,6 +4112,14 @@ static int dopus_tb_screen(unsigned *font_h, int *rx, int *ry, void *ud)
     return 1;
 }
 
+/* the family from the settings as dopustb_dos's dtd_outline reads them (amconf_icon_outline) */
+static int dopus_tb_outline(void *ud)
+{
+    dopus_tbrec *t = (dopus_tbrec *)ud;
+    t->outlines++;
+    return amconf_icon_outline(t->prefs);
+}
+
 static int dopus_tb_recolour(const char *set, const unsigned char rgb[8][3], void *ud)
 {
     dopus_tbrec *t = (dopus_tbrec *)ud;
@@ -4120,7 +4129,7 @@ static int dopus_tb_recolour(const char *set, const unsigned char rgb[8][3], voi
     return t->changed;
 }
 
-/* DT-3, DT-4 through the entry point: the screen's font and aspect pick the bank, the recolour gets that set and the theme's CMAP
+/* DT-3, DT-4, DT-9 through the entry point: the screen's font and aspect and the icon-style setting pick the bank, the recolour gets that set and the theme's CMAP
  * (dt_cmap), a lister on another of our banks is moved, one already on the picked bank is set again only when brushes changed */
 static void dopus_theme_send_picks_the_set_and_recolours(void)
 {
@@ -4129,15 +4138,19 @@ static void dopus_theme_send_picks_the_set_and_recolours(void)
     dopus_tbrec t;
     dopus_tb_ops ops;
     uint8_t want[DT_PENS][3];
+    am_prefs prefs;
     int i;
 
     gt_builtin(&th);
     dt_cmap(&th, want);
+    amconf_defaults(&prefs);                        /* icon-style filled, the default */
     ops.screen = dopus_tb_screen;
     ops.recolour = dopus_tb_recolour;
+    ops.outline = dopus_tb_outline;
     ops.ud = &t;
 
     memset(&t, 0, sizeof t);
+    t.prefs = &prefs;
     t.font_h = 8;
     t.rx = 22;
     t.ry = 44;                                      /* topaz 8 on a 2:1 pixel screen: 16 high-pixel set, tall */
@@ -4145,27 +4158,46 @@ static void dopus_theme_send_picks_the_set_and_recolours(void)
     r.screen = "Workbench 800 600 4 0";
     r.all = "1 2";
     strcpy(r.tb[1], "PROGDIR:Buttons/Toolbar");
-    strcpy(r.tb[2], DOPUS_TOOLBAR_FLAT "24");       /* ours, another size: moved */
+    strcpy(r.tb[2], DOPUS_TOOLBAR_FLAT "outline-24"); /* ours, another family and size: moved */
     dopus_theme_send(&th, dopus_fake_send, &r, &ops);
     CHECK_INT(t.screens, 1);
+    CHECK_INT(t.outlines, 1);
     CHECK_INT(t.recolours, 1);
-    CHECK_STR(t.set, "16t");
+    CHECK_STR(t.set, "filled-16t");
     CHECK(memcmp(t.rgb, want, sizeof want) == 0);
-    CHECK_STR(r.tb[1], DOPUS_TOOLBAR_FLAT "16t");
-    CHECK_STR(r.tb[2], DOPUS_TOOLBAR_FLAT "16t");
+    CHECK_STR(r.tb[1], DOPUS_TOOLBAR_FLAT "filled-16t");
+    CHECK_STR(r.tb[2], DOPUS_TOOLBAR_FLAT "filled-16t");
+
+    /* DT-9: icon-style = outline picks the Lucide bank of the same size, and moves a lister off the filled one */
+    strcpy(prefs.val[AM_ICONSTYLE], "outline");
+    memset(&t, 0, sizeof t);
+    t.prefs = &prefs;
+    t.font_h = 8;
+    t.rx = 22;
+    t.ry = 44;
+    memset(&r, 0, sizeof r);
+    r.screen = "Workbench 800 600 4 0";
+    r.all = "1";
+    strcpy(r.tb[1], DOPUS_TOOLBAR_FLAT "filled-16t");
+    dopus_theme_send(&th, dopus_fake_send, &r, &ops);
+    CHECK_INT(t.outlines, 1);
+    CHECK_STR(t.set, "outline-16t");
+    CHECK_STR(r.tb[1], DOPUS_TOOLBAR_FLAT "outline-16t");
+    strcpy(prefs.val[AM_ICONSTYLE], "filled");
 
     /* picked bank already on the lister: untouched when no brush changed, set again when one did (DT-4 refresh) */
     for (i = 0; i < 2; i++) {
         memset(&t, 0, sizeof t);
+        t.prefs = &prefs;
         t.font_h = 12;
         t.rx = t.ry = 1;
         t.changed = i;
         memset(&r, 0, sizeof r);
         r.screen = "Workbench 800 600 4 0";
         r.all = "1";
-        strcpy(r.tb[1], DOPUS_TOOLBAR_FLAT "24");
+        strcpy(r.tb[1], DOPUS_TOOLBAR_FLAT "filled-24");
         dopus_theme_send(&th, dopus_fake_send, &r, &ops);
-        CHECK_STR(t.set, "24");
+        CHECK_STR(t.set, "filled-24");
         {
             int k, n = 0;
             for (k = 0; k < r.n && k < 32; k++)

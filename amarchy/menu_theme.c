@@ -270,7 +270,7 @@ int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char
     unsigned n, i = 0, k, font_h = 0;
     int sent = 1, on_wb, rx = 0, ry = 0, changed = 0;
     dt_set set;
-    char name[8];
+    char name[DT_SET_NAME_MAX];
     uint8_t rgb[DT_PENS][3];
     if (!send || !th)
         return 0;
@@ -279,10 +279,10 @@ int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char
     if (send(DOPUS_PORT, "dopus screen", reply, (int)sizeof reply, ud) == -1)
         return sent;
     on_wb = dopus_on_workbench(reply);
-    /* DT-3: the set for this screen (font height and pixel aspect), DT-2: its brushes in the theme's blend, then the switch */
+    /* DT-3: the set for this screen (font height and pixel aspect) and DT-9 icon-style, DT-2: its brushes in the theme's blend, then the switch */
     if (tb && tb->screen)
         tb->screen(&font_h, &rx, &ry, tb->ud);
-    dt_pick_set(font_h, rx, ry, &set);
+    dt_pick_set(font_h, rx, ry, tb && tb->outline ? tb->outline(tb->ud) : 0, &set);   /* DT-9: the family of icon-style */
     dt_set_name(&set, name, sizeof name);
     if (tb && tb->recolour) {
         dt_cmap(th, rgb);

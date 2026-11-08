@@ -4,7 +4,7 @@
 #include "iconpen_core.h"
 #include "iconfile_core.h"
 
-void dt_pick_set(unsigned font_h, int rx, int ry, dt_set *out)
+void dt_pick_set(unsigned font_h, int rx, int ry, int outline, dt_set *out)
 {
     static const unsigned size[3] = { 16, 24, 32 };
     unsigned want = 2 * font_h, best = 1, i;
@@ -22,6 +22,7 @@ void dt_pick_set(unsigned font_h, int rx, int ry, dt_set *out)
     out->size = size[best];
     /* a pixel twice as high as wide is the "screen twice as wide as high" case of icons.c, with the roles swapped */
     out->tall = rx > 0 && ry > 0 && li_pick_variant((unsigned)ry, (unsigned)rx);
+    out->outline = outline != 0;
 }
 
 int dt_screen_name(const char *reply, char *out, unsigned cap)
@@ -47,9 +48,12 @@ int dt_screen_name(const char *reply, char *out, unsigned cap)
 
 unsigned dt_set_name(const dt_set *s, char *out, unsigned cap)
 {
+    const char *fam = s->outline ? "outline-" : "filled-";
     unsigned n = 0;
-    if (cap < 4)
+    if (cap < DT_SET_NAME_MAX)
         return 0;
+    while (*fam)
+        out[n++] = *fam++;
     out[n++] = (char)('0' + s->size / 10);
     out[n++] = (char)('0' + s->size % 10);
     if (s->tall)

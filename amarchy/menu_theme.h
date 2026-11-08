@@ -84,18 +84,21 @@ unsigned dopus_theme_commands(const gtheme *th, char *out, unsigned cap, int pal
 
 /* Directory Opus's ARexx port */
 #define DOPUS_PORT "DOPUS.1"
-/* The flat Lucide toolbar banks the up-dopus add-on installs, one per size set (dist/dopus-toolbar.txt, tools/gen_dopus_toolbar.py):
- * DOPUS_TOOLBAR_FLAT followed by the set name ("24", "24t", see dopustb_core.h dt_set_name). A bank holds its brushes' paths, so the
- * size cannot change without another bank. DOPUS_TOOLBAR_SET is the set used when the screen is not known. */
+/* The flat toolbar banks the up-dopus add-on installs, one per family and size set (dist/dopus-toolbar.txt, tools/gen_dopus_toolbar.py):
+ * DOPUS_TOOLBAR_FLAT followed by the set name ("filled-24", "outline-24t", see dopustb_core.h dt_set_name). A bank holds its brushes'
+ * paths, so neither the size nor the family can change without another bank. DOPUS_TOOLBAR_SET is the set used when the screen is
+ * not known (filled, the default family). */
 #define DOPUS_TOOLBAR_FLAT "DOpus5:Buttons/Amarchy-toolbar-"
-#define DOPUS_TOOLBAR_SET "24"
+#define DOPUS_TOOLBAR_SET "filled-24"
 
 /* The Amiga side of the toolbar set and blend (amarchy/dopustb_dos.c); dopus_theme_send takes NULL for none (default set, brushes
  * left as they are). screen: font height and pixel aspect of the DOpus screen (returns 0 when it cannot be read: set 24, square).
- * recolour: writes the theme's blend (dt_cmap) into the brushes of the named set; returns how many files it changed. */
+ * recolour: writes the theme's blend (dt_cmap) into the brushes of the named set; returns how many files it changed.
+ * outline (DT-9): 1 when icon-style is outline (the Lucide family), 0 for filled (Phosphor); NULL = filled, the default. */
 typedef struct {
     int (*screen)(unsigned *font_h, int *rx, int *ry, void *ud);
     int (*recolour)(const char *set, const unsigned char rgb[8][3], void *ud);
+    int (*outline)(void *ud);
     void *ud;
 } dopus_tb_ops;
 

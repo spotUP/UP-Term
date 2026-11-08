@@ -17,6 +17,8 @@
 #include "dopustb_core.h"
 #include "menu_font.h"
 #include "rexx_host.h"
+#include "amconf_core.h"
+#include "amconf_dos.h"
 
 #define DTD_DRAWER "DOpus5:Images/Amarchy/"
 
@@ -121,4 +123,14 @@ static int dtd_recolour(const char *set, const uint8_t rgb[DT_PENS][3], void *ud
     return changed;
 }
 
-const dopus_tb_ops dopustb_dos_ops = { dtd_screen, dtd_recolour, 0 };
+/* DT-9: the family of the icon-style setting (filled, the default, or outline), read from the Amarchy settings each theme apply. */
+static int dtd_outline(void *ud)
+{
+    am_prefs *p = amconf_borrow();     /* never NULL (amconf_dos.h) */
+    int outline = amconf_icon_outline(p);
+    (void)ud;
+    amconf_return(p);
+    return outline;
+}
+
+const dopus_tb_ops dopustb_dos_ops = { dtd_screen, dtd_recolour, dtd_outline, 0 };
