@@ -172,6 +172,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=rig_wasabimcp tools/rig/wasabimcp.py picks the wasabid target from the environment (tools/test_rig_wasabimcp.py)
 # ONLY=rig_ami tools/rig/ami.py over wasabid, every function against wasabi's mock daemon (tools/test_rig_ami.py; needs `make wasabi`)
 # ONLY=rig_fsuae_log FS-UAE log in the rig dir, capped (tools/test_rig_fsuae_log.py)
+# ONLY=rig_reports_not_in_rig_dir no rig script keeps reports, screenshots or verdicts under build/rig<N>, which rig.py stop deletes (tests/test_rig_reports_not_in_rig_dir.py)
 # ONLY=rig_boot_console the Startup-Sequence output lands in BOOTX:boot.console and the boot shell ends after it, so no AmigaDOS window stays open (tests/test_rig_boot_console_blind.py)
 # ONLY=rig_iprefs_sysreq the rig clone drops the Replay monitor driver whose boot output made IPrefs ask to close windows; Retry is bounded (tests/test_rig_iprefs_sysreq.py)
 # ONLY=rig_screennotify every rig start stages the pinned screennotify.library in VTC:ixp6 (tests/test_rig_screennotify.py)
@@ -233,6 +234,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_iprefs_sysreq ]; then python3 tests/test_rig_iprefs_sysreq.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_boot_console ]; then python3 tests/test_rig_boot_console_blind.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_stale_base ]; then python3 tests/test_rig_stale_base.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_reports_not_in_rig_dir ]; then python3 tests/test_rig_reports_not_in_rig_dir.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_screennotify ]; then python3 tests/test_rig_screennotify.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_clone_new ]; then python3 -I tools/test_rig_clone_new.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_crashed ]; then python3 -I tools/test_rig_crashed.py; fi

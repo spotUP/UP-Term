@@ -23,7 +23,7 @@ copy ("object is in use"). 2026-10-18, rig 2.
      `VTC:vsh -c "Execute .."`, and compares output and return code (R23 multi-line backtick, R6 `?` with a reply fed,
      R27 Run banner, S7b-2 upper-case CD kept, R2 R17 R24 R3 R9 R13 R14 R16 R19 R11 regressions). After every item the
      open windows and requesters of all screens are listed (DefIcons "Cannot load preferences because" watch).
-     `python3 tools/rig/vshexec_rig.py 7` runs only this case; verdicts go to build/<rig>/vshexec-case7.txt.
+     `python3 tools/rig/vshexec_rig.py 7` runs only this case; verdicts go to build/rig-reports/<rig>/vshexec-case7.txt.
 
 Run with the rig up: python3 tools/rig/vshexec_rig.py [7]
 """
@@ -155,7 +155,7 @@ def case7():
     c.run('Delete RAM:rc ALL QUIET')
     c.run('Delete RAM:marker QUIET')
     shutil.rmtree(paths.RIG / 'vtc/rcs', ignore_errors=True)
-    out = paths.RIG / 'vshexec-case7.txt'
+    out = paths.reports_dir() / 'vshexec-case7.txt'   # kept output: rig.py stop deletes paths.RIG
     out.write_text('\n'.join(log) + '\n')
 
 
