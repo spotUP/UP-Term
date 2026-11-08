@@ -267,8 +267,8 @@ const void *flat_tx_surface(const void *layer, const void *bitmap);
 
 /* A frame was drawn on surface surf by task: disarm when surf is the armed one; with pressed && fill, arm for box
  * (x0,y0)-(x1,y1). */
-/* S56-PRIMARY-ACCENT-FILL: does a frame draw arm the Text patch for its label (pen_ptext, the background colour)? A filled button that is
- * pressed or primary does (accent fill); a filled secondary button keeps its stock label. Pass the result as flat_tx_frame's "pressed". */
+/* S56-PRIMARY-ACCENT-FILL: does a frame draw arm the Text patch for its label (pen_ptext, the background colour)? Every filled push button does
+ * (primary accent, secondary pen_button, pressed); only the PLAIN role (scroller knob, cycle gadget) keeps its stock label. Pass the result as flat_tx_frame's "pressed". */
 int flat_tx_arm(int pressed, int fill, int role);
 void flat_tx_frame(flat_tx *t, const void *surf, const void *task, int pressed, int fill, int x0, int y0, int x1, int y1);
 

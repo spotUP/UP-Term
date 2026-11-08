@@ -931,10 +931,10 @@ static void test_which_from_gtype(void)
         CHECK_INT(flat_button_pen(&fs, 3), 4);                               /* 8 colours: lighter background */
     }
     {   /* S56-PRIMARY-ACCENT-FILL: a primary button (Save) draws the accent pen and its label in the background pen; pressed keeps the background label;
-         * secondary is an outline with the stock label. Driven through the frame draw and the label arm exactly as flat.c does. */
+         * secondary is a pen_button fill with the background-pen label (FLAT-SECONDARY-LABEL). Driven through the frame draw and the label arm exactly as flat.c does. */
         struct round_canvas { int pix[40][60]; } *cv = (struct round_canvas *)calloc(1, sizeof *cv);
         flat_state fs; flat_tx t; int surf = 1, task = 2, pressed, role, cases[3][2] = { { 0, FLAT_ROLE_PRIMARY }, { 1, FLAT_ROLE_PRIMARY }, { 0, FLAT_ROLE_SECONDARY } };
-        int body[3] = { 5, 6, 0 }, label[3] = { 0, 0, -1 }, i;
+        int body[3] = { 5, 6, 0 }, label[3] = { 0, 0, 0 }, i;
         memset(&fs, 0, sizeof fs);
         fs.enabled = 1; fs.pen_text = 6; fs.pen_line = 5; fs.pen_back = 0; fs.pen_ptext = 0; fs.pen_sel = 4;
         for (i = 0; i < 3; i++) {
@@ -965,6 +965,8 @@ static void test_which_from_gtype(void)
             CHECK_INT(t.armed, 0);
         }
         CHECK_INT(flat_tx_arm(0, 1, FLAT_ROLE_PRIMARY), 1);
+        CHECK_INT(flat_tx_arm(0, 1, FLAT_ROLE_SECONDARY), 1);                /* OWNER-2026-11-08 FLAT-SECONDARY-LABEL: a secondary fill (pen_button) takes the background-pen label */
+        CHECK_INT(flat_tx_arm(0, 0, FLAT_ROLE_SECONDARY), 0);
         free(cv);
     }
     {   /* FLAT-BUTTON-FILL: the pressed-label arm and the depth-checked fill pen */

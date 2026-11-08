@@ -397,7 +397,8 @@ void flat_tx_frame(flat_tx *t, const void *surf, const void *task, int pressed, 
 
 int flat_tx_arm(int pressed, int fill, int role)
 {
-    return fill && role != FLAT_ROLE_PLAIN && (pressed || role == FLAT_ROLE_PRIMARY);
+    (void)pressed;
+    return fill && role != FLAT_ROLE_PLAIN;                   /* OWNER-2026-11-08 FLAT-SECONDARY-LABEL: every filled push button (primary accent, secondary pen_button, pressed) draws its label in pen_ptext, the background colour; pressed no longer matters */
 }
 
 int flat_tx_text(flat_tx *t, const void *surf, const void *task, int cx, int cy)
