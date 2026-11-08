@@ -54,7 +54,8 @@ FONTS_OPENED = {}            # screen name -> (font name, ysize) the menu's font
 FONT_DRAWER = 'amarchy-fonts'
 JBMONO = os.path.join(REPO, 'build/jbmono/out')
 # KIT-AMARCHY-FLAT: amarchy-flat too, so the rig runs the build's resident, not the one the kit left loaded.
-# The kit's S:User-Startup starts it (install.dos ";BEGIN Amarchy-Flat": Run >NIL: UP-Term:bin/amarchy-flat BOOT);
+# The kit's S:Startup-Sequence starts it since Leg W (install.dos ";BEGIN UP-Term Amarchy-Flat", absolute path; older
+# kits: S:User-Startup ";BEGIN Amarchy-Flat"): Run >NIL: UP-Term:bin/amarchy-flat BOOT);
 # Amarchy itself loads it only when a flat switch flips on while none is resident (desk_dos dk_flat_sync_with).
 SETUP_NAMES = ('Amarchy', 'amarchy-menu', 'amarchy-gui', 'amarchy-flat')
 SETUP_BIN = 'VTCX:Apps/bin'
@@ -1304,7 +1305,7 @@ def flat_prefs_on():
     return flat_prefs_text_on(c.run('Type ENV:Amarchy/prefs', 20)[1])
 
 
-FLAT_BOOT = 'Run >NIL: UP-Term:bin/amarchy-flat BOOT'   # the kit's S:User-Startup line, word for word
+FLAT_BOOT = 'Run >NIL: UP-Term:bin/amarchy-flat BOOT'   # the kit's flat line (UP-Term: form: older kits only; the Leg W block spells the absolute path; rig update is W8)
 
 
 def flat_boot(tag):

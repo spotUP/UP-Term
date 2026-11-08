@@ -2002,7 +2002,7 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	cp dist/screenrc $(KIT)/Files/screenrc
 	python3 tools/tmuxfresh.py $(dir $(patsubst %/,%,$(dir $(TMUX_BIN)))) $(TMUX_BIN)
 	cp $(TMUX_BIN) $(KIT)/Files/tmux
-	cp dist/tmux.conf dist/unstartup.sh dist/takecon.sh dist/reassign.sh dist/upkg.conf $(KIT)/Files/
+	cp dist/tmux.conf dist/unstartup.sh dist/instssblock.sh dist/takecon.sh dist/reassign.sh dist/upkg.conf $(KIT)/Files/
 	cp $(IXEMUL_LIB) $(KIT)/Files/libs/ixemul.library
 	cp $(IXEMUL_LIB_SOFT) $(KIT)/Files/libs/ixemul.library.nofpu
 	python3 tools/libguard.py $(IXNET_LIB)
@@ -2012,6 +2012,9 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	printf 'UP-Term: double-click the icon to open a terminal with vsh.\n' > $(KIT)/Files/UP-Term
 	python3 tools/mkicon.py $(KIT)/Files/UP-Term-Prefs.info --tool "C:UP-Term-Prefs" --plain
 	printf 'UP-Term Prefs: edit the profiles in ENVARC:up-term/up-term.\n' > $(KIT)/Files/UP-Term-Prefs
+	mkdir -p $(KIT)/Files/wbstartup
+	python3 tools/mkicon.py $(KIT)/Files/wbstartup/Amarchy.info --tool "UP-Term:bin/Amarchy" --plain --tooltype DONOTWAIT --tooltype STARTPRI=10
+	python3 tools/mkicon.py $(KIT)/Files/wbstartup/amarchy-index.info --tool "UP-Term:bin/amarchy-index" --plain --tooltype DONOTWAIT --tooltype STARTPRI=-10 --tooltype TOOLPRI=-5
 	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/amiga/pty-handler $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/vsh $(BUILD)/amiga/ixkill dist/XCON dist/PTY dist/IXPIPE dist/vshrc \
 	  dist/up-term.conf $(KIT)/Files/
 	mkdir -p $(KIT)/Files/themes && cp themes/*.conf themes/ATTRIBUTION.md $(KIT)/Files/themes/

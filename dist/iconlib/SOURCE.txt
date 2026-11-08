@@ -16,5 +16,5 @@ RemLib, RemLib.doc  Thomas Rapp's RemLib, unchanged, as shipped in IconLib 46.4 
                    (the author allowed distribution with UP-Term by mail 2026-11-04, as long as it
                    stays free and publicly available). On AmigaOS 3.0/3.1 Install copies RemLib to C: (only when
                    there is none) and adds a ";BEGIN UP-Term RemLib" block before SetPatch in S:Startup-Sequence
-                   (made by instremlib.sh) that removes the Kickstart ROM icon.library from the resident list,
+                   (made by instssblock.sh (dist/, one inserter for all Startup-Sequence blocks)) that removes the Kickstart ROM icon.library from the resident list,
                    so the LIBS:icon.library above gets loaded. Never on 3.2. Uninstall strips the block.
