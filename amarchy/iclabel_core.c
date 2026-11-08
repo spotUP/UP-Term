@@ -49,26 +49,29 @@ int icl_mask(int jam2, int exact, const uint32_t *before, const uint32_t *after,
     return glyph;
 }
 
+/* coverage of the empty pixel (x, y): how many inner glyph corners it sits in (S62-FLAT-RF-TX-BUDGET: per pixel keeps
+ * icl_coverage's frame small; it runs inside the Text hook) */
+static int icl_corners(const uint8_t *mask, int w, int h, int x, int y)
+{
+    const uint8_t *m = mask + y * w + x;
+    int nn = y > 0 && m[-w], ss = y < h - 1 && m[w], ww = x > 0 && m[-1], ee = x < w - 1 && m[1];
+    return (nn && ee) + (nn && ww) + (ss && ee) + (ss && ww);
+}
+
 int icl_coverage(const uint8_t *mask, int w, int h, uint8_t *cov)
 {
-    int x, y, partial = 0;
-    for (y = 0; y < h; y++) {
-        for (x = 0; x < w; x++) {
-            int i = y * w + x, nn, ss, ee, ww, corners;
+    int x, y, i = 0, corners, partial = 0;
+    for (y = 0; y < h; y++)
+        for (x = 0; x < w; x++, i++) {
             if (mask[i]) {
                 cov[i] = 255;
                 continue;
             }
-            nn = y > 0 && mask[i - w];
-            ss = y < h - 1 && mask[i + w];
-            ww = x > 0 && mask[i - 1];
-            ee = x < w - 1 && mask[i + 1];
-            corners = (nn && ee) + (nn && ww) + (ss && ee) + (ss && ww);
+            corners = icl_corners(mask, w, h, x, y);
             cov[i] = (uint8_t)(corners == 0 ? 0 : corners == 1 ? ICL_COV_ONE : ICL_COV_TWO);
             if (corners)
                 partial++;
         }
-    }
     return partial;
 }
 
@@ -208,13 +211,15 @@ int icl_cache_bind(icl_pencache *c, const void *screen, unsigned epoch)
 
 int icl_cache_verify(icl_pencache *c, int (*is_free)(void *ctx, int pen), void *ctx)
 {
-    int pens[ICL_CACHE], i, n = 0;
+    /* The same test as ip_any_free over the obtained pens, without gathering them into an array: this runs inside the Text
+     * hook on the drawing task's stack (S62-FLAT-RF-TX-BUDGET). */
+    int i, any = 0;
     const void *screen = c->screen;
     unsigned epoch = c->epoch;
-    for (i = 0; i < ICL_CACHE; i++)
+    for (i = 0; is_free && !any && i < ICL_CACHE; i++)
         if (c->e[i].used && c->e[i].obtained)       /* a fg/bg pen the entry merely names is not ours to probe */
-            pens[n++] = c->e[i].pen;
-    if (!ip_any_free(is_free, ctx, pens, n))
+            any = is_free(ctx, c->e[i].pen);
+    if (!any)
         return 0;
     icl_cache_clear(c);                 /* the pens went with the old ColorMap: forget, never release */
     c->screen = screen;

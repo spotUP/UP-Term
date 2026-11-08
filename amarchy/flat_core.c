@@ -567,20 +567,27 @@ int flat_push_button(int has_text, int lx, int ly, int w, int h, int activation)
     return !has_text || (lx >= 0 && ly >= 0 && lx < w && ly < h);
 }
 
+int flat_button_role_add(int seen, const flat_box *self, const flat_box *o)
+{
+    int k = 0;
+    if (!self || !o || (o->x == self->x && o->y == self->y && o->w == self->w && o->h == self->h))
+        return seen;
+    if (o->y < self->y + self->h && self->y < o->y + o->h)        /* same row */
+        k = o->x > self->x ? 2 : 1;                                /* 2: a button further right (not rightmost), 1: one to the left */
+    return k > seen ? k : seen;
+}
+
+int flat_button_role_of(int seen)
+{
+    return seen == 1 ? FLAT_ROLE_SECONDARY : FLAT_ROLE_PRIMARY;
+}
+
 int flat_button_role(const flat_box *self, const flat_box *sib, int n)
 {
-    int i, left = 0;
-    for (i = 0; self && sib && i < n; i++) {
-        const flat_box *o = &sib[i];
-        if (o->x == self->x && o->y == self->y && o->w == self->w && o->h == self->h)
-            continue;
-        if (o->y < self->y + self->h && self->y < o->y + o->h) {   /* same row */
-            if (o->x > self->x)
-                return FLAT_ROLE_PRIMARY;                          /* a button further right: not rightmost */
-            left = 1;
-        }
-    }
-    return left ? FLAT_ROLE_SECONDARY : FLAT_ROLE_PRIMARY;
+    int i, seen = 0;
+    for (i = 0; self && sib && i < n; i++)
+        seen = flat_button_role_add(seen, self, &sib[i]);
+    return flat_button_role_of(seen);
 }
 
 int flat_button_pen(const flat_state *s, int depth)
@@ -728,26 +735,30 @@ int flat_frame_pen(const flat_state *s, int depth, int active)
     return -1;
 }
 
+void flat_title_span_add(const flat_gadrect *g, int win_w, int bar_h, int *x0, int *x1)
+{
+    int l, w, r;
+    if (g->drag || g->y >= bar_h || g->y + g->h <= 0)
+        return;
+    l = g->x + (g->relright ? win_w : 0);
+    w = g->w + (g->relwidth ? win_w : 0);
+    if (w <= 0)
+        return;
+    r = l + w - 1;
+    if (l + r < win_w) {
+        if (r + 1 > *x0) *x0 = r + 1;
+    } else if (l - 1 < *x1) {
+        *x1 = l - 1;
+    }
+}
+
 void flat_title_span(const flat_gadrect *g, int n, int win_w, int bar_h, int *x0, int *x1)
 {
     int i;
     *x0 = 0;
     *x1 = win_w - 1;
-    for (i = 0; i < n; i++) {
-        int l, w, r;
-        if (g[i].drag || g[i].y >= bar_h || g[i].y + g[i].h <= 0)
-            continue;
-        l = g[i].x + (g[i].relright ? win_w : 0);
-        w = g[i].w + (g[i].relwidth ? win_w : 0);
-        if (w <= 0)
-            continue;
-        r = l + w - 1;
-        if (l + r < win_w) {
-            if (r + 1 > *x0) *x0 = r + 1;
-        } else if (l - 1 < *x1) {
-            *x1 = l - 1;
-        }
-    }
+    for (i = 0; i < n; i++)
+        flat_title_span_add(&g[i], win_w, bar_h, x0, x1);
 }
 
 int flat_title_decide(const flat_state *s, int depth, int active, const char *title, int win_w, int bar_h,

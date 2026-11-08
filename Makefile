@@ -1203,9 +1203,16 @@ $(BUILD)/amiga/amarchy-icons: amarchy/icons.c amarchy/stkprobe.h amarchy/iconapp
 # FLAT-C3: vbcc's assembly of the dispatcher objects, checked by tests/test_flat_budget.py (entry frames <= 64 bytes, no libc call)
 FLAT_ASM_DIR := $(BUILD)/amiga/flat_asm
 .PHONY: flat-budget
-flat-budget: $(BUILD)/amiga/flat_asm/flat.s $(BUILD)/amiga/flat_asm/flat_glyph.s $(BUILD)/amiga/flat_asm/flat_core.s $(BUILD)/amiga/flat_asm/roundaa_core.s
-	python3 tests/test_flat_budget.py $(FLAT_ASM_DIR)/flat.s $(FLAT_ASM_DIR)/flat_glyph.s $(FLAT_ASM_DIR)/flat_core.s $(FLAT_ASM_DIR)/roundaa_core.s
-$(FLAT_ASM_DIR)/%.s: amarchy/%.c amarchy/flat_core.h amarchy/flat_glyph.h amarchy/roundaa_core.h
+# S62-FLAT-RF-TX-BUDGET: the RectFill and Text hooks (flat_rf_c, flat_tx_c) reach iclabel_core (the label shades) and
+# render/emoji.c (ce_mix, the corner antialias blend), so their assembly is checked too.
+FLAT_BUDGET_ASM := $(FLAT_ASM_DIR)/flat.s $(FLAT_ASM_DIR)/flat_glyph.s $(FLAT_ASM_DIR)/flat_core.s $(FLAT_ASM_DIR)/roundaa_core.s \
+	$(FLAT_ASM_DIR)/iclabel_core.s $(FLAT_ASM_DIR)/emoji.s
+flat-budget: $(FLAT_BUDGET_ASM)
+	python3 tests/test_flat_budget.py $(FLAT_BUDGET_ASM)
+$(FLAT_ASM_DIR)/%.s: amarchy/%.c amarchy/flat_core.h amarchy/flat_glyph.h amarchy/roundaa_core.h amarchy/iclabel_core.h
+	@mkdir -p $(FLAT_ASM_DIR)
+	$(VC) -dontwarn=153,65 -S -o $@ $<
+$(FLAT_ASM_DIR)/emoji.s: render/emoji.c render/emoji.h
 	@mkdir -p $(FLAT_ASM_DIR)
 	$(VC) -dontwarn=153,65 -S -o $@ $<
 

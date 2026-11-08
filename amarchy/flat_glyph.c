@@ -7,13 +7,15 @@ typedef struct plan {
     flat_fill_fn fill;          /* flat_glyph_draw: each rectangle goes straight out, no array in the caller's frame */
     void *ctx;
     const flat_state *st;
-    int ox, oy;
-    int n, cap;
-    int w, h, fg, bg;
-    int frame_pen;              /* pen of FLAT_ROLE_FRAME, -1: none known (pen_back) */
-    int knob_pen;               /* pen of FLAT_ROLE_KNOB, -1: none known (pen_line) */
-    int ix0, iy0, ix1, iy1;     /* the inner box the glyph lives in */
-    int side;                   /* flat_side_px of the screen: columns per row of visual height (1 square, 2 hires, 4 superhires) */
+    /* S62-FLAT-RF-TX-BUDGET: shorts, not ints. flat_glyph_draw keeps a plan in its frame on the drawing task's stack; every
+     * value here is a gadget coordinate, a pen (-1 .. 255), a role or a count up to FLAT_GLYPH_MAX_PRIMS. */
+    short ox, oy;
+    short n, cap;
+    short w, h, fg, bg;
+    short frame_pen;            /* pen of FLAT_ROLE_FRAME, -1: none known (pen_back) */
+    short knob_pen;             /* pen of FLAT_ROLE_KNOB, -1: none known (pen_line) */
+    short ix0, iy0, ix1, iy1;   /* the inner box the glyph lives in */
+    short side;                 /* flat_side_px of the screen: columns per row of visual height (1 square, 2 hires, 4 superhires) */
 } plan;
 
 static void put(plan *g, int x0, int y0, int x1, int y1, int role)
@@ -362,8 +364,12 @@ static int plan_run(plan *g, unsigned long which, int w, int h, int state, int s
 {
     int i;
     g->n = 0; g->w = w; g->h = h; g->side = side < 1 ? 1 : side;
-    flat_glyph_roles(which, state, &g->fg, &g->bg);
-    g->bg = flat_glyph_box_role(g->st, g->fg, g->bg, g->frame_pen, g->knob_pen);
+    {
+        int fg, bg;
+        flat_glyph_roles(which, state, &fg, &bg);
+        g->fg = (short)fg;
+        g->bg = (short)flat_glyph_box_role(g->st, fg, bg, g->frame_pen, g->knob_pen);
+    }
     i = imax(1, imin(w, h) / 4);
     g->ix0 = i; g->iy0 = i; g->ix1 = w - 1 - i; g->iy1 = h - 1 - i;
     put(g, 0, 0, w - 1, h - 1, g->bg);
@@ -430,20 +436,32 @@ int flat_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, 
     return 1;
 }
 
+int flat_button_corner(int w, int h, int i, int out[4])
+{
+    int tall = h >= FLAT_ROUND_TALL, c, k, x, y, ix, iy;
+    if (w < 3 || h < 3 || i < 0 || i >= (tall ? 12 : 4))
+        return 0;
+    c = tall ? i / 3 : i;
+    k = tall ? i % 3 : 0;
+    x = (c & 1) ? w - 1 : 0;
+    y = (c & 2) ? h - 1 : 0;
+    ix = (c & 1) ? -1 : 1;                                          /* direction into the box */
+    iy = (c & 2) ? -1 : 1;
+    if (k == 0) {
+        out[0] = x; out[1] = y; out[2] = x - ix; out[3] = y - iy;
+    } else if (k == 1) {
+        out[0] = x + ix; out[1] = y; out[2] = x + ix; out[3] = y - iy;  /* beside the corner, along the row */
+    } else {
+        out[0] = x; out[1] = y + iy; out[2] = x - ix; out[3] = y + iy;  /* beside the corner, down the column */
+    }
+    return 1;
+}
+
 int flat_button_corners(int w, int h, int out[][4])
 {
-    int c, n = 0, tall = h >= FLAT_ROUND_TALL;
-    if (w < 3 || h < 3)
-        return 0;
-    for (c = 0; c < 4; c++) {
-        int x = (c & 1) ? w - 1 : 0, y = (c & 2) ? h - 1 : 0;
-        int ix = (c & 1) ? -1 : 1, iy = (c & 2) ? -1 : 1;           /* direction into the box */
-        out[n][0] = x; out[n][1] = y; out[n][2] = x - ix; out[n][3] = y - iy; n++;
-        if (tall) {
-            out[n][0] = x + ix; out[n][1] = y; out[n][2] = x + ix; out[n][3] = y - iy; n++;     /* beside the corner, along the row */
-            out[n][0] = x; out[n][1] = y + iy; out[n][2] = x - ix; out[n][3] = y + iy; n++;     /* beside the corner, down the column */
-        }
-    }
+    int n = 0;
+    while (flat_button_corner(w, h, n, out[n]))
+        n++;
     return n;
 }
 
@@ -456,37 +474,44 @@ int flat_scroller_cuts(int cx, int cy, int cw, int ch, int horiz, int vert, unsi
     return flat_scroller_cuts_box(kx, ky, kw, kh, x0, y0, x1, y1, out);
 }
 
+int flat_scroller_cut_at(int kx, int ky, int kw, int kh, int x0, int y0, int x1, int y1, int i, int out[2])
+{
+    int cut[4], px, py;
+    if (!flat_button_corner(kw, kh, i, cut))
+        return 0;
+    px = kx + cut[0];                               /* every corner pixel inside THIS fill: 3.2 paints the knob as several fills */
+    py = ky + cut[1];
+    if (px < x0 || px > x1 || py < y0 || py > y1)
+        return 0;
+    out[0] = px;
+    out[1] = py;
+    return 1;
+}
+
 int flat_scroller_cuts_box(int kx, int ky, int kw, int kh, int x0, int y0, int x1, int y1, int out[][2])
 {
-    int cut[FLAT_ROUND_MAX][4], n, m, i;
-    n = flat_button_corners(kw, kh, cut);
-    for (i = 0, m = 0; i < n; i++) {                /* every corner pixel inside THIS fill: 3.2 paints the knob as several fills */
-        int px = kx + cut[i][0], py = ky + cut[i][1];
-        if (px < x0 || px > x1 || py < y0 || py > y1)
-            continue;
-        out[m][0] = px;
-        out[m][1] = py;
-        m++;
-    }
+    int i, m = 0;
+    for (i = 0; i < FLAT_ROUND_MAX; i++)
+        if (flat_scroller_cut_at(kx, ky, kw, kh, x0, y0, x1, y1, i, out[m]))
+            m++;
     return m;
 }
 
 int flat_frame_draw_round(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn,
                           flat_read_fn rd, void *ctx)
 {
-    int cut[FLAT_ROUND_MAX][4], pen[FLAT_ROUND_MAX], n = 0, i;
+    short pen[FLAT_ROUND_MAX];                       /* a read pen: -1 (unreadable) .. 255; S62-FLAT-RF-TX-BUDGET: corners one at a time */
+    int cut[4], n = 0, i;
     if (!s || !fn || w < 3 || h < 3)
         return 0;
-    if (rd && fill) {
-        n = flat_button_corners(w, h, cut);
-        for (i = 0; i < n; i++)
-            pen[i] = rd(ctx, ox + cut[i][2], oy + cut[i][3]);        /* before the box is painted */
-    }
+    if (rd && fill)
+        for (; flat_button_corner(w, h, n, cut); n++)
+            pen[n] = (short)rd(ctx, ox + cut[2], oy + cut[3]);      /* before the box is painted */
     if (!flat_frame_draw(s, ids, ox, oy, w, h, fill, role, fn, ctx))
         return 0;
     for (i = 0; i < n; i++)
-        if (pen[i] >= 0)
-            fn(ctx, ox + cut[i][0], oy + cut[i][1], ox + cut[i][0], oy + cut[i][1], pen[i]);
+        if (pen[i] >= 0 && flat_button_corner(w, h, i, cut))
+            fn(ctx, ox + cut[0], oy + cut[1], ox + cut[0], oy + cut[1], pen[i]);
     return 1;
 }
 

@@ -82,15 +82,18 @@ int raa_nearest(raa_rgb_fn rgb, void *ctx, int npens, unsigned long want)
 int raa_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn, flat_read_fn rd,
                    raa_rgb_fn rgb, int npens, void *ctx, int *blended)
 {
-    int bgpen[4], c, r, dx, dy, inner, ok;
+    unsigned char bgpen[4];  /* a read pen, checked 0 .. npens-1 (npens <= RAA_MAX_PENS 256); S62-FLAT-RF-TX-BUDGET: bytes, not ints */
+    int c, r, dx, dy, inner, ok, b;
     unsigned long fg;
     if (blended)
         *blended = 0;
     ok = s && fn && rd && rgb && fill && npens > 0 && npens <= RAA_MAX_PENS && w >= 3 && h >= 3;
     for (c = 0; ok && c < 4; c++) {
-        bgpen[c] = rd(ctx, (c & 1) ? ox + w : ox - 1, (c & 2) ? oy + h : oy - 1);     /* beside the corner, before the box is painted */
-        if (bgpen[c] < 0 || bgpen[c] >= npens)
+        b = rd(ctx, (c & 1) ? ox + w : ox - 1, (c & 2) ? oy + h : oy - 1);     /* beside the corner, before the box is painted */
+        if (b < 0 || b >= npens)
             ok = 0;
+        else
+            bgpen[c] = (unsigned char)b;
     }
     if (!flat_frame_draw_round(s, ids, ox, oy, w, h, fill, role, fn, rd, ctx))
         return 0;

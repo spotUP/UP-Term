@@ -312,6 +312,9 @@ typedef struct flat_gadrect { int x, y, w, h, relright, relwidth, drag; } flat_g
  * y + h > 0) other than the drag bar are resolved against win_w (relright adds win_w to x, relwidth to w); one centred in the
  * left half pushes x0 past its right edge, one in the right half pulls x1 before its left edge. No gadgets: 0 .. win_w-1. */
 void flat_title_span(const flat_gadrect *g, int n, int win_w, int bar_h, int *x0, int *x1);
+/* One gadget of flat_title_span (S62-FLAT-RF-TX-BUDGET: the Text hook keeps no gadget array): *x0 = 0, *x1 = win_w - 1, then this
+ * for each gadget in turn gives the same span. */
+void flat_title_span_add(const flat_gadrect *g, int win_w, int bar_h, int *x0, int *x1);
 int flat_title_decide(const flat_state *s, int depth, int active, const char *title, int win_w, int bar_h,
                       const char *str, int count, int cp_y, int bx0, int bx1, flat_title *t);
 
@@ -406,6 +409,10 @@ int flat_push_button(int has_text, int lx, int ly, int w, int h, int activation)
  * primary (filled); a lone button is primary. A row = siblings whose vertical span overlaps this box. sib lists every button of
  * the window, the box itself included (skipped by equal box). */
 int flat_button_role(const flat_box *self, const flat_box *sib, int n);
+/* The same rule one sibling at a time (S62-FLAT-RF-TX-BUDGET: the RectFill hook keeps no sibling array): start seen at 0, fold
+ * seen = flat_button_role_add(seen, self, o) over every o of sib, then flat_button_role_of(seen) == flat_button_role(self, sib, n). */
+int flat_button_role_add(int seen, const flat_box *self, const flat_box *o);
+int flat_button_role_of(int seen);
 
 /* FLAT-SCROLLER: a window scroller (prop gadget). The pen for one fill inside the gadget's container (cx,cy,cw,ch in the
  * rastport's coordinates): a fill inside the knob rectangle takes flat_knob_pen (its own pen_knob from 16 colours, else the theme muted text pen); the
