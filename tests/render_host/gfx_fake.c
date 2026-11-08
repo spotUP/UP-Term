@@ -38,6 +38,10 @@ static int truecolor;
 static unsigned long fpal[256];
 static int npal;
 int gf_pens_held;
+/* gf_freepens: the entries [pool_first, pool_first + pool_n) of the full map are free ones, loaded by the pen
+ * that is obtained for them (ObtainBestPen exact) and free again when released; pool_ref counts the holders */
+static int pool_first, pool_n;
+static unsigned char pool_ref[256];
 static struct Library cgx_lib;
 static int cgx_alpha_real = 1;
 gf_pixcall gf_lastpix;
@@ -140,6 +144,7 @@ void gf_open(int w, int h, int cw, int ch, int base)
     truecolor = 0;
     npal = 0;
     gf_pens_held = 0;
+    pool_n = 0;
 }
 
 void gf_palette(const unsigned long *rgb, int n)
@@ -148,6 +153,15 @@ void gf_palette(const unsigned long *rgb, int n)
     npal = n;
     for (i = 0; i < n; i++)
         fpal[i] = rgb[i];
+}
+
+void gf_freepens(int first, int n)
+{
+    int i;
+    pool_first = first;
+    pool_n = n;
+    for (i = 0; i < 256; i++)
+        pool_ref[i] = 0;
 }
 
 void gf_truecolor(int on) { truecolor = on; }
@@ -736,16 +750,30 @@ LONG ObtainBestPenA(struct ColorMap *cm, ULONG r, ULONG g, ULONG b, CONST struct
             if (t->ti_Tag == OBP_FailIfBad && t->ti_Data)
                 exact = 1;
         for (i = 0; i < npal; i++) {
-            long dr = (long)((fpal[i] >> 16) & 255) - (long)((want >> 16) & 255);
-            long dg = (long)((fpal[i] >> 8) & 255) - (long)((want >> 8) & 255);
-            long db = (long)(fpal[i] & 255) - (long)(want & 255), d = dr * dr + dg * dg + db * db;
+            long dr, dg, db, d;
+            if (pool_n && i >= pool_first && i < pool_first + pool_n && !pool_ref[i])
+                continue; /* a free entry shows nothing yet */
+            dr = (long)((fpal[i] >> 16) & 255) - (long)((want >> 16) & 255);
+            dg = (long)((fpal[i] >> 8) & 255) - (long)((want >> 8) & 255);
+            db = (long)(fpal[i] & 255) - (long)(want & 255);
+            d = dr * dr + dg * dg + db * db;
             if (bd < 0 || d < bd) {
                 bd = d;
                 k = i;
             }
         }
-        if (exact && bd)
+        if (exact && bd) {
+            for (i = pool_first; pool_n && i < pool_first + pool_n; i++)
+                if (!pool_ref[i]) { /* a free entry takes the colour */
+                    fpal[i] = want;
+                    pool_ref[i] = 1;
+                    gf_pens_held++;
+                    return i;
+                }
             return -1;
+        }
+        if (pool_n && k >= pool_first && k < pool_first + pool_n)
+            pool_ref[k]++;
         gf_pens_held++;
         return k;
     }
@@ -754,9 +782,11 @@ LONG ObtainBestPenA(struct ColorMap *cm, ULONG r, ULONG g, ULONG b, CONST struct
 }
 VOID ReleasePen(struct ColorMap *cm, ULONG n)
 {
-    (void)cm; (void)n;
+    (void)cm;
     if (npal)
         gf_pens_held--;
+    if (pool_n && n < 256 && (int)n >= pool_first && (int)n < pool_first + pool_n && pool_ref[n])
+        pool_ref[n]--;
 }
 VOID SetRGB32(struct ViewPort *vp, ULONG n, ULONG r, ULONG g, ULONG b)
 {

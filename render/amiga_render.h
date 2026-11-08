@@ -19,11 +19,25 @@
 #include "unifont.h"
 #include "emoji.h"
 #include "aa_ink.h"
+#include "pic_pens.h"
 
 #define VR_EXACT_SLOTS 256  /* a power of two */
 #define VR_EXACT_MAX 160
 #define VR_IMG_SLOTS 512    /* image colours' pens, a power of two */
 #define VR_IMG_MAX 256
+
+/* A kitty picture's pens on a palette screen (render/pic_pens.h): per palette entry the screen pens a and b and
+ * the level of the 8 x 8 pattern that mixes them, and the pens obtained for it (released when the slot is
+ * reused, the palette changes, or vr_free). VR_PIC_SLOTS pictures keep their pens at once. */
+#define VR_PIC_SLOTS 3
+struct vr_picslot {
+    LONG serial;          /* the picture it was made for (vt_image_view.serial); 0: free */
+    ULONG stamp;          /* the use that last drew it (eviction: the oldest) */
+    WORD nheld;
+    UWORD planes;         /* the pens' bits ORed */
+    pp_plan plan;         /* per entry: pens a, b, level */
+    UBYTE held[256];      /* pens to release */
+};
 
 /* An image's colours on this screen, 3,840 bytes: in every window's
  * vr_render they put a console.device STANDARD unit over DV4's 64 KB
@@ -34,6 +48,10 @@
  * True-colour screens: cybergraphics' WriteLUTPixelArray draws the
  * indices through ctab. */
 struct vr_images {
+    struct vr_picslot *pic; /* VR_PIC_SLOTS of them, allocated at the first kitty picture on a palette screen */
+    struct vr_picslot *pic_cur; /* the slot of the picture img_colours last prepared; 0: the maps below */
+    ULONG pic_use;
+    ULONG n_pic_picks;    /* sentinel: pictures whose colours were picked (pp_pick) because the pens ran out */
     ULONG key[VR_IMG_SLOTS];
     UBYTE pen[VR_IMG_SLOTS];
     UBYTE map[256];

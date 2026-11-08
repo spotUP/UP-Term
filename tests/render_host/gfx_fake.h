@@ -59,6 +59,9 @@ void gf_outline(const UBYTE *mask, WORD bpr, const UBYTE *cov);
  * obtained and not yet released. Call after gf_open (which clears it), before vr_init. */
 void gf_palette(const unsigned long *rgb, int n);
 extern int gf_pens_held;
+/* After gf_palette: entries [first, first + n) are free ones. ObtainBestPen exact loads one with the colour (a
+ * pen already of that colour is shared); none free: it fails, and not exact finds the nearest entry in use. */
+void gf_freepens(int first, int n);
 /* A planar screen (W-T4): the window's bitmap is `depth` real bitplanes in chip RAM (TypeOfMem says so),
  * BMF_STANDARD, the window at screen pixel (left, top) on it, one unobscured ClipRect over it, and the font
  * 8 pixels wide with glyph data (so the renderer's planar fast paths run). RectFill, Text, ScrollRaster and
