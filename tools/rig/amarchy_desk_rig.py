@@ -225,7 +225,7 @@ def pick(up=None, keep=True):
     kept = []
     if keep:   # FP-1: the apply asks "Keep?" for 15 s and reverts otherwise; the waits below can take longer, so a thread clicks it as it appears
         import threading
-        kt = threading.Thread(target=lambda: kept.append(t.keep_requester(t.APPLY_SECS, None, t.apply_settled)), daemon=True)
+        kt = threading.Thread(target=lambda: kept.append(t.keep_requester(t.APPLY_SECS, None, t.apply_settled, expect=True)), daemon=True)
         kt.start()
     ami.key(g.RETURN)
     try:
@@ -237,7 +237,11 @@ def pick(up=None, keep=True):
         g.close_menu()
         raise TimeoutError('the theme apply did not finish within %d s (%s never written)' % (t.APPLY_SECS, t.APPLY_DONE))
     if keep:
-        kt.join(10)
+        kt.join(t.APPLY_SECS)
+        if not (kept and kept[0]):
+            g.close_menu()
+            raise RuntimeError('FP-1 Keep was not clicked for the pick of %s: Amarchy reverts the theme after 15 s and the next pick '
+                               'would land on the same theme (see t.LAST_KEEP: %s)' % (rows[sel].split(' (')[0], dict(t.LAST_KEEP)))
     g.close_menu()
     return rows[sel].split(' (')[0], up
 
