@@ -708,6 +708,109 @@ static void outline_fill(void *ctx, int x0, int y0, int x1, int y1, int pen)
 
 struct frame_rec_t { int n, r[8][5]; };
 
+/* S62-FLAT-RF-TX-BUDGET: reference copies of the array forms at 4e5cf2e5, before the one-cut-at-a-time rewrite. */
+static int old_button_corners(int w, int h, int out[][4])
+{
+    int c, n = 0, tall = h >= FLAT_ROUND_TALL;
+    if (w < 3 || h < 3) return 0;
+    for (c = 0; c < 4; c++) {
+        int x = (c & 1) ? w - 1 : 0, y = (c & 2) ? h - 1 : 0;
+        int ix = (c & 1) ? -1 : 1, iy = (c & 2) ? -1 : 1;
+        out[n][0] = x; out[n][1] = y; out[n][2] = x - ix; out[n][3] = y - iy; n++;
+        if (tall) {
+            out[n][0] = x + ix; out[n][1] = y; out[n][2] = x + ix; out[n][3] = y - iy; n++;
+            out[n][0] = x; out[n][1] = y + iy; out[n][2] = x - ix; out[n][3] = y + iy; n++;
+        }
+    }
+    return n;
+}
+static int old_cuts_box(int kx, int ky, int kw, int kh, int x0, int y0, int x1, int y1, int out[][2])
+{
+    int cut[FLAT_ROUND_MAX][4], n = old_button_corners(kw, kh, cut), i, m = 0;
+    for (i = 0; i < n; i++) {
+        int px = kx + cut[i][0], py = ky + cut[i][1];
+        if (px < x0 || px > x1 || py < y0 || py > y1) continue;
+        out[m][0] = px; out[m][1] = py; m++;
+    }
+    return m;
+}
+
+/* The single-cut accessors give exactly the cuts, order and values of the old arrays. */
+static void test_round_cut_at(void)
+{
+    int w, h, i, n, bad = 0, cut[4], old[FLAT_ROUND_MAX][4];
+    for (w = 0; w <= 40; w++)
+        for (h = 0; h <= 40; h++) {
+            n = old_button_corners(w, h, old);
+            for (i = -2; i < FLAT_ROUND_MAX + 2; i++) {
+                int got = flat_button_corner(w, h, i, cut);
+                if (i >= 0 && i < n) {
+                    if (!got || memcmp(cut, old[i], sizeof cut)) bad++;
+                } else if (got) bad++;
+            }
+        }
+    CHECK_INT(bad, 0);
+    {
+        int kx, ky, kw, kh, d0, d1, xy[2], ref[FLAT_ROUND_MAX][2], all[FLAT_ROUND_MAX][2];
+        for (kw = 0; kw <= 16; kw += 1)
+            for (kh = 0; kh <= 16; kh += 3)
+                for (d0 = -1; d0 <= 1; d0++)
+                    for (d1 = -1; d1 <= 1; d1++) {
+                        int k = 0;
+                        kx = 5; ky = 7;
+                        n = old_cuts_box(kx, ky, kw, kh, kx + d0, ky + d0, kx + kw - 1 + d1, ky + kh - 1 + d1, ref);
+                        for (i = 0; i < FLAT_ROUND_MAX; i++)
+                            if (flat_scroller_cut_at(kx, ky, kw, kh, kx + d0, ky + d0, kx + kw - 1 + d1, ky + kh - 1 + d1, i, xy)) {
+                                if (k >= n || xy[0] != ref[k][0] || xy[1] != ref[k][1]) bad++;
+                                k++;
+                            }
+                        if (k != n) bad++;
+                        if (flat_scroller_cuts_box(kx, ky, kw, kh, kx + d0, ky + d0, kx + kw - 1 + d1, ky + kh - 1 + d1, all) != n
+                            || memcmp(all, ref, sizeof all[0] * n)) bad++;
+                    }
+    }
+    CHECK_INT(bad, 0);
+}
+
+/* raa_partial_mask bit y*4+x is exactly raa_cover < 255 inside the corner square. */
+static void test_round_partial_mask(void)
+{
+    int w, h, r, x, y, bad = 0;
+    for (w = 1; w <= 24; w++)
+        for (h = 1; h <= 24; h++)
+            for (r = 0; r <= 4 && r <= w / 2 && r <= h / 2; r++) {
+                unsigned m = raa_partial_mask(w, h, r), want = 0;
+                for (y = 0; y < r; y++) for (x = 0; x < r; x++)
+                    if (raa_cover(w, h, r, x, y) < 255) want |= 1u << (y * 4 + x);
+                if (m != want) bad++;
+            }
+    CHECK_INT(bad, 0);
+}
+
+/* flat_frame_draw_round puts back every read pen >= 0 as before the byte array (a pen over 255 as its low byte, the pen SetAPen
+ * keeps); an unreadable outside pixel (-1) leaves the cut as drawn. */
+static void test_round_pen_byte(void)
+{
+    static int a[40][60], b[40][60];
+    int cut[4], i, x, y, bad = 0;
+    flat_state fs;
+    memset(&fs, 0, sizeof fs);
+    fs.enabled = 1; fs.pen_line = 1; fs.pen_back = 0; fs.pen_button = 4; fs.pen_text = 2;
+    for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) a[y][x] = b[y][x] = 300;
+    a[24][20] = b[24][20] = 3;                                       /* the outside pixel of the bottom-right corner cut */
+    CHECK_INT(flat_frame_draw_round(&fs, 0, 0, 10, 20, 14, 1, 0, round_fill, 0, b), 1);   /* as drawn, no rounding */
+    CHECK_INT(flat_frame_draw_round(&fs, 0, 0, 10, 20, 14, 1, 0, round_fill, round_read, a), 1);
+    for (i = 0; flat_button_corner(20, 14, i, cut); i++) {
+        int sx = cut[2], sy = 10 + cut[3], want;
+        if (sx < 0) want = b[10 + cut[1]][cut[0]];                   /* x = -1: unreadable, left as drawn */
+        else if (sx == 20 && sy == 24) want = 3;
+        else want = 300 & 255;
+        if (a[10 + cut[1]][cut[0]] != want) bad++;
+    }
+    CHECK_INT(i, 12);
+    CHECK_INT(bad, 0);
+}
+
 static void round_fill(void *ctx, int x0, int y0, int x1, int y1, int pen)
 {
     int (*p)[60] = (int (*)[60])ctx, x, y;
@@ -2711,4 +2814,7 @@ void suite_flat_core(void)
     test_glyph_frame_bg();
     test_glyph_route();
     test_round_aa();
+    test_round_cut_at();
+    test_round_partial_mask();
+    test_round_pen_byte();
 }

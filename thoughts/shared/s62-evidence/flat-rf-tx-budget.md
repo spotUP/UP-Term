@@ -1,6 +1,6 @@
 ---
 title: Flat RectFill / Text hook stack budget (S62)
-status: partial - flat.c restructured; tx PASS, rf FAIL by 52 bytes (chain 372, limit 320)
+status: gate PASS on all four entries (rf chain 320, zero slack); rig eye-check and border-button wait lock open
 date: 2026-11-08
 branch: worktree-agent-ad60c5bcd9f17745f (base 4e5cf2e5)
 ---
@@ -161,6 +161,28 @@ No frame over 80. `flat_rf_c` children (rf 64 + 4 + child, stub 28 excluded; tar
 Tried, no gain: `b[]` in the stock call and one guarded block instead of the `on` flag in `flat_rf_c` (frame stays 64 = 20 locals + 11 registers).
 
 Still open: the two paths above; host tests for `flat_button_corner`, `flat_scroller_cut_at` and the `flat_frame_draw_round` pen bitmask (pen > 255) are not written.
+
+## Step 4: rf closes (2026-11-08, worktree agent-ad60c5bcd9f17745f)
+
+- Scroller: `scroller_paint` returns the cut count and `rf_scroller` calls `sring_note` after it, so the sring chain no longer sits under the paint frame. `scroller_cuts` takes one cut per `scroller_cut` call (wraps `flat_scroller_cut_at`), so vbcc has no loop invariant to hoist (frame was 80).
+- Dim: new `raa_partial_mask(w, h, r)` (roundaa_core) gives bit `y*4+x` set where `raa_cover < 255` in the corner square. `dim_corner` computes radius and mask once, from `rf_disabled`; `dim_fill` and `dim_keeps` test the bit instead of calling `raa_cover` per pixel. Same pixels: the four corner squares are mirror images (`rr <= w/2, h/2`), and `dim_keeps` is still called in the same order.
+- `flat_frame_draw_round` pens over 255: the old `int pen[]` code put back any read pen >= 0; the byte array had narrowed that to 0 .. 255 and left larger pens as drawn. Restored: every pen >= 0 is put back as its low byte. On the Amiga that is the pen `c2_fill`'s SetAPen keeps anyway (RastPort FgPen is a byte), so drawing equals the old code. Only a host fill callback sees `p & 255` instead of `p`. Whether ReadPixel ever returns > 255 (RTG deep screens) is unverified; planar depth <= 8 gives 0 .. 255.
+- Host tests (tests/test_flat_core.c): `test_round_cut_at` compares `flat_button_corner`, `flat_scroller_cut_at` and `flat_scroller_cuts_box` with reference copies of the 4e5cf2e5 array code (w, h 0 .. 40; knob boxes against shifted fill boxes); `test_round_partial_mask` checks the mask against `raa_cover`; `test_round_pen_byte` checks a read pen 300 is put back as 44, a read 3 as 3, an unreadable -1 left as drawn. With the `p <= 255` guard put back, `test_round_pen_byte` fails (7 corners wrong).
+
+`make flat-budget` after step 4 (stub included):
+
+| entry | own frame | chain | headroom | result |
+|---|---|---|---|---|
+| _c2_disp_reg | 20 | 312 | 72 | PASS |
+| _c2_disp_stk | 4 | 296 | 88 | PASS |
+| _flat_rf_c | 64 | 320 (stub 28) | 64 | PASS |
+| _flat_tx_c | 32 | 304 (stub 16) | 80 | PASS |
+
+rf children (stub excluded, target <= 292): bb path 292, scroller look-up path 292 (rf_scroller 28, scroller_pen 24, scroller_pen_of 60, prop_knob 32, knob_img 32, knob 28), dim path 268. Zero slack on rf: any new frame byte on the bb or scroller path fails the gate.
+
+Host suites flat_core, richaa, iclabel, flat_role_core pass; `build/amiga/amarchy-flat` builds with no warnings.
+
+Still open: rig eye-check of scroller knobs, disabled gadgets and border buttons (not run: no rig in this task); the border-button wait lock below.
 
 ## Border-button fill: wait instead of stock fallback (owner decision 2026-11-08) - NOT implemented
 

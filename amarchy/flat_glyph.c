@@ -500,7 +500,7 @@ int flat_scroller_cuts_box(int kx, int ky, int kw, int kh, int x0, int y0, int x
 int flat_frame_draw_round(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn,
                           flat_read_fn rd, void *ctx)
 {
-    unsigned char pen[FLAT_ROUND_MAX];               /* a read pen 0 .. 255, valid where its bit in got is set; S62-FLAT-RF-TX-BUDGET: bytes */
+    unsigned char pen[FLAT_ROUND_MAX];               /* the low byte of a read pen >= 0, valid where its bit in got is set; S62-FLAT-RF-TX-BUDGET: bytes */
     unsigned got = 0;
     int cut[4], n = 0, i, p;
     if (!s || !fn || w < 3 || h < 3)
@@ -508,7 +508,8 @@ int flat_frame_draw_round(const flat_state *s, int ids, int ox, int oy, int w, i
     if (rd && fill)
         for (; flat_button_corner(w, h, n, cut); n++) {
             p = rd(ctx, ox + cut[2], oy + cut[3]);                  /* before the box is painted */
-            if (p >= 0 && p <= 255) {
+            if (p >= 0) {                /* as before the byte array: every pen >= 0 is put back. A pen over 255 goes back as its low
+                                            * byte, which is the pen c2_fill's SetAPen keeps (RastPort FgPen is a byte) */
                 pen[n] = (unsigned char)p;
                 got |= 1u << n;
             }

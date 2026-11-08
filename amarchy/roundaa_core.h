@@ -20,6 +20,10 @@ int raa_radius(int h);
 int raa_round_inset(int w, int h, int r, int y);
 /* Coverage 0..255 of pixel (x, y) of a w x h box with corner radius r by the rounded rectangle (4 x 4 samples per pixel) */
 int raa_cover(int w, int h, int r, int x, int y);
+/* The partly covered pixels of the top left r x r corner square (r <= 4): bit (y * 4 + x) set when raa_cover(w, h, r, x, y) < 255.
+ * The cover is the same in all four mirrored corners, so a caller tests corner pixel (dx, dy) of any corner with one shift and
+ * makes no raa_cover call per pixel (S62-FLAT-RF-TX-BUDGET: dim_fill on the drawing task's stack). */
+unsigned raa_partial_mask(int w, int h, int r);
 /* 0xRRGGBB of screen pen p, as the host answers it */
 typedef unsigned long (*raa_rgb_fn)(void *ctx, int pen);
 /* The pen of 0..npens-1 whose colour looks nearest to rgb (pen_match's redmean + chroma distance) */

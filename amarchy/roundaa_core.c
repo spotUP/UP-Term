@@ -63,6 +63,17 @@ int raa_cover(int w, int h, int r, int x, int y)
     return n * 255 / 16;
 }
 
+unsigned raa_partial_mask(int w, int h, int r)
+{
+    unsigned m = 0;
+    int x, y;
+    for (y = 0; y < r && y < 4; y++)
+        for (x = 0; x < r && x < 4; x++)
+            if (raa_cover(w, h, r, x, y) < 255)
+                m |= 1u << (y * 4 + x);
+    return m;
+}
+
 int raa_nearest(raa_rgb_fn rgb, void *ctx, int npens, unsigned long want)
 {
     pm_target t;

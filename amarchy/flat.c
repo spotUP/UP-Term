@@ -1381,25 +1381,35 @@ static void bb_done(flatshared *r, struct RastPort *rp, const LONG *b, int bb)
 }
 
 /* OWNER-2026-11-08: one pixel of a disabled button's corner square that keeps what it has: inside the corner radius rr, readable and
- * not fully covered by the rounded box (raa_cover < 255). (x, y) are box-relative. */
-static int dim_keeps(struct RastPort *rp, const flat_gbox *gb, int rr, int x, int y)
+ * not fully covered by the rounded box (raa_cover < 255: bit (dy * 4 + dx) of part, raa_partial_mask of the box). (x, y) are
+ * box-relative. */
+static int dim_keeps(struct RastPort *rp, const flat_gbox *gb, int rr, unsigned part, int x, int y)
 {
     int bw = gb->x1 - gb->x0 + 1, bh = gb->y1 - gb->y0 + 1;
     int dx = x < rr ? x : bw - 1 - x, dy = y < rr ? y : bh - 1 - y;
     if (dx >= rr || dy >= rr)
         return 0;
-    return c2_read(rp, gb->x0 + x, gb->y0 + y) >= 0 && raa_cover(bw, bh, rr, x, y) < 255;
+    return c2_read(rp, gb->x0 + x, gb->y0 + y) >= 0 && ((part >> (dy * 4 + dx)) & 1);
 }
 
 /* The dim fill is a rectangle; the button's rounded corner squares (radius raa_radius, as the frame draw) keep the pixels they have.
  * The corner rows are filled pixel by pixel around the kept ones, the rest in one fill: the same pixels as filling the whole box and
  * writing the kept ones back, without holding them (S62-FLAT-RF-TX-BUDGET: no keep[4][4][4] on the drawing task's stack). */
-static void dim_fill(flatshared *r, struct RastPort *rp, const flat_gbox *gb)
+/* The dim fill's corner radius rr (raa_radius, clamped to half the box and to 4) in bits 16 and up, raa_partial_mask of the box in
+ * bits 0..15. rf_disabled calls this, so the raa_cover chain does not sit under dim_fill's frame (S62-FLAT-RF-TX-BUDGET). */
+static unsigned dim_corner(const flat_gbox *gb)
 {
-    int bw = gb->x1 - gb->x0 + 1, bh = gb->y1 - gb->y0 + 1, rr = raa_radius(bh), y, x;
+    int bw = gb->x1 - gb->x0 + 1, bh = gb->y1 - gb->y0 + 1, rr = raa_radius(bh);
     if (rr > bh / 2) rr = bh / 2;
     if (rr > bw / 2) rr = bw / 2;
     if (rr > 4) rr = 4;
+    return ((unsigned)rr << 16) | raa_partial_mask(bw, bh, rr);
+}
+
+static void dim_fill(flatshared *r, struct RastPort *rp, const flat_gbox *gb, unsigned corner)
+{
+    int bw = gb->x1 - gb->x0 + 1, bh = gb->y1 - gb->y0 + 1, rr = (int)(corner >> 16), y, x;
+    unsigned part = corner & 0xffffu;
     for (y = 0; y < bh; y++) {
         if (y >= rr && y < bh - rr) {               /* the rows between the corner squares: one fill */
             ((rectfn)r->rsw.saved)(rp, gb->x0, gb->y0 + y, gb->x1, gb->y1 - rr, (struct Library *)GfxBase);
@@ -1412,7 +1422,7 @@ static void dim_fill(flatshared *r, struct RastPort *rp, const flat_gbox *gb)
                 x = bw - rr - 1;
                 continue;
             }
-            if (!dim_keeps(rp, gb, rr, x, y))
+            if (!dim_keeps(rp, gb, rr, part, x, y))
                 ((rectfn)r->rsw.saved)(rp, gb->x0 + x, gb->y0 + y, gb->x0 + x, gb->y0 + y, (struct Library *)GfxBase);
         }
     }
@@ -1437,7 +1447,7 @@ static int rf_disabled(flatshared *r, struct RastPort *rp, struct Window *w, con
     rp->AreaPtrn = 0; rp->AreaPtSz = 0;
     SetDrMd(rp, JAM2);
     SetAPen(rp, (UBYTE)flat_dim_pen(st_scr(r, w->WScreen), depth));
-    dim_fill(r, rp, gb);
+    dim_fill(r, rp, gb, dim_corner(gb));
     if (gb->str) {
         SetDrMd(rp, JAM1);
         SetAPen(rp, (UBYTE)flat_dimtext_pen(st_scr(r, w->WScreen), depth));
@@ -1470,6 +1480,13 @@ static void sring_note(flatshared *r, struct Window *w, const LONG *b, int ncuts
     }
 }
 
+/* Cut ci of knob k inside fill b (flat_scroller_cut_at). One call per cut from its own frame, so vbcc does not hoist the k and b
+ * element addresses into stack temporaries of the scroller_cuts loop (S62-FLAT-RF-TX-BUDGET). */
+static int scroller_cut(const int *k, const LONG *b, int ci, int *xy)
+{
+    return flat_scroller_cut_at(k[0], k[1], k[2], k[3], (int)b[0], (int)b[1], (int)b[2], (int)b[3], ci, xy);
+}
+
 /* FLAT-SLIDER-ROUND: the knob corner cuts (flat_scroller_cut_at, knob k inside the fill b) in index order; pen >= 0 fills each in
  * that pen, pen < 0 only counts them. Returns the count. */
 static int scroller_cuts(flatshared *r, struct RastPort *rp, const int *k, const LONG *b, int pen)
@@ -1478,7 +1495,7 @@ static int scroller_cuts(flatshared *r, struct RastPort *rp, const int *k, const
     if (pen >= 0)
         SetAPen(rp, (UBYTE)pen);
     for (ci = 0; ci < FLAT_ROUND_MAX; ci++)
-        if (flat_scroller_cut_at(k[0], k[1], k[2], k[3], (int)b[0], (int)b[1], (int)b[2], (int)b[3], ci, xy)) {
+        if (scroller_cut(k, b, ci, xy)) {
             n++;
             if (pen >= 0)
                 ((rectfn)r->rsw.saved)(rp, xy[0], xy[1], xy[0], xy[1], (struct Library *)GfxBase);
@@ -1487,14 +1504,13 @@ static int scroller_cuts(flatshared *r, struct RastPort *rp, const int *k, const
 }
 
 /* FLAT-SCROLLER: a solid fill in the scroller pen sp (the stock track is a dither); FLAT-SLIDER-ROUND: the knob corners take the
- * track pen */
-static void scroller_paint(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *b, const int *k, int sp)
+ * track pen. Returns the knob corner cut count for the RL6 note. */
+static int scroller_paint(flatshared *r, struct RastPort *rp, const LONG *b, const int *k, int sp)
 {
     int ncuts = scroller_cuts(r, rp, k, b, -1);
     UBYTE fg = rp->FgPen, dm = rp->DrawMode, pt = rp->AreaPtSz;
     UWORD *pa = (UWORD *)rp->AreaPtrn;
     r->shits++;
-    sring_note(r, w, b, ncuts);
     rp->AreaPtrn = 0; rp->AreaPtSz = 0;
     SetDrMd(rp, JAM2);
     SetAPen(rp, (UBYTE)sp);
@@ -1504,15 +1520,18 @@ static void scroller_paint(flatshared *r, struct RastPort *rp, struct Window *w,
     SetAPen(rp, fg);
     SetDrMd(rp, dm);
     rp->AreaPtrn = pa; rp->AreaPtSz = pt;
+    return ncuts;
 }
 
-/* The scroller look-up (scroller_pen, a deep chain) runs from this small frame; the paint runs after it returns */
+/* The scroller look-up (scroller_pen, a deep chain) runs from this small frame; the paint runs after it returns. The RL6 note
+ * (sring_note reaches prop_knob, a deep chain) runs from here after the paint, not under the paint's frame (S62-FLAT-RF-TX-BUDGET);
+ * it only writes r->sring, so the drawing is unchanged. */
 static int rf_scroller(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *b)
 {
     int k[4], sp = scroller_pen(r, rp, w, b, k);
     if (sp < 0)
         return 0;
-    scroller_paint(r, rp, w, b, k, sp);
+    sring_note(r, w, b, scroller_paint(r, rp, b, k, sp));
     return 1;
 }
 
