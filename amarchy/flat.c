@@ -587,25 +587,50 @@ static int push_gadget_of(struct RastPort *rp, Object *obj)
  * among the window's border buttons (flat_button_role). */
 static struct Task *bb_task;     /* the task inside the border-button fill: its own RectFills (c2_fill) go stock */
 
+/* flat_border_button's box of g into *b, 1 when g is a Border-render push button */
+static int border_box(struct Gadget *g, flat_box *b)
+{
+    if (!flat_border_button(g->GadgetType, g->Flags, g->GadgetRender, g->SelectRender, g->GadgetText != NULL, g->Width, g->Height))
+        return 0;
+    b->x = g->LeftEdge; b->y = g->TopEdge; b->w = g->Width; b->h = g->Height;
+    return 1;
+}
+
+/* S62-FLAT-RF-TX-BUDGET: no sibling array on the drawing task's stack. Pass 1 finds the exact box among the first 32 border buttons
+ * of the first 64 gadgets (the caps of the old array walk); pass 2 folds flat_button_role_add over the same buttons. */
+static int border_role(struct Window *win, const flat_box *self)
+{
+    flat_box o;
+    struct Gadget *g;
+    int n = 0, i, seen = 0;
+    for (g = win->FirstGadget, i = 0; g && i < 64 && n < 32; g = g->NextGadget, i++)
+        if (border_box(g, &o)) {
+            seen = flat_button_role_add(seen, self, &o);
+            n++;
+        }
+    return flat_button_role_of(seen);
+}
+
 static struct Gadget *border_button_at(struct RastPort *rp, int x0, int y0, int x1, int y1, int *role)
 {
-    flat_box sib[32];
+    flat_box b;
     struct Layer *lay = rp ? rp->Layer : NULL;
     struct Window *win = lay ? (struct Window *)lay->Window : NULL;
-    struct Gadget *g, *hit = NULL;
-    int n = 0, i, self = -1;
+    struct Gadget *g;
+    int n = 0, i;
     if (!win || (win->Flags & WFLG_GIMMEZEROZERO))
         return NULL;
     for (g = win->FirstGadget, i = 0; g && i < 64 && n < 32; g = g->NextGadget, i++) {
-        if (!flat_border_button(g->GadgetType, g->Flags, g->GadgetRender, g->SelectRender, g->GadgetText != NULL, g->Width, g->Height))
+        if (!border_box(g, &b))
             continue;
-        sib[n].x = g->LeftEdge; sib[n].y = g->TopEdge; sib[n].w = g->Width; sib[n].h = g->Height;
-        if (!hit && flat_box_exact(&sib[n], x0, y0, x1, y1)) { hit = g; self = n; }
+        if (flat_box_exact(&b, x0, y0, x1, y1)) {
+            if (role)
+                *role = border_role(win, &b);
+            return g;
+        }
         n++;
     }
-    if (hit && role)
-        *role = flat_button_role(&sib[self], sib, n);
-    return hit;
+    return NULL;
 }
 
 static int c8_skip(Object *obj, Msg msg)
@@ -882,57 +907,55 @@ static void icl_read(struct RastPort *rp, int rtg, int x, int y, int w, int h, u
     }
 }
 
-/* 1 = the label was drawn here (stock Text inside, edges blended or not); 0 = the caller draws stock */
-static int icl_label(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG count)
+/* S62-FLAT-RF-TX-BUDGET: icl_label runs on the stack of whichever task calls Text; it is split so no frame holds more than its
+ * own step (icl_box: the ink box; icl_run: draw, read, mask; icl_write: blend and write). */
+
+/* The label's ink box b = x, y, w, h (TextExtent at the pen) when icl_accept takes it for the task's name and the window's inner box */
+static int icl_box(struct RastPort *rp, struct Window *w, struct Task *me, CONST_STRPTR str, ULONG count, int *b)
 {
-    struct Window *w;
-    struct Task *me;
     struct TextExtent te;
-    struct ColorMap *cm;
-    icl_cx icx;
-    int x, y, bw, bh, il, it, ir, ib, rtg, n, depth, jam2, i;
-    uint32_t fg;
-    if (!icl_ready || !rp->Layer || !rp->Layer->Window || !rp->Font || !rp->BitMap || count == 0)
-        return 0;
-    w = (struct Window *)rp->Layer->Window;
-    me = FindTask(NULL);
-    if (rp != w->RPort || !me->tc_Node.ln_Name)
-        return 0;
+    int il, it, ir, ib;
     TextExtent(rp, str, count, &te);
-    x = rp->cp_x + te.te_Extent.MinX;
-    y = rp->cp_y + te.te_Extent.MinY;
-    bw = te.te_Extent.MaxX - te.te_Extent.MinX + 1;
-    bh = te.te_Extent.MaxY - te.te_Extent.MinY + 1;
+    b[0] = rp->cp_x + te.te_Extent.MinX;
+    b[1] = rp->cp_y + te.te_Extent.MinY;
+    b[2] = te.te_Extent.MaxX - te.te_Extent.MinX + 1;
+    b[3] = te.te_Extent.MaxY - te.te_Extent.MinY + 1;
     if (w->Flags & WFLG_GIMMEZEROZERO) {
         il = 0; it = 0; ir = w->GZZWidth - 1; ib = w->GZZHeight - 1;
     } else {
         il = w->BorderLeft; it = w->BorderTop; ir = w->Width - w->BorderRight - 1; ib = w->Height - w->BorderBottom - 1;
     }
-    if (!icl_accept((const char *)me->tc_Node.ln_Name, rp->DrawMode, rp->FgPen, rp->BgPen, x, y, bw, bh, il, it, ir, ib))
-        return 0;
-    depth = (int)GetBitMapAttr(rp->BitMap, BMA_DEPTH);
-    rtg = depth > 8;
-    if (rtg && !icl_cgx)
-        return 0;
-    if (!AttemptSemaphore(&icl_ss)) {
-        r->lskip++;
-        return 0;
-    }
-    cm = w->WScreen->ViewPort.ColorMap;
-    icx.cm = cm;
-    icx.pc = NULL;
-    if (!rtg) {         /* TE-10.6b: this screen's own shade cache (a screen at a new epoch gets a fresh slot, the old one is reaped) */
-        icx.pc = icl_tab_for(&icl_pc, w->WScreen, flat_draw_epoch(&g_draw, w->WScreen));
-        if (!icx.pc) {  /* all slots taken by other screens: stock Text, never another screen's pens */
-            r->lskip++;
-            ReleaseSemaphore(&icl_ss);
-            return 0;
+    return icl_accept((const char *)me->tc_Node.ln_Name, rp->DrawMode, rp->FgPen, rp->BgPen, b[0], b[1], b[2], b[3], il, it, ir, ib);
+}
+
+/* The blended edges of the label in box b, ink colour fg, written back over the stock glyphs */
+static void icl_write(struct RastPort *rp, const int *b, int depth, uint32_t fg, icl_cx *icx)
+{
+    int n = b[2] * b[3], i;
+    if (depth > 8) {
+        if (icl_blend_rgb(icl_cv, icl_after, fg, n, icl_out) > 0) {
+            for (i = 0; i < n; i++)
+                icl_out[i] = (icl_out[i] << 8) | 0xFF;
+            vr_cgx_write_pixels(icl_cgx, icl_out, 0, 0, (UWORD)(b[2] * 4), rp, (UWORD)b[0], (UWORD)b[1], (UWORD)b[2], (UWORD)b[3], VR_RECTFMT_RGBA);
         }
-        /* S57-ICL-PINK-SHADE: same identity is not proof (a Workbench reopen at the same address keeps both): ask the ColorMap */
-        icl_cache_verify(icx.pc, cm_pen_is_free, cm);
+    } else {
+        if (icl_blend_pens(icl_cv, icl_after, (int)fg, aa_ink_shades_for_depth(depth), icl_pen_for, icx, n, icl_out) > 0) {
+            int pw = ((b[2] + 15) >> 4) << 4, xx, yy;
+            for (yy = 0; yy < b[3]; yy++)
+                for (xx = 0; xx < b[2]; xx++)
+                    icl_p8[yy * pw + xx] = (uint8_t)icl_out[yy * b[2] + xx];
+            WritePixelArray8(rp, (UWORD)b[0], (UWORD)b[1], (UWORD)(b[0] + b[2] - 1), (UWORD)(b[1] + b[3] - 1), icl_p8, &icl_trp);
+        }
+        /* The shade pens stay obtained (icl_pc, bound to this screen identity): a pen freed here would go to the next client,
+         * which recolours it under the glyph pixels already drawn (red in the grey antialias). */
     }
-    n = bw * bh;
-    jam2 = (rp->DrawMode & JAM2) != 0;
+}
+
+/* Under icl_ss: stock Text in box b, the pixels before and after, the ink mask and coverage, then icl_write */
+static void icl_run(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG count, const int *b, int depth, icl_cx *icx)
+{
+    int n = b[2] * b[3], rtg = depth > 8, jam2 = (rp->DrawMode & JAM2) != 0;
+    uint32_t fg;
     if (!rtg) {
         icl_trp = *rp;
         icl_trp.Layer = 0;
@@ -940,103 +963,154 @@ static int icl_label(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG
         icl_tbm->Depth = (UBYTE)depth;
     }
     if (!jam2)
-        icl_read(rp, rtg, x, y, bw, bh, icl_before);
+        icl_read(rp, rtg, b[0], b[1], b[2], b[3], icl_before);
     ((textfn)r->tsw.saved)(rp, str, count, (struct Library *)GfxBase);
-    icl_read(rp, rtg, x, y, bw, bh, icl_after);
-    if (rtg) {
-        uint32_t ap = icl_rgb(cm, rp->FgPen), bp = icl_rgb(cm, rp->BgPen);
-        icl_mask(jam2, 0, icl_before, icl_after, ap, bp, n, icl_mk);
-    } else {
+    icl_read(rp, rtg, b[0], b[1], b[2], b[3], icl_after);
+    if (rtg)
+        icl_mask(jam2, 0, icl_before, icl_after, icl_rgb(icx->cm, rp->FgPen), icl_rgb(icx->cm, rp->BgPen), n, icl_mk);
+    else
         icl_mask(jam2, 1, icl_before, icl_after, rp->FgPen, rp->BgPen, n, icl_mk);
-    }
-    if (!icl_fg(icl_mk, icl_after, n, &fg) || !icl_coverage(icl_mk, bw, bh, icl_cv)) {
+    if (!icl_fg(icl_mk, icl_after, n, &fg) || !icl_coverage(icl_mk, b[2], b[3], icl_cv)) {
         r->lskip++;
-        ReleaseSemaphore(&icl_ss);
-        return 1;
+        return;
     }
-    if (rtg) {
-        if (icl_blend_rgb(icl_cv, icl_after, fg, n, icl_out) > 0) {
-            for (i = 0; i < n; i++)
-                icl_out[i] = (icl_out[i] << 8) | 0xFF;
-            vr_cgx_write_pixels(icl_cgx, icl_out, 0, 0, (UWORD)(bw * 4), rp, (UWORD)x, (UWORD)y, (UWORD)bw, (UWORD)bh, VR_RECTFMT_RGBA);
-        }
-    } else {
-        if (icl_blend_pens(icl_cv, icl_after, (int)fg, aa_ink_shades_for_depth(depth), icl_pen_for, &icx, n, icl_out) > 0) {
-            int pw = ((bw + 15) >> 4) << 4, xx, yy;
-            for (yy = 0; yy < bh; yy++)
-                for (xx = 0; xx < bw; xx++)
-                    icl_p8[yy * pw + xx] = (uint8_t)icl_out[yy * bw + xx];
-            WritePixelArray8(rp, (UWORD)x, (UWORD)y, (UWORD)(x + bw - 1), (UWORD)(y + bh - 1), icl_p8, &icl_trp);
-        }
-        /* The shade pens stay obtained (icl_pc, bound to this screen identity): a pen freed here would go to the next client,
-         * which recolours it under the glyph pixels already drawn (red in the grey antialias). */
-    }
+    icl_write(rp, b, depth, fg, icx);
     r->labels++;
+}
+
+/* 1 = the label was drawn here (stock Text inside, edges blended or not); 0 = the caller draws stock */
+static int icl_label(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG count)
+{
+    struct Window *w;
+    struct Task *me;
+    icl_cx icx;
+    int b[4], depth;
+    if (!icl_ready || !rp->Layer || !rp->Layer->Window || !rp->Font || !rp->BitMap || count == 0)
+        return 0;
+    w = (struct Window *)rp->Layer->Window;
+    me = FindTask(NULL);
+    if (rp != w->RPort || !me->tc_Node.ln_Name || !icl_box(rp, w, me, str, count, b))
+        return 0;
+    depth = (int)GetBitMapAttr(rp->BitMap, BMA_DEPTH);
+    if (depth > 8 && !icl_cgx)
+        return 0;
+    if (!AttemptSemaphore(&icl_ss)) {
+        r->lskip++;
+        return 0;
+    }
+    icx.cm = w->WScreen->ViewPort.ColorMap;
+    icx.pc = NULL;
+    if (depth <= 8) {   /* TE-10.6b: this screen's own shade cache (a screen at a new epoch gets a fresh slot, the old one is reaped) */
+        icx.pc = icl_tab_for(&icl_pc, w->WScreen, flat_draw_epoch(&g_draw, w->WScreen));
+        if (!icx.pc) {  /* all slots taken by other screens: stock Text, never another screen's pens */
+            r->lskip++;
+            ReleaseSemaphore(&icl_ss);
+            return 0;
+        }
+        /* S57-ICL-PINK-SHADE: same identity is not proof (a Workbench reopen at the same address keeps both): ask the ColorMap */
+        icl_cache_verify(icx.pc, cm_pen_is_free, icx.cm);
+    }
+    icl_run(r, rp, str, count, b, depth, &icx);
     ReleaseSemaphore(&icl_ss);
     return 1;
 }
 
 
+/* FLAT-TITLE-ACCENT: the title span between the window's system gadgets, folded one gadget at a time (flat_title_span_add, the
+ * same span as flat_title_span over the first 8 system gadgets) so no gadget array sits on the drawing task's stack. */
+/* One system gadget as a flat_gadrect (window-relative, the relative-size flags kept) */
+static void tx_gad(const struct Window *w, const struct Gadget *g, flat_gadrect *gr)
+{
+    gr->x = g->LeftEdge; gr->w = g->Width;
+    gr->y = g->TopEdge + ((g->Flags & GFLG_RELBOTTOM) ? w->Height : 0);    /* sizing gadget sits at the bottom */
+    gr->h = g->Height + ((g->Flags & GFLG_RELHEIGHT) ? w->Height : 0);
+    gr->relright = (g->Flags & GFLG_RELRIGHT) != 0;
+    gr->relwidth = (g->Flags & GFLG_RELWIDTH) != 0;
+    gr->drag = (g->GadgetType & GTYP_SYSTYPEMASK) == GTYP_WDRAGGING;
+}
+
+static void tx_span(struct Window *w, int *sx0, int *sx1)
+{
+    flat_gadrect gr;
+    struct Gadget *g;
+    int ng = 0;
+    *sx0 = 0;
+    *sx1 = w->Width - 1;
+    for (g = w->FirstGadget; g && ng < 8; g = g->NextGadget)
+        if (g->GadgetType & GTYP_SYSGADGET) {
+            tx_gad(w, g, &gr);
+            flat_title_span_add(&gr, w->Width, w->BorderTop, sx0, sx1);
+            ng++;
+        }
+}
+
+/* The decided title (ft): the band, then the title text in its pens */
+static void tx_title_draw(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG count, const flat_title *ft)
+{
+    UBYTE fg = rp->FgPen, bg = rp->BgPen, dm = rp->DrawMode;
+    WORD cx = rp->cp_x, cy = rp->cp_y;
+    r->ttitle++;
+    if (ft->band_pen >= 0) {
+        UWORD *pa = (UWORD *)rp->AreaPtrn;
+        UBYTE pt = rp->AreaPtSz;
+        rp->AreaPtrn = 0; rp->AreaPtSz = 0;
+        SetDrMd(rp, JAM2);
+        SetAPen(rp, (UBYTE)ft->band_pen);
+        ((rectfn)r->rsw.saved)(rp, ft->bx0, ft->by0, ft->bx1, ft->by1, (struct Library *)GfxBase);
+        rp->AreaPtrn = pa; rp->AreaPtSz = pt;
+        SetDrMd(rp, dm);
+        Move(rp, cx, cy);
+    }
+    if (ft->text_pen >= 0)
+        SetAPen(rp, (UBYTE)ft->text_pen);
+    if (ft->bg_pen >= 0)
+        SetBPen(rp, (UBYTE)ft->bg_pen);
+    ((textfn)r->tsw.saved)(rp, str, count, (struct Library *)GfxBase);
+    SetAPen(rp, fg);
+    SetBPen(rp, bg);
+}
+
+/* The title text in the accent band (flat_title_decide). Returns 1 when drawn. */
+static int tx_title(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG count)
+{
+    struct Window *w = (struct Window *)rp->Layer->Window;
+    flat_title ft;
+    int sx0, sx1;
+    tx_span(w, &sx0, &sx1);
+    if (!flat_title_decide(st_rp(r, rp), rp->BitMap ? rp->BitMap->Depth : 0, (w->Flags & WFLG_WINDOWACTIVE) != 0, (const char *)w->Title,
+                           w->Width, w->BorderTop, (const char *)str, (int)count, rp->cp_y - (rp->Font ? rp->Font->tf_Baseline : 0), sx0, sx1, &ft))
+        return 0;
+    tx_title_draw(r, rp, str, count, &ft);
+    return 1;
+}
+
+/* A label pen from the frame tracker (flat_tx_pen). Returns 1 when drawn. */
+static int tx_armed(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG count)
+{
+    int pen = flat_tx_pen(st_rp(r, rp), &r->tx, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL), rp->cp_x, rp->cp_y);
+    UBYTE fg;
+    if (pen < 0)
+        return 0;
+    fg = rp->FgPen;
+    r->thits++;
+    SetAPen(rp, (UBYTE)pen);
+    ((textfn)r->tsw.saved)(rp, str, count, (struct Library *)GfxBase);
+    SetAPen(rp, fg);
+    return 1;
+}
+
+/* S62-FLAT-RF-TX-BUDGET: flat_tx_c runs on the stack of whichever task calls Text; a dispatcher, each branch a helper */
 void flat_tx_c(struct RastPort *rp, CONST_STRPTR str, ULONG count)
 {
     flatshared *r = g_r;
+    int on = r->st.enabled && !r->st.held;
     r->tcalls++;
-    int pen;
     flat_gh_text(&r->gh, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL), rp->cp_x, rp->cp_y, (const char *)str, (int)count);
-    if (r->st.enabled && !r->st.held && r->rsw.installed && rp->Layer && rp->Layer->Window) {      /* FLAT-TITLE-ACCENT */
-        struct Window *w = (struct Window *)rp->Layer->Window;
-        flat_title ft;
-        flat_gadrect gr[8];
-        struct Gadget *g;
-        int ng = 0, sx0, sx1;
-        for (g = w->FirstGadget; g && ng < 8; g = g->NextGadget) {
-            if (!(g->GadgetType & GTYP_SYSGADGET))
-                continue;
-            gr[ng].x = g->LeftEdge; gr[ng].w = g->Width;
-            gr[ng].y = g->TopEdge + ((g->Flags & GFLG_RELBOTTOM) ? w->Height : 0);    /* sizing gadget sits at the bottom */
-            gr[ng].h = g->Height + ((g->Flags & GFLG_RELHEIGHT) ? w->Height : 0);
-            gr[ng].relright = (g->Flags & GFLG_RELRIGHT) != 0;
-            gr[ng].relwidth = (g->Flags & GFLG_RELWIDTH) != 0;
-            gr[ng].drag = (g->GadgetType & GTYP_SYSTYPEMASK) == GTYP_WDRAGGING;
-            ng++;
-        }
-        flat_title_span(gr, ng, w->Width, w->BorderTop, &sx0, &sx1);
-        if (flat_title_decide(st_rp(r, rp), rp->BitMap ? rp->BitMap->Depth : 0, (w->Flags & WFLG_WINDOWACTIVE) != 0, (const char *)w->Title,
-                              w->Width, w->BorderTop, (const char *)str, (int)count, rp->cp_y - (rp->Font ? rp->Font->tf_Baseline : 0), sx0, sx1, &ft)) {
-            UBYTE fg = rp->FgPen, bg = rp->BgPen, dm = rp->DrawMode;
-            WORD cx = rp->cp_x, cy = rp->cp_y;
-            r->ttitle++;
-            if (ft.band_pen >= 0) {
-                UWORD *pa = (UWORD *)rp->AreaPtrn;
-                UBYTE pt = rp->AreaPtSz;
-                rp->AreaPtrn = 0; rp->AreaPtSz = 0;
-                SetDrMd(rp, JAM2);
-                SetAPen(rp, (UBYTE)ft.band_pen);
-                ((rectfn)r->rsw.saved)(rp, ft.bx0, ft.by0, ft.bx1, ft.by1, (struct Library *)GfxBase);
-                rp->AreaPtrn = pa; rp->AreaPtSz = pt;
-                SetDrMd(rp, dm);
-                Move(rp, cx, cy);
-            }
-            if (ft.text_pen >= 0)
-                SetAPen(rp, (UBYTE)ft.text_pen);
-            if (ft.bg_pen >= 0)
-                SetBPen(rp, (UBYTE)ft.bg_pen);
-            ((textfn)r->tsw.saved)(rp, str, count, (struct Library *)GfxBase);
-            SetAPen(rp, fg);
-            SetBPen(rp, bg);
-            return;
-        }
-    }
-    if (r->tx.armed && (pen = flat_tx_pen(st_rp(r, rp), &r->tx, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL),
-                                           rp->cp_x, rp->cp_y)) >= 0) {
-        UBYTE fg = rp->FgPen;
-        r->thits++;
-        SetAPen(rp, (UBYTE)pen);
-        ((textfn)r->tsw.saved)(rp, str, count, (struct Library *)GfxBase);
-        SetAPen(rp, fg);
+    if (on && r->rsw.installed && rp->Layer && rp->Layer->Window && tx_title(r, rp, str, count))
         return;
-    }
-    if (r->st.enabled && !r->st.held && icl_label(r, rp, str, count))       /* RL21 icon label */
+    if (r->tx.armed && tx_armed(r, rp, str, count))
+        return;
+    if (on && icl_label(r, rp, str, count))       /* RL21 icon label */
         return;
     ((textfn)r->tsw.saved)(rp, str, count, (struct Library *)GfxBase);
 }
@@ -1122,32 +1196,33 @@ static int prop_knob(struct Gadget *g, struct PropInfo *pi, int cx, int cy, int 
 }
 
 /* FLAT-SCROLLER: the pen for one Intuition fill inside a window scroller, or -1. Walks the window's prop gadgets (no
- * Intuition call: this runs inside graphics.library, GetScreenDrawInfo here could deadlock) and asks flat_scroller_pen. */
-static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, LONG x0, LONG y0, LONG x1, LONG y1, int cuts[][2], int *ncuts)
+ * Intuition call: this runs inside graphics.library, GetScreenDrawInfo here could deadlock) and asks flat_scroller_pen.
+ * k gets the knob box (x, y, w, h) of the matching gadget; the caller takes the knob corner cuts from it one at a time
+ * (flat_scroller_cut_at, S62-FLAT-RF-TX-BUDGET: no cut array on the drawing task's stack). */
+static int scroller_pen_of(flatshared *r, struct RastPort *rp, struct Window *w, struct Gadget *g, const LONG *box, int *k)
+{
+    struct PropInfo *pi = (struct PropInfo *)g->SpecialInfo;
+    int gx, gy, gw, gh, cx, cy;
+    gx = g->LeftEdge + ((g->Flags & GFLG_RELRIGHT) ? w->Width - 1 : 0);
+    gy = g->TopEdge + ((g->Flags & GFLG_RELBOTTOM) ? w->Height - 1 : 0);
+    gw = g->Width + ((g->Flags & GFLG_RELWIDTH) ? w->Width : 0);
+    gh = g->Height + ((g->Flags & GFLG_RELHEIGHT) ? w->Height : 0);
+    if (box[0] < gx || box[1] < gy || box[2] >= gx + gw || box[3] >= gy + gh)
+        return -1;
+    cx = gx + pi->LeftBorder; cy = gy + pi->TopBorder;
+    if (!prop_knob(g, pi, cx, cy, k))
+        return -1;
+    return flat_scroller_pen_box(st_scr(r, w->WScreen), (rp->BitMap ? rp->BitMap->Depth : 0), (w->Flags & WFLG_WINDOWACTIVE) != 0, cx, cy,
+                                 pi->CWidth, pi->CHeight, k[0], k[1], k[2], k[3], (int)box[0], (int)box[1], (int)box[2], (int)box[3]);
+}
+
+static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *box, int *k)
 {
     struct Gadget *g;
-    for (g = w->FirstGadget; g; g = g->NextGadget) {
-        struct PropInfo *pi;
-        int gx, gy, gw, gh, cx, cy, cw, ch, pen, k[4];
-        if (!gadget_has_propinfo(g))
-            continue;
-        pi = (struct PropInfo *)g->SpecialInfo;
-        gx = g->LeftEdge + ((g->Flags & GFLG_RELRIGHT) ? w->Width - 1 : 0);
-        gy = g->TopEdge + ((g->Flags & GFLG_RELBOTTOM) ? w->Height - 1 : 0);
-        gw = g->Width + ((g->Flags & GFLG_RELWIDTH) ? w->Width : 0);
-        gh = g->Height + ((g->Flags & GFLG_RELHEIGHT) ? w->Height : 0);
-        if (x0 < gx || y0 < gy || x1 >= gx + gw || y1 >= gy + gh)
-            continue;
-        cx = gx + pi->LeftBorder; cy = gy + pi->TopBorder; cw = pi->CWidth; ch = pi->CHeight;
-        if (!prop_knob(g, pi, cx, cy, k))
-            continue;
-        pen = flat_scroller_pen_box(st_scr(r, w->WScreen), (rp->BitMap ? rp->BitMap->Depth : 0), (w->Flags & WFLG_WINDOWACTIVE) != 0, cx, cy, cw, ch,
-                                    k[0], k[1], k[2], k[3], (int)x0, (int)y0, (int)x1, (int)y1);
-        if (pen >= 0) {
-            *ncuts = flat_scroller_cuts_box(k[0], k[1], k[2], k[3], (int)x0, (int)y0, (int)x1, (int)y1, cuts);
+    int pen;
+    for (g = w->FirstGadget; g; g = g->NextGadget)
+        if (gadget_has_propinfo(g) && (pen = scroller_pen_of(r, rp, w, g, box, k)) >= 0)
             return pen;
-        }
-    }
     return -1;
 }
 
@@ -1185,13 +1260,41 @@ static void aspect_update(flatshared *r, struct Screen *wb)
  * ghost's own FgPen: the ROM erases text holes with the menu fill pen, so the fill pen IS the menu background. Items and the
  * separator bar (rp->Layer NULL, off-screen menu bitmap) are recoloured in place; a disabled title (screen bar layer, no Window)
  * goes through a scratch bitmap so the layer's clipping holds. Non-planar (RTG) bitmaps, a refused rect or no memory: stock. */
-static int ghost_menu(flatshared *r, struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1)
+/* The disabled screen title: through a scratch bitmap, so the layer's clipping holds. The scratch RastPort is allocated, not a
+ * local (S62-FLAT-RF-TX-BUDGET: 100 bytes off the drawing task's stack). -1 = refused or no memory. */
+static long ghost_title(struct RastPort *rp, const LONG *b, int depth, int dim)
+{
+    int wd = (int)(b[2] - b[0] + 1), ht = (int)(b[3] - b[1] + 1);
+    struct BitMap *tb;
+    struct RastPort *trp;
+    long n = -1;
+    trp = (struct RastPort *)AllocVec(sizeof(struct RastPort), MEMF_PUBLIC);
+    if (!trp)
+        return -1;
+    tb = AllocBitMap((ULONG)wd, (ULONG)ht, (ULONG)depth, BMF_CLEAR, NULL);
+    if (tb) {
+        InitRastPort(trp);
+        trp->BitMap = tb;
+        ClipBlit(rp, (WORD)b[0], (WORD)b[1], trp, 0, 0, (WORD)wd, (WORD)ht, 0xC0);
+        WaitBlit();
+        if (GetBitMapAttr(tb, BMA_FLAGS) & BMF_STANDARD)
+            n = flat_gm_recolour((uint8_t *const *)tb->Planes, depth, tb->BytesPerRow, (int)GetBitMapAttr(tb, BMA_WIDTH), tb->Rows, 0, 0, wd - 1, ht - 1, rp->FgPen, dim);
+        if (n >= 0)
+            BltBitMapRastPort(tb, 0, 0, rp, (WORD)b[0], (WORD)b[1], (WORD)wd, (WORD)ht, 0xC0);
+        WaitBlit();
+        FreeBitMap(tb);
+    }
+    FreeVec(trp);
+    return n;
+}
+
+static int ghost_menu(flatshared *r, struct RastPort *rp, const LONG *b)
 {
     struct BitMap *bm = rp->BitMap;
     UWORD *pa = (UWORD *)rp->AreaPtrn;
     int depth, dim;
-    long n = -1;
-    if (!bm || !pa || x1 < x0 || y1 < y0 || !(GetBitMapAttr(bm, BMA_FLAGS) & BMF_STANDARD))
+    long n;
+    if (!bm || !pa || b[2] < b[0] || b[3] < b[1] || !(GetBitMapAttr(bm, BMA_FLAGS) & BMF_STANDARD))
         return 0;
     depth = bm->Depth;
     dim = flat_gm_pen(&r->st, depth, 1, 0, rp->AreaPtSz, pa[0], pa[1], rp->FgPen);
@@ -1199,177 +1302,273 @@ static int ghost_menu(flatshared *r, struct RastPort *rp, LONG x0, LONG y0, LONG
         return 0;
     if (!rp->Layer) {
         WaitBlit();                                       /* the item text may still be in the blitter */
-        n = flat_gm_recolour((uint8_t *const *)bm->Planes, depth, bm->BytesPerRow, (int)GetBitMapAttr(bm, BMA_WIDTH), bm->Rows, (int)x0, (int)y0, (int)x1, (int)y1, rp->FgPen, dim);
-    } else {
-        int wd = (int)(x1 - x0 + 1), ht = (int)(y1 - y0 + 1);
-        struct BitMap *tb = AllocBitMap((ULONG)wd, (ULONG)ht, (ULONG)depth, BMF_CLEAR, NULL);
-        struct RastPort trp;
-        if (!tb)
-            return 0;
-        InitRastPort(&trp);
-        trp.BitMap = tb;
-        ClipBlit(rp, (WORD)x0, (WORD)y0, &trp, 0, 0, (WORD)wd, (WORD)ht, 0xC0);
-        WaitBlit();
-        if (GetBitMapAttr(tb, BMA_FLAGS) & BMF_STANDARD)
-            n = flat_gm_recolour((uint8_t *const *)tb->Planes, depth, tb->BytesPerRow, (int)GetBitMapAttr(tb, BMA_WIDTH), tb->Rows, 0, 0, wd - 1, ht - 1, rp->FgPen, dim);
-        if (n >= 0)
-            BltBitMapRastPort(tb, 0, 0, rp, (WORD)x0, (WORD)y0, (WORD)wd, (WORD)ht, 0xC0);
-        WaitBlit();
-        FreeBitMap(tb);
-    }
+        n = flat_gm_recolour((uint8_t *const *)bm->Planes, depth, bm->BytesPerRow, (int)GetBitMapAttr(bm, BMA_WIDTH), bm->Rows, (int)b[0], (int)b[1],
+                             (int)b[2], (int)b[3], rp->FgPen, dim);
+    } else
+        n = ghost_title(rp, b, depth, dim);
     if (n < 0)
         return 0;
     r->mhits++;
     return 1;
 }
 
+/* S62-FLAT-RF-TX-BUDGET: flat_rf_c runs on the stack of whichever task calls RectFill (4 KB from a 3.1 Shell). It is a dispatcher;
+ * every branch is a helper of its own with a small frame (tests/test_flat_budget.py, make flat-budget). b = x0, y0, x1, y1. */
+
+/* INSTALLER-BORDER-BUTTON: the state the border-button fill draws with: the screen's look (st_scr) with the screen's outline columns.
+ * One static copy, held by the one task inside the fill (bb_task, claimed under Forbid): a second task meanwhile draws stock. */
+static flat_state bb_st;
+
+/* Claims the border-button fill for this task and fills bb_st. Returns the frame ids and role as one value (BB_IDS, BB_ROLE), or -1:
+ * not a border button's exact box, or another task is inside the fill. Off the frame draw's stack path. */
+#define BB_IDS(v)  ((v) & 0xFF)
+#define BB_ROLE(v) ((v) >> 8)
+static int bb_claim(flatshared *r, struct RastPort *rp, const LONG *b)
+{
+    int role = FLAT_ROLE_PRIMARY;
+    struct Gadget *bg = border_button_at(rp, (int)b[0], (int)b[1], (int)b[2], (int)b[3], &role);
+    struct Window *bw;
+    const flat_state *ps;
+    struct Task *me;
+    int ok;
+    if (!bg)
+        return -1;
+    me = FindTask(NULL);
+    Forbid();
+    ok = bb_task == NULL;
+    if (ok)
+        bb_task = me;
+    Permit();
+    if (!ok)
+        return -1;
+    bw = (struct Window *)rp->Layer->Window;
+    ps = st_scr(r, bw->WScreen);
+    bb_st = r->st;
+    bb_st.side = (uint8_t)side_px(r, bw->WScreen);
+    bb_st.pen_dim = ps->pen_dim; bb_st.pen_knob = ps->pen_knob; bb_st.pen_inbar = ps->pen_inbar; bb_st.pen_sel = ps->pen_sel;
+    return (role << 8) | flat_border_button_ids(bg->Flags);
+}
+
+/* The frame draw of the claimed border button; releases the claim. Few values live across the draw: this frame is on its path. */
+static int bb_draw(struct RastPort *rp, const LONG *b, int bb)
+{
+    UBYTE fg = rp->FgPen, dm = rp->DrawMode;
+    int ok = raa_frame_draw(&bb_st, BB_IDS(bb), (int)b[0], (int)b[1], (int)(b[2] - b[0] + 1), (int)(b[3] - b[1] + 1), 1, BB_ROLE(bb), c2_fill, c2_read,
+                            c2_rgb, raa_load(rp), rp, NULL);
+    bb_task = NULL;
+    SetAPen(rp, fg);
+    SetDrMd(rp, dm);
+    return ok;
+}
+
+/* The drawn border button: its box goes to the ghost and label trackers */
+static void bb_done(flatshared *r, struct RastPort *rp, const LONG *b, int bb)
+{
+    int ids = BB_IDS(bb), role = BB_ROLE(bb);
+    const void *surf = flat_tx_surface(rp->Layer, rp->BitMap);
+    struct Task *me = FindTask(NULL);
+    flat_gh_frame(&r->gh, surf, me, ids == 1, 1, (int)b[0], (int)b[1], (int)b[2], (int)b[3]);
+    flat_tx_frame(&r->tx, surf, me, flat_tx_arm(ids == 1, 1, role), 1, (int)b[0], (int)b[1], (int)b[2], (int)b[3]);
+    r->bhits++;
+}
+
+/* OWNER-2026-11-08: one pixel of a disabled button's corner square that keeps what it has: inside the corner radius rr, readable and
+ * not fully covered by the rounded box (raa_cover < 255). (x, y) are box-relative. */
+static int dim_keeps(struct RastPort *rp, const flat_gbox *gb, int rr, int x, int y)
+{
+    int bw = gb->x1 - gb->x0 + 1, bh = gb->y1 - gb->y0 + 1;
+    int dx = x < rr ? x : bw - 1 - x, dy = y < rr ? y : bh - 1 - y;
+    if (dx >= rr || dy >= rr)
+        return 0;
+    return c2_read(rp, gb->x0 + x, gb->y0 + y) >= 0 && raa_cover(bw, bh, rr, x, y) < 255;
+}
+
+/* The dim fill is a rectangle; the button's rounded corner squares (radius raa_radius, as the frame draw) keep the pixels they have.
+ * The corner rows are filled pixel by pixel around the kept ones, the rest in one fill: the same pixels as filling the whole box and
+ * writing the kept ones back, without holding them (S62-FLAT-RF-TX-BUDGET: no keep[4][4][4] on the drawing task's stack). */
+static void dim_fill(flatshared *r, struct RastPort *rp, const flat_gbox *gb)
+{
+    int bw = gb->x1 - gb->x0 + 1, bh = gb->y1 - gb->y0 + 1, rr = raa_radius(bh), y, x;
+    if (rr > bh / 2) rr = bh / 2;
+    if (rr > bw / 2) rr = bw / 2;
+    if (rr > 4) rr = 4;
+    for (y = 0; y < bh; y++) {
+        if (y >= rr && y < bh - rr) {               /* the rows between the corner squares: one fill */
+            ((rectfn)r->rsw.saved)(rp, gb->x0, gb->y0 + y, gb->x1, gb->y1 - rr, (struct Library *)GfxBase);
+            y = bh - rr - 1;
+            continue;
+        }
+        for (x = 0; x < bw; x++) {
+            if (x == rr && bw - rr > rr) {          /* the span between the two corner squares of this row */
+                ((rectfn)r->rsw.saved)(rp, gb->x0 + rr, gb->y0 + y, gb->x1 - rr, gb->y0 + y, (struct Library *)GfxBase);
+                x = bw - rr - 1;
+                continue;
+            }
+            if (!dim_keeps(rp, gb, rr, x, y))
+                ((rectfn)r->rsw.saved)(rp, gb->x0 + x, gb->y0 + y, gb->x0 + x, gb->y0 + y, (struct Library *)GfxBase);
+        }
+    }
+}
+
+/* FLAT-BUTTON-DISABLED-DIM: Intuition's dither over a disabled button: solid dim fill, label again in the dim label pen */
+static int rf_disabled(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *b)
+{
+    const flat_gbox *gb = flat_gh_match(&r->st, &r->gh, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL), rp->AreaPtSz, (int)b[0], (int)b[1],
+                                        (int)b[2], (int)b[3]);
+    int depth;
+    UBYTE fg, dm, pt;
+    UWORD *pa;
+    WORD cx, cy;
+    if (!gb)
+        return 0;
+    depth = rp->BitMap ? rp->BitMap->Depth : 0;
+    fg = rp->FgPen; dm = rp->DrawMode; pt = rp->AreaPtSz;
+    pa = (UWORD *)rp->AreaPtrn;
+    cx = rp->cp_x; cy = rp->cp_y;
+    r->ghits++;
+    rp->AreaPtrn = 0; rp->AreaPtSz = 0;
+    SetDrMd(rp, JAM2);
+    SetAPen(rp, (UBYTE)flat_dim_pen(st_scr(r, w->WScreen), depth));
+    dim_fill(r, rp, gb);
+    if (gb->str) {
+        SetDrMd(rp, JAM1);
+        SetAPen(rp, (UBYTE)flat_dimtext_pen(st_scr(r, w->WScreen), depth));
+        Move(rp, gb->lx, gb->ly);
+        ((textfn)r->tsw.saved)(rp, gb->str, gb->count, (struct Library *)GfxBase);
+    }
+    Move(rp, cx, cy);
+    SetAPen(rp, fg);
+    SetDrMd(rp, dm);
+    rp->AreaPtrn = pa; rp->AreaPtSz = pt;
+    return 1;
+}
+
+/* RL6 diagnostic: log the scroller fill b, its knob (the first prop gadget left/above of the fill whose knob resolves) and the cuts */
+static void sring_note(flatshared *r, struct Window *w, const LONG *b, int ncuts)
+{
+    int *e = r->sring[r->sring_n++ & 15];
+    struct Gadget *g2;
+    e[0] = (int)b[0]; e[1] = (int)b[1]; e[2] = (int)b[2]; e[3] = (int)b[3]; e[4] = e[5] = e[6] = e[7] = -1; e[8] = ncuts;
+    for (g2 = w->FirstGadget; g2; g2 = g2->NextGadget) {
+        struct PropInfo *p2;
+        int gx2, gy2;
+        if (!gadget_has_propinfo(g2))
+            continue;
+        p2 = (struct PropInfo *)g2->SpecialInfo;
+        gx2 = g2->LeftEdge + ((g2->Flags & GFLG_RELRIGHT) ? w->Width - 1 : 0);
+        gy2 = g2->TopEdge + ((g2->Flags & GFLG_RELBOTTOM) ? w->Height - 1 : 0);
+        if (b[0] >= gx2 && b[1] >= gy2 && prop_knob(g2, p2, gx2 + p2->LeftBorder, gy2 + p2->TopBorder, &e[4]))
+            break;
+    }
+}
+
+/* FLAT-SLIDER-ROUND: the knob corner cuts (flat_scroller_cut_at, knob k inside the fill b) in index order; pen >= 0 fills each in
+ * that pen, pen < 0 only counts them. Returns the count. */
+static int scroller_cuts(flatshared *r, struct RastPort *rp, const int *k, const LONG *b, int pen)
+{
+    int xy[2], ci, n = 0;
+    if (pen >= 0)
+        SetAPen(rp, (UBYTE)pen);
+    for (ci = 0; ci < FLAT_ROUND_MAX; ci++)
+        if (flat_scroller_cut_at(k[0], k[1], k[2], k[3], (int)b[0], (int)b[1], (int)b[2], (int)b[3], ci, xy)) {
+            n++;
+            if (pen >= 0)
+                ((rectfn)r->rsw.saved)(rp, xy[0], xy[1], xy[0], xy[1], (struct Library *)GfxBase);
+        }
+    return n;
+}
+
+/* FLAT-SCROLLER: a solid fill in the scroller pen sp (the stock track is a dither); FLAT-SLIDER-ROUND: the knob corners take the
+ * track pen */
+static void scroller_paint(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *b, const int *k, int sp)
+{
+    int ncuts = scroller_cuts(r, rp, k, b, -1);
+    UBYTE fg = rp->FgPen, dm = rp->DrawMode, pt = rp->AreaPtSz;
+    UWORD *pa = (UWORD *)rp->AreaPtrn;
+    r->shits++;
+    sring_note(r, w, b, ncuts);
+    rp->AreaPtrn = 0; rp->AreaPtSz = 0;
+    SetDrMd(rp, JAM2);
+    SetAPen(rp, (UBYTE)sp);
+    ((rectfn)r->rsw.saved)(rp, b[0], b[1], b[2], b[3], (struct Library *)GfxBase);
+    if (ncuts > 0)
+        scroller_cuts(r, rp, k, b, r->st.pen_back);
+    SetAPen(rp, fg);
+    SetDrMd(rp, dm);
+    rp->AreaPtrn = pa; rp->AreaPtSz = pt;
+}
+
+/* The scroller look-up (scroller_pen, a deep chain) runs from this small frame; the paint runs after it returns */
+static int rf_scroller(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *b)
+{
+    int k[4], sp = scroller_pen(r, rp, w, b, k);
+    if (sp < 0)
+        return 0;
+    scroller_paint(r, rp, w, b, k, sp);
+    return 1;
+}
+
+/* FLAT-OUTER-EDGE: a fill over the window's outer ring takes the edge pen (S32-INACTIVE-BAR: the inactive ring) */
+static int rf_edge(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *b)
+{
+    int e[4];
+    UBYTE fg;
+    if (!flat_outer_edge_fill(w->Width, w->Height, (int)b[0], (int)b[1], (int)b[2], (int)b[3], side_px(r, w->WScreen), e))
+        return 0;
+    fg = rp->FgPen;
+    r->rhits++;
+    SetAPen(rp, (UBYTE)flat_edge_pen(st_scr(r, w->WScreen), rp->BitMap ? rp->BitMap->Depth : 0, (w->Flags & WFLG_WINDOWACTIVE) != 0));
+    ((rectfn)r->rsw.saved)(rp, e[0], e[1], e[2], e[3], (struct Library *)GfxBase);
+    SetAPen(rp, fg);
+    return 1;
+}
+
+/* S57-LOCALE-LIST-NO-SELECT: FILLPEN is the accent; the sides stay dark */
+static int rf_side(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *b)
+{
+    int dk[4], sp2 = flat_side_fill_pen(st_scr(r, w->WScreen), rp->FgPen, w->Width, w->Height, w->BorderLeft, w->BorderTop, w->BorderRight,
+                                        w->BorderBottom, (int)b[0], (int)b[1], (int)b[2], (int)b[3], dk);
+    UBYTE fg;
+    if (sp2 < 0)
+        return 0;
+    fg = rp->FgPen;
+    r->rhits++;
+    if (dk[1] > b[1])
+        ((rectfn)r->rsw.saved)(rp, b[0], b[1], b[2], dk[1] - 1, (struct Library *)GfxBase);
+    SetAPen(rp, (UBYTE)sp2);
+    ((rectfn)r->rsw.saved)(rp, dk[0], dk[1], dk[2], dk[3], (struct Library *)GfxBase);
+    SetAPen(rp, fg);
+    return 1;
+}
+
 void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG ret)
 {
     flatshared *r = g_r;
-    struct Window *w;
+    struct Window *w = NULL;
+    LONG b[4];
+    int on, rom;
     r->rcalls++;
-    if (r->st.enabled && !r->st.held && rp && rp->AreaPtSz && ret >= r->irom_lo && ret < r->irom_hi && (!rp->Layer || !rp->Layer->Window) &&
-        ghost_menu(r, rp, x0, y0, x1, y1))
+    on = r->st.enabled && !r->st.held && rp;
+    rom = ret >= r->irom_lo && ret < r->irom_hi;
+    b[0] = x0; b[1] = y0; b[2] = x1; b[3] = y1;
+    if (on && rp->Layer)
+        w = (struct Window *)rp->Layer->Window;
+    if (on && rp->AreaPtSz && rom && !w && ghost_menu(r, rp, b))
         return;
-    if (r->st.enabled && !r->st.held && rp && !rp->AreaPtSz && bb_task != FindTask(NULL)) {
-        /* INSTALLER-BORDER-BUTTON (owner 2026-11-08): the erase of a Border-render push button (exact box, border_button_at)
-         * becomes the rounded flat fill of the frame draw; its label comes next and the IM_DRAWFRAME after it draws no ring
-         * (c8_skip). No ROM gate: the Installer erases from its own code; the exact gadget box is the gate. */
-        int role = FLAT_ROLE_PRIMARY;
-        struct Gadget *bg = border_button_at(rp, (int)x0, (int)y0, (int)x1, (int)y1, &role);
-        if (bg) {
-            struct Window *bw = (struct Window *)rp->Layer->Window;
-            flat_state st = r->st;
-            const flat_state *ps = st_scr(r, bw->WScreen);
-            int ids = flat_border_button_ids(bg->Flags), ok;
-            UBYTE fg = rp->FgPen, dm = rp->DrawMode;
-            const void *surf = flat_tx_surface(rp->Layer, rp->BitMap);
-            st.side = (uint8_t)side_px(r, bw->WScreen);
-            st.pen_dim = ps->pen_dim; st.pen_knob = ps->pen_knob; st.pen_inbar = ps->pen_inbar; st.pen_sel = ps->pen_sel;
-            bb_task = FindTask(NULL);
-            ok = raa_frame_draw(&st, ids, (int)x0, (int)y0, (int)(x1 - x0 + 1), (int)(y1 - y0 + 1), 1, role, c2_fill, c2_read, c2_rgb,
-                                raa_load(rp), rp, NULL);
-            bb_task = NULL;
-            SetAPen(rp, fg);
-            SetDrMd(rp, dm);
-            if (ok) {
-                flat_gh_frame(&r->gh, surf, FindTask(NULL), ids == 1, 1, (int)x0, (int)y0, (int)x1, (int)y1);
-                flat_tx_frame(&r->tx, surf, FindTask(NULL), flat_tx_arm(ids == 1, 1, role), 1, (int)x0, (int)y0, (int)x1, (int)y1);
-                r->bhits++;
-                return;
-            }
-        }
-    }
-    if (r->st.enabled && !r->st.held && rp && rp->Layer && (w = (struct Window *)rp->Layer->Window) != 0 && ret >= r->irom_lo &&
-        ret < r->irom_hi) {
-        int sp, cuts[FLAT_ROUND_MAX][2], ncuts = 0, ci;
-        const flat_gbox *gb = flat_gh_match(&r->st, &r->gh, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL), rp->AreaPtSz, (int)x0, (int)y0, (int)x1, (int)y1);
-        if (gb) {          /* FLAT-BUTTON-DISABLED-DIM: Intuition's dither over a disabled button: solid dim fill, label again in the dim label pen */
-            int depth = rp->BitMap ? rp->BitMap->Depth : 0;
-            UBYTE fg = rp->FgPen, dm = rp->DrawMode, pt = rp->AreaPtSz;
-            UWORD *pa = (UWORD *)rp->AreaPtrn;
-            WORD cx = rp->cp_x, cy = rp->cp_y;
-            r->ghits++;
-            rp->AreaPtrn = 0; rp->AreaPtSz = 0;
-            SetDrMd(rp, JAM2);
-            SetAPen(rp, (UBYTE)flat_dim_pen(st_scr(r, w->WScreen), depth));
-            {   /* OWNER-2026-11-08: the dim fill is a rectangle; the button's rounded corner squares (radius raa_radius, as the frame draw) keep the pixels they have */
-                int bw = gb->x1 - gb->x0 + 1, bh = gb->y1 - gb->y0 + 1, rr = raa_radius(bh), c, dx, dy;
-                int keep[4][4][4];
-                if (rr > bh / 2) rr = bh / 2;
-                if (rr > bw / 2) rr = bw / 2;
-                if (rr > 4) rr = 4;
-                for (c = 0; c < 4; c++)
-                    for (dy = 0; dy < rr; dy++)
-                        for (dx = 0; dx < rr; dx++)
-                            keep[c][dy][dx] = c2_read(rp, (c & 1) ? gb->x1 - dx : gb->x0 + dx, (c & 2) ? gb->y1 - dy : gb->y0 + dy);
-                ((rectfn)r->rsw.saved)(rp, gb->x0, gb->y0, gb->x1, gb->y1, (struct Library *)GfxBase);
-                SetDrMd(rp, JAM2);
-                for (c = 0; c < 4; c++)
-                    for (dy = 0; dy < rr; dy++)
-                        for (dx = 0; dx < rr; dx++) {
-                            int px = (c & 1) ? gb->x1 - dx : gb->x0 + dx, py = (c & 2) ? gb->y1 - dy : gb->y0 + dy;
-                            if (keep[c][dy][dx] >= 0 && raa_cover(bw, bh, rr, (c & 1) ? bw - 1 - dx : dx, (c & 2) ? bh - 1 - dy : dy) < 255) {
-                                SetAPen(rp, (UBYTE)keep[c][dy][dx]);
-                                WritePixel(rp, px, py);
-                            }
-                        }
-                SetAPen(rp, (UBYTE)flat_dim_pen(st_scr(r, w->WScreen), depth));
-            }
-            if (gb->str) {
-                SetDrMd(rp, JAM1);
-                SetAPen(rp, (UBYTE)flat_dimtext_pen(st_scr(r, w->WScreen), depth));
-                Move(rp, gb->lx, gb->ly);
-                ((textfn)r->tsw.saved)(rp, gb->str, gb->count, (struct Library *)GfxBase);
-            }
-            Move(rp, cx, cy);
-            SetAPen(rp, fg);
-            SetDrMd(rp, dm);
-            rp->AreaPtrn = pa; rp->AreaPtSz = pt;
-            return;
-        }
-        sp = scroller_pen(r, rp, w, x0, y0, x1, y1, cuts, &ncuts);
-        if (sp >= 0) {
-            UBYTE fg = rp->FgPen, dm = rp->DrawMode, pt = rp->AreaPtSz;
-            UWORD *pa = (UWORD *)rp->AreaPtrn;
-            r->shits++;
-            {
-                int *e = r->sring[r->sring_n++ & 15];
-                struct Gadget *g2;
-                e[0] = (int)x0; e[1] = (int)y0; e[2] = (int)x1; e[3] = (int)y1; e[4] = e[5] = e[6] = e[7] = -1; e[8] = ncuts;
-                for (g2 = w->FirstGadget; g2; g2 = g2->NextGadget) {
-                    struct PropInfo *p2;
-                    int gx2, gy2;
-                    if (!gadget_has_propinfo(g2))
-                        continue;
-                    p2 = (struct PropInfo *)g2->SpecialInfo;
-                    gx2 = g2->LeftEdge + ((g2->Flags & GFLG_RELRIGHT) ? w->Width - 1 : 0);
-                    gy2 = g2->TopEdge + ((g2->Flags & GFLG_RELBOTTOM) ? w->Height - 1 : 0);
-                    if (x0 >= gx2 && y0 >= gy2 && prop_knob(g2, p2, gx2 + p2->LeftBorder, gy2 + p2->TopBorder, &e[4]))
-                        break;
-                }
-            }
-            rp->AreaPtrn = 0; rp->AreaPtSz = 0;               /* a solid fill: the stock track is a dither */
-            SetDrMd(rp, JAM2);
-            SetAPen(rp, sp);
-            ((rectfn)r->rsw.saved)(rp, x0, y0, x1, y1, (struct Library *)GfxBase);
-            if (ncuts > 0) {                                  /* FLAT-SLIDER-ROUND: the knob corners take the track pen */
-                SetAPen(rp, (UBYTE)r->st.pen_back);
-                for (ci = 0; ci < ncuts; ci++)
-                    ((rectfn)r->rsw.saved)(rp, cuts[ci][0], cuts[ci][1], cuts[ci][0], cuts[ci][1], (struct Library *)GfxBase);
-            }
-            SetAPen(rp, fg);
-            SetDrMd(rp, dm);
-            rp->AreaPtrn = pa; rp->AreaPtSz = pt;
+    /* INSTALLER-BORDER-BUTTON (owner 2026-11-08): the erase of a Border-render push button (exact box, border_button_at) becomes the
+     * rounded flat fill of the frame draw; its label comes next and the IM_DRAWFRAME after it draws no ring (c8_skip). No ROM gate:
+     * the Installer erases from its own code; the exact gadget box is the gate. */
+    if (on && !rp->AreaPtSz && bb_task != FindTask(NULL)) {
+        int bb = bb_claim(r, rp, b);
+        if (bb >= 0 && bb_draw(rp, b, bb)) {
+            bb_done(r, rp, b, bb);
             return;
         }
     }
-    if (r->st.enabled && !r->st.held && r->st.pen_outline && rp && rp->Layer && (w = (struct Window *)rp->Layer->Window) != 0 &&
-        !(w->Flags & WFLG_BORDERLESS) && ret >= r->irom_lo && ret < r->irom_hi) {
-        int e[4];
-        if (flat_outer_edge_fill(w->Width, w->Height, (int)x0, (int)y0, (int)x1, (int)y1, side_px(r, w->WScreen), e)) {
-            UBYTE fg = rp->FgPen;
-            r->rhits++;
-            SetAPen(rp, (UBYTE)flat_edge_pen(st_scr(r, w->WScreen), rp->BitMap ? rp->BitMap->Depth : 0, (w->Flags & WFLG_WINDOWACTIVE) != 0));   /* S32-INACTIVE-BAR: the inactive ring */
-            ((rectfn)r->rsw.saved)(rp, e[0], e[1], e[2], e[3], (struct Library *)GfxBase);
-            SetAPen(rp, fg);
-            return;
-        }
-        {                                                     /* S57-LOCALE-LIST-NO-SELECT: FILLPEN is the accent; the sides stay dark */
-            int dk[4], sp2 = flat_side_fill_pen(st_scr(r, w->WScreen), rp->FgPen, w->Width, w->Height, w->BorderLeft, w->BorderTop, w->BorderRight,
-                                                w->BorderBottom, (int)x0, (int)y0, (int)x1, (int)y1, dk);
-            if (sp2 >= 0) {
-                UBYTE fg = rp->FgPen;
-                r->rhits++;
-                if (dk[1] > y0)
-                    ((rectfn)r->rsw.saved)(rp, x0, y0, x1, dk[1] - 1, (struct Library *)GfxBase);
-                SetAPen(rp, (UBYTE)sp2);
-                ((rectfn)r->rsw.saved)(rp, dk[0], dk[1], dk[2], dk[3], (struct Library *)GfxBase);
-                SetAPen(rp, fg);
-                return;
-            }
-        }
-    }
+    if (on && w && rom && (rf_disabled(r, rp, w, b) || rf_scroller(r, rp, w, b)))
+        return;
+    if (on && r->st.pen_outline && w && !(w->Flags & WFLG_BORDERLESS) && rom && (rf_edge(r, rp, w, b) || rf_side(r, rp, w, b)))
+        return;
     ((rectfn)r->rsw.saved)(rp, x0, y0, x1, y1, (struct Library *)GfxBase);
 }
 

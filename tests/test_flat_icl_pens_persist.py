@@ -28,7 +28,9 @@ class FlatIclPensPersist(unittest.TestCase):
 
     def test_label_call_verifies_held_pens(self):
         b = body("static int icl_label(")
-        self.assertLess(b.index("icl_tab_for("), b.index("icl_cache_verify(icx.pc, cm_pen_is_free, cm)"))
+        # S62-FLAT-RF-TX-BUDGET: the ColorMap travels in icx.cm; the verify still runs before the label is drawn (icl_run)
+        self.assertLess(b.index("icl_tab_for("), b.index("icl_cache_verify(icx.pc, cm_pen_is_free, icx.cm)"))
+        self.assertLess(b.index("icl_cache_verify(icx.pc, cm_pen_is_free, icx.cm)"), b.index("icl_run("))
 
     def test_watch_step_verifies_flat_pens(self):
         b = body("static void pens_run(")

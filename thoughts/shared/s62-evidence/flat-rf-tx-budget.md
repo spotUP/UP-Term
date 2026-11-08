@@ -1,6 +1,6 @@
 ---
 title: Flat RectFill / Text hook stack budget (S62)
-status: partial - gate extended, c2 + shared helpers fixed, flat_rf_c / flat_tx_c restructure open
+status: partial - flat.c restructured; tx PASS, rf FAIL by 52 bytes (chain 372, limit 320)
 date: 2026-11-08
 branch: worktree-agent-ad60c5bcd9f17745f (base 4e5cf2e5)
 ---
@@ -55,7 +55,7 @@ icl_label 124, scroller_pen 104, ghost_menu 180. Extern: `_ip_any_free`.
   icl_coverage uses a static per-pixel `icl_corners` helper.
 - roundaa_core: `bgpen[4]` is `unsigned char`.
 
-## After (current branch; still FAIL on rf/tx)
+## After step 1 (shared helpers only; base e200e3e2)
 
 | entry | own frame | chain |
 |---|---|---|
@@ -64,31 +64,69 @@ icl_label 124, scroller_pen 104, ghost_menu 180. Extern: `_ip_any_free`.
 | _flat_rf_c | 600 | 1252 (stub 28) FAIL |
 | _flat_tx_c | 352 | 576 (stub 16) FAIL |
 
-Remaining frames over 80: flat_rf_c 600, border_button_at (flat.s:l1136) 552,
-flat_tx_c 352, ghost_menu (l1816) 180, icl_label (l1493) 124,
-scroller_pen (l1746) 104, raa_frame_draw 88. No externs left.
+Frames over 80 then: flat_rf_c 600, border_button_at 552, flat_tx_c 352,
+ghost_menu 180, icl_label 124, scroller_pen 104, raa_frame_draw 88.
 
-Host suites flat_core (2724 checks) and iclabel (256 checks) pass;
-build/amiga/amarchy-flat builds clean.
+## Step 2: flat.c restructure (this commit)
 
-## Open: flat.c restructure (designed, not written)
+- border_button_at: no `flat_box sib[32]`; folds `flat_button_role_add` per
+  sibling (same caps), returns `(role << 8) | ids`.
+- Border-button fill split into bb_claim / bb_draw / bb_done. bb_claim takes a
+  single static `flat_state bb_st` under Forbid with an owner task (bb_task);
+  a second task that hits a border-button fill while another task is inside
+  it gets the stock fill (behaviour change, only under contention).
+- flat_rf_c is a dispatcher (frame 64): ghost, border button, rf_disabled
+  (dim fill without `keep[4][4][4]`: corner rows per pixel, middle as spans),
+  rf_scroller (scroller_pen / scroller_cuts / scroller_paint, sring_note),
+  rf_edge / rf_side.
+- ghost_menu: ghost_title uses an AllocVec RastPort.
+- flat_tx_c: tx_title / tx_span fold `flat_title_span_add` over one
+  `flat_gadrect` (no `gr[8]`); icl_label split into icl_box / icl_run /
+  icl_write (lskip and return semantics unchanged).
+- roundaa_core: raa_frame_draw corner-blend loop moved to static raa_corners.
+- flat_glyph: flat_frame_draw_round keeps pens as `unsigned char pen[12]` and
+  an `unsigned got` bitmask.
 
-- border_button_at: drop `flat_box sib[32]`; pass 1 finds the exact box
-  (caps i<64, n<32), pass 2 folds `flat_button_role_add` over border buttons
-  with the same caps, then `flat_button_role_of(seen)`.
-- flat_rf_c becomes a small dispatcher; each branch a helper:
-  border-button fill passes `st_scr(...)` to raa_frame_draw instead of copying
-  `flat_state st = r->st` (verify the fill path reads only pen_button,
-  pen_back, pen_text, pen_line); disabled dim without `int keep[4][4][4]`;
-  scroller via `flat_scroller_cut_at` loop, sring walk in its own helper;
-  outer edge and side fill helpers.
-- ghost_menu: the `struct RastPort trp` goes to AllocVec or a helper.
-- flat_tx_c: tx_title uses `flat_title_span_add` with one flat_gadrect
-  (no `gr[8]`); icl_label split into box / semaphore / run / write helpers.
-- raa_frame_draw (88): split the corner-blend loop into a helper.
-- New host tests: role_add/of == flat_button_role, title_span_add ==
-  flat_title_span, flat_button_corner == flat_button_corners,
-  flat_scroller_cut_at == cuts_box.
+## After step 2 (`make flat-budget`)
+
+| entry | own frame | chain |
+|---|---|---|
+| _c2_disp_reg | 20 | 312 (stub 0, headroom 72) PASS |
+| _c2_disp_stk | 4 | 296 (stub 0, headroom 88) PASS |
+| _flat_rf_c | 64 | 372 (stub 28, headroom 12) FAIL |
+| _flat_tx_c | 32 | 304 (stub 16, headroom 80) PASS |
+
+No helper frame over 80; no externs outside `_flat_*`. Overall gate: FAIL
+(rf only).
+
+rf deepest path: flat_rf_c 64 -> bb_draw 28 -> raa_frame_draw 52 ->
+raa_corners 76 -> raa_nearest 52 -> pm_dist 36 -> 12, + stub 28 = 372.
+
+Host suites pass: flat_core (2755 checks, incl. new fold tests
+role_add/of == flat_button_role over every self and sibling set, and
+title_span_add == flat_title_span over every gadget run), flat_role_core
+(48), iclabel (256), richaa (13), flat_icl_pens (test updated for
+`icx.cm`), flat_on_hang. build/amiga/amarchy-flat builds clean.
+
+## Open (exactly what is left)
+
+1. rf chain: 52 bytes over (372, must be <= 320). Candidates, in order:
+   - raa_corners (76 = 36 locals + 10 saved registers): move the per-corner
+     loop state into a small struct or split the per-pixel blend out, so the
+     raa_nearest call happens from a frame under ~40.
+   - raa_nearest 52 / pm_dist 36 (render/pen_match.h, shared with the
+     terminal renderer): inline pm_dist or reduce saved registers; needs
+     its own host test run (pen_match users).
+   - flat_rf_c 64 (11 saved registers): call bb_draw from a thinner frame.
+2. Host tests not written: flat_button_corner == flat_button_corners,
+   flat_scroller_cut_at == cuts_box, flat_frame_draw_round pen bitmask (only
+   0..255 pens taken).
+3. Rig eye-check (not done; no rig in this task): installer border buttons
+   (fill, rounded corners, labels), disabled button dim corners, scroller
+   track and knob corner cuts, window outer edge and side strips, ghosted
+   menu items and disabled menu titles, title accent band between system
+   gadgets, icon labels (antialiased edges). Contention: two tasks filling
+   border buttons at the same moment - the second draws stock.
 
 ## Gate weaknesses (not fixed)
 

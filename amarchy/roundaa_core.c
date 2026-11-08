@@ -79,26 +79,14 @@ int raa_nearest(raa_rgb_fn rgb, void *ctx, int npens, unsigned long want)
     return best;
 }
 
-int raa_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn, flat_read_fn rd,
-                   raa_rgb_fn rgb, int npens, void *ctx, int *blended)
+/* The corner blend of raa_frame_draw, after the box is painted: each corner pixel the rounded box does not fully cover takes the
+ * mix of the box's inner pen and the pen read beside that corner (bgpen). A helper of its own so the frame that calls the box draw
+ * stays small (S62-FLAT-RF-TX-BUDGET: the frame draw runs on the drawing task's stack). */
+static void raa_corners(int ox, int oy, int w, int h, flat_fill_fn fn, flat_read_fn rd, raa_rgb_fn rgb, int npens, void *ctx,
+                        const unsigned char *bgpen, int *blended)
 {
-    unsigned char bgpen[4];  /* a read pen, checked 0 .. npens-1 (npens <= RAA_MAX_PENS 256); S62-FLAT-RF-TX-BUDGET: bytes, not ints */
-    int c, r, dx, dy, inner, ok, b;
+    int c, r, dx, dy, inner;
     unsigned long fg;
-    if (blended)
-        *blended = 0;
-    ok = s && fn && rd && rgb && fill && npens > 0 && npens <= RAA_MAX_PENS && w >= 3 && h >= 3;
-    for (c = 0; ok && c < 4; c++) {
-        b = rd(ctx, (c & 1) ? ox + w : ox - 1, (c & 2) ? oy + h : oy - 1);     /* beside the corner, before the box is painted */
-        if (b < 0 || b >= npens)
-            ok = 0;
-        else
-            bgpen[c] = (unsigned char)b;
-    }
-    if (!flat_frame_draw_round(s, ids, ox, oy, w, h, fill, role, fn, rd, ctx))
-        return 0;
-    if (!ok)
-        return 1;
     r = raa_radius(h);
     if (r > h / 2)
         r = h / 2;
@@ -106,7 +94,7 @@ int raa_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, i
         r = w / 2;
     inner = rd(ctx, ox + w / 2, oy + h / 2);
     if (inner < 0 || inner >= npens)
-        return 1;
+        return;
     fg = rgb(ctx, inner);
     for (c = 0; c < 4; c++)
         for (dy = 0; dy < r; dy++)
@@ -120,6 +108,27 @@ int raa_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, i
                 if (blended && cov > 0)
                     (*blended)++;
             }
+}
+
+int raa_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn, flat_read_fn rd,
+                   raa_rgb_fn rgb, int npens, void *ctx, int *blended)
+{
+    unsigned char bgpen[4];  /* a read pen, checked 0 .. npens-1 (npens <= RAA_MAX_PENS 256); S62-FLAT-RF-TX-BUDGET: bytes, not ints */
+    int c, ok, b;
+    if (blended)
+        *blended = 0;
+    ok = s && fn && rd && rgb && fill && npens > 0 && npens <= RAA_MAX_PENS && w >= 3 && h >= 3;
+    for (c = 0; ok && c < 4; c++) {
+        b = rd(ctx, (c & 1) ? ox + w : ox - 1, (c & 2) ? oy + h : oy - 1);     /* beside the corner, before the box is painted */
+        if (b < 0 || b >= npens)
+            ok = 0;
+        else
+            bgpen[c] = (unsigned char)b;
+    }
+    if (!flat_frame_draw_round(s, ids, ox, oy, w, h, fill, role, fn, rd, ctx))
+        return 0;
+    if (ok)
+        raa_corners(ox, oy, w, h, fn, rd, rgb, npens, ctx, bgpen, blended);
     return 1;
 }
 

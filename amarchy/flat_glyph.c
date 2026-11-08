@@ -500,17 +500,23 @@ int flat_scroller_cuts_box(int kx, int ky, int kw, int kh, int x0, int y0, int x
 int flat_frame_draw_round(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn,
                           flat_read_fn rd, void *ctx)
 {
-    short pen[FLAT_ROUND_MAX];                       /* a read pen: -1 (unreadable) .. 255; S62-FLAT-RF-TX-BUDGET: corners one at a time */
-    int cut[4], n = 0, i;
+    unsigned char pen[FLAT_ROUND_MAX];               /* a read pen 0 .. 255, valid where its bit in got is set; S62-FLAT-RF-TX-BUDGET: bytes */
+    unsigned got = 0;
+    int cut[4], n = 0, i, p;
     if (!s || !fn || w < 3 || h < 3)
         return 0;
     if (rd && fill)
-        for (; flat_button_corner(w, h, n, cut); n++)
-            pen[n] = (short)rd(ctx, ox + cut[2], oy + cut[3]);      /* before the box is painted */
+        for (; flat_button_corner(w, h, n, cut); n++) {
+            p = rd(ctx, ox + cut[2], oy + cut[3]);                  /* before the box is painted */
+            if (p >= 0 && p <= 255) {
+                pen[n] = (unsigned char)p;
+                got |= 1u << n;
+            }
+        }
     if (!flat_frame_draw(s, ids, ox, oy, w, h, fill, role, fn, ctx))
         return 0;
     for (i = 0; i < n; i++)
-        if (pen[i] >= 0 && flat_button_corner(w, h, i, cut))
+        if ((got & (1u << i)) && flat_button_corner(w, h, i, cut))
             fn(ctx, ox + cut[0], oy + cut[1], ox + cut[0], oy + cut[1], pen[i]);
     return 1;
 }

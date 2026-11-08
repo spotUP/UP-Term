@@ -886,6 +886,21 @@ static void test_which_from_gtype(void)
         CHECK_INT(flat_button_role(&lone, &lone, 1), FLAT_ROLE_PRIMARY);     /* lone button is filled */
         { flat_box two[2]; two[0] = row[2]; two[1] = other;
           CHECK_INT(flat_button_role(&row[2], two, 2), FLAT_ROLE_PRIMARY); } /* a button in another row is no sibling */
+        {   /* S62-FLAT-RF-TX-BUDGET: the RectFill hook folds one sibling at a time; the fold equals flat_button_role for every self and set */
+            flat_box all[5]; int si, n, j, seen;
+            all[0] = row[0]; all[1] = row[1]; all[2] = row[2]; all[3] = other; all[4] = lone;
+            for (n = 1; n <= 5; n++)
+                for (si = 0; si < n; si++) {
+                    seen = 0;
+                    for (j = 0; j < n; j++)
+                        seen = flat_button_role_add(seen, &all[si], &all[j]);
+                    CHECK_INT(flat_button_role_of(seen), flat_button_role(&all[si], all, n));
+                }
+            seen = 0;
+            for (j = 0; j < 3; j++)
+                seen = flat_button_role_add(seen, &row[2], &row[j]);
+            CHECK_INT(flat_button_role_of(seen), FLAT_ROLE_SECONDARY);
+        }
         memset(&f, 0, sizeof f);
         CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 8, 6, 1, FLAT_ROLE_SECONDARY, frame_rec, &f), 1);
         CHECK_INT(f.n == 1 && f.r[0][4] == 4, 1);                            /* secondary: one full-box fill in pen_button, no ring */
@@ -1527,6 +1542,17 @@ static void test_title_accent(void)
         CHECK_INT(x1, 200 - 36 - 1);
         flat_title_span(g, 0, 200, 11, &x0, &x1);
         CHECK_INT(x0 == 0 && x1 == 199, 1);
+        {   /* S62-FLAT-RF-TX-BUDGET: the Text hook folds one gadget at a time; the fold equals the array form for every prefix and subset */
+            int n, k, f0, f1, a0, a1;
+            for (n = 0; n <= 4; n++)
+                for (k = 0; k + n <= 4; k++) {
+                    f0 = 0; f1 = 199;
+                    for (i = k; i < k + n; i++)
+                        flat_title_span_add(&g[i], 200, 11, &f0, &f1);
+                    flat_title_span(g + k, n, 200, 11, &a0, &a1);
+                    CHECK_INT(f0 == a0 && f1 == a1, 1);
+                }
+        }
     }
     CHECK_INT(t.text_pen, 0);
     CHECK_INT(t.bg_pen, 3);          /* JAM2 Text box must repaint the band pen, not pen 0 */
