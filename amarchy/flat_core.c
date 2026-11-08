@@ -418,7 +418,7 @@ int flat_tx_pen(const flat_state *s, flat_tx *t, const void *surf, const void *t
     return s->pen_ptext;
 }
 
-void flat_gh_frame(flat_gh *g, const void *surf, const void *task, int pressed, int fill, int secondary, int x0, int y0, int x1, int y1)
+void flat_gh_frame(flat_gh *g, const void *surf, const void *task, int pressed, int fill, int x0, int y0, int x1, int y1)
 {
     int i, slot = -1;
     for (i = 0; i < FLAT_GH_N; i++) {
@@ -428,7 +428,7 @@ void flat_gh_frame(flat_gh *g, const void *surf, const void *task, int pressed, 
             break;
         }
     }
-    if (pressed || !fill || secondary) {
+    if (pressed || !fill) {
         if (slot >= 0)
             g->box[slot].surf = 0;
         return;
@@ -552,6 +552,11 @@ const flat_gbox *flat_gh_match(const flat_state *s, const flat_gh *g, const void
             return b;
     }
     return 0;
+}
+
+int flat_frame_fill(int answered, int edges_only, int push)
+{
+    return answered ? (!edges_only || push) : push;
 }
 
 int flat_push_button(int has_text, int lx, int ly, int w, int h, int activation)

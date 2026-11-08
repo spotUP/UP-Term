@@ -554,6 +554,32 @@ static int smart_knob_of(struct RastPort *rp, Object *obj)
     return 0;
 }
 
+/* the window gadget (render == select == obj) of rp's window, NULL when obj is no such gadget image */
+static struct Gadget *gadget_of_image(struct RastPort *rp, Object *obj)
+{
+    struct Layer *lay = rp->Layer;
+    struct Window *win = lay ? (struct Window *)lay->Window : NULL;
+    struct Gadget *g;
+    int n;
+    for (g = win ? win->FirstGadget : NULL, n = 0; g && n < 64; g = g->NextGadget, n++)
+        if (flat_button_gadget(g->GadgetRender, g->SelectRender, obj))
+            return g;
+    return NULL;
+}
+
+static int button_gadget_of(struct RastPort *rp, Object *obj)
+{
+    return gadget_of_image(rp, obj) != NULL;
+}
+
+/* 1 when obj is the image of a push button gadget (flat_push_button), as role_of tells a push button from a cycle */
+static int push_gadget_of(struct RastPort *rp, Object *obj)
+{
+    struct Gadget *g = gadget_of_image(rp, obj);
+    struct IntuiText *it = g ? g->GadgetText : NULL;
+    return g && flat_push_button(it != NULL, it ? it->LeftEdge : 0, it ? it->TopEdge : 0, g->Width, g->Height, g->Activation);
+}
+
 static int c8_skip(Object *obj, Msg msg)
 {
     flatshared *r = g_r;
@@ -571,16 +597,9 @@ static int c8_skip(Object *obj, Msg msg)
         /* Fill only when the frame says it is not edges-only (an unanswered OM_GET counts as edges-only: never erase content). */
         int fill;
         if (GetAttr(IA_EdgesOnly, obj, &eo) != 0)
-            fill = eo == 0;
-        else {      /* 3.1 frameiclass V40 does not answer OM_GET: a button or cycle gadget renders this image as render and select */
-            struct Layer *lay = d->imp_RPort->Layer;
-            struct Window *win = lay ? (struct Window *)lay->Window : NULL;
-            struct Gadget *g;
-            int n;
-            fill = 0;
-            for (g = win ? win->FirstGadget : NULL, n = 0; g && n < 64 && !fill; g = g->NextGadget, n++)
-                fill = flat_button_gadget(g->GadgetRender, g->SelectRender, obj);
-        }
+            fill = flat_frame_fill(1, (int)eo, push_gadget_of(d->imp_RPort, obj));
+        else      /* 3.1 frameiclass V40 does not answer OM_GET: a button or cycle gadget renders this image as render and select */
+            fill = flat_frame_fill(0, 0, button_gadget_of(d->imp_RPort, obj));
         flat_state st = r->st;
         {   /* S57-BUTTON-ASPECT-BORDERS: the outline columns of this window's screen (slot table read, no Intuition call) */
             struct Layer *sl = d->imp_RPort->Layer;
@@ -604,7 +623,7 @@ static int c8_skip(Object *obj, Msg msg)
                             fill ? raa_load(d->imp_RPort) : 0, d->imp_RPort, NULL))
             return 0;
         flat_gh_frame(&r->gh, flat_tx_surface(d->imp_RPort->Layer, d->imp_RPort->BitMap), FindTask(NULL), d->imp_State == 1, fill,
-                      fill && role_of(d->imp_RPort, obj) == FLAT_ROLE_SECONDARY, ox, oy, ox + w - 1, oy + h - 1);
+                      ox, oy, ox + w - 1, oy + h - 1);
         /* a pressed filled frame arms the Text patch for its label; any other frame draw on this rastport disarms */
         flat_tx_frame(&r->tx, flat_tx_surface(d->imp_RPort->Layer, d->imp_RPort->BitMap), FindTask(NULL),
                       flat_tx_arm(d->imp_State == 1, fill, role_of(d->imp_RPort, obj)), fill, ox, oy, ox + w - 1, oy + h - 1);
@@ -1191,7 +1210,29 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
             rp->AreaPtrn = 0; rp->AreaPtSz = 0;
             SetDrMd(rp, JAM2);
             SetAPen(rp, (UBYTE)flat_dim_pen(st_scr(r, w->WScreen), depth));
-            ((rectfn)r->rsw.saved)(rp, gb->x0, gb->y0, gb->x1, gb->y1, (struct Library *)GfxBase);
+            {   /* OWNER-2026-11-08: the dim fill is a rectangle; the button's rounded corner squares (radius raa_radius, as the frame draw) keep the pixels they have */
+                int bw = gb->x1 - gb->x0 + 1, bh = gb->y1 - gb->y0 + 1, rr = raa_radius(bh), c, dx, dy;
+                int keep[4][4][4];
+                if (rr > bh / 2) rr = bh / 2;
+                if (rr > bw / 2) rr = bw / 2;
+                if (rr > 4) rr = 4;
+                for (c = 0; c < 4; c++)
+                    for (dy = 0; dy < rr; dy++)
+                        for (dx = 0; dx < rr; dx++)
+                            keep[c][dy][dx] = c2_read(rp, (c & 1) ? gb->x1 - dx : gb->x0 + dx, (c & 2) ? gb->y1 - dy : gb->y0 + dy);
+                ((rectfn)r->rsw.saved)(rp, gb->x0, gb->y0, gb->x1, gb->y1, (struct Library *)GfxBase);
+                SetDrMd(rp, JAM2);
+                for (c = 0; c < 4; c++)
+                    for (dy = 0; dy < rr; dy++)
+                        for (dx = 0; dx < rr; dx++) {
+                            int px = (c & 1) ? gb->x1 - dx : gb->x0 + dx, py = (c & 2) ? gb->y1 - dy : gb->y0 + dy;
+                            if (keep[c][dy][dx] >= 0 && raa_cover(bw, bh, rr, (c & 1) ? bw - 1 - dx : dx, (c & 2) ? bh - 1 - dy : dy) < 255) {
+                                SetAPen(rp, (UBYTE)keep[c][dy][dx]);
+                                WritePixel(rp, px, py);
+                            }
+                        }
+                SetAPen(rp, (UBYTE)flat_dim_pen(st_scr(r, w->WScreen), depth));
+            }
             if (gb->str) {
                 SetDrMd(rp, JAM1);
                 SetAPen(rp, (UBYTE)flat_dimtext_pen(st_scr(r, w->WScreen), depth));

@@ -25,7 +25,7 @@ typedef unsigned long (*raa_rgb_fn)(void *ctx, int pen);
 /* The pen of 0..npens-1 whose colour looks nearest to rgb (pen_match's redmean + chroma distance) */
 int raa_nearest(raa_rgb_fn rgb, void *ctx, int npens, unsigned long want);
 /* flat_frame_draw_round, then the antialiased corners. Falls back to flat_frame_draw_round alone (return as it) when rd or rgb is
- * null, the box is not filled, is a secondary (outline) button, has no readable pixel beyond a corner, or npens is 0 or over
+ * null, the box is not filled, has no readable pixel beyond a corner, or npens is 0 or over
  * RAA_MAX_PENS. Returns the number of corner pixels it blended in *blended when that is not null. */
 int raa_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn, flat_read_fn rd,
                    raa_rgb_fn rgb, int npens, void *ctx, int *blended);

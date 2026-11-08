@@ -418,16 +418,9 @@ int flat_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, 
     x1 = ox + w - 1;
     y1 = oy + h - 1;
     sw = flat_button_side(s->side, w);
-    if (fill && ids != 1 && role == FLAT_ROLE_SECONDARY) {   /* BUTTON-ROLES: the secondary button is a 1 px text-pen outline, no fill */
-        fn(ctx, ox, oy, x1, y1, s->pen_back);        /* clears a previous pressed fill */
-        fn(ctx, ox, oy, x1, oy, s->pen_text);
-        fn(ctx, ox, y1, x1, y1, s->pen_text);
-        fn(ctx, ox, oy, ox + sw - 1, y1, s->pen_text);
-        fn(ctx, x1 - sw + 1, oy, x1, y1, s->pen_text);
-        return 1;
-    }
-    if (fill) {                                      /* S56-PRIMARY-ACCENT-FILL: primary fill = the theme accent pen (pen_line, a palette pen at every depth), pressed = the text pen; label in pen_ptext (flat_tx_arm); the scroller knob and cycle gadget keep pen_button; no outline */
-        fn(ctx, ox, oy, x1, y1, role == FLAT_ROLE_PLAIN ? (s->pen_button ? s->pen_button : s->pen_back) : (ids == 1 ? s->pen_text : s->pen_line));
+    if (fill) {                                      /* OWNER-2026-11-08 FLAT-BUTTON-NO-RING: every push button is a solid fill, never a ring (the secondary role used to be a text-pen outline; it is now a pen_button fill, so the roles still differ: primary accent, secondary the raised button tone). S56-PRIMARY-ACCENT-FILL: primary fill = the theme accent pen (pen_line, a palette pen at every depth), pressed = the text pen; label in pen_ptext (flat_tx_arm); the scroller knob and cycle gadget keep pen_button; no outline */
+        int face = s->pen_button ? s->pen_button : s->pen_back;
+        fn(ctx, ox, oy, x1, y1, role == FLAT_ROLE_PLAIN ? face : ids == 1 ? s->pen_text : role == FLAT_ROLE_SECONDARY ? face : s->pen_line);
         return 1;
     }
     fn(ctx, ox, oy, x1, oy, s->pen_line);            /* top */
@@ -494,13 +487,6 @@ int flat_frame_draw_round(const flat_state *s, int ids, int ox, int oy, int w, i
     for (i = 0; i < n; i++)
         if (pen[i] >= 0)
             fn(ctx, ox + cut[i][0], oy + cut[i][1], ox + cut[i][0], oy + cut[i][1], pen[i]);
-    /* S56-LOCALE-CANCEL-CORNER: a tall cut takes three pixels per corner, which opens the secondary button's 1 px outline (its top row
-     * starts two pixels in, its side column two pixels down). The inner diagonal pixel closes it as a rounded outline. */
-    if (n > 4 && fill && ids != 1 && role == FLAT_ROLE_SECONDARY)
-        for (i = 0; i < 4; i++) {
-            int x = (i & 1) ? ox + w - 2 : ox + 1, y = (i & 2) ? oy + h - 2 : oy + 1;
-            fn(ctx, x, y, x, y, s->pen_text);
-        }
     return 1;
 }
 

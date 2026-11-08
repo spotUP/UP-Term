@@ -268,7 +268,7 @@ const void *flat_tx_surface(const void *layer, const void *bitmap);
 /* A frame was drawn on surface surf by task: disarm when surf is the armed one; with pressed && fill, arm for box
  * (x0,y0)-(x1,y1). */
 /* S56-PRIMARY-ACCENT-FILL: does a frame draw arm the Text patch for its label (pen_ptext, the background colour)? A filled button that is
- * pressed or primary does (accent fill); a filled secondary button is an outline and keeps its stock label. Pass the result as flat_tx_frame's "pressed". */
+ * pressed or primary does (accent fill); a filled secondary button keeps its stock label. Pass the result as flat_tx_frame's "pressed". */
 int flat_tx_arm(int pressed, int fill, int role);
 void flat_tx_frame(flat_tx *t, const void *surf, const void *task, int pressed, int fill, int x0, int y0, int x1, int y1);
 
@@ -331,9 +331,9 @@ typedef struct flat_gh {
     flat_gbox box[FLAT_GH_N];
     int next;
 } flat_gh;
-/* A filled frame was drawn: pressed or unfilled or outline-only (role secondary) frames drop a record for the box, a filled
+/* A filled frame was drawn: pressed or unfilled frames drop a record for the box, a filled
  * primary non-pressed frame records it (a ring of FLAT_GH_N, the same box replaces its record). */
-void flat_gh_frame(flat_gh *g, const void *surf, const void *task, int pressed, int fill, int secondary, int x0, int y0, int x1, int y1);
+void flat_gh_frame(flat_gh *g, const void *surf, const void *task, int pressed, int fill, int x0, int y0, int x1, int y1);
 /* A Text call at pen position (cx, cy): stored as the label of the record whose box holds the position. */
 void flat_gh_text(flat_gh *g, const void *surf, const void *task, int cx, int cy, const char *str, int count);
 /* The dim fill pen of a button on a screen of this depth: pen_dim when it is a pen of the depth (depth >= 3 and 0 < pen_dim < 1 << depth),
@@ -386,8 +386,13 @@ enum { FLAT_ROLE_PRIMARY = 0, FLAT_ROLE_SECONDARY = 1, FLAT_ROLE_PLAIN = 2 };   
  * (Sound Type: le=-96 on a 180x14 box); a scroller arrow has no text and Activation RELVERIFY|IMMEDIATE (0003). So: IMMEDIATE =
  * not a push button; no text or a label inside the box = push button; a label outside = cycle. An unlabelled cycle is not told
  * apart (no field differs) and stays a push button. lx, ly: IntuiText offsets; activation: Gadget.Activation. */
+/* OWNER-2026-11-08 FLAT-BUTTON-NO-RING: does a flat frame draw fill its box? answered: frameiclass answered OM_GET IA_EdgesOnly with edges_only;
+ * push: the frame is the render+select image of a push button gadget of the window. A frame that is not edges-only fills. An edges-only frame
+ * fills only for a push button (the Installer draws its buttons edges-only: the ring was all they got); string fields, listviews and bevel
+ * boxes stay outlines. Not answered (3.1): fill when it is a gadget image of the window (push = that test). */
+int flat_frame_fill(int answered, int edges_only, int push);
 int flat_push_button(int has_text, int lx, int ly, int w, int h, int activation);
-/* Amiga style guide: in a row of buttons the rightmost is secondary (Cancel, drawn as a text-pen outline), every other button
+/* Amiga style guide: in a row of buttons the rightmost is secondary (Cancel, a solid pen_button fill: no ring, OWNER-2026-11-08), every other button
  * primary (filled); a lone button is primary. A row = siblings whose vertical span overlaps this box. sib lists every button of
  * the window, the box itself included (skipped by equal box). */
 int flat_button_role(const flat_box *self, const flat_box *sib, int n);

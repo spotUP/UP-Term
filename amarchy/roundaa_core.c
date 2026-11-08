@@ -86,7 +86,7 @@ int raa_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, i
     unsigned long fg;
     if (blended)
         *blended = 0;
-    ok = s && fn && rd && rgb && fill && role != FLAT_ROLE_SECONDARY && npens > 0 && npens <= RAA_MAX_PENS && w >= 3 && h >= 3;
+    ok = s && fn && rd && rgb && fill && npens > 0 && npens <= RAA_MAX_PENS && w >= 3 && h >= 3;
     for (c = 0; ok && c < 4; c++) {
         bgpen[c] = rd(ctx, (c & 1) ? ox + w : ox - 1, (c & 2) ? oy + h : oy - 1);     /* beside the corner, before the box is painted */
         if (bgpen[c] < 0 || bgpen[c] >= npens)

@@ -629,7 +629,7 @@ static void test_round_aa(void)
     CHECK_INT(cv->pix[10][10], 0);                                  /* stock cut still made */
     CHECK_INT(raa_frame_draw(&fs, 0, 10, 10, 20, 14, 1, 0, round_fill, round_read, raa_test_rgb, 300, cv, &blended) && !blended, 1);
     CHECK_INT(raa_frame_draw(&fs, 0, 10, 10, 20, 14, 0, 0, round_fill, round_read, raa_test_rgb, 5, cv, &blended) && !blended, 1);   /* unfilled */
-    CHECK_INT(raa_frame_draw(&fs, 0, 10, 10, 20, 14, 1, FLAT_ROLE_SECONDARY, round_fill, round_read, raa_test_rgb, 5, cv, &blended) && !blended, 1);
+    CHECK_INT(raa_frame_draw(&fs, 0, 10, 10, 20, 14, 1, FLAT_ROLE_SECONDARY, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);   /* a secondary is a fill: antialiased like the primary */
     for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 9;       /* pen 9 is not in a 5 pen palette: unreadable */
     CHECK_INT(raa_frame_draw(&fs, 0, 10, 10, 20, 14, 1, 0, round_fill, round_read, raa_test_rgb, 5, cv, &blended) && !blended, 1);
     CHECK_INT(cv->pix[10][10], 9);
@@ -844,9 +844,9 @@ static void test_which_from_gtype(void)
         for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 0;
         CHECK_INT(flat_frame_draw_round(&fs, 0, 10, 10, 30, 14, 1, FLAT_ROLE_SECONDARY, round_fill, round_read, cv), 1);
         CHECK_INT(cv->pix[10][10] == 0 && cv->pix[10][11] == 0 && cv->pix[11][10] == 0, 1);           /* corner cut stays */
-        CHECK_INT(cv->pix[10][12] == 2 && cv->pix[12][10] == 2, 1);                                   /* outline row and column */
-        CHECK_INT(cv->pix[11][11] == 2 && cv->pix[11][38] == 2 && cv->pix[22][11] == 2 && cv->pix[22][38] == 2, 1);   /* closed */
-        CHECK_INT(cv->pix[12][12] == 0, 1);                                                           /* inside stays pen_back */
+        /* OWNER-2026-11-08 FLAT-BUTTON-NO-RING: secondary = solid pen_button fill, corner cut stays (surface pen), edge pixel beside it is the fill */
+        CHECK_INT(cv->pix[10][12] == 4 && cv->pix[12][10] == 4, 1);                                   /* edge row and column are fill, not outline */
+        CHECK_INT(cv->pix[11][11] == 4 && cv->pix[11][38] == 4 && cv->pix[22][11] == 4 && cv->pix[22][38] == 4 && cv->pix[12][12] == 4, 1);
         for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 0;
         CHECK_INT(flat_frame_draw_round(&fs, 0, 10, 10, 30, 14, 1, FLAT_ROLE_PRIMARY, round_fill, round_read, cv), 1);
         CHECK_INT(cv->pix[11][11] == 3, 1);                                                           /* primary: accent body pen_line, no bridge */
@@ -878,7 +878,6 @@ static void test_which_from_gtype(void)
         struct frame_rec_t f;
         flat_state fs;
         flat_box row[3] = { {10, 5, 40, 12}, {60, 5, 40, 12}, {110, 5, 40, 12} }, other = {10, 40, 40, 12}, lone = {10, 5, 40, 12};
-        int i;
         memset(&fs, 0, sizeof fs);
         fs.enabled = 1; fs.pen_text = 2; fs.pen_line = 3; fs.pen_back = 0; fs.pen_button = 4;
         CHECK_INT(flat_button_role(&row[2], row, 3), FLAT_ROLE_SECONDARY);   /* rightmost button in a row is outlined */
@@ -889,12 +888,19 @@ static void test_which_from_gtype(void)
           CHECK_INT(flat_button_role(&row[2], two, 2), FLAT_ROLE_PRIMARY); } /* a button in another row is no sibling */
         memset(&f, 0, sizeof f);
         CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 8, 6, 1, FLAT_ROLE_SECONDARY, frame_rec, &f), 1);
-        CHECK_INT(f.n, 5);                                                   /* background clear + four sides */
-        for (i = 1; i < 5; i++)
-            CHECK_INT(f.r[i][4], 2);                                         /* secondary: text-pen outline */
+        CHECK_INT(f.n == 1 && f.r[0][4] == 4, 1);                            /* secondary: one full-box fill in pen_button, no ring */
+        memset(&f, 0, sizeof f);
+        CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 8, 6, 1, FLAT_ROLE_SECONDARY, frame_rec, &f), 1);
+        CHECK_INT(f.n == 1 && f.r[0][4] == 4 && f.r[0][0] == 10 && f.r[0][1] == 20 && f.r[0][2] == 17 && f.r[0][3] == 25, 1);   /* covers the whole box */
         memset(&f, 0, sizeof f);
         CHECK_INT(flat_frame_draw(&fs, 1, 10, 20, 8, 6, 1, FLAT_ROLE_SECONDARY, frame_rec, &f), 1);
         CHECK_INT(f.n == 1 && f.r[0][4] == 2, 1);                            /* pressed secondary gets the text pen fill */
+        /* flat_frame_fill: an edges-only frame fills only for a push button (Installer buttons); edges-only non-push stays an outline */
+        CHECK_INT(flat_frame_fill(1, 0, 0), 1);
+        CHECK_INT(flat_frame_fill(1, 1, 1), 1);
+        CHECK_INT(flat_frame_fill(1, 1, 0), 0);
+        CHECK_INT(flat_frame_fill(0, 0, 1), 1);
+        CHECK_INT(flat_frame_fill(0, 0, 0), 0);
         {   /* S57-BUTTON-ASPECT-BORDERS: a button outline is flat_side_px columns wide left and right, 1 px top and bottom */
             int modes[3][2] = { { 22, 44 }, { 22, 22 }, { 11, 44 } };   /* 640x256 hires, 640x512 interlace, super hires */
             int want[3] = { 2, 1, 4 }, m, k;
@@ -902,9 +908,9 @@ static void test_which_from_gtype(void)
                 for (k = 0; k < 2; k++) {                                /* 0 = secondary (filled role), 1 = edges-only frame */
                     fs.side = (uint8_t)flat_side_px(modes[m][0], modes[m][1]);
                     memset(&f, 0, sizeof f);
-                    CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 60, 12, k == 0, FLAT_ROLE_SECONDARY, frame_rec, &f), 1);
-                    CHECK_INT(f.n, k == 0 ? 5 : 4);
-                    {   int o = f.n - 4;                                  /* top, bottom, left, right */
+                    CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 60, 12, k == 0, FLAT_ROLE_PRIMARY, frame_rec, &f), 1);
+                    CHECK_INT(f.n, k == 0 ? 1 : 4);
+                    if (k == 1) {   int o = f.n - 4;                                  /* top, bottom, left, right */
                         CHECK_INT(f.r[o][1] == 20 && f.r[o][3] == 20, 1);              /* top: 1 px */
                         CHECK_INT(f.r[o + 1][1] == 31 && f.r[o + 1][3] == 31, 1);      /* bottom: 1 px */
                         CHECK_INT(f.r[o + 2][0] == 10 && f.r[o + 2][2] == 10 + want[m] - 1, 1);   /* left: side px */
@@ -1437,7 +1443,7 @@ static void test_disabled_button_dim_fill(void)
     const flat_gbox *m;
     memset(&s, 0, sizeof s); memset(&g, 0, sizeof g);
     s.enabled = 1; s.pen_back = 0; s.pen_text = 2; s.pen_line = 3; s.pen_button = 4; s.pen_sel = 4; s.pen_dim = 6; s.pen_dimtext = 5;
-    flat_gh_frame(&g, &a, &c1, 0, 1, 0, 10, 20, 49, 39);
+    flat_gh_frame(&g, &a, &c1, 0, 1, 10, 20, 49, 39);
     flat_gh_text(&g, &a, &c1, 14, 32, "Use", 3);
     m = flat_gh_match(&s, &g, &a, &c1, 2, 10, 20, 49, 39);
     CHECK_INT(m != 0, 1);
@@ -1451,13 +1457,13 @@ static void test_disabled_button_dim_fill(void)
     CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 2, 5, 20, 49, 39) == 0, 1);
     CHECK_INT(flat_gh_match(&s, &g, &b, &c1, 2, 10, 20, 49, 39) == 0, 1);
     CHECK_INT(flat_gh_match(&s, &g, &a, &c2, 2, 10, 20, 49, 39) == 0, 1);
-    flat_gh_frame(&g, &a, &c1, 1, 1, 0, 10, 20, 49, 39);
+    flat_gh_frame(&g, &a, &c1, 1, 1, 10, 20, 49, 39);
     CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 2, 10, 20, 49, 39) == 0, 1);
-    flat_gh_frame(&g, &a, &c1, 0, 1, 1, 60, 20, 99, 39);
+    flat_gh_frame(&g, &a, &c1, 0, 1, 60, 20, 99, 39);
+    CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 2, 60, 20, 99, 39) != 0, 1);   /* OWNER-2026-11-08: a secondary button is a fill too: its disabled dim applies */
+    flat_gh_frame(&g, &a, &c1, 0, 0, 60, 20, 99, 39);
     CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 2, 60, 20, 99, 39) == 0, 1);
-    flat_gh_frame(&g, &a, &c1, 0, 0, 0, 60, 20, 99, 39);
-    CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 2, 60, 20, 99, 39) == 0, 1);
-    flat_gh_frame(&g, &a, &c1, 0, 1, 0, 10, 20, 49, 39);
+    flat_gh_frame(&g, &a, &c1, 0, 1, 10, 20, 49, 39);
     s.held = 1;
     CHECK_INT(flat_gh_match(&s, &g, &a, &c1, 2, 10, 20, 49, 39) == 0, 1);
     s.held = 0; s.enabled = 0;
