@@ -11,6 +11,7 @@
 typedef struct {
     unsigned size;         /* brush width in pixels: 16, 24 or 32 */
     int tall;              /* 1 = tall-pixel set, half the height (a 2:1 pixel aspect) */
+    int outline;           /* DT-9: 1 = the Lucide outline family (icon-style = outline), 0 = the Phosphor filled family, the default */
 } dt_set;
 
 /* The public screen Directory Opus runs on, from the reply of the ARexx command `dopus screen` ("<name> <w> <h> <depth> ...", the name
@@ -21,10 +22,12 @@ int dt_screen_name(const char *reply, char *out, unsigned cap);
 /* DT-3: the set for a DOpus screen whose font is font_h pixels high (Screen->Font->ta_YSize; 0 = unknown, gives 24) and whose
  * pixels are rx : ry (DisplayInfo Resolution via menu_screen_aspect; 0 = unknown, square). The icon height is about 2 x the font
  * height, snapped to the nearest of 16/24/32 (a tie goes to the smaller). Tall when li_pick_variant says the pixel is twice as
- * high as wide. */
-void dt_pick_set(unsigned font_h, int rx, int ry, dt_set *out);
+ * high as wide. DT-9: outline is the family (amconf_icon_outline), stored as given. */
+void dt_pick_set(unsigned font_h, int rx, int ry, int outline, dt_set *out);
 
-/* The set's name as gen_dopus_toolbar.py set_name writes it ("24", "24t"), NUL ended; returns its length, 0 when cap is too small. */
+/* The set's name as gen_dopus_toolbar.py set_name writes it ("filled-24", "outline-24t": family, then size and "t" when tall), NUL
+ * ended; returns its length, 0 when cap is too small (DT_SET_NAME_MAX bytes always fit). */
+#define DT_SET_NAME_MAX 12
 unsigned dt_set_name(const dt_set *s, char *out, unsigned cap);
 
 /* DT-2: the CMAP of every brush: ip_colours (iconpen_core.c, the Workbench icons' blend) on the lister's ground (GR_SURFACE);

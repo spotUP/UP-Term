@@ -44,14 +44,18 @@ Else
     Delete >NIL: T:updopus-live QUIET
   EndIf
 EndIf
-; the flat Lucide toolbar (B7): one image drawer per size set, DOpus5:Images/Amarchy/<set>, and one bank per set,
-; DOpus5:Buttons/Amarchy-toolbar-<set>, for the sets 16, 24 and 32 pixels, each square and tall ("t", for a screen whose
-; pixels are twice as high as wide). Amarchy picks the set from the DOpus screen's font and pixel aspect and writes the
-; theme's colours into that set's brushes when a theme is applied. Only added files: nothing of upstream's or the user's
-; is changed. The single bank of the first version (Amarchy-toolbar, no set) is ours and goes.
+; the flat toolbar (B7): one image drawer per set, DOpus5:Images/Amarchy/<set>, and one bank per set,
+; DOpus5:Buttons/Amarchy-toolbar-<set>. A set is an icon family, filled (Phosphor, the default) or outline (Lucide),
+; and a size, 16, 24 or 32 pixels, each square and tall ("t", for a screen whose pixels are twice as high as wide):
+; filled-16 ... outline-32t. Amarchy picks the set from icon-style and the DOpus screen's font and pixel aspect and writes
+; the theme's colours into that set's brushes when a theme is applied. Only added files: nothing of upstream's or the
+; user's is changed. Ours and gone: the single bank of the first version (Amarchy-toolbar, no set) and the sets of the
+; second (16 ... 32t, no family, DT-1).
 Assign >NIL: DOpus5: EXISTS
 If NOT WARN
-  If EXISTS toolbar/Buttons/Amarchy-toolbar-24
+  If EXISTS toolbar/Buttons/Amarchy-toolbar-filled-24
+    Delete >NIL: DOpus5:Buttons/Amarchy-toolbar-(16|24|32)(t|%) QUIET
+    Delete >NIL: DOpus5:Images/Amarchy/(16|24|32)(t|%) ALL QUIET FORCE
     MakeDir >NIL: DOpus5:Images/Amarchy
     Copy >NIL: toolbar/Images/ DOpus5:Images/Amarchy/ ALL CLONE QUIET
     If WARN

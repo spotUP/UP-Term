@@ -1,25 +1,25 @@
-; Flat Directory Opus 5.104 lister toolbar (task B7): <upstream image name> <Lucide glyph>, one row per image
-; the upstream default toolbar (Buttons/Toolbar) names. tools/gen_dopus_toolbar.py draws each glyph at the
-; upstream brush size into Images/Amarchy/<name> and rewrites the bank's image paths to that drawer.
-Root.small       chevrons-up
-World.small      globe
-Parent.small     arrow-up
-All.small        square-check-big
-All_s.small      square
-Select.small     list-checks
-Toggle.small     arrow-left-right
-Makedir.small    folder-plus
-Makefile.small   file-plus
-Assign.small     link
-Copy.small       copy
-CopyAs.small     copy-plus
-Move.small       move-right
-MoveAs.small     forward
-Rename.small     pencil
-Delete.small     trash-2
-Show.small       eye
-Read.small       book-open
-Play.small       play
-Protect.small    shield
-Comment.small    message-square
-Datestamp.small  calendar-clock
+; Flat Directory Opus 5.104 lister toolbar (task B7): <upstream image name> <Lucide glyph> <Phosphor glyph>, one row
+; per image the upstream default toolbar (Buttons/Toolbar) names. tools/gen_dopus_toolbar.py draws each glyph at every
+; size set into Images/Amarchy/<set>/<name>: the outline family from Lucide, the filled family (DT-9) from Phosphor Fill.
+Root.small       chevrons-up       caret-double-up
+World.small      globe             globe
+Parent.small     arrow-up          arrow-up
+All.small        square-check-big  check-square
+All_s.small      square            square
+Select.small     list-checks       list-checks
+Toggle.small     arrow-left-right  arrows-left-right
+Makedir.small    folder-plus       folder-plus
+Makefile.small   file-plus         file-plus
+Assign.small     link              link
+Copy.small       copy              copy
+CopyAs.small     copy-plus         copy-simple
+Move.small       move-right        arrow-right
+MoveAs.small     forward           arrow-bend-up-right
+Rename.small     pencil            pencil-simple
+Delete.small     trash-2           trash
+Show.small       eye               eye
+Read.small       book-open         book-open
+Play.small       play              play
+Protect.small    shield            shield
+Comment.small    message-square    chat-centered
+Datestamp.small  calendar-clock    calendar-dots

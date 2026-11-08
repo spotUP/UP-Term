@@ -18,7 +18,7 @@ static const char THEME_B[] = "name = dtb\nbackground = #f0e8d8\nforeground = #2
 static unsigned pick(unsigned font, int rx, int ry, int *tall)
 {
     dt_set s;
-    dt_pick_set(font, rx, ry, &s);
+    dt_pick_set(font, rx, ry, 0, &s);
     *tall = s.tall;
     return s.size;
 }
@@ -26,7 +26,7 @@ static unsigned pick(unsigned font, int rx, int ry, int *tall)
 static void test_pick_set(void)
 {
     int tall;
-    char name[8];
+    char name[DT_SET_NAME_MAX];
     dt_set s;
     /* the owner's band rule: about 2 x the font height, snapped to 16/24/32 */
     CHECK_INT(pick(8, 1, 1, &tall), 16);
@@ -44,13 +44,17 @@ static void test_pick_set(void)
     pick(8, 44, 44, &tall); CHECK_INT(tall, 0);
     pick(8, 22, 33, &tall); CHECK_INT(tall, 0);
     pick(8, 0, 0, &tall); CHECK_INT(tall, 0);
-    dt_pick_set(12, 22, 44, &s);
-    CHECK_INT(dt_set_name(&s, name, sizeof name), 3);
-    CHECK(strcmp(name, "24t") == 0);
-    s.tall = 0; s.size = 32;
-    CHECK_INT(dt_set_name(&s, name, sizeof name), 2);
-    CHECK(strcmp(name, "32") == 0);
-    CHECK_INT(dt_set_name(&s, name, 3), 0);
+    /* DT-9: the family leads the name, filled by default, outline from icon-style; the longest name fits DT_SET_NAME_MAX */
+    dt_pick_set(12, 22, 44, 0, &s);
+    CHECK_INT(dt_set_name(&s, name, sizeof name), 10);
+    CHECK(strcmp(name, "filled-24t") == 0);
+    dt_pick_set(12, 22, 44, 1, &s);
+    CHECK_INT(dt_set_name(&s, name, sizeof name), 11);
+    CHECK(strcmp(name, "outline-24t") == 0);
+    s.tall = 0; s.size = 32; s.outline = 0;
+    CHECK_INT(dt_set_name(&s, name, sizeof name), 9);
+    CHECK(strcmp(name, "filled-32") == 0);
+    CHECK_INT(dt_set_name(&s, name, DT_SET_NAME_MAX - 1), 0);
 }
 
 static void ilbm(uint8_t *b, size_t *len)

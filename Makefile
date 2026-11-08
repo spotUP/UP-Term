@@ -2125,16 +2125,18 @@ dist-python: $(BUILD)/amiga/upupdate
 	cp $(IXNET_LIB) $(KIT_python)/Files/libs/ixnet.library
 	$(call LAUNCHER,$(KIT_python),dist/addons/python/launch/Python 3,Python 3,640/400)
 	python3 tools/mkkit.py python
-# B7 flat lister toolbar for Directory Opus 5.104: Lucide glyphs (dist/dopus-toolbar.txt, drawn from the SVG source on the pixel grid, DT-8) as 3-bitplane ILBM brushes in
-# Images/Amarchy/<set> plus Buttons/Amarchy-toolbar-<set> (sets 16, 24, 32, each square and tall), upstream's default bank with those image paths and Borderless Buttons;
+# B7 flat lister toolbar for Directory Opus 5.104: glyphs of dist/dopus-toolbar.txt in two families, outline (Lucide SVG source) and filled
+# (Phosphor Fill, the default, DT-9), drawn on the pixel grid (DT-8) as 3-bitplane ILBM brushes in Images/Amarchy/<set> plus
+# Buttons/Amarchy-toolbar-<set> (sets <family>-16, 24, 32, each square and tall), upstream's default bank with those image paths and Borderless Buttons;
 # the bank is rewritten from the Buttons/Toolbar of the md5-checked os3 archive (upstream/ holds that one file)
 DOPUS_TOOLBAR_DIR := $(BUILD)/dopus-toolbar
-$(DOPUS_TOOLBAR_DIR)/Buttons/Amarchy-toolbar-24: tools/gen_dopus_toolbar.py tools/svg_raster.py tools/gen_lucide_icons.py tools/gen_menu_icons.py tools/gen_emoji.py tools/mkicon.py dist/dopus-toolbar.txt $(LUCIDE_TGZ)
+$(DOPUS_TOOLBAR_DIR)/Buttons/Amarchy-toolbar-filled-24: tools/gen_dopus_toolbar.py tools/svg_raster.py tools/gen_lucide_icons.py tools/gen_menu_icons.py tools/gen_emoji.py tools/mkicon.py dist/dopus-toolbar.txt $(LUCIDE_TGZ) $(PHOSPHOR_TTF) $(PHOSPHOR_CP)
 	mkdir -p $(DOPUS_TOOLBAR_DIR)/upstream
 	[ "$$(md5 -q $(VENDOR)/dopus5-5.104/DOpus5_104_os3.lha 2>/dev/null || md5sum < $(VENDOR)/dopus5-5.104/DOpus5_104_os3.lha | cut -d' ' -f1)" = "0800b7b3bf02c83bd45a84d038ee483e" ] || { echo "[ERROR] DOpus5_104_os3.lha: md5 mismatch"; exit 1; }
 	lha -xqfw=$(DOPUS_TOOLBAR_DIR)/upstream $(VENDOR)/dopus5-5.104/DOpus5_104_os3.lha DOpus5/Buttons/Toolbar
-	python3 tools/gen_dopus_toolbar.py dist/dopus-toolbar.txt $(LUCIDE_TGZ) $(DOPUS_TOOLBAR_DIR)/upstream/DOpus5/Buttons/Toolbar $(DOPUS_TOOLBAR_DIR)
-dopus-toolbar: $(DOPUS_TOOLBAR_DIR)/Buttons/Amarchy-toolbar-24
+	rm -rf $(DOPUS_TOOLBAR_DIR)/Images $(DOPUS_TOOLBAR_DIR)/Buttons
+	python3 tools/gen_dopus_toolbar.py dist/dopus-toolbar.txt $(LUCIDE_TGZ) $(PHOSPHOR_TTF) $(DOPUS_TOOLBAR_DIR)/upstream/DOpus5/Buttons/Toolbar $(DOPUS_TOOLBAR_DIR)
+dopus-toolbar: $(DOPUS_TOOLBAR_DIR)/Buttons/Amarchy-toolbar-filled-24
 # up-dopus: the unmodified upstream Directory Opus 5 68k archives (dist/addons/dopus/archives.txt), each checked
 # against its md5 in vendor/dopus5-5.104/ (download URLs: dist/addons/dopus/SOURCE.txt) and unpacked into its
 # drawer of Files; Install runs upstream's own "Install DOpus5" from the drawer that fits the CPU
@@ -2145,7 +2147,7 @@ dist-dopus: $(BUILD)/amiga/upupdate
 	  [ "$$(md5 -q $(VENDOR)/dopus5-5.104/$$a 2>/dev/null || md5sum < $(VENDOR)/dopus5-5.104/$$a | cut -d' ' -f1)" = "$$md5" ] || { echo "[ERROR] $$a: md5 is not $$md5"; exit 1; }; \
 	  mkdir -p $(KIT_dopus)/Files/$$drawer && lha -xqw=$(KIT_dopus)/Files/$$drawer $(VENDOR)/dopus5-5.104/$$a || exit 1; \
 	done
-	$(MAKE) $(DOPUS_TOOLBAR_DIR)/Buttons/Amarchy-toolbar-24
+	$(MAKE) $(DOPUS_TOOLBAR_DIR)/Buttons/Amarchy-toolbar-filled-24
 	mkdir -p $(KIT_dopus)/Files/toolbar && cp -R $(DOPUS_TOOLBAR_DIR)/Images $(DOPUS_TOOLBAR_DIR)/Buttons $(KIT_dopus)/Files/toolbar/
 	python3 tools/mkkit.py dopus
 # up-uhc: no UHC files (owner decision 2026-10-27): install.dos downloads the author's installer uhcinstall on the
