@@ -64,6 +64,44 @@ class Table(unittest.TestCase):
             self.assertIn(need, got)
 
 
+DOPUS5 = [   # the 35 .info files of the Directory Opus 5.104 drawer (DOpus5_104_os3.lha, DOpus5/ without IconSets), as DOpus5: assign paths
+    "DirectoryOpus",
+    "Help",
+    "Help/DOpus5.guide",
+    "Help/DOpusM2_ARexx.guide",
+    "WBStartup/Opus5_Startup",
+    "Icons/Lister",
+    "Icons/Settings",
+    "Icons/Command",
+    "Icons/Filetype",
+    "Icons/Group",
+    "Icons/Buttons",
+    "Icons/Environment",
+    "Icons/AppIcon",
+    "Icons/PrintFilesAppIcon",
+    "Icons/FTP",
+    "Icons/FTPSite",
+    "Icons/FTPDirectory",
+    "Icons/FTPFile",
+    "Icons/Icons-FTPNI/FTP",
+    "Icons/Icons-FTPNI/FTPSite",
+    "Icons/Icons-FTPNI/FTPDirectory",
+    "Icons/Icons-FTPNI/FTPFile",
+    "Icons/Beavis_HL",
+    "Icons/Beavis_HNL",
+    "Icons/Beavis_HNL_Black",
+    "Icons/IntelOutsideEmboss",
+    "Icons/IntelOutsideEmboss2",
+    "Images/Icons/Connect.small",
+    "Images/Icons/World.small",
+    "Images/Icons/FastView.small",
+    "Images/Icons/Library.small",
+    "Images/Icons/ClipBoard.small",
+    "Images/Icons/FTPSend.small",
+    "Images/Icons/SysPrefs.small",
+    "Images/Icons/QuitFTP.small"]
+
+
 SUBSTITUTES = {   # lucide name -> phosphor name for the 7 accepted substitutes (plan section 7); a silent swap shows here
     "cable": "plugs", "hard-drive-download": "hard-drives", "layout-dashboard": "squares-four", "memory-stick": "memory",
     "menu": "list", "monitor-cog": "monitor", "notebook-pen": "notebook"}
@@ -73,15 +111,26 @@ SUBSTITUTES = {   # lucide name -> phosphor name for the 7 accepted substitutes 
 class Pin(unittest.TestCase):
     CP = json.loads((ROOT / "build" / "phosphor" / "codepoints.json").read_text()) if (ROOT / "build" / "phosphor" / "codepoints.json").exists() else {}
 
+    LCP = json.loads((ROOT / "build" / "lucide" / "codepoints.json").read_text()) if (ROOT / "build" / "lucide" / "codepoints.json").exists() else {}
+
     def test_every_table_name_resolves_and_the_set_is_the_accepted_one(self):
         rows = g.parse_table(ROOT / "dist" / "lucide-icons", set(self.CP))      # an unknown name aborts here
         names = {n for _, n in rows}
-        self.assertEqual(len(rows), 81)
-        self.assertEqual(len(names), 50)                                         # 51 Lucide names, monitor and monitor-cog share one glyph
+        self.assertEqual(len(rows), 82 + len(DOPUS5))
+        self.assertEqual(len(names), 50 + 15)                                         # 51 Lucide names, monitor and monitor-cog share one glyph
         for sub in SUBSTITUTES.values():
             self.assertIn(sub, names)
         for must in ("gear-six", "vinyl-record", "text-aa", "terminal-window", "speaker-high", "file-xls", "film-strip"):
             self.assertIn(must, names)
+
+    def test_every_dopus5_info_has_a_path_row_in_both_tables_and_the_dat(self):
+        """ia_apply applies every "Vol:Dir/Name" row whose file exists, so a DOpus5: row reaches the drawer through the assign."""
+        want = {"DOpus5:" + p for p in DOPUS5}
+        self.assertEqual(len(want), 35)
+        for table, cps in (("lucide-icons", self.CP), ("lucide-icons-outline", self.LCP)):
+            rows = g.parse_table(ROOT / "dist" / table, set(cps))
+            self.assertEqual({m for m, _ in rows if m.startswith("DOpus5:")}, want, table)
+            self.assertTrue(all(len(m) <= g.NAME_LEN for m, _ in rows), table)
 
     def test_codepoint_extraction_is_deterministic_and_complete(self):
         sys.path.insert(0, str(ROOT / "tools"))
