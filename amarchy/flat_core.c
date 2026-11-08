@@ -602,6 +602,25 @@ int flat_button_gadget(const void *gadget_render, const void *select_render, con
     return image && gadget_render == image && select_render == image;
 }
 
+int flat_border_button(unsigned gadget_type, unsigned flags, const void *gadget_render, const void *select_render, int has_text, int w, int h)
+{
+    if ((gadget_type & 0x8000u) || (gadget_type & 0x0007u) != 0x0005u)     /* GTYP_SYSGADGET / not GTYP_CUSTOMGADGET */
+        return 0;
+    if ((flags & 0x0003u) != 0x0002u || (flags & 0x007cu))                  /* GADGHIMAGE only; GADGIMAGE, GRELBOTTOM/RIGHT/WIDTH/HEIGHT clear */
+        return 0;
+    return gadget_render && select_render && gadget_render != select_render && !has_text && w >= 3 && h >= 3;
+}
+
+int flat_box_exact(const flat_box *b, int x0, int y0, int x1, int y1)
+{
+    return b && x0 == b->x && y0 == b->y && x1 == b->x + b->w - 1 && y1 == b->y + b->h - 1;
+}
+
+int flat_border_button_ids(unsigned flags)
+{
+    return (flags & 0x0080u) ? 1 : 0;                                       /* GFLG_SELECTED: IDS_SELECTED */
+}
+
 /* pen_outline when it is a pen of the depth (non-zero, below 1 << depth), else 0. */
 static int flat_outline_of_depth(const flat_state *s, int depth)
 {

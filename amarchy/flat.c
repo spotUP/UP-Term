@@ -580,6 +580,34 @@ static int push_gadget_of(struct RastPort *rp, Object *obj)
     return g && flat_push_button(it != NULL, it ? it->LeftEdge : 0, it ? it->TopEdge : 0, g->Width, g->Height, g->Activation);
 }
 
+/* INSTALLER-BORDER-BUTTON (owner 2026-11-08): the Border-render push button of rp's window (flat_border_button) whose box is
+ * exactly x0,y0..x1,y1, NULL when none. The Installer draws such a button as a pen-0 RectFill of the box, its label, then a
+ * temporary frameiclass IM_DRAWFRAME over the same box; render != select, so the frame object never names the gadget and the
+ * rectangle is the only link. GZZ windows are skipped (gadget and rastport coordinates differ there). *role gets the row role
+ * among the window's border buttons (flat_button_role). */
+static struct Task *bb_task;     /* the task inside the border-button fill: its own RectFills (c2_fill) go stock */
+
+static struct Gadget *border_button_at(struct RastPort *rp, int x0, int y0, int x1, int y1, int *role)
+{
+    flat_box sib[32];
+    struct Layer *lay = rp ? rp->Layer : NULL;
+    struct Window *win = lay ? (struct Window *)lay->Window : NULL;
+    struct Gadget *g, *hit = NULL;
+    int n = 0, i, self = -1;
+    if (!win || (win->Flags & WFLG_GIMMEZEROZERO))
+        return NULL;
+    for (g = win->FirstGadget, i = 0; g && i < 64 && n < 32; g = g->NextGadget, i++) {
+        if (!flat_border_button(g->GadgetType, g->Flags, g->GadgetRender, g->SelectRender, g->GadgetText != NULL, g->Width, g->Height))
+            continue;
+        sib[n].x = g->LeftEdge; sib[n].y = g->TopEdge; sib[n].w = g->Width; sib[n].h = g->Height;
+        if (!hit && flat_box_exact(&sib[n], x0, y0, x1, y1)) { hit = g; self = n; }
+        n++;
+    }
+    if (hit && role)
+        *role = flat_button_role(&sib[self], sib, n);
+    return hit;
+}
+
 static int c8_skip(Object *obj, Msg msg)
 {
     flatshared *r = g_r;
@@ -611,6 +639,12 @@ static int c8_skip(Object *obj, Msg msg)
         int ox = im->LeftEdge + d->imp_Offset.X, oy = im->TopEdge + d->imp_Offset.Y;
         int w, h;
         flat_frame_size(msg->MethodID == FLAT_IM_DRAWFRAME, d->imp_Dimensions.Width, d->imp_Dimensions.Height, im->Width, im->Height, &w, &h);
+        if (border_button_at(d->imp_RPort, ox, oy, ox + w - 1, oy + h - 1, NULL)) {
+            /* INSTALLER-BORDER-BUTTON: the rounded fill was painted at the erase (flat_rf_c) and the label is drawn; no ring */
+            flat_tx_frame(&r->tx, flat_tx_surface(d->imp_RPort->Layer, d->imp_RPort->BitMap), FindTask(NULL), 0, 0, ox, oy, ox + w - 1, oy + h - 1);
+            r->fflat++;
+            return 1;
+        }
         if (smart_knob_of(d->imp_RPort, obj)) {      /* S56-LOCALE-KNOB: the listview scroller knob takes the Workbench knob pen */
             struct Window *kw = (struct Window *)d->imp_RPort->Layer->Window;
             if (!raa_knob_frame_draw(st_scr(r, kw->WScreen), d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0, (kw->Flags & WFLG_WINDOWACTIVE) != 0,
@@ -1197,6 +1231,35 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
     if (r->st.enabled && !r->st.held && rp && rp->AreaPtSz && ret >= r->irom_lo && ret < r->irom_hi && (!rp->Layer || !rp->Layer->Window) &&
         ghost_menu(r, rp, x0, y0, x1, y1))
         return;
+    if (r->st.enabled && !r->st.held && rp && !rp->AreaPtSz && bb_task != FindTask(NULL)) {
+        /* INSTALLER-BORDER-BUTTON (owner 2026-11-08): the erase of a Border-render push button (exact box, border_button_at)
+         * becomes the rounded flat fill of the frame draw; its label comes next and the IM_DRAWFRAME after it draws no ring
+         * (c8_skip). No ROM gate: the Installer erases from its own code; the exact gadget box is the gate. */
+        int role = FLAT_ROLE_PRIMARY;
+        struct Gadget *bg = border_button_at(rp, (int)x0, (int)y0, (int)x1, (int)y1, &role);
+        if (bg) {
+            struct Window *bw = (struct Window *)rp->Layer->Window;
+            flat_state st = r->st;
+            const flat_state *ps = st_scr(r, bw->WScreen);
+            int ids = flat_border_button_ids(bg->Flags), ok;
+            UBYTE fg = rp->FgPen, dm = rp->DrawMode;
+            const void *surf = flat_tx_surface(rp->Layer, rp->BitMap);
+            st.side = (uint8_t)side_px(r, bw->WScreen);
+            st.pen_dim = ps->pen_dim; st.pen_knob = ps->pen_knob; st.pen_inbar = ps->pen_inbar; st.pen_sel = ps->pen_sel;
+            bb_task = FindTask(NULL);
+            ok = raa_frame_draw(&st, ids, (int)x0, (int)y0, (int)(x1 - x0 + 1), (int)(y1 - y0 + 1), 1, role, c2_fill, c2_read, c2_rgb,
+                                raa_load(rp), rp, NULL);
+            bb_task = NULL;
+            SetAPen(rp, fg);
+            SetDrMd(rp, dm);
+            if (ok) {
+                flat_gh_frame(&r->gh, surf, FindTask(NULL), ids == 1, 1, (int)x0, (int)y0, (int)x1, (int)y1);
+                flat_tx_frame(&r->tx, surf, FindTask(NULL), flat_tx_arm(ids == 1, 1, role), 1, (int)x0, (int)y0, (int)x1, (int)y1);
+                r->bhits++;
+                return;
+            }
+        }
+    }
     if (r->st.enabled && !r->st.held && rp && rp->Layer && (w = (struct Window *)rp->Layer->Window) != 0 && ret >= r->irom_lo &&
         ret < r->irom_hi) {
         int sp, cuts[FLAT_ROUND_MAX][2], ncuts = 0, ci;
@@ -1387,13 +1450,13 @@ static void put_word(char *out, int *n, const char *w)
 static void print_status(void)
 {
     flat_state copy;
-    char line[128];              /* worst-case rectfill line with mhits is 108 */
+    char line[128];              /* worst-case rectfill line with mhits and bhits is 125 */
     flatshared *r;
     int found = 0, dfound = 0, dreason = 0, dmask = 0, dinst = 0;
     unsigned dver = 0, drev = 0;
     unsigned long dcalls = 0, dflat = 0, fcalls = 0, fflat = 0;
     int finst = 0, rinst = 0;
-    unsigned long rcalls = 0, rhits = 0, shits = 0, mhits = 0, tcalls = 0, thits = 0, labels = 0, lskip = 0;
+    unsigned long rcalls = 0, rhits = 0, shits = 0, mhits = 0, bhits = 0, tcalls = 0, thits = 0, labels = 0, lskip = 0;
     int tinst = 0;
     unsigned long cdraws = 0, cfall = 0, alooks = 0, cfb = 0, cfd = 0, cfm = 0, cfe = 0, cfk = 0, cfi = 0, clw = 0, cls = 0, cln = 0, clm = 0;
     int apx = 0, sring[16][9], sn = 0;
@@ -1408,7 +1471,7 @@ static void print_status(void)
         dinst = r->dsw[0].installed || r->dsw[1].installed; dcalls = r->dcalls; dflat = r->dflat;
         dsum[0] = r->dsum[0]; dsum[1] = r->dsum[1];
         finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat;
-        rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits; mhits = r->mhits;
+        rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits; mhits = r->mhits; bhits = r->bhits;
         tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits; labels = r->labels; lskip = r->lskip;
         cdraws = r->cdraws; cfall = r->cfall;
         cfb = r->cf_busy; cfd = r->cf_nodri; cfm = r->cf_nobm; cfe = r->cf_empty; cfk = r->cf_mask;
@@ -1444,6 +1507,7 @@ static void print_status(void)
         put_word(line, &n, " hits=");               put_num(line, &n, rhits);
         put_word(line, &n, " shits=");              put_num(line, &n, shits);
         put_word(line, &n, " mhits=");              put_num(line, &n, mhits);
+        put_word(line, &n, " bhits=");              put_num(line, &n, bhits);
         put_word(line, &n, " side=");               put_num(line, &n, (unsigned long)apx);
         put_word(line, &n, " looks=");              put_num(line, &n, alooks);
         line[n] = 0;

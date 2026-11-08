@@ -1024,6 +1024,27 @@ static void test_which_from_gtype(void)
             CHECK_INT(flat_button_gadget(&other, &other, &img), 0);           /* another gadget's image */
             CHECK_INT(flat_button_gadget(0, 0, 0), 0);
         }
+        {   /* INSTALLER-BORDER-BUTTON: the 3.2 Installer's buttons (rig 97 gprobe: type 5, flags 0002, render != select, no text, 238x16) */
+            int ren = 0, sel = 0;
+            flat_box b = { 8, 174, 238, 16 };
+            CHECK_INT(flat_border_button(5, 0x0002, &ren, &sel, 0, 238, 16), 1);
+            CHECK_INT(flat_border_button(0x0005, 0x0082, &ren, &sel, 0, 238, 16), 1);     /* pressed (GFLG_SELECTED) is still one */
+            CHECK_INT(flat_border_button(5, 0x0006, &ren, &sel, 0, 238, 16), 0);          /* GFLG_GADGIMAGE: image renders (frameiclass path) */
+            CHECK_INT(flat_border_button(5, 0x0002, &ren, &ren, 0, 238, 16), 0);          /* render == select: a GadTools-style image button */
+            CHECK_INT(flat_border_button(5, 0x0002, &ren, 0, 0, 238, 16), 0);             /* no select render */
+            CHECK_INT(flat_border_button(5, 0x0002, &ren, &sel, 1, 238, 16), 0);          /* own IntuiText label */
+            CHECK_INT(flat_border_button(1, 0x0002, &ren, &sel, 0, 238, 16), 0);          /* GTYP_BOOLGADGET */
+            CHECK_INT(flat_border_button(0x8005, 0x0002, &ren, &sel, 0, 238, 16), 0);     /* GTYP_SYSGADGET */
+            CHECK_INT(flat_border_button(5, 0x0012, &ren, &sel, 0, 238, 16), 0);          /* GFLG_RELRIGHT */
+            CHECK_INT(flat_border_button(5, 0x0000, &ren, &sel, 0, 238, 16), 0);          /* GADGHCOMP: no select render drawn */
+            CHECK_INT(flat_border_button(5, 0x0002, &ren, &sel, 0, 2, 16), 0);            /* too small to round */
+            CHECK_INT(flat_box_exact(&b, 8, 174, 245, 189), 1);                           /* the measured body erase */
+            CHECK_INT(flat_box_exact(&b, 8, 174, 245, 174), 0);                           /* one ring strip */
+            CHECK_INT(flat_box_exact(&b, 9, 175, 244, 188), 0);
+            CHECK_INT(flat_box_exact(0, 8, 174, 245, 189), 0);
+            CHECK_INT(flat_border_button_ids(0x0002), 0);
+            CHECK_INT(flat_border_button_ids(0x0082), 1);
+        }
         memset(&bs, 0, sizeof bs);
         bs.pen_back = 0; bs.pen_button = 4;
         CHECK_INT(flat_button_pen(&bs, 3), 0);                                /* S33-PREFS-SKIN-FAIL: the role number is not a held pen: pen_back */

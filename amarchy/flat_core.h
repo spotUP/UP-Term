@@ -379,6 +379,16 @@ int flat_button_pen(const flat_state *s, int depth);
 
 /* BUTTON-ROLES: a button box in gadget coordinates. */
 typedef struct { int x, y, w, h; } flat_box;
+/* INSTALLER-BORDER-BUTTON (owner 2026-11-08): is this window gadget a push button drawn from two Border renders? The 3.2 Installer
+ * (43.3) builds its buttons as GTYP_CUSTOMGADGET (type & 7 == 5) with Flags GFLG_GADGHIMAGE only (no GFLG_GADGIMAGE: the renders are
+ * struct Border, no relative flags), GadgetRender != SelectRender, GadgetText NULL; its draw is a body RectFill of the whole box,
+ * the label Text, then a temporary frameiclass IM_DRAWFRAME over the same box (s61-evidence/installer-button-class-trace.md).
+ * System gadgets, image buttons, labelled or relative gadgets and boxes under 3 x 3 are not. */
+int flat_border_button(unsigned gadget_type, unsigned flags, const void *gadget_render, const void *select_render, int has_text, int w, int h);
+/* Is (x0,y0)-(x1,y1) exactly box b (both corners inclusive)? */
+int flat_box_exact(const flat_box *b, int x0, int y0, int x1, int y1);
+/* The image state a Border-button body fill draws with: IDS_SELECTED (1) while the gadget is GFLG_SELECTED, else IDS_NORMAL (0). */
+int flat_border_button_ids(unsigned flags);
 enum { FLAT_ROLE_PRIMARY = 0, FLAT_ROLE_SECONDARY = 1, FLAT_ROLE_PLAIN = 2 };   /* PLAIN: a filled frame that is no push button (scroller knob, cycle gadget): filled with pen_button, stock label, never the accent */
 /* S56-CYCLE-PLAIN / S56-PUSH-ROLE: is this boolean frame gadget (render == select) a push button? 1 = push button.
  * Measured on 3.2 GadTools (rig 88, s56-evidence/push-role-fix.md): a BUTTON_KIND gadget has GadgetText NULL (GadTools draws
