@@ -507,17 +507,46 @@ def rig_flags(default=None):
     return shlex.split(raw) if raw.strip() else list(default or [])
 
 
+# rig.py options that take a value (the next word). rig.py's bare-number check and merge_start_args read it.
+VALUE_OPTIONS = ("--serial", "--os", "--purpose", "--kick", "--ram", "--emu", "--idle-minutes", "--hours")
+# Options that pick one setting together: a given member replaces every recorded member of its group. The machine
+# (MAX is the default when none of --a1200/--a500 is set) and the system disk (--os <name> or --os32).
+START_ARG_GROUPS = (("--max", "--060", "--a1200", "--a500", "--stock", "--exact", "--fast"), ("--os", "--os32"))
+
+
+def _option_words(args):
+    """`args` as [(name, words)]: an option with its value (VALUE_OPTIONS) as one entry; --name=value is named --name."""
+    out, i = [], 0
+    while i < len(args):
+        n = 2 if args[i] in VALUE_OPTIONS and i + 1 < len(args) else 1
+        out.append((args[i].split("=", 1)[0], args[i:i + n]))
+        i += n
+    return out
+
+
+def merge_start_args(recorded, given):
+    """`recorded` start arguments with `given` on top: a given option replaces the same option (with its value) and
+    every recorded member of its START_ARG_GROUPS group; everything else recorded stays. `rig.py reboot --purpose x`
+    replaced the whole list and booted a --max --os 32 rig as the default 3.1 machine (rig 95 and rig 94, 2026-11-08)."""
+    given_opts = _option_words(list(given))
+    names = {n for n, _ in given_opts}
+    for group in START_ARG_GROUPS:
+        if names & set(group):
+            names |= set(group)
+    kept = [w for n, words in _option_words(list(recorded)) if n not in names for w in words]
+    return kept + [w for _, words in given_opts for w in words]
+
+
 def reboot_args(given, start_file=None):
-    """The arguments a reboot starts with: the ones given, else the last start's (<rig>/start.args, a JSON list that
-    rig.py start writes; `start_file` names another record, rig.START_ARGS). One parser for rig.py reboot/screenmode
-    and installer_rig's restarts."""
+    """The arguments a reboot starts with: the last start's (<rig>/start.args, a JSON list that rig.py start writes;
+    `start_file` names another record, rig.START_ARGS) with the given ones on top (merge_start_args). One parser for
+    rig.py reboot/screenmode and installer_rig's restarts."""
     import json
-    if given:
-        return list(given)
     try:
-        return json.loads(pathlib.Path(start_file or RIG / 'start.args').read_text())
+        recorded = json.loads(pathlib.Path(start_file or RIG / 'start.args').read_text())
     except (OSError, ValueError):
-        return []
+        recorded = []
+    return merge_start_args(recorded, given)
 
 
 def stale_targets(targets, run=subprocess.run, cwd=None, on_error=None):

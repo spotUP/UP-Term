@@ -56,6 +56,23 @@ class RigReboot(unittest.TestCase):
         self.assertEqual(self.calls, ["stop"])
         self.assertEqual(ran[0][2:], ["start", "--keep-sys", "--max", "--purpose", "s: t"])
 
+    def test_reboot_with_a_purpose_keeps_the_machine_and_os(self):
+        """RIG-REBOOT-ARGS (rig 95 and rig 94, 2026-11-08): `rig.py reboot --purpose x` started the rig with only the
+        purpose, so --os 32 and --max were lost and the rig came back as the default 3.1 machine."""
+        (self.tmp / "start.args").write_text(json.dumps(["--max", "--os", "32", "--purpose", "old"]))
+        ran = []
+        argv = ["rig.py", "reboot", "--purpose", "new task"]
+        with mock.patch.object(rig.subprocess, "run", lambda cmd, **k: ran.append(cmd)), mock.patch.object(rig.sys, "argv", argv):
+            self.assertEqual(rig.main(argv), 0)
+        self.assertEqual(ran[0][2:], ["start", "--keep-sys", "--max", "--os", "32", "--purpose", "new task"])
+
+    def test_a_given_flag_replaces_only_its_group(self):
+        merge = rig.paths.merge_start_args
+        self.assertEqual(merge(["--max", "--os", "32", "--purpose", "p"], ["--a1200"]), ["--os", "32", "--purpose", "p", "--a1200"])
+        self.assertEqual(merge(["--a1200", "--os32", "--ram", "64"], ["--os", "47"]), ["--a1200", "--ram", "64", "--os", "47"])
+        self.assertEqual(merge(["--max", "--keep-060lib=a,b"], ["--keep-060lib=c"]), ["--max", "--keep-060lib=c"])
+        self.assertEqual(merge(["--max"], []), ["--max"])
+
     def test_keep_sys_start_boots_the_disk_the_last_run_left(self):
         self.boot(True, ["rig.py", "start", "--keep-sys", "--max"])
         self.assertNotIn("clone", self.calls)

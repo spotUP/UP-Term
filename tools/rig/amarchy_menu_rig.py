@@ -2262,15 +2262,7 @@ def is_os32(args):
 def os32_start_args(args):
     """The last start's arguments with the OS switched to 3.2 (the same reboot_args idea as rig.py screenmode:
     keep the machine flags and the purpose, replace --os / --os32)."""
-    out, skip = [], False
-    for a in args:
-        if skip:
-            skip = False
-        elif a == '--os':
-            skip = True
-        elif a != '--os32':
-            out.append(a)
-    return out + ['--os', '32']
+    return paths.merge_start_args(args, ['--os', '32'])
 
 
 def ensure_os32_rig():

@@ -49,7 +49,8 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   for 2 hours, and every leftover build/rig*.del; each removal is printed and appended to build/rig-gc.log.
                   `start` runs the same sweep first
   rig.py reboot   stop and start again with DH0: as the last run left it (a start clones it anew):
-                  an install's writes survive. The last start's machine flags, or the ones given
+                  an install's writes survive. The last start's flags, with any given ones on top (a given
+                  --purpose keeps --max / --os 32; a given machine or --os flag replaces only its own group)
   rig.py install  copy build/amiga/vtcon-handler to the VTC: drawer; the boot then puts
                   these builds over the copies a kit installed in SYS: (KIT_SHADOWS;
                   reboot the rig after install). The kit's own files are kept in
@@ -2983,7 +2984,7 @@ def gc(home=None, own_n=None, lines=None, now=None, remove=None):
     return removed
 
 # Options that take the next argument as their value; that value may be a number (--os 32, --ram 128).
-VALUE_OPTIONS = ("--serial", "--os", "--purpose", "--kick", "--ram", "--emu", "--idle-minutes", "--hours")
+VALUE_OPTIONS = paths.VALUE_OPTIONS
 # Commands whose arguments are free text for another tool (debugger lines, muforce and wasabi arguments).
 FREE_ARGS = ("dbg", "muforce", "wasabi")
 
