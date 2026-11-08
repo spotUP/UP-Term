@@ -436,6 +436,11 @@ int flat_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, 
     return 1;
 }
 
+int flat_dopus_box_draw(const flat_state *s, int x0, int y0, int x1, int y1, flat_fill_fn fn, void *ctx)
+{
+    return flat_frame_draw(s, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1, 0, FLAT_ROLE_PLAIN, fn, ctx);
+}
+
 int flat_button_corner(int w, int h, int i, int out[4])
 {
     int tall = h >= FLAT_ROUND_TALL, c, k, x, y, ix, iy;

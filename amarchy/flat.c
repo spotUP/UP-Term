@@ -13,7 +13,7 @@
  *
  * FLAT-D4 (runtime DOpus patch): when dopus5.library is resident and its version, revision and routine checksums are in
  * the table, the JMP operand of the DrawBox (LVO -696) and DrawFieldBox (-702) jump table entries is swapped with the
- * same flat_swap model for a routine that draws nothing while flat is on and the pens are flat (no shadow L), and
+ * same flat_swap model for a routine that draws the flat outline while flat is on and the pens are flat (no shadow L), and
  * calls the saved routine otherwise. Any other build is inert (STATUS "dopus=<v.r> inert=..."). Not reachable by an
  * LVO, so not patched: path field (button_class.c:900 calls draw_field_box inside the library), scroller knob and
  * arrows (dopusiclass IM_BBOX / arrows, image_class.c:261, :109), sort arrow (lister_title.c:972-987, inline in the
@@ -798,7 +798,7 @@ ULONG c8_disp_stk(struct Hook *h, Object *obj, Msg msg)
 }
 
 /* ---- FLAT-D4: the replacement routines. They run on the caller's task with the caller's registers (a0 rp, a1 rect,
- * a2 info, d0 recessed). Flat on and flat pens: draw nothing. Otherwise the saved routine, same arguments. */
+ * a2 info, d0 recessed). Flat on and flat pens: the flat outline. Otherwise the saved routine, same arguments. */
 typedef void (*boxfn)(__reg("a0") struct RastPort *, __reg("a1") struct Rectangle *, __reg("a2") struct DrawInfo *,
                       __reg("d0") LONG, __reg("a6") struct Library *);
 typedef void (*fieldfn)(__reg("a0") struct RastPort *, __reg("a1") struct Rectangle *, __reg("a2") struct DrawInfo *,
@@ -817,7 +817,10 @@ static long d4_rgb(struct RastPort *rp, ULONG pen)
     return (long)icl_rgb(cm, pen);
 }
 
-static int d4_flat(int el, struct RastPort *rp, struct DrawInfo *info, LONG recessed)
+/* 0c DOPUS-ENV-UNSTYLED: under flat pens the stock bevel is replaced by the flat outline (flat_dopus_box_draw), with this
+ * window's screen pens and outline columns (S57-BUTTON-ASPECT-BORDERS, as c8_skip); drawing nothing left every DOpus
+ * button and field without a border (owner, DOpus Environment, rig 63). */
+static int d4_flat(int el, struct RastPort *rp, struct Rectangle *rect, struct DrawInfo *info, LONG recessed)
 {
     flatshared *r = g_r;
     ULONG shine = info->dri_Pens[SHINEPEN], back = info->dri_Pens[BACKGROUNDPEN];
@@ -825,6 +828,12 @@ static int d4_flat(int el, struct RastPort *rp, struct DrawInfo *info, LONG rece
     if (flat_dopus_decide(&r->st, el, recessed ? 1 : 0, (int)shine, (int)back,
                           shine == back ? -1 : d4_rgb(rp, shine), shine == back ? -1 : d4_rgb(rp, back)) != FLAT_DRAW_SKIP)
         return 0;
+    if (rp && rect) {
+        struct Window *w = rp->Layer ? (struct Window *)rp->Layer->Window : NULL;
+        flat_state st = *st_rp(r, rp);
+        st.side = (uint8_t)(w ? side_px(r, w->WScreen) : 1);
+        flat_dopus_box_draw(&st, rect->MinX, rect->MinY, rect->MaxX, rect->MaxY, c2_fill, rp);
+    }
     r->dflat++;
     return 1;
 }
@@ -832,13 +841,13 @@ static int d4_flat(int el, struct RastPort *rp, struct DrawInfo *info, LONG rece
 static void d4_drawbox(__reg("a0") struct RastPort *rp, __reg("a1") struct Rectangle *rect, __reg("a2") struct DrawInfo *info,
                        __reg("d0") LONG recessed)
 {
-    if (!d4_flat(FLAT_EL_DRAWBOX, rp, info, recessed))
+    if (!d4_flat(FLAT_EL_DRAWBOX, rp, rect, info, recessed))
         ((boxfn)g_r->dsw[FLAT_EL_DRAWBOX].saved)(rp, rect, info, recessed, g_r->dlib);
 }
 
 static void d4_fieldbox(__reg("a0") struct RastPort *rp, __reg("a1") struct Rectangle *rect, __reg("a2") struct DrawInfo *info)
 {
-    if (!d4_flat(FLAT_EL_FIELDBOX, rp, info, 0))
+    if (!d4_flat(FLAT_EL_FIELDBOX, rp, rect, info, 0))
         ((fieldfn)g_r->dsw[FLAT_EL_FIELDBOX].saved)(rp, rect, info, g_r->dlib);
 }
 
