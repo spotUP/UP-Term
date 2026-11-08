@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
 """Flat toolbar banks for Directory Opus 5.104 (task B7), in two icon families (DT-9).
 
-usage: gen_dopus_toolbar.py <table> <lucide-static.tgz> <Phosphor-Fill.ttf> <upstream Buttons/Toolbar> <out dir>
+usage: gen_dopus_toolbar.py <table> <lucide-static.tgz> <Phosphor-Fill.ttf> <upstream Buttons/Toolbar> <out dir> [<hand dir>]
+       gen_dopus_toolbar.py --export-hand <out dir> <hand dir>
+
+DT-12 (owner 2026-11-09): the tall sets (HAND_SETS) are drawn by hand, not by the rasteriser: a 1-row bar can not sit
+centred on a 1:2 pixel grid (the + of folder-plus), so the owner touches every tall brush up. <hand dir>/<set>/<name> is
+the owner's ILBM (any paint program: any CMAP, compression or masking); it is decoded (tools/ilbm_decode.py), checked
+for the set's size and pens 0-6, and written back as this generator's own brush (CMAP, masking 2, uncompressed), so DOpus
+and dopustb_core.c dt_cmap see the same format as for a generated set. A tall set image with no hand file is an error.
+--export-hand copies a built <out dir>'s tall images into <hand dir> once, as the starting files.
 
 Writes <out>/Images/<set>/<name> (IFF ILBM brushes, FORM ILBM / BMHD / CMAP of 8 pens / BODY, pens 0-6) and
 <out>/Buttons/Amarchy-toolbar-<set>, one per set. A set is a family and a size: "outline-16" ... "outline-32t" and
@@ -27,6 +35,7 @@ import tarfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import gen_lucide_icons as gl  # noqa: E402
+import ilbm_decode  # noqa: E402
 import svg_raster  # noqa: E402
 from fontTools.pens.svgPathPen import SVGPathPen  # noqa: E402
 from fontTools.pens.transformPen import TransformPen  # noqa: E402
@@ -73,6 +82,32 @@ def set_name(family, width, tall):
 def sets():
     """[(set name, family, width, height)]: outline-16, outline-16t, ... filled-32t."""
     return [(set_name(f, w, t), f, w, w // 2 if t else w) for f in FAMILIES for w in SIZES for t in (False, True)]
+
+
+# DT-12: the sets drawn by hand (dist/dopus-toolbar-hand/<set>), the tall ones.
+HAND_SETS = tuple(n for n, _, w, h in sets() if h != w)
+
+
+def hand_brush(path, w, h):
+    """The owner's brush at path, re-encoded as this generator's ILBM; SystemExit unless w x h with pens 0-6."""
+    try:
+        bw, bh, _, _, _, rows = ilbm_decode.decode(path.read_bytes())
+    except (ValueError, TypeError, struct.error) as e:
+        raise SystemExit("%s: not a readable ILBM: %s" % (path, e))
+    if (bw, bh) != (w, h):
+        raise SystemExit("%s: %dx%d, the set needs %dx%d" % (path, bw, bh, w, h))
+    bad = sorted({p for row in rows for p in row if p > 6})
+    if bad:
+        raise SystemExit("%s: pens %s, only 0-6 (0 ground, 1-3 glyph, 4-6 accent)" % (path, bad))
+    return ilbm(w, h, rows)
+
+
+def export_hand(out, hand):
+    for sname in HAND_SETS:
+        (hand / sname).mkdir(parents=True, exist_ok=True)
+        for f in sorted((out / "Images" / sname).iterdir()):
+            (hand / sname / f.name).write_bytes(f.read_bytes())
+    print("[OK] exported %s to %s" % (", ".join(HAND_SETS), hand))
 
 
 def phosphor_svg(font, cp):
@@ -128,9 +163,12 @@ def rewrite_bank(src, name):
 
 
 def main():
-    if len(sys.argv) != 6:
+    if len(sys.argv) == 4 and sys.argv[1] == "--export-hand":
+        return export_hand(pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3]))
+    if len(sys.argv) not in (6, 7):
         raise SystemExit(__doc__)
-    table, tgz, ttf, bank, dest = sys.argv[1:]
+    table, tgz, ttf, bank, dest = sys.argv[1:6]
+    hand = pathlib.Path(sys.argv[6]) if len(sys.argv) == 7 else None
     with tarfile.open(tgz) as tf:
         by_name = {pathlib.PurePosixPath(m.name).stem: m for m in tf.getmembers()
                    if m.isfile() and re.fullmatch(r"package/icons/[a-z0-9-]+\.svg", m.name)}
@@ -151,7 +189,13 @@ def main():
     for sname, fam, w, h in sets():
         (dest / "Images" / sname).mkdir(parents=True, exist_ok=True)
         for name, _, _ in rows:
-            (dest / "Images" / sname / name).write_bytes(glyph(svgs[fam][name], w, h))
+            if hand is not None and sname in HAND_SETS:
+                if not (hand / sname / name).exists():
+                    raise SystemExit("%s: missing; the tall sets are drawn by hand (DT-12)" % (hand / sname / name))
+                img = hand_brush(hand / sname / name, w, h)
+            else:
+                img = glyph(svgs[fam][name], w, h)
+            (dest / "Images" / sname / name).write_bytes(img)
         (dest / "Buttons" / ("Amarchy-toolbar-" + sname)).write_bytes(rewrite_bank(upstream, sname))
     print("[OK] %d images x %d sets and Buttons/Amarchy-toolbar-<set> in %s" % (len(rows), len(sets()), dest))
 
