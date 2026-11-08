@@ -25,6 +25,7 @@ MD5 = '0800b7b3bf02c83bd45a84d038ee483e'
 TGZ = ROOT / 'build' / 'lucide' / 'lucide-static-1.66.0.tgz'
 TTF = ROOT / 'build' / 'phosphor' / 'Phosphor-Fill.ttf'
 TABLE = ROOT / 'dist' / 'dopus-toolbar.txt'
+HAND = ROOT / 'dist' / 'dopus-toolbar-hand'
 CEILING = {'outline-16': 0.40, 'outline-16t': 0.40, 'outline-24': 0.25, 'outline-24t': 0.36, 'outline-32': 0.25, 'outline-32t': 0.36,
            'filled-16': 0.15, 'filled-16t': 0.20, 'filled-24': 0.12, 'filled-24t': 0.17, 'filled-32': 0.12, 'filled-32t': 0.14}
 DEFAULT = re.search(r'#define DOPUS_TOOLBAR_SET "([^"]+)"', (ROOT / 'amarchy' / 'menu_theme.h').read_text()).group(1)
@@ -49,8 +50,22 @@ class DopusToolbar(unittest.TestCase):
             t = pathlib.Path(t)
             subprocess.run(['lha', '-xqw=' + str(t / 'up'), str(ARCHIVE), 'DOpus5/Buttons/Toolbar'], check=True)
             up = (t / 'up' / 'DOpus5' / 'Buttons' / 'Toolbar').read_bytes()
+            # DT-12: the tall sets come from the hand drawer (a copy of dist/dopus-toolbar-hand, the drawer make passes);
+            # one brush gets a sentinel pixel, accent pen 5 at (0, 0), that the rasteriser never draws
+            import shutil
+            import gen_dopus_toolbar as gd
+            shutil.copytree(HAND, t / 'hand')
+            sent = t / 'hand' / 'filled-24t' / 'Makedir.small'
+            sw, sh, _, _, _, srows = ilbm_decode.decode(sent.read_bytes())
+            srows[0][0] = 5
+            sent.write_bytes(gd.ilbm(sw, sh, srows))
             subprocess.run([sys.executable, '-I', str(ROOT / 'tools' / 'gen_dopus_toolbar.py'), str(TABLE), str(TGZ), str(TTF),
-                            str(t / 'up' / 'DOpus5' / 'Buttons' / 'Toolbar'), str(t / 'out')], check=True)
+                            str(t / 'up' / 'DOpus5' / 'Buttons' / 'Toolbar'), str(t / 'out'), str(t / 'hand')], check=True)
+            self.assertEqual(ilbm_decode.decode((t / 'out' / 'Images' / 'filled-24t' / 'Makedir.small').read_bytes())[5][0][0], 5)
+            for hs in gd.HAND_SETS:
+                for f in (t / 'hand' / hs).iterdir():
+                    self.assertEqual(ilbm_decode.decode((t / 'out' / 'Images' / hs / f.name).read_bytes())[5],
+                                     ilbm_decode.decode(f.read_bytes())[5], f)
             self.assertEqual(DEFAULT, 'filled-24')
             bank = (t / 'out' / 'Buttons' / ('Amarchy-toolbar-' + DEFAULT)).read_bytes()
             drawer = t / 'out' / 'Images' / DEFAULT
@@ -85,7 +100,10 @@ class DopusToolbar(unittest.TestCase):
                 w2, h2, d2, _, _, rows2 = ilbm_decode.decode((t / 'out' / 'Images' / name / 'Directory').read_bytes() if (t / 'out' / 'Images' / name / 'Directory').exists() else next((t / 'out' / 'Images' / name).iterdir()).read_bytes())
                 self.assertEqual((w2, h2, d2), (w, h, 3), name)
                 self.assertTrue(any(v for r in rows2 for v in r), name)
-                # DT-8: partial-pixel share of the whole set under its ceiling (the font path is over every one)
+                # DT-8: partial-pixel share of the whole set under its ceiling (the font path is over every one); the
+                # hand-drawn sets (DT-12) are the owner's pixels, not the rasteriser's, so the ceiling is not theirs
+                if name in gd.HAND_SETS:
+                    continue
                 part = tot = 0
                 for f in (t / 'out' / 'Images' / name).iterdir():
                     lv = [v for r in ilbm_decode.decode(f.read_bytes())[5] for v in r]
@@ -104,6 +122,42 @@ class DopusToolbar(unittest.TestCase):
                 if tag == b'BTNW':
                     ud = ud[:128] + struct.pack('>L', struct.unpack('>L', ud[128:132])[0] | 0x10) + ud[132:]
                 self.assertEqual(bd.replace(('dopus5:images/Amarchy/%s/' % DEFAULT).encode(), b'dopus5:images/'), ud)
+
+
+class HandBrushes(unittest.TestCase):
+    """DT-12, where it lives (gen_dopus_toolbar.hand_brush): the owner's brush from any paint program is re-encoded as
+    the generator's own (its CMAP, masking 2), and a wrong size or a pen above 6 stops the build."""
+    def brush(self, w, h, rows, cmap=b'\xff' * 24):
+        import gen_dopus_toolbar as gd
+        b = bytearray(gd.ilbm(w, h, rows))
+        i = b.index(b'CMAP') + 8
+        b[i:i + 24] = cmap
+        return bytes(b)
+
+    def test_reencoded_with_generator_cmap(self):
+        import gen_dopus_toolbar as gd
+        rows = [[(x + y) % 7 for x in range(24)] for y in range(12)]
+        with tempfile.TemporaryDirectory() as t:
+            f = pathlib.Path(t) / 'b'
+            f.write_bytes(self.brush(24, 12, rows))
+            out = gd.hand_brush(f, 24, 12)
+        self.assertEqual(out, gd.ilbm(24, 12, rows))
+
+    def test_wrong_size_or_pen_stops(self):
+        import gen_dopus_toolbar as gd
+        with tempfile.TemporaryDirectory() as t:
+            f = pathlib.Path(t) / 'b'
+            f.write_bytes(self.brush(24, 24, [[0] * 24] * 24))
+            with self.assertRaisesRegex(SystemExit, '24x24, the set needs 24x12'):
+                gd.hand_brush(f, 24, 12)
+            f.write_bytes(self.brush(24, 12, [[7] * 24] * 12))
+            with self.assertRaisesRegex(SystemExit, r'pens \[7\]'):
+                gd.hand_brush(f, 24, 12)
+
+    def test_tall_sets_only(self):
+        import gen_dopus_toolbar as gd
+        self.assertEqual(sorted(gd.HAND_SETS), sorted(f + '-' + s for f in ('outline', 'filled') for s in ('16t', '24t', '32t')))
+        self.assertEqual(sorted(p.name for p in HAND.iterdir()), sorted(gd.HAND_SETS))
 
 
 class StraightStrokes(unittest.TestCase):
