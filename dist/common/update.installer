@@ -74,8 +74,9 @@
                               "kit no longer has, and runs again only the parts of "
                               "the install whose files or script changed. The "
                               "drawer, the assigns, the blocks in S:User-Startup "
-                              "and every choice of the last install stay as they "
-                              "are.\n\n"
+                              "and S:Startup-Sequence, the icons in "
+                              "SYS:WBStartup and every choice of the last "
+                              "install stay as they are.\n\n"
                               "Full install asks every question again and copies "
                               "everything.")
                         (choices "Update" "Full install")

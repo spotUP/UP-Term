@@ -1305,7 +1305,9 @@ def flat_prefs_on():
     return flat_prefs_text_on(c.run('Type ENV:Amarchy/prefs', 20)[1])
 
 
-FLAT_BOOT = 'Run >NIL: UP-Term:bin/amarchy-flat BOOT'   # the kit's flat line (UP-Term: form: older kits only; the Leg W block spells the absolute path; rig update is W8)
+# The kit's flat block spells the install drawer's absolute path (Leg W); the rig runs the same `Run >NIL: <bin>/amarchy-flat
+# BOOT` through the UP-Term: assign instead, so that it loads the build's binary (UP-Term: resolves to SETUP_BIN first).
+FLAT_BOOT = 'Run >NIL: UP-Term:bin/amarchy-flat BOOT'
 
 
 def flat_boot(tag):
@@ -1330,7 +1332,7 @@ def flat_boot(tag):
 
 def start_amarchy(tag):
     """Run the build's Amarchy from SETUP_BIN and wait for its port. --setup ends with it; a rig script that reboots a
-    host-directory system (--os 32: the clean image has no kit S:User-Startup block, so no boot starts Amarchy) calls it
+    host-directory system (--os 32: the clean image has no kit WBStartup icons, so no boot starts Amarchy) calls it
     after the reboot, with UP-Term: as BOOTX:go assigns it (VTCX:Apps)."""
     c.run('Run >NIL: %s/Amarchy' % SETUP_BIN, 20)
     for _ in range(20):

@@ -60,7 +60,8 @@ UPDATE
   its size and checksum) with this kit's, copies only the files that
   changed, deletes the ones this kit no longer has, and runs again only
   the parts of the install whose files or script changed. The drawer,
-  the assigns, the blocks in S:User-Startup and every choice of the last
+  the assigns, the blocks in S:User-Startup and S:Startup-Sequence, the
+  icons in SYS:WBStartup and every choice of the last
   install (kept in ENVARC:up-term/opts) stay as they are; the bar counts
   only what Update copies. An install from a Shell keeps no choices and
   a kit older than Update no list: Install then installs in full.
@@ -996,8 +997,8 @@ AMARCHY
   so is Prefs/Env-Archive. The result is the cache ENVARC:Amarchy/apps,
   written to a temporary file and renamed, so a scan cut short never leaves
   a broken cache. Amarchy only reads the cache; it never scans itself.
-  The scan runs in the background at every boot (a line in S:User-Startup,
-  taken out by Uninstall) and on demand with the Rescan apps row. The
+  The scan runs in the background at every boot (the icon
+  SYS:WBStartup/amarchy-index, taken out by Uninstall) and on demand with the Rescan apps row. The
   scan runs in the background and the menu stays open: its first row shows
   "Scanning..." with the drawer being read, then "Scan done: N apps, M
   games" (or why it stopped), and the Apps level lists the new rows.

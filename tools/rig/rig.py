@@ -336,8 +336,12 @@ KIT_STAMP_BOOT = """If NOT EXISTS VTC:kit-restore
 EndIf""" % {"stamp": kitstamp.STAMP, "hash": kitstamp.HASH}
 
 
-# LEGW NOTE: since Leg W the kit starts Amarchy from a SYS:WBStartup icon and amarchy-flat from a S:Startup-Sequence
-# block; the User-Startup block named below exists only on a clone made from an older kit. Rig logic follows in W8.
+# LEGW: since Leg W the kit starts amarchy-flat from a S:Startup-Sequence block (before IPrefs) and Amarchy and
+# amarchy-index from SYS:WBStartup icons (after LoadWB), none from S:User-Startup. The rig's shadow block is anchored
+# before the User-Startup ';BEGIN UP-Term Amarchy' block of a clone made from an older kit (KIT_AMARCHY_BLOCK); with a
+# current kit there is none, the block goes to the end of S:User-Startup, which still runs before both WBStartup
+# programs. amarchy-flat starts before User-Startup exists, so a boot never gives it the shadowed build: the rig
+# restarts it itself (amarchy_gui_rig.flat_boot).
 # RIG-BOOT-STALE-BIN: the kit's S:User-Startup block `Run >NIL: UP-Term:bin/Amarchy` starts Amarchy (and the programs it
 # starts from UP-Term:bin at boot, amarchy-flat BOOT) before BOOTX:go, which runs beside the Startup-Sequence, has copied
 # the build over them: every boot-started program ran the previous build. The UP-Term: shadow pass therefore also runs
@@ -630,7 +634,7 @@ MMU = "--mmu" in sys.argv and M060 and not NOFPU
 # --no-jit: the plain machine with the JIT compiler off (FS-UAE jit_compiler = 0, Amiberry cachesize=0), no MMU added: tells a JIT bug from a guest bug
 NOJIT = "--no-jit" in sys.argv
 # I1145 startup bisect: --no-solidwin starts no SolidWin (the rig's solidwin-up only logs, the kit's SolidWin block is
-# stripped from the clone); --no-amarchy-block strips the kit's ';BEGIN UP-Term Amarchy' block from the clone's S:User-Startup
+# stripped from the clone); --no-amarchy-block strips what starts Amarchy from the clone (WBStartup icons, Startup-Sequence flat block, an older kit's User-Startup block)
 NOSOLIDWIN = "--no-solidwin" in sys.argv
 NOAMARCHYBLOCK = "--no-amarchy-block" in sys.argv
 DEBUGGER = "--debugger" in sys.argv   # FS-UAE's console debugger on a FIFO (debugger_lines, dbg)
@@ -1050,12 +1054,35 @@ def sys_hdf_no_wasabid(image):
     'auth failed: bad key' (2026-10-25). The block goes from the clone; the master is never touched."""
     strip_user_startup_blocks(image, "UP-Term wasabi")
 
+def sys_hdf_strip_file_blocks(image, path, name):
+    """Remove the ';BEGIN <name>' blocks from the image file <path> ("S/Startup-Sequence"); none: nothing happens."""
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    tmp = RIG / "block-strip.tmp"
+    tmp.unlink(missing_ok=True)
+    if subprocess.run([xdf, str(image), "read", path, str(tmp)], capture_output=True).returncode != 0:
+        return
+    data = tmp.read_bytes()
+    clean = user_startup.strip_upterm_blocks(data, name)
+    if clean != data:
+        tmp.write_bytes(clean)
+        subprocess.run([xdf, str(image), "delete", path], check=True, capture_output=True)
+        subprocess.run([xdf, str(image), "write", str(tmp), path], check=True, capture_output=True)
+    tmp.unlink()
+
+KIT_WBSTARTUP_ICONS = ("WBStartup/Amarchy.info", "WBStartup/amarchy-index.info")
+
 def sys_hdf_skip_blocks(image):
-    """I1145: --no-solidwin / --no-amarchy-block take the kit's blocks out of the clone's S:User-Startup."""
+    """I1145: --no-solidwin / --no-amarchy-block take the kit's blocks out of the clone's S:User-Startup.
+    --no-amarchy-block also removes what starts Amarchy since Leg W: the two SYS:WBStartup icons and the
+    ';BEGIN UP-Term Amarchy-Flat' block of S:Startup-Sequence (the User-Startup blocks stay stripped for an older kit)."""
     if NOSOLIDWIN:
         strip_user_startup_blocks(image, "UP-Term SolidWin")
     if NOAMARCHYBLOCK:
         strip_user_startup_blocks(image, "UP-Term Amarchy")
+        sys_hdf_strip_file_blocks(image, "S/Startup-Sequence", "UP-Term Amarchy-Flat")
+        xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+        for icon in KIT_WBSTARTUP_ICONS:
+            subprocess.run([xdf, str(image), "delete", icon], capture_output=True)   # absent: nothing to remove
 
 def sys_hdf_a500(image):
     """--a500: the clone's S:User-Startup loses every UP-Term block (assign, console, device, Amarchy, Amarchy index ...)
