@@ -6,15 +6,15 @@
 #include "flat_core.h"
 #include "../render/aa_ink_rule.h"
 
-int icl_accept(const char *task, int mode, int apen, int bpen, int x, int y, int w, int h, int il, int it, int ir, int ib)
+int icl_accept(int aa_on, int mode, int apen, int bpen, int x, int y, int w, int h, int il, int it, int ir, int ib)
 {
-    if (!task || (strcmp(task, "Workbench") != 0 && strcmp(task, "dopus") != 0))
+    if (!aa_on)
         return 0;
     if (mode & (ICL_COMPLEMENT | ICL_INVERSVID))
         return 0;
     if (apen == bpen)
         return 0;
-    if (w <= 0 || h <= 0 || w > ICL_MAXW || h > ICL_MAXH)
+    if (w <= 0 || h <= 0 || w > ICL_MAXW || h > ICL_MAXH || (long)w * h > ICL_MAXPX)
         return 0;
     if (x < il || y < it || x + w - 1 > ir || y + h - 1 > ib)
         return 0;

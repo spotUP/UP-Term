@@ -79,6 +79,13 @@ int mtc_advance(mtc *c, unsigned long cp)
     return g->adv;
 }
 
+void mtc_cov_hard(unsigned char *cov, int n)
+{
+    int i;
+    for (i = 0; i < n; i++)
+        cov[i] = cov[i] >= 128 ? 255 : 0;
+}
+
 const mtc_glyph *mtc_glyph_of(mtc *c, unsigned long cp)
 {
     mtc_glyph *g;
@@ -88,6 +95,8 @@ const mtc_glyph *mtc_glyph_of(mtc *c, unsigned long cp)
     g = slot_of(c, cp);
     if (!g->have_cov) {
         c->src.render(c->src.u, cp, g);
+        if (c->src.hard && g->cov)
+            mtc_cov_hard(g->cov, g->w * g->h);
         g->have_cov = 1;
         c->renders++;
     } else
@@ -332,4 +341,5 @@ void mtc_ttf_source(mtc_src *s, mtc_ttf *t, void *(*alloc)(unsigned long), void 
     s->render = ttf_rend;
     s->alloc = alloc;
     s->release = release;
+    s->hard = 0;
 }

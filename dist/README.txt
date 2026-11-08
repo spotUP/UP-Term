@@ -219,6 +219,7 @@ CONFIGURATION (profiles)
                                pen shows closely is drawn with two pens in a fixed
                                pattern; off draws the nearest single pen
      outline-antialias = on    on | off: outline-font glyphs are drawn smoothed (off: hard edges)
+     ui-antialias = on         on | off: menus, window titles, gadget labels, window text, icon labels and bitmap fonts are drawn smoothed
      outline-blend-dest = on   on | off: on a few-colour screen a smoothed edge is blended with the pen of the dither under it
      padding-color = background  background | extend: the strips beside the character
                                grid (the part of the window that is not a whole cell)

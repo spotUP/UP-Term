@@ -15,6 +15,7 @@
 #include "menu_text_core.h"
 #include "menu_font.h"
 #include "../render/aa_ink.h"
+#include "iclabel_core.h"
 #include "../render/fontpair.h"
 #include "../render/outline.h"
 #include "../render/pens_amiga.h"
@@ -45,6 +46,7 @@ struct menu_text {
     pen_cache pens;
     int height, base;
     long aa_drawn;
+    int aa;         /* ui-antialias: bitmap glyphs corner-filled (icl_coverage) and drawn through aa_ink on every screen */
 };
 
 static void *mt_alloc(unsigned long n)
@@ -165,6 +167,20 @@ static int bm_advance(void *u, unsigned long cp)
 /* On a true-colour screen: the glyph as Text() draws it into one plane, as coverage, so mt_draw paints it in the
  * theme's own colours (aa_ink over cybergraphics) instead of on the nearest pens, which showed grey boxes behind
  * every word on the Directory Opus 24-bit screen (owner 2026-10-28). The pad takes kerning and italic overhang. */
+/* ui-antialias on a bitmap font: the RL21 icon-label routine (icl_coverage, amarchy/iclabel_core.c) smooths the glyph:
+ * each empty pixel in an inner corner of the strokes gets partial coverage. No copy of the routine. */
+static void bm_corner_fill(mtc_glyph *g)
+{
+    int n = g->w * g->h, i;
+    uint8_t *mask = (uint8_t *)mt_alloc((unsigned long)n);
+    if (!mask)
+        return;
+    for (i = 0; i < n; i++)
+        mask[i] = g->cov[i] >= 128;
+    icl_coverage(mask, g->w, g->h, g->cov);
+    mt_free_mem(mask);
+}
+
 static int bm_render(void *u, unsigned long cp, mtc_glyph *g)
 {
     menu_text *m = (menu_text *)u;
@@ -187,6 +203,8 @@ static int bm_render(void *u, unsigned long cp, mtc_glyph *g)
     WaitBlit();
     ok = mtc_cov_from_plane(bm->Planes[0], bm->BytesPerRow, bw, bh, pad, g, mt_alloc, mt_free_mem);
     FreeBitMap(bm);
+    if (ok && m->aa && g->cov && g->w > 0)
+        bm_corner_fill(g);
     return ok;
 }
 
@@ -230,6 +248,7 @@ static int mt_open_ttf_spec(menu_text *m, const char *spec, int px)
         ttf_open(&io, &m->font) == TTF_OK) {
         if (mtc_ttf_init(&m->tt, m->font, px, m->rx, m->ry)) {
             mtc_ttf_source(&src, &m->tt, mt_alloc, mt_free_mem);
+            src.hard = !m->aa;   /* ui-antialias off: TrueType with hard edges */
             mtc_init(&m->core, &src);
             m->height = m->tt.line;
             m->base = m->tt.base;
@@ -255,7 +274,7 @@ static int mt_open_ttf(menu_text *m, const char *name, int px)
     return 0;
 }
 
-menu_text *mt_open(struct Screen *scr, int square, const char *spec)
+menu_text *mt_open(struct Screen *scr, int square, const char *spec, int aa)
 {
     menu_text *m = (menu_text *)AllocVec(sizeof(*m), MEMF_ANY | MEMF_CLEAR);
     char name[64];
@@ -266,6 +285,7 @@ menu_text *mt_open(struct Screen *scr, int square, const char *spec)
     if (!m)
         return 0;
     m->scr = scr;
+    m->aa = aa;
     /* a true-colour screen draws every colour as itself (mt_fill, mt_draw): its pens are few and taken */
     if (GetBitMapAttr(scr->RastPort.BitMap, BMA_DEPTH) > 8 && (m->cgx = OpenLibrary((STRPTR)"cybergraphics.library", 41)) != 0)
         m->truecolor = 1;
@@ -294,13 +314,14 @@ menu_text *mt_open(struct Screen *scr, int square, const char *spec)
     SetFont(m->measure_rp, m->bitmap);
     src.u = m;
     src.advance = bm_advance;
-    src.render = m->cgx ? bm_render : 0;   /* a palette screen keeps Text() on its pens (mt_draw) */
+    src.render = (m->cgx || m->aa) ? bm_render : 0;   /* ui-antialias off on a palette screen: Text() on its pens (mt_draw) */
     src.alloc = mt_alloc;
+    src.hard = 0;
     src.release = mt_free_mem;
     mtc_init(&m->core, &src);
     m->height = m->bitmap->tf_YSize;
     m->base = m->bitmap->tf_Baseline;
-    if (m->cgx)
+    if (m->cgx || m->aa)
         ink_init(m);
     return m;
 }
@@ -375,7 +396,7 @@ void mt_draw(menu_text *m, struct RastPort *rp, int x, int y, const char *text, 
 {
     int n;
     unsigned long cp;
-    if (!m->font && !m->cgx) { /* bitmap on a palette screen: Text() on the pens nearest fg and bg */
+    if (!m->font && !m->cgx && !m->aa) { /* bitmap, palette screen, ui-antialias off: Text() on the pens nearest fg and bg */
         LONG pf = pen_of(m, fg), pb = pen_of(m, bg);
         SetFont(rp, m->bitmap);
         SetABPenDrMd(rp, pf < 0 ? 1 : (UBYTE)pf, pb < 0 ? 0 : (UBYTE)pb, JAM2);

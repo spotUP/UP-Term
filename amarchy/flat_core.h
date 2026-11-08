@@ -48,7 +48,7 @@ typedef struct flat_state {
     uint8_t glyph_set;          /* 40 gt_look glyph_set */
     uint8_t ghost_style;        /* 41 gt_look ghost_style */
     uint8_t hover;              /* 42 gt_look hover_on */
-    uint8_t pad5;               /* 43 reserved, zero */
+    uint8_t aa;                 /* 43 ui-antialias: 1 = UI text is drawn smoothed (written by Amarchy from the prefs key, default on); 0 = hard edges */
     uint8_t knob_rgb[3];        /* 44 the Scroll Knob colour (R, G, B) from the theme element GTE_SCROLL_KNOB; all zero = derive it */
     uint8_t pad6;               /* 47 reserved, zero (keeps the block a multiple of 4 bytes) */
 } flat_state;                   /* 48 bytes */

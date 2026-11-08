@@ -1789,7 +1789,7 @@ static void pick_font(gui *g)
     ap = amconf_borrow();
     gt_dos_current(name, (int)sizeof name);   /* the saved theme, as pens_get(g, 0) reads it */
     mt_font_spec_load(gt_dos_read, 0, name, ap->val[AM_FONT], spec, (int)sizeof spec);   /* the theme's Menu Font (loaded with the editor's model; gt_dos_load_current attaches none), else AM_FONT ("name:size"), else built-in */
-    g->mt = mt_open(g->scr, square, spec);
+    g->mt = mt_open(g->scr, square, spec, amconf_flat_index(ap, AM_UIAA));   /* ui-antialias: bitmap fonts get the icon-label coverage, off = hard edges */
     amconf_return(ap);
 }
 

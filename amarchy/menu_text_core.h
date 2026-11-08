@@ -28,6 +28,7 @@ typedef struct mtc_src {
     int (*render)(void *u, unsigned long cp, mtc_glyph *g);         /* fills left, w, h, cov (malloc'd); 0 = blank */
     void *(*alloc)(unsigned long n);
     void (*release)(void *p);
+    int hard;       /* ui-antialias off: each rendered coverage becomes 0 or 255 (hard edges), at render time */
 } mtc_src;
 
 typedef struct mtc {
@@ -39,6 +40,8 @@ typedef struct mtc {
 } mtc;
 
 void mtc_init(mtc *c, const mtc_src *src);
+/* ui-antialias off: coverage of n pixels to 0 (under 128) or 255, in place */
+void mtc_cov_hard(unsigned char *cov, int n);
 void mtc_free(mtc *c);
 
 /* the next code point of UTF-8 s (a malformed byte is itself); *n bytes used, at least 1 unless *s is 0 */

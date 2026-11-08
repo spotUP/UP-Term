@@ -68,6 +68,7 @@ void amconf_to_fields(const am_prefs *p, prefs_fields *f)
     f->am_iconstyle = amconf_icon_outline(p);
     f->am_icontext = amconf_icon_text(p);
     f->am_borderblank = amconf_flat_index(p, AM_BORDERBLANK);
+    f->am_uiaa = amconf_flat_index(p, AM_UIAA);
 }
 
 void amconf_from_fields(am_prefs *p, const prefs_fields *f)
@@ -86,6 +87,7 @@ void amconf_from_fields(am_prefs *p, const prefs_fields *f)
     strcpy(p->val[AM_ICONSTYLE], f->am_iconstyle ? "outline" : "filled");
     strcpy(p->val[AM_ICONTEXT], f->am_icontext == 1 ? "outline" : f->am_icontext == 2 ? "shadow" : "plain");
     strcpy(p->val[AM_BORDERBLANK], f->am_borderblank ? "on" : "off");
+    strcpy(p->val[AM_UIAA], f->am_uiaa ? "on" : "off");
 }
 
 int amconf_icons(const am_prefs *p)

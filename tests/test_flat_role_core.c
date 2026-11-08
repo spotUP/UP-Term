@@ -162,7 +162,7 @@ static void r6_workbench_parity(void)
     flat_role_resolve(rgb, 0, 0, 0, cmap, DK_ROLES, dri, &out);
     memset(&want, 0, sizeof want);
     memset(&got, 0, sizeof got);
-    desk_flat_state(1, 1, &want);
+    desk_flat_state(1, 1, 1, &want);
     flat_role_apply(&got, &out);
     CHECK_INT(got.pen_outline, want.pen_outline);
     CHECK_INT(got.pen_button, want.pen_button);

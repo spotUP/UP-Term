@@ -115,12 +115,13 @@ int desk_icons_state(int on, int outline)
     return on ? (outline ? 2 : 1) : 0;
 }
 
-void desk_flat_state(int flat, int gadgets, flat_state *s)
+void desk_flat_state(int flat, int gadgets, int aa, flat_state *s)
 {
     unsigned char t, l, b;
     desk_flat_state_calls++;
     desk_flat_glyph_pens(&t, &l, &b);
     s->enabled = (flat || gadgets) ? 1 : 0;
+    s->aa = aa ? 1 : 0;
     s->pen_text = t;
     s->pen_line = l;
     s->pen_back = b;

@@ -1406,7 +1406,7 @@ static void test_desk_flat_state(void)
             flat_init(&s);
             s.held = 2; s.still_chained = 1; s.calls = 77;
             before = desk_flat_state_calls;
-            desk_flat_state(f, g, &s);
+            desk_flat_state(f, g, 1, &s);
             CHECK_INT(desk_flat_state_calls, before + 1);                      /* sentinel: the mapping ran */
             CHECK_INT(s.enabled, f || g);                                     /* either switch enables; both off = 0 */
             CHECK_INT(s.pen_text, t);
@@ -1415,6 +1415,9 @@ static void test_desk_flat_state(void)
             CHECK_INT(s.pen_button, DK_SELECTION);                            /* FLAT-BUTTON-FILL */
             CHECK_INT(s.pen_ptext, DK_BG);
             CHECK_INT(s.pen_outline, DK_ACCENT);                              /* the theme accent pen, never 0 */
+            CHECK_INT(s.aa, 1);                                               /* ui-antialias on */
+            desk_flat_state(f, g, 0, &s);
+            CHECK_INT(s.aa, 0);                                               /* ui-antialias off */
             CHECK(s.pen_outline != 0);
             CHECK_INT(s.version, FLAT_VERSION);
             CHECK_INT(s.size, FLAT_STATE_SIZE);
@@ -1443,7 +1446,7 @@ static void test_scroller(void)
     flat_state s;
     int kn, tr;
     flat_init(&s);
-    desk_flat_state(1, 1, &s);
+    desk_flat_state(1, 1, 1, &s);
     kn = s.pen_outline;                                                  /* S32-KNOB-STATE: the active knob is the accent pen_outline (was the muted pen: invisible on the track) */
     tr = s.pen_back;
     CHECK(kn != tr);
@@ -1555,7 +1558,7 @@ static void test_knob_pen(void)
 {
     flat_state s;
     flat_init(&s);
-    desk_flat_state(1, 1, &s);
+    desk_flat_state(1, 1, 1, &s);
     s.pen_outline = 0;                                                   /* the knob pen is the fallback below the S32-KNOB-STATE accent */
     s.pen_knob = 9;
     CHECK_INT(flat_knob_pen(&s, 4), 9);
@@ -1755,7 +1758,7 @@ static void test_arrow_aspect(void)
     unsigned long w;
     int side, x0, x1, rows, top, bot, lw[3] = { 0 }, uh[3] = { 0 }, gap[3] = { 0 };
     flat_init(&st);
-    desk_flat_state(1, 1, &st);
+    desk_flat_state(1, 1, 1, &st);
     for (side = 1; side <= 2; side++) {
         for (w = FLAT_W_LEFT; w <= FLAT_W_DOWN; w++) {
             if (w == FLAT_W_LEFT || w == FLAT_W_RIGHT) {
@@ -1791,7 +1794,7 @@ static void test_arrow_glyph_pens(void)
     unsigned long w;
     int d, si, x, y, glyph, box;
     flat_init(&st);
-    desk_flat_state(1, 1, &st);
+    desk_flat_state(1, 1, 1, &st);
     for (w = FLAT_W_LEFT; w <= FLAT_W_DOWN; w++)
         for (d = 0; d < 2; d++)
             for (si = 0; si < 2; si++) {
@@ -2019,7 +2022,7 @@ static void test_button_pen_held(void)
     flat_pen_ops o;
     flat_state s;
     int scr, i, n, live[4], d, bp, kp, sel;
-    desk_flat_state(1, 1, &s);
+    desk_flat_state(1, 1, 1, &s);
     CHECK_INT(s.pen_button, DK_SELECTION);                          /* the role number Amarchy writes */
     s.sel_rgb[0] = 0x28; s.sel_rgb[1] = 0x2c; s.sel_rgb[2] = 0x34;
     s.pen_knob = 0; s.pen_dimtext = 0;                              /* the knob falls back to the button pen */
@@ -2381,7 +2384,7 @@ static void test_ghost_menu_pen(void)
 {
     flat_state s;
     flat_init(&s);
-    desk_flat_state(1, 1, &s);
+    desk_flat_state(1, 1, 1, &s);
     CHECK(s.pen_dimtext != 0);
     CHECK_INT(flat_gm_pen(&s, 8, 1, 0, 1, 0x4444, 0x1111, 2), s.pen_dimtext);      /* item: Layer NULL */
     CHECK_INT(flat_gm_pen(&s, 3, 1, 0, 1, 0x4444, 0x1111, 2), s.pen_dimtext);      /* 8 colours */
@@ -2475,7 +2478,7 @@ static void test_pens_tab_never_cross_screens(void)
     flat_state s;
     int scr_a, scr_b;
     const flat_pens *pa, *pb;
-    desk_flat_state(1, 1, &s);
+    desk_flat_state(1, 1, 1, &s);
     flat_pens_tab_init(&t);
     o.obtain = wb_obtain; o.release = wb_release; o.rgb = wb_rgb;
     wb_screen(&w, 100);
@@ -2496,7 +2499,7 @@ static void test_pens_tab_switch_releases_nothing(void)
     flat_pen_ops o;
     flat_state s;
     int scr_a, scr_b, obtains, dim_a;
-    desk_flat_state(1, 1, &s);
+    desk_flat_state(1, 1, 1, &s);
     flat_pens_tab_init(&t);
     o.obtain = wb_obtain; o.release = wb_release; o.rgb = wb_rgb;
     wb_screen(&w, 100);
@@ -2519,7 +2522,7 @@ static void test_pens_tab_new_epoch_not_old_pens(void)
     flat_pen_ops o;
     flat_state s;
     int scr_a;
-    desk_flat_state(1, 1, &s);
+    desk_flat_state(1, 1, 1, &s);
     flat_pens_tab_init(&t);
     o.obtain = wb_obtain; o.release = wb_release; o.rgb = wb_rgb;
     wb_screen(&w, 100);
@@ -2539,7 +2542,7 @@ static void test_pens_tab_full_obtains_nothing(void)
     flat_state s;
     static int scr[FLAT_PENS_SLOTS + 1];
     int i, obtains;
-    desk_flat_state(1, 1, &s);
+    desk_flat_state(1, 1, 1, &s);
     flat_pens_tab_init(&t);
     o.obtain = wb_obtain; o.release = wb_release; o.rgb = wb_rgb;
     wb_screen(&w, 100);
@@ -2565,7 +2568,7 @@ static void test_pens_tab_reap_forgets_closed_only(void)
     flat_pen_ops o;
     flat_state s;
     int scr_a, scr_b, scr_c;
-    desk_flat_state(1, 1, &s);
+    desk_flat_state(1, 1, 1, &s);
     flat_pens_tab_init(&t);
     o.obtain = wb_obtain; o.release = wb_release; o.rgb = wb_rgb;
     wb_screen(&w, 100);
@@ -2589,7 +2592,7 @@ static void test_pens_non_workbench_slot_keeps_flat_state(void)
     flat_pen_ops o;
     flat_state s;
     int scr;
-    desk_flat_state(1, 1, &s);
+    desk_flat_state(1, 1, 1, &s);
     s.sel_rgb[0] = 0x28; s.sel_rgb[1] = 0x2c; s.sel_rgb[2] = 0x34;
     s.pen_dim = 11; s.pen_knob = 12; s.pen_inbar = 13; s.pen_sel = 14;     /* the Workbench's numbers */
     flat_pens_init(&p);
@@ -2622,7 +2625,7 @@ static void test_state_for_screen_pens(void)
     flat_pen_ops o;
     flat_state look, a, b, c;
     int scr_a, scr_b, scr_c;
-    desk_flat_state(1, 1, &look);
+    desk_flat_state(1, 1, 1, &look);
     look.sel_rgb[0] = 0x28; look.sel_rgb[1] = 0x2c; look.sel_rgb[2] = 0x34;
     look.pen_dim = 77; look.pen_knob = 78; look.pen_inbar = 79; look.pen_sel = 80;   /* stale numbers in the look block */
     flat_pens_tab_init(&t);
@@ -2652,7 +2655,7 @@ static void draw_setup(flat_state *look, flat_pens_tab *t, int *sa, int *sb)
 {
     wbscr w;
     flat_pen_ops o;
-    desk_flat_state(1, 1, look);
+    desk_flat_state(1, 1, 1, look);
     look->pen_dim = 77; look->pen_knob = 78; look->pen_inbar = 79; look->pen_sel = 80;
     flat_pens_tab_init(t);
     o.obtain = wb_obtain; o.release = wb_release; o.rgb = wb_rgb;

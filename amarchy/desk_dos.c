@@ -564,20 +564,21 @@ static void dk_flat_sync_theme(const gtheme *thp, int changed_only)
     am_prefs *ap;
     flatshared *r;
     const gtheme *th = thp;
-    int flat, gad, wrote = 0;
+    int flat, gad, aa, wrote = 0;
     ap = amconf_borrow();
     flat = amconf_flat_index(ap, AM_FLAT);
     gad = amconf_flat_index(ap, AM_FLATGAD);
+    aa = amconf_flat_index(ap, AM_UIAA);
     dk_icons_sync(flat || gad, amconf_icon_outline(ap));
     Forbid();
     r = (flatshared *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
     if (r && flat_check(&r->st, sizeof r->st) == FLAT_OK) {
         flat_state next = r->st;
-        desk_flat_state(flat, gad, &next);
+        desk_flat_state(flat, gad, aa, &next);
         desk_flat_inbar(th, &next);                 /* S32-INACTIVE-BAR: the theme `inactive` colour */
         desk_flat_look(th, &next);                  /* TE-6.1: the version-5 look fields and knob colour */
         if (!changed_only || memcmp(&next, &r->st, sizeof next) != 0) {
-            desk_flat_state(flat, gad, &r->st);
+            desk_flat_state(flat, gad, aa, &r->st);
             desk_flat_inbar(th, &r->st);
             desk_flat_look(th, &r->st);
             if (r->task)

@@ -39,7 +39,7 @@ void desk_flat_glyph_pens(unsigned char *text, unsigned char *line, unsigned cha
  * pen map to the flat_state block of "Amarchy.Flat": enabled = either switch, pen_text/pen_line/pen_back = desk_flat_glyph_pens,
  * pen_outline = the theme accent pen (DK_ACCENT), pen_button = DK_SELECTION, pen_ptext = DK_BG. Only these fields are written; version, size, held, still_chained and calls
  * belong to the resident program and are left alone. desk_flat_state_calls counts calls (the reachability sentinel). */
-void desk_flat_state(int flat, int gadgets, flat_state *s);
+void desk_flat_state(int flat, int gadgets, int aa, flat_state *s);
 extern unsigned long desk_flat_state_calls;
 /* S32-INACTIVE-BAR: the theme's GR_INACTIVE colour into s->inbar_rgb (amarchy-flat obtains the pen itself, like the knob pen; an all-zero
  * triple means "not written": flat derives the default from the screen's surface and text colours). Not part of desk_flat_state: that one

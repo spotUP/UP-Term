@@ -41,6 +41,7 @@ static void open_fake(mtc *c)
     s.render = f_render;
     s.alloc = f_alloc;
     s.release = f_rel;
+    s.hard = 0;
     fake_adv_calls = fake_render_calls = 0;
     mtc_init(c, &s);
 }
@@ -262,9 +263,51 @@ static void test_bitmap_truecolor_wired(void)
     n = fread(src, 1, sizeof src - 1, f);
     fclose(f);
     src[n] = 0;
-    CHECK(strstr(src, "if (!m->font && !m->cgx) {") != 0);
-    CHECK(strstr(src, "src.render = m->cgx ? bm_render : 0;") != 0);
+    CHECK(strstr(src, "if (!m->font && !m->cgx && !m->aa) {") != 0);
+    CHECK(strstr(src, "src.render = (m->cgx || m->aa) ? bm_render : 0;") != 0);
     CHECK(strstr(src, "mtc_cov_from_plane(bm->Planes[0]") != 0);
+    /* ui-antialias: the bitmap glyph goes through the icon-label corner fill, TrueType gets hard edges when off */
+    CHECK(strstr(src, "if (ok && m->aa && g->cov && g->w > 0)\n        bm_corner_fill(g);") != 0);
+    CHECK(strstr(src, "icl_coverage(mask, g->w, g->h, g->cov);") != 0);
+    CHECK(strstr(src, "src.hard = !m->aa;") != 0);
+}
+
+/* ui-antialias off: a rendered TrueType glyph's coverage is cut to 0 or 255 in the cache (hard edges); on: kept */
+static int ramp_render(void *u, unsigned long cp, mtc_glyph *g)
+{
+    static const unsigned char ramp[4] = {0, 100, 128, 255};
+    (void)u; (void)cp;
+    g->left = 0;
+    g->w = 4;
+    g->h = 1;
+    g->cov = (unsigned char *)malloc(4);
+    memcpy(g->cov, ramp, 4);
+    return 1;
+}
+
+static void test_hard_edges_when_antialias_off(void)
+{
+    static mtc c;
+    mtc_src s;
+    const mtc_glyph *g;
+    int hard;
+    for (hard = 0; hard <= 1; hard++) {
+        s.u = 0;
+        s.advance = f_adv;
+        s.render = ramp_render;
+        s.alloc = f_alloc;
+        s.release = f_rel;
+        s.hard = hard;
+        mtc_init(&c, &s);
+        g = mtc_glyph_of(&c, 'a');
+        CHECK(g != 0 && g->cov != 0);
+        if (g && g->cov) {
+            CHECK_INT(g->cov[1], hard ? 0 : 100);
+            CHECK_INT(g->cov[2], hard ? 255 : 128);
+            CHECK_INT(g->cov[3], 255);
+        }
+        mtc_free(&c);
+    }
 }
 
 void suite_menu_text(void)
@@ -279,4 +322,5 @@ void suite_menu_text(void)
     test_gui_uses_menu_text();
     test_bitmap_plane_coverage();
     test_bitmap_truecolor_wired();
+    test_hard_edges_when_antialias_off();
 }

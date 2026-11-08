@@ -11,9 +11,9 @@
 
 #include <stdint.h>
 
-#define ICL_MAXW 320            /* widest label box blended (topaz 8: 40 characters); wider ones run stock */
-#define ICL_MAXH 24             /* tallest label box blended */
-#define ICL_MAXPX (ICL_MAXW * ICL_MAXH)
+#define ICL_MAXW 1024           /* widest box blended (a window title across a wide screen); wider ones run stock */
+#define ICL_MAXH 24             /* tallest box blended */
+#define ICL_MAXPX (320 * ICL_MAXH)  /* most pixels in one box (the buffers): 320 x 24, a 960 x 8 title, a 480 x 16 title */
 
 /* rp->DrawMode bits (graphics/rastport.h), repeated so the host needs no Amiga headers */
 #define ICL_JAM2 1
@@ -23,10 +23,11 @@
 #define ICL_COV_ONE 96          /* an empty pixel in one inner corner of the glyph (two orthogonal glyph neighbours) */
 #define ICL_COV_TWO 160         /* an empty pixel in two or more such corners */
 
-/* Does this Text call get antialiased? The task is "Workbench" or "dopus", the mode JAM1 or JAM2 with no COMPLEMENT
- * or INVERSVID, APen != BPen, the box (x, y, w, h) non-empty, at most ICL_MAXW x ICL_MAXH, and wholly inside the window's
+/* Does this Text call get antialiased? ui-antialias is on (aa_on != 0; any task), the mode JAM1 or JAM2 with no COMPLEMENT
+ * or INVERSVID, APen != BPen, the box (x, y, w, h) non-empty, at most ICL_MAXW wide,
+ * ICL_MAXH tall and ICL_MAXPX pixels, and wholly inside the window's
  * inner area il..ir, it..ib (inclusive, rastport coordinates). 1 = yes. */
-int icl_accept(const char *task, int mode, int apen, int bpen, int x, int y, int w, int h, int il, int it, int ir, int ib);
+int icl_accept(int aa_on, int mode, int apen, int bpen, int x, int y, int w, int h, int il, int it, int ir, int ib);
 
 /* The glyph mask of a box of n pixels. JAM2 (jam2 != 0): a pixel is glyph when after is APen; exact != 0 compares the
  * values (pens), exact == 0 takes the nearer of apen and bpen (a 15/16-bit RTG screen reads the pens back rounded).

@@ -763,7 +763,7 @@ typedef void (*textfn)(__reg("a1") struct RastPort *, __reg("a0") CONST_STRPTR, 
 extern void flat_tx_entry(void);
 
 /* ---- RL21 SELECTA-AA-ICONTEXT: antialiased Workbench and DOpus icon labels, inside the Text patch (no second patch).
- * A label call (icl_accept: task Workbench or dopus, JAM1/JAM2, box inside the window's inner area) reads its box
+ * A label call (icl_accept: ui-antialias on, JAM1/JAM2, box inside the window) reads its box
  * before (JAM1: the backdrop) and after the stock Text, builds the glyph mask and corner coverage (iclabel_core.c), and
  * writes the edge pixels back blended: ce_mix on a true-colour screen (cybergraphics ReadPixelArray/WritePixelArray),
  * a cached ObtainBestPen shade on a pen screen (ReadPixelArray8/WritePixelArray8). The buffers are allocated once
@@ -910,8 +910,8 @@ static void icl_read(struct RastPort *rp, int rtg, int x, int y, int w, int h, u
 /* S62-FLAT-RF-TX-BUDGET: icl_label runs on the stack of whichever task calls Text; it is split so no frame holds more than its
  * own step (icl_box: the ink box; icl_run: draw, read, mask; icl_write: blend and write). */
 
-/* The label's ink box b = x, y, w, h (TextExtent at the pen) when icl_accept takes it for the task's name and the window's inner box */
-static int icl_box(struct RastPort *rp, struct Window *w, struct Task *me, CONST_STRPTR str, ULONG count, int *b)
+/* The label's ink box b = x, y, w, h (TextExtent at the pen) when icl_accept takes it (ui-antialias on, the window box) */
+static int icl_box(flatshared *r, struct RastPort *rp, struct Window *w, CONST_STRPTR str, ULONG count, int *b)
 {
     struct TextExtent te;
     int il, it, ir, ib;
@@ -922,10 +922,10 @@ static int icl_box(struct RastPort *rp, struct Window *w, struct Task *me, CONST
     b[3] = te.te_Extent.MaxY - te.te_Extent.MinY + 1;
     if (w->Flags & WFLG_GIMMEZEROZERO) {
         il = 0; it = 0; ir = w->GZZWidth - 1; ib = w->GZZHeight - 1;
-    } else {
-        il = w->BorderLeft; it = w->BorderTop; ir = w->Width - w->BorderRight - 1; ib = w->Height - w->BorderBottom - 1;
+    } else {   /* the whole window box: titles are drawn in the border */
+        il = 0; it = 0; ir = w->Width - 1; ib = w->Height - 1;
     }
-    return icl_accept((const char *)me->tc_Node.ln_Name, rp->DrawMode, rp->FgPen, rp->BgPen, b[0], b[1], b[2], b[3], il, it, ir, ib);
+    return icl_accept(r->st.aa, rp->DrawMode, rp->FgPen, rp->BgPen, b[0], b[1], b[2], b[3], il, it, ir, ib);
 }
 
 /* The blended edges of the label in box b, ink colour fg, written back over the stock glyphs */
@@ -982,14 +982,12 @@ static void icl_run(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG 
 static int icl_label(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG count)
 {
     struct Window *w;
-    struct Task *me;
     icl_cx icx;
     int b[4], depth;
     if (!icl_ready || !rp->Layer || !rp->Layer->Window || !rp->Font || !rp->BitMap || count == 0)
         return 0;
     w = (struct Window *)rp->Layer->Window;
-    me = FindTask(NULL);
-    if (rp != w->RPort || !me->tc_Node.ln_Name || !icl_box(rp, w, me, str, count, b))
+    if (rp != w->RPort || !icl_box(r, rp, w, str, count, b))
         return 0;
     depth = (int)GetBitMapAttr(rp->BitMap, BMA_DEPTH);
     if (depth > 8 && !icl_cgx)
@@ -1044,10 +1042,10 @@ static void tx_span(struct Window *w, int *sx0, int *sx1)
         }
 }
 
-/* The decided title (ft): the band, then the title text in its pens */
-static void tx_title_draw(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG count, const flat_title *ft)
+/* The decided title (ft): the band, then the title's pens (flat_tx_c draws the text and puts the caller's pens back) */
+static void tx_title_draw(flatshared *r, struct RastPort *rp, const flat_title *ft)
 {
-    UBYTE fg = rp->FgPen, bg = rp->BgPen, dm = rp->DrawMode;
+    UBYTE dm = rp->DrawMode;
     WORD cx = rp->cp_x, cy = rp->cp_y;
     r->ttitle++;
     if (ft->band_pen >= 0) {
@@ -1065,12 +1063,9 @@ static void tx_title_draw(flatshared *r, struct RastPort *rp, CONST_STRPTR str, 
         SetAPen(rp, (UBYTE)ft->text_pen);
     if (ft->bg_pen >= 0)
         SetBPen(rp, (UBYTE)ft->bg_pen);
-    ((textfn)r->tsw.saved)(rp, str, count, (struct Library *)GfxBase);
-    SetAPen(rp, fg);
-    SetBPen(rp, bg);
 }
 
-/* The title text in the accent band (flat_title_decide). Returns 1 when drawn. */
+/* The title text in the accent band (flat_title_decide): band drawn and title pens set. Returns 1 when set. */
 static int tx_title(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG count)
 {
     struct Window *w = (struct Window *)rp->Layer->Window;
@@ -1080,39 +1075,39 @@ static int tx_title(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG 
     if (!flat_title_decide(st_rp(r, rp), rp->BitMap ? rp->BitMap->Depth : 0, (w->Flags & WFLG_WINDOWACTIVE) != 0, (const char *)w->Title,
                            w->Width, w->BorderTop, (const char *)str, (int)count, rp->cp_y - (rp->Font ? rp->Font->tf_Baseline : 0), sx0, sx1, &ft))
         return 0;
-    tx_title_draw(r, rp, str, count, &ft);
+    tx_title_draw(r, rp, &ft);
     return 1;
 }
 
-/* A label pen from the frame tracker (flat_tx_pen). Returns 1 when drawn. */
-static int tx_armed(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG count)
+/* A label pen from the frame tracker (flat_tx_pen), set as APen. Returns 1 when set. */
+static int tx_armed(flatshared *r, struct RastPort *rp)
 {
     int pen = flat_tx_pen(st_rp(r, rp), &r->tx, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL), rp->cp_x, rp->cp_y);
-    UBYTE fg;
     if (pen < 0)
         return 0;
-    fg = rp->FgPen;
     r->thits++;
     SetAPen(rp, (UBYTE)pen);
-    ((textfn)r->tsw.saved)(rp, str, count, (struct Library *)GfxBase);
-    SetAPen(rp, fg);
     return 1;
 }
 
-/* S62-FLAT-RF-TX-BUDGET: flat_tx_c runs on the stack of whichever task calls Text; a dispatcher, each branch a helper */
+/* S62-FLAT-RF-TX-BUDGET: flat_tx_c runs on the stack of whichever task calls Text; a dispatcher, each branch a helper.
+ * The flat title and the armed label only set pens (their frames are gone before the text is drawn), then every text
+ * goes through one step: the icon-label blend (RL21, ui-antialias), else stock Text. The caller's pens come back after. */
 void flat_tx_c(struct RastPort *rp, CONST_STRPTR str, ULONG count)
 {
     flatshared *r = g_r;
-    int on = r->st.enabled && !r->st.held;
+    int on = r->st.enabled && !r->st.held, set;
+    UBYTE fg = rp->FgPen, bg = rp->BgPen;
     r->tcalls++;
     flat_gh_text(&r->gh, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL), rp->cp_x, rp->cp_y, (const char *)str, (int)count);
-    if (on && r->rsw.installed && rp->Layer && rp->Layer->Window && tx_title(r, rp, str, count))
-        return;
-    if (r->tx.armed && tx_armed(r, rp, str, count))
-        return;
-    if (on && icl_label(r, rp, str, count))       /* RL21 icon label */
-        return;
-    ((textfn)r->tsw.saved)(rp, str, count, (struct Library *)GfxBase);
+    set = (on && r->rsw.installed && rp->Layer && rp->Layer->Window && tx_title(r, rp, str, count))
+          || (r->tx.armed && tx_armed(r, rp));
+    if (!(on && icl_label(r, rp, str, count)))
+        ((textfn)r->tsw.saved)(rp, str, count, (struct Library *)GfxBase);
+    if (set) {
+        SetAPen(rp, fg);
+        SetBPen(rp, bg);
+    }
 }
 
 static int tx_install(flatshared *r)
@@ -2262,6 +2257,7 @@ int main(void)
     poll_timer tm, pen_tm;
     int install_rc = FLAT_ERR_ARG;                      /* no install tried (held or no libraries) */
     int marker_live = 0;
+    flat_state st0;                                     /* the prefs' state, read before the instance guard */
     (void)ver;
     stk_probe_init("AMFLT");
     InitSemaphore(&cl_ss);
@@ -2284,6 +2280,15 @@ int main(void)
     }
     if (is_boot(args) && !boot_wanted())
         return 0;
+    flat_init(&st0);
+    {   /* FLAT-C9: the switch and pens from the prefs (the one mapping desk apply uses too). Read here, before the
+           guard: a DOS read inside Forbid waits and breaks it, and a second starter (User-Startup's BOOT line and
+           Amarchy's start gate run in the same second) then passed the guard too and patched twice (KS31-BOOT-CRASH) */
+        am_prefs *bp;
+        bp = amconf_borrow();
+        desk_flat_state(amconf_flat_index(bp, AM_FLAT), amconf_flat_index(bp, AM_FLATGAD), amconf_flat_index(bp, AM_UIAA), &st0);
+        amconf_return(bp);
+    }
     Forbid();
     r = (flatshared *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
     if (r && task_alive(r->task, r->tname)) {
@@ -2308,13 +2313,7 @@ int main(void)
         for (i = 0; FLAT_SEM_NAME[i] && i < (int)sizeof r->name - 1; i++)
             r->name[i] = FLAT_SEM_NAME[i];
         r->ss.ss_Link.ln_Name = r->name;
-        flat_init(&r->st);
-        {   /* FLAT-C9: the switch and pens from the prefs (the one mapping desk apply uses too) */
-            am_prefs *bp;
-            bp = amconf_borrow();
-            desk_flat_state(amconf_flat_index(bp, AM_FLAT), amconf_flat_index(bp, AM_FLATGAD), &r->st);
-            amconf_return(bp);
-        }
+        r->st = st0;
         r->task = me;
         if (me->tc_Node.ln_Name) {
             for (i = 0; me->tc_Node.ln_Name[i] && i < (int)sizeof r->tname - 1; i++)

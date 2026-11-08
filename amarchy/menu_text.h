@@ -14,8 +14,9 @@ typedef struct menu_text menu_text;
 
 /* The font of spec "name:size" (the AM_FONT value) on scr: TrueType when the name resolves to a .ttf in FONTS:
  * (the lookup the terminal uses, render/outline.c vo_ttf_spec), else the bitmap font menu_font_open picks
- * (square: the screen's pixels are square). 0 when there is no memory. */
-menu_text *mt_open(struct Screen *scr, int square, const char *spec);
+ * (square: the screen's pixels are square). aa = ui-antialias: a bitmap font is smoothed with the icon-label corner fill
+ * and drawn through aa_ink on every screen; 0 keeps Text() on palette screens and gives TrueType hard edges. 0 when there is no memory. */
+menu_text *mt_open(struct Screen *scr, int square, const char *spec, int aa);
 void mt_close(menu_text *m);
 /* the drawn theme changes: release the pens held for the old colours (palette screens) */
 void mt_theme_changed(menu_text *m);
@@ -35,7 +36,8 @@ int mt_width(menu_text *m, const char *text);
 /* pixels the first len bytes take; the bytes of the first len that fit maxw pixels (whole code points) */
 int mt_width_n(menu_text *m, const char *text, int len);
 int mt_prefix(menu_text *m, const char *text, int len, int maxw);
-/* antialiased glyphs mt_draw has drawn since mt_open (0 for a bitmap font): the rig's proof the TrueType path ran */
+/* coverage glyphs mt_draw has drawn since mt_open (TrueType, or a bitmap font with ui-antialias on or on true colour):
+ * the rig's proof the aa_ink path ran */
 long mt_aa_glyphs(const menu_text *m);
 /* text cut with an ellipsis to fit maxw pixels into out (n bytes); the pixel width of out */
 int mt_fit(menu_text *m, const char *text, int maxw, char *out, int n);

@@ -11,17 +11,21 @@
 static void t_accept(void)
 {
     /* a Workbench label inside a drawer of inner area 4..195, 11..97 */
-    CHECK(icl_accept("Workbench", ICL_JAM2, 1, 0, 20, 40, 48, 8, 4, 11, 195, 97));
-    CHECK(icl_accept("dopus", 0, 2, 0, 20, 40, 48, 8, 4, 11, 195, 97));
-    CHECK(!icl_accept("Shell Process", ICL_JAM2, 1, 0, 20, 40, 48, 8, 4, 11, 195, 97));
-    CHECK(!icl_accept("Workbench", ICL_JAM2 | ICL_COMPLEMENT, 1, 0, 20, 40, 48, 8, 4, 11, 195, 97));
-    CHECK(!icl_accept("Workbench", ICL_INVERSVID, 1, 0, 20, 40, 48, 8, 4, 11, 195, 97));
-    CHECK(!icl_accept("Workbench", ICL_JAM2, 1, 1, 20, 40, 48, 8, 4, 11, 195, 97));
+    CHECK(icl_accept(1, ICL_JAM2, 1, 0, 20, 40, 48, 8, 4, 11, 195, 97));
+    CHECK(icl_accept(1, 0, 2, 0, 20, 40, 48, 8, 4, 11, 195, 97));
+    CHECK(icl_accept(1, ICL_JAM2, 1, 0, 20, 40, 48, 8, 4, 11, 195, 97));    /* any task: the task-name gate is gone */
+    CHECK(!icl_accept(0, ICL_JAM2, 1, 0, 20, 40, 48, 8, 4, 11, 195, 97));   /* ui-antialias off refuses */
+    CHECK(!icl_accept(1, ICL_JAM2 | ICL_COMPLEMENT, 1, 0, 20, 40, 48, 8, 4, 11, 195, 97));
+    CHECK(!icl_accept(1, ICL_INVERSVID, 1, 0, 20, 40, 48, 8, 4, 11, 195, 97));
+    CHECK(!icl_accept(1, ICL_JAM2, 1, 1, 20, 40, 48, 8, 4, 11, 195, 97));
     /* title bar text (y 2) and a box past the right border stay stock */
-    CHECK(!icl_accept("Workbench", ICL_JAM2, 1, 0, 20, 2, 48, 8, 4, 11, 195, 97));
-    CHECK(!icl_accept("Workbench", ICL_JAM2, 1, 0, 160, 40, 48, 8, 4, 11, 195, 97));
-    CHECK(!icl_accept("Workbench", ICL_JAM2, 1, 0, 0, 0, ICL_MAXW + 8, 8, 0, 0, 2000, 2000));
-    CHECK(!icl_accept(NULL, ICL_JAM2, 1, 0, 20, 40, 48, 8, 4, 11, 195, 97));
+    CHECK(!icl_accept(1, ICL_JAM2, 1, 0, 20, 2, 48, 8, 4, 11, 195, 97));
+    CHECK(!icl_accept(1, ICL_JAM2, 1, 0, 160, 40, 48, 8, 4, 11, 195, 97));
+    CHECK(!icl_accept(1, ICL_JAM2, 1, 0, 0, 0, ICL_MAXW + 8, 8, 0, 0, 2000, 2000));
+    /* a long window title (wider than 320) is blended while its pixels fit the buffers; more pixels run stock */
+    CHECK(icl_accept(1, ICL_JAM2, 1, 0, 0, 2, 640, 8, 0, 0, 1023, 767));
+    CHECK(icl_accept(1, ICL_JAM2, 1, 0, 0, 2, 480, 16, 0, 0, 1023, 767));
+    CHECK(!icl_accept(1, ICL_JAM2, 1, 0, 0, 2, 640, 16, 0, 0, 1023, 767));
 }
 
 static void t_mask(void)
