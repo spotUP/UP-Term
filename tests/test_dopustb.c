@@ -28,27 +28,25 @@ static void test_pick_set(void)
     int tall;
     char name[DT_SET_NAME_MAX];
     dt_set s;
-    /* the owner's band rule: about 2 x the font height, snapped to 16/24/32 */
-    CHECK_INT(pick(8, 1, 1, &tall), 16);
-    CHECK_INT(pick(9, 1, 1, &tall), 16);
-    CHECK_INT(pick(10, 1, 1, &tall), 16);
-    CHECK_INT(pick(11, 1, 1, &tall), 24);
-    CHECK_INT(pick(12, 1, 1, &tall), 24);
-    CHECK_INT(pick(13, 1, 1, &tall), 24);
-    CHECK_INT(pick(14, 1, 1, &tall), 24);
-    CHECK_INT(pick(15, 1, 1, &tall), 32);
+    /* the owner's band rule: about 4 x the font height (2026-11-08: "make 2x bigger"), snapped to 16/24/32 */
+    CHECK_INT(pick(4, 1, 1, &tall), 16);
+    CHECK_INT(pick(5, 1, 1, &tall), 16);          /* 20: tie goes to the smaller */
+    CHECK_INT(pick(6, 1, 1, &tall), 24);
+    CHECK_INT(pick(7, 1, 1, &tall), 24);          /* 28: 24/32 tie goes to the smaller */
+    CHECK_INT(pick(8, 1, 1, &tall), 32);          /* topaz 8: was 16 */
+    CHECK_INT(pick(11, 1, 1, &tall), 32);
     CHECK_INT(pick(24, 1, 1, &tall), 32);
-    CHECK_INT(pick(0, 1, 1, &tall), 24);          /* unknown font */
+    CHECK_INT(pick(0, 1, 1, &tall), 32);          /* unknown font */
     /* aspect: tall pixel only at 2:1 (li_pick_variant), unknown aspect is square */
     pick(8, 22, 44, &tall); CHECK_INT(tall, 1);
     pick(8, 44, 44, &tall); CHECK_INT(tall, 0);
     pick(8, 22, 33, &tall); CHECK_INT(tall, 0);
     pick(8, 0, 0, &tall); CHECK_INT(tall, 0);
     /* DT-9: the family leads the name, filled by default, outline from icon-style; the longest name fits DT_SET_NAME_MAX */
-    dt_pick_set(12, 22, 44, 0, &s);
+    dt_pick_set(6, 22, 44, 0, &s);
     CHECK_INT(dt_set_name(&s, name, sizeof name), 10);
     CHECK(strcmp(name, "filled-24t") == 0);
-    dt_pick_set(12, 22, 44, 1, &s);
+    dt_pick_set(6, 22, 44, 1, &s);
     CHECK_INT(dt_set_name(&s, name, sizeof name), 11);
     CHECK(strcmp(name, "outline-24t") == 0);
     s.tall = 0; s.size = 32; s.outline = 0;
