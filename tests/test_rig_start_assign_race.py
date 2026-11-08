@@ -5,6 +5,7 @@ BOOTX:go runs beside the Startup-Sequence (Run >NIL: C:Execute BOOTX:go), and th
 first answer as "up", read Assign LIST, and failed "the boot lacks the assigns ETC" on a fresh rig 68 whose
 boot.log said "assigns done" a moment later."""
 import pathlib, sys, tempfile, unittest
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools/rig"))
@@ -44,6 +45,8 @@ class StartWaitsForAssigns(unittest.TestCase):
                     cls.polls += 1
                     log.parent.mkdir(parents=True, exist_ok=True)
                     log.write_text(GO_DONE if cls.polls >= 4 else GO_EARLY)
+                    # start deletes boot.console before the boot; BOOTX:bootcap writes its marker line (the up gate)
+                    log.with_name("boot.console").write_text(rig.BOOT_CONSOLE_MARKER + "\n")
 
                 @classmethod
                 def time(cls):
@@ -80,7 +83,8 @@ class StartWaitsForAssigns(unittest.TestCase):
                 rig.retry_wb_reset = lambda: None
                 rig.paths.cap_fsuae_log = lambda **k: None
                 rig.paths.FSUAE = pathlib.Path("fs-uae")
-                rig.start()   # SystemExit here = the race is back
+                with mock.patch.object(rig.rigwasabi, "warn_guru", lambda *a, **k: []):   # would start a wasabi client on a live rig
+                    rig.start()   # SystemExit here = the race is back
             finally:
                 for n, v in saved.items():
                     setattr(rig, n, v)

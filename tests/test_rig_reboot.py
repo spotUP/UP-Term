@@ -33,9 +33,13 @@ class RigReboot(unittest.TestCase):
         p("boot_assigns_missing", lambda: [])
         p("guard_shell_startup", lambda: None)
         p("retry_wb_reset", lambda: None)
+        st.enter_context(mock.patch.object(rig.rigwasabi, "warn_guru", lambda *a, **k: []))   # would start a wasabi client on a live rig
         st.enter_context(mock.patch.object(rig.paths, "cap_fsuae_log", lambda **k: None))
         st.enter_context(mock.patch.object(rig.subprocess, "Popen", lambda *a, **k: None))
-        st.enter_context(mock.patch.object(rig.time, "sleep", lambda s: None))
+        def sleep(s):   # start deletes boot/boot.console before the boot; BOOTX:bootcap writes its marker line (the up gate)
+            (self.tmp / "boot").mkdir(exist_ok=True)
+            (self.tmp / "boot/boot.console").write_text(rig.BOOT_CONSOLE_MARKER + "\n")
+        st.enter_context(mock.patch.object(rig.time, "sleep", sleep))
         st.enter_context(contextlib.redirect_stdout(io.StringIO()))
 
     def boot(self, keep, argv):

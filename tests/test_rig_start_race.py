@@ -8,6 +8,7 @@ both launched one. start() now holds <rig dir>/start.lock for the whole boot,
 so the second start waits, then finds the first one's emulator.
 """
 import pathlib, sys, tempfile, threading, time, unittest
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools/rig"))
@@ -41,6 +42,8 @@ class StartRace(unittest.TestCase):
                     # the booted go's lines: start waits for "assigns done" (RIG-START-ASSIGN-RACE)
                     (rig.RIG / "boot").mkdir(exist_ok=True)
                     (rig.RIG / "boot/boot.log").write_text("go started\nassigns done\nwasabid started\n")
+                    # start deletes boot.console before the boot; BOOTX:bootcap writes its marker line (the up gate)
+                    (rig.RIG / "boot/boot.console").write_text(rig.BOOT_CONSOLE_MARKER + "\n")
 
         with tempfile.TemporaryDirectory() as d:
             try:
@@ -62,11 +65,14 @@ class StartRace(unittest.TestCase):
                 rig.start_watchdog = lambda: None
                 rig.paths.cap_fsuae_log = lambda **k: None
                 rig.paths.FSUAE = pathlib.Path("fs-uae")
-                threads = [threading.Thread(target=rig.start) for _ in range(2)]
-                for t in threads:
-                    t.start()
-                for t in threads:
-                    t.join(10)
+                # a start is a real start: retry_wb_reset and warn_guru read the live machine
+                with mock.patch.object(rig, "retry_wb_reset", lambda: None), \
+                     mock.patch.object(rig.rigwasabi, "warn_guru", lambda *a, **k: []):
+                    threads = [threading.Thread(target=rig.start, daemon=True) for _ in range(2)]
+                    for t in threads:
+                        t.start()
+                    for t in threads:
+                        t.join(10)
             finally:
                 for n, v in saved.items():
                     setattr(rig, n, v)

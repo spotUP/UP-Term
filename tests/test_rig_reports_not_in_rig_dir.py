@@ -23,6 +23,7 @@ SCRATCH = {
     "hlmd-doc.md",          # hlmd_rig: fixture copied onto the Amiga disk, an input not an output
     "RAM:README.md",        # hlmd_rig: the Amiga-side destination of that fixture, not a host path
     "boot/boot.log", "fs-uae.log.txt",   # rig.py: the emulator's own boot and FS-UAE logs
+    "owner.json",           # rig.py OWNER_FILE: who started this rig, read by mine()/stop; rig state, gone with the rig
     "vt/charset.txt",       # vttest_rig: payload written into the Amiga disk image (vtc/)
 }
 
