@@ -32,8 +32,9 @@ Research: thoughts/shared/research/2026-11-08-dopus-toolbar-size-blend.md (DOpus
 
 ## Owner decisions (AskUserQuestion, 2026-11-08)
 
-- Size: follow the DOpus screen font. Icon height about 2 x the DOPUS.1 screen font height (ta_YSize), snapped to the
-  nearest of 16/24/32 (topaz 8 -> 16, 11-13 px font -> 24); tall-pixel variant (half height) on 2:1 pixel aspect.
+- Size: follow the DOpus screen font. Icon height about 4 x the DOPUS.1 screen font height (ta_YSize), snapped to the
+  nearest of 16/24/32, a tie to the smaller (topaz 8 -> 32, 6-7 px -> 24, 4-5 px -> 16); tall-pixel variant (half height)
+  on 2:1 pixel aspect. Was 2 x (topaz 8 -> 16) until the owner's 2026-11-08 eye check on rig 63: "make 2x bigger".
 - Accent kept: depth 3 brushes, 8 pens (ground, glyph 33/66/100%, accent 33/66/100%).
 
 ## Checklist

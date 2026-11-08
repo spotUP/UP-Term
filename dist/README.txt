@@ -968,7 +968,7 @@ AMARCHY
   buttons without bevels). It comes in 16, 24 and 32 pixel sizes, each also as a
   tall version (name ends in t) for screens whose pixels are twice as high as wide.
   Applying a theme picks the size that fits the Directory Opus screen's font
-  (about twice the font height), colours the glyphs in the theme's colours and
+  (about four times the font height), colours the glyphs in the theme's colours and
   switches every lister that still uses upstream's default toolbar, or one of
   these banks, to it; a toolbar of your own is never touched.
   A bank of your own: open it (Lister > Edit Toolbar, or Settings > Buttons >

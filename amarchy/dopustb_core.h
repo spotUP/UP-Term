@@ -19,8 +19,8 @@ typedef struct {
  * reply, out is then "" and the caller uses the default public screen. */
 int dt_screen_name(const char *reply, char *out, unsigned cap);
 
-/* DT-3: the set for a DOpus screen whose font is font_h pixels high (Screen->Font->ta_YSize; 0 = unknown, gives 24) and whose
- * pixels are rx : ry (DisplayInfo Resolution via menu_screen_aspect; 0 = unknown, square). The icon height is about 2 x the font
+/* DT-3: the set for a DOpus screen whose font is font_h pixels high (Screen->Font->ta_YSize; 0 = unknown, gives 32) and whose
+ * pixels are rx : ry (DisplayInfo Resolution via menu_screen_aspect; 0 = unknown, square). The icon height is about 4 x the font
  * height, snapped to the nearest of 16/24/32 (a tie goes to the smaller). Tall when li_pick_variant says the pixel is twice as
  * high as wide. DT-9: outline is the family (amconf_icon_outline), stored as given. */
 void dt_pick_set(unsigned font_h, int rx, int ry, int outline, dt_set *out);

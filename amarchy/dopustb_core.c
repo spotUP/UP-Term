@@ -7,10 +7,10 @@
 void dt_pick_set(unsigned font_h, int rx, int ry, int outline, dt_set *out)
 {
     static const unsigned size[3] = { 16, 24, 32 };
-    unsigned want = 2 * font_h, best = 1, i;
+    unsigned want = 4 * font_h, best = 1, i;
     unsigned d, bd;
     if (!font_h)
-        want = 24;
+        want = 32;
     bd = want > size[1] ? want - size[1] : size[1] - want;
     for (i = 0; i < 3; i += 2) {
         d = want > size[i] ? want - size[i] : size[i] - want;
