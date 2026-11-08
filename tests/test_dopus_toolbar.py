@@ -132,6 +132,28 @@ class StraightStrokes(unittest.TestCase):
             self.assertEqual(rows, pen if h == w else max(1, pen * h // w), name)   # whole rows (tall: half, at least 1)
 
 
+class FilledStemsKeepAspect(unittest.TestCase):
+    """DT-12 (owner, rig 63 32t: "the + has different line thickness on the horizontal line and vertical line"):
+    a filled glyph's bars and cut-outs keep one physical thickness both ways at every filled set. A + cut out of a
+    filled square, arms 1.5/24 of the design thick (as Phosphor's folder-plus at 32x16: 0.75 rows, 1.5 columns), comes
+    out with its horizontal arm r whole rows high and its vertical arm r * w / h whole columns wide, r at least 1:
+    the cut-out stays open and the + is not twice as thick one way."""
+    SVG = ('<svg viewBox="0 0 24 24"><path d="M2 2H22V22H2Z'
+           'M11.25 5V11.25H5V12.75H11.25V19H12.75V12.75H19V11.25H12.75V5Z"/></svg>')   # hole wound the other way
+
+    def test_plus_cut_out_same_thickness_both_ways(self):
+        import gen_dopus_toolbar as gd
+        for name, fam, w, h in gd.sets():
+            if fam != 'filled':
+                continue
+            lv = [[gen_lucide_icons.level(c) for c in r] for r in svg_raster.coverage(self.SVG, w, h, gd.STROKE_PX[w])]
+            mid_r, mid_c = h // 4, w // 4    # a row / column through the vertical / horizontal arm, off the crossing
+            gap_cols = [x for x in range(w) if lv[mid_r][x] == 0 and 0 < x < w - 1 and any(lv[mid_r][:x]) and any(lv[mid_r][x:])]
+            gap_rows = [y for y in range(h) if lv[y][mid_c] == 0 and 0 < y < h - 1 and any(r[mid_c] for r in lv[:y]) and any(r[mid_c] for r in lv[y:])]
+            self.assertTrue(gap_rows and gap_cols, (name, lv))
+            self.assertEqual(len(gap_cols), len(gap_rows) * (w // h), (name, gap_rows, gap_cols))
+
+
 class InstallScript(unittest.TestCase):
     """dist/addons/dopus/install.dos carries one installer body: one CHECKFRAG include, one Lab dopus, and the old bank
     names (Amarchy-toolbar with no set, and the DT-1 sets 16 ... 32t with no family) only in Deletes of the old banks."""

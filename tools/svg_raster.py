@@ -10,7 +10,7 @@ stroke of 2/24 of the design between pixels at 16 and 32 px. This one draws from
   and half as many rows high (at least 1 row), the same physical thickness both ways;
 - every segment end and every curve extreme (the points where a curve runs horizontal or vertical) snaps per axis to
   the pixel grid: to pixel centres when the pen is an odd number of pixels along that axis, to pixel edges when even
-  (a fill edge: 0, even). A straight horizontal or vertical stroke then covers whole pixels only; the points between
+  (a fill edge: see _fill_hints, DT-12). A straight horizontal or vertical stroke then covers whole pixels only; the points between
   snapped ends move by the interpolated snap offset, so curves keep their shape and their partial pixels (the 33/66%
   levels of the blend);
 - coverage is SUB x SUB samples a pixel: a sample is inked when within the pen's radius of the path (round caps and
@@ -18,6 +18,7 @@ stroke of 2/24 of the design between pixels at 16 and 32 px. This one draws from
 
 Elements: path (M L H V C S Q T A Z, absolute and relative), line, polyline, polygon, rect (rx, ry), circle, ellipse.
 No transforms (none in lucide-static). stroke / fill inherit from the <svg> root; "none" switches either off."""
+import bisect
 import math
 import re
 import xml.etree.ElementTree as ET
@@ -283,6 +284,70 @@ def _snap(v, odd):
     return math.floor(v) + 0.5 if odd else float(round(v))
 
 
+def _fill_hints(subs, to_px, unit_x):
+    """Per-axis maps (x, y) from target pixels to hinted target pixels for a filled-only element.
+
+    A fill edge snaps to a pixel edge. A stem (the ink or the gap between two facing straight edges, horizontal or
+    vertical, whose spans overlap) keeps a width of a whole number of units, at least one: a unit is one row in y and
+    w / h columns in x on a tall-pixel grid (one column on a square one). So a bar and a gap of one physical thickness
+    come out the same thickness both ways, and a thin cut-out (a + in a folder, a tick) stays open. Every other
+    segment end and curve extreme rounds to the nearest pixel edge; the points between move piecewise-linearly with
+    their neighbours, so curves keep their shape and their partial pixels."""
+    keys = ([], [])
+    edges = ([], [])          # per axis: (coordinate, span lo, span hi, direction)
+    for closed, pieces in subs:
+        for pc in pieces:
+            for t0, t1 in _split(pc):
+                a, b = to_px(_point(pc, t0)), to_px(_point(pc, t1))
+                for ax in (0, 1):
+                    keys[ax].extend((a[ax], b[ax]))
+                    o = 1 - ax
+                    if pc[0] == "L" and abs(a[ax] - b[ax]) < 1e-6 and abs(a[o] - b[o]) > 1e-6:
+                        edges[ax].append((a[ax], min(a[o], b[o]), max(a[o], b[o]), 1 if b[o] > a[o] else -1))
+    return tuple(_axis_map(keys[ax], edges[ax], (unit_x, 1.0)[ax]) for ax in (0, 1))
+
+
+def _axis_map(keys, edges, unit):
+    pairs = []
+    for e in edges:
+        best = None
+        for f in edges:
+            d = f[0] - e[0]
+            if d > 1e-6 and min(e[2], f[2]) - max(e[1], f[1]) > 1e-6 and (best is None or d < best[0]):
+                best = (d, f)
+        if best and best[1][3] != e[3]:
+            pairs.append((best[0], e[0], best[1][0]))
+    k = lambda v: round(v, 6)
+    tgt = {}
+    for d, a, b in sorted(pairs):
+        width = unit * max(1, round(d / unit))
+        if k(a) in tgt and k(b) in tgt:
+            continue
+        if k(a) in tgt:
+            tgt[k(b)] = tgt[k(a)] + width
+        elif k(b) in tgt:
+            tgt[k(a)] = tgt[k(b)] - width
+        else:
+            tgt[k(a)] = float(round((a + b) / 2 - width / 2))
+            tgt[k(b)] = tgt[k(a)] + width
+    for v in keys:
+        tgt.setdefault(k(v), float(round(v)))
+    src = sorted(tgt)
+    dst = [tgt[v] for v in src]
+    for i in range(1, len(dst)):        # keep the map monotonic: hinting never folds the outline over
+        dst[i] = max(dst[i], dst[i - 1])
+
+    def m(v):
+        i = bisect.bisect_left(src, v)
+        if i == 0:
+            return v + dst[0] - src[0]
+        if i == len(src):
+            return v + dst[-1] - src[-1]
+        s0, s1 = src[i - 1], src[i]
+        return dst[i - 1] + (dst[i] - dst[i - 1]) * (v - s0) / (s1 - s0) if s1 > s0 else dst[i]
+    return m
+
+
 def coverage(svg_text, w, h, stroke_px):
     """h rows of w coverages 0..1 of the SVG drawn on a w x h pixel grid (see the module doc). stroke_px: the pen's
     width in target columns; on a tall-pixel grid (h < w) its height is stroke_px * h / w rows, at least 1."""
@@ -304,6 +369,21 @@ def coverage(svg_text, w, h, stroke_px):
         odd_y = stroked and pen_y % 2 == 1
         snap = lambda p: (_snap(p[0], odd_x), _snap(p[1], odd_y))
         polys = []
+        if filled and not stroked:
+            mx, my = _fill_hints(subs, to_px, w / h if h < w else 1.0)
+            for closed, pieces in subs:
+                pts = []
+                for pc in pieces:
+                    for t0, t1 in _split(pc):
+                        for i in range(0 if not pts else 1, (1 if pc[0] == "L" else FLAT) + 1):
+                            p = to_px(_point(pc, t0 + (t1 - t0) * i / (1 if pc[0] == "L" else FLAT)))
+                            q = (mx(p[0]), my(p[1]))
+                            if not pts or q != pts[-1]:
+                                pts.append(q)
+                if pts:
+                    polys.append((closed, pts))
+            _fill(ink, n_x, n_y, [p for c, p in polys])
+            continue
         for closed, pieces in subs:
             pts = []
             for pc in pieces:
