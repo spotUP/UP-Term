@@ -276,6 +276,16 @@ If WARN
       Copy T:User-Startup.up-term S:User-Startup CLONE QUIET
       Delete >NIL: T:User-Startup.up-term QUIET
       Echo "UP-Term: S:User-Startup now assigns UP-Term: to $updest (it named another drawer or had no guard)."
+      ; the flat block of S:Startup-Sequence names the drawer too (absolute path): same rewrite, its own output file
+      Search >NIL: S:Startup-Sequence ";BEGIN UP-Term Amarchy-Flat"
+      If NOT WARN
+        Delete >NIL: T:Startup-Sequence.up-term QUIET
+        vsh reassign.sh "$updest" S:Startup-Sequence
+        If EXISTS T:Startup-Sequence.up-term
+          Copy T:Startup-Sequence.up-term S:Startup-Sequence CLONE QUIET
+          Delete >NIL: T:Startup-Sequence.up-term QUIET
+        EndIf
+      EndIf
       If EXISTS ENV:upold
         If EXISTS "$upold"
           Echo "UP-Term: old drawer $upold is left in place: delete it or run Uninstall of that kit first."
@@ -549,8 +559,13 @@ EndIf
 ; and stopped the boot). The guarded Run line has two leading spaces, so an
 ; older unguarded block (no such line) is stripped by unstartup.sh (this kit's,
 ; the current drawer; the same marker) and written again guarded.
-Search >NIL: S:User-Startup "  Run >NIL: UP-Term:bin/Amarchy"
-If WARN
+; Leg W: Amarchy and the app index no longer start from S:User-Startup. Amarchy and amarchy-index start from
+; icons in SYS:WBStartup (the desktop part below), amarchy-flat from a block in S:Startup-Sequence. The three
+; User-Startup blocks of earlier kits (";BEGIN UP-Term Amarchy", ";BEGIN UP-Term Amarchy index" and the flat
+; patch's ";BEGIN Amarchy-Flat") are stripped here on every Install and Update, so nothing starts twice. Each
+; strip runs only when its marker is there; S:User-Startup.before-UP-Term is made once, as for the other blocks.
+Search >NIL: S:User-Startup ";BEGIN UP-Term Amarchy"
+If NOT WARN
   If NOT EXISTS S:User-Startup.before-UP-Term
     Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
   EndIf
@@ -560,46 +575,41 @@ If WARN
     Copy T:User-Startup.up-term S:User-Startup CLONE QUIET
     Delete >NIL: T:User-Startup.up-term QUIET
   EndIf
-  Echo >>S:User-Startup ";BEGIN UP-Term Amarchy"
-  Echo >>S:User-Startup "Assign >NIL: UP-Term: EXISTS"
-  Echo >>S:User-Startup "If NOT WARN"
-  Echo >>S:User-Startup "  Run >NIL: UP-Term:bin/Amarchy"
-  Echo >>S:User-Startup "EndIf"
-  Echo >>S:User-Startup ";END UP-Term Amarchy"
-EndIf
-; the boot scan of the app index: a block of its own, so an Update that finds the Amarchy block
-; from an earlier version still adds it (and unstartup.sh strips it with the other UP-Term blocks)
-Search >NIL: S:User-Startup "  Run >NIL: UP-Term:bin/amarchy-index"
-If WARN
   Delete >NIL: T:User-Startup.up-term QUIET
   vsh unstartup.sh "Amarchy index"
   If EXISTS T:User-Startup.up-term
     Copy T:User-Startup.up-term S:User-Startup CLONE QUIET
     Delete >NIL: T:User-Startup.up-term QUIET
   EndIf
-  Echo >>S:User-Startup ";BEGIN UP-Term Amarchy index"
-  Echo >>S:User-Startup "Assign >NIL: UP-Term: EXISTS"
-  Echo >>S:User-Startup "If NOT WARN"
-  Echo >>S:User-Startup "  Run >NIL: UP-Term:bin/amarchy-index"
-  Echo >>S:User-Startup "EndIf"
-  Echo >>S:User-Startup ";END UP-Term Amarchy index"
 EndIf
-; the flat UI patch (amarchy-flat): a stand-alone block, ";BEGIN Amarchy-Flat", so an Update adds it to an older
-; S:User-Startup and "unstartup.sh Amarchy-Flat" strips it alone. BOOT starts it only when Amarchy's flat key is on.
-Search >NIL: S:User-Startup "  Run >NIL: UP-Term:bin/amarchy-flat BOOT"
-If WARN
+Search >NIL: S:User-Startup ";BEGIN Amarchy-Flat"
+If NOT WARN
   Delete >NIL: T:User-Startup.up-term QUIET
   vsh unstartup.sh "Amarchy-Flat"
   If EXISTS T:User-Startup.up-term
     Copy T:User-Startup.up-term S:User-Startup CLONE QUIET
     Delete >NIL: T:User-Startup.up-term QUIET
   EndIf
-  Echo >>S:User-Startup ";BEGIN Amarchy-Flat"
-  Echo >>S:User-Startup "Assign >NIL: UP-Term: EXISTS"
-  Echo >>S:User-Startup "If NOT WARN"
-  Echo >>S:User-Startup "  Run >NIL: UP-Term:bin/amarchy-flat BOOT"
-  Echo >>S:User-Startup "EndIf"
-  Echo >>S:User-Startup ";END Amarchy-Flat"
+EndIf
+; the flat UI patch (amarchy-flat): a marked block ";BEGIN UP-Term Amarchy-Flat" in S:Startup-Sequence directly
+; BEFORE IPrefs (after AddDataTypes), put there by instssblock.sh, the same inserter as the RemLib block (it does
+; nothing when the block is there or the sequence has no IPrefs line). S:Startup-Sequence runs before
+; S:User-Startup makes the UP-Term: assign, so the block names the drawer by absolute path, read from
+; ENVARC:up-term/Dir, and is guarded by If EXISTS on the binary; reassign.sh rewrites the path when a later Install
+; moves the drawer. BOOT starts the patch only when Amarchy's flat key is on. Uninstall strips the block with
+; "unstartup.sh '' S:Startup-Sequence". S:Startup-Sequence.before-UP-Term is made once, as for RemLib.
+If EXISTS ENVARC:up-term/Dir
+  Copy >NIL: ENVARC:up-term/Dir ENV:upflatdir CLONE
+  If NOT EXISTS S:Startup-Sequence.before-UP-Term
+    Copy S:Startup-Sequence S:Startup-Sequence.before-UP-Term CLONE
+  EndIf
+  Delete >NIL: T:Startup-Sequence.up-term QUIET
+  vsh instssblock.sh Amarchy-Flat IPrefs "If EXISTS $upflatdir/bin/amarchy-flat" "  Run >NIL: $upflatdir/bin/amarchy-flat BOOT" "EndIf"
+  If EXISTS T:Startup-Sequence.up-term
+    Copy T:Startup-Sequence.up-term S:Startup-Sequence CLONE QUIET
+    Delete >NIL: T:Startup-Sequence.up-term QUIET
+  EndIf
+  Delete >NIL: ENV:upflatdir QUIET
 EndIf
 ; ps and top: the tasks, and the tasks by CPU use (sampled at the vertical blank)
 Copy ps top UP-Term:bin CLONE
@@ -912,6 +922,15 @@ If NOT EXISTS SYS:Prefs
 EndIf
 Copy UP-Term-Prefs UP-Term-Prefs.info SYS:Prefs CLONE
 Delete >NIL: SYS:Utilities/UP-Term SYS:Utilities/UP-Term.info SYS:Utilities/UP-Term-Prefs SYS:Utilities/UP-Term-Prefs.info QUIET
+; Leg W: Amarchy and the app index start from Workbench's own startup drawer. Two PROJECT icons (default tools
+; UP-Term:bin/Amarchy and UP-Term:bin/amarchy-index, no binary copied, so an Update leaves no stale twin) carry
+; DONOTWAIT (Workbench does not wait for the program), STARTPRI (Amarchy 10, the index -10: Amarchy first) and,
+; for the indexer, TOOLPRI=-5 (low task priority). UP-Term: exists by then: S:User-Startup ran before LoadWB.
+; Uninstall deletes both icons. Made by tools/mkicon.py (Makefile), kit drawer Files/wbstartup.
+If NOT EXISTS SYS:WBStartup
+  MakeDir SYS:WBStartup
+EndIf
+Copy wbstartup/Amarchy.info wbstartup/amarchy-index.info SYS:WBStartup CLONE
 ; SHELLICON: the Shell icon (SYS:System/Shell) starts vsh (its default tool
 ; UP-Term:bin/vsh) in a window on XCON:, the window's place, size, title and
 ; options as they were (upicon swaps only the WINDOW tooltype's device).
@@ -1154,7 +1173,7 @@ If "$opticonlib" EQ "ICONLIB"
       Copy S:Startup-Sequence S:Startup-Sequence.before-UP-Term CLONE
     EndIf
     Delete >NIL: T:Startup-Sequence.up-term QUIET
-    vsh iconlib/instremlib.sh
+    vsh instssblock.sh RemLib SetPatch "If EXISTS LIBS:icon.library" "   RemLib >NIL: icon.library" "EndIf"
     If EXISTS T:Startup-Sequence.up-term
       Copy T:Startup-Sequence.up-term S:Startup-Sequence CLONE QUIET
       Delete >NIL: T:Startup-Sequence.up-term QUIET

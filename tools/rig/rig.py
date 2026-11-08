@@ -336,6 +336,8 @@ KIT_STAMP_BOOT = """If NOT EXISTS VTC:kit-restore
 EndIf""" % {"stamp": kitstamp.STAMP, "hash": kitstamp.HASH}
 
 
+# LEGW NOTE: since Leg W the kit starts Amarchy from a SYS:WBStartup icon and amarchy-flat from a S:Startup-Sequence
+# block; the User-Startup block named below exists only on a clone made from an older kit. Rig logic follows in W8.
 # RIG-BOOT-STALE-BIN: the kit's S:User-Startup block `Run >NIL: UP-Term:bin/Amarchy` starts Amarchy (and the programs it
 # starts from UP-Term:bin at boot, amarchy-flat BOOT) before BOOTX:go, which runs beside the Startup-Sequence, has copied
 # the build over them: every boot-started program ran the previous build. The UP-Term: shadow pass therefore also runs

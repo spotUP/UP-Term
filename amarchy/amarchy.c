@@ -282,7 +282,7 @@ static void welcome_maybe(void)
     amconf_return(p);
 }
 
-/* S32-START-LOOK: the start look needs the Workbench screen, and Amarchy starts from S:User-Startup before LoadWB
+/* S32-START-LOOK: the start look needs the Workbench screen, and Amarchy starts from its SYS:WBStartup icon (Leg W; earlier kits: S:User-Startup) before LoadWB
  * opens it; ipd_lock_wb_screen never opens a closed Workbench (BOOT-31-WB-DEADLOCK), so these steps found no screen
  * and wrote nothing. Run once at start when the screen is up, else on the first tick that finds it (desk_start_due). */
 static int g_desk_started, g_tick_ok;

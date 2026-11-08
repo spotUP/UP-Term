@@ -729,7 +729,7 @@ VIEWING FILES (hl, mdv)
 AMARCHY
   Amarchy is a small commodity that gives the whole machine Super-key
   shortcuts, the way a tiling desktop does. Super is the Left Amiga key. It
-  runs from boot (a block in S:User-Startup starts UP-Term:bin/Amarchy), so
+  runs from boot (an icon in SYS:WBStartup starts UP-Term:bin/Amarchy), so
   the keys work with no UP-Term window open: Left Amiga + T opens a window,
   Left Amiga + Space shows the quick menu, Left Amiga + K lists every key.
   Inside an UP-Term window the window itself answers first (Left Amiga + T is

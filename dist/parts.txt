@@ -26,6 +26,7 @@ system          Files/ixkill
 system          Files/pty-handler
 system          Files/screen
 system          Files/screenrc
+system          Files/instssblock.sh
 system          Files/takecon.sh
 system          Files/termcap.vtcon
 system          Files/terminfo
@@ -83,6 +84,7 @@ desktop         Files/UP-Term.info
 desktop         Files/UP-Term-Prefs
 desktop         Files/UP-Term-Prefs.info
 desktop         Files/upicon
+desktop         Files/wbstartup
 desktop         Files/dopus-filetype
 boot            Files/banner
 boot            Files/vshrc

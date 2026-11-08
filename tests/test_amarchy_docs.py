@@ -24,7 +24,7 @@ class AmarchyDocs(unittest.TestCase):
         quit_at = un.index('Status >ENV:upw COM UP-Term:bin/Amarchy')
         self.assertIn('Break $upw C', un[quit_at:quit_at + 200])
         self.assertLess(quit_at, un.index('Delete >NIL: "$updest" ALL QUIET'))
-        self.assertIn('Run >NIL: UP-Term:bin/Amarchy', read('dist/install.dos'))  # the startup block unstartup.sh strips
+        self.assertIn('vsh unstartup.sh Amarchy', read('dist/install.dos'))  # an older kit's startup block is still stripped
 
     def test_man_page_and_readme_cover_notices_and_safe_off(self):
         man = read('man/amarchy.1')
@@ -86,10 +86,11 @@ class AmarchyDocs(unittest.TestCase):
             self.assertRegex(parts, r'(?m)^tools\s+Files/%s$' % f)
         d = read('dist/install.dos')
         self.assertIn('Copy Amarchy amarchy-menu amarchy-gui amarchy-index amarchy-flat amnotify amarchy-icons AmTile UP-Term:bin CLONE', d)
-        self.assertIn('Run >NIL: UP-Term:bin/Amarchy', d)
-        self.assertIn(';BEGIN UP-Term Amarchy', d)
-        self.assertIn(';BEGIN UP-Term Amarchy index', d)  # its own block: an Update adds it once
-        self.assertEqual(d.count('Run >NIL: UP-Term:bin/amarchy-index'), 2)  # the Search for the guarded line, and the Echo that writes it
+        # Leg W: Amarchy and the index start from SYS:WBStartup icons; the User-Startup blocks are only stripped
+        self.assertNotIn('Echo >>S:User-Startup "Run >NIL: UP-Term:bin/Amarchy', d)
+        self.assertIn('vsh unstartup.sh Amarchy', d)
+        self.assertIn('vsh unstartup.sh "Amarchy index"', d)
+        self.assertIn('Copy wbstartup/Amarchy.info wbstartup/amarchy-index.info SYS:WBStartup CLONE', d)
 
     def test_bar_conf_documented_and_installed_only_when_missing(self):
         man = read('man/amarchy.1')

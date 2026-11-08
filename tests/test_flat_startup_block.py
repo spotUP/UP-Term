@@ -1,24 +1,31 @@
-"""FLAT-C4: the ;BEGIN Amarchy-Flat startup block. Install writes exactly these lines, unstartup.sh strips only that
-block (every other line byte for byte), the base Uninstall runs the by-name strip, and the kit ships the binary."""
+"""LEGW-W2: the Amarchy-Flat start entry is a marked block in S:Startup-Sequence (before IPrefs), not in S:User-Startup.
+Install writes it through the one inserter (instssblock.sh) with the absolute install path, unstartup.sh strips it by
+name (and a plain strip of the sequence removes it), the base Uninstall runs the strips, and the kit ships the binary."""
 import pathlib, re, subprocess, tempfile, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DOS = (ROOT / "dist/install.dos").read_text()
-BLOCK = [";BEGIN Amarchy-Flat", "Assign >NIL: UP-Term: EXISTS", "If NOT WARN",
-         "  Run >NIL: UP-Term:bin/amarchy-flat BOOT", "EndIf", ";END Amarchy-Flat"]
+BLOCK = [";BEGIN UP-Term Amarchy-Flat", "If EXISTS Work:UP-Term/bin/amarchy-flat",
+         "  Run >NIL: Work:UP-Term/bin/amarchy-flat BOOT", "EndIf", ";END UP-Term Amarchy-Flat"]
+
+
+def run(script, args, t):
+    s = (ROOT / "dist" / script).read_text().replace("S:", "S_").replace("T:", "T_").replace("ENV:", "E_")
+    r = subprocess.run(["sh", "-c", s, "x", *args], cwd=t, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    return r
 
 
 class FlatStartupBlock(unittest.TestCase):
-    def echoed(self):
-        return [m.group(1) for m in re.finditer(r'(?m)^\s*Echo >>S:User-Startup "(.*)"$', DOS)]
+    def test_install_writes_no_flat_line_to_user_startup(self):
+        self.assertNotRegex(DOS, r"Echo >>S:User-Startup \"[^\n]*amarchy-flat")
 
-    def test_install_writes_the_block_exactly(self):
-        e = self.echoed()
-        i = e.index(";BEGIN Amarchy-Flat")
-        self.assertEqual(e[i:i + len(BLOCK)], BLOCK)
+    def test_install_inserts_the_block_before_iprefs_with_the_absolute_path(self):
+        self.assertRegex(DOS, r'vsh instssblock\.sh Amarchy-Flat IPrefs "If EXISTS \$upflatdir/bin/amarchy-flat" '
+                              r'"  Run >NIL: \$upflatdir/bin/amarchy-flat BOOT" "EndIf"')
+        self.assertIn("ENVARC:up-term/Dir", DOS)
 
-    def test_install_strips_an_old_copy_first_and_guards_the_add(self):
-        self.assertIn('Search >NIL: S:User-Startup "  Run >NIL: UP-Term:bin/amarchy-flat BOOT"', DOS)
+    def test_install_still_strips_the_old_user_startup_block(self):
         self.assertIn('vsh unstartup.sh "Amarchy-Flat"', DOS)
 
     def test_kit_ships_the_binary(self):
@@ -27,21 +34,20 @@ class FlatStartupBlock(unittest.TestCase):
         self.assertIn("$(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/amnotify", mk)
         self.assertRegex(DOS, r"(?m)^Copy Amarchy .*\bamarchy-flat\b.* UP-Term:bin CLONE")
 
-    def test_uninstall_strips_the_block_by_name(self):
-        self.assertIn('$unvsh "$unst" Amarchy-Flat', (ROOT / "dist/Uninstall").read_text())
+    def test_uninstall_strips_the_block_from_both_files(self):
+        u = (ROOT / "dist/Uninstall").read_text()
+        self.assertIn('$unvsh "$unst" Amarchy-Flat', u)  # an old kit's User-Startup copy
+        self.assertIn("S:Startup-Sequence", u)
 
-    def test_unstartup_by_name_removes_only_the_block(self):
-        keep = "; user\n;BEGIN UP-Term Amarchy\nRun >NIL: UP-Term:bin/Amarchy\n;END UP-Term Amarchy\nEcho keep\n"
-        text = keep + "\n".join(BLOCK) + "\n" + "Echo after\n"
-        s = (ROOT / "dist/unstartup.sh").read_text().replace("S:", "S_").replace("T:", "T_").replace("ENV:", "E_")
+    def test_unstartup_strips_the_block_from_the_sequence_by_name_and_plainly(self):
+        keep = "; stock\nEcho keep\n"
+        text = keep + "\n".join(BLOCK) + "\nIPrefs\n"
         with tempfile.TemporaryDirectory() as t:
-            pathlib.Path(t, "S_User-Startup").write_text(text)
-            r = subprocess.run(["sh", "-c", s, "x", "Amarchy-Flat"], cwd=t, capture_output=True, text=True)
-            self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertEqual(pathlib.Path(t, "T_User-Startup.up-term").read_text(), keep + "Echo after\n")
-            # the plain call (every UP-Term block) leaves the stand-alone block alone
-            r = subprocess.run(["sh", "-c", s, "x"], cwd=t, capture_output=True, text=True)
-            self.assertIn(";BEGIN Amarchy-Flat", pathlib.Path(t, "T_User-Startup.up-term").read_text())
+            pathlib.Path(t, "S_Startup-Sequence").write_text(text)
+            run("unstartup.sh", ["Amarchy-Flat", "S_Startup-Sequence"], t)
+            self.assertEqual(pathlib.Path(t, "T_Startup-Sequence.up-term").read_text(), keep + "IPrefs\n")
+            run("unstartup.sh", ["", "S_Startup-Sequence"], t)
+            self.assertEqual(pathlib.Path(t, "T_Startup-Sequence.up-term").read_text(), keep + "IPrefs\n")
 
 
 if __name__ == "__main__":

@@ -951,23 +951,23 @@ class UserStartupBlocksAreGuarded(unittest.TestCase):
                 self.assertTrue(g, (name, lines))
                 self.assertIn('If NOT WARN', [x.strip() for x in lines[g[-1] + 1:i]], (name, lines))
                 self.assertEqual(lines[-1], 'EndIf', (name, lines))
-        # the assign line, Amarchy, Amarchy index, Amarchy-Flat, GG
-        self.assertEqual(seen, 5)
+        # the assign line and GG: Amarchy, the index and the flat helper no longer write User-Startup (Leg W)
+        self.assertEqual(seen, 2)
 
     def test_old_unguarded_block_is_replaced_on_update(self):
-        for key in ('  Run >NIL: UP-Term:bin/Amarchy', '  Run >NIL: UP-Term:bin/amarchy-index',
-                    '    Assign GG: UP-Term:', '  Assign UP-Term: *"$updest*"'):
+        # the old Amarchy and index blocks are only stripped now, never written (Leg W)
+        for key in ('    Assign GG: UP-Term:', '  Assign UP-Term: *"$updest*"'):
             self.assertIn('Search >NIL: S:User-Startup "%s' % key, DOS)
-        for call in ('vsh unstartup.sh Amarchy\n', 'vsh unstartup.sh "Amarchy index"\n',
+        for call in ('vsh unstartup.sh Amarchy\n', 'vsh unstartup.sh "Amarchy index"\n', 'vsh unstartup.sh "Amarchy-Flat"\n',
                      'vsh unstartup.sh UP-Term\n', 'vsh reassign.sh "$updest"'):
             self.assertIn(call, DOS)
 
-    def sh(self, script, args, tmp):
+    def sh(self, script, args, tmp, out='T_User-Startup.up-term'):
         import subprocess
         s = (ROOT / 'dist' / script).read_text().replace('S:', 'S_').replace('T:', 'T_').replace('ENV:', 'E_')
         r = subprocess.run(['sh', '-c', s, 'x', *args], cwd=tmp, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
-        return pathlib.Path(tmp, 'T_User-Startup.up-term').read_text()
+        return pathlib.Path(tmp, out).read_text()
 
     OLD = ('; user\n;BEGIN UP-Term assign\nAssign UP-Term: "Work:UP-Term"\n;END UP-Term assign\n'
            ';BEGIN UP-Term Amarchy\nRun >NIL: UP-Term:bin/Amarchy\n;END UP-Term Amarchy\n'
@@ -989,6 +989,17 @@ class UserStartupBlocksAreGuarded(unittest.TestCase):
             self.assertIn('If EXISTS "Sys:Other"\n  Assign UP-Term: "Sys:Other"\nEndIf\n', out2)
             self.assertEqual(pathlib.Path(t, 'E_upold').read_text(), 'Work:UP-Term')
 
+    def test_reassign_rewrites_the_startup_sequence_flat_block_path(self):
+        import tempfile
+        ss = ('; stock\n;BEGIN UP-Term Amarchy-Flat\nIf EXISTS Work:UP-Term/bin/amarchy-flat\n'
+              '  Run >NIL: Work:UP-Term/bin/amarchy-flat BOOT\nEndIf\n;END UP-Term Amarchy-Flat\nIPrefs\n')
+        with tempfile.TemporaryDirectory() as t:
+            pathlib.Path(t, 'S_Startup-Sequence').write_text(ss)
+            out = self.sh('reassign.sh', ['Sys:Moved/UP-Term', 'S_Startup-Sequence'], t, 'T_Startup-Sequence.up-term')
+            self.assertEqual(out, ss.replace('Work:UP-Term', 'Sys:Moved/UP-Term'))
+            # User-Startup stays untouched in this mode
+            self.assertFalse(pathlib.Path(t, 'T_User-Startup.up-term').exists())
+
     def test_unstartup_strips_every_guarded_block(self):
         import tempfile
         text = '; user\n'
@@ -996,8 +1007,11 @@ class UserStartupBlocksAreGuarded(unittest.TestCase):
             if not name.startswith(';BEGIN UP-Term'):
                 continue  # Amarchy-Flat goes by its own name (tests/test_flat_startup_block.py)
             text += '\n'.join([name] + lines + [name.replace('BEGIN', 'END')]) + '\n'
+        # blocks of an older kit, which the installer no longer writes but still strips
+        text += (';BEGIN UP-Term Amarchy\nRun >NIL: UP-Term:bin/Amarchy\n;END UP-Term Amarchy\n'
+                 ';BEGIN UP-Term Amarchy index\nRun >NIL: UP-Term:bin/amarchy-index\n;END UP-Term Amarchy index\n')
         text += 'Echo keep\n'
-        self.assertIn('  Run >NIL: UP-Term:bin/Amarchy', text)
+        self.assertIn('Run >NIL: UP-Term:bin/Amarchy', text)
         with tempfile.TemporaryDirectory() as t:
             pathlib.Path(t, 'S_User-Startup').write_text(text)
             self.assertEqual(self.sh('unstartup.sh', [], t), '; user\nEcho keep\n')

@@ -12,6 +12,10 @@ sys.path.insert(0, str(ROOT / 'tools'))
 import mkinstaller as mi
 
 DIR = ROOT / 'dist/iconlib'
+FIX = ROOT / 'tests/fixtures'
+# the arguments install.dos hands instssblock.sh for the two blocks it inserts
+REMLIB = ('RemLib', 'SetPatch', 'If EXISTS LIBS:icon.library', '   RemLib >NIL: icon.library', 'EndIf')
+FLAT = ('Amarchy-Flat', 'IPrefs', 'If EXISTS SYS:UP-Term/bin/amarchy-flat', '  Run >NIL: SYS:UP-Term/bin/amarchy-flat BOOT', 'EndIf')
 INSTALLER = (ROOT / 'dist/Install.installer').read_text(encoding='latin-1')
 DOS = mi.build(ROOT / 'dist/install.dos', 'base')
 UNINSTALL = (ROOT / 'dist/Uninstall').read_text(encoding='latin-1')
@@ -69,11 +73,11 @@ class IconLib(unittest.TestCase):
         p = p[:p.index('UnSet upiconlib')]
         gate = p.index('If "$upiconlib" EQ iconlib/icon.library.os30')
         self.assertLess(p.index('Version >NIL: exec.library 47'), gate)  # 3.2 switches to os32 before the gate
-        for line in ('Copy iconlib/RemLib C:RemLib CLONE', 'vsh iconlib/instremlib.sh',
+        for line in ('Copy iconlib/RemLib C:RemLib CLONE', 'vsh instssblock.sh RemLib SetPatch',
                      'Copy T:Startup-Sequence.up-term S:Startup-Sequence CLONE QUIET'):
             self.assertGreater(p.index(line), gate)
 
-    def test_instremlib_inserts_before_setpatch_once_and_unstartup_strips_it(self):
+    def test_instssblock_remlib_inserts_before_setpatch_once_and_unstartup_strips_it(self):
         import subprocess, tempfile
         seq = 'Assign >NIL: LIBS: SYS:Libs\n  c:SetPatch >NIL: QUIET\nAddBuffers df0: 20\nSetPatch\n'
         with tempfile.TemporaryDirectory() as d:
@@ -81,16 +85,59 @@ class IconLib(unittest.TestCase):
                 src = re.sub(r'(?<![A-Za-z])[ST]:', d + '/', pathlib.Path(script).read_text())
                 return subprocess.run(['sh', '-c', src, 'x', *args], capture_output=True, text=True, check=True)
             (pathlib.Path(d) / 'Startup-Sequence').write_text(seq)
-            sh(DIR / 'instremlib.sh')
+            sh(ROOT / 'dist/instssblock.sh', *REMLIB)
             out = (pathlib.Path(d) / 'Startup-Sequence.up-term').read_text()
             block = ';BEGIN UP-Term RemLib\nIf EXISTS LIBS:icon.library\n   RemLib >NIL: icon.library\nEndIf\n;END UP-Term RemLib\n'
             self.assertEqual(out, 'Assign >NIL: LIBS: SYS:Libs\n' + block + '  c:SetPatch >NIL: QUIET\nAddBuffers df0: 20\nSetPatch\n')
             (pathlib.Path(d) / 'Startup-Sequence').write_text(out)
             (pathlib.Path(d) / 'Startup-Sequence.up-term').unlink()
-            sh(DIR / 'instremlib.sh')  # second run: block present, writes nothing
+            sh(ROOT / 'dist/instssblock.sh', *REMLIB)  # second run: block present, writes nothing
             self.assertFalse((pathlib.Path(d) / 'Startup-Sequence.up-term').exists())
             sh(ROOT / 'dist/unstartup.sh', '', d + '/Startup-Sequence')
             self.assertEqual((pathlib.Path(d) / 'Startup-Sequence.up-term').read_text(), seq)
+
+    def _ins(self, d, *args):
+        import subprocess
+        src = re.sub(r'(?<![A-Za-z])[ST]:', d + '/', (ROOT / 'dist/instssblock.sh').read_text())
+        subprocess.run(['sh', '-c', src, 'x', *args], capture_output=True, text=True, check=True)
+        return pathlib.Path(d) / 'Startup-Sequence.up-term'
+
+    def test_instssblock_flat_goes_before_iprefs_on_stock_31_and_322_sequences_idempotently(self):
+        """Amarchy-Flat is inserted directly before the (C:)IPrefs line of the real stock sequences (after
+        AddDataTypes), once, and unstartup.sh strips it by name and by the plain call, byte for byte."""
+        import tempfile
+        for fixture, iprefs in (('Startup-Sequence.ks31', 'C:IPrefs'), ('Startup-Sequence.ks322', 'IPrefs')):
+            seq = (FIX / fixture).read_text()
+            with tempfile.TemporaryDirectory() as d:
+                (pathlib.Path(d) / 'Startup-Sequence').write_text(seq)
+                out = self._ins(d, *FLAT).read_text()
+                block = ';BEGIN UP-Term Amarchy-Flat\n' + '\n'.join(FLAT[2:]) + '\n;END UP-Term Amarchy-Flat\n'
+                self.assertEqual(out, seq.replace(iprefs + '\n', block + iprefs + '\n', 1), fixture)
+                lines = out.splitlines()
+                self.assertTrue(lines[lines.index(';END UP-Term Amarchy-Flat') + 1].endswith('IPrefs'))
+                self.assertIn('AddDataTypes', lines[lines.index(';BEGIN UP-Term Amarchy-Flat') - 1])
+                (pathlib.Path(d) / 'Startup-Sequence').write_text(out)
+                self.assertFalse(self._ins(d, *FLAT).exists(), 'second run must write nothing')
+                for strip in (('Amarchy-Flat',), ('',)):
+                    import subprocess
+                    src = re.sub(r'(?<![A-Za-z])[ST]:', d + '/', (ROOT / 'dist/unstartup.sh').read_text())
+                    subprocess.run(['sh', '-c', src, 'x', *strip, d + '/Startup-Sequence'], check=True, capture_output=True)
+                    self.assertEqual((pathlib.Path(d) / 'Startup-Sequence.up-term').read_text(), seq, fixture)
+
+    def test_instssblock_flat_is_a_noop_without_iprefs_and_remlib_block_leaves_flat_alone(self):
+        import tempfile
+        seq = 'Assign >NIL: LIBS: SYS:Libs\nAddDataTypes REFRESH QUIET\nConClip\n'
+        with tempfile.TemporaryDirectory() as d:
+            (pathlib.Path(d) / 'Startup-Sequence').write_text(seq)
+            self.assertFalse(self._ins(d, *FLAT).exists())
+            # a RemLib block present does not stop the Flat block (the guard is per block name)
+            (pathlib.Path(d) / 'Startup-Sequence').write_text((FIX / 'Startup-Sequence.ks31').read_text())
+            with_remlib = self._ins(d, *REMLIB).read_text()
+            (pathlib.Path(d) / 'Startup-Sequence').write_text(with_remlib)
+            (pathlib.Path(d) / 'Startup-Sequence.up-term').unlink()
+            out = self._ins(d, *FLAT).read_text()
+            self.assertIn(';BEGIN UP-Term RemLib', out)
+            self.assertIn(';BEGIN UP-Term Amarchy-Flat', out)
 
     def test_uninstall_strips_block_and_removes_our_remlib_only(self):
         self.assertIn('$unvsh "$unst" "" S:Startup-Sequence', UNINSTALL)
