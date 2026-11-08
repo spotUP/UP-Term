@@ -222,6 +222,35 @@ If NOT WARN
   EndIf
 EndIf
 UnSet upwait
+; amarchy-flat (the flat UI patch), when its BOOT start left it resident: Leg W starts it from S:Startup-Sequence by the
+; absolute drawer path, so Status knows it under that name. Ctrl-C ends it (it puts back its patches when the slot is
+; still its own), and until it is gone it holds the drawer (an empty UP-Term/bin was left behind, rig, 2026-11-08).
+Status >ENV:upw COM "$updest/bin/amarchy-flat"
+If WARN
+  Status >ENV:upw COM UP-Term:bin/amarchy-flat
+EndIf
+If WARN
+  Status >ENV:upw COM amarchy-flat
+EndIf
+If NOT WARN
+  Break $upw C
+EndIf
+UnSet >NIL: upw
+Delete >NIL: ENV:upw QUIET
+Set upwait ""
+Lab flatgone
+Status >NIL: COM "$updest/bin/amarchy-flat"
+If WARN
+  Status >NIL: COM amarchy-flat
+EndIf
+If NOT WARN
+  If NOT "$upwait" EQ ".........."
+    Wait 1
+    Set upwait "$upwait."
+    Skip flatgone BACK
+  EndIf
+EndIf
+UnSet upwait
 ; Your data lives in UP-Term:var (asked above): on No everything else goes
 ; and var stays where it is.
 If "$upkeepvar" EQ "YES"
