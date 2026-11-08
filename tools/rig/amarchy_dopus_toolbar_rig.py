@@ -143,7 +143,7 @@ def main():
     cmaps = []
     for n in range(2):
         g.close_menu()
-        name, up = d.pick(up=None if n == 0 else False)
+        name, up = d.pick()   # away from the cursor, which sits on the current theme
         time.sleep(5)
         want_set, want_cmap = expect(name, font_h, prx, pry)
         want_bank = 'DOpus5:Buttons/Amarchy-toolbar-' + want_set

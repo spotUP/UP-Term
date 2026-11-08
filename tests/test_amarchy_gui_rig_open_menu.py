@@ -28,6 +28,7 @@ def key(code, qual=0):
 g.ami.key = key
 g.where = lambda title: ({'row_scale': 1}, {'title': title}) if title == g.TITLE and state['open'] else (None, None)
 time.sleep = lambda s: None
+g.menu_port_up = lambda: state['open']      # the port is up exactly while the menu is
 
 s, w = g.open_menu()
 if not w:

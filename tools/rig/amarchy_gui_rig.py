@@ -194,10 +194,29 @@ def box_of(s, w):
     return (w['left'], w['top'] // k, w['width'], w['height'] // k)
 
 
+def menu_port_up():
+    """True while a menu owns the MENU-TOGGLE port AMARCHY.MENU (menu_open.h), with or without a window."""
+    return c.run("""SYS:Rexxc/rx "SAY SHOW(P,'AMARCHY.MENU')" """)[1].strip() == '1'
+
+
+def clear_zombie_menu():
+    """After a theme pick's apply the menu owner can stay alive with no window (port AMARCHY.MENU up): the next hotkey then
+    CLOSES it instead of opening a menu ("open menu: no stable state"). The hotkey once ends it; True when the port is gone."""
+    if where(TITLE)[1] or not menu_port_up():
+        return True
+    ami.key(SPACE, LAMIGA)
+    for _ in range(10):
+        time.sleep(0.5)
+        if not menu_port_up():
+            return True
+    return False
+
+
 def open_menu():
     """The menu at its root level. The hotkey toggles (MENU-TOGGLE, amarchy.c mo_close_open): with a menu still open
     from an earlier step (Esc in a job view only climbs back to the section list) it would close it instead."""
     close_menu()
+    clear_zombie_menu()
     ami.key(SPACE, LAMIGA)
     return wait_where(TITLE)
 

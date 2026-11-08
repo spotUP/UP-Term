@@ -316,6 +316,7 @@ def open_menu():
     scr = g.screens()[0]
     ami.click_px(int(scr['width']) * 5 // 8, int(scr['height']) * 7 // 8)
     time.sleep(1)
+    g.clear_zombie_menu()
     ami.key(g.SPACE, g.LAMIGA)
 
 
