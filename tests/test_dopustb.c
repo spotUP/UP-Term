@@ -101,8 +101,25 @@ static void test_cmap(void)
     CHECK_INT(dt_cmap_patch(file, 5, rgb), 0);
 }
 
+/* The screen DOpus runs on comes from the reply of `dopus screen` (the PAL Workbench case has no DOPUS.1 screen). */
+static void test_screen_name(void)
+{
+    char n[16];
+    CHECK_INT(dt_screen_name("Workbench 640 256 4 1 2", n, sizeof n), 1);
+    CHECK(strcmp(n, "Workbench") == 0);
+    CHECK_INT(dt_screen_name("  DOPUS.1 1344 1080 8\n", n, sizeof n), 1);
+    CHECK(strcmp(n, "DOPUS.1") == 0);
+    CHECK_INT(dt_screen_name("", n, sizeof n), 0);
+    CHECK_INT(n[0], 0);
+    CHECK_INT(dt_screen_name("   ", n, sizeof n), 0);
+    CHECK_INT(dt_screen_name(0, n, sizeof n), 0);
+    CHECK_INT(dt_screen_name("AVeryLongScreenName 1 2 3", n, sizeof n), 0);
+    CHECK_INT(n[0], 0);
+}
+
 void suite_dopustb(void)
 {
+    test_screen_name();
     test_pick_set();
     test_cmap();
 }

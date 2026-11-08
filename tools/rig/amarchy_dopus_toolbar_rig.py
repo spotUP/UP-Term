@@ -91,8 +91,9 @@ def screen_facts():
     w, h = [int(x) for x in rx('dopus screen').split()[1:3]]
     s = g.screens()[0]
     ry = int(s['row_scale'])
-    font = c.run('Type ENV:Sys/font.prefs')[0] == 0
-    return (None if font else 8), 1, ry, '%dx%d' % (w, h)
+    if c.run('Type ENV:Sys/font.prefs')[0] == 0:
+        raise SystemExit('ENV:Sys/font.prefs exists: the screen font is not topaz 8, read it before trusting the expected set')
+    return 8, 1, ry, '%dx%d' % (w, h)
 
 
 def cmap_of(path):
@@ -106,15 +107,6 @@ def cmap_of(path):
         os.unlink(local)
     i = b.find(b'CMAP')
     return b[i + 8:i + 8 + int.from_bytes(b[i + 4:i + 8], 'big')].hex()
-
-
-def strip_colours(shot, lister_title=None):
-    """Colour counts of the toolbar strip of the DOpus lister in a screenshot: the top 40 picture rows under the lister's title bar."""
-    from PIL import Image
-    im = Image.open(shot).convert('RGB')
-    s = g.screens()[0]
-    ws = [w for w in s['windows'] if 'DOPUS' in w['title'].upper() or w['title']]
-    return im, s, ws
 
 
 def main():
@@ -132,8 +124,7 @@ def main():
         time.sleep(8)
     print('process Amarchy running:', g.process_running('Amarchy'))
     font_h, prx, pry, geom = screen_facts()
-    print('dopus screen:', rx('dopus screen'), '| font height', font_h or 8, '| pixel', '%d:%d' % (prx, pry))
-    font_h = font_h or 8
+    print('dopus screen:', rx('dopus screen'), '| font height', font_h, '| pixel', '%d:%d' % (prx, pry))
     before = set(handles())
     for _ in range(2):
         c.run('SYS:Rexxc/rx "ADDRESS DOPUS.1; command DeviceList NEW"')

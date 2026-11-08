@@ -81,5 +81,18 @@ class DopusToolbar(unittest.TestCase):
                 self.assertEqual(bd.replace(b'dopus5:images/Amarchy/24/', b'dopus5:images/'), ud)
 
 
+class InstallScript(unittest.TestCase):
+    """dist/addons/dopus/install.dos carries one installer body: one CHECKFRAG include, one Lab dopus, and the single-bank
+    name Amarchy-toolbar (no set) only in the Delete of the old bank."""
+    def test_body_once_and_old_bank_only_deleted(self):
+        t = (ROOT / 'dist' / 'addons' / 'dopus' / 'install.dos').read_text()
+        self.assertEqual(t.count('@include dist/common/@CHECKFRAG@'), 1)
+        self.assertEqual(t.count('Lab dopus'), 1)
+        self.assertEqual(t.count('record.dos'), 1)
+        for line in t.splitlines():
+            if re.search(r'Amarchy-toolbar(?![-\w])', line) and not line.lstrip().startswith(';'):
+                self.assertIn('Delete', line, line)
+
+
 if __name__ == '__main__':
     unittest.main()

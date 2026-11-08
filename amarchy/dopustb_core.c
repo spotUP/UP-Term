@@ -24,6 +24,27 @@ void dt_pick_set(unsigned font_h, int rx, int ry, dt_set *out)
     out->tall = rx > 0 && ry > 0 && li_pick_variant((unsigned)ry, (unsigned)rx);
 }
 
+int dt_screen_name(const char *reply, char *out, unsigned cap)
+{
+    unsigned n = 0;
+    if (cap)
+        out[0] = 0;
+    if (!reply || !cap)
+        return 0;
+    while (*reply == ' ' || *reply == '\t')
+        reply++;
+    while (reply[n] && reply[n] != ' ' && reply[n] != '\t' && reply[n] != '\r' && reply[n] != '\n') {
+        if (n + 1 >= cap) {
+            out[0] = 0;
+            return 0;
+        }
+        out[n] = reply[n];
+        n++;
+    }
+    out[n] = 0;
+    return n > 0;
+}
+
 unsigned dt_set_name(const dt_set *s, char *out, unsigned cap)
 {
     unsigned n = 0;

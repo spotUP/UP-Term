@@ -16,26 +16,35 @@
 #include "dopustb_dos.h"
 #include "dopustb_core.h"
 #include "menu_font.h"
+#include "rexx_host.h"
 
 #define DTD_DRAWER "DOpus5:Images/Amarchy/"
 
 extern struct GfxBase *GfxBase;      /* each Amarchy program owns its own, opened or not: see dtd_screen */
 
-/* The font height and the pixel aspect of the DOpus screen (the public screen DOPUS.1, whose name the up-dopus add-on sets); the
- * aspect through menu_screen_aspect, the lookup the menus use. 0 when Directory Opus has no such screen. */
+/* The font height and the pixel aspect of the screen Directory Opus runs on; the aspect through menu_screen_aspect, the lookup the
+ * menus use. The screen is the one `dopus screen` names (DOPUS.1 on its own screen, Workbench when DOpus opens there: chosen over
+ * the lister's WScreen because that needs a lister, and over a fixed DOPUS.1 because that is absent on Workbench); an unanswered
+ * command or an unlocked name falls back to the default public screen. 0 when Directory Opus has no port. */
 static int dtd_screen(unsigned *font_h, int *rx, int *ry, void *ud)
 {
     struct IntuitionBase *IntuitionBase;
     struct GfxBase *opened = 0, *saved = GfxBase;
     struct Screen *scr;
+    char reply[128], name[64];
     int found = 0;
     (void)ud;
     *font_h = 0;
     *rx = *ry = 0;
+    reply[0] = 0;
+    if (rexx_send("DOPUS.1", "dopus screen", reply, sizeof reply) != 0)
+        return 0;
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
     if (!IntuitionBase)
         return 0;
-    scr = LockPubScreen((STRPTR)"DOPUS.1");
+    scr = dt_screen_name(reply, name, sizeof name) ? LockPubScreen((STRPTR)name) : 0;
+    if (!scr)
+        scr = LockPubScreen(0);
     if (scr) {
         if (scr->Font)
             *font_h = scr->Font->ta_YSize;

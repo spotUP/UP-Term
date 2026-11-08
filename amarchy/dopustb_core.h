@@ -13,6 +13,11 @@ typedef struct {
     int tall;              /* 1 = tall-pixel set, half the height (a 2:1 pixel aspect) */
 } dt_set;
 
+/* The public screen Directory Opus runs on, from the reply of the ARexx command `dopus screen` ("<name> <w> <h> <depth> ...", the name
+ * of a public screen has no blanks): the first word is copied to out (NUL ended). Returns 1 with the name; 0 for an empty or too long
+ * reply, out is then "" and the caller uses the default public screen. */
+int dt_screen_name(const char *reply, char *out, unsigned cap);
+
 /* DT-3: the set for a DOpus screen whose font is font_h pixels high (Screen->Font->ta_YSize; 0 = unknown, gives 24) and whose
  * pixels are rx : ry (DisplayInfo Resolution via menu_screen_aspect; 0 = unknown, square). The icon height is about 2 x the font
  * height, snapped to the nearest of 16/24/32 (a tie goes to the smaller). Tall when li_pick_variant says the pixel is twice as
