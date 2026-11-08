@@ -85,6 +85,7 @@ import kitstamp
 import user_startup
 import wasabi as rigwasabi
 import amiberry
+import emuwin
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 RIG = paths.RIG      # build/rig, or build/rig2 with UPTERM_RIG=2
@@ -2401,6 +2402,7 @@ def _start(retries):
             break
     print("[ERROR] no wasabid answer; boot.log:",
           log.read_text().strip().replace("\n", " | ") if log.exists() else "(none: go never ran)")
+    frozen_boot_screen()
     if retries > 0:
         print("retrying the boot")
         stop()
@@ -2410,6 +2412,24 @@ def _start(retries):
     # ConnectionRefusedError, and the third boot's FS-UAE (with its logwatch) kept running unattended (rig 1, 2026-10-25).
     stop()
     sys.exit("rig: the boot failed %d times (no wasabid answer); see the boot.log lines above" % (START_RETRIES + 1))
+
+def frozen_boot_screen():
+    """Record what the emulator window shows when a boot never answers, before the retry stops it.
+
+    A frozen boot has no wasabid, so the guest cannot report what it waits on. Rig 94 (2026-11-08) showed
+    "Please insert volume System: in any drive" to the owner, but the retry stopped the emulator and overwrote
+    boot.log, so nothing was left to find the cause from. The screenshot goes to paths.REPORTS/shots (survives
+    the stop); the requester or alert lines it shows are printed as [ERROR] lines."""
+    png, lines = emuwin.window_text(CFG, paths.reports_dir("shots"), "boot-freeze")
+    hits = emuwin.requester_lines(lines)
+    for l in hits:
+        print("[ERROR] frozen boot screen: %s" % l)
+    if not hits:
+        print("[INFO] frozen boot screen: no requester text read (%s)" % (" | ".join(lines[:6]) or "no text"))
+    if png:
+        print("[INFO] frozen boot screenshot: %s" % png)
+    return hits
+
 
 # the assigns every rig script uses, made by the boot hook and BOOTX:go: a
 # boot that lacks one has a requester waiting ("Please insert volume VTC:"

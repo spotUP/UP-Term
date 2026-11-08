@@ -60,6 +60,7 @@ import paths  # noqa: E402
 import ami  # noqa: E402
 import condev_rig as c  # noqa: E402
 import typewin as tw  # noqa: E402
+import emuwin  # noqa: E402
 
 ROOT = paths.VTCON
 RIG = paths.RIG
@@ -303,43 +304,11 @@ def alive(name):
 
 # ---------------------------------------------------------------- the emulator itself (a guru, a hung machine)
 
-SWIFT_WINDOWS = (
-    'import CoreGraphics\nimport Foundation\n'
-    'let l = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as! [[String: Any]]\n'
-    'for w in l { let b = w["kCGWindowBounds"] as! [String: Any]\n'
-    '  print(w["kCGWindowNumber"]!, w["kCGWindowOwnerPID"]!, b["Width"]!, b["Height"]!) }\n')
-
-
 def emulator_text():
-    """What the emulator's own window shows, read by Tesseract (macOS screencapture of this rig's FS-UAE
-    window, found by the config path in its command line): an Exec alert ("Software Failure", "Guru
+    """What the emulator's own window shows (emuwin.window_text): an Exec alert ("Software Failure", "Guru
     Meditation #xxxxxxxx.xxxxxxxx") is drawn outside the Workbench screen, where wasabid cannot see it.
     Returns the non-empty lines of the top fifth of the window, or a note why it could not be read."""
-    try:
-        cfg = str(RIG / 'vtcon-rig.fs-uae')
-        pid = subprocess.run(['pgrep', '-f', 'fs-uae.*' + re.escape(cfg)], capture_output=True, text=True).stdout.split()
-        if not pid:
-            return ['(no FS-UAE process for this rig)']
-        swift = OUT / '_windows.swift'
-        swift.write_text(SWIFT_WINDOWS)
-        wins = [l.split() for l in subprocess.run(['swift', str(swift)], capture_output=True, text=True).stdout.splitlines()]
-        big = [w for w in wins if w[1] == pid[0] and int(w[2]) > 600 and int(w[3]) > 400]
-        if not big:
-            return ['(no FS-UAE window found)']
-        png = OUT / '_emulator.png'
-        subprocess.run(['screencapture', '-x', '-o', '-l' + big[0][0], str(png)], check=True)
-        from PIL import Image
-        im = Image.open(png).convert('RGB')
-        w, h = im.size
-        shots = OUT / 'shots'
-        shots.mkdir(parents=True, exist_ok=True)
-        im.save(shots / ('emulator-%s.png' % time.strftime('%H%M%S')))
-        top = OUT / '_emulator-top.png'
-        im.crop((0, 0, w, h // 5)).resize((w * 2, h * 2 // 5)).save(top)
-        out = subprocess.run(['tesseract', str(top), '-', '--psm', '6'], capture_output=True, text=True).stdout
-        return [l.strip() for l in out.splitlines() if l.strip()]
-    except (OSError, subprocess.SubprocessError, ImportError) as e:
-        return ['(emulator window unreadable: %s)' % e]
+    return emuwin.window_text(RIG / 'vtcon-rig.fs-uae', OUT / 'shots', 'emulator', top=0.2)[1]
 
 
 def restart_rig():
