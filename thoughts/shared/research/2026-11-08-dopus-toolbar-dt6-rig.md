@@ -28,3 +28,13 @@ to the Workbench screen when DOPUS.1 is absent (product decision for the owner; 
 - d.pick timeouts: run 1 "Down to Style: no stable state within 30s"; run 2 second pick "open menu: no stable state within 60s". Not reproduced by hand; cause unknown. The owner's "enter Amarchy theme" timeout did not recur.
 - dist/addons/dopus/install.dos HEAD contains its whole body twice (grep "Lab dopus" = 2); the second copy is the old single-bank installer.
 - Unused leftover strip_colours and inverted font check in the rig script (cosmetic, ends at font 8).
+
+## Rerun after cc4641a7 (rig 63, KS 3.2, PAL hires 640x256 non-laced, DOpus on the Workbench screen)
+Fixes: cc4641a7 (screen from the `dopus screen` reply, install.dos once, rig nits) and the next commit (rig script reads ENV:Sys/font.prefs: topaz 8 on this rig).
+Binary: build/amiga/Amarchy md5 a8275fabe011fd6d5ce957ccb696a74f, built from cc4641a7 sources, copied to build/rig63/vtc.
+- Theme 1 ("white"): (a) PASS lister B toolbar = DOpus5:Buttons/Amarchy-toolbar-16t (expected 16t); lister A kept Custom-bank. (b) PASS CMAP of 16t/Copy.small
+  = ffffffababab575757000000cfcfcf9f9f9f6e6e6effffff == dt_cmap(white).
+- Theme 2: NOT RUN. d.pick timed out again: "open menu: no stable state within 60s (last None)" (same as earlier run 2; the menu driver, not the toolbar).
+- (c) caching verdict (recoloured brush shown after re-set without restart): NOT ANSWERED, needs the second apply.
+- RTG 800x600: NOT RUN.
+DT-6 stays OPEN: PAL theme 1 sentinels pass, theme 2 / caching / RTG outstanding.
