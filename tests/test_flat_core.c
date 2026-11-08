@@ -397,6 +397,39 @@ static void cv_fill(void *ctx, int x0, int y0, int x1, int y1, int pen)
                 cv[y][x] = (char)pen;
 }
 
+/* 0c DOPUS-ENV-UNSTYLED (owner, rig 63, DOpus Environment "buttons are text only"): under flat pens DrawBox / DrawFieldBox
+ * drew nothing. They now draw the flat outline in pen_line on the inclusive rectangle, side columns wide, and never touch
+ * the inside (the caller's label). Fails on the old code: no flat_dopus_box_draw, and the d4 SKIP branch drew no pixel. */
+static void test_dopus_box_outline(void)
+{
+    flat_state s;
+    int x, y;
+    flat_init(&s);
+    s.enabled = 1;
+    s.pen_line = 7;
+    s.side = 1;
+    cv_clear();
+    CHECK_INT(flat_dopus_box_draw(&s, 2, 3, 11, 8, cv_fill, 0), 1);
+    for (y = 0; y < CV; y++)
+        for (x = 0; x < CV; x++) {
+            int in = x >= 2 && x <= 11 && y >= 3 && y <= 8;
+            int edge = in && (x == 2 || x == 11 || y == 3 || y == 8);
+            if (cv[y][x] != (edge ? 7 : '?'))
+                CHECK_INT(cv[y][x], edge ? 7 : '?');
+        }
+    s.side = 2;                                     /* a tall-pixel screen: two outline columns at each side */
+    cv_clear();
+    CHECK_INT(flat_dopus_box_draw(&s, 2, 3, 11, 8, cv_fill, 0), 1);
+    CHECK_INT(cv[5][3], 7);
+    CHECK_INT(cv[5][10], 7);
+    CHECK_INT(cv[5][4], '?');
+    CHECK_INT(cv[4][4], '?');
+    cv_clear();
+    CHECK_INT(flat_dopus_box_draw(&s, 2, 3, 3, 8, cv_fill, 0), 0);   /* under 3x3: nothing, caller draws nothing */
+    CHECK_INT(cv[3][2], '?');
+    CHECK_INT(flat_dopus_box_draw(&s, 2, 3, 11, 8, 0, 0), 0);
+}
+
 /* the fake dispatcher: the same three steps as flat.c c2_disp_reg / c2_disp_stk */
 static int fake_dispatch(const flat_state *st, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy, int w, int h)
 {
@@ -2810,6 +2843,7 @@ void suite_flat_core(void)
     test_disabled_button_dim_fill();
     test_dopus_swap();
     test_dopus_decide();
+    test_dopus_box_outline();
     test_dopus_path();
     test_glyph_goldens();
     test_glyph_solid_and_state_equal();

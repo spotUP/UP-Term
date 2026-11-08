@@ -71,6 +71,13 @@ int flat_glyph_draw(const flat_state *s, unsigned long which, unsigned long meth
  * when the box is under 3x3 or fill_fn is null (the caller then runs the stock routine). */
 int flat_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn, void *ctx);
 
+/* 0c DOPUS-ENV-UNSTYLED: the flat result of one dopus5.library DrawBox / DrawFieldBox call (FLAT-D4) under flat pens. Both
+ * stock routines draw the bevel edges only, never the inside (the caller has drawn or will draw the label and contents), so
+ * the flat equivalent is flat_frame_draw's edges-only form: a full outline in pen_line, s->side columns wide at the sides.
+ * x0..y1 is the inclusive struct Rectangle the routine got. Returns 1 when drawn, 0 when the box is under 3x3 or fn is
+ * null (the caller then draws nothing, as before). */
+int flat_dopus_box_draw(const flat_state *s, int x0, int y0, int x1, int y1, flat_fill_fn fn, void *ctx);
+
 /* FLAT-BUTTON-ROUND: rd(ctx, x, y) reads the pen already on the surface (ReadPixel; negative = unreadable). */
 typedef int (*flat_read_fn)(void *ctx, int x, int y);
 /* The rounded corners of a button box of size w x h, window-relative: each cut pixel is {x, y, sx, sy} where (x, y) is inside the box
