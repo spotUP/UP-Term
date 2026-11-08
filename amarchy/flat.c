@@ -169,6 +169,19 @@ static struct RastPort cl_rp;
 static int cl_w, cl_h;
 static UWORD cl_pens[FLAT_CLONE_MARKS];
 static flat_clone_in cl_in;                         /* the call arguments, held under cl_ss (flat budget: 7 pushed arguments, not 18) */
+/* S63-KS31-STACK: the clone runs on a private stack. It nests NewObjectA(sysiclass), AllocBitMap, the saved ROM dispatcher and a
+ * ReadPixel loop; the drawing task can be any task (IPrefs had 1052 bytes free), so the call never runs on the caller's stack. */
+#define CLONE_STACK_BYTES 16384
+#define CLONE_STACK_FILL 0xA5
+#define CLONE_STACK_SKIP 8     /* KS 3.1 writes 0xBAD1BAD3 into the first 4 bytes of a swapped-in stack (measured rig 97): not use, so the scan starts past it */
+LONG flat_on_stack(LONG (*fn)(void *), void *arg, struct StackSwapStruct *sss);
+#define CLONE_GUARD 16
+static uint8_t *cl_base;                            /* the AllocVec block: CLONE_GUARD canary bytes, then the stack */
+static uint8_t *cl_stk;                             /* allocated in main before the hooks install, freed after they are removed */
+static struct StackSwapStruct cl_sss;               /* held under cl_ss */
+static ULONG cl_hwp;                                /* first byte of cl_stk not yet seen written (high-water scan start), under cl_ss */
+typedef struct { const flat_state *st; cloneenv *env; struct RastPort *rp; int rc; } cl_call;
+static cl_call cl_arg;                              /* the stack function's argument, held under cl_ss */
 static uint8_t cl_scratch[FLAT_CLONE_SCRATCH];     /* the grids: static (held under cl_ss), not on the stack of whatever task draws */
 /* S32 CLONE-PRIVATE-IMAGE (flat_glyph.h): the private marker images. 3.2 sysiclass keeps the SYSIA_DrawInfo pointer and bakes
  * its pens at OM_NEW, so the marker DrawInfo is static (it outlives every private image) and dri_Depth is FLAT_CLONE_DEPTH. */
@@ -409,6 +422,75 @@ static void c2_clone_note_fail(flatshared *r, ULONG which, int got, int why)
     r->cf_mask |= 1UL << (which & 31);
 }
 
+/* The function that runs on the private stack (flat_on_stack): the whole clone draw. Under cl_ss. */
+static LONG clone_on_private(void *a)
+{
+    cl_call *c = (cl_call *)a;
+    c->rc = flat_clone_draw_in(c->st, &cl_in, clone_render, c->env, c2_fill, c->rp, cl_scratch);
+    return 0;
+}
+
+/* Allocate the clone stack once, before the hooks install (main task). Filled with a pattern for the high-water mark. */
+static void clone_stack_alloc(flatshared *r)
+{
+    cl_base = (uint8_t *)AllocVec(CLONE_STACK_BYTES + CLONE_GUARD, MEMF_PUBLIC);
+    if (!cl_base)
+        return;
+    memset(cl_base, 0x5A, CLONE_GUARD);
+    cl_stk = cl_base + CLONE_GUARD;
+    memset(cl_stk, CLONE_STACK_FILL, CLONE_STACK_BYTES);
+    cl_sss.stk_Lower = cl_stk;
+    cl_sss.stk_Upper = (ULONG)(cl_stk + CLONE_STACK_BYTES);
+    cl_sss.stk_Pointer = (APTR)(cl_stk + CLONE_STACK_BYTES);
+    cl_hwp = CLONE_STACK_SKIP;
+    r->cstk = CLONE_STACK_BYTES;
+}
+
+/* After the hooks are removed and cl_ss is held: nothing can be on the stack any more. */
+static void clone_stack_free(void)
+{
+    if (cl_base) {
+        FreeVec(cl_base);
+        cl_base = NULL;
+        cl_stk = NULL;
+    }
+}
+
+/* Diagnostics, under cl_ss: the drawing task's free stack before the swap (least seen, and whose), the private stack high-water. */
+static void clone_stack_note(flatshared *r, int after)
+{
+    if (!after) {
+        struct Task *me = FindTask(NULL);
+        ULONG free_b = (ULONG)((char *)&me - (char *)me->tc_SPLower);
+        const char *nm = me->tc_Node.ln_Name ? me->tc_Node.ln_Name : "?";
+        int i;
+        if (r->cmin && free_b >= r->cmin)
+            return;
+        r->cmin = free_b;
+        for (i = 0; i < 15 && nm[i]; i++)
+            r->ctask[i] = nm[i];
+        r->ctask[i] = 0;
+        return;
+    }
+    cl_hwp = CLONE_STACK_SKIP;  /* rescan from the bottom every time: a later, deeper draw dirties bytes below the last stop */
+    while (cl_hwp < CLONE_STACK_BYTES && cl_stk[cl_hwp] == CLONE_STACK_FILL)
+        cl_hwp++;
+    r->chw = CLONE_STACK_BYTES - cl_hwp;
+    {   /* S63 probe: is byte 0 a stray write (a few bottom bytes) or real depth (the high-water ignoring the bottom 256)? */
+        ULONG i, n = 0, g = 0;
+        for (i = 0; i < 256; i++)
+            n += cl_stk[i] == CLONE_STACK_FILL;
+        for (i = 0; i < CLONE_GUARD; i++)
+            g += cl_base[i] == 0x5A;
+        for (i = 256; i < CLONE_STACK_BYTES && cl_stk[i] == CLONE_STACK_FILL; i++)
+            ;
+        r->cb256 = n; r->cguard = g; r->cdeep = CLONE_STACK_BYTES - i;
+        r->cb8a = ((ULONG)cl_stk[0] << 24) | ((ULONG)cl_stk[1] << 16) | ((ULONG)cl_stk[2] << 8) | cl_stk[3];
+        r->cb8b = ((ULONG)cl_stk[4] << 24) | ((ULONG)cl_stk[5] << 16) | ((ULONG)cl_stk[6] << 8) | cl_stk[7];
+        r->chdr = *(ULONG *)(cl_base - 4);
+    }
+}
+
 /* The clone draw of one gadget image: 1 when it was drawn (the caller is done), 0 to fall back to the block glyph. Its own function
  * so the clone's environment is not part of c2_draw's frame (flat budget). */
 static int c2_clone(struct Hook *hk, Object *obj, Msg msg, int reg, ULONG which, ULONG raw_which, const c2_pens *p)
@@ -425,7 +507,17 @@ static int c2_clone(struct Hook *hk, Object *obj, Msg msg, int reg, ULONG which,
         cl_in.ox = im->LeftEdge + d->imp_Offset.X; cl_in.oy = im->TopEdge + d->imp_Offset.Y; cl_in.w = im->Width; cl_in.h = im->Height;
         cl_in.frame_pen = p->frame; cl_in.knob_pen = p->knob; cl_in.text_pen = p->text; cl_in.band_rows = p->band; cl_in.edge_pen = p->edge;
     }
-    rc = !got ? FLAT_CLONE_FAIL : flat_clone_draw_in(st_rp(r, d->imp_RPort), &cl_in, clone_render, &env, c2_fill, d->imp_RPort, cl_scratch);
+    rc = FLAT_CLONE_FAIL;
+    if (got && !cl_stk) {       /* no private stack: never run the clone on the caller's stack */
+        r->cnostk++;
+        env.why = CLONE_WHY_BUSY;
+    } else if (got) {
+        clone_stack_note(r, 0);
+        cl_arg.st = st_rp(r, d->imp_RPort); cl_arg.env = &env; cl_arg.rp = d->imp_RPort; cl_arg.rc = FLAT_CLONE_FAIL;
+        flat_on_stack(clone_on_private, &cl_arg, &cl_sss);
+        clone_stack_note(r, 1);
+        rc = cl_arg.rc;
+    }
     if (got && rc == FLAT_CLONE_FAIL && env.why == CLONE_WHY_NONE)
         c2_clone_note_empty(r, d, im, which);
     if (got)
@@ -1671,7 +1763,7 @@ static void put_word(char *out, int *n, const char *w)
 static void print_status(void)
 {
     flat_state copy;
-    char line[128];              /* worst-case rectfill line with mhits and bhits is 125 */
+    char line[256];              /* worst-case rectfill line with mhits and bhits is 125 */
     flatshared *r;
     int found = 0, dfound = 0, dreason = 0, dmask = 0, dinst = 0;
     unsigned dver = 0, drev = 0;
@@ -1679,6 +1771,8 @@ static void print_status(void)
     int finst = 0, rinst = 0;
     unsigned long rcalls = 0, rhits = 0, shits = 0, mhits = 0, bhits = 0, tcalls = 0, thits = 0, labels = 0, lskip = 0;
     int tinst = 0;
+    unsigned long scmin = 0, schw = 0, scstk = 0, scno = 0, scb256 = 0, scb8a = 0, scb8b = 0, schdr = 0, scguard = 0, scdeep = 0;
+    char sctask[16] = "";
     unsigned long cdraws = 0, cfall = 0, alooks = 0, cfb = 0, cfd = 0, cfm = 0, cfe = 0, cfk = 0, cfi = 0, clw = 0, cls = 0, cln = 0, clm = 0;
     int apx = 0, sring[16][9], sn = 0;
     uint32_t dsum[FLAT_EL_COUNT] = { 0, 0 };
@@ -1694,6 +1788,8 @@ static void print_status(void)
         finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat;
         rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits; mhits = r->mhits; bhits = r->bhits;
         tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits; labels = r->labels; lskip = r->lskip;
+        scmin = r->cmin; schw = r->chw; scstk = r->cstk; scno = r->cnostk; memcpy(sctask, r->ctask, 16); sctask[15] = 0;
+        scb256 = r->cb256; scb8a = r->cb8a; scb8b = r->cb8b; schdr = r->chdr; scguard = r->cguard; scdeep = r->cdeep;
         cdraws = r->cdraws; cfall = r->cfall;
         cfb = r->cf_busy; cfd = r->cf_nodri; cfm = r->cf_nobm; cfe = r->cf_empty; cfk = r->cf_mask;
         cfi = r->cf_ids; clw = r->cf_lwhich; cls = r->cf_lsize; cln = r->cf_lnz; clm = r->cf_lmarks;
@@ -1753,6 +1849,21 @@ static void print_status(void)
         put_word(line, &n, " hits=");               put_num(line, &n, thits);
         put_word(line, &n, " labels=");             put_num(line, &n, labels);     /* RL21 sentinels */
         put_word(line, &n, " lskip=");              put_num(line, &n, lskip);
+        put_word(line, &n, " cmin=");               put_num(line, &n, scmin);
+        put_word(line, &n, " ctask=");              put_word(line, &n, sctask);
+        put_word(line, &n, " chw=");                put_num(line, &n, schw);
+        put_word(line, &n, " cstk=");               put_num(line, &n, scstk);
+        put_word(line, &n, " cnostk=");             put_num(line, &n, scno);
+        line[n] = 0;
+        PutStr((STRPTR)line);
+        PutStr((STRPTR)"\n");
+        n = 0;
+        put_word(line, &n, "cprobe fill256=");      put_num(line, &n, scb256);
+        put_word(line, &n, " deep=");               put_num(line, &n, scdeep);
+        put_word(line, &n, " guard=");              put_num(line, &n, scguard);
+        put_word(line, &n, " hdr=");                put_num(line, &n, schdr);
+        put_word(line, &n, " b0=");                 put_num(line, &n, scb8a);
+        put_word(line, &n, " b4=");                 put_num(line, &n, scb8b);
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
@@ -2332,6 +2443,7 @@ int main(void)
     pt_open(&tm);
     memset(&pen_tm, 0, sizeof pen_tm);
     pt_open(&pen_tm);
+    clone_stack_alloc(r);                               /* S63-KS31-STACK: before any hook can run the clone */
     if (IntuitionBase && GfxBase) {
         int lmb, rmb, why;
         buttons(&lmb, &rmb);
@@ -2404,6 +2516,7 @@ int main(void)
         }
         ObtainSemaphore(&cl_ss);
         clone_free();
+        clone_stack_free();                             /* hooks are removed and cl_ss is ours: no task is on the stack */
         ReleaseSemaphore(&cl_ss);
         ObtainSemaphore(&icl_ss);                       /* RL21: Text is unchained, no label branch can be inside */
         icl_free();

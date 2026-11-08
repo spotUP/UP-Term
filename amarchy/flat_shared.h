@@ -48,6 +48,9 @@ typedef struct flatshared {
     ULONG ttitle;               /* window titles redrawn by FLAT-TITLE-ACCENT (the sentinel) */
     ULONG tcalls, thits;
     ULONG labels, lskip;        /* RL21: icon labels antialiased / label calls drawn stock (semaphore busy, nothing to blend) */        /* every patched Text call / every pressed label recoloured (the sentinels) */
+    ULONG cmin, chw, cstk, cnostk;  /* S63 clone stack: least free stack of the drawing task at c2_clone, private stack high-water bytes, its size, clones refused for want of it */
+    ULONG cb256, cb8a, cb8b, chdr, cguard, cdeep;  /* S63 stack probe: fill bytes left in the bottom 256, the first 8 stack bytes, AllocVec size longword, guard bytes intact (of 16), high-water ignoring the bottom 256 */
+    char ctask[16];             /* name of the task at cmin */
     ULONG cdraws, cfall;        /* FLAT-GLYPH-OS-SHAPES sentinels: gadgets drawn by cloning the system image / clone attempts that fell back to the block glyph */
     ULONG cf_busy, cf_nodri, cf_nobm, cf_empty;    /* cfall split by cause: cl_ss held by another task / no DrawInfo / no offscreen bitmap / image drew no pixel */
     ULONG cf_mask;              /* bit (which & 31) set for every image that fell back (SYSIA_Which after flat_which_alias) */
