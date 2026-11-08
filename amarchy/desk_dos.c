@@ -16,6 +16,7 @@
 #include "desk_core.h"
 #include "bar_core.h"
 #include "menu_theme.h"
+#include "dopustb_dos.h"
 #include "amconf_dos.h"
 #include "flat_shared.h"
 #include "win_refresh.h"
@@ -478,7 +479,7 @@ static int dk_apply(const gtheme *th, char *why, int cap)
         dk_live_want = 1;
         dk_live_flat = flat_pens;
         desk_dos_dopus_sends++;
-        dopus_theme_send(th, dk_dopus_send, 0);
+        dopus_theme_send(th, dk_dopus_send, 0, &dopustb_dos_ops);
     }
     if (mask & (1u << DT_WBPATTERN)) {
         plen = dk_read("ENV:Sys/wbpattern.prefs", prev, sizeof prev);
@@ -850,7 +851,7 @@ static int dk_flat_pens(const gtheme *th)
     }
     if (theme && len > 0) {
         desk_dos_dopus_sends++;
-        dopus_theme_send(th, dk_dopus_send, 0);
+        dopus_theme_send(th, dk_dopus_send, 0, &dopustb_dos_ops);
         return 1;
     }
     return 0;
@@ -1711,7 +1712,7 @@ int desk_dos_start_apply(void)
         dk_live_want = 1;
         dk_live_flat = flat;
         desk_dos_dopus_sends++;
-        dopus_theme_send(&th, dk_dopus_send, 0);
+        dopus_theme_send(&th, dk_dopus_send, 0, &dopustb_dos_ops);
     }
     if (plan & DESK_START_POINTER) {
         dk_orig_save(1u << DT_POINTER, 0);

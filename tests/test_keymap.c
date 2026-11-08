@@ -2977,6 +2977,7 @@ static void menu_theme_roles_map_the_palette(void);
 static void dopus_theme_commands_use_the_theme_directly(void);
 static void dopus_theme_send_goes_to_the_dopus_port(void);
 static void dopus_theme_send_switches_only_a_default_toolbar(void);
+static void dopus_theme_send_picks_the_set_and_recolours(void);
 static void wb_pens_contrast_guard(void);
 static void minimal_mode_reaches_the_program(void);
 static void the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg(void);
@@ -3701,6 +3702,7 @@ void suite_keymap(void)
     dopus_theme_commands_use_the_theme_directly();
     dopus_theme_send_goes_to_the_dopus_port();
     dopus_theme_send_switches_only_a_default_toolbar();
+    dopus_theme_send_picks_the_set_and_recolours();
     wb_pens_contrast_guard();
     minimal_mode_reaches_the_program();
     the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg();
@@ -3785,6 +3787,7 @@ void suite_keymap(void)
 }
 /* ---- menu_theme: the drawn menu's colour roles ---- */
 #include "../amarchy/menu_theme.h"
+#include "../amarchy/dopustb_core.h"
 
 /* role -> palette index is the table's: the shipped default palette is the renderer's xterm one, and the
  * table's defaults are those values (hand-written below, then held to the engine) */
@@ -4010,7 +4013,7 @@ static void dopus_theme_send_goes_to_the_dopus_port(void)
     /* Opus on its own screen: screen query, toolbar handle query, palette, ten pens, refresh */
     memset(&r, 0, sizeof r);
     r.screen = "DOpus5 800 600 4";
-    CHECK_INT((long)dopus_theme_send(&th, dopus_fake_send, &r), 14L);
+    CHECK_INT((long)dopus_theme_send(&th, dopus_fake_send, &r, 0), 14L);
     CHECK_INT((long)r.n, 14L);
     for (i = 0; i < 14; i++)
         CHECK_STR(r.port[i], "DOPUS.1");
@@ -4028,7 +4031,7 @@ static void dopus_theme_send_goes_to_the_dopus_port(void)
     /* Opus on the Workbench screen: no palette line (set palette only recolours Opus's own screen) */
     memset(&r, 0, sizeof r);
     r.screen = "Workbench 800 600 4 0";
-    CHECK_INT((long)dopus_theme_send(&th, dopus_fake_send, &r), 13L);
+    CHECK_INT((long)dopus_theme_send(&th, dopus_fake_send, &r, 0), 13L);
     CHECK_STR(r.line[0], "dopus screen");
     CHECK_STR(r.line[1], "lister query all");
     CHECK_STR(r.line[2], "dopus set pens icons 1 0 0 1 0 0");
@@ -4039,11 +4042,11 @@ static void dopus_theme_send_goes_to_the_dopus_port(void)
     /* Directory Opus not running: one attempt, then stop */
     memset(&r, 0, sizeof r);
     r.absent = 1;
-    CHECK_INT((long)dopus_theme_send(&th, dopus_fake_send, &r), 1L);
+    CHECK_INT((long)dopus_theme_send(&th, dopus_fake_send, &r, 0), 1L);
     CHECK_INT((long)r.n, 1L);
 
     memset(&r, 0, sizeof r);
-    CHECK_INT((long)dopus_theme_send(0, dopus_fake_send, &r), 0L);
+    CHECK_INT((long)dopus_theme_send(0, dopus_fake_send, &r, 0), 0L);
     CHECK_INT((long)r.n, 0L);
 }
 
@@ -4061,10 +4064,10 @@ static void dopus_theme_send_switches_only_a_default_toolbar(void)
     strcpy(r.tb[1], "PROGDIR:Buttons/Toolbar");     /* default, as the env reports it */
     strcpy(r.tb[2], "SYS:My/Own-bank");            /* the user's own bank: never touched */
     strcpy(r.tb[3], "dopus5:buttons/toolbar");     /* default spelled with DOpus5:, any case */
-    dopus_theme_send(&th, dopus_fake_send, &r);
-    CHECK_STR(r.tb[1], DOPUS_TOOLBAR_FLAT);
+    dopus_theme_send(&th, dopus_fake_send, &r, 0);
+    CHECK_STR(r.tb[1], DOPUS_TOOLBAR_FLAT DOPUS_TOOLBAR_SET);
     CHECK_STR(r.tb[2], "SYS:My/Own-bank");
-    CHECK_STR(r.tb[3], DOPUS_TOOLBAR_FLAT);
+    CHECK_STR(r.tb[3], DOPUS_TOOLBAR_FLAT DOPUS_TOOLBAR_SET);
     for (i = 0; i < r.n && i < 32; i++)
         if (strncmp(r.line[i], "lister set ", 11) == 0) {
             sets++;
@@ -4083,17 +4086,94 @@ static void dopus_theme_send_switches_only_a_default_toolbar(void)
     r.all = "1";
     r.bank_missing = 1;
     strcpy(r.tb[1], "PROGDIR:Buttons/Toolbar");
-    dopus_theme_send(&th, dopus_fake_send, &r);
+    dopus_theme_send(&th, dopus_fake_send, &r, 0);
     CHECK_STR(r.tb[1], "PROGDIR:Buttons/Toolbar");
 
     /* already switched: no set at all */
     memset(&r, 0, sizeof r);
     r.screen = "Workbench 800 600 4 0";
     r.all = "1";
-    strcpy(r.tb[1], DOPUS_TOOLBAR_FLAT);
-    dopus_theme_send(&th, dopus_fake_send, &r);
+    strcpy(r.tb[1], DOPUS_TOOLBAR_FLAT DOPUS_TOOLBAR_SET);
+    dopus_theme_send(&th, dopus_fake_send, &r, 0);
     for (i = 0; i < r.n && i < 32; i++)
         CHECK(strncmp(r.line[i], "lister set ", 11) != 0);
+}
+
+typedef struct { unsigned font_h; int rx, ry, changed, screens, recolours; char set[8]; unsigned char rgb[8][3]; } dopus_tbrec;
+
+static int dopus_tb_screen(unsigned *font_h, int *rx, int *ry, void *ud)
+{
+    dopus_tbrec *t = (dopus_tbrec *)ud;
+    t->screens++;
+    *font_h = t->font_h;
+    *rx = t->rx;
+    *ry = t->ry;
+    return 1;
+}
+
+static int dopus_tb_recolour(const char *set, const unsigned char rgb[8][3], void *ud)
+{
+    dopus_tbrec *t = (dopus_tbrec *)ud;
+    t->recolours++;
+    strcpy(t->set, set);
+    memcpy(t->rgb, rgb, sizeof t->rgb);
+    return t->changed;
+}
+
+/* DT-3, DT-4 through the entry point: the screen's font and aspect pick the bank, the recolour gets that set and the theme's CMAP
+ * (dt_cmap), a lister on another of our banks is moved, one already on the picked bank is set again only when brushes changed */
+static void dopus_theme_send_picks_the_set_and_recolours(void)
+{
+    gtheme th;
+    dopus_rec r;
+    dopus_tbrec t;
+    dopus_tb_ops ops;
+    uint8_t want[DT_PENS][3];
+    int i;
+
+    gt_builtin(&th);
+    dt_cmap(&th, want);
+    ops.screen = dopus_tb_screen;
+    ops.recolour = dopus_tb_recolour;
+    ops.ud = &t;
+
+    memset(&t, 0, sizeof t);
+    t.font_h = 8;
+    t.rx = 22;
+    t.ry = 44;                                      /* topaz 8 on a 2:1 pixel screen: 16 high-pixel set, tall */
+    memset(&r, 0, sizeof r);
+    r.screen = "Workbench 800 600 4 0";
+    r.all = "1 2";
+    strcpy(r.tb[1], "PROGDIR:Buttons/Toolbar");
+    strcpy(r.tb[2], DOPUS_TOOLBAR_FLAT "24");       /* ours, another size: moved */
+    dopus_theme_send(&th, dopus_fake_send, &r, &ops);
+    CHECK_INT(t.screens, 1);
+    CHECK_INT(t.recolours, 1);
+    CHECK_STR(t.set, "16t");
+    CHECK(memcmp(t.rgb, want, sizeof want) == 0);
+    CHECK_STR(r.tb[1], DOPUS_TOOLBAR_FLAT "16t");
+    CHECK_STR(r.tb[2], DOPUS_TOOLBAR_FLAT "16t");
+
+    /* picked bank already on the lister: untouched when no brush changed, set again when one did (DT-4 refresh) */
+    for (i = 0; i < 2; i++) {
+        memset(&t, 0, sizeof t);
+        t.font_h = 12;
+        t.rx = t.ry = 1;
+        t.changed = i;
+        memset(&r, 0, sizeof r);
+        r.screen = "Workbench 800 600 4 0";
+        r.all = "1";
+        strcpy(r.tb[1], DOPUS_TOOLBAR_FLAT "24");
+        dopus_theme_send(&th, dopus_fake_send, &r, &ops);
+        CHECK_STR(t.set, "24");
+        {
+            int k, n = 0;
+            for (k = 0; k < r.n && k < 32; k++)
+                if (strncmp(r.line[k], "lister set ", 11) == 0)
+                    n++;
+            CHECK_INT(n, t.changed ? 1 : 0);
+        }
+    }
 }
 
 /* Workbench pens 0-3 on a theme switch (menu_theme.h wb_pens_plan): gt_contrast of pen 0 against pen 1 (floor GT_FLOOR_TEXT) */

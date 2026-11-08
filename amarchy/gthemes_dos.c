@@ -19,6 +19,7 @@
 #include "amconf_dos.h"
 #include "../prefs/prefs_dos.h"
 #include "menu_theme.h"
+#include "dopustb_dos.h"
 #include "rexx_host.h"
 #include "wbreset_core.h"
 
@@ -242,7 +243,7 @@ static int gt_dos_apply_saved(const char *name)
     if (d <= 0 || !(d & (1 << DT_PALETTE))) {
         /* desk_dos_apply hands the theme to DOpus itself after its Palette write (FLAT-D2); otherwise it goes here */
         gt_dos_dopus_sends++;
-        dopus_theme_send(&th, gt_dopus_send, 0);
+        dopus_theme_send(&th, gt_dopus_send, 0, &dopustb_dos_ops);
         wb_pens_apply(&th);
     }
     ipd_recolour();             /* ICON-AA-WRONG-BG: the held icon pens 32-47 follow the new theme live */

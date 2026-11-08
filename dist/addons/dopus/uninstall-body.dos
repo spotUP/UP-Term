@@ -5,4 +5,5 @@ Assign >NIL: DOpus5: EXISTS
 If NOT WARN
   Delete >NIL: DOpus5:Images/Amarchy ALL QUIET FORCE
   Delete >NIL: DOpus5:Buttons/Amarchy-toolbar QUIET
+  Delete >NIL: DOpus5:Buttons/Amarchy-toolbar-#? QUIET
 EndIf

@@ -44,6 +44,61 @@ Else
     Delete >NIL: T:updopus-live QUIET
   EndIf
 EndIf
+; the flat Lucide toolbar (B7): one image drawer per size set, DOpus5:Images/Amarchy/<set>, and one bank per set,
+; DOpus5:Buttons/Amarchy-toolbar-<set>, for the sets 16, 24 and 32 pixels, each square and tall ("t", for a screen whose
+; pixels are twice as high as wide). Amarchy picks the set from the DOpus screen's font and pixel aspect and writes the
+; theme's colours into that set's brushes when a theme is applied. Only added files: nothing of upstream's or the user's
+; is changed. The single bank of the first version (Amarchy-toolbar, no set) is ours and goes.
+Assign >NIL: DOpus5: EXISTS
+If NOT WARN
+  If EXISTS toolbar/Buttons/Amarchy-toolbar-24
+    MakeDir >NIL: DOpus5:Images/Amarchy
+    Copy >NIL: toolbar/Images/ DOpus5:Images/Amarchy/ ALL CLONE QUIET
+    If WARN
+      Quit 20
+    EndIf
+    Copy >NIL: toolbar/Buttons/ DOpus5:Buttons/ ALL CLONE QUIET
+    If WARN
+      Quit 20
+    EndIf
+    Delete >NIL: DOpus5:Buttons/Amarchy-toolbar QUIET
+  EndIf
+EndIf
+If NOT "{STEP}" EQ ""
+  Skip {STEP}
+EndIf
+; @include dist/common/@CHECKFRAG@
+Lab dopus
+; an existing Directory Opus is never touched (owner 2026-10-26)
+Assign >NIL: DOpus5: EXISTS
+If NOT WARN
+  Echo "Directory Opus 5 is already installed (DOpus5: is assigned): left as it is."
+Else
+  Set dopusbuild os3
+  If EXISTS ENV:UPTOPTCPU68000
+    Set dopusbuild os3-68000
+  EndIf
+  ; upstream's own Installer script, from the build that fits the CPU
+  ; the script finds its own files relative to the current directory: it runs from its own drawer
+  CD "$dopusbuild"
+  Installer SCRIPT "Install DOpus5" APPNAME "Directory Opus 5" MINUSER Novice DEFUSER Novice NOLOG
+  If WARN
+    CD "{DIR}"
+    UnSet dopusbuild
+    Quit 20
+  EndIf
+  CD "{DIR}"
+  UnSet dopusbuild
+  ; upstream writes the DOpus5: assign and the DOpus5:C path into its ;BEGIN DOpus5 block of
+  ; S:User-Startup and has them take effect at the next boot. Run those two lines now (whatever drawer
+  ; the Installer chose is in them), so DOpus5: and the path are live without a reboot.
+  Search >T:updopus-live FROM S:User-Startup SEARCH "Assign DOpus5:" NONUM
+  Search >>T:updopus-live FROM S:User-Startup SEARCH "Path DOpus5:" NONUM
+  If EXISTS T:updopus-live
+    Execute T:updopus-live
+    Delete >NIL: T:updopus-live QUIET
+  EndIf
+EndIf
 ; the flat Lucide toolbar (B7): image drawer DOpus5:Images/Amarchy and bank DOpus5:Buttons/Amarchy-toolbar. Only
 ; added files: nothing of upstream's or the user's is changed. A bank of that name that differs in size from ours is
 ; the user's own: it is kept and a note says so (Amarchy then finds no bank to switch to and leaves the toolbar alone).

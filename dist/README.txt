@@ -963,9 +963,13 @@ AMARCHY
     Copy ENV:EDITOR ENVARC:
 
   Flat Directory Opus toolbar: the DOpus add-on installs a flat toolbar bank
-  (DOpus5:Buttons/Amarchy-toolbar, line glyphs in DOpus5:Images/Amarchy, buttons
-  without bevels). Applying a theme switches every lister that still uses
-  upstream's default toolbar to it; a toolbar of your own is never touched.
+  (DOpus5:Buttons/Amarchy-toolbar-<size>, line glyphs in DOpus5:Images/Amarchy/<size>,
+  buttons without bevels). It comes in 16, 24 and 32 pixel sizes, each also as a
+  tall version (name ends in t) for screens whose pixels are twice as high as wide.
+  Applying a theme picks the size that fits the Directory Opus screen's font
+  (about twice the font height), colours the glyphs in the theme's colours and
+  switches every lister that still uses upstream's default toolbar, or one of
+  these banks, to it; a toolbar of your own is never touched.
   A bank of your own: open it (Lister > Edit Toolbar, or Settings > Buttons >
   Edit) and in the Appearance section of the Button Bank Editor tick
   Borderless Buttons , then save the bank.

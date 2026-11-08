@@ -84,18 +84,32 @@ unsigned dopus_theme_commands(const gtheme *th, char *out, unsigned cap, int pal
 
 /* Directory Opus's ARexx port */
 #define DOPUS_PORT "DOPUS.1"
-/* The flat Lucide toolbar bank the up-dopus add-on installs (dist/dopus-toolbar.txt, tools/gen_dopus_toolbar.py) */
-#define DOPUS_TOOLBAR_FLAT "DOpus5:Buttons/Amarchy-toolbar"
+/* The flat Lucide toolbar banks the up-dopus add-on installs, one per size set (dist/dopus-toolbar.txt, tools/gen_dopus_toolbar.py):
+ * DOPUS_TOOLBAR_FLAT followed by the set name ("24", "24t", see dopustb_core.h dt_set_name). A bank holds its brushes' paths, so the
+ * size cannot change without another bank. DOPUS_TOOLBAR_SET is the set used when the screen is not known. */
+#define DOPUS_TOOLBAR_FLAT "DOpus5:Buttons/Amarchy-toolbar-"
+#define DOPUS_TOOLBAR_SET "24"
+
+/* The Amiga side of the toolbar set and blend (amarchy/dopustb_dos.c); dopus_theme_send takes NULL for none (default set, brushes
+ * left as they are). screen: font height and pixel aspect of the DOpus screen (returns 0 when it cannot be read: set 24, square).
+ * recolour: writes the theme's blend (dt_cmap) into the brushes of the named set; returns how many files it changed. */
+typedef struct {
+    int (*screen)(unsigned *font_h, int *rx, int *ry, void *ud);
+    int (*recolour)(const char *set, const unsigned char rgb[8][3], void *ud);
+    void *ud;
+} dopus_tb_ops;
 
 /* Asks DOPUS_PORT "dopus screen" first (send(port, line, result, cap, ud); result NULL = no reply wanted), then switches every lister whose
- * `lister query <handle> toolbar` is upstream's default (PROGDIR:Buttons/Toolbar or DOpus5:Buttons/Toolbar) to
- * DOPUS_TOOLBAR_FLAT with `lister set <handle> toolbar` (a lister that loses its toolbar by it gets the old path back),
+ * `lister query <handle> toolbar` is upstream's default (PROGDIR:Buttons/Toolbar or DOpus5:Buttons/Toolbar) or one of our banks
+ * to the bank of the set tb picks (DOPUS_TOOLBAR_FLAT + set) with `lister set <handle> toolbar` (a lister that loses its toolbar by it
+ * gets the old path back). Our bank already on a lister is set again only when the brushes were recoloured (DT-4: that is the
+ * refresh that makes Opus read them again; rig check pending),
  * then sends dopus_theme_commands' lines one at a time (line has no newline), the palette line only when the reply does not
  * start with "Workbench". send returns -1 when the port is absent (Directory Opus not running: normal, not an
  * error), and sending stops at that line. Returns the number of lines handed to send (including the screen query and
  * a refused one); 0 when th or send is NULL. */
 int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char *line, char *result, int cap, void *ud),
-                     void *ud);
+                     void *ud, const dopus_tb_ops *tb);
 
 /* Workbench pens 0-3 take the theme's bg, fg, dim, accent (Directory Opus on the Workbench screen shares them). */
 #define WB_PENS 4

@@ -3,9 +3,9 @@
 
 usage: gen_dopus_toolbar.py <table> <lucide.ttf> <upstream Buttons/Toolbar> <out dir>
 
-Writes <out>/Images/<name> (IFF ILBM brushes, FORM ILBM / BMHD / CMAP of 4 pens / BODY, pens 0-3, drawn by the
-existing Lucide path of gen_lucide_icons: coverage, level) and <out>/Buttons/Amarchy-toolbar: the upstream default
-toolbar bank with only two differences, the image paths (dopus5:images/X -> dopus5:images/Amarchy/X) and the
+Writes <out>/Images/<set>/<name> (IFF ILBM brushes, FORM ILBM / BMHD / CMAP of 8 pens / BODY, pens 0-6, drawn by the
+existing Lucide path of gen_lucide_icons: coverage, level) and <out>/Buttons/Amarchy-toolbar-<set> (one per size set 16, 16t, 24, 24t, 32, 32t): the upstream default
+toolbar bank with only two differences, the image paths (dopus5:images/X -> dopus5:images/Amarchy/<set>/X) and the
 Borderless Buttons flag (BTNWF_BORDERLESS, dopus5.h CFG_BTNW flags). The glyph map is the table file
 (`<image name> <lucide glyph>` per line), nothing is named here.
 
@@ -22,14 +22,19 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import gen_lucide_icons as gl  # noqa: E402
 from fontTools.ttLib import TTFont  # noqa: E402
 
-SIZE = 24                      # upstream brush size, measured on DOpus5/Images/*.small (BMHD 24x24)
-DEPTH = 2                      # pens 0-3
-# CMAP of pens 0..3: ground (transparent), glyph, glyph at 33%, accent. The default theme (Tokyo Night) colours: DOpus
-# remaps a brush to the screen with its CMAP, so these do not follow a later theme change.
-CMAP = ((0x1A, 0x1B, 0x26), (0xA9, 0xB1, 0xD6), (0x41, 0x48, 0x68), (0x7A, 0xA2, 0xF7))
-PEN_OF_LEVEL = (0, 2, 1, 1)    # level 0 ground, 1 (33%) dim, 2 and 3 glyph
+# DT-1: size sets. SIZES are the brush widths (upstream's is 24, measured on DOpus5/Images/*.small); each set is square
+# (width x width) or tall pixel (width x width/2, for a 2:1 pixel aspect, as gen_lucide_icons.VARIANTS (32, 16)).
+# Theme apply picks the set (amarchy/dopustb_core.c dt_pick_set, which mirrors set_name below).
+SIZES = (16, 24, 32)
+DEPTH = 3                      # 8 pens
+# Pens: 0 ground (transparent), 1-3 glyph at 33/66/100 percent, 4-6 accent at 33/66/100 percent, 7 ground. Levels map
+# 1:1 to pens 1-3.
+PEN_OF_LEVEL = (0, 1, 2, 3)
+# Placeholder CMAP (Tokyo Night, the blend of amarchy/iconpen_core.c ip_colours). DOpus remaps a brush to the screen by
+# its CMAP; theme apply rewrites these 24 bytes from ip_colours itself (dopustb_core.c dt_cmap), so nothing here is a
+# second blend: these literals only serve until the first theme apply.
+CMAP = ((0x1A, 0x1B, 0x26), (0x49, 0x4D, 0x60), (0x78, 0x7E, 0x9A), (0xA9, 0xB1, 0xD6), (0x3A, 0x48, 0x6B), (0x59, 0x74, 0xB0), (0x7A, 0xA2, 0xF7), (0x1A, 0x1B, 0x26))
 OLD_PREFIX = b"dopus5:images/"
-NEW_PREFIX = b"dopus5:images/Amarchy/"
 BTNW_FLAGS_OFF = 128           # CFG_BTNW: name[32] IBox[8] font[80] pad[3] size[1] columns[2] rows[2] flags[4] = 132 bytes
 BORDERLESS = 0x10              # BTNWF_BORDERLESS = 1 << 4
 
@@ -48,14 +53,23 @@ def parse_map(path):
     return rows
 
 
+def set_name(width, tall):
+    return "%d%s" % (width, "t" if tall else "")
+
+
+def sets():
+    """[(set name, width, height)]: 16, 16t, 24, 24t, 32, 32t."""
+    return [(set_name(w, t), w, w // 2 if t else w) for w in SIZES for t in (False, True)]
+
+
 def chunk(tag, data):
     return tag + struct.pack(">L", len(data)) + data + (b"\0" if len(data) & 1 else b"")
 
 
 def ilbm(w, h, pens):
-    """FORM ILBM of h rows of w pens 0..3 (uncompressed, masking 2: pen 0 transparent, as upstream's brushes)."""
+    """FORM ILBM of h rows of w pens 0..7 (uncompressed, masking 2: pen 0 transparent, as upstream's brushes)."""
     art = ["".join(chr(p) for p in row) for row in pens]
-    body = gl.mkicon.planes(art, DEPTH, {chr(i): i for i in range(4)})
+    body = gl.mkicon.planes(art, DEPTH, {chr(i): i for i in range(1 << DEPTH)})
     # mkicon.planes is plane after plane; ILBM wants each row's planes together
     wb = ((w + 15) // 16) * 2
     rows = [[body[(p * h + y) * wb:(p * h + y + 1) * wb] for p in range(DEPTH)] for y in range(h)]
@@ -65,12 +79,12 @@ def ilbm(w, h, pens):
     return chunk(b"FORM", b"ILBM" + chunk(b"BMHD", bmhd) + chunk(b"CMAP", cmap) + chunk(b"BODY", body))
 
 
-def glyph(font, cp):
-    cov = gl.coverage(font, cp, SIZE, SIZE)
-    return ilbm(SIZE, SIZE, [[PEN_OF_LEVEL[gl.level(cov[y][x])] for x in range(SIZE)] for y in range(SIZE)])
+def glyph(font, cp, w, h):
+    cov = gl.coverage(font, cp, w, h)    # area average to the grid, horizontal stems snapped to rows when h != w
+    return ilbm(w, h, [[PEN_OF_LEVEL[gl.level(cov[y][x])] for x in range(w)] for y in range(h)])
 
 
-def rewrite_bank(src):
+def rewrite_bank(src, name):
     """The upstream bank with the image drawer and the Borderless flag changed, nothing else."""
     if src[:4] != b"FORM" or src[8:12] != b"EPUS":
         raise SystemExit("not an Opus bank (FORM EPUS)")
@@ -84,7 +98,7 @@ def rewrite_bank(src):
             data = data[:BTNW_FLAGS_OFF] + struct.pack(">L", flags) + data[BTNW_FLAGS_OFF + 4:]
             seen += 1
         elif tag == b"BUTN":
-            data = re.sub(re.escape(OLD_PREFIX), NEW_PREFIX, data, flags=re.I)
+            data = re.sub(re.escape(OLD_PREFIX), b"dopus5:images/Amarchy/" + name.encode() + b"/", data, flags=re.I)
         out.append(chunk(tag, data))
     if seen != 1:
         raise SystemExit("bank has %d BTNW chunks" % seen)
@@ -98,14 +112,18 @@ def main():
     font = TTFont(ttf)
     by_name = json.loads((pathlib.Path(ttf).parent / "codepoints.json").read_text())
     dest = pathlib.Path(dest)
-    (dest / "Images").mkdir(parents=True, exist_ok=True)
     (dest / "Buttons").mkdir(parents=True, exist_ok=True)
-    for name, g in parse_map(table):
+    rows = parse_map(table)
+    for name, g in rows:
         if g not in by_name:
             raise SystemExit("%s: unknown Lucide glyph: %s" % (table, g))
-        (dest / "Images" / name).write_bytes(glyph(font, by_name[g]))
-    (dest / "Buttons" / "Amarchy-toolbar").write_bytes(rewrite_bank(pathlib.Path(bank).read_bytes()))
-    print("[OK] %d images and Buttons/Amarchy-toolbar in %s" % (len(parse_map(table)), dest))
+    upstream = pathlib.Path(bank).read_bytes()
+    for sname, w, h in sets():
+        (dest / "Images" / sname).mkdir(parents=True, exist_ok=True)
+        for name, g in rows:
+            (dest / "Images" / sname / name).write_bytes(glyph(font, by_name[g], w, h))
+        (dest / "Buttons" / ("Amarchy-toolbar-" + sname)).write_bytes(rewrite_bank(upstream, sname))
+    print("[OK] %d images x %d sets and Buttons/Amarchy-toolbar-<set> in %s" % (len(rows), len(sets()), dest))
 
 
 if __name__ == "__main__":

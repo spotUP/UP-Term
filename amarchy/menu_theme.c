@@ -1,6 +1,7 @@
 /* menu_theme -- see menu_theme.h */
 #include <string.h>
 #include "menu_theme.h"
+#include "dopustb_core.h"
 
 /* role -> palette index, and that index's xterm colour. Default palette: black ground, light grey text, grey
  * header (5:1 on black), cyan accent, blue selected box (cyan on it reads at 8:1). */
@@ -171,6 +172,22 @@ static int dopus_same_path(const char *reply, const char *path)
     }
 }
 
+/* a path in one of our banks, DOPUS_TOOLBAR_FLAT + any set name (case-insensitive) */
+static int dopus_is_our_bank(const char *path)
+{
+    unsigned k;
+    for (k = 0; DOPUS_TOOLBAR_FLAT[k]; k++) {
+        char a = path[k], b = DOPUS_TOOLBAR_FLAT[k];
+        if (a >= 'A' && a <= 'Z')
+            a = (char)(a + 32);
+        if (b >= 'A' && b <= 'Z')
+            b = (char)(b + 32);
+        if (a != b)
+            return 0;
+    }
+    return path[k] > ' ';
+}
+
 /* line = a ... b ... c ... (NULL ends), truncated to cap-1 */
 static void dopus_line(char *line, unsigned cap, const char *a, const char *b, const char *c, const char *d)
 {
@@ -189,10 +206,10 @@ static void dopus_line(char *line, unsigned cap, const char *a, const char *b, c
  * open the new bank loses its toolbar (lister_toolbar.c lister_new_toolbar clears the path): the re-query catches that
  * and puts the old path back. Returns the number of lines handed to send. */
 static int dopus_toolbar_flat(long (*send)(const char *port, const char *line, char *result, int cap, void *ud),
-                              void *ud)
+                              void *ud, const char *bank, int force)
 {
     static const char *const upstream[] = { "PROGDIR:Buttons/Toolbar", "DOpus5:Buttons/Toolbar" };
-    char handles[160], line[160], path[160], hnd[24];
+    char handles[160], line[160], path[160], hnd[24], old[160];
     unsigned i = 0, k, d;
     int sent = 1;
     handles[0] = 0;
@@ -213,9 +230,21 @@ static int dopus_toolbar_flat(long (*send)(const char *port, const char *line, c
             return sent;
         for (d = 0; d < sizeof upstream / sizeof upstream[0] && !dopus_same_path(path, upstream[d]); d++)
             ;
-        if (d == sizeof upstream / sizeof upstream[0])
-            continue;
-        dopus_line(line, sizeof line, "lister set ", hnd, " toolbar ", DOPUS_TOOLBAR_FLAT);
+        if (d == sizeof upstream / sizeof upstream[0]) {
+            /* one of our banks (any set): moved to the picked set, or set again to make Opus read recoloured brushes */
+            if (!dopus_is_our_bank(path) || (dopus_same_path(path, bank) && !force))
+                continue;
+            d = 0;
+            old[0] = 0;
+            for (k = 0; path[k] > ' ' && k < sizeof old - 1; k++)
+                old[k] = path[k];
+            old[k] = 0;
+        } else {
+            for (k = 0; upstream[d][k] && k < sizeof old - 1; k++)
+                old[k] = upstream[d][k];
+            old[k] = 0;
+        }
+        dopus_line(line, sizeof line, "lister set ", hnd, " toolbar ", bank);
         sent++;
         if (send(DOPUS_PORT, line, 0, 0, ud) == -1)
             return sent;
@@ -224,8 +253,8 @@ static int dopus_toolbar_flat(long (*send)(const char *port, const char *line, c
         sent++;
         if (send(DOPUS_PORT, line, path, (int)sizeof path, ud) == -1)
             return sent;
-        if (!dopus_same_path(path, DOPUS_TOOLBAR_FLAT)) {
-            dopus_line(line, sizeof line, "lister set ", hnd, " toolbar ", upstream[d]);
+        if (!dopus_same_path(path, bank)) {
+            dopus_line(line, sizeof line, "lister set ", hnd, " toolbar ", old);
             sent++;
             if (send(DOPUS_PORT, line, 0, 0, ud) == -1)
                 return sent;
@@ -235,11 +264,14 @@ static int dopus_toolbar_flat(long (*send)(const char *port, const char *line, c
 }
 
 int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char *line, char *result, int cap, void *ud),
-                     void *ud)
+                     void *ud, const dopus_tb_ops *tb)
 {
-    char cmds[512], line[192], reply[160];
-    unsigned n, i = 0, k;
-    int sent = 1, on_wb;
+    char cmds[512], line[192], reply[160], bank[96];
+    unsigned n, i = 0, k, font_h = 0;
+    int sent = 1, on_wb, rx = 0, ry = 0, changed = 0;
+    dt_set set;
+    char name[8];
+    uint8_t rgb[DT_PENS][3];
     if (!send || !th)
         return 0;
     /* a DOpus on the Workbench screen shares Workbench's palette: set palette would not reach it (it only recolours
@@ -247,7 +279,17 @@ int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char
     if (send(DOPUS_PORT, "dopus screen", reply, (int)sizeof reply, ud) == -1)
         return sent;
     on_wb = dopus_on_workbench(reply);
-    sent += dopus_toolbar_flat(send, ud);   /* before the refresh, the last line of dopus_theme_commands */
+    /* DT-3: the set for this screen (font height and pixel aspect), DT-2: its brushes in the theme's blend, then the switch */
+    if (tb && tb->screen)
+        tb->screen(&font_h, &rx, &ry, tb->ud);
+    dt_pick_set(font_h, rx, ry, &set);
+    dt_set_name(&set, name, sizeof name);
+    if (tb && tb->recolour) {
+        dt_cmap(th, rgb);
+        changed = tb->recolour(name, (const unsigned char (*)[3])rgb, tb->ud);
+    }
+    dopus_line(bank, sizeof bank, DOPUS_TOOLBAR_FLAT, name, 0, 0);
+    sent += dopus_toolbar_flat(send, ud, bank, changed > 0);   /* before the refresh, the last line of dopus_theme_commands */
     n = dopus_theme_commands(th, cmds, sizeof cmds, !on_wb);
     while (i < n) {
         for (k = 0; i < n && cmds[i] != '\n'; i++)
