@@ -80,56 +80,75 @@ int raa_nearest(raa_rgb_fn rgb, void *ctx, int npens, unsigned long want)
 }
 
 /* The corner blend of raa_frame_draw, after the box is painted: each corner pixel the rounded box does not fully cover takes the
- * mix of the box's inner pen and the pen read beside that corner (bgpen). A helper of its own so the frame that calls the box draw
- * stays small (S62-FLAT-RF-TX-BUDGET: the frame draw runs on the drawing task's stack). */
-static void raa_corners(int ox, int oy, int w, int h, flat_fill_fn fn, flat_read_fn rd, raa_rgb_fn rgb, int npens, void *ctx,
-                        const unsigned char *bgpen, int *blended)
+ * mix of the box's inner pen and the pen read beside that corner (bg: corner c's pen in bits 8c .. 8c+7, as raa_frame_box packs it).
+ * S62-FLAT-RF-TX-BUDGET: the box half and this half run one after the other, not nested, so a caller on a foreign task's stack
+ * (flat.c bb_draw) holds no raa_frame_draw frame under the nearest-pen search. */
+/* Pixel k (row k / r, column k % r, from the corner) of corner c of the job's box, corner radius r, inner colour fg: a pixel the
+ * rounded box does not fully cover takes the mix of fg and the pen beside the corner. Returns 1 when it blended (coverage 1..254).
+ * A helper of its own so the corner loop keeps few values live (S62-FLAT-RF-TX-BUDGET). */
+static int raa_corner_px(const raa_job *j, unsigned long fg, int r, int c, int k)
 {
-    int c, r, dx, dy, inner;
+    int w = j->w, h = j->h, dx = k % r, dy = k / r;
+    int px = (c & 1) ? w - 1 - dx : dx, py = (c & 2) ? h - 1 - dy : dy;
+    int cov = raa_cover(w, h, r, px, py), bp, pen;
+    if (cov >= 255)
+        return 0;
+    bp = (int)((j->bg >> (8 * c)) & 255);
+    pen = cov == 0 ? bp : raa_nearest(j->rgb, j->ctx, j->npens, ce_mix(fg, j->rgb(j->ctx, bp), cov));
+    j->fn(j->ctx, j->ox + px, j->oy + py, j->ox + px, j->oy + py, pen);
+    return cov > 0;
+}
+
+void raa_frame_corners(const raa_job *j, int *blended)
+{
+    int c, k, r, inner, n = 0;
     unsigned long fg;
-    r = raa_radius(h);
-    if (r > h / 2)
-        r = h / 2;
-    if (r > w / 2)
-        r = w / 2;
-    inner = rd(ctx, ox + w / 2, oy + h / 2);
-    if (inner < 0 || inner >= npens)
+    r = raa_radius(j->h);
+    if (r > j->h / 2)
+        r = j->h / 2;
+    if (r > j->w / 2)
+        r = j->w / 2;
+    inner = j->rd(j->ctx, j->ox + j->w / 2, j->oy + j->h / 2);
+    if (inner < 0 || inner >= j->npens)
         return;
-    fg = rgb(ctx, inner);
+    fg = j->rgb(j->ctx, inner);
     for (c = 0; c < 4; c++)
-        for (dy = 0; dy < r; dy++)
-            for (dx = 0; dx < r; dx++) {
-                int px = (c & 1) ? w - 1 - dx : dx, py = (c & 2) ? h - 1 - dy : dy;
-                int cov = raa_cover(w, h, r, px, py), pen;
-                if (cov >= 255)
-                    continue;
-                pen = cov == 0 ? bgpen[c] : raa_nearest(rgb, ctx, npens, ce_mix(fg, rgb(ctx, bgpen[c]), cov));
-                fn(ctx, ox + px, oy + py, ox + px, oy + py, pen);
-                if (blended && cov > 0)
-                    (*blended)++;
-            }
+        for (k = 0; k < r * r; k++)        /* row by row, as the box is painted */
+            n += raa_corner_px(j, fg, r, c, k);
+    if (blended)
+        *blended += n;
+}
+
+int raa_frame_box(raa_job *j)
+{
+    int c, ok, b;
+    ok = j->s && j->fn && j->rd && j->rgb && j->fill && j->npens > 0 && j->npens <= RAA_MAX_PENS && j->w >= 3 && j->h >= 3;
+    j->bg = 0;                                 /* a read pen, checked 0 .. npens-1 (npens <= RAA_MAX_PENS 256): one byte per corner */
+    for (c = 0; ok && c < 4; c++) {
+        b = j->rd(j->ctx, (c & 1) ? j->ox + j->w : j->ox - 1, (c & 2) ? j->oy + j->h : j->oy - 1);   /* beside the corner, before the box is painted */
+        if (b < 0 || b >= j->npens)
+            ok = 0;
+        else
+            j->bg |= (unsigned long)b << (8 * c);
+    }
+    if (!flat_frame_draw_round(j->s, j->ids, j->ox, j->oy, j->w, j->h, j->fill, j->role, j->fn, j->rd, j->ctx))
+        return RAA_BOX_NONE;
+    return ok ? RAA_BOX_BLEND : RAA_BOX_PLAIN;
 }
 
 int raa_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn, flat_read_fn rd,
                    raa_rgb_fn rgb, int npens, void *ctx, int *blended)
 {
-    unsigned char bgpen[4];  /* a read pen, checked 0 .. npens-1 (npens <= RAA_MAX_PENS 256); S62-FLAT-RF-TX-BUDGET: bytes, not ints */
-    int c, ok, b;
+    raa_job j;
+    int k;
     if (blended)
         *blended = 0;
-    ok = s && fn && rd && rgb && fill && npens > 0 && npens <= RAA_MAX_PENS && w >= 3 && h >= 3;
-    for (c = 0; ok && c < 4; c++) {
-        b = rd(ctx, (c & 1) ? ox + w : ox - 1, (c & 2) ? oy + h : oy - 1);     /* beside the corner, before the box is painted */
-        if (b < 0 || b >= npens)
-            ok = 0;
-        else
-            bgpen[c] = (unsigned char)b;
-    }
-    if (!flat_frame_draw_round(s, ids, ox, oy, w, h, fill, role, fn, rd, ctx))
-        return 0;
-    if (ok)
-        raa_corners(ox, oy, w, h, fn, rd, rgb, npens, ctx, bgpen, blended);
-    return 1;
+    j.s = s; j.fn = fn; j.rd = rd; j.rgb = rgb; j.ctx = ctx;
+    j.ids = ids; j.ox = ox; j.oy = oy; j.w = w; j.h = h; j.fill = fill; j.role = role; j.npens = npens;
+    k = raa_frame_box(&j);
+    if (k == RAA_BOX_BLEND)
+        raa_frame_corners(&j, blended);
+    return k != RAA_BOX_NONE;
 }
 
 int raa_knob_frame_draw(const flat_state *s, int depth, int active, int ox, int oy, int w, int h, flat_fill_fn fn, flat_read_fn rd,

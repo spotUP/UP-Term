@@ -133,3 +133,48 @@ title_span_add == flat_title_span over every gadget run), flat_role_core
 - Argument bytes pushed at call sites are not counted.
 - Calls through a register (`jsr (aN)`: c2_fill, c2_read, c2_rgb, put's fill
   callback, icl_pen_for via icl_blend_pens) are not followed.
+
+## Step 3: raa_frame_draw split + pen_match (2026-11-08, worktree agent-ad60c5bcd9f17745f)
+
+- `raa_frame_draw` split into `raa_frame_box` (box half, returns NONE/PLAIN/BLEND and the packed corner bg pens) and `raa_frame_corners` (corner blend, one pixel per `raa_corner_px` call so vbcc cannot hoist loop invariants into stack temporaries). Arguments travel in a `raa_job` struct. `raa_frame_draw` keeps its signature and calls both halves.
+- `bb_draw` uses a static `bb_job`, held by the same `bb_task` claim as `bb_st`, so no `raa_frame_draw` frame sits under the corners.
+- `render/pen_match.h`: `pm_dist` computes the opponent axes through `PM_OPP_U` / `PM_OPP_V` macros instead of calling `pm_opp`. Same arithmetic, one call level less.
+- Drawing: pixel order (corner, row, column) and pen choice are unchanged by construction. Not verified on a rig.
+
+`make flat-budget` after step 3 (stub included):
+
+| entry | chain | headroom | result |
+|---|---|---|---|
+| _c2_disp_reg | 312 | 72 | PASS |
+| _c2_disp_stk | 296 | 88 | PASS |
+| _flat_rf_c | 332 | 52 | FAIL |
+| _flat_tx_c | 304 | 80 | PASS |
+
+No frame over 80. `flat_rf_c` children (rf 64 + 4 + child, stub 28 excluded; target <= 292):
+
+| path | chain | needed |
+|---|---|---|
+| rf_scroller: l2079 48, l2031 56, l1785 32, flat_scroller_knob_img 32, flat_scroller_knob 28 | 304 | -12 |
+| rf_disabled 64, dim_fill 76, dim_keeps 40, raa_cover 40 | 300 | -8 |
+| bb_draw 24, raa_frame_box 68, flat_frame_draw_round 68, flat_frame_draw 44, flat_button_side 4 | 292 | 0 |
+
+Tried, no gain: `b[]` in the stock call and one guarded block instead of the `on` flag in `flat_rf_c` (frame stays 64 = 20 locals + 11 registers).
+
+Still open: the two paths above; host tests for `flat_button_corner`, `flat_scroller_cut_at` and the `flat_frame_draw_round` pen bitmask (pen > 255) are not written.
+
+## Border-button fill: wait instead of stock fallback (owner decision 2026-11-08) - NOT implemented
+
+Owner asked that a second task wait for the shared border-button state instead of drawing stock, with the lock held only around reads/writes of the shared state, never across a graphics/layers call or anything that can wait.
+
+Why not implemented:
+- The gap is not closed yet (rf 332), and the decision was to be taken after it closes.
+- The shared state (`bb_st` 1 x flat_state, `bb_job`) is not read once and dropped: `c2_fill`, `c2_read` and `c2_rgb` read it through `bb_job.s` during every RectFill/ReadPixel of the box and corners. So the lock would have to be held across graphics calls (forbidden: input.device can draw while a lower-priority task holds it, holder blocks on a layer lock input.device holds, screen deadlocks).
+- The only deadlock-free form is copy-under-lock: copy the fields the draw needs to the caller's stack, release, draw. That puts a flat_state plus a raa_job on the stack of a path that is already 12 bytes over budget. The statics exist precisely to keep them off the stack.
+
+Lock design if the budget later allows (for whoever implements it):
+1. `ObtainSemaphore(&bb_sem)`; copy `r->st` fields used by c2_fill/c2_read/c2_rgb plus side and the four pens into a caller-owned block; `ReleaseSemaphore`. No graphics call between Obtain and Release.
+2. Draw from the private copy only; `bb_job.s` points at the copy, never at `bb_st`.
+3. The `bb_task` self-check in `flat_rf_c` (line ~1569) stays: it routes the fill's own RectFills to stock, independent of the semaphore.
+4. Host test: fake Obtain/Release counters plus fake RectFill/LockLayer that assert the semaphore is not held when they run.
+
+Until then the existing behaviour stays: a second task while the claim is held draws the stock look.

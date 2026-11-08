@@ -99,11 +99,13 @@ static unsigned char pm_srgb_of[PM_LIN_MAX + 1];
 static int pm_srgb_ready;
 
 /* a colour's chroma as a vector on two opponent axes, red-green and yellow-blue */
+#define PM_OPP_U(r, g, b) ((r) - (g))
+#define PM_OPP_V(r, g, b) (((r) + (g)) / 2 - (b))
 static void pm_opp(unsigned long c, long *u, long *v)
 {
     long r = (long)((c >> 16) & 255), g = (long)((c >> 8) & 255), b = (long)(c & 255);
-    *u = r - g;
-    *v = (r + g) / 2 - b;
+    *u = PM_OPP_U(r, g, b);
+    *v = PM_OPP_V(r, g, b);
 }
 
 static long pm_isqrt(long n)
@@ -142,12 +144,15 @@ static void pm_aim(unsigned long t, pm_target *a)
  * chroma projected on t's: a grey has none, a pen of another hue little) */
 static long pm_dist(const pm_target *t, unsigned long c)
 {
-    long dr = t->r - (long)((c >> 16) & 255), dg = t->g - (long)((c >> 8) & 255), db = t->b - (long)(c & 255);
-    long rm = (t->r + (long)((c >> 16) & 255)) / 2, cu, cv, lost;
+    long cr = (long)((c >> 16) & 255), cg = (long)((c >> 8) & 255), cb = (long)(c & 255);
+    long dr = t->r - cr, dg = t->g - cg, db = t->b - cb;
+    long rm = (t->r + cr) / 2, cu, cv, lost;
     long d = (((512 + rm) * dr * dr) >> 8) + 4 * dg * dg + (((767 - rm) * db * db) >> 8);
     if (!t->n)
         return d;
-    pm_opp(c, &cu, &cv);
+    /* pm_opp's chroma, worked here: no out-parameters, no call (S62-FLAT-RF-TX-BUDGET: this runs on the RectFill caller's stack) */
+    cu = PM_OPP_U(cr, cg, cb);
+    cv = PM_OPP_V(cr, cg, cb);
     lost = t->n - (t->u * cu + t->v * cv) / t->n;
     return lost > 0 ? d + PM_CHROMA_K * lost * lost : d;
 }

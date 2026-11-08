@@ -1349,12 +1349,20 @@ static int bb_claim(flatshared *r, struct RastPort *rp, const LONG *b)
     return (role << 8) | flat_border_button_ids(bg->Flags);
 }
 
-/* The frame draw of the claimed border button; releases the claim. Few values live across the draw: this frame is on its path. */
+/* The frame draw of the claimed border button; releases the claim. raa_frame_draw's two halves run one after the other here on
+ * bb_job (static, held by the claim like bb_st), so this frame stays small and no raa_frame_draw frame sits under the corner
+ * blend's nearest-pen search (the deepest RectFill path). */
+static raa_job bb_job;
 static int bb_draw(struct RastPort *rp, const LONG *b, int bb)
 {
     UBYTE fg = rp->FgPen, dm = rp->DrawMode;
-    int ok = raa_frame_draw(&bb_st, BB_IDS(bb), (int)b[0], (int)b[1], (int)(b[2] - b[0] + 1), (int)(b[3] - b[1] + 1), 1, BB_ROLE(bb), c2_fill, c2_read,
-                            c2_rgb, raa_load(rp), rp, NULL);
+    int ok;
+    bb_job.s = &bb_st; bb_job.fn = c2_fill; bb_job.rd = c2_read; bb_job.rgb = c2_rgb; bb_job.ctx = rp;
+    bb_job.ids = BB_IDS(bb); bb_job.role = BB_ROLE(bb); bb_job.fill = 1; bb_job.npens = raa_load(rp);
+    bb_job.ox = (int)b[0]; bb_job.oy = (int)b[1]; bb_job.w = (int)(b[2] - b[0] + 1); bb_job.h = (int)(b[3] - b[1] + 1);
+    ok = raa_frame_box(&bb_job);
+    if (ok == RAA_BOX_BLEND)
+        raa_frame_corners(&bb_job, NULL);
     bb_task = NULL;
     SetAPen(rp, fg);
     SetDrMd(rp, dm);

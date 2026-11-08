@@ -27,6 +27,25 @@ int raa_nearest(raa_rgb_fn rgb, void *ctx, int npens, unsigned long want);
 /* flat_frame_draw_round, then the antialiased corners. Falls back to flat_frame_draw_round alone (return as it) when rd or rgb is
  * null, the box is not filled, has no readable pixel beyond a corner, or npens is 0 or over
  * RAA_MAX_PENS. Returns the number of corner pixels it blended in *blended when that is not null. */
+/* raa_frame_draw in two halves a caller runs one after the other (S62-FLAT-RF-TX-BUDGET: neither frame is under the other, and
+ * the arguments travel as one pointer, so the RectFill hook's border-button fill keeps its job in a static and its stack small).
+ * raa_frame_box reads the pen beside each corner, then paints flat_frame_draw_round. It returns RAA_BOX_NONE when that drew
+ * nothing, RAA_BOX_PLAIN when the box is drawn and the corners stay as drawn (the fallbacks raa_frame_draw names), or
+ * RAA_BOX_BLEND: j->bg then holds corner c's pen in bits 8c .. 8c+7 for raa_frame_corners, which blends the corner pixels. */
+typedef struct raa_job {
+    const flat_state *s;
+    flat_fill_fn fn;
+    flat_read_fn rd;
+    raa_rgb_fn rgb;
+    void *ctx;
+    int ids, ox, oy, w, h, fill, role, npens;
+    unsigned long bg;                         /* out of raa_frame_box */
+} raa_job;
+#define RAA_BOX_NONE  0
+#define RAA_BOX_PLAIN 1
+#define RAA_BOX_BLEND 2
+int raa_frame_box(raa_job *j);
+void raa_frame_corners(const raa_job *j, int *blended);
 int raa_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn, flat_read_fn rd,
                    raa_rgb_fn rgb, int npens, void *ctx, int *blended);
 /* flat_knob_frame_draw (the Workbench scroller knob: state pen box, plain role) through raa_frame_draw */
