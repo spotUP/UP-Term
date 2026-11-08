@@ -626,6 +626,10 @@ KEEP060LIB = tuple(sys.argv[[a.startswith("--keep-060lib=") for a in sys.argv].i
 MMU = "--mmu" in sys.argv and M060 and not NOFPU
 # --no-jit: the plain machine with the JIT compiler off (FS-UAE jit_compiler = 0, Amiberry cachesize=0), no MMU added: tells a JIT bug from a guest bug
 NOJIT = "--no-jit" in sys.argv
+# I1145 startup bisect: --no-solidwin starts no SolidWin (the rig's solidwin-up only logs, the kit's SolidWin block is
+# stripped from the clone); --no-amarchy-block strips the kit's ';BEGIN UP-Term Amarchy' block from the clone's S:User-Startup
+NOSOLIDWIN = "--no-solidwin" in sys.argv
+NOAMARCHYBLOCK = "--no-amarchy-block" in sys.argv
 DEBUGGER = "--debugger" in sys.argv   # FS-UAE's console debugger on a FIFO (debugger_lines, dbg)
 EXACT = "--exact" in sys.argv  # read-only DH0: makes "write protected" requesters that stall the rig
 
@@ -1043,6 +1047,13 @@ def sys_hdf_no_wasabid(image):
     'auth failed: bad key' (2026-10-25). The block goes from the clone; the master is never touched."""
     strip_user_startup_blocks(image, "UP-Term wasabi")
 
+def sys_hdf_skip_blocks(image):
+    """I1145: --no-solidwin / --no-amarchy-block take the kit's blocks out of the clone's S:User-Startup."""
+    if NOSOLIDWIN:
+        strip_user_startup_blocks(image, "UP-Term SolidWin")
+    if NOAMARCHYBLOCK:
+        strip_user_startup_blocks(image, "UP-Term Amarchy")
+
 def sys_hdf_a500(image):
     """--a500: the clone's S:User-Startup loses every UP-Term block (assign, console, device, Amarchy, Amarchy index ...)
     before it boots. The master image carries the kit's blocks, and the kit is built for the 68020 (Makefile CPU ?= 68020):
@@ -1454,7 +1465,8 @@ def setup():
     (RIG / "boot/go").write_text(GO)
     (RIG / "boot/shadows-up").write_text(SHADOWS_UP_SCRIPT)
     (RIG / "boot/wasabid-up").write_text(WASABID_UP_SCRIPT)
-    (RIG / "boot/solidwin-up").write_text(SOLIDWIN_UP_SCRIPT)
+    (RIG / "boot/solidwin-up").write_text(
+        'Echo >>BOOTX:boot.log "rig SolidWin skipped (--no-solidwin)"\n' if NOSOLIDWIN else SOLIDWIN_UP_SCRIPT)
     (RIG / "boot" / kitstamp.LIST).write_text("".join(n + "\n" for n in sorted({x[0] for x in KIT_SHADOWS})))
     kitstamp.check(RIG / "boot", RIG / "vtc")
     (RIG / "boot/Mountlist").write_text(MOUNTLIST)
@@ -2322,6 +2334,7 @@ def _start(retries):
         if A500:
             sys_hdf_a500(RIG / "sys.hdf")
         sys_hdf_shadows_block(RIG / "sys.hdf")
+        sys_hdf_skip_blocks(RIG / "sys.hdf")
     elif not OS and not OS32:
         fresh_sys_hdf()
         sys_hdf_screenmode(RIG / "sys.hdf")
@@ -2335,6 +2348,7 @@ def _start(retries):
         if A500:
             sys_hdf_a500(RIG / "sys.hdf")
         sys_hdf_shadows_block(RIG / "sys.hdf")
+        sys_hdf_skip_blocks(RIG / "sys.hdf")
         sys_hdf_cpu_lib(RIG / "sys.hdf")   # the master image is never touched; this and any other write into DH0: runs after the clone
     RIG.mkdir(parents=True, exist_ok=True)
     START_ARGS.write_text(json.dumps([a for a in sys.argv[2:] if a != "--keep-sys"]))
