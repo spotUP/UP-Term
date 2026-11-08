@@ -91,8 +91,13 @@ def screen_facts():
     w, h = [int(x) for x in rx('dopus screen').split()[1:3]]
     s = g.screens()[0]
     ry = int(s['row_scale'])
-    if c.run('Type ENV:Sys/font.prefs')[0] == 0:
-        raise SystemExit('ENV:Sys/font.prefs exists: the screen font is not topaz 8, read it before trusting the expected set')
+    if c.run('Type ENV:Sys/font.prefs')[0] == 0:   # a prefs file: every FONT chunk (fp_Type, fp_TextAttr: ta_YSize 0x20 bytes after the tag) must say topaz 8
+        hexdump = c.run('Type ENV:Sys/font.prefs HEX')[1]
+        raw = bytes.fromhex(''.join(m.group(1).replace(' ', '') for m in re.finditer(r'^[0-9A-F]{4}: ((?:[0-9A-F]{8} ?){1,4})', hexdump, re.M)))
+        sizes = [int.from_bytes(raw[i + 0x20:i + 0x22], 'big') for i in range(len(raw)) if raw[i:i + 4] == b'FONT']
+        names = raw.count(b'topaz.font')
+        if not sizes or any(z != 8 for z in sizes) or names != len(sizes):
+            raise SystemExit('ENV:Sys/font.prefs is not all topaz 8 (sizes %s, topaz names %d)' % (sizes, names))
     return 8, 1, ry, '%dx%d' % (w, h)
 
 
