@@ -88,19 +88,24 @@ def expect(theme, font_h, rx_, ry_):
 
 
 def screen_facts():
-    """(font height, pixel rx, ry, 'WxH') of the DOpus screen. The Workbench font when ENV:Sys/font.prefs is absent is topaz 8;
-    the aspect is the picture's row doubling (a 640x256 screen has pixels twice as high as wide, ami.py list_windows row_scale)."""
+    """(font height, pixel rx, ry, 'WxH') of the DOpus screen. The font is the screen font: the FONT chunk of
+    ENV:Sys/font.prefs with fp_Type FP_SCREENFONT (2), its ta_YSize; topaz 8 when the file or that chunk is absent.
+    The icon and system font chunks do not count (the stock 3.2 ENVARC prefs carry an icon font bhelv 11, s64 rig 64).
+    The aspect is the picture's row doubling (a 640x256 screen has pixels twice as high as wide, ami.py list_windows
+    row_scale)."""
     w, h = [int(x) for x in rx('dopus screen').split()[1:3]]
     s = g.screens()[0]
     ry = int(s['row_scale'])
-    if c.run('Type ENV:Sys/font.prefs')[0] == 0:   # a prefs file: every FONT chunk (fp_Type, fp_TextAttr: ta_YSize 0x20 bytes after the tag) must say topaz 8
+    font_h = 8
+    if c.run('Type ENV:Sys/font.prefs')[0] == 0:
         hexdump = c.run('Type ENV:Sys/font.prefs HEX')[1]
         raw = bytes.fromhex(''.join(m.group(1).replace(' ', '') for m in re.finditer(r'^[0-9A-F]{4}: ((?:[0-9A-F]{8} ?){1,4})', hexdump, re.M)))
-        sizes = [int.from_bytes(raw[i + 0x20:i + 0x22], 'big') for i in range(len(raw)) if raw[i:i + 4] == b'FONT']
-        names = raw.count(b'topaz.font')
-        if not sizes or any(z != 8 for z in sizes) or names != len(sizes):
-            raise SystemExit('ENV:Sys/font.prefs is not all topaz 8 (sizes %s, topaz names %d)' % (sizes, names))
-    return 8, 1, ry, '%dx%d' % (w, h)
+        # struct FontPrefs after the chunk header: fp_Type at +14, fp_TextAttr.ta_YSize at +24 (FONT tag +0x16, +0x20)
+        screen = [int.from_bytes(raw[i + 0x20:i + 0x22], 'big') for i in range(len(raw))
+                  if raw[i:i + 4] == b'FONT' and int.from_bytes(raw[i + 0x16:i + 0x18], 'big') == 2]
+        if screen:
+            font_h = screen[-1]
+    return font_h, 1, ry, '%dx%d' % (w, h)
 
 
 def cmap_of(path):
