@@ -35,3 +35,21 @@ after opening Palette and Font prefs, so amarchy-flat still draws clones on 3.2.
 Tests: tests/test_flat_clone_stack.py (make test ONLY=flat_clone_stack): fails 3 of 4 on main's
 flat.c, passes 4 of 4 on this branch. flat_core, flat_role_core, flat_single_instance pass.
 make flat-budget PASS.
+
+## s63 part 9 (chw=16384 explained: measurement bug, not overflow)
+
+Verdict: the private stack is NOT overflowing. KS 3.1 writes the longword 0xBAD1BAD3 into the first 4 bytes of the
+swapped-in stack (probe: b0=0xBAD1BAD3, b4=0xA5A5A5A5, fill256=252 of 256, AllocVec size longword hdr=16404 intact,
+16 canary bytes below the block all intact). The scan started at byte 0, saw a non-fill byte, and read "full".
+A second defect hid behind it: the scan resumed at its last stop, so a later, deeper draw was never seen.
+
+Fix (commit on s63-ks31-stack): CLONE_STACK_SKIP=8 (scan starts past the marker), rescan from the bottom on every draw,
+STATUS gains `cprobe fill256= deep= guard= hdr= b0= b4=` (deep = high water ignoring the bottom 256 bytes; b0/b4 decimal).
+Test: tests/test_flat_clone_stack.py (2 new tests, both fail on a1a9ea16).
+
+Measured on rig 97, KS 3.1, 060, binary md5 1a4b8257..., after Workbench + Palette + Font prefs:
+boot 1: chw=1632 deep=1632 cmin=1176 clone draws=14 fallback=0
+boot 2: chw=1564 deep=1564 cmin=1176 clone draws=14 fallback=0
+Real depth about 1.6 KB of 16 KB (10%): no overflow, headroom 14.7 KB. cmin on IPrefs is still ~1.2 KB, now unused by the clone.
+Not done: the deep frame was not located (not needed at 1.6 KB). Hypotheses row 10 text for main's table:
+"10 | private 16 KB stack | part 8-9 | chw=16384 was a scan bug (KS 3.1 stamps 0xBAD1BAD3 at the stack bottom); real depth 1564-1632 bytes | CONFIRMED safe".

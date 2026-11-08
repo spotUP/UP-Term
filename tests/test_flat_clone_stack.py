@@ -47,6 +47,18 @@ class FlatCloneStack(unittest.TestCase):
         self.assertLess(body.rindex("ObtainSemaphore(&cl_ss)", 0, free), free, "the stack is freed without holding cl_ss")
         self.assertGreater(body.index("ReleaseSemaphore(&cl_ss)", free), free)
 
+    def test_high_water_scan_starts_past_the_rom_marker(self):
+        # KS 3.1 stamps 0xBAD1BAD3 into the bottom 4 bytes of the swapped-in stack; a scan from byte 0 read that as "stack full" (chw=16384).
+        m = re.search(r"#define\s+CLONE_STACK_SKIP\s+(\d+)", code())
+        self.assertTrue(m, "no CLONE_STACK_SKIP")
+        self.assertGreaterEqual(int(m.group(1)), 4)
+        self.assertRegex(func(code(), "clone_stack_alloc"), r"cl_hwp\s*=\s*CLONE_STACK_SKIP\s*;", "the high-water scan starts at byte 0")
+
+    def test_high_water_is_rescanned_from_the_bottom_each_draw(self):
+        # a scan resumed at the last stop never sees a later, deeper draw (measured: chw 1564 while a bottom-up scan read 1628)
+        body = func(code(), "clone_stack_note")
+        self.assertRegex(body, r"cl_hwp\s*=\s*CLONE_STACK_SKIP\s*;\s*[^\n]*\n\s*while", "clone_stack_note resumes the scan at the old cl_hwp")
+
     def test_the_asm_helper_swaps_twice_and_is_linked(self):
         asm = (ROOT / "amarchy" / "flat_stk.s").read_text()
         self.assertEqual(asm.count("-732(a6)"), 2, "StackSwap must be called once in, once out")

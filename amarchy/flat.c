@@ -173,7 +173,10 @@ static flat_clone_in cl_in;                         /* the call arguments, held 
  * ReadPixel loop; the drawing task can be any task (IPrefs had 1052 bytes free), so the call never runs on the caller's stack. */
 #define CLONE_STACK_BYTES 16384
 #define CLONE_STACK_FILL 0xA5
+#define CLONE_STACK_SKIP 8     /* KS 3.1 writes 0xBAD1BAD3 into the first 4 bytes of a swapped-in stack (measured rig 97): not use, so the scan starts past it */
 LONG flat_on_stack(LONG (*fn)(void *), void *arg, struct StackSwapStruct *sss);
+#define CLONE_GUARD 16
+static uint8_t *cl_base;                            /* the AllocVec block: CLONE_GUARD canary bytes, then the stack */
 static uint8_t *cl_stk;                             /* allocated in main before the hooks install, freed after they are removed */
 static struct StackSwapStruct cl_sss;               /* held under cl_ss */
 static ULONG cl_hwp;                                /* first byte of cl_stk not yet seen written (high-water scan start), under cl_ss */
@@ -430,22 +433,25 @@ static LONG clone_on_private(void *a)
 /* Allocate the clone stack once, before the hooks install (main task). Filled with a pattern for the high-water mark. */
 static void clone_stack_alloc(flatshared *r)
 {
-    cl_stk = (uint8_t *)AllocVec(CLONE_STACK_BYTES, MEMF_PUBLIC);
-    if (!cl_stk)
+    cl_base = (uint8_t *)AllocVec(CLONE_STACK_BYTES + CLONE_GUARD, MEMF_PUBLIC);
+    if (!cl_base)
         return;
+    memset(cl_base, 0x5A, CLONE_GUARD);
+    cl_stk = cl_base + CLONE_GUARD;
     memset(cl_stk, CLONE_STACK_FILL, CLONE_STACK_BYTES);
     cl_sss.stk_Lower = cl_stk;
     cl_sss.stk_Upper = (ULONG)(cl_stk + CLONE_STACK_BYTES);
     cl_sss.stk_Pointer = (APTR)(cl_stk + CLONE_STACK_BYTES);
-    cl_hwp = 0;
+    cl_hwp = CLONE_STACK_SKIP;
     r->cstk = CLONE_STACK_BYTES;
 }
 
 /* After the hooks are removed and cl_ss is held: nothing can be on the stack any more. */
 static void clone_stack_free(void)
 {
-    if (cl_stk) {
-        FreeVec(cl_stk);
+    if (cl_base) {
+        FreeVec(cl_base);
+        cl_base = NULL;
         cl_stk = NULL;
     }
 }
@@ -466,9 +472,23 @@ static void clone_stack_note(flatshared *r, int after)
         r->ctask[i] = 0;
         return;
     }
+    cl_hwp = CLONE_STACK_SKIP;  /* rescan from the bottom every time: a later, deeper draw dirties bytes below the last stop */
     while (cl_hwp < CLONE_STACK_BYTES && cl_stk[cl_hwp] == CLONE_STACK_FILL)
         cl_hwp++;
     r->chw = CLONE_STACK_BYTES - cl_hwp;
+    {   /* S63 probe: is byte 0 a stray write (a few bottom bytes) or real depth (the high-water ignoring the bottom 256)? */
+        ULONG i, n = 0, g = 0;
+        for (i = 0; i < 256; i++)
+            n += cl_stk[i] == CLONE_STACK_FILL;
+        for (i = 0; i < CLONE_GUARD; i++)
+            g += cl_base[i] == 0x5A;
+        for (i = 256; i < CLONE_STACK_BYTES && cl_stk[i] == CLONE_STACK_FILL; i++)
+            ;
+        r->cb256 = n; r->cguard = g; r->cdeep = CLONE_STACK_BYTES - i;
+        r->cb8a = ((ULONG)cl_stk[0] << 24) | ((ULONG)cl_stk[1] << 16) | ((ULONG)cl_stk[2] << 8) | cl_stk[3];
+        r->cb8b = ((ULONG)cl_stk[4] << 24) | ((ULONG)cl_stk[5] << 16) | ((ULONG)cl_stk[6] << 8) | cl_stk[7];
+        r->chdr = *(ULONG *)(cl_base - 4);
+    }
 }
 
 /* The clone draw of one gadget image: 1 when it was drawn (the caller is done), 0 to fall back to the block glyph. Its own function
@@ -1751,7 +1771,7 @@ static void print_status(void)
     int finst = 0, rinst = 0;
     unsigned long rcalls = 0, rhits = 0, shits = 0, mhits = 0, bhits = 0, tcalls = 0, thits = 0, labels = 0, lskip = 0;
     int tinst = 0;
-    unsigned long scmin = 0, schw = 0, scstk = 0, scno = 0;
+    unsigned long scmin = 0, schw = 0, scstk = 0, scno = 0, scb256 = 0, scb8a = 0, scb8b = 0, schdr = 0, scguard = 0, scdeep = 0;
     char sctask[16] = "";
     unsigned long cdraws = 0, cfall = 0, alooks = 0, cfb = 0, cfd = 0, cfm = 0, cfe = 0, cfk = 0, cfi = 0, clw = 0, cls = 0, cln = 0, clm = 0;
     int apx = 0, sring[16][9], sn = 0;
@@ -1769,6 +1789,7 @@ static void print_status(void)
         rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits; mhits = r->mhits; bhits = r->bhits;
         tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits; labels = r->labels; lskip = r->lskip;
         scmin = r->cmin; schw = r->chw; scstk = r->cstk; scno = r->cnostk; memcpy(sctask, r->ctask, 16); sctask[15] = 0;
+        scb256 = r->cb256; scb8a = r->cb8a; scb8b = r->cb8b; schdr = r->chdr; scguard = r->cguard; scdeep = r->cdeep;
         cdraws = r->cdraws; cfall = r->cfall;
         cfb = r->cf_busy; cfd = r->cf_nodri; cfm = r->cf_nobm; cfe = r->cf_empty; cfk = r->cf_mask;
         cfi = r->cf_ids; clw = r->cf_lwhich; cls = r->cf_lsize; cln = r->cf_lnz; clm = r->cf_lmarks;
@@ -1833,6 +1854,16 @@ static void print_status(void)
         put_word(line, &n, " chw=");                put_num(line, &n, schw);
         put_word(line, &n, " cstk=");               put_num(line, &n, scstk);
         put_word(line, &n, " cnostk=");             put_num(line, &n, scno);
+        line[n] = 0;
+        PutStr((STRPTR)line);
+        PutStr((STRPTR)"\n");
+        n = 0;
+        put_word(line, &n, "cprobe fill256=");      put_num(line, &n, scb256);
+        put_word(line, &n, " deep=");               put_num(line, &n, scdeep);
+        put_word(line, &n, " guard=");              put_num(line, &n, scguard);
+        put_word(line, &n, " hdr=");                put_num(line, &n, schdr);
+        put_word(line, &n, " b0=");                 put_num(line, &n, scb8a);
+        put_word(line, &n, " b4=");                 put_num(line, &n, scb8b);
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
