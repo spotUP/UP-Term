@@ -109,11 +109,14 @@ def requester_open():
     return g.where(REQUESTER)[1] is not None
 
 
-def keep_requester(secs=5, t0=None, settled=None):
+def keep_requester(secs=5, t0=None, settled=None, expect=False):
     """FP-1: every desktop theme apply opens the 15 s requester "Amarchy desktop theme"; unanswered it reverts the apply. Click Keep
     (wasabi ui_click) so the picked theme stays. True when Keep was clicked; False when no requester came within secs (an apply that
     changed no desktop part asks nothing). With `settled` (a callable, apply_settled for a pick) the wait also ends False as soon as
     it returns True and no requester window exists: the apply is done and asked nothing. Without it the wait runs the full secs.
+    expect=True (a pick that must be kept): `settled` is ignored, the wait ends on the click or after the full secs, because
+    apply_settled can be True before the requester opens (DT-9: Keep missed, Amarchy reverted the theme after 15 s).
+    A click exception other than "no window yet" is printed once per message, never swallowed silently.
     The one place that clicks it: the other rig scripts call this.
     Measures as it goes into LAST_KEEP (seconds from t0, default the call): when the requester window was first seen, when the
     click returned, and whether the window was gone 2 s after the click."""
@@ -121,6 +124,7 @@ def keep_requester(secs=5, t0=None, settled=None):
     LAST_KEEP.clear()
     LAST_KEEP.update(seen_at=None, kept_at=None, gone=None)
     end = time.time() + secs
+    logged = set()
     while time.time() < end:
         try:
             if LAST_KEEP['seen_at'] is None and requester_open():
@@ -133,8 +137,11 @@ def keep_requester(secs=5, t0=None, settled=None):
             return True
         except AttributeError:
             return False   # a stub ami (the unit test of the pick order) has no wasabi connection
-        except Exception:
-            if settled is not None and settled() and not requester_open():
+        except Exception as e:
+            if str(e) not in logged:
+                logged.add(str(e))
+                print('[INFO] keep_requester: Keep click raised %s: %s' % (type(e).__name__, e), flush=True)
+            if not expect and settled is not None and settled() and not requester_open():
                 return False
             time.sleep(0.5)
     return False

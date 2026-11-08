@@ -78,6 +78,7 @@ t.c.run = d.c.run = run
 t.ami.key = key
 t.open_menu = open_menu
 t.OPEN_SECS = t.STEP_SECS = 1
+t.keep_requester = lambda *a, **k: True   # this test is about the apply wait; the Keep check is in test_amarchy_pick_keep_checked.py
 
 
 def wait_stable(*a, **k):
