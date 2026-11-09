@@ -157,6 +157,195 @@ static void level_and_pair_lists(void)
     CHECK_INT(rip_errors(&st), 0);
 }
 
+
+/* ---- RIP-3: palette and canvas ---- */
+
+/* A test-side mini interpreter standing in for the RIP-4 executor: just
+ * enough (* reset, S fill colour, B bar, Q/a through rip_pal_exec) to run
+ * fixture 05 end to end through the real parser. */
+struct mini {
+    struct cv *cv;
+    struct rip_pal pal;
+    int fill;
+    int calls;
+    unsigned long bar1_before_a; /* pixel of bar 1 as drawn on screen when `a` arrives */
+};
+
+static unsigned long shown(const struct cv *c, int x, int y)
+{
+    return c->pal[cv_get(c, x, y)];
+}
+
+static void mini_cmd(void *ud, const struct rip_cmd *c)
+{
+    struct mini *m = ud;
+    m->calls++;
+    if (c->level)
+        return;
+    if (c->ch == '*') {
+        rip_pal_reset(&m->pal, m->cv);
+    } else if (c->ch == 'S') {
+        m->fill = (int)c->arg[1];
+    } else if (c->ch == 'B') {
+        cv_rect(m->cv, (int)c->arg[0], (int)c->arg[1], (int)c->arg[2], (int)c->arg[3], m->fill);
+    } else if (c->ch == 'a') {
+        m->bar1_before_a = shown(m->cv, 40, 50);
+        rip_pal_exec(&m->pal, m->cv, c);
+    } else {
+        rip_pal_exec(&m->pal, m->cv, c);
+    }
+}
+
+static void run_mini(struct mini *m, const unsigned char *b, long n)
+{
+    struct rip_sinks sk;
+    struct rip_state st;
+    sk.ud = m;
+    sk.text = NULL;
+    sk.cmd = mini_cmd;
+    rip_init(&st);
+    rip_feed(&st, b, n, &sk);
+}
+
+static void palette_fixture_05(void)
+{
+    unsigned char *b = NULL;
+    long n = slurp("tests/rip/05-palette.rip", &b);
+    struct mini m;
+    int i;
+    static const unsigned long want[16] = {
+        0x000000, 0x0000AA, 0x00AA00, 0x00AAAA, 0xAA0000, 0xAA00AA, 0xAA5500, 0xAAAAAA,
+        0x555555, 0x5555FF, 0x55FF55, 0x55FFFF, 0xFF5555, 0xFF55FF, 0xFFFF55, 0xFFFFFF
+    };
+    CHECK(n > 0);
+    if (n <= 0)
+        return;
+    memset(&m, 0, sizeof(m));
+    m.cv = cv_open(CV_RIP_W, CV_RIP_H, 256);
+    CHECK(m.cv != NULL);
+    run_mini(&m, b, n);
+    CHECK(m.calls > 17);
+    /* bar k is x = 36k.., y 20..100; bar 1 was blue until the last line recoloured index 1 */
+    CHECK_INT(m.bar1_before_a, 0x0000AA);
+    CHECK_INT(shown(m.cv, 40, 50), 0xAA0000);
+    for (i = 0; i < 16; i++) {
+        if (i == 1)
+            continue;
+        CHECK_INT(shown(m.cv, 36 * i + 5, 50), want[i]);
+    }
+    CHECK_INT(cv_get(m.cv, 36 * 6 + 5, 50), 6); /* the pixel stays index 6 */
+    CHECK_INT(cv_get(m.cv, 5, 5), 0);           /* outside the bars: still index 0 */
+    cv_close(m.cv);
+    free(b);
+}
+
+static void palette_commands_move_output(void)
+{
+    struct cv *c = cv_open(8, 8, 256);
+    struct rip_pal p;
+    struct rip_cmd q;
+    struct rip_cmd a;
+    int i;
+    memset(&q, 0, sizeof(q));
+    memset(&a, 0, sizeof(a));
+    rip_pal_reset(&p, c);
+    cv_pixel(c, 2, 2, 12);
+    CHECK_INT(shown(c, 2, 2), 0xFF5555);
+    cv_take_dirty(c);
+    /* a: one entry */
+    a.level = 0, a.ch = 'a', a.nargs = 2, a.arg[0] = 12, a.arg[1] = 1;
+    CHECK_INT(rip_pal_exec(&p, c, &a), 1);
+    CHECK_INT(shown(c, 2, 2), 0x0000AA);
+    CHECK_INT(cv_take_dirty(c).x1, 8); /* a palette change dirties the whole canvas */
+    /* Q: all sixteen, every entry moves */
+    q.level = 0, q.ch = 'Q', q.nargs = 16;
+    for (i = 0; i < 16; i++)
+        q.arg[i] = 63 - i;
+    CHECK_INT(rip_pal_exec(&p, c, &q), 1);
+    for (i = 0; i < 16; i++)
+        CHECK_INT(c->pal[i], rip_ega_rgb(63 - i));
+    /* a wrong argument count, level or index is refused and changes nothing */
+    a.arg[0] = 16;
+    CHECK_INT(rip_pal_exec(&p, c, &a), 0);
+    a.arg[0] = 3, a.nargs = 1;
+    CHECK_INT(rip_pal_exec(&p, c, &a), 0);
+    a.nargs = 2, a.level = 1;
+    CHECK_INT(rip_pal_exec(&p, c, &a), 0);
+    /* reset restores the defaults, brown at 6 */
+    rip_pal_reset(&p, c);
+    CHECK_INT(c->pal[6], 0xAA5500);
+    CHECK_INT(c->pal[14], 0xFFFF55);
+    cv_close(c);
+}
+
+static void ega_master_levels(void)
+{
+    CHECK_INT(rip_ega_rgb(0), 0x000000);
+    CHECK_INT(rip_ega_rgb(7), 0xAAAAAA);
+    CHECK_INT(rip_ega_rgb(56), 0x555555);
+    CHECK_INT(rip_ega_rgb(63), 0xFFFFFF);
+    CHECK_INT(rip_ega_rgb(20), 0xAA5500);
+    CHECK_INT(rip_ega_rgb(64 + 4), 0xAA0000); /* only the low six bits count */
+}
+
+static void canvas_dirty_and_serial(void)
+{
+    struct cv *c = cv_open(CV_RIP_W, CV_RIP_H, 256);
+    struct cv_rect_s d;
+    CHECK(c != NULL);
+    CHECK_INT(cv_flush(c), 0); /* nothing drawn: no serial bump */
+    CHECK_INT(c->serial, 0);
+    cv_pixel(c, 10, 20, 5);
+    cv_rect(c, 100, 50, 199, 99, 7);
+    cv_pixel(c, -1, 0, 3);     /* clipped: no effect */
+    cv_pixel(c, 640, 0, 3);
+    CHECK_INT(cv_get(c, 10, 20), 5);
+    CHECK_INT(cv_get(c, 199, 99), 7);
+    CHECK_INT(cv_get(c, 200, 99), 0);
+    CHECK_INT(cv_get(c, 640, 0), -1);
+    CHECK_INT(cv_flush(c), 1);
+    CHECK_INT(c->serial, 1);
+    d = cv_take_dirty(c);
+    CHECK_INT(d.x0, 10);
+    CHECK_INT(d.y0, 20);
+    CHECK_INT(d.x1, 200);
+    CHECK_INT(d.y1, 100);
+    d = cv_take_dirty(c);
+    CHECK_INT(d.x1 - d.x0, 0);
+    CHECK_INT(cv_flush(c), 0);
+    CHECK_INT(c->serial, 1);
+    /* spans clip and accept reversed corners */
+    cv_hspan(c, 700, 600, 5, 9);
+    CHECK_INT(cv_get(c, 639, 5), 9);
+    cv_rect(c, -5, 340, 3, 400, 4);
+    CHECK_INT(cv_get(c, 0, 349), 4);
+    CHECK_INT(cv_get(c, 4, 349), 0);
+    CHECK(cv_open(0, 5, 16) == NULL);
+    CHECK(cv_open(2000, 5, 16) == NULL);
+    cv_close(c);
+}
+
+static void canvas_placement(void)
+{
+    struct cv_map_s m;
+    /* O7: 1:1 at the grid origin when the window fits */
+    CHECK(cv_map(640, 350, 1000, 700, &m));
+    CHECK_INT(m.out_w, 640);
+    CHECK_INT(m.out_h, 350);
+    CHECK_INT(m.num, 1);
+    CHECK_INT(m.den, 1);
+    /* the window is the knob: half width halves the drawn size, aspect kept */
+    CHECK(cv_map(640, 350, 320, 700, &m));
+    CHECK_INT(m.out_w, 320);
+    CHECK_INT(m.out_h, 175);
+    CHECK_INT(m.num * 2, m.den); /* 320/640, not reduced */
+    /* the height is the tight side */
+    CHECK(cv_map(640, 350, 1000, 175, &m));
+    CHECK_INT(m.out_h, 175);
+    CHECK_INT(m.out_w, 320);
+    CHECK(!cv_map(640, 350, 0, 100, &m));
+}
+
 /* RIP-1 reachability, expected-pending until RIP-2: bytes written to a
  * terminal reach the RIP parser (sentinel: the commands it handed on). */
 static void reach_rip_through_vt_write(void)
@@ -181,5 +370,10 @@ void suite_rip(void)
     text_lines_pass_through();
     malformed_commands_are_counted();
     level_and_pair_lists();
+    palette_fixture_05();
+    palette_commands_move_output();
+    ega_master_levels();
+    canvas_dirty_and_serial();
+    canvas_placement();
     reach_rip_through_vt_write();
 }
