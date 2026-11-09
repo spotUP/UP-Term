@@ -1741,6 +1741,7 @@ int vt_cell_placeholder(const vt_term *t, int row, int col, vt_image_view *v, in
     v->opaque = im->opaque;
     v->rgb = im->rgb;
     v->kitty = 1;
+    v->bg0 = 0;
     v->cw = im->cw;
     v->ch = im->ch;
     v->col0 = 0;

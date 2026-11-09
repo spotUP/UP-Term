@@ -5691,7 +5691,8 @@ int vt_row_image(const vt_term *t, int row, int i, vt_image_view *v)
         v->fmt = im->fmt;
         v->opaque = im->opaque;
         v->rgb = im->rgb;
-        v->kitty = im->kind != 0 && im->kind != 4; /* a RIP canvas draws like a sixel: index 0 is the background */
+        v->kitty = im->kind != 0 && im->kind != 4;
+        v->bg0 = im->kind == 0; /* sixel only: a RIP canvas's index 0 is palette entry 0 */
         v->cw = im->cw;
         v->ch = im->ch;
         v->col0 = t->pl[k].col0;

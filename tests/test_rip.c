@@ -581,6 +581,26 @@ static void canvas_lifecycle(void)
     vt_free(t);
 }
 
+/* RIP-VIEW-BG0: index 0 is palette entry 0 on a RIP canvas, "unset" only on a sixel */
+static void index_zero_is_a_colour_for_rip_not_for_sixel(void)
+{
+    vt_term *t = rip_draw("!|a0000|c00|L00000A00\r\n"); /* entry 0 -> master 0 stays black: control */
+    vt_image_view v;
+    vt_free(t);
+    t = rip_draw("!|a000K|c00|L00000A00\r\n"); /* entry 0 -> master 20 (brown), a line in colour 0 */
+    CHECK(view0(t, &v));
+    CHECK_INT(rpx(t, 5, 0), 0);
+    CHECK_INT(v.bg0, 0);
+    CHECK_INT(v.kitty, 0);
+    CHECK(v.pal[0] == rip_ega_rgb(20));
+    vt_free(t);
+    t = rip_term();
+    h_put(t, "\033Pq\"1;1;4;6#1;2;100;0;0#1~~~~\033\\");
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(v.bg0, 1);
+    vt_free(t);
+}
+
 static void palette_through_the_terminal(void)
 {
     vt_term *t = rip_draw("!|a0C0K|c0C|X0101\r\n"); /* index 12 gets master 20 (RIP-0: 6 is brown 0x14, here 12) */
@@ -1130,6 +1150,7 @@ void suite_rip(void)
     rip_off_is_byte_identical();
     canvas_lifecycle();
     palette_through_the_terminal();
+    index_zero_is_a_colour_for_rip_not_for_sixel();
     knob_colour_and_write_mode();
     knob_line_style_and_thickness();
     knob_fill_style();

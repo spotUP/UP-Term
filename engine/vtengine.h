@@ -374,7 +374,8 @@ typedef struct vt_image_view {
     const vt_u8 *pix;   /* w x h indices into pal, row after row */
     int w, h;
     const vt_u32 *pal;  /* 0xRRGGBB; entry 0 is the pixels the image left
-                         * unset: draw them in the default background */
+                         * unset when bg0 is 1: draw them in the default
+                         * background; with bg0 0 it is a real colour */
     int npal;
     int fmt;            /* 0 pix holds indices into pal; 1 it holds w x h x 4 bytes R G B A (pal, npal unused) */
     int opaque;         /* fmt 1: no pixel has an alpha below 255 */
@@ -390,6 +391,7 @@ typedef struct vt_image_view {
     long serial;        /* different for every image (a pen cache's key) */
     long z;             /* kitty's z= (0 for a sixel): below 0 the image is
                          * under the text, in the VT_CELL_UNDER cells */
+    int bg0;            /* 1: index 0 means unset, draw the default background (sixel); 0: index 0 is a real palette colour (RIP) or transparent (kitty, see kitty) */
 } vt_image_view;
 /* The i-th image on row `row` (vt_row's numbering), in draw order: by z,
  * then kitty i=, then the oldest first, so drawing them in order puts the
