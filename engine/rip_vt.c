@@ -524,8 +524,7 @@ int vt_rip_active(const vt_term *t)
 
 long vt_rip_icons(const vt_term *t)
 {
-    (void)t;
-    return rip_icons_drawn();
+    return t->rip ? rip_icons_drawn() : 0;
 }
 
 long vt_rip_commands(const vt_term *t)

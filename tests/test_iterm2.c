@@ -290,6 +290,22 @@ static int cap_sink(const char *host, const char *name, const vt_u8 *data, long 
     return data && n == 5;
 }
 
+/* Regression (dctelnet-74, 2026-11-09): a host that sets only the sink, with no
+ * vt_set_download writer, must still get inline=0 files. iterm_begin used to
+ * test t->file_write alone and swallowed the bytes. */
+static void the_download_sink_alone_gets_the_file(void)
+{
+    vt_term *t = iterm_term(20, 10);
+    sk_calls = 0;
+    sv_reset();
+    vt_set_download_sink(t, cap_sink, "bbs");
+    put_file(t, "name=bm90ZS50eHQ=;inline=0;size=5", "aGVsbG8=", "\007");
+    CHECK_INT(sk_calls, 1);
+    CHECK_INT(sv_calls, 0);
+    CHECK(!strcmp(sk_name, "note.txt"));
+    vt_free(t);
+}
+
 static void the_download_sink_gets_host_and_name_apart(void)
 {
     vt_term *t = iterm_term(20, 10);
@@ -360,6 +376,7 @@ void suite_iterm2(void)
     names_are_base_names_only();
     inline_zero_is_saved_through_the_host_writer();
     the_download_sink_gets_host_and_name_apart();
+    the_download_sink_alone_gets_the_file();
     a_download_over_four_megabytes_is_dropped();
     report_cell_size_answers_height_then_width();
     parser_reads_every_argument();

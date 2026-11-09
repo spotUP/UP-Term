@@ -1450,7 +1450,7 @@ static void iterm_begin(vt_term *t, const char *hdr, int n)
     kitty_abort(t); /* a half-sent kitty upload does not survive an OSC */
     t->osc52 = 4;
     iterm_parse(hdr, n, &a);
-    if (!a.inl && !t->file_write)
+    if (!a.inl && !t->dl_sink && !t->file_write)
         return; /* nobody to save it: bytes swallowed, t->kit stays 0 */
     k = (vt_kitty *)VT_MALLOC(sizeof(vt_kitty));
     if (!k)
