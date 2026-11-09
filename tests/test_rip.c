@@ -6,10 +6,6 @@
 #include "harness.h"
 #include "../engine/rip.h"
 
-/* RIP-2 lands the vt adapter; until then the reachability test below is
- * expected-pending (it still drives vt_write and reads the sentinel). */
-#define RIP2_LANDED 0
-
 #define DUMP_MAX 65536
 
 struct sink {
@@ -346,20 +342,334 @@ static void canvas_placement(void)
     CHECK(!cv_map(640, 350, 0, 100, &m));
 }
 
-/* RIP-1 reachability, expected-pending until RIP-2: bytes written to a
- * terminal reach the RIP parser (sentinel: the commands it handed on). */
+/* ---- RIP-2 / RIP-4: through the terminal ---- */
+
+/* an 80x25 terminal with 8x14 cells (the 640x350 canvas is 1:1) and RIP in auto */
+static vt_term *rip_term(void)
+{
+    vt_term *t = h_new(80, 25, VT_XTERM);
+    vt_set_cell_pixels(t, 8, 14);
+    vt_set_rip(t, 1);
+    return t;
+}
+
+static int view0(vt_term *t, vt_image_view *v) { return vt_row_image(t, 0, 0, v); }
+
+/* canvas index at (x, y); -2 when there is no canvas on row 0 */
+static int rpx(vt_term *t, int x, int y)
+{
+    vt_image_view v;
+    if (!view0(t, &v))
+        return -2;
+    return v.pix[(long)y * v.w + x];
+}
+
+static long rcount(vt_term *t, int idx)
+{
+    vt_image_view v;
+    long n = 0, i;
+    if (!view0(t, &v))
+        return -1;
+    for (i = 0; i < (long)v.w * v.h; i++)
+        n += v.pix[i] == idx;
+    return n;
+}
+
+/* pixels equal to idx on row y between x0 and x1 inclusive */
+static long rrow(vt_term *t, int y, int x0, int x1, int idx)
+{
+    long n = 0;
+    int x;
+    for (x = x0; x <= x1; x++)
+        n += rpx(t, x, y) == idx;
+    return n;
+}
+
+static vt_term *rip_draw(const char *cmds)
+{
+    vt_term *t = rip_term();
+    h_put(t, cmds);
+    return t;
+}
+
+/* The one reachability test: vt_write -> detection -> scanner -> parser -> drawing -> canvas
+ * -> the image store's view. Numbers are the plan's (section 2.1). */
 static void reach_rip_through_vt_write(void)
 {
-    vt_term *t = h_new(40, 10, VT_XTERM);
-    vt_set_rip(t, 1);
-    h_put(t, "!|c0F|L0A0A5050\r\n");
-    h_put(t, "!|c0C|R0A0A5050\r\n");
-    if (!RIP2_LANDED) {
-        printf("  PENDING RIP-2: vt_write does not reach the parser (commands=%ld)\n", vt_rip_commands(t));
-        return;
-    }
+    vt_term *t = rip_term();
+    vt_image_view v;
+    int x, y;
+    long red = 0;
+    CHECK_INT(vt_rip_commands(t), 0);
+    CHECK_INT(vt_images(t), 0);
+    h_reply_clear();
+    h_put(t, "\033[!" "!|c0F|L00001E00|S010C|B0A0A1414\r\n" "after\r\n");
+    CHECK_INT(h_reply_len, 14);
+    CHECK(memcmp(h_reply, "RIPSCRIP015410", 14) == 0);
     CHECK_INT(vt_rip_commands(t), 4);
-    CHECK_STR(h_screen(t), "");
+    CHECK_INT(vt_images(t), 1);
+    CHECK(view0(t, &v));
+    CHECK_INT(v.w, 640);
+    CHECK_INT(v.h, 350);
+    CHECK_INT(v.cw, 8);
+    CHECK_INT(v.ch, 14);
+    CHECK_INT(v.z, -1);
+    CHECK(!v.kitty);
+    for (x = 0; x <= 50; x++)
+        CHECK_INT(rpx(t, x, 0), 15);
+    CHECK_INT(rpx(t, 51, 0), 0);
+    CHECK(v.pal[15] == 0xFFFFFF);
+    for (y = 0; y < v.h; y++)
+        for (x = 0; x < v.w; x++)
+            red += v.pix[(long)y * v.w + x] == 12;
+    CHECK_INT(red, 961); /* 31 x 31 */
+    CHECK_INT(rpx(t, 10, 10), 12);
+    CHECK_INT(rpx(t, 40, 40), 12);
+    CHECK_INT(rpx(t, 41, 41), 0);
+    CHECK_INT(rpx(t, 9, 9), 0);
+    CHECK(v.pal[12] == rip_ega_rgb(0x3C)); /* RIP-0: light red */
+    CHECK(strstr(h_screen(t), "|") == 0);
+    CHECK(strstr(h_screen(t), "after") != 0);
+    CHECK_INT(vt_image_memory(t), 640L * 350L);
+    vt_free(t);
+}
+
+static void detection_and_switch(void)
+{
+    vt_term *t = rip_term();
+    h_reply_clear();
+    h_put(t, "\033[0!");
+    CHECK_INT(h_reply_len, 14);
+    h_reply_clear();
+    h_put(t, "\033["); /* split anywhere */
+    CHECK_INT(h_reply_len, 0);
+    h_put(t, "!");
+    CHECK_INT(h_reply_len, 14);
+    /* ESC [ 1 ! : RIP off, the command line is text */
+    h_reply_clear();
+    h_put(t, "\033[1!");
+    CHECK_INT(h_reply_len, 0);
+    h_put(t, "!|c0F|L00001E00\r\n");
+    CHECK_INT(vt_rip_commands(t), 0);
+    CHECK_INT(vt_images(t), 0);
+    CHECK(strstr(h_screen(t), "!|c0F") != 0);
+    /* ESC [ 2 ! : on again */
+    h_put(t, "\033[2!" "!|c0F|L00001E00\r\n");
+    CHECK_INT(vt_rip_commands(t), 2);
+    CHECK_INT(vt_images(t), 1);
+    CHECK_INT(rpx(t, 50, 0), 15);
+    vt_free(t);
+    /* an escape that is not ours reaches the engine whole */
+    t = rip_term();
+    h_put(t, "a\033[1mb\033[0m");
+    CHECK_STR(h_screen(t), "ab");
+    vt_free(t);
+}
+
+static void decstr_still_resets(void)
+{
+    vt_term *t = rip_term(), *u = h_new(80, 25, VT_XTERM);
+    /* insert mode on, soft reset, then overwrite: only a DECSTR that reached the engine turns insert off */
+    const char *s = "\033[4h" "\033[!p" "ab\rcd";
+    h_put(t, s);
+    h_put(u, s);
+    CHECK_STR(h_screen(t), h_screen(u));
+    CHECK(strncmp(h_screen(t), "cd", 2) == 0);
+    vt_free(t);
+    vt_free(u);
+}
+
+static void rip_off_is_byte_identical(void)
+{
+    vt_term *t = h_new(80, 25, VT_XTERM), *u = h_new(80, 25, VT_XTERM);
+    const char *s = "\033[!" "!|c0F|L00001E00\r\n" "x\033[2!y\r\n";
+    h_reply_clear();
+    h_put(t, s);
+    CHECK_INT(h_reply_len, 0); /* RIP not set: no detection answer */
+    h_put(u, s);
+    vt_set_rip(u, 1);
+    vt_set_rip(u, 0); /* set and unset leaves nothing behind */
+    h_put(u, s);
+    CHECK_INT(vt_rip_commands(t), 0);
+    CHECK_INT(vt_rip_commands(u), 0);
+    CHECK_INT(vt_images(t), 0);
+    CHECK_INT(vt_images(u), 0);
+    vt_free(t);
+    vt_free(u);
+}
+
+static void canvas_lifecycle(void)
+{
+    vt_term *t = rip_draw("!|c0F|X0505\r\n");
+    long serial0, serial1;
+    vt_image_view v;
+    CHECK_INT(vt_images(t), 1);
+    CHECK_INT(rpx(t, 5, 5), 15);
+    CHECK(view0(t, &v));
+    serial0 = v.serial;
+    h_put(t, "!|X0606\r\n");
+    CHECK(view0(t, &v));
+    serial1 = v.serial;
+    CHECK(serial1 != serial0); /* drawing makes it a new picture for the renderer's cache */
+    h_put(t, "text only\r\n");
+    CHECK(view0(t, &v));
+    CHECK_INT(v.serial, serial1); /* no drawing, no new picture */
+    CHECK_INT(vt_images(t), 1);
+    CHECK_INT(vt_image_memory(t), 224000);
+    /* the screen clear drops the placements and the store frees the picture: the adapter
+     * notices and the next command opens a fresh, blank canvas */
+    h_put(t, "\033[2J\r\n"); /* a command starts a line: the clear leaves the cursor mid-line */
+    CHECK_INT(vt_images(t), 0);
+    CHECK_INT(vt_image_memory(t), 0);
+    h_put(t, "!|X0707\r\n");
+    CHECK_INT(vt_images(t), 1);
+    CHECK_INT(rpx(t, 7, 7), 15);
+    CHECK_INT(rpx(t, 5, 5), 0);
+    vt_free(t);
+}
+
+static void palette_through_the_terminal(void)
+{
+    vt_term *t = rip_draw("!|a0C0K|c0C|X0101\r\n"); /* index 12 gets master 20 (RIP-0: 6 is brown 0x14, here 12) */
+    vt_image_view v;
+    CHECK(view0(t, &v));
+    CHECK(v.pal[12] == rip_ega_rgb(20));
+    CHECK_INT(rpx(t, 1, 1), 12);
+    vt_free(t);
+}
+
+/* each declared drawing knob moves the output */
+static void knob_colour_and_write_mode(void)
+{
+    vt_term *t = rip_draw("!|c05|L00000A00\r\n");
+    CHECK_INT(rpx(t, 5, 0), 5);
+    vt_free(t);
+    t = rip_draw("!|c0F|L00000A00\r\n"); /* copy twice stays */
+    h_put(t, "!|L00000A00\r\n");
+    CHECK_INT(rpx(t, 5, 0), 15);
+    h_put(t, "!|W01|L00000A00\r\n"); /* XOR with itself clears */
+    CHECK_INT(rpx(t, 5, 0), 0);
+    h_put(t, "!|W01|L00000A00\r\n"); /* and again sets */
+    CHECK_INT(rpx(t, 5, 0), 15);
+    vt_free(t);
+}
+
+static void knob_line_style_and_thickness(void)
+{
+    vt_term *t = rip_draw("!|c0F|L00000F00\r\n");
+    CHECK_INT(rrow(t, 0, 0, 15, 15), 16); /* solid */
+    vt_free(t);
+    t = rip_draw("!|c0F|=0100000" "1|L00000F00\r\n");
+    CHECK_INT(rrow(t, 0, 0, 15, 15), 8); /* dotted 0xCCCC: two on, two off (UNVERIFIED pattern) */
+    CHECK_INT(rpx(t, 0, 0), 15);
+    CHECK_INT(rpx(t, 2, 0), 0);
+    vt_free(t);
+    t = rip_draw("!|c0F|=0402Z3" "01|L00000F00\r\n"); /* user pattern 0x0F0F */
+    CHECK_INT(rrow(t, 0, 0, 15, 15), 8);
+    CHECK_INT(rpx(t, 0, 0), 0);
+    CHECK_INT(rpx(t, 4, 0), 15);
+    vt_free(t);
+    t = rip_draw("!|c0F|L00050F05\r\n");
+    CHECK_INT(rcount(t, 15), 16);
+    vt_free(t);
+    t = rip_draw("!|c0F|=00000003|L00050F05\r\n"); /* thickness 3: three rows */
+    CHECK_INT(rcount(t, 15), 48);
+    CHECK_INT(rpx(t, 5, 4), 15);
+    CHECK_INT(rpx(t, 5, 6), 15);
+    CHECK_INT(rpx(t, 5, 3), 0);
+    vt_free(t);
+}
+
+static void knob_fill_style(void)
+{
+    vt_term *t = rip_draw("!|S010C|B00000707\r\n");
+    CHECK_INT(rcount(t, 12), 64); /* solid */
+    vt_free(t);
+    t = rip_draw("!|S000C|B00000707\r\n");
+    CHECK_INT(rcount(t, 12), 0); /* empty: background */
+    vt_free(t);
+    t = rip_draw("!|S020C|B00000707\r\n");
+    CHECK_INT(rcount(t, 12), 32); /* line fill (UNVERIFIED table) */
+    vt_free(t);
+    t = rip_draw("!|S030C|B00000707\r\n");
+    CHECK_INT(rcount(t, 12), 8); /* light slash: one pixel a row (UNVERIFIED table) */
+    vt_free(t);
+    t = rip_draw("!|s7300000000000000" "0C|B00000707\r\n"); /* user pattern: top row only */
+    CHECK_INT(rcount(t, 12), 8);
+    CHECK_INT(rrow(t, 0, 0, 7, 12), 8);
+    vt_free(t);
+}
+
+static void knob_geometry(void)
+{
+    vt_term *t = rip_draw("!|c0F|C2S2S0K\r\n"); /* circle, centre (100,100) radius 20 */
+    CHECK_INT(rpx(t, 120, 100), 15);
+    CHECK_INT(rpx(t, 80, 100), 15);
+    CHECK_INT(rpx(t, 100, 80), 15);
+    CHECK_INT(rpx(t, 100, 120), 15);
+    CHECK_INT(rpx(t, 100, 100), 0);
+    vt_free(t);
+    t = rip_draw("!|c0F|A2S2S002I0K\r\n"); /* arc 0 to 90 degrees, counterclockwise from three o'clock */
+    CHECK_INT(rpx(t, 120, 100), 15);
+    CHECK_INT(rpx(t, 100, 80), 15);
+    CHECK_INT(rpx(t, 80, 100), 0);
+    CHECK_INT(rpx(t, 100, 120), 0);
+    vt_free(t);
+    t = rip_draw("!|c0F|S010C|I2S2S002I0K\r\n"); /* pie slice: filled, centre set */
+    CHECK_INT(rpx(t, 100, 100), 15); /* the outline runs through the centre */
+    CHECK_INT(rpx(t, 110, 90), 12);
+    CHECK_INT(rpx(t, 90, 110), 0);
+    vt_free(t);
+    t = rip_draw("!|c0F|O2S2S00000K0A\r\n"); /* oval, radii 20 and 10 */
+    CHECK_INT(rpx(t, 120, 100), 15);
+    CHECK_INT(rpx(t, 100, 90), 15);
+    CHECK_INT(rpx(t, 100, 89), 0);
+    CHECK_INT(rpx(t, 100, 100), 0);
+    vt_free(t);
+    t = rip_draw("!|c0F|S010C|o2S2S0K0A\r\n"); /* filled oval */
+    CHECK_INT(rpx(t, 100, 100), 12);
+    CHECK_INT(rpx(t, 119, 100), 12);
+    CHECK_INT(rpx(t, 100, 89), 0);
+    vt_free(t);
+    t = rip_draw("!|c0F|Z0A0K0K0K0U0K140K0A\r\n"); /* a Bezier whose control points lie on the line */
+    CHECK_INT(rrow(t, 20, 10, 40, 15), 31);
+    vt_free(t);
+    t = rip_draw("!|c0F|Z0A140A0A140A14140A\r\n"); /* ends (10,40) (40,40), pulled up to y 17 at x 25 */
+    CHECK_INT(rpx(t, 10, 40), 15);
+    CHECK_INT(rpx(t, 40, 40), 15);
+    CHECK_INT(rpx(t, 25, 40), 0);
+    CHECK_INT(rpx(t, 25, 17) + rpx(t, 25, 18), 15); /* exactly one of the two rows (UNVERIFIED rounding) */
+    vt_free(t);
+}
+
+static void knob_polygon_rect_flood(void)
+{
+    vt_term *t = rip_draw("!|c0F|S010C|p030A0A140A0A14\r\n"); /* filled triangle (10,10) (40,10) (10,40) */
+    CHECK_INT(rpx(t, 15, 15), 12);
+    CHECK_INT(rpx(t, 35, 35), 0);
+    CHECK_INT(rpx(t, 10, 10), 15);
+    vt_free(t);
+    t = rip_draw("!|c0F|P030A0A140A0A14\r\n"); /* the same, outline only */
+    CHECK_INT(rpx(t, 15, 15), 0);
+    CHECK_INT(rpx(t, 25, 10), 15);
+    CHECK_INT(rpx(t, 10, 25), 15);
+    vt_free(t);
+    t = rip_draw("!|c0F|l030A0A140A0A14\r\n"); /* the polyline is not closed */
+    CHECK_INT(rpx(t, 25, 10), 15);
+    CHECK_INT(rpx(t, 10, 25), 0);
+    vt_free(t);
+    t = rip_draw("!|c0F|R0A0A0U0U\r\n"); /* rectangle outline, then fill it */
+    CHECK_INT(rpx(t, 20, 20), 0);
+    CHECK_INT(rpx(t, 10, 20), 15);
+    CHECK_INT(rpx(t, 30, 30), 15);
+    h_put(t, "!|S010C|F0K0K0F\r\n");
+    CHECK_INT(rpx(t, 20, 20), 12);
+    CHECK_INT(rpx(t, 11, 11), 12);
+    CHECK_INT(rpx(t, 10, 10), 15); /* the border stays */
+    CHECK_INT(rpx(t, 5, 5), 0);    /* outside stays */
+    h_put(t, "!|E\r\n");
+    CHECK_INT(rcount(t, 12) + rcount(t, 15), 0);
+    vt_free(t);
 }
 
 void suite_rip(void)
@@ -376,4 +686,14 @@ void suite_rip(void)
     canvas_dirty_and_serial();
     canvas_placement();
     reach_rip_through_vt_write();
+    detection_and_switch();
+    decstr_still_resets();
+    rip_off_is_byte_identical();
+    canvas_lifecycle();
+    palette_through_the_terminal();
+    knob_colour_and_write_mode();
+    knob_line_style_and_thickness();
+    knob_fill_style();
+    knob_geometry();
+    knob_polygon_rect_flood();
 }

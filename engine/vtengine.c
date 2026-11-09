@@ -318,6 +318,7 @@ struct vt_term {
     vt_u8 image_rgb;           /* vt_set_image_rgb */
     vt_u8 image_copy;          /* vt_set_image_rgb_copy */
     unsigned long img_frees;   /* pictures freed (vt_image_frees) */
+    void *rip;                 /* vt_set_rip: the RIPscrip adapter (rip_vt.c), 0 when off */
     unsigned long kit_copy_made; /* RGB copies made (vt_kitty_copy_made) */
     unsigned long kit_rgba_frames; /* RGBA frame canvases made (vt_kitty_rgba_frames, K39) */
     unsigned long kit_rgb_made; /* RGB pictures made (vt_kitty_rgb_made) */
@@ -651,7 +652,7 @@ static void place_add(vt_term *t, vt_line *l, int slot, int col0, int row)
 /* A kitty picture placed with z < 0: drawn under the text (K30). */
 static int image_under(const vt_image *im)
 {
-    return im && im->kind == 1 && im->kz < 0;
+    return im && (im->kind == 1 || im->kind == 4) && im->kz < 0;
 }
 
 /* Reflow: the image cell at column x of `from` moved to column nx of `to`;
@@ -2152,16 +2153,6 @@ static void sb_walk(vt_term *t, const vt_style_sweep *ss, vt_u8 *live)
 
 #ifdef VT_COUNT_ALLOC
 long vt_count_fast_esc;
-void vt_set_rip(vt_term *t, int on)
-{
-    (void)t;
-    (void)on; /* RIP-2 */
-}
-long vt_rip_commands(const vt_term *t)
-{
-    (void)t;
-    return 0; /* RIP-2 */
-}
 long vt_count_fast_sgr;
 long vt_count_sb_payload(const vt_term *t)
 {
@@ -5653,7 +5644,7 @@ int vt_images(const vt_term *t)
 }
 
 /* the draw order of an image: kitty's z= and i=, a sixel 0 and 0 */
-static long image_z(const vt_image *im) { return im->kind == 1 ? im->kz : 0; }
+static long image_z(const vt_image *im) { return im->kind == 1 || im->kind == 4 ? im->kz : 0; }
 static vt_u32 image_kid(const vt_image *im) { return im->kind == 1 ? im->kid : 0; }
 
 int vt_row_image(const vt_term *t, int row, int i, vt_image_view *v)
@@ -5700,7 +5691,7 @@ int vt_row_image(const vt_term *t, int row, int i, vt_image_view *v)
         v->fmt = im->fmt;
         v->opaque = im->opaque;
         v->rgb = im->rgb;
-        v->kitty = im->kind != 0;
+        v->kitty = im->kind != 0 && im->kind != 4; /* a RIP canvas draws like a sixel: index 0 is the background */
         v->cw = im->cw;
         v->ch = im->ch;
         v->col0 = t->pl[k].col0;
@@ -5727,6 +5718,11 @@ static void clear_params(vt_term *t)
 }
 
 #include "kitty.c"
+#include "rip_parse.c"
+#include "rip_pal.c"
+#include "canvas.c"
+#include "rip_draw.c"
+#include "rip_vt.c"
 
 static void enter_string(vt_term *t, vt_u8 kind)
 {
@@ -6316,6 +6312,7 @@ void vt_free(vt_term *t)
         VT_FREE(t->sb);
     sixel_abort(t);
     kitty_abort(t);
+    rip_free(t);
     for (i = 0; i < VT_IMG_SLOTS; i++)
         if (t->imgs[i]) {
             image_free(t, i);
@@ -7097,7 +7094,7 @@ static int fast_cp(const vt_term *t, const vt_u8 *b, long len, vt_u32 *cp)
 #define PEN_PLAIN(t) \
     ((t)->fg == VT_COLOR_DEFAULT && (t)->bg == VT_COLOR_DEFAULT && !(t)->attr && !(t)->deco && !(t)->ext)
 
-void vt_feed(vt_term *t, const vt_u8 *buf, long len)
+static void vt_feed_core(vt_term *t, const vt_u8 *buf, long len)
 {
     long i = 0, k;
     /* what put_ascii_run may do, worked out once and kept while only text,

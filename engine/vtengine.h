@@ -216,11 +216,6 @@ extern long vt_count_peak;   /* the most vt_count_live has been (a test may rese
 long vt_count_sb_payload(const vt_term *t);
 extern long vt_count_fast_sgr; /* ESC [ m and ESC [ 3n m / 4n m taken by csi_fast's short form */
 extern long vt_count_fast_esc; /* ESC ( B (G already B) taken by vt_feed's fast path */
-/* RIPscrip (engine/rip.h). RIP-2 wires the parser into vt_write; until then
- * both are inert: vt_set_rip is ignored and vt_rip_commands (the commands the
- * parser handed to the canvas since vt_new, the reachability sentinel) is 0. */
-void vt_set_rip(vt_term *t, int on);
-long vt_rip_commands(const vt_term *t);
 #endif
 
 vt_term *vt_new(int cols, int rows, int scrollback, const vt_callbacks *cb, void *user);
@@ -477,6 +472,14 @@ void     vt_screen_reverse(vt_term *t, int on);
 /* The cell size in pixels, for the size reports programs ask for (CSI 14t,
  * 16t). */
 void     vt_set_cell_pixels(vt_term *t, int w, int h);
+/* RIPscrip (engine/rip.h, rip_vt.c). vt_set_rip(t, 1) is "auto": ESC [ ! and ESC [ 0 !
+ * answer RIPSCRIP015410, ESC [ 1 ! turns RIP off, ESC [ 2 ! on, and with RIP on the
+ * `!|` command lines of the stream draw on a 640 x 350 canvas, an image under the text
+ * (z -1) at the top left. 0 (the default) leaves vt_feed byte for byte as without RIP.
+ * vt_rip_commands: the commands the parser handed on since RIP was set (the reachability
+ * sentinel). Needs the cell size (vt_set_cell_pixels) before the canvas is placed. */
+void vt_set_rip(vt_term *t, int on);
+long vt_rip_commands(const vt_term *t);
 /* IMAGE-ASPECT-HIRES: the screen's pixel in ticks (DisplayInfo Resolution, 44x22 on 640x256 hires: twice as
  * tall as wide). A kitty picture placed without both cell counts is scaled so its source pixels keep their
  * look: the height shrinks by rx/ry. 0 or equal: square pixels, nothing changes. */

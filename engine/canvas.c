@@ -42,13 +42,31 @@ struct cv *cv_open(int w, int h, int npal)
     c->w = w;
     c->h = h;
     c->npal = npal;
+    c->own = 1;
+    return c;
+}
+
+struct cv *cv_open_pix(int w, int h, int npal, unsigned char *pix)
+{
+    struct cv *c;
+    if (!pix || w <= 0 || h <= 0 || w > CV_MAX || h > CV_MAX || npal < 1 || npal > 256)
+        return NULL;
+    c = calloc(1, sizeof(*c));
+    if (!c)
+        return NULL;
+    memset(pix, 0, (size_t)w * (size_t)h);
+    c->pix = pix;
+    c->w = w;
+    c->h = h;
+    c->npal = npal;
     return c;
 }
 
 void cv_close(struct cv *c)
 {
     if (c) {
-        free(c->pix);
+        if (c->own)
+            free(c->pix);
         free(c);
     }
 }

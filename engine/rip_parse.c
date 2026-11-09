@@ -63,6 +63,9 @@ void rip_init(struct rip_state *st)
     st->mode = M_BOL;
 }
 
+int rip_in_text(const struct rip_state *st) { return st->mode == M_TEXT || st->mode == M_BOL; }
+void rip_bol(struct rip_state *st) { st->mode = M_BOL; st->eol = 0; }
+
 long rip_commands(const struct rip_state *st) { return st->n_cmd; }
 long rip_errors(const struct rip_state *st) { return st->n_err; }
 long rip_unknown(const struct rip_state *st) { return st->n_unknown; }

@@ -57,6 +57,10 @@ void rip_feed(struct rip_state *st, const unsigned char *p, long n, const struct
 long rip_commands(const struct rip_state *st);
 long rip_errors(const struct rip_state *st);
 long rip_unknown(const struct rip_state *st);
+/* 1 when the parser sits between commands (text or line start): the adapter may
+ * look at an escape sequence there. rip_bol puts it at a line start. */
+int rip_in_text(const struct rip_state *st);
+void rip_bol(struct rip_state *st);
 /* one line "L<level>[.sub] <ch> a,b,c|text" for tests and golden files; returns length */
 int rip_dump(const struct rip_cmd *c, char *out, int max);
 
@@ -83,11 +87,15 @@ struct cv {
     int w, h, npal;
     struct cv_rect_s dirty;
     long serial;
+    int own; /* pix was malloc'd by cv_open and cv_close frees it */
 };
 
 /* alloc with malloc; NULL when the size is zero, over 1024x1024, or malloc fails.
  * Pixels start at index 0, the palette at black. */
 struct cv *cv_open(int w, int h, int npal);
+/* The same over pixels the caller owns (the vt adapter hands in the image slot's buffer):
+ * cleared to index 0, never freed by cv_close. */
+struct cv *cv_open_pix(int w, int h, int npal, unsigned char *pix);
 void cv_close(struct cv *c);
 void cv_set_pal(struct cv *c, int idx, unsigned long rgb);
 int cv_get(const struct cv *c, int x, int y);           /* -1 outside */
@@ -114,5 +122,22 @@ struct rip_pal {
 void rip_pal_reset(struct rip_pal *p, struct cv *c);
 /* c is a parsed cmd: ch 'Q' (level 0) or 'a'; returns 1 if it was a palette command and applied */
 int rip_pal_exec(struct rip_pal *p, struct cv *c, const struct rip_cmd *cmd);
+
+/* ---- drawing model (rip_draw.c, RIP-4) ---- */
+struct rip_gfx {
+    int color;                  /* c: drawing colour */
+    int wmode;                  /* W: 0 copy, 1 XOR */
+    int lstyle;                 /* =: 0 solid 1 dotted 2 centre 3 dashed 4 user */
+    unsigned lpat;              /* = user pattern, 16 bits */
+    int thick;                  /* = thickness 1 or 3 */
+    int fpat, fcolor;           /* S: fill pattern 0..11 (12 user), fill colour */
+    unsigned char upat[8];      /* s: user 8x8 pattern, row 0 first, bit 0x80 leftmost */
+    int px, py;                 /* m: current position */
+};
+void rip_gfx_init(struct rip_gfx *g);
+/* 1 when rip_gfx_exec acts on this command (it needs a canvas) */
+int rip_gfx_handles(const struct rip_cmd *c);
+/* run a level-0 drawing or state command; returns 1 if handled */
+int rip_gfx_exec(struct rip_gfx *g, struct cv *cv, const struct rip_cmd *c);
 
 #endif
