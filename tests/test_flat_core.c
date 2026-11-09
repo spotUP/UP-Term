@@ -2295,6 +2295,80 @@ static void test_pens_verify_same_address_reopen(void)
     CHECK_INT(a.bad_releases, 0);
 }
 
+/* DOPUS-SCROLLER-LOOK: DOpus draws its lister scroller arrows as LOWRES / MEDRES sysiclass images, whose glyph is fat in a small
+ * box. The clone took the most common interior marker as the ground, so a glyph covering over half of the interior swapped ground
+ * and glyph: accent box, dark arrow. Every arrow x size, at rest, must give the pens flat_glyph_draw gives the Workbench arrow
+ * (box = frame pen, glyph = knob pen), through the real clone entry (flat_clone_draw, render sentinel). Size 0 = MEDRES, 1 =
+ * LOWRES, 2 = HIRES (SYSISIZE_*): the boxes and glyph coverage are what each ROM image looks like at that size. */
+typedef struct { int bw, bh, gx0, gx1, gy0, gy1; } arrow_size;
+static int arrow_render(void *ctx, unsigned long ids, uint8_t *grid, int w, int h)
+{
+    const arrow_size *a = (const arrow_size *)ctx;
+    int x, y;
+    (void)ids;
+    g_render_calls++;
+    for (y = 0; y < h; y++)
+        for (x = 0; x < w; x++) {
+            int ring = x == 0 || y == 0 || x == w - 1 || y == h - 1;
+            int m = FLAT_CLONE_MARK(0);                                 /* ground: a pen that is no BACKGROUND hole */
+            if (ring)
+                m = (x == 0 || y == 0) ? FLAT_CLONE_SHINE : FLAT_CLONE_SHADOW;
+            else if (x >= a->gx0 && x <= a->gx1 && y >= a->gy0 && y <= a->gy1)
+                m = FLAT_CLONE_MARK(2);
+            else if (x == w - 2 && y == h - 2)
+                m = FLAT_CLONE_MARK(1);                                 /* a stray shade pixel, so a swapped vote still maps something */
+            grid[y * w + x] = (uint8_t)m;
+        }
+    return 1;
+}
+
+static void arrow_pens(int clone, const flat_state *st, unsigned long w, const arrow_size *a, int *glyph, int *box)
+{
+    int x, y, nb = 0, ng = 0, gp = -1, bp = -1;
+    cv_clear();
+    if (clone)
+        CHECK_INT(flat_clone_draw(st, w, FLAT_IM_DRAW, 0, 0, 0, a->bw, a->bh, 'F', 'K', -1, 99, -1, arrow_render, (void *)a, cv_fill, 0, g_scr), FLAT_CLONE_OK);
+    else
+        CHECK_INT(flat_glyph_draw(st, w, FLAT_IM_DRAW, 0, 0, 0, a->bw, a->bh, 'F', 'K', 1, cv_fill, 0), 1);
+    for (y = 0; y < a->bh; y++)
+        for (x = 0; x < a->bw; x++) {
+            if (cv[y][x] == cv[0][0]) { nb++; bp = cv[y][x]; }
+            else { ng++; gp = cv[y][x]; }
+        }
+    CHECK(nb > 0 && ng > 0);
+    *glyph = gp; *box = bp;
+}
+
+static void test_clone_arrow_sizes(void)
+{
+    static const arrow_size sizes[3] = {
+        { 12, 10, 5, 6, 2, 7 },         /* MEDRES: thin arrow */
+        { 9, 9, 2, 6, 1, 7 },           /* LOWRES: fat arrow, 35 of the 49 interior pixels */
+        { 16, 12, 6, 9, 3, 8 }          /* HIRES */
+    };
+    flat_state st;
+    unsigned long w;
+    int si, g0, b0, g1, b1, calls;
+    glyph_state(&st);
+    st.enabled = 1; st.held = 0;
+    st.pen_back = 'B'; st.pen_text = 'T'; st.pen_line = 'L';
+    for (w = FLAT_W_LEFT; w <= FLAT_W_DOWN; w++)
+        for (si = 0; si < 3; si++) {
+            calls = g_render_calls;
+            arrow_pens(0, &st, w, &sizes[si], &g0, &b0);
+            arrow_pens(1, &st, w, &sizes[si], &g1, &b1);
+            CHECK_INT(g_render_calls, calls + 1);                       /* the sentinel: the clone path ran */
+            CHECK_INT(b1, b0);                                          /* the box pen equals the Workbench arrow's */
+            CHECK_INT(g1, g0);                                          /* and so does the glyph pen */
+        }
+    {   /* the private image is per size: LOWRES and MEDRES at one box size are two images */
+        flat_clone_key k[FLAT_CLONE_OBJS];
+        k[0].which = FLAT_W_UP; k[0].size = 0; k[0].w = 9; k[0].h = 9;
+        CHECK_INT(flat_clone_slot(k, 1, FLAT_CLONE_OBJS, FLAT_W_UP, 0, 9, 9), 0);
+        CHECK_INT(flat_clone_slot(k, 1, FLAT_CLONE_OBJS, FLAT_W_UP, 1, 9, 9), 1);
+    }
+}
+
 /* S32 CLONE-PRIVATE-IMAGE: OS 3.2 sysiclass bakes its pens at OM_NEW and ignores imp_DrInfo at IM_DRAW, so drawing the window's
  * own image with the marker DrawInfo read back its baked screen pens (all 0 under flat pens: 'empty'). The clone keeps one private
  * image per (which, width, height), made with the marker DrawInfo; this is its table. The marker DrawInfo is deep enough for
@@ -2303,16 +2377,16 @@ static void test_clone_private_slot(void)
 {
     flat_clone_key k[FLAT_CLONE_OBJS];
     int n = 0, i;
-    CHECK_INT(flat_clone_slot(k, n, FLAT_CLONE_OBJS, FLAT_W_DEPTH, 23, 11), 0);        /* empty table: append */
-    k[n].which = FLAT_W_DEPTH; k[n].w = 23; k[n].h = 11; n++;
-    CHECK_INT(flat_clone_slot(k, n, FLAT_CLONE_OBJS, FLAT_W_DEPTH, 23, 11), 0);        /* the same image: reused, not remade */
-    CHECK_INT(flat_clone_slot(k, n, FLAT_CLONE_OBJS, FLAT_W_DEPTH, 23, 10), 1);        /* another size: its own image */
-    CHECK_INT(flat_clone_slot(k, n, FLAT_CLONE_OBJS, FLAT_W_CLOSE, 23, 11), 1);        /* another gadget: its own image */
+    CHECK_INT(flat_clone_slot(k, n, FLAT_CLONE_OBJS, FLAT_W_DEPTH, 0, 23, 11), 0);        /* empty table: append */
+    k[n].which = FLAT_W_DEPTH; k[n].size = 0; k[n].w = 23; k[n].h = 11; n++;
+    CHECK_INT(flat_clone_slot(k, n, FLAT_CLONE_OBJS, FLAT_W_DEPTH, 0, 23, 11), 0);        /* the same image: reused, not remade */
+    CHECK_INT(flat_clone_slot(k, n, FLAT_CLONE_OBJS, FLAT_W_DEPTH, 0, 23, 10), 1);        /* another size: its own image */
+    CHECK_INT(flat_clone_slot(k, n, FLAT_CLONE_OBJS, FLAT_W_CLOSE, 0, 23, 11), 1);        /* another gadget: its own image */
     for (i = n; i < FLAT_CLONE_OBJS; i++) {
         k[i].which = FLAT_W_CLOSE; k[i].w = 10 + i; k[i].h = 11;
     }
-    CHECK_INT(flat_clone_slot(k, FLAT_CLONE_OBJS, FLAT_CLONE_OBJS, FLAT_W_ZOOM, 23, 11), -1);   /* full: refused, the block glyph */
-    CHECK_INT(flat_clone_slot(k, FLAT_CLONE_OBJS, FLAT_CLONE_OBJS, FLAT_W_DEPTH, 23, 11), 0);   /* full, but a hit still answers */
+    CHECK_INT(flat_clone_slot(k, FLAT_CLONE_OBJS, FLAT_CLONE_OBJS, FLAT_W_ZOOM, 0, 23, 11), -1);   /* full: refused, the block glyph */
+    CHECK_INT(flat_clone_slot(k, FLAT_CLONE_OBJS, FLAT_CLONE_OBJS, FLAT_W_DEPTH, 0, 23, 11), 0);   /* full, but a hit still answers */
     CHECK_INT((1 << FLAT_CLONE_DEPTH) > FLAT_CLONE_MARK(FLAT_CLONE_MARKS - 1), 1);
 }
 
@@ -2939,6 +3013,7 @@ void suite_flat_core(void)
     test_clone_arrows();
     test_glyph_clone();
     test_clone_private_slot();
+    test_clone_arrow_sizes();
     test_clone_no_dividers();
     test_clone_clip_depth_marker();
     test_clone_band_rows_strip();

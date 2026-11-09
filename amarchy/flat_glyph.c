@@ -188,11 +188,11 @@ int flat_glyph_on_band(unsigned long which)
     return which == FLAT_W_CLOSE || which == FLAT_W_DEPTH || which == FLAT_W_ZOOM || which == FLAT_W_ICONIFY;
 }
 
-int flat_clone_slot(const flat_clone_key *keys, int n, int cap, unsigned long which, int w, int h)
+int flat_clone_slot(const flat_clone_key *keys, int n, int cap, unsigned long which, unsigned long size, int w, int h)
 {
     int i;
     for (i = 0; i < n; i++)
-        if (keys[i].which == which && keys[i].w == w && keys[i].h == h)
+        if (keys[i].which == which && keys[i].size == size && keys[i].w == w && keys[i].h == h)
             return i;
     return n < cap ? n : -1;
 }
@@ -217,11 +217,18 @@ static int edge_line(const uint8_t *grid, int w, int h, int bgm, int k, int col)
 }
 
 /* ---- FLAT-GLYPH-OS-SHAPES: the clone. The system's own image is drawn offscreen with marker pens; this is the pure part. */
-/* The pen that fills most of the inside is the gadget's own ground. Counted one marker at a time, not through a
- * per-marker count array: this runs on the drawing task's stack (FLAT-C3 budget, test_flat_budget.py HELPER_MAX). */
-static int clone_ground(const uint8_t *grid, int w, int h)
+/* The ground of an arrow or size box (corner true) is the pen of the interior corner just inside the bevel ring: the system
+ * paints it there for every size, and the glyph never reaches it. The other gadgets keep the vote: the depth gadget's corner is
+ * its back window's outline, not the ground (DOPUS-SCROLLER-LOOK: a LOWRES arrow's glyph covers more of its small box than the ground does, so
+ * the majority vote below took the glyph for the ground and drew the arrow inverted). Only when that corner is untouched or is
+ * itself a ring marker does the majority pen stand in. Counted one marker at a time, not through a per-marker count
+ * array: this runs on the drawing task's stack (FLAT-C3 budget, test_flat_budget.py HELPER_MAX). */
+static int clone_ground(const uint8_t *grid, int w, int h, int corner)
 {
     int x, y, i, c, best = 0, bgm = FLAT_CLONE_BACK;
+    i = grid[w + 1];
+    if (corner && i != 0 && i != FLAT_CLONE_SHINE && i != FLAT_CLONE_SHADOW)
+        return i;
     for (i = 0; i <= FLAT_CLONE_MARKS; i++) {
         c = 0;
         for (y = 1; y < h - 1; y++)
@@ -235,13 +242,13 @@ static int clone_ground(const uint8_t *grid, int w, int h)
     return bgm;
 }
 
-int flat_clone_map(const uint8_t *grid, int w, int h, uint8_t *out)
+int flat_clone_map(const uint8_t *grid, int w, int h, uint8_t *out, int corner)
 {
     int x, y, n = 0;
     int bgm, l, r, t, b;
     if (!grid || !out || w < 3 || h < 3)
         return -1;
-    bgm = clone_ground(grid, w, h);
+    bgm = clone_ground(grid, w, h, corner);
     /* FLAT-NO-DIVIDERS: peel the full-span edge lines from each side (at most a third of the box): only the glyph shows */
     for (l = 0; l < w / 3 && edge_line(grid, w, h, bgm, l, 1); l++)
         ;
@@ -352,7 +359,7 @@ int flat_clone_draw_in(const flat_state *s, const flat_clone_in *in, flat_render
     memset(grid, 0, (size_t)(in->w * in->h));
     /* No glyph pixel is a failed clone, not a plain box: OS 3.2's sysiclass returns 1 from IM_DRAW for the window gadgets
      * yet puts nothing in our offscreen rastport, and drawing that empty map painted the active close/depth/zoom boxes solid. */
-    if (!render(rctx, in->ids, grid, in->w, in->h) || flat_clone_map(grid, in->w, in->h, map) <= 0)
+    if (!render(rctx, in->ids, grid, in->w, in->h) || flat_clone_map(grid, in->w, in->h, map, flat_glyph_knob_gadget(in->which)) <= 0)
         return FLAT_CLONE_FAIL;
     clone_pens(s, in, state, &gpen, &bpen);
     clone_paint(in, map, gpen, bpen, fill, fctx);
