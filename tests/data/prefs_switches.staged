@@ -27,6 +27,7 @@ unknown-key = kept
 palette = 01,00CD00,04,5C5CFF
 outline-blend-dest = on
 split-restore = off
+rip = auto
 ansi-music = on
 
 

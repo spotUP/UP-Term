@@ -167,6 +167,14 @@ static void settings_name_their_menu_items(void)
     CHECK_INT(cmd.id, MENU_SET_CLIP_OFF);
     CHECK_INT(parse("/program-clipboard write"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_SET_CLIP_WRITE);
+    CHECK_INT(parse("/rip off"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_SET_RIP_OFF);
+    CHECK_INT(parse("/rip on"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_SET_RIP_ON);
+    CHECK_INT(parse("/rip auto"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_SET_RIP_AUTO);
+    CHECK_INT(parse("/rip"), SLASH_ERROR);
+    CHECK_INT(parse("/rip maybe"), SLASH_ERROR);
 }
 
 static void arguments_are_handed_on_trimmed(void)

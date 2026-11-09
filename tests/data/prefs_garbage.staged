@@ -24,4 +24,5 @@ font-aspect = on
 outline-antialias = on
 outline-blend-dest = on
 split-restore = off
+rip = auto
 ansi-music = on

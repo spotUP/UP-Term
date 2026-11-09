@@ -419,6 +419,7 @@ static void ua_set(con *c, int on);
 typedef char con_size_bound[sizeof(con) <= 26000 + CON_PROF_ALLOWANCE ? 1 : -1];
 /* the window's RIP state: one allocation, so a window with rip Off pays 4 bytes (the con size bound) */
 typedef struct rip_state {
+    int mode;                 /* the profile's rip setting: PREFS_RIP_OFF / _ON / _AUTO */
     ripglue rg;               /* the routing state of ACTION_WRITE (xfer: a transfer owns the stream) */
     struct rip_ctx *ctx;      /* the transfer worker (rip_start); 0 when none */
     struct MsgPort *port;     /* the worker's messages and the replies to the chunks we sent it */
@@ -431,11 +432,19 @@ static int rip_busy(const con *c)
 }
 
 /* The profile's setting to the engine (open_window, a live profile change). */
+static int rip_mode_of(const con *c)
+{
+    return c->rs ? c->rs->mode : PREFS_RIP_OFF;
+}
+
 static void rip_apply(con *c, int mode)
 {
     if (mode && !c->rs)
         c->rs = (rip_state *)AllocVec(sizeof(rip_state), MEMF_PUBLIC | MEMF_CLEAR);
-    vt_set_rip(c->w.t, c->rs ? mode : 0);
+    if (c->rs)
+        c->rs->mode = mode;
+    if (c->w.t)
+        vt_set_rip(c->w.t, mode);
 }
 
 typedef char upconf_size_bound[sizeof(upconf) <= 18500 ? 1 : -1];
@@ -1823,6 +1832,7 @@ static void apply_profile(con *c)
         c->sbar_on = sd_conf_key_index("scrollbar", c->conf, p);
     v = upconf_str(c->conf, p, "completion", 0);
     c->kingcon = v && str_ieq(v, "kingcon");
+    rip_apply(c, sd_conf_key_index("rip", c->conf, p));
     v = upconf_str(c->conf, p, "split-restore", 0);
     c->split_restore = !v ? PREFS_SPLIT_OFF : str_ieq(v, "programs") ? PREFS_SPLIT_PROGRAMS
                      : str_ieq(v, "layout") ? PREFS_SPLIT_LAYOUT : PREFS_SPLIT_OFF;
@@ -2423,6 +2433,7 @@ static void window_fields(con *c, prefs_fields *f)
     f->blend_dest = c->w.blend_dest != 0;
     f->pad_extend = c->w.pad_extend != 0;
     f->split_restore = c->split_restore;
+    f->rip = rip_mode_of(c);
     f->clipboard = c->w.clip_access == 0 ? PREFS_CLIP_OFF
                  : (c->w.clip_access & VT_CLIP_READ) ? PREFS_CLIP_READ_WRITE : PREFS_CLIP_WRITE;
     copy_str(f->linkopen, c->link_open, sizeof(f->linkopen));
@@ -2952,6 +2963,9 @@ static int menu_setting(con *c, LONG id, int on)
         c->split_restore = PREFS_SPLIT_OFF;
         splits_write(c, 0, 0); /* off: no saved split waits for the next window */
         break;
+    case MENU_SET_RIP_OFF: rip_apply(c, PREFS_RIP_OFF); break;
+    case MENU_SET_RIP_ON: rip_apply(c, PREFS_RIP_ON); break;
+    case MENU_SET_RIP_AUTO: rip_apply(c, PREFS_RIP_AUTO); break;
     case MENU_SET_SPLIT_LAYOUT: c->split_restore = PREFS_SPLIT_LAYOUT; break;
     case MENU_SET_SPLIT_PROGRAMS: c->split_restore = PREFS_SPLIT_PROGRAMS; break;
     case MENU_SET_UNIX:
@@ -3519,7 +3533,7 @@ have_window:
     vt_set_image_decoder(c->w.t, png_decode, png_release);
     vt_set_file_reader(c->w.t, kfile_read, kfile_unlink);
     vt_set_download_sink(c->w.t, dl_save, "local");
-    rip_apply(c, 2); /* Auto until step 5 reads the profile row */
+    rip_apply(c, rip_mode_of(c));
     pens_tell(c);
     menu_add(c, win);
     sbar_apply(c); /* our own sizable window: the scroll bar in its border */

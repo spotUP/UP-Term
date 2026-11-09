@@ -191,7 +191,7 @@ static void stage_cases(void)
     static const char file[] =
         "[profile default]\nfont = TOPAZ 8.8.font\nfont-fallback = Symbols Nerd Font Mono\n"
         "screen = fullscreen\nscreen-mode = 0x29004\nscreen-depth = 4\nbell = none\n"
-        "program-clipboard = read-write\nlink-open = Run >NIL: OpenURL %s\nterm = xterm-256color\ncolors = rgb\n"
+        "program-clipboard = read-write\nrip = off\nlink-open = Run >NIL: OpenURL %s\nterm = xterm-256color\ncolors = rgb\n"
         "[profile vim]\nfg = C0C0C0\n";
     prefs_fields f, g;
     long len;
@@ -201,6 +201,7 @@ static void stage_cases(void)
     CHECK_INT(prefs_load(&conf, file, (long)strlen(file), UC_MAX_FILE), PREFS_LOAD_OK);
     prefs_from_conf(&f, &conf, "default");
     CHECK_STR(f.font, "TOPAZ 8.8.font");
+    CHECK_INT(f.rip, PREFS_RIP_OFF);   /* read from the file; the default is Automatic */
     CHECK_INT(f.bell, PREFS_BELL_NONE);
     f.cursor = PREFS_CURSOR_BAR;
     f.blink = 1;
@@ -242,6 +243,7 @@ static void stage_cases(void)
     CHECK_INT(g.screen, PREFS_SCREEN_FULL); /* the screen keys survive a save too */
     CHECK_STR(g.screenmode, "0x29004");
     CHECK_STR(g.screendepth, "4");
+    CHECK_INT(g.rip, PREFS_RIP_OFF);                /* the rip row (RIP-7b) survives a save */
     CHECK_INT(g.clipboard, PREFS_CLIP_READ_WRITE); /* OSC 52 access (G3) survives a save */
     CHECK_STR(g.linkopen, "Run >NIL: OpenURL %s"); /* and the OSC 8 link command */
     CHECK_STR(g.term, "xterm-256color");            /* and what programs are told (W46) */
@@ -294,6 +296,7 @@ static void stage_cases(void)
     }
     memcpy(&before, &conf, sizeof(conf));
     prefs_defaults(&f);
+    CHECK_INT(f.rip, PREFS_RIP_AUTO);  /* a new profile finds RIP transfers by itself */
     CHECK_INT(prefs_stage(&work, &conf, "ninth", &f, buf, sizeof(buf)), PREFS_STAGE_FULL);
     CHECK(!memcmp(&before, &conf, sizeof(conf)));
     /* an existing one of the eight still saves */

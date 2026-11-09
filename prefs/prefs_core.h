@@ -46,6 +46,7 @@ typedef struct prefs_fields {
     int aspect;     /* font-aspect: the font fitted to the screen's aspect (on by default) */
     int backspace_bs; /* backspace = bs: the key sends ^H; 0: del, ^? (the default) */
     int clipboard;  /* PREFS_CLIP_*: program-clipboard, what OSC 52 may do */
+    int rip;        /* PREFS_RIP_*: rip, RIP file transfers (off, on, auto; auto by default) */
     /* the Amarchy menu's keys: always the [default] profile's, whichever profile is edited (amarchy/gui.c
      * reads them there); empty = key absent */
     char am_music[UC_MAX_VALUE];    /* amarchy-music-drawers */
@@ -86,6 +87,7 @@ enum { PREFS_COMPLETE_UNIX, PREFS_COMPLETE_KINGCON };
 enum { PREFS_SCREEN_WORKBENCH, PREFS_SCREEN_OWN, PREFS_SCREEN_FULL };
 /* OSC 52: programs may set the clipboard (the default), set and read it,
  * or neither */
+enum { PREFS_RIP_OFF, PREFS_RIP_ON, PREFS_RIP_AUTO };
 enum { PREFS_CLIP_WRITE, PREFS_CLIP_READ_WRITE, PREFS_CLIP_OFF };
 
 /* The built-in values (what a window with no file shows). */
