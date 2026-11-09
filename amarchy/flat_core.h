@@ -235,6 +235,18 @@ int flat_which_from_gtype(unsigned gadget_type);
  * so flat.c walks the screen's list with this too. */
 int flat_gadget_which(unsigned gadget_type, const void *gadget_render, const void *select_render, const void *image);
 
+/* DOPUS-ARROW-WHICH: Kickstart 3.1 sysiclass has no OM_GET, and an app-made scroller arrow (sysiclass image inside a buttongclass
+ * gadget: DOpus listers, MultiView) is no Intuition system gadget, so flat_gadget_which never finds it. flat.c records the
+ * SYSIA_Which / SYSIA_Size of every arrow image (LEFT 0x0A .. DOWN 0x0D) at OM_NEW in this fixed table, keyed by the object pointer,
+ * and removes the entry at OM_DISPOSE. Any other Which is not recorded. The caller serialises access (Forbid). */
+#define FLAT_IMG_RECS 32
+typedef struct { const void *obj; unsigned char which; unsigned char size; } flat_img_rec;
+/* 1 recorded (an existing entry for obj is replaced), 0 not an arrow Which or table full (the image stays ROM-drawn). */
+int flat_img_record(flat_img_rec *t, int n, const void *obj, unsigned long which, unsigned long size);
+void flat_img_forget(flat_img_rec *t, int n, const void *obj);
+/* The recorded Which of obj, -1 when none; *size (if non-NULL) gets its SYSIA_Size. */
+int flat_img_which(const flat_img_rec *t, int n, const void *obj, unsigned long *size);
+
 /* SYSIA_Which values that draw the glyph of another one (SDEPTHIMAGE 5 -> DEPTHIMAGE 0). */
 unsigned long flat_which_alias(unsigned long which);
 

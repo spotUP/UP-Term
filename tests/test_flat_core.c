@@ -1006,6 +1006,37 @@ static void test_which_from_gtype(void)
         CHECK_INT(flat_gadget_which(0x4055u, &img, 0, &img), -1);           /* not a system gadget */
         CHECK_INT(flat_gadget_which(0xc035u, &img, 0, &img), -1);           /* screen drag bar: no glyph */
     }
+    /* DOPUS-ARROW-WHICH: an app-made arrow (not a system gadget) resolves through the table recorded at OM_NEW */
+    {
+        flat_img_rec tab[FLAT_IMG_RECS];
+        int objs[FLAT_IMG_RECS + 2], i;
+        unsigned long sz = 99;
+        memset(tab, 0, sizeof tab);
+        CHECK_INT(flat_gadget_which(0x0001u, &objs[0], &objs[0], &objs[0]), -1);    /* the system lookup alone misses it */
+        CHECK_INT(flat_img_which(tab, FLAT_IMG_RECS, &objs[0], &sz), -1);
+        CHECK_INT(flat_img_record(tab, FLAT_IMG_RECS, &objs[0], 0x0B, 1), 1);
+        CHECK_INT(flat_img_record(tab, FLAT_IMG_RECS, &objs[1], 0x0D, 0), 1);
+        CHECK_INT(flat_img_record(tab, FLAT_IMG_RECS, &objs[2], 0x0A, 2), 1);
+        CHECK_INT(flat_img_record(tab, FLAT_IMG_RECS, &objs[3], 0x0C, 2), 1);
+        CHECK_INT(flat_img_which(tab, FLAT_IMG_RECS, &objs[0], &sz), FLAT_W_UP);
+        CHECK_INT((int)sz, 1);
+        CHECK_INT(flat_img_which(tab, FLAT_IMG_RECS, &objs[1], &sz), FLAT_W_DOWN);
+        CHECK_INT(flat_img_which(tab, FLAT_IMG_RECS, &objs[2], &sz), FLAT_W_LEFT);
+        CHECK_INT(flat_img_which(tab, FLAT_IMG_RECS, &objs[3], &sz), FLAT_W_RIGHT);
+        CHECK_INT((int)sz, 2);
+        CHECK_INT(flat_img_record(tab, FLAT_IMG_RECS, &objs[4], 0x00, 1), 0);       /* not an arrow Which: not recorded */
+        /* OM_DISPOSE: the entry goes, a new object at the same address is not the old arrow */
+        flat_img_forget(tab, FLAT_IMG_RECS, &objs[0]);
+        CHECK_INT(flat_img_which(tab, FLAT_IMG_RECS, &objs[0], &sz), -1);
+        CHECK_INT(flat_img_which(tab, FLAT_IMG_RECS, &objs[1], &sz), FLAT_W_DOWN);
+        /* full table: falls back (0 / -1), nothing overwritten */
+        memset(tab, 0, sizeof tab);
+        for (i = 0; i < FLAT_IMG_RECS; i++)
+            CHECK_INT(flat_img_record(tab, FLAT_IMG_RECS, &objs[i], 0x0B, 1), 1);
+        CHECK_INT(flat_img_record(tab, FLAT_IMG_RECS, &objs[FLAT_IMG_RECS], 0x0B, 1), 0);
+        CHECK_INT(flat_img_which(tab, FLAT_IMG_RECS, &objs[FLAT_IMG_RECS], &sz), -1);
+        CHECK_INT(flat_img_which(tab, FLAT_IMG_RECS, &objs[5], &sz), FLAT_W_UP);
+    }
     /* FLAT-C8: the frameiclass decision. Skip only for IM_DRAW / IM_DRAWFRAME, switch on, not held, flat pens. */
     {
         flat_state fs;

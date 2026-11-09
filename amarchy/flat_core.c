@@ -354,6 +354,44 @@ int flat_gadget_which(unsigned gadget_type, const void *gadget_render, const voi
     return flat_which_from_gtype(gadget_type);
 }
 
+int flat_img_record(flat_img_rec *t, int n, const void *obj, unsigned long which, unsigned long size)
+{
+    int i, free_i = -1;
+    if (!obj || which < 0x0Au || which > 0x0Du)
+        return 0;
+    for (i = 0; i < n; i++) {
+        if (t[i].obj == obj) { free_i = i; break; }
+        if (!t[i].obj && free_i < 0)
+            free_i = i;
+    }
+    if (free_i < 0)
+        return 0;
+    t[free_i].obj = obj;
+    t[free_i].which = (unsigned char)which;
+    t[free_i].size = (unsigned char)size;
+    return 1;
+}
+
+void flat_img_forget(flat_img_rec *t, int n, const void *obj)
+{
+    int i;
+    for (i = 0; obj && i < n; i++)
+        if (t[i].obj == obj)
+            t[i].obj = 0;
+}
+
+int flat_img_which(const flat_img_rec *t, int n, const void *obj, unsigned long *size)
+{
+    int i;
+    for (i = 0; obj && i < n; i++)
+        if (t[i].obj == obj) {
+            if (size)
+                *size = t[i].size;
+            return t[i].which;
+        }
+    return -1;
+}
+
 unsigned long flat_which_alias(unsigned long which)
 {
     return which == 0x05 ? 0x00 : which;    /* SYSIA_Which SDEPTHIMAGE draws the depth glyph */

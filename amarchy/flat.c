@@ -493,6 +493,47 @@ static void clone_stack_note(flatshared *r, int after)
     }
 }
 
+/* DOPUS-ARROW-WHICH: the arrow images made after flat started (flat_img_record holds the rule). Hooks run in many tasks, so the
+ * table is touched under Forbid as the other shared tables are; the walk is 32 entries. A full table leaves the image ROM-drawn. */
+static flat_img_rec img_tab[FLAT_IMG_RECS];
+static int img_lookup(Object *obj, ULONG *size)
+{
+    int wh;
+    Forbid();
+    wh = flat_img_which(img_tab, FLAT_IMG_RECS, obj, size);
+    Permit();
+    return wh;
+}
+
+/* OM_NEW of sysiclass: read SYSIA_Which / SYSIA_Size from the taglist (TAG_MORE / IGNORE / SKIP followed) and record the new object. */
+static void img_note_new(Object *obj, struct opSet *ops)
+{
+    const struct TagItem *t = ops->ops_AttrList;
+    ULONG which = 0xFFFF, size = SYSISIZE_MEDRES, guard = 0;
+    int ok = 0;
+    for (; t && guard < 64; guard++) {
+        if (t->ti_Tag == TAG_DONE) break;
+        if (t->ti_Tag == TAG_MORE) { t = (const struct TagItem *)t->ti_Data; continue; }
+        if (t->ti_Tag == TAG_SKIP) { t += t->ti_Data + 1; continue; }
+        if (t->ti_Tag == SYSIA_Which) { which = t->ti_Data; ok = 1; }
+        else if (t->ti_Tag == SYSIA_Size) size = t->ti_Data;
+        else if (t->ti_Tag == SYSIA_DrawInfo && t->ti_Data == (ULONG)&cl_di) return;     /* flat's own private clone image */
+        t++;
+    }
+    if (!ok)
+        return;
+    Forbid();
+    flat_img_record(img_tab, FLAT_IMG_RECS, obj, which, size);
+    Permit();
+}
+
+static void img_note_dispose(Object *obj)
+{
+    Forbid();
+    flat_img_forget(img_tab, FLAT_IMG_RECS, obj);
+    Permit();
+}
+
 /* The clone draw of one gadget image: 1 when it was drawn (the caller is done), 0 to fall back to the block glyph. Its own function
  * so the clone's environment is not part of c2_draw's frame (flat budget). */
 static int c2_clone(struct Hook *hk, Object *obj, Msg msg, int reg, ULONG which, ULONG raw_which, const c2_pens *p)
@@ -503,7 +544,8 @@ static int c2_clone(struct Hook *hk, Object *obj, Msg msg, int reg, ULONG which,
     cloneenv env;
     int rc, got;
     env.size = SYSISIZE_MEDRES;     /* the ROM default when SYSIA_Size is not given (and not gettable on every ROM) */
-    GetAttr(SYSIA_Size, obj, &env.size);
+    if (GetAttr(SYSIA_Size, obj, &env.size) == 0)
+        img_lookup(obj, &env.size);     /* 3.1: no OM_GET; the size recorded at OM_NEW */
     env.h = hk; env.obj = obj; env.d = d; env.reg = reg; env.which = raw_which; env.why = CLONE_WHY_NONE;
     got = AttemptSemaphore(&cl_ss);
     if (got) {                  /* cl_in is guarded by cl_ss like cl_scratch: off the draw task's stack */
@@ -555,7 +597,8 @@ static ULONG c2_which_31(Object *obj, struct impDraw *d)
     struct Layer *lay = d->imp_RPort->Layer;
     struct Window *w = lay ? (struct Window *)lay->Window : NULL;
     struct Gadget *g;
-    int n = 0, wh = -1;
+    int n = 0, wh;
+    wh = img_lookup(obj, NULL);     /* DOPUS-ARROW-WHICH: an app-made arrow image, recorded at its OM_NEW, before the system gadgets */
     for (g = w ? w->FirstGadget : NULL; g && n < 64 && wh < 0; g = g->NextGadget, n++)
         wh = flat_gadget_which(g->GadgetType, g->GadgetRender, g->SelectRender, obj);
     if (wh < 0 && lay && !w)
@@ -590,16 +633,28 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
 
 ULONG c2_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1") Msg msg)
 {
+    ULONG rc;
     if (c2_draw(h, obj, msg, 1))
         return TRUE;
-    return ((oldfn_reg)g_r->sw.saved)(h, obj, msg);
+    if (msg->MethodID == OM_DISPOSE)
+        img_note_dispose(obj);
+    rc = ((oldfn_reg)g_r->sw.saved)(h, obj, msg);
+    if (msg->MethodID == OM_NEW && rc)
+        img_note_new((Object *)rc, (struct opSet *)msg);
+    return rc;
 }
 
 ULONG c2_disp_stk(struct Hook *h, Object *obj, Msg msg)
 {
+    ULONG rc;
     if (c2_draw(h, obj, msg, 0))
         return TRUE;
-    return ((oldfn_stk)g_r->sw.saved)(h, obj, msg);
+    if (msg->MethodID == OM_DISPOSE)
+        img_note_dispose(obj);
+    rc = ((oldfn_stk)g_r->sw.saved)(h, obj, msg);
+    if (msg->MethodID == OM_NEW && rc)
+        img_note_new((Object *)rc, (struct opSet *)msg);
+    return rc;
 }
 
 /* ---- FLAT-C8: the frameiclass dispatcher. Under flat pens (shine == background) the stock bevel leaves its shadow half
