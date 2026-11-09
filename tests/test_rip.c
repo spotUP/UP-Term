@@ -718,7 +718,7 @@ static void text_font_scale_direction(void)
     vt_term *t;
     int x0, y0, x1, y1, a = popcount8('A');
     CHECK(a > 8 && a < 56);
-    CHECK_INT(rip_font8_row('A', 0), 0x38); /* the CP437 sheet: row 0 of A */
+    CHECK_INT(rip_font8_row('A', 0), 0x30); /* font8x8_basic A row 0 is 0x0C, bit-reversed to MSB-left */
     /* size 1, 2, 3: the lit pixels grow with the square of the size, the box with the size */
     t = rip_draw("!|c0F|Y00000100|@0A0AA\r\n");
     CHECK_INT(bbox_extent(t, 15, &x0, &y0, &x1, &y1), a);
