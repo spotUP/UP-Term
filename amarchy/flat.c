@@ -1401,6 +1401,32 @@ static int prop_knob(struct Gadget *g, struct PropInfo *pi, int cx, int cy, int 
  * Intuition call: this runs inside graphics.library, GetScreenDrawInfo here could deadlock) and asks flat_scroller_pen.
  * k gets the knob box (x, y, w, h) of the matching gadget; the caller takes the knob corner cuts from it one at a time
  * (flat_scroller_cut_at, S62-FLAT-RF-TX-BUDGET: no cut array on the drawing task's stack). */
+/* S69-KNOB-ASPECT: the height of the window's horizontal-only prop gadget (its container rows), 0 when it has none. The one thickness
+ * Intuition fixes per screen; a vertical knob is painted that many rows thick (flat_knob_cross). */
+static int hprop_rows(struct Window *w)
+{
+    struct Gadget *g;
+    for (g = w->FirstGadget; g; g = g->NextGadget)
+        if (gadget_has_propinfo(g) && (((struct PropInfo *)g->SpecialInfo)->Flags & (FREEHORIZ | FREEVERT)) == FREEHORIZ)
+            return ((struct PropInfo *)g->SpecialInfo)->CHeight;
+    return 0;
+}
+
+/* S69-KNOB-ASPECT: narrow knob k (kx, ky, kw, kh) in place to what is painted and set r->knob_side to the screen's side; returns pen. A vertical-only knob
+ * becomes the horizontal knob's visual thickness wide, centred (flat_knob_cross); every other knob is painted whole. The pen decision
+ * has already used Intuition's full box, which is what the fills Intuition issues for the knob cover. */
+static int knob_thin(flatshared *r, struct Window *w, struct PropInfo *pi, int *k, int pen)
+{
+    int off = 0, n;
+    r->knob_side = side_px(r, w->WScreen);
+    if ((pi->Flags & (FREEHORIZ | FREEVERT)) == FREEVERT) {
+        n = flat_knob_cross(k[2], hprop_rows(w), r->knob_side, &off);
+        k[0] += off;
+        k[2] = n;
+    }
+    return pen;
+}
+
 static int scroller_pen_of(flatshared *r, struct RastPort *rp, struct Window *w, struct Gadget *g, const LONG *box, int *k)
 {
     struct PropInfo *pi = (struct PropInfo *)g->SpecialInfo;
@@ -1414,8 +1440,8 @@ static int scroller_pen_of(flatshared *r, struct RastPort *rp, struct Window *w,
     cx = gx + pi->LeftBorder; cy = gy + pi->TopBorder;
     if (!prop_knob(g, pi, cx, cy, k))
         return -1;
-    return flat_scroller_pen_box(st_scr(r, w->WScreen), (rp->BitMap ? rp->BitMap->Depth : 0), (w->Flags & WFLG_WINDOWACTIVE) != 0, cx, cy,
-                                 pi->CWidth, pi->CHeight, k[0], k[1], k[2], k[3], (int)box[0], (int)box[1], (int)box[2], (int)box[3]);
+    return knob_thin(r, w, pi, k, flat_scroller_pen_box(st_scr(r, w->WScreen), (rp->BitMap ? rp->BitMap->Depth : 0), (w->Flags & WFLG_WINDOWACTIVE) != 0,
+                                                        cx, cy, pi->CWidth, pi->CHeight, k[0], k[1], k[2], k[3], (int)box[0], (int)box[1], (int)box[2], (int)box[3]));
 }
 
 static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *box, int *k)
@@ -1684,9 +1710,9 @@ static void sring_note(flatshared *r, struct Window *w, const LONG *b, int ncuts
 
 /* Cut ci of knob k inside fill b (flat_scroller_cut_at). One call per cut from its own frame, so vbcc does not hoist the k and b
  * element addresses into stack temporaries of the scroller_cuts loop (S62-FLAT-RF-TX-BUDGET). */
-static int scroller_cut(const int *k, const LONG *b, int ci, int *xy)
+static int scroller_cut(int side, const int *k, const LONG *b, int ci, int *xy)
 {
-    return flat_scroller_cut_at(k[0], k[1], k[2], k[3], (int)b[0], (int)b[1], (int)b[2], (int)b[3], ci, xy);
+    return flat_knob_cut_at(side, k[0], k[1], k[2], k[3], (int)b[0], (int)b[1], (int)b[2], (int)b[3], ci, xy);
 }
 
 /* FLAT-SLIDER-ROUND: the knob corner cuts (flat_scroller_cut_at, knob k inside the fill b) in index order; pen >= 0 fills each in
@@ -1697,12 +1723,22 @@ static int scroller_cuts(flatshared *r, struct RastPort *rp, const int *k, const
     if (pen >= 0)
         SetAPen(rp, (UBYTE)pen);
     for (ci = 0; ci < FLAT_ROUND_MAX; ci++)
-        if (scroller_cut(k, b, ci, xy)) {
+        if (scroller_cut(r->knob_side, k, b, ci, xy)) {
             n++;
             if (pen >= 0)
                 ((rectfn)r->rsw.saved)(rp, xy[0], xy[1], xy[0], xy[1], (struct Library *)GfxBase);
         }
     return n;
+}
+
+/* S69-KNOB-ASPECT: fill b (wider than the painted knob k) in the ground pen, then the knob columns of b in sp. */
+static void scroller_thin_fill(flatshared *r, struct RastPort *rp, const LONG *b, const int *k, int sp)
+{
+    LONG x0 = k[0] > b[0] ? k[0] : b[0], x1 = k[0] + k[2] - 1 < b[2] ? k[0] + k[2] - 1 : b[2];
+    SetAPen(rp, (UBYTE)r->st.pen_back);
+    ((rectfn)r->rsw.saved)(rp, b[0], b[1], b[2], b[3], (struct Library *)GfxBase);
+    SetAPen(rp, (UBYTE)sp);
+    ((rectfn)r->rsw.saved)(rp, x0, b[1], x1, b[3], (struct Library *)GfxBase);
 }
 
 /* FLAT-SCROLLER: a solid fill in the scroller pen sp (the stock track is a dither); FLAT-SLIDER-ROUND: the knob corners take the
@@ -1715,8 +1751,12 @@ static int scroller_paint(flatshared *r, struct RastPort *rp, const LONG *b, con
     r->shits++;
     rp->AreaPtrn = 0; rp->AreaPtSz = 0;
     SetDrMd(rp, JAM2);
-    SetAPen(rp, (UBYTE)sp);
-    ((rectfn)r->rsw.saved)(rp, b[0], b[1], b[2], b[3], (struct Library *)GfxBase);
+    if (sp != r->st.pen_back && (b[0] < k[0] || b[2] >= k[0] + k[2]))
+        scroller_thin_fill(r, rp, b, k, sp);        /* S69-KNOB-ASPECT: Intuition's wider knob fill: ground, then the thinner knob */
+    else {
+        SetAPen(rp, (UBYTE)sp);
+        ((rectfn)r->rsw.saved)(rp, b[0], b[1], b[2], b[3], (struct Library *)GfxBase);
+    }
     if (ncuts > 0)
         scroller_cuts(r, rp, k, b, r->st.pen_back);
     SetAPen(rp, fg);

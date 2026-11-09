@@ -457,9 +457,10 @@ int flat_dopus_box_draw(const flat_state *s, int x0, int y0, int x1, int y1, fla
     return flat_frame_draw(s, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1, 0, FLAT_ROLE_PLAIN, fn, ctx);
 }
 
-int flat_button_corner(int w, int h, int i, int out[4])
+/* Corner cut i of a w x h box; tall picks the 12-cut round form, else the 4-cut 1 px form. */
+static int corner_cut(int w, int h, int tall, int i, int out[4])
 {
-    int tall = h >= FLAT_ROUND_TALL, c, k, x, y, ix, iy;
+    int c, k, x, y, ix, iy;
     if (w < 3 || h < 3 || i < 0 || i >= (tall ? 12 : 4))
         return 0;
     c = tall ? i / 3 : i;
@@ -476,6 +477,28 @@ int flat_button_corner(int w, int h, int i, int out[4])
         out[0] = x; out[1] = y + iy; out[2] = x - ix; out[3] = y + iy;  /* beside the corner, down the column */
     }
     return 1;
+}
+
+int flat_button_corner(int w, int h, int i, int out[4])
+{
+    return corner_cut(w, h, h >= FLAT_ROUND_TALL, i, out);
+}
+
+int flat_knob_thickness(int kw, int kh, int side)
+{
+    int vis = side > 1 ? kw / side : kw;                            /* the knob's width in visual (row-sized) units */
+    return side < 1 || kh < vis ? kh : vis;
+}
+
+int flat_knob_cross(int cross, int rows, int side, int *off)
+{
+    int n = rows * (side > 1 ? side : 1);
+    if (n < 1 || n >= cross) {
+        *off = 0;
+        return cross;
+    }
+    *off = (cross - n) / 2;
+    return n;
 }
 
 int flat_button_corners(int w, int h, int out[][4])
@@ -497,8 +520,13 @@ int flat_scroller_cuts(int cx, int cy, int cw, int ch, int horiz, int vert, unsi
 
 int flat_scroller_cut_at(int kx, int ky, int kw, int kh, int x0, int y0, int x1, int y1, int i, int out[2])
 {
+    return flat_knob_cut_at(0, kx, ky, kw, kh, x0, y0, x1, y1, i, out);
+}
+
+int flat_knob_cut_at(int side, int kx, int ky, int kw, int kh, int x0, int y0, int x1, int y1, int i, int out[2])
+{
     int cut[4], px, py;
-    if (!flat_button_corner(kw, kh, i, cut))
+    if (!corner_cut(kw, kh, flat_knob_thickness(kw, kh, side) >= FLAT_ROUND_TALL, i, cut))
         return 0;
     px = kx + cut[0];                               /* every corner pixel inside THIS fill: 3.2 paints the knob as several fills */
     py = ky + cut[1];

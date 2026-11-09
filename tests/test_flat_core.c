@@ -922,6 +922,46 @@ static void test_round_cut_at(void)
     CHECK_INT(bad, 0);
 }
 
+/* S69-KNOB-ASPECT: a vertical and a horizontal knob get the same thickness and mirrored caps on every pixel aspect. */
+static int knob_cut_n(int side, int kw, int kh, int xy[][2])
+{
+    int i, n = 0;
+    for (i = 0; i < FLAT_ROUND_MAX; i++)
+        if (flat_knob_cut_at(side, 0, 0, kw, kh, 0, 0, kw - 1, kh - 1, i, xy[n]))
+            n++;
+    return n;
+}
+
+static void test_knob_aspect(void)
+{
+    int side, off, hw, vw, nh, nv, i, mirrored, hx[FLAT_ROUND_MAX][2], vx[FLAT_ROUND_MAX][2];
+    for (side = 1; side <= 4; side *= 2) {
+        hw = flat_knob_cross(10, 6, 1, &off);                       /* the horizontal knob is 6 rows thick: gadget cross 6 stays 6 */
+        CHECK_INT(hw, 6);
+        vw = flat_knob_cross(10 * side, 6, side, &off);             /* vertical gadget 10 * side columns: 6 rows = 6 * side columns, centred */
+        CHECK_INT(vw, 6 * side);
+        CHECK_INT(off, (10 * side - 6 * side) / 2);
+        CHECK_INT(flat_knob_thickness(vw, 200, side), 6);
+        CHECK_INT(flat_knob_thickness(200, 6, side), 6);
+        nh = knob_cut_n(side, 200, 6, hx);
+        nv = knob_cut_n(side, vw, 200, vx);
+        CHECK_INT(nh, 4);                                           /* old rule picked 12 for the vertical knob (height 200) */
+        CHECK_INT(nv, 4);
+        mirrored = 1;                                               /* corner cut (c): horizontal (x, y) <-> vertical (y, x) */
+        for (i = 0; i < nh; i++) {
+            int cx = vx[i][0] ? 1 : 0, cy = vx[i][1] ? 1 : 0;       /* which corner the vertical cut sits in */
+            int hxc = hx[i][0] ? 1 : 0, hyc = hx[i][1] ? 1 : 0;
+            if (!((cx == hxc && cy == hyc) || (cx == hyc && cy == hxc))) mirrored = 0;
+            if ((vx[i][0] != 0 && vx[i][0] != vw - 1) || (vx[i][1] != 0 && vx[i][1] != 199)) mirrored = 0;
+        }
+        CHECK_INT(mirrored, 1);
+    }
+    CHECK_INT(flat_knob_cross(10, 0, 1, &off), 10);                 /* no horizontal prop: the knob stays whole */
+    CHECK_INT(flat_knob_cross(10, 12, 1, &off), 10);                /* never wider than the gadget */
+    CHECK_INT(flat_knob_thickness(40, 200, 2), 20);                 /* a genuinely thick knob keeps the round caps */
+    CHECK_INT(knob_cut_n(2, 40, 200, vx), 12);
+}
+
 /* raa_partial_mask bit y*4+x is exactly raa_cover < 255 inside the corner square. */
 static void test_round_partial_mask(void)
 {
@@ -3157,6 +3197,7 @@ void suite_flat_core(void)
     test_glyph_route();
     test_round_aa();
     test_round_cut_at();
+    test_knob_aspect();
     test_round_partial_mask();
     test_round_pen_byte();
 }

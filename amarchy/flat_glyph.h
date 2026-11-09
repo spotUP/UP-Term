@@ -100,6 +100,16 @@ int flat_scroller_cuts_box(int kx, int ky, int kw, int kh, int x0, int y0, int x
 /* Cut i (0 .. FLAT_ROUND_MAX-1) of the knob box as flat_scroller_cuts_box tests it: 1 and out = (x, y) when cut i exists and lies
  * inside the fill, else 0. flat_scroller_cuts_box lists exactly the cuts this accepts, in index order. */
 int flat_scroller_cut_at(int kx, int ky, int kw, int kh, int x0, int y0, int x1, int y1, int i, int out[2]);
+/* S69-KNOB-ASPECT: the knob's visual thickness in rows: the smaller of its height and its width / side (side < 1: the height alone, the
+ * flat_scroller_cut_at rule). The cap shape follows it, so a vertical and a horizontal knob of the same thickness get the same caps. */
+int flat_knob_thickness(int kw, int kh, int side);
+/* flat_scroller_cut_at with the cap chosen from flat_knob_thickness(kw, kh, side) instead of the height. */
+int flat_knob_cut_at(int side, int kx, int ky, int kw, int kh, int x0, int y0, int x1, int y1, int i, int out[2]);
+/* S69-KNOB-ASPECT thickness rule: a vertical knob is as thick on screen as the window's horizontal knob: rows * side columns (rows =
+ * the horizontal prop gadget's height in the same window, the one thickness Intuition fixes per screen), centred in the vertical
+ * gadget's cross dimension. Returns the knob's width for a gadget cross columns wide and sets *off to its offset from the gadget's
+ * left; the whole cross when rows < 1 (no horizontal prop) or the knob would not be narrower. */
+int flat_knob_cross(int cross, int rows, int side, int *off);
 /* flat_frame_draw plus rounded corners: the outside pens are read with rd BEFORE the box is painted, then each cut pixel takes its
  * sampled pen (an unreadable pixel is left as drawn). rd null: no rounding, same as flat_frame_draw. */
 int flat_frame_draw_round(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn,
