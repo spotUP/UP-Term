@@ -32,28 +32,39 @@ class BootConsole(unittest.TestCase):
         self.assertEqual(["BOOTX:bootcap", "BOOTX:boot.console", "C:Execute", "DH0:S/Startup-Sequence"], line.split())
         self.assertTrue((ROOT / "tools/rig/bootcap.c").is_file())
 
-    def test_os_image_startup_sequence_runs_through_bootcap(self):
-        # BOOT-CONSOLE-OS: an --os rig boots the image copy's own S:Startup-Sequence; without the wrapper every
-        # --os start failed the marker gate (rig 96, 2026-11-05). Idempotent: a second start keeps the original.
+    def test_os_image_startup_sequence_stays_the_real_file_with_iprefs_and_runs_through_bootcap(self):
+        # BOOT-CONSOLE-OS + W8a: an --os rig boots the image copy's own S:Startup-Sequence; without bootcap every --os
+        # start failed the marker gate (rig 96, 2026-11-05). The sequence must stay AT S:Startup-Sequence with its IPrefs
+        # line, or Install's instssblock.sh finds no anchor and adds no Amarchy-Flat block (legw 17/23, 2026-11-09).
+        # Idempotent; a copy of the earlier wrapper design (real sequence in Startup-Sequence.os) is folded back.
         import tempfile
-        with tempfile.TemporaryDirectory() as d:
-            s = pathlib.Path(d) / "S"
-            s.mkdir()
-            (s / "Startup-Sequence").write_text("SetPatch QUIET\nLoadWB\nEndCLI >NIL:\n")
-            for _ in range(2):
-                rig.os_tree_bootcap(d)
-                self.assertEqual(["BOOTX:bootcap BOOTX:boot.console C:Execute S:Startup-Sequence.os", "EndCLI >NIL:"],
-                                 (s / "Startup-Sequence").read_text().splitlines())
-                self.assertEqual("SetPatch QUIET\nLoadWB\nEndCLI >NIL:\n", (s / "Startup-Sequence.os").read_text())
+        real = "SetPatch QUIET\nAddDataTypes REFRESH\nIPrefs\nLoadWB\nEndCLI >NIL:\n"
+        for old_design in (False, True):
+            with tempfile.TemporaryDirectory() as d:
+                s = pathlib.Path(d) / "S"
+                s.mkdir()
+                if old_design:
+                    (s / "Startup-Sequence").write_text("BOOTX:bootcap BOOTX:boot.console C:Execute S:Startup-Sequence.os\nEndCLI >NIL:\n")
+                    (s / "Startup-Sequence.os").write_text(real)
+                else:
+                    (s / "Startup-Sequence").write_text(real)
+                for _ in range(2):
+                    rig.os_tree_bootcap(d)
+                    text = (s / "Startup-Sequence").read_text()
+                    self.assertEqual(rig.OS_STARTUP_PREFIX + real, text)
+                    self.assertFalse((s / "Startup-Sequence.os").exists())
+                self.assertIn("\nIPrefs\n", text)
+                self.assertIn("BOOTX:bootcap BOOTX:boot.console C:Execute S:Startup-Sequence\n", text)
+                self.assertNotIn("UP-Term", rig.OS_STARTUP_PREFIX)   # Uninstall's unstartup.sh strips UP-Term blocks only
 
     def test_boot_shell_ends_after_bootcap_so_no_amigados_window_holds_the_iprefs_request(self):
         # RIG-IPREFS-SYSREQ: the Startup-Sequence's EndCLI ends bootcap's child CLI only. The boot shell must end
         # itself right after bootcap, on both boot paths, or it opens an "AmigaDOS" window and IPrefs' screen-reset
         # request stays up and `rig.py reboot` fails (rig 146, 2026-11-05).
-        for script in (rig.STARTUP, rig.OS_STARTUP_WRAP):
+        for script in (rig.STARTUP, rig.OS_STARTUP_PREFIX):
             lines = [l.strip() for l in script.splitlines() if l.strip()]
             i = next(n for n, l in enumerate(lines) if l.startswith("BOOTX:bootcap"))
-            self.assertEqual(["EndCLI >NIL:"], lines[i + 1:], script)
+            self.assertEqual("EndCLI >NIL:", lines[i + 1], script)
 
     def test_marker_tells_capture_from_no_capture(self):
         self.assertTrue(rig.boot_console_captured("boot console open\nSetPatch 43.6\n"))

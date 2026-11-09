@@ -96,10 +96,11 @@ class IconLib(unittest.TestCase):
             sh(ROOT / 'dist/unstartup.sh', '', d + '/Startup-Sequence')
             self.assertEqual((pathlib.Path(d) / 'Startup-Sequence.up-term').read_text(), seq)
 
-    def _ins(self, d, *args):
+    def _ins(self, d, *args, rc=0):
         import subprocess
         src = re.sub(r'(?<![A-Za-z])[ST]:', d + '/', (ROOT / 'dist/instssblock.sh').read_text())
-        subprocess.run(['sh', '-c', src, 'x', *args], capture_output=True, text=True, check=True)
+        r = subprocess.run(['sh', '-c', src, 'x', *args], capture_output=True, text=True)
+        self.assertEqual(rc, r.returncode)
         return pathlib.Path(d) / 'Startup-Sequence.up-term'
 
     def test_instssblock_flat_goes_before_iprefs_on_stock_31_and_322_sequences_idempotently(self):
@@ -124,12 +125,29 @@ class IconLib(unittest.TestCase):
                     subprocess.run(['sh', '-c', src, 'x', *strip, d + '/Startup-Sequence'], check=True, capture_output=True)
                     self.assertEqual((pathlib.Path(d) / 'Startup-Sequence.up-term').read_text(), seq, fixture)
 
+    def test_instssblock_without_the_anchor_line_reports_rc_10_and_writes_nothing(self):
+        # W8a: a sequence with no IPrefs line (the rig's wrapper layout) made the Flat block vanish silently
+        import subprocess, tempfile
+        with tempfile.TemporaryDirectory() as d:
+            (pathlib.Path(d) / 'Startup-Sequence').write_text('Assign >NIL: LIBS: SYS:Libs\nConClip\n')
+            src = re.sub(r'(?<![A-Za-z])[ST]:', d + '/', (ROOT / 'dist/instssblock.sh').read_text())
+            r = subprocess.run(['sh', '-c', src, 'x', *FLAT], capture_output=True, text=True)
+            self.assertEqual(10, r.returncode)
+            self.assertIn('no IPrefs line', r.stderr)
+            self.assertFalse((pathlib.Path(d) / 'Startup-Sequence.up-term').exists())
+
+    def test_install_dos_and_installer_report_a_block_that_found_no_anchor(self):
+        for name, cmd in (('FLAT', 'Amarchy-Flat IPrefs'), ('REMLIB', 'RemLib SetPatch')):
+            i = DOS.index('vsh instssblock.sh ' + cmd)
+            self.assertRegex(DOS[i:i + 700], r'(?s)If ERROR.*?ENV:UPTSSFAIL' + name)
+            self.assertIn('ENV:UPTSSFAIL' + name, INSTALLER)
+
     def test_instssblock_flat_is_a_noop_without_iprefs_and_remlib_block_leaves_flat_alone(self):
         import tempfile
         seq = 'Assign >NIL: LIBS: SYS:Libs\nAddDataTypes REFRESH QUIET\nConClip\n'
         with tempfile.TemporaryDirectory() as d:
             (pathlib.Path(d) / 'Startup-Sequence').write_text(seq)
-            self.assertFalse(self._ins(d, *FLAT).exists())
+            self.assertFalse(self._ins(d, *FLAT, rc=10).exists())
             # a RemLib block present does not stop the Flat block (the guard is per block name)
             (pathlib.Path(d) / 'Startup-Sequence').write_text((FIX / 'Startup-Sequence.ks31').read_text())
             with_remlib = self._ins(d, *REMLIB).read_text()

@@ -515,7 +515,13 @@ If "$opticonlib" EQ "ICONLIB"
       Copy S:Startup-Sequence S:Startup-Sequence.before-UP-Term CLONE
     EndIf
     Delete >NIL: T:Startup-Sequence.up-term QUIET
+    Delete >NIL: ENV:UPTSSFAILREMLIB QUIET
     vsh instssblock.sh RemLib SetPatch "If EXISTS LIBS:icon.library" "   RemLib >NIL: icon.library" "EndIf"
+    ; rc 10: S:Startup-Sequence has no SetPatch line, the block was not added (the Installer's last page says so)
+    If ERROR
+      Echo "UP-Term: S:Startup-Sequence has no SetPatch line: the RemLib block was NOT added."
+      Echo "1" >ENV:UPTSSFAILREMLIB
+    EndIf
     If EXISTS T:Startup-Sequence.up-term
       Copy T:Startup-Sequence.up-term S:Startup-Sequence CLONE QUIET
       Delete >NIL: T:Startup-Sequence.up-term QUIET
@@ -718,7 +724,7 @@ If NOT WARN
 EndIf
 ; the flat UI patch (amarchy-flat): a marked block ";BEGIN UP-Term Amarchy-Flat" in S:Startup-Sequence directly
 ; BEFORE IPrefs (after AddDataTypes), put there by instssblock.sh, the same inserter as the RemLib block (it does
-; nothing when the block is there or the sequence has no IPrefs line). S:Startup-Sequence runs before
+; nothing when the block is there, and reports rc 10 when the sequence has no IPrefs line). S:Startup-Sequence runs before
 ; S:User-Startup makes the UP-Term: assign, so the block names the drawer by absolute path, read from
 ; ENVARC:up-term/Dir, and is guarded by If EXISTS on the binary; reassign.sh rewrites the path when a later Install
 ; moves the drawer. BOOT starts the patch only when Amarchy's flat key is on. Uninstall strips the block with
@@ -729,7 +735,13 @@ If EXISTS ENVARC:up-term/Dir
     Copy S:Startup-Sequence S:Startup-Sequence.before-UP-Term CLONE
   EndIf
   Delete >NIL: T:Startup-Sequence.up-term QUIET
+  Delete >NIL: ENV:UPTSSFAILFLAT QUIET
   vsh instssblock.sh Amarchy-Flat IPrefs "If EXISTS $upflatdir/bin/amarchy-flat" "  Run >NIL: $upflatdir/bin/amarchy-flat BOOT" "EndIf"
+  ; rc 10: S:Startup-Sequence has no IPrefs line, the block was not added (the Installer's last page says so)
+  If ERROR
+    Echo "UP-Term: S:Startup-Sequence has no IPrefs line: the Amarchy-Flat block was NOT added."
+    Echo "1" >ENV:UPTSSFAILFLAT
+  EndIf
   If EXISTS T:Startup-Sequence.up-term
     Copy T:Startup-Sequence.up-term S:Startup-Sequence CLONE QUIET
     Delete >NIL: T:Startup-Sequence.up-term QUIET

@@ -670,21 +670,30 @@ OS_HOOKS = "Assign >NIL: VTC: VTCX:\nRun >NIL: C:Execute BOOTX:go\n"
 
 # BOOT-CONSOLE-OS: an --os rig boots the copy's own S:Startup-Sequence, not BOOTX:s/startup-sequence (STARTUP), so
 # the bootcap line there never ran and every --os start failed the "boot console open" gate (rig 96, 2026-11-05).
-# The copy's Startup-Sequence moves to S:Startup-Sequence.os and a one-line wrapper runs it through bootcap.
-OS_STARTUP_ORIG = "Startup-Sequence.os"
-OS_STARTUP_WRAP = "BOOTX:bootcap BOOTX:boot.console C:Execute S:%s\nEndCLI >NIL:\n" % OS_STARTUP_ORIG
+# W8a (2026-11-09): the first fix moved the image's sequence to S:Startup-Sequence.os behind a wrapper, so the file the
+# Installer edits had no IPrefs line and instssblock.sh could not put the Amarchy-Flat block in. The real sequence now
+# stays at S:Startup-Sequence, as on a real system; a marked prefix on its first lines re-runs it once through bootcap
+# (guarded by RAM:.bootcap, which the inner run finds and skips). The markers are not "UP-Term" ones: Uninstall's
+# unstartup.sh strips those.
+OS_BOOTCAP_BEGIN = ";BEGIN rig bootcap"
+OS_BOOTCAP_END = ";END rig bootcap"
+OS_STARTUP_PREFIX = (OS_BOOTCAP_BEGIN + "\nIf NOT EXISTS RAM:.bootcap\n  Echo >RAM:.bootcap \"\"\n"
+                     "  BOOTX:bootcap BOOTX:boot.console C:Execute S:Startup-Sequence\n  EndCLI >NIL:\nEndIf\n" + OS_BOOTCAP_END + "\n")
+OS_STARTUP_ORIG = "Startup-Sequence.os"   # the earlier design's moved copy; folded back by os_tree_bootcap
 
 
 def os_tree_bootcap(tree):
-    """The --os copy's S:Startup-Sequence runs through BOOTX:bootcap, every start (copies made before
-    BOOT-CONSOLE-OS get it too); the image's own sequence is kept as S:Startup-Sequence.os."""
+    """The --os copy's S:Startup-Sequence runs through BOOTX:bootcap, every start: the rig prefix is put on its first
+    lines once. A copy made by the earlier wrapper design (S:Startup-Sequence.os holds the real sequence) is folded back."""
     s = pathlib.Path(tree) / "S"
-    seq, orig = s / "Startup-Sequence", s / OS_STARTUP_ORIG
-    if not orig.exists():
-        if not seq.exists():
-            sys.exit("rig: %s has no S:Startup-Sequence" % tree)
-        seq.rename(orig)
-    seq.write_text(OS_STARTUP_WRAP)
+    seq, old = s / "Startup-Sequence", s / OS_STARTUP_ORIG
+    if old.exists():
+        old.replace(seq)
+    if not seq.exists():
+        sys.exit("rig: %s has no S:Startup-Sequence" % tree)
+    text = seq.read_text()
+    if OS_BOOTCAP_BEGIN not in text:
+        seq.write_text(OS_STARTUP_PREFIX + text)
 
 RIG_MUTE_FLAG = pathlib.Path.home() / ".config" / "upterm" / "rig-mute"
 
