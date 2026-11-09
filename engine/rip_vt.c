@@ -40,6 +40,7 @@ struct rip_ad {
     int bang;   /* the last thing taken was a bare ESC [ ! : a `p` now is DECSTR */
     int nhold;
     vt_u8 hold[16]; /* a possible ESC [ digits ! , kept across vt_feed calls */
+    int stroke;     /* host option: Hershey strokes for fonts 1..4 (vt_set_rip_stroke) */
     int moved;      /* text went to the engine since the tiles were last put right */
     struct rip_mouse mouse;
 };
@@ -103,6 +104,7 @@ static struct cv *rip_canvas(vt_term *t, struct rip_ad *ad)
         return 0;
     }
     rip_gfx_init(&ad->g);
+    ad->g.stroke = ad->stroke;
     return ad->cv;
 }
 
@@ -353,6 +355,20 @@ void vt_set_rip(vt_term *t, int on)
     rip_mouse_init(&ad->mouse);
     ad->active = 1;
     t->rip = ad;
+}
+
+void vt_set_rip_stroke(vt_term *t, int stroke)
+{
+    struct rip_ad *ad = t->rip;
+    if (!ad)
+        return;
+    ad->stroke = stroke ? 1 : 0;
+    ad->g.stroke = ad->stroke;
+}
+
+long vt_rip_stroke_glyphs(void)
+{
+    return rip_font_stroke_glyphs();
 }
 
 long vt_rip_commands(const vt_term *t)

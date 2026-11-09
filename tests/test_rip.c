@@ -392,6 +392,34 @@ static vt_term *rip_draw(const char *cmds)
     return t;
 }
 
+/* FNV-1a over the whole canvas, one byte a pixel */
+static unsigned long canvas_sum(vt_term *t)
+{
+    vt_image_view v;
+    unsigned long h = 2166136261UL;
+    long i;
+    if (!view0(t, &v))
+        return 0;
+    for (i = 0; i < (long)v.w * v.h; i++)
+        h = ((h ^ v.pix[i]) * 16777619UL) & 0xFFFFFFFFUL;
+    return h;
+}
+
+/* font f (1..4), direction d, size z: the RIP stream of one text fixture, @ then T: 10 glyphs and a space */
+static void stroke_fixture(char *cmd, size_t n, int f, int d, int z)
+{
+    snprintf(cmd, n, "!|c0F|Y%02d%02d%02d00|@2S3CHgRip, a|TZy&\r\n", f, d, z);
+}
+
+/* golden checksums, [style 1..4][size 1,2][across, up]; stroke on */
+static const unsigned long stroke_gold[4][2][2] = {
+    { { 2193060398UL, 1752216166UL }, { 2382301143UL, 3844413134UL } },
+    { { 2360949884UL, 1021602710UL }, { 3259880719UL, 3061184685UL } },
+    { { 2590449555UL, 4163509401UL }, { 2611125737UL, 2621238633UL } },
+    { { 40918293UL, 3834845909UL }, { 1273473025UL, 1397791636UL } }
+};
+static const unsigned long bitmap_gold[2][2] = { { 2972558292UL, 3012486204UL }, { 2480458793UL, 4238776281UL } }; /* the same fixtures, option off, font 1 */
+
 /* The one reachability test: vt_write -> detection -> scanner -> parser -> drawing -> canvas
  * -> the image store's view. Numbers are the plan's (section 2.1). */
 static void reach_rip_through_vt_write(void)
@@ -444,6 +472,19 @@ static void reach_rip_through_vt_write(void)
         CHECK_INT(vt_rip_click(t, 300, 300, out), 0);
     }
     vt_free(t);
+    /* RIP-3b through the same door: a stroke-font stream gives the golden checksum and the stroke code ran */
+    {
+        char cmd[128];
+        long before = vt_rip_stroke_glyphs();
+        t = rip_term();
+        vt_set_rip_stroke(t, 1);
+        stroke_fixture(cmd, sizeof cmd, 3, 0, 2);
+        h_put(t, "\033[!");
+        h_put(t, cmd);
+        CHECK_INT(vt_rip_stroke_glyphs() - before, 10); /* "HgRip, a" 7 + "Zy&" 3; the space draws nothing */
+        CHECK(canvas_sum(t) == stroke_gold[2][1][0]);
+        vt_free(t);
+    }
 }
 
 static void detection_and_switch(void)
@@ -784,6 +825,62 @@ static void viewport_clips_and_resets(void)
     vt_free(t);
 }
 
+/* ---- RIP-3b: Hershey stroke fonts ---- */
+
+static void stroke_fonts_goldens(void)
+{
+    int f, zi, d, nsum = 0;
+    unsigned long seen[16];
+    char cmd[128];
+    vt_term *t;
+    for (f = 1; f <= 4; f++)
+        for (zi = 0; zi < 2; zi++)
+            for (d = 0; d < 2; d++) {
+                unsigned long sum, b;
+                int k;
+                t = rip_term();
+                vt_set_rip_stroke(t, 1);
+                stroke_fixture(cmd, sizeof cmd, f, d, zi + 1);
+                h_put(t, cmd);
+                sum = canvas_sum(t);
+                if (getenv("RIP_PRINT_GOLD"))
+                    printf("GOLD %d %d %d %lu\n", f, zi, d, sum);
+                CHECK(rcount(t, 15) > 20);
+                CHECK(sum == stroke_gold[f - 1][zi][d]);
+                for (k = 0; k < nsum; k++)
+                    CHECK(seen[k] != sum); /* style, size and direction each move the output */
+                seen[nsum++] = sum;
+                vt_free(t);
+                /* option off (the default): the bitmap, whatever the style number */
+                t = rip_term();
+                stroke_fixture(cmd, sizeof cmd, f, d, zi + 1);
+                h_put(t, cmd);
+                b = canvas_sum(t);
+                if (f == 1) {
+                    if (getenv("RIP_PRINT_GOLD"))
+                        printf("BGOLD %d %d %lu\n", zi, d, b);
+                    CHECK(b == bitmap_gold[zi][d]);
+                }
+                CHECK(b != sum); /* the option moves the output */
+                vt_free(t);
+            }
+    /* every style draws the same bitmap with the option off */
+    {
+        unsigned long a, b;
+        t = rip_term();
+        stroke_fixture(cmd, sizeof cmd, 1, 0, 1);
+        h_put(t, cmd);
+        a = canvas_sum(t);
+        vt_free(t);
+        t = rip_term();
+        stroke_fixture(cmd, sizeof cmd, 4, 0, 1);
+        h_put(t, cmd);
+        b = canvas_sum(t);
+        vt_free(t);
+        CHECK(a == b);
+    }
+}
+
 static void text_window_scrolls_text_not_canvas(void)
 {
     vt_term *t = rip_term();
@@ -1039,6 +1136,7 @@ void suite_rip(void)
     knob_geometry();
     knob_polygon_rect_flood();
     text_font_scale_direction();
+    stroke_fonts_goldens();
     viewport_clips_and_resets();
     text_window_scrolls_text_not_canvas();
     text_window_commands_and_wrap();

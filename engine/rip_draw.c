@@ -94,6 +94,16 @@ static void gput(const struct rip_gfx *g, struct cv *cv, int x, int y, int col)
     cv_pixel(cv, x, y, col);
 }
 
+struct stroke_ctx { const struct rip_gfx *g; struct cv *cv; };
+
+static void line(const struct rip_gfx *g, struct cv *cv, int x0, int y0, int x1, int y1, unsigned pat);
+
+static void stroke_seg(void *ud, int x0, int y0, int x1, int y1)
+{
+    const struct stroke_ctx *sc = ud;
+    line(sc->g, sc->cv, x0, y0, x1, y1, 0xFFFF);
+}
+
 static int fill_bit(const struct rip_gfx *g, int x, int y)
 {
     const unsigned char *p = g->fpat == 12 ? g->upat : fill_tab[g->fpat < 0 || g->fpat > 11 ? 1 : g->fpat];
@@ -414,6 +424,22 @@ int rip_gfx_exec(struct rip_gfx *g, struct cv *cv, const struct rip_cmd *c)
         if (c->ch == '@') {
             g->px = (int)a[0];
             g->py = (int)a[1];
+        }
+        if (g->stroke && rip_font_is_stroke(g->font)) { /* RIP-3b: Hershey strokes through the line primitive */
+            struct rip_gfx pen1 = *g;
+            struct stroke_ctx sc;
+            pen1.thick = 1;
+            pen1.lstyle = 0;
+            sc.g = &pen1;
+            sc.cv = cv;
+            for (i = 0; i < c->ntext; i++) {
+                int adv = rip_font_glyph(g->font, c->text[i], s, g->fdir, g->px, g->py, stroke_seg, &sc);
+                if (g->fdir)
+                    g->py -= adv;
+                else
+                    g->px += adv;
+            }
+            break;
         }
         for (i = 0; i < c->ntext; i++) {
             for (r = 0; r < 8; r++) {

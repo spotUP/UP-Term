@@ -134,11 +134,20 @@ struct rip_gfx {
     unsigned char upat[8];      /* s: user 8x8 pattern, row 0 first, bit 0x80 leftmost */
     int px, py;                 /* m: current position */
     int vx0, vy0, vx1, vy1;     /* v: the graphics viewport, corners inclusive; every pixel clips to it */
-    int font, fdir, fsize;      /* Y: font number (all draw the 8x8 bitmap until RIP-3b), 0 across or 1 up, scale */
+    int font, fdir, fsize;      /* Y: font number (1..4 draw Hershey strokes when stroke is set, all else the 8x8 bitmap), 0 across or 1 up, scale */
+    int stroke;                 /* host option (RIP-3b): 0 8x8 bitmap for every font (default), 1 Hershey strokes for fonts 1..4 */
 };
 void rip_gfx_init(struct rip_gfx *g);
 /* 8x8 bitmap font (O19): glyph `ch` (CP437) row r, bit 0x80 leftmost */
 unsigned char rip_font8_row(int ch, int r);
+/* Hershey stroke fonts (RIP-3b, rip_font.c): BGI fonts 1 triplex, 2 small, 3 sans-serif, 4 gothic.
+ * rip_font_is_stroke: 1 for a font number that has strokes. rip_font_glyph feeds the segments of
+ * glyph ch at size s (1..10) from the cell origin ox, oy (up: a quarter turn counter-clockwise) to
+ * seg and returns the advance in pixels. rip_font_stroke_glyphs counts the glyphs drawn (sentinel). */
+int rip_font_is_stroke(int font);
+int rip_font_glyph(int font, int ch, int s, int up, int ox, int oy,
+                   void (*seg)(void *ud, int x0, int y0, int x1, int y1), void *ud);
+long rip_font_stroke_glyphs(void);
 /* 1 when rip_gfx_exec acts on this command (it needs a canvas) */
 int rip_gfx_handles(const struct rip_cmd *c);
 /* run a level-0 drawing or state command; returns 1 if handled */

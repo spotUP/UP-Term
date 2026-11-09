@@ -480,6 +480,11 @@ void     vt_set_cell_pixels(vt_term *t, int w, int h);
  * sentinel). Needs the cell size (vt_set_cell_pixels) before the canvas is placed. */
 void vt_set_rip(vt_term *t, int on);
 long vt_rip_commands(const vt_term *t);
+/* RIP text font option (RIP-3b): 0 draws every BGI font with the 8x8 bitmap (the default), 1 draws
+ * font styles 1..4 (triplex, small, sans-serif, gothic) as Hershey strokes. Call after vt_set_rip(t, 1);
+ * it is kept across the canvas being rebuilt. vt_rip_stroke_glyphs: stroke glyphs drawn (sentinel). */
+void vt_set_rip_stroke(vt_term *t, int stroke);
+long vt_rip_stroke_glyphs(void);
 /* RIP mouse fields and buttons (1M, 1U; rip_mouse.c). A left press at px, py (pixels from the text
  * area's top left, as vt_encode_mouse_px takes them) over a field gives the field's host command
  * with ^x, backquote and $VAR$ expanded into out (VT_RIP_OUT_MAX bytes at most) and returns its
