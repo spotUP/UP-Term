@@ -159,13 +159,15 @@ int flat_glyph_on_band(unsigned long which);
 int flat_clone_route(const flat_state *s, unsigned long which, unsigned long method);
 /* S32 CLONE-PRIVATE-IMAGE: OS 3.2 sysiclass (intuition 47) renders its imagery ONCE, at OM_NEW, into private planar data with
  * the SYSIA_DrawInfo pens of that moment; IM_DRAW only blits that data and never reads imp_DrInfo. The clone therefore draws
- * a private image made with the marker DrawInfo, one per (which, width, height), kept in a small table. flat_clone_slot finds
+ * a private image made with the marker DrawInfo, one per (which, size, width, height), kept in a small table. flat_clone_slot finds
  * the entry for the key: its index, n when it must be appended (n < cap), or -1 when the table is full. */
 #define FLAT_CLONE_OBJS 16
 #define FLAT_CLONE_DEPTH 8          /* the marker DrawInfo's dri_Depth: the private image is baked deep enough for every marker */
-typedef struct flat_clone_key { unsigned long which; int w, h; } flat_clone_key;
-int flat_clone_slot(const flat_clone_key *keys, int n, int cap, unsigned long which, int w, int h);
-int flat_clone_map(const uint8_t *grid, int w, int h, uint8_t *out);
+/* size is the image's SYSIA_Size (SYSISIZE_*): DOpus asks LOWRES / MEDRES arrows whose glyph differs from the HIRES one at the same box. */
+typedef struct flat_clone_key { unsigned long which; unsigned long size; int w, h; } flat_clone_key;
+int flat_clone_slot(const flat_clone_key *keys, int n, int cap, unsigned long which, unsigned long size, int w, int h);
+/* corner: arrow / size gadget, whose ground is the interior corner's pen instead of the majority pen (DOPUS-SCROLLER-LOOK). */
+int flat_clone_map(const uint8_t *grid, int w, int h, uint8_t *out, int corner);
 /* S32-CLONE-CLIP: the draw offset that puts the private image's column 0 at grid column 0. 3.2 sysiclass gives the depth and
  * zoom images LeftEdge -1 (close and size 0): drawn at offset 0 the image's first column fell off the bitmap, the glyph sat
  * 1 px left and its right bevel became a glyph line (rig 23, s32-evidence/clone-clip-hunt.md). */

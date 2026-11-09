@@ -158,6 +158,7 @@ typedef struct cloneenv {
     Object *obj;
     struct impDraw *d;
     int reg;
+    ULONG size;                 /* the system image's SYSIA_Size: the private image must be made at the same size */
     ULONG which;                /* the system image's own SYSIA_Which (before flat_which_alias): the private image's key */
     int why;                    /* CLONE_WHY_*: set by clone_render when it gives up */
 } cloneenv;
@@ -191,9 +192,9 @@ static Object *cl_objs[FLAT_CLONE_OBJS];
 static int cl_nobj;
 static struct Task *cl_task;    /* the task inside the system dispatcher for the clone: its nested image draws go to the system */
 
-static Object *clone_object(const struct DrawInfo *real, ULONG which, int w, int h)
+static Object *clone_object(const struct DrawInfo *real, ULONG which, ULONG size, int w, int h)
 {
-    int i = flat_clone_slot(cl_keys, cl_nobj, FLAT_CLONE_OBJS, which, w, h);
+    int i = flat_clone_slot(cl_keys, cl_nobj, FLAT_CLONE_OBJS, which, size, w, h);
     Object *o;
     if (i < 0)
         return NULL;
@@ -208,17 +209,18 @@ static Object *clone_object(const struct DrawInfo *real, ULONG which, int w, int
         i = 0;
     }
     {
-        struct TagItem t[5];
+        struct TagItem t[6];
         t[0].ti_Tag = SYSIA_DrawInfo; t[0].ti_Data = (ULONG)&cl_di;
         t[1].ti_Tag = SYSIA_Which; t[1].ti_Data = which;
         t[2].ti_Tag = IA_Width; t[2].ti_Data = (ULONG)w;
         t[3].ti_Tag = IA_Height; t[3].ti_Data = (ULONG)h;
-        t[4].ti_Tag = TAG_DONE; t[4].ti_Data = 0;
+        t[4].ti_Tag = SYSIA_Size; t[4].ti_Data = size;
+        t[5].ti_Tag = TAG_DONE; t[5].ti_Data = 0;
         o = (Object *)NewObjectA(NULL, (UBYTE *)"sysiclass", t);
     }
     if (!o)
         return NULL;
-    cl_keys[i].which = which; cl_keys[i].w = w; cl_keys[i].h = h;
+    cl_keys[i].which = which; cl_keys[i].size = size; cl_keys[i].w = w; cl_keys[i].h = h;
     cl_objs[i] = o;
     cl_nobj = i + 1;
     return o;
@@ -276,7 +278,7 @@ static int clone_render(void *ctx, unsigned long ids, uint8_t *grid, int w, int 
     }
     if (!clone_ensure(w, h))
         e->why = CLONE_WHY_NOBM;
-    else if (cl_task = FindTask(NULL), !(po = clone_object(e->d->imp_DrInfo, e->which, im->Width, im->Height))) {
+    else if (cl_task = FindTask(NULL), !(po = clone_object(e->d->imp_DrInfo, e->which, e->size, im->Width, im->Height))) {
         cl_task = NULL;
         e->why = CLONE_WHY_NOOBJ;
     } else {
@@ -500,6 +502,8 @@ static int c2_clone(struct Hook *hk, Object *obj, Msg msg, int reg, ULONG which,
     struct Image *im = (struct Image *)obj;
     cloneenv env;
     int rc, got;
+    env.size = SYSISIZE_MEDRES;     /* the ROM default when SYSIA_Size is not given (and not gettable on every ROM) */
+    GetAttr(SYSIA_Size, obj, &env.size);
     env.h = hk; env.obj = obj; env.d = d; env.reg = reg; env.which = raw_which; env.why = CLONE_WHY_NONE;
     got = AttemptSemaphore(&cl_ss);
     if (got) {                  /* cl_in is guarded by cl_ss like cl_scratch: off the draw task's stack */
