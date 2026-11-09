@@ -814,6 +814,47 @@ static void canvas_lifecycle(void)
     vt_free(t);
 }
 
+/* RIP-DIRTY: vt_rip_take_dirty hands the host the area drawn since its last take (through vt_feed) */
+static void take_dirty_rect(void)
+{
+    vt_term *t = rip_term();
+    int x0 = -1, y0 = -1, x1 = -1, y1 = -1;
+    long cmds0;
+    CHECK_INT(vt_rip_take_dirty(t, &x0, &y0, &x1, &y1), 0);
+    h_put(t, "!|c0F|L0A0K0U0P");                 /* (10,20)-(30,25), no newline: no text moved */
+    cmds0 = vt_rip_commands(t);
+    CHECK(cmds0 > 0);                            /* the parser ran it */
+    CHECK_INT(vt_rip_take_dirty(t, &x0, &y0, &x1, &y1), 1);  /* first take: the new canvas, whole */
+    CHECK_INT(x1 - x0, CV_RIP_W);
+    h_put(t, "!|L0A0K0U0P");
+    CHECK(vt_rip_commands(t) > cmds0);
+    CHECK_INT(vt_rip_take_dirty(t, &x0, &y0, &x1, &y1), 1);
+    CHECK(x0 <= 10 && y0 <= 20 && x1 >= 31 && y1 >= 26); /* covers the line */
+    CHECK(x1 - x0 < CV_RIP_W / 4 && y1 - y0 < CV_RIP_H / 4); /* and is not the canvas */
+    CHECK_INT(vt_rip_take_dirty(t, &x0, &y0, &x1, &y1), 0);  /* cleared by the take */
+    CHECK_INT(x1 - x0, 0);                       /* outputs are zeroed when clean */
+    CHECK_INT(y1 - y0, 0);
+    /* two draws before a take give their union */
+    h_put(t, "!|L0A0K0U0P");
+    h_put(t, "!|L50500A60");
+    CHECK_INT(vt_rip_take_dirty(t, &x0, &y0, &x1, &y1), 1);
+    CHECK(x0 <= 10 && y1 >= 26 && x1 >= 31);
+    /* text moves the tiles: the whole canvas */
+    h_put(t, "\r\nplain text\r\n");
+    CHECK_INT(vt_rip_take_dirty(t, &x0, &y0, &x1, &y1), 1);
+    CHECK(x0 == 0 && y0 == 0 && x1 == CV_RIP_W && y1 == CV_RIP_H);
+    CHECK_INT(vt_rip_take_dirty(t, &x0, &y0, &x1, &y1), 0);
+    /* the canvas rebuilt (screen clear frees the picture) */
+    h_put(t, "\033[2J\r\n");
+    cmds0 = vt_rip_commands(t);
+    h_put(t, "!|L0A0K0U0P\r\n");
+    CHECK(vt_rip_commands(t) > cmds0);
+    CHECK_INT(vt_images(t), 1);
+    CHECK_INT(vt_rip_take_dirty(t, &x0, &y0, &x1, &y1), 1);
+    CHECK(x0 == 0 && y0 == 0 && x1 == CV_RIP_W && y1 == CV_RIP_H);
+    vt_free(t);
+}
+
 /* RIP-VIEW-BG0: index 0 is palette entry 0 on a RIP canvas, "unset" only on a sixel */
 static void index_zero_is_a_colour_for_rip_not_for_sixel(void)
 {
@@ -1387,6 +1428,7 @@ void suite_rip(void)
     decstr_still_resets();
     rip_off_is_byte_identical();
     canvas_lifecycle();
+    take_dirty_rect();
     palette_through_the_terminal();
     index_zero_is_a_colour_for_rip_not_for_sixel();
     knob_colour_and_write_mode();

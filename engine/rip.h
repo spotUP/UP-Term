@@ -114,6 +114,8 @@ void cv_rect(struct cv *c, int x0, int y0, int x1, int y1, int idx); /* both cor
 void cv_blit(struct cv *c, int x, int y, const unsigned char *src, int w, int h, int minterm,
              int cx0, int cy0, int cx1, int cy1);
 struct cv_rect_s cv_take_dirty(struct cv *c);
+/* grow *d to cover r (an empty r changes nothing; an empty *d becomes r) */
+void cv_rect_union(struct cv_rect_s *d, const struct cv_rect_s *r);
 /* bump serial when something is dirty (call once per feed); returns 1 if it bumped */
 int cv_flush(struct cv *c);
 

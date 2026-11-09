@@ -41,6 +41,7 @@ struct rip_ad {
     struct rip_gfx g;
     struct rip_pal pal;
     struct cv *cv;
+    struct cv_rect_s dirty; /* canvas area changed since vt_rip_take_dirty */
     int slot;
     vt_u16 gen;
     int mode;   /* vt_set_rip argument: 1 On, 2 Auto */
@@ -68,6 +69,13 @@ static int rip_canvas_alive(const vt_term *t, const struct rip_ad *ad)
         return 0;
     im = t->imgs[ad->slot];
     return im && im->pix == ad->cv->pix && im->kind == 4 && im->gen == ad->gen;
+}
+
+static void rip_dirty_all(struct rip_ad *ad)
+{
+    struct cv_rect_s all;
+    all.x0 = 0, all.y0 = 0, all.x1 = CV_RIP_W, all.y1 = CV_RIP_H;
+    cv_rect_union(&ad->dirty, &all);
 }
 
 static void rip_canvas_drop(struct rip_ad *ad)
@@ -99,6 +107,7 @@ static struct cv *rip_canvas(vt_term *t, struct rip_ad *ad)
         VT_FREE(pix);
         return 0;
     }
+    rip_dirty_all(ad); /* a new canvas: everything is new to the host */
     rip_pal_reset(&ad->pal, ad->cv);
     for (i = 0; i < RIP_NPAL; i++)
         pal[i] = (vt_u32)ad->cv->pal[i];
@@ -251,6 +260,7 @@ static void rip_reanchor(vt_term *t, struct rip_ad *ad)
 {
     vt_image *im = t->imgs[ad->slot];
     int k, rows = (im->py0 + im->h + im->ch - 1) / im->ch;
+    rip_dirty_all(ad); /* the tiles moved: the host redraws the picture whole */
     im->refs++;
     for (k = 0; k < rows && k < t->rows; k++)
         sixel_place_row(t, ad->slot, k, 0, k);
@@ -274,7 +284,10 @@ static void rip_settle(vt_term *t, struct rip_ad *ad)
     }
     if (!cv_flush(ad->cv))
         return;
-    (void)cv_take_dirty(ad->cv);
+    {
+        struct cv_rect_s d = cv_take_dirty(ad->cv);
+        cv_rect_union(&ad->dirty, &d);
+    }
     im = t->imgs[ad->slot];
     for (i = 0; i < RIP_NPAL; i++)
         im->pal[i] = (vt_u32)ad->cv->pal[i];
@@ -581,6 +594,22 @@ int vt_rip_key(vt_term *t, int key, vt_u8 *out)
         rip_settle(t, ad);
     }
     return n;
+}
+
+int vt_rip_take_dirty(vt_term *t, int *x0, int *y0, int *x1, int *y1)
+{
+    struct rip_ad *ad = t->rip;
+    struct cv_rect_s d;
+    memset(&d, 0, sizeof(d));
+    if (ad) {
+        d = ad->dirty;
+        memset(&ad->dirty, 0, sizeof(ad->dirty));
+    }
+    if (x0) *x0 = d.x0;
+    if (y0) *y0 = d.y0;
+    if (x1) *x1 = d.x1;
+    if (y1) *y1 = d.y1;
+    return d.x1 > d.x0 && d.y1 > d.y0;
 }
 
 long vt_rip_mouse_fields(const vt_term *t)

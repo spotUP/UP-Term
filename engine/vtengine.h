@@ -493,6 +493,12 @@ void vt_set_rip(vt_term *t, int on);
 /* 1 when RIP is active (Auto has switched on, or On and not turned off by ESC [ 1 !), else 0. */
 int vt_rip_active(const vt_term *t);
 long vt_rip_commands(const vt_term *t);
+/* The canvas area changed since the last call (union of all drawing, in canvas pixels; *x1, *y1
+ * exclusive), so a host redraws that part and not the whole picture. Returns 1 and the rect, or 0
+ * with all four outputs zeroed when nothing changed (also when RIP is off). The whole canvas
+ * (0, 0, 640, 350) after the canvas was built or its tiles re-anchored on the text grid (text
+ * moved). Clears on take. Any output pointer may be NULL. */
+int vt_rip_take_dirty(vt_term *t, int *x0, int *y0, int *x1, int *y1);
 /* Icons (1I) loaded through vt_set_file_reader and drawn since start (sentinel). The file name
  * handed to the reader is the sanitised name alone, no directory; the host resolves it. The
  * image release function (vt_set_image_decoder) must be set too, as for kitty t=f. */

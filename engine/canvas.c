@@ -9,21 +9,29 @@
 
 #define CV_MAX 1024
 
-static void dirty_add(struct cv *c, int x0, int y0, int x1, int y1)
+void cv_rect_union(struct cv_rect_s *d, const struct cv_rect_s *r)
 {
-    struct cv_rect_s *d = &c->dirty;
+    if (r->x1 <= r->x0 || r->y1 <= r->y0)
+        return;
     if (d->x1 <= d->x0) {
-        d->x0 = x0, d->y0 = y0, d->x1 = x1, d->y1 = y1;
+        *d = *r;
         return;
     }
-    if (x0 < d->x0)
-        d->x0 = x0;
-    if (y0 < d->y0)
-        d->y0 = y0;
-    if (x1 > d->x1)
-        d->x1 = x1;
-    if (y1 > d->y1)
-        d->y1 = y1;
+    if (r->x0 < d->x0)
+        d->x0 = r->x0;
+    if (r->y0 < d->y0)
+        d->y0 = r->y0;
+    if (r->x1 > d->x1)
+        d->x1 = r->x1;
+    if (r->y1 > d->y1)
+        d->y1 = r->y1;
+}
+
+static void dirty_add(struct cv *c, int x0, int y0, int x1, int y1)
+{
+    struct cv_rect_s r;
+    r.x0 = x0, r.y0 = y0, r.x1 = x1, r.y1 = y1;
+    cv_rect_union(&c->dirty, &r);
 }
 
 struct cv *cv_open(int w, int h, int npal)
