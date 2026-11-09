@@ -9,7 +9,8 @@
 #   <before-command>  the command the block goes in front of: matched without regard to case, with or
 #                     without a "C:" prefix, with or without arguments; the FIRST such line wins
 #   <body line>...    one argument per line of the block body
-# Writes nothing (and removes any older T: result) when the block is already there or the file has no such line.
+# Writes nothing (and removes any older T: result) when the block is already there (rc 0). When the file has no
+# <before-command> line it writes nothing, says so on stderr and ends with rc 10 (ERROR): install.dos shows it.
 IFS=''
 file=S:Startup-Sequence
 name=$1
@@ -46,4 +47,8 @@ while read -r l; do
     esac
     printf '%s\n' "$l"
 done <"$file" >T:Startup-Sequence.up-term
-if [ "$found" = 0 ]; then rm -f T:Startup-Sequence.up-term; fi
+if [ "$found" = 0 ]; then
+    rm -f T:Startup-Sequence.up-term
+    echo "instssblock: $file has no $cmd line; the $name block was not added" >&2
+    exit 10
+fi

@@ -771,6 +771,19 @@
                  "\nC:UPConsole STATUS says who serves them now."))
         (run "Delete >NIL: ENV:UPTREFUSED#? QUIET")))
 
+; S:Startup-Sequence had no line to put a block before (install.dos: instssblock.sh rc 10): n = 6
+(if (or (exists "ENV:UPTSSFAILFLAT") (exists "ENV:UPTSSFAILREMLIB"))
+    (
+        (set #n 6)
+        (P_LEAD)
+        (message
+            (cat #lead
+                 (if (exists "ENV:UPTSSFAILFLAT")
+                     "The Amarchy-Flat block was NOT added: S:Startup-\nSequence has no IPrefs line to put it before.\n" "")
+                 (if (exists "ENV:UPTSSFAILREMLIB")
+                     "The RemLib block was NOT added: S:Startup-\nSequence has no SetPatch line to put it before.\n" "")))
+        (run "Delete >NIL: ENV:UPTSSFAIL#? QUIET")))
+
 ; another console replacement's Mount lines were turned off (install.dos:
 ; ENV:UPTCONREBOOT, dist/takecon.sh): n = 6
 (if (exists "ENV:UPTCONREBOOT")
