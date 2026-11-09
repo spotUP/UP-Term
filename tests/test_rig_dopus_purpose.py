@@ -23,5 +23,21 @@ class Purpose(unittest.TestCase):
             self.assertEqual(d.purpose(), d.PURPOSE)
 
 
+class StaleBase(unittest.TestCase):
+    """`rig.py dopus --allow-stale-base "<reason>"` reaches the `rig.py start` the install boots with (it was dropped)."""
+    def cmd(self, argv):
+        with mock.patch.object(d.sys, "argv", ["rig.py", "dopus"] + argv), mock.patch.object(d, "system_args", return_value=[]):
+            return d.start_cmd()
+
+    def test_reason_is_forwarded(self):
+        c = self.cmd(["--allow-stale-base", "other agent owns the merge"])
+        i = c.index("--allow-stale-base")
+        self.assertEqual(c[i + 1], "other agent owns the merge")
+        self.assertEqual(c[c.index("start") - 1].endswith("rig.py"), True)
+
+    def test_absent_flag_adds_nothing(self):
+        self.assertNotIn("--allow-stale-base", self.cmd(["--force"]))
+
+
 if __name__ == "__main__":
     unittest.main()
