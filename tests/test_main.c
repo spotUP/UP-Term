@@ -6,6 +6,7 @@ void suite_keys(void);
 void suite_amiga(void);
 void suite_reflow(void);
 void suite_sixel(void);
+void suite_rip(void);
 void suite_kitty(void);
 void suite_kittyout(void);
 void suite_iterm2(void);
@@ -123,6 +124,7 @@ static const h_suite suites[] = {
     { "amiga", suite_amiga },
     { "reflow", suite_reflow },
     { "sixel", suite_sixel },
+    { "rip", suite_rip },
     { "kitty", suite_kitty },
     { "kittyout", suite_kittyout },
     { "iterm2", suite_iterm2 },

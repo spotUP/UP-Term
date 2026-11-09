@@ -2771,17 +2771,21 @@ static void img_colours(vr_render *r, const vt_image_view *v)
 {
     ULONG bgrgb = ink_rgb(r, r->bg_ink);
     int i;
+    /* index 0 is the pixels the image left unset (sixel) unless it is a real palette colour (RIP) */
+    int pal0 = !v->kitty && !v->bg0 && v->npal > 0;
     if (r->img_serial == v->serial && r->img_bgrgb == bgrgb)
         return;
     r->img_serial = v->serial;
     r->img_bgrgb = bgrgb;
     if (r->cgx) {
-        r->img->ctab[0] = bgrgb; /* the pixels the image left unset */
+        r->img->ctab[0] = pal0 ? v->pal[0] : bgrgb; /* sixel: the pixels the image left unset */
         for (i = 1; i < v->npal; i++)
             r->img->ctab[i] = v->pal[i];
         return;
     }
-    r->img->map[0] = r->bg_ink & VR_INK_RGB ? img_pen_for(r, bgrgb) : (UBYTE)r->bg_ink;
+    r->img->map[0] = pal0                    ? img_pen_for(r, v->pal[0])
+                     : r->bg_ink & VR_INK_RGB ? img_pen_for(r, bgrgb)
+                                              : (UBYTE)r->bg_ink;
     r->img_planes = r->img->map[0];
     r->img->pic_cur = 0;
     if (v->kitty && !r->few && r->cm && r->depth > 4 && (r->img->pic_cur = pic_slot(r, v)) != 0) {

@@ -1486,6 +1486,9 @@ static void iterm_end(vt_term *t)
         if (k->full) {
             if (t->cb.notify)
                 t->cb.notify(t->user, "iTerm2", "download over 4 MB dropped");
+        } else if (k->len > 0 && t->dl_sink) {
+            if (!t->dl_sink(t->dl_host[0] ? t->dl_host : "local", k->iname, k->raw, k->len) && t->cb.notify)
+                t->cb.notify(t->user, "iTerm2", "download could not be saved");
         } else if (k->len > 0 && t->file_write) {
             iterm_path(path, (int)sizeof(path), t->dl_host, k->iname);
             if (!t->file_write(path, k->raw, k->len) && t->cb.notify)
@@ -1741,6 +1744,7 @@ int vt_cell_placeholder(const vt_term *t, int row, int col, vt_image_view *v, in
     v->opaque = im->opaque;
     v->rgb = im->rgb;
     v->kitty = 1;
+    v->bg0 = 0;
     v->cw = im->cw;
     v->ch = im->ch;
     v->col0 = 0;

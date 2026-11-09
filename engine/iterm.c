@@ -113,13 +113,15 @@ static int iterm_cells(int unit, long val, int cellpx, int total)
 
 /* ---- inline=0 downloads: the file name and the path it is saved at -------- */
 
+#include "dlname.h"
+
 /* The name= value (base64) as a safe file name: base name only (after the last
  * '/', '\\' or ':'), no control characters, never "." / ".." / empty ("download"). */
 static void iterm_name(const char *b64, int n, char *out, int max)
 {
     static const char tab[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     char raw[80];
-    int rn = 0, i, o = 0, start = 0;
+    int rn = 0, i;
     unsigned long acc = 0;
     int bits = 0;
     for (i = 0; i < n && rn < (int)sizeof(raw) - 1; i++) {
@@ -133,31 +135,20 @@ static void iterm_name(const char *b64, int n, char *out, int max)
             raw[rn++] = (char)((acc >> bits) & 0xFF);
         }
     }
-    for (i = 0; i < rn; i++)
-        if (raw[i] == '/' || raw[i] == '\\' || raw[i] == ':')
-            start = i + 1;
-    for (i = start; i < rn && o < max - 1; i++)
-        if ((unsigned char)raw[i] >= 0x20 && (unsigned char)raw[i] != 0x7F)
-            out[o++] = raw[i];
-    out[o] = 0;
-    if (!o || !strcmp(out, ".") || !strcmp(out, ".."))
-        strcpy(out, "download");
+    dl_clean_name(raw, rn, out, max, "download");
 }
 
-/* ENVARC:UP-Term/Downloads/<host>/<name> (O10) */
+/* <host>/<name>, relative: where it lands is the host's business (D22). */
 static void iterm_path(char *out, int max, const char *host, const char *name)
 {
-    static const char pre[] = "ENVARC:UP-Term/Downloads/";
-    const char *part[3];
+    const char *part[2];
     int p, o = 0;
-    part[0] = pre;
-    part[1] = host && *host ? host : "local";
-    part[2] = name;
-    for (p = 0; p < 3; p++) {
+    part[0] = host && *host ? host : "local";
+    part[1] = name;
+    for (p = 0; p < 2; p++) {
         const char *c = part[p];
-        if (p) /* the separator before <host> is in pre; one '/' before <name> */
-            if (p == 2 && o < max - 1)
-                out[o++] = '/';
+        if (p && o < max - 1)
+            out[o++] = '/';
         while (*c && o < max - 1)
             out[o++] = *c++;
     }

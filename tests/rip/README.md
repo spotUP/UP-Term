@@ -19,3 +19,13 @@ Pixel expectations marked (UNVERIFIED) depend on geometry not confirmed against 
 | 09-mouse-limit.rip | Mouse field limit: 128 fields plus buttons combined | One `1U` button ("Start") plus 128 `1M` regions (16x8 grid of 24x24 fields, cell pitch 36, from (10,40)), 129 objects total. The 129th object, the last `1M` (num 3J, text `f127`, rectangle (550,292)-(574,316)), must be rejected: clicking it sends nothing; the first 128 objects work. Each field also has a gray outline drawn. |
 
 Fixtures 01-07 and 09 use LF line ends; 08 uses CRLF. Fixture 01 contains raw 0x01 and 0x02 bytes.
+
+## Stroke fonts (RIP-3b)
+
+`stroke_fonts_goldens` and the stroke part of `reach_rip_through_vt_write` in tests/test_rip.c
+check FNV-1a checksums of the canvas for BGI font styles 1-4 (Hershey triplex, small, sans-serif,
+gothic) at sizes 1 and 2, across and up, with `vt_set_rip_stroke(t, 1)`. `RIP_PRINT_GOLD=1 make
+test-one SUITE=rip` prints the current sums to refresh the tables after a deliberate change. The
+glyph data (engine/rip_fontdata.inc, from tools/gen_rip_font.py) is the Hershey data of
+A. V. Hershey (US NBS, 1967) in James Hurt's format; its source, licence and style mapping are in
+the header of engine/rip_font.c.
