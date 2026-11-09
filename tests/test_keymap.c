@@ -2975,6 +2975,7 @@ static void the_commodity_keymap_of_dist_keymap_is_exact_and_small(void)
 
 static void menu_theme_roles_map_the_palette(void);
 static void dopus_theme_commands_use_the_theme_directly(void);
+static void dopus_lister_info_bars_are_never_filled_bars(void);
 static void dopus_theme_send_goes_to_the_dopus_port(void);
 static void dopus_theme_send_switches_only_a_default_toolbar(void);
 static void dopus_theme_send_picks_the_set_and_recolours(void);
@@ -3700,6 +3701,7 @@ void suite_keymap(void)
     a_volume_without_a_handler_task_matches_no_device();
     menu_theme_roles_map_the_palette();
     dopus_theme_commands_use_the_theme_directly();
+    dopus_lister_info_bars_are_never_filled_bars();
     dopus_theme_send_goes_to_the_dopus_port();
     dopus_theme_send_switches_only_a_default_toolbar();
     dopus_theme_send_picks_the_set_and_recolours();
@@ -3920,6 +3922,22 @@ static void the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg(void)
     CHECK_INT((long)rgb[MT_TEXT], 0xE5E5E5L);
 }
 
+/* DOPUS-LISTER-LOOK (owner 2026-11-09, "nowhere near our other flat windows"): the source and destination listers' info bars
+ * drew bg on accent (a second accent band under the active title band) and fg on dim. In a flat window the only filled bar is the
+ * active title band, so both info bars take background pen 0 (the surface) and keep their state in the text pen: source accent,
+ * destination dim. */
+static void dopus_lister_info_bars_are_never_filled_bars(void)
+{
+    gtheme th;
+    char buf[512];
+    gt_builtin(&th);
+    CHECK(dopus_theme_commands(&th, buf, sizeof buf, 0) > 0);
+    CHECK(strstr(buf, "dopus set pens source 3 0\n") != NULL);
+    CHECK(strstr(buf, "dopus set pens dest 2 0\n") != NULL);
+    CHECK(strstr(buf, "dopus set pens source 0 3\n") == NULL);
+    CHECK(strstr(buf, "dopus set pens dest 1 2\n") == NULL);
+}
+
 /* DOpus ARexx syntax: dopus5 v5.104 source/Program/rexx_dopus.c:587 (palette), :616 (pens), :941 (refresh lister) */
 static void dopus_theme_commands_use_the_theme_directly(void)
 {
@@ -3934,8 +3952,8 @@ static void dopus_theme_commands_use_the_theme_directly(void)
                        "dopus set pens seldirs 0 3\n"
                        "dopus set pens devices 1 0\n"
                        "dopus set pens assigns 1 0\n"
-                       "dopus set pens source 0 3\n"
-                       "dopus set pens dest 1 2\n"
+                       "dopus set pens source 3 0\n"
+                       "dopus set pens dest 2 0\n"
                        "dopus set pens gauge 3 0\n";
     /* B8b: an own screen reopens the display (rexx_dopus.c:948 CONFIG_CHANGE_DISPLAY -> display_open loads the palette,
      * display.c:267); the Workbench screen only redraws the listers (:960) */

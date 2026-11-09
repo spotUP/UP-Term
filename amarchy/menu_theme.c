@@ -85,8 +85,8 @@ unsigned dopus_theme_commands(const gtheme *th, char *out, unsigned cap, int pal
     static const char *const pens[] = { "dopus set pens icons 1 0 0 1 0 0\n", "dopus set pens files 1 0\n",
                                        "dopus set pens dirs 3 0\n", "dopus set pens selfiles 0 3\n",
                                        "dopus set pens seldirs 0 3\n", "dopus set pens devices 1 0\n",
-                                       "dopus set pens assigns 1 0\n", "dopus set pens source 0 3\n",
-                                       "dopus set pens dest 1 2\n", "dopus set pens gauge 3 0\n" };
+                                       "dopus set pens assigns 1 0\n", "dopus set pens source 3 0\n",
+                                       "dopus set pens dest 2 0\n", "dopus set pens gauge 3 0\n" };
     /* `set palette` and `set pens` only write the environment; an own screen loads its palette in display_open, which
      * `refresh all` reruns (dopus5 rexx_dopus.c:948, main_reset.c:40, display.c:267). `refresh lister` only redraws
      * (rexx_dopus.c:960): right for the Workbench screen, where a reopen would flicker every window. */
