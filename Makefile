@@ -32,7 +32,7 @@ DCTELNET_ROOT ?= $(CODE_ROOT)/DCTelnet
 AMIEXPRESS_ROOT ?= $(CODE_ROOT)/AmiExpress
 
 ENGINE  := engine/vtengine.c
-RENDER  := render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/sbar.c render/layout.c render/otag.c render/ttf.c render/painter.c handler/lineedit.c handler/kcmode.c handler/slash.c handler/winspec.c handler/clipfmt.c handler/ripxfer.c handler/dlsave.c handler/be32.c handler/complete_core.c render/vtinput.c handler/waitset.c handler/histfile.c
+RENDER  := render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/sbar.c render/layout.c render/otag.c render/ttf.c render/painter.c handler/lineedit.c handler/kcmode.c handler/slash.c handler/winspec.c handler/clipfmt.c handler/ripxfer.c handler/ripglue.c handler/dlsave.c handler/be32.c handler/complete_core.c render/vtinput.c handler/waitset.c handler/histfile.c
 SHELL_CORE := shell/sh_parse.c shell/sh_expand.c shell/sh_exec.c shell/sh_amiscript.c shell/sh_float.c shell/sh_path.c shell/vsh_cmdline.c
 TTY     := tty/ldisc.c tty/bmsg.c
 DEVICE_CORE := device/upc_core.c
