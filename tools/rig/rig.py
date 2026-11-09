@@ -93,7 +93,11 @@ RIG = paths.RIG      # build/rig, or build/rig2 with UPTERM_RIG=2
 AMIBERRY = paths.EMU == "amiberry"
 CFG = RIG / ("vtcon-rig.uae" if AMIBERRY else "vtcon-rig.fs-uae")
 # what the running emulator's command line carries: the config path, or for Amiberry the win/ drawer of title links
-EMU_KEY = str(RIG / "win") + "/" if AMIBERRY else str(CFG)
+def emu_key(emu):
+    """What `emu`'s command line carries (one rule for EMU_KEY and for stopping the emulator a rig is running)."""
+    return str(RIG / "win") + "/" if emu == "amiberry" else str(RIG / "vtcon-rig.fs-uae")
+
+EMU_KEY = emu_key(paths.EMU)
 DBG_IN = RIG / "debugger.in"
 DBG_LOG = RIG / "debugger.log"
 # the last start's arguments (the machine: --a1200, --060, --kick ...). A reboot from another command
@@ -2149,7 +2153,9 @@ def reboot(given=None):
     install (2026-10-27, RIG-REBOOT, MASTER-BUILD-NOREBOOT). `given` replaces this command line's arguments (ensure_current
     passes [], as its caller's argv is not rig.py's)."""
     args = reboot_args(sys.argv[2:] if given is None else given)
-    stop()
+    # --emu names the NEXT start; stop the emulator the rig is running (recorded by start), else it stays up (2026-11-09)
+    running = paths.EMU_FILE.read_text().strip() if paths.EMU_FILE.is_file() else ""
+    stop(running if running in ("amiberry", "fsuae") else None)
     # a new process: the machine flags are read from sys.argv when rig.py is loaded
     subprocess.run([sys.executable, str(pathlib.Path(__file__).resolve()), "start", "--keep-sys"] + args, check=True)
 
@@ -2194,9 +2200,11 @@ def os_tree_no_wasabid(tree):
             if clean != data:
                 us.write_bytes(clean)
 
-def mine():
+def mine(emu=None):
+    """This rig's emulator processes: of `emu` (default: paths.EMU)."""
+    emu = emu or paths.EMU
     out = subprocess.run(["ps", "-eo", "pid,command"], capture_output=True, text=True).stdout
-    return [l for l in out.splitlines() if EMU_KEY in l and ("amiberry" if AMIBERRY else "fs-uae") in l.lower()]
+    return [l for l in out.splitlines() if emu_key(emu) in l and ("amiberry" if emu == "amiberry" else "fs-uae") in l.lower()]
 
 def serialwatch():
     """Amiberry rigs: connect to the rig's serial TCP port (paths.serial_tcp_port) and append what the Amiga sends
@@ -2629,11 +2637,11 @@ def retry_wb_reset():
             time.sleep(2)
     print("[WARN] the Workbench stayed PAL (W43)")
 
-def stop():
+def stop(emu=None):
     """Safe stop: killing FS-UAE while the Amiga writes to its disk corrupts the filesystem (rig 2, 2026-10-13).
     Wait until wasabid takes a command (nothing else is running), lock the volumes (the OS flushes them), stay
     quiet for 8 s, ask FS-UAE to quit (TERM), and kill it only if it ignores that."""
-    if mine() and status(quiet=True):
+    if mine(emu) and status(quiet=True):
         try:
             sys.path.insert(0, str(ROOT / "tools/rig"))
             import ami
@@ -2651,14 +2659,14 @@ def stop():
             time.sleep(8)
         except BaseException:
             pass
-    subprocess.run(["pkill", "-TERM", "-f", EMU_KEY])
+    subprocess.run(["pkill", "-TERM", "-f", emu_key(emu or paths.EMU)])
     for _ in range(90):   # FS-UAE closes its disks before it exits
-        if not mine():
+        if not mine(emu):
             break
         time.sleep(1)
-    if mine():
-        subprocess.run(["pkill", "-9", "-f", EMU_KEY])
-    print("stopped" if not mine() else "[ERROR] still running")
+    if mine(emu):
+        subprocess.run(["pkill", "-9", "-f", emu_key(emu or paths.EMU)])
+    print("stopped" if not mine(emu) else "[ERROR] still running")
 
 WATCHDOG_EVERY = 60   # seconds between two idle checks
 WATCHDOG_QUIET = 5    # the last command must be at least this old: a stop never lands on a write in flight
