@@ -378,6 +378,7 @@ typedef struct vt_image_view {
     int npal;
     int fmt;            /* 0 pix holds indices into pal; 1 it holds w x h x 4 bytes R G B A (pal, npal unused) */
     int opaque;         /* fmt 1: no pixel has an alpha below 255 */
+    const vt_u8 *rgb;   /* fmt 0: w x h x 3 bytes R G B, the picture's own colours (vt_set_image_rgb_copy was on when it was made); 0 none */
     int kitty;          /* a kitty picture: its index 0 (fmt 0) is transparent, draw nothing there; sixel: the background */
     int cw, ch;         /* the cell size the image was placed with */
     int col0;           /* the grid column of the image's left edge on this
@@ -601,6 +602,17 @@ unsigned long vt_kitty_png_own(const vt_term *t);
  * same pixel capacity). Off (the default): indexed pictures as always. Turning it
  * off converts the RGBA pictures to indices. Sentinel: RGB pictures made. */
 void vt_set_image_rgb(vt_term *t, int on);
+/* A screen short of pens (a palette screen: fewer free pens than a picture has colours) asks for the pictures' own
+ * colours: while on, each new kitty picture is stored as indices AND as 3 bytes a pixel (R G B, vt_image_view.rgb)
+ * so the renderer picks pens from the colours and dithers each pixel once onto them. Off: the copies are freed.
+ * Pictures made before it went on have none. Sixel pictures never have one (their palette is exact already);
+ * animated and frame-edited pictures drop theirs. */
+void vt_set_image_rgb_copy(vt_term *t, int on);
+unsigned long vt_kitty_copy_made(const vt_term *t); /* RGB copies made (a test sentinel) */
+/* Pictures freed so far (delete, replace, clear, eviction) and whether the picture of a view's serial is still alive:
+ * a renderer holding resources per picture lets them go when the serial is gone. */
+unsigned long vt_image_frees(const vt_term *t);
+int vt_image_alive(const vt_term *t, long serial);
 unsigned long vt_kitty_rgb_made(const vt_term *t);
 /* K39: frame canvases made as RGBA (4 bytes a pixel, charged to the x4 frame budget), a test sentinel. */
 unsigned long vt_kitty_rgba_frames(const vt_term *t);

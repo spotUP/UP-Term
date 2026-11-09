@@ -505,6 +505,13 @@ static long aa_dist(ULONG want, ULONG c);
 static void aa_set_pen(void *u, ULONG ink);
 static void aa_fill_bg(void *u, WORD x0, WORD y0, WORD x1, WORD y1, ULONG ink);
 
+/* The engine keeps a picture's own colours (3 bytes a pixel) only where the screen is short of pens: a palette
+ * screen of 5 to 7 planes without the cybergraphics calls (those keep their RGBA path, 256 colours have pens to spare). */
+static void vr_pic_copy(vr_render *r)
+{
+    vt_set_image_rgb_copy(r->t, r->cm && !r->cgx && !r->few && r->depth > 4 && r->depth < 8);
+}
+
 void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t,
              enum vt_font_enc enc)
 {
@@ -638,8 +645,10 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     /* K40: pictures hold their exact colours (RGBA) only where the screen is deeper than 8 bits and the
      * cybergraphics calls are there; everywhere else the engine makes today's indexed pictures */
     r->cgx_alpha = r->cgx ? vr_cgx_has_alpha(r->cgx) : 0;
-    if (t)
+    if (t) {
         vt_set_image_rgb(t, r->cgx != 0);
+        vr_pic_copy(r);
+    }
     /* colour emoji (U4) through the same call; ce_has asks for RTG of 15
      * bits or more and the call, so AGA and 8-bit RTG keep Unifont's glyph */
     r->emoji.tg.rtg = !r->planar;
@@ -751,6 +760,48 @@ ULONG vr_pen_rgb(vr_render *r, UBYTE pen)
     return ((c[0] >> 24) << 16) | ((c[1] >> 24) << 8) | (c[2] >> 24);
 }
 
+/* ---- kitty pictures on a palette screen (render/pic_pens.h) ------------------------------------------ */
+
+static void pic_release(vr_render *r, struct vr_picslot *s)
+{
+    int i;
+    for (i = 0; i < s->nheld; i++)
+        if (r->cm)
+            ReleasePen(r->cm, (ULONG)s->held[i]);
+    s->nheld = 0;
+    s->serial = 0;
+    if (s->rgbmem) {
+        FreeVec(s->rgbmem);
+        s->rgbmem = 0;
+    }
+}
+
+/* The pens of a picture go when it does (deleted, replaced, a cleared screen), not when a slot happens to be
+ * wanted: a slot whose picture the engine no longer has lets its pens go. One counter compare per pass. */
+static void pic_sweep(vr_render *r)
+{
+    int i;
+    unsigned long f = vt_image_frees(r->t);
+    if (!r->img || !r->img->pic || f == r->img->pic_frees)
+        return;
+    r->img->pic_frees = f;
+    for (i = 0; i < VR_PIC_SLOTS; i++)
+        if (r->img->pic[i].serial && !vt_image_alive(r->t, r->img->pic[i].serial)) {
+            if (r->img->pic_cur == &r->img->pic[i]) {
+                r->img->pic_cur = 0;
+                r->img_serial = 0;
+            }
+            pic_release(r, &r->img->pic[i]);
+        }
+}
+
+static void pic_release_all(vr_render *r)
+{
+    int i;
+    for (i = 0; i < VR_PIC_SLOTS; i++)
+        pic_release(r, &r->img->pic[i]);
+}
+
 /* A program changed the palette or the default colours: every pen chosen
  * for a colour is given back and chosen again as cells are drawn. */
 void vr_palette_changed(vr_render *r)
@@ -768,6 +819,11 @@ void vr_palette_changed(vr_render *r)
         r->obtained[i] = -1;
     }
     aa_ink_forget(&r->aa); /* the shade pens show other colours now */
+    if (r->img && r->img->pic) {
+        pic_release_all(r); /* their fixed pens were chosen against the old palette */
+        r->img->pic_cur = 0;
+        r->img_serial = 0;
+    }
 }
 
 void vr_set_dither(vr_render *r, int on)
@@ -840,6 +896,10 @@ void vr_free(vr_render *r)
     if (r->glyphs)
         FreeVec(r->glyphs);
     if (r->img) {
+        if (r->img->pic) {
+            pic_release_all(r);
+            FreeVec(r->img->pic);
+        }
         for (i = 0; i < VR_IMG_SLOTS; i++)
             if (r->cm && r->img->key[i])
                 ReleasePen(r->cm, (ULONG)r->img->pen[i]);
@@ -2569,6 +2629,143 @@ static UBYTE img_pen_for(vr_render *r, ULONG rgb)
     return (UBYTE)(ink & VR_INK_RGB ? r->pen_default_fg : ink);
 }
 
+/* The pens of kitty picture v in slot s on a palette screen of more than 16 pens. The colours the picture uses
+ * each get a pen of their own while the map has them (the plan is then pen a alone). When it runs out the free
+ * pens go to the colours covering most of the picture (pp_pick) and every entry mixes, in the 8 x 8 pattern, the
+ * two of {the terminal's 16 colours, those pens} that come nearest (pp_plan_make). Every pen held is released
+ * with the slot (pic_release). */
+static void pic_make(vr_render *r, struct vr_picslot *s, const vt_image_view *v)
+{
+    static unsigned long wt[PP_MAXCOL];
+    static pm_palette scr;
+    unsigned long cand[PM_MAXPENS], pick[PM_MAXPENS], pal[PP_MAXCOL];
+    UBYTE cpen[PM_MAXPENS];
+    int i, nf = 0, nc, got, np = v->npal > PP_MAXCOL ? PP_MAXCOL : v->npal, rgbmode = 0;
+    LONG p;
+    s->nheld = 0;
+    if (v->rgb && v->fmt == 0 && (s->rgbmem = (UBYTE *)AllocVec(sizeof(pm_palette) + PP_BINS * 6, MEMF_ANY | MEMF_CLEAR))) {
+        /* the picture's own colours: the heaviest of them get the pens, every pixel is dithered from its colour */
+        pp_hist_work *wk = (pp_hist_work *)AllocVec(sizeof(pp_hist_work), MEMF_ANY);
+        if (wk) {
+            np = pp_hist(v->pix, v->rgb, (long)v->w * v->h, wk, pal, wt, s->rgbmem + sizeof(pm_palette) + PP_BINS * 3);
+            FreeVec(wk);
+            rgbmode = 1;
+        } else {
+            FreeVec(s->rgbmem);
+            s->rgbmem = 0;
+        }
+    }
+    if (!rgbmode) {
+        pp_weights(v->pix, (long)v->w * v->h, np, wt);
+        wt[0] = 0;
+        for (i = 0; i < np; i++)
+            pal[i] = v->pal[i];
+    }
+    for (i = rgbmode ? np : 1; i < np; i++) { /* every used colour exact? */
+        if (!wt[i])
+            continue;
+        p = vr_pen_best(r->cm, pal[i], 1);
+        if (p < 0)
+            break;
+        s->held[s->nheld++] = (UBYTE)p;
+        s->plan.a[i] = s->plan.b[i] = (UBYTE)p;
+        s->plan.lev[i] = 0;
+    }
+    if (rgbmode || i < np) { /* out of pens (or: the colours are the picture's own, picked from) */
+        for (i = 0; i < s->nheld; i++)
+            ReleasePen(r->cm, (ULONG)s->held[i]);
+        s->nheld = 0;
+        r->img->n_pic_picks++;
+        if (rgbmode)
+            r->img->n_pic_rgb++;
+        if (vt_personality(r->t) != VT_AMIGA)
+            for (i = 0; i < 16 && nf < PM_MAXPENS; i++) {
+                ULONG ink = pen_for(r, (vt_color)i, 0);
+                if (ink & VR_INK_RGB)
+                    continue;
+                cpen[nf] = (UBYTE)ink;
+                cand[nf++] = vr_pen_rgb(r, (UBYTE)ink);
+            }
+        got = pp_pick(pal, wt, np, cand, nf, PM_MAXPENS - nf, pick);
+        for (i = 0; i < got; i++) { /* heaviest first: the free pens run out on the lightest */
+            p = vr_pen_best(r->cm, pick[i], 1);
+            if (p < 0)
+                break;
+            s->held[s->nheld++] = (UBYTE)p;
+        }
+        if (i < got) { /* fewer pens than colours: cut again for the number there are */
+            int k = i;
+            for (i = 0; i < s->nheld; i++)
+                ReleasePen(r->cm, (ULONG)s->held[i]);
+            s->nheld = 0;
+            got = pp_pick(pal, wt, np, cand, nf, k, pick);
+            for (i = 0; i < got; i++) {
+                p = vr_pen_best(r->cm, pick[i], 1);
+                if (p < 0)
+                    break;
+                s->held[s->nheld++] = (UBYTE)p;
+            }
+            got = i;
+        }
+        nc = nf;
+        for (i = 0; i < got; i++) {
+            cpen[nc] = s->held[i];
+            cand[nc++] = pick[i];
+        }
+        if (rgbmode) {
+            pm_palette *cp = (pm_palette *)s->rgbmem;
+            UBYTE *plan3 = s->rgbmem + sizeof(pm_palette);
+            if (nc > PM_MAXPENS)
+                nc = PM_MAXPENS;
+            pm_palette_set(cp, cand, nc);
+            s->usable = nc >= 32 ? 0xFFFFFFFFUL : ((1UL << nc) - 1);
+            for (i = 0; i < nc; i++)
+                s->cpen[i] = cpen[i];
+            for (i = 0; i < PP_BINS; i++)
+                plan3[i * 3 + 2] = PP_UNSET;
+        } else {
+            pp_plan tmp;
+            pp_plan_make(&tmp, &scr, pal, np, cand, nc);
+            for (i = 1; i < np; i++) {
+                s->plan.a[i] = cpen[tmp.a[i]];
+                s->plan.b[i] = cpen[tmp.b[i]];
+                s->plan.lev[i] = tmp.lev[i];
+            }
+        }
+    }
+    s->planes = 0;
+    if (rgbmode) {
+        for (i = 0; i < ((pm_palette *)s->rgbmem)->n; i++)
+            s->planes |= (UWORD)s->cpen[i];
+    } else {
+        for (i = 1; i < np; i++)
+            if (wt[i])
+                s->planes |= (UWORD)(s->plan.a[i] | (s->plan.lev[i] ? s->plan.b[i] : 0));
+    }
+    s->serial = v->serial;
+}
+
+/* The slot of kitty picture v: the one made for it, else the least recently used, made now. 0: none (no memory) */
+static struct vr_picslot *pic_slot(vr_render *r, const vt_image_view *v)
+{
+    int i, old = 0;
+    if (!r->img->pic && !(r->img->pic = (struct vr_picslot *)AllocVec(sizeof(struct vr_picslot) * VR_PIC_SLOTS,
+                                                              MEMF_ANY | MEMF_CLEAR)))
+        return 0;
+    for (i = 0; i < VR_PIC_SLOTS; i++) {
+        if (r->img->pic[i].serial == v->serial) {
+            r->img->pic[i].stamp = ++r->img->pic_use;
+            return &r->img->pic[i];
+        }
+        if (r->img->pic[i].serial == 0 || r->img->pic[i].stamp < r->img->pic[old].stamp)
+            old = i;
+    }
+    pic_release(r, &r->img->pic[old]);
+    pic_make(r, &r->img->pic[old], v);
+    r->img->pic[old].stamp = ++r->img->pic_use;
+    return &r->img->pic[old];
+}
+
 /* The image's colours for this screen, once per image (and background). */
 static void img_colours(vr_render *r, const vt_image_view *v)
 {
@@ -2586,6 +2783,11 @@ static void img_colours(vr_render *r, const vt_image_view *v)
     }
     r->img->map[0] = r->bg_ink & VR_INK_RGB ? img_pen_for(r, bgrgb) : (UBYTE)r->bg_ink;
     r->img_planes = r->img->map[0];
+    r->img->pic_cur = 0;
+    if (v->kitty && !r->few && r->cm && r->depth > 4 && (r->img->pic_cur = pic_slot(r, v)) != 0) {
+        r->img_planes |= (UBYTE)r->img->pic_cur->planes;
+        return;
+    }
     for (i = 1; i < v->npal; i++) {
         r->img->map[i] = img_pen_for(r, v->pal[i]);
         r->img_planes |= r->img->map[i];
@@ -2726,8 +2928,22 @@ static void img_write_idx(vr_render *r, const vt_image_view *v, LONG sx, LONG sy
     for (k = 0; k < h; k++) {
         src = v->pix + (sy + k) * v->w + sx;
         d = r->img_buf + k * stride;
-        for (j = 0; j < w; j++)
-            d[j] = r->img->map[src[j]];
+        if (r->img->pic_cur && r->img->pic_cur->rgbmem) {
+            struct vr_picslot *ps = r->img->pic_cur;
+            UBYTE *plan3 = ps->rgbmem + sizeof(pm_palette), *bc = plan3 + PP_BINS * 3;
+            const UBYTE *px = v->rgb + ((sy + k) * v->w + sx) * 3;
+            for (j = 0; j < w; j++)
+                d[j] = src[j] ? ps->cpen[pp_pen_bin(plan3, bc, (pm_palette *)ps->rgbmem, ps->usable, px + j * 3,
+                                                    (int)(sx + j), (int)(sy + k))]
+                              : r->img->map[0];
+        } else if (r->img->pic_cur) {
+            for (j = 0; j < w; j++)
+                d[j] = src[j] ? (UBYTE)pp_pen_at(&r->img->pic_cur->plan, src[j], (int)(sx + j), (int)(sy + k))
+                              : r->img->map[0];
+        } else {
+            for (j = 0; j < w; j++)
+                d[j] = r->img->map[src[j]];
+        }
     }
     if ((UBYTE)(r->img_planes & ~r->mask)) {
         /* planes not in use held zeros: drawing may start to include them */
@@ -3696,6 +3912,7 @@ static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1)
     if (r->hidden)
         return;
     has_img = vt_images(r->t) != 0; /* the one test a pass pays when there are none */
+    pic_sweep(r);
     want_direct = r->glyphs != 0;
     if (x1 > vis_cols(r))
         x1 = vis_cols(r);
