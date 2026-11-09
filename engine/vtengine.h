@@ -167,6 +167,13 @@ typedef struct vt_callbacks {
      * calls). background: MB was given (MF / default 0). The host must not
      * block: the notes are queued and played while output goes on. */
     void (*music)(void *user, const vt_note *notes, int n, int background);
+    /* RIPscrip level-9 block transfer (`!|9<ESC>` mode proto type res name): the BBS
+     * is about to send (mode 0) or wants (mode 1) a file. The engine does no I/O and
+     * does not touch the line: the host runs the transfer itself (the next bytes are
+     * the protocol's, not RIP's) and saves the file through vt_set_download_sink.
+     * name is the file name the BBS gave, reduced to a base name by the shared
+     * sanitiser ("" when it gave none or only a path). Unset: the command is ignored. */
+    void (*rip_block)(void *user, int mode, int proto, int type, const char *name);
 } vt_callbacks;
 
 /* vt_modes() bits the host needs for input. */
@@ -503,6 +510,9 @@ int vt_rip_take_dirty(vt_term *t, int *x0, int *y0, int *x1, int *y1);
  * handed to the reader is the sanitised name alone, no directory; the host resolves it. The
  * image release function (vt_set_image_decoder) must be set too, as for kitty t=f. */
 long vt_rip_icons(const vt_term *t);
+/* Level-9 block transfers (9<ESC>) handed to the host's rip_block callback since RIP was set
+ * (sentinel). */
+long vt_rip_blocks(const vt_term *t);
 /* RIP text font option (RIP-3b): 0 draws every BGI font with the 8x8 bitmap (the default), 1 draws
  * font styles 1..4 (triplex, small, sans-serif, gothic) as Hershey strokes. Call after vt_set_rip(t, 1);
  * it is kept across the canvas being rebuilt. vt_rip_stroke_glyphs: stroke glyphs drawn (sentinel). */
