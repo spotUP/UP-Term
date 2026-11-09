@@ -337,6 +337,7 @@ struct vt_term {
     char iname[96];            /* OSC 1337 File= name= value (base64), kept apart from str */
     int iname_n;
     vt_file_writer file_write; /* vt_set_download: inline=0 files */
+    vt_dl_sink dl_sink;        /* vt_set_download_sink: inline=0 files, host and name apart */
     char dl_host[32];          /* its <host> folder, sanitised */
     long kit_last_z;           /* z= of the last kitty placement (vt_kitty_last_z) */
     vt_u32 kit_ph;             /* placeholder cells resolved (vt_kitty_placeholders) */
@@ -6663,14 +6664,27 @@ void vt_set_file_reader(vt_term *t, vt_file_reader read, vt_file_unlinker unlink
     t->file_unlink = unlink_file;
 }
 
-void vt_set_download(vt_term *t, vt_file_writer write, const char *host)
+static void dl_set_host(vt_term *t, const char *host)
 {
     int n = 0;
-    t->file_write = write;
     for (; host && *host && n < (int)sizeof(t->dl_host) - 1; host++)
-        if (*host != '/' && *host != ':' && (vt_u8)*host >= 0x20 && (vt_u8)*host < 0x7F)
+        if (*host != '/' && *host != '\\' && *host != ':' && (vt_u8)*host >= 0x20 && (vt_u8)*host < 0x7F)
             t->dl_host[n++] = *host;
     t->dl_host[n] = 0;
+    if (!strcmp(t->dl_host, ".") || !strcmp(t->dl_host, ".."))
+        t->dl_host[0] = 0;
+}
+
+void vt_set_download(vt_term *t, vt_file_writer write, const char *host)
+{
+    t->file_write = write;
+    dl_set_host(t, host);
+}
+
+void vt_set_download_sink(vt_term *t, vt_dl_sink sink, const char *host)
+{
+    t->dl_sink = sink;
+    dl_set_host(t, host);
 }
 
 void vt_set_reflow(vt_term *t, int on)

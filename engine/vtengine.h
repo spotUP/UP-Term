@@ -417,11 +417,16 @@ void     vt_set_image_decoder(vt_term *t, vt_image_decoder decode, vt_image_rele
  * or no release function answers EBADF. t=s answers EBADF always. */
 typedef int (*vt_file_reader)(const char *path, long offset, long size, vt_u8 **buf, long *n);
 typedef int (*vt_file_unlinker)(const char *path);
-/* iTerm2 OSC 1337 File= with inline=0 is a file to keep. write(path, data, n)
- * saves it (return 1 when saved) at "ENVARC:UP-Term/Downloads/<host>/<name>"; the
- * engine sanitises <name> (base name only, no '/' or ':') and <host>, drops a
- * file over 4 MB (and tells the host through notify) and does no I/O itself.
- * Without a writer the file is dropped. host NULL or "" is "local". */
+/* iTerm2 OSC 1337 File= with inline=0 is a file to keep. The engine sanitises <name>
+ * (base name only, no '/' or ':') and <host>, drops a file over 4 MB (and tells the
+ * host through notify) and does no I/O itself. host NULL or "" is "local".
+ * Preferred sink: vt_dl_sink hands the host the sanitised host and the sanitised name
+ * SEPARATELY, so the host builds the path (the engine knows no directory layout).
+ * Return 1 when saved. Set with vt_set_download_sink. */
+typedef int (*vt_dl_sink)(const char *host, const char *name, const vt_u8 *data, long len);
+void     vt_set_download_sink(vt_term *t, vt_dl_sink sink, const char *host);
+/* Older writer: path is the relative "<host>/<name>" (no root; the host adds it). Used
+ * only while no sink is set. Without a sink or a writer the file is dropped. */
 typedef int (*vt_file_writer)(const char *path, const vt_u8 *data, long n);
 void     vt_set_download(vt_term *t, vt_file_writer write, const char *host);
 void     vt_set_file_reader(vt_term *t, vt_file_reader read, vt_file_unlinker unlink_file);

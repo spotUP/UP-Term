@@ -246,8 +246,8 @@ static void names_are_base_names_only(void)
     CHECK(!strcmp(o, "download"));
     iterm_name("Zm9v", 4, o, sizeof(o));
     CHECK(!strcmp(o, "foo"));
-    iterm_path(o, 20, "h", "verylongname.txt"); /* cut, always terminated */
-    CHECK_INT(strlen(o), 19);
+    iterm_path(o, 12, "h", "verylongname.txt"); /* cut, always terminated */
+    CHECK_INT(strlen(o), 11);
 }
 
 static void inline_zero_is_saved_through_the_host_writer(void)
@@ -259,7 +259,7 @@ static void inline_zero_is_saved_through_the_host_writer(void)
     /* name = "dir/note.txt", payload "hello" */
     put_file(t, "name=ZGlyL25vdGUudHh0;inline=0;size=5", "aGVsbG8=", "\007");
     CHECK_INT(sv_calls, 1);
-    CHECK(!strcmp(sv_path, "ENVARC:UP-Term/Downloads/amiga1/note.txt"));
+    CHECK(!strcmp(sv_path, "amiga1/note.txt"));
     CHECK_INT(sv_len, 5);
     CHECK(!memcmp(sv_data, "hello", 5));
     CHECK_INT(vt_iterm_placed(t), 0);
@@ -271,12 +271,51 @@ static void inline_zero_is_saved_through_the_host_writer(void)
     vt_set_download(t, cap_writer, 0);
     put_file(t, "inline=0", "aGVsbG8=", "\033\\");
     CHECK_INT(sv_calls, 1);
-    CHECK(!strcmp(sv_path, "ENVARC:UP-Term/Downloads/local/download"));
+    CHECK(!strcmp(sv_path, "local/download"));
     /* without a writer nothing is saved */
     sv_reset();
     vt_set_download(t, 0, "x");
     put_file(t, "inline=0", "aGVsbG8=", "\007");
     CHECK_INT(sv_calls, 0);
+    vt_free(t);
+}
+
+static char sk_host[64], sk_name[64];
+static int sk_calls;
+static int cap_sink(const char *host, const char *name, const vt_u8 *data, long n)
+{
+    sk_calls++;
+    strncpy(sk_host, host, sizeof(sk_host) - 1);
+    strncpy(sk_name, name, sizeof(sk_name) - 1);
+    return data && n == 5;
+}
+
+static void the_download_sink_gets_host_and_name_apart(void)
+{
+    vt_term *t = iterm_term(20, 10);
+    sk_calls = 0;
+    sv_reset();
+    vt_set_download_sink(t, cap_sink, "am/ig:a1");
+    vt_set_download(t, cap_writer, "am/ig:a1"); /* the sink wins while set */
+    put_file(t, "name=ZGlyL25vdGUudHh0;inline=0;size=5", "aGVsbG8=", "\007");
+    CHECK_INT(sk_calls, 1);
+    CHECK_INT(sv_calls, 0);
+    CHECK(!strcmp(sk_host, "amiga1"));
+    CHECK(!strcmp(sk_name, "note.txt"));
+    /* traversal: the name is cut to its base, a host of ".." or "\\.." is not a folder */
+    vt_set_download_sink(t, cap_sink, "..");
+    put_file(t, "name=Li4vLi4vZXRjOnBhc3N3ZA==;inline=0", "aGVsbG8=", "\007"); /* ../../etc:passwd */
+    CHECK_INT(sk_calls, 2);
+    CHECK(!strcmp(sk_host, "local"));
+    CHECK(!strcmp(sk_name, "passwd"));
+    put_file(t, "name=Li4=;inline=0", "aGVsbG8=", "\007"); /* .. */
+    CHECK(!strcmp(sk_name, "download"));
+    /* sink removed: the old writer path works again, relative */
+    vt_set_download_sink(t, 0, "h");
+    put_file(t, "name=Zm9v;inline=0", "aGVsbG8=", "\007");
+    CHECK_INT(sk_calls, 3);
+    CHECK_INT(sv_calls, 1);
+    CHECK(!strcmp(sv_path, "h/foo"));
     vt_free(t);
 }
 
@@ -320,6 +359,7 @@ void suite_iterm2(void)
 {
     names_are_base_names_only();
     inline_zero_is_saved_through_the_host_writer();
+    the_download_sink_gets_host_and_name_apart();
     a_download_over_four_megabytes_is_dropped();
     report_cell_size_answers_height_then_width();
     parser_reads_every_argument();
