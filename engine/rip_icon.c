@@ -40,8 +40,9 @@ int rip_icon_decode(const unsigned char *d, long n, unsigned char **pix, int *w,
     unsigned char *o;
     if (!d || n < 4 || n > RIP_ICON_FILE_MAX)
         return 0;
-    iw = d[0] | (d[1] << 8);
-    ih = d[2] | (d[3] << 8);
+    /* Borland getimage header (the RIPscrip .ICN format): width - 1, height - 1, little-endian */
+    iw = (d[0] | (d[1] << 8)) + 1;
+    ih = (d[2] | (d[3] << 8)) + 1;
     if (iw < 1 || ih < 1 || iw > CV_RIP_W || ih > CV_RIP_H)
         return 0;
     rb = (iw + 7) / 8;

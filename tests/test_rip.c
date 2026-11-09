@@ -489,7 +489,7 @@ static void reach_rip_through_vt_write(void)
 
 /* ---- RIP-7: clipboard and icons ---- */
 #define ICN_GOLD 653013169UL /* canvas checksum after the 1I fixture */
-static const unsigned char icn_file[] = { 8, 0, 2, 0, 0xF0, 0x0F, 0xAA, 0x00, 0xFF, 0xFF, 0xFF, 0xFF };
+static const unsigned char icn_file[] = { 7, 0, 1, 0, /* 8x2: header holds width-1, height-1 */ 0xF0, 0x0F, 0xAA, 0x00, 0xFF, 0xFF, 0xFF, 0xFF };
 static int icn_reads, icn_frees;
 static char icn_last[64];
 
