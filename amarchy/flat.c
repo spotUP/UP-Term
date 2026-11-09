@@ -494,7 +494,7 @@ static void clone_stack_note(flatshared *r, int after)
 }
 
 /* DOPUS-ARROW-WHICH: the arrow images made after flat started (flat_img_record holds the rule). Hooks run in many tasks, so the
- * table is touched under Forbid as the other shared tables are; the walk is 32 entries. A full table leaves the image ROM-drawn. */
+ * table is touched under Forbid as the other shared tables are; the walk is FLAT_IMG_RECS (128) entries: each app scroller window holds 2-4 arrow images. A full table leaves the image ROM-drawn. */
 static flat_img_rec img_tab[FLAT_IMG_RECS];
 static int img_lookup(Object *obj, ULONG *size)
 {
