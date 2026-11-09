@@ -53,6 +53,7 @@ struct rip_ad {
     int nhold;
     vt_u8 hold[16]; /* a possible ESC [ digits ! , kept across vt_feed calls */
     int stroke;     /* host option: Hershey strokes for fonts 1..4 (vt_set_rip_stroke) */
+    long blocks;    /* level-9 transfers handed to cb.rip_block (sentinel) */
     int moved;      /* text went to the engine since the tiles were last put right */
     struct rip_mouse mouse;
     struct rip_clip clip; /* 1C / 1I clipboard */
@@ -207,6 +208,15 @@ static void rip_on_cmd(void *ud, const struct rip_cmd *c)
     vt_term *t = (vt_term *)ud;
     struct rip_ad *ad = t->rip;
     struct cv *cv;
+    if (c->level == 9 && c->ch == 27) { /* block transfer: the host runs the protocol */
+        char name[RIP_TEXT_MAX + 1];
+        if (t->cb.rip_block && c->nargs >= 3) {
+            dl_clean_name((const char *)c->text, c->ntext, name, (int)sizeof name, 0);
+            ad->blocks++;
+            t->cb.rip_block(t->user, (int)c->arg[0], (int)c->arg[1], (int)c->arg[2], name);
+        }
+        return;
+    }
     if (c->level == 0 && (c->ch == 'w' || c->ch == '*' || c->ch == 'e' || c->ch == 'g' || c->ch == 'H' ||
                           c->ch == '>')) {
         if (c->ch == '*')
@@ -513,6 +523,11 @@ long vt_rip_icons(const vt_term *t)
 {
     (void)t;
     return rip_icons_drawn();
+}
+
+long vt_rip_blocks(const vt_term *t)
+{
+    return t->rip ? ((struct rip_ad *)t->rip)->blocks : 0;
 }
 
 long vt_rip_commands(const vt_term *t)
