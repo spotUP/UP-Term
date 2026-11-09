@@ -16,6 +16,9 @@ static const slash_value v_split[] = {
     { "off", MENU_SET_SPLIT_OFF, 1 }, { "layout", MENU_SET_SPLIT_LAYOUT, 1 },
     { "programs", MENU_SET_SPLIT_PROGRAMS, 1 }, { 0, 0, 0 }
 };
+static const slash_value v_rip[] = {
+    { "off", MENU_SET_RIP_OFF, 1 }, { "on", MENU_SET_RIP_ON, 1 }, { "auto", MENU_SET_RIP_AUTO, 1 }, { 0, 0, 0 }
+};
 static const slash_value v_bold[] = ONOFF(MENU_SET_BOLD);
 static const slash_value v_meta[] = {
     { "amiga", MENU_SET_META_AMIGA, 1 }, { "alt", MENU_SET_META_ALT, 1 }, { 0, 0, 0 }
@@ -127,6 +130,8 @@ static const slash_def table[] = {
       "programs' clipboard access (OSC 52)" },
     { "reflow", SL_CHOICE, 0, 0, v_reflow, "on | off", "a resize re-wraps the lines and the scrollback" },
     { "reset", SL_ACTION, MENU_RESET, 0, 0, "", "reset the terminal (RIS)" },
+    { "rip", SL_CHOICE, 0, 0, v_rip, "off | on | auto",
+      "RIP file transfers: off, on, or auto (also found in a stream that did not announce RIP)" },
     { "save", SL_ACTION, MENU_SET_SAVE, 0, 0, "", "save the settings to the profile" },
     { "screen", SL_CHOICE, 0, 0, v_screen, "workbench | own | fullscreen",
       "the window on the Workbench, a screen of its own, or full screen" },

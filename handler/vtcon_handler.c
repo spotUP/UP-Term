@@ -74,6 +74,8 @@
 #include "upactive.h"
 #include "../config/keymap_load.h"
 #include "slash.h"
+#include "ripglue.h"
+#include "dlsave.h"
 #include "winspec.h"
 #include "tabprog.h"
 #include "tabslot.h"
@@ -280,6 +282,7 @@ typedef struct con {
     struct watch_msg *watch;
     struct Process *watch_task;
     int watch_held;              /* the window has the message (the watcher waits for it) */
+    struct rip_state *rs;        /* RIP-7b: made when the profile's rip setting is not Off (rip_apply) */
     upconf *conf;                /* the user config, read at startup (config/upconf.h) */
     struct Window *foreign;      /* WINDOW 0xaddr: not ours to open or close */
     struct MsgPort *comp_port;   /* Tab completion and command lookups answer here */
@@ -414,6 +417,36 @@ static void ua_set(con *c, int on);
 #define CON_PROF_ALLOWANCE 0
 #endif
 typedef char con_size_bound[sizeof(con) <= 26000 + CON_PROF_ALLOWANCE ? 1 : -1];
+/* the window's RIP state: one allocation, so a window with rip Off pays 4 bytes (the con size bound) */
+typedef struct rip_state {
+    int mode;                 /* the profile's rip setting: PREFS_RIP_OFF / _ON / _AUTO */
+    ripglue rg;               /* the routing state of ACTION_WRITE (xfer: a transfer owns the stream) */
+    struct rip_ctx *ctx;      /* the transfer worker (rip_start); 0 when none */
+    struct MsgPort *port;     /* the worker's messages and the replies to the chunks we sent it */
+    int cancel;               /* consecutive Ctrl-X typed during a transfer (5 cancel it) */
+} rip_state;
+
+static int rip_busy(const con *c)
+{
+    return c->rs && c->rs->rg.xfer;
+}
+
+/* The profile's setting to the engine (open_window, a live profile change). */
+static int rip_mode_of(const con *c)
+{
+    return c->rs ? c->rs->mode : PREFS_RIP_OFF;
+}
+
+static void rip_apply(con *c, int mode)
+{
+    if (mode && !c->rs)
+        c->rs = (rip_state *)AllocVec(sizeof(rip_state), MEMF_PUBLIC | MEMF_CLEAR);
+    if (c->rs)
+        c->rs->mode = mode;
+    if (c->w.t)
+        vt_set_rip(c->w.t, mode);
+}
+
 typedef char upconf_size_bound[sizeof(upconf) <= 18500 ? 1 : -1];
 typedef char complete_req_size_bound[sizeof(struct complete_req) <= 1024 ? 1 : -1];
 
@@ -1016,6 +1049,8 @@ static void h_key(void *u, const vt_u8 *b, int n, long key, int mods)
 static void h_pasted(void *u, const vt_u8 *b, int n, long key)
 {
     con *c = (con *)u;
+    if (rip_busy(c))
+        return; /* a RIP transfer owns the stream */
     if (to_tty(c, b, n))
         return;
     if (c->raw)
@@ -1058,8 +1093,18 @@ static void h_clipped(void *u, int what)
     stat_note((con *)u, what == VTWIN_CLIP_COPY ? STATE_COPY : STATE_PASTE, 0, 0);
 }
 
+/* A level-9 RIP block command: take it when the glue accepts it (a BBS send), stop the engine at the command. */
+static void h_rip_block(void *u, int mode, int proto, int type, const char *name)
+{
+    con *c = (con *)u;
+    if (type < 0 || !c->rs)
+        return; /* (a RIP number is never negative; no state: rip is Off) */
+    if (ripglue_arm(&c->rs->rg, mode, proto, name))
+        vt_feed_stop(c->w.t);
+}
+
 static const vtwin_host host = { h_reply, h_input, h_key, h_pasted, h_raw, h_resized, h_titled, h_open_link,
-                                 h_knob, h_clipped };
+                                 h_knob, h_clipped, h_rip_block };
 
 /* FONTS:<name>.ttf is there (NERD-FALLBACK-DEFAULT: the font-fallback default is used only when it is).
  * A DOS call: only config_worker and watch_worker call it. On the handler process a Lock does DoPkt on
@@ -1787,6 +1832,7 @@ static void apply_profile(con *c)
         c->sbar_on = sd_conf_key_index("scrollbar", c->conf, p);
     v = upconf_str(c->conf, p, "completion", 0);
     c->kingcon = v && str_ieq(v, "kingcon");
+    rip_apply(c, sd_conf_key_index("rip", c->conf, p));
     v = upconf_str(c->conf, p, "split-restore", 0);
     c->split_restore = !v ? PREFS_SPLIT_OFF : str_ieq(v, "programs") ? PREFS_SPLIT_PROGRAMS
                      : str_ieq(v, "layout") ? PREFS_SPLIT_LAYOUT : PREFS_SPLIT_OFF;
@@ -2006,7 +2052,7 @@ static int kc_cyc_key(con *c, const vt_u8 *b, int n, long key, int mods);
 static void kc_menu(con *c, int mode);
 static int slash_run(con *c, const char *line, int len, char *ans, int cap, int typed);
 static void answer_print(con *c, const char *ans);
-static void output(con *c, const vt_u8 *b, long n);
+static long output(con *c, const vt_u8 *b, long n);
 static int find_open(con *c);
 static void close_gadget(con *c);
 
@@ -2099,7 +2145,7 @@ static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_SUB, (STRPTR)"Not told", 0, CHECKIT, 7, (APTR)MENU_SET_COLORS_NONE },
     { NM_ITEM, (STRPTR)"Copy on select", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_COPY },
     { NM_ITEM, (STRPTR)"Wheel scrolls", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_WHEEL },
-    { NM_ITEM, (STRPTR)"Reflow on resize", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_REFLOW },
+    { NM_ITEM, (STRPTR)"Reflow text", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_REFLOW },
     { NM_ITEM, (STRPTR)"Scroll bar", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_SCROLLBAR },
     { NM_ITEM, (STRPTR)"Backspace key sends", 0, 0, 0, 0 },
     { NM_SUB, (STRPTR)"Delete", 0, CHECKIT, 2, (APTR)MENU_SET_BS_DEL },
@@ -2387,6 +2433,7 @@ static void window_fields(con *c, prefs_fields *f)
     f->blend_dest = c->w.blend_dest != 0;
     f->pad_extend = c->w.pad_extend != 0;
     f->split_restore = c->split_restore;
+    f->rip = rip_mode_of(c);
     f->clipboard = c->w.clip_access == 0 ? PREFS_CLIP_OFF
                  : (c->w.clip_access & VT_CLIP_READ) ? PREFS_CLIP_READ_WRITE : PREFS_CLIP_WRITE;
     copy_str(f->linkopen, c->link_open, sizeof(f->linkopen));
@@ -2606,7 +2653,7 @@ static int theme_apply(con *c, const char *text, long len)
 
 /* ---- /theme's list (W30) ------------------------------------------------------ */
 
-static void output(con *c, const vt_u8 *b, long n);
+static long output(con *c, const vt_u8 *b, long n);
 
 /* The reader's empty line, held while the list was up: a shell shows its
  * prompt where the list was. */
@@ -2916,6 +2963,9 @@ static int menu_setting(con *c, LONG id, int on)
         c->split_restore = PREFS_SPLIT_OFF;
         splits_write(c, 0, 0); /* off: no saved split waits for the next window */
         break;
+    case MENU_SET_RIP_OFF: rip_apply(c, PREFS_RIP_OFF); break;
+    case MENU_SET_RIP_ON: rip_apply(c, PREFS_RIP_ON); break;
+    case MENU_SET_RIP_AUTO: rip_apply(c, PREFS_RIP_AUTO); break;
     case MENU_SET_SPLIT_LAYOUT: c->split_restore = PREFS_SPLIT_LAYOUT; break;
     case MENU_SET_SPLIT_PROGRAMS: c->split_restore = PREFS_SPLIT_PROGRAMS; break;
     case MENU_SET_UNIX:
@@ -3482,6 +3532,8 @@ have_window:
     DBG("vt_new", c->w.t, 0);
     vt_set_image_decoder(c->w.t, png_decode, png_release);
     vt_set_file_reader(c->w.t, kfile_read, kfile_unlink);
+    vt_set_download_sink(c->w.t, dl_save, "local");
+    rip_apply(c, rip_mode_of(c));
     pens_tell(c);
     menu_add(c, win);
     sbar_apply(c); /* our own sizable window: the scroll bar in its border */
@@ -3806,23 +3858,393 @@ static void wb_msgs(con *c)
 
 /* ---- output ---------------------------------------------------------------- */
 
-static void output(con *c, const vt_u8 *b, long n)
+static long output(con *c, const vt_u8 *b, long n)
 {
 #if defined(VTCON_DEBUG) || defined(VTCON_PROF)
     struct EClockVal e0, e1;
     ReadEClock(&e0);
 #endif
+    long fed;
     if (!c->w.t)
-        return;
+        return n;
     if (!c->le.len)
         c->le.started = 0; /* the next line starts wherever this output ends */
-    vtwin_write(&c->w, b, n);
+    fed = vtwin_write(&c->w, b, n);
 #if defined(VTCON_DEBUG) || defined(VTCON_PROF)
     ReadEClock(&e1);
     c->prof_out += e1.ev_lo - e0.ev_lo;
     c->prof_writes++;
     c->prof_bytes += n;
 #endif
+    return fed;
+}
+
+/* ---- RIP-7b: a block transfer inside the output stream ----------------------
+ * A level-9 RIP command (rip_block) stops the engine at the command; the bytes that follow are a
+ * ZMODEM stream. ripglue_write (host-tested) decides per ACTION_WRITE buffer: draw it, hold it for
+ * the worker, or start the worker. The worker ("vtcon rip receive") runs ripglue_run (ripxfer_receive)
+ * on a zm_line: it reads the held packets as chunks and sends its answers back as messages, which
+ * the window puts in the console input (h_input). A packet is replied to the client when the worker
+ * has used its bytes up (the chunk comes back replied), so the sender is held back as the transfer
+ * runs. The worker owns its own message port and timer; it ends with ReplyMsg of the start message,
+ * after which the window frees the context. */
+
+enum { RM_START = 1, RM_READY, RM_CHUNK, RM_SEND, RM_DONE, RM_QUIT };
+
+struct rip_msg {
+    struct Message msg;
+    int kind;
+    struct DosPacket *pkt;     /* RM_CHUNK: the packet replied when the chunk is used up (0: none) */
+    const unsigned char *p;    /* RM_CHUNK: the bytes */
+    long n;                    /* RM_CHUNK / RM_SEND: how many */
+    unsigned char data[1];     /* RM_SEND: the bytes to send to the BBS (n of them) */
+};
+
+typedef struct rip_ctx {
+    struct rip_msg start, ready, done, quit; /* embedded: the context outlives them all */
+    struct MsgPort *hport;     /* the window's rip_state port */
+    struct MsgPort *wport;     /* the worker's: made by the worker, 0 when it could not */
+    struct Process *task;
+    struct MsgPort *tport;
+    struct timerequest *tio;
+    int tbusy, broke, got_quit;
+    struct rip_msg *cur;       /* the chunk being read (replied when the next is wanted) */
+    ripglue g;
+    char host[DL_LEAF_MAX + 8];
+    int result, delivered;
+    int is_ready;              /* window side: the READY message came */
+} rip_ctx;
+
+static void rw_release(rip_ctx *x)
+{
+    if (x->cur) {
+        ReplyMsg(&x->cur->msg);
+        x->cur = 0;
+    }
+}
+
+static void rw_stop_timer(rip_ctx *x)
+{
+    if (x->tbusy) {
+        AbortIO((struct IORequest *)x->tio);
+        WaitIO((struct IORequest *)x->tio);
+        x->tbusy = 0;
+    }
+}
+
+static int rw_next(void *u, int ms, const unsigned char **p, long *n)
+{
+    rip_ctx *x = (rip_ctx *)u;
+    ULONG wsig = 1UL << x->wport->mp_SigBit, tsig = 1UL << x->tport->mp_SigBit, got;
+    struct rip_msg *m;
+    rw_release(x);
+    for (;;) {
+        while ((m = (struct rip_msg *)GetMsg(x->wport)) != 0) {
+            if (m->kind == RM_CHUNK) {
+                if (m->n <= 0) {
+                    ReplyMsg(&m->msg);
+                    continue;
+                }
+                rw_stop_timer(x);
+                x->cur = m;
+                *p = m->p;
+                *n = m->n;
+                return 1;
+            }
+            if (m->kind == RM_QUIT)
+                x->got_quit = 1;
+        }
+        if (x->broke || x->got_quit) {
+            rw_stop_timer(x);
+            return -1;
+        }
+        if (!x->tbusy && ms > 0) {
+            x->tio->tr_node.io_Command = TR_ADDREQUEST;
+            x->tio->tr_time.tv_secs = (ULONG)ms / 1000;
+            x->tio->tr_time.tv_micro = ((ULONG)ms % 1000) * 1000;
+            SendIO((struct IORequest *)x->tio);
+            x->tbusy = 1;
+        }
+        got = Wait(wsig | tsig | SIGBREAKF_CTRL_C);
+        if (got & SIGBREAKF_CTRL_C)
+            x->broke = 1;
+        if ((got & tsig) && GetMsg(x->tport)) {
+            x->tbusy = 0;
+            return 0;
+        }
+    }
+}
+
+static int rw_send(void *u, const unsigned char *b, long n)
+{
+    rip_ctx *x = (rip_ctx *)u;
+    struct rip_msg *m = (struct rip_msg *)AllocVec(sizeof(*m) + (ULONG)n, MEMF_PUBLIC | MEMF_CLEAR);
+    if (!m)
+        return -1;
+    m->kind = RM_SEND;
+    m->n = n;
+    m->msg.mn_Length = (UWORD)sizeof(*m);
+    memcpy(m->data, b, (size_t)n);
+    PutMsg(x->hport, &m->msg);
+    return 0;
+}
+
+static void rip_worker(void)
+{
+    struct Process *me = (struct Process *)FindTask(0);
+    rip_ctx *x;
+    struct rip_msg *st;
+    ripglue_io io;
+    struct rip_msg *m;
+
+    WaitPort(&me->pr_MsgPort);
+    st = (struct rip_msg *)GetMsg(&me->pr_MsgPort);
+    x = (rip_ctx *)st->p; /* the start message carries the context */
+    x->wport = CreateMsgPort();
+    x->tport = CreateMsgPort();
+    if (x->tport)
+        x->tio = (struct timerequest *)CreateIORequest(x->tport, sizeof(struct timerequest));
+    if (x->tio && OpenDevice((STRPTR)"timer.device", UNIT_VBLANK, (struct IORequest *)x->tio, 0) != 0) {
+        DeleteIORequest((struct IORequest *)x->tio);
+        x->tio = 0;
+    }
+    if (!x->wport || !x->tio) {
+        if (x->wport)
+            DeleteMsgPort(x->wport);
+        if (x->tport)
+            DeleteMsgPort(x->tport);
+        x->wport = 0;
+        x->ready.kind = RM_READY;
+        PutMsg(x->hport, &x->ready.msg);
+        Forbid(); /* the window frees x on this reply: end before it can run on */
+        ReplyMsg(&st->msg);
+        return;
+    }
+    x->ready.kind = RM_READY;
+    PutMsg(x->hport, &x->ready.msg);
+    io.next = rw_next;
+    io.send = rw_send;
+    io.user = x;
+    x->g.io = io;
+    x->result = ripglue_run(&x->g, dl_save, x->host, &x->delivered);
+    rw_release(x);
+    rw_stop_timer(x);
+    x->done.kind = RM_DONE;
+    PutMsg(x->hport, &x->done.msg);
+    /* packets that arrive until the window has seen DONE and sent QUIT: used up at once */
+    while (!x->got_quit) {
+        WaitPort(x->wport);
+        while ((m = (struct rip_msg *)GetMsg(x->wport)) != 0) {
+            if (m->kind == RM_QUIT)
+                x->got_quit = 1;
+            else
+                ReplyMsg(&m->msg);
+        }
+    }
+    CloseDevice((struct IORequest *)x->tio);
+    DeleteIORequest((struct IORequest *)x->tio);
+    DeleteMsgPort(x->tport);
+    DeleteMsgPort(x->wport);
+    Forbid();
+    ReplyMsg(&st->msg);
+}
+
+/* the packet, replied now or when the worker has used its bytes up */
+static void rip_chunk(con *c, struct DosPacket *p, const unsigned char *b, long n)
+{
+    struct rip_msg *m = 0;
+    if (n > 0 && c->rs && c->rs->ctx && c->rs->ctx->wport)
+        m = (struct rip_msg *)AllocVec(sizeof(*m), MEMF_PUBLIC | MEMF_CLEAR);
+    if (!m) {
+        if (p)
+            reply(p, p->dp_Arg3, 0); /* nothing to read it (or no memory): the bytes are dropped */
+        return;
+    }
+    m->kind = RM_CHUNK;
+    m->pkt = p;
+    m->p = b;
+    m->n = n;
+    m->msg.mn_ReplyPort = c->rs->port;
+    m->msg.mn_Length = (UWORD)sizeof(*m);
+    PutMsg(c->rs->ctx->wport, &m->msg);
+}
+
+static void rip_msgs(con *c)
+{
+    struct rip_msg *m;
+    if (!c->rs || !c->rs->port)
+        return;
+    while ((m = (struct rip_msg *)GetMsg(c->rs->port)) != 0) {
+        rip_ctx *x = c->rs->ctx;
+        if (m->msg.mn_Node.ln_Type == NT_REPLYMSG) {
+            if (m->kind == RM_CHUNK) {
+                if (m->pkt) {
+                    reply(m->pkt, m->pkt->dp_Arg3, 0);
+                }
+                FreeVec(m);
+            } else if (m->kind == RM_START) {
+                FreeVec(x); /* the worker is gone */
+                c->rs->ctx = 0;
+            }
+            continue;
+        }
+        if (m->kind == RM_READY) {
+            x->is_ready = 1;
+        } else if (m->kind == RM_SEND) {
+            h_input(c, m->data, m->n);
+            FreeVec(m);
+        } else if (m->kind == RM_DONE) {
+            DBG("rip done", x->result, x->delivered);
+            ripglue_done(&c->rs->rg); /* the stream is the terminal's again */
+            c->rs->cancel = 0;
+            c->tty_ocol = 0;
+            PutMsg(x->wport, &x->quit.msg);
+        }
+    }
+}
+
+/* The buffer fired an accepted block: start the worker; rest / restn are the bytes after the command
+ * (in the packet's buffer: the packet p is replied when they are used up). 0: no worker (the
+ * transfer is dropped, the stream is the terminal's again). */
+static int rip_start(con *c, struct DosPacket *p, const unsigned char *rest, long restn)
+{
+    rip_ctx *x = (rip_ctx *)AllocVec(sizeof(*x), MEMF_PUBLIC | MEMF_CLEAR);
+    struct Process *w;
+    if (!c->rs->port)
+        c->rs->port = CreateMsgPort();
+    if (!x || !c->rs->port || c->rs->ctx) {
+        if (x)
+            FreeVec(x);
+        goto fail;
+    }
+    x->hport = c->rs->port;
+    strncpy(x->g.name, c->rs->rg.name, RIPGLUE_NAME - 1);
+    dl_host_of_cwd(vt_cwd(c->w.t), x->host, (int)sizeof(x->host));
+    if (!x->host[0])
+        strcpy(x->host, "local");
+    w = CreateNewProcTags(NP_Entry, (ULONG)rip_worker, NP_Name, (ULONG)"vtcon rip receive",
+                          NP_StackSize, 16384, NP_Input, 0, NP_Output, 0,
+                          NP_CloseInput, FALSE, NP_CloseOutput, FALSE, NP_ConsoleTask, 0, TAG_DONE);
+    if (!w) {
+        FreeVec(x);
+        goto fail;
+    }
+    c->rs->ctx = x;
+    x->task = w;
+    x->start.kind = RM_START;
+    x->start.p = (const unsigned char *)x;
+    x->start.msg.mn_ReplyPort = c->rs->port;
+    x->start.msg.mn_Length = (UWORD)sizeof(x->start);
+    PutMsg(&w->pr_MsgPort, &x->start.msg);
+    while (c->rs->ctx && !x->is_ready) { /* the worker makes its port first (it does no DOS call before) */
+        WaitPort(c->rs->port);
+        rip_msgs(c);
+    }
+    if (!c->rs->ctx)
+        goto fail;
+    if (!x->wport) { /* it could not: it ends; the reply to its start message frees x */
+        while (c->rs->ctx) {
+            WaitPort(c->rs->port);
+            rip_msgs(c);
+        }
+        goto fail;
+    }
+    DBG("rip start", restn, 0);
+    rip_chunk(c, p, rest, restn);
+    return 1;
+fail:
+    ripglue_done(&c->rs->rg);
+    return 0;
+}
+
+static void rip_stop(con *c)
+{
+    if (!c->rs)
+        return;
+    if (c->rs->ctx) {
+        Signal(&c->rs->ctx->task->pr_Task, SIGBREAKF_CTRL_C); /* next() ends the transfer; DONE follows */
+        while (c->rs->ctx) {
+            WaitPort(c->rs->port);
+            rip_msgs(c);
+        }
+    }
+    if (c->rs->port) {
+        DeleteMsgPort(c->rs->port);
+        c->rs->port = 0;
+    }
+    FreeVec(c->rs);
+    c->rs = 0;
+}
+
+/* A key while a transfer owns the stream: dropped. Five Ctrl-X in a row cancel it, as ZMODEM's own cancel. */
+static void rip_key(con *c, const vt_u8 *b, int n)
+{
+    if (!c->rs)
+        return;
+    if (n == 1 && b[0] == 0x18) {
+        if (++c->rs->cancel >= 5 && c->rs->ctx)
+            Signal(&c->rs->ctx->task->pr_Task, SIGBREAKF_CTRL_C);
+    } else
+        c->rs->cancel = 0;
+}
+
+static long rip_feed(void *u, const unsigned char *b, long n)
+{
+    return output((con *)u, b, n);
+}
+
+/* The routing decision of ripglue_write; with no RIP state (rip Off) the buffer is just drawn. */
+static int rip_route(con *c, const unsigned char *b, long n, const unsigned char **rest, long *restn)
+{
+    if (!c->rs) {
+        output(c, b, n);
+        return RIPGLUE_FED;
+    }
+    return ripglue_write(&c->rs->rg, rip_feed, c, b, n, rest, restn);
+}
+
+/* ACTION_WRITE of one buffer (p replied here or by the worker). */
+static void rip_write(con *c, struct DosPacket *p)
+{
+    const unsigned char *b = (const unsigned char *)p->dp_Arg2, *rest;
+    LONG left = p->dp_Arg3;
+    long restn;
+    int r;
+    if (rip_busy(c)) { /* held: ZMODEM data is not OPOST-translated, not drawn */
+        rip_chunk(c, p, b, left);
+        return;
+    }
+    if (tty_active(c) && (c->ld.t.c_oflag & LD_OPOST)) {
+        /* OPOST in chunks: a byte may become 8 (a tab under OXTABS) */
+        while (left > 0) {
+            LONG k = left > (LONG)sizeof(c->obuf) / 8 ? (LONG)sizeof(c->obuf) / 8 : left;
+            int ocol0 = c->tty_ocol;
+            long m = ld_output(&c->ld.t, b, k, c->obuf, &c->tty_ocol);
+            r = rip_route(c, c->obuf, m, &rest, &restn);
+            if (r == RIPGLUE_START) {
+                /* the engine took (m - restn) translated bytes: the raw bytes they came from */
+                long fed = m - restn, got = 0;
+                LONG used = 0;
+                int col = ocol0;
+                unsigned char tmp[16];
+                while (used < k && got < fed) {
+                    got += ld_output(&c->ld.t, b + used, 1, tmp, &col);
+                    used++;
+                }
+                if (rip_start(c, p, b + used, left - used)) /* the rest, raw, in the packet's buffer */
+                    return;
+                break; /* no worker: the stream stays the terminal's (the rest is dropped) */
+            }
+            b += k;
+            left -= k;
+        }
+    } else {
+        r = rip_route(c, b, left, &rest, &restn);
+        if (r == RIPGLUE_START && rip_start(c, p, rest, restn))
+            return;
+    }
+    reply(p, p->dp_Arg3, 0);
+    service_reads(c); /* the output may have queued a report */
 }
 
 /* ---- reads ------------------------------------------------------------------ */
@@ -3905,7 +4327,7 @@ static void hold_task(con *c, struct Task *t, int on)
 /* Answer queued reads with what the input holds. */
 /* ---- termios mode ----------------------------------------------------------- */
 
-static void output(con *c, const vt_u8 *b, long n);
+static long output(con *c, const vt_u8 *b, long n);
 static void send_break(con *c, ULONG sig);
 
 static void tty_echo(void *u, const unsigned char *s, int n)
@@ -5514,6 +5936,10 @@ static void ahead_feed(con *c)
  * line discipline, the line editor or the raw stream. */
 static void typed(con *c, const vt_u8 *out, int n, long key, int mods)
 {
+    if (rip_busy(c)) { /* a RIP transfer owns the stream */
+        rip_key(c, out, n);
+        return;
+    }
     if (tty_active(c)) {
         /* a Unix program's terminal: the line discipline takes the key (ISIG
          * makes ^C a break, ^\\ and ^Z signals; the rest is input) */
@@ -8585,21 +9011,7 @@ static void packet(con *c, struct DosPacket *p)
             reply(p, -1, ERROR_NO_FREE_STORE);
             return;
         }
-        if (tty_active(c) && (c->ld.t.c_oflag & LD_OPOST)) {
-            /* OPOST in chunks: a byte may become 8 (a tab under OXTABS) */
-            const unsigned char *b = (const unsigned char *)p->dp_Arg2;
-            LONG left = p->dp_Arg3;
-            while (left > 0) {
-                LONG k = left > (LONG)sizeof(c->obuf) / 8 ? (LONG)sizeof(c->obuf) / 8 : left;
-                output(c, c->obuf, ld_output(&c->ld.t, b, k, c->obuf, &c->tty_ocol));
-                b += k;
-                left -= k;
-            }
-        } else {
-            output(c, (const vt_u8 *)p->dp_Arg2, p->dp_Arg3);
-        }
-        reply(p, p->dp_Arg3, 0);
-        service_reads(c); /* the output may have queued a report */
+        rip_write(c, p); /* draws it, holds it for a transfer, or starts one; replies the packet */
         return;
     case ACTION_FORCE: {
         /* The V47 Shell's answer to a medium-mode report (T3, measured on
@@ -9079,6 +9491,8 @@ static LONG handler_main(void)
             wait |= 1UL << c->find_port->mp_SigBit;
         if (c->watch_port)
             wait |= 1UL << c->watch_port->mp_SigBit;
+        if (c->rs && c->rs->port)
+            wait |= 1UL << c->rs->port->mp_SigBit;
         if (c->sel_port)
             wait |= 1UL << c->sel_port->mp_SigBit;
         if (c->req_port)
@@ -9136,6 +9550,7 @@ static LONG handler_main(void)
         find_idcmp(c); /* the find prompt, while it is open */
         sel_idcmp(c);  /* KingCON's selection window, while it is open */
         watch_take(c); /* the profile file changed: this window's profile, live */
+        rip_msgs(c);   /* a RIP transfer: its answers, the packets it used up */
         host_msgs(c);  /* tabs: registering, leaving, asking (the host) */
         tab_msgs(c);   /* tabs: events and show/hide from the host (a tab) */
         tab_replies(c);
@@ -9234,6 +9649,7 @@ static LONG handler_main(void)
     if (c->node && c->node->dn_Task == c->port)
         c->node->dn_Task = 0; /* never leave DOS a port that is going away */
     Permit();
+    rip_stop(c);
     watch_stop(c);
     le_free(&c->le);
     le_ahead_free(&c->ahead);

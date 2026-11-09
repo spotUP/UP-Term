@@ -57,6 +57,7 @@ static void parse(const unsigned char *b, long n, long step, struct sink *s, str
     sk.ud = s;
     sk.text = on_text;
     sk.cmd = on_cmd;
+        sk.halt = NULL;
     s->len = 0;
     s->dump[0] = 0;
     s->text_bytes = 0;
@@ -97,6 +98,7 @@ static void fixture(const char *name)
         sk.ud = &s2;
         sk.text = on_text;
         sk.cmd = on_cmd;
+        sk.halt = NULL;
         s2.len = 0;
         s2.dump[0] = 0;
         s2.text_bytes = 0;
@@ -199,6 +201,7 @@ static void run_mini(struct mini *m, const unsigned char *b, long n)
     sk.ud = m;
     sk.text = NULL;
     sk.cmd = mini_cmd;
+    sk.halt = NULL;
     rip_init(&st);
     rip_feed(&st, b, n, &sk);
 }

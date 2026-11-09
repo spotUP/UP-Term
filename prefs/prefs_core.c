@@ -65,6 +65,7 @@ void prefs_defaults(prefs_fields *f)
     f->blend_dest = 1;
     f->hlcat = 1;
     f->split_restore = PREFS_SPLIT_OFF;
+    f->rip = PREFS_RIP_AUTO;
 }
 
 /* The palette key's entries into the 16 hex fields; an entry the key does not name stays empty. */
@@ -588,7 +589,7 @@ int prefs_equal(const prefs_fields *a, const prefs_fields *b)
            a->bold == b->bold && a->meta_alt == b->meta_alt && a->copy_sel == b->copy_sel &&
            a->wheel == b->wheel && a->reflow == b->reflow && a->music == b->music && a->scrollbar == b->scrollbar &&
            a->completion == b->completion && a->screen == b->screen && a->aspect == b->aspect &&
-           a->backspace_bs == b->backspace_bs && a->clipboard == b->clipboard &&
+           a->backspace_bs == b->backspace_bs && a->clipboard == b->clipboard && a->rip == b->rip &&
            a->kcinfo == b->kcinfo && a->kccache == b->kccache && a->amiga_keys == b->amiga_keys &&
            a->dither == b->dither && a->outline_aa == b->outline_aa && a->blend_dest == b->blend_dest && a->pad_extend == b->pad_extend && a->hlcat == b->hlcat &&
            a->split_restore == b->split_restore;

@@ -332,6 +332,7 @@ static int *int_of(struct app *a, int id)
     case PG_SCREEN: return &a->f.screen;
     case PG_ASPECT: return &a->f.aspect;
     case PG_CLIPBOARD: return &a->f.clipboard;
+    case PG_RIP: return &a->f.rip;
     case PG_HLCAT: return &a->f.hlcat;
     case PG_SPLIT_RESTORE: return &a->f.split_restore;
     case PG_SCROLLBACK_NONE: return &a->sb_none;

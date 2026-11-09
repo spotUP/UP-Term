@@ -278,6 +278,8 @@ struct vt_term {
      * obtains them again (UPDemo's palette cycling: 32 a frame, 10 ms of
      * a frame's 113 on a 68060; ledger S2). in_feed: vt_feed is reading. */
     int colors_pending, in_feed;
+    int feed_stop;             /* vt_feed_stop: the host took the rest of the buffer (RIP block) */
+    long fed;                  /* bytes of the last vt_feed buffer consumed */
     int full_y0, full_y1;      /* rows damaged whole since the last flush (damage_rows) */
     /* A scroll the renderer has not been told about yet: the pixels are
      * pend_n rows behind the grid in [pend_top, pend_bot) (negative: down).

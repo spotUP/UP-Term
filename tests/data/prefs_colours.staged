@@ -19,6 +19,7 @@ outline-blend-dest = on
 highlight-cat = on
 split-restore = off
 program-clipboard = write
+rip = auto
 cursor = block
 cursor-blink = off
 bell = beep

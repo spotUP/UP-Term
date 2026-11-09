@@ -64,6 +64,9 @@ typedef struct vtwin_host {
     /* a copy put text on the clipboard, or a paste typed some in (what: VTWIN_CLIP_*): once per
      * action, not per character. May be 0. */
     void (*clipped)(void *user, int what);
+    /* a RIP level-9 block transfer (engine cb.rip_block). The owner may call vt_feed_stop(w->t)
+     * to take the rest of the buffer; vtwin_write then returns the bytes it consumed. May be 0. */
+    void (*rip_block)(void *user, int mode, int proto, int type, const char *name);
 } vtwin_host;
 
 typedef struct vtwin {
@@ -234,7 +237,8 @@ void vtwin_unbind(vtwin *w);
 int vtwin_rebind(vtwin *w, struct Window *win);
 
 /* output: the grid now, the screen at the next frame */
-void vtwin_write(vtwin *w, const vt_u8 *b, long n);
+/* returns the bytes consumed: n, or fewer when a rip_block callback took the rest (vt_feed_stop) */
+long vtwin_write(vtwin *w, const vt_u8 *b, long n);
 /* draw what the grid has that the screen has not */
 void vtwin_render(vtwin *w);
 /* the window's size changed: new grid size, redraw, raw report */

@@ -173,6 +173,7 @@ typedef struct vt_callbacks {
      * the protocol's, not RIP's) and saves the file through vt_set_download_sink.
      * name is the file name the BBS gave, reduced to a base name by the shared
      * sanitiser ("" when it gave none or only a path). Unset: the command is ignored. */
+    /* call vt_feed_stop from here to take the rest of the stream (the protocol bytes that follow) */
     void (*rip_block)(void *user, int mode, int proto, int type, const char *name);
 } vt_callbacks;
 
@@ -513,6 +514,13 @@ long vt_rip_icons(const vt_term *t);
 /* Level-9 block transfers (9<ESC>) handed to the host's rip_block callback since RIP was set
  * (sentinel). */
 long vt_rip_blocks(const vt_term *t);
+/* Take the rest of the stream: call from inside a callback (cb.rip_block) during vt_feed. vt_feed
+ * returns after the byte that ended the current RIP command; the bytes after it are not parsed or
+ * drawn, the host owns them. Only a RIP command can be stopped at (RIP set up through vt_set_rip);
+ * without RIP vt_feed reads the whole buffer. vt_fed: bytes of the last vt_feed buffer consumed
+ * (== len unless stopped). */
+void vt_feed_stop(vt_term *t);
+long vt_fed(const vt_term *t);
 /* RIP text font option (RIP-3b): 0 draws every BGI font with the 8x8 bitmap (the default), 1 draws
  * font styles 1..4 (triplex, small, sans-serif, gothic) as Hershey strokes. Call after vt_set_rip(t, 1);
  * it is kept across the canvas being rebuilt. vt_rip_stroke_glyphs: stroke glyphs drawn (sentinel). */

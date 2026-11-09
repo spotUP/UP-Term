@@ -72,3 +72,4 @@ kingcon-info = hide
 kingcon-cache = on
 outline-blend-dest = on
 split-restore = off
+rip = auto

@@ -35,6 +35,9 @@ struct rip_sinks {
     void (*text)(void *ud, const unsigned char *p, long n);
     /* a complete, valid command; the pointer is valid during the call only */
     void (*cmd)(void *ud, const struct rip_cmd *c);
+    /* may be NULL: asked after every delivered command; nonzero = stop there, rip_feed returns
+     * the bytes consumed up to and including the byte that ended the command */
+    int (*halt)(void *ud);
 };
 
 struct rip_state {
@@ -51,7 +54,7 @@ struct rip_state {
 
 void rip_init(struct rip_state *st);
 /* feed bytes; sinks->text and sinks->cmd may be NULL */
-void rip_feed(struct rip_state *st, const unsigned char *p, long n, const struct rip_sinks *sk);
+long rip_feed(struct rip_state *st, const unsigned char *p, long n, const struct rip_sinks *sk);
 /* commands delivered, malformed commands dropped (short, bad digit, over
  * RIP_MAXARGS), well-formed commands with a (level, letter) the table lacks */
 long rip_commands(const struct rip_state *st);

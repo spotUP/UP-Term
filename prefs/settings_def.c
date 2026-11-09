@@ -33,6 +33,7 @@ static const sd_value v_kc_match[] = { { "W", "Window" }, { "L", "List under the
 static const sd_value v_screen[] = { { "workbench", "Workbench" }, { "own", "Own screen" },
                                      { "fullscreen", "Full screen" } };
 /* in the order of PREFS_SPLIT_* */
+static const sd_value v_rip[] = { { "off", "Off" }, { "on", "On" }, { "auto", "Automatic" } };
 static const sd_value v_split[] = { { "off", "Off" }, { "layout", "Layout" }, { "programs", "Layout and programs" } };
 static const sd_value v_clipboard[] = { { "write", "Set the clipboard" }, { "read-write", "Set and read the clipboard" },
                                         { "off", "Not use the clipboard" } };
@@ -167,10 +168,13 @@ const sd_setting sd_settings[SDI_COUNT] = {
     { SDI_CLIPBOARD, "program-clipboard", 0, PG_PAGE_ADVANCED, SD_CYCLE, "_Programs may",
       "What programs may do with the clipboard (OSC 52).",
       VALS(v_clipboard), "write", SD_UPTERM, SDF_INT, FO(clipboard), 0, NORANGE, PG_CLIPBOARD, 0, 0, 1, 0 },
-    { SDI_HLCAT, "highlight-cat", 0, PG_PAGE_ADVANCED, SD_CHECK, "_Highlight files shown with cat",
+    { SDI_RIP, "rip", 0, PG_PAGE_ADVANCED, SD_CYCLE, "RIP Grap_hics",
+      "RIP file transfers: Off ignores them, Automatic also spots unannounced ones.",
+      VALS(v_rip), "auto", SD_UPTERM, SDF_INT, FO(rip), 0, NORANGE, PG_RIP, 0, 0, 1, 0 },
+    { SDI_HLCAT, "highlight-cat", 0, PG_PAGE_ADVANCED, SD_CHECK, "Highlight _files shown with cat",
       "vsh's cat colours the file through hl.",
       VALS(v_off_on), "on", SD_UPTERM, SDF_INT, FO(hlcat), 0, NORANGE, PG_HLCAT, 0, 0, 1, 0 },
-    { SDI_REFLOW, "reflow", 0, PG_PAGE_ADVANCED, SD_CHECK, "_Reflow on resize",
+    { SDI_REFLOW, "reflow", 0, PG_PAGE_ADVANCED, SD_CHECK, "_Reflow text",
       "Re-wrap the lines when the window changes size.",
       VALS(v_off_on), "on", SD_UPTERM, SDF_INT, FO(reflow), 0, NORANGE, PG_REFLOW, 0, 0, 1, 0 },
     { SDI_MUSIC, "ansi-music", 0, PG_PAGE_ADVANCED, SD_CHECK, "ANS_I Music",
@@ -350,7 +354,7 @@ int sd_conf_key_index(const char *key, const upconf *c, const char *p)
 
 const int sd_write_order[] = {
     SDI_FALLBACK, SDI_SCREEN, SDI_SCREEN_MODE, SDI_SCROLLBACK, SDI_ASPECT, SDI_BACKSPACE, SDI_AMIGAKEYS,
-    SDI_DITHER, SDI_OUTLINE_AA, SDI_PADDING, SDI_BLEND_DEST, SDI_HLCAT, SDI_SPLIT_RESTORE, SDI_CLIPBOARD, SDI_LINK, SDI_TERM, SDI_COLORS,
+    SDI_DITHER, SDI_OUTLINE_AA, SDI_PADDING, SDI_BLEND_DEST, SDI_HLCAT, SDI_SPLIT_RESTORE, SDI_CLIPBOARD, SDI_RIP, SDI_LINK, SDI_TERM, SDI_COLORS,
     SDI_CURSOR, SDI_BLINK, SDI_BELL, SDI_BOLD, SDI_META, SDI_COPY, SDI_WHEEL, SDI_REFLOW, SDI_MUSIC, SDI_SCROLLBAR,
     SDI_COMPLETE, SDI_KC_MATCH, SDI_KC_INFO, SDI_KC_CACHE,
     /* the look */
