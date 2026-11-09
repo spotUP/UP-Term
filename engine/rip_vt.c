@@ -16,7 +16,16 @@
  * The canvas is an image of the store (kind 4, z = -1: under the text, index 0 opaque):
  * 640 x 350 bytes charged to the image budget (O12), created by the first command that
  * draws, placed at the top left without moving the cursor. The drawing model borrows
- * its pixels; before every use the adapter checks the slot still holds them. */
+ * its pixels; before every use the adapter checks the slot still holds them.
+ *
+ * RIP-5 text windows: the RIP text window (w) is the engine's scroll region with the
+ * origin mode on, so ANSI text lands inside it and scrolls there. DECSLRM does not exist
+ * in the engine, so only the rows count: x0 and x1 of w are not used (exempt, UNVERIFIED
+ * against a real BBS). Image placements belong to lines, so a region scroll carries the
+ * canvas tiles with the lines; after text the adapter puts the tiles back on rows 0.. of
+ * the grid (rip_reanchor): the canvas does not scroll.
+ * RIP-6 mouse: the fields live in rip_mouse.c; vt_rip_click and vt_rip_key give the
+ * expanded host command, the way vt_encode_mouse_px gives a report. */
 
 #define RIP_DETECT "RIPSCRIP015410"
 
@@ -31,6 +40,8 @@ struct rip_ad {
     int bang;   /* the last thing taken was a bare ESC [ ! : a `p` now is DECSTR */
     int nhold;
     vt_u8 hold[16]; /* a possible ESC [ digits ! , kept across vt_feed calls */
+    int moved;      /* text went to the engine since the tiles were last put right */
+    struct rip_mouse mouse;
 };
 
 static void vt_feed_core(vt_term *t, const vt_u8 *buf, long len);
@@ -95,13 +106,87 @@ static struct cv *rip_canvas(vt_term *t, struct rip_ad *ad)
     return ad->cv;
 }
 
+/* the screen of the text grid: the whole of it, every row */
+static void rip_clear_grid(vt_term *t)
+{
+    int y;
+    for (y = 0; y < t->rows; y++)
+        erase_cells(t, y, 0, t->cols);
+}
+
+/* The text window commands. Coordinates are grid cells from 0; the window is the scroll
+ * region (rows) with the origin mode on. Returns 1 when the command was one of them. */
+static int rip_window(vt_term *t, const struct rip_cmd *c)
+{
+    int y, top, bot;
+    switch (c->ch) {
+    case 'w':
+        if (c->nargs < 5)
+            return 1;
+        top = (int)c->arg[1];
+        bot = (int)c->arg[3] + 1;
+        if (top > bot - 1) {
+            y = top;
+            top = bot - 1;
+            bot = y + 1;
+        }
+        if (top < 0)
+            top = 0;
+        if (bot > t->rows)
+            bot = t->rows;
+        if (top < bot - 1) {
+            t->top = top;
+            t->bot = bot;
+            t->origin = 1;
+            t->autowrap = c->arg[4] != 0;
+            move_to(t, 0, t->top);
+        }
+        return 1;
+    case '*':
+        t->top = 0;
+        t->bot = t->rows;
+        t->origin = 0;
+        t->autowrap = 1;
+        rip_clear_grid(t);
+        move_to(t, 0, 0);
+        return 0; /* the drawing model clears its viewport and the canvas too */
+    case 'e':
+        for (y = t->top; y < t->bot; y++)
+            erase_cells(t, y, 0, t->cols);
+        move_to(t, 0, t->origin ? t->top : 0);
+        return 1;
+    case 'g':
+        if (c->nargs >= 2)
+            move_to(t, (int)c->arg[0], (t->origin ? t->top : 0) + (int)c->arg[1]);
+        return 1;
+    case 'H':
+        move_to(t, 0, t->origin ? t->top : 0);
+        return 1;
+    case '>':
+        erase_cells(t, t->cy, t->cx, t->cols);
+        return 1;
+    }
+    return 0;
+}
+
 static void rip_on_cmd(void *ud, const struct rip_cmd *c)
 {
     vt_term *t = (vt_term *)ud;
     struct rip_ad *ad = t->rip;
     struct cv *cv;
+    if (c->level == 0 && (c->ch == 'w' || c->ch == '*' || c->ch == 'e' || c->ch == 'g' || c->ch == 'H' ||
+                          c->ch == '>')) {
+        if (c->ch == '*')
+            ad->mouse.n = 0; /* reset windows kills the mouse fields too */
+        if (rip_window(t, c))
+            return;
+    } else if (rip_mouse_handles(c)) {
+        cv = c->ch == 'U' ? rip_canvas(t, ad) : 0; /* only a button draws */
+        rip_mouse_exec(&ad->mouse, &ad->g, cv, c);
+        return;
+    }
     if (!rip_gfx_handles(c) && !(c->level == 0 && (c->ch == 'Q' || c->ch == 'a')))
-        return; /* windows, text, buttons, queries: RIP-5 and later */
+        return; /* icons, queries, files: RIP-7 and later */
     cv = rip_canvas(t, ad);
     if (!cv)
         return;
@@ -111,7 +196,22 @@ static void rip_on_cmd(void *ud, const struct rip_cmd *c)
 
 static void rip_on_text(void *ud, const unsigned char *p, long n)
 {
+    struct rip_ad *ad = ((vt_term *)ud)->rip;
+    ad->moved = 1;
     vt_feed_core((vt_term *)ud, p, n);
+}
+
+/* The canvas tiles back on grid rows 0..: a scroll of the text window carries them with the
+ * lines they were on. place_add replaces the tile of the same image on a line; the extra
+ * reference keeps the image alive while a line lets go of its old placement. */
+static void rip_reanchor(vt_term *t, struct rip_ad *ad)
+{
+    vt_image *im = t->imgs[ad->slot];
+    int k, rows = (im->py0 + im->h + im->ch - 1) / im->ch;
+    im->refs++;
+    for (k = 0; k < rows && k < t->rows; k++)
+        sixel_place_row(t, ad->slot, k, 0, k);
+    im->refs--;
 }
 
 /* the canvas changed: its image is a new picture and its cells are drawn again */
@@ -124,6 +224,10 @@ static void rip_settle(vt_term *t, struct rip_ad *ad)
     if (!rip_canvas_alive(t, ad)) {
         rip_canvas_drop(ad);
         return;
+    }
+    if (ad->moved) {
+        ad->moved = 0;
+        rip_reanchor(t, ad);
     }
     if (!cv_flush(ad->cv))
         return;
@@ -219,7 +323,11 @@ void vt_feed(vt_term *t, const vt_u8 *buf, long len)
         vt_feed_core(t, buf, len); /* RIP off: nothing here runs */
         return;
     }
+    if (rip_canvas_alive(t, ad))
+        t->imgs[ad->slot]->refs++; /* the text may clear the lines the tile is on: the canvas stays */
     rip_run(t, ad, buf, len);
+    if (rip_canvas_alive(t, ad))
+        t->imgs[ad->slot]->refs--;
     rip_settle(t, ad);
 }
 
@@ -242,6 +350,7 @@ void vt_set_rip(vt_term *t, int on)
     memset(ad, 0, sizeof(*ad));
     rip_init(&ad->st);
     rip_gfx_init(&ad->g);
+    rip_mouse_init(&ad->mouse);
     ad->active = 1;
     t->rip = ad;
 }
@@ -258,4 +367,62 @@ static void rip_free(vt_term *t)
         VT_FREE(t->rip);
         t->rip = 0;
     }
+}
+
+/* A canvas pixel of a point in the text area (pixels from its top left): the cell and the
+ * position in it map to the picture's own cells, so a cell size that differs from the
+ * picture's (the screen font) still lands on the right pixel. */
+static int rip_canvas_xy(const vt_term *t, const struct rip_ad *ad, int px, int py, int *cx, int *cy)
+{
+    const vt_image *im;
+    int cw = t->cell_w, ch = t->cell_h;
+    if (px < 0 || py < 0 || cw <= 0 || ch <= 0 || !rip_canvas_alive(t, ad))
+        return 0;
+    im = t->imgs[ad->slot];
+    *cx = (px / cw) * im->cw + (px % cw) * im->cw / cw;
+    *cy = (py / ch) * im->ch + (py % ch) * im->ch / ch;
+    return *cx < CV_RIP_W && *cy < CV_RIP_H;
+}
+
+int vt_rip_click(vt_term *t, int px, int py, vt_u8 *out)
+{
+    struct rip_ad *ad = t->rip;
+    int x, y, n, clr = 0;
+    if (!ad || !ad->active || !rip_canvas_xy(t, ad, px, py, &x, &y))
+        return 0;
+    n = rip_mouse_click(&ad->mouse, x, y, out, VT_RIP_OUT_MAX, &clr);
+    if (n < 0)
+        return 0;
+    if (clr) {
+        struct rip_cmd c;
+        memset(&c, 0, sizeof(c));
+        c.ch = '*';
+        rip_on_cmd(t, &c);
+        rip_settle(t, ad);
+    }
+    return n;
+}
+
+int vt_rip_key(vt_term *t, int key, vt_u8 *out)
+{
+    struct rip_ad *ad = t->rip;
+    int n, clr = 0;
+    if (!ad || !ad->active)
+        return 0;
+    n = rip_mouse_key(&ad->mouse, key, out, VT_RIP_OUT_MAX, &clr);
+    if (n < 0)
+        return 0;
+    if (clr) {
+        struct rip_cmd c;
+        memset(&c, 0, sizeof(c));
+        c.ch = '*';
+        rip_on_cmd(t, &c);
+        rip_settle(t, ad);
+    }
+    return n;
+}
+
+long vt_rip_mouse_fields(const vt_term *t)
+{
+    return t->rip ? ((struct rip_ad *)t->rip)->mouse.n : 0;
 }

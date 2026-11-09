@@ -5720,6 +5720,7 @@ static void clear_params(vt_term *t)
 #include "kitty.c"
 #include "rip_parse.c"
 #include "rip_pal.c"
+#include "rip_mouse.c"
 #include "canvas.c"
 #include "rip_draw.c"
 #include "rip_vt.c"

@@ -63,10 +63,28 @@ void rip_gfx_init(struct rip_gfx *g)
     g->thick = 1;
     g->fpat = 1;
     g->fcolor = 15;
+    g->vx0 = 0;
+    g->vy0 = 0;
+    g->vx1 = CV_RIP_W - 1;
+    g->vy1 = CV_RIP_H - 1;
+    g->font = 0;
+    g->fdir = 0;
+    g->fsize = 1;
+}
+
+static const unsigned char font8[256][8] = {
+#include "font8x8.inc"
+};
+
+unsigned char rip_font8_row(int ch, int r)
+{
+    return font8[ch & 255][r & 7];
 }
 
 static void gput(const struct rip_gfx *g, struct cv *cv, int x, int y, int col)
 {
+    if (x < g->vx0 || x > g->vx1 || y < g->vy0 || y > g->vy1)
+        return;
     if (g->wmode == 1) {
         int old = cv_get(cv, x, y);
         if (old < 0)
@@ -312,7 +330,7 @@ int rip_gfx_handles(const struct rip_cmd *c)
     switch (c->ch) {
     case 'c': case 'W': case '=': case 'S': case 's': case 'm': case 'X': case 'L': case 'R': case 'B':
     case 'C': case 'O': case 'o': case 'A': case 'V': case 'I': case 'i': case 'Z': case 'P': case 'p':
-    case 'l': case 'F': case 'E': case '#':
+    case 'l': case 'F': case 'E': case '#': case 'v': case 'Y': case 'T': case '@': case '*':
         return 1;
     }
     return 0;
@@ -366,9 +384,59 @@ int rip_gfx_exec(struct rip_gfx *g, struct cv *cv, const struct rip_cmd *c)
         break;
     }
     case '#': case 'E':
-        if (c->ch == 'E')
-            cv_rect(cv, 0, 0, cv->w - 1, cv->h - 1, 0);
+        if (c->ch == 'E') /* erase the viewport */
+            cv_rect(cv, g->vx0, g->vy0, g->vx1, g->vy1, 0);
         break;
+    case '*': /* reset windows: the viewport is the whole canvas again, cleared */
+        g->vx0 = 0;
+        g->vy0 = 0;
+        g->vx1 = cv->w - 1;
+        g->vy1 = cv->h - 1;
+        cv_rect(cv, 0, 0, cv->w - 1, cv->h - 1, 0);
+        break;
+    case 'v': { /* viewport, clamped to the canvas */
+        int x0 = (int)a[0], y0 = (int)a[1], x1 = (int)a[2], y1 = (int)a[3], t;
+        if (x0 > x1) { t = x0; x0 = x1; x1 = t; }
+        if (y0 > y1) { t = y0; y0 = y1; y1 = t; }
+        g->vx0 = x0 < 0 ? 0 : x0;
+        g->vy0 = y0 < 0 ? 0 : y0;
+        g->vx1 = x1 >= cv->w ? cv->w - 1 : x1;
+        g->vy1 = y1 >= cv->h ? cv->h - 1 : y1;
+        break;
+    }
+    case 'Y':
+        g->font = (int)a[0];
+        g->fdir = a[1] == 1 ? 1 : 0;
+        g->fsize = (int)(a[2] < 1 ? 1 : a[2] > 10 ? 10 : a[2]);
+        break;
+    case 'T': case '@': {
+        int i, r, k, s = g->fsize, x, y, sx, sy;
+        if (c->ch == '@') {
+            g->px = (int)a[0];
+            g->py = (int)a[1];
+        }
+        for (i = 0; i < c->ntext; i++) {
+            for (r = 0; r < 8; r++) {
+                unsigned row = font8[c->text[i]][r];
+                for (k = 0; k < 8; k++) {
+                    if (!((row >> (7 - k)) & 1))
+                        continue;
+                    /* across: glyph column k to the right; up: rotated a quarter turn
+                     * counter-clockwise, the glyph's top toward the left */
+                    x = g->fdir ? g->px + r * s : g->px + k * s;
+                    y = g->fdir ? g->py - (k + 1) * s : g->py + r * s;
+                    for (sy = 0; sy < s; sy++)
+                        for (sx = 0; sx < s; sx++)
+                            gput(g, cv, x + sx, y + sy, g->color);
+                }
+            }
+            if (g->fdir)
+                g->py -= 8 * s;
+            else
+                g->px += 8 * s;
+        }
+        break;
+    }
     case 'C': case 'O': case 'o': case 'A': case 'V': case 'I': case 'i': {
         int cx = (int)a[0], cy = (int)a[1], sa = 0, ea = 0, rx, ry, pie = 0, fillit = 0;
         if (c->ch == 'C') { rx = ry = (int)a[2]; }

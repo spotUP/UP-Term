@@ -1766,6 +1766,15 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
             n += encode_key(w, cooked, buf[i], km, out + n);
         }
     }
+    if (n == 1 && !key) {
+        /* a RIP button's hotkey sends the button's command instead of the key */
+        vt_u8 rb[VT_RIP_OUT_MAX];
+        int rn = vt_rip_key(w->t, out[0], rb);
+        if (rn > 0) {
+            w->host->input(w->user, rb, rn);
+            return;
+        }
+    }
     if (n)
         w->host->key(w->user, out, n, key,
                      mods | ((qual & (IEQUALIFIER_LALT | IEQUALIFIER_RALT)) ? VTWIN_MOD_ALTKEY : 0));
@@ -1893,6 +1902,15 @@ void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my, U
                  DoubleClick(w->click_secs, w->click_micros, secs, micros);
         w->click_secs = secs;
         w->click_micros = micros;
+    }
+    if (btn == 0 && down && in && !w->r.view) {
+        /* a RIP mouse field or button under the pointer answers before any report or selection */
+        vt_u8 rb[VT_RIP_OUT_MAX];
+        int rn = vt_rip_click(w->t, mx - w->r.ox, my - w->r.oy, rb);
+        if (rn > 0) {
+            w->host->input(w->user, rb, rn);
+            return;
+        }
     }
     switch (vti_button(&w->mouse, w->t, btn, down, x, y, in, w->mouse_mods,
                        w->dragging, dclick, out, &n)) {

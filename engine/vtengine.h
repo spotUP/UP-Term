@@ -480,6 +480,18 @@ void     vt_set_cell_pixels(vt_term *t, int w, int h);
  * sentinel). Needs the cell size (vt_set_cell_pixels) before the canvas is placed. */
 void vt_set_rip(vt_term *t, int on);
 long vt_rip_commands(const vt_term *t);
+/* RIP mouse fields and buttons (1M, 1U; rip_mouse.c). A left press at px, py (pixels from the text
+ * area's top left, as vt_encode_mouse_px takes them) over a field gives the field's host command
+ * with ^x, backquote and $VAR$ expanded into out (VT_RIP_OUT_MAX bytes at most) and returns its
+ * length; 0 when RIP is off, nothing is hit or the command is empty (the click is then not the
+ * RIP's). A field with the clear flag first resets the text window and the canvas (`*`).
+ * The last defined field holding the point wins. vt_rip_key does the same for a button's hotkey:
+ * key is the character the key made (letters match in either case). Same return and out. */
+#define VT_RIP_OUT_MAX 128
+int  vt_rip_click(vt_term *t, int px, int py, vt_u8 *out);
+int  vt_rip_key(vt_term *t, int key, vt_u8 *out);
+/* the fields defined: the reachability sentinel of the mouse path */
+long vt_rip_mouse_fields(const vt_term *t);
 /* IMAGE-ASPECT-HIRES: the screen's pixel in ticks (DisplayInfo Resolution, 44x22 on 640x256 hires: twice as
  * tall as wide). A kitty picture placed without both cell counts is scaled so its source pixels keep their
  * look: the height shrinks by rx/ry. 0 or equal: square pixels, nothing changes. */

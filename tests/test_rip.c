@@ -431,6 +431,18 @@ static void reach_rip_through_vt_write(void)
     CHECK(strstr(h_screen(t), "|") == 0);
     CHECK(strstr(h_screen(t), "after") != 0);
     CHECK_INT(vt_image_memory(t), 640L * 350L);
+    /* RIP-5 / RIP-6 through the same door: a text window and a mouse field; the sentinels prove both ran */
+    CHECK_INT(vt_rip_mouse_fields(t), 0);
+    {
+        vt_u8 out[VT_RIP_OUT_MAX];
+        h_put(t, "!|w0005270A10\r\n" "!|1M000A0A1414" "1000000go^M\r\n" "!|g0001\r\n" "inside\r\n");
+        CHECK_INT(vt_rip_commands(t), 7);   /* 4 + w + 1M + g */
+        CHECK_INT(vt_rip_mouse_fields(t), 1); /* the mouse path ran */
+        CHECK(strstr(h_row(t, 6), "inside") != 0); /* the text path ran: window row 1 is grid row 6 */
+        CHECK_INT(vt_rip_click(t, 15, 15, out), 3);
+        CHECK(memcmp(out, "go\r", 3) == 0);
+        CHECK_INT(vt_rip_click(t, 300, 300, out), 0);
+    }
     vt_free(t);
 }
 
@@ -672,6 +684,336 @@ static void knob_polygon_rect_flood(void)
     vt_free(t);
 }
 
+/* ---- RIP-5: text and text windows ---- */
+
+static int popcount8(int ch)
+{
+    int r, b, n = 0;
+    for (r = 0; r < 8; r++)
+        for (b = 0; b < 8; b++)
+            n += (rip_font8_row(ch, r) >> b) & 1;
+    return n;
+}
+
+static long bbox_extent(vt_term *t, int idx, int *x0, int *y0, int *x1, int *y1)
+{
+    int x, y;
+    long n = 0;
+    *x0 = *y0 = 9999;
+    *x1 = *y1 = -1;
+    for (y = 0; y < 350; y++)
+        for (x = 0; x < 640; x++)
+            if (rpx(t, x, y) == idx) {
+                n++;
+                if (x < *x0) *x0 = x;
+                if (x > *x1) *x1 = x;
+                if (y < *y0) *y0 = y;
+                if (y > *y1) *y1 = y;
+            }
+    return n;
+}
+
+static void text_font_scale_direction(void)
+{
+    vt_term *t;
+    int x0, y0, x1, y1, a = popcount8('A');
+    CHECK(a > 8 && a < 56);
+    CHECK_INT(rip_font8_row('A', 0), 0x38); /* the CP437 sheet: row 0 of A */
+    /* size 1, 2, 3: the lit pixels grow with the square of the size, the box with the size */
+    t = rip_draw("!|c0F|Y00000100|@0A0AA\r\n");
+    CHECK_INT(bbox_extent(t, 15, &x0, &y0, &x1, &y1), a);
+    CHECK(x0 >= 10 && x1 <= 17 && y0 >= 10 && y1 <= 17);
+    vt_free(t);
+    t = rip_draw("!|c0F|Y00000200|@0A0AA\r\n");
+    CHECK_INT(bbox_extent(t, 15, &x0, &y0, &x1, &y1), 4 * a);
+    CHECK(x0 >= 10 && x1 <= 25 && y0 >= 10 && y1 <= 25);
+    vt_free(t);
+    t = rip_draw("!|c0F|Y00000300|@0A0AA\r\n");
+    CHECK_INT(bbox_extent(t, 15, &x0, &y0, &x1, &y1), 9 * a);
+    vt_free(t);
+    /* a string advances 8 x size per character across (direction 0) */
+    t = rip_draw("!|c0F|Y00000100|@0A0AAA\r\n");
+    CHECK_INT(bbox_extent(t, 15, &x0, &y0, &x1, &y1), 2 * a);
+    CHECK(x1 >= 18 && x1 <= 25 && y1 <= 17);
+    vt_free(t);
+    /* direction 1: the same pixels, the string climbs the screen */
+    t = rip_draw("!|c0F|Y00010100|@0A32A\r\n");
+    CHECK_INT(bbox_extent(t, 15, &x0, &y0, &x1, &y1), a);
+    vt_free(t);
+    t = rip_draw("!|c0F|Y00010100|@0A32AA\r\n");
+    CHECK_INT(bbox_extent(t, 15, &x0, &y0, &x1, &y1), 2 * a);
+    CHECK(y1 - y0 >= 9); /* two glyphs one above the other */
+    CHECK(x1 - x0 <= 7);
+    vt_free(t);
+    /* T draws at the current position (m 0A0A) and advances it */
+    t = rip_draw("!|c0F|Y00000100|m0A0A|TAB\r\n");
+    CHECK_INT(bbox_extent(t, 15, &x0, &y0, &x1, &y1), popcount8('A') + popcount8('B'));
+    vt_free(t);
+    /* size is clamped: 0 draws as 1, a huge size as 10 */
+    t = rip_draw("!|c0F|Y00000000|@0A0AA\r\n");
+    CHECK_INT(bbox_extent(t, 15, &x0, &y0, &x1, &y1), a);
+    vt_free(t);
+    t = rip_draw("!|c0F|Y000010ZZ|@0A0AA\r\n");
+    CHECK_INT(bbox_extent(t, 15, &x0, &y0, &x1, &y1), 100 * a);
+    vt_free(t);
+}
+
+static void viewport_clips_and_resets(void)
+{
+    vt_term *t;
+    /* a bar 36 x 36 inside a 10 x 10 viewport: 100 pixels */
+    t = rip_draw("!|v00000909|S010F|B00000Z0Z\r\n");
+    CHECK_INT(rcount(t, 15), 100);
+    CHECK_INT(rpx(t, 9, 9), 15);
+    CHECK_INT(rpx(t, 10, 9), 0);
+    CHECK_INT(rpx(t, 9, 10), 0);
+    /* E erases the viewport only */
+    h_put(t, "!|v00000Z0Z|S0107|B00000Z0Z|v00000909|E\r\n");
+    CHECK_INT(rcount(t, 7), 36 * 36 - 100);
+    /* the corners swap and clamp */
+    h_put(t, "!|v0909000 0\r\n");
+    vt_free(t);
+    t = rip_draw("!|v09090000|S010F|B00000Z0Z\r\n");
+    CHECK_INT(rcount(t, 15), 100);
+    /* text clips to the viewport too */
+    h_put(t, "!|*\r\n!|v00000303|c0E|Y00000200|@0000A\r\n");
+    CHECK(rcount(t, 14) > 0 && rcount(t, 14) < 4 * popcount8('A'));
+    /* * puts the viewport back to the whole canvas and clears it */
+    h_put(t, "!|*\r\n!|S010F|B00000Z0Z\r\n");
+    CHECK_INT(rcount(t, 15), 36 * 36);
+    vt_free(t);
+}
+
+static void text_window_scrolls_text_not_canvas(void)
+{
+    vt_term *t = rip_term();
+    vt_image_view v;
+    char line[40];
+    int i, k;
+    long before;
+    h_put(t, "\033[!" "!|S010C|B0A0A1414\r\n" "!|w0005270A10\r\n");
+    before = rcount(t, 12);
+    CHECK_INT(before, 961);
+    for (i = 0; i < 40; i++) {
+        snprintf(line, sizeof line, "line%d\r\n", i);
+        h_put(t, line);
+    }
+    CHECK_STR(h_row(t, 5), "line35");
+    CHECK_STR(h_row(t, 9), "line39");
+    CHECK_STR(h_row(t, 4), ""); /* above the window: untouched */
+    CHECK_STR(h_row(t, 11), "");
+    CHECK_INT(rcount(t, 12), before);
+    CHECK_INT(rpx(t, 10, 10), 12);
+    CHECK_INT(vt_images(t), 1);
+    /* every grid row still shows its own tile of the canvas */
+    for (k = 0; k < 25; k++) {
+        CHECK(vt_row_image(t, k, 0, &v));
+        CHECK_INT(v.py, k * 14);
+    }
+    /* and text outside the window scrolls nothing: below it a line stays */
+    h_put(t, "!|g0007\r\n");
+    vt_free(t);
+}
+
+static void text_window_commands_and_wrap(void)
+{
+    vt_term *t = rip_term();
+    h_put(t, "\033[!" "!|c0F|L00001E00\r\n" "!|w0003270700\r\n"); /* rows 3..7, wrap off */
+    h_put(t, "ab\r\n");
+    CHECK_STR(h_row(t, 3), "ab");
+    h_put(t, "!|g0402\r\n" "X\r\n");
+    CHECK(strstr(h_row(t, 5), "X") != 0);
+    CHECK_INT(h_cell(t, 4, 5)->ch, 'X');
+    h_put(t, "!|H\r\n" "Y");
+    CHECK_INT(h_cell(t, 0, 3)->ch, 'Y'); /* H: home of the window */
+    h_put(t, "!|g0001\r\n" "abcdef\r\n" "!|g0301\r\n" "!|>\r\n");
+    CHECK_STR(h_row(t, 4), "abc"); /* > erases to the end of the line */
+    h_put(t, "!|e\r\n");
+    CHECK_STR(h_row(t, 3), "");
+    CHECK_STR(h_row(t, 4), "");
+    CHECK_INT(rpx(t, 10, 0), 15); /* e leaves the canvas */
+    /* wrap off: a long line stays on one row; wrap on: it continues below */
+    h_put(t, "!|g0000\r\n");
+    h_put(t, "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789");
+    CHECK(h_row(t, 4)[0] == 0);
+    vt_free(t);
+    t = rip_term();
+    h_put(t, "\033[!" "!|w0003270710\r\n");
+    h_put(t, "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789\r\n");
+    CHECK(h_row(t, 4)[0] != 0);
+    /* * resets the window and the grid */
+    h_put(t, "!|*\r\n" "z");
+    CHECK_STR(h_screen(t), "z");
+    vt_free(t);
+}
+
+/* ---- RIP-6: mouse fields and buttons ---- */
+
+static void m2(char *p, int v)
+{
+    const char *d = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    p[0] = d[v / 36];
+    p[1] = d[v % 36];
+}
+
+static void mouse_limit_overlap_click_key(void)
+{
+    vt_term *t = rip_term();
+    vt_u8 out[VT_RIP_OUT_MAX];
+    char cmd[64];
+    int i;
+    /* fixture 07: a button with a hotkey and two overlapping fields */
+    h_put(t, "\033[!" "!|*\r\n" "!|1K\r\n"
+             "!|1B1O0K010274030F080F080700010E07000000\r\n"
+             "!|1U0K0K28141T00<>Alpha<>alpha^M\r\n"
+             "!|1M002S2S4G3W1000000region^M\r\n"
+             "!|1M013W3C5K4G1000000overlap^M\r\n");
+    CHECK_INT(vt_rip_mouse_fields(t), 3);
+    CHECK_INT(vt_rip_click(t, 50, 30, out), 6); /* the button's centre */
+    CHECK(memcmp(out, "alpha\r", 6) == 0);
+    CHECK_INT(vt_rip_click(t, 20, 20, out), 6); /* its corner, inclusive */
+    CHECK_INT(vt_rip_click(t, 81, 30, out), 0); /* just outside */
+    CHECK_INT(vt_rip_click(t, 110, 110, out), 7);
+    CHECK(memcmp(out, "region\r", 7) == 0);
+    CHECK_INT(vt_rip_click(t, 150, 130, out), 8); /* in both: the last defined wins */
+    CHECK(memcmp(out, "overlap\r", 8) == 0);
+    /* the hotkey (1T = 65 = 'A') returns the same bytes, in either case */
+    CHECK_INT(vt_rip_key(t, 'A', out), 6);
+    CHECK(memcmp(out, "alpha\r", 6) == 0);
+    CHECK_INT(vt_rip_key(t, 'a', out), 6);
+    CHECK_INT(vt_rip_key(t, 'Q', out), 0);
+    /* a different cell size than the picture's: the click maps through the cell */
+    vt_set_cell_pixels(t, 16, 28);
+    CHECK_INT(vt_rip_click(t, 100, 60, out), 6);
+    vt_set_cell_pixels(t, 8, 14);
+    /* 1K kills them all */
+    h_put(t, "!|1K\r\n");
+    CHECK_INT(vt_rip_mouse_fields(t), 0);
+    CHECK_INT(vt_rip_click(t, 50, 30, out), 0);
+    CHECK_INT(vt_rip_key(t, 'A', out), 0);
+    /* the 129th field is rejected */
+    for (i = 0; i < 129; i++) {
+        strcpy(cmd, "!|1M");
+        m2(cmd + 4, 0);
+        m2(cmd + 6, (i % 16) * 4);
+        m2(cmd + 8, (i / 16) * 4);
+        m2(cmd + 10, (i % 16) * 4 + 2);
+        m2(cmd + 12, (i / 16) * 4 + 2);
+        strcpy(cmd + 14, "1000000");
+        cmd[21] = 'a' + (char)(i % 26);
+        cmd[22] = 0;
+        strcat(cmd, "\r\n");
+        h_put(t, cmd);
+    }
+    CHECK_INT(vt_rip_mouse_fields(t), 128);
+    CHECK_INT(vt_rip_click(t, 2, 2, out), 1); /* the first still answers */
+    CHECK(out[0] == 'a');
+    /* field 128 (i = 127) is at column 15, row 7 -> x 60, y 28 */
+    CHECK_INT(vt_rip_click(t, 61, 29, out), 1);
+    CHECK_INT(out[0], 'a' + 127 % 26);
+    /* field 129 (i = 128) would be at column 0, row 8 -> x 0, y 32: nothing there */
+    CHECK_INT(vt_rip_click(t, 1, 33, out), 0);
+    vt_free(t);
+    /* RIP off: no answer */
+    t = h_new(80, 25, VT_XTERM);
+    CHECK_INT(vt_rip_click(t, 50, 30, out), 0);
+    CHECK_INT(vt_rip_key(t, 'A', out), 0);
+    vt_free(t);
+}
+
+static void mouse_expansion(void)
+{
+    unsigned char out[64];
+    int n;
+    n = rip_expand((const unsigned char *)"a^Mb^[c^a^A", 11, out, 64);
+    CHECK_INT(n, 7);
+    CHECK(memcmp(out, "a\rb\033c\001\001", 7) == 0);
+    /* a backquote and a $NAME$ variable are no-ops (no variable is defined) */
+    n = rip_expand((const unsigned char *)"x$FOO$y`z", 9, out, 64);
+    CHECK_INT(n, 3);
+    CHECK(memcmp(out, "xyz", 3) == 0);
+    /* a $ that closes nothing is kept, the output is capped */
+    n = rip_expand((const unsigned char *)"a$b c", 5, out, 64);
+    CHECK_INT(n, 5);
+    n = rip_expand((const unsigned char *)"abcdef", 6, out, 3);
+    CHECK_INT(n, 3);
+}
+
+/* the pixels of the Alpha button drawn with the given 1B fields (as one string of the fixture's shape) */
+static vt_term *button_with(const char *b1)
+{
+    char cmd[200];
+    vt_term *t = rip_term();
+    snprintf(cmd, sizeof cmd, "\033[!" "!|*\r\n" "!|1B%s000000\r\n" "!|1U0K0K28141T00<>Alpha<>alpha^M\r\n", b1);
+    h_put(t, cmd);
+    return t;
+}
+
+static void button_knobs_move_output(void)
+{
+    vt_term *t;
+    vt_u8 out[VT_RIP_OUT_MAX];
+    long bright, dark, surf, label;
+    /* wid hgt orient flags bev dfore dback bright dark surface grp flags2 uline corner */
+    t = button_with("000001" "0000" "03" "0C" "08" "0E" "09" "0A" "00" "00" "00" "00");
+    bright = rcount(t, 14);
+    dark = rcount(t, 9);
+    surf = rcount(t, 10);
+    label = rcount(t, 12);
+    CHECK(bright > 0 && dark > 0 && surf > 0 && label > 0);
+    CHECK_INT(rpx(t, 20, 20), 14);   /* the top left corner is bright */
+    CHECK_INT(rpx(t, 80, 40), 9);    /* the bottom right is dark */
+    CHECK_INT(rpx(t, 24, 24), 10);   /* inside the bevel: the surface */
+    CHECK_INT(rpx(t, 19, 20), 0);    /* outside: untouched */
+    vt_free(t);
+    /* bevel size 0: no bevel; 3 -> 1: fewer bevel pixels */
+    t = button_with("000001" "0000" "00" "0C" "08" "0E" "09" "0A" "00" "00" "00" "00");
+    CHECK_INT(rcount(t, 14), 0);
+    CHECK_INT(rcount(t, 9), 0);
+    CHECK(rcount(t, 10) > surf);
+    vt_free(t);
+    t = button_with("000001" "0000" "01" "0C" "08" "0E" "09" "0A" "00" "00" "00" "00");
+    CHECK(rcount(t, 14) > 0 && rcount(t, 14) < bright);
+    vt_free(t);
+    /* each colour field moves its own pixels */
+    t = button_with("000001" "0000" "03" "01" "08" "02" "03" "04" "00" "00" "00" "00");
+    CHECK_INT(rcount(t, 12), 0);
+    CHECK_INT(rcount(t, 1), label);
+    CHECK_INT(rcount(t, 2), bright);
+    CHECK_INT(rcount(t, 3), dark);
+    CHECK(rcount(t, 4) >= surf);
+    vt_free(t);
+    /* wid and hgt override the button's own corner: 10 x 10 from (20,20) */
+    t = button_with("0A0A01" "0000" "03" "0C" "08" "0E" "09" "0A" "00" "00" "00" "00");
+    CHECK_INT(rpx(t, 30, 30), 9);
+    CHECK_INT(rpx(t, 31, 30), 0);
+    CHECK_INT(vt_rip_click(t, 25, 25, out), 6);
+    CHECK_INT(vt_rip_click(t, 50, 30, out), 0);
+    vt_free(t);
+}
+
+static void mouse_clear_flag(void)
+{
+    vt_term *t = rip_term();
+    vt_u8 out[VT_RIP_OUT_MAX];
+    h_put(t, "\033[!" "!|c0F|S010F|B0A0A1414\r\n" "!|w0005270A10\r\n" "!|1M000A0A1414" "1100000bye\r\n");
+    CHECK_INT(rcount(t, 15), 31 * 31);
+    CHECK_INT(vt_rip_click(t, 15, 15, out), 3);
+    CHECK(memcmp(out, "bye", 3) == 0);
+    CHECK_INT(rcount(t, 15), 0);        /* clr: the windows and canvas reset first */
+    CHECK_INT(vt_rip_mouse_fields(t), 0);
+    h_put(t, "z");
+    CHECK(strstr(h_row(t, 0), "z") != 0); /* the text window is the whole grid again */
+    vt_free(t);
+    /* clr = 0 keeps the canvas and the fields */
+    t = rip_term();
+    h_put(t, "\033[!" "!|c0F|S010F|B0A0A1414\r\n" "!|1M000A0A1414" "1000000bye\r\n");
+    CHECK_INT(vt_rip_click(t, 15, 15, out), 3);
+    CHECK_INT(rcount(t, 15), 31 * 31);
+    CHECK_INT(vt_rip_mouse_fields(t), 1);
+    vt_free(t);
+}
+
 void suite_rip(void)
 {
     fixture_01_line_grammar();
@@ -696,4 +1038,12 @@ void suite_rip(void)
     knob_fill_style();
     knob_geometry();
     knob_polygon_rect_flood();
+    text_font_scale_direction();
+    viewport_clips_and_resets();
+    text_window_scrolls_text_not_canvas();
+    text_window_commands_and_wrap();
+    mouse_limit_overlap_click_key();
+    mouse_expansion();
+    button_knobs_move_output();
+    mouse_clear_flag();
 }

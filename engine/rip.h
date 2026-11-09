@@ -133,11 +133,47 @@ struct rip_gfx {
     int fpat, fcolor;           /* S: fill pattern 0..11 (12 user), fill colour */
     unsigned char upat[8];      /* s: user 8x8 pattern, row 0 first, bit 0x80 leftmost */
     int px, py;                 /* m: current position */
+    int vx0, vy0, vx1, vy1;     /* v: the graphics viewport, corners inclusive; every pixel clips to it */
+    int font, fdir, fsize;      /* Y: font number (all draw the 8x8 bitmap until RIP-3b), 0 across or 1 up, scale */
 };
 void rip_gfx_init(struct rip_gfx *g);
+/* 8x8 bitmap font (O19): glyph `ch` (CP437) row r, bit 0x80 leftmost */
+unsigned char rip_font8_row(int ch, int r);
 /* 1 when rip_gfx_exec acts on this command (it needs a canvas) */
 int rip_gfx_handles(const struct rip_cmd *c);
 /* run a level-0 drawing or state command; returns 1 if handled */
 int rip_gfx_exec(struct rip_gfx *g, struct cv *cv, const struct rip_cmd *c);
+
+/* ---- mouse fields and buttons (rip_mouse.c, RIP-6) ---- */
+#define RIP_MOUSE_MAX 128 /* fields and buttons together; the 129th is rejected */
+#define RIP_MCMD 128      /* host command bytes kept per field */
+
+struct rip_mfield {
+    int x0, y0, x1, y1;          /* pixels, corners inclusive */
+    int clk, clr;                /* 1M flags: invert on click (stored, not drawn), reset windows first */
+    int hotkey;                  /* 1U: an ASCII code, 0 none */
+    int ncmd;
+    unsigned char cmd[RIP_MCMD]; /* the host command as sent, before expansion */
+};
+struct rip_bstyle { int wid, hgt, bevel, dfore, dback, bright, dark, surface; }; /* 1B */
+struct rip_mouse {
+    int n;
+    long rejected;               /* fields refused for the limit */
+    struct rip_bstyle st;
+    struct rip_mfield f[RIP_MOUSE_MAX];
+};
+void rip_mouse_init(struct rip_mouse *m);
+/* 1 for a level-1 M, K, B or U */
+int rip_mouse_handles(const struct rip_cmd *c);
+/* run it; g and cv draw a button (cv may be NULL: the field is kept, nothing drawn) */
+int rip_mouse_exec(struct rip_mouse *m, struct rip_gfx *g, struct cv *cv, const struct rip_cmd *c);
+/* index of the last defined field holding the pixel, -1 none */
+int rip_mouse_at(const struct rip_mouse *m, int px, int py);
+/* the expanded host command of the field hit (byte count, 0 for an empty command), -1 for no hit.
+ * out holds up to max (RIP_MCMD is always enough); *clr (may be NULL) gets the field's clear flag */
+int rip_mouse_click(const struct rip_mouse *m, int px, int py, unsigned char *out, int max, int *clr);
+int rip_mouse_key(const struct rip_mouse *m, int key, unsigned char *out, int max, int *clr);
+/* host command expansion: ^x control character, backquote and $NAME$ recognised (no-op) */
+int rip_expand(const unsigned char *src, int n, unsigned char *out, int max);
 
 #endif
