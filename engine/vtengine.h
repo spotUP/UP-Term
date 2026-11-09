@@ -566,6 +566,8 @@ int      vt_kitty_flags(const vt_term *t);
 unsigned long vt_music_smile_blocks(const vt_term *t);
 /* How many kitty graphics images were placed on the screen (a test sentinel). */
 unsigned long vt_kitty_placed(const vt_term *t);
+/* How many OSC 1337 File= (iTerm2) images were placed on the screen (a test sentinel). */
+unsigned long vt_iterm_placed(const vt_term *t);
 /* How many placeholder cells vt_cell_placeholder resolved to a tile (a test sentinel). */
 unsigned long vt_kitty_placeholders(const vt_term *t);
 /* K34: animation frames alive (a picture with a frame list counts its root too). */

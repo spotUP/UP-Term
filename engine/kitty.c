@@ -37,6 +37,7 @@
 
 #define KIT_RAW_MAX (4L * 1024L * 1024L) /* the bytes of one picture, base64 decoded */
 #include "png.c"
+#include "iterm.c"
 #define KIT_EBADF "EBADF:Failed to read image file" /* the one answer for any unreadable medium */
 #define KIT_PATH_MAX 1024
 #define KIT_KEYS 192                     /* the longest key list */
@@ -53,6 +54,7 @@ typedef struct vt_kitty {
     int in_data;     /* past the ';' of this chunk */
     int more;        /* m=1: the picture goes on in the next APC */
     int full;        /* the data passed KIT_RAW_MAX: dropped */
+    iterm_args ia;   /* OSC 1337 File=: its arguments (the data goes through the same base64 and cap) */
     char keys[KIT_KEYS];
 } vt_kitty;
 
@@ -1431,6 +1433,78 @@ static void kitty_end(vt_term *t)
         return;
     kitty_run(t, k);
     kitty_abort(t);
+}
+
+/* ---- iTerm2 inline images (OSC 1337 ; File=...) -------------------------------
+ * The header (str, up to the ':') was parsed by iterm_parse; the base64 after
+ * it streams through the kitty chunk's own decoder, buffer and cap (kit_b64,
+ * kit_data, KIT_RAW_MAX), and ST / BEL decodes it as a PNG (or through the host
+ * decoder) and places it with kit_show, as a kitty a=T would. inline=0 is a
+ * download: its bytes are swallowed and nothing is kept. */
+
+static void iterm_begin(vt_term *t, const char *hdr, int n)
+{
+    iterm_args a;
+    vt_kitty *k;
+    kitty_abort(t); /* a half-sent kitty upload does not survive an OSC */
+    t->osc52 = 4;
+    iterm_parse(hdr, n, &a);
+    if (!a.inl)
+        return; /* bytes swallowed, t->kit stays 0 */
+    k = (vt_kitty *)VT_MALLOC(sizeof(vt_kitty));
+    if (!k)
+        return;
+    memset(k, 0, sizeof(*k));
+    k->ia = a;
+    t->kit = k;
+}
+
+static void iterm_byte(vt_term *t, vt_u32 c)
+{
+    if (t->kit && c < 0x80)
+        kit_b64(t->kit, (vt_u8)c);
+}
+
+static void iterm_end(vt_term *t)
+{
+    vt_kitty *k = t->kit;
+    kit_src s;
+    int cw, ch, c, r;
+    if (!k)
+        return;
+    if (k->nacc == 2) {
+        kit_data(k, (vt_u8)(k->acc >> 4));
+    } else if (k->nacc == 3) {
+        kit_data(k, (vt_u8)(k->acc >> 10));
+        kit_data(k, (vt_u8)(k->acc >> 2));
+    }
+    k->acc = 0;
+    k->nacc = 0;
+    KV(k, 'f') = 100;
+    if (!k->full && k->len > 0 && !kit_load(t, k, &s)) {
+        cw = t->cell_w > 0 ? t->cell_w : 8;
+        ch = t->cell_h > 0 ? t->cell_h : 16;
+        c = iterm_cells(k->ia.wu, k->ia.wv, cw, t->cols);
+        r = iterm_cells(k->ia.hu, k->ia.hv, ch, 256);
+        if (c && r && k->ia.keep) { /* both given: the picture fits the box, one count decides */
+            if ((long)s.w * r * ch > (long)s.h * c * cw)
+                r = 0;
+            else
+                c = 0;
+        }
+        KV(k, 'c') = c;
+        KV(k, 'r') = r;
+        KV(k, 'C') = k->ia.nomove ? 1 : 0;
+        if (!kit_show(t, k, &s, 0))
+            t->iterm_placed++;
+        kit_src_free(&s);
+    }
+    kitty_abort(t); /* too big, unreadable or placed: the bytes go in every case */
+}
+
+unsigned long vt_iterm_placed(const vt_term *t)
+{
+    return t->iterm_placed;
 }
 
 unsigned long vt_kitty_placeholders(const vt_term *t)

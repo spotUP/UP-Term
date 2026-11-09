@@ -241,7 +241,7 @@ struct vt_term {
     int str_len;
     /* OSC 52: its payload streams past str, base64 decoded as it comes
      * into a buffer that grows to VT_CLIP_MAX (osc52_byte) */
-    vt_u8 osc52;               /* 0 not an OSC 52; 1 its selection; 2 its data;
+    vt_u8 osc52;               /* 0 not an OSC 52; 1 its selection; 2 its data; 4 an OSC 1337 File= picture (iterm_byte);
                                 * 3 an OSC 7 / 8 (long_cmd) kept whole in clip */
     vt_u8 long_cmd;
     vt_u8 clip_bad, clip_query;
@@ -332,6 +332,7 @@ struct vt_term {
     vt_u8 anim_off; /* vt_set_animation(0): the clock plays nothing (profile image-animation = off) */
     unsigned long kit_switches; /* animation frames switched (vt_kitty_frame_switches) */
     vt_u32 kit_placed;         /* kitty images placed on the screen (vt_kitty_placed) */
+    vt_u32 iterm_placed;       /* OSC 1337 File= images placed on the screen (vt_iterm_placed) */
     long kit_last_z;           /* z= of the last kitty placement (vt_kitty_last_z) */
     vt_u32 kit_ph;             /* placeholder cells resolved (vt_kitty_placeholders) */
     vt_image_decoder decode;   /* vt_set_image_decoder: PNG and the like (f=100) */
@@ -4351,9 +4352,28 @@ static void b64_flush(vt_term *t)
     t->b64_n = 0;
 }
 
+static void iterm_byte(vt_term *t, vt_u32 c); /* kitty.c: OSC 1337 File= */
+static void iterm_end(vt_term *t);
+
+/* In OSC 1337;File=args the name= value (a base64 file name, as long as the
+ * program likes) is not kept: the arguments after it must still fit in str. */
+static int iterm_in_name(const vt_term *t)
+{
+    int i = t->str_len;
+    if (t->str_len < 15 || memcmp(t->str, "1337;File=", 10))
+        return 0;
+    while (i > 10 && t->str[i - 1] != ';')
+        i--;
+    return t->str_len - i >= 5 && !memcmp(t->str + i, "name=", 5);
+}
+
 static void osc52_byte(vt_term *t, vt_u32 c)
 {
     int v;
+    if (t->osc52 == 4) { /* OSC 1337 File=: the picture's base64 */
+        iterm_byte(t, c);
+        return;
+    }
     if (t->osc52 == 3) { /* OSC 7 / 8: the text as it is, to VT_URI_MAX */
         vt_u8 u[4];
         int k, n;
@@ -4447,6 +4467,11 @@ static void osc8_set(vt_term *t, char *s);
 
 static void osc52_end(vt_term *t)
 {
+    if (t->osc52 == 4) {
+        iterm_end(t);
+        t->osc52 = 0;
+        return;
+    }
     if (t->osc52 == 3 && !t->clip_bad) {
         clip_put(t, 0);
         if (!t->clip_bad) {
@@ -5771,6 +5796,10 @@ static void feed(vt_term *t, vt_u32 c)
             sixel_abort(t); /* cancelled: no image */
         if (t->state == S_KITTY)
             kitty_abort(t);
+        if (t->osc52 == 4) { /* cancelled mid-picture: no image */
+            kitty_abort(t);
+            t->osc52 = 0;
+        }
         t->state = S_GROUND;
         return;
     }
@@ -5852,6 +5881,10 @@ static void feed(vt_term *t, vt_u32 c)
                 t->long_cmd = (vt_u8)(t->str[0] - '0');
                 return;
             }
+            if (t->state == S_OSC && c == ':' && t->str_len >= 10 && !memcmp(t->str, "1337;File=", 10)) {
+                iterm_begin(t, t->str + 10, t->str_len - 10); /* OSC 1337 File=args: the base64 follows */
+                return;
+            }
             if (t->str_kind == '_' && c == 'G' && t->state == S_STRING && t->str_len == 0) {
                 kitty_begin(t); /* APC G: a kitty graphics command */
                 return;
@@ -5865,6 +5898,8 @@ static void feed(vt_term *t, vt_u32 c)
                  * was cut to 3 bytes of garbage) */
                 vt_u8 u[4];
                 int k, m = put_utf8(u, (long)c);
+                if (t->state == S_OSC && c != ';' && iterm_in_name(t))
+                    return;
                 if (t->str_len + m < VT_STR_MAX)
                     for (k = 0; k < m; k++)
                         t->str[t->str_len++] = (char)u[k];
