@@ -26,6 +26,14 @@ class SeedVtc(unittest.TestCase):
         rig.seed_rig_vtc(d / "src", d / "dst")
         self.assertTrue((d / "dst/etc").is_dir())
 
+    def test_missing_source_is_skipped_not_a_crash(self):
+        """no build/rig (rig 1 never ran in this checkout): rig N>1 setup must not crash; stage_rig_vtc fills the drawer"""
+        d = pathlib.Path(tempfile.mkdtemp())
+        rig.seed_rig_vtc(d / "no-such-rig1/vtc", d / "dst")
+        self.assertFalse((d / "dst").exists())
+        (d / "dst").mkdir()
+        rig.seed_rig_vtc(d / "no-such-rig1/vtc", d / "dst")
+
 class StageThemes(unittest.TestCase):
     def test_setup_path_stages_every_amarchy_theme_into_the_drawer(self):
         """stage_rig_vtc (setup's call) fills VTC:amarchy-themes with every dist/amarchy-themes file, without `install`"""

@@ -1429,7 +1429,11 @@ def seed_rig_vtc(src, dst):
     """Rig N>1's VTC: starts as a copy of rig 1's (only read there; .uaem files carry the protection bits);
     `install` and the scripts keep it. A drawer that already exists but was made by something else first
     (a kit install or a stage into a fresh rig) still gets every file of rig 1's it lacks, e.g. VTC:etc that
-    the boot's ETC: assign needs; files already there are never replaced."""
+    the boot's ETC: assign needs; files already there are never replaced.
+    No rig 1 drawer (build/rig is only the first rig's folder; a checkout may never have run rig 1): nothing to
+    copy, and setup's stage_rig_vtc then builds the drawer from the repo, the source rig 1's own drawer came from."""
+    if not src.is_dir():
+        return
     if not dst.exists():
         print("copying rig 1's VTC: drawer ...")
         shutil.copytree(src, dst, symlinks=True)

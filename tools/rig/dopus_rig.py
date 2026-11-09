@@ -162,6 +162,16 @@ def own_screen(vtc):
     print("dopus: %s now opens DOpus on its own screen" % f)
 
 
+def start_cmd():
+    """The `rig.py start` command the install boots with. --allow-stale-base "<reason>" given to the dopus command goes
+    on to the start (which guards its own base, RIG-STALE-BASE) the way `rig.py start` reads it: the flag and the next argv item."""
+    cmd = [sys.executable, str(pathlib.Path(rig.__file__)), "start", "--max", "--no-dopus", "--purpose", purpose()] + system_args()
+    if "--allow-stale-base" in sys.argv:
+        i = sys.argv.index("--allow-stale-base")
+        cmd += ["--allow-stale-base"] + sys.argv[i + 1:i + 2]
+    return cmd
+
+
 def main():
     label, _ = target(system_args())
     print("[DOPUS] target: " + label)
@@ -186,7 +196,7 @@ def main():
     subprocess.run(["lha", "xq", str(ARCHIVE)], cwd=vtc / TREE, check=True)
     (vtc / SCRIPT).write_text('CD VTCX:%s\nInstaller "Install DOpus5" NOLOG\n' % TREE)
     try:
-        subprocess.run([sys.executable, str(pathlib.Path(rig.__file__)), "start", "--max", "--no-dopus", "--purpose", purpose()] + system_args(), check=True)
+        subprocess.run(start_cmd(), check=True)
         if ir.run('Assign >NIL: DOpus5: EXISTS')[0] == 0:
             sys.exit("dopus: DOpus5: is assigned on the boot; the Installer would offer an upgrade of it")
         ir.run('Run >NIL: Execute VTCX:%s' % SCRIPT)
