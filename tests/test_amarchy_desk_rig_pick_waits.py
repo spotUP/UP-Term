@@ -20,7 +20,7 @@ import pathlib, sys, time, types
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'tools' / 'rig'))
 for name in ('paths', 'ami', 'condev_rig', 'stage_rig', 'amarchy_window_rig', 'upkg_rig',
-             'amarchy_gui_rig', 'amarchy_tile_rig'):
+             'amarchy_gui_rig', 'amarchy_tile_rig', 'amarchy_rig'):
     sys.modules.setdefault(name, types.ModuleType(name))
 g = sys.modules['amarchy_gui_rig']
 g.UP, g.DOWN, g.RETURN, g.TITLE = 'up', 'down', 'return', 'Amarchy'
@@ -77,6 +77,7 @@ g.where = lambda title: ('s', {'title': title}) if state['menu'] in ('open', 're
 t.c.run = d.c.run = run
 t.ami.key = key
 t.open_menu = open_menu
+t.menu_state = lambda: (('box', 'digest') if state['menu'] in ('open', 'recoloured') else (None, None))   # pick() re-hotkeys when the menu is absent
 t.OPEN_SECS = t.STEP_SECS = 1
 t.keep_requester = lambda *a, **k: True   # this test is about the apply wait; the Keep check is in test_amarchy_pick_keep_checked.py
 
