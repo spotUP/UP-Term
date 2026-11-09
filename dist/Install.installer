@@ -588,6 +588,13 @@
                "screen in C:."))
 (P_STEP)
 
+;; libs right after system: rm and grep (instssblock.sh) are ixemul programs, so the library goes in before any part runs one
+(set #step "libs" #kb @KBLIBS@ #n 3
+     #why (cat "Installing the patched ixemul.library and its\n"
+               "ixnet.library (the ones there are kept as\n"
+               "LIBS:<name>.orig)."))
+(P_STEP)
+
 (set #from (tackon #files "coreutils/bin") #to (tackon #dest "bin") #part "copy-coreutils" #kb #kb-coreutils #n 3
      #why (cat "Copying the Unix commands (GNU coreutils: ls, cp,\n"
                "sort...) to UP-Term:bin. They stay out of C:, where\n"
@@ -650,12 +657,6 @@
      #why (cat "Writing vsh's settings"
                (if #serial ",\nthe serial login" "")
                (if #wasabi ",\nwasabid and its key" "") "."))
-(P_STEP)
-
-(set #step "libs" #kb @KBLIBS@ #n 3
-     #why (cat "Installing the patched ixemul.library and its\n"
-               "ixnet.library (the ones there are kept as\n"
-               "LIBS:<name>.orig)."))
 (P_STEP)
 
 (set #step "mount" #kb @KBMOUNT@ #n 2

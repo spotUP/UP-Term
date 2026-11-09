@@ -15,7 +15,7 @@ CHK = 'Version >NIL: LIBS:amisslmaster.library 5'
 
 
 def libs_part():
-    return DOS[DOS.index('Lab libs'):DOS.index('Lab mount')]
+    return DOS[DOS.index('Lab libs'):DOS.index('Lab copy-coreutils')]
 
 
 def p_amissl():
