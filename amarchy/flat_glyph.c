@@ -72,7 +72,13 @@ static void g_zoom(plan *g)
 static void g_size(plan *g)
 {
     int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1;
-    put(g, g->ix0 + iw / 2, g->iy0 + ih / 2, g->ix1, g->iy1, g->fg);
+    int n = imin(ih, (iw + g->side - 1) / g->side), k;
+    /* S69-ARROW-ASPECT: the size gadget is a right triangle in the lower right corner, hypotenuse at 45 degrees in visual units
+     * (a row counts g->side columns, like g_arrow's left/right arrows); the bottom row is the widest, the corner pixel is filled */
+    for (k = 0; k < n; k++) {
+        int len = imin(iw, g->side * (k + 1));
+        put(g, g->ix1 - len + 1, g->iy1 - n + 1 + k, g->ix1, g->iy1 - n + 1 + k, g->fg);
+    }
 }
 
 static void g_iconify(plan *g)
@@ -197,9 +203,12 @@ int flat_clone_slot(const flat_clone_key *keys, int n, int cap, unsigned long wh
     return n < cap ? n : -1;
 }
 
+/* S69-ARROW-ASPECT: the scroller arrows and the size gadget are NOT cloned. The stock shapes are authored for 2:1 hires pixels, so
+ * a copy of them on a square-pixel screen steps 2 columns per row (left/right, size) instead of 1. They draw as flat's own solid
+ * glyphs (g_arrow, g_size), scaled by the drawing screen's pixel aspect (g->side). Close, depth, zoom and iconify keep the clone. */
 int flat_clone_route(const flat_state *s, unsigned long which, unsigned long method)
 {
-    return s && s->enabled && !s->held && method == FLAT_IM_DRAW && flat_glyph_window_gadget(which);
+    return s && s->enabled && !s->held && method == FLAT_IM_DRAW && flat_glyph_window_gadget(which) && !flat_glyph_knob_gadget(which);
 }
 
 /* FLAT-NO-DIVIDERS: is line k (a column when col, else a row) a stock divider / border line? It is when every pixel of it between
