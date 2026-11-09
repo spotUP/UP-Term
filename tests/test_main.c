@@ -77,6 +77,7 @@ void suite_iconspec(void);
 void suite_updiff(void);
 void suite_zmodem(void);
 void suite_ripxfer(void);
+void suite_ripglue(void);
 void suite_otag(void);
 void suite_ttf(void);
 void suite_slash(void);
@@ -195,6 +196,7 @@ static const h_suite suites[] = {
     { "updiff", suite_updiff },
     { "zmodem", suite_zmodem },
     { "ripxfer", suite_ripxfer },
+    { "ripglue", suite_ripglue },
     { "otag", suite_otag },
     { "ttf", suite_ttf },
     { "slash", suite_slash },

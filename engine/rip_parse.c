@@ -215,7 +215,7 @@ static void emit(const struct rip_sinks *sk, const unsigned char *p, long n)
         sk->text(sk->ud, p, n);
 }
 
-void rip_feed(struct rip_state *st, const unsigned char *p, long n, const struct rip_sinks *sk)
+long rip_feed(struct rip_state *st, const unsigned char *p, long n, const struct rip_sinks *sk)
 {
     long i, run = (st->mode == M_TEXT || st->mode == M_BOL) ? 0 : -1;
     for (i = 0; i < n; i++) {
@@ -282,11 +282,15 @@ void rip_feed(struct rip_state *st, const unsigned char *p, long n, const struct
             } else if (c == '|') {
                 finish(st, sk);
                 begin(st);
+                if (sk && sk->halt && sk->halt(sk->ud))
+                    return i + 1;
             } else if (c == '\r' || c == '\n') {
                 finish(st, sk);
                 st->mode = M_BOL;
                 st->eol = c == '\r' ? '\n' : '\r';
                 run = i + 1;
+                if (sk && sk->halt && sk->halt(sk->ud))
+                    return i + 1;
             } else {
                 put(st, c);
             }
@@ -295,6 +299,7 @@ void rip_feed(struct rip_state *st, const unsigned char *p, long n, const struct
     }
     if (run >= 0)
         emit(sk, p + run, n - run);
+    return n;
 }
 
 static int add(char *out, int max, int len, const char *s)

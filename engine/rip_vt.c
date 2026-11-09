@@ -54,6 +54,7 @@ struct rip_ad {
     int nhold;
     vt_u8 hold[16]; /* a possible ESC [ digits ! , kept across vt_feed calls */
     int stroke;     /* host option: Hershey strokes for fonts 1..4 (vt_set_rip_stroke) */
+    long took;      /* bytes the last rip_pass consumed (less than n after a feed stop) */
     long blocks;    /* level-9 transfers handed to cb.rip_block (sentinel) */
     int moved;      /* text went to the engine since the tiles were last put right */
     struct rip_mouse mouse;
@@ -326,9 +327,15 @@ static void rip_switch(vt_term *t, struct rip_ad *ad, int n)
     ad->nhold = 0;
 }
 
+static int rip_on_halt(void *ud)
+{
+    return ((vt_term *)ud)->feed_stop;
+}
+
 static void rip_pass(vt_term *t, struct rip_ad *ad, const vt_u8 *p, long n)
 {
     struct rip_sinks sk;
+    ad->took = n;
     if (n <= 0)
         return;
     if (!ad->active) {
@@ -338,7 +345,8 @@ static void rip_pass(vt_term *t, struct rip_ad *ad, const vt_u8 *p, long n)
     sk.ud = t;
     sk.text = rip_on_text;
     sk.cmd = rip_on_cmd;
-    rip_feed(&ad->st, p, n, &sk);
+    sk.halt = rip_on_halt;
+    ad->took = rip_feed(&ad->st, p, n, &sk);
 }
 
 /* Auto: the held line is complete (ad->nline bytes in ad->line, ending in CR or LF). Valid =
@@ -418,10 +426,18 @@ static void rip_run(vt_term *t, struct rip_ad *ad, const vt_u8 *buf, long len)
             if (rip_auto_byte(t, ad, b)) {
                 i++;
                 from = i;
+                if (t->feed_stop) { /* the held line ran a command that took the stream */
+                    t->fed = i;
+                    return;
+                }
                 continue;
             }
         } else if (ad->mode == 2 && !ad->active && ad->bol && b == '!' && !ad->nhold) {
             rip_pass(t, ad, buf + from, i - from);
+            if (t->feed_stop) {
+                t->fed = from + ad->took;
+                return;
+            }
             ad->line[0] = b;
             ad->nline = 1;
             i++;
@@ -441,6 +457,10 @@ static void rip_run(vt_term *t, struct rip_ad *ad, const vt_u8 *buf, long len)
             n = ad->nhold; /* not ours: the held bytes go on as they came */
             ad->nhold = 0;
             rip_pass(t, ad, ad->hold, n);
+            if (t->feed_stop) { /* the held bytes are not command bytes: a stop here is the host's */
+                t->fed = i;
+                return;
+            }
             continue;
         }
         if (ad->bang) {
@@ -454,6 +474,10 @@ static void rip_run(vt_term *t, struct rip_ad *ad, const vt_u8 *buf, long len)
         }
         if (b == 0x1B && (!ad->active || rip_in_text(&ad->st))) {
             rip_pass(t, ad, buf + from, i - from);
+            if (t->feed_stop) {
+                t->fed = from + ad->took;
+                return;
+            }
             ad->bol = 0;
             ad->hold[0] = b;
             ad->nhold = 1;
@@ -465,13 +489,16 @@ static void rip_run(vt_term *t, struct rip_ad *ad, const vt_u8 *buf, long len)
         i++;
     }
     rip_pass(t, ad, buf + from, len - from);
+    t->fed = t->feed_stop ? from + ad->took : len;
 }
 
 void vt_feed(vt_term *t, const vt_u8 *buf, long len)
 {
     struct rip_ad *ad = (struct rip_ad *)t->rip;
+    t->feed_stop = 0;
+    t->fed = len;
     if (!ad) {
-        vt_feed_core(t, buf, len); /* RIP off: nothing here runs */
+        vt_feed_core(t, buf, len); /* RIP off: nothing here runs, so nothing can stop the feed */
         return;
     }
     if (rip_canvas_alive(t, ad))
@@ -535,6 +562,16 @@ int vt_rip_active(const vt_term *t)
 long vt_rip_icons(const vt_term *t)
 {
     return t->rip ? rip_icons_drawn() : 0;
+}
+
+void vt_feed_stop(vt_term *t)
+{
+    t->feed_stop = 1;
+}
+
+long vt_fed(const vt_term *t)
+{
+    return t->fed;
 }
 
 long vt_rip_blocks(const vt_term *t)

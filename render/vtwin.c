@@ -985,6 +985,14 @@ static void settings(vtwin *w)
 
 static void bind(vtwin *w, struct Window *win);
 
+/* A RIP level-9 block transfer: the owner decides whether to take the stream (vt_feed_stop). */
+static void cb_rip_block(void *u, int mode, int proto, int type, const char *name)
+{
+    vtwin *w = (vtwin *)u;
+    if (w->host->rip_block)
+        w->host->rip_block(w->user, mode, proto, type, name);
+}
+
 static void cb_music(void *u, const vt_note *n, int c, int bg)
 {
     if (u) /* the window; vbcc refuses (void)u */
@@ -1008,6 +1016,7 @@ void vtwin_callbacks(struct vt_callbacks *cb)
     cb->clipboard_get = cb_clipboard_get;
     cb->notify = cb_notify;
     cb->music = cb_music; /* ANSI music (render/vtmusic) */
+    cb->rip_block = cb_rip_block;
 }
 
 int vtwin_attach(vtwin *w, struct Window *win)
@@ -1284,10 +1293,11 @@ void vtwin_detach(vtwin *w)
 
 /* ---- output --------------------------------------------------------------------- */
 
-void vtwin_write(vtwin *w, const vt_u8 *b, long n)
+long vtwin_write(vtwin *w, const vt_u8 *b, long n)
 {
+    long fed;
     if (!w->t)
-        return;
+        return n;
     if (w->r.view) {
         /* new output shows the live screen, as xterm does; the engine's
          * pending batch goes first (ignored by the renderer while the view
@@ -1304,6 +1314,7 @@ void vtwin_write(vtwin *w, const vt_u8 *b, long n)
         w->wrote = 1; /* output since the last frame: no settling yet */
         PROF_IN(w);
         vt_feed(w->t, b, n);
+        fed = vt_fed(w->t);
         PROF_OUT(w, 3);
         w->render_pending = 1;
         if (sync && !(vt_modes(w->t) & VT_MODE_SYNC))
@@ -1329,6 +1340,7 @@ void vtwin_write(vtwin *w, const vt_u8 *b, long n)
         }
     }
     frame_start(w);
+    return fed;
 }
 
 int vtwin_raw_report(vtwin *w, int cls)
