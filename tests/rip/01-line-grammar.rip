@@ -1,0 +1,10 @@
+This plain text line has no bang-pipe start and is not RIP.
+!|*|E|c0F|L0A0A5050|R0A0A5050
+
+More plain text between RIP lines is ignored by the parser.
+!|c0C|L500A0A50
+!|c0E|C2N2N1O
+!|c0A|R5K0A781O trailing junk text zz ignored
+plain text before soh |c0B|R7K0A9G1O
+plain text before stx |c0D|RA00ABU1O
+!|#
