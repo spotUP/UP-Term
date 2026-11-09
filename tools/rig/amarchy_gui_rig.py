@@ -1312,7 +1312,7 @@ FLAT_BOOT = 'Run >NIL: UP-Term:bin/amarchy-flat BOOT'
 
 def flat_boot(tag):
     """Run the kit's boot line for amarchy-flat. UP-Term:bin resolves to SETUP_BIN first, so the build's binary loads.
-    BOOT returns at once with nothing resident while both flat prefs are off: then the right state is STATUS
+    BOOT returns at once with nothing resident while both flat prefs are explicitly off (the defaults are on): then the right state is STATUS
     flat=absent. Prefs on: the resident answers STATUS with flat=on or flat=off; held or absent means no hook went in."""
     c.run(FLAT_BOOT, 20)
     if not flat_prefs_on():

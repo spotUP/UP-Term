@@ -129,10 +129,26 @@ int main(int argc, char **argv)
     if (argc >= 3 && !strcmp(argv[2], "pens")) {
         unsigned char want[DK_SLOTS];
         int i;
-        desk_pens(want);
+        if (argc > 3 && !strcmp(argv[3], "flat"))
+            desk_pens_flat(want);
+        else
+            desk_pens(want);
         printf("pens:");
-        for (i = 0; i < 12; i++)
-            printf(" %d", i == 11 ? 2 : want[i]);
+        for (i = 0; i < 12; i++) {
+            int v = want[i];
+            if (argc > 4 && !strcmp(argv[4], "31") && i != 11) {
+                /* OS below 47: IPrefs 40.7 reads the 4-colour list under depth 3, else the 8-colour list through desk_palette_pen;
+                 * DrawInfo slot 1 (BLOCKPEN) reads 1 (s57 pens31 hunt) */
+                int depth = argc > 5 ? atoi(argv[5]) : 8;
+                if (v >= 4)
+                    v = depth >= 3 ? desk_palette_pen(v, depth) : 0;
+                if (v < 0 || (v < 4 && v >= (1 << depth)))
+                    v = 0;
+                if (i == 1)
+                    v = 1;
+            }
+            printf(" %d", i == 11 ? 2 : v);
+        }
         printf("\n");
         return 0;
     }
@@ -167,6 +183,12 @@ int main(int argc, char **argv)
         else
             desk_pens(pens);
         n = desk_palette(&th, atoi(argv[3]), pens, buf, sizeof buf);
+        if (n > 0 && argc > 4 && !strcmp(argv[4], "31")) {   /* OS below 47: the form desk_core writes there, 12 pens then ffff per list */
+            static unsigned char safe[sizeof buf];
+            n = desk_palette_31safe(buf, n, safe, sizeof safe);
+            if (n > 0)
+                memcpy(buf, safe, (size_t)n);
+        }
     }
     else if (!strcmp(argv[2], "wbpattern"))
         n = desk_wbpattern(&th, atoi(argv[3]), 0, 0, buf, sizeof buf);
@@ -176,7 +198,7 @@ int main(int argc, char **argv)
             return 3;
     } else if (!strcmp(argv[2], "font") && argc > 4) {
         n = strcmp(argv[3], "-") ? slurp(argv[3], buf, sizeof buf) : desk_font_default(buf, sizeof buf);
-        if (n < 0 || desk_font_pens(buf, n, DK_ICONTEXT_OUTLINE) < 0 || desk_font_name(&th, buf, n, exists, argv[4]) < 0)
+        if (n < 0 || desk_font_pens(buf, n, argc > 5 ? atoi(argv[5]) : DK_ICONTEXT_PLAIN) < 0 || desk_font_name(&th, buf, n, exists, argv[4]) < 0)
             return 3;
     } else
         return 2;

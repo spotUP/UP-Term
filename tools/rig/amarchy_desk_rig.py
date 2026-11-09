@@ -4,7 +4,7 @@
 Real entry point: the drawn menu (Left Amiga + Space) > Style > Amarchy theme > Return, the path that runs
 gt_dos_select (there is no `desk` ARexx verb or hotkey action yet: R1.12). The steps:
   1. Baseline: ENV:Sys and ENVARC:Sys prefs bytes, Workbench colours 0-3 (T:wbpens).
-  2. Master switch off (the default): pick a theme. AMARCHY_DESKS must not rise, no desktop prefs file may change,
+  2. Master switch off (written explicitly: the key defaults ON): pick a theme. AMARCHY_DESKS must not rise, no desktop prefs file may change,
      T:amarchy-revert must not appear.
   3. Master switch on (desktop-theme = on in ENV:Amarchy/prefs): pick another theme. AMARCHY_DESKS +1, AMARCHY_DESKMASK 15;
      the THEMED FIELDS of ENV:Sys palette, wbpattern, pointer, font equal those of the bytes desk_core makes for that theme
@@ -33,6 +33,7 @@ ROOT = os.path.join(HERE, '..', '..')
 sys.path.insert(0, HERE)
 import ami, condev_rig as c
 import amarchy_gui_rig as g
+import amarchy_rig as ar
 import amarchy_theme_save_rig as t
 import amarchy_tile_rig as tile
 
@@ -142,8 +143,10 @@ def wb_pens():
     return pens, scr
 
 
-def desk_pen_line():
-    return subprocess.check_output([desk_expect_exe(), '-', 'pens']).decode().split(':', 1)[1].strip()
+def desk_pen_line(os31=False):
+    """The DrawInfo pens the desk palette produces (flat pens when flat-system-look is on). os31: the form IPrefs 40.7 reads (pens31 hunt)."""
+    args = [desk_expect_exe(), '-', 'pens', 'flat' if g.flat_prefs_on() else 'desk'] + (['31', str(wb_depth())] if os31 else [])
+    return subprocess.check_output(args).decode().split(':', 1)[1].strip()
 
 
 def probe_state(tag):
@@ -165,12 +168,12 @@ def watch_reset(scr0, secs=20):
     """R1.17: poll the Workbench DrawInfo pens every 2 s up to secs; true once they equal the desk pens (IPrefs applied the palette; the
     screen address is not asserted: 3.2 resets in place, the address never changes). Slot 11 is not compared: IPrefs leaves it at the
     live value (1 on the stock palette) while the desk pens say 2; slots 0..10 are the ones desk_palette sets in palette.prefs."""
-    want, t0, last = desk_pen_line(), time.time(), ('', '')
+    want, t0, last = desk_pen_line(editor_version('Palette') < 47), time.time(), ('', '')
     probe_state('+0')
     while time.time() - t0 < secs:
         last = wb_pens()
         print('[INFO] +%d s: pens %s screen %s requesters %s' % (time.time() - t0, last[0], last[1], [ami.describe_requester(r) for r in ifaces_blocked()]))
-        if last[0].split()[:11] == want.split()[:11]:
+        if last[0].split() == want.split() if editor_version('Palette') < 47 else last[0].split()[:11] == want.split()[:11]:
             return True, last, want
         time.sleep(2)
     probe_state('+end')
@@ -181,9 +184,9 @@ def live_pens_differ():
     """R1.17 trigger: with the bar closed, make the live Workbench pens differ from the desk pens (the stock Palette editor USEs a
     palette whose DrawInfo pens are not the desk ones), so the next desk apply must reset the screen. The bar comes back after."""
     if editor_version('Palette') < 47:
-        # DESK-31-CRASH: on 3.1 (Palette 40.2, IPrefs 40.7) any palette.prefs write freezes the guest, this trigger's too; the desk
-        # apply skips the palette there, so no screen reset follows and none is provoked
-        print('[INFO] trigger: SYS:Prefs/Palette < 47, no stock Palette USE (it freezes IPrefs 40.7)')
+        # S56-PALETTE-31-SAFE: STOCK_PALETTE is a 3.2 file (13 pens per list); IPrefs 40.7 applying it overwrites ExecBase. The desk
+        # apply writes the 3.1-safe form and resets the screen itself (stock pens differ from the desk pens), so no trigger is needed
+        print('[INFO] trigger: SYS:Prefs/Palette < 47, no stock Palette USE (3.2-format file; the stock pens already differ)')
         return
     rc, _ = tile.send('AMARCHY', 'BAR OFF')
     say(rc == 0 and tile.bar_box() is None, 'trigger: bar closed before the stock palette USE', str(rc))
@@ -203,6 +206,10 @@ def pick(up=None, keep=True):
     the menu is closed only after that (the apply hides and reopens it: THEME-PICK-MENU-STABLE)."""
     c.run('Delete >NIL: ENV:%s QUIET' % t.APPLY_DONE)
     t.open_menu()
+    time.sleep(4)
+    if t.menu_state()[0] is None:   # the first hotkey after an Amarchy start is lost (measured rig 89: the second one opens it)
+        print('[INFO] menu did not open on the first hotkey, again')
+        t.open_menu()
     st, _ = t.wait_stable(t.OPEN_SECS, what='open menu')
     # the top level differs per rig (3.1: Style is the 4th entry; the 3.2 rig lists Apps, Settings, Style): read where it is
     for _ in range(t.style_downs()):
@@ -246,6 +253,22 @@ def pick(up=None, keep=True):
     return rows[sel].split(' (')[0], up
 
 
+def pal_pen_counts(data):
+    """(pens in the 4-colour list, pens in the 8-colour list) of a palette.prefs PALT body: words before the ffff terminator
+    (32 if none). Offsets are desk_core.c PAL_4PENS 16 / PAL_8PENS 80 into the body."""
+    import struct
+    i = data.find(b'PALT')
+    if i < 0 or len(data) < i + 8 + 144:
+        return None
+    body = data[i + 8:]
+    def count(off):
+        for n in range(32):
+            if struct.unpack('>H', body[off + 2 * n:off + 2 * n + 2])[0] == 0xffff:
+                return n
+        return 32
+    return count(16), count(80)
+
+
 def desk_expect_exe():
     exe = os.path.join(tempfile.gettempdir(), 'desk_expect_rig')
     srcs = ['tools/rig/desk_expect.c', 'amarchy/desk_core.c', 'amarchy/gthemes_core.c', 'handler/be32.c',
@@ -274,7 +297,7 @@ def fields(part, data, ncol=8):
     return dict(l.split(' ', 1) for l in out.stdout.decode('latin-1').splitlines())
 
 
-def compare(part, got, want, what, ncol=8):
+def compare(part, got, want, what, ncol=8, skip=()):
     """One [OK]/[FAIL] for a part: every themed field of `want` against `got`; each difference names field, expected, got."""
     if got is None:
         return say(False, what, 'file missing')
@@ -287,7 +310,7 @@ def compare(part, got, want, what, ncol=8):
         for k in list(w):
             if k.endswith('.depth') and w.get(k[:-6] + '.data', 'x').strip('0 ') == '' and g.get(k[:-6] + '.data') == w[k[:-6] + '.data']:
                 g[k] = w[k]
-    diffs = ['%s: expected %s got %s' % (k, w[k], g.get(k, '<absent>')) for k in w if g.get(k) != w[k]]
+    diffs = ['%s: expected %s got %s' % (k, w[k], g.get(k, '<absent>')) for k in w if k not in skip and g.get(k) != w[k]]
     print('[INFO] %s: %d themed fields compared' % (part, len(w)))
     return say(not diffs, what, '; '.join(diffs[:12]))
 
@@ -441,15 +464,20 @@ def main():
         print('[FAIL] the Amarchy commodity is not running')
         return 1
     g.close_menu()
+    for tgt in ('build/amiga/wbpens', 'build/amiga/dripens'):    # rig helpers: make builds them, so the run needs no manual step
+        subprocess.check_call(['make', tgt], cwd=ROOT, stdout=subprocess.DEVNULL)
     ami.put(os.path.join(ROOT, 'build', 'amiga', 'wbpens'), 'T:wbpens')
     # the rig image has no pointer.prefs: seed ENV:Sys with the OS 3.2.2 file (tests/data/desk, the host golden) as the baseline
     if sysfile('ENV', 'pointer') is None and sysfile('ENVARC', 'pointer') is None:
         ami.put(os.path.join(ROOT, 'tests', 'data', 'desk', 'pointer-os322.prefs'), 'ENV:Sys/pointer.prefs')
         print('[INFO] seeded ENV:Sys/pointer.prefs from tests/data/desk/pointer-os322.prefs')
-    base = snapshot()
-    cols0 = wb_colours()
-    print('[INFO] baseline Workbench colours %s; ENV:Sys %s' % (cols0, {n: (len(base[('ENV', n)]) if base[('ENV', n)] else None) for n in SYS_FILES}))
-    hdr = '; Amarchy preferences. Written by the Amarchy preferences window (Exchange: Show Interface).\n'
+    # desktop-theme defaults ON (amconf_core.h AM_DESK): the off step must write it off explicitly, or it is not the off step
+    hdr = ('; Amarchy preferences. Written by the Amarchy preferences window (Exchange: Show Interface).\n'
+           '[profile default]\ndesktop-theme = off\n'
+           # flat-system-look and flat-window-gadgets default ON as well, and the resident flat look writes ENV:/ENVARC: palette,
+           # wbpattern and font prefs itself (FLAT-PENS-LIVE, FLAT-BACKDROP-SAME-AS-WINDOW, icon text); with them on the
+           # off step could not tell the desktop theme from the flat look. This rig tests the desktop theme: flat off.
+           'flat-system-look = off\nflat-window-gadgets = off\n')
     with tempfile.NamedTemporaryFile(delete=False) as f:
         f.write(hdr.encode('latin-1'))
     c.run('MakeDir >NIL: ENV:Amarchy')    # a fresh rig has no ENV:Amarchy yet; the put cannot create it
@@ -457,7 +485,21 @@ def main():
     os.unlink(f.name)
     prefs = (ami.read_file(PREFS) or b'').decode('latin-1')
     print('[INFO] %s before:\n%s' % (PREFS, prefs))
+    say(re.search(r'^\s*desktop-theme\s*=\s*off\b', prefs, re.M) is not None, 'off: ENV:Amarchy/prefs holds desktop-theme = off before the first pick')
     c.run('Delete T:amarchy-revert ALL QUIET')
+    time.sleep(8)           # the prefs notify reaches Amarchy and the flat resident (flat off may restore files): then the baseline
+    # AMARCHY_DESKS and the other counters are per-process (desk_dos_applies) but published as ENV: globals that outlive the process, and
+    # only after a pick: a baseline read here is the previous Amarchy's last value (3), the first pick of a restarted Amarchy publishes 0 and
+    # the next 1. A fresh process with the globals deleted makes the baseline 0 and every published value this run's own.
+    c.run('Delete >NIL: ENV:AMARCHY_DESKS ENV:AMARCHY_DESKMASK ENV:AMARCHY_WBCLOSES ENV:AMARCHY_WBPENS ENV:AMARCHY_WBREFUSED QUIET')
+    ar.arexx('QUIT')
+    time.sleep(3)
+    if not g.start_amarchy('desk rig: fresh Amarchy process for the counters'):
+        return 1
+    time.sleep(8)
+    base = snapshot()
+    cols0 = wb_colours()
+    print('[INFO] baseline Workbench colours %s; ENV:Sys %s' % (cols0, {n: (len(base[('ENV', n)]) if base[('ENV', n)] else None) for n in SYS_FILES}))
 
     # step 2: master off
     desks0 = n_env('AMARCHY_DESKS')
@@ -501,11 +543,11 @@ def main():
     stop.append(1); th.join(); print('[PROBE] timeline', tl)
     say(bool(name2) and name2 != name1, 'on: picked a second theme', '%s then %s' % (name1, name2))
     say(n_env('AMARCHY_DESKS') == desks0 + 1, 'on: AMARCHY_DESKS +1', 'was %r now %r' % (desks0, t.env('AMARCHY_DESKS')))
-    old_ws = editor_version('Palette') < 47     # desk_gate_mask: no palette part there, the backdrop write asks Intuition for a reset
-    say(t.env('AMARCHY_DESKMASK') == ('14' if old_ws else '15'), 'on: AMARCHY_DESKMASK %s' % ('14' if old_ws else '15'), t.env('AMARCHY_DESKMASK'))
+    # S56-PALETTE-31-SAFE: the palette bit stays on 3.1 (mask 15 everywhere)
+    say(t.env('AMARCHY_DESKMASK') == '15', 'on: AMARCHY_DESKMASK 15', t.env('AMARCHY_DESKMASK'))
     # R1.17: IPrefs resets the Workbench screen after the USE and cannot while the bar is on it ("Please close the following windows: Amarchy bar")
     reset_ok, got_pens, want_pens = watch_reset(scr0)
-    say(reset_ok or old_ws, 'on: IPrefs applied the palette (DrawInfo pens 0..10 == desk pens)',
+    say(reset_ok, 'on: IPrefs applied the palette (DrawInfo pens 0..10 == desk pens)',
         'screen %s -> %s, pens %r want %r' % (scr0, got_pens[1], got_pens[0], want_pens))
     blocked = ['%s | %s' % (ami.describe_requester(r), requester_text(r)) for r in ifaces_blocked()]
     say(not blocked, 'on: no System Request from IPrefs after the desk apply', '; '.join(blocked))
@@ -533,12 +575,15 @@ def main():
     depth = wb_depth()
     ncol = 8 if depth >= 3 else 4
     print('[INFO] Workbench depth %d: palette compared at %d colours' % (depth, ncol))
-    if editor_version('Palette') < 47:      # desk_palette_editor_ok (DESK-31-CRASH): IPrefs 40.7 freezes on a palette.prefs write
-        pal = base_on[('ENV', 'palette')] or base_on[('ENVARC', 'palette')]
-        say(got['palette'] == pal, 'on: SYS:Prefs/Palette < 47, ENV:Sys/palette.prefs not written (equals its baseline)')
-    else:
-        compare('palette', got['palette'], expect(name2, 'palette', [str(ncol)]),
-                'on: ENV:Sys/palette.prefs themed fields equal desk_core output', ncol)
+    pal31 = editor_version('Palette') < 47      # S56-PALETTE-31-SAFE: below 47 desk_core writes desk_palette_31safe, so compare that form
+    compare('palette', got['palette'], expect(name2, 'palette', [str(ncol)] + (['31'] if pal31 else [])),
+            'on: ENV:Sys/palette.prefs themed fields equal desk_core output' + (' (3.1: minus the fields Palette 40.2 USE rewrites)' if pal31 else ''), ncol,
+            # Palette 40.2 USE rewrites the file: pen 5 -> PEN_C2 0xFEFD, slot 11 -> 2, colour 7 (s57 pens31 hunt); the DrawInfo pens
+            # check above is the product check on 3.1
+            skip=('pen8[1]', 'pen8[4]', 'pen4[11]', 'pen8[11]', 'color[7]') if pal31 else ())
+    if pal31:
+        pens31 = pal_pen_counts(got['palette'])
+        say(pens31 == (12, 12), 'on: ENV:Sys/palette.prefs is the 3.1-safe form (12 pens then ffff in both PALT lists)', str(pens31))
     compare('wbpattern', got['wbpattern'], expect(name2, 'wbpattern', [str(min(depth, 3))]),
             'on: ENV:Sys/wbpattern.prefs ROOT and DRAWER fields equal desk_core output')
     ptr = base_on[('ENV', 'pointer')] or base_on[('ENVARC', 'pointer')]
@@ -555,17 +600,20 @@ def main():
     if fbase:
         with tempfile.NamedTemporaryFile(delete=False) as f:
             f.write(fbase)
-        w = expect(name2, 'font', [f.name, fdir])
+        w = expect(name2, 'font', [f.name, fdir, '0'])
         os.unlink(f.name)
     else:
-        w = expect(name2, 'font', ['-', fdir])
+        w = expect(name2, 'font', ['-', fdir, '0'])
     os.rmdir(fdir)
     compare('font', got['font'], w, 'on: ENV:Sys/font.prefs WBFONT pens, modes, name and size equal desk_core output')
     cols = wb_colours()
     print('[INFO] Workbench colours before %s after %s' % (cols_on, cols))
     say(cols != cols_on, 'on: Workbench colours 0-3 changed live')
     for p, b in base_on.items():
-        if p[0] == 'ENVARC':
+        if p[0] == 'ENVARC' and p[1] == 'palette' and pal31:
+            # the 3.1-safe write changes ENVARC by design (pal31-rig-pass.md): ENVARC:Sys/palette.prefs ends identical to ENV:Sys's
+            say(sysfile(*p) == got['palette'], 'on: ENVARC:Sys/palette.prefs equals ENV:Sys/palette.prefs (3.1-safe write persists)')
+        elif p[0] == 'ENVARC':
             say(sysfile(*p) == b, 'on: ENVARC:Sys/%s.prefs unchanged' % p[1])
     rev = c.run('List T:amarchy-revert')[1]
     print('[INFO] T:amarchy-revert:\n%s' % rev)
