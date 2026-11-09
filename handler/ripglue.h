@@ -25,6 +25,8 @@ typedef struct ripglue {
     long len;
     char name[RIPGLUE_NAME];  /* the name the BBS gave in the RIP command */
     long armed, refused;
+    int pending; /* armed by the rip_block callback; the write that fired it turns this into xfer */
+    int xfer;    /* a transfer owns the stream: ACTION_WRITE packets are held for the worker, not drawn */
 } ripglue;
 
 void ripglue_init(ripglue *g, const ripglue_io *io);
@@ -34,6 +36,21 @@ void ripglue_init(ripglue *g, const ripglue_io *io);
 int ripglue_arm(ripglue *g, int mode, int proto, const char *name);
 /* The bytes of the triggering buffer after the command (vtwin_write returned fed < len). */
 void ripglue_begin(ripglue *g, const unsigned char *rest, long n);
+/* What the handler's ACTION_WRITE does with one buffer. */
+enum { RIPGLUE_FED = 0,   /* drawn; reply the packet now */
+       RIPGLUE_HELD = 1,  /* a transfer is running: hand the packet to the worker, reply when it is used up */
+       RIPGLUE_START = 2  /* the buffer fired an accepted block: start the worker with rest/restn as its first chunk */
+};
+/* Bytes drawn (vtwin_write); returns how many of the n it took. */
+typedef long (*ripglue_feed)(void *user, const unsigned char *b, long n);
+/* The one routing decision of ACTION_WRITE (host-tested; the handler only calls it). During a
+ * transfer the buffer is not drawn at all. Otherwise it is fed; when the rip_block callback armed
+ * the glue (ripglue_arm returned 1) the transfer starts and rest and restn are the bytes the engine
+ * left (restn may be 0). */
+int ripglue_write(ripglue *g, ripglue_feed feed, void *user, const unsigned char *b, long n,
+                  const unsigned char **rest, long *restn);
+/* The worker has ended: the stream is the terminal's again. */
+void ripglue_done(ripglue *g);
 /* The zm_line of this glue; l->user is g. */
 void ripglue_line(ripglue *g, zm_line *l);
 /* The worker body. Returns zm_receive's ZM_* result. */

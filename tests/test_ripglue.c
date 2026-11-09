@@ -273,8 +273,103 @@ static void glue_loop(int rip, const char *prefix)
     vt_free(t);
 }
 
+/* ---- ACTION_WRITE routing (ripglue_write): the one decision the handler's packet case makes ---- */
+static vt_term *r_t;
+static int r_feeds;
+static long r_feed(void *u, const unsigned char *b, long n)
+{
+    (void)u;
+    r_feeds++;
+    vt_feed(r_t, b, n);
+    return vt_fed(r_t);
+}
+
+static void arm_cb(void *u, int mode, int proto, int type, const char *name)
+{
+    ripglue *g = (ripglue *)u;
+    (void)type;
+    if (ripglue_arm(g, mode, proto, name))
+        vt_feed_stop(r_t);
+}
+
+/* Sentinel r_feeds proves the feed ran through the routing; the HELD path never feeds. */
+static void route_case(int rip, const char *prefix)
+{
+    static const char tail[] = "**\030B00000000000000";
+    char buf[256];
+    ripglue g;
+    ripglue_io io;
+    vt_callbacks cb;
+    const unsigned char *rest = 0;
+    long restn = -1, cmd_end;
+    memset(&io, 0, sizeof io);
+    ripglue_init(&g, &io);
+    memset(&cb, 0, sizeof cb);
+    cb.rip_block = arm_cb;
+    r_t = vt_new(80, 25, 100, &cb, &g);
+    vt_set_cell_pixels(r_t, 8, 14);
+    vt_set_rip(r_t, rip);
+    r_feeds = 0;
+    /* plain text: fed, nothing armed */
+    CHECK_INT(ripglue_write(&g, r_feed, 0, (const unsigned char *)"hello\r\n", 7, &rest, &restn), RIPGLUE_FED);
+    CHECK_INT(r_feeds, 1);
+    CHECK(grid_has(r_t, "hello"));
+    strcpy(buf, prefix);
+    strcat(buf, "!|9\033" "0" "5" "00" "0000" "X.ICN" "\r\n");
+    cmd_end = (long)strlen(buf);
+    memcpy(buf + cmd_end, tail, sizeof tail - 1);
+    CHECK_INT(ripglue_write(&g, r_feed, 0, (const unsigned char *)buf, cmd_end + (long)sizeof tail - 1, &rest, &restn),
+              RIPGLUE_START);
+    CHECK_INT(r_feeds, 2);
+    CHECK(g.xfer);
+    CHECK(rest != 0 && restn > 0 && restn <= (long)sizeof tail - 1 + 1);
+    CHECK(memcmp(rest + restn - (long)(sizeof tail - 1), tail, sizeof tail - 1) == 0);
+    CHECK(!grid_has(r_t, "B00"));
+    /* a transfer owns the stream: held, never fed */
+    CHECK_INT(ripglue_write(&g, r_feed, 0, (const unsigned char *)"zzz", 3, &rest, &restn), RIPGLUE_HELD);
+    CHECK_INT(r_feeds, 2);
+    CHECK(!ripglue_arm(&g, 0, 7, "second.icn")); /* one transfer at a time */
+    /* U-LF: stop at the CR, then the terminal's own text afterwards: the leading LF is kept */
+    ripglue_done(&g);
+    CHECK_INT(ripglue_write(&g, r_feed, 0, (const unsigned char *)"\nAFTER", 6, &rest, &restn), RIPGLUE_FED);
+    CHECK(grid_has(r_t, "AFTER"));
+    {
+        static char scr[8192];
+        char *a;
+        vt_screen_text(r_t, scr, (long)sizeof scr);
+        a = strstr(scr, "AFTER");
+        CHECK(a != 0 && a > scr && a[-1] == '\n'); /* AFTER is on its own row, column 0 */
+    }
+    vt_free(r_t);
+}
+
+/* A stop with nothing left in the buffer still starts the transfer (the ZMODEM bytes arrive next). */
+static void route_empty_rest(void)
+{
+    char buf[64];
+    ripglue g;
+    ripglue_io io;
+    vt_callbacks cb;
+    const unsigned char *rest = 0;
+    long restn = -1;
+    memset(&io, 0, sizeof io);
+    ripglue_init(&g, &io);
+    memset(&cb, 0, sizeof cb);
+    cb.rip_block = arm_cb;
+    r_t = vt_new(80, 25, 100, &cb, &g);
+    vt_set_cell_pixels(r_t, 8, 14);
+    vt_set_rip(r_t, 2);
+    strcpy(buf, "!|9\033" "0" "5" "00" "0000" "X.ICN" "\r");
+    CHECK_INT(ripglue_write(&g, r_feed, 0, (const unsigned char *)buf, (long)strlen(buf), &rest, &restn), RIPGLUE_START);
+    CHECK_INT(restn, 0);
+    vt_free(r_t);
+}
+
 void suite_ripglue(void)
 {
+    route_case(1, "\033[2!");
+    route_case(2, "");
+    route_empty_rest();
     stop_case(1, "\033[2!");
     stop_case(2, "");
     arm_case();

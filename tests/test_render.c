@@ -110,7 +110,7 @@ static void selection_of_a_renderer_not_yet_initialised_is_none_and_reads_no_ter
 static vtwin dw;
 static int dh_raw(void *u) { (void)u; return 0; }
 static void dh_input(void *u, const vt_u8 *b, long n) { (void)u; (void)b; (void)n; }
-static const vtwin_host dhost = { 0, dh_input, 0, 0, dh_raw, 0, 0, 0, 0, 0 };
+static const vtwin_host dhost = { 0, dh_input, 0, 0, dh_raw, 0, 0, 0, 0, 0, 0 };
 
 static void drag_open(void)
 {
@@ -2336,7 +2336,7 @@ static void pst_pasted(void *u, const vt_u8 *b, int n, long key)
     if (pst_n < (int)sizeof pst_keys)
         pst_keys[pst_n++] = key == VT_KEY_RETURN ? 'R' : 'c';
 }
-static const vtwin_host phost = { 0, dh_input, 0, pst_pasted, dh_raw, 0, 0, 0, 0, 0 };
+static const vtwin_host phost = { 0, dh_input, 0, pst_pasted, dh_raw, 0, 0, 0, 0, 0, 0 };
 
 static void pst_run(const char *clip, const char *want)
 {

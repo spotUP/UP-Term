@@ -15,6 +15,10 @@
  * already sanitised them, asserted again here). Returns 1 when it fits in n, else 0 with out "". */
 int dl_path(char *out, int n, const char *host, const char *name);
 
+/* O2: the host for a download is the host part of the OSC 7 working directory
+ * ("file://host/path"); "" when there is none (dl_path then says "local"). */
+void dl_host_of_cwd(const char *cwd, char *out, int n);
+
 /* What the core needs from the OS. */
 typedef struct dl_os {
     /* make one directory level; 1 when it exists afterwards (already there counts) */

@@ -39,6 +39,19 @@ bad:
     return 0;
 }
 
+void dl_host_of_cwd(const char *cwd, char *out, int n)
+{
+    int o = 0;
+    if (n <= 0)
+        return;
+    out[0] = 0;
+    if (!cwd || strncmp(cwd, "file://", 7) != 0)
+        return;
+    for (cwd += 7; *cwd && *cwd != '/' && o + 1 < n; cwd++)
+        out[o++] = *cwd;
+    out[o] = 0;
+}
+
 int dl_save_with(const dl_os *os, const char *host, const char *name, const vt_u8 *data, long len)
 {
     char path[160];

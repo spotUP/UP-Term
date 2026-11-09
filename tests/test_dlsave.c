@@ -85,8 +85,24 @@ static void walk(void)
     fail_at = -1;
 }
 
+static void hosts(void)
+{
+    char h[48];
+    dl_host_of_cwd("file://bbs.example.org/home/x", h, sizeof h);
+    CHECK_STR(h, "bbs.example.org");
+    dl_host_of_cwd("file:///home/x", h, sizeof h);
+    CHECK_STR(h, "");
+    dl_host_of_cwd("", h, sizeof h);
+    CHECK_STR(h, "");
+    dl_host_of_cwd(0, h, sizeof h);
+    CHECK_STR(h, "");
+    dl_host_of_cwd("file://averyverylonghostnamethatdoesnotfit/x", h, 8);
+    CHECK_STR(h, "averyve");
+}
+
 void suite_dlsave(void)
 {
     paths();
     walk();
+    hosts();
 }
