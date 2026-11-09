@@ -657,6 +657,25 @@ static void a_login_shell_reads_its_profiles_and_a_posix_shell_reads_ENV(void)
     CHECK_STR(slot(OUT)->data, "envfile\n");
 }
 
+/* W8a: with no PATH after the startup files (KS 3.2 install: no ENV:vsh/vshrc yet) the shell gets the default,
+ * exported; a PATH from the parent or a vshrc stays */
+static void a_shell_with_no_PATH_after_startup_gets_the_default_and_a_set_PATH_stays(void)
+{
+    fresh();
+    sh_run_text(&sh, "unset PATH", 0);
+    sh_startup_path(&sh);
+    sh_run_text(&sh, "echo [$PATH]", 0);
+    CHECK_STR(slot(OUT)->data, "[/UP-Term/bin:/UP-Term/Python3/bin:/SYS/Python3/bin:/UP-Term/nvim/bin:/gg/bin:/c]\n");
+    sh_run_text(&sh, "PATH=", 0);
+    sh_startup_path(&sh);
+    sh_run_text(&sh, "echo [$PATH]", 0);
+    CHECK_STR(slot(OUT)->data, "[/UP-Term/bin:/UP-Term/Python3/bin:/SYS/Python3/bin:/UP-Term/nvim/bin:/gg/bin:/c]\n[/UP-Term/bin:/UP-Term/Python3/bin:/SYS/Python3/bin:/UP-Term/nvim/bin:/gg/bin:/c]\n");
+    sh_run_text(&sh, "PATH=/mine", 0);
+    sh_startup_path(&sh);
+    sh_run_text(&sh, "echo $PATH", 0);
+    CHECK_STR(slot(OUT)->data, "[/UP-Term/bin:/UP-Term/Python3/bin:/SYS/Python3/bin:/UP-Term/nvim/bin:/gg/bin:/c]\n[/UP-Term/bin:/UP-Term/Python3/bin:/SYS/Python3/bin:/UP-Term/nvim/bin:/gg/bin:/c]\n/mine\n");
+}
+
 /* V88: a console that keeps the line list (vtcon) is asked through os.hist and the shell holds nothing;
  * this one is a plain array standing in for the handler's */
 static char native_cfg[80];
@@ -3104,6 +3123,7 @@ void suite_sh_exec(void)
     bang_is_the_process_pid();
     a_shell_made_on_dirty_memory_is_a_fresh_shell();
     a_login_shell_reads_its_profiles_and_a_posix_shell_reads_ENV();
+    a_shell_with_no_PATH_after_startup_gets_the_default_and_a_set_PATH_stays();
     dollar_name_reads_the_system_variables();
     unset_hides_the_system_variable();
     history_has_one_owner_the_console_list_or_the_shell();

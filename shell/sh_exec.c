@@ -6178,6 +6178,7 @@ static long b_prompt(sh_shell *sh, int argc, char **argv, const sh_io *io)
 
 /* Ask "question": prints it as given (no "(y/n)" added), reads a line from standard input; a line starting with Y or y
  * gives 5 (WARN), anything else, an empty line or end of input gives 0, as the AmigaDOS command. */
+
 /* The default $PATH of vsh (dist/vshrc runs `path reset` for it): the single place it is written. */
 #define VSH_DEFAULT_PATH "/UP-Term/bin:/UP-Term/Python3/bin:/SYS/Python3/bin:/UP-Term/nvim/bin:/gg/bin:/c"
 
@@ -9832,6 +9833,18 @@ long sh_run_script(sh_shell *sh)
         return 127;
     }
     return sh_run_text(sh, "source \"$0\"", 0);
+}
+
+/* bash gives a shell a default PATH when its environment has none: AmigaDOS has no PATH variable, so a
+ * `vsh script.sh` before ENV:vsh/vshrc exists (KS 3.2 install) found no rm or grep. A PATH from the parent
+ * or a vshrc stays. */
+void sh_startup_path(sh_shell *sh)
+{
+    const char *p = sh_get(&sh->ctx, "PATH");
+    if (!p || !*p) {
+        sh_set(&sh->ctx, "PATH", VSH_DEFAULT_PATH);
+        sh_export(&sh->ctx, "PATH");
+    }
 }
 
 void sh_startup_login(sh_shell *sh)
