@@ -820,22 +820,33 @@ static long d4_rgb(struct RastPort *rp, ULONG pen)
 /* 0c DOPUS-ENV-UNSTYLED: under flat pens the stock bevel is replaced by the flat outline (flat_dopus_box_draw), with this
  * window's screen pens and outline columns (S57-BUTTON-ASPECT-BORDERS, as c8_skip); drawing nothing left every DOpus
  * button and field without a border (owner, DOpus Environment, rig 63). */
-static int d4_flat(int el, struct RastPort *rp, struct Rectangle *rect, struct DrawInfo *info, LONG recessed)
+static int d4_flat_pens(int el, struct RastPort *rp, ULONG shine, ULONG back, int x0, int y0, int x1, int y1, LONG recessed)
 {
     flatshared *r = g_r;
-    ULONG shine = info->dri_Pens[SHINEPEN], back = info->dri_Pens[BACKGROUNDPEN];
     r->dcalls++;
+    if (el == FLAT_EL_BEVEL)
+        r->dbevel++;
     if (flat_dopus_decide(&r->st, el, recessed ? 1 : 0, (int)shine, (int)back,
                           shine == back ? -1 : d4_rgb(rp, shine), shine == back ? -1 : d4_rgb(rp, back)) != FLAT_DRAW_SKIP)
         return 0;
-    if (rp && rect) {
+    if (rp) {
         struct Window *w = rp->Layer ? (struct Window *)rp->Layer->Window : NULL;
         flat_state st = *st_rp(r, rp);
         st.side = (uint8_t)(w ? side_px(r, w->WScreen) : 1);
-        flat_dopus_box_draw(&st, rect->MinX, rect->MinY, rect->MaxX, rect->MaxY, c2_fill, rp);
+        flat_dopus_box_draw(&st, x0, y0, x1, y1, c2_fill, rp);
     }
     r->dflat++;
     return 1;
+}
+
+static int d4_flat(int el, struct RastPort *rp, struct Rectangle *rect, struct DrawInfo *info, LONG recessed)
+{
+    if (!rect) {
+        g_r->dcalls++;
+        return 0;
+    }
+    return d4_flat_pens(el, rp, info->dri_Pens[SHINEPEN], info->dri_Pens[BACKGROUNDPEN], rect->MinX, rect->MinY,
+                        rect->MaxX, rect->MaxY, recessed);
 }
 
 static void d4_drawbox(__reg("a0") struct RastPort *rp, __reg("a1") struct Rectangle *rect, __reg("a2") struct DrawInfo *info,
@@ -861,7 +872,30 @@ static void d4_fieldbody(struct RastPort *rp, struct Rectangle *rect, struct Dra
         ((fieldbodyfn)g_r->dsw[FLAT_EL_FIELDBOX].saved)(rp, rect, info, gfx);
 }
 
-static const LONG d4_lvo[FLAT_EL_COUNT] = { FLAT_LVO_DRAWBOX, FLAT_LVO_FIELDBOX };
+/* s66 0c buttons: dopus5's internal static bevel (5.104 0x166d8), entered by JMP from its patched entry. Stack convention
+ * (unused, rp, pens, rect, recessed, thin at 4..24(sp)), the caller pops them. pens is the DrawInfo pen array (the stock
+ * code reads pens[SHINEPEN] / pens[SHADOWPEN]); rect is four WORDs x, y, width, height (the stock code draws its top
+ * line at y from x to x + width - 2 and its left line down to y + height - 1). dopusbuttongclass (Use / Save / Cancel)
+ * and dopusiclass frame images draw here, never through DrawBox, so without this they kept pen 0 edges. */
+typedef void (*bevelbodyfn)(ULONG, struct RastPort *, UWORD *, WORD *, ULONG, ULONG);
+
+static void d4_bevelbody(ULONG a, struct RastPort *rp, UWORD *pens, WORD *rect, ULONG recessed, ULONG thin)
+{
+    if (!pens || !rect || !d4_flat_pens(FLAT_EL_BEVEL, rp, pens[SHINEPEN], pens[BACKGROUNDPEN], rect[0], rect[1],
+                                         rect[0] + rect[2] - 1, rect[1] + rect[3] - 1, (LONG)(recessed == 1)))
+        ((bevelbodyfn)g_r->dsw[FLAT_EL_BEVEL].saved)(a, rp, pens, rect, recessed, thin);
+}
+
+static const LONG d4_lvo[FLAT_EL_COUNT] = { FLAT_LVO_DRAWBOX, FLAT_LVO_FIELDBOX, 0 };   /* the bevel has no LVO */
+
+static int d4_installed(const flatshared *r)
+{
+    int el;
+    for (el = 0; el < FLAT_EL_COUNT; el++)
+        if (r->dsw[el].installed)
+            return 1;
+    return 0;
+}
 
 /* ---- FLAT-BUTTON-FILL: graphics.library Text (LVO -60, Text(rp a1, string a0, count d0)). The frame is drawn first, then the
  * label in pen 1 with JAM1, also when pressed, so the dark pressed label needs this patch: while c8_skip has armed
@@ -1794,7 +1828,8 @@ static void print_status(void)
     char sctask[16] = "";
     unsigned long cdraws = 0, cfall = 0, alooks = 0, cfb = 0, cfd = 0, cfm = 0, cfe = 0, cfk = 0, cfi = 0, clw = 0, cls = 0, cln = 0, clm = 0;
     int apx = 0, sring[16][9], sn = 0;
-    uint32_t dsum[FLAT_EL_COUNT] = { 0, 0 };
+    uint32_t dsum[FLAT_EL_COUNT] = { 0, 0, 0 };
+    unsigned long dbevel = 0;
     memset(&copy, 0, sizeof copy);
     Forbid();
     r = (flatshared *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
@@ -1802,8 +1837,8 @@ static void print_status(void)
         found = 1;
         copy = r->st;
         dfound = r->dfound; dver = r->dver; drev = r->drev; dreason = r->dreason; dmask = r->dmask;
-        dinst = r->dsw[0].installed || r->dsw[1].installed; dcalls = r->dcalls; dflat = r->dflat;
-        dsum[0] = r->dsum[0]; dsum[1] = r->dsum[1];
+        dinst = d4_installed(r); dcalls = r->dcalls; dflat = r->dflat; dbevel = r->dbevel;
+        memcpy(dsum, r->dsum, sizeof dsum);
         finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat;
         rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits; mhits = r->mhits; bhits = r->bhits;
         tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits; labels = r->labels; lskip = r->lskip;
@@ -1833,6 +1868,13 @@ static void print_status(void)
         PutStr((STRPTR)"\n");
     }
     if (found && flat_dopus_status_line(dfound, dver, drev, dreason, dmask, dinst, dcalls, dflat, dsum, line, sizeof line)) {
+        PutStr((STRPTR)line);
+        PutStr((STRPTR)"\n");
+    }
+    if (found && dinst) {                           /* s66: the bevel body's own sentinel (button / frame image calls) */
+        int n = 0;
+        put_word(line, &n, "dopus bevel calls=");   put_num(line, &n, dbevel);
+        line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
     }
@@ -2054,7 +2096,7 @@ static void dopus_unpatch(flatshared *r)
         libpatch_done(r->dlib);
     CacheClearU();
     Permit();
-    if (!r->dsw[0].installed && !r->dsw[1].installed && r->dlib) {
+    if (!d4_installed(r) && r->dlib) {
         Delay(2);                       /* a caller that already entered the replacement leaves it */
         CloseLibrary(r->dlib);
         r->dlib = 0;
@@ -2069,7 +2111,7 @@ static void dopus_scan(flatshared *r)
     uint32_t sums[FLAT_EL_COUNT];
     int n, el, mask;
     const flat_dopus_build *tab = flat_dopus_table(&n);
-    if (r->dsw[0].installed || r->dsw[1].installed)
+    if (d4_installed(r))
         return;                         /* already patched */
     Forbid();
     lib = (struct Library *)FindName(&eb->LibList, (STRPTR)"dopus5.library");
@@ -2082,7 +2124,8 @@ static void dopus_scan(flatshared *r)
     r->dver = lib->lib_Version;
     r->drev = lib->lib_Revision;
     for (el = 0; el < FLAT_EL_COUNT; el++) {
-        uint32_t t = flat_jmp_target((const unsigned char *)lib + d4_lvo[el]);
+        uint32_t t = d4_lvo[el] ? flat_jmp_target((const unsigned char *)lib + d4_lvo[el])
+                                : flat_bevel_body(tab, n, r->dver, r->drev, flat_jmp_target((const unsigned char *)lib + FLAT_LVO_DRAWBOX));
         sums[el] = t ? flat_sum_reloc((const void *)t, FLAT_FUNC_BYTES) : 0;
         r->dsum[el] = sums[el];
     }
@@ -2094,8 +2137,10 @@ static void dopus_scan(flatshared *r)
     g_r = r;
     Forbid();
     for (el = 0; el < FLAT_EL_COUNT; el++) {
-        unsigned char *entry = (unsigned char *)lib + d4_lvo[el];
+        unsigned char *entry = (unsigned char *)lib + (d4_lvo[el] ? d4_lvo[el] : FLAT_LVO_DRAWBOX);
         uint32_t t = flat_jmp_target(entry);
+        if (el == FLAT_EL_BEVEL)
+            t = flat_bevel_body(tab, n, r->dver, r->drev, t);
         if (!(mask & (1 << el)) || !t || flat_sum_reloc((const void *)t, FLAT_FUNC_BYTES) != sums[el]) {
             mask &= ~(1 << el);         /* changed since the gate (a foreign patch landed): leave it alone */
             continue;
@@ -2106,11 +2151,12 @@ static void dopus_scan(flatshared *r)
         /* 0c: dopus5's own gadget classes jsr the BODY, never the jump table, so hook the body entry itself when its
          * prologue bytes are exactly the known ones; any other build keeps the LVO swap (fail closed) */
         {
-            unsigned char *body = (unsigned char *)(el == FLAT_EL_DRAWBOX ? t : flat_fieldbox_body((const unsigned char *)t, t));
+            unsigned char *body = (unsigned char *)(el == FLAT_EL_FIELDBOX ? flat_fieldbox_body((const unsigned char *)t, t) : t);
             int plen = body ? flat_body_prologue(el, body) : 0;
+            void *ours = el == FLAT_EL_DRAWBOX ? (void *)d4_drawbox : el == FLAT_EL_FIELDBOX ? (void *)d4_fieldbody : (void *)d4_bevelbody;
             if (plen) {
                 if (flat_body_install(&r->dsw[el], body, plen, (unsigned char *)r->dtramp[el], r->dorig[el],
-                                      (uintptr_t)(el == FLAT_EL_DRAWBOX ? (void *)d4_drawbox : (void *)d4_fieldbody)) != FLAT_OK)
+                                      (uintptr_t)ours) != FLAT_OK)
                     mask &= ~(1 << el);
                 else {
                     r->dbody[el] = body;
@@ -2118,6 +2164,10 @@ static void dopus_scan(flatshared *r)
                 }
                 continue;
             }
+        }
+        if (el == FLAT_EL_BEVEL) {          /* no LVO slot to fall back on: an unknown prologue stays stock */
+            mask &= ~(1 << el);
+            continue;
         }
         if (flat_swap_install(&r->dsw[el], r->dslot[el], (uintptr_t)(el == FLAT_EL_DRAWBOX ? (void *)d4_drawbox : (void *)d4_fieldbox)) != FLAT_OK)
             mask &= ~(1 << el);
@@ -2539,7 +2589,7 @@ int main(void)
         if (!(got & SIGBREAKF_CTRL_C))
             continue;
         dopus_unpatch(r);
-        if (r->dsw[0].installed || r->dsw[1].installed) {
+        if (d4_installed(r)) {
             PutStr((STRPTR)"amarchy-flat: a patch is still chained on a DOpus entry, not unloading\n");
             continue;
         }

@@ -38,6 +38,7 @@ typedef struct flatshared {
     int dreason, dmask, dfound;
     uint32_t dsum[FLAT_EL_COUNT]; /* flat_sum of each routine at the last scan (printed by STATUS) */
     ULONG dcalls, dflat;        /* every patched call / every call that drew flat (the sentinels) */
+    ULONG dbevel;               /* s66: calls that entered the internal bevel body (FLAT_EL_BEVEL), part of dcalls */
     /* FLAT-OUTER-EDGE: the graphics.library RectFill patch (LVO -306) that paints Intuition's outer border edges in pen_outline */
     flat_swap rsw;
     uintptr_t *rslot;
