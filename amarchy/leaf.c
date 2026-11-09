@@ -306,6 +306,7 @@ static int theme_action(const sd_setting *s, const char *label, const lf_ui *ui)
         ok = gt_dos_save(gt_ed.name, &gt_ed.m, why, sizeof why);
         if (ok)
             gte_saved();
+        am_sentinel("AMARCHY_EDIT_APPLIES", (long)gt_dos_edit_applies);
         break;
     case GTA_SAVE_AS:
     case GTA_DUPLICATE:
@@ -328,6 +329,7 @@ static int theme_action(const sd_setting *s, const char *label, const lf_ui *ui)
         break;
     case GTA_APPLY:
         ok = gt_dos_select(gt_ed.name, why, sizeof why);
+        am_sentinel("AMARCHY_EDIT_APPLIES", (long)gt_dos_edit_applies);
         break;
     case GTA_IMPORT:
     case GTA_EXPORT: {
