@@ -168,6 +168,21 @@ class OneListOfParts(unittest.TestCase):
         self.assertLess(INSTALLER.index('\n(P_OPTIONS_END)\n'), INSTALLER.rindex('(P_END)'))
         self.assertRegex(INSTALLER, r'\(P_OPTIONS_END\)\n\s+\(abort', 'a failed part removes them too')
 
+    def test_libs_part_comes_before_any_part_that_runs_an_ixemul_program(self):
+        """rm and grep (vsh instssblock.sh / unstartup.sh) are ixemul programs: on stock
+        KS 3.2 they stop at the ixemul startup requester until part "libs" has put
+        ixemul.library in place. Checked in install.dos (Lab order) and Install.installer
+        (#step order). reassign.sh uses shell builtins only, so part drawer may come first."""
+        dos = dos_parts()
+        names = [n for n, _ in dos]
+        runs = [n for n, body in dos if n != 'libs' and re.search(r'(?m)^\s*vsh (?!reassign)\S+\.sh\b', body)]
+        self.assertIn('tools', runs)                      # the part that failed on stock 3.2
+        self.assertGreaterEqual(len(runs), 3)
+        steps = re.findall(r'\(set #step "([a-z-]+)"', INSTALLER)
+        for order in (names, steps):
+            for n in runs:
+                self.assertLess(order.index('libs'), order.index(n), 'libs after %s' % n)
+
 
 class TheBaseNamesNoAddOn(unittest.TestCase):
     """KIT-SPLIT: Neovim, Python, Claude and amiga-pi are archives of their own; the base's scripts, parts

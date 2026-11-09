@@ -421,6 +421,131 @@ Copy tmux.conf ENV:tmux.conf CLONE
 If NOT "{STEP}" EQ ""
   Quit 0
 EndIf
+Lab libs
+; libs comes right after system, before any part runs a kit program: rm and grep (instssblock.sh,
+; unstartup.sh) are ixemul programs, and on stock KS 3.2 (no ixemul.library) they stop at the ixemul
+; startup requester. tests/test_dist_installer.py holds this order in install.dos and Install.installer.
+; ixemul.library with the UP-Term patches (termios, PTY: ptys, job
+; control), and ixnet.library from the same build: ixnet refuses an ixemul
+; of another version or revision. Each library there is kept once as
+; <name>.orig, beside the library it replaces. LIBS: can be several drawers
+; (Copy and Open of LIBS:<name> only look in the first one), so the real place
+; of the library (Which) is written to ENVARC:up-term-orig/<name>.path by the
+; first Install, the kit's library replaces it there, and Uninstall puts the
+; .orig back at that path. Without an earlier library it goes to LIBS:.
+If NOT EXISTS ENVARC:up-term-orig
+  MakeDir >NIL: ENVARC:up-term-orig
+EndIf
+; a second Install on a system that had none finds only the kit's own library
+; there: the .none marker keeps it from being recorded as the original
+If NOT EXISTS ENVARC:up-term-orig/ixemul.path
+ If NOT EXISTS ENVARC:up-term-orig/ixemul.none
+  Which >NIL: LIBS:ixemul.library
+  If NOT WARN
+    Which >ENV:upixemul LIBS:ixemul.library
+    Copy >NIL: ENV:upixemul ENVARC:up-term-orig/ixemul.path CLONE
+    If NOT EXISTS "$upixemul.orig"
+      Copy "$upixemul" "$upixemul.orig" CLONE
+    EndIf
+  EndIf
+ EndIf
+EndIf
+; a machine without an FPU (the installer's (database "fpu") is NOFPU) gets the soft-float build
+Set upixlib libs/ixemul.library
+If "$optnofpu" EQ "NOFPU"
+  Set upixlib libs/ixemul.library.nofpu
+EndIf
+If EXISTS ENVARC:up-term-orig/ixemul.path
+  Copy >NIL: ENVARC:up-term-orig/ixemul.path ENV:upixemul CLONE
+  Copy $upixlib "$upixemul" CLONE
+Else
+  Copy $upixlib LIBS:ixemul.library CLONE
+  ; no library of the system's was replaced: Uninstall removes ours (a system
+  ; without ixemul.library was left with the kit's after Uninstall, 2026-10-11)
+  Echo >ENVARC:up-term-orig/ixemul.none ""
+EndIf
+; a second Install on a system that had none finds only the kit's own library
+; there: the .none marker keeps it from being recorded as the original
+If NOT EXISTS ENVARC:up-term-orig/ixnet.path
+ If NOT EXISTS ENVARC:up-term-orig/ixnet.none
+  Which >NIL: LIBS:ixnet.library
+  If NOT WARN
+    Which >ENV:upixnet LIBS:ixnet.library
+    Copy >NIL: ENV:upixnet ENVARC:up-term-orig/ixnet.path CLONE
+    If NOT EXISTS "$upixnet.orig"
+      Copy "$upixnet" "$upixnet.orig" CLONE
+    EndIf
+  EndIf
+ EndIf
+EndIf
+If EXISTS ENVARC:up-term-orig/ixnet.path
+  Copy >NIL: ENVARC:up-term-orig/ixnet.path ENV:upixnet CLONE
+  Copy libs/ixnet.library "$upixnet" CLONE
+Else
+  Copy libs/ixnet.library LIBS:ixnet.library CLONE
+  Echo >ENVARC:up-term-orig/ixnet.none ""
+EndIf
+Delete >NIL: ENV:upixemul ENV:upixnet QUIET
+; ICONLIB: Peter Keunecke's IconLib (freeware, Files/iconlib) as LIBS:icon.library. AmigaOS 3.0/3.1 get the 46.4
+; build (68020, unrestricted), 3.2 the 51.4 TrueColor build (the only one that beats the 3.2 ROM module).
+; The library there is kept once as LIBS:icon.library.amarchy-backup BEFORE the copy (never overwritten by a second
+; Install); ENVARC:up-term/iconlib is Install's marker: Uninstall puts the backup back only then.
+If "$opticonlib" EQ "ICONLIB"
+  Set upiconlib iconlib/icon.library.os30
+  Version >NIL: exec.library 47
+  If NOT WARN
+    Set upiconlib iconlib/icon.library.os32
+  EndIf
+  If NOT EXISTS LIBS:icon.library.amarchy-backup
+    If EXISTS LIBS:icon.library
+      Copy LIBS:icon.library LIBS:icon.library.amarchy-backup CLONE
+    EndIf
+  EndIf
+  Copy $upiconlib LIBS:icon.library CLONE
+  Echo "ICONLIB" >ENVARC:up-term/iconlib
+  ; OS 3.0/3.1 only (exec below 47): the ROM icon.library is resident there and wins over LIBS:, so RemLib (Thomas
+  ; Rapp, from IconLib's ThirdParty) goes to C: and a ";BEGIN UP-Term RemLib" block runs it in S:Startup-Sequence
+  ; BEFORE SetPatch. C:RemLib is ours only when none was there (marker ENVARC:up-term/remlib: Uninstall deletes it).
+  If "$upiconlib" EQ iconlib/icon.library.os30
+    If NOT EXISTS C:RemLib
+      Copy iconlib/RemLib C:RemLib CLONE
+      Echo "REMLIB" >ENVARC:up-term/remlib
+    EndIf
+    If NOT EXISTS S:Startup-Sequence.before-UP-Term
+      Copy S:Startup-Sequence S:Startup-Sequence.before-UP-Term CLONE
+    EndIf
+    Delete >NIL: T:Startup-Sequence.up-term QUIET
+    vsh instssblock.sh RemLib SetPatch "If EXISTS LIBS:icon.library" "   RemLib >NIL: icon.library" "EndIf"
+    If EXISTS T:Startup-Sequence.up-term
+      Copy T:Startup-Sequence.up-term S:Startup-Sequence CLONE QUIET
+      Delete >NIL: T:Startup-Sequence.up-term QUIET
+    EndIf
+  EndIf
+  Avail >NIL: FLUSH
+  UnSet upiconlib
+EndIf
+; AmiSSL: UP-Term:bin/curl is linked against it and cannot start without LIBS:amisslmaster.library version 5. The kit's
+; Install (STEP set) offers it as its own page (P_AMISSL); a Shell install without Installer has no page, so this
+; part runs the same Files/install-amissl.dos, which asks nothing (AmiSSL's own Install-AmiSSL asks at every level
+; and stopped a full install). A failed AmiSSL install does not stop the base install.
+If "{STEP}" EQ ""
+  Version >NIL: LIBS:amisslmaster.library 5
+  If WARN
+    Echo "[INFO] AmiSSL: LIBS:amisslmaster.library version 5 is missing or older, running install-amissl.dos."
+    Execute "{DIR}/install-amissl.dos" DIR "{DIR}" $optcpu060
+    Version >NIL: LIBS:amisslmaster.library 5
+    If WARN
+      Echo "[ERROR] AmiSSL was not installed, https programs (curl) cannot run."
+      Echo "[ERROR] Run Files/install-amissl.dos again."
+    Else
+      Echo "[INFO] AmiSSL installed: LIBS: has it now, usable at once."
+    EndIf
+  EndIf
+EndIf
+Avail >NIL: FLUSH
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
 Lab copy-coreutils
 ; The Unix userland: GNU coreutils (the ports' 9.12 come with userland/bin
 ; below; this drawer keeps only hostname, pinky and who, GNU 5.2.1) (ls, cp, mv, rm, sort, head,
@@ -1079,128 +1204,6 @@ Set upempty ENV:vsh
 MakeDir >NIL: ENV:vsh
 Copy vshrc ENV:vsh/vshrc CLONE
 Copy banner ENV:vsh/banner CLONE
-If NOT "{STEP}" EQ ""
-  Quit 0
-EndIf
-Lab libs
-; ixemul.library with the UP-Term patches (termios, PTY: ptys, job
-; control), and ixnet.library from the same build: ixnet refuses an ixemul
-; of another version or revision. Each library there is kept once as
-; <name>.orig, beside the library it replaces. LIBS: can be several drawers
-; (Copy and Open of LIBS:<name> only look in the first one), so the real place
-; of the library (Which) is written to ENVARC:up-term-orig/<name>.path by the
-; first Install, the kit's library replaces it there, and Uninstall puts the
-; .orig back at that path. Without an earlier library it goes to LIBS:.
-If NOT EXISTS ENVARC:up-term-orig
-  MakeDir >NIL: ENVARC:up-term-orig
-EndIf
-; a second Install on a system that had none finds only the kit's own library
-; there: the .none marker keeps it from being recorded as the original
-If NOT EXISTS ENVARC:up-term-orig/ixemul.path
- If NOT EXISTS ENVARC:up-term-orig/ixemul.none
-  Which >NIL: LIBS:ixemul.library
-  If NOT WARN
-    Which >ENV:upixemul LIBS:ixemul.library
-    Copy >NIL: ENV:upixemul ENVARC:up-term-orig/ixemul.path CLONE
-    If NOT EXISTS "$upixemul.orig"
-      Copy "$upixemul" "$upixemul.orig" CLONE
-    EndIf
-  EndIf
- EndIf
-EndIf
-; a machine without an FPU (the installer's (database "fpu") is NOFPU) gets the soft-float build
-Set upixlib libs/ixemul.library
-If "$optnofpu" EQ "NOFPU"
-  Set upixlib libs/ixemul.library.nofpu
-EndIf
-If EXISTS ENVARC:up-term-orig/ixemul.path
-  Copy >NIL: ENVARC:up-term-orig/ixemul.path ENV:upixemul CLONE
-  Copy $upixlib "$upixemul" CLONE
-Else
-  Copy $upixlib LIBS:ixemul.library CLONE
-  ; no library of the system's was replaced: Uninstall removes ours (a system
-  ; without ixemul.library was left with the kit's after Uninstall, 2026-10-11)
-  Echo >ENVARC:up-term-orig/ixemul.none ""
-EndIf
-; a second Install on a system that had none finds only the kit's own library
-; there: the .none marker keeps it from being recorded as the original
-If NOT EXISTS ENVARC:up-term-orig/ixnet.path
- If NOT EXISTS ENVARC:up-term-orig/ixnet.none
-  Which >NIL: LIBS:ixnet.library
-  If NOT WARN
-    Which >ENV:upixnet LIBS:ixnet.library
-    Copy >NIL: ENV:upixnet ENVARC:up-term-orig/ixnet.path CLONE
-    If NOT EXISTS "$upixnet.orig"
-      Copy "$upixnet" "$upixnet.orig" CLONE
-    EndIf
-  EndIf
- EndIf
-EndIf
-If EXISTS ENVARC:up-term-orig/ixnet.path
-  Copy >NIL: ENVARC:up-term-orig/ixnet.path ENV:upixnet CLONE
-  Copy libs/ixnet.library "$upixnet" CLONE
-Else
-  Copy libs/ixnet.library LIBS:ixnet.library CLONE
-  Echo >ENVARC:up-term-orig/ixnet.none ""
-EndIf
-Delete >NIL: ENV:upixemul ENV:upixnet QUIET
-; ICONLIB: Peter Keunecke's IconLib (freeware, Files/iconlib) as LIBS:icon.library. AmigaOS 3.0/3.1 get the 46.4
-; build (68020, unrestricted), 3.2 the 51.4 TrueColor build (the only one that beats the 3.2 ROM module).
-; The library there is kept once as LIBS:icon.library.amarchy-backup BEFORE the copy (never overwritten by a second
-; Install); ENVARC:up-term/iconlib is Install's marker: Uninstall puts the backup back only then.
-If "$opticonlib" EQ "ICONLIB"
-  Set upiconlib iconlib/icon.library.os30
-  Version >NIL: exec.library 47
-  If NOT WARN
-    Set upiconlib iconlib/icon.library.os32
-  EndIf
-  If NOT EXISTS LIBS:icon.library.amarchy-backup
-    If EXISTS LIBS:icon.library
-      Copy LIBS:icon.library LIBS:icon.library.amarchy-backup CLONE
-    EndIf
-  EndIf
-  Copy $upiconlib LIBS:icon.library CLONE
-  Echo "ICONLIB" >ENVARC:up-term/iconlib
-  ; OS 3.0/3.1 only (exec below 47): the ROM icon.library is resident there and wins over LIBS:, so RemLib (Thomas
-  ; Rapp, from IconLib's ThirdParty) goes to C: and a ";BEGIN UP-Term RemLib" block runs it in S:Startup-Sequence
-  ; BEFORE SetPatch. C:RemLib is ours only when none was there (marker ENVARC:up-term/remlib: Uninstall deletes it).
-  If "$upiconlib" EQ iconlib/icon.library.os30
-    If NOT EXISTS C:RemLib
-      Copy iconlib/RemLib C:RemLib CLONE
-      Echo "REMLIB" >ENVARC:up-term/remlib
-    EndIf
-    If NOT EXISTS S:Startup-Sequence.before-UP-Term
-      Copy S:Startup-Sequence S:Startup-Sequence.before-UP-Term CLONE
-    EndIf
-    Delete >NIL: T:Startup-Sequence.up-term QUIET
-    vsh instssblock.sh RemLib SetPatch "If EXISTS LIBS:icon.library" "   RemLib >NIL: icon.library" "EndIf"
-    If EXISTS T:Startup-Sequence.up-term
-      Copy T:Startup-Sequence.up-term S:Startup-Sequence CLONE QUIET
-      Delete >NIL: T:Startup-Sequence.up-term QUIET
-    EndIf
-  EndIf
-  Avail >NIL: FLUSH
-  UnSet upiconlib
-EndIf
-; AmiSSL: UP-Term:bin/curl is linked against it and cannot start without LIBS:amisslmaster.library version 5. The kit's
-; Install (STEP set) offers it as its own page (P_AMISSL); a Shell install without Installer has no page, so this
-; part runs the same Files/install-amissl.dos, which asks nothing (AmiSSL's own Install-AmiSSL asks at every level
-; and stopped a full install). A failed AmiSSL install does not stop the base install.
-If "{STEP}" EQ ""
-  Version >NIL: LIBS:amisslmaster.library 5
-  If WARN
-    Echo "[INFO] AmiSSL: LIBS:amisslmaster.library version 5 is missing or older, running install-amissl.dos."
-    Execute "{DIR}/install-amissl.dos" DIR "{DIR}" $optcpu060
-    Version >NIL: LIBS:amisslmaster.library 5
-    If WARN
-      Echo "[ERROR] AmiSSL was not installed, https programs (curl) cannot run."
-      Echo "[ERROR] Run Files/install-amissl.dos again."
-    Else
-      Echo "[INFO] AmiSSL installed: LIBS: has it now, usable at once."
-    EndIf
-  EndIf
-EndIf
-Avail >NIL: FLUSH
 If NOT "{STEP}" EQ ""
   Quit 0
 EndIf
