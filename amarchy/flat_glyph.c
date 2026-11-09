@@ -124,7 +124,25 @@ static void g_menusub(plan *g)
  * showed left/right half as wide and up/down twice as tall as on a square-pixel screen. */
 static void g_arrow(plan *g, unsigned long which)
 {
-    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1, k;
+    /* S69-ARROW-EQUAL: the arrow base (visual units) is bounded by the HEIGHT of the arrow's own box, h * side - 3: the
+     * thickness Intuition gives the bottom border strip. So the up/down arrows (whose base runs across the wider right
+     * strip) are no bigger than the left/right arrows the thin bottom strip fits. Before this, on a square-pixel screen
+     * with Intuition's 18x11 up/down and 16x10 left/right boxes, up/down had a 13-column base and left/right a 6-row base
+     * (owner s69: "horizontal are like half the size"). The 3 leaves 1 px each side plus 1 for the odd (pointed) base;
+     * both now get a 7 px base on that screen. Left/right narrow the inner box to the arrow's own rows (odd count, 1 px
+     * margin) and keep the loop below; locals stay few because plan_run inlines this frame on the _c2_disp_reg chain
+     * (make flat-budget). */
+    int iw, ih, k;
+    if (which == FLAT_W_LEFT || which == FLAT_W_RIGHT) {
+        k = imin(g->h - 2, (g->h * g->side - 3) / g->side);
+        if (k > 1 && !(k & 1))
+            k--;                                        /* odd row count: a one-row point */
+        if (k < 1)
+            k = 1;
+        g->iy0 = (g->h - k) / 2; g->iy1 = g->iy0 + k - 1;
+        g->ix0 = 1; g->ix1 = g->w - 2;
+    }
+    iw = g->ix1 - g->ix0 + 1; ih = g->iy1 - g->iy0 + 1;
     if (which == FLAT_W_LEFT || which == FLAT_W_RIGHT) {
         int lmax = imin(iw, g->side * ((ih + 1) / 2)), xs = g->ix0 + (iw - lmax) / 2;
         for (k = 0; k < ih; k++) {
@@ -137,7 +155,7 @@ static void g_arrow(plan *g, unsigned long which)
     } else {
         /* Up sits on the bottom of its box, down on the top: the up gadget is above the down gadget, so on hires (fewer
          * rows) the pair keeps the gap a full-height glyph pair has instead of growing apart (S31-ARROW-GAP). */
-        int n = imin(ih, (iw - 1) / (2 * g->side) + 1), ys = which == FLAT_W_UP ? g->iy1 - n + 1 : g->iy0;
+        int n = imin(ih, (imax(1, imin(g->h * g->side - 3, g->w - 2)) - 1) / (2 * g->side) + 1), ys = which == FLAT_W_UP ? g->iy1 - n + 1 : g->iy0;
         for (k = 0; k < n; k++) {
             int row = which == FLAT_W_UP ? k : n - 1 - k;
             int len = imin(iw, 2 * g->side * row + 1), x0 = g->ix0 + (iw - len) / 2;
@@ -376,16 +394,21 @@ int flat_clone_draw_in(const flat_state *s, const flat_clone_in *in, flat_render
 }
 
 /* Both entry points run the same generator; g carries either the array or the fill callback. */
+/* The glyph and box roles of plan g. Its own frame (the role pair is address-taken, so it lives on the stack): kept out of
+ * plan_run, whose frame sits on the deepest flat-budget chain (plan_run, put, flat_clone_pen; S69-ARROW-EQUAL). */
+static void plan_roles(plan *g, unsigned long which, int state)
+{
+    int fg, bg;
+    flat_glyph_roles(which, state, &fg, &bg);
+    g->fg = (short)fg;
+    g->bg = (short)flat_glyph_box_role(g->st, fg, bg, g->frame_pen, g->knob_pen);
+}
+
 static int plan_run(plan *g, unsigned long which, int w, int h, int state, int side)
 {
     int i;
     g->n = 0; g->w = w; g->h = h; g->side = side < 1 ? 1 : side;
-    {
-        int fg, bg;
-        flat_glyph_roles(which, state, &fg, &bg);
-        g->fg = (short)fg;
-        g->bg = (short)flat_glyph_box_role(g->st, fg, bg, g->frame_pen, g->knob_pen);
-    }
+    plan_roles(g, which, state);
     i = imax(1, imin(w, h) / 4);
     g->ix0 = i; g->iy0 = i; g->ix1 = w - 1 - i; g->iy1 = h - 1 - i;
     put(g, 0, 0, w - 1, h - 1, g->bg);

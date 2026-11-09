@@ -1977,28 +1977,33 @@ static void test_arrow_aspect(void)
 {
     flat_state st;
     unsigned long w;
-    int side, x0, x1, rows, top, bot, lw[3] = { 0 }, uh[3] = { 0 }, gap[3] = { 0 };
+    int side, x0, x1, rows, top, bot, lw[3] = { 0 }, uh[3] = { 0 }, gap[3] = { 0 }, lb[3] = { 0 }, ub[3] = { 0 };
     flat_init(&st);
     desk_flat_state(1, 1, 1, &st);
     for (side = 1; side <= 2; side++) {
         for (w = FLAT_W_LEFT; w <= FLAT_W_DOWN; w++) {
             if (w == FLAT_W_LEFT || w == FLAT_W_RIGHT) {
                 arrow_bbox(&st, w, 16, 10, side, &x0, &x1, &rows, 0, 0);
-                CHECK_INT(rows * side, 2 * (x1 - x0 + 1));        /* base twice the length, in visual units */
+                CHECK_INT(rows * side, 2 * (x1 - x0 + 1) - side); /* odd base (one-row point): 2 * length - one row, visual units */
                 CHECK(abs(x0 - (16 - 1 - x1)) <= 1);              /* centred */
                 lw[side] = x1 - x0 + 1;
+                lb[side] = rows * side;
             } else {
                 arrow_bbox(&st, w, 18, 11, side, &x0, &x1, &rows, &top, &bot);
                 CHECK_INT(x1 - x0 + 1, 2 * side * (rows - 1) + 1);
                 CHECK(abs(x0 - (18 - 1 - x1)) <= 1);
                 uh[side] = rows;
+                ub[side] = x1 - x0 + 1;
                 if (w == FLAT_W_UP) gap[side] += 11 - 1 - bot;    /* up box sits above the down box */
                 else gap[side] += top;
             }
         }
     }
     CHECK_INT(lw[2], 2 * lw[1]);                                  /* hires: left/right twice as wide */
-    CHECK(uh[2] < uh[1]);                                         /* hires: up/down fewer rows */
+    CHECK(uh[1] > 0 && uh[2] > 0);
+    /* S69-ARROW-EQUAL: on each screen the up/down base and the left/right base match within one row (visual units) */
+    for (side = 1; side <= 2; side++)
+        CHECK(abs(ub[side] - lb[side]) <= side);
     /* S31-ARROW-GAP: the shorter hires glyphs sit toward the shared edge, so the empty rows between the up and the down
      * glyph stay what they are on a square-pixel screen (owner: "the vertical spacing between the arrows are bigger"). */
     CHECK_INT(gap[2], gap[1]);
@@ -2060,6 +2065,29 @@ static void test_arrow_s69_shape(void)
                 wprev = l; rows++;
             }
             CHECK(rows >= 3);
+        }
+        /* S69-ARROW-EQUAL: Intuition's boxes on a square-pixel screen (up/down 18x11, left/right 16x10): every arrow gets the
+         * same base and depth, 7 x 4 (left/right had a 6-row base before, up/down a 13-column one) */
+        if (side == 1) {
+            int x, rows = 0, base = 0, depth = 0;
+            cv_clear();
+            CHECK_INT(flat_glyph_draw(&st, FLAT_W_LEFT, FLAT_IM_DRAW, 0, 0, 0, 16, 10, st.pen_back, st.pen_text, 1, cv_fill, 0), 1);
+            for (y = 0; y < 10; y++) {
+                int l = row_len(&st, y, 16);
+                if (l) { rows++; if (l > depth) depth = l; }
+            }
+            CHECK_INT(rows, 7);
+            CHECK_INT(depth, 4);
+            cv_clear();
+            CHECK_INT(flat_glyph_draw(&st, FLAT_W_UP, FLAT_IM_DRAW, 0, 0, 0, 18, 11, st.pen_back, st.pen_text, 1, cv_fill, 0), 1);
+            rows = 0;
+            for (y = 0; y < 11; y++) {
+                int l = row_len(&st, y, 18);
+                if (l) { rows++; if (l > base) base = l; }
+            }
+            CHECK_INT(base, 7);
+            CHECK_INT(rows, 4);
+            (void)x;
         }
         /* size: a right triangle on the lower right; from the top glyph row, each row adds side columns; the last row ends at the
          * inner box's right edge (the corner pixel is filled) */
