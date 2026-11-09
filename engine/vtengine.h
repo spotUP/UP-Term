@@ -415,6 +415,13 @@ void     vt_set_image_decoder(vt_term *t, vt_image_decoder decode, vt_image_rele
  * or no release function answers EBADF. t=s answers EBADF always. */
 typedef int (*vt_file_reader)(const char *path, long offset, long size, vt_u8 **buf, long *n);
 typedef int (*vt_file_unlinker)(const char *path);
+/* iTerm2 OSC 1337 File= with inline=0 is a file to keep. write(path, data, n)
+ * saves it (return 1 when saved) at "ENVARC:UP-Term/Downloads/<host>/<name>"; the
+ * engine sanitises <name> (base name only, no '/' or ':') and <host>, drops a
+ * file over 4 MB (and tells the host through notify) and does no I/O itself.
+ * Without a writer the file is dropped. host NULL or "" is "local". */
+typedef int (*vt_file_writer)(const char *path, const vt_u8 *data, long n);
+void     vt_set_download(vt_term *t, vt_file_writer write, const char *host);
 void     vt_set_file_reader(vt_term *t, vt_file_reader read, vt_file_unlinker unlink_file);
 /* The largest sixel image, in pixels, and the memory all images share. */
 #define VT_SIXEL_MAX_W 1024

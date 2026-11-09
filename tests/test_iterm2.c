@@ -211,8 +211,117 @@ static void an_oversize_payload_is_discarded_without_a_picture(void)
     vt_free(t);
 }
 
+/* ---- inline=0: saved through the host writer (O5, O10) ---- */
+static char sv_path[200];
+static unsigned char sv_data[64];
+static long sv_len;
+static int sv_calls;
+
+static int cap_writer(const char *path, const vt_u8 *data, long n)
+{
+    sv_calls++;
+    strncpy(sv_path, path, sizeof(sv_path) - 1);
+    sv_len = n;
+    memcpy(sv_data, data, (size_t)(n < 64 ? n : 64));
+    return 1;
+}
+
+static void sv_reset(void)
+{
+    sv_calls = 0;
+    sv_len = 0;
+    sv_path[0] = 0;
+}
+
+static void names_are_base_names_only(void)
+{
+    char o[64];
+    iterm_name("Li4vLi4vZXRjL3Bhc3N3ZA==", 24, o, sizeof(o)); /* ../../etc/passwd */
+    CHECK(!strcmp(o, "passwd"));
+    iterm_name("RGgwOnN5cy9ldmlsLnR4dA==", 24, o, sizeof(o)); /* Dh0:sys/evil.txt */
+    CHECK(!strcmp(o, "evil.txt"));
+    iterm_name("Li4=", 4, o, sizeof(o)); /* .. */
+    CHECK(!strcmp(o, "download"));
+    iterm_name("", 0, o, sizeof(o));
+    CHECK(!strcmp(o, "download"));
+    iterm_name("Zm9v", 4, o, sizeof(o));
+    CHECK(!strcmp(o, "foo"));
+    iterm_path(o, 20, "h", "verylongname.txt"); /* cut, always terminated */
+    CHECK_INT(strlen(o), 19);
+}
+
+static void inline_zero_is_saved_through_the_host_writer(void)
+{
+    vt_term *t = iterm_term(20, 10);
+    int x, y;
+    sv_reset();
+    vt_set_download(t, cap_writer, "am/ig:a1");
+    /* name = "dir/note.txt", payload "hello" */
+    put_file(t, "name=ZGlyL25vdGUudHh0;inline=0;size=5", "aGVsbG8=", "\007");
+    CHECK_INT(sv_calls, 1);
+    CHECK(!strcmp(sv_path, "ENVARC:UP-Term/Downloads/amiga1/note.txt"));
+    CHECK_INT(sv_len, 5);
+    CHECK(!memcmp(sv_data, "hello", 5));
+    CHECK_INT(vt_iterm_placed(t), 0);
+    CHECK_INT(vt_images(t), 0);
+    vt_cursor(t, &x, &y);
+    CHECK_INT(x, 0);
+    /* no name= : a fixed name; no host set: "local" */
+    sv_reset();
+    vt_set_download(t, cap_writer, 0);
+    put_file(t, "inline=0", "aGVsbG8=", "\033\\");
+    CHECK_INT(sv_calls, 1);
+    CHECK(!strcmp(sv_path, "ENVARC:UP-Term/Downloads/local/download"));
+    /* without a writer nothing is saved */
+    sv_reset();
+    vt_set_download(t, 0, "x");
+    put_file(t, "inline=0", "aGVsbG8=", "\007");
+    CHECK_INT(sv_calls, 0);
+    vt_free(t);
+}
+
+static void a_download_over_four_megabytes_is_dropped(void)
+{
+    vt_term *t = iterm_term(20, 10);
+    long n = (KIT_RAW_MAX / 3 + 4096) * 4;
+    char *big = (char *)malloc((size_t)n + 1);
+    CHECK(big != 0);
+    if (!big) {
+        vt_free(t);
+        return;
+    }
+    memset(big, 'A', (size_t)n);
+    big[n] = 0;
+    sv_reset();
+    vt_set_download(t, cap_writer, "h");
+    h_put(t, "\033]1337;File=name=Zm9v;inline=0:");
+    h_put(t, big);
+    h_put(t, "\007");
+    free(big);
+    CHECK_INT(sv_calls, 0);
+    put_file(t, "name=Zm9v;inline=0", "aGVsbG8=", "\007"); /* and the next one is taken */
+    CHECK_INT(sv_calls, 1);
+    vt_free(t);
+}
+
+static void report_cell_size_answers_height_then_width(void)
+{
+    vt_term *t = iterm_term(20, 10);
+    h_reply_clear();
+    h_put(t, "\033]1337;ReportCellSize\033\\");
+    CHECK(!strcmp(h_reply, "\033]1337;ReportCellSize=6;2\033\\"));
+    h_reply_clear();
+    h_put(t, "\033]1337;Capabilities\033\\");
+    CHECK_INT(h_reply_len, 0);
+    vt_free(t);
+}
+
 void suite_iterm2(void)
 {
+    names_are_base_names_only();
+    inline_zero_is_saved_through_the_host_writer();
+    a_download_over_four_megabytes_is_dropped();
+    report_cell_size_answers_height_then_width();
     parser_reads_every_argument();
     inline_is_one_or_a_download();
     units_become_cells();

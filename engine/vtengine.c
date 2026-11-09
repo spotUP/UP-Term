@@ -333,6 +333,10 @@ struct vt_term {
     unsigned long kit_switches; /* animation frames switched (vt_kitty_frame_switches) */
     vt_u32 kit_placed;         /* kitty images placed on the screen (vt_kitty_placed) */
     vt_u32 iterm_placed;       /* OSC 1337 File= images placed on the screen (vt_iterm_placed) */
+    char iname[96];            /* OSC 1337 File= name= value (base64), kept apart from str */
+    int iname_n;
+    vt_file_writer file_write; /* vt_set_download: inline=0 files */
+    char dl_host[32];          /* its <host> folder, sanitised */
     long kit_last_z;           /* z= of the last kitty placement (vt_kitty_last_z) */
     vt_u32 kit_ph;             /* placeholder cells resolved (vt_kitty_placeholders) */
     vt_image_decoder decode;   /* vt_set_image_decoder: PNG and the like (f=100) */
@@ -4687,6 +4691,20 @@ static void osc_dispatch(vt_term *t)
     if (i < t->str_len && t->str[i] != ';')
         return;
     i++;
+    if (cmd == 1337 && !strcmp(t->str + i, "ReportCellSize")) { /* iTerm2 cell size query (O4); Capabilities is not answered */
+        char b[48];
+        int n = 0;
+        b[n++] = 0x1B;
+        memcpy(b + n, "]1337;ReportCellSize=", 21);
+        n += 21;
+        n = fmt_uint(b, n, t->cell_h > 0 ? t->cell_h : 16);
+        b[n++] = ';';
+        n = fmt_uint(b, n, t->cell_w > 0 ? t->cell_w : 8);
+        b[n++] = 0x1B;
+        b[n++] = '\\';
+        reply(t, b, n);
+        return;
+    }
     if (cmd == 104 || (cmd >= 110 && cmd <= 112)) { /* resets */
         const char *it;
         int n, any = 0;
@@ -5705,6 +5723,7 @@ static void enter_string(vt_term *t, vt_u8 kind)
     t->state = kind == ']' ? S_OSC : S_STRING;
     t->str_kind = kind;
     t->str_len = 0;
+    t->iname_n = 0;
     t->osc52 = 0;
     t->str_esc = 0;
     t->str_bel = 0;
@@ -5898,8 +5917,11 @@ static void feed(vt_term *t, vt_u32 c)
                  * was cut to 3 bytes of garbage) */
                 vt_u8 u[4];
                 int k, m = put_utf8(u, (long)c);
-                if (t->state == S_OSC && c != ';' && iterm_in_name(t))
+                if (t->state == S_OSC && c != ';' && iterm_in_name(t)) {
+                    if (c < 0x80 && t->iname_n < (int)sizeof(t->iname) - 1)
+                        t->iname[t->iname_n++] = (char)c;
                     return;
+                }
                 if (t->str_len + m < VT_STR_MAX)
                     for (k = 0; k < m; k++)
                         t->str[t->str_len++] = (char)u[k];
@@ -6629,6 +6651,16 @@ void vt_set_file_reader(vt_term *t, vt_file_reader read, vt_file_unlinker unlink
 {
     t->file_read = read;
     t->file_unlink = unlink_file;
+}
+
+void vt_set_download(vt_term *t, vt_file_writer write, const char *host)
+{
+    int n = 0;
+    t->file_write = write;
+    for (; host && *host && n < (int)sizeof(t->dl_host) - 1; host++)
+        if (*host != '/' && *host != ':' && (vt_u8)*host >= 0x20 && (vt_u8)*host < 0x7F)
+            t->dl_host[n++] = *host;
+    t->dl_host[n] = 0;
 }
 
 void vt_set_reflow(vt_term *t, int on)

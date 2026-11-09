@@ -54,6 +54,7 @@ typedef struct vt_kitty {
     int in_data;     /* past the ';' of this chunk */
     int more;        /* m=1: the picture goes on in the next APC */
     int full;        /* the data passed KIT_RAW_MAX: dropped */
+    char iname[64];  /* inline=0: the sanitised file name */
     iterm_args ia;   /* OSC 1337 File=: its arguments (the data goes through the same base64 and cap) */
     char keys[KIT_KEYS];
 } vt_kitty;
@@ -1449,13 +1450,15 @@ static void iterm_begin(vt_term *t, const char *hdr, int n)
     kitty_abort(t); /* a half-sent kitty upload does not survive an OSC */
     t->osc52 = 4;
     iterm_parse(hdr, n, &a);
-    if (!a.inl)
-        return; /* bytes swallowed, t->kit stays 0 */
+    if (!a.inl && !t->file_write)
+        return; /* nobody to save it: bytes swallowed, t->kit stays 0 */
     k = (vt_kitty *)VT_MALLOC(sizeof(vt_kitty));
     if (!k)
         return;
     memset(k, 0, sizeof(*k));
     k->ia = a;
+    if (!a.inl)
+        iterm_name(t->iname, t->iname_n, k->iname, (int)sizeof(k->iname));
     t->kit = k;
 }
 
@@ -1472,6 +1475,25 @@ static void iterm_end(vt_term *t)
     int cw, ch, c, r;
     if (!k)
         return;
+    if (!k->ia.inl) { /* inline=0: a file to keep (O5), under the 4 MB cap (O10) */
+        char path[160];
+        if (k->nacc == 2) {
+            kit_data(k, (vt_u8)(k->acc >> 4));
+        } else if (k->nacc == 3) {
+            kit_data(k, (vt_u8)(k->acc >> 10));
+            kit_data(k, (vt_u8)(k->acc >> 2));
+        }
+        if (k->full) {
+            if (t->cb.notify)
+                t->cb.notify(t->user, "iTerm2", "download over 4 MB dropped");
+        } else if (k->len > 0 && t->file_write) {
+            iterm_path(path, (int)sizeof(path), t->dl_host, k->iname);
+            if (!t->file_write(path, k->raw, k->len) && t->cb.notify)
+                t->cb.notify(t->user, "iTerm2", "download could not be saved");
+        }
+        kitty_abort(t);
+        return;
+    }
     if (k->nacc == 2) {
         kit_data(k, (vt_u8)(k->acc >> 4));
     } else if (k->nacc == 3) {

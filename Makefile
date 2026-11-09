@@ -61,7 +61,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 
 .PHONY: symbolsnerd phosphor lucide lucide-dat screennotify jbmono wasabi wasabi-clean nas-deploy nas-deploy-dry bebbossh bebbossh-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
 
-# ONLY=iterm2 iTerm2 inline images (OSC 1337 File=): arg parser, units, BEL/ST ends, inline=0 ignored, cap, placement and cursor through the engine input (tests/test_iterm2.c)
+# ONLY=iterm2 iTerm2 inline images (OSC 1337 File=): arg parser, units, BEL/ST ends, inline=0 saved through the host writer, name sanitising, 4 MB cap, ReportCellSize, cap, placement and cursor through the engine input (tests/test_iterm2.c)
 # ONLY=desk the native desktop theme core: palette/pointer/font/wbpattern prefs bytes, darker tone, readability guard, targets and marker (tests/test_desk.c)
 # ONLY=desk_start_apply Amarchy's start writes the icon border, volume gauge and backdrop the prefs ask for, and nothing when ENV: matches (tests/test_desk.c)
 # ONLY=themeprev the Theme Editor preview pane: layout boxes, colours from gt_resolve, placement, drawn through the editor (tests/test_themeprev.c)
