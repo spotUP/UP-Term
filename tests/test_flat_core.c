@@ -214,8 +214,8 @@ typedef struct { unsigned char jmp[6]; } fake_entry;
 
 static void test_dopus_gate(void)
 {
-    flat_dopus_build tab[2] = { { 73, 8, { 0x1111, 0x2222 } }, { 73, 9, { 0, 0 } } };
-    uint32_t sums[2] = { 0x1111, 0x2222 };
+    flat_dopus_build tab[2] = { { 73, 8, { 0x1111, 0x2222 }, 0 }, { 73, 9, { 0, 0 }, 0 } };
+    uint32_t sums[FLAT_EL_COUNT] = { 0x1111, 0x2222 };
     unsigned char fn[8] = { 0, 0, 0, 1, 0, 0, 0, 2 };
     unsigned char e[6] = { 0x4E, 0xF9, 0x00, 0x12, 0x34, 0x56 };
     int why = -1, n;
@@ -267,6 +267,54 @@ static void test_dopus_gate(void)
     e[1] = 0xF8;
     CHECK_INT(flat_jmp_target(e), 0);                                   /* not a JMP abs.l: foreign code, no patch */
     CHECK_INT(flat_jmp_target(0), 0);
+}
+
+/* s66 0c buttons: dopusbuttongclass (Use / Save / Cancel) and dopusiclass frames draw through dopus5's internal static
+ * bevel 0x166d8 (no LVO, absolute jsr from 0x15d7a, 0x19012, 0x19370, 0x1a9da), not DrawBox / FieldBox, so neither D4
+ * element saw them and they stayed pen 0 under the flat theme. The real 5.104 bytes: the bevel body is found at
+ * DrawBox body - 0xde34, its 8-byte prologue is relocatable, and its sum gates it like the other two elements. */
+static void test_dopus_bevel_hook(void)
+{
+    static const unsigned char bevel[64] = {
+        0x48,0xe7,0x38,0x32,0x41,0xef,0x00,0x20,0x24,0x18,0x26,0x58,0x24,0x58,0x28,0x18,0x36,0x28,0x00,0x02,0x30,0x7c,
+        0x00,0x08,0x70,0x01,0xb0,0x84,0x67,0x04,0x30,0x7c,0x00,0x06,0x30,0x33,0x88,0x00,0x22,0x42,0x2c,0x79,0x00,0x00,
+        0x00,0x08,0x4e,0xae,0xfe,0xaa,0x30,0x12,0xd0,0x6a,0x00,0x04,0x4a,0x43,0x56,0xc1,0x48,0x81,0x54,0x41};
+    static const unsigned char box[8] = {0x48,0xe7,0x30,0x12,0x24,0x08,0x26,0x49};
+    unsigned char b2[64], t[FLAT_BODY_TRAMP_MAX], orig[FLAT_PRO_MAX];
+    uint32_t sums[FLAT_EL_COUNT] = { 0x780fd46bu, 0xba2cf172u, 0 };
+    const flat_dopus_build *tab;
+    flat_swap w;
+    char line[160];
+    int n, why = -1;
+    tab = flat_dopus_table(&n);
+    CHECK_INT(flat_bevel_body(tab, n, 73, 8, 0x2450c), 0x166d8);       /* the jsr target of the button render */
+    CHECK_INT(flat_bevel_body(tab, n, 73, 8, 0x0102450c), 0x010166d8); /* position independent */
+    CHECK_INT(flat_bevel_body(tab, n, 68, 16, 0x2450c), 0);            /* 5.82: offset not measured, never hooked */
+    CHECK_INT(flat_bevel_body(tab, n, 73, 9, 0x2450c), 0);
+    CHECK_INT(flat_bevel_body(tab, n, 73, 8, 0), 0);
+    CHECK_INT(flat_bevel_body(tab, n, 73, 8, 0x100), 0);               /* would wrap below 0 */
+    CHECK_INT(flat_body_prologue(FLAT_EL_BEVEL, bevel), 8);
+    CHECK_INT(flat_body_prologue(FLAT_EL_BEVEL, box), 0);              /* each element only its own prologue */
+    CHECK_INT(flat_body_prologue(FLAT_EL_DRAWBOX, bevel), 0);
+    memcpy(b2, bevel, 64); b2[7] = 0x1c;                               /* lea 28(sp): another frame, no hook */
+    CHECK_INT(flat_body_prologue(FLAT_EL_BEVEL, b2), 0);
+    CHECK_INT(flat_sum_reloc(bevel, FLAT_FUNC_BYTES), 0xbdaa116au);    /* the table sum is these bytes */
+    memcpy(b2, bevel, 64); b2[42] = 0x12; b2[45] = 0x34;               /* GfxBase relocated elsewhere: same sum */
+    CHECK_INT(flat_sum_reloc(b2, FLAT_FUNC_BYTES), 0xbdaa116au);
+    CHECK_INT(flat_dopus_gate(tab, n, 73, 8, sums, &why), 3);           /* bevel sum missing: DrawBox + FieldBox only */
+    sums[FLAT_EL_BEVEL] = flat_sum_reloc(bevel, FLAT_FUNC_BYTES);
+    CHECK_INT(flat_dopus_gate(tab, n, 73, 8, sums, &why), 7);           /* all three elements */
+    CHECK_INT(why, FLAT_GATE_OK);
+    /* the hook itself: JMP over the 8-byte prologue, trampoline = prologue + JMP body+8, removal restores the bytes */
+    memcpy(b2, bevel, 64);
+    flat_swap_init(&w);
+    CHECK_INT(flat_body_install(&w, b2, 8, t, orig, 0x00c0ffee), FLAT_OK);
+    CHECK_INT(flat_jmp_target(b2), 0x00c0ffee);
+    CHECK(memcmp(t, bevel, 8) == 0 && flat_jmp_target(t + 8) == (uint32_t)(uintptr_t)(b2 + 8));
+    CHECK_INT(flat_body_remove(&w, b2, orig, 8, 0), FLAT_REMOVED);
+    CHECK(memcmp(b2, bevel, 64) == 0);
+    flat_dopus_status_line(1, 73, 8, FLAT_GATE_OK, 7, 1, 4, 4, sums, line, sizeof line);
+    CHECK_STR(line, "dopus=73.8 patched=7 calls=4 flat=4 sums=780fd46b,ba2cf172,bdaa116a");
 }
 
 /* 0c: the body hook's pure parts, on the real dopus5.library 73.8 (DOpus 5.104 OS3) bytes: .text 0x245c4 (the -702 stub),
@@ -346,7 +394,7 @@ static void test_dopus_swap(void)
     int el;
     flat_init(&st);
     memcpy(snap, slot, sizeof slot);
-    for (el = 0; el < FLAT_EL_COUNT; el++) {
+    for (el = 0; el < FLAT_EL_BEVEL; el++) {             /* the two LVO elements; the bevel has no slot */
         flat_swap_init(&w[el]);
         CHECK_INT(flat_swap_install(&w[el], &slot[el], 0x7000 + el), FLAT_OK);
         CHECK_INT(slot[el], 0x7000 + el);
@@ -391,7 +439,7 @@ static void test_dopus_decide(void)
     flat_dopus_status_line(1, 73, 8, FLAT_GATE_UNKNOWN, 0, 0, 0, 0, 0, line, sizeof line);
     CHECK_STR(line, "dopus=73.8 inert=unknown");
     flat_dopus_status_line(1, 73, 8, FLAT_GATE_UNMEASURED, 0, 0, 0, 0, sm, line, sizeof line);
-    CHECK_STR(line, "dopus=73.8 inert=unmeasured sums=0001abcd,deadbeef");
+    CHECK_STR(line, "dopus=73.8 inert=unmeasured sums=0001abcd,deadbeef,00000000");
     flat_dopus_status_line(1, 73, 8, FLAT_GATE_OK, 3, 1, 12, 9, 0, line, sizeof line);
     CHECK_STR(line, "dopus=73.8 patched=3 calls=12 flat=9");
 }
@@ -408,10 +456,10 @@ static void patched_call(const flat_state *s, int el, int shine, int back)
 
 static void test_dopus_path(void)
 {
-    flat_dopus_build tab[1] = { { 73, 8, { 0xAB, 0xCD } } };
-    uint32_t sums[2] = { 0xAB, 0xCD };
-    uintptr_t slot[2] = { 0x5000, 0x6000 };
-    flat_swap w[2];
+    flat_dopus_build tab[1] = { { 73, 8, { 0xAB, 0xCD }, 0 } };
+    uint32_t sums[FLAT_EL_COUNT] = { 0xAB, 0xCD };
+    uintptr_t slot[FLAT_EL_COUNT] = { 0x5000, 0x6000 };
+    flat_swap w[FLAT_EL_COUNT];
     flat_state st;
     int why, mask, el;
     flat_init(&st);
@@ -2911,6 +2959,7 @@ void suite_flat_core(void)
     test_dopus_gate();
     test_disabled_button_dim_fill();
     test_dopus_body_hook();
+    test_dopus_bevel_hook();
     test_dopus_body_swap();
     test_dopus_swap();
     test_dopus_decide();

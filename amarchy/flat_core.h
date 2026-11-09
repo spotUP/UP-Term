@@ -125,7 +125,10 @@ int flat_conv(unsigned intuition_version);
  * operand of the entry's JMP abs.l, swapped with the C1 model (flat_swap): same restore-if-ours, same still_chained.
  * A build is patched only when its version, revision and the checksum of the first FLAT_FUNC_BYTES bytes of each
  * routine match the table; any other build is inert and STATUS says why. */
-enum { FLAT_EL_DRAWBOX = 0, FLAT_EL_FIELDBOX = 1, FLAT_EL_COUNT = 2 };
+/* FLAT_EL_BEVEL (s66): dopus5's internal static bevel routine (5.104: 0x166d8), no LVO. dopusbuttongclass (Use / Save /
+ * Cancel), dopusiclass frame images (types 0 and 1, which checkbox imagery draws through) and the palette class call it
+ * with an absolute jsr; it is found at a fixed distance before the DrawBox body (flat_bevel_body) and only body-hooked. */
+enum { FLAT_EL_DRAWBOX = 0, FLAT_EL_FIELDBOX = 1, FLAT_EL_BEVEL = 2, FLAT_EL_COUNT = 3 };
 #define FLAT_LVO_TEXT (-60)         /* graphics.library Text (the pressed-button label patch, FLAT-BUTTON-FILL) */
 #define FLAT_LVO_RECTFILL (-306)    /* graphics.library RectFill (the outer-edge patch) */
 #define FLAT_LVO_DRAWBOX (-696)
@@ -135,6 +138,7 @@ enum { FLAT_EL_DRAWBOX = 0, FLAT_EL_FIELDBOX = 1, FLAT_EL_COUNT = 2 };
 typedef struct flat_dopus_build {
     uint16_t version, revision;             /* lib_Version / lib_Revision of dopus5.library */
     uint32_t sum[FLAT_EL_COUNT];            /* flat_sum of the routine's first FLAT_FUNC_BYTES; 0 = not measured yet: never matches */
+    uint32_t bevel_off;                     /* DrawBox body - bevel body in this build; 0 = not located: the bevel is never hooked */
 } flat_dopus_build;
 
 /* gate reasons */
@@ -171,6 +175,11 @@ uint32_t flat_fieldbox_body(const unsigned char *stub, uint32_t stub_addr);
 /* Bytes to relocate from the body of element el: 6 for DrawBox (48e7 3012 2408: movem.l, move.l a0,d2), 8 for FieldBox
  * (48e7 2032 41ef 0014: movem.l, lea 20(sp),a0; the trampoline is jumped to, so sp is the same); 0 = unknown body. */
 int flat_body_prologue(int el, const unsigned char *body);
+
+/* s66: the address of the internal bevel body (FLAT_EL_BEVEL) for this build: drawbox_body - the table's bevel_off.
+ * 0 for a build without a measured offset or no DrawBox body. The caller still gates the result by sum and prologue
+ * (48e7 3832 41ef 0020: movem.l, lea 32(sp),a0; 8 bytes, relocatable because the trampoline is jumped to). */
+uint32_t flat_bevel_body(const flat_dopus_build *tab, int n, unsigned version, unsigned revision, uint32_t drawbox_body);
 
 /* JMP abs.l target into out[0..5]. */
 void flat_jmp_build(unsigned char *out, uint32_t target);
