@@ -482,7 +482,8 @@ void     vt_set_cell_pixels(vt_term *t, int w, int h);
 /* RIPscrip (engine/rip.h, rip_vt.c). vt_set_rip(t, 0) is off, 1 is On (RIP is active at
  * once), 2 is Auto (inactive until the host sends ESC [ ! / ESC [ 0 !, or a complete line
  * that starts with `!|` parses as valid RIP; a line that fails the parse is plain text,
- * unchanged). In both modes ESC [ ! and ESC [ 0 ! answer RIPSCRIP015410, ESC [ 1 ! turns
+ * unchanged). On->Auto keeps active=1 by design; a fresh inactive Auto is vt_set_rip(t,0) then
+ * vt_set_rip(t,2). In both modes ESC [ ! and ESC [ 0 ! answer RIPSCRIP015410, ESC [ 1 ! turns
  * RIP off, ESC [ 2 ! on, and with RIP active the
  * `!|` command lines of the stream draw on a 640 x 350 canvas, an image under the text
  * (z -1) at the top left. 0 (the default) leaves vt_feed byte for byte as without RIP.
