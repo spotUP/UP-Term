@@ -119,6 +119,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=rig_themes_live rig.py install/start stage the Amarchy themes into the live drawer UP-Term: points at, no boot needed (tests/test_rig_themes_live.py)
 # ONLY=editor_stack dk_editor gives the prefs editors a pl_stack stack, floor 32768 (tests/test_amarchy_editor_stack.py)
 # ONLY=palette_closes every palette.prefs write in desk_dos.c (dk_flat_pens too) closes Amarchy's windows around a pen reset, so IPrefs raises no System Request (tests/test_palette_write_closes_windows.py)
+# ONLY=revert_live_pens the timeout Revert sets the live pens 4-7 after Amarchy's windows are back, the way apply does, and dk_live_pens holds no Workbench lock across ipd_role_write (KS 3.2 freeze, tests/test_revert_live_pens_deferred.py)
 # ONLY=wb_absent flat off / revert to no Workbench.prefs USEs the stock file and keeps it in ENV: for IPrefs, so the icon border returns (tests/test_wb_absent_restore.py)
 # ONLY=gui_rebind amarchy-gui takes and drops every screen resource in screen_bind/screen_unbind, so a Workbench reset between gui_hide and gui_show leaves nothing on the freed screen (tests/test_amarchy_gui_rebind.py)
 # ONLY=dist_stack every kit program sets its stack ($STACK: cookie), no launcher gives a loaded program a fixed stack (tests/test_dist_stack.py)
@@ -264,6 +265,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = editor_stack ]; then python3 -I tests/test_amarchy_editor_stack.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = wb_absent ]; then python3 -I tests/test_wb_absent_restore.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = palette_closes ]; then python3 -I tests/test_palette_write_closes_windows.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = revert_live_pens ]; then python3 -I tests/test_revert_live_pens_deferred.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rig_open_menu ]; then python3 -I tests/test_amarchy_gui_rig_open_menu.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_chip_pens ]; then python3 -I tests/test_gui_chip_pens.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rig_setup_breaks ]; then python3 -I tests/test_gui_rig_setup_breaks_any_copy.py; fi
