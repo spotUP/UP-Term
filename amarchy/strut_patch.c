@@ -18,6 +18,8 @@
 #include "bar_core.h"
 #include "sentinel_dos.h"
 #include "iconpen_dos.h"
+#include "inst_core.h"
+#include <dos/dosextens.h>
 
 extern struct IntuitionBase *IntuitionBase;
 
@@ -31,6 +33,7 @@ typedef struct strut_pub {
     const struct Screen *scr;   /* only compared, never dereferenced */
     int sw, sh, title, strip;   /* screen size, title bar height, strip height; strip 0 = nothing published */
     long opens, clamped, zoom_set;
+    long inst;                  /* Installer 43.3 windows opened with the A5 margin patch (inst_core.h) */
     int nd;
     struct { struct Window *w; int h; } d[DESK_MAX];
     int nr;
@@ -242,6 +245,61 @@ static struct Window *tags_hook(__reg("a0") struct NewWindow *nw, __reg("a1") st
     return w;
 }
 
+/* A5: Installer 43.3 anchors its button rows 1 px apart and 1 px above the window bottom. On its own plain
+ * OpenWindow (0x4420), before it lays anything out, verify the exact hunk-0 bytes of the calling process, turn both
+ * row immediates from #1 into #4 (Forbid, CacheClearU; fail closed like the dopus5 body patch) and open the window
+ * inst_grow() pixels taller, still centred. The code is the process's own and dies with it: nothing to restore.
+ * Bytes already patched (resident or shared code) still get the taller window. Writes only *copy. */
+static int inst_window(strut_pub *p, const struct NewWindow *nw, struct NewWindow *copy)
+{
+    struct Process *pr = (struct Process *)FindTask(0);
+    struct CommandLineInterface *cli;
+    struct Screen *scr = 0, *lock = 0;
+    BPTR seg = 0;
+    ULONG *h;
+    unsigned char *code;
+    int sig, top, height;
+    if (!nw || !inst_font_y(nw->Height) || pr->pr_Task.tc_Node.ln_Type != NT_PROCESS)
+        return 0;
+    cli = (struct CommandLineInterface *)BADDR(pr->pr_CLI);
+    if (cli)
+        seg = cli->cli_Module;
+    if (!seg && pr->pr_SegList)
+        seg = ((BPTR *)BADDR(pr->pr_SegList))[3];
+    if (!seg)
+        return 0;
+    h = (ULONG *)BADDR(seg);
+    code = (unsigned char *)(h + 1);
+    if (h[-1] < INST_CODE_MIN + 8)
+        return 0;
+    sig = inst_sig(code, h[-1] - 8);
+    if (sig == INST_SIG_UNKNOWN)
+        return 0;
+    if ((nw->Type & SCREENTYPE) != WBENCHSCREEN && nw->Screen)
+        scr = nw->Screen;
+    else
+        scr = lock = LockPubScreen((STRPTR)"Workbench");
+    if (!scr)
+        return 0;
+    sig = inst_box(nw->TopEdge, nw->Height, scr->Height, &top, &height) ? sig : INST_SIG_UNKNOWN;
+    if (lock)
+        UnlockPubScreen(0, lock);
+    if (sig == INST_SIG_UNKNOWN)
+        return 0;
+    if (sig == INST_SIG_ORIG) {
+        Forbid();
+        if (inst_sig(code, h[-1] - 8) == INST_SIG_ORIG)
+            inst_apply(code);
+        Permit();
+        CacheClearU();
+    }
+    *copy = *nw;
+    copy->TopEdge = (WORD)top;
+    copy->Height = (WORD)height;
+    p->inst++;
+    return 1;
+}
+
 static struct Window *plain_hook(__reg("a0") struct NewWindow *nw, __reg("a1") struct TagItem *tags, __reg("a6") struct Library *ib)
 {
     strut_pub *p = g_pub;
@@ -249,6 +307,9 @@ static struct Window *plain_hook(__reg("a0") struct NewWindow *nw, __reg("a1") s
     struct NewWindow copy;
     req r;
     plan pl;
+    struct NewWindow grown;
+    if (inst_window(p, nw, &grown))
+        nw = &grown;
     parse(&r, nw, 0);
     if (nw && p->strip > 0 && on_bar_screen(p, &r)) {
         p->opens++;
@@ -461,10 +522,11 @@ void strut_sentinels(void)
     long v[5];
     if (!g_pub)
         return;
-    v[0] = g_pub->opens; v[1] = g_pub->clamped; v[2] = g_pub->zoom_set; v[3] = g_pub->nd; v[4] = 0;
+    v[0] = g_pub->opens; v[1] = g_pub->clamped; v[2] = g_pub->zoom_set; v[3] = g_pub->nd; v[4] = g_pub->inst;
     if (v[0] != g_last[0]) am_sentinel("AMARCHY_STRUT_OPENS", v[0]);
     if (v[1] != g_last[1]) am_sentinel("AMARCHY_STRUT_CLAMPED", v[1]);
     if (v[2] != g_last[2]) am_sentinel("AMARCHY_STRUT_ZOOM", v[2]);
     if (v[3] != g_last[3]) am_sentinel("AMARCHY_STRUT_DESK", v[3]);
+    if (v[4] != g_last[4]) am_sentinel("AMARCHY_INSTALLER_MARGIN", v[4]);
     memcpy(g_last, v, sizeof v);
 }
