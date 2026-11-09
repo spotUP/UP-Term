@@ -695,7 +695,8 @@ static void dk_live_pens(const gtheme *th, int flat)
     struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
     struct GfxBase *GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
     struct Screen *scr = IntuitionBase && GfxBase ? ipd_lock_wb_screen() : 0;
-    int pens[4], n = 0, i, depth = 0;
+    int pens[4], n = 0, i, depth = 0, direct = 0;
+    uc_u32 cols[4];
     long slen = -1;
     if (scr) {
         depth = scr->RastPort.BitMap->Depth;
@@ -707,16 +708,25 @@ static void dk_live_pens(const gtheme *th, int flat)
             if (slen < 0)
                 slen = dk_read("ENVARC:Sys/Palette.prefs", saved, sizeof saved);
         }
-        for (i = 0; i < n; i++) {
-            uc_u32 c = th ? desk_pen_colour(th, pens[i], flat) : desk_live_baseline(slen > 0 ? saved : 0, slen, pens[i], depth);
-            if (ipd_role_write(pens[i], c) < 0)      /* S57-PENS47-UNOWNED: the holder owns 4-7; no holder running = the old direct write */
-                SetRGB32(&scr->ViewPort, (ULONG)pens[i], ((c >> 16) & 255) * 0x01010101UL, ((c >> 8) & 255) * 0x01010101UL,
-                         (c & 255) * 0x01010101UL);
-        }
-        if (n > 0)
-            desk_dos_live_pens++;
+        for (i = 0; i < n; i++)
+            cols[i] = th ? desk_pen_colour(th, pens[i], flat) : desk_live_baseline(slen > 0 ? saved : 0, slen, pens[i], depth);
         UnlockPubScreen(0, scr);
     }
+    /* S66-FREEZE-LIVEPENS: ipd_role_write takes the holder semaphore and then the public screen list. It runs with NO Workbench visitor
+     * lock of ours: a visitor lock held across LockPubScreenList waited out an IPrefs Workbench reset (KS 3.2, timeout Revert) and the
+     * guest froze. Lock order: holder semaphore, list lock; a screen lock only around the direct write, never across the list lock. */
+    for (i = 0; i < n; i++)
+        if (ipd_role_write(pens[i], cols[i]) < 0)   /* S57-PENS47-UNOWNED: the holder owns 4-7; no holder running = the old direct write */
+            direct |= 1 << i;
+    if (direct && (scr = ipd_lock_wb_screen()) != 0) {
+        for (i = 0; i < n; i++)
+            if (direct & (1 << i))
+                SetRGB32(&scr->ViewPort, (ULONG)pens[i], ((cols[i] >> 16) & 255) * 0x01010101UL, ((cols[i] >> 8) & 255) * 0x01010101UL,
+                         (cols[i] & 255) * 0x01010101UL);
+        UnlockPubScreen(0, scr);
+    }
+    if (n > 0)
+        desk_dos_live_pens++;
     if (GfxBase)
         CloseLibrary((struct Library *)GfxBase);
     if (IntuitionBase)
@@ -1422,7 +1432,12 @@ static void dk_restore_targets(unsigned mask, const char *dir)
         uc_u32 rc[4];
         if (dk_rv_theme)   /* a Revert: pens 4-7 come from the previous theme (desk_revert_role_pens), the baseline only when it says so */
             use = desk_revert_role_pens(dk_rv_theme, flat_pens, (dmask >> DT_PALETTE) & 1, dk_screen_depth(), rp, rc);
-        dk_live_pens(use >= 0 ? dk_rv_theme : 0, use >= 0 ? flat_pens : 0);
+        /* S66-FREEZE-LIVEPENS: the live pens wait for the caller, after the windows are back (desk_dos_revert, desk_dos_apply), as the
+         * apply's do: dk_live_pens inside this bracket, straight after the Palette reset, froze KS 3.2. A pick's own want is kept. */
+        if (!dk_live_want) {
+            dk_live_want = use >= 0 && dk_rv_theme ? 1 : -1;
+            dk_live_flat = use >= 0 ? flat_pens : 0;
+        }
         dk_windows_open(was);
     }
 }
@@ -1442,6 +1457,7 @@ void desk_dos_revert(void)
     gtheme prev;
     char name[GT_NAME];
     desk_dos_reverts++;
+    dk_live_want = 0;
     DeleteFile((STRPTR)DK_PENDING);
     wb = dk_wb_restore();
     if (dk_revert_theme_name(name, sizeof name)) {   /* the prefs theme line goes back first: the pens below follow the previous theme */
@@ -1458,6 +1474,9 @@ void desk_dos_revert(void)
     }
     if (mask)
         dk_restore_targets(mask, DK_REVERT);
+    if (dk_live_want)   /* S66-FREEZE-LIVEPENS: windows open again, the reset done; the apply's order (desk_dos_apply) */
+        dk_live_pens(dk_live_want > 0 ? dk_rv_theme : 0, dk_live_flat);
+    dk_live_want = 0;
     dk_rv_theme = 0;
     if (mask || wb)
         dk_orig_drop_reverted(mask, wb);
