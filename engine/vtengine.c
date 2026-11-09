@@ -5726,6 +5726,7 @@ static void clear_params(vt_term *t)
 #include "canvas.c"
 #include "rip_font.c"
 #include "rip_draw.c"
+#include "rip_icon.c"
 #include "rip_vt.c"
 
 static void enter_string(vt_term *t, vt_u8 kind)

@@ -487,6 +487,110 @@ static void reach_rip_through_vt_write(void)
     }
 }
 
+/* ---- RIP-7: clipboard and icons ---- */
+#define ICN_GOLD 653013169UL /* canvas checksum after the 1I fixture */
+static const unsigned char icn_file[] = { 8, 0, 2, 0, 0xF0, 0x0F, 0xAA, 0x00, 0xFF, 0xFF, 0xFF, 0xFF };
+static int icn_reads, icn_frees;
+static char icn_last[64];
+
+static int icn_read(const char *path, long off, long size, vt_u8 **buf, long *n)
+{
+    (void)off;
+    (void)size;
+    icn_reads++;
+    strncpy(icn_last, path, sizeof(icn_last) - 1);
+    if (strcmp(path, "TEST.ICN"))
+        return 0;
+    *buf = (vt_u8 *)icn_file; /* host-owned; the release below only counts */
+    *n = (long)sizeof(icn_file);
+    return 1;
+}
+
+static int icn_decode(const vt_u8 *d, long n, vt_u32 **argb, int *w, int *h)
+{
+    (void)d; (void)n; (void)argb; (void)w; (void)h;
+    return 0;
+}
+
+static void icn_release(vt_u32 *p)
+{
+    (void)p;
+    icn_frees++;
+}
+
+static void icons_and_clipboard(void)
+{
+    static const int row0[8] = { 5, 1, 5, 1, 6, 2, 6, 2 };
+    vt_term *t = rip_term();
+    long before = vt_rip_icons(t);
+    int x;
+    vt_set_image_decoder(t, icn_decode, icn_release);
+    vt_set_file_reader(t, icn_read, 0);
+    h_put(t, "\033[!");
+    /* 1I at 4,3 copy, clipboard flag 1, file TEST (".ICN" added) */
+    h_put(t, "!|1I040300" "1" "0000TEST\r\n");
+    CHECK_INT(vt_rip_icons(t) - before, 1); /* the icon path ran */
+    CHECK_INT(icn_reads, 1);
+    CHECK_INT(icn_frees, 1);
+    CHECK(!strcmp(icn_last, "TEST.ICN"));
+    for (x = 0; x < 8; x++) {
+        CHECK_INT(rpx(t, 4 + x, 3), row0[x]);
+        CHECK_INT(rpx(t, 4 + x, 4), 15);
+    }
+    CHECK_INT(rpx(t, 12, 3), 0);
+    CHECK(canvas_sum(t) == ICN_GOLD);
+    /* 1P (clipboard from the icon) copy at 20,3 then xor over itself clears it; and mode 4 not */
+    h_put(t, "!|1P0K0300" "0\r\n");
+    CHECK_INT(rpx(t, 20, 3), 5);
+    CHECK_INT(rpx(t, 27, 4), 15);
+    h_put(t, "!|1P0K0301" "0\r\n");
+    CHECK_INT(rpx(t, 20, 3), 0);
+    CHECK_INT(rpx(t, 27, 4), 0);
+    h_put(t, "!|1P0K0304" "0\r\n");
+    CHECK_INT(rpx(t, 20, 3), 10); /* not 5 */
+    /* 1C the icon box 4,3..11,4 into the clipboard, 1P at 30,10 */
+    h_put(t, "!|1C0403" "0B04" "0\r\n");
+    h_put(t, "!|1P0U0A00" "0\r\n");
+    CHECK_INT(rpx(t, 30, 10), 5);
+    CHECK_INT(rpx(t, 37, 11), 15);
+    /* 1G moves the box 4,3..11,4 to row 20 */
+    h_put(t, "!|1G0403" "0B04" "00" "0K\r\n");
+    CHECK_INT(rpx(t, 4, 20), 5);
+    CHECK_INT(rpx(t, 11, 21), 15);
+    vt_free(t);
+}
+
+static void icon_names_that_climb_out_are_refused(void)
+{
+    static const char *const bad[] = { "!|1I0403000" "0000..\r\n", "!|1I0403000" "0000A/TEST\r\n",
+                                       "!|1I0403000" "0000C:TEST\r\n", "!|1I0403000" "0000..\\TEST\r\n",
+                                       "!|1I0403000" "0000.\r\n" };
+    vt_term *t = rip_term();
+    long before = vt_rip_icons(t);
+    unsigned long blank;
+    int i;
+    vt_set_image_decoder(t, icn_decode, icn_release);
+    vt_set_file_reader(t, icn_read, 0);
+    h_put(t, "\033[!");
+    h_put(t, "!|c0F\r\n");
+    blank = canvas_sum(t);
+    icn_reads = 0;
+    for (i = 0; i < (int)(sizeof(bad) / sizeof(bad[0])); i++)
+        h_put(t, bad[i]);
+    CHECK_INT(icn_reads, 0); /* the host file hook was never asked */
+    CHECK_INT(vt_rip_icons(t) - before, 0);
+    CHECK(canvas_sum(t) == blank);
+    /* no release function: no read either */
+    vt_free(t);
+    t = rip_term();
+    vt_set_file_reader(t, icn_read, 0);
+    h_put(t, "\033[!");
+    icn_reads = 0;
+    h_put(t, "!|1I040300" "0" "0000TEST\r\n");
+    CHECK_INT(icn_reads, 0);
+    vt_free(t);
+}
+
 static void detection_and_switch(void)
 {
     vt_term *t = rip_term();
@@ -1299,4 +1403,6 @@ void suite_rip(void)
     mouse_expansion();
     button_knobs_move_output();
     mouse_clear_flag();
+    icons_and_clipboard();
+    icon_names_that_climb_out_are_refused();
 }

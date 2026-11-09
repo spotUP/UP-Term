@@ -6,7 +6,7 @@ CL_DIR ?=
 cl_src = $(addprefix $(CL_DIR),$(1))
 
 # the .c files engine/vtengine.c and engine/kitty.c #include: every binary built from vtengine.c depends on them
-ENGINE_INC := $(call cl_src,engine/kitty.c engine/ansimusic.c engine/inflate.c engine/png.c engine/iterm.c engine/dlname.h engine/rip_parse.c engine/rip_pal.c engine/rip_mouse.c engine/canvas.c engine/rip_font.c engine/rip_fontdata.inc engine/rip_draw.c engine/rip_vt.c)
+ENGINE_INC := $(call cl_src,engine/kitty.c engine/ansimusic.c engine/inflate.c engine/png.c engine/iterm.c engine/dlname.h engine/rip_parse.c engine/rip_pal.c engine/rip_mouse.c engine/canvas.c engine/rip_font.c engine/rip_fontdata.inc engine/rip_draw.c engine/rip_icon.c engine/rip_vt.c)
 
 # hl and mdv (view/): the lexer, themes, the Markdown renderer
 VIEW_LEX  := $(call cl_src,view/hl_lex.c view/hl_langs.c view/hl_style.c view/vw_text.c)

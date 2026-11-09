@@ -55,6 +55,7 @@ struct rip_ad {
     int stroke;     /* host option: Hershey strokes for fonts 1..4 (vt_set_rip_stroke) */
     int moved;      /* text went to the engine since the tiles were last put right */
     struct rip_mouse mouse;
+    struct rip_clip clip; /* 1C / 1I clipboard */
     vt_u8 line[RIP_AUTO_LINE]; /* Auto: the `!|` line being held */
 };
 
@@ -184,6 +185,23 @@ static int rip_window(vt_term *t, const struct rip_cmd *c)
     return 0;
 }
 
+/* icon files come through the host's file hook (vt_set_file_reader) by their sanitised
+ * name alone; the host decides the directory. Needs the release function too (kitty rule). */
+static int rip_icon_load(void *ud, const char *name, unsigned char **buf, long *n)
+{
+    vt_term *t = (vt_term *)ud;
+    if (!t->file_read || !t->decode_free)
+        return 0;
+    return t->file_read(name, 0, 0, buf, n);
+}
+
+static void rip_icon_release(void *ud, unsigned char *buf)
+{
+    vt_term *t = (vt_term *)ud;
+    if (t->decode_free)
+        t->decode_free((vt_u32 *)(void *)buf);
+}
+
 static void rip_on_cmd(void *ud, const struct rip_cmd *c)
 {
     vt_term *t = (vt_term *)ud;
@@ -200,8 +218,18 @@ static void rip_on_cmd(void *ud, const struct rip_cmd *c)
         rip_mouse_exec(&ad->mouse, &ad->g, cv, c);
         return;
     }
+    if (rip_clip_handles(c)) {
+        struct rip_icon_src src;
+        src.ud = t;
+        src.load = rip_icon_load;
+        src.release = rip_icon_release;
+        cv = rip_canvas(t, ad);
+        if (cv)
+            rip_clip_exec(&ad->clip, &ad->g, cv, c, &src);
+        return;
+    }
     if (!rip_gfx_handles(c) && !(c->level == 0 && (c->ch == 'Q' || c->ch == 'a')))
-        return; /* icons, queries, files: RIP-7 and later */
+        return; /* queries, files: RIP-8 and later */
     cv = rip_canvas(t, ad);
     if (!cv)
         return;
@@ -437,6 +465,7 @@ void vt_set_rip(vt_term *t, int on)
     if (!on) {
         if (ad) {
             rip_canvas_drop(ad);
+            rip_clip_free(&ad->clip);
             VT_FREE(ad);
             t->rip = 0;
         }
@@ -480,6 +509,12 @@ int vt_rip_active(const vt_term *t)
     return t->rip ? ((struct rip_ad *)t->rip)->active : 0;
 }
 
+long vt_rip_icons(const vt_term *t)
+{
+    (void)t;
+    return rip_icons_drawn();
+}
+
 long vt_rip_commands(const vt_term *t)
 {
     return t->rip ? rip_commands(&((struct rip_ad *)t->rip)->st) : 0;
@@ -489,6 +524,7 @@ static void rip_free(vt_term *t)
 {
     if (t->rip) {
         rip_canvas_drop((struct rip_ad *)t->rip);
+        rip_clip_free(&((struct rip_ad *)t->rip)->clip);
         VT_FREE(t->rip);
         t->rip = 0;
     }

@@ -103,6 +103,16 @@ void cv_pixel(struct cv *c, int x, int y, int idx);
 void cv_hspan(struct cv *c, int x0, int x1, int y, int idx); /* x1 inclusive */
 void cv_rect(struct cv *c, int x0, int y0, int x1, int y1, int idx); /* both corners inclusive */
 /* the dirty rectangle since the last take; cleared */
+/* Copy w x h indexed pixels (row major) onto the canvas at x, y with a write mode (the RIP
+ * 1P/1I modes: copy, xor, or, and, not-of-source); only pixels inside the box cx0..cx1,
+ * cy0..cy1 (inclusive) and on the canvas are written. */
+#define CV_COPY 0
+#define CV_XOR 1
+#define CV_OR 2
+#define CV_AND 3
+#define CV_NOT 4
+void cv_blit(struct cv *c, int x, int y, const unsigned char *src, int w, int h, int minterm,
+             int cx0, int cy0, int cx1, int cy1);
 struct cv_rect_s cv_take_dirty(struct cv *c);
 /* bump serial when something is dirty (call once per feed); returns 1 if it bumped */
 int cv_flush(struct cv *c);
@@ -152,6 +162,33 @@ long rip_font_stroke_glyphs(void);
 int rip_gfx_handles(const struct rip_cmd *c);
 /* run a level-0 drawing or state command; returns 1 if handled */
 int rip_gfx_exec(struct rip_gfx *g, struct cv *cv, const struct rip_cmd *c);
+
+/* ---- clipboard and icons (rip_icon.c, RIP-7) ---- */
+#define RIP_ICON_FILE_MAX 131072L /* a .ICN file over this is refused (640 x 350 x 4 planes is 112000) */
+/* The clipboard: indexed pixels of 1C and 1I (clip flag); malloc'd, freed by rip_clip_free. */
+struct rip_clip {
+    unsigned char *pix;
+    int w, h;
+};
+/* How an icon file is read; the host's file hook sits behind load. name is the sanitised file
+ * name only (never a path); load returns 1 with a buffer of n bytes that release frees. */
+struct rip_icon_src {
+    void *ud;
+    int (*load)(void *ud, const char *name, unsigned char **buf, long *n);
+    void (*release)(void *ud, unsigned char *buf);
+};
+/* The 1I file text as a file name: one plain component (no '/', '\\', ':', control characters;
+ * not "." or ".."), ".ICN" appended when it has no dot. 1 and out filled, or 0 = refused. */
+int rip_icon_name(const unsigned char *text, int ntext, char *out, int max);
+/* .ICN: u16 width, u16 height (little endian), then per scanline the four bit planes blue,
+ * green, red, intensity, each (width+7)/8 bytes, bit 0x80 leftmost. 1 with *pix malloc'd
+ * (width x height indices 0..15), or 0 for a bad or oversized file. */
+int rip_icon_decode(const unsigned char *d, long n, unsigned char **pix, int *w, int *h);
+int rip_clip_handles(const struct rip_cmd *c); /* 1 for 1C 1P 1G 1I */
+int rip_clip_exec(struct rip_clip *clip, const struct rip_gfx *g, struct cv *cv,
+                  const struct rip_cmd *c, const struct rip_icon_src *src);
+void rip_clip_free(struct rip_clip *clip);
+long rip_icons_drawn(void); /* sentinel: icons loaded and drawn since start */
 
 /* ---- mouse fields and buttons (rip_mouse.c, RIP-6) ---- */
 #define RIP_MOUSE_MAX 128 /* fields and buttons together; the 129th is rejected */

@@ -493,6 +493,10 @@ void vt_set_rip(vt_term *t, int on);
 /* 1 when RIP is active (Auto has switched on, or On and not turned off by ESC [ 1 !), else 0. */
 int vt_rip_active(const vt_term *t);
 long vt_rip_commands(const vt_term *t);
+/* Icons (1I) loaded through vt_set_file_reader and drawn since start (sentinel). The file name
+ * handed to the reader is the sanitised name alone, no directory; the host resolves it. The
+ * image release function (vt_set_image_decoder) must be set too, as for kitty t=f. */
+long vt_rip_icons(const vt_term *t);
 /* RIP text font option (RIP-3b): 0 draws every BGI font with the 8x8 bitmap (the default), 1 draws
  * font styles 1..4 (triplex, small, sans-serif, gothic) as Hershey strokes. Call after vt_set_rip(t, 1);
  * it is kept across the canvas being rebuilt. vt_rip_stroke_glyphs: stroke glyphs drawn (sentinel). */

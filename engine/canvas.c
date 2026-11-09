@@ -125,6 +125,29 @@ void cv_rect(struct cv *c, int x0, int y0, int x1, int y1, int idx)
         cv_hspan(c, x0, x1, y, idx);
 }
 
+void cv_blit(struct cv *c, int x, int y, const unsigned char *src, int w, int h, int minterm,
+             int cx0, int cy0, int cx1, int cy1)
+{
+    int i, j;
+    for (j = 0; j < h; j++)
+        for (i = 0; i < w; i++) {
+            int px = x + i, py = y + j, d, v = src[j * w + i];
+            if (px < cx0 || px > cx1 || py < cy0 || py > cy1)
+                continue;
+            d = cv_get(c, px, py);
+            if (d < 0)
+                continue;
+            switch (minterm) {
+            case CV_XOR: v = d ^ v; break;
+            case CV_OR: v = d | v; break;
+            case CV_AND: v = d & v; break;
+            case CV_NOT: v = ~v & 15; break;
+            default: break;
+            }
+            cv_pixel(c, px, py, v);
+        }
+}
+
 struct cv_rect_s cv_take_dirty(struct cv *c)
 {
     struct cv_rect_s d = c->dirty;
