@@ -66,6 +66,7 @@ void suite_dopustb(void);
 void suite_menu_fontspec(void);
 void suite_wbreset(void);
 void suite_borderblank(void);
+void suite_inst(void);
 void suite_help_core(void);
 void suite_themeprev(void);
 void suite_menusrv(void);
@@ -180,6 +181,7 @@ static const h_suite suites[] = {
     { "menu_fontspec", suite_menu_fontspec },
     { "wbreset", suite_wbreset },
     { "borderblank", suite_borderblank },
+    { "inst", suite_inst },
     { "help_core", suite_help_core },
     { "themeprev", suite_themeprev },
     { "menusrv", suite_menusrv },
