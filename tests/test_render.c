@@ -2639,6 +2639,124 @@ static void k32_few_free_pens_show_the_big_areas_in_their_colours(void)
     test_npal = 0;
 }
 
+/* A 5-plane screen of 12 free pens with the picture's own colours kept (copy_on) or not: the picture is a 64 x 64
+ * smooth gradient in 4096 colours. Returns the mean error of the shown pens against the gradient, a channel's 0..255
+ * averaged over the picture, times 100. */
+static int k32_gradient_run(int copy_on, int *rgb_pics, long *mem_with, long *pens_after_delete, long *pens_during)
+{
+    static unsigned long pal[32];
+    static unsigned char px[64 * 64 * 4];
+    int x, y, i;
+    long sum = 0, before = 0;
+    planar_depth = 5;
+    planar_left = 0;
+    test_pal = pal;
+    test_npal = 32;
+    {
+        vt_callbacks cb;
+        vt_term *tt;
+        memset(&cb, 0, sizeof cb);
+        tt = vt_new(COLS, ROWS, 0, &cb, 0);
+        for (i = 0; i < 16; i++)
+            pal[i] = vt_palette_rgb(tt, i);
+        vt_free(tt);
+    }
+    for (i = 16; i < 20; i++)
+        pal[i] = 0x101010UL * (unsigned long)(i - 15) * 3;
+    for (i = 20; i < 32; i++)
+        pal[i] = 0;
+    open_term_in(0, VT_XTERM);
+    gf_freepens(20, 12);
+    if (!copy_on)
+        vt_set_image_rgb_copy(term, 0); /* otherwise the renderer's own choice (vr_init) stands: that is the path under test */
+    vt_set_cell_pixels(term, CW, CH);
+    for (y = 0; y < 64; y++)
+        for (x = 0; x < 64; x++) {
+            unsigned char *p = px + (y * 64 + x) * 4;
+            p[0] = (unsigned char)(4 * x);
+            p[1] = (unsigned char)(4 * y);
+            p[2] = (unsigned char)(2 * (x + y));
+            p[3] = 255;
+        }
+    pass("\x1b[1;1H");
+    k37_send("a=T,f=32,s=64,v=64,i=1", px, sizeof px);
+    *rgb_pics = (int)rn.img->n_pic_rgb;
+    *mem_with = vt_image_memory(term) - 3L * 64 * 64 * (long)vt_kitty_copy_made(term); /* what the indices took */
+    for (i = 0; i < VR_PIC_SLOTS; i++)
+        before += rn.img->pic[i].nheld; /* the pens the picture holds */
+    *pens_during = before;
+    before = gf_pens_held;
+    for (y = 1; y < 63; y++)
+        for (x = 1; x < 63; x++) {
+            ULONG rgb = vr_pen_rgb(&rn, (UBYTE)(gf_pixel(x, y) & 255));
+            int c;
+            for (c = 0; c < 3; c++) {
+                int want = px[(y * 64 + x) * 4 + c], got = (int)((rgb >> (16 - 8 * c)) & 255);
+                sum += got > want ? got - want : want - got;
+            }
+        }
+    pass("\x1b_Ga=d,d=I,i=1\x1b\\");
+    pass("\x1b[1;1H");
+    *pens_after_delete = before - gf_pens_held; /* what the delete gave back */
+    close_term();
+    planar_depth = 0;
+    test_npal = 0;
+    return (int)(sum * 100 / (62L * 62 * 3));
+}
+
+/* Owner decision 2026-11-09: a picture on a screen short of pens is dithered once from its own colours, not from the
+ * palette the engine cut it to; its pens go when the picture does. */
+static void k32_gradient_from_own_colours_beats_the_palette_entries(void)
+{
+    int r_on, r_off, e_on, e_off;
+    long m_on, m_off, a_on, a_off, d_on, d_off;
+    e_off = k32_gradient_run(0, &r_off, &m_off, &a_off, &d_off);
+    e_on = k32_gradient_run(1, &r_on, &m_on, &a_on, &d_on);
+    if (getenv("K37_PRINT"))
+        printf("K32 gradient mean error x100: own colours %d, palette entries %d; picture bytes %ld / %ld; pens held %ld / %ld, after delete %ld / %ld\n",
+               e_on, e_off, m_on, m_off, d_on, d_off, a_on, a_off);
+    CHECK_INT(r_on, 1);  /* the own-colours path ran (sentinel) */
+    CHECK_INT(r_off, 0); /* and not without the copy */
+    CHECK(e_on < e_off); /* the gradient is nearer to the picture */
+    CHECK(m_on == m_off); /* the copy took 3 bytes a pixel on top of the indices (taken off above), only with the setting on */
+    CHECK(d_on > 0 && d_off > 0);
+    CHECK(a_on == d_on); /* the pens went with the picture: deleted, the screen is still open (the pool is back) */
+    CHECK(a_off == d_off);
+}
+
+/* The engine's copy: made only with the setting on, freed when it goes off or the picture goes */
+static void k32_engine_copy_lives_only_with_the_setting(void)
+{
+    static unsigned char px[16 * 16 * 4];
+    vt_callbacks cb;
+    vt_term *tt;
+    long base, with, made;
+    memset(&cb, 0, sizeof cb);
+    memset(px, 0x80, sizeof px);
+    tt = vt_new(COLS, ROWS, 0, &cb, 0);
+    vt_set_cell_pixels(tt, CW, CH);
+    {
+        char b[2000], cmd[2200];
+        k37_b64(b, px, (int)sizeof px);
+        snprintf(cmd, sizeof cmd, "\x1b_Ga=T,f=32,s=16,v=16,i=1;%s\x1b\\", b);
+        vt_feed(tt, (const vt_u8 *)cmd, (long)strlen(cmd));
+        vt_flush(tt);
+        base = vt_image_memory(tt);
+        CHECK_INT((int)vt_kitty_copy_made(tt), 0); /* off: no copy */
+        vt_set_image_rgb_copy(tt, 1);
+        snprintf(cmd, sizeof cmd, "\x1b_Ga=T,f=32,s=16,v=16,i=2;%s\x1b\\", b);
+        vt_feed(tt, (const vt_u8 *)cmd, (long)strlen(cmd));
+        vt_flush(tt);
+        with = vt_image_memory(tt);
+        made = (long)vt_kitty_copy_made(tt);
+        CHECK(made >= 1);
+        CHECK(with - base >= made * 16L * 16 * 3); /* the copies are in the memory count, 3 bytes a pixel */
+        vt_set_image_rgb_copy(tt, 0); /* off: every copy goes */
+        CHECK(vt_image_memory(tt) == with - made * 16L * 16 * 3);
+    }
+    vt_free(tt);
+}
+
 /* pp_pick on its own: the heaviest colours get the pens; a colour a fixed pen shows closely gets none */
 static void k32_pick_takes_the_heaviest_and_skips_what_a_fixed_pen_shows(void)
 {
@@ -3415,6 +3533,8 @@ int main(void)
     k32_placeholder_cells_draw_their_tiles();
     k37_eight_bit_golden();
     k32_few_free_pens_show_the_big_areas_in_their_colours();
+    k32_gradient_from_own_colours_beats_the_palette_entries();
+    k32_engine_copy_lives_only_with_the_setting();
     k32_pick_takes_the_heaviest_and_skips_what_a_fixed_pen_shows();
     k36_a_frame_switch_never_shows_the_picture_half_drawn();
     a_front_picture_spanning_rows_is_not_overdrawn_by_the_text_of_its_lower_rows();

@@ -37,6 +37,10 @@ struct vr_picslot {
     UWORD planes;         /* the pens' bits ORed */
     pp_plan plan;         /* per entry: pens a, b, level */
     UBYTE held[256];      /* pens to release */
+    UBYTE *rgbmem;        /* a picture with its own colours (vt_image_view.rgb): a pm_palette of the candidates, then
+                           * PP_BINS plans of 3 bytes (a, b, level) and PP_BINS mean colours of 3 bytes; 0: plan above */
+    UBYTE cpen[PM_MAXPENS]; /* rgbmem: the pen of every candidate */
+    unsigned long usable;   /* rgbmem: the candidates' mask for pm_match */
 };
 
 /* An image's colours on this screen, 3,840 bytes: in every window's
@@ -51,6 +55,8 @@ struct vr_images {
     struct vr_picslot *pic; /* VR_PIC_SLOTS of them, allocated at the first kitty picture on a palette screen */
     struct vr_picslot *pic_cur; /* the slot of the picture img_colours last prepared; 0: the maps below */
     ULONG pic_use;
+    ULONG n_pic_rgb;      /* sentinel: pictures picked and dithered from their own colours (the engine's RGB copy) */
+    ULONG pic_frees;      /* the engine's vt_image_frees when the slots were last checked for pictures gone */
     ULONG n_pic_picks;    /* sentinel: pictures whose colours were picked (pp_pick) because the pens ran out */
     ULONG key[VR_IMG_SLOTS];
     UBYTE pen[VR_IMG_SLOTS];

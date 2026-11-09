@@ -296,4 +296,104 @@ PM_MAYBE_UNUSED static int pp_pen_at(const pp_plan *pl, int i, int x, int y)
     return pl->lev[i] && pm_bayer[y & 7][x & 7] < pl->lev[i] ? pl->b[i] : pl->a[i];
 }
 
+/* ---- a picture that keeps its own colours (vt_image_view.rgb: 3 bytes a pixel) ----
+ *
+ *   pp_hist     the colours of the picture, 4 bits a channel: the heaviest bins (at most PP_MAXCOL) as (mean
+ *               colour, pixel count), from at most about 65 000 sampled pixels; feeds pp_pick like a palette. Also
+ *               the mean colour of every bin sampled (the others: the bin's middle) for pp_bin_fill.
+ *   pp_bin_fill the two candidates and the level for one bin, worked on first use (a picture costs at most 4096)
+ *   pp_pen_bin  the candidate a pixel (x, y) takes: the same 8 x 8 pattern as pp_pen_at
+ * Every pixel is dithered ONCE from its own colour onto {fixed pens + picked pens}. */
+#define PP_BINS 4096
+#define PP_UNSET 255 /* a bin plan's level before pp_bin_fill */
+
+typedef struct pp_hist_work {
+    unsigned long n[PP_BINS], s[3][PP_BINS];
+} pp_hist_work;
+
+static int pp_bin_of(const unsigned char *p)
+{
+    return ((p[0] >> 4) << 8) | ((p[1] >> 4) << 4) | (p[2] >> 4);
+}
+
+static int pp_log2(unsigned long v)
+{
+    int lg = 0;
+    while (v > 1) {
+        v >>= 1;
+        lg++;
+    }
+    return lg;
+}
+
+/* idx[i] == 0: an unset (transparent) pixel, left out. bincol[bin * 3 + c]: mean colour of bin. Returns the entries
+ * written to orgb / ow (at most PP_MAXCOL). */
+PM_MAYBE_UNUSED static int pp_hist(const unsigned char *idx, const unsigned char *rgb, long npix, pp_hist_work *wk,
+                                   unsigned long *orgb, unsigned long *ow, unsigned char *bincol)
+{
+    long i, step = (npix / 65536L) | 1L;
+    int cnt[33], b, c, got = 0, th = 0, acc = 0;
+    for (b = 0; b < PP_BINS; b++) {
+        wk->n[b] = wk->s[0][b] = wk->s[1][b] = wk->s[2][b] = 0;
+        bincol[b * 3] = (unsigned char)(((b >> 8) & 15) * 17);
+        bincol[b * 3 + 1] = (unsigned char)(((b >> 4) & 15) * 17);
+        bincol[b * 3 + 2] = (unsigned char)((b & 15) * 17);
+    }
+    for (i = 0; i < npix; i += step) {
+        int bn;
+        if (!idx[i])
+            continue;
+        bn = pp_bin_of(rgb + i * 3);
+        wk->n[bn]++;
+        for (c = 0; c < 3; c++)
+            wk->s[c][bn] += rgb[i * 3 + c];
+    }
+    for (b = 0; b <= 32; b++)
+        cnt[b] = 0;
+    for (b = 0; b < PP_BINS; b++)
+        if (wk->n[b]) {
+            cnt[pp_log2(wk->n[b])]++;
+            for (c = 0; c < 3; c++)
+                bincol[b * 3 + c] = (unsigned char)((wk->s[c][b] + wk->n[b] / 2) / wk->n[b]);
+        }
+    for (b = 32; b >= 0; b--) { /* the lowest weight class (log2) from which at most PP_MAXCOL bins are taken */
+        if (acc + cnt[b] > PP_MAXCOL)
+            break;
+        acc += cnt[b];
+        th = b;
+    }
+    for (b = 0; b < PP_BINS && got < PP_MAXCOL; b++) {
+        if (!wk->n[b] || pp_log2(wk->n[b]) < th)
+            continue;
+        orgb[got] = ((unsigned long)bincol[b * 3] << 16) | ((unsigned long)bincol[b * 3 + 1] << 8) |
+                    bincol[b * 3 + 2];
+        ow[got++] = wk->n[b];
+    }
+    return got;
+}
+
+/* plan3[bin * 3 .. +2] = candidate a, candidate b, level; filled on first use from the bin's colour */
+PM_MAYBE_UNUSED static void pp_bin_fill(unsigned char *plan3, const unsigned char *bincol, const pm_palette *pal,
+                                        unsigned long usable, int bin)
+{
+    pm_pick pk;
+    unsigned long rgb = ((unsigned long)bincol[bin * 3] << 16) | ((unsigned long)bincol[bin * 3 + 1] << 8) |
+                        bincol[bin * 3 + 2];
+    pm_match(pal, usable, rgb, 1, &pk);
+    plan3[bin * 3] = (unsigned char)(pk.a < 0 ? 0 : pk.a);
+    plan3[bin * 3 + 1] = (unsigned char)(pk.b < 0 ? plan3[bin * 3] : pk.b);
+    plan3[bin * 3 + 2] = (unsigned char)(pk.a == pk.b ? 0 : pk.lev);
+}
+
+/* the candidate pixel (x, y) with colour rgb[0..2] takes */
+PM_MAYBE_UNUSED static int pp_pen_bin(unsigned char *plan3, const unsigned char *bincol, const pm_palette *pal,
+                                      unsigned long usable, const unsigned char *rgb, int x, int y)
+{
+    int bin = pp_bin_of(rgb);
+    unsigned char *e = plan3 + bin * 3;
+    if (e[2] == PP_UNSET)
+        pp_bin_fill(plan3, bincol, pal, usable, bin);
+    return e[2] && pm_bayer[y & 7][x & 7] < e[2] ? e[1] : e[0];
+}
+
 #endif

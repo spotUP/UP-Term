@@ -237,6 +237,32 @@ static int kit_picture(vt_term *t, const kit_src *s, int x0, int y0, int w, int 
         }
         return slot;
     }
+    if (t->image_copy && kit_room(t, (long)tw * th * 4)) { /* a screen short of pens: the picture's own colours too */
+        vt_u8 *cp = (vt_u8 *)VT_MALLOC((long)tw * th * 3);
+        if (cp && kit_make(t, s, x0, y0, w, h, tw, th, &pix, pal, &npal)) {
+            long i, n = (long)tw * th;
+            for (i = 0; i < n; i++) {
+                int sx = (int)(i % tw), sy = (int)(i / tw);
+                vt_u32 p = kit_px(s, (y0 + (long)sy * h / th) * s->w + x0 + (long)sx * w / tw);
+                cp[i * 3] = (vt_u8)(p >> 16);
+                cp[i * 3 + 1] = (vt_u8)(p >> 8);
+                cp[i * 3 + 2] = (vt_u8)p;
+            }
+            slot = image_install(t, pix, n, tw, th, npal, pal);
+            if (slot >= 0) {
+                t->imgs[slot]->rgb = cp;
+                t->imgs[slot]->bytes += n * 3;
+                t->img_mem += n * 3;
+                t->kit_copy_made++;
+            } else {
+                VT_FREE(cp);
+            }
+            return slot;
+        }
+        if (cp) { /* the indices have no room: the plain path below says so */
+            VT_FREE(cp);
+        }
+    }
     if (!kit_make(t, s, x0, y0, w, h, tw, th, &pix, pal, &npal))
         return -1;
     return image_install(t, pix, (long)tw * th, tw, th, npal, pal);
@@ -1056,6 +1082,7 @@ static const char *kit_frame(vt_term *t, const vt_kitty *k, const kit_src *s, vt
         return err;
     }
     if (root) {
+        image_drop_rgb(t, im); /* the frames are indices: the copy would show the first one */
         im->anim = (vt_anim *)VT_MALLOC(sizeof(vt_anim));
         if (!im->anim) {
             VT_FREE(root);
@@ -1616,6 +1643,7 @@ int vt_cell_placeholder(const vt_term *t, int row, int col, vt_image_view *v, in
     v->npal = im->npal;
     v->fmt = im->fmt;
     v->opaque = im->opaque;
+    v->rgb = im->rgb;
     v->kitty = 1;
     v->cw = im->cw;
     v->ch = im->ch;

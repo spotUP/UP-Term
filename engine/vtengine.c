@@ -110,6 +110,8 @@ typedef struct vt_image {
     long kz;            /* kitty's z= (negative: under the text) */
     vt_u8 fmt;          /* 0 indices into pal, 1 RGBA (R G B A in memory order; vt_set_image_rgb) */
     vt_u8 opaque;       /* fmt 1: no pixel has an alpha below 255 */
+    vt_u8 *rgb;         /* fmt 0 kitty pictures made while vt_set_image_rgb_copy was on: w x h x 3 bytes R G B, the picture's
+                         * own colours beside the cube indices (counted in bytes); 0 when none */
     vt_u8 ktrans;       /* kitty's N=1 on a stored picture: evicted first */
     int px0, py0;       /* kitty's X=, Y=: the picture's offset inside its first cell */
     vt_u32 pkid, ppid;  /* kitty's P=, Q=: the parent placement's i= and p= (0 none) */
@@ -314,6 +316,9 @@ struct vt_term {
     long img_mem, img_serial;
     long img_budget, anim_budget; /* VT_IMAGE_MEMORY / VT_ANIM_MEMORY, times 4 in RGB mode (vt_set_image_rgb) */
     vt_u8 image_rgb;           /* vt_set_image_rgb */
+    vt_u8 image_copy;          /* vt_set_image_rgb_copy */
+    unsigned long img_frees;   /* pictures freed (vt_image_frees) */
+    unsigned long kit_copy_made; /* RGB copies made (vt_kitty_copy_made) */
     unsigned long kit_rgba_frames; /* RGBA frame canvases made (vt_kitty_rgba_frames, K39) */
     unsigned long kit_rgb_made; /* RGB pictures made (vt_kitty_rgb_made) */
     long anim_mem;             /* bytes of animation frames, against VT_ANIM_MEMORY (K34) */
@@ -475,6 +480,17 @@ static void image_mark(vt_term *t, int slot)
                 mark(t, t->pl[e].col0, y, t->pl[e].col0 + image_cols(im));
 }
 
+/* the RGB copies of the pictures dropped: their bytes leave the picture and the shared memory */
+static void image_drop_rgb(vt_term *t, vt_image *im)
+{
+    if (!im->rgb)
+        return;
+    VT_FREE(im->rgb);
+    im->rgb = 0;
+    im->bytes -= (long)im->w * im->h * 3;
+    t->img_mem -= (long)im->w * im->h * 3;
+}
+
 static void image_free(vt_term *t, int slot)
 {
     vt_image *im = t->imgs[slot];
@@ -490,6 +506,11 @@ static void image_free(vt_term *t, int slot)
     anim_free(t, im);
     VT_FREE(im->pix);
     im->pix = 0;
+    if (im->rgb) {
+        VT_FREE(im->rgb);
+        im->rgb = 0;
+    }
+    t->img_frees++;
     t->img_mem -= im->bytes;
     im->bytes = 0;
     im->refs = 0;
@@ -5428,6 +5449,7 @@ static int image_install(vt_term *t, vt_u8 *pix, long bytes, long w, long h, int
     im->npal = npal;
     im->refs = 0;
     im->fmt = im->opaque = 0;
+    im->rgb = 0;
     im->kind = 0;
     im->kid = im->knum = im->pid = 0;
     im->kz = 0;
@@ -5624,6 +5646,7 @@ int vt_row_image(const vt_term *t, int row, int i, vt_image_view *v)
         v->npal = im->npal;
         v->fmt = im->fmt;
         v->opaque = im->opaque;
+        v->rgb = im->rgb;
         v->kitty = im->kind != 0;
         v->cw = im->cw;
         v->ch = im->ch;
@@ -6515,8 +6538,41 @@ void vt_set_image_rgb(vt_term *t, int on)
     t->image_rgb = (vt_u8)on;
     if (!on)
         kit_to_index(t); /* before the budgets shrink */
-    t->img_budget = VT_IMAGE_MEMORY * (on ? 4 : 1);
+    t->img_budget = VT_IMAGE_MEMORY * (on || t->image_copy ? 4 : 1);
     t->anim_budget = VT_ANIM_MEMORY * (on ? 4 : 1);
+}
+
+void vt_set_image_rgb_copy(vt_term *t, int on)
+{
+    int i;
+    on = on != 0;
+    if (on == t->image_copy)
+        return;
+    t->image_copy = (vt_u8)on;
+    if (!on)
+        for (i = 0; i < VT_IMG_SLOTS; i++)
+            if (t->imgs[i] && t->imgs[i]->pix)
+                image_drop_rgb(t, t->imgs[i]);
+    t->img_budget = VT_IMAGE_MEMORY * (on || t->image_rgb ? 4 : 1);
+}
+
+unsigned long vt_image_frees(const vt_term *t)
+{
+    return t->img_frees;
+}
+
+int vt_image_alive(const vt_term *t, long serial)
+{
+    int i;
+    for (i = 0; i < VT_IMG_SLOTS; i++)
+        if (t->imgs[i] && t->imgs[i]->pix && t->imgs[i]->serial == serial)
+            return 1;
+    return 0;
+}
+
+unsigned long vt_kitty_copy_made(const vt_term *t)
+{
+    return t->kit_copy_made;
 }
 
 long vt_image_memory(const vt_term *t)
