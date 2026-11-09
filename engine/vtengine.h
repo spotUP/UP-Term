@@ -433,6 +433,8 @@ typedef int (*vt_file_unlinker)(const char *path);
  * Return 1 when saved. Set with vt_set_download_sink. */
 typedef int (*vt_dl_sink)(const char *host, const char *name, const vt_u8 *data, long len);
 void     vt_set_download_sink(vt_term *t, vt_dl_sink sink, const char *host);
+/* The sanitised <host> folder the download sink gets: "local" when none. */
+const char *vt_download_host(const vt_term *t);
 /* Older writer: path is the relative "<host>/<name>" (no root; the host adds it). Used
  * only while no sink is set. Without a sink or a writer the file is dropped. */
 typedef int (*vt_file_writer)(const char *path, const vt_u8 *data, long n);

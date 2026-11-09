@@ -6690,6 +6690,11 @@ void vt_set_download_sink(vt_term *t, vt_dl_sink sink, const char *host)
     dl_set_host(t, host);
 }
 
+const char *vt_download_host(const vt_term *t)
+{
+    return t && t->dl_host[0] ? t->dl_host : "local";
+}
+
 void vt_set_reflow(vt_term *t, int on)
 {
     t->reflow = on != 0;

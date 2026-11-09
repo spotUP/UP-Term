@@ -335,6 +335,26 @@ static void the_download_sink_gets_host_and_name_apart(void)
     vt_free(t);
 }
 
+static void the_download_host_getter_matches_the_sanitiser(void)
+{
+    vt_term *t = iterm_term(20, 10);
+    CHECK(!strcmp(vt_download_host(0), "local"));
+    CHECK(!strcmp(vt_download_host(t), "local"));
+    vt_set_download_sink(t, cap_sink, "am/ig:a1");
+    CHECK(!strcmp(vt_download_host(t), "amiga1"));
+    vt_set_download_sink(t, cap_sink, "..");
+    CHECK(!strcmp(vt_download_host(t), "local"));
+    vt_set_download_sink(t, cap_sink, ".");
+    CHECK(!strcmp(vt_download_host(t), "local"));
+    vt_set_download_sink(t, cap_sink, "");
+    CHECK(!strcmp(vt_download_host(t), "local"));
+    vt_set_download_sink(t, cap_sink, 0);
+    CHECK(!strcmp(vt_download_host(t), "local"));
+    vt_set_download_sink(t, cap_sink, "bbs");
+    CHECK(!strcmp(vt_download_host(t), "bbs"));
+    vt_free(t);
+}
+
 static void a_download_over_four_megabytes_is_dropped(void)
 {
     vt_term *t = iterm_term(20, 10);
@@ -376,6 +396,7 @@ void suite_iterm2(void)
     names_are_base_names_only();
     inline_zero_is_saved_through_the_host_writer();
     the_download_sink_gets_host_and_name_apart();
+    the_download_host_getter_matches_the_sanitiser();
     the_download_sink_alone_gets_the_file();
     a_download_over_four_megabytes_is_dropped();
     report_cell_size_answers_height_then_width();
