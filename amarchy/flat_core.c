@@ -166,6 +166,80 @@ uint32_t flat_jmp_target(const unsigned char *e)
     return ((uint32_t)e[2] << 24) | ((uint32_t)e[3] << 16) | ((uint32_t)e[4] << 8) | e[5];
 }
 
+uint32_t flat_fieldbox_body(const unsigned char *s, uint32_t stub_addr)
+{
+    static const unsigned char head[4] = {0x2f, 0x0a, 0x2f, 0x39}, tail[8] = {0x2f, 0x0a, 0x2f, 0x09, 0x2f, 0x08, 0x4e, 0xba};
+    int16_t d;
+    if (!s || memcmp(s, head, 4) || memcmp(s + 8, tail, 8))
+        return 0;
+    d = (int16_t)(((unsigned)s[16] << 8) | s[17]);
+    return stub_addr + 16 + (uint32_t)(int32_t)d;
+}
+
+int flat_body_prologue(int el, const unsigned char *body)
+{
+    static const unsigned char box[6] = {0x48, 0xe7, 0x30, 0x12, 0x24, 0x08};
+    static const unsigned char field[8] = {0x48, 0xe7, 0x20, 0x32, 0x41, 0xef, 0x00, 0x14};
+    if (!body)
+        return 0;
+    if (el == FLAT_EL_DRAWBOX)
+        return memcmp(body, box, sizeof box) ? 0 : (int)sizeof box;
+    if (el == FLAT_EL_FIELDBOX)
+        return memcmp(body, field, sizeof field) ? 0 : (int)sizeof field;
+    return 0;
+}
+
+void flat_jmp_build(unsigned char *out, uint32_t t)
+{
+    out[0] = 0x4e; out[1] = 0xf9;
+    out[2] = (unsigned char)(t >> 24); out[3] = (unsigned char)(t >> 16);
+    out[4] = (unsigned char)(t >> 8); out[5] = (unsigned char)t;
+}
+
+int flat_body_tramp_build(unsigned char *out, const unsigned char *prologue, int len, uint32_t resume)
+{
+    if (!out || !prologue || len < FLAT_JMP_BYTES || len > FLAT_PRO_MAX || (len & 1))
+        return 0;
+    memcpy(out, prologue, (size_t)len);
+    flat_jmp_build(out + len, resume);
+    return len + FLAT_JMP_BYTES;
+}
+
+int flat_body_install(flat_swap *w, unsigned char *body, int len, unsigned char *tramp, unsigned char *orig, uintptr_t ours)
+{
+    if (!w || !body || !tramp || !orig || !ours)
+        return FLAT_ERR_ARG;
+    if (w->installed)
+        return FLAT_ERR_DOUBLE;
+    if (!flat_body_tramp_build(tramp, body, len, (uint32_t)((uintptr_t)body + (unsigned)len)))
+        return FLAT_ERR_ARG;
+    memcpy(orig, body, (size_t)len);
+    w->saved = (uintptr_t)tramp;
+    w->ours = ours;
+    flat_jmp_build(body, (uint32_t)ours);
+    w->installed = 1;
+    w->inert = 0;
+    return FLAT_OK;
+}
+
+int flat_body_remove(flat_swap *w, unsigned char *body, const unsigned char *orig, int len, flat_state *st)
+{
+    if (!w || !body || !orig || !w->installed)
+        return FLAT_NOT_INSTALLED;
+    if (body[0] != 0x4e || body[1] != 0xf9 || flat_jmp_target(body) != (uint32_t)w->ours) {
+        if (st)
+            st->still_chained = 1;
+        w->inert = 1;
+        return FLAT_STILL_CHAINED;
+    }
+    memcpy(body, orig, (size_t)len);
+    w->installed = 0;
+    w->inert = 0;
+    if (st)
+        st->still_chained = 0;
+    return FLAT_REMOVED;
+}
+
 int flat_dopus_gate(const flat_dopus_build *tab, int n, unsigned version, unsigned revision,
                     const uint32_t sums[FLAT_EL_COUNT], int *reason)
 {

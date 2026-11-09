@@ -28,6 +28,12 @@ typedef struct flatshared {
     struct Library *dlib;       /* dopus5.library, opened while patched so it cannot expunge under the patch */
     flat_swap dsw[FLAT_EL_COUNT];
     uintptr_t *dslot[FLAT_EL_COUNT];
+    /* 0c body hook: the body entry hooked per element (0 = the LVO jump-table swap above), the bytes it held, and the
+     * trampoline (relocated prologue + JMP back into the body) the replacement calls when it draws nothing */
+    unsigned char *dbody[FLAT_EL_COUNT];
+    unsigned char dorig[FLAT_EL_COUNT][FLAT_PRO_MAX];
+    int dplen[FLAT_EL_COUNT];
+    uint16_t dtramp[FLAT_EL_COUNT][FLAT_BODY_TRAMP_MAX / 2];
     unsigned dver, drev;
     int dreason, dmask, dfound;
     uint32_t dsum[FLAT_EL_COUNT]; /* flat_sum of each routine at the last scan (printed by STATUS) */
