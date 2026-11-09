@@ -687,7 +687,7 @@ static void test_glyph_solid_and_state_equal(void)
                     if (p[k][j].role != FLAT_ROLE_FRAME && p[k][j].role != FLAT_ROLE_BACK &&
                         p[k][j].x1 - p[k][j].x0 >= 1 && p[k][j].y1 - p[k][j].y0 >= 1)
                         solid = 1;
-                CHECK(solid);
+                CHECK(solid || win[i] == FLAT_W_SIZE);          /* S69-ARROW-ASPECT: the size triangle is rows 1 px high (shape: test_arrow_s69_shape) */
             }
             for (j = 0; j < c[0]; j++) {                            /* identical geometry; only the glyph pen role moves */
                 CHECK(p[0][j].x0 == p[1][j].x0 && p[0][j].y0 == p[1][j].y0 &&
@@ -1964,6 +1964,86 @@ static void test_arrow_aspect(void)
     CHECK_INT(gap[2], gap[1]);
 }
 
+/* S69-ARROW-ASPECT: arrows and the size gadget are flat's own glyphs, never the clone of the 2:1 stock shape. At side 1 the arms
+ * are at 45 degrees (left/right: one column per row; up/down: two columns per row); at side 2 (hires) the proportion is the
+ * hires one. Size: right triangle, one column per row at side 1, two at side 2. */
+static int row_len(const flat_state *st, int y, int bw)
+{
+    int x, n = 0;
+    for (x = 0; x < bw; x++) n += cv[y][x] == (char)st->pen_text;
+    return n;
+}
+
+static int first_row(const flat_state *st, int bw, int bh)
+{
+    int y;
+    for (y = 0; y < bh; y++)
+        if (row_len(st, y, bw)) return y;
+    return -1;
+}
+
+static void test_arrow_s69_shape(void)
+{
+    flat_state st;
+    unsigned long w;
+    int side, y, bw = 18, bh = 11;
+    flat_init(&st);
+    desk_flat_state(1, 1, 1, &st);
+    for (w = FLAT_W_LEFT; w <= FLAT_W_DOWN; w++)
+        CHECK_INT(flat_clone_route(&st, w, FLAT_IM_DRAW), 0);
+    CHECK_INT(flat_clone_route(&st, FLAT_W_SIZE, FLAT_IM_DRAW), 0);
+    CHECK_INT(flat_clone_route(&st, FLAT_W_CLOSE, FLAT_IM_DRAW), 1);            /* the other window gadgets keep the clone */
+    CHECK_INT(flat_clone_route(&st, FLAT_W_DEPTH, FLAT_IM_DRAW), 1);
+    CHECK_INT(flat_clone_route(&st, FLAT_W_ZOOM, FLAT_IM_DRAW), 1);
+    CHECK_INT(flat_clone_route(&st, FLAT_W_ICONIFY, FLAT_IM_DRAW), 1);
+    for (side = 1; side <= 2; side++) {
+        /* left / right: the tip row has side columns, each row toward the middle adds side */
+        for (w = FLAT_W_LEFT; w <= FLAT_W_RIGHT; w += FLAT_W_RIGHT - FLAT_W_LEFT) {
+            int f;
+            cv_clear();
+            CHECK_INT(flat_glyph_draw(&st, w, FLAT_IM_DRAW, 0, 0, 0, bw, bh, st.pen_back, st.pen_text, side, cv_fill, 0), 1);
+            f = first_row(&st, bw, bh);
+            CHECK(f >= 0);
+            CHECK_INT(row_len(&st, f, bw), side);
+            CHECK_INT(row_len(&st, f + 1, bw), 2 * side);
+            CHECK_INT(row_len(&st, f + 2, bw), 3 * side);
+        }
+        /* up / down: consecutive glyph rows differ by 2 * side columns */
+        for (w = FLAT_W_UP; w <= FLAT_W_DOWN; w += FLAT_W_DOWN - FLAT_W_UP) {
+            int rows = 0, wprev = 0;
+            cv_clear();
+            CHECK_INT(flat_glyph_draw(&st, w, FLAT_IM_DRAW, 0, 0, 0, bw, bh, st.pen_back, st.pen_text, side, cv_fill, 0), 1);
+            for (y = 0; y < bh; y++) {
+                int l = row_len(&st, y, bw);
+                if (!l) continue;
+                if (rows) CHECK_INT(abs(l - wprev), 2 * side);
+                wprev = l; rows++;
+            }
+            CHECK(rows >= 3);
+        }
+        /* size: a right triangle on the lower right; from the top glyph row, each row adds side columns; the last row ends at the
+         * inner box's right edge (the corner pixel is filled) */
+        {
+            int f, l0, l1, l2;
+            cv_clear();
+            CHECK_INT(flat_glyph_draw(&st, FLAT_W_SIZE, FLAT_IM_DRAW, 0, 0, 0, 16, 10, st.pen_back, st.pen_text, side, cv_fill, 0), 1);
+            f = first_row(&st, 16, 10);
+            CHECK(f >= 0);
+            l0 = row_len(&st, f, 16); l1 = row_len(&st, f + 1, 16); l2 = row_len(&st, f + 2, 16);
+            CHECK_INT(l0, side);
+            CHECK_INT(l1 - l0, side);
+            CHECK_INT(l2 - l1, side);
+            {   int x, e0 = -1, e2 = -1;                                   /* right-aligned: every row ends in the same column */
+                for (x = 0; x < 16; x++) {
+                    if (cv[f][x] == (char)st.pen_text) e0 = x;
+                    if (cv[f + 2][x] == (char)st.pen_text) e2 = x;
+                }
+                CHECK_INT(e0, e2);
+            }
+        }
+    }
+}
+
 /* S31 SCROLLER-ARROWS-INVISIBLE: OS 3.2's sysiclass draws nothing offscreen for the arrow images, so the clone fails and the
  * block glyph is what shows. Through the same two steps flat.c runs (clone, then glyph draw) with the pens desk_flat_state
  * gives: the canvas must hold the glyph pen AND a different box pen, for every arrow, state and box size seen on the rig. */
@@ -1982,7 +2062,7 @@ static void test_arrow_glyph_pens(void)
                 int bw = dims[d][0], bh = dims[d][1], rc;
                 cv_clear();
                 rc = flat_clone_draw(&st, w, FLAT_IM_DRAW, (unsigned long)states[si], 0, 0, bw, bh, st.pen_back, st.pen_text, -1, 99, -1, blank_render, 0, cv_fill, 0, g_scr);
-                CHECK_INT(rc, FLAT_CLONE_FAIL);                  /* the system image gave no pixel */
+                CHECK_INT(rc, FLAT_CLONE_NO);                    /* S69-ARROW-ASPECT: arrows are never cloned */
                 CHECK_INT(flat_glyph_draw(&st, w, FLAT_IM_DRAW, (unsigned long)states[si], 0, 0, bw, bh, st.pen_back, st.pen_text, 1, cv_fill, 0), 1);
                 glyph = box = 0;
                 for (y = 0; y < bh; y++)
@@ -2006,7 +2086,7 @@ static void test_clone_arrows(void)
     st.enabled = 1; st.held = 0;
     for (w = FLAT_W_LEFT; w <= FLAT_W_DOWN; w++) {
         CHECK_INT(flat_glyph_window_gadget(w), 1);                              /* scroller arrows take the clone path */
-        CHECK_INT(flat_clone_route(&st, w, FLAT_IM_DRAW), 1);
+        CHECK_INT(flat_clone_route(&st, w, FLAT_IM_DRAW), 0);                    /* S69-ARROW-ASPECT: flat's own glyph, scaled by pixel aspect */
         CHECK_INT(flat_glyph_on_band(w), 0);                                    /* they sit in the border, not the title band */
         CHECK_INT(flat_glyph_known(w), 1);                                      /* OS 3.2 draws nothing offscreen: the block glyph is the arrow */
         flat_glyph_roles(w, FLAT_G_NORMAL, &g, &b);
@@ -2032,10 +2112,9 @@ static void knob_canvas(const flat_state *st, unsigned long w, unsigned long ids
 {
     int x, y, bw = 16, bh = 12, nb = 0, ng = 0, gp = -1, bp = -1;
     cv_clear();
-    if (clone)
-        CHECK_INT(flat_clone_draw(st, w, FLAT_IM_DRAW, ids, 0, 0, bw, bh, 'F', knob, -1, 99, -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_OK);
-    else
-        CHECK_INT(flat_glyph_draw(st, w, FLAT_IM_DRAW, ids, 0, 0, bw, bh, 'F', knob, 1, cv_fill, 0), 1);
+    if (clone)      /* S69-ARROW-ASPECT: arrows and size are never cloned; the glyph path draws them in either case */
+        CHECK_INT(flat_clone_draw(st, w, FLAT_IM_DRAW, ids, 0, 0, bw, bh, 'F', knob, -1, 99, -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_NO);
+    CHECK_INT(flat_glyph_draw(st, w, FLAT_IM_DRAW, ids, 0, 0, bw, bh, 'F', knob, 1, cv_fill, 0), 1);
     for (y = 0; y < bh; y++)
         for (x = 0; x < bw; x++) {
             int c = cv[y][x];
@@ -2357,10 +2436,9 @@ static void arrow_pens(int clone, const flat_state *st, unsigned long w, const a
 {
     int x, y, nb = 0, ng = 0, gp = -1, bp = -1;
     cv_clear();
-    if (clone)
-        CHECK_INT(flat_clone_draw(st, w, FLAT_IM_DRAW, 0, 0, 0, a->bw, a->bh, 'F', 'K', -1, 99, -1, arrow_render, (void *)a, cv_fill, 0, g_scr), FLAT_CLONE_OK);
-    else
-        CHECK_INT(flat_glyph_draw(st, w, FLAT_IM_DRAW, 0, 0, 0, a->bw, a->bh, 'F', 'K', 1, cv_fill, 0), 1);
+    if (clone)      /* S69-ARROW-ASPECT: the clone refuses arrows (render never called); both columns are the glyph path */
+        CHECK_INT(flat_clone_draw(st, w, FLAT_IM_DRAW, 0, 0, 0, a->bw, a->bh, 'F', 'K', -1, 99, -1, arrow_render, (void *)a, cv_fill, 0, g_scr), FLAT_CLONE_NO);
+    CHECK_INT(flat_glyph_draw(st, w, FLAT_IM_DRAW, 0, 0, 0, a->bw, a->bh, 'F', 'K', 1, cv_fill, 0), 1);
     for (y = 0; y < a->bh; y++)
         for (x = 0; x < a->bw; x++) {
             if (cv[y][x] == cv[0][0]) { nb++; bp = cv[y][x]; }
@@ -2388,7 +2466,7 @@ static void test_clone_arrow_sizes(void)
             calls = g_render_calls;
             arrow_pens(0, &st, w, &sizes[si], &g0, &b0);
             arrow_pens(1, &st, w, &sizes[si], &g1, &b1);
-            CHECK_INT(g_render_calls, calls + 1);                       /* the sentinel: the clone path ran */
+            CHECK_INT(g_render_calls, calls);                           /* S69-ARROW-ASPECT: the system image is never rendered for an arrow */
             CHECK_INT(b1, b0);                                          /* the box pen equals the Workbench arrow's */
             CHECK_INT(g1, g0);                                          /* and so does the glyph pen */
         }
@@ -3041,6 +3119,7 @@ void suite_flat_core(void)
     test_arrow_glyph_pens();
     test_arrow_knob_colour();
     test_arrow_aspect();
+    test_arrow_s69_shape();
     test_clone_arrows();
     test_glyph_clone();
     test_clone_private_slot();
