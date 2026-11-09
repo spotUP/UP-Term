@@ -474,13 +474,18 @@ void     vt_screen_reverse(vt_term *t, int on);
 /* The cell size in pixels, for the size reports programs ask for (CSI 14t,
  * 16t). */
 void     vt_set_cell_pixels(vt_term *t, int w, int h);
-/* RIPscrip (engine/rip.h, rip_vt.c). vt_set_rip(t, 1) is "auto": ESC [ ! and ESC [ 0 !
- * answer RIPSCRIP015410, ESC [ 1 ! turns RIP off, ESC [ 2 ! on, and with RIP on the
+/* RIPscrip (engine/rip.h, rip_vt.c). vt_set_rip(t, 0) is off, 1 is On (RIP is active at
+ * once), 2 is Auto (inactive until the host sends ESC [ ! / ESC [ 0 !, or a complete line
+ * that starts with `!|` parses as valid RIP; a line that fails the parse is plain text,
+ * unchanged). In both modes ESC [ ! and ESC [ 0 ! answer RIPSCRIP015410, ESC [ 1 ! turns
+ * RIP off, ESC [ 2 ! on, and with RIP active the
  * `!|` command lines of the stream draw on a 640 x 350 canvas, an image under the text
  * (z -1) at the top left. 0 (the default) leaves vt_feed byte for byte as without RIP.
  * vt_rip_commands: the commands the parser handed on since RIP was set (the reachability
  * sentinel). Needs the cell size (vt_set_cell_pixels) before the canvas is placed. */
 void vt_set_rip(vt_term *t, int on);
+/* 1 when RIP is active (Auto has switched on, or On and not turned off by ESC [ 1 !), else 0. */
+int vt_rip_active(const vt_term *t);
 long vt_rip_commands(const vt_term *t);
 /* RIP text font option (RIP-3b): 0 draws every BGI font with the 8x8 bitmap (the default), 1 draws
  * font styles 1..4 (triplex, small, sans-serif, gothic) as Hershey strokes. Call after vt_set_rip(t, 1);

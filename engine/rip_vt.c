@@ -29,6 +29,13 @@
 
 #define RIP_DETECT "RIPSCRIP015410"
 
+/* Auto mode (vt_set_rip(t, 2)) holds a line that starts with `!|` until its end, then asks
+ * the RIP parser whether it is valid. A line longer than RIP_AUTO_LINE bytes is given up:
+ * what was held goes to the terminal as text, byte for byte, and so does the rest of that
+ * line (it is not a line start any more). An over-long line therefore never turns RIP on.
+ * Only a line that starts with `!|` is ever held; every other byte stays on the fast path. */
+#define RIP_AUTO_LINE 4096
+
 struct rip_ad {
     struct rip_state st;
     struct rip_gfx g;
@@ -36,13 +43,19 @@ struct rip_ad {
     struct cv *cv;
     int slot;
     vt_u16 gen;
+    int mode;   /* vt_set_rip argument: 1 On, 2 Auto */
     int active; /* RIP on (ESC [ 2 !) and not turned off (ESC [ 1 !) */
+    int bol;    /* Auto: the stream is at a line start (the last byte passed was CR or LF) */
+    int lbs;    /* Auto: backslash state of the held line, as the parser's bs (0, 1, 2) */
+    int lsoh;   /* Auto: the newline byte after a backslash */
+    int nline;  /* Auto: bytes of a candidate `!|` line held in line[] */
     int bang;   /* the last thing taken was a bare ESC [ ! : a `p` now is DECSTR */
     int nhold;
     vt_u8 hold[16]; /* a possible ESC [ digits ! , kept across vt_feed calls */
     int stroke;     /* host option: Hershey strokes for fonts 1..4 (vt_set_rip_stroke) */
     int moved;      /* text went to the engine since the tiles were last put right */
     struct rip_mouse mouse;
+    vt_u8 line[RIP_AUTO_LINE]; /* Auto: the `!|` line being held */
 };
 
 static void vt_feed_core(vt_term *t, const vt_u8 *buf, long len);
@@ -251,11 +264,14 @@ static void rip_switch(vt_term *t, struct rip_ad *ad, int n)
     if (n == 3 || v == 0) {
         reply(t, RIP_DETECT, (int)sizeof(RIP_DETECT) - 1);
         ad->bang = n == 3; /* ESC [ ! may be the head of DECSTR */
+        if (ad->mode == 2)
+            ad->active = 1; /* Auto: the host asked the RIP query, so it speaks RIP */
     } else if (v == 1) {
         ad->active = 0;
     } else if (v == 2) {
         ad->active = 1;
     }
+    ad->bol = 0;
     ad->nhold = 0;
 }
 
@@ -274,6 +290,72 @@ static void rip_pass(vt_term *t, struct rip_ad *ad, const vt_u8 *p, long n)
     rip_feed(&ad->st, p, n, &sk);
 }
 
+/* Auto: the held line is complete (ad->nline bytes in ad->line, ending in CR or LF). Valid =
+ * the RIP parser, run over the line with no sinks, delivers at least one command and counts
+ * no error and no unknown command. Valid: RIP turns on and the line goes through the
+ * parser. Otherwise the line goes to the terminal as text, unchanged. */
+static void rip_auto_done(vt_term *t, struct rip_ad *ad)
+{
+    long c0 = ad->st.n_cmd, e0 = ad->st.n_err, u0 = ad->st.n_unknown;
+    int n = ad->nline, ok;
+    rip_init(&ad->st);
+    rip_feed(&ad->st, ad->line, n, 0);
+    ok = ad->st.n_cmd > 0 && ad->st.n_err == 0 && ad->st.n_unknown == 0;
+    rip_init(&ad->st); /* the trial leaves no trace: parser at a line start, counters as before */
+    ad->st.n_cmd = c0;
+    ad->st.n_err = e0;
+    ad->st.n_unknown = u0;
+    ad->nline = 0;
+    ad->bol = 1;
+    if (ok) {
+        ad->active = 1;
+        rip_pass(t, ad, ad->line, n);
+    } else {
+        vt_feed_core(t, ad->line, n);
+    }
+}
+
+/* Auto: byte b while a `!|` line is held. Returns 1 when b was taken into the line, 0 when
+ * the hold ended before b (not `!|`, or over RIP_AUTO_LINE): the held bytes went on as
+ * text and the caller looks at b again. */
+static int rip_auto_byte(vt_term *t, struct rip_ad *ad, vt_u8 b)
+{
+    int nl = b == '\r' || b == '\n';
+    if ((ad->nline == 1 && b != '|') || ad->nline >= RIP_AUTO_LINE) {
+        int n = ad->nline;
+        ad->nline = 0;
+        ad->bol = 0;
+        vt_feed_core(t, ad->line, n);
+        return 0;
+    }
+    ad->line[ad->nline++] = b;
+    if (ad->nline <= 2) {
+        ad->lbs = 0;
+        return 1;
+    }
+    if (ad->lbs == 1) { /* after a backslash, as the parser reads it */
+        if (b == '!' || b == '|' || b == '\\') {
+            ad->lbs = 0;
+        } else if (nl) {
+            ad->lbs = 2;
+            ad->lsoh = b;
+        } else {
+            ad->lbs = 0;
+        }
+        return 1;
+    }
+    if (ad->lbs == 2) {
+        ad->lbs = 0;
+        if (nl && b != ad->lsoh)
+            return 1; /* the second byte of a CRLF continuation */
+    }
+    if (b == '\\')
+        ad->lbs = 1;
+    else if (nl)
+        rip_auto_done(t, ad);
+    return 1;
+}
+
 /* The bytes of vt_feed with RIP set up. An ESC at a command boundary (the parser between
  * commands, or RIP off) is held until it is known not to be ESC [ digits !. */
 static void rip_run(vt_term *t, struct rip_ad *ad, const vt_u8 *buf, long len)
@@ -281,6 +363,20 @@ static void rip_run(vt_term *t, struct rip_ad *ad, const vt_u8 *buf, long len)
     long i = 0, from = 0;
     while (i < len) {
         vt_u8 b = buf[i];
+        if (ad->nline) {
+            if (rip_auto_byte(t, ad, b)) {
+                i++;
+                from = i;
+                continue;
+            }
+        } else if (ad->mode == 2 && !ad->active && ad->bol && b == '!' && !ad->nhold) {
+            rip_pass(t, ad, buf + from, i - from);
+            ad->line[0] = b;
+            ad->nline = 1;
+            i++;
+            from = i;
+            continue;
+        }
         if (ad->nhold) {
             int n = ad->nhold;
             if ((n == 1 && b == '[') || (n >= 2 && n < 8 && b >= '0' && b <= '9') || (n >= 2 && b == '!')) {
@@ -307,12 +403,14 @@ static void rip_run(vt_term *t, struct rip_ad *ad, const vt_u8 *buf, long len)
         }
         if (b == 0x1B && (!ad->active || rip_in_text(&ad->st))) {
             rip_pass(t, ad, buf + from, i - from);
+            ad->bol = 0;
             ad->hold[0] = b;
             ad->nhold = 1;
             i++;
             from = i;
             continue;
         }
+        ad->bol = b == '\r' || b == '\n';
         i++;
     }
     rip_pass(t, ad, buf + from, len - from);
@@ -344,8 +442,12 @@ void vt_set_rip(vt_term *t, int on)
         }
         return;
     }
-    if (ad)
+    if (ad) { /* a mode change keeps the canvas; On turns RIP on at once */
+        ad->mode = on;
+        if (on == 1)
+            ad->active = 1;
         return;
+    }
     ad = (struct rip_ad *)VT_MALLOC(sizeof(*ad));
     if (!ad)
         return;
@@ -353,7 +455,9 @@ void vt_set_rip(vt_term *t, int on)
     rip_init(&ad->st);
     rip_gfx_init(&ad->g);
     rip_mouse_init(&ad->mouse);
-    ad->active = 1;
+    ad->mode = on;
+    ad->active = on != 2; /* Auto starts inactive */
+    ad->bol = 1;
     t->rip = ad;
 }
 
@@ -369,6 +473,11 @@ void vt_set_rip_stroke(vt_term *t, int stroke)
 long vt_rip_stroke_glyphs(void)
 {
     return rip_font_stroke_glyphs();
+}
+
+int vt_rip_active(const vt_term *t)
+{
+    return t->rip ? ((struct rip_ad *)t->rip)->active : 0;
 }
 
 long vt_rip_commands(const vt_term *t)

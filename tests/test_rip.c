@@ -551,6 +551,135 @@ static void rip_off_is_byte_identical(void)
     vt_free(u);
 }
 
+/* ---- RIP-AUTO: vt_set_rip(t, 2) ---- */
+
+static vt_term *auto_term(void)
+{
+    vt_term *t = h_new(80, 25, VT_XTERM);
+    vt_set_cell_pixels(t, 8, 14);
+    vt_set_rip(t, 2);
+    return t;
+}
+
+static void auto_plain_text_is_rip_off(void)
+{
+    vt_term *t = auto_term(), *u = h_new(80, 25, VT_XTERM);
+    /* a `!` line start that is not `!|`, a `!` alone at a chunk end, text, a colour sequence */
+    const char *s = "hello\r\n" "!bang\r\n" "\033[31mred\033[0m\r\n" "a!|b\r\n" "!";
+    h_reply_clear();
+    h_put(t, s);
+    h_put(t, "x\r\n");
+    h_put(u, s);
+    h_put(u, "x\r\n");
+    CHECK_STR(h_screen(t), h_screen(u));
+    CHECK_INT(vt_rip_active(t), 0);
+    CHECK_INT(vt_rip_commands(t), 0);
+    CHECK_INT(vt_images(t), 0);
+    CHECK_INT(h_reply_len, 0);
+    vt_free(t);
+    vt_free(u);
+}
+
+static void auto_query_turns_on(void)
+{
+    vt_term *t = auto_term();
+    h_reply_clear();
+    CHECK_INT(vt_rip_active(t), 0);
+    h_put(t, "\033[!");
+    CHECK_INT(h_reply_len, 14);
+    CHECK(memcmp(h_reply, "RIPSCRIP015410", 14) == 0);
+    CHECK_INT(vt_rip_active(t), 1);
+    h_put(t, "\033[1!");
+    CHECK_INT(vt_rip_active(t), 0);
+    h_reply_clear();
+    h_put(t, "\033[0!");
+    CHECK_INT(h_reply_len, 14);
+    CHECK_INT(vt_rip_active(t), 1);
+    h_put(t, "\033[1!" "\033[2!");
+    CHECK_INT(vt_rip_active(t), 1);
+    vt_free(t);
+}
+
+/* the reachability test for Auto: vt_write-level bytes, the sentinel moves, numbers asserted */
+static void auto_valid_line_turns_on_and_draws(void)
+{
+    vt_term *t = auto_term();
+    vt_image_view v;
+    CHECK_INT(vt_rip_commands(t), 0);
+    h_put(t, "ok\r\n" "!|c0F|L00001E00|S010C|B0A0A1414\r\n" "after\r\n");
+    CHECK_INT(vt_rip_active(t), 1);
+    CHECK_INT(vt_rip_commands(t), 4);
+    CHECK_INT(vt_images(t), 1);
+    CHECK(view0(t, &v));
+    CHECK_INT(v.w, 640);
+    CHECK_INT(rpx(t, 40, 40), 12); /* bar corner, S010C fill colour 12 */
+    vt_free(t);
+    /* split at every byte, and a CRLF continuation */
+    t = auto_term();
+    {
+        const char *s = "!|c0F|L0000\\\r\n1E00|B0A0A1414\r\n";
+        size_t i;
+        for (i = 0; s[i]; i++) {
+            char b[2];
+            b[0] = s[i];
+            b[1] = 0;
+            h_put(t, b);
+        }
+    }
+    CHECK_INT(vt_rip_active(t), 1);
+    CHECK_INT(vt_rip_commands(t), 3);
+    vt_free(t);
+}
+
+static void auto_bad_line_is_text(void)
+{
+    vt_term *t = auto_term(), *u = h_new(80, 25, VT_XTERM);
+    const char *lines[] = { "!|grep foo bar\r\n", "!|1|\r\n", "!|c0F|zz\r\n", "!|zzzz\r\n", "!|\r\n", "!|c0\r\n", 0 };
+    int i;
+    for (i = 0; lines[i]; i++) {
+        h_put(t, lines[i]);
+        h_put(u, lines[i]);
+        CHECK_INT(vt_rip_active(t), 0);
+        CHECK_STR(h_screen(t), h_screen(u));
+    }
+    CHECK_INT(vt_rip_commands(t), 0);
+    CHECK_INT(vt_images(t), 0);
+    CHECK(strstr(h_screen(t), "!|grep foo bar") != 0);
+    /* a line longer than the hold buffer is text too, even when it would parse */
+    {
+        static char big[6000];
+        memset(big, 'c', sizeof(big));
+        big[0] = '!';
+        big[1] = '|';
+        big[5990] = '\r';
+        big[5991] = '\n';
+        big[5992] = 0;
+        h_put(t, big);
+        h_put(u, big);
+        CHECK_INT(vt_rip_active(t), 0);
+        CHECK_STR(h_screen(t), h_screen(u));
+    }
+    /* and a good line afterwards still turns RIP on */
+    h_put(t, "!|c0F|L00001E00\r\n");
+    CHECK_INT(vt_rip_active(t), 1);
+    vt_free(t);
+    vt_free(u);
+}
+
+static void on_mode_is_active_at_once(void)
+{
+    vt_term *t = rip_term();
+    CHECK_INT(vt_rip_active(t), 1);
+    h_put(t, "!|zzzz\r\n"); /* On does not hold or judge lines */
+    CHECK_INT(vt_rip_active(t), 1);
+    h_put(t, "\033[1!");
+    CHECK_INT(vt_rip_active(t), 0);
+    vt_free(t);
+    t = h_new(80, 25, VT_XTERM);
+    CHECK_INT(vt_rip_active(t), 0);
+    vt_free(t);
+}
+
 static void canvas_lifecycle(void)
 {
     vt_term *t = rip_draw("!|c0F|X0505\r\n");
@@ -1145,6 +1274,11 @@ void suite_rip(void)
     canvas_dirty_and_serial();
     canvas_placement();
     reach_rip_through_vt_write();
+    auto_plain_text_is_rip_off();
+    auto_query_turns_on();
+    auto_valid_line_turns_on_and_draws();
+    auto_bad_line_is_text();
+    on_mode_is_active_at_once();
     detection_and_switch();
     decstr_still_resets();
     rip_off_is_byte_identical();
