@@ -2833,6 +2833,7 @@ static int vsh_main(int argc, char **argv)
         }
         canonical_home(&sh);
     }
+    sh_startup_path(&sh);
     sh_startup_env(&sh);
     if (!command && !script && IsInteractive(Input())) {
         /* bash's HISTFILE. On a vtcon console the console keeps the list, in the shell's HISTFILE when it

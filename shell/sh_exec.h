@@ -480,6 +480,7 @@ void sh_hist_load(sh_shell *sh);
 void sh_hist_save(sh_shell *sh);
 long sh_run_text(sh_shell *sh, const char *text, int *incomplete);
 /* BASH_ENV: a non-interactive shell sources it before its command or script */
+void sh_startup_path(sh_shell *sh);   /* PATH unset or empty after the startup files: VSH_DEFAULT_PATH, exported */
 void sh_startup_env(sh_shell *sh);
 long sh_run_script(sh_shell *sh);      /* the script named on the command line: 127 when it is not there */
 void sh_startup_login(sh_shell *sh);   /* a login shell: login_shell on, then ENV:vsh/profile and $HOME/.vsh_profile */
