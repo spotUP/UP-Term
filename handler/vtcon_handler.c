@@ -2145,7 +2145,7 @@ static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_SUB, (STRPTR)"Not told", 0, CHECKIT, 7, (APTR)MENU_SET_COLORS_NONE },
     { NM_ITEM, (STRPTR)"Copy on select", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_COPY },
     { NM_ITEM, (STRPTR)"Wheel scrolls", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_WHEEL },
-    { NM_ITEM, (STRPTR)"Reflow on resize", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_REFLOW },
+    { NM_ITEM, (STRPTR)"Reflow text", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_REFLOW },
     { NM_ITEM, (STRPTR)"Scroll bar", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_SCROLLBAR },
     { NM_ITEM, (STRPTR)"Backspace key sends", 0, 0, 0, 0 },
     { NM_SUB, (STRPTR)"Delete", 0, CHECKIT, 2, (APTR)MENU_SET_BS_DEL },
