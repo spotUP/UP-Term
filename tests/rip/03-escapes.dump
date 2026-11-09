@@ -1,0 +1,8 @@
+0 *
+0 E
+0 c 15
+0 @ 10,10 "bar|inside"
+0 @ 10,30 "bang!inside"
+0 @ 10,50 "back\slash"
+0 @ 10,70 "all | ! \ together"
+0 #

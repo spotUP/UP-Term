@@ -2152,6 +2152,16 @@ static void sb_walk(vt_term *t, const vt_style_sweep *ss, vt_u8 *live)
 
 #ifdef VT_COUNT_ALLOC
 long vt_count_fast_esc;
+void vt_set_rip(vt_term *t, int on)
+{
+    (void)t;
+    (void)on; /* RIP-2 */
+}
+long vt_rip_commands(const vt_term *t)
+{
+    (void)t;
+    return 0; /* RIP-2 */
+}
 long vt_count_fast_sgr;
 long vt_count_sb_payload(const vt_term *t)
 {

@@ -216,6 +216,11 @@ extern long vt_count_peak;   /* the most vt_count_live has been (a test may rese
 long vt_count_sb_payload(const vt_term *t);
 extern long vt_count_fast_sgr; /* ESC [ m and ESC [ 3n m / 4n m taken by csi_fast's short form */
 extern long vt_count_fast_esc; /* ESC ( B (G already B) taken by vt_feed's fast path */
+/* RIPscrip (engine/rip.h). RIP-2 wires the parser into vt_write; until then
+ * both are inert: vt_set_rip is ignored and vt_rip_commands (the commands the
+ * parser handed to the canvas since vt_new, the reachability sentinel) is 0. */
+void vt_set_rip(vt_term *t, int on);
+long vt_rip_commands(const vt_term *t);
 #endif
 
 vt_term *vt_new(int cols, int rows, int scrollback, const vt_callbacks *cb, void *user);
