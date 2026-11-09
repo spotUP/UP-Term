@@ -269,6 +269,75 @@ static void test_dopus_gate(void)
     CHECK_INT(flat_jmp_target(0), 0);
 }
 
+/* 0c: the body hook's pure parts, on the real dopus5.library 73.8 (DOpus 5.104 OS3) bytes: .text 0x245c4 (the -702 stub),
+ * 0x2450c (DrawBox body), 0x245de (FieldBox body). */
+static void test_dopus_body_hook(void)
+{
+    static const unsigned char stub[18] = {0x2f,0x0a,0x2f,0x39,0x00,0x00,0x00,0x08,0x2f,0x0a,0x2f,0x09,0x2f,0x08,0x4e,0xba,0x00,0x0a};
+    static const unsigned char box[8] = {0x48,0xe7,0x30,0x12,0x24,0x08,0x26,0x49};
+    static const unsigned char field[10] = {0x48,0xe7,0x20,0x32,0x41,0xef,0x00,0x14,0x24,0x18};
+    unsigned char s2[18], b2[10], t[FLAT_BODY_TRAMP_MAX], j[6];
+    CHECK_INT(flat_fieldbox_body(stub, 0x245c4), 0x245de);             /* the bsr target the disassembly found */
+    CHECK_INT(flat_fieldbox_body(stub, 0x1000000), 0x100001a);        /* position independent */
+    memcpy(s2, stub, 18); s2[4] = 0x12; s2[7] = 0x34;                  /* another GfxBase: still the stub */
+    CHECK_INT(flat_fieldbox_body(s2, 0x245c4), 0x245de);
+    s2[16] = 0xff; s2[17] = 0xf0;                                      /* a backward bsr */
+    CHECK_INT(flat_fieldbox_body(s2, 0x245c4), 0x245c4 + 16 - 16);
+    memcpy(s2, stub, 18); s2[13] = 0x09;                               /* other code: no body */
+    CHECK_INT(flat_fieldbox_body(s2, 0x245c4), 0);
+    CHECK_INT(flat_fieldbox_body(0, 0x245c4), 0);
+    CHECK_INT(flat_body_prologue(FLAT_EL_DRAWBOX, box), 6);
+    CHECK_INT(flat_body_prologue(FLAT_EL_FIELDBOX, field), 8);
+    CHECK_INT(flat_body_prologue(FLAT_EL_FIELDBOX, box), 0);           /* each element only its own prologue */
+    CHECK_INT(flat_body_prologue(FLAT_EL_DRAWBOX, field), 0);
+    memcpy(b2, box, 8); b2[5] = 0x09;                                  /* move.l a1,d2: another build, keep the LVO swap */
+    CHECK_INT(flat_body_prologue(FLAT_EL_DRAWBOX, b2), 0);
+    memcpy(b2, field, 10); b2[7] = 0x18;                               /* lea 24(sp): another frame */
+    CHECK_INT(flat_body_prologue(FLAT_EL_FIELDBOX, b2), 0);
+    b2[0] = 0x4e; b2[1] = 0xf9;                                        /* already hooked (ours or foreign): no second hook */
+    CHECK_INT(flat_body_prologue(FLAT_EL_FIELDBOX, b2), 0);
+    CHECK_INT(flat_body_prologue(FLAT_EL_DRAWBOX, 0), 0);
+    flat_jmp_build(j, 0x00c01234);
+    CHECK(j[0] == 0x4e && j[1] == 0xf9 && j[2] == 0x00 && j[3] == 0xc0 && j[4] == 0x12 && j[5] == 0x34);
+    CHECK_INT(flat_jmp_target(j), 0xc01234);
+    CHECK_INT(flat_body_tramp_build(t, field, 8, 0x245de + 8), 14);
+    CHECK(memcmp(t, field, 8) == 0);
+    CHECK_INT(flat_jmp_target(t + 8), 0x245e6);
+    CHECK_INT(flat_body_tramp_build(t, box, 6, 0x2450c + 6), 12);
+    CHECK(memcmp(t, box, 6) == 0);
+    CHECK_INT(flat_jmp_target(t + 6), 0x24512);
+    CHECK_INT(flat_body_tramp_build(t, box, 4, 0x24510), 0);          /* shorter than the JMP it is replaced by */
+    CHECK_INT(flat_body_tramp_build(t, box, 10, 0x24516), 0);         /* longer than the trampoline holds */
+    CHECK_INT(flat_body_tramp_build(t, box, 7, 0x24513), 0);          /* odd: not an instruction boundary */
+}
+
+/* 0c: install / remove of the body hook on a fake body (the real DrawBox and FieldBox prologues). */
+static void test_dopus_body_swap(void)
+{
+    static const unsigned char field[10] = {0x48,0xe7,0x20,0x32,0x41,0xef,0x00,0x14,0x24,0x18};
+    unsigned char body[10], orig[FLAT_PRO_MAX], tramp[FLAT_BODY_TRAMP_MAX];
+    flat_swap w;
+    flat_state st;
+    flat_init(&st);
+    flat_swap_init(&w);
+    memcpy(body, field, 10);
+    CHECK_INT(flat_body_install(&w, body, 8, tramp, orig, 0x7000), FLAT_OK);
+    CHECK_INT(flat_jmp_target(body), 0x7000);                          /* the body entry now jumps to ours */
+    CHECK(memcmp(tramp, field, 8) == 0);                               /* saved path: the relocated prologue ... */
+    CHECK_INT(flat_jmp_target(tramp + 8), (uint32_t)((uintptr_t)body + 8));   /* ... and on into the body */
+    CHECK_INT(w.saved, (uintptr_t)tramp);
+    CHECK_INT(flat_body_install(&w, body, 8, tramp, orig, 0x7100), FLAT_ERR_DOUBLE);
+    body[2] = 0x00; body[5] = 0x99;                                    /* a foreign patch on top */
+    CHECK_INT(flat_body_remove(&w, body, orig, 8, &st), FLAT_STILL_CHAINED);
+    CHECK_INT(st.still_chained, 1);
+    flat_jmp_build(body, 0x7000);
+    CHECK_INT(flat_body_remove(&w, body, orig, 8, &st), FLAT_REMOVED);
+    CHECK(memcmp(body, field, 10) == 0);                               /* the body is byte for byte as found */
+    CHECK_INT(st.still_chained, 0);
+    CHECK_INT(flat_body_install(&w, body, 4, tramp, orig, 0x7000), FLAT_ERR_ARG);   /* shorter than the JMP: refused */
+    CHECK(memcmp(body, field, 10) == 0);
+}
+
 static void test_dopus_swap(void)
 {
     uintptr_t slot[FLAT_EL_COUNT] = { 0x5000, 0x6000 }, snap[FLAT_EL_COUNT];
@@ -2841,6 +2910,8 @@ void suite_flat_core(void)
     test_tramp();
     test_dopus_gate();
     test_disabled_button_dim_fill();
+    test_dopus_body_hook();
+    test_dopus_body_swap();
     test_dopus_swap();
     test_dopus_decide();
     test_dopus_box_outline();

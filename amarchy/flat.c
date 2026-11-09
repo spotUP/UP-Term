@@ -851,6 +851,16 @@ static void d4_fieldbox(__reg("a0") struct RastPort *rp, __reg("a1") struct Rect
         ((fieldfn)g_r->dsw[FLAT_EL_FIELDBOX].saved)(rp, rect, info, g_r->dlib);
 }
 
+/* 0c: the FieldBox body, entered by JMP from its patched entry. Stack convention (rp, rect, info, GfxBase at 4/8/12/16(sp)),
+ * the caller pops them; the saved path is the trampoline called with the same four arguments. */
+typedef void (*fieldbodyfn)(struct RastPort *, struct Rectangle *, struct DrawInfo *, struct Library *);
+
+static void d4_fieldbody(struct RastPort *rp, struct Rectangle *rect, struct DrawInfo *info, struct Library *gfx)
+{
+    if (!d4_flat(FLAT_EL_FIELDBOX, rp, rect, info, 0))
+        ((fieldbodyfn)g_r->dsw[FLAT_EL_FIELDBOX].saved)(rp, rect, info, gfx);
+}
+
 static const LONG d4_lvo[FLAT_EL_COUNT] = { FLAT_LVO_DRAWBOX, FLAT_LVO_FIELDBOX };
 
 /* ---- FLAT-BUTTON-FILL: graphics.library Text (LVO -60, Text(rp a1, string a0, count d0)). The frame is drawn first, then the
@@ -2034,8 +2044,12 @@ static void dopus_unpatch(flatshared *r)
     int el;
     Forbid();
     for (el = 0; el < FLAT_EL_COUNT; el++)
-        if (r->dsw[el].installed)
-            flat_swap_remove(&r->dsw[el], r->dslot[el], &r->st);
+        if (r->dsw[el].installed) {
+            if (r->dbody[el])
+                flat_body_remove(&r->dsw[el], r->dbody[el], r->dorig[el], r->dplen[el], &r->st);
+            else
+                flat_swap_remove(&r->dsw[el], r->dslot[el], &r->st);
+        }
     if (r->dlib)
         libpatch_done(r->dlib);
     CacheClearU();
@@ -2088,10 +2102,28 @@ static void dopus_scan(flatshared *r)
         }
         flat_swap_init(&r->dsw[el]);
         r->dslot[el] = (uintptr_t *)(entry + 2);
+        r->dbody[el] = 0;
+        /* 0c: dopus5's own gadget classes jsr the BODY, never the jump table, so hook the body entry itself when its
+         * prologue bytes are exactly the known ones; any other build keeps the LVO swap (fail closed) */
+        {
+            unsigned char *body = (unsigned char *)(el == FLAT_EL_DRAWBOX ? t : flat_fieldbox_body((const unsigned char *)t, t));
+            int plen = body ? flat_body_prologue(el, body) : 0;
+            if (plen) {
+                if (flat_body_install(&r->dsw[el], body, plen, (unsigned char *)r->dtramp[el], r->dorig[el],
+                                      (uintptr_t)(el == FLAT_EL_DRAWBOX ? (void *)d4_drawbox : (void *)d4_fieldbody)) != FLAT_OK)
+                    mask &= ~(1 << el);
+                else {
+                    r->dbody[el] = body;
+                    r->dplen[el] = plen;
+                }
+                continue;
+            }
+        }
         if (flat_swap_install(&r->dsw[el], r->dslot[el], (uintptr_t)(el == FLAT_EL_DRAWBOX ? (void *)d4_drawbox : (void *)d4_fieldbox)) != FLAT_OK)
             mask &= ~(1 << el);
     }
     libpatch_done(lib);
+    CacheClearU();                      /* the body entries are code just written */
     Permit();
     r->dmask = mask;
     if (mask)

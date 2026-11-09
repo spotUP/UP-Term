@@ -153,6 +153,41 @@ uint32_t flat_sum(const void *p, size_t len);
 uint32_t flat_sum_reloc(const void *p, size_t len);
 uint32_t flat_jmp_target(const unsigned char *entry);
 
+/* ---- 0c FLAT-D4 body hook (thoughts/shared/s66-evidence/0c-dopus-gadget-outline.md) --------------------------------
+ * dopus5's own gadget classes call the DrawBox / DrawFieldBox BODIES with an absolute jsr, never through the jump table,
+ * so the LVO swap above misses every Environment gadget. The body hook writes JMP abs.l (FLAT_JMP_BYTES) over the
+ * body's first instructions; the saved path is a trampoline of the relocated prologue + JMP to body + its length.
+ * Only a body whose prologue bytes are exactly the known position-independent ones is hooked; anything else keeps the
+ * LVO swap. */
+#define FLAT_JMP_BYTES 6
+#define FLAT_PRO_MAX 8
+#define FLAT_BODY_TRAMP_MAX (FLAT_PRO_MAX + FLAT_JMP_BYTES)
+
+/* The FieldBox body the LVO -702 stub calls. The stub (5.104: 2f0a 2f39 <GfxBase.l> 2f0a 2f09 2f08 4eba <d16>) pushes
+ * a2, GfxBase, info, rect, rp and bsr's the stack-convention body at stub + 16 + d16. stub_addr is where stub sits in
+ * the Amiga's memory. 0 when the bytes are anything else. */
+uint32_t flat_fieldbox_body(const unsigned char *stub, uint32_t stub_addr);
+
+/* Bytes to relocate from the body of element el: 6 for DrawBox (48e7 3012 2408: movem.l, move.l a0,d2), 8 for FieldBox
+ * (48e7 2032 41ef 0014: movem.l, lea 20(sp),a0; the trampoline is jumped to, so sp is the same); 0 = unknown body. */
+int flat_body_prologue(int el, const unsigned char *body);
+
+/* JMP abs.l target into out[0..5]. */
+void flat_jmp_build(unsigned char *out, uint32_t target);
+
+/* The trampoline: len prologue bytes + JMP abs.l resume (body + len). Returns its size, 0 for a bad len. out must hold
+ * FLAT_BODY_TRAMP_MAX. */
+int flat_body_tramp_build(unsigned char *out, const unsigned char *prologue, int len, uint32_t resume);
+
+/* Install the body hook: save the first len bytes into orig, build the trampoline (relocated prologue + JMP body+len) in
+ * tramp, then write JMP ours over the body entry. w->saved = tramp (what the replacement calls when it draws nothing).
+ * The caller verified the prologue (flat_body_prologue) and holds Forbid; it flushes the instruction cache. */
+int flat_body_install(flat_swap *w, unsigned char *body, int len, unsigned char *tramp, unsigned char *orig, uintptr_t ours);
+
+/* Restore orig over the body entry ONLY while it is still our JMP; anything else there (a foreign patch on top) is
+ * FLAT_STILL_CHAINED: the body is left alone, st->still_chained = 1, the swap goes inert (as flat_swap_remove). */
+int flat_body_remove(flat_swap *w, unsigned char *body, const unsigned char *orig, int len, flat_state *st);
+
 /* Which elements may be patched for this library. Bit (1 << FLAT_EL_*) per element; *reason says why a bit is missing. */
 int flat_dopus_gate(const flat_dopus_build *tab, int n, unsigned version, unsigned revision,
                     const uint32_t sums[FLAT_EL_COUNT], int *reason);
