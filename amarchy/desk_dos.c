@@ -560,6 +560,19 @@ static void dk_flat_start(int flat, int gad)
     pl_start(PL_BIN_DIR "/amarchy-flat BOOT", PL_BIN_DIR "/amarchy-flat", 32768, "amarchy-flat");   /* its $STACK cookie (rule 6) */
 }
 
+/* The Workbench task (0: none) and whether it sits idle in Wait() right now (not inside a synchronous call). Shared by the
+ * start gate (desk_dos_wb_ready) and the frame refresh after an apply or revert (win_refresh_frames takes Workbench's
+ * windows only while it is idle: a busy Workbench may close a drawer window in the gap). No ARexx round-trip: cheap. */
+static struct Task *dk_wb_task(int *idle)
+{
+    struct Task *wb;
+    Forbid();
+    wb = FindTask((STRPTR)"Workbench");
+    *idle = wb && wb->tc_State == TS_WAIT && !(wb->tc_SigWait & SIGF_SINGLE);
+    Permit();
+    return wb;
+}
+
 static void dk_flat_sync_theme(const gtheme *thp, int changed_only)
 {
     am_prefs *ap;
@@ -590,7 +603,11 @@ static void dk_flat_sync_theme(const gtheme *thp, int changed_only)
     Permit();
     if (wrote) {
         desk_dos_flat_writes++;
-        win_refresh_frames();
+        {
+            int wb_idle;
+            dk_wb_task(&wb_idle);
+            win_refresh_frames(wb_idle);
+        }
     } else if (!r) {
         dk_flat_start(flat, gad);
     }
@@ -1587,10 +1604,7 @@ int desk_dos_wb_ready(long now)
     struct Task *wb;
     unsigned long fl = 0;
     int ver = 0, answered = 0, idle, r;
-    Forbid();
-    wb = FindTask((STRPTR)"Workbench");
-    idle = wb && wb->tc_State == TS_WAIT && !(wb->tc_SigWait & SIGF_SINGLE);
-    Permit();
+    wb = dk_wb_task(&idle);
     if (!wb)
         return DESK_WBR_READY;
     if ((lib = OpenLibrary((STRPTR)"workbench.library", 0))) {

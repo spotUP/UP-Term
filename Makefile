@@ -103,6 +103,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=menu_stamp the Amarchy hotkey press path reaches ms_binary_changed (act_menu_open -> ms_open, stamp and quit hooks set) (tests/test_amarchy_menu_stamp.py)
 # ONLY=wb_lock_guard no amarchy/*.c calls LockPubScreen with any argument, the default screen (0) included (it reopens a closed Workbench on OS 3.1: BOOT-31-WB-DEADLOCK); ipd_lock_pub_screen only (tests/test_wb_lock_guard.py)
 # ONLY=screens_page_name_guard the Screens page samples public screen names at full length (GT_SCR_PAT), not 32 bytes (TE-10.8b)
+# ONLY=win_refresh win_refresh_frames refreshes only the caller's windows and an idle Workbench's, never a window another task can close in the unlocked gap (fake Intuition; tests/test_win_refresh.py)
 # ONLY=ibase_lock_guard no amarchy/*.c calls DOS or a blocking Intuition call between LockIBase and UnlockIBase (AMARCHY-WIN-IBASE-DOS; tests/test_ibase_lock_guard.py)
 # ONLY=ipatch_guard the intuition patch gate counts callers itself, hooks leave through it, gates are never freed (tests/test_ipatch_guard.py)
 # ONLY=gui_rig_setup_breaks the rig's --setup Breaks every running Amarchy program copy from any path (RAM:amarchy-flat a pixel helper left), so its fresh copy is the one tested (tests/test_gui_rig_setup_breaks_any_copy.py)
@@ -219,7 +220,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 TEST_ONLY_NAMES := $(shell grep -o '"$$(ONLY)" = [a-z_0-9]*' $(firstword $(MAKEFILE_LIST)) | sed 's/.* //' | sort -u)
 # ONLY= rows that run python3 on files alone: no C binary below is built or run for them (a worktree without the vendor NDK
 # cannot build render_host, and pkg_rows needs none). Add a name only after checking its script starts no $(BUILD) binary.
-TEST_PY_ONLY := gui_chip_pens gen_lucide_icons icon_grid_fit pkg_rows worktree_ready rig_handler_fallback rig_amarchy_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq rig_boot_console gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free dopus_toolbar flat_on_hang icat_stderr help_man_sync ipd_no_dos_under_list amarchy_rows_buffer flat_single_instance flat_clone_stack
+TEST_PY_ONLY := win_refresh gui_chip_pens gen_lucide_icons icon_grid_fit pkg_rows worktree_ready rig_handler_fallback rig_amarchy_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq rig_boot_console gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free dopus_toolbar flat_on_hang icat_stderr help_man_sync ipd_no_dos_under_list amarchy_rows_buffer flat_single_instance flat_clone_stack
 TEST_BINS := $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host $(BUILD)/upgetty_host
 test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -n "$(ONLY)" ] && [ -z "$(filter $(ONLY),$(TEST_ONLY_NAMES))" ] && ! ./$(BUILD)/vttest_host --has $(ONLY); then echo "[ERROR] make test: no suite named $(ONLY)"; exit 2; fi
@@ -248,6 +249,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = wb_lock_guard ]; then python3 -I tests/test_wb_lock_guard.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = screens_page_name_guard ]; then python3 -I tests/test_screens_page_name_guard.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ibase_lock_guard ]; then python3 -I tests/test_ibase_lock_guard.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = win_refresh ]; then python3 -I tests/test_win_refresh.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ipatch_guard ]; then python3 -I tests/test_ipatch_guard.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_wbr_drop ]; then python3 -I tests/test_gui_wbr_drop.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ipd_no_dos_under_list ]; then python3 -I tests/test_ipd_no_dos_under_list.py; fi
