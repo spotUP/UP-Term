@@ -3575,7 +3575,7 @@ static void test_no_outlines(void)
     flat_state s;
     flat_gr gr;
     const flat_grbox *m;
-    int a, t1, t2, out[4];
+    int a, t2, out[4];
     flat_gadbox time_g[3] = { { 130, 156, 186, 7, FLAT_GK_PROP }, { 12, 53, 311, 100, FLAT_GK_OTHER }, { 60, 35, 41, 8, FLAT_GK_STRING } };
     flat_gadbox font_g[2] = { { 20, 52, 100, 14, FLAT_GK_OTHER }, { 130, 52, 100, 14, FLAT_GK_OTHER } };
     memset(&s, 0, sizeof s); memset(&gr, 0, sizeof gr);
@@ -3599,25 +3599,31 @@ static void test_no_outlines(void)
     CHECK_INT(flat_noline_pen(&s, FLAT_FC_TRACK, 4, 0), -1);                        /* no input pen on the screen */
     s.pen_sel = 5;
     /* ring: record, match, miss, drop */
-    flat_gr_add(&gr, &a, &t1, 12, 180, 319, 193, 5);
-    m = flat_gr_match(&s, &gr, &a, &t1, 14, 182, 100, 191);
+    flat_gr_add(&gr, &a, 12, 180, 319, 193, 5);
+    m = flat_gr_match(&s, &gr, &a, 14, 182, 100, 191);
     CHECK_INT(m != 0, 1);
     CHECK_INT(m ? m->pen : -1, 5);
-    CHECK_INT(flat_gr_match(&s, &gr, &a, &t1, 14, 182, 100, 195) != 0, 0);          /* rect leaves the box */
-    CHECK_INT(flat_gr_match(&s, &gr, &a, &t2, 14, 182, 100, 191) != 0, 0);          /* another task */
-    CHECK_INT(flat_gr_match(&s, &gr, &t2, &t1, 14, 182, 100, 191) != 0, 0);         /* another surface */
+    CHECK_INT(flat_gr_match(&s, &gr, &a, 14, 182, 100, 195) != 0, 0);          /* rect leaves the box */
+    CHECK_INT(flat_gr_match(&s, &gr, &t2, 14, 182, 100, 191) != 0, 0);         /* another surface */
     s.held = 1;
-    CHECK_INT(flat_gr_match(&s, &gr, &a, &t1, 14, 182, 100, 191) != 0, 0);          /* held: stock */
+    CHECK_INT(flat_gr_match(&s, &gr, &a, 14, 182, 100, 191) != 0, 0);          /* held: stock */
     s.held = 0;
-    flat_gr_drop(&gr, &a, &t1, 300, 190, 330, 200);                                 /* another frame overlaps the box */
-    CHECK_INT(flat_gr_match(&s, &gr, &a, &t1, 14, 182, 100, 191) != 0, 0);
-    flat_gr_add(&gr, &a, &t1, 12, 180, 319, 193, 5);
-    flat_gr_drop(&gr, &a, &t1, 400, 400, 410, 410);                                 /* a disjoint frame keeps it */
-    CHECK_INT(flat_gr_match(&s, &gr, &a, &t1, 14, 182, 100, 191) != 0, 1);
-    /* the content fill keeps the corner squares (radius 2) the frame drew */
+    flat_gr_drop(&gr, &a, 300, 190, 330, 200);                                 /* another frame overlaps the box */
+    CHECK_INT(flat_gr_match(&s, &gr, &a, 14, 182, 100, 191) != 0, 0);
+    flat_gr_add(&gr, &a, 12, 180, 319, 193, 5);
+    flat_gr_drop(&gr, &a, 400, 400, 410, 410);                                 /* a disjoint frame keeps it */
+    CHECK_INT(flat_gr_match(&s, &gr, &a, 14, 182, 100, 191) != 0, 1);
+        /* PREFS-NO-OUTLINES: a record belongs to a surface region, not to a task */
+    memset(&gr, 0, sizeof gr);
+    flat_gr_add(&gr, &a, 126, 154, 319, 164, 5);                                    /* slider track recorded by the Prefs task */
+    m = flat_gr_match(&s, &gr, &a, 130, 156, 137, 162);                             /* knob erase drawn by input.device during a drag still lands on the track ground */
+    CHECK_INT(m != 0, 1);
+    CHECK_INT(m ? m->pen : -1, 5);
+    CHECK_INT(flat_gr_match(&s, &gr, &t2, 130, 156, 137, 162) != 0, 0);             /* the same rect on another surface misses */
+/* the content fill keeps the corner squares (radius 2) the frame drew */
     {
         flat_grbox b;
-        b.surf = &a; b.task = &t1; b.x0 = 12; b.y0 = 180; b.x1 = 319; b.y1 = 193; b.pen = 5;
+        b.surf = &a; b.x0 = 12; b.y0 = 180; b.x1 = 319; b.y1 = 193; b.pen = 5;
         CHECK_INT(flat_gr_clip(&b, 2, 12, 180, 319, 193, 0, out) && out[0] == 14 && out[1] == 180 && out[2] == 317 && out[3] == 181, 1);   /* top band without the corners */
         CHECK_INT(flat_gr_clip(&b, 2, 12, 180, 319, 193, 1, out) && out[0] == 12 && out[1] == 182 && out[2] == 319 && out[3] == 191, 1);   /* middle rows whole */
         CHECK_INT(flat_gr_clip(&b, 2, 12, 180, 319, 193, 2, out) && out[0] == 14 && out[1] == 192 && out[2] == 317 && out[3] == 193, 1);

@@ -529,11 +529,13 @@ int flat_fc_class(const flat_fc *a);
  * else pen_back) or, when centre_pen (the pixel at the box centre, the app's selected fill drawn before the frame) is pen_line, the
  * accent; -1 for any other class (nothing to fill) and when the screen holds no such pen. */
 int flat_noline_pen(const flat_state *s, int cls, int depth, int centre_pen);
-/* Ground box records: the boxes a frame filled and whose content (drawn after the frame) must stay on that ground. A ring of
+/* Ground box records: the boxes a frame filled and whose content (drawn after the frame) must stay on that ground. Keyed on surface
+ * and box only, never the drawing task: Intuition draws prop gadget knobs from input.device, so a knob erase must match the record the
+ * Prefs task added. A ring of
  * FLAT_GR_N (a month holds up to 31 cell frames before their content arrives), same shape as flat_gh. */
 #define FLAT_GR_N 48
 typedef struct flat_grbox {
-    const void *surf, *task;
+    const void *surf;
     int x0, y0, x1, y1, pen;
 } flat_grbox;
 typedef struct flat_gr {
@@ -541,11 +543,11 @@ typedef struct flat_gr {
     int next;
 } flat_gr;
 /* A frame draw of box x0,y0..x1,y1: every record that overlaps it is dropped (the same box included). */
-void flat_gr_drop(flat_gr *g, const void *surf, const void *task, int x0, int y0, int x1, int y1);
+void flat_gr_drop(flat_gr *g, const void *surf, int x0, int y0, int x1, int y1);
 /* Record a box and its ground pen (call flat_gr_drop first). */
-void flat_gr_add(flat_gr *g, const void *surf, const void *task, int x0, int y0, int x1, int y1, int pen);
-/* The record of this surface and task whose box holds the rect, or 0 (not enabled, held, no record). */
-const flat_grbox *flat_gr_match(const flat_state *s, const flat_gr *g, const void *surf, const void *task, int x0, int y0, int x1, int y1);
+void flat_gr_add(flat_gr *g, const void *surf, int x0, int y0, int x1, int y1, int pen);
+/* The record of this surface whose box holds the rect, or 0 (not enabled, held, no record). */
+const flat_grbox *flat_gr_match(const flat_state *s, const flat_gr *g, const void *surf, int x0, int y0, int x1, int y1);
 /* Band k (0 top corner rows, 1 middle rows, 2 bottom corner rows) of the rect inside record b minus the four rounded corner squares
  * (rad x rad, drawn by the frame and kept): 1 and the band in out (x0,y0,x1,y1), 0 when the band is empty. */
 int flat_gr_clip(const flat_grbox *b, int rad, int x0, int y0, int x1, int y1, int k, int out[4]);

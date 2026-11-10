@@ -816,32 +816,32 @@ int flat_noline_pen(const flat_state *s, int cls, int depth, int centre_pen)
     return -1;
 }
 
-void flat_gr_drop(flat_gr *g, const void *surf, const void *task, int x0, int y0, int x1, int y1)
+void flat_gr_drop(flat_gr *g, const void *surf, int x0, int y0, int x1, int y1)
 {
     int i;
     for (i = 0; i < FLAT_GR_N; i++) {
         flat_grbox *b = &g->box[i];
-        if (b->surf && b->surf == surf && b->task == task && x0 <= b->x1 && x1 >= b->x0 && y0 <= b->y1 && y1 >= b->y0)
+        if (b->surf && b->surf == surf && x0 <= b->x1 && x1 >= b->x0 && y0 <= b->y1 && y1 >= b->y0)
             b->surf = 0;
     }
 }
 
-void flat_gr_add(flat_gr *g, const void *surf, const void *task, int x0, int y0, int x1, int y1, int pen)
+void flat_gr_add(flat_gr *g, const void *surf, int x0, int y0, int x1, int y1, int pen)
 {
     flat_grbox *b = &g->box[g->next];
     g->next = (g->next + 1) % FLAT_GR_N;
-    b->surf = surf; b->task = task;
+    b->surf = surf;
     b->x0 = x0; b->y0 = y0; b->x1 = x1; b->y1 = y1; b->pen = pen;
 }
 
-const flat_grbox *flat_gr_match(const flat_state *s, const flat_gr *g, const void *surf, const void *task, int x0, int y0, int x1, int y1)
+const flat_grbox *flat_gr_match(const flat_state *s, const flat_gr *g, const void *surf, int x0, int y0, int x1, int y1)
 {
     int i;
     if (!s->enabled || s->held || x1 < x0 || y1 < y0)
         return 0;
     for (i = 0; i < FLAT_GR_N; i++) {
         const flat_grbox *b = &g->box[i];
-        if (b->surf && b->surf == surf && b->task == task && x0 >= b->x0 && y0 >= b->y0 && x1 <= b->x1 && y1 <= b->y1)
+        if (b->surf && b->surf == surf && x0 >= b->x0 && y0 >= b->y0 && x1 <= b->x1 && y1 <= b->y1)
             return b;
     }
     return 0;

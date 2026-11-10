@@ -973,7 +973,7 @@ static int noline_frame(flatshared *r, struct RastPort *rp, int ox, int oy, int 
     struct Gadget *g;
     flat_fc fc;
     int n, cls, pen, depth = rp->BitMap ? rp->BitMap->Depth : 0, centre = -1;
-    flat_gr_drop(&r->gr, surf, FindTask(NULL), ox, oy, ox + w - 1, oy + h - 1);
+    flat_gr_drop(&r->gr, surf, ox, oy, ox + w - 1, oy + h - 1);
     if (!win)
         return 0;
     memset(&fc, 0, sizeof fc);
@@ -1007,7 +1007,7 @@ static int noline_frame(flatshared *r, struct RastPort *rp, int ox, int oy, int 
     if (pen < 0)
         return 0;
     ground_box(r, rp, ox, oy, ox + w - 1, oy + h - 1, pen);
-    flat_gr_add(&r->gr, surf, FindTask(NULL), ox, oy, ox + w - 1, oy + h - 1, pen);
+    flat_gr_add(&r->gr, surf, ox, oy, ox + w - 1, oy + h - 1, pen);
     r->gbhits++;
     return 1;
 }
@@ -1756,7 +1756,7 @@ void flat_tx_c(struct RastPort *rp, CONST_STRPTR str, ULONG count)
     set = (on && r->rsw.installed && rp->Layer && rp->Layer->Window && tx_title(r, rp, str, count))
           || (r->tx.armed && tx_armed(r, rp));
     if (on && (rp->DrawMode & JAM2) && rp->BgPen == r->st.pen_back && rp->Layer) {   /* PREFS-NO-OUTLINES: text on a ground box keeps its ground */
-        const flat_grbox *gb = flat_gr_match(&r->st, &r->gr, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL), rp->cp_x, rp->cp_y, rp->cp_x, rp->cp_y);
+        const flat_grbox *gb = flat_gr_match(&r->st, &r->gr, flat_tx_surface(rp->Layer, rp->BitMap), rp->cp_x, rp->cp_y, rp->cp_x, rp->cp_y);
         if (gb) {
             SetBPen(rp, (UBYTE)gb->pen);
             set = 1;
@@ -2326,7 +2326,7 @@ static int rf_gbox(flatshared *r, struct RastPort *rp, const LONG *b)
     int k;
     if (rp->AreaPtSz || rp->FgPen != r->st.pen_back || !rp->Layer)
         return 0;
-    gb = flat_gr_match(&r->st, &r->gr, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL), (int)b[0], (int)b[1], (int)b[2], (int)b[3]);
+    gb = flat_gr_match(&r->st, &r->gr, flat_tx_surface(rp->Layer, rp->BitMap), (int)b[0], (int)b[1], (int)b[2], (int)b[3]);
     if (!gb)
         return 0;
     fg = rp->FgPen;
