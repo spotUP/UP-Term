@@ -1492,6 +1492,59 @@ static void buttons_fixture_canvas_is_unchanged(void)
     vt_free(t);
 }
 
+/* The 68000 hot paths (canvas core, cv_blit, glyph blit, line) write rows straight into the canvas.
+ * hot_gold[] are FNV sums of canvas plus dirty box recorded from the code before those fast paths
+ * (7365004f); HOT_GOLD=1 prints them again. */
+static const char *const hot_cases[] = {
+    "!|c0E|X0A0A|X0B0A|XHR9P|XZZZZ|X0A0B\r\n",                          /* 0 pixels, one off the canvas */
+    "!|c0C|L00001Q0Z|L1Q0Z0000|LHR000009P|L00009P9P\r\n",              /* 4 lines, every octant pair */
+    "!|c0B|=01000001|L0505HR9P|=0402Z301|L000050A0\r\n",          /* dotted and user pattern */
+    "!|c0D|=00000003|L0A0A5050|L50500A50|L0A3C0A0A\r\n",             /* thick */
+    "!|S010C|B0000HR9P|W01|c0F|L00005050|L00505000\r\n",                 /* XOR lines over a bar */
+    "!|v0A0A2M1Q|c0F|L00009P9P|L9P0000ZZ|R0505HRHR\r\n",                /* viewport clip */
+    "!|c09|R0A0A3C3C|C3C3C1E|O5050001E1E0A|P030A0A2M0A1E2M\r\n",         /* rect, circle, arc, polygon */
+    "!|c0F|@0A0AHello, RIP!\r\n",                                       /* text size 1 */
+    "!|c0E|Y00000300|@1010Big|Y00000A00|@0010W\r\n",                     /* sizes 3 and 10 */
+    "!|c0D|Y00010200|@1H2HUp|Y00010100|@5050up1\r\n",                    /* rotated */
+    "!|S010C|B0000HR9P|W01|c0F|Y00000200|@0505XOR\r\n",                  /* XOR text */
+    "!|v0A0A1E1E|c0F|Y00000400|@0505Clip\r\n",                          /* viewport clip */
+    "!|c0F|Y00000300|@HM9MEdge|Y00010300|@0200Top\r\n",                  /* past the canvas edges */
+    "!|S0B0C|B0000HR9P|c0F|L00009P9P|1C0000282800|1P1E1E000\r\n",        /* copy blit */
+    "!|S0B0C|B0000HR9P|c0F|L00009P9P|1C0000282800|1P0A0A010|1P1E1E020\r\n", /* xor, or */
+    "!|S0B0C|B0000HR9P|c0F|L00009P9P|1C0000282800|1P0A0A030|1P1E1E040\r\n", /* and, not */
+    "!|S0B0C|B0000HR9P|c0F|L00009P9P|1C0000282800|v0F0F1E1E|1P0505000\r\n", /* viewport clip */
+    "!|S0B0C|B0000HR9P|c0F|L00009P9P|1C0000282800|1PHM9K000\r\n",          /* past the canvas edge */
+    "!|S0B0C|B0000HR9P|c0F|L00009P9P|1G00002828000A\r\n",                 /* 1G block move */
+};
+#define NHOT ((int)(sizeof hot_cases / sizeof hot_cases[0]))
+static const unsigned long hot_gold[NHOT] = {
+    1503518763UL, 4066511283UL, 3103958941UL, 1910754637UL, 3288909371UL, 1162073572UL, 1087245736UL, 2511698522UL, 3495851653UL, 3491949135UL, 3025901691UL, 93388604UL, 3072458842UL, 180410429UL, 4058139093UL, 1533611686UL, 1039115325UL, 3818197359UL, 3166832083UL
+};
+
+static unsigned long hot_sum(vt_term *t)
+{
+    unsigned long h = canvas_sum(t);
+    int d[4] = { 0, 0, 0, 0 }, i;
+    vt_rip_take_dirty(t, &d[0], &d[1], &d[2], &d[3]);
+    for (i = 0; i < 4; i++)
+        h = ((h ^ (unsigned long)(d[i] & 0xFFFF)) * 16777619UL) & 0xFFFFFFFFUL;
+    return h;
+}
+
+static void hot_paths_are_pixel_exact(void)
+{
+    int i;
+    for (i = 0; i < NHOT; i++) {
+        vt_term *t = rip_draw(hot_cases[i]);
+        unsigned long s = hot_sum(t);
+        if (getenv("HOT_GOLD"))
+            printf("    %luUL, /* %d */\n", s, i);
+        else
+            CHECK(s == hot_gold[i]);
+        vt_free(t);
+    }
+}
+
 void suite_rip(void)
 {
     fixture_01_line_grammar();
@@ -1525,6 +1578,7 @@ void suite_rip(void)
     bars_row_path_is_pixel_exact();
     bar_does_not_write_per_pixel();
     buttons_fixture_canvas_is_unchanged();
+    hot_paths_are_pixel_exact();
     knob_polygon_rect_flood();
     text_font_scale_direction();
     stroke_fonts_goldens();
