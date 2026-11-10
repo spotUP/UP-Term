@@ -506,10 +506,13 @@ static void aa_set_pen(void *u, ULONG ink);
 static void aa_fill_bg(void *u, WORD x0, WORD y0, WORD x1, WORD y1, ULONG ink);
 
 /* The engine keeps a picture's own colours (3 bytes a pixel) only where the screen is short of pens: a palette
- * screen of 5 to 7 planes without the cybergraphics calls (those keep their RGBA path, 256 colours have pens to spare). */
+ * screen of 7 planes or fewer without the cybergraphics calls (those keep their RGBA path, 256 colours have pens to
+ * spare). On 16 pens or fewer the picture is then dithered once, from its own colours, to the pens the screen has:
+ * cut to the engine's 240-colour palette first and each entry put on its nearest pen, it was quantised twice and
+ * smooth areas broke into bands. */
 static void vr_pic_copy(vr_render *r)
 {
-    vt_set_image_rgb_copy(r->t, r->cm && !r->cgx && !r->few && r->depth > 4 && r->depth < 8);
+    vt_set_image_rgb_copy(r->t, r->cm && !r->cgx && r->depth < 8);
 }
 
 void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t,
@@ -2629,8 +2632,9 @@ static UBYTE img_pen_for(vr_render *r, ULONG rgb)
     return (UBYTE)(ink & VR_INK_RGB ? r->pen_default_fg : ink);
 }
 
-/* The pens of kitty picture v in slot s on a palette screen of more than 16 pens. The colours the picture uses
- * each get a pen of their own while the map has them (the plan is then pen a alone). When it runs out the free
+/* The pens of kitty picture v in slot s on a palette screen (16 pens or fewer: only from its own colours, see
+ * img_colours). The colours the picture uses each get a pen of their own while the map has them (the plan is then
+ * pen a alone): an exact palette (v->exact) shows undithered. When it runs out the free
  * pens go to the colours covering most of the picture (pp_pick) and every entry mixes, in the 8 x 8 pattern, the
  * two of {the terminal's 16 colours, those pens} that come nearest (pp_plan_make). Every pen held is released
  * with the slot (pic_release). */
@@ -2678,7 +2682,7 @@ static void pic_make(vr_render *r, struct vr_picslot *s, const vt_image_view *v)
         r->img->n_pic_picks++;
         if (rgbmode)
             r->img->n_pic_rgb++;
-        if (vt_personality(r->t) != VT_AMIGA)
+        if (vt_personality(r->t) != VT_AMIGA || r->few) /* few pens: the terminal's are most of them, no free ones */
             for (i = 0; i < 16 && nf < PM_MAXPENS; i++) {
                 ULONG ink = pen_for(r, (vt_color)i, 0);
                 if (ink & VR_INK_RGB)
@@ -2788,7 +2792,10 @@ static void img_colours(vr_render *r, const vt_image_view *v)
                                               : (UBYTE)r->bg_ink;
     r->img_planes = r->img->map[0];
     r->img->pic_cur = 0;
-    if (v->kitty && !r->few && r->cm && r->depth > 4 && (r->img->pic_cur = pic_slot(r, v)) != 0) {
+    /* few pens: only from the picture's own colours, its RGB copy (vr_pic_copy) or an exact palette (kit_index: 255
+     * colours or fewer, undithered); a palette the engine dithered to the cube keeps each entry's nearest pen, or
+     * the picture would be dithered twice */
+    if (v->kitty && r->cm && (r->depth > 4 || v->rgb || v->exact) && (r->img->pic_cur = pic_slot(r, v)) != 0) {
         r->img_planes |= (UBYTE)r->img->pic_cur->planes;
         return;
     }

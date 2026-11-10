@@ -112,6 +112,7 @@ typedef struct vt_image {
     vt_u8 opaque;       /* fmt 1: no pixel has an alpha below 255 */
     vt_u8 *rgb;         /* fmt 0 kitty pictures made while vt_set_image_rgb_copy was on: w x h x 3 bytes R G B, the picture's
                          * own colours beside the cube indices (counted in bytes); 0 when none */
+    vt_u8 kexact;       /* fmt 0 kitty: pal is the picture's own colours, undithered (kit_index); 0 the cube */
     vt_u8 ktrans;       /* kitty's N=1 on a stored picture: evicted first */
     int px0, py0;       /* kitty's X=, Y=: the picture's offset inside its first cell */
     vt_u32 pkid, ppid;  /* kitty's P=, Q=: the parent placement's i= and p= (0 none) */
@@ -5497,6 +5498,7 @@ static int image_install(vt_term *t, vt_u8 *pix, long bytes, long w, long h, int
     im->refs = 0;
     im->fmt = im->opaque = 0;
     im->rgb = 0;
+    im->kexact = 0;
     im->kind = 0;
     im->kid = im->knum = im->pid = 0;
     im->kz = 0;
@@ -5699,6 +5701,7 @@ int vt_row_image(const vt_term *t, int row, int i, vt_image_view *v)
         v->fmt = im->fmt;
         v->opaque = im->opaque;
         v->rgb = im->rgb;
+        v->exact = im->kexact;
         v->kitty = im->kind != 0 && im->kind != 4;
         v->bg0 = im->kind == 0; /* sixel only: a RIP canvas's index 0 is palette entry 0 */
         v->cw = im->cw;

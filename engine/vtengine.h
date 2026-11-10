@@ -388,6 +388,7 @@ typedef struct vt_image_view {
     int fmt;            /* 0 pix holds indices into pal; 1 it holds w x h x 4 bytes R G B A (pal, npal unused) */
     int opaque;         /* fmt 1: no pixel has an alpha below 255 */
     const vt_u8 *rgb;   /* fmt 0: w x h x 3 bytes R G B, the picture's own colours (vt_set_image_rgb_copy was on when it was made); 0 none */
+    int exact;          /* kitty fmt 0: pal holds the picture's own colours, undithered (255 or fewer); 0 a cube cut */
     int kitty;          /* a kitty picture: its index 0 (fmt 0) is transparent, draw nothing there; sixel: the background */
     int cw, ch;         /* the cell size the image was placed with */
     int col0;           /* the grid column of the image's left edge on this
