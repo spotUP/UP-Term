@@ -557,6 +557,33 @@ static void test_dopus_box_outline(void)
     CHECK_INT(flat_dopus_box_draw(&s, 2, 3, 11, 8, 0, 0), 0);
 }
 
+/* OWNER-2026-11-10 INPUT-GROUND: the input ground is the held selection pen only; a string gadget is told by type, StringExtend flag
+ * and presence; a frame is a string border only when every edge sits within 4 px of the gadget box (a group box is not). */
+static void test_input_ground(void)
+{
+    flat_state s;
+    memset(&s, 0, sizeof s);
+    s.pen_sel = 5;
+    CHECK_INT(flat_input_pen(&s, 4), 5);
+    CHECK_INT(flat_input_pen(&s, 2), -1);                 /* depth < 3: no selection pen */
+    CHECK_INT(flat_input_pen(&s, 8), 5);
+    s.pen_sel = 9;
+    CHECK_INT(flat_input_pen(&s, 3), -1);                 /* pen outside the depth */
+    s.pen_sel = 0;
+    CHECK_INT(flat_input_pen(&s, 4), -1);                 /* none held */
+    CHECK_INT(flat_input_pen(0, 4), -1);
+    CHECK_INT(flat_string_ext(4, 0x0800 | 1, 1, 1), 1);
+    CHECK_INT(flat_string_ext(4, 1, 1, 1), 0);            /* no GACT_STRINGEXTEND */
+    CHECK_INT(flat_string_ext(1, 0x0800, 1, 1), 0);       /* boolean gadget */
+    CHECK_INT(flat_string_ext(4, 0x0800, 0, 1), 0);
+    CHECK_INT(flat_string_ext(4, 0x0800, 1, 0), 0);
+    CHECK_INT(flat_string_frame(10, 10, 104, 18, 12, 12, 100, 14), 1);    /* bevel 2 px out */
+    CHECK_INT(flat_string_frame(12, 12, 100, 14, 12, 12, 100, 14), 1);
+    CHECK_INT(flat_string_frame(2, 2, 120, 34, 12, 12, 100, 14), 0);     /* 10 px out: a group box, not the input border */
+    CHECK_INT(flat_string_frame(2, 2, 300, 120, 12, 12, 100, 14), 0);     /* group box around the gadget */
+    CHECK_INT(flat_string_frame(10, 10, 104, 18, 12, 12, 0, 14), 0);      /* empty gadget */
+}
+
 /* DOPUS-BUTTON-NO-RING (owner s70 O5-O7): the ring rule and the face-pen band. Mirrors d4_flat_pens: when the decision is
  * SKIP and flat_dopus_ring says 0, the border is painted in the interior's pen (stand-in for ReadPixel: 4) through
  * flat_dopus_box_draw; ring-keeping elements paint pen_line. Revert check: ring in pen_line fails the face asserts. */
@@ -3529,6 +3556,7 @@ void suite_flat_core(void)
     test_dopus_decide();
     test_dopus_box_outline();
     test_dopus_no_ring();
+    test_input_ground();
     test_title_gadget_filter();
     test_dopus_path();
     test_lock_glyph();

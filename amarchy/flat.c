@@ -38,6 +38,7 @@
 #include <intuition/classusr.h>
 #include <intuition/imageclass.h>
 #include <intuition/screens.h>
+#include <intuition/sghooks.h>
 #include <utility/hooks.h>
 #include <dos/dos.h>
 #include <proto/exec.h>
@@ -785,6 +786,46 @@ static int push_gadget_of(struct RastPort *rp, Object *obj)
     return g && flat_push_button(it != NULL, it ? it->LeftEdge : 0, it ? it->TopEdge : 0, g->Width, g->Height, g->Activation);
 }
 
+/* OWNER-2026-11-10 INPUT-GROUND: the string gadget of rp's window whose box the frame box x0,y0..x1,y1 borders (flat_string_frame),
+ * NULL when there is none. Relative gadget edges are resolved against the window. */
+static struct Gadget *string_gadget_at(struct RastPort *rp, int x0, int y0, int x1, int y1)
+{
+    struct Layer *lay = rp ? rp->Layer : NULL;
+    struct Window *win = lay ? (struct Window *)lay->Window : NULL;
+    struct Gadget *g;
+    int n;
+    for (g = win ? win->FirstGadget : NULL, n = 0; g && n < 64; g = g->NextGadget, n++) {
+        struct StringInfo *si = (struct StringInfo *)g->SpecialInfo;
+        int gx, gy, gw, gh;
+        if (!flat_string_ext(g->GadgetType & GTYP_GTYPEMASK, g->Activation, si != NULL, si && si->Extension != NULL))
+            continue;
+        gx = g->LeftEdge + ((g->Flags & GFLG_RELRIGHT) ? win->Width - 1 : 0);
+        gy = g->TopEdge + ((g->Flags & GFLG_RELBOTTOM) ? win->Height - 1 : 0);
+        gw = g->Width + ((g->Flags & GFLG_RELWIDTH) ? win->Width : 0);
+        gh = g->Height + ((g->Flags & GFLG_RELHEIGHT) ? win->Height : 0);
+        if (flat_string_frame(x0, y0, x1 - x0 + 1, y1 - y0 + 1, gx, gy, gw, gh))
+            return g;
+    }
+    return NULL;
+}
+
+/* OWNER-2026-11-10 INPUT-GROUND: when the box x0,y0..x1,y1 is a string input's border, give the gadget the selection pen as its ground
+ * (strgclass repaints its interior from StringExtend Pens[1] / ActivePens[1], so a fill here would be overpainted) and return that
+ * pen; -1 when the box is no string input or the screen holds no such pen. Only two pen NUMBERS are written, no pointer: after the
+ * patcher unloads the gadget still draws with a valid pen. */
+static int string_ground(flatshared *r, struct RastPort *rp, int x0, int y0, int x1, int y1)
+{
+    struct Gadget *g = string_gadget_at(rp, x0, y0, x1, y1);
+    struct Window *w = g ? (struct Window *)rp->Layer->Window : NULL;
+    int pen = w ? flat_input_pen(st_scr(r, w->WScreen), rp->BitMap ? rp->BitMap->Depth : 0) : -1;
+    if (pen >= 0) {
+        struct StringExtend *ex = ((struct StringInfo *)g->SpecialInfo)->Extension;
+        ex->Pens[1] = ex->ActivePens[1] = (UBYTE)pen;
+        r->sground++;
+    }
+    return pen;
+}
+
 /* INSTALLER-BORDER-BUTTON (owner 2026-11-08): the Border-render push button of rp's window (flat_border_button) whose box is
  * exactly x0,y0..x1,y1, NULL when none. The Installer draws such a button as a pen-0 RectFill of the box, its label, then a
  * temporary frameiclass IM_DRAWFRAME over the same box; render != select, so the frame object never names the gadget and the
@@ -921,6 +962,8 @@ static int c8_draw(Object *obj, Msg msg)
             r->fflat++;
             return 1;
         }
+        if (string_ground(r, d->imp_RPort, ox, oy, ox + w - 1, oy + h - 1) >= 0)
+            return 1;                    /* INPUT-GROUND: a string input has no outline; the ground is strgclass's own repaint */
         if (smart_knob_of(d->imp_RPort, obj)) {      /* S56-LOCALE-KNOB: the listview scroller knob takes the Workbench knob pen */
             struct Window *kw = (struct Window *)d->imp_RPort->Layer->Window;
             if (!raa_knob_frame_draw(st_scr(r, kw->WScreen), d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0, (kw->Flags & WFLG_WINDOWACTIVE) != 0,
@@ -1067,7 +1110,9 @@ static int d4_flat_pens(int el, struct RastPort *rp, ULONG shine, ULONG back, in
         if (!flat_dopus_ring(el, recessed ? 1 : 0)) {
             /* DOPUS-BUTTON-NO-RING: the 1 px (side columns) border takes the pen of the box interior, so the button is one
              * flat block (SRCE / DEST) or bare content (OFF); the interior itself is DOpus's and is never touched here */
-            LONG fp = ReadPixel(rp, x0 + st.side, y0 + 1);
+            int gp = el == FLAT_EL_FIELDBOX ? string_ground(r, rp, x0, y0, x1, y1) : -1;
+            LONG fp = gp >= 0 ? gp : ReadPixel(rp, x0 + st.side, y0 + 1);    /* INPUT-GROUND: the field's own ground, not the old pixel */
+
             if (fp < 0)
                 r->dnopix++;
             st.pen_line = (uint8_t)flat_dopus_face_pen(fp, (int)back);

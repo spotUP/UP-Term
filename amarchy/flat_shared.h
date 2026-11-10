@@ -75,6 +75,7 @@ typedef struct flatshared {
     ULONG mhits;                /* S32-GHOST-MENU: menu ghost fills recoloured to the dim label pen (the sentinel) */
     ULONG bhits;                /* INSTALLER-BORDER-BUTTON: Border-render button erases drawn as the rounded flat fill (the sentinel) */
     ULONG dface;                /* DOPUS-BUTTON-NO-RING sentinel: raised Program DrawBox calls whose ring was painted in the face pen */
+    ULONG sground;              /* INPUT-GROUND sentinel: string inputs whose StringExtend ground pens were set to the selection pen */
     ULONG dnopix;               /* DOPUS-BUTTON-NO-RING: face reads that failed (ReadPixel < 0), border fell back to the background pen */
     flat_swap d5sw;             /* DOPUS-LOCK-ICONIFY: the dopusiclass h_Entry swap (lock / iconify images) */
     uintptr_t *d5slot;

@@ -331,6 +331,28 @@ int flat_dopus_face_pen(long read, int pen_back)
     return read >= 0 ? (int)read : pen_back;
 }
 
+int flat_input_pen(const flat_state *s, int depth)
+{
+    if (!s || !s->pen_sel || depth < 3 || depth > 8 || s->pen_sel >= (1 << depth))
+        return -1;
+    return s->pen_sel;
+}
+
+int flat_string_ext(unsigned gadget_type, unsigned activation, int has_info, int has_ext)
+{
+    return (gadget_type & 0x7) == 4 && (activation & 0x0800) && has_info && has_ext;    /* GTYP_STRGADGET, GACT_STRINGEXTEND */
+}
+
+static int near4(int a, int b)
+{
+    return a - b <= 4 && b - a <= 4;
+}
+
+int flat_string_frame(int fx, int fy, int fw, int fh, int gx, int gy, int gw, int gh)
+{
+    return gw > 0 && gh > 0 && near4(fx, gx) && near4(fy, gy) && near4(fx + fw, gx + gw) && near4(fy + fh, gy + gh);
+}
+
 int flat_frame_decide(const flat_state *s, unsigned long method, int pen_shine, int pen_back)
 {
     if (!s || !s->enabled || s->held)

@@ -270,6 +270,15 @@ int flat_dopus_recessed(long d0);
  * (-1: no pixel) the DrawInfo BACKGROUNDPEN, the colour stock draws the frame in when shine == back. Never the accent. */
 int flat_dopus_face_pen(long read, int pen_back);
 
+/* OWNER-2026-11-10 INPUT-GROUND: every text input draws no outline and the ground of the held selection pen (GR_SELECTION, the grey
+ * of the flat cycle gadget). flat_input_pen: that pen for a screen of this depth, -1 when the screen holds none (depth < 3 or no pen:
+ * the input keeps its ground). flat_string_ext: 1 when a gadget is a string gadget whose StringExtend (GACT_STRINGEXTEND, pens a
+ * plain byte pair) may be written. flat_string_frame: 1 when the frame box f (x, y, w, h) is the border of the string gadget box g:
+ * every edge within 4 px (a group box around several inputs is not). */
+int flat_input_pen(const flat_state *s, int depth);
+int flat_string_ext(unsigned gadget_type, unsigned activation, int has_info, int has_ext);
+int flat_string_frame(int fx, int fy, int fw, int fh, int gx, int gy, int gw, int gh);
+
 /* DOPUS-LOCK-ICONIFY (S2b.3): dopusiclass DIA_Type -> flat glyph id. IM_ICONIFY (6) -> FLAT_W_ICONIFY, IM_LOCK (8) ->
  * FLAT_W_LOCK; every other type (arrows, BBOX, gauge ...) -1 = the class draws it stock. */
 int flat_dopus_image_which(int type);
