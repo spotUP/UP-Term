@@ -572,6 +572,14 @@ static void test_input_ground(void)
     s.pen_sel = 0;
     CHECK_INT(flat_input_pen(&s, 4), -1);                 /* none held */
     CHECK_INT(flat_input_pen(0, 4), -1);
+    /* INPUT-GROUND: the strgclass dispatcher writes the ground pens on GM_RENDER only */
+    CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0x0800 | 1, 1, 5), 1);
+    CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0x0800, 1, 0), 1);          /* pen 0 is a pen */
+    CHECK_INT(flat_string_render_write(FLAT_GM_RENDER + 1, 1, 0x0800, 1, 5), 0);      /* GM_GOACTIVE */
+    CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 0, 0x0800, 1, 5), 0);          /* no SpecialInfo */
+    CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 1, 1, 5), 0);               /* no GACT_STRINGEXTEND */
+    CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0x0800, 0, 5), 0);          /* no Extension */
+    CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0x0800, 1, -1), 0);         /* no pen on this screen */
     CHECK_INT(flat_string_ext(4, 0x0800 | 1, 1, 1, 0), 1);
     CHECK_INT(flat_string_ext(4, 1, 1, 1, 0), 0);            /* no GACT_STRINGEXTEND */
     CHECK_INT(flat_string_ext(1, 0x0800, 1, 1, 0), 0);       /* boolean gadget */

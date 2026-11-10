@@ -37,6 +37,7 @@
 #include <intuition/classes.h>
 #include <intuition/classusr.h>
 #include <intuition/imageclass.h>
+#include <intuition/gadgetclass.h>
 #include <intuition/screens.h>
 #include <intuition/sghooks.h>
 #include <utility/hooks.h>
@@ -1080,6 +1081,35 @@ ULONG c8_disp_stk(void *caller_return, struct Hook *h, Object *obj, Msg msg)
     if (c8_skip(obj, msg))
         return TRUE;
     return ((oldfn_stk)g_r->fsw.saved)(h, obj, msg);
+}
+
+/* INPUT-GROUND: strgclass GM_RENDER. Before the stock render the gadget's StringExtend ground pens become the input pen (two pen
+ * numbers, no pointer: nothing dangles after unload). No allocation, no lock, no print. */
+static void g9_ground(Object *obj, Msg msg)
+{
+    flatshared *r = g_r;
+    struct gpRender *gp = (struct gpRender *)msg;
+    struct Gadget *g = (struct Gadget *)obj;
+    struct StringInfo *si;
+    struct GadgetInfo *gi;
+    int pen;
+    r->sgseen++;                        /* sentinel: every strgclass dispatch */
+    if (msg->MethodID != FLAT_GM_RENDER || !obj || !gp->gpr_GInfo)
+        return;
+    r->sgext++;                         /* sentinel: GM_RENDER with a GadgetInfo */
+    gi = gp->gpr_GInfo;
+    si = (struct StringInfo *)g->SpecialInfo;
+    pen = flat_input_pen(st_scr(r, gi->gi_Screen), gi->gi_DrInfo ? gi->gi_DrInfo->dri_Depth : 0);
+    if (flat_string_render_write(msg->MethodID, si != NULL, g->Activation, si && si->Extension != NULL, pen)) {
+        si->Extension->Pens[1] = si->Extension->ActivePens[1] = (UBYTE)pen;
+        r->sground++;
+    }
+}
+
+ULONG g9_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1") Msg msg)
+{
+    g9_ground(obj, msg);
+    return ((oldfn_reg)g_r->gsw.saved)(h, obj, msg);
 }
 
 /* ---- FLAT-D4: the replacement routines. They run on the caller's task with the caller's registers (a0 rp, a1 rect,
@@ -2509,6 +2539,7 @@ static void print_status(void)
         put_word(line, &n, " d5=");                 put_num(line, &n, d5draws);
         put_word(line, &n, " ground=");             put_num(line, &n, g_r->sground);
         put_word(line, &n, " sg=");                 put_num(line, &n, g_r->sgseen);
+        put_word(line, &n, " gs=");                 put_num(line, &n, g_r->gslot ? 1 : 0);
         put_word(line, &n, " ext=");                put_num(line, &n, g_r->sgext);
         line[n] = 0;
         PutStr((STRPTR)line);
@@ -2701,6 +2732,21 @@ static int hook_install(flatshared *r)
     if (rc != FLAT_OK)
         return rc;
     r->slot = slot;
+    {   /* INPUT-GROUND: strgclass. Its absence leaves the sysiclass hook working. */
+        uintptr_t *gs = class_slot("strgclass", NULL, 1);   /* h_Entry: the subclass reaches strgclass through it, h_SubEntry is never called */
+        uintptr_t gours = (uintptr_t)g9_disp_reg;     /* h_Entry: register convention */
+        if (gs && !r->ggate)
+            r->ggate = gate_make((void *)flat_dg_tpl, (void *)flat_dg_tpl_end, (ULONG)gours);
+        if (gs && r->ggate) {
+            Forbid();
+            rc = flat_swap_install(&r->gsw, gs, (uintptr_t)r->ggate->code);
+            if (rc == FLAT_OK)
+                gate_open(r->ggate, r->gsw.saved);
+            Permit();
+            if (rc == FLAT_OK)
+                r->gslot = gs;
+        }
+    }
     {   /* FLAT-C8: the second class. Its absence leaves the sysiclass hook working: report it, do not undo C2. */
         uintptr_t *fs = frameiclass_slot();
         uintptr_t fours = flat_conv(IntuitionBase->LibNode.lib_Version) == FLAT_CONV_REG ? (uintptr_t)c8_disp_reg : (uintptr_t)c8_disp_stk;
@@ -2728,6 +2774,18 @@ static int hook_remove(flatshared *r)
     int rc = FLAT_NOT_INSTALLED;
     if (!r->sw.installed)
         return rc;
+    if (r->gsw.installed) {             /* INPUT-GROUND: the strgclass hook before all */
+        gate_close(r->ggate);
+        Forbid();
+        rc = flat_swap_remove(&r->gsw, r->gslot, &r->st);
+        Permit();
+        if (rc == FLAT_STILL_CHAINED) {
+            gate_reopen(r->ggate);
+            return rc;
+        }
+        gate_wait(r->ggate);
+        r->gslot = 0;
+    }
     if (r->fsw.installed) {             /* FLAT-C8: the frameiclass hook first; chained on top = keep both */
         gate_close(r->fgate);           /* FLAT-UNLOAD-INFLIGHT: closed, restore, then wait */
         Forbid();

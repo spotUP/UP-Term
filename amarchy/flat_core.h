@@ -277,6 +277,10 @@ int flat_dopus_face_pen(long read, int pen_back);
  * every edge within 4 px (a group box around several inputs is not). */
 int flat_input_pen(const flat_state *s, int depth);
 int flat_string_ext(unsigned gadget_type, unsigned activation, int has_info, int has_ext, int strg_chain);   /* strg_chain: boopsi gadget (type 5) whose class chain holds strgclass; also accepted */
+/* INPUT-GROUND (strgclass dispatcher): 1 when a dispatch of method (FLAT_GM_RENDER only) on a gadget with SpecialInfo, GACT_STRINGEXTEND
+ * and an Extension may get its ground pens written: pen >= 0 (flat_input_pen said so). The text pens stay untouched. */
+#define FLAT_GM_RENDER 1UL
+int flat_string_render_write(unsigned long method, int has_info, unsigned activation, int has_ext, int pen);
 int flat_string_frame(int fx, int fy, int fw, int fh, int gx, int gy, int gw, int gh);
 
 /* DOPUS-LOCK-ICONIFY (S2b.3): dopusiclass DIA_Type -> flat glyph id. IM_ICONIFY (6) -> FLAT_W_ICONIFY, IM_LOCK (8) ->

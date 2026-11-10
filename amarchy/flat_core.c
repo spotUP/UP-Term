@@ -345,6 +345,11 @@ int flat_string_ext(unsigned gadget_type, unsigned activation, int has_info, int
     return (t == 4 || (t == 5 && strg_chain)) && (activation & 0x0800) && has_info && has_ext;
 }
 
+int flat_string_render_write(unsigned long method, int has_info, unsigned activation, int has_ext, int pen)
+{
+    return method == FLAT_GM_RENDER && has_info && (activation & 0x0800) && has_ext && pen >= 0;
+}
+
 static int near4(int a, int b)
 {
     return a - b <= 4 && b - a <= 4;

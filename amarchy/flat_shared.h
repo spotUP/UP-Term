@@ -25,6 +25,10 @@ typedef struct flatshared {
     uintptr_t *fslot;
     ULONG fcalls, fflat;        /* every frameiclass dispatch / every IM_DRAW(FRAME) that drew flat */
     ULONG fbusy, fnostk;        /* c8_draw_on fell back to the stock draw: cl_ss busy (another task holds it) / no private stack (cl_stk NULL) */
+    /* INPUT-GROUND: the strgclass hook (GM_RENDER writes the ground pens) */
+    flat_swap gsw;
+    uintptr_t *gslot;
+    struct flat_gate *ggate;
     /* FLAT-D4 */
     struct Library *dlib;       /* dopus5.library, opened while patched so it cannot expunge under the patch */
     flat_swap dsw[FLAT_EL_COUNT];
