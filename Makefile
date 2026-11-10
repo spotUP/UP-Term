@@ -1081,7 +1081,7 @@ AMARCHY_LEAF_DEPS := handler/kcmode.c handler/slash.c config/upconf.c config/upc
 # CHKABORT_PROGRAMS: the Amarchy-family programs that handle Ctrl-C in their own Wait and hold system state; each links
 # $(AMARCHY_NOBREAK) (empty _chkabort) and tests/test_nobreak.py checks exactly these (make chkabort-check)
 AMARCHY_NOBREAK := amarchy/nobreak.c
-CHKABORT_PROGRAMS := Amarchy amarchy-gui amarchy-flat amarchy-icons upprefs upgetty top allocwatch patchcon lvoprobe frameprobe sizewatch
+CHKABORT_PROGRAMS := Amarchy amarchy-gui amarchy-flat amarchy-icons upprefs upgetty top allocwatch patchcon lvoprobe frameprobe sizewatch gadprobe
 # Stack high-water probe (amarchy/stkprobe.h), a measuring tool and off by default. `make STKPROBE=1 BUILD=build/stkprobe
 # build/stkprobe/amiga/amarchy-index ...` links it into amarchy-index, amarchy-icons, amarchy-flat and AmTile with a 131072-byte
 # stack and publishes <PREFIX>_STK_USED (GetEnv). Use a separate BUILD directory: make does not see the knob as a dependency.
@@ -1597,6 +1597,11 @@ $(BUILD)/amiga/sysiprobe: tests/amiga/sysiprobe.c
 $(BUILD)/amiga/frameprobe: tests/amiga/frameprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ $(AMARCHY_NOBREAK) tests/amiga/frameprobe.c
+
+# Lists the string and boopsi gadgets of every window and requester (input-ground map)
+$(BUILD)/amiga/gadprobe: tests/amiga/gadprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ $(AMARCHY_NOBREAK) tests/amiga/gadprobe.c
 
 # dopus5.library jump-table entries and the flat enable switch (FLAT-D4 rig)
 $(BUILD)/amiga/dopusprobe: tests/amiga/dopusprobe.c amarchy/flat_core.h
