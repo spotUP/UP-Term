@@ -84,6 +84,7 @@ struct cv_rect_s { int x0, y0, x1, y1; }; /* x1,y1 exclusive; empty when x1 <= x
 /* An indexed canvas: one byte per pixel, pal[] 0xRRGGBB. The host reads pix/pal and the
  * dirty rectangle; cv_take_dirty returns it and clears it. serial is bumped by every
  * cv_flush that had something dirty (a renderer's cache key). */
+#define CV_ROWS_MAX 1024 /* = CV_MAX in canvas.c */
 struct cv {
     unsigned char *pix;
     unsigned long pal[256];
@@ -91,6 +92,9 @@ struct cv {
     struct cv_rect_s dirty;
     long serial;
     int own; /* pix was malloc'd by cv_open and cv_close frees it */
+    /* row[y] = pix + y * w, filled by cv_open / cv_open_pix: a 68000 has no 32-bit multiply (vbcc
+     * expands y * w into three mulu.w, ~200 cycles), a table read costs ~20 */
+    unsigned char *row[CV_ROWS_MAX];
 };
 
 /* alloc with malloc; NULL when the size is zero, over 1024x1024, or malloc fails.
@@ -120,6 +124,9 @@ void cv_blit(struct cv *c, int x, int y, const unsigned char *src, int w, int h,
 struct cv_rect_s cv_take_dirty(struct cv *c);
 /* grow *d to cover r (an empty r changes nothing; an empty *d becomes r) */
 void cv_rect_union(struct cv_rect_s *d, const struct cv_rect_s *r);
+/* widen the dirty rectangle by the box x0..x1-1, y0..y1-1 (exclusive ends; an empty box changes
+ * nothing): for callers that write c->row[] directly and report the box once */
+void cv_dirty(struct cv *c, int x0, int y0, int x1, int y1);
 /* bump serial when something is dirty (call once per feed); returns 1 if it bumped */
 int cv_flush(struct cv *c);
 

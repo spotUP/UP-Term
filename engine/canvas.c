@@ -7,7 +7,22 @@
 #include <string.h>
 #include "rip.h"
 
-#define CV_MAX 1024
+#define CV_MAX CV_ROWS_MAX
+
+/* Widen c->dirty by a NON-EMPTY box on locals: cv_rect_union's result without a struct copy and a
+ * call (on a 68000 those cost ~470 cycles a pixel). */
+#define DIRTY_BOX(c, X0, Y0, X1, Y1)                                                                   \
+    do {                                                                                               \
+        struct cv_rect_s *d_ = &(c)->dirty;                                                            \
+        if (d_->x1 <= d_->x0) {                                                                        \
+            d_->x0 = (X0), d_->y0 = (Y0), d_->x1 = (X1), d_->y1 = (Y1);                                \
+        } else {                                                                                       \
+            if ((X0) < d_->x0) d_->x0 = (X0);                                                          \
+            if ((Y0) < d_->y0) d_->y0 = (Y0);                                                          \
+            if ((X1) > d_->x1) d_->x1 = (X1);                                                          \
+            if ((Y1) > d_->y1) d_->y1 = (Y1);                                                          \
+        }                                                                                              \
+    } while (0)
 
 void cv_rect_union(struct cv_rect_s *d, const struct cv_rect_s *r)
 {
@@ -27,11 +42,19 @@ void cv_rect_union(struct cv_rect_s *d, const struct cv_rect_s *r)
         d->y1 = r->y1;
 }
 
-static void dirty_add(struct cv *c, int x0, int y0, int x1, int y1)
+void cv_dirty(struct cv *c, int x0, int y0, int x1, int y1)
 {
-    struct cv_rect_s r;
-    r.x0 = x0, r.y0 = y0, r.x1 = x1, r.y1 = y1;
-    cv_rect_union(&c->dirty, &r);
+    if (x1 <= x0 || y1 <= y0)
+        return;
+    DIRTY_BOX(c, x0, y0, x1, y1);
+}
+
+static void fill_rows(struct cv *c)
+{
+    int y;
+    unsigned char *p = c->pix;
+    for (y = 0; y < c->h; y++, p += c->w)
+        c->row[y] = p;
 }
 
 struct cv *cv_open(int w, int h, int npal)
@@ -51,6 +74,7 @@ struct cv *cv_open(int w, int h, int npal)
     c->h = h;
     c->npal = npal;
     c->own = 1;
+    fill_rows(c);
     return c;
 }
 
@@ -67,6 +91,7 @@ struct cv *cv_open_pix(int w, int h, int npal, unsigned char *pix)
     c->w = w;
     c->h = h;
     c->npal = npal;
+    fill_rows(c);
     return c;
 }
 
@@ -84,27 +109,41 @@ void cv_set_pal(struct cv *c, int idx, unsigned long rgb)
     if (idx < 0 || idx >= c->npal || c->pal[idx] == rgb)
         return;
     c->pal[idx] = rgb;
-    dirty_add(c, 0, 0, c->w, c->h);
+    DIRTY_BOX(c, 0, 0, c->w, c->h);
 }
 
+/* one unsigned compare tests both ends: a negative int is a huge unsigned */
 int cv_get(const struct cv *c, int x, int y)
 {
-    if (x < 0 || y < 0 || x >= c->w || y >= c->h)
+    if ((unsigned)x >= (unsigned)c->w || (unsigned)y >= (unsigned)c->h)
         return -1;
-    return c->pix[y * c->w + x];
+    return c->row[y][x];
 }
 
 void cv_pixel(struct cv *c, int x, int y, int idx)
 {
-    if (x < 0 || y < 0 || x >= c->w || y >= c->h)
+    struct cv_rect_s *d;
+    if ((unsigned)x >= (unsigned)c->w || (unsigned)y >= (unsigned)c->h)
         return;
-    c->pix[y * c->w + x] = (unsigned char)idx;
-    dirty_add(c, x, y, x + 1, y + 1);
+    c->row[y][x] = (unsigned char)idx;
+    d = &c->dirty;
+    if (d->x1 <= d->x0) {
+        d->x0 = x, d->y0 = y, d->x1 = x + 1, d->y1 = y + 1;
+        return;
+    }
+    if (x < d->x0)
+        d->x0 = x;
+    else if (x >= d->x1)
+        d->x1 = x + 1;
+    if (y < d->y0)
+        d->y0 = y;
+    else if (y >= d->y1)
+        d->y1 = y + 1;
 }
 
 void cv_hspan(struct cv *c, int x0, int x1, int y, int idx)
 {
-    if (y < 0 || y >= c->h)
+    if ((unsigned)y >= (unsigned)c->h)
         return;
     if (x0 > x1) {
         int t = x0;
@@ -117,14 +156,15 @@ void cv_hspan(struct cv *c, int x0, int x1, int y, int idx)
         x1 = c->w - 1;
     if (x1 < x0)
         return;
-    memset(c->pix + y * c->w + x0, idx, (size_t)(x1 - x0 + 1));
-    dirty_add(c, x0, y, x1 + 1, y + 1);
+    memset(c->row[y] + x0, idx, (size_t)(x1 - x0 + 1));
+    x1++;
+    DIRTY_BOX(c, x0, y, x1, y + 1);
 }
 
 void cv_hrow(struct cv *c, int x0, int y, const unsigned char *src, int n)
 {
     int x1 = x0 + n - 1;
-    if (y < 0 || y >= c->h || n <= 0)
+    if ((unsigned)y >= (unsigned)c->h || n <= 0)
         return;
     if (x0 < 0) {
         src -= x0;
@@ -134,8 +174,9 @@ void cv_hrow(struct cv *c, int x0, int y, const unsigned char *src, int n)
         x1 = c->w - 1;
     if (x1 < x0)
         return;
-    memcpy(c->pix + y * c->w + x0, src, (size_t)(x1 - x0 + 1));
-    dirty_add(c, x0, y, x1 + 1, y + 1);
+    memcpy(c->row[y] + x0, src, (size_t)(x1 - x0 + 1));
+    x1++;
+    DIRTY_BOX(c, x0, y, x1, y + 1);
 }
 
 void cv_rect(struct cv *c, int x0, int y0, int x1, int y1, int idx)
@@ -153,24 +194,36 @@ void cv_rect(struct cv *c, int x0, int y0, int x1, int y1, int idx)
 void cv_blit(struct cv *c, int x, int y, const unsigned char *src, int w, int h, int minterm,
              int cx0, int cy0, int cx1, int cy1)
 {
-    int i, j;
-    for (j = 0; j < h; j++)
-        for (i = 0; i < w; i++) {
-            int px = x + i, py = y + j, d, v = src[j * w + i];
-            if (px < cx0 || px > cx1 || py < cy0 || py > cy1)
-                continue;
-            d = cv_get(c, px, py);
-            if (d < 0)
-                continue;
-            switch (minterm) {
-            case CV_XOR: v = d ^ v; break;
-            case CV_OR: v = d | v; break;
-            case CV_AND: v = d & v; break;
-            case CV_NOT: v = ~v & 15; break;
-            default: break;
-            }
-            cv_pixel(c, px, py, v);
+    /* Clip the source box once against the clip rectangle and the canvas,
+       then walk row pointers: no per-pixel bounds test, multiply or call.
+       The dirty box is widened once for the whole clipped box, which is
+       exactly the set of pixels the old per-pixel cv_pixel path touched. */
+    int x0 = x, y0 = y, x1 = x + w - 1, y1 = y + h - 1, n, j, i;
+    if (x0 < cx0) x0 = cx0;
+    if (y0 < cy0) y0 = cy0;
+    if (x1 > cx1) x1 = cx1;
+    if (y1 > cy1) y1 = cy1;
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > c->w - 1) x1 = c->w - 1;
+    if (y1 > c->h - 1) y1 = c->h - 1;
+    if (x1 < x0 || y1 < y0)
+        return;
+    n = x1 - x0 + 1;
+    src += (y0 - y) * w + (x0 - x);
+    for (j = y0; j <= y1; j++, src += w) {
+        unsigned char *d = c->row[j] + x0;
+        const unsigned char *s = src;
+        switch (minterm) {
+        case CV_XOR: for (i = n; i; i--) *d++ ^= *s++; break;
+        case CV_OR: for (i = n; i; i--) *d++ |= *s++; break;
+        case CV_AND: for (i = n; i; i--) *d++ &= *s++; break;
+        case CV_NOT: for (i = n; i; i--) *d++ = (unsigned char)(~*s++ & 15); break;
+        default: for (i = n; i; i--) *d++ = *s++; break;
         }
+    }
+    x1++, y1++;
+    DIRTY_BOX(c, x0, y0, x1, y1);
 }
 
 struct cv_rect_s cv_take_dirty(struct cv *c)

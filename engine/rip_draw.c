@@ -169,29 +169,57 @@ static unsigned line_pattern(const struct rip_gfx *g)
     return g->lstyle == 4 ? g->lpat & 0xFFFF : pat[g->lstyle & 3];
 }
 
-static void pen(const struct rip_gfx *g, struct cv *cv, int x, int y, int xmajor)
-{
-    gput(g, cv, x, y, g->color);
-    if (g->thick == 3) {
-        if (xmajor) {
-            gput(g, cv, x, y - 1, g->color);
-            gput(g, cv, x, y + 1, g->color);
-        } else {
-            gput(g, cv, x - 1, y, g->color);
-            gput(g, cv, x + 1, y, g->color);
-        }
-    }
-}
-
-/* Bresenham; pat 0xFFFF solid, else bit 15 first, one bit a pixel along the line */
+/* Bresenham; pat 0xFFFF solid, else bit 15 first, one bit a pixel along the line. Each pixel (and, for
+ * a thick line, the two beside it across the major axis) is clipped to the viewport and the canvas
+ * with one unsigned compare a coordinate, written through the row table (XOR flips in place) and
+ * widens a local box; the dirty rectangle is updated once per line. Pixel-exact with the per-pixel
+ * gput chain it replaced (tests: hot_paths_are_pixel_exact). */
 static void line(const struct rip_gfx *g, struct cv *cv, int x0, int y0, int x1, int y1, unsigned pat)
 {
     int dx = x1 > x0 ? x1 - x0 : x0 - x1, dy = y1 > y0 ? y1 - y0 : y0 - y1;
     int sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
-    int err = dx - dy, k = 0, xmajor = dx >= dy;
+    int err = dx - dy, k = 0, xmajor = dx >= dy, thick = g->thick == 3;
+    int cx0 = g->vx0 < 0 ? 0 : g->vx0, cx1 = g->vx1 >= cv->w ? cv->w - 1 : g->vx1;
+    int cy0 = g->vy0 < 0 ? 0 : g->vy0, cy1 = g->vy1 >= cv->h ? cv->h - 1 : g->vy1;
+    unsigned ux, uy;
+    int bx0 = cv->w, by0 = cv->h, bx1 = -1, by1 = -1, xr = g->wmode == 1;
+    unsigned char col = (unsigned char)g->color;
+    if (cx1 < cx0 || cy1 < cy0)
+        return;
+    ux = (unsigned)(cx1 - cx0);
+    uy = (unsigned)(cy1 - cy0);
+#define LPLOT(PX, PY)                                                                                  \
+    do {                                                                                               \
+        int ax_ = (PX), ay_ = (PY);                                                                    \
+        if ((unsigned)(ax_ - cx0) <= ux && (unsigned)(ay_ - cy0) <= uy) {                              \
+            unsigned char *q_ = cv->row[ay_] + ax_;                                                    \
+            if (xr)                                                                                    \
+                *q_ ^= col;                                                                            \
+            else                                                                                       \
+                *q_ = col;                                                                             \
+            if (ax_ < bx0)                                                                             \
+                bx0 = ax_;                                                                             \
+            if (ax_ > bx1)                                                                             \
+                bx1 = ax_;                                                                             \
+            if (ay_ < by0)                                                                             \
+                by0 = ay_;                                                                             \
+            if (ay_ > by1)                                                                             \
+                by1 = ay_;                                                                             \
+        }                                                                                              \
+    } while (0)
     for (;;) {
-        if ((pat >> (15 - (k & 15))) & 1)
-            pen(g, cv, x0, y0, xmajor);
+        if (pat == 0xFFFF || (pat >> (15 - (k & 15))) & 1) {
+            LPLOT(x0, y0);
+            if (thick) {
+                if (xmajor) {
+                    LPLOT(x0, y0 - 1);
+                    LPLOT(x0, y0 + 1);
+                } else {
+                    LPLOT(x0 - 1, y0);
+                    LPLOT(x0 + 1, y0);
+                }
+            }
+        }
         k++;
         if (x0 == x1 && y0 == y1)
             break;
@@ -207,6 +235,8 @@ static void line(const struct rip_gfx *g, struct cv *cv, int x0, int y0, int x1,
             }
         }
     }
+#undef LPLOT
+    cv_dirty(cv, bx0, by0, bx1 + 1, by1 + 1);
 }
 
 static void styled_line(const struct rip_gfx *g, struct cv *cv, int x0, int y0, int x1, int y1)
@@ -268,7 +298,7 @@ static void poly_line(const struct rip_gfx *g, struct cv *cv, const int *pt, int
     for (i = 1; i < n; i++)
         line(&s, cv, pt[2 * i - 2], pt[2 * i - 1], pt[2 * i], pt[2 * i + 1], 0xFFFF);
     if (n == 1)
-        pen(&s, cv, pt[0], pt[1], 1);
+        line(&s, cv, pt[0], pt[1], pt[0], pt[1], 0xFFFF);
 }
 
 /* even-odd scanline fill of a closed polygon with the fill style */
@@ -392,6 +422,59 @@ int rip_gfx_handles(const struct rip_cmd *c)
     return 0;
 }
 
+/* One 8x8 glyph at the pen, each set bit a s x s block (across: column k to the right; up: rotated a
+ * quarter turn counter-clockwise, the glyph's top toward the left). Blocks are clipped once to the
+ * viewport and the canvas, then written through the row table: the scale steps by addition (a
+ * 68000 multiply is ~200 cycles), no per-pixel call, and one dirty update for the glyph. XOR mode
+ * flips the pixel in place. Pixel-exact with the per-pixel gput loop (tests: hot_paths_are_pixel_exact). */
+static void glyph(const struct rip_gfx *g, struct cv *cv, int ch, int s)
+{
+    int cx0 = g->vx0 < 0 ? 0 : g->vx0, cx1 = g->vx1 >= cv->w ? cv->w - 1 : g->vx1;
+    int cy0 = g->vy0 < 0 ? 0 : g->vy0, cy1 = g->vy1 >= cv->h ? cv->h - 1 : g->vy1;
+    int dx0 = cv->w, dy0 = cv->h, dx1 = -1, dy1 = -1;
+    unsigned char col = (unsigned char)g->color;
+    int xor = g->wmode == 1, r, k;
+    int rx = g->px, ry = g->py; /* the block origin of row r: across steps y, up steps x */
+    const unsigned char *rows = font8[ch & 255];
+    for (r = 0; r < 8; r++) {
+        unsigned bits = rows[r];
+        int x = g->fdir ? rx : g->px, y = g->fdir ? g->py - s : ry;
+        for (k = 0; k < 8; k++) {
+            if ((bits >> (7 - k)) & 1) {
+                int bx0 = x < cx0 ? cx0 : x, bx1 = x + s - 1 > cx1 ? cx1 : x + s - 1;
+                int by0 = y < cy0 ? cy0 : y, by1 = y + s - 1 > cy1 ? cy1 : y + s - 1;
+                if (bx1 >= bx0 && by1 >= by0) {
+                    int yy;
+                    for (yy = by0; yy <= by1; yy++) {
+                        unsigned char *p = cv->row[yy] + bx0, *e = cv->row[yy] + bx1 + 1;
+                        if (xor)
+                            while (p < e)
+                                *p++ ^= col;
+                        else
+                            while (p < e)
+                                *p++ = col;
+                    }
+                    if (bx0 < dx0)
+                        dx0 = bx0;
+                    if (bx1 > dx1)
+                        dx1 = bx1;
+                    if (by0 < dy0)
+                        dy0 = by0;
+                    if (by1 > dy1)
+                        dy1 = by1;
+                }
+            }
+            if (g->fdir)
+                y -= s;
+            else
+                x += s;
+        }
+        rx += s;
+        ry += s;
+    }
+    cv_dirty(cv, dx0, dy0, dx1 + 1, dy1 + 1);
+}
+
 int rip_gfx_exec(struct rip_gfx *g, struct cv *cv, const struct rip_cmd *c)
 {
     const long *a = c->arg;
@@ -466,7 +549,7 @@ int rip_gfx_exec(struct rip_gfx *g, struct cv *cv, const struct rip_cmd *c)
         g->fsize = (int)(a[2] < 1 ? 1 : a[2] > 10 ? 10 : a[2]);
         break;
     case 'T': case '@': {
-        int i, r, k, s = g->fsize, x, y, sx, sy;
+        int i, s = g->fsize;
         if (c->ch == '@') {
             g->px = (int)a[0];
             g->py = (int)a[1];
@@ -488,20 +571,7 @@ int rip_gfx_exec(struct rip_gfx *g, struct cv *cv, const struct rip_cmd *c)
             break;
         }
         for (i = 0; i < c->ntext; i++) {
-            for (r = 0; r < 8; r++) {
-                unsigned row = font8[c->text[i]][r];
-                for (k = 0; k < 8; k++) {
-                    if (!((row >> (7 - k)) & 1))
-                        continue;
-                    /* across: glyph column k to the right; up: rotated a quarter turn
-                     * counter-clockwise, the glyph's top toward the left */
-                    x = g->fdir ? g->px + r * s : g->px + k * s;
-                    y = g->fdir ? g->py - (k + 1) * s : g->py + r * s;
-                    for (sy = 0; sy < s; sy++)
-                        for (sx = 0; sx < s; sx++)
-                            gput(g, cv, x + sx, y + sy, g->color);
-                }
-            }
+            glyph(g, cv, c->text[i], s);
             if (g->fdir)
                 g->py -= 8 * s;
             else
