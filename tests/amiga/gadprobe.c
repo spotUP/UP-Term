@@ -51,6 +51,32 @@ static int contains(const char *h, const char *n)
     return 0;
 }
 
+#define MAXCL 4
+static struct IClass *g_cl[MAXCL];
+static int g_nc;
+static int sgchain(struct IClass *c)
+{
+    int d;
+    for (d = 0; c && d < 8; d++, c = c->cl_Super)
+        if (c->cl_ID && c->cl_ID[0] == 's' && c->cl_ID[1] == 't' && c->cl_ID[2] == 'r' && c->cl_ID[3] == 'g' && c->cl_ID[4] == 'c') return 1;
+    return 0;
+}
+static void chain(const char *tag, struct IClass *c)
+{
+    int d;
+    for (d = 0; c && d < 8; d++, c = c->cl_Super)
+        printf("%s d=%d id=%s class=%08lx entry=%08lx sub=%08lx data=%08lx super=%08lx\n", tag, d, c->cl_ID ? (const char *)c->cl_ID : "-",
+               (unsigned long)c, (unsigned long)c->cl_Dispatcher.h_Entry, (unsigned long)c->cl_Dispatcher.h_SubEntry,
+               (unsigned long)c->cl_Dispatcher.h_Data, (unsigned long)c->cl_Super);
+}
+static void fresh(const char *name)
+{
+    Object *o = NewObjectA(NULL, (UBYTE *)name, NULL);
+    if (!o) { printf("fresh %s: none\n", name); return; }
+    chain(name, OCLASS(o));
+    DisposeObject(o);
+}
+
 static void gadget(struct Window *w, const char *list, struct Gadget *g)
 {
     unsigned type = g->GadgetType & GTYP_GTYPEMASK;
@@ -83,6 +109,7 @@ static void gadget(struct Window *w, const char *list, struct Gadget *g)
     if ((g->GadgetType & GTYP_GTYPEMASK) == GTYP_CUSTOMGADGET) {
         struct IClass *cl = OCLASS((Object *)g);
         int d;
+        if (sgchain(cl) && g_nc < MAXCL) g_cl[g_nc++] = cl;   /* chain printed after the lock */
         put(" CL=");
         for (d = 0; cl && d < 8; d++) {
             if (d) put("/");
@@ -120,6 +147,9 @@ int main(int argc, char **argv)
     }
     UnlockIBase(lock);
     for (i = 0; i < g_n; i++) printf("%s\n", g_buf[i]);
+    for (i = 0; i < g_nc; i++) chain("gadget", g_cl[i]);
+    fresh("strgclass");
+    fresh("dopusstrgclass");
     printf("gadprobe: %d lines%s\n", g_n, g_over ? " (cap hit)" : "");
     CloseLibrary((struct Library *)IntuitionBase);
     return 0;

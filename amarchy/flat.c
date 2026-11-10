@@ -2540,6 +2540,18 @@ static void print_status(void)
         put_word(line, &n, " ground=");             put_num(line, &n, g_r->sground);
         put_word(line, &n, " sg=");                 put_num(line, &n, g_r->sgseen);
         put_word(line, &n, " gs=");                 put_num(line, &n, g_r->gslot ? 1 : 0);
+        {   /* s71: slot address and gate code address, hex, to compare with tests/amiga/gadprobe */
+            static const char hx[] = "0123456789abcdef";
+            unsigned long v[2];
+            int k, j;
+            v[0] = (unsigned long)g_r->gslot;
+            v[1] = g_r->ggate ? (unsigned long)g_r->ggate->code : 0;
+            put_word(line, &n, " gslot=0x");
+            for (k = 0; k < 2; k++) {
+                for (j = 28; j >= 0; j -= 4) line[n++] = hx[(v[k] >> j) & 15];
+                if (!k) put_word(line, &n, " gcode=0x");
+            }
+        }
         put_word(line, &n, " ext=");                put_num(line, &n, g_r->sgext);
         line[n] = 0;
         PutStr((STRPTR)line);
