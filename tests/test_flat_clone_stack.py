@@ -32,6 +32,18 @@ class FlatCloneStack(unittest.TestCase):
         self.assertNotIn("flat_clone_draw_in(", func(src, "c2_clone"), "c2_clone calls the clone on the caller's stack")
         self.assertRegex(func(src, "c2_clone"), r"!cl_stk", "c2_clone has no fallback for a missing stack")
 
+    def test_c8_frame_draw_runs_through_flat_on_stack(self):
+        # S71-C8-PRIVATE-STACK: the frameiclass draw hook runs on any task's stack (flat budget: 384 bytes); its draw moves to cl_stk.
+        src = code()
+        self.assertRegex(func(src, "c8_draw_on"), r"flat_on_stack\(\s*c8_run\s*,", "c8_draw_on does not call flat_on_stack(c8_run, ...)")
+        self.assertIn("c8_draw(", func(src, "c8_on_private"))
+        self.assertRegex(src, r"\(\*c8_run\)\(void \*\)\s*=\s*c8_on_private;", "c8_run must be the indirect way to c8_on_private")
+        self.assertRegex(func(src, "c8_skip"), r"c8_draw_on\(", "c8_skip does not hand the draw to c8_draw_on")
+        self.assertNotRegex(func(src, "c8_skip"), r"raa_frame_draw|c8_draw\(", "c8_skip draws on the caller's stack")
+        self.assertRegex(func(src, "c8_draw_on"), r"AttemptSemaphore\(&cl_ss\)", "c8_draw_on must not wait for cl_ss (lock cycle)")
+        self.assertNotRegex(func(src, "c8_draw_on"), r"ObtainSemaphore", "c8_draw_on waits for a semaphore in a draw hook")
+        self.assertRegex(func(src, "c8_draw_on"), r"cl_stk \+ CLONE_STACK_BYTES", "c8_draw_on has no re-entry test for the private stack")
+
     def test_the_stack_is_big_enough(self):
         m = re.search(r"#define\s+CLONE_STACK_BYTES\s+(\d+)", code())
         self.assertTrue(m, "no CLONE_STACK_BYTES")

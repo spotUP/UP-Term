@@ -827,17 +827,12 @@ static struct Gadget *border_button_at(struct RastPort *rp, int x0, int y0, int 
     return NULL;
 }
 
-static int c8_skip(Object *obj, Msg msg)
+/* The frame draw of c8_skip (1 = drawn, 0 = leave it to the ROM frame). Runs on the private stack (S71-C8-PRIVATE-STACK): the
+ * flat_state copy, the outline columns and the raa_* draw calls are far over the 384 byte budget of a hook on a foreign stack. */
+static int c8_draw(Object *obj, Msg msg)
 {
     flatshared *r = g_r;
     struct impDraw *d = (struct impDraw *)msg;
-    r->fcalls++;
-    if (msg->MethodID != FLAT_IM_DRAW && msg->MethodID != FLAT_IM_DRAWFRAME)
-        return 0;
-    if (!d->imp_RPort || !d->imp_DrInfo)
-        return 0;
-    if (flat_frame_decide(&r->st, msg->MethodID, d->imp_DrInfo->dri_Pens[SHINEPEN], d->imp_DrInfo->dri_Pens[BACKGROUNDPEN]) != FLAT_DRAW_SKIP)
-        return 0;
     {
         struct Image *im = (struct Image *)obj;
         ULONG eo = 1;
@@ -883,6 +878,59 @@ static int c8_skip(Object *obj, Msg msg)
     }
     r->fflat++;
     return 1;
+}
+
+typedef struct { Object *obj; Msg msg; int rc; } c8_call;
+static LONG c8_on_private(void *a);
+/* The way into c8_on_private: always an indirect call (flat_on_stack's `jsr (a2)`, and the re-entry call below). The flat budget
+ * follows direct calls only and skips calls through a register, so the draw's frames are charged to the private stack, where
+ * they run, and not to the caller's 384 bytes. Not const, so the compiler cannot fold it back into a direct call. */
+static LONG (*c8_run)(void *) = c8_on_private;
+
+/* The function that runs on the private stack (flat_on_stack). */
+static LONG c8_on_private(void *a)
+{
+    c8_call *c = (c8_call *)a;
+    c->rc = c8_draw(c->obj, c->msg);
+    return 0;
+}
+
+/* c8_draw on the private stack of the clone (cl_stk, cl_sss), shared with c2_clone, never on the caller's.
+ * Re-entry: a frame drawn from inside a clone draw (the clone's NewObjectA/render path) already runs on cl_stk, and cl_ss is held by
+ * this very task: the stack pointer is inside cl_stk, so c8_run calls the draw directly (no second StackSwap on cl_sss, no semaphore).
+ * LOCK ORDER: cl_ss is only ever taken here with AttemptSemaphore, never waited for (as in c2_clone and clone_render). A hook that
+ * never waits is no edge in a wait-for graph, so no cycle with a layer lock or any other task's lock can close on it (s71 freeze:
+ * a lock cycle in a draw hook); the only waiter is main's ObtainSemaphore(&cl_ss) at shutdown, after the hooks are removed, and
+ * nothing holding cl_ss waits for main. LockIBase is never taken. Busy (another task is drawing a clone or a frame) or no stack: 0,
+ * the ROM draws its own frame, as c2_clone falls back to the block glyph. */
+static int c8_draw_on(Object *obj, Msg msg)
+{
+    c8_call c;
+    c.obj = obj; c.msg = msg; c.rc = 0;
+    if (cl_stk && (uint8_t *)&c >= cl_stk && (uint8_t *)&c < cl_stk + CLONE_STACK_BYTES)
+    {   /* already on cl_stk (cl_ss held by this task): no second swap */
+        c8_run(&c);
+        return c.rc;
+    }
+    if (!cl_stk || !AttemptSemaphore(&cl_ss))
+        return 0;
+    flat_on_stack(c8_run, &c, &cl_sss);
+    ReleaseSemaphore(&cl_ss);
+    return c.rc;
+}
+
+static int c8_skip(Object *obj, Msg msg)
+{
+    flatshared *r = g_r;
+    struct impDraw *d = (struct impDraw *)msg;
+    r->fcalls++;
+    if (msg->MethodID != FLAT_IM_DRAW && msg->MethodID != FLAT_IM_DRAWFRAME)
+        return 0;
+    if (!d->imp_RPort || !d->imp_DrInfo)
+        return 0;
+    if (flat_frame_decide(&r->st, msg->MethodID, d->imp_DrInfo->dri_Pens[SHINEPEN], d->imp_DrInfo->dri_Pens[BACKGROUNDPEN]) != FLAT_DRAW_SKIP)
+        return 0;
+    return c8_draw_on(obj, msg);
 }
 
 ULONG c8_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1") Msg msg)
