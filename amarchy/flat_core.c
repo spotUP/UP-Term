@@ -882,6 +882,12 @@ void flat_title_span_add(const flat_gadrect *g, int win_w, int bar_h, int *x0, i
     }
 }
 
+int flat_title_gadget(unsigned gadget_type, unsigned activation, int gzz, const flat_gadrect *g, int bar_h)
+{
+    return (gadget_type & 0x8000u) != 0 || (activation & 0x0010u) != 0 ||
+           (!gzz && !(activation & 0x00E0u) /* GACT_LEFT|RIGHT|BOTTOMBORDER */ && g->y >= 0 && g->y + g->h <= bar_h);
+}
+
 void flat_title_span(const flat_gadrect *g, int n, int win_w, int bar_h, int *x0, int *x1)
 {
     int i;

@@ -1239,22 +1239,24 @@ static void tx_gad(const struct Window *w, const struct Gadget *g, flat_gadrect 
     gr->h = g->Height + ((g->Flags & GFLG_RELHEIGHT) ? w->Height : 0);
     gr->relright = (g->Flags & GFLG_RELRIGHT) != 0;
     gr->relwidth = (g->Flags & GFLG_RELWIDTH) != 0;
-    gr->drag = (g->GadgetType & GTYP_SYSTYPEMASK) == GTYP_WDRAGGING;
+    gr->drag = (g->GadgetType & GTYP_SYSGADGET) && (g->GadgetType & GTYP_SYSTYPEMASK) == GTYP_WDRAGGING;
 }
 
 static void tx_span(struct Window *w, int *sx0, int *sx1)
 {
     flat_gadrect gr;
     struct Gadget *g;
-    int ng = 0;
+    int ng = 0, n = 0;
     *sx0 = 0;
     *sx1 = w->Width - 1;
-    for (g = w->FirstGadget; g && ng < 8; g = g->NextGadget)
-        if (g->GadgetType & GTYP_SYSGADGET) {
-            tx_gad(w, g, &gr);
+    /* FLAT-TITLE-GADGETS: system gadgets and the application's title-bar gadgets (DOpus iconify / lock / hijacked zoom) */
+    for (g = w->FirstGadget; g && n < 64 && ng < 8; g = g->NextGadget, n++) {
+        tx_gad(w, g, &gr);
+        if (flat_title_gadget(g->GadgetType, g->Activation, (w->Flags & WFLG_GIMMEZEROZERO) != 0, &gr, w->BorderTop)) {
             flat_title_span_add(&gr, w->Width, w->BorderTop, sx0, sx1);
             ng++;
         }
+    }
 }
 
 /* The decided title (ft): the band, then the title's pens (flat_tx_c draws the text and puts the caller's pens back) */

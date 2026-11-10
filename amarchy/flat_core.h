@@ -377,6 +377,11 @@ void flat_title_span(const flat_gadrect *g, int n, int win_w, int bar_h, int *x0
 /* One gadget of flat_title_span (S62-FLAT-RF-TX-BUDGET: the Text hook keeps no gadget array): *x0 = 0, *x1 = win_w - 1, then this
  * for each gadget in turn gives the same span. */
 void flat_title_span_add(const flat_gadrect *g, int win_w, int bar_h, int *x0, int *x1);
+/* FLAT-TITLE-GADGETS: 1 when a gadget belongs to the title bar for flat_title_span: a system gadget (gadget_type & 0x8000
+ * GTYP_SYSGADGET), a GACT_TOPBORDER (0x0010) gadget (app iconify / lock / snapshot: DOpus, MUI, ReAction), or, with no border
+ * flag at all (DOpus's hijacked zoom if Intuition left GACT_TOPBORDER clear), a gadget wholly inside rows 0..bar_h-1 of a window
+ * that is not GIMMEZEROZERO (there an inner gadget's TopEdge is inner-relative and would look like a title gadget). */
+int flat_title_gadget(unsigned gadget_type, unsigned activation, int gzz, const flat_gadrect *g, int bar_h);
 int flat_title_decide(const flat_state *s, int depth, int active, const char *title, int win_w, int bar_h,
                       const char *str, int count, int cp_y, int bx0, int bx1, flat_title *t);
 

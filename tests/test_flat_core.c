@@ -580,6 +580,41 @@ static void test_dopus_no_ring(void)
     }
 }
 
+/* FLAT-TITLE-GADGETS (S1.3): DOpus's iconify / lock / hijacked zoom are not system gadgets; the band must still end before the
+ * leftmost of them. Reachability: the fold below is exactly tx_span (flat.c) over the lister's gadget list. Revert check: a
+ * SYSGADGET-only filter leaves x1 at 420. */
+static void test_title_gadget_filter(void)
+{
+    flat_gadrect rect = { 0, 0, 24, 14, 0, 0, 0 }, low = { 0, 20, 24, 14, 0, 0, 0 };
+    flat_gadrect g[6];
+    int i, x0, x1, ng;
+    unsigned type[6], act[6];
+    CHECK_INT(flat_title_gadget(0x0005, 0x10, 0, &rect, 14), 1);          /* GACT_TOPBORDER */
+    CHECK_INT(flat_title_gadget(0x0005, 0, 0, &rect, 14), 1);             /* geometry branch */
+    CHECK_INT(flat_title_gadget(0x0005, 0, 1, &rect, 14), 0);             /* GIMMEZEROZERO: inner-relative */
+    CHECK_INT(flat_title_gadget(0x0005, 0x20, 0, &rect, 14), 0);          /* GACT_RIGHTBORDER */
+    CHECK_INT(flat_title_gadget(0x0005, 0, 0, &low, 14), 0);              /* content gadget */
+    CHECK_INT(flat_title_gadget(0x8040, 0, 0, &low, 14), 1);              /* system gadget anywhere */
+    /* DOpus lister, win_w 444, bar_h 14: close, depth, zoom, iconify, lock, drag (LeftEdges 349/373/398/421) */
+    {
+        flat_gadrect d[6] = { { 0, 0, 20, 14, 0, 0, 0 }, { -23, 0, 24, 14, 1, 0, 0 }, { -46, 0, 24, 14, 1, 0, 0 },
+                              { -71, 0, 24, 14, 1, 0, 0 }, { -95, 0, 24, 14, 1, 0, 0 }, { 0, 0, -20, 14, 0, 1, 1 } };
+        unsigned t[6] = { 0x8001, 0x8001, 0x0005, 0x0005, 0x0005, 0x8020 };
+        unsigned a[6] = { 0, 0, 0x10, 0x10, 0x10, 0 };
+        for (i = 0; i < 6; i++) { g[i] = d[i]; type[i] = t[i]; act[i] = a[i]; }
+    }
+    x0 = 0; x1 = 443; ng = 0;
+    for (i = 0; i < 6; i++)
+        if (flat_title_gadget(type[i], act[i], 0, &g[i], 14)) { flat_title_span_add(&g[i], 444, 14, &x0, &x1); ng++; }
+    CHECK_INT(ng, 6);
+    CHECK_INT(x0, 20);
+    CHECK_INT(x1, 348);
+    x0 = 0; x1 = 443;                                                     /* the old filter: system gadgets only */
+    for (i = 0; i < 6; i++)
+        if (type[i] & 0x8000u) flat_title_span_add(&g[i], 444, 14, &x0, &x1);
+    CHECK_INT(x1, 420);
+}
+
 /* the fake dispatcher: the same three steps as flat.c c2_disp_reg / c2_disp_stk */
 static int fake_dispatch(const flat_state *st, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy, int w, int h)
 {
@@ -3251,6 +3286,7 @@ void suite_flat_core(void)
     test_dopus_decide();
     test_dopus_box_outline();
     test_dopus_no_ring();
+    test_title_gadget_filter();
     test_dopus_path();
     test_glyph_goldens();
     test_glyph_solid_and_state_equal();
