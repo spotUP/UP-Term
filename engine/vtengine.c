@@ -8704,8 +8704,10 @@ int vt_encode_mouse_px(const vt_term *t, int button, int kind, int x, int y, int
     vt_u32 m = t->modes;
     int cb, n = 0, i;
     char b[32];
-    if (t->pers != VT_XTERM)
-        return 0;
+    /* Any personality: the modes are set only by the host's own DECSET, and
+     * Vt_MouseOwned() hands the click to the host whenever one is on. A BBS
+     * door on the pcansi personality that sends ?1003h ?1006h gets its
+     * reports, or the click would vanish (owned, never sent). */
     if (!(m & (VT_MODE_MOUSE_X10 | VT_MODE_MOUSE_NORMAL | VT_MODE_MOUSE_BUTTON | VT_MODE_MOUSE_ANY)))
         return 0;
     if (kind == 2 && !(m & VT_MODE_MOUSE_ANY) && !(m & VT_MODE_MOUSE_BUTTON))
