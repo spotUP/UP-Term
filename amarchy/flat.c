@@ -61,6 +61,7 @@
 #include "iconpen_core.h"
 #include "iconpen_dos.h"
 #include "gthemes_core.h"
+#include "gthemes_dos.h"
 #include "iclabel_core.h"
 #include "../render/aa_ink.h"
 #include "../render/pen_match.h"
@@ -2579,6 +2580,16 @@ static void print_status(void)
         put_word(line, &n, " spen=");               put_num(line, &n, vspen);
         put_word(line, &n, " sdep=");               put_num(line, &n, vsdep);
         put_word(line, &n, " ssel=");               put_num(line, &n, vssel);
+        {   /* FLAT-BOOT-THEME-FIELDS: read from the record at STATUS time (copy, taken under Forbid), unlike the sentinels the strgclass hook writes */
+            static const char hx3[] = "0123456789abcdef";
+            int k;
+            put_word(line, &n, " selrgb=");
+            for (k = 0; k < 3; k++) {
+                line[n++] = hx3[(copy.sel_rgb[k] >> 4) & 15];
+                line[n++] = hx3[copy.sel_rgb[k] & 15];
+            }
+            put_word(line, &n, " pensel=");         put_num(line, &n, (unsigned long)copy.pen_sel);
+        }
         put_word(line, &n, " snoext=");             put_num(line, &n, vsnoext);
         {
             static const char hx2[] = "0123456789abcdef";
@@ -3345,9 +3356,11 @@ int main(void)
     {   /* FLAT-C9: the switch and pens from the prefs (the one mapping desk apply uses too). Read here, before the
            guard: a DOS read inside Forbid waits and breaks it, and a second starter (User-Startup's BOOT line and
            Amarchy's start gate run in the same second) then passed the guard too and patched twice (KS31-BOOT-CRASH) */
+        static gtheme boot_theme;                   /* FLAT-BOOT-THEME-FIELDS: static, a theme is large for main's stack */
         am_prefs *bp;
+        gt_dos_load_current(&boot_theme);           /* the saved theme (prefs AM_GTHEME, else the default); an unreadable file gives gt_load's built-in default */
         bp = amconf_borrow();
-        desk_flat_state(amconf_flat_index(bp, AM_FLAT), amconf_flat_index(bp, AM_FLATGAD), amconf_flat_index(bp, AM_UIAA), &st0);
+        desk_flat_full(amconf_flat_index(bp, AM_FLAT), amconf_flat_index(bp, AM_FLATGAD), amconf_flat_index(bp, AM_UIAA), &boot_theme, &st0);
         amconf_return(bp);
     }
     Forbid();

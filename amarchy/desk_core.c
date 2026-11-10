@@ -162,6 +162,16 @@ void desk_flat_look(const gtheme *t, flat_state *s)
     s->knob_rgb[2] = (unsigned char)k;
 }
 
+/* FLAT-BOOT-THEME-FIELDS: the whole theme-and-prefs mapping of flat_state in one call: desk_flat_state, desk_flat_inbar and
+ * desk_flat_look. Amarchy's desk apply (dk_flat_sync_theme) and amarchy-flat's own start both use it, so a resident started at
+ * boot holds the same selection, inactive-bar and look fields as one that was synced later. */
+void desk_flat_full(int flat, int gadgets, int aa, const gtheme *t, flat_state *s)
+{
+    desk_flat_state(flat, gadgets, aa, s);
+    desk_flat_inbar(t, s);                  /* S32-INACTIVE-BAR: the theme `inactive` colour, and sel_rgb */
+    desk_flat_look(t, s);                   /* TE-6.1: the version-5 look fields and knob colour */
+}
+
 /* TE-2.3: the Window Title Bar Inactive element (S32-INACTIVE-BAR); the group Inactive when the model gives it no ref */
 uc_u32 desk_inbar_rgb(const gtheme *t)
 {

@@ -62,42 +62,6 @@ static void wb_pens_apply(const gtheme *th)
         CloseLibrary((struct Library *)IntuitionBase);
 }
 
-long gt_dos_read(void *ctx, const char *path, char *buf, long cap)
-{
-    BPTR f = Open((STRPTR)path, MODE_OLDFILE);
-    LONG got;
-    (void)ctx;
-    if (!f)
-        return -1;
-    got = Read(f, buf, cap);
-    Close(f);
-    return got < 0 ? 0 : got;
-}
-
-void gt_dos_load(const char *name, gtheme *out)
-{
-    gt_load(gt_dos_read, 0, name, out);
-}
-
-void gt_dos_current(char *out, int cap)
-{
-    am_prefs *ap;
-    const char *v;
-    ap = amconf_borrow();
-    v = ap->val[AM_GTHEME];
-    if (!*v || (int)strlen(v) >= cap)
-        v = GT_DEFAULT;
-    strcpy(out, v);
-    amconf_return(ap);
-}
-
-void gt_dos_load_current(gtheme *out)
-{
-    char name[GT_NAME];
-    gt_dos_current(name, sizeof name);
-    gt_dos_load(name, out);
-}
-
 /* The theme's terminal colours into GT_TERM_FILE: every open console tab watches it and recolours (vtcon_handler.c). The
  * drawer ENV:up-term exists on any install that has run the console; made here when it does not. */
 unsigned long gt_dos_term_writes;

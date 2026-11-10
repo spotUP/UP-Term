@@ -2123,6 +2123,27 @@ static void test_scroller(void)
     CHECK_INT(flat_scroller_pen(&s, 3, 1, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), -1);
 }
 
+/* FLAT-BOOT-THEME-FIELDS: desk_flat_full is the one mapping; on the default theme it gives the selection colour the input ground needs */
+static long ftheme_none(void *ctx, const char *path, char *buf, long cap)
+{
+    (void)ctx; (void)path; (void)buf; (void)cap;
+    return -1;                                                           /* no theme file: gt_load falls back to the built-in theme */
+}
+static void test_desk_flat_full(void)
+{
+    gtheme th;
+    flat_state full, parts;
+    gt_load(ftheme_none, 0, GT_DEFAULT, &th);
+    flat_init(&full);
+    flat_init(&parts);
+    desk_flat_full(1, 1, 1, &th, &full);
+    desk_flat_state(1, 1, 1, &parts);
+    desk_flat_inbar(&th, &parts);
+    desk_flat_look(&th, &parts);
+    CHECK_INT(memcmp(&full, &parts, sizeof full), 0);                    /* the three calls and nothing else */
+    CHECK_INT((full.sel_rgb[0] | full.sel_rgb[1] | full.sel_rgb[2]) != 0, 1);   /* a boot resident holds a selection colour, not zero */
+}
+
 /* KNOB-PEN: the knob has its own pen from 16 colours, a colour between the surface and the muted text on every theme; at 8 colours
  * or fewer (no free pen) it is DK_MUTED as before. */
 static void test_knob_pen(void)
@@ -3569,6 +3590,7 @@ void suite_flat_core(void)
     test_dopus_box_outline();
     test_dopus_no_ring();
     test_input_ground();
+    test_desk_flat_full();
     test_title_gadget_filter();
     test_dopus_path();
     test_lock_glyph();

@@ -523,7 +523,7 @@ static int dk_apply(const gtheme *th, char *why, int cap)
 
 /* FLAT-C9: write the flat_state fields of the running amarchy-flat from the prefs (the one mapping desk_flat_state), then redraw every
  * window frame so the switch shows at once. The layout is checked (flat_check) before the write; the other fields are the program's.
- * No record: the program is not running, so start it (BOOT: resident only when a flat switch is on; it writes the same fields itself). */
+ * No record: the program is not running, so start it (BOOT: resident only when a flat switch is on; it writes the same fields itself: FLAT-BOOT-THEME-FIELDS, desk_flat_full at its start). */
 unsigned long desk_dos_flat_writes;
 /* L9: flat on puts the filled icons on the Workbench default icons (amarchy-icons APPLY), flat off puts the originals back (RESTORE).
  * One process per change of the on/off state, so two quick prefs writes never run two at once on the manifest; RESTORE with no
@@ -548,7 +548,7 @@ static void dk_icons_sync(int on, int outline)
 /* changed_only: the prefs-file notify path (desk_dos_flat_sync): write and redraw only when the block's fields differ, so a keymap edit
  * or the commodity's own save after a desk apply redraws nothing. */
 /* FLAT-ABSENT-AT-BOOT: no Amarchy.Flat record and a flat switch on: start amarchy-flat (BOOT form: resident only when a switch is on;
- * it writes the theme fields itself). The one place Amarchy starts it, for a desk apply and for the start gate alike. */
+ * it writes the theme fields itself, FLAT-BOOT-THEME-FIELDS: desk_flat_full in its main). The one place Amarchy starts it, for a desk apply and for the start gate alike. */
 unsigned long desk_dos_flat_starts;
 
 static void dk_flat_start(int flat, int gad)
@@ -588,13 +588,9 @@ static void dk_flat_sync_theme(const gtheme *thp, int changed_only)
     r = (flatshared *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
     if (r && flat_check(&r->st, sizeof r->st) == FLAT_OK) {
         flat_state next = r->st;
-        desk_flat_state(flat, gad, aa, &next);
-        desk_flat_inbar(th, &next);                 /* S32-INACTIVE-BAR: the theme `inactive` colour */
-        desk_flat_look(th, &next);                  /* TE-6.1: the version-5 look fields and knob colour */
+        desk_flat_full(flat, gad, aa, th, &next);   /* FLAT-BOOT-THEME-FIELDS: the one mapping, also run by amarchy-flat at its start */
         if (!changed_only || memcmp(&next, &r->st, sizeof next) != 0) {
-            desk_flat_state(flat, gad, aa, &r->st);
-            desk_flat_inbar(th, &r->st);
-            desk_flat_look(th, &r->st);
+            desk_flat_full(flat, gad, aa, th, &r->st);
             if (r->task)
                 Signal(r->task, SIGBREAKF_CTRL_D);  /* LUCIDE L7: amarchy-flat takes or drops the icon pens */
             wrote = 1;

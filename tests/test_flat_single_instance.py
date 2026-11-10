@@ -13,7 +13,7 @@ call that can wait (prefs read, DOS, output) may run, and the prefs read happens
 import pathlib, re, unittest
 
 SRC = pathlib.Path(__file__).resolve().parent.parent / "amarchy" / "flat.c"
-WAITS = ("amconf_borrow(", "amconf_load(", "amconf_return(", "desk_flat_state(", "boot_wanted(", "Open(", "Read(",
+WAITS = ("amconf_borrow(", "amconf_load(", "amconf_return(", "desk_flat_state(", "desk_flat_full(", "gt_dos_load_current(", "boot_wanted(", "Open(", "Read(",
          "Lock(", "PutStr(", "Printf(", "print_status(", "Delay(", "Wait(", "OpenLibrary(")
 
 
@@ -55,7 +55,8 @@ class FlatSingleInstance(unittest.TestCase):
         forbid, _, add, _ = self.guard(body)
         before = body[:forbid]
         self.assertIn("amconf_borrow(", before, "the switch and pens are no longer read from the prefs at start")
-        self.assertIn("desk_flat_state(", before, "the prefs no longer map to the flat state at start")
+        self.assertIn("desk_flat_full(", before, "FLAT-BOOT-THEME-FIELDS: main no longer fills the theme fields (sel_rgb) at start")
+        self.assertIn("gt_dos_load_current(", before, "FLAT-BOOT-THEME-FIELDS: main no longer loads the current theme at start")
         self.assertIn("amconf_return(", before, "the borrowed prefs are not returned")
         self.assertRegex(body[forbid:add], r"r->st\s*=\s*\w+\s*;", "the record does not take the state read before the guard")
 
