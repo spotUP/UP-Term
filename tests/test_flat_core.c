@@ -1302,9 +1302,9 @@ static void test_which_from_gtype(void)
     }
     {
         char fl[64];
-        CHECK_INT(flat_frame_status_line(0, 0, 0, fl, sizeof fl) > 0 && !strcmp(fl, "frame=absent"), 1);
-        CHECK_INT(flat_frame_status_line(1, 7, 3, fl, sizeof fl) > 0 && !strcmp(fl, "frame=hooked calls=7 flat=3"), 1);
-        CHECK_INT(flat_frame_status_line(1, 7, 3, fl, 40), 0);
+        CHECK_INT(flat_frame_status_line(0, 0, 0, 0, 0, fl, sizeof fl) > 0 && !strcmp(fl, "frame=absent"), 1);
+        CHECK_INT(flat_frame_status_line(1, 7, 3, 2, 1, fl, sizeof fl) > 0 && !strcmp(fl, "frame=hooked calls=7 flat=3 busy=2 nostk=1"), 1);
+        CHECK_INT(flat_frame_status_line(1, 7, 3, 2, 1, fl, 40), 0);
     }
     {   /* FLAT-C8: the flat frame geometry: fill, then four 1 px sides; edges-only has no fill; selected fills pen_line */
         struct frame_rec_t f;

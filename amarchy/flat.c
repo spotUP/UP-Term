@@ -912,8 +912,14 @@ static int c8_draw_on(Object *obj, Msg msg)
         c8_run(&c);
         return c.rc;
     }
-    if (!cl_stk || !AttemptSemaphore(&cl_ss))
+    if (!cl_stk) {              /* counters: plain ULONG increments like fcalls/fflat, in the shared block g_r */
+        g_r->fnostk++;
         return 0;
+    }
+    if (!AttemptSemaphore(&cl_ss)) {
+        g_r->fbusy++;
+        return 0;
+    }
     flat_on_stack(c8_run, &c, &cl_sss);
     ReleaseSemaphore(&cl_ss);
     return c.rc;
@@ -2260,7 +2266,7 @@ static void print_status(void)
     flatshared *r;
     int found = 0, dfound = 0, dreason = 0, dmask = 0, dinst = 0;
     unsigned dver = 0, drev = 0;
-    unsigned long dcalls = 0, dflat = 0, fcalls = 0, fflat = 0;
+    unsigned long dcalls = 0, dflat = 0, fcalls = 0, fflat = 0, fbusy = 0, fnostk = 0;
     int finst = 0, rinst = 0;
     unsigned long rcalls = 0, rhits = 0, shits = 0, mhits = 0, bhits = 0, tcalls = 0, thits = 0, labels = 0, lskip = 0;
     int tinst = 0;
@@ -2282,7 +2288,7 @@ static void print_status(void)
         dfound = r->dfound; dver = r->dver; drev = r->drev; dreason = r->dreason; dmask = r->dmask;
         dinst = d4_installed(r); dcalls = r->dcalls; dflat = r->dflat; dbevel = r->dbevel; dface = r->dface; d5draws = r->d5draws;
         memcpy(dsum, r->dsum, sizeof dsum);
-        finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat;
+        finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat; fbusy = r->fbusy; fnostk = r->fnostk;
         rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits; mhits = r->mhits; bhits = r->bhits;
         tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits; labels = r->labels; lskip = r->lskip;
         scmin = r->cmin; schw = r->chw; scstk = r->cstk; scno = r->cnostk; memcpy(sctask, r->ctask, 16); sctask[15] = 0;
@@ -2418,7 +2424,7 @@ static void print_status(void)
             PutStr((STRPTR)"\n");
         }
     }
-    if (found && flat_frame_status_line(finst, fcalls, fflat, line, sizeof line)) {
+    if (found && flat_frame_status_line(finst, fcalls, fflat, fbusy, fnostk, line, sizeof line)) {
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
     }

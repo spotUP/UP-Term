@@ -241,8 +241,10 @@ int flat_dopus_image_which(int type);
  * IM_HITFRAME, ...) is STOCK. A missing state is STOCK. */
 #define FLAT_IM_DRAWFRAME 0x206UL
 int flat_frame_decide(const flat_state *s, unsigned long method, int pen_shine, int pen_back);
-/* STATUS line of the frameiclass hook: "frame=absent" or "frame=hooked calls=N flat=N" (flat = draws skipped). */
-int flat_frame_status_line(int installed, unsigned long calls, unsigned long flat, char *out, size_t cap);
+/* STATUS line of the frameiclass hook: "frame=absent" or "frame=hooked calls=N flat=N busy=N nostk=N" (flat = draws skipped; busy / nostk =
+ * stock-draw fallbacks of c8_draw_on: semaphore busy / no private stack). */
+int flat_frame_status_line(int installed, unsigned long calls, unsigned long flat, unsigned long busy, unsigned long nostk,
+                           char *out, size_t cap);
 
 /* STATUS extra line for the DOpus patch: "dopus=absent", "dopus=73.8 inert unknown|unmeasured|sum" or
  * "dopus=73.8 patched=<mask> calls=N flat=N". Appends " sums=<hex>,<hex>" (the measured routine sums, NULL = none) when found. Returns the length, 0 when cap < 96. */

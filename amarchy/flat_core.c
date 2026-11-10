@@ -349,7 +349,8 @@ int flat_dopus_status_line(int found, unsigned version, unsigned revision, int r
     return n > 0 && (size_t)n < cap ? n : 0;
 }
 
-int flat_frame_status_line(int installed, unsigned long calls, unsigned long flat, char *out, size_t cap)
+int flat_frame_status_line(int installed, unsigned long calls, unsigned long flat, unsigned long busy, unsigned long nostk,
+                           char *out, size_t cap)
 {
     int n;
     if (cap < 48)
@@ -357,7 +358,7 @@ int flat_frame_status_line(int installed, unsigned long calls, unsigned long fla
     if (!installed)
         n = snprintf(out, cap, "frame=absent");
     else
-        n = snprintf(out, cap, "frame=hooked calls=%lu flat=%lu", calls, flat);
+        n = snprintf(out, cap, "frame=hooked calls=%lu flat=%lu busy=%lu nostk=%lu", calls, flat, busy, nostk);
     return n > 0 && (size_t)n < cap ? n : 0;
 }
 
