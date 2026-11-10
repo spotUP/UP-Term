@@ -852,6 +852,17 @@ static int string_ground(flatshared *r, struct RastPort *rp, int x0, int y0, int
     return pen;
 }
 
+/* INPUT-GROUND: the input's whole box x0,y0..x1,y1 in its ground pen with the rounded corners of a flat button, no outline
+ * (raa_ground_frame_draw: the same rounded fill and corner blend as the knobs and buttons). */
+static void ground_box(flatshared *r, struct RastPort *rp, int x0, int y0, int x1, int y1, int pen)
+{
+    int blended;
+    UBYTE fg = rp->FgPen, dm = rp->DrawMode;
+    raa_ground_frame_draw(st_rp(r, rp), pen, x0, y0, x1 - x0 + 1, y1 - y0 + 1, c2_fill, c2_read, c2_rgb, raa_load(rp), rp, &blended);
+    SetAPen(rp, fg);
+    SetDrMd(rp, dm);
+}
+
 /* INSTALLER-BORDER-BUTTON (owner 2026-11-08): the Border-render push button of rp's window (flat_border_button) whose box is
  * exactly x0,y0..x1,y1, NULL when none. The Installer draws such a button as a pen-0 RectFill of the box, its label, then a
  * temporary frameiclass IM_DRAWFRAME over the same box; render != select, so the frame object never names the gadget and the
@@ -988,8 +999,13 @@ static int c8_draw(Object *obj, Msg msg)
             r->fflat++;
             return 1;
         }
-        if (string_ground(r, d->imp_RPort, ox, oy, ox + w - 1, oy + h - 1) >= 0)
-            return 1;                    /* INPUT-GROUND: a string input has no outline; the ground is strgclass's own repaint */
+        {
+            int gp = string_ground(r, d->imp_RPort, ox, oy, ox + w - 1, oy + h - 1);
+            if (gp >= 0) {               /* INPUT-GROUND: a string input has no outline: its whole box is the rounded ground */
+                ground_box(r, d->imp_RPort, ox, oy, ox + w - 1, oy + h - 1, gp);
+                return 1;
+            }
+        }
         if (smart_knob_of(d->imp_RPort, obj)) {      /* S56-LOCALE-KNOB: the listview scroller knob takes the Workbench knob pen */
             struct Window *kw = (struct Window *)d->imp_RPort->Layer->Window;
             if (!raa_knob_frame_draw(st_scr(r, kw->WScreen), d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0, (kw->Flags & WFLG_WINDOWACTIVE) != 0,
@@ -1182,6 +1198,12 @@ static int d4_flat_pens(int el, struct RastPort *rp, ULONG shine, ULONG back, in
             /* DOPUS-BUTTON-NO-RING: the 1 px (side columns) border takes the pen of the box interior, so the button is one
              * flat block (SRCE / DEST) or bare content (OFF); the interior itself is DOpus's and is never touched here */
             int gp = el == FLAT_EL_FIELDBOX ? string_ground(r, rp, x0, y0, x1, y1) : -1;
+            if (gp >= 0) {              /* INPUT-GROUND: no ring, no inner frame: the whole field box is the rounded ground */
+                ground_box(r, rp, x0, y0, x1, y1, gp);
+                r->dface++;
+                r->dflat++;
+                return 1;
+            }
             LONG fp = gp >= 0 ? gp : ReadPixel(rp, x0 + st.side, y0 + 1);    /* INPUT-GROUND: the field's own ground, not the old pixel */
 
             if (fp < 0)

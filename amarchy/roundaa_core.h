@@ -55,5 +55,9 @@ int raa_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, i
 /* flat_knob_frame_draw (the Workbench scroller knob: state pen box, plain role) through raa_frame_draw */
 int raa_knob_frame_draw(const flat_state *s, int depth, int active, int ox, int oy, int w, int h, flat_fill_fn fn, flat_read_fn rd,
                         raa_rgb_fn rgb, int npens, void *ctx, int *blended);
+/* INPUT-GROUND: a text input's box (no outline, no inner frame): the whole box filled with ground pen, rounded corners as the flat
+ * buttons (flat_frame_draw_round + raa_frame_corners, the knob path). pen < 0 draws nothing and returns 0. */
+int raa_ground_frame_draw(const flat_state *s, int pen, int ox, int oy, int w, int h, flat_fill_fn fn, flat_read_fn rd, raa_rgb_fn rgb,
+                          int npens, void *ctx, int *blended);
 
 #endif

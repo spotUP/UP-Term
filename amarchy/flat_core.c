@@ -357,14 +357,14 @@ int flat_string_render_write(unsigned long method, int has_info, unsigned flags,
     return method == FLAT_GM_RENDER && has_info && flat_string_has_extend(flags, activation) && has_ext && pen >= 0;
 }
 
-static int near4(int a, int b)
+static int near_by(int a, int b, int lim)
 {
-    return a - b <= 4 && b - a <= 4;
+    return a - b <= lim && b - a <= lim;
 }
 
 int flat_string_frame(int fx, int fy, int fw, int fh, int gx, int gy, int gw, int gh)
 {
-    return gw > 0 && gh > 0 && near4(fx, gx) && near4(fy, gy) && near4(fx + fw, gx + gw) && near4(fy + fh, gy + gh);
+    return gw > 0 && gh > 0 && near_by(fx, gx, 6) && near_by(fy, gy, 4) && near_by(fx + fw, gx + gw, 6) && near_by(fy + fh, gy + gh, 4);
 }
 
 int flat_frame_decide(const flat_state *s, unsigned long method, int pen_shine, int pen_back)

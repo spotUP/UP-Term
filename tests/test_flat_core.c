@@ -601,6 +601,8 @@ static void test_input_ground(void)
     CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0, 0x0800, 1, 5), 0);
     CHECK_INT(flat_string_frame(10, 10, 104, 18, 12, 12, 100, 14), 1);    /* bevel 2 px out */
     CHECK_INT(flat_string_frame(12, 12, 100, 14, 12, 12, 100, 14), 1);
+    CHECK_INT(flat_string_frame(54, 32, 53, 14, 60, 35, 41, 8), 1);      /* GadTools bevel: 6 px out horizontally, 3 vertically (Prefs/Time year) */
+    CHECK_INT(flat_string_frame(54, 32, 53, 14, 60, 35, 41, 2), 0);      /* a frame 12 px taller than the gadget is no input border */
     CHECK_INT(flat_string_frame(2, 2, 120, 34, 12, 12, 100, 14), 0);     /* 10 px out: a group box, not the input border */
     CHECK_INT(flat_string_frame(2, 2, 300, 120, 12, 12, 100, 14), 0);     /* group box around the gadget */
     CHECK_INT(flat_string_frame(10, 10, 104, 18, 12, 12, 0, 14), 0);      /* empty gadget */
@@ -964,7 +966,7 @@ static void test_round_aa(void)
 {
     struct round_canvas { int pix[40][60]; } *cv = (struct round_canvas *)calloc(1, sizeof *cv);
     flat_state fs;
-    int x, y, blended = 0, mid = 0, stock0, pen_bd;
+    int x, y, blended = 0, mid = 0, stock0, pen_bd, ground_px, other_px;
     memset(&fs, 0, sizeof fs);
     fs.enabled = 1; fs.pen_line = 1; fs.pen_back = 0; fs.pen_button = 4; fs.pen_text = 2;
     /* raa_cover: inside 255, outside 0, the edge between */
@@ -1051,6 +1053,23 @@ static void test_round_aa(void)
     mid = 0;
     for (y = 10; y < 14; y++) for (x = 10; x < 14; x++) if (cv->pix[y][x] >= 2) mid++;
     CHECK_INT(mid > 0, 1);
+    /* INPUT-GROUND: ground pen >= 0 = the whole box in that pen, rounded as the buttons, no outline; pen < 0 draws nothing */
+    for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 0;
+    blended = 0;
+    CHECK_INT(raa_ground_frame_draw(&fs, -1, 10, 10, 30, 14, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 0);
+    CHECK_INT(cv->pix[12][20], 0);
+    CHECK_INT(raa_ground_frame_draw(&fs, 2, 10, 10, 30, 14, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);
+    ground_px = 0; other_px = 0;
+    for (y = 10; y < 24; y++) for (x = 10; x < 40; x++) {
+        int corner = (x < 14 || x >= 36) && (y < 14 || y >= 20);
+        if (cv->pix[y][x] == 2) ground_px++;
+        else if (!corner) other_px++;                          /* outside the four corner squares every pixel is the ground */
+    }
+    CHECK_INT(cv->pix[16][25], 2);                                  /* interior */
+    CHECK_INT(cv->pix[10][20] == 2 && cv->pix[23][20] == 2 && cv->pix[16][10] == 2 && cv->pix[16][39] == 2, 1);   /* edges are ground: no outline, no inner frame */
+    CHECK_INT(cv->pix[10][10] != 2, 1);                             /* corner pixel is cut */
+    CHECK_INT(ground_px > 30 * 14 - 16, 1);
+    CHECK_INT(other_px, 0);
     free(cv);
 }
 

@@ -274,7 +274,8 @@ int flat_dopus_face_pen(long read, int pen_back);
  * of the flat cycle gadget). flat_input_pen: that pen for a screen of this depth, -1 when the screen holds none (depth < 3 or no pen:
  * the input keeps its ground). flat_string_ext: 1 when a gadget is a string gadget whose StringExtend (GFLG_STRINGEXTEND 0x0400 in Flags or GACT_STRINGEXTEND 0x2000 in Activation, see flat_string_has_extend; pens a
  * plain byte pair) may be written. flat_string_frame: 1 when the frame box f (x, y, w, h) is the border of the string gadget box g:
- * every edge within 4 px (a group box around several inputs is not). */
+ * every left/right edge within 6 px and every top/bottom edge within 4 (the GadTools bevel is 6 out horizontally, 3 vertically; a group box
+ * 10 px out around several inputs is not). */
 int flat_input_pen(const flat_state *s, int depth);
 int flat_string_has_extend(unsigned flags, unsigned activation);   /* 1 when the StringInfo.Extension is valid */
 int flat_string_ext(unsigned gadget_type, unsigned flags, unsigned activation, int has_info, int has_ext, int strg_chain);   /* strg_chain: boopsi gadget (type 5) whose class chain holds strgclass; also accepted */

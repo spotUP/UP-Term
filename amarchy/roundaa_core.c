@@ -174,3 +174,16 @@ int raa_knob_frame_draw(const flat_state *s, int depth, int active, int ox, int 
     st.pen_button = (uint8_t)flat_knob_state_pen(s, depth, active);
     return raa_frame_draw(&st, 0, ox, oy, w, h, 1, FLAT_ROLE_PLAIN, fn, rd, rgb, npens, ctx, blended);
 }
+
+int raa_ground_frame_draw(const flat_state *s, int pen, int ox, int oy, int w, int h, flat_fill_fn fn, flat_read_fn rd, raa_rgb_fn rgb,
+                          int npens, void *ctx, int *blended)
+{
+    flat_state st;
+    if (blended)
+        *blended = 0;
+    if (!s || pen < 0)
+        return 0;
+    st = *s;
+    st.pen_button = (uint8_t)pen;
+    return raa_frame_draw(&st, 0, ox, oy, w, h, 1, FLAT_ROLE_PLAIN, fn, rd, rgb, npens, ctx, blended);
+}
