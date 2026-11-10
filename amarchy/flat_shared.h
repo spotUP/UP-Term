@@ -60,6 +60,8 @@ typedef struct flatshared {
     struct flat_gate *tgate, *rgate;   /* FLAT-UNLOAD-INFLIGHT: the never-freed entry blocks of the Text and RectFill patches (flat.c gate_make) */
     flat_tx tx;                 /* the armed pressed frame (flat_core.h) */
     flat_gh gh;                 /* FLAT-BUTTON-DISABLED-DIM: the recorded filled button boxes and labels (flat_core.h) */
+    flat_gr gr;                 /* PREFS-NO-OUTLINES: the ground boxes of frames drawn without an outline, matched by the RectFill and Text patches */
+    ULONG gbhits;               /* PREFS-NO-OUTLINES sentinel: frames drawn as a ground box or left empty (group), content fills and texts moved onto a record */
     ULONG ghits;                /* ghost fills replaced by the solid dim fill (the sentinel) */
     ULONG ttitle;               /* window titles redrawn by FLAT-TITLE-ACCENT (the sentinel) */
     ULONG tcalls, thits;

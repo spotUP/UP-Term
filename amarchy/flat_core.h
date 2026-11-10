@@ -499,6 +499,57 @@ int flat_knob_pen(const flat_state *s, int depth);
  * no pattern, no record of that surface and task containing the rect). */
 const flat_gbox *flat_gh_match(const flat_state *s, const flat_gh *g, const void *surf, const void *task, int ptsz, int x0, int y0, int x1, int y1);
 
+/* PREFS-NO-OUTLINES (owner 2026-11-11): a frameiclass frame on a flat screen never draws a line in pen_line. An edges-only frame
+ * carries no answer for IA_Recessed / IA_FrameType, so only its box and the window's gadget list classify it. flat_gadbox is one
+ * gadget of the window (resolved box, kind). flat_frame_class returns the first match of: STRING (borders a string gadget,
+ * flat_string_frame: the input ground path), TRACK (borders a prop gadget), CELL (wholly inside, and smaller than, one other
+ * gadget and not bordering it), BORDERED (borders exactly one other gadget: unchanged, the stock draw), GROUP (wholly contains
+ * one or more gadgets), DISPLAY (no gadget relation). */
+#define FLAT_GK_STRING 1
+#define FLAT_GK_PROP   2
+#define FLAT_GK_OTHER  3
+typedef struct flat_gadbox {
+    int x, y, w, h, kind;
+} flat_gadbox;
+#define FLAT_FC_STRING   0
+#define FLAT_FC_TRACK    1
+#define FLAT_FC_CELL     2
+#define FLAT_FC_BORDERED 3
+#define FLAT_FC_GROUP    4
+#define FLAT_FC_DISPLAY  5
+int flat_frame_class(int fx, int fy, int fw, int fh, const flat_gadbox *g, int n);
+/* The same decision one gadget at a time (the drawing task's stack holds no gadget array): zero a flat_fc, flat_fc_add every gadget of
+ * the window for the frame box, flat_fc_class gives the class. */
+typedef struct flat_fc {
+    int string, track, others, inside, holds;
+} flat_fc;
+void flat_fc_add(flat_fc *a, int fx, int fy, int fw, int fh, const flat_gadbox *g);
+int flat_fc_class(const flat_fc *a);
+/* The fill pen of a class at depth: TRACK and DISPLAY the input ground pen (flat_input_pen), CELL the push button face (pen_button,
+ * else pen_back) or, when centre_pen (the pixel at the box centre, the app's selected fill drawn before the frame) is pen_line, the
+ * accent; -1 for any other class (nothing to fill) and when the screen holds no such pen. */
+int flat_noline_pen(const flat_state *s, int cls, int depth, int centre_pen);
+/* Ground box records: the boxes a frame filled and whose content (drawn after the frame) must stay on that ground. A ring of
+ * FLAT_GR_N (a month holds up to 31 cell frames before their content arrives), same shape as flat_gh. */
+#define FLAT_GR_N 48
+typedef struct flat_grbox {
+    const void *surf, *task;
+    int x0, y0, x1, y1, pen;
+} flat_grbox;
+typedef struct flat_gr {
+    flat_grbox box[FLAT_GR_N];
+    int next;
+} flat_gr;
+/* A frame draw of box x0,y0..x1,y1: every record that overlaps it is dropped (the same box included). */
+void flat_gr_drop(flat_gr *g, const void *surf, const void *task, int x0, int y0, int x1, int y1);
+/* Record a box and its ground pen (call flat_gr_drop first). */
+void flat_gr_add(flat_gr *g, const void *surf, const void *task, int x0, int y0, int x1, int y1, int pen);
+/* The record of this surface and task whose box holds the rect, or 0 (not enabled, held, no record). */
+const flat_grbox *flat_gr_match(const flat_state *s, const flat_gr *g, const void *surf, const void *task, int x0, int y0, int x1, int y1);
+/* Band k (0 top corner rows, 1 middle rows, 2 bottom corner rows) of the rect inside record b minus the four rounded corner squares
+ * (rad x rad, drawn by the frame and kept): 1 and the band in out (x0,y0,x1,y1), 0 when the band is empty. */
+int flat_gr_clip(const flat_grbox *b, int rad, int x0, int y0, int x1, int y1, int k, int out[4]);
+
 /* S32-GHOST-MENU: Intuition's menu ghost on 3.2 (ROM RectFill, AreaPtrn {0x4444, 0x1111}, AreaPtSz 1, JAM1, FgPen = the menu fill pen)
  * is drawn OVER the finished item text, into the off-screen menu bitmap (rp->Layer NULL) for items and the separator bar, and into
  * the screen bar layer (Layer->Window NULL) for a disabled title. Instead of the dither every non-background pixel of the rect

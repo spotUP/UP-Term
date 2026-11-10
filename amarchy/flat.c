@@ -967,6 +967,57 @@ static int dopus_push_claim(struct RastPort *rp, int x0, int y0, int x1, int y1,
     return 1;
 }
 
+/* PREFS-NO-OUTLINES: the frame box ox,oy,w,h of an edges-only frame, classified by the window's gadget list (flat_fc_add / flat_fc_class,
+ * pure, host tested), drawn without a coloured outline. TRACK, CELL and DISPLAY become a rounded ground box and are recorded so the
+ * pen-0 content the app draws after the frame lands on it (flat_rf_c, flat_tx_c); GROUP draws nothing. 1 = handled, 0 = stock draw
+ * (a frame bordering another gadget type, or no pen on this screen). Any frame draw first drops the records it overlaps. */
+static int noline_frame(flatshared *r, struct RastPort *rp, int ox, int oy, int w, int h)
+{
+    struct Layer *lay = rp->Layer;
+    struct Window *win = lay ? (struct Window *)lay->Window : NULL;
+    const void *surf = flat_tx_surface(lay, rp->BitMap);
+    struct Gadget *g;
+    flat_fc fc;
+    int n, cls, pen, depth = rp->BitMap ? rp->BitMap->Depth : 0, centre = -1;
+    flat_gr_drop(&r->gr, surf, FindTask(NULL), ox, oy, ox + w - 1, oy + h - 1);
+    if (!win)
+        return 0;
+    memset(&fc, 0, sizeof fc);
+    for (g = win->FirstGadget, n = 0; g && n < 64; g = g->NextGadget, n++) {
+        struct StringInfo *si = (struct StringInfo *)g->SpecialInfo;
+        flat_gadbox gb;
+        int gt = g->GadgetType & GTYP_GTYPEMASK;
+        gb.x = g->LeftEdge + ((g->Flags & GFLG_RELRIGHT) ? win->Width - 1 : 0);
+        gb.y = g->TopEdge + ((g->Flags & GFLG_RELBOTTOM) ? win->Height - 1 : 0);
+        gb.w = g->Width + ((g->Flags & GFLG_RELWIDTH) ? win->Width : 0);
+        gb.h = g->Height + ((g->Flags & GFLG_RELHEIGHT) ? win->Height : 0);
+        if (flat_string_ext(gt, g->Flags, g->Activation, si != NULL, si && si->Extension != NULL,
+                            gt == GTYP_CUSTOMGADGET && gadget_class_has(g, "strgclass", 8)))
+            gb.kind = FLAT_GK_STRING;
+        else if (gt == GTYP_PROPGADGET && gadget_has_propinfo(g))
+            gb.kind = FLAT_GK_PROP;
+        else
+            gb.kind = FLAT_GK_OTHER;
+        flat_fc_add(&fc, ox, oy, w, h, &gb);
+    }
+    cls = flat_fc_class(&fc);
+    if (cls == FLAT_FC_GROUP) {
+        r->gbhits++;
+        return 1;
+    }
+    if (cls != FLAT_FC_TRACK && cls != FLAT_FC_CELL && cls != FLAT_FC_DISPLAY)
+        return 0;
+    if (cls == FLAT_FC_CELL)
+        centre = (int)ReadPixel(rp, ox + w / 2, oy + h / 2);
+    pen = flat_noline_pen(st_scr(r, win->WScreen), cls, depth, centre);
+    if (pen < 0)
+        return 0;
+    ground_box(r, rp, ox, oy, ox + w - 1, oy + h - 1, pen);
+    flat_gr_add(&r->gr, surf, FindTask(NULL), ox, oy, ox + w - 1, oy + h - 1, pen);
+    r->gbhits++;
+    return 1;
+}
+
 /* The frame draw of c8_skip (1 = drawn, 0 = leave it to the ROM frame). Runs on the private stack (S71-C8-PRIVATE-STACK): the
  * flat_state copy, the outline columns and the raa_* draw calls are far over the 384 byte budget of a hook on a foreign stack. */
 static int c8_draw(Object *obj, Msg msg)
@@ -1014,6 +1065,8 @@ static int c8_draw(Object *obj, Msg msg)
             r->fflat++;
             return 1;
         }
+        if (!fill && d->imp_State == 0 && noline_frame(r, d->imp_RPort, ox, oy, w, h))
+            return 1;
         if (!raa_frame_draw(&st, (int)d->imp_State, ox, oy, w, h, fill, role_of(d->imp_RPort, obj), c2_fill, c2_read, c2_rgb,
                             fill ? raa_load(d->imp_RPort) : 0, d->imp_RPort, NULL))
             return 0;
@@ -1726,6 +1779,14 @@ void flat_tx_c(struct RastPort *rp, CONST_STRPTR str, ULONG count)
     flat_gh_text(&r->gh, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL), rp->cp_x, rp->cp_y, (const char *)str, (int)count);
     set = (on && r->rsw.installed && rp->Layer && rp->Layer->Window && tx_title(r, rp, str, count))
           || (r->tx.armed && tx_armed(r, rp));
+    if (on && (rp->DrawMode & JAM2) && rp->BgPen == r->st.pen_back && rp->Layer) {   /* PREFS-NO-OUTLINES: text on a ground box keeps its ground */
+        const flat_grbox *gb = flat_gr_match(&r->st, &r->gr, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL), rp->cp_x, rp->cp_y, rp->cp_x, rp->cp_y);
+        if (gb) {
+            SetBPen(rp, (UBYTE)gb->pen);
+            set = 1;
+            r->gbhits++;
+        }
+    }
     if (!(on && icl_label(r, rp, str, count)))
         ((textfn)r->tsw.saved)(rp, str, count, (struct Library *)GfxBase);
     if (set) {
@@ -2272,6 +2333,35 @@ static int rf_side(flatshared *r, struct RastPort *rp, struct Window *w, const L
     return 1;
 }
 
+/* One band k of the rect b inside the record gb, in the record's pen (the pen is set by the caller). */
+static void rf_gband(flatshared *r, struct RastPort *rp, const flat_grbox *gb, const LONG *b, int k)
+{
+    int o[4];
+    if (flat_gr_clip(gb, raa_radius(gb->y1 - gb->y0 + 1), (int)b[0], (int)b[1], (int)b[2], (int)b[3], k, o))
+        ((rectfn)r->rsw.saved)(rp, o[0], o[1], o[2], o[3], (struct Library *)GfxBase);
+}
+
+/* PREFS-NO-OUTLINES: a solid window-ground fill inside a recorded ground box (flat_gr_match) is drawn in the box's own pen, the
+ * rounded corner squares the frame drew kept (flat_gr_clip). 1 = handled. */
+static int rf_gbox(flatshared *r, struct RastPort *rp, const LONG *b)
+{
+    const flat_grbox *gb;
+    UBYTE fg;
+    int k;
+    if (rp->AreaPtSz || rp->FgPen != r->st.pen_back || !rp->Layer)
+        return 0;
+    gb = flat_gr_match(&r->st, &r->gr, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL), (int)b[0], (int)b[1], (int)b[2], (int)b[3]);
+    if (!gb)
+        return 0;
+    fg = rp->FgPen;
+    SetAPen(rp, (UBYTE)gb->pen);
+    for (k = 0; k < 3; k++)
+        rf_gband(r, rp, gb, b, k);
+    SetAPen(rp, fg);
+    r->gbhits++;
+    return 1;
+}
+
 void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG ret)
 {
     flatshared *r = g_r;
@@ -2303,6 +2393,8 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
             return;
         }
     }
+    if (on && rf_gbox(r, rp, b))
+        return;
     if (on && w && rom && (rf_disabled(r, rp, w, b) || rf_scroller(r, rp, w, b)))
         return;
     if (on && r->st.pen_outline && w && !(w->Flags & WFLG_BORDERLESS) && rom && (rf_edge(r, rp, w, b) || rf_side(r, rp, w, b)))
@@ -2514,7 +2606,7 @@ static void print_status(void)
     unsigned dver = 0, drev = 0;
     unsigned long dcalls = 0, dflat = 0, fcalls = 0, fflat = 0, fbusy = 0, fnostk = 0;
     int finst = 0, rinst = 0;
-    unsigned long rcalls = 0, rhits = 0, shits = 0, mhits = 0, bhits = 0, tcalls = 0, thits = 0, labels = 0, lskip = 0;
+    unsigned long rcalls = 0, rhits = 0, shits = 0, mhits = 0, bhits = 0, gbhits = 0, tcalls = 0, thits = 0, labels = 0, lskip = 0;
     int tinst = 0;
     unsigned long scmin = 0, schw = 0, scstk = 0, scno = 0, scb256 = 0, scb8a = 0, scb8b = 0, schdr = 0, scguard = 0, scdeep = 0;
     char sctask[16] = "";
@@ -2537,7 +2629,7 @@ static void print_status(void)
         dinst = d4_installed(r); dcalls = r->dcalls; dflat = r->dflat; dbevel = r->dbevel; dface = r->dface; dnopix = r->dnopix; d5draws = r->d5draws;
         memcpy(dsum, r->dsum, sizeof dsum);
         finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat; fbusy = r->fbusy; fnostk = r->fnostk;
-        rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits; mhits = r->mhits; bhits = r->bhits;
+        rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits; mhits = r->mhits; bhits = r->bhits; gbhits = r->gbhits;
         tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits; labels = r->labels; lskip = r->lskip;
         scmin = r->cmin; schw = r->chw; scstk = r->cstk; scno = r->cnostk; memcpy(sctask, r->ctask, 16); sctask[15] = 0;
         scb256 = r->cb256; scb8a = r->cb8a; scb8b = r->cb8b; schdr = r->chdr; scguard = r->cguard; scdeep = r->cdeep;
@@ -2646,6 +2738,7 @@ static void print_status(void)
         put_word(line, &n, " shits=");              put_num(line, &n, shits);
         put_word(line, &n, " mhits=");              put_num(line, &n, mhits);
         put_word(line, &n, " bhits=");              put_num(line, &n, bhits);
+        put_word(line, &n, " gboxes=");             put_num(line, &n, gbhits);
         put_word(line, &n, " side=");               put_num(line, &n, (unsigned long)apx);
         put_word(line, &n, " looks=");              put_num(line, &n, alooks);
         line[n] = 0;

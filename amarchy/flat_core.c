@@ -760,6 +760,116 @@ const flat_gbox *flat_gh_match(const flat_state *s, const flat_gh *g, const void
     return 0;
 }
 
+/* PREFS-NO-OUTLINES: one gadget box as flat_string_frame sees it */
+static int gad_borders(int fx, int fy, int fw, int fh, const flat_gadbox *g)
+{
+    return flat_string_frame(fx, fy, fw, fh, g->x, g->y, g->w, g->h);
+}
+
+void flat_fc_add(flat_fc *a, int fx, int fy, int fw, int fh, const flat_gadbox *g)
+{
+    if (g->w <= 0 || g->h <= 0)
+        return;
+    if (g->kind == FLAT_GK_STRING && gad_borders(fx, fy, fw, fh, g))
+        a->string = 1;
+    else if (g->kind == FLAT_GK_PROP && gad_borders(fx, fy, fw, fh, g))
+        a->track = 1;
+    else if (g->kind == FLAT_GK_OTHER && gad_borders(fx, fy, fw, fh, g))
+        a->others++;
+    else if (g->kind == FLAT_GK_OTHER && fx >= g->x && fy >= g->y && fx + fw <= g->x + g->w && fy + fh <= g->y + g->h && (fw < g->w || fh < g->h))
+        a->inside = 1;
+    if (g->x >= fx && g->y >= fy && g->x + g->w <= fx + fw && g->y + g->h <= fy + fh)
+        a->holds = 1;
+}
+
+int flat_fc_class(const flat_fc *a)
+{
+    if (a->string)
+        return FLAT_FC_STRING;
+    if (a->track)
+        return FLAT_FC_TRACK;
+    if (a->inside)
+        return FLAT_FC_CELL;
+    if (a->others == 1)
+        return FLAT_FC_BORDERED;
+    return a->holds ? FLAT_FC_GROUP : FLAT_FC_DISPLAY;
+}
+
+int flat_frame_class(int fx, int fy, int fw, int fh, const flat_gadbox *g, int n)
+{
+    flat_fc a;
+    int i;
+    memset(&a, 0, sizeof a);
+    for (i = 0; i < n; i++)
+        flat_fc_add(&a, fx, fy, fw, fh, &g[i]);
+    return flat_fc_class(&a);
+}
+
+int flat_noline_pen(const flat_state *s, int cls, int depth, int centre_pen)
+{
+    if (!s)
+        return -1;
+    if (cls == FLAT_FC_TRACK || cls == FLAT_FC_DISPLAY)
+        return flat_input_pen(s, depth);
+    if (cls == FLAT_FC_CELL)
+        return s->pen_line && centre_pen == s->pen_line ? s->pen_line : s->pen_button ? s->pen_button : s->pen_back;
+    return -1;
+}
+
+void flat_gr_drop(flat_gr *g, const void *surf, const void *task, int x0, int y0, int x1, int y1)
+{
+    int i;
+    for (i = 0; i < FLAT_GR_N; i++) {
+        flat_grbox *b = &g->box[i];
+        if (b->surf && b->surf == surf && b->task == task && x0 <= b->x1 && x1 >= b->x0 && y0 <= b->y1 && y1 >= b->y0)
+            b->surf = 0;
+    }
+}
+
+void flat_gr_add(flat_gr *g, const void *surf, const void *task, int x0, int y0, int x1, int y1, int pen)
+{
+    flat_grbox *b = &g->box[g->next];
+    g->next = (g->next + 1) % FLAT_GR_N;
+    b->surf = surf; b->task = task;
+    b->x0 = x0; b->y0 = y0; b->x1 = x1; b->y1 = y1; b->pen = pen;
+}
+
+const flat_grbox *flat_gr_match(const flat_state *s, const flat_gr *g, const void *surf, const void *task, int x0, int y0, int x1, int y1)
+{
+    int i;
+    if (!s->enabled || s->held || x1 < x0 || y1 < y0)
+        return 0;
+    for (i = 0; i < FLAT_GR_N; i++) {
+        const flat_grbox *b = &g->box[i];
+        if (b->surf && b->surf == surf && b->task == task && x0 >= b->x0 && y0 >= b->y0 && x1 <= b->x1 && y1 <= b->y1)
+            return b;
+    }
+    return 0;
+}
+
+int flat_gr_clip(const flat_grbox *b, int rad, int x0, int y0, int x1, int y1, int k, int out[4])
+{
+    int ty1 = b->y0 + rad - 1, by0 = b->y1 - rad + 1;
+    int ya, yb, xa = x0, xb = x1;
+    if (by0 <= ty1)                                                                     /* a box shorter than two radii: no middle band */
+        by0 = ty1 + 1;
+    if (k == 0) { ya = b->y0; yb = ty1; }                                               /* top corner rows */
+    else if (k == 1) { ya = ty1 + 1; yb = by0 - 1; }                                    /* middle rows */
+    else { ya = by0; yb = b->y1; }                                                      /* bottom corner rows */
+    if (ya < y0) ya = y0;
+    if (yb > y1) yb = y1;
+    if (ya > yb)
+        return 0;
+    if (k != 1) {
+        if (xa < b->x0 + rad) xa = b->x0 + rad;
+        if (xb > b->x1 - rad) xb = b->x1 - rad;
+    }
+    if (xa > xb)
+        return 0;
+    out[0] = xa; out[1] = ya; out[2] = xb; out[3] = yb;
+    return 1;
+}
+
 int flat_frame_fill(int answered, int edges_only, int push)
 {
     return answered ? (!edges_only || push) : push;

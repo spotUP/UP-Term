@@ -3568,6 +3568,65 @@ static void test_draw_epoch(void)
     CHECK_INT(flat_draw_epoch(&g_dt, 0), 0);
 }
 
+/* PREFS-NO-OUTLINES: the class of an edges-only frame from its box and the window's gadget boxes (the five boxes measured in
+ * Prefs/Time and Prefs/Font), the pen each class takes, and the ground box records the content fills are matched against. */
+static void test_no_outlines(void)
+{
+    flat_state s;
+    flat_gr gr;
+    const flat_grbox *m;
+    int a, t1, t2, out[4];
+    flat_gadbox time_g[3] = { { 130, 156, 186, 7, FLAT_GK_PROP }, { 12, 53, 311, 100, FLAT_GK_OTHER }, { 60, 35, 41, 8, FLAT_GK_STRING } };
+    flat_gadbox font_g[2] = { { 20, 52, 100, 14, FLAT_GK_OTHER }, { 130, 52, 100, 14, FLAT_GK_OTHER } };
+    memset(&s, 0, sizeof s); memset(&gr, 0, sizeof gr);
+    s.enabled = 1; s.pen_back = 0; s.pen_text = 2; s.pen_line = 3; s.pen_button = 4; s.pen_sel = 5;
+    CHECK_INT(flat_frame_class(126, 154, 194, 11, time_g, 3), FLAT_FC_TRACK);       /* slider frame around its prop gadget */
+    CHECK_INT(flat_frame_class(56, 68, 44, 15, time_g, 3), FLAT_FC_CELL);           /* day cell inside the calendar gadget */
+    CHECK_INT(flat_frame_class(12, 180, 308, 14, time_g, 3), FLAT_FC_DISPLAY);      /* date row: no gadget relation */
+    CHECK_INT(flat_frame_class(14, 46, 376, 35, font_g, 2), FLAT_FC_GROUP);         /* Font Prefs group box holds gadgets */
+    CHECK_INT(flat_frame_class(54, 32, 53, 14, time_g, 3), FLAT_FC_STRING);         /* the year input keeps the string path */
+    CHECK_INT(flat_frame_class(10, 10, 104, 18, font_g, 0), FLAT_FC_DISPLAY);       /* no gadgets at all */
+    CHECK_INT(flat_frame_class(20, 52, 100, 14, font_g, 2), FLAT_FC_BORDERED);      /* borders exactly one other gadget: today's draw */
+    CHECK_INT(flat_noline_pen(&s, FLAT_FC_TRACK, 4, 0), 5);                         /* ground pen = the input ground pen */
+    CHECK_INT(flat_noline_pen(&s, FLAT_FC_DISPLAY, 4, 0), 5);
+    CHECK_INT(flat_noline_pen(&s, FLAT_FC_CELL, 4, 0), 4);                          /* push button face */
+    CHECK_INT(flat_noline_pen(&s, FLAT_FC_CELL, 4, 3), 3);                          /* the app's selected fill (accent) under the centre */
+    s.pen_button = 0;
+    CHECK_INT(flat_noline_pen(&s, FLAT_FC_CELL, 4, 0), 0);                          /* no button pen: the window ground */
+    CHECK_INT(flat_noline_pen(&s, FLAT_FC_GROUP, 4, 0), -1);                        /* group: nothing is drawn */
+    CHECK_INT(flat_noline_pen(&s, FLAT_FC_BORDERED, 4, 0), -1);
+    s.pen_sel = 0;
+    CHECK_INT(flat_noline_pen(&s, FLAT_FC_TRACK, 4, 0), -1);                        /* no input pen on the screen */
+    s.pen_sel = 5;
+    /* ring: record, match, miss, drop */
+    flat_gr_add(&gr, &a, &t1, 12, 180, 319, 193, 5);
+    m = flat_gr_match(&s, &gr, &a, &t1, 14, 182, 100, 191);
+    CHECK_INT(m != 0, 1);
+    CHECK_INT(m ? m->pen : -1, 5);
+    CHECK_INT(flat_gr_match(&s, &gr, &a, &t1, 14, 182, 100, 195) != 0, 0);          /* rect leaves the box */
+    CHECK_INT(flat_gr_match(&s, &gr, &a, &t2, 14, 182, 100, 191) != 0, 0);          /* another task */
+    CHECK_INT(flat_gr_match(&s, &gr, &t2, &t1, 14, 182, 100, 191) != 0, 0);         /* another surface */
+    s.held = 1;
+    CHECK_INT(flat_gr_match(&s, &gr, &a, &t1, 14, 182, 100, 191) != 0, 0);          /* held: stock */
+    s.held = 0;
+    flat_gr_drop(&gr, &a, &t1, 300, 190, 330, 200);                                 /* another frame overlaps the box */
+    CHECK_INT(flat_gr_match(&s, &gr, &a, &t1, 14, 182, 100, 191) != 0, 0);
+    flat_gr_add(&gr, &a, &t1, 12, 180, 319, 193, 5);
+    flat_gr_drop(&gr, &a, &t1, 400, 400, 410, 410);                                 /* a disjoint frame keeps it */
+    CHECK_INT(flat_gr_match(&s, &gr, &a, &t1, 14, 182, 100, 191) != 0, 1);
+    /* the content fill keeps the corner squares (radius 2) the frame drew */
+    {
+        flat_grbox b;
+        b.surf = &a; b.task = &t1; b.x0 = 12; b.y0 = 180; b.x1 = 319; b.y1 = 193; b.pen = 5;
+        CHECK_INT(flat_gr_clip(&b, 2, 12, 180, 319, 193, 0, out) && out[0] == 14 && out[1] == 180 && out[2] == 317 && out[3] == 181, 1);   /* top band without the corners */
+        CHECK_INT(flat_gr_clip(&b, 2, 12, 180, 319, 193, 1, out) && out[0] == 12 && out[1] == 182 && out[2] == 319 && out[3] == 191, 1);   /* middle rows whole */
+        CHECK_INT(flat_gr_clip(&b, 2, 12, 180, 319, 193, 2, out) && out[0] == 14 && out[1] == 192 && out[2] == 317 && out[3] == 193, 1);
+        CHECK_INT(flat_gr_clip(&b, 2, 20, 184, 100, 190, 0, out), 0);                 /* an interior rect lies in the middle band only */
+        CHECK_INT(flat_gr_clip(&b, 2, 20, 184, 100, 190, 2, out), 0);
+        CHECK_INT(flat_gr_clip(&b, 2, 20, 184, 100, 190, 1, out) && out[0] == 20 && out[1] == 184 && out[2] == 100 && out[3] == 190, 1);
+    }
+}
+
 void suite_flat_core(void)
 {
     test_draw_state_lookup();
@@ -3641,4 +3700,5 @@ void suite_flat_core(void)
     test_knob_aspect();
     test_round_partial_mask();
     test_round_pen_byte();
+    test_no_outlines();
 }
