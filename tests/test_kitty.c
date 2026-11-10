@@ -1398,6 +1398,102 @@ static void a_shrunk_many_colour_picture_copies_its_averaged_colours(void)
 
 /* A frame over a root of its own colours: the frames are cube canvases, and a root colour off the cube must land on
  * the cube there, not turn clear (index 0) because no cube entry equals it. */
+/* 4 x 24 RGB, 4 cell rows of 6: pixel (x, y) is R y*10, G 200-y*5, B x*60
+ * (96 colours: the exact-colour path) */
+static const char tall4x24[] =
+    "AMgAAMg8AMh4AMi0CsMACsM8CsN4CsO0FL4AFL48FL54FL60HrkAHrk8Hrl4Hrm0KLQAKLQ8KLR4KLS0Mq8AMq88Mq94Mq+0"
+    "PKoAPKo8PKp4PKq0RqUARqU8RqV4RqW0UKAAUKA8UKB4UKC0WpsAWps8Wpt4Wpu0ZJYAZJY8ZJZ4ZJa0bpEAbpE8bpF4bpG0"
+    "eIwAeIw8eIx4eIy0gocAgoc8god4goe0jIIAjII8jIJ4jIK0ln0Aln08ln14ln20oHgAoHg8oHh4oHi0qnMAqnM8qnN4qnO0"
+    "tG4AtG48tG54tG60vmkAvmk8vml4vmm0yGQAyGQ8yGR4yGS00l8A0l880l940l+03FoA3Fo83Fp43Fq05lUA5lU85lV45lW0";
+
+static vt_u32 tall_px(int x, int y)
+{
+    return ((vt_u32)(y * 10) << 16) | ((vt_u32)(200 - y * 5) << 8) | (vt_u32)(x * 60);
+}
+
+static void store_tall(vt_term *t)
+{
+    h_put(t, "\033_Ga=t,i=7,f=24,s=4,v=24,q=2;");
+    h_put(t, tall4x24);
+    h_put(t, "\033\\");
+}
+
+/* screen row `row` shows the picture's source rows from y0 (1:1) */
+static int row_shows(const vt_term *t, int row, int y0)
+{
+    vt_image_view v;
+    int x, y;
+    if (!vt_row_image(t, row, 0, &v))
+        return 0;
+    for (y = 0; y < 6; y++)
+        for (x = 0; x < 4; x++)
+            if (pixel(&v, x, v.py + y) != tall_px(x, y0 + y))
+                return 0;
+    return 1;
+}
+
+/* The LiveChat door scrolls a stored picture by deleting its placement
+ * (a=d,d=i: the data stays) and placing the next crop of whole rows, with
+ * +-1 px jitter. Each step was a new picture: scaled, quantised and
+ * dithered again under a new serial (seconds on a 68020, the renderer's
+ * caches missed). A band of whole rows is now rows of one scaled copy. */
+static void scrolling_a_cropped_picture_does_not_rebuild_it(void)
+{
+    vt_term *t = kitty_term(20, 10);
+    vt_image_view v;
+    unsigned long made;
+    long serial;
+    store_tall(t);
+    made = vt_kitty_pictures_made(t);
+    h_put(t, "\033[1;1H\033_Ga=p,i=7,p=1,x=0,y=0,w=4,h=12,c=2,r=2,C=1,q=2\033\\");
+    CHECK(vt_row_image(t, 0, 0, &v));
+    serial = v.serial;
+    CHECK(v.h == 24 && v.py == 0);
+    CHECK(row_shows(t, 0, 0) && row_shows(t, 1, 6));
+    h_put(t, "\033_Ga=d,d=i,i=7\033\\");
+    CHECK(!vt_row_image(t, 0, 0, &v));
+    h_put(t, "\033_Ga=p,i=7,p=1,x=0,y=6,w=4,h=12,c=2,r=2,C=1,q=2\033\\");
+    CHECK(vt_row_image(t, 0, 0, &v) && v.py == 6 && v.serial == serial);
+    CHECK(row_shows(t, 0, 6) && row_shows(t, 1, 12));
+    h_put(t, "\033_Ga=d,d=i,i=7\033\\");
+    h_put(t, "\033_Ga=p,i=7,p=1,x=0,y=11,w=4,h=12,c=2,r=2,C=1,q=2\033\\"); /* -1 px: the nearest row */
+    CHECK(vt_row_image(t, 0, 0, &v) && v.py == 12 && v.serial == serial);
+    CHECK(row_shows(t, 0, 12) && row_shows(t, 1, 18));
+    CHECK(!vt_row_image(t, 2, 0, &v));
+    CHECK(vt_kitty_pictures_made(t) == made + 1);
+    /* the same placement id again, no delete: replaced in place, still the one copy */
+    h_put(t, "\033_Ga=p,i=7,p=1,x=0,y=0,w=4,h=12,c=2,r=2,C=1,q=2\033\\");
+    CHECK(row_shows(t, 0, 0) && row_shows(t, 1, 6));
+    CHECK(vt_kitty_pictures_made(t) == made + 1);
+    /* deleting the data frees the copy with it */
+    h_put(t, "\033_Ga=d,d=I,i=7\033\\");
+    CHECK(!vt_row_image(t, 0, 0, &v));
+    store_tall(t);
+    made = vt_kitty_pictures_made(t);
+    h_put(t, "\033_Ga=p,i=7,p=1,x=0,y=6,w=4,h=12,c=2,r=2,C=1,q=2\033\\");
+    CHECK(row_shows(t, 0, 6) && vt_kitty_pictures_made(t) == made + 1);
+    vt_free(t);
+}
+
+/* A crop that is not whole rows of the whole width keeps its own picture. */
+static void a_crop_off_the_rows_is_still_its_own_picture(void)
+{
+    vt_term *t = kitty_term(20, 10);
+    vt_image_view v;
+    unsigned long made;
+    store_tall(t);
+    made = vt_kitty_pictures_made(t);
+    h_put(t, "\033[1;1H\033_Ga=p,i=7,p=1,x=2,y=0,w=2,h=12,c=1,r=2,C=1,q=2\033\\"); /* the right half */
+    CHECK(vt_row_image(t, 0, 0, &v) && v.w == 2 && v.h == 12);
+    CHECK(pixel(&v, 0, 0) == tall_px(2, 0) && pixel(&v, 1, 7) == tall_px(3, 7));
+    h_put(t, "\033_Ga=d,d=i,i=7\033\\");
+    h_put(t, "\033_Ga=p,i=7,p=1,x=0,y=3,w=4,h=12,c=2,r=2,C=1,q=2\033\\"); /* half a row down */
+    CHECK(vt_row_image(t, 0, 0, &v) && v.w == 4 && v.h == 12);
+    CHECK(pixel(&v, 0, 0) == tall_px(0, 3) && pixel(&v, 3, 11) == tall_px(3, 14));
+    CHECK(vt_kitty_pictures_made(t) == made + 2);
+    vt_free(t);
+}
+
 static void a_frame_over_an_exact_colour_root_keeps_the_root_pixels(void)
 {
     vt_term *t = kitty_term(10, 5);
@@ -1784,6 +1880,8 @@ void suite_kitty(void)
     a_flat_two_colour_picture_shows_exact_colours_undithered();
     a_shrunk_many_colour_picture_copies_its_averaged_colours();
     a_frame_over_an_exact_colour_root_keeps_the_root_pixels();
+    scrolling_a_cropped_picture_does_not_rebuild_it();
+    a_crop_off_the_rows_is_still_its_own_picture();
     k39_frame_canvases_stop_at_the_x4_budget_in_both_modes();
     k39_rgba_frames_keep_exact_bytes_and_alpha();
 }

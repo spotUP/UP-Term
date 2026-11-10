@@ -688,6 +688,7 @@ void vt_set_image_rgb(vt_term *t, int on);
  * animated and frame-edited pictures drop theirs. */
 void vt_set_image_rgb_copy(vt_term *t, int on);
 unsigned long vt_kitty_copy_made(const vt_term *t); /* RGB copies made (a test sentinel) */
+unsigned long vt_kitty_pictures_made(const vt_term *t); /* pictures scaled and installed (a test sentinel) */
 /* Pictures freed so far (delete, replace, clear, eviction) and whether the picture of a view's serial is still alive:
  * a renderer holding resources per picture lets them go when the serial is gone. */
 unsigned long vt_image_frees(const vt_term *t);

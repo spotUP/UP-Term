@@ -119,6 +119,9 @@ typedef struct vt_image {
     int kdepth;         /* parents above this placement (0 none, at most 8) */
     struct vt_anim *anim; /* kind 2: the frame list (kitty a=f, K34), 0 for a plain picture */
     int sx0, sy0, sw, sh; /* kind 1: the part of the stored picture shown (sw 0: unknown), for K35's rescale */
+    vt_u8 kmaster;      /* kind 1: the stored picture kid scaled whole once, shown by bands of its rows (a scrolled
+                         * crop, kit_band); kept off the screen across a=d,d=i, freed with the stored picture */
+    int krow0;          /* kmaster: the first of its rows the placement shows (kit_corner) */
 } vt_image;
 
 /* The frames of a kitty animation: full w x h canvases of cube indices
@@ -323,6 +326,7 @@ struct vt_term {
     unsigned long img_frees;   /* pictures freed (vt_image_frees) */
     void *rip;                 /* vt_set_rip: the RIPscrip adapter (rip_vt.c), 0 when off */
     unsigned long kit_copy_made; /* RGB copies made (vt_kitty_copy_made) */
+    unsigned long kit_made;      /* pictures scaled and installed (vt_kitty_pictures_made) */
     unsigned long kit_rgba_frames; /* RGBA frame canvases made (vt_kitty_rgba_frames, K39) */
     unsigned long kit_rgb_made; /* RGB pictures made (vt_kitty_rgb_made) */
     long anim_mem;             /* bytes of animation frames, against VT_ANIM_MEMORY (K34) */
@@ -534,6 +538,14 @@ static void image_free(vt_term *t, int slot)
                 image_free(t, i); /* and theirs: at most 8 deep */
         }
     }
+    if (im->kind == 2 && im->kid) { /* kitty: its scaled copy for row bands (kit_band) goes with the data */
+        int i;
+        for (i = 0; i < VT_IMG_SLOTS; i++) {
+            const vt_image *c = t->imgs[i];
+            if (c && c->pix && c->kind == 1 && c->kmaster && c->kid == im->kid)
+                image_free(t, i);
+        }
+    }
 }
 
 /* The image a placement shows, 0 when it went (evicted, its slot reused). */
@@ -553,8 +565,8 @@ static void place_release(vt_term *t, vt_u16 i)
 {
     vt_place *p = &t->pl[i];
     vt_image *im = place_image(t, p);
-    if (im && --im->refs <= 0)
-        image_free(t, p->img);
+    if (im && --im->refs <= 0 && !im->kmaster)
+        image_free(t, p->img); /* a scaled copy (kit_band) stays with its stored data */
     p->next = t->pl_free;
     t->pl_free = i;
 }
@@ -5508,6 +5520,8 @@ static int image_install(vt_term *t, vt_u8 *pix, long bytes, long w, long h, int
     im->kdepth = 0;
     im->anim = 0;
     im->vc = im->vr = 0;
+    im->kmaster = 0;
+    im->krow0 = 0;
     im->serial = ++t->img_serial;
     for (i = 0; i < npal; i++)
         im->pal[i] = pal[i];
@@ -5524,14 +5538,25 @@ static int image_install(vt_term *t, vt_u8 *pix, long bytes, long w, long h, int
  * the screen's last row, nothing scrolled, the cursor where it was (kitty
  * C=1: the cursor does not move, so the screen does not scroll either); 3:
  * as 0 but the cursor ends after the image's last column (kitty). */
+static void image_place_rows(vt_term *t, int slot, int mode, int k0, int n);
 static void image_place(vt_term *t, int slot, int mode)
+{
+    image_place_rows(t, slot, mode, 0, -1);
+}
+
+/* image_place for the image's rows k0 .. k0 + n - 1 (n < 0: to its last):
+ * row k0 goes where row 0 would. A kitty row band of a scaled picture
+ * (kit_band) shows a scrolled crop without a picture of its own. */
+static void image_place_rows(vt_term *t, int slot, int mode, int k0, int n)
 {
     vt_image *im = t->imgs[slot];
     int rows, k, cy, ocx = t->cx, scrolled = 0, ocy = t->cy;
-    rows = (im->py0 + im->h + im->ch - 1) / im->ch;
+    rows = (im->py0 + im->h + im->ch - 1) / im->ch - k0;
+    if (n >= 0 && n < rows)
+        rows = n;
     if (mode == 1) {
         for (k = 0; k < rows && k < t->rows; k++)
-            sixel_place_row(t, slot, k, 0, k);
+            sixel_place_row(t, slot, k, 0, k0 + k);
     } else {
         cy = t->cy;
         for (k = 0; k < rows; k++) {
@@ -5549,7 +5574,7 @@ static void image_place(vt_term *t, int slot, int mode)
                     break; /* below the margins at the screen's bottom: cut */
                 }
             }
-            sixel_place_row(t, slot, cy, t->cx, k);
+            sixel_place_row(t, slot, cy, t->cx, k0 + k);
         }
         t->cy = cy;
         t->wrap_pending = 0;
@@ -5562,8 +5587,8 @@ static void image_place(vt_term *t, int slot, int mode)
                 t->cx = t->cols - 1;
         }
     }
-    if (!im->refs)
-        image_free(t, slot); /* nowhere on the screen */
+    if (!im->refs && !im->kmaster)
+        image_free(t, slot); /* nowhere on the screen (a scaled copy stays with its data) */
 }
 
 /* ST: the image is complete. It goes on the screen like text: at the
@@ -6329,10 +6354,11 @@ void vt_free(vt_term *t)
     kitty_abort(t);
     rip_free(t);
     for (i = 0; i < VT_IMG_SLOTS; i++)
-        if (t->imgs[i]) {
-            image_free(t, i);
+        if (t->imgs[i])
+            image_free(t, i); /* all first: freeing one looks at the others (relative children, a scaled copy) */
+    for (i = 0; i < VT_IMG_SLOTS; i++)
+        if (t->imgs[i])
             VT_FREE(t->imgs[i]);
-        }
     if (t->pl)
         VT_FREE(t->pl);
     if (t->six_regs)
@@ -6652,6 +6678,11 @@ int vt_image_alive(const vt_term *t, long serial)
 unsigned long vt_kitty_copy_made(const vt_term *t)
 {
     return t->kit_copy_made;
+}
+
+unsigned long vt_kitty_pictures_made(const vt_term *t)
+{
+    return t->kit_made;
 }
 
 long vt_image_memory(const vt_term *t)
