@@ -819,10 +819,10 @@ static struct Gadget *string_gadget_at(struct RastPort *rp, int x0, int y0, int 
         if ((g->GadgetType & GTYP_GTYPEMASK) == GTYP_STRGADGET) {      /* sentinels: string gadgets seen, with an extension */
             flatshared *rr = g_r;
             rr->sgseen++;
-            if (si && (g->Activation & 0x0800) && si->Extension)
+            if (si && flat_string_has_extend(g->Flags, g->Activation) && si->Extension)
                 rr->sgext++;
         }
-        if (!flat_string_ext(g->GadgetType & GTYP_GTYPEMASK, g->Activation, si != NULL, si && si->Extension != NULL,
+        if (!flat_string_ext(g->GadgetType & GTYP_GTYPEMASK, g->Flags, g->Activation, si != NULL, si && si->Extension != NULL,
                              (g->GadgetType & GTYP_GTYPEMASK) == GTYP_CUSTOMGADGET && gadget_class_has(g, "strgclass", 8)))
             continue;
         gx = g->LeftEdge + ((g->Flags & GFLG_RELRIGHT) ? win->Width - 1 : 0);
@@ -1117,7 +1117,7 @@ static void g9_ground(Object *obj, Msg msg)
     r->sgsel = st_scr(r, gi->gi_Screen) ? (ULONG)st_scr(r, gi->gi_Screen)->pen_sel : 0;
     if (!si || !si->Extension)
         r->sgnoext++;
-    if (flat_string_render_write(msg->MethodID, si != NULL, g->Activation, si && si->Extension != NULL, pen)) {
+    if (flat_string_render_write(msg->MethodID, si != NULL, g->Flags, g->Activation, si && si->Extension != NULL, pen)) {
         si->Extension->Pens[1] = si->Extension->ActivePens[1] = (UBYTE)pen;
         r->sground++;
     }

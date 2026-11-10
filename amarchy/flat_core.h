@@ -272,15 +272,16 @@ int flat_dopus_face_pen(long read, int pen_back);
 
 /* OWNER-2026-11-10 INPUT-GROUND: every text input draws no outline and the ground of the held selection pen (GR_SELECTION, the grey
  * of the flat cycle gadget). flat_input_pen: that pen for a screen of this depth, -1 when the screen holds none (depth < 3 or no pen:
- * the input keeps its ground). flat_string_ext: 1 when a gadget is a string gadget whose StringExtend (GACT_STRINGEXTEND, pens a
+ * the input keeps its ground). flat_string_ext: 1 when a gadget is a string gadget whose StringExtend (GFLG_STRINGEXTEND 0x0400 in Flags or GACT_STRINGEXTEND 0x2000 in Activation, see flat_string_has_extend; pens a
  * plain byte pair) may be written. flat_string_frame: 1 when the frame box f (x, y, w, h) is the border of the string gadget box g:
  * every edge within 4 px (a group box around several inputs is not). */
 int flat_input_pen(const flat_state *s, int depth);
-int flat_string_ext(unsigned gadget_type, unsigned activation, int has_info, int has_ext, int strg_chain);   /* strg_chain: boopsi gadget (type 5) whose class chain holds strgclass; also accepted */
-/* INPUT-GROUND (strgclass dispatcher): 1 when a dispatch of method (FLAT_GM_RENDER only) on a gadget with SpecialInfo, GACT_STRINGEXTEND
+int flat_string_has_extend(unsigned flags, unsigned activation);   /* 1 when the StringInfo.Extension is valid */
+int flat_string_ext(unsigned gadget_type, unsigned flags, unsigned activation, int has_info, int has_ext, int strg_chain);   /* strg_chain: boopsi gadget (type 5) whose class chain holds strgclass; also accepted */
+/* INPUT-GROUND (strgclass dispatcher): 1 when a dispatch of method (FLAT_GM_RENDER only) on a gadget with SpecialInfo, GFLG/GACT_STRINGEXTEND
  * and an Extension may get its ground pens written: pen >= 0 (flat_input_pen said so). The text pens stay untouched. */
 #define FLAT_GM_RENDER 1UL
-int flat_string_render_write(unsigned long method, int has_info, unsigned activation, int has_ext, int pen);
+int flat_string_render_write(unsigned long method, int has_info, unsigned flags, unsigned activation, int has_ext, int pen);
 int flat_string_frame(int fx, int fy, int fw, int fh, int gx, int gy, int gw, int gh);
 
 /* DOPUS-LOCK-ICONIFY (S2b.3): dopusiclass DIA_Type -> flat glyph id. IM_ICONIFY (6) -> FLAT_W_ICONIFY, IM_LOCK (8) ->

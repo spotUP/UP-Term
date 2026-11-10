@@ -573,22 +573,32 @@ static void test_input_ground(void)
     CHECK_INT(flat_input_pen(&s, 4), -1);                 /* none held */
     CHECK_INT(flat_input_pen(0, 4), -1);
     /* INPUT-GROUND: the strgclass dispatcher writes the ground pens on GM_RENDER only */
-    CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0x0800 | 1, 1, 5), 1);
-    CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0x0800, 1, 0), 1);          /* pen 0 is a pen */
-    CHECK_INT(flat_string_render_write(FLAT_GM_RENDER + 1, 1, 0x0800, 1, 5), 0);      /* GM_GOACTIVE */
-    CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 0, 0x0800, 1, 5), 0);          /* no SpecialInfo */
-    CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 1, 1, 5), 0);               /* no GACT_STRINGEXTEND */
-    CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0x0800, 0, 5), 0);          /* no Extension */
-    CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0x0800, 1, -1), 0);         /* no pen on this screen */
-    CHECK_INT(flat_string_ext(4, 0x0800 | 1, 1, 1, 0), 1);
-    CHECK_INT(flat_string_ext(4, 1, 1, 1, 0), 0);            /* no GACT_STRINGEXTEND */
-    CHECK_INT(flat_string_ext(1, 0x0800, 1, 1, 0), 0);       /* boolean gadget */
-    CHECK_INT(flat_string_ext(4, 0x0800, 0, 1, 0), 0);
-    CHECK_INT(flat_string_ext(4, 0x0800, 1, 0, 0), 0);
-    CHECK_INT(flat_string_ext(5, 0x0800 | 1, 1, 1, 1), 1);      /* INPUT-GROUND: boopsi dopusstrgclass chain holds strgclass */
-    CHECK_INT(flat_string_ext(5, 0x0800 | 1, 1, 1, 0), 0);      /* custom gadget without strgclass */
-    CHECK_INT(flat_string_ext(5, 1, 1, 1, 1), 0);               /* no GACT_STRINGEXTEND */
-    CHECK_INT(flat_string_ext(5, 0x0800, 1, 0, 1), 0);          /* no extension */
+    CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0, 0x2000 | 1, 1, 5), 1);
+    CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0, 0x2000, 1, 0), 1);          /* pen 0 is a pen */
+    CHECK_INT(flat_string_render_write(FLAT_GM_RENDER + 1, 1, 0, 0x2000, 1, 5), 0);      /* GM_GOACTIVE */
+    CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 0, 0, 0x2000, 1, 5), 0);          /* no SpecialInfo */
+    CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0, 1, 1, 5), 0);               /* no GACT_STRINGEXTEND */
+    CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0, 0x2000, 0, 5), 0);          /* no Extension */
+    CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0, 0x2000, 1, -1), 0);         /* no pen on this screen */
+    CHECK_INT(flat_string_ext(4, 0, 0x2000 | 1, 1, 1, 0), 1);
+    CHECK_INT(flat_string_ext(4, 0, 1, 1, 1, 0), 0);            /* no GACT_STRINGEXTEND */
+    CHECK_INT(flat_string_ext(1, 0, 0x2000, 1, 1, 0), 0);       /* boolean gadget */
+    CHECK_INT(flat_string_ext(4, 0, 0x2000, 0, 1, 0), 0);
+    CHECK_INT(flat_string_ext(4, 0, 0x2000, 1, 0, 0), 0);
+    CHECK_INT(flat_string_ext(5, 0, 0x2000 | 1, 1, 1, 1), 1);      /* INPUT-GROUND: boopsi dopusstrgclass chain holds strgclass */
+    CHECK_INT(flat_string_ext(5, 0, 0x2000 | 1, 1, 1, 0), 0);      /* custom gadget without strgclass */
+    CHECK_INT(flat_string_ext(5, 0, 1, 1, 1, 1), 0);               /* no GACT_STRINGEXTEND */
+    CHECK_INT(flat_string_ext(5, 0, 0x2000, 1, 0, 1), 0);          /* no extension */
+    /* extension flag: GFLG_STRINGEXTEND 0x0400 in Flags OR GACT_STRINGEXTEND 0x2000 in Activation; 0x0800 is GACT_LONGINT (the old wrong bit) */
+    CHECK_INT(flat_string_has_extend(0x0400, 0), 1);
+    CHECK_INT(flat_string_has_extend(0, 0x2000), 1);
+    CHECK_INT(flat_string_has_extend(0, 0x0800), 0);
+    CHECK_INT(flat_string_ext(4, 0x0400, 0, 1, 1, 0), 1);
+    CHECK_INT(flat_string_ext(4, 0, 0x2000, 1, 1, 0), 1);
+    CHECK_INT(flat_string_ext(4, 0, 0x0800, 1, 1, 0), 0);
+    CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0x0400, 0, 1, 5), 1);
+    CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0, 0x2000, 1, 5), 1);
+    CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0, 0x0800, 1, 5), 0);
     CHECK_INT(flat_string_frame(10, 10, 104, 18, 12, 12, 100, 14), 1);    /* bevel 2 px out */
     CHECK_INT(flat_string_frame(12, 12, 100, 14, 12, 12, 100, 14), 1);
     CHECK_INT(flat_string_frame(2, 2, 120, 34, 12, 12, 100, 14), 0);     /* 10 px out: a group box, not the input border */

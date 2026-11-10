@@ -338,16 +338,23 @@ int flat_input_pen(const flat_state *s, int depth)
     return s->pen_sel;
 }
 
-int flat_string_ext(unsigned gadget_type, unsigned activation, int has_info, int has_ext, int strg_chain)
+/* A string gadget's StringInfo.Extension is valid when Gadget.Flags holds GFLG_STRINGEXTEND (0x0400) or Gadget.Activation holds
+ * GACT_STRINGEXTEND (0x2000) (NDK intuition.h). 0x0800 is GACT_LONGINT, not an extension flag. */
+int flat_string_has_extend(unsigned flags, unsigned activation)
+{
+    return (flags & 0x0400) != 0 || (activation & 0x2000) != 0;
+}
+
+int flat_string_ext(unsigned gadget_type, unsigned flags, unsigned activation, int has_info, int has_ext, int strg_chain)
 {
     unsigned t = gadget_type & 0x7;
     /* GTYP_STRGADGET, or a GTYP_CUSTOMGADGET (boopsi: DOpus dopusstrgclass) whose class chain holds strgclass; GACT_STRINGEXTEND */
-    return (t == 4 || (t == 5 && strg_chain)) && (activation & 0x0800) && has_info && has_ext;
+    return (t == 4 || (t == 5 && strg_chain)) && flat_string_has_extend(flags, activation) && has_info && has_ext;
 }
 
-int flat_string_render_write(unsigned long method, int has_info, unsigned activation, int has_ext, int pen)
+int flat_string_render_write(unsigned long method, int has_info, unsigned flags, unsigned activation, int has_ext, int pen)
 {
-    return method == FLAT_GM_RENDER && has_info && (activation & 0x0800) && has_ext && pen >= 0;
+    return method == FLAT_GM_RENDER && has_info && flat_string_has_extend(flags, activation) && has_ext && pen >= 0;
 }
 
 static int near4(int a, int b)
