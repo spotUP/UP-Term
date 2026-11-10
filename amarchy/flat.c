@@ -1109,7 +1109,7 @@ static void g9_ground(Object *obj, Msg msg)
     pen = flat_input_pen(st_scr(r, gi->gi_Screen), gi->gi_DrInfo ? gi->gi_DrInfo->dri_Depth : 0);
     r->sgpen = (ULONG)(pen + 1);
     r->sscr = (ULONG)gi->gi_Screen;
-    r->swscr = gi->gi_Window ? (ULONG)gi->gi_Window->WScreen : 0;
+    r->swscr = (gi->gi_Window && TypeOfMem(gi->gi_Window)) ? (ULONG)gi->gi_Window->WScreen : 0;
     r->swb = (ULONG)g_draw.wb;
     r->slive = (ULONG)r->st.pen_sel;
     r->sgdep = gi->gi_DrInfo ? (ULONG)gi->gi_DrInfo->dri_Depth : 0;
@@ -2482,7 +2482,7 @@ static void print_stuck(struct Task *t)
 static void print_status(void)
 {
     flat_state copy;
-    char line[256];              /* worst-case rectfill line with mhits and bhits is 125 */
+    char line[512];              /* worst case: the input-ground line with its sentinels is about 330 */
     flatshared *r;
     int found = 0, dfound = 0, dreason = 0, dmask = 0, dinst = 0;
     unsigned dver = 0, drev = 0;
