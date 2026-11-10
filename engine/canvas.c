@@ -194,24 +194,36 @@ void cv_rect(struct cv *c, int x0, int y0, int x1, int y1, int idx)
 void cv_blit(struct cv *c, int x, int y, const unsigned char *src, int w, int h, int minterm,
              int cx0, int cy0, int cx1, int cy1)
 {
-    int i, j;
-    for (j = 0; j < h; j++)
-        for (i = 0; i < w; i++) {
-            int px = x + i, py = y + j, d, v = src[j * w + i];
-            if (px < cx0 || px > cx1 || py < cy0 || py > cy1)
-                continue;
-            d = cv_get(c, px, py);
-            if (d < 0)
-                continue;
-            switch (minterm) {
-            case CV_XOR: v = d ^ v; break;
-            case CV_OR: v = d | v; break;
-            case CV_AND: v = d & v; break;
-            case CV_NOT: v = ~v & 15; break;
-            default: break;
-            }
-            cv_pixel(c, px, py, v);
+    /* Clip the source box once against the clip rectangle and the canvas,
+       then walk row pointers: no per-pixel bounds test, multiply or call.
+       The dirty box is widened once for the whole clipped box, which is
+       exactly the set of pixels the old per-pixel cv_pixel path touched. */
+    int x0 = x, y0 = y, x1 = x + w - 1, y1 = y + h - 1, n, j, i;
+    if (x0 < cx0) x0 = cx0;
+    if (y0 < cy0) y0 = cy0;
+    if (x1 > cx1) x1 = cx1;
+    if (y1 > cy1) y1 = cy1;
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > c->w - 1) x1 = c->w - 1;
+    if (y1 > c->h - 1) y1 = c->h - 1;
+    if (x1 < x0 || y1 < y0)
+        return;
+    n = x1 - x0 + 1;
+    src += (y0 - y) * w + (x0 - x);
+    for (j = y0; j <= y1; j++, src += w) {
+        unsigned char *d = c->row[j] + x0;
+        const unsigned char *s = src;
+        switch (minterm) {
+        case CV_XOR: for (i = n; i; i--) *d++ ^= *s++; break;
+        case CV_OR: for (i = n; i; i--) *d++ |= *s++; break;
+        case CV_AND: for (i = n; i; i--) *d++ &= *s++; break;
+        case CV_NOT: for (i = n; i; i--) *d++ = (unsigned char)(~*s++ & 15); break;
+        default: for (i = n; i; i--) *d++ = *s++; break;
         }
+    }
+    x1++, y1++;
+    DIRTY_BOX(c, x0, y0, x1, y1);
 }
 
 struct cv_rect_s cv_take_dirty(struct cv *c)
