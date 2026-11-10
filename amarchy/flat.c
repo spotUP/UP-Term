@@ -816,12 +816,6 @@ static struct Gadget *string_gadget_at(struct RastPort *rp, int x0, int y0, int 
     for (g = win ? win->FirstGadget : NULL, n = 0; g && n < 64; g = g->NextGadget, n++) {
         struct StringInfo *si = (struct StringInfo *)g->SpecialInfo;
         int gx, gy, gw, gh;
-        if ((g->GadgetType & GTYP_GTYPEMASK) == GTYP_STRGADGET) {      /* sentinels: string gadgets seen, with an extension */
-            flatshared *rr = g_r;
-            rr->sgseen++;
-            if (si && flat_string_has_extend(g->Flags, g->Activation) && si->Extension)
-                rr->sgext++;
-        }
         if (!flat_string_ext(g->GadgetType & GTYP_GTYPEMASK, g->Flags, g->Activation, si != NULL, si && si->Extension != NULL,
                              (g->GadgetType & GTYP_GTYPEMASK) == GTYP_CUSTOMGADGET && gadget_class_has(g, "strgclass", 8)))
             continue;
@@ -1163,29 +1157,11 @@ static void g9_ground(Object *obj, Msg msg)
     struct StringInfo *si;
     struct GadgetInfo *gi;
     int pen;
-    int k;
-    r->sgseen++;                        /* sentinel: every strgclass dispatch */
-    for (k = 0; k < 4; k++) {           /* sentinel: histogram of the first 4 distinct methods */
-        if (r->smn[k] && r->smid[k] == (ULONG)msg->MethodID) { r->smn[k]++; break; }
-        if (!r->smn[k]) { r->smid[k] = (ULONG)msg->MethodID; r->smn[k] = 1; break; }
-    }
-    if (msg->MethodID == FLAT_GM_RENDER && !gp->gpr_GInfo)
-        r->snogi++;
     if (msg->MethodID != FLAT_GM_RENDER || !obj || !gp->gpr_GInfo)
         return;
-    r->sgext++;                         /* sentinel: GM_RENDER with a GadgetInfo */
     gi = gp->gpr_GInfo;
     si = (struct StringInfo *)g->SpecialInfo;
     pen = flat_input_pen(st_scr(r, gi->gi_Screen), gi->gi_DrInfo ? gi->gi_DrInfo->dri_Depth : 0);
-    r->sgpen = (ULONG)(pen + 1);
-    r->sscr = (ULONG)gi->gi_Screen;
-    r->swscr = (gi->gi_Window && TypeOfMem(gi->gi_Window)) ? (ULONG)gi->gi_Window->WScreen : 0;
-    r->swb = (ULONG)g_draw.wb;
-    r->slive = (ULONG)r->st.pen_sel;
-    r->sgdep = gi->gi_DrInfo ? (ULONG)gi->gi_DrInfo->dri_Depth : 0;
-    r->sgsel = st_scr(r, gi->gi_Screen) ? (ULONG)st_scr(r, gi->gi_Screen)->pen_sel : 0;
-    if (!si || !si->Extension)
-        r->sgnoext++;
     if (flat_string_render_write(msg->MethodID, si != NULL, g->Flags, g->Activation, si && si->Extension != NULL, pen)) {
         int tpen = gi->gi_DrInfo ? flat_input_text_pen(gi->gi_DrInfo->dri_Pens[TEXTPEN], gi->gi_DrInfo->dri_Depth) : -1;
         si->Extension->Pens[1] = si->Extension->ActivePens[1] = (UBYTE)pen;
@@ -2617,8 +2593,7 @@ static void print_status(void)
     unsigned long lbeat = 0, lnref = 0;
     struct Task *ltask = 0;
     unsigned lstage = 0, lref = 0;
-    unsigned long vsscr = 0, vswscr = 0, vswb = 0, vslive = 0, vsmid[4] = {0, 0, 0, 0}, vsmn[4] = {0, 0, 0, 0}, vsnogi = 0;
-    unsigned long vground = 0, vsg = 0, vgs = 0, vgslot = 0, vgcode = 0, vext = 0, vspen = 0, vsdep = 0, vssel = 0, vsnoext = 0;
+    unsigned long vground = 0, vgs = 0, vgslot = 0, vgcode = 0;
     memset(&copy, 0, sizeof copy);
     Forbid();
     r = (flatshared *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
@@ -2640,11 +2615,8 @@ static void print_status(void)
         memcpy(sring, r->sring, sizeof sring); sn = (int)(r->sring_n > 16 ? 16 : r->sring_n);
         lbeat = r->beat; lstage = r->stage; lref = r->refuse; lnref = r->nrefuse;
         ltask = r->task;
-        vground = r->sground; vsg = r->sgseen; vgs = r->gsw.installed; vgslot = (unsigned long)r->gslot;
-        vgcode = r->ggate ? (unsigned long)r->ggate->code : 0; vext = r->sgext;
-        vspen = r->sgpen; vsdep = r->sgdep; vssel = r->sgsel; vsnoext = r->sgnoext;
-        vsscr = r->sscr; vswscr = r->swscr; vswb = r->swb; vslive = r->slive; vsnogi = r->snogi;
-        memcpy(vsmid, r->smid, sizeof vsmid); memcpy(vsmn, r->smn, sizeof vsmn);
+        vground = r->sground; vgs = r->gsw.installed; vgslot = (unsigned long)r->gslot;
+        vgcode = r->ggate ? (unsigned long)r->ggate->code : 0;
     }
     Permit();
     if (flat_status_line(&copy, sizeof copy, found, line, sizeof line)) {
@@ -2679,7 +2651,6 @@ static void print_status(void)
         put_word(line, &n, " nopix=");              put_num(line, &n, dnopix);
         put_word(line, &n, " d5=");                 put_num(line, &n, d5draws);
         put_word(line, &n, " ground=");             put_num(line, &n, vground);
-        put_word(line, &n, " sg=");                 put_num(line, &n, vsg);
         put_word(line, &n, " gs=");                 put_num(line, &n, vgs ? 1 : 0);
         {   /* s71: slot address and gate code address, hex, to compare with tests/amiga/gadprobe */
             static const char hx[] = "0123456789abcdef";
@@ -2693,10 +2664,6 @@ static void print_status(void)
                 if (!k) put_word(line, &n, " gcode=0x");
             }
         }
-        put_word(line, &n, " ext=");                put_num(line, &n, vext);
-        put_word(line, &n, " spen=");               put_num(line, &n, vspen);
-        put_word(line, &n, " sdep=");               put_num(line, &n, vsdep);
-        put_word(line, &n, " ssel=");               put_num(line, &n, vssel);
         {   /* FLAT-BOOT-THEME-FIELDS: read from the record at STATUS time (copy, taken under Forbid), unlike the sentinels the strgclass hook writes */
             static const char hx3[] = "0123456789abcdef";
             int k;
@@ -2706,25 +2673,6 @@ static void print_status(void)
                 line[n++] = hx3[copy.sel_rgb[k] & 15];
             }
             put_word(line, &n, " pensel=");         put_num(line, &n, (unsigned long)copy.pen_sel);
-        }
-        put_word(line, &n, " snoext=");             put_num(line, &n, vsnoext);
-        {
-            static const char hx2[] = "0123456789abcdef";
-            unsigned long hv[4];
-            int k, j, m;
-            hv[0] = vsscr; hv[1] = vswscr; hv[2] = vswb; hv[3] = vslive;
-            for (m = 0; m < 4; m++) {
-                put_word(line, &n, m == 0 ? " sscr=0x" : m == 1 ? " swscr=0x" : m == 2 ? " swb=0x" : " slive=0x");
-                for (j = 28; j >= 0; j -= 4) line[n++] = hx2[(hv[m] >> j) & 15];
-            }
-            for (k = 0; k < 4; k++) {
-                char nm[6]; nm[0] = ' '; nm[1] = 's'; nm[2] = 'm'; nm[3] = (char)('0' + k); nm[4] = '='; nm[5] = 0;
-                put_word(line, &n, nm);
-                for (j = 28; j >= 0; j -= 4) line[n++] = hx2[(vsmid[k] >> j) & 15];
-                line[n++] = ':';
-                put_num(line, &n, vsmn[k]);
-            }
-            put_word(line, &n, " snogi=");           put_num(line, &n, vsnogi);
         }
         line[n] = 0;
         PutStr((STRPTR)line);

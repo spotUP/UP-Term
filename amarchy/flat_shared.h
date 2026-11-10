@@ -81,10 +81,6 @@ typedef struct flatshared {
     ULONG mhits;                /* S32-GHOST-MENU: menu ghost fills recoloured to the dim label pen (the sentinel) */
     ULONG bhits;                /* INSTALLER-BORDER-BUTTON: Border-render button erases drawn as the rounded flat fill (the sentinel) */
     ULONG dface;                /* DOPUS-BUTTON-NO-RING sentinel: raised Program DrawBox calls whose ring was painted in the face pen */
-    ULONG sgseen, sgext;        /* INPUT-GROUND sentinels: string gadgets walked / of them with a StringExtend */
-    ULONG sgpen, sgdep, sgsel, sgnoext;   /* INPUT-GROUND sentinels: last pen+1, last DrInfo depth, last pen_sel used, GM_RENDERs with no SpecialInfo or Extension */
-    ULONG sscr, swscr, swb, slive;   /* INPUT-GROUND sentinels: last gi_Screen, last gi_Window->WScreen, g_draw.wb, live r->st.pen_sel */
-    ULONG smid[4], smn[4], snogi;    /* INPUT-GROUND sentinels: first 4 distinct strgclass MethodIDs with counts; FLAT_GM_RENDER calls with gpr_GInfo NULL */
     ULONG sground;              /* INPUT-GROUND sentinel: string inputs whose StringExtend ground pens were set to the selection pen */
     ULONG dnopix;               /* DOPUS-BUTTON-NO-RING: face reads that failed (ReadPixel < 0), border fell back to the background pen */
     flat_swap d5sw;             /* DOPUS-LOCK-ICONIFY: the dopusiclass h_Entry swap (lock / iconify images) */
