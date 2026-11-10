@@ -3,6 +3,7 @@
  * repository root. */
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include "harness.h"
 #include "../engine/rip.h"
 
@@ -321,6 +322,15 @@ static void canvas_dirty_and_serial(void)
     CHECK_INT(cv_get(c, 4, 349), 0);
     CHECK(cv_open(0, 5, 16) == NULL);
     CHECK(cv_open(2000, 5, 16) == NULL);
+    /* the row table holds CV_ROWS_MAX rows: a taller canvas is refused by both creators, never overflowed */
+    CHECK(cv_open(4, CV_ROWS_MAX + 1, 16) == NULL);
+    {
+        unsigned char one[4];
+        struct cv *tall = cv_open(1, CV_ROWS_MAX, 16);
+        CHECK(tall != NULL && tall->h == CV_ROWS_MAX && tall->row[CV_ROWS_MAX - 1] == tall->pix + CV_ROWS_MAX - 1);
+        cv_close(tall);
+        CHECK(cv_open_pix(4, CV_ROWS_MAX + 1, 16, one) == NULL);
+    }
     cv_close(c);
 }
 
@@ -1408,6 +1418,150 @@ static void mouse_clear_flag(void)
     vt_free(t);
 }
 
+/* Bars and fills are written a row at a time (fill_span); the canvas must stay pixel-exact with the
+ * old per-pixel path. bar_gold[] are FNV canvas sums recorded from the per-pixel code before the
+ * row fast path. */
+static const char *const bar_cases[] = {
+    "!|v0A0A2M1Q|S000C|B0000HR9P\r\n",                  /* empty (background), viewport clip */
+    "!|v0A0A2M1Q|S010C|B0000HR9P\r\n",                  /* solid */
+    "!|v0A0A2M1Q|S020C|B0000HR9P\r\n",
+    "!|v0A0A2M1Q|S030C|B0000HR9P\r\n",
+    "!|v0A0A2M1Q|S040C|B0000HR9P\r\n",
+    "!|v0A0A2M1Q|S050C|B0000HR9P\r\n",
+    "!|v0A0A2M1Q|S060C|B0000HR9P\r\n",
+    "!|v0A0A2M1Q|S070C|B0000HR9P\r\n",
+    "!|v0A0A2M1Q|S080C|B0000HR9P\r\n",
+    "!|v0A0A2M1Q|S090C|B0000HR9P\r\n",
+    "!|v0A0A2M1Q|S0A0C|B0000HR9P\r\n",
+    "!|v0A0A2M1Q|S0B0C|B0000HR9P\r\n",
+    "!|v0A0A2M1Q|s2G6X1A3C5E7F0K4Z0C|B0000HR9P\r\n", /* user pattern */
+    "!|S010C|B0000HR9P\r\n",                            /* whole canvas */
+    "!|S0B0A|B0305HR9P\r\n",                            /* odd origin, clipped right and bottom */
+    "!|S0B0A|B03050ZZZZ\r\n",                           /* far outside the canvas */
+    "!|S0B0A|BHR9PZZZZ\r\n",                            /* past the edge, empty */
+    "!|S0B0A|B0A0A0F0F|B1A1A1B1B\r\n",                  /* small bars, odd widths */
+    "!|S040C|W01|B0000HR9P|B0A0A2M1Q\r\n",              /* XOR over XOR */
+    "!|c0F|S010C|B0A0A2M1Q|W01|S030B|B0F0F3A3A\r\n",    /* XOR over a copy bar */
+    "!|v0A0A2M1Q|S0B0C|P040A0A2M0A1E2M0A3C\r\n",
+    "!|S0C0C|o1K1K0K0F\r\n",
+    "!|c0F|S0B09|R0A0A2M2M|F1E1E0F\r\n",                /* flood fill */
+};
+#define NBAR ((int)(sizeof bar_cases / sizeof bar_cases[0]))
+static const unsigned long bar_gold[NBAR] = {
+    714430917UL, 4103493257UL, 768965797UL, 3208238709UL, 854245629UL, 2120127685UL, 432249541UL, 24841161UL, 179121257UL, 2926621341UL, 3052960581UL, 1526211209UL, 300627093UL, 3477794245UL, 2016951557UL, 40998853UL, 714430917UL, 4100652005UL, 464212461UL, 1039321601UL, 1547310672UL, 2027983621UL, 3991569644UL
+};
+
+static void bars_row_path_is_pixel_exact(void)
+{
+    int i;
+    for (i = 0; i < NBAR; i++) {
+        vt_term *t = rip_draw(bar_cases[i]);
+        unsigned long s = canvas_sum(t);
+        if (getenv("BAR_GOLD"))
+            printf("    %luUL, /* %d */\n", s, i);
+        else
+            CHECK(s == bar_gold[i]);
+        vt_free(t);
+    }
+}
+
+/* B0000HR9P over the whole 640x350 canvas used to cost 224000 gput calls (91 s on an A500) */
+static void bar_does_not_write_per_pixel(void)
+{
+    static const char *const modes[] = { "S010C", "S0B0C", "s2G6X1A3C5E7F0K4Z0C" };
+    int i;
+    for (i = 0; i < 3; i++) {
+        char cmd[64];
+        long before = vt_rip_gput_calls();
+        vt_term *t;
+        snprintf(cmd, sizeof cmd, "!|%s|B0000HR9P\r\n", modes[i]);
+        t = rip_draw(cmd);
+        CHECK(vt_rip_gput_calls() - before < 1000);
+        CHECK_INT(rpx(t, 639, 349) >= 0, 1);
+        vt_free(t);
+    }
+}
+
+/* fixture 07-buttons.rip through the real entry point */
+#define BUTTONS_GOLD 621586454UL /* recorded from the per-pixel code */
+static void buttons_fixture_canvas_is_unchanged(void)
+{
+    unsigned char *b = NULL;
+    long n = slurp("tests/rip/07-buttons.rip", &b), i;
+    vt_term *t = rip_term();
+    long before = vt_rip_gput_calls();
+    clock_t c0 = clock();
+    for (i = 0; i < n; i += 64)
+        vt_write(t, b + i, (size_t)(n - i < 64 ? n - i : 64));
+    if (getenv("BAR_GOLD"))
+        printf("    BUTTONS %lu gput %ld ms %ld\n", canvas_sum(t), vt_rip_gput_calls() - before, (long)((clock() - c0) * 1000 / CLOCKS_PER_SEC));
+    else
+        CHECK(canvas_sum(t) == BUTTONS_GOLD);
+    free(b);
+    vt_free(t);
+}
+
+/* The 68000 hot paths (canvas core, cv_blit, glyph blit, line) write rows straight into the canvas.
+ * hot_gold[] are FNV sums of canvas plus dirty box recorded from the code before those fast paths
+ * (7365004f); HOT_GOLD=1 prints them again. */
+static const char *const hot_cases[] = {
+    "!|c0E|X0A0A|X0B0A|XHR9P|XZZZZ|X0A0B\r\n",                          /* 0 pixels, one off the canvas */
+    "!|c0C|L00001Q0Z|L1Q0Z0000|LHR000009P|L00009P9P\r\n",              /* 4 lines, every octant pair */
+    "!|c0B|=01000001|L0505HR9P|=0402Z301|L000050A0\r\n",          /* dotted and user pattern */
+    "!|c0D|=00000003|L0A0A5050|L50500A50|L0A3C0A0A\r\n",             /* thick */
+    "!|S010C|B0000HR9P|W01|c0F|L00005050|L00505000\r\n",                 /* XOR lines over a bar */
+    "!|v0A0A2M1Q|c0F|L00009P9P|L9P0000ZZ|R0505HRHR\r\n",                /* viewport clip */
+    "!|c09|R0A0A3C3C|C3C3C1E|O5050001E1E0A|P030A0A2M0A1E2M\r\n",         /* rect, circle, arc, polygon */
+    "!|c0F|@0A0AHello, RIP!\r\n",                                       /* text size 1 */
+    "!|c0E|Y00000300|@1010Big|Y00000A00|@0010W\r\n",                     /* sizes 3 and 10 */
+    "!|c0D|Y00010200|@1H2HUp|Y00010100|@5050up1\r\n",                    /* rotated */
+    "!|S010C|B0000HR9P|W01|c0F|Y00000200|@0505XOR\r\n",                  /* XOR text */
+    "!|v0A0A1E1E|c0F|Y00000400|@0505Clip\r\n",                          /* viewport clip */
+    "!|c0F|Y00000300|@HM9MEdge|Y00010300|@0200Top\r\n",                  /* past the canvas edges */
+    "!|S0B0C|B0000HR9P|c0F|L00009P9P|1C0000282800|1P1E1E000\r\n",        /* copy blit */
+    "!|S0B0C|B0000HR9P|c0F|L00009P9P|1C0000282800|1P0A0A010|1P1E1E020\r\n", /* xor, or */
+    "!|S0B0C|B0000HR9P|c0F|L00009P9P|1C0000282800|1P0A0A030|1P1E1E040\r\n", /* and, not */
+    "!|S0B0C|B0000HR9P|c0F|L00009P9P|1C0000282800|v0F0F1E1E|1P0505000\r\n", /* viewport clip */
+    "!|S0B0C|B0000HR9P|c0F|L00009P9P|1C0000282800|1PHM9K000\r\n",          /* past the canvas edge */
+    "!|S0B0C|B0000HR9P|c0F|L00009P9P|1G00002828000A\r\n",                 /* 1G block move */
+    "!|c0F|=00000003|L0A0AZZZZ|LZZ0A0A5P|L0A5PZZ5P|L5P0A5PZZ\r\n",         /* thick, across both edges */
+    "!|c0E|=0402Z303|L0A0AZZZZ|LZZ5P0A0A|L00005P5P\r\n",                  /* thick user pattern, edges */
+    "!|S010C|B0000HR9P|W01|c0F|=0402Z303|L0A0AZZ5P|LZZ0A0A5P|L5P5P5P5P\r\n", /* XOR thick pattern, a point */
+    "!|c0D|=01000001|LZZZZ0000|L0000ZZ00|L00ZZ00ZZ|L0A0A0A5P|L0A0A5P0A\r\n", /* dotted axis lines, edges */
+    "!|c0F|Y00010200|@0A0AUp2|Y00000300|@HE0AEdge|Y00010300|@2020Up3\r\n", /* scales 2, 3 both ways, clipped */
+    "!|S010C|B0000HR9P|W01|c0F|Y00010300|@3030XOR|Y00000500|@HH10Edge5\r\n", /* XOR scales 3, 5 */
+    "!|v0A0A3C3C|c0F|Y00000300|@0505Clip|Y00010300|@3050Up\r\n",         /* viewport clip scale 3 */
+};
+#define NHOT ((int)(sizeof hot_cases / sizeof hot_cases[0]))
+static const unsigned long hot_gold[NHOT] = {
+    1503518763UL, 4066511283UL, 3103958941UL, 1910754637UL, 3288909371UL, 1162073572UL, 1087245736UL, 2511698522UL, 3495851653UL, 3491949135UL, 3025901691UL, 93388604UL, 3072458842UL, 180410429UL, 4058139093UL, 1533611686UL, 1039115325UL, 3818197359UL, 3166832083UL,
+    3167963882UL, 2175254661UL, 3740713959UL, 713952347UL, 1086918729UL, 2949204449UL, 413799069UL
+};
+
+static unsigned long hot_sum(vt_term *t)
+{
+    unsigned long h = canvas_sum(t);
+    int d[4] = { 0, 0, 0, 0 }, i;
+    vt_rip_take_dirty(t, &d[0], &d[1], &d[2], &d[3]);
+    for (i = 0; i < 4; i++)
+        h = ((h ^ (unsigned long)(d[i] & 0xFFFF)) * 16777619UL) & 0xFFFFFFFFUL;
+    return h;
+}
+
+static void hot_paths_are_pixel_exact(void)
+{
+    int i;
+    for (i = 0; i < NHOT; i++) {
+        vt_term *t = rip_draw(hot_cases[i]);
+        unsigned long s = hot_sum(t);
+        if (getenv("HOT_GOLD"))
+            printf("    %luUL, /* %d */\n", s, i);
+        else
+            CHECK(s == hot_gold[i]);
+        vt_free(t);
+    }
+}
+
 void suite_rip(void)
 {
     fixture_01_line_grammar();
@@ -1438,6 +1592,10 @@ void suite_rip(void)
     knob_line_style_and_thickness();
     knob_fill_style();
     knob_geometry();
+    bars_row_path_is_pixel_exact();
+    bar_does_not_write_per_pixel();
+    buttons_fixture_canvas_is_unchanged();
+    hot_paths_are_pixel_exact();
     knob_polygon_rect_flood();
     text_font_scale_direction();
     stroke_fonts_goldens();

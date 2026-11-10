@@ -554,6 +554,11 @@ long vt_rip_stroke_glyphs(void)
     return rip_font_stroke_glyphs();
 }
 
+long vt_rip_gput_calls(void)
+{
+    return rip_gput_calls();
+}
+
 int vt_rip_active(const vt_term *t)
 {
     return t->rip ? ((struct rip_ad *)t->rip)->active : 0;
