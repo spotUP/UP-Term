@@ -588,7 +588,7 @@ static int c2_glyph(Object *obj, Msg msg, ULONG which, const c2_pens *p)
     /* S69-ARROW-ASPECT: side from side_px of the drawing screen, the one per-screen aspect source (not dri_Resolution) */
     int side = w && w->WScreen ? side_px(r, w->WScreen) : d->imp_DrInfo && d->imp_DrInfo->dri_Screen ? side_px(r, d->imp_DrInfo->dri_Screen) : 1;
     return flat_glyph_draw(st_rp(r, d->imp_RPort), which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
-                           im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, p->frame, p->knob, side,
+                           im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, p->frame, p->knob, p->text, side,
                            c2_fill, d->imp_RPort);
 }
 #define NOWHICH 0xFFFFFFFFUL

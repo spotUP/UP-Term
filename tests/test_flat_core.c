@@ -623,7 +623,7 @@ static void test_title_gadget_filter(void)
 static int fake_dispatch(const flat_state *st, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy, int w, int h)
 {
     g_disp_calls++;
-    if (flat_glyph_draw(st, which, method, ids, ox, oy, w, h, g_frame_pen, st->pen_text, 1, cv_fill, 0))
+    if (flat_glyph_draw(st, which, method, ids, ox, oy, w, h, g_frame_pen, st->pen_text, -1, 1, cv_fill, 0))
         return 1;
     g_old_calls++;                                      /* the saved routine */
     return 0;
@@ -643,7 +643,7 @@ static int lock_rows(const flat_state *st, unsigned long ids, int side, int w, i
 {
     int y, x, r;
     cv_clear();
-    r = flat_glyph_draw(st, FLAT_W_LOCK, FLAT_IM_DRAW, ids, 3, 2, w, h, -1, st->pen_text, side, cv_fill, 0);
+    r = flat_glyph_draw(st, FLAT_W_LOCK, FLAT_IM_DRAW, ids, 3, 2, w, h, -1, st->pen_text, -1, side, cv_fill, 0);
     for (y = 0; y < h; y++) {
         for (x = 0; x < w; x++)
             rows[y][x] = cv[2 + y][3 + x];
@@ -679,6 +679,34 @@ static void test_dopus_image_which(void)
         for (x = 0; x < 16; x++)
             lit += rows[y][x] == '#';
     CHECK_INT(lit > 0, 1);                                  /* the lock type reached the glyph and drew pixels */
+}
+
+/* GLYPH-TEXT-PEN: DOpus lock and iconify on the title band draw in the title text pen the band gives them (c2_get_pens p->text),
+ * the same pen the cloned zoom and depth take; before, the flat glyphs ignored it and drew in pen_text. */
+static void test_band_glyphs_take_text_pen(void)
+{
+    static const unsigned long whichs[3] = { FLAT_W_LOCK, FLAT_W_LOCK, FLAT_W_ICONIFY };
+    static const unsigned long idss[3] = { 0, 1, 0 };          /* open lock, closed lock (IDS_SELECTED), iconify */
+    flat_state st;
+    int i, y, x, side, text, other;
+    glyph_state(&st);
+    for (side = 1; side <= 2; side++)
+        for (i = 0; i < 3; i++) {
+            cv_clear();
+            CHECK_INT(flat_glyph_draw(&st, whichs[i], FLAT_IM_DRAW, idss[i], 0, 0, 16 * side, 14, '=', -1, '@', side, cv_fill, 0), 1);
+            text = other = 0;
+            for (y = 0; y < 14; y++)
+                for (x = 0; x < 16 * side; x++) {
+                    text += cv[y][x] == '@';
+                    other += cv[y][x] != '@' && cv[y][x] != '=';
+                }
+            CHECK_INT(text > 0, 1);                 /* the glyph lines are in the text pen */
+            CHECK_INT(other, 0);                    /* no pen_text pixel: only band and text pen */
+        }
+    /* one rule for both paths: the clone's glyph pen equals the flat glyph's */
+    CHECK_INT(flat_glyph_fg_pen(&st, FLAT_ROLE_TEXT, '@', '=', -1), '@');
+    CHECK_INT(flat_glyph_fg_pen(&st, FLAT_ROLE_TEXT, -1, '=', -1), '#');
+    CHECK_INT(flat_glyph_fg_pen(&st, FLAT_ROLE_BACK, '@', '=', -1), flat_clone_pen(&st, FLAT_ROLE_BACK, '=', -1));
 }
 
 static void test_lock_glyph(void)
@@ -2126,7 +2154,7 @@ static void arrow_bbox(const flat_state *st, unsigned long w, int bw, int bh, in
     int x, y, y0 = -1, y1 = -1;
     cv_clear();
     *x0 = CV; *x1 = -1;
-    CHECK_INT(flat_glyph_draw(st, w, FLAT_IM_DRAW, 0, 0, 0, bw, bh, st->pen_back, st->pen_text, side, cv_fill, 0), 1);
+    CHECK_INT(flat_glyph_draw(st, w, FLAT_IM_DRAW, 0, 0, 0, bw, bh, st->pen_back, st->pen_text, -1, side, cv_fill, 0), 1);
     for (y = 0; y < bh; y++)
         for (x = 0; x < bw; x++)
             if (cv[y][x] == (char)st->pen_text) {
@@ -2213,7 +2241,7 @@ static void test_arrow_s69_shape(void)
         for (w = FLAT_W_LEFT; w <= FLAT_W_RIGHT; w += FLAT_W_RIGHT - FLAT_W_LEFT) {
             int f;
             cv_clear();
-            CHECK_INT(flat_glyph_draw(&st, w, FLAT_IM_DRAW, 0, 0, 0, bw, bh, st.pen_back, st.pen_text, side, cv_fill, 0), 1);
+            CHECK_INT(flat_glyph_draw(&st, w, FLAT_IM_DRAW, 0, 0, 0, bw, bh, st.pen_back, st.pen_text, -1, side, cv_fill, 0), 1);
             f = first_row(&st, bw, bh);
             CHECK(f >= 0);
             CHECK_INT(row_len(&st, f, bw), side);
@@ -2224,7 +2252,7 @@ static void test_arrow_s69_shape(void)
         for (w = FLAT_W_UP; w <= FLAT_W_DOWN; w += FLAT_W_DOWN - FLAT_W_UP) {
             int rows = 0, wprev = 0;
             cv_clear();
-            CHECK_INT(flat_glyph_draw(&st, w, FLAT_IM_DRAW, 0, 0, 0, bw, bh, st.pen_back, st.pen_text, side, cv_fill, 0), 1);
+            CHECK_INT(flat_glyph_draw(&st, w, FLAT_IM_DRAW, 0, 0, 0, bw, bh, st.pen_back, st.pen_text, -1, side, cv_fill, 0), 1);
             for (y = 0; y < bh; y++) {
                 int l = row_len(&st, y, bw);
                 if (!l) continue;
@@ -2238,7 +2266,7 @@ static void test_arrow_s69_shape(void)
         if (side == 1) {
             int x, rows = 0, base = 0, depth = 0;
             cv_clear();
-            CHECK_INT(flat_glyph_draw(&st, FLAT_W_LEFT, FLAT_IM_DRAW, 0, 0, 0, 16, 10, st.pen_back, st.pen_text, 1, cv_fill, 0), 1);
+            CHECK_INT(flat_glyph_draw(&st, FLAT_W_LEFT, FLAT_IM_DRAW, 0, 0, 0, 16, 10, st.pen_back, st.pen_text, -1, 1, cv_fill, 0), 1);
             for (y = 0; y < 10; y++) {
                 int l = row_len(&st, y, 16);
                 if (l) { rows++; if (l > depth) depth = l; }
@@ -2246,7 +2274,7 @@ static void test_arrow_s69_shape(void)
             CHECK_INT(rows, 7);
             CHECK_INT(depth, 4);
             cv_clear();
-            CHECK_INT(flat_glyph_draw(&st, FLAT_W_UP, FLAT_IM_DRAW, 0, 0, 0, 18, 11, st.pen_back, st.pen_text, 1, cv_fill, 0), 1);
+            CHECK_INT(flat_glyph_draw(&st, FLAT_W_UP, FLAT_IM_DRAW, 0, 0, 0, 18, 11, st.pen_back, st.pen_text, -1, 1, cv_fill, 0), 1);
             rows = 0;
             for (y = 0; y < 11; y++) {
                 int l = row_len(&st, y, 18);
@@ -2261,7 +2289,7 @@ static void test_arrow_s69_shape(void)
         {
             int f, l0, l1, l2;
             cv_clear();
-            CHECK_INT(flat_glyph_draw(&st, FLAT_W_SIZE, FLAT_IM_DRAW, 0, 0, 0, 16, 10, st.pen_back, st.pen_text, side, cv_fill, 0), 1);
+            CHECK_INT(flat_glyph_draw(&st, FLAT_W_SIZE, FLAT_IM_DRAW, 0, 0, 0, 16, 10, st.pen_back, st.pen_text, -1, side, cv_fill, 0), 1);
             f = first_row(&st, 16, 10);
             CHECK(f >= 0);
             l0 = row_len(&st, f, 16); l1 = row_len(&st, f + 1, 16); l2 = row_len(&st, f + 2, 16);
@@ -2298,7 +2326,7 @@ static void test_arrow_glyph_pens(void)
                 cv_clear();
                 rc = flat_clone_draw(&st, w, FLAT_IM_DRAW, (unsigned long)states[si], 0, 0, bw, bh, st.pen_back, st.pen_text, -1, 99, -1, blank_render, 0, cv_fill, 0, g_scr);
                 CHECK_INT(rc, FLAT_CLONE_NO);                    /* S69-ARROW-ASPECT: arrows are never cloned */
-                CHECK_INT(flat_glyph_draw(&st, w, FLAT_IM_DRAW, (unsigned long)states[si], 0, 0, bw, bh, st.pen_back, st.pen_text, 1, cv_fill, 0), 1);
+                CHECK_INT(flat_glyph_draw(&st, w, FLAT_IM_DRAW, (unsigned long)states[si], 0, 0, bw, bh, st.pen_back, st.pen_text, -1, 1, cv_fill, 0), 1);
                 glyph = box = 0;
                 for (y = 0; y < bh; y++)
                     for (x = 0; x < bw; x++) {
@@ -2349,7 +2377,7 @@ static void knob_canvas(const flat_state *st, unsigned long w, unsigned long ids
     cv_clear();
     if (clone)      /* S69-ARROW-ASPECT: arrows and size are never cloned; the glyph path draws them in either case */
         CHECK_INT(flat_clone_draw(st, w, FLAT_IM_DRAW, ids, 0, 0, bw, bh, 'F', knob, -1, 99, -1, fake_render, 0, cv_fill, 0, g_scr), FLAT_CLONE_NO);
-    CHECK_INT(flat_glyph_draw(st, w, FLAT_IM_DRAW, ids, 0, 0, bw, bh, 'F', knob, 1, cv_fill, 0), 1);
+    CHECK_INT(flat_glyph_draw(st, w, FLAT_IM_DRAW, ids, 0, 0, bw, bh, 'F', knob, -1, 1, cv_fill, 0), 1);
     for (y = 0; y < bh; y++)
         for (x = 0; x < bw; x++) {
             int c = cv[y][x];
@@ -2673,7 +2701,7 @@ static void arrow_pens(int clone, const flat_state *st, unsigned long w, const a
     cv_clear();
     if (clone)      /* S69-ARROW-ASPECT: the clone refuses arrows (render never called); both columns are the glyph path */
         CHECK_INT(flat_clone_draw(st, w, FLAT_IM_DRAW, 0, 0, 0, a->bw, a->bh, 'F', 'K', -1, 99, -1, arrow_render, (void *)a, cv_fill, 0, g_scr), FLAT_CLONE_NO);
-    CHECK_INT(flat_glyph_draw(st, w, FLAT_IM_DRAW, 0, 0, 0, a->bw, a->bh, 'F', 'K', 1, cv_fill, 0), 1);
+    CHECK_INT(flat_glyph_draw(st, w, FLAT_IM_DRAW, 0, 0, 0, a->bw, a->bh, 'F', 'K', -1, 1, cv_fill, 0), 1);
     for (y = 0; y < a->bh; y++)
         for (x = 0; x < a->bw; x++) {
             if (cv[y][x] == cv[0][0]) { nb++; bp = cv[y][x]; }
@@ -3388,6 +3416,7 @@ void suite_flat_core(void)
     test_title_gadget_filter();
     test_dopus_path();
     test_lock_glyph();
+    test_band_glyphs_take_text_pen();
     test_dopus_image_which();
     test_glyph_goldens();
     test_glyph_solid_and_state_equal();
