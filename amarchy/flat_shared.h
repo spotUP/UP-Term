@@ -28,6 +28,8 @@ typedef struct flatshared {
     struct Library *dlib;       /* dopus5.library, opened while patched so it cannot expunge under the patch */
     flat_swap dsw[FLAT_EL_COUNT];
     uintptr_t *dslot[FLAT_EL_COUNT];
+    struct flat_gate *dgate[FLAT_EL_COUNT];   /* FLAT-UNLOAD-INFLIGHT: the never-freed gate of each patched D4 entry (flat.c dgate_get) and the handler it was made for */
+    ULONG dgate_h[FLAT_EL_COUNT];
     /* 0c body hook: the body entry hooked per element (0 = the LVO jump-table swap above), the bytes it held, and the
      * trampoline (relocated prologue + JMP back into the body) the replacement calls when it draws nothing */
     unsigned char *dbody[FLAT_EL_COUNT];

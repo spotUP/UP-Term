@@ -40,8 +40,39 @@ class FlatUnloadInflight(unittest.TestCase):
         for fn in ("tx_remove", "rf_remove", "hook_remove"):
             body = func(code(), fn)
             self.assertNotRegex(body, r"Delay\(\s*\d{1,2}\s*\)", "%s waits a fixed Delay(n) for in-flight callers" % fn)
-        # dopus_unpatch keeps one Delay for the ungated D4 library entries (dsw); the d5 dispatcher is waited on the count
-        self.assertNotRegex(func(code(), "dopus_unpatch"), r"Delay\(\s*\d{1,2}\s*\)[^\n]*\n[^\n]*\n[^\n]*d5", "d5 not on a Delay")
+        # the D4 library entries (dsw) are gated too: dopus_unpatch waits on the counts, never on a fixed time
+        self.assertNotRegex(func(code(), "dopus_unpatch"), r"Delay\(", "dopus_unpatch waits a fixed Delay for in-flight callers")
+
+    def test_no_fixed_delay_in_any_unload_path(self):
+        src = code()
+        for fn in ("tx_remove", "rf_remove", "hook_remove", "dopus_unpatch"):
+            self.assertNotRegex(func_any(src, fn), r"Delay\(", fn)
+        self.assertEqual(re.findall(r"\bDelay\(\s*(\w+)\s*\)", func(src, "gate_wait")), ["1"], "the only Delay on an unload path is the poll inside gate_wait")
+
+    def test_every_patched_dopus_entry_reaches_our_code_only_through_a_gate(self):
+        src = code()
+        scan = func_any(src, "dopus_scan")
+        # no swap/body install may be handed one of our handlers directly: the operand is always a gate block's code
+        for call in re.findall(r"flat_(?:swap|body)_install\(([^;]*?)\)\s*(?:!=|==)", scan, re.S):
+            if "dsw" in call:
+                self.assertIn("->code", call, "ungated install: " + " ".join(call.split()))
+        self.assertEqual(len(re.findall(r"flat_(?:swap|body)_install\(&r->dsw\[el\]", scan)), 2)
+        self.assertEqual(len(re.findall(r"gate_open\(g,", scan)), 2, "both install paths open their gate after the swap")
+        self.assertIn("gate_make(", func_any(src, "dgate_get"))
+        # unload: each element is closed before its restore, reopened when refused, waited on after the Forbid
+        un = func_any(src, "dopus_unpatch")
+        c = un.find("gate_close(r->dgate[el])")
+        rm = un.find("flat_body_remove(&r->dsw[el]")
+        rm2 = un.find("flat_swap_remove(&r->dsw[el]")
+        ro = un.find("gate_reopen(r->dgate[el])")
+        pm = un.find("Permit()")
+        w = un.find("gate_wait(r->dgate[el])")
+        cl = un.find("CloseLibrary(r->dlib)")
+        self.assertTrue(0 <= c < rm < rm2 < ro < pm < w < cl, (c, rm, rm2, ro, pm, w, cl))
+        # the stack-convention body handlers absorb the gate's return address
+        self.assertRegex(src, r"d4_fieldbody\(void \*caller_return, ")
+        self.assertRegex(src, r"d4_bevelbody\(void \*caller_return, ")
+        self.assertNotRegex(src, r"FreeMem\(\s*r->dgate")
 
     def test_every_gate_counts_in_before_the_closed_test_and_the_pass_through_counts_out(self):
         for name, tag in GATES:

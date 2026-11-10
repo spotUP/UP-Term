@@ -972,11 +972,15 @@ static void d4_fieldbox(__reg("a0") struct RastPort *rp, __reg("a1") struct Rect
         ((fieldfn)g_r->dsw[FLAT_EL_FIELDBOX].saved)(rp, rect, info, g_r->dlib);
 }
 
-/* 0c: the FieldBox body, entered by JMP from its patched entry. Stack convention (rp, rect, info, GfxBase at 4/8/12/16(sp)),
+/* FLAT-UNLOAD-INFLIGHT: the body hooks are entered through the class gate template (flat_dg.s) by a plain jsr, so the stack
+ * holds [gate ret][caller ret][args]: the two stack-convention handlers (d4_fieldbody, d4_bevelbody) take one leading
+ * caller_return parameter that absorbs the caller's return address, as c2_disp_stk does. The register-convention ones
+ * (d4_drawbox, d4_fieldbox) need nothing.
+ * 0c: the FieldBox body, entered by JMP from its patched entry. Stack convention (rp, rect, info, GfxBase at 4/8/12/16(sp)),
  * the caller pops them; the saved path is the trampoline called with the same four arguments. */
 typedef void (*fieldbodyfn)(struct RastPort *, struct Rectangle *, struct DrawInfo *, struct Library *);
 
-static void d4_fieldbody(struct RastPort *rp, struct Rectangle *rect, struct DrawInfo *info, struct Library *gfx)
+static void d4_fieldbody(void *caller_return, struct RastPort *rp, struct Rectangle *rect, struct DrawInfo *info, struct Library *gfx)
 {
     if (!d4_flat(FLAT_EL_FIELDBOX, rp, rect, info, 0))
         ((fieldbodyfn)g_r->dsw[FLAT_EL_FIELDBOX].saved)(rp, rect, info, gfx);
@@ -989,7 +993,7 @@ static void d4_fieldbody(struct RastPort *rp, struct Rectangle *rect, struct Dra
  * and dopusiclass frame images draw here, never through DrawBox, so without this they kept pen 0 edges. */
 typedef void (*bevelbodyfn)(ULONG, struct RastPort *, UWORD *, WORD *, ULONG, ULONG);
 
-static void d4_bevelbody(ULONG a, struct RastPort *rp, UWORD *pens, WORD *rect, ULONG recessed, ULONG thin)
+static void d4_bevelbody(void *caller_return, ULONG a, struct RastPort *rp, UWORD *pens, WORD *rect, ULONG recessed, ULONG thin)
 {
     if (!pens || !rect || !d4_flat_pens(FLAT_EL_BEVEL, rp, pens[SHINEPEN], pens[BACKGROUNDPEN], rect[0], rect[1],
                                          rect[0] + rect[2] - 1, rect[1] + rect[3] - 1, (LONG)(recessed == 1)))
@@ -2527,7 +2531,7 @@ static void refused(flatshared *r, unsigned why)
 
 static void dopus_unpatch(flatshared *r)
 {
-    int el, d5_removed = 0;
+    int el, d5_removed = 0, removed[FLAT_EL_COUNT];
     Forbid();
     if (r->d5sw.installed) {
         gate_close(r->d5gate);          /* FLAT-UNLOAD-INFLIGHT: closed, restore, then wait */
@@ -2536,25 +2540,47 @@ static void dopus_unpatch(flatshared *r)
         else
             gate_reopen(r->d5gate);
     }
-    for (el = 0; el < FLAT_EL_COUNT; el++)
+    for (el = 0; el < FLAT_EL_COUNT; el++) {
+        removed[el] = 0;
         if (r->dsw[el].installed) {
+            int rc;
+            gate_close(r->dgate[el]);   /* the gate passes a late caller to the original (for a body hook: the body, restored below in this same Forbid) */
             if (r->dbody[el])
-                flat_body_remove(&r->dsw[el], r->dbody[el], r->dorig[el], r->dplen[el], &r->st);
+                rc = flat_body_remove(&r->dsw[el], r->dbody[el], r->dorig[el], r->dplen[el], &r->st);
             else
-                flat_swap_remove(&r->dsw[el], r->dslot[el], &r->st);
+                rc = flat_swap_remove(&r->dsw[el], r->dslot[el], &r->st);
+            if (rc == FLAT_REMOVED)
+                removed[el] = 1;
+            else
+                gate_reopen(r->dgate[el]);     /* refused (a foreign hook sits on top): the gate keeps serving as it did */
         }
+    }
     if (r->dlib)
         libpatch_done(r->dlib);
     CacheClearU();
     Permit();
     if (d5_removed)
         gate_wait(r->d5gate);           /* every caller inside the dopusiclass replacement has left */
+    for (el = 0; el < FLAT_EL_COUNT; el++)
+        if (removed[el])
+            gate_wait(r->dgate[el]);    /* every caller inside a D4 library entry replacement has left (it counts in before it looks at the flag) */
     if (!d4_installed(r) && r->dlib) {
-        Delay(2);                       /* the D4 library entries (dsw) are not gated: a caller inside one leaves (still a fixed wait, see the s71 note) */
         CloseLibrary(r->dlib);
         r->dlib = 0;
         r->dmask = 0;
     }
+}
+
+/* FLAT-UNLOAD-INFLIGHT: the gate of D4 element el for the handler ours. A gate keeps its handler in the copied code, so one is
+ * reused only when the handler is the same (the LVO swap and the body hook of FieldBox use different handlers); otherwise a new
+ * block is made and the old one, idle after its wait, stays behind like every gate. NULL: out of memory, element stays stock. */
+static flat_gate *dgate_get(flatshared *r, int el, uintptr_t ours)
+{
+    if (!r->dgate[el] || r->dgate_h[el] != (ULONG)ours) {
+        r->dgate[el] = gate_make((void *)flat_dg_tpl, (void *)flat_dg_tpl_end, (ULONG)ours);
+        r->dgate_h[el] = r->dgate[el] ? (ULONG)ours : 0;
+    }
+    return r->dgate[el];
 }
 
 static void dopus_scan(flatshared *r)
@@ -2608,12 +2634,14 @@ static void dopus_scan(flatshared *r)
             int plen = body ? flat_body_prologue(el, body) : 0;
             void *ours = el == FLAT_EL_DRAWBOX ? (void *)d4_drawbox : el == FLAT_EL_FIELDBOX ? (void *)d4_fieldbody : (void *)d4_bevelbody;
             if (plen) {
-                if (flat_body_install(&r->dsw[el], body, plen, (unsigned char *)r->dtramp[el], r->dorig[el],
-                                      (uintptr_t)ours) != FLAT_OK)
+                flat_gate *g = dgate_get(r, el, (uintptr_t)ours);
+                if (!g || flat_body_install(&r->dsw[el], body, plen, (unsigned char *)r->dtramp[el], r->dorig[el],
+                                            (uintptr_t)g->code) != FLAT_OK)
                     mask &= ~(1 << el);
                 else {
                     r->dbody[el] = body;
                     r->dplen[el] = plen;
+                    gate_open(g, (uintptr_t)body);     /* a late caller of the closed gate runs the body, which unload has restored by then (the trampoline lives in the record) */
                 }
                 continue;
             }
@@ -2622,8 +2650,14 @@ static void dopus_scan(flatshared *r)
             mask &= ~(1 << el);
             continue;
         }
-        if (flat_swap_install(&r->dsw[el], r->dslot[el], (uintptr_t)(el == FLAT_EL_DRAWBOX ? (void *)d4_drawbox : (void *)d4_fieldbox)) != FLAT_OK)
-            mask &= ~(1 << el);
+        {
+            uintptr_t ours = el == FLAT_EL_DRAWBOX ? (uintptr_t)d4_drawbox : (uintptr_t)d4_fieldbox;
+            flat_gate *g = dgate_get(r, el, ours);
+            if (!g || flat_swap_install(&r->dsw[el], r->dslot[el], (uintptr_t)g->code) != FLAT_OK)
+                mask &= ~(1 << el);
+            else
+                gate_open(g, r->dsw[el].saved);
+        }
     }
     libpatch_done(lib);
     CacheClearU();                      /* the body entries are code just written */
