@@ -100,10 +100,33 @@ def audit():
     return mk, listed, missing
 
 
+def unbuilt(mk, v, target):
+    """The $(BUILD)/amiga/<name> files the target's recipe reads that are not among its prerequisites: on a fresh
+    tree the recipe then stops at a missing file (DIST-CHECK-PREREQ: make dist-check ran test_nobreak.py on
+    allocwatch, patchcon, lvoprobe and frameprobe, which neither make amiga nor dist-check built)."""
+    lst = ' '.join('$(BUILD)/amiga/' + n for n in sorted(chkabort_list(v)))
+    names = lambda text: set(re.findall(r'\$\(BUILD\)/amiga/([A-Za-z0-9_.-]+)',
+                                        text.replace('$(CHKABORT_PROGRAMS:%=$(BUILD)/amiga/%)', lst)))
+    lines = mk.split('\n')
+    for i, ln in enumerate(lines):
+        if not ln.startswith(target + ':'):
+            continue
+        recipe, j = '', i + 1
+        while j < len(lines) and lines[j].startswith('\t'):
+            recipe += ' ' + lines[j]
+            j += 1
+        return sorted(names(recipe) - names(ln))
+    return ['no rule for %s' % target]
+
+
 def main():
     mk, listed, missing = audit()
+    late = unbuilt(mk, variables(mk), 'dist-check')
+    for name in late:
+        print('[FAIL] dist-check reads $(BUILD)/amiga/%s but does not build it (not a prerequisite)' % name)
+    missing = missing + [(name, 'dist-check') for name in late]
     n = len(programs(mk, variables(mk)))
-    for name, why in missing:
+    for name, why in missing[:len(missing) - len(late)]:
         print('[FAIL] %s holds system state (%s) but is not in CHKABORT_PROGRAMS and has no EXEMPT reason' % (name, why))
     print('[INFO] %d Amiga programs, %d in CHKABORT_PROGRAMS, %d exempt' % (n, len(listed), len(EXEMPT)))
     if not missing:
