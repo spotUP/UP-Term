@@ -1064,21 +1064,6 @@ typedef void (*bevelbodyfn)(ULONG, struct RastPort *, UWORD *, WORD *, ULONG, UL
 
 static void d4_bevelbody(void *caller_return, ULONG a, struct RastPort *rp, UWORD *pens, WORD *rect, ULONG recessed, ULONG thin)
 {
-    if (rect && g_r) {              /* DIAG s71: caller map, no big locals (hook stack budget) */
-        flatshared *r = g_r;
-        LONG off = (LONG)((unsigned char *)caller_return - r->dbody[FLAT_EL_BEVEL]);
-        ULONG i;
-        for (i = 0; i < r->dcalln; i++)
-            if (r->dcall[i].off == off && r->dcall[i].w == rect[2] && r->dcall[i].h == rect[3] && r->dcall[i].rec == (UBYTE)recessed && r->dcall[i].thin == (UBYTE)thin)
-                break;
-        if (i == r->dcalln && i < 16) {
-            r->dcall[i].off = off; r->dcall[i].w = rect[2]; r->dcall[i].h = rect[3];
-            r->dcall[i].rec = (UBYTE)recessed; r->dcall[i].thin = (UBYTE)thin; r->dcall[i].n = 0;
-            r->dcalln = i + 1;
-        }
-        if (i < 16)
-            r->dcall[i].n++;
-    }
     if (!pens || !rect || !d4_flat_pens(FLAT_EL_BEVEL, rp, pens[SHINEPEN], pens[BACKGROUNDPEN], rect[0], rect[1],
                                          rect[0] + rect[2] - 1, rect[1] + rect[3] - 1, (LONG)(recessed == 1)))
         ((bevelbodyfn)g_r->dsw[FLAT_EL_BEVEL].saved)(a, rp, pens, rect, recessed, thin);
@@ -2305,8 +2290,7 @@ static void print_status(void)
     unsigned long cdraws = 0, cfall = 0, alooks = 0, cfb = 0, cfd = 0, cfm = 0, cfe = 0, cfk = 0, cfi = 0, clw = 0, cls = 0, cln = 0, clm = 0;
     int apx = 0, sring[16][9], sn = 0;
     uint32_t dsum[FLAT_EL_COUNT] = { 0, 0, 0 };
-    unsigned long dbevel = 0, dface = 0, dnopix = 0, d5draws = 0, dcn = 0;
-    static struct { LONG off; WORD w, h; UBYTE rec, thin; ULONG n; } dcl[16];
+    unsigned long dbevel = 0, dface = 0, dnopix = 0, d5draws = 0;
     unsigned long lbeat = 0, lnref = 0;
     struct Task *ltask = 0;
     unsigned lstage = 0, lref = 0;
@@ -2318,7 +2302,6 @@ static void print_status(void)
         copy = r->st;
         dfound = r->dfound; dver = r->dver; drev = r->drev; dreason = r->dreason; dmask = r->dmask;
         dinst = d4_installed(r); dcalls = r->dcalls; dflat = r->dflat; dbevel = r->dbevel; dface = r->dface; dnopix = r->dnopix; d5draws = r->d5draws;
-        dcn = r->dcalln > 16 ? 16 : r->dcalln; memcpy(dcl, r->dcall, sizeof dcl);
         memcpy(dsum, r->dsum, sizeof dsum);
         finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat; fbusy = r->fbusy; fnostk = r->fnostk;
         rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits; mhits = r->mhits; bhits = r->bhits;
@@ -2368,23 +2351,6 @@ static void print_status(void)
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
-        {                                           /* DIAG s71: bevel caller map, one line per distinct caller */
-            unsigned long di;
-            for (di = 0; di < dcn && di < 16; di++) {
-                int k = 0, sh;
-                put_word(line, &k, "bevcaller off=0x");
-                for (sh = 28; sh >= 0; sh -= 4)
-                    line[k++] = "0123456789abcdef"[((unsigned long)dcl[di].off >> sh) & 15];
-                put_word(line, &k, " w=");   put_num(line, &k, (unsigned long)dcl[di].w);
-                put_word(line, &k, " h=");   put_num(line, &k, (unsigned long)dcl[di].h);
-                put_word(line, &k, " rec="); put_num(line, &k, dcl[di].rec);
-                put_word(line, &k, " thin="); put_num(line, &k, dcl[di].thin);
-                put_word(line, &k, " n=");   put_num(line, &k, dcl[di].n);
-                line[k] = 0;
-                PutStr((STRPTR)line);
-                PutStr((STRPTR)"\n");
-            }
-        }
     }
     if (found) {                                    /* FLAT-OUTER-EDGE sentinels: calls rising = the stub runs, hits rising = ring painted */
         int n = 0;
