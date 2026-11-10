@@ -2532,10 +2532,13 @@ static void k37_eight_bit_golden(void)
      * S56-UD2-GLOBE-BAND: the fake now draws WriteChunkyPixels into a planar window's planes (before, the planar pens
      * hashes held no picture at all), so the planar pens row was recaptured; it is the same with and without the fix.
      * Scene 2 (a composited frame) now composes in the CPU pass into the back planes, so fewer chunky writes reach the
-     * window: its planar chunky hash was recaptured too. */
+     * window: its planar chunky hash was recaptured too.
+     * Scene 1 (64 pixels placed in 4 cells of 8: a 2:1 shrink) was recaptured when a shrunk picture began averaging
+     * the source area each pixel covers instead of taking one point (kit_sample); scenes 0, 2, 3 do not shrink and
+     * are unchanged. */
     static const unsigned long gold[2][4][2] = {
-        { { 1594208197UL, 2497176488UL }, { 3441995717UL, 1537239861UL }, { 1184631749UL, 461891154UL }, { 584822725UL, 4290872673UL } },
-        { { 2667657136UL, 2497176488UL }, { 2594922047UL, 1537239861UL }, { 3977437005UL, 2690927650UL }, { 2515437413UL, 4290872673UL } },
+        { { 1594208197UL, 2497176488UL }, { 3441995717UL, 3480533673UL }, { 1184631749UL, 461891154UL }, { 584822725UL, 4290872673UL } },
+        { { 2667657136UL, 2497176488UL }, { 1051589253UL, 3480533673UL }, { 3977437005UL, 2690927650UL }, { 2515437413UL, 4290872673UL } },
     };
     int m, s;
     for (m = 0; m < 2; m++)
