@@ -962,7 +962,9 @@ static int d4_flat(int el, struct RastPort *rp, struct Rectangle *rect, struct D
 static void d4_drawbox(__reg("a0") struct RastPort *rp, __reg("a1") struct Rectangle *rect, __reg("a2") struct DrawInfo *info,
                        __reg("d0") LONG recessed)
 {
-    if (!d4_flat(FLAT_EL_DRAWBOX, rp, rect, info, recessed))
+    /* L_DrawBox declares BOOL recessed (a WORD): only the low word of d0 is defined (DOpus passes 0x22000000 for a raised
+     * info-field frame). Our own decision reads the BOOL; the stock routine gets d0 untouched. */
+    if (!d4_flat(FLAT_EL_DRAWBOX, rp, rect, info, flat_dopus_recessed(recessed)))
         ((boxfn)g_r->dsw[FLAT_EL_DRAWBOX].saved)(rp, rect, info, recessed, g_r->dlib);
 }
 

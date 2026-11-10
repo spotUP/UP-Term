@@ -321,6 +321,11 @@ int flat_dopus_ring(int element, int recessed)
     return !(element == FLAT_EL_DRAWBOX && !recessed);
 }
 
+int flat_dopus_recessed(long d0)
+{
+    return (short)d0 != 0;
+}
+
 int flat_dopus_face_pen(long read, int pen_back)
 {
     return read >= 0 ? (int)read : pen_back;

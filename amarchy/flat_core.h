@@ -233,6 +233,10 @@ int flat_dopus_decide(const flat_state *s, int element, int recessed, int pen_sh
  * recessed (pressed) DrawBox keep the ring. */
 int flat_dopus_ring(int element, int recessed);
 
+/* A BOOL register argument of a hooked dopus5.library function (AmigaOS BOOL is a 16-bit WORD): only the low word of the
+ * register is defined, the high word is whatever the caller left (DOpus leaves 0x2200 there). Returns the BOOL's value. */
+int flat_dopus_recessed(long d0);
+
 /* The pen for a no-ring border: the pen read from the box interior (ReadPixel result, >= 0), or when the read failed
  * (-1: no pixel) the DrawInfo BACKGROUNDPEN, the colour stock draws the frame in when shine == back. Never the accent. */
 int flat_dopus_face_pen(long read, int pen_back);
