@@ -227,9 +227,15 @@ int flat_dopus_decide(const flat_state *s, int element, int recessed, int pen_sh
 
 /* DOPUS-BUTTON-NO-RING (owner s70, O5-O7): when flat_dopus_decide said SKIP, does the box keep a pen_line outline (1)
  * or is it a flat button face (0)? A raised Program DrawBox (lister status row, toolbar buttons, header boxes, dual
- * close buttons) is a push button: no ring, as FLAT-BUTTON-NO-RING for flat's own buttons. Fields, bevel bodies (the
- * Environment's class-drawn buttons, DOPUS-ENV-UNSTYLED, rig 63) and a recessed (pressed) DrawBox keep the ring. */
+ * close buttons) is a push button: no ring, as FLAT-BUTTON-NO-RING for flat's own buttons. String fields (FieldBox: lister
+ * path field, Environment, requesters) get no ring either (owner reversed the earlier keep-the-border decision for
+ * fields on 2026-11-10, s71). Bevel bodies (the Environment's class-drawn buttons, DOPUS-ENV-UNSTYLED, rig 63) and a
+ * recessed (pressed) DrawBox keep the ring. */
 int flat_dopus_ring(int element, int recessed);
+
+/* The pen for a no-ring border: the pen read from the box interior (ReadPixel result, >= 0), or when the read failed
+ * (-1: no pixel) the DrawInfo BACKGROUNDPEN, the colour stock draws the frame in when shine == back. Never the accent. */
+int flat_dopus_face_pen(long read, int pen_back);
 
 /* DOPUS-LOCK-ICONIFY (S2b.3): dopusiclass DIA_Type -> flat glyph id. IM_ICONIFY (6) -> FLAT_W_ICONIFY, IM_LOCK (8) ->
  * FLAT_W_LOCK; every other type (arrows, BBOX, gauge ...) -1 = the class draws it stock. */

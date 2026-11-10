@@ -316,7 +316,14 @@ int flat_dopus_image_which(int type)
 
 int flat_dopus_ring(int element, int recessed)
 {
+    if (element == FLAT_EL_FIELDBOX)
+        return 0;
     return !(element == FLAT_EL_DRAWBOX && !recessed);
+}
+
+int flat_dopus_face_pen(long read, int pen_back)
+{
+    return read >= 0 ? (int)read : pen_back;
 }
 
 int flat_frame_decide(const flat_state *s, unsigned long method, int pen_shine, int pen_back)

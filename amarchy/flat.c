@@ -14,8 +14,9 @@
  * FLAT-D4 (runtime DOpus patch): when dopus5.library is resident and its version, revision and routine checksums are in
  * the table, the JMP operand of the DrawBox (LVO -696) and DrawFieldBox (-702) jump table entries is swapped with the
  * same flat_swap model for a routine that draws the flat outline while flat is on and the pens are flat (no shadow L), and
- * calls the saved routine otherwise. Any other build is inert (STATUS "dopus=<v.r> inert=..."). Not reachable by an
- * LVO, so not patched: path field (button_class.c:900 calls draw_field_box inside the library), scroller knob and
+ * calls the saved routine otherwise. Any other build is inert (STATUS "dopus=<v.r> inert=..."). The path field is
+ * not reachable by an LVO (button_class.c:900 calls draw_field_box inside the library) but its FieldBox body is hooked
+ * (d4_fieldbody). Not reachable, so not patched: scroller knob and
  * arrows (dopusiclass IM_BBOX / arrows, image_class.c:261, :109), sort arrow (lister_title.c:972-987, inline in the
  * DirectoryOpus program). `amarchy-flat DOPUS` makes the running program look for DOpus again (Ctrl-D signal).
  *
@@ -918,7 +919,8 @@ static long d4_rgb(struct RastPort *rp, ULONG pen)
 
 /* 0c DOPUS-ENV-UNSTYLED: under flat pens the stock bevel is replaced by the flat outline (flat_dopus_box_draw), with this
  * window's screen pens and outline columns (S57-BUTTON-ASPECT-BORDERS, as c8_skip); drawing nothing left every DOpus
- * button and field without a border (owner, DOpus Environment, rig 63). */
+ * button and field without a border (owner, DOpus Environment, rig 63). The owner reversed the border for fields on
+ * 2026-11-10 (s71): FieldBox gets no ring either (flat_dopus_ring 0), like a raised DrawBox. */
 static int d4_flat_pens(int el, struct RastPort *rp, ULONG shine, ULONG back, int x0, int y0, int x1, int y1, LONG recessed)
 {
     flatshared *r = g_r;
@@ -936,8 +938,9 @@ static int d4_flat_pens(int el, struct RastPort *rp, ULONG shine, ULONG back, in
             /* DOPUS-BUTTON-NO-RING: the 1 px (side columns) border takes the pen of the box interior, so the button is one
              * flat block (SRCE / DEST) or bare content (OFF); the interior itself is DOpus's and is never touched here */
             LONG fp = ReadPixel(rp, x0 + st.side, y0 + 1);
-            if (fp >= 0)
-                st.pen_line = (uint8_t)fp;
+            if (fp < 0)
+                r->dnopix++;
+            st.pen_line = (uint8_t)flat_dopus_face_pen(fp, (int)back);
             r->dface++;
         }
         flat_dopus_box_draw(&st, x0, y0, x1, y1, c2_fill, rp);
@@ -2108,7 +2111,7 @@ static void print_status(void)
     unsigned long cdraws = 0, cfall = 0, alooks = 0, cfb = 0, cfd = 0, cfm = 0, cfe = 0, cfk = 0, cfi = 0, clw = 0, cls = 0, cln = 0, clm = 0;
     int apx = 0, sring[16][9], sn = 0;
     uint32_t dsum[FLAT_EL_COUNT] = { 0, 0, 0 };
-    unsigned long dbevel = 0, dface = 0, d5draws = 0;
+    unsigned long dbevel = 0, dface = 0, dnopix = 0, d5draws = 0;
     unsigned long lbeat = 0, lnref = 0;
     struct Task *ltask = 0;
     unsigned lstage = 0, lref = 0;
@@ -2119,7 +2122,7 @@ static void print_status(void)
         found = 1;
         copy = r->st;
         dfound = r->dfound; dver = r->dver; drev = r->drev; dreason = r->dreason; dmask = r->dmask;
-        dinst = d4_installed(r); dcalls = r->dcalls; dflat = r->dflat; dbevel = r->dbevel; dface = r->dface; d5draws = r->d5draws;
+        dinst = d4_installed(r); dcalls = r->dcalls; dflat = r->dflat; dbevel = r->dbevel; dface = r->dface; dnopix = r->dnopix; d5draws = r->d5draws;
         memcpy(dsum, r->dsum, sizeof dsum);
         finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat;
         rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits; mhits = r->mhits; bhits = r->bhits;
@@ -2164,6 +2167,7 @@ static void print_status(void)
         int n = 0;
         put_word(line, &n, "dopus bevel calls=");   put_num(line, &n, dbevel);
         put_word(line, &n, " face=");               put_num(line, &n, dface);
+        put_word(line, &n, " nopix=");              put_num(line, &n, dnopix);
         put_word(line, &n, " d5=");                 put_num(line, &n, d5draws);
         line[n] = 0;
         PutStr((STRPTR)line);

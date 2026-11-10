@@ -566,7 +566,10 @@ static void test_dopus_no_ring(void)
     int x, y, side;
     CHECK_INT(flat_dopus_ring(FLAT_EL_DRAWBOX, 0), 0);        /* raised Program button: face */
     CHECK_INT(flat_dopus_ring(FLAT_EL_DRAWBOX, 1), 1);        /* pressed toolbar button stays outlined */
-    CHECK_INT(flat_dopus_ring(FLAT_EL_FIELDBOX, 0), 1);
+    CHECK_INT(flat_dopus_ring(FLAT_EL_FIELDBOX, 0), 0);       /* string fields: no ring (owner 2026-11-10, s71) */
+    CHECK_INT(flat_dopus_face_pen(4, 0), 4);                  /* read ok: the interior pen */
+    CHECK_INT(flat_dopus_face_pen(-1, 0), 0);                 /* read failed: the background pen, never the accent */
+    CHECK_INT(flat_dopus_face_pen(0, 5), 0);                  /* pen 0 is a valid read */
     CHECK_INT(flat_dopus_ring(FLAT_EL_BEVEL, 0), 1);          /* Environment class-drawn buttons keep the ring (O7) */
     for (side = 1; side <= 2; side++) {
         flat_init(&s);
