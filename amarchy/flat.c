@@ -1012,7 +1012,42 @@ static int d4_installed(const flatshared *r)
  * LVO: the ROM code reads its base from a6, and these hooks use a6 as a scratch register and for FindTask (a6 = SysBase).
  * Without it, the stock Text ran with a6 = SysBase and jumped through a garbage base (s28 flat-ON hang). */
 typedef void (*textfn)(__reg("a1") struct RastPort *, __reg("a0") CONST_STRPTR, __reg("d0") ULONG, __reg("a6") struct Library *);
-extern void flat_tx_entry(void);
+/* FLAT-UNLOAD-INFLIGHT: the entry code of the Text and RectFill patches lives in a small AllocMem(MEMF_PUBLIC) block that is
+ * NEVER freed, with the in-flight counter at its start. The reason: a caller that is inside the patch (a draw blocked on a
+ * layer lock, say) comes back through the entry's count-out and final rts AFTER the handler returns, and by then unload may
+ * have freed this program's segment; the old stub lived in that segment and the caller returned into freed code. The block
+ * is a copy of the position-independent template in flat_rf.s / flat_tx.s (the jsr to the C handler is relocated by the
+ * loader before the copy). Unload restores the vector, then waits until the counter reads 0 (gate_wait); it never gives up and
+ * frees anyway. Cost: about 70 bytes of public memory per load, deliberately left behind. */
+typedef struct flat_gate {
+    volatile LONG count;                /* callers inside the entry: addq.l #1 on entry, subq.l #1 before the final rts (single instructions, atomic on 68k) */
+    unsigned char code[1];              /* the copied template follows */
+} flat_gate;
+
+/* Copy the template [tpl, end) into a fresh block, point its two counter operands (c1, c2: the instructions that carry them,
+ * operand at +2) at the block's own counter, flush the caches. NULL when out of memory. */
+static flat_gate *gate_make(const void *tpl, const void *end, const void *c1, const void *c2)
+{
+    ULONG len = (ULONG)((const unsigned char *)end - (const unsigned char *)tpl);
+    flat_gate *g = (flat_gate *)AllocMem(sizeof(LONG) + len, MEMF_PUBLIC | MEMF_CLEAR);
+    ULONG *cnt = (ULONG *)&g->count;
+    if (!g)
+        return 0;
+    CopyMem((APTR)tpl, g->code, len);
+    *(ULONG *)(g->code + ((const unsigned char *)c1 - (const unsigned char *)tpl) + 2) = (ULONG)cnt;
+    *(ULONG *)(g->code + ((const unsigned char *)c2 - (const unsigned char *)tpl) + 2) = (ULONG)cnt;
+    CacheClearU();                      /* the block is code just written */
+    return g;
+}
+
+/* After the vector is restored: wait for every caller that is inside the entry. No timeout, nothing is freed before it is 0. */
+static void gate_wait(flat_gate *g)
+{
+    while (g && g->count > 0)
+        Delay(1);
+}
+
+extern void flat_tx_tpl(void), flat_tx_tpl_c1(void), flat_tx_tpl_c2(void), flat_tx_tpl_end(void);
 
 /* ---- RL21 SELECTA-AA-ICONTEXT: antialiased Workbench and DOpus icon labels, inside the Text patch (no second patch).
  * A label call (icl_accept: ui-antialias on, JAM1/JAM2, box inside the window) reads its box
@@ -1371,9 +1406,13 @@ static int tx_install(flatshared *r)
     if (!flat_jmp_target(entry))
         return -100;
     flat_swap_init(&r->tsw);
+    if (!r->tgate)                      /* kept across a remove and install of this record; never freed (FLAT-UNLOAD-INFLIGHT) */
+        r->tgate = gate_make((void *)flat_tx_tpl, (void *)flat_tx_tpl_end, (void *)flat_tx_tpl_c1, (void *)flat_tx_tpl_c2);
+    if (!r->tgate)
+        return -101;
     g_r = r;
     Forbid();
-    rc = flat_swap_install(&r->tsw, (uintptr_t *)(entry + 2), (uintptr_t)flat_tx_entry);
+    rc = flat_swap_install(&r->tsw, (uintptr_t *)(entry + 2), (uintptr_t)r->tgate->code);
     if (rc == FLAT_OK) {
         r->tslot = (uintptr_t *)(entry + 2);
         libpatch_done((struct Library *)GfxBase);
@@ -1394,7 +1433,7 @@ static int tx_remove(flatshared *r)
     }
     Permit();
     if (rc == FLAT_REMOVED) {
-        Delay(5);
+        gate_wait(r->tgate);            /* FLAT-UNLOAD-INFLIGHT: every Text caller inside the entry has left */
         r->tslot = 0;
         r->tx.armed = 0;
     }
@@ -1407,7 +1446,7 @@ static int tx_remove(flatshared *r)
  * is recoloured to pen_outline only when ALL hold: enabled and not held, the rastport is a window's layer, the window
  * has a border, the rect is exactly one outer strip of the window (flat_outer_edge_match) and the caller lies in
  * Intuition's ROM code. Anything else runs the stock RectFill untouched. ---- */
-extern void flat_rf_entry(void);
+extern void flat_rf_tpl(void), flat_rf_tpl_c1(void), flat_rf_tpl_c2(void), flat_rf_tpl_end(void);
 
 /* S32-KNOB-NONE-FRESH: XCON's scroller is a boopsi gadget (GadgetType GTYP_CUSTOMGADGET) of propgclass or a subclass. Walk OCLASS(g)
  * and cl_Super comparing cl_ID with PROPGCLASS: plain memory reads, no Intuition call (this runs inside graphics.library), depth bounded. */
@@ -1915,9 +1954,13 @@ static int rf_install(flatshared *r)
     r->irom_lo = (uintptr_t)rt->rt_MatchTag;
     r->irom_hi = (uintptr_t)rt->rt_EndSkip;
     flat_swap_init(&r->rsw);
+    if (!r->rgate)                      /* FLAT-UNLOAD-INFLIGHT: see gate_make */
+        r->rgate = gate_make((void *)flat_rf_tpl, (void *)flat_rf_tpl_end, (void *)flat_rf_tpl_c1, (void *)flat_rf_tpl_c2);
+    if (!r->rgate)
+        return -101;
     g_r = r;
     Forbid();
-    rc = flat_swap_install(&r->rsw, (uintptr_t *)(entry + 2), (uintptr_t)flat_rf_entry);
+    rc = flat_swap_install(&r->rsw, (uintptr_t *)(entry + 2), (uintptr_t)r->rgate->code);
     if (rc == FLAT_OK) {
         r->rslot = (uintptr_t *)(entry + 2);
         libpatch_done((struct Library *)GfxBase);
@@ -1938,7 +1981,7 @@ static int rf_remove(flatshared *r)
     }
     Permit();
     if (rc == FLAT_REMOVED) {
-        Delay(5);                       /* a caller that already entered the stub finishes its fill */
+        gate_wait(r->rgate);            /* FLAT-UNLOAD-INFLIGHT: every RectFill caller inside the entry has left */
         r->rslot = 0;
     }
     return rc;

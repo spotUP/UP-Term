@@ -35,7 +35,7 @@ def stub_bytes(entry):
         s = s.split(';')[0].rstrip()
         if re.match(r'^\tmove\.l\t[^,]+,-\(a7\)$', s):
             n += 4
-        elif s == '\tjsr\t' + entry:
+        elif s in ('\tjsr\t' + entry, '\tjsr\t(' + entry + ').l'):
             return n + 4
     raise SystemExit('FAIL: %s has no jsr %s' % (path, entry))
 ALLOWED_EXTERN = re.compile(r'^_flat_[a-z0-9_]+$')

@@ -50,6 +50,7 @@ typedef struct flatshared {
     /* FLAT-BUTTON-FILL: the graphics.library Text patch (LVO -60) that draws a pressed button's label in pen_ptext */
     flat_swap tsw;
     uintptr_t *tslot;
+    struct flat_gate *tgate, *rgate;   /* FLAT-UNLOAD-INFLIGHT: the never-freed entry blocks of the Text and RectFill patches (flat.c gate_make) */
     flat_tx tx;                 /* the armed pressed frame (flat_core.h) */
     flat_gh gh;                 /* FLAT-BUTTON-DISABLED-DIM: the recorded filled button boxes and labels (flat_core.h) */
     ULONG ghits;                /* ghost fills replaced by the solid dim fill (the sentinel) */
