@@ -1235,6 +1235,53 @@ static void ring_rec_fill(void *ctx, int x0, int y0, int x1, int y1, int pen)
     rr->n++;
 }
 
+/* S71-DOPUS-BORDER-BREAK: the glyph path (arrows, size) fills its whole box in the frame pen, which erased the window outline
+ * beside the scroller arrows. glyph_then_ring (c2_glyph's two steps) must leave the ring in the edge pen: the LAST fill that
+ * touches a ring pixel is the edge pen, and it is not refilled when nothing was drawn or no ring is given. */
+typedef struct { int n, r[64][5]; } rect_log;
+static void rect_log_fill(void *ctx, int x0, int y0, int x1, int y1, int pen)
+{
+    rect_log *l = ctx;
+    if (l->n < 64) { l->r[l->n][0] = x0; l->r[l->n][1] = y0; l->r[l->n][2] = x1; l->r[l->n][3] = y1; l->r[l->n][4] = pen; l->n++; }
+}
+static int rect_log_pen_at(const rect_log *l, int x, int y)
+{
+    int i, pen = -1;
+    for (i = 0; i < l->n; i++)
+        if (x >= l->r[i][0] && x <= l->r[i][2] && y >= l->r[i][1] && y <= l->r[i][3]) pen = l->r[i][4];
+    return pen;
+}
+static int glyph_then_ring(const flat_state *st, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
+                           int w, int h, int frame_pen, int knob_pen, int text_pen, int side, flat_fill_fn fill, void *ctx,
+                           const flat_ring *ring)
+{   /* the two steps of flat.c c2_glyph: flat_glyph_draw, then c2_ring_refill -> flat_ring_refill_after */
+    int drawn = flat_glyph_draw(st, which, method, ids, ox, oy, w, h, frame_pen, knob_pen, text_pen, side, fill, ctx);
+    flat_ring_refill_after(drawn, ring, ox, oy, w, h, ctx);
+    return drawn;
+}
+static void test_glyph_keeps_window_ring(void)
+{
+    flat_state st;
+    rect_log l;
+    flat_ring ring;
+    glyph_state(&st);
+    ring.w = 640; ring.h = 256; ring.px = 2; ring.pen = 'E'; ring.fill = rect_log_fill;
+    memset(&l, 0, sizeof l);
+    CHECK_INT(glyph_then_ring(&st, FLAT_W_UP, FLAT_IM_DRAW, 0, 622, 214, 18, 11, 'F', -1, -1, 2, rect_log_fill, &l, &ring), 1);
+    CHECK_INT(rect_log_pen_at(&l, 639, 220), 'E');          /* right ring column beside the up arrow: edge pen */
+    CHECK_INT(rect_log_pen_at(&l, 638, 214), 'E');
+    CHECK_INT(rect_log_pen_at(&l, 630, 220) != 'E', 1);     /* inside the box the glyph pens stay */
+    memset(&l, 0, sizeof l);
+    CHECK_INT(glyph_then_ring(&st, FLAT_W_LEFT, FLAT_IM_DRAW, 0, 600, 244, 32, 12, 'F', -1, -1, 2, rect_log_fill, &l, &ring), 1);
+    CHECK_INT(rect_log_pen_at(&l, 610, 255), 'E');          /* bottom ring row under the left arrow */
+    memset(&l, 0, sizeof l);
+    CHECK_INT(glyph_then_ring(&st, FLAT_W_UP, FLAT_IM_DRAW, 0, 622, 214, 18, 11, 'F', -1, -1, 2, rect_log_fill, &l, 0), 1);
+    CHECK_INT(rect_log_pen_at(&l, 639, 220) == 'E', 0);     /* no ring given: nothing refilled */
+    memset(&l, 0, sizeof l);
+    CHECK_INT(glyph_then_ring(&st, FLAT_W_UP, FLAT_IM_DRAW, 0, 622, 214, 4, 4, 'F', -1, -1, 2, rect_log_fill, &l, &ring), 0);
+    CHECK_INT(l.n, 0);                                      /* not drawn (box too small): no ring fill either */
+}
+
 static void test_which_from_gtype(void)
 {
     CHECK_INT(flat_which_from_gtype(0x8000u | 0x40), FLAT_W_DEPTH);
@@ -3441,6 +3488,7 @@ void suite_flat_core(void)
     test_dopus_path();
     test_lock_glyph();
     test_band_glyphs_take_text_pen();
+    test_glyph_keeps_window_ring();
     test_dopus_image_which();
     test_glyph_goldens();
     test_glyph_solid_and_state_equal();

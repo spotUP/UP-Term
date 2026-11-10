@@ -69,6 +69,14 @@ int flat_lock_state(unsigned long which, unsigned long ids);
 int flat_glyph_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
                     int w, int h, int frame_pen, int knob_pen, int text_pen, int side, flat_fill_fn fill, void *ctx);
 
+/* S71-DOPUS-BORDER-BREAK: the window's 1 px outer ring (edge pen) that a gadget box reaching the last column or row must leave
+ * intact. ring == 0 (borderless window, outline off): no refill. fill paints the ring (the OS side's saved RectFill). */
+typedef struct { int w, h, px, pen; flat_fill_fn fill; } flat_ring;
+/* After a gadget draw: when it drew (drawn != 0) and a ring is given, refill the ring overlap of the box (ox, oy, w, h) with ring->pen
+ * through ring->fill (ctx = its context) and return the number of strips filled; 0 otherwise. The one decision both the clone
+ * and the glyph path of flat.c call, so no gadget box fill leaves a different pen on the window outline. */
+int flat_ring_refill_after(int drawn, const flat_ring *ring, int ox, int oy, int w, int h, void *ctx);
+
 /* FLAT-C8: the flat frame of one frameiclass IM_DRAW / IM_DRAWFRAME call: with fill != 0 the box is one solid fill,
  * NO outline: pen_button (pen_back when 0), pen_line when ids == IDS_SELECTED (1) (FLAT-BUTTON-FILL); with fill == 0 only a
  * full 1 px outline in pen_line. Returns 1 when drawn, 0

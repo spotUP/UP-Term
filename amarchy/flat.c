@@ -359,17 +359,25 @@ static const flat_state *st_rp(flatshared *r, const struct RastPort *rp)
 /* S32-ARROW-OUTLINE: the box fill ran over the window's outer ring where the gadget reaches the last column or row;
  * the ring belongs to flat, so refill the overlap with the edge pen through the saved RectFill. A function of its own, with the
  * rects handed to c2_ring_fill one by one, so no rect array is part of c2_draw's frame (flat budget). */
-static void c2_ring_refill(flatshared *r, struct impDraw *d, struct Image *im)
+/* The ring of the window the image draws in: 0 = none to protect (no window, outline off, RectFill patch not saved, borderless). */
+static int c2_ring_get(flatshared *r, struct impDraw *d, flat_ring *ring)
 {
     struct Window *rw = d->imp_RPort->Layer ? (struct Window *)d->imp_RPort->Layer->Window : NULL;
-    if (rw && r->st.pen_outline && r->rsw.saved && !(rw->Flags & WFLG_BORDERLESS)) {
-        UBYTE fg = d->imp_RPort->FgPen;
-        if (flat_outer_ring_overlap(rw->Width, rw->Height, side_px(r, rw->WScreen), im->LeftEdge + d->imp_Offset.X,
-                im->TopEdge + d->imp_Offset.Y, im->LeftEdge + d->imp_Offset.X + im->Width - 1,
-                im->TopEdge + d->imp_Offset.Y + im->Height - 1, c2_ring_fill, d->imp_RPort,
-                flat_edge_pen(st_scr(r, rw->WScreen), d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0, (rw->Flags & WFLG_WINDOWACTIVE) != 0)) > 0)
-            SetAPen(d->imp_RPort, fg);
-    }
+    if (!rw || !r->st.pen_outline || !r->rsw.saved || (rw->Flags & WFLG_BORDERLESS))
+        return 0;
+    ring->w = rw->Width; ring->h = rw->Height; ring->px = side_px(r, rw->WScreen); ring->fill = c2_ring_fill;
+    ring->pen = flat_edge_pen(st_scr(r, rw->WScreen), d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0, (rw->Flags & WFLG_WINDOWACTIVE) != 0);
+    return 1;
+}
+
+static void c2_ring_refill(flatshared *r, struct impDraw *d, struct Image *im, int drawn)
+{
+    flat_ring ring;
+    UBYTE fg = d->imp_RPort->FgPen;
+    if (c2_ring_get(r, d, &ring) &&
+        flat_ring_refill_after(drawn, &ring, im->LeftEdge + d->imp_Offset.X, im->TopEdge + d->imp_Offset.Y, im->Width, im->Height,
+                               d->imp_RPort) > 0)
+        SetAPen(d->imp_RPort, fg);
 }
 
 /* The pens one gadget image draws with (the pen of the frame it sits on, the knob and text pens, the title band rows), short so the
@@ -580,7 +588,7 @@ static int c2_clone(struct Hook *hk, Object *obj, Msg msg, int reg, ULONG which,
     if (got)
         ReleaseSemaphore(&cl_ss);
     if (rc == FLAT_CLONE_OK) {
-        c2_ring_refill(r, d, im);
+        c2_ring_refill(r, d, im, 1);
         r->cdraws++;
         return 1;
     }
@@ -598,9 +606,11 @@ static int c2_glyph(Object *obj, Msg msg, ULONG which, const c2_pens *p)
     struct Window *w = lay ? (struct Window *)lay->Window : NULL;
     /* S69-ARROW-ASPECT: side from side_px of the drawing screen, the one per-screen aspect source (not dri_Resolution) */
     int side = w && w->WScreen ? side_px(r, w->WScreen) : d->imp_DrInfo && d->imp_DrInfo->dri_Screen ? side_px(r, d->imp_DrInfo->dri_Screen) : 1;
-    return flat_glyph_draw(st_rp(r, d->imp_RPort), which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
+    int drawn = flat_glyph_draw(st_rp(r, d->imp_RPort), which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
                            im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, p->frame, p->knob, p->text, side,
                            c2_fill, d->imp_RPort);
+    c2_ring_refill(r, d, im, drawn);    /* S71-DOPUS-BORDER-BREAK: the box fill covered the window outline; same refill as the clone path */
+    return drawn;
 }
 #define NOWHICH 0xFFFFFFFFUL
 /* Kickstart 3.1 sysiclass does not answer OM_GET: find the window gadget that renders this image. The layer

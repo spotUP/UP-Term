@@ -506,6 +506,13 @@ int flat_glyph_draw(const flat_state *s, unsigned long which, unsigned long meth
     return plan_run(&g, flat_lock_which(which, ids), w, h, flat_lock_state(which, ids), side) > 0;
 }
 
+int flat_ring_refill_after(int drawn, const flat_ring *ring, int ox, int oy, int w, int h, void *ctx)
+{
+    if (!drawn || !ring || !ring->fill)
+        return 0;
+    return flat_outer_ring_overlap(ring->w, ring->h, ring->px, ox, oy, ox + w - 1, oy + h - 1, ring->fill, ctx, ring->pen);
+}
+
 int flat_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn, void *ctx)
 {
     int x1, y1, sw;
