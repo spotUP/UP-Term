@@ -278,6 +278,26 @@ static void mouse_reports_follow_the_modes(void)
     vt_free(t);
 }
 
+/* A BBS door on the pcansi or amiga personality that turns the mouse on
+ * gets SGR reports: Vt_MouseOwned() takes the click from selection, so an
+ * empty report would lose it (LiveChat, ?1003h ?1006h). */
+static void mouse_reports_in_every_personality(void)
+{
+    static const enum vt_personality pers[2] = { VT_PCANSI, VT_AMIGA };
+    int i;
+    for (i = 0; i < 2; i++) {
+        vt_term *t = h_new(80, 24, pers[i]);
+        CHECK_STR(mouse(t, 0, 0, 4, 2, 0), "");
+        h_put(t, "\033[?1003h\033[?1006h");
+        CHECK_STR(mouse(t, 0, 0, 4, 2, 0), "\033[<0;5;3M");
+        CHECK_STR(mouse(t, 0, 1, 4, 2, 0), "\033[<0;5;3m");
+        CHECK_STR(mouse(t, 3, 2, 6, 1, 0), "\033[<35;7;2M");
+        h_put(t, "\033[?1003l\033[?1006l");
+        CHECK_STR(mouse(t, 0, 0, 4, 2, 0), "");
+        vt_free(t);
+    }
+}
+
 static void keypad_follows_deckpam(void)
 {
     vt_term *t = h_new(10, 2, VT_XTERM);
@@ -367,6 +387,7 @@ void suite_keys(void)
     shift_left_right_send_home_end_unless_the_option_is_off();
     keypad_follows_deckpam();
     mouse_reports_follow_the_modes();
+    mouse_reports_in_every_personality();
     xterm_cursor_keys_follow_decckm();
     xterm_function_and_editing_keys();
     xterm_characters_are_utf8();
