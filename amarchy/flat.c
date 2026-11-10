@@ -136,18 +136,25 @@ static int raa_load(struct RastPort *rp)
 }
 
 /* FLAT-C7: a layer without a window is a screen's title bar: find the screen whose BarLayer it is and look through
- * Screen->FirstGadget (the depth gadget, type 0xc055) for the gadget that renders this image. */
+ * Screen->FirstGadget (the depth gadget, type 0xc055) for the gadget that renders this image.
+ * FLAT-HOOK-NO-IBASE: this runs on the drawing task, inside Intuition and layers calls that already hold locks, so it must
+ * never take the Intuition lock (LockIBase here made Directory Opus' clock task and a lister task wait on each other: the
+ * s71 freeze). The screen comes from the layer itself: a screen's layers hang off the Layer_Info embedded in struct Screen.
+ * It counts only when the main task has published that screen (aspect_update's slot table), which proves the Layer_Info is
+ * a screen's and not a program's own; the drawing task holds the layer lock, so that screen cannot close meanwhile. A
+ * screen opened since the last update has no slot yet: its bar gadget draws stock until the next bar redraw. */
 static int c7_screen_which(struct Layer *lay, Object *obj)
 {
-    ULONG lock = LockIBase(0);
     struct Screen *sc;
     struct Gadget *g;
     int n, wh = -1;
-    for (sc = IntuitionBase->FirstScreen; sc && wh < 0; sc = sc->NextScreen)
-        if (sc->BarLayer == lay)
-            for (g = sc->FirstGadget, n = 0; g && n < 64 && wh < 0; g = g->NextGadget, n++)
-                wh = flat_gadget_which(g->GadgetType, g->GadgetRender, g->SelectRender, obj);
-    UnlockIBase(lock);
+    if (!g_r || !lay->LayerInfo)
+        return -1;
+    sc = (struct Screen *)((UBYTE *)lay->LayerInfo - offsetof(struct Screen, LayerInfo));
+    if (!flat_aspect_known(g_r->aspect_slot, FLAT_ASPECT_SLOTS, sc) || sc->BarLayer != lay)
+        return -1;
+    for (g = sc->FirstGadget, n = 0; g && n < 64 && wh < 0; g = g->NextGadget, n++)
+        wh = flat_gadget_which(g->GadgetType, g->GadgetRender, g->SelectRender, obj);
     return wh;
 }
 

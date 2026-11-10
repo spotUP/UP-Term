@@ -1089,6 +1089,16 @@ int flat_aspect_find(const flat_aspect_slot *t, int n, const void *scr)
     return 1;
 }
 
+int flat_aspect_known(const flat_aspect_slot *t, int n, const void *scr)
+{
+    int i;
+    if (scr)
+        for (i = 0; i < n; i++)
+            if (t[i].scr == scr)
+                return 1;
+    return 0;
+}
+
 int flat_aspect_need(const flat_aspect_slot *t, int n, const void *scr, unsigned long mode)
 {
     int i;

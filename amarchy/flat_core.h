@@ -645,6 +645,8 @@ typedef struct flat_aspect_slot {
 } flat_aspect_slot;
 /* px of scr, 1 when scr is NULL or has no slot. */
 int flat_aspect_find(const flat_aspect_slot *t, int n, const void *scr);
+/* 1 when the main task has published scr (it has a slot): the draw hook's proof that a pointer it derived is a live screen. */
+int flat_aspect_known(const flat_aspect_slot *t, int n, const void *scr);
 /* 1 when scr has no slot yet or its slot was measured for another mode: the caller then measures and calls flat_aspect_put. */
 int flat_aspect_need(const flat_aspect_slot *t, int n, const void *scr, unsigned long mode);
 /* store px for scr: its own slot, else a free one, else the last (evicted). */

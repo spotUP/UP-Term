@@ -1674,6 +1674,10 @@ static void test_which_from_gtype(void)
             CHECK_INT(flat_aspect_find(t, FLAT_ASPECT_SLOTS, &hires), 2);
             CHECK_INT(flat_aspect_find(t, FLAT_ASPECT_SLOTS, &lores), 4);
             CHECK_INT(flat_aspect_find(t, FLAT_ASPECT_SLOTS, NULL), 1);
+            CHECK_INT(flat_aspect_known(t, FLAT_ASPECT_SLOTS, &wb), 1);             /* FLAT-HOOK-NO-IBASE: published screens only */
+            CHECK_INT(flat_aspect_known(t, FLAT_ASPECT_SLOTS, &lores), 1);
+            CHECK_INT(flat_aspect_known(t, FLAT_ASPECT_SLOTS, &i), 0);              /* never published: the hook leaves it alone */
+            CHECK_INT(flat_aspect_known(t, FLAT_ASPECT_SLOTS, NULL), 0);            /* an empty slot is not the NULL screen */
             CHECK_INT(flat_aspect_need(t, FLAT_ASPECT_SLOTS, &hires, 7), 0);        /* same mode: cached */
             CHECK_INT(flat_aspect_need(t, FLAT_ASPECT_SLOTS, &hires, 8), 1);        /* mode switched: measure again */
             flat_aspect_put(t, FLAT_ASPECT_SLOTS, &hires, 8, 1);
