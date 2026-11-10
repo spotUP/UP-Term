@@ -383,7 +383,7 @@ void flat_title_span(const flat_gadrect *g, int n, int win_w, int bar_h, int *x0
  * for each gadget in turn gives the same span. */
 void flat_title_span_add(const flat_gadrect *g, int win_w, int bar_h, int *x0, int *x1);
 /* FLAT-TITLE-GADGETS: 1 when a gadget belongs to the title bar for flat_title_span: a system gadget (gadget_type & 0x8000
- * GTYP_SYSGADGET), a GACT_TOPBORDER (0x0010) gadget (app iconify / lock / snapshot: DOpus, MUI, ReAction), or, with no border
+ * GTYP_SYSGADGET), a GACT_TOPBORDER (0x0040) gadget (app iconify / lock / snapshot: DOpus, MUI, ReAction), or, with no border
  * flag at all (DOpus's hijacked zoom if Intuition left GACT_TOPBORDER clear), a gadget wholly inside rows 0..bar_h-1 of a window
  * that is not GIMMEZEROZERO (there an inner gadget's TopEdge is inner-relative and would look like a title gadget). */
 int flat_title_gadget(unsigned gadget_type, unsigned activation, int gzz, const flat_gadrect *g, int bar_h);
