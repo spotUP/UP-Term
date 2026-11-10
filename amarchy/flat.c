@@ -1093,7 +1093,14 @@ static void g9_ground(Object *obj, Msg msg)
     struct StringInfo *si;
     struct GadgetInfo *gi;
     int pen;
+    int k;
     r->sgseen++;                        /* sentinel: every strgclass dispatch */
+    for (k = 0; k < 4; k++) {           /* sentinel: histogram of the first 4 distinct methods */
+        if (r->smn[k] && r->smid[k] == (ULONG)msg->MethodID) { r->smn[k]++; break; }
+        if (!r->smn[k]) { r->smid[k] = (ULONG)msg->MethodID; r->smn[k] = 1; break; }
+    }
+    if (msg->MethodID == FLAT_GM_RENDER && !gp->gpr_GInfo)
+        r->snogi++;
     if (msg->MethodID != FLAT_GM_RENDER || !obj || !gp->gpr_GInfo)
         return;
     r->sgext++;                         /* sentinel: GM_RENDER with a GadgetInfo */
@@ -1101,6 +1108,10 @@ static void g9_ground(Object *obj, Msg msg)
     si = (struct StringInfo *)g->SpecialInfo;
     pen = flat_input_pen(st_scr(r, gi->gi_Screen), gi->gi_DrInfo ? gi->gi_DrInfo->dri_Depth : 0);
     r->sgpen = (ULONG)(pen + 1);
+    r->sscr = (ULONG)gi->gi_Screen;
+    r->swscr = gi->gi_Window ? (ULONG)gi->gi_Window->WScreen : 0;
+    r->swb = (ULONG)g_draw.wb;
+    r->slive = (ULONG)r->st.pen_sel;
     r->sgdep = gi->gi_DrInfo ? (ULONG)gi->gi_DrInfo->dri_Depth : 0;
     r->sgsel = st_scr(r, gi->gi_Screen) ? (ULONG)st_scr(r, gi->gi_Screen)->pen_sel : 0;
     if (!si || !si->Extension)
@@ -2488,6 +2499,7 @@ static void print_status(void)
     unsigned long lbeat = 0, lnref = 0;
     struct Task *ltask = 0;
     unsigned lstage = 0, lref = 0;
+    unsigned long vsscr = 0, vswscr = 0, vswb = 0, vslive = 0, vsmid[4] = {0, 0, 0, 0}, vsmn[4] = {0, 0, 0, 0}, vsnogi = 0;
     unsigned long vground = 0, vsg = 0, vgs = 0, vgslot = 0, vgcode = 0, vext = 0, vspen = 0, vsdep = 0, vssel = 0, vsnoext = 0;
     memset(&copy, 0, sizeof copy);
     Forbid();
@@ -2513,6 +2525,8 @@ static void print_status(void)
         vground = r->sground; vsg = r->sgseen; vgs = r->gsw.installed; vgslot = (unsigned long)r->gslot;
         vgcode = r->ggate ? (unsigned long)r->ggate->code : 0; vext = r->sgext;
         vspen = r->sgpen; vsdep = r->sgdep; vssel = r->sgsel; vsnoext = r->sgnoext;
+        vsscr = r->sscr; vswscr = r->swscr; vswb = r->swb; vslive = r->slive; vsnogi = r->snogi;
+        memcpy(vsmid, r->smid, sizeof vsmid); memcpy(vsmn, r->smn, sizeof vsmn);
     }
     Permit();
     if (flat_status_line(&copy, sizeof copy, found, line, sizeof line)) {
@@ -2566,6 +2580,24 @@ static void print_status(void)
         put_word(line, &n, " sdep=");               put_num(line, &n, vsdep);
         put_word(line, &n, " ssel=");               put_num(line, &n, vssel);
         put_word(line, &n, " snoext=");             put_num(line, &n, vsnoext);
+        {
+            static const char hx2[] = "0123456789abcdef";
+            unsigned long hv[4];
+            int k, j, m;
+            hv[0] = vsscr; hv[1] = vswscr; hv[2] = vswb; hv[3] = vslive;
+            for (m = 0; m < 4; m++) {
+                put_word(line, &n, m == 0 ? " sscr=0x" : m == 1 ? " swscr=0x" : m == 2 ? " swb=0x" : " slive=0x");
+                for (j = 28; j >= 0; j -= 4) line[n++] = hx2[(hv[m] >> j) & 15];
+            }
+            for (k = 0; k < 4; k++) {
+                char nm[6]; nm[0] = ' '; nm[1] = 's'; nm[2] = 'm'; nm[3] = (char)('0' + k); nm[4] = '='; nm[5] = 0;
+                put_word(line, &n, nm);
+                for (j = 28; j >= 0; j -= 4) line[n++] = hx2[(vsmid[k] >> j) & 15];
+                line[n++] = ':';
+                put_num(line, &n, vsmn[k]);
+            }
+            put_word(line, &n, " snogi=");           put_num(line, &n, vsnogi);
+        }
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
