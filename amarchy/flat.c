@@ -494,7 +494,7 @@ static void clone_stack_note(flatshared *r, int after)
 }
 
 /* DOPUS-ARROW-WHICH: the arrow images made after flat started (flat_img_record holds the rule). Hooks run in many tasks, so the
- * table is touched under Forbid as the other shared tables are; the walk is FLAT_IMG_RECS (128) entries: each app scroller window holds 2-4 arrow images. A full table leaves the image ROM-drawn. */
+ * table is touched under Forbid as the other shared tables are; the walk is FLAT_IMG_RECS (256) entries: each app scroller window holds 2-4 arrow images. A full table leaves the image ROM-drawn. */
 static flat_img_rec img_tab[FLAT_IMG_RECS];
 static int img_lookup(Object *obj, ULONG *size)
 {
@@ -601,9 +601,11 @@ static ULONG c2_which_31(Object *obj, struct impDraw *d)
     struct Window *w = lay ? (struct Window *)lay->Window : NULL;
     struct Gadget *g;
     int n = 0, wh;
-    wh = img_lookup(obj, NULL);     /* DOPUS-ARROW-WHICH: an app-made arrow image, recorded at its OM_NEW, before the system gadgets */
+    /* system gadgets first: a zoom image recorded at OM_NEW (DOPUS-ZOOM-WHICH) is also a real WZOOM gadget on a normal window */
     for (g = w ? w->FirstGadget : NULL; g && n < 64 && wh < 0; g = g->NextGadget, n++)
         wh = flat_gadget_which(g->GadgetType, g->GadgetRender, g->SelectRender, obj);
+    if (wh < 0)
+        wh = img_lookup(obj, NULL);     /* DOPUS-ARROW-WHICH: an app-made arrow / zoom image, recorded at its OM_NEW */
     if (wh < 0 && lay && !w)
         wh = c7_screen_which(lay, obj);
     return wh < 0 ? NOWHICH : (ULONG)wh;

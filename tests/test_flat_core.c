@@ -1144,6 +1144,14 @@ static void test_which_from_gtype(void)
         CHECK_INT(flat_img_record(tab, FLAT_IMG_RECS, &objs[FLAT_IMG_RECS], 0x0B, 1), 0);
         CHECK_INT(flat_img_which(tab, FLAT_IMG_RECS, &objs[FLAT_IMG_RECS], &sz), -1);
         CHECK_INT(flat_img_which(tab, FLAT_IMG_RECS, &objs[5], &sz), FLAT_W_UP);
+        /* DOPUS-ZOOM-WHICH: a ZOOMIMAGE (Which 1) is recorded and reads back as the zoom glyph; 256 slots */
+        memset(tab, 0, sizeof tab);
+        CHECK_INT(FLAT_IMG_RECS, 256);
+        CHECK_INT(flat_img_record(tab, FLAT_IMG_RECS, &objs[0], 0x01, 1), 1);
+        CHECK_INT(flat_img_which(tab, FLAT_IMG_RECS, &objs[0], &sz), FLAT_W_ZOOM);
+        CHECK_INT(flat_img_record(tab, FLAT_IMG_RECS, &objs[1], 0x02, 1), 0);       /* other non-arrow Which stays out */
+        CHECK_INT(flat_img_record(tab, FLAT_IMG_RECS, &objs[0], 0x0B, 1), 1);       /* same obj replaced */
+        CHECK_INT(flat_img_which(tab, FLAT_IMG_RECS, &objs[0], &sz), FLAT_W_UP);
     }
     /* FLAT-C8: the frameiclass decision. Skip only for IM_DRAW / IM_DRAWFRAME, switch on, not held, flat pens. */
     {

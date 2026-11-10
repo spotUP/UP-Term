@@ -362,7 +362,7 @@ int flat_gadget_which(unsigned gadget_type, const void *gadget_render, const voi
 int flat_img_record(flat_img_rec *t, int n, const void *obj, unsigned long which, unsigned long size)
 {
     int i, free_i = -1;
-    if (!obj || which < 0x0Au || which > 0x0Du)
+    if (!obj || (which != 0x01u && (which < 0x0Au || which > 0x0Du)))   /* ZOOMIMAGE 0x01 or an arrow */
         return 0;
     for (i = 0; i < n; i++) {
         if (t[i].obj == obj) { free_i = i; break; }

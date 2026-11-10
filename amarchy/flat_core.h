@@ -245,9 +245,10 @@ int flat_gadget_which(unsigned gadget_type, const void *gadget_render, const voi
  * gadget: DOpus listers, MultiView) is no Intuition system gadget, so flat_gadget_which never finds it. flat.c records the
  * SYSIA_Which / SYSIA_Size of every arrow image (LEFT 0x0A .. DOWN 0x0D) at OM_NEW in this fixed table, keyed by the object pointer,
  * and removes the entry at OM_DISPOSE. Any other Which is not recorded. The caller serialises access (Forbid). */
-#define FLAT_IMG_RECS 128
+#define FLAT_IMG_RECS 256
 typedef struct { const void *obj; unsigned char which; unsigned char size; } flat_img_rec;
-/* 1 recorded (an existing entry for obj is replaced), 0 not an arrow Which or table full (the image stays ROM-drawn). */
+/* DOPUS-ZOOM-WHICH: a ZOOMIMAGE (Which 0x01) is recorded too, so an app title-bar zoom gadget resolves to the zoom glyph.
+ * 1 recorded (an existing entry for obj is replaced), 0 not an arrow/zoom Which or table full (the image stays ROM-drawn). */
 int flat_img_record(flat_img_rec *t, int n, const void *obj, unsigned long which, unsigned long size);
 void flat_img_forget(flat_img_rec *t, int n, const void *obj);
 /* The recorded Which of obj, -1 when none; *size (if non-NULL) gets its SYSIA_Size. */
