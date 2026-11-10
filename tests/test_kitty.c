@@ -1360,7 +1360,7 @@ static void a_flat_two_colour_picture_shows_exact_colours_undithered(void)
     }
 }
 
-/* A picture of more colours than a palette holds is still dithered to the cube (once); with the copy on, its own
+/* A picture of more colours than a palette holds gets a palette cut from its own (kit_adapt); with the copy on, its own
  * colours beside the indices are kit_sample's average like the indices, not one point a pixel: a 64 x 64 green
  * checker over a red/blue gradient shown 64 x 32 (rows halved) averages to mid-green, a point sample is 0 or 255. */
 static void a_shrunk_many_colour_picture_copies_its_averaged_colours(void)
@@ -1383,7 +1383,8 @@ static void a_shrunk_many_colour_picture_copies_its_averaged_colours(void)
     h_put(t, b64);
     h_put(t, "\033\\");
     CHECK(vt_row_image(t, 0, 0, &v));
-    CHECK_INT(v.exact, 0); /* 4096 colours: the cube */
+    CHECK_INT(v.exact, 1); /* 2048 colours: its own cut palette (was 0, the cube, until kit_adapt replaced the
+                              dither for stills: the cube's Bayer pattern striped a flat logo, 2026-11-11) */
     CHECK(v.rgb != 0);
     if (v.rgb)
         for (y = 0; y < v.h; y++)
@@ -1491,6 +1492,184 @@ static void a_crop_off_the_rows_is_still_its_own_picture(void)
     CHECK(vt_row_image(t, 0, 0, &v) && v.w == 4 && v.h == 12);
     CHECK(pixel(&v, 0, 0) == tall_px(0, 3) && pixel(&v, 3, 11) == tall_px(3, 14));
     CHECK(vt_kitty_pictures_made(t) == made + 2);
+    vt_free(t);
+}
+
+/* ---- the LiveChat logo (owner, rig 3, 2026-11-11): a flat blue chat bubble (#3a70d8) with three white discs,
+ * edges anti-aliased, over black. The hub area-averages it when it scales, so its edges carry more than 255
+ * colours: the whole picture dropped to the 6x6x6 cube with a 4x4 Bayer dither, and the flat body (off the cube)
+ * showed a fine stripe pattern of two blues. 320 x 256 source, shown 2:1 (16 source rows a cell row of 8 px, as
+ * the door crops it). */
+#define LOGO_W 320
+#define LOGO_H 256
+#define LOGO_BODY 0x3A70D8u
+static unsigned char logo_px[LOGO_W * LOGO_H * 3];
+
+/* coverage 0..256 of the ellipse (cx, cy, rx, ry) over pixel (x, y): 16 x 16 samples */
+static int logo_cover(int x, int y, int cx, int cy, int rx, int ry)
+{
+    int i, j, n = 0;
+    for (j = 0; j < 16; j++)
+        for (i = 0; i < 16; i++) {
+            double dx = (x + (i + 0.5) / 16.0 - cx) / rx, dy = (y + (j + 0.5) / 16.0 - cy) / ry;
+            if (dx * dx + dy * dy <= 1.0)
+                n++;
+        }
+    return n;
+}
+
+static int logo_distinct;
+
+static void logo_make(void)
+{
+    static unsigned long seen[4096];
+    int x, y, d, i;
+    logo_distinct = 0;
+    for (y = 0; y < LOGO_H; y++)
+        for (x = 0; x < LOGO_W; x++) {
+            unsigned char *q = logo_px + (y * LOGO_W + x) * 3;
+            int body = logo_cover(x, y, 160, 128, 150, 118), disc = 0, c;
+            unsigned long rgb;
+            for (d = 0; d < 3; d++)
+                disc += logo_cover(x, y, 90 + d * 70, 128, 22, 22);
+            for (c = 0; c < 3; c++) {
+                int b = (int)(LOGO_BODY >> (16 - 8 * c)) & 255;
+                int v = (b * (256 - disc) + 255 * disc) / 256; /* a white disc over the body */
+                q[c] = (unsigned char)(v * body / 256);       /* the body over black */
+            }
+            if (y < 4) { /* a ramp above the body: anti-aliasing alone stays under 256 colours, a logo's shading not */
+                q[0] = (unsigned char)(x & 255);
+                q[1] = (unsigned char)(x / 256 * 128 + y * 8);
+                q[2] = 40;
+            }
+            rgb = (unsigned long)q[0] << 16 | (unsigned long)q[1] << 8 | q[2];
+            for (i = 0; i < logo_distinct && seen[i] != rgb; i++)
+                ;
+            if (i == logo_distinct && logo_distinct < 4096)
+                seen[logo_distinct++] = rgb;
+        }
+}
+
+static int logo_is_body(int x, int y)
+{
+    const unsigned char *q = logo_px + (y * LOGO_W + x) * 3;
+    return ((unsigned long)q[0] << 16 | (unsigned long)q[1] << 8 | q[2]) == LOGO_BODY;
+}
+
+/* pixel (x, y) of the source part (sx0, sy0, sw, sh) scaled to tw x th covers only flat body (one pixel's margin) */
+static int logo_flat(int x, int y, int tw, int th, int sx0, int sy0, int sw, int sh)
+{
+    int a0 = sx0 + (int)((long)x * sw / tw) - 1, a1 = sx0 + (int)((long)(x + 1) * sw / tw) + 1;
+    int b0 = sy0 + (int)((long)y * sh / th) - 1, b1 = sy0 + (int)((long)(y + 1) * sh / th) + 1, i, j;
+    if (a0 < 0 || b0 < 0 || a1 >= LOGO_W || b1 >= LOGO_H)
+        return 0;
+    for (j = b0; j <= b1; j++)
+        for (i = a0; i <= a1; i++)
+            if (!logo_is_body(i, j))
+                return 0;
+    return 1;
+}
+
+static void logo_store(vt_term *t)
+{
+    static char b64[LOGO_W * LOGO_H * 3 / 3 * 4 + 8];
+    k38_b64(logo_px, sizeof(logo_px), b64);
+    h_put(t, "\033_Ga=t,i=9,f=24,s=320,v=256,q=2;");
+    h_put(t, b64);
+    h_put(t, "\033\\");
+}
+
+static vt_term *logo_term(int copy)
+{
+    vt_term *t = h_new(80, 30, VT_XTERM);
+    vt_set_cell_pixels(t, 8, 8); /* DCTelnet's cells (vtbuiltin.c) */
+    vt_set_image_rgb_copy(t, copy);
+    return t;
+}
+
+static void a_flat_logo_with_antialiased_edges_stays_solid(void)
+{
+    int copy;
+    logo_make();
+    CHECK(logo_distinct > 255); /* the case: more colours than a palette holds */
+    for (copy = 0; copy <= 1; copy++) {
+        vt_term *t = logo_term(copy);
+        vt_image_view v;
+        int x, y, flat = 0, off = 0, idx = -1, idxs = 0;
+        logo_store(t);
+        h_put(t, "\033[1;1H\033_Ga=p,i=9,p=1,x=0,y=0,w=320,h=128,c=20,r=8,C=1,q=2\033\\");
+        CHECK(vt_row_image(t, 0, 0, &v));
+        CHECK_INT(v.fmt, 0);
+        CHECK(v.npal <= 256);
+        for (y = 0; y < v.h; y++)
+            for (x = 0; x < v.w; x++) {
+                if (!logo_flat(x, y, v.w, v.h, 0, 0, LOGO_W, LOGO_H))
+                    continue;
+                flat++;
+                if (pixel(&v, x, y) != LOGO_BODY)
+                    off++;
+                if (v.pix[y * v.w + x] != idx) {
+                    idxs += idx >= 0;
+                    idx = v.pix[y * v.w + x];
+                }
+            }
+        CHECK(flat > 5000); /* most of the bubble */
+        CHECK_INT(off, 0);  /* every flat pixel is the body colour itself */
+        CHECK_INT(idxs, 0); /* ... and one index */
+        vt_free(t);
+    }
+}
+
+/* The door scrolls the logo a cell row (16 source rows) at a time, and once off the rows (8 px: its own picture).
+ * Every screen row of the flat body equals the rows above and below it: no lighter or darker line between the
+ * cell rows, the crops or the dither's tiles. */
+static void scrolled_picture_has_no_seam_rows(void)
+{
+    vt_term *t;
+    int step, seams = 0, rows = 0;
+    logo_make();
+    t = logo_term(0);
+    logo_store(t);
+    for (step = 0; step <= 9; step++) {
+        static unsigned long line[64][160];
+        static unsigned char isflat[64][160];
+        int y0 = step < 9 ? step * 16 : 8, row, y, x;
+        char keys[128];
+        h_put(t, "\033_Ga=d,d=i,i=9,q=2\033\\");
+        snprintf(keys, sizeof(keys), "\033[1;1H\033_Ga=p,i=9,p=1,x=0,y=%d,w=320,h=128,c=20,r=8,C=1,q=2\033\\", y0);
+        h_put(t, keys);
+        memset(isflat, 0, sizeof(isflat));
+        for (row = 0; row < 8; row++) {
+            vt_image_view v;
+            int band;
+            if (!vt_row_image(t, row, 0, &v)) {
+                CHECK(0);
+                continue;
+            }
+            band = v.h == 128; /* rows of the whole picture scaled once, else the crop's own */
+            for (y = 0; y < 8; y++)
+                for (x = 0; x < 160 && x < v.w; x++) {
+                    int py = v.py + y;
+                    line[row * 8 + y][x] = pixel(&v, x, py);
+                    isflat[row * 8 + y][x] = (unsigned char)(band ? logo_flat(x, py, v.w, v.h, 0, 0, LOGO_W, LOGO_H)
+                                                                  : logo_flat(x, py, v.w, v.h, 0, y0, LOGO_W, 128));
+                }
+        }
+        for (y = 1; y < 64; y++) {
+            int diff = 0, n = 0;
+            for (x = 0; x < 160; x++)
+                if (isflat[y][x] && isflat[y - 1][x]) {
+                    n++;
+                    diff += line[y][x] != line[y - 1][x];
+                }
+            if (n >= 16) {
+                rows++;
+                seams += diff > 0;
+            }
+        }
+    }
+    CHECK(rows > 300);
+    CHECK_INT(seams, 0);
     vt_free(t);
 }
 
@@ -1882,6 +2061,8 @@ void suite_kitty(void)
     a_frame_over_an_exact_colour_root_keeps_the_root_pixels();
     scrolling_a_cropped_picture_does_not_rebuild_it();
     a_crop_off_the_rows_is_still_its_own_picture();
+    a_flat_logo_with_antialiased_edges_stays_solid();
+    scrolled_picture_has_no_seam_rows();
     k39_frame_canvases_stop_at_the_x4_budget_in_both_modes();
     k39_rgba_frames_keep_exact_bytes_and_alpha();
 }

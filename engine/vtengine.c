@@ -112,7 +112,7 @@ typedef struct vt_image {
     vt_u8 opaque;       /* fmt 1: no pixel has an alpha below 255 */
     vt_u8 *rgb;         /* fmt 0 kitty pictures made while vt_set_image_rgb_copy was on: w x h x 3 bytes R G B, the picture's
                          * own colours beside the cube indices (counted in bytes); 0 when none */
-    vt_u8 kexact;       /* fmt 0 kitty: pal is the picture's own colours, undithered (kit_index); 0 the cube */
+    vt_u8 kexact;       /* fmt 0 kitty: pal is the picture's own colours or 255 cut from them, undithered (kit_index); 0 the cube */
     vt_u8 ktrans;       /* kitty's N=1 on a stored picture: evicted first */
     int px0, py0;       /* kitty's X=, Y=: the picture's offset inside its first cell */
     vt_u32 pkid, ppid;  /* kitty's P=, Q=: the parent placement's i= and p= (0 none) */
