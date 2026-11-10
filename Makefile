@@ -2214,7 +2214,7 @@ dist-src:
 
 # The kit says what it was built from: Files/VERSIONS has a line per part, and
 # it is in the lha archive.
-dist-check: flat-budget $(BUILD)/amiga/keymap.o $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/amarchy-icons $(BUILD)/amiga/amarchy-menu $(BUILD)/updiff_kit_drv
+dist-check: flat-budget $(BUILD)/amiga/keymap.o $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/amarchy-icons $(BUILD)/amiga/amarchy-menu $(BUILD)/updiff_kit_drv $(CHKABORT_PROGRAMS:%=$(BUILD)/amiga/%) $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/amnotify $(BUILD)/amiga/AmTile
 	python3 tests/test_dist_installer.py
 	KITSIZE_REQUIRE=1 python3 tests/test_dist_kitsize.py
 	python3 tests/test_dist_addons.py
