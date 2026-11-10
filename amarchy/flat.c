@@ -76,6 +76,8 @@ const char amarchy_flat_stack_cookie[] = STK_COOKIE(16384);
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 static flatshared *g_r;
+/* FLAT-LOOP-BEAT: the main task names the step it enters (STATUS prints it; a loop stuck in a lock names that lock) */
+#define STG(x) do { if (g_r) g_r->stage = (UWORD)(x); } while (0)
 static int side_px(flatshared *r, struct Screen *scr);
 static void aspect_update(flatshared *r, struct Screen *scr);
 
@@ -1971,6 +1973,8 @@ static void print_status(void)
     int apx = 0, sring[16][9], sn = 0;
     uint32_t dsum[FLAT_EL_COUNT] = { 0, 0, 0 };
     unsigned long dbevel = 0, dface = 0, d5draws = 0;
+    unsigned long lbeat = 0, lnref = 0;
+    unsigned lstage = 0, lref = 0;
     memset(&copy, 0, sizeof copy);
     Forbid();
     r = (flatshared *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
@@ -1990,9 +1994,14 @@ static void print_status(void)
         cfi = r->cf_ids; clw = r->cf_lwhich; cls = r->cf_lsize; cln = r->cf_lnz; clm = r->cf_lmarks;
         apx = r->aspect_px; alooks = r->aspect_looks;
         memcpy(sring, r->sring, sizeof sring); sn = (int)(r->sring_n > 16 ? 16 : r->sring_n);
+        lbeat = r->beat; lstage = r->stage; lref = r->refuse; lnref = r->nrefuse;
     }
     Permit();
     if (flat_status_line(&copy, sizeof copy, found, line, sizeof line)) {
+        PutStr((STRPTR)line);
+        PutStr((STRPTR)"\n");
+    }
+    if (found && flat_loop_line(lbeat, lstage, lref, lnref, line, sizeof line)) {     /* FLAT-LOOP-BEAT */
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
     }
@@ -2242,6 +2251,13 @@ static int hook_remove(flatshared *r)
 }
 
 /* ---- FLAT-D4: find dopus5.library among the resident libraries (never load it), gate it, swap the two entries ---- */
+/* FLAT-LOOP-BEAT: a Ctrl-C refusal, kept for STATUS (the refusal line itself goes to a buffered stdout) */
+static void refused(flatshared *r, unsigned why)
+{
+    r->refuse = (UWORD)why;
+    r->nrefuse++;
+}
+
 static void dopus_unpatch(flatshared *r)
 {
     int el;
@@ -2363,6 +2379,7 @@ static void dopus_scan(flatshared *r)
 static void pens_sync(flatshared *r, int quit)
 {
     int hold = ip_hold_wanted(quit, r->st.held != 0, GfxBase && GfxBase->LibNode.lib_Version >= 39);   /* not the flat switch */
+    STG(FLAT_STG_PENS_SYNC);
     ipd_owner(IP_OWNER_FLAT, hold);     /* also syncs the pens with the owners and the screen */
 }
 
@@ -2513,9 +2530,12 @@ static unsigned long fp_rgb(void *ctx, int pen)
  * list or reopened at another epoch, under the list lock; icl_ss guards the icl table against the Text hook. */
 static void pens_reap(void)
 {
-    struct List *pl = LockPubScreenList();
+    struct List *pl;
+    STG(FLAT_STG_REAP_LIST);
+    pl = LockPubScreenList();
     flat_pens_tab_reap(&g_pens, scr_is_open, pl);
     if (icl_ready) {
+        STG(FLAT_STG_REAP_ICL);
         ObtainSemaphore(&icl_ss);
         icl_tab_reap(&icl_pc, scr_is_open, pl);
         ReleaseSemaphore(&icl_ss);
@@ -2530,10 +2550,13 @@ static flat_draw_scr g_draw_list[FLAT_PENS_SLOTS];
 
 static void draw_sync(flatshared *r)
 {
-    struct List *pl = LockPubScreenList();
+    struct List *pl;
     struct Node *nd;
     int n = 0;
-    unsigned wbep = ipd_epoch();
+    unsigned wbep;
+    STG(FLAT_STG_DRAW_SYNC);
+    pl = LockPubScreenList();
+    wbep = ipd_epoch();
     if (pl) {
         for (nd = pl->lh_Head; nd->ln_Succ && n < FLAT_PENS_SLOTS; nd = nd->ln_Succ) {
             const struct Screen *sc = ((struct PubScreenNode *)nd)->psn_Screen;
@@ -2555,13 +2578,18 @@ static void draw_sync(flatshared *r)
  * r->st. Other screens obtain no pens here (their hooks draw with the stock fallbacks). */
 static void pens_run(flatshared *r, int mode)
 {
-    struct Screen *scr = ipd_lock_wb_screen();
+    struct Screen *scr;
     pen_cx x;
     flat_pen_ops o;
-    const void *id = scr;
+    const void *id;
     flat_pens *sl;
-    unsigned ep = ipd_epoch();
+    unsigned ep;
     int depth = 0;
+    STG(FLAT_STG_LOCK_WB);
+    scr = ipd_lock_wb_screen();
+    STG(FLAT_STG_PENS);
+    id = scr;
+    ep = ipd_epoch();
     x.cm = scr ? scr->ViewPort.ColorMap : NULL;
     o.ctx = &x;
     o.obtain = fp_obtain;
@@ -2734,16 +2762,22 @@ int main(void)
     pt_start(&pen_tm, 1000000UL);                       /* the Workbench screen watch (pens_sync) */
     print_status();
     for (;;) {
-        ULONG got = Wait(SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D | pt_sigmask(&tm) | pt_sigmask(&pen_tm));
+        ULONG got;
+        STG(FLAT_STG_WAIT);
+        got = Wait(SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D | pt_sigmask(&tm) | pt_sigmask(&pen_tm));
+        r->beat++;
         stk_probe();
         if (pt_fired(&pen_tm, got)) {                   /* Workbench closed / reopened / mode change */
-            if (IntuitionBase && GfxBase && flat_install_due(r->st.held, install_rc == FLAT_OK, install_rc))
-                install_rc = install_all(r, &tm, &marker_live);     /* S32-START-LOOK: LoadWB opened the screen */
+            if (IntuitionBase && GfxBase && flat_install_due(r->st.held, install_rc == FLAT_OK, install_rc)) {
+                STG(FLAT_STG_INSTALL);
+                install_rc = install_all(r, &tm, &marker_live);
+            }     /* S32-START-LOOK: LoadWB opened the screen */
             pens_sync(r, 0);
             pens_run(r, 1);                             /* S32-STALE-HELD-PENS: a new screen forgets the old pens and obtains on it (icon pens synced first) */
             pt_start(&pen_tm, 1000000UL);
         }
         if (marker_live && pt_fired(&tm, got)) {        /* 60 s without a crash: the start is safe */
+            STG(FLAT_STG_MARKER);
             marker_delete();
             marker_live = 0;
         }
@@ -2752,31 +2786,42 @@ int main(void)
                 dim_release(r);                         /* the dim pen is a shared pen: let go first so it cannot sit on an icon pen index */
             pens_sync(r, 0);
             if (!r->st.held) {
+                STG(FLAT_STG_SCAN);
                 dopus_scan(r);
                 dim_refresh(r);
+                STG(FLAT_STG_STATUS);
                 print_status();
             } else
                 draw_sync(r);
         }
         if (!(got & SIGBREAKF_CTRL_C))
             continue;
+        STG(FLAT_STG_UNPATCH);
         dopus_unpatch(r);
         if (d4_installed(r)) {
+            refused(r, FLAT_REF_DOPUS);
             PutStr((STRPTR)"amarchy-flat: a patch is still chained on a DOpus entry, not unloading\n");
             continue;
         }
+        STG(FLAT_STG_TX_REMOVE);
         if (tx_remove(r) == FLAT_STILL_CHAINED) {
+            refused(r, FLAT_REF_TEXT);
             PutStr((STRPTR)"amarchy-flat: a patch is still chained on Text, not unloading\n");
             continue;
         }
+        STG(FLAT_STG_RF_REMOVE);
         if (rf_remove(r) == FLAT_STILL_CHAINED) {
+            refused(r, FLAT_REF_RECTFILL);
             PutStr((STRPTR)"amarchy-flat: a patch is still chained on RectFill, not unloading\n");
             continue;
         }
+        STG(FLAT_STG_HOOK_REMOVE);
         if (r->sw.installed && hook_remove(r) == FLAT_STILL_CHAINED) {
+            refused(r, FLAT_REF_HOOK);
             PutStr((STRPTR)"amarchy-flat: a hook is still chained on top of ours, not unloading\n");
             continue;
         }
+        STG(FLAT_STG_FREE);
         ObtainSemaphore(&cl_ss);
         clone_free();
         clone_stack_free();                             /* hooks are removed and cl_ss is ours: no task is on the stack */
@@ -2803,6 +2848,7 @@ int main(void)
             stk_probe();
             return 0;
         }
+        refused(r, FLAT_REF_RECORD);
         PutStr((STRPTR)"amarchy-flat: the state block is in use, not unloading\n");
     }
 }

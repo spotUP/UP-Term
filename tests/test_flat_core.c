@@ -128,6 +128,16 @@ static void test_status(void)
     flat_status_line(&s, sizeof s, 1, line, sizeof line);
     CHECK_STR(line, "flat=absent bad=size");
     CHECK_INT(flat_status_line(&s, sizeof s, 1, line, 47), 0);          /* a buffer under 48 bytes is refused */
+    /* FLAT-LOOP-BEAT: the main loop trace line */
+    CHECK_INT(flat_loop_line(7, FLAT_STG_WAIT, FLAT_REF_NONE, 0, line, sizeof line) > 0, 1);
+    CHECK_STR(line, "loop beat=7 stage=wait refused=none refusals=0");
+    flat_loop_line(9, FLAT_STG_REAP_ICL, FLAT_REF_DOPUS, 2, line, sizeof line);
+    CHECK_STR(line, "loop beat=9 stage=reap_icl refused=dopus refusals=2");
+    flat_loop_line(1, FLAT_STG_FREE, FLAT_REF_RECORD, 1, line, sizeof line);
+    CHECK_STR(line, "loop beat=1 stage=free refused=record refusals=1");
+    flat_loop_line(1, FLAT_STG_COUNT, FLAT_REF_COUNT, 0, line, sizeof line);
+    CHECK_STR(line, "loop beat=1 stage=bad refused=bad refusals=0");
+    CHECK_INT(flat_loop_line(1, 0, 0, 0, line, 63), 0);                  /* a buffer under 64 bytes is refused */
 }
 
 static void test_exit(void)

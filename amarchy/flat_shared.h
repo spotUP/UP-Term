@@ -74,6 +74,10 @@ typedef struct flatshared {
     flat_swap d5sw;             /* DOPUS-LOCK-ICONIFY: the dopusiclass h_Entry swap (lock / iconify images) */
     uintptr_t *d5slot;
     ULONG d5draws;              /* sentinel: lock / iconify images drawn by flat */
+    /* FLAT-LOOP-BEAT: the main loop trace (flat_loop_line): passes after Wait, the FLAT_STG_* step it is in, the last FLAT_REF_* refusal */
+    ULONG beat;
+    UWORD stage, refuse;
+    ULONG nrefuse;
     /* the icon pens are no longer here: the shared holder record IPD_SEM_NAME owns them (iconpen_dos.h, F14) */
 } flatshared;
 

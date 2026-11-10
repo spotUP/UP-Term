@@ -49,6 +49,21 @@ int flat_status_line(const void *p, size_t avail, int found, char *out, size_t c
     return n > 0 && (size_t)n < cap ? n : 0;
 }
 
+int flat_loop_line(unsigned long beat, unsigned stage, unsigned refuse, unsigned long nrefuse, char *out, size_t cap)
+{
+    static const char *const stg[FLAT_STG_COUNT] = {
+        "none", "wait", "pens_sync", "install", "lock_wb", "pens", "draw_sync", "reap_list", "reap_icl", "marker", "scan",
+        "status", "unpatch", "tx_remove", "rf_remove", "hook_remove", "free"
+    };
+    static const char *const ref[FLAT_REF_COUNT] = { "none", "dopus", "text", "rectfill", "hook", "record" };
+    int n;
+    if (cap < 64)
+        return 0;
+    n = snprintf(out, cap, "loop beat=%lu stage=%s refused=%s refusals=%lu", beat, stage < FLAT_STG_COUNT ? stg[stage] : "bad",
+                 refuse < FLAT_REF_COUNT ? ref[refuse] : "bad", nrefuse);
+    return n > 0 && (size_t)n < cap ? n : 0;
+}
+
 int flat_can_exit(const flat_state *s)
 {
     return !s || !s->still_chained;

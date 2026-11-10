@@ -74,6 +74,19 @@ const char *flat_status_word(const flat_state *s, int found);
  * layout reads "flat=absent bad=version|size". Returns the length, 0 when cap < 48. */
 int flat_status_line(const void *p, size_t avail, int found, char *out, size_t cap);
 
+/* FLAT-LOOP-BEAT: the main loop's trace, kept in the shared record so a second copy (STATUS) can read it while the running copy's
+ * stdout is buffered. beat counts loop passes after Wait; stage is the step the loop is in (a stuck loop names the call that blocks);
+ * refuse is the last Ctrl-C refusal and nrefuse how many refusals so far. */
+enum {
+    FLAT_STG_NONE, FLAT_STG_WAIT, FLAT_STG_PENS_SYNC, FLAT_STG_INSTALL, FLAT_STG_LOCK_WB, FLAT_STG_PENS, FLAT_STG_DRAW_SYNC,
+    FLAT_STG_REAP_LIST, FLAT_STG_REAP_ICL, FLAT_STG_MARKER, FLAT_STG_SCAN, FLAT_STG_STATUS, FLAT_STG_UNPATCH, FLAT_STG_TX_REMOVE,
+    FLAT_STG_RF_REMOVE, FLAT_STG_HOOK_REMOVE, FLAT_STG_FREE, FLAT_STG_COUNT
+};
+enum { FLAT_REF_NONE, FLAT_REF_DOPUS, FLAT_REF_TEXT, FLAT_REF_RECTFILL, FLAT_REF_HOOK, FLAT_REF_RECORD, FLAT_REF_COUNT };
+
+/* "loop beat=N stage=<name> refused=<name> refusals=N"; returns the length, 0 when cap < 64. */
+int flat_loop_line(unsigned long beat, unsigned stage, unsigned refuse, unsigned long nrefuse, char *out, size_t cap);
+
 /* Can the program unload on Ctrl-C? 1 when nothing is chained on top of it. */
 int flat_can_exit(const flat_state *s);
 
