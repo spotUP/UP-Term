@@ -797,6 +797,12 @@ static struct Gadget *string_gadget_at(struct RastPort *rp, int x0, int y0, int 
     for (g = win ? win->FirstGadget : NULL, n = 0; g && n < 64; g = g->NextGadget, n++) {
         struct StringInfo *si = (struct StringInfo *)g->SpecialInfo;
         int gx, gy, gw, gh;
+        if ((g->GadgetType & GTYP_GTYPEMASK) == GTYP_STRGADGET) {      /* sentinels: string gadgets seen, with an extension */
+            flatshared *rr = g_r;
+            rr->sgseen++;
+            if (si && (g->Activation & 0x0800) && si->Extension)
+                rr->sgext++;
+        }
         if (!flat_string_ext(g->GadgetType & GTYP_GTYPEMASK, g->Activation, si != NULL, si && si->Extension != NULL))
             continue;
         gx = g->LeftEdge + ((g->Flags & GFLG_RELRIGHT) ? win->Width - 1 : 0);
@@ -2493,6 +2499,9 @@ static void print_status(void)
         put_word(line, &n, " face=");               put_num(line, &n, dface);
         put_word(line, &n, " nopix=");              put_num(line, &n, dnopix);
         put_word(line, &n, " d5=");                 put_num(line, &n, d5draws);
+        put_word(line, &n, " ground=");             put_num(line, &n, g_r->sground);
+        put_word(line, &n, " sg=");                 put_num(line, &n, g_r->sgseen);
+        put_word(line, &n, " ext=");                put_num(line, &n, g_r->sgext);
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
