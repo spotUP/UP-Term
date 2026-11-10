@@ -1443,7 +1443,8 @@ static int prop_knob(struct Gadget *g, struct PropInfo *pi, int cx, int cy, int 
 static int hprop_rows(struct Window *w)
 {
     struct Gadget *g;
-    for (g = w->FirstGadget; g; g = g->NextGadget)
+    int n;
+    for (g = w->FirstGadget, n = 0; g && n < 64; g = g->NextGadget, n++)
         if (gadget_has_propinfo(g) && (((struct PropInfo *)g->SpecialInfo)->Flags & (FREEHORIZ | FREEVERT)) == FREEHORIZ)
             return ((struct PropInfo *)g->SpecialInfo)->CHeight;
     return 0;
@@ -1484,8 +1485,8 @@ static int scroller_pen_of(flatshared *r, struct RastPort *rp, struct Window *w,
 static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *box, int *k)
 {
     struct Gadget *g;
-    int pen;
-    for (g = w->FirstGadget; g; g = g->NextGadget)
+    int pen, n;
+    for (g = w->FirstGadget, n = 0; g && n < 64; g = g->NextGadget, n++)
         if (gadget_has_propinfo(g) && (pen = scroller_pen_of(r, rp, w, g, box, k)) >= 0)
             return pen;
     return -1;
@@ -1731,8 +1732,9 @@ static void sring_note(flatshared *r, struct Window *w, const LONG *b, int ncuts
 {
     int *e = r->sring[r->sring_n++ & 15];
     struct Gadget *g2;
+    int n2;
     e[0] = (int)b[0]; e[1] = (int)b[1]; e[2] = (int)b[2]; e[3] = (int)b[3]; e[4] = e[5] = e[6] = e[7] = -1; e[8] = ncuts;
-    for (g2 = w->FirstGadget; g2; g2 = g2->NextGadget) {
+    for (g2 = w->FirstGadget, n2 = 0; g2 && n2 < 64; g2 = g2->NextGadget, n2++) {
         struct PropInfo *p2;
         int gx2, gy2;
         if (!gadget_has_propinfo(g2))
