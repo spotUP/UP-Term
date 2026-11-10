@@ -21,7 +21,11 @@ HELPER_MAX = 80
 CHAIN_MAX = 384
 HEADROOM_MIN = 64          # the deepest chain must leave this many bytes under CHAIN_MAX (S56-FLAT-HEADROOM)
 ENTRIES = ('_c2_disp_reg', '_d5_disp_reg', '_c2_disp_stk', '_flat_rf_c', '_flat_tx_c')
-STUBS = {'_flat_rf_c': 'amarchy/flat_rf.s', '_flat_tx_c': 'amarchy/flat_tx.s'}   # entry -> the asm stub that calls it
+# entry -> (the asm stub that calls it, the jsr operand that reaches it). The class dispatchers are reached through the
+# FLAT-UNLOAD-INFLIGHT gate (flat_dg.s): its plain `jsr` pushes one return address (4 bytes) on the caller's stack, counted here.
+DG = ('amarchy/flat_dg.s', '($44444444).l')
+STUBS = {'_flat_rf_c': ('amarchy/flat_rf.s', None), '_flat_tx_c': ('amarchy/flat_tx.s', None),
+         '_c2_disp_reg': DG, '_d5_disp_reg': DG, '_c2_disp_stk': DG}
 
 
 def stub_bytes(entry):
@@ -29,15 +33,17 @@ def stub_bytes(entry):
     `jsr <entry>`, plus that jsr's return address. 0 for an entry called from C."""
     if entry not in STUBS:
         return 0
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', STUBS[entry])
+    path, operand = STUBS[entry]
+    operand = operand or entry
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', path)
     n = 0
     for s in open(path).read().split('\n'):
         s = s.split(';')[0].rstrip()
         if re.match(r'^\tmove\.l\t[^,]+,-\(a7\)$', s):
             n += 4
-        elif s in ('\tjsr\t' + entry, '\tjsr\t(' + entry + ').l'):
+        elif s in ('\tjsr\t' + operand, '\tjsr\t(' + operand + ').l'):
             return n + 4
-    raise SystemExit('FAIL: %s has no jsr %s' % (path, entry))
+    raise SystemExit('FAIL: %s has no jsr %s' % (path, operand))
 ALLOWED_EXTERN = re.compile(r'^_flat_[a-z0-9_]+$')
 
 

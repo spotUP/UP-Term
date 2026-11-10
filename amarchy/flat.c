@@ -659,6 +659,9 @@ ULONG c2_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1
     return rc;
 }
 
+/* FLAT-UNLOAD-INFLIGHT: c2_disp_stk and c8_disp_stk are entered through the class gate (flat_dg.s) by a plain jsr, so the stack
+ * holds [gate ret][caller ret][hook][obj][msg]: the leading caller_return parameter absorbs the caller's own return address
+ * and is never read. The register-convention entries need nothing: their registers pass through the gate untouched. */
 /* DOPUS-LOCK-ICONIFY: dopusiclass IM_DRAW of the title-bar iconify and lock images. type is the first field of the
  * instance data (BoopsiImageData.type, a short). 0 = not ours: the stock dispatcher draws. */
 static int d5_draw(struct Hook *h, Object *obj, Msg msg)
@@ -684,7 +687,7 @@ ULONG d5_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1
     return ((oldfn_reg)g_r->d5sw.saved)(h, obj, msg);
 }
 
-ULONG c2_disp_stk(struct Hook *h, Object *obj, Msg msg)
+ULONG c2_disp_stk(void *caller_return, struct Hook *h, Object *obj, Msg msg)
 {
     ULONG rc;
     if (c2_draw(h, obj, msg, 0))
@@ -889,7 +892,7 @@ ULONG c8_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1
     return ((oldfn_reg)g_r->fsw.saved)(h, obj, msg);
 }
 
-ULONG c8_disp_stk(struct Hook *h, Object *obj, Msg msg)
+ULONG c8_disp_stk(void *caller_return, struct Hook *h, Object *obj, Msg msg)
 {
     if (c8_skip(obj, msg))
         return TRUE;
@@ -1017,37 +1020,92 @@ typedef void (*textfn)(__reg("a1") struct RastPort *, __reg("a0") CONST_STRPTR, 
  * layer lock, say) comes back through the entry's count-out and final rts AFTER the handler returns, and by then unload may
  * have freed this program's segment; the old stub lived in that segment and the caller returned into freed code. The block
  * is a copy of the position-independent template in flat_rf.s / flat_tx.s (the jsr to the C handler is relocated by the
- * loader before the copy). Unload restores the vector, then waits until the counter reads 0 (gate_wait); it never gives up and
- * frees anyway. Cost: about 70 bytes of public memory per load, deliberately left behind. */
+ * loader before the copy). Unload sets the block's closed flag FIRST (a late arrival counts in, sees it and runs the original
+ * function: nothing of ours), restores the vector, then waits until the counter reads 0 (gate_wait); it never gives up. The
+ * entry order is count in, then the closed test, so a caller that fetched the vector but has not yet counted in cannot slip
+ * past the wait. The same gate (flat_dg.s) fronts the class dispatchers. Cost: about 70 bytes of public memory per load, deliberately left behind. */
 typedef struct flat_gate {
     volatile LONG count;                /* callers inside the entry: addq.l #1 on entry, subq.l #1 before the final rts (single instructions, atomic on 68k) */
+    volatile LONG closed;               /* unload sets it BEFORE it restores the vector: a caller that enters later counts in, sees it, and runs the original */
+    ULONG orig;                         /* the function the vector held before our swap (flat_swap.saved): where a closed gate passes the call on */
     unsigned char code[1];              /* the copied template follows */
 } flat_gate;
 
-/* Copy the template [tpl, end) into a fresh block, point its two counter operands (c1, c2: the instructions that carry them,
- * operand at +2) at the block's own counter, flush the caches. NULL when out of memory. */
-static flat_gate *gate_make(const void *tpl, const void *end, const void *c1, const void *c2)
+/* The template operands that gate_make patches in the copy (see the note at the end of flat_dg.s). */
+#define GATE_M_COUNT   0x11111111UL
+#define GATE_M_CLOSED  0x22222222UL
+#define GATE_M_ORIG    0x33333333UL
+#define GATE_M_HANDLER 0x44444444UL
+
+/* Replace every even-offset occurrence of the magic word m in [code, code+len) by v; returns how many were replaced. */
+static int gate_patch(unsigned char *code, ULONG len, ULONG m, ULONG v)
+{
+    ULONG o;
+    int n = 0;
+    for (o = 0; o + 4 <= len; o += 2) {
+        if (code[o] == (unsigned char)(m >> 24) && code[o + 1] == (unsigned char)(m >> 16) && code[o + 2] == (unsigned char)(m >> 8) && code[o + 3] == (unsigned char)m) {
+            code[o] = (unsigned char)(v >> 24); code[o + 1] = (unsigned char)(v >> 16); code[o + 2] = (unsigned char)(v >> 8); code[o + 3] = (unsigned char)v;
+            n++;
+        }
+    }
+    return n;
+}
+
+/* Copy the template [tpl, end) into a fresh block and point its operands at the block's own counter, closed flag and orig
+ * word (and at handler, when the template calls one), flush the caches. NULL when out of memory or the template lacks an
+ * operand. The gate starts open; gate_open sets orig after the swap. */
+static flat_gate *gate_make(const void *tpl, const void *end, ULONG handler)
 {
     ULONG len = (ULONG)((const unsigned char *)end - (const unsigned char *)tpl);
-    flat_gate *g = (flat_gate *)AllocMem(sizeof(LONG) + len, MEMF_PUBLIC | MEMF_CLEAR);
-    ULONG *cnt = (ULONG *)&g->count;
+    flat_gate *g = (flat_gate *)AllocMem(sizeof(flat_gate) + len, MEMF_PUBLIC | MEMF_CLEAR);
+    int ok;
     if (!g)
         return 0;
     CopyMem((APTR)tpl, g->code, len);
-    *(ULONG *)(g->code + ((const unsigned char *)c1 - (const unsigned char *)tpl) + 2) = (ULONG)cnt;
-    *(ULONG *)(g->code + ((const unsigned char *)c2 - (const unsigned char *)tpl) + 2) = (ULONG)cnt;
+    ok = gate_patch(g->code, len, GATE_M_COUNT, (ULONG)&g->count) >= 2
+      && gate_patch(g->code, len, GATE_M_CLOSED, (ULONG)&g->closed) == 1
+      && gate_patch(g->code, len, GATE_M_ORIG, (ULONG)&g->orig) == 1
+      && (!handler || gate_patch(g->code, len, GATE_M_HANDLER, handler) == 1);
+    if (!ok) {
+        FreeMem(g, sizeof(flat_gate) + len);    /* never entered: not yet reachable by anyone */
+        return 0;
+    }
     CacheClearU();                      /* the block is code just written */
     return g;
 }
 
-/* After the vector is restored: wait for every caller that is inside the entry. No timeout, nothing is freed before it is 0. */
+/* After the swap installed us: the original is what the swap saved, and the gate runs our handler. */
+static void gate_open(flat_gate *g, uintptr_t orig)
+{
+    if (g) {
+        g->orig = (ULONG)orig;
+        g->closed = 0;
+    }
+}
+
+/* Unload step 1, BEFORE the vector is restored: from now on every caller that reaches the gate runs the original. */
+static void gate_close(flat_gate *g)
+{
+    if (g)
+        g->closed = 1;
+}
+
+/* The restore was refused (a foreign hook sits on top): the gate keeps serving as it did. */
+static void gate_reopen(flat_gate *g)
+{
+    if (g)
+        g->closed = 0;
+}
+
+/* Unload step 3, after the vector is restored: wait for every caller that is inside the entry. No timeout, nothing is freed before it is 0. */
 static void gate_wait(flat_gate *g)
 {
     while (g && g->count > 0)
         Delay(1);
 }
 
-extern void flat_tx_tpl(void), flat_tx_tpl_c1(void), flat_tx_tpl_c2(void), flat_tx_tpl_end(void);
+extern void flat_tx_tpl(void), flat_tx_tpl_end(void);
+extern void flat_dg_tpl(void), flat_dg_tpl_end(void);   /* the dispatcher gate (flat_dg.s) */
 
 /* ---- RL21 SELECTA-AA-ICONTEXT: antialiased Workbench and DOpus icon labels, inside the Text patch (no second patch).
  * A label call (icl_accept: ui-antialias on, JAM1/JAM2, box inside the window) reads its box
@@ -1407,13 +1465,14 @@ static int tx_install(flatshared *r)
         return -100;
     flat_swap_init(&r->tsw);
     if (!r->tgate)                      /* kept across a remove and install of this record; never freed (FLAT-UNLOAD-INFLIGHT) */
-        r->tgate = gate_make((void *)flat_tx_tpl, (void *)flat_tx_tpl_end, (void *)flat_tx_tpl_c1, (void *)flat_tx_tpl_c2);
+        r->tgate = gate_make((void *)flat_tx_tpl, (void *)flat_tx_tpl_end, 0);
     if (!r->tgate)
         return -101;
     g_r = r;
     Forbid();
     rc = flat_swap_install(&r->tsw, (uintptr_t *)(entry + 2), (uintptr_t)r->tgate->code);
     if (rc == FLAT_OK) {
+        gate_open(r->tgate, r->tsw.saved);
         r->tslot = (uintptr_t *)(entry + 2);
         libpatch_done((struct Library *)GfxBase);
     }
@@ -1426,12 +1485,15 @@ static int tx_remove(flatshared *r)
     int rc = FLAT_NOT_INSTALLED;
     if (!r->tsw.installed)
         return rc;
+    gate_close(r->tgate);                  /* FLAT-UNLOAD-INFLIGHT: from here a caller runs the original */
     Forbid();
     rc = flat_swap_remove(&r->tsw, r->tslot, &r->st);
     if (rc == FLAT_REMOVED) {
         libpatch_done((struct Library *)GfxBase);
     }
     Permit();
+    if (rc != FLAT_REMOVED)
+        gate_reopen(r->tgate);
     if (rc == FLAT_REMOVED) {
         gate_wait(r->tgate);            /* FLAT-UNLOAD-INFLIGHT: every Text caller inside the entry has left */
         r->tslot = 0;
@@ -1446,7 +1508,7 @@ static int tx_remove(flatshared *r)
  * is recoloured to pen_outline only when ALL hold: enabled and not held, the rastport is a window's layer, the window
  * has a border, the rect is exactly one outer strip of the window (flat_outer_edge_match) and the caller lies in
  * Intuition's ROM code. Anything else runs the stock RectFill untouched. ---- */
-extern void flat_rf_tpl(void), flat_rf_tpl_c1(void), flat_rf_tpl_c2(void), flat_rf_tpl_end(void);
+extern void flat_rf_tpl(void), flat_rf_tpl_end(void);
 
 /* S32-KNOB-NONE-FRESH: XCON's scroller is a boopsi gadget (GadgetType GTYP_CUSTOMGADGET) of propgclass or a subclass. Walk OCLASS(g)
  * and cl_Super comparing cl_ID with PROPGCLASS: plain memory reads, no Intuition call (this runs inside graphics.library), depth bounded. */
@@ -1955,13 +2017,14 @@ static int rf_install(flatshared *r)
     r->irom_hi = (uintptr_t)rt->rt_EndSkip;
     flat_swap_init(&r->rsw);
     if (!r->rgate)                      /* FLAT-UNLOAD-INFLIGHT: see gate_make */
-        r->rgate = gate_make((void *)flat_rf_tpl, (void *)flat_rf_tpl_end, (void *)flat_rf_tpl_c1, (void *)flat_rf_tpl_c2);
+        r->rgate = gate_make((void *)flat_rf_tpl, (void *)flat_rf_tpl_end, 0);
     if (!r->rgate)
         return -101;
     g_r = r;
     Forbid();
     rc = flat_swap_install(&r->rsw, (uintptr_t *)(entry + 2), (uintptr_t)r->rgate->code);
     if (rc == FLAT_OK) {
+        gate_open(r->rgate, r->rsw.saved);
         r->rslot = (uintptr_t *)(entry + 2);
         libpatch_done((struct Library *)GfxBase);
     }
@@ -1974,12 +2037,15 @@ static int rf_remove(flatshared *r)
     int rc = FLAT_NOT_INSTALLED;
     if (!r->rsw.installed)
         return rc;
+    gate_close(r->rgate);                  /* FLAT-UNLOAD-INFLIGHT: from here a caller runs the original */
     Forbid();
     rc = flat_swap_remove(&r->rsw, r->rslot, &r->st);
     if (rc == FLAT_REMOVED) {
         libpatch_done((struct Library *)GfxBase);
     }
     Permit();
+    if (rc != FLAT_REMOVED)
+        gate_reopen(r->rgate);
     if (rc == FLAT_REMOVED) {
         gate_wait(r->rgate);            /* FLAT-UNLOAD-INFLIGHT: every RectFill caller inside the entry has left */
         r->rslot = 0;
@@ -2386,9 +2452,15 @@ static int hook_install(flatshared *r)
     int rc;
     if (!slot)
         return FLAT_ERR_NOCLASS;
+    if (!r->sgate)                      /* FLAT-UNLOAD-INFLIGHT: the never-freed gate in front of the dispatcher */
+        r->sgate = gate_make((void *)flat_dg_tpl, (void *)flat_dg_tpl_end, (ULONG)ours);
+    if (!r->sgate)
+        return -101;                     /* memory */
     g_r = r;                            /* the dispatcher reads it from its first call on */
     Forbid();
-    rc = flat_swap_install(&r->sw, slot, ours);     /* r->sw.saved is the old routine before the first dispatcher call */
+    rc = flat_swap_install(&r->sw, slot, (uintptr_t)r->sgate->code);     /* r->sw.saved is the old routine before the first dispatcher call */
+    if (rc == FLAT_OK)
+        gate_open(r->sgate, r->sw.saved);
     Permit();
     if (rc != FLAT_OK)
         return rc;
@@ -2398,8 +2470,14 @@ static int hook_install(flatshared *r)
         uintptr_t fours = flat_conv(IntuitionBase->LibNode.lib_Version) == FLAT_CONV_REG ? (uintptr_t)c8_disp_reg : (uintptr_t)c8_disp_stk;
         if (!fs)
             return FLAT_OK;
+        if (!r->fgate)
+            r->fgate = gate_make((void *)flat_dg_tpl, (void *)flat_dg_tpl_end, (ULONG)fours);
+        if (!r->fgate)
+            return FLAT_OK;             /* as an absent class: the sysiclass hook keeps working */
         Forbid();
-        rc = flat_swap_install(&r->fsw, fs, fours);
+        rc = flat_swap_install(&r->fsw, fs, (uintptr_t)r->fgate->code);
+        if (rc == FLAT_OK)
+            gate_open(r->fgate, r->fsw.saved);
         Permit();
         if (rc == FLAT_OK)
             r->fslot = fs;
@@ -2415,18 +2493,25 @@ static int hook_remove(flatshared *r)
     if (!r->sw.installed)
         return rc;
     if (r->fsw.installed) {             /* FLAT-C8: the frameiclass hook first; chained on top = keep both */
+        gate_close(r->fgate);           /* FLAT-UNLOAD-INFLIGHT: closed, restore, then wait */
         Forbid();
         rc = flat_swap_remove(&r->fsw, r->fslot, &r->st);
         Permit();
-        if (rc == FLAT_STILL_CHAINED)
+        if (rc == FLAT_STILL_CHAINED) {
+            gate_reopen(r->fgate);
             return rc;
+        }
+        gate_wait(r->fgate);
         r->fslot = 0;
     }
+    gate_close(r->sgate);
     Forbid();
     rc = flat_swap_remove(&r->sw, r->slot, &r->st);
     Permit();
+    if (rc != FLAT_REMOVED)
+        gate_reopen(r->sgate);
     if (rc == FLAT_REMOVED) {
-        Delay(5);                       /* a caller that already entered the dispatcher finishes its draw */
+        gate_wait(r->sgate);            /* every caller inside the dispatcher has left (it counts in before it looks at the flag) */
         r->slot = 0;
     }
     return rc;
@@ -2442,10 +2527,15 @@ static void refused(flatshared *r, unsigned why)
 
 static void dopus_unpatch(flatshared *r)
 {
-    int el;
+    int el, d5_removed = 0;
     Forbid();
-    if (r->d5sw.installed)
-        flat_swap_remove(&r->d5sw, r->d5slot, &r->st);     /* FLAT_STILL_CHAINED: installed stays set, the library stays open */
+    if (r->d5sw.installed) {
+        gate_close(r->d5gate);          /* FLAT-UNLOAD-INFLIGHT: closed, restore, then wait */
+        if (flat_swap_remove(&r->d5sw, r->d5slot, &r->st) == FLAT_REMOVED)     /* FLAT_STILL_CHAINED: installed stays set, the library stays open */
+            d5_removed = 1;
+        else
+            gate_reopen(r->d5gate);
+    }
     for (el = 0; el < FLAT_EL_COUNT; el++)
         if (r->dsw[el].installed) {
             if (r->dbody[el])
@@ -2457,8 +2547,10 @@ static void dopus_unpatch(flatshared *r)
         libpatch_done(r->dlib);
     CacheClearU();
     Permit();
+    if (d5_removed)
+        gate_wait(r->d5gate);           /* every caller inside the dopusiclass replacement has left */
     if (!d4_installed(r) && r->dlib) {
-        Delay(2);                       /* a caller that already entered the replacement leaves it */
+        Delay(2);                       /* the D4 library entries (dsw) are not gated: a caller inside one leaves (still a fixed wait, see the s71 note) */
         CloseLibrary(r->dlib);
         r->dlib = 0;
         r->dmask = 0;
@@ -2541,8 +2633,12 @@ static void dopus_scan(flatshared *r)
         flat_swap_init(&r->d5sw);
         r->d5slot = s5;
         Forbid();
-        if (!s5 || flat_swap_install(&r->d5sw, s5, (uintptr_t)d5_disp_reg) != FLAT_OK)
+        if (!r->d5gate)
+            r->d5gate = gate_make((void *)flat_dg_tpl, (void *)flat_dg_tpl_end, (ULONG)d5_disp_reg);
+        if (!s5 || !r->d5gate || flat_swap_install(&r->d5sw, s5, (uintptr_t)r->d5gate->code) != FLAT_OK)
             r->d5slot = 0;              /* refused: dopusiclass stays stock */
+        else
+            gate_open(r->d5gate, r->d5sw.saved);
         Permit();
     }
     r->dmask = mask;
