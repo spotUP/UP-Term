@@ -241,6 +241,26 @@ int flat_dopus_push_gadget(unsigned gadget_type, unsigned activation);
  * box inset by one pixel per side (measured: box 160,71 47x17 -> fill 161,72..205,86); accepted: inside the box, each side inset 0 to 2 px,
  * so a fill narrower than bw - 4 or shorter than bh - 4 (a label strip, a one-line erase) is not the interior. */
 int flat_dopus_fill_match(int bx, int by, int bw, int bh, int x0, int y0, int x1, int y1);
+/* DOPUS-DIALOG-BUTTON-FILL pending table (s71, agent 43): the push-button boxes a bevel call recorded and the interior fill has not
+ * yet claimed, one entry per owner (a task, opaque here). The table never refuses a put and an entry never blocks another owner:
+ * a put reuses the owner's entry, else a free one, else replaces the oldest. An owner that never sends the fill (exited, clipped
+ * away, window closed) only loses its own entry, to its next put or drop, or to the oldest-first replacement. */
+#define FLAT_DPEND_N 4
+typedef struct flat_dpend {
+    const void *owner;              /* NULL = free */
+    const void *surf;
+    int x, y, w, h, val;
+    unsigned age;                   /* put order, larger = newer */
+} flat_dpend;
+typedef struct flat_dpend_tab {
+    flat_dpend e[FLAT_DPEND_N];
+    int n;                          /* live entries: 0 lets the hot path skip the table */
+    unsigned clock;
+} flat_dpend_tab;
+void flat_dpend_put(flat_dpend_tab *t, const void *owner, const void *surf, int x, int y, int w, int h, int val);
+/* the owner's entry on surf whose box the RectFill x0,y0..x1,y1 is the interior of (flat_dopus_fill_match): copied to *out, cleared; 1, else 0 */
+int flat_dpend_take(flat_dpend_tab *t, const void *owner, const void *surf, int x0, int y0, int x1, int y1, flat_dpend *out);
+void flat_dpend_drop(flat_dpend_tab *t, const void *owner);
 
 /* A BOOL register argument of a hooked dopus5.library function (AmigaOS BOOL is a 16-bit WORD): only the low word of the
  * register is defined, the high word is whatever the caller left (DOpus leaves 0x2200 there). Returns the BOOL's value. */

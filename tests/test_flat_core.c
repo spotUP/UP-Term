@@ -1568,6 +1568,40 @@ static void test_which_from_gtype(void)
         CHECK_INT(flat_dopus_fill_match(160, 71, 47, 17, 163, 72, 205, 86), 0);   /* a narrow strip: not the interior */
         CHECK_INT(flat_dopus_fill_match(160, 71, 47, 17, 161, 72, 205, 90), 0);   /* leaves the box */
         CHECK_INT(flat_dopus_fill_match(160, 71, 47, 17, 100, 72, 120, 86), 0);   /* another place */
+        {   /* DOPUS-DIALOG-BUTTON-FILL pending table (agent 43): a stale entry never blocks another owner, a put never refuses */
+            flat_dpend_tab dt;
+            flat_dpend o;
+            int A = 1, B = 2, C = 3, D = 4, E = 5, SA = 0, SB = 0;
+            memset(&dt, 0, sizeof dt);
+            flat_dpend_put(&dt, &A, &SA, 160, 71, 47, 17, 11);                /* A puts and never takes */
+            CHECK_INT(dt.n, 1);
+            flat_dpend_put(&dt, &B, &SB, 10, 10, 47, 17, 22);
+            CHECK_INT(flat_dpend_take(&dt, &B, &SB, 11, 11, 55, 25, &o), 1);  /* B still works beside A's stale entry */
+            CHECK_INT(o.val, 22);
+            CHECK_INT(o.x, 10);
+            CHECK_INT(dt.n, 1);
+            CHECK_INT(flat_dpend_take(&dt, &B, &SB, 11, 11, 55, 25, &o), 0);  /* taken once */
+            CHECK_INT(flat_dpend_take(&dt, &A, &SB, 161, 72, 205, 86, &o), 0);   /* wrong surface */
+            CHECK_INT(flat_dpend_take(&dt, &A, &SA, 163, 72, 205, 86, &o), 0);   /* a label strip: entry stays */
+            CHECK_INT(dt.n, 1);
+            CHECK_INT(flat_dpend_take(&dt, &B, &SA, 161, 72, 205, 86, &o), 0);   /* another owner's entry is not B's */
+            flat_dpend_put(&dt, &A, &SA, 160, 71, 47, 17, 12);                /* the owner's own put reuses its entry */
+            CHECK_INT(dt.n, 1);
+            flat_dpend_drop(&dt, &A);
+            CHECK_INT(dt.n, 0);
+            CHECK_INT(flat_dpend_take(&dt, &A, &SA, 161, 72, 205, 86, &o), 0);   /* drop cleared it */
+            flat_dpend_put(&dt, &A, &SA, 0, 0, 40, 20, 1);
+            flat_dpend_put(&dt, &B, &SA, 0, 0, 40, 20, 2);
+            flat_dpend_put(&dt, &C, &SA, 0, 0, 40, 20, 3);
+            flat_dpend_put(&dt, &D, &SA, 0, 0, 40, 20, 4);
+            flat_dpend_put(&dt, &E, &SA, 0, 0, 40, 20, 5);                    /* full: the oldest (A) is replaced, never refused */
+            CHECK_INT(dt.n, FLAT_DPEND_N);
+            CHECK_INT(flat_dpend_take(&dt, &A, &SA, 1, 1, 38, 18, &o), 0);
+            CHECK_INT(flat_dpend_take(&dt, &E, &SA, 1, 1, 38, 18, &o), 1);
+            CHECK_INT(o.val, 5);
+            CHECK_INT(flat_dpend_take(&dt, &B, &SA, 1, 1, 38, 18, &o), 1);
+            CHECK_INT(o.val, 2);
+        }
         CHECK_INT(flat_push_button(0, 0, 0, 18, 9, 0x0003), 0);               /* Locale scroller arrow: RELVERIFY|IMMEDIATE */
         for (pressed = 0; pressed <= 1; pressed++) {
             memset(&t, 0, sizeof t);

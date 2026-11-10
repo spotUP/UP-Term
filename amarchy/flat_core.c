@@ -799,6 +799,59 @@ int flat_dopus_fill_match(int bx, int by, int bw, int bh, int x0, int y0, int x1
     return l >= 0 && l <= 2 && t >= 0 && t <= 2 && r >= 0 && r <= 2 && b >= 0 && b <= 2;
 }
 
+static void flat_dpend_clear(flat_dpend_tab *t, flat_dpend *e)
+{
+    e->owner = NULL;
+    t->n--;
+}
+
+void flat_dpend_put(flat_dpend_tab *t, const void *owner, const void *surf, int x, int y, int w, int h, int val)
+{
+    flat_dpend *e = NULL;
+    int i;
+    for (i = 0; i < FLAT_DPEND_N; i++)
+        if (t->e[i].owner == owner) {
+            e = &t->e[i];
+            break;
+        }
+    for (i = 0; !e && i < FLAT_DPEND_N; i++)
+        if (!t->e[i].owner)
+            e = &t->e[i];
+    if (!e) {                                                               /* full: replace the oldest (wrap-safe), the put never refuses */
+        e = &t->e[0];
+        for (i = 1; i < FLAT_DPEND_N; i++)
+            if ((int)(t->e[i].age - e->age) < 0)
+                e = &t->e[i];
+    }
+    if (!e->owner)
+        t->n++;
+    e->owner = owner; e->surf = surf;
+    e->x = x; e->y = y; e->w = w; e->h = h; e->val = val;
+    e->age = ++t->clock;
+}
+
+int flat_dpend_take(flat_dpend_tab *t, const void *owner, const void *surf, int x0, int y0, int x1, int y1, flat_dpend *out)
+{
+    int i;
+    for (i = 0; i < FLAT_DPEND_N; i++) {
+        flat_dpend *e = &t->e[i];
+        if (e->owner == owner && owner && e->surf == surf && flat_dopus_fill_match(e->x, e->y, e->w, e->h, x0, y0, x1, y1)) {
+            *out = *e;
+            flat_dpend_clear(t, e);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+void flat_dpend_drop(flat_dpend_tab *t, const void *owner)
+{
+    int i;
+    for (i = 0; owner && i < FLAT_DPEND_N; i++)
+        if (t->e[i].owner == owner)
+            flat_dpend_clear(t, &t->e[i]);
+}
+
 int flat_border_button_ids(unsigned flags)
 {
     return (flags & 0x0080u) ? 1 : 0;                                       /* GFLG_SELECTED: IDS_SELECTED */
