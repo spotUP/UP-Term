@@ -64,6 +64,8 @@ typedef void (*flat_fill_fn)(void *ctx, int x0, int y0, int x1, int y1, int pen)
  * call the old hook), 0 when the call must go to the old hook unchanged (route refused, box too small). The box is
  * at (ox, oy); w, h are the image's Width and Height. side = flat_side_px of the screen's resolution (1 for square pixels):
  * the scroller arrows widen with it so they keep their shape on hires. */
+unsigned long flat_lock_which(unsigned long which, unsigned long ids);
+int flat_lock_state(unsigned long which, unsigned long ids);
 int flat_glyph_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
                     int w, int h, int frame_pen, int knob_pen, int side, flat_fill_fn fill, void *ctx);
 

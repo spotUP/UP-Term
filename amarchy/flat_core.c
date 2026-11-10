@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "flat_core.h"
+#include "flat_glyph.h"
 #include "iconpen_core.h"
 #include "gthemes_core.h"
 #include "../device/romspan.h"
@@ -291,6 +292,11 @@ int flat_dopus_decide(const flat_state *s, int element, int recessed, int pen_sh
     if (rgb_shine >= 0 && rgb_back >= 0 && rgb_shine == rgb_back)
         return FLAT_DRAW_SKIP;
     return FLAT_DRAW_STOCK;
+}
+
+int flat_dopus_image_which(int type)
+{
+    return type == 6 ? FLAT_W_ICONIFY : type == 8 ? FLAT_W_LOCK : -1;
 }
 
 int flat_dopus_ring(int element, int recessed)

@@ -600,7 +600,7 @@ static ULONG c2_which_31(Object *obj, struct impDraw *d)
     struct Layer *lay = d->imp_RPort->Layer;
     struct Window *w = lay ? (struct Window *)lay->Window : NULL;
     struct Gadget *g;
-    int n = 0, wh;
+    int n = 0, wh = -1;
     /* system gadgets first: a zoom image recorded at OM_NEW (DOPUS-ZOOM-WHICH) is also a real WZOOM gadget on a normal window */
     for (g = w ? w->FirstGadget : NULL; g && n < 64 && wh < 0; g = g->NextGadget, n++)
         wh = flat_gadget_which(g->GadgetType, g->GadgetRender, g->SelectRender, obj);
@@ -647,6 +647,31 @@ ULONG c2_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1
     if (msg->MethodID == OM_NEW && rc)
         img_note_new((Object *)rc, (struct opSet *)msg);
     return rc;
+}
+
+/* DOPUS-LOCK-ICONIFY: dopusiclass IM_DRAW of the title-bar iconify and lock images. type is the first field of the
+ * instance data (BoopsiImageData.type, a short). 0 = not ours: the stock dispatcher draws. */
+static int d5_draw(struct Hook *h, Object *obj, Msg msg)
+{
+    flatshared *r = g_r;
+    struct impDraw *d = (struct impDraw *)msg;
+    struct Image *im = (struct Image *)obj;
+    c2_pens pens;
+    int which = flat_dopus_image_which(*(short *)((UBYTE *)obj + ((struct IClass *)h)->cl_InstOffset));
+    if (which < 0 || !r->st.enabled || r->st.held || !d->imp_RPort || !d->imp_DrInfo)
+        return 0;
+    c2_get_pens(r, d, im, (ULONG)which, &pens);
+    if (!c2_glyph(obj, msg, (ULONG)which, &pens))
+        return 0;
+    r->d5draws++;
+    return 1;
+}
+
+ULONG d5_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1") Msg msg)
+{
+    if (msg->MethodID == FLAT_IM_DRAW && obj && d5_draw(h, obj, msg))
+        return TRUE;
+    return ((oldfn_reg)g_r->d5sw.saved)(h, obj, msg);
 }
 
 ULONG c2_disp_stk(struct Hook *h, Object *obj, Msg msg)
@@ -966,7 +991,7 @@ static int d4_installed(const flatshared *r)
     for (el = 0; el < FLAT_EL_COUNT; el++)
         if (r->dsw[el].installed)
             return 1;
-    return 0;
+    return r->d5sw.installed;
 }
 
 /* ---- FLAT-BUTTON-FILL: graphics.library Text (LVO -60, Text(rp a1, string a0, count d0)). The frame is drawn first, then the
@@ -1943,7 +1968,7 @@ static void print_status(void)
     unsigned long cdraws = 0, cfall = 0, alooks = 0, cfb = 0, cfd = 0, cfm = 0, cfe = 0, cfk = 0, cfi = 0, clw = 0, cls = 0, cln = 0, clm = 0;
     int apx = 0, sring[16][9], sn = 0;
     uint32_t dsum[FLAT_EL_COUNT] = { 0, 0, 0 };
-    unsigned long dbevel = 0, dface = 0;
+    unsigned long dbevel = 0, dface = 0, d5draws = 0;
     memset(&copy, 0, sizeof copy);
     Forbid();
     r = (flatshared *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
@@ -1951,7 +1976,7 @@ static void print_status(void)
         found = 1;
         copy = r->st;
         dfound = r->dfound; dver = r->dver; drev = r->drev; dreason = r->dreason; dmask = r->dmask;
-        dinst = d4_installed(r); dcalls = r->dcalls; dflat = r->dflat; dbevel = r->dbevel; dface = r->dface;
+        dinst = d4_installed(r); dcalls = r->dcalls; dflat = r->dflat; dbevel = r->dbevel; dface = r->dface; d5draws = r->d5draws;
         memcpy(dsum, r->dsum, sizeof dsum);
         finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat;
         rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits; mhits = r->mhits; bhits = r->bhits;
@@ -1989,6 +2014,7 @@ static void print_status(void)
         int n = 0;
         put_word(line, &n, "dopus bevel calls=");   put_num(line, &n, dbevel);
         put_word(line, &n, " face=");               put_num(line, &n, dface);
+        put_word(line, &n, " d5=");                 put_num(line, &n, d5draws);
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
@@ -2113,23 +2139,30 @@ static int is_help(const char *a)
 
 /* The slot to swap: h_SubEntry of the class that every system image (SYSIA_Which 0..0x2C) shares. The class is found
  * through a throw-away sysiclass object. 0 when it cannot be made. */
-static uintptr_t *class_slot(int frame)
+static uintptr_t *class_slot(const char *name, struct TagItem *t, int entry)
 {
-    struct TagItem t[4];
+    uintptr_t *slot = 0;
+    Object *o = NewObjectA(NULL, (UBYTE *)name, t);
+    if (o) {
+        struct IClass *cl = OCLASS(o);      /* the class outlives the object: it is a public class */
+        slot = entry ? (uintptr_t *)&cl->cl_Dispatcher.h_Entry : (uintptr_t *)&cl->cl_Dispatcher.h_SubEntry;
+        DisposeObject(o);
+    }
+    return slot;
+}
+
+/* sysiclass / frameiclass need a DrawInfo for their throw-away object. */
+static uintptr_t *draw_class_slot(int frame)
+{
+    struct TagItem t[3];
     struct Screen *scr = ipd_lock_wb_screen();
     struct DrawInfo *di = scr ? GetScreenDrawInfo(scr) : NULL;
     uintptr_t *slot = 0;
     if (di) {
-        Object *o;
         t[0].ti_Tag = SYSIA_DrawInfo; t[0].ti_Data = (ULONG)di;
         t[1].ti_Tag = frame ? IA_FrameType : SYSIA_Which;  t[1].ti_Data = frame ? FRAME_BUTTON : CLOSEIMAGE;
         t[2].ti_Tag = TAG_DONE;       t[2].ti_Data = 0;
-        o = NewObjectA(NULL, (UBYTE *)(frame ? "frameiclass" : "sysiclass"), t);
-        if (o) {
-            struct IClass *cl = OCLASS(o);
-            slot = (uintptr_t *)&cl->cl_Dispatcher.h_SubEntry;     /* the class outlives the object: it is a public class */
-            DisposeObject(o);
-        }
+        slot = class_slot(frame ? "frameiclass" : "sysiclass", t, 0);
     }
     if (di)
         FreeScreenDrawInfo(scr, di);
@@ -2138,8 +2171,19 @@ static uintptr_t *class_slot(int frame)
     return slot;
 }
 
-static uintptr_t *sysiclass_slot(void) { return class_slot(0); }
-static uintptr_t *frameiclass_slot(void) { return class_slot(1); }
+/* DOPUS-LOCK-ICONIFY: dopusiclass keeps its 68k dispatcher in h_Entry (register convention a0/a2/a1). */
+static uintptr_t *dopusiclass_slot(void)
+{
+    struct TagItem t[4];
+    t[0].ti_Tag = TAG_USER + 5; t[0].ti_Data = 0;       /* DIA_Type: any type builds an object */
+    t[1].ti_Tag = IA_Width;     t[1].ti_Data = 8;
+    t[2].ti_Tag = IA_Height;    t[2].ti_Data = 8;
+    t[3].ti_Tag = TAG_DONE;     t[3].ti_Data = 0;
+    return class_slot("dopusiclass", t, 1);
+}
+
+static uintptr_t *sysiclass_slot(void) { return draw_class_slot(0); }
+static uintptr_t *frameiclass_slot(void) { return draw_class_slot(1); }
 
 /* Install the pass-through under Forbid. Returns FLAT_OK or a negative flat_swap code / -100 (no class) / -101 (memory). */
 static int hook_install(flatshared *r)
@@ -2200,6 +2244,8 @@ static void dopus_unpatch(flatshared *r)
 {
     int el;
     Forbid();
+    if (r->d5sw.installed)
+        flat_swap_remove(&r->d5sw, r->d5slot, &r->st);     /* FLAT_STILL_CHAINED: installed stays set, the library stays open */
     for (el = 0; el < FLAT_EL_COUNT; el++)
         if (r->dsw[el].installed) {
             if (r->dbody[el])
@@ -2290,6 +2336,15 @@ static void dopus_scan(flatshared *r)
     libpatch_done(lib);
     CacheClearU();                      /* the body entries are code just written */
     Permit();
+    if (mask) {                         /* DOPUS-LOCK-ICONIFY: same gate, same lifetime as the D4 entries */
+        uintptr_t *s5 = dopusiclass_slot();
+        flat_swap_init(&r->d5sw);
+        r->d5slot = s5;
+        Forbid();
+        if (!s5 || flat_swap_install(&r->d5sw, s5, (uintptr_t)d5_disp_reg) != FLAT_OK)
+            r->d5slot = 0;              /* refused: dopusiclass stays stock */
+        Permit();
+    }
     r->dmask = mask;
     if (mask)
         r->dlib = lib;

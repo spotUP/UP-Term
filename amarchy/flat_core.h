@@ -218,6 +218,10 @@ int flat_dopus_decide(const flat_state *s, int element, int recessed, int pen_sh
  * Environment's class-drawn buttons, DOPUS-ENV-UNSTYLED, rig 63) and a recessed (pressed) DrawBox keep the ring. */
 int flat_dopus_ring(int element, int recessed);
 
+/* DOPUS-LOCK-ICONIFY (S2b.3): dopusiclass DIA_Type -> flat glyph id. IM_ICONIFY (6) -> FLAT_W_ICONIFY, IM_LOCK (8) ->
+ * FLAT_W_LOCK; every other type (arrows, BBOX, gauge ...) -1 = the class draws it stock. */
+int flat_dopus_image_which(int type);
+
 /* FLAT-C8: frameiclass (every GadTools bevel and ridge: buttons, strings, checkboxes, cycles, listviews, DrawBevelBox).
  * The same decision for one method call of the class: SKIP only for IM_DRAW (0x202) and IM_DRAWFRAME (0x206), when the
  * switch is on, not held, and the screen pens are flat (shine == background). Any other method (OM_GET, IM_ERASE,

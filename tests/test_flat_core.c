@@ -648,6 +648,35 @@ static int lock_rows(const flat_state *st, unsigned long ids, int side, int w, i
     return r;
 }
 
+/* S2b.3 / S2b.8: the type map d5_draw applies to BoopsiImageData.type, then the draw it routes to (the sentinel: pixels set). */
+static void test_dopus_image_which(void)
+{
+    flat_state st;
+    char rows[CV][CV + 1];
+    int type, y, x, lit, which, routed = 0;
+    glyph_state(&st);
+    CHECK_INT(flat_dopus_image_which(6), FLAT_W_ICONIFY);
+    CHECK_INT(flat_dopus_image_which(8), FLAT_W_LOCK);
+    for (type = -1; type < 40; type++) {
+        if (type == 6 || type == 8)
+            continue;
+        CHECK_INT(flat_dopus_image_which(type), -1);       /* arrows, BBOX, gauge ...: stock */
+    }
+    for (type = 6; type <= 8; type++) {
+        which = flat_dopus_image_which(type);
+        if (which < 0)
+            continue;
+        CHECK_INT(which == FLAT_W_LOCK ? lock_rows(&st, 0, 1, 16, 14, rows) : 1, 1);
+        routed++;
+    }
+    CHECK_INT(routed, 2);
+    lit = 0;
+    for (y = 0; y < 14; y++)
+        for (x = 0; x < 16; x++)
+            lit += rows[y][x] == '#';
+    CHECK_INT(lit > 0, 1);                                  /* the lock type reached the glyph and drew pixels */
+}
+
 static void test_lock_glyph(void)
 {
     static const char *const want_open[14] = { "................", "................", "................",
@@ -3355,6 +3384,7 @@ void suite_flat_core(void)
     test_title_gadget_filter();
     test_dopus_path();
     test_lock_glyph();
+    test_dopus_image_which();
     test_glyph_goldens();
     test_glyph_solid_and_state_equal();
     test_glyph_states();

@@ -20,7 +20,7 @@ ENTRY_MAX = 64
 HELPER_MAX = 80
 CHAIN_MAX = 384
 HEADROOM_MIN = 64          # the deepest chain must leave this many bytes under CHAIN_MAX (S56-FLAT-HEADROOM)
-ENTRIES = ('_c2_disp_reg', '_c2_disp_stk', '_flat_rf_c', '_flat_tx_c')
+ENTRIES = ('_c2_disp_reg', '_d5_disp_reg', '_c2_disp_stk', '_flat_rf_c', '_flat_tx_c')
 STUBS = {'_flat_rf_c': 'amarchy/flat_rf.s', '_flat_tx_c': 'amarchy/flat_tx.s'}   # entry -> the asm stub that calls it
 
 

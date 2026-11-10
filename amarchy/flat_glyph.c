@@ -89,24 +89,19 @@ static void g_iconify(plan *g)
 /* DOPUS-LOCK (O2/O3): a solid padlock, no inverted box. Visual units: a column is 1, a row is g->side. Body = the lower half of the
  * inner box, shackle = a bar t = side columns thick over it, closed reaches the body, open stops two rows short on the right leg.
  * A box too narrow for a shackle (bw < 4t+1) draws the body only. All locals are register ints: the dispatcher's stack headroom. */
-static void g_lock(plan *g, int closed)
+void flat_g_lock(plan *g, int closed)
 {
-    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1, t = g->side;
-    int bh = imax(2, (ih + 1) / 2), bw = imin(iw, t * imax(3, ih * 2 / 3));
-    int bx0, bx1, by0 = g->iy1 - bh + 1, sx0, sx1, ye;
+    int t = g->side, bw = imin(g->ix1 - g->ix0 + 1, t * imax(3, (g->iy1 - g->iy0 + 1) * 2 / 3));
+    int bx0, by0 = g->iy1 - imax(2, (g->iy1 - g->iy0 + 2) / 2) + 1;
     if (!(bw & 1))
         bw--;                                           /* odd: the body is symmetric about the box centre column */
-    bx0 = g->ix0 + (iw - bw) / 2;
-    bx1 = bx0 + bw - 1;
-    box(g, bx0, by0, bx1, g->iy1, g->fg);
+    bx0 = g->ix0 + (g->ix1 - g->ix0 + 1 - bw) / 2;
+    box(g, bx0, by0, bx0 + bw - 1, g->iy1, g->fg);
     if (bw < 4 * t + 1)
         return;
-    sx0 = bx0 + t;
-    sx1 = bx1 - t;
-    ye = by0 - 1;
-    put(g, sx0, g->iy0, sx1, g->iy0, g->fg);            /* top row */
-    put(g, sx0, g->iy0, sx0 + t - 1, ye, g->fg);        /* left leg */
-    put(g, sx1 - t + 1, g->iy0, sx1, closed ? ye : imax(g->iy0, ye - 2), g->fg);   /* right leg */
+    put(g, bx0 + t, g->iy0, bx0 + bw - 1 - t, g->iy0, g->fg);                           /* top row */
+    put(g, bx0 + t, g->iy0, bx0 + 2 * t - 1, by0 - 1, g->fg);                           /* left leg */
+    put(g, bx0 + bw - 2 * t, g->iy0, bx0 + bw - 1 - t, closed ? by0 - 1 : imax(g->iy0, by0 - 3), g->fg);   /* right leg */
 }
 
 static void g_check(plan *g)
@@ -443,8 +438,8 @@ static int plan_run(plan *g, unsigned long which, int w, int h, int state, int s
     case FLAT_W_ZOOM: g_zoom(g); break;
     case FLAT_W_SIZE: g_size(g); break;
     case FLAT_W_ICONIFY: g_iconify(g); break;
-    case FLAT_W_LOCK: g_lock(g, 0); break;
-    case FLAT_W_LOCKED: g_lock(g, 1); break;
+    case FLAT_W_LOCK: flat_g_lock(g, 0); break;
+    case FLAT_W_LOCKED: flat_g_lock(g, 1); break;
     case FLAT_W_MENUCHECK: g_check(g); break;
     case FLAT_W_AMIGAKEY: g_amigakey(g); break;
     case FLAT_W_MENUSUB: g_menusub(g); break;
@@ -472,6 +467,18 @@ int flat_glyph_route(const flat_state *s, unsigned long which, unsigned long met
     return s && s->enabled && !s->held && method == FLAT_IM_DRAW && flat_glyph_known(which);
 }
 
+/* DOPUS-LOCK: selected means closed, the shape carries the toggle; the box keeps its pens, never inverted (IDS_SELECTED = 1 draws
+ * the normal state, IDS_INACTIVESELECTED = 6 the inactive one). Out of flat_glyph_draw: its frame sits on the _c2_disp_reg chain. */
+unsigned long flat_lock_which(unsigned long which, unsigned long ids)
+{
+    return which == FLAT_W_LOCK && (ids == 1 || ids == 6) ? FLAT_W_LOCKED : which;
+}
+
+int flat_lock_state(unsigned long which, unsigned long ids)
+{
+    return which == FLAT_W_LOCK && ids == 1 ? FLAT_G_NORMAL : flat_glyph_state(ids);
+}
+
 int flat_glyph_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
                     int w, int h, int frame_pen, int knob_pen, int side, flat_fill_fn fill, void *ctx)
 {
@@ -479,9 +486,7 @@ int flat_glyph_draw(const flat_state *s, unsigned long which, unsigned long meth
     if (!fill || !flat_glyph_route(s, which, method) || w < FLAT_GLYPH_MIN_SIZE || h < FLAT_GLYPH_MIN_SIZE)
         return 0;
     g.p = 0; g.cap = FLAT_GLYPH_MAX_PRIMS; g.fill = fill; g.ctx = ctx; g.st = s; g.frame_pen = frame_pen; g.knob_pen = knob_pen; g.ox = ox; g.oy = oy;
-    if (which == FLAT_W_LOCK && (ids == 1 || ids == 6))     /* DOPUS-LOCK: selected means closed; the box keeps its pens, never inverted */
-        which = FLAT_W_LOCKED;
-    return plan_run(&g, which, w, h, which == FLAT_W_LOCKED && ids == 1 ? FLAT_G_NORMAL : flat_glyph_state(ids), side) > 0;
+    return plan_run(&g, flat_lock_which(which, ids), w, h, flat_lock_state(which, ids), side) > 0;
 }
 
 int flat_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn, void *ctx)
