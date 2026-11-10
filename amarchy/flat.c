@@ -946,10 +946,7 @@ static int d4_flat_pens(int el, struct RastPort *rp, ULONG shine, ULONG back, in
         }
         r->dg_ring = flat_dopus_ring(el, recessed ? 1 : 0);
         if (st.pen_line == r->st.pen_line)   /* DIAG s71 agent 27 */
-        {
             r->dg_acc++;
-            r->dga[0] = el; r->dga[1] = recessed; r->dga[2] = x0; r->dga[3] = y0; r->dga[4] = x1; r->dga[5] = y1; r->dga[6] = r->dg_ring; r->dga[7] = r->dg_fp;
-        }
         if (y1 - y0 + 1 >= 11 && y1 - y0 + 1 <= 15 && x1 - x0 + 1 > 150) {   /* DIAG s71 agent 27 */
             r->dg_n++; r->dg_el = el; r->dg_rec = recessed; r->dg_x0 = x0; r->dg_y0 = y0; r->dg_x1 = x1; r->dg_y1 = y1;
             r->dg_pl = st.pen_line; r->dg_side = st.side; r->dg_rgb = d4_rgb(rp, (ULONG)r->dg_fp);
@@ -2109,7 +2106,7 @@ static void print_stuck(struct Task *t)
 static void print_status(void)
 {
     flat_state copy;
-    char line[384];              /* worst-case rectfill line with mhits and bhits is 125 */
+    char line[256];              /* worst-case rectfill line with mhits and bhits is 125 */
     flatshared *r;
     int found = 0, dfound = 0, dreason = 0, dmask = 0, dinst = 0;
     unsigned dver = 0, drev = 0;
@@ -2123,7 +2120,7 @@ static void print_status(void)
     int apx = 0, sring[16][9], sn = 0;
     uint32_t dsum[FLAT_EL_COUNT] = { 0, 0, 0 };
     unsigned long dbevel = 0, dface = 0, dnopix = 0, d5draws = 0;
-    unsigned long dgn = 0, dgacc = 0; long dgv[11] = { 0 }, dga[8] = { 0 };   /* DIAG s71 agent 27 */
+    unsigned long dgn = 0, dgacc = 0; long dgv[11] = { 0 };   /* DIAG s71 agent 27 */
     unsigned long lbeat = 0, lnref = 0;
     struct Task *ltask = 0;
     unsigned lstage = 0, lref = 0;
@@ -2135,7 +2132,7 @@ static void print_status(void)
         copy = r->st;
         dfound = r->dfound; dver = r->dver; drev = r->drev; dreason = r->dreason; dmask = r->dmask;
         dinst = d4_installed(r); dcalls = r->dcalls; dflat = r->dflat; dbevel = r->dbevel; dface = r->dface; dnopix = r->dnopix; d5draws = r->d5draws;
-        dgn = r->dg_n; dgacc = r->dg_acc; dgv[0] = r->dg_el; dgv[1] = r->dg_rec; dgv[2] = r->dg_x0; dgv[3] = r->dg_y0; dgv[4] = r->dg_x1; dgv[5] = r->dg_y1; dgv[6] = r->dg_fp; dgv[7] = r->dg_pl; dgv[8] = r->dg_side; dgv[9] = r->dg_rgb; dgv[10] = r->dg_ring; memcpy(dga, r->dga, sizeof dga);   /* DIAG */
+        dgn = r->dg_n; dgacc = r->dg_acc; dgv[0] = r->dg_el; dgv[1] = r->dg_rec; dgv[2] = r->dg_x0; dgv[3] = r->dg_y0; dgv[4] = r->dg_x1; dgv[5] = r->dg_y1; dgv[6] = r->dg_fp; dgv[7] = r->dg_pl; dgv[8] = r->dg_side; dgv[9] = r->dg_rgb; dgv[10] = r->dg_ring;   /* DIAG */
         memcpy(dsum, r->dsum, sizeof dsum);
         finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat;
         rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits; mhits = r->mhits; bhits = r->bhits;
@@ -2193,11 +2190,6 @@ static void print_status(void)
         put_word(line, &n, " rgb=");                put_num(line, &n, dgv[9]);
         put_word(line, &n, " ring=");               put_num(line, &n, dgv[10]);
         put_word(line, &n, " accpen=");             put_num(line, &n, copy.pen_line);
-        put_word(line, &n, " ACC el=");             put_num(line, &n, dga[0]);
-        put_word(line, &n, " rec=");                put_num(line, &n, dga[1]);
-        put_word(line, &n, " rect=");               put_num(line, &n, dga[2]); put_word(line, &n, ","); put_num(line, &n, dga[3]); put_word(line, &n, ","); put_num(line, &n, dga[4]); put_word(line, &n, ","); put_num(line, &n, dga[5]);
-        put_word(line, &n, " ring=");               put_num(line, &n, dga[6]);
-        put_word(line, &n, " fp=");                 put_num(line, &n, dga[7]);
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
