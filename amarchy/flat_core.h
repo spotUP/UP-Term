@@ -212,6 +212,12 @@ enum { FLAT_DRAW_STOCK = 0, FLAT_DRAW_SKIP = 1 };
 int flat_dopus_decide(const flat_state *s, int element, int recessed, int pen_shine, int pen_back,
                       long rgb_shine, long rgb_back);
 
+/* DOPUS-BUTTON-NO-RING (owner s70, O5-O7): when flat_dopus_decide said SKIP, does the box keep a pen_line outline (1)
+ * or is it a flat button face (0)? A raised Program DrawBox (lister status row, toolbar buttons, header boxes, dual
+ * close buttons) is a push button: no ring, as FLAT-BUTTON-NO-RING for flat's own buttons. Fields, bevel bodies (the
+ * Environment's class-drawn buttons, DOPUS-ENV-UNSTYLED, rig 63) and a recessed (pressed) DrawBox keep the ring. */
+int flat_dopus_ring(int element, int recessed);
+
 /* FLAT-C8: frameiclass (every GadTools bevel and ridge: buttons, strings, checkboxes, cycles, listviews, DrawBevelBox).
  * The same decision for one method call of the class: SKIP only for IM_DRAW (0x202) and IM_DRAWFRAME (0x206), when the
  * switch is on, not held, and the screen pens are flat (shine == background). Any other method (OM_GET, IM_ERASE,

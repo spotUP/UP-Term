@@ -895,6 +895,14 @@ static int d4_flat_pens(int el, struct RastPort *rp, ULONG shine, ULONG back, in
         struct Window *w = rp->Layer ? (struct Window *)rp->Layer->Window : NULL;
         flat_state st = *st_rp(r, rp);
         st.side = (uint8_t)(w ? side_px(r, w->WScreen) : 1);
+        if (!flat_dopus_ring(el, recessed ? 1 : 0)) {
+            /* DOPUS-BUTTON-NO-RING: the 1 px (side columns) border takes the pen of the box interior, so the button is one
+             * flat block (SRCE / DEST) or bare content (OFF); the interior itself is DOpus's and is never touched here */
+            LONG fp = ReadPixel(rp, x0 + st.side, y0 + 1);
+            if (fp >= 0)
+                st.pen_line = (uint8_t)fp;
+            r->dface++;
+        }
         flat_dopus_box_draw(&st, x0, y0, x1, y1, c2_fill, rp);
     }
     r->dflat++;
@@ -1931,7 +1939,7 @@ static void print_status(void)
     unsigned long cdraws = 0, cfall = 0, alooks = 0, cfb = 0, cfd = 0, cfm = 0, cfe = 0, cfk = 0, cfi = 0, clw = 0, cls = 0, cln = 0, clm = 0;
     int apx = 0, sring[16][9], sn = 0;
     uint32_t dsum[FLAT_EL_COUNT] = { 0, 0, 0 };
-    unsigned long dbevel = 0;
+    unsigned long dbevel = 0, dface = 0;
     memset(&copy, 0, sizeof copy);
     Forbid();
     r = (flatshared *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
@@ -1939,7 +1947,7 @@ static void print_status(void)
         found = 1;
         copy = r->st;
         dfound = r->dfound; dver = r->dver; drev = r->drev; dreason = r->dreason; dmask = r->dmask;
-        dinst = d4_installed(r); dcalls = r->dcalls; dflat = r->dflat; dbevel = r->dbevel;
+        dinst = d4_installed(r); dcalls = r->dcalls; dflat = r->dflat; dbevel = r->dbevel; dface = r->dface;
         memcpy(dsum, r->dsum, sizeof dsum);
         finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat;
         rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits; mhits = r->mhits; bhits = r->bhits;
@@ -1976,6 +1984,7 @@ static void print_status(void)
     if (found && dinst) {                           /* s66: the bevel body's own sentinel (button / frame image calls) */
         int n = 0;
         put_word(line, &n, "dopus bevel calls=");   put_num(line, &n, dbevel);
+        put_word(line, &n, " face=");               put_num(line, &n, dface);
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");

@@ -547,6 +547,39 @@ static void test_dopus_box_outline(void)
     CHECK_INT(flat_dopus_box_draw(&s, 2, 3, 11, 8, 0, 0), 0);
 }
 
+/* DOPUS-BUTTON-NO-RING (owner s70 O5-O7): the ring rule and the face-pen band. Mirrors d4_flat_pens: when the decision is
+ * SKIP and flat_dopus_ring says 0, the border is painted in the interior's pen (stand-in for ReadPixel: 4) through
+ * flat_dopus_box_draw; ring-keeping elements paint pen_line. Revert check: ring in pen_line fails the face asserts. */
+static void test_dopus_no_ring(void)
+{
+    flat_state s;
+    int x, y, side;
+    CHECK_INT(flat_dopus_ring(FLAT_EL_DRAWBOX, 0), 0);        /* raised Program button: face */
+    CHECK_INT(flat_dopus_ring(FLAT_EL_DRAWBOX, 1), 1);        /* pressed toolbar button stays outlined */
+    CHECK_INT(flat_dopus_ring(FLAT_EL_FIELDBOX, 0), 1);
+    CHECK_INT(flat_dopus_ring(FLAT_EL_BEVEL, 0), 1);          /* Environment class-drawn buttons keep the ring (O7) */
+    for (side = 1; side <= 2; side++) {
+        flat_init(&s);
+        s.enabled = 1;
+        s.pen_line = 7;
+        s.side = (uint8_t)side;
+        cv_clear();
+        if (!flat_dopus_ring(FLAT_EL_DRAWBOX, 0))
+            s.pen_line = 4;                                    /* the face pen */
+        CHECK_INT(flat_dopus_box_draw(&s, 2, 3, 11, 8, cv_fill, 0), 1);
+        for (y = 0; y < CV; y++)
+            for (x = 0; x < CV; x++) {
+                int in = x >= 2 && x <= 11 && y >= 3 && y <= 8;
+                int edge = in && (x < 2 + side || x > 11 - side || y == 3 || y == 8);
+                int want = edge ? 4 : '?';
+                if (cv[y][x] != want)
+                    CHECK_INT(cv[y][x], want);
+                if (cv[y][x] == 7)
+                    CHECK_INT(1, 0);                           /* no pen_line pixel anywhere */
+            }
+    }
+}
+
 /* the fake dispatcher: the same three steps as flat.c c2_disp_reg / c2_disp_stk */
 static int fake_dispatch(const flat_state *st, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy, int w, int h)
 {
@@ -3217,6 +3250,7 @@ void suite_flat_core(void)
     test_dopus_swap();
     test_dopus_decide();
     test_dopus_box_outline();
+    test_dopus_no_ring();
     test_dopus_path();
     test_glyph_goldens();
     test_glyph_solid_and_state_equal();

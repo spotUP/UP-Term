@@ -293,6 +293,11 @@ int flat_dopus_decide(const flat_state *s, int element, int recessed, int pen_sh
     return FLAT_DRAW_STOCK;
 }
 
+int flat_dopus_ring(int element, int recessed)
+{
+    return !(element == FLAT_EL_DRAWBOX && !recessed);
+}
+
 int flat_frame_decide(const flat_state *s, unsigned long method, int pen_shine, int pen_back)
 {
     if (!s || !s->enabled || s->held)
