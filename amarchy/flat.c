@@ -1475,21 +1475,36 @@ static int knob_thin(flatshared *r, struct Window *w, struct PropInfo *pi, int *
     return pen;
 }
 
-static int scroller_pen_of(flatshared *r, struct RastPort *rp, struct Window *w, struct Gadget *g, const LONG *box, int *k)
+/* FLAT-WALK-CAP-BUDGET: scroller_pen_of is split in three so the knob look-up (prop_knob, the deepest RectFill chain) runs under a
+ * small frame: the box test and the pen decision each have their own frame, beside the look-up and not above it. That pays for the
+ * walk counter in scroller_pen (4 bytes on this chain; make flat-budget). scroller_hit: 1 when fill box lies inside prop gadget g;
+ * c = the container's top-left corner. */
+static int scroller_hit(struct Window *w, struct Gadget *g, const LONG *box, int *c)
 {
     struct PropInfo *pi = (struct PropInfo *)g->SpecialInfo;
-    int gx, gy, gw, gh, cx, cy;
+    int gx, gy, gw, gh;
     gx = g->LeftEdge + ((g->Flags & GFLG_RELRIGHT) ? w->Width - 1 : 0);
     gy = g->TopEdge + ((g->Flags & GFLG_RELBOTTOM) ? w->Height - 1 : 0);
     gw = g->Width + ((g->Flags & GFLG_RELWIDTH) ? w->Width : 0);
     gh = g->Height + ((g->Flags & GFLG_RELHEIGHT) ? w->Height : 0);
     if (box[0] < gx || box[1] < gy || box[2] >= gx + gw || box[3] >= gy + gh)
-        return -1;
-    cx = gx + pi->LeftBorder; cy = gy + pi->TopBorder;
-    if (!prop_knob(g, pi, cx, cy, k))
-        return -1;
+        return 0;
+    c[0] = gx + pi->LeftBorder; c[1] = gy + pi->TopBorder;
+    return 1;
+}
+
+static int scroller_pen_at(flatshared *r, struct RastPort *rp, struct Window *w, struct PropInfo *pi, const int *c, const LONG *box, int *k)
+{
     return knob_thin(r, w, pi, k, flat_scroller_pen_box(st_scr(r, w->WScreen), (rp->BitMap ? rp->BitMap->Depth : 0), (w->Flags & WFLG_WINDOWACTIVE) != 0,
-                                                        cx, cy, pi->CWidth, pi->CHeight, k[0], k[1], k[2], k[3], (int)box[0], (int)box[1], (int)box[2], (int)box[3]));
+                                                        c[0], c[1], pi->CWidth, pi->CHeight, k[0], k[1], k[2], k[3], (int)box[0], (int)box[1], (int)box[2], (int)box[3]));
+}
+
+static int scroller_pen_of(flatshared *r, struct RastPort *rp, struct Window *w, struct Gadget *g, const LONG *box, int *k)
+{
+    int c[2];
+    if (!scroller_hit(w, g, box, c) || !prop_knob(g, (struct PropInfo *)g->SpecialInfo, c[0], c[1], k))
+        return -1;
+    return scroller_pen_at(r, rp, w, (struct PropInfo *)g->SpecialInfo, c, box, k);
 }
 
 static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *box, int *k)
