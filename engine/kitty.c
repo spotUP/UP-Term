@@ -186,15 +186,217 @@ static int kit_room(vt_term *t, long bytes)
     return 1;
 }
 
+/* ---- a palette cut from a picture of more than 255 colours (kit_adapt) ---- */
+
+#define KIT_AHASH 4096 /* hash slots of the colour table */
+#define KIT_ACOL 2048  /* colours it holds; more and the keys drop a low bit a channel (bins) */
+typedef struct kit_atab {
+    vt_u32 key[KIT_AHASH]; /* the colour (its bin when cut), 0x1000000 set: the slot is used */
+    vt_u32 rep[KIT_AHASH]; /* the colour the bin stands for: its heaviest member, exactly */
+    vt_u32 n[KIT_AHASH];   /* its pixels */
+    vt_u8 idx[KIT_AHASH];  /* its palette entry */
+    int ord[KIT_ACOL];     /* the used slots, cut into boxes in place */
+    vt_u32 trep[KIT_ACOL], tn[KIT_ACOL]; /* the bins while the table drops a bit */
+    int used, sh;          /* colours held; low bits dropped from each channel */
+} kit_atab;
+
+static vt_u32 kit_amask(int sh)
+{
+    vt_u32 m = (vt_u32)(0xFF << sh) & 0xFFu;
+    return (m << 16) | (m << 8) | m;
+}
+
+/* the slot of colour c (cut to the table's bins); a new one when absent and room is left; -1 when full */
+static int kit_aslot(kit_atab *a, vt_u32 c, int add)
+{
+    vt_u32 k = (c & kit_amask(a->sh)) | 0x1000000u;
+    unsigned h = (unsigned)((k * 2654435761u) >> 16) & (KIT_AHASH - 1);
+    while (a->key[h] && a->key[h] != k)
+        h = (h + 1) & (KIT_AHASH - 1);
+    if (!a->key[h]) {
+        if (!add || a->used == KIT_ACOL)
+            return -1;
+        a->key[h] = k;
+        a->rep[h] = c;
+        a->n[h] = 0;
+        a->used++;
+    }
+    return (int)h;
+}
+
+/* one pixel of colour c into the table. A bin stands for its first colour; full, the table drops a low bit a
+ * channel and two bins that meet keep the colour of the heavier */
+static void kit_aadd(kit_atab *a, vt_u32 c)
+{
+    int h = kit_aslot(a, c, 1);
+    while (h < 0) {
+        int i, m = 0;
+        for (i = 0; i < KIT_AHASH; i++)
+            if (a->key[i]) {
+                a->trep[m] = a->rep[i];
+                a->tn[m++] = a->n[i];
+            }
+        memset(a->key, 0, sizeof(a->key));
+        a->used = 0;
+        a->sh++;
+        for (i = 0; i < m; i++) {
+            int j = kit_aslot(a, a->trep[i], 1);
+            if (a->tn[i] > a->n[j])
+                a->rep[j] = a->trep[i];
+            a->n[j] += a->tn[i];
+        }
+        h = kit_aslot(a, c, 1);
+    }
+    a->n[h]++;
+}
+
+static int kit_ch(vt_u32 c, int ch)
+{
+    return (int)(c >> (16 - 8 * ch)) & 255;
+}
+
+/* box ord[lo..hi): its longest channel and that range */
+static int kit_along(const kit_atab *a, int lo, int hi, int *range)
+{
+    int ch, best = 0, br = -1, i;
+    for (ch = 0; ch < 3; ch++) {
+        int mn = 255, mx = 0;
+        for (i = lo; i < hi; i++) {
+            int v = kit_ch(a->rep[a->ord[i]], ch);
+            if (v < mn)
+                mn = v;
+            if (v > mx)
+                mx = v;
+        }
+        if (mx - mn > br) {
+            br = mx - mn;
+            best = ch;
+        }
+    }
+    *range = br;
+    return best;
+}
+
+/* The picture's colours (kit_sample, alpha under half left out) cut to at most 255 entries pal[1..): a weighted
+ * median cut, splitting the box of the largest weight x range, a box's colour its heaviest member when that holds
+ * half of it (a flat area keeps its colour exactly), else the weighted mean; every pixel is the entry nearest its
+ * colour, undithered. The cube dithered such a picture whole: a white and blue logo with anti-aliased edges (more
+ * than 255 colours) showed its flat blue as a Bayer pattern of two cube blues (2026-11-11). 0 when there is no
+ * memory for the table (the caller dithers to the cube). */
+static int kit_adapt(const kit_src *s, int x0, int y0, int w, int h, int tw, int th, vt_u8 *o, vt_u32 *pal,
+                     int *npal)
+{
+    static int lo[256], hi[256];
+    kit_atab *a = (kit_atab *)VT_MALLOC(sizeof(kit_atab));
+    int x, y, i, j, nb = 1, n = 0;
+    if (!a)
+        return 0;
+    memset(a, 0, sizeof(*a));
+    for (y = 0; y < th; y++)
+        for (x = 0; x < tw; x++) {
+            vt_u32 p = kit_sample(s, x0, y0, w, h, tw, th, x, y);
+            if ((p >> 24) >= 128)
+                kit_aadd(a, p & 0xFFFFFFu);
+        }
+    for (i = 0; i < KIT_AHASH; i++)
+        if (a->key[i])
+            a->ord[n++] = i;
+    lo[0] = 0;
+    hi[0] = n;
+    while (nb < 255) { /* split the box of the largest weight x range */
+        long best = 0, acc, half, tot;
+        int b = -1, ch, rg, k, cut;
+        for (j = 0; j < nb; j++) {
+            long wt = 0;
+            if (hi[j] - lo[j] < 2)
+                continue;
+            kit_along(a, lo[j], hi[j], &rg);
+            for (i = lo[j]; i < hi[j]; i++)
+                wt += (long)a->n[a->ord[i]];
+            if (rg > 0 && wt * rg > best) {
+                best = wt * rg;
+                b = j;
+            }
+        }
+        if (b < 0)
+            break;
+        ch = kit_along(a, lo[b], hi[b], &rg);
+        for (i = lo[b] + 1; i < hi[b]; i++) { /* insertion sort along ch: a box is small after the first cuts */
+            int v = a->ord[i], key = kit_ch(a->rep[v], ch);
+            for (k = i - 1; k >= lo[b] && kit_ch(a->rep[a->ord[k]], ch) > key; k--)
+                a->ord[k + 1] = a->ord[k];
+            a->ord[k + 1] = v;
+        }
+        for (tot = 0, i = lo[b]; i < hi[b]; i++)
+            tot += (long)a->n[a->ord[i]];
+        half = tot / 2;
+        for (acc = 0, cut = lo[b]; cut < hi[b] - 1; cut++) {
+            acc += (long)a->n[a->ord[cut]];
+            if (acc >= half)
+                break;
+        }
+        cut++; /* [lo, cut) and [cut, hi): both hold a colour */
+        lo[nb] = cut;
+        hi[nb] = hi[b];
+        hi[b] = cut;
+        nb++;
+    }
+    for (j = 0; j < nb; j++) {
+        unsigned long sr = 0, sg = 0, sb = 0, tot = 0, top = 0;
+        vt_u32 heavy = 0;
+        for (i = lo[j]; i < hi[j]; i++) {
+            vt_u32 c = a->rep[a->ord[i]], wt = a->n[a->ord[i]];
+            sr += (unsigned long)kit_ch(c, 0) * wt;
+            sg += (unsigned long)kit_ch(c, 1) * wt;
+            sb += (unsigned long)kit_ch(c, 2) * wt;
+            tot += wt;
+            if (wt > top) {
+                top = wt;
+                heavy = c;
+            }
+        }
+        if (!tot)
+            tot = 1;
+        pal[j + 1] = top * 2 >= tot ? heavy
+                                    : (vt_u32)(((sr + tot / 2) / tot) << 16 | ((sg + tot / 2) / tot) << 8 |
+                                               ((sb + tot / 2) / tot));
+    }
+    for (i = 0; i < n; i++) { /* each colour's nearest entry */
+        int sl = a->ord[i], bi = 1;
+        long bd = 0x7FFFFFFFL;
+        vt_u32 c = a->rep[sl];
+        for (j = 1; j <= nb; j++) {
+            long dr = kit_ch(c, 0) - kit_ch(pal[j], 0), dg = kit_ch(c, 1) - kit_ch(pal[j], 1),
+                 db = kit_ch(c, 2) - kit_ch(pal[j], 2), d = 2 * dr * dr + 4 * dg * dg + 3 * db * db;
+            if (d < bd) {
+                bd = d;
+                bi = j;
+            }
+        }
+        a->idx[sl] = (vt_u8)bi;
+    }
+    for (y = 0; y < th; y++)
+        for (x = 0; x < tw; x++) {
+            vt_u32 p = kit_sample(s, x0, y0, w, h, tw, th, x, y);
+            o[(long)y * tw + x] = (p >> 24) < 128 ? 0 : a->idx[kit_aslot(a, p & 0xFFFFFFu, 0)];
+        }
+    VT_FREE(a);
+    pal[0] = 0;
+    *npal = nb + 1;
+    return 1;
+}
+
 /* The part (x0, y0, w, h) of src as indices into a palette of tw x th
  * pixels in o (kit_sample), the palette in pal[0..*npal). A picture of 255
  * colours or fewer (after kit_sample; alpha under half is index 0) keeps
  * them exactly, undithered: cut to the cube, a flat colour off it (a white
  * and blue logo) broke into a dither pattern on every screen. More colours
- * are dithered to the cube (kit_quant), its entries packed to the ones in
- * use. Returns 1 for the exact palette (the indices then hold every colour
- * the picture has: no screen needs an RGB copy beside them). The one maker of
- * index pictures: kit_make and the RGB-off conversion. */
+ * get 255 entries cut from its own (kit_adapt), undithered too: the cube's
+ * dither was the same pattern again on a logo whose anti-aliased edges
+ * passed 255 colours. Only with no memory for that cut are they dithered to
+ * the cube (kit_quant), its entries packed to the ones in use. Returns 1 for
+ * the picture's own palette (exact or cut: no cube), 0 for the cube. The one
+ * maker of index pictures: kit_make and the RGB-off conversion. */
 #define KIT_HASH 512 /* open addressing over at most 255 colours: never more than half full */
 static int kit_index(const kit_src *s, int x0, int y0, int w, int h, int tw, int th, vt_u8 *o, vt_u32 *pal,
                      int *npal)
@@ -217,7 +419,7 @@ static int kit_index(const kit_src *s, int x0, int y0, int w, int h, int tw, int
                 hsh = (hsh + 1) & (KIT_HASH - 1);
             if (!hv[hsh]) {
                 if (n == 256)
-                    goto dither; /* a 256th colour: the cube */
+                    goto many; /* a 256th colour */
                 hk[hsh] = c;
                 hv[hsh] = (vt_u8)n;
                 pal[n++] = c;
@@ -228,7 +430,9 @@ static int kit_index(const kit_src *s, int x0, int y0, int w, int h, int tw, int
     pal[0] = 0;
     *npal = n;
     return 1;
-dither:
+many:
+    if (kit_adapt(s, x0, y0, w, h, tw, th, o, pal, npal))
+        return 1;
     n = 1;
     memset(map, 0, sizeof(map));
     for (y = 0; y < th; y++) {
@@ -346,8 +550,8 @@ static int kit_picture(vt_term *t, const kit_src *s, int x0, int y0, int w, int 
 }
 
 /* vt_set_image_rgb off: every RGB picture becomes indices in place (T6),
- * as kit_make makes them (its own colours when 255 or fewer, else the cube
- * dithered at each pixel's own (x, y)); the frame canvases always the cube; img_mem
+ * as kit_make makes them (its own colours when 255 or fewer, else 255 cut
+ * from them, undithered); the frame canvases always the cube; img_mem
  * shrinks by what was freed. A picture with no room for its indices (cannot
  * happen: they are a quarter of the size) keeps its RGBA. */
 static void kit_to_index(vt_term *t)
