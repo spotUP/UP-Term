@@ -288,7 +288,7 @@ static void png_goes_through_the_host_decoder(void)
     CHECK(vt_row_image(t, 0, 0, &v));
     CHECK_INT(v.w, 2);
     CHECK_INT(v.h, 1);
-    CHECK_INT(pixel(&v, 0, 0), 0x333333); /* 0x112233 on the cube */
+    CHECK_INT(pixel(&v, 0, 0), 0x112233); /* two colours: the exact palette (was 0x333333, the cube) */
     CHECK_INT(v.pix[1], 0);               /* the clear pixel */
     vt_free(t);
 }
@@ -1322,6 +1322,93 @@ static void a_shrunk_picture_averages_instead_of_aliasing(void)
     }
 }
 
+/* A flat white and blue picture (the LiveChat door's logo): two colours, the blue off the 6x6x6 cube. Cut to the
+ * cube with the ordered dither it showed a pattern on every screen; 255 colours or fewer keep their own, exactly.
+ * With the copy on (a screen short of pens) the RGB copy is made too, for the renderer's own-colour dither. */
+static void a_flat_two_colour_picture_shows_exact_colours_undithered(void)
+{
+    static unsigned char px[16 * 16 * 3];
+    static char b64[16 * 16 * 3 / 3 * 4 + 8];
+    int copy;
+    for (copy = 0; copy <= 1; copy++) {
+        vt_term *t = k38_term(0);
+        vt_image_view v;
+        int x, y, bad = 0;
+        vt_set_image_rgb_copy(t, copy);
+        for (y = 0; y < 16; y++)
+            for (x = 0; x < 16; x++) {
+                unsigned char *q = px + (y * 16 + x) * 3;
+                q[0] = y < 8 ? 0xFF : 0x20;
+                q[1] = y < 8 ? 0xFF : 0x50;
+                q[2] = y < 8 ? 0xFF : 0xC8;
+            }
+        k38_b64(px, sizeof(px), b64);
+        h_put(t, "\033_Ga=T,f=24,s=16,v=16,C=1;");
+        h_put(t, b64);
+        h_put(t, "\033\\");
+        CHECK(vt_row_image(t, 0, 0, &v));
+        CHECK_INT(v.fmt, 0);
+        CHECK_INT(v.exact, 1);
+        CHECK_INT(v.npal, 3); /* clear, white, blue: nothing else */
+        for (y = 0; y < 16; y++)
+            for (x = 0; x < 16; x++)
+                if (pixel(&v, x, y) != (y < 8 ? 0xFFFFFFu : 0x2050C8u))
+                    bad++;
+        CHECK_INT(bad, 0);
+        CHECK(copy ? v.rgb != 0 : v.rgb == 0);
+        vt_free(t);
+    }
+}
+
+/* A picture of more colours than a palette holds is still dithered to the cube (once); with the copy on, its own
+ * colours beside the indices are kit_sample's average like the indices, not one point a pixel: a 64 x 64 green
+ * checker over a red/blue gradient shown 64 x 32 (rows halved) averages to mid-green, a point sample is 0 or 255. */
+static void a_shrunk_many_colour_picture_copies_its_averaged_colours(void)
+{
+    static unsigned char px[64 * 64 * 3];
+    static char b64[64 * 64 * 3 / 3 * 4 + 8];
+    vt_term *t = k38_term(0);
+    vt_image_view v;
+    int x, y, bad = 0;
+    vt_set_image_rgb_copy(t, 1);
+    for (y = 0; y < 64; y++)
+        for (x = 0; x < 64; x++) {
+            unsigned char *q = px + (y * 64 + x) * 3;
+            q[0] = (unsigned char)(x * 4);
+            q[1] = (x + y) & 1 ? 255 : 0;
+            q[2] = (unsigned char)(y * 4);
+        }
+    k38_b64(px, sizeof(px), b64);
+    h_put(t, "\033_Ga=T,f=24,s=64,v=64,c=8,r=2,C=1;"); /* 64 x 32: rows halved, 2048 colours */
+    h_put(t, b64);
+    h_put(t, "\033\\");
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(v.exact, 0); /* 4096 colours: the cube */
+    CHECK(v.rgb != 0);
+    if (v.rgb)
+        for (y = 0; y < v.h; y++)
+            for (x = 0; x < v.w; x++) {
+                int g = v.rgb[(y * v.w + x) * 3 + 1];
+                if (g < 0x60 || g > 0xA0)
+                    bad++;
+            }
+    CHECK_INT(bad, 0);
+    vt_free(t);
+}
+
+/* A frame over a root of its own colours: the frames are cube canvases, and a root colour off the cube must land on
+ * the cube there, not turn clear (index 0) because no cube entry equals it. */
+static void a_frame_over_an_exact_colour_root_keeps_the_root_pixels(void)
+{
+    vt_term *t = kitty_term(10, 5);
+    h_put(t, "\033_Ga=t,i=5,f=24,s=2,v=2;IFDIIFDIIFDIIFDI\033\\"); /* 2 x 2 of 0x2050C8 */
+    h_put(t, "\033_Ga=f,i=5,c=1,f=24,s=1,v=1,x=0,y=0;/wAA\033\\"); /* frame 2: a red pixel at (0,0) */
+    CHECK(vt_kitty_frame_px(t, 5, 1, 1, 1) > 0);
+    CHECK(vt_kitty_frame_px(t, 5, 2, 1, 1) > 0);
+    CHECK(vt_kitty_frame_px(t, 5, 2, 1, 0) > 0);
+    vt_free(t);
+}
+
 static void k38_switching_off_converts_and_on_leaves_indices(void)
 {
     vt_term *t = k38_term(1);
@@ -1694,6 +1781,9 @@ void suite_kitty(void)
     k38_budget_is_x4_with_the_same_pixel_capacity();
     k38_switching_off_converts_and_on_leaves_indices();
     a_shrunk_picture_averages_instead_of_aliasing();
+    a_flat_two_colour_picture_shows_exact_colours_undithered();
+    a_shrunk_many_colour_picture_copies_its_averaged_colours();
+    a_frame_over_an_exact_colour_root_keeps_the_root_pixels();
     k39_frame_canvases_stop_at_the_x4_budget_in_both_modes();
     k39_rgba_frames_keep_exact_bytes_and_alpha();
 }
