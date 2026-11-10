@@ -21,6 +21,8 @@
 #define FLAT_W_AMIGAKEY 0x11
 #define FLAT_W_ICONIFY 0x16
 #define FLAT_W_MENUSUB 0x1C
+#define FLAT_W_LOCK 0x3E        /* DOPUS-LOCK: dopusiclass IM_LOCK, open shackle (flat's own id, no SYSIA_Which of that value exists) */
+#define FLAT_W_LOCKED 0x3F      /* the same glyph with the shackle closed: flat_glyph_draw picks it for IDS_SELECTED / IDS_INACTIVESELECTED */
 
 #define FLAT_IM_DRAW 0x202UL    /* the only method C2 draws; IM_DRAWFRAME and the rest go to the old hook */
 

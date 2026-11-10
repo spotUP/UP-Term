@@ -634,6 +634,64 @@ static void glyph_state(flat_state *st)
     st->pen_back = '.';
 }
 
+/* DOPUS-LOCK (S2b.8): the solid padlock at side 1 and 2; open vs closed shackle, same pens, box never inverted */
+static int lock_rows(const flat_state *st, unsigned long ids, int side, int w, int h, char rows[][CV + 1])
+{
+    int y, x, r;
+    cv_clear();
+    r = flat_glyph_draw(st, FLAT_W_LOCK, FLAT_IM_DRAW, ids, 3, 2, w, h, -1, st->pen_text, side, cv_fill, 0);
+    for (y = 0; y < h; y++) {
+        for (x = 0; x < w; x++)
+            rows[y][x] = cv[2 + y][3 + x];
+        rows[y][w] = 0;
+    }
+    return r;
+}
+
+static void test_lock_glyph(void)
+{
+    static const char *const want_open[14] = { "................", "................", "................",
+        "......###.......", "......#.#.......", "......#.........", "......#.........", ".....#####......",
+        ".....#####......", ".....#####......", ".....#####......", "................", "................",
+        "................" };
+    flat_state st;
+    char op[CV][CV + 1], cl[CV][CV + 1], ins[CV][CV + 1];
+    int side, y, w, h = 14, diff;
+    glyph_state(&st);
+    CHECK_INT(flat_glyph_known(FLAT_W_LOCK), 1);
+    CHECK_INT(flat_glyph_known(FLAT_W_LOCKED), 1);
+    CHECK_INT(flat_glyph_window_gadget(FLAT_W_LOCK), 1);
+    CHECK_INT(flat_glyph_on_band(FLAT_W_LOCKED), 1);
+    CHECK_INT(flat_clone_route(&st, FLAT_W_LOCK, FLAT_IM_DRAW), 0);        /* never a cloned ROM image */
+    CHECK_INT(flat_clone_route(&st, FLAT_W_LOCKED, FLAT_IM_DRAW), 0);
+    CHECK_INT(flat_clone_route(&st, FLAT_W_CLOSE, FLAT_IM_DRAW), 1);       /* the others keep the clone */
+    for (side = 1; side <= 2; side++) {
+        w = 16 * side;
+        CHECK_INT(lock_rows(&st, 0, side, w, h, op), 1);
+        CHECK_INT(lock_rows(&st, 1, side, w, h, cl), 1);                   /* IDS_SELECTED: closed */
+        CHECK_INT(lock_rows(&st, 6, side, w, h, ins), 1);                  /* IDS_INACTIVESELECTED: closed shape */
+        for (y = 0; y < h; y++) {                                          /* inactive selected: the closed shape in the line pen */
+            int x;
+            for (x = 0; x < w; x++)
+                CHECK((ins[y][x] == '+') == (cl[y][x] == '#'));
+        }
+        CHECK(op[0][0] == '.' && cl[0][0] == '.');                         /* the box keeps its pen: not inverted */
+        for (diff = 0, y = 0; y < h; y++) {
+            diff += strcmp(op[y], cl[y]) != 0;
+            CHECK(strchr(cl[y], '?') == NULL && strchr(op[y], '?') == NULL);   /* every pixel of the box painted */
+        }
+        CHECK_INT(diff, 2);                                                /* open vs closed: the two rows of the right leg */
+        CHECK(strcmp(op[3], cl[3]) == 0 && strcmp(op[7], cl[7]) == 0);     /* top row and body are the same */
+        CHECK(cl[3][8 * side - 1] == '#' && cl[10][8 * side - 1] == '#');          /* shackle top, body bottom */
+        CHECK(cl[2][8 * side - 1] == '.' && cl[11][8 * side - 1] == '.');          /* nothing above or below */
+    }
+    for (y = 0; y < h; y++) {                                              /* side 1 open: the golden */
+        lock_rows(&st, 0, 1, 16, h, op);
+        CHECK(strcmp(op[y], want_open[y]) == 0);
+    }
+    CHECK_INT(lock_rows(&st, 0, 1, 6, 6, op), 0);                          /* under FLAT_GLYPH_MIN_SIZE: old hook */
+}
+
 static void test_glyph_goldens(void)
 {
     static const struct { const char *name; unsigned long which; int w, h; const char *rows; } gold[] = {
@@ -3296,6 +3354,7 @@ void suite_flat_core(void)
     test_dopus_no_ring();
     test_title_gadget_filter();
     test_dopus_path();
+    test_lock_glyph();
     test_glyph_goldens();
     test_glyph_solid_and_state_equal();
     test_glyph_states();

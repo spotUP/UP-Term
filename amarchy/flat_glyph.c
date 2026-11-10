@@ -86,6 +86,29 @@ static void g_iconify(plan *g)
     put(g, g->ix0, g->iy1 - 1, g->ix1, g->iy1, g->fg);
 }
 
+/* DOPUS-LOCK (O2/O3): a solid padlock, no inverted box. Visual units: a column is 1, a row is g->side. Body = the lower half of the
+ * inner box, shackle = a bar t = side columns thick over it, closed reaches the body, open stops two rows short on the right leg.
+ * A box too narrow for a shackle (bw < 4t+1) draws the body only. All locals are register ints: the dispatcher's stack headroom. */
+static void g_lock(plan *g, int closed)
+{
+    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1, t = g->side;
+    int bh = imax(2, (ih + 1) / 2), bw = imin(iw, t * imax(3, ih * 2 / 3));
+    int bx0, bx1, by0 = g->iy1 - bh + 1, sx0, sx1, ye;
+    if (!(bw & 1))
+        bw--;                                           /* odd: the body is symmetric about the box centre column */
+    bx0 = g->ix0 + (iw - bw) / 2;
+    bx1 = bx0 + bw - 1;
+    box(g, bx0, by0, bx1, g->iy1, g->fg);
+    if (bw < 4 * t + 1)
+        return;
+    sx0 = bx0 + t;
+    sx1 = bx1 - t;
+    ye = by0 - 1;
+    put(g, sx0, g->iy0, sx1, g->iy0, g->fg);            /* top row */
+    put(g, sx0, g->iy0, sx0 + t - 1, ye, g->fg);        /* left leg */
+    put(g, sx1 - t + 1, g->iy0, sx1, closed ? ye : imax(g->iy0, ye - 2), g->fg);   /* right leg */
+}
+
 static void g_check(plan *g)
 {
     int ih = g->iy1 - g->iy0 + 1;
@@ -169,7 +192,7 @@ int flat_glyph_known(unsigned long which)
     switch (which) {
     case FLAT_W_LEFT: case FLAT_W_UP: case FLAT_W_RIGHT: case FLAT_W_DOWN:
     case FLAT_W_DEPTH: case FLAT_W_ZOOM: case FLAT_W_SIZE: case FLAT_W_CLOSE: case FLAT_W_MENUCHECK:
-    case FLAT_W_AMIGAKEY: case FLAT_W_ICONIFY: case FLAT_W_MENUSUB:
+    case FLAT_W_AMIGAKEY: case FLAT_W_ICONIFY: case FLAT_W_MENUSUB: case FLAT_W_LOCK: case FLAT_W_LOCKED:
         return 1;
     default:
         return 0;
@@ -204,12 +227,13 @@ void flat_glyph_roles(unsigned long which, int state, int *glyph_role, int *box_
 int flat_glyph_window_gadget(unsigned long which)
 {
     return which == FLAT_W_CLOSE || which == FLAT_W_DEPTH || which == FLAT_W_ZOOM || which == FLAT_W_SIZE || which == FLAT_W_ICONIFY ||
-           which == FLAT_W_LEFT || which == FLAT_W_UP || which == FLAT_W_RIGHT || which == FLAT_W_DOWN;
+           which == FLAT_W_LOCK || which == FLAT_W_LOCKED || which == FLAT_W_LEFT || which == FLAT_W_UP || which == FLAT_W_RIGHT || which == FLAT_W_DOWN;
 }
 
 int flat_glyph_on_band(unsigned long which)
 {
-    return which == FLAT_W_CLOSE || which == FLAT_W_DEPTH || which == FLAT_W_ZOOM || which == FLAT_W_ICONIFY;
+    return which == FLAT_W_CLOSE || which == FLAT_W_DEPTH || which == FLAT_W_ZOOM || which == FLAT_W_ICONIFY || which == FLAT_W_LOCK ||
+           which == FLAT_W_LOCKED;
 }
 
 int flat_clone_slot(const flat_clone_key *keys, int n, int cap, unsigned long which, unsigned long size, int w, int h)
@@ -226,7 +250,8 @@ int flat_clone_slot(const flat_clone_key *keys, int n, int cap, unsigned long wh
  * glyphs (g_arrow, g_size), scaled by the drawing screen's pixel aspect (g->side). Close, depth, zoom and iconify keep the clone. */
 int flat_clone_route(const flat_state *s, unsigned long which, unsigned long method)
 {
-    return s && s->enabled && !s->held && method == FLAT_IM_DRAW && flat_glyph_window_gadget(which) && !flat_glyph_knob_gadget(which);
+    return s && s->enabled && !s->held && method == FLAT_IM_DRAW && flat_glyph_window_gadget(which) && !flat_glyph_knob_gadget(which) &&
+           which != FLAT_W_LOCK && which != FLAT_W_LOCKED;      /* DOPUS-LOCK: dopusiclass only, never a cloned ROM image */
 }
 
 /* FLAT-NO-DIVIDERS: is line k (a column when col, else a row) a stock divider / border line? It is when every pixel of it between
@@ -418,6 +443,8 @@ static int plan_run(plan *g, unsigned long which, int w, int h, int state, int s
     case FLAT_W_ZOOM: g_zoom(g); break;
     case FLAT_W_SIZE: g_size(g); break;
     case FLAT_W_ICONIFY: g_iconify(g); break;
+    case FLAT_W_LOCK: g_lock(g, 0); break;
+    case FLAT_W_LOCKED: g_lock(g, 1); break;
     case FLAT_W_MENUCHECK: g_check(g); break;
     case FLAT_W_AMIGAKEY: g_amigakey(g); break;
     case FLAT_W_MENUSUB: g_menusub(g); break;
@@ -452,7 +479,9 @@ int flat_glyph_draw(const flat_state *s, unsigned long which, unsigned long meth
     if (!fill || !flat_glyph_route(s, which, method) || w < FLAT_GLYPH_MIN_SIZE || h < FLAT_GLYPH_MIN_SIZE)
         return 0;
     g.p = 0; g.cap = FLAT_GLYPH_MAX_PRIMS; g.fill = fill; g.ctx = ctx; g.st = s; g.frame_pen = frame_pen; g.knob_pen = knob_pen; g.ox = ox; g.oy = oy;
-    return plan_run(&g, which, w, h, flat_glyph_state(ids), side) > 0;
+    if (which == FLAT_W_LOCK && (ids == 1 || ids == 6))     /* DOPUS-LOCK: selected means closed; the box keeps its pens, never inverted */
+        which = FLAT_W_LOCKED;
+    return plan_run(&g, which, w, h, which == FLAT_W_LOCKED && ids == 1 ? FLAT_G_NORMAL : flat_glyph_state(ids), side) > 0;
 }
 
 int flat_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn, void *ctx)
