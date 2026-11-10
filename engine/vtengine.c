@@ -5518,9 +5518,10 @@ static int image_install(vt_term *t, vt_u8 *pix, long bytes, long w, long h, int
  * scrolling the region up when it runs past the bottom margin, the
  * cursor left on its last row in the column it started (xterm, with
  * sixel scrolling on, the default); 1: at the top left, cut at the
- * bottom, the cursor where it was (?80, DECSDM); 2: as 0 but the cursor
- * ends where it began (kitty C=1); 3: as 0 but the cursor ends after the
- * image's last column (kitty). */
+ * bottom, the cursor where it was (?80, DECSDM); 2: at the cursor, cut at
+ * the screen's last row, nothing scrolled, the cursor where it was (kitty
+ * C=1: the cursor does not move, so the screen does not scroll either); 3:
+ * as 0 but the cursor ends after the image's last column (kitty). */
 static void image_place(vt_term *t, int slot, int mode)
 {
     vt_image *im = t->imgs[slot];
@@ -5533,7 +5534,11 @@ static void image_place(vt_term *t, int slot, int mode)
         cy = t->cy;
         for (k = 0; k < rows; k++) {
             if (k) {
-                if (cy == t->bot - 1) {
+                if (mode == 2) {
+                    if (cy >= t->rows - 1)
+                        break; /* past the screen's last row: cut */
+                    cy++;
+                } else if (cy == t->bot - 1) {
                     scroll_up(t, t->top, t->bot, 1);
                     scrolled++;
                 } else if (cy < t->rows - 1) {
