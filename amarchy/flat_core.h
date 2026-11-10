@@ -276,7 +276,7 @@ int flat_dopus_face_pen(long read, int pen_back);
  * plain byte pair) may be written. flat_string_frame: 1 when the frame box f (x, y, w, h) is the border of the string gadget box g:
  * every edge within 4 px (a group box around several inputs is not). */
 int flat_input_pen(const flat_state *s, int depth);
-int flat_string_ext(unsigned gadget_type, unsigned activation, int has_info, int has_ext);
+int flat_string_ext(unsigned gadget_type, unsigned activation, int has_info, int has_ext, int strg_chain);   /* strg_chain: boopsi gadget (type 5) whose class chain holds strgclass; also accepted */
 int flat_string_frame(int fx, int fy, int fw, int fh, int gx, int gy, int gw, int gh);
 
 /* DOPUS-LOCK-ICONIFY (S2b.3): dopusiclass DIA_Type -> flat glyph id. IM_ICONIFY (6) -> FLAT_W_ICONIFY, IM_LOCK (8) ->

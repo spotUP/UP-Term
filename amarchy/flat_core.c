@@ -338,9 +338,11 @@ int flat_input_pen(const flat_state *s, int depth)
     return s->pen_sel;
 }
 
-int flat_string_ext(unsigned gadget_type, unsigned activation, int has_info, int has_ext)
+int flat_string_ext(unsigned gadget_type, unsigned activation, int has_info, int has_ext, int strg_chain)
 {
-    return (gadget_type & 0x7) == 4 && (activation & 0x0800) && has_info && has_ext;    /* GTYP_STRGADGET, GACT_STRINGEXTEND */
+    unsigned t = gadget_type & 0x7;
+    /* GTYP_STRGADGET, or a GTYP_CUSTOMGADGET (boopsi: DOpus dopusstrgclass) whose class chain holds strgclass; GACT_STRINGEXTEND */
+    return (t == 4 || (t == 5 && strg_chain)) && (activation & 0x0800) && has_info && has_ext;
 }
 
 static int near4(int a, int b)

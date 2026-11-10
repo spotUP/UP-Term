@@ -786,6 +786,23 @@ static int push_gadget_of(struct RastPort *rp, Object *obj)
     return g && flat_push_button(it != NULL, it ? it->LeftEdge : 0, it ? it->TopEdge : 0, g->Width, g->Height, g->Activation);
 }
 
+/* The class-chain walk shared by the prop gadget test and the string input test: does boopsi gadget g's class or a superclass carry
+ * cl_ID == id (depth bounded, NULL ids skipped)? Plain memory reads, no Intuition call, no allocation: safe inside a graphics hook. */
+static int gadget_class_has(struct Gadget *g, const char *id, int cap)
+{
+    struct IClass *cl = OCLASS(g);
+    int depth;
+    for (depth = 0; cl && depth < cap; depth++, cl = cl->cl_Super) {
+        const char *a = (const char *)cl->cl_ID, *b = id;
+        if (a) {
+            while (*a && *a == *b) { a++; b++; }
+            if (*a == *b)
+                return 1;
+        }
+    }
+    return 0;
+}
+
 /* OWNER-2026-11-10 INPUT-GROUND: the string gadget of rp's window whose box the frame box x0,y0..x1,y1 borders (flat_string_frame),
  * NULL when there is none. Relative gadget edges are resolved against the window. */
 static struct Gadget *string_gadget_at(struct RastPort *rp, int x0, int y0, int x1, int y1)
@@ -803,7 +820,8 @@ static struct Gadget *string_gadget_at(struct RastPort *rp, int x0, int y0, int 
             if (si && (g->Activation & 0x0800) && si->Extension)
                 rr->sgext++;
         }
-        if (!flat_string_ext(g->GadgetType & GTYP_GTYPEMASK, g->Activation, si != NULL, si && si->Extension != NULL))
+        if (!flat_string_ext(g->GadgetType & GTYP_GTYPEMASK, g->Activation, si != NULL, si && si->Extension != NULL,
+                             (g->GadgetType & GTYP_GTYPEMASK) == GTYP_CUSTOMGADGET && gadget_class_has(g, "strgclass", 8)))
             continue;
         gx = g->LeftEdge + ((g->Flags & GFLG_RELRIGHT) ? win->Width - 1 : 0);
         gy = g->TopEdge + ((g->Flags & GFLG_RELBOTTOM) ? win->Height - 1 : 0);
@@ -1701,17 +1719,7 @@ extern void flat_rf_tpl(void), flat_rf_tpl_end(void);
  * and cl_Super comparing cl_ID with PROPGCLASS: plain memory reads, no Intuition call (this runs inside graphics.library), depth bounded. */
 static int gadget_class_is_prop(struct Gadget *g)
 {
-    struct IClass *cl = OCLASS(g);
-    int depth;
-    for (depth = 0; cl && depth < 16; depth++, cl = cl->cl_Super) {
-        const char *a = (const char *)cl->cl_ID, *b = PROPGCLASS;
-        if (a) {
-            while (*a && *a == *b) { a++; b++; }
-            if (*a == *b)
-                return 1;
-        }
-    }
-    return 0;
+    return gadget_class_has(g, PROPGCLASS, 16);
 }
 
 /* The one prop-gadget test for scroller_pen and the sring walk; flat_gadget_is_prop holds the rule. */
