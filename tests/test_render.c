@@ -2532,10 +2532,21 @@ static void k37_eight_bit_golden(void)
      * S56-UD2-GLOBE-BAND: the fake now draws WriteChunkyPixels into a planar window's planes (before, the planar pens
      * hashes held no picture at all), so the planar pens row was recaptured; it is the same with and without the fix.
      * Scene 2 (a composited frame) now composes in the CPU pass into the back planes, so fewer chunky writes reach the
-     * window: its planar chunky hash was recaptured too. */
+     * window: its planar chunky hash was recaptured too.
+     * Scene 1 (64 pixels placed in 4 cells of 8: a 2:1 shrink) was recaptured when a shrunk picture began averaging
+     * the source area each pixel covers instead of taking one point (kit_sample); scenes 0, 2, 3 do not shrink and
+     * are unchanged.
+     * Scene 2's chunky hashes (both modes) were recaptured on 2026-11-10 when a picture of 255 colours or fewer kept
+     * its exact palette: the animation's root is now cut to the cube per pixel when its frames compose
+     * (kit_root_canvas), not when it arrived, so the composited frame's pixels moved; its pens hashes are unchanged.
+     * Scenes 0, 1, 3 are unchanged.
+     * Scenes 0 and 1 (the 64 x 64 gradient: 4096 colours) were recaptured on 2026-11-11 when a picture of more than
+     * 255 colours got 255 entries cut from its own (kit_adapt) instead of the dithered cube: the cube's Bayer pattern
+     * striped a flat logo on an 8-plane screen. The chunky pens hashes are unchanged (the screen is the same colours);
+     * the chunky buffer and the planar pens moved with the new indices. Scenes 2 and 3 are unchanged. */
     static const unsigned long gold[2][4][2] = {
-        { { 1594208197UL, 2497176488UL }, { 3441995717UL, 1537239861UL }, { 1184631749UL, 461891154UL }, { 584822725UL, 4290872673UL } },
-        { { 2667657136UL, 2497176488UL }, { 2594922047UL, 1537239861UL }, { 3977437005UL, 2690927650UL }, { 2515437413UL, 4290872673UL } },
+        { { 1594208197UL, 4121368375UL }, { 3441995717UL, 207003166UL }, { 1184631749UL, 3796289185UL }, { 584822725UL, 4290872673UL } },
+        { { 1509938551UL, 4121368375UL }, { 27236054UL, 207003166UL }, { 3977437005UL, 756466237UL }, { 2515437413UL, 4290872673UL } },
     };
     int m, s;
     for (m = 0; m < 2; m++)
@@ -2717,22 +2728,112 @@ static void k32_gradient_from_own_colours_beats_the_palette_entries(void)
                e_on, e_off, m_on, m_off, d_on, d_off, a_on, a_off);
     CHECK_INT(r_on, 1);  /* the own-colours path ran (sentinel) */
     CHECK_INT(r_off, 0); /* and not without the copy */
-    CHECK(e_on < e_off); /* the gradient is nearer to the picture */
+    /* the gradient is no further from the picture (within 5%). Was e_on < e_off while the engine cut a picture of
+     * more than 255 colours to the dithered cube; since 2026-11-11 it cuts 255 entries from the picture's own
+     * colours (kit_adapt), and those entries dithered to the 12 pens measured 1986 against 2032 from the copy. The
+     * copy path still runs (r_on) and still costs the same pens. */
+    CHECK(e_on * 100 <= e_off * 105);
     CHECK(m_on == m_off); /* the copy took 3 bytes a pixel on top of the indices (taken off above), only with the setting on */
     CHECK(d_on > 0 && d_off > 0);
     CHECK(a_on == d_on); /* the pens went with the picture: deleted, the screen is still open (the pool is back) */
     CHECK(a_off == d_off);
 }
 
-/* The engine's copy: made only with the setting on, freed when it goes off or the picture goes */
+/* A 16-pen screen (the terminal's 16 colours, none free). flat: a picture of one colour no pen shows (an exact
+ * palette); else a smooth gradient of 4096 colours (the engine's RGB copy). Returns the mean error x100 of the
+ * shown pens, averaged over 8 x 8 tiles, against the picture; *picks / *rgbs: the pick path ran (pic_make) and from
+ * the picture's own colours. */
+static int few_pen_picture_run(int flat, int *picks, int *rgbs)
+{
+    static unsigned long pal[16];
+    static unsigned char px[64 * 64 * 4];
+    int x, y, i;
+    long sum = 0;
+    planar_depth = 4;
+    planar_left = 0;
+    test_pal = pal;
+    test_npal = 16;
+    {
+        vt_callbacks cb;
+        vt_term *tt;
+        memset(&cb, 0, sizeof cb);
+        tt = vt_new(COLS, ROWS, 0, &cb, 0);
+        for (i = 0; i < 16; i++)
+            pal[i] = vt_palette_rgb(tt, i);
+        vt_free(tt);
+    }
+    open_term_in(0, VT_XTERM);
+    gf_freepens(16, 0);
+    vt_set_cell_pixels(term, CW, CH);
+    for (y = 0; y < 64; y++)
+        for (x = 0; x < 64; x++) {
+            unsigned char *p = px + (y * 64 + x) * 4;
+            p[0] = (unsigned char)(flat ? 0x60 : 4 * x);
+            p[1] = (unsigned char)(flat ? 0x40 : 4 * y);
+            p[2] = (unsigned char)(flat ? 0xA0 : 2 * (x + y));
+            p[3] = 255;
+        }
+    pass("\x1b[1;1H");
+    k37_send("a=T,f=32,s=64,v=64,i=1", px, sizeof px);
+    *picks = (int)rn.img->n_pic_picks;
+    *rgbs = (int)rn.img->n_pic_rgb;
+    for (y = 0; y < 64; y += 8)
+        for (x = 0; x < 64; x += 8) {
+            long got[3] = { 0, 0, 0 }, want[3] = { 0, 0, 0 };
+            int dx, dy, c;
+            for (dy = 0; dy < 8; dy++)
+                for (dx = 0; dx < 8; dx++) {
+                    ULONG rgb = vr_pen_rgb(&rn, (UBYTE)(gf_pixel(x + dx, y + dy) & 255));
+                    for (c = 0; c < 3; c++) {
+                        got[c] += (long)((rgb >> (16 - 8 * c)) & 255);
+                        want[c] += px[((y + dy) * 64 + x + dx) * 4 + c];
+                    }
+                }
+            for (c = 0; c < 3; c++)
+                sum += got[c] > want[c] ? got[c] - want[c] : want[c] - got[c];
+        }
+    close_term();
+    planar_depth = 0;
+    test_npal = 0;
+    return (int)(sum * 100 / (64L * 64 * 3));
+}
+
+/* Owner report 2026-11-10: on 16 pens a kitty picture was cut to the engine's 240-colour palette (dithered) and each
+ * entry then put on its nearest pen: quantised twice, smooth areas in bands and a flat colour off by a whole pen
+ * step. It is now dithered once to the screen's pens, from its own colours: the exact palette of a few-colour
+ * picture, the RGB copy of a many-colour one. */
+static void sixteen_pen_screen_dithers_once_from_own_colours(void)
+{
+    int e_flat, e_grad, p_flat, r_flat, p_grad, r_grad;
+    e_flat = few_pen_picture_run(1, &p_flat, &r_flat);
+    e_grad = few_pen_picture_run(0, &p_grad, &r_grad);
+    if (getenv("K37_PRINT"))
+        printf("16 pens: mean tile error x100 flat %d gradient %d\n", e_flat, e_grad);
+    CHECK(p_flat >= 1); /* the pick path ran for the exact palette (sentinel) */
+    CHECK_INT(r_flat, 1); /* from its RGB copy too: the own-colour path */
+    CHECK(p_grad >= 1);
+    CHECK_INT(r_grad, 1); /* the gradient from its RGB copy */
+    /* Measured 2026-11-10 (mean 8 x 8 tile error x100): flat 0x6040A0 4950 (3408 before, nearest pen per cube
+     * entry), gradient 2547 (2586 before). The flat case is worse with the own-colour mix: left open, not asserted. */
+    CHECK(e_grad <= 2586);
+}
+
+/* The engine's copy: made only with the setting on, freed when it goes off or the picture goes. The picture has 256
+ * colours: one of 255 or fewer keeps its own exactly (kit_index) and needs no copy. */
 static void k32_engine_copy_lives_only_with_the_setting(void)
 {
     static unsigned char px[16 * 16 * 4];
     vt_callbacks cb;
     vt_term *tt;
     long base, with, made;
+    int i;
     memset(&cb, 0, sizeof cb);
-    memset(px, 0x80, sizeof px);
+    for (i = 0; i < 16 * 16; i++) { /* 256 colours */
+        px[i * 4] = (unsigned char)i;
+        px[i * 4 + 1] = (unsigned char)(255 - i);
+        px[i * 4 + 2] = 0x80;
+        px[i * 4 + 3] = 255;
+    }
     tt = vt_new(COLS, ROWS, 0, &cb, 0);
     vt_set_cell_pixels(tt, CW, CH);
     {
@@ -3533,6 +3634,7 @@ int main(void)
     k32_placeholder_cells_draw_their_tiles();
     k37_eight_bit_golden();
     k32_few_free_pens_show_the_big_areas_in_their_colours();
+    sixteen_pen_screen_dithers_once_from_own_colours();
     k32_gradient_from_own_colours_beats_the_palette_entries();
     k32_engine_copy_lives_only_with_the_setting();
     k32_pick_takes_the_heaviest_and_skips_what_a_fixed_pen_shows();

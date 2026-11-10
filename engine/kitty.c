@@ -69,6 +69,7 @@ typedef struct kit_src {
     vt_u32 *dec;     /* the decoder's buffer */
     vt_image_release dfree;
     vt_u8 *fbuf;     /* the bytes a file reader gave (t=f, t=t), freed through dfree */
+    int band;        /* a=p of a still stored picture: a row-band crop may show its scaled copy (kit_band) */
 } kit_src;
 
 static const vt_u8 kit_bayer[16] = { 0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5 };
@@ -125,6 +126,44 @@ static vt_u32 kit_px(const kit_src *s, long i)
     return ((vt_u32)(s->bpp == 4 ? q[3] : 255) << 24) | ((vt_u32)q[0] << 16) | ((vt_u32)q[1] << 8) | q[2];
 }
 
+/* One pixel of the part (x0, y0, w, h) of src scaled to tw x th, at
+ * (x, y). Enlarging takes the nearest source pixel. Shrinking averages
+ * the source area the pixel covers, weighted by alpha so clear pixels do
+ * not darken the edge: up to 4 x 4 evenly spread samples, so the cost per
+ * pixel stays bounded on a 68020 however large the source is. Taking one
+ * point per pixel aliases photos into noise the dither then magnifies. */
+static vt_u32 kit_sample(const kit_src *s, int x0, int y0, int w, int h, int tw, int th, int x, int y)
+{
+    long sx0 = (long)x * w / tw, sx1 = (long)(x + 1) * w / tw;
+    long sy0 = (long)y * h / th, sy1 = (long)(y + 1) * h / th;
+    long nx = sx1 - sx0, ny = sy1 - sy0, sa = 0, sr = 0, sg = 0, sb = 0;
+    int kx, ky, i, j, n;
+    if (nx <= 1 && ny <= 1)
+        return kit_px(s, (y0 + sy0) * s->w + x0 + sx0);
+    if (nx < 1)
+        nx = 1;
+    if (ny < 1)
+        ny = 1;
+    kx = nx < 4 ? (int)nx : 4;
+    ky = ny < 4 ? (int)ny : 4;
+    n = kx * ky;
+    for (j = 0; j < ky; j++) {
+        long row = (y0 + sy0 + (long)j * ny / ky) * s->w + x0 + sx0;
+        for (i = 0; i < kx; i++) {
+            vt_u32 p = kit_px(s, row + (long)i * nx / kx);
+            long a = (long)(p >> 24);
+            sa += a;
+            sr += a * (long)((p >> 16) & 255);
+            sg += a * (long)((p >> 8) & 255);
+            sb += a * (long)(p & 255);
+        }
+    }
+    if (!sa)
+        return 0;
+    return ((vt_u32)((sa + n / 2) / n) << 24) | ((vt_u32)((sr + sa / 2) / sa) << 16) |
+           ((vt_u32)((sg + sa / 2) / sa) << 8) | (vt_u32)((sb + sa / 2) / sa);
+}
+
 /* ---- memory (D7): stored pictures that are not on the screen go first ---- */
 
 static int kit_room(vt_term *t, long bytes)
@@ -147,20 +186,258 @@ static int kit_room(vt_term *t, long bytes)
     return 1;
 }
 
-/* The part (x0, y0, w, h) of src as indices into a palette of tw x th
- * pixels in o (nearest pixel, dithered), its colours packed to the ones in
- * use. The one maker of index pictures: kit_make and the RGB-off conversion. */
-static void kit_index(const kit_src *s, int x0, int y0, int w, int h, int tw, int th, vt_u8 *o, vt_u32 *pal,
-                      int *npal)
+/* ---- a palette cut from a picture of more than 255 colours (kit_adapt) ---- */
+
+#define KIT_AHASH 4096 /* hash slots of the colour table */
+#define KIT_ACOL 2048  /* colours it holds; more and the keys drop a low bit a channel (bins) */
+typedef struct kit_atab {
+    vt_u32 key[KIT_AHASH]; /* the colour (its bin when cut), 0x1000000 set: the slot is used */
+    vt_u32 rep[KIT_AHASH]; /* the colour the bin stands for: its heaviest member, exactly */
+    vt_u32 n[KIT_AHASH];   /* its pixels */
+    vt_u8 idx[KIT_AHASH];  /* its palette entry */
+    int ord[KIT_ACOL];     /* the used slots, cut into boxes in place */
+    vt_u32 trep[KIT_ACOL], tn[KIT_ACOL]; /* the bins while the table drops a bit */
+    int used, sh;          /* colours held; low bits dropped from each channel */
+} kit_atab;
+
+static vt_u32 kit_amask(int sh)
 {
+    vt_u32 m = (vt_u32)(0xFF << sh) & 0xFFu;
+    return (m << 16) | (m << 8) | m;
+}
+
+/* the slot of colour c (cut to the table's bins); a new one when absent and room is left; -1 when full */
+static int kit_aslot(kit_atab *a, vt_u32 c, int add)
+{
+    vt_u32 k = (c & kit_amask(a->sh)) | 0x1000000u;
+    unsigned h = (unsigned)((k * 2654435761u) >> 16) & (KIT_AHASH - 1);
+    while (a->key[h] && a->key[h] != k)
+        h = (h + 1) & (KIT_AHASH - 1);
+    if (!a->key[h]) {
+        if (!add || a->used == KIT_ACOL)
+            return -1;
+        a->key[h] = k;
+        a->rep[h] = c;
+        a->n[h] = 0;
+        a->used++;
+    }
+    return (int)h;
+}
+
+/* one pixel of colour c into the table. A bin stands for its first colour; full, the table drops a low bit a
+ * channel and two bins that meet keep the colour of the heavier */
+static void kit_aadd(kit_atab *a, vt_u32 c)
+{
+    int h = kit_aslot(a, c, 1);
+    while (h < 0) {
+        int i, m = 0;
+        for (i = 0; i < KIT_AHASH; i++)
+            if (a->key[i]) {
+                a->trep[m] = a->rep[i];
+                a->tn[m++] = a->n[i];
+            }
+        memset(a->key, 0, sizeof(a->key));
+        a->used = 0;
+        a->sh++;
+        for (i = 0; i < m; i++) {
+            int j = kit_aslot(a, a->trep[i], 1);
+            if (a->tn[i] > a->n[j])
+                a->rep[j] = a->trep[i];
+            a->n[j] += a->tn[i];
+        }
+        h = kit_aslot(a, c, 1);
+    }
+    a->n[h]++;
+}
+
+static int kit_ch(vt_u32 c, int ch)
+{
+    return (int)(c >> (16 - 8 * ch)) & 255;
+}
+
+/* box ord[lo..hi): its longest channel and that range */
+static int kit_along(const kit_atab *a, int lo, int hi, int *range)
+{
+    int ch, best = 0, br = -1, i;
+    for (ch = 0; ch < 3; ch++) {
+        int mn = 255, mx = 0;
+        for (i = lo; i < hi; i++) {
+            int v = kit_ch(a->rep[a->ord[i]], ch);
+            if (v < mn)
+                mn = v;
+            if (v > mx)
+                mx = v;
+        }
+        if (mx - mn > br) {
+            br = mx - mn;
+            best = ch;
+        }
+    }
+    *range = br;
+    return best;
+}
+
+/* The picture's colours (kit_sample, alpha under half left out) cut to at most 255 entries pal[1..): a weighted
+ * median cut, splitting the box of the largest weight x range, a box's colour its heaviest member when that holds
+ * half of it (a flat area keeps its colour exactly), else the weighted mean; every pixel is the entry nearest its
+ * colour, undithered. The cube dithered such a picture whole: a white and blue logo with anti-aliased edges (more
+ * than 255 colours) showed its flat blue as a Bayer pattern of two cube blues (2026-11-11). 0 when there is no
+ * memory for the table (the caller dithers to the cube). */
+static int kit_adapt(const kit_src *s, int x0, int y0, int w, int h, int tw, int th, vt_u8 *o, vt_u32 *pal,
+                     int *npal)
+{
+    static int lo[256], hi[256];
+    kit_atab *a = (kit_atab *)VT_MALLOC(sizeof(kit_atab));
+    int x, y, i, j, nb = 1, n = 0;
+    if (!a)
+        return 0;
+    memset(a, 0, sizeof(*a));
+    for (y = 0; y < th; y++)
+        for (x = 0; x < tw; x++) {
+            vt_u32 p = kit_sample(s, x0, y0, w, h, tw, th, x, y);
+            if ((p >> 24) >= 128)
+                kit_aadd(a, p & 0xFFFFFFu);
+        }
+    for (i = 0; i < KIT_AHASH; i++)
+        if (a->key[i])
+            a->ord[n++] = i;
+    lo[0] = 0;
+    hi[0] = n;
+    while (nb < 255) { /* split the box of the largest weight x range */
+        long best = 0, acc, half, tot;
+        int b = -1, ch, rg, k, cut;
+        for (j = 0; j < nb; j++) {
+            long wt = 0;
+            if (hi[j] - lo[j] < 2)
+                continue;
+            kit_along(a, lo[j], hi[j], &rg);
+            for (i = lo[j]; i < hi[j]; i++)
+                wt += (long)a->n[a->ord[i]];
+            if (rg > 0 && wt * rg > best) {
+                best = wt * rg;
+                b = j;
+            }
+        }
+        if (b < 0)
+            break;
+        ch = kit_along(a, lo[b], hi[b], &rg);
+        for (i = lo[b] + 1; i < hi[b]; i++) { /* insertion sort along ch: a box is small after the first cuts */
+            int v = a->ord[i], key = kit_ch(a->rep[v], ch);
+            for (k = i - 1; k >= lo[b] && kit_ch(a->rep[a->ord[k]], ch) > key; k--)
+                a->ord[k + 1] = a->ord[k];
+            a->ord[k + 1] = v;
+        }
+        for (tot = 0, i = lo[b]; i < hi[b]; i++)
+            tot += (long)a->n[a->ord[i]];
+        half = tot / 2;
+        for (acc = 0, cut = lo[b]; cut < hi[b] - 1; cut++) {
+            acc += (long)a->n[a->ord[cut]];
+            if (acc >= half)
+                break;
+        }
+        cut++; /* [lo, cut) and [cut, hi): both hold a colour */
+        lo[nb] = cut;
+        hi[nb] = hi[b];
+        hi[b] = cut;
+        nb++;
+    }
+    for (j = 0; j < nb; j++) {
+        unsigned long sr = 0, sg = 0, sb = 0, tot = 0, top = 0;
+        vt_u32 heavy = 0;
+        for (i = lo[j]; i < hi[j]; i++) {
+            vt_u32 c = a->rep[a->ord[i]], wt = a->n[a->ord[i]];
+            sr += (unsigned long)kit_ch(c, 0) * wt;
+            sg += (unsigned long)kit_ch(c, 1) * wt;
+            sb += (unsigned long)kit_ch(c, 2) * wt;
+            tot += wt;
+            if (wt > top) {
+                top = wt;
+                heavy = c;
+            }
+        }
+        if (!tot)
+            tot = 1;
+        pal[j + 1] = top * 2 >= tot ? heavy
+                                    : (vt_u32)(((sr + tot / 2) / tot) << 16 | ((sg + tot / 2) / tot) << 8 |
+                                               ((sb + tot / 2) / tot));
+    }
+    for (i = 0; i < n; i++) { /* each colour's nearest entry */
+        int sl = a->ord[i], bi = 1;
+        long bd = 0x7FFFFFFFL;
+        vt_u32 c = a->rep[sl];
+        for (j = 1; j <= nb; j++) {
+            long dr = kit_ch(c, 0) - kit_ch(pal[j], 0), dg = kit_ch(c, 1) - kit_ch(pal[j], 1),
+                 db = kit_ch(c, 2) - kit_ch(pal[j], 2), d = 2 * dr * dr + 4 * dg * dg + 3 * db * db;
+            if (d < bd) {
+                bd = d;
+                bi = j;
+            }
+        }
+        a->idx[sl] = (vt_u8)bi;
+    }
+    for (y = 0; y < th; y++)
+        for (x = 0; x < tw; x++) {
+            vt_u32 p = kit_sample(s, x0, y0, w, h, tw, th, x, y);
+            o[(long)y * tw + x] = (p >> 24) < 128 ? 0 : a->idx[kit_aslot(a, p & 0xFFFFFFu, 0)];
+        }
+    VT_FREE(a);
+    pal[0] = 0;
+    *npal = nb + 1;
+    return 1;
+}
+
+/* The part (x0, y0, w, h) of src as indices into a palette of tw x th
+ * pixels in o (kit_sample), the palette in pal[0..*npal). A picture of 255
+ * colours or fewer (after kit_sample; alpha under half is index 0) keeps
+ * them exactly, undithered: cut to the cube, a flat colour off it (a white
+ * and blue logo) broke into a dither pattern on every screen. More colours
+ * get 255 entries cut from its own (kit_adapt), undithered too: the cube's
+ * dither was the same pattern again on a logo whose anti-aliased edges
+ * passed 255 colours. Only with no memory for that cut are they dithered to
+ * the cube (kit_quant), its entries packed to the ones in use. Returns 1 for
+ * the picture's own palette (exact or cut: no cube), 0 for the cube. The one
+ * maker of index pictures: kit_make and the RGB-off conversion. */
+#define KIT_HASH 512 /* open addressing over at most 255 colours: never more than half full */
+static int kit_index(const kit_src *s, int x0, int y0, int w, int h, int tw, int th, vt_u8 *o, vt_u32 *pal,
+                     int *npal)
+{
+    static vt_u32 hk[KIT_HASH]; /* 2.5 KB off the caller's stack (the renderer's task calls this on a small one) */
+    static vt_u8 hv[KIT_HASH];
     vt_u8 map[256];
     int x, y, n = 1, i;
+    memset(hv, 0, sizeof(hv));
+    for (y = 0; y < th; y++) {
+        for (x = 0; x < tw; x++) {
+            vt_u32 p = kit_sample(s, x0, y0, w, h, tw, th, x, y), c = p & 0xFFFFFFu;
+            unsigned hsh;
+            if ((p >> 24) < 128) {
+                o[(long)y * tw + x] = 0;
+                continue;
+            }
+            hsh = (unsigned)((c * 2654435761u) >> 16) & (KIT_HASH - 1);
+            while (hv[hsh] && hk[hsh] != c)
+                hsh = (hsh + 1) & (KIT_HASH - 1);
+            if (!hv[hsh]) {
+                if (n == 256)
+                    goto many; /* a 256th colour */
+                hk[hsh] = c;
+                hv[hsh] = (vt_u8)n;
+                pal[n++] = c;
+            }
+            o[(long)y * tw + x] = hv[hsh];
+        }
+    }
+    pal[0] = 0;
+    *npal = n;
+    return 1;
+many:
+    if (kit_adapt(s, x0, y0, w, h, tw, th, o, pal, npal))
+        return 1;
+    n = 1;
     memset(map, 0, sizeof(map));
     for (y = 0; y < th; y++) {
-        long sy = y0 + (long)y * h / th;
         for (x = 0; x < tw; x++) {
-            long sx = x0 + (long)x * w / tw;
-            vt_u8 q = kit_quant(kit_px(s, sy * s->w + sx), x, y);
+            vt_u8 q = kit_quant(kit_sample(s, x0, y0, w, h, tw, th, x, y), x, y);
             if (q && !map[q])
                 map[q] = (vt_u8)n++;
             o[(long)y * tw + x] = q ? map[q] : 0;
@@ -171,12 +448,13 @@ static void kit_index(const kit_src *s, int x0, int y0, int w, int h, int tw, in
         if (map[i])
             pal[map[i]] = kit_color(i);
     *npal = n;
+    return 0;
 }
 
-/* The part (x0, y0, w, h) of src as an indexed image of tw x th pixels.
- * 0 when there is no memory. */
+/* The part (x0, y0, w, h) of src as an indexed image of tw x th pixels;
+ * *exact as kit_index returns. 0 when there is no memory. */
 static int kit_make(vt_term *t, const kit_src *s, int x0, int y0, int w, int h, int tw, int th,
-                    vt_u8 **pix, vt_u32 *pal, int *npal)
+                    vt_u8 **pix, vt_u32 *pal, int *npal, int *exact)
 {
     vt_u8 *o;
     long bytes = (long)tw * th;
@@ -185,12 +463,12 @@ static int kit_make(vt_term *t, const kit_src *s, int x0, int y0, int w, int h, 
     o = (vt_u8 *)VT_MALLOC(bytes);
     if (!o)
         return 0;
-    kit_index(s, x0, y0, w, h, tw, th, o, pal, npal);
+    *exact = kit_index(s, x0, y0, w, h, tw, th, o, pal, npal);
     *pix = o;
     return 1;
 }
 
-/* The RGB twin (vt_set_image_rgb on): the same nearest-pixel scale, 4 bytes a
+/* The RGB twin (vt_set_image_rgb on): the same kit_sample scale, 4 bytes a
  * pixel R G B A in memory order with the source's own alpha byte (owner O2:
  * true alpha). *opaque is 1 when no pixel is below 255. 0 when there is no memory. */
 static int kit_make_rgb(vt_term *t, const kit_src *s, int x0, int y0, int w, int h, int tw, int th,
@@ -206,10 +484,8 @@ static int kit_make_rgb(vt_term *t, const kit_src *s, int x0, int y0, int w, int
         return 0;
     q = o;
     for (y = 0; y < th; y++) {
-        long sy = y0 + (long)y * h / th;
         for (x = 0; x < tw; x++, q += 4) {
-            long sx = x0 + (long)x * w / tw;
-            vt_u32 p = kit_px(s, sy * s->w + sx);
+            vt_u32 p = kit_sample(s, x0, y0, w, h, tw, th, x, y);
             q[0] = (vt_u8)(p >> 16);
             q[1] = (vt_u8)(p >> 8);
             q[2] = (vt_u8)p;
@@ -229,7 +505,9 @@ static int kit_picture(vt_term *t, const kit_src *s, int x0, int y0, int w, int 
 {
     vt_u8 *pix;
     vt_u32 pal[256];
-    int npal, slot, op;
+    int npal, slot, op, exact, want;
+    long n;
+    t->kit_made++;
     if (t->image_rgb) {
         if (!kit_make_rgb(t, s, x0, y0, w, h, tw, th, &pix, &op))
             return -1;
@@ -240,39 +518,40 @@ static int kit_picture(vt_term *t, const kit_src *s, int x0, int y0, int w, int 
         }
         return slot;
     }
-    if (t->image_copy && kit_room(t, (long)tw * th * 4)) { /* a screen short of pens: the picture's own colours too */
-        vt_u8 *cp = (vt_u8 *)VT_MALLOC((long)tw * th * 3);
-        if (cp && kit_make(t, s, x0, y0, w, h, tw, th, &pix, pal, &npal)) {
-            long i, n = (long)tw * th;
+    /* a screen short of pens: the picture's own colours too (owner 2026-11-09: dithered once, from its own
+     * colours). Made for an exact palette as well: the renderer's own-colour path (pp_hist + pp_pen_bin) reads
+     * the copy, and on 5-7 planes it beats planning the palette entries (K32-PENS). Room for both is asked first:
+     * kit_room after the install could evict the picture just made. */
+    want = t->image_copy && kit_room(t, (long)tw * th * 4);
+    if (!kit_make(t, s, x0, y0, w, h, tw, th, &pix, pal, &npal, &exact))
+        return -1;
+    n = (long)tw * th;
+    slot = image_install(t, pix, n, tw, th, npal, pal);
+    if (slot < 0)
+        return slot;
+    t->imgs[slot]->kexact = (vt_u8)exact;
+    if (want) {
+        vt_u8 *cp = (vt_u8 *)VT_MALLOC(n * 3);
+        long i;
+        if (cp) { /* kit_sample, as the indices: point sampling aliased a shrunk photo into noise (2ad473af) */
             for (i = 0; i < n; i++) {
-                int sx = (int)(i % tw), sy = (int)(i / tw);
-                vt_u32 p = kit_px(s, (y0 + (long)sy * h / th) * s->w + x0 + (long)sx * w / tw);
+                vt_u32 p = kit_sample(s, x0, y0, w, h, tw, th, (int)(i % tw), (int)(i / tw));
                 cp[i * 3] = (vt_u8)(p >> 16);
                 cp[i * 3 + 1] = (vt_u8)(p >> 8);
                 cp[i * 3 + 2] = (vt_u8)p;
             }
-            slot = image_install(t, pix, n, tw, th, npal, pal);
-            if (slot >= 0) {
-                t->imgs[slot]->rgb = cp;
-                t->imgs[slot]->bytes += n * 3;
-                t->img_mem += n * 3;
-                t->kit_copy_made++;
-            } else {
-                VT_FREE(cp);
-            }
-            return slot;
-        }
-        if (cp) { /* the indices have no room: the plain path below says so */
-            VT_FREE(cp);
+            t->imgs[slot]->rgb = cp;
+            t->imgs[slot]->bytes += n * 3;
+            t->img_mem += n * 3;
+            t->kit_copy_made++;
         }
     }
-    if (!kit_make(t, s, x0, y0, w, h, tw, th, &pix, pal, &npal))
-        return -1;
-    return image_install(t, pix, (long)tw * th, tw, th, npal, pal);
+    return slot;
 }
 
-/* vt_set_image_rgb off: every RGB picture becomes cube indices in place (T6),
- * at each pixel's own (x, y), the palette packed as kit_make does; img_mem
+/* vt_set_image_rgb off: every RGB picture becomes indices in place (T6),
+ * as kit_make makes them (its own colours when 255 or fewer, else 255 cut
+ * from them, undithered); the frame canvases always the cube; img_mem
  * shrinks by what was freed. A picture with no room for its indices (cannot
  * happen: they are a quarter of the size) keeps its RGBA. */
 static void kit_to_index(vt_term *t)
@@ -292,7 +571,7 @@ static void kit_to_index(vt_term *t)
         s.bpp = 4;
         s.w = im->w;
         s.h = im->h;
-        kit_index(&s, 0, 0, im->w, im->h, im->w, im->h, o, im->pal, &im->npal);
+        im->kexact = (vt_u8)kit_index(&s, 0, 0, im->w, im->h, im->w, im->h, o, im->pal, &im->npal);
         if (im->anim) { /* K39: the frame canvases go back to cube indices too */
             int f;
             for (f = 0; f < im->anim->n; f++) {
@@ -605,7 +884,7 @@ static int kit_placement(const vt_term *t, vt_u32 id, vt_u32 pid)
     int i, best = -1;
     for (i = 0; i < VT_IMG_SLOTS; i++) {
         const vt_image *im = t->imgs[i];
-        if (im && im->pix && im->kind == 1 && im->kid == id && im->pid == pid &&
+        if (im && im->pix && im->kind == 1 && im->kid == id && im->pid == pid && (!im->kmaster || im->refs) &&
             (best < 0 || im->serial > t->imgs[best]->serial))
             best = i;
     }
@@ -623,7 +902,7 @@ static int kit_corner(const vt_term *t, int slot, int *col, int *row)
         for (i = t->scr[y]->img; i; i = t->pl[i].next)
             if (place_image(t, &t->pl[i]) == im) {
                 *col = t->pl[i].col0;
-                *row = y - t->pl[i].row;
+                *row = y - (t->pl[i].row - im->krow0);
                 return 1;
             }
     }
@@ -668,6 +947,75 @@ static int kit_parent(const vt_term *t, const vt_kitty *k, vt_u32 id, int *col, 
     return slot;
 }
 
+/* A scaled copy (kmaster) off the screen, its pixels and serial kept for
+ * the next band of its rows: its cells drawn again, its placements stale
+ * (gen), its relative children gone as with image_free (K29). */
+static void kit_unplace(vt_term *t, int slot)
+{
+    vt_image *im = t->imgs[slot];
+    int i;
+    if (im->refs > 0 && !t->img_nomark)
+        image_mark(t, slot);
+    im->refs = 0;
+    im->gen++;
+    for (i = 0; i < VT_IMG_SLOTS; i++) {
+        const vt_image *c = t->imgs[i];
+        if (c && c->pix && c->kind == 1 && !c->kmaster && c->pkid == im->kid && c->ppid == im->pid)
+            image_free(t, i);
+    }
+}
+
+/* A kitty placement deleted: a scaled copy only leaves the screen (its data
+ * may still be shown again), any other placement goes with its pixels. */
+static void kit_drop(vt_term *t, int slot)
+{
+    if (t->imgs[slot]->kmaster)
+        kit_unplace(t, slot);
+    else
+        image_free(t, slot);
+}
+
+/* A crop of the stored picture s that is a band of whole cell rows of all
+ * of it at width tw (x0 0, w all, rows r from source rows y0 .. y0 + h):
+ * the slot of the whole picture scaled to tw x (its rows x ch), made once
+ * per size and kept (one per id), *k0 the first row the crop shows. A
+ * scrolled picture (the LiveChat door: a=d,d=i then a=p one row further
+ * on, +-1 px) is then placed rows, not scaled, quantised and dithered
+ * again under a new serial each step. The crop rounds to the nearest row
+ * when within a quarter row of it. -1: not a band (today's crop path). */
+static int kit_band(vt_term *t, const kit_src *s, vt_u32 id, int y0, int h, int r, int tw, int ch, int *k0)
+{
+    long rows = ((long)s->h * r + h / 2) / h, num = (long)y0 * r, k = (num + h / 2) / h, d;
+    int i, slot = -1;
+    vt_image *m;
+    d = num - k * h;
+    if (d < 0)
+        d = -d;
+    if (d * 4 > h || rows < r || rows * ch > VT_SIXEL_MAX_H)
+        return -1;
+    if (k + r > rows)
+        k = rows - r;
+    for (i = 0; i < VT_IMG_SLOTS; i++) {
+        m = t->imgs[i];
+        if (m && m->pix && m->kind == 1 && m->kmaster && m->kid == id) {
+            if (m->refs)
+                return -1; /* on the screen as another placement: that one stays, this one is baked */
+            if (m->w == tw && m->h == rows * ch)
+                slot = i;
+            else
+                image_free(t, i); /* one size kept: the memory stays bounded */
+        }
+    }
+    if (slot < 0) {
+        slot = kit_picture(t, s, 0, 0, s->w, s->h, tw, (int)(rows * ch));
+        if (slot < 0)
+            return -1;
+        t->imgs[slot]->kmaster = 1;
+    }
+    *k0 = (int)k;
+    return slot;
+}
+
 /* Image `slot` with its top left at (col, row), the rows off the screen
  * cut; no scrolling, the cursor untouched (a relative placement). */
 static void kit_place_at(vt_term *t, int slot, int col, int row)
@@ -691,7 +1039,7 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
     int c = (int)KV(k, 'c'), r = (int)KV(k, 'r'), tw, th, slot;
     int cw = t->cell_w > 0 ? t->cell_w : 8, ch = t->cell_h > 0 ? t->cell_h : 16;
     int px0 = (int)KV(k, 'X'), py0 = (int)KV(k, 'Y');
-    int left, parent = -1, depth = 0, col = t->cx, row = t->cy;
+    int left, parent = -1, depth = 0, col = t->cx, row = t->cy, k0;
     int virt = KV(k, 'U') == 1; /* K31: a virtual placement, shown by placeholder cells */
     vt_image *im;
     if (KU(k, 'P')) {
@@ -752,9 +1100,16 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
         for (i = 0; i < VT_IMG_SLOTS; i++)
             if (t->imgs[i] && t->imgs[i]->pix && t->imgs[i]->kind == (virt ? 3 : 1) && t->imgs[i]->kid == id &&
                 t->imgs[i]->pid == KU(k, 'p'))
-                image_free(t, i);
+                kit_drop(t, i);
     }
-    slot = kit_picture(t, s, x0, y0, w, h, tw, th);
+    slot = -1;
+    if (s->band && id && !virt && parent < 0 && !px0 && !py0 && c && r && !x0 && w == s->w && tw == c * cw &&
+        th == r * ch)
+        slot = kit_band(t, s, id, y0, h, r, tw, ch, &k0);
+    if (slot < 0) {
+        k0 = -1;
+        slot = kit_picture(t, s, x0, y0, w, h, tw, th);
+    }
     if (slot < 0)
         return "ENOMEM:no room for the picture";
     im = t->imgs[slot];
@@ -768,10 +1123,11 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
         im->vr = (th + ch - 1) / ch;
         return 0;
     }
-    im->sx0 = x0; /* K35: what a frame switch rescales from */
-    im->sy0 = y0;
-    im->sw = w;
-    im->sh = h;
+    im->sx0 = k0 >= 0 ? 0 : x0; /* K35: what a frame switch rescales from (a scaled copy: all of it) */
+    im->sy0 = k0 >= 0 ? 0 : y0;
+    im->sw = k0 >= 0 ? s->w : w;
+    im->sh = k0 >= 0 ? s->h : h;
+    im->krow0 = k0 >= 0 ? k0 : 0;
     im->kz = KV(k, 'z');
     im->px0 = px0;
     im->py0 = py0;
@@ -782,7 +1138,7 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
         im->kdepth = depth;
         kit_place_at(t, slot, col, row);
     } else {
-        image_place(t, slot, KV(k, 'C') == 1 ? 2 : 3);
+        image_place_rows(t, slot, KV(k, 'C') == 1 ? 2 : 3, k0 >= 0 ? k0 : 0, k0 >= 0 ? r : -1);
     }
     t->kit_placed++;
     return 0;
@@ -938,7 +1294,7 @@ static void kit_delete(vt_term *t, const vt_kitty *k)
         if (!im || !im->pix || !im->kind)
             continue;
         if (im->kind == 1 && (lo == 'a' || (im->kid == id && (!KV(k, 'p') || im->pid == KU(k, 'p')))))
-            image_free(t, i);
+            kit_drop(t, i); /* a scaled copy stays with its data (kit_band); d=I frees it with the data below */
         else if (im->kind == 2 && up && (lo == 'a' || im->kid == id))
             image_free(t, i);
         else if (im->kind == 3 && lo == 'i' && im->kid == id && (!KV(k, 'p') || im->pid == KU(k, 'p')))
@@ -948,7 +1304,7 @@ static void kit_delete(vt_term *t, const vt_kitty *k)
 
 /* ---- K34: animation frames (a=f) ---- */
 
-/* the cube index of a stored picture's packed palette entry */
+/* the cube index of a stored picture's packed palette entry; 0 for an entry off the cube (an exact palette) */
 static void kit_root_map(const vt_image *im, vt_u8 *map)
 {
     int i, j;
@@ -967,7 +1323,9 @@ static long kit_cbpp(const vt_image *im)
     return im->fmt ? 4 : 1;
 }
 
-/* the root's picture as a canvas (cube indices; an RGBA picture is copied as it is), or 0 for no memory */
+/* the root's picture as a canvas (cube indices; an RGBA picture is copied as it is), or 0 for no memory. An entry
+ * of an exact palette (kit_index) that is not a cube colour is dithered to the cube at its pixel: looked up as a
+ * cube colour it had no index and the root's pixels turned clear when its frames started. */
 static vt_u8 *kit_root_canvas(const vt_image *im)
 {
     vt_u8 map[256], *c;
@@ -980,8 +1338,10 @@ static vt_u8 *kit_root_canvas(const vt_image *im)
         return c;
     }
     kit_root_map(im, map);
-    for (i = 0; i < n; i++)
-        c[i] = map[im->pix[i]];
+    for (i = 0; i < n; i++) {
+        vt_u8 e = im->pix[i];
+        c[i] = !e || map[e] ? map[e] : kit_quant(0xFF000000u | im->pal[e], (int)(i % im->w), (int)(i / im->w));
+    }
     return c;
 }
 
@@ -1147,12 +1507,16 @@ static void kit_anim_show(vt_term *t, vt_image *st)
                     break;
                 }
             p->serial = ++t->img_serial;
-        } else if (p->npal != 256) { /* first switch: the packed palette becomes the cube; the pen cache sees a new serial */
+        } else if (p->kexact || p->npal != 256) { /* first switch: the packed (or exact) palette becomes the cube; the
+                                                    * pen cache sees a new serial */
             for (c = 1; c < 256; c++)
                 p->pal[c] = kit_color(c);
             p->npal = 256;
+            p->kexact = 0;
             p->serial = ++t->img_serial;
         }
+        if (!p->fmt)
+            image_drop_rgb(t, p); /* the copy is of the root's pixels, not the frame's: the renderer would show the root */
         for (y = 0; y < (p->fmt ? 0 : p->h); y++) {
             long sy = p->sy0 + (long)y * p->sh / p->h;
             for (x = 0; x < p->w; x++)
@@ -1367,6 +1731,7 @@ static void kitty_run(vt_term *t, vt_kitty *k)
             s.bpp = im->fmt ? 4 : 1; /* an RGBA root reads back through kit_px as it is */
             s.w = im->w;
             s.h = im->h;
+            s.band = !im->anim; /* frames change the pixels under a kept copy: those keep baking */
             id = im->kid;
             err = kit_show(t, k, &s, id);
         }
@@ -1743,6 +2108,7 @@ int vt_cell_placeholder(const vt_term *t, int row, int col, vt_image_view *v, in
     v->fmt = im->fmt;
     v->opaque = im->opaque;
     v->rgb = im->rgb;
+    v->exact = im->kexact;
     v->kitty = 1;
     v->bg0 = 0;
     v->cw = im->cw;

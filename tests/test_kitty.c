@@ -288,7 +288,7 @@ static void png_goes_through_the_host_decoder(void)
     CHECK(vt_row_image(t, 0, 0, &v));
     CHECK_INT(v.w, 2);
     CHECK_INT(v.h, 1);
-    CHECK_INT(pixel(&v, 0, 0), 0x333333); /* 0x112233 on the cube */
+    CHECK_INT(pixel(&v, 0, 0), 0x112233); /* two colours: the exact palette (was 0x333333, the cube) */
     CHECK_INT(v.pix[1], 0);               /* the clear pixel */
     vt_free(t);
 }
@@ -364,6 +364,29 @@ static void moved_and_deleted_placements_damage_their_old_cells(void)
     CHECK(!vt_row_image(t, 5, 0, &v));
     CHECK(h_damaged(2, 5, 5));
     CHECK(h_damaged(2, 6, 5));
+    vt_free(t);
+}
+
+/* C=1 at the bottom: the cursor does not move, so nothing scrolls; the
+ * picture is cut at the screen's last row (kitty). The AmiExpress LiveChat
+ * door places half-scrolled pictures 64 rows tall with C=1 and the whole
+ * door scrolled up with each one. */
+static void c_equals_1_past_the_bottom_cuts_and_never_scrolls(void)
+{
+    vt_term *t = kitty_term(10, 5);
+    vt_image_view v;
+    int x, y;
+    h_put(t, "TOP");
+    h_put(t, "\033_Ga=t,i=7,f=24,s=2,v=2;");
+    h_put(t, rgb2x2);
+    h_put(t, "\033\\");
+    h_put(t, "\033[4;2H\033_Ga=p,i=7,c=2,r=4,C=1,q=2\033\\"); /* rows 3-6 of 0-4 */
+    CHECK(h_cell(t, 0, 0)->ch == 'T'); /* not scrolled */
+    CHECK(vt_row_image(t, 3, 0, &v));
+    CHECK(vt_row_image(t, 4, 0, &v));
+    vt_cursor(t, &x, &y);
+    CHECK_INT(x, 1);
+    CHECK_INT(y, 3);
     vt_free(t);
 }
 
@@ -1252,6 +1275,415 @@ static void k38_budget_is_x4_with_the_same_pixel_capacity(void)
     }
 }
 
+/* A 16 x 32 one-pixel black and white checker shrunk into one 8 x 16
+ * cell: every screen pixel covers two black and two white pixels, so it
+ * is grey. Taking one point per pixel made it solid black (aliasing),
+ * the way photos shrunk into a few cells came out jagged and noisy. */
+static void k38_send_checker(vt_term *t)
+{
+    static unsigned char px[16 * 32 * 3];
+    static char b64[16 * 32 * 3 / 3 * 4 + 8];
+    int x, y;
+    for (y = 0; y < 32; y++)
+        for (x = 0; x < 16; x++)
+            memset(px + (y * 16 + x) * 3, (x + y) & 1 ? 255 : 0, 3);
+    k38_b64(px, sizeof(px), b64);
+    h_put(t, "\033_Ga=T,f=24,s=16,v=32,c=1,r=1,C=1;");
+    h_put(t, b64);
+    h_put(t, "\033\\");
+}
+
+static void a_shrunk_picture_averages_instead_of_aliasing(void)
+{
+    int m;
+    for (m = 0; m <= 1; m++) {
+        vt_term *t = k38_term(m);
+        vt_image_view v;
+        int x, y, bad = 0;
+        k38_send_checker(t);
+        CHECK(vt_row_image(t, 0, 0, &v));
+        CHECK_INT(v.w, 8);
+        CHECK_INT(v.h, 16);
+        for (y = 0; y < v.h; y++)
+            for (x = 0; x < v.w; x++) {
+                vt_u32 c;
+                int g;
+                if (m) {
+                    const unsigned char *q = v.pix + (y * v.w + x) * 4;
+                    c = (vt_u32)q[0] << 16 | (vt_u32)q[1] << 8 | q[2];
+                } else
+                    c = pixel(&v, x, y);
+                g = (int)(c >> 8) & 255;
+                if (g < 0x60 || g > 0xA0)
+                    bad++;
+            }
+        CHECK_INT(bad, 0);
+        vt_free(t);
+    }
+}
+
+/* A flat white and blue picture (the LiveChat door's logo): two colours, the blue off the 6x6x6 cube. Cut to the
+ * cube with the ordered dither it showed a pattern on every screen; 255 colours or fewer keep their own, exactly.
+ * With the copy on (a screen short of pens) the RGB copy is made too, for the renderer's own-colour dither. */
+static void a_flat_two_colour_picture_shows_exact_colours_undithered(void)
+{
+    static unsigned char px[16 * 16 * 3];
+    static char b64[16 * 16 * 3 / 3 * 4 + 8];
+    int copy;
+    for (copy = 0; copy <= 1; copy++) {
+        vt_term *t = k38_term(0);
+        vt_image_view v;
+        int x, y, bad = 0;
+        vt_set_image_rgb_copy(t, copy);
+        for (y = 0; y < 16; y++)
+            for (x = 0; x < 16; x++) {
+                unsigned char *q = px + (y * 16 + x) * 3;
+                q[0] = y < 8 ? 0xFF : 0x20;
+                q[1] = y < 8 ? 0xFF : 0x50;
+                q[2] = y < 8 ? 0xFF : 0xC8;
+            }
+        k38_b64(px, sizeof(px), b64);
+        h_put(t, "\033_Ga=T,f=24,s=16,v=16,C=1;");
+        h_put(t, b64);
+        h_put(t, "\033\\");
+        CHECK(vt_row_image(t, 0, 0, &v));
+        CHECK_INT(v.fmt, 0);
+        CHECK_INT(v.exact, 1);
+        CHECK_INT(v.npal, 3); /* clear, white, blue: nothing else */
+        for (y = 0; y < 16; y++)
+            for (x = 0; x < 16; x++)
+                if (pixel(&v, x, y) != (y < 8 ? 0xFFFFFFu : 0x2050C8u))
+                    bad++;
+        CHECK_INT(bad, 0);
+        CHECK(copy ? v.rgb != 0 : v.rgb == 0);
+        vt_free(t);
+    }
+}
+
+/* A picture of more colours than a palette holds gets a palette cut from its own (kit_adapt); with the copy on, its own
+ * colours beside the indices are kit_sample's average like the indices, not one point a pixel: a 64 x 64 green
+ * checker over a red/blue gradient shown 64 x 32 (rows halved) averages to mid-green, a point sample is 0 or 255. */
+static void a_shrunk_many_colour_picture_copies_its_averaged_colours(void)
+{
+    static unsigned char px[64 * 64 * 3];
+    static char b64[64 * 64 * 3 / 3 * 4 + 8];
+    vt_term *t = k38_term(0);
+    vt_image_view v;
+    int x, y, bad = 0;
+    vt_set_image_rgb_copy(t, 1);
+    for (y = 0; y < 64; y++)
+        for (x = 0; x < 64; x++) {
+            unsigned char *q = px + (y * 64 + x) * 3;
+            q[0] = (unsigned char)(x * 4);
+            q[1] = (x + y) & 1 ? 255 : 0;
+            q[2] = (unsigned char)(y * 4);
+        }
+    k38_b64(px, sizeof(px), b64);
+    h_put(t, "\033_Ga=T,f=24,s=64,v=64,c=8,r=2,C=1;"); /* 64 x 32: rows halved, 2048 colours */
+    h_put(t, b64);
+    h_put(t, "\033\\");
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(v.exact, 1); /* 2048 colours: its own cut palette (was 0, the cube, until kit_adapt replaced the
+                              dither for stills: the cube's Bayer pattern striped a flat logo, 2026-11-11) */
+    CHECK(v.rgb != 0);
+    if (v.rgb)
+        for (y = 0; y < v.h; y++)
+            for (x = 0; x < v.w; x++) {
+                int g = v.rgb[(y * v.w + x) * 3 + 1];
+                if (g < 0x60 || g > 0xA0)
+                    bad++;
+            }
+    CHECK_INT(bad, 0);
+    vt_free(t);
+}
+
+/* A frame over a root of its own colours: the frames are cube canvases, and a root colour off the cube must land on
+ * the cube there, not turn clear (index 0) because no cube entry equals it. */
+/* 4 x 24 RGB, 4 cell rows of 6: pixel (x, y) is R y*10, G 200-y*5, B x*60
+ * (96 colours: the exact-colour path) */
+static const char tall4x24[] =
+    "AMgAAMg8AMh4AMi0CsMACsM8CsN4CsO0FL4AFL48FL54FL60HrkAHrk8Hrl4Hrm0KLQAKLQ8KLR4KLS0Mq8AMq88Mq94Mq+0"
+    "PKoAPKo8PKp4PKq0RqUARqU8RqV4RqW0UKAAUKA8UKB4UKC0WpsAWps8Wpt4Wpu0ZJYAZJY8ZJZ4ZJa0bpEAbpE8bpF4bpG0"
+    "eIwAeIw8eIx4eIy0gocAgoc8god4goe0jIIAjII8jIJ4jIK0ln0Aln08ln14ln20oHgAoHg8oHh4oHi0qnMAqnM8qnN4qnO0"
+    "tG4AtG48tG54tG60vmkAvmk8vml4vmm0yGQAyGQ8yGR4yGS00l8A0l880l940l+03FoA3Fo83Fp43Fq05lUA5lU85lV45lW0";
+
+static vt_u32 tall_px(int x, int y)
+{
+    return ((vt_u32)(y * 10) << 16) | ((vt_u32)(200 - y * 5) << 8) | (vt_u32)(x * 60);
+}
+
+static void store_tall(vt_term *t)
+{
+    h_put(t, "\033_Ga=t,i=7,f=24,s=4,v=24,q=2;");
+    h_put(t, tall4x24);
+    h_put(t, "\033\\");
+}
+
+/* screen row `row` shows the picture's source rows from y0 (1:1) */
+static int row_shows(const vt_term *t, int row, int y0)
+{
+    vt_image_view v;
+    int x, y;
+    if (!vt_row_image(t, row, 0, &v))
+        return 0;
+    for (y = 0; y < 6; y++)
+        for (x = 0; x < 4; x++)
+            if (pixel(&v, x, v.py + y) != tall_px(x, y0 + y))
+                return 0;
+    return 1;
+}
+
+/* The LiveChat door scrolls a stored picture by deleting its placement
+ * (a=d,d=i: the data stays) and placing the next crop of whole rows, with
+ * +-1 px jitter. Each step was a new picture: scaled, quantised and
+ * dithered again under a new serial (seconds on a 68020, the renderer's
+ * caches missed). A band of whole rows is now rows of one scaled copy. */
+static void scrolling_a_cropped_picture_does_not_rebuild_it(void)
+{
+    vt_term *t = kitty_term(20, 10);
+    vt_image_view v;
+    unsigned long made;
+    long serial;
+    store_tall(t);
+    made = vt_kitty_pictures_made(t);
+    h_put(t, "\033[1;1H\033_Ga=p,i=7,p=1,x=0,y=0,w=4,h=12,c=2,r=2,C=1,q=2\033\\");
+    CHECK(vt_row_image(t, 0, 0, &v));
+    serial = v.serial;
+    CHECK(v.h == 24 && v.py == 0);
+    CHECK(row_shows(t, 0, 0) && row_shows(t, 1, 6));
+    h_put(t, "\033_Ga=d,d=i,i=7\033\\");
+    CHECK(!vt_row_image(t, 0, 0, &v));
+    h_put(t, "\033_Ga=p,i=7,p=1,x=0,y=6,w=4,h=12,c=2,r=2,C=1,q=2\033\\");
+    CHECK(vt_row_image(t, 0, 0, &v) && v.py == 6 && v.serial == serial);
+    CHECK(row_shows(t, 0, 6) && row_shows(t, 1, 12));
+    h_put(t, "\033_Ga=d,d=i,i=7\033\\");
+    h_put(t, "\033_Ga=p,i=7,p=1,x=0,y=11,w=4,h=12,c=2,r=2,C=1,q=2\033\\"); /* -1 px: the nearest row */
+    CHECK(vt_row_image(t, 0, 0, &v) && v.py == 12 && v.serial == serial);
+    CHECK(row_shows(t, 0, 12) && row_shows(t, 1, 18));
+    CHECK(!vt_row_image(t, 2, 0, &v));
+    CHECK(vt_kitty_pictures_made(t) == made + 1);
+    /* the same placement id again, no delete: replaced in place, still the one copy */
+    h_put(t, "\033_Ga=p,i=7,p=1,x=0,y=0,w=4,h=12,c=2,r=2,C=1,q=2\033\\");
+    CHECK(row_shows(t, 0, 0) && row_shows(t, 1, 6));
+    CHECK(vt_kitty_pictures_made(t) == made + 1);
+    /* deleting the data frees the copy with it */
+    h_put(t, "\033_Ga=d,d=I,i=7\033\\");
+    CHECK(!vt_row_image(t, 0, 0, &v));
+    store_tall(t);
+    made = vt_kitty_pictures_made(t);
+    h_put(t, "\033_Ga=p,i=7,p=1,x=0,y=6,w=4,h=12,c=2,r=2,C=1,q=2\033\\");
+    CHECK(row_shows(t, 0, 6) && vt_kitty_pictures_made(t) == made + 1);
+    vt_free(t);
+}
+
+/* A crop that is not whole rows of the whole width keeps its own picture. */
+static void a_crop_off_the_rows_is_still_its_own_picture(void)
+{
+    vt_term *t = kitty_term(20, 10);
+    vt_image_view v;
+    unsigned long made;
+    store_tall(t);
+    made = vt_kitty_pictures_made(t);
+    h_put(t, "\033[1;1H\033_Ga=p,i=7,p=1,x=2,y=0,w=2,h=12,c=1,r=2,C=1,q=2\033\\"); /* the right half */
+    CHECK(vt_row_image(t, 0, 0, &v) && v.w == 2 && v.h == 12);
+    CHECK(pixel(&v, 0, 0) == tall_px(2, 0) && pixel(&v, 1, 7) == tall_px(3, 7));
+    h_put(t, "\033_Ga=d,d=i,i=7\033\\");
+    h_put(t, "\033_Ga=p,i=7,p=1,x=0,y=3,w=4,h=12,c=2,r=2,C=1,q=2\033\\"); /* half a row down */
+    CHECK(vt_row_image(t, 0, 0, &v) && v.w == 4 && v.h == 12);
+    CHECK(pixel(&v, 0, 0) == tall_px(0, 3) && pixel(&v, 3, 11) == tall_px(3, 14));
+    CHECK(vt_kitty_pictures_made(t) == made + 2);
+    vt_free(t);
+}
+
+/* ---- the LiveChat logo (owner, rig 3, 2026-11-11): a flat blue chat bubble (#3a70d8) with three white discs,
+ * edges anti-aliased, over black. The hub area-averages it when it scales, so its edges carry more than 255
+ * colours: the whole picture dropped to the 6x6x6 cube with a 4x4 Bayer dither, and the flat body (off the cube)
+ * showed a fine stripe pattern of two blues. 320 x 256 source, shown 2:1 (16 source rows a cell row of 8 px, as
+ * the door crops it). */
+#define LOGO_W 320
+#define LOGO_H 256
+#define LOGO_BODY 0x3A70D8u
+static unsigned char logo_px[LOGO_W * LOGO_H * 3];
+
+/* coverage 0..256 of the ellipse (cx, cy, rx, ry) over pixel (x, y): 16 x 16 samples */
+static int logo_cover(int x, int y, int cx, int cy, int rx, int ry)
+{
+    int i, j, n = 0;
+    for (j = 0; j < 16; j++)
+        for (i = 0; i < 16; i++) {
+            double dx = (x + (i + 0.5) / 16.0 - cx) / rx, dy = (y + (j + 0.5) / 16.0 - cy) / ry;
+            if (dx * dx + dy * dy <= 1.0)
+                n++;
+        }
+    return n;
+}
+
+static int logo_distinct;
+
+static void logo_make(void)
+{
+    static unsigned long seen[4096];
+    int x, y, d, i;
+    logo_distinct = 0;
+    for (y = 0; y < LOGO_H; y++)
+        for (x = 0; x < LOGO_W; x++) {
+            unsigned char *q = logo_px + (y * LOGO_W + x) * 3;
+            int body = logo_cover(x, y, 160, 128, 150, 118), disc = 0, c;
+            unsigned long rgb;
+            for (d = 0; d < 3; d++)
+                disc += logo_cover(x, y, 90 + d * 70, 128, 22, 22);
+            for (c = 0; c < 3; c++) {
+                int b = (int)(LOGO_BODY >> (16 - 8 * c)) & 255;
+                int v = (b * (256 - disc) + 255 * disc) / 256; /* a white disc over the body */
+                q[c] = (unsigned char)(v * body / 256);       /* the body over black */
+            }
+            if (y < 4) { /* a ramp above the body: anti-aliasing alone stays under 256 colours, a logo's shading not */
+                q[0] = (unsigned char)(x & 255);
+                q[1] = (unsigned char)(x / 256 * 128 + y * 8);
+                q[2] = 40;
+            }
+            rgb = (unsigned long)q[0] << 16 | (unsigned long)q[1] << 8 | q[2];
+            for (i = 0; i < logo_distinct && seen[i] != rgb; i++)
+                ;
+            if (i == logo_distinct && logo_distinct < 4096)
+                seen[logo_distinct++] = rgb;
+        }
+}
+
+static int logo_is_body(int x, int y)
+{
+    const unsigned char *q = logo_px + (y * LOGO_W + x) * 3;
+    return ((unsigned long)q[0] << 16 | (unsigned long)q[1] << 8 | q[2]) == LOGO_BODY;
+}
+
+/* pixel (x, y) of the source part (sx0, sy0, sw, sh) scaled to tw x th covers only flat body (one pixel's margin) */
+static int logo_flat(int x, int y, int tw, int th, int sx0, int sy0, int sw, int sh)
+{
+    int a0 = sx0 + (int)((long)x * sw / tw) - 1, a1 = sx0 + (int)((long)(x + 1) * sw / tw) + 1;
+    int b0 = sy0 + (int)((long)y * sh / th) - 1, b1 = sy0 + (int)((long)(y + 1) * sh / th) + 1, i, j;
+    if (a0 < 0 || b0 < 0 || a1 >= LOGO_W || b1 >= LOGO_H)
+        return 0;
+    for (j = b0; j <= b1; j++)
+        for (i = a0; i <= a1; i++)
+            if (!logo_is_body(i, j))
+                return 0;
+    return 1;
+}
+
+static void logo_store(vt_term *t)
+{
+    static char b64[LOGO_W * LOGO_H * 3 / 3 * 4 + 8];
+    k38_b64(logo_px, sizeof(logo_px), b64);
+    h_put(t, "\033_Ga=t,i=9,f=24,s=320,v=256,q=2;");
+    h_put(t, b64);
+    h_put(t, "\033\\");
+}
+
+static vt_term *logo_term(int copy)
+{
+    vt_term *t = h_new(80, 30, VT_XTERM);
+    vt_set_cell_pixels(t, 8, 8); /* DCTelnet's cells (vtbuiltin.c) */
+    vt_set_image_rgb_copy(t, copy);
+    return t;
+}
+
+static void a_flat_logo_with_antialiased_edges_stays_solid(void)
+{
+    int copy;
+    logo_make();
+    CHECK(logo_distinct > 255); /* the case: more colours than a palette holds */
+    for (copy = 0; copy <= 1; copy++) {
+        vt_term *t = logo_term(copy);
+        vt_image_view v;
+        int x, y, flat = 0, off = 0, idx = -1, idxs = 0;
+        logo_store(t);
+        h_put(t, "\033[1;1H\033_Ga=p,i=9,p=1,x=0,y=0,w=320,h=128,c=20,r=8,C=1,q=2\033\\");
+        CHECK(vt_row_image(t, 0, 0, &v));
+        CHECK_INT(v.fmt, 0);
+        CHECK(v.npal <= 256);
+        for (y = 0; y < v.h; y++)
+            for (x = 0; x < v.w; x++) {
+                if (!logo_flat(x, y, v.w, v.h, 0, 0, LOGO_W, LOGO_H))
+                    continue;
+                flat++;
+                if (pixel(&v, x, y) != LOGO_BODY)
+                    off++;
+                if (v.pix[y * v.w + x] != idx) {
+                    idxs += idx >= 0;
+                    idx = v.pix[y * v.w + x];
+                }
+            }
+        CHECK(flat > 5000); /* most of the bubble */
+        CHECK_INT(off, 0);  /* every flat pixel is the body colour itself */
+        CHECK_INT(idxs, 0); /* ... and one index */
+        vt_free(t);
+    }
+}
+
+/* The door scrolls the logo a cell row (16 source rows) at a time, and once off the rows (8 px: its own picture).
+ * Every screen row of the flat body equals the rows above and below it: no lighter or darker line between the
+ * cell rows, the crops or the dither's tiles. */
+static void scrolled_picture_has_no_seam_rows(void)
+{
+    vt_term *t;
+    int step, seams = 0, rows = 0;
+    logo_make();
+    t = logo_term(0);
+    logo_store(t);
+    for (step = 0; step <= 9; step++) {
+        static unsigned long line[64][160];
+        static unsigned char isflat[64][160];
+        int y0 = step < 9 ? step * 16 : 8, row, y, x;
+        char keys[128];
+        h_put(t, "\033_Ga=d,d=i,i=9,q=2\033\\");
+        snprintf(keys, sizeof(keys), "\033[1;1H\033_Ga=p,i=9,p=1,x=0,y=%d,w=320,h=128,c=20,r=8,C=1,q=2\033\\", y0);
+        h_put(t, keys);
+        memset(isflat, 0, sizeof(isflat));
+        for (row = 0; row < 8; row++) {
+            vt_image_view v;
+            int band;
+            if (!vt_row_image(t, row, 0, &v)) {
+                CHECK(0);
+                continue;
+            }
+            band = v.h == 128; /* rows of the whole picture scaled once, else the crop's own */
+            for (y = 0; y < 8; y++)
+                for (x = 0; x < 160 && x < v.w; x++) {
+                    int py = v.py + y;
+                    line[row * 8 + y][x] = pixel(&v, x, py);
+                    isflat[row * 8 + y][x] = (unsigned char)(band ? logo_flat(x, py, v.w, v.h, 0, 0, LOGO_W, LOGO_H)
+                                                                  : logo_flat(x, py, v.w, v.h, 0, y0, LOGO_W, 128));
+                }
+        }
+        for (y = 1; y < 64; y++) {
+            int diff = 0, n = 0;
+            for (x = 0; x < 160; x++)
+                if (isflat[y][x] && isflat[y - 1][x]) {
+                    n++;
+                    diff += line[y][x] != line[y - 1][x];
+                }
+            if (n >= 16) {
+                rows++;
+                seams += diff > 0;
+            }
+        }
+    }
+    CHECK(rows > 300);
+    CHECK_INT(seams, 0);
+    vt_free(t);
+}
+
+static void a_frame_over_an_exact_colour_root_keeps_the_root_pixels(void)
+{
+    vt_term *t = kitty_term(10, 5);
+    h_put(t, "\033_Ga=t,i=5,f=24,s=2,v=2;IFDIIFDIIFDIIFDI\033\\"); /* 2 x 2 of 0x2050C8 */
+    h_put(t, "\033_Ga=f,i=5,c=1,f=24,s=1,v=1,x=0,y=0;/wAA\033\\"); /* frame 2: a red pixel at (0,0) */
+    CHECK(vt_kitty_frame_px(t, 5, 1, 1, 1) > 0);
+    CHECK(vt_kitty_frame_px(t, 5, 2, 1, 1) > 0);
+    CHECK(vt_kitty_frame_px(t, 5, 2, 1, 0) > 0);
+    vt_free(t);
+}
+
 static void k38_switching_off_converts_and_on_leaves_indices(void)
 {
     vt_term *t = k38_term(1);
@@ -1585,6 +2017,7 @@ void suite_kitty(void)
     quiet_keys_hide_the_replies();
     delete_by_id_removes_the_image();
     moved_and_deleted_placements_damage_their_old_cells();
+    c_equals_1_past_the_bottom_cuts_and_never_scrolls();
     putting_an_unknown_id_says_enoent();
     a_picture_over_the_memory_limit_says_enomem();
     stored_pictures_give_way_to_new_ones();
@@ -1622,6 +2055,14 @@ void suite_kitty(void)
     k38_an_opaque_picture_says_so_and_a_placement_scales_the_rgba();
     k38_budget_is_x4_with_the_same_pixel_capacity();
     k38_switching_off_converts_and_on_leaves_indices();
+    a_shrunk_picture_averages_instead_of_aliasing();
+    a_flat_two_colour_picture_shows_exact_colours_undithered();
+    a_shrunk_many_colour_picture_copies_its_averaged_colours();
+    a_frame_over_an_exact_colour_root_keeps_the_root_pixels();
+    scrolling_a_cropped_picture_does_not_rebuild_it();
+    a_crop_off_the_rows_is_still_its_own_picture();
+    a_flat_logo_with_antialiased_edges_stays_solid();
+    scrolled_picture_has_no_seam_rows();
     k39_frame_canvases_stop_at_the_x4_budget_in_both_modes();
     k39_rgba_frames_keep_exact_bytes_and_alpha();
 }

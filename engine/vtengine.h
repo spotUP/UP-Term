@@ -388,6 +388,7 @@ typedef struct vt_image_view {
     int fmt;            /* 0 pix holds indices into pal; 1 it holds w x h x 4 bytes R G B A (pal, npal unused) */
     int opaque;         /* fmt 1: no pixel has an alpha below 255 */
     const vt_u8 *rgb;   /* fmt 0: w x h x 3 bytes R G B, the picture's own colours (vt_set_image_rgb_copy was on when it was made); 0 none */
+    int exact;          /* kitty fmt 0: pal holds the picture's own colours (255 or fewer) or 255 cut from them, undithered; 0 a cube cut */
     int kitty;          /* a kitty picture: its index 0 (fmt 0) is transparent, draw nothing there; sixel: the background */
     int cw, ch;         /* the cell size the image was placed with */
     int col0;           /* the grid column of the image's left edge on this
@@ -687,6 +688,7 @@ void vt_set_image_rgb(vt_term *t, int on);
  * animated and frame-edited pictures drop theirs. */
 void vt_set_image_rgb_copy(vt_term *t, int on);
 unsigned long vt_kitty_copy_made(const vt_term *t); /* RGB copies made (a test sentinel) */
+unsigned long vt_kitty_pictures_made(const vt_term *t); /* pictures scaled and installed (a test sentinel) */
 /* Pictures freed so far (delete, replace, clear, eviction) and whether the picture of a view's serial is still alive:
  * a renderer holding resources per picture lets them go when the serial is gone. */
 unsigned long vt_image_frees(const vt_term *t);
