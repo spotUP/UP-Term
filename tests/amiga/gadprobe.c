@@ -62,6 +62,14 @@ static void gadget(struct Window *w, const char *list, struct Gadget *g)
     put(" box="); puthex((unsigned short)g->LeftEdge); put(","); puthex((unsigned short)g->TopEdge); put(",");
     puthex((unsigned short)g->Width); put(","); puthex((unsigned short)g->Height);
     put(" SI="); put(g->SpecialInfo ? "1" : "0");
+    if (type == GTYP_CUSTOMGADGET && g->SpecialInfo) {          /* boopsi string gadget: strgclass in the chain -> SpecialInfo is a StringInfo */
+        struct IClass *c = OCLASS((Object *)g);
+        int d, sg = 0;
+        for (d = 0; c && d < 8; d++, c = c->cl_Super)
+            if (c->cl_ID && c->cl_ID[0] == 's' && c->cl_ID[1] == 't' && c->cl_ID[2] == 'r' && c->cl_ID[3] == 'g' && c->cl_ID[4] == 'c') sg = 1;
+        if (sg) type = GTYP_STRGADGET;                         /* reuse the StringInfo print below */
+        if (sg) put(" BSTR=1");
+    }
     if (type == GTYP_STRGADGET && g->SpecialInfo) {
         struct StringInfo *si = (struct StringInfo *)g->SpecialInfo;
         put(" EXT="); put(si->Extension ? "1" : "0");
@@ -72,7 +80,7 @@ static void gadget(struct Window *w, const char *list, struct Gadget *g)
             put(" AP="); puthex(se->ActivePens[0]); put(","); puthex(se->ActivePens[1]);
         }
     }
-    if (type == GTYP_CUSTOMGADGET) {
+    if ((g->GadgetType & GTYP_GTYPEMASK) == GTYP_CUSTOMGADGET) {
         struct IClass *cl = OCLASS((Object *)g);
         int d;
         put(" CL=");
