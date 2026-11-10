@@ -322,6 +322,15 @@ static void canvas_dirty_and_serial(void)
     CHECK_INT(cv_get(c, 4, 349), 0);
     CHECK(cv_open(0, 5, 16) == NULL);
     CHECK(cv_open(2000, 5, 16) == NULL);
+    /* the row table holds CV_ROWS_MAX rows: a taller canvas is refused by both creators, never overflowed */
+    CHECK(cv_open(4, CV_ROWS_MAX + 1, 16) == NULL);
+    {
+        unsigned char one[4];
+        struct cv *tall = cv_open(1, CV_ROWS_MAX, 16);
+        CHECK(tall != NULL && tall->h == CV_ROWS_MAX && tall->row[CV_ROWS_MAX - 1] == tall->pix + CV_ROWS_MAX - 1);
+        cv_close(tall);
+        CHECK(cv_open_pix(4, CV_ROWS_MAX + 1, 16, one) == NULL);
+    }
     cv_close(c);
 }
 
