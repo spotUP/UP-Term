@@ -77,6 +77,15 @@ typedef struct flatshared {
     ULONG dface;                /* DOPUS-BUTTON-NO-RING sentinel: raised Program DrawBox calls whose ring was painted in the face pen */
     ULONG sgseen, sgext;        /* INPUT-GROUND sentinels: string gadgets walked / of them with a StringExtend */
     ULONG sground;              /* INPUT-GROUND sentinel: string inputs whose StringExtend ground pens were set to the selection pen */
+    /* INPUT-GROUND DIAGNOSTIC (temporary, revert with git revert): what the hooks saw around input fields */
+    ULONG sgcalls, sgn;         /* string_gadget_at calls / gadgets walked in the last call */
+    int16_t wx0, wy0, wx1, wy1; /* the last DOpus FieldBox box (watch box) */
+    uint8_t wset, nrec;
+    struct {
+        uint8_t kind, pen, drmd, el;   /* kind: 'F' RectFill inside watch box or string gadget, 'D' FieldBox call, 'S' frame string_gadget_at call */
+        int16_t x0, y0, x1, y1;
+        char task[10];
+    } rec[16];
     ULONG dnopix;               /* DOPUS-BUTTON-NO-RING: face reads that failed (ReadPixel < 0), border fell back to the background pen */
     flat_swap d5sw;             /* DOPUS-LOCK-ICONIFY: the dopusiclass h_Entry swap (lock / iconify images) */
     uintptr_t *d5slot;
