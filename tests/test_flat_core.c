@@ -580,6 +580,11 @@ static void test_input_ground(void)
     CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0, 1, 1, 5), 0);               /* no GACT_STRINGEXTEND */
     CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0, 0x2000, 0, 5), 0);          /* no Extension */
     CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0, 0x2000, 1, -1), 0);         /* no pen on this screen */
+    /* INPUT-TEXT: DOpus path field has Pens[0] = 1 (414868 on the flat palette); the screen TEXTPEN replaces it */
+    CHECK_INT(flat_input_text_pen(2, 4), 2);
+    CHECK_INT(flat_input_text_pen(2, 2), -1);              /* depth < 3 */
+    CHECK_INT(flat_input_text_pen(16, 4), -1);             /* pen past the colours */
+    CHECK_INT(flat_input_text_pen(-1, 8), -1);
     CHECK_INT(flat_string_ext(4, 0, 0x2000 | 1, 1, 1, 0), 1);
     CHECK_INT(flat_string_ext(4, 0, 1, 1, 1, 0), 0);            /* no GACT_STRINGEXTEND */
     CHECK_INT(flat_string_ext(1, 0, 0x2000, 1, 1, 0), 0);       /* boolean gadget */

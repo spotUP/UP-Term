@@ -345,6 +345,11 @@ int flat_string_has_extend(unsigned flags, unsigned activation)
     return (flags & 0x0400) != 0 || (activation & 0x2000) != 0;
 }
 
+int flat_input_text_pen(int dri_text_pen, int depth)
+{
+    return (depth >= 3 && depth <= 8 && dri_text_pen >= 0 && dri_text_pen < (1 << depth)) ? dri_text_pen : -1;
+}
+
 int flat_string_ext(unsigned gadget_type, unsigned flags, unsigned activation, int has_info, int has_ext, int strg_chain)
 {
     unsigned t = gadget_type & 0x7;

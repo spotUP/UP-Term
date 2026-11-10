@@ -1134,7 +1134,10 @@ static void g9_ground(Object *obj, Msg msg)
     if (!si || !si->Extension)
         r->sgnoext++;
     if (flat_string_render_write(msg->MethodID, si != NULL, g->Flags, g->Activation, si && si->Extension != NULL, pen)) {
+        int tpen = gi->gi_DrInfo ? flat_input_text_pen(gi->gi_DrInfo->dri_Pens[TEXTPEN], gi->gi_DrInfo->dri_Depth) : -1;
         si->Extension->Pens[1] = si->Extension->ActivePens[1] = (UBYTE)pen;
+        if (tpen >= 0)          /* INPUT-TEXT: readable text on the ground, whatever pen the app chose (DOpus path: BLOCKPEN) */
+            si->Extension->Pens[0] = si->Extension->ActivePens[0] = (UBYTE)tpen;
         r->sground++;
     }
 }

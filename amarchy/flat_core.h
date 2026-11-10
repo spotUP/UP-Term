@@ -277,6 +277,10 @@ int flat_dopus_face_pen(long read, int pen_back);
  * every left/right edge within 6 px and every top/bottom edge within 4 (the GadTools bevel is 6 out horizontally, 3 vertically; a group box
  * 10 px out around several inputs is not). */
 int flat_input_pen(const flat_state *s, int depth);
+/* INPUT-TEXT: the text pen of an input is the screen's DrawInfo TEXTPEN (what GadTools inputs get), not the pen number the app chose:
+ * Directory Opus gives its path field StringExtend Pens[0] = 1, the BLOCKPEN slot, which the flat palette holds as 414868, nearly the
+ * ground. dri_text_pen for a screen of this depth, -1 when it lies outside the depth (depth < 3 or pen past the colours: keep the app's). */
+int flat_input_text_pen(int dri_text_pen, int depth);
 int flat_string_has_extend(unsigned flags, unsigned activation);   /* 1 when the StringInfo.Extension is valid */
 int flat_string_ext(unsigned gadget_type, unsigned flags, unsigned activation, int has_info, int has_ext, int strg_chain);   /* strg_chain: boopsi gadget (type 5) whose class chain holds strgclass; also accepted */
 /* INPUT-GROUND (strgclass dispatcher): 1 when a dispatch of method (FLAT_GM_RENDER only) on a gadget with SpecialInfo, GFLG/GACT_STRINGEXTEND
