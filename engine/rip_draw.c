@@ -81,8 +81,16 @@ unsigned char rip_font8_row(int ch, int r)
     return font8[ch & 255][r & 7];
 }
 
+static long gput_calls; /* sentinel: per-pixel writes (rip_gput_calls) */
+
+long rip_gput_calls(void)
+{
+    return gput_calls;
+}
+
 static void gput(const struct rip_gfx *g, struct cv *cv, int x, int y, int col)
 {
+    gput_calls++;
     if (x < g->vx0 || x > g->vx1 || y < g->vy0 || y > g->vy1)
         return;
     if (g->wmode == 1) {
@@ -110,11 +118,49 @@ static int fill_bit(const struct rip_gfx *g, int x, int y)
     return (p[y & 7] >> (7 - (x & 7))) & 1;
 }
 
+/* One row of the fill style from x0 to x1 inclusive. Copy mode writes the row whole: clipped once to
+ * the viewport and canvas, solid rows through cv_hspan, patterned rows built in a small buffer and
+ * copied with cv_hrow, one dirty update per piece. XOR needs the old pixel, so it stays per pixel
+ * through gput. Pixel-exact with the per-pixel loop (tests: bars_row_path_is_pixel_exact). */
 static void fill_span(const struct rip_gfx *g, struct cv *cv, int x0, int x1, int y)
 {
+    const unsigned char *p = g->fpat == 12 ? g->upat : fill_tab[g->fpat < 0 || g->fpat > 11 ? 1 : g->fpat];
+    unsigned char bits = p[y & 7];
     int x;
-    for (x = x0; x <= x1; x++)
-        gput(g, cv, x, y, fill_bit(g, x, y) ? g->fcolor : 0);
+    if (g->wmode == 1) {
+        for (x = x0; x <= x1; x++)
+            gput(g, cv, x, y, fill_bit(g, x, y) ? g->fcolor : 0);
+        return;
+    }
+    if (y < g->vy0 || y > g->vy1)
+        return;
+    if (x0 < g->vx0)
+        x0 = g->vx0;
+    if (x1 > g->vx1)
+        x1 = g->vx1;
+    if (x0 < 0)
+        x0 = 0;
+    if (x1 >= cv->w)
+        x1 = cv->w - 1;
+    if (x1 < x0)
+        return;
+    if (bits == 0xFF || bits == 0) {
+        cv_hspan(cv, x0, x1, y, bits ? g->fcolor : 0);
+        return;
+    }
+    {
+        unsigned char tile[8], buf[128];
+        int i;
+        for (i = 0; i < 8; i++)
+            tile[i] = (bits >> (7 - i)) & 1 ? (unsigned char)g->fcolor : 0;
+        for (x = x0; x <= x1;) {
+            int n = x1 - x + 1 > 128 ? 128 : x1 - x + 1;
+            for (i = 0; i < n; i++)
+                buf[i] = tile[(x + i) & 7];
+            cv_hrow(cv, x, y, buf, n);
+            x += n;
+        }
+    }
 }
 
 static unsigned line_pattern(const struct rip_gfx *g)
