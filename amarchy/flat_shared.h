@@ -72,9 +72,6 @@ typedef struct flatshared {
     ULONG bhits;                /* INSTALLER-BORDER-BUTTON: Border-render button erases drawn as the rounded flat fill (the sentinel) */
     ULONG dface;                /* DOPUS-BUTTON-NO-RING sentinel: raised Program DrawBox calls whose ring was painted in the face pen */
     ULONG dnopix;               /* DOPUS-BUTTON-NO-RING: face reads that failed (ReadPixel < 0), border fell back to the background pen */
-    /* DIAG s71 agent 27 (temporary): info-frame shaped d4 box draws (height 11..15, width > 150) */
-    ULONG dg_n, dg_acc;         /* shaped calls; all d4 draws whose final pen_line equals the state's accent line pen */
-    LONG dg_el, dg_rec, dg_x0, dg_y0, dg_x1, dg_y1, dg_fp, dg_pl, dg_side, dg_rgb, dg_ring; /* the last shaped call */
     flat_swap d5sw;             /* DOPUS-LOCK-ICONIFY: the dopusiclass h_Entry swap (lock / iconify images) */
     uintptr_t *d5slot;
     ULONG d5draws;              /* sentinel: lock / iconify images drawn by flat */

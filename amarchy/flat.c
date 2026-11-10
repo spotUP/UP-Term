@@ -942,14 +942,6 @@ static int d4_flat_pens(int el, struct RastPort *rp, ULONG shine, ULONG back, in
                 r->dnopix++;
             st.pen_line = (uint8_t)flat_dopus_face_pen(fp, (int)back);
             r->dface++;
-            r->dg_fp = fp;   /* DIAG s71 agent 27 */
-        }
-        r->dg_ring = flat_dopus_ring(el, recessed ? 1 : 0);
-        if (st.pen_line == r->st.pen_line)   /* DIAG s71 agent 27 */
-            r->dg_acc++;
-        if (y1 - y0 + 1 >= 11 && y1 - y0 + 1 <= 15 && x1 - x0 + 1 > 150) {   /* DIAG s71 agent 27 */
-            r->dg_n++; r->dg_el = el; r->dg_rec = recessed; r->dg_x0 = x0; r->dg_y0 = y0; r->dg_x1 = x1; r->dg_y1 = y1;
-            r->dg_pl = st.pen_line; r->dg_side = st.side; r->dg_rgb = d4_rgb(rp, (ULONG)r->dg_fp);
         }
         flat_dopus_box_draw(&st, x0, y0, x1, y1, c2_fill, rp);
     }
@@ -2120,7 +2112,6 @@ static void print_status(void)
     int apx = 0, sring[16][9], sn = 0;
     uint32_t dsum[FLAT_EL_COUNT] = { 0, 0, 0 };
     unsigned long dbevel = 0, dface = 0, dnopix = 0, d5draws = 0;
-    unsigned long dgn = 0, dgacc = 0; long dgv[11] = { 0 };   /* DIAG s71 agent 27 */
     unsigned long lbeat = 0, lnref = 0;
     struct Task *ltask = 0;
     unsigned lstage = 0, lref = 0;
@@ -2132,7 +2123,6 @@ static void print_status(void)
         copy = r->st;
         dfound = r->dfound; dver = r->dver; drev = r->drev; dreason = r->dreason; dmask = r->dmask;
         dinst = d4_installed(r); dcalls = r->dcalls; dflat = r->dflat; dbevel = r->dbevel; dface = r->dface; dnopix = r->dnopix; d5draws = r->d5draws;
-        dgn = r->dg_n; dgacc = r->dg_acc; dgv[0] = r->dg_el; dgv[1] = r->dg_rec; dgv[2] = r->dg_x0; dgv[3] = r->dg_y0; dgv[4] = r->dg_x1; dgv[5] = r->dg_y1; dgv[6] = r->dg_fp; dgv[7] = r->dg_pl; dgv[8] = r->dg_side; dgv[9] = r->dg_rgb; dgv[10] = r->dg_ring;   /* DIAG */
         memcpy(dsum, r->dsum, sizeof dsum);
         finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat;
         rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits; mhits = r->mhits; bhits = r->bhits;
@@ -2179,17 +2169,6 @@ static void print_status(void)
         put_word(line, &n, " face=");               put_num(line, &n, dface);
         put_word(line, &n, " nopix=");              put_num(line, &n, dnopix);
         put_word(line, &n, " d5=");                 put_num(line, &n, d5draws);
-        put_word(line, &n, " DIAG n=");             put_num(line, &n, dgn);
-        put_word(line, &n, " acc=");                put_num(line, &n, dgacc);
-        put_word(line, &n, " el=");                 put_num(line, &n, dgv[0]);
-        put_word(line, &n, " rec=");                put_num(line, &n, dgv[1]);
-        put_word(line, &n, " rect=");               put_num(line, &n, dgv[2]); put_word(line, &n, ","); put_num(line, &n, dgv[3]); put_word(line, &n, ","); put_num(line, &n, dgv[4]); put_word(line, &n, ","); put_num(line, &n, dgv[5]);
-        put_word(line, &n, " fp=");                 put_num(line, &n, dgv[6]);
-        put_word(line, &n, " pl=");                 put_num(line, &n, dgv[7]);
-        put_word(line, &n, " side=");               put_num(line, &n, dgv[8]);
-        put_word(line, &n, " rgb=");                put_num(line, &n, dgv[9]);
-        put_word(line, &n, " ring=");               put_num(line, &n, dgv[10]);
-        put_word(line, &n, " accpen=");             put_num(line, &n, copy.pen_line);
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
