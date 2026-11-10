@@ -1275,6 +1275,53 @@ static void k38_budget_is_x4_with_the_same_pixel_capacity(void)
     }
 }
 
+/* A 16 x 32 one-pixel black and white checker shrunk into one 8 x 16
+ * cell: every screen pixel covers two black and two white pixels, so it
+ * is grey. Taking one point per pixel made it solid black (aliasing),
+ * the way photos shrunk into a few cells came out jagged and noisy. */
+static void k38_send_checker(vt_term *t)
+{
+    static unsigned char px[16 * 32 * 3];
+    static char b64[16 * 32 * 3 / 3 * 4 + 8];
+    int x, y;
+    for (y = 0; y < 32; y++)
+        for (x = 0; x < 16; x++)
+            memset(px + (y * 16 + x) * 3, (x + y) & 1 ? 255 : 0, 3);
+    k38_b64(px, sizeof(px), b64);
+    h_put(t, "\033_Ga=T,f=24,s=16,v=32,c=1,r=1,C=1;");
+    h_put(t, b64);
+    h_put(t, "\033\\");
+}
+
+static void a_shrunk_picture_averages_instead_of_aliasing(void)
+{
+    int m;
+    for (m = 0; m <= 1; m++) {
+        vt_term *t = k38_term(m);
+        vt_image_view v;
+        int x, y, bad = 0;
+        k38_send_checker(t);
+        CHECK(vt_row_image(t, 0, 0, &v));
+        CHECK_INT(v.w, 8);
+        CHECK_INT(v.h, 16);
+        for (y = 0; y < v.h; y++)
+            for (x = 0; x < v.w; x++) {
+                vt_u32 c;
+                int g;
+                if (m) {
+                    const unsigned char *q = v.pix + (y * v.w + x) * 4;
+                    c = (vt_u32)q[0] << 16 | (vt_u32)q[1] << 8 | q[2];
+                } else
+                    c = pixel(&v, x, y);
+                g = (int)(c >> 8) & 255;
+                if (g < 0x60 || g > 0xA0)
+                    bad++;
+            }
+        CHECK_INT(bad, 0);
+        vt_free(t);
+    }
+}
+
 static void k38_switching_off_converts_and_on_leaves_indices(void)
 {
     vt_term *t = k38_term(1);
@@ -1646,6 +1693,7 @@ void suite_kitty(void)
     k38_an_opaque_picture_says_so_and_a_placement_scales_the_rgba();
     k38_budget_is_x4_with_the_same_pixel_capacity();
     k38_switching_off_converts_and_on_leaves_indices();
+    a_shrunk_picture_averages_instead_of_aliasing();
     k39_frame_canvases_stop_at_the_x4_budget_in_both_modes();
     k39_rgba_frames_keep_exact_bytes_and_alpha();
 }

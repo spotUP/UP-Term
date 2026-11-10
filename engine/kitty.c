@@ -125,6 +125,44 @@ static vt_u32 kit_px(const kit_src *s, long i)
     return ((vt_u32)(s->bpp == 4 ? q[3] : 255) << 24) | ((vt_u32)q[0] << 16) | ((vt_u32)q[1] << 8) | q[2];
 }
 
+/* One pixel of the part (x0, y0, w, h) of src scaled to tw x th, at
+ * (x, y). Enlarging takes the nearest source pixel. Shrinking averages
+ * the source area the pixel covers, weighted by alpha so clear pixels do
+ * not darken the edge: up to 4 x 4 evenly spread samples, so the cost per
+ * pixel stays bounded on a 68020 however large the source is. Taking one
+ * point per pixel aliases photos into noise the dither then magnifies. */
+static vt_u32 kit_sample(const kit_src *s, int x0, int y0, int w, int h, int tw, int th, int x, int y)
+{
+    long sx0 = (long)x * w / tw, sx1 = (long)(x + 1) * w / tw;
+    long sy0 = (long)y * h / th, sy1 = (long)(y + 1) * h / th;
+    long nx = sx1 - sx0, ny = sy1 - sy0, sa = 0, sr = 0, sg = 0, sb = 0;
+    int kx, ky, i, j, n;
+    if (nx <= 1 && ny <= 1)
+        return kit_px(s, (y0 + sy0) * s->w + x0 + sx0);
+    if (nx < 1)
+        nx = 1;
+    if (ny < 1)
+        ny = 1;
+    kx = nx < 4 ? (int)nx : 4;
+    ky = ny < 4 ? (int)ny : 4;
+    n = kx * ky;
+    for (j = 0; j < ky; j++) {
+        long row = (y0 + sy0 + (long)j * ny / ky) * s->w + x0 + sx0;
+        for (i = 0; i < kx; i++) {
+            vt_u32 p = kit_px(s, row + (long)i * nx / kx);
+            long a = (long)(p >> 24);
+            sa += a;
+            sr += a * (long)((p >> 16) & 255);
+            sg += a * (long)((p >> 8) & 255);
+            sb += a * (long)(p & 255);
+        }
+    }
+    if (!sa)
+        return 0;
+    return ((vt_u32)((sa + n / 2) / n) << 24) | ((vt_u32)((sr + sa / 2) / sa) << 16) |
+           ((vt_u32)((sg + sa / 2) / sa) << 8) | (vt_u32)((sb + sa / 2) / sa);
+}
+
 /* ---- memory (D7): stored pictures that are not on the screen go first ---- */
 
 static int kit_room(vt_term *t, long bytes)
@@ -148,7 +186,7 @@ static int kit_room(vt_term *t, long bytes)
 }
 
 /* The part (x0, y0, w, h) of src as indices into a palette of tw x th
- * pixels in o (nearest pixel, dithered), its colours packed to the ones in
+ * pixels in o (kit_sample, dithered), its colours packed to the ones in
  * use. The one maker of index pictures: kit_make and the RGB-off conversion. */
 static void kit_index(const kit_src *s, int x0, int y0, int w, int h, int tw, int th, vt_u8 *o, vt_u32 *pal,
                       int *npal)
@@ -157,10 +195,8 @@ static void kit_index(const kit_src *s, int x0, int y0, int w, int h, int tw, in
     int x, y, n = 1, i;
     memset(map, 0, sizeof(map));
     for (y = 0; y < th; y++) {
-        long sy = y0 + (long)y * h / th;
         for (x = 0; x < tw; x++) {
-            long sx = x0 + (long)x * w / tw;
-            vt_u8 q = kit_quant(kit_px(s, sy * s->w + sx), x, y);
+            vt_u8 q = kit_quant(kit_sample(s, x0, y0, w, h, tw, th, x, y), x, y);
             if (q && !map[q])
                 map[q] = (vt_u8)n++;
             o[(long)y * tw + x] = q ? map[q] : 0;
@@ -190,7 +226,7 @@ static int kit_make(vt_term *t, const kit_src *s, int x0, int y0, int w, int h, 
     return 1;
 }
 
-/* The RGB twin (vt_set_image_rgb on): the same nearest-pixel scale, 4 bytes a
+/* The RGB twin (vt_set_image_rgb on): the same kit_sample scale, 4 bytes a
  * pixel R G B A in memory order with the source's own alpha byte (owner O2:
  * true alpha). *opaque is 1 when no pixel is below 255. 0 when there is no memory. */
 static int kit_make_rgb(vt_term *t, const kit_src *s, int x0, int y0, int w, int h, int tw, int th,
@@ -206,10 +242,8 @@ static int kit_make_rgb(vt_term *t, const kit_src *s, int x0, int y0, int w, int
         return 0;
     q = o;
     for (y = 0; y < th; y++) {
-        long sy = y0 + (long)y * h / th;
         for (x = 0; x < tw; x++, q += 4) {
-            long sx = x0 + (long)x * w / tw;
-            vt_u32 p = kit_px(s, sy * s->w + sx);
+            vt_u32 p = kit_sample(s, x0, y0, w, h, tw, th, x, y);
             q[0] = (vt_u8)(p >> 16);
             q[1] = (vt_u8)(p >> 8);
             q[2] = (vt_u8)p;
