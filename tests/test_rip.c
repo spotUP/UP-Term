@@ -3,6 +3,7 @@
  * repository root. */
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include "harness.h"
 #include "../engine/rip.h"
 
@@ -1408,6 +1409,89 @@ static void mouse_clear_flag(void)
     vt_free(t);
 }
 
+/* Bars and fills are written a row at a time (fill_span); the canvas must stay pixel-exact with the
+ * old per-pixel path. bar_gold[] are FNV canvas sums recorded from the per-pixel code before the
+ * row fast path. */
+static const char *const bar_cases[] = {
+    "!|v0A0A2M1Q|S000C|B0000HR9P\r\n",                  /* empty (background), viewport clip */
+    "!|v0A0A2M1Q|S010C|B0000HR9P\r\n",                  /* solid */
+    "!|v0A0A2M1Q|S020C|B0000HR9P\r\n",
+    "!|v0A0A2M1Q|S030C|B0000HR9P\r\n",
+    "!|v0A0A2M1Q|S040C|B0000HR9P\r\n",
+    "!|v0A0A2M1Q|S050C|B0000HR9P\r\n",
+    "!|v0A0A2M1Q|S060C|B0000HR9P\r\n",
+    "!|v0A0A2M1Q|S070C|B0000HR9P\r\n",
+    "!|v0A0A2M1Q|S080C|B0000HR9P\r\n",
+    "!|v0A0A2M1Q|S090C|B0000HR9P\r\n",
+    "!|v0A0A2M1Q|S0A0C|B0000HR9P\r\n",
+    "!|v0A0A2M1Q|S0B0C|B0000HR9P\r\n",
+    "!|v0A0A2M1Q|s2G6X1A3C5E7F0K4Z0C|B0000HR9P\r\n", /* user pattern */
+    "!|S010C|B0000HR9P\r\n",                            /* whole canvas */
+    "!|S0B0A|B0305HR9P\r\n",                            /* odd origin, clipped right and bottom */
+    "!|S0B0A|B03050ZZZZ\r\n",                           /* far outside the canvas */
+    "!|S0B0A|BHR9PZZZZ\r\n",                            /* past the edge, empty */
+    "!|S0B0A|B0A0A0F0F|B1A1A1B1B\r\n",                  /* small bars, odd widths */
+    "!|S040C|W01|B0000HR9P|B0A0A2M1Q\r\n",              /* XOR over XOR */
+    "!|c0F|S010C|B0A0A2M1Q|W01|S030B|B0F0F3A3A\r\n",    /* XOR over a copy bar */
+    "!|v0A0A2M1Q|S0B0C|P040A0A2M0A1E2M0A3C\r\n",
+    "!|S0C0C|o1K1K0K0F\r\n",
+    "!|c0F|S0B09|R0A0A2M2M|F1E1E0F\r\n",                /* flood fill */
+};
+#define NBAR ((int)(sizeof bar_cases / sizeof bar_cases[0]))
+static const unsigned long bar_gold[NBAR] = {
+    714430917UL, 4103493257UL, 768965797UL, 3208238709UL, 854245629UL, 2120127685UL, 432249541UL, 24841161UL, 179121257UL, 2926621341UL, 3052960581UL, 1526211209UL, 300627093UL, 3477794245UL, 2016951557UL, 40998853UL, 714430917UL, 4100652005UL, 464212461UL, 1039321601UL, 1547310672UL, 2027983621UL, 3991569644UL
+};
+
+static void bars_row_path_is_pixel_exact(void)
+{
+    int i;
+    for (i = 0; i < NBAR; i++) {
+        vt_term *t = rip_draw(bar_cases[i]);
+        unsigned long s = canvas_sum(t);
+        if (getenv("BAR_GOLD"))
+            printf("    %luUL, /* %d */\n", s, i);
+        else
+            CHECK(s == bar_gold[i]);
+        vt_free(t);
+    }
+}
+
+/* B0000HR9P over the whole 640x350 canvas used to cost 224000 gput calls (91 s on an A500) */
+static void bar_does_not_write_per_pixel(void)
+{
+    static const char *const modes[] = { "S010C", "S0B0C", "s2G6X1A3C5E7F0K4Z0C" };
+    int i;
+    for (i = 0; i < 3; i++) {
+        char cmd[64];
+        long before = vt_rip_gput_calls();
+        vt_term *t;
+        snprintf(cmd, sizeof cmd, "!|%s|B0000HR9P\r\n", modes[i]);
+        t = rip_draw(cmd);
+        CHECK(vt_rip_gput_calls() - before < 1000);
+        CHECK_INT(rpx(t, 639, 349) >= 0, 1);
+        vt_free(t);
+    }
+}
+
+/* fixture 07-buttons.rip through the real entry point */
+#define BUTTONS_GOLD 621586454UL /* recorded from the per-pixel code */
+static void buttons_fixture_canvas_is_unchanged(void)
+{
+    unsigned char *b = NULL;
+    long n = slurp("tests/rip/07-buttons.rip", &b), i;
+    vt_term *t = rip_term();
+    long before = vt_rip_gput_calls();
+    clock_t c0 = clock();
+    for (i = 0; i < n; i += 64)
+        vt_write(t, b + i, (size_t)(n - i < 64 ? n - i : 64));
+    if (getenv("BAR_GOLD"))
+        printf("    BUTTONS %lu gput %ld ms %ld\n", canvas_sum(t), vt_rip_gput_calls() - before, (long)((clock() - c0) * 1000 / CLOCKS_PER_SEC));
+    else
+        CHECK(canvas_sum(t) == BUTTONS_GOLD);
+    free(b);
+    vt_free(t);
+}
+
 void suite_rip(void)
 {
     fixture_01_line_grammar();
@@ -1438,6 +1522,9 @@ void suite_rip(void)
     knob_line_style_and_thickness();
     knob_fill_style();
     knob_geometry();
+    bars_row_path_is_pixel_exact();
+    bar_does_not_write_per_pixel();
+    buttons_fixture_canvas_is_unchanged();
     knob_polygon_rect_flood();
     text_font_scale_direction();
     stroke_fonts_goldens();

@@ -121,6 +121,23 @@ void cv_hspan(struct cv *c, int x0, int x1, int y, int idx)
     dirty_add(c, x0, y, x1 + 1, y + 1);
 }
 
+void cv_hrow(struct cv *c, int x0, int y, const unsigned char *src, int n)
+{
+    int x1 = x0 + n - 1;
+    if (y < 0 || y >= c->h || n <= 0)
+        return;
+    if (x0 < 0) {
+        src -= x0;
+        x0 = 0;
+    }
+    if (x1 >= c->w)
+        x1 = c->w - 1;
+    if (x1 < x0)
+        return;
+    memcpy(c->pix + y * c->w + x0, src, (size_t)(x1 - x0 + 1));
+    dirty_add(c, x0, y, x1 + 1, y + 1);
+}
+
 void cv_rect(struct cv *c, int x0, int y0, int x1, int y1, int idx)
 {
     int y;

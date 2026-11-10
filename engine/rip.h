@@ -104,6 +104,7 @@ void cv_set_pal(struct cv *c, int idx, unsigned long rgb);
 int cv_get(const struct cv *c, int x, int y);           /* -1 outside */
 void cv_pixel(struct cv *c, int x, int y, int idx);
 void cv_hspan(struct cv *c, int x0, int x1, int y, int idx); /* x1 inclusive */
+void cv_hrow(struct cv *c, int x0, int y, const unsigned char *src, int n); /* n palette indices from src at (x0, y), clipped like cv_hspan, one dirty update */
 void cv_rect(struct cv *c, int x0, int y0, int x1, int y1, int idx); /* both corners inclusive */
 /* the dirty rectangle since the last take; cleared */
 /* Copy w x h indexed pixels (row major) onto the canvas at x, y with a write mode (the RIP
@@ -163,6 +164,8 @@ int rip_font_is_stroke(int font);
 int rip_font_glyph(int font, int ch, int s, int up, int ox, int oy,
                    void (*seg)(void *ud, int x0, int y0, int x1, int y1), void *ud);
 long rip_font_stroke_glyphs(void);
+/* per-pixel gput calls so far (sentinel: a bar or fill must not cost one per pixel) */
+long rip_gput_calls(void);
 /* 1 when rip_gfx_exec acts on this command (it needs a canvas) */
 int rip_gfx_handles(const struct rip_cmd *c);
 /* run a level-0 drawing or state command; returns 1 if handled */
