@@ -69,6 +69,7 @@ typedef struct kit_src {
     vt_u32 *dec;     /* the decoder's buffer */
     vt_image_release dfree;
     vt_u8 *fbuf;     /* the bytes a file reader gave (t=f, t=t), freed through dfree */
+    int band;        /* a=p of a still stored picture: a row-band crop may show its scaled copy (kit_band) */
 } kit_src;
 
 static const vt_u8 kit_bayer[16] = { 0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5 };
@@ -302,6 +303,7 @@ static int kit_picture(vt_term *t, const kit_src *s, int x0, int y0, int w, int 
     vt_u32 pal[256];
     int npal, slot, op, exact, want;
     long n;
+    t->kit_made++;
     if (t->image_rgb) {
         if (!kit_make_rgb(t, s, x0, y0, w, h, tw, th, &pix, &op))
             return -1;
@@ -678,7 +680,7 @@ static int kit_placement(const vt_term *t, vt_u32 id, vt_u32 pid)
     int i, best = -1;
     for (i = 0; i < VT_IMG_SLOTS; i++) {
         const vt_image *im = t->imgs[i];
-        if (im && im->pix && im->kind == 1 && im->kid == id && im->pid == pid &&
+        if (im && im->pix && im->kind == 1 && im->kid == id && im->pid == pid && (!im->kmaster || im->refs) &&
             (best < 0 || im->serial > t->imgs[best]->serial))
             best = i;
     }
@@ -696,7 +698,7 @@ static int kit_corner(const vt_term *t, int slot, int *col, int *row)
         for (i = t->scr[y]->img; i; i = t->pl[i].next)
             if (place_image(t, &t->pl[i]) == im) {
                 *col = t->pl[i].col0;
-                *row = y - t->pl[i].row;
+                *row = y - (t->pl[i].row - im->krow0);
                 return 1;
             }
     }
@@ -741,6 +743,75 @@ static int kit_parent(const vt_term *t, const vt_kitty *k, vt_u32 id, int *col, 
     return slot;
 }
 
+/* A scaled copy (kmaster) off the screen, its pixels and serial kept for
+ * the next band of its rows: its cells drawn again, its placements stale
+ * (gen), its relative children gone as with image_free (K29). */
+static void kit_unplace(vt_term *t, int slot)
+{
+    vt_image *im = t->imgs[slot];
+    int i;
+    if (im->refs > 0 && !t->img_nomark)
+        image_mark(t, slot);
+    im->refs = 0;
+    im->gen++;
+    for (i = 0; i < VT_IMG_SLOTS; i++) {
+        const vt_image *c = t->imgs[i];
+        if (c && c->pix && c->kind == 1 && !c->kmaster && c->pkid == im->kid && c->ppid == im->pid)
+            image_free(t, i);
+    }
+}
+
+/* A kitty placement deleted: a scaled copy only leaves the screen (its data
+ * may still be shown again), any other placement goes with its pixels. */
+static void kit_drop(vt_term *t, int slot)
+{
+    if (t->imgs[slot]->kmaster)
+        kit_unplace(t, slot);
+    else
+        image_free(t, slot);
+}
+
+/* A crop of the stored picture s that is a band of whole cell rows of all
+ * of it at width tw (x0 0, w all, rows r from source rows y0 .. y0 + h):
+ * the slot of the whole picture scaled to tw x (its rows x ch), made once
+ * per size and kept (one per id), *k0 the first row the crop shows. A
+ * scrolled picture (the LiveChat door: a=d,d=i then a=p one row further
+ * on, +-1 px) is then placed rows, not scaled, quantised and dithered
+ * again under a new serial each step. The crop rounds to the nearest row
+ * when within a quarter row of it. -1: not a band (today's crop path). */
+static int kit_band(vt_term *t, const kit_src *s, vt_u32 id, int y0, int h, int r, int tw, int ch, int *k0)
+{
+    long rows = ((long)s->h * r + h / 2) / h, num = (long)y0 * r, k = (num + h / 2) / h, d;
+    int i, slot = -1;
+    vt_image *m;
+    d = num - k * h;
+    if (d < 0)
+        d = -d;
+    if (d * 4 > h || rows < r || rows * ch > VT_SIXEL_MAX_H)
+        return -1;
+    if (k + r > rows)
+        k = rows - r;
+    for (i = 0; i < VT_IMG_SLOTS; i++) {
+        m = t->imgs[i];
+        if (m && m->pix && m->kind == 1 && m->kmaster && m->kid == id) {
+            if (m->refs)
+                return -1; /* on the screen as another placement: that one stays, this one is baked */
+            if (m->w == tw && m->h == rows * ch)
+                slot = i;
+            else
+                image_free(t, i); /* one size kept: the memory stays bounded */
+        }
+    }
+    if (slot < 0) {
+        slot = kit_picture(t, s, 0, 0, s->w, s->h, tw, (int)(rows * ch));
+        if (slot < 0)
+            return -1;
+        t->imgs[slot]->kmaster = 1;
+    }
+    *k0 = (int)k;
+    return slot;
+}
+
 /* Image `slot` with its top left at (col, row), the rows off the screen
  * cut; no scrolling, the cursor untouched (a relative placement). */
 static void kit_place_at(vt_term *t, int slot, int col, int row)
@@ -764,7 +835,7 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
     int c = (int)KV(k, 'c'), r = (int)KV(k, 'r'), tw, th, slot;
     int cw = t->cell_w > 0 ? t->cell_w : 8, ch = t->cell_h > 0 ? t->cell_h : 16;
     int px0 = (int)KV(k, 'X'), py0 = (int)KV(k, 'Y');
-    int left, parent = -1, depth = 0, col = t->cx, row = t->cy;
+    int left, parent = -1, depth = 0, col = t->cx, row = t->cy, k0;
     int virt = KV(k, 'U') == 1; /* K31: a virtual placement, shown by placeholder cells */
     vt_image *im;
     if (KU(k, 'P')) {
@@ -825,9 +896,16 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
         for (i = 0; i < VT_IMG_SLOTS; i++)
             if (t->imgs[i] && t->imgs[i]->pix && t->imgs[i]->kind == (virt ? 3 : 1) && t->imgs[i]->kid == id &&
                 t->imgs[i]->pid == KU(k, 'p'))
-                image_free(t, i);
+                kit_drop(t, i);
     }
-    slot = kit_picture(t, s, x0, y0, w, h, tw, th);
+    slot = -1;
+    if (s->band && id && !virt && parent < 0 && !px0 && !py0 && c && r && !x0 && w == s->w && tw == c * cw &&
+        th == r * ch)
+        slot = kit_band(t, s, id, y0, h, r, tw, ch, &k0);
+    if (slot < 0) {
+        k0 = -1;
+        slot = kit_picture(t, s, x0, y0, w, h, tw, th);
+    }
     if (slot < 0)
         return "ENOMEM:no room for the picture";
     im = t->imgs[slot];
@@ -841,10 +919,11 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
         im->vr = (th + ch - 1) / ch;
         return 0;
     }
-    im->sx0 = x0; /* K35: what a frame switch rescales from */
-    im->sy0 = y0;
-    im->sw = w;
-    im->sh = h;
+    im->sx0 = k0 >= 0 ? 0 : x0; /* K35: what a frame switch rescales from (a scaled copy: all of it) */
+    im->sy0 = k0 >= 0 ? 0 : y0;
+    im->sw = k0 >= 0 ? s->w : w;
+    im->sh = k0 >= 0 ? s->h : h;
+    im->krow0 = k0 >= 0 ? k0 : 0;
     im->kz = KV(k, 'z');
     im->px0 = px0;
     im->py0 = py0;
@@ -855,7 +934,7 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
         im->kdepth = depth;
         kit_place_at(t, slot, col, row);
     } else {
-        image_place(t, slot, KV(k, 'C') == 1 ? 2 : 3);
+        image_place_rows(t, slot, KV(k, 'C') == 1 ? 2 : 3, k0 >= 0 ? k0 : 0, k0 >= 0 ? r : -1);
     }
     t->kit_placed++;
     return 0;
@@ -1011,7 +1090,7 @@ static void kit_delete(vt_term *t, const vt_kitty *k)
         if (!im || !im->pix || !im->kind)
             continue;
         if (im->kind == 1 && (lo == 'a' || (im->kid == id && (!KV(k, 'p') || im->pid == KU(k, 'p')))))
-            image_free(t, i);
+            kit_drop(t, i); /* a scaled copy stays with its data (kit_band); d=I frees it with the data below */
         else if (im->kind == 2 && up && (lo == 'a' || im->kid == id))
             image_free(t, i);
         else if (im->kind == 3 && lo == 'i' && im->kid == id && (!KV(k, 'p') || im->pid == KU(k, 'p')))
@@ -1448,6 +1527,7 @@ static void kitty_run(vt_term *t, vt_kitty *k)
             s.bpp = im->fmt ? 4 : 1; /* an RGBA root reads back through kit_px as it is */
             s.w = im->w;
             s.h = im->h;
+            s.band = !im->anim; /* frames change the pixels under a kept copy: those keep baking */
             id = im->kid;
             err = kit_show(t, k, &s, id);
         }
