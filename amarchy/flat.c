@@ -1968,43 +1968,107 @@ static int sem_waits(struct SignalSemaphore *s, struct Task *t)
     return 0;
 }
 
-/* FLAT-STUCK-DIAG: name the semaphore the resident task waits on (public list, each screen's PalExtra, LayerInfo and
- * layer locks), its owner and nest count. Run from a second copy's STATUS while the resident one is stuck. Forbid only. */
+/* FLAT-STUCK-DIAG: "<tag>+<hex offset>" (offset as unsigned 32-bit; a negative offset shows as ffff....) */
+static void stuck_off(char *out, const char *tag, ULONG off)
+{
+    int i;
+    strcpy(out, tag); strcat(out, "+");
+    out += strlen(out);
+    for (i = 28; i >= 0; i -= 4) *out++ = "0123456789abcdef"[(off >> i) & 15];
+    *out = 0;
+}
+
+/* FLAT-STUCK-DIAG: find the semaphore t is queued on from the SemaphoreRequest exec left on t's stack (works for private
+ * semaphores). Forbid held by the caller. Returns 0 when no node on the stack looks like a queued request. */
+static struct SignalSemaphore *stuck_sem(struct Task *t)
+{
+    UBYTE *p, *end;
+    ULONG sp = (ULONG)t->tc_SPReg;
+    int i;
+    if (sp >= (ULONG)t->tc_SPLower && sp < (ULONG)t->tc_SPUpper) end = (UBYTE *)t->tc_SPUpper;
+    else end = (UBYTE *)(sp + 4096);
+    for (p = (UBYTE *)(sp & ~1UL); p + 12 <= end; p += 2) {
+        struct MinNode *c = (struct MinNode *)p, *w;
+        if (((*(ULONG *)(p + 8)) & ~1UL) != (ULONG)t) continue;
+        if (!c->mln_Succ || !c->mln_Pred || ((ULONG)c->mln_Succ & 1) || ((ULONG)c->mln_Pred & 1)) continue;
+        if ((ULONG)c->mln_Succ < 0x400 || (ULONG)c->mln_Pred < 0x400) continue;
+        if (c->mln_Pred->mln_Succ != c || c->mln_Succ->mln_Pred != c) continue;
+        w = c;
+        for (i = 0; i < 64 && w->mln_Pred; i++) w = w->mln_Pred;
+        if (w->mln_Pred) continue;
+        return (struct SignalSemaphore *)((UBYTE *)w - offsetof(struct SignalSemaphore, ss_WaitQueue));
+    }
+    return 0;
+}
+
+/* FLAT-STUCK-DIAG: name the semaphore the resident task waits on and follow the owner chain (up to 4 links). The public
+ * list, each screen's PalExtra, LayerInfo and layer locks are searched first, then the stack scan above. Forbid only. */
 static void print_stuck(struct Task *t)
 {
-    char what[40], own[32];
+    char what[40], own[32], nm[32];
     struct SignalSemaphore *hit = 0;
     struct Screen *sc;
     struct Node *n;
     ULONG st, sw, nest = 0, owner = 0;
     LONG cnt = 0;
+    int link;
+    struct Task *seen[4], *cur = t;
     what[0] = own[0] = 0;
     if (!t) return;
-    Forbid();
-    st = t->tc_State; sw = t->tc_SigWait;
-    for (n = SysBase->SemaphoreList.lh_Head; n->ln_Succ && !hit; n = n->ln_Succ)
-        if (sem_waits((struct SignalSemaphore *)n, t)) { hit = (struct SignalSemaphore *)n; strncpy(what, n->ln_Name ? n->ln_Name : "?", 39); }
-    for (sc = IntuitionBase->FirstScreen; sc && !hit; sc = sc->NextScreen) {
-        struct ColorMap *cm = sc->ViewPort.ColorMap;
-        struct Layer *l;
-        if (cm && cm->PalExtra && sem_waits(&cm->PalExtra->pe_Semaphore, t)) { hit = &cm->PalExtra->pe_Semaphore; strcpy(what, "palextra:"); }
-        else if (sem_waits(&sc->LayerInfo.Lock, t)) { hit = &sc->LayerInfo.Lock; strcpy(what, "layerinfo:"); }
-        else for (l = sc->LayerInfo.top_layer; l && !hit; l = l->back)
-            if (sem_waits(&l->Lock, t)) { hit = &l->Lock; strcpy(what, "layer:"); }
-        if (hit && sc->Title) strncat(what, (char *)sc->Title, 39 - strlen(what));
-    }
-    if (hit) {
-        owner = (ULONG)hit->ss_Owner; nest = (ULONG)hit->ss_NestCount; cnt = hit->ss_QueueCount;
-        if (hit->ss_Owner && hit->ss_Owner->tc_Node.ln_Name) strncpy(own, hit->ss_Owner->tc_Node.ln_Name, 31);
-    }
-    Permit();
-    what[39] = own[31] = 0;
-    {
-        ULONG a[7]; a[0] = st; a[1] = sw; a[2] = (ULONG)hit; a[3] = (ULONG)what; a[4] = owner; a[5] = (ULONG)own; a[6] = nest;
-        VPrintf((STRPTR)"stuck state=%ld sigwait=%08lx sem=%08lx %s owner=%08lx %s nest=%ld\n", (LONG *)a);
-        (void)cnt;
+    for (link = 0; link < 4 && cur; link++) {
+        int i, cyc = 0;
+        struct Task *ot;
+        what[0] = own[0] = nm[0] = 0; hit = 0; owner = nest = 0; cnt = 0;
+        for (i = 0; i < link; i++) if (seen[i] == cur) cyc = 1;
+        if (cyc) { PutStr((STRPTR)"cycle\n"); break; }
+        seen[link] = cur;
+        Forbid();
+        st = cur->tc_State; sw = cur->tc_SigWait;
+        if (cur->tc_Node.ln_Name) strncpy(nm, cur->tc_Node.ln_Name, 31);
+        if (link > 0 && !(st == TS_WAIT && (sw & SIGF_SINGLE))) { Permit(); nm[31] = 0; break; }
+        for (n = SysBase->SemaphoreList.lh_Head; n->ln_Succ && !hit; n = n->ln_Succ)
+            if (sem_waits((struct SignalSemaphore *)n, cur)) { hit = (struct SignalSemaphore *)n; strncpy(what, n->ln_Name ? n->ln_Name : "?", 39); }
+        for (sc = IntuitionBase->FirstScreen; sc && !hit; sc = sc->NextScreen) {
+            struct ColorMap *cm = sc->ViewPort.ColorMap;
+            struct Layer *l;
+            if (cm && cm->PalExtra && sem_waits(&cm->PalExtra->pe_Semaphore, cur)) { hit = &cm->PalExtra->pe_Semaphore; strcpy(what, "palextra:"); }
+            else if (sem_waits(&sc->LayerInfo.Lock, cur)) { hit = &sc->LayerInfo.Lock; strcpy(what, "layerinfo:"); }
+            else for (l = sc->LayerInfo.top_layer; l && !hit; l = l->back)
+                if (sem_waits(&l->Lock, cur)) { hit = &l->Lock; strcpy(what, "layer:"); }
+            if (hit && sc->Title) strncat(what, (char *)sc->Title, 39 - strlen(what));
+        }
+        if (!hit && (cur->tc_State == TS_WAIT)) {
+            hit = stuck_sem(cur);
+            if (hit) {
+                ULONG a = (ULONG)hit, b = (ULONG)IntuitionBase - IntuitionBase->LibNode.lib_NegSize;
+                ULONG g = (ULONG)GfxBase - GfxBase->LibNode.lib_NegSize;
+                if (a >= b && a < (ULONG)IntuitionBase + IntuitionBase->LibNode.lib_PosSize) stuck_off(what, "ibase", a - (ULONG)IntuitionBase);
+                else if (a >= g && a < (ULONG)GfxBase + GfxBase->LibNode.lib_PosSize) stuck_off(what, "gfx", a - (ULONG)GfxBase);
+                else strcpy(what, "private");
+                if (hit->ss_Link.ln_Type != NT_SIGNALSEM) strcat(what, " badtype");
+            }
+        }
+        ot = 0;
+        if (hit) {
+            owner = (ULONG)hit->ss_Owner; nest = (ULONG)hit->ss_NestCount; cnt = hit->ss_QueueCount; ot = hit->ss_Owner;
+            if (ot && ot->tc_Node.ln_Name) strncpy(own, ot->tc_Node.ln_Name, 31);
+        }
+        Permit();
+        what[39] = own[31] = nm[31] = 0;
+        {
+            ULONG a[11];
+            a[0] = (ULONG)link + 1; a[1] = (ULONG)cur; a[2] = (ULONG)nm; a[3] = st; a[4] = sw; a[5] = (ULONG)hit;
+            a[6] = (ULONG)what; a[7] = owner; a[8] = (ULONG)own; a[9] = nest; a[10] = (ULONG)cnt;
+            VPrintf((STRPTR)"chain %ld task=%08lx %s state=%ld sigwait=%08lx sem=%08lx %s owner=%08lx %s nest=%ld queue=%ld\n", (LONG *)a);
+        }
+        if (link == 0) {
+            ULONG a[7]; a[0] = st; a[1] = sw; a[2] = (ULONG)hit; a[3] = (ULONG)what; a[4] = owner; a[5] = (ULONG)own; a[6] = nest;
+            VPrintf((STRPTR)"stuck state=%ld sigwait=%08lx sem=%08lx %s owner=%08lx %s nest=%ld\n", (LONG *)a);
+        }
+        cur = ot;
     }
 }
+
 
 static void print_status(void)
 {
