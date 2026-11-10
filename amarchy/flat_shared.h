@@ -80,6 +80,7 @@ typedef struct flatshared {
     ULONG bhits;                /* INSTALLER-BORDER-BUTTON: Border-render button erases drawn as the rounded flat fill (the sentinel) */
     ULONG dface;                /* DOPUS-BUTTON-NO-RING sentinel: raised Program DrawBox calls whose ring was painted in the face pen */
     ULONG sgseen, sgext;        /* INPUT-GROUND sentinels: string gadgets walked / of them with a StringExtend */
+    ULONG sgpen, sgdep, sgsel, sgnoext;   /* INPUT-GROUND sentinels: last pen+1, last DrInfo depth, last pen_sel used, GM_RENDERs with no SpecialInfo or Extension */
     ULONG sground;              /* INPUT-GROUND sentinel: string inputs whose StringExtend ground pens were set to the selection pen */
     ULONG dnopix;               /* DOPUS-BUTTON-NO-RING: face reads that failed (ReadPixel < 0), border fell back to the background pen */
     flat_swap d5sw;             /* DOPUS-LOCK-ICONIFY: the dopusiclass h_Entry swap (lock / iconify images) */

@@ -1100,6 +1100,11 @@ static void g9_ground(Object *obj, Msg msg)
     gi = gp->gpr_GInfo;
     si = (struct StringInfo *)g->SpecialInfo;
     pen = flat_input_pen(st_scr(r, gi->gi_Screen), gi->gi_DrInfo ? gi->gi_DrInfo->dri_Depth : 0);
+    r->sgpen = (ULONG)(pen + 1);
+    r->sgdep = gi->gi_DrInfo ? (ULONG)gi->gi_DrInfo->dri_Depth : 0;
+    r->sgsel = st_scr(r, gi->gi_Screen) ? (ULONG)st_scr(r, gi->gi_Screen)->pen_sel : 0;
+    if (!si || !si->Extension)
+        r->sgnoext++;
     if (flat_string_render_write(msg->MethodID, si != NULL, g->Activation, si && si->Extension != NULL, pen)) {
         si->Extension->Pens[1] = si->Extension->ActivePens[1] = (UBYTE)pen;
         r->sground++;
@@ -2483,6 +2488,7 @@ static void print_status(void)
     unsigned long lbeat = 0, lnref = 0;
     struct Task *ltask = 0;
     unsigned lstage = 0, lref = 0;
+    unsigned long vground = 0, vsg = 0, vgs = 0, vgslot = 0, vgcode = 0, vext = 0, vspen = 0, vsdep = 0, vssel = 0, vsnoext = 0;
     memset(&copy, 0, sizeof copy);
     Forbid();
     r = (flatshared *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
@@ -2504,6 +2510,9 @@ static void print_status(void)
         memcpy(sring, r->sring, sizeof sring); sn = (int)(r->sring_n > 16 ? 16 : r->sring_n);
         lbeat = r->beat; lstage = r->stage; lref = r->refuse; lnref = r->nrefuse;
         ltask = r->task;
+        vground = r->sground; vsg = r->sgseen; vgs = r->gsw.installed; vgslot = (unsigned long)r->gslot;
+        vgcode = r->ggate ? (unsigned long)r->ggate->code : 0; vext = r->sgext;
+        vspen = r->sgpen; vsdep = r->sgdep; vssel = r->sgsel; vsnoext = r->sgnoext;
     }
     Permit();
     if (flat_status_line(&copy, sizeof copy, found, line, sizeof line)) {
@@ -2537,22 +2546,26 @@ static void print_status(void)
         put_word(line, &n, " face=");               put_num(line, &n, dface);
         put_word(line, &n, " nopix=");              put_num(line, &n, dnopix);
         put_word(line, &n, " d5=");                 put_num(line, &n, d5draws);
-        put_word(line, &n, " ground=");             put_num(line, &n, g_r->sground);
-        put_word(line, &n, " sg=");                 put_num(line, &n, g_r->sgseen);
-        put_word(line, &n, " gs=");                 put_num(line, &n, g_r->gslot ? 1 : 0);
+        put_word(line, &n, " ground=");             put_num(line, &n, vground);
+        put_word(line, &n, " sg=");                 put_num(line, &n, vsg);
+        put_word(line, &n, " gs=");                 put_num(line, &n, vgs ? 1 : 0);
         {   /* s71: slot address and gate code address, hex, to compare with tests/amiga/gadprobe */
             static const char hx[] = "0123456789abcdef";
             unsigned long v[2];
             int k, j;
-            v[0] = (unsigned long)g_r->gslot;
-            v[1] = g_r->ggate ? (unsigned long)g_r->ggate->code : 0;
+            v[0] = vgslot;
+            v[1] = vgcode;
             put_word(line, &n, " gslot=0x");
             for (k = 0; k < 2; k++) {
                 for (j = 28; j >= 0; j -= 4) line[n++] = hx[(v[k] >> j) & 15];
                 if (!k) put_word(line, &n, " gcode=0x");
             }
         }
-        put_word(line, &n, " ext=");                put_num(line, &n, g_r->sgext);
+        put_word(line, &n, " ext=");                put_num(line, &n, vext);
+        put_word(line, &n, " spen=");               put_num(line, &n, vspen);
+        put_word(line, &n, " sdep=");               put_num(line, &n, vsdep);
+        put_word(line, &n, " ssel=");               put_num(line, &n, vssel);
+        put_word(line, &n, " snoext=");             put_num(line, &n, vsnoext);
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
