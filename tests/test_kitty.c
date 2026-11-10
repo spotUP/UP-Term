@@ -367,6 +367,29 @@ static void moved_and_deleted_placements_damage_their_old_cells(void)
     vt_free(t);
 }
 
+/* C=1 at the bottom: the cursor does not move, so nothing scrolls; the
+ * picture is cut at the screen's last row (kitty). The AmiExpress LiveChat
+ * door places half-scrolled pictures 64 rows tall with C=1 and the whole
+ * door scrolled up with each one. */
+static void c_equals_1_past_the_bottom_cuts_and_never_scrolls(void)
+{
+    vt_term *t = kitty_term(10, 5);
+    vt_image_view v;
+    int x, y;
+    h_put(t, "TOP");
+    h_put(t, "\033_Ga=t,i=7,f=24,s=2,v=2;");
+    h_put(t, rgb2x2);
+    h_put(t, "\033\\");
+    h_put(t, "\033[4;2H\033_Ga=p,i=7,c=2,r=4,C=1,q=2\033\\"); /* rows 3-6 of 0-4 */
+    CHECK(h_cell(t, 0, 0)->ch == 'T'); /* not scrolled */
+    CHECK(vt_row_image(t, 3, 0, &v));
+    CHECK(vt_row_image(t, 4, 0, &v));
+    vt_cursor(t, &x, &y);
+    CHECK_INT(x, 1);
+    CHECK_INT(y, 3);
+    vt_free(t);
+}
+
 static void putting_an_unknown_id_says_enoent(void)
 {
     vt_term *t = kitty_term(10, 5);
@@ -1585,6 +1608,7 @@ void suite_kitty(void)
     quiet_keys_hide_the_replies();
     delete_by_id_removes_the_image();
     moved_and_deleted_placements_damage_their_old_cells();
+    c_equals_1_past_the_bottom_cuts_and_never_scrolls();
     putting_an_unknown_id_says_enoent();
     a_picture_over_the_memory_limit_says_enomem();
     stored_pictures_give_way_to_new_ones();
