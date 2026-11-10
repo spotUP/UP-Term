@@ -232,6 +232,15 @@ int flat_dopus_decide(const flat_state *s, int element, int recessed, int pen_sh
  * fields on 2026-11-10, s71). Bevel bodies (the Environment's class-drawn buttons, DOPUS-ENV-UNSTYLED, rig 63) and a
  * recessed (pressed) DrawBox keep the ring. */
 int flat_dopus_ring(int element, int recessed);
+/* DOPUS-DIALOG-BUTTON-FILL (owner s70/s71): is the gadget under a DOpus bevel box a push button? Measured on dopus5 5.104 (rig 68): the
+ * dialog buttons are custom gadgets (type & 7 == 5) with Activation RELVERIFY (0001, one build 4001); the check boxes of the List Format
+ * window have TOGGLESELECT too (0101); the scroller arrows have Activation 0000. 1 = push button: custom, RELVERIFY set, TOGGLESELECT
+ * and IMMEDIATE clear. */
+int flat_dopus_push_gadget(unsigned gadget_type, unsigned activation);
+/* DOPUS-DIALOG-BUTTON-FILL: is the RectFill x0,y0..x1,y1 the interior fill of the pending push button box bx,by,bw,bh? DOpus fills the
+ * box inset by one pixel per side (measured: box 160,71 47x17 -> fill 161,72..205,86); accepted: inside the box, each side inset 0 to 2 px,
+ * so a fill narrower than bw - 4 or shorter than bh - 4 (a label strip, a one-line erase) is not the interior. */
+int flat_dopus_fill_match(int bx, int by, int bw, int bh, int x0, int y0, int x1, int y1);
 
 /* A BOOL register argument of a hooked dopus5.library function (AmigaOS BOOL is a 16-bit WORD): only the low word of the
  * register is defined, the high word is whatever the caller left (DOpus leaves 0x2200 there). Returns the BOOL's value. */

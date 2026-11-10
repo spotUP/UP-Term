@@ -1557,6 +1557,17 @@ static void test_which_from_gtype(void)
         CHECK_INT(flat_push_button(1, 12, 3, 60, 14, 0x0001), 1);             /* a GadTools that keeps the label inside the box */
         CHECK_INT(flat_push_button(1, -96, 3, 180, 14, 0x0001), 0);           /* Sound "Sound Type:" cycle, label left */
         CHECK_INT(flat_push_button(1, 12, -10, 60, 14, 0x0001), 0);           /* cycle, label above */
+        /* DOPUS-DIALOG-BUTTON-FILL: values measured on dopus5 5.104 (rig 68): MakeDir / List Format buttons, check boxes, scroller arrows */
+        CHECK_INT(flat_dopus_push_gadget(5, 0x0001), 1);                      /* OK / Cancel / Save */
+        CHECK_INT(flat_dopus_push_gadget(5, 0x4001), 1);                      /* the 4001 variant */
+        CHECK_INT(flat_dopus_push_gadget(5, 0x0101), 0);                      /* List Format check box: TOGGLESELECT */
+        CHECK_INT(flat_dopus_push_gadget(5, 0x0000), 0);                      /* scroller arrow */
+        CHECK_INT(flat_dopus_push_gadget(1, 0x0001), 0);                      /* not a custom gadget */
+        CHECK_INT(flat_dopus_fill_match(160, 71, 47, 17, 161, 72, 205, 86), 1);   /* the measured interior of the first MakeDir button */
+        CHECK_INT(flat_dopus_fill_match(160, 71, 47, 17, 160, 71, 206, 87), 1);   /* the full box (no inset) */
+        CHECK_INT(flat_dopus_fill_match(160, 71, 47, 17, 163, 72, 205, 86), 0);   /* a narrow strip: not the interior */
+        CHECK_INT(flat_dopus_fill_match(160, 71, 47, 17, 161, 72, 205, 90), 0);   /* leaves the box */
+        CHECK_INT(flat_dopus_fill_match(160, 71, 47, 17, 100, 72, 120, 86), 0);   /* another place */
         CHECK_INT(flat_push_button(0, 0, 0, 18, 9, 0x0003), 0);               /* Locale scroller arrow: RELVERIFY|IMMEDIATE */
         for (pressed = 0; pressed <= 1; pressed++) {
             memset(&t, 0, sizeof t);

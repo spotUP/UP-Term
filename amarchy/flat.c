@@ -838,6 +838,65 @@ static struct Gadget *border_button_at(struct RastPort *rp, int x0, int y0, int 
     return NULL;
 }
 
+/* DOPUS-DIALOG-BUTTON-FILL (owner s70/s71): a DOpus push button draws its border through the bevel (d4_bevelbody), then fills its
+ * interior (a RectFill of the box inset by one pixel), then its label. The bevel of a push button draws no outline here: it records
+ * the box in this one slot, and flat_rf_c turns the next matching interior fill into the rounded flat fill of the FULL box (bb_draw:
+ * the Installer border-button path). Claimed under Forbid: a busy slot of another task leaves the outline path. The slot is released by
+ * the matching fill and by the same task's next bevel call. Pending gadget under the box: custom, RELVERIFY, no TOGGLESELECT (flat_dopus_push_gadget). */
+static struct {
+    struct Task *task;
+    const void *surf;
+    int x, y, w, h;
+    int bb;                         /* frame ids and role, as bb_claim returns them */
+} dpb;
+
+/* 1 when the gadget of rp's window with exactly this box is a DOpus push button; *role gets its row role among the window's push buttons */
+static int dopus_push_at(struct RastPort *rp, int x0, int y0, int x1, int y1, int *role)
+{
+    flat_box self, o;
+    struct Layer *lay = rp ? rp->Layer : NULL;
+    struct Window *win = lay ? (struct Window *)lay->Window : NULL;
+    struct Gadget *g;
+    int i, n = 0, found = 0, seen = 0;
+    if (!win || (win->Flags & WFLG_GIMMEZEROZERO))
+        return 0;
+    self.x = x0; self.y = y0; self.w = x1 - x0 + 1; self.h = y1 - y0 + 1;
+    for (g = win->FirstGadget, i = 0; g && i < 64; g = g->NextGadget, i++) {
+        if (!flat_dopus_push_gadget(g->GadgetType, g->Activation) || g->Width < 3 || g->Height < 3)
+            continue;
+        o.x = g->LeftEdge; o.y = g->TopEdge; o.w = g->Width; o.h = g->Height;
+        if (flat_box_exact(&o, x0, y0, x1, y1))
+            found = 1;
+        else if (n < 32) {
+            seen = flat_button_role_add(seen, &self, &o);
+            n++;
+        }
+    }
+    *role = found ? flat_button_role_of(seen) : FLAT_ROLE_PRIMARY;
+    return found;
+}
+
+/* The bevel of a DOpus push button: record it pending (1) or leave the outline path (0). Off the bevel hook's own frame. */
+static int dopus_push_claim(struct RastPort *rp, int x0, int y0, int x1, int y1, LONG recessed)
+{
+    int role, ok;
+    struct Task *me;
+    if (!rp->Layer || !dopus_push_at(rp, x0, y0, x1, y1, &role))
+        return 0;
+    me = FindTask(NULL);
+    Forbid();
+    ok = dpb.task == NULL || dpb.task == me;
+    if (ok)
+        dpb.task = me;
+    Permit();
+    if (!ok)
+        return 0;
+    dpb.surf = flat_tx_surface(rp->Layer, rp->BitMap);
+    dpb.x = x0; dpb.y = y0; dpb.w = x1 - x0 + 1; dpb.h = y1 - y0 + 1;
+    dpb.bb = (role << 8) | (recessed ? 1 : 0);
+    return 1;
+}
+
 /* The frame draw of c8_skip (1 = drawn, 0 = leave it to the ROM frame). Runs on the private stack (S71-C8-PRIVATE-STACK): the
  * flat_state copy, the outline columns and the raa_* draw calls are far over the 384 byte budget of a hook on a foreign stack. */
 static int c8_draw(Object *obj, Msg msg)
@@ -997,6 +1056,10 @@ static int d4_flat_pens(int el, struct RastPort *rp, ULONG shine, ULONG back, in
     if (flat_dopus_decide(&r->st, el, recessed ? 1 : 0, (int)shine, (int)back,
                           shine == back ? -1 : d4_rgb(rp, shine), shine == back ? -1 : d4_rgb(rp, back)) != FLAT_DRAW_SKIP)
         return 0;
+    if (el == FLAT_EL_BEVEL && rp && dopus_push_claim(rp, x0, y0, x1, y1, recessed)) {
+        r->dflat++;                     /* DOPUS-DIALOG-BUTTON-FILL: no outline, the interior fill draws the rounded button (flat_rf_c) */
+        return 1;
+    }
     if (rp) {
         struct Window *w = rp->Layer ? (struct Window *)rp->Layer->Window : NULL;
         flat_state st = *st_rp(r, rp);
@@ -1788,17 +1851,12 @@ static flat_state bb_st;
  * not a border button's exact box, or another task is inside the fill. Off the frame draw's stack path. */
 #define BB_IDS(v)  ((v) & 0xFF)
 #define BB_ROLE(v) ((v) >> 8)
-static int bb_claim(flatshared *r, struct RastPort *rp, const LONG *b)
+static int bb_take(flatshared *r, struct RastPort *rp, int val)
 {
-    int role = FLAT_ROLE_PRIMARY;
-    struct Gadget *bg = border_button_at(rp, (int)b[0], (int)b[1], (int)b[2], (int)b[3], &role);
     struct Window *bw;
     const flat_state *ps;
-    struct Task *me;
+    struct Task *me = FindTask(NULL);
     int ok;
-    if (!bg)
-        return -1;
-    me = FindTask(NULL);
     Forbid();
     ok = bb_task == NULL;
     if (ok)
@@ -1811,7 +1869,34 @@ static int bb_claim(flatshared *r, struct RastPort *rp, const LONG *b)
     bb_st = r->st;
     bb_st.side = (uint8_t)side_px(r, bw->WScreen);
     bb_st.pen_dim = ps->pen_dim; bb_st.pen_knob = ps->pen_knob; bb_st.pen_inbar = ps->pen_inbar; bb_st.pen_sel = ps->pen_sel;
-    return (role << 8) | flat_border_button_ids(bg->Flags);
+    return val;
+}
+
+static int bb_claim(flatshared *r, struct RastPort *rp, const LONG *b)
+{
+    int role = FLAT_ROLE_PRIMARY;
+    struct Gadget *bg = border_button_at(rp, (int)b[0], (int)b[1], (int)b[2], (int)b[3], &role);
+    if (!bg)
+        return -1;
+    return bb_take(r, rp, (role << 8) | flat_border_button_ids(bg->Flags));
+}
+
+/* DOPUS-DIALOG-BUTTON-FILL: the interior fill of the pending push button (dpb) of this task on this surface: claims the fill and
+ * returns its frame ids and role with the full box in bb_fb (flat_rf_c draws it, as for a border button), or -1. The slot is released here. */
+static LONG bb_fb[4];            /* the full box of the pending DOpus button, held by the bb_task claim (no array on the deep stack path) */
+
+static int dopus_fill(flatshared *r, struct RastPort *rp, const LONG *b)
+{
+    int bb;
+    if (!rp->Layer || dpb.surf != flat_tx_surface(rp->Layer, rp->BitMap) ||
+        !flat_dopus_fill_match(dpb.x, dpb.y, dpb.w, dpb.h, (int)b[0], (int)b[1], (int)b[2], (int)b[3]))
+        return -1;
+    bb = bb_take(r, rp, dpb.bb);
+    if (bb >= 0) {
+        bb_fb[0] = dpb.x; bb_fb[1] = dpb.y; bb_fb[2] = dpb.x + dpb.w - 1; bb_fb[3] = dpb.y + dpb.h - 1;
+    }
+    dpb.task = NULL;
+    return bb;
 }
 
 /* The frame draw of the claimed border button; releases the claim. raa_frame_draw's two halves run one after the other here on
@@ -2065,6 +2150,13 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
     /* INSTALLER-BORDER-BUTTON (owner 2026-11-08): the erase of a Border-render push button (exact box, border_button_at) becomes the
      * rounded flat fill of the frame draw; its label comes next and the IM_DRAWFRAME after it draws no ring (c8_skip). No ROM gate:
      * the Installer erases from its own code; the exact gadget box is the gate. */
+    if (on && !rp->AreaPtSz && dpb.task == FindTask(NULL) && bb_task != dpb.task) {
+        int db = dopus_fill(r, rp, b);
+        if (db >= 0 && bb_draw(rp, bb_fb, db)) {
+            bb_done(r, rp, bb_fb, db);
+            return;
+        }
+    }
     if (on && !rp->AreaPtSz && bb_task != FindTask(NULL)) {
         int bb = bb_claim(r, rp, b);
         if (bb >= 0 && bb_draw(rp, b, bb)) {

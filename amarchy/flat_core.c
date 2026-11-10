@@ -788,6 +788,17 @@ int flat_box_exact(const flat_box *b, int x0, int y0, int x1, int y1)
     return b && x0 == b->x && y0 == b->y && x1 == b->x + b->w - 1 && y1 == b->y + b->h - 1;
 }
 
+int flat_dopus_push_gadget(unsigned gadget_type, unsigned activation)
+{
+    return (gadget_type & 7u) == 5u && (activation & 0x0001u) && !(activation & 0x0102u);   /* RELVERIFY; not TOGGLESELECT, not IMMEDIATE */
+}
+
+int flat_dopus_fill_match(int bx, int by, int bw, int bh, int x0, int y0, int x1, int y1)
+{
+    int l = x0 - bx, t = y0 - by, r = bx + bw - 1 - x1, b = by + bh - 1 - y1;
+    return l >= 0 && l <= 2 && t >= 0 && t <= 2 && r >= 0 && r <= 2 && b >= 0 && b <= 2;
+}
+
 int flat_border_button_ids(unsigned flags)
 {
     return (flags & 0x0080u) ? 1 : 0;                                       /* GFLG_SELECTED: IDS_SELECTED */
