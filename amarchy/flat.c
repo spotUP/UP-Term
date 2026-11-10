@@ -63,6 +63,7 @@
 #include "../render/pen_match.h"
 #include "stkprobe.h"
 #include <graphics/view.h>
+#include <intuition/intuitionbase.h>
 #include <utility/tagitem.h>
 
 static const char ver[] = "$VER: amarchy-flat 0.1 (30.10.2026) (UP-Term)";
@@ -1956,6 +1957,55 @@ static void put_word(char *out, int *n, const char *w)
 }
 
 /* Print the STATUS line of the record in memory (a copy taken under Forbid; the layout is checked before use). */
+/* FLAT-STUCK-DIAG: is t queued on semaphore s (exclusive or shared waiter, low bit masked)? */
+static int sem_waits(struct SignalSemaphore *s, struct Task *t)
+{
+    struct SemaphoreRequest *q;
+    if (!s) return 0;
+    for (q = (struct SemaphoreRequest *)s->ss_WaitQueue.mlh_Head; q->sr_Link.mln_Succ;
+         q = (struct SemaphoreRequest *)q->sr_Link.mln_Succ)
+        if (((ULONG)q->sr_Waiter & ~1UL) == (ULONG)t) return 1;
+    return 0;
+}
+
+/* FLAT-STUCK-DIAG: name the semaphore the resident task waits on (public list, each screen's PalExtra, LayerInfo and
+ * layer locks), its owner and nest count. Run from a second copy's STATUS while the resident one is stuck. Forbid only. */
+static void print_stuck(struct Task *t)
+{
+    char what[40], own[32];
+    struct SignalSemaphore *hit = 0;
+    struct Screen *sc;
+    struct Node *n;
+    ULONG st, sw, nest = 0, owner = 0;
+    LONG cnt = 0;
+    what[0] = own[0] = 0;
+    if (!t) return;
+    Forbid();
+    st = t->tc_State; sw = t->tc_SigWait;
+    for (n = SysBase->SemaphoreList.lh_Head; n->ln_Succ && !hit; n = n->ln_Succ)
+        if (sem_waits((struct SignalSemaphore *)n, t)) { hit = (struct SignalSemaphore *)n; strncpy(what, n->ln_Name ? n->ln_Name : "?", 39); }
+    for (sc = IntuitionBase->FirstScreen; sc && !hit; sc = sc->NextScreen) {
+        struct ColorMap *cm = sc->ViewPort.ColorMap;
+        struct Layer *l;
+        if (cm && cm->PalExtra && sem_waits(&cm->PalExtra->pe_Semaphore, t)) { hit = &cm->PalExtra->pe_Semaphore; strcpy(what, "palextra:"); }
+        else if (sem_waits(&sc->LayerInfo.Lock, t)) { hit = &sc->LayerInfo.Lock; strcpy(what, "layerinfo:"); }
+        else for (l = sc->LayerInfo.top_layer; l && !hit; l = l->back)
+            if (sem_waits(&l->Lock, t)) { hit = &l->Lock; strcpy(what, "layer:"); }
+        if (hit && sc->Title) strncat(what, (char *)sc->Title, 39 - strlen(what));
+    }
+    if (hit) {
+        owner = (ULONG)hit->ss_Owner; nest = (ULONG)hit->ss_NestCount; cnt = hit->ss_QueueCount;
+        if (hit->ss_Owner && hit->ss_Owner->tc_Node.ln_Name) strncpy(own, hit->ss_Owner->tc_Node.ln_Name, 31);
+    }
+    Permit();
+    what[39] = own[31] = 0;
+    {
+        ULONG a[7]; a[0] = st; a[1] = sw; a[2] = (ULONG)hit; a[3] = (ULONG)what; a[4] = owner; a[5] = (ULONG)own; a[6] = nest;
+        VPrintf((STRPTR)"stuck state=%ld sigwait=%08lx sem=%08lx %s owner=%08lx %s nest=%ld\n", (LONG *)a);
+        (void)cnt;
+    }
+}
+
 static void print_status(void)
 {
     flat_state copy;
@@ -1974,6 +2024,7 @@ static void print_status(void)
     uint32_t dsum[FLAT_EL_COUNT] = { 0, 0, 0 };
     unsigned long dbevel = 0, dface = 0, d5draws = 0;
     unsigned long lbeat = 0, lnref = 0;
+    struct Task *ltask = 0;
     unsigned lstage = 0, lref = 0;
     memset(&copy, 0, sizeof copy);
     Forbid();
@@ -1995,6 +2046,7 @@ static void print_status(void)
         apx = r->aspect_px; alooks = r->aspect_looks;
         memcpy(sring, r->sring, sizeof sring); sn = (int)(r->sring_n > 16 ? 16 : r->sring_n);
         lbeat = r->beat; lstage = r->stage; lref = r->refuse; lnref = r->nrefuse;
+        ltask = r->task;
     }
     Permit();
     if (flat_status_line(&copy, sizeof copy, found, line, sizeof line)) {
@@ -2005,6 +2057,7 @@ static void print_status(void)
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
     }
+    if (found && ltask != FindTask(0)) print_stuck(ltask);     /* FLAT-STUCK-DIAG */
     if (found && flat_check(&copy, sizeof copy) == FLAT_OK) {      /* FLAT-C9: the pens the desk apply / BOOT wrote (the rig reads them) */
         int n = 0;
         put_word(line, &n, "pens text=");   put_pen(line, &n, copy.pen_text);
