@@ -786,44 +786,6 @@ static int push_gadget_of(struct RastPort *rp, Object *obj)
     return g && flat_push_button(it != NULL, it ? it->LeftEdge : 0, it ? it->TopEdge : 0, g->Width, g->Height, g->Activation);
 }
 
-/* INPUT-GROUND DIAGNOSTIC (temporary): append one record (deduplicated) to the shared table, at most 16 */
-static void diag_add(int kind, int el, int pen, int drmd, int x0, int y0, int x1, int y1)
-{
-    flatshared *r = g_r;
-    const char *nm = FindTask(NULL)->tc_Node.ln_Name;
-    int i, k;
-    for (i = 0; i < r->nrec && i < 16; i++)
-        if (r->rec[i].kind == kind && r->rec[i].el == el && r->rec[i].pen == pen && r->rec[i].drmd == drmd &&
-            r->rec[i].x0 == x0 && r->rec[i].y0 == y0 && r->rec[i].x1 == x1 && r->rec[i].y1 == y1)
-            return;
-    if (r->nrec >= 16)
-        return;
-    k = r->nrec++;
-    r->rec[k].kind = (uint8_t)kind; r->rec[k].el = (uint8_t)el; r->rec[k].pen = (uint8_t)pen; r->rec[k].drmd = (uint8_t)drmd;
-    r->rec[k].x0 = (int16_t)x0; r->rec[k].y0 = (int16_t)y0; r->rec[k].x1 = (int16_t)x1; r->rec[k].y1 = (int16_t)y1;
-    for (i = 0; nm && nm[i] && i < 9; i++)
-        r->rec[k].task[i] = nm[i];
-    r->rec[k].task[i] = 0;
-}
-
-/* INPUT-GROUND DIAGNOSTIC: a RectFill whose box lies inside the last FieldBox (el 1) or inside a string gadget of its window (el 2) */
-static void diag_fill(struct RastPort *rp, int x0, int y0, int x1, int y1)
-{
-    flatshared *r = g_r;
-    struct Layer *lay = rp ? rp->Layer : NULL;
-    struct Window *win = lay ? (struct Window *)lay->Window : NULL;
-    struct Gadget *g;
-    int n, el = 0;
-    if (r->wset && x0 >= r->wx0 && y0 >= r->wy0 && x1 <= r->wx1 && y1 <= r->wy1)
-        el = 1;
-    for (g = win ? win->FirstGadget : NULL, n = 0; !el && g && n < 64; g = g->NextGadget, n++)
-        if ((g->GadgetType & GTYP_GTYPEMASK) == GTYP_STRGADGET && x0 >= g->LeftEdge && y0 >= g->TopEdge &&
-            x1 < g->LeftEdge + g->Width && y1 < g->TopEdge + g->Height)
-            el = 2;
-    if (el)
-        diag_add('F', el, rp->FgPen, rp->DrawMode, x0, y0, x1, y1);
-}
-
 /* OWNER-2026-11-10 INPUT-GROUND: the string gadget of rp's window whose box the frame box x0,y0..x1,y1 borders (flat_string_frame),
  * NULL when there is none. Relative gadget edges are resolved against the window. */
 static struct Gadget *string_gadget_at(struct RastPort *rp, int x0, int y0, int x1, int y1)
@@ -832,11 +794,9 @@ static struct Gadget *string_gadget_at(struct RastPort *rp, int x0, int y0, int 
     struct Window *win = lay ? (struct Window *)lay->Window : NULL;
     struct Gadget *g;
     int n;
-    g_r->sgcalls++;
     for (g = win ? win->FirstGadget : NULL, n = 0; g && n < 64; g = g->NextGadget, n++) {
         struct StringInfo *si = (struct StringInfo *)g->SpecialInfo;
         int gx, gy, gw, gh;
-        g_r->sgn = (ULONG)n + 1;
         if ((g->GadgetType & GTYP_GTYPEMASK) == GTYP_STRGADGET) {      /* sentinels: string gadgets seen, with an extension */
             flatshared *rr = g_r;
             rr->sgseen++;
@@ -863,8 +823,6 @@ static int string_ground(flatshared *r, struct RastPort *rp, int x0, int y0, int
 {
     struct Gadget *g = string_gadget_at(rp, x0, y0, x1, y1);
     struct Window *w = g ? (struct Window *)rp->Layer->Window : NULL;
-    if (g)
-        diag_add('S', 1, 0, 0, x0, y0, x1, y1);
     int pen = w ? flat_input_pen(st_scr(r, w->WScreen), rp->BitMap ? rp->BitMap->Depth : 0) : -1;
     if (pen >= 0) {
         struct StringExtend *ex = ((struct StringInfo *)g->SpecialInfo)->Extension;
@@ -1134,10 +1092,6 @@ static int d4_flat_pens(int el, struct RastPort *rp, ULONG shine, ULONG back, in
 {
     flatshared *r = g_r;
     r->dcalls++;
-    if (el == FLAT_EL_FIELDBOX) {       /* INPUT-GROUND DIAGNOSTIC: watch box for the fills that follow */
-        r->wx0 = (int16_t)x0; r->wy0 = (int16_t)y0; r->wx1 = (int16_t)x1; r->wy1 = (int16_t)y1; r->wset = 1;
-        diag_add('D', el, (int)shine, (int)back, x0, y0, x1, y1);
-    }
     if (el == FLAT_EL_BEVEL)
         r->dbevel++;
     if (flat_dopus_decide(&r->st, el, recessed ? 1 : 0, (int)shine, (int)back,
@@ -2245,8 +2199,6 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
     LONG b[4];
     int on, rom;
     r->rcalls++;
-    if (rp && (r->wset || (rp->Layer && rp->Layer->Window)))
-        diag_fill(rp, x0, y0, x1, y1);      /* INPUT-GROUND DIAGNOSTIC */
     on = r->st.enabled && !r->st.held && rp;
     rom = ret >= r->irom_lo && ret < r->irom_hi;
     b[0] = x0; b[1] = y0; b[2] = x1; b[3] = y1;
@@ -2473,82 +2425,6 @@ static void print_stuck(struct Task *t)
 }
 
 
-/* INPUT-GROUND DIAGNOSTIC: print every string / boopsi gadget of every window (and requester gadget lists), one line each, max 40 */
-static void diag_gadget_line(char *line, const char *where, struct Window *w, struct Gadget *g)
-{
-    int n = 0;
-    unsigned long cls = 0;
-    struct StringInfo *si = (struct StringInfo *)g->SpecialInfo;
-    put_word(line, &n, "G "); put_word(line, &n, where);
-    put_word(line, &n, " win="); put_num(line, &n, (unsigned long)w & 0xFFFFFF);
-    put_word(line, &n, " title="); if (w->Title) { int i; for (i = 0; i < 12 && w->Title[i]; i++) line[n++] = (char)w->Title[i]; }
-    put_word(line, &n, " type="); put_num(line, &n, g->GadgetType);
-    put_word(line, &n, " fl="); put_num(line, &n, g->Flags);
-    put_word(line, &n, " act="); put_num(line, &n, g->Activation);
-    put_word(line, &n, " box="); put_num(line, &n, (unsigned)(g->LeftEdge & 0xFFFF)); line[n++] = ',';
-    put_num(line, &n, (unsigned)(g->TopEdge & 0xFFFF)); line[n++] = ',';
-    put_num(line, &n, (unsigned)g->Width); line[n++] = ','; put_num(line, &n, (unsigned)g->Height);
-    put_word(line, &n, " si="); put_word(line, &n, si ? "y" : "n");
-    if ((g->GadgetType & GTYP_GTYPEMASK) == GTYP_STRGADGET && si) {
-        struct StringExtend *ex = (struct StringExtend *)si->Extension;
-        put_word(line, &n, " ext="); put_word(line, &n, ex ? "y" : "n");
-        if (ex) {
-            put_word(line, &n, " pens="); put_num(line, &n, ex->Pens[0]); line[n++] = ','; put_num(line, &n, ex->Pens[1]);
-            put_word(line, &n, " apens="); put_num(line, &n, ex->ActivePens[0]); line[n++] = ','; put_num(line, &n, ex->ActivePens[1]);
-        }
-    }
-    if ((g->GadgetType & GTYP_GTYPEMASK) == GTYP_CUSTOMGADGET) {
-        Class *c = OCLASS((Object *)g);
-        int d;
-        put_word(line, &n, " cls=");
-        for (d = 0; c && d < 8; d++, c = c->cl_Super) {
-            if (c->cl_ID) { const char *id = (const char *)c->cl_ID; while (*id && n < 200) line[n++] = *id++; }
-            else put_word(line, &n, "NULL");
-            line[n++] = '>';
-        }
-        (void)cls;
-    }
-    line[n] = 0;
-}
-
-static char diag_buf[40][240];      /* lines are filled under LockIBase and printed after UnlockIBase (PutStr under the lock deadlocks the console) */
-
-static void diag_walk(char *line, int size)
-{
-    ULONG lock;
-    int i;
-    struct Screen *sc;
-    struct Window *w;
-    int count = 0;
-    (void)size;
-    lock = LockIBase(0);
-    for (sc = IntuitionBase->FirstScreen; sc; sc = sc->NextScreen)
-        for (w = sc->FirstWindow; w; w = w->NextWindow) {
-            struct Gadget *g;
-            struct Requester *rq;
-            int n;
-            for (g = w->FirstGadget, n = 0; g && n < 64; g = g->NextGadget, n++) {
-                ULONG t = g->GadgetType & GTYP_GTYPEMASK;
-                if ((t == GTYP_STRGADGET || t == GTYP_CUSTOMGADGET) && count < 40) {
-                    diag_gadget_line(diag_buf[count], "win", w, g); count++;
-                }
-            }
-            for (rq = w->FirstRequest; rq && count < 40; rq = rq->OlderRequest)
-                for (g = rq->ReqGadget, n = 0; g && n < 64; g = g->NextGadget, n++) {
-                    ULONG t = g->GadgetType & GTYP_GTYPEMASK;
-                    if ((t == GTYP_STRGADGET || t == GTYP_CUSTOMGADGET) && count < 40) {
-                        diag_gadget_line(diag_buf[count], "req", w, g); count++;
-                    }
-                }
-        }
-    UnlockIBase(lock);
-    for (i = 0; i < count; i++) {
-        PutStr((STRPTR)diag_buf[i]);
-        PutStr((STRPTR)"\n");
-    }
-    (void)line;
-}
-
 static void print_status(void)
 {
     flat_state copy;
@@ -2629,32 +2505,6 @@ static void print_status(void)
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
-    }
-    if (found && r) {                               /* INPUT-GROUND DIAGNOSTIC: records and a gadget walk of every window */
-        int i, n;
-        n = 0;
-        put_word(line, &n, "diag sgcalls=");        put_num(line, &n, r->sgcalls);
-        put_word(line, &n, " sgn=");                put_num(line, &n, r->sgn);
-        put_word(line, &n, " nrec=");               put_num(line, &n, r->nrec);
-        line[n] = 0;
-        PutStr((STRPTR)line);
-        PutStr((STRPTR)"\n");
-        for (i = 0; i < r->nrec && i < 16; i++) {
-            n = 0;
-            line[n++] = 'R'; line[n++] = ' '; line[n++] = (char)r->rec[i].kind;
-            put_word(line, &n, " el=");   put_num(line, &n, r->rec[i].el);
-            put_word(line, &n, " pen=");  put_num(line, &n, r->rec[i].pen);
-            put_word(line, &n, " drmd="); put_num(line, &n, r->rec[i].drmd);
-            put_word(line, &n, " box=");  put_num(line, &n, (unsigned)(r->rec[i].x0 & 0xFFFF)); line[n++] = ',';
-            put_num(line, &n, (unsigned)(r->rec[i].y0 & 0xFFFF)); line[n++] = ',';
-            put_num(line, &n, (unsigned)(r->rec[i].x1 & 0xFFFF)); line[n++] = ',';
-            put_num(line, &n, (unsigned)(r->rec[i].y1 & 0xFFFF));
-            put_word(line, &n, " task="); put_word(line, &n, r->rec[i].task);
-            line[n] = 0;
-            PutStr((STRPTR)line);
-            PutStr((STRPTR)"\n");
-        }
-        diag_walk(line, sizeof line);
     }
     if (found) {                                    /* FLAT-OUTER-EDGE sentinels: calls rising = the stub runs, hits rising = ring painted */
         int n = 0;
