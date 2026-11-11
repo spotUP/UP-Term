@@ -135,6 +135,13 @@ static void test_status(void)
     CHECK_STR(line, "loop beat=9 stage=reap_icl refused=dopus refusals=2");
     flat_loop_line(1, FLAT_STG_FREE, FLAT_REF_RECORD, 1, line, sizeof line);
     CHECK_STR(line, "loop beat=1 stage=free refused=record refusals=1");
+    flat_loop_line(3, FLAT_STG_CG_REMOVE, FLAT_REF_GADTOOLS, 1, line, sizeof line);     /* S74-TIME-ROW: the CreateGadgetA patch */
+    CHECK_STR(line, "loop beat=3 stage=cg_remove refused=gadtools refusals=1");
+    CHECK_STR(flat_trow_why_name(FLAT_TROW_OK), "ok");
+    CHECK_STR(flat_trow_why_name(FLAT_TROW_NOBUTTON), "nobutton");
+    CHECK_STR(flat_trow_why_name(FLAT_TROW_ROW), "row");
+    CHECK_STR(flat_trow_why_name(FLAT_TROW_ROW + 1), "bad");
+    CHECK_STR(flat_trow_why_name(-1), "bad");
     flat_loop_line(1, FLAT_STG_COUNT, FLAT_REF_COUNT, 0, line, sizeof line);
     CHECK_STR(line, "loop beat=1 stage=bad refused=bad refusals=0");
     CHECK_INT(flat_loop_line(1, 0, 0, 0, line, 63), 0);                  /* a buffer under 64 bytes is refused */
@@ -3815,6 +3822,297 @@ static void test_flat_spacing(void)
     CHECK_INT(flat_gr_match(&fs, &gr, &t2, 12, 180, 319, 193) != 0, 0);                      /* a fill on another surface misses */
 }
 
+/* S74-TIME-ROW: one CreateGadgetA event */
+static flat_trow_ev trow_ev(int kind, int l, int t, int w, int h, int id)
+{
+    flat_trow_ev e;
+    e.kind = kind; e.left = l; e.top = t; e.width = w; e.height = h; e.id = id;
+    return e;
+}
+
+/* Feed the time 39.1 buttons Save / Use / Cancel (window coords of the measured layout, window at 0,14: Save 12,198 87x14 on
+ * screen); returns how many calls answered "changed" (must be 0). */
+static int trow_buttons(flat_trow_tab *t, const void *task, const char *prog, int top, int h)
+{
+    flat_trow_ev e;
+    int nl = -1, nw = -1, n = 0;
+    e = trow_ev(FLAT_GT_BUTTON, 12, top, 87, h, 2);
+    n += flat_trow_feed(t, task, prog, 1, 0, &e, &nl, &nw);
+    e = trow_ev(FLAT_GT_BUTTON, 122, top, 87, h, 8);
+    n += flat_trow_feed(t, task, prog, 1, 0, &e, &nl, &nw);
+    e = trow_ev(FLAT_GT_BUTTON, 233, top, 87, h, 9);
+    n += flat_trow_feed(t, task, prog, 1, 0, &e, &nl, &nw);
+    return n;
+}
+
+/* The visible ground columns between two boxes side by side after FLAT-SPACING (flat_inset) */
+static int trow_ground(int side, int al, int at, int ar, int ab, int bl, int bt, int br, int bb)
+{
+    int a[4], b[4];
+    flat_inset(side, al, at, ar, ab, a);
+    flat_inset(side, bl, bt, br, bb, b);
+    return b[0] - a[2] - 1;
+}
+
+static void test_trow_name(void)
+{
+    CHECK_INT(flat_trow_name("Time"), 1);
+    CHECK_INT(flat_trow_name("time"), 1);
+    CHECK_INT(flat_trow_name("SYS:Prefs/TIME"), 1);
+    CHECK_INT(flat_trow_name("Work:Time"), 1);
+    CHECK_INT(flat_trow_name("Timer"), 0);
+    CHECK_INT(flat_trow_name("Time.info"), 0);
+    CHECK_INT(flat_trow_name("SYS:Time/Clock"), 0);
+    CHECK_INT(flat_trow_name("Tim"), 0);
+    CHECK_INT(flat_trow_name(""), 0);
+    CHECK_INT(flat_trow_name(0), 0);
+}
+
+/* The measured time 39.1 layout: row left = Save left 12; year 54..106 (frame box, NewGadget assumed to carry it, frame_out 0) lands
+ * at 12 keeping width 53; month 142..319 grows left to 65, width 255, right edge 319 unchanged; ground between = 2 * side. */
+static void test_trow_time39(void)
+{
+    static flat_trow_tab t;
+    flat_trow_ev e;
+    int a = 0, nl = -1, nw = -1, r;
+    flat_trow_init(&t);
+    CHECK_INT(trow_buttons(&t, &a, "SYS:Prefs/Time", 184, 14), 0);
+    e = trow_ev(FLAT_GT_INTEGER, 54, 18, 53, 14, 14);
+    r = flat_trow_feed(&t, &a, "SYS:Prefs/Time", 1, 0, &e, &nl, &nw);
+    CHECK_INT(r, 1);
+    CHECK_INT(nl, 12);                                                   /* year box left = row left (Save) */
+    CHECK_INT(nw, 53);                                                   /* keeps its width */
+    nl = nw = -1;
+    e = trow_ev(FLAT_GT_CYCLE, 142, 18, 178, 14, 15);
+    r = flat_trow_feed(&t, &a, "SYS:Prefs/Time", 1, 0, &e, &nl, &nw);
+    CHECK_INT(r, 1);
+    CHECK_INT(nl, 65);
+    CHECK_INT(nw, 255);
+    CHECK_INT(nl + nw - 1, 142 + 178 - 1);                               /* month right edge stays */
+    CHECK_INT(trow_ground(1, 12, 18, 64, 31, nl, 18, nl + nw - 1, 31), 2);   /* FLAT-SPACING gap, square pixels */
+    CHECK_INT(t.rows, 1);
+    CHECK_INT(t.why, FLAT_TROW_OK);
+    CHECK_INT(t.slot[0].task == 0 && t.slot[1].task == 0, 1);           /* sequence ended: slot freed */
+    e = trow_ev(11, 126, 140, 194, 11, 13);         /* the sliders after: unchanged */
+    CHECK_INT(flat_trow_feed(&t, &a, "SYS:Prefs/Time", 1, 0, &e, &nl, &nw), 0);
+}
+
+/* Same layout if the NewGadget carries the inner string box (60,21 41x8) and GadTools draws the frame 6 columns outside: the frame
+ * lands at 12 (box at 18), the month the same as above. */
+static void test_trow_inner_box(void)
+{
+    static flat_trow_tab t;
+    flat_trow_ev e;
+    int a = 0, nl = -1, nw = -1;
+    flat_trow_init(&t);
+    trow_buttons(&t, &a, "Time", 184, 14);
+    e = trow_ev(FLAT_GT_INTEGER, 60, 21, 41, 8, 14);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 6, &e, &nl, &nw), 1);
+    CHECK_INT(nl, 18);
+    CHECK_INT(nl - 6, 12);
+    CHECK_INT(nw, 41);
+    e = trow_ev(FLAT_GT_CYCLE, 142, 18, 178, 14, 15);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 6, &e, &nl, &nw), 1);
+    CHECK_INT(nl, 65);
+    CHECK_INT(nw, 255);
+}
+
+/* Non-square pixels (side 2, PAL hires): the program boxes still touch, the ground between is 4 columns = 2 * side; a row too small
+ * for flat_inset gets the gap as program space instead. */
+static void test_trow_aspect(void)
+{
+    int nl = -1, nw = -1;
+    CHECK_INT(flat_trow_month(2, 0, 12, 53, 18, 14, 106, 142, 18, 178, 14, &nl, &nw), 1);
+    CHECK_INT(nl, 65);
+    CHECK_INT(nw, 255);
+    CHECK_INT(trow_ground(2, 12, 18, 64, 31, nl, 18, nl + nw - 1, 31), 4);
+    CHECK_INT(flat_trow_month(1, 0, 12, 53, 18, 6, 106, 142, 18, 178, 6, &nl, &nw), 1);   /* 6 rows: no inset on either box */
+    CHECK_INT(nl, 67);
+    CHECK_INT(nl - 64 - 1, 2);
+    CHECK_INT(nl + nw - 1, 319);
+    CHECK_INT(flat_trow_month(2, 0, 12, 53, 18, 6, 106, 142, 18, 178, 6, &nl, &nw), 1);
+    CHECK_INT(nl - 64 - 1, 4);
+}
+
+/* A larger font: every size from the NewGadget values, no font constant (year 70,24 69x20, month 186,24 240x20). */
+static void test_trow_big_font(void)
+{
+    static flat_trow_tab t;
+    flat_trow_ev e;
+    int a = 0, nl = -1, nw = -1;
+    flat_trow_init(&t);
+    trow_buttons(&t, &a, "Time", 250, 20);
+    e = trow_ev(FLAT_GT_INTEGER, 70, 24, 69, 20, 14);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw), 1);
+    CHECK_INT(nl, 12);
+    CHECK_INT(nw, 69);
+    e = trow_ev(FLAT_GT_CYCLE, 186, 24, 240, 20, 15);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw), 1);
+    CHECK_INT(nl, 81);
+    CHECK_INT(nw, 345);
+    CHECK_INT(nl + nw - 1, 425);
+    CHECK_INT(trow_ground(1, 12, 24, 80, 43, nl, 24, 425, 43), 2);
+}
+
+/* Every mismatch: the gadget stays stock and the reason is kept for STATUS. */
+static void test_trow_mismatch(void)
+{
+    static flat_trow_tab t;
+    flat_trow_ev e;
+    int a = 0, nl = -1, nw = -1;
+    flat_trow_init(&t);
+    trow_buttons(&t, &a, "Clock", 184, 14);                                  /* another program: no slot, never changed */
+    e = trow_ev(FLAT_GT_INTEGER, 54, 18, 53, 14, 14);
+    CHECK_INT(flat_trow_feed(&t, &a, "Clock", 1, 0, &e, &nl, &nw), 0);
+    CHECK_INT(t.slot[0].task == 0, 1);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw), 0);         /* INTEGER before any BUTTON */
+    CHECK_INT(t.why, FLAT_TROW_NOBUTTON);
+    trow_buttons(&t, &a, "Time", 184, 14);                                   /* another kind before the INTEGER */
+    e = trow_ev(12, 54, 18, 53, 14, 14);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw), 0);
+    CHECK_INT(t.why, FLAT_TROW_ORDER);
+    e = trow_ev(FLAT_GT_INTEGER, 54, 18, 53, 14, 14);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw), 0);         /* the sequence restarted: no BUTTON since */
+    trow_buttons(&t, &a, "Time", 184, 14);                                   /* a program named Time with other ids */
+    e = trow_ev(FLAT_GT_INTEGER, 54, 18, 53, 14, 3);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw), 0);
+    CHECK_INT(t.why, FLAT_TROW_ID);
+    trow_buttons(&t, &a, "Time", 18, 14);                                    /* a BUTTON on the INTEGER's row */
+    e = trow_ev(FLAT_GT_INTEGER, 154, 18, 53, 14, 14);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw), 0);
+    CHECK_INT(t.why, FLAT_TROW_ORDER);
+    trow_buttons(&t, &a, "Time", 184, 14);                                   /* INTEGER already at the row left */
+    e = trow_ev(FLAT_GT_INTEGER, 12, 18, 53, 14, 14);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw), 0);
+    CHECK_INT(t.why, FLAT_TROW_GEOM);
+    trow_buttons(&t, &a, "Time", 184, 14);                                   /* degenerate width */
+    e = trow_ev(FLAT_GT_INTEGER, 54, 18, 0, 14, 14);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw), 0);
+    CHECK_INT(t.why, FLAT_TROW_GEOM);
+    trow_buttons(&t, &a, "Time", 184, 14);                                   /* INTEGER moved, next is no CYCLE */
+    e = trow_ev(FLAT_GT_INTEGER, 54, 18, 53, 14, 14);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw), 1);         /* decided when it arrives: it moves */
+    nl = nw = -1;
+    e = trow_ev(11, 142, 18, 178, 14, 15);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw), 0);
+    CHECK_INT(nl == -1 && nw == -1, 1);
+    CHECK_INT(t.why, FLAT_TROW_NOCYCLE);
+    trow_buttons(&t, &a, "Time", 184, 14);                                   /* CYCLE on another row */
+    e = trow_ev(FLAT_GT_INTEGER, 54, 18, 53, 14, 14);
+    flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw);
+    e = trow_ev(FLAT_GT_CYCLE, 142, 60, 178, 14, 15);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw), 0);
+    CHECK_INT(t.why, FLAT_TROW_ROW);
+    trow_buttons(&t, &a, "Time", 184, 14);                                   /* CYCLE left of the INTEGER */
+    e = trow_ev(FLAT_GT_INTEGER, 154, 18, 53, 14, 14);
+    flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw);
+    e = trow_ev(FLAT_GT_CYCLE, 100, 18, 40, 14, 15);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw), 0);
+    CHECK_INT(t.why, FLAT_TROW_ROW);
+    CHECK_INT(flat_trow_month(1, 0, 12, 53, 18, 14, 106, 142, 18, -5, 14, &nl, &nw), 0);   /* negative month width */
+    CHECK_INT(flat_trow_month(1, 0, 12, 53, 18, 14, 106, 107, 18, 178, 14, &nl, &nw), 1);  /* touching: grows */
+    CHECK_INT(flat_trow_month(1, 0, 60, 53, 18, 14, 106, 107, 18, 178, 14, &nl, &nw), 0);  /* would not grow */
+    CHECK_INT(flat_trow_year(-1, 0, 54, 53, &nl), 0);
+    CHECK_INT(t.rows, 0);
+}
+
+/* Two Time tasks creating at once keep independent states; a dropped task forgets its sequence. */
+/* The exact call order rig 68 traced from Time 39.1 (depth.kind.id): gadtools builds each kind by calling CreateGadgetA again through
+ * its own vector, so every program gadget is followed by nested GENERIC (and, for the INTEGER, STRING) calls of the same id:
+ * 0.0.0 0.1.2 1.0.2 0.1.8 1.0.8 0.1.9 1.0.9 0.3.14 1.12.14 2.0.14 0.7.15 1.0.15 0.11.13 1.0.13 1.0.13 0.11.12 1.0.12 1.0.12.
+ * Nested calls carry the box gadtools passes down (the moved one after a change). Only the INTEGER and CYCLE change. */
+static void test_trow_nested_trace(void)
+{
+    static const int seq[18][6] = {
+        { 0, 0, 0, 0, 0, 0 },                                               /* CreateContext */
+        { 1, 12, 184, 87, 14, 2 }, { 0, 12, 184, 87, 14, 2 },
+        { 1, 122, 184, 87, 14, 8 }, { 0, 122, 184, 87, 14, 8 },
+        { 1, 233, 184, 87, 14, 9 }, { 0, 233, 184, 87, 14, 9 },
+        { 3, 54, 18, 53, 14, 14 }, { 12, 12, 18, 53, 14, 14 }, { 0, 12, 18, 53, 14, 14 },
+        { 7, 142, 18, 178, 14, 15 }, { 0, 65, 18, 255, 14, 15 },
+        { 11, 126, 140, 194, 11, 13 }, { 0, 126, 140, 194, 11, 13 }, { 0, 126, 140, 194, 11, 13 },
+        { 11, 126, 160, 194, 11, 12 }, { 0, 126, 160, 194, 11, 12 }, { 0, 126, 160, 194, 11, 12 }
+    };
+    static flat_trow_tab t;
+    flat_trow_ev e;
+    int a = 0, i, r, nl, nw, changed = 0;
+    flat_trow_init(&t);
+    for (i = 0; i < 18; i++) {
+        nl = nw = -1;
+        e = trow_ev(seq[i][0], seq[i][1], seq[i][2], seq[i][3], seq[i][4], seq[i][5]);
+        r = flat_trow_feed(&t, &a, "SYS:Prefs/Time", 1, 0, &e, &nl, &nw);
+        changed += r;
+        if (i == 7) {
+            CHECK_INT(r, 1);
+            CHECK_INT(nl, 12);
+            CHECK_INT(nw, 53);
+        } else if (i == 10) {
+            CHECK_INT(r, 1);
+            CHECK_INT(nl, 65);
+            CHECK_INT(nw, 255);
+        } else {
+            CHECK_INT(r, 0);
+            CHECK_INT(nl, -1);                                               /* untouched: nested values stay as gadtools made them */
+        }
+        if (i == 9)
+            CHECK_INT(t.slot[0].phase == 1 || t.slot[1].phase == 1 || t.slot[2].phase == 1 || t.slot[3].phase == 1, 1);
+    }
+    CHECK_INT(changed, 2);
+    CHECK_INT(t.rows, 1);
+    CHECK_INT(t.why, FLAT_TROW_OK);                                          /* not overwritten by the nested calls after the row */
+}
+
+/* A nested-looking call neither starts nor ends a sequence: GENERIC or STRING id 14 alone take no slot and leave the reason; a
+ * GENERIC between the buttons and the INTEGER does not end the sequence. */
+static void test_trow_nested_inert(void)
+{
+    static flat_trow_tab t;
+    flat_trow_ev e;
+    int a = 0, nl = -1, nw = -1;
+    flat_trow_init(&t);
+    t.why = FLAT_TROW_ROW;
+    e = trow_ev(FLAT_GT_GENERIC, 12, 184, 87, 14, 2);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw), 0);
+    e = trow_ev(FLAT_GT_STRING, 54, 18, 53, 14, 14);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw), 0);
+    CHECK_INT(t.slot[0].task == 0 && t.slot[1].task == 0 && t.slot[2].task == 0 && t.slot[3].task == 0, 1);
+    CHECK_INT(t.why, FLAT_TROW_ROW);
+    CHECK_INT(t.clock, 0);
+    trow_buttons(&t, &a, "Time", 184, 14);
+    e = trow_ev(FLAT_GT_GENERIC, 54, 18, 53, 14, 14);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw), 0);
+    CHECK_INT(t.why, FLAT_TROW_ROW);
+    e = trow_ev(FLAT_GT_INTEGER, 54, 18, 53, 14, 14);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw), 1);
+    CHECK_INT(nl, 12);
+}
+
+static void test_trow_tasks(void)
+{
+    static flat_trow_tab t;
+    flat_trow_ev e;
+    int a = 0, b = 0, nl = -1, nw = -1;
+    flat_trow_init(&t);
+    trow_buttons(&t, &a, "Time", 184, 14);
+    e = trow_ev(FLAT_GT_INTEGER, 54, 18, 53, 14, 14);
+    CHECK_INT(flat_trow_feed(&t, &b, "Time", 1, 0, &e, &nl, &nw), 0);        /* b has no BUTTON yet */
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw), 1);
+    trow_buttons(&t, &b, "Time", 250, 20);
+    e = trow_ev(FLAT_GT_INTEGER, 70, 24, 69, 20, 14);
+    CHECK_INT(flat_trow_feed(&t, &b, "Time", 1, 0, &e, &nl, &nw), 1);
+    e = trow_ev(FLAT_GT_CYCLE, 142, 18, 178, 14, 15);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw), 1);
+    CHECK_INT(nl == 65 && nw == 255, 1);
+    e = trow_ev(FLAT_GT_CYCLE, 186, 24, 240, 20, 15);
+    CHECK_INT(flat_trow_feed(&t, &b, "Time", 1, 0, &e, &nl, &nw), 1);
+    CHECK_INT(nl == 81 && nw == 345, 1);
+    CHECK_INT(t.rows, 2);
+    trow_buttons(&t, &a, "Time", 184, 14);
+    flat_trow_drop(&t, &a);
+    e = trow_ev(FLAT_GT_INTEGER, 54, 18, 53, 14, 14);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw), 0);
+}
+
 void suite_flat_core(void)
 {
     test_draw_state_lookup();
@@ -3891,4 +4189,13 @@ void suite_flat_core(void)
     test_round_pen_byte();
     test_no_outlines();
     test_flat_spacing();
+    test_trow_name();
+    test_trow_time39();
+    test_trow_inner_box();
+    test_trow_aspect();
+    test_trow_big_font();
+    test_trow_mismatch();
+    test_trow_tasks();
+    test_trow_nested_trace();
+    test_trow_nested_inert();
 }

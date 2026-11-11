@@ -91,6 +91,15 @@ typedef struct flatshared {
     ULONG beat;
     UWORD stage, refuse;
     ULONG nrefuse;
+    /* S74-TIME-ROW: the gadtools.library CreateGadgetA patch (LVO -30) that lays out the Time preferences top row full width */
+    flat_swap cgsw;
+    uintptr_t *cgslot;
+    struct flat_gate *cggate;   /* FLAT-UNLOAD-INFLIGHT: the never-freed entry block of the patch (flat.c gate_make) */
+    struct Library *gtbase;     /* gadtools.library, open while the patch is in place; closed only after it is removed */
+    flat_trow_tab trow;         /* per creating task sequence state (flat_core.h); trow.rows is the sentinel, trow.why the last reason */
+    ULONG cgcalls;              /* every patched CreateGadgetA call (the stub runs) */
+    char cgname[8];             /* scratch for the calling CLI command name, used only under Forbid (flat.c cg_feed) */
+    WORD trow_raw[2][5];        /* rig evidence: the last INTEGER [0] / CYCLE [1] NewGadget of a program named Time, as given: left top width height id */
     /* the icon pens are no longer here: the shared holder record IPD_SEM_NAME owns them (iconpen_dos.h, F14) */
 } flatshared;
 
