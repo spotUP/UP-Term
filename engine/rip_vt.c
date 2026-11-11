@@ -253,8 +253,11 @@ static void rip_on_cmd(void *ud, const struct rip_cmd *c)
     cv = rip_canvas(t, ad);
     if (!cv)
         return;
-    if (!rip_pal_exec(&ad->pal, cv, c))
+    if (!rip_pal_exec(&ad->pal, cv, c)) {
         rip_gfx_exec(&ad->g, cv, c);
+        if (c->level == 0 && c->ch == '*') /* reset windows: the EGA palette comes back too (SyncTERM) */
+            rip_pal_reset(&ad->pal, cv);
+    }
 }
 
 static void rip_on_text(void *ud, const unsigned char *p, long n)
