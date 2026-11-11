@@ -35,7 +35,10 @@ int raa_nearest(raa_rgb_fn rgb, void *ctx, int npens, unsigned long want);
  * the arguments travel as one pointer, so the RectFill hook's border-button fill keeps its job in a static and its stack small).
  * raa_frame_box reads the pen beside each corner, then paints flat_frame_draw_round. It returns RAA_BOX_NONE when that drew
  * nothing, RAA_BOX_PLAIN when the box is drawn and the corners stay as drawn (the fallbacks raa_frame_draw names), or
- * RAA_BOX_BLEND: j->bg then holds corner c's pen in bits 8c .. 8c+7 for raa_frame_corners, which blends the corner pixels. */
+ * RAA_BOX_BLEND: j->bg then holds corner c's pen in bits 8c .. 8c+7 for raa_frame_corners, which blends the corner pixels.
+ * FLAT-SPACING: a filled job (fill set, state enabled and not held) first paints the band between its box and flat_inset(s->side)
+ * in s->pen_back, then works on the inset box: ox/oy/w/h hold the inset box after raa_frame_box. side and the knob and ground
+ * helpers' side argument are flat_side_px of the screen. */
 typedef struct raa_job {
     const flat_state *s;
     flat_fill_fn fn;
@@ -53,11 +56,11 @@ void raa_frame_corners(const raa_job *j, int *blended);
 int raa_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, int role, flat_fill_fn fn, flat_read_fn rd,
                    raa_rgb_fn rgb, int npens, void *ctx, int *blended);
 /* flat_knob_frame_draw (the Workbench scroller knob: state pen box, plain role) through raa_frame_draw */
-int raa_knob_frame_draw(const flat_state *s, int depth, int active, int ox, int oy, int w, int h, flat_fill_fn fn, flat_read_fn rd,
-                        raa_rgb_fn rgb, int npens, void *ctx, int *blended);
+int raa_knob_frame_draw(const flat_state *s, int depth, int active, int side, int ox, int oy, int w, int h, flat_fill_fn fn,
+                        flat_read_fn rd, raa_rgb_fn rgb, int npens, void *ctx, int *blended);
 /* INPUT-GROUND: a text input's box (no outline, no inner frame): the whole box filled with ground pen, rounded corners as the flat
  * buttons (flat_frame_draw_round + raa_frame_corners, the knob path). pen < 0 draws nothing and returns 0. */
-int raa_ground_frame_draw(const flat_state *s, int pen, int ox, int oy, int w, int h, flat_fill_fn fn, flat_read_fn rd, raa_rgb_fn rgb,
-                          int npens, void *ctx, int *blended);
+int raa_ground_frame_draw(const flat_state *s, int pen, int side, int ox, int oy, int w, int h, flat_fill_fn fn, flat_read_fn rd,
+                          raa_rgb_fn rgb, int npens, void *ctx, int *blended);
 
 #endif

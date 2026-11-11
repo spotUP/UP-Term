@@ -536,7 +536,8 @@ int flat_noline_pen(const flat_state *s, int cls, int depth, int centre_pen);
 #define FLAT_GR_N 48
 typedef struct flat_grbox {
     const void *surf;
-    int x0, y0, x1, y1, pen;
+    int x0, y0, x1, y1, pen;                                    /* program box: the match key */
+    int ix0, iy0, ix1, iy1;                                     /* FLAT-SPACING inset box (flat_inset): the part painted in pen */
 } flat_grbox;
 typedef struct flat_gr {
     flat_grbox box[FLAT_GR_N];
@@ -544,12 +545,13 @@ typedef struct flat_gr {
 } flat_gr;
 /* A frame draw of box x0,y0..x1,y1: every record that overlaps it is dropped (the same box included). */
 void flat_gr_drop(flat_gr *g, const void *surf, int x0, int y0, int x1, int y1);
-/* Record a box and its ground pen (call flat_gr_drop first). */
-void flat_gr_add(flat_gr *g, const void *surf, int x0, int y0, int x1, int y1, int pen);
+/* Record a box and its ground pen (call flat_gr_drop first). side (flat_side_px) gives the inset box the frame filled (flat_inset). */
+void flat_gr_add(flat_gr *g, const void *surf, int side, int x0, int y0, int x1, int y1, int pen);
 /* The record of this surface whose box holds the rect, or 0 (not enabled, held, no record). */
 const flat_grbox *flat_gr_match(const flat_state *s, const flat_gr *g, const void *surf, int x0, int y0, int x1, int y1);
-/* Band k (0 top corner rows, 1 middle rows, 2 bottom corner rows) of the rect inside record b minus the four rounded corner squares
- * (rad x rad, drawn by the frame and kept): 1 and the band in out (x0,y0,x1,y1), 0 when the band is empty. */
+/* Band k (0 top corner rows, 1 middle rows, 2 bottom corner rows) of the rect inside record b's inset box minus its four rounded
+ * corner squares (rad x rad, drawn by the frame and kept): 1 and the band in out (x0,y0,x1,y1), 0 when the band is empty. The part of
+ * the rect between program box and inset box is window ground (flat_inset_band). */
 int flat_gr_clip(const flat_grbox *b, int rad, int x0, int y0, int x1, int y1, int k, int out[4]);
 
 /* S32-GHOST-MENU: Intuition's menu ghost on 3.2 (ROM RectFill, AreaPtrn {0x4444, 0x1111}, AreaPtSz 1, JAM1, FgPen = the menu fill pen)
@@ -741,6 +743,19 @@ unsigned flat_draw_epoch(const flat_draw_tab *d, const void *screen);
 /* S57-BUTTON-ASPECT-BORDERS: the width in pixels of a button's left and right outline lines: side (flat_side_px; below 1 counts 1),
  * never more than a third of the box width w. Top and bottom lines stay 1 px. */
 int flat_button_side(int side, int w);
+
+/* FLAT-SPACING: two filled flat elements whose program boxes touch show window ground between them. The box x0,y0..x1,y1 shrinks by
+ * 1 row at top and bottom and by side columns (flat_side_px; below 1 counts 1) at left and right, so neighbours show 2 visual pixels of
+ * ground. An inset under FLAT_INSET_MIN wide or high leaves the box as it is (returns 0); 1 = inset. out = x0,y0,x1,y1. */
+#define FLAT_INSET_MIN 5
+int flat_inset(int side, int x0, int y0, int x1, int y1, int out[4]);
+/* Band k of box minus its inset in, clipped to clip (all x0,y0,x1,y1): 0 top rows (full width), 1 bottom rows, 2 left columns, 3 right
+ * columns (both on the inset rows). 1 and the rect in out, 0 when empty. The four bands cover box minus inset exactly once. */
+int flat_inset_band(const int box[4], const int in[4], const int clip[4], int k, int out[4]);
+/* flat_inset_band on a ground record: band k of gb's program box around its inset box, o[] = clip on entry, the band on 1. */
+int flat_gr_band(const flat_grbox *gb, int k, int o[4]);
+/* The scalar form both use: band k of box x0..y1 around inset ix0..iy1, o[] = clip on entry, the band on 1. */
+int flat_band_k(int x0, int y0, int x1, int y1, int ix0, int iy0, int ix1, int iy1, int k, int o[4]);
 
 /* FLAT-ASPECT-BORDERS: columns per row of visual height on a mode whose DisplayInfo Resolution is rx x ry ticks per pixel
  * (also the width in pixels of a vertical line that looks as thick as a 1 px horizontal one). Non-square modes with taller

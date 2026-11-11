@@ -826,12 +826,15 @@ void flat_gr_drop(flat_gr *g, const void *surf, int x0, int y0, int x1, int y1)
     }
 }
 
-void flat_gr_add(flat_gr *g, const void *surf, int x0, int y0, int x1, int y1, int pen)
+void flat_gr_add(flat_gr *g, const void *surf, int side, int x0, int y0, int x1, int y1, int pen)
 {
     flat_grbox *b = &g->box[g->next];
+    int in[4];
     g->next = (g->next + 1) % FLAT_GR_N;
     b->surf = surf;
     b->x0 = x0; b->y0 = y0; b->x1 = x1; b->y1 = y1; b->pen = pen;
+    flat_inset(side, x0, y0, x1, y1, in);
+    b->ix0 = in[0]; b->iy0 = in[1]; b->ix1 = in[2]; b->iy1 = in[3];
 }
 
 const flat_grbox *flat_gr_match(const flat_state *s, const flat_gr *g, const void *surf, int x0, int y0, int x1, int y1)
@@ -849,20 +852,22 @@ const flat_grbox *flat_gr_match(const flat_state *s, const flat_gr *g, const voi
 
 int flat_gr_clip(const flat_grbox *b, int rad, int x0, int y0, int x1, int y1, int k, int out[4])
 {
-    int ty1 = b->y0 + rad - 1, by0 = b->y1 - rad + 1;
+    int ty1 = b->iy0 + rad - 1, by0 = b->iy1 - rad + 1;
     int ya, yb, xa = x0, xb = x1;
     if (by0 <= ty1)                                                                     /* a box shorter than two radii: no middle band */
         by0 = ty1 + 1;
-    if (k == 0) { ya = b->y0; yb = ty1; }                                               /* top corner rows */
+    if (k == 0) { ya = b->iy0; yb = ty1; }                                              /* top corner rows */
     else if (k == 1) { ya = ty1 + 1; yb = by0 - 1; }                                    /* middle rows */
-    else { ya = by0; yb = b->y1; }                                                      /* bottom corner rows */
+    else { ya = by0; yb = b->iy1; }                                                     /* bottom corner rows */
     if (ya < y0) ya = y0;
     if (yb > y1) yb = y1;
     if (ya > yb)
         return 0;
+    if (xa < b->ix0) xa = b->ix0;                                                       /* FLAT-SPACING: never past the inset box */
+    if (xb > b->ix1) xb = b->ix1;
     if (k != 1) {
-        if (xa < b->x0 + rad) xa = b->x0 + rad;
-        if (xb > b->x1 - rad) xb = b->x1 - rad;
+        if (xa < b->ix0 + rad) xa = b->ix0 + rad;
+        if (xb > b->ix1 - rad) xb = b->ix1 - rad;
     }
     if (xa > xb)
         return 0;
@@ -1354,6 +1359,49 @@ int flat_button_side(int side, int w)
     if (side > w / 3)
         side = w / 3;
     return side < 1 ? 1 : side;
+}
+
+int flat_inset(int side, int x0, int y0, int x1, int y1, int out[4])
+{
+    if (side < 1)
+        side = 1;
+    out[0] = x0; out[1] = y0; out[2] = x1; out[3] = y1;
+    if ((x1 - x0 + 1) - 2 * side < FLAT_INSET_MIN || (y1 - y0 + 1) - 2 < FLAT_INSET_MIN)
+        return 0;
+    out[0] = x0 + side; out[1] = y0 + 1; out[2] = x1 - side; out[3] = y1 - 1;
+    return 1;
+}
+
+/* FLAT-SPACING band k of the box x0..y1 around the inset box ix0..iy1, clipped to o[] on entry; o[] = the band on 1. Scalars, so
+ * callers on the flat_rf_c chain (flat_gr_band, raa_inset) carry no box arrays (S62-FLAT-RF-TX-BUDGET). */
+int flat_band_k(int x0, int y0, int x1, int y1, int ix0, int iy0, int ix1, int iy1, int k, int o[4])
+{
+    if (k == 0) y1 = iy0 - 1;                                                           /* top rows, full width */
+    else if (k == 1) y0 = iy1 + 1;                                                      /* bottom rows, full width */
+    else {
+        y0 = iy0; y1 = iy1;                                                             /* side columns on the inset rows */
+        if (k == 2) x1 = ix0 - 1;
+        else x0 = ix1 + 1;
+    }
+    if (x0 < o[0]) x0 = o[0];
+    if (y0 < o[1]) y0 = o[1];
+    if (x1 > o[2]) x1 = o[2];
+    if (y1 > o[3]) y1 = o[3];
+    if (x0 > x1 || y0 > y1)
+        return 0;
+    o[0] = x0; o[1] = y0; o[2] = x1; o[3] = y1;
+    return 1;
+}
+
+int flat_inset_band(const int box[4], const int in[4], const int clip[4], int k, int out[4])
+{
+    out[0] = clip[0]; out[1] = clip[1]; out[2] = clip[2]; out[3] = clip[3];
+    return flat_band_k(box[0], box[1], box[2], box[3], in[0], in[1], in[2], in[3], k, out);
+}
+
+int flat_gr_band(const flat_grbox *gb, int k, int o[4])
+{
+    return flat_band_k(gb->x0, gb->y0, gb->x1, gb->y1, gb->ix0, gb->iy0, gb->ix1, gb->iy1, k, o);
 }
 
 

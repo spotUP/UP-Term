@@ -1001,7 +1001,7 @@ static void test_round_aa(void)
     CHECK_INT(stock0 == 1 || stock0 == 0, 1);                       /* stock: hard, one of fill or backdrop */
     /* the antialiased box: intermediate pens appear in the corners, the middle keeps the fill */
     for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 0;
-    CHECK_INT(raa_frame_draw(&fs, 0, 10, 10, 20, 14, 1, 0, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);
+    CHECK_INT(raa_frame_draw(&fs, 0, 9, 9, 22, 16, 1, 0, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);
     CHECK_INT(cv->pix[17][20], 1);                                  /* body */
     CHECK_INT(cv->pix[10][10], 0);                                  /* corner pixel: backdrop */
     for (y = 10; y < 14; y++) for (x = 10; x < 14; x++) if (cv->pix[y][x] >= 2) mid++;
@@ -1012,7 +1012,7 @@ static void test_round_aa(void)
     CHECK_INT(cv->pix[10][27] >= 2 && cv->pix[23][29] == 0, 1);     /* other corners alike */
     /* RL19 right corners: a wide button (40x14, the rig's is 80x14) blends all four corners alike, mirrored, on a plain backdrop */
     for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 0;
-    CHECK_INT(raa_frame_draw(&fs, 0, 10, 10, 40, 14, 1, 0, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);
+    CHECK_INT(raa_frame_draw(&fs, 0, 9, 9, 42, 16, 1, 0, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);
     for (y = 0, mid = 0; y < 4; y++)
         for (x = 0; x < 4; x++) {
             int tl = cv->pix[10 + y][10 + x];
@@ -1022,36 +1022,40 @@ static void test_round_aa(void)
             mid += tl >= 2;
         }
     CHECK_INT(mid > 0, 1);
-    /* RL19 rig reading: on the btnbgprobe 2x2 checker the blend mixes the ONE pen diagonally outside each corner. Where that tile
-     * has the fill colour (here pen 1 = pen_line, outside both right corners) a correct blend is fill over fill: no step shows. */
+    /* RL19 rig reading: on the btnbgprobe 2x2 checker the blend mixes the ONE pen diagonally outside each corner. FLAT-SPACING:
+     * that pen now lies on the band the inset painted in pen_back (0), so all four corners blend against the window ground alike,
+     * whatever the checker held there. */
     for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = ((x >> 1) + (y >> 1)) & 1 ? 1 : 0;
     CHECK_INT(cv->pix[9][9] == 0 && cv->pix[9][50] == 1 && cv->pix[24][9] == 0 && cv->pix[24][50] == 1, 1);   /* the rig's phase */
-    CHECK_INT(raa_frame_draw(&fs, 0, 10, 10, 40, 14, 1, 0, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);
+    CHECK_INT(raa_frame_draw(&fs, 0, 9, 9, 42, 16, 1, 0, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);
     for (y = 0; y < 4; y++)
         for (x = 0; x < 4; x++) {
             CHECK_INT(cv->pix[10 + y][10 + x], cv->pix[23 - y][10 + x]);                /* left corners: blended with pen 0 */
-            CHECK_INT(cv->pix[10 + y][49 - x], 1);                                      /* right corners: fill over fill */
-            CHECK_INT(cv->pix[23 - y][49 - x], 1);
+            CHECK_INT(cv->pix[10 + y][49 - x], cv->pix[10 + y][10 + x]);                /* right corners: the band's pen 0 too */
+            CHECK_INT(cv->pix[23 - y][49 - x], cv->pix[10 + y][10 + x]);
         }
     CHECK_INT(cv->pix[10][12] >= 2 && cv->pix[10][12] <= 4, 1);                         /* left edge pixel still between */
+    CHECK_INT(cv->pix[9][50] == 0 && cv->pix[24][50] == 0 && cv->pix[16][9] == 0 && cv->pix[16][50] == 0, 1);   /* the band is ground */
     /* fallbacks: the stock corners, no blend */
     for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 0;
-    CHECK_INT(raa_frame_draw(&fs, 0, 10, 10, 20, 14, 1, 0, round_fill, round_read, raa_test_rgb, 0, cv, &blended), 1);
+    CHECK_INT(raa_frame_draw(&fs, 0, 9, 9, 22, 16, 1, 0, round_fill, round_read, raa_test_rgb, 0, cv, &blended), 1);
     CHECK_INT(blended, 0);
     CHECK_INT(cv->pix[11][11], stock0);
     CHECK_INT(cv->pix[10][10], 0);                                  /* stock cut still made */
-    CHECK_INT(raa_frame_draw(&fs, 0, 10, 10, 20, 14, 1, 0, round_fill, round_read, raa_test_rgb, 300, cv, &blended) && !blended, 1);
+    CHECK_INT(raa_frame_draw(&fs, 0, 9, 9, 22, 16, 1, 0, round_fill, round_read, raa_test_rgb, 300, cv, &blended) && !blended, 1);
     CHECK_INT(raa_frame_draw(&fs, 0, 10, 10, 20, 14, 0, 0, round_fill, round_read, raa_test_rgb, 5, cv, &blended) && !blended, 1);   /* unfilled */
-    CHECK_INT(raa_frame_draw(&fs, 0, 10, 10, 20, 14, 1, FLAT_ROLE_SECONDARY, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);   /* a secondary is a fill: antialiased like the primary */
+    CHECK_INT(raa_frame_draw(&fs, 0, 9, 9, 22, 16, 1, FLAT_ROLE_SECONDARY, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);   /* a secondary is a fill: antialiased like the primary */
     for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 9;       /* pen 9 is not in a 5 pen palette: unreadable */
-    CHECK_INT(raa_frame_draw(&fs, 0, 10, 10, 20, 14, 1, 0, round_fill, round_read, raa_test_rgb, 5, cv, &blended) && !blended, 1);
+    fs.pen_back = 9;                                                            /* the band the inset paints stays unreadable */
+    CHECK_INT(raa_frame_draw(&fs, 0, 9, 9, 22, 16, 1, 0, round_fill, round_read, raa_test_rgb, 5, cv, &blended) && !blended, 1);
     CHECK_INT(cv->pix[10][10], 9);
+    fs.pen_back = 0;
     /* the scroller knob takes the same path */
     memset(&fs, 0, sizeof fs);
     fs.enabled = 1; fs.pen_text = 2; fs.pen_line = 3; fs.pen_back = 0; fs.pen_outline = 3; fs.pen_button = 4; fs.pen_knob = 1; fs.pen_inbar = 1;
     for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 0;
     blended = 0;
-    CHECK_INT(raa_knob_frame_draw(&fs, 8, 1, 10, 10, 10, 18, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);
+    CHECK_INT(raa_knob_frame_draw(&fs, 8, 1, 1, 9, 9, 12, 20, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);
     CHECK_INT(blended > 0, 1);
     CHECK_INT(cv->pix[10][10], 0);
     CHECK_INT(cv->pix[14][14] == flat_knob_state_pen(&fs, 8, 1), 1);
@@ -1061,9 +1065,9 @@ static void test_round_aa(void)
     /* INPUT-GROUND: ground pen >= 0 = the whole box in that pen, rounded as the buttons, no outline; pen < 0 draws nothing */
     for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 0;
     blended = 0;
-    CHECK_INT(raa_ground_frame_draw(&fs, -1, 10, 10, 30, 14, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 0);
+    CHECK_INT(raa_ground_frame_draw(&fs, -1, 1, 9, 9, 32, 16, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 0);
     CHECK_INT(cv->pix[12][20], 0);
-    CHECK_INT(raa_ground_frame_draw(&fs, 2, 10, 10, 30, 14, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);
+    CHECK_INT(raa_ground_frame_draw(&fs, 2, 1, 9, 9, 32, 16, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);
     ground_px = 0; other_px = 0;
     for (y = 10; y < 24; y++) for (x = 10; x < 40; x++) {
         int corner = (x < 14 || x >= 36) && (y < 14 || y >= 20);
@@ -3599,7 +3603,7 @@ static void test_no_outlines(void)
     CHECK_INT(flat_noline_pen(&s, FLAT_FC_TRACK, 4, 0), -1);                        /* no input pen on the screen */
     s.pen_sel = 5;
     /* ring: record, match, miss, drop */
-    flat_gr_add(&gr, &a, 12, 180, 319, 193, 5);
+    flat_gr_add(&gr, &a, 1, 12, 180, 319, 193, 5);
     m = flat_gr_match(&s, &gr, &a, 14, 182, 100, 191);
     CHECK_INT(m != 0, 1);
     CHECK_INT(m ? m->pen : -1, 5);
@@ -3610,12 +3614,12 @@ static void test_no_outlines(void)
     s.held = 0;
     flat_gr_drop(&gr, &a, 300, 190, 330, 200);                                 /* another frame overlaps the box */
     CHECK_INT(flat_gr_match(&s, &gr, &a, 14, 182, 100, 191) != 0, 0);
-    flat_gr_add(&gr, &a, 12, 180, 319, 193, 5);
+    flat_gr_add(&gr, &a, 1, 12, 180, 319, 193, 5);
     flat_gr_drop(&gr, &a, 400, 400, 410, 410);                                 /* a disjoint frame keeps it */
     CHECK_INT(flat_gr_match(&s, &gr, &a, 14, 182, 100, 191) != 0, 1);
         /* PREFS-NO-OUTLINES: a record belongs to a surface region, not to a task */
     memset(&gr, 0, sizeof gr);
-    flat_gr_add(&gr, &a, 126, 154, 319, 164, 5);                                    /* slider track recorded by the Prefs task */
+    flat_gr_add(&gr, &a, 1, 126, 154, 319, 164, 5);                                    /* slider track recorded by the Prefs task */
     m = flat_gr_match(&s, &gr, &a, 130, 156, 137, 162);                             /* knob erase drawn by input.device during a drag still lands on the track ground */
     CHECK_INT(m != 0, 1);
     CHECK_INT(m ? m->pen : -1, 5);
@@ -3624,6 +3628,7 @@ static void test_no_outlines(void)
     {
         flat_grbox b;
         b.surf = &a; b.x0 = 12; b.y0 = 180; b.x1 = 319; b.y1 = 193; b.pen = 5;
+        b.ix0 = 12; b.iy0 = 180; b.ix1 = 319; b.iy1 = 193;                          /* inset box = program box (FLAT-SPACING too small) */
         CHECK_INT(flat_gr_clip(&b, 2, 12, 180, 319, 193, 0, out) && out[0] == 14 && out[1] == 180 && out[2] == 317 && out[3] == 181, 1);   /* top band without the corners */
         CHECK_INT(flat_gr_clip(&b, 2, 12, 180, 319, 193, 1, out) && out[0] == 12 && out[1] == 182 && out[2] == 319 && out[3] == 191, 1);   /* middle rows whole */
         CHECK_INT(flat_gr_clip(&b, 2, 12, 180, 319, 193, 2, out) && out[0] == 14 && out[1] == 192 && out[2] == 317 && out[3] == 193, 1);
@@ -3631,6 +3636,91 @@ static void test_no_outlines(void)
         CHECK_INT(flat_gr_clip(&b, 2, 20, 184, 100, 190, 2, out), 0);
         CHECK_INT(flat_gr_clip(&b, 2, 20, 184, 100, 190, 1, out) && out[0] == 20 && out[1] == 184 && out[2] == 100 && out[3] == 190, 1);
     }
+}
+
+/* FLAT-SPACING (owner 2026-11-11: modern spacing between elements): two filled flat elements whose program boxes touch show window
+ * ground between them. Inset 1 row top and bottom, side columns left and right; neighbours show 2 visual pixels of ground. */
+static void test_flat_spacing(void)
+{
+    struct sp_canvas { int pix[40][60]; } *cv = (struct sp_canvas *)calloc(1, sizeof *cv);
+    int in[4], in2[4], box[4], o[4], x, y, k, n, bad, side, blended;
+    flat_state fs;
+    flat_gr gr;
+    const flat_grbox *m;
+    int a, t2;
+    /* the inset box: side 1 and side 2 */
+    CHECK_INT(flat_inset(1, 10, 10, 53, 23, in) && in[0] == 11 && in[1] == 11 && in[2] == 52 && in[3] == 22, 1);
+    CHECK_INT(flat_inset(2, 10, 10, 53, 23, in) && in[0] == 12 && in[1] == 11 && in[2] == 51 && in[3] == 22, 1);
+    CHECK_INT(flat_inset(0, 10, 10, 53, 23, in) && in[0] == 11 && in[2] == 52, 1);          /* side below 1 counts 1 */
+    /* too small: an inset under FLAT_INSET_MIN wide or high leaves the box unchanged */
+    CHECK_INT(flat_inset(1, 0, 0, 6, 6, in) && in[0] == 1 && in[3] == 5, 1);                 /* 7x7: inset 5x5, the minimum */
+    CHECK_INT(flat_inset(1, 0, 0, 5, 10, in), 0);                                            /* 6 wide: inset 4 */
+    CHECK_INT(in[0] == 0 && in[1] == 0 && in[2] == 5 && in[3] == 10, 1);
+    CHECK_INT(flat_inset(1, 0, 0, 20, 5, in), 0);                                            /* 6 high: inset 4 */
+    CHECK_INT(flat_inset(2, 0, 0, 7, 10, in), 0);                                            /* side 2 on 8 wide: inset 4 */
+    CHECK_INT(flat_inset(2, 0, 0, 8, 10, in), 1);                                            /* side 2 on 9 wide: inset 5 */
+    /* the four bands cover box minus inset exactly once, nothing inside the inset or outside the box */
+    box[0] = 10; box[1] = 10; box[2] = 53; box[3] = 23;
+    flat_inset(2, box[0], box[1], box[2], box[3], in);
+    for (y = 0, bad = 0; y < 40; y++)
+        for (x = 0; x < 60; x++) {
+            int want = x >= box[0] && x <= box[2] && y >= box[1] && y <= box[3] && !(x >= in[0] && x <= in[2] && y >= in[1] && y <= in[3]);
+            for (k = 0, n = 0; k < 4; k++)
+                if (flat_inset_band(box, in, box, k, o) && x >= o[0] && x <= o[2] && y >= o[1] && y <= o[3])
+                    n++;
+            bad += n != want;
+        }
+    CHECK_INT(bad, 0);
+    in2[0] = 0; in2[1] = 0; in2[2] = 11; in2[3] = 11;                                        /* a clip rect over the top-left corner */
+    CHECK_INT(flat_inset_band(box, in, in2, 0, o) && o[0] == 10 && o[1] == 10 && o[2] == 11 && o[3] == 10, 1);
+    CHECK_INT(flat_inset_band(box, in, in2, 2, o) && o[0] == 10 && o[1] == 11 && o[2] == 11 && o[3] == 11, 1);
+    CHECK_INT(flat_inset_band(box, in, in2, 3, o), 0);
+    /* two 44-wide boxes at x and x + 44 (touching): 2 * side columns of ground between their fills; rows alike, 2 rows */
+    for (side = 1; side <= 2; side++) {
+        flat_inset(side, 10, 10, 53, 23, in);
+        flat_inset(side, 54, 10, 97, 23, in2);
+        CHECK_INT(in2[0] - in[2] - 1, 2 * side);
+        flat_inset(side, 10, 24, 53, 37, in2);
+        CHECK_INT(in2[1] - in[3] - 1, 2);
+    }
+    /* through raa_frame_draw: two filled buttons whose program boxes touch, on a backdrop of pen 3, show 2 columns of pen_back (0) */
+    memset(&fs, 0, sizeof fs);
+    fs.enabled = 1; fs.pen_line = 1; fs.pen_back = 0; fs.pen_button = 4; fs.pen_text = 2; fs.side = 1;
+    for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 3;
+    CHECK_INT(raa_frame_draw(&fs, 0, 5, 5, 22, 16, 1, 0, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);
+    CHECK_INT(raa_frame_draw(&fs, 0, 27, 5, 22, 16, 1, 0, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);
+    CHECK_INT(cv->pix[12][26] == 0 && cv->pix[12][27] == 0, 1);                              /* the gap: window ground */
+    CHECK_INT(cv->pix[12][25] != 0 && cv->pix[12][28] != 0 && cv->pix[12][25] != 3, 1);       /* the fills either side */
+    CHECK_INT(cv->pix[5][15] == 0 && cv->pix[20][15] == 0 && cv->pix[12][5] == 0, 1);         /* the band all round */
+    CHECK_INT(cv->pix[4][15] == 3 && cv->pix[21][15] == 3 && cv->pix[12][4] == 3, 1);         /* nothing outside the program box */
+    for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 3;
+    CHECK_INT(raa_frame_draw(&fs, 0, 5, 5, 22, 16, 0, 0, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);
+    CHECK_INT(cv->pix[5][15] != 0, 1);                                                       /* outline only (fill 0): no inset */
+    fs.side = 2;                                                                             /* non-square pixels: 2 columns per side */
+    for (y = 0; y < 40; y++) for (x = 0; x < 60; x++) cv->pix[y][x] = 3;
+    CHECK_INT(raa_frame_draw(&fs, 0, 5, 5, 22, 16, 1, 0, round_fill, round_read, raa_test_rgb, 5, cv, &blended), 1);
+    CHECK_INT(cv->pix[12][5] == 0 && cv->pix[12][6] == 0 && cv->pix[12][7] != 0 && cv->pix[12][26] == 0 && cv->pix[12][25] == 0, 1);
+    free(cv);
+    /* ground record: the program-box erase matches, its fill is clipped to the inset box, the band part is ground */
+    memset(&gr, 0, sizeof gr);
+    fs.side = 0;
+    flat_gr_add(&gr, &a, 1, 12, 180, 319, 193, 5);
+    m = flat_gr_match(&fs, &gr, &a, 12, 180, 319, 193);                                      /* the program erases its full box */
+    CHECK_INT(m != 0, 1);
+    if (m) {
+        CHECK_INT(m->ix0 == 13 && m->iy0 == 181 && m->ix1 == 318 && m->iy1 == 192, 1);
+        CHECK_INT(flat_gr_clip(m, 2, 12, 180, 319, 193, 0, o) && o[0] == 15 && o[1] == 181 && o[2] == 316 && o[3] == 182, 1);
+        CHECK_INT(flat_gr_clip(m, 2, 12, 180, 319, 193, 1, o) && o[0] == 13 && o[1] == 183 && o[2] == 318 && o[3] == 190, 1);
+        CHECK_INT(flat_gr_clip(m, 2, 12, 180, 319, 193, 2, o) && o[0] == 15 && o[1] == 191 && o[2] == 316 && o[3] == 192, 1);
+        box[0] = m->x0; box[1] = m->y0; box[2] = m->x1; box[3] = m->y1;
+        in[0] = m->ix0; in[1] = m->iy0; in[2] = m->ix1; in[3] = m->iy1;
+        CHECK_INT(flat_inset_band(box, in, box, 0, o) && o[0] == 12 && o[1] == 180 && o[2] == 319 && o[3] == 180, 1);
+        o[0] = 0; o[1] = 0; o[2] = 100; o[3] = 400;                                          /* rf_gring: an erase clipped at x 100 */
+        CHECK_INT(flat_gr_band(m, 3, o), 0);                                                  /* right column is past the clip */
+        o[0] = 0; o[1] = 0; o[2] = 100; o[3] = 400;
+        CHECK_INT(flat_gr_band(m, 2, o) && o[0] == 12 && o[1] == 181 && o[2] == 12 && o[3] == 192, 1);
+    }
+    CHECK_INT(flat_gr_match(&fs, &gr, &t2, 12, 180, 319, 193) != 0, 0);                      /* a fill on another surface misses */
 }
 
 void suite_flat_core(void)
@@ -3707,4 +3797,5 @@ void suite_flat_core(void)
     test_round_partial_mask();
     test_round_pen_byte();
     test_no_outlines();
+    test_flat_spacing();
 }

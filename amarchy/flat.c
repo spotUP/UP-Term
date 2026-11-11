@@ -359,6 +359,13 @@ static const flat_state *st_rp(flatshared *r, const struct RastPort *rp)
     return st_scr(r, w ? w->WScreen : NULL);
 }
 
+/* FLAT-SPACING: side_px of the screen the rastport draws on, 1 without a window (the inset of flat_inset) */
+static int rp_side(flatshared *r, const struct RastPort *rp)
+{
+    struct Window *w = rp && rp->Layer ? (struct Window *)rp->Layer->Window : NULL;
+    return w && w->WScreen ? side_px(r, w->WScreen) : 1;
+}
+
 /* S32-ARROW-OUTLINE: the box fill ran over the window's outer ring where the gadget reaches the last column or row;
  * the ring belongs to flat, so refill the overlap with the edge pen through the saved RectFill. A function of its own, with the
  * rects handed to c2_ring_fill one by one, so no rect array is part of c2_draw's frame (flat budget). */
@@ -852,7 +859,7 @@ static void ground_box(flatshared *r, struct RastPort *rp, int x0, int y0, int x
 {
     int blended;
     UBYTE fg = rp->FgPen, dm = rp->DrawMode;
-    raa_ground_frame_draw(st_rp(r, rp), pen, x0, y0, x1 - x0 + 1, y1 - y0 + 1, c2_fill, c2_read, c2_rgb, raa_load(rp), rp, &blended);
+    raa_ground_frame_draw(st_rp(r, rp), pen, rp_side(r, rp), x0, y0, x1 - x0 + 1, y1 - y0 + 1, c2_fill, c2_read, c2_rgb, raa_load(rp), rp, &blended);
     SetAPen(rp, fg);
     SetDrMd(rp, dm);
 }
@@ -1007,7 +1014,7 @@ static int noline_frame(flatshared *r, struct RastPort *rp, int ox, int oy, int 
     if (pen < 0)
         return 0;
     ground_box(r, rp, ox, oy, ox + w - 1, oy + h - 1, pen);
-    flat_gr_add(&r->gr, surf, ox, oy, ox + w - 1, oy + h - 1, pen);
+    flat_gr_add(&r->gr, surf, side_px(r, win->WScreen), ox, oy, ox + w - 1, oy + h - 1, pen);   /* FLAT-SPACING: inset clip */
     r->gbhits++;
     return 1;
 }
@@ -1054,7 +1061,7 @@ static int c8_draw(Object *obj, Msg msg)
         if (smart_knob_of(d->imp_RPort, obj)) {      /* S56-LOCALE-KNOB: the listview scroller knob takes the Workbench knob pen */
             struct Window *kw = (struct Window *)d->imp_RPort->Layer->Window;
             if (!raa_knob_frame_draw(st_scr(r, kw->WScreen), d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0, (kw->Flags & WFLG_WINDOWACTIVE) != 0,
-                                     ox, oy, w, h, c2_fill, c2_read, c2_rgb, raa_load(d->imp_RPort), d->imp_RPort, NULL))
+                                     side_px(r, kw->WScreen), ox, oy, w, h, c2_fill, c2_read, c2_rgb, raa_load(d->imp_RPort), d->imp_RPort, NULL))
                 return 0;
             r->fflat++;
             return 1;
@@ -1241,6 +1248,12 @@ static int d4_flat_pens(int el, struct RastPort *rp, ULONG shine, ULONG back, in
             if (fp < 0)
                 r->dnopix++;
             st.pen_line = (uint8_t)flat_dopus_face_pen(fp, (int)back);
+            {
+                int in[4];               /* FLAT-SPACING: the ring is the band of flat_inset, so it takes the ground and the face block
+                                          * shows the 2-pixel gap to its neighbours (owner may veto at the eye check) */
+                if (flat_inset(st.side, x0, y0, x1, y1, in))
+                    st.pen_line = (uint8_t)back;
+            }
             r->dface++;
         }
         flat_dopus_box_draw(&st, x0, y0, x1, y1, c2_fill, rp);
@@ -2109,13 +2122,13 @@ static void bb_done(flatshared *r, struct RastPort *rp, const LONG *b, int bb)
 /* OWNER-2026-11-08: one pixel of a disabled button's corner square that keeps what it has: inside the corner radius rr, readable and
  * not fully covered by the rounded box (raa_cover < 255: bit (dy * 4 + dx) of part, raa_partial_mask of the box). (x, y) are
  * box-relative. */
-static int dim_keeps(struct RastPort *rp, const flat_gbox *gb, int rr, unsigned part, int x, int y)
+static int dim_keeps(struct RastPort *rp, const int *gb, int rr, unsigned part, int x, int y)
 {
-    int bw = gb->x1 - gb->x0 + 1, bh = gb->y1 - gb->y0 + 1;
+    int bw = gb[2] - gb[0] + 1, bh = gb[3] - gb[1] + 1;
     int dx = x < rr ? x : bw - 1 - x, dy = y < rr ? y : bh - 1 - y;
     if (dx >= rr || dy >= rr)
         return 0;
-    return c2_read(rp, gb->x0 + x, gb->y0 + y) >= 0 && ((part >> (dy * 4 + dx)) & 1);
+    return c2_read(rp, gb[0] + x, gb[1] + y) >= 0 && ((part >> (dy * 4 + dx)) & 1);
 }
 
 /* The dim fill is a rectangle; the button's rounded corner squares (radius raa_radius, as the frame draw) keep the pixels they have.
@@ -2123,43 +2136,58 @@ static int dim_keeps(struct RastPort *rp, const flat_gbox *gb, int rr, unsigned 
  * writing the kept ones back, without holding them (S62-FLAT-RF-TX-BUDGET: no keep[4][4][4] on the drawing task's stack). */
 /* The dim fill's corner radius rr (raa_radius, clamped to half the box and to 4) in bits 16 and up, raa_partial_mask of the box in
  * bits 0..15. rf_disabled calls this, so the raa_cover chain does not sit under dim_fill's frame (S62-FLAT-RF-TX-BUDGET). */
-static unsigned dim_corner(const flat_gbox *gb)
+static unsigned dim_corner(const int *gb)
 {
-    int bw = gb->x1 - gb->x0 + 1, bh = gb->y1 - gb->y0 + 1, rr = raa_radius(bh);
+    int bw = gb[2] - gb[0] + 1, bh = gb[3] - gb[1] + 1, rr = raa_radius(bh);
     if (rr > bh / 2) rr = bh / 2;
     if (rr > bw / 2) rr = bw / 2;
     if (rr > 4) rr = 4;
     return ((unsigned)rr << 16) | raa_partial_mask(bw, bh, rr);
 }
 
-static void dim_fill(flatshared *r, struct RastPort *rp, const flat_gbox *gb, unsigned corner)
+static void dim_fill(flatshared *r, struct RastPort *rp, const int *gb, unsigned corner)
 {
-    int bw = gb->x1 - gb->x0 + 1, bh = gb->y1 - gb->y0 + 1, rr = (int)(corner >> 16), y, x;
+    int bw = gb[2] - gb[0] + 1, bh = gb[3] - gb[1] + 1, rr = (int)(corner >> 16), y, x;
     unsigned part = corner & 0xffffu;
     for (y = 0; y < bh; y++) {
         if (y >= rr && y < bh - rr) {               /* the rows between the corner squares: one fill */
-            ((rectfn)r->rsw.saved)(rp, gb->x0, gb->y0 + y, gb->x1, gb->y1 - rr, (struct Library *)GfxBase);
+            ((rectfn)r->rsw.saved)(rp, gb[0], gb[1] + y, gb[2], gb[3] - rr, (struct Library *)GfxBase);
             y = bh - rr - 1;
             continue;
         }
         for (x = 0; x < bw; x++) {
             if (x == rr && bw - rr > rr) {          /* the span between the two corner squares of this row */
-                ((rectfn)r->rsw.saved)(rp, gb->x0 + rr, gb->y0 + y, gb->x1 - rr, gb->y0 + y, (struct Library *)GfxBase);
+                ((rectfn)r->rsw.saved)(rp, gb[0] + rr, gb[1] + y, gb[2] - rr, gb[1] + y, (struct Library *)GfxBase);
                 x = bw - rr - 1;
                 continue;
             }
             if (!dim_keeps(rp, gb, rr, part, x, y))
-                ((rectfn)r->rsw.saved)(rp, gb->x0 + x, gb->y0 + y, gb->x0 + x, gb->y0 + y, (struct Library *)GfxBase);
+                ((rectfn)r->rsw.saved)(rp, gb[0] + x, gb[1] + y, gb[0] + x, gb[1] + y, (struct Library *)GfxBase);
         }
     }
 }
 
-/* FLAT-BUTTON-DISABLED-DIM: Intuition's dither over a disabled button: solid dim fill, label again in the dim label pen */
+/* FLAT-SPACING: the band between the ghost's program box and its inset box (flat_inset) in window ground; in[] = the inset box the
+ * dim fill covers. A function of its own so the box arrays are not part of rf_disabled's frame (S62-FLAT-RF-TX-BUDGET). */
+static void dim_band(flatshared *r, struct RastPort *rp, struct Window *w, const flat_gbox *gb, int *in)
+{
+    int box[4], o[4], k;
+    box[0] = gb->x0; box[1] = gb->y0; box[2] = gb->x1; box[3] = gb->y1;
+    if (!flat_inset(side_px(r, w->WScreen), box[0], box[1], box[2], box[3], in))
+        return;
+    SetAPen(rp, (UBYTE)st_scr(r, w->WScreen)->pen_back);
+    for (k = 0; k < 4; k++)
+        if (flat_inset_band(box, in, box, k, o))
+            ((rectfn)r->rsw.saved)(rp, o[0], o[1], o[2], o[3], (struct Library *)GfxBase);
+}
+
+/* FLAT-BUTTON-DISABLED-DIM: Intuition's dither over a disabled button: solid dim fill, label again in the dim label pen.
+ * FLAT-SPACING: the dim fill covers the inset box, its corner radius from the inset height; the band is window ground. */
 static int rf_disabled(flatshared *r, struct RastPort *rp, struct Window *w, const LONG *b)
 {
     const flat_gbox *gb = flat_gh_match(&r->st, &r->gh, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL), rp->AreaPtSz, (int)b[0], (int)b[1],
                                         (int)b[2], (int)b[3]);
-    int depth;
+    int depth, in[4];
     UBYTE fg, dm, pt;
     UWORD *pa;
     WORD cx, cy;
@@ -2172,8 +2200,9 @@ static int rf_disabled(flatshared *r, struct RastPort *rp, struct Window *w, con
     r->ghits++;
     rp->AreaPtrn = 0; rp->AreaPtSz = 0;
     SetDrMd(rp, JAM2);
+    dim_band(r, rp, w, gb, in);
     SetAPen(rp, (UBYTE)flat_dim_pen(st_scr(r, w->WScreen), depth));
-    dim_fill(r, rp, gb, dim_corner(gb));
+    dim_fill(r, rp, in, dim_corner(in));
     if (gb->str) {
         SetDrMd(rp, JAM1);
         SetAPen(rp, (UBYTE)flat_dimtext_pen(st_scr(r, w->WScreen), depth));
@@ -2313,12 +2342,23 @@ static int rf_side(flatshared *r, struct RastPort *rp, struct Window *w, const L
 static void rf_gband(flatshared *r, struct RastPort *rp, const flat_grbox *gb, const LONG *b, int k)
 {
     int o[4];
-    if (flat_gr_clip(gb, raa_radius(gb->y1 - gb->y0 + 1), (int)b[0], (int)b[1], (int)b[2], (int)b[3], k, o))
+    if (flat_gr_clip(gb, raa_radius(gb->iy1 - gb->iy0 + 1), (int)b[0], (int)b[1], (int)b[2], (int)b[3], k, o))
+        ((rectfn)r->rsw.saved)(rp, o[0], o[1], o[2], o[3], (struct Library *)GfxBase);
+}
+
+/* FLAT-SPACING: the part of the rect b between record gb's program box and its inset box, in the pen set (window ground: rf_gbox
+ * only takes fills whose FgPen is pen_back). */
+static void rf_gring(flatshared *r, struct RastPort *rp, const flat_grbox *gb, const LONG *b, int k)
+{
+    int o[4];
+    o[0] = (int)b[0]; o[1] = (int)b[1]; o[2] = (int)b[2]; o[3] = (int)b[3];
+    if (flat_gr_band(gb, k, o))
         ((rectfn)r->rsw.saved)(rp, o[0], o[1], o[2], o[3], (struct Library *)GfxBase);
 }
 
 /* PREFS-NO-OUTLINES: a solid window-ground fill inside a recorded ground box (flat_gr_match) is drawn in the box's own pen, the
- * rounded corner squares the frame drew kept (flat_gr_clip). 1 = handled. */
+ * rounded corner squares the frame drew kept (flat_gr_clip). FLAT-SPACING: only inside the record's inset box; the rest of the
+ * rect, on the band, stays window ground (rf_gring). 1 = handled. */
 static int rf_gbox(flatshared *r, struct RastPort *rp, const LONG *b)
 {
     const flat_grbox *gb;
@@ -2330,6 +2370,8 @@ static int rf_gbox(flatshared *r, struct RastPort *rp, const LONG *b)
     if (!gb)
         return 0;
     fg = rp->FgPen;
+    for (k = 0; k < 4; k++)                     /* FgPen is pen_back here: the band part of the erase */
+        rf_gring(r, rp, gb, b, k);
     SetAPen(rp, (UBYTE)gb->pen);
     for (k = 0; k < 3; k++)
         rf_gband(r, rp, gb, b, k);
