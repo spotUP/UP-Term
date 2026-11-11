@@ -1282,6 +1282,29 @@ static void text_window_commands_and_wrap(void)
     vt_free(t);
 }
 
+/* RIP off (ESC [ 1 ! or vt_set_rip 0) with a |w window set gives the text screen the whole
+ * grid back; a scroll region the host set in text (no |w) is kept. */
+static void rip_off_ends_the_text_window(void)
+{
+    vt_term *t = rip_term();
+    h_put(t, "\033[!" "!|w0003270710\r\n");
+    h_put(t, "\033[1!" "\033[H" "a");
+    CHECK_INT(h_cell(t, 0, 0)->ch, 'a');
+    vt_free(t);
+    t = rip_term();
+    h_put(t, "\033[!" "!|w0003270710\r\n");
+    vt_set_rip(t, 0);
+    h_put(t, "\033[H" "b");
+    CHECK_INT(h_cell(t, 0, 0)->ch, 'b');
+    vt_free(t);
+    t = rip_term();
+    h_put(t, "\033[!" "\033[4;8r" "\033[?6h");
+    vt_set_rip(t, 0);
+    h_put(t, "\033[H" "c");
+    CHECK_INT(h_cell(t, 0, 3)->ch, 'c'); /* DECSTBM + origin from the host stay */
+    vt_free(t);
+}
+
 /* ---- RIP-6: mouse fields and buttons ---- */
 
 static void m2(char *p, int v)
@@ -1634,6 +1657,7 @@ void suite_rip(void)
     viewport_clips_and_resets();
     text_window_scrolls_text_not_canvas();
     text_window_commands_and_wrap();
+    rip_off_ends_the_text_window();
     mouse_limit_overlap_click_key();
     mouse_expansion();
     button_knobs_move_output();

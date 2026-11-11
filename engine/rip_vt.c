@@ -51,6 +51,7 @@ struct rip_ad {
     int lsoh;   /* Auto: the newline byte after a backslash */
     int nline;  /* Auto: bytes of a candidate `!|` line held in line[] */
     int bang;   /* the last thing taken was a bare ESC [ ! : a `p` now is DECSTR */
+    int win;    /* a RIP text window (|w) holds the scroll region; RIP off gives the screen back */
     int nhold;
     vt_u8 hold[16]; /* a possible ESC [ digits ! , kept across vt_feed calls */
     int stroke;     /* host option: Hershey strokes for fonts 1..4 (vt_set_rip_stroke) */
@@ -150,6 +151,19 @@ static void rip_clear_grid(vt_term *t)
         erase_cells(t, y, 0, t->cols);
 }
 
+/* RIP_RESET_WINDOWS for the text side: the whole screen, no origin, wrap on. Also run when
+ * RIP turns off with a |w window still set, so the text screen after RIP is not left in it. */
+static void rip_window_off(vt_term *t)
+{
+    struct rip_ad *ad = (struct rip_ad *)t->rip;
+    t->top = 0;
+    t->bot = t->rows;
+    t->origin = 0;
+    t->autowrap = 1;
+    if (ad)
+        ad->win = 0;
+}
+
 /* The text window commands. Coordinates are grid cells from 0; the window is the scroll
  * region (rows) with the origin mode on. Returns 1 when the command was one of them. */
 static int rip_window(vt_term *t, const struct rip_cmd *c)
@@ -175,14 +189,12 @@ static int rip_window(vt_term *t, const struct rip_cmd *c)
             t->bot = bot;
             t->origin = 1;
             t->autowrap = c->arg[4] != 0;
+            ((struct rip_ad *)t->rip)->win = 1;
             move_to(t, 0, t->top);
         }
         return 1;
     case '*':
-        t->top = 0;
-        t->bot = t->rows;
-        t->origin = 0;
-        t->autowrap = 1;
+        rip_window_off(t);
         rip_clear_grid(t);
         move_to(t, 0, 0);
         return 0; /* the drawing model clears its viewport and the canvas too */
@@ -334,6 +346,8 @@ static void rip_switch(vt_term *t, struct rip_ad *ad, int n)
             ad->active = 1; /* Auto: the host asked the RIP query, so it speaks RIP */
     } else if (v == 1) {
         ad->active = 0;
+        if (ad->win)
+            rip_window_off(t);
     } else if (v == 2) {
         ad->active = 1;
     }
@@ -528,6 +542,8 @@ void vt_set_rip(vt_term *t, int on)
     struct rip_ad *ad = t->rip;
     if (!on) {
         if (ad) {
+            if (ad->win)
+                rip_window_off(t);
             rip_canvas_drop(ad);
             rip_clip_free(&ad->clip);
             VT_FREE(ad);
