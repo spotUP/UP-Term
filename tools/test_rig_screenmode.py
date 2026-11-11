@@ -61,7 +61,9 @@ with tempfile.TemporaryDirectory() as d:
     check(reboot(["rig.py", "rtg"]) == ["--060", "--kick", "/x/kick.rom"], "every start argument is kept, values too")
     check(b"screenmode.rtg.prefs" in sent[0], "rtg copies the RTG prefs")
 
-    check(reboot(["rig.py", "aga256", "--max"]) == ["--max"], "arguments given to aga256 win over the saved ones")
+    # merge_start_args: --max replaces its group's --060, the recorded --kick stays
+    check(reboot(["rig.py", "aga256", "--max"]) == ["--kick", "/x/kick.rom", "--max"],
+          "arguments given to aga256 go on top of the saved ones")
 
     rig.START_ARGS.write_text("not json")
     check(reboot(["rig.py", "aga"]) == [], "a damaged start.args: no arguments, no crash")
