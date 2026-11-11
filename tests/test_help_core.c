@@ -239,11 +239,11 @@ static void test_gui_welcome_wired(void)
     am[n] = 0;
     CHECK(strstr(gui, "hc_expand(&km, viewer == 2 ? amhelp_welcome : amhelp_help") != 0);
     CHECK(strstr(gui, "hc_welcome_key(c, &g->wticked, &g->wdone)") != 0);
-    CHECK(strstr(gui, "hc_mark_shown(&p)") != 0);
+    CHECK(strstr(gui, "hc_mark_shown(p)") != 0);
     CHECK(strstr(gui, "hc_tick_role(g->wticked)") != 0);
     CHECK(strstr(gui, "hc_check_w(s, side)") != 0 && strstr(gui, "flat_side_px(g->ms.rx, g->ms.ry)") != 0);
     CHECK(strstr(gui, "mg_strip_hit(&g->g, mx, my)") != 0 && strstr(gui, "mg_strip_y(q, r)") != 0);
-    CHECK(strstr(gui, "amconf_save_with(amconf_dos_io(), &p, 1, &failed)") != 0);
+    CHECK(strstr(gui, "amconf_save_with(amconf_dos_io(), p, 1, &failed)") != 0);
     CHECK(strstr(gui, "\"Welcome to Amarchy\"") != 0 && strstr(gui, "\"Amarchy Help\"") != 0);
     CHECK(strstr(am, "hc_should_welcome(") != 0 && strstr(am, "\"amarchy-gui\", \"welcome\"") != 0);
 }
