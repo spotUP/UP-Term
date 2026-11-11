@@ -130,9 +130,29 @@ void raa_frame_corners(const raa_job *j, int *blended)
         *blended += n;
 }
 
+/* FLAT-SPACING: a filled box shrinks to its inset (flat_inset, side from the job's state) and the band between program box and
+ * inset box is painted window ground first, so two filled elements whose program boxes touch show ground between them. The
+ * beside-corner reads that follow then see the band. Outline-only jobs (fill 0) and a disabled or held state are left as they are. */
+static void raa_inset(raa_job *j)
+{
+    int in[4], o[4], k, x1, y1;
+    if (!j->s || !j->fn || !j->fill || !j->s->enabled || j->s->held)
+        return;
+    x1 = j->ox + j->w - 1; y1 = j->oy + j->h - 1;
+    if (!flat_inset(j->s->side, j->ox, j->oy, x1, y1, in))
+        return;
+    for (k = 0; k < 4; k++) {                  /* scalars and flat_band_k: no box arrays in this frame (flat-budget) */
+        o[0] = j->ox; o[1] = j->oy; o[2] = x1; o[3] = y1;
+        if (flat_band_k(j->ox, j->oy, x1, y1, in[0], in[1], in[2], in[3], k, o))
+            j->fn(j->ctx, o[0], o[1], o[2], o[3], j->s->pen_back);
+    }
+    j->ox = in[0]; j->oy = in[1]; j->w = in[2] - in[0] + 1; j->h = in[3] - in[1] + 1;
+}
+
 int raa_frame_box(raa_job *j)
 {
     int c, ok, b;
+    raa_inset(j);
     ok = j->s && j->fn && j->rd && j->rgb && j->fill && j->npens > 0 && j->npens <= RAA_MAX_PENS && j->w >= 3 && j->h >= 3;
     j->bg = 0;                                 /* a read pen, checked 0 .. npens-1 (npens <= RAA_MAX_PENS 256): one byte per corner */
     for (c = 0; ok && c < 4; c++) {
@@ -162,8 +182,8 @@ int raa_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, i
     return k != RAA_BOX_NONE;
 }
 
-int raa_knob_frame_draw(const flat_state *s, int depth, int active, int ox, int oy, int w, int h, flat_fill_fn fn, flat_read_fn rd,
-                        raa_rgb_fn rgb, int npens, void *ctx, int *blended)
+int raa_knob_frame_draw(const flat_state *s, int depth, int active, int side, int ox, int oy, int w, int h, flat_fill_fn fn,
+                        flat_read_fn rd, raa_rgb_fn rgb, int npens, void *ctx, int *blended)
 {
     flat_state st;
     if (blended)
@@ -171,12 +191,13 @@ int raa_knob_frame_draw(const flat_state *s, int depth, int active, int ox, int 
     if (!s)
         return 0;
     st = *s;
+    st.side = (uint8_t)(side < 1 ? 1 : side > 255 ? 255 : side);
     st.pen_button = (uint8_t)flat_knob_state_pen(s, depth, active);
     return raa_frame_draw(&st, 0, ox, oy, w, h, 1, FLAT_ROLE_PLAIN, fn, rd, rgb, npens, ctx, blended);
 }
 
-int raa_ground_frame_draw(const flat_state *s, int pen, int ox, int oy, int w, int h, flat_fill_fn fn, flat_read_fn rd, raa_rgb_fn rgb,
-                          int npens, void *ctx, int *blended)
+int raa_ground_frame_draw(const flat_state *s, int pen, int side, int ox, int oy, int w, int h, flat_fill_fn fn, flat_read_fn rd,
+                          raa_rgb_fn rgb, int npens, void *ctx, int *blended)
 {
     flat_state st;
     if (blended)
@@ -184,6 +205,7 @@ int raa_ground_frame_draw(const flat_state *s, int pen, int ox, int oy, int w, i
     if (!s || pen < 0)
         return 0;
     st = *s;
+    st.side = (uint8_t)(side < 1 ? 1 : side > 255 ? 255 : side);
     st.pen_button = (uint8_t)pen;
     return raa_frame_draw(&st, 0, ox, oy, w, h, 1, FLAT_ROLE_PLAIN, fn, rd, rgb, npens, ctx, blended);
 }
