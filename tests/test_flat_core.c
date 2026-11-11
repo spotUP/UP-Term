@@ -3603,7 +3603,7 @@ static void test_no_outlines(void)
     CHECK_INT(flat_noline_pen(&s, FLAT_FC_TRACK, 4, 0), -1);                        /* no input pen on the screen */
     s.pen_sel = 5;
     /* ring: record, match, miss, drop */
-    flat_gr_add(&gr, &a, 1, 12, 180, 319, 193, 5);
+    flat_gr_add(&gr, &a, 1, 12, 180, 319, 193, 5, 0);
     m = flat_gr_match(&s, &gr, &a, 14, 182, 100, 191);
     CHECK_INT(m != 0, 1);
     CHECK_INT(m ? m->pen : -1, 5);
@@ -3614,12 +3614,12 @@ static void test_no_outlines(void)
     s.held = 0;
     flat_gr_drop(&gr, &a, 300, 190, 330, 200);                                 /* another frame overlaps the box */
     CHECK_INT(flat_gr_match(&s, &gr, &a, 14, 182, 100, 191) != 0, 0);
-    flat_gr_add(&gr, &a, 1, 12, 180, 319, 193, 5);
+    flat_gr_add(&gr, &a, 1, 12, 180, 319, 193, 5, 0);
     flat_gr_drop(&gr, &a, 400, 400, 410, 410);                                 /* a disjoint frame keeps it */
     CHECK_INT(flat_gr_match(&s, &gr, &a, 14, 182, 100, 191) != 0, 1);
         /* PREFS-NO-OUTLINES: a record belongs to a surface region, not to a task */
     memset(&gr, 0, sizeof gr);
-    flat_gr_add(&gr, &a, 1, 126, 154, 319, 164, 5);                                    /* slider track recorded by the Prefs task */
+    flat_gr_add(&gr, &a, 1, 126, 154, 319, 164, 5, 0);                                    /* slider track recorded by the Prefs task */
     m = flat_gr_match(&s, &gr, &a, 130, 156, 137, 162);                             /* knob erase drawn by input.device during a drag still lands on the track ground */
     CHECK_INT(m != 0, 1);
     CHECK_INT(m ? m->pen : -1, 5);
@@ -3704,7 +3704,7 @@ static void test_flat_spacing(void)
     /* ground record: the program-box erase matches, its fill is clipped to the inset box, the band part is ground */
     memset(&gr, 0, sizeof gr);
     fs.side = 0;
-    flat_gr_add(&gr, &a, 1, 12, 180, 319, 193, 5);
+    flat_gr_add(&gr, &a, 1, 12, 180, 319, 193, 5, 0);
     m = flat_gr_match(&fs, &gr, &a, 12, 180, 319, 193);                                      /* the program erases its full box */
     CHECK_INT(m != 0, 1);
     if (m) {
@@ -3721,6 +3721,120 @@ static void test_flat_spacing(void)
         CHECK_INT(flat_gr_band(m, 2, o) && o[0] == 12 && o[1] == 181 && o[2] == 12 && o[3] == 192, 1);
     }
     CHECK_INT(flat_gr_match(&fs, &gr, &t2, 12, 180, 319, 193) != 0, 0);                      /* a fill on another surface misses */
+}
+
+/* FLAT-WIDE-INPUT (thoughts/shared/s72-evidence/flat-wide-input-design.md, owner decisions 2026-11-11): a read-only ground box
+ * (DISPLAY class, the Time Prefs date row 12,180..319,193) is fitted to its text: centred text is hugged on both sides with
+ * FLAT_FIT_PAD * side columns, left-aligned text keeps the program box x0 as its left edge, everything else stays full width.
+ * One block per named case of design section 5. */
+static flat_grbox *wi_date_row(flat_gr *gr, const void *surf, int side, int fit)
+{
+    memset(gr, 0, sizeof *gr);
+    return flat_gr_add(gr, surf, side, 12, 180, 319, 193, 5, fit);
+}
+
+static void test_flat_wide_input(void)
+{
+    flat_gr gr;
+    flat_grbox *b;
+    const flat_grbox *m;
+    flat_state fs;
+    int out[2], o[4], a, t2;
+    memset(&fs, 0, sizeof fs);
+    fs.enabled = 1;
+    CHECK_INT(FLAT_FIT_PAD, 6);
+    /* 1 date_row_box_ends_after_text: centred 17-character date, cp 98, 136 px: hugged 92..239 */
+    b = wi_date_row(&gr, &a, 1, 1);
+    out[0] = out[1] = -1;
+    CHECK_INT(flat_fit_box(b, 98, 136, FLAT_FIT_PAD, out), 1);
+    CHECK_INT(out[0], 92);
+    CHECK_INT(out[1], 239);
+    /* the moving edges repaint strips [min - r + 1 .. max + r - 1] inside the program box: full 13..318 to 92..239, radius 4 */
+    CHECK_INT(flat_fit_strip(13, 92, 4, 12, 319, out) && out[0] == 12 && out[1] == 95, 1);
+    CHECK_INT(flat_fit_strip(318, 239, 4, 12, 319, out) && out[0] == 236 && out[1] == 319, 1);
+    CHECK_INT(flat_fit_strip(92, 92, 4, 12, 319, out), 0);                              /* an edge that stays: nothing */
+    /* 2 date_row_after_slider_step: 16 characters at cp 102, 128 px, on the box carried from the last fit: 96..235 */
+    b = wi_date_row(&gr, &a, 1, 1);
+    flat_gr_fit(b, 92, 239, 0, -1);                                                     /* carried fit, no text yet */
+    CHECK_INT(flat_fit_box(b, 102, 128, FLAT_FIT_PAD, out) && out[0] == 96 && out[1] == 235, 1);
+    CHECK_INT(flat_fit_strip(92, 96, 4, 12, 319, out) && out[0] == 89 && out[1] == 99, 1);    /* 99 < 102: the text is never inside */
+    CHECK_INT(flat_fit_strip(239, 235, 4, 12, 319, out) && out[0] == 232 && out[1] == 242, 1);
+    /* the same step without a frame redraw: the app erases the old date (17 chars, 98..233) and draws the new one */
+    b = wi_date_row(&gr, &a, 1, 1);
+    flat_gr_fit(b, 92, 239, 98, 233);
+    CHECK_INT(flat_fit_box(b, 102, 128, FLAT_FIT_PAD, out) && out[0] == 92 && out[1] == 239, 1);   /* old date still there: kept */
+    flat_gr_erase(b, 100, 317);                                                         /* an erase that misses column 98 keeps it */
+    CHECK_INT(b->tx0 == 98 && b->tx1 == 233, 1);
+    flat_gr_erase(b, 14, 317);
+    CHECK_INT(b->tx1 < b->tx0, 1);
+    CHECK_INT(flat_fit_box(b, 102, 128, FLAT_FIT_PAD, out) && out[0] == 96 && out[1] == 235, 1);
+    /* 3 left_aligned_display_box_starts_at_program_edge: cp 16, 40 px: 12..61 (no left inset) */
+    b = wi_date_row(&gr, &a, 1, 1);
+    CHECK_INT(flat_fit_box(b, 16, 40, FLAT_FIT_PAD, out) && out[0] == 12 && out[1] == 61, 1);
+    /* 4 left_aligned_box_side2_pads_twelve_columns: side 2 (inset 14..317), cp 18, 40 px: 12..69 */
+    b = wi_date_row(&gr, &a, 2, 1);
+    CHECK_INT(b->ix0 == 14 && b->ix1 == 317, 1);
+    CHECK_INT(flat_fit_box(b, 18, 40, FLAT_FIT_PAD * 2, out) && out[0] == 12 && out[1] == 69, 1);
+    /* side 2 centred: pad 12 and tolerance 4 scale with side */
+    CHECK_INT(flat_fit_box(b, 98, 136, FLAT_FIT_PAD * 2, out) && out[0] == 86 && out[1] == 245, 1);   /* lgap 84, rgap 84 */
+    CHECK_INT(flat_fit_box(b, 24, 272, FLAT_FIT_PAD * 2, out), 0);                     /* lgap 10, rgap 22: neither rule */
+    CHECK_INT(flat_fit_box(b, 30, 272, FLAT_FIT_PAD * 2, out), 0);                     /* gaps 16 each, under 2 * pad: nothing to gain */
+    /* 5 right_aligned_display_text_unchanged: cp 278, 40 px, text ends at the inset edge */
+    b = wi_date_row(&gr, &a, 1, 1);
+    CHECK_INT(flat_fit_box(b, 278, 40, FLAT_FIT_PAD, out), 0);
+    CHECK_INT(flat_fit_box(b, 4, 40, FLAT_FIT_PAD, out), 0);                            /* cp left of the inset box */
+    CHECK_INT(flat_fit_box(b, 300, 40, FLAT_FIT_PAD, out), 0);                          /* text runs past the inset box */
+    /* 6 nearly_full_text_unchanged: cp 16, 290 px */
+    CHECK_INT(flat_fit_box(b, 16, 290, FLAT_FIT_PAD, out), 0);
+    CHECK_INT(flat_gr_full(b, out), 0);                                                 /* never fitted: nothing to restore */
+    flat_gr_fit(b, 12, 61, 16, 55);
+    CHECK_INT(flat_gr_full(b, out) && out[0] == 13 && out[1] == 318, 1);               /* fitted earlier: the full box comes back */
+    /* 7 slider_track_and_day_cell_never_shrink: a record added with fit 0 is never fitted, and is not counted live */
+    b = wi_date_row(&gr, &a, 1, 0);
+    CHECK_INT(gr.nfit, 0);
+    CHECK_INT(flat_fit_box(b, 98, 136, FLAT_FIT_PAD, out), 0);
+    CHECK_INT(flat_fit_box(b, 16, 40, FLAT_FIT_PAD, out), 0);
+    b = wi_date_row(&gr, &a, 1, 1);
+    CHECK_INT(gr.nfit, 1);
+    flat_gr_drop(&gr, &a, 12, 180, 319, 193);                                           /* the next frame draw drops it */
+    CHECK_INT(gr.nfit, 0);
+    /* 8 second_text_grows_box_never_cuts_first: 16+40 then 70+24 -> 12..99; a shorter third text keeps 12..99 */
+    b = wi_date_row(&gr, &a, 1, 1);
+    CHECK_INT(flat_fit_box(b, 16, 40, FLAT_FIT_PAD, out) && out[0] == 12 && out[1] == 61, 1);
+    flat_gr_fit(b, out[0], out[1], 16, 55);
+    CHECK_INT(b->ix0 == 12 && b->ix1 == 61 && b->tx0 == 16 && b->tx1 == 55, 1);
+    CHECK_INT(flat_fit_box(b, 70, 24, FLAT_FIT_PAD, out) && out[0] == 12 && out[1] == 99, 1);
+    flat_gr_fit(b, out[0], out[1], 16, 93);
+    CHECK_INT(flat_fit_box(b, 16, 8, FLAT_FIT_PAD, out) && out[0] == 12 && out[1] == 99, 1);
+    /* 9 erase_right_of_text_paints_window_ground: after a fit 12..61 the app's erase 234..317 x 181..192 is all band
+     * (window ground), and the left erase 14..97 is ground only up to column 61 */
+    b = wi_date_row(&gr, &a, 1, 1);
+    flat_gr_fit(b, 12, 61, 16, 55);
+    m = flat_gr_match(&fs, &gr, &a, 234, 181, 317, 192);
+    CHECK_INT(m == b, 1);
+    o[0] = 234; o[1] = 181; o[2] = 317; o[3] = 192;
+    CHECK_INT(flat_gr_band(b, 3, o) && o[0] == 234 && o[1] == 181 && o[2] == 317 && o[3] == 192, 1);
+    o[0] = 14; o[1] = 181; o[2] = 317; o[3] = 192;
+    CHECK_INT(flat_gr_band(b, 3, o) && o[0] == 62 && o[2] == 317, 1);                  /* the band starts right after the fit */
+    o[0] = 12; o[1] = 181; o[2] = 317; o[3] = 192;
+    CHECK_INT(flat_gr_band(b, 2, o), 0);                                                /* no left inset band at x0 */
+    CHECK_INT(flat_gr_clip(b, 4, 14, 181, 97, 192, 1, o) && o[0] == 14 && o[2] == 61, 1);
+    CHECK_INT(flat_gr_clip(b, 4, 234, 181, 317, 192, 1, o), 0);                         /* no ground right of the fit */
+    /* 10 redraw_keeps_previous_fit: the same surface and box give the fitted columns back, before the frame drops it */
+    b = wi_date_row(&gr, &a, 1, 1);
+    flat_gr_fit(b, 92, 239, 98, 233);
+    out[0] = out[1] = -1;
+    CHECK_INT(flat_gr_prev_fit(&gr, &a, 12, 180, 319, 193, out) && out[0] == 92 && out[1] == 239, 1);
+    CHECK_INT(flat_gr_prev_fit(&gr, &a, 12, 180, 318, 193, out), 0);                   /* another box */
+    CHECK_INT(flat_gr_prev_fit(&gr, &t2, 12, 180, 319, 193, out), 0);                  /* another surface */
+    b = wi_date_row(&gr, &a, 1, 0);
+    flat_gr_fit(b, 92, 239, 98, 233);                                                   /* never on a fit-0 record */
+    CHECK_INT(flat_gr_prev_fit(&gr, &a, 12, 180, 319, 193, out), 0);
+    /* 11 empty_display_box_keeps_full_ground: no text, the full inset box, nothing carried */
+    b = wi_date_row(&gr, &a, 1, 1);
+    CHECK_INT(b->ix0 == 13 && b->iy0 == 181 && b->ix1 == 318 && b->iy1 == 192, 1);
+    CHECK_INT(b->tx1 < b->tx0, 1);
+    CHECK_INT(flat_gr_prev_fit(&gr, &a, 12, 180, 319, 193, out), 0);
 }
 
 void suite_flat_core(void)
@@ -3798,4 +3912,5 @@ void suite_flat_core(void)
     test_round_pen_byte();
     test_no_outlines();
     test_flat_spacing();
+    test_flat_wide_input();
 }

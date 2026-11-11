@@ -816,6 +816,16 @@ int flat_noline_pen(const flat_state *s, int cls, int depth, int centre_pen)
     return -1;
 }
 
+/* FLAT-WIDE-INPUT: the live fit records, recounted after every change (the Text hook gate) */
+static void flat_gr_count(flat_gr *g)
+{
+    int i, n = 0;
+    for (i = 0; i < FLAT_GR_N; i++)
+        if (g->box[i].surf && g->box[i].fit)
+            n++;
+    g->nfit = n;
+}
+
 void flat_gr_drop(flat_gr *g, const void *surf, int x0, int y0, int x1, int y1)
 {
     int i;
@@ -824,9 +834,10 @@ void flat_gr_drop(flat_gr *g, const void *surf, int x0, int y0, int x1, int y1)
         if (b->surf && b->surf == surf && x0 <= b->x1 && x1 >= b->x0 && y0 <= b->y1 && y1 >= b->y0)
             b->surf = 0;
     }
+    flat_gr_count(g);
 }
 
-void flat_gr_add(flat_gr *g, const void *surf, int side, int x0, int y0, int x1, int y1, int pen)
+flat_grbox *flat_gr_add(flat_gr *g, const void *surf, int side, int x0, int y0, int x1, int y1, int pen, int fit)
 {
     flat_grbox *b = &g->box[g->next];
     int in[4];
@@ -835,6 +846,94 @@ void flat_gr_add(flat_gr *g, const void *surf, int side, int x0, int y0, int x1,
     b->x0 = x0; b->y0 = y0; b->x1 = x1; b->y1 = y1; b->pen = pen;
     flat_inset(side, x0, y0, x1, y1, in);
     b->ix0 = in[0]; b->iy0 = in[1]; b->ix1 = in[2]; b->iy1 = in[3];
+    b->fit = fit != 0;
+    b->side = side < 1 ? 1 : side;
+    b->tx0 = 0; b->tx1 = -1;
+    flat_gr_count(g);
+    return b;
+}
+
+int flat_fit_box(const flat_grbox *b, int tx0, int tw, int pad, int out[2])
+{
+    int in[4], u0 = tx0, u1 = tx0 + tw - 1, lg, rg, tol = 2 * b->side, f0, f1;
+    if (!b->fit || tw <= 0 || !flat_inset(b->side, b->x0, b->y0, b->x1, b->y1, in))
+        return 0;
+    if (u0 < in[0] || u1 > in[2])                                                       /* text outside the inset box: not ours */
+        return 0;
+    if (b->tx1 >= b->tx0) {                                                             /* text already on the box stays inside */
+        if (b->tx0 < u0) u0 = b->tx0;
+        if (b->tx1 > u1) u1 = b->tx1;
+    }
+    lg = u0 - in[0];
+    rg = in[2] - u1;
+    if (lg <= pad && rg > lg + 2 * pad) {                                               /* left-aligned: program box left edge */
+        f0 = b->x0;
+        f1 = u1 + pad;
+    } else if (lg - rg <= tol && rg - lg <= tol && rg > 2 * pad) {                      /* centred: hug both sides */
+        f0 = u0 - pad;
+        f1 = u1 + pad;
+    } else
+        return 0;
+    if (f0 < b->x0) f0 = b->x0;
+    if (f1 > in[2]) f1 = in[2];
+    if ((in[2] - in[0]) - (f1 - f0) < 2 * pad)                                          /* nothing worth the redraw */
+        return 0;
+    out[0] = f0; out[1] = f1;
+    return 1;
+}
+
+void flat_gr_fit(flat_grbox *b, int fx0, int fx1, int tx0, int tx1)
+{
+    if (!b->fit)
+        return;
+    b->ix0 = fx0; b->ix1 = fx1;
+    b->tx0 = tx0; b->tx1 = tx1;
+}
+
+int flat_gr_full(const flat_grbox *b, int out[2])
+{
+    int in[4];
+    flat_inset(b->side, b->x0, b->y0, b->x1, b->y1, in);
+    out[0] = in[0]; out[1] = in[2];
+    return b->ix0 != in[0] || b->ix1 != in[2];
+}
+
+void flat_gr_erase(flat_grbox *b, int x0, int x1)
+{
+    if (b->fit && b->tx1 >= b->tx0 && x0 <= b->tx0 && x1 >= b->tx1) {
+        b->tx0 = 0;
+        b->tx1 = -1;
+    }
+}
+
+int flat_gr_prev_fit(const flat_gr *g, const void *surf, int x0, int y0, int x1, int y1, int out[2])
+{
+    int i, full[2];
+    for (i = 0; i < FLAT_GR_N; i++) {
+        const flat_grbox *b = &g->box[i];
+        if (!b->surf || b->surf != surf || !b->fit || b->x0 != x0 || b->y0 != y0 || b->x1 != x1 || b->y1 != y1)
+            continue;
+        if (!flat_gr_full(b, full))
+            return 0;
+        out[0] = b->ix0; out[1] = b->ix1;
+        return 1;
+    }
+    return 0;
+}
+
+int flat_fit_strip(int old_edge, int new_edge, int r, int x0, int x1, int out[2])
+{
+    int a = old_edge < new_edge ? old_edge : new_edge, b = old_edge < new_edge ? new_edge : old_edge;
+    if (old_edge == new_edge)
+        return 0;
+    a -= r - 1;
+    b += r - 1;
+    if (a < x0) a = x0;
+    if (b > x1) b = x1;
+    if (a > b)
+        return 0;
+    out[0] = a; out[1] = b;
+    return 1;
 }
 
 const flat_grbox *flat_gr_match(const flat_state *s, const flat_gr *g, const void *surf, int x0, int y0, int x1, int y1)

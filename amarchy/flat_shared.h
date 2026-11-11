@@ -91,6 +91,8 @@ typedef struct flatshared {
     ULONG beat;
     UWORD stage, refuse;
     ULONG nrefuse;
+    /* FLAT-WIDE-INPUT: texts that moved a fit box's edges (sentinel), texts skipped because cl_ss was busy */
+    ULONG gfit, gfitbusy;
     /* the icon pens are no longer here: the shared holder record IPD_SEM_NAME owns them (iconpen_dos.h, F14) */
 } flatshared;
 
