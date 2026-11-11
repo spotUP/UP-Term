@@ -146,6 +146,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=rig_env_wait BOOTX:go waits for ENV (tests/test_rig_env_wait.py)
 # ONLY=rig_flags paths.rig_flags splits UPTERM_RIG_FLAGS the shell way (tests/test_rig_flags.py)
 # ONLY=rig_gc Rig folders clean themselves up (RULES.md rule 7, owner decision 2026-11-02) (tests/test_rig_gc.py)
+# ONLY=rig_gc_user_files_survive user files on a collected rig survive in build/rig-saved (RIG-GC-SAVE-USER-FILES) (tests/test_rig_gc_user_files_survive.py)
 # ONLY=rig_go_early RIG-GO-EARLY (tests/test_rig_go_early.py)
 # ONLY=rig_guru_host_capture RIG-GURU-LOST-ON-RESET (tests/test_rig_guru_host_capture.py)
 # ONLY=rig_help_tests rig.main (tests/test_rig_help.py)
@@ -365,6 +366,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_env_wait ]; then python3 tests/test_rig_env_wait.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_flags ]; then python3 tests/test_rig_flags.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_gc ]; then python3 tests/test_rig_gc.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_gc_user_files_survive ]; then python3 tests/test_rig_gc_user_files_survive.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_go_early ]; then python3 tests/test_rig_go_early.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_guru_host_capture ]; then python3 tests/test_rig_guru_host_capture.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_help_tests ]; then python3 tests/test_rig_help.py; fi

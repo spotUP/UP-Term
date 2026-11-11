@@ -47,7 +47,10 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   that stops and starts again mid-run passes it, the folder holds its resumable verdict files
   rig.py gc       sweep: remove every build/rig<N> (N > 1, not this rig's) with no emulator on it, no start.lock held and no command
                   for 2 hours, and every leftover build/rig*.del; each removal is printed and appended to build/rig-gc.log.
-                  `start` runs the same sweep first
+                  Before removing, it copies every file written on the rig (in the drive folders vtc, boot, work, os32,
+                  os-<name>: missing from or different to the clone source, rig 1's VTC: or the OS32 tree; drives without
+                  one: newer than the drive) to build/rig-saved/<N>/<date-time>/; a failed save keeps the folder ([ERROR]).
+                  Files inside the sys.hdf image are not saved. `start` runs the same sweep first
   rig.py reboot   stop and start again with DH0: as the last run left it (a start clones it anew):
                   an install's writes survive. The last start's flags, with any given ones on top (a given
                   --purpose keeps --max / --os 32; a given machine or --os flag replaces only its own group)
@@ -75,7 +78,7 @@ Layout under build/rig/ (gitignored): sys.hdf (DH0:), boot/ (BOOTX:, boots
 first: assigns, mounts XCON:, starts wasabid), vtc/ (VTC:, the binaries
 under test), shots/.
 """
-import contextlib, fcntl, hashlib, io, json, os, pathlib, re, shutil, signal, subprocess, sys, tempfile, time
+import contextlib, fcntl, filecmp, hashlib, io, json, os, pathlib, re, shutil, signal, subprocess, sys, tempfile, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import a1200_drift
 import paths
@@ -2995,10 +2998,83 @@ def folder_in_use(folder, lines):
     key = str(folder) + "/"
     return any(key in l and ("fs-uae" in l.lower() or "amiberry" in l.lower()) for l in lines)
 
-def gc(home=None, own_n=None, lines=None, now=None, remove=None):
+# The host directories a rig mounts as Amiga drives (rig_config, amiberry drives): VTC: (vtc), BOOTX: (boot), Work: (work),
+# and DH0: when it is a directory (os32 for --os32, os-<name> for --os). The default DH0:, sys.hdf, is a disk image: files
+# written into it are not seen here (RIG-GC-SAVE-USER-FILES, reported unverified).
+RIG_DRIVE_DIRS = re.compile(r"vtc|boot|work|os32|os-[^.]+")
+
+def rig_save_sources(home):
+    """The clone source of each drive directory, for save_rig_user_files: VTC: is seeded from rig 1's (seed_rig_vtc), the
+    3.2 DH0: is a copy of the OS32 tree (setup). A drive not named here has no source tree: its files count as written on
+    the rig when they are newer than the drive's creation (drive_created)."""
+    return {"vtc": pathlib.Path(home) / "rig/vtc", "os32": paths.OS32_TREE}
+
+def drive_created(folder, drive):
+    """Epoch seconds the drive directory was made: for os-<name> the .label file written right after the unpack
+    (os_image_copy), else the directory's birth time (macOS st_birthtime; st_ctime elsewhere)."""
+    label = pathlib.Path(folder) / (drive + ".label")
+    if drive.startswith("os-") and label.exists():
+        return label.stat().st_mtime
+    st = (pathlib.Path(folder) / drive).stat()
+    return getattr(st, "st_birthtime", st.st_ctime)
+
+def rig_user_files(folder, sources):
+    """Relative paths (drive/...) of the files in a rig folder's drive directories that were written on the rig: missing
+    in the drive's clone source or different in content (filecmp: size and mtime, else the bytes); a drive with no
+    source: modified after drive_created. Symlinks are never user data (the clones keep them as links)."""
+    folder = pathlib.Path(folder)
+    found = []
+    for drive in sorted(p.name for p in folder.iterdir() if p.is_dir() and not p.is_symlink() and RIG_DRIVE_DIRS.fullmatch(p.name)):
+        src = sources.get(drive)
+        src = pathlib.Path(src) if src is not None else None
+        created = None if src is not None and src.is_dir() else drive_created(folder, drive)
+        for root, _dirs, files in os.walk(folder / drive):
+            for f in files:
+                p = pathlib.Path(root) / f
+                if p.is_symlink() or not p.is_file():
+                    continue
+                rel = p.relative_to(folder)
+                if created is not None:
+                    user = p.stat().st_mtime > created
+                else:
+                    s = src / rel.relative_to(drive)
+                    user = not s.is_file() or not filecmp.cmp(s, p, shallow=True)
+                if user:
+                    found.append(rel)
+    return found
+
+def save_rig_user_files(folder, sources, dest):
+    """Copy every file written on the rig (rig_user_files) from `folder` to `dest`, relative paths and times kept; the
+    rest (the kit, the clone sources) is left to the removal. Returns the saved relative paths; raises OSError when a copy
+    fails (the caller then keeps the folder). `dest` is made only when there is something to save, and never reused:
+    an existing one raises FileExistsError."""
+    files = rig_user_files(folder, sources)
+    if not files:
+        return []
+    dest = pathlib.Path(dest)
+    dest.mkdir(parents=True, exist_ok=False)
+    for rel in files:
+        (dest / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(pathlib.Path(folder) / rel, dest / rel, follow_symlinks=False)
+    return files
+
+def saved_dest(home, n, now):
+    """build/rig-saved/<n>/<date-time>[-k]: a new folder per collection, so a later collection of rig N never writes
+    over an earlier save."""
+    base = pathlib.Path(home) / "rig-saved" / str(n) / time.strftime("%Y%m%d-%H%M%S", time.localtime(now))
+    dest, k = base, 1
+    while dest.exists():
+        k += 1
+        dest = base.with_name("%s-%d" % (base.name, k))
+    return dest
+
+def gc(home=None, own_n=None, lines=None, now=None, remove=None, sources=None):
     """Sweep build/rig<N> folders (N > 1, not this rig's own number): remove the idle ones (gc_decision) and every leftover
-    build/rig*.del. Each removal is printed and appended to <home>/rig-gc.log (time, folder, size, reason). Returns the
-    removed folder names."""
+    build/rig*.del. Before a removal, every file written on the rig is copied to build/rig-saved/<N>/<date-time>/
+    (save_rig_user_files; RIG-GC-SAVE-USER-FILES: a sweep removed rig 3 and with it the owner's DCTelnet.Prefs and
+    phonebook, files that existed nowhere else); a folder whose save fails is kept and an [ERROR] line printed. Each
+    removal is printed and appended to <home>/rig-gc.log (time, folder, size, reason, files saved). Returns the removed
+    folder names."""
     home = pathlib.Path(home or paths.RIG_HOME)
     own_n = paths.RIG_N if own_n is None else own_n
     lines = process_lines() if lines is None else lines
@@ -3028,9 +3104,19 @@ def gc(home=None, own_n=None, lines=None, now=None, remove=None):
             if not delete:
                 continue
             size = folder_size(d)
+        dest = saved_dest(home, n, now)
+        try:
+            saved = save_rig_user_files(d, rig_save_sources(home) if sources is None else sources, dest)
+        except OSError as e:
+            print("[ERROR] rig gc: could not save the files written on %s to %s (%s); folder kept" % (d, dest, e),
+                  file=sys.stderr)
+            continue
+        nbytes = sum((dest / rel).stat().st_size for rel in saved)
+        print("[INFO] rig gc: rig %d: saved %d files (%d bytes) written on the rig to %s" % (n, len(saved), nbytes,
+              dest if saved else "(nothing to save)"))
         if remove(d):
             removed.append(d.name)
-            log(d, size, reason)
+            log(d, size, "%s, %d files (%d bytes) saved%s" % (reason, len(saved), nbytes, " to %s" % dest if saved else ""))
     return removed
 
 # Options that take the next argument as their value; that value may be a number (--os 32, --ram 128).
