@@ -864,117 +864,6 @@ static void ground_box(flatshared *r, struct RastPort *rp, int x0, int y0, int x
     SetDrMd(rp, dm);
 }
 
-/* FLAT-WIDE-INPUT (owner 2026-11-11): a read-only ground box (DISPLAY class) fitted to its text, columns fx0..fx1 of the program box
- * x0,y0..x1,y1. The frame of the fitted box is the ground box frame of the box fx0 - side .. fx1 + side (its inset is exactly
- * fx0..fx1), the program box columns outside that in window ground; every pixel goes through fit_fill, clipped to the columns
- * cx0..cx1 (a moving edge repaints only its strip, flat_fit_strip). Runs on cl_stk under cl_ss (noline_frame, fit_on_private):
- * fit_ctx is held under cl_ss. fit_fill writes through the saved RectFill (c2_ring_fill: not recoloured by rf_gbox); fit_read
- * answers the box pen inside the fitted box, so the corner blend never reads the text already drawn there as the inner pen. */
-static struct { struct RastPort *rp; int cx0, cx1, fx0, fx1, iy0, iy1, pen; } fit_ctx;
-
-static void fit_fill(void *ctx, int x0, int y0, int x1, int y1, int pen)
-{
-    if (x0 < fit_ctx.cx0)
-        x0 = fit_ctx.cx0;
-    if (x1 > fit_ctx.cx1)
-        x1 = fit_ctx.cx1;
-    if (x0 > x1 || y0 > y1)
-        return;
-    if (g_r->rsw.installed)
-        c2_ring_fill(ctx, x0, y0, x1, y1, pen);
-    else
-        c2_fill(ctx, x0, y0, x1, y1, pen);
-}
-
-static int fit_read(void *ctx, int x, int y)
-{
-    if (x >= fit_ctx.fx0 && x <= fit_ctx.fx1 && y >= fit_ctx.iy0 && y <= fit_ctx.iy1)
-        return fit_ctx.pen;
-    return c2_read(ctx, x, y);
-}
-
-static void fit_draw(flatshared *r, struct RastPort *rp, const flat_grbox *b, int fx0, int fx1, int cx0, int cx1)
-{
-    const flat_state *s = st_rp(r, rp);
-    int blended, bk = s->pen_back;
-    UBYTE fg = rp->FgPen, dm = rp->DrawMode;
-    fit_ctx.rp = rp;
-    fit_ctx.cx0 = cx0 < b->x0 ? b->x0 : cx0;
-    fit_ctx.cx1 = cx1 > b->x1 ? b->x1 : cx1;
-    fit_ctx.fx0 = fx0; fit_ctx.fx1 = fx1;
-    fit_ctx.iy0 = b->y0 + 1; fit_ctx.iy1 = b->y1 - 1;
-    fit_ctx.pen = b->pen;
-    if (fx0 - b->side > b->x0)
-        fit_fill(rp, b->x0, b->y0, fx0 - b->side - 1, b->y1, bk);
-    if (fx1 + b->side < b->x1)
-        fit_fill(rp, fx1 + b->side + 1, b->y0, b->x1, b->y1, bk);
-    raa_ground_frame_draw(s, b->pen, b->side, fx0 - b->side, b->y0, fx1 - fx0 + 1 + 2 * b->side, b->y1 - b->y0 + 1, fit_fill, fit_read,
-                          c2_rgb, raa_load(rp), rp, &blended);
-    SetAPen(rp, fg);
-    SetDrMd(rp, dm);
-}
-
-/* FLAT-WIDE-INPUT text step, on cl_stk under cl_ss: the text about to be drawn at the pen position on a fit record moves the box
- * edges (flat_fit_box, or the full box back when the text no longer fits the rules), each moving edge repaints its strip. */
-typedef struct { flatshared *r; struct RastPort *rp; CONST_STRPTR str; ULONG count; } fit_call;
-static fit_call fit_arg;                            /* held under cl_ss */
-static LONG fit_on_private(void *a);
-static LONG (*fit_run)(void *) = fit_on_private;    /* indirect: the budget walk of flat_tx_c stops here (as c8_run) */
-
-static LONG fit_on_private(void *a)
-{
-    fit_call *c = (fit_call *)a;
-    flatshared *r = c->r;
-    struct RastPort *rp = c->rp;
-    const flat_grbox *m = flat_gr_match(&r->st, &r->gr, flat_tx_surface(rp->Layer, rp->BitMap), rp->cp_x, rp->cp_y, rp->cp_x, rp->cp_y);
-    flat_grbox *b;
-    int f[2], strip[2], tw, t0, t1, o0, o1, rad;
-    if (!m || !m->fit)
-        return 0;
-    b = &r->gr.box[m - r->gr.box];
-    tw = (int)TextLength(rp, c->str, c->count);
-    if (tw <= 0)
-        return 0;
-    if (!flat_fit_box(b, rp->cp_x, tw, FLAT_FIT_PAD * b->side, f) && !flat_gr_full(b, f))
-        return 0;
-    t0 = rp->cp_x; t1 = rp->cp_x + tw - 1;
-    if (b->tx1 >= b->tx0) {
-        if (b->tx0 < t0) t0 = b->tx0;
-        if (b->tx1 > t1) t1 = b->tx1;
-    }
-    o0 = b->ix0; o1 = b->ix1;
-    flat_gr_fit(b, f[0], f[1], t0, t1);
-    rad = raa_radius(b->iy1 - b->iy0 + 1);
-    if (flat_fit_strip(o0, f[0], rad, b->x0, b->x1, strip))
-        fit_draw(r, rp, b, f[0], f[1], strip[0], strip[1]);
-    if (flat_fit_strip(o1, f[1], rad, b->x0, b->x1, strip))
-        fit_draw(r, rp, b, f[0], f[1], strip[0], strip[1]);
-    r->gfit++;
-    return 0;
-}
-
-/* Text hook side of FLAT-WIDE-INPUT: no arrays (flat_tx_c budget). Only a text on a fit record goes to the private stack; cl_ss is
- * only attempted, never waited for (LOCK ORDER of c8_draw_on); busy: counted, the box keeps its width for this text. */
-static void tx_fit(flatshared *r, struct RastPort *rp, CONST_STRPTR str, ULONG count)
-{
-    const flat_grbox *m = flat_gr_match(&r->st, &r->gr, flat_tx_surface(rp->Layer, rp->BitMap), rp->cp_x, rp->cp_y, rp->cp_x, rp->cp_y);
-    if (!m || !m->fit || !cl_stk)
-        return;
-    if ((uint8_t *)&m >= cl_stk && (uint8_t *)&m < cl_stk + CLONE_STACK_BYTES) {   /* already on cl_stk, cl_ss held by this task */
-        fit_call c;
-        c.r = r; c.rp = rp; c.str = str; c.count = count;
-        fit_run(&c);
-        return;
-    }
-    if (!AttemptSemaphore(&cl_ss)) {
-        r->gfitbusy++;
-        return;
-    }
-    fit_arg.r = r; fit_arg.rp = rp; fit_arg.str = str; fit_arg.count = count;
-    flat_on_stack(fit_run, &fit_arg, &cl_sss);
-    ReleaseSemaphore(&cl_ss);
-}
-
 /* INSTALLER-BORDER-BUTTON (owner 2026-11-08): the Border-render push button of rp's window (flat_border_button) whose box is
  * exactly x0,y0..x1,y1, NULL when none. The Installer draws such a button as a pen-0 RectFill of the box, its label, then a
  * temporary frameiclass IM_DRAWFRAME over the same box; render != select, so the frame object never names the gadget and the
@@ -1090,9 +979,7 @@ static int noline_frame(flatshared *r, struct RastPort *rp, int ox, int oy, int 
     const void *surf = flat_tx_surface(lay, rp->BitMap);
     struct Gadget *g;
     flat_fc fc;
-    int n, cls, pen, depth = rp->BitMap ? rp->BitMap->Depth : 0, centre = -1, pf[2], fitted;
-    flat_grbox *b;
-    fitted = flat_gr_prev_fit(&r->gr, surf, ox, oy, ox + w - 1, oy + h - 1, pf);   /* FLAT-WIDE-INPUT: a redraw keeps the last fit */
+    int n, cls, pen, depth = rp->BitMap ? rp->BitMap->Depth : 0, centre = -1;
     flat_gr_drop(&r->gr, surf, ox, oy, ox + w - 1, oy + h - 1);
     if (!win)
         return 0;
@@ -1126,13 +1013,8 @@ static int noline_frame(flatshared *r, struct RastPort *rp, int ox, int oy, int 
     pen = flat_noline_pen(st_scr(r, win->WScreen), cls, depth, centre);
     if (pen < 0)
         return 0;
-    if (!(fitted && cls == FLAT_FC_DISPLAY))
-        ground_box(r, rp, ox, oy, ox + w - 1, oy + h - 1, pen);                   /* before the record: rf_gbox must not take its fills */
-    b = flat_gr_add(&r->gr, surf, side_px(r, win->WScreen), ox, oy, ox + w - 1, oy + h - 1, pen, cls == FLAT_FC_DISPLAY);   /* FLAT-SPACING: inset clip */
-    if (fitted && cls == FLAT_FC_DISPLAY) {                                        /* the saved RectFill: no record lookup */
-        fit_draw(r, rp, b, pf[0], pf[1], ox, ox + w - 1);
-        flat_gr_fit(b, pf[0], pf[1], 0, -1);                                       /* the text comes after the frame */
-    }
+    ground_box(r, rp, ox, oy, ox + w - 1, oy + h - 1, pen);
+    flat_gr_add(&r->gr, surf, side_px(r, win->WScreen), ox, oy, ox + w - 1, oy + h - 1, pen);   /* FLAT-SPACING: inset clip */
     r->gbhits++;
     return 1;
 }
@@ -1885,8 +1767,6 @@ void flat_tx_c(struct RastPort *rp, CONST_STRPTR str, ULONG count)
     flat_gh_text(&r->gh, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL), rp->cp_x, rp->cp_y, (const char *)str, (int)count);
     set = (on && r->rsw.installed && rp->Layer && rp->Layer->Window && tx_title(r, rp, str, count))
           || (r->tx.armed && tx_armed(r, rp));
-    if (on && r->gr.nfit && r->rsw.installed && rp->Layer)                          /* FLAT-WIDE-INPUT: the box hugs its text */
-        tx_fit(r, rp, str, count);
     if (on && (rp->DrawMode & JAM2) && rp->BgPen == r->st.pen_back && rp->Layer) {   /* PREFS-NO-OUTLINES: text on a ground box keeps its ground */
         const flat_grbox *gb = flat_gr_match(&r->st, &r->gr, flat_tx_surface(rp->Layer, rp->BitMap), rp->cp_x, rp->cp_y, rp->cp_x, rp->cp_y);
         if (gb) {
@@ -2492,8 +2372,6 @@ static int rf_gbox(flatshared *r, struct RastPort *rp, const LONG *b)
     for (k = 0; k < 3; k++)
         rf_gband(r, rp, gb, b, k);
     SetAPen(rp, fg);
-    if (gb->fit)                                /* FLAT-WIDE-INPUT: an erase of the whole text lets the next text fit anew */
-        flat_gr_erase(&r->gr.box[gb - r->gr.box], (int)b[0], (int)b[2]);
     r->gbhits++;
     return 1;
 }
@@ -2742,7 +2620,7 @@ static void print_status(void)
     unsigned dver = 0, drev = 0;
     unsigned long dcalls = 0, dflat = 0, fcalls = 0, fflat = 0, fbusy = 0, fnostk = 0;
     int finst = 0, rinst = 0;
-    unsigned long rcalls = 0, rhits = 0, shits = 0, mhits = 0, bhits = 0, gbhits = 0, gfit = 0, gfitbusy = 0, tcalls = 0, thits = 0, labels = 0, lskip = 0;
+    unsigned long rcalls = 0, rhits = 0, shits = 0, mhits = 0, bhits = 0, gbhits = 0, tcalls = 0, thits = 0, labels = 0, lskip = 0;
     int tinst = 0;
     unsigned long scmin = 0, schw = 0, scstk = 0, scno = 0, scb256 = 0, scb8a = 0, scb8b = 0, schdr = 0, scguard = 0, scdeep = 0;
     char sctask[16] = "";
@@ -2764,7 +2642,7 @@ static void print_status(void)
         dinst = d4_installed(r); dcalls = r->dcalls; dflat = r->dflat; dbevel = r->dbevel; dface = r->dface; dnopix = r->dnopix; d5draws = r->d5draws;
         memcpy(dsum, r->dsum, sizeof dsum);
         finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat; fbusy = r->fbusy; fnostk = r->fnostk;
-        rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits; mhits = r->mhits; bhits = r->bhits; gbhits = r->gbhits; gfit = r->gfit; gfitbusy = r->gfitbusy;
+        rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits; mhits = r->mhits; bhits = r->bhits; gbhits = r->gbhits;
         tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits; labels = r->labels; lskip = r->lskip;
         scmin = r->cmin; schw = r->chw; scstk = r->cstk; scno = r->cnostk; memcpy(sctask, r->ctask, 16); sctask[15] = 0;
         scb256 = r->cb256; scb8a = r->cb8a; scb8b = r->cb8b; schdr = r->chdr; scguard = r->cguard; scdeep = r->cdeep;
@@ -2847,8 +2725,6 @@ static void print_status(void)
         put_word(line, &n, " mhits=");              put_num(line, &n, mhits);
         put_word(line, &n, " bhits=");              put_num(line, &n, bhits);
         put_word(line, &n, " gboxes=");             put_num(line, &n, gbhits);
-        put_word(line, &n, " gfit=");               put_num(line, &n, gfit);
-        put_word(line, &n, " gfitbusy=");           put_num(line, &n, gfitbusy);
         put_word(line, &n, " side=");               put_num(line, &n, (unsigned long)apx);
         put_word(line, &n, " looks=");              put_num(line, &n, alooks);
         line[n] = 0;

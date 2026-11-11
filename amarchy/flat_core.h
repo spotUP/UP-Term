@@ -538,42 +538,15 @@ typedef struct flat_grbox {
     const void *surf;
     int x0, y0, x1, y1, pen;                                    /* program box: the match key */
     int ix0, iy0, ix1, iy1;                                     /* FLAT-SPACING inset box (flat_inset): the part painted in pen */
-    int fit, side;                                              /* FLAT-WIDE-INPUT: 1 = a read-only box fitted to its text; flat_side_px */
-    int tx0, tx1;                                               /* text columns drawn on the box since its frame (tx1 < tx0: none) */
 } flat_grbox;
 typedef struct flat_gr {
     flat_grbox box[FLAT_GR_N];
     int next;
-    int nfit;                                                   /* live fit records: the Text hook looks for a box only while nonzero */
 } flat_gr;
 /* A frame draw of box x0,y0..x1,y1: every record that overlaps it is dropped (the same box included). */
 void flat_gr_drop(flat_gr *g, const void *surf, int x0, int y0, int x1, int y1);
-/* Record a box and its ground pen (call flat_gr_drop first). side (flat_side_px) gives the inset box the frame filled (flat_inset).
- * fit 1 (FLAT-WIDE-INPUT, DISPLAY class only): the box may shrink to the text drawn on it (flat_fit_box). The new record. */
-flat_grbox *flat_gr_add(flat_gr *g, const void *surf, int side, int x0, int y0, int x1, int y1, int pen, int fit);
-
-/* FLAT-WIDE-INPUT (owner 2026-11-11): a read-only ground box hugs its text. Text at tx0, tw columns wide, on fit record b (the
- * columns already drawn, b->tx0..tx1, count too: a second text grows the box, never cuts the first). Against the box's normal inset
- * (flat_inset): left-aligned text (left gap <= pad, right gap > left gap + 2 * pad) keeps the program box x0 and ends pad columns
- * after the text; centred text (gaps within 2 * side of each other, right gap > 2 * pad) gets pad columns on both sides. pad =
- * FLAT_FIT_PAD * side. 1 and the fitted columns in out (x0, x1); 0 = keep the box (no fit flag, no text, text outside the inset,
- * right-aligned or nearly full text, or a fit less than 2 * pad narrower than the inset). */
-#define FLAT_FIT_PAD 6
-int flat_fit_box(const flat_grbox *b, int tx0, int tw, int pad, int out[2]);
-/* Set fit record b's inset columns to fx0..fx1 and its text columns to tx0..tx1 (no-op on a record without the fit flag). */
-void flat_gr_fit(flat_grbox *b, int fx0, int fx1, int tx0, int tx1);
-/* The fitted columns (out x0, x1) of the live fit record of this surface and exactly this box, when they differ from the normal
- * inset: a frame redraw of the box keeps the last fit instead of flashing full width. 0 = none. Call before flat_gr_drop. */
-int flat_gr_prev_fit(const flat_gr *g, const void *surf, int x0, int y0, int x1, int y1, int out[2]);
-/* The normal inset columns of record b (out x0, x1): 1 when the record is fitted narrower now (a text that no longer fits the rules
- * of flat_fit_box takes the full box back), 0 when it already has them. */
-int flat_gr_full(const flat_grbox *b, int out[2]);
-/* An erase of columns x0..x1 on fit record b that covers all of the text drawn on it: the text is gone, the next text fits anew
- * (a slider step erases the old date before the new one; without this the union keeps the longer old date's width). */
-void flat_gr_erase(flat_grbox *b, int x0, int x1);
-/* The columns a moving box edge repaints, old edge column to new, widened by the corner radius r - 1 on both sides and clipped to
- * the program box x0..x1: 1 and out (x0, x1); 0 when the edge stays. */
-int flat_fit_strip(int old_edge, int new_edge, int r, int x0, int x1, int out[2]);
+/* Record a box and its ground pen (call flat_gr_drop first). side (flat_side_px) gives the inset box the frame filled (flat_inset). */
+void flat_gr_add(flat_gr *g, const void *surf, int side, int x0, int y0, int x1, int y1, int pen);
 /* The record of this surface whose box holds the rect, or 0 (not enabled, held, no record). */
 const flat_grbox *flat_gr_match(const flat_state *s, const flat_gr *g, const void *surf, int x0, int y0, int x1, int y1);
 /* Band k (0 top corner rows, 1 middle rows, 2 bottom corner rows) of the rect inside record b's inset box minus its four rounded
