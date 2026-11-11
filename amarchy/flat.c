@@ -3833,15 +3833,19 @@ int main(void)
             CloseLibrary((struct Library *)GfxBase);
             GfxBase = 0;
         }
-        if (drop_record(r)) {
-            if (marker_live)
-                marker_delete();
-            pt_close(&tm);
-            pt_close(&pen_tm);
-            stk_probe();
-            return 0;
+        if (!drop_record(r)) {
+            /* FLAT-UNLOAD-RECORD-HELD: the hooks are gone and the libraries closed, so waiting for another Ctrl-C would run the
+             * teardown twice. Leave the record ownerless instead: its holder keeps valid memory and the next start takes it over
+             * (the dead-owner path in main). */
+            refused(r, FLAT_REF_RECORD);
+            r->task = 0;
+            PutStr((STRPTR)"amarchy-flat: the state block is in use, left for the next start\n");
         }
-        refused(r, FLAT_REF_RECORD);
-        PutStr((STRPTR)"amarchy-flat: the state block is in use, not unloading\n");
+        if (marker_live)
+            marker_delete();
+        pt_close(&tm);
+        pt_close(&pen_tm);
+        stk_probe();
+        return 0;
     }
 }
