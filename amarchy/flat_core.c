@@ -812,7 +812,7 @@ int flat_noline_pen(const flat_state *s, int cls, int depth, int centre_pen)
     if (cls == FLAT_FC_TRACK || cls == FLAT_FC_DISPLAY)
         return flat_input_pen(s, depth);
     if (cls == FLAT_FC_CELL)
-        return s->pen_line && centre_pen == s->pen_line ? s->pen_line : s->pen_button ? s->pen_button : s->pen_back;
+        return s->pen_line && centre_pen == s->pen_line ? s->pen_line : flat_button_pen(s, depth);   /* FLAT-GREEN-FACES: the held pen, never the bare role number pen_button */
     return -1;
 }
 
@@ -1016,6 +1016,17 @@ int flat_button_pen(const flat_state *s, int depth)
     if (!s->pen_sel || depth < 3 || depth > 8 || s->pen_sel >= (1 << depth))
         return s->pen_back;                                  /* S33-PREFS-SKIN-FAIL: only the held pen, never the bare role number pen_button */
     return s->pen_sel;
+}
+
+void flat_frame_state(flat_state *st, const flat_state *look, const flat_state *scr, int side, int depth)
+{
+    *st = *look;
+    st->side = (uint8_t)(side < 1 ? 1 : side > 255 ? 255 : side);
+    st->pen_dim = scr->pen_dim;
+    st->pen_knob = scr->pen_knob;
+    st->pen_inbar = scr->pen_inbar;
+    st->pen_sel = scr->pen_sel;
+    st->pen_button = (uint8_t)flat_button_pen(st, depth);    /* FLAT-GREEN-FACES: the face is the held pen; the role number is a pen nobody may own */
 }
 
 void flat_frame_size(int draw_frame, int dim_w, int dim_h, int img_w, int img_h, int *w, int *h)

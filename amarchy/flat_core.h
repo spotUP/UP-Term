@@ -525,8 +525,8 @@ typedef struct flat_fc {
 } flat_fc;
 void flat_fc_add(flat_fc *a, int fx, int fy, int fw, int fh, const flat_gadbox *g);
 int flat_fc_class(const flat_fc *a);
-/* The fill pen of a class at depth: TRACK and DISPLAY the input ground pen (flat_input_pen), CELL the push button face (pen_button,
- * else pen_back) or, when centre_pen (the pixel at the box centre, the app's selected fill drawn before the frame) is pen_line, the
+/* The fill pen of a class at depth: TRACK and DISPLAY the input ground pen (flat_input_pen), CELL the push button face (flat_button_pen:
+ * the held pen, else pen_back) or, when centre_pen (the pixel at the box centre, the app's selected fill drawn before the frame) is pen_line, the
  * accent; -1 for any other class (nothing to fill) and when the screen holds no such pen. */
 int flat_noline_pen(const flat_state *s, int cls, int depth, int centre_pen);
 /* Ground box records: the boxes a frame filled and whose content (drawn after the frame) must stay on that ground. Keyed on surface
@@ -606,6 +606,12 @@ int flat_button_gadget(const void *gadget_render, const void *select_render, con
 /* The PRIMARY button fill pen for a screen of the given depth: under 8 colours (depth < 3) the accent pen_line; from 8 colours the
  * theme lighter background pen_button, or pen_back when it is 0 or not a pen of that depth. */
 int flat_button_pen(const flat_state *s, int depth);
+
+/* FLAT-GREEN-FACES: the state a frame draw (flat_frame_draw, raa_frame_draw, raa_frame_box) takes for one screen: the look, the
+ * outline columns "side" (clamped to 1..255), the four own pens of the screen's state "scr" (pen_dim, pen_knob, pen_inbar,
+ * pen_sel), and pen_button resolved to the face pen flat_button_pen at "depth". The role number in look->pen_button is never a
+ * fill pen: its colour register is written only when the pen holder owns it, so a face filled with it shows the stock palette. */
+void flat_frame_state(flat_state *st, const flat_state *look, const flat_state *scr, int side, int depth);
 
 /* BUTTON-ROLES: a button box in gadget coordinates. */
 typedef struct { int x, y, w, h; } flat_box;

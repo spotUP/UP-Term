@@ -3593,10 +3593,38 @@ static void test_no_outlines(void)
     CHECK_INT(flat_frame_class(20, 52, 100, 14, font_g, 2), FLAT_FC_BORDERED);      /* borders exactly one other gadget: today's draw */
     CHECK_INT(flat_noline_pen(&s, FLAT_FC_TRACK, 4, 0), 5);                         /* ground pen = the input ground pen */
     CHECK_INT(flat_noline_pen(&s, FLAT_FC_DISPLAY, 4, 0), 5);
-    CHECK_INT(flat_noline_pen(&s, FLAT_FC_CELL, 4, 0), 4);                          /* push button face */
+    CHECK_INT(s.pen_button, 4);
+    CHECK_INT(flat_noline_pen(&s, FLAT_FC_CELL, 4, 0), 5);                          /* FLAT-GREEN-FACES: the face is the held pen, never the role number 4 (stock green when unowned) */
     CHECK_INT(flat_noline_pen(&s, FLAT_FC_CELL, 4, 3), 3);                          /* the app's selected fill (accent) under the centre */
-    s.pen_button = 0;
-    CHECK_INT(flat_noline_pen(&s, FLAT_FC_CELL, 4, 0), 0);                          /* no button pen: the window ground */
+    s.pen_sel = 0;
+    CHECK_INT(flat_noline_pen(&s, FLAT_FC_CELL, 4, 0), 0);                          /* nothing held: the window ground, still not pen 4 */
+    s.pen_sel = 5;
+    {   /* FLAT-GREEN-FACES: the frame draw state of a screen fills PLAIN and SECONDARY faces with the held pen */
+        flat_state look = s, scr = s, st;
+        rect_log fr;
+        look.pen_sel = 0; look.pen_button = 4;
+        scr.pen_sel = 12; scr.pen_dim = 13; scr.pen_knob = 14; scr.pen_inbar = 15;
+        flat_frame_state(&st, &look, &scr, 2, 4);
+        CHECK_INT(st.pen_button, 12);
+        CHECK_INT(st.pen_sel, 12);
+        CHECK_INT(st.pen_dim, 13);
+        CHECK_INT(st.pen_knob, 14);
+        CHECK_INT(st.pen_inbar, 15);
+        CHECK_INT(st.side, 2);
+        memset(&fr, 0, sizeof fr);
+        CHECK_INT(flat_frame_draw(&st, 0, 0, 0, 40, 12, 1, FLAT_ROLE_SECONDARY, rect_log_fill, &fr), 1);
+        CHECK_INT(fr.r[0][4], 12);                                                  /* Cancel: not the stock pen 4 */
+        memset(&fr, 0, sizeof fr);
+        CHECK_INT(flat_frame_draw(&st, 0, 0, 0, 40, 12, 1, FLAT_ROLE_PLAIN, rect_log_fill, &fr), 1);
+        CHECK_INT(fr.r[0][4], 12);                                                  /* cycle gadget */
+        scr.pen_sel = 0;
+        flat_frame_state(&st, &look, &scr, 0, 4);
+        CHECK_INT(st.pen_button, look.pen_back);                                    /* nothing held: the window ground */
+        CHECK_INT(st.side, 1);
+        scr.pen_sel = 12;
+        flat_frame_state(&st, &look, &scr, 1, 2);
+        CHECK_INT(st.pen_button, look.pen_line);                                    /* 4 colours: the accent line pen */
+    }
     CHECK_INT(flat_noline_pen(&s, FLAT_FC_GROUP, 4, 0), -1);                        /* group: nothing is drawn */
     CHECK_INT(flat_noline_pen(&s, FLAT_FC_BORDERED, 4, 0), -1);
     s.pen_sel = 0;

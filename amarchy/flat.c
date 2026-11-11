@@ -1152,13 +1152,12 @@ static int c8_draw(Object *obj, Msg msg)
             fill = flat_frame_fill(1, (int)eo, push_gadget_of(d->imp_RPort, obj));
         else      /* 3.1 frameiclass V40 does not answer OM_GET: a button or cycle gadget renders this image as render and select */
             fill = flat_frame_fill(0, 0, button_gadget_of(d->imp_RPort, obj));
-        flat_state st = r->st;
+        flat_state st;
         {   /* S57-BUTTON-ASPECT-BORDERS: the outline columns of this window's screen (slot table read, no Intuition call) */
             struct Layer *sl = d->imp_RPort->Layer;
             struct Window *sw = sl ? (struct Window *)sl->Window : NULL;
-            const flat_state *ps = st_scr(r, sw ? sw->WScreen : NULL);
-            st.side = (uint8_t)(sw ? side_px(r, sw->WScreen) : 1);
-            st.pen_dim = ps->pen_dim; st.pen_knob = ps->pen_knob; st.pen_inbar = ps->pen_inbar; st.pen_sel = ps->pen_sel;
+            flat_frame_state(&st, &r->st, st_scr(r, sw ? sw->WScreen : NULL), sw ? side_px(r, sw->WScreen) : 1,
+                             d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0);
         }
         int ox = im->LeftEdge + d->imp_Offset.X, oy = im->TopEdge + d->imp_Offset.Y;
         int w, h;
@@ -2155,10 +2154,7 @@ static flat_state bb_st;
 static void bb_setup(flatshared *r, struct RastPort *rp)
 {
     struct Window *bw = (struct Window *)rp->Layer->Window;
-    const flat_state *ps = st_scr(r, bw->WScreen);
-    bb_st = r->st;
-    bb_st.side = (uint8_t)side_px(r, bw->WScreen);
-    bb_st.pen_dim = ps->pen_dim; bb_st.pen_knob = ps->pen_knob; bb_st.pen_inbar = ps->pen_inbar; bb_st.pen_sel = ps->pen_sel;
+    flat_frame_state(&bb_st, &r->st, st_scr(r, bw->WScreen), side_px(r, bw->WScreen), rp->BitMap ? rp->BitMap->Depth : 0);
 }
 
 static int bb_take(flatshared *r, struct RastPort *rp, int val)
