@@ -811,6 +811,12 @@ int flat_check_image(unsigned long which)
     return which == FLAT_W_CHECKIMAGE;
 }
 
+int flat_check_width(int w, int h, int side)
+{
+    int sq = h * (side < 1 ? 1 : side);
+    return sq < w ? sq : w;
+}
+
 int flat_check_ticked(unsigned long ids)
 {
     return ids == 1 || ids == 6 || ids == 8;    /* IDS_SELECTED, IDS_INACTIVESELECTED, IDS_SELECTEDDISABLED */

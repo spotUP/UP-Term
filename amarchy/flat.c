@@ -1104,13 +1104,15 @@ static int check_draw(Object *obj, Msg msg, int tick_pen)
     struct Window *w = rp->Layer ? (struct Window *)rp->Layer->Window : NULL;
     int x0 = im->LeftEdge + d->imp_Offset.X, y0 = im->TopEdge + d->imp_Offset.Y;
     int pen = w ? flat_input_pen(st_scr(r, w->WScreen), rp->BitMap ? rp->BitMap->Depth : 0) : -1;
+    int bw;
     if (pen < 0)
         return 0;
     if (tick_pen < 0)
         tick_pen = d->imp_DrInfo ? d->imp_DrInfo->dri_Pens[TEXTPEN] : 1;
-    ground_box(r, rp, x0, y0, x0 + im->Width - 1, y0 + im->Height - 1, pen);
+    bw = flat_check_width(im->Width, im->Height, side_px(r, w->WScreen));   /* S74-CHECKBOX-SQUARE */
+    ground_box(r, rp, x0, y0, x0 + bw - 1, y0 + im->Height - 1, pen);
     if (flat_check_ticked(d->imp_State))
-        flat_glyph_tick(x0, y0, im->Width, im->Height, tick_pen, c2_fill, rp);
+        flat_glyph_tick(x0, y0, bw, im->Height, tick_pen, c2_fill, rp);
     return 1;
 }
 /* The way into c8_on_private: always an indirect call (flat_on_stack's `jsr (a2)`, and the re-entry call below). The flat budget

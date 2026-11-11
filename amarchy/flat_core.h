@@ -520,6 +520,9 @@ int flat_display_gadget(unsigned flags, unsigned activation);
 #define FLAT_W_CHECKIMAGE 0x0E
 int flat_check_image(unsigned long which);
 int flat_check_ticked(unsigned long ids);
+/* S74-CHECKBOX-SQUARE (owner 2026-11-11): the stock image is 26x11; the flat box is visually square: h rows by h * side columns
+ * (side = flat_side_px of the screen), never wider than the image, at the image's left edge. */
+int flat_check_width(int w, int h, int side);
 typedef struct flat_gadbox {
     int x, y, w, h, kind;
 } flat_gadbox;

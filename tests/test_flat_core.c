@@ -3679,6 +3679,10 @@ static void test_no_outlines(void)
         int i, ok = 1;
         CHECK_INT(flat_check_image(0x0E), 1);    /* CHECKIMAGE, NDK imageclass.h */
         CHECK_INT(flat_check_image(0x07), 0);
+        CHECK_INT(flat_check_width(26, 11, 1), 11);     /* S74-CHECKBOX-SQUARE: square pixels */
+        CHECK_INT(flat_check_width(26, 11, 2), 22);     /* 2 columns per row */
+        CHECK_INT(flat_check_width(26, 11, 0), 11);
+        CHECK_INT(flat_check_width(26, 11, 4), 26);     /* never wider than the image */
         CHECK_INT(flat_check_image(FLAT_W_MENUCHECK), 0);
         CHECK_INT(flat_check_ticked(0), 0);
         CHECK_INT(flat_check_ticked(5), 0);
