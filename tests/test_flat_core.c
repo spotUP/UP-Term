@@ -1403,6 +1403,9 @@ static void test_which_from_gtype(void)
         CHECK_INT(flat_img_which(tab, FLAT_IMG_RECS, &objs[3], &sz), FLAT_W_RIGHT);
         CHECK_INT((int)sz, 2);
         CHECK_INT(flat_img_record(tab, FLAT_IMG_RECS, &objs[4], 0x00, 1), 0);       /* not an arrow Which: not recorded */
+        CHECK_INT(flat_img_record(tab, FLAT_IMG_RECS, &objs[4], FLAT_W_CHECKIMAGE, 1), 1);   /* a check box image is found again at draw time */
+        CHECK_INT(flat_img_which(tab, FLAT_IMG_RECS, &objs[4], NULL), FLAT_W_CHECKIMAGE);
+        flat_img_forget(tab, FLAT_IMG_RECS, &objs[4]);
         /* OM_DISPOSE: the entry goes, a new object at the same address is not the old arrow */
         flat_img_forget(tab, FLAT_IMG_RECS, &objs[0]);
         CHECK_INT(flat_img_which(tab, FLAT_IMG_RECS, &objs[0], &sz), -1);
