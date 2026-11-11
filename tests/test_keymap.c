@@ -4083,9 +4083,9 @@ static void dopus_theme_send_switches_only_a_default_toolbar(void)
     strcpy(r.tb[2], "SYS:My/Own-bank");            /* the user's own bank: never touched */
     strcpy(r.tb[3], "dopus5:buttons/toolbar");     /* default spelled with DOpus5:, any case */
     dopus_theme_send(&th, dopus_fake_send, &r, 0);
-    CHECK_STR(r.tb[1], DOPUS_TOOLBAR_FLAT DOPUS_TOOLBAR_SET);
+    CHECK_STR(r.tb[1], DOPUS_TOOLBAR_FLAT "filled-32");
     CHECK_STR(r.tb[2], "SYS:My/Own-bank");
-    CHECK_STR(r.tb[3], DOPUS_TOOLBAR_FLAT DOPUS_TOOLBAR_SET);
+    CHECK_STR(r.tb[3], DOPUS_TOOLBAR_FLAT "filled-32");
     for (i = 0; i < r.n && i < 32; i++)
         if (strncmp(r.line[i], "lister set ", 11) == 0) {
             sets++;
@@ -4111,7 +4111,7 @@ static void dopus_theme_send_switches_only_a_default_toolbar(void)
     memset(&r, 0, sizeof r);
     r.screen = "Workbench 800 600 4 0";
     r.all = "1";
-    strcpy(r.tb[1], DOPUS_TOOLBAR_FLAT DOPUS_TOOLBAR_SET);
+    strcpy(r.tb[1], DOPUS_TOOLBAR_FLAT "filled-32");
     dopus_theme_send(&th, dopus_fake_send, &r, 0);
     for (i = 0; i < r.n && i < 32; i++)
         CHECK(strncmp(r.line[i], "lister set ", 11) != 0);
@@ -4171,7 +4171,7 @@ static void dopus_theme_send_picks_the_set_and_recolours(void)
     t.prefs = &prefs;
     t.font_h = 8;
     t.rx = 22;
-    t.ry = 44;                                      /* topaz 8 on a 2:1 pixel screen: 16 high-pixel set, tall */
+    t.ry = 44;                                      /* topaz 8 on a 2:1 pixel screen: 32 high-pixel set (4 x 8), tall */
     memset(&r, 0, sizeof r);
     r.screen = "Workbench 800 600 4 0";
     r.all = "1 2";
@@ -4181,10 +4181,10 @@ static void dopus_theme_send_picks_the_set_and_recolours(void)
     CHECK_INT(t.screens, 1);
     CHECK_INT(t.outlines, 1);
     CHECK_INT(t.recolours, 1);
-    CHECK_STR(t.set, "filled-16t");
+    CHECK_STR(t.set, "filled-32t");
     CHECK(memcmp(t.rgb, want, sizeof want) == 0);
-    CHECK_STR(r.tb[1], DOPUS_TOOLBAR_FLAT "filled-16t");
-    CHECK_STR(r.tb[2], DOPUS_TOOLBAR_FLAT "filled-16t");
+    CHECK_STR(r.tb[1], DOPUS_TOOLBAR_FLAT "filled-32t");
+    CHECK_STR(r.tb[2], DOPUS_TOOLBAR_FLAT "filled-32t");
 
     /* DT-9: icon-style = outline picks the Lucide bank of the same size, and moves a lister off the filled one */
     strcpy(prefs.val[AM_ICONSTYLE], "outline");
@@ -4196,11 +4196,11 @@ static void dopus_theme_send_picks_the_set_and_recolours(void)
     memset(&r, 0, sizeof r);
     r.screen = "Workbench 800 600 4 0";
     r.all = "1";
-    strcpy(r.tb[1], DOPUS_TOOLBAR_FLAT "filled-16t");
+    strcpy(r.tb[1], DOPUS_TOOLBAR_FLAT "filled-32t");
     dopus_theme_send(&th, dopus_fake_send, &r, &ops);
     CHECK_INT(t.outlines, 1);
-    CHECK_STR(t.set, "outline-16t");
-    CHECK_STR(r.tb[1], DOPUS_TOOLBAR_FLAT "outline-16t");
+    CHECK_STR(t.set, "outline-32t");
+    CHECK_STR(r.tb[1], DOPUS_TOOLBAR_FLAT "outline-32t");
     strcpy(prefs.val[AM_ICONSTYLE], "filled");
 
     /* picked bank already on the lister: untouched when no brush changed, set again when one did (DT-4 refresh) */
@@ -4213,9 +4213,9 @@ static void dopus_theme_send_picks_the_set_and_recolours(void)
         memset(&r, 0, sizeof r);
         r.screen = "Workbench 800 600 4 0";
         r.all = "1";
-        strcpy(r.tb[1], DOPUS_TOOLBAR_FLAT "filled-24");
+        strcpy(r.tb[1], DOPUS_TOOLBAR_FLAT "filled-32");
         dopus_theme_send(&th, dopus_fake_send, &r, &ops);
-        CHECK_STR(t.set, "filled-24");
+        CHECK_STR(t.set, "filled-32");
         {
             int k, n = 0;
             for (k = 0; k < r.n && k < 32; k++)
