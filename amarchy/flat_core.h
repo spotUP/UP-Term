@@ -792,4 +792,67 @@ int flat_aspect_need(const flat_aspect_slot *t, int n, const void *scr, unsigned
 /* store px for scr: its own slot, else a free one, else the last (evicted). */
 void flat_aspect_put(flat_aspect_slot *t, int n, const void *scr, unsigned long mode, int px);
 
+/* S74-TIME-ROW: the Time preferences (time 39.1) top row laid out full width at gadtools.library CreateGadgetA time
+ * (thoughts/shared/s74-evidence/flat-time-row-core.md). The glue feeds every CreateGadgetA call of a task in creation order; the
+ * answer is "unchanged" or "create it with this left edge and width". Only left edges and widths change, by deltas, so the
+ * NewGadget values pass through as the program gave them. */
+#define FLAT_GT_BUTTON 1                /* gadtools.h BUTTON_KIND */
+#define FLAT_GT_INTEGER 3               /* INTEGER_KIND */
+#define FLAT_GT_CYCLE 7                 /* CYCLE_KIND */
+#define FLAT_TROW_YEAR_ID 14            /* time 39.1 ng_GadgetID of the year INTEGER */
+#define FLAT_TROW_MONTH_ID 15           /* time 39.1 ng_GadgetID of the month CYCLE */
+#define FLAT_TROW_SLOTS 4               /* creating tasks followed at once (only Time tasks take one; all busy: the oldest is evicted) */
+
+/* Why the last sequence left the row stock (STATUS "last mismatch reason"); FLAT_TROW_OK after a changed row. */
+enum {
+    FLAT_TROW_OK = 0,
+    FLAT_TROW_NOBUTTON,     /* INTEGER before any BUTTON: no row left */
+    FLAT_TROW_ORDER,        /* a gadget of another kind came before the INTEGER, or a BUTTON sits on the INTEGER's row */
+    FLAT_TROW_ID,           /* INTEGER or CYCLE without the 39.1 gadget id */
+    FLAT_TROW_GEOM,         /* row left not left of the INTEGER, negative or empty boxes */
+    FLAT_TROW_NOCYCLE,      /* INTEGER moved, the next gadget is no CYCLE of id 15 (the INTEGER stays moved, see the note) */
+    FLAT_TROW_ROW           /* the CYCLE is not on the INTEGER's row, not right of it, or would not grow */
+};
+
+typedef struct flat_trow_ev {   /* one CreateGadgetA call: the kind and the NewGadget fields as given */
+    int kind, left, top, width, height, id;
+} flat_trow_ev;
+
+typedef struct flat_trow_slot {
+    const void *task;           /* the creating task (compared, never dereferenced); 0 = free */
+    unsigned long stamp;        /* clock at the last event: the oldest is evicted when all are busy */
+    int phase;                  /* 0 buttons so far, 1 INTEGER moved: the next gadget decides the month */
+    int rl;                     /* row left: the leftmost BUTTON left so far (Save on 39.1) */
+    int by0, by1;               /* vertical span of those BUTTONs */
+    int ynl, yw, yt, yh;        /* the moved INTEGER: new left, width, top, height (NewGadget values) */
+    int yr;                     /* the INTEGER's stock right edge (left + width - 1) */
+} flat_trow_slot;
+
+typedef struct flat_trow_tab {
+    flat_trow_slot slot[FLAT_TROW_SLOTS];
+    unsigned long clock;
+    unsigned long rows;         /* STATUS: rows changed (CYCLE widened) */
+    int why;                    /* STATUS: FLAT_TROW_* of the last sequence that ended */
+} flat_trow_tab;
+
+void flat_trow_init(flat_trow_tab *t);
+/* 1 when the FilePart of the program name (after the last ':' or '/') equals "Time", case ignored as AmigaDOS does. */
+int flat_trow_name(const char *prog);
+/* Year: new left = row left + frame_out (frame_out = columns the drawn INTEGER frame stands outside its NewGadget box; 0 when the
+ * NewGadget carries the frame box). 0 (leave it) unless that moves the box left and every value is sane. */
+int flat_trow_year(int row_left, int frame_out, int yl, int yw, int *new_left);
+/* Month: the CYCLE's new left and width beside the year moved to ynl (width yw, vertical yt,yh). The two program boxes are placed so
+ * the window ground between them is the FLAT-SPACING gap of two touching flat boxes, 2 * side columns (flat_inset; side =
+ * flat_side_px of the screen): boxes that flat_inset shrinks touch, a box too small to inset adds its side columns of program space.
+ * The right edge (ml + mw - 1) stays. 0 (leave it) when the CYCLE is not on the row, not right of the stock INTEGER (right edge yr),
+ * or would not grow. */
+int flat_trow_month(int side, int frame_out, int ynl, int yw, int yt, int yh, int yr, int ml, int mt, int mw, int mh,
+                    int *new_left, int *new_width);
+/* One CreateGadgetA call of task (program name prog, side of the window's screen): 1 = create it with *new_left / *new_width, 0 =
+ * unchanged. Tasks whose program is not Time never take a slot. A slot is freed when its sequence ends (row changed or mismatch). */
+int flat_trow_feed(flat_trow_tab *t, const void *task, const char *prog, int side, int frame_out, const flat_trow_ev *e,
+                   int *new_left, int *new_width);
+/* Forget task's slot (the glue may call it when the task's window closes); harmless when it has none. */
+void flat_trow_drop(flat_trow_tab *t, const void *task);
+
 #endif

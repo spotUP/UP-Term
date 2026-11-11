@@ -1568,3 +1568,152 @@ unsigned flat_draw_epoch(const flat_draw_tab *d, const void *screen)
     s = draw_find(d, screen);
     return s ? s->epoch : 0;
 }
+
+/* ---- S74-TIME-ROW: Time preferences top row full width (see flat_core.h) ---- */
+void flat_trow_init(flat_trow_tab *t)
+{
+    memset(t, 0, sizeof(*t));
+}
+
+int flat_trow_name(const char *prog)
+{
+    const char *p, *f;
+    if (!prog)
+        return 0;
+    f = prog;
+    for (p = prog; *p; p++)
+        if (*p == ':' || *p == '/')
+            f = p + 1;
+    return ci_prefix(f, "time") && f[4] == 0;
+}
+
+int flat_trow_year(int row_left, int frame_out, int yl, int yw, int *new_left)
+{
+    int nl = row_left + frame_out;
+    if (row_left < 0 || frame_out < 0 || yl < 0 || yw <= 0 || nl >= yl)
+        return 0;
+    *new_left = nl;
+    return 1;
+}
+
+int flat_trow_month(int side, int frame_out, int ynl, int yw, int yt, int yh, int yr, int ml, int mt, int mw, int mh,
+                    int *new_left, int *new_width)
+{
+    int in[4], yfl, yfr, mr, nl;
+    if (side < 1)
+        side = 1;
+    if (frame_out < 0 || ynl < 0 || yw <= 0 || yh <= 0 || ml < 0 || mt < 0 || mw <= 0 || mh <= 0)
+        return 0;
+    if (mt > yt + yh - 1 || yt > mt + mh - 1 || ml <= yr + frame_out)       /* on the row, right of the stock INTEGER frame */
+        return 0;
+    yfl = ynl - frame_out;
+    yfr = ynl + yw - 1 + frame_out;
+    mr = ml + mw - 1;
+    nl = yfr + 1;                                                           /* FLAT-SPACING: touching flat boxes show 2 * side */
+    if (!flat_inset(side, yfl, yt, yfr, yt + yh - 1, in))
+        nl += side;                                                         /* the year frame keeps its edge: its share as space */
+    if (!flat_inset(side, nl, mt, mr, mt + mh - 1, in))
+        nl += side;
+    if (nl >= ml)                                                           /* never shrink or keep: nothing to widen */
+        return 0;
+    *new_left = nl;
+    *new_width = mr - nl + 1;
+    return 1;
+}
+
+static flat_trow_slot *trow_find(flat_trow_tab *t, const void *task)
+{
+    int i;
+    for (i = 0; i < FLAT_TROW_SLOTS; i++)
+        if (t->slot[i].task == task)
+            return &t->slot[i];
+    return 0;
+}
+
+static flat_trow_slot *trow_take(flat_trow_tab *t, const void *task)
+{
+    flat_trow_slot *s = trow_find(t, 0);
+    int i;
+    if (!s) {                                                               /* all busy: evict the oldest (a task that died mid-sequence) */
+        s = &t->slot[0];
+        for (i = 1; i < FLAT_TROW_SLOTS; i++)
+            if (t->slot[i].stamp < s->stamp)
+                s = &t->slot[i];
+    }
+    memset(s, 0, sizeof(*s));
+    s->task = task;
+    s->rl = -1;
+    return s;
+}
+
+static int trow_end(flat_trow_tab *t, flat_trow_slot *s, int why)
+{
+    t->why = why;
+    memset(s, 0, sizeof(*s));
+    return 0;
+}
+
+int flat_trow_feed(flat_trow_tab *t, const void *task, const char *prog, int side, int frame_out, const flat_trow_ev *e,
+                   int *new_left, int *new_width)
+{
+    flat_trow_slot *s;
+    int nl, nw;
+    if (!t || !task || !e || !new_left || !new_width || !flat_trow_name(prog))
+        return 0;
+    s = trow_find(t, task);
+    if (!s) {
+        if (e->kind == FLAT_GT_INTEGER)
+            t->why = FLAT_TROW_NOBUTTON;
+        if (e->kind != FLAT_GT_BUTTON)
+            return 0;
+        s = trow_take(t, task);
+    }
+    s->stamp = ++t->clock;
+    if (s->phase == 0) {
+        if (e->kind == FLAT_GT_BUTTON) {
+            if (s->rl < 0) {                                                 /* the first BUTTON */
+                s->rl = e->left;
+                s->by0 = e->top;
+                s->by1 = e->top + e->height - 1;
+            } else {
+                if (e->left < s->rl)
+                    s->rl = e->left;
+                if (e->top < s->by0)
+                    s->by0 = e->top;
+                if (e->top + e->height - 1 > s->by1)
+                    s->by1 = e->top + e->height - 1;
+            }
+            return 0;
+        }
+        if (e->kind != FLAT_GT_INTEGER)
+            return trow_end(t, s, FLAT_TROW_ORDER);
+        if (e->id != FLAT_TROW_YEAR_ID)
+            return trow_end(t, s, FLAT_TROW_ID);
+        if (e->top <= s->by1 && s->by0 <= e->top + e->height - 1)            /* a BUTTON on the row could sit where the year goes */
+            return trow_end(t, s, FLAT_TROW_ORDER);
+        if (e->top < 0 || e->height <= 0 || !flat_trow_year(s->rl, frame_out, e->left, e->width, &nl))
+            return trow_end(t, s, FLAT_TROW_GEOM);
+        s->phase = 1;
+        s->ynl = nl; s->yw = e->width; s->yt = e->top; s->yh = e->height;
+        s->yr = e->left + e->width - 1;
+        *new_left = nl;
+        *new_width = e->width;
+        return 1;
+    }
+    if (e->kind != FLAT_GT_CYCLE || e->id != FLAT_TROW_MONTH_ID)
+        return trow_end(t, s, FLAT_TROW_NOCYCLE);
+    if (!flat_trow_month(side, frame_out, s->ynl, s->yw, s->yt, s->yh, s->yr, e->left, e->top, e->width, e->height, &nl, &nw))
+        return trow_end(t, s, FLAT_TROW_ROW);
+    t->rows++;
+    trow_end(t, s, FLAT_TROW_OK);
+    *new_left = nl;
+    *new_width = nw;
+    return 1;
+}
+
+void flat_trow_drop(flat_trow_tab *t, const void *task)
+{
+    flat_trow_slot *s = task ? trow_find(t, task) : 0;
+    if (s)
+        memset(s, 0, sizeof(*s));
+}
