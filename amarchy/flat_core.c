@@ -53,9 +53,9 @@ int flat_loop_line(unsigned long beat, unsigned stage, unsigned refuse, unsigned
 {
     static const char *const stg[FLAT_STG_COUNT] = {
         "none", "wait", "pens_sync", "install", "lock_wb", "pens", "draw_sync", "reap_list", "reap_icl", "marker", "scan",
-        "status", "unpatch", "tx_remove", "rf_remove", "hook_remove", "free"
+        "status", "unpatch", "tx_remove", "rf_remove", "hook_remove", "free", "cg_remove"
     };
-    static const char *const ref[FLAT_REF_COUNT] = { "none", "dopus", "text", "rectfill", "hook", "record" };
+    static const char *const ref[FLAT_REF_COUNT] = { "none", "dopus", "text", "rectfill", "hook", "record", "gadtools" };
     int n;
     if (cap < 64)
         return 0;
@@ -1716,4 +1716,10 @@ void flat_trow_drop(flat_trow_tab *t, const void *task)
     flat_trow_slot *s = task ? trow_find(t, task) : 0;
     if (s)
         memset(s, 0, sizeof(*s));
+}
+
+const char *flat_trow_why_name(int why)
+{
+    static const char *const nm[] = { "ok", "nobutton", "order", "id", "geom", "nocycle", "row" };
+    return why >= FLAT_TROW_OK && why <= FLAT_TROW_ROW ? nm[why] : "bad";
 }

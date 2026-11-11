@@ -135,6 +135,13 @@ static void test_status(void)
     CHECK_STR(line, "loop beat=9 stage=reap_icl refused=dopus refusals=2");
     flat_loop_line(1, FLAT_STG_FREE, FLAT_REF_RECORD, 1, line, sizeof line);
     CHECK_STR(line, "loop beat=1 stage=free refused=record refusals=1");
+    flat_loop_line(3, FLAT_STG_CG_REMOVE, FLAT_REF_GADTOOLS, 1, line, sizeof line);     /* S74-TIME-ROW: the CreateGadgetA patch */
+    CHECK_STR(line, "loop beat=3 stage=cg_remove refused=gadtools refusals=1");
+    CHECK_STR(flat_trow_why_name(FLAT_TROW_OK), "ok");
+    CHECK_STR(flat_trow_why_name(FLAT_TROW_NOBUTTON), "nobutton");
+    CHECK_STR(flat_trow_why_name(FLAT_TROW_ROW), "row");
+    CHECK_STR(flat_trow_why_name(FLAT_TROW_ROW + 1), "bad");
+    CHECK_STR(flat_trow_why_name(-1), "bad");
     flat_loop_line(1, FLAT_STG_COUNT, FLAT_REF_COUNT, 0, line, sizeof line);
     CHECK_STR(line, "loop beat=1 stage=bad refused=bad refusals=0");
     CHECK_INT(flat_loop_line(1, 0, 0, 0, line, 63), 0);                  /* a buffer under 64 bytes is refused */

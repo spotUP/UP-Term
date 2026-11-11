@@ -42,6 +42,8 @@
 #include <intuition/sghooks.h>
 #include <utility/hooks.h>
 #include <dos/dos.h>
+#include <dos/dosextens.h>
+#include <libraries/gadtools.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/intuition.h>
@@ -2463,6 +2465,158 @@ static int rf_remove(flatshared *r)
     return rc;
 }
 
+/* ---- S74-TIME-ROW: gadtools.library CreateGadgetA patch (LVO -30). Workbench Time preferences builds its top row from a year
+ * INTEGER (id 14) and a month CYCLE (id 15) that start right of the calendar's left edge; the core (flat_core.c flat_trow_feed)
+ * moves the year to the button row's left edge and grows the month left to meet it. The caller's NewGadget is never written:
+ * a changed call is made with a copy on this stack (thoughts/shared/s74-evidence/flat-time-row-core.md).
+ * Per-task state is released by the core when the sequence ends (row changed or first mismatch), the oldest of the four slots
+ * is evicted when all are busy (a task that died mid-sequence), and the table is cleared at install and remove. ---- */
+
+/* Columns the drawn INTEGER frame stands outside its NewGadget box. 0 = the NewGadget box is the frame box (documented GadTools
+ * behaviour). The rig step reads STATUS "integer=" (the raw NewGadget): left 54 width 53 keeps 0, left 60 width 41 needs 6. */
+#define FLAT_TROW_FRAME_OUT 0
+
+typedef struct Gadget *(*cgfn)(__reg("d0") ULONG, __reg("a0") struct Gadget *, __reg("a1") struct NewGadget *,
+                               __reg("a2") struct TagItem *, __reg("a6") struct Library *);
+extern void flat_cg_tpl(void), flat_cg_tpl_end(void);
+
+/* The calling program's name: a CLI process's command name (FilePart, into nm, empty when the part is over 7 characters, which
+ * can never be "Time"), else the task name (a Workbench start names the process after the program). */
+static const char *cg_name(struct Task *me, char *nm)
+{
+    struct Process *pr = (struct Process *)me;
+    struct CommandLineInterface *cli;
+    const UBYTE *b;
+    int len, i, k = 0;
+    if (me->tc_Node.ln_Type == NT_PROCESS && pr->pr_CLI) {
+        cli = (struct CommandLineInterface *)BADDR(pr->pr_CLI);
+        b = (const UBYTE *)BADDR(cli->cli_CommandName);
+        len = b ? b[0] : 0;
+        if (len > 0) {
+            for (i = 1; i <= len; i++)
+                if (b[i] == ':' || b[i] == '/')
+                    k = i;
+            nm[0] = 0;
+            if (len - k <= 7) {
+                for (i = 0; i < len - k; i++)
+                    nm[i] = (char)b[k + 1 + i];
+                nm[i] = 0;
+            }
+            return nm;
+        }
+    }
+    return me->tc_Node.ln_Name ? me->tc_Node.ln_Name : "";
+}
+
+/* 1 = create this gadget at *nl / *nw. Kept out of flat_cg_c so the entry frame holds only the NewGadget copy (flat budget).
+ * The name is copied into the record's cgname under Forbid (one buffer for every task; no frame bytes for it). */
+static int cg_feed(flatshared *r, ULONG kind, const struct NewGadget *ng, int *nl, int *nw)
+{
+    struct Task *me = FindTask(NULL);
+    const char *prog;
+    flat_trow_ev ev;
+    struct Screen *scr;
+    int side = 1, hit = 0;
+    if (!r->st.enabled || r->st.held)
+        return 0;
+    if (kind == CYCLE_KIND && (scr = LockPubScreen(NULL)) != NULL) {   /* Time opens on the default public screen */
+        side = side_px(r, scr);
+        UnlockPubScreen(NULL, scr);
+    }
+    ev.kind = (int)kind;
+    ev.left = ng->ng_LeftEdge; ev.top = ng->ng_TopEdge;
+    ev.width = ng->ng_Width; ev.height = ng->ng_Height;
+    ev.id = ng->ng_GadgetID;
+    Forbid();
+    prog = cg_name(me, r->cgname);
+    if (flat_trow_name(prog)) {
+        if (kind == INTEGER_KIND || kind == CYCLE_KIND) {
+            WORD *raw = r->trow_raw[kind == CYCLE_KIND];
+            raw[0] = ng->ng_LeftEdge; raw[1] = ng->ng_TopEdge; raw[2] = ng->ng_Width; raw[3] = ng->ng_Height;
+            raw[4] = (WORD)ng->ng_GadgetID;
+        }
+        hit = flat_trow_feed(&r->trow, me, prog, side, FLAT_TROW_FRAME_OUT, &ev, nl, nw);
+    }
+    Permit();
+    return hit;
+}
+
+struct Gadget *flat_cg_c(ULONG kind, struct Gadget *prev, struct NewGadget *ng, struct TagItem *tags)
+{
+    flatshared *r = g_r;
+    struct NewGadget cp;
+    int nl, nw;
+    r->cgcalls++;
+    if (ng && cg_feed(r, kind, ng, &nl, &nw)) {
+        CopyMem(ng, &cp, sizeof cp);
+        cp.ng_LeftEdge = (WORD)nl;
+        cp.ng_Width = (WORD)nw;
+        ng = &cp;
+    }
+    return ((cgfn)r->cgsw.saved)(kind, prev, ng, tags, r->gtbase);
+}
+
+static int cg_install(flatshared *r)
+{
+    unsigned char *entry;
+    int rc;
+    if (!r->gtbase)
+        r->gtbase = OpenLibrary((STRPTR)"gadtools.library", 37);
+    if (!r->gtbase)
+        return -100;
+    entry = (unsigned char *)r->gtbase + FLAT_LVO_CREATEGADGETA;
+    rc = -100;
+    if (flat_jmp_target(entry)) {
+        flat_swap_init(&r->cgsw);
+        Forbid();
+        flat_trow_init(&r->trow);
+        Permit();
+        if (!r->cggate)                 /* FLAT-UNLOAD-INFLIGHT: see gate_make */
+            r->cggate = gate_make((void *)flat_cg_tpl, (void *)flat_cg_tpl_end, 0);
+        rc = -101;
+        if (r->cggate) {
+            g_r = r;
+            Forbid();
+            rc = flat_swap_install(&r->cgsw, (uintptr_t *)(entry + 2), (uintptr_t)r->cggate->code);
+            if (rc == FLAT_OK) {
+                gate_open(r->cggate, r->cgsw.saved);
+                r->cgslot = (uintptr_t *)(entry + 2);
+                libpatch_done(r->gtbase);
+            }
+            Permit();
+        }
+    }
+    if (rc != FLAT_OK) {
+        CloseLibrary(r->gtbase);
+        r->gtbase = 0;
+    }
+    return rc;
+}
+
+static int cg_remove(flatshared *r)
+{
+    int rc = FLAT_NOT_INSTALLED;
+    if (!r->cgsw.installed)
+        return rc;
+    gate_close(r->cggate);                 /* FLAT-UNLOAD-INFLIGHT: from here a caller runs the original */
+    Forbid();
+    rc = flat_swap_remove(&r->cgsw, r->cgslot, &r->st);
+    if (rc == FLAT_REMOVED) {
+        libpatch_done(r->gtbase);
+        flat_trow_init(&r->trow);
+    }
+    Permit();
+    if (rc != FLAT_REMOVED)
+        gate_reopen(r->cggate);
+    if (rc == FLAT_REMOVED) {
+        gate_wait(r->cggate);           /* every CreateGadgetA caller inside the entry has left */
+        r->cgslot = 0;
+        CloseLibrary(r->gtbase);        /* only now: gadtools may expunge once nothing points into it */
+        r->gtbase = 0;
+    }
+    return rc;
+}
+
 static flatshared *find_record(void)
 {
     flatshared *r;
@@ -2622,6 +2776,9 @@ static void print_status(void)
     int finst = 0, rinst = 0;
     unsigned long rcalls = 0, rhits = 0, shits = 0, mhits = 0, bhits = 0, gbhits = 0, tcalls = 0, thits = 0, labels = 0, lskip = 0;
     int tinst = 0;
+    int cginst = 0, twhy = 0;   /* S74-TIME-ROW */
+    unsigned long cgcalls = 0, trows = 0;
+    WORD traw[2][5];
     unsigned long scmin = 0, schw = 0, scstk = 0, scno = 0, scb256 = 0, scb8a = 0, scb8b = 0, schdr = 0, scguard = 0, scdeep = 0;
     char sctask[16] = "";
     unsigned long cdraws = 0, cfall = 0, alooks = 0, cfb = 0, cfd = 0, cfm = 0, cfe = 0, cfk = 0, cfi = 0, clw = 0, cls = 0, cln = 0, clm = 0;
@@ -2642,6 +2799,8 @@ static void print_status(void)
         dinst = d4_installed(r); dcalls = r->dcalls; dflat = r->dflat; dbevel = r->dbevel; dface = r->dface; dnopix = r->dnopix; d5draws = r->d5draws;
         memcpy(dsum, r->dsum, sizeof dsum);
         finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat; fbusy = r->fbusy; fnostk = r->fnostk;
+        cginst = r->cgsw.installed; cgcalls = r->cgcalls; trows = r->trow.rows; twhy = r->trow.why;
+        CopyMem(r->trow_raw, traw, sizeof traw);
         rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits; shits = r->shits; mhits = r->mhits; bhits = r->bhits; gbhits = r->gbhits;
         tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits; labels = r->labels; lskip = r->lskip;
         scmin = r->cmin; schw = r->chw; scstk = r->cstk; scno = r->cnostk; memcpy(sctask, r->ctask, 16); sctask[15] = 0;
@@ -2727,6 +2886,27 @@ static void print_status(void)
         put_word(line, &n, " gboxes=");             put_num(line, &n, gbhits);
         put_word(line, &n, " side=");               put_num(line, &n, (unsigned long)apx);
         put_word(line, &n, " looks=");              put_num(line, &n, alooks);
+        line[n] = 0;
+        PutStr((STRPTR)line);
+        PutStr((STRPTR)"\n");
+    }
+    if (found) {                                    /* S74-TIME-ROW: calls rising = the stub runs, changed rising = a Time row laid out */
+        int n = 0, k, i;
+        put_word(line, &n, "time row installed=");  put_word(line, &n, cginst ? "yes" : "no");
+        put_word(line, &n, " calls=");              put_num(line, &n, cgcalls);
+        put_word(line, &n, " changed=");            put_num(line, &n, trows);
+        put_word(line, &n, " reason=");             put_word(line, &n, flat_trow_why_name(twhy));
+        for (k = 0; k < 2; k++) {                   /* the raw NewGadget of Time's last INTEGER and CYCLE: left,top,width,height,id */
+            put_word(line, &n, k ? " cycle=" : " integer=");
+            for (i = 0; i < 5; i++) {
+                if (i)
+                    put_word(line, &n, ",");
+                if (traw[k][i] < 0)
+                    put_word(line, &n, "-");
+                put_num(line, &n, (unsigned long)(traw[k][i] < 0 ? -traw[k][i] : traw[k][i]));
+            }
+        }
+        put_word(line, &n, " frame=");              put_num(line, &n, (unsigned long)FLAT_TROW_FRAME_OUT);
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
@@ -3422,6 +3602,8 @@ static int install_all(flatshared *r, poll_timer *tm, int *marker_live)
     icl_alloc();
     if (tx_install(r) != FLAT_OK)
         PutStr((STRPTR)"amarchy-flat: Text patch not installed\n");
+    if (cg_install(r) != FLAT_OK)
+        PutStr((STRPTR)"amarchy-flat: CreateGadgetA patch not installed\n");
     pt_start(tm, (unsigned long)FLAT_MARKER_SECS * 1000000UL);
     return rc;
 }
@@ -3439,7 +3621,7 @@ int main(void)
     InitSemaphore(&cl_ss);
     InitSemaphore(&icl_ss);
     if (is_help(args)) {
-        PutStr((STRPTR)"amarchy-flat [STATUS]: the flat-UI resident program; prints flat=on|off|absent|held. Ctrl-C unloads it\n");
+        PutStr((STRPTR)"amarchy-flat [STATUS]: the flat-UI resident program; prints flat=on|off|absent|held and the patch counters (time row: Time preferences gadgets moved). Ctrl-C unloads it\n");
         return 0;
     }
     if (is_status(args)) {
@@ -3589,6 +3771,12 @@ int main(void)
         if (rf_remove(r) == FLAT_STILL_CHAINED) {
             refused(r, FLAT_REF_RECTFILL);
             PutStr((STRPTR)"amarchy-flat: a patch is still chained on RectFill, not unloading\n");
+            continue;
+        }
+        STG(FLAT_STG_CG_REMOVE);
+        if (cg_remove(r) == FLAT_STILL_CHAINED) {
+            refused(r, FLAT_REF_GADTOOLS);
+            PutStr((STRPTR)"amarchy-flat: a patch is still chained on gadtools CreateGadgetA, not unloading\n");
             continue;
         }
         STG(FLAT_STG_HOOK_REMOVE);

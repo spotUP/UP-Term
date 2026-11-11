@@ -80,9 +80,9 @@ int flat_status_line(const void *p, size_t avail, int found, char *out, size_t c
 enum {
     FLAT_STG_NONE, FLAT_STG_WAIT, FLAT_STG_PENS_SYNC, FLAT_STG_INSTALL, FLAT_STG_LOCK_WB, FLAT_STG_PENS, FLAT_STG_DRAW_SYNC,
     FLAT_STG_REAP_LIST, FLAT_STG_REAP_ICL, FLAT_STG_MARKER, FLAT_STG_SCAN, FLAT_STG_STATUS, FLAT_STG_UNPATCH, FLAT_STG_TX_REMOVE,
-    FLAT_STG_RF_REMOVE, FLAT_STG_HOOK_REMOVE, FLAT_STG_FREE, FLAT_STG_COUNT
+    FLAT_STG_RF_REMOVE, FLAT_STG_HOOK_REMOVE, FLAT_STG_FREE, FLAT_STG_CG_REMOVE, FLAT_STG_COUNT
 };
-enum { FLAT_REF_NONE, FLAT_REF_DOPUS, FLAT_REF_TEXT, FLAT_REF_RECTFILL, FLAT_REF_HOOK, FLAT_REF_RECORD, FLAT_REF_COUNT };
+enum { FLAT_REF_NONE, FLAT_REF_DOPUS, FLAT_REF_TEXT, FLAT_REF_RECTFILL, FLAT_REF_HOOK, FLAT_REF_RECORD, FLAT_REF_GADTOOLS, FLAT_REF_COUNT };
 
 /* "loop beat=N stage=<name> refused=<name> refusals=N"; returns the length, 0 when cap < 64. */
 int flat_loop_line(unsigned long beat, unsigned stage, unsigned refuse, unsigned long nrefuse, char *out, size_t cap);
@@ -144,6 +144,7 @@ int flat_conv(unsigned intuition_version);
 enum { FLAT_EL_DRAWBOX = 0, FLAT_EL_FIELDBOX = 1, FLAT_EL_BEVEL = 2, FLAT_EL_COUNT = 3 };
 #define FLAT_LVO_TEXT (-60)         /* graphics.library Text (the pressed-button label patch, FLAT-BUTTON-FILL) */
 #define FLAT_LVO_RECTFILL (-306)    /* graphics.library RectFill (the outer-edge patch) */
+#define FLAT_LVO_CREATEGADGETA (-30) /* gadtools.library CreateGadgetA (S74-TIME-ROW: the Time preferences top row) */
 #define FLAT_LVO_DRAWBOX (-696)
 #define FLAT_LVO_FIELDBOX (-702)
 #define FLAT_FUNC_BYTES 64
@@ -854,5 +855,7 @@ int flat_trow_feed(flat_trow_tab *t, const void *task, const char *prog, int sid
                    int *new_left, int *new_width);
 /* Forget task's slot (the glue may call it when the task's window closes); harmless when it has none. */
 void flat_trow_drop(flat_trow_tab *t, const void *task);
+/* STATUS name of a FLAT_TROW_* reason ("ok", "nobutton", ...); "bad" out of range. */
+const char *flat_trow_why_name(int why);
 
 #endif
