@@ -514,10 +514,10 @@ const flat_gbox *flat_gh_match(const flat_state *s, const flat_gh *g, const void
 /* S74-TEXT-BOX: a gadget that takes no input: no highlight (GFLG_GADGHNONE) and no activation that reacts to a click
  * (GACT_RELVERIFY, GACT_IMMEDIATE, GACT_TOGGLESELECT, GACT_FOLLOWMOUSE). flags / activation as in struct Gadget. */
 int flat_display_gadget(unsigned flags, unsigned activation);
-/* S74-CHECKBOX-GROUND: GadTools CHECKBOX_KIND renders a sysiclass CHECKIMAGE (SYSIA_Which 0x07). Flat draws it as an input ground box
+/* S74-CHECKBOX-GROUND: GadTools CHECKBOX_KIND renders a sysiclass CHECKIMAGE (SYSIA_Which 0x0E, NDK imageclass.h). Flat draws it as an input ground box
  * (the string input's look) plus, when ticked, the menu check mark; flat_check_image says which, flat_check_ticked says whether ids
  * (impDraw imp_State) is a selected state (IDS_SELECTED, IDS_INACTIVESELECTED, IDS_SELECTEDDISABLED). */
-#define FLAT_W_CHECKIMAGE 0x07
+#define FLAT_W_CHECKIMAGE 0x0E
 int flat_check_image(unsigned long which);
 int flat_check_ticked(unsigned long ids);
 typedef struct flat_gadbox {

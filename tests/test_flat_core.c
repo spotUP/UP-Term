@@ -3677,7 +3677,8 @@ static void test_no_outlines(void)
     {   /* S74-CHECKBOX-GROUND: CHECKIMAGE takes the ground box; the tick only in the selected states, in the given pen, inside the box */
         rect_log tl;
         int i, ok = 1;
-        CHECK_INT(flat_check_image(0x07), 1);
+        CHECK_INT(flat_check_image(0x0E), 1);    /* CHECKIMAGE, NDK imageclass.h */
+        CHECK_INT(flat_check_image(0x07), 0);
         CHECK_INT(flat_check_image(FLAT_W_MENUCHECK), 0);
         CHECK_INT(flat_check_ticked(0), 0);
         CHECK_INT(flat_check_ticked(5), 0);
