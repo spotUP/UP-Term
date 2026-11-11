@@ -43,14 +43,18 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   also cold-restarts (stop + start --keep-sys) a rig whose FS-UAE log gains 10+ "CPU reset"
                   lines in a minute: the 060 post-Guru Kickstart reset loop (RIG-RESET-LOOP)
   rig.py stop [--keep]   kill THIS rig only (matched by its config path, at kill time), then, for rig N > 1, remove its
-                  build/rig<N> folder (as `clear`; never rig 1; not while the emulator still runs). --keep leaves the folder: a script
+                  build/rig<N> folder (as `clear`, files written on the rig saved first as for `gc`; never rig 1; not while the
+                  emulator still runs). --keep leaves the folder: a script
                   that stops and starts again mid-run passes it, the folder holds its resumable verdict files
   rig.py gc       sweep: remove every build/rig<N> (N > 1, not this rig's) with no emulator on it, no start.lock held and no command
                   for 2 hours, and every leftover build/rig*.del; each removal is printed and appended to build/rig-gc.log.
                   Before removing, it copies every file written on the rig (in the drive folders vtc, boot, work, os32,
                   os-<name>: missing from or different to the clone source, rig 1's VTC: or the OS32 tree; drives without
                   one: newer than the drive) to build/rig-saved/<N>/<date-time>/; a failed save keeps the folder ([ERROR]).
-                  Files inside the sys.hdf image are not saved. `start` runs the same sweep first
+                  Files in the DH0: image sys.hdf that are new or differ in content from the master image (UPTERM_SYSTEM_HDF)
+                  go to sys/ in the same folder (xdftool unpack, about 4 s; the master's digests are cached in
+                  build/rig-saved/sys-master.json). `clear` and `stop` run the same save before they remove a folder.
+                  `start` runs the same sweep first
   rig.py reboot   stop and start again with DH0: as the last run left it (a start clones it anew):
                   an install's writes survive. The last start's flags, with any given ones on top (a given
                   --purpose keeps --max / --os 32; a given machine or --os flag replaces only its own group)
@@ -719,6 +723,23 @@ def rig_volume():
     return 100 if SOUND and not RIG_MUTE_FLAG.exists() else 0
 
 
+def xdf_unpack(image, tmp):
+    """xdftool unpack of an ADF/HDF volume into the new directory tmp (an RDB hard disk file such as sys.hdf: its first
+    partition, DH0:). The image is only read (-r). Returns tmp/<volume name>, the volume's file tree; next to it xdftool
+    leaves <volume name>.xdfmeta (protection bits, dates, comments). Raises OSError when xdftool fails."""
+    tmp = pathlib.Path(tmp)
+    shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir(parents=True)
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    try:
+        r = subprocess.run([xdf, "-r", str(image), "unpack", str(tmp)], capture_output=True, text=True)
+    except OSError as e:
+        raise OSError("xdftool could not unpack %s: %s" % (image, e))
+    metas = list(tmp.glob("*.xdfmeta"))
+    if r.returncode != 0 or len(metas) != 1:
+        raise OSError("xdftool could not unpack %s: %s" % (image, (r.stderr or r.stdout).strip()[-200:]))
+    return tmp / metas[0].name[:-len(".xdfmeta")]
+
 def unpack_volume(image, dst):
     """The whole file tree of an ADF/HDF volume as a host directory FS-UAE
     mounts (its free space is the Mac's): xdftool unpack, then the protection
@@ -726,14 +747,11 @@ def unpack_volume(image, dst):
     sidecar files (flags in hspa rwed order, date, comment). The image is only
     read. Returns the volume's name."""
     tmp = pathlib.Path(str(dst) + ".unpack")
-    shutil.rmtree(tmp, ignore_errors=True)
-    tmp.mkdir(parents=True)
-    r = subprocess.run(["xdftool", str(image), "unpack", str(tmp)], capture_output=True, text=True)
-    metas = list(tmp.glob("*.xdfmeta"))
-    if r.returncode != 0 or len(metas) != 1:
-        sys.exit("rig: xdftool could not unpack %s: %s" % (image, (r.stderr or r.stdout).strip()[-200:]))
-    vol = metas[0].name[:-len(".xdfmeta")]
-    for line in metas[0].read_text(encoding="utf-8", errors="replace").splitlines():
+    try:
+        vol = xdf_unpack(image, tmp).name
+    except OSError as e:
+        sys.exit("rig: %s" % e)
+    for line in (tmp / (vol + ".xdfmeta")).read_text(encoding="utf-8", errors="replace").splitlines():
         path, _, rest = line.partition(":")
         if rest.startswith("DOS"):
             continue    # the volume's own line (file system type, dates)
@@ -2916,7 +2934,8 @@ def clear():
     deleted under it and build/rig4 vanished the same way (RIG-FOLDER-VANISHED), because the documented
     `mv build/rig<n> build/rig<n>.del && rm -rf` ran with no check. Stop the rig first (`rig.py stop`).
     Rig 1 (build/rig) is the owner's and is refused unless `--rig1` is given: a `rig.py clear` with UPTERM_RIG unset
-    removed it on 2026-11-02 (rig-gc.log 13:04:21 build/rig.del) and every later start that copies rig 1's VTC: failed."""
+    removed it on 2026-11-02 (rig-gc.log 13:04:21 build/rig.del) and every later start that copies rig 1's VTC: failed.
+    The files written on the rig are saved first (save_and_remove, the step gc shares); a failed save keeps the folder."""
     if paths.RIG_N == 1 and "--rig1" not in sys.argv[2:]:
         sys.exit("rig: rig 1 (%s) is the owner's; refusing to clear it. Set UPTERM_RIG=<n> for your own rig, or add --rig1 "
                  "if the owner asked for it" % RIG)
@@ -2925,7 +2944,8 @@ def clear():
     if not RIG.exists():
         print("rig: %s already gone" % RIG)
         return
-    if not remove_folder(RIG):
+    done = save_and_remove(RIG, paths.RIG_N, RIG.parent, tag="rig clear")   # files written on the rig survive first
+    if done is None or not done[0]:
         sys.exit(1)
     print("rig: removed", RIG)
 
@@ -2999,15 +3019,18 @@ def folder_in_use(folder, lines):
     return any(key in l and ("fs-uae" in l.lower() or "amiberry" in l.lower()) for l in lines)
 
 # The host directories a rig mounts as Amiga drives (rig_config, amiberry drives): VTC: (vtc), BOOTX: (boot), Work: (work),
-# and DH0: when it is a directory (os32 for --os32, os-<name> for --os). The default DH0:, sys.hdf, is a disk image: files
-# written into it are not seen here (RIG-GC-SAVE-USER-FILES, reported unverified).
+# and DH0: when it is a directory (os32 for --os32, os-<name> for --os). The default DH0:, the disk image sys.hdf, is read
+# through xdftool instead (sys_hdf_user_files); its files are saved under sys/ (RIG-GC-SAVE-USER-FILES part 2).
 RIG_DRIVE_DIRS = re.compile(r"vtc|boot|work|os32|os-[^.]+")
+SYS_IMAGE = "sys.hdf"      # the rig's DH0: image, an APFS clone of SRC_HDF (fresh_sys_hdf)
+SYS_SAVE_DIR = "sys"       # its saved files: build/rig-saved/<n>/<date-time>/sys/<path on DH0:>
 
 def rig_save_sources(home):
-    """The clone source of each drive directory, for save_rig_user_files: VTC: is seeded from rig 1's (seed_rig_vtc), the
-    3.2 DH0: is a copy of the OS32 tree (setup). A drive not named here has no source tree: its files count as written on
-    the rig when they are newer than the drive's creation (drive_created)."""
-    return {"vtc": pathlib.Path(home) / "rig/vtc", "os32": paths.OS32_TREE}
+    """The clone source of each drive, for save_rig_user_files: VTC: is seeded from rig 1's (seed_rig_vtc), the 3.2 DH0:
+    is a copy of the OS32 tree (setup), sys.hdf is a clone of the master image SRC_HDF (fresh_sys_hdf). A drive directory
+    not named here has no source tree: its files count as written on the rig when they are newer than the drive's
+    creation (drive_created)."""
+    return {"vtc": pathlib.Path(home) / "rig/vtc", "os32": paths.OS32_TREE, SYS_IMAGE: SRC_HDF}
 
 def drive_created(folder, drive):
     """Epoch seconds the drive directory was made: for os-<name> the .label file written right after the unpack
@@ -3043,20 +3066,91 @@ def rig_user_files(folder, sources):
                     found.append(rel)
     return found
 
-def save_rig_user_files(folder, sources, dest):
-    """Copy every file written on the rig (rig_user_files) from `folder` to `dest`, relative paths and times kept; the
-    rest (the kit, the clone sources) is left to the removal. Returns the saved relative paths; raises OSError when a copy
-    fails (the caller then keeps the folder). `dest` is made only when there is something to save, and never reused:
-    an existing one raises FileExistsError."""
-    files = rig_user_files(folder, sources)
-    if not files:
-        return []
-    dest = pathlib.Path(dest)
-    dest.mkdir(parents=True, exist_ok=False)
-    for rel in files:
-        (dest / rel).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(pathlib.Path(folder) / rel, dest / rel, follow_symlinks=False)
+def tree_digests(root):
+    """{relative posix path: sha1} of every regular file under root (symlinks skipped): the content comparison of an
+    unpacked DH0: image against its master (sys_master_digests)."""
+    root = pathlib.Path(root)
+    out = {}
+    for r, _dirs, files in os.walk(root):
+        for f in files:
+            p = pathlib.Path(r) / f
+            if p.is_symlink() or not p.is_file():
+                continue
+            out[p.relative_to(root).as_posix()] = hashlib.sha1(p.read_bytes()).hexdigest()
+    return out
+
+def sys_master_digests(home, master):
+    """tree_digests of the master DH0: image (SRC_HDF), cached in <home>/rig-saved/sys-master.json (one entry per file,
+    about 300 KB for the 3063 files of nyhd2.hdf) and rebuilt when the master's path, size or mtime changes. A rebuild
+    unpacks the master once (about 4 s, 51 MB on 2026-11-11) into <home>/rig-saved/sys-master.unpack and deletes that
+    right after: no unpacked copy of the image is kept. Raises OSError."""
+    master = pathlib.Path(master)
+    st = master.stat()
+    key = [str(master), st.st_size, st.st_mtime]
+    cache = pathlib.Path(home) / "rig-saved" / "sys-master.json"
+    try:
+        data = json.loads(cache.read_text())
+        if data.get("key") == key:
+            return data["files"]
+    except (OSError, ValueError, AttributeError, KeyError):
+        pass
+    tmp = cache.with_name("sys-master.unpack")
+    try:
+        files = tree_digests(xdf_unpack(master, tmp))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    new = cache.with_name(cache.name + ".new")
+    new.write_text(json.dumps({"key": key, "files": files}))
+    os.replace(new, cache)
     return files
+
+def save_rig_user_files(folder, sources, dest, home=None):
+    """Copy every file written on the rig from `folder` to `dest`, relative paths and times kept: the drive directories'
+    files (rig_user_files), and the files of the DH0: image sys.hdf that are new or different in content from its master
+    (sources["sys.hdf"], sys_master_digests) as sys/<path>. The image is unpacked (xdf_unpack, about 4 s and 51 MB) into
+    <folder>/sys.hdf.unpack, deleted before this returns. The rest (the kit, the clone sources) is left to the removal.
+    Returns the saved relative paths; raises OSError when an unpack or a copy fails (the caller then keeps the folder).
+    `dest` is made only when there is something to save, and never reused: an existing one raises FileExistsError.
+    `home` holds the master digest cache (default: the folder's parent, build/)."""
+    folder = pathlib.Path(folder)
+    copies = [(folder / rel, rel) for rel in rig_user_files(folder, sources)]
+    image, master = folder / SYS_IMAGE, sources.get(SYS_IMAGE)
+    tmp = folder / (SYS_IMAGE + ".unpack")
+    try:
+        if master is not None and image.is_file():
+            known = sys_master_digests(home or folder.parent, master)
+            vol = xdf_unpack(image, tmp)
+            for rel, digest in sorted(tree_digests(vol).items()):
+                if known.get(rel) != digest:
+                    copies.append((vol / rel, pathlib.Path(SYS_SAVE_DIR) / rel))
+        if not copies:
+            return []
+        dest = pathlib.Path(dest)
+        dest.mkdir(parents=True, exist_ok=False)
+        for src, rel in copies:
+            (dest / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest / rel, follow_symlinks=False)
+        return [rel for _src, rel in copies]
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+def save_and_remove(folder, n, home, now=None, sources=None, remove=None, tag="rig gc"):
+    """The one path that removes a rig folder: gc, clear, and `rig.py stop` (through clear). First every file written on
+    the rig goes to build/rig-saved/<n>/<date-time>/ (save_rig_user_files); a save that fails keeps the folder, prints
+    [ERROR] and returns None. Then remove (default remove_folder). Returns (removed, saved paths, bytes saved, dest)."""
+    home = pathlib.Path(home)
+    now = time.time() if now is None else now
+    dest = saved_dest(home, n, now)
+    try:
+        saved = save_rig_user_files(folder, rig_save_sources(home) if sources is None else sources, dest, home)
+    except OSError as e:
+        print("[ERROR] %s: could not save the files written on %s to %s (%s); folder kept" % (tag, folder, dest, e),
+              file=sys.stderr)
+        return None
+    nbytes = sum((dest / rel).stat().st_size for rel in saved)
+    print("[INFO] %s: rig %d: saved %d files (%d bytes) written on the rig to %s" % (tag, n, len(saved), nbytes,
+          dest if saved else "(nothing to save)"))
+    return (remove or remove_folder)(folder), saved, nbytes, dest
 
 def saved_dest(home, n, now):
     """build/rig-saved/<n>/<date-time>[-k]: a new folder per collection, so a later collection of rig N never writes
@@ -3070,8 +3164,8 @@ def saved_dest(home, n, now):
 
 def gc(home=None, own_n=None, lines=None, now=None, remove=None, sources=None):
     """Sweep build/rig<N> folders (N > 1, not this rig's own number): remove the idle ones (gc_decision) and every leftover
-    build/rig*.del. Before a removal, every file written on the rig is copied to build/rig-saved/<N>/<date-time>/
-    (save_rig_user_files; RIG-GC-SAVE-USER-FILES: a sweep removed rig 3 and with it the owner's DCTelnet.Prefs and
+    build/rig*.del. Before a removal, every file written on the rig (drive directories and the sys.hdf image) is copied
+    to build/rig-saved/<N>/<date-time>/ (save_and_remove, the step clear and stop share; RIG-GC-SAVE-USER-FILES: a sweep removed rig 3 and with it the owner's DCTelnet.Prefs and
     phonebook, files that existed nowhere else); a folder whose save fails is kept and an [ERROR] line printed. Each
     removal is printed and appended to <home>/rig-gc.log (time, folder, size, reason, files saved). Returns the removed
     folder names."""
@@ -3079,7 +3173,6 @@ def gc(home=None, own_n=None, lines=None, now=None, remove=None, sources=None):
     own_n = paths.RIG_N if own_n is None else own_n
     lines = process_lines() if lines is None else lines
     now = time.time() if now is None else now
-    remove = remove or remove_folder
     removed = []
     if not home.is_dir():
         return removed
@@ -3104,17 +3197,11 @@ def gc(home=None, own_n=None, lines=None, now=None, remove=None, sources=None):
             if not delete:
                 continue
             size = folder_size(d)
-        dest = saved_dest(home, n, now)
-        try:
-            saved = save_rig_user_files(d, rig_save_sources(home) if sources is None else sources, dest)
-        except OSError as e:
-            print("[ERROR] rig gc: could not save the files written on %s to %s (%s); folder kept" % (d, dest, e),
-                  file=sys.stderr)
+        done = save_and_remove(d, n, home, now, sources, remove, "rig gc")
+        if done is None:
             continue
-        nbytes = sum((dest / rel).stat().st_size for rel in saved)
-        print("[INFO] rig gc: rig %d: saved %d files (%d bytes) written on the rig to %s" % (n, len(saved), nbytes,
-              dest if saved else "(nothing to save)"))
-        if remove(d):
+        ok, saved, nbytes, dest = done
+        if ok:
             removed.append(d.name)
             log(d, size, "%s, %d files (%d bytes) saved%s" % (reason, len(saved), nbytes, " to %s" % dest if saved else ""))
     return removed

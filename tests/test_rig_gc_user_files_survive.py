@@ -34,7 +34,7 @@ class UserFilesOnACollectedRigSurvive(unittest.TestCase):
         d = self.home / ("rig%d" % n)
         d.mkdir()
         rig.seed_rig_vtc(self.home / "rig/vtc", d / "vtc")   # the real seeding: a copy of rig 1's drawer
-        (d / "sys.hdf").write_bytes(b"x" * 10)
+        (d / "fs-uae.log").write_bytes(b"x" * 10)   # no sys.hdf: a junk image fails its unpack (test_rig_gc_save_sys_hdf)
         (d / "last-command").write_text("%f\n" % (NOW - 5 * HOUR))
         later = time_after(d / "vtc/s/vsh.rc")
         # written on the rig: a new file in a new drawer, and a kit file the user changed

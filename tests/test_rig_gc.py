@@ -23,7 +23,7 @@ class RigGc(unittest.TestCase):
     def folder(self, name, age_hours):
         d = self.home / name
         d.mkdir()
-        (d / "sys.hdf").write_bytes(b"x" * 10)
+        (d / "fs-uae.log").write_bytes(b"x" * 10)   # no sys.hdf: a junk image fails its unpack (test_rig_gc_save_sys_hdf)
         (d / "last-command").write_text("%f\n" % (NOW - age_hours * HOUR))
         return d
 
