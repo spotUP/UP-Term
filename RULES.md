@@ -38,11 +38,13 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
    its `build/rig<n>` folder (rig 1 never). A script that stops and starts again mid-run passes `--keep`, because the
    folder holds its resumable verdict files; its final stop may clear. `rig.py start` and `rig.py gc` also sweep other
    rig folders that have no emulator, no held start.lock and no command for 2 hours (and any `build/rig*.del`), logging to
-   `build/rig-gc.log`. Before it removes one, the sweep copies every file written on that rig (in its drive folders:
-   missing from or different to the clone source, else newer than the drive) to `build/rig-saved/<n>/<date-time>/`,
-   relative paths kept; a failed save keeps the folder and prints `[ERROR]` (RIG-GC-SAVE-USER-FILES: a sweep lost the
-   owner's DCTelnet prefs and phonebook made on rig 3). Files inside the `sys.hdf` image are not saved: keep anything
-   you make on a rig in VTC: or Work:, or copy it off. `rig.py clear` still exists (it refuses while that rig's fs-uae runs; never `rm -rf build/rig<n>`
+   `build/rig-gc.log`. Before any removal (the sweep, `rig.py stop`, `rig.py clear`: one shared step), every file
+   written on that rig is copied to `build/rig-saved/<n>/<date-time>/`, relative paths kept: in its drive folders,
+   files missing from or different to the clone source, else newer than the drive; in the DH0: image `sys.hdf`, files
+   new or different in content from the master image, under `sys/`. A failed save (or image unpack) keeps the folder
+   and prints `[ERROR]` (RIG-GC-SAVE-USER-FILES: a sweep lost the owner's DCTelnet prefs and phonebook made on rig 3).
+   A `rig.py start` still clones DH0: anew from the master (RIG-FRESH-SYS): what a stop-start leaves in `sys.hdf` is
+   gone, so keep anything you make on a rig in VTC: or Work:. `rig.py clear` still exists (it refuses while that rig's fs-uae runs; never `rm -rf build/rig<n>`
    by hand). A rig that crashed or hangs counts as done; stop it the same way. Every brief that starts a rig ends
    with "stop your rig, confirm by ps". A session that finds a running rig it does
    not own reports it to the owner instead of stopping it; rig 1 is the owner's.
