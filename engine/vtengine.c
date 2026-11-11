@@ -102,6 +102,7 @@ typedef struct vt_image {
     long serial;
     vt_u32 pal[256];    /* 0xRRGGBB; 0 the unset pixels */
     int w, h, cw, ch, npal, refs;
+    int dh;             /* kind 4 (RIP): the rows the picture shows (0: h); the pixel rows are picked by vt_scale_row */
     vt_u16 gen;
     vt_u8 kind;         /* 0 sixel, 1 kitty on the screen, 2 kitty stored (not placed),
                          * 3 kitty virtual placement (U=1: shown by placeholder cells, K31) */
@@ -5525,7 +5526,7 @@ static void image_place(vt_term *t, int slot, int mode)
 {
     vt_image *im = t->imgs[slot];
     int rows, k, cy, ocx = t->cx, scrolled = 0, ocy = t->cy;
-    rows = (im->py0 + im->h + im->ch - 1) / im->ch;
+    rows = (im->py0 + (im->dh ? im->dh : im->h) + im->ch - 1) / im->ch;
     if (mode == 1) {
         for (k = 0; k < rows && k < t->rows; k++)
             sixel_place_row(t, slot, k, 0, k);
@@ -5689,6 +5690,7 @@ int vt_row_image(const vt_term *t, int row, int i, vt_image_view *v)
         v->z = image_z(im);
         v->w = im->w;
         v->h = im->h;
+        v->dh = im->dh ? im->dh : im->h;
         v->pal = im->pal;
         v->npal = im->npal;
         v->fmt = im->fmt;
@@ -6550,6 +6552,18 @@ void vt_set_pixel_aspect(vt_term *t, int rx, int ry)
 {
     t->px_rx = rx > 0 && ry > 0 ? rx : 0;
     t->px_ry = rx > 0 && ry > 0 ? ry : 0;
+    rip_px_changed(t);
+}
+
+/* The source row that output row r of a picture h rows high shown in dh rows takes: the nearest,
+ * so a downscale picks rows and an upscale repeats them (the RIP canvas, rip_disp_h). */
+int vt_scale_row(int r, int h, int dh)
+{
+    long s;
+    if (dh <= 0 || dh == h)
+        return r;
+    s = ((long)(2 * r + 1) * h) / (2L * dh);
+    return s < 0 ? 0 : s >= h ? h - 1 : (int)s;
 }
 
 int vt_aspect_rows(int h, int rx, int ry)

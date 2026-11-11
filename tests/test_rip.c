@@ -827,6 +827,37 @@ static void canvas_lifecycle(void)
     vt_free(t);
 }
 
+/* RIP-ASPECT: on a screen whose pixels are not square (PAL hires, 640x256 on a 4:3 monitor) the 640x350
+ * canvas shows vt_aspect_rows(480, rx, ry) rows, not 350; the dirty area and a click use the same row map */
+static void canvas_fits_the_pixel_aspect(void)
+{
+    vt_term *t = rip_term();
+    vt_image_view v;
+    vt_u8 out[VT_RIP_OUT_MAX];
+    int k, rows = 0, shown = vt_aspect_rows(480, 8, 15), x0, y0, x1, y1;
+    vt_set_pixel_aspect(t, 8, 15);
+    CHECK_INT(shown, 256);
+    h_put(t, "!|c0F|L0A0K0U0P");
+    CHECK(vt_rip_commands(t) > 0);                  /* the RIP path ran */
+    for (k = 0; k < 25; k++)
+        rows += vt_row_image(t, k, 0, &v);
+    CHECK_INT(v.dh, shown);
+    CHECK_INT(v.h, CV_RIP_H);                       /* the picture itself is still 350 rows */
+    CHECK_INT(rows, (shown + 13) / 14);             /* 19 tile rows, not 25 (350 / 14) */
+    CHECK(vt_rip_take_dirty(t, &x0, &y0, &x1, &y1) == 1);
+    h_put(t, "!|L0A0K0U0P");                        /* source rows 20..25 */
+    CHECK(vt_rip_take_dirty(t, &x0, &y0, &x1, &y1) == 1);
+    CHECK(y0 <= 20 * shown / CV_RIP_H && y1 >= 26 * shown / CV_RIP_H && y1 <= 24); /* in shown rows (unscaled it is 26 or more) */
+    h_put(t, "!|1M000A101414" "1000000go^M\r\n");  /* a field on picture rows 36..40 */
+    CHECK_INT(vt_rip_mouse_fields(t), 1);
+    CHECK_INT(vt_rip_click(t, 15, 26, out), 3);     /* shown row 26 is picture row 36 */
+    CHECK_INT(vt_rip_click(t, 15, 36, out), 0);     /* shown row 36 is picture row 49: unscaled it would hit */
+    CHECK_INT(vt_rip_click(t, 15, 300, out), 0);    /* below the picture */
+    CHECK_INT(vt_scale_row(0, 350, 256), 0);
+    CHECK_INT(vt_scale_row(255, 350, 256), 349);
+    vt_free(t);
+}
+
 /* RIP-DIRTY: vt_rip_take_dirty hands the host the area drawn since its last take (through vt_feed) */
 static void take_dirty_rect(void)
 {
@@ -1586,6 +1617,7 @@ void suite_rip(void)
     rip_off_is_byte_identical();
     canvas_lifecycle();
     take_dirty_rect();
+    canvas_fits_the_pixel_aspect();
     palette_through_the_terminal();
     index_zero_is_a_colour_for_rip_not_for_sixel();
     knob_colour_and_write_mode();

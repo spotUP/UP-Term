@@ -381,6 +381,7 @@ int      vt_images(const vt_term *t);
 typedef struct vt_image_view {
     const vt_u8 *pix;   /* w x h indices into pal, row after row */
     int w, h;
+    int dh;             /* the rows the picture shows: h, or fewer/more for a RIP canvas fitted to the screen's pixel aspect (output row r takes picture row vt_scale_row(r, h, dh)) */
     const vt_u32 *pal;  /* 0xRRGGBB; entry 0 is the pixels the image left
                          * unset when bg0 is 1: draw them in the default
                          * background; with bg0 0 it is a real colour */
@@ -548,6 +549,7 @@ void     vt_set_pixel_aspect(vt_term *t, int rx, int ry);
 /* h screen rows of a picture on pixels rx wide by ry tall, rounded to nearest (half up), at least 1;
  * h unchanged when the pixels are square or unknown. */
 int      vt_aspect_rows(int h, int rx, int ry);
+int      vt_scale_row(int r, int h, int dh);
 /* How many colours the screen can show at once (16 pens on a 4-plane AGA
  * screen, 256 on a card): what XTGETTCAP colors (and Co) answers, so a
  * program can pick its palette -- xterm defines that query ("XTGETTCAP",

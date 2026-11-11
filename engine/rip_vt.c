@@ -73,6 +73,14 @@ static int rip_canvas_alive(const vt_term *t, const struct rip_ad *ad)
     return im && im->pix == ad->cv->pix && im->kind == 4 && im->gen == ad->gen;
 }
 
+/* The rows the canvas shows: an EGA 640x350 screen on a 4:3 monitor is 480 square rows, so the
+ * canvas takes vt_aspect_rows(480, rx, ry) of the host's pixel rows (about 256 on PAL hires). Without a
+ * pixel aspect (the host never said) it is shown 1:1. */
+static int rip_disp_h(const vt_term *t)
+{
+    return t->px_rx > 0 && t->px_ry > 0 ? vt_aspect_rows(480, t->px_rx, t->px_ry) : CV_RIP_H;
+}
+
 static void rip_dirty_all(struct rip_ad *ad)
 {
     struct cv_rect_s all;
@@ -121,6 +129,7 @@ static struct cv *rip_canvas(vt_term *t, struct rip_ad *ad)
     im = t->imgs[slot];
     im->kind = 4;
     im->kz = -1;
+    im->dh = rip_disp_h(t);
     ad->slot = slot;
     ad->gen = im->gen;
     image_place(t, slot, 1);
@@ -273,7 +282,9 @@ static void rip_on_text(void *ud, const unsigned char *p, long n)
 static void rip_reanchor(vt_term *t, struct rip_ad *ad)
 {
     vt_image *im = t->imgs[ad->slot];
-    int k, rows = (im->py0 + im->h + im->ch - 1) / im->ch;
+    int k, rows;
+    im->dh = rip_disp_h(t);
+    rows = (im->py0 + im->dh + im->ch - 1) / im->ch;
     rip_dirty_all(ad); /* the tiles moved: the host redraws the picture whole */
     im->refs++;
     for (k = 0; k < rows && k < t->rows; k++)
@@ -614,6 +625,9 @@ static int rip_canvas_xy(const vt_term *t, const struct rip_ad *ad, int px, int 
     im = t->imgs[ad->slot];
     *cx = (px / cw) * im->cw + (px % cw) * im->cw / cw;
     *cy = (py / ch) * im->ch + (py % ch) * im->ch / ch;
+    if (*cy >= (im->dh ? im->dh : im->h))
+        return 0;
+    *cy = vt_scale_row(*cy, im->h, im->dh);
     return *cx < CV_RIP_W && *cy < CV_RIP_H;
 }
 
@@ -662,6 +676,17 @@ int vt_rip_take_dirty(vt_term *t, int *x0, int *y0, int *x1, int *y1)
     memset(&d, 0, sizeof(d));
     if (ad) {
         d = ad->dirty;
+        if (d.y1 > d.y0 && t->imgs[ad->slot] && rip_canvas_alive(t, ad)) { /* canvas rows to the rows shown */
+            int dh = t->imgs[ad->slot]->dh;
+            if (dh > 0 && dh != CV_RIP_H) {
+                d.y0 = (int)((long)d.y0 * dh / CV_RIP_H) - 1; /* one row of margin: the nearest-row pick rounds */
+                d.y1 = (int)(((long)d.y1 * dh + CV_RIP_H - 1) / CV_RIP_H) + 1;
+                if (d.y0 < 0)
+                    d.y0 = 0;
+                if (d.y1 > dh)
+                    d.y1 = dh;
+            }
+        }
         memset(&ad->dirty, 0, sizeof(ad->dirty));
     }
     if (x0) *x0 = d.x0;
@@ -674,4 +699,13 @@ int vt_rip_take_dirty(vt_term *t, int *x0, int *y0, int *x1, int *y1)
 long vt_rip_mouse_fields(const vt_term *t)
 {
     return t->rip ? ((struct rip_ad *)t->rip)->mouse.n : 0;
+}
+
+/* the host changed the pixel aspect: the canvas shows another number of rows, so its tiles move
+ * (put right with the next RIP flush) */
+void rip_px_changed(vt_term *t)
+{
+    struct rip_ad *ad = t->rip;
+    if (ad && ad->cv && rip_canvas_alive(t, ad) && t->imgs[ad->slot]->dh != rip_disp_h(t))
+        ad->moved = 1;
 }
