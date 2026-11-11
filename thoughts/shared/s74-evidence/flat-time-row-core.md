@@ -137,3 +137,67 @@ Results: see the "Test results" section below.
   5 want 4). Restored: 4474 checks, 0 failed.
 - Build note: `make test` regenerates build/amiga/menu_icons.inc and needs python3 with fontTools + PIL; the shell
   python3 and the main checkout's .venv lack fontTools; /opt/homebrew/bin/python3.11 has both (put first on PATH).
+
+## Glue (s74 step 2)
+
+Commit e8b2ff92 (branch s73-flat-time-row-full-width). Built, not run on a rig.
+
+### What was added
+
+- `amarchy/flat_cg.s`: gate template `_flat_cg_tpl` (same FLAT-UNLOAD-INFLIGHT shape as `flat_rf.s`); pushes a2, a1, a0,
+  d0 and calls `flat_cg_c(kind, previous, newgadget, taglist)`; the gadget comes back in d0.
+- `amarchy/flat.c` (section S74-TIME-ROW, before `find_record`):
+  - `FLAT_TROW_FRAME_OUT 0` (flat.c:2477), the one constant the rig step may flip.
+  - `cg_name` (flat.c:2485): CLI process: FilePart of `cli_CommandName` (BSTR) into an 8-byte buffer (empty when the part
+    is over 7 characters, which can never be "Time"); otherwise, or when the command name is empty, `tc_Node.ln_Name`.
+  - `cg_feed` (flat.c:2513): off when flat is disabled or held; for a CYCLE call reads side from `LockPubScreen(NULL)` +
+    `side_px` (flat_aspect_find, the one per-screen source) before Forbid; then under Forbid: name, raw log, `flat_trow_feed`.
+  - `flat_cg_c` (flat.c:2544, the entry): counts `cgcalls`; on a hit `CopyMem`s the NewGadget to its own stack, sets
+    `ng_LeftEdge` / `ng_Width`, calls the original with the copy; otherwise the original with the program's NewGadget.
+  - `cg_install` (flat.c:2559): opens gadtools.library 37, checks the LVO is a JMP, clears the table, gate + swap as
+    `rf_install`; closes gadtools again if the swap fails. Called from `install_all` after `tx_install`
+    (flat.c:3605), message "amarchy-flat: CreateGadgetA patch not installed".
+  - `cg_remove` (flat.c:2596): gate close, swap out, table cleared, `gate_wait`, then `CloseLibrary` (gadtools may expunge
+    only once nothing points into it). Unload calls it after RectFill (flat.c:3776, `STG(FLAT_STG_CG_REMOVE)`), refusal
+    `FLAT_REF_GADTOOLS` + "a patch is still chained on gadtools CreateGadgetA, not unloading".
+  - STATUS line (flat.c:2895): `time row installed=yes calls=N changed=N reason=ok integer=L,T,W,H,ID
+    cycle=L,T,W,H,ID frame=0`. Help text names the time row counter.
+- `amarchy/flat_shared.h`: `cgsw, cgslot, cggate, gtbase, trow, cgcalls, cgname[8], trow_raw[2][5]` appended.
+- `amarchy/flat_core.h/.c`: `FLAT_LVO_CREATEGADGETA (-30)`, `FLAT_STG_CG_REMOVE` ("cg_remove"), `FLAT_REF_GADTOOLS`
+  ("gadtools"), `flat_trow_why_name` (ok, nobutton, order, id, geom, nocycle, row). Host checks in `tests/test_flat_core.c`.
+- `Makefile`: `flat_cg.s` assembled and linked into amarchy-flat. `tests/test_flat_budget.py`: `_flat_cg_c` is an entry.
+
+### Release point for per-task state, and why
+
+The core frees a task's slot when its sequence ends: the row changed (CYCLE handled) or the first mismatch. Time holds a
+slot only from its first BUTTON to the CYCLE, a few calls inside one window open. When all four slots are busy the
+oldest is evicted (a task that died mid-sequence). The table is cleared at install and at remove. No window-close drop:
+amarchy-flat has no close hook, and the design note marks it optional. Known limits: a BUTTON created by Time after the
+row (a second window) takes a slot that stays until eviction; a later INTEGER from Time sets `reason=nobutton`, which
+overwrites `ok` in STATUS (`changed=` still counts the row); a freed task pointer reused by a new Time task resumes a
+stale slot only if one was left mid-sequence.
+
+### Stack budget
+
+`make flat-budget`: `_flat_cg_c` own frame 64 (ENTRY_MAX 64), deepest chain 312 incl. stub 20, headroom 72 (min 64).
+First build failed with `cg_feed` frame 84 > 80; the name buffer moved into the record (`cgname`, written only under
+Forbid), now 76. No libc call is reachable (the core's clears compiled inline).
+
+### Reading raw NewGadget values on the rig
+
+`amarchy-flat STATUS` after opening Prefs/Time: the `time row` line, fields `integer=` and `cycle=` (left, top, width,
+height, id as the program passed them, before any change). If `integer=` reads left 54 width 53, `FLAT_TROW_FRAME_OUT`
+stays 0. If it reads 60/41, set it to 6 (flat.c:2477) and rebuild. PASS on screen as in "NewGadget inner/outer
+assumption" above; `changed=` rises by one per Time window.
+
+### Verdicts
+
+- `make amarchy-flat`: built (vbcc warnings-as-errors), build/amiga/amarchy-flat.
+- `make flat-budget`: PASS.
+- `make test ONLY=flat_core`: [OK] 4480 checks, 0 failed.
+
+### Not done
+
+- Rig proof (later agent): the STATUS raw values, `FLAT_TROW_FRAME_OUT`, the screen PASS, and unload with the patch in place.
+- The screen used for `side` is the default public screen; a Time opened on another public screen would use the wrong
+  side (rig decides whether that matters).
