@@ -23,7 +23,7 @@
 #               perl, plain tools). upkg browse launches it on Enter; the .ipk control file
 #               and the Packages index carry it as `Launch:`
 # id    archive    version  needs-base  ixemul  record                 handed                                                consumes  launch
-base    up-term    1.0      -           -       UP-Term:               -                                                     vtcon,ixemul-vtcon,upterm-ports,tmux-amiga,screen-amiga/src  -
+base    up-term    1.1      -           -       UP-Term:               -                                                     vtcon,ixemul-vtcon,upterm-ports,tmux-amiga,screen-amiga/src  -
 claude  up-claude  1.2      -           -       ENVARC:upkg/up-claude  Files/Claude                                          vtcon  C:Claude
 pi      up-pi      1.0      -           -       ENVARC:upkg/up-pi      Files/amiga-pi                                        amiga-pi,vtcon  C:amiga-pi
 nvim    up-nvim    1.0      1.0         80      UP-Term:pkg/up-nvim    Files/nvim                                            neovim-amiga,ixemul-vtcon  UP-Term:nvim/bin/nvim
@@ -49,6 +49,6 @@ nc      up-nc     1.0      1.0         80      UP-Term:pkg/up-nc      Files/user
 fzy     up-fzy    1.0      1.0         80      UP-Term:pkg/up-fzy     Files/userland/bin/fzy  upterm-ports,ixemul-vtcon  -
 ctags   up-ctags  1.0      1.0         80      UP-Term:pkg/up-ctags   Files/userland/bin/ctags  upterm-ports,ixemul-vtcon  -
 zip     up-zip    1.0      1.0         80      UP-Term:pkg/up-zip     Files/userland/bin/zip  upterm-ports,ixemul-vtcon  -
-dopus   up-dopus   1.0      -           -       ENVARC:upkg/up-dopus   Files/os3,Files/os3-68000,Files/toolbar                                   vtcon  DOpus5:DirectoryOpus
+dopus   up-dopus   1.1      -           -       ENVARC:upkg/up-dopus   Files/os3,Files/os3-68000,Files/toolbar                                   vtcon  DOpus5:DirectoryOpus
 uhc     up-uhc     1.5      1.0         -       UP-Term:pkg/up-uhc     Files/unstartup-uhc.sh                                                          vtcon  -
 sqlite  up-sqlite3  1.0      1.0         80      UP-Term:pkg/up-sqlite3  Files/userland/bin/sqlite3                            upterm-ports,ixemul-vtcon  UP-Term:bin/sqlite3
