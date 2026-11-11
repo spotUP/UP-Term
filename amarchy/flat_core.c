@@ -1658,9 +1658,11 @@ int flat_trow_feed(flat_trow_tab *t, const void *task, const char *prog, int sid
 {
     flat_trow_slot *s;
     int nl, nw;
-    if (!t || !task || !e || !new_left || !new_width || !flat_trow_name(prog))
-        return 0;
+    if (!t || !task || !e || !new_left || !new_width || e->kind == FLAT_GT_GENERIC || !flat_trow_name(prog))
+        return 0;                                                           /* GENERIC: gadtools' own nested call (or CreateContext) */
     s = trow_find(t, task);
+    if (s && s->phase == 1 && e->kind == FLAT_GT_STRING && e->id == FLAT_TROW_YEAR_ID)
+        return 0;                                                           /* gadtools building the accepted INTEGER */
     if (!s) {
         if (e->kind == FLAT_GT_INTEGER)
             t->why = FLAT_TROW_NOBUTTON;

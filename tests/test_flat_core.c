@@ -4017,6 +4017,76 @@ static void test_trow_mismatch(void)
 }
 
 /* Two Time tasks creating at once keep independent states; a dropped task forgets its sequence. */
+/* The exact call order rig 68 traced from Time 39.1 (depth.kind.id): gadtools builds each kind by calling CreateGadgetA again through
+ * its own vector, so every program gadget is followed by nested GENERIC (and, for the INTEGER, STRING) calls of the same id:
+ * 0.0.0 0.1.2 1.0.2 0.1.8 1.0.8 0.1.9 1.0.9 0.3.14 1.12.14 2.0.14 0.7.15 1.0.15 0.11.13 1.0.13 1.0.13 0.11.12 1.0.12 1.0.12.
+ * Nested calls carry the box gadtools passes down (the moved one after a change). Only the INTEGER and CYCLE change. */
+static void test_trow_nested_trace(void)
+{
+    static const int seq[18][6] = {
+        { 0, 0, 0, 0, 0, 0 },                                               /* CreateContext */
+        { 1, 12, 184, 87, 14, 2 }, { 0, 12, 184, 87, 14, 2 },
+        { 1, 122, 184, 87, 14, 8 }, { 0, 122, 184, 87, 14, 8 },
+        { 1, 233, 184, 87, 14, 9 }, { 0, 233, 184, 87, 14, 9 },
+        { 3, 54, 18, 53, 14, 14 }, { 12, 12, 18, 53, 14, 14 }, { 0, 12, 18, 53, 14, 14 },
+        { 7, 142, 18, 178, 14, 15 }, { 0, 65, 18, 255, 14, 15 },
+        { 11, 126, 140, 194, 11, 13 }, { 0, 126, 140, 194, 11, 13 }, { 0, 126, 140, 194, 11, 13 },
+        { 11, 126, 160, 194, 11, 12 }, { 0, 126, 160, 194, 11, 12 }, { 0, 126, 160, 194, 11, 12 }
+    };
+    static flat_trow_tab t;
+    flat_trow_ev e;
+    int a = 0, i, r, nl, nw, changed = 0;
+    flat_trow_init(&t);
+    for (i = 0; i < 18; i++) {
+        nl = nw = -1;
+        e = trow_ev(seq[i][0], seq[i][1], seq[i][2], seq[i][3], seq[i][4], seq[i][5]);
+        r = flat_trow_feed(&t, &a, "SYS:Prefs/Time", 1, 0, &e, &nl, &nw);
+        changed += r;
+        if (i == 7) {
+            CHECK_INT(r, 1);
+            CHECK_INT(nl, 12);
+            CHECK_INT(nw, 53);
+        } else if (i == 10) {
+            CHECK_INT(r, 1);
+            CHECK_INT(nl, 65);
+            CHECK_INT(nw, 255);
+        } else {
+            CHECK_INT(r, 0);
+            CHECK_INT(nl, -1);                                               /* untouched: nested values stay as gadtools made them */
+        }
+        if (i == 9)
+            CHECK_INT(t.slot[0].phase == 1 || t.slot[1].phase == 1 || t.slot[2].phase == 1 || t.slot[3].phase == 1, 1);
+    }
+    CHECK_INT(changed, 2);
+    CHECK_INT(t.rows, 1);
+    CHECK_INT(t.why, FLAT_TROW_OK);                                          /* not overwritten by the nested calls after the row */
+}
+
+/* A nested-looking call neither starts nor ends a sequence: GENERIC or STRING id 14 alone take no slot and leave the reason; a
+ * GENERIC between the buttons and the INTEGER does not end the sequence. */
+static void test_trow_nested_inert(void)
+{
+    static flat_trow_tab t;
+    flat_trow_ev e;
+    int a = 0, nl = -1, nw = -1;
+    flat_trow_init(&t);
+    t.why = FLAT_TROW_ROW;
+    e = trow_ev(FLAT_GT_GENERIC, 12, 184, 87, 14, 2);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw), 0);
+    e = trow_ev(FLAT_GT_STRING, 54, 18, 53, 14, 14);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw), 0);
+    CHECK_INT(t.slot[0].task == 0 && t.slot[1].task == 0 && t.slot[2].task == 0 && t.slot[3].task == 0, 1);
+    CHECK_INT(t.why, FLAT_TROW_ROW);
+    CHECK_INT(t.clock, 0);
+    trow_buttons(&t, &a, "Time", 184, 14);
+    e = trow_ev(FLAT_GT_GENERIC, 54, 18, 53, 14, 14);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw), 0);
+    CHECK_INT(t.why, FLAT_TROW_ROW);
+    e = trow_ev(FLAT_GT_INTEGER, 54, 18, 53, 14, 14);
+    CHECK_INT(flat_trow_feed(&t, &a, "Time", 1, 0, &e, &nl, &nw), 1);
+    CHECK_INT(nl, 12);
+}
+
 static void test_trow_tasks(void)
 {
     static flat_trow_tab t;
@@ -4126,4 +4196,6 @@ void suite_flat_core(void)
     test_trow_big_font();
     test_trow_mismatch();
     test_trow_tasks();
+    test_trow_nested_trace();
+    test_trow_nested_inert();
 }

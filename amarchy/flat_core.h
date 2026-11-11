@@ -797,9 +797,11 @@ void flat_aspect_put(flat_aspect_slot *t, int n, const void *scr, unsigned long 
  * (thoughts/shared/s74-evidence/flat-time-row-core.md). The glue feeds every CreateGadgetA call of a task in creation order; the
  * answer is "unchanged" or "create it with this left edge and width". Only left edges and widths change, by deltas, so the
  * NewGadget values pass through as the program gave them. */
+#define FLAT_GT_GENERIC 0               /* gadtools.h GENERIC_KIND (gadtools' own nested sub-gadget calls; never sequence events) */
 #define FLAT_GT_BUTTON 1                /* gadtools.h BUTTON_KIND */
 #define FLAT_GT_INTEGER 3               /* INTEGER_KIND */
 #define FLAT_GT_CYCLE 7                 /* CYCLE_KIND */
+#define FLAT_GT_STRING 12               /* STRING_KIND (gadtools builds an INTEGER through a nested STRING call of the same id) */
 #define FLAT_TROW_YEAR_ID 14            /* time 39.1 ng_GadgetID of the year INTEGER */
 #define FLAT_TROW_MONTH_ID 15           /* time 39.1 ng_GadgetID of the month CYCLE */
 #define FLAT_TROW_SLOTS 4               /* creating tasks followed at once (only Time tasks take one; all busy: the oldest is evicted) */
@@ -850,7 +852,10 @@ int flat_trow_year(int row_left, int frame_out, int yl, int yw, int *new_left);
 int flat_trow_month(int side, int frame_out, int ynl, int yw, int yt, int yh, int yr, int ml, int mt, int mw, int mh,
                     int *new_left, int *new_width);
 /* One CreateGadgetA call of task (program name prog, side of the window's screen): 1 = create it with *new_left / *new_width, 0 =
- * unchanged. Tasks whose program is not Time never take a slot. A slot is freed when its sequence ends (row changed or mismatch). */
+ * unchanged. Tasks whose program is not Time never take a slot. A slot is freed when its sequence ends (row changed or mismatch).
+ * gadtools builds each kind by calling CreateGadgetA again through its own vector (rig 68 trace: BUTTON -> GENERIC, INTEGER ->
+ * STRING -> GENERIC, CYCLE -> GENERIC). Those nested calls are told apart by shape and ignored (0, no state touched): every
+ * GENERIC_KIND call, and a STRING_KIND call of the year id while the slot holds the moved INTEGER. */
 int flat_trow_feed(flat_trow_tab *t, const void *task, const char *prog, int side, int frame_out, const flat_trow_ev *e,
                    int *new_left, int *new_width);
 /* Forget task's slot (the glue may call it when the task's window closes); harmless when it has none. */
