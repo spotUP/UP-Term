@@ -899,6 +899,8 @@ static void test_icon_stems(void)
     for (gid = 1; gid <= 9; gid++) {
         if (gid == 5 || gid == 6 || gid == 7)
             continue;
+        memset(&pl, 0, sizeof pl); /* memcmp below reads the struct's padding too */
+        memset(&shape, 0, sizeof shape);
         ttf_place(f, gid, TTF_ICON, 16, 16, 13, 2, 2, &pl);
         ttf_place(f, gid, TTF_SHAPE, 16, 16, 13, 2, 2, &shape);
         CHECK_INT(pl.snap, TTF_SNAP_NONE);

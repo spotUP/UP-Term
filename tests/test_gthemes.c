@@ -2706,6 +2706,8 @@ static void test_gthemes_te105_plan(void)
     memset(full, 0xFF, sizeof full);
     memset(sparse, 0, sizeof sparse);
     sparse[0] = 0x00F0F000UL; sparse[1] = 0x0000FFFFUL; sparse[5] = 0xAAAAAAAAUL;
+    memset(p, 0, sizeof p); /* memcmp below reads the entries' padding too */
+    memset(q, 0, sizeof q);
     masks[0] = none; masks[1] = sparse; masks[2] = full;
     for (ni = 0; ni < 3; ni++) {
         te8_load(&m, names[ni]);
