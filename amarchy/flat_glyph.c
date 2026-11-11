@@ -465,6 +465,23 @@ static int plan_run(plan *g, unsigned long which, int w, int h, int state, int s
     return g->n;
 }
 
+/* S74-CHECKBOX-GROUND: the menu check mark (g_check) alone in pen over the box ox,oy,w,h, no box fill: the caller drew the ground.
+ * Same inset as plan_run. Returns the number of fills. */
+int flat_glyph_tick(int ox, int oy, int w, int h, int pen, flat_fill_fn fill, void *ctx)
+{
+    plan g;
+    int i;
+    if (!fill || w < FLAT_GLYPH_MIN_SIZE || h < FLAT_GLYPH_MIN_SIZE)
+        return 0;
+    memset(&g, 0, sizeof g);
+    g.cap = FLAT_GLYPH_MAX_PRIMS; g.fill = fill; g.ctx = ctx; g.ox = ox; g.oy = oy; g.w = w; g.h = h; g.side = 1;
+    g.fg = 1; g.bg = 0; g.fg_pen = (short)pen; g.bg_pen = (short)pen;
+    i = imax(1, imin(w, h) / 4);
+    g.ix0 = i; g.iy0 = i; g.ix1 = w - 1 - i; g.iy1 = h - 1 - i;
+    g_check(&g);
+    return g.n;
+}
+
 int flat_glyph_plan(unsigned long which, int w, int h, int state, flat_prim *out, int cap)
 {
     plan g;

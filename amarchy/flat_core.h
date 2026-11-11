@@ -509,6 +509,17 @@ const flat_gbox *flat_gh_match(const flat_state *s, const flat_gh *g, const void
 #define FLAT_GK_STRING 1
 #define FLAT_GK_PROP   2
 #define FLAT_GK_OTHER  3
+#define FLAT_GK_DISPLAY 4   /* S74-TEXT-BOX: a read-only display gadget (GadTools TEXT_KIND / NUMBER_KIND carrying its own bevel):
+                             * a frame bordering only that gadget and holding no other is DISPLAY (input ground), not BORDERED */
+/* S74-TEXT-BOX: a gadget that takes no input: no highlight (GFLG_GADGHNONE) and no activation that reacts to a click
+ * (GACT_RELVERIFY, GACT_IMMEDIATE, GACT_TOGGLESELECT, GACT_FOLLOWMOUSE). flags / activation as in struct Gadget. */
+int flat_display_gadget(unsigned flags, unsigned activation);
+/* S74-CHECKBOX-GROUND: GadTools CHECKBOX_KIND renders a sysiclass CHECKIMAGE (SYSIA_Which 0x07). Flat draws it as an input ground box
+ * (the string input's look) plus, when ticked, the menu check mark; flat_check_image says which, flat_check_ticked says whether ids
+ * (impDraw imp_State) is a selected state (IDS_SELECTED, IDS_INACTIVESELECTED, IDS_SELECTEDDISABLED). */
+#define FLAT_W_CHECKIMAGE 0x07
+int flat_check_image(unsigned long which);
+int flat_check_ticked(unsigned long ids);
 typedef struct flat_gadbox {
     int x, y, w, h, kind;
 } flat_gadbox;
@@ -522,7 +533,7 @@ int flat_frame_class(int fx, int fy, int fw, int fh, const flat_gadbox *g, int n
 /* The same decision one gadget at a time (the drawing task's stack holds no gadget array): zero a flat_fc, flat_fc_add every gadget of
  * the window for the frame box, flat_fc_class gives the class. */
 typedef struct flat_fc {
-    int string, track, others, inside, holds;
+    int string, track, others, inside, holds, display;
 } flat_fc;
 void flat_fc_add(flat_fc *a, int fx, int fy, int fw, int fh, const flat_gadbox *g);
 int flat_fc_class(const flat_fc *a);

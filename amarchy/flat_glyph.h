@@ -66,6 +66,7 @@ typedef void (*flat_fill_fn)(void *ctx, int x0, int y0, int x1, int y1, int pen)
  * the scroller arrows widen with it so they keep their shape on hires. */
 unsigned long flat_lock_which(unsigned long which, unsigned long ids);
 int flat_lock_state(unsigned long which, unsigned long ids);
+int flat_glyph_tick(int ox, int oy, int w, int h, int pen, flat_fill_fn fill, void *ctx);
 int flat_glyph_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
                     int w, int h, int frame_pen, int knob_pen, int text_pen, int side, flat_fill_fn fill, void *ctx);
 

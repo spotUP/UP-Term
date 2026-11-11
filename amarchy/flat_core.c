@@ -776,6 +776,10 @@ void flat_fc_add(flat_fc *a, int fx, int fy, int fw, int fh, const flat_gadbox *
         a->track = 1;
     else if (g->kind == FLAT_GK_OTHER && gad_borders(fx, fy, fw, fh, g))
         a->others++;
+    else if (g->kind == FLAT_GK_DISPLAY && gad_borders(fx, fy, fw, fh, g)) {
+        a->display++;
+        return;                                 /* the display gadget's own bevel: its box is not a held gadget */
+    }
     else if (g->kind == FLAT_GK_OTHER && fx >= g->x && fy >= g->y && fx + fw <= g->x + g->w && fy + fh <= g->y + g->h && (fw < g->w || fh < g->h))
         a->inside = 1;
     if (g->x >= fx && g->y >= fy && g->x + g->w <= fx + fw && g->y + g->h <= fy + fh)
@@ -790,9 +794,26 @@ int flat_fc_class(const flat_fc *a)
         return FLAT_FC_TRACK;
     if (a->inside)
         return FLAT_FC_CELL;
-    if (a->others == 1)
+    if (a->display && !a->others && !a->holds)
+        return FLAT_FC_DISPLAY;                 /* S74-TEXT-BOX: the bevel of a read-only text / number box: the input ground */
+    if (a->others + a->display == 1)
         return FLAT_FC_BORDERED;
     return a->holds ? FLAT_FC_GROUP : FLAT_FC_DISPLAY;
+}
+
+int flat_display_gadget(unsigned flags, unsigned activation)
+{
+    return (flags & 0x0003U) == 0x0003U && (activation & 0x010FU) == 0;   /* GADGHNONE; no RELVERIFY 1, IMMEDIATE 2, ENDGADGET 4, FOLLOWMOUSE 8, TOGGLESELECT 0x100 */
+}
+
+int flat_check_image(unsigned long which)
+{
+    return which == FLAT_W_CHECKIMAGE;
+}
+
+int flat_check_ticked(unsigned long ids)
+{
+    return ids == 1 || ids == 6 || ids == 8;    /* IDS_SELECTED, IDS_INACTIVESELECTED, IDS_SELECTEDDISABLED */
 }
 
 int flat_frame_class(int fx, int fy, int fw, int fh, const flat_gadbox *g, int n)

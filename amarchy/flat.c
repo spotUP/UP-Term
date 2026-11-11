@@ -644,6 +644,7 @@ static ULONG c2_which_31(Object *obj, struct impDraw *d)
     return wh < 0 ? NOWHICH : (ULONG)wh;
 }
 
+static int c8_draw_on(Object *obj, Msg msg, int tick_pen);
 static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
 {
     flatshared *r = g_r;
@@ -664,6 +665,8 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
     raw_which = which;
     which = flat_which_alias(which);
     c2_get_pens(r, d, im, which, &pens);
+    if (flat_check_image(which))
+        return c8_draw_on(obj, msg, pens.text);   /* S74-CHECKBOX-GROUND; pen fallback in check_draw keeps this frame small */
     if (flat_clone_route(&r->st, which, msg->MethodID) && c2_clone(hk, obj, msg, reg, which, raw_which, &pens))
         return 1;
     return c2_glyph(obj, msg, which, &pens);
@@ -999,6 +1002,8 @@ static int noline_frame(flatshared *r, struct RastPort *rp, int ox, int oy, int 
             gb.kind = FLAT_GK_STRING;
         else if (gt == GTYP_PROPGADGET && gadget_has_propinfo(g))
             gb.kind = FLAT_GK_PROP;
+        else if (flat_display_gadget(g->Flags, g->Activation))
+            gb.kind = FLAT_GK_DISPLAY;      /* S74-TEXT-BOX: GadTools TEXT_KIND / NUMBER_KIND with its own bevel */
         else
             gb.kind = FLAT_GK_OTHER;
         flat_fc_add(&fc, ox, oy, w, h, &gb);
@@ -1082,8 +1087,32 @@ static int c8_draw(Object *obj, Msg msg)
     return 1;
 }
 
-typedef struct { Object *obj; Msg msg; int rc; } c8_call;
+typedef struct { Object *obj; Msg msg; int rc, tick_pen; } c8_call;     /* tick_pen >= -1: check_draw, C8_FRAME: c8_draw */
+#define C8_FRAME (-2)
 static LONG c8_on_private(void *a);
+
+/* S74-CHECKBOX-GROUND (owner 2026-11-11): a GadTools check box (sysiclass CHECKIMAGE) on a flat screen. The stock image bevels
+ * the box in SHINE / SHADOW, which flat sets to the surface pen, so an unticked box was invisible. Drawn instead as the string
+ * input's look (ground_box in flat_input_pen: rounded ground, no outline) plus, when ticked, the menu check mark in the text pen
+ * (flat_glyph_tick). Runs on the private stack (c8_draw_on). 0 = no input pen on this screen: the stock draw. */
+static int check_draw(Object *obj, Msg msg, int tick_pen)
+{
+    flatshared *r = g_r;
+    struct impDraw *d = (struct impDraw *)msg;
+    struct Image *im = (struct Image *)obj;
+    struct RastPort *rp = d->imp_RPort;
+    struct Window *w = rp->Layer ? (struct Window *)rp->Layer->Window : NULL;
+    int x0 = im->LeftEdge + d->imp_Offset.X, y0 = im->TopEdge + d->imp_Offset.Y;
+    int pen = w ? flat_input_pen(st_scr(r, w->WScreen), rp->BitMap ? rp->BitMap->Depth : 0) : -1;
+    if (pen < 0)
+        return 0;
+    if (tick_pen < 0)
+        tick_pen = d->imp_DrInfo ? d->imp_DrInfo->dri_Pens[TEXTPEN] : 1;
+    ground_box(r, rp, x0, y0, x0 + im->Width - 1, y0 + im->Height - 1, pen);
+    if (flat_check_ticked(d->imp_State))
+        flat_glyph_tick(x0, y0, im->Width, im->Height, tick_pen, c2_fill, rp);
+    return 1;
+}
 /* The way into c8_on_private: always an indirect call (flat_on_stack's `jsr (a2)`, and the re-entry call below). The flat budget
  * follows direct calls only and skips calls through a register, so the draw's frames are charged to the private stack, where
  * they run, and not to the caller's 384 bytes. Not const, so the compiler cannot fold it back into a direct call. */
@@ -1093,7 +1122,7 @@ static LONG (*c8_run)(void *) = c8_on_private;
 static LONG c8_on_private(void *a)
 {
     c8_call *c = (c8_call *)a;
-    c->rc = c8_draw(c->obj, c->msg);
+    c->rc = c->tick_pen != C8_FRAME ? check_draw(c->obj, c->msg, c->tick_pen) : c8_draw(c->obj, c->msg);
     return 0;
 }
 
@@ -1105,10 +1134,10 @@ static LONG c8_on_private(void *a)
  * a lock cycle in a draw hook); the only waiter is main's ObtainSemaphore(&cl_ss) at shutdown, after the hooks are removed, and
  * nothing holding cl_ss waits for main. LockIBase is never taken. Busy (another task is drawing a clone or a frame) or no stack: 0,
  * the ROM draws its own frame, as c2_clone falls back to the block glyph. */
-static int c8_draw_on(Object *obj, Msg msg)
+static int c8_draw_on(Object *obj, Msg msg, int tick_pen)
 {
     c8_call c;
-    c.obj = obj; c.msg = msg; c.rc = 0;
+    c.obj = obj; c.msg = msg; c.rc = 0; c.tick_pen = tick_pen;
     if (cl_stk && (uint8_t *)&c >= cl_stk && (uint8_t *)&c < cl_stk + CLONE_STACK_BYTES)
     {   /* already on cl_stk (cl_ss held by this task): no second swap */
         c8_run(&c);
@@ -1138,7 +1167,7 @@ static int c8_skip(Object *obj, Msg msg)
         return 0;
     if (flat_frame_decide(&r->st, msg->MethodID, d->imp_DrInfo->dri_Pens[SHINEPEN], d->imp_DrInfo->dri_Pens[BACKGROUNDPEN]) != FLAT_DRAW_SKIP)
         return 0;
-    return c8_draw_on(obj, msg);
+    return c8_draw_on(obj, msg, C8_FRAME);
 }
 
 ULONG c8_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1") Msg msg)

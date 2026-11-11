@@ -3662,6 +3662,29 @@ static void test_no_outlines(void)
     CHECK_INT(flat_frame_class(54, 32, 53, 14, time_g, 3), FLAT_FC_STRING);         /* the year input keeps the string path */
     CHECK_INT(flat_frame_class(10, 10, 104, 18, font_g, 0), FLAT_FC_DISPLAY);       /* no gadgets at all */
     CHECK_INT(flat_frame_class(20, 52, 100, 14, font_g, 2), FLAT_FC_BORDERED);      /* borders exactly one other gadget: today's draw */
+    {   /* S74-TEXT-BOX: Input Prefs "Test Double-Click" box: a TEXT_KIND gadget (GADGHNONE, no activation) whose bevel is its own box */
+        flat_gadbox in_g[2] = { { 221, 88, 155, 14, FLAT_GK_DISPLAY }, { 14, 88, 207, 14, FLAT_GK_OTHER } };
+        flat_gadbox lv_g[2] = { { 386, 30, 166, 130, FLAT_GK_DISPLAY }, { 388, 32, 144, 126, FLAT_GK_OTHER } };
+        CHECK_INT(flat_display_gadget(0x8007, 0x0000), 1);                          /* GADGHNONE | GADGIMAGE, no activation */
+        CHECK_INT(flat_display_gadget(0x8006, 0x0101), 0);                          /* the check box: RELVERIFY | TOGGLESELECT */
+        CHECK_INT(flat_display_gadget(0x8007, 0x0001), 0);
+        CHECK_INT(flat_frame_class(221, 88, 155, 14, in_g, 2), FLAT_FC_DISPLAY);    /* was BORDERED: the stock outline */
+        CHECK_INT(flat_frame_class(386, 30, 166, 130, lv_g, 2), FLAT_FC_BORDERED);  /* a listview border holds its list: unchanged */
+    }
+    {   /* S74-CHECKBOX-GROUND: CHECKIMAGE takes the ground box; the tick only in the selected states, in the given pen, inside the box */
+        rect_log tl;
+        int i, ok = 1;
+        CHECK_INT(flat_check_image(0x07), 1);
+        CHECK_INT(flat_check_image(FLAT_W_MENUCHECK), 0);
+        CHECK_INT(flat_check_ticked(0), 0);
+        CHECK_INT(flat_check_ticked(5), 0);
+        CHECK_INT(flat_check_ticked(1) && flat_check_ticked(6) && flat_check_ticked(8), 1);
+        memset(&tl, 0, sizeof tl);
+        CHECK_INT(flat_glyph_tick(100, 50, 26, 11, 2, rect_log_fill, &tl) > 0, 1);
+        for (i = 0; i < tl.n; i++)
+            if (tl.r[i][4] != 2 || tl.r[i][0] < 100 || tl.r[i][2] > 125 || tl.r[i][1] < 50 || tl.r[i][3] > 60) ok = 0;
+        CHECK_INT(ok, 1);
+    }
     CHECK_INT(flat_noline_pen(&s, FLAT_FC_TRACK, 4, 0), 5);                         /* ground pen = the input ground pen */
     CHECK_INT(flat_noline_pen(&s, FLAT_FC_DISPLAY, 4, 0), 5);
     CHECK_INT(s.pen_button, 4);
