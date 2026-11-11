@@ -1287,10 +1287,23 @@ int flat_title_decide(const flat_state *s, int depth, int active, const char *ti
 }
 
 /* ---- S32-STALE-HELD-PENS (flat_core.h): the dim / knob / inbar pens follow the screen identity ---- */
+unsigned long flat_pens_palsig(const flat_pen_ops *o, int depth)
+{
+    unsigned long h = 2166136261UL;
+    int i, n;
+    if (depth < 1)
+        return 0;
+    n = 1 << (depth > 8 ? 8 : depth);
+    for (i = 0; i < n; i++)
+        h = ((h ^ (o->rgb(o->ctx, i) & 0xffffffUL)) * 16777619UL) & 0xffffffffUL;
+    return h;
+}
+
 void flat_pens_init(flat_pens *p)
 {
     p->screen = 0;
     p->epoch = 0;
+    p->palsig = 0;
     p->dim = p->knob = p->inbar = p->sel = -1;
 }
 
@@ -1303,6 +1316,7 @@ static void pens_forget(flat_pens *p, flat_state *s)
 {
     p->screen = 0;
     p->epoch = 0;
+    p->palsig = 0;
     p->dim = p->knob = p->inbar = p->sel = -1;
     if (s) {                            /* TE-10.6a: a non-Workbench slot has no flat_state numbers to clear */
         s->pen_dim = 0;
@@ -1362,6 +1376,7 @@ void flat_pens_refresh_on(flat_pens *p, const flat_pen_ops *o, const flat_state 
         if (p->dim >= 0 && store)
             store->pen_dim = (uint8_t)p->dim;
     }
+    p->palsig = flat_pens_palsig(o, depth);         /* after the obtains: a pen an obtain wrote is part of the signature */
 }
 
 void flat_pens_refresh(flat_pens *p, const flat_pen_ops *o, flat_state *s, const void *screen, unsigned epoch, int depth)
@@ -1376,8 +1391,13 @@ int flat_pens_follow_on(flat_pens *p, const flat_pen_ops *o, const flat_state *s
         flat_pens_release(p, o, store, screen, epoch);
         return 0;
     }
-    if (pens_here(p, screen, epoch))
-        return 0;
+    if (pens_here(p, screen, epoch)) {
+        if (p->palsig == flat_pens_palsig(o, depth))
+            return 0;
+        flat_pens_refresh_on(p, o, s, store, screen, epoch, depth);    /* FLAT-PENS-FOLLOW-PALETTE: same screen, new palette:
+                                                                         * release on the identity and pick the nearest pens again */
+        return 1;
+    }
     pens_forget(p, store);              /* another screen: the pens went with the old ColorMap, nothing to release */
     flat_pens_refresh_on(p, o, s, store, screen, epoch, depth);
     return 1;

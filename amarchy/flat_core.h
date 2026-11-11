@@ -688,6 +688,7 @@ typedef struct flat_pens {
     const void *screen;             /* the screen the pens were obtained on, 0 = none held */
     unsigned epoch;                 /* its ipd_epoch */
     int dim, knob, inbar, sel;      /* pen numbers, -1 = none */
+    unsigned long palsig;           /* FLAT-PENS-FOLLOW-PALETTE: flat_pens_palsig of the screen right after the obtain */
 } flat_pens;
 typedef struct flat_pen_ops {
     void *ctx;
@@ -696,6 +697,11 @@ typedef struct flat_pen_ops {
     unsigned long (*rgb)(void *ctx, int pen);           /* GetRGB32 of a pen, 0xRRGGBB */
 } flat_pen_ops;
 void flat_pens_init(flat_pens *p);
+/* FLAT-PENS-FOLLOW-PALETTE: the held pens are shared ObtainBestPen pens, the nearest colour of the palette AT THAT MOMENT. A start
+ * before the theme palette is loaded picks the nearest stock colour and, with the screen and epoch unchanged, kept it for good (rig
+ * 68: sel pen 10 = 7f007f while pen 12 held the wanted 3e4254). The signature is a hash of the first 1 << depth colours (depth
+ * capped at 8), taken after the obtain so pens the obtain itself wrote are part of it; flat_pens_follow obtains again when it moves. */
+unsigned long flat_pens_palsig(const flat_pen_ops *o, int depth);
 /* Release (on the identity they were obtained on) and re-obtain the three pens on `screen` at `depth`; stores the pen numbers in
  * s->pen_dim/pen_knob/pen_inbar. Called with no screen it only forgets. */
 void flat_pens_refresh(flat_pens *p, const flat_pen_ops *o, flat_state *s, const void *screen, unsigned epoch, int depth);

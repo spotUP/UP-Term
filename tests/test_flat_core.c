@@ -2882,6 +2882,70 @@ static void test_pens_verify_same_address_reopen(void)
     CHECK_INT(a.bad_releases, 0);
 }
 
+/* FLAT-PENS-FOLLOW-PALETTE: on a full 16 colour Workbench every pen is shared, so ObtainBestPen only answers the nearest pen and
+ * writes nothing. Started before the theme palette is loaded, the selection pen is the nearest stock colour; when the palette load
+ * then puts the wanted colour on another pen, the 1 s step must pick again (rig 68: pen 10 = 7f007f kept, pen 12 = 3e4254 unused). */
+static int near_obtain(void *c, unsigned long rgb)
+{
+    wbscr *w = c;
+    long best = -1;
+    int i, pen = 0;
+    for (i = 0; i < 16; i++) {
+        long dr = (long)((w->col[i] >> 16) & 255) - (long)((rgb >> 16) & 255);
+        long dg = (long)((w->col[i] >> 8) & 255) - (long)((rgb >> 8) & 255);
+        long db = (long)(w->col[i] & 255) - (long)(rgb & 255);
+        long d = dr * dr + dg * dg + db * db;
+        if (best < 0 || d < best) { best = d; pen = i; }
+    }
+    w->mine[pen]++;
+    w->obtains++;
+    return pen;
+}
+
+static void near_release(void *c, int pen)
+{
+    wbscr *w = c;
+    w->releases++;
+    if (w->mine[pen] <= 0)
+        w->bad_releases++;
+    else
+        w->mine[pen]--;
+}
+
+static void test_pens_follow_palette_load(void)
+{
+    wbscr a;
+    flat_pens p;
+    flat_pen_ops o;
+    flat_state s;
+    int screen_a, i, obt, held = 0;
+    flat_init(&s);
+    s.pen_back = 0; s.pen_text = 2; s.pen_button = 4; s.pen_dimtext = 6;
+    s.sel_rgb[0] = 0x3e; s.sel_rgb[1] = 0x42; s.sel_rgb[2] = 0x54;
+    flat_pens_init(&p);
+    memset(&a, 0, sizeof a);
+    for (i = 0; i < 16; i++)
+        a.col[i] = 0xff0000UL;                                               /* stock palette: nothing near the theme */
+    a.col[0] = 0x1a1b26UL; a.col[2] = 0xa9b1d6UL; a.col[4] = 0x00ff9fUL; a.col[10] = 0x7f007fUL;
+    o.obtain = near_obtain; o.release = near_release; o.rgb = wb_rgb; o.ctx = &a;
+    CHECK_INT(flat_pens_follow(&p, &o, &s, 1, &screen_a, 1, 4), 1);
+    CHECK(s.pen_sel != 12);                                                   /* the start before the palette load */
+    obt = a.obtains;
+    CHECK_INT(flat_pens_follow(&p, &o, &s, 1, &screen_a, 1, 4), 0);          /* palette unchanged: nothing, no churn */
+    CHECK_INT(a.obtains, obt);
+    a.col[12] = 0x3e4254UL;                                                   /* IPrefs loads the theme palette */
+    CHECK_INT(flat_pens_follow(&p, &o, &s, 1, &screen_a, 1, 4), 1);          /* same screen, same epoch: picked again */
+    CHECK_INT(s.pen_sel, 12);
+    CHECK_INT(flat_button_pen(&s, 4), 12);                                    /* and the faces follow */
+    CHECK_INT((int)a.col[flat_button_pen(&s, 4)], 0x3e4254);
+    CHECK_INT(a.bad_releases, 0);
+    for (i = 0; i < 16; i++)
+        held += a.mine[i];
+    CHECK_INT(held, a.obtains - a.releases);                                  /* every dropped pen was released on its screen */
+    CHECK_INT(flat_pens_follow(&p, &o, &s, 1, &screen_a, 1, 4), 0);          /* settled */
+    CHECK_INT(flat_pens_palsig(&o, 0), 0);
+}
+
 /* DOPUS-SCROLLER-LOOK: DOpus draws its lister scroller arrows as LOWRES / MEDRES sysiclass images, whose glyph is fat in a small
  * box. The clone took the most common interior marker as the ground, so a glyph covering over half of the interior swapped ground
  * and glyph: accent box, dark arrow. Every arrow x size, at rest, must give the pens flat_glyph_draw gives the Workbench arrow
@@ -3885,6 +3949,7 @@ void suite_flat_core(void)
     test_inbar_status_dump();
     test_stale_held_pens();
     test_pens_verify_same_address_reopen();
+    test_pens_follow_palette_load();
     test_button_pen_held();
     test_arrow_glyph_pens();
     test_arrow_knob_colour();
