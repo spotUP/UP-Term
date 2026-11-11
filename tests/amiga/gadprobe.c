@@ -77,10 +77,11 @@ static void fresh(const char *name)
     DisposeObject(o);
 }
 
+static int g_all;   /* argv[2] ALL: every gadget type, not only string and custom */
 static void gadget(struct Window *w, const char *list, struct Gadget *g)
 {
     unsigned type = g->GadgetType & GTYP_GTYPEMASK;
-    if (type != GTYP_STRGADGET && type != GTYP_CUSTOMGADGET) return;
+    if (!g_all && type != GTYP_STRGADGET && type != GTYP_CUSTOMGADGET) return;
     if (g_n >= MAXLINES) { g_over++; return; }
     g_p = g_buf[g_n];
     put("W\""); putcpy((const char *)w->Title, 16); put("\" L="); put(list);
@@ -88,6 +89,8 @@ static void gadget(struct Window *w, const char *list, struct Gadget *g)
     put(" box="); puthex((unsigned short)g->LeftEdge); put(","); puthex((unsigned short)g->TopEdge); put(",");
     puthex((unsigned short)g->Width); put(","); puthex((unsigned short)g->Height);
     put(" SI="); put(g->SpecialInfo ? "1" : "0");
+    put(" GR="); put(g->GadgetRender ? "1" : "0"); put(" SR="); put(g->SelectRender ? "1" : "0");
+    put(" ID="); puthex(g->GadgetID); put(" TX="); put(g->GadgetText ? "1" : "0");
     if (type == GTYP_CUSTOMGADGET && g->SpecialInfo) {          /* boopsi string gadget: strgclass in the chain -> SpecialInfo is a StringInfo */
         struct IClass *c = OCLASS((Object *)g);
         int d, sg = 0;
@@ -130,6 +133,7 @@ static void list(struct Window *w, const char *name, struct Gadget *g)
 int main(int argc, char **argv)
 {
     const char *filter = argc > 1 ? argv[1] : "";
+    g_all = argc > 2 && !strcmp(argv[2], "ALL");
     ULONG lock;
     struct Screen *s;
     int i;
