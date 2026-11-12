@@ -2202,6 +2202,33 @@ dist-$(1): $$(BUILD)/amiga/upupdate
 endef
 $(foreach p,$(SLIM_IDS),$(eval $(call SLIM_RULE,$(p))))
 
+# build/up-term-full.lha, the offline kit (owner 2026-11-12): up-term.lha plus a Packages drawer with every .ipk of
+# the feed and Install-Packages, an AmigaDOS script that installs them all with no network (run from the kit's
+# drawer after Install). Run after `make dist`; FULL_BASE / FULL_IPK name another cut (a released one).
+# The target removes nothing: a package left in build/dist-full by an older cut fails the count check below.
+# shortcut: Install-Packages is not run on a rig by any test, add a rig case when the full kit is released again.
+FULL_BASE ?= $(BUILD)/up-term.lha
+FULL_IPK ?= $(BUILD)/ipk
+FULL_STAGE := $(BUILD)/dist-full/up-term
+.PHONY: dist-full
+dist-full:
+	@test -s $(FULL_BASE) && ls $(FULL_IPK)/*.ipk >/dev/null 2>&1 || { echo "dist-full: $(FULL_BASE) or $(FULL_IPK)/*.ipk missing: make dist"; exit 1; }
+	mkdir -p $(FULL_STAGE)/Packages
+	cp $(FULL_IPK)/*.ipk $(FULL_IPK)/Packages $(FULL_STAGE)/Packages/
+	@{ echo "; Install-Packages: installs every package of this kit's Packages drawer, no network needed."; \
+	  echo "; Install the base first (Install), then in a Shell:  CD <this drawer>  and  Execute Install-Packages"; \
+	  echo "FailAt 21"; echo "Stack 262144"; \
+	  for f in $(FULL_IPK)/*.ipk; do echo "UP-Term:bin/upkg install Packages/$$(basename $$f)"; done; \
+	} > $(FULL_STAGE)/Install-Packages
+	chmod 755 $(FULL_STAGE)/Install-Packages
+	cp $(FULL_BASE) $(BUILD)/up-term-full.lha
+	cd $(BUILD)/dist-full && lha -aq ../up-term-full.lha up-term/Install-Packages up-term/Packages
+	@n=$$(ls $(FULL_IPK)/*.ipk | wc -l); m=$$(lha l $(BUILD)/up-term-full.lha | grep -c ' up-term/Packages/.*\.ipk$$'); \
+	  [ "$$n" -eq "$$m" ] && [ "$$m" -eq "$$(grep -c '^UP-Term:bin/upkg install ' $(FULL_STAGE)/Install-Packages)" ] \
+	  && lha l $(BUILD)/up-term-full.lha | grep -q ' up-term/Install$$' \
+	  || { echo "dist-full: the archive holds $$m packages, the feed $$n (an older cut in $(BUILD)/dist-full? remove that drawer)"; exit 1; }
+	@echo "[OK] $(BUILD)/up-term-full.lha: base + $$(ls $(FULL_IPK)/*.ipk | wc -l | tr -d ' ') packages"
+
 # build/up-term-src.lha, published next to the kit: the Unix tools' source (upterm-ports) and the
 # complete source of GNU coreutils (GPL v2 section 3: the same place as the binaries)
 .PHONY: dist-base dist-src dist-index dist-ipk
