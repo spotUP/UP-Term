@@ -355,7 +355,7 @@ class RecordMigration(unittest.TestCase):
             self.assertIn('; @include dist/common/kit-dir.dos\n', t, src)
             self.assertNotIn('{DIR}', t.split('; @include dist/common/kit-dir.dos\n', 1)[1], src)
         frag = (ROOT / 'dist/common/kit-dir.dos').read_text(encoding='latin-1')
-        self.assertIn('CD "{DIR}"\nSet uptkit "`CD`"\n', frag)
+        self.assertIn('CD "{DIR}"\nSet uptkit "`CD`"\nIf "$uptkit" EQ ""\n  Set uptkit "$PWD"\nEndIf\n', frag)
 
     def test_the_uptreal_lookup_has_one_source_resolve_addon_includes_it(self):
         src = (ROOT / 'dist/common/resolve-addon.dos').read_text(encoding='latin-1')
