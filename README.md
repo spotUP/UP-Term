@@ -35,6 +35,7 @@ Releases are on [spotUP/vtcon](https://github.com/spotUP/vtcon/releases/latest).
 |---|---|---|
 | `up-term.lha` (33 MB) | The base kit: terminal, Amarchy, Unix userland, upkg | The Amiga has a network: add-ons come through upkg |
 | `up-term-full.lha` (70 MB) | The base kit plus all 28 packages in a `Packages` drawer | The Amiga has no network |
+| `up-term-boot.lha` (250K) | A small downloader: fetches `up-term.lha` over https (certificate-checked) and starts its install | You want the smallest file to carry over: unpack, `CD` into the drawer, `Execute Get-UP-Term TO <drawer with 110 MB free>`. Needs a TCP/IP stack and `lha` in the path |
 | `up-claude.lha`, `up-dopus.lha`, `up-nvim.lha`, `up-pi.lha`, `up-python.lha`, `up-uhc.lha` | Add-ons with their own Install | You want one add-on without upkg |
 | `up-term-src.lha` | The sources of everything shipped | |
 
