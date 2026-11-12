@@ -114,7 +114,7 @@ class Renames(unittest.TestCase):
     def test_every_new_name_is_a_package_and_no_old_name_is(self):
         archives = {r['archive'] for r in pkgs.rows()}
         pairs = pkgs.renames()
-        self.assertEqual(len(pairs), 7)
+        self.assertEqual(len(pairs), 10)
         for old, new in pairs:
             self.assertIn(new, archives)
             self.assertNotIn(old, archives)

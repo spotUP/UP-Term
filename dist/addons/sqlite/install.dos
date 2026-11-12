@@ -1,7 +1,7 @@
 .KEY DIR/A,STEP/K
 .BRA {
 .KET }
-; up-sqlite3 install: SQLite 3.54.1 command line shell (sqlite3) in UP-Term:bin
+; up-sqlite install: SQLite 3.54.1 command line shell (sqlite3) in UP-Term:bin
 ; Run by this archive's Install (an Installer script), which asks the questions:
 ;   Execute <archive>/Files/install.dos <archive>/Files [STEP <part>]
 ; From a Shell without Installer the same line installs everything. The Installer

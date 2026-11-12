@@ -150,7 +150,7 @@ SUMMARY = {
 # Packages that never had another name (born as up-<x>, 2026-10-25 up-bitchx): they have no line in
 # dist/package-renames.txt and no old record to migrate. tests/test_dist_packages.py holds both facts.
 # Derived: the archive (committed dist/packages.txt, not UPTERM_PACKAGES_TXT: a test's fixture table has no slim ids;
-# an archive is not always up-<id>: sqlite ships as up-sqlite3) of every slim package (dist/slim.txt) with no old name.
+# an archive is not always up-<id>: hexedit ships as up-hexed) of every slim package (dist/slim.txt) with no old name.
 # up-dopus is no slim package: born as up-dopus (2026-10-26), the one hand-written package without an old record (up-uhc, 2026-10-26, the second).
 NEW_PACKAGES = tuple(r['archive'] for r in rows(ROOT / 'dist/packages.txt')
                     if r['id'] in slim.ids() and not old_names(r['archive'])) + ('up-dopus', 'up-uhc')

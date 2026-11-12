@@ -927,11 +927,46 @@ void prefs_theme_drawer(const prefs_fs *fs, const char *given, const char *home,
         out[0] = 0;
 }
 
+/* The one table of renamed themes (s75: a file name over 30 characters does not fit a classic FFS volume).
+ * tests/test_theme_aliases.py reads it: every new name must be a .conf file in themes/, no old name may be one. */
+static const char *const pc_theme_alias[][2] = {
+    { "github-light-high-contrast", "github-light-high" },
+    { "gruvbox-dark-hard-contrast", "gruvbox-dark-hard" },
+    { "gruvbox-dark-soft-contrast", "gruvbox-dark-soft" },
+    { "gruvbox-light-hard-contrast", "gruvbox-light-hard" },
+    { "gruvbox-light-soft-contrast", "gruvbox-light-soft" },
+    { "shades-of-purple-super-dark", "shades-of-purple-dark" },
+    { "zenbones-forestbones-light", "zenbones-forest-light" },
+};
+
+const char *prefs_theme_alias(const char *name, int len)
+{
+    unsigned i;
+    for (i = 0; i < sizeof pc_theme_alias / sizeof pc_theme_alias[0]; i++)
+        if (!pc_ncmp_i(name, len, pc_theme_alias[i][0]))
+            return pc_theme_alias[i][1];
+    return 0;
+}
+
 void prefs_theme_file(const char *drawer, const char *name, char *out, int cap)
 {
-    int l;
+    int l, base, stem;
+    const char *a;
+    char tmp[256];
     if (cap < 1)
         return;
+    for (base = 0, l = 0; name[l]; l++)
+        if (name[l] == '/' || name[l] == ':')
+            base = l + 1;
+    stem = pc_conf_stem(name + base);
+    if (stem < 0)
+        stem = (int)strlen(name + base);
+    a = prefs_theme_alias(name + base, stem);
+    if (a && base + (int)strlen(a) + 6 <= (int)sizeof tmp) {
+        memcpy(tmp, name, (size_t)base);
+        strcpy(tmp + base, a);
+        name = tmp;
+    }
     if (strchr(name, ':') || strchr(name, '/') || !pc_join(out, cap, drawer, name))
         pc_copy(out, name, cap);
     l = (int)strlen(out);
@@ -973,6 +1008,10 @@ int prefs_theme_index(const char *names, int n, const char *file)
     stem = pc_conf_stem(base);
     if (stem < 0)
         stem = (int)strlen(base);
+    if (prefs_theme_alias(base, stem)) {
+        base = prefs_theme_alias(base, stem);
+        stem = (int)strlen(base);
+    }
     for (i = 0; i < n; i++, names += strlen(names) + 1)
         if (stem && !pc_ncmp_i(base, stem, names))
             return i;

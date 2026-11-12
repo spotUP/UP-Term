@@ -24,7 +24,7 @@ class AllRows(unittest.TestCase):
         self.assertEqual(st['cur'], 0)
 
     def test_named_is_a_whole_word(self):
-        rows = ['[upkg] up-pi  1.0   >', '[upkg] up-picocom  1.0   >', '[UHC] up-pi  Installed']
+        rows = ['[upkg] up-pi  1.0   >', '[upkg] up-picom  1.0   >', '[UHC] up-pi  Installed']
         self.assertEqual(m.tx_named(rows, 'up-pi'), [rows[0], rows[2]])
 
     def test_list_after_job_goes_up_from_the_action_level(self):

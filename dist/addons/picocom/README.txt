@@ -1,4 +1,4 @@
-up-picocom: picocom, the serial terminal, for UP-Term
+up-picom: picocom, the serial terminal, for UP-Term
 
 Contents: bin/picocom, share/man/man1/picocom.1, licenses/picocom.
 Licence: GPL v2 or later; see LICENSES.txt.
@@ -8,5 +8,5 @@ slim base. It installs them at the same paths in UP-Term: (bin, share, licenses)
 change of the path. In an UP-Term window, in vsh:
   picocom --help
 
-Install: run Install (Installer) or, with upkg, install up-picocom. Uninstall takes the package out
+Install: run Install (Installer) or, with upkg, install up-picom. Uninstall takes the package out
 again; the UP-Term Uninstall runs it first.

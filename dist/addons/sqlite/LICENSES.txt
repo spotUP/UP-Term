@@ -1,4 +1,4 @@
-up-sqlite3: parts, licences and where the source is
+up-sqlite: parts, licences and where the source is
 
 Part     Licence                           Source
 -------  --------------------------------  -------------------

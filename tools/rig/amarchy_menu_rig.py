@@ -1541,7 +1541,7 @@ def tx_all_rows(limit=80):
 
 
 def tx_named(rows, name):
-    """The rows for the package called name: the name as a whole word, so up-pi does not also match up-picocom."""
+    """The rows for the package called name: the name as a whole word, so up-pi does not also match up-picom."""
     return [r for r in rows if re.search(r'(?<![\w-])%s(?![\w-])' % re.escape(name), r)]
 
 

@@ -38,7 +38,7 @@ class RepoDrawer(unittest.TestCase):
         f = (pd / '0021-follow-window-size.patch').read_text()
         self.assertIn('followWindowSize', f)
         self.assertIn('sendWindowResize', f)
-        u = (pd / '0022-utf8-in-vtcon-window.patch').read_text()
+        u = (pd / '0022-utf8-vtcon-window.patch').read_text()
         self.assertIn('getConsoleWinsize(&winCols, &winRows)', u)
         self.assertIn('charsetConv = false', u)
 

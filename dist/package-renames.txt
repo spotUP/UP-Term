@@ -16,3 +16,6 @@ Python3       up-python
 UP-Term-git   up-git
 UP-Term-perl  up-perl
 UP-Term-vim   up-vim
+up-hexedit    up-hexed
+up-picocom    up-picom
+up-sqlite3    up-sqlite

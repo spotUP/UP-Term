@@ -363,6 +363,9 @@ int prefs_install_target(const prefs_fs *fs, int t, const char *buf, long len);
  * symptom of W30, a missing kit drawer). out: cap bytes. */
 void prefs_theme_drawer(const prefs_fs *fs, const char *given, const char *home, char *out, int cap);
 
+/* The new name of a theme renamed to fit 30 characters (name's first len characters, no ".conf"), else 0:
+ * a config or /theme naming the old one keeps working. prefs_theme_file and prefs_theme_index apply it. */
+const char *prefs_theme_alias(const char *name, int len);
 /* The theme file /theme NAME means: name itself when it is a path (holds a
  * ':' or a '/'), else name in drawer; ".conf" added when it does not end
  * so (any case). out: cap bytes, cut to fit. */

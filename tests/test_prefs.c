@@ -702,6 +702,17 @@ static void theme_requester_opens_the_themes_drawer(void)
     CHECK_STR(d, "Work:t/mine.conf");
     prefs_theme_file("", "mine", d, sizeof(d));
     CHECK_STR(d, "mine.conf");
+    /* s75: a theme renamed to fit 30 characters is found by its old name too (with or without .conf, in a path) */
+    prefs_theme_file("ENVARC:up-term/themes", "gruvbox-light-hard-contrast", d, sizeof(d));
+    CHECK_STR(d, "ENVARC:up-term/themes/gruvbox-light-hard.conf");
+    prefs_theme_file("ENVARC:up-term/themes", "Zenbones-Forestbones-Light.conf", d, sizeof(d));
+    CHECK_STR(d, "ENVARC:up-term/themes/zenbones-forest-light.conf");
+    prefs_theme_file("ENVARC:up-term/themes", "Work:t/shades-of-purple-super-dark.conf", d, sizeof(d));
+    CHECK_STR(d, "Work:t/shades-of-purple-dark.conf");
+    prefs_theme_file("ENVARC:up-term/themes", "gruvbox-light", d, sizeof(d));
+    CHECK_STR(d, "ENVARC:up-term/themes/gruvbox-light.conf");   /* a name that only starts like an old one */
+    CHECK_INT(prefs_theme_alias("gruvbox-dark-soft-contrast", 26) != 0, 1);
+    CHECK_INT(prefs_theme_alias("gruvbox-dark-soft-contrast", 12) == 0, 1);
 }
 
 /* /theme's list: a drawer's names to the themes in it, sorted. */

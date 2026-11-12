@@ -40,7 +40,7 @@ class SearchPick(unittest.TestCase):
         self.assertEqual([g.RAW_KEYS[c] for c in "zq"], [0x31, 0x10])
 
     def test_pick_row_takes_the_exact_name(self):
-        rows = ["[upkg] up-picocom  1.0", "[upkg] up-pi  1.1"]
+        rows = ["[upkg] up-picom  1.0", "[upkg] up-pi  1.1"]
         self.assertEqual(g.pick_row("up-pi", rows), (["[upkg] up-pi  1.1"], 1))
 
     def test_pick_row_none_or_ambiguous_is_minus_one(self):

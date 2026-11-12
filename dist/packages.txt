@@ -43,12 +43,12 @@ ncdu    up-ncdu   1.0      1.0         80      UP-Term:pkg/up-ncdu    Files/user
 nnn     up-nnn    1.0      1.0         80      UP-Term:pkg/up-nnn     Files/userland/bin/nnn  upterm-ports,ixemul-vtcon  UP-Term:bin/nnn
 lua     up-lua    1.0      1.0         80      UP-Term:pkg/up-lua     Files/userland/bin/lua  upterm-ports,ixemul-vtcon  UP-Term:bin/lua
 jq      up-jq     1.0      1.0         80      UP-Term:pkg/up-jq      Files/userland/bin/jq  upterm-ports,ixemul-vtcon  -
-hexedit  up-hexedit  1.0      1.0         80      UP-Term:pkg/up-hexedit  Files/userland/bin/hexedit  upterm-ports,ixemul-vtcon  UP-Term:bin/hexedit
-picocom  up-picocom  1.0      1.0         80      UP-Term:pkg/up-picocom  Files/userland/bin/picocom  upterm-ports,ixemul-vtcon  UP-Term:bin/picocom
+hexedit  up-hexed  1.0      1.0         80      UP-Term:pkg/up-hexed  Files/userland/bin/hexedit  upterm-ports,ixemul-vtcon  UP-Term:bin/hexedit
+picocom  up-picom  1.0      1.0         80      UP-Term:pkg/up-picom  Files/userland/bin/picocom  upterm-ports,ixemul-vtcon  UP-Term:bin/picocom
 nc      up-nc     1.0      1.0         80      UP-Term:pkg/up-nc      Files/userland/bin/nc  upterm-ports,ixemul-vtcon  -
 fzy     up-fzy    1.0      1.0         80      UP-Term:pkg/up-fzy     Files/userland/bin/fzy  upterm-ports,ixemul-vtcon  -
 ctags   up-ctags  1.0      1.0         80      UP-Term:pkg/up-ctags   Files/userland/bin/ctags  upterm-ports,ixemul-vtcon  -
 zip     up-zip    1.0      1.0         80      UP-Term:pkg/up-zip     Files/userland/bin/zip  upterm-ports,ixemul-vtcon  -
 dopus   up-dopus   1.1      -           -       ENVARC:upkg/up-dopus   Files/os3,Files/os3-68000,Files/toolbar                                   vtcon  DOpus5:DirectoryOpus
 uhc     up-uhc     1.5      1.0         -       UP-Term:pkg/up-uhc     Files/unstartup-uhc.sh                                                          vtcon  -
-sqlite  up-sqlite3  1.0      1.0         80      UP-Term:pkg/up-sqlite3  Files/userland/bin/sqlite3                            upterm-ports,ixemul-vtcon  UP-Term:bin/sqlite3
+sqlite  up-sqlite  1.0      1.0         80      UP-Term:pkg/up-sqlite  Files/userland/bin/sqlite3                            upterm-ports,ixemul-vtcon  UP-Term:bin/sqlite3

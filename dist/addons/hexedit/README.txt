@@ -1,4 +1,4 @@
-up-hexedit: hexedit, the hex editor, for UP-Term
+up-hexed: hexedit, the hex editor, for UP-Term
 
 Contents: bin/hexedit, share/man/man1/hexedit.1, licenses/hexedit.
 Licence: GPL v2 or later; see LICENSES.txt.
@@ -8,5 +8,5 @@ slim base. It installs them at the same paths in UP-Term: (bin, share, licenses)
 change of the path. In an UP-Term window, in vsh:
   hexedit
 
-Install: run Install (Installer) or, with upkg, install up-hexedit. Uninstall takes the package out
+Install: run Install (Installer) or, with upkg, install up-hexed. Uninstall takes the package out
 again; the UP-Term Uninstall runs it first.

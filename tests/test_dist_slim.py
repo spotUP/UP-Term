@@ -84,7 +84,7 @@ class Table(unittest.TestCase):
     def test_each_package_stages_into_the_drawer_of_its_archive(self):
         """2026-10-26: make dist failed at dist-sqlite with FileExistsError on
         build/dist/up-sqlite/Files/userland/licenses/sqlite. The Makefile named every package's drawer
-        up-<id>, while ADDON_STAGE and mkkit.py use the packages.txt archive, up-sqlite3 for sqlite: the
+        up-<id>, while ADDON_STAGE and mkkit.py use the packages.txt archive, up-hexed for hexedit: the
         payload went into a drawer no archive packed and a rerun tripped over it. Read through make -n."""
         got = subprocess.run(['make', '-n', '-C', str(ROOT)] + ['dist-' + i for i in slim.ids()],
                              capture_output=True, text=True, env=dict(os.environ, UPTERM_ROOT=str(ROOT.parent)))

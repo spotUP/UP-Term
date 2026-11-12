@@ -366,6 +366,8 @@ Copy terminfo ENVARC:up-term/terminfo ALL CLONE QUIET
 ; colour themes for UP-Term Prefs' Theme... requester (one profile section
 ; each; ENVARC:up-term goes whole at Uninstall)
 MakeDir >NIL: ENVARC:up-term/themes
+; s75: seven themes were renamed to fit 30 characters (the old names still work, prefs_theme_alias); drop the old files
+Delete >NIL: ENVARC:up-term/themes/github-light-high-contrast.#? ENVARC:up-term/themes/gruvbox-dark-hard-contrast.#? ENVARC:up-term/themes/gruvbox-dark-soft-contrast.#? ENVARC:up-term/themes/gruvbox-light-hard-contrast.#? ENVARC:up-term/themes/gruvbox-light-soft-contrast.#? ENVARC:up-term/themes/shades-of-purple-super-dark.#? ENVARC:up-term/themes/zenbones-forestbones-light.#? QUIET
 Copy themes ENVARC:up-term/themes ALL CLONE QUIET
 Copy termcap.vtcon ENVARC:up-term/termcap.vtcon CLONE
 ; ENV: first emptied of its files, then copied; the drawers stay, as deleting

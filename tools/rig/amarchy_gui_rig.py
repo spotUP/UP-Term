@@ -661,7 +661,7 @@ def search_rows(name, tag):
 
 
 def pick_row(name, rows):
-    """The one row of rows that names the package (a name may prefix another: up-pi, up-picocom), the bar put on it with
+    """The one row of rows that names the package (a name may prefix another: up-pi, up-picom), the bar put on it with
     Down from the first row, and its index; ([], -1) when there is none or more than one."""
     hit = [r for r in rows if re.search(r'(^|\s)%s(\s|$)' % re.escape(name), r)]
     return (hit, rows.index(hit[0])) if len(hit) == 1 else (hit, -1)

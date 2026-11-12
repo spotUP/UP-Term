@@ -228,7 +228,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 TEST_ONLY_NAMES := $(shell grep -o '"$$(ONLY)" = [a-z_0-9]*' $(firstword $(MAKEFILE_LIST)) | sed 's/.* //' | sort -u)
 # ONLY= rows that run python3 on files alone: no C binary below is built or run for them (a worktree without the vendor NDK
 # cannot build render_host, and pkg_rows needs none). Add a name only after checking its script starts no $(BUILD) binary.
-TEST_PY_ONLY := win_refresh gui_chip_pens gen_lucide_icons icon_grid_fit pkg_rows worktree_ready rig_handler_fallback rig_amarchy_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq rig_boot_console gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free dopus_toolbar flat_on_hang icat_stderr help_man_sync ipd_no_dos_under_list amarchy_rows_buffer flat_single_instance flat_clone_stack flat_hook_locks flat_unload_inflight
+TEST_PY_ONLY := dist_name_len win_refresh gui_chip_pens gen_lucide_icons icon_grid_fit pkg_rows worktree_ready rig_handler_fallback rig_amarchy_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq rig_boot_console gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free dopus_toolbar flat_on_hang icat_stderr help_man_sync ipd_no_dos_under_list amarchy_rows_buffer flat_single_instance flat_clone_stack flat_hook_locks flat_unload_inflight
 TEST_BINS := $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host $(BUILD)/upgetty_host
 test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -n "$(ONLY)" ] && [ -z "$(filter $(ONLY),$(TEST_ONLY_NAMES))" ] && ! ./$(BUILD)/vttest_host --has $(ONLY); then echo "[ERROR] make test: no suite named $(ONLY)"; exit 2; fi
@@ -338,6 +338,8 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = dist_stack ]; then python3 tests/test_dist_stack.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = pkg_rows ]; then python3 -I tests/test_pkg_rows.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_amarchy_themes.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = dist_name_len ]; then python3 -I tests/test_dist_name_len.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = dist_name_len ]; then python3 -I tests/test_theme_aliases.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_ports_fresh.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_ports_path.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = addons ]; then python3 tests/test_dist_addons.py; fi
@@ -1967,7 +1969,7 @@ KIT_uhc := $(BUILD)/dist/up-uhc
 SLIM_IDS := $(shell python3 tools/slim.py ids)
 SLIM_DIST := $(addprefix dist-,$(SLIM_IDS))
 # the drawer is build/dist/<archive> of packages.txt (what ADDON_STAGE makes and mkkit.py reads), not up-<id>:
-# sqlite's archive is up-sqlite3, so up-$(p) staged its payload into a drawer no archive packed
+# hexedit's archive is up-hexed, so up-$(p) staged its payload into a drawer no archive packed
 $(foreach k,$(shell python3 tools/slim.py kits),$(eval KIT_$(firstword $(subst =, ,$(k))) := $(BUILD)/dist/$(lastword $(subst =, ,$(k)))))
 # the patched ixemul (P6): built in ixemul-vtcon with sh docker/build.sh
 IXEMUL_LIB ?= $(UPTERM_ROOT)/ixemul-vtcon/build295/library/68020/68881/amigaos/ixemul.library

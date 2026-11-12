@@ -41,7 +41,7 @@ def ids(path=TABLE):
 
 def kits(path=TABLE):
     """[(id, archive)] for every package: its stage drawer is named after the packages.txt archive, which
-    mkkit.py reads, and that is not always up-<id> (sqlite ships as up-sqlite3)."""
+    mkkit.py reads, and that is not always up-<id> (hexedit ships as up-hexed)."""
     import pkgs
     return [(i, pkgs.get(i, 'archive')) for i in ids(path)]
 
