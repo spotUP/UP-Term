@@ -288,19 +288,23 @@ static void stop_demo(void)
         }
     }
     UnlockIBase(lock);
-    lock = LockIBase(0);
-    if (g_snap.active && member(g_snap.active))
-        ActivateWindow(g_snap.active);
     {
+        /* ActivateWindow and ScreenToFront must run after UnlockIBase (win.c header, tile.c): decide under the lock,
+         * act after it. A window or screen closing in between is the race tile.c already accepts. */
         const struct Screen *s;
-        int there = 0;
+        int there = 0, act, front;
+        lock = LockIBase(0);
+        act = g_snap.active && member(g_snap.active);
         for (s = IntuitionBase->FirstScreen; s; s = s->NextScreen)
             if (s == g_snap.front)
                 there = 1;
-        if (there && g_snap.front != IntuitionBase->FirstScreen)
+        front = there && g_snap.front != IntuitionBase->FirstScreen;
+        UnlockIBase(lock);
+        if (act)
+            ActivateWindow(g_snap.active);
+        if (front)
             ScreenToFront(g_snap.front);
     }
-    UnlockIBase(lock);
     demo_stop(&g_clk);
     g_cur_theme = -1;
     am_sentinel("AMARCHY_DEMO_DONE", g_clk.loops);

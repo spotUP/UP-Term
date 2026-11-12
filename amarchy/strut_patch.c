@@ -278,7 +278,7 @@ static int inst_window(strut_pub *p, const struct NewWindow *nw, struct NewWindo
     if ((nw->Type & SCREENTYPE) != WBENCHSCREEN && nw->Screen)
         scr = nw->Screen;
     else
-        scr = lock = LockPubScreen((STRPTR)"Workbench");
+        scr = lock = ipd_lock_wb_screen();   /* 0 while WB is closed or still opening: stock behaviour */
     if (!scr)
         return 0;
     sig = inst_box(nw->TopEdge, nw->Height, scr->Height, &top, &height) ? sig : INST_SIG_UNKNOWN;

@@ -19,6 +19,7 @@
 #include "rexx_host.h"
 #include "amconf_core.h"
 #include "amconf_dos.h"
+#include "../handler/pubscr.h"
 
 #define DTD_DRAWER "DOpus5:Images/Amarchy/"
 
@@ -44,9 +45,9 @@ static int dtd_screen(unsigned *font_h, int *rx, int *ry, void *ud)
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
     if (!IntuitionBase)
         return 0;
-    scr = dt_screen_name(reply, name, sizeof name) ? LockPubScreen((STRPTR)name) : 0;
+    scr = dt_screen_name(reply, name, sizeof name) ? ipd_lock_pub_screen(name) : 0;   /* guarded: never reopens a closed WB */
     if (!scr)
-        scr = LockPubScreen(0);
+        scr = ipd_lock_default_pub_screen();
     if (scr) {
         if (scr->Font)
             *font_h = scr->Font->ta_YSize;

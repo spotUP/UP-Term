@@ -2550,7 +2550,8 @@ static int cg_feed(flatshared *r, ULONG kind, const struct NewGadget *ng, int *n
     int side = 1, hit = 0;
     if (!r->st.enabled || r->st.held)
         return 0;
-    if (kind == CYCLE_KIND && (scr = LockPubScreen(NULL)) != NULL) {   /* Time opens on the default public screen */
+    if (kind == CYCLE_KIND && (scr = ipd_lock_default_pub_screen()) != NULL) {   /* Time opens on the default public screen; a closed or
+                                                                              * still-private one reads 0, never reopened from a foreign task */
         side = side_px(r, scr);
         UnlockPubScreen(NULL, scr);
     }
