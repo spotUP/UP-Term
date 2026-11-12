@@ -521,12 +521,15 @@ def drive(case, inst, dest, baseline_titles, **kw):
 
 
 def drive_pages(log, case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=2700, poll=20,
-                expect_abort=False, room_dest=None, room_abort=False, console=False, tick_all=False, askdir_probe=None):
+                expect_abort=False, room_dest=None, room_abort=False, console=False, tick_all=False, askdir_probe=None,
+                need_one=None):
     """Answer the Installer's pages by gadget id (its custom gadgets have no labels): 90 Proceed, 91 Abort
     (never), 89 Make New Drawer (never), 1 on the install-mode page Install for Real, 92 the askdir string.
     room_dest: the drawer to ask for when the room page ("<dest> has N KB free; the parts you chose need about
     M KB") comes after the drawer page (read from the screen, logged as `room page: N KB free, M KB needed`);
     console: tick "UP-Term serves CON: and RAW:" on the console page.
+    need_one: {number of toggles: id}: an options page with that many toggles and none ticked gets that id ticked
+    before Proceed (AmiNetXDuo's network-device page, Install-AmiNetXDuo 1851-1866, repeats until one is ticked).
     askdir_probe: a list; at the first drawer page drive appends the string gadget's text, clicks Abort Install (91) and returns.
     tick_all: on every options page tick every box not ticked (and not disabled) before Proceed; a page with the
     install-mode gadget 1 is a choice, not a list of boxes. Each Installer (the nested ones too: their window
@@ -542,6 +545,7 @@ def drive_pages(log, case, inst, dest, baseline_titles, timeout=5400, stall=60, 
     work_since, last_pct, dumped_pct = None, None, set()
     room, after_ask, asks, ticked, drawer = None, False, 0, False, DrawerAsks()
     cur_title, ticked_sigs = None, set()
+    need_clicks = {}
     outer = None   # the Installer this case started; a nested add-on Install (AmiSSL) has another window name
     last_wins = None
 
@@ -724,6 +728,16 @@ def drive_pages(log, case, inst, dest, baseline_titles, timeout=5400, stall=60, 
             if got != target:
                 return False, log
             last_sig = None   # the page is redrawn: log it and go on to Proceed
+            continue
+        togs = [g for g, (_, r) in gads.items() if 2 <= g < 89 and r.startswith('toggle')]
+        want = (need_one or {}).get(len(togs))
+        if want in togs and not any('selected' in gads[g][1] for g in togs) and need_clicks.get(title, 0) < 3:
+            # an askoptions page that insists on one box (it loops through a "Select at least one" message
+            # while none is ticked, BOOTANX-PAGE-LOOP) and has none ticked by default: tick the case's box
+            need_clicks[title] = need_clicks.get(title, 0) + 1
+            click(gads[want][0])
+            log.append('ticked id %d of %d boxes on [%s] (the page needs one)' % (want, len(togs), title))
+            wait_change(tree, 2)
             continue
         if tick_all and 90 in gads and (sig, geom(tree), tree.count('selected')) not in ticked_sigs and 89 not in gads and not re.search(r'^G 1 \d+ \d+ \d+x\d+ button', tree, re.M):
             ticked_sigs.add((sig, geom(tree), tree.count('selected')))

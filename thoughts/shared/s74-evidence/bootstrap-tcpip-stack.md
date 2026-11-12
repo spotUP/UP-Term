@@ -88,3 +88,59 @@ No own network configuration code.
 ## Register row text (for thoughts/shared/research/test-register.md, not edited here)
 
 | 2026-11-12 | s74 | up-term-boot.lha no-stack path | rig 97 OS 3.2 | PARTIAL: no-stack detection and Install-AmiNetXDuo start pass; full stack install, stack-present path and network card not proven (no Amiga lha, Installer page loop under the driver, no a2065.device) | thoughts/shared/s74-evidence/bootstrap-tcpip-stack.md |
+
+## Retest (2026-11-12, rig 97, OS 3.2, purpose "up-term-ba s74: bootstrap stack retest")
+
+Archive under test: the existing build/up-term-boot.lha from 3af70aab (5944733 bytes, sha256
+ba63085af99c0b626e4ab5cf475cd8b3fe06f4de2852516d4a57829bb280d0c0). Get-UP-Term unchanged, not rebuilt.
+A real Amiga lha was used: Aminet util/arc/lha.run (LhASFX V1.2), lha_68020 copied to C:lha on the rig.
+`lha -q x RAM:up-term-boot.lha RAM:boot/` gave rc 0 and the full kit (Get-UP-Term, tcpprobe, bebboget,
+installcerts, cacert.pem, AmiNetXDuo drawer, COPYING, SOURCE.txt, bebboget-up-term.diff).
+
+### Cause of the case B page cycle (BOOTANX-PAGE-LOOP)
+
+The two alternating pages were Install-AmiNetXDuo's network device category page (an askoptions with
+10 toggles, ids 2-11, none ticked) and its "Select at least one network device." message page.
+vendor/aminetxduo-1.0.0-rc2/AmiNetXDuo/Install-AmiNetXDuo:1851-1866 loops `(until (> CATEGORY_MASK 0) ...)`;
+the default CATEGORY_DEFAULT comes from the card probe (1116-1195, 1826-1848), which finds nothing on
+a rig without uaenet.device, so the default is 0. The driver (tools/rig/installer_rig.py drive_pages,
+bootanx has tick_all False) clicked Proceed on the empty default every time. The script's loop is by
+design; Get-UP-Term was not at fault. Fix: drive_pages gained `need_one={number of toggles: id}`
+(tools/rig/installer_rig.py:733-741): an options page with that many toggles and none ticked gets that id
+ticked (at most 3 times per title) before Proceed. Case B passes need_one={10: 10} (id 10 = "Emulator network").
+
+### Case A (stack present): PASS
+
+`Execute Get-UP-Term TO Work:dl` from RAM:boot/up-term-boot: root certificates installed to ENVARC:certs
+(113 files), up-term.lha (34083462 bytes) fetched with the certificate check by bebboget, unpacked to
+Work:dl/up-term, the kit's install.dos ran (AmiSSL step, every file copied), "UP-Term installed." printed,
+GETRC=0. No "no TCP/IP stack" line; S:AmiNetXDuo-Files absent (no-stack block skipped); UP-Term: assign set.
+
+### Case B (no stack, tcpprobe replaced by an s-bit `Quit 5`): PASS
+
+Get-UP-Term printed "This Amiga has no TCP/IP stack (no bsdsocket.library) ...", started Installer 43.3 on
+Install-AmiNetXDuo; the driver ticked id 10 on the category page, answered the following ask pages with
+their default (left) button, ran to 100% and Proceeded the last page. Get-UP-Term then printed
+"AmiNetXDuo is installed. Reboot the Amiga so that it starts, then run Execute Get-UP-Term TO RAM:dl
+again ..." and GETRC=5. S:AmiNetXDuo-Files exists (5218 bytes); S:User-Startup has the
+;BEGIN AmiNetXDuo / ;END AmiNetXDuo block (lines 45-49); RAM:dl is empty (nothing fetched).
+
+### Gotchas
+
+- `Run >NIL: Execute T:x.dos >T:x.log <NIL:` (and `>T:x.log <NIL:` before the script) ran nothing on
+  this rig; `Run >NIL: Execute T:x.dos >T:x.log` works.
+- drive_pages calls window_ocr on the reboot-ask page, which imports PIL. The `python3` on PATH here
+  (python.org 3.9) and .venv have no Pillow; the first case B drive crashed there with
+  ModuleNotFoundError after the category page had passed. The drive was resumed with
+  /opt/homebrew/bin/python3.14 (Pillow 12.2.0) against the same running Installer.
+- Host tests test_installer_drive_loop, test_installer_rig_ask, test_installer_rig_args: 3 failures, all in
+  test_installer_rig_args (rig start arguments `--max --ram 256` versus expected `--purpose`), not in
+  drive_pages; judged pre-existing / caused by another session's dirty tools/rig/install_rig.py (not
+  verified against HEAD).
+
+### Not tested
+
+- Case C: a real network card or uaenet.device present (category default nonzero, driver page then
+  without need_one).
+- The reboot after the AmiNetXDuo install and the second Get-UP-Term run over the new stack.
+- Real hardware and real SANA-II drivers; the DHCP/fixed address pages were left at their defaults.
