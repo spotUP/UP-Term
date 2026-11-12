@@ -2979,6 +2979,7 @@ static void dopus_lister_info_bars_are_never_filled_bars(void);
 static void dopus_theme_send_goes_to_the_dopus_port(void);
 static void dopus_theme_send_switches_only_a_default_toolbar(void);
 static void dopus_theme_send_picks_the_set_and_recolours(void);
+static void dopus_toolbar_follow_switches_only_new_listers(void);
 static void wb_pens_contrast_guard(void);
 static void minimal_mode_reaches_the_program(void);
 static void the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg(void);
@@ -3705,6 +3706,7 @@ void suite_keymap(void)
     dopus_theme_send_goes_to_the_dopus_port();
     dopus_theme_send_switches_only_a_default_toolbar();
     dopus_theme_send_picks_the_set_and_recolours();
+    dopus_toolbar_follow_switches_only_new_listers();
     wb_pens_contrast_guard();
     minimal_mode_reaches_the_program();
     the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg();
@@ -4115,6 +4117,51 @@ static void dopus_theme_send_switches_only_a_default_toolbar(void)
     dopus_theme_send(&th, dopus_fake_send, &r, 0);
     for (i = 0; i < r.n && i < 32; i++)
         CHECK(strncmp(r.line[i], "lister set ", 11) != 0);
+}
+
+/* B7 new listers: a tick switches only handles it has not seen; a closed handle is forgotten (its number may come back as a new lister) */
+static void dopus_toolbar_follow_switches_only_new_listers(void)
+{
+    gtheme th;
+    dopus_rec r;
+    int i, sets;
+
+    gt_builtin(&th);
+    memset(&r, 0, sizeof r);
+    r.screen = "Workbench 800 600 4 0";
+    r.all = "1 2 3";
+    strcpy(r.tb[1], "PROGDIR:Buttons/Toolbar");
+    strcpy(r.tb[2], "SYS:My/Own-bank");
+    strcpy(r.tb[3], "PROGDIR:Buttons/Toolbar");
+    dopus_theme_send(&th, dopus_fake_send, &r, 0);   /* the apply switches 1 and 3 and remembers 1 2 3 */
+    CHECK_STR(r.tb[1], DOPUS_TOOLBAR_FLAT "filled-32");
+
+    /* nothing new: one query, no other traffic */
+    r.n = 0;
+    CHECK_INT((long)dopus_toolbar_follow(dopus_fake_send, &r, 0), 1L);
+    CHECK_INT((long)r.n, 1L);
+    CHECK_STR(r.line[0], "lister query all");
+
+    /* a lister opened after the apply (handle 3 closed, 3 is a fresh lister again later): only the new one is looked at */
+    r.all = "1 2";
+    dopus_toolbar_follow(dopus_fake_send, &r, 0);        /* 3 closed: forgotten */
+    r.all = "1 2 3";
+    strcpy(r.tb[3], "PROGDIR:Buttons/Toolbar");          /* a new lister reusing the handle */
+    r.n = 0;
+    dopus_toolbar_follow(dopus_fake_send, &r, 0);
+    CHECK_STR(r.tb[3], DOPUS_TOOLBAR_FLAT "filled-32");
+    for (i = 0, sets = 0; i < r.n && i < 32; i++) {
+        CHECK(strstr(r.line[i], " 1 ") == 0 && strstr(r.line[i], " 2 ") == 0);   /* the known listers are not asked */
+        if (strncmp(r.line[i], "lister set ", 11) == 0)
+            sets++;
+    }
+    CHECK_INT((long)sets, 1L);
+
+    /* DOpus gone: one failed query, no crash, no set */
+    memset(&r, 0, sizeof r);
+    r.absent = 1;
+    CHECK_INT((long)dopus_toolbar_follow(dopus_fake_send, &r, 0), 1L);
+    CHECK_INT((long)dopus_toolbar_follow(0, &r, 0), 0L);
 }
 
 typedef struct { unsigned font_h; int rx, ry, changed, screens, recolours, outlines; char set[DT_SET_NAME_MAX]; unsigned char rgb[8][3];

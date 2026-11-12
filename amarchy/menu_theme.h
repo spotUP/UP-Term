@@ -116,6 +116,11 @@ typedef struct {
 int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char *line, char *result, int cap, void *ud),
                      void *ud, const dopus_tb_ops *tb);
 
+/* The commodity's tick (B7 new listers): the flat toolbar for the Opus listers opened since the last pass or theme apply. The caller
+ * checks that DOPUS_PORT exists. Returns the lines handed to send. */
+int dopus_toolbar_follow(long (*send)(const char *port, const char *line, char *result, int cap, void *ud), void *ud,
+                         const dopus_tb_ops *tb);
+
 /* Workbench pens 0-3 take the theme's bg, fg, dim, accent (Directory Opus on the Workbench screen shares them). */
 #define WB_PENS 4
 /* The refusal threshold is GT_FLOOR_TEXT (gthemes_core.h): the text-on-ground contrast floor of the role derivation. */

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """amarchy_dopus_toolbar_rig.py -- B7 / DT-6: the theme apply switches a Directory Opus lister that uses upstream's default
 toolbar to the flat bank of the set that fits the DOpus screen (DOpus5:Buttons/Amarchy-toolbar-<set>), recolours that set's
-brushes to the applied theme, and never touches a lister with a toolbar of its own.
+brushes to the applied theme, and never touches a lister with a toolbar of its own. Listers opened after the apply get the bank
+within a few seconds (step d, Amarchy's tick).
 
 Steps: the generated sets (build/dopus-toolbar, `make dopus-toolbar`) go into DOpus5: the way dist/addons/dopus/install.dos
 does (DOpus5:Images/Amarchy/<set>/, DOpus5:Buttons/Amarchy-toolbar-<set>, 16 24 32 each square and tall "t"); Amarchy runs;
@@ -161,6 +162,14 @@ def main():
         got_cmap = cmap_of('DOpus5:Images/Amarchy/%s/%s' % (want_set, BRUSH))
         verdict(got_cmap == want_cmap, '(b) theme %d: CMAP of %s/%s equals dt_cmap' % (n + 1, want_set, BRUSH), got_cmap)
         cmaps.append(got_cmap)
+        # (d) a lister opened AFTER the apply: Amarchy's 2 s tick (desk_dos_dopus_follow) gives it the flat bank of the same set
+        known = set(handles())
+        c.run('SYS:Rexxc/rx "ADDRESS DOPUS.1; command DeviceList NEW"')
+        time.sleep(6)
+        fresh = [h for h in handles() if h not in known]
+        got_new = toolbar(fresh[0]) if fresh else ''
+        verdict(bool(fresh) and got_new.lower().replace('dopus5:', '') == want_bank.lower().replace('dopus5:', ''),
+                '(d) theme %d: a lister opened after the apply (%s) has the bank of set %s' % (n + 1, fresh[:1], want_set), got_new)
         rxn('dopus front')
         time.sleep(3)
         shot = os.path.join(out, 'toolbar-theme%d.png' % (n + 1))

@@ -200,66 +200,148 @@ static void dopus_line(char *line, unsigned cap, const char *a, const char *b, c
     line[n] = 0;
 }
 
-/* B7: the listers still on upstream's default toolbar get the flat bank (DOPUS_TOOLBAR_FLAT). A lister's toolbar is
+/* The handle after position *i of a `lister query all` reply (blank-separated); returns its length, 0 at the end. */
+static unsigned dopus_next_handle(const char *handles, unsigned *i, char *hnd, unsigned cap)
+{
+    unsigned k = 0;
+    while (handles[*i] == ' ' || handles[*i] == '\n' || handles[*i] == '\r')
+        (*i)++;
+    for (; handles[*i] > ' ' && k < cap - 1; (*i)++)
+        hnd[k++] = handles[*i];
+    hnd[k] = 0;
+    return k;
+}
+
+/* B7: one lister still on upstream's default toolbar gets the flat bank (DOPUS_TOOLBAR_FLAT). A lister's toolbar is
  * its own `toolbar_path` (dopus5 rexx_lister.c:613 query, :1269 set; `lister query all` lists the handles, `all` is
  * not allowed for set). Any other path, a user's own bank or one already switched, is left alone. A lister that cannot
  * open the new bank loses its toolbar (lister_toolbar.c lister_new_toolbar clears the path): the re-query catches that
- * and puts the old path back. Returns the number of lines handed to send. */
+ * and puts the old path back. Adds the lines handed to send to *sent; returns 1 when a send failed (DOpus gone). */
+static int dopus_toolbar_one(long (*send)(const char *port, const char *line, char *result, int cap, void *ud),
+                             void *ud, const char *hnd, const char *bank, int force, int *sent)
+{
+    static const char *const upstream[] = { "PROGDIR:Buttons/Toolbar", "DOpus5:Buttons/Toolbar" };
+    char line[160], path[160], old[160];
+    unsigned k, d;
+    dopus_line(line, sizeof line, "lister query ", hnd, " toolbar", 0);
+    path[0] = 0;
+    ++*sent;
+    if (send(DOPUS_PORT, line, path, (int)sizeof path, ud) == -1)
+        return 1;
+    for (d = 0; d < sizeof upstream / sizeof upstream[0] && !dopus_same_path(path, upstream[d]); d++)
+        ;
+    if (d == sizeof upstream / sizeof upstream[0]) {
+        /* one of our banks (any set): moved to the picked set, or set again to make Opus read recoloured brushes */
+        if (!dopus_is_our_bank(path) || (dopus_same_path(path, bank) && !force))
+            return 0;
+        for (k = 0; path[k] > ' ' && k < sizeof old - 1; k++)
+            old[k] = path[k];
+        old[k] = 0;
+    } else {
+        for (k = 0; upstream[d][k] && k < sizeof old - 1; k++)
+            old[k] = upstream[d][k];
+        old[k] = 0;
+    }
+    dopus_line(line, sizeof line, "lister set ", hnd, " toolbar ", bank);
+    ++*sent;
+    if (send(DOPUS_PORT, line, 0, 0, ud) == -1)
+        return 1;
+    dopus_line(line, sizeof line, "lister query ", hnd, " toolbar", 0);
+    path[0] = 0;
+    ++*sent;
+    if (send(DOPUS_PORT, line, path, (int)sizeof path, ud) == -1)
+        return 1;
+    if (!dopus_same_path(path, bank)) {
+        dopus_line(line, sizeof line, "lister set ", hnd, " toolbar ", old);
+        ++*sent;
+        if (send(DOPUS_PORT, line, 0, 0, ud) == -1)
+            return 1;
+    }
+    return 0;
+}
+
+/* The listers seen by the last full pass or follow tick, so dopus_toolbar_follow can tell a new one (handles of closed listers drop out). */
+#define DOPUS_KNOWN_MAX 16
+static char dopus_known[DOPUS_KNOWN_MAX][24];
+static unsigned dopus_nknown;
+
+static int dopus_is_known(const char *hnd)
+{
+    unsigned i;
+    for (i = 0; i < dopus_nknown; i++)
+        if (strcmp(dopus_known[i], hnd) == 0)
+            return 1;
+    return 0;
+}
+
+static void dopus_remember(char (*seen)[24], unsigned n)
+{
+    unsigned i;
+    for (i = 0; i < n; i++)
+        strcpy(dopus_known[i], seen[i]);
+    dopus_nknown = n;
+}
+
+/* Theme apply: every lister. Returns the number of lines handed to send. */
 static int dopus_toolbar_flat(long (*send)(const char *port, const char *line, char *result, int cap, void *ud),
                               void *ud, const char *bank, int force)
 {
-    static const char *const upstream[] = { "PROGDIR:Buttons/Toolbar", "DOpus5:Buttons/Toolbar" };
-    char handles[160], line[160], path[160], hnd[24], old[160];
-    unsigned i = 0, k, d;
+    char handles[160], hnd[24], seen[DOPUS_KNOWN_MAX][24];
+    unsigned i = 0, n = 0;
     int sent = 1;
     handles[0] = 0;
     if (send(DOPUS_PORT, "lister query all", handles, (int)sizeof handles, ud) == -1)
         return sent;
-    while (handles[i]) {
-        while (handles[i] == ' ' || handles[i] == '\n' || handles[i] == '\r')
-            i++;
-        for (k = 0; handles[i] > ' ' && k < sizeof hnd - 1; i++)
-            hnd[k++] = handles[i];
-        hnd[k] = 0;
-        if (!k)
-            break;
-        dopus_line(line, sizeof line, "lister query ", hnd, " toolbar", 0);
-        path[0] = 0;
-        sent++;
-        if (send(DOPUS_PORT, line, path, (int)sizeof path, ud) == -1)
+    while (dopus_next_handle(handles, &i, hnd, sizeof hnd)) {
+        if (n < DOPUS_KNOWN_MAX)
+            strcpy(seen[n++], hnd);
+        if (dopus_toolbar_one(send, ud, hnd, bank, force, &sent))
             return sent;
-        for (d = 0; d < sizeof upstream / sizeof upstream[0] && !dopus_same_path(path, upstream[d]); d++)
-            ;
-        if (d == sizeof upstream / sizeof upstream[0]) {
-            /* one of our banks (any set): moved to the picked set, or set again to make Opus read recoloured brushes */
-            if (!dopus_is_our_bank(path) || (dopus_same_path(path, bank) && !force))
-                continue;
-            d = 0;
-            old[0] = 0;
-            for (k = 0; path[k] > ' ' && k < sizeof old - 1; k++)
-                old[k] = path[k];
-            old[k] = 0;
-        } else {
-            for (k = 0; upstream[d][k] && k < sizeof old - 1; k++)
-                old[k] = upstream[d][k];
-            old[k] = 0;
-        }
-        dopus_line(line, sizeof line, "lister set ", hnd, " toolbar ", bank);
-        sent++;
-        if (send(DOPUS_PORT, line, 0, 0, ud) == -1)
-            return sent;
-        dopus_line(line, sizeof line, "lister query ", hnd, " toolbar", 0);
-        path[0] = 0;
-        sent++;
-        if (send(DOPUS_PORT, line, path, (int)sizeof path, ud) == -1)
-            return sent;
-        if (!dopus_same_path(path, bank)) {
-            dopus_line(line, sizeof line, "lister set ", hnd, " toolbar ", old);
-            sent++;
-            if (send(DOPUS_PORT, line, 0, 0, ud) == -1)
-                return sent;
-        }
     }
+    dopus_remember(seen, n);
+    return sent;
+}
+
+
+/* The bank of the screen's set: font height and pixel aspect (DT-3), the family of icon-style (DT-9). name gets the set name. */
+static void dopus_pick_bank(const dopus_tb_ops *tb, char *bank, unsigned cap, char *name, unsigned ncap)
+{
+    unsigned font_h = 0;
+    int rx = 0, ry = 0;
+    dt_set set;
+    if (tb && tb->screen)
+        tb->screen(&font_h, &rx, &ry, tb->ud);
+    dt_pick_set(font_h, rx, ry, tb && tb->outline ? tb->outline(tb->ud) : 0, &set);
+    dt_set_name(&set, name, ncap);
+    dopus_line(bank, cap, DOPUS_TOOLBAR_FLAT, name, 0, 0);
+}
+
+/* A tick of the commodity (the caller checks that the DOpus port exists): one `lister query all`, and the flat toolbar for the
+ * listers opened since the last pass; the set is the screen's, the brushes were recoloured by the apply. Returns the lines sent. */
+int dopus_toolbar_follow(long (*send)(const char *port, const char *line, char *result, int cap, void *ud), void *ud,
+                         const dopus_tb_ops *tb)
+{
+    char handles[160], hnd[24], seen[DOPUS_KNOWN_MAX][24], bank[96], name[DT_SET_NAME_MAX];
+    unsigned i = 0, n = 0;
+    int sent = 1, have_bank = 0;
+    if (!send)
+        return 0;
+    handles[0] = 0;
+    if (send(DOPUS_PORT, "lister query all", handles, (int)sizeof handles, ud) == -1)
+        return sent;
+    while (dopus_next_handle(handles, &i, hnd, sizeof hnd)) {
+        if (n < DOPUS_KNOWN_MAX)
+            strcpy(seen[n++], hnd);
+        if (dopus_is_known(hnd))
+            continue;
+        if (!have_bank) {
+            dopus_pick_bank(tb, bank, sizeof bank, name, sizeof name);
+            have_bank = 1;
+        }
+        if (dopus_toolbar_one(send, ud, hnd, bank, 0, &sent))
+            return sent;
+    }
+    dopus_remember(seen, n);
     return sent;
 }
 
@@ -267,9 +349,8 @@ int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char
                      void *ud, const dopus_tb_ops *tb)
 {
     char cmds[512], line[192], reply[160], bank[96];
-    unsigned n, i = 0, k, font_h = 0;
-    int sent = 1, on_wb, rx = 0, ry = 0, changed = 0;
-    dt_set set;
+    unsigned n, i = 0, k;
+    int sent = 1, on_wb, changed = 0;
     char name[DT_SET_NAME_MAX];
     uint8_t rgb[DT_PENS][3];
     if (!send || !th)
@@ -280,15 +361,11 @@ int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char
         return sent;
     on_wb = dopus_on_workbench(reply);
     /* DT-3: the set for this screen (font height and pixel aspect) and DT-9 icon-style, DT-2: its brushes in the theme's blend, then the switch */
-    if (tb && tb->screen)
-        tb->screen(&font_h, &rx, &ry, tb->ud);
-    dt_pick_set(font_h, rx, ry, tb && tb->outline ? tb->outline(tb->ud) : 0, &set);   /* DT-9: the family of icon-style */
-    dt_set_name(&set, name, sizeof name);
+    dopus_pick_bank(tb, bank, sizeof bank, name, sizeof name);
     if (tb && tb->recolour) {
         dt_cmap(th, rgb);
         changed = tb->recolour(name, (const unsigned char (*)[3])rgb, tb->ud);
     }
-    dopus_line(bank, sizeof bank, DOPUS_TOOLBAR_FLAT, name, 0, 0);
     sent += dopus_toolbar_flat(send, ud, bank, changed > 0);   /* before the refresh, the last line of dopus_theme_commands */
     n = dopus_theme_commands(th, cmds, sizeof cmds, !on_wb);
     while (i < n) {

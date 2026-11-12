@@ -41,6 +41,10 @@ extern unsigned long desk_dos_wbborder_writes; /* AM-ICON-NOBORDER: Workbench ed
 extern unsigned long desk_dos_wbgauge_writes;  /* WB-VOLUME-GAUGE-OFF: Workbench editor writes that changed the volume gauge */
 extern unsigned long desk_dos_flat_writes; /* FLAT-C9: times desk_dos_apply wrote the flat_state block of a running amarchy-flat */
 extern unsigned long desk_dos_dopus_sends; /* FLAT-D2: times desk_dos_apply handed the theme to dopus_theme_send */
+/* B7: the commodity tick hook: every DESK_DOPUS_FOLLOW_SECS seconds, the flat toolbar for Opus listers opened since the last pass */
+#define DESK_DOPUS_FOLLOW_SECS 2
+extern unsigned long desk_dos_dopus_follows;
+void desk_dos_dopus_follow(long now);
 extern unsigned long desk_dos_applies, desk_dos_last_mask;
 
 /* FP-1 (R1.8): after an apply that changed something the user has 15 s to Keep it. The commodity installs the begin hook (it owns the

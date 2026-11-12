@@ -660,6 +660,7 @@ int main(void)
     tick_hook(bar_tick);
     tick_hook(tw_tick);                         /* R2.5b: a theme switch retakes the helper windows' pens */
     tick_hook(iconpens_follow);
+    tick_hook(desk_dos_dopus_follow);           /* B7: listers Opus opens after a theme apply get the flat toolbar */
     iconpens_follow(0);                         /* at boot, before the tick's first second */
     g_tick_ok = tick_open_ok = tick_open();                 /* the 1 s tick, before the bar and running without it */
     dc_init();                                  /* FP-1: the confirm requester and its 15 s timeout ride the tick */

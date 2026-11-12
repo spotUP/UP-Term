@@ -386,6 +386,28 @@ static long dk_dopus_send(const char *port, const char *line, char *result, int 
     return rexx_send(port, line, result, cap);
 }
 
+/* B7 new listers: the commodity's tick (DESK_DOPUS_FOLLOW_SECS) gives the listers opened after a theme apply the flat toolbar. Only with the
+ * desktop theme switched on (the same palette/flat-pens gate as the start apply) and only when the DOpus port exists: no ARexx traffic
+ * otherwise. The recoloured brushes and the set were written by the apply; this only switches the new listers to the screen's set. */
+unsigned long desk_dos_dopus_follows;
+
+void desk_dos_dopus_follow(long now)
+{
+    am_prefs *ap;
+    unsigned mask;
+    int flat;
+    if (now % DESK_DOPUS_FOLLOW_SECS || !rexx_port_exists(DOPUS_PORT))
+        return;
+    ap = amconf_borrow();
+    mask = amconf_desk_mask(ap);
+    flat = amconf_desk_flat_pens(ap);
+    amconf_return(ap);
+    if (!((mask >> DT_PALETTE) & 1) && !flat)
+        return;
+    desk_dos_dopus_follows++;
+    dopus_toolbar_follow(dk_dopus_send, 0, &dopustb_dos_ops);
+}
+
 static void dk_live_pens(const gtheme *th, int flat);
 static void dk_confirm_ask(unsigned mask);
 /* the live role pens (FLAT-PEN5-MAGENTA) are set last, in desk_dos_apply: every Workbench reset of this apply (palette, wbpattern,

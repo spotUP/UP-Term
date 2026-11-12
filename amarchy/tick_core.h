@@ -3,7 +3,7 @@
 #ifndef AMARCHY_TICK_CORE_H
 #define AMARCHY_TICK_CORE_H
 
-#define TICK_MAX_HOOKS 8
+#define TICK_MAX_HOOKS 10
 
 typedef void (*tick_fn)(long now);
 
