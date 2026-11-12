@@ -19,6 +19,11 @@ SYMBOLS_TTF := $(BUILD)/symbolsnerd/SymbolsNerdFontMono-Regular.ttf
 # A git worktree sits inside the main checkout (.claude/worktrees/x), so the workspace is the main checkout's parent,
 # and vendor/ (gitignored) is the main checkout's when the worktree has none: both asked of tools/rig/paths.py.
 VENDOR := $(shell python3 -I $(CURDIR)/tools/rig/paths.py vendor)
+# AmiNetXDuo 1.0.0-rc2's release drawer as the kit and the bootstrap kit ship it: every entry but Developer and
+# Developer.info (headers, not installed). $(call ANX_COPY,<existing drawer>) copies the rest into the drawer.
+ANX_SRC := $(VENDOR)/aminetxduo-1.0.0-rc2/AmiNetXDuo
+ANX_FILES = $(filter-out Developer Developer.info,$(notdir $(wildcard $(ANX_SRC)/*)))
+ANX_COPY = cd $(ANX_SRC) && cp -R $(ANX_FILES) $(abspath $(1))/
 UPTERM_ROOT ?= $(abspath $(shell python3 -I $(CURDIR)/tools/rig/paths.py main-checkout)/..)
 # the upterm-ports checkout (a worktree works too); every upterm-ports path uses it
 UPTERM_PORTS ?= $(UPTERM_ROOT)/upterm-ports
@@ -2099,7 +2104,7 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	@# AmiSSL 5.27 (Apache 2.0) as its own release drawer: the Install runs its Install-AmiSSL (the Developer SDK is for building only, so it stays out)
 	rm -rf $(KIT)/Files/AmiSSL && mkdir -p $(KIT)/Files/AmiSSL && cp -R $(VENDOR)/amissl-5.27/AmiSSL/. $(KIT)/Files/AmiSSL/ && rm -rf $(KIT)/Files/AmiSSL/Developer $(KIT)/Files/AmiSSL/Developer.info
 	@# AmiNetXDuo 1.0.0-rc2 (MIT) as its own release drawer: the Install runs its Install-AmiNetXDuo only when no TCP/IP stack is found (the Developer drawer is headers, not installed)
-	rm -rf $(KIT)/Files/AmiNetXDuo && mkdir -p $(KIT)/Files/AmiNetXDuo && cp -R $(VENDOR)/aminetxduo-1.0.0-rc2/AmiNetXDuo/. $(KIT)/Files/AmiNetXDuo/ && rm -rf $(KIT)/Files/AmiNetXDuo/Developer $(KIT)/Files/AmiNetXDuo/Developer.info
+	rm -rf $(KIT)/Files/AmiNetXDuo && mkdir -p $(KIT)/Files/AmiNetXDuo && $(call ANX_COPY,$(KIT)/Files/AmiNetXDuo)
 	@# IconLib 46.4 (Peter Keunecke, freeware): the two builds, its guide and licence page; the Install copies one to LIBS:icon.library when ticked
 	rm -rf $(KIT)/Files/iconlib && cp -R dist/iconlib $(KIT)/Files/iconlib
 	cp terminfo/vtcon.termcap $(KIT)/Files/termcap.vtcon
@@ -2231,9 +2236,11 @@ dist-full:
 
 # build/up-term-boot.lha, the bootstrap kit (owner 2026-11-12): bebboget, installcerts, a root certificate file and
 # Get-UP-Term, which fetches up-term.lha from the feed of dist/upkg.conf, unpacks it and starts its install (ALL: every
-# package through upkg). dist/net/bebboget-1.11/cacert.pem is https://curl.se/ca/cacert.pem (Mozilla's root list): not
+# package through upkg). When the Amiga has no TCP/IP stack (tcpprobe and the evidence of P_TCPCHECK), Get-UP-Term first
+# runs the packed AmiNetXDuo 1.0.0-rc2 drawer's Install-AmiNetXDuo and asks for a reboot (about 6 MB of the archive).
+# dist/net/bebboget-1.11/cacert.pem is https://curl.se/ca/cacert.pem (Mozilla's root list): not
 # in git (the global *.pem ignore rule and the credentials commit hook), fetched here when absent; delete the file to
-# get a newer list when a release is cut. Needs no build: every other input is in dist/.
+# get a newer list when a release is cut. Builds only tcpprobe; AmiNetXDuo comes from $(VENDOR), the rest from dist/.
 BOOT_STAGE := $(BUILD)/dist-boot/up-term-boot
 BOOT_FEED := $(shell awk '$$1 == "src/gz" {print $$3}' dist/upkg.conf)
 .PHONY: dist-boot
@@ -2245,12 +2252,16 @@ dist-boot:
 	cp dist/net/bebboget-1.11/bebboget dist/net/bebboget-1.11/installcerts dist/net/bebboget-1.11/cacert.pem \
 	  dist/net/bebboget-1.11/COPYING dist/net/bebboget-1.11/SOURCE.txt \
 	  dist/net/bebboget-1.11/bebboget-up-term.diff $(BOOT_STAGE)/
+	@# no TCP/IP stack on the Amiga: Get-UP-Term runs tcpprobe, then AmiNetXDuo's own Install-AmiNetXDuo (the kit's drawer, ANX_COPY)
+	$(MAKE) $(BUILD)/amiga/tcpprobe && cp $(BUILD)/amiga/tcpprobe $(BOOT_STAGE)/tcpprobe
+	mkdir -p $(BOOT_STAGE)/AmiNetXDuo && $(call ANX_COPY,$(BOOT_STAGE)/AmiNetXDuo)
 	sed 's|@FEED@|$(BOOT_FEED)|' dist/Get-UP-Term > $(BOOT_STAGE)/Get-UP-Term
-	chmod 755 $(BOOT_STAGE)/bebboget $(BOOT_STAGE)/installcerts $(BOOT_STAGE)/Get-UP-Term
+	chmod 755 $(BOOT_STAGE)/bebboget $(BOOT_STAGE)/installcerts $(BOOT_STAGE)/tcpprobe $(BOOT_STAGE)/Get-UP-Term
 	cp /dev/null $(BUILD)/up-term-boot.lha && cd $(BUILD)/dist-boot && lha -aq ../up-term-boot.lha up-term-boot
 	@! grep -q '@FEED@' $(BOOT_STAGE)/Get-UP-Term && grep -q ' $(BOOT_FEED)/up-term.lha$$' $(BOOT_STAGE)/Get-UP-Term \
-	  && [ "$$(lha l $(BUILD)/up-term-boot.lha | grep -c -E ' up-term-boot/(bebboget|installcerts|cacert.pem|COPYING|SOURCE.txt|bebboget-up-term.diff|Get-UP-Term)$$')" -eq 7 ] \
-	  || { echo "dist-boot: the archive lacks a file or Get-UP-Term has no feed address"; exit 1; }
+	  && [ "$$(lha l $(BUILD)/up-term-boot.lha | grep -c -E ' up-term-boot/(bebboget|installcerts|cacert.pem|COPYING|SOURCE.txt|bebboget-up-term.diff|tcpprobe|Get-UP-Term|AmiNetXDuo/(Install-AmiNetXDuo|Installer|ReadMe))$$')" -eq 11 ] \
+	  && ! lha l $(BUILD)/up-term-boot.lha | grep -q ' up-term-boot/AmiNetXDuo/Developer' \
+	  || { echo "dist-boot: the archive lacks a file, holds AmiNetXDuo's Developer drawer, or Get-UP-Term has no feed address"; exit 1; }
 	@echo "[OK] $(BUILD)/up-term-boot.lha: $$(wc -c < $(BUILD)/up-term-boot.lha | tr -d ' ') bytes"
 
 # build/up-term-src.lha, published next to the kit: the Unix tools' source (upterm-ports) and the

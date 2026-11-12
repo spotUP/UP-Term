@@ -1241,8 +1241,12 @@ class AmiNetXDuoPart(unittest.TestCase):
 
     def test_staging_and_licence(self):
         mk = (ROOT / "Makefile").read_text()
-        self.assertIn("$(VENDOR)/aminetxduo-1.0.0-rc2/AmiNetXDuo/. $(KIT)/Files/AmiNetXDuo/", mk)
-        self.assertIn("rm -rf $(KIT)/Files/AmiNetXDuo/Developer", mk)
+        # one content rule (ANX_COPY: the vendor drawer without Developer) for the kit and the bootstrap kit
+        self.assertIn("ANX_SRC := $(VENDOR)/aminetxduo-1.0.0-rc2/AmiNetXDuo\n", mk)
+        self.assertIn("$(filter-out Developer Developer.info,$(notdir $(wildcard $(ANX_SRC)/*)))", mk)
+        self.assertIn("$(call ANX_COPY,$(KIT)/Files/AmiNetXDuo)", mk)
+        self.assertIn("$(call ANX_COPY,$(BOOT_STAGE)/AmiNetXDuo)", mk)
+        self.assertIn("cp $(BUILD)/amiga/tcpprobe $(BOOT_STAGE)/tcpprobe", mk)
         self.assertIn("cp $(BUILD)/amiga/tcpprobe $(KIT)/Files/tcpprobe", mk)
         parts = (ROOT / "dist/parts.txt").read_text()
         self.assertRegex(parts, r"(?m)^-\s+Files/AmiNetXDuo$")

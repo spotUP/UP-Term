@@ -7,7 +7,16 @@
 ; not to TO. ALL then installs every package of the feed through upkg.
 ;   CD <this drawer>
 ;   Execute Get-UP-Term TO <drawer with about 110 MB free for the archive and the unpacked kit, e.g. Work:> [ALL]
-; Needs: a running TCP/IP stack (bsdsocket.library), lha in the path, a 68020 or better.
+; Needs: lha in the path, a 68020 or better. A TCP/IP stack (bsdsocket.library) is needed for the download;
+; when the Amiga has none, the kit installs one first (below).
+; No TCP/IP stack: the evidence of P_TCPCHECK (dist/common/tcpstack.installer), in this order: tcpprobe (opens
+; bsdsocket.library, returns 0 when it opens: a running stack or the emulator's own), the assigns AmiNetXDuo:,
+; AmiTCP:, Miami:, Genesis:, TheWire:, then S:AmiNetXDuo-Files, LIBS:genesis.library, LIBS:bsdsocket.library on disk.
+; None of them: the script runs AmiNetXDuo 1.0.0-rc2's own Install-AmiNetXDuo (MIT, the drawer AmiNetXDuo here, as
+; the full kit's P_ANX does: a CD into the drawer, then its Installer script; it asks for the network card's
+; SANA-II driver and for DHCP or a fixed address), then asks for a reboot and quits; run it again after the reboot.
+; Return codes: 0 UP-Term installed; 5 AmiNetXDuo was installed now, reboot and run Get-UP-Term again (nothing
+; was fetched); 20 failed (a message says which step; nothing of UP-Term was installed).
 ; The download is certificate-checked: when the system holds no root certificates for bebboget yet
 ; (ENVARC:certs), installcerts writes the ones of cacert.pem (Mozilla's list, from curl.se) there first.
 ; bebboget and installcerts are Stefan Franke's bebboget 1.11, GPL v3+ (COPYING, SOURCE.txt; bebboget
@@ -23,6 +32,69 @@ If NOT EXISTS "{TO}"
   Echo "Get-UP-Term: {TO} does not exist. Nothing was changed."
   Quit 20
 EndIf
+Set UPTSTACK no
+tcpprobe >NIL:
+If NOT WARN
+  Set UPTSTACK yes
+EndIf
+Assign >NIL: EXISTS AmiNetXDuo:
+If NOT WARN
+  Set UPTSTACK yes
+EndIf
+Assign >NIL: EXISTS AmiTCP:
+If NOT WARN
+  Set UPTSTACK yes
+EndIf
+Assign >NIL: EXISTS Miami:
+If NOT WARN
+  Set UPTSTACK yes
+EndIf
+Assign >NIL: EXISTS Genesis:
+If NOT WARN
+  Set UPTSTACK yes
+EndIf
+Assign >NIL: EXISTS TheWire:
+If NOT WARN
+  Set UPTSTACK yes
+EndIf
+If EXISTS S:AmiNetXDuo-Files
+  Set UPTSTACK yes
+EndIf
+If EXISTS LIBS:genesis.library
+  Set UPTSTACK yes
+EndIf
+If EXISTS LIBS:bsdsocket.library
+  Set UPTSTACK yes
+EndIf
+If $UPTSTACK EQ no
+  UnSet UPTSTACK
+  If NOT EXISTS AmiNetXDuo/Install-AmiNetXDuo
+    Echo "Get-UP-Term: this Amiga has no TCP/IP stack and the drawer AmiNetXDuo is missing here. Nothing was changed."
+    Quit 20
+  EndIf
+  If NOT EXISTS AmiNetXDuo/Installer
+    Which >NIL: Installer
+    If WARN
+      Echo "Get-UP-Term: this Amiga has no TCP/IP stack and no Installer program to install one. Nothing was changed."
+      Quit 20
+    EndIf
+  EndIf
+  Echo "This Amiga has no TCP/IP stack (no bsdsocket.library), and the download needs one."
+  Echo "Starting the AmiNetXDuo installer (a free TCP/IP stack): it asks for your network card's"
+  Echo "SANA-II driver and for DHCP or a fixed address. UP-Term itself is not installed yet."
+  CD AmiNetXDuo
+  Installer SCRIPT Install-AmiNetXDuo APPNAME AmiNetXDuo MINUSER AVERAGE DEFUSER AVERAGE NOLOG
+  CD /
+  If NOT EXISTS S:AmiNetXDuo-Files
+    Echo "Get-UP-Term: AmiNetXDuo was not installed, so there is still no TCP/IP stack."
+    Echo "Run Execute Get-UP-Term TO {TO} again to retry, or install another TCP/IP stack."
+    Quit 20
+  EndIf
+  Echo "AmiNetXDuo is installed. Reboot the Amiga so that it starts, then run"
+  Echo "Execute Get-UP-Term TO {TO} again in this drawer to fetch and install UP-Term."
+  Quit 5
+EndIf
+UnSet UPTSTACK
 If NOT EXISTS ENVARC:certs
   Echo "Installing the root certificates (ENVARC:certs) ..."
   installcerts cacert.pem
