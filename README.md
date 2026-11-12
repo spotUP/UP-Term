@@ -15,6 +15,18 @@ A modern terminal, a Unix userland and a flat desktop for AmigaOS 3.x (68020 or 
 
 ![A Directory Opus lister](docs/screenshots/dopus-lister.png)
 
+Amarchy themes: the bar, the windows and the gadgets follow the theme you pick.
+
+| | | |
+|---|---|---|
+| ![The tokyo-night theme](docs/screenshots/theme-tokyo-night.png) | ![The gruvbox theme](docs/screenshots/theme-gruvbox.png) | ![The catppuccin-latte theme](docs/screenshots/theme-catppuccin-latte.png) |
+
+The Amarchy menu opens with Left Amiga + Space. Style > Amarchy theme lists the themes and switches to the one you pick.
+
+| | |
+|---|---|
+| ![The Amarchy menu](docs/screenshots/amarchy-menu.png) | ![The theme list under Style > Amarchy theme](docs/screenshots/amarchy-menu-themes.png) |
+
 ## Download and install
 
 Releases are on [spotUP/vtcon](https://github.com/spotUP/vtcon/releases/latest). Current: 1.1.
