@@ -39,7 +39,7 @@ class InstallDosRoom(unittest.TestCase):
     def test_every_part_is_counted_once_on_its_disk(self):
         line = room_line()
         words = line.split()
-        self.assertEqual(words[:3], ['"{DIR}/UPBigVol"', 'ROOM', '"$updest"'])
+        self.assertEqual(words[:3], ['"$uptkit/UPBigVol"', 'ROOM', '"$updest"'])
         sys_at = words.index('SYS:')
         want = {'DEST': [kb(p) for p in DEST] + ['KBSSH', 'KBBEBBOGET'], 'SYS': [kb(p) for p in SYS] + ['KBWASABI']}
         got = {'DEST': words[3:sys_at], 'SYS': words[sys_at + 1:]}

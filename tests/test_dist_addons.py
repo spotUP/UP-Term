@@ -346,6 +346,17 @@ class RecordMigration(unittest.TestCase):
             seen.add(r['id'])
         self.assertLessEqual({'git', 'nvim', 'perl', 'vim'}, seen)
 
+    def test_no_install_dos_names_the_relative_dir_after_its_cd(self):
+        # KIT-INSTALL-RELATIVE-DIR (2026-11-12): DIR may be relative to the caller's drawer (Execute
+        # Files/install.dos Files); after the script's CD into it, "{DIR}/x" named Files/Files/x. Every
+        # install.dos makes the CD through dist/common/kit-dir.dos and uses the drawer afterwards as $uptkit.
+        for src in [ROOT / 'dist/install.dos'] + sorted((ROOT / 'dist/addons').glob('*/install.dos')):
+            t = src.read_text(encoding='latin-1')
+            self.assertIn('; @include dist/common/kit-dir.dos\n', t, src)
+            self.assertNotIn('{DIR}', t.split('; @include dist/common/kit-dir.dos\n', 1)[1], src)
+        frag = (ROOT / 'dist/common/kit-dir.dos').read_text(encoding='latin-1')
+        self.assertIn('CD "{DIR}"\nSet uptkit "`CD`"\n', frag)
+
     def test_the_uptreal_lookup_has_one_source_resolve_addon_includes_it(self):
         src = (ROOT / 'dist/common/resolve-addon.dos').read_text(encoding='latin-1')
         self.assertNotIn('ENVARC:up-term/Dir', '\n'.join(l for l in src.splitlines() if not l.startswith(';')))

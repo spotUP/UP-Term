@@ -31,7 +31,7 @@ class InstallDosAmiSSL(unittest.TestCase):
 
     def test_shell_install_runs_the_script_between_check_and_recheck(self):
         p = libs_part()
-        run = 'Execute "{DIR}/install-amissl.dos" DIR "{DIR}" $optcpu060'
+        run = 'Execute "$uptkit/install-amissl.dos" DIR "$uptkit" $optcpu060'
         self.assertEqual(p.count(CHK), 2)
         self.assertLess(p.index(CHK), p.index(run))
         self.assertLess(p.index(run), p.rindex(CHK))

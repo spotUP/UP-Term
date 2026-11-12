@@ -9,8 +9,7 @@
 ; runs the parts one at a time with STEP (tests/test_dist_addons.py holds the two to
 ; the same list); the first part, check, has nothing to check for a stand-alone archive.
 FailAt 21
-; the archive's Files drawer: every name below is relative to it
-CD "{DIR}"
+; @include dist/common/kit-dir.dos
 ; REMOTE "host port": ENVARC:Claude/remote, where Claude Code runs (the NAS); plain
 ; Claude, with no API key, connects there. Written whenever given (ENVARC: and ENV:).
 ; The Installer passes it in the variable file ENV:UPTOPTREMOTE (as the base's

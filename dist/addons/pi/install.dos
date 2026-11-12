@@ -9,8 +9,7 @@
 ; runs the parts one at a time with STEP (tests/test_dist_addons.py holds the two to
 ; the same list); the first part, check, has nothing to check for a stand-alone archive.
 FailAt 21
-; the archive's Files drawer: every name below is relative to it
-CD "{DIR}"
+; @include dist/common/kit-dir.dos
 If NOT "{STEP}" EQ ""
   Skip {STEP}
 EndIf

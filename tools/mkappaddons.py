@@ -72,8 +72,7 @@ def files(pid, row):
 ; the same list); the first part, check, stops the install when up-term.lha is
 ; missing or too old (the reason is in ENV:UPTCHECK).
 FailAt 21
-; the archive's Files drawer: every name below is relative to it
-CD "{{DIR}}"
+; @include dist/common/kit-dir.dos
 If NOT "{{STEP}}" EQ ""
   Skip {{STEP}}
 EndIf

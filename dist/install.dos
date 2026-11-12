@@ -28,8 +28,7 @@
 ; console window); DEVICE / NODEVICE answer that one.
 ; (The brackets are { } here: the script's > redirections stay as they are.)
 FailAt 21
-; the kit's Files drawer: every name below is relative to it
-CD "{DIR}"
+; @include dist/common/kit-dir.dos
 ; The options. The kit's Install passes none of them on the command line (a
 ; kit in a long path made that line longer than AmigaDOS takes, 255): it
 ; writes each one it needs into the variable file ENV:UPTOPT<keyword> (the
@@ -178,7 +177,7 @@ If "{STEP}" EQ ""
         Set upssl "AmiSSL: @KBAMISSL@"
       EndIf
     EndIf
-    "{DIR}/UPBigVol" ROOM "$updest" @KBDRAWER@ @KBCOPYCOREUTILS@ @KBCOPYUSERLAND@ @KBUSERLAND@ $upkbuni $upkbemo @KBTOOLS@ $upkbssh $upkbbg @KBUNIX@ @KBRECORD@ SYS: @KBSYSTEM@ @KBFONTS@ @KBDESKTOP@ @KBBOOT@ $upkbwas @KBLIBS@ @KBMOUNT@ @KBCONSOLE@ $upssl
+    "$uptkit/UPBigVol" ROOM "$updest" @KBDRAWER@ @KBCOPYCOREUTILS@ @KBCOPYUSERLAND@ @KBUSERLAND@ $upkbuni $upkbemo @KBTOOLS@ $upkbssh $upkbbg @KBUNIX@ @KBRECORD@ SYS: @KBSYSTEM@ @KBFONTS@ @KBDESKTOP@ @KBBOOT@ $upkbwas @KBLIBS@ @KBMOUNT@ @KBCONSOLE@ $upssl
     If WARN
       Echo "UP-Term: nothing has been copied. Free some room, or give DEST a drawer on a bigger disk."
       UnSet upkbuni
@@ -538,7 +537,7 @@ If "{STEP}" EQ ""
   Version >NIL: LIBS:amisslmaster.library 5
   If WARN
     Echo "[INFO] AmiSSL: LIBS:amisslmaster.library version 5 is missing or older, running install-amissl.dos."
-    Execute "{DIR}/install-amissl.dos" DIR "{DIR}" $optcpu060
+    Execute "$uptkit/install-amissl.dos" DIR "$uptkit" $optcpu060
     Version >NIL: LIBS:amisslmaster.library 5
     If WARN
       Echo "[ERROR] AmiSSL was not installed, https programs (curl) cannot run."

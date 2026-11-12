@@ -1,0 +1,8 @@
+; The Files drawer DIR names becomes the current directory: every name below is relative to it.
+; DIR is spelled as the caller gave it, so it may be relative to the drawer the script was started
+; from (the README's Shell line: CD up-term, then Execute Files/install.dos Files): after this CD it
+; would name Files/Files. $uptkit is the same drawer as an absolute name (CD alone prints where the
+; Shell stands). A later use of the drawer (a program started by its path, a script handed the
+; drawer, a CD back after another one) goes through $uptkit, never through DIR.
+CD "{DIR}"
+Set uptkit "`CD`"

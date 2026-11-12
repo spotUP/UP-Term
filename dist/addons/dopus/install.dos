@@ -8,7 +8,7 @@
 ; The CPU choice is the installer's (database "cpu"), handed as ENV:UPTOPTCPU68000 (set for a 68000 or
 ; 68010): then the os3-68000 drawer (DOpus5_104_os3-68000.lha), else the os3 one (DOpus5_104_os3.lha).
 FailAt 21
-CD "{DIR}"
+; @include dist/common/kit-dir.dos
 If NOT "{STEP}" EQ ""
   Skip {STEP}
 EndIf
@@ -28,11 +28,11 @@ Else
   CD "$dopusbuild"
   Installer SCRIPT "Install DOpus5" APPNAME "Directory Opus 5" MINUSER Novice DEFUSER Novice NOLOG
   If WARN
-    CD "{DIR}"
+    CD "$uptkit"
     UnSet dopusbuild
     Quit 20
   EndIf
-  CD "{DIR}"
+  CD "$uptkit"
   UnSet dopusbuild
   ; upstream writes the DOpus5: assign and the DOpus5:C path into its ;BEGIN DOpus5 block of
   ; S:User-Startup and has them take effect at the next boot. Run those two lines now (whatever drawer
