@@ -2210,9 +2210,15 @@ $(foreach p,$(SLIM_IDS),$(eval $(call SLIM_RULE,$(p))))
 # build/up-term-full.lha, the offline kit (owner 2026-11-12): up-term.lha plus a Packages drawer with every .ipk of
 # the feed and Install-Packages, an AmigaDOS script that installs them all with no network (run from the kit's
 # drawer after Install). Run after `make dist`; FULL_BASE / FULL_IPK name another cut (a released one).
-# up-uhc is listed but not installed (one [INFO] line instead): its install.dos downloads the author's uhcinstall, which
-# downloads UHC; the UHC files are the author's, with no redistribution grant in the tree (dist/addons/uhc/LICENSES.txt,
-# owner decision 2026-10-27 at dist-uhc), so the offline kit cannot carry them. The .ipk stays in Packages for later.
+# up-uhc is installed only when the Amiga has a running TCP/IP stack (owner 2026-11-12): its install.dos downloads the
+# author's uhcinstall, which downloads UHC; the UHC files are the author's, with no redistribution grant in the tree
+# (dist/addons/uhc/LICENSES.txt, owner decision 2026-10-27 at dist-uhc), so the kit carries none of them. The stack test
+# is Get-UP-Term's: the kit's Files/tcpprobe returns 0 when bsdsocket.library opens (Install-Packages runs from the
+# kit's drawer). No stack: one [INFO] line instead, the .ipk stays in Packages for later. UHC's installer also needs
+# LhA (dist/addons/uhc/install.dos stops with an error without it, and upkg then leaves up-uhc unpacked and retries its
+# configure on every later install, rig OS 3.2 2026-11-12): no LhA in the path, the same kind of [INFO] line instead.
+# up-uhc goes before up-dopus.
+# The count check counts one `upkg install` line per package (the uhc one is indented inside its If).
 # The target removes nothing: a package left in build/dist-full by an older cut fails the count check below.
 # up-dopus goes last, after one [INFO] line: its install.dos runs upstream's own Install DOpus5 Installer script, which
 # has no unattended mode (Novice still asks and shows messages), so its window waits for answers; every other package
@@ -2231,7 +2237,11 @@ dist-full:
 	  echo "FailAt 21"; echo "Stack 262144"; \
 	  d=; for f in $(FULL_IPK)/*.ipk; do b=$$(basename $$f); case $$b in \
 	    up-dopus_*) d=$$b;; \
-	    up-uhc_*) echo "Echo \"[INFO] up-uhc skipped: UHC comes from its author's server at install time (not ours to pack), so it needs a network: later run  UP-Term:bin/upkg install Packages/$$b\"";; \
+	    up-uhc_*) echo "Files/tcpprobe >NIL:"; echo "If WARN"; \
+	      echo "  Echo \"[INFO] up-uhc skipped: UHC comes from its author's server at install time (not ours to pack) and this Amiga has no running TCP/IP stack: later run  UP-Term:bin/upkg install Packages/$$b\""; \
+	      echo "Else"; echo "  Which >NIL: LhA"; echo "  If WARN"; \
+	      echo "    Echo \"[INFO] up-uhc skipped: UHC's own installer needs LhA to unpack UHC and this Amiga has none: install LhA (Aminet: util/arc/lha), then run  UP-Term:bin/upkg install Packages/$$b\""; \
+	      echo "  Else"; echo "    UP-Term:bin/upkg install Packages/$$b"; echo "  EndIf"; echo "EndIf";; \
 	    *) echo "UP-Term:bin/upkg install Packages/$$b";; esac; done; \
 	  if [ -n "$$d" ]; then echo "Echo \"[INFO] up-dopus last: the Directory Opus 5 Installer window opens now and waits for your answers\""; \
 	    echo "UP-Term:bin/upkg install Packages/$$d"; fi; \
@@ -2240,7 +2250,7 @@ dist-full:
 	cp $(FULL_BASE) $(BUILD)/up-term-full.lha
 	cd $(BUILD)/dist-full && lha -aq ../up-term-full.lha up-term/Install-Packages up-term/Packages
 	@n=$$(ls $(FULL_IPK)/*.ipk | wc -l); m=$$(lha l $(BUILD)/up-term-full.lha | grep -c ' up-term/Packages/.*\.ipk$$'); \
-	  [ "$$n" -eq "$$m" ] && [ "$$m" -eq "$$(grep -c -E '^UP-Term:bin/upkg install |^Echo "\[INFO\] up-uhc skipped' $(FULL_STAGE)/Install-Packages)" ] \
+	  [ "$$n" -eq "$$m" ] && [ "$$m" -eq "$$(grep -c -E '^ *UP-Term:bin/upkg install ' $(FULL_STAGE)/Install-Packages)" ] \
 	  && lha l $(BUILD)/up-term-full.lha | grep -q ' up-term/Install$$' \
 	  || { echo "dist-full: the archive holds $$m packages, the feed $$n (an older cut in $(BUILD)/dist-full? remove that drawer)"; exit 1; }
 	@echo "[OK] $(BUILD)/up-term-full.lha: base + $$(ls $(FULL_IPK)/*.ipk | wc -l | tr -d ' ') packages"
