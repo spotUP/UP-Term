@@ -207,16 +207,21 @@ def _scripts(r, keys=()):
     answer goes too. A base without upkg-ask passes none, so install.dos keeps its own defaults."""
     st = '%s/%s' % (STAGE_DOS, r['archive'])
     rec = r['record'].rstrip('/')
+    # vsh runs the Executed script in its own process, so install.dos's CD into its Files drawer
+    # (dist/common/kit-dir.dos) is still the current directory afterwards, and AmigaDOS will not delete a
+    # drawer that is a current directory ("object is in use"): CD out of the stage before the Delete,
+    # as the prerm runs its Uninstall from a copy in T: so the record drawer holds nothing open
+    drop = 'rc=$?\ncd T:\nDelete >NIL: %s ALL QUIET\nexit $rc\n'
     if keys:
         post = ('#!/bin/sh\n# written by tools/pkgs.py ipk: asks the archive\'s install questions, runs its own install script\n'
                 '# with the answers, then drops the staged tree\n'
                 'set --\nif [ -f UP-Term:bin/upkg-ask ] && vsh UP-Term:bin/upkg-ask %s/Files/questions %s/answers %s; then\n'
                 '    . %s/answers\n    set -- %s\nfi\n'
-                'Execute %s/Files/install.dos %s/Files "$@"\nrc=$?\nDelete >NIL: %s ALL QUIET\nexit $rc\n'
-                % (st, st, r['archive'], st, ' '.join('%s "$%s"' % (k, k) for k in keys), st, st, st))
+                'Execute %s/Files/install.dos %s/Files "$@"\n' + drop) % (
+            st, st, r['archive'], st, ' '.join('%s "$%s"' % (k, k) for k in keys), st, st, st)
     else:
         post = ('#!/bin/sh\n# written by tools/pkgs.py ipk: runs the archive\'s own install script, then drops the staged tree\n'
-                'Execute %s/Files/install.dos %s/Files\nrc=$?\nDelete >NIL: %s ALL QUIET\nexit $rc\n' % (st, st, st))
+                'Execute %s/Files/install.dos %s/Files\n' + drop) % (st, st, st)
     sep = '' if rec.endswith(':') else '/'
     # a record without its Uninstall (an install from before the copy was fixed) must not block an upgrade
     # or a removal: warn and go on, so opkg still replaces the package

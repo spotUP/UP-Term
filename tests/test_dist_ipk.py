@@ -121,7 +121,9 @@ class IpkTest(unittest.TestCase):
         post = ctl.extractfile('./postinst').read().decode()
         self.assertIn('Execute T:upkg-stage/up-nvim/Files/install.dos T:upkg-stage/up-nvim/Files\n', post)
         # vsh runs the script and has no rm: the staged tree goes with the AmigaDOS Delete
-        self.assertIn('Delete >NIL: T:upkg-stage/up-nvim ALL QUIET\n', post)
+        # install.dos CDs into its Files drawer and vsh Executes it in its own process: the postinst CDs out of
+        # the stage first, or the Delete fails "object is in use" and the tree stays in RAM
+        self.assertIn('rc=$?\ncd T:\nDelete >NIL: T:upkg-stage/up-nvim ALL QUIET\nexit $rc\n', post)
         self.assertNotIn('rm -rf', post)
         pre = ctl.extractfile('./preinst').read().decode()
         self.assertIn('head -n 1 UP-Term:VERSIONS', pre)
@@ -160,7 +162,7 @@ class IpkTest(unittest.TestCase):
         st = 'T:upkg-stage/Claude'
         self.assertIn('if [ -f UP-Term:bin/upkg-ask ] && vsh UP-Term:bin/upkg-ask %s/Files/questions %s/answers Claude; then\n'
                       '    . %s/answers\n    set -- REMOTE "$REMOTE"\nfi\n' % (st, st, st), post)
-        self.assertIn('Execute %s/Files/install.dos %s/Files "$@"\n' % (st, st), post)
+        self.assertIn('Execute %s/Files/install.dos %s/Files "$@"\nrc=$?\ncd T:\nDelete >NIL: %s ALL QUIET\n' % (st, st, st), post)
         self.assertIn('./T/upkg-stage/Claude/Files/questions', data.getnames())
         # an add-on with no questions keeps the plain Execute line
         post = self.ctl_of('up-nvim_2.1_m68k-amigaos.ipk')[0].extractfile('./postinst').read().decode()
