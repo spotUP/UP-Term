@@ -13,6 +13,14 @@ SRC = (ROOT / "amarchy/flat.c").read_text()
 # saved-swap field -> the library base the stock routine expects in a6
 LVO_SWAPS = {"tsw": "GfxBase", "rsw": "GfxBase", "dsw": "dlib"}
 
+# Calls through dsw[el].saved that are NOT LVO calls. When flat_body_install succeeds, dsw[el].saved is the trampoline into
+# a dopus5 internal BODY routine with stack convention (flat.c comment above the fieldbodyfn typedef; install in
+# flat_body_install). The bodies save a6 and read every argument, GfxBase included, from the stack frame; their entry bytes
+# are checked before install (field 48 e7 20 32 41 ef 00 14, bevel 48 e7 38 32 ..., amarchy/flat_core.c). So a6 is not an
+# input and no base belongs in it; the bevel has no LVO at all. Exempt exactly these two typedefs; every other dsw call
+# (d4_drawbox, d4_fieldbox) is register convention and keeps the a6 rule.
+STACK_BODY_TYPEDEFS = {"fieldbodyfn", "bevelbodyfn"}
+
 
 def typedefs():
     return {m.group(1): m.group(2) for m in re.finditer(r"typedef\s+\w+\s*\(\*\s*(\w+)\s*\)\s*(\([^;]*?\));", SRC)}
@@ -30,19 +38,30 @@ class FlatOnHangWildCall(unittest.TestCase):
         for swap in LVO_SWAPS:
             self.assertIn(swap, seen, f"no call through {swap}.saved found: the parser no longer matches flat.c")
 
+    def test_stack_body_exemptions_still_match(self):
+        names = {name for name, swap, _ in saved_calls() if swap == "dsw"}
+        for name in STACK_BODY_TYPEDEFS:
+            self.assertIn(name, names, f"exempt {name} is no longer called through dsw.saved: drop it from the exemption")
+
     def test_saved_lvo_typedefs_take_a6(self):
         td = typedefs()
+        bad = []
         for name, swap, _ in saved_calls():
-            if swap in LVO_SWAPS:
-                self.assertIn(name, td, name)
-                self.assertIn('__reg("a6")', td[name], f"{name} (called through {swap}.saved) does not load a6")
+            if swap in LVO_SWAPS and name not in STACK_BODY_TYPEDEFS:
+                if name not in td:
+                    bad.append(f"{name} (called through {swap}.saved): typedef not found")
+                elif '__reg("a6")' not in td[name]:
+                    bad.append(f"{name} (called through {swap}.saved) does not load a6")
+        self.assertEqual(bad, [], "\n".join(bad))
 
     def test_saved_lvo_calls_pass_the_library_base(self):
+        bad = []
         for name, swap, args in saved_calls():
-            if swap in LVO_SWAPS:
+            if swap in LVO_SWAPS and name not in STACK_BODY_TYPEDEFS:
                 last = args.rsplit(",", 1)[-1]
-                self.assertIn(LVO_SWAPS[swap], last, f"{swap}.saved({args}) does not pass {LVO_SWAPS[swap]} last (a6)")
-
+                if LVO_SWAPS[swap] not in last:
+                    bad.append(f"{swap}.saved({args}) does not pass {LVO_SWAPS[swap]} last (a6)")
+        self.assertEqual(bad, [], "\n".join(bad))
 
 if __name__ == "__main__":
     unittest.main()
