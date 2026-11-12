@@ -2243,12 +2243,13 @@ dist-boot:
 	test -s dist/net/bebboget-1.11/cacert.pem || curl -fsSL -o dist/net/bebboget-1.11/cacert.pem https://curl.se/ca/cacert.pem
 	grep -q 'BEGIN CERTIFICATE' dist/net/bebboget-1.11/cacert.pem
 	cp dist/net/bebboget-1.11/bebboget dist/net/bebboget-1.11/installcerts dist/net/bebboget-1.11/cacert.pem \
-	  dist/net/bebboget-1.11/COPYING dist/net/bebboget-1.11/SOURCE.txt $(BOOT_STAGE)/
+	  dist/net/bebboget-1.11/COPYING dist/net/bebboget-1.11/SOURCE.txt \
+	  dist/net/bebboget-1.11/bebboget-up-term.diff $(BOOT_STAGE)/
 	sed 's|@FEED@|$(BOOT_FEED)|' dist/Get-UP-Term > $(BOOT_STAGE)/Get-UP-Term
 	chmod 755 $(BOOT_STAGE)/bebboget $(BOOT_STAGE)/installcerts $(BOOT_STAGE)/Get-UP-Term
 	cp /dev/null $(BUILD)/up-term-boot.lha && cd $(BUILD)/dist-boot && lha -aq ../up-term-boot.lha up-term-boot
 	@! grep -q '@FEED@' $(BOOT_STAGE)/Get-UP-Term && grep -q ' $(BOOT_FEED)/up-term.lha$$' $(BOOT_STAGE)/Get-UP-Term \
-	  && [ "$$(lha l $(BUILD)/up-term-boot.lha | grep -c -E ' up-term-boot/(bebboget|installcerts|cacert.pem|COPYING|SOURCE.txt|Get-UP-Term)$$')" -eq 6 ] \
+	  && [ "$$(lha l $(BUILD)/up-term-boot.lha | grep -c -E ' up-term-boot/(bebboget|installcerts|cacert.pem|COPYING|SOURCE.txt|bebboget-up-term.diff|Get-UP-Term)$$')" -eq 7 ] \
 	  || { echo "dist-boot: the archive lacks a file or Get-UP-Term has no feed address"; exit 1; }
 	@echo "[OK] $(BUILD)/up-term-boot.lha: $$(wc -c < $(BUILD)/up-term-boot.lha | tr -d ' ') bytes"
 

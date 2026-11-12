@@ -1,0 +1,164 @@
+diff -ru bebboget-1.11/src/bebboget.cpp bebboget-1.11-up-term/src/bebboget.cpp
+--- bebboget-1.11/src/bebboget.cpp	2026-11-12 10:57:06
++++ bebboget-1.11-up-term/src/bebboget.cpp	2026-11-12 10:57:16
+@@ -579,12 +579,15 @@
+     return r;
+ }
+ 
++static int exitCode = 0; // RETURN_OK, set to RETURN_ERROR (10) on failure
++
+ char* download() {
+     int isHttp = strncmp(url, "http://", 7) == 0;
+     int isHttps = strncmp(url, "https://", 8) == 0;
+ 
+     if (!isHttp && !isHttps) {
+         printf("unsupported protocol: %s\n", url);
++        exitCode = 10;
+         return 0;
+     }
+ 
+@@ -643,11 +646,13 @@
+ 
+         if (r) {
+             printf("error %ld\n", r);
++            exitCode = 10;
+             return 0;
+         }
+ 
+         if (!sloppy && !checkCertificates(host, s3.getCerts(), installCertificates)) {
+             printf("error: certificate not accepted\n");
++            exitCode = 10;
+             return 0;
+         }
+ 
+@@ -686,6 +691,7 @@
+         int read = is->read(rest.begin() + start, 2048);
+         if (read <= 0) {
+             puts("unexpected connection close");
++            exitCode = 10;
+             return 0;
+         }
+ 
+@@ -707,6 +713,17 @@
+             if (serverHeaders)
+                 printf("< %s\n", b);
+ 
++            // status line: a 4xx/5xx answer is an error, its body (an error page) is not the requested file
++            if (0 == strncmp(b, "HTTP/", 5)) {
++                char *sp = strchr(b, ' ');
++                long status = sp ? strtol(sp + 1, 0, 10) : 0;
++                if (status >= 400) {
++                    printf("error: HTTP status %ld\n", status);
++                    exitCode = 10;
++                    return 0;
++                }
++            }
++
+             char *colon = strchr(b, ':');
+             if (colon) {
+                 *colon++ = 0;
+@@ -787,6 +804,7 @@
+ #endif
+     } else {
+         printf("can't open '%s' for writing\n", src);
++        exitCode = 10;
+     }
+ 
+     if (size == 0) {
+@@ -825,5 +843,5 @@
+         --nredir;
+     }
+ 
+-    return 0;
++    return exitCode;
+ }}
+diff -ru bebboget-1.11/src/biginteger.cpp bebboget-1.11-up-term/src/biginteger.cpp
+--- bebboget-1.11/src/biginteger.cpp	2026-11-12 10:57:08
++++ bebboget-1.11-up-term/src/biginteger.cpp	2026-11-12 10:57:16
+@@ -332,6 +332,8 @@
+ void fastSecp384Mod(uint32_t* c, uint32_t* t, uint32_t* P) {
+     int64_t carry = 0;
+ 
++    // NIST P-384 (FIPS 186-4 D.2.4 / Guide to ECC alg. 2.30):
++    // T + 2*S1 + S2 + S3 + S4 + S5 + S6 - D1 - D2 - D3; S5 = (A23,A22,A21,A20) into words 7..4
+     // Each step accumulates contributions from high words (c[12..23])
+     // into low words (c[0..11]) with signed adjustments.
+     // This exploits the pseudo-Mersenne prime structure of P-384.
+@@ -348,16 +350,16 @@
+     carry += (int64_t)c[3] + c[15] + c[12] + c[20] + c[21] - c[14] - c[22] - c[23];
+     t[3] = carry; carry >>= 32;
+ 
+-    carry += (int64_t)c[4] + c[21] + c[21] + c[16] + c[13] + c[12] + c[22] - c[15] - c[23] - c[23];
++    carry += (int64_t)c[4] + c[21] + c[21] + c[16] + c[13] + c[12] + c[20] + c[22] - c[15] - c[23] - c[23];
+     t[4] = carry; carry >>= 32;
+ 
+-    carry += (int64_t)c[5] + c[22] + c[22] + c[17] + c[14] + c[13] + c[23] - c[16];
++    carry += (int64_t)c[5] + c[22] + c[22] + c[17] + c[14] + c[13] + c[21] + c[23] - c[16];
+     t[5] = carry; carry >>= 32;
+ 
+-    carry += (int64_t)c[6] + c[23] + c[23] + c[18] + c[15] + c[14] - c[17];
++    carry += (int64_t)c[6] + c[23] + c[23] + c[18] + c[15] + c[14] + c[22] - c[17];
+     t[6] = carry; carry >>= 32;
+ 
+-    carry += (int64_t)c[7] + c[19] + c[16] + c[15] - c[18];
++    carry += (int64_t)c[7] + c[19] + c[16] + c[15] + c[23] - c[18];
+     t[7] = carry; carry >>= 32;
+ 
+     carry += (int64_t)c[8] + c[20] + c[17] + c[16] - c[19];
+diff -ru bebboget-1.11/src/fastmath.cpp bebboget-1.11-up-term/src/fastmath.cpp
+--- bebboget-1.11/src/fastmath.cpp	2026-11-12 10:57:07
++++ bebboget-1.11-up-term/src/fastmath.cpp	2026-11-12 10:57:17
+@@ -526,6 +526,9 @@
+ 
+ static uinta fill(int nibble, uinta *data, int muLen, uint32_t const *mod, int modLen, int n0) {
+     uinta x(modLen + modLen + 1);
++    // mul() writes 2*muLen words but montgomery() reads 2*modLen (muLen == modLen-1 when the top
++    // limb of mod is 0, e.g. RSA moduli with a leading 0 byte): the words above must be 0, malloc does not clear.
++    memset(x.begin(), 0, x.size() * sizeof(uint32_t));
+     uinta *a, *b;
+ 
+     switch (nibble) {
+@@ -664,6 +667,9 @@
+ 	// allocate two buffers once
+ 	uinta buf0(z.size() + modLen + 1);
+ 	uinta buf1(maxLen);
++	// square()/mul() write 2*muLen words, montgomery() reads 2*modLen: clear the scratch buffer once
++	// (montgomery() leaves the upper half 0 afterwards, so both buffers stay clean).
++	memset(buf1.begin(), 0, buf1.size() * sizeof(uint32_t));
+ 
+ 	memset(buf0.begin(), 0, buf0.size() * sizeof(uint32_t));
+ 	memcpy(buf0.begin() + modLen, z.begin(), z.size() * sizeof(uint32_t));
+diff -ru bebboget-1.11/src/md.cpp bebboget-1.11-up-term/src/md.cpp
+--- bebboget-1.11/src/md.cpp	2026-11-12 10:57:09
++++ bebboget-1.11-up-term/src/md.cpp	2026-11-12 10:57:17
+@@ -296,7 +296,9 @@
+ 	update (Z8, 8);
+ 	update(mHash, l);
+ 	update(data + j, saltLen);
+-	uint8_t h2[l];
++	// not a VLA: as the newest VLA h2 sits at sp, and m68k gcc 6.5.0b then inlines the
++	// memcmp below as move.b (sp)+ which steps sp by 2 (h[i] is compared with h2[2*i]).
++	uint8_t h2[64]; // largest digest: SHA-512
+ 	digest(h2);
+ 
+ #ifdef DEBUG
+diff -ru bebboget-1.11/src/pkcs6.cpp bebboget-1.11-up-term/src/pkcs6.cpp
+--- bebboget-1.11/src/pkcs6.cpp	2026-11-12 10:57:07
++++ bebboget-1.11-up-term/src/pkcs6.cpp	2026-11-12 10:57:18
+@@ -279,6 +279,7 @@
+ void readTimes(CertificateInfo &ci, bytea const &times) {
+     const uint8_t *p   = times.begin();
+     const uint8_t *end = times.begin() + times.size();
++    int n = 0; // verifyCertificates runs more than once on the same CertificateInfo
+ 
+     while (p < end) {
+         if (*p != 0x17 && *p != 0x18) { // skip until UTCTime (0x17) or GeneralizedTime (0x18)
+@@ -312,7 +313,7 @@
+         timeval.tm_mon -= 1;
+         time_t tval = mktime(&timeval);
+ 
+-        if (!ci.validFrom) {
++        if (n++ == 0) {
+             ci.validFrom = tval;
+         } else {
+             ci.validTo = tval;

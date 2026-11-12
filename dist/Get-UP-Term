@@ -1,15 +1,18 @@
 .KEY TO/A,ALL/S
 .BRA {
 .KET }
-; Get-UP-Term: the bootstrap kit (owner 2026-11-12). Fetches the UP-Term base kit from the release feed over
-; https, unpacks it and starts its install; ALL then installs every package of the feed through upkg.
+; Get-UP-Term: the bootstrap kit (owner 2026-11-12). Fetches the UP-Term base kit (up-term.lha) from the
+; release feed over https into the TO drawer, unpacks it there (drawer up-term in TO) and runs the kit's own
+; install.dos. install.dos asks its questions and installs UP-Term to its own default drawer, SYS:UP-Term,
+; not to TO. ALL then installs every package of the feed through upkg.
 ;   CD <this drawer>
-;   Execute Get-UP-Term TO <drawer with about 110 MB free, e.g. Work:> [ALL]
+;   Execute Get-UP-Term TO <drawer with about 110 MB free for the archive and the unpacked kit, e.g. Work:> [ALL]
 ; Needs: a running TCP/IP stack (bsdsocket.library), lha in the path, a 68020 or better.
 ; The download is certificate-checked: when the system holds no root certificates for bebboget yet
 ; (ENVARC:certs), installcerts writes the ones of cacert.pem (Mozilla's list, from curl.se) there first.
-; bebboget and installcerts are Stefan Franke's bebboget 1.11, GPL v3+ (COPYING, SOURCE.txt; the source
-; archive is in up-term.lha, published at the same place: Files/net/bebboget-1.11).
+; bebboget and installcerts are Stefan Franke's bebboget 1.11, GPL v3+ (COPYING, SOURCE.txt; bebboget
+; is a modified build, its change is bebboget-up-term.diff; the source archive is in up-term.lha, published at
+; the same place: Files/net/bebboget-1.11).
 FailAt 21
 Which >NIL: lha
 If WARN
@@ -28,14 +31,27 @@ If NOT EXISTS ENVARC:certs
     Quit 20
   EndIf
 EndIf
-Echo "Fetching up-term.lha (about 33 MB) ..."
+Echo "Fetching up-term.lha (about 33 MB) into {TO} ..."
+Assign UPTGET: "{TO}"
+; bebboget (UP-Term's build, bebboget-up-term.diff) returns 10 on a failed connection, a failed certificate
+; check or an HTTP error status (4xx/5xx). An old archive goes first, and lha tests the new one as well, so a
+; cut-off file is not unpacked either.
+Delete >NIL: UPTGET:up-term.lha
 bebboget -O -D "{TO}" -o up-term.lha @FEED@/up-term.lha
 If WARN
+  Delete >NIL: UPTGET:up-term.lha
+  Assign UPTGET: REMOVE
   Echo "Get-UP-Term: the download failed (is the TCP/IP stack running?)."
   Quit 20
 EndIf
-Assign UPTGET: "{TO}"
-Echo "Unpacking ..."
+lha >NIL: -q t UPTGET:up-term.lha
+If WARN
+  Delete >NIL: UPTGET:up-term.lha
+  Assign UPTGET: REMOVE
+  Echo "Get-UP-Term: the downloaded up-term.lha is damaged."
+  Quit 20
+EndIf
+Echo "Unpacking up-term.lha into the drawer up-term in {TO} ..."
 lha -q x UPTGET:up-term.lha UPTGET:
 If WARN
   Assign UPTGET: REMOVE
@@ -43,6 +59,7 @@ If WARN
   Quit 20
 EndIf
 Delete >NIL: UPTGET:up-term.lha
+Echo "Starting the kit's install.dos: it asks its questions and installs UP-Term to SYS:UP-Term (not to {TO})."
 Execute UPTGET:up-term/Files/install.dos UPTGET:up-term/Files
 If WARN
   Assign UPTGET: REMOVE

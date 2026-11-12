@@ -2,12 +2,31 @@ bebboget 1.11 by Stefan "Bebbo" Franke: an https/http downloader for the
 Amiga that needs only a bsdsocket.library, as published on Aminet:
 
   https://aminet.net/comm/net/bebboget.lha   ($VER: amigaget 1.11 (05.12.2025))
-    bebboget (68020+), bebboget00 (68000), installcerts: the archive's
-    binaries, unmodified; bebboget.readme, COPYING, LICENSE: from the archive
+    bebboget00 (68000), installcerts: the archive's binaries, unmodified;
+    bebboget.readme, COPYING, LICENSE: from the archive
 
-  bebboget-1.11-src.tar.bz2: the complete corresponding source, the
-  author's repository https://franke.ms/git/bebbo/bebboget at commit
-  b18e500 ("Release 1.11").
+  bebboget-1.11-src.tar.bz2: the complete corresponding source of the
+  archive, the author's repository https://franke.ms/git/bebbo/bebboget at
+  commit b18e500 ("Release 1.11").
+
+bebboget (68020+) is a modified build, changed on 2026-11-12 by the UP-Term
+project: bebboget-1.11-src.tar.bz2 with bebboget-up-term.diff applied
+(patch -p1 inside bebboget-1.11/), built with m68k-amigaos-gcc (GCC) 6.5.0b
+(make Release=1 Release/bebboget: -mregparm=3 -Os -fomit-frame-pointer
+-m68020, -include of a header that maps gets(a,b) to fgets), then stripped.
+The changes:
+  - src/md.cpp: a fixed 64 byte buffer instead of a variable-length array in
+    the RSA-PSS check, because gcc 6.5.0b compiled its memcmp with a byte
+    step on the stack pointer and every PSS signature check failed.
+  - src/fastmath.cpp: the Montgomery scratch buffers are cleared after
+    allocation; unset memory made certificate checks fail at random.
+  - src/bebboget.cpp: the HTTP status line is read, a status of 400 or more
+    is an error, and bebboget returns 10 on every failure (it returned 0).
+  - src/biginteger.cpp: the NIST P-384 reduction adds its missing S5 terms.
+  - src/pkcs6.cpp: a certificate's validity times are read correctly when
+    the certificate is checked more than once.
+bebboget00 and installcerts are not rebuilt: bebboget00 still has the
+upstream faults above.
 
 Licence: GNU General Public License version 3 or later (COPYING, LICENSE).
 It has no certificates of its own: installcerts adds them (they go to

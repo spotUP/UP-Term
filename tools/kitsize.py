@@ -43,7 +43,7 @@ OPTIONS = {
                  ('one', ['AmiSSL/Libs/AmigaOS3/AmiSSL/*/amissl_v*.library'])],
 }
 # kit files no Install copies, whatever the options: the network tools' licences and sources
-NOT_COPIED = ['net/*/*-src.tar.bz2', 'net/*/COPYING', 'net/*/SOURCE.txt']
+NOT_COPIED = ['net/*/*-src.tar.bz2', 'net/*/*.diff', 'net/*/COPYING', 'net/*/SOURCE.txt']
 # the parts that copy no kit file and write a few small ones, by package: the base's /gg/bin/sh and TMP: drawer
 # (unix) and the record of the files and the choices (record); python's Python3: block in S:User-Startup (python);
 # uhc's download (about 150 KB) and its unpacked tree (about 1.2 MB), fetched from the net (uhctree).

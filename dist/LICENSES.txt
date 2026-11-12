@@ -58,8 +58,8 @@ Directory Opus 5 5.104 (the      AROS Public License 1.1          https://github
 up-dopus add-on: upstream's   (up-dopus.lha: Files/COPYING)    (up-dopus.lha: Files/SOURCE.txt)
 68k release builds,
 unmodified)
-bebboget 1.11                 GPL v3 or later (COPYING,        Files/net/bebboget-1.11/bebboget-1.11-src.tar.bz2
-                              LICENSE)
+bebboget 1.11 (bebboget:      GPL v3 or later (COPYING,        Files/net/bebboget-1.11/bebboget-1.11-src.tar.bz2
+modified by UP-Term)           LICENSE)                         + bebboget-up-term.diff (SOURCE.txt)
 BebboSSH 1.46.1 (bebbossh,    GPL v3 or later (COPYING); some  Files/net/bebbossh-1.46.1/ (bebbossh-1.45-src.tar.bz2 + patches/)
 bebbosshd, bebboscp, ...)     files public domain per header
 curl 8.22.0 (AmigaOS port)    curl licence (COPYING)           https://github.com/boingball/curl branch
