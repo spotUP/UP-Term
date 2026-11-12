@@ -321,13 +321,30 @@ class RecordMigration(unittest.TestCase):
             check = mi.build(ROOT / ('dist/common/%s' % mi.read_values(r['id'])['CHECKFRAG']), r['id'])
             if old.startswith('UP-Term:'):
                 # a record under UP-Term:: renamed through the one real drawer, resolved first (a multi-directory
-                # UP-Term: renames in its first directory only), and the assign dropped after
+                # UP-Term: renames in its first directory only); the assign stays for the copy part
                 old, new = (x.replace('UP-Term:', 'UPTREAL:', 1) for x in (old, new))
-                block = 'If EXISTS %s\n  If NOT EXISTS %s\n    Rename >NIL: %s %s\n  EndIf\nEndIf\nAssign >NIL: UPTREAL:\n' % (old, new, old, new)
+                block = 'If EXISTS %s\n  If NOT EXISTS %s\n    Rename >NIL: %s %s\n  EndIf\nEndIf\n' % (old, new, old, new)
                 self.assertLess(check.index('Assign >NIL: UPTREAL: UP-Term:\n'), check.index('If EXISTS %s' % old), r['id'])
             else:
                 block = 'If EXISTS %s\n  If NOT EXISTS %s\n    Rename >NIL: %s %s\n  EndIf\nEndIf' % (old, new, old, new)
             self.assertIn(block, check, r['id'])
+
+    def test_uptreal_stays_assigned_from_check_to_the_copy_part(self):
+        # UPKG-UPTREAL-GONE (2026-11-12): run without STEP (upkg's postinst) the script goes from check straight
+        # on to the copy part, which writes through UPTREAL:. The check's rename block dropped the assign, so
+        # git, nvim, perl and vim failed "Can't create directory UPTREAL:bin". Only the record's end drops it.
+        seen = set()
+        for r in pkgs.rows():
+            src = ROOT / 'dist/addons' / r['id'] / 'install.dos'
+            if r['id'] == 'base' or not src.is_file():
+                continue
+            out = mi.build(src, r['id'])
+            if 'UPTREAL:' not in out or 'Lab copy-' not in out:
+                continue
+            head = out[:out.index('Lab copy-')]
+            self.assertNotRegex(head, r'(?m)^\s*Assign >NIL: UPTREAL:\s*$', r['id'])
+            seen.add(r['id'])
+        self.assertLessEqual({'git', 'nvim', 'perl', 'vim'}, seen)
 
     def test_the_uptreal_lookup_has_one_source_resolve_addon_includes_it(self):
         src = (ROOT / 'dist/common/resolve-addon.dos').read_text(encoding='latin-1')

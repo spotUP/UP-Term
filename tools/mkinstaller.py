@@ -174,11 +174,14 @@ def read_values(pkg_id, extra=()):
     # the data drawer an add-on's Uninstall deletes, spelled through the one real drawer (UPTREAL:)
     if values.get('VARDIR', '').startswith('UP-Term:'):
         values['VARDIRREAL'] = 'UPTREAL:' + values['VARDIR'][len('UP-Term:'):]
-    # the check part's rename of a record drawer left under an old name: through UPTREAL:, resolved first
+    # the check part's rename of a record drawer left under an old name: through UPTREAL:, resolved first. The
+    # assign stays: run without STEP (a Shell, upkg's postinst) the script goes on from check to the copy part,
+    # which writes through UPTREAL:; record-end-addon.dos drops it after the record. Dropping it here left
+    # git, nvim, perl and vim copying to an unmounted UPTREAL: under upkg (2026-11-12, rig 99).
     pairs = [(o.replace('UP-Term:', 'UPTREAL:', 1), n.replace('UP-Term:', 'UPTREAL:', 1))
              for o, n in pkgs.old_record(row) if n.startswith('UP-Term:')]
     values['RENAMERECORDREAL'] = ('; @include dist/common/resolve-uptreal.dos\n' + pkgs.rename_lines(pairs)
-                                  + '\nAssign >NIL: UPTREAL:') if pairs else ''
+                                  if pairs else '')
     return values
 
 
