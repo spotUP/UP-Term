@@ -2214,6 +2214,9 @@ $(foreach p,$(SLIM_IDS),$(eval $(call SLIM_RULE,$(p))))
 # downloads UHC; the UHC files are the author's, with no redistribution grant in the tree (dist/addons/uhc/LICENSES.txt,
 # owner decision 2026-10-27 at dist-uhc), so the offline kit cannot carry them. The .ipk stays in Packages for later.
 # The target removes nothing: a package left in build/dist-full by an older cut fails the count check below.
+# up-dopus goes last, after one [INFO] line: its install.dos runs upstream's own Install DOpus5 Installer script, which
+# has no unattended mode (Novice still asks and shows messages), so its window waits for answers; every other package
+# is in by then. No package Depends on up-dopus, so the order breaks nothing.
 # shortcut: Install-Packages is not run on a rig by any test, add a rig case when the full kit is released again.
 FULL_BASE ?= $(BUILD)/up-term.lha
 FULL_IPK ?= $(BUILD)/ipk
@@ -2226,9 +2229,12 @@ dist-full:
 	@{ echo "; Install-Packages: installs every package of this kit's Packages drawer, no network needed."; \
 	  echo "; Install the base first (Install), then in a Shell:  CD <this drawer>  and  Execute Install-Packages"; \
 	  echo "FailAt 21"; echo "Stack 262144"; \
-	  for f in $(FULL_IPK)/*.ipk; do b=$$(basename $$f); case $$b in \
+	  d=; for f in $(FULL_IPK)/*.ipk; do b=$$(basename $$f); case $$b in \
+	    up-dopus_*) d=$$b;; \
 	    up-uhc_*) echo "Echo \"[INFO] up-uhc skipped: UHC comes from its author's server at install time (not ours to pack), so it needs a network: later run  UP-Term:bin/upkg install Packages/$$b\"";; \
 	    *) echo "UP-Term:bin/upkg install Packages/$$b";; esac; done; \
+	  if [ -n "$$d" ]; then echo "Echo \"[INFO] up-dopus last: the Directory Opus 5 Installer window opens now and waits for your answers\""; \
+	    echo "UP-Term:bin/upkg install Packages/$$d"; fi; \
 	} > $(FULL_STAGE)/Install-Packages
 	chmod 755 $(FULL_STAGE)/Install-Packages
 	cp $(FULL_BASE) $(BUILD)/up-term-full.lha
