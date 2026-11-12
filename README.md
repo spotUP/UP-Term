@@ -1,7 +1,49 @@
-# vtcon
+# UP-Term
 
-A modern console for AmigaOS 3.x (68020+): one terminal engine with three
-personalities, so that Amiga programs and Unix ports both render right.
+A modern terminal, a Unix userland and a flat desktop for AmigaOS 3.x (68020 or better, AmigaOS 3.0 and up; tested most on 3.2).
+
+- **UP-Term / vtcon**: a console window (`XCON:`) with a real terminal inside: 16, 256 and RGB colours, alternate screen, mouse, bracketed paste, sixel and kitty pictures, tabs, lines that re-wrap on resize. Unix ports (bash-compatible `vsh`, vim, tmux, less, git, ssh, curl) and Amiga programs both render right.
+- **Amarchy**: a desktop suite on top of Workbench: Left Amiga key shortcuts for the whole machine, a bar, menus, notices, themes, and `amarchy-flat`, which gives system gadgets (buttons, check boxes, input fields, sliders, Preferences programs) a flat look.
+- **upkg**: a package manager (opkg) with a feed of 28 add-ons: Neovim, Python 3.14, git, Perl, vim, BitchX, vbcc, Directory Opus 5.104 and more, from the Shell or a Workbench window.
+
+![The Amarchy desktop](docs/screenshots/amarchy-desktop.png)
+
+| | |
+|---|---|
+| ![A Unix program in an UP-Term window](docs/screenshots/terminal-unix.png) | ![A picture in the terminal through the kitty graphics protocol](docs/screenshots/terminal-kitty-picture.png) |
+| ![The upkg package browser](docs/screenshots/upkg-browser.png) | ![A Preferences program with the flat look](docs/screenshots/prefs-flat.png) |
+
+![A Directory Opus lister](docs/screenshots/dopus-lister.png)
+
+## Download and install
+
+Releases are on [spotUP/vtcon](https://github.com/spotUP/vtcon/releases/latest). Current: 1.1.
+
+| Archive | What it is | Use it when |
+|---|---|---|
+| `up-term.lha` (33 MB) | The base kit: terminal, Amarchy, Unix userland, upkg | The Amiga has a network: add-ons come through upkg |
+| `up-term-full.lha` (70 MB) | The base kit plus all 28 packages in a `Packages` drawer | The Amiga has no network |
+| `up-claude.lha`, `up-dopus.lha`, `up-nvim.lha`, `up-pi.lha`, `up-python.lha`, `up-uhc.lha` | Add-ons with their own Install | You want one add-on without upkg |
+| `up-term-src.lha` | The sources of everything shipped | |
+
+1. Copy the archive to the Amiga and unpack it: `lha x up-term.lha`.
+2. Double-click `Install` in the `up-term` drawer (needs Installer; AmigaOS 3.2 has it). From a Shell without Installer: `Execute Files/install.dos Files`.
+3. Reboot when Install offers to.
+4. Add-ons, with a TCP/IP stack running: `upkg update`, then `upkg browse` (or double-click `UP-Term:bin/upkg`). From the full kit, with no network: in a Shell, `CD` to the unpacked drawer and `Execute Install-Packages`.
+
+Update: install a newer kit over the old one; Install offers Update and copies only the files that changed. Add-ons: `upkg update`, then `upkg upgrade`.
+
+The network parts are optional and need a TCP/IP stack (Roadshow, Miami or AmiTCP) and AmiSSL 5 for curl.
+
+## Documentation
+
+- [dist/README.txt](dist/README.txt): the manual that ships in the kit: install, update, use, menu, keys, tmux, Amarchy, serial login, network, add-ons.
+- [dist/LICENSES.txt](dist/LICENSES.txt): the licences of every shipped part.
+- [Release notes](https://github.com/spotUP/vtcon/releases): changes and known issues per release.
+
+## The terminal engine
+
+One terminal engine with three personalities, so that Amiga programs and Unix ports both render right.
 
 - `amiga`  -- the ROM console.device dialect (RKM Devices, console chapter),
   including the private Amiga sequences and pen semantics.
@@ -12,6 +54,8 @@ personalities, so that Amiga programs and Unix ports both render right.
 The same bytes mean different things in the Amiga and xterm dialects (for
 example `CSI n u` sets the line length on the Amiga and restores the cursor
 in xterm), so a window carries exactly one personality at a time.
+
+## Source layout
 
 | Directory | Content |
 |-----------|---------|
