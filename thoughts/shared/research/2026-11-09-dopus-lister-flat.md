@@ -77,3 +77,14 @@ Per difference, at that build:
 
 Open: the owner's own screenshot conditions are needed to reproduce 1 and 3 (rig 63, own screen 1344x1080 with the theme
 palette?); an eye check of the same lister on the owner's setup decides whether a dopusiclass hook is still wanted.
+
+## Rig 63 state (s66)
+
+UNKNOWN. Read-only query attempt on rig 63 (UPTERM_RIG=63, tools/rig/ami.py) got a ping answer (wasabid 0.11b2) but exec "Status",
+rexx, uitree, screens, info all returned nothing within 20-60 s (timeouts, no output, no error). amarchy-flat running: not determined.
+DOpus running: not determined. rhits: not read. Possible cause: every non-ping ami.py request first runs rig.ensure_current()
+(tools/rig/ami.py gate(), rig.py:1971), which can hash/refresh VTC: and reboot a quiet rig it owns, i.e. it is NOT read-only; or the
+rig's agent is busy. Next step needs the owner: run `amarchy-flat STATUS` in a shell on rig 63, or allow a raw wasabi query that
+bypasses the gate.
+
+Owner verdict (2026-11-09, rig 68, amarchy-flat running, main without this fix): "the lister is fine". Closes DOPUS-LISTER-LOOK: the screenshot look came from amarchy-flat not running (FLAT-FALLBACK). No dopusiclass hook needed.

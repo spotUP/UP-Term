@@ -26,6 +26,22 @@ class AmarchyDocs(unittest.TestCase):
         self.assertLess(quit_at, un.index('Delete >NIL: "$updest" ALL QUIET'))
         self.assertIn('vsh unstartup.sh Amarchy', read('dist/install.dos'))  # an older kit's startup block is still stripped
 
+    def test_uninstall_quits_a_workbench_started_amarchy_through_its_port(self):
+        """W8b: Amarchy started from its SYS:WBStartup icon is no CLI process (Status/Break miss it) and Workbench
+        holds UP-Term/bin until it ends: the Uninstall stops it with `Amarchy QUIT` (by the drawer path, the UP-Term:
+        assign is already gone there) before the drawer is deleted, and Amarchy's CLI takes QUIT."""
+        un = read('dist/Uninstall')
+        quit_line = '"$updest/bin/Amarchy" >NIL: QUIT'
+        self.assertIn(quit_line, un)
+        quit_at = un.index(quit_line)
+        self.assertLess(un.index('\n  Assign UP-Term:\n'), quit_at)
+        self.assertLess(quit_at, un.index('Delete >NIL: "$updest" ALL QUIET'))
+        src = read('amarchy/amarchy.c')
+        main = src[src.index('int main(void)'):]
+        self.assertIn('quit_cli((const char *)GetArgStr())', main[:800])   # before ReadArgs: QUIT never starts a commodity
+        body = src[src.index('static int quit_cli('):src.index('int main(void)')]
+        self.assertIn('rexx_send("AMARCHY", "QUIT"', body)
+
     def test_man_page_and_readme_cover_notices_and_safe_off(self):
         man = read('man/amarchy.1')
         for w in ('amnotify', 'AMARCHY.NOTIFY', 'NOTIFY', 'COUNT', 'CLEAR', 'cap:screen', 'safe-off', 'Reboot DRYRUN'):

@@ -194,7 +194,14 @@ If EXISTS ENVARC:up-term/amiagent
 EndIf
 ; Amarchy (the Super-key commodity), when it runs: stopped first with Ctrl-C (its Wait loop ends on it, the same
 ; way as its ARexx QUIT, and it needs no RexxMast), because a running program's file cannot be deleted with the
-; drawer; its S:User-Startup block went with the other UP-Term blocks above
+; drawer; its S:User-Startup block went with the other UP-Term blocks above.
+; Started from its SYS:WBStartup icon (Leg W) it is no CLI process: Status does not list it and Break cannot reach it,
+; and until it ends Workbench holds its home drawer, so the Delete ALL below left an empty UP-Term/bin behind after
+; every reboot (W8b, KS 3.1 rig, 2026-11-09). `Amarchy QUIT` sends it the ARexx QUIT through its port (no RexxMast
+; needed) and waits until the port is gone; the UP-Term: assign is gone already, so by the drawer path.
+If EXISTS "$updest/bin/Amarchy"
+  "$updest/bin/Amarchy" >NIL: QUIT
+EndIf
 Status >ENV:upw COM UP-Term:bin/Amarchy
 If NOT WARN
   Break $upw C
@@ -264,6 +271,27 @@ Else
     Delete >NIL: "$updest" ALL QUIET
   EndIf
 EndIf
+; A program that ended a moment ago (Amarchy's last WBStartup reply, amarchy-flat putting its patches back) may
+; still hold UP-Term/bin while the Delete runs: the drawer stays, empty. Delete it again, at most 10 s.
+Set upwait ""
+Lab bingone
+If EXISTS "$updest/bin"
+  If NOT "$upwait" EQ ".........."
+    Wait 1
+    Set upwait "$upwait."
+    If "$upkeepvar" EQ "YES"
+      Delete >NIL: "$updest/~(var|var.info)" ALL QUIET
+    Else
+      If EXISTS ENVARC:up-term/DirWasThere
+        Delete >NIL: "$updest/#?" ALL QUIET
+      Else
+        Delete >NIL: "$updest" ALL QUIET
+      EndIf
+    EndIf
+    Skip bingone BACK
+  EndIf
+EndIf
+UnSet upwait
 UnSet upkeepvar
 UnSet updest
 If "$upvarmine" EQ "YES"

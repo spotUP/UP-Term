@@ -1,5 +1,6 @@
 /* Amarchy: the Left Amiga key commodity (plan 2026-10-22-amarchy-commodity.md, Phase C).
- * Usage: Run >NIL: Amarchy [CX_PRIORITY n]     ARexx port AMARCHY: RELOAD, SHOW, QUIT, RUN <row>, STATUS. */
+ * Usage: Run >NIL: Amarchy [CX_PRIORITY n]     ARexx port AMARCHY: RELOAD, SHOW, QUIT, RUN <row>, STATUS.
+ *        Amarchy QUIT                         stops the running one through its port (quit_cli). */
 #include <exec/types.h>
 #include <exec/memory.h>
 #include <dos/dos.h>
@@ -593,6 +594,36 @@ static int demo_cli(const char *a)
     return n == 0 ? 0 : 10;
 }
 
+/* `Amarchy QUIT`: the CLI form of the ARexx QUIT, for the Uninstall. Amarchy started from its SYS:WBStartup icon is
+ * no CLI process: Status does not list it and Break cannot reach it, so this is the only way a script stops it
+ * (RexxMast need not run: rexx_send puts the message on the port itself). Until it ends, Workbench holds the lock
+ * on its home drawer UP-Term:bin, and the Uninstall's Delete ALL left that drawer behind empty (W8b, KS 3.1 rig,
+ * after a reboot). Waits up to 10 s for the port to go. Returns -1 when the line is not QUIT; 0 when Amarchy quit,
+ * 5 when it was not running, 10 when it did not answer or did not go. */
+static int quit_cli(const char *a)
+{
+    static char out[REXX_HOST_OUT];
+    int i;
+    while (*a == ' ' || *a == '\t')
+        a++;
+    if (!starts(a, "QUIT"))
+        return -1;
+    for (a += 4; *a == ' ' || *a == '\t' || *a == '\n'; a++)
+        ;
+    if (*a)
+        return -1;
+    if (!FindPort((STRPTR)"AMARCHY")) {
+        PutStr((STRPTR)"Amarchy is not running\n");
+        return 5;
+    }
+    out[0] = 0;
+    if (rexx_send("AMARCHY", "QUIT", out, (int)sizeof out) != 0)
+        return 10;
+    for (i = 0; i < 50 && FindPort((STRPTR)"AMARCHY"); i++)
+        Delay(10);
+    return FindPort((STRPTR)"AMARCHY") ? 10 : 0;
+}
+
 int main(void)
 {
     ULONG sigs, cxs, rxs, nos, nts, lps, wrs, cws, tks;
@@ -603,8 +634,10 @@ int main(void)
     int pri = 0;
     if ((ev = demo_cli((const char *)GetArgStr())) >= 0)
         return ev;
+    if ((ev = quit_cli((const char *)GetArgStr())) >= 0)
+        return ev;
     if (qmark_line((const char *)GetArgStr())) { /* `Amarchy ?` shows the template and ends */
-        PutStr((STRPTR)"CX_PRIORITY/K/N  |  DEMO [STOP|STATUS|n]\n");
+        PutStr((STRPTR)"CX_PRIORITY/K/N  |  DEMO [STOP|STATUS|n]  |  QUIT\n");
         return 0;
     }
     if ((rda = ReadArgs((STRPTR)"CX_PRIORITY/K/N", args, 0))) {

@@ -1,71 +1,73 @@
----
-date: 2026-11-08
-session: s63 amarchy
-topic: where each Amarchy kit part starts at boot (Startup-Sequence / User-Startup / WBStartup)
-status: research, no code changed
----
+# Amiga startup order: patcher, Workbench-dependent commodity, indexer (2026-11-08)
 
-# Amiga startup order for the Amarchy kit
+Sources: A = /Users/spot/Code/Reference/amigadeveloperdocs/ADCD_2.1 ; N = /Users/spot/Code/Reference/NDK3.2R4/ReleaseNotes ; P = this project.
+Method: grep of both trees. Budget-limited, ~15 calls. The local docs are thin on boot ORDER: that is stated as UNVERIFIED where it applies.
 
-Note: the owner's term "system:WB-Startup" is the drawer SYS:WBStartup (no hyphen).
+## Doc-backed facts
 
-## 1. Rules with citations
+1. Reserved Workbench tool types: TOOLPRI=n (task priority at launch), STARTPRI=n (start order of icons in the WBStartup drawer), DONOTWAIT (Workbench does not wait for the program started from a WBStartup icon to return). Source: A Libraries_Manual_guide/node0244.html (lines 51-56 of the text-stripped page).
+2. Default WAIT time for icons in the WBStartup drawer is five seconds (so a WBStartup tool that neither returns nor says DONOTWAIT holds the drawer scan for that time). Source: N wb-RelNotes line 464 (workbench.library 44.629).
+3. The WBStartup tool types are shown in the Information window even outside WBStartup (DONOTWAIT/STARTPRI/WAIT; "Do not wait" gadgets exist for WBStartup icons). N wb-RelNotes lines 950-958, 1074-1075, 1089.
+4. Skipping the WBStartup scan at boot: hold Shift (LoadWB, N wb-RelNotes 227-229, also `loadwb skip`) or Alt (N wb-RelNotes 940-941). Confirms the drawer is scanned by workbench.library when LoadWB starts Workbench, i.e. WBStartup tools start AFTER LoadWB has been invoked, not before.
+5. WBStartup processing: tools that fail to load are not started (N wb-RelNotes 1573-1574); "wait until finished" mis-associated return messages when more than one tool asked to wait, fixed by the 47.x rewrite (N wb-RelNotes 2609-2614). Scan of the drawer is serialised against OpenWorkbenchObject() (N wb-RelNotes 1615-1616).
+6. A program started from WBStartup gets a WBStartup message (argc==0, sm_ArgList), as from any icon. Source: A Libraries_Manual_guide/node023E.html, node0248.html.
+7. IPrefs is a CLI program that sets up notification on the preferences files and applies them (opens/reopens screen, palette, patterns, pointer). Source: A Libraries_Manual_guide/node0229.html (lines 25-35); N IPrefs-RelNotes lines 114-116 (palette/pointer change closes and reopens the Workbench screen), 231-232 (IPrefs re-opens the screen on mode change), 206-210 (CloseWorkbench / non-WB windows on screen can block it).
+8. IPrefs stack: V44.1 "stack size is now inherited from the parent CLI" (N IPrefs-RelNotes line 7); a later version "increased the IPrefs process stack size to 8192 bytes. This fixed a few inexplicable crashes" (line 56); and IPrefs was reworked to "require much less stack" (lines 318-323). So IPrefs is stack-sensitive across versions; its drawing runs on its own process stack. A patched sysiclass called from IPrefs adds frames to THAT stack.
+9. IPrefs and Intuition are coupled (N IControl-RelNotes line 79 "combination of iprefs and intuition"; lines 142-143 old IPrefs/Intuition versions mismatch). Relevant to patching Intuition classes before IPrefs runs.
+10. IPrefs takes the IntuitionBase master lock paths and can call OpenScreenTagList (N IPrefs-RelNotes 11-16). A patch that opens a screen/lock-heavy call or prints to a window while IPrefs holds state risks deadlock (inference, UNVERIFIED as cause).
+11. 3.2 system modules: updating of system modules disabled when booting without startup-sequence (N system-startup-RelNotes 118-126). SetPatch runs inside the startup-sequence (N SetPatch-RelNotes 118, 149).
+12. Project fact: console.device / XCON: / PTY: are mounted BEFORE S:User-Startup runs (P dist/install.dos lines 233-234). S:User-Startup content is created/edited by install.dos with ;BEGIN/;END blocks (P dist/install.dos 259-270, 552-568, 587-602). Today all three programs start from S:User-Startup:
+   - Amarchy: `Run >NIL: UP-Term:bin/Amarchy` (install.dos 563-568)
+   - amarchy-index: block ";BEGIN UP-Term Amarchy index" (install.dos ~575-585, tail seen at line 584)
+   - amarchy-flat: `Run >NIL: UP-Term:bin/amarchy-flat BOOT` (install.dos 597-602; also rig FLAT_BOOT at tools/rig/amarchy_gui_rig.py:1307)
+   No SYS:WBStartup use for these today (grep of dist and tools/rig finds WBStartup only in lucide-icons mapping and a rig comment about an AppMenuItem). dist/lucide-icons lines 49 and 93 only map icons.
 
-R1. Order in the real 3.2.2 Startup-Sequence (the rig's own copy):
-SetPatch (l.18) -> AddDataTypes REFRESH QUIET (l.84) -> IPrefs (l.85) -> `Execute S:User-Startup` (l.96-97) -> LoadWB (l.100) -> EndCLI >NIL: (l.101).
-Source: build/rig3/os-322/S/Startup-Sequence.os. So S:User-Startup runs BEFORE Workbench exists; WBStartup is processed only when LoadWB brings Workbench up.
+## NOT found in local docs (UNVERIFIED)
 
-R2. The boot console is forced open by System-Startup (item 16) and the Startup-Sequence runs in it as a shell: NDK3.2R4/Autodocs/system-startup.doc:49-62. Anything a User-Startup line prints goes to that boot console, and a console window needs a screen. Before LoadWB the only screen is the early one; output there is what the owner sees as the requester / "Output window" with Workbench not opening. (Mechanism inferred from R1+R2 plus owner report; not stated in one doc line. Unverified.)
+- The exact order of IPrefs vs LoadWB inside the stock S:Startup-Sequence (ADCD grep hits for Startup-Sequence are only unrelated code examples: A Includes_and_Autodocs_3._guide/node05C1.html, AmigaMail_Vol2_guide/node017C.html). Commonly known (from memory, not verified here): stock 3.1 Startup-Sequence runs SetPatch, ..., `IPrefs`, ..., `LoadWB`, then `EndCLI`; S:User-Startup is run from Startup-Sequence via `Execute S:User-Startup` (3.1: before IPrefs? placement differs per version: UNVERIFIED).
+- Whether the Workbench screen is open when WBStartup tools start (inferred yes: WBStartup is scanned by workbench.library as it initialises, which is after LoadWB; the screen opening is workbench.library startup, but no doc states "screen open before first WBStartup tool"). UNVERIFIED.
+- Whether IPrefs has finished before WBStartup tools run (IPrefs is started by Startup-Sequence before LoadWB on stock layouts, but IPrefs re-applies prefs asynchronously via notification; no doc guarantees "done"). UNVERIFIED.
+- Picasso96 installer placement, AfA OS / AfA_OS_Loader placement: no local docs (grep for picasso96/AfA found nothing relevant). UNVERIFIED. Memory only: P96 installs `P96:` assigns and a `Picasso96Mode` / `P96Prefs` step in S:User-Startup, and monitors load via DEVS:Monitors and LoadMonDrvs; not verified here.
 
-R3. Convention for background programs: `run >nil: prog` in User-Startup (Amiga Mail Vol 2, ADCD_2.1/AmigaMail_Vol2_guide/node0114.html:20-23). Our `Run >NIL:` lines follow it; the `Run` itself prints nothing with >NIL:, but the started program's own stdout is NIL: only if it inherits it (Run >NIL: gives the child NIL: as output).
+## Recommended layout (reasoned from the facts above, not from a doc that states it)
 
-R4. WBStartup semantics: drawer SYS:WBStartup, icons started by Workbench in STARTPRI order (STARTPRI=n; default priority ordering), DONOTWAIT tells Workbench not to wait for the program to return, TOOLPRI sets the task priority: Libraries_Manual_guide/node0244.html:51-56 (RKM "Tool Types"), also NDK3.2R4/ReleaseNotes/wb-RelNotes:464 ("Default WAIT time for icons in the WBStartup drawer is five seconds") and :956. Holding Shift at boot skips the drawer (wb-RelNotes:227, :940). DONOTWAIT/STARTPRI only make sense in WBStartup (wb-RelNotes:956).
+(a) amarchy-flat (sysiclass patcher): must be active before Workbench opens windows AND before IPrefs draws, otherwise IPrefs/Workbench draw some imagery unpatched and the first draw through the patch happens on IPrefs's small stack. Place it in S:Startup-Sequence area before IPrefs (or S:User-Startup if the install puts User-Startup before IPrefs: check the target's Startup-Sequence, UNVERIFIED) as a headless Run with no window output (no Echo, no Open of CON:), because console output at that point has no screen. The patch must itself keep its stack usage on the stack of the caller small (drawing through the patched sysiclass runs on whatever stack IPrefs/Workbench has: fact 8). Its init must not need the Workbench screen.
+(b) Amarchy commodity: SYS:WBStartup icon with `DONOTWAIT` and a high-numbered `STARTPRI` so it starts after the patcher is in and it does not hold the drawer for 5 seconds (facts 1, 2). WBStartup implies workbench.library is up, which is the screen the commodity needs (inferred). The program still has to check for the screen itself (LockPubScreen("Workbench")) as the guarantee is not documented. Keep the existing S:User-Startup block only as fallback; do not start from both.
+(c) amarchy-index: also WBStartup, DONOTWAIT, later STARTPRI than (b), run at low task priority (TOOLPRI=-10 or lower, fact 1) so it does not compete with the boot; no Workbench screen needed, so it could equally stay a User-Startup `Run >NIL:` with `ChangeTaskPri`.
+No output at all before Workbench opens (owner hint): consistent with fact 12 (user-startup console exists) but the stack/IPrefs crash is not explained by output alone.
 
-R5. Windows and screens belong after LoadWB: Workbench-RelNotes:203 shows even Workbench blocks AmigaDOS requesters for its own scan; programs that open windows/requesters should run when Workbench is up (WBStartup), not from User-Startup.
+## Open questions
 
-R6. Assigns and Path belong in User-Startup (needed by everything later): Amiga Mail node0114.html:23; Picasso96 installer adds only an Assign to S:User-Startup: Picasso96Install/InstallPicasso96:474-482 and :4717-4724 (`Assign <MainPath>: ...`), and prints nothing there.
+1. Read the actual stock 3.1 and 3.2 S:Startup-Sequence from the rig images (not available in local docs) and record where IPrefs, LoadWB and `Execute S:User-Startup` sit. This decides whether S:User-Startup is before or after IPrefs.
+2. KS 3.1 boot crash: capture the stack pointer and stack size of the IPrefs process when it enters the patched sysiclass (fact 8 suggests a CLI-inherited, small stack; ask the rig to log `Stack` for the boot CLI and IPrefs). Check whether the patch runs BEFORE IPrefs at all today (it starts in User-Startup, so IPrefs/LoadWB may already be running when the patch installs, i.e. patching under a live drawer).
+3. 3.2 P96 boot freeze: P96 monitor/driver loading (LoadMonDrvs, P96 screenmode changes) triggers IPrefs reopening the Workbench screen (N IPrefs-RelNotes 114-116, 231-232); a patch installed or drawing during that reopen is a suspect. UNVERIFIED; needs a rig trace.
+4. How do Picasso96 and AfA_OS_Loader place their patches? Needs their install scripts (not local); fetch from the installed images or Aminet.
+5. Does WBStartup STARTPRI order get honoured by 3.1 workbench.library as in 3.2 (docs here are 2.1 era ADCD plus 3.2 NDK notes)? Test on the 3.1 rig.
 
-R7. P96: no start line of its own. Its installer puts the monitor in DEVS:Monitors (loaded by the OS, at library-open time) and settings in ENVARC:/Picasso96Settings; WBStartup is used only for the printer patch (InstallPicasso96:428, :501). The guide says: "Ensure that a monitor file is installed in DEVS:Monitors ... If you use a custom Startup-Sequence, ensure that this file is loaded": documentation/P96_english.guide:1436-1438. Also remove stale driver "Picasso" from Devs:Monitors OR WBStartup (guide:312). The screenmode switch ("SetSwitch() - Picasso96 800x600x32") happens when IPrefs opens the Workbench screen (after R1 l.85), so anything that opens a screen/window before then races it. (Last clause: inference from owner's rig-2 freeze note in ks31-boot-crash.md; unverified.)
+## Verified by main session 2026-11-08: stock Startup-Sequence order
 
-R8. AfA OS 4.8 (aminet misc/os/AfAOS4.8, extracted at /Users/spot/Code/Reference/AfAOS/x/AfA_OS). Docs/AfA_OS_Documentation.txt:238-241: `c:morelibspace` "if possible in the first line of your startup-sequence but latest before the setpatch command" (:246-250 `REBOOT` variant, because OS3.1 does not reboot after the first SetPatch). :280-289: `c:AfA_OS_Loader` goes "after (beneath) the AddDatatypes command in your startup-sequence"; "Tools like Visual Prefs and Birdie should be started later than the AfA_OS_Loader or text centering will not work properly." Install_AfA_OS:141 leaves the Startup-Sequence edit to the user. So the loader is in place before IPrefs/User-Startup/LoadWB, and our SetFunction patches (amarchy-flat, Amarchy) start after it, same class as Visual Prefs/Birdie. This replaces the earlier second-hand source thoughts/shared/handoffs/s28-evidence/round-corners-afa.md:34-36, which agrees.
+Read from the clean images (~/Downloads/clean-wb/Clean Workbench Installs/Workbench_3.1.hdf and Workbench_3.2.2.hdf, S/Startup-Sequence via xdftool):
 
-R9. Early-boot output: `Echo` or program banners in User-Startup (before LoadWB) are the requester trigger per owner; the kit's convention for quiet is `>NIL:` on every command (we do it) and `Echo >NIL:` is not needed if nothing prints.
+| Step | 3.1 line | 3.2.2 line |
+|---|---|---|
+| SetPatch | 4 | 18 |
+| AddDataTypes | 45 | 84 |
+| IPrefs | 46 | 85 |
+| ConClip | 47 | 86 |
+| Execute S:User-Startup | 51-52 | 96-97 |
+| LoadWB | 58 | 100 |
+| EndCLI | 59 | 101 |
 
-## 2. Our current lines (dist/install.dos)
+Consequence: on both versions IPrefs is already running when S:User-Startup starts amarchy-flat, so the patch is
+installed under a live IPrefs today. "Before IPrefs" is reachable only by editing S:Startup-Sequence itself (insert
+between AddDataTypes and IPrefs). SYS:WBStartup runs after LoadWB, so a patcher there installs under a live
+Workbench and must refresh the windows already drawn.
 
-All are appended to S:User-Startup, i.e. run at R1 l.96, before LoadWB:
+## Owner decisions (s64, 2026-11-08; supersedes the s63 ledger note "KS 3.1 fallback only if test shows need")
 
-| Block | Line(s) | Command | Now | Docs say |
-|---|---|---|---|---|
-| UP-Term assign | 261-267 | `If EXISTS` + `Assign UP-Term:` | User-Startup | right (R6) |
-| UP-Term (GG:) | 848-856 | `Assign GG: UP-Term:` | User-Startup | right (R6) |
-| tmp | 892-897 | `Assign TMP: T:` | User-Startup | right (R6) |
-| AmiSSL | install-amissl.dos:46-54 | Assign, Path | User-Startup | right (R6) |
-| Amarchy | 563-568 | `Run >NIL: UP-Term:bin/Amarchy` | User-Startup | WBStartup (R4,R5): it opens windows/menu |
-| Amarchy index | 580-585 | `Run >NIL: UP-Term:bin/amarchy-index` | User-Startup | WBStartup or stay (no UI; only a scan; R3) |
-| Amarchy-Flat | 597-602 | `Run >NIL: UP-Term:bin/amarchy-flat BOOT` | User-Startup | AfA OS reskin and P96 screen are set by IPrefs; flat patches SetFunction on intuition/graphics. Must start after AfA loader and (to be safe) after Workbench screen: WBStartup, STARTPRI after AfA (R7,R8) |
-| serial / wasabi / SolidWin | 961, 1022, 1049 | `Run >NIL: C:upgetty/wasabid/SolidWin` | User-Startup | daemons, no output: may stay (R3); they open no windows |
-| console / device | 1272, 1313 | `C:UPConsole >NIL: CON ON / DEVICE ON` | User-Startup | replaces CON: handler; must be before windows open: stay (R6 spirit; unverified) |
-| RemLib (OS 3.0/3.1) | 1146 | in S:Startup-Sequence | before SetPatch | right: ROM-resident lib removal must precede SetPatch |
-
-## 3. Proposed layout
-
-- S:Startup-Sequence: only RemLib (existing, before SetPatch). AfA OS lines are the AfA installer's (morelibspace first; AfA_OS_Loader after AddDataTypes). We do not touch them (R8).
-- S:User-Startup (pre-Workbench, silent, no windows): the assigns, Path, console/device handler switch, daemons (upgetty, wasabid, SolidWin). Every line `>NIL:` and guarded (R3, R6).
-- SYS:WBStartup (after LoadWB): Amarchy, amarchy-index, amarchy-flat as project/tool icons with `DONOTWAIT`, STARTPRI ordering index < flat < Amarchy (or per owner), and TOOLPRI left default (R4, R5). Uninstall deletes the icons by name; Update replaces the old User-Startup blocks via unstartup.sh.
-- Boot.log marker lines (rig) must also move: the "UP-Term shadows done" sequencing in ks31-boot-crash.md row 11 is the check for leg W.
-
-## 4. Open questions only the owner can answer
-
-1. Which hard evidence for "echo before WB gives requester"? Is it from a rig boot.log line, so we can name the exact line that prints?
-2. RESOLVED: AfA OS archive fetched to /Users/spot/Code/Reference/AfAOS; R8 now cites its documentation.
-3. Should amarchy-flat also run on a Shift-skipped WBStartup boot (then Amarchy would not start; accept)?
-4. Should the console/device switch (UPConsole) stay in User-Startup although it runs before IPrefs finishes? (It must precede any window.)
-5. Should kits on KS 3.1 (no WBStartup STARTPRI handling by 3.1 workbench.library 40? unverified) keep User-Startup as a fallback?
-
-## Owner decisions (AskUserQuestion, 2026-11-08)
-
-- Layout adopted: silent assigns, AmiSSL, UPConsole and daemons stay in S:User-Startup (all >NIL:); Amarchy, amarchy-index
-  and amarchy-flat move to SYS:WBStartup as DONOTWAIT icons ordered by STARTPRI. A User-Startup fallback for KS 3.1 is kept
-  only if a rig test shows KS 3.1 does not honour STARTPRI/DONOTWAIT. Accepted cost: Shift at boot skips the Amarchy set.
-- Fetch aminet misc/os/AfAOS4.8 into /Users/spot/Code/Reference so the AfA OS start rule rests on its own readme/install script.
+1. amarchy-flat starts BEFORE IPrefs. The installer inserts one marked line into S:Startup-Sequence between
+   AddDataTypes and IPrefs (no output, `>NIL:`); uninstall removes exactly that marked line. Accepted cost: we edit
+   the system's own Startup-Sequence.
+2. Amarchy (commodity) and amarchy-index both start from SYS:WBStartup icons with DONOTWAIT. STARTPRI: Amarchy
+   before the indexer; the indexer gets a low TOOLPRI. Amarchy keeps waiting for the Workbench screen itself
+   (LockPubScreen), because no doc guarantees it is open yet. User-Startup lines for all three go away.
