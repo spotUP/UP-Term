@@ -1,0 +1,57 @@
+.KEY TO/A,ALL/S
+.BRA {
+.KET }
+; Get-UP-Term: the bootstrap kit (owner 2026-11-12). Fetches the UP-Term base kit from the release feed over
+; https, unpacks it and starts its install; ALL then installs every package of the feed through upkg.
+;   CD <this drawer>
+;   Execute Get-UP-Term TO <drawer with about 110 MB free, e.g. Work:> [ALL]
+; Needs: a running TCP/IP stack (bsdsocket.library), lha in the path, a 68020 or better.
+; The download is certificate-checked: when the system holds no root certificates for bebboget yet
+; (ENVARC:certs), installcerts writes the ones of cacert.pem (Mozilla's list, from curl.se) there first.
+; bebboget and installcerts are Stefan Franke's bebboget 1.11, GPL v3+ (COPYING, SOURCE.txt; the source
+; archive is in up-term.lha, published at the same place: Files/net/bebboget-1.11).
+FailAt 21
+Which >NIL: lha
+If WARN
+  Echo "Get-UP-Term: lha is not in the path (Aminet util/arc/lha.run). Nothing was changed."
+  Quit 20
+EndIf
+If NOT EXISTS "{TO}"
+  Echo "Get-UP-Term: {TO} does not exist. Nothing was changed."
+  Quit 20
+EndIf
+If NOT EXISTS ENVARC:certs
+  Echo "Installing the root certificates (ENVARC:certs) ..."
+  installcerts cacert.pem
+  If WARN
+    Echo "Get-UP-Term: installcerts failed."
+    Quit 20
+  EndIf
+EndIf
+Echo "Fetching up-term.lha (about 33 MB) ..."
+bebboget -O -D "{TO}" -o up-term.lha @FEED@/up-term.lha
+If WARN
+  Echo "Get-UP-Term: the download failed (is the TCP/IP stack running?)."
+  Quit 20
+EndIf
+Assign UPTGET: "{TO}"
+Echo "Unpacking ..."
+lha -q x UPTGET:up-term.lha UPTGET:
+If WARN
+  Assign UPTGET: REMOVE
+  Echo "Get-UP-Term: lha could not unpack {TO} up-term.lha."
+  Quit 20
+EndIf
+Delete >NIL: UPTGET:up-term.lha
+Execute UPTGET:up-term/Files/install.dos UPTGET:up-term/Files
+If WARN
+  Assign UPTGET: REMOVE
+  Echo "Get-UP-Term: the install did not finish; the kit is in {TO} up-term."
+  Quit 20
+EndIf
+Assign UPTGET: REMOVE
+If "{ALL}" EQ "ALL"
+  Stack 262144
+  UP-Term:bin/upkg update
+  UP-Term:bin/upkg install --all
+EndIf

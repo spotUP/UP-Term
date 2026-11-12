@@ -2229,6 +2229,29 @@ dist-full:
 	  || { echo "dist-full: the archive holds $$m packages, the feed $$n (an older cut in $(BUILD)/dist-full? remove that drawer)"; exit 1; }
 	@echo "[OK] $(BUILD)/up-term-full.lha: base + $$(ls $(FULL_IPK)/*.ipk | wc -l | tr -d ' ') packages"
 
+# build/up-term-boot.lha, the bootstrap kit (owner 2026-11-12): bebboget, installcerts, a root certificate file and
+# Get-UP-Term, which fetches up-term.lha from the feed of dist/upkg.conf, unpacks it and starts its install (ALL: every
+# package through upkg). dist/net/bebboget-1.11/cacert.pem is https://curl.se/ca/cacert.pem (Mozilla's root list): not
+# in git (the global *.pem ignore rule and the credentials commit hook), fetched here when absent; delete the file to
+# get a newer list when a release is cut. Needs no build: every other input is in dist/.
+BOOT_STAGE := $(BUILD)/dist-boot/up-term-boot
+BOOT_FEED := $(shell awk '$$1 == "src/gz" {print $$3}' dist/upkg.conf)
+.PHONY: dist-boot
+dist-boot:
+	@test -n "$(BOOT_FEED)" || { echo "dist-boot: no src/gz line in dist/upkg.conf"; exit 1; }
+	mkdir -p $(BOOT_STAGE)
+	test -s dist/net/bebboget-1.11/cacert.pem || curl -fsSL -o dist/net/bebboget-1.11/cacert.pem https://curl.se/ca/cacert.pem
+	grep -q 'BEGIN CERTIFICATE' dist/net/bebboget-1.11/cacert.pem
+	cp dist/net/bebboget-1.11/bebboget dist/net/bebboget-1.11/installcerts dist/net/bebboget-1.11/cacert.pem \
+	  dist/net/bebboget-1.11/COPYING dist/net/bebboget-1.11/SOURCE.txt $(BOOT_STAGE)/
+	sed 's|@FEED@|$(BOOT_FEED)|' dist/Get-UP-Term > $(BOOT_STAGE)/Get-UP-Term
+	chmod 755 $(BOOT_STAGE)/bebboget $(BOOT_STAGE)/installcerts $(BOOT_STAGE)/Get-UP-Term
+	cp /dev/null $(BUILD)/up-term-boot.lha && cd $(BUILD)/dist-boot && lha -aq ../up-term-boot.lha up-term-boot
+	@! grep -q '@FEED@' $(BOOT_STAGE)/Get-UP-Term && grep -q ' $(BOOT_FEED)/up-term.lha$$' $(BOOT_STAGE)/Get-UP-Term \
+	  && [ "$$(lha l $(BUILD)/up-term-boot.lha | grep -c -E ' up-term-boot/(bebboget|installcerts|cacert.pem|COPYING|SOURCE.txt|Get-UP-Term)$$')" -eq 6 ] \
+	  || { echo "dist-boot: the archive lacks a file or Get-UP-Term has no feed address"; exit 1; }
+	@echo "[OK] $(BUILD)/up-term-boot.lha: $$(wc -c < $(BUILD)/up-term-boot.lha | tr -d ' ') bytes"
+
 # build/up-term-src.lha, published next to the kit: the Unix tools' source (upterm-ports) and the
 # complete source of GNU coreutils (GPL v2 section 3: the same place as the binaries)
 .PHONY: dist-base dist-src dist-index dist-ipk
