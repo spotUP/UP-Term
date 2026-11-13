@@ -50,7 +50,7 @@ run over wasabi port 1329.
    Planes[] writes exist in patina/*.c.
 2. Best candidate: a draw with no layer clipping during the drag, so a rectangle that
    ends at y >= 256 hits raw memory. Suspects: SolidWin (solid window drag, the only
-   non-system drag drawer running; see tests/amiga/rawdrag.c), or an Patina/flat
+   non-system drag drawer running; see tests/amiga/rawdrag.c), or a Patina/flat
    hook that draws into the screen RastPort (rp->Layer == NULL) with blitter calls
    that graphics does not clip on a layerless RastPort.
 3. Second candidate: 3.2 Intuition/graphics behaviour when a window moves so its top

@@ -388,7 +388,7 @@ def tabpix():
 
 
 def s_agenttab():
-    """OMARCHY-AI F3 (owner decision 2026-10-29: an Patina theme switch recolours ALL open tabs): a Claude agent tab
+    """OMARCHY-AI F3 (owner decision 2026-10-29: a Patina theme switch recolours ALL open tabs): a Claude agent tab
     (dummy ENVARC:Claude/key) and a plain shell tab both take the terminal colours of the Patina theme picked through the
     real entry point, a keymap row `gtheme:NAME` fired by `PATINA RUN n` (patina.c do_row -> gt_dos_select -> gt_dos_term_send
     -> ENV:up-term/theme-active -> each tab's watch_worker -> theme_apply). Sentinel: the file ENV:up-term/theme-active is

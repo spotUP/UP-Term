@@ -11,7 +11,7 @@
  * verb ran, 0 when it was refused (DisplayBeep). */
 int act_win(const char *arg);
 
-/* The same verb from the ARexx port (the drawn menu's row): when the active window is an Patina window the
+/* The same verb from the ARexx port (the drawn menu's row): when the active window is a Patina window the
  * ticket taken at menu launch is the target, if that window is still listed and its box is unchanged since the
  * ticket was taken (else refused, DisplayBeep). Returns WIN_RC_*. */
 int win_port(const char *arg);

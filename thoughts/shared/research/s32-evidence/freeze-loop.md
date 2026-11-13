@@ -80,7 +80,7 @@ ramlib is blocked on a private semaphore. This looks like a library or
 device open (through ramlib) that deadlocks against a filesystem packet
 during the Assign/Copy phase of startup. This shape matches boot 3 ("stopped
 answering while Assign was running"). It suggests that the rig-96 freeze may
-be a startup-sequence deadlock, not an Patina vblank loop. Not proven.
+be a startup-sequence deadlock, not a Patina vblank loop. Not proven.
 
 ## Fix direction (not implemented)
 

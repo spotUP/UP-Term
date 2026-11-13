@@ -17,7 +17,7 @@ screen. Please close the following windows: Patina bar" (Retry | Cancel).
 R1.17-WBRESET (38923fcf) only covers Patina's own desk apply (desk_dos_apply calls
 desk_wb_close / gui_hide around its own write).
 
-**Violated invariant:** an Patina window never blocks a Workbench reset. Patina closes its
+**Violated invariant:** a Patina window never blocks a Workbench reset. Patina closes its
 windows before the Workbench closes and reopens them on the new Workbench screen.
 
 **Level of the root cause:** the only point every reset passes through is the intuition

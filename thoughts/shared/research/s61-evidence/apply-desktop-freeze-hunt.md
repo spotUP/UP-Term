@@ -38,7 +38,7 @@ Boot 2 was a fresh boot, then `patina_gui_rig.py --setup --no-build`.
     in the same flat main task. The Text hook (flat.c:848) only uses AttemptSemaphore.
 - C2, palette write (desk_dos_apply, Palette / DT_PALETTE, ipd_recolour): OPEN.
   It is not a CPU crash on 3.2 (no wild PC). It may still be the step that blocks.
-  Boot 2 froze with no palette write, at an Patina start, which points at a shared step instead.
+  Boot 2 froze with no palette write, at a Patina start, which points at a shared step instead.
 - C3, patina-flat unload or patch removal on Break: OPEN.
   Break unloaded it cleanly ("ok"). The freeze came at the next Patina start, after the new patina-flat was copied.
 - C4, stack overflow: RULED OUT.

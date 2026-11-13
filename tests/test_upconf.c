@@ -426,7 +426,7 @@ static void rows_in_file_order(void)
     CHECK_INT(r.line[0], 3);
 }
 
-/* A tab opened after an Patina theme switch starts in that theme: the active theme's colours beat the up-term profile's
+/* A tab opened after a Patina theme switch starts in that theme: the active theme's colours beat the up-term profile's
  * (owner 2026-10-29); no theme file, or text that is not a theme, leaves the profile's. */
 static void theme_beats_profile(void)
 {

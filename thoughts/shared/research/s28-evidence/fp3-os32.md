@@ -2,7 +2,7 @@
 
 ## Why Patina does not start on a 3.2 rig after reboot
 
-Not an Patina bug: nothing launches it. `rig.py start --os 32` boots the clean 3.2 image tree
+Not a Patina bug: nothing launches it. `rig.py start --os 32` boots the clean 3.2 image tree
 (build/rig24/os-32) with only OS_HOOKS appended to S:User-Startup:
 
     Assign >NIL: VTC: VTCX:
@@ -20,7 +20,7 @@ Live evidence, rig 24 fresh boot from ac0c8561 build:
 - After --setup: md5 of VTCX:Apps/bin/{Patina,patina-menu,patina-gui} == build/amiga; port PATINA answers.
   So the binary starts and runs normally; no crash, Stack probe not needed.
 
-Earlier run: phase b waited 120 s for an Patina process that no boot path starts; the "a3" retry ran phase a
+Earlier run: phase b waited 120 s for a Patina process that no boot path starts; the "a3" retry ran phase a
 after a reboot without --setup, so d.pick() found no menu ("open menu: no stable state within 60s").
 
 ## Fix (rig-script gap), branch s29-fp3-os32, worktree ../vtcon-wt-fp3os32

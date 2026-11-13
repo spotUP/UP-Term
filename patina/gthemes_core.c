@@ -524,7 +524,7 @@ int gt_boot_term(const char *configured, void (*send)(const char *name))
 /* ====== Theme file format v2 and the model (plan 2026-11-05-patina-theme-editor.md, TE-1) ====== */
 #include <stdlib.h>
 
-/* The model is heap-allocated only through gt_model_attach; an Patina program that links this file has no VT_MALLOC (that
+/* The model is heap-allocated only through gt_model_attach; a Patina program that links this file has no VT_MALLOC (that
  * is the engine's), so plain malloc / free (deviation from the plan text, which named VT_MALLOC). */
 #define GT_ALLOC(n) malloc(n)
 #define GT_FREE(p) free(p)

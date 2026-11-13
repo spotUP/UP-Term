@@ -516,7 +516,7 @@ static void bar_actions_parse(void)
     }
 }
 
-/* RL16 W11, W11b: gui:<help|welcome> opens an patina-gui window, patina:quit ends the commodity; both are
+/* RL16 W11, W11b: gui:<help|welcome> opens a patina-gui window, patina:quit ends the commodity; both are
  * commodity actions, the shipped keymap binds them and carries a Help and a Quit Patina menu row. */
 static void gui_quit_actions_parse(void)
 {

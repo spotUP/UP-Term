@@ -8,7 +8,7 @@ research: thoughts/shared/research/2026-10-27-patina-packages-submenu.md
 # Patina Packages submenu
 
 ## Owner decision (2026-10-27)
-This session builds an Patina "Packages" submenu that reads `upkg --tsv` and launches field 7 for installed rows.
+This session builds a Patina "Packages" submenu that reads `upkg --tsv` and launches field 7 for installed rows.
 upkg browse Enter=Launch (plan 2026-10-26-upkg-browse-launch.md L4-L6) stays with the UP-Term session.
 
 ## Design (copies the Style > Theme rows pattern)

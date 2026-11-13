@@ -21,7 +21,7 @@ Next: clean ENV:/ENVARC: Sys prefs and ENV:Patina/prefs, restart Patina, run des
 
 ## Counter lines: real cause (s57 second pass)
 
-PATINA_DESKS is `desk_dos_applies`, a per-process counter, published to the ENV: global only after a theme pick (leaf.c lf_gt_select). The global outlives the Patina process. The old baseline read the previous process's last value (3); a restarted Patina published 0 after the off pick and 1 after the on pick (3 -> 0 -> 1: not stale files, a stale global against a fresh counter). Fix in patina_desk_rig.py: delete the PATINA_* globals, QUIT and restart Patina before the baseline (baseline 0, every published value this run's own). WB_DEPTH constant removed, wb_depth() measured. pick(): second hotkey when the first after an Patina start is lost (run a timed out at open menu).
+PATINA_DESKS is `desk_dos_applies`, a per-process counter, published to the ENV: global only after a theme pick (leaf.c lf_gt_select). The global outlives the Patina process. The old baseline read the previous process's last value (3); a restarted Patina published 0 after the off pick and 1 after the on pick (3 -> 0 -> 1: not stale files, a stale global against a fresh counter). Fix in patina_desk_rig.py: delete the PATINA_* globals, QUIT and restart Patina before the baseline (baseline 0, every published value this run's own). WB_DEPTH constant removed, wb_depth() measured. pick(): second hotkey when the first after a Patina start is lost (run a timed out at open menu).
 
 Runs on a cleared rig 89 (3.1), commit "second hotkey": run c 27 OK / 4 FAIL, run d 28 OK / 3 FAIL. Counter lines OK in both.
 Remaining FAIL lines:

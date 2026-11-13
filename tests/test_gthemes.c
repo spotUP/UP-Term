@@ -108,7 +108,7 @@ static void load_shipped(const char *name, gtheme *t)
         gt_parse(buf, n, t);
 }
 
-/* F3: an Patina theme switch recolours every console tab, so the theme becomes the text theme_apply reads: one profile with
+/* F3: a Patina theme switch recolours every console tab, so the theme becomes the text theme_apply reads: one profile with
  * fg, bg and the 16-colour palette, all from the theme's colors.toml */
 static void test_gthemes_term_text(void)
 {

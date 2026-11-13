@@ -1,6 +1,6 @@
 ---
 date: 2026-11-02
-topic: RL15 IPREFS-SYSREQ - IPrefs "System Request" on a Workbench reset during an Patina apply
+topic: RL15 IPREFS-SYSREQ - IPrefs "System Request" on a Workbench reset during a Patina apply
 status: open - cause not reproduced, no fix committed
 base: origin/main 4ece6785
 rig: shared rig 91 (OS 3.1, exec 40.10, Directory Opus 800x600x24 as Workbench screen)

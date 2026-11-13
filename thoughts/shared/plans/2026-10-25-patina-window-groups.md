@@ -104,7 +104,7 @@ terminal handler never does.
   the pointer is still a member of some screen's window list by walking `Screen->FirstWindow` for every screen
   (never trust a stored pointer). It copies out the box (`LeftEdge`, `TopEdge`, `Width`, `Height`, `MinWidth`,
   `MinHeight`, `MaxWidth`, `MaxHeight`, `WScreen`, the zoom box) into a plain struct for `win_core.c`.
-  The target is never an Patina window (menu, viewer, gui): skip a window whose title is the Patina menu
+  The target is never a Patina window (menu, viewer, gui): skip a window whose title is the Patina menu
   window's, or better, whose `UserPort` belongs to a task started by Patina (the commodity knows its launched
   tasks through `patina/wblaunch.c`; read that file before choosing; decision in the checklist K5).
 - K5a, target after the menu opened: the drawn menu is an Intuition window and becomes the active window, so

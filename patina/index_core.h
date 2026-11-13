@@ -25,7 +25,7 @@
 #define IX_CLIP_NONE     "clip:none"
 #define IX_KIND_LISTER   (IX_NKINDS + 1)   /* a Directory Opus lister row (ix_lister_row); stored by ix_add_listers, the node they fill IX_LISTERS_NODE */
 #define IX_LISTERS_NODE  "dopus.listers"
-#define IX_KIND_GTHEME   (IX_NKINDS + 2)   /* an Patina GUI theme row (ix_add_gthemes), path "gtheme:<name>"; fills IX_GTHEMES_NODE (Style > Theme) */
+#define IX_KIND_GTHEME   (IX_NKINDS + 2)   /* a Patina GUI theme row (ix_add_gthemes), path "gtheme:<name>"; fills IX_GTHEMES_NODE (Style > Theme) */
 #define IX_GTHEMES_NODE  "style.theme"
 #define IX_PKGS_NODE     "packages"        /* the Packages group (plan 2026-10-27-patina-packages-group.md); ix_pkgs_due is true for it and every node below it */
 #define IX_PKG_NONE      "pkg-none:"      /* the single row of an empty Packages menu; Enter does nothing */

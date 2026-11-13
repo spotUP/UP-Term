@@ -51,7 +51,7 @@ after install.
 - [x] P5 install.dos calls `WBPath ADD UHC:ExtBin` + open-shell hint
 - [x] P6 uninstall-body.dos calls `WBPath REMOVE UHC:ExtBin` before deletes
 - [x] P7 host tests: string/structure tests for install/uninstall order (existing dist/addons tests pattern), Makefile/kit listing
-- [x] P8 reachability on rig 7 (purpose "Patina s20: UHC-EXTBIN-LIVE-PATH check"): fresh boot, install up-uhc, then WITHOUT reboot (a) new UP-Term window: `taskpath` shows UHC:ExtBin and `Pipe` (or another ExtBin program) runs by name; (b) an Patina launch runs the same program by name; (c) uninstall removes the node (taskpath on a new window lacks it) and UHC: deletes without "object in use"
+- [x] P8 reachability on rig 7 (purpose "Patina s20: UHC-EXTBIN-LIVE-PATH check"): fresh boot, install up-uhc, then WITHOUT reboot (a) new UP-Term window: `taskpath` shows UHC:ExtBin and `Pipe` (or another ExtBin program) runs by name; (b) a Patina launch runs the same program by name; (c) uninstall removes the node (taskpath on a new window lacks it) and UHC: deletes without "object in use"
 - [x] P9 regression: each host test fails with its change reverted
 - [x] P10 ledger row ticked with commits; handoff line
 

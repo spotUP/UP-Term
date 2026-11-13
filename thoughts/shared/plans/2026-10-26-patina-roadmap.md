@@ -212,7 +212,7 @@ third-party. So the commodity looks instead of listening.
   A window that does not take its box on 2 consecutive applies becomes floating for its lifetime (keyed by
   Window pointer, dropped when it closes). Counter in STATUS (`tilefloat=`).
 - Tileable = all of: has WFLG_SIZEGADGET, not WFLG_BACKDROP, MinWidth != MaxWidth or MinHeight != MaxHeight,
-  not an Patina-owned window (bar, menu, notify popup), title not matched by ENVARC:Patina/tile.conf
+  not a Patina-owned window (bar, menu, notify popup), title not matched by ENVARC:Patina/tile.conf
   (one AmigaDOS pattern per line, ParsePatternNoCase). Requesters (EasyRequest, ASL) have no size gadget
   and drop out by the first rule; probe confirms.
 - Default: auto re-tiling is off on every screen until toggled (owner decision 11).
@@ -339,7 +339,7 @@ CTRL_C, so streaming needs a pipe or timer signal in that Wait.
 ## Phase X. Omarchy extras (owner picked all four, 2026-10-27; after P2 because RX.3 needs the R2.3 tick)
 
 - RX.1 Toggle rows that show state: keymap row `checked:` condition (ENV: variable or file exists), tick glyph drawn
-- RX.2 Add-launcher wizard: input rows (RJ.3) for name, command, window style, icon; writes an Patina app entry
+- RX.2 Add-launcher wizard: input rows (RJ.3) for name, command, window style, icon; writes a Patina app entry
 - RX.3 Reminders: list with times, fired by the R2.3 tick, shown through the P4 notification (R4.9)
 - RX.4 Disk speed test row: write and read a file on the chosen volume, timed with timer.device, result in the job view
 - RX.5 Host tests and one rig reachability test per row kind

@@ -24,7 +24,7 @@ Format (skills.c:155-245): SKILL.md frontmatter `name`, `description` (required,
 Both read `<dir>/<skill>/SKILL.md` with `name` + `description` frontmatter; SAME FORMAT for those two keys. No single directory is read by both: C:Claude `UP-Term:var/Claude/skills` (or ENVARC:Claude/skills), amiga-pi `UP-Term:var/amiga-pi/skills` (or ENVARC:amiga-pi/skills). Project-level, `<project>/.claude/skills` (Claude) vs `<project>/.pi/skills` or `.agents/skills` (pi): `.agents/skills` is not read by C:Claude. So the kit needs TWO copies (or one install step writing both): `UP-Term:var/Claude/skills/patina/SKILL.md` and `UP-Term:var/amiga-pi/skills/patina/SKILL.md`. Note settings.json "skills" in amiga-pi could point at one shared dir, but C:Claude has no equivalent: two copies is simplest. Keep frontmatter to name+description (+ allowed-tools harmless to pi? pi only warns on unknown).
 amiga-pi's existing arexx skill: `../amiga-pi/skills/arexx/SKILL.md` (siblings amigados, amiga-c-build, amiga-autodocs).
 
-## Sources an Patina skill's command list can be generated from
+## Sources a Patina skill's command list can be generated from
 - Keymap action prefixes: config/keymap.c:213-218 `prefixes[]` (menu, menuid, tab, slash, run, job, rexx, open, detach, scan, win, gtheme, settings); tab verbs :220-; key names `knames[]` config/keymap.c:32; parser `keymap_parse` :837, `keymap_overlay` :852; loader config/keymap_load.c.
 - `win:` verbs: closed list in patina/win_core.c:32 `bare[]`, :37 `withArg[]`, direction lists :41-43; validator config/keymap.c:245.
 - act.c (patina/act.c, act.h:8-22) is a dispatcher (act_run, act_rexx, act_in_window, act_menu_open), not an action table; keymap dispatch is handler/keymap_act.c:6 `ids[]` (name -> id).

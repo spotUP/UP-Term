@@ -134,7 +134,7 @@ Planned = roadmap `thoughts/shared/plans/2026-10-26-patina-roadmap.md` (R1.x P1 
 | Setup: security, git, default apps, keyboard, language | missing | Locale/Input prefs launch (Prefs programs), Roadshow/AmiSSL setup rows; most are Linux-only |
 | Setup: edit config files in editor | already (settings.patina.edit = nvim ENV:up-term/keymap) | |
 | Install: dev environments, browsers, editors, AI, gaming catalogues | covered by the package group (upkg add-ons: up-python, up-vim, up-git ...) | Group the rows by upkg Section: field (UPKG-PATINA-API) instead of hand-written lists |
-| Install Web App / TUI launcher wizard | missing | "Add launcher" form: name, command, window style, icon -> writes an Patina app entry / .info |
+| Install Web App / TUI launcher wizard | missing | "Add launcher" form: name, command, window style, icon -> writes a Patina app entry / .info |
 | Speed test, disk test | missing | Disk speed row (read/write a RAM/DH file, time via timer.device); network via Roadshow |
 | Reminders | missing | Timer-driven reminder list using R2.3 ticks plus notify R4.9 |
 | Emoji picker, Transcode, Share (LocalSend), Hardware toggles, Hybrid GPU | missing, Linux-specific | Skip; Share could be an FTP/ftpd toggle (not planned) |

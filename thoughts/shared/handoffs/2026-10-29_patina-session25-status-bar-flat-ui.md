@@ -21,7 +21,7 @@ Correction to the s24 handoff: it asks the owner for a Pointer editor hand test.
 - R2.12 tray: bar.conf order, on/off and run rows drive the live bar; tray click runs via proclaunch with stack 262144 (5e9fce25, 525ee11a).
 - Bar overlap: tray segments drop after Agents; width sweep test (550e8f79).
 - R2.15 docs: man page STATUS BAR section, README, Uninstall keeps bar.conf, parts.txt row (e42f707b, 7836ec42).
-- F3 reopened with evidence (b00b6c21). Owner decision: an Patina theme switch recolours all open console tabs, agent tabs included, over hand-set tab themes.
+- F3 reopened with evidence (b00b6c21). Owner decision: a Patina theme switch recolours all open console tabs, agent tabs included, over hand-set tab themes.
 
 ## Pending at handoff time
 

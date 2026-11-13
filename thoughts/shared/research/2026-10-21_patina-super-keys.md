@@ -196,7 +196,7 @@ unsafe (the owner holds the IDCMP port): closing stays with the owner (break sig
 | Workbench menu: Backdrop, Execute Command, Redraw All, Update All, Last Message, About, Open volume (unverified), Quit | not in Omarchy | WORKBENCH MENU WINDOW ROOT INVOKE ... | existing rexx: (8 rows) | Workbench |
 | Window menu: New Drawer, Open Parent, Close, Update, Select Contents, Clean Up, Snapshot, Show, View By, Sort Order (unverified) | not in Omarchy | NEWDRAWER; MENU INVOKE; VIEW | existing rexx: (10 rows) | Window |
 | Icons menu: Open, Copy, Rename, Information, Snapshot, UnSnapshot, Leave Out, Put Away, Delete, Format Disk, Empty Trash | not in Omarchy | MENU INVOKE on selection; RENAME, DELETE, INFO | existing rexx: (11 rows) | Workbench |
-| Tools menu: ResetWB, user items | not in Omarchy | MENU INVOKE; AddAppMenuItemA for an Patina entry | existing rexx: / NEW C (AppMenuItem) | Workbench |
+| Tools menu: ResetWB, user items | not in Omarchy | MENU INVOKE; AddAppMenuItemA for a Patina entry | existing rexx: / NEW C (AppMenuItem) | Workbench |
 | S+J, S+P, S+T, S+C+F, S+O, S+L, S+A+L, S+G, S+A+G, S+A+Arrows, S+A+1..5, S+Backspace family | tiling: split, pseudo, float, layouts, groups, gaps, opacity | none: Intuition has no tiling layout engine or compositor | none (out) | none |
 | S+Sh+1..0, S+Sh+A+1..0, S+A+S, S+Sh+C+Arrows | move window to workspace / scratchpad / monitor | none: a window cannot change screen | out | none |
 | Print family, S+, family, reminders, weather, dictation, share, transcode, docker, signal, XF86 keys, S+wheel, laptop display | Linux desktop | none stock on 3.2 | out | none |

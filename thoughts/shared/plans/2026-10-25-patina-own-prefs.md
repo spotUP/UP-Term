@@ -31,7 +31,7 @@ terminal's preferences program.
    `ENVARC:up-term/up-term` by hand (`dist/README.txt:703`); no prefs program shows it. The window offers every
    value the reader accepts (a cycle gadget), the key moves to `ENVARC:Patina/prefs` with the other Patina keys
    (migration reads the old line from the UP-Term file), and the commodity re-reads it on Save so Super+Space
-   picks the new style without an Patina restart. Reader: `upconf_menu_style` (`config/upconf_rows.c:139-157`,
+   picks the new style without a Patina restart. Reader: `upconf_menu_style` (`config/upconf_rows.c:139-157`,
    called from `patina/patina.c:92`); the value list comes from that one reader, not a second table. Test: host
    test that every value the reader accepts is offered by the gadget; rig case: change the style in the window,
    Save, Super+Space opens the other menu program.
@@ -45,7 +45,7 @@ settings and no longer accepts `PATINA`.
 
 Finish line: on a rig (OS 3.2, `rig.py start --max`), a disk with only the old keys in `ENVARC:up-term/up-term`
 boots, the commodity migrates them into `ENVARC:Patina/prefs` once, Exchange "Show Interface" opens the window,
-a changed menu font and menu style are saved and take effect without an Patina restart, both menu rows open the
+a changed menu font and menu style are saved and take effect without a Patina restart, both menu rows open the
 same window, and `C:UP-Term-Prefs PATINA` is refused with its usage line. All checklist items below ticked.
 
 ## Facts (2026-10-26, read from origin/main 7f5ec51d)

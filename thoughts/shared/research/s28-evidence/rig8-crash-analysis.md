@@ -71,7 +71,7 @@ Stack the patches add on a foreign task, per frame draw (flat.c:188-232):
 
 Why the registers fit this picture:
 - USP=10003D80 and ISP=10002318 are both in the lowest boot-time allocations. ROM tasks and the first startup-sequence loads (IPrefs is one of the first) get their stacks there. A program's or Patina's stack would sit far higher.
-- The text at USP (a gai_strerror table: "Request canceled ... system error / Unknown error code", next to "Invalid argument") is **in none of build/amiga/***. It is in os-322.hdf at byte 4537650, a system TCP/SSL component loaded early. So SP walked out of a small low stack into a neighbouring early hunk, which may have been freed. It did not walk into an Patina hunk.
+- The text at USP (a gai_strerror table: "Request canceled ... system error / Unknown error code", next to "Invalid argument") is **in none of build/amiga/***. It is in os-322.hdf at byte 4537650, a system TCP/SSL component loaded early. So SP walked out of a small low stack into a neighbouring early hunk, which may have been freed. It did not walk into a Patina hunk.
 - No Guru: an overflow corrupts memory silently. The RTS pops a text longword, and the CPU then runs nearby heap (the DOS boot-node block) in a loop with D1=3. That matches both runs (1000DDBC Illegal 7fff, 1000DEB4 loop).
 
 Ruled out by reading: patina-flat's own stack (16384, it only Waits); `pl_start` floors (Patina launchers honour the cookies); the flatshared layout (see above).

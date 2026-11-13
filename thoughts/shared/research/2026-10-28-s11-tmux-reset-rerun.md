@@ -25,7 +25,7 @@ Window list: W0 "Software Failure" 286x101 active, W1 "UP-Term" 640x300, W3 "men
 Verdict A: Guru in patina-menu (the task named is patina-menu, not vsh/tmux), machine survives until Reboot is pressed; same with current build.
 
 ## Case B (hand-started) - INCONCLUSIVE
-Reboot, arexx PATINA QUIT, `Run >NIL: UP-Term:bin/Patina`. Afterwards the Patina 800x600 screen was gone: Workbench Screen 640x256 depth 2, windows "UP-Term", "menuhost", a "System Request" (task IPrefs, Retry|Cancel). Menu click then did not reach an Patina menu. Not a valid tmux test; needs a clean redo (check that QUIT actually ended boot Patina and the hand start opened its screen before driving the menu).
+Reboot, arexx PATINA QUIT, `Run >NIL: UP-Term:bin/Patina`. Afterwards the Patina 800x600 screen was gone: Workbench Screen 640x256 depth 2, windows "UP-Term", "menuhost", a "System Request" (task IPrefs, Retry|Cancel). Menu click then did not reach a Patina menu. Not a valid tmux test; needs a clean redo (check that QUIT actually ended boot Patina and the hand start opened its screen before driving the menu).
 
 ## Open
 - Capture guru code+PC: `rig.py wasabi debug start` before clicking Tmux, then Stack 262144 rerun.

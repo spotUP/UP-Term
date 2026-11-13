@@ -12,7 +12,7 @@ source read at: origin/main 98998de6 (local main lags in 10 files under patina/ 
 
 ## Goal
 
-Picking an Patina theme restyles the native Workbench, not only the drawn menu: screen palette and DrawInfo pens
+Picking a Patina theme restyles the native Workbench, not only the drawn menu: screen palette and DrawInfo pens
 (palette.prefs), root and drawer backdrops (wbpattern.prefs), pointer colours and optionally shapes (pointer.prefs),
 Workbench font, icon label colours and the screen title (font.prefs / 3.2 workbench.prefs). Every write is live where the
 OS allows it, snapshotted first, auto-reverted after 15 s without a confirm, persisted to ENVARC: only after confirm, and
@@ -303,7 +303,7 @@ optional; R1.19 pens in palette.prefs; R1.20 drawer backdrops in wbpattern.prefs
   name, add outline only if R1.1e proves the bit. (b) Wait for a workbench.prefs field as the roadmap row says. Trade-off:
   (a) works on 3.1 and 3.2, but writes font.prefs even when the theme names no font; (b) may not exist. Re-asked after
   R1.1e.
-- OD11 Screen title. (a) Recommended: leave the title stock until P2's bar exists (bar shows clock/memory). (b) An Patina
+- OD11 Screen title. (a) Recommended: leave the title stock until P2's bar exists (bar shows clock/memory). (b) A Patina
   title format, e.g. "Patina  <theme>  <chip/fast free>" via WBTF on 3.2. Trade-off: (a) no duplicated info later;
   (b) visible now, 3.2 only, format codes unverified.
 - OD12 Emergency restore hotkey. (a) Recommended: yes, a `desk:revert` binding (e.g. Super+Ctrl+Shift+Backspace) that

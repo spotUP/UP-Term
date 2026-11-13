@@ -12,7 +12,7 @@
   `pens-held 3` after a restart: the 16 pens were released by the flat switch and taken by others.
 
 Holder per run: nobody holds 32..47 at boot; patina-flat holds them while flat is ON; after flat OFF
-(or an patina-flat restart) the next shared allocator on the screen takes them from the free-list head
+(or a patina-flat restart) the next shared allocator on the screen takes them from the free-list head
 (measured: patina-flat's own dim pen, dim=47/46). The boot `missing 43` holder was not caught in a
 WATCH window (unverified); the same mechanism fits it.
 

@@ -16,7 +16,7 @@ Build notes: `make dist-base` fails (needs upterm-ports `make kit-stage`: no bui
 `taskpath Workbench` ends `System:AmiSSL`, `System:UHC/ExtBin`. New UP-Term window `Path` lists `System:UHC/ExtBin`; typing `Pipe` printed `Pipe: Invalid pipeline` / `***Broken pipe` (Pipe's own usage error: found and run by name).
 
 ## 5b PASS
-Temp bind (ENVARC:up-term/keymap.user, `super+alt+f8 = run:Execute RAM:b5.script`), Patina ARexx `RELOAD` (rows 46 -> 47), `RUN 46`/`RUN 47`. RAM:b5.out contained `Pipe: Invalid pipeline` / `***Broken pipe`: Pipe ran by name from an Patina act_run launch. Temp keymap.user and RAM files deleted, RELOAD back to rows=46. (Script stopped after Pipe's rc 20, so Path/Echo lines did not run.)
+Temp bind (ENVARC:up-term/keymap.user, `super+alt+f8 = run:Execute RAM:b5.script`), Patina ARexx `RELOAD` (rows 46 -> 47), `RUN 46`/`RUN 47`. RAM:b5.out contained `Pipe: Invalid pipeline` / `***Broken pipe`: Pipe ran by name from a Patina act_run launch. Temp keymap.user and RAM files deleted, RELOAD back to rows=46. (Script stopped after Pipe's rc 20, so Path/Echo lines did not run.)
 
 ## 5c PASS (with notes)
 Uninstall output: `[OK] WBPath: 0 node(s) for  removed from the Workbench path` then `up-uhc removed.` rc 0. `taskpath Workbench` afterwards ends `System:Opus5/C`, `System:AmiSSL`: no UHC/ExtBin. up-uhc Uninstall by design leaves SYS:UHC and the UHC: assign (Uninstall header comment).

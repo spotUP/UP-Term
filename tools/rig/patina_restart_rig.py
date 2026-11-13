@@ -2,7 +2,7 @@
 """patina_restart_rig.py -- B2-RIG: Patina QUIT then start, ten times, over the hardened ipatch gates (2988e11c).
 
 The three ipatch users (wbreset_patch.c, strut_patch.c, borderblank_patch.c) must survive a restart series: no Guru,
-no MuForce hit for an Patina task, no *_BUSY_WAIT sentinel (the remove never had to wait a tick), and the patched
+no MuForce hit for a Patina task, no *_BUSY_WAIT sentinel (the remove never had to wait a tick), and the patched
 vectors (OpenWindow) still work after the last QUIT. Rows: round_1..round_10 (port up, verb answered, port gone
 within 10 s), no_guru, no_muforce_hit, no_busy_wait_sentinel, patch_chain_restored.
 Needs the rig up with `rig.py start --max --os 32 --mmu` and `rig.py muforce on`. Resumable like patina_rig.py:

@@ -59,5 +59,5 @@ Result: NOT MEASURED (blocked). Active, pressed and inactive items are all unpro
 - Opened an XCON window with `ami.py open` (window "UP-Term", tree: W 0 0,11 640x235; scroller gadgets 23312 at 626,23 10x190; arrows 23313 at 622,214 18x11 and 23314 at 622,225 18x11; sys:size 622,236 18x10).
 - The front-screen capture (`ami.py shot`, 640x256) does not show that window. Rows 11-19 hold the Patina desktop title text (x 31-84), not the UP-Term title bar. Regions 622-640 x 214-246 are 100% 1A1B26 (198/198, 198/198, 180/180 px): no frame, no arrow glyph, no triangle drawn there. Likely the XCON window is covered by another window (tree lists W 2 "" 0,11 640x235 and the Patina desktop); sys:depth / drag clicks on UP-Term did not change the capture.
 - Not measured: active glyphs 7AA2F7 (0 px of 7AA2F7 in the arrow regions), pressed fill (no press-hold command in ami.py), inactive 5A5E75.
-- Needs: a window with scrollbars visibly in front on rig 35 (e.g. close/move the covering Patina window, or an Patina-owned scrolling window), then re-measure.
+- Needs: a window with scrollbars visibly in front on rig 35 (e.g. close/move the covering Patina window, or a Patina-owned scrolling window), then re-measure.
 - Shots: ~/Desktop/upterm-shots/arrow-knob-active.png, arrow-knob-rig35-front-screen.png

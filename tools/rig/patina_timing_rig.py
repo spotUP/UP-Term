@@ -201,7 +201,7 @@ def main():
         c.run('MakeDir >NIL: ENV:Patina')
         c.run('Echo >ENV:Patina/prefs "[profile default]"')
         c.run('Echo >>ENV:Patina/prefs "menu-in-terminal = graphical"')
-    wasabi('arexx', 'PATINA', 'QUIT')     # an Patina of the rig's boot would keep the old code and refuse a second one
+    wasabi('arexx', 'PATINA', 'QUIT')     # a Patina of the rig's boot would keep the old code and refuse a second one
     time.sleep(3)
     c.run('Run >NIL: %s/Patina' % paths.UPTERM_BIN)
     tabstate.open_host('timinghost')

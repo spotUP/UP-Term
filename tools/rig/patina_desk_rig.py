@@ -207,7 +207,7 @@ def pick(up=None, keep=True):
     c.run('Delete >NIL: ENV:%s QUIET' % t.APPLY_DONE)
     t.open_menu()
     time.sleep(4)
-    if t.menu_state()[0] is None:   # the first hotkey after an Patina start is lost (measured rig 89: the second one opens it)
+    if t.menu_state()[0] is None:   # the first hotkey after a Patina start is lost (measured rig 89: the second one opens it)
         print('[INFO] menu did not open on the first hotkey, again')
         t.open_menu()
     st, _ = t.wait_stable(t.OPEN_SECS, what='open menu')

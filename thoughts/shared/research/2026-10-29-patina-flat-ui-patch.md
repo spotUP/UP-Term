@@ -48,7 +48,7 @@ Default drawing facts marked V come from NDK 3.2 headers; "internal" means no pu
 
 - Patches are removable: VP's remove routine implements chain repair (V, 0x16df6). If another patcher (MCP, PatchControl, ToolsDaemon, SetPatch) patched on top, we cannot unlink safely except by that JMP-slot rewrite; the stub memory must stay allocated (never freed) when `still_chained` is set. This is the realistic limit of "off = stock": off restores behaviour, RAM stays.
 - Class dispatchers: our switch is a boolean checked at the top of our dispatcher ("off = call old dispatcher"). This is the safest live switch: no unpatching ever, one global flag, patch stays resident but inert. Recommend this for BOTH class and SetFunction patches: do not remove, make inert (U for SetFunction paths: a function that always JMPs the old pointer is safe and cheap).
-- Patch order with other tools: since Birdie/VP must run before/after IPrefs in a specific order (earlier doc), an Patina patch started from User-Startup after IPrefs sits above VP/Birdie if both are present; coexistence rules unneeded because we are replacing them, but a user keeping Birdie must run theirs first: U.
+- Patch order with other tools: since Birdie/VP must run before/after IPrefs in a specific order (earlier doc), a Patina patch started from User-Startup after IPrefs sits above VP/Birdie if both are present; coexistence rules unneeded because we are replacing them, but a user keeping Birdie must run theirs first: U.
 - Reboot not required for flag flip; windows already open need `RefreshWindowFrame()` / `RefreshGList` (public calls) to redraw: U that every app cooperates.
 
 ## 4. RTG and AGA

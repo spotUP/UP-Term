@@ -29,7 +29,7 @@ cache belongs to the old account. This file plus the ledger is the whole state.
    before its guard; added `le_unbind`. Also fixed the Makefile
    `MENU_ICONS_INC`/`SYMBOLS_TTF` ordering bug. Commits 141d68a7, 77e62eec,
    merge e524e7ff.
-2. **test_dist_stack red on main**: 2523115c added an Patina cookie but left
+2. **test_dist_stack red on main**: 2523115c added a Patina cookie but left
    Patina in `AUDIT_PENDING`. Fixed befdf652, merge 83c34d1d.
 3. **UNINSTALL-WASABI-BLOCK, wasabi-owned rig case**: PASS 14/14 on rig 3,
    fresh `make dist` from 83c34d1d.

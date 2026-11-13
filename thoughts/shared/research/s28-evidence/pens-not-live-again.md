@@ -1,6 +1,6 @@
 ---
 date: 2026-11-01
-topic: S28 pens not live after an Patina theme pick with flat on
+topic: S28 pens not live after a Patina theme pick with flat on
 status: fixed (rig helper)
 ---
 # Pens not live after theme pick (flat on): rig helper read too early
