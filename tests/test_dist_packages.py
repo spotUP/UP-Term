@@ -124,6 +124,16 @@ class Renames(unittest.TestCase):
         self.assertEqual(len({n for _, n in pairs}), len(pairs), 'a new name twice')
         self.assertNotIn('UP-Term', [n for _, n in pairs] + [o for o, _ in pairs])
 
+    def test_a_renamed_package_is_newer_than_its_old_name(self):
+        """opkg upgrades an old name to its new one only when the new version is higher (s78 rename probe):
+        at the same version `upkg upgrade` says everything is up to date and the old package stays."""
+        ver = {r['archive']: r['version'] for r in pkgs.rows()}
+        olds = pkgs.rename_old_versions()
+        self.assertEqual(sorted(olds), ['up-hexed', 'up-picom', 'up-sqlite'])
+        num = lambda v: tuple(int(x) for x in v.split('.'))
+        for new, old_v in olds.items():
+            self.assertGreater(num(ver[new]), num(old_v), '%s %s is not newer than its old name at %s' % (new, ver[new], old_v))
+
     def test_every_add_on_of_the_table_was_renamed_and_its_record_ends_in_its_new_name(self):
         renamed = {n for _, n in pkgs.renames()}
         for r in pkgs.rows():

@@ -1,4 +1,6 @@
-# Packages that changed their name: "old new", one a line. The one source of the old names
+# Packages that changed their name: "old new [old-version]", one a line. old-version, when given, is the
+# last version shipped under the old name: the new name's version in packages.txt must be higher, or
+# `upkg upgrade` sees nothing newer and leaves the old package installed (s78 rename probe). The one source of the old names
 # (tools/pkgs.py reads it).
 #   - every renamed ipk control and Packages entry carries Replaces, Conflicts and Provides: <old>,
 #     so opkg removes the old package (running its prerm) before it installs the new one
@@ -16,6 +18,6 @@ Python3       up-python
 UP-Term-git   up-git
 UP-Term-perl  up-perl
 UP-Term-vim   up-vim
-up-hexedit    up-hexed
-up-picocom    up-picom
-up-sqlite3    up-sqlite
+up-hexedit    up-hexed   1.0
+up-picocom    up-picom   1.0
+up-sqlite3    up-sqlite  1.0

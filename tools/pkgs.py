@@ -41,15 +41,24 @@ def rows(path=TABLE):
 
 
 def renames(path=RENAMES):
-    """[(old, new)] of dist/package-renames.txt ("old new" a line, # comments)."""
+    """[(old, new)] of dist/package-renames.txt ("old new [old-version]" a line, # comments)."""
+    return [(o, n) for o, n, _ in _rename_rows(path)]
+
+
+def rename_old_versions(path=RENAMES):
+    """{new: last version shipped under the old name} for the renames that record it (column 3)."""
+    return {n: v for _, n, v in _rename_rows(path) if v}
+
+
+def _rename_rows(path):
     out = []
     for line in pathlib.Path(path).read_text(encoding='utf-8').splitlines():
         line = line.strip()
         if line and not line.startswith('#'):
             f = line.split()
-            if len(f) != 2:
-                raise SystemExit('package-renames.txt: %r: want "old new"' % line)
-            out.append((f[0], f[1]))
+            if len(f) not in (2, 3):
+                raise SystemExit('package-renames.txt: %r: want "old new [old-version]"' % line)
+            out.append((f[0], f[1], f[2] if len(f) == 3 else None))
     return out
 
 
