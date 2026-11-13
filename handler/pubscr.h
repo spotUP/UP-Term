@@ -22,4 +22,8 @@ struct Screen *ipd_lock_pub_screen(const char *name);
  * Use it where LockPubScreen(0) was: that call reopens a closed default Workbench on OS 3.1 (BOOT-31-WB-DEADLOCK). */
 struct Screen *ipd_lock_default_pub_screen(void);
 
+/* ipd_lock_default_pub_screen with the caller's name buffer (at least MAXPUBSCREENNAME + 1 bytes), for callers on a
+ * foreign task's stack that cannot hold the 140-byte name in their frame (patina/flat.c cg_feed, the flat budget). */
+struct Screen *ipd_lock_default_pub_screen_in(char *name);
+
 #endif

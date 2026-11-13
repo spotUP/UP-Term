@@ -547,6 +547,7 @@ $(AMHELP_INC): tools/gen_patina_help.py dist/patina.help dist/keymap
 # rules create on demand (a kit build on a clean machine died in gen_dopus_toolbar.py with "No module named 'fontTools'")
 VENV_PY := .venv/bin/python
 VENV_FONTTOOLS := .venv/.fonttools-installed
+VENV_PILLOW := .venv/.pillow-installed
 $(MENU_ICONS_INC): tools/gen_menu_icons.py tools/gen_emoji.py dist/menu-icons $(SYMBOLS_TTF) | $(VENV_FONTTOOLS)
 	@mkdir -p $(dir $@)
 	$(VENV_PY) tools/gen_menu_icons.py dist/menu-icons $(SYMBOLS_TTF) $@
@@ -691,8 +692,10 @@ $(JBMONO_ARCHIVE):
 $(JBMONO_TTF): $(JBMONO_ARCHIVE)
 	unzip -o -j -q $(JBMONO_ARCHIVE) fonts/ttf/JetBrainsMono-Regular.ttf -d $(BUILD)/jbmono
 	echo "$(JBMONO_TTF_SHA256)  $@" | shasum -a 256 -c -
-$(JBMONO_OUT)/JetBrainsMono.font: $(JBMONO_TTF) tools/gen_jbmono.py
-	python3 -I tools/gen_jbmono.py $(JBMONO_TTF) $(JBMONO_OUT)
+# gen_jbmono.py imports Pillow, which a stock host python3 lacks: it runs in the repo .venv (VENV_PILLOW, below),
+# like the fontTools generators (make dist died with "No module named 'PIL'" once the rename touched the script)
+$(JBMONO_OUT)/JetBrainsMono.font: $(JBMONO_TTF) tools/gen_jbmono.py | $(VENV_PILLOW)
+	$(VENV_PY) -I tools/gen_jbmono.py $(JBMONO_TTF) $(JBMONO_OUT)
 jbmono: $(JBMONO_OUT)/JetBrainsMono.font
 
 # Twemoji (ledger U4): the release archive fetched once into build/twemoji/
@@ -822,6 +825,8 @@ $(VENV_PY):
 	python3 -m venv .venv
 $(VENV_FONTTOOLS): | $(VENV_PY)
 	$(VENV_PY) -m pip install -q fonttools && touch $@
+$(VENV_PILLOW): | $(VENV_PY)
+	$(VENV_PY) -m pip install -q pillow && touch $@
 
 # Regenerate the hand-written edge-case streams (tests/streams/quirk-*).
 quirks:
@@ -1104,6 +1109,9 @@ PATINA_LEAF_DEPS := handler/kcmode.c handler/slash.c config/upconf.c config/upco
 # $(PATINA_NOBREAK) (empty _chkabort) and tests/test_nobreak.py checks exactly these (make chkabort-check)
 PATINA_NOBREAK := patina/nobreak.c
 CHKABORT_PROGRAMS := Patina patina-gui patina-flat patina-icons upprefs upgetty top allocwatch patchcon lvoprobe frameprobe sizewatch gadprobe
+# each one depends on nobreak.c: binaries linked before their rule named it (top, allocwatch, patchcon, sizewatch, built
+# 2026-10-26) were never rebuilt and failed make dist-check's chkabort row with the library _chkabort
+$(addprefix $(BUILD)/amiga/,$(CHKABORT_PROGRAMS)): $(PATINA_NOBREAK)
 # Stack high-water probe (patina/stkprobe.h), a measuring tool and off by default. `make STKPROBE=1 BUILD=build/stkprobe
 # build/stkprobe/amiga/patina-index ...` links it into patina-index, patina-icons, patina-flat and AmTile with a 131072-byte
 # stack and publishes <PREFIX>_STK_USED (GetEnv). Use a separate BUILD directory: make does not see the knob as a dependency.
@@ -1243,10 +1251,14 @@ FLAT_ASM_DIR := $(BUILD)/amiga/flat_asm
 # S62-FLAT-RF-TX-BUDGET: the RectFill and Text hooks (flat_rf_c, flat_tx_c) reach iclabel_core (the label shades) and
 # render/emoji.c (ce_mix, the corner antialias blend), so their assembly is checked too.
 FLAT_BUDGET_ASM := $(FLAT_ASM_DIR)/flat.s $(FLAT_ASM_DIR)/flat_glyph.s $(FLAT_ASM_DIR)/flat_core.s $(FLAT_ASM_DIR)/roundaa_core.s \
-	$(FLAT_ASM_DIR)/iclabel_core.s $(FLAT_ASM_DIR)/emoji.s
+	$(FLAT_ASM_DIR)/iclabel_core.s $(FLAT_ASM_DIR)/emoji.s $(FLAT_ASM_DIR)/pubscr.s $(FLAT_ASM_DIR)/pubscr_core.s
+# S74-TIME-ROW: cg_feed (under flat_cg_c) locks the default public screen through handler/pubscr.c, so its frames count too.
 flat-budget: $(FLAT_BUDGET_ASM)
 	python3 tests/test_flat_budget.py $(FLAT_BUDGET_ASM)
 $(FLAT_ASM_DIR)/%.s: patina/%.c patina/flat_core.h patina/flat_glyph.h patina/roundaa_core.h patina/iclabel_core.h
+	@mkdir -p $(FLAT_ASM_DIR)
+	$(VC) -dontwarn=153,65 -S -o $@ $<
+$(FLAT_ASM_DIR)/pubscr.s $(FLAT_ASM_DIR)/pubscr_core.s: $(FLAT_ASM_DIR)/%.s: handler/%.c handler/pubscr.h handler/pubscr_core.h
 	@mkdir -p $(FLAT_ASM_DIR)
 	$(VC) -dontwarn=153,65 -S -o $@ $<
 $(FLAT_ASM_DIR)/emoji.s: render/emoji.c render/emoji.h

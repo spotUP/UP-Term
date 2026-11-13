@@ -7,6 +7,7 @@
 #include <exec/semaphores.h>
 #include <exec/tasks.h>
 #include <exec/libraries.h>
+#include <intuition/screens.h>
 #include <stdint.h>
 #include "flat_core.h"
 #include "iconpen_core.h"
@@ -100,6 +101,7 @@ typedef struct flatshared {
     ULONG cgcalls;              /* every patched CreateGadgetA call (the stub runs) */
     char cgname[8];             /* scratch for the calling CLI command name, used only under Forbid (flat.c cg_feed) */
     WORD trow_raw[2][5];        /* rig evidence: the last INTEGER [0] / CYCLE [1] NewGadget of a program named Time, as given: left top width height id */
+    char scrname[MAXPUBSCREENNAME + 1]; /* the default public screen's name for cg_feed, used only under ss (no 140-byte name in that frame: the flat budget) */
     /* the icon pens are no longer here: the shared holder record IPD_SEM_NAME owns them (iconpen_dos.h, F14) */
 } flatshared;
 

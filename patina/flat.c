@@ -2540,7 +2540,8 @@ static const char *cg_name(struct Task *me, char *nm)
 }
 
 /* 1 = create this gadget at *nl / *nw. Kept out of flat_cg_c so the entry frame holds only the NewGadget copy (flat budget).
- * The name is copied into the record's cgname under Forbid (one buffer for every task; no frame bytes for it). */
+ * The name is copied into the record's cgname under Forbid, the default screen name into scrname under ss (one buffer each for
+ * every task; no frame bytes for them). */
 static int cg_feed(flatshared *r, ULONG kind, const struct NewGadget *ng, int *nl, int *nw)
 {
     struct Task *me = FindTask(NULL);
@@ -2550,10 +2551,16 @@ static int cg_feed(flatshared *r, ULONG kind, const struct NewGadget *ng, int *n
     int side = 1, hit = 0;
     if (!r->st.enabled || r->st.held)
         return 0;
-    if (kind == CYCLE_KIND && (scr = ipd_lock_default_pub_screen()) != NULL) {   /* Time opens on the default public screen; a closed or
-                                                                              * still-private one reads 0, never reopened from a foreign task */
-        side = side_px(r, scr);
-        UnlockPubScreen(NULL, scr);
+    if (kind == CYCLE_KIND) {   /* Time opens on the default public screen; a closed or still-private one reads 0, never reopened
+                                 * from a foreign task. The name goes in the record's scrname under ss, not in this frame (flat budget);
+                                 * holding ss also keeps drop_record from freeing the record meanwhile. */
+        ObtainSemaphore(&r->ss);
+        scr = ipd_lock_default_pub_screen_in(r->scrname);
+        ReleaseSemaphore(&r->ss);
+        if (scr) {
+            side = side_px(r, scr);
+            UnlockPubScreen(NULL, scr);
+        }
     }
     ev.kind = (int)kind;
     ev.left = ng->ng_LeftEdge; ev.top = ng->ng_TopEdge;
