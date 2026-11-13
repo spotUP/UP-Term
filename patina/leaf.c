@@ -26,6 +26,9 @@
 #include "../handler/upreq.h"
 #include "../handler/upactive.h"
 #include "../handler/frontscr.h"
+#include "../handler/keymap_act.h"
+#include "../handler/tabprog.h"
+#include "uterm_dos.h"
 #define UPASSIGN_DOS
 #include "../config/upassign.h"
 
@@ -687,19 +690,46 @@ static int lister_front(unsigned long handle)
     return 0;
 }
 
-/* open:uterm: a new UP-Term window (NewShell on LF_UTERM_SPEC) */
-static int open_uterm(void)
+/* open:uterm: a new UP-Term window (NewShell on LF_UTERM_SPEC) running vsh, as a handler tab does; prog: a
+ * TAB_* program instead (uterm_dos.h), task its first message (0 none). 0 when on its way. */
+static int open_uterm(int prog, const char *task, const char *label, const lf_ui *ui)
 {
-    char spec[128], line[160];
+    char spec[128], line[256];
+    int rc;
+    termenv_ensure();
     uterm_spec(spec, sizeof spec);
-    snprintf(line, sizeof line, "NewShell \"%s\"", spec);
+    rc = uterm_line(line, sizeof line, spec, prog, task);
+    if (rc != 1) {
+        if (ui && ui->refused)
+            ui->refused(ui->ctx, label, UPREQ_FAILED, rc < 0 ? uterm_missing(prog) : "no UP-Term window could be opened");
+        return UPREQ_FAILED;
+    }
     return system(line);
+}
+
+/* A menuid: row for a program (UP-Term > Claude, pi, Demo tour, Shell tutorial, the agent) with no terminal
+ * window open: its own window with the program first (lf_menu_program), TAB_SHELL for every other row. */
+static int menu_program(const km_menu *m)
+{
+    long id = m->kind == KA_MENUID ? kact_menu_id(m->arg) : -1;
+    int prog;
+    if (id == MENU_AGENT) { /* the ai-agent preference, as the handler's super+l reads it */
+        am_prefs *ap = amconf_borrow();
+        prog = lf_menu_program(m->kind, 0, id, ap ? amconf_agent(ap) : 0);
+        if (ap)
+            amconf_return(ap);
+    } else
+        prog = lf_menu_program(m->kind, 0, id, 0);
+    return prog;
 }
 
 /* Style > Terminal with no terminal window open: open one, wait for its request port, then send the row there. */
 static int open_then_request(const km_menu *m, const lf_ui *ui, const char *value)
 {
-    int i, rc = open_uterm();
+    int i, prog = value ? TAB_SHELL : menu_program(m), rc;
+    if (prog != TAB_SHELL)              /* the program is the window's first program: nothing to send */
+        return open_uterm(prog, 0, m->label, ui);
+    rc = open_uterm(TAB_SHELL, 0, m->label, ui);
     if (rc)
         return rc;
     for (i = 0; i < 100 && !upactive_terminal_present(ui->self_in_mru); i++)
@@ -760,7 +790,7 @@ int lf_run(const km_menu *m, const lf_ui *ui)
         return rc;
     }
     case LF_OPEN:
-        return open_uterm();
+        return open_uterm(TAB_SHELL, 0, m->label, ui);
     case LF_WIN:
         return send_win(m, ui);
     case LF_CAP:

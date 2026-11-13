@@ -87,6 +87,48 @@ static void a_big_window_is_left_alone(void)
     CHECK(!tabprog_grow(40, 10, 0, 0, 0, &c, &r));   /* Claude: no size */
 }
 
+/* s77: open:uterm ran a bare NewShell, the AmigaDOS Shell with no vsh banner; a Patina window now starts as a
+ * shell tab does, vsh from its FROM script, and the window closes with vsh */
+static void a_new_uterm_window_runs_vsh_from_its_script(void)
+{
+    char text[200], line[256];
+    CHECK(tabprog_shell_script(text, sizeof text, 0, "UP-Term:bin/vsh"));
+    CHECK_STR(text, "FailAt 2147483647\nUP-Term:bin/vsh\nEndCLI >NIL:\n");
+    CHECK(tabprog_shell_script(text, sizeof text, "Work:", 0));
+    CHECK_STR(text, "FailAt 2147483647\nCD \"Work:\"\n");          /* no vsh: the AmigaDOS Shell stays */
+    CHECK(!tabprog_shell_script(text, 20, 0, "UP-Term:bin/vsh"));
+    CHECK(tabprog_window_line(line, sizeof line, "XCON:0/20/640/300/UP-Term/CLOSE", 0, 0, "T:Patina-uterm.00"));
+    CHECK_STR(line, "NewShell \"XCON:0/20/640/300/UP-Term/CLOSE\" FROM T:Patina-uterm.00");
+    CHECK(tabprog_window_line(line, sizeof line, "XCON:x", 0, 0, 0));
+    CHECK_STR(line, "NewShell \"XCON:x\"");
+    CHECK(!tabprog_window_line(line, 20, "XCON:0/20/640/300/UP-Term/CLOSE", 0, 0, 0));
+}
+
+/* s77: the Demo tour in a window of its own opens at the demo's grid, as its tab grows to it */
+static void a_program_window_opens_at_its_grid(void)
+{
+    char line[256];
+    CHECK(tabprog_window_line(line, sizeof line, "XCON:x", tab_progs[TAB_DEMO].cols, tab_progs[TAB_DEMO].rows,
+                              tab_progs[TAB_DEMO].script));
+    CHECK_STR(line, "NewShell \"XCON:x/CELLS 76x20\" FROM T:UP-Term-demo");
+    CHECK(tabprog_window_line(line, sizeof line, "XCON:x", 120, 5, 0));
+    CHECK_STR(line, "NewShell \"XCON:x/CELLS 120x5\"");
+}
+
+/* s77: UP-Term > Claude with no terminal open opened a shell tab and then a Claude tab; the menu item names
+ * the one program its window runs, the same table as the handler's tabs */
+static void menu_items_name_their_program(void)
+{
+    CHECK_INT(tabprog_menu_tab(MENU_CLAUDE, 0), TAB_CLAUDE);
+    CHECK_INT(tabprog_menu_tab(MENU_PI, 0), TAB_PI);
+    CHECK_INT(tabprog_menu_tab(MENU_DEMO, 0), TAB_DEMO);
+    CHECK_INT(tabprog_menu_tab(MENU_TUTORIAL, 0), TAB_TUTORIAL);
+    CHECK_INT(tabprog_menu_tab(MENU_AGENT, "pi"), TAB_PI);
+    CHECK_INT(tabprog_menu_tab(MENU_AGENT, 0), TAB_CLAUDE);
+    CHECK_INT(tabprog_menu_tab(MENU_COPY, 0), TAB_SHELL);
+    CHECK_STR(tab_progs[TAB_CLAUDE].pre, "Stack 32768\n");
+}
+
 void suite_tabprog(void)
 {
     a_failed_demo_keeps_its_tab_open_until_return();
@@ -97,4 +139,7 @@ void suite_tabprog(void)
     a_script_too_long_for_the_buffer_is_refused();
     a_small_window_grows_to_the_demo_and_the_tab_bar();
     a_big_window_is_left_alone();
+    a_new_uterm_window_runs_vsh_from_its_script();
+    a_program_window_opens_at_its_grid();
+    menu_items_name_their_program();
 }

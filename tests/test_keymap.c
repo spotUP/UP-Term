@@ -2664,6 +2664,12 @@ static void the_dopus_group_needs_a_port(void)
     CHECK_INT(mn_row_needs(KA_MENUID, "agents.launch"), 0);
     CHECK_INT((int)lf_plan_t(KA_MENUID, 0), (int)LF_OPEN_THEN_REQUEST);
     CHECK_INT((int)lf_plan_t(KA_MENUID, 1), (int)LF_REQUEST);
+    /* s77: a program row with no terminal open opens one window running the program, not a shell plus a tab */
+    CHECK_INT(lf_menu_program(KA_MENUID, 0, kact_menu_id("MENU_CLAUDE"), 0), 2);       /* TAB_CLAUDE */
+    CHECK_INT(lf_menu_program(KA_MENUID, 0, kact_menu_id("MENU_AGENT"), "pi"), 4);     /* TAB_PI */
+    CHECK_INT(lf_menu_program(KA_MENUID, 1, kact_menu_id("MENU_CLAUDE"), 0), 0);       /* a terminal: its request */
+    CHECK_INT(lf_menu_program(KA_SLASH, 0, kact_menu_id("MENU_CLAUDE"), 0), 0);
+    CHECK_INT(lf_menu_program(KA_MENUID, 0, kact_menu_id("MENU_COPY"), 0), 0);
     {
         mn_item it[MN_MAX_ITEMS];
         int c = mn_children_t(&km, BAR_AGENT_NODE, it, MN_MAX_ITEMS, mn_cond(0, 0, 0));

@@ -7476,32 +7476,7 @@ struct tab_spawn_msg {
     char task[200];              /* an AI agent's first message ("" none): the agent starts on it */
 };
 
-/* A tab that runs one program instead of a shell: Help > Demo tour (UPDemo)
- * and UP-Term > Claude (C:Claude). The tab closes when the program ends.
- * `file` is looked up first: a program that is not there is said in a
- * requester, as Preferences... says it of the editor. */
-struct tab_prog {
-    const char *file;    /* C:... the program */
-    const char *cmd;     /* the script's command line (the program, or vsh and its script) */
-    const char *script;  /* T:... the FROM script that runs it */
-    const char *pre;     /* a script line before it ("" none): Claude refuses a stack under 16000 */
-    const char *missing; /* the requester's text when file is not there */
-    int cols, rows;      /* the grid it needs (0 0: any); the window grows to it first */
-};
-static const struct tab_prog tab_progs[] = {
-    { 0, 0, 0, "", 0, 0, 0 },
-    { "C:UPDemo", "C:UPDemo", "T:UP-Term-demo", "",
-      "The demo is not installed:\nC:UPDemo was not found.\n\nInstall UP-Term from its archive to get it.",
-      UPDEMO_MIN_COLS, UPDEMO_MIN_ROWS },
-    { "C:Claude", "C:Claude", "T:UP-Term-claude", "Stack 32768\n",
-      "Claude is not installed:\nC:Claude was not found.\n\nInstall UP-Term from its archive to get it.", 0, 0 },
-    { TABPROG_TUTORIAL_FILE, TABPROG_TUTORIAL_CMD, "T:UP-Term-tutorial", "",
-      "The tutorial is not installed:\nUP-Term:bin/tutorial was not found.\n\nInstall UP-Term from its archive to get it.",
-      TABPROG_TUTORIAL_COLS, TABPROG_TUTORIAL_ROWS },
-    /* amiga-pi (the up-pi package) takes the same stack cookie as Claude */
-    { "C:amiga-pi", "C:amiga-pi", "T:UP-Term-pi", "Stack 32768\n",
-      "pi is not installed:\nC:amiga-pi was not found.\n\nInstall the up-pi package to get it.", 0, 0 }
-};
+/* tab_progs[] (tabprog.h): the programs a tab of its own runs */
 
 /* 1 when the tab is on its way; 0 when the program is not there */
 static int tab_prog_script(struct tab_spawn_msg *m)
@@ -7563,18 +7538,10 @@ static void tab_spawner(void)
         script[16] = 0;
         f = Open((STRPTR)script, MODE_NEWFILE);
     }
-    if (f) {
-        FPuts(f, (STRPTR)"FailAt 2147483647\n");
-        if (cd) { /* termurl_cwd_dir refused anything a quote cannot hold */
-            FPuts(f, (STRPTR)"CD \"");
-            FPuts(f, (STRPTR)dir);
-            FPuts(f, (STRPTR)"\"\n");
-        }
-        if (vsh)
-        {
-            FPuts(f, (STRPTR)vsh);
-            FPuts(f, (STRPTR)"\nEndCLI >NIL:\n");
-        }
+    if (f) { /* termurl_cwd_dir refused anything a quote cannot hold */
+        char text[sizeof(dir) + 160];
+        if (tabprog_shell_script(text, sizeof(text), cd ? dir : 0, vsh))
+            FPuts(f, (STRPTR)text);
         Close(f);
         strcat(m->cmd, " FROM ");
         strcat(m->cmd, script);
@@ -7953,19 +7920,12 @@ static void host_command(con *c, int what, con *from, const char *task)
     case MENU_TAB_NEW:
         tab_spawn(c, from->profile, from, TAB_SHELL, 0, 0, 0);
         break;
-    case MENU_DEMO:
-        /* the tour in a tab of its own: what it does to its screen (the
-         * main screen, a resize) leaves the user's session alone */
-        if (!tab_spawn(c, from->profile, from, TAB_DEMO, 0, 0, 0))
+    case MENU_DEMO: case MENU_CLAUDE: case MENU_PI:
+        /* the program in a tab of its own (tabprog_menu_tab, the one map
+         * Patina's menu rows read too): what the demo does to its screen
+         * (the main screen, a resize) leaves the user's session alone */
+        if (!tab_spawn(c, from->profile, from, tabprog_menu_tab(what, 0), 0, 0, 0))
             DisplayBeep(c->own_win ? c->own_win->WScreen : 0); /* no room for a tab */
-        break;
-    case MENU_CLAUDE:
-        if (!tab_spawn(c, from->profile, from, TAB_CLAUDE, 0, 0, 0))
-            DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
-        break;
-    case MENU_PI:
-        if (!tab_spawn(c, from->profile, from, TAB_PI, 0, 0, 0))
-            DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
         break;
     case MENU_AGENT: { /* super+l: the agent of the ai-agent preference, in a new tab */
         am_prefs *ap;

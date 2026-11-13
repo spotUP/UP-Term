@@ -67,6 +67,13 @@ lf_how lf_plan_t(int kind, int term);
  * open is LF_ASK_THEN_OPEN_REQUEST. Every other case plans as lf_plan_t. */
 lf_how lf_plan_ta(int kind, int term, int needs_value);
 
+/* The program a menuid: row opens in a new window of its own when no terminal window is open (term 0): the
+ * row's menu id (kact_menu_id) through handler/tabprog.h's map, agent the ai-agent preference's word for
+ * MENU_AGENT. TAB_SHELL (0) for any other row, and whenever a terminal is open: such a row is sent there as
+ * before. UP-Term > Claude with no window open is then ONE window running Claude, not a shell window that is
+ * then asked for a Claude tab (s77). */
+int lf_menu_program(int kind, int term, long id, const char *agent);
+
 /* ---- LF_SETTING: a setting row of a settings page group (plan 2026-10-26-patina-prefs-inline.md, M3) ----
  * Pure decisions here (leaf_core.c), the file I/O through an amconf_io (the DOS one on the Amiga, the memory
  * one in tests/test_amconf.c). The write is the Prefs window's own: UP-Term's file by prefs_stage and

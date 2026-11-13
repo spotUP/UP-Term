@@ -27,7 +27,8 @@ class TutorialWiring(unittest.TestCase):
         self.assertRegex(H, r"case MENU_DEMO: case MENU_CLAUDE: case MENU_PI: case MENU_AGENT: case MENU_SET_AGENT_CLAUDE: case MENU_SET_AGENT_PI: case MENU_TUTORIAL:\n[^\n]*MENU_PANE_ZOOM:\n\s*tab_command")
         self.assertRegex(H, r"case MENU_TUTORIAL:\n\s*if \(!tab_spawn\(c, from->profile, from, TAB_TUTORIAL, 0, 0, 0\)\)")
         self.assertIn("enum { TAB_SHELL = 0, TAB_DEMO, TAB_CLAUDE, TAB_TUTORIAL, TAB_PI };", (ROOT / "handler/tabprog.h").read_text())
-        rows = H.split("static const struct tab_prog tab_progs[] = {")[1].split("};")[0]
+        # the one table (handler/tabprog.h): the handler's tabs and Patina's new windows both read it
+        rows = (ROOT / "handler/tabprog.h").read_text().split("static const struct tab_prog tab_progs[] = {")[1].split("};")[0]
         self.assertEqual(len(re.findall(r"^\s*\{ ", rows, re.M)), 5)  # shell, demo, claude, tutorial, pi: the enum's order
         self.assertRegex(rows, r'\{ TABPROG_TUTORIAL_FILE, TABPROG_TUTORIAL_CMD, "T:UP-Term-tutorial"')
         # the tab must start the next lesson: with no argument the tutorial lists and exits, and the tab closes

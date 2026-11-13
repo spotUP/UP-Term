@@ -16,6 +16,8 @@
 #include "taskalive.h"
 #include "cxdesc.h"
 #include "proclaunch.h"
+#include "uterm_dos.h"
+#include "../handler/tabprog.h"
 
 int act_run(const char *cmd)
 {
@@ -246,12 +248,13 @@ int act_rexx(const char *arg)
     return act_run(note);
 }
 
+/* A new UP-Term window running vsh, as open:uterm in a menu (patina/uterm_dos.c): a bare NewShell was the
+ * AmigaDOS Shell, with no vsh banner or logo (s77). */
 int act_open_uterm(void)
 {
-    char spec[128], line[160];
+    char spec[128], line[256];
     spec_on_front(spec, sizeof spec, LF_UTERM_SPEC);
-    cl_copy(line, "NewShell \"", sizeof line);
-    cl_cat(line, spec, sizeof line);
-    cl_cat(line, "\"", sizeof line);
+    if (uterm_line(line, sizeof line, spec, TAB_SHELL, 0) != 1)
+        return 0;
     return act_run(line);
 }
