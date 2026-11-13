@@ -727,8 +727,8 @@ static int menu_program(const km_menu *m)
 static int open_then_request(const km_menu *m, const lf_ui *ui, const char *value)
 {
     int i, prog = value ? TAB_SHELL : menu_program(m), rc;
-    if (prog != TAB_SHELL)              /* the program is the window's first program: nothing to send */
-        return open_uterm(prog, 0, m->label, ui);
+    if (prog != TAB_SHELL || (!value && lf_menu_open_is_all(m->kind, 0, kact_menu_id(m->arg))))
+        return open_uterm(prog, 0, m->label, ui); /* the window is the row (its program, or New tab): nothing to send */
     rc = open_uterm(TAB_SHELL, 0, m->label, ui);
     if (rc)
         return rc;

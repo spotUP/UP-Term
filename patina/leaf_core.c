@@ -58,6 +58,11 @@ int lf_menu_program(int kind, int term, long id, const char *agent)
     return kind == KA_MENUID && !term ? tabprog_menu_tab(id, agent) : TAB_SHELL;
 }
 
+int lf_menu_open_is_all(int kind, int term, long id)
+{
+    return kind == KA_MENUID && !term && id == MENU_TAB_NEW;
+}
+
 const char *lf_rexx_notice(const char *script, long rc)
 {
     const char *base = script ? script : "";

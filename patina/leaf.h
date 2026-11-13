@@ -74,6 +74,11 @@ lf_how lf_plan_ta(int kind, int term, int needs_value);
  * then asked for a Claude tab (s77). */
 int lf_menu_program(int kind, int term, long id, const char *agent);
 
+/* 1 when, with no terminal window open (term 0), opening the new UP-Term window is the whole of a menuid: row:
+ * New tab (MENU_TAB_NEW). Sending the row on to the window that just opened gave a second tab beside the first
+ * vsh window (s79). 0 for every other row, and whenever a terminal is open. */
+int lf_menu_open_is_all(int kind, int term, long id);
+
 /* ---- LF_SETTING: a setting row of a settings page group (plan 2026-10-26-patina-prefs-inline.md, M3) ----
  * Pure decisions here (leaf_core.c), the file I/O through an amconf_io (the DOS one on the Amiga, the memory
  * one in tests/test_amconf.c). The write is the Prefs window's own: UP-Term's file by prefs_stage and

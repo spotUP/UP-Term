@@ -2670,6 +2670,11 @@ static void the_dopus_group_needs_a_port(void)
     CHECK_INT(lf_menu_program(KA_MENUID, 1, kact_menu_id("MENU_CLAUDE"), 0), 0);       /* a terminal: its request */
     CHECK_INT(lf_menu_program(KA_SLASH, 0, kact_menu_id("MENU_CLAUDE"), 0), 0);
     CHECK_INT(lf_menu_program(KA_MENUID, 0, kact_menu_id("MENU_COPY"), 0), 0);
+    /* s79: New tab with no terminal open is the one vsh window that opens, not that window plus a second tab */
+    CHECK(lf_menu_open_is_all(KA_MENUID, 0, kact_menu_id("MENU_TAB_NEW")));
+    CHECK(!lf_menu_open_is_all(KA_MENUID, 1, kact_menu_id("MENU_TAB_NEW")));       /* a terminal: its request */
+    CHECK(!lf_menu_open_is_all(KA_SLASH, 0, kact_menu_id("MENU_TAB_NEW")));
+    CHECK(!lf_menu_open_is_all(KA_MENUID, 0, kact_menu_id("MENU_COPY")));
     {
         mn_item it[MN_MAX_ITEMS];
         int c = mn_children_t(&km, BAR_AGENT_NODE, it, MN_MAX_ITEMS, mn_cond(0, 0, 0));
