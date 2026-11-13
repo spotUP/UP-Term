@@ -371,7 +371,7 @@ class RecordMigration(unittest.TestCase):
             upd = mi.build(ROOT / 'dist/common/update.installer', r['id'])
             self.assertIn('(run (cat "Rename >NIL: " "%s" " " "%s"))' % (old, new), upd, r['id'])
 
-    def test_the_base_uninstall_renames_all_seven_old_records_before_it_looks_at_any(self):
+    def test_the_base_uninstall_renames_every_old_record_before_it_looks_at_any(self):
         base = mi.build(ROOT / 'dist/Uninstall', 'base')
         first_look = base.index('Execute UP-Term:pkg/up-')
         for r in RENAMED:
@@ -379,7 +379,7 @@ class RecordMigration(unittest.TestCase):
             block = 'If EXISTS %s\n  If NOT EXISTS %s\n    Rename >NIL: %s %s\n  EndIf\nEndIf' % (old, new, old, new)
             self.assertIn(block, base, r['id'])
             self.assertLess(base.index(block), first_look, r['id'])
-        self.assertEqual(base.count('Rename >NIL:'), 7)
+        self.assertEqual(base.count('Rename >NIL:'), len(RENAMED))   # one per renamed record (10 since f686c417)
 
     def test_the_base_itself_renames_nothing(self):
         self.assertEqual(mi.read_values('base')['RENAMERECORD'], '')
