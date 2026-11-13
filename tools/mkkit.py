@@ -83,6 +83,7 @@ def main(argv):
     lha = BUILD / (archive + '.lha')
     lha.unlink(missing_ok=True)
     subprocess.run(['lha', '-aq', str(lha), archive], check=True, cwd=BUILD / 'dist')
+    run('python3', 'tools/lhafix.py', str(lha), str(BUILD / 'dist'))
     run('python3', 'tools/mkreadme.py', pkg_id)
     print('%s: %d bytes' % (lha, lha.stat().st_size))
 

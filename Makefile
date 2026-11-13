@@ -2274,6 +2274,7 @@ dist-full:
 	chmod 755 $(FULL_STAGE)/Install-Packages
 	cp $(FULL_BASE) $(BUILD)/up-term-full.lha
 	cd $(BUILD)/dist-full && lha -aq ../up-term-full.lha up-term/Install-Packages up-term/Packages
+	python3 tools/lhafix.py $(BUILD)/up-term-full.lha $(BUILD)/dist-full
 	@n=$$(ls $(FULL_IPK)/*.ipk | wc -l); m=$$(lha l $(BUILD)/up-term-full.lha | grep -c ' up-term/Packages/.*\.ipk$$'); \
 	  [ "$$n" -eq "$$m" ] && [ "$$m" -eq "$$(grep -c -E '^ *UP-Term:bin/upkg install ' $(FULL_STAGE)/Install-Packages)" ] \
 	  && lha l $(BUILD)/up-term-full.lha | grep -q ' up-term/Install$$' \
@@ -2304,6 +2305,7 @@ dist-boot:
 	sed 's|@FEED@|$(BOOT_FEED)|' dist/Get-UP-Term > $(BOOT_STAGE)/Get-UP-Term
 	chmod 755 $(BOOT_STAGE)/bebboget $(BOOT_STAGE)/installcerts $(BOOT_STAGE)/tcpprobe $(BOOT_STAGE)/Get-UP-Term
 	cp /dev/null $(BUILD)/up-term-boot.lha && cd $(BUILD)/dist-boot && lha -aq ../up-term-boot.lha up-term-boot
+	python3 tools/lhafix.py $(BUILD)/up-term-boot.lha $(BUILD)/dist-boot
 	@! grep -q '@FEED@' $(BOOT_STAGE)/Get-UP-Term && grep -q ' $(BOOT_FEED)/up-term.lha$$' $(BOOT_STAGE)/Get-UP-Term \
 	  && [ "$$(lha l $(BUILD)/up-term-boot.lha | grep -c -E ' up-term-boot/(bebboget|installcerts|cacert.pem|COPYING|SOURCE.txt|bebboget-up-term.diff|tcpprobe|Get-UP-Term|AmiNetXDuo/(Install-AmiNetXDuo|Installer|ReadMe))$$')" -eq 11 ] \
 	  && ! lha l $(BUILD)/up-term-boot.lha | grep -q ' up-term-boot/AmiNetXDuo/Developer' \
@@ -2328,7 +2330,9 @@ dist-src:
 	rm -rf $(BUILD)/dist-src && mkdir -p $(BUILD)/dist-src/coreutils-5.2.1
 	cp dist/gg/coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2 dist/gg/coreutils-5.2.1/SOURCE.txt dist/gg/coreutils-5.2.1/COPYING $(BUILD)/dist-src/coreutils-5.2.1/
 	cd $(PORTS_KIT)/.. && rm -f $(CURDIR)/$(BUILD)/up-term-src.lha && lha -aq $(CURDIR)/$(BUILD)/up-term-src.lha userland-src
+	python3 tools/lhafix.py $(BUILD)/up-term-src.lha $(PORTS_KIT)/..
 	cd $(BUILD)/dist-src && lha -aq ../up-term-src.lha coreutils-5.2.1
+	python3 tools/lhafix.py $(BUILD)/up-term-src.lha $(BUILD)/dist-src
 	python3 tools/mkreadme.py src
 	@ls -la $(BUILD)/up-term-src.lha
 
@@ -2380,6 +2384,8 @@ dist-check: flat-budget $(BUILD)/amiga/keymap.o $(BUILD)/amiga/Patina $(BUILD)/a
 	SLIM_REQUIRE=1 python3 tests/test_dist_slim.py
 	@test -s $(BUILD)/up-term-src.lha || { echo "dist-check: $(BUILD)/up-term-src.lha missing: make dist"; exit 1; }
 	@lha l $(BUILD)/up-term-src.lha | grep -q "coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2" || { echo "dist-check: up-term-src.lha lacks the coreutils source"; exit 1; }
+	@# every archive decodes in a strict decoder too: lha 1.14i-ac wrote an -lh5- ixkill only lha itself could read (v1.1, 2026-11-13; tools/lhafix.py)
+	@for a in $(BUILD)/*.lha; do 7zz t $$a > /dev/null 2>&1 || { echo "dist-check: 7zz t $$a fails: python3 tools/lhafix.py"; 7zz t $$a 2>&1 | grep ERROR; exit 1; }; done
 
 # The one reachability test: XCON: through DOS on the running rig.
 test-rig: amiga
