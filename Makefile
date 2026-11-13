@@ -542,9 +542,13 @@ $(AMHELP_INC): tools/gen_patina_help.py dist/patina.help dist/keymap
 
 # The drawn Patina menu's icons (plan 2026-10-23-patina-drawn-menu.md, G3): dist/menu-icons names Symbols
 # Nerd Font glyphs; tools/gen_menu_icons.py (on tools/gen_emoji.py) makes one emoji page of them for patina/menu_icon.c.
-$(MENU_ICONS_INC): tools/gen_menu_icons.py tools/gen_emoji.py dist/menu-icons $(SYMBOLS_TTF)
+# The icon generators import fontTools, which a stock host python3 lacks: they run in the repo .venv, which these
+# rules create on demand (a kit build on a clean machine died in gen_dopus_toolbar.py with "No module named 'fontTools'")
+VENV_PY := .venv/bin/python
+VENV_FONTTOOLS := .venv/.fonttools-installed
+$(MENU_ICONS_INC): tools/gen_menu_icons.py tools/gen_emoji.py dist/menu-icons $(SYMBOLS_TTF) | $(VENV_FONTTOOLS)
 	@mkdir -p $(dir $@)
-	python3 tools/gen_menu_icons.py dist/menu-icons $(SYMBOLS_TTF) $@
+	$(VENV_PY) tools/gen_menu_icons.py dist/menu-icons $(SYMBOLS_TTF) $@
 
 # the themes the UPDemo tour switches between, from themes/ (committed)
 demo/tour_themes.inc: tools/gen_tour_themes.py $(addprefix themes/,$(addsuffix .conf,dracula-default solarized-dark gruvbox-dark nord-default tokyo-night-default one-dark tomorrow-night-eighties kanagawa-wave everforest-dark solarized-light github-light one-light))
@@ -631,8 +635,8 @@ $(PHOSPHOR_CP): $(PHOSPHOR_TTF) tools/phosphor_codepoints.py
 phosphor: $(PHOSPHOR_TTF) $(PHOSPHOR_CP)
 # one generator run emits both files: the Filled set (default) and the Outline set (make 3.81 has no grouped targets:
 # the Outline file hangs off the Filled one, and a missing Outline file forces the generator again)
-$(LUCIDE_DAT): tools/gen_lucide_icons.py tools/gen_menu_icons.py tools/gen_emoji.py tools/mkicon.py dist/lucide-icons dist/lucide-icons-outline $(PHOSPHOR_TTF) $(PHOSPHOR_CP) $(LUCIDE_TTF)
-	python3 tools/gen_lucide_icons.py dist/lucide-icons $(PHOSPHOR_TTF) $(LUCIDE_DAT) dist/lucide-icons-outline $(LUCIDE_TTF) $(OUTLINE_DAT)
+$(LUCIDE_DAT): tools/gen_lucide_icons.py tools/gen_menu_icons.py tools/gen_emoji.py tools/mkicon.py dist/lucide-icons dist/lucide-icons-outline $(PHOSPHOR_TTF) $(PHOSPHOR_CP) $(LUCIDE_TTF) | $(VENV_FONTTOOLS)
+	$(VENV_PY) tools/gen_lucide_icons.py dist/lucide-icons $(PHOSPHOR_TTF) $(LUCIDE_DAT) dist/lucide-icons-outline $(LUCIDE_TTF) $(OUTLINE_DAT)
 $(OUTLINE_DAT): $(LUCIDE_DAT)
 	@test -f $@ || { rm -f $(LUCIDE_DAT); $(MAKE) $(LUCIDE_DAT); }
 lucide-dat: $(LUCIDE_DAT) $(OUTLINE_DAT)
@@ -811,8 +815,12 @@ $(BUILD)/bebbossh/.stamp: tools/build_bebbossh.sh $(BEBBO_DIR)/bebbossh-1.45-src
 bebbossh-clean:
 	rm -rf $(BUILD)/bebbossh
 
-venv:
-	python3 -m venv .venv && .venv/bin/pip install pyte
+venv: $(VENV_FONTTOOLS)
+	.venv/bin/pip install pyte
+$(VENV_PY):
+	python3 -m venv .venv
+$(VENV_FONTTOOLS): | $(VENV_PY)
+	$(VENV_PY) -m pip install -q fonttools && touch $@
 
 # Regenerate the hand-written edge-case streams (tests/streams/quirk-*).
 quirks:
@@ -2168,12 +2176,12 @@ dist-python: $(BUILD)/amiga/upupdate
 # the tall sets come from the owner's hand-drawn brushes in dist/dopus-toolbar-hand/<set>/ (DT-12)
 DOPUS_TOOLBAR_DIR := $(BUILD)/dopus-toolbar
 DOPUS_TOOLBAR_HAND := dist/dopus-toolbar-hand
-$(DOPUS_TOOLBAR_DIR)/Buttons/Patina-toolbar-filled-24: $(wildcard $(DOPUS_TOOLBAR_HAND)/*/*) tools/ilbm_decode.py tools/gen_dopus_toolbar.py tools/svg_raster.py tools/gen_lucide_icons.py tools/gen_menu_icons.py tools/gen_emoji.py tools/mkicon.py dist/dopus-toolbar.txt $(LUCIDE_TGZ) $(PHOSPHOR_TTF) $(PHOSPHOR_CP)
+$(DOPUS_TOOLBAR_DIR)/Buttons/Patina-toolbar-filled-24: $(wildcard $(DOPUS_TOOLBAR_HAND)/*/*) tools/ilbm_decode.py tools/gen_dopus_toolbar.py tools/svg_raster.py tools/gen_lucide_icons.py tools/gen_menu_icons.py tools/gen_emoji.py tools/mkicon.py dist/dopus-toolbar.txt $(LUCIDE_TGZ) $(PHOSPHOR_TTF) $(PHOSPHOR_CP) | $(VENV_FONTTOOLS)
 	mkdir -p $(DOPUS_TOOLBAR_DIR)/upstream
 	[ "$$(md5 -q $(VENDOR)/dopus5-5.104/DOpus5_104_os3.lha 2>/dev/null || md5sum < $(VENDOR)/dopus5-5.104/DOpus5_104_os3.lha | cut -d' ' -f1)" = "0800b7b3bf02c83bd45a84d038ee483e" ] || { echo "[ERROR] DOpus5_104_os3.lha: md5 mismatch"; exit 1; }
 	lha -xqfw=$(DOPUS_TOOLBAR_DIR)/upstream $(VENDOR)/dopus5-5.104/DOpus5_104_os3.lha DOpus5/Buttons/Toolbar
 	rm -rf $(DOPUS_TOOLBAR_DIR)/Images $(DOPUS_TOOLBAR_DIR)/Buttons
-	python3 tools/gen_dopus_toolbar.py dist/dopus-toolbar.txt $(LUCIDE_TGZ) $(PHOSPHOR_TTF) $(DOPUS_TOOLBAR_DIR)/upstream/DOpus5/Buttons/Toolbar $(DOPUS_TOOLBAR_DIR) $(DOPUS_TOOLBAR_HAND)
+	$(VENV_PY) tools/gen_dopus_toolbar.py dist/dopus-toolbar.txt $(LUCIDE_TGZ) $(PHOSPHOR_TTF) $(DOPUS_TOOLBAR_DIR)/upstream/DOpus5/Buttons/Toolbar $(DOPUS_TOOLBAR_DIR) $(DOPUS_TOOLBAR_HAND)
 dopus-toolbar: $(DOPUS_TOOLBAR_DIR)/Buttons/Patina-toolbar-filled-24
 # up-dopus: the unmodified upstream Directory Opus 5 68k archives (dist/addons/dopus/archives.txt), each checked
 # against its md5 in vendor/dopus5-5.104/ (download URLs: dist/addons/dopus/SOURCE.txt) and unpacked into its
