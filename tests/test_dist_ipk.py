@@ -256,9 +256,11 @@ class RenamedPackages(unittest.TestCase):
         m = dict(split_ar((self.build / 'ipk' / pkgs.ipk_name(r)).read_bytes()))
         return tarfile.open(fileobj=io.BytesIO(m['control.tar.gz'])).extractfile('./control').read().decode()
 
-    def test_the_seven_renames_are_in_every_control_and_in_the_packages_index(self):
+    def test_every_rename_is_in_every_control_and_in_the_packages_index(self):
+        # the first seven are the 1.0 add-on renames; the last three are the 30-character kit names (f686c417)
         want = {'Claude': 'up-claude', 'amiga-pi': 'up-pi', 'UP-Term-nvim': 'up-nvim', 'Python3': 'up-python',
-                'UP-Term-git': 'up-git', 'UP-Term-perl': 'up-perl', 'UP-Term-vim': 'up-vim'}
+                'UP-Term-git': 'up-git', 'UP-Term-perl': 'up-perl', 'UP-Term-vim': 'up-vim',
+                'up-hexedit': 'up-hexed', 'up-picocom': 'up-picom', 'up-sqlite3': 'up-sqlite'}
         self.assertEqual(dict(pkgs.renames()), want)
         by_name = {s['Package']: s for s in stanzas(self.packages)}
         for old, new in want.items():
