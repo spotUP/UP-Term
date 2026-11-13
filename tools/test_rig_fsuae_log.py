@@ -95,16 +95,29 @@ with tempfile.TemporaryDirectory() as d:
     # the host-only guards read the real machine (git origin, lsof, build/ folders); the boot loop waits for go's
     # "assigns done" line in boot.log (RIG-START-ASSIGN-RACE), which no real go writes here
     host_steps = {"guard_stale_base": lambda *a, **k: None, "refuse_port_clash": lambda *a, **k: None,
-                  "gc": lambda *a, **k: [], "go_assigns_done": lambda text: True}
+                  "gc": lambda *a, **k: [], "go_assigns_done": lambda text: True,
+                  "start_watchdog": lambda *a, **k: None}
+    # after the boot, start asks the live wasabid for a guru (warn_guru): no wasabid runs here
+    saved_guru = rig.rigwasabi.warn_guru
+    rig.rigwasabi.warn_guru = lambda *a, **k: None
     saved_sys = {n: getattr(rig, n) for n in sys_steps + tuple(host_steps)}
     for n in sys_steps:
         setattr(rig, n, lambda *a: None)
     for n, f in host_steps.items():
         setattr(rig, n, f)
     paths.FSUAE = pathlib.Path("/usr/bin/true")
+    # the boot loop reads BOOTX:boot.console (52ed369a) and refuses a boot bootcap did not capture. start() deletes a
+    # stale console before it spawns the emulator, so the fake spawn writes the clean console a real bootcap leaves:
+    # the check runs on real text instead of a stub
+    def fake_popen(cmd, **kw):
+        spawned.append(cmd)
+        (d / "boot").mkdir(exist_ok=True)
+        (d / "boot" / "boot.console").write_text(rig.BOOT_CONSOLE_MARKER + "\n")
+    rig.subprocess.Popen = fake_popen
     rig.start()
     for n, f in saved_sys.items():
         setattr(rig, n, f)
+    rig.rigwasabi.warn_guru = saved_guru
     check(sum(1 for c in spawned if c[-1] == "logwatch") == 1, "rig start spawns exactly one logwatch (spawned: %r)" % spawned)
     (paths.FSUAE_LOG_DIR, paths.FSUAE_LOG_MAX, paths.FSUAE, rig.SERIAL, rig.LOGWATCH_EVERY, rig.mine,
      rig.setup_config_only, rig.status, rig.boot_assigns_missing, rig.guard_shell_startup, rig.M060,
