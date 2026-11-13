@@ -1,0 +1,43 @@
+diff --git a/src/slide.c b/src/slide.c
+index 5dd5f98..89b701c 100644
+--- a/src/slide.c
++++ b/src/slide.c
+@@ -96,6 +96,8 @@ static struct decode_option decode_set;
+ static unsigned int txtsiz;
+ static unsigned long dicsiz;
+ static unsigned int remainder;
++/* text[] index of the first input byte; below it lie only the ' ' preset bytes */
++static int data_start;
+ 
+ struct matchdata {
+     int len;
+@@ -170,6 +172,7 @@ update_dict(unsigned int *pos, unsigned int *crc)
+     remainder += n;
+ 
+     *pos -= dicsiz;
++    data_start -= dicsiz;
+     for (i = 0; i < HSHSIZ; i++) {
+         j = hash[i].pos;
+         hash[i].pos = (j > dicsiz) ? j - dicsiz : NIL;
+@@ -200,6 +203,13 @@ search_dict_1(unsigned int token, unsigned int pos, unsigned int off,
+     int scan_end = pos - dicsiz;
+     unsigned int len;
+ 
++    /* The hashed search key may lie `off' bytes into the match, so
++       scan_beg can fall before the first input byte, into the ' ' preset.
++       Decoders that start from an empty window (7-Zip, XADMaster) reject
++       or misdecode such matches, so never let a match start there. */
++    if (scan_end < data_start - 1)
++        scan_end = data_start - 1;
++
+     while (scan_beg > scan_end) {
+         chain++;
+ 
+@@ -318,6 +328,7 @@ encode(struct interfacing *interface)
+     if (match.len > remainder) match.len = remainder;
+ 
+     pos = dicsiz;
++    data_start = dicsiz;
+     token = INIT_HASH(pos);
+     insert_hash(token, pos);     /* associate token and pos */
+ 

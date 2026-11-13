@@ -69,6 +69,7 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | Task | Command |
 |------|---------|
 | Host tests (CI) | `make test` |
+| Patched host lha for packing the kit archives (LHa for UNIX at tools/lha/lha.rev plus tools/lha/lh-prestart.patch, built into build/host/lha, `$(LHA)`; the Homebrew lha writes a match 7-Zip rejects; host test `make test ONLY=lha_prestart` fails with an unpatched lha) | `make build/host/lha` |
 | Patina menu link: libupkgui sysroot built from the pinned upterm-ports commit in `tools/upkgui.rev` (`git archive` into `build/upkgui/src`); bump the rev to relink against a new libupkgui | `make upkgui` (also run by `make build/amiga/patina-menu`); `make upkgui-clean` |
 | One suite | `make test ONLY=<name>` (e.g. `ONLY=xterm`) |
 | New git worktree rig-ready in about a minute (build/ seeded from the main checkout, unchanged sources dated as there so make rebuilds only what the branch changed; `rig.py install` uses the main checkout's handler with a [WARN] when the worktree has none; it and the refresh gate run `make` on a stale build/amiga program before pushing it, [ERROR] naming the program when that build fails) | `make worktree-ready`, then `make <target>` and `UPTERM_RIG=<free n> python3 tools/rig/rig.py start --max --purpose "<who: what>"` |

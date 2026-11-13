@@ -3,6 +3,8 @@
 HOSTCC  ?= cc
 HOSTCFLAGS := -std=c89 -pedantic -Wno-long-long -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined -DVT_CHECK_USED
 BUILD   := build
+LHA     := $(CURDIR)/$(BUILD)/host/lha
+export LHA
 # the generated version header; named here because the host rules above its own rule list it as a prerequisite
 UPTERM_VERSION_H := $(BUILD)/amiga/upterm_version.h
 # the generated menu icon page and the font it is drawn from, named here for the same reason: vttest_host
@@ -229,7 +231,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 TEST_ONLY_NAMES := $(shell grep -o '"$$(ONLY)" = [a-z_0-9]*' $(firstword $(MAKEFILE_LIST)) | sed 's/.* //' | sort -u)
 # ONLY= rows that run python3 on files alone: no C binary below is built or run for them (a worktree without the vendor NDK
 # cannot build render_host, and pkg_rows needs none). Add a name only after checking its script starts no $(BUILD) binary.
-TEST_PY_ONLY := dist_name_len win_refresh gui_chip_pens gen_lucide_icons icon_grid_fit pkg_rows worktree_ready rig_handler_fallback rig_patina_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq rig_boot_console gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free dopus_toolbar flat_on_hang icat_stderr help_man_sync ipd_no_dos_under_list patina_rows_buffer flat_single_instance flat_clone_stack flat_hook_locks flat_unload_inflight uterm_wiring
+TEST_PY_ONLY := lha_prestart dist_name_len win_refresh gui_chip_pens gen_lucide_icons icon_grid_fit pkg_rows worktree_ready rig_handler_fallback rig_patina_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq rig_boot_console gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free dopus_toolbar flat_on_hang icat_stderr help_man_sync ipd_no_dos_under_list patina_rows_buffer flat_single_instance flat_clone_stack flat_hook_locks flat_unload_inflight uterm_wiring
 TEST_BINS := $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host $(BUILD)/upgetty_host
 # the icon rows import fontTools: they run in the repo .venv like the icon generators (VENV_PY, below)
 test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS)) | $(VENV_FONTTOOLS)
@@ -253,6 +255,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS)) | $(VENV_FONTTOOLS)
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_reports_not_in_rig_dir ]; then python3 tests/test_rig_reports_not_in_rig_dir.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_screennotify ]; then python3 tests/test_rig_screennotify.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_clone_new ]; then python3 -I tools/test_rig_clone_new.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = lha_prestart ]; then $(MAKE) -s $(LHA) && python3 -I tests/test_lha_prestart.py $(LHA); fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_crashed ]; then python3 -I tools/test_rig_crashed.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = userland_expected ]; then python3 -I tests/test_userland_rig_expected.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_stamp ]; then python3 -I tests/test_patina_menu_stamp.py; fi
@@ -733,6 +736,21 @@ $(BUILD)/vtreply: $(ENGINE) engine/vtengine.h engine/vtwidth.h tools/vtreply.c
 $(BUILD)/tn_host: $(HOST_HDR) net/tn.c net/tn.h llm/sha256.c llm/sha256.h tools/tn_host.c
 	@mkdir -p $(BUILD)
 	$(HOSTCC) -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -o $@ net/tn.c llm/sha256.c tools/tn_host.c
+
+# LHa for UNIX (jca02266/lha, commit in tools/lha/lha.rev) plus tools/lha/lh-prestart.patch, built on the host and used to pack every
+# kit archive: the Homebrew lha 1.14i-ac writes a match into its pre-file ' ' window that 7-Zip rejects (thoughts/shared/s80-evidence/lha-encoder-root-cause.md).
+# Needs git, autoreconf, a C compiler. Extraction (lha -x) may stay on the system lha.
+LHA_REV := $(strip $(shell cat tools/lha/lha.rev))
+build/host/lha: $(LHA)
+$(LHA): tools/lha/lha.rev tools/lha/lh-prestart.patch
+	rm -rf $(BUILD)/host/lha-src && mkdir -p $(BUILD)/host
+	git clone -q https://github.com/jca02266/lha.git $(BUILD)/host/lha-src
+	git -C $(BUILD)/host/lha-src checkout -q $(LHA_REV)
+	git -C $(BUILD)/host/lha-src apply "$(CURDIR)/tools/lha/lh-prestart.patch"
+	cd $(BUILD)/host/lha-src && autoreconf -fi >/dev/null 2>&1 && ./configure -q >/dev/null && $(MAKE) -s -C src >/dev/null
+	cp $(BUILD)/host/lha-src/src/lha $@
+	rm -rf $(BUILD)/host/lha-src
+	@echo "[OK] patched lha $(LHA_REV): $@"
 
 # libvterm (neovim's terminal) as the reference, built from source into build/.
 LIBVTERM := $(BUILD)/third_party/libvterm
@@ -2049,7 +2067,7 @@ dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-dopus dist-uhc $(
 # every archive of dist/packages.txt, and the source archive
 # the base archive build/up-term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
 # Python, Claude and amiga-pi are archives of their own (dist/packages.txt, kit-split plan)
-dist-base: amiga jbmono $(BUILD)/amiga/patina-menu $(BUILD)/amiga/patina-gui $(BUILD)/amiga/patina-index $(BUILD)/amiga/patina-flat $(BUILD)/amiga/patina-icons $(BUILD)/amiga/AmTile bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(SYMBOLS_TTF) $(LUCIDE_DAT) $(OUTLINE_DAT) $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV)
+dist-base: amiga jbmono $(BUILD)/amiga/patina-menu $(BUILD)/amiga/patina-gui $(BUILD)/amiga/patina-index $(BUILD)/amiga/patina-flat $(BUILD)/amiga/patina-icons $(BUILD)/amiga/AmTile bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(SYMBOLS_TTF) $(LUCIDE_DAT) $(OUTLINE_DAT) $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV) $(LHA)
 	@# the ports kit is checked before the kit drawer is wiped: a missing kit left no build/dist/up-term
 	$(call PORTS_KIT_FRESH,dist)
 	rm -rf $(KIT) && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
@@ -2152,7 +2170,7 @@ LAUNCHER = mkdir -p "$(1)/Files/launch" && cp "$(2)" "$(1)/Files/launch/$(3)" \
 	&& python3 tools/mkicon.py "$(1)/Files/launch/$(3).info" --tool C:IconX \
 	  --tooltype "WINDOW=XCON:0/12/$(4)/$(3)/CLOSE"
 .PHONY: dist-claude dist-pi dist-nvim dist-python dist-dopus dist-uhc $(SLIM_DIST)
-dist-claude: $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(BUILD)/amiga/upupdate $(BUILD)/wasabi/.stamp-$(WASABI_REV)
+dist-claude: $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(BUILD)/amiga/upupdate $(BUILD)/wasabi/.stamp-$(WASABI_REV) $(LHA)
 	$(call ADDON_STAGE,claude)
 	cp $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(KIT_claude)/Files/
 	cp $(BUILD)/wasabi/wasabid $(KIT_claude)/Files/wasabid
@@ -2161,20 +2179,20 @@ dist-claude: $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(BUILD)/amiga/upupda
 	cp dist/wasabi/LICENSE $(KIT_claude)/Files/wasabid.LICENSE
 	$(call LAUNCHER,$(KIT_claude),dist/addons/claude/launch/Claude,Claude,800/560)
 	python3 tools/mkkit.py claude
-dist-pi: amiga-pi-bin $(BUILD)/amiga/upupdate
+dist-pi: amiga-pi-bin $(BUILD)/amiga/upupdate $(LHA)
 	$(call ADDON_STAGE,pi)
 	cp $(AMIGA_PI_BIN) $(KIT_pi)/Files/amiga-pi
 	cp $(AMIGA_PI)/CHANGELOG.md $(KIT_pi)/Files/CHANGELOG.md
 	cp -R $(AMIGA_PI_SKILLS) $(KIT_pi)/Files/skills
 	$(call LAUNCHER,$(KIT_pi),dist/addons/pi/launch/amiga-pi,amiga-pi,800/560)
 	python3 tools/mkkit.py pi
-dist-nvim: $(BUILD)/amiga/upupdate
+dist-nvim: $(BUILD)/amiga/upupdate $(LHA)
 	$(call ADDON_STAGE,nvim)
 	cp -R $(NVIM_DIST) $(KIT_nvim)/Files/nvim
 	cp dist/addons/nvim/sysinit.vim $(KIT_nvim)/Files/nvim/share/nvim/sysinit.vim
 	$(call LAUNCHER,$(KIT_nvim),dist/addons/nvim/launch/Neovim,Neovim,800/560)
 	python3 tools/mkkit.py nvim
-dist-python: $(BUILD)/amiga/upupdate
+dist-python: $(BUILD)/amiga/upupdate $(LHA)
 	$(call ADDON_STAGE,python)
 	cp -R $(PYTHON_DIST) $(KIT_python)/Files/python3
 	mkdir -p $(KIT_python)/Files/libs
@@ -2201,7 +2219,7 @@ dopus-toolbar: $(DOPUS_TOOLBAR_DIR)/Buttons/Patina-toolbar-filled-24
 # up-dopus: the unmodified upstream Directory Opus 5 68k archives (dist/addons/dopus/archives.txt), each checked
 # against its md5 in vendor/dopus5-5.104/ (download URLs: dist/addons/dopus/SOURCE.txt) and unpacked into its
 # drawer of Files; Install runs upstream's own "Install DOpus5" from the drawer that fits the CPU
-dist-dopus: $(BUILD)/amiga/upupdate
+dist-dopus: $(BUILD)/amiga/upupdate $(LHA)
 	$(call ADDON_STAGE,dopus)
 	cp dist/addons/dopus/COPYING dist/addons/dopus/SOURCE.txt dist/addons/dopus/archives.txt $(KIT_dopus)/Files/
 	grep -v '^#' dist/addons/dopus/archives.txt | while read a md5 drawer rest; do \
@@ -2214,7 +2232,7 @@ dist-dopus: $(BUILD)/amiga/upupdate
 # up-uhc: no UHC files (owner decision 2026-10-27): install.dos downloads the author's installer uhcinstall on the
 # user's machine and runs it. The kit holds only unstartup-uhc.sh (dist/unstartup.sh, copied), which takes the legacy
 # ";BEGIN uhc" block of up-uhc 1.0 to 1.3 out of S:User-Startup.
-dist-uhc: $(BUILD)/amiga/upupdate
+dist-uhc: $(BUILD)/amiga/upupdate $(LHA)
 	$(call ADDON_STAGE,uhc)
 	cp dist/unstartup.sh $(KIT_uhc)/Files/unstartup-uhc.sh
 	python3 tools/mkkit.py uhc
@@ -2227,7 +2245,7 @@ define SLIM_STAGE
 	python3 tools/mkkit.py $(1)
 endef
 define SLIM_RULE
-dist-$(1): $$(BUILD)/amiga/upupdate
+dist-$(1): $$(BUILD)/amiga/upupdate $(LHA)
 	$$(call SLIM_STAGE,$(1))
 endef
 $(foreach p,$(SLIM_IDS),$(eval $(call SLIM_RULE,$(p))))
@@ -2253,7 +2271,7 @@ FULL_BASE ?= $(BUILD)/up-term.lha
 FULL_IPK ?= $(BUILD)/ipk
 FULL_STAGE := $(BUILD)/dist-full/up-term
 .PHONY: dist-full
-dist-full:
+dist-full: $(LHA)
 	@test -s $(FULL_BASE) && ls $(FULL_IPK)/*.ipk >/dev/null 2>&1 || { echo "dist-full: $(FULL_BASE) or $(FULL_IPK)/*.ipk missing: make dist"; exit 1; }
 	mkdir -p $(FULL_STAGE)/Packages
 	cp $(FULL_IPK)/*.ipk $(FULL_IPK)/Packages $(FULL_STAGE)/Packages/
@@ -2273,8 +2291,7 @@ dist-full:
 	} > $(FULL_STAGE)/Install-Packages
 	chmod 755 $(FULL_STAGE)/Install-Packages
 	cp $(FULL_BASE) $(BUILD)/up-term-full.lha
-	cd $(BUILD)/dist-full && lha -aq ../up-term-full.lha up-term/Install-Packages up-term/Packages
-	python3 tools/lhafix.py $(BUILD)/up-term-full.lha $(BUILD)/dist-full
+	cd $(BUILD)/dist-full && $(LHA) -aq ../up-term-full.lha up-term/Install-Packages up-term/Packages
 	@n=$$(ls $(FULL_IPK)/*.ipk | wc -l); m=$$(lha l $(BUILD)/up-term-full.lha | grep -c ' up-term/Packages/.*\.ipk$$'); \
 	  [ "$$n" -eq "$$m" ] && [ "$$m" -eq "$$(grep -c -E '^ *UP-Term:bin/upkg install ' $(FULL_STAGE)/Install-Packages)" ] \
 	  && lha l $(BUILD)/up-term-full.lha | grep -q ' up-term/Install$$' \
@@ -2291,7 +2308,7 @@ dist-full:
 BOOT_STAGE := $(BUILD)/dist-boot/up-term-boot
 BOOT_FEED := $(shell awk '$$1 == "src/gz" {print $$3}' dist/upkg.conf)
 .PHONY: dist-boot
-dist-boot:
+dist-boot: $(LHA)
 	@test -n "$(BOOT_FEED)" || { echo "dist-boot: no src/gz line in dist/upkg.conf"; exit 1; }
 	mkdir -p $(BOOT_STAGE)
 	test -s dist/net/bebboget-1.11/cacert.pem || curl -fsSL -o dist/net/bebboget-1.11/cacert.pem https://curl.se/ca/cacert.pem
@@ -2304,8 +2321,7 @@ dist-boot:
 	mkdir -p $(BOOT_STAGE)/AmiNetXDuo && $(call ANX_COPY,$(BOOT_STAGE)/AmiNetXDuo)
 	sed 's|@FEED@|$(BOOT_FEED)|' dist/Get-UP-Term > $(BOOT_STAGE)/Get-UP-Term
 	chmod 755 $(BOOT_STAGE)/bebboget $(BOOT_STAGE)/installcerts $(BOOT_STAGE)/tcpprobe $(BOOT_STAGE)/Get-UP-Term
-	cp /dev/null $(BUILD)/up-term-boot.lha && cd $(BUILD)/dist-boot && lha -aq ../up-term-boot.lha up-term-boot
-	python3 tools/lhafix.py $(BUILD)/up-term-boot.lha $(BUILD)/dist-boot
+	cp /dev/null $(BUILD)/up-term-boot.lha && cd $(BUILD)/dist-boot && $(LHA) -aq ../up-term-boot.lha up-term-boot
 	@! grep -q '@FEED@' $(BOOT_STAGE)/Get-UP-Term && grep -q ' $(BOOT_FEED)/up-term.lha$$' $(BOOT_STAGE)/Get-UP-Term \
 	  && [ "$$(lha l $(BUILD)/up-term-boot.lha | grep -c -E ' up-term-boot/(bebboget|installcerts|cacert.pem|COPYING|SOURCE.txt|bebboget-up-term.diff|tcpprobe|Get-UP-Term|AmiNetXDuo/(Install-AmiNetXDuo|Installer|ReadMe))$$')" -eq 11 ] \
 	  && ! lha l $(BUILD)/up-term-boot.lha | grep -q ' up-term-boot/AmiNetXDuo/Developer' \
@@ -2325,14 +2341,12 @@ dist-index: dist-base dist-claude dist-pi dist-nvim dist-python dist-dopus dist-
 dist-ipk: dist-index
 	python3 tools/pkgs.py ipk $(BUILD)
 	python3 tools/pkgs.py feed $(BUILD)
-dist-src:
+dist-src: $(LHA)
 	$(call PORTS_KIT_FRESH,dist-src)
 	rm -rf $(BUILD)/dist-src && mkdir -p $(BUILD)/dist-src/coreutils-5.2.1
 	cp dist/gg/coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2 dist/gg/coreutils-5.2.1/SOURCE.txt dist/gg/coreutils-5.2.1/COPYING $(BUILD)/dist-src/coreutils-5.2.1/
-	cd $(PORTS_KIT)/.. && rm -f $(CURDIR)/$(BUILD)/up-term-src.lha && lha -aq $(CURDIR)/$(BUILD)/up-term-src.lha userland-src
-	python3 tools/lhafix.py $(BUILD)/up-term-src.lha $(PORTS_KIT)/..
-	cd $(BUILD)/dist-src && lha -aq ../up-term-src.lha coreutils-5.2.1
-	python3 tools/lhafix.py $(BUILD)/up-term-src.lha $(BUILD)/dist-src
+	cd $(PORTS_KIT)/.. && rm -f $(CURDIR)/$(BUILD)/up-term-src.lha && $(LHA) -aq $(CURDIR)/$(BUILD)/up-term-src.lha userland-src
+	cd $(BUILD)/dist-src && $(LHA) -aq ../up-term-src.lha coreutils-5.2.1
 	python3 tools/mkreadme.py src
 	@ls -la $(BUILD)/up-term-src.lha
 
@@ -2384,8 +2398,8 @@ dist-check: flat-budget $(BUILD)/amiga/keymap.o $(BUILD)/amiga/Patina $(BUILD)/a
 	SLIM_REQUIRE=1 python3 tests/test_dist_slim.py
 	@test -s $(BUILD)/up-term-src.lha || { echo "dist-check: $(BUILD)/up-term-src.lha missing: make dist"; exit 1; }
 	@lha l $(BUILD)/up-term-src.lha | grep -q "coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2" || { echo "dist-check: up-term-src.lha lacks the coreutils source"; exit 1; }
-	@# every archive decodes in a strict decoder too: lha 1.14i-ac wrote an -lh5- ixkill only lha itself could read (v1.1, 2026-11-13; tools/lhafix.py)
-	@for a in $(BUILD)/*.lha; do 7zz t $$a > /dev/null 2>&1 || { echo "dist-check: 7zz t $$a fails: python3 tools/lhafix.py"; 7zz t $$a 2>&1 | grep ERROR; exit 1; }; done
+	@# every archive decodes in a strict decoder too: unpatched lha 1.14i-ac wrote an -lh5- ixkill only lha itself could read (v1.1, 2026-11-13; tools/lha/lh-prestart.patch)
+	@for a in $(BUILD)/*.lha; do 7zz t $$a > /dev/null 2>&1 || { echo "dist-check: 7zz t $$a fails: is $(LHA) the patched build (make build/host/lha)?"; 7zz t $$a 2>&1 | grep ERROR; exit 1; }; done
 
 # The one reachability test: XCON: through DOS on the running rig.
 test-rig: amiga
