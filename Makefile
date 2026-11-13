@@ -230,7 +230,8 @@ TEST_ONLY_NAMES := $(shell grep -o '"$$(ONLY)" = [a-z_0-9]*' $(firstword $(MAKEF
 # cannot build render_host, and pkg_rows needs none). Add a name only after checking its script starts no $(BUILD) binary.
 TEST_PY_ONLY := dist_name_len win_refresh gui_chip_pens gen_lucide_icons icon_grid_fit pkg_rows worktree_ready rig_handler_fallback rig_patina_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq rig_boot_console gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free dopus_toolbar flat_on_hang icat_stderr help_man_sync ipd_no_dos_under_list patina_rows_buffer flat_single_instance flat_clone_stack flat_hook_locks flat_unload_inflight
 TEST_BINS := $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host $(BUILD)/upgetty_host
-test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
+# the icon rows import fontTools: they run in the repo .venv like the icon generators (VENV_PY, below)
+test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS)) | $(VENV_FONTTOOLS)
 	@if [ -n "$(ONLY)" ] && [ -z "$(filter $(ONLY),$(TEST_ONLY_NAMES))" ] && ! ./$(BUILD)/vttest_host --has $(ONLY); then echo "[ERROR] make test: no suite named $(ONLY)"; exit 2; fi
 	@if [ -z "$(filter $(ONLY),$(TEST_PY_ONLY))" ] && { [ -z "$(ONLY)" ] || ./$(BUILD)/vttest_host --has $(ONLY); }; then ./$(BUILD)/vttest_host $(ONLY); fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uptelnetd ]; then python3 tools/test_uptelnetd.py; fi
@@ -408,9 +409,9 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_zmodem_handshake ]; then python3 tests/test_rig_zmodem_handshake.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = terminfo_amiga ]; then python3 tests/test_terminfo_amiga.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = emoji ]; then python3 tests/test_gen_emoji.py; fi
-	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gen_lucide_icons ]; then python3 -I tests/test_gen_lucide_icons.py && python3 -I tests/test_preview_lucide_icons.py; fi
-	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = dopus_toolbar ]; then python3 -I tests/test_dopus_toolbar.py; fi
-	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = icon_grid_fit ]; then python3 -I tests/test_icon_grid_fit.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gen_lucide_icons ]; then $(VENV_PY) -I tests/test_gen_lucide_icons.py && $(VENV_PY) -I tests/test_preview_lucide_icons.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = dopus_toolbar ]; then $(VENV_PY) -I tests/test_dopus_toolbar.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = icon_grid_fit ]; then $(VENV_PY) -I tests/test_icon_grid_fit.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_delete_on_error.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_only.py && python3 -I tests/test_make_link_lists.py && python3 -I tests/test_handler_deps.py && python3 -I tests/test_handler_rows.py && python3 -I tests/test_handler_fallback_order.py && python3 -I tests/test_handler_no_dos_on_handler.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_netinclude_in_tree.py; fi
