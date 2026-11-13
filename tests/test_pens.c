@@ -89,7 +89,7 @@ static void glyph_pen_kept_when_it_differs_or_was_asked_equal(void)
     CHECK(vr_glyph_pen(2, 2, 0, 1, 0) == 2);
 }
 
-/* render/aa_ink.c's rules, the shared coverage-to-ink path (terminal glyphs and amarchy-gui's text): the table
+/* render/aa_ink.c's rules, the shared coverage-to-ink path (terminal glyphs and patina-gui's text): the table
  * runs from bg (coverage 0) to fg (255), the shades aim at 1/4, 1/2, 3/4, the passes sit at 64/128/192/255, and a
  * nearest pen is taken only when it beats both the text pen and the background pen. */
 static void aa_ink_rules(void)

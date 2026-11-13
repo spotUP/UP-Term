@@ -1,7 +1,7 @@
 ---
 date: 2026-11-05
 topic: S57-FREEZE-2IN9 root cause, read from the live hung rig 145 (3.2, 060 max), worktree vtcon-s57-freeze9 f8c4ddba
-verdict: FIXED (ceebb596): lock ring between Amarchy and the Workbench task; 19 clean boots on rig 146, 0 hangs
+verdict: FIXED (ceebb596): lock ring between Patina and the Workbench task; 19 clean boots on rig 146, 0 hangs
 ---
 
 # S57-FREEZE-2IN9: the boot freeze is a lock ring on the public screen list
@@ -25,10 +25,10 @@ ROM routines were disassembled from the ROM image in memory (0xf80000) with m68k
 - Workbench task 0x1066cf10: its LockPubScreen("Workbench") took the reopen path (0xfe8b50), set the guard word,
   opened the screen (0xfeab5a, 0xff1b1c) and now sits in the PubScreenStatus body (0xfe8a74) that makes the screen
   public. That call waits for lock 4.
-- Amarchy task 0x100ff0e0, at start (wbmode.c wb_mode_id): inside `ipd_lock_wb_screen`. It holds lock 4
+- Patina task 0x100ff0e0, at start (wbmode.c wb_mode_id): inside `ipd_lock_wb_screen`. It holds lock 4
   (LockPubScreenList) and is inside LockPubScreen("Workbench"), in routine 0xfeaac8: Forbid, guard word not 0,
   Permit, WaitTOF, loop.
-- IPrefs, amarchy-flat and wasabid queue on lock 4. wasabid holds lock 0, so input.device stops as well. That is why
+- IPrefs, patina-flat and wasabid queue on lock 4. wasabid holds lock 0, so input.device stops as well. That is why
   the rig stops answering.
 
 ## ROM facts behind it (Intuition V40 in the 3.2 ROM)
@@ -41,9 +41,9 @@ ROM routines were disassembled from the ROM image in memory (0xf80000) with m68k
 ## The ring
 
 1. LoadWB's Workbench task opens the Workbench: holds the guard word, screen node in the list but still private.
-2. Amarchy takes lock 4, `ipd_wb_screen_in` finds the "Workbench" node with a screen, so `ipd_lock_wb_screen`
+2. Patina takes lock 4, `ipd_wb_screen_in` finds the "Workbench" node with a screen, so `ipd_lock_wb_screen`
    calls LockPubScreen("Workbench").
-3. Intuition treats the private node as not found and takes the reopen path: Amarchy polls the guard word, still
+3. Intuition treats the private node as not found and takes the reopen path: Patina polls the guard word, still
    holding lock 4.
 4. The Workbench task needs lock 4 to make the screen public and drop the guard. Neither side can move.
 
@@ -61,7 +61,7 @@ invariant; this is the "node present but private" half.
 
 1. The predicate of the single helper (root level): ask for the lock only when Intuition will find the node, which
    means listed, with a screen, and not PSNF_PRIVATE. A private Workbench reads as "not open yet", the state every
-   caller already handles (Amarchy starts before LoadWB).
+   caller already handles (Patina starts before LoadWB).
 2. The lock order: drop the list lock before LockPubScreen. Wrong: without the list lock the screen can close between
    the look and the lock, which brings BOOT-31-WB-DEADLOCK back.
 3. The caller (wbmode.c start path): delay or retry around the start. A band-aid: 15 other callers of the helper keep
@@ -71,7 +71,7 @@ invariant; this is the "node present but private" half.
 
 - Option A, level 1, one pure predicate `ip_wb_lockable(listed, has_screen, flags)` in iconpen_core.c, used by
   `ipd_lock_wb_screen`. Cost: a few lines plus a host test. Covers every caller, since all go through the helper
-  (tests/test_wb_lock_guard.py enforces that). Does not cover a program outside Amarchy that locks the list and
+  (tests/test_wb_lock_guard.py enforces that). Does not cover a program outside Patina that locks the list and
   the Workbench; none of ours does.
 - Option B, make `ipd_wb_screen_in` itself skip a private node. Same effect for the lock helper, but it also changes
   the two users that only read the screen under the list lock (pen sync at iconpen_dos.c:175, recolour at :288).
@@ -85,7 +85,7 @@ the list lock) and "LockPubScreen will find it" (`ip_wb_lockable`, for the lock 
 
 ## Callers and the 0 result
 
-`ipd_lock_wb_screen` returning 0 already means "Workbench not open" everywhere (S32-START-LOOK: Amarchy starts from
+`ipd_lock_wb_screen` returning 0 already means "Workbench not open" everywhere (S32-START-LOOK: Patina starts from
 S:User-Startup before LoadWB). wbmode.c `wb_mode_id` returns WBM_INVALID_ID and the hold waits for the next tick;
 `desk_start_gate` runs again on the next tick. No caller needs a change.
 

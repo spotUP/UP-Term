@@ -32,9 +32,9 @@ status: handoff, week limit approaching
 4. Ledger (thoughts/spot/todos.md, edit by pattern, rows move):
    - STRUT-REFLOW-RESTORE: strut prebar PASS, strut_off PASS after helper fix (release-rig-batch.md).
    - FLAT-BUTTON-FILL: depth 8 idle 8d8d8d (pen 3), held bebebe = window background. Owner chose
-     "Lighter tint". Code in amarchy/flat_core.c ~560 belongs to the Amarchy session: ledger only.
-   - R1.17-WBRESET / AM-FLAT-WB: NOT verified. `amarchy_gui_rig.py --setup` on rig 115 failed:
-     "flat prefs off, amarchy-flat BOOT left nothing resident, STATUS: flat=on calls=16 chained=0". Undiagnosed.
+     "Lighter tint". Code in patina/flat_core.c ~560 belongs to the Patina session: ledger only.
+   - R1.17-WBRESET / AM-FLAT-WB: NOT verified. `patina_gui_rig.py --setup` on rig 115 failed:
+     "flat prefs off, patina-flat BOOT left nothing resident, STATUS: flat=on calls=16 chained=0". Undiagnosed.
    - FLAT-PENS-NOT-LIVE visual check: not run.
    - 3.1 rows: wait for the batched 3.1 run.
    - New row: UD2 band fix landed 230f94bf, owner eye check open.

@@ -1,6 +1,6 @@
 """Unload waits for the callers inside a patched entry (FLAT-UNLOAD-INFLIGHT).
 
-On unload amarchy-flat restored the vector and then waited a fixed Delay for callers already inside the patched entry. A
+On unload patina-flat restored the vector and then waited a fixed Delay for callers already inside the patched entry. A
 caller blocked longer returned through the entry's pop and rts after the segment was freed: a jump into freed memory. So: the
 entry code is a template copied into a never-freed AllocMem block that counts callers in and out, and unload polls that counter
 to 0 after the restore. A second window: a task that has fetched the entry address but has not yet counted in is invisible to
@@ -12,7 +12,7 @@ FLAT_ROOT points the test at another tree (the fail-before run against commit 28
 import os, pathlib, re, unittest
 
 ROOT = pathlib.Path(os.environ.get("FLAT_ROOT") or pathlib.Path(__file__).resolve().parent.parent)
-SRC = ROOT / "amarchy" / "flat.c"
+SRC = ROOT / "patina" / "flat.c"
 
 
 def code():
@@ -20,7 +20,7 @@ def code():
 
 
 def asm(name):
-    return [l.split(";")[0].strip() for l in (ROOT / "amarchy" / name).read_text().split("\n")]
+    return [l.split(";")[0].strip() for l in (ROOT / "patina" / name).read_text().split("\n")]
 
 
 def func(src, name):

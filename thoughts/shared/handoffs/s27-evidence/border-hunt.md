@@ -3,7 +3,7 @@ Probe: scratchpad/bprobe/bprobe.c (not committed). SetFunction on graphics RectF
 and intuition DrawImageState(-618); logs every call whose rp->Layer is window A's layer (or Layer->Window == A), with nesting
 inside DrawImageState. Window A 220x90 (close, depth, zoom, size, drag), window B overlaps. Phases: 1 RefreshWindowFrame(A),
 2 ActivateWindow(B) (A deactivates), 3 ActivateWindow(A), 4 ChangeWindowBox bigger, 5 WindowToBack, 6 WindowToFront.
-Raw: bprobe/out32.txt (rig 8, intuition V47.53, amarchy-flat running with ring), bprobe/out31.txt (rig 8 --os 31, V40.85, stock).
+Raw: bprobe/out32.txt (rig 8, intuition V47.53, patina-flat running with ring), bprobe/out31.txt (rig 8 --os 31, V40.85, stock).
 Pen column in the logs is NOT reliable (Intuition sets pens without SetAPen); ignore it. out32 coords are offset by -20 (probe bug, fixed for 3.1).
 
 ## Measured sequence per redraw (V, both OSes)

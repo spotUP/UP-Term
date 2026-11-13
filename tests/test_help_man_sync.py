@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""help_man_sync: the GETTING STARTED section of man/amarchy.1 is exactly what tools/gen_amarchy_help.py makes from
-dist/amarchy.help, and the generated amhelp.inc carries both sections. A hand edit of either side fails."""
+"""help_man_sync: the GETTING STARTED section of man/patina.1 is exactly what tools/gen_patina_help.py makes from
+dist/patina.help, and the generated amhelp.inc carries both sections. A hand edit of either side fails."""
 import os
 import subprocess
 import sys
 import tempfile
 
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-gen = os.path.join(root, "tools", "gen_amarchy_help.py")
-help_, kmap, man = (os.path.join(root, p) for p in ("dist/amarchy.help", "dist/keymap", "man/amarchy.1"))
+gen = os.path.join(root, "tools", "gen_patina_help.py")
+help_, kmap, man = (os.path.join(root, p) for p in ("dist/patina.help", "dist/keymap", "man/patina.1"))
 
 r = subprocess.run([sys.executable, "-I", gen, "--check", help_, kmap, man], capture_output=True, text=True)
 print(r.stdout.strip() or r.stderr.strip())

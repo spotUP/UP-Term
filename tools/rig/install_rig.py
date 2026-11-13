@@ -31,8 +31,8 @@ One case per package on the base, and the combinations (K2-10, plan 2026-10-13-k
               amiagent is removed and our wasabid 0.2 replaced; Uninstall takes it away (WM6)
   net-upgrade Install SSH over a 1.45 libcryptossh.library: with our marker it is replaced by 1.46, without it (the user's own) it is kept
               with a note and the replace command; Uninstall removes only ours (K6 fix)
-  legw        Leg W W8: Install, the Amarchy-Flat block in S:Startup-Sequence and the WBStartup icons, a reboot, Status lists
-              amarchy-flat, Amarchy, amarchy-index in that order, Uninstall gives S:Startup-Sequence back
+  legw        Leg W W8: Install, the Patina-Flat block in S:Startup-Sequence and the WBStartup icons, a reboot, Status lists
+              patina-flat, Patina, patina-index in that order, Uninstall gives S:Startup-Sequence back
   nobase      an add-on that needs the base (nvim): install.dos with no UP-Term: returns 20, ENV:UPTCHECK names up-term.lha
 
 Resumable (RULES section 6a): the verdict of each case goes to build/<rig>/install/<case>.json when the case
@@ -1990,7 +1990,7 @@ def _libs_case(ck):
 
 
 def status_processes():
-    """{command name (lower case): process number} from AmigaDOS `Status` ("Process 7: Loaded as command: amarchy-flat")."""
+    """{command name (lower case): process number} from AmigaDOS `Status` ("Process 7: Loaded as command: patina-flat")."""
     out = {}
     for m in re.finditer(r'Process\s+(\d+):\s+Loaded as command:\s+(\S+)', run('Status')[1]):
         out.setdefault(os.path.basename(m.group(2).replace(':', '/')).lower(), int(m.group(1)))
@@ -1998,7 +1998,7 @@ def status_processes():
 
 
 def case_legw(ck):
-    """Leg W W8: where the install starts Amarchy. Install on a clean image, the blocks and icons, a reboot, the start
+    """Leg W W8: where the install starts Patina. Install on a clean image, the blocks and icons, a reboot, the start
     order, Uninstall. The one reachability test of plan 2026-11-08-legw-startup-move.md (D1, D4, D6)."""
     prepare(None)
     before = Before()
@@ -2007,55 +2007,55 @@ def case_legw(ck):
     sseq = run('Type S:Startup-Sequence')[1]
     lines = sseq.splitlines()
     at = {n: [i for i, l in enumerate(lines) if re.sub(r'^c:', '', l.strip().lower()).startswith(n)] for n in ('adddatatypes', 'iprefs')}
-    begin = [i for i, l in enumerate(lines) if l.startswith(';BEGIN UP-Term Amarchy-Flat')]
-    end = [i for i, l in enumerate(lines) if l.startswith(';END UP-Term Amarchy-Flat')]
+    begin = [i for i, l in enumerate(lines) if l.startswith(';BEGIN UP-Term Patina-Flat')]
+    end = [i for i, l in enumerate(lines) if l.startswith(';END UP-Term Patina-Flat')]
     block = lines[begin[0]:end[0] + 1] if begin and end else []
-    ck(len(begin) == 1 and len(end) == 1, 'legw (a): one ";BEGIN UP-Term Amarchy-Flat" block in S:Startup-Sequence', sseq[-300:])
+    ck(len(begin) == 1 and len(end) == 1, 'legw (a): one ";BEGIN UP-Term Patina-Flat" block in S:Startup-Sequence', sseq[-300:])
     ck(bool(begin and at['iprefs']) and begin[0] < at['iprefs'][0] and end[0] < at['iprefs'][0],
        'legw (a): the block ends before IPrefs', 'block %s, IPrefs %s' % (begin, at['iprefs']))
     ck(bool(begin and at['adddatatypes']) and at['adddatatypes'][0] < begin[0],
        'legw (a): the block sits after AddDataTypes', 'block %s, AddDataTypes %s' % (begin, at['adddatatypes']))
-    run_lines = [l for l in block if 'amarchy-flat BOOT' in l]
-    ck(bool(dest) and dest.endswith('UP-Term') and any(l.strip() == 'Run >NIL: %s/bin/amarchy-flat BOOT' % dest for l in run_lines)
-       and any(l.strip() == 'If EXISTS %s/bin/amarchy-flat' % dest for l in block),
+    run_lines = [l for l in block if 'patina-flat BOOT' in l]
+    ck(bool(dest) and dest.endswith('UP-Term') and any(l.strip() == 'Run >NIL: %s/bin/patina-flat BOOT' % dest for l in run_lines)
+       and any(l.strip() == 'If EXISTS %s/bin/patina-flat' % dest for l in block),
        'legw (a): the block names the absolute drawer path, no stray character (ENVARC:up-term/Dir: %r)' % dest, repr(block))
-    for icon, tts in (('Amarchy', ('DONOTWAIT', 'STARTPRI=10')), ('amarchy-index', ('DONOTWAIT', 'STARTPRI=-10', 'TOOLPRI=-5'))):
+    for icon, tts in (('Patina', ('DONOTWAIT', 'STARTPRI=10')), ('patina-index', ('DONOTWAIT', 'STARTPRI=-10', 'TOOLPRI=-5'))):
         path = 'SYS:WBStartup/%s.info' % icon
         ck(run('List >NIL: %s' % path)[0] == 0, 'legw (b): %s exists' % path)
         # Search reads the binary icon (Type would stop at its NUL bytes): every tooltype and the default tool is in the file
         found = [t for t in tts + ('UP-Term:bin/%s' % icon,) if run('Search >NIL: %s "%s"' % (path, t))[0] == 0]
         ck(len(found) == len(tts) + 1, 'legw (b): %s carries %s and the tool UP-Term:bin/%s' % (path, ' '.join(tts), icon),
            'found only %s' % found)
-    run('Delete >NIL: ENV:Amarchy/prefs ENVARC:Amarchy/apps QUIET')   # no prefs: both flat keys default on, BOOT stays resident; no index yet
+    run('Delete >NIL: ENV:Patina/prefs ENVARC:Patina/apps QUIET')   # no prefs: both flat keys default on, BOOT stays resident; no index yet
     import ami
     ami.reboot()
     stock_libs()
     # Workbench starts the WBStartup programs after S:User-Startup, and they are not CLI processes (Status does not list
-    # them): Amarchy shows by its ARexx port AMARCHY, the index scan by the file ENVARC:Amarchy/apps it writes.
+    # them): Patina shows by its ARexx port PATINA, the index scan by the file ENVARC:Patina/apps it writes.
     procs, port, apps, perr = {}, None, False, ''
     for _ in range(40):   # up to 2 minutes
         procs = status_processes()
         try:
             with ami._conn() as conn:
-                port = ami._m().arexx(conn, 'AMARCHY', 'STATUS', timeout=5)[2].strip()
+                port = ami._m().arexx(conn, 'PATINA', 'STATUS', timeout=5)[2].strip()
         except Exception as e:
             port, perr = None, repr(e)
-        apps = run('List >NIL: ENVARC:Amarchy/apps')[0] == 0
+        apps = run('List >NIL: ENVARC:Patina/apps')[0] == 0
         if port and apps:
             break
         time.sleep(3)
-    ck('amarchy-flat' in procs, 'legw (c): after the reboot Status lists amarchy-flat (S:Startup-Sequence block ran)', ' '.join(sorted(procs)))
-    ck(bool(port), 'legw (c): Amarchy (WBStartup icon) runs: port AMARCHY answers STATUS, so Workbench did not hang on it (D6)', '%r %s Status: %s' % (port, perr, ' '.join(sorted(procs))))
-    ck(apps, 'legw (c): amarchy-index (WBStartup icon) ran: ENVARC:Amarchy/apps written (D6)')
-    flat = procs.get('amarchy-flat', 0)
+    ck('patina-flat' in procs, 'legw (c): after the reboot Status lists patina-flat (S:Startup-Sequence block ran)', ' '.join(sorted(procs)))
+    ck(bool(port), 'legw (c): Patina (WBStartup icon) runs: port PATINA answers STATUS, so Workbench did not hang on it (D6)', '%r %s Status: %s' % (port, perr, ' '.join(sorted(procs))))
+    ck(apps, 'legw (c): patina-index (WBStartup icon) ran: ENVARC:Patina/apps written (D6)')
+    flat = procs.get('patina-flat', 0)
     later = [procs[n] for n in ('solidwin', 'do_launcher') if n in procs]
     ck(0 < flat and bool(later) and all(flat < n for n in later),
-       'legw (d): amarchy-flat is process %d, below %s started in S:User-Startup (after IPrefs); the textual order is (a)' % (flat, later))
-    st = run('%s/bin/amarchy-flat STATUS' % dest)[1]
+       'legw (d): patina-flat is process %d, below %s started in S:User-Startup (after IPrefs); the textual order is (a)' % (flat, later))
+    st = run('%s/bin/patina-flat STATUS' % dest)[1]
     ck(re.search(r'flat=(on|off) ', st) is not None, 'legw (d): the resident patch answers STATUS (stack held on this Kickstart)', st.strip()[:80])
     base_uninstall(ck, before, rebooted=True,
                    keep_assign=('VTCX:Apps',) + tuple(t for t in upterm_targets(run('Assign UP-Term: EXISTS')[1]) if 'SYS:UP-Term' not in t))
-    for icon in ('Amarchy', 'amarchy-index'):
+    for icon in ('Patina', 'patina-index'):
         ck(run('List >NIL: SYS:WBStartup/%s.info' % icon)[0] != 0, 'legw (e): Uninstall removed SYS:WBStartup/%s.info' % icon)
     ck(run('Type S:Startup-Sequence')[1] == before.sseq, 'legw (e): S:Startup-Sequence is byte for byte the original')
 

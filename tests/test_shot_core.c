@@ -1,11 +1,11 @@
-/* shot_core (amarchy/shot_core.c): ByteRun1 packer edges, chunky to planes, the ILBM writer byte for byte against
+/* shot_core (patina/shot_core.c): ByteRun1 packer edges, chunky to planes, the ILBM writer byte for byte against
  * tests/data/shot_4x3_d2.ilbm (made by hand from the IFF spec), and a round trip through the independent decoder
  * tools/ilbm_decode.py (no shared code). */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "harness.h"
-#include "../amarchy/shot_core.h"
+#include "../patina/shot_core.h"
 
 typedef struct { unsigned char *b; long n, cap; int calls_write, calls_patch, fail_after; } msink;
 
@@ -281,7 +281,7 @@ static void deep_golden(void)
     free(m.b);
 }
 
-/* make amiga must compile shot_core.c: it is in the Amarchy sources (it used to build only through shotprobe) */
+/* make amiga must compile shot_core.c: it is in the Patina sources (it used to build only through shotprobe) */
 static void built_by_make_amiga(void)
 {
     char line[8192];
@@ -289,7 +289,7 @@ static void built_by_make_amiga(void)
     int seen = 0;
     CHECK(f != NULL);
     while (f && fgets(line, sizeof line, f))
-        if (strncmp(line, "AMARCHY_SRC :=", 14) == 0 && strstr(line, "amarchy/shot_core.c") && strstr(line, "amarchy/shot.c"))
+        if (strncmp(line, "PATINA_SRC :=", 13) == 0 && strstr(line, "patina/shot_core.c") && strstr(line, "patina/shot.c"))
             seen = 1;
     if (f)
         fclose(f);

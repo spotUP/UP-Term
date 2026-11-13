@@ -1,6 +1,6 @@
-; Outline icon style of the flat Workbench (plan 2026-10-31-amarchy-lucide-icons.md, L2; style choice: todos s28 AM-ICONS-SET-CHOICE).
+; Outline icon style of the flat Workbench (plan 2026-10-31-patina-lucide-icons.md, L2; style choice: todos s28 AM-ICONS-SET-CHOICE).
 ; One row per target: `match = lucide-name`. tools/gen_lucide_icons.py renders each Lucide glyph
-; (build/lucide, lucide-static in the Makefile) to dist/Amarchy/Icons/outline.dat; an unknown Lucide name fails the build.
+; (build/lucide, lucide-static in the Makefile) to dist/Patina/Icons/outline.dat; an unknown Lucide name fails the build.
 ; match is one of
 ;   a path          SYS:Prefs/Font         (volume or assign, then the .info path without ".info")
 ;   a default       def_drawer             (ENVARC:Sys/def_NAME.info; def_disk, def_drawer, def_tool, def_project, def_trashcan, def_RAM, every def_* of OS 3.2 Prefs/Env-Archive/Sys)
@@ -74,15 +74,15 @@ SYS:System/Shell        = terminal
 SYS:System/DiskCopy     = copy
 SYS:System/Format       = hard-drive-download
 SYS:System/RexxMast     = scroll-text
-; Amarchy and UP-Term
+; Patina and UP-Term
 UP-Term                 = square-terminal
-UP-Term:Amarchy         = layout-dashboard
-UP-Term:Amarchy/Icons   = shapes
-UP-Term:Amarchy/Themes  = palette
-UP-Term:Amarchy/Amarchy      = layout-dashboard
-UP-Term:Amarchy/amarchy-menu = menu
-UP-Term:Amarchy/amarchy-gui  = app-window
-UP-Term:Amarchy/AmTile       = layout-grid
+UP-Term:Patina         = layout-dashboard
+UP-Term:Patina/Icons   = shapes
+UP-Term:Patina/Themes  = palette
+UP-Term:Patina/Patina      = layout-dashboard
+UP-Term:Patina/patina-menu = menu
+UP-Term:Patina/patina-gui  = app-window
+UP-Term:Patina/AmTile       = layout-grid
 UP-Term:UPConsole       = square-terminal
 UP-Term:UP-Term         = square-terminal
 ; Directory Opus 5.104 (DOpus5: assign; vendor/dopus5-5.104, VTCX:DOpus5 on rigs): every .info of the installed drawer, paths applied by ia_apply when the assign exists

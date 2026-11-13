@@ -1,11 +1,11 @@
 # s55 rig recheck 2 (rig 102, main 4705d533 >= d873ce13)
 
 Build: make wasabi, make amiga, make dist (UPTERM_PORTS=kit-main) all rc 0. Rig 102 started --max --idle-minutes 0.
-Install: installer_rig.py ONLY fresh-all (every option ticked, INSTALLER_KEEP=1): PASS, 36 checks, includes reboot + Amarchy port + menu.
+Install: installer_rig.py ONLY fresh-all (every option ticked, INSTALLER_KEEP=1): PASS, 36 checks, includes reboot + Patina port + menu.
 
 ## Boot verdicts (serial.log "87000004" count 0 each time; ami.py requesters empty; "CPU reset" count 0 in fs-uae.log.txt)
-- boot 1 (installer's own reboot): clean, Workbench + Amarchy bar, no requester.
-- boot 2 (rig.py reboot): clean, "Welcome to Amarchy" window only.
+- boot 1 (installer's own reboot): clean, Workbench + Patina bar, no requester.
+- boot 2 (rig.py reboot): clean, "Welcome to Patina" window only.
 - boot 3 (rig.py reboot): clean, same.
 PASS: no Program failed #87000004, no reset loop on 3 boots.
 

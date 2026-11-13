@@ -5,9 +5,9 @@ status: rig-verified
 
 # Flat recheck, rig 11 (3.2, 256 colours), 2026-11-01
 
-Setup: build from origin/main 19888120 (amarchy-flat, Amarchy, amarchy-gui, amarchy-menu); `rig.py start --max --os 32`,
-then `rig.py aga256` worked on 3.2 (wbpens: DEPTH 8). amarchy_gui_rig.py --setup, put_flat_prefs(True)+pick() (theme vantablack).
-`RAM:amarchy-flat STATUS`: flat=on, pens text=2 line=3 back=0 outline=3 button=4 ptext=0; dri_Pens (wbpens) SHINE=0 SHADOW=0
+Setup: build from origin/main 19888120 (patina-flat, Patina, patina-gui, patina-menu); `rig.py start --max --os 32`,
+then `rig.py aga256` worked on 3.2 (wbpens: DEPTH 8). patina_gui_rig.py --setup, put_flat_prefs(True)+pick() (theme vantablack).
+`RAM:patina-flat STATUS`: flat=on, pens text=2 line=3 back=0 outline=3 button=4 ptext=0; dri_Pens (wbpens) SHINE=0 SHADOW=0
 FILL=0 BACKGROUND=0 = the flat map (this is the fix over rig 8, where SHINE stayed 2). With windows open: `frame=hooked calls=162 flat=36`
 (frame calls > 0 and flat > 0). Windows: tests/amiga/flatprobe FOREVER (inactive at x=10, active at x=250; not overlapping).
 Palette (wbpens): pen 0 aaaaaa, pen 3 6688bb, pen 5 ff00ff. Screen grab by ami.grab (640x256), PNG

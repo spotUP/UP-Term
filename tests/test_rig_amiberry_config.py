@@ -83,9 +83,9 @@ class Config(unittest.TestCase):
         self.assertTrue(amiberry.drive_line(0, dict(path="/s.hdf", hdf=True)).startswith("uaehf0=hdf,rw,DH0:/s.hdf"))
 
     def test_mute_and_title(self):
-        c = cfg(volume=0, title="vtcon rig 20 - Amarchy s29: x")
+        c = cfg(volume=0, title="vtcon rig 20 - Patina s29: x")
         self.assertEqual((c["sound_output"], c["sound_volume"]), ("none", "100"))
-        self.assertEqual(c["config_description"], "vtcon rig 20 - Amarchy s29: x")
+        self.assertEqual(c["config_description"], "vtcon rig 20 - Patina s29: x")
 
     def test_command(self):
         self.assertEqual(amiberry.command("/c.uae")[1:], ["-G", "--log", "-f", "/c.uae"])
@@ -104,11 +104,11 @@ class MachineFromFlags(unittest.TestCase):
         return json.loads(out.stdout.strip().splitlines()[-1])
 
     def test_max_mmu_purpose(self):
-        m = self.machine("--max", "--mmu", "--emu", "amiberry", "--purpose", "Amarchy s29: probe")
+        m = self.machine("--max", "--mmu", "--emu", "amiberry", "--purpose", "Patina s29: probe")
         self.assertEqual((m["cpu"], m["mmu"], m["jit"], m["z3_mb"]), ("68060", "68060", False, 1024))
-        self.assertIn("Amarchy s29: probe", m["title"])
+        self.assertIn("Patina s29: probe", m["title"])
         c = dict(l.split("=", 1) for l in amiberry.config_lines(dict(m, window=tuple(m["window"]))))
-        self.assertIn("Amarchy s29: probe", c["config_description"])
+        self.assertIn("Patina s29: probe", c["config_description"])
 
     def test_a1200_is_020(self):
         m = self.machine("--a1200", "--emu", "amiberry")

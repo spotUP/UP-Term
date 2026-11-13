@@ -1,7 +1,7 @@
 ---
 date: 2026-11-02
 topic: HANDLER-ICON-GRID-FIT scope - which handler paths downsample art to non-square pixels
-status: complete (read-only survey, grep + ranges; amarchy/ not covered)
+status: complete (read-only survey, grep + ranges; patina/ not covered)
 ---
 
 # Result
@@ -32,4 +32,4 @@ Size: roughly 100-150 lines in ttf.c plus a test through vo/ttf_render at ry:rx 
 
 # Verdict on the ledger premise
 
-The row said "unverified that any do": confirmed - the handler has exactly one vector scaler (ttf.c). The segment-based reference applies to none; stem snapping applies to the TTF_FILL box/block/powerline set. Everything else is either integer-exact already or raster/bitmap with no stroke information. Amarchy-side icon code is out of scope here.
+The row said "unverified that any do": confirmed - the handler has exactly one vector scaler (ttf.c). The segment-based reference applies to none; stem snapping applies to the TTF_FILL box/block/powerline set. Everything else is either integer-exact already or raster/bitmap with no stroke information. Patina-side icon code is out of scope here.

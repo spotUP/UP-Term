@@ -1,6 +1,6 @@
 /* btnbgprobe -- s28 FLAT-BUTTON-ROUND-BG: a window whose interior is a 2x2 checker of pens 2 and 3 (never pen 0), with or
  * without one GadTools button on it, so a host script can compare the button's corner pixels with the background pen
- * that was there before (tools/rig/amarchy_btnbg_rig.py).
+ * that was there before (tools/rig/patina_btnbg_rig.py).
  *   btnbgprobe NOGAD   pattern only, window stays open until Ctrl-C
  *   btnbgprobe GAD     the same pattern, then one 80x14 button added over it (AddGList + RefreshGList), until Ctrl-C
  *   btnbgprobe NOGAD|GAD SOLID   pen 2 everywhere instead of the checker (RL19: the corner blend reads ONE backdrop pen

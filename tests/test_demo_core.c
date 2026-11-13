@@ -1,6 +1,6 @@
-/* The Amarchy demo tour core: ten scenes, the total time, advance and wrap, the verb parse, STATUS text, STOP. */
+/* The Patina demo tour core: ten scenes, the total time, advance and wrap, the verb parse, STATUS text, STOP. */
 #include "harness.h"
-#include "../amarchy/demo_core.h"
+#include "../patina/demo_core.h"
 
 static void test_table(void)
 {

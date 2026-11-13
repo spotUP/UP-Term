@@ -15,5 +15,5 @@ gzip, bzip2, xz, tar - output shows only the tool name, tool not found), and
 Likely: the kit lacks the ports binaries on this build (sed missing in UP-Term:bin) - unverified.
 
 Notes: first `make wasabi` failed once with tls.h missing (race with another session's build), second run OK.
-First rig start failed with RIG-WARM-SRV-RACE (build/amiga/Amarchy rebuilt by another session mid-start); retry OK.
+First rig start failed with RIG-WARM-SRV-RACE (build/amiga/Patina rebuilt by another session mid-start); retry OK.
 Log: scratchpad r3/base.log (small, kept).

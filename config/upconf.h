@@ -100,12 +100,12 @@ int  upconf_parse(upconf *c, const char *buf, long len);
  * and key case aside; a profile absent from both is equal)? A window's
  * live update: only a window whose own profile changed is redrawn. */
 int  upconf_profile_equal(const upconf *a, const upconf *b, const char *profile);
-/* Where a window's colours come from: the Amarchy theme table THEME (one profile section holding fg, ENV:up-term/theme-active)
+/* Where a window's colours come from: the Patina theme table THEME (one profile section holding fg, ENV:up-term/theme-active)
  * when it is one, else the profile P of PROF. Sets *sec to the section; *is_theme is 1 for the theme (a theme replaces every
- * colour, a profile only the ones it sets). Owner 2026-10-29: the active Amarchy theme beats the up-term profile's. */
+ * colour, a profile only the ones it sets). Owner 2026-10-29: the active Patina theme beats the up-term profile's. */
 const upconf *upconf_colour_source(const upconf *prof, const char *p, const upconf *theme, const char **sec, int *is_theme);
 /* The "NAME:SIZE" font a window takes: the theme's (its one profile section, ENV:up-term/theme-active) when it has a font line,
- * else profile P's of PROF, else 0. Sits beside upconf_colour_source: built-in < profile < Amarchy theme (TE-7b.2). */
+ * else profile P's of PROF, else 0. Sits beside upconf_colour_source: built-in < profile < Patina theme (TE-7b.2). */
 const char *upconf_font_source(const upconf *prof, const char *p, const upconf *theme);
 /* What a window does with the watcher's theme report: CHANGED is whether the theme file was re-read for this message, TEXT what
  * the read gave (0 when the file is gone). 0 keep the window's theme, 1 take TEXT, 2 the theme is gone: drop it, the profile's
@@ -131,8 +131,8 @@ int  upconf_rows(const char *buf, long len, const char *section, upconf_row_fn f
  * raw text through upconf_rows, so the commodity needs no table. */
 #define UC_MENU_GRAPHICAL 0
 #define UC_MENU_TEXT      1
-#define UC_MENU_MINIMAL   2     /* amarchy-gui with text-only rows and two pens (it is the drawn program) */
-/* amarchy-app-icons = generic | amiga | none (absent: generic), the icons of the index rows */
+#define UC_MENU_MINIMAL   2     /* patina-gui with text-only rows and two pens (it is the drawn program) */
+/* patina-app-icons = generic | amiga | none (absent: generic), the icons of the index rows */
 #define UC_ICONS_GENERIC  0
 #define UC_ICONS_AMIGA    1
 #define UC_ICONS_NONE     2

@@ -3,15 +3,15 @@
 
   python3 -I tests/test_menu_on_move.py
 
-amarchy-menu is Amiga-only, so this checks the two links the per-key recolour needs and fails when one is missing:
+patina-menu is Amiga-only, so this checks the two links the per-key recolour needs and fails when one is missing:
   1. the libupkgui commit pinned in tools/upkgui.rev exports ui_on_move (the cursor-move hook of ui_run);
-  2. amarchy/menu.c installs on_move with ui_on_move on the menu path (next to every ui_on_tick(on_tick)), and on_move
+  2. patina/menu.c installs on_move with ui_on_move on the menu path (next to every ui_on_tick(on_tick)), and on_move
      calls preview_sync.
 Exit 1 on a missing link."""
 import pathlib, re, subprocess, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-menu = (ROOT / 'amarchy' / 'menu.c').read_text()
+menu = (ROOT / 'patina' / 'menu.c').read_text()
 
 m = re.search(r'static void on_move\([^)]*\)\s*\{(.*?)^\}', menu, re.S | re.M)
 if not m or 'preview_sync(0)' not in m.group(1):

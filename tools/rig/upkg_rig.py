@@ -539,7 +539,7 @@ def free_check(vol, need_bytes, what, note=print):
 
 def base_processes(status):
     """Process numbers in `Status` output whose program is loaded from a UP-Term drawer's bin (the image's User-Startup runs
-    UP-Term:bin/Amarchy, which starts amarchy-gui and amarchy-menu). A running program holds a lock on the bin drawer:
+    UP-Term:bin/Patina, which starts patina-gui and patina-menu). A running program holds a lock on the bin drawer:
     "bin Not Deleted: object is in use" on the base's Delete (2026-10-29)."""
     found = []
     for l in status.splitlines():
@@ -550,7 +550,7 @@ def base_processes(status):
 
 
 def stop_base_programs(rounds=10):
-    """Break the programs running from the old base's bin, re-listing Status each round (Amarchy restarts its children),
+    """Break the programs running from the old base's bin, re-listing Status each round (Patina restarts its children),
     until none is left; the Delete of the drawer needs no lock on bin."""
     for _ in range(rounds):
         procs = base_processes(ir.run('Status')[1])

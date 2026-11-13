@@ -1,4 +1,4 @@
-# Why rig scripts select all text in the Amarchy text menu (2026-10-28)
+# Why rig scripts select all text in the Patina text menu (2026-10-28)
 
 Cause: tools/rig/rig.py install (_install loop, ~line 1021) refreshed only files already present in the rig's
 VTC:. UPTerm was added to the quiet reader (typewin.quiet_screen_text, commit f4e96be9) after rigs such as rig 3

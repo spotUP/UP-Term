@@ -1,5 +1,5 @@
 # Scrollbar knob check, rig 34 (OS 3.2, flat on), 2026-11-03
-Setup: installer_rig ONLY fresh-all rig 34 ([PASS]), overlay build/amiga/Amarchy (md5 6b8d0124..) + amarchy-flat (md5 15cab0f3..), both md5-matched via ami.py get, wasabi reboot, Welcome window up.
+Setup: installer_rig ONLY fresh-all rig 34 ([PASS]), overlay build/amiga/Patina (md5 6b8d0124..) + patina-flat (md5 15cab0f3..), both md5-matched via ami.py get, wasabi reboot, Welcome window up.
 STATUS: flat=on calls=276 chained=0 / pens text=2 line=3 back=0 outline=3 button=4 ptext=0 / clone draws=53 fallback=0 / pens-held 16 refs=2 dim=250 knob=251 / frame=hooked calls=0 flat=0 (pen_knob=251, pen_dimtext=250; pen_back=0). Palette index->RGB not read.
 Window SYS:C opened via arexx WORKBENCH 'WINDOW SYS:C OPEN' (400x200 at 50,100); props: vertical id2 at 436,124 10x110, horizontal id1 at 53,284 345x12.
 Shots: ~/Desktop/upterm-shots/vtcon16-rig34-knob.png (icons only: content fits), vtcon16-rig34-knob2.png (Show all files + View by Name: content overflows).

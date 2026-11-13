@@ -11,7 +11,7 @@
 #include "../prefs/pick_list.h"
 #include "../prefs/settings_def.h"
 #include "../prefs/prefs_merge.h"
-#include "../amarchy/amconf_core.h"
+#include "../patina/amconf_core.h"
 #include "harness.h"
 #include "memfs.h"
 
@@ -482,14 +482,14 @@ static void dither_and_padding_color_round_trip(void)
     CHECK_INT(g.pad_extend, 0);
 }
 
-/* The Amarchy keys have one store (Amarchy/prefs): the UP-Term profile neither reads them into the editor's
- * fields nor writes them, and a save drops what an older version left there (plan 2026-10-25-amarchy-own-prefs.md M3). */
-static void prefs_stage_leaves_no_amarchy_keys_in_the_upterm_profile(void)
+/* The Patina keys have one store (Patina/prefs): the UP-Term profile neither reads them into the editor's
+ * fields nor writes them, and a save drops what an older version left there (plan 2026-10-25-patina-own-prefs.md M3). */
+static void prefs_stage_leaves_no_patina_keys_in_the_upterm_profile(void)
 {
     static upconf conf, work;
     static char buf[UC_MAX_FILE + 1];
-    static const char src[] = "[default]\nfont = x\namarchy-music-drawers = Music\nmenu-style = text\n"
-                              "menu-in-terminal = graphical\n[work]\nfont = y\namarchy-app-icons = none\n";
+    static const char src[] = "[default]\nfont = x\npatina-music-drawers = Music\nmenu-style = text\n"
+                              "menu-in-terminal = graphical\n[work]\nfont = y\npatina-app-icons = none\n";
     prefs_fields f;
     long len;
     CHECK_INT(prefs_load(&conf, src, (long)strlen(src), UC_MAX_FILE), PREFS_LOAD_OK);
@@ -502,20 +502,20 @@ static void prefs_stage_leaves_no_amarchy_keys_in_the_upterm_profile(void)
     CHECK(len > 0);
     CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
     CHECK_STR(upconf_str(&conf, "default", "font", "?"), "x");
-    CHECK_STR(upconf_str(&conf, "default", "amarchy-music-drawers", "?"), "?");
+    CHECK_STR(upconf_str(&conf, "default", "patina-music-drawers", "?"), "?");
     CHECK_STR(upconf_str(&conf, "default", "menu-style", "?"), "?");
     CHECK_STR(upconf_str(&conf, "default", "menu-in-terminal", "?"), "?");
 }
 
-static void the_amarchy_keyword_picks_the_start_page(void)
+static void the_patina_keyword_picks_the_start_page(void)
 {
     CHECK_INT(PG_NPAGES, 7);
-    CHECK_INT(pg_page_for_args("AMARCHY"), PG_PAGE_AMARCHY);
-    CHECK_INT(pg_page_for_args("amarchy"), PG_PAGE_AMARCHY);
-    CHECK_INT(pg_page_for_args("  Amarchy \n"), PG_PAGE_AMARCHY);
+    CHECK_INT(pg_page_for_args("PATINA"), PG_PAGE_PATINA);
+    CHECK_INT(pg_page_for_args("patina"), PG_PAGE_PATINA);
+    CHECK_INT(pg_page_for_args("  Patina \n"), PG_PAGE_PATINA);
     CHECK_INT(pg_page_for_args(""), PG_PAGE_GENERAL);
     CHECK_INT(pg_page_for_args("foo"), PG_PAGE_GENERAL);
-    CHECK_INT(pg_page_for_args("amarchyx"), PG_PAGE_GENERAL);
+    CHECK_INT(pg_page_for_args("patinax"), PG_PAGE_GENERAL);
     CHECK_INT(pg_page_for_args(0), PG_PAGE_GENERAL);
 }
 
@@ -1553,7 +1553,7 @@ static void the_menu_theme_row_is_a_select_over_the_scanned_themes(void)
     CHECK_INT(pg_themes_pick(&t, 9, name, sizeof name), 0);
 }
 
-/* C1: the files change while Prefs is open (the Amarchy menu wrote a setting). An unedited page takes the
+/* C1: the files change while Prefs is open (the Patina menu wrote a setting). An unedited page takes the
  * file's value, an edited page keeps the user's, and a Save afterwards writes both. */
 static void a_file_change_while_open_reloads_only_the_unedited_pages(void)
 {
@@ -1578,7 +1578,7 @@ static void a_file_change_while_open_reloads_only_the_unedited_pages(void)
     user.cursor = PREFS_CURSOR_BAR;
     CHECK_INT((int)prefs_pages_edited(&user, &open_f), 1 << PG_PAGE_GENERAL);
 
-    /* the menu writes two settings: the Keyboard page in the UP-Term file, the Amarchy page in its own */
+    /* the menu writes two settings: the Keyboard page in the UP-Term file, the Patina page in its own */
     file_f = open_f;
     file_f.meta_alt = !open_f.meta_alt;
     file_f.cursor = PREFS_CURSOR_UNDERLINE;     /* the menu also touched the page the user edited */
@@ -1586,7 +1586,7 @@ static void a_file_change_while_open_reloads_only_the_unedited_pages(void)
     amconf_to_fields(&am_file, &file_f);
 
     changed = prefs_merge_external(&user, &open_f, &file_f, &merged, &orig2);
-    CHECK_INT((int)changed, (1 << PG_PAGE_KEYBOARD) | (1 << PG_PAGE_AMARCHY));
+    CHECK_INT((int)changed, (1 << PG_PAGE_KEYBOARD) | (1 << PG_PAGE_PATINA));
     CHECK_INT(merged.meta_alt, file_f.meta_alt);            /* unedited page: the file's value */
     CHECK_INT(merged.am_mode, UC_MENU_MINIMAL);             /* unedited page: the file's value */
     CHECK_INT(merged.cursor, PREFS_CURSOR_BAR);             /* edited page: the user's value */
@@ -1601,7 +1601,7 @@ static void a_file_change_while_open_reloads_only_the_unedited_pages(void)
     CHECK_INT(saved.meta_alt, file_f.meta_alt);             /* the menu's change, not overwritten */
     amconf_defaults(&am_saved);
     amconf_from_fields(&am_saved, &merged);
-    CHECK_STR(am_saved.val[AM_STYLE], "minimal");           /* the menu's change in Amarchy's file */
+    CHECK_STR(am_saved.val[AM_STYLE], "minimal");           /* the menu's change in Patina's file */
 }
 
 void suite_prefs(void)
@@ -1631,8 +1631,8 @@ void suite_prefs(void)
     style_stage_sets_only_the_look();
     dither_and_padding_color_round_trip();
     advanced_page_has_the_outline_blend_switch();
-    prefs_stage_leaves_no_amarchy_keys_in_the_upterm_profile();
-    the_amarchy_keyword_picks_the_start_page();
+    prefs_stage_leaves_no_patina_keys_in_the_upterm_profile();
+    the_patina_keyword_picks_the_start_page();
     the_brightness_slider_gets_a_uword_pen_list_ended_by_ffff();
     file_text_is_byte_identical_for_defaults_the_a1200_file_and_every_key();
     the_menu_theme_row_is_a_select_over_the_scanned_themes();

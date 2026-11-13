@@ -1,7 +1,7 @@
 /* settings_def: every setting of UP-Term Prefs' six pages as one row of one table (plan
- * 2026-10-26-amarchy-prefs-inline.md): the file key, the kind, the label with its `_` shortcut, the help, the
+ * 2026-10-26-patina-prefs-inline.md): the file key, the kind, the label with its `_` shortcut, the help, the
  * choices of a cycle as file text plus display text, the default, which file stores it and where its value
- * sits in the field set. The Prefs window, the Amarchy menu and the file parse and serialise read this one
+ * sits in the field set. The Prefs window, the Patina menu and the file parse and serialise read this one
  * table instead of keeping a copy each. No OS calls: the host tests walk it (tests/test_settings_def.c).
  *
  * A row is a setting, not a gadget: the swatch and its hex field, "Scrollback" and "No scrollback", the
@@ -31,7 +31,7 @@ enum {
     /* Advanced */
     SDI_SCREEN, SDI_SCREEN_MODE, SDI_ASPECT, SDI_CLIPBOARD, SDI_RIP, SDI_HLCAT, SDI_REFLOW, SDI_MUSIC, SDI_LINK,
     SDI_SPLIT_RESTORE, SDI_BLEND_DEST,
-    /* Amarchy */
+    /* Patina */
     SDI_AM_MUSIC, SDI_AM_DEMO, SDI_AM_HIDE, SDI_AM_ICONS, SDI_AM_MODE, SDI_AM_TERMMENU, SDI_AM_GTHEME,
     SDI_AM_FONT, SDI_AM_FLAT, SDI_AM_FLATGAD, SDI_AM_FLATSIZE, SDI_AM_ICONSTYLE, SDI_AM_ICONTEXT, SDI_AM_BORDERBLANK, SDI_AM_UIAA, SDI_AM_FLATSTATUS,
     SDI_COUNT
@@ -58,9 +58,9 @@ enum {
 };
 
 /* which file holds it */
-enum { SD_UPTERM, SD_AMARCHY, SD_GTHEME /* TE-4: the theme edit buffer (gthemes_core.h gte_*) */ };
+enum { SD_UPTERM, SD_PATINA, SD_GTHEME /* TE-4: the theme edit buffer (gthemes_core.h gte_*) */ };
 
-/* where the value sits, in the store the row names (prefs_fields for SD_UPTERM, am_prefs for SD_AMARCHY) */
+/* where the value sits, in the store the row names (prefs_fields for SD_UPTERM, am_prefs for SD_PATINA) */
 enum {
     SDF_NONE,       /* no value (profile, theme, info) */
     SDF_INT,        /* an int at off: the index into values[] */
@@ -87,7 +87,7 @@ typedef struct sd_setting {
     const sd_value *values; /* SD_CHECK and SD_CYCLE */
     int nvalues;
     const char *def;        /* the file text of an absent key; "" for a key that is then not written */
-    int store;              /* SD_UPTERM or SD_AMARCHY */
+    int store;              /* SD_UPTERM or SD_PATINA */
     int ftype;              /* SDF_* */
     size_t off;
     int size;               /* SDF_STR and SDF_AMSTR: bytes of one array */
@@ -101,11 +101,11 @@ typedef struct sd_setting {
 extern const sd_setting sd_settings[SDI_COUNT];
 extern const int sd_nsettings;
 
-/* The Amarchy keys with no control in Prefs (index skip list, index volumes): rows of the same kind, no page. */
+/* The Patina keys with no control in Prefs (index skip list, index volumes): rows of the same kind, no page. */
 #define SD_NHIDDEN 15
 extern const sd_setting sd_hidden[SD_NHIDDEN];
 /* The row, of sd_settings or sd_hidden, that stores the am_prefs value k (AM_*); every k has one. */
-const sd_setting *sd_amarchy_key(int k);
+const sd_setting *sd_patina_key(int k);
 
 /* The order prefs_stage writes the keys of a profile that has none yet (a key already in the file is set in
  * place, whatever the order): the ids of the SD_UPTERM rows that own a file key, with the three KingCON rows
@@ -116,7 +116,7 @@ extern const int sd_write_order[];
 extern const int sd_nwrite;
 extern const int sd_nstyle;
 
-/* The row of a file key within a store (SD_UPTERM or SD_AMARCHY), 0 when none; a key two rows share
+/* The row of a file key within a store (SD_UPTERM or SD_PATINA), 0 when none; a key two rows share
  * (kingcon-mode) gives the first. */
 const sd_setting *sd_find_key(int store, const char *key);
 /* The row whose controls include the pg_items id, 0 when none (buttons, the common gadgets). */
@@ -163,7 +163,7 @@ const char *sd_page_name(int page);
 /* The label without the Prefs shortcut `_`, copied to out (n bytes, always terminated); the length. */
 int sd_label_plain(const sd_setting *s, char *out, int n);
 /* One menu row, "Label: Value" for every kind, the label without its `_`. store is the row's own store
- * (a prefs_fields for SD_UPTERM, an am_prefs for SD_AMARCHY, as s->store says). width is the size of buf in
+ * (a prefs_fields for SD_UPTERM, an am_prefs for SD_PATINA, as s->store says). width is the size of buf in
  * bytes: when label and value do not fit, the value is cut (ending in "..") and the label is kept whole.
  * Shown values: a check or cycle the display text of its value, an int, string, colour, font, screen mode
  * and theme name as stored ("default" when empty, "(empty)" for an empty string), the palette, theme and

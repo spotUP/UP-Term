@@ -35,15 +35,15 @@ class SeedVtc(unittest.TestCase):
         rig.seed_rig_vtc(d / "no-such-rig1/vtc", d / "dst")
 
 class StageThemes(unittest.TestCase):
-    def test_setup_path_stages_every_amarchy_theme_into_the_drawer(self):
-        """stage_rig_vtc (setup's call) fills VTC:amarchy-themes with every dist/amarchy-themes file, without `install`"""
+    def test_setup_path_stages_every_patina_theme_into_the_drawer(self):
+        """stage_rig_vtc (setup's call) fills VTC:patina-themes with every dist/patina-themes file, without `install`"""
         vtc = pathlib.Path(tempfile.mkdtemp())
         (vtc / rig.paths.UPTERM_DRAWER / "bin").mkdir(parents=True)
         (vtc / rig.paths.UPTERM_DRAWER / "bin/vsh").write_text("x")   # skip stage_upterm: it needs the built vsh
         rig.stage_rig_vtc(vtc)
-        want = sorted(p.name for p in (ROOT / "dist/amarchy-themes").glob("*.theme"))
+        want = sorted(p.name for p in (ROOT / "dist/patina-themes").glob("*.theme"))
         self.assertGreater(len(want), 1)
-        self.assertEqual(sorted(p.name for p in (vtc / "amarchy-themes").glob("*.theme")), want)
+        self.assertEqual(sorted(p.name for p in (vtc / "patina-themes").glob("*.theme")), want)
 
 class StageEtc(unittest.TestCase):
     def test_setup_path_makes_vtc_etc_with_the_termcap(self):

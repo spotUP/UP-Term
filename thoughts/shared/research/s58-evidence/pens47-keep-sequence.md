@@ -7,10 +7,10 @@ verdict: harness fixed (Keep answered, picks kept, no revert); product: pens 0-3
 # Pick sequence with Keep, rig 148
 
 Build: s58-integ merged with origin/main, code commit = harness fix. Rig 148 `--max --os 32 --idle-minutes 0`, purpose "vtcon-c1: pens 4-7 pick sequence with Keep", fresh-all [PASS].
-md5 installed UP-Term:bin/x = build/amiga/x: Amarchy 2bfd910d..., amarchy-flat cc7086b7..., amarchy-icons f35bb619..., amarchy-gui 1bae23e9... (all equal).
+md5 installed UP-Term:bin/x = build/amiga/x: Patina 2bfd910d..., patina-flat cc7086b7..., patina-icons f35bb619..., patina-gui 1bae23e9... (all equal).
 
 ## Cause of the timeout
-`one_select` waited (wait_stable, 30 s, differ_from the open menu) for the menu to recolour BEFORE keep_requester. Observed on the rig (uitree watch, 25 s into the run): the pick opens a window "Amarchy desktop theme" (the FP-1 requester, a window, `ami.py requesters` stays empty) and the menu window disappears. The menu does not come back after Keep (watched 150 s, no "Amarchy" window; amarchy-gui and amarchy-menu processes still run). So the wait timed out with "last None", and the branch returned before Keep: the apply reverted after 15 s.
+`one_select` waited (wait_stable, 30 s, differ_from the open menu) for the menu to recolour BEFORE keep_requester. Observed on the rig (uitree watch, 25 s into the run): the pick opens a window "Patina desktop theme" (the FP-1 requester, a window, `ami.py requesters` stays empty) and the menu window disappears. The menu does not come back after Keep (watched 150 s, no "Patina" window; patina-gui and patina-menu processes still run). So the wait timed out with "last None", and the branch returned before Keep: the apply reverted after 15 s.
 Fix: keep_requester(12) directly after the Return, before the wait; every failure path after the pick calls keep_requester(2) and states "(Keep answered)" or "(FP-1 requester not answered: the apply was left to revert)".
 
 ## Proof

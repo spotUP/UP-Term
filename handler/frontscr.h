@@ -1,5 +1,5 @@
 /* frontscr -- the front screen as a locked public screen, shared by the handler (a window opened with FRONT)
- * and amarchy-gui. Amiga only. */
+ * and patina-gui. Amiga only. */
 #ifndef FRONTSCR_H
 #define FRONTSCR_H
 

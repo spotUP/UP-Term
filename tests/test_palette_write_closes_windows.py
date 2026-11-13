@@ -1,16 +1,16 @@
 """RL15-IPREFS-SYSREQ: toggling flat look and then picking a theme raised IPrefs' "System Request" ("Intuition is attempting to reset
 the Workbench screen. Please close the following windows: ...", Retry/Cancel) and blocked each pick 40-70 s (rig 124, s57). A palette.prefs
-USE whose pen map differs from the live DrawInfo pens resets the Workbench screen; IPrefs' CloseWorkBench fails while Amarchy's windows are
+USE whose pen map differs from the live DrawInfo pens resets the Workbench screen; IPrefs' CloseWorkBench fails while Patina's windows are
 open. dk_apply closed them around its palette write (desk_pens_reset); dk_flat_pens, run after it on every pick, did not. Invariant: every
 dk_put_palette call in desk_dos.c sits between dk_windows_close and dk_windows_open, guarded by the same pen-reset test.
-amarchy/desk_dos.c is Amiga-only code no host test links, so this test reads its structure."""
+patina/desk_dos.c is Amiga-only code no host test links, so this test reads its structure."""
 import pathlib
 import re
 import sys
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-SRC = (ROOT / "amarchy" / "desk_dos.c").read_text()
+SRC = (ROOT / "patina" / "desk_dos.c").read_text()
 
 
 def body(src, head):
@@ -32,7 +32,7 @@ class PaletteWriteClosesWindows(unittest.TestCase):
         b = body(SRC, "static int dk_flat_pens(const gtheme *th)")
         put = b.index("dk_put_palette(")
         close = b.rfind("dk_windows_close()", 0, put)
-        self.assertNotEqual(close, -1, "dk_flat_pens writes the palette with Amarchy windows open: IPrefs System Request on the reset")
+        self.assertNotEqual(close, -1, "dk_flat_pens writes the palette with Patina windows open: IPrefs System Request on the reset")
         self.assertNotEqual(b.find("dk_windows_open(", put), -1, "dk_flat_pens never reopens the windows it closed")
         self.assertIn("desk_pens_reset(live, nlive, flat, depth)", b, "close only when the pen map changes (a colour-only write resets nothing)")
 

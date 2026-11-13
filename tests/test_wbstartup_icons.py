@@ -1,7 +1,7 @@
-"""LEGW-W6: the two SYS:WBStartup icons that start Amarchy and the app index at boot.
+"""LEGW-W6: the two SYS:WBStartup icons that start Patina and the app index at boot.
 Runs the Makefile's own mkicon rules and reads back the icon they write: a PROJECT icon (do_Type 4) whose default
 tool is UP-Term:bin/<program> (no binary is copied, so an Update leaves no stale twin), with DONOTWAIT, STARTPRI
-(Amarchy higher than the indexer) and, for the indexer, a low TOOLPRI. Also: the kit rows and the install/uninstall
+(Patina higher than the indexer) and, for the indexer, a low TOOLPRI. Also: the kit rows and the install/uninstall
 wiring (Install copies both icons into SYS:WBStartup, Uninstall deletes them)."""
 import pathlib, re, shlex, struct, subprocess, sys, tempfile, unittest
 
@@ -48,21 +48,21 @@ class WbStartupIcons(unittest.TestCase):
 
     def test_generated_icons_carry_donotwait_startpri_toolpri_and_default_tool(self):
         icons = self.make()
-        self.assertEqual(set(icons), {"Amarchy.info", "amarchy-index.info"})
-        t, tool, tts = icons["Amarchy.info"]
-        self.assertEqual((t, tool), (4, "UP-Term:bin/Amarchy"))
+        self.assertEqual(set(icons), {"Patina.info", "patina-index.info"})
+        t, tool, tts = icons["Patina.info"]
+        self.assertEqual((t, tool), (4, "UP-Term:bin/Patina"))
         self.assertEqual(tts, ["DONOTWAIT", "STARTPRI=10"])
-        t, tool, tts = icons["amarchy-index.info"]
-        self.assertEqual((t, tool), (4, "UP-Term:bin/amarchy-index"))
+        t, tool, tts = icons["patina-index.info"]
+        self.assertEqual((t, tool), (4, "UP-Term:bin/patina-index"))
         self.assertEqual(tts, ["DONOTWAIT", "STARTPRI=-10", "TOOLPRI=-5"])
-        # Amarchy starts first
-        self.assertGreater(int(icons["Amarchy.info"][2][1].split("=")[1]), int(icons["amarchy-index.info"][2][1].split("=")[1]))
+        # Patina starts first
+        self.assertGreater(int(icons["Patina.info"][2][1].split("=")[1]), int(icons["patina-index.info"][2][1].split("=")[1]))
 
     def test_kit_row_install_copy_and_uninstall_delete(self):
         self.assertRegex(PARTS, r"(?m)^desktop\s+Files/wbstartup$")
         i = DOS.index("Lab desktop")
-        self.assertIn("Copy wbstartup/Amarchy.info wbstartup/amarchy-index.info SYS:WBStartup CLONE", DOS[i:])
-        self.assertIn("Delete >NIL: SYS:WBStartup/Amarchy.info SYS:WBStartup/amarchy-index.info QUIET", UNINSTALL)
+        self.assertIn("Copy wbstartup/Patina.info wbstartup/patina-index.info SYS:WBStartup CLONE", DOS[i:])
+        self.assertIn("Delete >NIL: SYS:WBStartup/Patina.info SYS:WBStartup/patina-index.info QUIET", UNINSTALL)
 
 
 if __name__ == "__main__":

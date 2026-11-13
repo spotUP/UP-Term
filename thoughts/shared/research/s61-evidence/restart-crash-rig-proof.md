@@ -1,23 +1,23 @@
 ---
 date: 2026-11-06
 topic: rig proof of the _chkabort restart-crash fix (two legs)
-build: parent of 9b3e6599 link state (AMARCHY_NOBREAK= empty) vs 9b3e6599
-rig: 176, AmigaOS 3.2, 060 --max, purpose "vtcon-c1: Amarchy restart crash proof"
+build: parent of 9b3e6599 link state (PATINA_NOBREAK= empty) vs 9b3e6599
+rig: 176, AmigaOS 3.2, 060 --max, purpose "vtcon-c1: Patina restart crash proof"
 status: LEG U crash seen; LEG F FAIL (fix does not stop the restart crash)
 ---
 
-# Rig proof, Break + restart of Amarchy
+# Rig proof, Break + restart of Patina
 
-Loop script: scratchpad restart-proof/loop.py (Break every Process whose command is a SETUP_NAMES program, wait up to 10 s for no Amarchy process, GetEnv AMARCHY_STRUT_INSTALLED, count Exception/CPU reset lines in the rig's fs-uae.log, then Run >NIL: VTCX:Apps/bin/Amarchy and wait 20 s for port AMARCHY). Pause schedule 0.2 0.5 1 2 3 s after the port answers.
+Loop script: scratchpad restart-proof/loop.py (Break every Process whose command is a SETUP_NAMES program, wait up to 10 s for no Patina process, GetEnv PATINA_STRUT_INSTALLED, count Exception/CPU reset lines in the rig's fs-uae.log, then Run >NIL: VTCX:Apps/bin/Patina and wait 20 s for port PATINA). Pause schedule 0.2 0.5 1 2 3 s after the port answers.
 
 ## Commands
-- Leg U build: rm the three binaries; make build/amiga/Amarchy build/amiga/amarchy-gui build/amiga/amarchy-flat AMARCHY_NOBREAK= ; make build/amiga/amarchy-menu AMARCHY_NOBREAK=
+- Leg U build: rm the three binaries; make build/amiga/Patina build/amiga/patina-gui build/amiga/patina-flat PATINA_NOBREAK= ; make build/amiga/patina-menu PATINA_NOBREAK=
   tests/test_nobreak.py: [FAIL] x3 (offsets 0x371C, 0x28E4, 0xF444), rc 1.
 - Leg F build: rm the three; make chkabort-check: [OK] x3 (no library _chkabort), rc 0.
-- Both: UPTERM_RIG=176 rig.py start --max --os 32 (once); amarchy_gui_rig.py --setup --no-build (its last check "flat prefs off" prints FAIL, unrelated flat-prefs state; Amarchy started and the port answered); rig.py reboot; loop.py.
+- Both: UPTERM_RIG=176 rig.py start --max --os 32 (once); patina_gui_rig.py --setup --no-build (its last check "flat prefs off" prints FAIL, unrelated flat-prefs state; Patina started and the port answered); rig.py reboot; loop.py.
 
 ## Leg U (unfixed): CAUSE SEEN as a crash
-| cycle | pause | process gone | AMARCHY_STRUT_INSTALLED | new exc lines | next start |
+| cycle | pause | process gone | PATINA_STRUT_INSTALLED | new exc lines | next start |
 |---|---|---|---|---|---|
 | 1 | 0.2 | yes | 0 | 0 | port up |
 | 2 | 0.5 | yes | 0 | 0 | port up |
@@ -41,8 +41,8 @@ Fixed binaries deployed (sizes on the rig equal build/amiga: 367256, 534836, 209
 | 10 | 3 | yes | unset | 12 | up |
 | 11 | 0.2 | yes | 0 | 12 | NOT up |
 | 12 | 0.5 | yes | unset | 15 | up |
-Passed 2 of 12 (cycles 5, 6). Five CPU address errors (Exception 3) in 14 cycles, PCs 1025eb46, 1025a23e, 102891be, 1025f266, 1025c37e (all in the Amarchy segment range of hunt 2). Pattern: a start whose port does not answer in 20 s is followed by a crash within the next cycle. The variable is always 0 or unset, never 1: the cleanup did run after the Break, so the crash here is NOT the skipped-cleanup path of the _chkabort cause.
-Extra cycles 13-14 (Break right after Run): INVALID. The script ran Run while the previous Amarchy was still up (duplicate start exits), so the Break did not hit a starting instance; cycle 14 ended in the sixth crash (connection refused). Not a startup-Break measurement.
+Passed 2 of 12 (cycles 5, 6). Five CPU address errors (Exception 3) in 14 cycles, PCs 1025eb46, 1025a23e, 102891be, 1025f266, 1025c37e (all in the Patina segment range of hunt 2). Pattern: a start whose port does not answer in 20 s is followed by a crash within the next cycle. The variable is always 0 or unset, never 1: the cleanup did run after the Break, so the crash here is NOT the skipped-cleanup path of the _chkabort cause.
+Extra cycles 13-14 (Break right after Run): INVALID. The script ran Run while the previous Patina was still up (duplicate start exits), so the Break did not hit a starting instance; cycle 14 ended in the sixth crash (connection refused). Not a startup-Break measurement.
 
 ## Verdict
 - Leg U: crash seen in cycle 4 of 4 run.

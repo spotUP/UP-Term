@@ -12,7 +12,7 @@ status: phase done
 - rig7 deleted (owner OK); rig6 kept, stopped.
 
 ## Open in vtcon-05 s43 queue
-- AM-RIG-TEXTMENU-LEFTOVER: Amarchy session's row.
+- AM-RIG-TEXTMENU-LEFTOVER: Patina session's row.
 - s28 WASABI-SHORTHELP-MUI3: A1200 final check only.
 - AMIBERRY-RIGS-GAPS: needs a rebuilt Amiberry rig and owner key tests.
 - feature/native-splits is still a side branch; no merge to main planned.

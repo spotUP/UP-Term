@@ -1,8 +1,8 @@
-/* DT-2, DT-3: the Directory Opus toolbar's set pick and brush CMAP (amarchy/dopustb_core.c). */
+/* DT-2, DT-3: the Directory Opus toolbar's set pick and brush CMAP (patina/dopustb_core.c). */
 #include <stdio.h>
 #include <string.h>
-#include "../amarchy/dopustb_core.h"
-#include "../amarchy/iconpen_core.h"
+#include "../patina/dopustb_core.h"
+#include "../patina/iconpen_core.h"
 #include "harness.h"
 
 static void theme(gtheme *t, const char *s)

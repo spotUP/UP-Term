@@ -9,9 +9,9 @@ verdict: FAIL / INCONCLUSIVE (4 of 10 boots PASS, boot 5 rig stopped answering)
 Build: main 92b29ff8 (make amiga && make dist with absolute UPTERM_PORTS = kit-main worktree).
 Recipe: INSTALLER_KEEP=1 installer_rig.py ONLY fresh-all (every option ticked), then loop of rig.py reboot.
 
-Install boot: PASS (step 34 AMARCHY port answers STATUS, step 35 menu window opens).
+Install boot: PASS (step 34 PATINA port answers STATUS, step 35 menu window opens).
 
-| Boot | rc | AMARCHY port | SYS:Prefs processes | Guru warn | CPU reset PC=f80edc delta |
+| Boot | rc | PATINA port | SYS:Prefs processes | Guru warn | CPU reset PC=f80edc delta |
 |------|----|--------------|---------------------|-----------|---------------------------|
 | 1 | 0 | yes | 0 | 0 | 0 |
 | 2 | 0 | yes | 0 | 0 | 0 |
@@ -26,7 +26,7 @@ No Guru, no CPU reset line in fs-uae.log.txt (total count 0).
 Cause UNVERIFIED: product hang (fix incomplete or another cause) or start-time race.
 No debugger FIFO (rig not started with --debugger), so no task states captured.
 
-Busy pointer: not measurable by ami.py; proxied by AMARCHY port presence plus zero Prefs processes. Proxy only.
+Busy pointer: not measurable by ami.py; proxied by PATINA port presence plus zero Prefs processes. Proxy only.
 
 Button pixels at 640x256 (2 px sides, 1 px top, rounded corners): NOT RUN, wasabid dead, no screenshot possible.
 

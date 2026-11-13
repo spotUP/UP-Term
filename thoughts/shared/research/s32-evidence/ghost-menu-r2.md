@@ -10,7 +10,7 @@ bitmap** (BytesPerRow 192, the same BitMap pointer for every item), with **AreaP
 FgPen 2, DrawMode JAM1 (0)**. One call per disabled item, rect x 15-176, 9 rows high. The menu is then copied to the
 screen (that blit was not probed: not needed for this question).
 
-These calls DO pass through our patch: flat_rf_c (amarchy/flat.c) receives every one. Round 1 missed them only
+These calls DO pass through our patch: flat_rf_c (patina/flat.c) receives every one. Round 1 missed them only
 because its probe required rp->Layer != NULL. The existing outer-edge / scroller gate also requires rp->Layer and
 Layer->Window, so today they fall through to the stock RectFill.
 
@@ -24,9 +24,9 @@ Patch: /private/tmp/claude-501/-Users-spot-Code-UP-Term-vtcon/286924bf-47a4-4018
 (round 1 patch widened, reverted from the tree). In flat_rf_c, right after `r->rcalls++`, every RectFill with
 rp->AreaPtSz != 0 (any Layer, any Window, any caller) was logged to a 32-entry ring in flatshared: raw return
 address, AreaPtrn[0], AreaPtSz, rect, Layer, Layer->Window, BitMap, FgPen, DrawMode, Layer bounds MinX/MinY,
-AreaPtrn[1], BitMap->BytesPerRow. `amarchy-flat STATUS` prints the ring with irom_lo/irom_hi.
-Binary build/amiga/amarchy-flat md5 8636c52561d6ee4232cfc425010c1cbf, put to RAM:, started with `Run >NIL:
-RAM:amarchy-flat` (no prefs needed: the plain start installs the RectFill swap). Menu held: pointer (100,16) grab
+AreaPtrn[1], BitMap->BytesPerRow. `patina-flat STATUS` prints the ring with irom_lo/irom_hi.
+Binary build/amiga/patina-flat md5 8636c52561d6ee4232cfc425010c1cbf, put to RAM:, started with `Run >NIL:
+RAM:patina-flat` (no prefs needed: the plain start installs the RectFill swap). Menu held: pointer (100,16) grab
 space, right button down, STATUS read while held, screenshot, button up.
 
 ## Result (rectfill calls=60, pattern fills=10)
@@ -60,7 +60,7 @@ dx +82, dy +9.
 - RectFill, rp->Layer NULL, ROM caller: TESTED, this is the call (9 of 9 ghosted item/separator bands).
 - RectFill with a Window layer: TESTED, no pattern fill with a Window while the menu was open.
 - RectFill from a non-ROM caller: TESTED, none.
-- BltPattern / BltTemplate / BltBitMap / BltBitMapRastPort / ClipBlit: NOT patched by amarchy-flat (it patches only
+- BltPattern / BltTemplate / BltBitMap / BltBitMapRastPort / ClipBlit: NOT patched by patina-flat (it patches only
   sysiclass h_SubEntry, DrawBox -696, DrawFieldBox -702, Text -60, RectFill -306). UNTESTED and not needed for the
   dither; the off-screen menu bitmap reaches the screen through one of these (the copy carries the already-dithered
   pixels).

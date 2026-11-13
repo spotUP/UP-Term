@@ -1,13 +1,13 @@
 """TE-COLOUR-LIST-ALL-SWATCHES source guard (evidence: thoughts/shared/research/s61-evidence/te-chip-pens.md).
 
-amarchy/gui.c drew each colour chip (colour rows, and the boxes of the theme preview) with vr_pen_obtain, RectFill and an
+patina/gui.c drew each colour chip (colour rows, and the boxes of the theme preview) with vr_pen_obtain, RectFill and an
 immediate ReleasePen. A released pen is free for the next colour, so every chip drawn with the pen number showed the last
 colour (rig 172, 3.2 Workbench, 256 colours: seven chips, one colour). The chips draw through the frame's held pens
 (pen_cache, pc_of) and release them at the start of each list draw (the frame). Nothing in gui.c may obtain a pen for a chip and
 release it in the same function; the only ReleasePen calls are pens_release and the held-pen release callback."""
 import pathlib, re, unittest
 
-GUI = pathlib.Path(__file__).resolve().parent.parent / "amarchy" / "gui.c"
+GUI = pathlib.Path(__file__).resolve().parent.parent / "patina" / "gui.c"
 
 
 def functions(text):

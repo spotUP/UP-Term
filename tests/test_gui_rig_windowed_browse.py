@@ -1,4 +1,4 @@
-"""amarchy_gui_rig: the PG.8 package cases assert against the Browse WINDOW (12 of 28 rows on PAL), not all rows.
+"""patina_gui_rig: the PG.8 package cases assert against the Browse WINDOW (12 of 28 rows on PAL), not all rows.
 
 Rig 3 run r1 (research/2026-10-27-s10-pg8-gui-r1.md): pkg_install and pkg_tags compared the shown window with the whole
 feed, pkg_fail and pkg_notfound looked for up-zzfail / up-zzgone in the first window only.
@@ -9,7 +9,7 @@ from unittest import mock
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools/rig"))
 
-import amarchy_gui_rig as g
+import patina_gui_rig as g
 
 FEED = ["up-%02d" % i for i in range(27)] + ["up-zzfail"]
 UHC = "pg8uhc"
@@ -32,7 +32,7 @@ class Window:
 
 
 class SearchPick(unittest.TestCase):
-    """A row beyond the Browse window is reached through Search (AMARCHY_ROWS is only published on a full draw, so a
+    """A row beyond the Browse window is reached through Search (PATINA_ROWS is only published on a full draw, so a
     scroll cannot read it): the keys typed are the name's raw codes, the row is the one that names the package."""
     def test_raw_keys_cover_package_names(self):
         for name in ("zzfail", "zzgone", "pi", "git", "bitchx", "perl"):

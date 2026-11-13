@@ -1,7 +1,7 @@
-diff --git a/amarchy/flat.c b/amarchy/flat.c
+diff --git a/patina/flat.c b/patina/flat.c
 index 31c04dae..b6bd47dd 100644
---- a/amarchy/flat.c
-+++ b/amarchy/flat.c
+--- a/patina/flat.c
++++ b/patina/flat.c
 @@ -124,6 +124,7 @@ static struct BitMap *cl_bm;
  static struct RastPort cl_rp;
  static int cl_w, cl_h;
@@ -103,16 +103,16 @@ index 31c04dae..b6bd47dd 100644
          line[n] = 0;
          PutStr((STRPTR)line);
          PutStr((STRPTR)"\n");
-diff --git a/amarchy/flat_shared.h b/amarchy/flat_shared.h
+diff --git a/patina/flat_shared.h b/patina/flat_shared.h
 index 0d1ca3e4..0e903209 100644
---- a/amarchy/flat_shared.h
-+++ b/amarchy/flat_shared.h
+--- a/patina/flat_shared.h
++++ b/patina/flat_shared.h
 @@ -46,6 +46,8 @@ typedef struct flatshared {
      ULONG ttitle;               /* window titles redrawn by FLAT-TITLE-ACCENT (the sentinel) */
      ULONG tcalls, thits;        /* every patched Text call / every pressed label recoloured (the sentinels) */
      ULONG cdraws, cfall;        /* FLAT-GLYPH-OS-SHAPES sentinels: gadgets drawn by cloning the system image / clone attempts that fell back to the block glyph */
 +    ULONG cnest, cempty;        /* DIAG: dispatcher entries aimed at the clone rastport / renders that read an all-zero grid */
 +    ULONG cnz_direct, cnz_dis, crc; /* DIAG: last nonzero count via the direct saved call, via DrawImageState; last saved rc */
-     /* the icon pens are no longer here: the shared holder record "Amarchy.IconPens" owns them (iconpen_dos.h, F14) */
+     /* the icon pens are no longer here: the shared holder record "Patina.IconPens" owns them (iconpen_dos.h, F14) */
  } flatshared;
  

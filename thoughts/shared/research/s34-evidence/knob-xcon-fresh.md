@@ -1,6 +1,6 @@
 ---
 date: 2026-11-04
-topic: S32-KNOB-NONE-FRESH - why the XCON prop knob misses the amarchy-flat scroller gate (3.2)
+topic: S32-KNOB-NONE-FRESH - why the XCON prop knob misses the patina-flat scroller gate (3.2)
 status: PAUSED before any rig measurement (coordinator: rig 96 R3 runs alone). No verdict yet.
 ---
 
@@ -18,17 +18,17 @@ status: PAUSED before any rig measurement (coordinator: rig 96 R3 runs alone). N
 1. `make dist` on main fails: `dist: upterm-ports/build/kit/userland was staged before the stamp: make kit-stage
    in upterm-ports`. Not run here (other repo's build state). The existing build/dist/up-term kit is
    from 2026-11-03 23:37 and is OLDER than main's flat code (c245126f 23:48, S33-PREFS-SKIN-FAIL, flat_core.c):
-   kit amarchy-flat md5 a694b2a2, main build/amiga/amarchy-flat md5 2f92eb62. A "fresh install from main"
+   kit patina-flat md5 a694b2a2, main build/amiga/patina-flat md5 2f92eb62. A "fresh install from main"
    needs `make kit-stage` in upterm-ports first (owner of that repo's session), or install the old kit and
-   copy build/amiga/amarchy-flat over UP-Term:bin/amarchy-flat + reboot (flat.c gate code is unchanged).
+   copy build/amiga/patina-flat over UP-Term:bin/patina-flat + reboot (flat.c gate code is unchanged).
 2. Local main dec2222f lacks origin/main ae859c52 (UPDemo only) -> rig.py refuses (RIG-STALE-BASE).
    Working start: `UPTERM_RIG=65 UPTERM_RIG_FLAGS="--os 32 --max --allow-stale-base missing-commit-is-updemo-only"
-   INSTALLER_KEEP=1 python3 -I tools/rig/installer_rig.py ONLY fresh-all --purpose "Amarchy s34: XCON scroller knob hunt (3.2)"`.
+   INSTALLER_KEEP=1 python3 -I tools/rig/installer_rig.py ONLY fresh-all --purpose "Patina s34: XCON scroller knob hunt (3.2)"`.
    (`--os 32` on the installer command line plus UPTERM_RIG_FLAGS passes it twice; harmless, the flags form is enough.)
 
 ## Code facts (read, not measured)
 
-- Gate: amarchy/flat.c:700-701 (`rp->Layer->Window` set and `ret` inside irom_lo..irom_hi), then
+- Gate: patina/flat.c:700-701 (`rp->Layer->Window` set and `ret` inside irom_lo..irom_hi), then
   `scroller_pen` flat.c:618-640: skips any gadget with `(g->GadgetType & GTYP_GTYPEMASK) != GTYP_PROPGADGET`
   or no SpecialInfo (flat.c:625); needs fill inside the gadget box (flat.c:627-632) and inside the
   container gx+LeftBorder, gy+TopBorder, CWidth, CHeight (flat.c:633 -> flat_core.c:597).
@@ -60,7 +60,7 @@ status: PAUSED before any rig measurement (coordinator: rig 96 R3 runs alone). N
    `RAM:gadprobe KnobShell` and `RAM:gadprobe System` (prints IROM lo/hi, every gadget's type/flags/box and PropInfo).
    - type != 0x0003 on the XCON prop and 0x0003 on the drawer -> candidate 1 confirmed (flat.c:625).
    - CWidth/CHeight 0 -> candidate 2 (flat_core.c:597).
-3. If both look right: debug amarchy-flat in a worktree that rings every irom-or-not fill inside a
+3. If both look right: debug patina-flat in a worktree that rings every irom-or-not fill inside a
    prop box (ret, Layer->Window, rect, chosen gadget, pen result) in STATUS (next to the sfill ring,
    flat.c:933) -> separates candidate 3 from 4.
 4. Pixel-check the prop column (x406-415, y45-170 in KnobShell) before/after.

@@ -1,7 +1,7 @@
-/* keymap: the Amarchy key bindings -- a plain-text file read by the XCON:
+/* keymap: the Patina key bindings -- a plain-text file read by the XCON:
  * handler and by the commodity, parsed with no OS calls so it can be
  * host-tested (tests/test_keymap.c). Plan
- * thoughts/shared/plans/2026-10-22-amarchy-commodity.md section 1.
+ * thoughts/shared/plans/2026-10-22-patina-commodity.md section 1.
  *
  * The file (ENVARC:up-term/keymap; shipped as dist/keymap):
  *
@@ -77,13 +77,13 @@ enum {
     KA_DETACH,      /* detach:<command line>  a program in the background: no window, input and output NIL: */
     KA_SCAN,        /* scan:<command line>  like detach:, and the menu watches the scan it started (RESCAN-FEEDBACK) */
     KA_WIN,         /* win:<verb [argument]>  a window verb on the active window, run by the commodity (win_core.h) */
-    KA_GTHEME,      /* gtheme:<name>  the drawn menu's Omarchy theme (amarchy/gthemes_core.h), run by the commodity */
-    KA_JOB,         /* job:<command line>  like run:, shown in the commodity's job view when the menu style has one (amarchy/leaf.h run_job); a style without one runs it as run: */
-    KA_CAP,         /* cap:<screen|window|region>  a screenshot (amarchy/shot.h), run by the commodity; the file also goes to clipboard unit 0 (D3 a) */
-    KA_SETTINGS,    /* settings:<page>  a settings page group of the menu (general colors palette keyboard advanced amarchy): mn_children lists the page's rows from prefs/settings_def.c; no action of its own */
-    KA_GUI,         /* gui:<help|welcome>  the amarchy-gui help or welcome window (amarchy/help_core.h), started by the commodity */
-    KA_AMARCHY,     /* amarchy:quit  the Amarchy commodity shuts down by its normal exit path (as the ARexx QUIT) */
-    KA_BAR          /* bar:<on|off|toggle>  the status bar (amarchy/bar.h), run by the commodity as the ARexx BAR verb */
+    KA_GTHEME,      /* gtheme:<name>  the drawn menu's Omarchy theme (patina/gthemes_core.h), run by the commodity */
+    KA_JOB,         /* job:<command line>  like run:, shown in the commodity's job view when the menu style has one (patina/leaf.h run_job); a style without one runs it as run: */
+    KA_CAP,         /* cap:<screen|window|region>  a screenshot (patina/shot.h), run by the commodity; the file also goes to clipboard unit 0 (D3 a) */
+    KA_SETTINGS,    /* settings:<page>  a settings page group of the menu (general colors palette keyboard advanced patina): mn_children lists the page's rows from prefs/settings_def.c; no action of its own */
+    KA_GUI,         /* gui:<help|welcome>  the patina-gui help or welcome window (patina/help_core.h), started by the commodity */
+    KA_PATINA,     /* patina:quit  the Patina commodity shuts down by its normal exit path (as the ARexx QUIT) */
+    KA_BAR          /* bar:<on|off|toggle>  the status bar (patina/bar.h), run by the commodity as the ARexx BAR verb */
 };
 
 /* where an action runs (keymap_action_scope) */
@@ -136,7 +136,7 @@ void keymap_free(keymap *k);
 void keymap_swap(keymap *live, keymap *scratch);
 /* Rebuild the table at its exact size: only the binds `keep` accepts (all when keep is NULL), no
  * [menu] rows, one array and one string block with no slack; the old memory is released. For a
- * caller that reads the file once and holds the result (the Amarchy commodity). 1 ok, 0 out of
+ * caller that reads the file once and holds the result (the Patina commodity). 1 ok, 0 out of
  * memory (the table is unchanged). */
 int  keymap_compact(keymap *k, int (*keep)(const km_bind *));
 /* Read a second file over the table (keymap.user): rows replace by key

@@ -8,7 +8,7 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <stdio.h>
-#include "../../amarchy/rexx_host.h"
+#include "../../patina/rexx_host.h"
 
 static long secs_now(void)
 {

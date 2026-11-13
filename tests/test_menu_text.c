@@ -1,9 +1,9 @@
-/* The Amarchy menu text layout (amarchy/menu_text_core.c; plan 2026-10-26-amarchy-gui-aa-font.md A2): string
+/* The Patina menu text layout (patina/menu_text_core.c; plan 2026-10-26-patina-gui-aa-font.md A2): string
  * width, ellipsis fitting, the per-code-point glyph cache. A fake glyph source stands in for a font. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../amarchy/menu_text_core.h"
+#include "../patina/menu_text_core.h"
 #include "../render/ttf.h"
 #include "data/symnerd_subset.h"
 #include "harness.h"
@@ -122,13 +122,13 @@ static void test_prefix(void)
     mtc_free(&c);
 }
 
-/* amarchy/gui.c measures and draws every label through menu_text (A3): none of the bitmap-font calls are left
+/* patina/gui.c measures and draws every label through menu_text (A3): none of the bitmap-font calls are left
  * in it, and its width callback is mt_width. Fails when a TextLength/TextFit/Text call comes back. */
 static void test_gui_uses_menu_text(void)
 {
     static char src[300000];
     size_t n;
-    FILE *f = fopen("amarchy/gui.c", "rb");
+    FILE *f = fopen("patina/gui.c", "rb");
     CHECK(f != 0);
     if (!f)
         return;
@@ -250,13 +250,13 @@ static void test_bitmap_plane_coverage(void)
     CHECK(mtc_cov_from_plane(plane, 1, 16, 4, 3, &g, f_alloc, f_rel) == 0);   /* wider than the row */
 }
 
-/* amarchy/menu_text.c keeps Text() for palette screens only: a true-colour screen renders bitmap glyphs to
+/* patina/menu_text.c keeps Text() for palette screens only: a true-colour screen renders bitmap glyphs to
  * coverage (bm_render) and draws them through aa_ink. Fails when the Text() path loses its !m->cgx gate. */
 static void test_bitmap_truecolor_wired(void)
 {
     static char src[60000];
     size_t n;
-    FILE *f = fopen("amarchy/menu_text.c", "rb");
+    FILE *f = fopen("patina/menu_text.c", "rb");
     CHECK(f != 0);
     if (!f)
         return;

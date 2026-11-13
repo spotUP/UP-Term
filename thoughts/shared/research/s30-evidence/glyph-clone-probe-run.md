@@ -7,8 +7,8 @@ status: measured
 # Probe run: glyph-clone-clprobe on OS 3.2
 
 ## Result
-Every target is NONZERO, in both runs (amarchy-flat absent, and amarchy-flat started via
-`Run >NIL: RAM:amarchy-flat`). The two outputs are byte-identical. Screen depth 8, dri_Version 3.
+Every target is NONZERO, in both runs (patina-flat absent, and patina-flat started via
+`Run >NIL: RAM:patina-flat`). The two outputs are byte-identical. Screen depth 8, dri_Version 3.
 
 | image | size | B 8pl nofriend | C scrdepth friend | D scrdepth nofriend | E 8pl marker DrawInfo | G screen RastPort |
 |---|---|---|---|---|---|---|
@@ -22,14 +22,14 @@ Every target is NONZERO, in both runs (amarchy-flat absent, and amarchy-flat sta
 Hypotheses 1 (screen friend/depth) and 2 (window gadget images not drawn by IM_DRAW) are refuted:
 the fresh NewObject images and the real window gadget images draw into the layerless 8-plane,
 no-friend bitmap, with the marker DrawInfo too. The probe's offscreen draw path works on 3.2, so the
-clone failure in amarchy/flat.c clone_render is not the target. Remaining: hypothesis 3 (re-entry /
+clone failure in patina/flat.c clone_render is not the target. Remaining: hypothesis 3 (re-entry /
 the saved dispatcher call convention in clone_render) or something specific to the hooked object.
 
-Run 2 caveat: `amarchy-flat STATUS` before and after the probe read `frame=hooked calls=0 flat=0`
+Run 2 caveat: `patina-flat STATUS` before and after the probe read `frame=hooked calls=0 flat=0`
 and `clone draws=0 fallback=0`, so the swap was installed but the probe's images did not go through
 the hook (calls stayed 0) and the flat switch was 0. Run 2 therefore does not test re-entry.
 
-## Run 1 full output (amarchy-flat not running)
+## Run 1 full output (patina-flat not running)
 ```
 rc 0
 intuition 47.53

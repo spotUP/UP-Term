@@ -22,7 +22,7 @@ ledger: thoughts/spot/todos.md:3627 (SELECTA-AA-ICONTEXT)
 3. **Cost of reading the background back** (UAE JIT "060 max", emulated time, not real hardware):
    cgx `ReadPixelArray` RGB 57 us per 96x12 label; `ReadPixelArray8` 115-262 us; `ReadPixel` loop
    about 2 ms per label (unusable).
-4. **Patch point:** graphics `Text()` (already patched by Amarchy for FLAT-BUTTON-FILL), with a
+4. **Patch point:** graphics `Text()` (already patched by Patina for FLAT-BUTTON-FILL), with a
    label filter; `DrawIconStateA` patch on V44+ only as a context marker (optional, see Design).
 
 ## Probe method
@@ -49,7 +49,7 @@ Scratch program `iclprobe` (vbcc, 68020, NDK 3.2r4; source in the session scratc
 - Screen: RTG, 800x600 depth 24, `iscgx=TRUE pixfmt=3200`. `rp->BitMap->Depth` reads 4 here, which is
   meaningless on RTG: use `GetCyberMapAttr(CYBRMATTR_ISCYBERGFX/DEPTH)`.
 - Readback per label: `ReadPixel` 1911 us, `ReadPixelArray8` 262 us, cgx `ReadPixelArray` RGB 57 us.
-- Other `Text()` callers on the same screen: `Background` (Amarchy bar, helvetica 11, JAM2),
+- Other `Text()` callers on the same screen: `Background` (Patina bar, helvetica 11, JAM2),
   `dopus_clock`. The label filter must reject these.
 
 ## Evidence: OS 3.2 rig 26 (graphics 47.10, icon 47.4, workbench 47.33)
@@ -77,7 +77,7 @@ Scratch program `iclprobe` (vbcc, 68020, NDK 3.2r4; source in the session scratc
 | 3.1 Workbench | workbench.library (unverified) | task == Workbench AND Workbench window layer |
 | Directory Opus 5 | task `dopus` | task == `dopus` AND window is backdrop (WFLG_BACKDROP) |
 
-One mechanism: extend the existing graphics `Text()` patch in amarchy/flat.c (flat_tx_c / flat_tx.s,
+One mechanism: extend the existing graphics `Text()` patch in patina/flat.c (flat_tx_c / flat_tx.s,
 tx_install / tx_remove) with an icon-label branch. Do not add a second `Text()` patch: two
 SetFunctions on one vector double the chain-removal risk that strut_patch already handles. The
 `DrawIconStateA` patch is optional on V44+: it gives a reliable "this Text is a label" flag and the
@@ -94,7 +94,7 @@ saved `Text()` with a6 = GfxBase (s28 hang rule in flat.c).
 ### Background: solid-colour detection first, readback second
 
 1. **Solid**: no ENV:Sys/wbpattern.prefs, or the ROOT chunk (prefs/wbpattern.h, WBP_ROOT) has
-   WBPF_PATTERN set and every tile pixel is one pen. Amarchy's own flat backdrop writes exactly this
+   WBPF_PATTERN set and every tile pixel is one pen. Patina's own flat backdrop writes exactly this
    (desk_core.h:139 desk_wbpattern "one solid darker tone"; desk_dos.c:548-560, 700-710). Then
    bg = that pen, RGB from GetRGB32 on the screen ViewPort. No readback. DOpus: its own background
    prefs, not wbpattern: treat as non-solid unless detected otherwise (unverified).
@@ -126,18 +126,18 @@ the owner should confirm readback is wanted here, or limit SELECTA-AA-ICONTEXT t
 
 ## Reuse list
 
-- amarchy/flat.c:281-376: graphics `Text()` patch (flat_tx_c, flat_tx.s flat_tx_entry, tx_install,
-  tx_remove, flat_swap_install/remove, libpatch_done). Constants amarchy/flat_core.h:109-112.
-- amarchy/strut_patch.c + amarchy/ipatch.h/.c: install pattern with semaphore, busy counter,
+- patina/flat.c:281-376: graphics `Text()` patch (flat_tx_c, flat_tx.s flat_tx_entry, tx_install,
+  tx_remove, flat_swap_install/remove, libpatch_done). Constants patina/flat_core.h:109-112.
+- patina/strut_patch.c + patina/ipatch.h/.c: install pattern with semaphore, busy counter,
   passthru-then-unarm, leak if busy or chained, am_sentinel. ipatch_alloc takes IntuitionBase only;
   for an optional icon.library -162 patch, generalise ipatch_alloc to take a `struct Library *`, do
   not clone it.
-- amarchy/libpatch.h libpatch_done.
+- patina/libpatch.h libpatch_done.
 - render/aa_ink.c/.h: aa_ink_draw (single bg) for cases 1 and 2 as-is; add one per-pixel-bg entry
   for case 3 in the same module (not a second module). Shade ramp work on branch s29-aa-ramp.
-- amarchy/menu_text.c / menu_text_core.c (mt_open, mt_draw) and render/outline/ttf as glyph source
+- patina/menu_text.c / menu_text_core.c (mt_open, mt_draw) and render/outline/ttf as glyph source
   (coverage per string).
-- amarchy/desk_core.c:626-718 font.prefs WBFONT (label pen, JAM1) and desk_core.h:139 desk_wbpattern
+- patina/desk_core.c:626-718 font.prefs WBFONT (label pen, JAM1) and desk_core.h:139 desk_wbpattern
   for the solid test; prefs/wbpattern.h flags.
 
 ## Test plan
@@ -149,8 +149,8 @@ the owner should confirm readback is wanted here, or limit SELECTA-AA-ICONTEXT t
     ROOT two-pen tile, picture entry).
   - per-pixel blend core: coverage x fg x bg buffer to RGB / nearest pen; exact numbers for 0, 50, 100%
     coverage.
-- **One reachability test** (rig, OS 3.2 then 3.1, top-level entry = Amarchy start with the option on):
-  - sentinel `AMARCHY_ICONTEXT_INSTALLED` from install, and a counter of labels drawn by the AA path
+- **One reachability test** (rig, OS 3.2 then 3.1, top-level entry = Patina start with the option on):
+  - sentinel `PATINA_ICONTEXT_INSTALLED` from install, and a counter of labels drawn by the AA path
     (exposed like strut_counts) that must be > 0 after a forced desktop redraw and equal the icon count.
   - pixels: screenshot of one label ("RAM Disk"), measure that edge pixels contain colours strictly
     between fg and bg (not only fg and bg). Measured pixels, never pen reads.

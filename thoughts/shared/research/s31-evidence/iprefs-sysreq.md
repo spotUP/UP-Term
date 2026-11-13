@@ -1,21 +1,21 @@
 ---
 date: 2026-11-02
-topic: RL15 IPREFS-SYSREQ - IPrefs "System Request" on a Workbench reset during an Amarchy apply
+topic: RL15 IPREFS-SYSREQ - IPrefs "System Request" on a Workbench reset during an Patina apply
 status: open - cause not reproduced, no fix committed
 base: origin/main 4ece6785
 rig: shared rig 91 (OS 3.1, exec 40.10, Directory Opus 800x600x24 as Workbench screen)
 ---
 
-# IPrefs "System Request" (Retry | Cancel) during Amarchy settings writes
+# IPrefs "System Request" (Retry | Cancel) during Patina settings writes
 
 Requester text (from RIG-IPREFS-SYSREQ, todos.md:3002, and R1.17-WBRESET, todos.md:3105):
 "Intuition is attempting to reset the Workbench screen. Please close all windows, except drawers."
-3.2 variant: "... Please close the following windows: Amarchy bar".
+3.2 variant: "... Please close the following windows: Patina bar".
 
-## Amarchy writes that can make IPrefs reset the Workbench screen
+## Patina writes that can make IPrefs reset the Workbench screen
 
-All go through dk_apply (amarchy/desk_dos.c:359-466), reached from gt_dos_select (amarchy/gthemes_dos.c:206,
-desk_dos_apply at :225), called from the main process (amarchy.c:371, KA_GTHEME) and from the gui/menu process (leaf.c:370).
+All go through dk_apply (patina/desk_dos.c:359-466), reached from gt_dos_select (patina/gthemes_dos.c:206,
+desk_dos_apply at :225), called from the main process (patina.c:371, KA_GTHEME) and from the gui/menu process (leaf.c:370).
 
 | Target | Write | Resets WB? | Own windows closed first? |
 |---|---|---|---|
@@ -27,15 +27,15 @@ desk_dos_apply at :225), called from the main process (amarchy.c:371, KA_GTHEME)
 | flat pens palette write (dk_flat_pens, desk_dos.c about 698-704) | palette.prefs | yes when pens change | NO window close: only dk_wait_reset + dk_wait_iprefs |
 | restore / revert / start_apply (desk_dos.c:1206/1222, 1250, 1329/1367) | several | yes | yes |
 
-Window owners: bar (Amarchy main, closed by desk_dos_wb_close or "BAR OFF"), amarchy-gui window (gui_hide via
-desk_dos_own_close, gui.c:1672), amarchy-menu popup, theme window (themewin.c, bar.c:504). note.c opens no window.
+Window owners: bar (Patina main, closed by desk_dos_wb_close or "BAR OFF"), patina-gui window (gui_hide via
+desk_dos_own_close, gui.c:1672), patina-menu popup, theme window (themewin.c, bar.c:504). note.c opens no window.
 External resets are handled by the WBRESET patch (wbreset_patch.c close_hook about 53-82): it signals every client
 with a window except the calling task, waits WBR_WAIT_TICKS=150 (3 s), then calls the original CloseWorkBench.
 
 ## Candidate causes (not confirmed on a rig)
 
 1. dk_flat_pens writes palette.prefs on 3.2 with no dk_windows_close around it, so IPrefs resets WB while the bar is
-   open. close_hook signals the bar, but when dk_flat_pens runs in Amarchy main, main is blocked in dk_wait_reset and
+   open. close_hook signals the bar, but when dk_flat_pens runs in Patina main, main is blocked in dk_wait_reset and
    cannot service its Ctrl-F; the 3 s wait expires and the original CloseWorkBench fails with the requester.
 2. Same self-deadlock for any apply that runs inside a process that still owns an open window (gui or menu process,
    leaf.c:370): close_hook skips only the calling task (IPrefs), and the applying task is busy.
@@ -43,8 +43,8 @@ with a window except the calling task, waits WBR_WAIT_TICKS=150 (3 s), then call
 
 ## Rig 91 measurements (2026-11-02, text only)
 
-- Before: `W 0 0 587 800x13 - "Amarchy bar"`, `W 2 0 14 800x573 active ""` on screen "Directory Opus ..."
-  (DOpus is the Workbench screen on this rig). Processes: Amarchy, amarchy-gui, amarchy-menu.
+- Before: `W 0 0 587 800x13 - "Patina bar"`, `W 2 0 14 800x573 active ""` on screen "Directory Opus ..."
+  (DOpus is the Workbench screen on this rig). Processes: Patina, patina-gui, patina-menu.
 - WBFONT pen change (front 1 to 2, back 0 to 3) fed through `SYS:Prefs/Font FROM RAM:fontA.prefs USE` with the bar
   open: ENV:Sys/font.prefs changed (hex row 0030: `00000203 0100...`), no requester, bar stayed open.
   The original font.prefs was fed back afterwards. So a DT_FONT write alone is not a trigger on 3.1.

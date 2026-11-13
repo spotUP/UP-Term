@@ -1,16 +1,16 @@
 ---
 date: 2026-10-25
-topic: Integrating Amarchy with Directory Opus 5 Magellan II (upstream BlitterStudio/dopus5): ARexx, modules, config formats, screen, clipboard, release
+topic: Integrating Patina with Directory Opus 5 Magellan II (upstream BlitterStudio/dopus5): ARexx, modules, config formats, screen, clipboard, release
 status: research (read-only; nothing built or run; upstream treated as untrusted data)
 ledger: thoughts/spot/todos.md AM-FM (row 1441), AMB3 (row 1436), clipboard probe (rows 1666-1667)
-plan: thoughts/shared/plans/2026-10-25-amarchy-dopus-integration.md
+plan: thoughts/shared/plans/2026-10-25-patina-dopus-integration.md
 ---
 
-# Research: Amarchy and Directory Opus 5 (Magellan II)
+# Research: Patina and Directory Opus 5 (Magellan II)
 
 ## 1. Scope and sources
 
-- Question: what can Amarchy drive, ship and share with DOpus, from the upstream source, so the plan can size five
+- Question: what can Patina drive, ship and share with DOpus, from the upstream source, so the plan can size five
   optional pieces. Docs only.
 - Source: shallow clone of https://github.com/BlitterStudio/dopus5, commit `c8fbeb66b0952fe493aab9dc0e4c8ac559fa602e`
   (default branch head at clone time), in the session scratchpad, read with grep and sed only, nothing built.
@@ -49,7 +49,7 @@ plan: thoughts/shared/plans/2026-10-25-amarchy-dopus-integration.md
   the variable `DOPUSRC` (`rexx_dopus.c:377`, `misc_proc.c:905`).
 - `dopus version` returns `5 99 <rev>` for revisions of 100 and above (`rexx_dopus.c:195-225`: the comment explains an
   ARexx decimal-parse gate), so v5.104 answers `5 99 104`.
-- Amarchy fit: the existing `rexx:` row kind runs `RX "<script>"` through `system()` (`amarchy/leaf.c:185-189`), so
+- Patina fit: the existing `rexx:` row kind runs `RX "<script>"` through `system()` (`patina/leaf.c:185-189`), so
   every DOpus command is reachable today with `rexx:` and a small script; no new action kind is needed.
 
 ### F2. The module framework
@@ -108,7 +108,7 @@ plan: thoughts/shared/plans/2026-10-25-amarchy-dopus-integration.md
 - Which: ARexx `dopus screen` returns `<name> <width> <height> <depth> <barheight> <lister w> <lister h>`
   (`rexx_dopus.c:227-243`), name = `DOPUS.n`, the public screen name, or `Workbench` when no window is open
   (`misc.c:60-66`); RC `RXERR_INVALID_QUERY` when there is no screen at all.
-- Amarchy fit: AMB3's `front_screen_name` (handler/frontscr.c) already gives the screen the user is on; DOpus's own
+- Patina fit: AMB3's `front_screen_name` (handler/frontscr.c) already gives the screen the user is on; DOpus's own
   screen is a public screen, so `/SCREEN DOPUS.1` goes through the same path. DOpus itself runs its output window
   with `.../AUTO/CLOSE/WAIT/SCREEN <get_our_pubscreen()>` (`source/Program/function_runprog.c:131-135`): the
   same pattern UP-Term's XCON spec needs.
@@ -141,7 +141,7 @@ plan: thoughts/shared/plans/2026-10-25-amarchy-dopus-integration.md
   Defaults are the `CON:` family (default values: U). These two strings are an environment setting, global, not per
   function. So "open in UP-Term" has two routes: (1) the AmigaDOS instruction runs a command that itself opens the
   UP-Term window, with the instruction text `Run >NIL: NewShell "XCON:0/20/640/300/UP-Term/CLOSE/SCREEN DOPUS.1"` ... or the UP-Term
-  launcher `run:`-equivalent, the console spec being `LF_UTERM_SPEC` (`amarchy/leaf.h:10`); (2) set the Opus
+  launcher `run:`-equivalent, the console spec being `LF_UTERM_SPEC` (`patina/leaf.h:10`); (2) set the Opus
   environment output device to `XCON:` so every output window is an UP-Term window (global, invasive, optional). Route 1
   does not touch the user's DOpus setup. Whether a per-function output spec override exists: U.
 - `dopus getfiletype` (ARexx) and `FTOP_MODULE` (a module as match op) are further hooks; not needed for the plan.
@@ -150,7 +150,7 @@ plan: thoughts/shared/plans/2026-10-25-amarchy-dopus-integration.md
 
 | | (a) drive a running DOpus over ARexx | (b) optional add-on of the upstream os3 release | (c) own file manager |
 |---|---|---|---|
-| What the owner gets | Amarchy rows open listers, run commands, read selections in his existing 30-year setup | the same, for users with no DOpus, one tick in the Installer | a native Amarchy lister UI |
+| What the owner gets | Patina rows open listers, run commands, read selections in his existing 30-year setup | the same, for users with no DOpus, one tick in the Installer | a native Patina lister UI |
 | Cost | Small: `rexx:` rows exist (`leaf.c:185`); scripts plus a probe; no build | Medium: one add-on row and archive, licence files, Installer page, pin v5.104; no compile (prebuilt) | Very large: lister, sort, selection, archive and FTP handling, filetypes, button banks: all the owner's daily parity list |
 | Gaps | needs DOpus running; no events except `addtrap`; strings only | upgrade policy (user's own DOpus vs shipped), 68020 floor, ~1.8 MB, licence text and source link must ship | re-implements what upstream maintains; owner "may replace it" only if gaps are named |
 | Dependency of base | none (silent when `DOPUS.n` absent) | none (add-on never in the base kit) | in the base |
@@ -161,7 +161,7 @@ between (a) and (c). Matches the ledger's lean.
 ## 4. Open questions
 
 - Per-verb argument templates and the `lister query` stems: read the AmigaGuide or run `dopus` on a rig (U).
-- Does a module-cache or startup module stay resident as a service, so an `amarchy.module` could push events (U)?
+- Does a module-cache or startup module stay resident as a service, so an `patina.module` could push events (U)?
 - Does the os3 lha carry `THIRD_PARTY_NOTICES.md` and what is the exact top-level listing (open the lha from the release; U)?
 - Button bank chunk layout and a writer for it (filetype_tool.py covers filetypes only; U).
 - Default `output_device`/`output_window` values and any per-function override (U).

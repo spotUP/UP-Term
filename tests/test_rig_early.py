@@ -108,12 +108,12 @@ class SysHdfKit(unittest.TestCase):
 
 RDB = shutil.which("rdbtool")
 USER_STARTUP = (';BEGIN UP-Term assign\nIf EXISTS "Rushhours:Tools/UP-Term"\n  Assign UP-Term: "Rushhours:Tools/UP-Term"\n'
-                'EndIf\n;END UP-Term assign\n;BEGIN UP-Term Amarchy\nRun >NIL: UP-Term:bin/Amarchy\n;END UP-Term Amarchy\n')
+                'EndIf\n;END UP-Term assign\n;BEGIN UP-Term Patina\nRun >NIL: UP-Term:bin/Patina\n;END UP-Term Patina\n')
 
 @unittest.skipUnless(XDF and RDB, "needs xdftool and rdbtool (pip install amitools)")
 class SysHdfKitUpTerm(SysHdfKit):
     """RIG-WARM-SRV-RACE: the master image's UP-Term:bin (DH1 'Rushhours', named by the kit's User-Startup assign)
-    held older Amarchy programs; a fresh clone started them while the boot's shadow Copy wrote the new ones over
+    held older Patina programs; a fresh clone started them while the boot's shadow Copy wrote the new ones over
     them, and the warm servers never came up. The clone must hold the build's UP-Term: files before it boots."""
     def setUp(self):
         super().setUp()

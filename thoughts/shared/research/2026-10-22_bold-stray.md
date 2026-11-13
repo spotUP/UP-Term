@@ -33,4 +33,4 @@ No host probe was run (no repro; engine tests not touched). Faint (SGR 2) render
 
 ## Question that pins it
 
-Which program (ls, a Shell prompt, an ncurses app such as amarchy-menu, vim), on which persona (xterm vs Amiga CON:), and is the text brighter, thicker, or both?
+Which program (ls, a Shell prompt, an ncurses app such as patina-menu, vim), on which persona (xterm vs Amiga CON:), and is the text brighter, thicker, or both?

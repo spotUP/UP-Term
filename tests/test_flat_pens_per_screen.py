@@ -1,9 +1,9 @@
-"""TE-10.6b wiring guard: amarchy/flat.c keeps pen numbers per screen. The draw hooks take them from the slot of w->WScreen
+"""TE-10.6b wiring guard: patina/flat.c keeps pen numbers per screen. The draw hooks take them from the slot of w->WScreen
 (st_scr / st_rp -> flat_draw_state, a table the main task fills with flat_state_for in draw_sync), never from one screen-global pen set; the icon-label cache is a per-screen icl_pentab; no
 bare LockPubScreen call. The overlay logic itself is tested in tests/test_flat_core.c and tests/test_iclabel.c."""
 import pathlib, re, unittest
 
-SRC = (pathlib.Path(__file__).resolve().parent.parent / "amarchy/flat.c").read_text()
+SRC = (pathlib.Path(__file__).resolve().parent.parent / "patina/flat.c").read_text()
 
 
 class FlatPensPerScreen(unittest.TestCase):

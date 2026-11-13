@@ -19,6 +19,6 @@ Open (new rows):
 - CLAUDE-SETUP-SWALLOW: line typed at the Claude setup/login prompt on a rig is swallowed.
 - RIG-PYTHON-UHC-FAIL: install_rig --only all fails python add-on and uhc (amisslmaster.library v5 missing).
 - --orig path of use_ixemul (LIBS: DH0:Libs) has no booted-lib guard.
-- test_rig_kit_shadow_keymap amnotify failure belongs to the Amarchy session.
+- test_rig_kit_shadow_keymap amnotify failure belongs to the Patina session.
 
 Rigs 9 and 10 stopped by their agents.

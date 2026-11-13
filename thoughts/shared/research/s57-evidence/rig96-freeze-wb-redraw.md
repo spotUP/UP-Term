@@ -2,7 +2,7 @@
 date: 2026-11-05
 author: opus agent (vtcon-c1 brief), read-only on rig 96
 row: S57-RIG96-FREEZE
-build: rig 96 = ../vtcon-s58-rig96 at main 92b29ff8, amarchy-flat full install, OS 3.2, 640x256x8
+build: rig 96 = ../vtcon-s58-rig96 at main 92b29ff8, patina-flat full install, OS 3.2, 640x256x8
 verdict: freeze state lost (rig rebooted by vtcon-8c before this read); red-in-AA cause found and reproduced on the live boot
 ---
 
@@ -62,11 +62,11 @@ Measured by script (scratchpad red.py / red2.py), 12 distinct colours on screen:
 
 ### Cause (code)
 
-amarchy/flat.c icl text path (pen screens, lines ~806-823): `icl_pen_for` obtains each shade with `ObtainBestPen`
+patina/flat.c icl text path (pen screens, lines ~806-823): `icl_pen_for` obtains each shade with `ObtainBestPen`
 (PRECISION_IMAGE), the label is written with `WritePixelArray8`, then since 351e9c0e every obtained pen is released in
 the same call (`icl_cache_drain` + `ReleasePen`). The pixels stay on screen in a pen the patch no longer owns. A pen
-with no users is free in the PalExtra; the next client that needs a colour with no close match (Amarchy's theme pens,
-amarchy-flat's dim/knob/inbar/sel pens, colour icon pens, IPrefs/Palette on the next redraw) gets that pen number and
+with no users is free in the PalExtra; the next client that needs a colour with no close match (Patina's theme pens,
+patina-flat's dim/knob/inbar/sel pens, colour icon pens, IPrefs/Palette on the next redraw) gets that pen number and
 SetRGBs it, here to the theme red. Every label pixel drawn with it turns red until the label is redrawn. The last
 redraw of the boot sequence is the one where a red-needing allocation lands after the labels; earlier redraws repaint
 labels after the allocation, which is why only the final one shows it.
@@ -77,7 +77,7 @@ recolour: releasing per call is only correct for pens whose pixels do not outliv
 ## Proposed fix (not done in this brief)
 
 Hold the icon-label shade pens for the life of the screen, keyed by screen identity, the same pattern as
-`flat_pens` (amarchy/flat_core.h S32-STALE-HELD-PENS: screen + ipd_epoch; ReleasePen only on the identity the pens
+`flat_pens` (patina/flat_core.h S32-STALE-HELD-PENS: screen + ipd_epoch; ReleasePen only on the identity the pens
 were obtained on, forget without ReleasePen on any other). Concretely: move `icl_pc` to a per-identity holder, drop the
 per-call `icl_cache_drain` release, and drain from the 1 s Workbench watch step (`flat_pens_follow` call site) and on
 unload: release when the identity still matches, forget when the screen is gone or reopened. That keeps both
@@ -97,17 +97,17 @@ signature only; low confidence on any lock.
 - Hole closed: icl_pen_for no longer calls ObtainBestPen when the 32-slot cache has no room for the key (new
   icl_cache_has_room); it takes the non-obtained choice (nearest of fg/bg), so no drawn pen is ever released. Host test
   t_cache_full_no_obtain (tests/test_iclabel.c) + wiring test in tests/test_flat_icl_pens_persist.py. `make test ONLY=iclabel`:
-  184 checks, 0 failed; ONLY=flat_icl_pens OK. `make build/amiga/Amarchy` and `build/amiga/amarchy-flat` (vc -warnings-as-errors) rc=0.
+  184 checks, 0 failed; ONLY=flat_icl_pens OK. `make build/amiga/Patina` and `build/amiga/patina-flat` (vc -warnings-as-errors) rc=0.
 - RGB-changed same-key path (icl_cache_put hands back old_pen, caller releases it): CAN in principle recolour, because pixels
   drawn with the old pen may still be on screen after a palette change and the released pen can be reallocated. It needs a
   palette change of the fg/bg pen first, and the labels are repainted by the redraw that follows a palette change. NOT fixed
   here (no repro; a fix would hold the old pen until the next bind, i.e. a deliberate leak): open question for the owner.
-- Rig 144 (OS 3.2, 060 max, 640x256x8, base-staleness override), Amarchy + amarchy-flat (flat-system-look on, labels=30 AA drawn),
+- Rig 144 (OS 3.2, 060 max, 640x256x8, base-staleness override), Patina + patina-flat (flat-system-look on, labels=30 AA drawn),
   Workbench drawer open/close, grab. Exact (247,118,142) pixels: boot0 0, boot1 0, boot2 0 (INVALID: flat=held, labels=0, no AA
   drawn), boot3 0. Boot hangs: 0 of 3 reboots (wasabid answered each time).
 - Caveat, unverified as proof: this rig has no client that allocates the theme red, so 0 is weak evidence (the before-fix 38
   came from rig 96 full install). Boot1 showed the two AA shade pens (93 px and 14 px) as pink (255,119,238)/(255,85,170)
   instead of grey (83,87,108)/(112,117,144) seen on boot0 and boot3: the shade pens were recoloured by another client in that
-  boot although held. Cause not investigated (budget). Needs a hunt: who SetRGBs pens 4+ after the labels (Amarchy palette
+  boot although held. Cause not investigated (budget). Needs a hunt: who SetRGBs pens 4+ after the labels (Patina palette
   apply?) and why ObtainBestPen shares an existing pen that a client then recolours.
 - Shots: ~/Desktop/upterm-shots/s57-icl-fix-rig144-boot{0,1,2,3}.png. Rig 144 stopped and cleared.

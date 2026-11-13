@@ -1,6 +1,6 @@
 ---
 date: 2026-11-04
-topic: S56 XCON scrollbar knob drawn as a thin line under amarchy-flat on AmigaOS 3.2
+topic: S56 XCON scrollbar knob drawn as a thin line under patina-flat on AmigaOS 3.2
 status: fixed (rig 74 pixel proof)
 ---
 
@@ -15,7 +15,7 @@ knob body only: it took the track pen, and only slivers took the knob pen.
 
 ## Root cause
 
-amarchy-flat decides the pen of each Intuition RectFill inside a prop gadget by whether the fill lies
+patina-flat decides the pen of each Intuition RectFill inside a prop gadget by whether the fill lies
 wholly inside the knob rectangle. That rectangle was computed from PropInfo (`flat_scroller_knob`:
 size = body * container / 0xFFFF, pos = pot * (container - size) / 0xFFFF). Intuition 3.2 lays the
 knob out differently. Rig 74, XCON KBShell 640x240, measured with a probe (`kbprobe`, ReadPixel
@@ -30,7 +30,7 @@ the computed rectangle, and therefore took pen_back (invisible). Only fills whol
 (single rows/strips) took the knob pen: the thin line and the tick. The earlier S54 reproof only
 covered Total == Visible (knob = whole container), where both layouts agree.
 
-Root: `amarchy/flat.c` scroller_pen used the formula knob instead of the knob Intuition drew.
+Root: `patina/flat.c` scroller_pen used the formula knob instead of the knob Intuition drew.
 
 ## Fix
 
@@ -55,7 +55,7 @@ holds the box Intuition laid out (LeftEdge/TopEdge relative to the container, Wi
 
 With the fix: `[OK] flat_core: 2313 checks, 0 failed`.
 
-## Rig pixel proof (rig 74, --os 32, fixed amarchy-flat restarted)
+## Rig pixel proof (rig 74, --os 32, fixed patina-flat restarted)
 
 ReadPixel pens, x = 620..639 window-relative (container x 626..635), pen 3 = outline (active
 knob), K = pen 250 (inbar, inactive knob), 0 = track:

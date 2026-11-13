@@ -18,8 +18,8 @@ checkout's tools/rig (session scratchpad, folder `main/`). No screenshots taken.
    build/rig-saved/68/20261111-113923, removed build/rig68), then from
    /Users/spot/Code/UP-Term/vtcon:
    `rig.py start --max --purpose "s73: FLAT-SPACING + FLAT-WIDE-INPUT owner eye check"`, rc 0.
-   Refreshed: amarchy-flat 239792, amarchy-gui 567920, amarchy-menu 684260,
-   Amarchy 399124, upprefs 199380, pty-handler 13156, vtcon-handler 610512.
+   Refreshed: patina-flat 239792, patina-gui 567920, patina-menu 684260,
+   Patina 399124, upprefs 199380, pty-handler 13156, vtcon-handler 610512.
 2. `rig.py hold --hours 4.5`: hold until 2026-11-11 16:11:23 (pid 217), idle watchdog off.
 3. ENVARC:Sys/palette.prefs was missing again (the stop cleared the rig). Ran
    `Copy ENV:Sys/palette.prefs ENVARC:Sys/palette.prefs CLONE`, then `ami.py reboot`
@@ -30,9 +30,9 @@ checkout's tools/rig (session scratchpad, folder `main/`). No screenshots taken.
 build/rig68/owner.json =
 {"root": "/Users/spot/Code/UP-Term/vtcon", "purpose": "s73: FLAT-SPACING + FLAT-WIDE-INPUT owner eye check"}
 
-## Q2 resident amarchy-flat: PASS
-`List UP-Term:bin/amarchy-flat` = 239792 bytes, 11:40:33 (after the start refresh).
-`UP-Term:bin/amarchy-flat STATUS` after reboot with Time Preferences open:
+## Q2 resident patina-flat: PASS
+`List UP-Term:bin/patina-flat` = 239792 bytes, 11:40:33 (after the start refresh).
+`UP-Term:bin/patina-flat STATUS` after reboot with Time Preferences open:
 flat=on gboxes=38 gfit=1 gfitbusy=0 side=1.
 
 ## Q3 date row box hugs text: PASS
@@ -60,13 +60,13 @@ layout change. Cell pitch 15 px (13 px cell + 2 px gap) in both.
 
 ## Unexpected
 
-- rig start printed `[BUILD] stale before push: Amarchy, pty-handler, upprefs,
+- rig start printed `[BUILD] stale before push: Patina, pty-handler, upprefs,
   vtcon-handler` for the main checkout's build/amiga (sources newer than those
-  binaries). amarchy-flat, amarchy-gui and amarchy-menu were not in the stale list.
+  binaries). patina-flat, patina-gui and patina-menu were not in the stale list.
   Not rebuilt (task forbids builds).
 - DOpus 5.104 not installed in the rig's VTC: drawer (warning only, as before).
 - No hang, no reset loop this time (no `ami.py put` was needed: rig start refreshed
-  amarchy-flat itself).
+  patina-flat itself).
 
 ## End state
 

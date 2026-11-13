@@ -1,6 +1,6 @@
 # Side worktrees: unique work check (2026-11-01)
 
-Method: all 7 worktrees have empty `git status --porcelain`. `git cherry -v` against origin/main and s28-crash-hunt; for each `+` commit the added/removed code lines (amarchy/, tests/) were diffed against the same-subject commit on origin/main (difflines=0 means identical change).
+Method: all 7 worktrees have empty `git status --porcelain`. `git cherry -v` against origin/main and s28-crash-hunt; for each `+` commit the added/removed code lines (patina/, tests/) were diffed against the same-subject commit on origin/main (difflines=0 means identical change).
 
 | worktree | branch | `+` on both bases | code equal on main | verdict |
 |---|---|---|---|---|

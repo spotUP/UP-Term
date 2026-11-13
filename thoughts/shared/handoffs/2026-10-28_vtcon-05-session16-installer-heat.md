@@ -52,4 +52,4 @@ status: final
 
 ## Other Notes
 - Do not touch: musicplayer-55 scratchpads 7b6e9b73, 2198f063, 05a22682; worktree vtcon-splits (63 unmerged commits); UpRough scratchpad eaea0c13 (owner's call).
-- Uncommitted files at start that are not ours: tests/test_installer_drive_loop.py and tools/rig/installer_rig.py are now committed; the Amarchy handoff edit, `-`, scratchpad_info, scratchpad_w.log and the session 13/14 handoffs are other sessions' or earlier files, left alone.
+- Uncommitted files at start that are not ours: tests/test_installer_drive_loop.py and tools/rig/installer_rig.py are now committed; the Patina handoff edit, `-`, scratchpad_info, scratchpad_w.log and the session 13/14 handoffs are other sessions' or earlier files, left alone.

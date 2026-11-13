@@ -17,7 +17,7 @@ B = blocks the UP-Term release.
 | 3718 | RIG-OS32-NO-RTG (W43) | OPEN-CODE | Not started per row; rig tool/3.2 RTG switch. No commit. | no |
 | 3719 | BOOT-31-WB-DEADLOCK | DONE | 13955b72 merge s30-wblock; 3a1cafc3 cause recorded. | no |
 | 3757 | KITTY-FINISH (s51) K30-K36 | DONE | 192eceb3 (K40d), 9cad5c9b (K36 gap), K35 a6de061d, b0a0a42a ticks K40/K41. | no |
-| 3760 | KIT-AMARCHY-ALL (release gate) | OPEN-OWNER | Owner holds release for Amarchy RL15/RL16/RL8; 1230e176 KIT-AMARCHY-FLAT run 3 ok. Amarchy session (vtcon-16) must report READY on main. Not verifiable from vtcon repo. | yes (gate) |
+| 3760 | KIT-PATINA-ALL (release gate) | OPEN-OWNER | Owner holds release for Patina RL15/RL16/RL8; 1230e176 KIT-PATINA-FLAT run 3 ok. Patina session (vtcon-16) must report READY on main. Not verifiable from vtcon repo. | yes (gate) |
 | 3763 | KITTY-TRUECOLOR | DONE | 5ff4b661 plan, K40 + K41 rig 91 3 of 3 b0a0a42a, cbd9e471 AGA pixel-equal. | no |
 | 3765 | IXEMUL-EXECVE-SHARED-FH | OPEN-CODE | tmux fixed in tmux-amiga; screen/ptyrun/other dup'd-tty programs open. Ports repo, no vtcon commit. | no |
 | 3894 | INSTALL-CHECK30-AMISSL-PREBOOT | DONE | d88e7821 merge s51-check30; 4054 shows rig 96 fresh-all 3.2 installer [PASS] from fb6aa600. | no |
@@ -41,5 +41,5 @@ DONE 13 (959, 3719, 3757, 3763, 3894, 3900, 3915, 3919, 3925, 3929, 4096, 4104, 
 
 ## Release path (what remains)
 1. OPEN-RIG 4072 + 4073 + 4125: one shared fresh-all 3.2 run from current main (rig 96, --idle-minutes 0), pixel reads.
-2. OPEN-OWNER: eye check on rig 96 (knobs, Locale, UPDemo 15), KIT-AMARCHY-ALL READY from vtcon-16 (RL15/16/8), then 1088 steps 4-6 (repos.lock re-pin, kit build + dist-checks, upload).
+2. OPEN-OWNER: eye check on rig 96 (knobs, Locale, UPDemo 15), KIT-PATINA-ALL READY from vtcon-16 (RL15/16/8), then 1088 steps 4-6 (repos.lock re-pin, kit build + dist-checks, upload).
 3. No OPEN-CODE row blocks a 3.2 release; 4086 only gates the 3.1 palette.

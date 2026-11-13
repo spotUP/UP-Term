@@ -1,4 +1,4 @@
-"""amarchy_menu_rig: one row that aborts fails that row, the table goes on.
+"""patina_menu_rig: one row that aborts fails that row, the table goes on.
 
 open_timing's helper exited with "[ERROR] window 'menuhost' is not the active window and a click did not make it
 so" (SystemExit) and the 22 rows after it never ran (rig 7, 2026-10-27, research/2026-10-27-s10-menurig.md).
@@ -8,7 +8,7 @@ import pathlib, sys, unittest
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools/rig"))
 
-import amarchy_menu_rig as m
+import patina_menu_rig as m
 
 
 class RowAbort(unittest.TestCase):
@@ -33,7 +33,7 @@ REQ = {"addr": 1, "title": "System Request", "task": "ramlib", "screen": "Workbe
 
 
 class RequesterOpen(unittest.TestCase):
-    """A ramlib "Please insert volume AmiTCP" requester blocked amarchy-menu and the row only said "text menu did
+    """A ramlib "Please insert volume AmiTCP" requester blocked patina-menu and the row only said "text menu did
     not open" (rig 7, 2026-10-27)."""
 
     def test_open_requester_aborts_row_without_running_it(self):

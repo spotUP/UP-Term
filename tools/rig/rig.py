@@ -25,7 +25,7 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   --allow-stale-base "<reason>": start although this checkout's HEAD lacks origin/main
                   (RIG-STALE-BASE-GUARD; the reason is required and printed);
                   --purpose "<who: what>": the window title says which session runs the
-                  rig and for what, e.g. "Amarchy session: menu terminal check")
+                  rig and for what, e.g. "Patina session: menu terminal check")
                   --overscan: AGA rigs show the whole overscan picture (zoom = full), not the cropped 640x512 area;
                   --os <30|31|314|32|321|322|35|39>: boot the owner's clean installed
                   Workbench of that version (paths.OS_IMAGES; own copy per rig,
@@ -347,39 +347,39 @@ KIT_STAMP_BOOT = """If NOT EXISTS VTC:kit-restore
 EndIf""" % {"stamp": kitstamp.STAMP, "hash": kitstamp.HASH}
 
 
-# LEGW: since Leg W the kit starts amarchy-flat from a S:Startup-Sequence block (before IPrefs) and Amarchy and
-# amarchy-index from SYS:WBStartup icons (after LoadWB), none from S:User-Startup. The rig's shadow block is anchored
-# before the User-Startup ';BEGIN UP-Term Amarchy' block of a clone made from an older kit (KIT_AMARCHY_BLOCK); with a
+# LEGW: since Leg W the kit starts patina-flat from a S:Startup-Sequence block (before IPrefs) and Patina and
+# patina-index from SYS:WBStartup icons (after LoadWB), none from S:User-Startup. The rig's shadow block is anchored
+# before the User-Startup ';BEGIN UP-Term Patina' block of a clone made from an older kit (KIT_PATINA_BLOCK); with a
 # current kit there is none, the block goes to the end of S:User-Startup, which still runs before both WBStartup
-# programs. amarchy-flat starts before User-Startup exists, so a boot never gives it the shadowed build: the rig
-# restarts it itself (amarchy_gui_rig.flat_boot).
-# RIG-BOOT-STALE-BIN: the kit's S:User-Startup block `Run >NIL: UP-Term:bin/Amarchy` starts Amarchy (and the programs it
-# starts from UP-Term:bin at boot, amarchy-flat BOOT) before BOOTX:go, which runs beside the Startup-Sequence, has copied
+# programs. patina-flat starts before User-Startup exists, so a boot never gives it the shadowed build: the rig
+# restarts it itself (patina_gui_rig.flat_boot).
+# RIG-BOOT-STALE-BIN: the kit's S:User-Startup block `Run >NIL: UP-Term:bin/Patina` starts Patina (and the programs it
+# starts from UP-Term:bin at boot, patina-flat BOOT) before BOOTX:go, which runs beside the Startup-Sequence, has copied
 # the build over them: every boot-started program ran the previous build. The UP-Term: shadow pass therefore also runs
-# from a rig-only block in S:User-Startup directly before the kit's Amarchy block (BOOTX:shadows-up); it leaves
-# SHADOWS_UP_DONE, and go then skips its own pass (a rig with no Amarchy block has no such block: go runs the pass).
+# from a rig-only block in S:User-Startup directly before the kit's Patina block (BOOTX:shadows-up); it leaves
+# SHADOWS_UP_DONE, and go then skips its own pass (a rig with no Patina block has no such block: go runs the pass).
 # The kit stamp stays in go: it must follow both passes, and go runs the other pass.
 SHADOWS_UP_BLOCK = user_startup.RIG_SHADOWS_BLOCK
-# AMARCHY-MENU-IXEMUL-BOOT-RACE: the kit's Amarchy block starts amarchy-menu, which needs ixemul v48 from LIBS:; the
+# PATINA-MENU-IXEMUL-BOOT-RACE: the kit's Patina block starts patina-menu, which needs ixemul v48 from LIBS:; the
 # RIG_LIBS assigns lived only in go (async beside the Startup-Sequence), so the menu opened a "needs ixemul v48"
 # requester and stayed in it. The same early block therefore makes the RIG_LIBS assigns and leaves RIG_LIBS_DONE; go
 # then skips them (a second Assign ADD would list each path twice).
 RIG_LIBS_DONE = "RAM:rig-libs-done"
-KIT_AMARCHY_BLOCK = ";BEGIN UP-Term Amarchy"
+KIT_PATINA_BLOCK = ";BEGIN UP-Term Patina"
 SHADOWS_UP_SCRIPT = """FailAt 21
-Echo >>BOOTX:boot.log "early UP-Term shadows started (before Amarchy)"
+Echo >>BOOTX:boot.log "early UP-Term shadows started (before Patina)"
 C:Assign >NIL: VTC: EXISTS
 If NOT WARN
 %(shadows)s
   Echo >>BOOTX:boot.log "kit shadows done"
 %(shadows_up)s
-  Echo >>BOOTX:boot.log "early UP-Term shadows done (before Amarchy)"
+  Echo >>BOOTX:boot.log "early UP-Term shadows done (before Patina)"
 %(kit_stamp)s
   If NOT EXISTS %(libs_done)s
     If EXISTS VTC:ixp6/ixemul.library
 %(libs)s
       Echo >%(libs_done)s "done"
-      Echo >>BOOTX:boot.log "early LIBS: assigns done (before Amarchy)"
+      Echo >>BOOTX:boot.log "early LIBS: assigns done (before Patina)"
     EndIf
   EndIf
   ; the handler is a shadowed file (L:vtcon-handler): mounted only after the shadow pass.
@@ -404,11 +404,11 @@ SHADOWS_UP_BLOCK_TEXT = ";BEGIN %s\nExecute BOOTX:shadows-up\n;END %s\n" % (SHAD
 
 
 def user_startup_with_shadows_block(data):
-    """data (S:User-Startup bytes) with the rig's shadow block directly before the kit's ';BEGIN UP-Term Amarchy' block;
-    an earlier copy of it is removed first. No Amarchy block: appended at the end (the pass is never in go, which runs
+    """data (S:User-Startup bytes) with the rig's shadow block directly before the kit's ';BEGIN UP-Term Patina' block;
+    an earlier copy of it is removed first. No Patina block: appended at the end (the pass is never in go, which runs
     beside the Startup-Sequence: RIG-GO-EARLY)."""
     data = user_startup.strip_upterm_blocks(data, SHADOWS_UP_BLOCK)
-    at = data.find(KIT_AMARCHY_BLOCK.encode("latin-1"))
+    at = data.find(KIT_PATINA_BLOCK.encode("latin-1"))
     if at < 0:
         if data and not data.endswith(b"\n"):
             data += b"\n"
@@ -422,19 +422,19 @@ If WARN
   C:Assign >NIL: UP-Term: VTC:%s
 EndIf""" % paths.UPTERM_DRAWER
 
-# RIG-NO-THEMES: the kit ships UP-Term:Amarchy/Themes and FONTS:JetBrainsMono.ttf; a rig whose kit is older or
-# absent has neither (empty theme list, bitmap menu font). `install` stages both in VTC: (stage_amarchy_assets),
+# RIG-NO-THEMES: the kit ships UP-Term:Patina/Themes and FONTS:JetBrainsMono.ttf; a rig whose kit is older or
+# absent has neither (empty theme list, bitmap menu font). `install` stages both in VTC: (stage_patina_assets),
 # the boot puts them where the kit would, only where they are missing.
-AMARCHY_ASSETS_BOOT = """C:Assign >NIL: UP-Term: EXISTS
+PATINA_ASSETS_BOOT = """C:Assign >NIL: UP-Term: EXISTS
 If NOT WARN
-  If EXISTS VTC:amarchy-themes
-    If NOT EXISTS UP-Term:Amarchy
-      C:MakeDir >NIL: UP-Term:Amarchy
+  If EXISTS VTC:patina-themes
+    If NOT EXISTS UP-Term:Patina
+      C:MakeDir >NIL: UP-Term:Patina
     EndIf
-    If NOT EXISTS UP-Term:Amarchy/Themes
-      C:MakeDir >NIL: UP-Term:Amarchy/Themes
+    If NOT EXISTS UP-Term:Patina/Themes
+      C:MakeDir >NIL: UP-Term:Patina/Themes
     EndIf
-    C:Copy >NIL: VTC:amarchy-themes/#? UP-Term:Amarchy/Themes CLONE
+    C:Copy >NIL: VTC:patina-themes/#? UP-Term:Patina/Themes CLONE
   EndIf
 EndIf
 If NOT EXISTS FONTS:JetBrainsMono.ttf
@@ -509,7 +509,7 @@ EndIf
 ; (vsh), as the kit sets it up. VTC: is assigned in BOOTX:s/startup-sequence,
 ; before the system's Startup-Sequence runs anything.
 If EXISTS %(libs_done)s
-  Echo >>BOOTX:boot.log "LIBS: assigned before Amarchy"
+  Echo >>BOOTX:boot.log "LIBS: assigned before Patina"
 Else
   If EXISTS VTC:ixp6/ixemul.library
 %(libs)s
@@ -544,7 +544,7 @@ EndIf
 ; replaces this one. ENVARC:up-term/Dir is no sign of a kit: an installer_rig
 ; run can leave it naming a drawer it deleted (rig 1, 2026-10-13).
 %(upterm_assign)s
-%(amarchy_assets)s
+%(patina_assets)s
 ; no global TERM: a kit sets none either (vsh sets it in UP-Term windows, and a
 ; ROM CON: window with TERM=vtcon would be sent xterm sequences)
 C:SetEnv TERMINFO /VTC/terminfo
@@ -577,7 +577,7 @@ Echo >>BOOTX:boot.log "assigns done"
 Run >NIL: SYS:System/RexxMast
 %(wasabid_start)s
 Echo >>BOOTX:boot.log "wasabid started"
-""" % {"wasabid_start": WASABID_START, "upterm_assign": UPTERM_ASSIGN, "amarchy_assets": AMARCHY_ASSETS_BOOT, "libs": "\n".join("    C:" + l for l in RIG_LIBS), "libs_done": RIG_LIBS_DONE,
+""" % {"wasabid_start": WASABID_START, "upterm_assign": UPTERM_ASSIGN, "patina_assets": PATINA_ASSETS_BOOT, "libs": "\n".join("    C:" + l for l in RIG_LIBS), "libs_done": RIG_LIBS_DONE,
        "shellpath": "\n".join('    Echo >>S:Shell-Startup "%s"' % l for l in SHELL_STARTUP_PATH)}
 # boot.log in the host drawer BOOTX: tells from the Mac how far a boot got
 # (the rig's screen is not visible from here).
@@ -645,9 +645,9 @@ MMU = "--mmu" in sys.argv and M060 and not NOFPU
 # --no-jit: the plain machine with the JIT compiler off (FS-UAE jit_compiler = 0, Amiberry cachesize=0), no MMU added: tells a JIT bug from a guest bug
 NOJIT = "--no-jit" in sys.argv
 # I1145 startup bisect: --no-solidwin starts no SolidWin (the rig's solidwin-up only logs, the kit's SolidWin block is
-# stripped from the clone); --no-amarchy-block strips what starts Amarchy from the clone (WBStartup icons, Startup-Sequence flat block, an older kit's User-Startup block)
+# stripped from the clone); --no-patina-block strips what starts Patina from the clone (WBStartup icons, Startup-Sequence flat block, an older kit's User-Startup block)
 NOSOLIDWIN = "--no-solidwin" in sys.argv
-NOAMARCHYBLOCK = "--no-amarchy-block" in sys.argv
+NOPATINABLOCK = "--no-patina-block" in sys.argv
 DEBUGGER = "--debugger" in sys.argv   # FS-UAE's console debugger on a FIFO (debugger_lines, dbg)
 EXACT = "--exact" in sys.argv  # read-only DH0: makes "write protected" requesters that stall the rig
 
@@ -682,7 +682,7 @@ OS_HOOKS = "Assign >NIL: VTC: VTCX:\nRun >NIL: C:Execute BOOTX:go\n"
 # BOOT-CONSOLE-OS: an --os rig boots the copy's own S:Startup-Sequence, not BOOTX:s/startup-sequence (STARTUP), so
 # the bootcap line there never ran and every --os start failed the "boot console open" gate (rig 96, 2026-11-05).
 # W8a (2026-11-09): the first fix moved the image's sequence to S:Startup-Sequence.os behind a wrapper, so the file the
-# Installer edits had no IPrefs line and instssblock.sh could not put the Amarchy-Flat block in. The real sequence now
+# Installer edits had no IPrefs line and instssblock.sh could not put the Patina-Flat block in. The real sequence now
 # stays at S:Startup-Sequence, as on a real system; a marked prefix on its first lines re-runs it once through bootcap
 # (guarded by RAM:.bootcap, which the inner run finds and skips). The markers are not "UP-Term" ones: Uninstall's
 # unstartup.sh strips those.
@@ -960,10 +960,10 @@ def clone_upterm_place(image):
     return None
 
 def sys_hdf_kit_upterm(image):
-    """sys_hdf_kit for the UP-Term: places (RIG-WARM-SRV-RACE). The master image's UP-Term:bin holds older Amarchy,
-    amarchy-menu, amarchy-gui and amarchy-index (all four md5s differed from the build, 2026-10-28). On a fresh clone
-    the kit's User-Startup line `Run >NIL: UP-Term:bin/Amarchy` started those while BOOTX:go's shadow Copy wrote the
-    new ones over the same files, and the warm servers AMARCHY.MENUSRV/GUISRV never came up (3 of 3 fresh starts;
+    """sys_hdf_kit for the UP-Term: places (RIG-WARM-SRV-RACE). The master image's UP-Term:bin holds older Patina,
+    patina-menu, patina-gui and patina-index (all four md5s differed from the build, 2026-10-28). On a fresh clone
+    the kit's User-Startup line `Run >NIL: UP-Term:bin/Patina` started those while BOOTX:go's shadow Copy wrote the
+    new ones over the same files, and the warm servers PATINA.MENUSRV/GUISRV never came up (3 of 3 fresh starts;
     every `rig.py reboot`, whose clone already held the copies, had them). The clone now gets every UP-Term: file of
     the kit before it boots, read back and compared by md5 like the system disk's; the boot's shadow then writes the
     same bytes."""
@@ -1041,7 +1041,7 @@ def user_startup_with_rig_blocks(data):
 
 
 def sys_hdf_shadows_block(image):
-    """RIG-BOOT-STALE-BIN: the rig's shadow block goes into the image's S:User-Startup before the kit's Amarchy block."""
+    """RIG-BOOT-STALE-BIN: the rig's shadow block goes into the image's S:User-Startup before the kit's Patina block."""
     xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
     us = RIG / "user-startup.tmp"
     us.unlink(missing_ok=True)
@@ -1057,7 +1057,7 @@ def sys_hdf_shadows_block(image):
 
 def os_tree_shadows_block(tree):
     """sys_hdf_shadows_block for a host-directory system (--os <name>, --os32); every start, so a kit installed or
-    reinstalled since (its Amarchy block is written at the end of the file) gets the block before it again."""
+    reinstalled since (its Patina block is written at the end of the file) gets the block before it again."""
     for sub in ("S", "s"):
         us = pathlib.Path(tree) / sub / "User-Startup"
         if us.is_file():
@@ -1103,25 +1103,25 @@ def sys_hdf_strip_file_blocks(image, path, name):
         subprocess.run([xdf, str(image), "write", str(tmp), path], check=True, capture_output=True)
     tmp.unlink()
 
-KIT_WBSTARTUP_ICONS = ("WBStartup/Amarchy.info", "WBStartup/amarchy-index.info")
+KIT_WBSTARTUP_ICONS = ("WBStartup/Patina.info", "WBStartup/patina-index.info")
 
 def sys_hdf_skip_blocks(image):
-    """I1145: --no-solidwin / --no-amarchy-block take the kit's blocks out of the clone's S:User-Startup.
-    --no-amarchy-block also removes what starts Amarchy since Leg W: the two SYS:WBStartup icons and the
-    ';BEGIN UP-Term Amarchy-Flat' block of S:Startup-Sequence (the User-Startup blocks stay stripped for an older kit)."""
+    """I1145: --no-solidwin / --no-patina-block take the kit's blocks out of the clone's S:User-Startup.
+    --no-patina-block also removes what starts Patina since Leg W: the two SYS:WBStartup icons and the
+    ';BEGIN UP-Term Patina-Flat' block of S:Startup-Sequence (the User-Startup blocks stay stripped for an older kit)."""
     if NOSOLIDWIN:
         strip_user_startup_blocks(image, "UP-Term SolidWin")
-    if NOAMARCHYBLOCK:
-        strip_user_startup_blocks(image, "UP-Term Amarchy")
-        sys_hdf_strip_file_blocks(image, "S/Startup-Sequence", "UP-Term Amarchy-Flat")
+    if NOPATINABLOCK:
+        strip_user_startup_blocks(image, "UP-Term Patina")
+        sys_hdf_strip_file_blocks(image, "S/Startup-Sequence", "UP-Term Patina-Flat")
         xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
         for icon in KIT_WBSTARTUP_ICONS:
             subprocess.run([xdf, str(image), "delete", icon], capture_output=True)   # absent: nothing to remove
 
 def sys_hdf_a500(image):
-    """--a500: the clone's S:User-Startup loses every UP-Term block (assign, console, device, Amarchy, Amarchy index ...)
+    """--a500: the clone's S:User-Startup loses every UP-Term block (assign, console, device, Patina, Patina index ...)
     before it boots. The master image carries the kit's blocks, and the kit is built for the 68020 (Makefile CPU ?= 68020):
-    on the 68000 the block's `Run >NIL: UP-Term:bin/Amarchy` and amarchy-index put up two Software Failure requesters at
+    on the 68000 the block's `Run >NIL: UP-Term:bin/Patina` and patina-index put up two Software Failure requesters at
     boot and installer_rig's D10 case failed on them (RIG-A500-KIT-BOOT, 2026-10-29). install_rig strips the same blocks
     only after the boot. A real 68000 never has them: the base Installer refuses the 68000. The master is never touched."""
     strip_user_startup_blocks(image, "UP-Term")
@@ -1160,7 +1160,7 @@ def sys_hdf_monitors(image):
     "Picasso96: Could not create graphics board context for 'REPLAY'" to the boot console. That output opens the
     initial CLI window ('AmigaDOS', 640x256) on the PAL Workbench screen before C:IPrefs; IPrefs then has a window
     open when it resets the screen to the RTG mode in ENVARC:Sys/screenmode.prefs and raises "Intuition is attempting
-    to reset the Workbench screen", and DOpus' backdrop and the Amarchy bar keep Retry failing. The clone drops the
+    to reset the Workbench screen", and DOpus' backdrop and the Patina bar keep Retry failing. The clone drops the
     driver; the master is never touched."""
     xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
     have = subprocess.run([xdf, str(image), "list", "Devs/Monitors"], capture_output=True, text=True).stdout
@@ -1392,9 +1392,9 @@ HOST_KEYS = [
     "modifier_key = menu",
     "keyboard_key_lsuper = action_key_amiga_right",
     "keyboard_key_rsuper = action_key_amiga_right",
-    # so no Cmd key is Left-Amiga, which Amarchy's bindings need (Super is
+    # so no Cmd key is Left-Amiga, which Patina's bindings need (Super is
     # "rawkey lcommand"), and macOS keeps Cmd+Space for Spotlight anyway. The left
-    # Option key is Left-Amiga: Left Option+Space opens the Amarchy menu. On the
+    # Option key is Left-Amiga: Left Option+Space opens the Patina menu. On the
     # owner's Mac the right Option key reaches FS-UAE as Cmd (Right Option+M
     # minimised the window, s61 2026-11-06) and there is no right Ctrl key, so the
     # earlier ralt and rctrl mappings never reached the Amiga. The rig has no
@@ -1420,7 +1420,7 @@ def screenmode_prefs_bytes(display_id, width, height, depth):
 def stage_rig_vtc(vtc):
     """What a rig's VTC: drawer needs to start, for build/rig and build/rigN alike (setup calls it): the ScreenMode
     prefs, and the UP-Term drawer the boot's UP-Term: assign points at, with bin/vsh, the icons and the Prefs launcher
-    (stage_upterm, as `rig.py install` makes it), and the Amarchy themes and font (stage_amarchy_assets: a rig that
+    (stage_upterm, as `rig.py install` makes it), and the Patina themes and font (stage_patina_assets: a rig that
     never ran `install` listed no themes), and VTC:etc that the boot's ETC: assign (ixemul's /etc) points at, with
     the vtcon termcap the boot's TERMCAP=/etc/termcap names (rig 1's etc was made by hand once; when its folder
     went, every rebuilt or seeded rig lacked ETC: and start failed "the boot lacks the assigns ETC", 2026-11-02).
@@ -1438,7 +1438,7 @@ def stage_rig_vtc(vtc):
     if not (vtc / paths.UPTERM_DRAWER / "bin/vsh").is_file():
         paths.require_input(vsh, "UPTERM_ROOT", "build/amiga/vsh (run make for the Amiga programs)")
         stage_upterm(vtc / paths.UPTERM_DRAWER, vsh)
-    stage_amarchy_assets(vtc)
+    stage_patina_assets(vtc)
     # icat (ICAT-STACK): a fresh rig answered "icat: Unknown command"; VTC: for VTC:icat, the drawer's bin for the PATH
     icat = ROOT / "build/amiga/icat"
     if icat.is_file():
@@ -1688,13 +1688,13 @@ def require_vsh(vsh):
 
 def stage_upterm(dest, vsh):
     """The kit's UP-Term: drawer as far as the icon needs it (R9): bin/vsh, the tool
-    of UP-Term.info, and the icon and its text file, made as `make dist-base` makes them. Amarchy and
-    amarchy-menu go to bin beside vsh when they were built, at paths.UPTERM_BIN (the rig drawer; the
-    rig scripts start them from there, as UP-Term: moves with a kit install); before this the rig had no Amarchy."""
+    of UP-Term.info, and the icon and its text file, made as `make dist-base` makes them. Patina and
+    patina-menu go to bin beside vsh when they were built, at paths.UPTERM_BIN (the rig drawer; the
+    rig scripts start them from there, as UP-Term: moves with a kit install); before this the rig had no Patina."""
     require_vsh(vsh)
     (dest / "bin").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(vsh, dest / "bin/vsh")
-    for name in ("Amarchy", "amarchy-menu", "amarchy-gui", "amarchy-index", "AmTile"):
+    for name in ("Patina", "patina-menu", "patina-gui", "patina-index", "AmTile"):
         if (vsh.parent / name).is_file():
             shutil.copyfile(vsh.parent / name, dest / "bin" / name)
     subprocess.run([sys.executable, "-I", str(ROOT / "tools/mkicon.py"), str(dest / "UP-Term.info")], check=True)
@@ -1708,24 +1708,24 @@ def stage_upterm(dest, vsh):
     subprocess.run([sys.executable, "-I", str(ROOT / "tools/mkicon.py"),
                     str(dest.with_name(dest.name + ".info")), "--drawer"], check=True)
 
-def stage_amarchy_assets(vtc):
-    """RIG-NO-THEMES: dist/amarchy-themes to VTC:amarchy-themes and the kit's JetBrainsMono.ttf (the
+def stage_patina_assets(vtc):
+    """RIG-NO-THEMES: dist/patina-themes to VTC:patina-themes and the kit's JetBrainsMono.ttf (the
     Makefile's JBMONO_TTF, installed as Files/fonts/JetBrainsMono.ttf) to VTC:fonts; the boot
-    (AMARCHY_ASSETS_BOOT) puts them at UP-Term:Amarchy/Themes and FONTS:."""
-    themes = sorted((ROOT / "dist/amarchy-themes").glob("*.theme"))
+    (PATINA_ASSETS_BOOT) puts them at UP-Term:Patina/Themes and FONTS:."""
+    themes = sorted((ROOT / "dist/patina-themes").glob("*.theme"))
     if themes:
-        (vtc / "amarchy-themes").mkdir(parents=True, exist_ok=True)
+        (vtc / "patina-themes").mkdir(parents=True, exist_ok=True)
         for f in themes:
-            shutil.copyfile(f, vtc / "amarchy-themes" / f.name)
+            shutil.copyfile(f, vtc / "patina-themes" / f.name)
         # Live as well: VTC: is the host drawer of a running rig, and the boot copy above ran before `install`
         # staged anything, so a rig started first never got the themes (rig 8, 2026-11-01). The drawer is the one
-        # the boot's UP-Term: assign and amarchy_gui_rig --setup (UP-Term: VTCX:Apps) point at.
-        live = vtc / paths.UPTERM_DRAWER / "Amarchy/Themes"
+        # the boot's UP-Term: assign and patina_gui_rig --setup (UP-Term: VTCX:Apps) point at.
+        live = vtc / paths.UPTERM_DRAWER / "Patina/Themes"
         live.mkdir(parents=True, exist_ok=True)
         for f in themes:
             shutil.copyfile(f, live / f.name)
     else:
-        print("no themes in %s: the rig's theme list stays empty" % (ROOT / "dist/amarchy-themes"))
+        print("no themes in %s: the rig's theme list stays empty" % (ROOT / "dist/patina-themes"))
     ttf = ROOT / "build/jbmono/JetBrainsMono-Regular.ttf"
     if ttf.is_file():
         (vtc / "fonts").mkdir(exist_ok=True)
@@ -1798,7 +1798,7 @@ def stage_ixemul(vtc, nofpu):
     """VTC:ixp6, first in LIBS: (RIG_LIBS), as the kit's patched ixemul.library and its ixnet.library, every
     start: the soft-float ixemul with --nofpu, else the FPU one. Before this only ixpty_rig and stackext_rig
     filled it, and a rig kept what they last put there: rig 7's 19 Oct ixemul (199528 bytes; the build's is
-    200644) made amarchy-menu stop with "Illegal instruction" and draw no menu (2026-10-25). Those scripts
+    200644) made patina-menu stop with "Illegal instruction" and draw no menu (2026-10-25). Those scripts
     still put their own library there after boot, for that boot."""
     ixemul = paths.IXEMUL_LIB_SOFT if nofpu else paths.IXEMUL_LIB
     for src, var in ((ixemul, "IXEMUL"), (paths.IXNET_LIB, "IXNET")):
@@ -2117,7 +2117,7 @@ def _install():
     refresh_programs(RIG / "vtc", build_amiga(), VTC_REQUIRED)
     refresh_kit_shadows(RIG / "vtc")
     kitstamp.check(RIG / "boot", RIG / "vtc")   # a changed kit file: the next boot shadows it
-    stage_amarchy_assets(RIG / "vtc")
+    stage_patina_assets(RIG / "vtc")
     stage_kit_media(RIG / "vtc")
     # the themes beside the handler: the rig has no kit, so no
     # ENVARC:up-term/themes, and the theme requesters and /theme fall back

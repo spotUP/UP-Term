@@ -19,7 +19,7 @@ status: handoff
    Never stash that file.
 2. tests/test_rig_kit_shadow_keymap.py test_install_stages_dist_keymap_and_refreshes_apps_bin fails on HEAD:
    build_drift lists Apps/bin/md5sum twice.
-3. tests/test_amarchy_docs fails on origin/main (vtcon-32 area): install.dos misses the Copy Amarchy line.
+3. tests/test_patina_docs fails on origin/main (vtcon-32 area): install.dos misses the Copy Patina line.
 4. Ledger items still open: ColdReboot loop after INSTALLER-END-CRASH (todos ~3263), KILL-BUS-ERROR, rig 11 flakes,
    stale curl on rigs 3/4/9, IPrefs System Request at --fresh boot (text unread), ir.Before() base rununinstall on 68000,
    rig "A1200" ROM is the 40.63 A500 ROM (note at todos ~1460).

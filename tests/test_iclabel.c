@@ -1,11 +1,11 @@
-/* RL21 icon label antialiasing core (amarchy/iclabel_core.c): call filter, glyph mask, corner coverage, true-colour
+/* RL21 icon label antialiasing core (patina/iclabel_core.c): call filter, glyph mask, corner coverage, true-colour
  * and pen blends, shade pen cache. */
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include "harness.h"
-#include "../amarchy/iclabel_core.h"
-#include "../amarchy/iconpen_core.h"
+#include "../patina/iclabel_core.h"
+#include "../patina/iconpen_core.h"
 #include "../render/aa_ink_rule.h"
 
 static void t_accept(void)

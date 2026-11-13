@@ -26,11 +26,11 @@ MD5 = "UP-Term:bin/md5sum"
 # solidwin/SolidWin is Thomas Rapp's binary the kit ships unchanged (Copy solidwin/SolidWin C:SolidWin); listing it here
 # puts C:SolidWin in every rig's kit set (kitset.derive, RIG-SOLIDWIN) and in the A1200 drift check.
 DIST_SOURCES = ("keymap", "solidwin/SolidWin")
-# Data the kit lays down, by install.dos source name -> file in dist/. lucide.dat and outline.dat are built into dist/Amarchy
+# Data the kit lays down, by install.dos source name -> file in dist/. lucide.dat and outline.dat are built into dist/Patina
 # (make lucide-dat); bar.conf is the user's once it exists (install.dos copies it only when absent), so it is
-# checked for existence only (USER_OWNED); the theme drawer (`Copy amarchy-themes <dir> ALL`) is DATA_DRAWERS.
-DATA_FILES = {"lucide/lucide.dat": "Amarchy/Icons/lucide.dat", "lucide/outline.dat": "Amarchy/Icons/outline.dat", "bar.conf": "bar.conf"}
-DATA_DRAWERS = {"amarchy-themes": "amarchy-themes"}
+# checked for existence only (USER_OWNED); the theme drawer (`Copy patina-themes <dir> ALL`) is DATA_DRAWERS.
+DATA_FILES = {"lucide/lucide.dat": "Patina/Icons/lucide.dat", "lucide/outline.dat": "Patina/Icons/outline.dat", "bar.conf": "bar.conf"}
+DATA_DRAWERS = {"patina-themes": "patina-themes"}
 USER_OWNED = ("bar.conf",)
 # Media the kit lays in the UP-Term: drawer (install.dos `Copy share/updemo/earth.anim UP-Term:share/updemo`), by path in the
 # drawer -> file in dist/. A rig whose UP-Term: tree predates one of these shows UPDemo's coded fallback, not the media
@@ -78,7 +78,7 @@ def data_entries(install_dos_text, dist=None):
     file of each DATA_DRAWERS drawer (`Copy <drawer> <dest> ALL`) at <dest>/<file>. Paths come from the Copy lines."""
     dist = pathlib.Path(dist) if dist else ROOT / "dist"
     base = lambda n: n.rsplit("/", 1)[-1]
-    # `Copy lucide/lucide.dat UP-Term:Amarchy/Icons`: a dest not named like the source is a drawer
+    # `Copy lucide/lucide.dat UP-Term:Patina/Icons`: a dest not named like the source is a drawer
     out = [(n, p if p.lower().endswith(("/" + base(n).lower(), ":" + base(n).lower())) else p + "/" + base(n), dist / DATA_FILES[n])
            for n, p in install_map(install_dos_text, list(DATA_FILES))]
     for line in install_dos_text.splitlines():

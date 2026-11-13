@@ -12,7 +12,7 @@ topic: wasabi PR #3 rebase, A1200 drift covers LIBS:, window-close fixed on the 
   https://github.com/creep-ltx/wasabi/pull/2#issuecomment-6556608974 (text in thoughts/spot/wasabi-merge-ask.md).
 - A1200-DRIFT-LIBS (main 5e1eea66): tools/rig/a1200_drift.py now checks LIBS:ixemul.library and
   LIBS:ixnet.library against paths.py (--nofpu picks IXEMUL_LIB_SOFT); install_map skips only the unbuilt
-  sources of a Copy line (one unbuilt program hid all 8 Amarchy programs); the script inserts its own drawer
+  sources of a Copy line (one unbuilt program hid all 8 Patina programs); the script inserts its own drawer
   on sys.path so the documented `python3 -I` run works. tests/test_a1200_drift.py 11 pass, each new row
   revert-checked.
 - WINDOW-CLOSE-KILLS-APP done on the A1200: ixemul a8a7bf4c and handler dc2a9265 installed (backups
@@ -21,7 +21,7 @@ topic: wasabi PR #3 rebase, A1200 drift covers LIBS:, window-close fixed on the 
   Evidence thoughts/spot/term-findings/wbpark-zorder-32.md.
 
 ## Open, in order
-1. A1200 is a full kit behind: live drift (scratchpad drift.log, 11-01) = 6 same, 27 DIFF, amarchy-flat
+1. A1200 is a full kit behind: live drift (scratchpad drift.log, 11-01) = 6 same, 27 DIFF, patina-flat
    missing. Ask the owner before refreshing it with the kit. Every A1200 brief runs a1200_drift first.
 2. MG-CLOSE-WINDOW-STAYS (new row): closing a window running mg ends mg and vsh, but the window and its
    XCON task stay until a second close click. Hunt cause in the handler close path (opus if unknown).

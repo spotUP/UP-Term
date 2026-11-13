@@ -117,7 +117,7 @@ Reading: the bug is not FS-UAE specific; Amiberry with JIT reproduces a guest cr
 
 NOT ANSWERED: no Copy boot ran. With the JIT off the Amiberry rig never reached a booted guest (0 of 6 Copy boots, no JIT-on control boot).
 
-Command: `UPTERM_RIG=84 python3 tools/rig/rig.py start --max --os 31 --emu amiberry --no-jit --idle-minutes 0 --purpose "vtcon-16 Amarchy session: palette Copy crash, JIT off"`
+Command: `UPTERM_RIG=84 python3 tools/rig/rig.py start --max --os 31 --emu amiberry --no-jit --idle-minutes 0 --purpose "vtcon-16 Patina session: palette Copy crash, JIT off"`
 (new flag `--no-jit`, commit 5d3f99d0; written build/rig84/vtcon-rig.uae has `cpu_model=68060`, `cachesize=0`, no `mmu_model`; log shows `JIT: cache=0`).
 
 Three starts, each: `boot 60/120/180/... s: (go not started)`, wasabid never answered, Amiberry host at 0.1 % CPU with 1.5-2.4 s total CPU time.
@@ -138,7 +138,7 @@ the patched build is the comparable control), `rig.py start --max --os 31`. Soli
 20 s settle, `ami.py exec Version` (rc 0 every boot), `ami.py put tests/data/desk/palette-gui-save.prefs RAM:palette.prefs`, `ami.py exec "Copy RAM:palette.prefs ENV:Sys/palette.prefs"` (rc 0 every boot),
 30 s wait, `ami.py exec "Echo alive"` (40 s timeout), host check by `pgrep -f build/rig84/vtcon-rig`, grep of fs-uae.log.txt / debug.uae / serial.log for guru|software failure|illegal instruction|CPU reset.
 
-Commands: `UPTERM_RIG=84 python3 tools/rig/rig.py start --max --os 31 --no-jit --idle-minutes 0 --purpose "vtcon-16 Amarchy session: palette Copy crash, FS-UAE JIT off"`;
+Commands: `UPTERM_RIG=84 python3 tools/rig/rig.py start --max --os 31 --no-jit --idle-minutes 0 --purpose "vtcon-16 Patina session: palette Copy crash, FS-UAE JIT off"`;
 written vtcon-rig.fs-uae has `cpu = 68060-NOMMU`, `jit_compiler = 0`. Control: `rig.py stop --keep`, then the same start without `--no-jit` and with purpose "...: palette Copy crash, FS-UAE JIT on control"; config `jit_compiler = 1`, same cpu.
 
 | Boot | JIT | Version | Copy | Host fs-uae after 30 s | Guest `Echo alive` | Guru / reset lines |

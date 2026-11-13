@@ -19,12 +19,12 @@ Branch s56-pushfix, based on origin/main 0292023f.
 
 ## Fix
 
-amarchy/flat_core.c: flat_push_label replaced by
+patina/flat_core.c: flat_push_label replaced by
 `flat_push_button(has_text, lx, ly, w, h, activation)`:
 - GACT_IMMEDIATE set: scroller arrow, not a push button (0).
 - No GadgetText: push button (1).
 - GadgetText inside the box: push button (1); outside (cycle, checkbox label): 0.
-amarchy/flat.c role_of passes g->Activation. Prototype and measured values in flat_core.h.
+patina/flat.c role_of passes g->Activation. Prototype and measured values in flat_core.h.
 Known limit: an unlabelled cycle gadget cannot be told apart and stays a push button.
 
 ## Validation
@@ -32,7 +32,7 @@ Known limit: an unlabelled cycle gadget cannot be told apart and stays a push bu
 - test-one SUITE=flat_core: 2367 checks, 0 failed. With the old rule restored the
   suite fails 2 checks (test_flat_core.c lines 789, 790); fix restored after.
 - make flat-budget: PASS, _c2_disp_reg deepest 308 (headroom 76), _c2_disp_stk 292 (headroom 92).
-- make amiga: rc 0. amarchy-flat md5 4f3feeb2003b41b72b98efc0cdfa9ca0.
+- make amiga: rc 0. patina-flat md5 4f3feeb2003b41b72b98efc0cdfa9ca0.
 
 ## Pixels (rig 88 screenshots, box census; palette PAL 0 13a907, 2 ffffff, 3 6688bb, 4 3e4254)
 

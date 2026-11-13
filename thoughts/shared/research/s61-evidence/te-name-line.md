@@ -3,7 +3,7 @@ date: 2026-11-06
 topic: Duplicate Theme / Save As wrote the source name in the name line
 status: fixed on branch te-name-line (local commit), host gthemes green, m68k rc=0
 ---
-Cause: amarchy/gthemes_core.c gt_save called gt_model_save_text(m,...), whose writer emits m->name. gt_duplicate loads the source into g_smodel (name = source), so the file under the new name held the source name. Save As likewise carries whatever name the model had.
+Cause: patina/gthemes_core.c gt_save called gt_model_save_text(m,...), whose writer emits m->name. gt_duplicate loads the source into g_smodel (name = source), so the file under the new name held the source name. Save As likewise carries whatever name the model had.
 Invariant: theme identity is the file name.
 Fix shape: the writer body became static model_save_named(m, name, out, cap); gt_model_save_text (public, unchanged signature) calls it with m->name; gt_save calls it with its target `name`. One place, no cast, model untouched.
 Test: tests/test_gthemes.c near Probe Copy: copy file holds name = "Probe Copy", not "Probe"; Save As of a model named Probe Copy to Other Copy holds Other Copy.

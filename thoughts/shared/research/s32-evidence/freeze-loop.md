@@ -1,6 +1,6 @@
 ---
 date: 2026-11-03
-topic: S31-RIG96-FREEZE - which Amarchy loop runs per vblank, why wasabid starves
+topic: S31-RIG96-FREEZE - which Patina loop runs per vblank, why wasabid starves
 status: not proven (loop function); earlier caller analysis corrected
 agent: vtcon-16 hunt, rig 67
 ---
@@ -10,17 +10,17 @@ agent: vtcon-16 hunt, rig 67
 ## Answer in brief
 
 - Loop function and source line: **not proven.** No freeze in this hunt was
-  caught with Amarchy alive, so no Amarchy stack was captured.
+  caught with Patina alive, so no Patina stack was captured.
 - What it waits for: the only evidence is from freeze-task.md: a task sits in
   graphics f87320, which is WaitTOF-shaped (Disable, AddTail to a list at
-  10004c0c, likely GfxBase TOF_WaitQ, Wait(0x10), Remove, Enable). Amarchy
+  10004c0c, likely GfxBase TOF_WaitQ, Wait(0x10), Remove, Enable). Patina
   source has no WaitTOF call. Grep finds WaitTOF only in
   render/amiga_render.c:3011, handler/vtcon_handler.c:3136 and :8869, and
   tests. So the per-vblank waiter is either the vtcon handler or the render
-  code (linked into a console that Amarchy opens), not Amarchy's own loop.
+  code (linked into a console that Patina opens), not Patina's own loop.
   Unverified.
 - Why wasabid starves: not proven. The boot-8 dump shows a different hang
-  that happens before Amarchy or wasabid starts (see below).
+  that happens before Patina or wasabid starts (see below).
 - A/B: not run. The budget went on boots with the extended probe.
 
 ## Correction to freeze-task.md
@@ -57,8 +57,8 @@ changes). All boots ran with that WIP.
 Raw dump: freeze-loop-ring67-boot8.txt (same folder).
 
 - ThisTask is input.device, idle. intena is 602c.
-- There is no Amarchy and no wasabid process in any exec list. The hang is
-  earlier than the Amarchy line of User-Startup.
+- There is no Patina and no wasabid process in any exec list. The hang is
+  earlier than the Patina line of User-Startup.
 - 'Initial CLI' (100104c8) runs C:Copy and waits on sigwait 0x100
   (SIGF_DOS = waiting for a DOS packet reply). Its stack return addresses
   are all in ROM DOS/exec (f828da, f9faa8, f9f154, fa562e, fa3bc2, fa3b72).
@@ -80,7 +80,7 @@ ramlib is blocked on a private semaphore. This looks like a library or
 device open (through ramlib) that deadlocks against a filesystem packet
 during the Assign/Copy phase of startup. This shape matches boot 3 ("stopped
 answering while Assign was running"). It suggests that the rig-96 freeze may
-be a startup-sequence deadlock, not an Amarchy vblank loop. Not proven.
+be a startup-sequence deadlock, not an Patina vblank loop. Not proven.
 
 ## Fix direction (not implemented)
 
@@ -97,7 +97,7 @@ be a startup-sequence deadlock, not an Amarchy vblank loop. Not proven.
    pair.
 3. For the original WaitTOF signature: in the dump, read the long 24 bytes
    above the node in f87320 frame. That long is the true return address.
-   Map it against the vtcon-handler and Amarchy hunks.
+   Map it against the vtcon-handler and Patina hunks.
 
 ## Scratch
 

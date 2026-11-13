@@ -33,11 +33,11 @@ flat=4 of calls=4: every box drawn skipped its bevel (flat_dopus_decide SKIP nee
                  FAIL tests/test_flat_core.c:249: why = 1, want 0
                  [FAIL] flat_core: 2711 checks, 3 failed
     Also asserts: 68.15 stays FLAT_GATE_UNKNOWN, 68.16 with other sums stays FLAT_GATE_SUM.
-    (Reachability: the gate is exercised on the real amarchy-flat on the rig above, mask 3, calls/flat counters.)
+    (Reachability: the gate is exercised on the real patina-flat on the rig above, mask 3, calls/flat counters.)
 
 ## Screen finding
 Directory Opus 5.82 here is the Workbench replacement on the single 800x600 screen titled "Directory Opus"
-(listers, the Amarchy bar and Device List are windows of that screen), not a separate own-screen. DrawInfo pen values are
+(listers, the Patina bar and Device List are windows of that screen), not a separate own-screen. DrawInfo pen values are
 not exposed by the rig tooling; the equality is shown by flat == calls (4 of 4 skipped). A DOpus on its own screen with
 its own palette (`rig.py dopus --own-screen` shape) was NOT measured; there the bevel would stay when SHINEPEN != BACKGROUNDPEN
 (owner decision, not changed). No screenshot taken (text answers sufficed), none to delete.

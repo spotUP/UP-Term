@@ -2,9 +2,9 @@
 
 Verdict: ON PASS (frame measured gone), OFF FAIL (frame does not come back after flat off, 28 s later).
 
-Method: rig 56 `--max --emu fsuae --os 32`; `amarchy_gui_rig.py --setup`; RAM:amarchy-flat started with flat prefs off;
-`put_flat_prefs(True)` + `pick()` (menu Style > Amarchy theme, entry desk_dos_apply) then `put_flat_prefs(False)` + `pick()`
-(tools/rig/amarchy_desk_rig.py helpers). Screenshots via ami.grab (raw RGB, 640x256), saved as PNG, measured with numpy.
+Method: rig 56 `--max --emu fsuae --os 32`; `patina_gui_rig.py --setup`; RAM:patina-flat started with flat prefs off;
+`put_flat_prefs(True)` + `pick()` (menu Style > Patina theme, entry desk_dos_apply) then `put_flat_prefs(False)` + `pick()`
+(tools/rig/patina_desk_rig.py helpers). Screenshots via ami.grab (raw RGB, 640x256), saved as PNG, measured with numpy.
 Icon measured: the third backdrop icon, region x22-62 y101-133; icon cluster = pixels differing from the backdrop colour.
 
 Baseline (ENV:Sys/Workbench.prefs absent, stock frame): bbox x22-62 y101-133 = 41x33, 1283 non-backdrop px.
@@ -23,8 +23,8 @@ Screenshots: ~/Desktop/upterm-shots/s31-noborder-{base,on,off}.png
 
 ## Re-proof after 2ae68838
 
-Verdict: FAIL. Flat OFF still does not bring the icon frame back. Build: 2ae68838 sources, amarchy-menu/Amarchy/amarchy-gui/amarchy-flat
-rebuilt 14:30 (amarchy-menu was stale before; `make build/amiga/amarchy` is a different target). Rig 56, OS 3.2, FS-UAE, `--setup`, same helpers (put_flat_prefs + pick()).
+Verdict: FAIL. Flat OFF still does not bring the icon frame back. Build: 2ae68838 sources, patina-menu/Patina/patina-gui/patina-flat
+rebuilt 14:30 (patina-menu was stale before; `make build/amiga/patina` is a different target). Rig 56, OS 3.2, FS-UAE, `--setup`, same helpers (put_flat_prefs + pick()).
 Region x22-62 y101-133, non-backdrop pixels:
 - Baseline (ENV:Sys/Workbench.prefs absent): bbox x22-62 y102-133 = 41x32, 990 px against a white reference pixel (the helper reference was a frame pixel; a mode-colour count is unreliable on the patterned backdrop). Frame present.
 - Flat ON: file 84 bytes, WBNC body present (border word read as 0001 earlier method; not re-decoded); bbox x25-59 y104-130 = 35x27, 932 px.
@@ -40,14 +40,14 @@ Commit 68d939ac. Fix 2ae68838 made dk_wb_absent USE the stock Workbench.prefs be
 Evidence (wasabi snoop on rig 56, OS 3.2, OFF pick with the 2ae68838 build):
 
 ```
-14:40:23.342 SYS:Prefs/Workbench RunCommand("FROM T:amarchy-desk/workbench.prefs USE") = rc 0
-14:40:23.508 VTCX:Apps/bin/amarchy-gui DeleteFile("ENV:Sys/Workbench.prefs") = ok
+14:40:23.342 SYS:Prefs/Workbench RunCommand("FROM T:patina-desk/workbench.prefs USE") = rc 0
+14:40:23.508 VTCX:Apps/bin/patina-gui DeleteFile("ENV:Sys/Workbench.prefs") = ok
 14:40:25.023 « IPrefs » Open("ENV:Sys/workbench.prefs", read) = fail (Error 205: Object not found)
 ```
 
-IPrefs reads the file on its change notice 1.5 to 7 s after the USE (the ON read came 6.7 s later). Amarchy deleted the file 0.17 s after the USE, so workbench.library never got the stock border setting and the icons stayed frameless. In addition, dk_orig_off ran dk_env_fix_file(DK_ORIG, DESK_WBPREFS_ENV) with an absent original, which would also delete the ENV file.
+IPrefs reads the file on its change notice 1.5 to 7 s after the USE (the ON read came 6.7 s later). Patina deleted the file 0.17 s after the USE, so workbench.library never got the stock border setting and the icons stayed frameless. In addition, dk_orig_off ran dk_env_fix_file(DK_ORIG, DESK_WBPREFS_ENV) with an absent original, which would also delete the ENV file.
 
-Fix (amarchy/desk_dos.c):
+Fix (patina/desk_dos.c):
 - dk_wb_absent no longer deletes ENV:Sys/Workbench.prefs. The stock file written by the editor USE stays in ENV: for IPrefs. ENVARC: carries the persistent "absent" state, because dk_orig_restore_arc deletes the ENVARC copy.
 - dk_orig_off runs the final env fix only when an original file exists (`wbfix = dk_exists(name)`), not for an absent original.
 

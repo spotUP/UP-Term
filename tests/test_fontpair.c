@@ -77,7 +77,7 @@ static void a_face_knows_its_pair(void)
     CHECK_INT(ch.size, 0);
 }
 
-/* Owner 2026-10-23: the Amarchy menu uses Omarchy's font, JetBrains Mono 16, on square pixels; the terminal
+/* Owner 2026-10-23: the Patina menu uses Omarchy's font, JetBrains Mono 16, on square pixels; the terminal
  * keeps TopazPro 16; tall pixels keep topaz 8 for both. */
 static void menu_uses_jetbrains_mono_on_square_screens(void)
 {

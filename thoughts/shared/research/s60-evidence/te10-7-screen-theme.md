@@ -1,11 +1,11 @@
 # TE-10.7: drawn menu and theme windows take the theme of their screen
 
 ## Invariant
-A window Amarchy draws itself (drawn menu amarchy/gui.c, theme windows amarchy/themewin.c) uses the theme the screen rules give
+A window Patina draws itself (drawn menu patina/gui.c, theme windows patina/themewin.c) uses the theme the screen rules give
 the screen it opens on; no rule, excluded, or no public name: the main theme. Before: both always read the main theme.
 
 ## Level of the fix
-Pure rule in amarchy/gthemes_core.c `gt_screen_draw_theme` (built on `gt_screen_theme_of`). DOS side in amarchy/iconpen_dos.c:
+Pure rule in patina/gthemes_core.c `gt_screen_draw_theme` (built on `gt_screen_theme_of`). DOS side in patina/iconpen_dos.c:
 `ipd_pub_screen_name_of` (name copied under LockPubScreenList, unlocked before return), `ipd_screen_theme_name` (name, then
 rules + main theme read with the list unlocked), counter `ipd_screen_theme_asks`.
 gui.c `pens_get(g, 0)` and the preview compare in `preview_sync` use the screen theme; `cur_label` and the font spec stay on the
@@ -30,6 +30,6 @@ RED (test with a wrong stub, assertion fail): `FAIL tests/test_gthemes.c:2663 go
 GREEN: `RUNTEST gthemes rc=0 [OK] gthemes: 6674 checks, 0 failed`. m68k build of the seven targets rc=0. wb-lock-guard OK, link-list test OK.
 
 ## Rig check (not run here)
-Public screen with its own theme entry (screen-themes: `NAME = othertheme`), open the drawn menu on it: `GetVar AMARCHY_THEME`
+Public screen with its own theme entry (screen-themes: `NAME = othertheme`), open the drawn menu on it: `GetVar PATINA_THEME`
 names that theme and menu pixels match its colours; on Workbench the main theme; select a Style > Theme preview on the themed
 screen then leave: colours return to the screen theme; `ipd_screen_theme_asks` rises. Theme windows (leaf) likewise.

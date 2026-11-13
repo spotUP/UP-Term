@@ -8,7 +8,7 @@ status: decided (owner): follow the console palette, no per-theme JSON files
 
 ## Decision
 
-C:Claude draws with palette indices 0-15 only. A console theme switch (Amarchy or `themes/*.conf`) recolours it
+C:Claude draws with palette indices 0-15 only. A console theme switch (Patina or `themes/*.conf`) recolours it
 with no theme file and no new mode. The JSON theme-file loader (commit c16dbb89) stays in the branch as a way to
 override, but nothing needs it for this goal.
 
@@ -23,7 +23,7 @@ override, but nothing needs it for this goal.
   dirty (`mark_rows(t, 0, t->rows)`) and re-derives the pens. Text already on screen in colours 0-15 is
   recoloured. This is read from code. NOT confirmed on a running window.
 - Own screen: `own_screen_open` (`handler/vtcon_handler.c:2660-2710`) makes the first 16 pens the ANSI colours.
-- `amarchy/gthemes_core.c` (colors.toml, six keys) drives the drawn Amarchy menu only. It does not write the
+- `patina/gthemes_core.c` (colors.toml, six keys) drives the drawn Patina menu only. It does not write the
   console palette itself.
 
 ## What C:Claude drew outside the palette

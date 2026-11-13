@@ -8,15 +8,15 @@ status: static analysis only, no rig run; one testable question open
 
 Source: thoughts/shared/research/s57-evidence/rig96-freeze-wb-redraw.md "Fix run" (commit 703365f0). main b4406ecf.
 
-## 1. Every palette writer on the Workbench screen (grep SetRGB4/SetRGB32/LoadRGB4/LoadRGB32/ObtainPen in amarchy prefs handler render install dist)
+## 1. Every palette writer on the Workbench screen (grep SetRGB4/SetRGB32/LoadRGB4/LoadRGB32/ObtainPen in patina prefs handler render install dist)
 
 | site | pens | owned? |
 |---|---|---|
-| amarchy/gthemes_dos.c:51 wb_pens_apply | 0-3 | no (Intuition DrawInfo pens; theme rewrite by design) |
-| amarchy/gthemes_dos.c:146 pv_set (desk preview) | 0-7 | no, restored after |
-| amarchy/desk_dos.c:626 dk_live_pens | desk_live_role_pens(depth): 4-7 at depth 8 | no (never obtained) |
-| amarchy/iconpen_core.c:235-236 ip_sync -> iconpen_dos.c:72 pen_set_rgb | same 4-7 (desk_live_follow) | no |
-| amarchy/iconpen_core.c:122 ip_recolour -> pen_set_rgb | 32-47 at depth 8 | yes, only have[i] (PENF_EXCLUSIVE, iconpen_dos.c:46) |
+| patina/gthemes_dos.c:51 wb_pens_apply | 0-3 | no (Intuition DrawInfo pens; theme rewrite by design) |
+| patina/gthemes_dos.c:146 pv_set (desk preview) | 0-7 | no, restored after |
+| patina/desk_dos.c:626 dk_live_pens | desk_live_role_pens(depth): 4-7 at depth 8 | no (never obtained) |
+| patina/iconpen_core.c:235-236 ip_sync -> iconpen_dos.c:72 pen_set_rgb | same 4-7 (desk_live_follow) | no |
+| patina/iconpen_core.c:122 ip_recolour -> pen_set_rgb | 32-47 at depth 8 | yes, only have[i] (PENF_EXCLUSIVE, iconpen_dos.c:46) |
 | render/amiga_render.c:169/588 | scratch pens | yes, ObtainPen(-1, EXCLUSIVE) |
 | handler/vtcon_handler.c:3238 | 0-15+ | own screen only, not Workbench |
 

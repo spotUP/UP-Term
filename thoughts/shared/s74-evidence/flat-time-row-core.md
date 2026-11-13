@@ -8,7 +8,7 @@ branch: s73-flat-time-row-full-width
 # Time preferences top row full width: the pure core
 
 Background and measurements: `thoughts/shared/s73-evidence/flat-time-row-full-width.md`. This step adds only pure,
-host-tested logic to `amarchy/flat_core.c` / `amarchy/flat_core.h` (section S74-TIME-ROW). `amarchy/flat.c` is unchanged.
+host-tested logic to `patina/flat_core.c` / `patina/flat_core.h` (section S74-TIME-ROW). `patina/flat.c` is unchanged.
 
 ## What was searched and what is reused
 
@@ -105,7 +105,7 @@ after the hook: year frame left at screen x 12 (Save's left), month frame right 
 - side: `flat_aspect_find` for the screen the gadgets are for. OPEN: NewGadget only carries ng_VisualInfo (private);
   the glue needs the screen without reading private fields. Time opens on the default public screen, so the default
   public screen (or the Workbench screen) is the proposed source; the rig step decides.
-- For each CreateGadgetA(kind, prev, ng, tags): if amarchy-flat is enabled and not held, call
+- For each CreateGadgetA(kind, prev, ng, tags): if patina-flat is enabled and not held, call
   `flat_trow_feed(&tab, task, name, side, frame_out, &ev, &nl, &nw)`; on 1 copy *ng into a private NewGadget on the
   hook's stack (budget entry), set ng_LeftEdge = nl, ng_Width = nw, call the original with the copy; on 0 call the
   original with the program's ng. Never write the program's NewGadget.
@@ -144,9 +144,9 @@ Commit e8b2ff92 (branch s73-flat-time-row-full-width). Built, not run on a rig.
 
 ### What was added
 
-- `amarchy/flat_cg.s`: gate template `_flat_cg_tpl` (same FLAT-UNLOAD-INFLIGHT shape as `flat_rf.s`); pushes a2, a1, a0,
+- `patina/flat_cg.s`: gate template `_flat_cg_tpl` (same FLAT-UNLOAD-INFLIGHT shape as `flat_rf.s`); pushes a2, a1, a0,
   d0 and calls `flat_cg_c(kind, previous, newgadget, taglist)`; the gadget comes back in d0.
-- `amarchy/flat.c` (section S74-TIME-ROW, before `find_record`):
+- `patina/flat.c` (section S74-TIME-ROW, before `find_record`):
   - `FLAT_TROW_FRAME_OUT 0` (flat.c:2477), the one constant the rig step may flip.
   - `cg_name` (flat.c:2485): CLI process: FilePart of `cli_CommandName` (BSTR) into an 8-byte buffer (empty when the part
     is over 7 characters, which can never be "Time"); otherwise, or when the command name is empty, `tc_Node.ln_Name`.
@@ -156,23 +156,23 @@ Commit e8b2ff92 (branch s73-flat-time-row-full-width). Built, not run on a rig.
     `ng_LeftEdge` / `ng_Width`, calls the original with the copy; otherwise the original with the program's NewGadget.
   - `cg_install` (flat.c:2559): opens gadtools.library 37, checks the LVO is a JMP, clears the table, gate + swap as
     `rf_install`; closes gadtools again if the swap fails. Called from `install_all` after `tx_install`
-    (flat.c:3605), message "amarchy-flat: CreateGadgetA patch not installed".
+    (flat.c:3605), message "patina-flat: CreateGadgetA patch not installed".
   - `cg_remove` (flat.c:2596): gate close, swap out, table cleared, `gate_wait`, then `CloseLibrary` (gadtools may expunge
     only once nothing points into it). Unload calls it after RectFill (flat.c:3776, `STG(FLAT_STG_CG_REMOVE)`), refusal
     `FLAT_REF_GADTOOLS` + "a patch is still chained on gadtools CreateGadgetA, not unloading".
   - STATUS line (flat.c:2895): `time row installed=yes calls=N changed=N reason=ok integer=L,T,W,H,ID
     cycle=L,T,W,H,ID frame=0`. Help text names the time row counter.
-- `amarchy/flat_shared.h`: `cgsw, cgslot, cggate, gtbase, trow, cgcalls, cgname[8], trow_raw[2][5]` appended.
-- `amarchy/flat_core.h/.c`: `FLAT_LVO_CREATEGADGETA (-30)`, `FLAT_STG_CG_REMOVE` ("cg_remove"), `FLAT_REF_GADTOOLS`
+- `patina/flat_shared.h`: `cgsw, cgslot, cggate, gtbase, trow, cgcalls, cgname[8], trow_raw[2][5]` appended.
+- `patina/flat_core.h/.c`: `FLAT_LVO_CREATEGADGETA (-30)`, `FLAT_STG_CG_REMOVE` ("cg_remove"), `FLAT_REF_GADTOOLS`
   ("gadtools"), `flat_trow_why_name` (ok, nobutton, order, id, geom, nocycle, row). Host checks in `tests/test_flat_core.c`.
-- `Makefile`: `flat_cg.s` assembled and linked into amarchy-flat. `tests/test_flat_budget.py`: `_flat_cg_c` is an entry.
+- `Makefile`: `flat_cg.s` assembled and linked into patina-flat. `tests/test_flat_budget.py`: `_flat_cg_c` is an entry.
 
 ### Release point for per-task state, and why
 
 The core frees a task's slot when its sequence ends: the row changed (CYCLE handled) or the first mismatch. Time holds a
 slot only from its first BUTTON to the CYCLE, a few calls inside one window open. When all four slots are busy the
 oldest is evicted (a task that died mid-sequence). The table is cleared at install and at remove. No window-close drop:
-amarchy-flat has no close hook, and the design note marks it optional. Known limits: a BUTTON created by Time after the
+patina-flat has no close hook, and the design note marks it optional. Known limits: a BUTTON created by Time after the
 row (a second window) takes a slot that stays until eviction; a later INTEGER from Time sets `reason=nobutton`, which
 overwrites `ok` in STATUS (`changed=` still counts the row); a freed task pointer reused by a new Time task resumes a
 stale slot only if one was left mid-sequence.
@@ -185,14 +185,14 @@ Forbid), now 76. No libc call is reachable (the core's clears compiled inline).
 
 ### Reading raw NewGadget values on the rig
 
-`amarchy-flat STATUS` after opening Prefs/Time: the `time row` line, fields `integer=` and `cycle=` (left, top, width,
+`patina-flat STATUS` after opening Prefs/Time: the `time row` line, fields `integer=` and `cycle=` (left, top, width,
 height, id as the program passed them, before any change). If `integer=` reads left 54 width 53, `FLAT_TROW_FRAME_OUT`
 stays 0. If it reads 60/41, set it to 6 (flat.c:2477) and rebuild. PASS on screen as in "NewGadget inner/outer
 assumption" above; `changed=` rises by one per Time window.
 
 ### Verdicts
 
-- `make amarchy-flat`: built (vbcc warnings-as-errors), build/amiga/amarchy-flat.
+- `make patina-flat`: built (vbcc warnings-as-errors), build/amiga/patina-flat.
 - `make flat-budget`: PASS.
 - `make test ONLY=flat_core`: [OK] 4480 checks, 0 failed.
 

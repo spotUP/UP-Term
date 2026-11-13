@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Host preview of lucide.dat (plan 2026-10-31-amarchy-lucide-icons.md): a PNG contact sheet of every icon at its real Amiga
-pixel size, scaled x4 nearest-neighbour, in the real pens (amarchy/iconpen_core.c ip_colours: stored pen 32+slot, slot colour
-blended from the theme background toward FG / SELFG), on the Amarchy backdrop (DK_MUTED). Per icon: square 32x32 normal and
+"""Host preview of lucide.dat (plan 2026-10-31-patina-lucide-icons.md): a PNG contact sheet of every icon at its real Amiga
+pixel size, scaled x4 nearest-neighbour, in the real pens (patina/iconpen_core.c ip_colours: stored pen 32+slot, slot colour
+blended from the theme background toward FG / SELFG), on the Patina backdrop (DK_MUTED). Per icon: square 32x32 normal and
 selected, then tall 32x16 normal and selected. Pixel decode reuses tools/gen_lucide_icons.py (layout, pen tables) and
 tools/mkicon.py planes' inverse; no rasteriser here.
 
@@ -15,7 +15,7 @@ import gen_lucide_icons as g  # noqa: E402
 from PIL import Image, ImageDraw  # noqa: E402
 
 SCALE = 4
-# default theme tokyo-night (amarchy/gthemes_core.c gt_builtin); pens as ip_colours; slot numbers from iconpen_core.h
+# default theme tokyo-night (patina/gthemes_core.c gt_builtin); pens as ip_colours; slot numbers from iconpen_core.h
 BG, FG, SELECTION, BACKDROP = 0x1a1b26, 0xa9b1d6, 0x292e42, 0x414868
 SLOT_FG33, SLOT_FG100, SLOT_SELFG100, SLOT_FG66, SLOT_SELFG66, SLOT_SELFG33, SLOT_SELBG = 0, 1, 2, 5, 6, 10, 11
 TEXT = (200, 205, 225)

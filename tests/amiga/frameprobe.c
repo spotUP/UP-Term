@@ -1,4 +1,4 @@
-/* frameprobe -- FLAT-C8 Q2: does frameiclass's dispatcher run for GadTools bevels? (plan 2026-10-29-amarchy-flat-ui-patch.md)
+/* frameprobe -- FLAT-C8 Q2: does frameiclass's dispatcher run for GadTools bevels? (plan 2026-10-29-patina-flat-ui-patch.md)
  *   frameprobe   swap frameiclass's dispatcher h_SubEntry (when set, else h_Entry) for a counting trampoline that tail-calls
  *                the saved routine, open a GadTools window (button, string, checkbox, cycle, listview, DrawBevelBox), refresh
  *                it and open a second window to deactivate it, then print COUNT lines (per MethodID) and the first calls

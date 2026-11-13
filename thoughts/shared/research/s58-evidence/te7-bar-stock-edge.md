@@ -12,7 +12,7 @@ Measured before the fix (tests/test_desk.c, test_thin_with_stock_bar_height_does
   [FAIL] desk_start_apply: 61 checks, 3 failed
 
 Violated invariants: (1) a file that already holds the wanted geometry is not rewritten; (2) the saved pre-thin snapshot is never
-overwritten by a later apply. Cause: icontrol_ours() infers "written by Amarchy" from "geometry non-zero"; thin + bar 11 wants
+overwritten by a later apply. Cause: icontrol_ours() infers "written by Patina" from "geometry non-zero"; thin + bar 11 wants
 geometry {0,0,0,0} (= stock), so our own file reads as foreign, the decision is WRITE + snapshot=1 on every start.
 
 Searched: icontrol_ours / desk_icontrol_decide callers (desk_dos.c:406 only), desk_icontrol writer (sets ICB_VERSIONED, version 2,
@@ -34,5 +34,5 @@ Before fix: [FAIL] desk_start_apply: 61 checks, 3 failed (lines above).
 After fix:  [OK] desk_start_apply: 63 checks, 0 failed
 Fix reverted by patch: [FAIL] desk_start_apply: 63 checks, 5 failed
 Fix restored, ONLY=desk: [OK] desk: 2311 checks, 0 failed
-m68k: make build/amiga/Amarchy build/amiga/amarchy-gui build/amiga/amarchy-menu rc=0 (first try rc=137 killed, rerun rc=0)
+m68k: make build/amiga/Patina build/amiga/patina-gui build/amiga/patina-menu rc=0 (first try rc=137 killed, rerun rc=0)
 Behaviour change: a stock file with thin on and bar height 11 now plans nothing (was WRITE + snapshot every start).

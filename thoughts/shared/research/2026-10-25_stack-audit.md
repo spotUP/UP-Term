@@ -4,7 +4,7 @@ Measured instead with a scratchpad helper ($S/stk/stkrun.c + runon.s): LoadSeg t
 call the segment entry with the real args (stdin fed from T:stk.in so ReadArgs works), swap back, scan for the lowest touched byte
 (bottom 1024 bytes skipped: exec writes 4 marker bytes there). Peak includes startup + dos.library calls made on the caller stack,
 not exception/interrupt frames. All kit programs below use vbcc (`$(VC)`), no program sets `__stack` except upupdate (16384, no cookie).
-vbcc: `long __stack = N;` plus `const char x[] = "$STACK: N";` (see amarchy/menu.c:34-35, install/upupdate.c:36).
+vbcc: `long __stack = N;` plus `const char x[] = "$STACK: N";` (see patina/menu.c:34-35, install/upupdate.c:36).
 
 | program | source | toolchain | stack given | peak used | method | proposed N | notes |
 |---|---|---|---|---|---|---|---|

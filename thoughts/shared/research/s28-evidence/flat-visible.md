@@ -7,7 +7,7 @@ date: 2026-11-01
 # Why rig 8 does not look flat
 
 Rig 8: FS-UAE, OS 3.2, Workbench 640x256 depth 8 (256 pens), build main a586f6c9. Prefs: desktop-theme on,
-flat-system-look on, flat-window-gadgets on, amarchy-gui-theme vantablack. Shot: ~/Desktop/upterm-shots/s29-flatvis-r8a.png.
+flat-system-look on, flat-window-gadgets on, patina-gui-theme vantablack. Shot: ~/Desktop/upterm-shots/s29-flatvis-r8a.png.
 
 ## Hypotheses
 
@@ -15,13 +15,13 @@ flat-system-look on, flat-window-gadgets on, amarchy-gui-theme vantablack. Shot:
   both read `GetRGB32(screen->ViewPort.ColorMap)`; same source.
 - (b) the WBPattern: YES, this is the backdrop cause (below).
 - (c) IPrefs did not reset: NO. Pens 0-7 carry the theme, DrawInfo pens are the flat map `0 1 2 0 0 0 2 0 2 2 0 1`.
-- (d) amarchy-flat not running: NO. Icon pens 32-47 hold the theme ramp (909090 BEBEBE BEBEBE 8D8D8D 808080 A7A7A7 ...),
-  which only the amarchy-flat pen holder sets.
+- (d) patina-flat not running: NO. Icon pens 32-47 hold the theme ramp (909090 BEBEBE BEBEBE 8D8D8D 808080 A7A7A7 ...),
+  which only the patina-flat pen holder sets.
 
 ## Numbers
 
 Shot histogram (640x256 raw): EE9900 133886 px, 000000 23955, BEBEBE 3556, 222222 1825, A7A7A7 359, 909090 259.
-First orange row y=22 (menu bar + Amarchy bar above are black).
+First orange row y=22 (menu bar + Patina bar above are black).
 
 `VTC:dripens Workbench` palette: pens 0-7 = 000000 222222 BEBEBE 8D8D8D 1A1A1A 7A7A7A B6B6B6 7A7A7A;
 pens 249-255 = A4A4A4 B6B6B6 505050 EE4444 55DD55 0044DD EE9900. EE9900 occurs at pen 255 only (checked over all 256
@@ -33,7 +33,7 @@ ENV:Sys/Palette.prefs ColorSpecs: 0 000000, 1 222222, 2 BEBEBE, 3 8D8D8D, 4 EE44
 ## Cause 1: backdrop orange
 
 Workbench maps a 3-plane WBPattern tile's pens 4-7 the same way IPrefs maps palette.prefs entries 4-7: to the LAST four
-pens, 2^depth - 8 + i. Tile pen 7 is drawn as screen pen 255. Amarchy colours screen pen 7 live (dk_live_pens /
+pens, 2^depth - 8 + i. Tile pen 7 is drawn as screen pen 255. Patina colours screen pen 7 live (dk_live_pens /
 desk_live_follow, here 7A7A7A = muted because desktop-theme is on, desk_pen_colour own=0) and leaves palette entry 7 at the
 user's stock 3.2 EE9900 (desk_palette_theme keeps entries that reach 252-255). Nothing draws pen 7, so the theme never
 shows; pen 255 = EE9900 fills the desktop. At depth 3 the two coincide, which is why depth-3 reasoning holds and depth 8 fails.
@@ -43,7 +43,7 @@ on a deep Workbench. The same mistake flat-palette.md found for palette.prefs (d
 ## Cause 2: black box around every icon
 
 The icons ARE the flat lucide images (ASCII render of the hard drive icon at 26,99: outline in A7A7A7/909090/BEBEBE,
-32x16, tall-pixel variant; amarchy-icons skipped-done=304 is correct, the files on disk carry the written image crc).
+32x16, tall-pixel variant; patina-icons skipped-done=304 is correct, the files on disk carry the written image crc).
 Their background pixels are image colour 0 = pen 0 = theme bg 000000. A classic planar image has no transparency:
 Workbench draws colour 0 as pen 0 over the backdrop. FLAT-BACKDROP-SAME-AS-WINDOW deliberately gives the backdrop a pen
 other than pen 0, so pen 0's box shows on any backdrop colour that is not the theme bg (orange now; still a visible
@@ -78,7 +78,7 @@ Layout source (no NDK header describes it; read from stock 3.2 files build/rig/o
   palette RGB bytes. Chunks padded to even length.
 - Verified field-by-field on the stock sample (30 colours, 90 palette bytes).
 
-Our encoder (amarchy/iconfile_core.c li_form_build): 16 colours, depth 4, ImageFormat 0 (raw, depth bits per pixel packed
+Our encoder (patina/iconfile_core.c li_form_build): 16 colours, depth 4, ImageFormat 0 (raw, depth bits per pixel packed
 MSB first, no row padding), palette raw. Index 0 = transparent = slot 12 (the ground); slots 0..11 -> index 1..12; slots
 13..15 -> index 13..15; any pen outside 32..47 -> 0. Palette comes from ipd_icon_rgb (pens_theme + ip_colours + ip_ground),
 so a theme change changes the palette bytes.
@@ -91,7 +91,7 @@ UNVERIFIED (rig must prove): the stock RLE (ImageFormat 1) did not decode as byt
 on the CD, so ImageFormat 0 and the bit packing are from the format description only. Real icon.library v47 acceptance and
 pixel layout are not proven on a host.
 
-ip_fold finding, pen slot 12 (stored pen 44) on shallow screens (amarchy/iconpen_core.c ip_fold): at depth >= 6 it returns
+ip_fold finding, pen slot 12 (stored pen 44) on shallow screens (patina/iconpen_core.c ip_fold): at depth >= 6 it returns
 IP_FIRST + slot. At depth 4/5 and slot >= 8 it returns the slot itself, so slot 12 is held as its own pen 12 and carries
 the ip_colours value for slot 12 (the ground). At depth <= 3 every slot folds to the nearest role pen among DK_BG..DK_MUTED
 (DK_ACCENT at depth 2), and the distance is computed from ip_colours drawn on desk_role(DK_BG), the panel tone. Slot 12

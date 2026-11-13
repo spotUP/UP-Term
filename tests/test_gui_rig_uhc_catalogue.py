@@ -1,4 +1,4 @@
-"""amarchy_gui_rig.uhc_catalogue: the staged UHC stub is installable on a rig that has no UHC add-on.
+"""patina_gui_rig.uhc_catalogue: the staged UHC stub is installable on a rig that has no UHC add-on.
 
 Rig 4 (research/2026-10-28-s11-uhc-text-cases.md): `upkg install uhc:pg8uhc` failed rc 14 "UHC:C: device (or volume) is not
 mounted"; and the stub had no `Copy ... TO <file>` line, so `upkg remove uhc:` could not tell which files it installed (rc 20).
@@ -9,7 +9,7 @@ from unittest import mock
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools/rig"))
 
-import amarchy_gui_rig as g
+import patina_gui_rig as g
 
 
 class UhcCatalogue(unittest.TestCase):

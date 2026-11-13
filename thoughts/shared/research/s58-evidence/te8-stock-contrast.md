@@ -6,7 +6,7 @@ verdict: 23 themes (22 other files + tokyo-night, which is both the GT_DEFAULT n
 
 # TE-8 stock theme contrast
 
-Source of the theme list: `dist/amarchy-themes/*.theme` filtered through `gt_name_of_file` (same directory scan as `test_gthemes_roles` in tests/test_gthemes.c, which asserts 23 files), plus `GT_DEFAULT` = "tokyo-night" (amarchy/gthemes_core.h:19). `gt_preset_model` reads the shipped file first, so the built-in fallback path is not exercised (tokyo-night has a file). Count: 23 distinct themes. Probe: host C file (not in repo) calling `gt_preset_model` then `gt_contrast_pairs`, read function maps any path to dist/amarchy-themes/<basename>. 24 loads x 13 pairs = 312 rows, no load failure. Floors: text 220, muted 220, selection 150.
+Source of the theme list: `dist/patina-themes/*.theme` filtered through `gt_name_of_file` (same directory scan as `test_gthemes_roles` in tests/test_gthemes.c, which asserts 23 files), plus `GT_DEFAULT` = "tokyo-night" (patina/gthemes_core.h:19). `gt_preset_model` reads the shipped file first, so the built-in fallback path is not exercised (tokyo-night has a file). Count: 23 distinct themes. Probe: host C file (not in repo) calling `gt_preset_model` then `gt_contrast_pairs`, read function maps any path to dist/patina-themes/<basename>. 24 loads x 13 pairs = 312 rows, no load failure. Floors: text 220, muted 220, selection 150.
 
 ## Failing pairs per theme (contrast / floor)
 
@@ -60,9 +60,9 @@ None. Next most frequent: P9 in 4 of 23 (catppuccin-latte 121, flexoki-light 123
 
 ## P8 removed
 
-Removed the `{ GTE_BUTTON_FACE, NORMAL, GTE_REQUESTER_BACKGROUND, NORMAL, GTC_SEL }` entry from `gt_cpair_def[]` in amarchy/gthemes_core.c (table now 12 pairs; GT_NCPAIR derives from the size, GT_CPAIRS 16 unchanged). No index-coupled consumer: info_text and gt_contrast_warnings use the `first` index returned by the same call; the only other users are tests/test_gthemes.c, which assert by element, not by number.
+Removed the `{ GTE_BUTTON_FACE, NORMAL, GTE_REQUESTER_BACKGROUND, NORMAL, GTC_SEL }` entry from `gt_cpair_def[]` in patina/gthemes_core.c (table now 12 pairs; GT_NCPAIR derives from the size, GT_CPAIRS 16 unchanged). No index-coupled consumer: info_text and gt_contrast_warnings use the `first` index returned by the same call; the only other users are tests/test_gthemes.c, which assert by element, not by number.
 Tests (tests/test_gthemes.c): new `test_gthemes_te8_button_face_equals_requester_gets_no_warning`; nord now measures 1 warning (was 2); te8_clean no longer needs to blacken the requester background.
 - RED (pair present, tests updated): `[FAIL] gthemes: 6146 checks, 11 failed`
 - GREEN (pair removed): `RUNTEST gthemes rc=0 [OK] gthemes: 6146 checks, 0 failed`
-- m68k: make of Amarchy amarchy-gui amarchy-menu amarchy-index amarchy-icons amarchy-flat upprefs: rc=0
+- m68k: make of Patina patina-gui patina-menu patina-index patina-icons patina-flat upprefs: rc=0
 - Per-theme failing count: no survey tool exists; each of the 23 stock themes drops by exactly 1 (P8 failed in all 23).

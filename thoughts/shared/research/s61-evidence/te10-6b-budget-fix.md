@@ -3,8 +3,8 @@
 Commits: 577bc3a9 (fix + tests), then a one-line follow-up for tests/test_flat_icl_pens_persist.py.
 
 ## Changed
-- amarchy/flat_core.h/.c: flat_draw_slot/tab/scr, flat_draw_init/sync/state/epoch. Slot lookup reuses flat_ident_slot; pens via flat_state_for.
-- amarchy/flat.c: static g_draw; st_scr/st_rp return flat_draw_state pointer (no buffers, st_pens removed); draw_sync(r) (collect under
+- patina/flat_core.h/.c: flat_draw_slot/tab/scr, flat_draw_init/sync/state/epoch. Slot lookup reuses flat_ident_slot; pens via flat_state_for.
+- patina/flat.c: static g_draw; st_scr/st_rp return flat_draw_state pointer (no buffers, st_pens removed); draw_sync(r) (collect under
   LockPubScreenList, write under Forbid/Permit) at end of pens_run (every mode, before pens_reap), startup and CTRL_D held branches;
   label hook uses flat_draw_epoch. The one `flat_state st = r->st` copy with side stays (as on main), pens taken from the pointer state.
 - tests/test_flat_core.c: 4 test functions covering the 9 cases; tests/test_flat_pens_per_screen.py, test_flat_icl_pens_persist.py adapted.

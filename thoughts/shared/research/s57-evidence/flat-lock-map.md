@@ -1,6 +1,6 @@
-# amarchy-flat hunk 0 + 0x325E: stale ColorMap ReleasePen (vtcon-c1 subagent, 2026-11-05)
+# patina-flat hunk 0 + 0x325E: stale ColorMap ReleasePen (vtcon-c1 subagent, 2026-11-05)
 
-Question: the stuck Workbench stack (rig141-stuck-taskdump.txt, line 296 on) holds 1041d52a, inside amarchy-flat hunk 0
+Question: the stuck Workbench stack (rig141-stuck-taskdump.txt, line 296 on) holds 1041d52a, inside patina-flat hunk 0
 (1041a2cc-1043d350). Which function, which lock, who holds it, and is it a lock-order inversion?
 
 ## Verdict
@@ -14,7 +14,7 @@ then blocks on LayerInfo 10104150, and Prefs/Font behind it.
 
 ## Map (proof)
 
-- Rebuilt amarchy-flat from main b5458e99 (no source diff vs 6430b154 in amarchy/ render/ handler/be32.c device/ tty/),
+- Rebuilt patina-flat from main b5458e99 (no source diff vs 6430b154 in patina/ render/ handler/be32.c device/ tty/),
   same vc command as the Makefile, vlink `-M` map added: md5 a6923d113be3392a203451801a5ea0fd, byte-identical to the
   rig 141 binary.
 - Dump hunk ranges are BPTR address .. +size+8 (hunk 1 __MERGED 0x3c -> 0x44, hunk 5 BSS 0x18e30 -> 0x18e38;
@@ -23,7 +23,7 @@ then blocks on LayerInfo 10104150, and Prefs/Font behind it.
   = graphics ReleasePen. 0x325A is its return address. The map labels match the -S output exactly:
   l1355 0x3210, l1408 0x3238, l1371 0x325a (return label), l1364 0x3276.
 - Function: the Text patch label branch (inlined into the code after `_c8_disp_stk`, before `_flat_tx_c` 0x33d4),
-  source amarchy/flat.c:811-815:
+  source patina/flat.c:811-815:
   ```c
   if (icl_cm && icl_cm != cm) {             /* another screen's colour map: the cached pens are not ours */
       for (i = 0; i < ICL_CACHE; i++)
@@ -47,14 +47,14 @@ then blocks on LayerInfo 10104150, and Prefs/Font behind it.
 
 - 640x256x8 only: the pen path (`depth <= 8`) is the only one that caches pens and icl_cm; at 800x600x24 the rtg path
   never touches icl_cm.
-- Needs a WB screen close/reopen after a label was drawn (IPrefs palette/font USE at Amarchy start) and then a new label
+- Needs a WB screen close/reopen after a label was drawn (IPrefs palette/font USE at Patina start) and then a new label
   draw by Workbench: icl_cm != cm triggers the release on the dead map.
 - A start by hand a minute later works: icl_cm already matches the new screen or no reopen follows.
 
-## Proposed fix (not committed; no amarchy/ edit made)
+## Proposed fix (not committed; no patina/ edit made)
 
-Invariant: amarchy-flat must never call graphics on a ColorMap whose screen may be closed. Root cause level:
-amarchy/flat.c icl cache lifetime (flat program, not the start gate).
+Invariant: patina-flat must never call graphics on a ColorMap whose screen may be closed. Root cause level:
+patina/flat.c icl cache lifetime (flat program, not the start gate).
 
 - flat.c:811-816 (and icl_free, flat.c:652-655, called at unload line 1925): before `ReleasePen(icl_cm, ...)`, check
   under Forbid() that icl_cm is still the `ViewPort.ColorMap` of a screen in `IntuitionBase->FirstScreen ... NextScreen`.
@@ -62,7 +62,7 @@ amarchy/flat.c icl cache lifetime (flat program, not the start gate).
   here: the Text patch runs with the caller's layer locks held, and IBase -> LayerInfo is Intuition's lock order.
 - Optionally also keep `icl_scr` (the Screen pointer) and require both scr and cm to match, to shrink the ABA window of
   a new screen getting the same ColorMap address.
-- Put the liveness decision in a pure helper in amarchy/iclabel_core.c (`icl_cm_alive(cm, const void *const *maps, n)`
+- Put the liveness decision in a pure helper in patina/iclabel_core.c (`icl_cm_alive(cm, const void *const *maps, n)`
   or a release-plan function returning RELEASE/DROP), host-tested.
 
 Regression tests:
@@ -70,7 +70,7 @@ Regression tests:
    that is; a cache built on map A, then a draw on map B with A gone, issues zero ReleasePen calls (counted stub).
 2. Source guard (python, like test_flat_on_hang_wild_call.py): every `ReleasePen(icl_cm` in flat.c sits behind the
    liveness helper. Fails on current main, passes after.
-3. Rig (one run): rig 141, --os 32, 640x256x8, fresh-all, Amarchy start with flat on (the gate run 1 recipe); PASS =
+3. Rig (one run): rig 141, --os 32, 640x256x8, fresh-all, Patina start with flat on (the gate run 1 recipe); PASS =
    no hang and Workbench answers GETATTR after the start; fails on a6923d11.
 
 ## Rig A/B

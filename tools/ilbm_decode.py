@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Independent IFF ILBM decoder (no code shared with amarchy/shot_core.c), used by tests/test_shot_core.c and the
+"""Independent IFF ILBM decoder (no code shared with patina/shot_core.c), used by tests/test_shot_core.c and the
 rig rows. Prints "W H DEPTH CAMG" then one line per pixel row of space-separated colour register numbers.
 Handles uncompressed and ByteRun1 BODYs, 1..8 planes, or 24 planes (R, G, B, no CMAP; a pixel prints as 0xRRGGBB in decimal), no mask plane."""
 import struct

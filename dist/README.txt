@@ -727,19 +727,19 @@ VIEWING FILES (hl, mdv)
   when TERM does not (a ROM CON: window: Latin-1, lines and boxes drawn
   with + - |). hl --help and mdv --help list the options; Ctrl-C stops hl.
 
-AMARCHY
-  Amarchy is a small commodity that gives the whole machine Super-key
+PATINA
+  Patina is a small commodity that gives the whole machine Super-key
   shortcuts, the way a tiling desktop does. Super is the Left Amiga key. It
-  runs from boot (an icon in SYS:WBStartup starts UP-Term:bin/Amarchy), so
+  runs from boot (an icon in SYS:WBStartup starts UP-Term:bin/Patina), so
   the keys work with no UP-Term window open: Left Amiga + T opens a window,
   Left Amiga + Space shows the quick menu, Left Amiga + K lists every key.
   Inside an UP-Term window the window itself answers first (Left Amiga + T is
-  a new tab there); everywhere else Amarchy does. Only the keys listed below
+  a new tab there); everywhere else Patina does. Only the keys listed below
   are taken; every other Left Amiga key reaches the program as before, and
   Left Amiga + M, Left Amiga + N, Left Amiga + the mouse and the two-Amiga
   reset keys are never touched.
   Notices: amnotify TITLE [BODY] [SECONDS n] [BODYFILE file] (also amnotify
-  -t 3 Done "build ok") shows a short message from Amarchy, SECONDS 0 keeps it
+  -t 3 Done "build ok") shows a short message from Patina, SECONDS 0 keeps it
   until dismissed. Left Amiga + Esc opens the System menu; Safe to switch off
   there runs UP-Term:S/safe-off, which flushes every disk (Reboot DRYRUN) and
   then says "Safe to switch off" or "Not all disks answered".
@@ -750,8 +750,8 @@ AMARCHY
   Left Amiga + K                     Key bindings
   Left Amiga + H                     Help
   Left Amiga + Shift + H             Tutorial
-  Left Amiga + Shift + /             Amarchy Help
-  Left Amiga + Ctrl + Shift + Q      Quit Amarchy
+  Left Amiga + Shift + /             Patina Help
+  Left Amiga + Ctrl + Shift + Q      Quit Patina
   Left Amiga + T                     New tab
   Left Amiga + W                     Close tab
   Left Amiga + Backspace             Close tab
@@ -848,26 +848,26 @@ AMARCHY
   Left Amiga + B                     Status bar
   [end keys]
   The quick menu (Left Amiga + Space) is a short list you filter by typing;
-  Left Amiga + K is the key viewer. Two programs draw them. amarchy-gui is
+  Left Amiga + K is the key viewer. Two programs draw them. patina-gui is
   the drawn menu: its own borderless window with an icon in front of each row.
-  amarchy-menu is the text menu in a console window. The setting
+  patina-menu is the text menu in a console window. The setting
     menu-style = graphical
   in ENVARC:up-term/up-term (before the first section; graphical, text or
   minimal, default graphical) picks the one Left Amiga + Space and Left
-  Amiga + K start. minimal is amarchy-gui as plain text rows: no border, no
+  Amiga + K start. minimal is patina-gui as plain text rows: no border, no
   icons, two colours (the fg and bg settings, else the screen's own pens 1
   and 0), and a group row ends in " >". While an UP-Term window is
   active, the setting
     menu-in-terminal = text
   (text or graphical, default text; the Prefs row "Menu in terminal") picks
   the program instead, and a full-screen terminal always gets the text
-  menu. The setting amarchy-app-icons = generic, amiga or none picks the icons of app
+  menu. The setting patina-app-icons = generic, amiga or none picks the icons of app
   rows (amiga: their .info images; none: no icon column). The Prefs program
-  sets both on its Amarchy page (Menu mode, App icons). You can also run
+  sets both on its Patina page (Menu mode, App icons). You can also run
   them by hand:
-    amarchy-gui menu [node]      the menu (node: a menu id, default root)
-    amarchy-gui viewer           the list of every key
-  and the same two words for amarchy-menu. The icons come from a table made
+    patina-gui menu [node]      the menu (node: a menu id, default root)
+    patina-gui viewer           the list of every key
+  and the same two words for patina-menu. The icons come from a table made
   when the kit is built (the file dist/menu-icons in the source); a row in
   keymap.user cannot name an icon, and a row without an entry in the table
   shows an empty icon column. The groups of the index have glyphs too:
@@ -877,26 +877,26 @@ AMARCHY
   every Install: an older copy that differs is first saved as keymap.bak, so
   edits there do not survive an upgrade) or put your own rows in ENVARC:up-term/keymap.user: a row there
   replaces the row for the same key, and  super+t = none  unbinds one.
-  Amarchy watches the ENV: copies, not the ENVARC: ones, so an edit in
-  ENVARC: applies after you copy it to ENV: (Amarchy picks that up at once):
+  Patina watches the ENV: copies, not the ENVARC: ones, so an edit in
+  ENVARC: applies after you copy it to ENV: (Patina picks that up at once):
     Copy ENVARC:up-term/keymap.user ENV:up-term/keymap.user
-  or after a reboot. To make Amarchy and every window read the files again
+  or after a reboot. To make Patina and every window read the files again
   without a copy, send it the command:
-    rx "address AMARCHY RELOAD"
-  ARexx port AMARCHY: STATUS (hits, rows, enabled, active), RELOAD, RUN n
+    rx "address PATINA RELOAD"
+  ARexx port PATINA: STATUS (hits, rows, enabled, active), RELOAD, RUN n
   (do row n of the table), SHOW (the key viewer) and QUIT.
-  Switch it off for a while in Exchange (the commodity AMARCHY, Disable), or
-  stop it with  rx "address AMARCHY QUIT" . Uninstall takes the startup block
-  out. man amarchy has the file format.
+  Switch it off for a while in Exchange (the commodity PATINA, Disable), or
+  stop it with  rx "address PATINA QUIT" . Uninstall takes the startup block
+  out. man patina has the file format.
 
   Status bar: a thin bar along the top of the front screen (Left Amiga + B
-  switches it on and off; ARexx  address AMARCHY BAR ON|OFF|TOGGLE|STATUS ).
+  switches it on and off; ARexx  address PATINA BAR ON|OFF|TOGGLE|STATUS ).
   It shows the screens, the clock, CPU, RAM, the network, Agents, System
-  and your own tray entries. Its settings are in ENVARC:Amarchy/bar.conf
-  (ENV:Amarchy/bar.conf is read first): start on|off, clock, clockalt, the
+  and your own tray entries. Its settings are in ENVARC:Patina/bar.conf
+  (ENV:Patina/bar.conf is read first): start on|off, clock, clockalt, the
   order of each group, segment NAME on|off and run LABEL COMMAND rows. Install
   lays down a commented default only when you have no bar.conf, and Uninstall
-  keeps yours. man amarchy lists every key and what the bar drops on a narrow
+  keeps yours. man patina lists every key and what the bar drops on a narrow
   screen.
 
   Job view (the Install group): a keymap row can start with  job:  instead
@@ -922,7 +922,7 @@ AMARCHY
   answers". A last output line that has not ended with a newline shows once
   it ends. A job: row bound to a hotkey runs like a run: row.
 
-  Packages (a top-level group of the menu): every add-on Amarchy can install,
+  Packages (a top-level group of the menu): every add-on Patina can install,
   from upkg and from upkg's UHC repo together, in one list. Rows:
     Browse        every package, one sub-group per section, sorted by name
     Search        type a word; lists the packages whose name or description
@@ -939,13 +939,13 @@ AMARCHY
   installed one. Remove asks first: "Remove <name>", No then Yes. Install,
   Remove, Upgrade and Upgrade all run in the job view, so no terminal or
   console window opens for package work. upkg is the only back end: a UHC
-  package installs as  upkg install uhc:<name> , and Amarchy has no UHC
+  package installs as  upkg install uhc:<name> , and Patina has no UHC
   code of its own. The list loads once per boot, on the first open of
   Packages, then again after each install, remove, upgrade or Refresh. When
   upkg is missing or fails, the group shows one row with the reason.
 
   Directory Opus (the DOpus group of the menu): if Directory Opus 5 is
-  running, Amarchy drives it. Left Amiga + Shift + D opens a lister, Left
+  running, Patina drives it. Left Amiga + Shift + D opens a lister, Left
   Amiga + Shift + O opens a lister at the current folder, and Left Amiga + D
   brings Directory Opus to the front. The DOpus group also sends it to the
   back, goes to the parent folder, refreshes the lister, shows the devices,
@@ -964,7 +964,7 @@ AMARCHY
     Copy ENV:EDITOR ENVARC:
 
   Flat Directory Opus toolbar: the DOpus add-on installs a flat toolbar bank
-  (DOpus5:Buttons/Amarchy-toolbar-<size>, line glyphs in DOpus5:Images/Amarchy/<size>,
+  (DOpus5:Buttons/Patina-toolbar-<size>, line glyphs in DOpus5:Images/Patina/<size>,
   buttons without bevels). It comes in 16, 24 and 32 pixel sizes, each also as a
   tall version (name ends in t) for screens whose pixels are twice as high as wide.
   Applying a theme picks the size that fits the Directory Opus screen's font
@@ -978,7 +978,7 @@ AMARCHY
   Window, Screens and Workbench groups: rows of the form  win:<verb>  act on
   windows of any program. Verbs: cycle, front, back, zip, fullwidth,
   fullscreen, save, restore, move, size, focus, closedrawers, screen, title.
-  When you open the menu, Amarchy records a target ticket: the window under
+  When you open the menu, Patina records a target ticket: the window under
   the pointer and its box. A win: row run from the menu uses the ticket only
   if that window is still listed and its box is unchanged; otherwise the verb
   fails with a screen flash (DisplayBeep). A win: hotkey reads the active
@@ -989,16 +989,16 @@ AMARCHY
   under Directory Opus.
 
   App index: the menu lists the programs found on your disks. The scanner
-  amarchy-index looks at the hard-disk volumes (not floppies, RAM: or other
+  patina-index looks at the hard-disk volumes (not floppies, RAM: or other
   virtual volumes) and walks their drawers down to depth 6. An icon of type
   Tool with a program beside it makes an app; a project icon whose default
   tool is WHDLoad makes a game, listed under Games. The system
   drawers Devs, Libs, L, Fonts, Locale, Env, T and Trashcan are skipped, and
-  so is Prefs/Env-Archive. The result is the cache ENVARC:Amarchy/apps,
+  so is Prefs/Env-Archive. The result is the cache ENVARC:Patina/apps,
   written to a temporary file and renamed, so a scan cut short never leaves
-  a broken cache. Amarchy only reads the cache; it never scans itself.
+  a broken cache. Patina only reads the cache; it never scans itself.
   The scan runs in the background at every boot (the icon
-  SYS:WBStartup/amarchy-index, taken out by Uninstall) and on demand with the Rescan apps row. The
+  SYS:WBStartup/patina-index, taken out by Uninstall) and on demand with the Rescan apps row. The
   scan runs in the background and the menu stays open: its first row shows
   "Scanning..." with the drawer being read, then "Scan done: N apps, M
   games" (or why it stopped), and the Apps level lists the new rows.
@@ -1007,27 +1007,27 @@ AMARCHY
   both. When a menu row has the same label as an indexed app, the menu row
   wins and the index row is left out. An indexed row starts like a
   double-click in Workbench (OpenWorkbenchObject); if Workbench cannot
-  start it, Amarchy starts it through WBStartup itself, never through a
+  start it, Patina starts it through WBStartup itself, never through a
   shell. To keep drawers out of the scan, list path prefixes, comma
   separated, in ENVARC:up-term/up-term (before the first section):
-    amarchy-index-skip = Work:Old,DH1:Backup
+    patina-index-skip = Work:Old,DH1:Backup
   A path matches when it begins with an entry, so Work:Old also skips
   Work:Old/Tools. Press Rescan apps afterwards to rebuild the cache.
   Network volumes (an SMB or NFS share, found by its handler) are left out
   of the scan, since walking one over the network takes hours. To scan a
   share, list its volume name, comma separated, in the same file:
-    amarchy-index-volumes = spotUP,Music
+    patina-index-volumes = spotUP,Music
   Ctrl-C stops a running scan: it writes no cache and returns WARN.
-  The scan keeps its progress in memory (a record named Amarchy.index, no
+  The scan keeps its progress in memory (a record named Patina.index, no
   disk writes): the stage and the drawer or icon it is on. After a scan
-  that failed or hung, run  amarchy-index --where  (or -w): it prints the
+  that failed or hung, run  patina-index --where  (or -w): it prints the
   stage, the volume and path last handled, the drawers and icons counted,
   and whether the scanner task still exists, is moving, is stuck (a
   Software Failure requester keeps it alive) or has died. After a normal
   finish it shows done with the counts. A failed cache write shows stage
   "write failed" (and the scan returns ERROR). The record lasts until a
-  reboot; one left by an older amarchy-index build is not read or reused,
-  --where then says "record from another amarchy-index build, reboot to
+  reboot; one left by an older patina-index build is not read or reused,
+  --where then says "record from another patina-index build, reboot to
   clear".
 
 SERIAL LOGIN

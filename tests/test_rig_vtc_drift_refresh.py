@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / "tools/rig"))
 
 import paths
 import rig
-import amarchy_menu_rig as m
+import patina_menu_rig as m
 
 
 class VtcRefresh(unittest.TestCase):

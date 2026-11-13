@@ -9,7 +9,7 @@
  * every pass of its main loop, also before the first Open packet: when the
  * zero value meant "move to the Workbench screen" (kind 0), every new XCON:
  * process tried that move with no window, failed and called DisplayBeep(0)
- * once (the flash when the Amarchy text menu opened, 2026-10-26).
+ * once (the flash when the Patina text menu opened, 2026-10-26).
  * Portable C89.
  */
 #ifndef SCREENREQ_H

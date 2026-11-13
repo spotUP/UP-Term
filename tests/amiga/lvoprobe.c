@@ -1,6 +1,6 @@
 /* lvoprobe -- test only (WBRESET-EXT step 1): SetFunction a counting pass-through stub on every intuition.library
  * vector (-30 downward, JMP entries only, LockIBase/UnlockIBase skipped), then on Ctrl-C restore them and print every
- * vector called at least once, plus whether the Amarchy.WBReset record exists. Shows which LVO IPrefs really calls. */
+ * vector called at least once, plus whether the Patina.WBReset record exists. Shows which LVO IPrefs really calls. */
 #include <stdio.h>
 #include <string.h>
 #include <exec/execbase.h>
@@ -31,7 +31,7 @@ int main(void)
     if (!stubs)
         return 20;
     Forbid();
-    jmp = FindSemaphore((STRPTR)"Amarchy.WBReset") != 0;
+    jmp = FindSemaphore((STRPTR)"Patina.WBReset") != 0;
     for (i = 5; i < n; i++) {
         unsigned char *e = (unsigned char *)ib - 6 * (i + 1), *s = stubs + 16 * i;
         ULONG c = (ULONG)&cnt[i], t;
@@ -49,7 +49,7 @@ int main(void)
         done[i] = 1;
     }
     Permit();
-    printf("lvoprobe: %d vectors patched, semaphore Amarchy.WBReset %s; Ctrl-C reports\n", n, jmp ? "PRESENT" : "ABSENT");
+    printf("lvoprobe: %d vectors patched, semaphore Patina.WBReset %s; Ctrl-C reports\n", n, jmp ? "PRESENT" : "ABSENT");
     fflush(stdout);
     for (i = 5; i < n; i++)
         if (skipped[i])

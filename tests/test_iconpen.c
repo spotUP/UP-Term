@@ -1,7 +1,7 @@
-/* Lucide icon pens, pure half (amarchy/iconpen_core.c, desk_pen_plan_for; plan 2026-10-31-amarchy-lucide-icons.md L5, L6, L7). */
+/* Lucide icon pens, pure half (patina/iconpen_core.c, desk_pen_plan_for; plan 2026-10-31-patina-lucide-icons.md L5, L6, L7). */
 #include <stdio.h>
 #include <string.h>
-#include "../amarchy/iconpen_core.h"
+#include "../patina/iconpen_core.h"
 #include "harness.h"
 
 static void theme(gtheme *t)
@@ -207,7 +207,7 @@ static void px_release(void *ctx, int pen)
     p->n++;
 }
 
-/* pens_sync of amarchy/flat.c: the same two decisions in the same order (the flat switch is not an input) */
+/* pens_sync of patina/flat.c: the same two decisions in the same order (the flat switch is not an input) */
 static void px_sync(ip_holder *h, const ip_ops *o, int quit, const void *scr, const uint8_t rgb[IP_PENS][3])
 {
     int act = ip_sync_decide(h, ip_hold_wanted(quit, 0, 1), scr, 8);
@@ -232,7 +232,7 @@ static void test_free_list_model(void)
     CHECK_INT(h.held, 16);
     for (k = 0; k < 2; k++) {                           /* flat off, on, off, on: the 1 s tick and Ctrl-D syncs */
         px_sync(&h, &o, 0, &scr, rgb);                  /* flat off */
-        dim = px_best(&p);                              /* dim_refresh and Amarchy's theme pens while off */
+        dim = px_best(&p);                              /* dim_refresh and Patina's theme pens while off */
         CHECK_INT(dim >= IP_FIRST && dim < IP_FIRST + IP_PENS, 0);
         for (i = 0; i < 3; i++) {
             int sh = px_best(&p);
@@ -246,9 +246,9 @@ static void test_free_list_model(void)
     CHECK_INT(px_take(&p, IP_FIRST + 15), IP_FIRST + 15);
 }
 
-/* F14 (H1) symptom: icons keep theme pens when flat stops. amarchy-icons APPLY takes a reference and exits; amarchy-flat takes
+/* F14 (H1) symptom: icons keep theme pens when flat stops. patina-icons APPLY takes a reference and exits; patina-flat takes
  * another while it runs; flat stopping (or the kill switch) must not release the pens while the icons are applied. Drives the
- * same decisions ipd_owner runs in amarchy/iconpen_dos.c (ip_shared_set -> ip_shared_hold -> ip_sync_decide -> obtain/release). */
+ * same decisions ipd_owner runs in patina/iconpen_dos.c (ip_shared_set -> ip_shared_hold -> ip_sync_decide -> obtain/release). */
 static void sh_sync(ip_shared *s, const ip_ops *o, const void *scr, const uint8_t rgb[IP_PENS][3])
 {
     int act = ip_sync_decide(&s->h, ip_shared_hold(s, 1), scr, 8);
@@ -279,7 +279,7 @@ static void test_icons_keep_pens_when_flat_stops(void)
     CHECK_INT(sh_owner(&s, &o, &scr, rgb, IP_OWNER_ICONS, 1), 1);       /* APPLY with flat OFF and not running */
     CHECK_INT(s.h.held, 16);
     CHECK_INT(sh_owner(&s, &o, &scr, rgb, IP_OWNER_ICONS, 1), 1);       /* a second APPLY counts once */
-    CHECK_INT(sh_owner(&s, &o, &scr, rgb, IP_OWNER_FLAT, 1), 2);        /* amarchy-flat starts */
+    CHECK_INT(sh_owner(&s, &o, &scr, rgb, IP_OWNER_FLAT, 1), 2);        /* patina-flat starts */
     CHECK_INT(s.h.held, 16);
     CHECK_INT(sh_owner(&s, &o, &scr, rgb, IP_OWNER_FLAT, 0), 1);        /* flat stops: the icons stay themed */
     CHECK_INT(s.h.held, 16);
@@ -299,8 +299,8 @@ static void test_icons_keep_pens_when_flat_stops(void)
 }
 
 /* ICONPEN-MAIN-BOOT symptom: flat OFF, icons applied, reboot. The holder record is RAM-only, so nobody holds pens 32-47 though the
- * Amarchy .info files name them. Amarchy main, started at boot, takes IP_OWNER_MAIN while the manifest exists (ip_main_step drives
- * it, as iconpens_follow in amarchy/amarchy.c does), re-takes after a Workbench reopen, drops on RESTORE and on exit. */
+ * Patina .info files name them. Patina main, started at boot, takes IP_OWNER_MAIN while the manifest exists (ip_main_step drives
+ * it, as iconpens_follow in patina/patina.c does), re-takes after a Workbench reopen, drops on RESTORE and on exit. */
 static void px_gone(void *ctx, int pen)   /* iconpen_dos pen_release with old = 0: the old screen is gone, its pens went with it */
 {
     (void)ctx; (void)pen;
@@ -356,7 +356,7 @@ static void test_main_takes_pens_at_boot(void)
 /* FLAT-PENS47-RESET (s28 evidence flat-pens47-hunt.md, rig 14, 3.2, depth 8): the Workbench reopen that desk_dos_apply runs
  * allocated the new Screen at the freed one's address. The holder keyed its screen on address + depth, so ip_sync_decide said
  * NONE: the 16 icon pens stayed missing on the new ColorMap ("pens-held 0 missing 32 .. 47") and pens 4-7 kept the graphics
- * defaults 0000ff ff00ff 00ffff ffffff. This drives ip_sync (the whole of amarchy/iconpen_dos.c pens_sync) against a model
+ * defaults 0000ff ff00ff 00ffff ffffff. This drives ip_sync (the whole of patina/iconpen_dos.c pens_sync) against a model
  * ColorMap whose allocation state is the truth, like graphics' PalExtra. */
 typedef struct rcm {
     int alloc[256];              /* 1 = allocated (by anyone) */
@@ -755,8 +755,8 @@ static void test_icon_colours_inverted_pens_are_vantablack(void)
     }
 }
 
-/* S57-FREEZE-2IN9: 2 boots in 9 froze. Amarchy asked for the Workbench lock while LoadWB was still opening the screen
- * (node listed, screen set, PSNF_PRIVATE); Intuition then reopens the Workbench under the list lock Amarchy holds. */
+/* S57-FREEZE-2IN9: 2 boots in 9 froze. Patina asked for the Workbench lock while LoadWB was still opening the screen
+ * (node listed, screen set, PSNF_PRIVATE); Intuition then reopens the Workbench under the list lock Patina holds. */
 static void test_workbench_still_opening_is_not_locked(void)
 {
     CHECK_INT(ip_pub_lockable(1, 1, IP_PSN_PRIVATE), 0);         /* the freeze: listed, has a screen, still private */
@@ -1574,7 +1574,7 @@ static void test_recheck_replans_held_slot(void)
     CHECK_INT(t.slot[1].sh.h.recheck, 0);
 }
 
-/* The DOS wiring (amarchy/iconpen_dos.c is Amiga-only): the source carries each call that makes the invariant true. */
+/* The DOS wiring (patina/iconpen_dos.c is Amiga-only): the source carries each call that makes the invariant true. */
 static const char *src_fn(const char *big, const char *head)
 {
     const char *p = strstr(big, head);
@@ -1586,7 +1586,7 @@ static void test_dos_wiring_source(void)
     static char big[131072];
     size_t n = 0;
     const char *ps, *pp, *sl;
-    FILE *f = fopen("amarchy/iconpen_dos.c", "rb");
+    FILE *f = fopen("patina/iconpen_dos.c", "rb");
     CHECK(f != 0);
     if (f) { n = fread(big, 1, sizeof big - 1, f); fclose(f); }
     big[n] = 0;
@@ -1623,11 +1623,11 @@ static void test_dos_wiring_source(void)
             CHECK(strstr(body, "applies=") != 0);
         } else CHECK(0);
     }
-    f = fopen("amarchy/iconpen_dos.h", "rb");
+    f = fopen("patina/iconpen_dos.h", "rb");
     CHECK(f != 0);
     if (f) {
         n = fread(big, 1, sizeof big - 1, f); fclose(f); big[n] = 0;
-        CHECK(strstr(big, "#define IPD_SEM_NAME \"Amarchy.IconPens.6\"") != 0);
+        CHECK(strstr(big, "#define IPD_SEM_NAME \"Patina.IconPens.6\"") != 0);
         CHECK(strstr(big, "unsigned long screen_applies;") != 0);
         CHECK(strstr(big, "int ipd_screen_roles(const void *scr, ipd_roles *out);") != 0);
     }

@@ -53,4 +53,4 @@ See the final lines appended below.
 [OK] gthemes: 1289 checks, 0 failed
 ```
 
-m68k builds (vbcc, -warn): amarchy-flat, Amarchy, amarchy-menu, amarchy-gui all link clean.
+m68k builds (vbcc, -warn): patina-flat, Patina, patina-menu, patina-gui all link clean.

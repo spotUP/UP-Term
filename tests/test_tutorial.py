@@ -134,7 +134,7 @@ class Tutorial(unittest.TestCase):
             rc, out = self.run_tutorial(shell, [])
             self.assertIn('  [ ] 12  The UP-Term window', out)
             self.assertIn('  [ ] 13  Split panes with tmux', out)
-            self.assertIn('  [ ] 14  Amarchy: Super-key shortcuts', out)
+            self.assertIn('  [ ] 14  Patina: Super-key shortcuts', out)
             self.assertEqual(out.count('  [ ] '), 14, out)
         self.each_shell(case)
 

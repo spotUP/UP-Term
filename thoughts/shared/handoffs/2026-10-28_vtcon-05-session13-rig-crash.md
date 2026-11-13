@@ -55,7 +55,7 @@ Open, in order:
 1. RIG9-INSTALLER-CRASH hunt 7: name the reset caller. Hunt 6 ruled out Files/Reboot as trigger; likely the garbage bsdsocket base call from hunt 4. Plan and traps in the ledger row "hunt 6" and thoughts/spot/term-findings/rig9-installer-loop.md "## hunt 6 reset caller".
 2. Small poll follow-ups: comment in ixemul-vtcon compat/poll.c, check that fails when a `-lamisslstubs` port has HAVE_POLL.
 3. git README note: needs a long-filename volume (new tools/pkg_rows_prose/git.json).
-4. ports main git recipe lacks git_SUMMARY (tests.test_dist_ipk errors). The Amarchy session (vtcon-32) may hit it; it said it will ask before anyone edits ports.
+4. ports main git recipe lacks git_SUMMARY (tests.test_dist_ipk errors). The Patina session (vtcon-32) may hit it; it said it will ask before anyone edits ports.
 5. Other candidates: curl rig check cases, upkg two-directory install rig proof, RIG-KIT-DERIVE, RIG-RECHECK-STALE, INSTALLER-CLICK-SPEED step 3, AmiNetXDuo case B.
 
 Coordination: vtcon-32 is preparing the UHC demo video from main on rig 7 and will ping when main is pushed. Our rigs: 9, 10, 11. All stopped.

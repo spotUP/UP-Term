@@ -8,7 +8,7 @@ status: cause NOT proven; frozen boot was destroyed before it could be probed
 
 ## Timeline (host files)
 
-- 23:56 installer_rig `reboot_amarchy_check` (tools/rig/installer_rig.py:1077) answered the reboot page Later,
+- 23:56 installer_rig `reboot_patina_check` (tools/rig/installer_rig.py:1077) answered the reboot page Later,
   slept 10 s, ran `rig.py reboot` = `stop()` + `start --keep-sys` (tools/rig/rig.py:1821). New fs-uae pid 46817
   started 23:57. installer_rig then wrote no verdict (fresh-all.json is still the 23:30 run).
 - 23:57 boot: build/rig96/serial.log ends at the vsh banner + `Empty-12MB-FFS: %` prompt, i.e. the installed
@@ -20,15 +20,15 @@ status: cause NOT proven; frozen boot was destroyed before it could be probed
 - 00:05 `ami.py ping` (port 1329): TCP connect timeout (not refused: listener present, Amiga not accepting,
   consistent with a hung Amiga side). fs-uae 60-85 % CPU.
 - 00:05:46 the coordinator's own shell ran `UPTERM_RIG=96 rig.py stop --keep` + `rig.py start --max --os 32
-  --keep-sys --purpose "Amarchy session: rig 96 owner eye-check full install"`. pid 46817 gone, new pid 85957
+  --keep-sys --purpose "Patina session: rig 96 owner eye-check full install"`. pid 46817 gone, new pid 85957
   at 00:06. This destroyed the frozen state before this hunt could probe it (no ps / guru / muforce of it).
 
 ## The 00:06 boot (same reboot procedure) is healthy
 
 - boot/boot.log complete: go started ... early UP-Term shadows done ... assigns done ... wasabid started.
-- `wasabi ps` on 1329 answers: 38 tasks, Amarchy, amarchy-gui, amarchy-menu, upgetty, SolidWin, Workbench all
-  `wait`; stack headroom fine everywhere (Amarchy 16384/16154 free, menu 262144/261386).
-- Screenshot ~/Desktop/upterm-shots/rig96-freeze-0010.png (00:08): Workbench + Amarchy "Welcome to Amarchy"
+- `wasabi ps` on 1329 answers: 38 tasks, Patina, patina-gui, patina-menu, upgetty, SolidWin, Workbench all
+  `wait`; stack headroom fine everywhere (Patina 16384/16154 free, menu 262144/261386).
+- Screenshot ~/Desktop/upterm-shots/rig96-freeze-0010.png (00:08): Workbench + Patina "Welcome to Patina"
   window, bar clock "Tue 00:08" = host time 00:08:20, bar CPU 13 %. Not frozen.
 
 So the hang is intermittent: the same stop + start --keep-sys gave one hung and one good boot.
@@ -50,5 +50,5 @@ So the hang is intermittent: the same stop + start --keep-sys gave one hung and 
   `nc -vz 127.0.0.1 1329`, host-side screenshot, `ls -la build/rig96/boot/`, `tail serial.log`; if the
   serial getty is up, the Amiga is partly alive. Then `rig.py start --max --mmu` + `muforce on` for a trap.
 - Suspect order: (a) the kit C:wasabid racing BOOTX:wasabid / bsdsocket at boot (both start within the same
-  second; port 1234 clash when rig 1 holds it), (b) BOOTX: handler hang (no boot.log at all), (c) Amarchy
+  second; port 1234 clash when rig 1 holds it), (b) BOOTX: handler hang (no boot.log at all), (c) Patina
   start with all feature keys on. Stack ruled out for the live boot only.

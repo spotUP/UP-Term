@@ -1,4 +1,4 @@
-/* install/hardvol.h: is a volume on a disk of this machine. Shared by amarchy-index (which volumes to scan)
+/* install/hardvol.h: is a volume on a disk of this machine. Shared by patina-index (which volumes to scan)
  * and UPBigVol (where the Install offers the drawer). */
 #ifndef HARDVOL_H
 #define HARDVOL_H

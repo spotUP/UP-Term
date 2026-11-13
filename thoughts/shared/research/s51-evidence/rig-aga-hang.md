@@ -7,7 +7,7 @@ status: fixed in branch s51-aga-hang, commit ee2b2700 (not merged)
 # rig.py aga: wasabid stops answering after the AGA reboot
 
 ## Symptom
-On the default master-sys.hdf rig (kit + Amarchy + DOpus), `rig.py aga` failed: its inner `rig.py start`
+On the default master-sys.hdf rig (kit + Patina + DOpus), `rig.py aga` failed: its inner `rig.py start`
 raised CalledProcessError. serial.log reached the vsh `BOOTX:` prompt (from `C:upgetty LOOP`), fs-uae
 listened on 1313, a host TCP connect succeeded at once but recv timed out: wasabid accepted and never answered.
 Every earlier AGA success (s28 flat pens, s31 aspect borders) ran on `--os 32` rigs; kitty-te.md had the same

@@ -6,8 +6,8 @@ up to "Modify Startup-Sequence File" 88%). Probe: throwaway C `winprobe` (scratc
 Pixel values below are host `ami.grab` RGB (truth of the display) unless "pen".
 
 ## Setup finding that matters
-On a fresh boot of this rig `amarchy-flat STATUS` = `flat=absent` (Amarchy runs, bar shows, flat is not started until a prefs apply
-starts it: amarchy/desk_dos.c:580 pl_start only when prefs flat/gad is on). Measured BOTH states.
+On a fresh boot of this rig `patina-flat STATUS` = `flat=absent` (Patina runs, bar shows, flat is not started until a prefs apply
+starts it: patina/desk_dos.c:580 pl_start only when prefs flat/gad is on). Measured BOTH states.
 
 ## Check 1: window geometry and edge pixels
 Installer main window: Flags 0x08023006 (active) / 0x08021006 (inactive), L152 T195 W496 H210, BorderLeft4 Top14 Right4 Bottom2,
@@ -23,7 +23,7 @@ B) flat=on before the window opened (second run, all 6 pages, H stays 210):
 The 000000 below the window is the Workbench desktop window / unallocated colour (ReadPixel gives pen 0x10 there, outside the 4-bitplane
 range), NOT 0E0E14 and not outside the display: the window ends inside the 600 px screen.
 
-## Check 2: amarchy-flat STATUS
+## Check 2: patina-flat STATUS
 Fresh flat start: `rectfill calls=64 hits=0 shits=0`, `frame=hooked calls=0 flat=0`.
 Installer open (page 1 welcome): rectfill hits=14, frame calls=4 flat=1.
 Per page (rig run B): page1 rhits 55 shits 36 frame 56/14 -> page 6 (88%) rhits 55 shits 72 frame 292/73.
@@ -48,7 +48,7 @@ Caveat: contrast against the black desktop is fine, against the body 1a1b26 low 
 ## Root-cause hypotheses
 - Bottom row / window cut off: reproduced only with flat=absent at window-open time (A). Stock bottom border pen is SHADOW = BACKGROUND =
   pen 0, so with no ring patch the last row is body colour and the 000000 desktop shows right below: looks "written over by bg".
-  The ring is drawn solely by the RectFill patch (amarchy/flat.c:1229-1250, strips flat_glyph.c:525-531 outer_strip, flat_outer_edge_fill
+  The ring is drawn solely by the RectFill patch (patina/flat.c:1229-1250, strips flat_glyph.c:525-531 outer_strip, flat_outer_edge_fill
   flat_glyph.c:573). A window whose frame was painted while flat was absent/late (or a frame paint that bypasses the ROM-caller gate,
   flat.c:1229) keeps the stock look until RefreshWindowFrame. Owner's rig 94 is therefore most likely "flat started after the Installer
   window opened or not at all" (UNVERIFIED on 94: not touched). Owner's 418-px window height was not reproduced (210 here): second variable.
@@ -61,7 +61,7 @@ Caveat: contrast against the black desktop is fine, against the body 1a1b26 low 
   "flat not running" root as the others, but a separate low-contrast issue remains if the owner means contrast.
 
 ## Single root candidate for the owner's symptoms
-amarchy-flat not running (or started after the Installer window opened) on the owner's rig 94: all three symptoms follow from
-SHINE=SHADOW=BACKGROUND with no patch active. Next check (needs rig 94 owner): `amarchy-flat STATUS` on 94 at the failing moment.
+patina-flat not running (or started after the Installer window opened) on the owner's rig 94: all three symptoms follow from
+SHINE=SHADOW=BACKGROUND with no patch active. Next check (needs rig 94 owner): `patina-flat STATUS` on 94 at the failing moment.
 
 State: rig 93 stopped, build/rig93 removed, scratchpad files (winprobe, drv.py) small.

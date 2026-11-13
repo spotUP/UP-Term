@@ -1,9 +1,9 @@
-/* RL20 rich Amarchy UI box corners (amarchy/richaa_core.c): reachability through rich_corners, the mix per pixel, the
- * depth and size fallbacks. The glue (amarchy/gui.c fill_round) hands rich_corners the same put callback shape. */
+/* RL20 rich Patina UI box corners (patina/richaa_core.c): reachability through rich_corners, the mix per pixel, the
+ * depth and size fallbacks. The glue (patina/gui.c fill_round) hands rich_corners the same put callback shape. */
 #include <stdio.h>
 #include <string.h>
 #include "harness.h"
-#include "../amarchy/richaa_core.h"
+#include "../patina/richaa_core.h"
 
 typedef struct fb {
     unsigned long px[32 * 32];

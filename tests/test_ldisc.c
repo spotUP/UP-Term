@@ -127,7 +127,7 @@ static void signals(void)
 
 /* A closed window (close gadget, CLOSEINACTIVE) hangs the terminal up: an
  * ixemul program blocked in read() or select() in termios mode must see end
- * of file, or it never leaves (the Amarchy menu stayed open on focus loss). */
+ * of file, or it never leaves (the Patina menu stayed open on focus loss). */
 static void hangup_reads_find_the_end(void)
 {
     vt_termios t;

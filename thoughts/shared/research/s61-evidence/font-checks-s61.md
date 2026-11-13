@@ -1,4 +1,4 @@
-# Font fallback rig proof (s61), origin/main e10a39e2 (contains 52d2fc3a), rig 163, os32, 060, --mmu (JIT off), no Amarchy
+# Font fallback rig proof (s61), origin/main e10a39e2 (contains 52d2fc3a), rig 163, os32, 060, --mmu (JIT off), no Patina
 Method: vsh script in an XCON: window samples `VTC:ixwinch 1` (cols x rows, TIOCGWINSZ) into RAM:<w>.<n> every 25 s; host edits ENV:up-term/{up-term,theme-active} between samples (watcher live path). Window 640x200. No dialog or requester appeared (`ami.py requesters` empty after each window).
 Note: a window spec with spaces needs quotes in Run: `<>"XCON:0/30/640/200/t/FONT topaz 8"`, else AmigaDOS drops the FONT args (first B/C/E run all gave 77x17).
 1. Theme font live, then removed: baseline 77x23 (topaz 8); theme-active `font = topaz.font:11` -> 77x17; theme-active rewritten without font line -> 77x23. PASS.

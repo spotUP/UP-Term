@@ -18,4 +18,4 @@ Red (old matcher + counter, final test code): `FAIL tests/test_gthemes.c:731: w 
 -> `[FAIL] gthemes: 6379 checks, 1 failed` (differential check passed: no behaviour difference).
 Green: `RUNTEST gthemes rc=0 [OK] gthemes: 6383 checks, 0 failed` (baseline 6375).
 Second revert-and-rerun not done (budget); the red run above used the identical final test file.
-m68k: `make build/amiga/{Amarchy,amarchy-gui,amarchy-menu,amarchy-index,amarchy-icons,amarchy-flat,upprefs}` rc=0.
+m68k: `make build/amiga/{Patina,patina-gui,patina-menu,patina-index,patina-icons,patina-flat,upprefs}` rc=0.

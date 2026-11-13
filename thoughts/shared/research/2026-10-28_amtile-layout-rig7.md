@@ -1,10 +1,10 @@
 # AmTile layouts on rig 7 (Phase 6), 2026-10-28
 
-Rig 7: `UPTERM_RIG=7 rig.py start --max --purpose "Amarchy s20: AmTile layouts"`; no [WARN] drift line. `make wasabi` (562672a8), AmTile and Amarchy
-already current. The start refreshed AmTile (64332), Amarchy (164540) and the keymap (20780) onto the rig itself, so `rig.py install`
-(which copies the handler) was not run. md5 on the rig vs build: AmTile 7c0346e935d3aee95833f6bd535ecb43 = build; Amarchy
+Rig 7: `UPTERM_RIG=7 rig.py start --max --purpose "Patina s20: AmTile layouts"`; no [WARN] drift line. `make wasabi` (562672a8), AmTile and Patina
+already current. The start refreshed AmTile (64332), Patina (164540) and the keymap (20780) onto the rig itself, so `rig.py install`
+(which copies the handler) was not run. md5 on the rig vs build: AmTile 7c0346e935d3aee95833f6bd535ecb43 = build; Patina
 90600edf08ee93798e0f7f2497489448 = build.
-Command: `UPTERM_RIG=7 python3 tools/rig/amarchy_tile_rig.py --screen 800x600 --title 14` (all 29 STEPS).
+Command: `UPTERM_RIG=7 python3 tools/rig/patina_tile_rig.py --screen 800x600 --title 14` (all 29 STEPS).
 
 ## Run A: full run in one go, 17 of 29 OK
 OK: start, row_on (RUN 15), boxes2, second_on, env_on, third, close_one, midapply, layout_default, layout_row (RUN 16, dwindle -> master-stack,
@@ -37,7 +37,7 @@ Needs: a front-window probe that reads Intuition layer order, or a visual check 
 Result: full run 17 of 29; best per step across both runs 27 of 29 (cycle, monocle_raise open).
 
 ## Run 2 (rig 7, rig script fixed): full run 29 of 29 OK
-Command: `UPTERM_RIG=7 python3 tools/rig/amarchy_tile_rig.py --screen 800x600 --title 14 --no-build`; 0 steps failed (all of start .. restart PASS).
+Command: `UPTERM_RIG=7 python3 tools/rig/patina_tile_rig.py --screen 800x600 --title 14 --no-build`; 0 steps failed (all of start .. restart PASS).
 Intermediate full runs: first fix 19/29 (layout_hotkey..nmaster still failed), after open_win + prefs fix 28/29 (promote), final 29/29.
 
 Defect A, causes found (all in the script, no product change):

@@ -66,13 +66,13 @@
 #include "prefs_core.h"
 #include "prefs_ui.h"
 #include "settings_def.h"
-#include "../amarchy/flat_shared.h"
+#include "../patina/flat_shared.h"
 #include "prefs_asl.h"
-#include "../amarchy/gthemes_scan_dos.h"
+#include "../patina/gthemes_scan_dos.h"
 #include "../tty/qmark.h"
 #include "prefs_dos.h"
 #include "prefs_merge.h"
-#include "../amarchy/amconf_dos.h"
+#include "../patina/amconf_dos.h"
 
 /* vbcc's startup runs main on a stack of this size whatever the starter gives
  * it; the cookie says the same to AmigaOS 3.2 and to vsh (RULES.md rule 6). */
@@ -103,7 +103,7 @@ struct Library *UtilityBase;
 /* a swatch's line of text is the larger of these, a name the longest */
 #define PROFNAME_CAP UC_NAME
 
-#define NNOTIFY 4 /* the profile file and Amarchy's file, in ENV: and ENVARC: */
+#define NNOTIFY 4 /* the profile file and Patina's file, in ENV: and ENVARC: */
 
 struct app {
     struct Window *win;
@@ -129,10 +129,10 @@ struct app {
     int tab_dirty;            /* the table changed (rename, delete) and is not saved */
     STRPTR plab[UC_MAX_PROFILES + 2]; /* the Profile gadget's labels */
     prefs_fields f;           /* what the gadgets show */
-    am_prefs am;              /* Amarchy's own file (the one store of the Amarchy page), as loaded or last written */
+    am_prefs am;              /* Patina's own file (the one store of the Patina page), as loaded or last written */
     int am_src;               /* the AMCONF_* source it came from */
     prefs_fields orig;        /* what the profile held when it was loaded or last written */
-    struct MsgPort *nport;    /* the files' change notices (the Amarchy menu writes them while Prefs is open) */
+    struct MsgPort *nport;    /* the files' change notices (the Patina menu writes them while Prefs is open) */
     struct NotifyRequest nreq[NNOTIFY];
     int non[NNOTIFY];         /* StartNotify took nreq[i] */
     prefs_kc kc;              /* KingCON's style, decoded from f.kcmode */
@@ -150,7 +150,7 @@ struct app {
 static struct TextAttr topaz8 = { (STRPTR)"topaz.font", 8, FS_NORMAL, FPF_ROMFONT };
 
 static STRPTR page_labels[] = { (STRPTR)"General", (STRPTR)"Colors", (STRPTR)"Palette",
-                                (STRPTR)"Keyboard", (STRPTR)"Advanced", (STRPTR)"Amarchy", (STRPTR)"Flat Look", 0 };
+                                (STRPTR)"Keyboard", (STRPTR)"Advanced", (STRPTR)"Patina", (STRPTR)"Flat Look", 0 };
 /* A taglist from (tag, data) pairs, ended by TAG_DONE: t has room for them.
  * (A compound literal: vbcc warns about va_start, and the values are not
  * constants.) */
@@ -430,7 +430,7 @@ static void mode_text(struct app *a, char *out, int cap)
         strcpy(out + j, ", default depth");
 }
 
-/* The text amarchy-flat reports (the STATUS path: flat_status_text over the state block of the "Amarchy.Flat"
+/* The text patina-flat reports (the STATUS path: flat_status_text over the state block of the "Patina.Flat"
  * semaphore): on, off, absent, or "held by <patch>" naming the kill switch (FLAT-C4). */
 static const char *flat_prefs_status(void)
 {
@@ -786,7 +786,7 @@ static void load_profile(struct app *a, const char *name)
         prefs_defaults(&a->f);
         a->prof_new = 1;
     }
-    amconf_to_fields(&a->am, &a->f); /* the Amarchy page is the same in every profile */
+    amconf_to_fields(&a->am, &a->f); /* the Patina page is the same in every profile */
     a->orig = a->f;
     sb_load(a);
     a->colors = prefs_colors_index(a->f.colors);
@@ -803,7 +803,7 @@ static void notify_start(struct app *a)
     if (!a->nport)
         return;
     for (i = 0; i < NNOTIFY; i++) {
-        a->nreq[i].nr_Name = (STRPTR)(i < 2 ? prefs_paths_upterm.path[i] : prefs_paths_amarchy.path[i - 2]);
+        a->nreq[i].nr_Name = (STRPTR)(i < 2 ? prefs_paths_upterm.path[i] : prefs_paths_patina.path[i - 2]);
         a->nreq[i].nr_Flags = NRF_SEND_MESSAGE;
         a->nreq[i].nr_stuff.nr_Msg.nr_Port = a->nport;
         a->non[i] = StartNotify(&a->nreq[i]) ? 1 : 0;
@@ -946,17 +946,17 @@ static int commit(struct app *a, int keep)
         set_status(a, msg);
         return 0;
     }
-    /* Amarchy's file first: the profile's save below drops the Amarchy keys an older version left in it, so
+    /* Patina's file first: the profile's save below drops the Patina keys an older version left in it, so
      * the values must already be in their one store. Written when the page changed, or when they were only
      * read from that old copy. */
     r = amconf_save_fields(&a->am, &a->am_src, &a->f, keep, &t);
     if (r == PREFS_SAVE_NODIR) {
-        puts_(msg, puts_(msg, 0, "Cannot create ", -1), prefs_paths_amarchy.dir[t], -1);
+        puts_(msg, puts_(msg, 0, "Cannot create ", -1), prefs_paths_patina.dir[t], -1);
         set_status(a, msg);
         return 0;
     }
     if (r != PREFS_INSTALL_OK) {
-        puts_(msg, 0, "Amarchy preferences could not be written.", -1);
+        puts_(msg, 0, "Patina preferences could not be written.", -1);
         set_status(a, msg);
         return 0;
     }
@@ -1608,7 +1608,7 @@ static void pick_menu_font(struct app *a)
     long size = 0, isize = 0;
     iname[0] = 0;
     prefs_font_parse(a->f.am_font, iname, sizeof(iname), &isize);
-    if (!asl_pick_font(0, a->win, "Amarchy menu font", iname, isize, 0, name, sizeof(name), &size))
+    if (!asl_pick_font(0, a->win, "Patina menu font", iname, isize, 0, name, sizeof(name), &size))
         return;
     if (!prefs_font_compose(name, size, spec, sizeof(spec))) {
         set_status(a, "The font's name has a colon: not usable.");
@@ -1992,9 +1992,9 @@ int main(void)
     ULONG sig, nsig;
     int done = 0, rc = 1, i;
 
-    /* `UP-Term Prefs ?` shows the usage and ends; the one argument is the keyword AMARCHY */
+    /* `UP-Term Prefs ?` shows the usage and ends; the one argument is the keyword PATINA */
     if (qmark_line((const char *)GetArgStr())) {
-        PutStr((STRPTR)"UP-Term Prefs [AMARCHY]: opens the preferences window; AMARCHY opens it on the Amarchy page\n");
+        PutStr((STRPTR)"UP-Term Prefs [PATINA]: opens the preferences window; PATINA opens it on the Patina page\n");
         return RETURN_OK;
     }
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39L);

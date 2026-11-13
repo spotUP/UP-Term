@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """B7, the one reachability test of tools/gen_dopus_toolbar.py: the generator's own command line (what `make
 dopus-toolbar` runs) turns the md5-checked upstream Buttons/Toolbar of DOpus5_104_os3.lha and dist/dopus-toolbar.txt
-into Images/<name> and Buttons/Amarchy-toolbar. Asserts: every image path the bank names exists in the drawer, each
+into Images/<name> and Buttons/Patina-toolbar. Asserts: every image path the bank names exists in the drawer, each
 image decodes as ILBM at the measured upstream size (its set's size) with depth 3 and has glyph pixels (the sentinel: the
 generator ran), the Borderless flag is set, and the bank differs from upstream only in the image paths and that flag.
 DT-1: size sets 16, 24, 32 x square and tall pixel, depth 3, one bank per set.
@@ -11,7 +11,7 @@ DT-8: glyphs come from the Lucide SVG source on the pixel grid (tools/svg_raster
 a straight horizontal or vertical stroke is full level only, its round caps aside.
 DT-9: two families, "outline-<size>" from Lucide and "filled-<size>" from Phosphor Fill (the default), twelve sets and
 banks; the filled share measured 2026-11-08: 16 0.10, 16t 0.15, 24 0.08, 24t 0.12, 32 0.07, 32t 0.09. The default bank
-checked byte for byte against upstream is DOPUS_TOOLBAR_SET (amarchy/menu_theme.h), filled-24.
+checked byte for byte against upstream is DOPUS_TOOLBAR_SET (patina/menu_theme.h), filled-24.
 Run: python3 -I tests/test_dopus_toolbar.py   (skips when the vendored archive, build/lucide or build/phosphor is absent)"""
 import hashlib, pathlib, re, struct, subprocess, sys, tempfile, unittest
 
@@ -28,7 +28,7 @@ TABLE = ROOT / 'dist' / 'dopus-toolbar.txt'
 HAND = ROOT / 'dist' / 'dopus-toolbar-hand'
 CEILING = {'outline-16': 0.40, 'outline-16t': 0.40, 'outline-24': 0.25, 'outline-24t': 0.36, 'outline-32': 0.25, 'outline-32t': 0.36,
            'filled-16': 0.15, 'filled-16t': 0.20, 'filled-24': 0.12, 'filled-24t': 0.17, 'filled-32': 0.12, 'filled-32t': 0.14}
-DEFAULT = re.search(r'#define DOPUS_TOOLBAR_SET "([^"]+)"', (ROOT / 'amarchy' / 'menu_theme.h').read_text()).group(1)
+DEFAULT = re.search(r'#define DOPUS_TOOLBAR_SET "([^"]+)"', (ROOT / 'patina' / 'menu_theme.h').read_text()).group(1)
 FLAGS_OFF = 12 + 8 + 128   # FORM header, BTNW chunk header, CFG_BTNW flags (dopus5.h)
 
 
@@ -67,7 +67,7 @@ class DopusToolbar(unittest.TestCase):
                     self.assertEqual(ilbm_decode.decode((t / 'out' / 'Images' / hs / f.name).read_bytes())[5],
                                      ilbm_decode.decode(f.read_bytes())[5], f)
             self.assertEqual(DEFAULT, 'filled-24')
-            bank = (t / 'out' / 'Buttons' / ('Amarchy-toolbar-' + DEFAULT)).read_bytes()
+            bank = (t / 'out' / 'Buttons' / ('Patina-toolbar-' + DEFAULT)).read_bytes()
             drawer = t / 'out' / 'Images' / DEFAULT
 
             # every image the bank names exists, decodes at the upstream size and carries glyph pixels
@@ -77,7 +77,7 @@ class DopusToolbar(unittest.TestCase):
                     paths_in_bank |= set(re.findall(rb'dopus5:images/[^\0]+', data, re.I))
             self.assertEqual(len(paths_in_bank), 22)
             for p in paths_in_bank:
-                self.assertTrue(p.lower().startswith(('dopus5:images/amarchy/%s/' % DEFAULT).encode()), p)
+                self.assertTrue(p.lower().startswith(('dopus5:images/patina/%s/' % DEFAULT).encode()), p)
                 f = drawer / p.decode().split('/')[-1]
                 self.assertTrue(f.exists(), f)
                 w, h, depth, _, cmap, rows = ilbm_decode.decode(f.read_bytes())
@@ -93,10 +93,10 @@ class DopusToolbar(unittest.TestCase):
             want = [(f + '-' + s, w, h) for f in ('outline', 'filled')
                     for s, w, h in [('16', 16, 16), ('16t', 16, 8), ('24', 24, 24), ('24t', 24, 12), ('32', 32, 32), ('32t', 32, 16)]]
             self.assertEqual(sorted(p.name for p in (t / 'out' / 'Images').iterdir()), sorted(n for n, _, _ in want))
-            self.assertEqual(sorted(p.name for p in (t / 'out' / 'Buttons').iterdir()), sorted('Amarchy-toolbar-' + n for n, _, _ in want))
+            self.assertEqual(sorted(p.name for p in (t / 'out' / 'Buttons').iterdir()), sorted('Patina-toolbar-' + n for n, _, _ in want))
             for name, w, h in want:
-                b = (t / 'out' / 'Buttons' / ('Amarchy-toolbar-' + name)).read_bytes()
-                self.assertIn(('dopus5:images/Amarchy/%s/' % name).encode(), b)
+                b = (t / 'out' / 'Buttons' / ('Patina-toolbar-' + name)).read_bytes()
+                self.assertIn(('dopus5:images/Patina/%s/' % name).encode(), b)
                 w2, h2, d2, _, _, rows2 = ilbm_decode.decode((t / 'out' / 'Images' / name / 'Directory').read_bytes() if (t / 'out' / 'Images' / name / 'Directory').exists() else next((t / 'out' / 'Images' / name).iterdir()).read_bytes())
                 self.assertEqual((w2, h2, d2), (w, h, 3), name)
                 self.assertTrue(any(v for r in rows2 for v in r), name)
@@ -121,7 +121,7 @@ class DopusToolbar(unittest.TestCase):
             for (tag, ud), (_, bd) in zip(uc, bc):
                 if tag == b'BTNW':
                     ud = ud[:128] + struct.pack('>L', struct.unpack('>L', ud[128:132])[0] | 0x10) + ud[132:]
-                self.assertEqual(bd.replace(('dopus5:images/Amarchy/%s/' % DEFAULT).encode(), b'dopus5:images/'), ud)
+                self.assertEqual(bd.replace(('dopus5:images/Patina/%s/' % DEFAULT).encode(), b'dopus5:images/'), ud)
 
 
 class HandBrushes(unittest.TestCase):
@@ -210,14 +210,14 @@ class FilledStemsKeepAspect(unittest.TestCase):
 
 class InstallScript(unittest.TestCase):
     """dist/addons/dopus/install.dos carries one installer body: one CHECKFRAG include, one Lab dopus, and the old bank
-    names (Amarchy-toolbar with no set, and the DT-1 sets 16 ... 32t with no family) only in Deletes of the old banks."""
+    names (Patina-toolbar with no set, and the DT-1 sets 16 ... 32t with no family) only in Deletes of the old banks."""
     def test_body_once_and_old_bank_only_deleted(self):
         t = (ROOT / 'dist' / 'addons' / 'dopus' / 'install.dos').read_text()
         self.assertEqual(t.count('@include dist/common/@CHECKFRAG@'), 1)
         self.assertEqual(t.count('Lab dopus'), 1)
         self.assertEqual(t.count('record.dos'), 1)
         for line in t.splitlines():
-            if re.search(r'Amarchy-toolbar(-\d+t?)?(?![-\w])|Amarchy/\d+t?(?![-\w])', line) and not line.lstrip().startswith(';'):
+            if re.search(r'Patina-toolbar(-\d+t?)?(?![-\w])|Patina/\d+t?(?![-\w])', line) and not line.lstrip().startswith(';'):
                 self.assertIn('Delete', line, line)
 
 

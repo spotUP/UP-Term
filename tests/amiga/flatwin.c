@@ -1,13 +1,13 @@
-/* flatwin -- FLAT-C1 rig helper (tools/rig/amarchy_flat_rig.py): windows whose close / depth / size / zoom gadgets are
+/* flatwin -- FLAT-C1 rig helper (tools/rig/patina_flat_rig.py): windows whose close / depth / size / zoom gadgets are
  * sysiclass images, opened and closed in a loop, and a hash of their frame pixels.
  *   flatwin N   open and close N windows on the Workbench screen (each one draws its system gadgets through sysiclass)
  *               and print "flatwin cycles=N hash=<hex>": FNV-1a over every pixel of the first window's title bar and
  *               bottom border (ReadPixel). The windows are opened inactive at a fixed place, so the hash depends only
- *               on what sysiclass drew: the same with and without amarchy-flat's pass-through.
+ *               on what sysiclass drew: the same with and without patina-flat's pass-through.
  * FLAT-C2 additions (the rig's c2 step):
  *   flatwin N SET <enabled> <reserved, was style> <pen_text> <pen_line> <pen_back> [pen_outline]
- *               write the switch and glyph pens into the running amarchy-flat's state block first (what
- *               Amarchy does); a close/depth/zoom/size window is then opened, hashed, RefreshWindowFrame'd, hashed.
+ *               write the switch and glyph pens into the running patina-flat's state block first (what
+ *               Patina does); a close/depth/zoom/size window is then opened, hashed, RefreshWindowFrame'd, hashed.
  *   Every run prints, per system gadget, "gad <name> w=<which> open=<hash> refresh=<hash>": FNV-1a over the pixels
  *   of that gadget's box after the open and after RefreshWindowFrame; <which> is GetAttr(SYSIA_Which) on the
  *   gadget's image (-1 when GetAttr answers 0). */
@@ -26,7 +26,7 @@
 #include <intuition/classes.h>
 #include <intuition/gadgetclass.h>
 #include <exec/semaphores.h>
-#include "../../amarchy/flat_core.h"
+#include "../../patina/flat_core.h"
 
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
@@ -179,7 +179,7 @@ int main(int argc, char **argv)
         }
         Permit();
         if (!r) {
-            printf("flatwin: no Amarchy.Flat record\n");
+            printf("flatwin: no Patina.Flat record\n");
             return 5;
         }
     }

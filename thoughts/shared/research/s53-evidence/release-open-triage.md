@@ -1,12 +1,12 @@
 # Release open-row triage (ledger thoughts/spot/todos.md lines 3737-4010 + 1088), 2026-11-03
 
 Method: ID grep through the ledger for later [x]/DONE lines, git log --all --grep=ID, merge-base --is-ancestor against main (tip b873cf84). Nothing edited, no rig.
-Owner: ee = vtcon-ee (UP-Term/vtcon side), 16 = vtcon-16 (Amarchy).
+Owner: ee = vtcon-ee (UP-Term/vtcon side), 16 = vtcon-16 (Patina).
 
 | line | ID | verdict | evidence | owner |
 |---|---|---|---|---|
 | 1088 | RELEASE-1.0 | OPEN | umbrella; R10/R11 below still open, no release tag besides nas-v1 | ee |
-| 3738 | KIT-AMARCHY-ALL | OPEN | gate: depends on RL8/RL17/RL19-21 and a final AMARCHY READY/VTCON READY cut | 16 |
+| 3738 | KIT-PATINA-ALL | OPEN | gate: depends on RL8/RL17/RL19-21 and a final PATINA READY/VTCON READY cut | 16 |
 | 3741 | KITTY-TRUECOLOR | DONE | K37 a14fe089, K38 ceacf685, K39 eaa21b90, K41 merged 1ed14b5f/cbd9e471, ledger 3900 "K41 DONE" | ee |
 | 3743 | IXEMUL-EXECVE-SHARED-FH | OPEN | row says not a blocker unless screen ships; no commit | ee |
 | 3744 | TMUX-NCURSES-PATH | OPEN | Makefile path in tmux-amiga repo, no commit/ledger close | ee |
@@ -26,7 +26,7 @@ Owner: ee = vtcon-ee (UP-Term/vtcon side), 16 = vtcon-16 (Amarchy).
 | 3792 | RL11 AM-ICONS-DISK-ALL | OPEN | 397a811a partial measurement; fe2405a7 network volumes icon; no close | 16 |
 | 3802 | RL12 ICONLIB-PETERK | OPEN | code on main (d0651c1a, d340e8cb); only rig proof on RL18 left | 16 |
 | 3805 | RL15 IPREFS-SYSREQ | DONE | b20f7072 in main, pushed in fe7bdb7c (ledger 3816) | 16 |
-| 3809 | RL16 AMARCHY-WELCOME | UNCLEAR | phases 1-3 in main (fe7bdb7c); row still [~], no line saying remaining phases done | 16 |
+| 3809 | RL16 PATINA-WELCOME | UNCLEAR | phases 1-3 in main (fe7bdb7c); row still [~], no line saying remaining phases done | 16 |
 | 3812 | RL17 INSTALLER-RECHECK | OPEN | recheck agent ended without verdict; later install checks (INSTALL-CHECK30/39 fixes) may cover it, no explicit close | 16 |
 | 3814 | SHOT-ASPECT | OPEN | tooling nicety, no commit | 16 |
 | 3815 | RL18 OWNER-DEMO-RIG + release build | OPEN | after RL1-RL17 | 16 |
@@ -62,7 +62,7 @@ Owner: ee = vtcon-ee (UP-Term/vtcon side), 16 = vtcon-16 (Amarchy).
 ## OPEN grouped
 
 Real release blockers (release gates R10/R11, RL18 "after RL1-RL17", owner-stated "in THIS release"):
-- 3769 R11, 3768 R10 (release steps), 1088 umbrella, 3738 KIT-AMARCHY-ALL, 3815 RL18
+- 3769 R11, 3768 R10 (release steps), 1088 umbrella, 3738 KIT-PATINA-ALL, 3815 RL18
 - 3784 RL8 (steps 3-4, pointer), 4001 S32-GREEN-LINE-96, 4000 S32-CLONE-CLIP, 3840 S32-STALE-GADGETS, 3838 S32-EYECHECK-96
 - 3818/3819/3820 RL19-RL21 (owner: in this release), 3812 RL17
 - 3757 R3b subst (unmerged correctness fix, planned before release)
@@ -81,7 +81,7 @@ Checked 2026-11-03 against code, git log and ledger (read-only).
 |---|---|---|---|
 | 3760 | TMUX-PANE-PATH | OPEN-BLOCKER | dist/tmux.conf only has `set -g default-shell /C/vsh` (line 4), no PATH/environment setting; no commit after aec39407 (rig phtmux path only) addresses the kit pane PATH; users hit it per the row. Needs fix + rig proof. |
 | 3764 | R6 K34-K35 / R7 K36 | DONE for code (K34 f9ca3bee via 9a018549, K35 a6de061d, K36 99656f6d + 562f588e + 9cad5c9b gap-1S AGA+RTG); remaining proof is row 3961 |
-| 3809 | RL16 AMARCHY-WELCOME | OPEN-BLOCKER (gated by RL18) | Welcome/Help commits in main (dda77bd3, 9e9ce3b8, ed94e6ab, b6b27d0b); row still [~], no line closing it, and ledger 3844 shows the rig 96 reinstall had no Amarchy start look, so no pixel/eye proof of the welcome window. Close only after the s32 eye-check. |
+| 3809 | RL16 PATINA-WELCOME | OPEN-BLOCKER (gated by RL18) | Welcome/Help commits in main (dda77bd3, 9e9ce3b8, ed94e6ab, b6b27d0b); row still [~], no line closing it, and ledger 3844 shows the rig 96 reinstall had no Patina start look, so no pixel/eye proof of the welcome window. Close only after the s32 eye-check. |
 | 3824 | S31-START-PALETTE | OPEN-BLOCKER | Code fixes in main (cf0d408e/d11e29ee, e7e321e2/1b0eb507) but the 2026-11-03 rig 96 reinstall (ledger 3844) measured flat calls=0, grey backdrop (170,170,170) not (14,14,20); opus start-look hunt (s32-evidence/start-look.md) not shown closed. Same family as S32-PLAN result. |
 | 3906 | MAKE-DIST-NO-STAGED-FROM | OPEN-NOT-BLOCKING | Guard is deliberate (a2398557, 133cd0c0; DIST-STAGED-FROM 3721 = NOT A BUG). R10 runs make kit-stage first; the rig 91 eye-check dist already needed a kit-stage workaround (3996). Verify at R10, no code change. |
 | 3913 | S32-PLAN | DONE | Plan was the order of work: INSTALLER-FLAT-OFF + RIG-TIMEOUT-VERDICT fixed, merged, then the reinstall from main happened (3844, main 952d2457). Its failure is tracked under S31-START-PALETTE, not here. |

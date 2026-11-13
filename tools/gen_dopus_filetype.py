@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The Directory Opus 5 filetype file UP-Term ships (plan 2026-10-25-amarchy-dopus-integration.md, D11): binary IFF
+"""The Directory Opus 5 filetype file UP-Term ships (plan 2026-10-25-patina-dopus-integration.md, D11): binary IFF
 `FORM OPUS`, one TYPE chunk with its FUNC chunks, written in the layout of upstream dopus5 v5.104
 archive/tools/filetype_tool.py `encode` (read by L_ReadFiletypes in source/Library/config_open.c). Check the output
 with that tool: `python3 -I filetype_tool.py check FILE` and `lint FILE`.

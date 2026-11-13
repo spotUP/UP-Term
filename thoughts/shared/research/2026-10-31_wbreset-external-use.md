@@ -1,8 +1,8 @@
 ---
 date: 2026-10-31
-topic: Workbench reset started by another program (external prefs USE) with Amarchy windows open
+topic: Workbench reset started by another program (external prefs USE) with Patina windows open
 status: design, implemented in the same branch
-ids: WBRESET-EXT (follows R1.17-WBRESET, AMARCHY-31-PALUSE-REBOOT)
+ids: WBRESET-EXT (follows R1.17-WBRESET, PATINA-31-PALUSE-REBOOT)
 ---
 
 # Workbench reset from an external `Palette ... USE`
@@ -10,14 +10,14 @@ ids: WBRESET-EXT (follows R1.17-WBRESET, AMARCHY-31-PALUSE-REBOOT)
 ## Defect
 
 `Palette FROM <file> USE` (also Font / ScreenMode / Overscan USE) makes IPrefs call
-intuition `CloseWorkBench()`. It fails while the Amarchy bar (process Amarchy), the drawn
-menu (amarchy-gui) or the text menu (amarchy-menu, an XCON: window) is open on the
+intuition `CloseWorkBench()`. It fails while the Patina bar (process Patina), the drawn
+menu (patina-gui) or the text menu (patina-menu, an XCON: window) is open on the
 Workbench screen, and IPrefs raises "Intuition is attempting to reset the Workbench
-screen. Please close the following windows: Amarchy bar" (Retry | Cancel).
-R1.17-WBRESET (38923fcf) only covers Amarchy's own desk apply (desk_dos_apply calls
+screen. Please close the following windows: Patina bar" (Retry | Cancel).
+R1.17-WBRESET (38923fcf) only covers Patina's own desk apply (desk_dos_apply calls
 desk_wb_close / gui_hide around its own write).
 
-**Violated invariant:** an Amarchy window never blocks a Workbench reset. Amarchy closes its
+**Violated invariant:** an Patina window never blocks a Workbench reset. Patina closes its
 windows before the Workbench closes and reopens them on the new Workbench screen.
 
 **Level of the root cause:** the only point every reset passes through is the intuition
@@ -27,29 +27,29 @@ is third party), so the hook is ours to install, the way screennotify does it.
 
 ## Mechanism
 
-1. **Owner: the Amarchy commodity process.** It runs for the whole desktop session, it
-   owns the bar, and it is the process that sees Amarchy quit. At start it makes the
-   public record `Amarchy.WBReset` (a SignalSemaphore plus a client table,
-   `amarchy/wbreset_core.h`) and swaps the JMP operands of intuition's CloseWorkBench and
+1. **Owner: the Patina commodity process.** It runs for the whole desktop session, it
+   owns the bar, and it is the process that sees Patina quit. At start it makes the
+   public record `Patina.WBReset` (a SignalSemaphore plus a client table,
+   `patina/wbreset_core.h`) and swaps the JMP operands of intuition's CloseWorkBench and
    OpenWorkBench library entries.
 2. **Reused patch model.** The swap is `flat_swap_install` / `flat_swap_remove` and
-   `flat_jmp_target` from flat_core.c (the amarchy-flat Text / RectFill patches: Forbid,
+   `flat_jmp_target` from flat_core.c (the patina-flat Text / RectFill patches: Forbid,
    JMP check, operand swap, SumLibrary, CacheClearU, restore only when the slot is still
    ours). The slot points to a 22-byte gate stub in AllocMem'd memory (`wbr_gate_build`,
    bytes pinned by the host test):
    `move.l hook(pc),-(sp); bne.s go; addq.l #4,sp; move.l saved(pc),-(sp); go: rts`.
-   hook = a C function in amarchy/wbreset_patch.c taking `__reg("a6") struct Library *`
+   hook = a C function in patina/wbreset_patch.c taking `__reg("a6") struct Library *`
    (vbcc; no asm file), saved = the original routine.
    Clearing hook turns the gate into a pure pass-through.
 3. **Clients** register task, signal mask, mode and "has a window on the Workbench" in the
    record (always under Forbid + FindSemaphore, so no client keeps a pointer to a record
-   that may be gone; a restarted Amarchy is found again on the next update):
-   - Amarchy (the bar): mode HIDE, signal Ctrl-F, has_win = bar_is_open(), refreshed every
+   that may be gone; a restarted Patina is found again on the next update):
+   - Patina (the bar): mode HIDE, signal Ctrl-F, has_win = bar_is_open(), refreshed every
      main-loop pass. Close = desk_wb_close(), reopen = desk_wb_open() (the R1.17 paths).
-   - amarchy-gui: mode DISMISS, signal Ctrl-F, has_win updated after every change of the
+   - patina-gui: mode DISMISS, signal Ctrl-F, has_win updated after every change of the
      popup window (gui_open, gui_hide, gui_show, cleanup). event_loop treats Ctrl-F like
      the hotkey close: the popup goes away and is not reopened after the reset.
-   - amarchy-menu (text menu, an XCON: console window): mode DISMISS, signal Ctrl-C (the
+   - patina-menu (text menu, an XCON: console window): mode DISMISS, signal Ctrl-C (the
      MENU-TOGGLE close it already has); has_win set around Open / Close of its window. A
      console window cannot be hidden and shown again by the menu, so it is closed, not
      reopened; the next hotkey opens it on the new screen.
@@ -66,12 +66,12 @@ is third party), so the hook is ours to install, the way screennotify does it.
 ## Deadlock
 
 - The hook never holds Forbid while it waits and never waits on the caller's own task.
-- A client blocked on IPrefs (Amarchy or amarchy-gui inside desk_dos_apply) has already
+- A client blocked on IPrefs (Patina or patina-gui inside desk_dos_apply) has already
   closed its windows (R1.17), so has_win = 0 and the hook does not wait on it. The 3 s
   timeout is the backstop for any other case: the original call then runs as before (the
   old requester at worst, never a hang).
 
-## Removal at Amarchy exit
+## Removal at Patina exit
 
 Forbid; clear both gates' hook (pass-through from now on); `flat_swap_remove` each slot;
 RemSemaphore; Permit. Then wait (bounded) until no caller is inside the hook (busy
@@ -81,25 +81,25 @@ still_chained).
 
 ## Tests
 
-- Host: `make test ONLY=wbreset` (tests/test_wbreset.c on amarchy/wbreset_core.c): close,
+- Host: `make test ONLY=wbreset` (tests/test_wbreset.c on patina/wbreset_core.c): close,
   failed close reopens, open, self skip, timeout, dismiss clients, table full, gate bytes.
-- Rig 8, 3.1 and 3.2: Amarchy with the bar up, `Palette FROM <prefs> USE`: no System
+- Rig 8, 3.1 and 3.2: Patina with the bar up, `Palette FROM <prefs> USE`: no System
   Request, pens changed, bar back. With the fix reverted the requester returns.
 
 ## Step 1 measurement: which intuition vector does a Palette USE reset go through (rig 8, KS 3.1, 2026-10-31)
 
 Probe: `tests/amiga/lvoprobe.c` (`make build/amiga/lvoprobe`) SetFunction-wraps a counting pass-through stub on every
 intuition.library JMP vector (-30 .. -828, 138 vectors; only LockIBase -414 / UnlockIBase -420 left alone), on top of
-the Amarchy hooks, and prints every vector called at least once after Ctrl-C. Amarchy was the commit-293a99d5 build
-(md5 319c5dade578e04dd0a4346a80b5c8a2), started before the probe. The installed kit Amarchy on a fresh rig is an old
-build without the patch (156912 bytes): copy build/amiga/Amarchy over UP-Term:bin/Amarchy first.
+the Patina hooks, and prints every vector called at least once after Ctrl-C. Patina was the commit-293a99d5 build
+(md5 319c5dade578e04dd0a4346a80b5c8a2), started before the probe. The installed kit Patina on a fresh rig is an old
+build without the patch (156912 bytes): copy build/amiga/Patina over UP-Term:bin/Patina first.
 
-- Patch installed: semaphore `Amarchy.WBReset` PRESENT when the probe started (wbr_patch_install did install; its
+- Patch installed: semaphore `Patina.WBReset` PRESENT when the probe started (wbr_patch_install did install; its
   return code is still not printed anywhere).
 - `SYS:Prefs/Palette FROM RAM:pal_red.prefs USE` -> System Request "Intuition is attempting to reset the Workbench
   screen" (task IPrefs, buttons Retry|Cancel), counts during that run:
   -78 CloseWorkBench = 0, -210 OpenWorkBench = 0, -324 SetPrefs = 0, -576 / -672 / -720 / -726 (intuitionPrivate1..4) = 0,
-  all other nonzero vectors are the public ones Palette/IPrefs/Amarchy use (-510 LockPubScreen 1, -516 1, -522/-528 11,
+  all other nonzero vectors are the public ones Palette/IPrefs/Patina use (-510 LockPubScreen 1, -516 1, -522/-528 11,
   -600 SysReqHandler 106, -678/-684/-714 MakeClass/AddClass/FreeClass 2 each).
 - After Cancel on the requester a second requester came (screen "Workbench Screen"); in that run -78 = 1,
   -576 = 3, -84 = 6, -600 = 167.
@@ -112,12 +112,12 @@ on IPrefs, or disassemble IPrefs / intuition.library to find the entry it jumps 
 
 ## Reset entry (s28 opus hunt)
 
-Rig 8, KS 3.1: intuition.library 40.85, SYS:C/IPrefs 40.7 (06/02/93), workbench.library 40.5. Amarchy = the 293a99d5
-build (248304 bytes, md5 319c5dade578e04dd0a4346a80b5c8a2) copied over UP-Term:bin/Amarchy.
+Rig 8, KS 3.1: intuition.library 40.85, SYS:C/IPrefs 40.7 (06/02/93), workbench.library 40.5. Patina = the 293a99d5
+build (248304 bytes, md5 319c5dade578e04dd0a4346a80b5c8a2) copied over UP-Term:bin/Patina.
 
 **Requester body (3.1, read from a grab of the window):** "Intuition is attempting to reset the Workbench screen.
 Please close all windows, except drawers." (Retry | Cancel). It names no window. The string is in SYS:C/IPrefs itself
-(`strings`), not in intuition: on 3.1 IPrefs owns this requester. (The 3.2 text that lists "Amarchy bar" is a
+(`strings`), not in intuition: on 3.1 IPrefs owns this requester. (The 3.2 text that lists "Patina bar" is a
 different, intuition-side check.)
 
 **Directory Opus:** the rig's master image replaces the Workbench with DOpus 5 (C/LoadWB starts it, Libs/workbench.library
@@ -128,7 +128,7 @@ replaced; see rig.py `sys_hdf_no_dopus`; tasks `dopus`, `dopus_start_menu`, DO_L
 Reproducible pair: RAM:pal_red.prefs and RAM:pal_pen.prefs (pal_red with TEXTPEN 1 -> 2 at file offsets 0x36 and
 0x76), USEd alternately. Matrix:
 
-| DOpus | Amarchy bar | Requester | Reset happened |
+| DOpus | Patina bar | Requester | Reset happened |
 |---|---|---|---|
 | running | open | yes (IPrefs) | no |
 | running | stopped | no | yes (dopus_start_menu window reopened at a new address) |
@@ -147,7 +147,7 @@ This explains step 1: CloseWorkBench is never reached while a non-WBENCHWINDOW w
 LockIBase/UnlockIBase, which carry the check. DOpus passes because its windows carry WFLG_WBENCHWINDOW.
 
 **Hook point:** keep the CloseWorkBench/OpenWorkBench gate (that is where 3.2's intuition-side check and every other
-reset caller arrive) and make 3.1 IPrefs reach it: Amarchy's own Workbench-screen windows (bar, drawn menu) carry
+reset caller arrive) and make 3.1 IPrefs reach it: Patina's own Workbench-screen windows (bar, drawn menu) carry
 WFLG_WBENCHWINDOW, so IPrefs 40.7 counts them as Workbench windows, calls CloseWorkBench, and the gate closes them
 before the original runs and reopens them in OpenWorkBench. The XCON: text menu window cannot be flagged by us (the
 handler opens it); it needs the same flag set by the handler or stays a blocker on 3.1. Not verified on the rig yet.
@@ -155,7 +155,7 @@ handler opens it); it needs the same flag set by the handler or stays a blocker 
 Open risks: (1) WFLG_WBENCHWINDOW windows may be treated as Workbench's own by workbench.library/DOpus (window list,
 "close all", AppWindow paths); measure before choosing it. (2) The alternative without the flag is a DOS notify on
 ENV:Sys/{palette,font,screenmode,overscan,wbpattern}.prefs, which races IPrefs. (3) wasabi's last guru on this boot:
-RECOVERABLE ALERT #01000003 (exec: library checksum failure) in task UP-Term:bin/Amarchy: the vector swap likely
+RECOVERABLE ALERT #01000003 (exec: library checksum failure) in task UP-Term:bin/Patina: the vector swap likely
 writes the jump table without LIBF_CHANGED before SumLibrary; check flat_swap_install / wbr_patch_install.
 
 ## Result of the WA_WBenchWindow flag on rig 8 (subagent run, 2026-10-31)
@@ -170,25 +170,25 @@ Change: gui.c window_open and themewin.c tw_open (the bar) open with WA_WBenchWi
 ## Window census (s28)
 
 Probe: tests/amiga/wincensus.c (make build/amiga/wincensus): walks every screen under LockIBase, prints address, Flags,
-WFLG_WBENCHWINDOW (0x02000000), owner task of UserPort. Rig 8, KS 3.1, DOpus 5, Amarchy build md5 455179624de95e381468487f476ac523
-(Amarchy/amarchy-gui/amarchy-menu md5-checked against build/amiga after put), bar running, gui and menu not open.
+WFLG_WBENCHWINDOW (0x02000000), owner task of UserPort. Rig 8, KS 3.1, DOpus 5, Patina build md5 455179624de95e381468487f476ac523
+(Patina/patina-gui/patina-menu md5-checked against build/amiga after put), bar running, gui and menu not open.
 
 | address | title | Flags | WBENCHWINDOW | owner task |
 |---|---|---|---|---|
-| 0x1004f1f4 | Amarchy bar | 0a010840 | yes | Background CLI (Amarchy) |
+| 0x1004f1f4 | Patina bar | 0a010840 | yes | Background CLI (Patina) |
 | 0x1062d74c | (null) | 00010800 | NO | dopus_start_menu |
 | 0x1060af34 | (null) | 08203940 | NO | dopus |
 | 0x1004f1f4 (after USE, new addr) | System Request | 08031046 | NO (own, excluded) | IPrefs |
 
 Only one screen exists ("Directory Opus ..."). Three alternating pen-change USEs (pal_pen, pal_red, pal_pen), 6 s apart, bar flagged:
 System Request (Retry|Cancel) from IPrefs present after all 3 -> FAIL. The unnamed windows seen earlier are the two DOpus
-windows above (0x101200e4 / 0x100fc454 in the old run). Amarchy opens no unflagged window on this screen: bar flagged, gui.c
-and themewin.c flagged; amarchy/shot.c g_rw opens on a custom screen (not the Workbench screen); the XCON: menu/act windows are
+windows above (0x101200e4 / 0x100fc454 in the old run). Patina opens no unflagged window on this screen: bar flagged, gui.c
+and themewin.c flagged; patina/shot.c g_rw opens on a custom screen (not the Workbench screen); the XCON: menu/act windows are
 opened by the handler (not open at census time).
 
 Contradiction not resolved: the predicate (IPrefs 40.7 at hunk offset 0x108a: pubscreen "Workbench" found via FindName on the
 public screen list, then every window with bit 0x02000000 clear and not the requester sets the result to 0) would count the two
-DOpus windows, yet the reset went through earlier with Amarchy stopped. So either the counted screen is not the DOpus screen
+DOpus windows, yet the reset went through earlier with Patina stopped. So either the counted screen is not the DOpus screen
 (is the DOpus screen the public screen named "Workbench"? not checked) or the result is used inverted/combined with another check
 (callers at 0x1168 and 0x2c82, not yet read). Next: read the callers, print screen Flags + public screen names in wincensus.
 Rig note: after the first rig start RAM: reported 109% used and every command failed ("could not start the command"); a rig reboot cured it.
@@ -225,13 +225,13 @@ backdrop, task or IDCMP test in IPrefs; any such condition lives in the inner Cl
 
 | state | -78 target | Workbench visitors | windows (WBENCHWINDOW) | after pen USE |
 |---|---|---|---|---|
-| Amarchy stopped | 104cdb50 `594f 48e7 301e 49ee 0030 ...` (not IPrefs' stub, which starts `6100 e406`) | 2 | dopus_start_menu NO, dopus NO | reset OK: screen re-made (10002450 -> 10002458), DOpus windows new addresses, no requester |
-| Amarchy.s28 (md5 455179624de9..., bar flagged) | 100606b0 = Amarchy gate (`2f3a 000c 6606 ... 4e75`, saved 102eeb00 hook / 104cdb50) | 4 | bar yes, DOpus NO x2 | requester; screen NOT re-made (10002458 stays), but bar AND both DOpus windows closed and reopened (new addresses) |
+| Patina stopped | 104cdb50 `594f 48e7 301e 49ee 0030 ...` (not IPrefs' stub, which starts `6100 e406`) | 2 | dopus_start_menu NO, dopus NO | reset OK: screen re-made (10002450 -> 10002458), DOpus windows new addresses, no requester |
+| Patina.s28 (md5 455179624de9..., bar flagged) | 100606b0 = Patina gate (`2f3a 000c 6606 ... 4e75`, saved 102eeb00 hook / 104cdb50) | 4 | bar yes, DOpus NO x2 | requester; screen NOT re-made (10002458 stays), but bar AND both DOpus windows closed and reopened (new addresses) |
 
-Reading: with Amarchy stopped two unflagged DOpus windows do not block, so the inner patch at 104cdb50 closes DOpus'
+Reading: with Patina stopped two unflagged DOpus windows do not block, so the inner patch at 104cdb50 closes DOpus'
 windows before IPrefs' window check runs (or does not chain to it); unverified which program owns 104cdb50. With the
-flagged bar the Amarchy gate works (bar closes and reopens), DOpus closes its windows too, yet the inner
-CloseWorkBench still returns FALSE. The flag is therefore irrelevant to this failure. Amarchy's only extra visitors are
+flagged bar the Patina gate works (bar closes and reopens), DOpus closes its windows too, yet the inner
+CloseWorkBench still returns FALSE. The flag is therefore irrelevant to this failure. Patina's only extra visitors are
 the bar window and the bar's LockPubScreen("Workbench") (bar.c:471, released in bar_close), both gone after
 desk_wb_close if the close finished in time.
 
@@ -240,5 +240,5 @@ timed_out counter) so the original ran with the bar still open, or (2) does a vi
 the window list from inside close_hook just before the saved vector is called). (3) Identify 104cdb50's owner (segment
 walk of dopus / IPrefs seglists).
 
-Accident: the first census run went to rig 1 (UPTERM_RIG unset): it Broke Amarchy there, USEd both palettes, restarted
-Amarchy (rig 1's build, bar unflagged, Flags 08010840) and left an IPrefs System Request open on rig 1. Not dismissed.
+Accident: the first census run went to rig 1 (UPTERM_RIG unset): it Broke Patina there, USEd both palettes, restarted
+Patina (rig 1's build, bar unflagged, Flags 08010840) and left an IPrefs System Request open on rig 1. Not dismissed.

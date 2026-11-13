@@ -417,16 +417,16 @@ class OffersAReboot(unittest.TestCase):
 
 
 class LucideDatShipped(unittest.TestCase):
-    """amarchy-icons reads UP-Term:Amarchy/Icons/lucide.dat (amarchy/iconapply_core.h IA_DAT). The kit must build it
+    """patina-icons reads UP-Term:Patina/Icons/lucide.dat (patina/iconapply_core.h IA_DAT). The kit must build it
     (make lucide-dat, a prerequisite of dist-base), stage it in Files/lucide, list it in parts.txt, and install.dos
     must copy it to that path. A rig 8 kit install lacked it."""
 
     def test_icons_c_path_is_what_install_dos_copies_to(self):
-        h = (ROOT / "amarchy/iconapply_core.h").read_text()
-        self.assertIn('#define IA_DAT        "UP-Term:Amarchy/Icons/lucide.dat"', h)
-        self.assertIn("Copy lucide/lucide.dat UP-Term:Amarchy/Icons CLONE QUIET", (ROOT / "dist/install.dos").read_text())
-        self.assertIn('#define IA_DAT_OUTLINE "UP-Term:Amarchy/Icons/outline.dat"', h)
-        self.assertIn("Copy lucide/outline.dat UP-Term:Amarchy/Icons CLONE QUIET", (ROOT / "dist/install.dos").read_text())
+        h = (ROOT / "patina/iconapply_core.h").read_text()
+        self.assertIn('#define IA_DAT        "UP-Term:Patina/Icons/lucide.dat"', h)
+        self.assertIn("Copy lucide/lucide.dat UP-Term:Patina/Icons CLONE QUIET", (ROOT / "dist/install.dos").read_text())
+        self.assertIn('#define IA_DAT_OUTLINE "UP-Term:Patina/Icons/outline.dat"', h)
+        self.assertIn("Copy lucide/outline.dat UP-Term:Patina/Icons CLONE QUIET", (ROOT / "dist/install.dos").read_text())
 
     def test_kit_lists_and_builds_lucide_dat(self):
         self.assertRegex((ROOT / "dist/parts.txt").read_text(), r"(?m)^userland\s+Files/lucide$")
@@ -644,16 +644,16 @@ class WasabiDaemonOption(unittest.TestCase):
         self.assertLess(stop, un.index("Delete >NIL: ENVARC:up-term ALL QUIET"))
         self.assertIn("Delete >NIL: C:wasabid QUIET", un[un.index("If EXISTS ENVARC:up-term/wasabid"):][:300])
 
-    def test_uninstall_waits_for_amarchy_to_end_before_the_drawer_goes(self):
-        # Break C only signals Amarchy; its process held UP-Term:bin while Delete ALL ran, and an
+    def test_uninstall_waits_for_patina_to_end_before_the_drawer_goes(self):
+        # Break C only signals Patina; its process held UP-Term:bin while Delete ALL ran, and an
         # empty UP-Term/bin stayed behind (rig 9 fresh-all check 38, 2026-10-29)
         un = mi.build(ROOT / "dist/Uninstall", "base")
-        brk = un.index("Status >ENV:upw COM Amarchy")
-        lab = un.index("Lab amarchygone", brk)
+        brk = un.index("Status >ENV:upw COM Patina")
+        lab = un.index("Lab patinagone", brk)
         loop = un[lab:un.index("UnSet upwait", lab)]
-        self.assertIn("Status >NIL: COM UP-Term:bin/Amarchy", loop)
+        self.assertIn("Status >NIL: COM UP-Term:bin/Patina", loop)
         self.assertIn("Wait 1", loop)
-        self.assertIn("Skip amarchygone BACK", loop)
+        self.assertIn("Skip patinagone BACK", loop)
         self.assertIn('If NOT "$upwait" EQ ".........."', loop)   # bounded: 10 s at most
         self.assertLess(lab, un.index('Delete >NIL: "$updest" ALL QUIET'))
         self.assertLess(lab, un.index('Delete >NIL: "$updest/~(var|var.info)" ALL QUIET'))
@@ -966,14 +966,14 @@ class UserStartupBlocksAreGuarded(unittest.TestCase):
                 self.assertTrue(g, (name, lines))
                 self.assertIn('If NOT WARN', [x.strip() for x in lines[g[-1] + 1:i]], (name, lines))
                 self.assertEqual(lines[-1], 'EndIf', (name, lines))
-        # the assign line and GG: Amarchy, the index and the flat helper no longer write User-Startup (Leg W)
+        # the assign line and GG: Patina, the index and the flat helper no longer write User-Startup (Leg W)
         self.assertEqual(seen, 2)
 
     def test_old_unguarded_block_is_replaced_on_update(self):
-        # the old Amarchy and index blocks are only stripped now, never written (Leg W)
+        # the old Patina and index blocks are only stripped now, never written (Leg W)
         for key in ('    Assign GG: UP-Term:', '  Assign UP-Term: *"$updest*"'):
             self.assertIn('Search >NIL: S:User-Startup "%s' % key, DOS)
-        for call in ('vsh unstartup.sh Amarchy\n', 'vsh unstartup.sh "Amarchy index"\n', 'vsh unstartup.sh "Amarchy-Flat"\n',
+        for call in ('vsh unstartup.sh Patina\n', 'vsh unstartup.sh "Patina index"\n', 'vsh unstartup.sh "Patina-Flat"\n',
                      'vsh unstartup.sh UP-Term\n', 'vsh reassign.sh "$updest"'):
             self.assertIn(call, DOS)
 
@@ -985,7 +985,7 @@ class UserStartupBlocksAreGuarded(unittest.TestCase):
         return pathlib.Path(tmp, out).read_text()
 
     OLD = ('; user\n;BEGIN UP-Term assign\nAssign UP-Term: "Work:UP-Term"\n;END UP-Term assign\n'
-           ';BEGIN UP-Term Amarchy\nRun >NIL: UP-Term:bin/Amarchy\n;END UP-Term Amarchy\n'
+           ';BEGIN UP-Term Patina\nRun >NIL: UP-Term:bin/Patina\n;END UP-Term Patina\n'
            ';BEGIN UP-Term\nAssign >NIL: GG: EXISTS\nIf WARN\n  Assign GG: UP-Term:\nEndIf\n;END UP-Term\n'
            ';BEGIN UP-Term wasabi\nRun >NIL: C:wasabid\n;END UP-Term wasabi\nEcho keep\n')
 
@@ -1006,8 +1006,8 @@ class UserStartupBlocksAreGuarded(unittest.TestCase):
 
     def test_reassign_rewrites_the_startup_sequence_flat_block_path(self):
         import tempfile
-        ss = ('; stock\n;BEGIN UP-Term Amarchy-Flat\nIf EXISTS Work:UP-Term/bin/amarchy-flat\n'
-              '  Run >NIL: Work:UP-Term/bin/amarchy-flat BOOT\nEndIf\n;END UP-Term Amarchy-Flat\nIPrefs\n')
+        ss = ('; stock\n;BEGIN UP-Term Patina-Flat\nIf EXISTS Work:UP-Term/bin/patina-flat\n'
+              '  Run >NIL: Work:UP-Term/bin/patina-flat BOOT\nEndIf\n;END UP-Term Patina-Flat\nIPrefs\n')
         with tempfile.TemporaryDirectory() as t:
             pathlib.Path(t, 'S_Startup-Sequence').write_text(ss)
             out = self.sh('reassign.sh', ['Sys:Moved/UP-Term', 'S_Startup-Sequence'], t, 'T_Startup-Sequence.up-term')
@@ -1020,22 +1020,22 @@ class UserStartupBlocksAreGuarded(unittest.TestCase):
         text = '; user\n'
         for name, lines in self.blocks().items():
             if not name.startswith(';BEGIN UP-Term'):
-                continue  # Amarchy-Flat goes by its own name (tests/test_flat_startup_block.py)
+                continue  # Patina-Flat goes by its own name (tests/test_flat_startup_block.py)
             text += '\n'.join([name] + lines + [name.replace('BEGIN', 'END')]) + '\n'
         # blocks of an older kit, which the installer no longer writes but still strips
-        text += (';BEGIN UP-Term Amarchy\nRun >NIL: UP-Term:bin/Amarchy\n;END UP-Term Amarchy\n'
-                 ';BEGIN UP-Term Amarchy index\nRun >NIL: UP-Term:bin/amarchy-index\n;END UP-Term Amarchy index\n')
+        text += (';BEGIN UP-Term Patina\nRun >NIL: UP-Term:bin/Patina\n;END UP-Term Patina\n'
+                 ';BEGIN UP-Term Patina index\nRun >NIL: UP-Term:bin/patina-index\n;END UP-Term Patina index\n')
         text += 'Echo keep\n'
-        self.assertIn('Run >NIL: UP-Term:bin/Amarchy', text)
+        self.assertIn('Run >NIL: UP-Term:bin/Patina', text)
         with tempfile.TemporaryDirectory() as t:
             pathlib.Path(t, 'S_User-Startup').write_text(text)
             self.assertEqual(self.sh('unstartup.sh', [], t), '; user\nEcho keep\n')
-            one = self.sh('unstartup.sh', ['Amarchy'], t)
-            self.assertNotIn('bin/Amarchy', one)
-            self.assertIn('bin/amarchy-index', one)
+            one = self.sh('unstartup.sh', ['Patina'], t)
+            self.assertNotIn('bin/Patina', one)
+            self.assertIn('bin/patina-index', one)
             gg = self.sh('unstartup.sh', ['UP-Term'], t)
             self.assertNotIn('Assign GG:', gg)
-            self.assertIn('bin/Amarchy', gg)
+            self.assertIn('bin/Patina', gg)
 
 
 class LinkedEnvOn32(unittest.TestCase):

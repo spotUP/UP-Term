@@ -6,12 +6,12 @@ Rig 48, AmigaOS 3.1 (no --os flag), 2026-11-03. Version: `Kickstart 40.68, Workb
 
 `wasabi ps` right after boot (rig 48, before any palette write):
 
-- ours / non-stock: `BOOTX:wasabid`, `C:SolidWin`, `C:upgetty` (+ upgetty shell), `UP-Term:bin/Amarchy`,
-  `amarchy-gui` (2 procs), `amarchy-menu`, `Amarchy bar idle` (pri -128, ready), `dopus (DOpus5:DirectoryOpus)`
+- ours / non-stock: `BOOTX:wasabid`, `C:SolidWin`, `C:upgetty` (+ upgetty shell), `UP-Term:bin/Patina`,
+  `patina-gui` (2 procs), `patina-menu`, `Patina bar idle` (pri -128, ready), `dopus (DOpus5:DirectoryOpus)`
   + dopus_clock/rexx/start_menu, `PTY`, `ixemul task switcher`.
 - stock: IPrefs, ConClip, RexxMaster, ramlib, Picasso96, console/input/trackdisk.
-- Not running: amarchy-icons, amarchy-flat.
-- BOOTX:go (rig harness) starts RexxMast, wasabid; the Amarchy programs come from the installed
+- Not running: patina-icons, patina-flat.
+- BOOTX:go (rig harness) starts RexxMast, wasabid; the Patina programs come from the installed
   DH0:S startup on sys.hdf.
 
 ## Owner save (3.1 Palette prefs by hand, snooped)
@@ -31,21 +31,21 @@ Capture: `wasabi debug --with-snoop --entry --ignore-wasabi --output full`, all 
   21:48:11.397 dopus_closewb  FindTask(...)       <- DOpus reacts to IPrefs' WB close/reopen
   ```
   The stream kept flowing after the save (last line 21:49:49), and after the stream was stopped
-  `wasabi run "Version"` -> `Kickstart 40.68, Workbench 40.42` and `ps` listed wasabid, Amarchy,
-  amarchy-gui, amarchy-menu, SolidWin, DOpus, IPrefs all alive. **Guest and wasabid both survived the 3.1 Save.**
+  `wasabi run "Version"` -> `Kickstart 40.68, Workbench 40.42` and `ps` listed wasabid, Patina,
+  patina-gui, patina-menu, SolidWin, DOpus, IPrefs all alive. **Guest and wasabid both survived the 3.1 Save.**
   Owner confirms: colours applied, DOpus redrawn, pointer and windows alive.
 - The silence the owner saw was at 21:46:06-21:47:38, i.e. TWO MINUTES BEFORE the Palette editor
   was even launched. The client logged `nothing heard for 20 s` then `the stream is back`, and
   wasabid then reported `[wasabi: 13000 snoop event(s) lost]` (21:47:46). Earlier, `wasabi run`
   failed with "daemon did not answer for 15 s" at 21:38 while the guest streamed fine.
-- Event mix in the log: `Amarchy bar idle` 48540 lines (FindTask ~100/s at pri -128),
-  `UP-Term:bin/Amarchy` 11154 (opens ENV:Amarchy/prefs + Lock manifest + FindSemaphore ~1/s), dopus_clock 1029.
+- Event mix in the log: `Patina bar idle` 48540 lines (FindTask ~100/s at pri -128),
+  `UP-Term:bin/Patina` 11154 (opens ENV:Patina/prefs + Lock manifest + FindSemaphore ~1/s), dopus_clock 1029.
 
 ### Why wasabid "hangs" (source: build/wasabi/src/wasabid.c, rev 959c33bd)
 
 - `pump_snoop_stream()` wasabid.c:1233-1250: `while ((n = snoop_next_line(...)) > 0) send_log(...)`
   drains until the ring is empty, each send blocking in `send_all`/`io_wait` (wasabid.c:552-630).
-  With `--entry` and a producer that never stops (Amarchy bar idle's FindTask loop), the ring
+  With `--entry` and a producer that never stops (Patina bar idle's FindTask loop), the ring
   refills as fast as it drains, so the main loop (wasabid.c:7236-7270, accept at 7358) is not
   reached for long stretches: new `run`/`ps` connections get "daemon did not answer for 15 s".
   The file comment at wasabid.c:701 says it: "one client is served at a time".
@@ -55,8 +55,8 @@ Capture: `wasabi debug --with-snoop --entry --ignore-wasabi --output full`, all 
 
 ## Trigger run without any stream (owner watching, 2026-11-03)
 
-- Rig 48 restarted (same purpose). State before trigger: Amarchy, amarchy-gui, amarchy-menu,
-  Amarchy bar idle, DOpus5, SolidWin, IPrefs, wasabid running. No snoop or debug stream.
+- Rig 48 restarted (same purpose). State before trigger: Patina, patina-gui, patina-menu,
+  Patina bar idle, DOpus5, SolidWin, IPrefs, wasabid running. No snoop or debug stream.
 - ENVARC:Sys/palette.prefs did not exist, so the trigger file was
   `tests/data/desk/palette-gui-save.prefs` (434 bytes, FORM PREF, PRHD + PALT size 0x190 = 400,
   which is the 3.1 PalettePrefs size), uploaded to RAM:palette.prefs.
@@ -78,12 +78,12 @@ Capture: `wasabi debug --with-snoop --entry --ignore-wasabi --output full`, all 
   cause is not proven yet.
 - Difference between the two paths still open: file content (our test golden vs an editor-written
   file), Copy vs Palette's own Open/Write, or IPrefs' WB close/reopen racing one of ours
-  (Amarchy polling ENV:, amarchy-gui, amarchy-menu, DOpus dopus_closewb, SolidWin).
+  (Patina polling ENV:, patina-gui, patina-menu, DOpus dopus_closewb, SolidWin).
 
 ## Next step
 
 On a fresh 3.1 rig (clean sys.hdf), bisect: before each Copy, `Break` one program
-(amarchy-menu, then amarchy-gui, then Amarchy + bar, then SolidWin, then DOpus5). Repeat with the
+(patina-menu, then patina-gui, then Patina + bar, then SolidWin, then DOpus5). Repeat with the
 file the owner's Palette Save wrote (copy ENV:Sys/palette.prefs to RAM: right after a GUI save
 first). The first program whose absence stops the crash is the culprit; then run that one under
 `rig.py start --max --mmu` + MuForce to get the faulting PC in its code.

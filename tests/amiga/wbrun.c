@@ -20,11 +20,11 @@
  *   47.2 on 3.2) reads WINDOW, FROM and STACK and starts the shell itself.
  *
  * Waits for the message to come back (it holds the tool's code until then): run it with
- * Run >NIL: for a tool that stays open. The launch itself is amarchy/wblaunch.c, shared with
- * Amarchy's app index rows. */
+ * Run >NIL: for a tool that stays open. The launch itself is patina/wblaunch.c, shared with
+ * Patina's app index rows. */
 #include <dos/dos.h>
 #include <proto/dos.h>
-#include "../../amarchy/wblaunch.h"
+#include "../../patina/wblaunch.h"
 
 #define MAXARGS 8
 

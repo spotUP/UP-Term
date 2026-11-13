@@ -1,6 +1,6 @@
 ; Flat Directory Opus 5.104 lister toolbar (task B7): <upstream image name> <Lucide glyph> <Phosphor glyph>, one row
 ; per image the upstream default toolbar (Buttons/Toolbar) names. tools/gen_dopus_toolbar.py draws each glyph at every
-; size set into Images/Amarchy/<set>/<name>: the outline family from Lucide, the filled family (DT-9) from Phosphor Fill.
+; size set into Images/Patina/<set>/<name>: the outline family from Lucide, the filled family (DT-9) from Phosphor Fill.
 Root.small       chevrons-up       caret-double-up
 World.small      globe             globe
 Parent.small     arrow-up          arrow-up

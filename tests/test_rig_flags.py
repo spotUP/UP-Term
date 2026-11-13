@@ -9,8 +9,8 @@ import paths
 
 class RigFlags(unittest.TestCase):
     def test_quoted_purpose_stays_one_word(self):
-        with mock.patch.dict(os.environ, {"UPTERM_RIG_FLAGS": '--max --purpose "Amarchy: menu check"'}):
-            self.assertEqual(paths.rig_flags(), ["--max", "--purpose", "Amarchy: menu check"])
+        with mock.patch.dict(os.environ, {"UPTERM_RIG_FLAGS": '--max --purpose "Patina: menu check"'}):
+            self.assertEqual(paths.rig_flags(), ["--max", "--purpose", "Patina: menu check"])
 
     def test_unset_gives_default_copy(self):
         with mock.patch.dict(os.environ, clear=False):

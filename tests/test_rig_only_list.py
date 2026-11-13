@@ -1,4 +1,4 @@
-"""`--only a,b` in the amarchy rig scripts selects those rows (it ran 0 rows, "passed 0 of 0", before), and an unknown
+"""`--only a,b` in the patina rig scripts selects those rows (it ran 0 rows, "passed 0 of 0", before), and an unknown
 row name exits non-zero naming it. One shared helper: tools/rig/verdicts.py parse_only. The test drives each script's
 main() with stage_rig stubbed and the rows replaced by recorders, so no emulator is needed."""
 import importlib, pathlib, sys, tempfile, unittest
@@ -7,8 +7,8 @@ from unittest import mock
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools/rig"))
 
-SCRIPTS = ["amarchy_menu_rig", "amarchy_bar_rig", "amarchy_clash_rig", "amarchy_rig", "amarchy_window_rig",
-           "amarchy_prefs_rig", "amarchy_p2_rig", "amarchy_demo_rig"]
+SCRIPTS = ["patina_menu_rig", "patina_bar_rig", "patina_clash_rig", "patina_rig", "patina_window_rig",
+           "patina_prefs_rig", "patina_p2_rig", "patina_demo_rig"]
 
 
 def run_main(mod, only):

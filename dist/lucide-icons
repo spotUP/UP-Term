@@ -1,6 +1,6 @@
-; Filled icons for the flat Workbench (plan 2026-11-01-amarchy-filled-icon-set.md, F3).
+; Filled icons for the flat Workbench (plan 2026-11-01-patina-filled-icon-set.md, F3).
 ; One row per target: `match = phosphor-name`. tools/gen_lucide_icons.py renders each Phosphor Fill glyph
-; (build/phosphor, @phosphor-icons/web in the Makefile) to dist/Amarchy/Icons/lucide.dat; an unknown icon name fails the build.
+; (build/phosphor, @phosphor-icons/web in the Makefile) to dist/Patina/Icons/lucide.dat; an unknown icon name fails the build.
 ; match is one of
 ;   a path          SYS:Prefs/Font         (volume or assign, then the .info path without ".info")
 ;   a default       def_drawer             (ENVARC:Sys/def_NAME.info; def_disk, def_drawer, def_tool, def_project, def_trashcan, def_RAM, every def_* of OS 3.2 Prefs/Env-Archive/Sys)
@@ -74,15 +74,15 @@ SYS:System/Shell        = terminal
 SYS:System/DiskCopy     = copy
 SYS:System/Format       = hard-drives
 SYS:System/RexxMast     = scroll
-; Amarchy and UP-Term
+; Patina and UP-Term
 UP-Term                 = terminal-window
-UP-Term:Amarchy         = squares-four
-UP-Term:Amarchy/Icons   = shapes
-UP-Term:Amarchy/Themes  = palette
-UP-Term:Amarchy/Amarchy      = squares-four
-UP-Term:Amarchy/amarchy-menu = list
-UP-Term:Amarchy/amarchy-gui  = app-window
-UP-Term:Amarchy/AmTile       = grid-four
+UP-Term:Patina         = squares-four
+UP-Term:Patina/Icons   = shapes
+UP-Term:Patina/Themes  = palette
+UP-Term:Patina/Patina      = squares-four
+UP-Term:Patina/patina-menu = list
+UP-Term:Patina/patina-gui  = app-window
+UP-Term:Patina/AmTile       = grid-four
 UP-Term:UPConsole       = terminal-window
 UP-Term:UP-Term         = terminal-window
 ; Directory Opus 5.104 (DOpus5: assign; vendor/dopus5-5.104, VTCX:DOpus5 on rigs): every .info of the installed drawer, paths applied by ia_apply when the assign exists

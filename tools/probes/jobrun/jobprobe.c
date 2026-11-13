@@ -1,4 +1,4 @@
-/* jobprobe: RJ.1 proof of the job runner (amarchy/job_dos.c). Runs each command given on the command line (default:
+/* jobprobe: RJ.1 proof of the job runner (patina/job_dos.c). Runs each command given on the command line (default:
  * `Echo one`, then `Search NOFILE x`) through jb_start, polls until the end marker or 15 s, and prints every jc
  * line, the state and the return code. Build: make build/amiga/jobprobe. */
 #include <stdio.h>
@@ -7,8 +7,8 @@
 #include <dos/dos.h>
 #include <proto/dos.h>
 #include <proto/exec.h>
-#include "../../../amarchy/job_core.h"
-#include "../../../amarchy/job_dos.h"
+#include "../../../patina/job_core.h"
+#include "../../../patina/job_dos.h"
 
 static jc j;
 

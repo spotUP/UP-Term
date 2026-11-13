@@ -26,7 +26,7 @@ ADDR       SIZE        DEPTH  TITLE
 rc=0
 $ wasabi --port 1290 windows
 screen "Directory Opus  2059344 graphics mem  1071691848 other mem"  800x600, 24 bit
-  window "Amarchy bar"  at 0,587  800x13  task UP-Term:bin/Amarchy
+  window "Patina bar"  at 0,587  800x13  task UP-Term:bin/Patina
   window ""  at 12,456  39x15  task dopus_start_menu
   window ""  at 0,14  800x573  task DOpus5:DirectoryOpus  [active, backdrop]
 rc=0

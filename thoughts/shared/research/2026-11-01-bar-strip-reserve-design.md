@@ -1,20 +1,20 @@
 ---
 date: 2026-11-01
-topic: Amarchy bar strip reserved like an X11 strut (windows and icons stay out of the bottom strip)
+topic: Patina bar strip reserved like an X11 strut (windows and icons stay out of the bottom strip)
 status: design, not implemented
 scope: host-only read; no rig, no A1200, no code edits
 ---
 
-# BAR-STRUT: reserve the Amarchy bar strip at the root
+# BAR-STRUT: reserve the Patina bar strip at the root
 
 Owner on the A1200: "stuff still draw behind our footer bar": Workbench icons and other programs' windows
 open, zoom or size into the bottom strip. The bar is a plain window kept BEHIND normal windows (BAR-BEHIND
 aa989997, BAR-CLICK a3ac2be0: plain window, raised only over foreign desktop windows by the poll,
-`amarchy/bar.c:575-590`). Today the strip is reserved only for Amarchy's own placement code.
+`patina/bar.c:575-590`). Today the strip is reserved only for Patina's own placement code.
 
 ## Violated invariant and level
 
-Invariant wanted: on the screen that carries the bar, no window Amarchy does not own gets an Intuition-chosen
+Invariant wanted: on the screen that carries the bar, no window Patina does not own gets an Intuition-chosen
 or program-chosen box (open position, open size, zoom box) that reaches into the strip, and the desktop (WB root
 window / DOpus backdrop) lays icons out only in the usable area.
 
@@ -31,21 +31,21 @@ icon area) is fixed by the box set there.
 
 | Need | Existing code | Use |
 |---|---|---|
-| strut and usable area of a screen | `amarchy/bar_usable.c:7-28` (`bar_usable`), `amarchy/win_core.c:177-189` (`win_strut`, `win_usable`), header `amarchy/bar_usable.h:1-3` says it is "the one strut rule (R2.9)" | the clamp's area comes from `win_usable`; bar.c publishes the result |
-| intuition jump-table patch, stack-safe, chained-patch safe | `amarchy/wbreset_patch.c:110-191` (`wbr_patch_install` / `wbr_patch_remove`): gate stub `wbr_gate_build` (`amarchy/wbreset_core.h:66-78`), `flat_swap_install/remove` restore-only-if-ours (`amarchy/flat_core.h:60-85`), `libpatch_done` checksum (`amarchy/libpatch.h`), public semaphore against a double install, busy count + leak-if-busy on remove | copy the model exactly; better: factor the gate+swap+semaphore install/remove of wbreset_patch.c into one `ipatch.c` both use (reuse rule, not a third copy) |
-| install / remove points | `amarchy/amarchy.c:558` (`wbr_patch_install()`), `amarchy/amarchy.c:613` (`wbr_patch_remove()`) | add the strut patch next to them |
-| desktop window test | `amarchy/bar_core.c:335-340` (`bar_is_desktop`: WFLG_BACKDROP or WBENCHWINDOW full width) | the clamp's "desktop" class |
-| full-screen terminal test | `amarchy/win_core.h:72-74` (`win_is_fullscreen_terminal`) | pass-through class (FULLSCREEN opens its own screen, `handler/vtcon_handler.c:206`, so the screen check already skips it; keep the test as a guard) |
-| Amarchy's own windows | `win_is_amarchy` `amarchy/win_core.c:192`; the bar's title is set after open (BAR-TWO-ROWS) so the hook cannot see it | exempt by geometry instead (below) |
-| sentinels | `amarchy/sentinel_dos.h:5-7` (`am_sentinel`, `am_sentinel_str`) | counters for the rig test |
+| strut and usable area of a screen | `patina/bar_usable.c:7-28` (`bar_usable`), `patina/win_core.c:177-189` (`win_strut`, `win_usable`), header `patina/bar_usable.h:1-3` says it is "the one strut rule (R2.9)" | the clamp's area comes from `win_usable`; bar.c publishes the result |
+| intuition jump-table patch, stack-safe, chained-patch safe | `patina/wbreset_patch.c:110-191` (`wbr_patch_install` / `wbr_patch_remove`): gate stub `wbr_gate_build` (`patina/wbreset_core.h:66-78`), `flat_swap_install/remove` restore-only-if-ours (`patina/flat_core.h:60-85`), `libpatch_done` checksum (`patina/libpatch.h`), public semaphore against a double install, busy count + leak-if-busy on remove | copy the model exactly; better: factor the gate+swap+semaphore install/remove of wbreset_patch.c into one `ipatch.c` both use (reuse rule, not a third copy) |
+| install / remove points | `patina/patina.c:558` (`wbr_patch_install()`), `patina/patina.c:613` (`wbr_patch_remove()`) | add the strut patch next to them |
+| desktop window test | `patina/bar_core.c:335-340` (`bar_is_desktop`: WFLG_BACKDROP or WBENCHWINDOW full width) | the clamp's "desktop" class |
+| full-screen terminal test | `patina/win_core.h:72-74` (`win_is_fullscreen_terminal`) | pass-through class (FULLSCREEN opens its own screen, `handler/vtcon_handler.c:206`, so the screen check already skips it; keep the test as a guard) |
+| Patina's own windows | `win_is_patina` `patina/win_core.c:192`; the bar's title is set after open (BAR-TWO-ROWS) so the hook cannot see it | exempt by geometry instead (below) |
+| sentinels | `patina/sentinel_dos.h:5-7` (`am_sentinel`, `am_sentinel_str`) | counters for the rig test |
 | probes | `tests/amiga/winprobe.c` (window boxes front to back), `tests/amiga/wincensus.c`, `tests/amiga/winbox.c` (program resize) | rig assertions |
 
 Gap found: `bar_usable.h` claims AmTile and the notice window ask it; AmTile does (via `win_box_of`,
-`amarchy/win_apply.c:21`), but `note.c` has no call (note_core takes a `note_box` from the caller). Not part of
-this fix; check the caller of `note_slot` when touching it. `amarchy/win.c:148` zeroes `s.bottom` on purpose
+`patina/win_apply.c:21`), but `note.c` has no call (note_core takes a `note_box` from the caller). Not part of
+this fix; check the caller of `note_slot` when touching it. `patina/win.c:148` zeroes `s.bottom` on purpose
 (full-screen terminal test), fine.
 
-No `strut` hook, SetFunction or window patch exists for windows today (grep of amarchy/ for SetFunction, LVO,
+No `strut` hook, SetFunction or window patch exists for windows today (grep of patina/ for SetFunction, LVO,
 strut, usable: only flat.c graphics patches, wbreset_patch.c Close/OpenWorkBench, shot.c cgx call).
 
 ## Recommended design
@@ -89,7 +89,7 @@ constrains only placement and maximise, never explicit moves. AmTile already pla
 
 ### W2. Existing desktop windows at install
 
-The WB root window (and a DOpus desktop) is open before Amarchy starts. At install, under the published strut:
+The WB root window (and a DOpus desktop) is open before Patina starts. At install, under the published strut:
 `ChangeWindowBox` each foreign desktop window on the bar screen to the usable height; record the old height.
 At remove / `BAR OFF`: grow them back. Re-done when the bar reopens after a Workbench close/open (WBRESET
 path; the patch also catches the reopened root window's OpenWindowTagList). With the desktop out of the strip
@@ -133,7 +133,7 @@ rewriting `.info` do_CurrentX/Y + `UpdateWorkbench`, which writes users' disks. 
 - Stacking with MCP, IPrefs (patches CloseWorkBench, `wincensus.c` header), Magic menu tools, other window
   patchers: the wbreset model handles it (restore only if ours; else gate goes pass-through and is leaked).
 - Caller stack: hook keeps locals small; `CloneTagItems` allocates in the caller (AllocVec, fine). RULES.md 6
-  stack rule applies to Amarchy itself, not the foreign caller; the probe run under `Stack 4096` checks it.
+  stack rule applies to Patina itself, not the foreign caller; the probe run under `Stack 4096` checks it.
 - MUI/ReAction: open through OpenWindowTagList, compute size from InnerHeight (step 5 covers it). MUI
   remembered window positions inside the strip get moved up once per open; MUI saves the moved position on
   snapshot only.
@@ -145,16 +145,16 @@ rewriting `.info` do_CurrentX/Y + `UpdateWorkbench`, which writes users' disks. 
 
 ## Files to touch
 
-- `amarchy/win_core.c` / `.h`: `win_strut_class`, `win_strut_clamp` (pure).
-- `amarchy/strut_patch.c` (new, Amiga) or, preferred, `amarchy/ipatch.c` factored out of
-  `amarchy/wbreset_patch.c` + `strut_patch.c` using it.
-- `amarchy/bar.c`: publish / clear strut (open path ~line 503, BAR OFF/close path), W2 desktop shrink/restore.
-- `amarchy/amarchy.c:558/613`: install / remove; STATUS keys `strut_opens strut_clamped strut_zoom` (status_core).
-- `amarchy/bar_usable.h`: comment (patch now asks too).
+- `patina/win_core.c` / `.h`: `win_strut_class`, `win_strut_clamp` (pure).
+- `patina/strut_patch.c` (new, Amiga) or, preferred, `patina/ipatch.c` factored out of
+  `patina/wbreset_patch.c` + `strut_patch.c` using it.
+- `patina/bar.c`: publish / clear strut (open path ~line 503, BAR OFF/close path), W2 desktop shrink/restore.
+- `patina/patina.c:558/613`: install / remove; STATUS keys `strut_opens strut_clamped strut_zoom` (status_core).
+- `patina/bar_usable.h`: comment (patch now asks too).
 - `tests/test_win.c`: clamp cases; `tests/test_wbreset.c` stays green after the ipatch factoring.
 - `tests/amiga/winprobe.c`: unchanged (the zoom alternate box has no public readout: `ZipWindow`, then read the box).
 - New `tests/amiga/struttest.c` (opens a window with given flags/box, prints the box it got; optional ZIP).
-- `tools/rig/amarchy_bar_rig.py`: new cases `strut_open`, `strut_zoom`, `strut_desk`, `strut_off`.
+- `tools/rig/patina_bar_rig.py`: new cases `strut_open`, `strut_zoom`, `strut_desk`, `strut_off`.
 - Makefile: build rule for the probe; `thoughts/shared/research/2026-09-28_console-conformance-matrix.md` not affected.
 
 ## Reachability test plan
@@ -163,11 +163,11 @@ Host (pure, `tests/test_win.c`, fail on revert): bordered box below strip moves 
 to usable but not below MinHeight; desktop box shortened; exact strut box passes; borderless popup passes;
 zoom box clamped; idempotent second pass changes nothing.
 
-One rig reachability test through the product entry point (Amarchy started from WBStartup as installed),
+One rig reachability test through the product entry point (Patina started from WBStartup as installed),
 sentinels:
-- `AMARCHY_STRUT_INSTALLED` (1 when the gate is in the -606 and -204 slots),
-- `AMARCHY_STRUT_CLAMPED` (count of clamped opens), `AMARCHY_STRUT_ZOOM` (injected/clamped zoom boxes),
-- `AMARCHY_STRUT_DESK` (desktop windows shortened at install).
+- `PATINA_STRUT_INSTALLED` (1 when the gate is in the -606 and -204 slots),
+- `PATINA_STRUT_CLAMPED` (count of clamped opens), `PATINA_STRUT_ZOOM` (injected/clamped zoom boxes),
+- `PATINA_STRUT_DESK` (desktop windows shortened at install).
 Also exposed in `BAR STATUS`.
 
 Rig steps (060, `UPTERM_RIG=<n> rig.py start --max --purpose "<session>: BAR-STRUT strip reserve"`, then
@@ -177,14 +177,14 @@ Rig steps (060, `UPTERM_RIG=<n> rig.py start --max --purpose "<session>: BAR-STR
    root window 20 rows shorter, insert a disk/ new drawer icon, CleanUp: do icons stay above? Same with
    DOpus desktop if installed.
 1. Bar on; `struttest` opens a 200x150 window at top = screen height - 100: assert box bottom <=
-   strip top (winprobe), `AMARCHY_STRUT_CLAMPED` +1.
+   strip top (winprobe), `PATINA_STRUT_CLAMPED` +1.
 2. `struttest` full-height sizable window, `ZipWindow` twice: neither box enters the strip;
-   `AMARCHY_STRUT_ZOOM` +1.
-3. `winprobe`: WB root window bottom == strip top - 1; `AMARCHY_STRUT_DESK` == 1; drop a new icon
+   `PATINA_STRUT_ZOOM` +1.
+3. `winprobe`: WB root window bottom == strip top - 1; `PATINA_STRUT_DESK` == 1; drop a new icon
    (NO_ICON_POSITION) via `UpdateWorkbench`: its position above the strip.
 4. Shell under `Stack 4096` opens via the patch: no crash (stack check).
 5. `BAR OFF`: same opener gets the unclamped box, root window back to full height; `BAR ON` restores.
-6. Quit Amarchy: -606/-204 slots hold the original targets again (lvoprobe), unless chained (report it).
+6. Quit Patina: -606/-204 slots hold the original targets again (lvoprobe), unless chained (report it).
 Revert check: steps 1-3 fail with the patch install line commented out.
 
 ## Owner decisions

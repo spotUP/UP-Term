@@ -1,6 +1,6 @@
 # Flat outer borders by pixel aspect (commit 230044cf, rig 70, OS 3.2, FS-UAE 060)
 
-Build: `make amiga` rc 0; amarchy-flat and flatwin from the branch merged with origin/main (97408c0f).
+Build: `make amiga` rc 0; patina-flat and flatwin from the branch merged with origin/main (97408c0f).
 Flat switched on with `flatwin 1 SET 1 0 2 3 0 3` (pen_outline 3 = RGB 102,136,187), window: `NewShell CON:40/40/400/100`
 at screen x 40..439, y 40..139. Pixels read with `ami.grab()` (screen framebuffer), runs of equal colour counted.
 

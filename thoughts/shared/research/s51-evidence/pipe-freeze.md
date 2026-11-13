@@ -20,7 +20,7 @@ Snoop (build/rig83/wasabi/snoop.log, printf_wc, first run after boot):
 vsh opens PTY:v103a1c681/w (create) and /r, LoadSegs VTC:userland/bin/wc,
 the runner sets local vars, wc (ixemul) opens bsdsocket, ixnet, timer.device,
 ixemul.library v48, FindTask - last line 21:38:41, then
-"snoop: nothing heard for 20 s - the machine is frozen". Amarchy idle calls stop too:
+"snoop: nothing heard for 20 s - the machine is frozen". Patina idle calls stop too:
 the whole machine froze, no Guru in serial.log.
 The freeze falls while wc's ixemul start-up runs concurrently with the printf
 subshell writing to and closing the write end.

@@ -105,7 +105,7 @@ static void selection_of_a_renderer_not_yet_initialised_is_none_and_reads_no_ter
 
 
 /* A drag selection exists only while the left button is down and the window is active (render/vtwin.c). The
- * release of a press that opened the Amarchy text menu's window went to that window: the terminal kept
+ * release of a press that opened the Patina text menu's window went to that window: the terminal kept
  * dragging, and every pointer move extended the selection for good. */
 static vtwin dw;
 static int dh_raw(void *u) { (void)u; return 0; }

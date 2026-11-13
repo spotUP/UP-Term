@@ -5,8 +5,8 @@
 #include <string.h>
 #include "../prefs/settings_def.h"
 #include "../prefs/prefs_core.h"
-#include "../amarchy/amconf_core.h"
-#include "../amarchy/menu_core.h"
+#include "../patina/amconf_core.h"
+#include "../patina/menu_core.h"
 #include "harness.h"
 
 static int pg_item_at(int id)
@@ -123,14 +123,14 @@ static void test_settings_table(void)
     }
 }
 
-/* the Amarchy rows are the am_keys[] they name */
-static void test_settings_amarchy(void)
+/* the Patina rows are the am_keys[] they name */
+static void test_settings_patina(void)
 {
     int i, k, rows = 0, seen[AM_NKEYS];
     memset(seen, 0, sizeof(seen));
     for (i = 0; i < sd_nsettings; i++) {
         const sd_setting *s = &sd_settings[i];
-        if (s->store != SD_AMARCHY)
+        if (s->store != SD_PATINA)
             continue;
         rows++;
         CHECK_INT(s->ftype, SDF_AMSTR);
@@ -166,7 +166,7 @@ static void test_settings_defaults(void)
     amconf_defaults(&a);
     for (i = 0; i < sd_nsettings; i++) {
         const sd_setting *s = &sd_settings[i];
-        const void *st = s->store == SD_AMARCHY ? (const void *)&a : (const void *)&f;
+        const void *st = s->store == SD_PATINA ? (const void *)&a : (const void *)&f;
         if (s->nvalues) {
             if (sd_index(s, st) != sd_def_index(s))
                 printf("default of %s: index %d, table says %d\n", s->key, sd_index(s, st), sd_def_index(s));
@@ -193,7 +193,7 @@ static void test_settings_roundtrip(void)
             continue;
         for (v = 0; v < s->nvalues; v++) {
             long len;
-            if (s->store == SD_AMARCHY) {
+            if (s->store == SD_PATINA) {
                 amconf_defaults(&a);
                 sd_set_index(s, &a, v);
                 CHECK_INT(sd_index(s, &a), v);
@@ -286,7 +286,7 @@ static void test_settings_row_label(void)
         char plain[80], want[200], got[200];
         sd_label_plain(s, plain, sizeof plain);
         CHECK(strchr(plain, '_') == 0);
-        sd_row_label(s, s->store == SD_AMARCHY ? (void *)&a : (void *)&f, got, sizeof got);
+        sd_row_label(s, s->store == SD_PATINA ? (void *)&a : (void *)&f, got, sizeof got);
         strcpy(want, plain);
         strcat(want, ": ");
         CHECK(!strncmp(got, want, strlen(want)));
@@ -396,7 +396,7 @@ void suite_settings_def(void)
     test_settings_garbage_value();
     test_settings_gadgets();
     test_settings_table();
-    test_settings_amarchy();
+    test_settings_patina();
     test_settings_defaults();
     test_settings_roundtrip();
 }

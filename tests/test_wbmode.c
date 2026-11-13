@@ -1,6 +1,6 @@
-/* W43: the ScreenMode prefs parser and the wait-for-final-mode decision (amarchy/wbmode_core.c). The bytes are the
+/* W43: the ScreenMode prefs parser and the wait-for-final-mode decision (patina/wbmode_core.c). The bytes are the
  * rig's own files (tools/rig/rig.py screenmode_prefs_bytes: FORM/PREF/PRHD(6)/SCRM(28)). */
-#include "../amarchy/wbmode_core.h"
+#include "../patina/wbmode_core.h"
 #include "harness.h"
 
 #define RTG_ID 0x50041303UL

@@ -62,7 +62,7 @@ def main():
     tasks = [l.split(None, 1) for l in out.splitlines() if l.strip()]
     print('%d other tasks in the exec lists' % len(tasks))
     for addr, name in tasks:
-        # a Background CLI may be a real ixemul program (Amarchy, upgetty): rc 0 or 1, never a hang
+        # a Background CLI may be a real ixemul program (Patina, upgetty): rc 0 or 1, never a hang
         want = 0 if addr == peer else 1
         if name.startswith('Background CLI') and addr != peer:
             ok = check_any("task %s %s: ixkill -0" % (addr, name), 'VTC:ixkill -0 %s' % addr) and ok

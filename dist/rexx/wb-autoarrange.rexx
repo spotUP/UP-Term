@@ -3,7 +3,7 @@
  * which workbench.library does not know: MENU INVOKE on it is rc 10 in every state. This runs the same four menu
  * actions on the active window: update, sort the icons by name, resize the window to fit them, snapshot all icons.
  * No Workbench port, or no drawer/volume window active (nothing, or the Workbench root): exit 5, nothing is touched.
- * Plan 2026-10-25-amarchy-window-groups.md, B2. */
+ * Plan 2026-10-25-patina-window-groups.md, B2. */
 OPTIONS RESULTS
 IF ~SHOW('P', 'WORKBENCH') THEN EXIT 5
 ADDRESS WORKBENCH

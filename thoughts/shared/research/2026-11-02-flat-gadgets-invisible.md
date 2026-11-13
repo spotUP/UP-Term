@@ -20,9 +20,9 @@ bar ONLY", landed c036836a / 3f47e564 / fcf305ef) superseded "frames BG in both 
 The pen map (SHINE=SHADOW=FILL=BG) is not involved.
 
 ## (a) Who draws what on 3.2 with flat on
-- Gadget glyphs: the amarchy-flat sysiclass hook, c2_draw (amarchy/flat.c:197-262): clone route
-  (flat_clone_draw, amarchy/flat_glyph.c:197-222) or block fallback (flat_glyph_draw).
-- Title band + title text: the amarchy-flat graphics Text patch, flat_tx_c (amarchy/flat.c:402-436), which paints the band
+- Gadget glyphs: the patina-flat sysiclass hook, c2_draw (patina/flat.c:197-262): clone route
+  (flat_clone_draw, patina/flat_glyph.c:197-222) or block fallback (flat_glyph_draw).
+- Title band + title text: the patina-flat graphics Text patch, flat_tx_c (patina/flat.c:402-436), which paints the band
   with the saved RectFill before the title string.
 - Frame fill/sides: stock Intuition (FILLPEN/BACKGROUNDPEN via the flat pen map).
 
@@ -33,9 +33,9 @@ The pen map (SHINE=SHADOW=FILL=BG) is not involved.
 - Title band = pen_outline (DK_ACCENT, flat_core.c:518-521), title text = pen_ptext (DK_BG).
 
 ## ROOT CAUSE: the band erases the gadgets
-flat_title_decide sets the band to the FULL title bar width: amarchy/flat_core.c:516
+flat_title_decide sets the band to the FULL title bar width: patina/flat_core.c:516
 `t->bx0 = 0; t->by0 = 0; t->bx1 = win_w - 1; t->by1 = bar_h - 1;`
-and flat_tx_c fills it on every title Text call (amarchy/flat.c:415-419). The close, depth and zoom gadgets live inside
+and flat_tx_c fills it on every title Text call (patina/flat.c:415-419). The close, depth and zoom gadgets live inside
 that rectangle. Any title Text call that comes after the gadgets were drawn (activation redraw order on 3.2, and every
 SetWindowTitles, e.g. Workbench updating "Ram Disk  x% full") wipes them to solid band grey; Intuition does not redraw
 the gadgets after the title, so they stay erased. The route note itself flagged this as an unchecked assumption:
@@ -47,13 +47,13 @@ Unverified: which exact call (activation vs SetWindowTitles) erased them on rig 
 
 ## (c) Hook installed? STATUS hang?
 - The sysiclass hook is installed: rf_install/tx_install run only after hook_install returns FLAT_OK
-  (amarchy/flat.c:1162-1171), and the Text patch demonstrably ran (black text on accent band).
+  (patina/flat.c:1162-1171), and the Text patch demonstrably ran (black text on accent band).
 - "frame hook calls=0 flat=0" is the C8 frameiclass hook line (flat_frame_status_line, flat.c:735-738; counters
   fcalls/fflat from c8_skip flat.c:301-345), not the sysiclass hook. calls=0 means no frameiclass IM_DRAW reached it
   (GadTools bevels on 3.2 not via that slot, or none drawn); unrelated to window gadgets. The sysiclass counter is
   st.calls (the "flat=on N calls" field).
 - STATUS hang: print_status (flat.c:652-740, ipd_status_line iconpen_dos.c:229-247) takes no lock and waits on nothing
-  (Forbid/FindSemaphore/copy/Permit/PutStr). The hang is not in amarchy-flat's STATUS code. At 2026-11-02 rig 8's
+  (Forbid/FindSemaphore/copy/Permit/PutStr). The hang is not in patina-flat's STATUS code. At 2026-11-02 rig 8's
   wasabid refuses connections (`rig.py status` = down) while its fs-uae runs at ~100% CPU: the Amiga side (or its
   wasabid) is wedged, which also explains the exec not returning. Cause of the wedge unverified (rig 8 not touched).
 
@@ -71,7 +71,7 @@ SetWindowTitles (Workbench "% full" refresh).
 
 Question: what paints the active window's close/depth/zoom boxes as one solid colour with no glyph?
 
-Evidence (diagnostic counters added to flatshared, read with `amarchy-flat STATUS` after opening a CON: window):
+Evidence (diagnostic counters added to flatshared, read with `patina-flat STATUS` after opening a CON: window):
 
 - `clone draws=13 fallback=0` and `clone diag zero=13 which=2 glyph=0 mask=1`: every clone draw of a window
   gadget produced an EMPTY glyph map. The offscreen grid held only value 0 (untouched).
@@ -91,30 +91,30 @@ Open: why 3.2 sysiclass draws nothing offscreen is not known (cached imagery tie
 unverified). Rig pixel proof of the fallback glyph after activation and re-activation is not yet measured.
 The diagnostic patch is kept out of the tree.
 
-## Rig 8 second cause: the resident amarchy-flat lags one boot behind the files
+## Rig 8 second cause: the resident patina-flat lags one boot behind the files
 
 Owner's rig 8 (OS 3.2) still showed solid band-colour gadget boxes after the 99fa0fe5 fix was built
 (shot ~/Desktop/upterm-shots/s29-rig8-gadgets-fix2-fail.png: close zone 113-133 solid 8d8d8d, no glyph
 pixel; STATUS `clone draws=47 fallback=0`). The fixed build cannot report draws>0 on an empty clone map,
-so the resident process was not the fixed build, although UP-Term:bin/amarchy-flat already had the build's
+so the resident process was not the fixed build, although UP-Term:bin/patina-flat already had the build's
 md5 (88102e4c).
 
 Proof (2026-11-02, rig 8):
-- A diagnostic amarchy-flat (extra shared-record fields) was placed in build/amiga and the rig rebooted
+- A diagnostic patina-flat (extra shared-record fields) was placed in build/amiga and the rig rebooted
   (ami.py refreshed VTC:, the boot shadow copied it to UP-Term:bin). After the boot STATUS printed garbage
   for the new fields (`tb n=4101 1633683443 ...`) although the record is MEMF_CLEAR: the resident was the
   PREVIOUS boot's file (the fixed main build), giving `clone draws=0 fallback=46` and visible block glyphs.
 - After restoring main's build and rebooting twice: `clone draws=0 fallback=46`; shot close zone
   197 px 8d8d8d + 18 px 000000 + 16 px bebebe (glyph ink present), right zone 168 px bebebe.
 
-Cause: Amarchy starts `UP-Term:bin/amarchy-flat BOOT` (desk_dos.c:514 pl_start) before the boot's shadow
+Cause: Patina starts `UP-Term:bin/patina-flat BOOT` (desk_dos.c:514 pl_start) before the boot's shadow
 Copy VTC: -> UP-Term:bin replaces that file. The resident keeps the old code in memory; the file on disk
 looks current. Same race as RIG-WARM-SRV-RACE (rig.py sys_hdf_kit_upterm), which only pre-writes
 UP-Term: files on a fresh clone, not on `ami.py reboot` / `rig.py reboot`.
 
 Consequence: the flat_glyph.c fix (99fa0fe5) is correct; the rig-8 failure was stale code. Any rig check
-of amarchy-flat (and any other program Amarchy starts at boot) after one reboot measures the previous
+of patina-flat (and any other program Patina starts at boot) after one reboot measures the previous
 build. Workaround until the rig is fixed: reboot twice, or quit the resident and start it again.
 Rig fix (not done here, rig tooling scope): write the UP-Term: kit files into the clone before every
 boot that refreshed them (extend sys_hdf_kit_upterm to reboots), or have the boot shadow run before
-User-Startup starts Amarchy.
+User-Startup starts Patina.

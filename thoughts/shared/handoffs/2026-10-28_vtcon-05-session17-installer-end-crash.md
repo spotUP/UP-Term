@@ -13,7 +13,7 @@ status: open
   tests/test_installer_rig_ask.py and tests/test_installer_drive_loop.py (fail with the fix reverted).
 - 5a3d62b0: `VTC:inhandlers ADDR` (name, node, is_Code, is_Data, read inside Forbid) and
   `INSTALLER_CHAIN=1` on installer_rig.py (chain dump logged before each Proceed).
-- Static check: IND_ADDHANDLER/IND_REMHANDLER pairing is correct in amarchy/cx.c,
+- Static check: IND_ADDHANDLER/IND_REMHANDLER pairing is correct in patina/cx.c,
   device/upcon_input.c, handler/vtcon_handler.c (winch_remove), proc/top_amiga.c.
 
 ## Evidence
@@ -26,7 +26,7 @@ status: open
   reset loop. Same file, "## Chain dump s17".
 
 ## Open lead
-- A CxCustom object (Amarchy gate, DOpus, others) runs inside the commodities.library chain node,
+- A CxCustom object (Patina gate, DOpus, others) runs inside the commodities.library chain node,
   so the input.device dump cannot show it. A broker whose program exited without DeleteCxObjAll
   leaves a dangling custom function there.
 - PC 104E8438 is not inside any inhandlers code; its owner is unknown.

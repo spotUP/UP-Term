@@ -16,5 +16,5 @@ Matching gadget: depth (x468..491, rows 0..10, h11). Its height 11 exceeds the 1
 
 Inactive Shell (300,60 raw; 300x120): no strip visible. Inactive bar is painted 1a1b26 (same as background), only 7aa2f7 outline at top row 120 and right border x598..599; bar interior rows 122..137 constant 1a1b26 at x540..597. Gadgets: depth 577,120 24x22; zoom 554,120 24x22. Strip would be background coloured, so invisible when inactive.
 
-Flat OFF comparison: not done. amarchy-flat usage is only "[STATUS]; Ctrl-C unloads it" (no OFF/ON toggle); unloading would disturb the held eye-check rig. STATUS: flat=on calls=1058, rectfill installed=yes.
+Flat OFF comparison: not done. patina-flat usage is only "[STATUS]; Ctrl-C unloads it" (no OFF/ON toggle); unloading would disturb the held eye-check rig. STATUS: flat=on calls=1058, rectfill installed=yes.
 Not verified: whether stock (flat off) shows the strip.

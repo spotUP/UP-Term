@@ -15,7 +15,7 @@ status: open
 ## Open, in order
 1. RIG96-DRAG-COPPER (todos.md): run hunt attempt 4 on a QUIET host only (attempt 3 on rig 131 starved: rigs 96/127/129 + pre-push hook). Recipe in rig96-drag-freeze.md "Hunt attempt 3" / next run: debug fs-uae (`--no-jit --debugger`), send memwatch together with the first "g" at the Kickstart stop, watch the bitmap END (0x2BD40), not LOFlist (its offset differs per rig: 0x168 on rig 96, 0x11A0 on rig 131). Drag NewShell XCON:0/7/640/249 with RAM:rawdrag dy<0, SolidWin running then stopped. Opus agent. Candidates: SolidWin, 3.2 Intuition frame redraw.
 2. Owner eye check on rig 96 rebuilt from main (full install, --keep, --idle-minutes 0): UPDemo 15 exit prompt below text. Drag recheck only after item 1 lands a fix (or confirm still reproducible).
-3. Item 3 of the 2026-11-04 handoff: wait for "AMARCHY READY <commit>" from vtcon-c1 (final combined pixel proof RL15, RL19 depth 8, Locale, GADGET-BLACK running on rig 135; do not re-pin before READY), then re-pin repos.lock, kit build + dist checks; upload needs owner OK.
+3. Item 3 of the 2026-11-04 handoff: wait for "PATINA READY <commit>" from vtcon-c1 (final combined pixel proof RL15, RL19 depth 8, Locale, GADGET-BLACK running on rig 135; do not re-pin before READY), then re-pin repos.lock, kit build + dist checks; upload needs owner OK.
 4. INSTALLER-RIG-REBOOT: close only after a clean fresh-all. vtcon-c1 (2026-11-05): the check 34 fail on rigs 131 and 125 was the S57 start hang, NOT host load: Pointer editor USE ran while IPrefs still handled the Palette write and hung 3.2 boot; fixed on main 500984a1; fresh-all PASS on rig 134. Check whether that PASS satisfies this row before running another.
 5. S57-LOCALE-GADGET-BLACK / XCON title black square: owned by vtcon-c1.
 
@@ -28,4 +28,4 @@ status: open
 - Item 1: hunt attempt 4 on rig 137 (61b6295e on main): no drag ran. The guest froze right after NewShell DragTest; SYS:Prefs/Pointer was still running from the S57 start hang; no memwatch hit past the bitmap end. Data point sent to vtcon-c1 (their start-hang agent on rig 141). Attempt 5 = same recipe, only after the start-hang fix lands.
 - Item 2: owner decision: rebuild rig 96 only after the start-hang fix, once, for the UPDemo eye check and the drag recheck together. Rig 96 stays up until then.
 - Item 4: INSTALLER-RIG-REBOOT closed in todos.md (reboot clean on rigs 124, 134, 135, 136).
-- Waiting on: vtcon-c1 message to vtcon-8c with the start-hang fix commit, then AMARCHY READY (item 3).
+- Waiting on: vtcon-c1 message to vtcon-8c with the start-hang fix commit, then PATINA READY (item 3).

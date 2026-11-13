@@ -1,4 +1,4 @@
-/* pubscr: see pubscr.h. The guarded public screen lock, moved out of amarchy/iconpen_dos.c. */
+/* pubscr: see pubscr.h. The guarded public screen lock, moved out of patina/iconpen_dos.c. */
 #include <string.h>
 #include <exec/types.h>
 #include <exec/lists.h>

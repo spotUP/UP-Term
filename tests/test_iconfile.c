@@ -1,4 +1,4 @@
-/* The .info rewrite of the filled icons (amarchy/iconfile_core.c; plan 2026-10-31-amarchy-lucide-icons.md L4, L13 host
+/* The .info rewrite of the filled icons (patina/iconfile_core.c; plan 2026-10-31-patina-lucide-icons.md L4, L13 host
  * part). Fixtures: tests/data/icons/ (a stock 3.2 drawer icon and tool icon), a built-here NewIcon + FORM ICON file, a
  * built-here lucide.dat, and every .info under build/rig/os-31 and os-322 when those trees exist (UPTERM_ICON_ROOT
  * names another root). */
@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include "../amarchy/iconfile_core.h"
+#include "../patina/iconfile_core.h"
 #include "harness.h"
 
 #define BUF 65536
@@ -427,11 +427,11 @@ static void test_pick_backup(void)
     CHECK_INT(li_pick_variant(0, 0), 0);
 
     CHECK_INT(li_backup_path("Work:Tools/Foo.info", out, sizeof out), 0);
-    CHECK_STR(out, "SYS:Storage/Icons/Amarchy/Work/Tools/Foo.info");
+    CHECK_STR(out, "SYS:Storage/Icons/Patina/Work/Tools/Foo.info");
     CHECK_INT(li_backup_path("SYS:Prefs.INFO", out, sizeof out), 0);
-    CHECK_STR(out, "SYS:Storage/Icons/Amarchy/SYS/Prefs.INFO");
+    CHECK_STR(out, "SYS:Storage/Icons/Patina/SYS/Prefs.INFO");
     CHECK_INT(li_backup_path("Ram Disk:disk.info", out, sizeof out), 0);
-    CHECK_STR(out, "SYS:Storage/Icons/Amarchy/Ram Disk/disk.info");
+    CHECK_STR(out, "SYS:Storage/Icons/Patina/Ram Disk/disk.info");
     CHECK_INT(li_backup_path("Tools/Foo.info", out, sizeof out), -1);
     CHECK_INT(li_backup_path("Work:Tools/Foo", out, sizeof out), -1);
     CHECK_INT(li_backup_path("a/b:Foo.info", out, sizeof out), -1);

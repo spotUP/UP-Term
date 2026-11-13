@@ -3,7 +3,7 @@
  * The Installer script cannot list volumes. Install (dist/Install.installer) runs this first; it sets the global
  * variable ENV:UPTBIGVOL to "<Volume>:UP-Term", or deletes the variable when no volume qualifies (the script then
  * offers SYS:UP-Term). The choice itself is install/bigvol.h (bv_choose, host-tested); the walk over the volumes
- * is install/hardvol.c, shared with amarchy-index, plus the device test: a network share's (smbfs) and RAM:'s
+ * is install/hardvol.c, shared with patina-index, plus the device test: a network share's (smbfs) and RAM:'s
  * device node has no FileSysStartupMsg, so only volumes of a disk of this machine are looked at.
  * `UPBigVol LIST` also prints every volume it looked at and why it was or was not taken. `UPBigVol ?` prints what
  * it does.

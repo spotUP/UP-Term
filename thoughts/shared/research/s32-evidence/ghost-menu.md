@@ -4,11 +4,11 @@ Status: step (a) partly done, (b)-(d) NOT started. Blocked: the menu ITEM ghost 
 into a layer without a Window, so the planned second gate would not see it. No code committed.
 
 ## Probe
-TEMP log in flat_rf_c (amarchy/flat.c, after `r->rcalls++`): ROM caller (ret in [irom_lo, irom_hi)), rp->Layer set,
+TEMP log in flat_rf_c (patina/flat.c, after `r->rcalls++`): ROM caller (ret in [irom_lo, irom_hi)), rp->Layer set,
 rp->Layer->Window NULL, rp->AreaPtSz != 0. Logged caller offset, AreaPtrn[0], AreaPtSz, rect, layer bounds, FgPen
-into a 16-entry ring in flatshared, printed by `amarchy-flat STATUS` while the menu was held open.
+into a 16-entry ring in flatshared, printed by `patina-flat STATUS` while the menu was held open.
 Probe patch: /private/tmp/claude-501/-Users-spot-Code-UP-Term-vtcon/286924bf-47a4-4018-b024-45e49a009a2e/scratchpad/ghost-probe.patch (reverted from the tree).
-Binary: build/amiga/amarchy-flat md5 a3aef7f29ccf5ab8a3813bb02eabb2ec, run from RAM: with BOOT (rig had no kit).
+Binary: build/amiga/patina-flat md5 a3aef7f29ccf5ab8a3813bb02eabb2ec, run from RAM: with BOOT (rig had no kit).
 Menu held open: mouse button held over the bar, title "Window" (inverted at x 91-147), pointer at (100,16).
 
 ## Result (one line for the whole menu open, rectfill calls=60)

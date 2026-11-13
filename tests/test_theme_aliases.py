@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """s75: the themes renamed to fit 30 characters. The one alias table is pc_theme_alias in prefs/prefs_core.c
-(prefs_theme_file and prefs_theme_index apply it, so /theme, Prefs, Amarchy and the live theme list all map old names).
+(prefs_theme_file and prefs_theme_index apply it, so /theme, Prefs, Patina and the live theme list all map old names).
 Every new name is a themes/*.conf, no old name still is, and every theme file name is 30 characters or shorter."""
 import pathlib, re, unittest
 

@@ -1,7 +1,7 @@
-/* prefs_merge: Prefs holds one copy of the fields per session, and the Amarchy menu (or another Prefs) can
+/* prefs_merge: Prefs holds one copy of the fields per session, and the Patina menu (or another Prefs) can
  * write the same files meanwhile. When the files change under an open Prefs, the pages the user has not
  * edited since open (or last save) take the file's values; the pages the user has edited keep the user's
- * edits, so a later Save loses neither (plan 2026-10-26-amarchy-prefs-inline.md, "Concurrency with Prefs").
+ * edits, so a later Save loses neither (plan 2026-10-26-patina-prefs-inline.md, "Concurrency with Prefs").
  * The decision is per page, and a field's page is the page of its settings_def row: no field list here.
  * No OS calls; tests/test_prefs.c walks it. */
 #ifndef PREFS_MERGE_H

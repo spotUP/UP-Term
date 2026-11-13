@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """rig.stage_ixemul (no emulator): VTC:ixp6, first in LIBS:, gets the kit's ixemul.library and ixnet.library
-on every start; a stale copy there is replaced (rig 7's 19 Oct ixemul made amarchy-menu stop with "Illegal
+on every start; a stale copy there is replaced (rig 7's 19 Oct ixemul made patina-menu stop with "Illegal
 instruction", 2026-10-25), --nofpu takes the soft-float ixemul, a current copy is left alone."""
 import inspect, pathlib, shutil, sys, tempfile, unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -55,7 +55,7 @@ class BuildDrift(unittest.TestCase):
         self.addCleanup(setattr, rig, "ROOT", self.save)
         rig.ROOT = self.d
         (self.d / "build/amiga").mkdir(parents=True)
-        for name in ("vsh", "pty-handler", "amarchy-gui"):
+        for name in ("vsh", "pty-handler", "patina-gui"):
             (self.d / "build/amiga" / name).write_bytes(b"new " + name.encode())
         self.vtc = self.d / "vtc"
         (self.vtc / paths.UPTERM_DRAWER / "bin").mkdir(parents=True)
@@ -63,15 +63,15 @@ class BuildDrift(unittest.TestCase):
 
     def test_names_stale_copies(self):
         (self.vtc / "pty-handler").write_bytes(b"old")
-        (self.vtc / paths.UPTERM_DRAWER / "bin/amarchy-gui").write_bytes(b"old")
+        (self.vtc / paths.UPTERM_DRAWER / "bin/patina-gui").write_bytes(b"old")
         (self.vtc / "gg/bin/sh").write_bytes(b"old")
         (self.vtc / "vsh").write_bytes(b"new vsh")
         self.assertEqual(sorted(rig.build_drift(self.vtc)),
-                         sorted(["pty-handler", paths.UPTERM_DRAWER + "/bin/amarchy-gui", "gg/bin/sh"]))
+                         sorted(["pty-handler", paths.UPTERM_DRAWER + "/bin/patina-gui", "gg/bin/sh"]))
 
-    def test_stage_upterm_carries_every_amarchy_program(self):
+    def test_stage_upterm_carries_every_patina_program(self):
         src = inspect.getsource(rig.stage_upterm)
-        for name in ("Amarchy", "amarchy-menu", "amarchy-gui", "amarchy-index"):
+        for name in ("Patina", "patina-menu", "patina-gui", "patina-index"):
             self.assertIn('"%s"' % name, src)
 
     def test_start_warns(self):

@@ -3,10 +3,10 @@
 A modern terminal, a Unix userland and a flat desktop for AmigaOS 3.x (68020 or better, AmigaOS 3.0 and up; tested most on 3.2).
 
 - **UP-Term / vtcon**: a console window (`XCON:`) with a real terminal inside: 16, 256 and RGB colours, alternate screen, mouse, bracketed paste, sixel and kitty pictures, tabs, lines that re-wrap on resize. Unix ports (bash-compatible `vsh`, vim, tmux, less, git, ssh, curl) and Amiga programs both render right.
-- **Amarchy**: a desktop suite on top of Workbench: Left Amiga key shortcuts for the whole machine, a bar, menus, notices, themes, and `amarchy-flat`, which gives system gadgets (buttons, check boxes, input fields, sliders, Preferences programs) a flat look.
+- **Patina**: a desktop suite on top of Workbench: Left Amiga key shortcuts for the whole machine, a bar, menus, notices, themes, and `patina-flat`, which gives system gadgets (buttons, check boxes, input fields, sliders, Preferences programs) a flat look.
 - **upkg**: a package manager (opkg) with a feed of 28 add-ons: Neovim, Python 3.14, git, Perl, vim, BitchX, vbcc, Directory Opus 5.104 and more, from the Shell or a Workbench window.
 
-![The Amarchy desktop](docs/screenshots/amarchy-desktop.png)
+![The Patina desktop](docs/screenshots/patina-desktop.png)
 
 | | |
 |---|---|
@@ -15,17 +15,17 @@ A modern terminal, a Unix userland and a flat desktop for AmigaOS 3.x (68020 or 
 
 ![A Directory Opus lister](docs/screenshots/dopus-lister.png)
 
-Amarchy themes: the bar, the windows and the gadgets follow the theme you pick.
+Patina themes: the bar, the windows and the gadgets follow the theme you pick.
 
 | | | |
 |---|---|---|
 | ![The tokyo-night theme](docs/screenshots/theme-tokyo-night.png) | ![The gruvbox theme](docs/screenshots/theme-gruvbox.png) | ![The catppuccin-latte theme](docs/screenshots/theme-catppuccin-latte.png) |
 
-The Amarchy menu opens with Left Amiga + Space. Style > Amarchy theme lists the themes and switches to the one you pick.
+The Patina menu opens with Left Amiga + Space. Style > Patina theme lists the themes and switches to the one you pick.
 
 | | |
 |---|---|
-| ![The Amarchy menu](docs/screenshots/amarchy-menu.png) | ![The theme list under Style > Amarchy theme](docs/screenshots/amarchy-menu-themes.png) |
+| ![The Patina menu](docs/screenshots/patina-menu.png) | ![The theme list under Style > Patina theme](docs/screenshots/patina-menu-themes.png) |
 
 ## Download and install
 
@@ -33,7 +33,7 @@ Releases are on [spotUP/vtcon](https://github.com/spotUP/vtcon/releases/latest).
 
 | Archive | What it is | Use it when |
 |---|---|---|
-| `up-term.lha` (33 MB) | The base kit: terminal, Amarchy, Unix userland, upkg | The Amiga has a network: add-ons come through upkg |
+| `up-term.lha` (33 MB) | The base kit: terminal, Patina, Unix userland, upkg | The Amiga has a network: add-ons come through upkg |
 | `up-term-full.lha` (70 MB) | The base kit plus all 28 packages in a `Packages` drawer | The Amiga has no network |
 | `up-term-boot.lha` (5.7 MB) | A small downloader: fetches `up-term.lha` over https (certificate-checked) and starts its install; on an Amiga with no TCP/IP stack it first installs AmiNetXDuo (asks for the network card and DHCP), then asks you to reboot and run it again | You want the smallest file to carry over: unpack, `CD` into the drawer, `Execute Get-UP-Term TO <drawer with 110 MB free>`. Needs `lha` in the path |
 | `up-claude.lha`, `up-dopus.lha`, `up-nvim.lha`, `up-pi.lha`, `up-python.lha`, `up-uhc.lha` | Add-ons with their own Install | You want one add-on without upkg |
@@ -50,7 +50,7 @@ The network parts are optional and need a TCP/IP stack (Roadshow, Miami or AmiTC
 
 ## Documentation
 
-- [dist/README.txt](dist/README.txt): the manual that ships in the kit: install, update, use, menu, keys, tmux, Amarchy, serial login, network, add-ons.
+- [dist/README.txt](dist/README.txt): the manual that ships in the kit: install, update, use, menu, keys, tmux, Patina, serial login, network, add-ons.
 - [dist/LICENSES.txt](dist/LICENSES.txt): the licences of every shipped part.
 - [Release notes](https://github.com/spotUP/vtcon/releases): changes and known issues per release.
 

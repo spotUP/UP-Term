@@ -1,6 +1,6 @@
 ---
 date: 2026-11-05
-topic: S57 Locale side border fill in Amarchy flat mode
+topic: S57 Locale side border fill in Patina flat mode
 status: measured, no code fix needed on this evidence
 branch: s57-locale-flat (2e28bdd5 + temporary dfill diagnostic, reverted)
 rig: 127 (OS 3.2, 060 max)
@@ -12,11 +12,11 @@ rig: 127 (OS 3.2, 060 max)
 
 - Build of s57-locale-flat head 2e28bdd5 plus a temporary RectFill diagnostic ring
   (`dring`, 16 entries: rect, caller flags in-ROM/layer/window, window size and borders).
-  The diagnostic was printed through `amarchy-flat STATUS` and is reverted; patch kept in the
+  The diagnostic was printed through `patina-flat STATUS` and is reverted; patch kept in the
   session scratchpad only.
-- amarchy-flat copied to UP-Term:bin and VTCX:Apps/bin (the resident copy loads from UP-Term:bin),
+- patina-flat copied to UP-Term:bin and VTCX:Apps/bin (the resident copy loads from UP-Term:bin),
   flat prefs on, `SYS:Prefs/Palette FROM palette-flat-pen8.prefs USE`, then `SYS:Prefs/Locale`.
-- The Amarchy theme pick (d.pick hotkey menu) did not open on this rig ("no stable state within
+- The Patina theme pick (d.pick hotkey menu) did not open on this rig ("no stable state within
   60s"), so the run uses the palette prefs only. The owner's path through the theme pick is not
   reproduced here.
 

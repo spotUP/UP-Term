@@ -9,4 +9,4 @@ Runs (make test ONLY=...):
   - test_desk.c:1970 live == snapshot with non-zero user geometry: got RESTORE, want NONE (defect B)
 - GREEN (fix): desk_start_apply 76 checks, 0 failed; desk 2311 checks, 0 failed
 - REVERT proof: the red run is the revert (same predicate edit, done by hand, no stash); fix copied back afterwards.
-- m68k: make build/amiga/Amarchy build/amiga/amarchy-menu build/amiga/amarchy-gui rc=0 (these three link desk_dos.c; amarchy-flat does not).
+- m68k: make build/amiga/Patina build/amiga/patina-menu build/amiga/patina-gui rc=0 (these three link desk_dos.c; patina-flat does not).

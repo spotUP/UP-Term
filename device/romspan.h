@@ -1,5 +1,5 @@
-/* ROM-span tests, shared by up-console.device (patched console vectors) and amarchy-flat (foreign hook on the
- * sysiclass slot; plan 2026-10-29-amarchy-flat-ui-patch.md FLAT-C4). Header only, no OS calls, so the host
+/* ROM-span tests, shared by up-console.device (patched console vectors) and patina-flat (foreign hook on the
+ * sysiclass slot; plan 2026-10-29-patina-flat-ui-patch.md FLAT-C4). Header only, no OS calls, so the host
  * tests drive the same code the Amiga programs run. Addresses are unsigned long (32 bit on the Amiga). */
 #ifndef UPTERM_ROMSPAN_H
 #define UPTERM_ROMSPAN_H

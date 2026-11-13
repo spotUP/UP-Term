@@ -3,7 +3,7 @@ Echo "Directory Opus 5 stays in place; delete its drawer (DOpus5:) by hand if yo
 ; the flat toolbar files this add-on put into DOpus5: go (Directory Opus itself stays)
 Assign >NIL: DOpus5: EXISTS
 If NOT WARN
-  Delete >NIL: DOpus5:Images/Amarchy ALL QUIET FORCE
-  Delete >NIL: DOpus5:Buttons/Amarchy-toolbar QUIET
-  Delete >NIL: DOpus5:Buttons/Amarchy-toolbar-#? QUIET
+  Delete >NIL: DOpus5:Images/Patina ALL QUIET FORCE
+  Delete >NIL: DOpus5:Buttons/Patina-toolbar QUIET
+  Delete >NIL: DOpus5:Buttons/Patina-toolbar-#? QUIET
 EndIf

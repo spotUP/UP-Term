@@ -1,6 +1,6 @@
-/* lcmdprobe: a stand-in third-party application for the Amarchy clash rig (tools/rig/amarchy_clash_rig.py).
+/* lcmdprobe: a stand-in third-party application for the Patina clash rig (tools/rig/patina_clash_rig.py).
  * Opens a window "lcmdprobe", and for every IDCMP_RAWKEY it receives appends "raw=<hex> qual=<hex>" to
- * RAM:lcmdprobe.log. Ends when the window is closed or after 60 s. A Left Amiga chord that Amarchy does not
+ * RAM:lcmdprobe.log. Ends when the window is closed or after 60 s. A Left Amiga chord that Patina does not
  * own reaches it with IEQUALIFIER_LCOMMAND (0x0040) set; one the commodity swallowed never appears. */
 #include <stdio.h>
 #include <exec/types.h>

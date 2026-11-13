@@ -1,10 +1,10 @@
-/* scrprobe: the screens amarchy_gui_rig.py needs (G7, AMB3), and the font numbers it compares the menu with.
+/* scrprobe: the screens patina_gui_rig.py needs (G7, AMB3), and the font numbers it compares the menu with.
  *   scrprobe open NAME|- SECS      opens a 640x256 screen and holds it SECS seconds (Ctrl-C ends it): public under
  *                                  NAME, or private with "-" (a screen with no public name: the menu must fall back
  *                                  to the Workbench). Prints "open" once it is in front.
  *   scrprobe font NAME|- [text...] the public screen NAME (the default public screen for "-"): prints
  *                                  "screen W H ysize xsize proportional rx ry" and "len N text" for each text, in
- *                                  the font the menu opens on that screen (amarchy/menu_font.c), rx ry the
+ *                                  the font the menu opens on that screen (patina/menu_font.c), rx ry the
  *                                  pixel shape of the screen's display mode; then "fontname NAME ysize" for that font. */
 #include <exec/types.h>
 #include <dos/dos.h>
@@ -18,7 +18,7 @@
 #include <proto/intuition.h>
 #include <string.h>
 #include <stdlib.h>
-#include "../../amarchy/menu_font.h"
+#include "../../patina/menu_font.h"
 
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
@@ -72,7 +72,7 @@ static int do_font(const char *name, int argc, char **argv)
         return 20;
     }
     square = menu_screen_aspect(s, &rx, &ry);
-    /* No preferred font: the probe reports the per-screen default choice the menu makes without amarchy-menu-font. */
+    /* No preferred font: the probe reports the per-screen default choice the menu makes without patina-menu-font. */
     f = menu_font_open(s, square, "", 0, &opened);
     InitRastPort(&rp);
     SetFont(&rp, f);

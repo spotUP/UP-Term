@@ -7,8 +7,8 @@ status: cause unproven, probe built
 # Glyph clone empty on 3.2
 
 ## Question
-Why does the clone in amarchy/flat.c clone_render (161-195) read an all-zero grid after
-the saved sysiclass IM_DRAW on OS 3.2, so amarchy/flat_glyph.c flat_clone_draw (~206-209)
+Why does the clone in patina/flat.c clone_render (161-195) read an all-zero grid after
+the saved sysiclass IM_DRAW on OS 3.2, so patina/flat_glyph.c flat_clone_draw (~206-209)
 returns FLAT_CLONE_FAIL and the 99fa0fe5 block-glyph fallback runs?
 
 ## Known before this session
@@ -34,7 +34,7 @@ thoughts/shared/research/s30-evidence/glyph-clone-clprobe.c (build: vc command f
 DEPTHIMAGE/CLOSEIMAGE with screen DrawInfo; DrawImageState into B 8-plane no-friend, C screen-depth
 friend, D screen-depth no friend, E 8-plane marker DrawInfo, G screen RastPort control; then the
 GadgetRender images of a real window's system gadgets (B-E). Prints pixel grid and nonzero count.
-Run with amarchy-flat NOT active.
+Run with patina-flat NOT active.
 
 ## Result
 Not run. Rig 55 never answered: Amiberry hung at boot (App Nap throttle, 0.1% CPU); fs-uae start
@@ -42,10 +42,10 @@ hit the kit clone slowly and a 500 s timeout killed it; the third start was stop
 coordinator at budget. No probe output, no fix, no rig pixel proof.
 
 ## Next step
-1. Boot one OS 3.2 rig (fs-uae), STATUS shows amarchy-flat not active.
+1. Boot one OS 3.2 rig (fs-uae), STATUS shows patina-flat not active.
 2. Put and run glyph-clone-clprobe; read which of B/C/D/E/G and the WIN gadget images are nonzero.
    - G nonzero, B-E zero: offscreen target is the problem (check C friend vs D depth).
    - NewObject images draw but WIN gadget images do not: Intuition-owned window images are
      cached/drawn outside IM_DRAW on 3.2 (hypothesis 2); clone must use a fresh NewObject sysiclass image.
    - All zero including G: probe draw path itself wrong; recheck.
-3. Then rerun with amarchy-flat active to test re-entry (hypothesis 3).
+3. Then rerun with patina-flat active to test re-entry (hypothesis 3).

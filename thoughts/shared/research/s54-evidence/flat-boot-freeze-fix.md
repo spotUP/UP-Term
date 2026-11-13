@@ -1,4 +1,4 @@
-# FLAT-BOOT-FREEZE: amarchy-flat from User-Startup froze AmigaOS 3.2 at boot
+# FLAT-BOOT-FREEZE: patina-flat from User-Startup froze AmigaOS 3.2 at boot
 
 Rig 66, OS 3.2, `--max`. Follows flat-freezes-daemon.md (wasabid lost in 4 of 4 boots).
 
@@ -18,7 +18,7 @@ icon pen holder. The trace of a frozen boot:
 
 ## Cause
 
-amarchy/iconpen_dos.c pens_sync (and ipd_recolour) locked the public screen list, then let ip_sync call
+patina/iconpen_dos.c pens_sync (and ipd_recolour) locked the public screen list, then let ip_sync call
 `o.theme = pens_theme`, which reads ENV:/ENVARC: prefs and the theme file. One second after LoadWB opened the
 Workbench, that read blocks in DOS (volume or handler not ready; a requester needs the public screen list to open
 its window). LoadWB and wasabid both wait on the list lock too, so the whole system stops.
@@ -41,7 +41,7 @@ and pens_theme_cached reads no file. 2 failures before the fix, OK after.
 ## The UP-Term: requester (coordinator report, owner saw it on rig 66)
 
 Rig 66 is a plain rig, not a full install: UP-Term: is not assigned (rig.py only touches UP-Term: behind
-`Assign EXISTS`). GT_SHIPPED_DIR is `UP-Term:Amarchy/Themes` (amarchy/gthemes_core.h:15), so the theme read in
+`Assign EXISTS`). GT_SHIPPED_DIR is `UP-Term:Patina/Themes` (patina/gthemes_core.h:15), so the theme read in
 pens_theme asks DOS for volume UP-Term:, and DOS puts up "Please insert volume UP-Term:". That is the blocked
 gt_load in the trace: with the list locked the requester cannot open, so the system froze; with the first fix it
 opened and sat on the screen (verify run 1: daemon answered 3 of 3 boots, but rig start rc 1 and every EXEC ended
@@ -56,14 +56,14 @@ missing volume is a failed read (theme defaults), never a requester. The test al
 
 - 3 boots: rig start rc 0, daemon ping rc 0 each time, no requester error. STATUS was not captured
   (wrong ami.py subcommand in the script).
-- Boot 4: ping rc 0, `ami.py requesters` empty, `ami.py exec "VTC:amarchy-flat STATUS"` prints
+- Boot 4: ping rc 0, `ami.py requesters` empty, `ami.py exec "VTC:patina-flat STATUS"` prints
   `flat=on`, rectfill and text installed=yes, 16 pens held.
 - Before the fix: 4 of 4 boots froze (flat-freezes-daemon.md) and the trace boot froze again.
 
 ## Lazy theme read
 
-Problem with the first two commits: pens_sync read the theme (amconf_load + gt_load, ENVARC:Amarchy/themes, UP-Term:Amarchy/Themes)
-on every call, and amarchy-flat calls it once per second (flat.c ipd_owner). Before them the theme was read only on the
+Problem with the first two commits: pens_sync read the theme (amconf_load + gt_load, ENVARC:Patina/themes, UP-Term:Patina/Themes)
+on every call, and patina-flat calls it once per second (flat.c ipd_owner). Before them the theme was read only on the
 IP_SYNC_OBTAIN path.
 
 Fix (commit dac3b6dd): ip_ops gets an optional `theme_ready`. ip_sync, after verify and decide, returns the new
@@ -76,5 +76,5 @@ test_theme_ready covers the same-address reopen). ipd_recolour keeps its pre-rea
 Tests: tests/test_ipd_no_dos_under_list.py (new: no pre-lock pens_theme in pens_sync, NEED_THEME path present),
 tests/test_iconpen.c test_theme_ready (NEED_THEME without obtain, retry obtains, steady state and release ask nothing).
 
-Rig 66 (OS 3.2, --max, started with --allow-stale-base: branch lacks 12 origin/main commits), amarchy-flat BOOT appended to
+Rig 66 (OS 3.2, --max, started with --allow-stale-base: branch lacks 12 origin/main commits), patina-flat BOOT appended to
 S:User-Startup, one reboot: daemon ping ok, `ami.py requesters` empty, STATUS `flat=on`, rectfill/text installed, pens-held 16.

@@ -14,10 +14,10 @@ status: handoff
 - UPKG-CURL-SIGNAL-HINT cause row ticked as a duplicate of the fixed row.
 
 ## Next (ledger rows, grep thoughts/spot/todos.md)
-1. RIG31-RESET-LOOP: on the next loop, read the first Illegal/Exception line from reset-loop-*.fs-uae.log. Trigger to try: RTG screen close (Palette or ScreenMode USE, Amarchy theme switch). Side: rig holds 3 wasabid binaries (BOOTX: ca3950f4 = build, C:wasabid 3df49aa0, vtc/wasabid cbb93a92).
+1. RIG31-RESET-LOOP: on the next loop, read the first Illegal/Exception line from reset-loop-*.fs-uae.log. Trigger to try: RTG screen close (Palette or ScreenMode USE, Patina theme switch). Side: rig holds 3 wasabid binaries (BOOTX: ca3950f4 = build, C:wasabid 3df49aa0, vtc/wasabid cbb93a92).
 2. NVIM-HEAP-CORRUPT: find the FS-UAE exit path for a guest-triggered quit (fs-uae source at ~/Code/Emulators/fs-uae; grep exit/uae_quit callers), and the first writer to _SysBase. Quiet host only.
 3. RJ7-DRAWN-MENU-NOOPEN (new): drawn menu did not open after earlier runs on the same boot, twice.
-4. Remaining: NVIM-PERF, AMARCHY-LAUNCH-FIELD7 (waits up-uhc 1.4), RIG-BATCH-DAILY, upterm-ports mk/common.mk:123 `seq 1 0` on macOS.
+4. Remaining: NVIM-PERF, PATINA-LAUNCH-FIELD7 (waits up-uhc 1.4), RIG-BATCH-DAILY, upterm-ports mk/common.mk:123 `seq 1 0` on macOS.
 
 ## State
 - No rigs of this session running; build/rig4, rig5, rig6 deleted. Rigs 1, 2, 8 belong to other sessions.

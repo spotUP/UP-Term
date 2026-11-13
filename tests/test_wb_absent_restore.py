@@ -2,7 +2,7 @@
 workbench.library learns a change only when IPrefs reads ENV:Sys/Workbench.prefs on its change notice, 1.5-7 s after the editor's USE (rig 56,
 s31, OS 3.2, wasabi snoop). 2ae68838 USEd the stock file and then deleted the ENV: file at once: IPrefs' open failed (Error 205) and the icons
 stayed frameless. So the stock file the editor writes must stay in ENV: (ENVARC: carries the persistent "absent"), and nothing on the off path may
-delete it afterwards (dk_env_fix_file with an absent original deletes). amarchy/desk_dos.c is Amiga-only code no host test links, so this test
+delete it afterwards (dk_env_fix_file with an absent original deletes). patina/desk_dos.c is Amiga-only code no host test links, so this test
 reads its structure."""
 import pathlib
 import re
@@ -10,7 +10,7 @@ import sys
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-SRC = (ROOT / "amarchy" / "desk_dos.c").read_text()
+SRC = (ROOT / "patina" / "desk_dos.c").read_text()
 
 
 def body(src, head):

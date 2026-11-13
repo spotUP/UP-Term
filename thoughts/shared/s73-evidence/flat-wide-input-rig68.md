@@ -14,18 +14,18 @@ session scratchpad). No screenshots taken.
 
 ## Build under test
 
-`nice -n 19 make build/amiga/amarchy-flat build/amiga/amarchy-gui build/amiga/Amarchy build/amiga/amarchy-menu build/amiga/upprefs` in the worktree, rc=0.
+`nice -n 19 make build/amiga/patina-flat build/amiga/patina-gui build/amiga/Patina build/amiga/patina-menu build/amiga/upprefs` in the worktree, rc=0.
 
 | binary | bytes |
 |---|---|
-| amarchy-flat | 239792 (md5 4cec5c4f7ea4a3d5a392c43b53822b90) |
-| Amarchy | 398708 |
-| amarchy-gui | 567920 |
-| amarchy-menu | 684260 |
+| patina-flat | 239792 (md5 4cec5c4f7ea4a3d5a392c43b53822b90) |
+| Patina | 398708 |
+| patina-gui | 567920 |
+| patina-menu | 684260 |
 | upprefs | 199380 |
 
-Struct readers of `flatshared` (flat_shared.h): amarchy/flat.c, amarchy/desk_dos.c
-(linked into Amarchy, amarchy-menu, amarchy-gui), prefs/upprefs.c. New fields
+Struct readers of `flatshared` (flat_shared.h): patina/flat.c, patina/desk_dos.c
+(linked into Patina, patina-menu, patina-gui), prefs/upprefs.c. New fields
 gfit / gfitbusy are appended at the struct end; readers use only earlier fields,
 so the rebuilt readers stay layout-compatible.
 
@@ -35,7 +35,7 @@ Coordinates: window-relative (grab origin 0,14); screen y = window y + 14, scree
 Time Preferences window W0 at 0,14 size 332x203.
 
 ### Q7 new build resident: PASS
-`List UP-Term:bin/amarchy-flat` = 239792 bytes (11:26:34). STATUS from the resident
+`List UP-Term:bin/patina-flat` = 239792 bytes (11:26:34). STATUS from the resident
 patch shows the new gfit / gfitbusy fields. After reboot: flat=on gboxes=38 side=1.
 
 ### Q1 box fits text at open: PASS
@@ -82,10 +82,10 @@ palette, see below); the span is the full gadget width, which is the claim.
 1. 11:08:45 rig 68 reset loop (watchdog: "10+ CPU resets in 60 s ... no CPU
    exception logged (ROM reset)"), log
    /Users/spot/Code/UP-Term/vtcon/build/rig68/reset-loop-20261111-110845.fs-uae.log.
-   It coincided with `ami.py exec 'List UP-Term:bin/amarchy#? UP-Term:bin/Amarchy'`
+   It coincided with `ami.py exec 'List UP-Term:bin/patina#? UP-Term:bin/Patina'`
    while the old s72 build (237076) was resident. Watchdog restarted the rig. Cause
    not investigated.
-2. ~11:19 `ami.py put` of the new amarchy-flat to UP-Term:bin hung the Amiga (no
+2. ~11:19 `ami.py put` of the new patina-flat to UP-Term:bin hung the Amiga (no
    ping, fs-uae 109% CPU, status down).
 3. Running ami commands from the main checkout's tools makes the rig gate refresh
    vtc/ from the main checkout's build/amiga (owner root was main), undoing
@@ -98,7 +98,7 @@ palette, see below); the span is the full gadget width, which is the claim.
 5. ENVARC:Sys/palette.prefs was missing (inset drew 7f007f). Ran
    `Copy ENV:Sys/palette.prefs ENVARC:Sys/palette.prefs CLONE` and rebooted; inset
    now 3e4254 (agent 13 saw 3f4551). The untouched year field also draws 3e4254,
-   so the pen difference is environment, not the fit code. ENV/ENVARC:Amarchy/prefs
+   so the pen difference is environment, not the fit code. ENV/ENVARC:Patina/prefs
    do not exist; defaults in use.
 6. Time Preferences date was changed to the 24th by the Q3 click. Not saved or used.
 
@@ -107,5 +107,5 @@ palette, see below); the span is the full gadget width, which is the claim.
 - rig 68 up; `rig.py status`: hold until 2026-11-11 15:27:23 (pid 79658), idle
   watchdog off; ping answers (wasabid 0.11b2).
 - uitree: W0 "Time Preferences" 0,14 332x203 active (front).
-- Resident amarchy-flat 239792 (checked by List + STATUS fields).
+- Resident patina-flat 239792 (checked by List + STATUS fields).
 - Scratch: small scripts and logs only in the session scratchpad; nothing over 10 MB.

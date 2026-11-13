@@ -194,7 +194,7 @@ static int tabslot_remove(tab_slot *t, int *n, int *active, const void *pane, in
 
 /* The tab bar's pens (TAB-FILLPEN). The active tab is the inverse of the
  * rest: TEXT pen ground with BACKGROUND pen letters, the others the other
- * way round. The DrawInfo FILLPEN is not used: the Amarchy flat pen map
+ * way round. The DrawInfo FILLPEN is not used: the Patina flat pen map
  * sets FILLPEN = BACKGROUNDPEN, which made the active tab look like the
  * inactive ones. TEXT and BACKGROUND differ under the stock and the flat
  * map. pens is the DrawInfo array; text and background are its indices. */

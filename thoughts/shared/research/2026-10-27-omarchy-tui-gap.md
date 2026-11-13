@@ -1,10 +1,10 @@
 ---
 date: 2026-10-27
-topic: What Omarchy does that Amarchy does not - startup logo, font sizes, menu actions with TUI pages; gap list
+topic: What Omarchy does that Patina does not - startup logo, font sizes, menu actions with TUI pages; gap list
 status: research
 ---
 
-# Omarchy vs Amarchy gap (logo, font sizes, richer TUI)
+# Omarchy vs Patina gap (logo, font sizes, richer TUI)
 
 Source: shallow clone of basecamp/omarchy master (scratchpad `omarchy/`, read-only, no script run). Paths below are repo paths.
 Important correction to older notes: the Omarchy menu is no longer a `bin/omarchy-menu` script plus walker. `bin/omarchy-menu` is a 52-line wrapper
@@ -104,37 +104,37 @@ Root entries (`default/omarchy/omarchy-menu.jsonc`): Apps, Learn, Appearance, Tr
 Conditional rows: `when` / `checked` / `disabled` shell guards (docs/menu.md) show On/Off pairs only for the active state.
 Pattern worth copying: every long job is the same wrapper (logo, command, Done), so output, errors and "press any key" are uniform.
 
-## 4 Gap list against Amarchy
+## 4 Gap list against Patina
 
-Amarchy today (checked: `dist/keymap` [menu] rows, `amarchy/*.c`, roadmap): groups Apps, Settings (Amarchy prefs, menu font, edit menu), Style (theme, font, background), Learn, System (Reboot, screen switch), Install (upkg browse, upgrade, update), Trigger (clipboard history), Window (25 rows), DOpus (10). Drawn menu has one font (the screen font via `amarchy/menu_font.c`, plan `2026-10-23-amarchy-menu-aspect.md`).
-Planned = roadmap `thoughts/shared/plans/2026-10-26-amarchy-roadmap.md` (R1.x P1 theme, R2.x P2 bar, R3.x P3 tiling, R4.x P4 capture/notify/power) or the AMARCHY-UHC section of `thoughts/spot/todos.md` (line 2788).
+Patina today (checked: `dist/keymap` [menu] rows, `patina/*.c`, roadmap): groups Apps, Settings (Patina prefs, menu font, edit menu), Style (theme, font, background), Learn, System (Reboot, screen switch), Install (upkg browse, upgrade, update), Trigger (clipboard history), Window (25 rows), DOpus (10). Drawn menu has one font (the screen font via `patina/menu_font.c`, plan `2026-10-23-patina-menu-aspect.md`).
+Planned = roadmap `thoughts/shared/plans/2026-10-26-patina-roadmap.md` (R1.x P1 theme, R2.x P2 bar, R3.x P3 tiling, R4.x P4 capture/notify/power) or the PATINA-UHC section of `thoughts/spot/todos.md` (line 2788).
 
 | Omarchy feature | Status | Amiga equivalent for the missing ones |
 |---|---|---|
-| Menu with groups, search, Apps launcher | already in Amarchy | |
-| Theme / Font / Background rows | already in Amarchy (style.*); desktop-wide theme planned R1.2-R1.13 | |
-| Clipboard history, Learn > Keybindings | already in Amarchy | |
+| Menu with groups, search, Apps launcher | already in Patina | |
+| Theme / Font / Background rows | already in Patina (style.*); desktop-wide theme planned R1.2-R1.13 | |
+| Clipboard history, Learn > Keybindings | already in Patina | |
 | Window snapping, tiling, layouts | already (window.* rows) / planned R3.1-R3.12, auto re-tile R3.7b | |
 | Status bar (clock, RAM, CPU, network, workspaces) | planned R2.1-R2.16 | |
 | Screenshot / capture, clipboard image | planned R4.1-R4.7 (no OCR, QR, colour picker) | OCR and QR: none on stock OS 3.2; colour picker: ReadPixel under pointer, small, not planned |
 | Notifications | planned R4.8-R4.11 | |
 | Power: shutdown, reboot, flush | planned R4.12-R4.14 (Safe to switch off); Reboot row exists | Suspend, Hibernate, Logout: none on Amiga; Lock: out of scope per roadmap line 260 |
-| Package install / remove / update (Install, Remove, Update groups) | planned: AMARCHY-UHC (merged upkg + UHC Packages group: Search, Browse, Installed, Upgrades, Refresh) | Remove group = Installed rows with remove action; Update Omarchy = Upgrades row |
-| Output of a job shown inside the UI, not a terminal | planned in AMARCHY-UHC (owner: "show the output inside amarchy not in a term"); the Amarchy-side gap is stated there (act_run output unread, no live log view, loop waits only on IDCMP and CTRL_C) | The same log pane serves every job below |
-| Prompt rows for questions (gum input / choose) | planned for upkg add-ons only (AMARCHY-UHC, "drawn as input rows") | General input row: string, choose-one, confirm, reused by Setup and Install forms |
-| Startup logo: Plymouth boot logo + progress | missing; Amiga has no pre-Workbench splash from Amarchy | Logo shown when Amarchy starts (a small themed window or full screen for about 2 s from Startup-Sequence or the commodity start), optional boot logo ILBM via a Startup-Sequence line before LoadWB |
+| Package install / remove / update (Install, Remove, Update groups) | planned: PATINA-UHC (merged upkg + UHC Packages group: Search, Browse, Installed, Upgrades, Refresh) | Remove group = Installed rows with remove action; Update Omarchy = Upgrades row |
+| Output of a job shown inside the UI, not a terminal | planned in PATINA-UHC (owner: "show the output inside patina not in a term"); the Patina-side gap is stated there (act_run output unread, no live log view, loop waits only on IDCMP and CTRL_C) | The same log pane serves every job below |
+| Prompt rows for questions (gum input / choose) | planned for upkg add-ons only (PATINA-UHC, "drawn as input rows") | General input row: string, choose-one, confirm, reused by Setup and Install forms |
+| Startup logo: Plymouth boot logo + progress | missing; Amiga has no pre-Workbench splash from Patina | Logo shown when Patina starts (a small themed window or full screen for about 2 s from Startup-Sequence or the commodity start), optional boot logo ILBM via a Startup-Sequence line before LoadWB |
 | Logo before every job (omarchy-show-logo / Done screen) | missing | Header band (logo rows) at the top of the job log pane, plus a Done/Failed footer with the exit code |
-| Screensaver with logo effects (ttfx) | missing; `thoughts/shared/research/2026-10-22_amarchy-v2-native-workbench.md` row 28 notes a blanker commodity idea, no roadmap item | Blanker commodity: input.device event counter then a screen with the ASCII logo and a random text effect; needs a timer source (R2.3 provides it) |
-| About screen with logo and system info (fastfetch) | missing | About row: logo, Kickstart/WB version, CPU, chip/fast RAM, UP-Term and Amarchy versions, uptime; data from AvailMem, SysBase, exec version |
-| Branding menu (replace logo) | missing | Logo file in `UP-Term:Amarchy/` that the user can replace |
+| Screensaver with logo effects (ttfx) | missing; `thoughts/shared/research/2026-10-22_patina-v2-native-workbench.md` row 28 notes a blanker commodity idea, no roadmap item | Blanker commodity: input.device event counter then a screen with the ASCII logo and a random text effect; needs a timer source (R2.3 provides it) |
+| About screen with logo and system info (fastfetch) | missing | About row: logo, Kickstart/WB version, CPU, chip/fast RAM, UP-Term and Patina versions, uptime; data from AvailMem, SysBase, exec version |
+| Branding menu (replace logo) | missing | Logo file in `UP-Term:Patina/` that the user can replace |
 | Several font sizes in the menu (title 16, row 16, description 11, small 10) | missing; one font and one size per menu | Title bar and group header in a larger font, rows in the screen font, description line in a smaller one; needs menu_font.c to open 2 or 3 fonts per screen (JetBrainsMono 16 / TopazPro 16 / topaz 8 pairs already exist in `render/fontpair.c`); theme-pinned sizes would follow GUI-themes plan |
 | Font size scale as one base + multipliers, theme can pin tokens | missing | `font-base` plus ratios in the theme file (R1.5 parses `font`; extend to size tokens) |
 | Description subtitle on a row | missing | Second text line (or status line at the menu bottom) per row from keymap `|` field |
 | Toggle rows that show the current state (On/Off pairs with `when`) | missing as a general feature | Row `checked:` condition (ENV: variable or file exists) shown with a tick glyph |
 | Setup: security, git, default apps, keyboard, language | missing | Locale/Input prefs launch (Prefs programs), Roadshow/AmiSSL setup rows; most are Linux-only |
-| Setup: edit config files in editor | already (settings.amarchy.edit = nvim ENV:up-term/keymap) | |
-| Install: dev environments, browsers, editors, AI, gaming catalogues | covered by the package group (upkg add-ons: up-python, up-vim, up-git ...) | Group the rows by upkg Section: field (UPKG-AMARCHY-API) instead of hand-written lists |
-| Install Web App / TUI launcher wizard | missing | "Add launcher" form: name, command, window style, icon -> writes an Amarchy app entry / .info |
+| Setup: edit config files in editor | already (settings.patina.edit = nvim ENV:up-term/keymap) | |
+| Install: dev environments, browsers, editors, AI, gaming catalogues | covered by the package group (upkg add-ons: up-python, up-vim, up-git ...) | Group the rows by upkg Section: field (UPKG-PATINA-API) instead of hand-written lists |
+| Install Web App / TUI launcher wizard | missing | "Add launcher" form: name, command, window style, icon -> writes an Patina app entry / .info |
 | Speed test, disk test | missing | Disk speed row (read/write a RAM/DH file, time via timer.device); network via Roadshow |
 | Reminders | missing | Timer-driven reminder list using R2.3 ticks plus notify R4.9 |
 | Emoji picker, Transcode, Share (LocalSend), Hardware toggles, Hybrid GPU | missing, Linux-specific | Skip; Share could be an FTP/ftpd toggle (not planned) |
@@ -143,10 +143,10 @@ Planned = roadmap `thoughts/shared/plans/2026-10-26-amarchy-roadmap.md` (R1.x P1
 
 ## 5 Open questions for the owner
 
-1. Boot logo: only when Amarchy starts (safe, one window), or also a pre-Workbench splash edited into Startup-Sequence (riskier, touches the owner's boot)?
+1. Boot logo: only when Patina starts (safe, one window), or also a pre-Workbench splash edited into Startup-Sequence (riskier, touches the owner's boot)?
 2. Screensaver: wanted at all? If yes it becomes a new roadmap phase after P2 (needs the timer tick); text-effect style (ttfx-like) or just the logo with a colour cycle?
 3. Several font sizes: three tiers (header, row, description) from one base like Omarchy's `Style.font` scale, or only a bigger header? Should a theme be able to pin sizes?
-4. One shared job log pane (header logo, live output, Done/Failed footer) as a roadmap item before AMARCHY-UHC, so packages, Setup forms and power reuse it? Recommended: yes, it is the common piece.
+4. One shared job log pane (header logo, live output, Done/Failed footer) as a roadmap item before PATINA-UHC, so packages, Setup forms and power reuse it? Recommended: yes, it is the common piece.
 5. General input rows (string, choose, confirm) in the drawn menu: build once now for Setup/Install forms, or only for upkg questions?
-6. Which Omarchy Setup/Trigger groups do you want at all (Setup defaults, Reminders, Speed tests, Add-launcher wizard)? Unverified: how Amarchy would persist toggle state ("checked" rows).
+6. Which Omarchy Setup/Trigger groups do you want at all (Setup defaults, Reminders, Speed tests, Add-launcher wizard)? Unverified: how Patina would persist toggle state ("checked" rows).
 7. Not verified here: the exact meaning of the Menu.qml large-glyph font uses (lines 1682, 1693) and the contents of the Omarchy provider sub-menus (JavaScript, PHP, Elixir, DNS, Docker DB) - the parsed list shows the parents only.

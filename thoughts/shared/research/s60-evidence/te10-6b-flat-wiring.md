@@ -1,6 +1,6 @@
 # TE-10.6b: flat.c uses per-screen pen numbers
 
-Branch te10-6b. Build `build/amiga/amarchy-flat` rc 0 (-Werror). Host suites flat_core 2673/0, iclabel 256/0, iconpen 2529/0.
+Branch te10-6b. Build `build/amiga/patina-flat` rc 0 (-Werror). Host suites flat_core 2673/0, iclabel 256/0, iconpen 2529/0.
 Python: tests/test_flat_icl_pens_persist.py (updated), tests/test_flat_pens_per_screen.py (new guard), tests/test_wb_lock_guard.py: 12 passed.
 Rig run NOT done (unverified on the Amiga): needs an eye check with a second public screen.
 

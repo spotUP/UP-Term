@@ -343,7 +343,7 @@
               "the 51.4 TrueColor build, which is unticked there because "
               "3.2 has an icon.library of its own.\n\n"
               "The library you have is kept once as "
-              "LIBS:icon.library.amarchy-backup before it is replaced, and "
+              "LIBS:icon.library.patina-backup before it is replaced, and "
               "Uninstall puts it back. Reboot to use the new library.\n\n"
               "The licence is the \"Important Restrictions\" section of "
               "Files/iconlib/IconLib.html.")
@@ -632,7 +632,7 @@
 (set #step "tools" #kb #kb-tools #n 3
      #why (cat "Installing UP-Term's own commands (UPTerm, UPDemo,\n"
                "upgetty, uptelnet, hl, mdv, icat, ps, top, sz, rz,\n"
-               "Amarchy) and the network tools you chose."))
+               "Patina) and the network tools you chose."))
 (P_STEP)
 
 (set #step "fonts" #kb @KBFONTS@ #n 2
@@ -779,7 +779,7 @@
         (message
             (cat #lead
                  (if (exists "ENV:UPTSSFAILFLAT")
-                     "The Amarchy-Flat block was NOT added: S:Startup-\nSequence has no IPrefs line to put it before.\n" "")
+                     "The Patina-Flat block was NOT added: S:Startup-\nSequence has no IPrefs line to put it before.\n" "")
                  (if (exists "ENV:UPTSSFAILREMLIB")
                      "The RemLib block was NOT added: S:Startup-\nSequence has no SetPatch line to put it before.\n" "")))
         (run "Delete >NIL: ENV:UPTSSFAIL#? QUIET")))

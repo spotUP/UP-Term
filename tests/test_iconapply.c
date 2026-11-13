@@ -1,11 +1,11 @@
-/* amarchy-icons APPLY / RESTORE (amarchy/iconapply_core.c; plan 2026-10-31-amarchy-lucide-icons.md rows L8, L9).
+/* patina-icons APPLY / RESTORE (patina/iconapply_core.c; plan 2026-10-31-patina-lucide-icons.md rows L8, L9).
  * Drives the real ia_apply / ia_restore over an in-memory file system with the stock 3.2 fixtures
  * (tests/data/icons/os322-tool.info, os322-drawer.info) and a built-here lucide.dat. The sentinel of "the new code ran" is
  * the ia_ctx counters plus the bytes in the fake file system. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../amarchy/iconapply_core.h"
+#include "../patina/iconapply_core.h"
 #include "harness.h"
 
 /* named checks: CK(message, condition), CI(message, got, want) */
@@ -158,7 +158,7 @@ static void test_pure(void)
     strcpy(e.path, "ENV:Sys/def_disk.info"); e.absent = 1; e.ocrc = 0; e.wcrc = 0xABCDEF01u; ia_man_put(&m, &e);
     n = ia_man_format(&m, txt, sizeof txt);
     CK("manifest formats", n > 0);
-    CK("manifest header", strncmp(txt, "# amarchy-icons manifest 1\n", 27) == 0);
+    CK("manifest header", strncmp(txt, "# patina-icons manifest 1\n", 26) == 0);
     CK("manifest line", strstr(txt, "ENVARC:Sys/def_tool.info ; deadbeef ; 12345678\n") != NULL);
     CK("manifest absent line", strstr(txt, "ENV:Sys/def_disk.info ; absent ; abcdef01\n") != NULL);
     CI("manifest parse count", ia_man_parse(&m2, txt, n), 2);
@@ -207,7 +207,7 @@ static void test_flow(void)
     CK("manifest written", mf_find(&s, IA_MANIFEST) != NULL);
     CK("backup of an original equals the original", li_backup_path("ENVARC:Sys/def_tool.info", bp, sizeof bp) == 0 && same(&s, bp, g_tool, g_tool_n));
     CK("backup of the ENV copy", li_backup_path("ENV:Sys/def_drawer.info", bp, sizeof bp) == 0 && same(&s, bp, g_drawer, g_drawer_n));
-    for (i = 0; i < NFILES; i++) if (s.f[i].used && strstr(s.f[i].path, "SYS:Storage/Icons/Amarchy/") == s.f[i].path && !strstr(s.f[i].path, "manifest")) nbak++;
+    for (i = 0; i < NFILES; i++) if (s.f[i].used && strstr(s.f[i].path, "SYS:Storage/Icons/Patina/") == s.f[i].path && !strstr(s.f[i].path, "manifest")) nbak++;
     CI("six backups (one per existing original, none for the six absent ones)", nbak, 6);
 
     {   /* idempotence: the second APPLY must not back the icon set icon up over the original */
@@ -228,7 +228,7 @@ static void test_flow(void)
     CK("restore gives byte-identical originals and removes the files that did not exist", ok);
     CK("manifest removed with the last entry", mf_find(&s, IA_MANIFEST) == NULL);
     nbak = 0;
-    for (i = 0; i < NFILES; i++) if (s.f[i].used && strstr(s.f[i].path, "SYS:Storage/Icons/Amarchy/") == s.f[i].path) nbak++;
+    for (i = 0; i < NFILES; i++) if (s.f[i].used && strstr(s.f[i].path, "SYS:Storage/Icons/Patina/") == s.f[i].path) nbak++;
     CI("backup files removed", nbak, 0);
     mfs_free(&s);
 }
@@ -265,7 +265,7 @@ static void test_style(void)
     CK("and from the original", m && !same(&s, "ENVARC:Sys/def_tool.info", g_tool, g_tool_n));
     CK("backup of the tool icon is still the ORIGINAL", li_backup_path("ENVARC:Sys/def_tool.info", bp, sizeof bp) == 0 && same(&s, bp, g_tool, g_tool_n));
     CK("backup of the ENV drawer is still the original", li_backup_path("ENV:Sys/def_drawer.info", bp, sizeof bp) == 0 && same(&s, bp, g_drawer, g_drawer_n));
-    for (i = 0; i < NFILES; i++) if (s.f[i].used && strstr(s.f[i].path, "SYS:Storage/Icons/Amarchy/") == s.f[i].path && !strstr(s.f[i].path, "manifest")) nbak++;
+    for (i = 0; i < NFILES; i++) if (s.f[i].used && strstr(s.f[i].path, "SYS:Storage/Icons/Patina/") == s.f[i].path && !strstr(s.f[i].path, "manifest")) nbak++;
     CI("still six backups, none of a set", nbak, 6);
     {
         int w0 = s.writes;
@@ -513,7 +513,7 @@ static void test_walkfile(void)
     setup(&s, &c, 0);
     CI("drawer fixture type", ia_info_type(g_drawer, (size_t)g_drawer_n), 2);
     CI("tool fixture type", ia_info_type(g_tool, (size_t)g_tool_n), 3);
-    CK("backup drawer is skipped", ia_walk_skip_dir("Boot:Storage/Icons/Amarchy") && !ia_walk_skip_dir("Boot:Storage/Icons"));
+    CK("backup drawer is skipped", ia_walk_skip_dir("Boot:Storage/Icons/Patina") && !ia_walk_skip_dir("Boot:Storage/Icons"));
     mf_put(&s, "Work:Games/Foo.info", g_drawer, (size_t)g_drawer_n);
     mf_put(&s, "Work:Games/Bar.info", g_tool, (size_t)g_tool_n);
     mf_put(&s, "Work:Games/Foo.info.uaem", g_tool, (size_t)g_tool_n);
@@ -523,7 +523,7 @@ static void test_walkfile(void)
     CI("no specific entry: type fallback", ia_walk_file(&c, "Work:Games/Foo.info", 0, 0), IA_DO_FALLBACK);
     CI("fallback wrote through ia_apply's path", (int)c.written, 1);
     CK("file now differs", !same(&s, "Work:Games/Foo.info", g_drawer, g_drawer_n));
-    CK("original backed up under the Amarchy drawer", li_backup_path("Work:Games/Foo.info", bp, sizeof bp) == 0 && same(&s, bp, g_drawer, g_drawer_n));
+    CK("original backed up under the Patina drawer", li_backup_path("Work:Games/Foo.info", bp, sizeof bp) == 0 && same(&s, bp, g_drawer, g_drawer_n));
     m = mf_find(&s, IA_MANIFEST);
     CK("manifest lists the walked file", m != NULL && strstr((const char *)m->d, "Work:Games/Foo.info") != NULL);
     CI("second visit is idempotent (already icon set)", ia_walk_file(&c, "Work:Games/Foo.info", 0, 0), IA_DO_SKIP_OTHER);

@@ -1,4 +1,4 @@
-/* install/hardvol.c: see hardvol.h. The walk was amarchy/index.c's hard_disk(). */
+/* install/hardvol.c: see hardvol.h. The walk was patina/index.c's hard_disk(). */
 #include <dos/dos.h>
 #include <dos/dosextens.h>
 #include <dos/filehandler.h>

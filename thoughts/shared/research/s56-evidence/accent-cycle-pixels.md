@@ -5,14 +5,14 @@ rig: 86 (060 max, AmigaOS 3.2, Workbench 640x256 depth 8), main 37b5e3d2
 status: FAIL for S56-PRIMARY-ACCENT-FILL; S56-CYCLE-PLAIN not confirmed
 ---
 
-Setup: worktree build (amarchy-flat md5 2b5873e2d1e195803d2edf62f60257ca, RAM:amarchy-flat md5 equal), palette-flat-pen8.prefs USE, amarchy-flat, then UP-Term:bin/Amarchy (tokyo-night: pen0 1a1b26, pen2 a9b1d6, pen3 7aa2f7, pen4 3e4254). STATUS: flat=on, pens text=2 line=3 back=0 outline=3 button=4 ptext=0, clone draws>0 fallback=0. Pens read with build/amiga/wbpenprobe (ReadPixel pen indices) per gadget box from the UI tree. Windows opened after flat was running. Screenshots: ~/Desktop/upterm-shots/s56-pix86-*.png.
+Setup: worktree build (patina-flat md5 2b5873e2d1e195803d2edf62f60257ca, RAM:patina-flat md5 equal), palette-flat-pen8.prefs USE, patina-flat, then UP-Term:bin/Patina (tokyo-night: pen0 1a1b26, pen2 a9b1d6, pen3 7aa2f7, pen4 3e4254). STATUS: flat=on, pens text=2 line=3 back=0 outline=3 button=4 ptext=0, clone draws>0 fallback=0. Pens read with build/amiga/wbpenprobe (ReadPixel pen indices) per gadget box from the UI tree. Windows opened after flat was running. Screenshots: ~/Desktop/upterm-shots/s56-pix86-*.png.
 
 ## 1. S56-PRIMARY-ACCENT-FILL: FAIL
 Expected Save/Use fill pen 3 (7aa2f7), label pen 0 (ptext). Measured, identical in Locale, ScreenMode, Input, Serial, Sound prefs:
 - Locale Save (12,181 88x14): pen4 1136, pen2 84 (label), pen0 12 (corner cuts). Use (232,181): pen4 1155, pen2 65, pen0 12. Cancel (452,181): pen4 1113, pen2 107, pen0 12.
 - ScreenMode Save (12,184), Input Save (12,188), Serial Save (12,178), Sound Save (12,184): the same 1136/84/12.
 - Zero pen3 pixels in any Save/Use box. Cancel is not the outlined secondary look either (previous build 386666d6: pen0 933 + outline 299; now pen4 filled 1113, no outline).
-Every Save/Use/Cancel is drawn with role PLAIN (pen_button fill, stock text pen 2): the S56-CYCLE-PLAIN role filter (amarchy/flat.c role_of, flat_push_label) takes the GadTools push buttons for non-push gadgets. Suspect: GadTools button GadgetText offsets fail flat_push_label(has_text, lx>=0, ly>=0, lx<w, ly<h). Unverified: GadgetText values were not read on the rig.
+Every Save/Use/Cancel is drawn with role PLAIN (pen_button fill, stock text pen 2): the S56-CYCLE-PLAIN role filter (patina/flat.c role_of, flat_push_label) takes the GadTools push buttons for non-push gadgets. Suspect: GadTools button GadgetText offsets fail flat_push_label(has_text, lx>=0, ly>=0, lx<w, ly<h). Unverified: GadgetText values were not read on the rig.
 
 ## 2. S56-CYCLE-PLAIN: not confirmed
 Locale has no cycle gadget; ScreenMode, Input, Serial show none in the UI tree (kind is reported "button" for all). Sound Preferences "Sound Type:" (216,80 180x14), a cycle by position: fill pen 255 (rgb 0e0e14) 2427 px, pen1 (414868) 93 px, not pen4 (3e4254), no accent pixels. The fill is not the pen_button of the Save buttons; identification of the gadget as a GadTools cycle is by label, unverified. Verdict: cannot PASS; pen is neither accent nor pen_button.

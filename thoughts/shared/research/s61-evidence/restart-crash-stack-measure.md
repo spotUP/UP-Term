@@ -1,6 +1,6 @@
-# Amarchy restart: stack low-water measure (rig 177)
+# Patina restart: stack low-water measure (rig 177)
 
-Recipe: rig.py start --max --mmu --os 32 (rig 177), amarchy_gui_rig.py --setup --no-build (FAIL line 'flat prefs off' as known), muforce on; VTCX:Apps/bin/Amarchy = 369616 bytes (build/amiga/Amarchy measuring build, stack 131072). Script scratchpad/loopstk.py (loopm.py + GetEnv reads), 6 instances: cycle 0 = first start after Breaking the setup instance, cycles 1-5 = Break/Run restarts. Read at +20 s (cycle 0) / +15 s (others) after port up, and after Break.
+Recipe: rig.py start --max --mmu --os 32 (rig 177), patina_gui_rig.py --setup --no-build (FAIL line 'flat prefs off' as known), muforce on; VTCX:Apps/bin/Patina = 369616 bytes (build/amiga/Patina measuring build, stack 131072). Script scratchpad/loopstk.py (loopm.py + GetEnv reads), 6 instances: cycle 0 = first start after Breaking the setup instance, cycles 1-5 = Break/Run restarts. Read at +20 s (cycle 0) / +15 s (others) after port up, and after Break.
 
 | inst | STK_SIZE | STK_LO dec (hex) | STK_HI dec (hex) | BSS_LO dec (hex) | BSS_HI dec (hex) | STK_LO-BSS_HI |
 |---|---|---|---|---|---|---|

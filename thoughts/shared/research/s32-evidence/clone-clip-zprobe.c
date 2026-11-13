@@ -1,4 +1,4 @@
-/* zprobe: real window gadget geometry vs the Amarchy clone's private sysiclass image (clone_object/clone_render replica) */
+/* zprobe: real window gadget geometry vs the Patina clone's private sysiclass image (clone_object/clone_render replica) */
 #include <exec/types.h>
 #include <intuition/intuition.h>
 #include <intuition/screens.h>

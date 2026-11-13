@@ -66,7 +66,7 @@ import paths
 import ami
 import verdicts
 import install_rig as ir
-import amarchy_window_rig as amw
+import patina_window_rig as amw
 from assign_rig import rig
 
 ROOT = ir.ROOT
@@ -88,7 +88,7 @@ CASES["migrate"] = ("AVERAGE", None)
 FULLDEST = "DH1:KitTest-full"   # the fullsuite case's drawer for UP-Term: never SYS: (it is small and the owner's)
 FULL_DRAWER = "nvim"            # the add-on staged as an unpacked drawer; the rest are .lha files
 CASES["fullsuite"] = ("AVERAGE", None)
-# F1: the fresh kit, every box on every page ticked (only drawer and install mode stay default), a reboot, Amarchy up
+# F1: the fresh kit, every box on every page ticked (only drawer and install mode stay default), a reboot, Patina up
 CASES["fresh-all"] = ("AVERAGE", None)
 # The default drawer is UP-Term on the local disk with the most free room (UPBigVol -> ENV:UPTBIGVOL), which on the rig
 # is VTCX: or BOOTX: (host directories, 2 GB), not SYS:. The `space` case asks for SYS:UP-Term itself (it needs a small disk).
@@ -1070,8 +1070,8 @@ def run_kingcon():
 ROOM_CASES = ()   # the default drawer is on the biggest disk (VTCX: on the rig), so no case meets the room page by default; `space` meets it on SYS:
 
 
-def amarchy_window():
-    return any(t == 'Amarchy' for t, _ in windows(ami.req(0x0D).decode('latin-1')))
+def patina_window():
+    return any(t == 'Patina' for t, _ in windows(ami.req(0x0D).decode('latin-1')))
 
 
 class DrawerAsks:
@@ -1088,10 +1088,10 @@ class DrawerAsks:
         return self.n
 
 
-def reboot_amarchy_check(ck, log):
+def reboot_patina_check(ck, log):
     """F1: after the install the rig is rebooted (once the Installer's writes are quiet); the startup block must
-    have started Amarchy: its ARexx port answers STATUS, and Left Amiga + Space opens its menu (an XCON: window
-    titled Amarchy)."""
+    have started Patina: its ARexx port answers STATUS, and Left Amiga + Space opens its menu (an XCON: window
+    titled Patina)."""
     import tabstate
     time.sleep(10)   # the Installer's last writes and the volume's flush, never a reset mid-write
     rig_reboot()    # DH0: kept: a stop + start clones it anew from the master and the install is gone
@@ -1100,24 +1100,24 @@ def reboot_amarchy_check(ck, log):
     m = ami._m()
     try:
         with ami._conn() as conn:
-            st = m.arexx(conn, 'AMARCHY', 'STATUS')[2].strip()
+            st = m.arexx(conn, 'PATINA', 'STATUS')[2].strip()
     except m.WasabiError:
         st = ''
-    ck(bool(st), 'after the reboot: the AMARCHY ARexx port answers STATUS', st or 'no port')
-    print('amarchy STATUS after reboot: %s' % st)
+    ck(bool(st), 'after the reboot: the PATINA ARexx port answers STATUS', st or 'no port')
+    print('patina STATUS after reboot: %s' % st)
     tabstate.open_host('f1host')
-    # over the f1host terminal Left Amiga + Space opens amarchy-menu in the terminal while menu-in-terminal = text
-    # (the default); the drawn menu, titled Amarchy, needs graphical (FRESH-ALL-AFTER-END 32, as amarchy_window_rig)
+    # over the f1host terminal Left Amiga + Space opens patina-menu in the terminal while menu-in-terminal = text
+    # (the default); the drawn menu, titled Patina, needs graphical (FRESH-ALL-AFTER-END 32, as patina_window_rig)
     saved = amw.drawn_menu_prefs()
     try:
         ami.key(0x40, 0x40)   # Left Amiga + Space
         t0 = time.time()
-        while time.time() - t0 < 20 and not amarchy_window():
+        while time.time() - t0 < 20 and not patina_window():
             time.sleep(0.5)
-        up = amarchy_window()
-        ck(up, 'after the reboot: Left Amiga + Space opens the Amarchy menu window', 'no window titled Amarchy in 20 s')
+        up = patina_window()
+        ck(up, 'after the reboot: Left Amiga + Space opens the Patina menu window', 'no window titled Patina in 20 s')
         print('menu window after reboot: %s' % up)
-        if not up:   # amarchy_window reads the front screen only: say where every window is
+        if not up:   # patina_window reads the front screen only: say where every window is
             with ami._conn() as conn:
                 for s in ami._m().list_windows(conn)[0]:
                     print('screen [%s]: %s' % (s.get('title'), ' | '.join(w['title'] for w in s['windows'])))
@@ -1261,7 +1261,7 @@ def run_base_case(case):
         # AmiSSL: drawer (assigned by it when none existed) must hold the libraries it copied
         for f in ('AmiSSL:Libs/amisslmaster.library', 'AmiSSL:Libs/AmiSSL/amissl_v362.library', 'AmiSSL:Certs'):
             ck(ir.run('List >NIL: %s' % f)[0] == 0, 'install-amissl.dos put %s there' % f)
-        reboot_amarchy_check(ck, log)
+        reboot_patina_check(ck, log)
         if KEEP_INSTALLED:
             ir.require_upterm_assign(ir.run, 'at the end of fresh-all (kit kept)')
             print('installer_rig fresh-all: INSTALLER_KEEP set, the kit stays installed (no Uninstall, no fixture restore)')

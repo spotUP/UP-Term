@@ -1,6 +1,6 @@
 # TE-10.5a: gt_screen_apply_plan (pure, host only)
 
-Signature (amarchy/gthemes_core.h):
+Signature (patina/gthemes_core.h):
 
     typedef struct gt_plan_pen { short pen; uc_u32 rgb; short exclusive; } gt_plan_pen;
     #define GT_MASK_WORDS 8
@@ -28,4 +28,4 @@ Signature (amarchy/gthemes_core.h):
 ## Results
 - Red (stub returning 0 entries): RUNTEST gthemes rc=2 [FAIL] gthemes: 6647 checks, 56 failed
 - Green: RUNTEST gthemes rc=0 [OK] gthemes: 6647 checks, 0 failed
-- m68k build (7 Amarchy targets): rc=0
+- m68k build (7 Patina targets): rc=0

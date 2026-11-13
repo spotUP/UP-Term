@@ -3,13 +3,13 @@
 Branch s58-pens47. Host tests only; no rig.
 
 ## Violated invariant
-A pen Amarchy writes (SetRGB32) must be a pen Amarchy owns (ObtainPen exclusive, released with the rest). Pens 32-47 (icon pens)
+A pen Patina writes (SetRGB32) must be a pen Patina owns (ObtainPen exclusive, released with the rest). Pens 32-47 (icon pens)
 obey it through the ipd holder (iconpen_dos.c pen_obtain/pen_release via ip_holder_obtain/ip_holder_release). The live role pens
 4-7 (desk_live_role_pens: the pens no palette.prefs entry reaches on a screen deeper than 3 planes) did not:
 
-- amarchy/iconpen_core.c ip_sync (OBTAIN branch, was :235): `o->set_rgb(lp[k], lc[k])` for desk_live_follow's pens, never obtained.
-- amarchy/iconpen_dos.c:72 pen_set_rgb (the set_rgb op) is the SetRGB32 of that write.
-- amarchy/desk_dos.c:626 dk_live_pens: SetRGB32 on the same pens for theme apply / restore, never obtained.
+- patina/iconpen_core.c ip_sync (OBTAIN branch, was :235): `o->set_rgb(lp[k], lc[k])` for desk_live_follow's pens, never obtained.
+- patina/iconpen_dos.c:72 pen_set_rgb (the set_rgb op) is the SetRGB32 of that write.
+- patina/desk_dos.c:626 dk_live_pens: SetRGB32 on the same pens for theme apply / restore, never obtained.
 Line numbers in the ledger row matched (+-2).
 Consequence: ObtainBestPen from another client may be handed 4-7; the next sync repainted them.
 
@@ -41,7 +41,7 @@ tests/test_iconpen.c test_pens47_owned (make test ONLY=iconpen).
 
 Merge 957a8e23 (merge, not rebase). No textual conflicts; iconpen_core.c/.h, iconpen_dos.c/.h and tests/test_iconpen.c auto-merged and kept both sides: `ip_wb_lockable` is still used by `ipd_lock_wb_screen` (iconpen_dos.c:126), the test `test_workbench_still_opening_is_not_locked` is present, the pens 4-7 holder code and tests are present.
 
-Makefile check (MAIN-LINK-AMARCHY-INDEX): the branch makes desk_dos.c call `ipd_role_write` (iconpen_dos.c). desk_dos.c is linked by AMARCHY_SRC, AMARCHY_MENU_SRC and AMARCHY_GUI_SRC (Makefile lines 957, 1023, 1037); all three also list amarchy/iconpen_dos.c and iconpen_core.c. No other target lists desk_dos.c.
+Makefile check (MAIN-LINK-PATINA-INDEX): the branch makes desk_dos.c call `ipd_role_write` (iconpen_dos.c). desk_dos.c is linked by PATINA_SRC, PATINA_MENU_SRC and PATINA_GUI_SRC (Makefile lines 957, 1023, 1037); all three also list patina/iconpen_dos.c and iconpen_core.c. No other target lists desk_dos.c.
 
 Host suites (machine-wide lock helper):
 - green: RUNTEST iconpen rc=0 [OK] iconpen: 2195 checks, 0 failed (main alone: 2160)
@@ -50,6 +50,6 @@ Host suites (machine-wide lock helper):
 - red (iconpen_core.c:271 obtain forced to rhave = 0): RUNTEST iconpen rc=2 [FAIL] iconpen: 2195 checks, 28 failed
 - restored with git checkout, rerun: RUNTEST iconpen rc=0 [OK] iconpen: 2195 checks, 0 failed
 
-m68k: make build/amiga/Amarchy amarchy-gui amarchy-menu amarchy-index amarchy-icons amarchy-flat upprefs, rc=0.
+m68k: make build/amiga/Patina patina-gui patina-menu patina-index patina-icons patina-flat upprefs, rc=0.
 
-Finding, obtaining pens 4-7 fails (another client owns one): iconpen_core.c:271 sets `h->rhave[k]` to 1 only when `obtain` returns exactly that pen, and only then calls `set_rgb` (line 272), so a pen another client owns is silently skipped and left at its current colour. Later `ipd_role_write` (iconpen_dos.c) returns 0 for it (`ip_role_claim` fails, no SetRGB32), and desk_dos.c:639 falls back to the direct SetRGB32 only when it returns < 0 (no holder running), so that pen is never written by Amarchy; no retry, no log, no error surfaced.
+Finding, obtaining pens 4-7 fails (another client owns one): iconpen_core.c:271 sets `h->rhave[k]` to 1 only when `obtain` returns exactly that pen, and only then calls `set_rgb` (line 272), so a pen another client owns is silently skipped and left at its current colour. Later `ipd_role_write` (iconpen_dos.c) returns 0 for it (`ip_role_claim` fails, no SetRGB32), and desk_dos.c:639 falls back to the direct SetRGB32 only when it returns < 0 (no holder running), so that pen is never written by Patina; no retry, no log, no error surfaced.

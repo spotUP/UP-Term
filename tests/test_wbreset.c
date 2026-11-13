@@ -1,9 +1,9 @@
-/* WBRESET-EXT (amarchy/wbreset_core.c): an external CloseWorkBench (IPrefs on `Palette ... USE`) must find no
- * Amarchy window on the Workbench screen. Pins the phase machine the patched CloseWorkBench / OpenWorkBench and
- * the bar / amarchy-gui / amarchy-menu clients drive, and the bytes of the gate stub in the library slot. */
+/* WBRESET-EXT (patina/wbreset_core.c): an external CloseWorkBench (IPrefs on `Palette ... USE`) must find no
+ * Patina window on the Workbench screen. Pins the phase machine the patched CloseWorkBench / OpenWorkBench and
+ * the bar / patina-gui / patina-menu clients drive, and the bytes of the gate stub in the library slot. */
 #include <stdio.h>
 #include <string.h>
-#include "../amarchy/wbreset_core.h"
+#include "../patina/wbreset_core.h"
 #include "harness.h"
 
 static char bar_t, gui_t, menu_t, iprefs_t;
@@ -124,7 +124,7 @@ static void test_table(void)
     CHECK_INT(wbr_set(&r, &t[3], SIG_C, WBR_DISMISS, 1), 3);  /* update keeps the slot */
     wbr_drop(&r, &t[3]);
     CHECK_INT(wbr_set(&r, &t[WBR_MAX], SIG_F, WBR_HIDE, 0), 3);
-    CHECK_STR(WBR_SEM_NAME, "Amarchy.WBReset");
+    CHECK_STR(WBR_SEM_NAME, "Patina.WBReset");
     CHECK_INT(WBR_LVO_CLOSEWB, -78);
     CHECK_INT(WBR_LVO_OPENWB, -210);
 }
@@ -187,7 +187,7 @@ static void gstep_one(gstep *g)
     }
 }
 
-/* AMARCHY-IPATCH-GATE: a caller pre-empted at ANY instruction boundary of the gate, with the remover then zeroing the
+/* PATINA-IPATCH-GATE: a caller pre-empted at ANY instruction boundary of the gate, with the remover then zeroing the
  * hook word and reading the counter, is either counted (the remover waits for it) or goes to saved (never into the
  * hook). The old gate read the hook word first and counted in the C hook: a caller between the two was invisible. */
 static void test_gate_counts_before_it_reads_the_hook(void)
@@ -246,11 +246,11 @@ static int count_in(const char *path, const char *needle)
  * SetFunction takes); a bare SumLibrary leaves the checksum stale: RECOVERABLE ALERT #01000003 at boot. */
 static void test_hand_patch_finish(void)
 {
-    static const char *const files[] = { "amarchy/flat.c", "amarchy/wbreset_patch.c" };
+    static const char *const files[] = { "patina/flat.c", "patina/wbreset_patch.c" };
     unsigned i;
-    CHECK_INT(count_in("amarchy/libpatch.h", "lib_Flags |= LIBF_CHANGED"), 1);
-    CHECK_INT(count_in("amarchy/libpatch.h", "SumLibrary(lib)"), 1);
-    CHECK_INT(count_in("amarchy/libpatch.h", "CacheClearU()") >= 1, 1);
+    CHECK_INT(count_in("patina/libpatch.h", "lib_Flags |= LIBF_CHANGED"), 1);
+    CHECK_INT(count_in("patina/libpatch.h", "SumLibrary(lib)"), 1);
+    CHECK_INT(count_in("patina/libpatch.h", "CacheClearU()") >= 1, 1);
     for (i = 0; i < sizeof files / sizeof *files; i++) {
         CHECK_INT(count_in(files[i], "SumLibrary("), 0);
         CHECK_INT(count_in(files[i], "libpatch_done(") >= 1, 1);
@@ -258,19 +258,19 @@ static void test_hand_patch_finish(void)
 }
 
 /* IPrefs 40.7 counts the windows on the Workbench screen that lack WFLG_WBENCHWINDOW and shows "Please close all
- * windows, except drawers" without ever calling CloseWorkBench, so the gate never runs. Every window Amarchy opens
+ * windows, except drawers" without ever calling CloseWorkBench, so the gate never runs. Every window Patina opens
  * on the Workbench screen (the status bar via tw_open, the drawn menu via gui window_open) carries WA_WBenchWindow.
  * shot.c's full-screen overlay is on the front screen for one drag and is exempt. */
 static void test_wb_window_flag(void)
 {
-    static const char *const files[] = { "amarchy/gui.c", "amarchy/themewin.c" };
+    static const char *const files[] = { "patina/gui.c", "patina/themewin.c" };
     unsigned i;
     for (i = 0; i < sizeof files / sizeof *files; i++) {
         int opens = count_in(files[i], "OpenWindowTag");
         CHECK_INT(opens >= 1, 1);
         CHECK_INT(count_in(files[i], "WA_WBenchWindow"), opens);
     }
-    CHECK_INT(count_in("amarchy/bar.c", "OpenWindow"), 0);      /* the bar opens only through tw_open */
+    CHECK_INT(count_in("patina/bar.c", "OpenWindow"), 0);      /* the bar opens only through tw_open */
 }
 
 /* TE-7: reset-bound only for the fields of the plan's section 5 table; every live field leaves the mask 0. */

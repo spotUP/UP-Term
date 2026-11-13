@@ -1,5 +1,5 @@
 /* pens_amiga -- a screen colour map's pen for an 0xRRGGBB colour, shared by the renderer and the programs that
- * draw into a window of their own (amarchy-gui). The rule is render/pen_rule.h: exact while the map has room,
+ * draw into a window of their own (patina-gui). The rule is render/pen_rule.h: exact while the map has room,
  * the nearest pen when it is full. */
 #ifndef PENS_AMIGA_H
 #define PENS_AMIGA_H

@@ -1,15 +1,15 @@
 # rig 96 eye-check on 3.2 (vtcon-ee s54, main ecba5144, kit from fb6aa600, no code diff since)
 - fresh-all: [PASS] with UPTERM_RIG_FLAGS="--os 32 --max" INSTALLER_KEEP=1; Version = Kickstart 47.115, Workbench 47.2, exec.library 47.13
-- amarchy STATUS after reboot: rows=71 enabled=1 bar=1 ticks=121 (ok 34/35 passed)
+- patina STATUS after reboot: rows=71 enabled=1 bar=1 ticks=121 (ok 34/35 passed)
 - Screenshot 1 (fresh boot, window f1host active): backdrop 0E0E14 at 3 points PASS; no EE9900/6688BB/000000/FFFFFF pixels PASS; frame/title 7AA2F7 active, flat 1A1B26 interior
 - Screenshot 2 (two CON: shells): ShellB active frame+title 7AA2F7, ShellA inactive frame+title 5A5E75 PASS
 - Knob: UNRESOLVED. Prop gadget 23312 is all 1A1B26 in active and inactive windows (no 7AA2F7/5A5E75 knob pixels); CON: windows had no scrollback (typed keys did not reach shell). Needs a window with overflowing content.
-- Not done: arrow click ring check, UPDemo (tool-call budget exceeded). amarchy-flat STATUS: Unknown command via exec (binary is build/dist/up-term/Files/amarchy-flat, not on path); ARexx AMARCHY STATUS used instead.
+- Not done: arrow click ring check, UPDemo (tool-call budget exceeded). patina-flat STATUS: Unknown command via exec (binary is build/dist/up-term/Files/patina-flat, not on path); ARexx PATINA STATUS used instead.
 - Warnings: updemo assets (earth.anim, kanim-stream.bin, photo.png) missing in UP-Term: tree; Directory Opus not installed on rig; Workbench stayed PAL (W43).
 
 ## Second pass (2026-11-03, agent: knob / arrow ring / UPDemo)
 - Windows: XCON:20/30/400/120/FillA/CLOSE and XCON:200/60/400/120/FillB/CLOSE via NewShell FROM RAM:fill (List SYS:C, SYS:Libs x). Content overflowed (scrolled with up arrow).
-- Knob: FAIL. FillB prop (586,72 10x75) 750 px all 1A1B26 while active; FillA prop (406,42 10x75) 750 px all 1A1B26 (active, FillB sent behind) and inactive. Expected 7AA2F7 / 5A5E75: no knob drawn. amarchy-flat running, binary size equals build/dist (125816). Arrow glyphs draw in A9B1D6, no box outline. Shots: rig96-eyecheck-32-1-knob-none.png
+- Knob: FAIL. FillB prop (586,72 10x75) 750 px all 1A1B26 while active; FillA prop (406,42 10x75) 750 px all 1A1B26 (active, FillB sent behind) and inactive. Expected 7AA2F7 / 5A5E75: no knob drawn. patina-flat running, binary size equals build/dist (125816). Arrow glyphs draw in A9B1D6, no box outline. Shots: rig96-eyecheck-32-1-knob-none.png
 - Arrow ring: PASS. 6 clicks on FillA up/down arrows (411,123 / 411,134); right edge x418-419 y41-149, bottom y149 x20-419, left x20-21: 0 non-7AA2F7 pixels. Shot: rig96-eyecheck-32-2-arrow-ring.png
 - UPDemo: NOT VERIFIED. `UPDemo SCENE 15` -> "wrong number of arguments" (template SCENE/N; `UPDemo 15` parses). UPDemo is C:UPDemo. Via exec it exits at once (no tty); ami.py type/key text never reached the XCON window (Echo to RAM: file not created), so it could not be started inside an UP-Term window.
 - Closed FillA/FillB; deleted RAM:fill etc.

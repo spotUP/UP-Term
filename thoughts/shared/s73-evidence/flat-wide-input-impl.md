@@ -26,7 +26,7 @@ keeps the full ground box.
 - _flat_tx_c own frame 48, deepest chain 316, headroom 68 (limit 64 held)
 
 ## Build
-build/amiga/amarchy-flat: 239792 bytes, vbcc -warnings-as-errors clean.
+build/amiga/patina-flat: 239792 bytes, vbcc -warnings-as-errors clean.
 
 ## Reuse / search
 No clipping fill existed (searched c2_fill, c2_ring_fill callers in flat.c,
@@ -53,8 +53,8 @@ flat_on_stack/cl_ss/cl_sss pattern from c8_draw_on.
   keeping the union 92..239.
 - Left band empty when ix0 == x0.
 - Strip safety relies on raa_radius - 1 < pad*side.
-- flat_shared.h gains gfit, gfitbusy at the end of the struct: amarchy-gui
-  and amarchy-flat must come from the same tree.
+- flat_shared.h gains gfit, gfitbusy at the end of the struct: patina-gui
+  and patina-flat must come from the same tree.
 
 ## Rig agent must check (side 1, Time Prefs)
 1. Date row box 92..239 on open (17-char date).

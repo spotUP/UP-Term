@@ -45,7 +45,7 @@ void winspec_box(const winspec_opts *o, int cw, int ch, int bl, int bt, int br, 
 /* The title to pass as WA_Title. A borderless window gets none: Intuition
  * (RKRM, WFLG_BORDERLESS) draws the border anyway when a title is given, a
  * title bar and side borders inside a window budgeted for none, which pushed
- * the Amarchy text menu's cell area down and in (2026-10-25). The caller keeps
+ * the Patina text menu's cell area down and in (2026-10-25). The caller keeps
  * its own copy of the title for the tab bar. */
 const char *winspec_wa_title(int borderless, const char *title);
 

@@ -60,7 +60,7 @@ HOST_HDR := $(ENGINE_INC) $(wildcard engine/*.h engine/*.inc render/*.h render/*
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_reflow.c tests/test_sixel.c tests/test_rip.c tests/test_kitty.c tests/test_kittyout.c pic/kittyout.c tests/test_iterm2.c tests/test_pcansi.c tests/test_ansimusic.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c \
            tests/test_sh_parse.c tests/test_sh_expand.c tests/test_sh_exec.c tests/test_ldisc.c \
-           tests/test_desk.c tests/test_upcon.c tests/test_upconf.c tests/test_keymap.c tests/test_dopustb.c tests/test_prefs.c tests/test_amconf.c tests/test_settings_def.c tests/test_iconspec.c tests/test_updiff.c tests/test_zmodem.c tests/test_ripxfer.c tests/test_ripglue.c tests/test_dlsave.c tests/test_otag.c tests/test_ttf.c tests/test_slash.c tests/test_winspec.c tests/test_screenreq.c tests/test_wbpark.c tests/test_cmdline.c tests/test_fontpair.c tests/test_updemo.c tests/test_tabprog.c tests/test_pace.c tests/test_painter.c tests/test_text.c tests/test_clip.c tests/test_menusrv.c tests/test_gthemes.c tests/test_pkgs.c tests/test_job.c tests/test_bar.c tests/test_tick.c tests/test_demo_core.c tests/test_wbmode.c tests/test_status_core.c tests/test_barconf.c tests/test_note_core.c tests/test_flat_core.c tests/test_flat_role_core.c tests/test_iclabel.c tests/test_richaa.c tests/test_iconfile.c tests/test_iconapply.c tests/test_iconpen.c tests/test_menu_fontspec.c amarchy/menu_fontspec_core.c tests/test_wbreset.c tests/test_borderblank.c tests/test_inst.c tests/test_help_core.c tests/test_themeprev.c tests/test_menu_text.c \
+           tests/test_desk.c tests/test_upcon.c tests/test_upconf.c tests/test_keymap.c tests/test_dopustb.c tests/test_prefs.c tests/test_amconf.c tests/test_settings_def.c tests/test_iconspec.c tests/test_updiff.c tests/test_zmodem.c tests/test_ripxfer.c tests/test_ripglue.c tests/test_dlsave.c tests/test_otag.c tests/test_ttf.c tests/test_slash.c tests/test_winspec.c tests/test_screenreq.c tests/test_wbpark.c tests/test_cmdline.c tests/test_fontpair.c tests/test_updemo.c tests/test_tabprog.c tests/test_pace.c tests/test_painter.c tests/test_text.c tests/test_clip.c tests/test_menusrv.c tests/test_gthemes.c tests/test_pkgs.c tests/test_job.c tests/test_bar.c tests/test_tick.c tests/test_demo_core.c tests/test_wbmode.c tests/test_status_core.c tests/test_barconf.c tests/test_note_core.c tests/test_flat_core.c tests/test_flat_role_core.c tests/test_iclabel.c tests/test_richaa.c tests/test_iconfile.c tests/test_iconapply.c tests/test_iconpen.c tests/test_menu_fontspec.c patina/menu_fontspec_core.c tests/test_wbreset.c tests/test_borderblank.c tests/test_inst.c tests/test_help_core.c tests/test_themeprev.c tests/test_menu_text.c \
            tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_layout.c tests/test_splits_state.c tests/test_tabslot.c tests/test_menudef.c tests/test_telnet.c tests/test_upagent.c tests/test_complete.c tests/test_winmem.c tests/test_sbpack.c tests/test_hl.c tests/test_md.c \
            tests/claude_load.c tests/claude_vol.c tests/claude_screen.c tests/pi_stub.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_pi_llm.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c tests/test_emoji.c tests/test_waitset.c tests/test_brk.c tests/test_sh_pipe.c tests/test_sh_ixargv.c tests/test_sh_own.c tests/test_sh_jobgone.c tests/test_histfile.c tests/test_pens.c tests/test_proc.c tests/test_pty_name.c tests/test_bmsg.c tests/test_qmark.c tests/test_ttyown.c tests/test_closeeof.c tests/test_upassign.c tests/test_bigvol.c tests/test_fssm.c tests/test_clips.c tests/test_shot_core.c tests/test_win.c tests/test_tile.c
 
@@ -68,17 +68,17 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 
 # ONLY=iterm2 iTerm2 inline images (OSC 1337 File=): arg parser, units, BEL/ST ends, inline=0 saved through the host writer, name sanitising, 4 MB cap, ReportCellSize, cap, placement and cursor through the engine input (tests/test_iterm2.c)
 # ONLY=desk the native desktop theme core: palette/pointer/font/wbpattern prefs bytes, darker tone, readability guard, targets and marker (tests/test_desk.c)
-# ONLY=desk_start_apply Amarchy's start writes the icon border, volume gauge and backdrop the prefs ask for, and nothing when ENV: matches (tests/test_desk.c)
+# ONLY=desk_start_apply Patina's start writes the icon border, volume gauge and backdrop the prefs ask for, and nothing when ENV: matches (tests/test_desk.c)
 # ONLY=themeprev the Theme Editor preview pane: layout boxes, colours from gt_resolve, placement, drawn through the editor (tests/test_themeprev.c)
 # ONLY=help_core the welcome window and Help view core: placeholder expansion from the live keymap, sections, welcome-shown key, checkbox keys (tests/test_help_core.c)
-# ONLY=help_man_sync man/amarchy.1 GETTING STARTED equals what tools/gen_amarchy_help.py makes from dist/amarchy.help (tests/test_help_man_sync.py)
+# ONLY=help_man_sync man/patina.1 GETTING STARTED equals what tools/gen_patina_help.py makes from dist/patina.help (tests/test_help_man_sync.py)
 # ONLY=fssm a device node's startup is read as a FileSysStartupMsg only when it is one (tests/test_fssm.c)
 # ONLY=clips the clipboard history: ring prepend, dedupe, cap 20, labels, file round trip, the menu level (tests/test_clips.c)
-# ONLY=iconapply amarchy-icons APPLY / RESTORE: manifest, backup, idempotence, atomic-write recovery, restore byte for byte (tests/test_iconapply.c)
+# ONLY=iconapply patina-icons APPLY / RESTORE: manifest, backup, idempotence, atomic-write recovery, restore byte for byte (tests/test_iconapply.c)
 # ONLY=tick the commodity tick hook list (tests/test_tick.c)
-# ONLY=demo_core the Amarchy demo tour core: 10 scenes, total time, advance and wrap, verb parse, STATUS text, STOP (tests/test_demo_core.c)
+# ONLY=demo_core the Patina demo tour core: 10 scenes, total time, advance and wrap, verb parse, STATUS text, STOP (tests/test_demo_core.c)
 # ONLY=wbmode the ScreenMode prefs parser and the wait-for-final-Workbench-mode decision (tests/test_wbmode.c)
-# ONLY=status_core the AMARCHY STATUS and BAR STATUS replies fit REXX_HOST_OUT at the largest counters; BAR verb parse (tests/test_status_core.c)
+# ONLY=status_core the PATINA STATUS and BAR STATUS replies fit REXX_HOST_OUT at the largest counters; BAR verb parse (tests/test_status_core.c)
 # ONLY=barconf bar.conf parse, defaults, bad rows counted (tests/test_barconf.c)
 # ONLY=note_core the notice queue: parse with \| escape, expiry at t0+timeout, sticky, overflow drops oldest, corner slots, hit-test (tests/test_note_core.c)
 # ONLY=iconfile the .info rewrite: parse, splice, NewIcon and FORM ICON strip, restore byte for byte, variant pick, backup path, lucide.dat reader, every .info of the rig trees (tests/test_iconfile.c)
@@ -89,50 +89,50 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=iclabel RL21 antialiased icon labels: call filter, glyph mask, corner coverage, RGB and pen blends, pen cache (tests/test_iclabel.c)
 # ONLY=richaa RL20 rich menu box corners: reachability sentinel, per-pixel mix, depth and size fallbacks (tests/test_richaa.c)
 # ONLY=flat_role_core the role pens of a themed foreign screen: held, ColorMap, nearest, DrawInfo rows, Workbench parity (tests/test_flat_role_core.c)
-# ONLY=flat_core the amarchy-flat state block: offsets pinned, version and size mismatch refused, STATUS word (tests/test_flat_core.c)
+# ONLY=flat_core the patina-flat state block: offsets pinned, version and size mismatch refused, STATUS word (tests/test_flat_core.c)
 # ONLY=shot_core the screenshot ILBM writer: ByteRun1 edges, planes, golden bytes, round trip through tools/ilbm_decode.py (tests/test_shot_core.c)
 # ONLY=winspec the XCON: spec's size fields and the default ground (a CON:/RAW: window looks like an XCON: one) (tests/test_winspec.c)
 # ONLY=screenreq a zeroed screen move request asks for no move, so a new XCON: process does not flash the screen (tests/test_screenreq.c)
 # ONLY=wbpark   a closing Workbench parks a plain Workbench window once and its reopen brings it back; a failed reopen retries (tests/test_wbpark.c)
 # ONLY=cmdline vsh's argv as an AmigaDOS command line: KEY=value keeps KEY= unquoted so ReadArgs sees the keyword (tests/test_cmdline.c)
 # ONLY=dopus_filetype the Directory Opus filetype file's golden bytes; upstream filetype_tool check/lint when $(DOPUS5_SRC) is set (tests/test_dopus_filetype.py)
-# ONLY=menu_rig_dopus_absent the amarchy_menu_rig dopus_absent row starts the commodity before the root menu (tests/test_menu_rig_dopus_absent_commodity.py)
+# ONLY=menu_rig_dopus_absent the patina_menu_rig dopus_absent row starts the commodity before the root menu (tests/test_menu_rig_dopus_absent_commodity.py)
 # ONLY=menu_rig_dopus_quit the dopus_quit row starts DOpus again with C:LoadWB at its end, also on a raise (tests/test_menu_rig_dopus_quit_restore.py)
-# ONLY=rig_only_list `--only a,b` in the amarchy rig scripts runs those rows; an unknown row exits naming it (tests/test_rig_only_list.py)
+# ONLY=rig_only_list `--only a,b` in the patina rig scripts runs those rows; an unknown row exits naming it (tests/test_rig_only_list.py)
 # ONLY=rig_dopus_startup_page rig.py dopus answers the Installer's Modify Startup-Sequence page with S:Startup-Sequence, not the BOOTX wrapper (tests/test_rig_dopus_startup_page.py)
 # ONLY=rig_dopus_purpose rig.py dopus --purpose reaches the install rig's window title (tests/test_rig_dopus_purpose.py)
 # ONLY=rig_dopus_own_screen rig.py dopus --own-screen writes the DOpus environment that opens DOpus on its own screen (tests/test_rig_dopus_own_screen.py)
 # ONLY=menu_rig_dopus_screen dopus_present checks that Open UP-Term here and the drawn menu open on DOpus's own screen (tests/test_menu_rig_dopus_screen.py)
 # ONLY=claude_fixture the fake Messages API's routes (tools/test_claude_fixture.py)
 # ONLY=worktree_ready make worktree-ready dates a source that differs from main newer than the seeded binaries (tools/test_worktree_ready.py)
-# ONLY=menu_stamp the Amarchy hotkey press path reaches ms_binary_changed (act_menu_open -> ms_open, stamp and quit hooks set) (tests/test_amarchy_menu_stamp.py)
-# ONLY=wb_lock_guard no amarchy/*.c calls LockPubScreen with any argument, the default screen (0) included (it reopens a closed Workbench on OS 3.1: BOOT-31-WB-DEADLOCK); ipd_lock_pub_screen only (tests/test_wb_lock_guard.py)
+# ONLY=menu_stamp the Patina hotkey press path reaches ms_binary_changed (act_menu_open -> ms_open, stamp and quit hooks set) (tests/test_patina_menu_stamp.py)
+# ONLY=wb_lock_guard no patina/*.c calls LockPubScreen with any argument, the default screen (0) included (it reopens a closed Workbench on OS 3.1: BOOT-31-WB-DEADLOCK); ipd_lock_pub_screen only (tests/test_wb_lock_guard.py)
 # ONLY=screens_page_name_guard the Screens page samples public screen names at full length (GT_SCR_PAT), not 32 bytes (TE-10.8b)
 # ONLY=win_refresh win_refresh_frames refreshes only the caller's windows and an idle Workbench's, never a window another task can close in the unlocked gap (fake Intuition; tests/test_win_refresh.py)
-# ONLY=ibase_lock_guard no amarchy/*.c calls DOS or a blocking Intuition call between LockIBase and UnlockIBase (AMARCHY-WIN-IBASE-DOS; tests/test_ibase_lock_guard.py)
+# ONLY=ibase_lock_guard no patina/*.c calls DOS or a blocking Intuition call between LockIBase and UnlockIBase (PATINA-WIN-IBASE-DOS; tests/test_ibase_lock_guard.py)
 # ONLY=ipatch_guard the intuition patch gate counts callers itself, hooks leave through it, gates are never freed (tests/test_ipatch_guard.py)
-# ONLY=gui_rig_setup_breaks the rig's --setup Breaks every running Amarchy program copy from any path (RAM:amarchy-flat a pixel helper left), so its fresh copy is the one tested (tests/test_gui_rig_setup_breaks_any_copy.py)
+# ONLY=gui_rig_setup_breaks the rig's --setup Breaks every running Patina program copy from any path (RAM:patina-flat a pixel helper left), so its fresh copy is the one tested (tests/test_gui_rig_setup_breaks_any_copy.py)
 # ONLY=gui_rig_flat_default the rig helper reads the flat prefs with both keys default on (a header-only prefs file is flat on), off only when both say off (tests/test_gui_rig_flat_prefs_default.py)
-# ONLY=gui_chip_pens the Amarchy colour chips and theme preview hold their pens until the next full redraw, so no chip releases the pen it just drew with (tests/test_gui_chip_pens.py)
-# ONLY=gui_rig_open_menu the rig's open_menu() closes a menu an earlier step left open before the toggle hotkey, so it never closes it instead (tests/test_amarchy_gui_rig_open_menu.py)
-# ONLY=desk_rig_pick_waits the rig's desk pick() returns only after Amarchy wrote AMARCHY_WBCLOSES again, so pen reads see the applied theme (tests/test_amarchy_desk_rig_pick_waits.py)
-# ONLY=one_select_level the rig's one_select accepts Style level after a theme pick and checks "(current)" on the reopened theme list (tests/test_amarchy_one_select_level.py)
+# ONLY=gui_chip_pens the Patina colour chips and theme preview hold their pens until the next full redraw, so no chip releases the pen it just drew with (tests/test_gui_chip_pens.py)
+# ONLY=gui_rig_open_menu the rig's open_menu() closes a menu an earlier step left open before the toggle hotkey, so it never closes it instead (tests/test_patina_gui_rig_open_menu.py)
+# ONLY=desk_rig_pick_waits the rig's desk pick() returns only after Patina wrote PATINA_WBCLOSES again, so pen reads see the applied theme (tests/test_patina_desk_rig_pick_waits.py)
+# ONLY=one_select_level the rig's one_select accepts Style level after a theme pick and checks "(current)" on the reopened theme list (tests/test_patina_one_select_level.py)
 # ONLY=rig_installer_free installer_rig sys_free_bytes reads SYS: free space from Info with DH0: (3.1) and DH0 (3.2) (tests/test_installer_rig_free.py)
 # ONLY=icat_stderr icat prints its error lines (no datatype reads, cannot read) on the error stream and returns 10 (tests/test_icat_stderr.py)
 # ONLY=rig_real_drawer installer_rig judges the drawer the Installer recorded (ENVARC:up-term/Dir), not UPBigVol's prediction; check 10 only off the SYS: volume (tests/test_installer_rig_real_drawer.py)
-# ONLY=flat_icl_pens amarchy-flat keeps icon-label shade pens across Text calls per screen identity, releases them only on the live map at unload (tests/test_flat_icl_pens_persist.py, behaviour in test_iclabel.c)
-# ONLY=flat_single_instance amarchy-flat reads its prefs before the single-instance guard, so two boot starters cannot both patch (KS31-BOOT-CRASH; tests/test_flat_single_instance.py)
-# ONLY=flat_on_hang amarchy-flat passes the library base in a6 on every saved Text/RectFill/DrawBox/FieldBox call, so flat-ON no longer jumps into DOS device data (tests/test_flat_on_hang_wild_call.py)
+# ONLY=flat_icl_pens patina-flat keeps icon-label shade pens across Text calls per screen identity, releases them only on the live map at unload (tests/test_flat_icl_pens_persist.py, behaviour in test_iclabel.c)
+# ONLY=flat_single_instance patina-flat reads its prefs before the single-instance guard, so two boot starters cannot both patch (KS31-BOOT-CRASH; tests/test_flat_single_instance.py)
+# ONLY=flat_on_hang patina-flat passes the library base in a6 on every saved Text/RectFill/DrawBox/FieldBox call, so flat-ON no longer jumps into DOS device data (tests/test_flat_on_hang_wild_call.py)
 # ONLY=rig_install_no_vsh rig.py install without build/amiga/vsh exits with one message naming the file and the make target (tests/test_rig_install_no_vsh.py)
-# ONLY=rig_themes_live rig.py install/start stage the Amarchy themes into the live drawer UP-Term: points at, no boot needed (tests/test_rig_themes_live.py)
-# ONLY=editor_stack dk_editor gives the prefs editors a pl_stack stack, floor 32768 (tests/test_amarchy_editor_stack.py)
-# ONLY=palette_closes every palette.prefs write in desk_dos.c (dk_flat_pens too) closes Amarchy's windows around a pen reset, so IPrefs raises no System Request (tests/test_palette_write_closes_windows.py)
-# ONLY=revert_live_pens the timeout Revert sets the live pens 4-7 after Amarchy's windows are back, the way apply does, and dk_live_pens holds no Workbench lock across ipd_role_write (KS 3.2 freeze, tests/test_revert_live_pens_deferred.py)
+# ONLY=rig_themes_live rig.py install/start stage the Patina themes into the live drawer UP-Term: points at, no boot needed (tests/test_rig_themes_live.py)
+# ONLY=editor_stack dk_editor gives the prefs editors a pl_stack stack, floor 32768 (tests/test_patina_editor_stack.py)
+# ONLY=palette_closes every palette.prefs write in desk_dos.c (dk_flat_pens too) closes Patina's windows around a pen reset, so IPrefs raises no System Request (tests/test_palette_write_closes_windows.py)
+# ONLY=revert_live_pens the timeout Revert sets the live pens 4-7 after Patina's windows are back, the way apply does, and dk_live_pens holds no Workbench lock across ipd_role_write (KS 3.2 freeze, tests/test_revert_live_pens_deferred.py)
 # ONLY=wb_absent flat off / revert to no Workbench.prefs USEs the stock file and keeps it in ENV: for IPrefs, so the icon border returns (tests/test_wb_absent_restore.py)
-# ONLY=gui_rebind amarchy-gui takes and drops every screen resource in screen_bind/screen_unbind, so a Workbench reset between gui_hide and gui_show leaves nothing on the freed screen (tests/test_amarchy_gui_rebind.py)
+# ONLY=gui_rebind patina-gui takes and drops every screen resource in screen_bind/screen_unbind, so a Workbench reset between gui_hide and gui_show leaves nothing on the freed screen (tests/test_patina_gui_rebind.py)
 # ONLY=dist_stack every kit program sets its stack ($STACK: cookie), no launcher gives a loaded program a fixed stack (tests/test_dist_stack.py)
 # ONLY=ami_screen_text the rig's screen reader asks the focused window and clicks nothing first: a menu opening during the read stays (tests/test_ami_screen_text.py)
-# ONLY=rig_keys a rig's Right Option is Left Amiga (Amarchy), the Cmd keys stay Right Amiga (tests/test_rig_keys.py)
+# ONLY=rig_keys a rig's Right Option is Left Amiga (Patina), the Cmd keys stay Right Amiga (tests/test_rig_keys.py)
 # ONLY=keymap_rig_font_keys keymap_rig.py reads the rig keymap from input.prefs and presses the font keys by that keymap (tests/test_keymap_rig_font_keys.py)
 # ONLY=installer_drive installer_rig.drive FAILs when the room page keeps coming back (tests/test_installer_drive_loop.py)
 # ONLY=rig_tty_mask a terminal case's check/mask rows are blanked before the screens are compared, nothing else (tools/test_rig_tty_mask.py)
@@ -228,7 +228,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 TEST_ONLY_NAMES := $(shell grep -o '"$$(ONLY)" = [a-z_0-9]*' $(firstword $(MAKEFILE_LIST)) | sed 's/.* //' | sort -u)
 # ONLY= rows that run python3 on files alone: no C binary below is built or run for them (a worktree without the vendor NDK
 # cannot build render_host, and pkg_rows needs none). Add a name only after checking its script starts no $(BUILD) binary.
-TEST_PY_ONLY := dist_name_len win_refresh gui_chip_pens gen_lucide_icons icon_grid_fit pkg_rows worktree_ready rig_handler_fallback rig_amarchy_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq rig_boot_console gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free dopus_toolbar flat_on_hang icat_stderr help_man_sync ipd_no_dos_under_list amarchy_rows_buffer flat_single_instance flat_clone_stack flat_hook_locks flat_unload_inflight
+TEST_PY_ONLY := dist_name_len win_refresh gui_chip_pens gen_lucide_icons icon_grid_fit pkg_rows worktree_ready rig_handler_fallback rig_patina_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq rig_boot_console gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free dopus_toolbar flat_on_hang icat_stderr help_man_sync ipd_no_dos_under_list patina_rows_buffer flat_single_instance flat_clone_stack flat_hook_locks flat_unload_inflight
 TEST_BINS := $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host $(BUILD)/upgetty_host
 test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -n "$(ONLY)" ] && [ -z "$(filter $(ONLY),$(TEST_ONLY_NAMES))" ] && ! ./$(BUILD)/vttest_host --has $(ONLY); then echo "[ERROR] make test: no suite named $(ONLY)"; exit 2; fi
@@ -240,7 +240,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_paths ]; then python3 -I tools/test_rig_paths.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_wasabimcp ]; then python3 -I tools/test_rig_wasabimcp.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_muforce ]; then python3 -I tools/test_rig_muforce.py; fi
-	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_amarchy_conf ]; then python3 -I tools/test_rig_amarchy_conf.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_patina_conf ]; then python3 -I tools/test_rig_patina_conf.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_screenmode ]; then python3 -I tools/test_rig_screenmode.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_dopus_os_default ]; then python3 -I tools/test_rig_dopus_os_default.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_wasabi ]; then python3 -I tools/test_rig_wasabi.py; fi
@@ -253,7 +253,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_clone_new ]; then python3 -I tools/test_rig_clone_new.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_crashed ]; then python3 -I tools/test_rig_crashed.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = userland_expected ]; then python3 -I tests/test_userland_rig_expected.py; fi
-	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_stamp ]; then python3 -I tests/test_amarchy_menu_stamp.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_stamp ]; then python3 -I tests/test_patina_menu_stamp.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = wb_lock_guard ]; then python3 -I tests/test_wb_lock_guard.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = screens_page_name_guard ]; then python3 -I tests/test_screens_page_name_guard.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ibase_lock_guard ]; then python3 -I tests/test_ibase_lock_guard.py; fi
@@ -261,7 +261,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ipatch_guard ]; then python3 -I tests/test_ipatch_guard.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_wbr_drop ]; then python3 -I tests/test_gui_wbr_drop.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ipd_no_dos_under_list ]; then python3 -I tests/test_ipd_no_dos_under_list.py; fi
-	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = amarchy_rows_buffer ]; then python3 -I tests/test_amarchy_rows_buffer.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = patina_rows_buffer ]; then python3 -I tests/test_patina_rows_buffer.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_wbr_drop ]; then python3 -I tests/test_menu_wbr_drop.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_install_no_vsh ]; then python3 -I tests/test_rig_install_no_vsh.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_themes_live ]; then python3 -I tests/test_rig_themes_live.py; fi
@@ -275,18 +275,18 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = flat_hook_locks ]; then python3 -I tests/test_flat_hook_locks.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = flat_unload_inflight ]; then python3 -I tests/test_flat_unload_inflight.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = flat_icl_pens ]; then python3 -I tests/test_flat_icl_pens_persist.py; fi
-	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rebind ]; then python3 -I tests/test_amarchy_gui_rebind.py; fi
-	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = editor_stack ]; then python3 -I tests/test_amarchy_editor_stack.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rebind ]; then python3 -I tests/test_patina_gui_rebind.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = editor_stack ]; then python3 -I tests/test_patina_editor_stack.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = wb_absent ]; then python3 -I tests/test_wb_absent_restore.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = palette_closes ]; then python3 -I tests/test_palette_write_closes_windows.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = revert_live_pens ]; then python3 -I tests/test_revert_live_pens_deferred.py; fi
-	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rig_open_menu ]; then python3 -I tests/test_amarchy_gui_rig_open_menu.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rig_open_menu ]; then python3 -I tests/test_patina_gui_rig_open_menu.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_chip_pens ]; then python3 -I tests/test_gui_chip_pens.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rig_setup_breaks ]; then python3 -I tests/test_gui_rig_setup_breaks_any_copy.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rig_flat_default ]; then python3 -I tests/test_gui_rig_flat_prefs_default.py; fi
-	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = desk_rig_pick_waits ]; then python3 -I tests/test_amarchy_desk_rig_pick_waits.py; fi
-	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = one_select_level ]; then python3 -I tests/test_amarchy_one_select_level.py; fi
-	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = keep_wait ]; then python3 -I tests/test_amarchy_keep_wait.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = desk_rig_pick_waits ]; then python3 -I tests/test_patina_desk_rig_pick_waits.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = one_select_level ]; then python3 -I tests/test_patina_one_select_level.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = keep_wait ]; then python3 -I tests/test_patina_keep_wait.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_ami ]; then if [ -f "$(BUILD)/wasabi/src/tests/mock-wasabid.py" ] || [ -f "$(CURDIR)/../../$(BUILD)/wasabi/src/tests/mock-wasabid.py" ] || [ -n "$(ONLY)" ]; then python3 -I tools/test_rig_ami.py; else echo "[SKIP] rig_ami: wasabi is not built (make wasabi)"; fi; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_claude_import ]; then python3 -I tools/test_rig_claude_import.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_stdin ]; then python3 -I tools/test_rig_stdin.py; fi
@@ -337,7 +337,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_bebbossh.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = dist_stack ]; then python3 tests/test_dist_stack.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = pkg_rows ]; then python3 -I tests/test_pkg_rows.py; fi
-	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_amarchy_themes.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_patina_themes.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = dist_name_len ]; then python3 -I tests/test_dist_name_len.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = dist_name_len ]; then python3 -I tests/test_theme_aliases.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_ports_fresh.py; fi
@@ -443,7 +443,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 # never clash), -MMD/-MP dependency files so a header change rebuilds only the objects that include it, and a link step.
 # Editing one file recompiles one object (HOST-TEST-INCREMENTAL). The generated menu icon page is order-only: it must
 # exist before the first compile, and from then on the .d file names it as an ordinary prerequisite.
-VTTEST_HOST_SRC := handler/brk.c $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(PROC_CORE) $(CONF) $(SPLITS) config/keymap.c amarchy/cxdesc.c amarchy/amconf_core.c amarchy/amconf_keys.c amarchy/menu_core.c amarchy/leaf_core.c amarchy/leaf_pkg.c amarchy/menu_tree.c amarchy/index_core.c amarchy/index_load.c amarchy/clips_core.c amarchy/shot_core.c amarchy/icon_core.c amarchy/menu_geom.c amarchy/menu_icon.c amarchy/menu_theme.c amarchy/dopustb_core.c amarchy/win_core.c amarchy/tile_core.c handler/keymap_act.c handler/upmru.c $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) $(TELNET) demo/updemo.c $(VIEW_CORE) $(CLAUDE_CORE) $(TESTS) amarchy/gthemes_core.c amarchy/desk_core.c amarchy/menu_text_core.c amarchy/menusrv_core.c amarchy/pkgs_core.c amarchy/job_core.c amarchy/bar_core.c amarchy/tick_core.c amarchy/demo_core.c amarchy/wbmode_core.c amarchy/status_core.c amarchy/barconf_core.c amarchy/note_core.c amarchy/flat_core.c amarchy/flat_role_core.c amarchy/iclabel_core.c amarchy/iconfile_core.c amarchy/iconapply_core.c amarchy/iconpen_core.c handler/pubscr_core.c amarchy/flat_glyph.c amarchy/roundaa_core.c amarchy/richaa_core.c amarchy/wbreset_core.c amarchy/borderblank_core.c amarchy/inst_core.c amarchy/help_core.c amarchy/themeprev_core.c
+VTTEST_HOST_SRC := handler/brk.c $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(PROC_CORE) $(CONF) $(SPLITS) config/keymap.c patina/cxdesc.c patina/amconf_core.c patina/amconf_keys.c patina/menu_core.c patina/leaf_core.c patina/leaf_pkg.c patina/menu_tree.c patina/index_core.c patina/index_load.c patina/clips_core.c patina/shot_core.c patina/icon_core.c patina/menu_geom.c patina/menu_icon.c patina/menu_theme.c patina/dopustb_core.c patina/win_core.c patina/tile_core.c handler/keymap_act.c handler/upmru.c $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) $(TELNET) demo/updemo.c $(VIEW_CORE) $(CLAUDE_CORE) $(TESTS) patina/gthemes_core.c patina/desk_core.c patina/menu_text_core.c patina/menusrv_core.c patina/pkgs_core.c patina/job_core.c patina/bar_core.c patina/tick_core.c patina/demo_core.c patina/wbmode_core.c patina/status_core.c patina/barconf_core.c patina/note_core.c patina/flat_core.c patina/flat_role_core.c patina/iclabel_core.c patina/iconfile_core.c patina/iconapply_core.c patina/iconpen_core.c handler/pubscr_core.c patina/flat_glyph.c patina/roundaa_core.c patina/richaa_core.c patina/wbreset_core.c patina/borderblank_core.c patina/inst_core.c patina/help_core.c patina/themeprev_core.c
 VTTEST_HOST_OBJ := $(patsubst %.c,$(BUILD)/host-obj/%.o,$(VTTEST_HOST_SRC))
 
 $(VTTEST_HOST_OBJ): $(BUILD)/host-obj/%.o: %.c | $(MENU_ICONS_INC)
@@ -535,13 +535,13 @@ $(KEYMAP_DEFAULT_INC): tools/gen_keymap_default.py dist/keymap
 	python3 tools/gen_keymap_default.py dist/keymap $@
 
 AMHELP_INC := $(BUILD)/amiga/amhelp.inc
-# the welcome window and Help view text for amarchy-gui, from dist/amarchy.help (also the man page's GETTING STARTED)
-$(AMHELP_INC): tools/gen_amarchy_help.py dist/amarchy.help dist/keymap
+# the welcome window and Help view text for patina-gui, from dist/patina.help (also the man page's GETTING STARTED)
+$(AMHELP_INC): tools/gen_patina_help.py dist/patina.help dist/keymap
 	@mkdir -p $(dir $@)
-	python3 tools/gen_amarchy_help.py dist/amarchy.help dist/keymap $@
+	python3 tools/gen_patina_help.py dist/patina.help dist/keymap $@
 
-# The drawn Amarchy menu's icons (plan 2026-10-23-amarchy-drawn-menu.md, G3): dist/menu-icons names Symbols
-# Nerd Font glyphs; tools/gen_menu_icons.py (on tools/gen_emoji.py) makes one emoji page of them for amarchy/menu_icon.c.
+# The drawn Patina menu's icons (plan 2026-10-23-patina-drawn-menu.md, G3): dist/menu-icons names Symbols
+# Nerd Font glyphs; tools/gen_menu_icons.py (on tools/gen_emoji.py) makes one emoji page of them for patina/menu_icon.c.
 $(MENU_ICONS_INC): tools/gen_menu_icons.py tools/gen_emoji.py dist/menu-icons $(SYMBOLS_TTF)
 	@mkdir -p $(dir $@)
 	python3 tools/gen_menu_icons.py dist/menu-icons $(SYMBOLS_TTF) $@
@@ -594,10 +594,10 @@ $(SYMBOLS_TTF): $(SYMBOLS_ARCHIVE)
 symbolsnerd: $(SYMBOLS_TTF)
 
 # Phosphor Fill icons (@phosphor-icons/web 2.1.2 from the npm registry, MIT; the Flat Workbench icon set, plan
-# 2026-11-01-amarchy-filled-icon-set.md F1): the package tarball fetched once into build/phosphor/, SHA-256 checked, the
+# 2026-11-01-patina-filled-icon-set.md F1): the package tarball fetched once into build/phosphor/, SHA-256 checked, the
 # Phosphor-Fill.ttf and style.css extracted (both checked); tools/phosphor_codepoints.py turns the style.css rules
 # `.ph-fill.ph-NAME:before { content: "\eXXX" }` into codepoints.json (name -> code point, sorted, deterministic).
-# tools/gen_lucide_icons.py renders dist/lucide-icons to the planar images of dist/Amarchy/Icons/lucide.dat (built into
+# tools/gen_lucide_icons.py renders dist/lucide-icons to the planar images of dist/Patina/Icons/lucide.dat (built into
 # the kit by dist-base; the file name stays, no on-disk migration). PHOSPHOR_VER= another release (with the three SHA-256).
 PHOSPHOR_VER ?= 2.1.2
 PHOSPHOR_SHA256 ?= 40e3096099ca818c047979cece6a3764944d5200c67b64092f7bcd8bcd1d2b08
@@ -606,8 +606,8 @@ PHOSPHOR_CSS_SHA256 ?= 555980683a582c1910a954648b4ae38f58d76e797f02bfdc2c5e81790
 PHOSPHOR_TGZ := $(BUILD)/phosphor/web-$(PHOSPHOR_VER).tgz
 PHOSPHOR_TTF := $(BUILD)/phosphor/Phosphor-Fill.ttf
 PHOSPHOR_CP := $(BUILD)/phosphor/codepoints.json
-LUCIDE_DAT := dist/Amarchy/Icons/lucide.dat
-OUTLINE_DAT := dist/Amarchy/Icons/outline.dat
+LUCIDE_DAT := dist/Patina/Icons/lucide.dat
+OUTLINE_DAT := dist/Patina/Icons/outline.dat
 # Outline icon style (the second set, pref icon-style = outline): lucide-static 1.66.0 from the npm registry, ISC; tarball
 # fetched once into build/lucide/, all SHA-256 checked, lucide.ttf + codepoints.json extracted. LUCIDE_VER= another release
 # (with LUCIDE_SHA256, LUCIDE_TTF_SHA256, LUCIDE_CODEPOINTS_SHA256).
@@ -669,7 +669,7 @@ screennotify: $(SCREENNOTIFY_LIB)
 
 # JetBrains Mono (OFL 1.1; Omarchy's font): the release archive fetched once into build/jbmono/, SHA-256
 # checked, JetBrainsMono-Regular.ttf extracted, then drawn as the Amiga strike font JetBrainsMono.font 16
-# (tools/gen_jbmono.py: build/jbmono/out/JetBrainsMono.font and JetBrainsMono/16) for the Amarchy menu on
+# (tools/gen_jbmono.py: build/jbmono/out/JetBrainsMono.font and JetBrainsMono/16) for the Patina menu on
 # square-pixel screens. The kit's Files/fonts/JetBrainsMono.font + JetBrainsMono/16 (licence drawer dist/fonts/JetBrainsMonoLicence). JBMONO_VER= another
 # release (with JBMONO_SHA256 and JBMONO_TTF_SHA256).
 JBMONO_VER ?= 2.304
@@ -908,12 +908,12 @@ $(UPTERM_VERSION_H): FORCE
 ENGINE_68K := engine/vtengine_68k.s
 # the console's history file (handler/histfile.c) by C:Claude's rule for growing files, over its DOS calls alone
 HANDLER_DATADIR := claude/datadir.c claude/path.c claude/util.c claude/datadir_amiga.c
-HANDLER_SRC := handler/handler_start.s $(ENGINE_68K) render/amiga_render_68k.s render/painter.c render/painter_68k.s render/painter.h handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/kcmode.c handler/complete.c handler/complete_core.c prefs/prefs_asl.c handler/brk.c handler/waitset.c handler/slash.c handler/keymap_act.c handler/upmru.c config/keymap.c amarchy/win_core.c config/keymap_load.c handler/upactive.c handler/upreq.c handler/frontscr.c handler/pubscr.c handler/pubscr_core.c handler/winspec.c handler/sbar_gad.c handler/ripxfer.c handler/ripxfer.h handler/ripglue.c handler/ripglue.h handler/dlsave.c handler/dlsave.h zm/zmodem.c zm/zmodem.h $(ENGINE) render/amiga_render.c render/pens_amiga.c render/aa_ink.c render/aa_ink.h render/pic_pens.h render/pen_match.h render/aa_ink_rule.h render/pens_amiga.h render/vtwin.c render/vtmusic.c render/vtmusic.h render/vtinput.c render/sbar.c render/layout.c render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/outline.c render/otag.c render/ttf.c tty/ldisc.c config/upconf.c config/splits_state.c config/upconf_rows.c config/termurl.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c amarchy/amconf_core.c amarchy/amconf_keys.c amarchy/amconf_dos.c handler/clipfmt.c handler/be32.c handler/histfile.c claude/histline.c claude/json.c shell/sh_path.c $(HANDLER_DATADIR)
+HANDLER_SRC := handler/handler_start.s $(ENGINE_68K) render/amiga_render_68k.s render/painter.c render/painter_68k.s render/painter.h handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/kcmode.c handler/complete.c handler/complete_core.c prefs/prefs_asl.c handler/brk.c handler/waitset.c handler/slash.c handler/keymap_act.c handler/upmru.c config/keymap.c patina/win_core.c config/keymap_load.c handler/upactive.c handler/upreq.c handler/frontscr.c handler/pubscr.c handler/pubscr_core.c handler/winspec.c handler/sbar_gad.c handler/ripxfer.c handler/ripxfer.h handler/ripglue.c handler/ripglue.h handler/dlsave.c handler/dlsave.h zm/zmodem.c zm/zmodem.h $(ENGINE) render/amiga_render.c render/pens_amiga.c render/aa_ink.c render/aa_ink.h render/pic_pens.h render/pen_match.h render/aa_ink_rule.h render/pens_amiga.h render/vtwin.c render/vtmusic.c render/vtmusic.h render/vtinput.c render/sbar.c render/layout.c render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/outline.c render/otag.c render/ttf.c tty/ldisc.c config/upconf.c config/splits_state.c config/upconf_rows.c config/termurl.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c patina/amconf_core.c patina/amconf_keys.c patina/amconf_dos.c handler/clipfmt.c handler/be32.c handler/histfile.c claude/histline.c claude/json.c shell/sh_path.c $(HANDLER_DATADIR)
 HANDLER_HDR := $(KEYMAP_DEFAULT_INC) handler/keymap_act.h config/keymap.h config/keymap_load.h handler/upactive.h handler/upcmd.h shell/vsh_quote.h handler/upreq.h handler/frontscr.h handler/pubscr.h handler/pubscr_core.h engine/vtengine.h engine/vtcaps.inc engine/vtwidth.h render/amiga_render.h render/vtwin.h render/synchold.h render/vtinput.h render/sbar.h handler/sbar_gad.h render/glyphmap.h render/unifont.h render/emoji.h render/glyph_tables.inc render/outline.h render/otag.h render/ttf.h \
                handler/clip.h handler/clipfmt.h handler/lineedit.h handler/le_fns.h handler/complete.h handler/complete_core.h handler/histfile.h claude/histline.h claude/json.h claude/datadir.h claude/sys.h claude/datadir_amiga.h handler/brk.h handler/ttyown.h handler/closeeof.h handler/slash.h handler/winspec.h handler/screenreq.h handler/wbpark.h handler/screennotify.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h config/termurl.h config/upassign.h \
-               handler/tabprog.h handler/waitset.h demo/updemo.h prefs/prefs_core.h shell/sh_path.h amarchy/amconf_core.h amarchy/amconf_dos.h handler/tabslot.h handler/menu_def.h render/layout.h
+               handler/tabprog.h handler/waitset.h demo/updemo.h prefs/prefs_core.h shell/sh_path.h patina/amconf_core.h patina/amconf_dos.h handler/tabslot.h handler/menu_def.h render/layout.h
 
-amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/tcpprobe $(BUILD)/amiga/Reboot $(BUILD)/amiga/WBPath $(BUILD)/amiga/UPBigVol $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/phaseprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/amarchy-icons $(BUILD)/amiga/amnotify $(BUILD)/amiga/AmTile $(BUILD)/amiga/upicon $(BUILD)/amiga/upupdate $(BUILD)/amiga/upsame $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/Agent $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/icat $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Claude $(BUILD)/amiga/scrprobe
+amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/tcpprobe $(BUILD)/amiga/Reboot $(BUILD)/amiga/WBPath $(BUILD)/amiga/UPBigVol $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/phaseprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/Patina $(BUILD)/amiga/patina-gui $(BUILD)/amiga/patina-index $(BUILD)/amiga/patina-flat $(BUILD)/amiga/patina-icons $(BUILD)/amiga/amnotify $(BUILD)/amiga/AmTile $(BUILD)/amiga/upicon $(BUILD)/amiga/upupdate $(BUILD)/amiga/upsame $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/Agent $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/icat $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Claude $(BUILD)/amiga/scrprobe
 
 # hl and mdv: the portable view/ core and the AmigaDOS side (no ixemul).
 # vbcc warns (153, 65) on the (void) parameter casts, as for vsh.
@@ -924,10 +924,10 @@ $(BUILD)/amiga/ps: proc/ps_amiga.c proc/tasks_amiga.c proc/tasks_amiga.h $(PROC_
 $(BUILD)/amiga/top: proc/top_amiga.c proc/tasks_amiga.c proc/tasks_amiga.h proc/vbsample.s $(PROC_CORE) proc/proc_core.h handler/vtcon_packets.h tty/ldisc.h $(BUILD)/amiga/obj/cpuchk-top.o
 	@mkdir -p $(BUILD)/amiga/obj
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/vbsample.o proc/vbsample.s
-	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ $(AMARCHY_NOBREAK) proc/top_amiga.c proc/tasks_amiga.c $(PROC_CORE) $(BUILD)/amiga/obj/vbsample.o $(BUILD)/amiga/obj/cpuchk-top.o
-$(BUILD)/amiga/shotprobe: tests/amiga/shotprobe.c amarchy/shot_core.c amarchy/shot_core.h
+	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ $(PATINA_NOBREAK) proc/top_amiga.c proc/tasks_amiga.c $(PROC_CORE) $(BUILD)/amiga/obj/vbsample.o $(BUILD)/amiga/obj/cpuchk-top.o
+$(BUILD)/amiga/shotprobe: tests/amiga/shotprobe.c patina/shot_core.c patina/shot_core.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 -o $@ tests/amiga/shotprobe.c amarchy/shot_core.c
+	$(VC) -dontwarn=153,65 -o $@ tests/amiga/shotprobe.c patina/shot_core.c
 $(BUILD)/amiga/shotscreen: tests/amiga/shotscreen.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -o $@ tests/amiga/shotscreen.c
@@ -1012,12 +1012,12 @@ $(BUILD)/amiga/Claude: $(CLAUDE_PORTABLE) $(UPTERM_VERSION_H) claude/net_amiga.c
 	$(VC) -dontwarn=153,65 $(CLAUDE_TLS_INC) -c -o $(BUILD)/amiga/obj/claude/tls.o $(CLAUDE_TLS)
 	$(VC) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153,65 -o $@ $(CLAUDE_PORTABLE) $(BUILD)/amiga/obj/claude/net_amiga.o $(BUILD)/amiga/obj/claude/tls.o $(BUILD)/amiga/obj/cpuchk-Claude.o
 
-# P2 probes (R2.1 network query, R2.2 idle counter), plans/2026-10-29-amarchy-p2-status-bar.md
+# P2 probes (R2.1 network query, R2.2 idle counter), plans/2026-10-29-patina-p2-status-bar.md
 $(BUILD)/amiga/netprobe: tools/probes/p2/netprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -I$(VTCON_NETINCLUDE) -o $@ tools/probes/p2/netprobe.c
 
-# P2 probes (R2.1 network query, R2.2 idle counter), plans/2026-10-29-amarchy-p2-status-bar.md
+# P2 probes (R2.1 network query, R2.2 idle counter), plans/2026-10-29-patina-p2-status-bar.md
 $(BUILD)/amiga/idleprobe: tools/probes/p2/idleprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -I$(VTCON_NETINCLUDE) -o $@ tools/probes/p2/idleprobe.c
@@ -1054,7 +1054,7 @@ $(BUILD)/amiga/winbox: tests/amiga/winbox.c
 
 $(BUILD)/amiga/sizewatch: tests/amiga/sizewatch.c
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -o $@ $(AMARCHY_NOBREAK) tests/amiga/sizewatch.c
+	$(VC) -o $@ $(PATINA_NOBREAK) tests/amiga/sizewatch.c
 
 # muhit: one illegal access on purpose, for MuForce (rig.py muforce, tools/rig/muforce.py)
 $(BUILD)/amiga/muhit: tests/amiga/muhit.c
@@ -1083,31 +1083,31 @@ $(BUILD)/amiga/breakport: tests/amiga/breakport.c
 # program (its own window), so vc links it. vbcc warns (153, 65) on the
 # (void) parameter casts of the file callbacks, as for vsh.
 # The kit ships it as Files/upprefs; Install copies it to C:UP-Term-Prefs.
-$(BUILD)/amiga/upprefs: prefs/upprefs.c prefs/prefs_merge.c prefs/prefs_merge.h prefs/prefs_core.c prefs/settings_def.c prefs/settings_def.h prefs/prefs_core.h prefs/prefs_dos.c prefs/prefs_dos.h prefs/prefs_asl.c prefs/prefs_asl.h prefs/prefs_ui.c prefs/prefs_ui.h prefs/pick_list.c prefs/pick_list.h prefs/pick_list_gt.c handler/kcmode.c handler/kcmode.h handler/slash.c handler/slash.h config/upconf.c config/upconf_rows.c config/upconf.h amarchy/amconf_core.c amarchy/amconf_core.h amarchy/amconf_dos.c amarchy/amconf_dos.h amarchy/amconf_keys.c amarchy/gthemes_core.c amarchy/gthemes_core.h amarchy/gthemes_scan_dos.c amarchy/gthemes_scan_dos.h amarchy/flat_core.c amarchy/iconpen_core.c handler/pubscr_core.c amarchy/desk_core.c handler/be32.c amarchy/flat_core.h amarchy/flat_shared.h device/romspan.h $(BUILD)/amiga/obj/cpuchk-upprefs.o
+$(BUILD)/amiga/upprefs: prefs/upprefs.c prefs/prefs_merge.c prefs/prefs_merge.h prefs/prefs_core.c prefs/settings_def.c prefs/settings_def.h prefs/prefs_core.h prefs/prefs_dos.c prefs/prefs_dos.h prefs/prefs_asl.c prefs/prefs_asl.h prefs/prefs_ui.c prefs/prefs_ui.h prefs/pick_list.c prefs/pick_list.h prefs/pick_list_gt.c handler/kcmode.c handler/kcmode.h handler/slash.c handler/slash.h config/upconf.c config/upconf_rows.c config/upconf.h patina/amconf_core.c patina/amconf_core.h patina/amconf_dos.c patina/amconf_dos.h patina/amconf_keys.c patina/gthemes_core.c patina/gthemes_core.h patina/gthemes_scan_dos.c patina/gthemes_scan_dos.h patina/flat_core.c patina/iconpen_core.c handler/pubscr_core.c patina/desk_core.c handler/be32.c patina/flat_core.h patina/flat_shared.h device/romspan.h $(BUILD)/amiga/obj/cpuchk-upprefs.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ $(AMARCHY_NOBREAK) prefs/upprefs.c prefs/prefs_merge.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c prefs/prefs_asl.c prefs/prefs_ui.c prefs/pick_list.c prefs/pick_list_gt.c handler/kcmode.c handler/slash.c config/upconf.c config/upconf_rows.c amarchy/amconf_core.c amarchy/amconf_dos.c amarchy/amconf_keys.c amarchy/gthemes_core.c amarchy/gthemes_scan_dos.c amarchy/flat_core.c amarchy/iconpen_core.c handler/pubscr_core.c amarchy/desk_core.c handler/be32.c $(BUILD)/amiga/obj/cpuchk-upprefs.o
+	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ $(PATINA_NOBREAK) prefs/upprefs.c prefs/prefs_merge.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c prefs/prefs_asl.c prefs/prefs_ui.c prefs/pick_list.c prefs/pick_list_gt.c handler/kcmode.c handler/slash.c config/upconf.c config/upconf_rows.c patina/amconf_core.c patina/amconf_dos.c patina/amconf_keys.c patina/gthemes_core.c patina/gthemes_scan_dos.c patina/flat_core.c patina/iconpen_core.c handler/pubscr_core.c patina/desk_core.c handler/be32.c $(BUILD)/amiga/obj/cpuchk-upprefs.o
 
-# Amarchy: the Super-key commodity (plan 2026-10-22-amarchy-commodity.md, Phase C). A plain
+# Patina: the Super-key commodity (plan 2026-10-22-patina-commodity.md, Phase C). A plain
 # vbcc CLI/WBStartup program, no ixemul. Parser, loader and semaphore reader are the handler's.
 # leaf_core.c calls the prefs and amconf modules; every program linking it links this set.
-AMARCHY_LEAF_DEPS := handler/kcmode.c handler/slash.c config/upconf.c config/upconf_rows.c amarchy/amconf_core.c amarchy/amconf_keys.c amarchy/amconf_dos.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c
-# CHKABORT_PROGRAMS: the Amarchy-family programs that handle Ctrl-C in their own Wait and hold system state; each links
-# $(AMARCHY_NOBREAK) (empty _chkabort) and tests/test_nobreak.py checks exactly these (make chkabort-check)
-AMARCHY_NOBREAK := amarchy/nobreak.c
-CHKABORT_PROGRAMS := Amarchy amarchy-gui amarchy-flat amarchy-icons upprefs upgetty top allocwatch patchcon lvoprobe frameprobe sizewatch gadprobe
-# Stack high-water probe (amarchy/stkprobe.h), a measuring tool and off by default. `make STKPROBE=1 BUILD=build/stkprobe
-# build/stkprobe/amiga/amarchy-index ...` links it into amarchy-index, amarchy-icons, amarchy-flat and AmTile with a 131072-byte
+PATINA_LEAF_DEPS := handler/kcmode.c handler/slash.c config/upconf.c config/upconf_rows.c patina/amconf_core.c patina/amconf_keys.c patina/amconf_dos.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c
+# CHKABORT_PROGRAMS: the Patina-family programs that handle Ctrl-C in their own Wait and hold system state; each links
+# $(PATINA_NOBREAK) (empty _chkabort) and tests/test_nobreak.py checks exactly these (make chkabort-check)
+PATINA_NOBREAK := patina/nobreak.c
+CHKABORT_PROGRAMS := Patina patina-gui patina-flat patina-icons upprefs upgetty top allocwatch patchcon lvoprobe frameprobe sizewatch gadprobe
+# Stack high-water probe (patina/stkprobe.h), a measuring tool and off by default. `make STKPROBE=1 BUILD=build/stkprobe
+# build/stkprobe/amiga/patina-index ...` links it into patina-index, patina-icons, patina-flat and AmTile with a 131072-byte
 # stack and publishes <PREFIX>_STK_USED (GetEnv). Use a separate BUILD directory: make does not see the knob as a dependency.
 STKPROBE_SRC :=
 STKPROBE_FLAGS :=
 ifeq ($(STKPROBE),1)
-STKPROBE_SRC := amarchy/stkprobe.c amarchy/sentinel_dos.c
+STKPROBE_SRC := patina/stkprobe.c patina/sentinel_dos.c
 STKPROBE_FLAGS := -DAMDBG_STK
 endif
-AMARCHY_SRC := amarchy/menu_core.c amarchy/desk_confirm_dos.c amarchy/sentinel_dos.c amarchy/iconpen_core.c handler/pubscr_core.c amarchy/iconpen_dos.c amarchy/flat_role_core.c amarchy/note.c amarchy/note_core.c amarchy/shot.c amarchy/shot_core.c amarchy/rexx_host.c amarchy/taskalive.c amarchy/menusrv_core.c amarchy/termenv.c claude/util.c handler/frontscr.c handler/pubscr.c amarchy/leaf_core.c amarchy/leaf_pkg.c amarchy/wblaunch.c amarchy/menu_open.c amarchy/amarchy.c amarchy/demo.c amarchy/demo_core.c amarchy/cx.c amarchy/act.c amarchy/win.c amarchy/win_apply.c amarchy/bar_usable.c amarchy/win_core.c amarchy/tile_core.c amarchy/cxdesc.c amarchy/menu_tree.c config/keymap.c config/keymap_load.c $(AMARCHY_LEAF_DEPS) handler/upactive.c handler/upmru.c amarchy/clipwatch.c amarchy/clips_core.c handler/clip.c handler/clipfmt.c handler/be32.c amarchy/index_core.c amarchy/pkgs_core.c amarchy/gthemes_core.c amarchy/gthemes_cur_dos.c amarchy/gthemes_dos.c prefs/prefs_asl.c amarchy/desk_dos.c amarchy/win_refresh.c amarchy/flat_core.c amarchy/desk_core.c amarchy/gthemes_scan_dos.c amarchy/proclaunch.c amarchy/poll_timer.c amarchy/tick.c amarchy/tick_core.c amarchy/wbmode_core.c amarchy/wbmode.c amarchy/status_core.c amarchy/barconf_core.c amarchy/barconf_dos.c amarchy/themewin.c amarchy/bar.c amarchy/bar_core.c amarchy/menu_theme.c render/pens_amiga.c handler/upreq.c handler/keymap_act.c amarchy/wbreset_core.c amarchy/wbreset.c amarchy/wbreset_patch.c amarchy/ipatch.c amarchy/strut_patch.c amarchy/inst_core.c amarchy/borderblank_core.c amarchy/help_core.c amarchy/borderblank_patch.c $(AMARCHY_NOBREAK) amarchy/dopustb_core.c amarchy/dopustb_dos.c amarchy/iconfile_core.c amarchy/menu_font.c render/fontpair.c
-$(BUILD)/amiga/Amarchy: $(AMARCHY_SRC) amarchy/inst_core.h amarchy/win_refresh.h amarchy/flat_shared.h amarchy/flat_core.h amarchy/note.h amarchy/note_core.h amarchy/shot.h amarchy/shot_core.h amarchy/rexx_host.h amarchy/taskalive.h amarchy/menusrv_core.h amarchy/menu_open.h config/segstack.h config/cmdpath.h amarchy/clipwatch.h amarchy/clips_core.h handler/clip.h amarchy/wblaunch.h amarchy/act.h amarchy/leaf.h amarchy/win.h amarchy/demo.h amarchy/demo_core.h amarchy/win_apply.h amarchy/bar_usable.h amarchy/win_core.h amarchy/tile_core.h handler/frontscr.h amarchy/cx.h amarchy/cxdesc.h amarchy/menu_core.h claude/util.h config/keymap.h config/keymap_load.h handler/upactive.h handler/keymap_act.h config/upconf.h config/upconf_lex.h $(KEYMAP_DEFAULT_INC) amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h amarchy/index_core.h amarchy/pkgs_core.h amarchy/gthemes_core.h amarchy/gthemes_dos.h amarchy/desk_dos.h amarchy/desk_core.h amarchy/gthemes_scan_dos.h amarchy/proclaunch.h amarchy/poll_timer.h amarchy/tick.h amarchy/tick_core.h amarchy/wbmode_core.h amarchy/wbmode.h amarchy/status_core.h amarchy/barconf_core.h amarchy/barconf_dos.h amarchy/themewin.h amarchy/bar.h amarchy/bar_core.h amarchy/menu_theme.h render/pens_amiga.h handler/upreq.h
+PATINA_SRC := patina/menu_core.c patina/desk_confirm_dos.c patina/sentinel_dos.c patina/iconpen_core.c handler/pubscr_core.c patina/iconpen_dos.c patina/flat_role_core.c patina/note.c patina/note_core.c patina/shot.c patina/shot_core.c patina/rexx_host.c patina/taskalive.c patina/menusrv_core.c patina/termenv.c claude/util.c handler/frontscr.c handler/pubscr.c patina/leaf_core.c patina/leaf_pkg.c patina/wblaunch.c patina/menu_open.c patina/patina.c patina/demo.c patina/demo_core.c patina/cx.c patina/act.c patina/win.c patina/win_apply.c patina/bar_usable.c patina/win_core.c patina/tile_core.c patina/cxdesc.c patina/menu_tree.c config/keymap.c config/keymap_load.c $(PATINA_LEAF_DEPS) handler/upactive.c handler/upmru.c patina/clipwatch.c patina/clips_core.c handler/clip.c handler/clipfmt.c handler/be32.c patina/index_core.c patina/pkgs_core.c patina/gthemes_core.c patina/gthemes_cur_dos.c patina/gthemes_dos.c prefs/prefs_asl.c patina/desk_dos.c patina/win_refresh.c patina/flat_core.c patina/desk_core.c patina/gthemes_scan_dos.c patina/proclaunch.c patina/poll_timer.c patina/tick.c patina/tick_core.c patina/wbmode_core.c patina/wbmode.c patina/status_core.c patina/barconf_core.c patina/barconf_dos.c patina/themewin.c patina/bar.c patina/bar_core.c patina/menu_theme.c render/pens_amiga.c handler/upreq.c handler/keymap_act.c patina/wbreset_core.c patina/wbreset.c patina/wbreset_patch.c patina/ipatch.c patina/strut_patch.c patina/inst_core.c patina/borderblank_core.c patina/help_core.c patina/borderblank_patch.c $(PATINA_NOBREAK) patina/dopustb_core.c patina/dopustb_dos.c patina/iconfile_core.c patina/menu_font.c render/fontpair.c
+$(BUILD)/amiga/Patina: $(PATINA_SRC) patina/inst_core.h patina/win_refresh.h patina/flat_shared.h patina/flat_core.h patina/note.h patina/note_core.h patina/shot.h patina/shot_core.h patina/rexx_host.h patina/taskalive.h patina/menusrv_core.h patina/menu_open.h config/segstack.h config/cmdpath.h patina/clipwatch.h patina/clips_core.h handler/clip.h patina/wblaunch.h patina/act.h patina/leaf.h patina/win.h patina/demo.h patina/demo_core.h patina/win_apply.h patina/bar_usable.h patina/win_core.h patina/tile_core.h handler/frontscr.h patina/cx.h patina/cxdesc.h patina/menu_core.h claude/util.h config/keymap.h config/keymap_load.h handler/upactive.h handler/keymap_act.h config/upconf.h config/upconf_lex.h $(KEYMAP_DEFAULT_INC) patina/amconf_core.h patina/amconf_dos.h prefs/prefs_dos.h patina/index_core.h patina/pkgs_core.h patina/gthemes_core.h patina/gthemes_dos.h patina/desk_dos.h patina/desk_core.h patina/gthemes_scan_dos.h patina/proclaunch.h patina/poll_timer.h patina/tick.h patina/tick_core.h patina/wbmode_core.h patina/wbmode.h patina/status_core.h patina/barconf_core.h patina/barconf_dos.h patina/themewin.h patina/bar.h patina/bar_core.h patina/menu_theme.h render/pens_amiga.h handler/upreq.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -I$(VTCON_NETINCLUDE) -o $@ $(AMARCHY_SRC)
+	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -I$(VTCON_NETINCLUDE) -o $@ $(PATINA_SRC)
 
 .PHONY: ttf-testdata
 # Regenerates tests/data/symnerd_subset.h and ttf_golden.h (needs fontTools and Homebrew FreeType); not part of any default target
@@ -1124,13 +1124,13 @@ $(BUILD)/bench_ttf: tests/bench_ttf.c render/ttf.c render/ttf.h
 	@mkdir -p $(BUILD)
 	$(HOSTCC) -std=c89 -O2 -Wall -Wextra -Werror -o $@ tests/bench_ttf.c render/ttf.c
 
-# keymap.c as Amarchy and the handler compile it: its allocator must be exec's AllocVec, not vc.lib's
+# keymap.c as Patina and the handler compile it: its allocator must be exec's AllocVec, not vc.lib's
 # malloc, whose 16 KB puddles stay until exit (tests/test_keymap_amiga_alloc.py).
-$(BUILD)/amiga/keymap.o: config/keymap.c config/keymap.h config/upconf.h config/upconf_lex.h amarchy/win_core.h
+$(BUILD)/amiga/keymap.o: config/keymap.c config/keymap.h config/upconf.h config/upconf_lex.h patina/win_core.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -c -o $@ config/keymap.c
 
-# amarchy-menu: the quick menu and key viewer (Phase D). A gcc/ixemul program linked with
+# patina-menu: the quick menu and key viewer (Phase D). A gcc/ixemul program linked with
 # libupkgui.a straight from upterm-ports' sysroot (decision D4), so it is NOT part of `make amiga`
 # (that needs no ports build). `make dist-check` builds it (a link error such as GfxBase in
 # pv_get landed unnoticed once, 9e04c45d fixed by 2e900ae1), so the build check covers it.
@@ -1170,63 +1170,63 @@ worktree-ready:
 test-one: $(BUILD)/vttest_host
 	@if [ -z "$(SUITE)" ]; then echo "[ERROR] make test-one SUITE=<name>"; exit 2; fi
 	nice -n 19 ./$(BUILD)/vttest_host $(SUITE)
-AMARCHY_MENU_SRC := amarchy/iconpen_core.c handler/pubscr_core.c amarchy/iconpen_dos.c amarchy/flat_role_core.c amarchy/rexx_host.c amarchy/poll_timer.c amarchy/taskalive.c amarchy/menusrv_core.c amarchy/termenv.c amarchy/menu_open.c amarchy/menu.c amarchy/leaf.c amarchy/wblaunch.c amarchy/leaf_core.c amarchy/leaf_pkg.c handler/frontscr.c handler/pubscr.c amarchy/menu_core.c amarchy/menu_tree.c amarchy/index_core.c amarchy/index_load.c amarchy/ixwatch.c config/keymap.c amarchy/win_core.c config/keymap_load.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c amarchy/clips_core.c handler/clip.c handler/clipfmt.c handler/be32.c amarchy/gthemes_core.c amarchy/gthemes_cur_dos.c amarchy/gthemes_dos.c amarchy/desk_dos.c amarchy/bar_core.c amarchy/win_refresh.c amarchy/flat_core.c amarchy/desk_core.c amarchy/gthemes_scan_dos.c amarchy/proclaunch.c amarchy/pkgs_core.c amarchy/pkgs_dos.c $(AMARCHY_LEAF_DEPS) prefs/prefs_asl.c amarchy/job_core.c amarchy/job_dos.c amarchy/sentinel_dos.c amarchy/menu_theme.c amarchy/wbreset_core.c amarchy/wbreset.c amarchy/dopustb_core.c amarchy/dopustb_dos.c amarchy/iconfile_core.c amarchy/menu_font.c render/fontpair.c
-.PHONY: amarchy-menu
-amarchy-menu: $(BUILD)/amiga/amarchy-menu
-$(BUILD)/amiga/amarchy-menu: $(AMARCHY_MENU_SRC) amarchy/iconpen_dos.h amarchy/iconpen_core.h amarchy/win_refresh.h amarchy/flat_shared.h amarchy/flat_core.h amarchy/rexx_host.h amarchy/taskalive.h amarchy/menusrv_core.h amarchy/menu_open.h amarchy/termenv.h handler/frontscr.h amarchy/clips_core.h amarchy/menu_core.h amarchy/index_core.h amarchy/ixwatch.h amarchy/leaf.h amarchy/wblaunch.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC) $(UPKGUI_SYS)/lib/libupkgui.a amarchy/gthemes_core.h amarchy/gthemes_dos.h amarchy/desk_dos.h amarchy/desk_core.h amarchy/gthemes_scan_dos.h amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h amarchy/proclaunch.h config/cmdpath.h amarchy/pkgs_core.h amarchy/pkgs_dos.h amarchy/job_core.h amarchy/job_dos.h amarchy/sentinel_dos.h amarchy/menu_theme.h
+PATINA_MENU_SRC := patina/iconpen_core.c handler/pubscr_core.c patina/iconpen_dos.c patina/flat_role_core.c patina/rexx_host.c patina/poll_timer.c patina/taskalive.c patina/menusrv_core.c patina/termenv.c patina/menu_open.c patina/menu.c patina/leaf.c patina/wblaunch.c patina/leaf_core.c patina/leaf_pkg.c handler/frontscr.c handler/pubscr.c patina/menu_core.c patina/menu_tree.c patina/index_core.c patina/index_load.c patina/ixwatch.c config/keymap.c patina/win_core.c config/keymap_load.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c patina/clips_core.c handler/clip.c handler/clipfmt.c handler/be32.c patina/gthemes_core.c patina/gthemes_cur_dos.c patina/gthemes_dos.c patina/desk_dos.c patina/bar_core.c patina/win_refresh.c patina/flat_core.c patina/desk_core.c patina/gthemes_scan_dos.c patina/proclaunch.c patina/pkgs_core.c patina/pkgs_dos.c $(PATINA_LEAF_DEPS) prefs/prefs_asl.c patina/job_core.c patina/job_dos.c patina/sentinel_dos.c patina/menu_theme.c patina/wbreset_core.c patina/wbreset.c patina/dopustb_core.c patina/dopustb_dos.c patina/iconfile_core.c patina/menu_font.c render/fontpair.c
+.PHONY: patina-menu
+patina-menu: $(BUILD)/amiga/patina-menu
+$(BUILD)/amiga/patina-menu: $(PATINA_MENU_SRC) patina/iconpen_dos.h patina/iconpen_core.h patina/win_refresh.h patina/flat_shared.h patina/flat_core.h patina/rexx_host.h patina/taskalive.h patina/menusrv_core.h patina/menu_open.h patina/termenv.h handler/frontscr.h patina/clips_core.h patina/menu_core.h patina/index_core.h patina/ixwatch.h patina/leaf.h patina/wblaunch.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC) $(UPKGUI_SYS)/lib/libupkgui.a patina/gthemes_core.h patina/gthemes_dos.h patina/desk_dos.h patina/desk_core.h patina/gthemes_scan_dos.h patina/amconf_core.h patina/amconf_dos.h prefs/prefs_dos.h patina/proclaunch.h config/cmdpath.h patina/pkgs_core.h patina/pkgs_dos.h patina/job_core.h patina/job_dos.h patina/sentinel_dos.h patina/menu_theme.h
 	@mkdir -p $(BUILD)/amiga
-	$(UPTERM_PORTS)/tools/m68k-cc -m68020 -O2 -Wall -I$(BUILD)/amiga -I$(UPKGUI_SYS)/include -I$(UPKGUI_SYS)/include/ncursesw -o $@ $(AMARCHY_MENU_SRC) $(UPKGUI_SYS)/lib/libupkgui.a $(UPKGUI_SYS)/lib/libncursesw.a $(UPKGUI_SYS)/lib/libixcompat.a
+	$(UPTERM_PORTS)/tools/m68k-cc -m68020 -O2 -Wall -I$(BUILD)/amiga -I$(UPKGUI_SYS)/include -I$(UPKGUI_SYS)/include/ncursesw -o $@ $(PATINA_MENU_SRC) $(UPKGUI_SYS)/lib/libupkgui.a $(UPKGUI_SYS)/lib/libncursesw.a $(UPKGUI_SYS)/lib/libixcompat.a
 
-# jobprobe: RJ.1 proof of amarchy/job_dos.c on the rig (tools/probes/jobrun/jobprobe.c)
-$(BUILD)/amiga/jobprobe: tools/probes/jobrun/jobprobe.c amarchy/taskalive.c amarchy/job_core.c amarchy/job_dos.c amarchy/sentinel_dos.c amarchy/leaf_core.c amarchy/gthemes_core.c amarchy/proclaunch.c $(AMARCHY_LEAF_DEPS) amarchy/job_core.h amarchy/job_dos.h amarchy/sentinel_dos.h amarchy/proclaunch.h amarchy/taskalive.h
+# jobprobe: RJ.1 proof of patina/job_dos.c on the rig (tools/probes/jobrun/jobprobe.c)
+$(BUILD)/amiga/jobprobe: tools/probes/jobrun/jobprobe.c patina/taskalive.c patina/job_core.c patina/job_dos.c patina/sentinel_dos.c patina/leaf_core.c patina/gthemes_core.c patina/proclaunch.c $(PATINA_LEAF_DEPS) patina/job_core.h patina/job_dos.h patina/sentinel_dos.h patina/proclaunch.h patina/taskalive.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ tools/probes/jobrun/jobprobe.c amarchy/taskalive.c amarchy/job_core.c amarchy/job_dos.c amarchy/sentinel_dos.c amarchy/leaf_core.c amarchy/gthemes_core.c amarchy/proclaunch.c $(AMARCHY_LEAF_DEPS)
+	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ tools/probes/jobrun/jobprobe.c patina/taskalive.c patina/job_core.c patina/job_dos.c patina/sentinel_dos.c patina/leaf_core.c patina/gthemes_core.c patina/proclaunch.c $(PATINA_LEAF_DEPS)
 
-# amarchy-gui: the drawn menu and key viewer (plan 2026-10-23-amarchy-drawn-menu.md, G5). A plain vbcc
-# Intuition program, no ixemul, same command line as amarchy-menu.
-AMARCHY_GUI_SRC := amarchy/iconpen_core.c handler/pubscr_core.c amarchy/iconpen_dos.c amarchy/flat_role_core.c amarchy/rexx_host.c amarchy/poll_timer.c amarchy/taskalive.c amarchy/menusrv_core.c amarchy/termenv.c amarchy/menu_open.c amarchy/gui.c amarchy/menu_fontspec_core.c amarchy/iclabel_core.c amarchy/icon_core.c amarchy/icon_gfx.c amarchy/leaf.c amarchy/wblaunch.c amarchy/leaf_core.c amarchy/leaf_pkg.c amarchy/menu_core.c amarchy/menu_tree.c amarchy/index_core.c amarchy/index_load.c amarchy/ixwatch.c amarchy/menu_geom.c amarchy/menu_icon.c amarchy/menu_font.c amarchy/menu_theme.c render/emoji.c render/fontpair.c render/unifont.c render/pens_amiga.c handler/frontscr.c handler/pubscr.c config/keymap.c amarchy/win_core.c config/keymap_load.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c amarchy/clips_core.c handler/clip.c handler/clipfmt.c handler/be32.c $(AMARCHY_LEAF_DEPS) amarchy/gthemes_core.c amarchy/gthemes_cur_dos.c amarchy/gthemes_dos.c amarchy/desk_dos.c amarchy/bar_core.c amarchy/win_refresh.c amarchy/flat_core.c amarchy/desk_core.c amarchy/gthemes_scan_dos.c amarchy/proclaunch.c amarchy/pkgs_core.c amarchy/pkgs_dos.c amarchy/menu_text.c amarchy/menu_text_core.c amarchy/richaa_core.c amarchy/roundaa_core.c amarchy/flat_glyph.c render/aa_ink.c render/ttf.c render/otag.c render/outline.c prefs/prefs_asl.c amarchy/job_core.c amarchy/job_dos.c amarchy/sentinel_dos.c amarchy/wbreset_core.c amarchy/wbreset.c amarchy/help_core.c amarchy/themeprev_core.c $(AMARCHY_NOBREAK) amarchy/dopustb_core.c amarchy/dopustb_dos.c amarchy/iconfile_core.c
-.PHONY: amarchy-gui
-amarchy-gui: $(BUILD)/amiga/amarchy-gui
-$(BUILD)/amiga/amarchy-gui: $(AMARCHY_GUI_SRC) amarchy/iconpen_dos.h amarchy/iconpen_core.h amarchy/win_refresh.h amarchy/flat_shared.h amarchy/flat_core.h amarchy/rexx_host.h amarchy/taskalive.h amarchy/menusrv_core.h amarchy/menu_open.h amarchy/clips_core.h amarchy/menu_core.h amarchy/index_core.h amarchy/ixwatch.h amarchy/icon_core.h amarchy/icon_gfx.h amarchy/wblaunch.h amarchy/menu_geom.h amarchy/menu_icon.h amarchy/menu_font.h render/emoji.h render/fontpair.h render/unifont.h $(MENU_ICONS_INC) amarchy/menu_theme.h amarchy/leaf.h render/pens_amiga.h handler/frontscr.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h prefs/prefs_core.h $(KEYMAP_DEFAULT_INC) amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h amarchy/gthemes_core.h amarchy/gthemes_dos.h amarchy/desk_dos.h amarchy/desk_core.h amarchy/gthemes_scan_dos.h amarchy/menu_text.h amarchy/menu_text_core.h amarchy/iclabel_core.h render/aa_ink.h render/aa_ink_rule.h render/pen_match.h render/ttf.h render/otag.h render/outline.h amarchy/proclaunch.h amarchy/pkgs_core.h amarchy/pkgs_dos.h amarchy/job_core.h amarchy/job_dos.h amarchy/sentinel_dos.h amarchy/help_core.h $(AMHELP_INC) amarchy/themeprev_core.h
+# patina-gui: the drawn menu and key viewer (plan 2026-10-23-patina-drawn-menu.md, G5). A plain vbcc
+# Intuition program, no ixemul, same command line as patina-menu.
+PATINA_GUI_SRC := patina/iconpen_core.c handler/pubscr_core.c patina/iconpen_dos.c patina/flat_role_core.c patina/rexx_host.c patina/poll_timer.c patina/taskalive.c patina/menusrv_core.c patina/termenv.c patina/menu_open.c patina/gui.c patina/menu_fontspec_core.c patina/iclabel_core.c patina/icon_core.c patina/icon_gfx.c patina/leaf.c patina/wblaunch.c patina/leaf_core.c patina/leaf_pkg.c patina/menu_core.c patina/menu_tree.c patina/index_core.c patina/index_load.c patina/ixwatch.c patina/menu_geom.c patina/menu_icon.c patina/menu_font.c patina/menu_theme.c render/emoji.c render/fontpair.c render/unifont.c render/pens_amiga.c handler/frontscr.c handler/pubscr.c config/keymap.c patina/win_core.c config/keymap_load.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c patina/clips_core.c handler/clip.c handler/clipfmt.c handler/be32.c $(PATINA_LEAF_DEPS) patina/gthemes_core.c patina/gthemes_cur_dos.c patina/gthemes_dos.c patina/desk_dos.c patina/bar_core.c patina/win_refresh.c patina/flat_core.c patina/desk_core.c patina/gthemes_scan_dos.c patina/proclaunch.c patina/pkgs_core.c patina/pkgs_dos.c patina/menu_text.c patina/menu_text_core.c patina/richaa_core.c patina/roundaa_core.c patina/flat_glyph.c render/aa_ink.c render/ttf.c render/otag.c render/outline.c prefs/prefs_asl.c patina/job_core.c patina/job_dos.c patina/sentinel_dos.c patina/wbreset_core.c patina/wbreset.c patina/help_core.c patina/themeprev_core.c $(PATINA_NOBREAK) patina/dopustb_core.c patina/dopustb_dos.c patina/iconfile_core.c
+.PHONY: patina-gui
+patina-gui: $(BUILD)/amiga/patina-gui
+$(BUILD)/amiga/patina-gui: $(PATINA_GUI_SRC) patina/iconpen_dos.h patina/iconpen_core.h patina/win_refresh.h patina/flat_shared.h patina/flat_core.h patina/rexx_host.h patina/taskalive.h patina/menusrv_core.h patina/menu_open.h patina/clips_core.h patina/menu_core.h patina/index_core.h patina/ixwatch.h patina/icon_core.h patina/icon_gfx.h patina/wblaunch.h patina/menu_geom.h patina/menu_icon.h patina/menu_font.h render/emoji.h render/fontpair.h render/unifont.h $(MENU_ICONS_INC) patina/menu_theme.h patina/leaf.h render/pens_amiga.h handler/frontscr.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h prefs/prefs_core.h $(KEYMAP_DEFAULT_INC) patina/amconf_core.h patina/amconf_dos.h prefs/prefs_dos.h patina/gthemes_core.h patina/gthemes_dos.h patina/desk_dos.h patina/desk_core.h patina/gthemes_scan_dos.h patina/menu_text.h patina/menu_text_core.h patina/iclabel_core.h render/aa_ink.h render/aa_ink_rule.h render/pen_match.h render/ttf.h render/otag.h render/outline.h patina/proclaunch.h patina/pkgs_core.h patina/pkgs_dos.h patina/job_core.h patina/job_dos.h patina/sentinel_dos.h patina/help_core.h $(AMHELP_INC) patina/themeprev_core.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ $(AMARCHY_GUI_SRC)
+	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ $(PATINA_GUI_SRC)
 
-# amarchy-index: the app index scanner (plan 2026-10-23-amarchy-app-index.md, X2). A plain vbcc DOS program,
-# no ixemul; it writes ENVARC:Amarchy/apps, which Amarchy reads (it never scans itself).
-AMARCHY_INDEX_SRC := amarchy/taskalive.c amarchy/index.c install/hardvol.c amarchy/index_core.c amarchy/pkgs_core.c amarchy/ixwatch.c amarchy/menu_tree.c config/upconf.c config/upconf_rows.c amarchy/amconf_core.c amarchy/amconf_keys.c amarchy/amconf_dos.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c handler/kcmode.c handler/slash.c amarchy/gthemes_core.c
-.PHONY: amarchy-index
-amarchy-index: $(BUILD)/amiga/amarchy-index
-$(BUILD)/amiga/amarchy-index: $(AMARCHY_INDEX_SRC) amarchy/stkprobe.h amarchy/stkprobe.c amarchy/taskalive.h amarchy/index_core.h amarchy/pkgs_core.h amarchy/ixwatch.h amarchy/menu_core.h config/upconf.h tty/qmark.h install/hardvol.h install/fssm.h amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h amarchy/gthemes_core.h
+# patina-index: the app index scanner (plan 2026-10-23-patina-app-index.md, X2). A plain vbcc DOS program,
+# no ixemul; it writes ENVARC:Patina/apps, which Patina reads (it never scans itself).
+PATINA_INDEX_SRC := patina/taskalive.c patina/index.c install/hardvol.c patina/index_core.c patina/pkgs_core.c patina/ixwatch.c patina/menu_tree.c config/upconf.c config/upconf_rows.c patina/amconf_core.c patina/amconf_keys.c patina/amconf_dos.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c handler/kcmode.c handler/slash.c patina/gthemes_core.c
+.PHONY: patina-index
+patina-index: $(BUILD)/amiga/patina-index
+$(BUILD)/amiga/patina-index: $(PATINA_INDEX_SRC) patina/stkprobe.h patina/stkprobe.c patina/taskalive.h patina/index_core.h patina/pkgs_core.h patina/ixwatch.h patina/menu_core.h config/upconf.h tty/qmark.h install/hardvol.h install/fssm.h patina/amconf_core.h patina/amconf_dos.h prefs/prefs_dos.h patina/gthemes_core.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 $(STKPROBE_FLAGS) -o $@ $(AMARCHY_INDEX_SRC) $(STKPROBE_SRC)
+	$(VC) -dontwarn=153,65 $(STKPROBE_FLAGS) -o $@ $(PATINA_INDEX_SRC) $(STKPROBE_SRC)
 
-# amarchy-flat: the resident flat-UI program (plan 2026-10-29-amarchy-flat-ui-patch.md FLAT-C0). A plain vbcc DOS program,
-# no ixemul; it keeps the public state block "Amarchy.Flat" that Amarchy writes. flat_core.c is host-tested.
-.PHONY: amarchy-flat
-amarchy-flat: $(BUILD)/amiga/amarchy-flat
-$(BUILD)/amiga/amarchy-flat: device/romspan.h amarchy/stkprobe.h amarchy/flat_shared.h amarchy/flat.c $(AMARCHY_NOBREAK) amarchy/iclabel_core.c amarchy/iclabel_core.h render/aa_ink.h render/aa_ink_rule.h amarchy/menu_font.c amarchy/menu_font.h render/fontpair.c render/fontpair.h amarchy/flat_rf.s amarchy/flat_cg.s amarchy/flat_tx.s amarchy/flat_dg.s amarchy/flat_stk.s amarchy/flat_glyph.c amarchy/flat_glyph.h amarchy/roundaa_core.c amarchy/roundaa_core.h render/emoji.c render/emoji.h render/unifont.c render/unifont.h render/pen_match.h amarchy/flat_core.c amarchy/desk_core.c amarchy/desk_core.h amarchy/gthemes_core.c amarchy/gthemes_cur_dos.c amarchy/gthemes_dos.h amarchy/gthemes_core.h amarchy/iconpen_core.c handler/pubscr_core.c amarchy/iconpen_core.h amarchy/iconpen_dos.c amarchy/flat_role_core.c amarchy/flat_role_core.h amarchy/iconpen_dos.h handler/pubscr.c handler/pubscr.h handler/be32.c handler/be32.h amarchy/taskalive.c amarchy/flat_core.h amarchy/taskalive.h tty/qmark.h amarchy/poll_timer.c amarchy/poll_timer.h amarchy/amconf_core.h amarchy/amconf_dos.h $(AMARCHY_LEAF_DEPS)
+# patina-flat: the resident flat-UI program (plan 2026-10-29-patina-flat-ui-patch.md FLAT-C0). A plain vbcc DOS program,
+# no ixemul; it keeps the public state block "Patina.Flat" that Patina writes. flat_core.c is host-tested.
+.PHONY: patina-flat
+patina-flat: $(BUILD)/amiga/patina-flat
+$(BUILD)/amiga/patina-flat: device/romspan.h patina/stkprobe.h patina/flat_shared.h patina/flat.c $(PATINA_NOBREAK) patina/iclabel_core.c patina/iclabel_core.h render/aa_ink.h render/aa_ink_rule.h patina/menu_font.c patina/menu_font.h render/fontpair.c render/fontpair.h patina/flat_rf.s patina/flat_cg.s patina/flat_tx.s patina/flat_dg.s patina/flat_stk.s patina/flat_glyph.c patina/flat_glyph.h patina/roundaa_core.c patina/roundaa_core.h render/emoji.c render/emoji.h render/unifont.c render/unifont.h render/pen_match.h patina/flat_core.c patina/desk_core.c patina/desk_core.h patina/gthemes_core.c patina/gthemes_cur_dos.c patina/gthemes_dos.h patina/gthemes_core.h patina/iconpen_core.c handler/pubscr_core.c patina/iconpen_core.h patina/iconpen_dos.c patina/flat_role_core.c patina/flat_role_core.h patina/iconpen_dos.h handler/pubscr.c handler/pubscr.h handler/be32.c handler/be32.h patina/taskalive.c patina/flat_core.h patina/taskalive.h tty/qmark.h patina/poll_timer.c patina/poll_timer.h patina/amconf_core.h patina/amconf_dos.h $(PATINA_LEAF_DEPS)
 	@mkdir -p $(BUILD)/amiga
 	@mkdir -p $(BUILD)/amiga/obj
-	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_rf.o amarchy/flat_rf.s
-	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_cg.o amarchy/flat_cg.s
-	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_tx.o amarchy/flat_tx.s
-	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_dg.o amarchy/flat_dg.s
-	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_stk.o amarchy/flat_stk.s
-	$(VC) -dontwarn=153,65 $(STKPROBE_FLAGS) -o $@ amarchy/flat.c $(STKPROBE_SRC) $(AMARCHY_NOBREAK) $(BUILD)/amiga/obj/flat_rf.o $(BUILD)/amiga/obj/flat_cg.o $(BUILD)/amiga/obj/flat_tx.o $(BUILD)/amiga/obj/flat_dg.o $(BUILD)/amiga/obj/flat_stk.o amarchy/flat_glyph.c amarchy/roundaa_core.c amarchy/iclabel_core.c render/emoji.c render/unifont.c amarchy/menu_font.c render/fontpair.c amarchy/flat_core.c amarchy/desk_core.c amarchy/gthemes_cur_dos.c amarchy/gthemes_core.c amarchy/iconpen_core.c handler/pubscr_core.c amarchy/iconpen_dos.c amarchy/flat_role_core.c handler/pubscr.c handler/be32.c amarchy/taskalive.c amarchy/poll_timer.c $(AMARCHY_LEAF_DEPS)
+	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_rf.o patina/flat_rf.s
+	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_cg.o patina/flat_cg.s
+	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_tx.o patina/flat_tx.s
+	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_dg.o patina/flat_dg.s
+	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/flat_stk.o patina/flat_stk.s
+	$(VC) -dontwarn=153,65 $(STKPROBE_FLAGS) -o $@ patina/flat.c $(STKPROBE_SRC) $(PATINA_NOBREAK) $(BUILD)/amiga/obj/flat_rf.o $(BUILD)/amiga/obj/flat_cg.o $(BUILD)/amiga/obj/flat_tx.o $(BUILD)/amiga/obj/flat_dg.o $(BUILD)/amiga/obj/flat_stk.o patina/flat_glyph.c patina/roundaa_core.c patina/iclabel_core.c render/emoji.c render/unifont.c patina/menu_font.c render/fontpair.c patina/flat_core.c patina/desk_core.c patina/gthemes_cur_dos.c patina/gthemes_core.c patina/iconpen_core.c handler/pubscr_core.c patina/iconpen_dos.c patina/flat_role_core.c handler/pubscr.c handler/be32.c patina/taskalive.c patina/poll_timer.c $(PATINA_LEAF_DEPS)
 
-# amarchy-icons: filled icons on the Workbench default icons, APPLY and RESTORE (plan 2026-10-31-amarchy-lucide-icons.md L8, L9).
-# A plain vbcc DOS program; every decision is amarchy/iconapply_core.c (host suite iconapply).
-.PHONY: amarchy-icons
+# patina-icons: filled icons on the Workbench default icons, APPLY and RESTORE (plan 2026-10-31-patina-lucide-icons.md L8, L9).
+# A plain vbcc DOS program; every decision is patina/iconapply_core.c (host suite iconapply).
+.PHONY: patina-icons
 
-# A Break during file work must not end Amarchy behind its cleanup: no CHKABORT_PROGRAMS binary may hold vc.lib's _chkabort.
+# A Break during file work must not end Patina behind its cleanup: no CHKABORT_PROGRAMS binary may hold vc.lib's _chkabort.
 .PHONY: chkabort-check
 chkabort-check: $(CHKABORT_PROGRAMS:%=$(BUILD)/amiga/%)
 	python3 tests/test_nobreak.py $(CHKABORT_PROGRAMS:%=$(BUILD)/amiga/%)
 	python3 tests/test_chkabort_suite.py
-amarchy-icons: $(BUILD)/amiga/amarchy-icons
-$(BUILD)/amiga/amarchy-icons: amarchy/icons.c amarchy/stkprobe.h amarchy/iconapply_core.c amarchy/iconapply_core.h amarchy/iconfile_core.c amarchy/iconfile_core.h amarchy/iconpen_core.c handler/pubscr_core.c amarchy/iconpen_core.h amarchy/iconpen_dos.c amarchy/flat_role_core.c amarchy/flat_role_core.h amarchy/iconpen_dos.h handler/pubscr.c handler/pubscr.h amarchy/gthemes_core.c amarchy/gthemes_core.h amarchy/desk_core.c amarchy/desk_core.h amarchy/amconf_core.h amarchy/amconf_dos.h handler/be32.c handler/be32.h tty/qmark.h $(AMARCHY_LEAF_DEPS)
+patina-icons: $(BUILD)/amiga/patina-icons
+$(BUILD)/amiga/patina-icons: patina/icons.c patina/stkprobe.h patina/iconapply_core.c patina/iconapply_core.h patina/iconfile_core.c patina/iconfile_core.h patina/iconpen_core.c handler/pubscr_core.c patina/iconpen_core.h patina/iconpen_dos.c patina/flat_role_core.c patina/flat_role_core.h patina/iconpen_dos.h handler/pubscr.c handler/pubscr.h patina/gthemes_core.c patina/gthemes_core.h patina/desk_core.c patina/desk_core.h patina/amconf_core.h patina/amconf_dos.h handler/be32.c handler/be32.h tty/qmark.h $(PATINA_LEAF_DEPS)
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 $(STKPROBE_FLAGS) -o $@ $(AMARCHY_NOBREAK) $(STKPROBE_SRC) amarchy/icons.c amarchy/iconfile_core.c amarchy/iconapply_core.c amarchy/iconpen_core.c handler/pubscr_core.c amarchy/iconpen_dos.c amarchy/flat_role_core.c handler/pubscr.c amarchy/gthemes_core.c amarchy/desk_core.c handler/be32.c $(AMARCHY_LEAF_DEPS)
+	$(VC) -dontwarn=153,65 $(STKPROBE_FLAGS) -o $@ $(PATINA_NOBREAK) $(STKPROBE_SRC) patina/icons.c patina/iconfile_core.c patina/iconapply_core.c patina/iconpen_core.c handler/pubscr_core.c patina/iconpen_dos.c patina/flat_role_core.c handler/pubscr.c patina/gthemes_core.c patina/desk_core.c handler/be32.c $(PATINA_LEAF_DEPS)
 
 # FLAT-C3: vbcc's assembly of the dispatcher objects, checked by tests/test_flat_budget.py (entry frames <= 64 bytes, no libc call)
 FLAT_ASM_DIR := $(BUILD)/amiga/flat_asm
@@ -1237,25 +1237,25 @@ FLAT_BUDGET_ASM := $(FLAT_ASM_DIR)/flat.s $(FLAT_ASM_DIR)/flat_glyph.s $(FLAT_AS
 	$(FLAT_ASM_DIR)/iclabel_core.s $(FLAT_ASM_DIR)/emoji.s
 flat-budget: $(FLAT_BUDGET_ASM)
 	python3 tests/test_flat_budget.py $(FLAT_BUDGET_ASM)
-$(FLAT_ASM_DIR)/%.s: amarchy/%.c amarchy/flat_core.h amarchy/flat_glyph.h amarchy/roundaa_core.h amarchy/iclabel_core.h
+$(FLAT_ASM_DIR)/%.s: patina/%.c patina/flat_core.h patina/flat_glyph.h patina/roundaa_core.h patina/iclabel_core.h
 	@mkdir -p $(FLAT_ASM_DIR)
 	$(VC) -dontwarn=153,65 -S -o $@ $<
 $(FLAT_ASM_DIR)/emoji.s: render/emoji.c render/emoji.h
 	@mkdir -p $(FLAT_ASM_DIR)
 	$(VC) -dontwarn=153,65 -S -o $@ $<
 
-# amnotify: the notice CLI (plan 2026-10-29-amarchy-p4-capture-notify-power.md R4.10). A plain vbcc DOS program; it sends
-# NOTIFY lines to AMARCHY.NOTIFY and shares note_core.c (its argument parse) with Amarchy.
+# amnotify: the notice CLI (plan 2026-10-29-patina-p4-capture-notify-power.md R4.10). A plain vbcc DOS program; it sends
+# NOTIFY lines to PATINA.NOTIFY and shares note_core.c (its argument parse) with Patina.
 .PHONY: amnotify
 amnotify: $(BUILD)/amiga/amnotify
-$(BUILD)/amiga/amnotify: amarchy/amnotify.c amarchy/note_core.c amarchy/rexx_host.c amarchy/poll_timer.c amarchy/note.h amarchy/note_core.h amarchy/rexx_host.h tty/qmark.h
+$(BUILD)/amiga/amnotify: patina/amnotify.c patina/note_core.c patina/rexx_host.c patina/poll_timer.c patina/note.h patina/note_core.h patina/rexx_host.h tty/qmark.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 -o $@ amarchy/amnotify.c amarchy/note_core.c amarchy/rexx_host.c amarchy/poll_timer.c
+	$(VC) -dontwarn=153,65 -o $@ patina/amnotify.c patina/note_core.c patina/rexx_host.c patina/poll_timer.c
 
 # rexxbound + deafport: the bound of rexx_send (tools/rig/rexxbound_rig.py; REXX-DEAD-AFTER-THEME)
-$(BUILD)/amiga/rexxbound: tests/amiga/rexxbound.c amarchy/rexx_host.c amarchy/poll_timer.c amarchy/rexx_host.h amarchy/poll_timer.h
+$(BUILD)/amiga/rexxbound: tests/amiga/rexxbound.c patina/rexx_host.c patina/poll_timer.c patina/rexx_host.h patina/poll_timer.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 -o $@ tests/amiga/rexxbound.c amarchy/rexx_host.c amarchy/poll_timer.c
+	$(VC) -dontwarn=153,65 -o $@ tests/amiga/rexxbound.c patina/rexx_host.c patina/poll_timer.c
 $(BUILD)/amiga/deafport: tests/amiga/deafport.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/deafport.c
@@ -1270,12 +1270,12 @@ $(BUILD)/amiga/renameopen: tools/rig/renameopen.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tools/rig/renameopen.c
 
-# AmTile: the autotiling commodity (plan 2026-10-28-amarchy-autotile.md, phase 2). A plain vbcc program like Amarchy;
+# AmTile: the autotiling commodity (plan 2026-10-28-patina-autotile.md, phase 2). A plain vbcc program like Patina;
 # tile_core.c is its pure part, win_apply.c the OS calls it shares with win.c.
-AMTILE_SRC := handler/frontscr.c handler/pubscr.c handler/pubscr_core.c amarchy/poll_timer.c amarchy/tile.c amarchy/tile_core.c amarchy/win_core.c amarchy/win_apply.c amarchy/win_refresh.c amarchy/bar_usable.c amarchy/rexx_host.c $(AMARCHY_LEAF_DEPS)
+AMTILE_SRC := handler/frontscr.c handler/pubscr.c handler/pubscr_core.c patina/poll_timer.c patina/tile.c patina/tile_core.c patina/win_core.c patina/win_apply.c patina/win_refresh.c patina/bar_usable.c patina/rexx_host.c $(PATINA_LEAF_DEPS)
 .PHONY: AmTile
 AmTile: $(BUILD)/amiga/AmTile
-$(BUILD)/amiga/AmTile: $(AMTILE_SRC) amarchy/stkprobe.h tty/qmark.h amarchy/win_refresh.h amarchy/poll_timer.h amarchy/rexx_host.h amarchy/tile_core.h amarchy/win_core.h amarchy/win_apply.h amarchy/bar_usable.h amarchy/bar_core.h amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h
+$(BUILD)/amiga/AmTile: $(AMTILE_SRC) patina/stkprobe.h tty/qmark.h patina/win_refresh.h patina/poll_timer.h patina/rexx_host.h patina/tile_core.h patina/win_core.h patina/win_apply.h patina/bar_usable.h patina/bar_core.h patina/amconf_core.h patina/amconf_dos.h prefs/prefs_dos.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 $(STKPROBE_FLAGS) -o $@ $(AMTILE_SRC) $(STKPROBE_SRC)
 
@@ -1436,9 +1436,9 @@ $(BUILD)/amiga/iconprobe: tests/amiga/iconprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/iconprobe.c
 
-$(BUILD)/amiga/wbrun: tests/amiga/wbrun.c amarchy/wblaunch.c amarchy/leaf_core.c amarchy/gthemes_core.c $(AMARCHY_LEAF_DEPS) amarchy/wblaunch.h amarchy/leaf.h
+$(BUILD)/amiga/wbrun: tests/amiga/wbrun.c patina/wblaunch.c patina/leaf_core.c patina/gthemes_core.c $(PATINA_LEAF_DEPS) patina/wblaunch.h patina/leaf.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ tests/amiga/wbrun.c amarchy/wblaunch.c amarchy/leaf_core.c amarchy/gthemes_core.c $(AMARCHY_LEAF_DEPS)
+	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ tests/amiga/wbrun.c patina/wblaunch.c patina/leaf_core.c patina/gthemes_core.c $(PATINA_LEAF_DEPS)
 
 $(BUILD)/amiga/wbfake: tests/amiga/wbfake.c
 	@mkdir -p $(BUILD)/amiga
@@ -1594,7 +1594,7 @@ $(BUILD)/amiga/wpaprobe: tests/amiga/wpaprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/wpaprobe.c
 
-$(BUILD)/amiga/iconpens: tests/amiga/iconpens.c amarchy/iconpen_core.h
+$(BUILD)/amiga/iconpens: tests/amiga/iconpens.c patina/iconpen_core.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/iconpens.c
 
@@ -1610,15 +1610,15 @@ $(BUILD)/amiga/sysiprobe: tests/amiga/sysiprobe.c
 # Counts frameiclass dispatcher calls while a GadTools window opens (FLAT-C8 Q2)
 $(BUILD)/amiga/frameprobe: tests/amiga/frameprobe.c
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -o $@ $(AMARCHY_NOBREAK) tests/amiga/frameprobe.c
+	$(VC) -o $@ $(PATINA_NOBREAK) tests/amiga/frameprobe.c
 
 # Lists the string and boopsi gadgets of every window and requester (input-ground map)
 $(BUILD)/amiga/gadprobe: tests/amiga/gadprobe.c
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -o $@ $(AMARCHY_NOBREAK) tests/amiga/gadprobe.c
+	$(VC) -o $@ $(PATINA_NOBREAK) tests/amiga/gadprobe.c
 
 # dopus5.library jump-table entries and the flat enable switch (FLAT-D4 rig)
-$(BUILD)/amiga/dopusprobe: tests/amiga/dopusprobe.c amarchy/flat_core.h
+$(BUILD)/amiga/dopusprobe: tests/amiga/dopusprobe.c patina/flat_core.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/dopusprobe.c
 
@@ -1629,15 +1629,15 @@ $(BUILD)/amiga/muigroupbtn: tools/rig/fixtures/mui-group-button/muigroupbtn.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -I$(MUI_INC) -o $@ tools/rig/fixtures/mui-group-button/muigroupbtn.c -lamiga
 
-# Windows with sysiclass gadgets opened in a loop, and a hash of their frame pixels (FLAT-C1 rig, tools/rig/amarchy_flat_rig.py)
-$(BUILD)/amiga/flatwin: tests/amiga/flatwin.c amarchy/flat_core.h
+# Windows with sysiclass gadgets opened in a loop, and a hash of their frame pixels (FLAT-C1 rig, tools/rig/patina_flat_rig.py)
+$(BUILD)/amiga/flatwin: tests/amiga/flatwin.c patina/flat_core.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/flatwin.c
 
-# A public or a private screen to hold in front, and the font numbers of a public screen (amarchy_gui_rig, G7)
-$(BUILD)/amiga/scrprobe: tests/amiga/scrprobe.c amarchy/menu_font.c amarchy/menu_font.h render/fontpair.c render/fontpair.h
+# A public or a private screen to hold in front, and the font numbers of a public screen (patina_gui_rig, G7)
+$(BUILD)/amiga/scrprobe: tests/amiga/scrprobe.c patina/menu_font.c patina/menu_font.h render/fontpair.c render/fontpair.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -o $@ tests/amiga/scrprobe.c amarchy/menu_font.c render/fontpair.c
+	$(VC) -o $@ tests/amiga/scrprobe.c patina/menu_font.c render/fontpair.c
 
 # The front-to-back windows of the Workbench screen with Flags and borders (BAR-ZOOMED-DRAWER)
 $(BUILD)/amiga/winprobe: tests/amiga/winprobe.c
@@ -1711,7 +1711,7 @@ $(BUILD)/amiga/up-console.device: device/upcon_rom.s $(DEVICE_SRC) $(DEVICE_HDR)
 
 # C:UPTerm: the slash commands from scripts (ledger C1)
 # (UPTerm ACTIVE ... asks the focused window through its request port: upreq.c and what it needs)
-UPTERM_SRC := handler/upterm.c handler/upreq.c handler/upactive.c handler/upmru.c handler/keymap_act.c config/keymap.c amarchy/win_core.c config/upconf_rows.c handler/slash.c handler/kcmode.c
+UPTERM_SRC := handler/upterm.c handler/upreq.c handler/upactive.c handler/upmru.c handler/keymap_act.c config/keymap.c patina/win_core.c config/upconf_rows.c handler/slash.c handler/kcmode.c
 $(BUILD)/amiga/UPTerm: $(UPTERM_SRC) $(UPTERM_VERSION_H) handler/vtcon_packets.h handler/upreq.h handler/upactive.h handler/upcmd.h handler/keymap_act.h $(BUILD)/amiga/obj/cpuchk-UPTerm.o
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -I$(BUILD)/amiga -Dmain=up_main -o $@ $(UPTERM_SRC) $(BUILD)/amiga/obj/cpuchk-UPTerm.o
@@ -1731,7 +1731,7 @@ $(BUILD)/upgetty_host: tests/test_upgetty_serial.c device/upgetty_serial.h
 # C:upgetty: a shell over the serial port through a PTY: pair (ledger T4)
 $(BUILD)/amiga/upgetty: device/upgetty.c device/upgetty_serial.h $(UPTERM_VERSION_H) handler/vtcon_packets.h $(BUILD)/amiga/obj/cpuchk-upgetty.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153 -o $@ $(AMARCHY_NOBREAK) device/upgetty.c $(BUILD)/amiga/obj/cpuchk-upgetty.o
+	$(VC) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153 -o $@ $(PATINA_NOBREAK) device/upgetty.c $(BUILD)/amiga/obj/cpuchk-upgetty.o
 
 # C:UPConsole: CON:/RAW: to UP-Term and back (console plan H5.4)
 $(BUILD)/amiga/UPConsole: device/upconsole.c $(UPTERM_VERSION_H) device/upc_public.h device/romspan.h $(BUILD)/amiga/obj/cpuchk-UPConsole.o
@@ -1760,17 +1760,17 @@ $(BUILD)/amiga/closeread: tests/amiga/closeread.c
 
 $(BUILD)/amiga/allocwatch: tests/amiga/allocwatch.c
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -o $@ $(AMARCHY_NOBREAK) tests/amiga/allocwatch.c
+	$(VC) -o $@ $(PATINA_NOBREAK) tests/amiga/allocwatch.c
 
 # D4.3's patch (tools/rig/devctl_rig.py; test only)
 $(BUILD)/amiga/patchcon: tests/amiga/patchcon.c
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -o $@ $(AMARCHY_NOBREAK) tests/amiga/patchcon.c
+	$(VC) -o $@ $(PATINA_NOBREAK) tests/amiga/patchcon.c
 
 # WBRESET-EXT step 1: counting probe on every intuition vector (test only)
 $(BUILD)/amiga/lvoprobe: tests/amiga/lvoprobe.c
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -o $@ $(AMARCHY_NOBREAK) tests/amiga/lvoprobe.c
+	$(VC) -o $@ $(PATINA_NOBREAK) tests/amiga/lvoprobe.c
 
 # D1.3's copy probe (tools/rig/snip_rig.py)
 $(BUILD)/amiga/snipprobe: tests/amiga/snipprobe.c handler/clip.c handler/clip.h handler/clipfmt.c handler/be32.c handler/clipfmt.h
@@ -1802,7 +1802,7 @@ $(BUILD)/amiga/rkcprobe: tests/amiga/rkcprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/rkcprobe.c
 
-# Amarchy clash rig's third-party window (tools/rig/amarchy_clash_rig.py)
+# Patina clash rig's third-party window (tools/rig/patina_clash_rig.py)
 $(BUILD)/amiga/lcmdprobe: tests/amiga/lcmdprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/lcmdprobe.c
@@ -1903,7 +1903,7 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(UPTERM_VERSION_H) 
 	$(VC) -c -o $(BUILD)/amiga/obj/keymap_act.o handler/keymap_act.c
 	$(VC) -c -o $(BUILD)/amiga/obj/upmru.o handler/upmru.c
 	$(VC) -c -o $(BUILD)/amiga/obj/keymap.o config/keymap.c
-	$(VC) -c -o $(BUILD)/amiga/obj/win_core.o amarchy/win_core.c
+	$(VC) -c -o $(BUILD)/amiga/obj/win_core.o patina/win_core.c
 	$(VC) -c -o $(BUILD)/amiga/obj/keymap_load.o config/keymap_load.c
 	$(VC) -c -o $(BUILD)/amiga/obj/upactive.o handler/upactive.c
 	$(VC) -c -o $(BUILD)/amiga/obj/upreq.o handler/upreq.c
@@ -1917,9 +1917,9 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(UPTERM_VERSION_H) 
 	$(VC) -c -o $(BUILD)/amiga/obj/termurl.o $(TERMURL)
 	$(VC) -dontwarn=153,65 -c -o $(BUILD)/amiga/obj/prefs_core.o prefs/prefs_core.c
 	$(VC) -dontwarn=153,65 -c -o $(BUILD)/amiga/obj/settings_def.o prefs/settings_def.c
-	$(VC) -c -o $(BUILD)/amiga/obj/amconf_keys.o amarchy/amconf_keys.c
-	$(VC) -dontwarn=153,65 -c -o $(BUILD)/amiga/obj/amconf_core.o amarchy/amconf_core.c
-	$(VC) -dontwarn=153,65 -c -o $(BUILD)/amiga/obj/amconf_dos.o amarchy/amconf_dos.c
+	$(VC) -c -o $(BUILD)/amiga/obj/amconf_keys.o patina/amconf_keys.c
+	$(VC) -dontwarn=153,65 -c -o $(BUILD)/amiga/obj/amconf_core.o patina/amconf_core.c
+	$(VC) -dontwarn=153,65 -c -o $(BUILD)/amiga/obj/amconf_dos.o patina/amconf_dos.c
 	$(VC) -dontwarn=153,65 -c -o $(BUILD)/amiga/obj/prefs_dos.o prefs/prefs_dos.c
 	$(VC) -dontwarn=153,65 -c -o $(BUILD)/amiga/obj/ripxfer.o handler/ripxfer.c
 	$(VC) -dontwarn=153,65 -c -o $(BUILD)/amiga/obj/hd_zmodem.o zm/zmodem.c
@@ -2026,7 +2026,7 @@ dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-dopus dist-uhc $(
 # every archive of dist/packages.txt, and the source archive
 # the base archive build/up-term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
 # Python, Claude and amiga-pi are archives of their own (dist/packages.txt, kit-split plan)
-dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/amarchy-icons $(BUILD)/amiga/AmTile bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(SYMBOLS_TTF) $(LUCIDE_DAT) $(OUTLINE_DAT) $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV)
+dist-base: amiga jbmono $(BUILD)/amiga/patina-menu $(BUILD)/amiga/patina-gui $(BUILD)/amiga/patina-index $(BUILD)/amiga/patina-flat $(BUILD)/amiga/patina-icons $(BUILD)/amiga/AmTile bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(SYMBOLS_TTF) $(LUCIDE_DAT) $(OUTLINE_DAT) $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV)
 	@# the ports kit is checked before the kit drawer is wiped: a missing kit left no build/dist/up-term
 	$(call PORTS_KIT_FRESH,dist)
 	rm -rf $(KIT) && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
@@ -2046,14 +2046,14 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	python3 tools/mkicon.py $(KIT)/Files/UP-Term-Prefs.info --tool "C:UP-Term-Prefs" --plain
 	printf 'UP-Term Prefs: edit the profiles in ENVARC:up-term/up-term.\n' > $(KIT)/Files/UP-Term-Prefs
 	mkdir -p $(KIT)/Files/wbstartup
-	python3 tools/mkicon.py $(KIT)/Files/wbstartup/Amarchy.info --tool "UP-Term:bin/Amarchy" --plain --tooltype DONOTWAIT --tooltype STARTPRI=10
-	python3 tools/mkicon.py $(KIT)/Files/wbstartup/amarchy-index.info --tool "UP-Term:bin/amarchy-index" --plain --tooltype DONOTWAIT --tooltype STARTPRI=-10 --tooltype TOOLPRI=-5
+	python3 tools/mkicon.py $(KIT)/Files/wbstartup/Patina.info --tool "UP-Term:bin/Patina" --plain --tooltype DONOTWAIT --tooltype STARTPRI=10
+	python3 tools/mkicon.py $(KIT)/Files/wbstartup/patina-index.info --tool "UP-Term:bin/patina-index" --plain --tooltype DONOTWAIT --tooltype STARTPRI=-10 --tooltype TOOLPRI=-5
 	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/amiga/pty-handler $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/vsh $(BUILD)/amiga/ixkill dist/XCON dist/PTY dist/IXPIPE dist/vshrc \
 	  dist/up-term.conf $(KIT)/Files/
 	mkdir -p $(KIT)/Files/themes && cp themes/*.conf themes/ATTRIBUTION.md $(KIT)/Files/themes/
-	@# the Omarchy colour themes of the drawn Amarchy menu: install.dos copies this drawer to UP-Term:Amarchy/Themes
-	rm -rf $(KIT)/Files/amarchy-themes && cp -R dist/amarchy-themes $(KIT)/Files/amarchy-themes
-	@# the icon images of the flat Workbench (Amarchy/Icons/lucide.dat, file name kept) with the Phosphor licence and source note
+	@# the Omarchy colour themes of the drawn Patina menu: install.dos copies this drawer to UP-Term:Patina/Themes
+	rm -rf $(KIT)/Files/patina-themes && cp -R dist/patina-themes $(KIT)/Files/patina-themes
+	@# the icon images of the flat Workbench (Patina/Icons/lucide.dat, file name kept) with the Phosphor licence and source note
 	rm -rf $(KIT)/Files/lucide $(KIT)/Files/phosphor && mkdir -p $(KIT)/Files/lucide $(KIT)/Files/phosphor && cp $(LUCIDE_DAT) $(OUTLINE_DAT) dist/lucide/LICENSE dist/lucide/SOURCE.txt $(KIT)/Files/lucide/ && cp dist/phosphor/LICENSE dist/phosphor/SOURCE.txt $(KIT)/Files/phosphor/
 	rm -rf $(KIT)/Files/coreutils && mkdir -p $(KIT)/Files/coreutils
 	cp -R dist/gg/coreutils-5.2.1/bin dist/gg/coreutils-5.2.1/COPYING dist/gg/coreutils-5.2.1/SOURCE.txt $(KIT)/Files/coreutils/
@@ -2073,7 +2073,7 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	@# the shell tutorial (plan 2026-10-19-shell-tutorial L-6): the script in bin (copy-userland), the lessons in
 	@# share/tutorial (userland); after slim.py, which removes only what dist/slim.txt names
 	cp dist/tutorial $(KIT)/Files/userland/bin/tutorial
-	@# the Directory Opus filetype's launchers (plan 2026-10-25-amarchy-dopus-integration.md D13): uterm-edit and uterm-view open an UP-Term window
+	@# the Directory Opus filetype's launchers (plan 2026-10-25-patina-dopus-integration.md D13): uterm-edit and uterm-view open an UP-Term window
 	@# on the front screen (AmigaDOS scripts; uterm-start and uterm-open run in that window)
 	cp dist/uterm-edit dist/uterm-view dist/uterm-start dist/uterm-open dist/uterm-shell dist/uterm-shellstart $(KIT)/Files/userland/bin/
 	@# the filetype file itself (the base Install's DOPUS option copies it to DOpus5:Filetypes/UP-Term)
@@ -2087,7 +2087,7 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	cp $(BUILD)/amiga/upsame $(KIT)/Files/upsame
 	cp dist/install-amissl.dos $(KIT)/Files/install-amissl.dos
 	cp $(BUILD)/amiga/tcpprobe $(KIT)/Files/tcpprobe
-	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/Agent $(BUILD)/amiga/UPDemo $(BUILD)/amiga/Reboot $(BUILD)/amiga/WBPath $(BUILD)/amiga/UPBigVol $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/icat $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/amnotify $(BUILD)/amiga/amarchy-icons $(BUILD)/amiga/AmTile dist/keymap dist/bar.conf $(KIT)/Files/
+	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/Agent $(BUILD)/amiga/UPDemo $(BUILD)/amiga/Reboot $(BUILD)/amiga/WBPath $(BUILD)/amiga/UPBigVol $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/icat $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Patina $(BUILD)/amiga/patina-menu $(BUILD)/amiga/patina-gui $(BUILD)/amiga/patina-index $(BUILD)/amiga/patina-flat $(BUILD)/amiga/amnotify $(BUILD)/amiga/patina-icons $(BUILD)/amiga/AmTile dist/keymap dist/bar.conf $(KIT)/Files/
 	rm -rf $(KIT)/Files/net && cp -R dist/net $(KIT)/Files/net
 	rm -rf $(KIT)/Files/Rexx && cp -R dist/rexx $(KIT)/Files/Rexx
 	rm -rf $(KIT)/Files/share/updemo && mkdir -p $(KIT)/Files/share && cp -R dist/updemo $(KIT)/Files/share/updemo
@@ -2162,19 +2162,19 @@ dist-python: $(BUILD)/amiga/upupdate
 	$(call LAUNCHER,$(KIT_python),dist/addons/python/launch/Python 3,Python 3,640/400)
 	python3 tools/mkkit.py python
 # B7 flat lister toolbar for Directory Opus 5.104: glyphs of dist/dopus-toolbar.txt in two families, outline (Lucide SVG source) and filled
-# (Phosphor Fill, the default, DT-9), drawn on the pixel grid (DT-8) as 3-bitplane ILBM brushes in Images/Amarchy/<set> plus
-# Buttons/Amarchy-toolbar-<set> (sets <family>-16, 24, 32, each square and tall), upstream's default bank with those image paths and Borderless Buttons;
+# (Phosphor Fill, the default, DT-9), drawn on the pixel grid (DT-8) as 3-bitplane ILBM brushes in Images/Patina/<set> plus
+# Buttons/Patina-toolbar-<set> (sets <family>-16, 24, 32, each square and tall), upstream's default bank with those image paths and Borderless Buttons;
 # the bank is rewritten from the Buttons/Toolbar of the md5-checked os3 archive (upstream/ holds that one file);
 # the tall sets come from the owner's hand-drawn brushes in dist/dopus-toolbar-hand/<set>/ (DT-12)
 DOPUS_TOOLBAR_DIR := $(BUILD)/dopus-toolbar
 DOPUS_TOOLBAR_HAND := dist/dopus-toolbar-hand
-$(DOPUS_TOOLBAR_DIR)/Buttons/Amarchy-toolbar-filled-24: $(wildcard $(DOPUS_TOOLBAR_HAND)/*/*) tools/ilbm_decode.py tools/gen_dopus_toolbar.py tools/svg_raster.py tools/gen_lucide_icons.py tools/gen_menu_icons.py tools/gen_emoji.py tools/mkicon.py dist/dopus-toolbar.txt $(LUCIDE_TGZ) $(PHOSPHOR_TTF) $(PHOSPHOR_CP)
+$(DOPUS_TOOLBAR_DIR)/Buttons/Patina-toolbar-filled-24: $(wildcard $(DOPUS_TOOLBAR_HAND)/*/*) tools/ilbm_decode.py tools/gen_dopus_toolbar.py tools/svg_raster.py tools/gen_lucide_icons.py tools/gen_menu_icons.py tools/gen_emoji.py tools/mkicon.py dist/dopus-toolbar.txt $(LUCIDE_TGZ) $(PHOSPHOR_TTF) $(PHOSPHOR_CP)
 	mkdir -p $(DOPUS_TOOLBAR_DIR)/upstream
 	[ "$$(md5 -q $(VENDOR)/dopus5-5.104/DOpus5_104_os3.lha 2>/dev/null || md5sum < $(VENDOR)/dopus5-5.104/DOpus5_104_os3.lha | cut -d' ' -f1)" = "0800b7b3bf02c83bd45a84d038ee483e" ] || { echo "[ERROR] DOpus5_104_os3.lha: md5 mismatch"; exit 1; }
 	lha -xqfw=$(DOPUS_TOOLBAR_DIR)/upstream $(VENDOR)/dopus5-5.104/DOpus5_104_os3.lha DOpus5/Buttons/Toolbar
 	rm -rf $(DOPUS_TOOLBAR_DIR)/Images $(DOPUS_TOOLBAR_DIR)/Buttons
 	python3 tools/gen_dopus_toolbar.py dist/dopus-toolbar.txt $(LUCIDE_TGZ) $(PHOSPHOR_TTF) $(DOPUS_TOOLBAR_DIR)/upstream/DOpus5/Buttons/Toolbar $(DOPUS_TOOLBAR_DIR) $(DOPUS_TOOLBAR_HAND)
-dopus-toolbar: $(DOPUS_TOOLBAR_DIR)/Buttons/Amarchy-toolbar-filled-24
+dopus-toolbar: $(DOPUS_TOOLBAR_DIR)/Buttons/Patina-toolbar-filled-24
 # up-dopus: the unmodified upstream Directory Opus 5 68k archives (dist/addons/dopus/archives.txt), each checked
 # against its md5 in vendor/dopus5-5.104/ (download URLs: dist/addons/dopus/SOURCE.txt) and unpacked into its
 # drawer of Files; Install runs upstream's own "Install DOpus5" from the drawer that fits the CPU
@@ -2185,7 +2185,7 @@ dist-dopus: $(BUILD)/amiga/upupdate
 	  [ "$$(md5 -q $(VENDOR)/dopus5-5.104/$$a 2>/dev/null || md5sum < $(VENDOR)/dopus5-5.104/$$a | cut -d' ' -f1)" = "$$md5" ] || { echo "[ERROR] $$a: md5 is not $$md5"; exit 1; }; \
 	  mkdir -p $(KIT_dopus)/Files/$$drawer && lha -xqw=$(KIT_dopus)/Files/$$drawer $(VENDOR)/dopus5-5.104/$$a || exit 1; \
 	done
-	$(MAKE) $(DOPUS_TOOLBAR_DIR)/Buttons/Amarchy-toolbar-filled-24
+	$(MAKE) $(DOPUS_TOOLBAR_DIR)/Buttons/Patina-toolbar-filled-24
 	mkdir -p $(KIT_dopus)/Files/toolbar && cp -R $(DOPUS_TOOLBAR_DIR)/Images $(DOPUS_TOOLBAR_DIR)/Buttons $(KIT_dopus)/Files/toolbar/
 	python3 tools/mkkit.py dopus
 # up-uhc: no UHC files (owner decision 2026-10-27): install.dos downloads the author's installer uhcinstall on the
@@ -2311,28 +2311,28 @@ dist-src:
 
 # The kit says what it was built from: Files/VERSIONS has a line per part, and
 # it is in the lha archive.
-dist-check: flat-budget $(BUILD)/amiga/keymap.o $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/amarchy-icons $(BUILD)/amiga/amarchy-menu $(BUILD)/updiff_kit_drv $(CHKABORT_PROGRAMS:%=$(BUILD)/amiga/%) $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/amnotify $(BUILD)/amiga/AmTile
+dist-check: flat-budget $(BUILD)/amiga/keymap.o $(BUILD)/amiga/Patina $(BUILD)/amiga/patina-gui $(BUILD)/amiga/patina-flat $(BUILD)/amiga/patina-icons $(BUILD)/amiga/patina-menu $(BUILD)/updiff_kit_drv $(CHKABORT_PROGRAMS:%=$(BUILD)/amiga/%) $(BUILD)/amiga/patina-index $(BUILD)/amiga/amnotify $(BUILD)/amiga/AmTile
 	python3 tests/test_dist_installer.py
 	KITSIZE_REQUIRE=1 python3 tests/test_dist_kitsize.py
 	python3 tests/test_dist_addons.py
 	python3 tests/test_dist_launch.py
-	python3 tests/test_amarchy_docs.py
-	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amarchy-menu
-	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amarchy-gui
-	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/Amarchy
-	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amarchy-index
-	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amnotify
-	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amarchy-flat
-	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amarchy-icons
+	python3 tests/test_patina_docs.py
+	python3 tests/test_patina_stack.py $(BUILD)/amiga/patina-menu
+	python3 tests/test_patina_stack.py $(BUILD)/amiga/patina-gui
+	python3 tests/test_patina_stack.py $(BUILD)/amiga/Patina
+	python3 tests/test_patina_stack.py $(BUILD)/amiga/patina-index
+	python3 tests/test_patina_stack.py $(BUILD)/amiga/amnotify
+	python3 tests/test_patina_stack.py $(BUILD)/amiga/patina-flat
+	python3 tests/test_patina_stack.py $(BUILD)/amiga/patina-icons
 	python3 tests/test_nobreak.py $(CHKABORT_PROGRAMS:%=$(BUILD)/amiga/%)
-	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/AmTile
-	python3 tests/test_amarchy_frames.py $(BUILD)/amiga/Amarchy
-	python3 tests/test_amarchy_frames.py $(BUILD)/amiga/amarchy-gui
-	python3 tests/test_amarchy_frames.py $(BUILD)/amiga/amarchy-index
-	python3 tests/test_amarchy_frames.py $(BUILD)/amiga/amarchy-flat
-	python3 tests/test_amarchy_frames.py $(BUILD)/amiga/amarchy-icons
-	python3 tests/test_amarchy_frames.py $(BUILD)/amiga/AmTile
-	python3 tests/test_amarchy_frames.py $(BUILD)/amiga/amnotify
+	python3 tests/test_patina_stack.py $(BUILD)/amiga/AmTile
+	python3 tests/test_patina_frames.py $(BUILD)/amiga/Patina
+	python3 tests/test_patina_frames.py $(BUILD)/amiga/patina-gui
+	python3 tests/test_patina_frames.py $(BUILD)/amiga/patina-index
+	python3 tests/test_patina_frames.py $(BUILD)/amiga/patina-flat
+	python3 tests/test_patina_frames.py $(BUILD)/amiga/patina-icons
+	python3 tests/test_patina_frames.py $(BUILD)/amiga/AmTile
+	python3 tests/test_patina_frames.py $(BUILD)/amiga/amnotify
 	python3 tests/test_keymap_amiga_alloc.py $(BUILD)/amiga/keymap.o
 	python3 tests/test_dist_userdata.py
 	python3 tests/test_dist_updemo_names.py

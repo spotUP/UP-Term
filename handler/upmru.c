@@ -1,5 +1,5 @@
 /* upmru.c -- the most-recently-focused list of UP-Term request ports and a port's name
- * (declared in keymap_act.h). Its own file so the Amarchy commodity, which reaches the windows
+ * (declared in keymap_act.h). Its own file so the Patina commodity, which reaches the windows
  * only through handler/upactive.c, links these few functions and not the rest of keymap_act.c. */
 #include <string.h>
 #include "keymap_act.h"

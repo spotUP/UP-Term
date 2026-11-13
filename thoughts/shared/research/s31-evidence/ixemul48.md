@@ -19,7 +19,7 @@ Result: the v48 requester was NOT reproduced. No fix made.
 - Full-tick install (fresh-all) on OS 3.2: SYS:Libs/ixemul.library = 80.1 (201256 bytes, kit file), SYS:Libs/ixnet.library present.
   ENVARC:up-term-orig holds ixemul.none and ixnet.none (no original library existed; kit copy went to LIBS:).
 - The installer's own reboot check passed: BOOTX:boot.log ran to "wasabid started", no requester logged.
-- S:User-Startup order after install: BOOTX:go, UP-Term assign, shadows-up, Amarchy, amarchy-index, amarchy-flat BOOT,
+- S:User-Startup order after install: BOOTX:go, UP-Term assign, shadows-up, Patina, patina-index, patina-flat BOOT,
   upgetty LOOP, wasabid, SolidWin, UPConsole, then the AmiSSL block (Assign LIBS: AmiSSL:Libs ADD, last).
   Work:AmiSSL/Libs holds no ixemul.library, so the AmiSSL assign cannot supply a wrong copy.
 - A second, manual reboot (ami.py reboot) ended in an Exec alert, not the ixemul requester:

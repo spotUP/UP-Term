@@ -1,27 +1,27 @@
 """stage_rig.py -- put the freshly built Amiga programs on the rig and prove they are the ones there.
 
 A rig script that starts VTC:Apps/bin/<name> must run the build it was just given, not a binary copied
-by hand earlier (a --fresh run once used a stale Amarchy). stage_build() builds the make targets, then
+by hand earlier (a --fresh run once used a stale Patina). stage_build() builds the make targets, then
 for each program reads the rig's copy back through wasabi, compares its SHA-256 with the host build,
 puts the host file when they differ and reads it back again; a copy that still differs raises
 StageError (the script stops, it does not run a stale binary).
 
-Imported by amarchy_rig.py; amarchy_menu_rig.py and others may use it the same way.
+Imported by patina_rig.py; patina_menu_rig.py and others may use it the same way.
 """
 import hashlib, os, pathlib, subprocess, sys
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import paths
 
 BUILD = paths.VTCON / 'build/amiga'
-# program -> make target that builds it (amarchy-menu needs upterm-ports built, see the Makefile)
-TARGETS = {'Amarchy': 'build/amiga/Amarchy', 'amarchy-menu': 'build/amiga/amarchy-menu',
-           'amarchy-gui': 'build/amiga/amarchy-gui', 'amarchy-index': 'build/amiga/amarchy-index',
+# program -> make target that builds it (patina-menu needs upterm-ports built, see the Makefile)
+TARGETS = {'Patina': 'build/amiga/Patina', 'patina-menu': 'build/amiga/patina-menu',
+           'patina-gui': 'build/amiga/patina-gui', 'patina-index': 'build/amiga/patina-index',
            'wbfake': 'build/amiga/wbfake', 'scrprobe': 'build/amiga/scrprobe',
            'lcmdprobe': 'build/amiga/lcmdprobe', 'AmTile': 'build/amiga/AmTile',
-           'amarchy-flat': 'build/amiga/amarchy-flat', 'pubscreen': 'build/amiga/pubscreen'}
+           'patina-flat': 'build/amiga/patina-flat', 'pubscreen': 'build/amiga/pubscreen'}
 
-# staged when a rig script names nothing: amarchy-gui is the menu Amarchy draws, amarchy-menu its text fallback
-DEFAULT = ('Amarchy', 'amarchy-menu', 'amarchy-gui', 'amarchy-index')
+# staged when a rig script names nothing: patina-gui is the menu Patina draws, patina-menu its text fallback
+DEFAULT = ('Patina', 'patina-menu', 'patina-gui', 'patina-index')
 
 
 class StageError(SystemExit):

@@ -6,27 +6,27 @@ status: paused 2026-11-01 (owner: wait for the filled icon set); Q1 measured, Q2
 # Lucide icon colours on a 3.2 rig (rig 11, AGA 256, 640x256)
 
 Tool: tests/amiga/wbpenprobe (GetRGB32 pens 0..63 + ReadPixel rows of the Workbench screen), driven by
-tools/rig/wbpenprobe_rig.py `<tag> [apply]` (amarchy-icons APPLY, opens SYS: via the WORKBENCH ARexx port, probes it).
+tools/rig/wbpenprobe_rig.py `<tag> [apply]` (patina-icons APPLY, opens SYS: via the WORKBENCH ARexx port, probes it).
 
 ## Q1 inverted colours: measured root
 lucide.dat draws the glyph in the reserved pens 32 (33% coverage), 37 (66%), 33 (100%). Those pens get theme colours
-only while amarchy-flat runs and holds them (flat.c pens_sync -> ip_colours -> ip_holder_obtain).
+only while patina-flat runs and holds them (flat.c pens_sync -> ip_colours -> ip_holder_obtain).
 
 | case | pen 32 (edge 33%) | pen 37 (66%) | pen 33 (core 100%) |
 |---|---|---|---|
-| APPLY, no amarchy-flat (stock 256-colour palette) | ffffff | ffffff | 888888 |
-| same, Amarchy running with flat-system-look = on but no amarchy-flat binary reachable | ffffff | ffffff | 888888 |
-| amarchy-flat running (STATUS `pens-held 16`) | 494d60 | 787e9a | a9b1d6 |
+| APPLY, no patina-flat (stock 256-colour palette) | ffffff | ffffff | 888888 |
+| same, Patina running with flat-system-look = on but no patina-flat binary reachable | ffffff | ffffff | 888888 |
+| patina-flat running (STATUS `pens-held 16`) | 494d60 | 787e9a | a9b1d6 |
 
-Without amarchy-flat the stroke core is darker than its edges (white rim, grey core): the owner's "inverted" look,
+Without patina-flat the stroke core is darker than its edges (white rim, grey core): the owner's "inverted" look,
 same as the screenshot (s28-owner-rig8-icons.png). The icon frame was also still drawn (borderless not set).
 Pixel rows of SYS: show pen 0 (transparent) around the glyph: no box behind the glyph in this window.
 
-Not checked: whether amarchy-flat runs on rig 8 (owner's rig, not touched). Check there: `amarchy-flat STATUS` must say
+Not checked: whether patina-flat runs on rig 8 (owner's rig, not touched). Check there: `patina-flat STATUS` must say
 `pens-held 16`.
 
 ## Q2 label background: not measured
-Stock WB (no Amarchy font.prefs): labels have no background (pen 0 under the text). Amarchy's desktop-labels target writes
+Stock WB (no Patina font.prefs): labels have no background (pen 0 under the text). Patina's desktop-labels target writes
 font.prefs WBFONT FrontPen=DK_FG, BackPen=DK_DARKER, DrawMode 0 (JAM1), SpecialDrawMode 1 (desk_core.c desk_font_pens).
 Next probe: apply a theme with desktop-labels on and compare the pens under a label with the window pen.
 
@@ -37,19 +37,19 @@ lucide.dat is rasterised from the Lucide font: a stroke-outline icon set, 2-3 px
 ## Code references
 - Glyph pens: tools/gen_lucide_icons.py:38 PEN_NORMAL (0, 32, 37, 33), :39 PEN_SELECTED, :94-104 images(); coverage from the
   Lucide TTF outline raster, tools/gen_lucide_icons.py:77-81 (gen_menu_icons.raster, gen_emoji.area).
-- Pens 32..47 coloured only by a running amarchy-flat: amarchy/flat.c:852-881 pens_sync (ip_colours, ip_holder_obtain).
-- Amarchy starts amarchy-flat on a prefs change only, from PL_BIN_DIR: amarchy/desk_dos.c:499 (pl_start ... amarchy-flat BOOT);
+- Pens 32..47 coloured only by a running patina-flat: patina/flat.c:852-881 pens_sync (ip_colours, ip_holder_obtain).
+- Patina starts patina-flat on a prefs change only, from PL_BIN_DIR: patina/desk_dos.c:499 (pl_start ... patina-flat BOOT);
   boot start: dist/install.dos:563. On rig 11 the binary was absent from UP-Term:bin, so nothing held the pens.
-- Label pens: amarchy/desk_core.c:590 desk_font_pens, :600 fp_SpecialDrawMode = 1 (assumed "outline").
+- Label pens: patina/desk_core.c:590 desk_font_pens, :600 fp_SpecialDrawMode = 1 (assumed "outline").
 
 ## Unknown
-- Rig 8: is amarchy-flat running and holding 16 pens? (not touched)
+- Rig 8: is patina-flat running and holding 16 pens? (not touched)
 - Q2: which font.prefs field gives the coloured label background on 3.2 (fp_SpecialDrawMode 1 semantics, BackPen DK_DARKER
   vs the backdrop pen).
-- Whether amarchy-icons APPLY should refuse, or the pens be held by another owner, when amarchy-flat is not running.
+- Whether patina-icons APPLY should refuse, or the pens be held by another owner, when patina-flat is not running.
 
 ## Next probe (after the filled icon set lands)
-1. Rig (not 8), Amarchy + amarchy-flat running, theme with desktop-labels on: `tools/rig/wbpenprobe_rig.py labels apply`,
+1. Rig (not 8), Patina + patina-flat running, theme with desktop-labels on: `tools/rig/wbpenprobe_rig.py labels apply`,
    compare the pens under a label with the window pen.
 2. Same with font.prefs fp_SpecialDrawMode 0, 1, 2 written by hand (one IPrefs reload each).
-3. On rig 8, read-only: `amarchy-flat STATUS` (expect `pens-held 16`).
+3. On rig 8, read-only: `patina-flat STATUS` (expect `pens-held 16`).

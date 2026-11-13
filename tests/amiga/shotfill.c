@@ -1,5 +1,5 @@
 /* shotfill: paints two known colours on the front (RTG truecolour) Workbench screen with cgx FillPixelArray, for the deep
- * capture proof (tools/rig/amarchy_cap_rig.py). Rect 1: x 100..115, y 100..107 = 0x00FF8040. Rect 2: x 300..303,
+ * capture proof (tools/rig/patina_cap_rig.py). Rect 1: x 100..115, y 100..107 = 0x00FF8040. Rect 2: x 300..303,
  * y 200..203 = 0x001020FF. */
 #include <stdio.h>
 #include <exec/types.h>

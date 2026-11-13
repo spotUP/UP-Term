@@ -4,13 +4,13 @@ Commit fe2405a7 (branch worktree-agent-a32d9f57a7b8e2912), not pushed.
 
 ## Implemented
 - dist/lucide-icons: `type:net = globe-hemisphere-west`; dist/lucide-icons-outline: `type:net = network`. `make lucide-dat` OK (51 / 52 icons).
-- amarchy/iconapply_core.c: `ia_vol_is_net(devname, handler)` is pure: case-insensitive substrings smb, samba, cifs, nfs, ftpmount, netfs, webdav, sftp in the DosList device name or its handler file. `ia_walk_net` applies `type:net` to `<vol>Disk.info` (a missing file is created from def_disk and recorded absent, so RESTORE removes it) and counts `c->net`.
-- amarchy/icons.c: walk_volumes finds the device entry sharing the volume's MsgPort (vol_is_net) and calls ia_walk_net after walk_dir (the walk's def_disk fallback would otherwise overwrite it). Summary line gains `net=N`.
+- patina/iconapply_core.c: `ia_vol_is_net(devname, handler)` is pure: case-insensitive substrings smb, samba, cifs, nfs, ftpmount, netfs, webdav, sftp in the DosList device name or its handler file. `ia_walk_net` applies `type:net` to `<vol>Disk.info` (a missing file is created from def_disk and recorded absent, so RESTORE removes it) and counts `c->net`.
+- patina/icons.c: walk_volumes finds the device entry sharing the volume's MsgPort (vol_is_net) and calls ia_walk_net after walk_dir (the walk's def_disk fallback would otherwise overwrite it). Summary line gains `net=N`.
 
 ## Tests
 - Host: `make test ONLY=iconapply`: 166 checks, 0 failed (new test_net: classifier cases, creation, sentinel, manifest absent, RESTORE removes).
 - tests/test_icons_skip_glue.py: new pin; fails with the ia_walk_net call removed, passes restored.
-- `make amarchy-icons`: clean (warnings as errors).
+- `make patina-icons`: clean (warnings as errors).
 
 ## Rig 77 (FS-UAE, OS 3.2)
 No network volume mounted: net=0 in the APPLY summary; the classifier is proven on host only.

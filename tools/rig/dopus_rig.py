@@ -148,7 +148,7 @@ ENVFILE = "DOpus5/Environment/workbench"
 
 def own_screen(vtc):
     """`rig.py dopus --own-screen`: DOpus 5.104 opens its own 1344x1080 screen (DOPUS.1 on it, the lister and button bank
-    there, the Amarchy bar stays on the Workbench screen). Edits the saved environment file in the rig's VTC: drawer, so the
+    there, the Patina bar stays on the Workbench screen). Edits the saved environment file in the rig's VTC: drawer, so the
     next boot (and every clone) has it. Idempotent; refuses a file that is neither the shipped nor the saved bytes."""
     f = vtc / ENVFILE
     if not f.exists():

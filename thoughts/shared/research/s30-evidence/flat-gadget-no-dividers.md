@@ -10,8 +10,8 @@ status: fixed on branch s30-nodividers (flat_clone_map edge-line peel); rig proo
 The divider is not drawn by Intuition's title bar code; it is part of the stock sysiclass image and
 survives the glyph clone.
 
-- amarchy/flat.c:258 (`c2_draw`) routes every window gadget to `flat_clone_draw`
-  (amarchy/flat_glyph.c), which renders the stock image offscreen (`clone_render`, flat.c:160)
+- patina/flat.c:258 (`c2_draw`) routes every window gadget to `flat_clone_draw`
+  (patina/flat_glyph.c), which renders the stock image offscreen (`clone_render`, flat.c:160)
   and keeps as "glyph" every pixel `flat_clone_map` (flat_glyph.c:156) does not call ground.
 - `flat_clone_map` dropped only pixels that are (a) the dominant inside pen or (b) on the 1 px outer
   ring AND in the marker SHINE / SHADOW / BACK pen. The 2 px separator is not on the ring:
@@ -46,9 +46,9 @@ Regression check: with the two flat_glyph.c hunks reverted, `test_clone_no_divid
 (tests/test_flat_core.c:1289, separator columns in the glyph pen); with the fix, flat_core passes
 1172 checks, 0 failed.
 
-Rig 56, fs-uae, worktree build amarchy-flat md5 ec0c98e07d0625722e1a6aa7f75da629 (read back from
+Rig 56, fs-uae, worktree build patina-flat md5 ec0c98e07d0625722e1a6aa7f75da629 (read back from
 VTCX:Apps/bin on the rig: same md5), prefs flat-system-look = on, flat-window-gadgets = on,
-`amarchy-flat BOOT`, then `NewShell "CON:40/40/420/160/no dividers/CLOSE"` (active window).
+`patina-flat BOOT`, then `NewShell "CON:40/40/420/160/no dividers/CLOSE"` (active window).
 Measured with a Python pixel dump of each shot, band pen (102,136,187), glyph pen (170,170,170).
 
 OS 3.2 (Kickstart 47, 640x256), STATUS `clone draws=13 fallback=0`,

@@ -6,9 +6,9 @@ Sys/ prefs snapshot (right), the prefs theme line kept the picked name, pens 4-7
 Root cause level: the revert data (snapshot + marker set) did not carry the theme name.
 
 ## Where the name is recorded
-- `gt_dos_select` (amarchy/gthemes_dos.c) copies the theme line it loaded before overwriting it and hands it to
-  `desk_dos_prev_theme` (amarchy/desk_dos.c) once the pick saved.
-- `dk_snapshot` -> `dk_snapshot_theme` writes `T:amarchy-revert/prevtheme` (text from `desk_revert_theme_make`, desk_core.c) only when no
+- `gt_dos_select` (patina/gthemes_dos.c) copies the theme line it loaded before overwriting it and hands it to
+  `desk_dos_prev_theme` (patina/desk_dos.c) once the pick saved.
+- `dk_snapshot` -> `dk_snapshot_theme` writes `T:patina-revert/prevtheme` (text from `desk_revert_theme_make`, desk_core.c) only when no
   unconfirmed apply is pending (FP-1: the first snapshot wins). No known name = the file is deleted (no stale name).
 - The name file is the 4th member of `dk_mark_extra`, so the ENVARC marker set (reboot recovery) carries it. Keep deletes it.
 - `desk_dos_revert`: reads it (`desk_revert_theme_parse`); writes the theme line through `amconf_load`/`amconf_save(&ap, 1, ..)`, the same
@@ -29,9 +29,9 @@ GREEN: `RUNTEST desk rc=0 [OK] desk: 2333 checks, 0 failed`
 m68k: seven-target build rc=0 (first compile of the DOS side; no warning in desk_dos.c, gthemes_dos.c, desk_core.c); `tests/test_make_link_lists.py` OK.
 
 ## Rig check (not run here)
-Pick a theme, leave the Keep/Revert requester unanswered for 15 s. Measure: `ENV:Amarchy/prefs` and `ENVARC:Amarchy/prefs` theme line = the
+Pick a theme, leave the Keep/Revert requester unanswered for 15 s. Measure: `ENV:Patina/prefs` and `ENVARC:Patina/prefs` theme line = the
 previous theme; pens 4-7 of the Workbench screen on a deep screen = the previous theme's role colours (tokyo-night, flat: 3e4254 0e0e14
-9ece6a 0e0e14), not 0000ff ff00ff 00ffff ffffff. Also: pick, reboot before answering, start Amarchy: same result via the marker set.
+9ece6a 0e0e14), not 0000ff ff00ff 00ffff ffffff. Also: pick, reboot before answering, start Patina: same result via the marker set.
 
 ## Follow-up: stale name
 Invariant: one `desk_dos_prev_theme(name)` hand-over belongs to exactly one snapshot; it is consumed there, written or not.
@@ -44,5 +44,5 @@ RED (clear line left out): `RUNTEST desk rc=2 [FAIL] desk: 2346 checks, 5 failed
 GREEN: `RUNTEST desk rc=0 [OK] desk: 2346 checks, 0 failed`
 (an intermediate run failed 1 check: the source check matched the forward declaration; anchored on the definition `...(void)\n{`.)
 m68k: seven-target build rc=0; `tests/test_make_link_lists.py` OK.
-Rig check: pick A->B, pick B->C before answering the requester, Keep; toggle a desktop switch only, Revert it; the theme line in ENV:Amarchy/prefs
-must still be C, and `T:amarchy-revert/prevtheme` must not exist after the toggle snapshot.
+Rig check: pick A->B, pick B->C before answering the requester, Keep; toggle a desktop switch only, Revert it; the theme line in ENV:Patina/prefs
+must still be C, and `T:patina-revert/prevtheme` must not exist after the toggle snapshot.

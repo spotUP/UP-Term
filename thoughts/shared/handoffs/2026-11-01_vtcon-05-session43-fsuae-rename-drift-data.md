@@ -22,8 +22,8 @@ status: finished, nothing in flight
 ## Open
 - Wait for upstream review of fs-uae #393/#394.
 - creep-ltx/wasabi PRs #2, #3, #4: creep merges from Tuesday 2026-11-03; #2 before #3. Pin stays f59c839 until then.
-- Amarchy bar overflow on A1200 (right group runs off the edge, System cut, launch icon covers label): sent to Amarchy session vtcon-32. Ledger sub-bullet under the "2026-10-29 bar-prio" row. Not vtcon-05 work.
+- Patina bar overflow on A1200 (right group runs off the edge, System cut, launch icon covers label): sent to Patina session vtcon-32. Ledger sub-bullet under the "2026-10-29 bar-prio" row. Not vtcon-05 work.
 
 ## Gotchas
-- Rig 8 belongs to the Amarchy s28 session. Never touch rigs 1, 2, 8, 10.
+- Rig 8 belongs to the Patina s28 session. Never touch rigs 1, 2, 8, 10.
 - Other sessions' rigs pick up the new fs-uae binary on their next start.

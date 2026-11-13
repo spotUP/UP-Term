@@ -42,7 +42,7 @@ copy-coreutils  Files/coreutils/bin     bin
 -               Files/coreutils
 copy-userland   Files/userland/bin      bin
 userland        Files/userland
-userland        Files/amarchy-themes
+userland        Files/patina-themes
 userland        Files/lucide
 userland        Files/phosphor
 copy-unifont    Files/unifont           unifont
@@ -55,12 +55,12 @@ tools           Files/Agent
 tools           Files/UPTerm
 tools           Files/UP-Term.version
 tools           Files/VERSIONS
-tools           Files/Amarchy
-tools           Files/amarchy-menu
-tools           Files/amarchy-gui
-tools           Files/amarchy-index
-tools           Files/amarchy-flat
-tools           Files/amarchy-icons
+tools           Files/Patina
+tools           Files/patina-menu
+tools           Files/patina-gui
+tools           Files/patina-index
+tools           Files/patina-flat
+tools           Files/patina-icons
 tools           Files/amnotify
 tools           Files/AmTile
 tools           Files/keymap

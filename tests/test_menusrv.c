@@ -1,8 +1,8 @@
-/* The warm menu server's open decision (amarchy/menusrv_core.c; plan 2026-10-27-amarchy-warm-menu-server.md
+/* The warm menu server's open decision (patina/menusrv_core.c; plan 2026-10-27-patina-warm-menu-server.md
  * section 5). Sentinel counters prove which path ran: a live server gets the message and nothing is spawned. */
-#include "../amarchy/menusrv_core.h"
+#include "../patina/menusrv_core.h"
 #include "harness.h"
-#include "../amarchy/serve_sig.h"
+#include "../patina/serve_sig.h"
 #include <signal.h>
 
 typedef struct {
@@ -61,7 +61,7 @@ static void test_live_server(void)
 }
 
 /* The bar's agents panel asks for a menu hung from a point: ms_open hands the anchor on to send, which puts it in the
- * message the drawn menu server reads (amarchy/menu_open.c srv_send; gui.c gui_open). */
+ * message the drawn menu server reads (patina/menu_open.c srv_send; gui.c gui_open). */
 static void test_anchor_reaches_send(void)
 {
     fake f = { 1, 1, 0, 100, 0, 0, 0, 0, 0, 0, 0 };
@@ -91,10 +91,10 @@ static void test_anchor_reaches_send(void)
 }
 
 /* The first open of the bar's panel (no server yet) runs the drawn menu's own process: its command line carries the
- * anchor, so the panel hangs above the bar instead of opening centred; amarchy-gui parses it back. */
+ * anchor, so the panel hangs above the bar instead of opening centred; patina-gui parses it back. */
 static void test_cold_line_carries_anchor(void)
 {
-    char out[96], *av[] = { "amarchy-gui", "menu", "agents", "at", "640", "246" };
+    char out[96], *av[] = { "patina-gui", "menu", "agents", "at", "640", "246" };
     ms_req r;
     int ax = 0, ay = 0;
     r.kind = 0;
@@ -102,12 +102,12 @@ static void test_cold_line_carries_anchor(void)
     r.anchored = 1;
     r.ax = 640;
     r.ay = 246;
-    CHECK_INT(ms_cold_line(out, sizeof out, "\"VTC:amarchy-gui\" menu agents", &r), 1);
-    CHECK_STR(out, "\"VTC:amarchy-gui\" menu agents at 640 246");
+    CHECK_INT(ms_cold_line(out, sizeof out, "\"VTC:patina-gui\" menu agents", &r), 1);
+    CHECK_STR(out, "\"VTC:patina-gui\" menu agents at 640 246");
     r.anchored = 0;
-    ms_cold_line(out, sizeof out, "\"VTC:amarchy-gui\" menu root", &r);
-    CHECK_STR(out, "\"VTC:amarchy-gui\" menu root");
-    CHECK_INT(ms_cold_line(out, 8, "\"VTC:amarchy-gui\" menu root", &r), 0);   /* too small: cut, reported */
+    ms_cold_line(out, sizeof out, "\"VTC:patina-gui\" menu root", &r);
+    CHECK_STR(out, "\"VTC:patina-gui\" menu root");
+    CHECK_INT(ms_cold_line(out, 8, "\"VTC:patina-gui\" menu root", &r), 0);   /* too small: cut, reported */
     CHECK_INT(ms_anchor_args(6, av, 3, &ax, &ay), 1);
     CHECK_INT(ax, 640);
     CHECK_INT(ay, 246);
@@ -127,7 +127,7 @@ static void test_no_port(void)
     CHECK_INT(f.took, 0);
 }
 
-/* AMARCHY-MENU-STALE-PORT: a port whose owner task is gone is taken over, the menu still opens */
+/* PATINA-MENU-STALE-PORT: a port whose owner task is gone is taken over, the menu still opens */
 static void test_stale_port(void)
 {
     fake f = { 1, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0 };
@@ -207,11 +207,11 @@ static void test_server_names(void)
 {
     const char *port, *task;
     ms_server_names(1, &port, &task);
-    CHECK_STR(port, "AMARCHY.MENUSRV");
-    CHECK_STR(task, "amarchy-menu");
+    CHECK_STR(port, "PATINA.MENUSRV");
+    CHECK_STR(task, "patina-menu");
     ms_server_names(0, &port, &task);
-    CHECK_STR(port, "AMARCHY.GUISRV");
-    CHECK_STR(task, "amarchy-gui");
+    CHECK_STR(port, "PATINA.GUISRV");
+    CHECK_STR(task, "patina-gui");
 }
 
 /* A menu process (warm server and cold menu) ignores SIGHUP: an XCON console closing sent it "Hangup" and ended

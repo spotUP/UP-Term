@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""test_gui_rig_flat_prefs_default.py -- amarchy_gui_rig reads the flat prefs with their default ON.
+"""test_gui_rig_flat_prefs_default.py -- patina_gui_rig reads the flat prefs with their default ON.
 
   python3 -I tests/test_gui_rig_flat_prefs_default.py
 
@@ -8,11 +8,11 @@ both flat keys default to on (amconf_core.h INSTALLER-FLAT-OFF) and the installe
 import pathlib, sys, types
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'tools' / 'rig'))
-for name in ('paths', 'ami', 'condev_rig', 'stage_rig', 'amarchy_window_rig', 'upkg_rig'):
+for name in ('paths', 'ami', 'condev_rig', 'stage_rig', 'patina_window_rig', 'upkg_rig'):
     sys.modules.setdefault(name, types.ModuleType(name))
-import amarchy_gui_rig as g
+import patina_gui_rig as g
 
-HDR = '; Amarchy preferences. Written by the Amarchy preferences window (Exchange: Show Interface).\n'
+HDR = '; Patina preferences. Written by the Patina preferences window (Exchange: Show Interface).\n'
 OFF2 = 'flat-system-look = off\nflat-window-gadgets = off\n'
 for text, want, why in ((HDR, True, 'header-only file: defaults on'),
                         ('Type: object not found\n', True, 'no file: defaults on'),

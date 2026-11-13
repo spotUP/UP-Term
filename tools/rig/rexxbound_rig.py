@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """rexxbound_rig.py -- rexx_send waits at most REXX_SEND_SECS for a reply (REXX-DEAD-AFTER-THEME).
 
-Entry point: the shared client rexx_send (amarchy/rexx_host.c), driven by RAM:rexxbound against RAM:deafport, an ARexx port
+Entry point: the shared client rexx_send (patina/rexx_host.c), driven by RAM:rexxbound against RAM:deafport, an ARexx port
 that holds its first message 12 s before replying. Sentinel that the new code ran: rexx_send_timeouts, printed by rexxbound.
 Steps: rexxbound's first send returns rc -1 after about 10 s with timeouts=1 (the old code waited for the 12 s reply and
 returned rc 0, or forever for a peer that never replies); after the late reply rexx_send_reap frees the parked message once

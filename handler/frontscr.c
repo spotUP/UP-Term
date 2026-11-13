@@ -1,4 +1,4 @@
-/* frontscr -- see frontscr.h. Moved out of vtcon_handler.c unchanged so amarchy-gui locks the screen the
+/* frontscr -- see frontscr.h. Moved out of vtcon_handler.c unchanged so patina-gui locks the screen the
  * same way. */
 #include <exec/types.h>
 #include <exec/lists.h>

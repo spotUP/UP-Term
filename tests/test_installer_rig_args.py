@@ -151,7 +151,7 @@ class Addon68000(unittest.TestCase):
 
 
 class RebootKeepsTheWindowTitle(unittest.TestCase):
-    """INSTALLER-RIG-REBOOT (rig 111, 2026-11-04): reboot_amarchy_check called a bare rig("reboot"), so a --purpose given
+    """INSTALLER-RIG-REBOOT (rig 111, 2026-11-04): reboot_patina_check called a bare rig("reboot"), so a --purpose given
     to installer_rig never reached the window, and the rig's own purpose could be lost by a restart."""
     def setUp(self):
         for l in (irg.PURPOSE, irg.RIG_FLAGS):
@@ -182,7 +182,7 @@ class RebootKeepsTheWindowTitle(unittest.TestCase):
     def test_reboot_check_uses_it(self):
         with mock.patch.object(irg, "rig_reboot", side_effect=RuntimeError("reached")), mock.patch.object(irg.time, "sleep"):
             with self.assertRaises(RuntimeError):
-                irg.reboot_amarchy_check(mock.Mock(), mock.Mock())
+                irg.reboot_patina_check(mock.Mock(), mock.Mock())
 
 
 if __name__ == "__main__":

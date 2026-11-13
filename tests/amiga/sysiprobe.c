@@ -1,4 +1,4 @@
-/* sysiprobe -- FLAT-R3: the Hook layout of intuition's sysiclass (plan 2026-10-29-amarchy-flat-ui-patch.md).
+/* sysiprobe -- FLAT-R3: the Hook layout of intuition's sysiclass (plan 2026-10-29-patina-flat-ui-patch.md).
  *   sysiprobe   create a sysiclass image (SYSIA_DrawInfo of the Workbench screen, SYSIA_Which CLOSEIMAGE), then print
  *               CLASS <addr> id=<cl_ID> super=<addr> and HOOK entry=<h_Entry> sub=<h_SubEntry> data=<h_Data> for it,
  *               HEX <addr>: 32 bytes at h_Entry, and the same HOOK line for imageclass, frameiclass and gadgetclass.

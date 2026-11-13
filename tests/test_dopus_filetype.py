@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The Directory Opus filetype file tools/gen_dopus_filetype.py writes (plan 2026-10-25-amarchy-dopus-integration.md, D11):
+"""The Directory Opus filetype file tools/gen_dopus_filetype.py writes (plan 2026-10-25-patina-dopus-integration.md, D11):
 the bytes are golden; and, when the upstream dopus5 v5.104 source is at $DOPUS5_SRC, its archive/tools/filetype_tool.py
 `check` (decode and re-encode equal) passes and `lint` reports nothing but the UP-TERM: assign (ours, not a stock
 one) and the note that the type is recognised by file name only. The tool is run with -I, from another directory."""

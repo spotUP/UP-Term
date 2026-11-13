@@ -1,6 +1,6 @@
 ---
 date: 2026-10-28
-author: spot (Amarchy s20)
+author: spot (Patina s20)
 topic: OMARCHY-AI B1 skills search path, D1 local model status, F1 agent colour config
 ---
 
@@ -21,15 +21,15 @@ Amiga: agent dir = `ENVARC:amiga-pi` (main_amiga.c:159-161, PI_CODING_AGENT_DIR 
 Format (skills.c:155-245): SKILL.md frontmatter `name`, `description` (required, <=1024 chars), `disable-model-invocation`; name lowercase a-z0-9-, <=64 (warns only). Also loose .md in `.pi/skills` root style.
 
 ## Common path
-Both read `<dir>/<skill>/SKILL.md` with `name` + `description` frontmatter; SAME FORMAT for those two keys. No single directory is read by both: C:Claude `UP-Term:var/Claude/skills` (or ENVARC:Claude/skills), amiga-pi `UP-Term:var/amiga-pi/skills` (or ENVARC:amiga-pi/skills). Project-level, `<project>/.claude/skills` (Claude) vs `<project>/.pi/skills` or `.agents/skills` (pi): `.agents/skills` is not read by C:Claude. So the kit needs TWO copies (or one install step writing both): `UP-Term:var/Claude/skills/amarchy/SKILL.md` and `UP-Term:var/amiga-pi/skills/amarchy/SKILL.md`. Note settings.json "skills" in amiga-pi could point at one shared dir, but C:Claude has no equivalent: two copies is simplest. Keep frontmatter to name+description (+ allowed-tools harmless to pi? pi only warns on unknown).
+Both read `<dir>/<skill>/SKILL.md` with `name` + `description` frontmatter; SAME FORMAT for those two keys. No single directory is read by both: C:Claude `UP-Term:var/Claude/skills` (or ENVARC:Claude/skills), amiga-pi `UP-Term:var/amiga-pi/skills` (or ENVARC:amiga-pi/skills). Project-level, `<project>/.claude/skills` (Claude) vs `<project>/.pi/skills` or `.agents/skills` (pi): `.agents/skills` is not read by C:Claude. So the kit needs TWO copies (or one install step writing both): `UP-Term:var/Claude/skills/patina/SKILL.md` and `UP-Term:var/amiga-pi/skills/patina/SKILL.md`. Note settings.json "skills" in amiga-pi could point at one shared dir, but C:Claude has no equivalent: two copies is simplest. Keep frontmatter to name+description (+ allowed-tools harmless to pi? pi only warns on unknown).
 amiga-pi's existing arexx skill: `../amiga-pi/skills/arexx/SKILL.md` (siblings amigados, amiga-c-build, amiga-autodocs).
 
-## Sources an Amarchy skill's command list can be generated from
+## Sources an Patina skill's command list can be generated from
 - Keymap action prefixes: config/keymap.c:213-218 `prefixes[]` (menu, menuid, tab, slash, run, job, rexx, open, detach, scan, win, gtheme, settings); tab verbs :220-; key names `knames[]` config/keymap.c:32; parser `keymap_parse` :837, `keymap_overlay` :852; loader config/keymap_load.c.
-- `win:` verbs: closed list in amarchy/win_core.c:32 `bare[]`, :37 `withArg[]`, direction lists :41-43; validator config/keymap.c:245.
-- act.c (amarchy/act.c, act.h:8-22) is a dispatcher (act_run, act_rexx, act_in_window, act_menu_open), not an action table; keymap dispatch is handler/keymap_act.c:6 `ids[]` (name -> id).
-- ARexx port: `AMARCHY` (amarchy/amarchy.c:309 rexx_host_open); command table in amarchy/rexx_host.c (see its dispatch).
-- Prefs keys: prefs/settings_def.c (`sd_amarchy_key()`; amarchy/amconf_keys.c:13 consumes it).
+- `win:` verbs: closed list in patina/win_core.c:32 `bare[]`, :37 `withArg[]`, direction lists :41-43; validator config/keymap.c:245.
+- act.c (patina/act.c, act.h:8-22) is a dispatcher (act_run, act_rexx, act_in_window, act_menu_open), not an action table; keymap dispatch is handler/keymap_act.c:6 `ids[]` (name -> id).
+- ARexx port: `PATINA` (patina/patina.c:309 rexx_host_open); command table in patina/rexx_host.c (see its dispatch).
+- Prefs keys: prefs/settings_def.c (`sd_patina_key()`; patina/amconf_keys.c:13 consumes it).
 
 # D1 Local model status
 - B5 status: LANDED in part. claude/http.c no longer names a provider (grep anthropic|x-api-key: no match; amiga-pi ARCHITECTURE.md:35 expected it at http.c:112-142). C:Claude posts via `llm_post` (claude/repl.c:418) and decodes via `llm_anth_init` (claude/stream.c:13), both in vtcon/llm/. D8 (ARCHITECTURE.md:16) and :79.

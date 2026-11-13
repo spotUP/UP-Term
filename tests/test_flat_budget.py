@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""test_flat_budget.py -- FLAT-C3 caller-context budget of the amarchy-flat sysiclass dispatcher.
+"""test_flat_budget.py -- FLAT-C3 caller-context budget of the patina-flat sysiclass dispatcher.
 
   python3 tests/test_flat_budget.py build/amiga/flat_asm/flat.s build/amiga/flat_asm/flat_glyph.s build/amiga/flat_asm/flat_core.s
 
 The dispatcher entries (c2_disp_reg, c2_disp_stk) run on the stack of whichever task is drawing a window: a CLI program
 under `Stack 4096`, or input.device. So do the graphics.library patches (S62-FLAT-RF-TX-BUDGET): RectFill enters
-flat_rf_c and Text enters flat_tx_c through the register-to-stack stubs amarchy/flat_rf.s / amarchy/flat_tx.s, whose
+flat_rf_c and Text enters flat_tx_c through the register-to-stack stubs patina/flat_rf.s / patina/flat_tx.s, whose
 pushed arguments and return address are added to those chains (counted from the stub source, STUBS). From vbcc's own assembly (vc -S, the `; stacksize=N` line it writes per function,
 saved registers plus locals) this checks
   1. every entry function's own frame is <= ENTRY_MAX bytes,
@@ -23,8 +23,8 @@ HEADROOM_MIN = 64          # the deepest chain must leave this many bytes under 
 ENTRIES = ('_c2_disp_reg', '_d5_disp_reg', '_c2_disp_stk', '_c8_disp_reg', '_c8_disp_stk', '_flat_rf_c', '_flat_tx_c', '_flat_cg_c')
 # entry -> (the asm stub that calls it, the jsr operand that reaches it). The class dispatchers are reached through the
 # FLAT-UNLOAD-INFLIGHT gate (flat_dg.s): its plain `jsr` pushes one return address (4 bytes) on the caller's stack, counted here.
-DG = ('amarchy/flat_dg.s', '($44444444).l')
-STUBS = {'_flat_rf_c': ('amarchy/flat_rf.s', None), '_flat_cg_c': ('amarchy/flat_cg.s', None), '_flat_tx_c': ('amarchy/flat_tx.s', None),
+DG = ('patina/flat_dg.s', '($44444444).l')
+STUBS = {'_flat_rf_c': ('patina/flat_rf.s', None), '_flat_cg_c': ('patina/flat_cg.s', None), '_flat_tx_c': ('patina/flat_tx.s', None),
          '_c2_disp_reg': DG, '_d5_disp_reg': DG, '_c2_disp_stk': DG, '_c8_disp_reg': DG, '_c8_disp_stk': DG}
 
 

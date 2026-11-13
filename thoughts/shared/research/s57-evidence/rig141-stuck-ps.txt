@@ -1,13 +1,13 @@
 ADDR       KIND  PRI STATE    STACK    FREE  CLI  NAME
 0x100fa0f8 proc    0 wait     32768   31666    1  Background CLI (SYS:Prefs/Font)
 0x1013d188 proc    1 run     262144  260087    3  Background CLI (BOOTX:wasabid)
-0x100ffda8 proc    0 wait    262144  256342    4  Background CLI (UP-Term:bin/Amarchy)
-0x1012b5f0 proc    0 wait    262144  257406    6  Background CLI (UP-Term:bin/amarchy-flat)
+0x100ffda8 proc    0 wait    262144  256342    4  Background CLI (UP-Term:bin/Patina)
+0x1012b5f0 proc    0 wait    262144  257406    6  Background CLI (UP-Term:bin/patina-flat)
 0x10131548 proc    0 wait    262144  260950    7  Background CLI (C:upgetty)
 0x10134a28 proc    0 wait    262144  261990    8  Background CLI (C:SolidWin)
-0x1049f500 proc    0 wait    262144  261614    9  amarchy-gui (Empty-12MB-FFS:UP-Term/bin/amarchy-gui)
+0x1049f500 proc    0 wait    262144  261614    9  patina-gui (Empty-12MB-FFS:UP-Term/bin/patina-gui)
 0x108abac8 proc    0 wait    262144  260322   10  upgetty shell (C:upgetty)
-0x105652b8 proc    0 wait    262144  261386   11  amarchy-menu (Empty-12MB-FFS:UP-Term/bin/amarchy-menu)
+0x105652b8 proc    0 wait    262144  261386   11  patina-menu (Empty-12MB-FFS:UP-Term/bin/patina-menu)
 0x10581120 proc    1 wait      8000    6658   12  Workbench
 0x109e66f8 proc    0 wait      4096    3934    -  << AssignWedge >>
 0x10a1d9c8 proc    0 wait      4932    4738    -  AsyncWB

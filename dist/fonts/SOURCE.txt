@@ -14,13 +14,13 @@ FixFonts lists every size in the .font files).
   JetBrainsMono.font 16   JetBrains Mono Regular 2.304 (OFL 1.1, Omarchy's
                      font) drawn as an Amiga strike font, 7 x 16 cells,
                      Latin-1, by tools/gen_jbmono.py at build time (make
-                     jbmono). The Amarchy menu opens it on square pixels
+                     jbmono). The Patina menu opens it on square pixels
                      (JetBrainsMonoLicence/SOURCE.txt: URL, SHA-256, OFL.txt).
                      Not kept in this drawer.
 
   JetBrainsMono.ttf       The same JetBrains Mono Regular 2.304 TrueType file,
                      copied unchanged by make dist-base and installed to
-                     FONTS:. The Amarchy menu draws it antialiased at 12 px
+                     FONTS:. The Patina menu draws it antialiased at 12 px
                      first and falls back to the strike above when it does
                      not open (render/fontpair.c ttf_px).
 

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""own_prefs_rig.py -- Amarchy's own settings file on the rig (plan 2026-10-25-amarchy-own-prefs.md, rows G2 G3 G4;
-R1 R2 R4 M1). The settings window (phase U) does not exist yet: the cases write ENV:Amarchy/prefs and
-ENVARC:Amarchy/prefs the way its Save will, and prove the commodity and amarchy-gui read them.
+"""own_prefs_rig.py -- Patina's own settings file on the rig (plan 2026-10-25-patina-own-prefs.md, rows G2 G3 G4;
+R1 R2 R4 M1). The settings window (phase U) does not exist yet: the cases write ENV:Patina/prefs and
+ENVARC:Patina/prefs the way its Save will, and prove the commodity and patina-gui read them.
 
-  own_prefs_migrate  M1/G4: only the old UP-Term file holds Amarchy keys (ENVARC:up-term/up-term, default profile),
-                     no ENVARC:Amarchy/prefs. The first Amarchy start writes it with those values; the second start
+  own_prefs_migrate  M1/G4: only the old UP-Term file holds Patina keys (ENVARC:up-term/up-term, default profile),
+                     no ENVARC:Patina/prefs. The first Patina start writes it with those values; the second start
                      (after QUIT) leaves it byte for byte and in date alone.
-  own_prefs_style    R1/R4/G2: menu-style changed in both files while Amarchy runs; the notify reloads it and
-                     Left Amiga + Space opens the other menu program (amarchy-gui for graphical, amarchy-menu for text).
-  own_prefs_font     R2/G3: amarchy-menu-font changed; the drawn menu opens in a window of another size
+  own_prefs_style    R1/R4/G2: menu-style changed in both files while Patina runs; the notify reloads it and
+                     Left Amiga + Space opens the other menu program (patina-gui for graphical, patina-menu for text).
+  own_prefs_font     R2/G3: patina-menu-font changed; the drawn menu opens in a window of another size
                      (the cell is the font's), back at the default it returns to the first size.
 
 Self-checking, rig up (rig.py start --max). The script stages the build (stage_rig.py). UPTERM_RIG=<n>.
@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths, ami, condev_rig as c, stage_rig
 
 LAMIGA, SPACE, ESC = 0x40, 0x40, 0x45
-NEW, NEWARC = 'ENV:Amarchy/prefs', 'ENVARC:Amarchy/prefs'
+NEW, NEWARC = 'ENV:Patina/prefs', 'ENVARC:Patina/prefs'
 OLD, OLDARC = 'ENV:up-term/up-term', 'ENVARC:up-term/up-term'
 FILES = (NEW, NEWARC, OLD, OLDARC)
 bad = 0
@@ -35,7 +35,7 @@ def arexx(cmd):
     m = ami._m()
     try:
         with ami._conn() as conn:
-            return m.arexx(conn, 'AMARCHY', cmd)[2].strip()
+            return m.arexx(conn, 'PATINA', cmd)[2].strip()
     except m.WasabiError:
         return ''
 
@@ -64,8 +64,8 @@ def stat(path):
     return out.strip() if rc == 0 else None
 
 
-def start_amarchy():
-    c.run('Run >NIL: %s/Amarchy' % paths.UPTERM_BIN)
+def start_patina():
+    c.run('Run >NIL: %s/Patina' % paths.UPTERM_BIN)
     end = time.time() + 15
     while time.time() < end:
         if arexx('STATUS'):
@@ -74,7 +74,7 @@ def start_amarchy():
     return False
 
 
-def quit_amarchy():
+def quit_patina():
     arexx('QUIT')
     end = time.time() + 10
     while time.time() < end and arexx('STATUS'):
@@ -85,7 +85,7 @@ def quit_amarchy():
 
 def close_menus():
     for _ in range(3):
-        if not (running('amarchy-gui') or running('amarchy-menu')):
+        if not (running('patina-gui') or running('patina-menu')):
             return True
         ami.key(ESC)
         time.sleep(2)
@@ -93,11 +93,11 @@ def close_menus():
 
 
 def hotkey():
-    """the menu program the hotkey starts: 'amarchy-gui', 'amarchy-menu' or None"""
+    """the menu program the hotkey starts: 'patina-gui', 'patina-menu' or None"""
     ami.key(SPACE, LAMIGA)
     end = time.time() + 15
     while time.time() < end:
-        for p in ('amarchy-gui', 'amarchy-menu'):
+        for p in ('patina-gui', 'patina-menu'):
             if running(p):
                 time.sleep(2)
                 return p
@@ -106,7 +106,7 @@ def hotkey():
 
 
 def window_box():
-    for t in ('Amarchy',):
+    for t in ('Patina',):
         w = ami.window(t)
         if w:
             return tuple(w['box'])
@@ -115,27 +115,27 @@ def window_box():
 
 def case_migrate():
     print('-- own_prefs_migrate')
-    quit_amarchy()
+    quit_patina()
     write(NEW)
     write(NEWARC)
     write(OLD)
-    write(OLDARC, '[profile default]', 'menu-style = text', 'amarchy-menu-font = topaz:8',
-          'amarchy-app-icons = none', 'amarchy-hide-drawers = Work:Hidden')
-    check(text(NEWARC) is None, 'before: no ENVARC:Amarchy/prefs')
-    check(start_amarchy(), 'first start: the commodity answers on AMARCHY')
+    write(OLDARC, '[profile default]', 'menu-style = text', 'patina-menu-font = topaz:8',
+          'patina-app-icons = none', 'patina-hide-drawers = Work:Hidden')
+    check(text(NEWARC) is None, 'before: no ENVARC:Patina/prefs')
+    check(start_patina(), 'first start: the commodity answers on PATINA')
     time.sleep(3)
     t1 = text(NEWARC)
-    check(t1 is not None, 'first start wrote ENVARC:Amarchy/prefs')
+    check(t1 is not None, 'first start wrote ENVARC:Patina/prefs')
     t1 = t1 or ''
-    for want in ('menu-style = text', 'amarchy-menu-font = topaz:8', 'amarchy-app-icons = none',
-                 'amarchy-hide-drawers = Work:Hidden'):
+    for want in ('menu-style = text', 'patina-menu-font = topaz:8', 'patina-app-icons = none',
+                 'patina-hide-drawers = Work:Hidden'):
         check(want.replace(' = ', '=').replace(' ', '') in t1.replace(' = ', '=').replace(' ', ''),
-              'ENVARC:Amarchy/prefs holds "%s"' % want)
+              'ENVARC:Patina/prefs holds "%s"' % want)
     print('info file:\n' + t1)
     s1 = stat(NEWARC)
-    check(quit_amarchy(), 'QUIT, then 5 s quiet')
+    check(quit_patina(), 'QUIT, then 5 s quiet')
     time.sleep(62)   # a rewrite would change the minute of List's date as well as the content
-    check(start_amarchy(), 'second start')
+    check(start_patina(), 'second start')
     time.sleep(3)
     t2, s2 = text(NEWARC), stat(NEWARC)
     check(t2 == t1, 'second start left the content alone')
@@ -144,29 +144,29 @@ def case_migrate():
 
 def case_style():
     print('-- own_prefs_style')
-    quit_amarchy()
+    quit_patina()
     write(OLD)
     write(OLDARC)
     write(NEWARC, '[profile default]', 'menu-style = graphical')
     write(NEW, '[profile default]', 'menu-style = graphical')
-    check(start_amarchy(), 'start with menu-style = graphical')
+    check(start_patina(), 'start with menu-style = graphical')
     time.sleep(3)
     got = hotkey()
-    check(got == 'amarchy-gui', 'graphical: the hotkey opened %s' % got)
+    check(got == 'patina-gui', 'graphical: the hotkey opened %s' % got)
     close_menus()
-    for style, want in (('text', 'amarchy-menu'), ('minimal', 'amarchy-gui'), ('graphical', 'amarchy-gui'), ('text', 'amarchy-menu')):
+    for style, want in (('text', 'patina-menu'), ('minimal', 'patina-gui'), ('graphical', 'patina-gui'), ('text', 'patina-menu')):
         for f in (NEWARC, NEW):
             write(f, '[profile default]', 'menu-style = %s' % style)
         time.sleep(4)    # notify: the file change reaches the commodity
         got = hotkey()
         check(got == want, 'menu-style = %s (ENV and ENVARC written while running): the hotkey opened %s, want %s' % (style, got, want))
         close_menus()
-    # a change of the OLD file alone no longer reaches Amarchy (R4: the watch moved to Amarchy/prefs)
+    # a change of the OLD file alone no longer reaches Patina (R4: the watch moved to Patina/prefs)
     write(OLDARC, '[profile default]', 'menu-style = graphical')
     write(OLD, '[profile default]', 'menu-style = graphical')
     time.sleep(4)
     got = hotkey()
-    check(got == 'amarchy-menu', 'the UP-Term file changed to graphical: still the text menu (%s), the new file wins' % got)
+    check(got == 'patina-menu', 'the UP-Term file changed to graphical: still the text menu (%s), the new file wins' % got)
     close_menus()
     write(OLDARC)
     write(OLD)
@@ -174,15 +174,15 @@ def case_style():
 
 def case_font():
     print('-- own_prefs_font')
-    quit_amarchy()
+    quit_patina()
     write(OLD)
     write(OLDARC)
     for f in (NEWARC, NEW):
         write(f, '[profile default]', 'menu-style = graphical')
-    check(start_amarchy(), 'start')
+    check(start_patina(), 'start')
     time.sleep(3)
     sizes = {}
-    for label, line in (('default', None), ('topaz8', 'amarchy-menu-font = topaz:8'), ('topaz9', 'amarchy-menu-font = topaz:9'),
+    for label, line in (('default', None), ('topaz8', 'patina-menu-font = topaz:8'), ('topaz9', 'patina-menu-font = topaz:9'),
                         ('default again', None)):
         for f in (NEWARC, NEW):
             write(f, *(['[profile default]', 'menu-style = graphical'] + ([line] if line else [])))
@@ -191,7 +191,7 @@ def case_font():
         box = window_box()
         sizes[label] = box
         print('info %s: %s window %s' % (label, got, box))
-        check(got == 'amarchy-gui' and box is not None, '%s: amarchy-gui open, box %s' % (label, box))
+        check(got == 'patina-gui' and box is not None, '%s: patina-gui open, box %s' % (label, box))
         close_menus()
     d, t8, t9, d2 = (sizes[k] for k in ('default', 'topaz8', 'topaz9', 'default again'))
     if all((d, t8, t9, d2)):
@@ -210,7 +210,7 @@ def main():
         for n in cases:
             globals()['case_' + n]()
     finally:
-        quit_amarchy()
+        quit_patina()
         for f, b in saved.items():
             ami.restore_file(f, b)
     print('FAIL' if bad else 'PASS')

@@ -9,13 +9,13 @@ Version L:vtcon-handler -> "vtcon-handler 1.0" (expected 47.x: MISMATCH, flagged
 | a S31-START-PALETTE | PASS | backdrop 0E0E14, frames 7AA2F7 active, no EE9900/6688BB/000000/FFFFFF |
 | b window knob colour | NOT RUN | tool budget used up |
 | c FLAT-SCROLLER | NOT RUN | tool budget |
-| d AMARCHY-WB-BACKDROP / RL3 | NOT RUN | tool budget |
+| d PATINA-WB-BACKDROP / RL3 | NOT RUN | tool budget |
 | e BAR-STRIP-RESERVE | NOT RUN | tool budget |
 | f FLAT-BUTTON-FILL | NOT RUN | tool budget |
 | g FLAT-PENS-NOT-LIVE | NOT RUN | tool budget |
 | h R1.17-WBRESET | NOT RUN | tool budget |
 | i AM-FLAT-WB | NOT RUN | tool budget |
-| j strut_prebar | FAIL | clamp counter rose, but harness found no window at left 20 with top <= 246, before and after BAR OFF (run twice). Product vs harness filter (r_strut_prebar in amarchy_bar_rig.py) undetermined |
+| j strut_prebar | FAIL | clamp counter rose, but harness found no window at left 20 with top <= 246, before and after BAR OFF (run twice). Product vs harness filter (r_strut_prebar in patina_bar_rig.py) undetermined |
 | k UPDemo scenes | PARTIAL | the scene that ran shows the status "Demo 19/32 Kitty graphics: place, move, delete and relate placements": ovals drawn, wider than tall, no tall circle (shot r96r2-updemo-18.png). Scene numbering: UPDemo 18 shows Demo 19/32 (the argument is 0-based vs the status 1-based; check). Scenes 15 (animation, globe over photo) and 20 (Nerd Font glyphs) NOT VERIFIED: the later shots were stale (typed text queued at the shell prompt, then wasabi connection refused) |
 | optional btnbg --prefs-magenta, gui --welcome | NOT RUN | tool budget |
 

@@ -145,7 +145,7 @@ def main():
     ap.add_argument('--tool', default='UP-Term:bin/vsh')
     ap.add_argument('--drawer', action='store_true')
     ap.add_argument('--plain', action='store_true')
-    ap.add_argument('--wbtool', action='store_true', help='a WBTOOL icon (no default tool): an app, as the Amarchy app index lists it')
+    ap.add_argument('--wbtool', action='store_true', help='a WBTOOL icon (no default tool): an app, as the Patina app index lists it')
     ap.add_argument('--tooltype', action='append', default=[])
     ap.add_argument('--stack', type=int, default=65536,
                     help='do_StackSize: the stack Workbench gives the program (upkg: 262144, as its $STACK cookie)')

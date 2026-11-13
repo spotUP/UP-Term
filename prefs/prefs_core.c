@@ -3,7 +3,7 @@
 
 #include "prefs_core.h"
 #include "settings_def.h"
-#include "../amarchy/amconf_core.h"
+#include "../patina/amconf_core.h"
 #include "../handler/kcmode.h"
 #include "../handler/slash.h"
 
@@ -754,7 +754,7 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
      * else the profile holds -- keys only the handler reads, keys typed by
      * hand, comments -- is written back as it was read. (The profile was
      * removed and refilled here, and all of that went with every save.) */
-    /* The Amarchy keys have one store, ENVARC:Amarchy/prefs (amconf); this file no longer carries them, and a
+    /* The Patina keys have one store, ENVARC:Patina/prefs (amconf); this file no longer carries them, and a
      * save drops what an older version left here, so a stale copy cannot shadow or mislead (plan M3). */
     amconf_strip_legacy(w);
     pc_stage_rows(w, p, f, 0, sd_nwrite - sd_nstyle);
@@ -809,15 +809,15 @@ const prefs_paths prefs_paths_upterm = {
     "ENVARC:up-term/up-term.orig"
 };
 
-const prefs_paths prefs_paths_amarchy = {
-    { "ENV:Amarchy", "ENVARC:Amarchy" },
-    { "ENV:Amarchy/prefs", "ENVARC:Amarchy/prefs" },
-    "ENVARC:Amarchy/prefs.new",
-    "ENVARC:Amarchy/prefs.orig"
+const prefs_paths prefs_paths_patina = {
+    { "ENV:Patina", "ENVARC:Patina" },
+    { "ENV:Patina/prefs", "ENVARC:Patina/prefs" },
+    "ENVARC:Patina/prefs.new",
+    "ENVARC:Patina/prefs.orig"
 };
 
-const char *const prefs_notify_amarchy[PREFS_NNOTIFY_AMARCHY] = {
-    "ENV:up-term/keymap", "ENV:up-term/keymap.user", "ENV:Amarchy/prefs" /* prefs_paths_amarchy.path[PREFS_T_ENV] */
+const char *const prefs_notify_patina[PREFS_NNOTIFY_PATINA] = {
+    "ENV:up-term/keymap", "ENV:up-term/keymap.user", "ENV:Patina/prefs" /* prefs_paths_patina.path[PREFS_T_ENV] */
 };
 
 int prefs_install_target_at(const prefs_fs *fs, const prefs_paths *p, int t, const char *buf, long len)

@@ -1,12 +1,12 @@
 # Restart crash: intuition patch remover leak measurement (rig 176)
 
-Branch restart-measure (from 7b565387). Debug sentinels (global ENV AMDBG_*) added to strut_patch.c, wbreset_patch.c, borderblank_patch.c, amarchy.c. Nothing fixed.
+Branch restart-measure (from 7b565387). Debug sentinels (global ENV AMDBG_*) added to strut_patch.c, wbreset_patch.c, borderblank_patch.c, patina.c. Nothing fixed.
 
 ## Commands
-- make build/amiga/Amarchy build/amiga/amarchy-gui build/amiga/amarchy-flat; make build/amiga/amarchy-menu; make chkabort-check ([OK] x3)
-- UPTERM_RIG=176 python3 tools/rig/rig.py start --max --purpose "vtcon-c1 Amarchy: restart crash leak measurement"
-- amarchy_gui_rig.py --setup --no-build (prints known "FAIL flat prefs off")
-- loop3.py <N> <startcycle> (scratch script): per cycle run Amarchy, step a = read markers after port up, step b = Break, wait for exit, read markers; on crash copy fs-uae log, reboot.
+- make build/amiga/Patina build/amiga/patina-gui build/amiga/patina-flat; make build/amiga/patina-menu; make chkabort-check ([OK] x3)
+- UPTERM_RIG=176 python3 tools/rig/rig.py start --max --purpose "vtcon-c1 Patina: restart crash leak measurement"
+- patina_gui_rig.py --setup --no-build (prints known "FAIL flat prefs off")
+- loop3.py <N> <startcycle> (scratch script): per cycle run Patina, step a = read markers after port up, step b = Break, wait for exit, read markers; on crash copy fs-uae log, reboot.
 - Pass 1: loop3.py 12 1 (cycles 1-2), loop3.py 12 3 (cycles 3-12). Pass 2: loop3.py 12 1.
 
 ## Marker meaning

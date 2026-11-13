@@ -13,12 +13,12 @@ the gadget box (or a part of it) and rp->AreaPtSz != 0. If the sentinel `ghits` 
 rastport (rcalls rises) before changing anything.
 
 Setup (same as thoughts/shared/handoffs/s28-evidence/button-fill-rig.md): `UPTERM_RIG=8 rig.py start --max --os 32` then
-`--os 31`, `--purpose "Amarchy s28: disabled button dim"`; palette tests/data/desk/palette-flat-pen8.prefs applied first,
-flat-system-look=on, flat-window-gadgets=on, build/amiga/amarchy-flat started (md5 in the report), a window with a disabled
+`--os 31`, `--purpose "Patina s28: disabled button dim"`; palette tests/data/desk/palette-flat-pen8.prefs applied first,
+flat-system-look=on, flat-window-gadgets=on, build/amiga/patina-flat started (md5 in the report), a window with a disabled
 GadTools button (the probe gwin with a button created GA_Disabled, or a Prefs editor with a ghosted gadget).
 
 Checks, each on 3.2 and 3.1:
-1. STATUS shows a dim pen: amarchy-flat prints it; the block's pen_dim (byte 22) is non-zero on a >= 8 colour screen.
+1. STATUS shows a dim pen: patina-flat prints it; the block's pen_dim (byte 22) is non-zero on a >= 8 colour screen.
 2. Read pixels inside the disabled button (box interior, away from the label): ONE colour only, not equal to an enabled
    button's fill, darker than it (about 60 percent per channel). Zero pixels of the dither's second colour.
 3. Label pixels are the muted pen (DK_MUTED), not the full text pen.
@@ -30,4 +30,4 @@ Checks, each on 3.2 and 3.1:
 Known limits (unverified): pen_dim is obtained at start and on CTRL_D; a theme change needs `Break <task> D` or a restart
 to refresh it. A disabled secondary (outline) button keeps the stock dither.
 
-Build: build/amiga/amarchy-flat md5 70aedaaeb2f686006e1040a041548704 (68020 cross-build, host flat_core 660 checks 0 failed, flat-budget PASS).
+Build: build/amiga/patina-flat md5 70aedaaeb2f686006e1040a041548704 (68020 cross-build, host flat_core 660 checks 0 failed, flat-budget PASS).

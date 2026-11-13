@@ -8,7 +8,7 @@ status: measured (rig 23, --max --os 32, intuition 47.53), cause proven; fix not
 
 Probe: thoughts/shared/research/s32-evidence/clone-clip-zprobe.c (vbcc, same flags as build/amiga/dripens). It opens a
 window with close/depth/zoom/size, prints each system gadget's box and image geometry, and draws (a) the real image and
-(b) a private sysiclass object built exactly like amarchy/flat.c clone_object (marker DrawInfo, SYSIA_Which, IA_Width,
+(b) a private sysiclass object built exactly like patina/flat.c clone_object (marker DrawInfo, SYSIA_Which, IA_Width,
 IA_Height) into an 8 plane bitmap at offset PAD=4, i.e. clone_render's offset 0 shifted 4 columns right.
 
 ## Geometry (rig 23)
@@ -115,10 +115,10 @@ Candidates: (a) refuted as stated (private layout = real layout, same pixels, sa
 LeftEdge = -1 that clone_render ignores. (b) refuted (the peel does not strip glyph columns; it fails to strip the
 bevel because of the shift). (c) confirmed in part: le = -1 on depth/zoom; Width 24 equals the gadget box width.
 
-Not checked: the owner's exact on-screen pixels with flat on (no amarchy-flat install on rig 23, no screenshot).
+Not checked: the owner's exact on-screen pixels with flat on (no patina-flat install on rig 23, no screenshot).
 
 ## Fix
-amarchy/flat.c clone_render: draw the private image at m.imp_Offset.X = -((struct Image *)po)->LeftEdge,
+patina/flat.c clone_render: draw the private image at m.imp_Offset.X = -((struct Image *)po)->LeftEdge,
 m.imp_Offset.Y = -((struct Image *)po)->TopEdge, so image column 0 lands at grid column 0 (the same origin
 flat_clone_draw paints at). The "its edges are 0" comment is wrong on 3.2.
 

@@ -1,9 +1,9 @@
-/* The Amarchy bar core (amarchy/bar_core.c; roadmap phase 2 R2.4) and the geometry of the agents panel that hangs
- * from it (amarchy/menu_geom.c anchored layout). The bar's drawing and IDCMP loop (amarchy/bar.c) are the rig
- * script's (tools/rig/amarchy_bar_rig.py). */
+/* The Patina bar core (patina/bar_core.c; roadmap phase 2 R2.4) and the geometry of the agents panel that hangs
+ * from it (patina/menu_geom.c anchored layout). The bar's drawing and IDCMP loop (patina/bar.c) are the rig
+ * script's (tools/rig/patina_bar_rig.py). */
 #include <string.h>
-#include "../amarchy/bar_core.h"
-#include "../amarchy/menu_geom.h"
+#include "../patina/bar_core.h"
+#include "../patina/menu_geom.h"
 #include "harness.h"
 
 static void test_layout_groups(void)
@@ -503,7 +503,7 @@ static void test_fmt_misc(void)
     bar_fmt_screen(o, sizeof o, "UP-Term");              CHECK_STR(o, "UP-Term");
     bar_fmt_screen(o, sizeof o, "  Mui screen");         CHECK_STR(o, "Mui");
     bar_fmt_screen(o, sizeof o, "");                     CHECK_STR(o, "");
-    bar_fmt_screen(o, sizeof o, "Amarchy-Workspace-2");  CHECK_STR(o, "Amarchy-Workspace-2");   /* no 8 character cut */
+    bar_fmt_screen(o, sizeof o, "Patina-Workspace-2");  CHECK_STR(o, "Patina-Workspace-2");   /* no 8 character cut */
     bar_fmt_screen(o, 6, "Workbench");                   CHECK_STR(o, "Workb");                 /* cap */
     CHECK_INT(bar_cpu_pct(0, 50, 1000000UL), 100);
     CHECK_INT(bar_cpu_pct(50000000UL, 50, 1000000UL), 0);

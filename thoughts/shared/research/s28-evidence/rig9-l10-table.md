@@ -1,7 +1,7 @@
 # L10 table-path check, rig 9, AmigaOS 3.2 (main 83126599)
 
-Build md5: amarchy-icons 5e8818b593dc75499918085b42f3937d, lucide.dat de9875de3a319ebf77cec2c5ad0b81e9 (both read back from the rig and equal; the rig has no md5 tool, so .info md5s were taken on the host after rig file reads).
-Deploy: VTCX:bin/amarchy-icons, VTCX:Apps/Amarchy/Icons/lucide.dat (UP-Term: = VTCX:Apps).
+Build md5: patina-icons 5e8818b593dc75499918085b42f3937d, lucide.dat de9875de3a319ebf77cec2c5ad0b81e9 (both read back from the rig and equal; the rig has no md5 tool, so .info md5s were taken on the host after rig file reads).
+Deploy: VTCX:bin/patina-icons, VTCX:Apps/Patina/Icons/lucide.dat (UP-Term: = VTCX:Apps).
 
 Note: the first APPLY failed with "lucide.dat missing or bad" because I ran `Assign UP-Term:` (removes the assign); re-added with `Assign UP-Term: VTCX:Apps`. Not a product defect.
 

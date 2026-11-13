@@ -1,9 +1,9 @@
-"""S57-ICL-PEN-RECOLOUR wiring: amarchy-flat's icon-label shade pens stay obtained across Text calls (red pixels in the grey
+"""S57-ICL-PEN-RECOLOUR wiring: patina-flat's icon-label shade pens stay obtained across Text calls (red pixels in the grey
 antialias came from the per-call ReleasePen), bound to the screen identity (icl_cache_bind), and are given back only at unload on
 the live Workbench map. The behaviour itself is tested in tests/test_iclabel.c; this guards that flat.c uses it."""
 import pathlib, re, unittest
 
-SRC = (pathlib.Path(__file__).resolve().parent.parent / "amarchy/flat.c").read_text()
+SRC = (pathlib.Path(__file__).resolve().parent.parent / "patina/flat.c").read_text()
 
 
 def body(name):

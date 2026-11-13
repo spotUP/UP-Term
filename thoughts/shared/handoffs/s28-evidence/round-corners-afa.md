@@ -1,6 +1,6 @@
 ---
 date: 2026-10-31
-topic: AfA OS 4.8 as a base for Amarchy rounded window corners
+topic: AfA OS 4.8 as a base for Patina rounded window corners
 status: research done (no rig run)
 source: https://aminet.net/package/misc/os/AfAOS4.8 (AfAOS4.8.lha, 2,265,670 bytes; readme)
 ---
@@ -74,9 +74,9 @@ CloseScreen, MoveWindow, WindowToFront/Back, ZipWindow, ChangeWindowBox). That i
 - Shipping AfA binaries in a public repo is permitted under APL, but there is nothing in them for
   rounded corners.
 
-## Q6: Use for Amarchy?
+## Q6: Use for Patina?
 - 3.1: no. No layers to reuse. The intuition ChangeWindowShape glue is ~60 lines of 68k that just
-  locks the LayerInfo, calls ChangeLayerShape and refreshes. Amarchy would write that itself in an
+  locks the LayerInfo, calls ChangeLayerShape and refreshes. Patina would write that itself in an
   hour once a layers with ChangeLayerShape exists.
 - 3.2: no, and AfA's intuition patches are an extra risk on Intuition 47.
 - Effort vs fresh port: unchanged, 6-10 weeks (3.1 only: 4-6). AfA removes zero items from the spike's

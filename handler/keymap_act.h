@@ -1,4 +1,4 @@
-/* From a keymap binding to what the terminal runs (plan 2026-10-22-amarchy-commodity,
+/* From a keymap binding to what the terminal runs (plan 2026-10-22-patina-commodity,
  * section 3). Portable, no OS calls: the handler (vtcon_handler.c) does the running,
  * this file only decides WHAT a binding means, so a host suite can test it.
  *
@@ -34,7 +34,7 @@ int  kact_resolve(const km_bind *b, kact *out);
  * Shift in a command key, so the menu would take the Shift key's press. */
 int  kact_comm_key(const keymap *k, long id, char out[2]);
 
-/* The handler request port (decision 2026-10-22): the quick menu (amarchy-menu, its own XCON
+/* The handler request port (decision 2026-10-22): the quick menu (patina-menu, its own XCON
  * window) hands a tab:, menuid: or slash: leaf to the terminal by NAME, and the handler runs it
  * through the same kact_resolve + menu_do / slash_run a key binding uses, so it works with the
  * chord unbound. The body below is the portable half of the message (handler/upreq.c wraps it

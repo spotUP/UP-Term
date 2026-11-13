@@ -1,4 +1,4 @@
-/* icprobe -- FLAT-R1: IControl ic_GUIGeometry probe (plan 2026-10-29-amarchy-flat-ui-patch.md, research note section R1).
+/* icprobe -- FLAT-R1: IControl ic_GUIGeometry probe (plan 2026-10-29-patina-flat-ui-patch.md, research note section R1).
  *   icprobe                 print the ENV:Sys/icontrol.prefs ICTL fields, the Workbench screen address and the borders of a new window
  *   icprobe b0 b1 b2 b3     first write ic_GUIGeometry = b0..b3 (ICB_VERSIONED set, ic_Version 2, ic_VersionMagic 0, every other
  *                           field kept from the file now on disk), wait 4 s for IPrefs, then print as above

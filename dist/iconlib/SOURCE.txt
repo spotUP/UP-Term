@@ -6,10 +6,10 @@ icon.library.os30  Bonus/Libraries/256ColorPalette/icon.library_68020, $VER icon
                    Installed on AmigaOS 3.0 and 3.1 (an unrestricted build).
 icon.library.os32  Libs/icon.library, $VER icon.library 51.4.602 (TC020). Installed on AmigaOS 3.2 only.
                    The TrueColor (v51) builds may not be shipped in packages sold for more than 10 EUR
-                   or in commercial bundles; Amarchy is free.
+                   or in commercial bundles; Patina is free.
 
 Install copies the one for the system to LIBS:icon.library when the "PeterK icon library" option is
-ticked, after keeping the old library as LIBS:icon.library.amarchy-backup (only when no backup exists).
+ticked, after keeping the old library as LIBS:icon.library.patina-backup (only when no backup exists).
 Uninstall puts the backup back.
 
 RemLib, RemLib.doc  Thomas Rapp's RemLib, unchanged, as shipped in IconLib 46.4 ThirdParty/RemLib

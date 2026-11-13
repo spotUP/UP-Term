@@ -5,26 +5,26 @@ import a1200_drift as d
 
 DOS = """Copy vtcon-handler L: CLONE
 Copy upprefs C:UP-Term-Prefs CLONE
-  Copy Amarchy amarchy-menu UP-Term:bin CLONE
+  Copy Patina patina-menu UP-Term:bin CLONE
 Copy vsh UP-Term:bin/vsh CLONE
 Copy vsh C:vsh CLONE
 Copy userland/bin UP-Term:bin ALL CLONE QUIET
 Copy keymap ENVARC:up-term/keymap CLONE QUIET
 Copy up-console.device DEVS:up-console.device CLONE
 """
-NAMES = ["vtcon-handler", "upprefs", "Amarchy", "amarchy-menu", "vsh", "up-console.device"]
+NAMES = ["vtcon-handler", "upprefs", "Patina", "patina-menu", "vsh", "up-console.device"]
 
 
 def test_map():
     assert d.install_map(DOS, NAMES) == [
         ("vtcon-handler", "L:vtcon-handler"), ("upprefs", "C:UP-Term-Prefs"),
-        ("Amarchy", "UP-Term:bin/Amarchy"), ("amarchy-menu", "UP-Term:bin/amarchy-menu"),
+        ("Patina", "UP-Term:bin/Patina"), ("patina-menu", "UP-Term:bin/patina-menu"),
         ("vsh", "UP-Term:bin/vsh"), ("vsh", "C:vsh"), ("up-console.device", "DEVS:up-console.device")]
 
 
-def test_real_install_dos_covers_every_amarchy_program():
+def test_real_install_dos_covers_every_patina_program():
     text = (pathlib.Path(__file__).resolve().parent.parent / "dist/install.dos").read_text(errors="replace")
-    names = ["Amarchy", "amarchy-menu", "amarchy-gui", "amarchy-index"]
+    names = ["Patina", "patina-menu", "patina-gui", "patina-index"]
     got = d.install_map(text, names)
     for n in names:
         assert (n, "UP-Term:bin/" + n) in got
@@ -42,28 +42,28 @@ def test_parse_md5sum():
 
 def test_real_install_dos_checks_keymap_in_envarc_and_env():
     text = (pathlib.Path(__file__).resolve().parent.parent / "dist/install.dos").read_text(errors="replace")
-    got = d.install_map(text, ["Amarchy"] + list(d.DIST_SOURCES))
+    got = d.install_map(text, ["Patina"] + list(d.DIST_SOURCES))
     assert ("keymap", "ENVARC:up-term/keymap") in got
     assert ("keymap", "ENV:up-term/keymap") in got
     assert (pathlib.Path(__file__).resolve().parent.parent / "dist/keymap").is_file()
 
 
 def test_program_names_from_the_amiga_and_dist_base_rules():
-    mk = "amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vsh $(BUILD)/amiga/Amarchy\n" \
-         "dist-base: amiga $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/vsh\nother: $(BUILD)/amiga/x\n"
-    assert d.program_names(mk) == ["vsh", "Amarchy", "amarchy-menu"]
+    mk = "amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vsh $(BUILD)/amiga/Patina\n" \
+         "dist-base: amiga $(BUILD)/amiga/patina-menu $(BUILD)/amiga/vsh\nother: $(BUILD)/amiga/x\n"
+    assert d.program_names(mk) == ["vsh", "Patina", "patina-menu"]
 
 
 def test_unbuilt_installed_programs_are_named_not_skipped():
-    progs = ["vtcon-handler", "upprefs", "Amarchy", "amarchy-menu", "vsh", "up-console.device", "notinstalled"]
-    assert d.unchecked(DOS, progs, ["Amarchy", "vsh"]) == [
-        "amarchy-menu", "up-console.device", "upprefs", "vtcon-handler"]
+    progs = ["vtcon-handler", "upprefs", "Patina", "patina-menu", "vsh", "up-console.device", "notinstalled"]
+    assert d.unchecked(DOS, progs, ["Patina", "vsh"]) == [
+        "patina-menu", "up-console.device", "upprefs", "vtcon-handler"]
 
 
-def test_real_makefile_lists_every_amarchy_program():
+def test_real_makefile_lists_every_patina_program():
     root = pathlib.Path(__file__).resolve().parent.parent
     names = d.program_names((root / "Makefile").read_text(errors="replace"))
-    for n in ("Amarchy", "amarchy-menu", "amarchy-gui", "amarchy-index", "vtcon-handler", "upprefs"):
+    for n in ("Patina", "patina-menu", "patina-gui", "patina-index", "vtcon-handler", "upprefs"):
         assert n in names
 
 
@@ -90,20 +90,20 @@ def test_loads_under_python_isolated_mode():
 
 
 def test_data_the_installer_lays_down_is_checked_and_missing_data_is_drift():
-    # A1200-DRIFT-DATA: programs current but no Amarchy themes, lucide.dat or bar.conf must read as drift.
+    # A1200-DRIFT-DATA: programs current but no Patina themes, lucide.dat or bar.conf must read as drift.
     root = pathlib.Path(__file__).resolve().parent.parent
     text = (root / "dist/install.dos").read_text(errors="replace")
     entries = [(n, p) for n, p, _ in d.data_entries(text)]
     got = {p: n for n, p in entries}
-    assert got["UP-Term:Amarchy/Icons/lucide.dat"] == "lucide/lucide.dat"
-    assert got["ENVARC:Amarchy/bar.conf"] == "bar.conf"
-    assert "UP-Term:Amarchy/Themes/nord.theme" in got
+    assert got["UP-Term:Patina/Icons/lucide.dat"] == "lucide/lucide.dat"
+    assert got["ENVARC:Patina/bar.conf"] == "bar.conf"
+    assert "UP-Term:Patina/Themes/nord.theme" in got
     build = {n: None if n in d.USER_OWNED else "1" for n, _ in entries}
     assert {s for s, _, _ in d.verdicts(entries, build, {})} == {"missing"}
     there = {p: "1" for _, p in entries}
-    there["ENVARC:Amarchy/bar.conf"] = "user edited"
+    there["ENVARC:Patina/bar.conf"] = "user edited"
     assert {s for s, _, _ in d.verdicts(entries, build, there)} == {"same"}
-    there["UP-Term:Amarchy/Icons/lucide.dat"] = "old"
+    there["UP-Term:Patina/Icons/lucide.dat"] = "old"
     assert [n for s, n, _ in d.verdicts(entries, build, there) if s == "DIFF"] == ["lucide/lucide.dat"]
 
 

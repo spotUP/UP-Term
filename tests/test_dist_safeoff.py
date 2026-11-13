@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""dist/S/safe-off names only commands the kit installs (plan 2026-10-29-amarchy-p4-capture-notify-power.md R4.12).
+"""dist/S/safe-off names only commands the kit installs (plan 2026-10-29-patina-p4-capture-notify-power.md R4.12).
 Every command word in the script is an AmigaDOS script keyword or a program that install.dos copies to UP-Term:bin or C:
 (Reboot, amnotify); the script itself ships in the S drawer and is copied to UP-Term:S."""
 import pathlib, re, unittest
@@ -35,7 +35,7 @@ class SafeOff(unittest.TestCase):
         for line in SCRIPT.splitlines():
             if "amnotify" in line and not line.strip().startswith(";"):
                 self.assertTrue(line.strip().startswith("UP-Term:bin/amnotify"), line)
-        self.assertRegex(DOS, r"(?m)^Copy Amarchy .*\bamnotify\b.* UP-Term:bin")
+        self.assertRegex(DOS, r"(?m)^Copy Patina .*\bamnotify\b.* UP-Term:bin")
 
     def test_menu_row_and_key(self):
         km = (ROOT / "dist/keymap").read_text()

@@ -3,7 +3,7 @@
   - dist/iconlib holds the two builds (46.4 for OS 3.0/3.1, 51.4 for 3.2), the guide and the licence page,
     and dist/parts.txt, the Makefile's dist-base and LICENSES.txt know them;
   - Install.installer asks "PeterK icon library": ticked on 3.0/3.1, unticked on 3.2 (exec 47);
-  - install.dos keeps LIBS:icon.library.amarchy-backup before it copies, only when none exists,
+  - install.dos keeps LIBS:icon.library.patina-backup before it copies, only when none exists,
     and picks the 51.4 build only on exec 47; Uninstall puts the backup back."""
 import pathlib, re, sys, unittest
 
@@ -15,7 +15,7 @@ DIR = ROOT / 'dist/iconlib'
 FIX = ROOT / 'tests/fixtures'
 # the arguments install.dos hands instssblock.sh for the two blocks it inserts
 REMLIB = ('RemLib', 'SetPatch', 'If EXISTS LIBS:icon.library', '   RemLib >NIL: icon.library', 'EndIf')
-FLAT = ('Amarchy-Flat', 'IPrefs', 'If EXISTS SYS:UP-Term/bin/amarchy-flat', '  Run >NIL: SYS:UP-Term/bin/amarchy-flat BOOT', 'EndIf')
+FLAT = ('Patina-Flat', 'IPrefs', 'If EXISTS SYS:UP-Term/bin/patina-flat', '  Run >NIL: SYS:UP-Term/bin/patina-flat BOOT', 'EndIf')
 INSTALLER = (ROOT / 'dist/Install.installer').read_text(encoding='latin-1')
 DOS = mi.build(ROOT / 'dist/install.dos', 'base')
 UNINSTALL = (ROOT / 'dist/Uninstall').read_text(encoding='latin-1')
@@ -52,15 +52,15 @@ class IconLib(unittest.TestCase):
     def test_backup_precedes_copy_and_is_kept_once(self):
         p = DOS[DOS.index('If "$opticonlib" EQ "ICONLIB"'):]
         p = p[:p.index('UnSet upiconlib')]
-        bak = 'Copy LIBS:icon.library LIBS:icon.library.amarchy-backup CLONE'
+        bak = 'Copy LIBS:icon.library LIBS:icon.library.patina-backup CLONE'
         cp = 'Copy $upiconlib LIBS:icon.library CLONE'
-        self.assertLess(p.index('If NOT EXISTS LIBS:icon.library.amarchy-backup'), p.index(bak))
+        self.assertLess(p.index('If NOT EXISTS LIBS:icon.library.patina-backup'), p.index(bak))
         self.assertLess(p.index(bak), p.index(cp))
         self.assertIn('iconlib/icon.library.os30', p)
         self.assertLess(p.index('Version >NIL: exec.library 47'), p.index('iconlib/icon.library.os32'))
 
     def test_uninstall_restores_the_backup(self):
-        self.assertIn('Copy LIBS:icon.library.amarchy-backup LIBS:icon.library CLONE', UNINSTALL)
+        self.assertIn('Copy LIBS:icon.library.patina-backup LIBS:icon.library CLONE', UNINSTALL)
 
     def test_remlib_is_in_the_kit_and_credited(self):
         self.assertEqual((DIR / 'RemLib').read_bytes()[:4], b'\x00\x00\x03\xf3')  # an Amiga executable
@@ -104,7 +104,7 @@ class IconLib(unittest.TestCase):
         return pathlib.Path(d) / 'Startup-Sequence.up-term'
 
     def test_instssblock_flat_goes_before_iprefs_on_stock_31_and_322_sequences_idempotently(self):
-        """Amarchy-Flat is inserted directly before the (C:)IPrefs line of the real stock sequences (after
+        """Patina-Flat is inserted directly before the (C:)IPrefs line of the real stock sequences (after
         AddDataTypes), once, and unstartup.sh strips it by name and by the plain call, byte for byte."""
         import tempfile
         for fixture, iprefs in (('Startup-Sequence.ks31', 'C:IPrefs'), ('Startup-Sequence.ks322', 'IPrefs')):
@@ -112,14 +112,14 @@ class IconLib(unittest.TestCase):
             with tempfile.TemporaryDirectory() as d:
                 (pathlib.Path(d) / 'Startup-Sequence').write_text(seq)
                 out = self._ins(d, *FLAT).read_text()
-                block = ';BEGIN UP-Term Amarchy-Flat\n' + '\n'.join(FLAT[2:]) + '\n;END UP-Term Amarchy-Flat\n'
+                block = ';BEGIN UP-Term Patina-Flat\n' + '\n'.join(FLAT[2:]) + '\n;END UP-Term Patina-Flat\n'
                 self.assertEqual(out, seq.replace(iprefs + '\n', block + iprefs + '\n', 1), fixture)
                 lines = out.splitlines()
-                self.assertTrue(lines[lines.index(';END UP-Term Amarchy-Flat') + 1].endswith('IPrefs'))
-                self.assertIn('AddDataTypes', lines[lines.index(';BEGIN UP-Term Amarchy-Flat') - 1])
+                self.assertTrue(lines[lines.index(';END UP-Term Patina-Flat') + 1].endswith('IPrefs'))
+                self.assertIn('AddDataTypes', lines[lines.index(';BEGIN UP-Term Patina-Flat') - 1])
                 (pathlib.Path(d) / 'Startup-Sequence').write_text(out)
                 self.assertFalse(self._ins(d, *FLAT).exists(), 'second run must write nothing')
-                for strip in (('Amarchy-Flat',), ('',)):
+                for strip in (('Patina-Flat',), ('',)):
                     import subprocess
                     src = re.sub(r'(?<![A-Za-z])[ST]:', d + '/', (ROOT / 'dist/unstartup.sh').read_text())
                     subprocess.run(['sh', '-c', src, 'x', *strip, d + '/Startup-Sequence'], check=True, capture_output=True)
@@ -137,7 +137,7 @@ class IconLib(unittest.TestCase):
             self.assertFalse((pathlib.Path(d) / 'Startup-Sequence.up-term').exists())
 
     def test_install_dos_and_installer_report_a_block_that_found_no_anchor(self):
-        for name, cmd in (('FLAT', 'Amarchy-Flat IPrefs'), ('REMLIB', 'RemLib SetPatch')):
+        for name, cmd in (('FLAT', 'Patina-Flat IPrefs'), ('REMLIB', 'RemLib SetPatch')):
             i = DOS.index('vsh instssblock.sh ' + cmd)
             self.assertRegex(DOS[i:i + 700], r'(?s)If ERROR.*?ENV:UPTSSFAIL' + name)
             self.assertIn('ENV:UPTSSFAIL' + name, INSTALLER)
@@ -155,7 +155,7 @@ class IconLib(unittest.TestCase):
             (pathlib.Path(d) / 'Startup-Sequence.up-term').unlink()
             out = self._ins(d, *FLAT).read_text()
             self.assertIn(';BEGIN UP-Term RemLib', out)
-            self.assertIn(';BEGIN UP-Term Amarchy-Flat', out)
+            self.assertIn(';BEGIN UP-Term Patina-Flat', out)
 
     def test_uninstall_strips_block_and_removes_our_remlib_only(self):
         self.assertIn('$unvsh "$unst" "" S:Startup-Sequence', UNINSTALL)

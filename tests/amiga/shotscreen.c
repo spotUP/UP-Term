@@ -1,5 +1,5 @@
 /* shotscreen: a chipset front screen (320x200x4 PAL lores) with one active window, for the capture rig
- * (tools/rig/amarchy_cap_rig.py). The rig Workbench is RTG truecolour, which shot.c refuses (SHOT_DEEP, open question
+ * (tools/rig/patina_cap_rig.py). The rig Workbench is RTG truecolour, which shot.c refuses (SHOT_DEEP, open question
  * Q1 of the P4 probe note), so the capture proof needs a planar screen. Draws a known pattern, holds N seconds
  * (argv[1], default 90) or until the window closes. */
 #include <stdio.h>

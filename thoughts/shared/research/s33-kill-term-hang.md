@@ -27,7 +27,7 @@ SLOT STATE       TIME  OUTPUT   COMMAND
 1    running      62s  -        UP-Term:bin/vsh -c "kill -s TERM 269629752"
 ```
 Pri-0 tasks at the same time (from the pre-kill ps; same set): ramlib 0 wait, DO_LAUNCHER 0 ready,
-dopus_clock 0 ready, Amarchy 0 ready, Workbench helpers 0.
+dopus_clock 0 ready, Patina 0 ready, Workbench helpers 0.
 
 - Snoop (60 s, no task filter, 13955 lines): 13948 lines are `UP-Term:bin/vsh` (the target's
   `Lock("RAM:kt.stop")` / `FindTask` / `OpenLibrary("dos.library")` loop every ~12 ms), 5 `Wait`, 0 lines from

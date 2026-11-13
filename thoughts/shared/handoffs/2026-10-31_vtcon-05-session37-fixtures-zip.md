@@ -14,5 +14,5 @@ status: phase done
 
 ## Next
 - Open vtcon-05 rows: RIG-RECHECK-STALE (nvim SysBase hang first), RJ7-CANCEL-STILL-SLOW, RJ7-DRAWN-UNRUN,
-  NVIM-PERF, AMARCHY-LAUNCH-FIELD7, RIG-AMITCP-UNSTAGED.
+  NVIM-PERF, PATINA-LAUNCH-FIELD7, RIG-AMITCP-UNSTAGED.
 - Ports session item still open: upterm-ports mk/common.mk:123 `seq 1 0` on macOS.

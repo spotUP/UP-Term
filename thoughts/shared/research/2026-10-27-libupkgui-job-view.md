@@ -1,6 +1,6 @@
 ---
 date: 2026-10-27
-topic: Can the Amarchy text menu show a job view through libupkgui as it is today
+topic: Can the Patina text menu show a job view through libupkgui as it is today
 status: research
 ---
 

@@ -20,7 +20,7 @@ The switch is the prefs file; the editor's USE (same route as AM-ICON-NOBORDER) 
 
 # Stock-file bug found on the way
 
-`wbnc_stock[]` in `amarchy/desk_core.c` (the 84-byte file the border code creates when no Workbench.prefs exists) had 0x32 (TitleUpdateDelay 50 ms) at WBNC body index 39. The editor-saved file has it at index 41 (UWORD at 40). So the stock file read as DisableVolumeGauge = 0x32, gauge off. Fixed: two zero bytes added so 0x32 sits at index 41. Without the fix the new test failed 9 checks.
+`wbnc_stock[]` in `patina/desk_core.c` (the 84-byte file the border code creates when no Workbench.prefs exists) had 0x32 (TitleUpdateDelay 50 ms) at WBNC body index 39. The editor-saved file has it at index 41 (UWORD at 40). So the stock file read as DisableVolumeGauge = 0x32, gauge off. Fixed: two zero bytes added so 0x32 sits at index 41. Without the fix the new test failed 9 checks.
 
 # Host test
 
@@ -35,9 +35,9 @@ Not yet verified on a 3.2 rig that the gauge disappears from an open volume wind
 # Rig 12 3.2 check (2026-11-01, build 2cb78383, `--os 32`)
 
 Start state: ENV: and ENVARC:Sys/Workbench.prefs both 84 bytes, byte 73 = 0 (earlier editor save with byte 73 = 1 reset to 0 by copying), md5 cb431079bba5268a1061de7bd47b76b2.
-Driver: `put_flat_prefs(on)` + `pick()` from tools/rig/amarchy_desk_rig.py (drawn theme menu -> desk_dos_apply). Window probe: `ami.window('VTCX', prefix=True)` on a volume window opened with ARexx `WINDOW 'VTCX:' OPEN`.
+Driver: `put_flat_prefs(on)` + `pick()` from tools/rig/patina_desk_rig.py (drawn theme menu -> desk_dos_apply). Window probe: `ami.window('VTCX', prefix=True)` on a volume window opened with ARexx `WINDOW 'VTCX:' OPEN`.
 - Gauge shown (before): window has a `custom` gadget (50,61,19,81) in the left border = the volume gauge.
-- Flat ON: ENV:Sys/Workbench.prefs byte 73 = 1 (md5 e30c49d3...); T:amarchy-revert/wbgauge.prev = "0"; reopened volume window has NO `custom` gadget (gauge gone, text-verified). PASS.
+- Flat ON: ENV:Sys/Workbench.prefs byte 73 = 1 (md5 e30c49d3...); T:patina-revert/wbgauge.prev = "0"; reopened volume window has NO `custom` gadget (gauge gone, text-verified). PASS.
   ENVARC:Sys/Workbench.prefs stays byte 73 = 0, md5 unchanged (only the ENV: copy is written, as for the other desk files; persisting is the separate R1.10 step).
 - Flat OFF: byte 73 = 0 in ENV: and ENVARC:, both md5 cb431079... = start md5; wbgauge.prev removed; reopened volume window has the `custom` gauge gadget (50,61,19,81) again. PASS.
 Not checked visually (no screenshot taken); the gauge gadget presence is from the window's gadget list.

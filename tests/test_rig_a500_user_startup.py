@@ -1,7 +1,7 @@
 """--a500: the rig clone boots with no UP-Term block in S:User-Startup (RIG-A500-KIT-BOOT, 2026-10-29).
 
-The master image carries the kit's blocks, and the kit is built for the 68020. On the 68000 rig the Amarchy and
-Amarchy index blocks put up two Software Failure requesters at boot, and installer_rig's D10 case failed on them.
+The master image carries the kit's blocks, and the kit is built for the 68020. On the 68000 rig the Patina and
+Patina index blocks put up two Software Failure requesters at boot, and installer_rig's D10 case failed on them.
 """
 import inspect, pathlib, sys, unittest
 from unittest import mock
@@ -16,12 +16,12 @@ STARTUP = b"""Assign LIBS: SYS:Libs ADD
 ;BEGIN UP-Term
 Assign UP-Term: DH0:UP-Term
 ;END UP-Term
-;BEGIN UP-Term Amarchy
-Run >NIL: UP-Term:bin/Amarchy
-;END UP-Term Amarchy
-;BEGIN UP-Term Amarchy index
-Run >NIL: UP-Term:bin/amarchy-index
-;END UP-Term Amarchy index
+;BEGIN UP-Term Patina
+Run >NIL: UP-Term:bin/Patina
+;END UP-Term Patina
+;BEGIN UP-Term Patina index
+Run >NIL: UP-Term:bin/patina-index
+;END UP-Term Patina index
 ;BEGIN DOpus5
 Assign DOpus5: SYS:DOpus5
 ;END DOpus5

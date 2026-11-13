@@ -717,7 +717,7 @@ class NvimShell(unittest.TestCase):
 
 
 class DopusAddOn(unittest.TestCase):
-    """D8 and D10 of the Amarchy DOpus plan: the add-on carries both upstream 68k archives, pinned by md5
+    """D8 and D10 of the Patina DOpus plan: the add-on carries both upstream 68k archives, pinned by md5
     (dist/addons/dopus/archives.txt), with the licence files, and the Installer picks one by (database "cpu")."""
     A = ROOT / 'dist/addons/dopus'
 
@@ -932,7 +932,7 @@ class UhcAddOn(unittest.TestCase):
         self.assertFalse(any('User-Startup' in x and x.startswith('Echo >>') for x in S))
 
     def test_uhc_extbin_is_put_on_the_workbench_path_right_after_the_shell_path(self):
-        """Path ADD changes only the installer's Shell: new UP-Term windows and Amarchy launches copy the Workbench
+        """Path ADD changes only the installer's Shell: new UP-Term windows and Patina launches copy the Workbench
         process's path, so WBPath puts the drawer there too, at the top level, with the open-shell hint."""
         L = self.dos()
         S = [l.strip() for l in L]
@@ -969,15 +969,15 @@ class UhcAddOn(unittest.TestCase):
         for line in re.findall(r'Printf\([^;]*;', c):
             self.assertNotRegex(line, r'%-?\d*d', line)
 
-    def test_one_shared_command_path_copy_serves_vsh_and_amarchy(self):
-        """No second copy loop: vsh's wb_path() and Amarchy's pl_dup_path()/pl_free_path() use config/cmdpath.h,
-        and Amarchy copies the Workbench process's path first (own CLI path as fallback), UP-Term:bin last."""
-        for f in ('shell/vsh.c', 'amarchy/proclaunch.c', 'amarchy/wblaunch.c'):
+    def test_one_shared_command_path_copy_serves_vsh_and_patina(self):
+        """No second copy loop: vsh's wb_path() and Patina's pl_dup_path()/pl_free_path() use config/cmdpath.h,
+        and Patina copies the Workbench process's path first (own CLI path as fallback), UP-Term:bin last."""
+        for f in ('shell/vsh.c', 'patina/proclaunch.c', 'patina/wblaunch.c'):
             t = (ROOT / f).read_text()
             self.assertIn('config/cmdpath.h', t, f)
             self.assertNotIn('AllocVec(2 * sizeof(BPTR)', t, f)
         self.assertIn('cmdpath_copy(*field, 0)', (ROOT / 'shell/vsh.c').read_text())
-        pl = (ROOT / 'amarchy/proclaunch.c').read_text()
+        pl = (ROOT / 'patina/proclaunch.c').read_text()
         dup = pl[pl.index('BPTR pl_dup_path'):pl.index('void pl_free_path')]
         self.assertLess(dup.index('cmdpath_workbench()'), dup.index('FindTask(0)'))
         self.assertLess(dup.index('cmdpath_copy('), dup.index('PL_BIN_DIR'))

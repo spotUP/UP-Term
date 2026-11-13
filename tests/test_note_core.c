@@ -1,7 +1,7 @@
-/* The Amarchy notice queue (amarchy/note_core.c; roadmap P4 R4.8, D4 corner, D5 timeout and stacking). The clock is
- * an argument, so nothing here waits. The window and the AMARCHY.NOTIFY port (note.c) are the rig's. */
+/* The Patina notice queue (patina/note_core.c; roadmap P4 R4.8, D4 corner, D5 timeout and stacking). The clock is
+ * an argument, so nothing here waits. The window and the PATINA.NOTIFY port (note.c) are the rig's. */
 #include <string.h>
-#include "../amarchy/note_core.h"
+#include "../patina/note_core.h"
 #include "harness.h"
 
 static void test_parse(void)
@@ -95,7 +95,7 @@ static void test_overflow(void)
 
 static void test_slots(void)
 {
-    note_box box = { 0, 11, 639, 245 };                 /* below a menu bar, above the Amarchy bar */
+    note_box box = { 0, 11, 639, 245 };                 /* below a menu bar, above the Patina bar */
     int x, y, x1, y1;
     CHECK_INT(note_slot(NOTE_TOP_RIGHT, &box, 200, 40, 0, &x, &y), 0);
     CHECK_INT(x, 640 - NOTE_GAP - 200);

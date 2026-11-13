@@ -1,6 +1,6 @@
 #include <string.h>
 #include "harness.h"
-#include "../amarchy/win_core.h"
+#include "../patina/win_core.h"
 
 static const win_screen scr = { 640, 256, 11, 0 };
 
@@ -237,11 +237,11 @@ static void strut_and_ours(void)
         CHECK_INT(u.height, s0.height - s0.title - 16);
         CHECK_INT(u.width, s0.width);
     }
-    CHECK(win_is_amarchy("Amarchy"));
-    CHECK(win_is_amarchy("Amarchy bar"));
-    CHECK(!win_is_amarchy("Amarchy bar2"));
-    CHECK(!win_is_amarchy("Shell"));
-    CHECK(!win_is_amarchy(0));
+    CHECK(win_is_patina("Patina"));
+    CHECK(win_is_patina("Patina bar"));
+    CHECK(!win_is_patina("Patina bar2"));
+    CHECK(!win_is_patina("Shell"));
+    CHECK(!win_is_patina(0));
 }
 
 static void snap_parse(void)

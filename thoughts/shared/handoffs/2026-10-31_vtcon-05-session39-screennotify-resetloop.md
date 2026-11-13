@@ -14,7 +14,7 @@ status: handoff
 - 69e5a447 NVIM-HEAP-CORRUPT watch retarget: watch never hit; slot address is per boot (BSS base + 4 + 0x1fb88); FS-UAE exited after setting the watch.
 
 ## Open, in order
-1. WB-RESET-SCREENNOTIFY: find how IPrefs 3.1 resets the Workbench without the patched vector. Compare with Amarchy WBRESET-EXT (d3a5346c, amarchy/wbreset_core.c), which patches CloseWorkBench itself and sees Palette USE: ScreenMode vs Palette path, and patch order (screennotify README: start clients after IPrefs). Then retest on a 3.2 rig (`--os 32`). Gaps: tabbed consoles not parked; DISK_INFO returns no window while parked.
+1. WB-RESET-SCREENNOTIFY: find how IPrefs 3.1 resets the Workbench without the patched vector. Compare with Patina WBRESET-EXT (d3a5346c, patina/wbreset_core.c), which patches CloseWorkBench itself and sees Palette USE: ScreenMode vs Palette path, and patch order (screennotify README: start clients after IPrefs). Then retest on a 3.2 rig (`--os 32`). Gaps: tabbed consoles not parked; DISK_INFO returns no window while parked.
 2. RIG31-RESET-LOOP: add a rig.py flag for a 060 rig without 68060.library, rerun `crashme illegal`.
 3. NVIM-HEAP-CORRUPT: start the rig as a background task, poll debugger.log from a second process; if FS-UAE dies on the first hit, make fs-uae-debug memwatch output unbuffered.
 4. Backlog for the second slot: RIG-BATCH (upkg 0053), NVIM-PERF, RIG-RECHECK-STALE.

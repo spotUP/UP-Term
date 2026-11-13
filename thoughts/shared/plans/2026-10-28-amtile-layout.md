@@ -3,7 +3,7 @@ date: 2026-10-28
 topic: AMTILE-LAYOUT - layouts, ratio, master count, promote for AmTile
 status: planned (0 of 40)
 research: thoughts/shared/research/2026-10-28-amtile-layout.md (f8904bf9)
-base plan: thoughts/shared/plans/2026-10-28-amarchy-autotile.md (D5 "LAYOUT command reserved for later")
+base plan: thoughts/shared/plans/2026-10-28-patina-autotile.md (D5 "LAYOUT command reserved for later")
 ledger: thoughts/spot/todos.md, rows "AMTILE-LAYOUT" (owner decisions)
 ---
 
@@ -26,7 +26,7 @@ ledger: thoughts/spot/todos.md, rows "AMTILE-LAYOUT" (owner decisions)
 ## Implementation choices (mine, stated)
 - Names (ARexx words, case-insensitive, exact): `dwindle`, `master-stack`, `mirrored`, `columns`, `rows`, `grid`, `monocle`.
 - ONE layout entry point `tile_layout(kind, ...)` replaces `tile_master_stack` (removed; its 3 callers move: tile.c:267,
-  tools/rig/amarchy_tile_boxes.c:44, tests/test_tile.c). Mirror is a layout KIND (`TL_MIRROR`), not a flag, so one id
+  tools/rig/patina_tile_boxes.c:44, tests/test_tile.c). Mirror is a layout KIND (`TL_MIRROR`), not a flag, so one id
   names one layout everywhere (command, hotkey, amconf, STATUS).
 - Ratio and nmaster are plain global state, range ratio 20..80 (TILE_RATIO_MIN/MAX), nmaster 1..`TILE_NMASTER_MAX` 8.
 - Relative steps (`RATIO +5`, `NMASTER -1`) CLAMP at the bounds and return rc 0; an absolute out-of-range value is rc 10
@@ -84,7 +84,7 @@ monocle n=3: all (4,18,792,578).
 
 ## Interfaces (exact)
 
-### tile_core.h / tile_core.c (amarchy/)
+### tile_core.h / tile_core.c (patina/)
 ```c
 #define TILE_NMASTER_MAX 8
 typedef enum { TL_DWINDLE = 0, TL_MASTER, TL_MIRROR, TL_COLUMNS, TL_ROWS, TL_GRID, TL_MONOCLE, TL_COUNT } tile_layout_kind;
@@ -102,10 +102,10 @@ int tile_promote(long *order, int n, long id);
 `tile_layout` switches on kind to static `master_stack(s,gap,ratio,nm,mirror,n,in,out)`, `columns`, `rows`, `grid`,
 `dwindle`, `monocle`; all call the existing static `cell()` (tile_core.c:47). An unknown kind falls back to TL_DWINDLE.
 
-### amarchy/amconf_core.h / .c, prefs/settings_def.c|.h
+### patina/amconf_core.h / .c, prefs/settings_def.c|.h
 - enum before `AM_NKEYS`: `AM_TILELAYOUT, AM_TILERATIO, AM_TILENMASTER` (after AM_TILEGAP, amconf_core.h:22).
 - `sd_hidden[]` rows copied from the tile-gap row (settings_def.c:213): `tile-layout` default "dwindle", `tile-ratio`
-  default "55", `tile-nmaster` default "1" (all `SD_STRING, SD_AMARCHY, SDF_AMSTR, AO(AM_...)`, hidden = no Prefs
+  default "55", `tile-nmaster` default "1" (all `SD_STRING, SD_PATINA, SDF_AMSTR, AO(AM_...)`, hidden = no Prefs
   gadget). `SD_NHIDDEN` 3 -> 6 (settings_def.h:99).
 - Readers beside `amconf_tile_gap` (amconf_core.c:92), same style (digits only, range, else the default):
 ```c
@@ -115,7 +115,7 @@ int amconf_tile_nmaster(const am_prefs *p);          /* 1..AM_TILENM_MAX (8) els
 ```
   with `#define AM_TILERATIO_MIN 20 / _MAX 80`, `AM_TILENM_MAX 8` in amconf_core.h next to AM_TILEGAP_MAX (h:53).
 
-### amarchy/tile.c
+### patina/tile.c
 State: `static int g_layout = TL_DWINDLE, g_nmaster = 1;` (g_ratio exists, tile.c:55-61), `static long g_last_raised;`.
 - `gap_load()` (tile.c:231) is renamed `cfg_load()`: after `amconf_load(&p)` it sets g_gap, g_ratio=amconf_tile_ratio,
   g_nmaster=amconf_tile_nmaster, and g_layout from `tile_layout_parse(amconf_tile_layout(&p))` (unknown -> TL_DWINDLE).
@@ -144,16 +144,16 @@ static int num_arg(const char *cmd, int lo, int hi, int *out, int *rel);
   (outside LockIBase), when g_layout == TL_MONOCLE: target = snap.active if it is in g_order else g_order[0];
   if target != g_last_raised, `win_raise((struct Window *)target)` and g_last_raised = target. This runs on every poll
   (not only on retile), so clicking/activating another window re-raises it. `win_raise` is a thin `WindowToFront` wrapper
-  in amarchy/win_apply.c (grep win.c for the existing WindowToFront use first and move/reuse it, no second copy).
+  in patina/win_apply.c (grep win.c for the existing WindowToFront use first and move/reuse it, no second copy).
   Leaving monocle resets g_last_raised = 0.
 - STATUS (tile.c:329) -> `"<on|off> <norder> <retiles> <layout> <nmaster> <ratio>"`, e.g. `on 2 5 dwindle 1 55`
   (new fields appended last).
 - Persistence write path (the only one): `cfg_save()` = `amconf_load(&p); strcpy(p.val[AM_TILELAYOUT], tile_layout_name(g_layout));
   put_num(p.val[AM_TILERATIO], g_ratio); put_num(p.val[AM_TILENMASTER], g_nmaster); amconf_save(&p, 1, &failed);`
-  Pattern and helper reused from `gt_dos_select` (amarchy/gthemes_dos.c:57: `amconf_load` / `amconf_save(&ap, 1, &failed)`
+  Pattern and helper reused from `gt_dos_select` (patina/gthemes_dos.c:57: `amconf_load` / `amconf_save(&ap, 1, &failed)`
   writes ENVARC: then ENV:). Called from LAYOUT, RATIO and NMASTER only (user commands that change a value); never from
   GAP, RETILE or start. A failed save is logged on the console like the state file's and does not fail the command (rc 0).
-  amconf_dos.c is already linked via `$(AMARCHY_LEAF_DEPS)` (Makefile:821); verify with the cross build.
+  amconf_dos.c is already linked via `$(PATINA_LEAF_DEPS)` (Makefile:821); verify with the cross build.
 
 ### dist rows (key names verified against config/keymap.c)
 Parser facts (cite): key names live in `knames[]` config/keymap.c:32-47: digits `1`..`0` (0x01..0x0A), `minus` (0x0B),
@@ -196,13 +196,13 @@ menu-icons file already uses; else U+F009.
 - D-3 (P1) `make test ONLY=tile` could not link the whole host binary while P2's amconf test (tests/test_amconf.c, amconf_tile_ratio/nmaster) was half-written; the tile suite was verified in an isolated build of test_tile.c + tile_core.c + win_core.c with the Makefile's flags (1551 checks, 0 failures). Re-run `make test ONLY=tile` once P2 lands.
 - D-4 (P3) `num_arg` bounds the magnitude while parsing (stops above 100000) so a long digit string cannot overflow; `win_raise` also replaces both WindowToFront calls in win.c (one copy). CYCLE raises under IBase lock (win_raise only queues) and calls ActivateWindow after unlock, as win.c does; rc 5 also when the target died between order and lock. cfg_save logs failure with PutStr (AmTile has no console log helper).
 - D-5 (P5) Rig code untested on a rig (Phase 6 runs it). Front-most window = the one of mine whose centre `wasabi covered()` reports uncovered (no z-order in the window list); activation = `ui_front` + a click in the window middle. `layout_hotkey` sends super+alt+l as raw 0x28 with qualifier LAmiga|LAlt (0x50) via `ami.key`, the path run 2 used for super+alt+t. The prefs keys are assumed named `tile-layout`, `tile-ratio`, `tile-nmaster` (layout_default / persist grep those). Step names: `lay_dwindle`, `lay_master` (master-stack), `lay_mirrored`, `lay_columns`, `lay_rows`, `lay_grid`, `lay_monocle`; `layout_default` runs right after `midapply`, `reset` right after `persist`.
-- D-6 (P4) rawkeys 0x38 = comma, 0x39 = period (config/keymap.c:41), so the plan's code list order is swapped: 0x38 = CYCLE PREV, 0x39 = CYCLE NEXT in tests. Window-level count measured 32 (was 24); `window.*` win/rexx/run rows in dist/keymap counted 32. Also raised test ceilings: km.nbind <= 100 (86 measured), AMARCHY_KEYMAP_HEAP_MAX 3400 (3365 measured, 46 kept rows).
+- D-6 (P4) rawkeys 0x38 = comma, 0x39 = period (config/keymap.c:41), so the plan's code list order is swapped: 0x38 = CYCLE PREV, 0x39 = CYCLE NEXT in tests. Window-level count measured 32 (was 24); `window.*` win/rexx/run rows in dist/keymap counted 32. Also raised test ceilings: km.nbind <= 100 (86 measured), PATINA_KEYMAP_HEAP_MAX 3400 (3365 measured, 46 kept rows).
 - D-7 (P4) tests/test_rig_kit_shadow_keymap.py pinned 4 shadowed names; dist/install.dos has copied AmTile into UP-Term:bin since c2c818de, and the kit builder (rig.kit_entries) shadows it, so the pin was stale: AmTile added to the expected list (5 of 5 pass). dist-check's test_the_drawer_holds_licence_and_source_note_but_no_binary fails because 03894058 (another session, I657) moved tools/nas/wasabi.rev to 562672a8 without updating dist/wasabi/SOURCE.txt (still names be4c0559); not caused by AmTile, left to that change's owner.
 - Others: filled in by the implementer when a row is refused or taken (nearest free key, state which).
 
 ## Phase 1 - tile_core layouts (pure) + host tests
-Files: amarchy/tile_core.c/.h, tests/test_tile.c, tools/rig/amarchy_tile_boxes.c (call site only, so the host tree
-builds), amarchy/tile.c:267 (call site only, TL_MASTER nm 1, so nothing else breaks).
+Files: patina/tile_core.c/.h, tests/test_tile.c, tools/rig/patina_tile_boxes.c (call site only, so the host tree
+builds), patina/tile.c:267 (call site only, TL_MASTER nm 1, so nothing else breaks).
 Success: `make test ONLY=tile` passes with every worked number above asserted (box by box); existing master-stack
 asserts unchanged at nm=1; min/max test per layout (a window with minw 300 in each of the 7 layouts: its box is >=300
 wide, no other box missing, no crash, boxes inside the screen); knob test: ratio 55->65 changes dwindle, master-stack,
@@ -211,16 +211,16 @@ not crash; `tile_layout_parse` accepts each name in any case, rejects "", "x", "
 `tile_promote` moves middle and last to front, returns 0 for an unknown id, keeps order of the rest.
 
 ## Phase 2 - amconf keys
-Files: amarchy/amconf_core.h/.c, prefs/settings_def.c/.h, tests/test_amconf.c, plus every test that counts hidden keys
+Files: patina/amconf_core.h/.c, prefs/settings_def.c/.h, tests/test_amconf.c, plus every test that counts hidden keys
 or AM_NKEYS (grep `SD_NHIDDEN`, `AM_NKEYS`, `tile-gap` in tests/ and prefs/; today's settings_def run asserts 1456).
 Success: `make test ONLY=amconf` and `ONLY=settings_def` pass. test_amconf (copy test_amconf_tile_gap,
 tests/test_amconf.c:72-84): defaults dwindle/55/1; `tile-layout = grid` round-trips through parse+serialize; ratio 19 and
 81 and "x" -> 55, 20 and 80 accepted; nmaster 0, 9, "x" -> 1, 8 accepted; a key at its default is not written.
 
 ## Phase 3 - AmTile commands, state, persistence
-Files: amarchy/tile.c, amarchy/win_apply.c/.h (win_raise).
+Files: patina/tile.c, patina/win_apply.c/.h (win_raise).
 Success: cross build of AmTile rc 0 (`make` target `amtile`, Makefile:819-821), stack cookie test
-(tests/test_amarchy_stack.py) still passes; `make test ONLY=tile` and amconf pass; STATUS shape asserted by a host-visible
+(tests/test_patina_stack.py) still passes; `make test ONLY=tile` and amconf pass; STATUS shape asserted by a host-visible
 pure formatter? NO: STATUS is checked on the rig (P6). Code review items: GAP unchanged (num_arg rel NULL), relative
 clamps, rc codes (10 bad, 5 not tiled).
 
@@ -235,8 +235,8 @@ Success: `make test ONLY=keymap` passes with zero skipped/refused rows (`km.skip
 shadow keymap test (tests/test_rig_kit_shadow_keymap.py) and `make dist-check` unchanged apart from the known wasabi pin note.
 
 ## Phase 5 - rig code (no rig use yet)
-Files: tools/rig/amarchy_tile_boxes.c, tools/rig/amarchy_tile_rig.py.
-- boxes helper CLI becomes `amarchy_tile_boxes SCREEN_W SCREEN_H TITLE GAP RATIO N LAYOUT NMASTER [MINW MINH [MAXW MAXH]]`
+Files: tools/rig/patina_tile_boxes.c, tools/rig/patina_tile_rig.py.
+- boxes helper CLI becomes `patina_tile_boxes SCREEN_W SCREEN_H TITLE GAP RATIO N LAYOUT NMASTER [MINW MINH [MAXW MAXH]]`
   (LAYOUT = name; calls `tile_layout`).
 - rig: `expected(n)` reads OPT['layout'], OPT['nmaster'], OPT['ratio'] (defaults dwindle, 1, 55). `tile_status()` regex
   becomes `(on|off) (\d+) (\d+) (\S+) (\d+) (\d+)$` returning (on, tiled, retiles, layout, nmaster, ratio); every caller
@@ -246,19 +246,19 @@ Files: tools/rig/amarchy_tile_boxes.c, tools/rig/amarchy_tile_rig.py.
 Success: `python3 -m py_compile`; the helper compiles with `cc` and prints the worked numbers above for 800 600 14 4 55
 (1..4 dwindle, nm 2 master-stack) - run on the host, diffed against the plan numbers.
 
-## Phase 6 - rig run (rig 7, 800x600 Workbench/DOpus, title 14, purpose "Amarchy s20: AmTile layouts")
-Start `UPTERM_RIG=7 rig.py start --max --purpose "Amarchy s20: AmTile layouts"` (060, wasabi built first per ledger rules),
+## Phase 6 - rig run (rig 7, 800x600 Workbench/DOpus, title 14, purpose "Patina s20: AmTile layouts")
+Start `UPTERM_RIG=7 rig.py start --max --purpose "Patina s20: AmTile layouts"` (060, wasabi built first per ledger rules),
 run the full STEPS once (all new steps are new, so a full run is the stated reason), stop the rig at the end with no
 write running. Write the evidence to thoughts/shared/research/2026-10-28_amtile-layout-rig7.md.
 
 ## Reachability (REACHABILITY_PROTOCOL gates)
-ONE wiring test through the real entry: step `layout_row` fires the dist/keymap row `LAYOUT NEXT` through port AMARCHY
+ONE wiring test through the real entry: step `layout_row` fires the dist/keymap row `LAYOUT NEXT` through port PATINA
 as `RUN <row index>` (the dispatch a menu pick or the super+alt+l hotkey reaches, same as `s_row_on`), after `row_on`:
 1. before: STATUS `on 2 n dwindle 1 55`; 2. fire the row; 3. sentinel: STATUS retiles > n AND layout == master-stack;
 4. both windows' boxes equal the host helper's `master-stack` n=2 boxes; PASS = all three. FAIL looks like layout still
 dwindle, or retiles unchanged (code did not run), or boxes of the old layout.
 The hotkey itself (super+alt+l) is fired once with the key-injection path run 2 used for super+alt+t
-(thoughts/shared/research/2026-10-28_amarchy-tile-rig7.md "Run 2"; implementer reads that section) and asserts the same
+(thoughts/shared/research/2026-10-28_patina-tile-rig7.md "Run 2"; implementer reads that section) and asserts the same
 sentinel.
 Every other behaviour is tested where it lives, via `AMTILE <cmd>` sent to the port (`send('AMTILE', cmd)`, rig.py:48) then
 STATUS + `tiled_boxes_match`:
@@ -276,7 +276,7 @@ STATUS + `tiled_boxes_match`:
 - `monocle_raise`: `LAYOUT monocle`, activate window A, then window B; after < 1 s the front-most window of the screen
   (wasabi window list order, helper from the existing rig `c.`/windows call) is the active one each time;
 - `persist`: `LAYOUT grid`, `RATIO 60`, `NMASTER 2`; `AMTILE QUIT`; wait port gone; start `AmTile ON` fresh; STATUS shows
-  `grid 2 60`; ENV:Amarchy/prefs holds the three keys; then `reset` step sends `LAYOUT dwindle`, `RATIO 55`, `NMASTER 1`
+  `grid 2 60`; ENV:Patina/prefs holds the three keys; then `reset` step sends `LAYOUT dwindle`, `RATIO 55`, `NMASTER 1`
   (leaves the rig image at defaults);
 - `layout_default`: on a rig whose prefs have no tile-* keys (the first run; the step first removes the three lines from
   ENV: and ENVARC: and restarts AmTile), STATUS is `dwindle 1 55` (boot default L1).
@@ -287,7 +287,7 @@ exemptions (ratio/nmaster ignored by columns, rows, grid, monocle; nmaster ignor
 
 ## Verification
 Automated (host): `make test ONLY=tile`, `ONLY=amconf`, `ONLY=settings_def`, `ONLY=keymap`; cross builds of AmTile and
-Amarchy rc 0; `python3 -m py_compile tools/rig/amarchy_tile_rig.py`; helper numbers diffed against this plan.
+Patina rc 0; `python3 -m py_compile tools/rig/patina_tile_rig.py`; helper numbers diffed against this plan.
 Automated (rig 7): P6 full run, every step OK.
 Manual (owner): see the end of the plan.
 
@@ -315,7 +315,7 @@ file in the scratchpad and print only errors and the summary, one test run on th
 On rig 7 or the A1200 with AmTile on: press super+alt+1..7 and see each layout with 3 to 5 windows; super+alt+l cycles;
 super+alt+minus/plus grows and shrinks the master/first split; super+alt+j/k changes the master count in master-stack;
 super+alt+return puts the active window in the master place; monocle shows the active window on top and a click on
-super+alt+period/comma cycles the tiled windows (raises each in monocle); restart Amarchy and see layout, ratio and master
+super+alt+period/comma cycles the tiled windows (raises each in monocle); restart Patina and see layout, ratio and master
 count come back. PASS = layouts look right and hotkeys respond; the A1200 is the final check only.
 
 ## Owner questions

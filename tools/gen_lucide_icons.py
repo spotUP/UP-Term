@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Filled icons for the flat Workbench (plan 2026-11-01-amarchy-filled-icon-set.md F4, earlier L3): dist/lucide-icons
+"""Filled icons for the flat Workbench (plan 2026-11-01-patina-filled-icon-set.md F4, earlier L3): dist/lucide-icons
 (match = phosphor-name) and the Phosphor Fill icon font -> lucide.dat (file name kept), the planar images the on-Amiga applier splices into .info files.
 
 Reuses, writes no rasteriser of its own: tools/gen_menu_icons.py (Flatten, raster: outline -> 64x64 coverage, SUB=4),

@@ -1,4 +1,4 @@
-"""s28 flat-ON hang: Amarchy stopped answering right after flat-system-look was switched on. amarchy-flat's Text patch
+"""s28 flat-ON hang: Patina stopped answering right after flat-system-look was switched on. patina-flat's Text patch
 (flat_tx_c) called the stock graphics.library Text through its saved pointer with a6 = SysBase (left by FindTask), the
 ROM Text read its base from a6 and jumped through a garbage base into DOS device data, where it spun forever.
 
@@ -8,7 +8,7 @@ not LVOs, and take no base."""
 import pathlib, re, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-SRC = (ROOT / "amarchy/flat.c").read_text()
+SRC = (ROOT / "patina/flat.c").read_text()
 
 # saved-swap field -> the library base the stock routine expects in a6
 LVO_SWAPS = {"tsw": "GfxBase", "rsw": "GfxBase", "dsw": "dlib"}
@@ -16,7 +16,7 @@ LVO_SWAPS = {"tsw": "GfxBase", "rsw": "GfxBase", "dsw": "dlib"}
 # Calls through dsw[el].saved that are NOT LVO calls. When flat_body_install succeeds, dsw[el].saved is the trampoline into
 # a dopus5 internal BODY routine with stack convention (flat.c comment above the fieldbodyfn typedef; install in
 # flat_body_install). The bodies save a6 and read every argument, GfxBase included, from the stack frame; their entry bytes
-# are checked before install (field 48 e7 20 32 41 ef 00 14, bevel 48 e7 38 32 ..., amarchy/flat_core.c). So a6 is not an
+# are checked before install (field 48 e7 20 32 41 ef 00 14, bevel 48 e7 38 32 ..., patina/flat_core.c). So a6 is not an
 # input and no base belongs in it; the bevel has no LVO at all. Exempt exactly these two typedefs; every other dsw call
 # (d4_drawbox, d4_fieldbox) is register convention and keeps the a6 rule.
 STACK_BODY_TYPEDEFS = {"fieldbodyfn", "bevelbodyfn"}

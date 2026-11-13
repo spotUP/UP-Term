@@ -1,21 +1,21 @@
 ---
 date: 2026-11-06
-topic: TE-10.6c per-screen theming, amarchy-flat role pens on themed foreign screens
+topic: TE-10.6c per-screen theming, patina-flat role pens on themed foreign screens
 status: design, not implemented
 ledger: thoughts/shared/todos.md TE-10.6C (row near :4345)
-source: snapshot of origin/main (amarchy/), file:line below refer to that snapshot
+source: snapshot of origin/main (patina/), file:line below refer to that snapshot
 ---
 
 # TE-10.6c design: flat role pens per themed foreign screen
 
 ## 0. Problem in one paragraph
 
-amarchy-flat draws its flat look from one live record `r->st` (flat_state, flat_core.h:18-54). Its role pens
+patina-flat draws its flat look from one live record `r->st` (flat_state, flat_core.h:18-54). Its role pens
 (pen_outline, pen_button, pen_ptext, pen_dimtext, pen_text, pen_line, pen_back) are Workbench pen numbers written by
 desk_flat_state (desk_core.c:118). TE-10.6a/b added a per-screen draw table g_draw (flat.c:319); its slots copy the look
-and overlay only the four pens amarchy-flat obtains itself (flat_state_for, flat_core.c:972). The role pens in a foreign
+and overlay only the four pens patina-flat obtains itself (flat_state_for, flat_core.c:972). The role pens in a foreign
 screen's slot are therefore still Workbench pen numbers: on a themed foreign screen they index that screen's palette at
-the wrong place. The fix gives each themed slot its own role pens, taken from the pens the Amarchy pen record already
+the wrong place. The fix gives each themed slot its own role pens, taken from the pens the Patina pen record already
 holds on that screen, resolved on the main task only.
 
 ## 1. Gap found in the brief's premise
@@ -36,7 +36,7 @@ per slot is already in the pen record: `ipd_rec.st[IP_SCREENS]` (iconpen_dos.h:4
 
 ## 2. Mapping table (answer to point 1)
 
-One table, one pure module: new `amarchy/flat_role_core.c/.h` (host-built, no AmigaOS headers). Each row: flat_state
+One table, one pure module: new `patina/flat_role_core.c/.h` (host-built, no AmigaOS headers). Each row: flat_state
 field, the GTE element whose colour it paints, the GR role used when the theme leaves the element unset (gt_elem_rgb
 already falls back to the role, gthemes_core.h:294), and the rule when no pen carries the colour.
 
@@ -49,7 +49,7 @@ already falls back to the role, gthemes_core.h:294), and the rule when no pen ca
 | pen_text (:26)           | GTE_GADGET_GLYPH                  | GR_TEXT         | DrawInfo TEXTPEN                    |
 | pen_line (:27)           | GTE_BORDER                        | GR_ACCENT       | DrawInfo SHADOWPEN                  |
 | pen_back (:28)           | GTE_REQUESTER_BACKGROUND          | GR_SURFACE      | DrawInfo BACKGROUNDPEN              |
-| pen_dim, pen_knob,       | not mapped: amarchy-flat's own    | -               | stay 0 on a foreign screen (stock   |
+| pen_dim, pen_knob,       | not mapped: patina-flat's own    | -               | stay 0 on a foreign screen (stock   |
 | pen_inbar, pen_sel       | pens, g_pens Workbench only       |                 | fallback paths already handle 0)    |
 
 The Workbench rows are the ones desk_flat_state writes today (desk_core.c:118: pen_outline = GR_ACCENT,
@@ -60,13 +60,13 @@ desk_flat_glyph_pens decides it on the Workbench and the brief author (sonnet 1)
 
 CORRECTED 2026-11-06 (brief 1, on main a43acea5): the first draft of this table had pen_line = GR_TEXT and
 pen_back = GR_BACKGROUND. desk_flat_glyph_pens (desk_core.c:104-109) gives text = GR_TEXT, line = GR_ACCENT,
-back = GR_SURFACE; the table above and `g_rows` in amarchy/flat_role_core.c now carry that. The UNCONFIRMED point is
+back = GR_SURFACE; the table above and `g_rows` in patina/flat_role_core.c now carry that. The UNCONFIRMED point is
 closed: pen_line follows GTE_BORDER with fallback GR_ACCENT. Caveat: a theme that gives GTE_BORDER its own colour
 moves outline and line together.
 
-API as landed (amarchy/flat_role_core.h): `flat_role_row_of(i)` (table row), `flat_role_rgb_of(t, rgb)` (the seven
+API as landed (patina/flat_role_core.h): `flat_role_row_of(i)` (table row), `flat_role_rgb_of(t, rgb)` (the seven
 theme colours of a gtheme), `flat_role_resolve(...)`, `flat_role_apply(st, p)`. The distance is `gt_rgb_dist2`
-(gthemes_core.c, shared with `gt_nearest_role_pen`). Not yet linked into amarchy-flat: brief 3 links it and checks
+(gthemes_core.c, shared with `gt_nearest_role_pen`). Not yet linked into patina-flat: brief 3 links it and checks
 `make flat-budget`.
 
 API (pure, host-tested):
@@ -89,7 +89,7 @@ Reuse: the nearest-colour distance must be the one gthemes already uses for "fol
 > CORRECTED 2026-11-06 (section 11): item 1's "fills the per-row theme colour from `st[slot].t`" and item 3's epoch rule
 > are wrong. Section 11 holds the rule that briefs 2 to 4 follow.
 
-All work runs in draw_sync (flat.c:1812) on the amarchy-flat main task, the place that already lists the public screens
+All work runs in draw_sync (flat.c:1812) on the patina-flat main task, the place that already lists the public screens
 with ipd_epoch_of_screen and fills g_draw under Forbid (flat.c:1812-1836).
 
 1. New pen-record reader in iconpen_dos (main task only, takes `r->ss` like ipd_epoch_of_screen, iconpen_dos.c:432):
@@ -184,7 +184,7 @@ Python guards, extend tests/test_flat_pens_per_screen.py:
   d4_flat bodies (only `r->st.calls`).
 - G2 no `flat_state st = r->st` and no `flat_state` local in any hook body.
 - G3 no `ipd_` and no GetScreenDrawInfo/GetRGB32 in any hook body; ipd_screen_roles called only from draw_sync.
-- G4 no ObtainBestPen/ObtainPen with a non-Workbench ColorMap in flat.c (amarchy-flat never obtains on a foreign
+- G4 no ObtainBestPen/ObtainPen with a non-Workbench ColorMap in flat.c (patina-flat never obtains on a foreign
   screen); pens_run obtains on the Workbench only (flat.c:1837).
 - G5 the mapping table exists once: the GTE_ names of section 2 appear only in flat_role_core.c.
 Budget: tests/test_flat_budget.py unchanged, must pass.
@@ -211,7 +211,7 @@ Rig proof TE-9.6 (one shared rig run, 060 max, built from main with every brief 
 2. iconpen_dos reader ipd_screen_roles: slot by pointer, themed flag from the same gt_screen_theme_of result, plan pens
    copy, and a COPY OF THE SLOT THEME (st[slot].t) into the caller's buffer. Decision 2026-11-06: the reader does not
    compute row colours; draw_sync (brief 4) calls flat_role_rgb_of on the copy, so iconpen_dos stays free of
-   flat_role_core and only amarchy-flat links it. The slot lookup and copy are a pure part in iconpen_core with host
+   flat_role_core and only patina-flat links it. The slot lookup and copy are a pure part in iconpen_core with host
    tests in the iconpen suite. Depends on nothing in 1.
 3. flat_core: `themed` in flat_draw_slot, enabled = 0 in plain and unthemed slots, flat_state_for applies role pens and
    side; tests D1-D3. Depends on 1.
@@ -277,9 +277,9 @@ Rules that replace them:
   give the screen a theme (the reader calls `gt_screen_theme_of` itself: a non-owner process computes hold = 0) AND the
   stored colours belong to this screen pointer and this theme name. Out: themed, epoch, held plan pens (number and
   colour), the seven role colours.
-- Record layout grows: `IPD_SEM_NAME` moves to `Amarchy.IconPens.6`. The single rig 96 reinstall at AMARCHY READY
+- Record layout grows: `IPD_SEM_NAME` moves to `Patina.IconPens.6`. The single rig 96 reinstall at PATINA READY
   covers it.
-- No epoch gating in amarchy-flat. `draw_sync` calls the reader and `flat_role_resolve` for every listed non-Workbench
+- No epoch gating in patina-flat. `draw_sync` calls the reader and `flat_role_resolve` for every listed non-Workbench
   screen on EVERY sync (main task, 1 s watch and CTRL_D) and passes themed flag, role pens and side in the list entry.
   `flat_draw_sync` writes them into the slot on every sync. Test D2 ("equal epoch keeps the resolved pens") becomes
   "a second sync with other role pens or another themed flag replaces the slot's values, same slot address".
@@ -290,7 +290,7 @@ Rules that replace them:
 ## 12. Notes after briefs 2 and 3 (2026-11-06)
 
 1. Enum name clash. `flat_role_core.h` names `FLAT_ROLE_TEXT`, `FLAT_ROLE_LINE`, `FLAT_ROLE_BACK` also exist in
-   `amarchy/flat_glyph.h:28` with other values. flat.c and flat_glyph.c include flat_glyph.h, so they cannot include
+   `patina/flat_glyph.h:28` with other values. flat.c and flat_glyph.c include flat_glyph.h, so they cannot include
    flat_role_core.h today. Workarounds in the tree: `IPD_ROLE_COUNT` in iconpen_dos.h (brief 2), a forward declaration
    `struct flat_role_pens;` in flat_core.h and the draw tests in tests/test_flat_role_core.c (brief 3). Brief 4a renames the
    enum in flat_role_core.h (prefix `FLAT_RP_`), then `IPD_ROLE_COUNT` goes.
@@ -307,7 +307,7 @@ Rules that replace them:
 - The pen record sync takes `r->ss` FIRST and `LockPubScreenList()` SECOND (iconpen_dos.c:520-540, :551-559), and holds
   `r->ss` across its DOS calls.
 - `ipd_screen_roles` takes `r->ss` (iconpen_dos.c:461). `ipd_epoch` / `ipd_epoch_of_screen` take no semaphore.
-- Rule: amarchy-flat NEVER calls `ipd_screen_roles` while it holds the public screen list lock (reverse order = deadlock
+- Rule: patina-flat NEVER calls `ipd_screen_roles` while it holds the public screen list lock (reverse order = deadlock
   with the pen record sync; and a reader that waits on a DOS read would stall every OpenScreen in the system).
 - Shape of `draw_sync` (main task), three passes:
   1. Under the list lock: collect the screen pointers and epochs (as today). Unlock.

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""dist/keymap -> the key list of the README's AMARCHY section (and the man page's).
+"""dist/keymap -> the key list of the README's PATINA section (and the man page's).
 
 One line per shipped row, in file order: "Left Amiga + Shift + T   New tab". A
 `super+1..9` row is one line. The README holds the output between the lines
-"  [keys]" and "  [end keys]"; tests/test_amarchy_docs.py compares the two, so a
+"  [keys]" and "  [end keys]"; tests/test_patina_docs.py compares the two, so a
 row added to dist/keymap without a README line fails `make dist-check`.
 Usage: keymap_doc.py [dist/keymap]"""
 import os

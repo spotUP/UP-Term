@@ -15,7 +15,7 @@
 #define PREFS_UI_H
 
 /* ---- gadget ids: stable, the rig names them ------------------------------ */
-#include "../amarchy/gthemes_core.h"
+#include "../patina/gthemes_core.h"
 
 enum {
     /* in every page */
@@ -41,7 +41,7 @@ enum {
     PG_SCREEN = 120, PG_SCREEN_MODE = 121, PG_SCREEN_CHOOSE = 122, PG_SCREEN_WORKBENCH = 123,
     PG_ASPECT = 124, PG_CLIPBOARD = 125, PG_HLCAT = 126, PG_LINK = 127, PG_LINK_DEFAULT = 128,
     PG_TERM = 129, PG_COLORS = 130, PG_MUSIC = 131, PG_SPLIT_RESTORE = 132, PG_BLEND_DEST = 133, PG_RIP = 134,
-    /* Amarchy */
+    /* Patina */
     PG_AM_MUSIC = 140, PG_AM_DEMO = 141, PG_AM_HIDE = 142,
     PG_AM_FONT = 143, PG_AM_FONT_CHOOSE = 144, PG_AM_FONT_CLEAR = 145, PG_AM_ICONS = 146,
     PG_AM_MODE = 147, PG_AM_TERMMENU = 148, PG_AM_GTHEME = 149,
@@ -55,8 +55,8 @@ enum {
 };
 
 enum { PG_PAGE_GENERAL, PG_PAGE_COLORS, PG_PAGE_PALETTE, PG_PAGE_KEYBOARD, PG_PAGE_ADVANCED,
-       PG_PAGE_AMARCHY, PG_PAGE_FLAT, PG_NPAGES };
-/* TE-4: the Theme Editor pages of the Amarchy menu. They follow PG_NPAGES on purpose: the Prefs window loops over PG_NPAGES pages
+       PG_PAGE_PATINA, PG_PAGE_FLAT, PG_NPAGES };
+/* TE-4: the Theme Editor pages of the Patina menu. They follow PG_NPAGES on purpose: the Prefs window loops over PG_NPAGES pages
  * and draws a gadget per row, and these pages have rows (swatches, groups, elements) with no gadget. Only the menu shows them. */
 enum { PG_PAGE_THEME = PG_NPAGES, PG_PAGE_THEME_SWATCHES, PG_PAGE_THEME_GROUPS, PG_PAGE_THEME_ELEMENTS, PG_PAGE_THEME_TYPE,
        PG_PAGE_THEME_SHAPE, PG_PAGE_THEME_STATES, PG_PAGE_THEME_DESKTOP, PG_PAGE_THEME_FILES, PG_PAGE_THEME_SCREENS, PG_NPAGES_ALL };
@@ -124,7 +124,7 @@ void pg_plain_label(const char *label, char *out, int cap);
 /* The gadget a key reaches on `page`: the page's own or a common one with
  * that shortcut (any case); 0 when none. */
 const pg_item *pg_for_key(int page, int key);
-/* The page the command line asks for: the keyword AMARCHY (any case, blanks around) opens the Amarchy page;
+/* The page the command line asks for: the keyword PATINA (any case, blanks around) opens the Patina page;
  * anything else, and no arguments, the first page. */
 int pg_page_for_args(const char *args);
 

@@ -2,7 +2,7 @@
 date: 2026-10-27
 session: vtcon-05 session 9 (UP-Term side)
 status: handoff
-ledger: thoughts/spot/todos.md (rows U8 DONE, UHC-PATH-BEFORE-REBOOT, TSV-LAUNCH, UPKG-AMARCHY-API, RIG-NO-DRIVE-SOUNDS)
+ledger: thoughts/spot/todos.md (rows U8 DONE, UHC-PATH-BEFORE-REBOOT, TSV-LAUNCH, UPKG-PATINA-API, RIG-NO-DRIVE-SOUNDS)
 ---
 
 # vtcon-05 session 9: UHC repo U8 done, upgrade questions PR, drive sounds
@@ -17,7 +17,7 @@ ledger: thoughts/spot/todos.md (rows U8 DONE, UHC-PATH-BEFORE-REBOOT, TSV-LAUNCH
 ## Next, in order
 1. UHC-PATH-BEFORE-REBOOT + TSV-LAUNCH on feat/uhc-repo (worktree ../upterm-ports-uhc). Rules in ledger row TSV-LAUNCH. Reply to vtcon-a1 with hash, m68k md5, field 7 text.
 2. feat/uhc-repo PR after the renumber rebase.
-3. Rest of UPKG-AMARCHY-API: question channel, progress line format, stable exit codes.
+3. Rest of UPKG-PATINA-API: question channel, progress line format, stable exit codes.
 4. PR 9 rerun items (up-iaask answer kept; Shift+U "Update all 4" where 2 expected; Shift+I --only 4).
 5. Rig 8: PR 10 even-row height, PR 11 mid-install resize.
 6. ixemul mkdir (ixemul-vtcon PR 3, worktree ixemul-mkdir; A1200 install needs approval; clean build295 and docker image ixemul-gcc295).

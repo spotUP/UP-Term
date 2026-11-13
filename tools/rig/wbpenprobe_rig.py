@@ -6,12 +6,12 @@ import ami, condev_rig as c
 OUT = os.path.dirname(os.path.abspath(__file__))
 tag = sys.argv[1]
 if 'apply' in sys.argv:
-    c.run('MakeDir >NIL: VTCX:Apps/Amarchy'); c.run('MakeDir >NIL: VTCX:Apps/Amarchy/Icons')
+    c.run('MakeDir >NIL: VTCX:Apps/Patina'); c.run('MakeDir >NIL: VTCX:Apps/Patina/Icons')
     c.run('Assign UP-Term: VTCX:Apps ADD', 20)
-    ami.put(WT + '/dist/Amarchy/Icons/lucide.dat', 'UP-Term:Amarchy/Icons/lucide.dat')
-    for n in ('amarchy-icons', 'wbpenprobe'):
+    ami.put(WT + '/dist/Patina/Icons/lucide.dat', 'UP-Term:Patina/Icons/lucide.dat')
+    for n in ('patina-icons', 'wbpenprobe'):
         ami.put(WT + '/build/amiga/' + n, 'RAM:' + n); c.run('Protect RAM:%s +e' % n)
-    print(c.run('RAM:amarchy-icons APPLY', 300)[1][-300:])
+    print(c.run('RAM:patina-icons APPLY', 300)[1][-300:])
 rx = ("address WORKBENCH; WINDOW 'SYS:' CLOSE; WINDOW 'SYS:' OPEN; "
       "GETATTR WINDOW.LEFT NAME 'SYS:' VAR l; GETATTR WINDOW.TOP NAME 'SYS:' VAR t; "
       "GETATTR WINDOW.WIDTH NAME 'SYS:' VAR w; GETATTR WINDOW.HEIGHT NAME 'SYS:' VAR h; say l t w h")

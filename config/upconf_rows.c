@@ -1,5 +1,5 @@
 /* upconf_rows and the line tokeniser it shares with upconf_parse. Its own file so a
- * program that only walks rows (the Amarchy commodity) does not link the profile table. */
+ * program that only walks rows (the Patina commodity) does not link the profile table. */
 #include <string.h>
 #include "upconf.h"
 #include "upconf_lex.h"

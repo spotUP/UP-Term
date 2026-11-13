@@ -4,7 +4,7 @@
 
 #include "settings_def.h"
 #include "prefs_core.h"
-#include "../amarchy/amconf_core.h"
+#include "../patina/amconf_core.h"
 
 #define FO(m) offsetof(prefs_fields, m)
 #define FS(m) ((int)sizeof(((prefs_fields *)0)->m))
@@ -189,106 +189,106 @@ const sd_setting sd_settings[SDI_COUNT] = {
     { SDI_BLEND_DEST, "outline-blend-dest", 0, PG_PAGE_ADVANCED, SD_CHECK, "_Blend edges",
       "Outline glyph edges blend with the dithered background behind them.",
       VALS(v_off_on), "on", SD_UPTERM, SDF_INT, FO(blend_dest), 0, NORANGE, PG_BLEND_DEST, 0, 0, 1, 0 },
-    /* Amarchy: the keys of ENVARC:Amarchy/prefs, in am_keys[] order of the Prefs page */
-    { SDI_AM_MUSIC, "amarchy-music-drawers", 0, PG_PAGE_AMARCHY, SD_STRING, "_Music drawers",
-      "More drawers, comma separated, listed under Music in the Amarchy menu.",
-      NOVALS, "", SD_AMARCHY, SDF_AMSTR, AO(AM_MUSIC), UC_MAX_VALUE, NORANGE, PG_AM_MUSIC, 0, 0, 1, 0 },
-    { SDI_AM_DEMO, "amarchy-demo-drawers", 0, PG_PAGE_AMARCHY, SD_STRING, "_Demo drawers",
-      "More drawers, comma separated, listed under Demos in the Amarchy menu.",
-      NOVALS, "", SD_AMARCHY, SDF_AMSTR, AO(AM_DEMO), UC_MAX_VALUE, NORANGE, PG_AM_DEMO, 0, 0, 1, 0 },
-    { SDI_AM_HIDE, "amarchy-hide-drawers", 0, PG_PAGE_AMARCHY, SD_STRING, "_Hidden drawers",
-      "Drawers, comma separated, the Amarchy menu leaves out of its lists.",
-      NOVALS, "", SD_AMARCHY, SDF_AMSTR, AO(AM_HIDE), UC_MAX_VALUE, NORANGE, PG_AM_HIDE, 0, 0, 1, 0 },
-    { SDI_AM_ICONS, "amarchy-app-icons", 0, PG_PAGE_AMARCHY, SD_CYCLE, "App _icons",
+    /* Patina: the keys of ENVARC:Patina/prefs, in am_keys[] order of the Prefs page */
+    { SDI_AM_MUSIC, "patina-music-drawers", 0, PG_PAGE_PATINA, SD_STRING, "_Music drawers",
+      "More drawers, comma separated, listed under Music in the Patina menu.",
+      NOVALS, "", SD_PATINA, SDF_AMSTR, AO(AM_MUSIC), UC_MAX_VALUE, NORANGE, PG_AM_MUSIC, 0, 0, 1, 0 },
+    { SDI_AM_DEMO, "patina-demo-drawers", 0, PG_PAGE_PATINA, SD_STRING, "_Demo drawers",
+      "More drawers, comma separated, listed under Demos in the Patina menu.",
+      NOVALS, "", SD_PATINA, SDF_AMSTR, AO(AM_DEMO), UC_MAX_VALUE, NORANGE, PG_AM_DEMO, 0, 0, 1, 0 },
+    { SDI_AM_HIDE, "patina-hide-drawers", 0, PG_PAGE_PATINA, SD_STRING, "_Hidden drawers",
+      "Drawers, comma separated, the Patina menu leaves out of its lists.",
+      NOVALS, "", SD_PATINA, SDF_AMSTR, AO(AM_HIDE), UC_MAX_VALUE, NORANGE, PG_AM_HIDE, 0, 0, 1, 0 },
+    { SDI_AM_ICONS, "patina-app-icons", 0, PG_PAGE_PATINA, SD_CYCLE, "App _icons",
       "Generic: drawn glyphs. Amiga: .info icons of apps and games. None: no icons.",
-      VALS(v_icons), "generic", SD_AMARCHY, SDF_AMSTR, AO(AM_ICONS), UC_MAX_VALUE, NORANGE,
+      VALS(v_icons), "generic", SD_PATINA, SDF_AMSTR, AO(AM_ICONS), UC_MAX_VALUE, NORANGE,
       PG_AM_ICONS, 0, 0, 1, 0 },
-    { SDI_AM_MODE, "menu-style", 0, PG_PAGE_AMARCHY, SD_CYCLE, "Menu mod_e",
+    { SDI_AM_MODE, "menu-style", 0, PG_PAGE_PATINA, SD_CYCLE, "Menu mod_e",
       "Drawn: icons, border. Text: terminal menu. Minimal: text only, two colours.",
-      VALS(v_mode), "graphical", SD_AMARCHY, SDF_AMSTR, AO(AM_STYLE), UC_MAX_VALUE, NORANGE,
+      VALS(v_mode), "graphical", SD_PATINA, SDF_AMSTR, AO(AM_STYLE), UC_MAX_VALUE, NORANGE,
       PG_AM_MODE, 0, 0, 1, 0 },
-    { SDI_AM_TERMMENU, "menu-in-terminal", 0, PG_PAGE_AMARCHY, SD_CYCLE, "Menu in _terminal",
+    { SDI_AM_TERMMENU, "menu-in-terminal", 0, PG_PAGE_PATINA, SD_CYCLE, "Menu in _terminal",
       "Menu over a UP-Term window: Text or Graphical. Full screen: always Text.",
-      VALS(v_termmenu), "text", SD_AMARCHY, SDF_AMSTR, AO(AM_TERMMENU), UC_MAX_VALUE, NORANGE,
+      VALS(v_termmenu), "text", SD_PATINA, SDF_AMSTR, AO(AM_TERMMENU), UC_MAX_VALUE, NORANGE,
       PG_AM_TERMMENU, 0, 0, 1, 0 },
-    { SDI_AM_GTHEME, "amarchy-gui-theme", 0, PG_PAGE_AMARCHY, SD_DYNLIST, "Me_nu theme",
+    { SDI_AM_GTHEME, "patina-gui-theme", 0, PG_PAGE_PATINA, SD_DYNLIST, "Me_nu theme",
       "Colours of the drawn menu: a shipped theme or one of your own.",
-      NOVALS, "tokyo-night", SD_AMARCHY, SDF_AMSTR, AO(AM_GTHEME), UC_MAX_VALUE, NORANGE,
+      NOVALS, "tokyo-night", SD_PATINA, SDF_AMSTR, AO(AM_GTHEME), UC_MAX_VALUE, NORANGE,
       PG_AM_GTHEME, 0, 0, 1, 0 },
-    { SDI_AM_FONT, "amarchy-menu-font", 0, PG_PAGE_AMARCHY, SD_FONT, "Menu _font",
-      "The Amarchy menu font; empty: the built-in choice. Click to choose.",
-      NOVALS, "", SD_AMARCHY, SDF_AMSTR, AO(AM_FONT), UC_MAX_VALUE, NORANGE, PG_AM_FONT, 0, 0, 1, 0 },
+    { SDI_AM_FONT, "patina-menu-font", 0, PG_PAGE_PATINA, SD_FONT, "Menu _font",
+      "The Patina menu font; empty: the built-in choice. Click to choose.",
+      NOVALS, "", SD_PATINA, SDF_AMSTR, AO(AM_FONT), UC_MAX_VALUE, NORANGE, PG_AM_FONT, 0, 0, 1, 0 },
     { SDI_AM_FLAT, "flat-system-look", 0, PG_PAGE_FLAT, SD_CHECK, "Flat system _look",
       "Flat frames and flat pen roles, your colours stay. Off: stock pens.",
-      VALS(v_off_on), "on", SD_AMARCHY, SDF_AMSTR, AO(AM_FLAT), UC_MAX_VALUE, NORANGE, PG_AM_FLAT, 0, 0, 1, 0 },
+      VALS(v_off_on), "on", SD_PATINA, SDF_AMSTR, AO(AM_FLAT), UC_MAX_VALUE, NORANGE, PG_AM_FLAT, 0, 0, 1, 0 },
     { SDI_AM_FLATGAD, "flat-window-gadgets", 0, PG_PAGE_FLAT, SD_CHECK, "Flat _window gadgets",
       "Draw the close, depth and zoom gadgets of windows as flat glyphs.",
-      VALS(v_off_on), "on", SD_AMARCHY, SDF_AMSTR, AO(AM_FLATGAD), UC_MAX_VALUE, NORANGE, PG_AM_FLATGAD, 0, 0, 1, 0 },
+      VALS(v_off_on), "on", SD_PATINA, SDF_AMSTR, AO(AM_FLATGAD), UC_MAX_VALUE, NORANGE, PG_AM_FLATGAD, 0, 0, 1, 0 },
     { SDI_AM_FLATSIZE, "flat-border-size", 0, PG_PAGE_FLAT, SD_CYCLE, "_Border and title size",
       "Stock: the size of the system. Thin: slimmer window borders and title bars.",
-      VALS(v_flatsize), "stock", SD_AMARCHY, SDF_AMSTR, AO(AM_FLATSIZE), UC_MAX_VALUE, NORANGE,
+      VALS(v_flatsize), "stock", SD_PATINA, SDF_AMSTR, AO(AM_FLATSIZE), UC_MAX_VALUE, NORANGE,
       PG_AM_FLATSIZE, 0, 0, 1, 0 },
     { SDI_AM_ICONSTYLE, "icon-style", 0, PG_PAGE_FLAT, SD_CYCLE, "Icon st_yle",
       "Filled: solid icons. Outline: thin lines. Applies at once; Restore undoes.",
-      VALS(v_iconstyle), "filled", SD_AMARCHY, SDF_AMSTR, AO(AM_ICONSTYLE), UC_MAX_VALUE, NORANGE,
+      VALS(v_iconstyle), "filled", SD_PATINA, SDF_AMSTR, AO(AM_ICONSTYLE), UC_MAX_VALUE, NORANGE,
       PG_AM_ICONSTYLE, 0, 0, 1, 0 },
     { SDI_AM_ICONTEXT, "icon-text", 0, PG_PAGE_FLAT, SD_CYCLE, "Icon label _text",
       "Plain, or an outline or shadow in the backdrop colour.",
-      VALS(v_icontext), "plain", SD_AMARCHY, SDF_AMSTR, AO(AM_ICONTEXT), UC_MAX_VALUE, NORANGE,
+      VALS(v_icontext), "plain", SD_PATINA, SDF_AMSTR, AO(AM_ICONTEXT), UC_MAX_VALUE, NORANGE,
       PG_AM_ICONTEXT, 0, 0, 1, 0 },
     { SDI_AM_BORDERBLANK, "border-blank", 0, PG_PAGE_FLAT, SD_CHECK, "Blac_k screen border",
       "Native screens: black outside the picture, not colour 0. Off: stock border.",
-      VALS(v_off_on), "on", SD_AMARCHY, SDF_AMSTR, AO(AM_BORDERBLANK), UC_MAX_VALUE, NORANGE, PG_AM_BORDERBLANK, 0, 0, 1, 0 },
+      VALS(v_off_on), "on", SD_PATINA, SDF_AMSTR, AO(AM_BORDERBLANK), UC_MAX_VALUE, NORANGE, PG_AM_BORDERBLANK, 0, 0, 1, 0 },
     { SDI_AM_UIAA, "ui-antialias", 0, PG_PAGE_FLAT, SD_CHECK, "Antialiase_d text",
       "Smooth text in menus, titles, gadgets, windows, icons; bitmap fonts too.",
-      VALS(v_off_on), "on", SD_AMARCHY, SDF_AMSTR, AO(AM_UIAA), UC_MAX_VALUE, NORANGE, PG_AM_UIAA, 0, 0, 1, 0 },
+      VALS(v_off_on), "on", SD_PATINA, SDF_AMSTR, AO(AM_UIAA), UC_MAX_VALUE, NORANGE, PG_AM_UIAA, 0, 0, 1, 0 },
     { SDI_AM_FLATSTATUS, 0, 0, PG_PAGE_FLAT, SD_INFO, "Flat st_atus",
-      "What amarchy-flat reports: on, off, held, absent. Read only.",
+      "What patina-flat reports: on, off, held, absent. Read only.",
       NOVALS, "", SD_UPTERM, SDF_NONE, 0, 0, NORANGE, PG_AM_FLATSTATUS, 0, 0, 1, 0 },
 };
 const int sd_nsettings = SDI_COUNT;
 
-/* The Amarchy keys no control of Prefs edits: they live in the file for the index (amarchy-index) and are
+/* The Patina keys no control of Prefs edits: they live in the file for the index (patina-index) and are
  * set by hand. They have no page, label or help; the rows above are all that Prefs shows. */
 const sd_setting sd_hidden[SD_NHIDDEN] = {
-    { -1, "amarchy-index-skip", 0, -1, SD_STRING, 0, 0, NOVALS, "", SD_AMARCHY, SDF_AMSTR, AO(AM_SKIP),
+    { -1, "patina-index-skip", 0, -1, SD_STRING, 0, 0, NOVALS, "", SD_PATINA, SDF_AMSTR, AO(AM_SKIP),
       UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
-    { -1, "amarchy-index-volumes", 0, -1, SD_STRING, 0, 0, NOVALS, "", SD_AMARCHY, SDF_AMSTR, AO(AM_VOLUMES),
+    { -1, "patina-index-volumes", 0, -1, SD_STRING, 0, 0, NOVALS, "", SD_PATINA, SDF_AMSTR, AO(AM_VOLUMES),
       UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
-    { -1, "tile-gap", 0, -1, SD_STRING, 0, 0, NOVALS, "4", SD_AMARCHY, SDF_AMSTR, AO(AM_TILEGAP),
+    { -1, "tile-gap", 0, -1, SD_STRING, 0, 0, NOVALS, "4", SD_PATINA, SDF_AMSTR, AO(AM_TILEGAP),
       UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
-    { -1, "tile-layout", 0, -1, SD_STRING, 0, 0, NOVALS, "dwindle", SD_AMARCHY, SDF_AMSTR, AO(AM_TILELAYOUT),
+    { -1, "tile-layout", 0, -1, SD_STRING, 0, 0, NOVALS, "dwindle", SD_PATINA, SDF_AMSTR, AO(AM_TILELAYOUT),
       UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
-    { -1, "tile-ratio", 0, -1, SD_STRING, 0, 0, NOVALS, "55", SD_AMARCHY, SDF_AMSTR, AO(AM_TILERATIO),
+    { -1, "tile-ratio", 0, -1, SD_STRING, 0, 0, NOVALS, "55", SD_PATINA, SDF_AMSTR, AO(AM_TILERATIO),
       UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
-    { -1, "tile-nmaster", 0, -1, SD_STRING, 0, 0, NOVALS, "1", SD_AMARCHY, SDF_AMSTR, AO(AM_TILENMASTER),
+    { -1, "tile-nmaster", 0, -1, SD_STRING, 0, 0, NOVALS, "1", SD_PATINA, SDF_AMSTR, AO(AM_TILENMASTER),
       UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
-    { -1, "ai-agent", 0, -1, SD_STRING, 0, 0, NOVALS, "claude", SD_AMARCHY, SDF_AMSTR, AO(AM_AGENT),
+    { -1, "ai-agent", 0, -1, SD_STRING, 0, 0, NOVALS, "claude", SD_PATINA, SDF_AMSTR, AO(AM_AGENT),
       UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
-    { -1, "shot-dir", 0, -1, SD_STRING, 0, 0, NOVALS, "RAM:Shots", SD_AMARCHY, SDF_AMSTR, AO(AM_SHOTDIR),
+    { -1, "shot-dir", 0, -1, SD_STRING, 0, 0, NOVALS, "RAM:Shots", SD_PATINA, SDF_AMSTR, AO(AM_SHOTDIR),
       UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
-    { -1, "desktop-theme", 0, -1, SD_STRING, 0, 0, NOVALS, "on", SD_AMARCHY, SDF_AMSTR, AO(AM_DESK),
+    { -1, "desktop-theme", 0, -1, SD_STRING, 0, 0, NOVALS, "on", SD_PATINA, SDF_AMSTR, AO(AM_DESK),
       UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
-    { -1, "desktop-palette", 0, -1, SD_STRING, 0, 0, NOVALS, "on", SD_AMARCHY, SDF_AMSTR, AO(AM_DESKPAL),
+    { -1, "desktop-palette", 0, -1, SD_STRING, 0, 0, NOVALS, "on", SD_PATINA, SDF_AMSTR, AO(AM_DESKPAL),
       UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
-    { -1, "desktop-backdrop", 0, -1, SD_STRING, 0, 0, NOVALS, "on", SD_AMARCHY, SDF_AMSTR, AO(AM_DESKBACK),
+    { -1, "desktop-backdrop", 0, -1, SD_STRING, 0, 0, NOVALS, "on", SD_PATINA, SDF_AMSTR, AO(AM_DESKBACK),
       UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
-    { -1, "desktop-pointer", 0, -1, SD_STRING, 0, 0, NOVALS, "on", SD_AMARCHY, SDF_AMSTR, AO(AM_DESKPTR),
+    { -1, "desktop-pointer", 0, -1, SD_STRING, 0, 0, NOVALS, "on", SD_PATINA, SDF_AMSTR, AO(AM_DESKPTR),
       UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
-    { -1, "desktop-labels", 0, -1, SD_STRING, 0, 0, NOVALS, "on", SD_AMARCHY, SDF_AMSTR, AO(AM_DESKLBL),
+    { -1, "desktop-labels", 0, -1, SD_STRING, 0, 0, NOVALS, "on", SD_PATINA, SDF_AMSTR, AO(AM_DESKLBL),
       UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
-    { -1, "welcome-shown", 0, -1, SD_STRING, 0, 0, NOVALS, "off", SD_AMARCHY, SDF_AMSTR, AO(AM_WELCOME),
+    { -1, "welcome-shown", 0, -1, SD_STRING, 0, 0, NOVALS, "off", SD_PATINA, SDF_AMSTR, AO(AM_WELCOME),
       UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
-    { -1, "screen-themes", 0, -1, SD_STRING, 0, 0, NOVALS, "on", SD_AMARCHY, SDF_AMSTR, AO(AM_SCREENTHEMES),
+    { -1, "screen-themes", 0, -1, SD_STRING, 0, 0, NOVALS, "on", SD_PATINA, SDF_AMSTR, AO(AM_SCREENTHEMES),
       UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
 };
 
-const sd_setting *sd_amarchy_key(int k)
+const sd_setting *sd_patina_key(int k)
 {
     size_t off = AO(k);
     int i;
     for (i = 0; i < sd_nsettings; i++)
-        if (sd_settings[i].store == SD_AMARCHY && sd_settings[i].off == off)
+        if (sd_settings[i].store == SD_PATINA && sd_settings[i].off == off)
             return &sd_settings[i];
     for (i = 0; i < SD_NHIDDEN; i++)
         if (sd_hidden[i].off == off)
@@ -473,7 +473,7 @@ const char *sd_text_reason(int check)
 /* ---- menu rows ---- */
 
 static const char *const sd_page_names[PG_NPAGES_ALL] = {
-    "general", "colors", "palette", "keyboard", "advanced", "amarchy", "flat",
+    "general", "colors", "palette", "keyboard", "advanced", "patina", "flat",
     "theme", "theme-swatches", "theme-groups", "theme-elements", "theme-type", "theme-shape", "theme-states", "theme-desktop",
     "theme-files", "theme-screens"
 };

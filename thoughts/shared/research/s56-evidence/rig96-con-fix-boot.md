@@ -3,7 +3,7 @@
 Verdict: 3 of 3 clean boots (plus the install's own post-install reboot, also clean). No "CON Program failed #87000004", no reset loop.
 
 Dist: not rebuilt by this session. build/dist (mtime 2026-11-04 10:54:52) came from vtcon-ee's `make dist` (pid 33776, built from d873ce13, which contains fix 4ea3135c); it is newer than d873ce13 (commit 10:50:12). main was 4705d533.
-Install: `UPTERM_RIG=96 UPTERM_RIG_FLAGS="--max --os 32 --idle-minutes 0" INSTALLER_KEEP=1 installer_rig.py ONLY fresh-all` (every option ticked, CON on): [PASS], 35 checks ok, L:vtcon-handler, DEVS:DOSDrivers/XCON, PTY: mounted, Amarchy menu opens after the reboot. Only warning: "the Workbench stayed PAL (W43)" plus updemo files missing in the rig tree (installer-only).
+Install: `UPTERM_RIG=96 UPTERM_RIG_FLAGS="--max --os 32 --idle-minutes 0" INSTALLER_KEEP=1 installer_rig.py ONLY fresh-all` (every option ticked, CON on): [PASS], 35 checks ok, L:vtcon-handler, DEVS:DOSDrivers/XCON, PTY: mounted, Patina menu opens after the reboot. Only warning: "the Workbench stayed PAL (W43)" plus updemo files missing in the rig tree (installer-only).
 
 | Boot | wasabid | 87000004 in serial.log | reset/guru/alert lines | Version L:vtcon-handler | requesters |
 |---|---|---|---|---|---|

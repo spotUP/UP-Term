@@ -1,10 +1,10 @@
-/* A5 Installer margin patch (amarchy/inst_core.c): Installer 43.3 places its button rows 1 px apart and 1 px above
+/* A5 Installer margin patch (patina/inst_core.c): Installer 43.3 places its button rows 1 px apart and 1 px above
  * the window bottom. The patch makes both 4 px (its own side margin and button gap) and grows the window by the
  * added pixels: topaz 8 159 -> 165, helvetica 11 210 -> 216. The code image below carries the exact hunk-0 bytes
  * at the four signature sites; everything else is zero. */
 #include <stdlib.h>
 #include <string.h>
-#include "../amarchy/inst_core.h"
+#include "../patina/inst_core.h"
 #include "harness.h"
 
 static unsigned char code[INST_CODE_MIN + 16];

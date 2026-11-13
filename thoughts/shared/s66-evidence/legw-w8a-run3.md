@@ -10,5 +10,5 @@ Rig 86 (`rig.py start --os 32 --max`, purpose "up-term-bb s66: W8a vsh PATH fix 
 - Steps (a)-(e), Uninstall: not reached.
 
 New failure, cause: rm and grep are ixemul programs. The "startup message" requester is ixemul.library failing to open (known, thoughts/shared/research/2026-10-17_a1200-kit-tests.md Run 2). On a stock KS 3.2 rig LIBS: has no ixemul.library, and dist/install.dos copies it only at :1120 (`Copy $upixlib LIBS:ixemul.library`), after the instssblock.sh call at :607.
-Proposed fix: move the ixemul.library/ixnet.library copy block (install.dos:1086-1143) ahead of the Amarchy-Flat insertion at :595-607 (or move that insertion after :1143). Not applied (budget).
+Proposed fix: move the ixemul.library/ixnet.library copy block (install.dos:1086-1143) ahead of the Patina-Flat insertion at :595-607 (or move that insertion after :1143). Not applied (budget).
 Cleanup: rig 86 stopped, build/rig86 removed; scratch logs under 10 MB.

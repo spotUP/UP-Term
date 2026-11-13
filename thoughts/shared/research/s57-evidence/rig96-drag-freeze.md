@@ -2,7 +2,7 @@
 date: 2026-11-05
 topic: rig 96 "freeze" after dragging a VTC:vsh XCON window into the screen title bar
 status: UNPROVEN (mechanism found, writer not identified; vtcon-handler direct-plane lead dead 2026-11-05)
-rig: 96 (AmigaOS 3.2, main 7cf4ac17, flat mode, Amarchy + amarchy-flat at boot), started from ../vtcon-s57-rig96b
+rig: 96 (AmigaOS 3.2, main 7cf4ac17, flat mode, Patina + patina-flat at boot), started from ../vtcon-s57-rig96b
 ---
 
 # Rig 96 drag freeze
@@ -20,9 +20,9 @@ is not identified (UNPROVEN).
 Tools: RAM:taskdump, RAM:vpdump, RAM:copdump (sources in the session scratchpad),
 run over wasabi port 1329.
 
-- Tasks: every task waits normally. input.device sw=C0000000. XCON, Amarchy,
-  amarchy-flat and SolidWin (sw=00001000, Ctrl-C) are all in Wait. The only busy task
-  is the Amarchy bar idle task (pri -128 busy counter, amarchy/bar.c:89-123). That task
+- Tasks: every task waits normally. input.device sw=C0000000. XCON, Patina,
+  patina-flat and SolidWin (sw=00001000, Ctrl-C) are all in Wait. The only busy task
+  is the Patina bar idle task (pri -128 busy counter, patina/bar.c:89-123). That task
   is why fs-uae shows 99% CPU. It is by design, not the fault.
 - Semaphores: all free (own=-): IBase private semaphores IBase+822..+1708,
   LayerInfo.Lock, layers 0-3, ActiViewCpr.
@@ -44,13 +44,13 @@ run over wasabi port 1329.
 
 ## Candidates for the writer
 
-1. Ruled out: amarchy/flat_core.c flat_gm_recolour (the flat.c ghost_menu direct-plane
+1. Ruled out: patina/flat_core.c flat_gm_recolour (the flat.c ghost_menu direct-plane
    path for layerless RastPorts). It clamps x1 to width-1 and y1 to rows-1
    (flat_core.c:506-511), so it cannot write past the bitmap. No other direct
-   Planes[] writes exist in amarchy/*.c.
+   Planes[] writes exist in patina/*.c.
 2. Best candidate: a draw with no layer clipping during the drag, so a rectangle that
    ends at y >= 256 hits raw memory. Suspects: SolidWin (solid window drag, the only
-   non-system drag drawer running; see tests/amiga/rawdrag.c), or an Amarchy/flat
+   non-system drag drawer running; see tests/amiga/rawdrag.c), or an Patina/flat
    hook that draws into the screen RastPort (rp->Layer == NULL) with blitter calls
    that graphics does not clip on a layerless RastPort.
 3. Second candidate: 3.2 Intuition/graphics behaviour when a window moves so its top
@@ -60,7 +60,7 @@ run over wasabi port 1329.
 ## Next step to prove it
 
 Repro on a new rig (125 or above) with a fresh full install. Drag a VTC:vsh window to
-top 7 with SolidWin stopped, then with amarchy-flat stopped. After each drag, run
+top 7 with SolidWin stopped, then with patina-flat stopped. After each drag, run
 copdump and check that LOFlist still starts with colour MOVEs. The run where the list
 stays intact names the writer. A memory watchpoint on 0x2BD40-0x2BFFF (UAE debugger)
 gives the writer's PC directly.
@@ -86,7 +86,7 @@ reboot).
   layer bounds. Invariant to test: every byte written lies inside the locked ClipRect bounds, with the
   position taken from the layer, not the Window.
 - Next run: quiet host first, rig start, fresh-all, copcheck before and after the drag to top 7, then
-  stop SolidWin / amarchy-flat / Amarchy in turn; memwatch with the debug FS-UAE (--no-jit --debugger).
+  stop SolidWin / patina-flat / Patina in turn; memwatch with the debug FS-UAE (--no-jit --debugger).
 
 ## Host test 2026-11-05: vtcon-handler direct-plane lead DEAD
 
@@ -132,12 +132,12 @@ running. A memory watchpoint on 0x2BD40-0x2BFFF gives the writer's PC.
 ## Hunt attempt 3, 2026-11-05 (rig 131): writer UNPROVEN, no drag run
 
 - Build: worktree drag-copper-hunt at origin/main fdb5e99f (make worktree-ready, wasabi 959c33bd, amiga, dist via kit-main).
-  `installer_rig.py ONLY fresh-all` with INSTALLER_KEEP=1: checks 1-33 ok, then FAIL 34 (AMARCHY port: no port) and
+  `installer_rig.py ONLY fresh-all` with INSTALLER_KEEP=1: checks 1-33 ok, then FAIL 34 (PATINA port: no port) and
   [ABORT]: after the post-install reboot wasabid took the connection but did not answer for 15 s. This is the same stop
   as rig 125. Host at the time: rigs 96, 127, 129 plus a node pre-push hook, each about 85-100% CPU.
 - `rig.py reboot --max --os 32 --no-jit --debugger` with UPTERM_FSUAE=fs-uae-debug: the console debugger stops at the
   Kickstart entry (PC 00F800D2) on start, so `rig.py reboot` times out until `rig.py dbg "g"` is sent. After "g" the
-  machine booted fully (Amarchy, amarchy-flat, amarchy-menu, SolidWin, Workbench up).
+  machine booted fully (Patina, patina-flat, patina-menu, SolidWin, Workbench up).
 - copcheck (now tests/amiga/copcheck.c, CONPROBES) on the clean boot, before any drag:
   `pl0=00003d40 pl1=00003d90 bpr=640 rows=256 depth=8 end=0002bd40 lof=0002cee0 off=4512 verdict=OK`.
   Same bitmap address and end as rig 96, but LOFlist sits 0x11A0 past the end here (rig 96: 0x168), so where the copper
@@ -155,7 +155,7 @@ running. A memory watchpoint on 0x2BD40-0x2BFFF gives the writer's PC.
 Verdict: INCONCLUSIVE. No drag ran. The guest froze right after the DragTest shell opened, so the writer is still unknown.
 
 - Build: origin/main 6b2aeb09 (wasabi made, dist via kit-main). fresh-all with INSTALLER_KEEP=1: checks 1-33 OK, step 34
-  fails (AMARCHY port: no port), as expected.
+  fails (PATINA port: no port), as expected.
 - Debug reboot: fs-uae-debug `--max --os 32 --no-jit --debugger --idle-minutes 0`, purpose "vtcon-8c: drag freeze
   memwatch hunt". At the Kickstart stop (PC 00F800D2) two watches were armed in one FIFO round, then g (no second
   dbgbreak): `w 0 2bd40 80 W CPUDW` and `w 1 2bd40 80 W BLTD` (the mask is only parsed as the last token, so CPU and
@@ -166,8 +166,8 @@ Verdict: INCONCLUSIVE. No drag ran. The guest froze right after the DragTest she
   CPU 400B484A x68, 400B4900 x8, 00F8200C x20, 00F8200E x20, 00F81F24 x2, 00F81EE6/00F81EEE (exec clear);
   blitter D 00F86AA6 x34, 00F86AA8 x13, 00F86AE2 x7, 00F895D6 x10, 00F895DC x7. These are boot-time users of that
   memory, not the drag writer.
-- Process list after boot: SYS:Prefs/Pointer still running (the S57 start hang from vtcon-c1), plus Amarchy,
-  amarchy-flat, amarchy-gui, SolidWin, amarchy-menu, Workbench.
+- Process list after boot: SYS:Prefs/Pointer still running (the S57 start hang from vtcon-c1), plus Patina,
+  patina-flat, patina-gui, SolidWin, patina-menu, Workbench.
 - `Run >NIL: NewShell WINDOW=XCON:0/7/640/249/DragTest` returned rc 0. The next exec (RAM:copcheck) never returned
   and wasabid stayed silent ("daemon did not answer for 150 s"), also after a dbgbreak + g. The debugger showed the CPU
   idle in STOP at PC 40061A8E (S=1, STP=1, IMASK=0): no task ready, all waiting. No memwatch hit in this phase, so

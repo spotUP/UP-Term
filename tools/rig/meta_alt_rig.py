@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""meta_alt_rig.py -- Alt is Meta by default (plan 2026-10-22-amarchy-commodity.md, Phase A6, decision D2).
+"""meta_alt_rig.py -- Alt is Meta by default (plan 2026-10-22-patina-commodity.md, Phase A6, decision D2).
 
 On the Swedish keymap, Left Alt + b and Left Alt + f reach the vsh line editor as M-b and M-f
 (word back, word forward). Each check types a command, edits it with the Alt key, runs it and

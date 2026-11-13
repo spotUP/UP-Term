@@ -1,6 +1,6 @@
 """upkg_browse_rig.setup(): the old base's Delete needs no program running from its bin.
 
-The image's User-Startup runs UP-Term:bin/Amarchy, which starts amarchy-gui and amarchy-menu; each holds a lock on the
+The image's User-Startup runs UP-Term:bin/Patina, which starts patina-gui and patina-menu; each holds a lock on the
 bin drawer and the Delete failed with "bin Not Deleted: object is in use" (rc 20, 2026-10-29, rig 10).
 """
 import pathlib, sys, tempfile, unittest
@@ -13,10 +13,10 @@ import upkg_rig as ur
 
 STATUS = """Process  1: Loaded as command: DO_LAUNCHER
 Process  2: Loaded as command: BOOTX:wasabid
-Process  5: Loaded as command: UP-Term:bin/Amarchy
+Process  5: Loaded as command: UP-Term:bin/Patina
 Process  6: Loaded as command: Status
-Process  7: Loaded as command: Rushhours:Tools/UP-Term/bin/amarchy-gui
-Process  8: Loaded as command: Rushhours:Tools/UP-Term/bin/amarchy-menu
+Process  7: Loaded as command: Rushhours:Tools/UP-Term/bin/patina-gui
+Process  8: Loaded as command: Rushhours:Tools/UP-Term/bin/patina-menu
 Process  9: Loaded as command: DOpus5:DirectoryOpus
 """
 

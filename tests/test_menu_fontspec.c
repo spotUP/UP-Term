@@ -1,7 +1,7 @@
-/* The drawn menu's font spec: the theme's Menu Font, else the user's AM_FONT, else the built-in (amarchy/menu_fontspec_core.c, TE-7b.1). */
+/* The drawn menu's font spec: the theme's Menu Font, else the user's AM_FONT, else the built-in (patina/menu_fontspec_core.c, TE-7b.1). */
 #include <stdio.h>
 #include <string.h>
-#include "../amarchy/menu_fontspec_core.h"
+#include "../patina/menu_fontspec_core.h"
 #include "harness.h"
 
 static gt_model mdl;
@@ -32,12 +32,12 @@ static void test_fontspec_load(void)
     char out[64];
     int used;
 
-    file_body = "amarchy-theme = 2\nname = \"mf\"\n[profile look]\nmenu-font = \"topaz.font/8\"\n";
+    file_body = "patina-theme = 2\nname = \"mf\"\n[profile look]\nmenu-font = \"topaz.font/8\"\n";
     used = mt_font_spec_load(fake_theme_read, 0, "mf", "JetBrainsMono.font:16", out, (int)sizeof out);
     CHECK_INT(used, 1);
     CHECK_STR(out, "topaz.font:8");
 
-    file_body = "amarchy-theme = 2\nname = \"nf\"\n[profile look]\ntitle-font = \"topaz.font\"\n";
+    file_body = "patina-theme = 2\nname = \"nf\"\n[profile look]\ntitle-font = \"topaz.font\"\n";
     used = mt_font_spec_load(fake_theme_read, 0, "nf", "JetBrainsMono.font:16", out, (int)sizeof out);
     CHECK_INT(used, 0);
     CHECK_STR(out, "JetBrainsMono.font:16");

@@ -1,4 +1,4 @@
-/* wbfake -- a fake app for the Amarchy app index rig case (plan 2026-10-23-amarchy-app-index.md, X9).
+/* wbfake -- a fake app for the Patina app index rig case (plan 2026-10-23-patina-app-index.md, X9).
  * Started as Workbench starts a tool (no console): writes RAM:x9.<name>.started, waits two seconds,
  * writes RAM:x9.<name>.ended and ends. <name> is the program's own file name, so one binary serves as
  * several fake apps. Plain vbcc, no ixemul. */

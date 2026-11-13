@@ -9,8 +9,8 @@ branch: worktree-agent-ad60c5bcd9f17745f (base 4e5cf2e5)
 
 ## Defect
 
-The graphics.library RectFill and Text patches (amarchy/flat_rf.s -> flat_rf_c,
-amarchy/flat_tx.s -> flat_tx_c in amarchy/flat.c) run on the CALLER's stack.
+The graphics.library RectFill and Text patches (patina/flat_rf.s -> flat_rf_c,
+patina/flat_tx.s -> flat_tx_c in patina/flat.c) run on the CALLER's stack.
 tests/test_flat_budget.py only covered the two c2 image hooks, so these two
 entries had no budget at all. Limits (unchanged): entry frame <= 64, any
 reachable frame <= 80, chain <= 384 with >= 64 headroom (target <= 320), no
@@ -106,7 +106,7 @@ Host suites pass: flat_core (2755 checks, incl. new fold tests
 role_add/of == flat_button_role over every self and sibling set, and
 title_span_add == flat_title_span over every gadget run), flat_role_core
 (48), iclabel (256), richaa (13), flat_icl_pens (test updated for
-`icx.cm`), flat_on_hang. build/amiga/amarchy-flat builds clean.
+`icx.cm`), flat_on_hang. build/amiga/patina-flat builds clean.
 
 ## Open (exactly what is left)
 
@@ -180,7 +180,7 @@ Still open: the two paths above; host tests for `flat_button_corner`, `flat_scro
 
 rf children (stub excluded, target <= 292): bb path 292, scroller look-up path 292 (rf_scroller 28, scroller_pen 24, scroller_pen_of 60, prop_knob 32, knob_img 32, knob 28), dim path 268. Zero slack on rf: any new frame byte on the bb or scroller path fails the gate.
 
-Host suites flat_core, richaa, iclabel, flat_role_core pass; `build/amiga/amarchy-flat` builds with no warnings.
+Host suites flat_core, richaa, iclabel, flat_role_core pass; `build/amiga/patina-flat` builds with no warnings.
 
 Still open: rig eye-check of scroller knobs, disabled gadgets and border buttons (not run: no rig in this task); the border-button wait lock below.
 

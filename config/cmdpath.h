@@ -4,7 +4,7 @@
  * cli_CommandDir is a BPTR chain of AllocVec'd nodes {next, lock}: a Shell started with NP_Path gets a copy
  * of it and frees it when it ends. Three users:
  *   shell/vsh.c wb_path()           the Shell vsh starts from Workbench gets a copy of the Workbench path
- *   amarchy/proclaunch.c            every Amarchy launch gets a copy of the Workbench path (+ UP-Term:bin)
+ *   patina/proclaunch.c            every Patina launch gets a copy of the Workbench path (+ UP-Term:bin)
  *   install/wbpath.c (WBPath)       edits the Workbench process's own path live (UHC:ExtBin on install)
  * Needs CMDPATH_DOS defined before the include, after proto/exec.h, proto/dos.h and dos/dosextens.h. */
 #ifndef CMDPATH_H

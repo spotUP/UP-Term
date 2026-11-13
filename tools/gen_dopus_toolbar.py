@@ -12,15 +12,15 @@ and dopustb_core.c dt_cmap see the same format as for a generated set. A tall se
 --export-hand copies a built <out dir>'s tall images into <hand dir> once, as the starting files.
 
 Writes <out>/Images/<set>/<name> (IFF ILBM brushes, FORM ILBM / BMHD / CMAP of 8 pens / BODY, pens 0-6) and
-<out>/Buttons/Amarchy-toolbar-<set>, one per set. A set is a family and a size: "outline-16" ... "outline-32t" and
-"filled-16" ... "filled-32t" (sizes 16, 24, 32, each square and tall; amarchy/dopustb_core.c dt_set_name makes the same
+<out>/Buttons/Patina-toolbar-<set>, one per set. A set is a family and a size: "outline-16" ... "outline-32t" and
+"filled-16" ... "filled-32t" (sizes 16, 24, 32, each square and tall; patina/dopustb_core.c dt_set_name makes the same
 names). Both families are drawn by tools/svg_raster.py on the pixel grid (DT-8: design grid to whole pixels, straight
 edges whole pixels), levels by gen_lucide_icons.level:
   outline  the Lucide SVG source (package/icons/<glyph>.svg in the lucide-static tarball), stroke STROKE_PX;
   filled   the Phosphor Fill glyph (codepoints.json beside the font names its code point), its outline turned into an SVG
            path on the font's 1024 em square (y = ascent 960 - font y) and filled, the default family (icon-style filled).
 The bank is the upstream default toolbar bank with only two differences, the image paths
-(dopus5:images/X -> dopus5:images/Amarchy/<set>/X) and the Borderless Buttons flag (BTNWF_BORDERLESS, dopus5.h CFG_BTNW
+(dopus5:images/X -> dopus5:images/Patina/<set>/X) and the Borderless Buttons flag (BTNWF_BORDERLESS, dopus5.h CFG_BTNW
 flags). The glyph map is the table file (`<image name> <lucide glyph> <phosphor glyph>` per line), nothing is named here.
 
 Bank format (dopus5 source include/dopus/dopus5.h CFG_BTNW, config/): FORM EPUS { BTNW, then BUTN and FUNC chunks }.
@@ -43,7 +43,7 @@ from fontTools.ttLib import TTFont  # noqa: E402
 
 # DT-1: size sets. SIZES are the brush widths (upstream's is 24, measured on DOpus5/Images/*.small); each set is square
 # (width x width) or tall pixel (width x width/2, for a 2:1 pixel aspect, as gen_lucide_icons.VARIANTS (32, 16)).
-# Theme apply picks the set (amarchy/dopustb_core.c dt_pick_set, which mirrors set_name below).
+# Theme apply picks the set (patina/dopustb_core.c dt_pick_set, which mirrors set_name below).
 SIZES = (16, 24, 32)
 FAMILIES = ("outline", "filled")   # DT-9: Lucide strokes, Phosphor Fill (the default, dopustb_core dt_set.outline 0)
 DEPTH = 3                      # 8 pens
@@ -52,7 +52,7 @@ STROKE_PX = {16: 1, 24: 2, 32: 2}
 # Pens: 0 ground (transparent), 1-3 glyph at 33/66/100 percent, 4-6 accent at 33/66/100 percent, 7 ground. Levels map
 # 1:1 to pens 1-3.
 PEN_OF_LEVEL = (0, 1, 2, 3)
-# Placeholder CMAP (Tokyo Night, the blend of amarchy/iconpen_core.c ip_colours). DOpus remaps a brush to the screen by
+# Placeholder CMAP (Tokyo Night, the blend of patina/iconpen_core.c ip_colours). DOpus remaps a brush to the screen by
 # its CMAP; theme apply rewrites these 24 bytes from ip_colours itself (dopustb_core.c dt_cmap), so nothing here is a
 # second blend: these literals only serve until the first theme apply.
 CMAP = ((0x1A, 0x1B, 0x26), (0x49, 0x4D, 0x60), (0x78, 0x7E, 0x9A), (0xA9, 0xB1, 0xD6), (0x3A, 0x48, 0x6B), (0x59, 0x74, 0xB0), (0x7A, 0xA2, 0xF7), (0x1A, 0x1B, 0x26))
@@ -155,7 +155,7 @@ def rewrite_bank(src, name):
             data = data[:BTNW_FLAGS_OFF] + struct.pack(">L", flags) + data[BTNW_FLAGS_OFF + 4:]
             seen += 1
         elif tag == b"BUTN":
-            data = re.sub(re.escape(OLD_PREFIX), b"dopus5:images/Amarchy/" + name.encode() + b"/", data, flags=re.I)
+            data = re.sub(re.escape(OLD_PREFIX), b"dopus5:images/Patina/" + name.encode() + b"/", data, flags=re.I)
         out.append(chunk(tag, data))
     if seen != 1:
         raise SystemExit("bank has %d BTNW chunks" % seen)
@@ -196,8 +196,8 @@ def main():
             else:
                 img = glyph(svgs[fam][name], w, h)
             (dest / "Images" / sname / name).write_bytes(img)
-        (dest / "Buttons" / ("Amarchy-toolbar-" + sname)).write_bytes(rewrite_bank(upstream, sname))
-    print("[OK] %d images x %d sets and Buttons/Amarchy-toolbar-<set> in %s" % (len(rows), len(sets()), dest))
+        (dest / "Buttons" / ("Patina-toolbar-" + sname)).write_bytes(rewrite_bank(upstream, sname))
+    print("[OK] %d images x %d sets and Buttons/Patina-toolbar-<set> in %s" % (len(rows), len(sets()), dest))
 
 
 if __name__ == "__main__":

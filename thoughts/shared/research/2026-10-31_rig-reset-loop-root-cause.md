@@ -47,4 +47,4 @@ fails on HEAD rig.py, passes with the fix.
 ## Next (when it recurs)
 Read build/rig<N>/reset-loop-*.fs-uae.log: first Illegal/Exception line and the 30 lines before it. For a PC in Z3
 RAM, map it with wasabi ps/seglists on a second boot; for the RTG -> NTSC -> SetSwitch amiga sequence, try closing an
-RTG screen (Palette/ScreenMode prefs USE, Amarchy theme switch) as the trigger.
+RTG screen (Palette/ScreenMode prefs USE, Patina theme switch) as the trigger.

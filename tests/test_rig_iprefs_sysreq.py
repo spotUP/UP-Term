@@ -3,7 +3,7 @@
 and a start that still meets it fails after a bounded number of Retry clicks.
 Old clone: the A1200 master's DEVS:Monitors/REPLAY (FPGA Replay P96 driver) failed on FS-UAE and printed to the boot
 console before C:IPrefs; that opened the 'AmigaDOS' window on the PAL Workbench screen, so IPrefs' reset to the RTG
-screenmode.prefs found a window open, and DOpus' backdrop and the Amarchy bar kept every Retry failing."""
+screenmode.prefs found a window open, and DOpus' backdrop and the Patina bar kept every Retry failing."""
 import contextlib, io, pathlib, sys, tempfile, types, unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools/rig"))

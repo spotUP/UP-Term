@@ -38,10 +38,10 @@ headroom at least 64. The limits never move.
 
 ## Fix
 
-The main task of amarchy-flat owns a draw table. Hooks only look up a pointer. No `flat_state` copy and no iconpen_dos
+The main task of patina-flat owns a draw table. Hooks only look up a pointer. No `flat_state` copy and no iconpen_dos
 call in any function reachable from the dispatchers.
 
-### Pure part (amarchy/flat_core.h, flat_core.c; host tested)
+### Pure part (patina/flat_core.h, flat_core.c; host tested)
 
 ```c
 typedef struct flat_draw_slot {

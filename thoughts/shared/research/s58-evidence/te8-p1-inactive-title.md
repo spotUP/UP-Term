@@ -13,7 +13,7 @@ The inactive title text is dimmed on purpose, so its pair is held to 150 (GT_FLO
 `gt_elem_defs[GTE_TITLE_TEXT_INACTIVE]` (gthemes_core.c:528) names group GTG_MUTED_TEXT. `gt_resolve` (about :893) falls back element normal, then group state, then group normal; `gt_resolve_rgb` evaluates the ref. Every reader goes through `gt_resolve_rgb`: the contrast table (`gt_contrast_pairs`), the pen budget (`gt_pen_budget`), `gt_elem_rgb`, the preview. Single place changed: `gt_resolve_rgb`, when elem is GTE_TITLE_TEXT_INACTIVE and neither the state nor the normal slot of the element holds a ref, the result goes through the existing `push_off(c, toward, bar, GT_FLOOR_DIM)` (toward black on a light bar, white on a dark one). No second push routine.
 
 ## Kind consumers (counted from the code)
-`GTC_*` kinds are read in 2 places: the table `gt_cpair_def[]` (gthemes_core.c, pair 1 now GTC_DIM) and the kind-to-floor mapping in `gt_contrast_pairs` (one ternary, now with GTC_DIM). grep of amarchy/, tests/ shows no kind-to-label switch. gthemes_core.h: enum + GT_FLOOR_DIM + comment.
+`GTC_*` kinds are read in 2 places: the table `gt_cpair_def[]` (gthemes_core.c, pair 1 now GTC_DIM) and the kind-to-floor mapping in `gt_contrast_pairs` (one ternary, now with GTC_DIM). grep of patina/, tests/ shows no kind-to-label switch. gthemes_core.h: enum + GT_FLOOR_DIM + comment.
 
 ## Per-theme (old default, new, contrast on the inactive bar)
 | theme | old | contrast | new | contrast | bar |
@@ -51,7 +51,7 @@ The pen budget counts distinct resolved colours, so the pushed default adds one 
 - RED (fix disabled, FINAL test code): RUNTEST gthemes rc=2 [FAIL] gthemes: 6279 checks, 78 failed
 - GREEN (fix, final test code): RUNTEST gthemes rc=0 [OK] gthemes: 6279 checks, 0 failed
 - desk: RUNTEST desk rc=0 [OK] desk: 2311 checks, 0 failed
-- m68k build (Amarchy amarchy-gui amarchy-menu amarchy-index amarchy-icons amarchy-flat upprefs): rc=0
+- m68k build (Patina patina-gui patina-menu patina-index patina-icons patina-flat upprefs): rc=0
 
 ## Drawing code (not changed)
 The drawn inactive title text does NOT read the model element GTE_TITLE_TEXT_INACTIVE. flat.c:318-345 `c2_get_pens` uses `flat_inactive_pen` (flat_core.c:661-666): pen_inbar (the GR_INACTIVE bar tone, obtained from inbar_rgb) at depth 4..8, else pen_dimtext (muted text pen). Only `themeprev_core.c:21` (the editor preview) reads GTE_TITLE_TEXT_INACTIVE; grep over all .c/.h finds no other reader. So this fix changes the contrast table, the warning, the preview and the pen budget, not the live window. Whether the live inactive title text should follow the element is a separate question.

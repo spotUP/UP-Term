@@ -1,5 +1,5 @@
 /* wbpens -- P1A R1.1f: the Workbench screen's live pens as text, for the rig test that proves a
- * theme moved the desktop (plan 2026-10-29-amarchy-p1a-native-theme.md).
+ * theme moved the desktop (plan 2026-10-29-patina-p1a-native-theme.md).
  *
  * Prints, for the Workbench public screen: its depth, GetRGB32 of colours 0-7 and the sprite
  * colours 17-19 and on a screen deeper than 8 colours the last four (8-bit per gun, the high byte of the 32-bit value), the DrawInfo pens
@@ -10,11 +10,11 @@
  *   TITLE Workbench Screen
  *
  * wbpens WATCH <seconds>: every tick, a line when the Workbench screen address, colours 4-7 or the last four change, or when
- * T:amarchy-revert/flatlive.rgb (F, the flat live-pen write) or ENV:AMARCHY_WBCLOSES (D, the apply returned) appears or goes, stamped with ticks since start:
+ * T:patina-revert/flatlive.rgb (F, the flat live-pen write) or ENV:PATINA_WBCLOSES (D, the apply returned) appears or goes, stamped with ticks since start:
  *   T 123 SCR 0x1234 4 0000ff 5 ff00ff 6 00ffff 7 ffffff L 0000ff 222222 00ffff ffffff F 1 D 0
  *
  * wbpens RGB <n> [<n> ...]: only the RGB lines of the given colour entries (an allocated pen such as
- * amarchy-flat STATUS knob=249), same RGB line form. */
+ * patina-flat STATUS knob=249), same RGB line form. */
 #include <stdio.h>
 #include <intuition/intuition.h>
 #include <intuition/screens.h>
@@ -26,7 +26,7 @@
 #include <proto/dos.h>
 #include <proto/intuition.h>
 #include <proto/graphics.h>
-#include "../../amarchy/flat_shared.h"   /* the "Amarchy.Flat" record: st.enabled is the flat state (F marker) */
+#include "../../patina/flat_shared.h"   /* the "Patina.Flat" record: st.enabled is the flat state (F marker) */
 
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
@@ -45,7 +45,7 @@ static void watch(long secs)
         int flat_on;
         int i, n = 0;
         ULONG rgb[3];
-        BPTR d = Lock((STRPTR)"ENV:AMARCHY_WBCLOSES", ACCESS_READ);
+        BPTR d = Lock((STRPTR)"ENV:PATINA_WBCLOSES", ACCESS_READ);
         Forbid();
         fr = (flatshared *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
         flat_on = fr && fr->st.enabled;

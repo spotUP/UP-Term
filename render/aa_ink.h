@@ -1,6 +1,6 @@
 /* aa_ink -- coverage to ink: how an antialiased glyph (one coverage byte per pixel) is drawn in a text colour
  * over a background colour. Shared by the terminal renderer (render/amiga_render.c) and every program that
- * draws antialiased text in a window of its own (amarchy-gui's TrueType menu text); no copy of this path
+ * draws antialiased text in a window of its own (patina-gui's TrueType menu text); no copy of this path
  * anywhere else.
  *
  * What it does: a table of fg over bg at each of 256 coverages (ce_mix); on a true-colour screen with
@@ -39,7 +39,7 @@ LONG vr_cgx_write_lut(__reg("a6") struct Library *, __reg("a0") APTR src, __reg(
 #endif
 
 /* cybergraphics.library V41 FillPixelArray (LVO -150): a rectangle in a 0xAARRGGBB colour, no pen, through the
- * RastPort's layer. The terminal's fills and amarchy-gui's menu boxes on a true-colour screen. */
+ * RastPort's layer. The terminal's fills and patina-gui's menu boxes on a true-colour screen. */
 #ifdef VR_HOST_TEST
 ULONG vr_cgx_fill(struct Library *, struct RastPort *rp, UWORD x, UWORD y, UWORD w, UWORD h, ULONG argb);
 #else

@@ -1,16 +1,16 @@
-/* Amarchy's own settings file (amarchy/amconf_core.c): the key table, parse, serialize, the UP-Term file as the
+/* Patina's own settings file (patina/amconf_core.c): the key table, parse, serialize, the UP-Term file as the
  * legacy source, the load chain, the migration and the shared install path, against a file table in memory. */
 #include <stdio.h>
 #include <string.h>
-#include "../amarchy/amconf_core.h"
-#include "../amarchy/leaf.h"
+#include "../patina/amconf_core.h"
+#include "../patina/leaf.h"
 #include "../prefs/settings_def.h"
 #include "../prefs/prefs_ui.h"
 #include "harness.h"
 #include "memfs.h"
 
-#define AP "ENVARC:Amarchy/prefs"
-#define EP "ENV:Amarchy/prefs"
+#define AP "ENVARC:Patina/prefs"
+#define EP "ENV:Patina/prefs"
 #define UP "ENV:up-term/up-term"
 #define UA "ENVARC:up-term/up-term"
 
@@ -69,9 +69,9 @@ static void test_amconf_parse_defaults(void)
     }
     {   /* every key is read by its own name */
         static const char txt[] =
-            "[profile default]\nmenu-style = Text\namarchy-app-icons = none\namarchy-menu-font = topaz.font:11\n"
-            "amarchy-music-drawers = Work:Music\namarchy-demo-drawers = Work:Demos\namarchy-hide-drawers = Sys:Tools\n"
-            "amarchy-index-skip = Work:Tmp\namarchy-index-volumes = Net:\n";
+            "[profile default]\nmenu-style = Text\npatina-app-icons = none\npatina-menu-font = topaz.font:11\n"
+            "patina-music-drawers = Work:Music\npatina-demo-drawers = Work:Demos\npatina-hide-drawers = Sys:Tools\n"
+            "patina-index-skip = Work:Tmp\npatina-index-volumes = Net:\n";
         amconf_parse(txt, (long)strlen(txt), &p);
         CHECK_STR(p.val[AM_STYLE], "Text");
         CHECK_INT(amconf_style(&p), UC_MENU_TEXT);
@@ -242,7 +242,7 @@ static void test_amconf_roundtrip(void)
     amconf_defaults(&p);
     n = amconf_serialize(&p, buf, sizeof buf);
     CHECK(n > 0);
-    CHECK(strstr(buf, "amarchy-") == 0 && strstr(buf, "menu-style") == 0); /* all defaults: no key written */
+    CHECK(strstr(buf, "patina-") == 0 && strstr(buf, "menu-style") == 0); /* all defaults: no key written */
     amconf_parse(buf, n, &q);
     CHECK(same_prefs(&p, &q));
     strcpy(p.val[AM_STYLE], "minimal");
@@ -250,7 +250,7 @@ static void test_amconf_roundtrip(void)
     strcpy(p.val[AM_SKIP], "Work:Tmp");
     n = amconf_serialize(&p, buf, sizeof buf);
     CHECK(strstr(buf, "menu-style = minimal") != 0);
-    CHECK(strstr(buf, "amarchy-app-icons") == 0); /* still at its default: absent */
+    CHECK(strstr(buf, "patina-app-icons") == 0); /* still at its default: absent */
     amconf_parse(buf, n, &q);
     CHECK(same_prefs(&p, &q));
     CHECK_INT(amconf_serialize(&p, buf, 10), -1);
@@ -259,8 +259,8 @@ static void test_amconf_roundtrip(void)
 static void test_amconf_legacy(void)
 {
     static const char old[] =
-        "; UP-Term\n[profile default]\nfont = topaz.font:8\nmenu-style = text\namarchy-index-volumes = Net:\n"
-        "[profile ansi]\nmenu-style = minimal\namarchy-app-icons = none\n";
+        "; UP-Term\n[profile default]\nfont = topaz.font:8\nmenu-style = text\npatina-index-volumes = Net:\n"
+        "[profile ansi]\nmenu-style = minimal\npatina-app-icons = none\n";
     am_prefs p;
     amconf_legacy(old, (long)strlen(old), &p);
     CHECK_STR(p.val[AM_STYLE], "text");
@@ -284,8 +284,8 @@ static void test_amconf_style(void)
 
 /* T12: the Prefs "Menu theme" row reaches the saved key through the fields: to_fields shows the saved name, from_fields
  * stores the typed one, an emptied row falls back to the default theme */
-/* The Amarchy font row's chooser result (ASL name + size, a TrueType face included) reaches the spec
- * amarchy-gui's mt_open parses: compose -> field -> amconf file -> parse gives the same name and size. */
+/* The Patina font row's chooser result (ASL name + size, a TrueType face included) reaches the spec
+ * patina-gui's mt_open parses: compose -> field -> amconf file -> parse gives the same name and size. */
 static void test_amconf_ttf_font_roundtrip(void)
 {
     am_prefs p, q;
@@ -301,7 +301,7 @@ static void test_amconf_ttf_font_roundtrip(void)
     CHECK_STR(f.am_font, "Vera Mono:14");
     amconf_from_fields(&p, &f);
     n = amconf_serialize(&p, buf, sizeof buf);
-    CHECK(strstr(buf, "amarchy-menu-font = Vera Mono:14") != 0);
+    CHECK(strstr(buf, "patina-menu-font = Vera Mono:14") != 0);
     amconf_parse(buf, n, &q);
     CHECK_INT(prefs_font_parse(q.val[AM_FONT], name, sizeof name, &size), 1);
     CHECK_STR(name, "Vera Mono.font"); /* what vo_ttf_spec cuts to FONTS:Vera Mono.otag */
@@ -330,30 +330,30 @@ static void test_amconf_index_keys(void)
     prefs_fs fs;
     amconf_io io = io_of(&m, &fs);
     am_prefs p;
-    mf_put(&m, AP, "amarchy-index-skip = Work:Tmp,Ram:\namarchy-index-volumes = Net:,Srv:\n");
+    mf_put(&m, AP, "patina-index-skip = Work:Tmp,Ram:\npatina-index-volumes = Net:,Srv:\n");
     CHECK_INT(amconf_load_with(&io, &p), AMCONF_ENVARC);
     CHECK_STR(p.val[AM_SKIP], "Work:Tmp,Ram:");
     CHECK_STR(p.val[AM_VOLUMES], "Net:,Srv:");
 }
 
-static void test_prefs_strip_legacy_amarchy(void)
+static void test_prefs_strip_legacy_patina(void)
 {
     static upconf c;
-    const char *txt = "[profile default]\nfont = topaz.font:8\namarchy-music-drawers = Mod\n"
-                      "amarchy-index-skip = Ram:\nmenu-style = text\n";
+    const char *txt = "[profile default]\nfont = topaz.font:8\npatina-music-drawers = Mod\n"
+                      "patina-index-skip = Ram:\nmenu-style = text\n";
     CHECK_INT(upconf_parse(&c, txt, (long)strlen(txt)), 1);
     CHECK_INT(amconf_strip_legacy(&c), 3);
-    CHECK(upconf_str(&c, "default", "amarchy-music-drawers", 0) == 0);
+    CHECK(upconf_str(&c, "default", "patina-music-drawers", 0) == 0);
     CHECK(upconf_str(&c, "default", "menu-style", 0) == 0);
     CHECK_STR(upconf_str(&c, "default", "font", ""), "topaz.font:8");
     CHECK_INT(amconf_strip_legacy(&c), 0);
 }
 
-/* The reported symptom: ENVARC:Amarchy/prefs exists, so an edit of the Amarchy page that went into the
- * UP-Term profile was never read. The page now loads from and saves to Amarchy's file; the profile holds no
- * Amarchy key afterwards. Drives the editor's path: load, edit a field, amconf_save_fields_with, prefs_stage,
+/* The reported symptom: ENVARC:Patina/prefs exists, so an edit of the Patina page that went into the
+ * UP-Term profile was never read. The page now loads from and saves to Patina's file; the profile holds no
+ * Patina key afterwards. Drives the editor's path: load, edit a field, amconf_save_fields_with, prefs_stage,
  * prefs_save_at on the UP-Term paths. */
-static void prefs_amarchy_page_edit_reaches_amarchy_prefs(void)
+static void prefs_patina_page_edit_reaches_patina_prefs(void)
 {
     static upconf conf, work;
     static char buf[UC_MAX_FILE + 1];
@@ -364,7 +364,7 @@ static void prefs_amarchy_page_edit_reaches_amarchy_prefs(void)
     am_prefs am, got;
     int src, failed;
     long len;
-    mf_put(&m, AP, "amarchy-music-drawers = Mod\n");
+    mf_put(&m, AP, "patina-music-drawers = Mod\n");
     mf_put(&m, UA, "[profile default]\nfont = topaz.font:8\nmenu-in-terminal = graphical\nmenu-style = text\n");
     src = amconf_load_with(&io, &am);
     CHECK_INT(src, AMCONF_ENVARC);
@@ -389,7 +389,7 @@ static void prefs_amarchy_page_edit_reaches_amarchy_prefs(void)
     mf_put(&m, AP, "marker\n");
     CHECK_INT(amconf_save_fields_with(&io, &am, &src, &f, 1, &failed), PREFS_INSTALL_OK);
     CHECK_STR(mf_get(&m, AP), "marker\n");
-    /* values only read from the old UP-Term file are moved into Amarchy's file before the profile drops them */
+    /* values only read from the old UP-Term file are moved into Patina's file before the profile drops them */
     mf_put(&m, AP, "");
     am.val[AM_MUSIC][0] = 0;
     src = AMCONF_LEGACY_ENVARC;
@@ -416,10 +416,10 @@ static void test_amconf_load_chain(void)
     mf_put(&m, UP, "menu-style = text\n");
     CHECK_INT(amconf_load_with(&io, &p), AMCONF_LEGACY_ENV);
     CHECK_INT(amconf_style(&p), UC_MENU_TEXT);
-    mf_put(&m, AP, "menu-style = graphical\namarchy-app-icons = none\n");
+    mf_put(&m, AP, "menu-style = graphical\npatina-app-icons = none\n");
     CHECK_INT(amconf_load_with(&io, &p), AMCONF_ENVARC);
     CHECK_INT(amconf_icons(&p), UC_ICONS_NONE);
-    mf_put(&m, EP, "amarchy-app-icons = amiga\n");
+    mf_put(&m, EP, "patina-app-icons = amiga\n");
     CHECK_INT(amconf_load_with(&io, &p), AMCONF_ENV);
     CHECK_INT(amconf_icons(&p), UC_ICONS_AMIGA);
     CHECK_INT(amconf_style(&p), UC_MENU_GRAPHICAL); /* the new file wins whole: no key mixing with legacy */
@@ -459,15 +459,15 @@ static void test_amconf_migrate_idempotent(void)
 }
 
 /* the commodity watches the ENV: copies only: an ENVARC: watch makes the reload race the ENV: write (error 202) */
-static void test_amarchy_notify_env_only(void)
+static void test_patina_notify_env_only(void)
 {
     int i, keymap = 0, user = 0, own = 0;
-    for (i = 0; i < PREFS_NNOTIFY_AMARCHY; i++) {
-        const char *n = prefs_notify_amarchy[i];
+    for (i = 0; i < PREFS_NNOTIFY_PATINA; i++) {
+        const char *n = prefs_notify_patina[i];
         CHECK(strncmp(n, "ENVARC:", 7) != 0);
         keymap += strcmp(n, "ENV:up-term/keymap") == 0;
         user += strcmp(n, "ENV:up-term/keymap.user") == 0;
-        own += strcmp(n, prefs_paths_amarchy.path[PREFS_T_ENV]) == 0;
+        own += strcmp(n, prefs_paths_patina.path[PREFS_T_ENV]) == 0;
     }
     CHECK_INT(keymap, 1);
     CHECK_INT(user, 1);
@@ -480,7 +480,7 @@ static void test_amconf_install_both_sets(void)
     const prefs_paths *set[2];
     int s;
     set[0] = &prefs_paths_upterm;
-    set[1] = &prefs_paths_amarchy;
+    set[1] = &prefs_paths_patina;
     for (s = 0; s < 2; s++) {
         memfs m;
         prefs_fs fs;
@@ -519,25 +519,25 @@ static int note_dir(const prefs_paths *p, int t)
     return 1;
 }
 
-static void test_prefs_dos_dir_amarchy(void)
+static void test_prefs_dos_dir_patina(void)
 {
     memfs m;
     prefs_fs fs;
     int failed, t;
     mf_init(&m, &fs);
     g_dirs_seen = 0;
-    CHECK_INT(prefs_save_at(&fs, note_dir, &prefs_paths_amarchy, "x", 1, 1, &failed), PREFS_INSTALL_OK);
+    CHECK_INT(prefs_save_at(&fs, note_dir, &prefs_paths_patina, "x", 1, 1, &failed), PREFS_INSTALL_OK);
     CHECK_INT(g_dirs_seen, 2);
-    CHECK_STR(g_dir_last[PREFS_T_ENV], "ENV:Amarchy");
-    CHECK_STR(g_dir_last[PREFS_T_ENVARC], "ENVARC:Amarchy");
+    CHECK_STR(g_dir_last[PREFS_T_ENV], "ENV:Patina");
+    CHECK_STR(g_dir_last[PREFS_T_ENVARC], "ENVARC:Patina");
     g_dirs_seen = 0;
-    prefs_save_at(&fs, note_dir, &prefs_paths_amarchy, "x", 1, 0, &failed); /* Use: ENV: only */
+    prefs_save_at(&fs, note_dir, &prefs_paths_patina, "x", 1, 0, &failed); /* Use: ENV: only */
     CHECK_INT(g_dirs_seen, 1);
     for (t = 0; t < 2; t++) {
-        CHECK(strcmp(prefs_paths_amarchy.dir[t], prefs_paths_upterm.dir[t]) != 0);
-        CHECK(strcmp(prefs_paths_amarchy.path[t], prefs_paths_upterm.path[t]) != 0);
+        CHECK(strcmp(prefs_paths_patina.dir[t], prefs_paths_upterm.dir[t]) != 0);
+        CHECK(strcmp(prefs_paths_patina.path[t], prefs_paths_upterm.path[t]) != 0);
     }
-    CHECK(strcmp(prefs_paths_amarchy.tmp, prefs_paths_upterm.tmp) != 0);
+    CHECK(strcmp(prefs_paths_patina.tmp, prefs_paths_upterm.tmp) != 0);
 }
 
 static int no_dir(const prefs_paths *p, int t)
@@ -560,7 +560,7 @@ static void test_amconf_save_nodir(void)
     CHECK_INT(failed, PREFS_T_ENVARC);
 }
 
-/* LF_SETTING (plan 2026-10-26-amarchy-prefs-inline.md, M3): Enter on a check row writes UP-Term's file and the
+/* LF_SETTING (plan 2026-10-26-patina-prefs-inline.md, M3): Enter on a check row writes UP-Term's file and the
  * reloaded fields show the new value; the profile's other keys and the highlight-cat variable go with it. */
 /* FLAT-C5: each row of the Flat Look page writes its key (flat-system-look, flat-window-gadgets,
  * flat-border-size) through the editor's fields, and reads it back. */
@@ -660,13 +660,13 @@ static void test_amconf_uiaa_key(void)
     CHECK(strstr(txt, "ui-antialias = off") != 0);
 }
 
-/* INSTALLER-FLAT-OFF: the installer writes ENVARC:Amarchy/prefs with the header only, so the key defaults are the
+/* INSTALLER-FLAT-OFF: the installer writes ENVARC:Patina/prefs with the header only, so the key defaults are the
  * look a fresh install shows. A header-only file means the flat look and flat window gadgets on (the thin border
  * size stays stock: it changes the window geometry). */
 static void test_amconf_header_only_prefs_is_flat_on(void)
 {
     am_prefs p;
-    static const char hdr[] = "; Amarchy preferences.\n";
+    static const char hdr[] = "; Patina preferences.\n";
     amconf_parse(hdr, (long)strlen(hdr), &p);
     CHECK_INT(amconf_flat_index(&p, AM_FLAT), 1);
     CHECK_INT(amconf_flat_index(&p, AM_FLATGAD), 1);
@@ -735,7 +735,7 @@ static void test_lf_setting_cycle_next_and_choices(void)
     CHECK_INT(lf_setting_next(s, 0), 1);
     CHECK_INT(lf_setting_next(s, s->nvalues - 1), 0);        /* wraps */
     CHECK_INT(lf_setting_next(&sd_settings[SDI_SCROLLBACK], 0), -1);
-    CHECK_INT(lf_setting_step(&io, s, &failed), LF_SET_OK);  /* Amarchy's own file */
+    CHECK_INT(lf_setting_step(&io, s, &failed), LF_SET_OK);  /* Patina's own file */
     CHECK(mf_get(&m, AP) != 0);
     amconf_load_with(&io, &a);
     CHECK_INT(sd_index(s, &a), (sd_def_index(s) + 1) % s->nvalues);
@@ -780,7 +780,7 @@ static void test_lf_setting_text(void)
     lf_setting_text(&io, sb, out, sizeof out);
     CHECK_STR(out, "1200");                                  /* written and reloaded */
     CHECK(strstr(mf_get(&m, UP), "font = topaz") != 0);
-    CHECK_INT(lf_setting_set_text(&io, mu, "Mods:Music", &failed), LF_SET_OK);   /* Amarchy's file */
+    CHECK_INT(lf_setting_set_text(&io, mu, "Mods:Music", &failed), LF_SET_OK);   /* Patina's file */
     amconf_load_with(&io, &a);
     CHECK_STR(a.val[AM_MUSIC], "Mods:Music");
     CHECK_INT(lf_setting_set_text(&io, mu, "a\tb", &failed), LF_SET_INVALID);
@@ -788,7 +788,7 @@ static void test_lf_setting_text(void)
     CHECK_INT(sb->max, PREFS_SB_MAX);                        /* the row's bound is Prefs' cut */
 }
 
-/* LF_SETTING colour pickers (plan 2026-10-26-amarchy-prefs-inline.md, M5): picking palette entry 5 writes that
+/* LF_SETTING colour pickers (plan 2026-10-26-patina-prefs-inline.md, M5): picking palette entry 5 writes that
  * slot to ENV: and ENVARC:; a swatch takes a palette entry or a typed hex; bad hex leaves the files alone. */
 static void test_lf_setting_colour_picker(void)
 {
@@ -905,7 +905,7 @@ static int fake_otag(void *ctx, char *out, int cap)
     return 1;
 }
 
-/* LF_SETTING font and screen mode pickers (plan 2026-10-26-amarchy-prefs-inline.md, M6): a picked font or mode
+/* LF_SETTING font and screen mode pickers (plan 2026-10-26-patina-prefs-inline.md, M6): a picked font or mode
  * is written to ENV: and ENVARC:, a cancelled requester leaves both files byte-identical. */
 static void test_lf_setting_asl_pickers(void)
 {
@@ -942,7 +942,7 @@ static void test_lf_setting_asl_pickers(void)
     CHECK_INT(fk.mode_calls, 1);
     CHECK_STR(mf_get(&m, UP), before_u);
     CHECK_STR(mf_get(&m, UA), before_a);
-    CHECK_STR(mf_get(&m, AP), "<absent>");                /* Amarchy's file never created */
+    CHECK_STR(mf_get(&m, AP), "<absent>");                /* Patina's file never created */
     /* picked */
     fk.ok = 1;
     CHECK_INT(lf_setting_pick(&io, font, &asl, &failed), LF_SET_OK);
@@ -957,7 +957,7 @@ static void test_lf_setting_asl_pickers(void)
         CHECK_STR(f.screenmode, "0x00029000");
         CHECK_STR(f.screendepth, "6");
     }
-    /* the menu font lives in Amarchy's file, and any width may be picked */
+    /* the menu font lives in Patina's file, and any width may be picked */
     CHECK_INT(lf_setting_pick(&io, mf, &asl, &failed), LF_SET_OK);
     CHECK_INT(fk.fixed, 0);
     amconf_load_with(&io, &a);
@@ -1104,14 +1104,14 @@ void suite_amconf(void)
     test_amconf_gtheme_fields();
     test_amconf_ttf_font_roundtrip();
     test_amconf_index_keys();
-    test_prefs_strip_legacy_amarchy();
-    prefs_amarchy_page_edit_reaches_amarchy_prefs();
+    test_prefs_strip_legacy_patina();
+    prefs_patina_page_edit_reaches_patina_prefs();
     test_amconf_migrate_rule();
     test_amconf_load_chain();
     test_amconf_migrate_idempotent();
     test_amconf_install_both_sets();
-    test_amarchy_notify_env_only();
-    test_prefs_dos_dir_amarchy();
+    test_patina_notify_env_only();
+    test_prefs_dos_dir_patina();
     test_amconf_save_nodir();
     test_amconf_flat_rows_write_their_keys();
     test_amconf_header_only_prefs_is_flat_on();

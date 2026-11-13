@@ -2,11 +2,11 @@
 [INFO] direction Down
 [INFO] picking row 21 (vantablack)
 Process  1: Loaded as command: BOOTX:wasabid
-Process  2: Loaded as command: VTCX:Apps/bin/amarchy-gui
+Process  2: Loaded as command: VTCX:Apps/bin/patina-gui
 Process  3: Loaded as command: Workbench
-Process  4: Loaded as command: VTCX:Apps/bin/amarchy-menu
+Process  4: Loaded as command: VTCX:Apps/bin/patina-menu
 Process  5: Loaded as command: RAM:af-rf
-Process  6: Loaded as command: VTCX:Apps/bin/Amarchy
+Process  6: Loaded as command: VTCX:Apps/bin/Patina
 Process  7: No command loaded
 Process  8: No command loaded
 Process  9: Loaded as command: BOOTX:wasabid

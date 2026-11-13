@@ -1,15 +1,15 @@
-/* TE-5 (amarchy/themeprev_core.c, plan 2026-11-05-amarchy-theme-editor.md): the preview pane's layout boxes for stock and thin
+/* TE-5 (patina/themeprev_core.c, plan 2026-11-05-patina-theme-editor.md): the preview pane's layout boxes for stock and thin
  * bar heights, radius 0 and 6, the gadget order, the colours from gt_resolve, the placement rule (D4), and the wiring in
- * amarchy/gui.c (which cannot compile on the host) checked in its source text. */
+ * patina/gui.c (which cannot compile on the host) checked in its source text. */
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stddef.h>
-#include "../amarchy/themeprev_core.h"
-#include "../amarchy/pen_cache.h"
+#include "../patina/themeprev_core.h"
+#include "../patina/pen_cache.h"
 #include "harness.h"
 
-#define THEME_DIR "dist/amarchy-themes"
+#define THEME_DIR "dist/patina-themes"
 
 static int load_model(const char *name, gt_model *m)
 {
@@ -139,7 +139,7 @@ static void test_themeprev_placement(void)
 /* Reachability (TE-5.2): gui.c cannot be built on the host, so the chain from the editor's draw to the sentinel is checked in
  * its source: draw_list -> draw_preview -> theme_preview_view -> themeprev_layout/themeprev_rgb, the sentinel bumped and
  * published, the pane shown only on a Theme Editor page with the model open, Tab toggling the full view. The rig proof is the
- * AMARCHY_PREVIEW_DRAWS global. */
+ * PATINA_PREVIEW_DRAWS global. */
 static char *slurp(const char *path)
 {
     static char buf[400000];
@@ -161,7 +161,7 @@ static const char *fn_body(const char *src, const char *head)
 
 static void test_themeprev_reaches_gui(void)
 {
-    char *src = slurp("amarchy/gui.c");
+    char *src = slurp("patina/gui.c");
     const char *b;
     CHECK(src != 0);
     if (!src)
@@ -171,7 +171,7 @@ static void test_themeprev_reaches_gui(void)
     CHECK(strstr(b, "themeprev_layout(&gt_ed.m.look") != 0);
     CHECK(strstr(b, "themeprev_rgb(&gt_ed.m") != 0);
     CHECK(strstr(b, "gui_preview_draws++") != 0);
-    CHECK(strstr(b, "sentinel_publish(\"AMARCHY_PREVIEW_DRAWS\"") != 0);
+    CHECK(strstr(b, "sentinel_publish(\"PATINA_PREVIEW_DRAWS\"") != 0);
     CHECK(strstr(b, "rich_corners(") != 0);                 /* the look's corner radius reaches the drawing */
     b = fn_body(src, "static void draw_preview(gui *g)\n{");
     CHECK(*b != 0);

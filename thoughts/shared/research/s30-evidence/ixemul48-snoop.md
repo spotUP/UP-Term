@@ -5,9 +5,9 @@ State after boot (wasabi run):
 - Version SYS:Libs/ixemul.library = object not found; List SYS:Libs PAT=#?emul#? = empty; host build/rig51/os-32/Libs has no ix* files
 - Assign LIBS: EXISTS = VTCX:ixp6 + Empty-12MB-FFS:Libs + :Classes + VTCX:pkgs/ncurses.../ixlibrary/sys/libs + VTCX:amissl ; IXEMUL: not assigned
 - ncurses ixlibrary dir holds only libncurses.ixlibrary (no ixemul); no ixemul in Work:Apps/UP-Term
-- window "startup message" (Abort button, frbuttonclass) still open, task Work:Apps/UP-Term/bin/amarchy-menu (survives Ctrl-C = boot instance blocked in the requester)
-Snoop of a manual amarchy-menu rerun after boot (LIBS has ixp6):
+- window "startup message" (Abort button, frbuttonclass) still open, task Work:Apps/UP-Term/bin/patina-menu (survives Ctrl-C = boot instance blocked in the requester)
+Snoop of a manual patina-menu rerun after boot (LIBS has ixp6):
 12:04:50.649 ramlib FindResident("ixemul.library") = fail
 12:04:54.485 ramlib LoadSeg("LIBS:ixemul.library") = ok
-12:04:59.736 amarchy-menu OpenLibrary("ixemul.library", v48) = ok
+12:04:59.736 patina-menu OpenLibrary("ixemul.library", v48) = ok
 Full log was in scratchpad snoop.log (deleted).

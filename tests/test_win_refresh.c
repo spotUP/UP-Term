@@ -1,10 +1,10 @@
-/* AMARCHY-WIN-REFRESH-UAF: win_refresh_frames() refreshes only windows that cannot close under the unlocked
+/* PATINA-WIN-REFRESH-UAF: win_refresh_frames() refreshes only windows that cannot close under the unlocked
  * RefreshWindowFrame. A fake Intuition (tests/win_refresh_host): the list is read under LockIBase; the fake UnlockIBase
  * simulates Directory Opus closing a window in the gap (unlinks it); the fake RefreshWindowFrame fails when handed a window
  * that is no longer listed (the use-after-free). Built and run by tests/test_win_refresh.py. */
 #include <stdio.h>
 #include <string.h>
-#include "../amarchy/win_refresh.h"
+#include "../patina/win_refresh.h"
 #include <proto/intuition.h>
 #include <proto/exec.h>
 

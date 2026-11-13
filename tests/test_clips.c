@@ -1,12 +1,12 @@
-/* Clipboard history (amarchy/clips_core.c): the ring, its file form, the labels and the menu level. */
+/* Clipboard history (patina/clips_core.c): the ring, its file form, the labels and the menu level. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include "harness.h"
-#include "../amarchy/clips_core.h"
-#include "../amarchy/index_core.h"
-#include "../amarchy/leaf.h"
+#include "../patina/clips_core.h"
+#include "../patina/index_core.h"
+#include "../patina/leaf.h"
 #include "../config/keymap.h"
 
 static void add(clip_ring *r, const char *s)

@@ -1,6 +1,6 @@
 # TE-10.6a: per-screen pen tables (pure half)
 
-Branch te10-6. No wiring into amarchy/flat.c (part b).
+Branch te10-6. No wiring into patina/flat.c (part b).
 
 ## Delivered API
 
@@ -37,11 +37,11 @@ RED (break: flat_ident_slot returns 0 for any non-null screen):
 GREEN (break removed):
 - RUNTEST flat_core rc=0 [OK] flat_core: 2658 checks, 0 failed
 - RUNTEST iclabel rc=0 [OK] iclabel: 256 checks, 0 failed
- m68k build (amarchy-flat, Amarchy, amarchy-gui) rc=0.
+ m68k build (patina-flat, Patina, patina-gui) rc=0.
 
 ## Read-only question: does the flat draw hook filter by screen?
 
-No. flat_rf_c (amarchy/flat.c:1095) decides by `r->st.enabled && !r->st.held` (1100), `rp->Layer->Window` (1103) and the caller return address in the Intuition ROM range `ret >= r->irom_lo && ret < r->irom_hi` (1165). w->WScreen is used only for side_px (309, 555, 1168) and raa_load (122, 128). The icon label hook is gated by icl_accept (flat.c:789) on task name and DrawMode. So the hook draws on any screen with the global pens; part b must select pens by w->WScreen.
+No. flat_rf_c (patina/flat.c:1095) decides by `r->st.enabled && !r->st.held` (1100), `rp->Layer->Window` (1103) and the caller return address in the Intuition ROM range `ret >= r->irom_lo && ret < r->irom_hi` (1165). w->WScreen is used only for side_px (309, 555, 1168) and raa_load (122, 128). The icon label hook is gated by icl_accept (flat.c:789) on task name and DrawMode. So the hook draws on any screen with the global pens; part b must select pens by w->WScreen.
 
 ## flat.c call sites part b must change
 

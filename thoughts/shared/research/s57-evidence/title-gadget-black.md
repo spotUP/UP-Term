@@ -6,7 +6,7 @@ status: not reproduced, cause not found (budget of about 40 tool calls spent on 
 # Title bar gadget black, line missing, title box (rig 143, main 53d89817)
 
 ## Runs
-1. RTG default boot (800x600x24, Workbench). amarchy-flat from build/amiga started by hand (STATUS flat=on),
+1. RTG default boot (800x600x24, Workbench). patina-flat from build/amiga started by hand (STATUS flat=on),
    palette-flat-pen8.prefs USE, SYS:Prefs/Locale. Locale at x0 y14 552x285, zoom gadget x506..529, depth x529..552.
    - Inactive and active: both gadgets draw glyph lines (13a907 on the band), bottom border line y27 runs straight
      across x496..552 in both states, title text drawn. Active band 6688bb, inactive 55dd55.
@@ -16,7 +16,7 @@ status: not reproduced, cause not found (budget of about 40 tool calls spent on 
    10031f6a) right after `Palette FROM ... USE` + the flat start; not analysed. Run 2 gave no pixels.
 
 ## Code read (no change made)
-- Title text: flat_tx_c (amarchy/flat.c:~833) fills band rect bx0..bx1 x 0..BorderTop-1 with the frame pen under every
+- Title text: flat_tx_c (patina/flat.c:~833) fills band rect bx0..bx1 x 0..BorderTop-1 with the frame pen under every
   matching Text() call. bx0..bx1 come from flat_title_span (flat_core.c:698) from the window's SYS gadgets (first 8 only).
   Candidate: a gadget it does not list (the OS 3.2 iconify/zoom gadget when not GTYP_SYSGADGET, or gadgets beyond 8)
   leaves the span too wide, so the band fill repaints the gadget; a repaint of the title after SetWindowTitles (XCON
@@ -26,14 +26,14 @@ status: not reproduced, cause not found (budget of about 40 tool calls spent on 
   bg (26,27,37) with no glyph: matches the reported solid block. Unverified.
 
 ## Next
-Boot rig on aga256 FIRST (rig.py start --max, then aga256), wait for the reboot, start amarchy-flat, then Palette USE
+Boot rig on aga256 FIRST (rig.py start --max, then aga256), wait for the reboot, start patina-flat, then Palette USE
 (watch for the exception 3 above), Locale, grid the zoom gadget at depth 8. Then run SetWindowTitles on a shell window
 with a counter on flat_tx_c. Frame the regression test in tests/test_flat_core.c on flat_title_span with a gadget
 list that includes the OS 3.2 zoom/iconify case.
 Scratch grid script: scratchpad/grid.py (not kept). Rig 143 stopped and cleared; shots not copied (none useful).
 
 ## Run 3 (depth 8, 640x256, 2026-11-05, rig 143, OS 3.2, 060 max, worktree build of main 7e07580f)
-Rig started with `--max --os 32` (boots aga256 640x256 depth=8 by itself; uitree S line "640x256 depth=8"). VTC:amarchy-flat
+Rig started with `--max --os 32` (boots aga256 640x256 depth=8 by itself; uitree S line "640x256 depth=8"). VTC:patina-flat
 started by hand, STATUS flat=on calls=51 after Locale opened. Palette USE NOT run (stock palette: band pen 6688bb).
 Locale window x0 y11 552x192 active; zoom gadget x506..529, depth x529..553 (uitree).
 - Zoom gadget (x511..523, y13..19): outlined box with inner square, band-coloured fill 6688bb, black glyph lines. NOT black.
@@ -48,7 +48,7 @@ no code change. Screenshot: ~/Desktop/upterm-shots/title-gadget-depth8-rig143.pn
 fallback) stay unproven. Reproduction may need a window with gadgets beyond the 8 scanned or a SetWindowTitles repaint.
 
 ## Run 4 (UPDemo 15 exit, depth 8, 640x256, 2026-11-05, rig 143, OS 3.2, 060 max, worktree build of 96ef3a03)
-Rig: `--max --os 32 --allow-stale-base` (boots 640x256 depth=8). amarchy-flat started by hand (flat=on). UPDemo assets copied
+Rig: `--max --os 32 --allow-stale-base` (boots 640x256 depth=8). patina-flat started by hand (flat=on). UPDemo assets copied
 to VTCX:Apps/share/updemo (rig had none). XCON shell NewShell XCON:0/11/640/240/UPDemoShell/CLOSE (a 600 px window fails:
 "UPDemo: the window is 72x20, it needs 76x20"). `UPDemo 15` run, title became "UP-Term demo" (OSC 2), then `q`.
 - Before demo: title "UPDemoShell" text aaaaaa on band 6688bb; close, zoom, depth glyphs aaaaaa on 6688bb.

@@ -23,5 +23,5 @@ Block: `make dist` fails in dist-base:
 
 Needed from the owner: allow `make kit-stage` in upterm-ports (on main), or name a ports commit/kit to use.
 Then: `make wasabi dist rig-helpers`, and
-`UPTERM_RIG=91 UPTERM_RIG_FLAGS="--os 32" python3 -I tools/rig/installer_rig.py ONLY default --purpose "Amarchy session 31: Installer recheck"`
+`UPTERM_RIG=91 UPTERM_RIG_FLAGS="--os 32" python3 -I tools/rig/installer_rig.py ONLY default --purpose "Patina session 31: Installer recheck"`
 (installer_rig.py has no --help; it takes ONLY/FAILED/FORCE/--purpose; --os 32 goes through UPTERM_RIG_FLAGS).

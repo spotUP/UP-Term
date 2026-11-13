@@ -20,9 +20,9 @@ Counted from plan checkbox lists (grep -c on "- [ ]" / "- [x]") plus git log; bu
 | 8 installer finds addons | DONE | 2a67fa6e, 733fe571 (7 of 7) | none (status line fixed) |
 | 9 native picture tools | PARTIAL | P1 kittyout.c, P2 rig 32 | P3 fetch, P4 nnn preview, P5 chafa (later by owner) |
 | 10 screens + dctelnet | PARTIAL | P1-P2, P4-P10 ticked | P3 cycle-exact direct path proof |
-| 11 Amarchy plans | see below | | |
+| 11 Patina plans | see below | | |
 
-Amarchy: status line set to done (all boxes ticked, majority carry hashes): menu-minimal, app-index, group-drawer-icon.
+Patina: status line set to done (all boxes ticked, majority carry hashes): menu-minimal, app-index, group-drawer-icon.
 Not changed, ticked but few or no hashes: commodity (3 of 5 hashed), gui-aa-font (2 of 6; status says not started), menu-aspect (0 of 8; status open).
 Plans with open boxes (real work left): dopus-integration 13, own-prefs 25, p1a 17, p1b 31, lx-logo 14, p3 8, p4 8, menu-in-terminal 7, flat-ui-patch 4, p2 3.
 Already correct: gui-warm done, autotile done.

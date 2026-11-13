@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The Directory Opus button bank tools/gen_dopus_buttons.py writes (plan 2026-10-25-amarchy-dopus-integration.md, D12):
+"""The Directory Opus button bank tools/gen_dopus_buttons.py writes (plan 2026-10-25-patina-dopus-integration.md, D12):
 the bytes are parsed back by an independent reader following L_OpenButtonBank (config_open.c:280-440), and the
 stock DOpus5/Buttons/Hotkeys file (from vendor/dopus5-5.104, when present) is parsed by the same reader."""
 import pathlib, struct, subprocess, sys, unittest

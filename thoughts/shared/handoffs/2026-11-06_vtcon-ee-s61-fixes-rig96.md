@@ -15,8 +15,8 @@ status: in progress (one rig proof agent running at handoff time)
 
 ## Open
 - S61-SHARED-RIG-PROOF DONE (rig 164, main d5294c47): A, B (colours), C PASS; s61-evidence/shared-proof-s61.md. Font fallback after delete not measured.
-- RIG96-REINSTALL-PENS4: reinstall rig 96 ONCE when vtcon-c1 sends the AMARCHY READY sha (pen record is now Amarchy.IconPens.5; full install + reboot, never RAM swaps).
-- Owner eye checks on rig 96 (live): Shift+Left Option+Space opens the Amarchy menu (owner tested, DONE); F12 opens the FS-UAE menu; theme editor width; boot reaches the "Welcome to Amarchy" window.
+- RIG96-REINSTALL-PENS4: reinstall rig 96 ONCE when vtcon-c1 sends the PATINA READY sha (pen record is now Patina.IconPens.5; full install + reboot, never RAM swaps).
+- Owner eye checks on rig 96 (live): Shift+Left Option+Space opens the Patina menu (owner tested, DONE); F12 opens the FS-UAE menu; theme editor width; boot reaches the "Welcome to Patina" window.
 - Not covered by d5294c47: a non-ixemul async reader waiting on its own pr_MsgPort would look blocked (unverified, unlikely).
 - Uncommitted s5x/s6x evidence files and test-register rows in the main checkout (thoughts/shared); commit from a worktree.
 

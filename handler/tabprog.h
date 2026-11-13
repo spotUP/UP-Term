@@ -18,7 +18,7 @@
 /* The programs a tab can run. TAB_SHELL is a shell, not a program. */
 enum { TAB_SHELL = 0, TAB_DEMO, TAB_CLAUDE, TAB_TUTORIAL, TAB_PI };
 
-/* The AI agents: the one table from the ai-agent preference's word (Amarchy's settings file) to the tab that
+/* The AI agents: the one table from the ai-agent preference's word (Patina's settings file) to the tab that
  * runs it. MENU_AGENT (super+l) opens the one the preference names; MENU_CLAUDE and MENU_PI open theirs. */
 struct tabprog_agent {
     const char *name;

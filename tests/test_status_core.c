@@ -1,6 +1,6 @@
-/* The AMARCHY port's STATUS and BAR STATUS replies fit REXX_HOST_OUT with the largest counters (amarchy/status_core.c). */
-#include "../amarchy/status_core.h"
-#include "../amarchy/rexx_host.h"
+/* The PATINA port's STATUS and BAR STATUS replies fit REXX_HOST_OUT with the largest counters (patina/status_core.c). */
+#include "../patina/status_core.h"
+#include "../patina/rexx_host.h"
 #include "harness.h"
 #include <string.h>
 

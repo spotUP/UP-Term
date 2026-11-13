@@ -4,7 +4,7 @@
  *   HOLDER owners=<bits> held=<n> refs=<n> slot0=<n> first=<n> count=<n> screen=<hex>   or  HOLDER none (record freed)
  *   HAVE <16 digits>                    have[i] of the record
  *   PEN <n> <rrggbb>                    GetRGB32 of pens 32..47 (the stored icon pens; depth >= 6)
- * The record layout is ipd_rec of amarchy/iconpen_dos.h (the real struct): semaphore, 20 name bytes, the per-screen table (slot 0 = Workbench). */
+ * The record layout is ipd_rec of patina/iconpen_dos.h (the real struct): semaphore, 20 name bytes, the per-screen table (slot 0 = Workbench). */
 #include <stdio.h>
 #include <exec/semaphores.h>
 #include <intuition/intuition.h>
@@ -13,7 +13,7 @@
 #include <proto/exec.h>
 #include <proto/intuition.h>
 #include <proto/graphics.h>
-#include "../../amarchy/iconpen_dos.h"
+#include "../../patina/iconpen_dos.h"
 
 long __stack = 8192;
 const char iconpens_stack_cookie[] = "$STACK: 8192";

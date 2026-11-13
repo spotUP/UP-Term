@@ -1,11 +1,11 @@
 # RL6 FLAT-SLIDER-LOOK: rounded scroller knob and arrows (s31)
 
-Verdict: host test PASS and fails on revert; `make amiga amarchy-menu` rc 0; rig pixel proof NOT obtained (see below). Not done.
+Verdict: host test PASS and fails on revert; `make amiga patina-menu` rc 0; rig pixel proof NOT obtained (see below). Not done.
 
 ## Code
-- amarchy/flat_core.c/.h: `flat_scroller_knob` (knob layout, extracted from `flat_scroller_pen`, behaviour unchanged).
-- amarchy/flat_glyph.c/.h: `flat_scroller_cuts` returns the corner pixels (absolute coordinates) when the fill rect equals the knob rect exactly, reusing `flat_button_corners` (1 px cut, 12 pixels for boxes 12 px or taller).
-- amarchy/flat.c: `flat_rf_c` paints each cut pixel with the track pen (`pen_back`) after the knob RectFill.
+- patina/flat_core.c/.h: `flat_scroller_knob` (knob layout, extracted from `flat_scroller_pen`, behaviour unchanged).
+- patina/flat_glyph.c/.h: `flat_scroller_cuts` returns the corner pixels (absolute coordinates) when the fill rect equals the knob rect exactly, reusing `flat_button_corners` (1 px cut, 12 pixels for boxes 12 px or taller).
+- patina/flat.c: `flat_rf_c` paints each cut pixel with the track pen (`pen_back`) after the knob RectFill.
 
 ## Host test
 `make test ONLY=flat_core`: with fix `[OK] flat_core: 1177 checks, 0 failed`. With `flat_scroller_cuts` forced to return 0:
@@ -24,10 +24,10 @@ No pixel in the screen is 494949. So the measured knob was not drawn through the
 
 ## Rig 72 diagnosis (OS 3.2, FS-UAE, 2026-11-02, worktree agent-ae4afa3fa22cbd372 at 6f44ba14)
 
-Setup: `amarchy_gui_rig.py --setup --no-build` (build Amarchy from VTCX:Apps/bin), then `put_flat_prefs(True)` + `pick()`,
+Setup: `patina_gui_rig.py --setup --no-build` (build Patina from VTCX:Apps/bin), then `put_flat_prefs(True)` + `pick()`,
 WB ARexx `WINDOW 'SYS:C' OPEN; CHANGEWINDOW 'SYS:C' 50 50 400 100`.
 
-- (d) stale binary: ruled out. VTC:amarchy-flat md5 c05cf0ae47d22be40d1a217e008f642c = build/amiga/amarchy-flat.
+- (d) stale binary: ruled out. VTC:patina-flat md5 c05cf0ae47d22be40d1a217e008f642c = build/amiga/patina-flat.
 - (a) not a Workbench drawer: ruled out. UITREE: `W 0 50 50 400x100 active "C"`, `G 2 436 62 10x55 prop` (the vertical
   scroller container), `G 3 432 118 18x11 button`, `G 4 432 129 18x11 button` (the up/down arrows), size/zoom/depth/close.
   The arrow gadgets exist; their pixels are all 000000 (rows 117-139: `000000*16 8d8d8d*2` over x432-449): the arrows are
@@ -49,7 +49,7 @@ equals the whole knob rectangle, and no corner is ever cut. A second possible mi
 equality.
 
 Proof still needed: a ring of the last 16 scroller fills (rect, knob rect from flat_scroller_knob, ncuts) in flatshared,
-printed by `amarchy-flat STATUS`; one drawer open shows the fill list.
+printed by `patina-flat STATUS`; one drawer open shows the fill list.
 
 Proposed fix (after the ring confirms): flat_scroller_cuts returns every knob corner cut pixel that lies inside the
 current fill (fill inside the knob is already guaranteed by flat_scroller_pen), instead of requiring the fill to be the
@@ -60,7 +60,7 @@ If the ring shows a layout offset instead, flat_scroller_knob must copy Intuitio
 
 ## Rig 76 fill log and fix (OS 3.2, FS-UAE, 2026-11-02)
 
-The ring (flatshared.sring, 16 entries, printed by `amarchy-flat STATUS` as `sfill x0 y0 x1 y1 knobx knoby knobw knobh cuts`)
+The ring (flatshared.sring, 16 entries, printed by `patina-flat STATUS` as `sfill x0 y0 x1 y1 knobx knoby knobw knobh cuts`)
 confirmed the first guess: 3.2 paints the knob as SEVERAL fills, not one. Vertical knob 10 x 190 at (626,12), window
 relative, one repaint:
   626 12 635 201 (whole knob), 626 12 634 200 (inner), 626 12 634 12 (top strip), 626 13 626 200 (left strip),
@@ -84,7 +84,7 @@ Violated invariant: every window gadget glyph is drawn through flat_glyph_roles 
 
 Diagnosis on rig 78 (temporary debug build, reverted): for all four arrows (sizes 16x10 horizontal, 18x11 vertical) the clone path returns FLAT_CLONE_FAIL and the offscreen grid is entirely marker 0, because OS 3.2 sysiclass draws nothing offscreen for arrow images (STATUS: clone draws=0 fallback=135). Fallback to flat_glyph_draw returned 0 (unknown), so the stock draw ran under the flat pens, where shine, shadow and background are one pen. Before pixels (vantablack pick): rows 117-141 over x430-450 all 000000.
 
-Fix (amarchy/flat_glyph.c): new g_arrow() builds a solid triangle in the inner box (left/right per-row length from the row distance to the edge, base on the opposite side; up/down per-row length 2*row+1, centred). flat_glyph_known and plan_run route the four Which values to it, so roles, pens and the inactive LINE pen come from the existing flat_glyph_roles. No new pen logic, no special-case colour.
+Fix (patina/flat_glyph.c): new g_arrow() builds a solid triangle in the inner box (left/right per-row length from the row distance to the edge, base on the opposite side; up/down per-row length 2*row+1, centred). flat_glyph_known and plan_run route the four Which values to it, so roles, pens and the inactive LINE pen come from the existing flat_glyph_roles. No new pen logic, no special-case colour.
 
 Tests (tests/test_flat_core.c): test_arrow_glyph_pens runs the two steps flat.c runs (clone with a blank render returns FLAT_CLONE_FAIL, then flat_glyph_draw) for every arrow, both box sizes, normal and inactive: canvas holds glyph pen > 0 pixels and a different box pen, nothing else. test_clone_arrows now expects flat_glyph_known 1; test_glyph_route no longer lists 0x0A-0x0D as unknown.
 

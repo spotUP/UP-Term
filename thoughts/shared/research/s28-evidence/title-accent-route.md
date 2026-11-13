@@ -1,6 +1,6 @@
 # FLAT-TITLE-ACCENT + inactive title dim: hook route (s28)
 
-Chosen: the existing graphics.library Text patch (flat_tx_c in amarchy/flat.c). Intuition draws a window title with one
+Chosen: the existing graphics.library Text patch (flat_tx_c in patina/flat.c). Intuition draws a window title with one
 Text call on the window's border rastport. flat_title_decide (flat_core.c, pure) recognises it: flat on and not held,
 rastport layer belongs to a window, the string is a prefix of Window->Title, pen y (cp_y) inside BorderTop. Then:
 - active (WFLG_WINDOWACTIVE): paint the band (0,0)-(Width-1,BorderTop-1) in pen_outline (the theme accent pen the

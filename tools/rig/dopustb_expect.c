@@ -5,10 +5,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../../amarchy/dopustb_core.h"
+#include "../../patina/dopustb_core.h"
 
 /* gthemes_core.c names this table in gt_save_text, which this tool never calls; the stub keeps prefs out of the link */
-const prefs_paths prefs_paths_amarchy;
+const prefs_paths prefs_paths_patina;
 
 static char buf[65536];
 

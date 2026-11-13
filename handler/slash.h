@@ -143,7 +143,7 @@ int slash_setup_text(const slash_row *rows, int n, char *out, int cap);
  * Keys (the /state names): tabs-opened tab-switches menu-picks last-menu slash-count
  * last-slash copies pastes tabs active km-hits last-key font-size outline-own outline-aa
  * splits panes zoom slot-fonts split-restores scrollback. km-hits counts the keymap bindings the
- * handler ran (Left Amiga keys, plan 2026-10-22-amarchy-commodity); last-key is the last one's
+ * handler ran (Left Amiga keys, plan 2026-10-22-patina-commodity); last-key is the last one's
  * (KM_Q_* mask << 8) | raw code. outline-own counts the glyphs UP-Term's own TrueType engine
  * drew for the answering window's outline font (render/outline.h vo_own; plan
  * 2026-10-22-handler-rasterizer.md R3.4). scrollback is the answering pane's own scrollback

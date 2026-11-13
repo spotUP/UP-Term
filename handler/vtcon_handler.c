@@ -79,7 +79,7 @@
 #include "winspec.h"
 #include "tabprog.h"
 #include "tabslot.h"
-#include "../amarchy/amconf_dos.h"
+#include "../patina/amconf_dos.h"
 #include "../demo/updemo.h"
 #include "brk.h"
 #include "ttyown.h"
@@ -246,9 +246,9 @@ typedef struct con {
     char colors[8];              /* W46: rgb | 256 ("": not told) */
     char link_open[UC_MAX_VALUE]; /* the profile's link-open, or /link-open's ("": OpenURL %s) */
     int nerd_ttf;                /* FONTS:SymbolsNerdFontMono.ttf exists, found by a worker (no DOS call on the handler process) */
-    char *theme_text;            /* ENV:up-term/theme-active as read (Amarchy theme), 0 none: beats the profile's colours */
+    char *theme_text;            /* ENV:up-term/theme-active as read (Patina theme), 0 none: beats the profile's colours */
     long theme_len;
-    int font_spec;               /* the spec's FONT or a slash /font chose the font: the Amarchy theme's Shell Font does not replace it */
+    int font_spec;               /* the spec's FONT or a slash /font chose the font: the Patina theme's Shell Font does not replace it */
     int colours_spec;            /* the spec chose colours (DARK/FG/BG/LIGHT): it beats the profile */
     ULONG spec_fg, spec_bg;      /* the colours before any profile (a profile switch starts there) */
     upconf *save_work;           /* Save settings to profile: the table once the file is written
@@ -1212,7 +1212,7 @@ static void parse_font(const char *rest, char *name, int max, WORD *size)
     *size = (WORD)sz;
 }
 
-/* A config value "NAME:SIZE" (profile or Amarchy theme font line): the spec's "NAME SIZE" form, parsed by parse_font. */
+/* A config value "NAME:SIZE" (profile or Patina theme font line): the spec's "NAME SIZE" form, parsed by parse_font. */
 static void parse_conf_font(const char *v, char *name, int max, WORD *size)
 {
     char f[UC_MAX_VALUE];
@@ -1273,7 +1273,7 @@ struct config_msg {
     upconf *conf;
     struct splits_rest *rest;    /* 0: no split file wanted */
     keymap *km; /* the shared keymap to fill, or 0 when it is already loaded */
-    char *theme; /* the active Amarchy theme's text, read with the profile (0 none) */
+    char *theme; /* the active Patina theme's text, read with the profile (0 none) */
     long theme_len;
     int nerd_ttf; /* FONTS:SymbolsNerdFontMono.ttf is there (read here: no DOS call on the handler process) */
 };
@@ -1282,7 +1282,7 @@ struct config_msg {
 
 static char *read_active_theme(long *len);
 
-/* The keymap (Left Amiga keys, plan 2026-10-22-amarchy-commodity): one table
+/* The keymap (Left Amiga keys, plan 2026-10-22-patina-commodity): one table
  * for the whole handler, not one per window. The first window to open
  * claims it (g_km_claim) and has its config worker fill it; after that it is
  * read-only. A window that opens while it is still filling sees no keymap
@@ -1291,7 +1291,7 @@ static char *read_active_theme(long *len);
 static keymap *g_km;
 static volatile int g_km_claim, g_km_ready, g_km_users;
 
-/* The shipped file, then keymap.user over it, then the flag (keymap_load.c, shared with Amarchy). */
+/* The shipped file, then keymap.user over it, then the flag (keymap_load.c, shared with Patina). */
 static void read_keymap(keymap *km)
 {
     keymap_load(km, km_default_text);
@@ -1398,7 +1398,7 @@ struct watch_msg {
     int nerd_ttf; /* FONTS:SymbolsNerdFontMono.ttf is there, as of this table */
 };
 
-/* The file the Amarchy theme switch writes (amarchy/gthemes_core.h GT_TERM_FILE): one profile section holding the new
+/* The file the Patina theme switch writes (patina/gthemes_core.h GT_TERM_FILE): one profile section holding the new
  * theme's colours. The watcher is told about it as it is about the profile file; the window applies it (theme_apply), so a
  * switch recolours every open tab, a tab's hand-set theme included (owner 2026-10-29). */
 #define ACTIVE_THEME_FILE "ENV:up-term/theme-active"
@@ -1556,7 +1556,7 @@ static void config_load(con *c)
     WaitPort(port);
     GetMsg(port);
     c->nerd_ttf = m->nerd_ttf;
-    c->theme_text = m->theme; /* a new tab starts in the active Amarchy theme (apply_profile) */
+    c->theme_text = m->theme; /* a new tab starts in the active Patina theme (apply_profile) */
     c->theme_len = m->theme_len;
     FreeVec(m);
     DeleteMsgPort(port);
@@ -1670,7 +1670,7 @@ static void apply_colours(con *c, const upconf *cf, const char *p, int theme)
     apply_colours_rest(c, cf, p, theme);
 }
 
-/* The colours: the active Amarchy theme beats the profile's (upconf_colour_source); the window spec beats both.
+/* The colours: the active Patina theme beats the profile's (upconf_colour_source); the window spec beats both.
  * p is the profile section, 0 when the file has none: the theme still applies then. */
 static void apply_profile_colours(con *c, const char *p, const upconf *t)
 {
@@ -1687,7 +1687,7 @@ static void apply_profile_colours(con *c, const char *p, const upconf *t)
     }
 }
 
-/* The active Amarchy theme (c->theme_text) parsed once: 0 when there is none (or no memory). Free with FreeVec. */
+/* The active Patina theme (c->theme_text) parsed once: 0 when there is none (or no memory). Free with FreeVec. */
 static upconf *theme_table(con *c)
 {
     upconf *t = c->theme_text ? (upconf *)AllocVec(sizeof(upconf), MEMF_ANY | MEMF_CLEAR) : 0;
@@ -2820,7 +2820,7 @@ static void font_live(con *c, const char *oldname, WORD oldsize)
     }
 }
 
-/* A new Amarchy theme text is in c->theme_text: its Shell Font (else the profile's) on the window, live. Not when the spec's
+/* A new Patina theme text is in c->theme_text: its Shell Font (else the profile's) on the window, live. Not when the spec's
  * FONT or a slash /font owns the font. */
 static void theme_font_live(con *c)
 {

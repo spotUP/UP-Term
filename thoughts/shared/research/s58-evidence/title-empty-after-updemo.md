@@ -6,7 +6,7 @@ engine's own t->title starts "" (engine/vtengine.c, vt_new / RIS at ~6285).
 UPDemo's `\033[22;0t` (demo/updemo.c:2741) pushes t->title = "" (engine/vtengine.c:3477),
 then `\033]2;UP-Term demo\007`, and `\033[23;0t` (updemo.c:2857) pops "" and calls
 cb_title (render/vtwin.c:148) which copies "" into w->title and shows it
-(vtwin_show_title). So the bar is "" after `q`. Not UPDemo, not amarchy-flat.
+(vtwin_show_title). So the bar is "" after `q`. Not UPDemo, not patina-flat.
 Existing test window_reports_and_title_stack only used a title set via OSC, so
 the open-string case was uncovered.
 

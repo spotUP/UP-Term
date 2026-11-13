@@ -17,7 +17,7 @@ Branch s29-flat-colour. Host test evidence only; the rig 22 check is NOT done (s
 - Muted vs selection readability guard: not cheap, not done.
 - Depth 2 shares pen 1 with stock icon outlines.
 
-## Rig 22 check (fs-uae, 3.2, AGA 256 colours depth 8, branch rebased on origin/main b2e0aabf, flat-system-look and flat-window-gadgets on, FP-1 Keep clicked after each pick, amarchy-icons APPLY done)
+## Rig 22 check (fs-uae, 3.2, AGA 256 colours depth 8, branch rebased on origin/main b2e0aabf, flat-system-look and flat-window-gadgets on, FP-1 Keep clicked after each pick, patina-icons APPLY done)
 Host after rebase: desk 2033/0, iconpen 2113/0, make amiga rc 0. Contrast below = desk_contrast (the guard's metric: (luma_hi+13)/(luma_lo+13)); WCAG ratio in brackets.
 
 desktop-theme OFF (flat only; the backdrop pen is "own"):

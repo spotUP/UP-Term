@@ -213,7 +213,7 @@ static int own_open(struct vo_engine *e, const char *spec)
 }
 
 /* The candidate TrueType files of the font `name`, tried in order by the caller (own_open here, the file read in
- * amarchy/menu_text.c): which 0 is the OT_Spec1 of FONTS:<name>.otag (ttfinstall's, for ttf.library), which 1 is
+ * patina/menu_text.c): which 0 is the OT_Spec1 of FONTS:<name>.otag (ttfinstall's, for ttf.library), which 1 is
  * FONTS:<name>.ttf itself. The .otag's engine is not opened: render/ttf.c draws every TrueType font. Into spec
  * (n bytes); 1 when the candidate exists as a string, else 0. Whether the file opens and is TrueType is the
  * caller's to decide, so a spec that is no TrueType still falls through to the .ttf. */

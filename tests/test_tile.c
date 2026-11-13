@@ -1,6 +1,6 @@
 #include <string.h>
 #include "harness.h"
-#include "../amarchy/tile_core.h"
+#include "../patina/tile_core.h"
 
 static const win_screen scr = { 800, 600, 12, 0 };
 
@@ -79,7 +79,7 @@ static void classification(void)
     w = mk(1, "Shell");
     w.flags |= TW_BORDERLESS;
     CHECK_INT(tile_classify(&w), TILE_FLOAT);
-    w = mk(1, "Amarchy");
+    w = mk(1, "Patina");
     CHECK_INT(tile_classify(&w), TILE_FLOAT);
     w = mk(1, NULL);
     CHECK_INT(tile_classify(&w), TILE_TILE);
@@ -330,9 +330,9 @@ static void bottom_reserve_and_bar(void)
     check_box(&o[0], 0, 14, 800, 570);
     tile_layout(TL_ROWS, &b16, 0, 55, 1, 2, in, o);
     CHECK_INT(o[1].top + o[1].height, 584);            /* the last row ends on the reserve */
-    in[0].title = "Amarchy bar";
+    in[0].title = "Patina bar";
     CHECK_INT(tile_classify(&in[0]), TILE_FLOAT);
-    in[0].title = "Amarchy";
+    in[0].title = "Patina";
     CHECK_INT(tile_classify(&in[0]), TILE_FLOAT);
 }
 

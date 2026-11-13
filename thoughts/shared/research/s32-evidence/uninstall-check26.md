@@ -2,7 +2,7 @@
 
 Verdict: check 26 PASSES. Main commit tested: a51c35bc (includes 4c0200d7 + 6c405484).
 
-Rig: 47 (`UPTERM_RIG=47 rig.py start --max --os 32 --purpose "vtcon-16 Amarchy session: Uninstall keeps old drawer check 26"`).
+Rig: 47 (`UPTERM_RIG=47 rig.py start --max --os 32 --purpose "vtcon-16 Patina session: Uninstall keeps old drawer check 26"`).
 Stopped and cleared: `rig.py stop` printed "stopped", `rig.py clear` printed "removed build/rig47"; afterwards build/rig47 does not exist and no process mentions rig47.
 
 Kit: `make dist` fails on this host ("upterm-ports/build/kit/userland was staged before the stamp: make kit-stage in upterm-ports"; sibling repo, not run). build/dist/up-term was the stale 11:53 kit without DirWasThere, so a private copy was made and Install, Files/install.dos and Uninstall were re-assembled from the committed templates with tools/mkinstaller.py + mkkit.templates('base') (grep: DirWasThere x3 in install.dos, x2 in Uninstall). Run with UPTERM_KIT pointing at it. The copy (66 MB, scratchpad) is deleted.

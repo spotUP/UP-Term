@@ -63,7 +63,7 @@ amiberry.*_pause=false, boot.log ends "wasabid started", then "the Amiga stopped
 running", with Amiberry frozen at 0.1% CPU. Probe (a) was not run because the disk filled. Next: `sample` the frozen
 Amiberry right after "wasabid started", then probe (a). Step 9 is in the worktree research file.
 
-vtcon-16 (Amarchy) runs its own Amiberry hunt on rig 47 (OS 3.2, branch s30-amiberry-hang, findings
+vtcon-16 (Patina) runs its own Amiberry hunt on rig 47 (OS 3.2, branch s30-amiberry-hang, findings
 thoughts/shared/research/s30-evidence/amiberry-hang.md): OS 3.2 vs 3.1, other Amiberry builds, boot drawer bisect.
 This session holds the sample and probe (a). Owner decision: all rig work uses fs-uae meanwhile.
 

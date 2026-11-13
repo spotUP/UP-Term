@@ -1,4 +1,4 @@
-/* host model for tests/test_win_refresh.c: the AmigaOS types amarchy/win_refresh.c uses */
+/* host model for tests/test_win_refresh.c: the AmigaOS types patina/win_refresh.c uses */
 #ifndef WRH_EXEC_TYPES_H
 #define WRH_EXEC_TYPES_H
 typedef unsigned long ULONG;

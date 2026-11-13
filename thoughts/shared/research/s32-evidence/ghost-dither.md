@@ -2,7 +2,7 @@
 
 Sources: NDK3.2R4 Autodocs (intuition.doc:4112-4120, button_gc.doc:86, string_gc.doc:49, tabs_gc.doc:63/138, clicktab_gc.doc:148,
 speedbar_gc.doc:339, chooser_gc.doc:84, space_gc.doc:70), Include_H/intuition/imageclass.h:96 (IA_SupportsDisable), intuition.h:361
-(GFLG_IMAGEDISABLE); amarchy/flat.c, flat_core.c, flat_glyph.c; thoughts/shared/research/s28-evidence/button-disabled.md.
+(GFLG_IMAGEDISABLE); patina/flat.c, flat_core.c, flat_glyph.c; thoughts/shared/research/s28-evidence/button-disabled.md.
 UNVERIFIED on the rig: the exact ghost call (pattern word, rect, caller). The NDK docs say only "ghosting pattern"; no header names
 0x2222/0x8888. The s28 button-disabled check list was written "NOT RUN, host only"; the ghits hit is itself unproven on 3.1/3.2.
 
@@ -14,7 +14,7 @@ Class gadgets on 3.2 (button/string/tabs/clicktab/chooser/space/speedbar/datebro
 (Sys:Classes/Gadgets/*.gadget), "dusted in a ghosting pattern rendered in SHADOWPEN" (tabs_gc.doc:63, clicktab_gc.doc:148).
 
 ## Existing hook (already in tree)
-flat_rf_c, amarchy/flat.c:642-672: gate = enabled && !held && rp->Layer->Window && ret in [irom_lo, irom_hi) (ROM caller, set at flat.c:731-732).
+flat_rf_c, patina/flat.c:642-672: gate = enabled && !held && rp->Layer->Window && ret in [irom_lo, irom_hi) (ROM caller, set at flat.c:731-732).
 flat_gh_match (flat_core.c:453) = AreaPtSz != 0 AND the fill rect lies inside a recorded filled primary button box (same layer surface + task),
 recorded by flat_gh_frame (flat.c:418, c8_skip) and the label by flat_gh_text (flat.c:491). On match: solid fill with flat_dim_pen
 (60 percent of button fill, flat_core.c:424), label redrawn in pen_dimtext (DK_MUTED, desk_core.c:147), AreaPtrn restored. So the

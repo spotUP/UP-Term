@@ -12,19 +12,19 @@ The Installer's buttons (gadget ids 90, 91, 1, 100; 238x16) are custom gadgets w
 GadgetRender and a different Border as SelectRender (GADGHIMAGE, no GadgetText). The Installer draws each one as a
 pen-0 RectFill of the box, then the label (Move + Text), then a temporary frameiclass object (OM_NEW, IM_DRAWFRAME,
 OM_DISPOSE). c8_skip recognised push buttons only as render == select == frame object, so the temporary object
-never matched: fill was 0, and amarchy-flat drew its own edges-only 1 px outline (the square pen-3 ring). A fill at
+never matched: fill was 0, and patina-flat drew its own edges-only 1 px outline (the square pen-3 ring). A fill at
 frame time could not work: the label is already drawn.
 
 ## Fix
 
-- amarchy/flat_core.c: flat_border_button (the gadget rule), flat_box_exact (exact box match),
+- patina/flat_core.c: flat_border_button (the gadget rule), flat_box_exact (exact box match),
   flat_border_button_ids (GFLG_SELECTED to IDS_SELECTED).
-- amarchy/flat.c border_button_at: the window's border button whose box equals the drawn rectangle, with its
+- patina/flat.c border_button_at: the window's border button whose box equals the drawn rectangle, with its
   row role (flat_button_role). GZZ windows are skipped.
-- amarchy/flat.c flat_rf_c: the pen-0 erase of such a box is drawn by raa_frame_draw with fill=1 (the same rounded
+- patina/flat.c flat_rf_c: the pen-0 erase of such a box is drawn by raa_frame_draw with fill=1 (the same rounded
   fill as every flat push button), the label Text patch armed through flat_tx_arm, the box recorded for the
   disabled ghost (flat_gh_frame); counter bhits. bb_task keeps the fill's own RectFills stock.
-- amarchy/flat.c c8_skip: the IM_DRAWFRAME over that exact box draws nothing (no ring) and disarms the label arm.
+- patina/flat.c c8_skip: the IM_DRAWFRAME over that exact box draws nothing (no ring) and disarms the label arm.
 - b7377f75's push_gadget_of / flat_frame_fill path is kept: it serves edges-only frames of render == select
   push buttons, which the Installer buttons are not.
 

@@ -413,8 +413,8 @@ class RigMachine(unittest.TestCase):
 
     def test_each_rig_window_names_its_session_and_task(self):
         """The owner could not tell what each rig did or whose it was (2026-10-25): --purpose goes in the title."""
-        self.assertEqual(self.title(7, '--max', '--purpose', 'Amarchy session:\n menu  terminal check'),
-                         'title = vtcon rig 7 (060 max) - Amarchy session: menu terminal check')
+        self.assertEqual(self.title(7, '--max', '--purpose', 'Patina session:\n menu  terminal check'),
+                         'title = vtcon rig 7 (060 max) - Patina session: menu terminal check')
 
     def test_nofpu_drops_the_fpu_on_every_machine(self):
         self.assertEqual(self.config(), ['cpu = 68060-NOMMU', 'fpu = 68060',

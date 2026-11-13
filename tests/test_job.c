@@ -1,7 +1,7 @@
-/* The Amarchy job view core: lines, end marker, footer, scroll (amarchy/job_core.c; plan 2026-10-27-amarchy-job-view.md). */
+/* The Patina job view core: lines, end marker, footer, scroll (patina/job_core.c; plan 2026-10-27-patina-job-view.md). */
 #include <stdio.h>
 #include <string.h>
-#include "../amarchy/job_core.h"
+#include "../patina/job_core.h"
 #include "harness.h"
 
 static jc J;
@@ -181,7 +181,7 @@ static void test_job_word_sentinel(void)
         pub_calls = 0;
         jc_publish_word(&J, fake_pub);
         CHECK_INT(pub_calls, 1);
-        CHECK_STR(pub_name, "AMARCHY_JOB_WORD");
+        CHECK_STR(pub_name, "PATINA_JOB_WORD");
         CHECK_STR(pub_word, foot());
     }
     jc_init(&J);

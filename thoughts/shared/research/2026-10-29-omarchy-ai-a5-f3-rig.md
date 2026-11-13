@@ -9,7 +9,7 @@ No API key on the rig, so C:Claude cannot answer a task (see below).
    first-run wizard (/setup, "Later") takes the screen and the prompt is never shown. main_amiga.c:403 sends `cli.prompt` once the
    session is up; the end-to-end Claude case needs a configured key or `URL=` fixture (standalone_rig launches C:Claude with URL=).
 2. `/ask list the files`: PASS (same). Script deleted first, rewritten with `C:Claude "list the files"`, new tab "Claude".
-3. `/agent pi` then `/ask list the files`: PASS. ENVARC:Amarchy/prefs got `ai-agent = pi`; T:UP-Term-pi = `C:amiga-pi "list the files"`;
+3. `/agent pi` then `/ask list the files`: PASS. ENVARC:Patina/prefs got `ai-agent = pi`; T:UP-Term-pi = `C:amiga-pi "list the files"`;
    fixture request dump 001.json: the user message is exactly `list the files` (one text, not "list"), screen shows pi answering.
    Needs the agent to have a provider configured; with default anthropic pi prints "No API key" and does not send the prompt.
 4. super+l (LAMIGA + l, raw 0x28): PASS. With pref = pi, a "pi - SYS" tab and T:UP-Term-pi; after `/agent claude` (ai-agent line

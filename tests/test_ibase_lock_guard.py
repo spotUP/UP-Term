@@ -1,8 +1,8 @@
-"""AMARCHY-WIN-IBASE-DOS source guard (evidence: thoughts/shared/research/s58-evidence/win-ibase-dos.md).
+"""PATINA-WIN-IBASE-DOS source guard (evidence: thoughts/shared/research/s58-evidence/win-ibase-dos.md).
 
 Under LockIBase a program may only read IntuitionBase lists. A DOS call (file I/O, config load) or an Intuition call that takes
 Intuition locks or waits on another task can deadlock against Intuition or stall input. Every LockIBase ... UnlockIBase span in
-amarchy/*.c is scanned; a forbidden call inside one fails the test.
+patina/*.c is scanned; a forbidden call inside one fails the test.
 
 Allowed on purpose: ChangeWindowBox, WindowToFront, WindowToBack and ZipWindow only queue a request to Intuition's input task and
 are called under the lock so the window cannot close between the membership check and the call (win.c header, plan 1.3 K6;
@@ -10,7 +10,7 @@ tile.c does the same). They are not in the forbidden list.
 """
 import pathlib, re, unittest
 
-AMARCHY = pathlib.Path(__file__).resolve().parent.parent / "amarchy"
+PATINA = pathlib.Path(__file__).resolve().parent.parent / "patina"
 FORBIDDEN = [
     "amconf_load", "amconf_load_with", "Open", "Close", "Read", "Write", "Lock", "UnLock", "Examine", "ExNext", "ExAll",
     "Delay", "Execute", "SystemTagList", "MoveWindow", "SizeWindow", "ActivateWindow", "ScreenToFront", "ScreenToBack",
@@ -46,7 +46,7 @@ def violations(text):
 class IBaseLockGuard(unittest.TestCase):
     def test_no_dos_or_blocking_call_under_ibase_lock(self):
         bad = []
-        for f in sorted(AMARCHY.glob("*.c")):
+        for f in sorted(PATINA.glob("*.c")):
             for n, name in violations(f.read_text(errors="replace")):
                 bad.append(f"{f.name}:{n} {name}()")
         self.assertEqual(bad, [], "gather under LockIBase, unlock, then call DOS or Intuition")

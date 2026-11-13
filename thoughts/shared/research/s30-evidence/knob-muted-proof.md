@@ -1,6 +1,6 @@
 # Scroller knob DK_MUTED pixel proof (rig 52, Amiberry, OS 3.2, HEAD 33f03a31 at run time; task base 39152f89)
 
-Setup: rig.py start --max --emu amiberry --os 32; amarchy_gui_rig.py --setup; amarchy-flat to RAM:, flat prefs on, theme pick (amarchy_desk_rig.pick).
+Setup: rig.py start --max --emu amiberry --os 32; patina_gui_rig.py --setup; patina-flat to RAM:, flat prefs on, theme pick (patina_desk_rig.pick).
 Shot: ~/Desktop/upterm-shots/s30-knob-muted.png (SYS:Prefs, View by Name, Show All). Pixels by PIL, whole-screen grab 640x256.
 
 | check | region | measured | verdict |

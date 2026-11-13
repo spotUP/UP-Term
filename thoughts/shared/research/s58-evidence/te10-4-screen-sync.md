@@ -3,13 +3,13 @@
 Rig proof is NOT part of this step (plan case TE-9.6). Nothing here is verified on an Amiga.
 
 ## Changed per file
-- amarchy/iconpen_core.c/.h: `ip_snap_add`, `ip_screens_sync` (pure multi-slot sync: per slot select callback, ip_sync, NEED_THEME reported in `need[]`),
+- patina/iconpen_core.c/.h: `ip_snap_add`, `ip_screens_sync` (pure multi-slot sync: per slot select callback, ip_sync, NEED_THEME reported in `need[]`),
   `ip_screens_held` (non-Workbench slots holding pens), `ip_screens_epoch` (slot 0 = sh.epoch, others = slot.epoch, unknown = 0).
-- amarchy/iconpen_dos.h: `ipd_rec` and `ipd_stheme` moved here (no new file, no Makefile change); semaphore name `Amarchy.IconPens.2`;
+- patina/iconpen_dos.h: `ipd_rec` and `ipd_stheme` moved here (no new file, no Makefile change); semaphore name `Patina.IconPens.2`;
   declares `ipd_epoch_of`, `ipd_screen_rules_load`, `ipd_rules_changed`.
-- amarchy/iconpen_dos.c: record holds ip_screens, snap, cur, diff, parsed rules, main theme, per-slot theme cache, rules_dirty (all heap, AllocVec, none on a stack).
+- patina/iconpen_dos.c: record holds ip_screens, snap, cur, diff, parsed rules, main theme, per-slot theme cache, rules_dirty (all heap, AllocVec, none on a stack).
   `pens_sync` rewritten (pass loop below). `ipd_status_line` appends ` screens=<n>` at the end. `ipd_recolour` stays Workbench only and marks rules dirty.
-- tests/amiga/iconpens.c uses the real `ipd_rec` and `IPD_SEM_NAME`; tools/rig/amarchy_iconpens_rig.py docstring and amarchy/flat_shared.h comment name `Amarchy.IconPens.2`. Parsed text fields unchanged.
+- tests/amiga/iconpens.c uses the real `ipd_rec` and `IPD_SEM_NAME`; tools/rig/patina_iconpens_rig.py docstring and patina/flat_shared.h comment name `Patina.IconPens.2`. Parsed text fields unchanged.
 - tests/test_iconpen.c: test_screens_sync (two screens, gone screen, hold 0, private node then public, slot 0 hold 0, exit with a private slot, reopen epoch) and test_screens_held_count.
 
 ## Pass bound
@@ -31,7 +31,7 @@ gtheme=296, ip_screen_slot=272, ip_screens=10888, ip_snap=6728, ip_diff=13448, g
   - RED: `RUNTEST iconpen rc=2 [FAIL] iconpen: 2332 checks, 12 failed` (terminates).
   - GREEN (restored): `RUNTEST iconpen rc=0 [OK] iconpen: 2332 checks, 0 failed`
 - `RUNTEST wb_lock_guard rc=0`
-- m68k: `make build/amiga/Amarchy ... upprefs` rc=0; `make rig-helpers` rc=0.
+- m68k: `make build/amiga/Patina ... upprefs` rc=0; `make rig-helpers` rc=0.
 
 ## Not proven
 Live behaviour on an Amiga (two real public screens, private to public turn, exit with a private screen): plan case TE-9.6. Make suites make_hygiene and gthemes not run (Makefile and gthemes_core untouched).

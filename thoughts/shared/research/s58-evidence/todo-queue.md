@@ -3,7 +3,7 @@
 Source: thoughts/spot/todos.md, 468 open `- [ ]` lines (grep). Triage by a sonnet agent with a 40-call budget, so classification is from each row's first ~150 chars plus a keyword match against commit messages and `[x]` rows. Treat "done?" flags as leads, not verdicts. Sizes are estimates.
 
 ## Exclusions (counts)
-- 106 rows: vtcon-c1 / Amarchy session (S57-AMARCHY-READY A2-A8, AMARCHY-*), TE-*, S57-BOOT5-HANG, S57-FREEZE-2IN9, S57-ICL-PEN*, S57-PENS47*, BACKBURNER, POST-RELEASE (keyword match, one grep).
+- 106 rows: vtcon-c1 / Patina session (S57-PATINA-READY A2-A8, PATINA-*), TE-*, S57-BOOT5-HANG, S57-FREEZE-2IN9, S57-ICL-PEN*, S57-PENS47*, BACKBURNER, POST-RELEASE (keyword match, one grep).
 - ~25 rows other repos (MusicPlayer/Selecta: lines 3095, 3106, 3511, 3585, 3647 SELECTA-*; upterm-ports/ixemul-vtcon-only rows 3034-3049 PR26 kill, 3220, 3222) -> hand to those sessions.
 - 4224-4232 S57-START-POINTER-HANG / double-mount: in flight (rig 141 agent, vtcon-8c) -> exclude.
 - Stale-suspect: ~270 rows are progress narrative from 2026-10-19..11-03 ("agent running", "next:", "P2..P6", IDE-speed A2-D3 lines 551-601, upkg test1/test2 lines 958-1063, DOpus D-rows 1992-2044, upkg wb-ui 2052-2260, sqlite/fts5 2296-2329, CI feed 2433-2440, FLAT s25-s28 3097-3430, release RL1-RL17 3786-3839). Many have matching `[x]` rows (e.g. FLAT-SCROLLER, FLAT-SOLID-FILL, FLAT-BUTTON-FILL, R1.17-WBRESET, F3-NEWTAB, ROUND-CORNERS, IXEMUL-SIGRC-DEPLOY, AMIBERRY-DEFAULT, NVIM-*, RIG-BATCH-DAILY all have `[x]` hits). NOT queued as work; see Phase 0.

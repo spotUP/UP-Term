@@ -2,7 +2,7 @@
 
 Volumes: Empty-12MB-FFS (SYS:), RAM Disk, VTCX, BOOTX, Work. No network/host volume on the rig.
 - Empty-12MB-FFS: Disk.info written.
-- RAM Disk: Disk.info is a SOFT LINK to ENVARC:Sys/def_RAM.info. list_dir treats fib_DirEntryType>0 (ST_SOFTLINK=3) as a directory, recurses into Disk.info/, Lock fails: note 'skip io (no lock)', counted skipped-io. Image still Amarchy through def_RAM.info (1328 bytes written). Fix (not done): list_dir skips soft links.
+- RAM Disk: Disk.info is a SOFT LINK to ENVARC:Sys/def_RAM.info. list_dir treats fib_DirEntryType>0 (ST_SOFTLINK=3) as a directory, recurses into Disk.info/, Lock fails: note 'skip io (no lock)', counted skipped-io. Image still Patina through def_RAM.info (1328 bytes written). Fix (not done): list_dir skips soft links.
 - VTCX, BOOTX, Work: no Disk.info, fall to ENV:Sys/def_disk.info (written by APPLY, 1214 bytes).
 Counters: written=185 skipped-done=38 skipped-nodefault=15 skipped-io=7 fallback=126.
 

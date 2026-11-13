@@ -1,6 +1,6 @@
-/* AM-BORDERBLANK (amarchy/borderblank_core.c): which modes get the black border, and the table of the screens
- * Amarchy blanked (Off and quit clear only those). */
-#include "../amarchy/borderblank_core.h"
+/* AM-BORDERBLANK (patina/borderblank_core.c): which modes get the black border, and the table of the screens
+ * Patina blanked (Off and quit clear only those). */
+#include "../patina/borderblank_core.h"
 #include "harness.h"
 
 static void test_native_modes(void)

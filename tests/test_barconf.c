@@ -1,5 +1,5 @@
-/* bar.conf: parse, defaults on a missing file or missing keys, bad rows ignored with a count (amarchy/barconf_core.c). */
-#include "../amarchy/barconf_core.h"
+/* bar.conf: parse, defaults on a missing file or missing keys, bad rows ignored with a count (patina/barconf_core.c). */
+#include "../patina/barconf_core.h"
 #include "harness.h"
 #include <stdio.h>
 #include <string.h>

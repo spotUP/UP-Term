@@ -9,8 +9,8 @@ make wasabi amiga rc=0. md5 build/amiga/vsh = build/rig3/vtc/vsh = build/rig3/vt
 `rc161_rig: OK` (resident_true st=0, script_kill ended).
 
 ## tutorial_rig: 24 of 27 pass (was 4/27). All rc161 failures are gone.
-- selftest-14 (14-amarchy-keys.lesson), "ok 1 / FAIL 2": step 2 needs `rx "address AMARCHY STATUS"`; on rig 3 `rx: Unknown command` rc 10 (no ARexx/rexxmast in this rig). Class (c) environment. (Not verified that rx exists on other rigs.)
-- check-b: "14 lessons listed; missing []": test hard-codes `== 13` (tutorial_rig.py:507) but dist/tutorial-lessons has 14 lessons (14-amarchy-keys added 2026-10-26). Class (b) test bug. Docstring line 7 also says 13.
+- selftest-14 (14-patina-keys.lesson), "ok 1 / FAIL 2": step 2 needs `rx "address PATINA STATUS"`; on rig 3 `rx: Unknown command` rc 10 (no ARexx/rexxmast in this rig). Class (c) environment. (Not verified that rx exists on other rigs.)
+- check-b: "14 lessons listed; missing []": test hard-codes `== 13` (tutorial_rig.py:507) but dist/tutorial-lessons has 14 lessons (14-patina-keys added 2026-10-26). Class (b) test bug. Docstring line 7 also says 13.
 - lesson12: window-lesson steps all True except ('paste', False); echo said `TYPE can't open T:tutorial.out / object not found`. Counters slash-count 0 of 1, copies 0 of 4 are normal for the shown state. Not rc161. Class (c)/(b) undecided: paste step reads T:tutorial.out that was never created (clipboard paste into the tab did not happen); earlier commit 0932094d says this case was flaky on rig 4. Not investigated further (budget).
 
 ## VSH-KILL-TERM-NATIVE-HANG: still reproduces

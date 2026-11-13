@@ -4,13 +4,13 @@ dk_live_pens held a visitor lock on the Workbench screen across ipd_role_write, 
 list; while the IPrefs reset was still running that lock order closed a cycle. Apply never froze: it defers dk_live_pens (dk_live_want)
 until the windows are back. Invariants: (1) no dk_live_pens call inside a dk_windows_close/dk_windows_open bracket, the revert defers it
 through dk_live_want to desk_dos_revert, after dk_restore_targets; (2) dk_live_pens holds no Workbench screen lock while ipd_role_write runs.
-amarchy/desk_dos.c is Amiga-only code no host test links, so this test reads its structure."""
+patina/desk_dos.c is Amiga-only code no host test links, so this test reads its structure."""
 import pathlib
 import sys
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-SRC = (ROOT / "amarchy" / "desk_dos.c").read_text()
+SRC = (ROOT / "patina" / "desk_dos.c").read_text()
 
 
 def body(src, head):
@@ -49,7 +49,7 @@ class RevertLivePensDeferred(unittest.TestCase):
             k = b.find("dk_live_pens(")
             while k != -1:
                 close, opn = b.rfind("dk_windows_close()", 0, k), b.rfind("dk_windows_open(", 0, k)
-                self.assertFalse(close != -1 and close > opn, head + ": dk_live_pens with Amarchy's windows closed")
+                self.assertFalse(close != -1 and close > opn, head + ": dk_live_pens with Patina's windows closed")
                 k = b.find("dk_live_pens(", k + 1)
 
     def test_live_pens_holds_no_screen_lock_across_role_write(self):

@@ -2,7 +2,7 @@
 import pathlib, sys, unittest
 from unittest import mock
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / 'tools' / 'rig'))
-import amarchy_menu_rig as m
+import patina_menu_rig as m
 
 
 class AllRows(unittest.TestCase):

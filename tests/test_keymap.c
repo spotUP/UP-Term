@@ -7,22 +7,22 @@
 #include "../config/keymap.h"
 #include "../handler/keymap_act.h"
 #include "../handler/menu_ids.h"
-#include "../amarchy/cxdesc.h"
-#include "../amarchy/bar_core.h"
+#include "../patina/cxdesc.h"
+#include "../patina/bar_core.h"
 #include "../handler/slash.h"
-#include "../amarchy/menu_core.h"
+#include "../patina/menu_core.h"
 #include "../prefs/settings_def.h"
-#include "../amarchy/menu_geom.h"
-#include "../amarchy/leaf.h"
-#include "../amarchy/menu_icon.h"
-#include "../amarchy/icon_core.h"
-#include "../amarchy/index_core.h"
+#include "../patina/menu_geom.h"
+#include "../patina/leaf.h"
+#include "../patina/menu_icon.h"
+#include "../patina/icon_core.h"
+#include "../patina/index_core.h"
 #include "../render/emoji.h"
 #include "../engine/vtengine.h"
 #include "harness.h"
 #include "memfs.h"
-#include "../amarchy/gthemes_core.h"
-#include "../amarchy/amconf_core.h"
+#include "../patina/gthemes_core.h"
+#include "../patina/amconf_core.h"
 
 #define RAW_K     0x27
 #define RAW_T     0x14
@@ -169,7 +169,7 @@ static void the_shipped_keymap_has_no_super_alt_chord(void)
         if (km.bind[i].qual & KM_Q_CTRL)
             ctrl++;
     }
-    CHECK_INT(ctrl, 44);                /* the 28 former Super+Alt chords, now Super+Ctrl, super+ctrl+help (window shot), and the 14 super+ctrl+shift snap, float and swap keys (P3-D1), and super+ctrl+shift+q (Quit Amarchy) */
+    CHECK_INT(ctrl, 44);                /* the 28 former Super+Alt chords, now Super+Ctrl, super+ctrl+help (window shot), and the 14 super+ctrl+shift snap, float and swap keys (P3-D1), and super+ctrl+shift+q (Quit Patina) */
 }
 
 static void a_newer_major_is_rejected_whole(void)
@@ -382,7 +382,7 @@ static void the_shipped_keymap_loads_whole(void)
     }
     /* every shipped run: row is a line lf_shell_command can hand to `vsh -c "..."`: a double quote
      * in the row ends that argument, so the leaf refuses it ("the command line is not valid",
-     * Settings > Amarchy > Amarchy preferences shipped as run:"C:UP-Term-Prefs" AMARCHY); vsh
+     * Settings > Patina > Patina preferences shipped as run:"C:UP-Term-Prefs" PATINA); vsh
      * takes single quotes for a path with a space */
     for (i = 0; i < km.nbind; i++) {
         char line[512];
@@ -516,19 +516,19 @@ static void bar_actions_parse(void)
     }
 }
 
-/* RL16 W11, W11b: gui:<help|welcome> opens an amarchy-gui window, amarchy:quit ends the commodity; both are
- * commodity actions, the shipped keymap binds them and carries a Help and a Quit Amarchy menu row. */
+/* RL16 W11, W11b: gui:<help|welcome> opens an patina-gui window, patina:quit ends the commodity; both are
+ * commodity actions, the shipped keymap binds them and carries a Help and a Quit Patina menu row. */
 static void gui_quit_actions_parse(void)
 {
-    static const char *const bad[] = { "gui:", "gui:viewer", "gui:Help", "gui:help x", "amarchy:", "amarchy:stop",
-                                       "amarchy:quit now" };
+    static const char *const bad[] = { "gui:", "gui:viewer", "gui:Help", "gui:help x", "patina:", "patina:stop",
+                                       "patina:quit now" };
     char row[64];
     size_t i;
     CHECK(parse("[bind]\nsuper+shift+slash = gui:help\n") && km.nbind == 1 && km.bind[0].kind == KA_GUI &&
           !strcmp(km.bind[0].arg, "help") && km.bind[0].code == 0x3A);
     CHECK(parse("[bind]\nsuper+w = gui:welcome\n") && km.nbind == 1 && km.bind[0].kind == KA_GUI &&
           !strcmp(km.bind[0].arg, "welcome"));
-    CHECK(parse("[bind]\nsuper+q = amarchy:quit\n") && km.nbind == 1 && km.bind[0].kind == KA_AMARCHY &&
+    CHECK(parse("[bind]\nsuper+q = patina:quit\n") && km.nbind == 1 && km.bind[0].kind == KA_PATINA &&
           !strcmp(km.bind[0].arg, "quit"));
     for (i = 0; i < sizeof bad / sizeof bad[0]; i++) {
         snprintf(row, sizeof row, "[bind]\nsuper+w = %s\n", bad[i]);
@@ -536,9 +536,9 @@ static void gui_quit_actions_parse(void)
         CHECK_INT(km.nbind, 0);
     }
     CHECK_INT(keymap_action_scope(KA_GUI), KS_COMMODITY);
-    CHECK_INT(keymap_action_scope(KA_AMARCHY), KS_COMMODITY);
+    CHECK_INT(keymap_action_scope(KA_PATINA), KS_COMMODITY);
     CHECK_INT((int)lf_plan(KA_GUI), (int)LF_GUI);
-    CHECK_INT((int)lf_plan(KA_AMARCHY), (int)LF_QUIT);
+    CHECK_INT((int)lf_plan(KA_PATINA), (int)LF_QUIT);
     {
         static char file[32768];
         long n = slurp("dist/keymap", file, sizeof(file));
@@ -547,14 +547,14 @@ static void gui_quit_actions_parse(void)
         for (i = 0; i < (size_t)km.nbind; i++) {
             if (km.bind[i].kind == KA_GUI && !strcmp(km.bind[i].arg, "help"))
                 help_bind++;
-            if (km.bind[i].kind == KA_AMARCHY && !strcmp(km.bind[i].arg, "quit"))
+            if (km.bind[i].kind == KA_PATINA && !strcmp(km.bind[i].arg, "quit"))
                 quit_bind++;
         }
         for (i = 0; i < (size_t)km.nmenu; i++) {
             if (km.menu[i].kind == KA_GUI && !strcmp(km.menu[i].arg, "help") && !strcmp(km.menu[i].label, "Help"))
                 help_row++;
-            if (km.menu[i].kind == KA_AMARCHY && !strcmp(km.menu[i].arg, "quit") &&
-                !strcmp(km.menu[i].label, "Quit Amarchy"))
+            if (km.menu[i].kind == KA_PATINA && !strcmp(km.menu[i].arg, "quit") &&
+                !strcmp(km.menu[i].label, "Quit Patina"))
                 quit_row++;
         }
         CHECK_INT(help_bind, 1);
@@ -890,7 +890,7 @@ static void shipped_settings_has_the_six_page_groups(void)
     mn_item it[MN_MAX_ITEMS], pg[MN_MAX_ITEMS];
     int i, n, p, k, want, at = -1;
     char node[40];
-    const km_menu *pref = shipped_row("settings.amarchy.preferences");
+    const km_menu *pref = shipped_row("settings.patina.preferences");
     n = mn_children(&km, "settings", it, MN_MAX_ITEMS);
     for (p = 0; p < PG_NPAGES; p++) {
         int found = -1;
@@ -906,31 +906,31 @@ static void shipped_settings_has_the_six_page_groups(void)
         want = 0;
         for (i = 0; i < sd_nsettings; i++)
             want += sd_settings[i].page == p;
-        /* M9b: Amarchy is one entry; the page rows come first, then its static children */
-        if (p == PG_PAGE_AMARCHY) {
+        /* M9b: Patina is one entry; the page rows come first, then its static children */
+        if (p == PG_PAGE_PATINA) {
             int st = 0, j;
             for (j = 0; j < km.nmenu; j++)
-                st += !strncmp(km.menu[j].id, "settings.amarchy.", 17);
+                st += !strncmp(km.menu[j].id, "settings.patina.", 16);
             CHECK(st > 0);
             want += st;
         }
         k = mn_children(&km, node, pg, MN_MAX_ITEMS);
         CHECK_INT(k, want);
         CHECK(want > 0);
-        if (p == PG_PAGE_AMARCHY && k == want) {
+        if (p == PG_PAGE_PATINA && k == want) {
             CHECK_INT(pg[0].row, MN_ROW_SETTING);
             CHECK(pg[k - 1].row >= 0);
         }
     }
-    /* one Amarchy entry under Settings: no second group, no settings.amarchysettings row */
+    /* one Patina entry under Settings: no second group, no settings.patinasettings row */
     for (i = 0, k = 0; i < n; i++)
-        k += it[i].row == MN_ROW_GROUP && !strcmp(it[i].seg, "amarchy");
+        k += it[i].row == MN_ROW_GROUP && !strcmp(it[i].seg, "patina");
     CHECK_INT(k, 1);
-    CHECK(shipped_row("settings.amarchysettings") == 0);
+    CHECK(shipped_row("settings.patinasettings") == 0);
     CHECK(pref != 0);
     if (pref) {
         CHECK_INT(pref->kind, KA_DETACH);
-        CHECK(!strcmp(pref->arg, "C:UP-Term-Prefs AMARCHY"));
+        CHECK(!strcmp(pref->arg, "C:UP-Term-Prefs PATINA"));
     }
 }
 
@@ -1168,7 +1168,7 @@ static void the_shipped_menu_has_learn_system_and_install_groups(void)
     check_row("learn.tutorial", KA_MENUID, "MENU_TUTORIAL");
     check_row("learn.help", KA_MENUID, "MENU_HELP_SLASH");
     check_row("learn.demo", KA_SLASH, "/demo");
-    check_row("learn.amarchydemo", KA_REXX, "address AMARCHY DEMO");
+    check_row("learn.patinademo", KA_REXX, "address PATINA DEMO");
     check_row("system.reboot", KA_DETACH, "Reboot");  /* run:Reboot opened an UP-Term window (A1200 2026-10-26) */
     CHECK_INT((int)lf_plan(KA_DETACH), (int)LF_DETACH);  /* detach: NIL: in and out, no window */
     check_row("system.workbench", KA_SLASH, "/screen workbench");
@@ -1184,9 +1184,9 @@ static void the_shipped_menu_has_learn_system_and_install_groups(void)
     {   /* the viewer is started by its full path beside the menu, never by a bare name through a PATH */
         char vl[64];
         CHECK_INT(lf_viewer_command(vl, sizeof vl, "UP-Term:bin"), 1);
-        CHECK_STR(vl, "\"UP-Term:bin/amarchy-gui\" viewer");
+        CHECK_STR(vl, "\"UP-Term:bin/patina-gui\" viewer");
         CHECK_INT(lf_viewer_command(vl, sizeof vl, "VTC:"), 1);
-        CHECK_STR(vl, "\"VTC:amarchy-gui\" viewer");
+        CHECK_STR(vl, "\"VTC:patina-gui\" viewer");
         CHECK_INT(lf_viewer_command(vl, sizeof vl, ""), 0);
         CHECK_INT(lf_viewer_command(vl, sizeof vl, "a\"b"), 0);
         CHECK_INT(lf_viewer_command(vl, 10, "UP-Term:bin"), 0);
@@ -1206,13 +1206,13 @@ static void the_shipped_menu_has_learn_system_and_install_groups(void)
         for (i = 0; i < nn; i++) {
             keys += !strcmp(it[i].label, "Key bindings");
             demo += !strcmp(it[i].label, "Demo tour");
-            amdemo += !strcmp(it[i].label, "Amarchy demo");
+            amdemo += !strcmp(it[i].label, "Patina demo");
         }
         CHECK_INT(amdemo, 1);
         CHECK_INT(keys, 1);
         CHECK_INT(demo, 0);
         nn = mn_children_t(&km, "learn", it, MN_MAX_ITEMS, 1);
-        CHECK_INT(nn, 5);   /* keys, tutorial, help, demo tour, Amarchy demo (a rexx row: needs no terminal) */
+        CHECK_INT(nn, 5);   /* keys, tutorial, help, demo tour, Patina demo (a rexx row: needs no terminal) */
     }
 }
 /* ---- end Omarchy groups ---- */
@@ -1250,12 +1250,12 @@ static void cx_gate_takes_only_its_own_row(void)
 static void cx_helper_path(void)
 {
     char out[64];
-    CHECK(cx_helper_cmd(out, sizeof(out), "UP-Term:bin", "amarchy-menu", "menu root"));
-    CHECK_STR(out, "\"UP-Term:bin/amarchy-menu\" menu root");
-    CHECK(cx_helper_cmd(out, sizeof(out), "UP-Term:", "amarchy-menu", "viewer"));
-    CHECK_STR(out, "\"UP-Term:amarchy-menu\" viewer");
-    CHECK(!cx_helper_cmd(out, 20, "UP-Term:bin", "amarchy-menu", "viewer"));   /* does not fit */
-    CHECK(!cx_helper_cmd(out, sizeof(out), "", "amarchy-menu", "viewer"));
+    CHECK(cx_helper_cmd(out, sizeof(out), "UP-Term:bin", "patina-menu", "menu root"));
+    CHECK_STR(out, "\"UP-Term:bin/patina-menu\" menu root");
+    CHECK(cx_helper_cmd(out, sizeof(out), "UP-Term:", "patina-menu", "viewer"));
+    CHECK_STR(out, "\"UP-Term:patina-menu\" viewer");
+    CHECK(!cx_helper_cmd(out, 20, "UP-Term:bin", "patina-menu", "viewer"));   /* does not fit */
+    CHECK(!cx_helper_cmd(out, sizeof(out), "", "patina-menu", "viewer"));
     /* TERM unset (as on an Amiga): the helper defaults to vtcon; a TERM that is set is kept */
     CHECK_STR(mn_term_default(0), "vtcon");
     CHECK_STR(mn_term_default(""), "vtcon");
@@ -1271,12 +1271,12 @@ static void menu_style_commands(void)
         const char *node, *want;
         int text;
     } t[] = {
-        { KA_MENU,        UC_MENU_GRAPHICAL, "apps", "\"UP-Term:bin/amarchy-gui\" menu apps", 0 },
-        { KA_VIEWER,      UC_MENU_GRAPHICAL, "",     "\"UP-Term:bin/amarchy-gui\" viewer", 0 },
-        { KA_MENU,        UC_MENU_TEXT,      "apps", "\"UP-Term:bin/amarchy-menu\" menu apps", 1 },
-        { KA_VIEWER,      UC_MENU_TEXT,      "",     "\"UP-Term:bin/amarchy-menu\" viewer", 1 },
-        { KA_MENU,        UC_MENU_MINIMAL,   "apps", "\"UP-Term:bin/amarchy-gui\" menu apps", 0 },
-        { KA_VIEWER,      UC_MENU_MINIMAL,   "",     "\"UP-Term:bin/amarchy-gui\" viewer", 0 },
+        { KA_MENU,        UC_MENU_GRAPHICAL, "apps", "\"UP-Term:bin/patina-gui\" menu apps", 0 },
+        { KA_VIEWER,      UC_MENU_GRAPHICAL, "",     "\"UP-Term:bin/patina-gui\" viewer", 0 },
+        { KA_MENU,        UC_MENU_TEXT,      "apps", "\"UP-Term:bin/patina-menu\" menu apps", 1 },
+        { KA_VIEWER,      UC_MENU_TEXT,      "",     "\"UP-Term:bin/patina-menu\" viewer", 1 },
+        { KA_MENU,        UC_MENU_MINIMAL,   "apps", "\"UP-Term:bin/patina-gui\" menu apps", 0 },
+        { KA_VIEWER,      UC_MENU_MINIMAL,   "",     "\"UP-Term:bin/patina-gui\" viewer", 0 },
     };
     char out[96];
     int i, text;
@@ -1310,7 +1310,7 @@ static void menu_style_parse(void)
 #undef STYLE
 }
 
-/* Menu in terminal: the style a menu hotkey opens is chosen by cx_menu_style, the function amarchy.c's
+/* Menu in terminal: the style a menu hotkey opens is chosen by cx_menu_style, the function patina.c's
  * act_menu_kind passes to cx_menu_cmd; the other-style bindings are gone from the keymap. */
 static void menu_in_terminal_setting(void)
 {
@@ -1327,7 +1327,7 @@ static void menu_in_terminal_setting(void)
     /* through the command builder: the program that would run */
     style = cx_menu_style(UC_MENU_GRAPHICAL, UC_TERMMENU_TEXT, 1, 0);
     CHECK(cx_menu_cmd(out, sizeof(out), "UP-Term:bin", KA_MENU, "", style, &text));
-    CHECK_STR(out, "\"UP-Term:bin/amarchy-menu\" menu root");
+    CHECK_STR(out, "\"UP-Term:bin/patina-menu\" menu root");
     CHECK_INT(text, 1);
     /* the setting's value parser: text unless graphical */
     CHECK_INT(upconf_term_menu_value(0), UC_TERMMENU_TEXT);
@@ -1519,14 +1519,14 @@ static void style_theme_lists_the_gui_theme_rows(void)
     }
     CHECK_INT(x.rows[it[1].ix].kind, IX_KIND_GTHEME);
     c = ix_level_t(&km, &x, "style", "", it, MN_MAX_ITEMS, 0);
-    CHECK_INT(c, 2);                                 /* Amarchy theme (the GUI themes) and the Terminal group */
-    CHECK_STR(it[0].label, "Amarchy theme");
+    CHECK_INT(c, 2);                                 /* Patina theme (the GUI themes) and the Terminal group */
+    CHECK_STR(it[0].label, "Patina theme");
     CHECK_INT(it[0].row, MN_ROW_GROUP);
     ix_free(&x);
     CHECK_INT(lf_plan(KA_GTHEME), LF_GTHEME);
     CHECK_INT(keymap_action_scope(KA_GTHEME), KS_COMMODITY);
 }
-/* Packages group (plan 2026-10-27-amarchy-packages-group.md PG.2, PG.3). The fake loader stands for pk_dos_load_rows:
+/* Packages group (plan 2026-10-27-patina-packages-group.md PG.2, PG.3). The fake loader stands for pk_dos_load_rows:
  * it counts its runs and hands a fixed `upkg list --tsv` text to the index. */
 static const char pkg_tsv[] =
     "tiny\t1.0\t1\t0\t\tutils\tUP-Term:uhc/ExtBin/Tiny\tuhc\tA tiny tool\n"
@@ -1704,10 +1704,10 @@ static void the_package_list_loads_once_and_reloads_when_stale(void)
     pkg_pub_n = 0;
     ix_pkgs_publish(&x, pkg_pub);                   /* the sentinels carry the fake load's rows and load count */
     CHECK_INT(pkg_pub_n, 2);
-    CHECK_STR(pkg_pub_name[0], "AMARCHY_PKGS_ROWS");
+    CHECK_STR(pkg_pub_name[0], "PATINA_PKGS_ROWS");
     CHECK_INT(pkg_pub_val[0], x.pk.n);
     CHECK(x.pk.n > 0);
-    CHECK_STR(pkg_pub_name[1], "AMARCHY_PKGS_LOADS");
+    CHECK_STR(pkg_pub_name[1], "PATINA_PKGS_LOADS");
     CHECK_INT(pkg_pub_val[1], 1);
     c = pkg_level(&x, "packages.installed", it);    /* Installed and Upgrades are filters of that one load */
     CHECK_INT(c, 3);
@@ -1876,8 +1876,8 @@ static void terminal_rows_show_only_over_a_terminal(void)
     CHECK(has_label(it, c, "Style"));               /* the Theme group lists the GUI themes, over a terminal or not */
     CHECK(has_label(it, c, "Window"));              /* the win: rows run in the commodity, over a terminal or not */
     c = ix_level_t(&km, 0, "style", "", it, MN_MAX_ITEMS, 0);
-    CHECK_INT(c, 2);                                 /* Amarchy theme and the Terminal group, shown with no terminal open */
-    CHECK(has_label(it, c, "Amarchy theme") && has_label(it, c, "Terminal"));
+    CHECK_INT(c, 2);                                 /* Patina theme and the Terminal group, shown with no terminal open */
+    CHECK(has_label(it, c, "Patina theme") && has_label(it, c, "Terminal"));
     c = ix_level_t(&km, 0, "style.terminal", "", it, MN_MAX_ITEMS, 0);
     CHECK_INT(c, 3);                                 /* Theme, Font, Background: picking one opens a terminal first */
     CHECK(has_label(it, c, "Theme") && has_label(it, c, "Font") && has_label(it, c, "Background"));
@@ -1890,7 +1890,7 @@ static void terminal_rows_show_only_over_a_terminal(void)
     c = ix_level_t(&km, 0, "", "", it, MN_MAX_ITEMS, 1);
     CHECK(has_label(it, c, "Apps") && has_label(it, c, "Style") && has_label(it, c, "Window"));
     c = ix_level_t(&km, 0, "style", "", it, MN_MAX_ITEMS, 1);
-    CHECK(has_label(it, c, "Amarchy theme") && has_label(it, c, "Terminal"));
+    CHECK(has_label(it, c, "Patina theme") && has_label(it, c, "Terminal"));
     c = ix_level_t(&km, 0, "style.terminal", "", it, MN_MAX_ITEMS, 1);
     CHECK(has_label(it, c, "Theme") && has_label(it, c, "Font") && has_label(it, c, "Background"));
     c = ix_level_t(&km, 0, "apps", "", it, MN_MAX_ITEMS, 1);
@@ -1982,7 +1982,7 @@ static void menu_levels_follow_the_ids_and_escape_goes_up(void)
 }
 
 /* AM-OSD O5: the commodity sizes the menu window from the keymap it holds, walking every level
- * reachable from the node (the same mn_children walk amarchy-menu uses). The expected numbers are
+ * reachable from the node (the same mn_children walk patina-menu uses). The expected numbers are
  * counted by hand from the shipped file below, not from mn_children. */
 static void osd_size_counts_the_reachable_levels(void)
 {
@@ -2101,7 +2101,7 @@ static void a_slow_blit_keeps_the_estimate_up_so_the_bar_does_not_tear(void)
     CHECK_INT(est < 105000 && est >= 100000, 1);
 }
 
-/* AM-GUI G1, aspect plan 2026-10-23-amarchy-menu-aspect.md: the drawn menu's rectangles. The text
+/* AM-GUI G1, aspect plan 2026-10-23-patina-menu-aspect.md: the drawn menu's rectangles. The text
  * width is a fixed number of pixels per character (ctx), as topaz's is; the expected numbers are worked
  * out by hand from the rule in menu_geom.h, not from menu_geom.c: a row is R = ysize * 15 / 4 (topaz 8:
  * 30, TopazPro 16: 60); Omarchy's px become V(px) = (px * R + 25) / 50 down and, across,
@@ -2160,7 +2160,7 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
     CHECK_INT(g.m.margin_y, 12);
 
     mg_header("", head, sizeof head);
-    CHECK_STR(head, "Amarchy");
+    CHECK_STR(head, "Patina");
     mg_header("apps", head, sizeof head);
     CHECK_STR(head, "Apps");
     mg_header("apps.tools", head, sizeof head);
@@ -2169,7 +2169,7 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
     /* the shipped keymap at topaz 8 on 640x256: root 3 groups, apps 6 rows; the widest label of all
      * levels is "Install add-ons" (15 x 8 px): 2 x 4 + 2 x 22 + 2 x 14 + 120 = 200, under min_w 360 */
     CHECK(n > 0 && keymap_parse(&km, file, n));
-    CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 17);   /* with the Help and Quit Amarchy rows (RL16 W11, W11b), with the Capture group (R4.7), the Trigger, Settings, Dopus, Workbench, Screens, Packages, Agents and Network groups (all shown) */
+    CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 17);   /* with the Help and Quit Patina rows (RL16 W11, W11b), with the Capture group (R4.7), the Trigger, Settings, Dopus, Workbench, Screens, Packages, Agents and Network groups (all shown) */
     CHECK_INT(mn_children(&km, "apps", items, MN_MAX_ITEMS), 5);
     w = mg_width(&km, "", &topaz, 0, 8, fixed_width, &px8, &pal);
     CHECK_INT(w, 360);
@@ -2573,7 +2573,7 @@ static void a_leaf_window_spec_names_the_front_public_screen(void)
 }
 
 
-/* DOPUS D2 (plan 2026-10-25-amarchy-dopus-integration.md): the three Directory Opus hotkeys parse from the
+/* DOPUS D2 (plan 2026-10-25-patina-dopus-integration.md): the three Directory Opus hotkeys parse from the
  * shipped dist/keymap, each is one rexx: row, and no other [bind] row (counted from the parsed table, not
  * grepped) takes the same key. The parser keeps the last of two rows for one key without a word, so a
  * clash would silently unbind a key: this count is the guard. */
@@ -2632,10 +2632,10 @@ static void a_dopus_script_without_a_port_has_a_notice(void)
 static void a_hotkey_dopus_script_without_a_port_shows_the_notice_window(void)
 {
     char c[480];
-    const char *spec = "XCON:0/0/0/0/Amarchy/NOBORDER/CENTRE/FRONT/CLOSEINACTIVE/CELLS 36x3";
+    const char *spec = "XCON:0/0/0/0/Patina/NOBORDER/CENTRE/FRONT/CLOSEINACTIVE/CELLS 36x3";
     const char *want =
         "RX \"r = 'UP-Term:Rexx/dopus-front.rexx'(); if r = 5 then do; if open(w, '"
-        "XCON:0/0/0/0/Amarchy/NOBORDER/CENTRE/FRONT/CLOSEINACTIVE/CELLS 36x3', 'W') then do; "
+        "XCON:0/0/0/0/Patina/NOBORDER/CENTRE/FRONT/CLOSEINACTIVE/CELLS 36x3', 'W') then do; "
         "call writech(w, 'Directory Opus is not running'); address command 'Wait 3 SECS'; "
         "call close(w); end; end\"";
     CHECK(lf_rexx_notice_line(c, sizeof c, "UP-Term:Rexx/dopus-front.rexx", spec) == 1);
@@ -2729,7 +2729,7 @@ static void the_dopus_rows_are_shipped(void)
         if (!strncmp(km.menu[i].id, "dopus.", 6))
             dopus++;
     }
-    CHECK_INT(dopus, 11);                       /* ten rows plus the dopus.listers group (amarchy/index_core.h) */
+    CHECK_INT(dopus, 11);                       /* ten rows plus the dopus.listers group (patina/index_core.h) */
     for (i = 0; i < 9; i++) {
         const km_menu *r = shipped_row(rows[i].id);
         char path[96], arg[96];
@@ -2928,11 +2928,11 @@ static void a_reload_swaps_whole_keeps_the_old_map_on_a_bad_edit_and_leaks_nothi
     CHECK_INT((int)(vt_count_live - base), 0);
 }
 
-/* The Amarchy commodity holds only its own rows, at exact size: the heap bytes of dist/keymap
+/* The Patina commodity holds only its own rows, at exact size: the heap bytes of dist/keymap
  * after keymap_compact(cx_row_installed) stay under a ceiling (the rig measured 17944 B for the
  * parsed table, 8288 B on the host), carry no
  * [menu] rows, no slack beyond the block headers, and every kept row is found unchanged. */
-#define AMARCHY_KEYMAP_HEAP_MAX 5400 /* P3-D1: 68 rows, 4996 B measured (was 3600 for 49 rows) */  /* 49 rows (the three cap: hotkeys, R4.7; was 3400 for 46) (8 + the 18 window hotkeys + the three Directory Opus hotkeys + the three Screens hotkeys + the 15 AmTile layout hotkeys); 3365 B measured; the full parsed table is larger */
+#define PATINA_KEYMAP_HEAP_MAX 5400 /* P3-D1: 68 rows, 4996 B measured (was 3600 for 49 rows) */  /* 49 rows (the three cap: hotkeys, R4.7; was 3400 for 46) (8 + the 18 window hotkeys + the three Directory Opus hotkeys + the three Screens hotkeys + the 15 AmTile layout hotkeys); 3365 B measured; the full parsed table is larger */
 static void the_commodity_keymap_of_dist_keymap_is_exact_and_small(void)
 {
     static char file[32768];
@@ -2968,7 +2968,7 @@ static void the_commodity_keymap_of_dist_keymap_is_exact_and_small(void)
     CHECK(kept < ref_n);
     CHECK(held < parsed);
     CHECK(held <= want + 64);                   /* exact: only the string block header is slack */
-    CHECK(held <= AMARCHY_KEYMAP_HEAP_MAX);
+    CHECK(held <= PATINA_KEYMAP_HEAP_MAX);
     keymap_free(&km);
     CHECK_INT((int)(vt_count_live - base), 0);
 }
@@ -3041,14 +3041,14 @@ static void the_scan_record_has_a_layout_version_and_an_older_one_is_not_read(vo
     ix_prog_note(&p, IX_ST_WALK, "Work:Games");
     p.version = IX_PROG_VERSION - 1;   /* a record another build left in memory */
     CHECK(ix_prog_text(&p, 1, 1, buf, sizeof buf) > 0);
-    CHECK(strstr(buf, "another amarchy-index build, reboot to clear") && !strstr(buf, "Work:Games") &&
+    CHECK(strstr(buf, "another patina-index build, reboot to clear") && !strstr(buf, "Work:Games") &&
           !strstr(buf, "stage:"));
     CHECK_INT(ix_prog_text(&p, 1, 1, buf, 10), -1);
-    CHECK(ix_prog_other_text(buf, sizeof buf) > 0 && strstr(buf, "another amarchy-index build"));
+    CHECK(ix_prog_other_text(buf, sizeof buf) > 0 && strstr(buf, "another patina-index build"));
     /* the scanner never reuses the older semaphore: its name differs from the older build's */
     CHECK(strcmp(IX_PROG_NAME, ix_prog_old_names[0]) != 0 && strcmp(IX_PROG_NAME, ix_prog_old_names[1]) != 0);
-    CHECK_STR(ix_prog_old_names[0], "Amarchy.index.2");
-    CHECK_STR(ix_prog_old_names[1], "Amarchy.index");
+    CHECK_STR(ix_prog_old_names[0], "Patina.index.2");
+    CHECK_STR(ix_prog_old_names[1], "Patina.index");
     CHECK(ix_prog_old_names[2] == 0);
 }
 
@@ -3057,20 +3057,20 @@ static void a_failed_cache_write_is_its_own_stage_and_not_reported_as_died(void)
     ix_prog p = {0};
     char buf[1024];
     ix_prog_begin(&p);
-    ix_prog_note(&p, IX_ST_WRITE, "ENVARC:Amarchy/apps");
+    ix_prog_note(&p, IX_ST_WRITE, "ENVARC:Patina/apps");
     ix_prog_write_failed(&p);
     CHECK_INT(p.stage, IX_ST_WRITE_FAILED);
     CHECK(ix_prog_text(&p, 0, 0, buf, sizeof buf) > 0);
     CHECK(strstr(buf, "cache write failed") && strstr(buf, "stage: write failed") &&
-          strstr(buf, "path: ENVARC:Amarchy/apps") && !strstr(buf, "died"));
+          strstr(buf, "path: ENVARC:Patina/apps") && !strstr(buf, "died"));
 }
 
 static void a_scan_leaf_parses_to_ka_scan_and_a_detach_leaf_stays_ka_detach(void)
 {
-    CHECK(parse("[keymap]\nversion = 1\n[menu]\napps.rescan = Rescan apps | scan:amarchy-index\napps.bg = Bg | detach:foo\n"));
+    CHECK(parse("[keymap]\nversion = 1\n[menu]\napps.rescan = Rescan apps | scan:patina-index\napps.bg = Bg | detach:foo\n"));
     CHECK_INT(km.nmenu, 2);
     CHECK_INT(km.menu[0].kind, KA_SCAN);
-    CHECK_STR(km.menu[0].arg, "amarchy-index");
+    CHECK_STR(km.menu[0].arg, "patina-index");
     CHECK_INT(km.menu[1].kind, KA_DETACH);
 }
 
@@ -3082,7 +3082,7 @@ static void ixw_poll(ix_watch *w, const ix_prog *p, int have, int alive, int wan
     CHECK_STR(row, text);
 }
 
-/* RESCAN-ONE-SCANNER: Rescan chosen again while a scan ran started a second amarchy-index (three ran at
+/* RESCAN-ONE-SCANNER: Rescan chosen again while a scan ran started a second patina-index (three ran at
  * once on the A1200, all writing the apps file). The menu now shows the live scan and starts nothing. */
 static void a_second_rescan_while_a_scan_runs_shows_that_scan_and_starts_nothing(void)
 {
@@ -3200,7 +3200,7 @@ static void stopped_and_write_failed_each_name_the_failure(void)
     ix_prog_stopped(&p);
     ixw_poll(&w, &p, 1, 0, IXW_FAILED, "Scan stopped at Work:Apps");
     ix_prog_begin(&p);
-    ix_prog_note(&p, IX_ST_WRITE, "ENVARC:Amarchy/apps");
+    ix_prog_note(&p, IX_ST_WRITE, "ENVARC:Patina/apps");
     ix_prog_write_failed(&p);
     ixw_poll(&w, &p, 1, 0, IXW_FAILED, "Scan could not save the list");
 }
@@ -3242,7 +3242,7 @@ static void a_menu_opened_during_a_scan_it_did_not_start_adopts_it_and_a_quiet_r
     CHECK_INT(x.on, 0);
 }
 
-/* AMARCHY_ROWS: amarchy-menu (text) and amarchy-gui (drawn) both call mn_rows_join, so one format: the shown rows'
+/* PATINA_ROWS: patina-menu (text) and patina-gui (drawn) both call mn_rows_join, so one format: the shown rows'
  * labels in display order joined by '|', whole labels only. */
 static void both_menu_styles_publish_the_shown_rows_through_one_join(void)
 {
@@ -3454,7 +3454,7 @@ static void tw_level(const mn_item *src, int n, void *ctx)
 static void tw_open_editor(void)
 {
     static char buf[UC_MAX_FILE];
-    FILE *f = fopen("dist/amarchy-themes/nord.theme", "rb");
+    FILE *f = fopen("dist/patina-themes/nord.theme", "rb");
     long n = f ? (long)fread(buf, 1, sizeof buf, f) : -1;
     gtheme t;
     int failed = 0;
@@ -3482,7 +3482,7 @@ static void tw_open_editor(void)
 /* Owner bug A (s61): no swatch can be recoloured. Every picker row on the
  * Swatches page must open its colour list, a built-in swatch (swatch0 =
  * "background") as well as one added with Add Swatch. Fails on main on
- * purpose: choice_setting (amarchy/menu_tree.c) only searches ids below
+ * purpose: choice_setting (patina/menu_tree.c) only searches ids below
  * sd_nsettings, so editor rows never get a list. */
 static void every_swatch_row_opens_its_colour_list(void)
 {
@@ -3659,7 +3659,7 @@ static void the_menu_stays_open_when_its_own_confirm_takes_the_focus(void)
     CHECK_INT(f.own_confirm, 0);
     CHECK_INT(mg_focus_inactive(&f, 0), 1);
     /* the wiring: gui.c uses the state, the pick sets the latch, the old bare flag is gone */
-    n = slurp("amarchy/gui.c", gui, (long)sizeof gui);
+    n = slurp("patina/gui.c", gui, (long)sizeof gui);
     CHECK_INT(n > 0, 1);
     CHECK_INT(strstr(gui, "mg_focus_inactive(") != 0, 1);
     CHECK_INT(strstr(gui, "mg_focus_confirm_asked(") != 0, 1);
@@ -3790,8 +3790,8 @@ void suite_keymap(void)
     the_icon_cache_file_round_trips_and_rejects_bad_buffers();
 }
 /* ---- menu_theme: the drawn menu's colour roles ---- */
-#include "../amarchy/menu_theme.h"
-#include "../amarchy/dopustb_core.h"
+#include "../patina/menu_theme.h"
+#include "../patina/dopustb_core.h"
 
 /* role -> palette index is the table's: the shipped default palette is the renderer's xterm one, and the
  * table's defaults are those values (hand-written below, then held to the engine) */
@@ -3850,7 +3850,7 @@ static void minimal_mode_reaches_the_program(void)
     style = upconf_menu_style(conf, (long)strlen(conf));
     CHECK_INT(style, UC_MENU_MINIMAL);
     CHECK(cx_menu_cmd(out, sizeof(out), "UP-Term:bin", KA_MENU, "apps", style, &text));
-    CHECK_STR(out, "\"UP-Term:bin/amarchy-gui\" menu apps");
+    CHECK_STR(out, "\"UP-Term:bin/patina-gui\" menu apps");
     CHECK_INT(text, 0);
 
     mg_metrics_for(&md, &topaz, &drawn);
@@ -4013,7 +4013,7 @@ static long dopus_fake_send(const char *port, const char *line, char *result, in
     else if (sscanf(line, "lister query %d toolbar", &h) == 1 && h >= 1 && h <= 3)
         reply = r->tb[h];
     else if (sscanf(line, "lister set %d toolbar ", &h) == 1 && h >= 1 && h <= 3) {
-        strcpy(r->tb[h], r->bank_missing && strstr(line, "Amarchy") ? "" : line + strlen("lister set 1 toolbar "));
+        strcpy(r->tb[h], r->bank_missing && strstr(line, "Patina") ? "" : line + strlen("lister set 1 toolbar "));
         reply = "";
     }
     if (result && cap > 0) {
@@ -4298,7 +4298,7 @@ static void wb_pens_contrast_guard(void)
     CHECK_INT((long)wb_pens_plan(0, rgb), 0L);
 }
 
-/* ---- index_core: the app index's cache rows (plan 2026-10-23-amarchy-app-index.md, X1) ---- */
+/* ---- index_core: the app index's cache rows (plan 2026-10-23-patina-app-index.md, X1) ---- */
 
 static void an_index_row_has_kind_label_and_path(void)
 {
@@ -4349,7 +4349,7 @@ static void an_index_label_is_the_icon_file_name_without_info(void)
     CHECK_STR(l, ".info");
 }
 
-static void network_volumes_are_skipped_unless_listed_in_amarchy_index_volumes(void)
+static void network_volumes_are_skipped_unless_listed_in_patina_index_volumes(void)
 {
     /* handler names measured on the A1200: SMB0 L:smb2-handler, FAT0 l:fat95, DH0 none (a startup message) */
     CHECK(ix_net_handler("L:smb2-handler"));
@@ -4458,7 +4458,7 @@ static void every_cache_row_reaches_the_apps_level_past_256(void)
 }
 
 /* MENU-SEARCH-DEEP (owner A1200 2026-10-30): with the shipped keymap and an app index, typing "reboot" at the
- * root of amarchy-gui showed an empty list. The level buffer (ix_level_cap) had no room for the deep rows,
+ * root of patina-gui showed an empty list. The level buffer (ix_level_cap) had no room for the deep rows,
  * so leaves late in [menu] were cut off. The GUI's own buffer size and level call, here. */
 static void typing_reboot_at_root_finds_system_reboot_with_the_shipped_keymap(void)
 {
@@ -4492,7 +4492,7 @@ static void typing_reboot_at_root_finds_system_reboot_with_the_shipped_keymap(vo
     ix_free(&x);
 }
 
-/* GROUP-DRAWER-ICON: every item of the levels amarchy-gui draws resolves to an id with a glyph; the kind
+/* GROUP-DRAWER-ICON: every item of the levels patina-gui draws resolves to an id with a glyph; the kind
  * groups keep their own, a scanned drawer takes "drawer", an index row the glyph of its level */
 static void menu_item_id_cases(void)
 {
@@ -4546,7 +4546,7 @@ static void menu_item_id_cases(void)
     CHECK_STR(id, "apps");
     n = mn_children(&km, "style", it, TEST_LEVEL_MAX);
     for (i = 0; i < n; i++)
-        if (!MN_IS_GROUP(&it[i]) && !strcmp(it[i].label, "Amarchy theme")) {
+        if (!MN_IS_GROUP(&it[i]) && !strcmp(it[i].label, "Patina theme")) {
             mi_item_id("style", &it[i], id, sizeof id);
             CHECK_STR(id, "style.theme");
             ran = -1;
@@ -4623,11 +4623,11 @@ static void an_index_row_launches_its_tool_path_and_a_rescan_row_ships_in_the_ap
     n = slurp("dist/keymap", buf, sizeof(buf));
     CHECK(n > 0 && keymap_parse(&km, buf, n));
     for (i = 0; i < km.nmenu; i++)
-        if (!strcmp(km.menu[i].id, "settings.amarchy.rescan"))
+        if (!strcmp(km.menu[i].id, "settings.patina.rescan"))
             rescan = i;
     CHECK(rescan >= 0);
     CHECK_STR(km.menu[rescan].label, "Rescan apps");
-    CHECK_STR(km.menu[rescan].arg, "amarchy-index");
+    CHECK_STR(km.menu[rescan].arg, "patina-index");
     CHECK_INT(km.menu[rescan].kind, KA_SCAN);            /* in the background, and the menu watches it */
     CHECK_INT((int)lf_plan(KA_DETACH), (int)LF_DETACH);
     CHECK_INT((int)lf_plan(KA_SCAN), (int)LF_SCAN);
@@ -4660,7 +4660,7 @@ static void an_index_row_launches_its_tool_path_and_a_rescan_row_ships_in_the_ap
     }
 }
 
-static void a_launch_request_for_the_resident_amarchy_carries_the_path_and_refuses_a_bad_one(void)
+static void a_launch_request_for_the_resident_patina_carries_the_path_and_refuses_a_bad_one(void)
 {
     lf_launch b;
     char longp[LF_LAUNCH_PATH + 8];
@@ -4790,7 +4790,7 @@ static void system_drawers_vanish_from_the_apps_level(void)
     CHECK(level_has(it, n, "Lemmings"));        /* the one game category is shown flat */
 }
 
-static void the_shipped_settings_amarchy_group_holds_rescan_preferences_font_and_edit(void)
+static void the_shipped_settings_patina_group_holds_rescan_preferences_font_and_edit(void)
 {
     static char buf[32768];
     static ix_index x;
@@ -4798,27 +4798,27 @@ static void the_shipped_settings_amarchy_group_holds_rescan_preferences_font_and
     int n, g, i, found = 0;
     long len = slurp("dist/keymap", buf, sizeof(buf));
     CHECK(len > 0 && keymap_parse(&km, buf, len));
-    check_row("settings.amarchy.rescan", KA_SCAN, "amarchy-index");
+    check_row("settings.patina.rescan", KA_SCAN, "patina-index");
     /* run: opened an UP-Term window beside the Prefs window (A1200 2026-10-26) */
-    check_row("settings.amarchy.preferences", KA_DETACH, "C:UP-Term-Prefs AMARCHY");
-    check_row("settings.amarchy.font", KA_DETACH, "C:UP-Term-Prefs AMARCHY");
-    check_row("settings.amarchy.edit", KA_RUN, "nvim ENV:up-term/keymap");
+    check_row("settings.patina.preferences", KA_DETACH, "C:UP-Term-Prefs PATINA");
+    check_row("settings.patina.font", KA_DETACH, "C:UP-Term-Prefs PATINA");
+    check_row("settings.patina.edit", KA_RUN, "nvim ENV:up-term/keymap");
     CHECK(shipped_row("apps.rescan") == 0);
     ix_load_text(&km, &x, "app\tClock\tSys:Tools/Clock\napp\tPalette\tSystem:Prefs/Palette\n");
     n = ix_level(&km, &x, "", "", it, TEST_LEVEL_MAX);
     CHECK(level_has(it, n, "Settings"));
     CHECK(root_has_group("Settings", 1));
     n = ix_level(&km, &x, "settings", "", it, TEST_LEVEL_MAX);
-    CHECK(level_has(it, n, "Amarchy") && level_has(it, n, "Palette"));
+    CHECK(level_has(it, n, "Patina") && level_has(it, n, "Palette"));
     for (g = 0; g < n; g++)
-        if (!strcmp(it[g].label, "Amarchy"))
+        if (!strcmp(it[g].label, "Patina"))
             found = 1;
     CHECK(found);
-    n = ix_level(&km, &x, "settings.amarchy", "", it, TEST_LEVEL_MAX);
+    n = ix_level(&km, &x, "settings.patina", "", it, TEST_LEVEL_MAX);
     for (g = 0, i = 0; i < sd_nsettings; i++)
-        g += sd_settings[i].page == PG_PAGE_AMARCHY;
+        g += sd_settings[i].page == PG_PAGE_PATINA;
     CHECK_INT(n, g + 6); /* the page's table rows plus the six static rows (rescan, preferences, font, edit, two AI agent picks) */
-    CHECK(level_has(it, n, "Rescan apps") && level_has(it, n, "Amarchy preferences") &&
+    CHECK(level_has(it, n, "Rescan apps") && level_has(it, n, "Patina preferences") &&
           level_has(it, n, "Menu font") && level_has(it, n, "Edit menu") &&
           level_has(it, n, "AI Agent: Claude") && level_has(it, n, "AI Agent: pi"));
     for (i = 0; i < n; i++)
@@ -4922,7 +4922,7 @@ static void a_missing_or_empty_cache_adds_no_index_rows(void)
     /* a root filter adds the [menu] leaves with their paths (MENU-DEEP-SEARCH, here Apps/Tmux) and no index row */
     CHECK_INT(ix_level(&km, &x, "", "tur", it, TEST_LEVEL_MAX),
               mn_deep_rows(&km, base, mn_children(&km, "", base, TEST_LEVEL_MAX), TEST_LEVEL_MAX, MN_COND_ALL));
-    ix_load_file(&km, &x, "/nonexistent/amarchy/apps");
+    ix_load_file(&km, &x, "/nonexistent/patina/apps");
     CHECK_INT(x.n, 1);                                  /* no cache rows; only the clipboard history placeholder */
     CHECK_INT(x.rows[0].kind, IX_KIND_CLIP);
     ix_load_text(&km, &x, 0);
@@ -4956,14 +4956,14 @@ static void the_app_index_core_behaves(void)
     a_bad_index_row_is_rejected();
     an_index_label_is_the_icon_file_name_without_info();
     the_skip_list_skips_by_whole_path_prefix();
-    network_volumes_are_skipped_unless_listed_in_amarchy_index_volumes();
+    network_volumes_are_skipped_unless_listed_in_patina_index_volumes();
     equal_index_labels_get_their_volume_as_suffix_and_rows_sort_by_label();
     a_menu_row_wins_over_an_index_row_with_the_same_label();
     the_apps_level_lists_index_apps_after_merging();
     menu_item_id_cases();
     the_scan_record_names_the_last_path_and_the_where_text_tells_running_stuck_died_and_done();
     an_index_row_launches_its_tool_path_and_a_rescan_row_ships_in_the_apps_menu();
-    a_launch_request_for_the_resident_amarchy_carries_the_path_and_refuses_a_bad_one();
+    a_launch_request_for_the_resident_patina_carries_the_path_and_refuses_a_bad_one();
     a_menu_row_hides_an_index_app_with_the_same_label();
     the_games_level_lists_index_games_and_the_root_offers_the_group();
     music_disks_leave_games_and_get_a_flat_music_level();
@@ -4971,7 +4971,7 @@ static void the_app_index_core_behaves(void)
     an_index_without_prefs_music_or_scene_rows_keeps_apps_and_games_only();
     extra_music_drawers_from_the_upconf_move_games_to_music();
     system_drawers_vanish_from_the_apps_level();
-    the_shipped_settings_amarchy_group_holds_rescan_preferences_font_and_edit();
+    the_shipped_settings_patina_group_holds_rescan_preferences_font_and_edit();
     hidden_drawers_from_the_upconf_vanish_too();
     the_apps_and_games_levels_group_by_the_first_drawer_under_the_volume();
     a_missing_or_empty_cache_adds_no_index_rows();

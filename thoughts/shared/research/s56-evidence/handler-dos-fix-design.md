@@ -20,7 +20,7 @@ Plan:
    engine calls become thin worker_call wrappers. pr_WindowPtr = -1 is set on the WORKER (requesters
    follow the calling process). Sentinels kitty_files_read/deleted unchanged.
 3. SLASH_SCREEN_TEXT: buffer filled on the handler (vt_screen_text), Open/Write/Close on a worker.
-4. clip_write_form: NOT a violation. Only caller is amarchy/shot.c (separate program); verified git grep.
+4. clip_write_form: NOT a violation. Only caller is patina/shot.c (separate program); verified git grep.
 5. dbg_flush (VTCON_DEBUG build only, :487): Open/Seek/Write on RAM:vtcon.log from the handler; the
    IsListEmpty check narrows but does not close the race. Move the Open/Write to worker_call too.
    Every window, tab and pane is its own handler_main process serving packets on pr_MsgPort (:8716),

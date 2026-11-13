@@ -1,9 +1,9 @@
-/* shotprobe: the R4.1 probe of thoughts/shared/plans/2026-10-29-amarchy-p4-capture-notify-power.md (a probe tool, not
+/* shotprobe: the R4.1 probe of thoughts/shared/plans/2026-10-29-patina-p4-capture-notify-power.md (a probe tool, not
  * shipped). One line per question, to stdout: shotprobe >RAM:shot.txt
  *  a  ReadPixelArray8 of an own chipset screen row equals the WritePixelArray8 input
  *  b  the front (Workbench) screen: depth, cybergraphics.library, ReadPixelArray8 and ReadPixelArray RECTFMT_RGB
  *  c  a PNG datatype: the class file, NewDTObject with a png base name
- *  d  clipboard.device takes a ~320 KB FORM ILBM (made by amarchy/shot_core.c) with CMD_WRITE, reads it back whole */
+ *  d  clipboard.device takes a ~320 KB FORM ILBM (made by patina/shot_core.c) with CMD_WRITE, reads it back whole */
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,7 +21,7 @@
 #include <proto/intuition.h>
 #include <proto/graphics.h>
 #include <proto/datatypes.h>
-#include "../../amarchy/shot_core.h"
+#include "../../patina/shot_core.h"
 
 long __stack = 65536;
 const char *shotprobe_cookie = "$STACK:65536";

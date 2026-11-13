@@ -2,16 +2,16 @@
 date: 2026-11-03
 topic: S32-ARROW-OUTLINE - which draw erases the flat outer ring next to the scroller arrows
 status: root cause found, no fix
-rig: 47 (OS 3.2, --max, amarchy-flat from main md5 45a4579e12de607738a5ab8319aceaeb, refreshed by rig.py start)
+rig: 47 (OS 3.2, --max, patina-flat from main md5 45a4579e12de607738a5ab8319aceaeb, refreshed by rig.py start)
 ---
 
 # S32-ARROW-OUTLINE
 
 ## Answer
 
-The erasing call is amarchy-flat's own clone draw of the arrow image, not Intuition:
-`flat_clone_draw` (amarchy/flat_glyph.c:299-304) fills the WHOLE image box with the box pen via `c2_fill`
-(amarchy/flat.c:82-87, plain `RectFill`), called from the sysiclass hook at amarchy/flat.c:313.
+The erasing call is patina-flat's own clone draw of the arrow image, not Intuition:
+`flat_clone_draw` (patina/flat_glyph.c:299-304) fills the WHOLE image box with the box pen via `c2_fill`
+(patina/flat.c:82-87, plain `RectFill`), called from the sysiclass hook at patina/flat.c:313.
 For the down arrow of the UP-Term window: rect window-relative (622,214)-(639,224) (screen y 225..235), pen 0
 (BACKGROUNDPEN = `frame_pen`, FLAT-SOLID-FILL, flat.c:300; band_rows 9999 so the single fill at flat_glyph.c:302).
 
@@ -20,11 +20,11 @@ Why the box hits the ring: the handler places each arrow at `GA_RelRight 1-sw`, 
 window's outer column(s). On this PAL hires screen `side=2` (FLAT-ASPECT-BORDERS), so the ring is x=638..639 and
 both columns are inside the 18 px box (622..639).
 
-Why it is not repainted: the ring exists only through the RectFill patch (flat_rf_c, amarchy/flat.c:759-768), which
+Why it is not repainted: the ring exists only through the RectFill patch (flat_rf_c, patina/flat.c:759-768), which
 recolours Intuition's four 1 px outer-strip fills (caller in Intuition ROM + exact strip match,
 flat_outer_edge_fill flat_glyph.c:494). Intuition issues those strips only in a full frame redraw. A gadget-only
 render (button press = SELECTED render + normal render; RefreshGList) never issues them, and c2_fill's own RectFill
-fails both gates (caller is amarchy-flat, rect is not a full strip), so it runs stock. Nothing re-draws the ring.
+fails both gates (caller is patina-flat, rect is not a full strip), so it runs stock. Nothing re-draws the ring.
 
 ## Measurements (PIL on full grabs, 640x256, ring pen colour (122,162,247), pen 0 = (26,27,38))
 

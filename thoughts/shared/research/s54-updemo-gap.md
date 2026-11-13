@@ -52,12 +52,12 @@ Media: demo/media/earth.gif (+ SOURCE.txt) -> dist/updemo/earth.anim via tools/g
 | Split panes (render/layout, restore) | partly: key table only, no live split (8) |
 | Tabs, /tab new / close | in demo (19) |
 | Welcome + Help core, /help, Help > Shell tutorial, /tutorial, /ask, Agent tab | missing |
-| Themes (12 live) | in demo (11); desktop-theme/flat look/Amarchy are Amarchy, not terminal features |
+| Themes (12 live) | in demo (11); desktop-theme/flat look/Patina are Patina, not terminal features |
 | Hyperlinks, OSC 9 | in demo (13) |
 | Sync output 2026, DECCOLM, reflow | in demo (20-22) |
 | vsh, completion; vsh `why` builtin | partly (9,10); `why` missing |
 | Drawn job view (M_JOB), upkg/Packages | missing (not terminal-protocol features; optional) |
-| Bar (bar.conf, CPU/net segments), AmTile, flat gadgets, inactive dragbar | Amarchy only: out of scope for this tour |
+| Bar (bar.conf, CPU/net segments), AmTile, flat gadgets, inactive dragbar | Patina only: out of scope for this tour |
 
 ## 3. Constraints found
 

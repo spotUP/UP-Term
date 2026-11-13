@@ -1,7 +1,7 @@
 ---
 date: 2026-10-25
 topic: Full session handover (account switch). 0x34 NULL read, test_dist_stack, MuForce reruns, HARDVOL-FSSM, STACK-AUDIT landed; owner checks and follow-ups open
-branch: main (my last merge 176c572d; main since moved to 79d5a212 from the Amarchy session)
+branch: main (my last merge 176c572d; main since moved to 79d5a212 from the Patina session)
 ---
 
 # Handover: UP-Term session 2026-10-25 (account switch)
@@ -29,8 +29,8 @@ cache belongs to the old account. This file plus the ledger is the whole state.
    before its guard; added `le_unbind`. Also fixed the Makefile
    `MENU_ICONS_INC`/`SYMBOLS_TTF` ordering bug. Commits 141d68a7, 77e62eec,
    merge e524e7ff.
-2. **test_dist_stack red on main**: 2523115c added an Amarchy cookie but left
-   Amarchy in `AUDIT_PENDING`. Fixed befdf652, merge 83c34d1d.
+2. **test_dist_stack red on main**: 2523115c added an Patina cookie but left
+   Patina in `AUDIT_PENDING`. Fixed befdf652, merge 83c34d1d.
 3. **UNINSTALL-WASABI-BLOCK, wasabi-owned rig case**: PASS 14/14 on rig 3,
    fresh `make dist` from 83c34d1d.
 4. **XCON-NULL-READ-0x56 MuForce rerun** (rig 6, `--mmu`): 0 hits at 0x56 and
@@ -38,7 +38,7 @@ cache belongs to the old account. This file plus the ledger is the whole state.
    `closecrash_rig.py 6`, `bind_rig.py`, `closeinactive_rig.py`.
    pane_close NOT covered (see open item 2).
 5. **HARDVOL-FSSM** (rig 6, MuForce on): `UPBigVol LIST` marks `* VTCX:`
-   correctly; `amarchy_menu_rig` app_index 19/19; MuForce 0 hits.
+   correctly; `patina_menu_rig` app_index 19/19; MuForce 0 hits.
    `installer_rig` bigvol 3/4: askdir showed `VTCX:Apps`, test expects
    `VTCX:UP-Term`, because `rig.py install` leaves an `UP-Term:` assign and
    `P_ASKDEST` offers that drawer first. Test precondition gap, not an fssm bug.
@@ -70,7 +70,7 @@ cache belongs to the old account. This file plus the ledger is the whole state.
    `tests/test_render.c`.
 3. **installer_rig fixes**: takes `ONLY <case>`, silently ignores `--only` and
    runs every case; bigvol needs the `UP-Term:` assign removed first; the run
-   leaves the rig without `VTC:Apps`, so `amarchy_menu_rig` then fails with
+   leaves the rig without `VTC:Apps`, so `patina_menu_rig` then fails with
    "ERR: cannot create the temporary file" until `rig.py install` reruns.
 4. **make dist** stops at packaging: "upterm-ports/build/kit/userland is older
    than these checked builds: make kit-stage in upterm-ports first". Other repo;
@@ -90,7 +90,7 @@ cache belongs to the old account. This file plus the ledger is the whole state.
 ## Hands off (other sessions' work)
 - Unstaged `tools/rig/rig.py` hunk on main (another session).
 - Untracked `thoughts/shared/releases-backup/2026-10-23_vtcon-v1.0-v1.6/`.
-- Amarchy session items: AMARCHY-*, RESCAN-FEEDBACK,
+- Patina session items: PATINA-*, RESCAN-FEEDBACK,
   TERM-ROWS-ONLY-OVER-TERMINAL, INDEX-SKIP-NETWORK, app_index check 7, I4.
   That session committed 79d5a212 on main after my merge.
 - Worktrees not mine: `vtcon-demo-perf`, `vtcon-splits`, and the three under

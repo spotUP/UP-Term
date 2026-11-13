@@ -1,6 +1,6 @@
 ---
 date: 2026-11-04
-topic: Locale Prefs listview knob colour and Cancel button corners under amarchy-flat
+topic: Locale Prefs listview knob colour and Cancel button corners under patina-flat
 rig: 75 (060 max, AmigaOS 3.2, Workbench 640x256 depth 8)
 status: fixed, rig-proven
 ---
@@ -29,11 +29,11 @@ the RectFill call that flat's scroller_pen paints in flat_knob_state_pen. flat's
 call as an ordinary frame. It drew the frame as an edge-only box or a fill in pen_button, never in the knob pen.
 
 ### Fix
-- `flat_smart_knob` (amarchy/flat_glyph.c) recognises the knob: a prop gadget with AUTOKNOB and SMARTKNOBIMAGE set,
+- `flat_smart_knob` (patina/flat_glyph.c) recognises the knob: a prop gadget with AUTOKNOB and SMARTKNOBIMAGE set,
   where the image is its AUTOKNOB Image's NextImage.
 - `flat_knob_frame_draw` paints the knob as a box in `flat_knob_state_pen(depth, window active)`. This is the same pen
   as the Workbench window knob. It keeps the rounded corners of flat_frame_draw_round.
-- c8_skip calls them through `smart_knob_of` (amarchy/flat.c).
+- c8_skip calls them through `smart_knob_of` (patina/flat.c).
 
 ### Measured after the fix (wbpenprobe 240 81 14 22)
 - Box 242..251 x 83..100: pen 3 (7aa2f7), the active-window knob pen.
@@ -69,7 +69,7 @@ tests/test_flat_core.c has two blocks:
   flat_smart_knob accepts flags 0x3d and refuses 0x1d, another object and a gadget that is not a prop.
 
 ## Smoke check 6a682293 (flat-budget draw-path refactor)
-Rig 85 (060 max, 3.2, Workbench 640x256), fresh from `make -s amiga`; Amarchy + amarchy-flat started, flat=on, palette
+Rig 85 (060 max, 3.2, Workbench 640x256), fresh from `make -s amiga`; Patina + patina-flat started, flat=on, palette
 pen 0 = 1a1b26, pen 2 = a9b1d6, pen 3 = 7aa2f7. Probe: build/amiga/wbpenprobe. The Locale window opened at 34,54 (not
 88,54), so coordinates are shifted by -54 in x against the 7e51272c values.
 - Locale listview knob (probe 186 81 14 22): box 188..197 x 83..100 is pen 3, corners pen 0, rows 83/100 span 190..195,
@@ -83,7 +83,7 @@ pen 0 = 1a1b26, pen 2 = a9b1d6, pen 3 = 7aa2f7. Probe: build/amiga/wbpenprobe. T
 - Workbench drawer window (SYS: 462x103 at 28,39, active): outer right side line columns 488..489 are pen 3, the
   gutter 486..487 pen 0, rows 100..108; title bar rows 39..49 pen 3. No 7e51272c baseline recorded for this edge
   (measured only, not compared).
-- `amarchy-flat STATUS` after the run: clone draws=242 fallback=0 (the new c2_clone path ran, no fallback).
-- Amarchy alive: ARexx AMARCHY STATUS rc 0 after opening/closing SYS:, SYS:Prefs, SYS:System and Locale; no Guru
+- `patina-flat STATUS` after the run: clone draws=242 fallback=0 (the new c2_clone path ran, no fallback).
+- Patina alive: ARexx PATINA STATUS rc 0 after opening/closing SYS:, SYS:Prefs, SYS:System and Locale; no Guru
   requester, serial.log has no guru line, wasabid answers.
 Screenshots: ~/Desktop/upterm-shots/s56-smoke-6a682293-*.png.

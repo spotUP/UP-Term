@@ -1,21 +1,21 @@
-/* The Amarchy GUI themes (amarchy/gthemes_core.c, menu_theme_roles_gui, the AM_GTHEME key; plan
- * 2026-10-26-amarchy-gui-themes.md checks H1..H8). The shipped files are read from dist/amarchy-themes. */
+/* The Patina GUI themes (patina/gthemes_core.c, menu_theme_roles_gui, the AM_GTHEME key; plan
+ * 2026-10-26-patina-gui-themes.md checks H1..H8). The shipped files are read from dist/patina-themes. */
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include "../amarchy/amconf_core.h"
-#include "../amarchy/desk_core.h"
-#include "../amarchy/flat_core.h"
-#include "../amarchy/gthemes_core.h"
-#include "../amarchy/iconpen_core.h"
-#include "../amarchy/wbreset_core.h"
-#include "../amarchy/leaf.h"
+#include "../patina/amconf_core.h"
+#include "../patina/desk_core.h"
+#include "../patina/flat_core.h"
+#include "../patina/gthemes_core.h"
+#include "../patina/iconpen_core.h"
+#include "../patina/wbreset_core.h"
+#include "../patina/leaf.h"
 #include "../prefs/settings_def.h"
-#include "../amarchy/menu_core.h"
-#include "../amarchy/menu_theme.h"
-#include "../amarchy/pen_cache.h"
+#include "../patina/menu_core.h"
+#include "../patina/menu_theme.h"
+#include "../patina/pen_cache.h"
 #include "harness.h"
 #include "memfs.h"
 
@@ -51,7 +51,7 @@ static int ref_screen_match(const char *p, const char *s)
 }
 
 
-#define THEME_DIR "dist/amarchy-themes"
+#define THEME_DIR "dist/patina-themes"
 
 /* name, mode, background, foreground, dark_foreground, accent: the plan's table, from Omarchy's colors.toml */
 static const struct {
@@ -108,7 +108,7 @@ static void load_shipped(const char *name, gtheme *t)
         gt_parse(buf, n, t);
 }
 
-/* F3: an Amarchy theme switch recolours every console tab, so the theme becomes the text theme_apply reads: one profile with
+/* F3: an Patina theme switch recolours every console tab, so the theme becomes the text theme_apply reads: one profile with
  * fg, bg and the 16-colour palette, all from the theme's colors.toml */
 static void test_gthemes_term_text(void)
 {
@@ -138,7 +138,7 @@ static void test_gthemes_term_text(void)
 /* TE-7b.2: the Shell Font reaches the terminal text as one "font = NAME:SIZE" line in the same profile section */
 static long term_font_text(char *buf, long cap, const char *shell_font)
 {
-    long n = snprintf(buf, (size_t)cap, "amarchy-theme = 2\nname = \"tf\"\nmode = \"dark\"\n"
+    long n = snprintf(buf, (size_t)cap, "patina-theme = 2\nname = \"tf\"\nmode = \"dark\"\n"
                       "[profile swatches]\nbackground = #101010\nforeground = #eeeeee\naccent = #336699\n[profile look]\ncorner-radius = 4\n");
     if (shell_font)
         n += snprintf(buf + n, (size_t)(cap - n), "shell-font = \"%s\"\n", shell_font);
@@ -513,7 +513,7 @@ static void test_gthemes_user(void)
     gt_label("gruvbox", "nord", lab, sizeof lab);
     CHECK_STR(lab, "gruvbox");
     CHECK(gt_path(GT_USER_DIR, "nord", lab, sizeof lab) == 1);
-    CHECK_STR(lab, "ENVARC:Amarchy/themes/nord.theme");
+    CHECK_STR(lab, "ENVARC:Patina/themes/nord.theme");
     CHECK(gt_path("UP-Term:", "x", lab, sizeof lab) == 1);
     CHECK_STR(lab, "UP-Term:x.theme");
 }
@@ -526,7 +526,7 @@ static void test_gthemes_amconf(void)
     int n;
     amconf_parse("", 0, &p);
     CHECK_STR(p.val[AM_GTHEME], GT_DEFAULT);
-    CHECK_STR(am_keys[AM_GTHEME].name, "amarchy-gui-theme");
+    CHECK_STR(am_keys[AM_GTHEME].name, "patina-gui-theme");
     strcpy(p.val[AM_GTHEME], "nord");
     n = (int)amconf_serialize(&p, buf, sizeof buf);
     CHECK(n > 0);
@@ -683,7 +683,7 @@ static void test_gthemes_fallback(void)
     CHECK_INT((long)d.bg, 0x1a1b26L);
 }
 
-/* TE-10.2: the screen rules (ENVARC:Amarchy/screen-themes): parse, write, resolve one public screen name */
+/* TE-10.2: the screen rules (ENVARC:Patina/screen-themes): parse, write, resolve one public screen name */
 static int scr_theme(const gt_screen_rules *r, const char *name, const char *main_theme, char *th, int *take)
 {
     return gt_screen_theme_of(r, name, main_theme, th, GT_NAME, take);
@@ -1328,15 +1328,15 @@ static void test_gthemes_save_text(void)
     gt_save_text(GT_SAVE_NAME, 0, 0, t, sizeof t);
     CHECK_STR(t, "the theme could not be saved: check the name of the theme");
     gt_save_text(PREFS_INSTALL_WRITE, PREFS_T_ENV, 202, t, sizeof t);
-    CHECK_STR(t, "the theme could not be saved: write ENV:Amarchy/prefs, error 202");
+    CHECK_STR(t, "the theme could not be saved: write ENV:Patina/prefs, error 202");
     gt_save_text(PREFS_INSTALL_WRITE, PREFS_T_ENVARC, 103, t, sizeof t);
-    CHECK(strstr(t, "write ENVARC:Amarchy/") && strstr(t, ", error 103"));
+    CHECK(strstr(t, "write ENVARC:Patina/") && strstr(t, ", error 103"));
     gt_save_text(PREFS_SAVE_NODIR, PREFS_T_ENVARC, 0, t, sizeof t);
-    CHECK_STR(t, "the theme could not be saved: make the drawer ENVARC:Amarchy");
+    CHECK_STR(t, "the theme could not be saved: make the drawer ENVARC:Patina");
     gt_save_text(PREFS_INSTALL_BACKUP, PREFS_T_ENVARC, 5, t, sizeof t);
-    CHECK(strstr(t, "back up to ENVARC:Amarchy/") && strstr(t, ", error 5"));
+    CHECK(strstr(t, "back up to ENVARC:Patina/") && strstr(t, ", error 5"));
     gt_save_text(PREFS_INSTALL_PLACE, PREFS_T_ENVARC, 5, t, sizeof t);
-    CHECK(strstr(t, "rename into place ENVARC:Amarchy/prefs"));
+    CHECK(strstr(t, "rename into place ENVARC:Patina/prefs"));
     gt_save_text(PREFS_INSTALL_STRANDED, PREFS_T_ENVARC, 5, t, sizeof t);
     CHECK(strstr(t, "restore after a failed rename"));
 }
@@ -1931,7 +1931,7 @@ static void test_gthemes_model_refs(void)
 
 static void test_gthemes_model_cycle(void)
 {
-    static const char text[] = "amarchy-theme = 2\nname = \"cyc\"\n[profile swatches]\nbackground = #101010\nforeground = #eeeeee\n"
+    static const char text[] = "patina-theme = 2\nname = \"cyc\"\n[profile swatches]\nbackground = #101010\nforeground = #eeeeee\n"
                                "accent = #336699\n[profile groups]\ntext = group:accent\naccent = group:text\n";
     gt_roles r;
     gt_model_parse(text, (long)sizeof text - 1, &te_m);
@@ -1947,7 +1947,7 @@ static void test_gthemes_model_full_and_extras(void)
     static char text[UC_MAX_FILE];
     long n = 0, len;
     int i;
-    n += snprintf(text + n, sizeof text - (size_t)n, "amarchy-theme = 2\nname = \"full\"\nmode = \"dark\"\nomarchy_extra = \"keepme\"\n");
+    n += snprintf(text + n, sizeof text - (size_t)n, "patina-theme = 2\nname = \"full\"\nmode = \"dark\"\nomarchy_extra = \"keepme\"\n");
     n += snprintf(text + n, sizeof text - (size_t)n, "[profile swatches]\nbackground = #101010\nforeground = #eeeeee\naccent = #336699\n");
     n += snprintf(text + n, sizeof text - (size_t)n, "[profile groups]\nbogus-group = #010203\n[profile elements]\n");
     for (i = 0; i < GTE_COUNT; i++)
@@ -2083,8 +2083,8 @@ static void test_gthemes_te3_save(void)
     strcpy(mod.name, "Mine");                     /* gt_save writes the target name: the round trip is of the model named Mine */
     n = gt_model_save_text(&mod, out, (long)sizeof out);
     CHECK(gt_save(&fs, "Mine", &mod, why, sizeof why));
-    u = tm_find(&m, "ENVARC:Amarchy/themes/Mine.theme");
-    e = tm_find(&m, "ENV:Amarchy/themes/Mine.theme");
+    u = tm_find(&m, "ENVARC:Patina/themes/Mine.theme");
+    e = tm_find(&m, "ENV:Patina/themes/Mine.theme");
     CHECK(u && e);
     CHECK(u && u->len == n && !memcmp(u->data, out, (size_t)n));     /* save text equals the round trip */
     CHECK(e && e->len == n && !memcmp(e->data, out, (size_t)n));
@@ -2092,9 +2092,9 @@ static void test_gthemes_te3_save(void)
     CHECK(strstr(why, "name") != 0);
     CHECK(!gt_save(&fs, "", &mod, why, sizeof why));
     /* D2: a shipped theme's name is never saved over, not even as a user copy */
-    tm_write(&m, "UP-Term:Amarchy/Themes/Nord.theme", tm_theme, (long)strlen(tm_theme));
+    tm_write(&m, "UP-Term:Patina/Themes/Nord.theme", tm_theme, (long)strlen(tm_theme));
     CHECK(!gt_save(&fs, "Nord", &mod, why, sizeof why));
-    CHECK(tm_find(&m, "ENVARC:Amarchy/themes/Nord.theme") == 0);
+    CHECK(tm_find(&m, "ENVARC:Patina/themes/Nord.theme") == 0);
     CHECK(!gt_save_as(&fs, "Mine", &mod, why, sizeof why));         /* taken */
     CHECK(!gt_save_as(&fs, "Nord", &mod, why, sizeof why));
     CHECK(gt_save_as(&fs, "Nord Custom", &mod, why, sizeof why));
@@ -2104,7 +2104,7 @@ static void test_gthemes_te3_save(void)
 static int tm_taken(void *c, const char *name)
 {
     char p[160];
-    snprintf(p, sizeof p, "ENVARC:Amarchy/themes/%s.theme", name);
+    snprintf(p, sizeof p, "ENVARC:Patina/themes/%s.theme", name);
     return tm_exists(c, p);
 }
 static void test_gthemes_te3_custom_name(void)
@@ -2115,7 +2115,7 @@ static void test_gthemes_te3_custom_name(void)
     tm_init(&m, &fs);
     gt_custom_name("Nord", tm_taken, &m, nm, sizeof nm);
     CHECK_STR(nm, "Nord Custom");
-    tm_write(&m, "ENVARC:Amarchy/themes/Nord Custom.theme", "x", 1);
+    tm_write(&m, "ENVARC:Patina/themes/Nord Custom.theme", "x", 1);
     gt_custom_name("Nord", tm_taken, &m, nm, sizeof nm);
     CHECK_STR(nm, "Nord Custom 2");
     tm_free(&m);
@@ -2280,14 +2280,14 @@ static void test_gthemes_te4_rows(void)
     r = te4_row("Terminal Palette");
     CHECK(r && r->kind == SD_PALETTE && r->store == SD_UPTERM);
     r = te4_row("Desktop Backdrop");
-    CHECK(r && r->kind == SD_CYCLE && r->store == SD_AMARCHY && r->nvalues == 2);
+    CHECK(r && r->kind == SD_CYCLE && r->store == SD_PATINA && r->nvalues == 2);
     if (r) {
         CHECK_INT(lf_setting_set(&io, r, 0, &failed), LF_SET_OK);       /* writes the real desktop-backdrop key */
         CHECK(amconf_load_with(&io, &am) != AMCONF_DEFAULTS);
         CHECK_STR(am.val[AM_DESKBACK], "off");
     }
     r = te4_row("Icon Label Style");
-    CHECK(r && r->store == SD_AMARCHY && r->nvalues == 3);
+    CHECK(r && r->store == SD_PATINA && r->nvalues == 3);
     if (r) {
         CHECK_INT(lf_setting_set(&io, r, 1, &failed), LF_SET_OK);
         CHECK(amconf_load_with(&io, &am) != AMCONF_DEFAULTS);
@@ -2313,7 +2313,7 @@ static void test_gthemes_te7_no_title_font_row(void)
         if (r)
             CHECK_INT(r->aux, rows[i].slot + 1);
     }
-    n = snprintf(text, sizeof text, "amarchy-theme = 2\nname = \"tf\"\n[profile look]\ntitle-font = \"topaz.font\"\n");
+    n = snprintf(text, sizeof text, "patina-theme = 2\nname = \"tf\"\n[profile look]\ntitle-font = \"topaz.font\"\n");
     gt_model_parse(text, n, &te_m);
     CHECK_STR(te_m.look.font[GT_FONT_TITLE], "topaz.font");
     len = gt_model_save_text(&te_m, te_out, (long)sizeof te_out);
@@ -3072,24 +3072,24 @@ static void test_gthemes_te3_import_export_delete(void)
     tm_write(&m, "RAM:bad.theme", "this is not a theme\n", 20);
     CHECK(!gt_import(&fs, tm_read, &m, "RAM:bad.theme", "Bad", why, sizeof why));
     CHECK(strstr(why, "no key = value") != 0);                       /* the parser's message */
-    CHECK(tm_find(&m, "ENVARC:Amarchy/themes/Bad.theme") == 0);      /* nothing copied */
+    CHECK(tm_find(&m, "ENVARC:Patina/themes/Bad.theme") == 0);      /* nothing copied */
     CHECK(!gt_import(&fs, tm_read, &m, "RAM:missing.theme", "Bad", why, sizeof why));
     CHECK(gt_import(&fs, tm_read, &m, "RAM:ok.theme", "Imp", why, sizeof why));
-    f = tm_find(&m, "ENVARC:Amarchy/themes/Imp.theme");
+    f = tm_find(&m, "ENVARC:Patina/themes/Imp.theme");
     CHECK(f && f->len == (long)strlen(tm_theme) && !memcmp(f->data, tm_theme, (size_t)f->len));   /* byte for byte */
-    CHECK(tm_find(&m, "ENV:Amarchy/themes/Imp.theme") != 0);
+    CHECK(tm_find(&m, "ENV:Patina/themes/Imp.theme") != 0);
     CHECK(!gt_import(&fs, tm_read, &m, "RAM:ok.theme", "Imp", why, sizeof why));   /* taken */
     CHECK(gt_export(&fs, tm_read, &m, "Imp", "RAM:out.theme", why, sizeof why));
     CHECK_INT((int)tm_read(&m, "RAM:out.theme", buf, sizeof buf), (int)strlen(tm_theme));
     CHECK(gt_duplicate(&fs, tm_read, &m, "Imp", "Imp Two", why, sizeof why));
-    CHECK(tm_find(&m, "ENVARC:Amarchy/themes/Imp Two.theme") != 0);
+    CHECK(tm_find(&m, "ENVARC:Patina/themes/Imp Two.theme") != 0);
     CHECK(!gt_duplicate(&fs, tm_read, &m, "Nothing", "X", why, sizeof why));
     /* Delete User Theme: a shipped theme of that name shows again, the shipped file is never touched */
-    tm_write(&m, "UP-Term:Amarchy/Themes/Imp.theme", tm_theme, (long)strlen(tm_theme));
+    tm_write(&m, "UP-Term:Patina/Themes/Imp.theme", tm_theme, (long)strlen(tm_theme));
     CHECK(gt_delete_user(&fs, "Imp", why, sizeof why));
-    CHECK(tm_find(&m, "ENVARC:Amarchy/themes/Imp.theme") == 0);
-    CHECK(tm_find(&m, "ENV:Amarchy/themes/Imp.theme") == 0);
-    CHECK(tm_find(&m, "UP-Term:Amarchy/Themes/Imp.theme") != 0);
+    CHECK(tm_find(&m, "ENVARC:Patina/themes/Imp.theme") == 0);
+    CHECK(tm_find(&m, "ENV:Patina/themes/Imp.theme") == 0);
+    CHECK(tm_find(&m, "UP-Term:Patina/Themes/Imp.theme") != 0);
     CHECK(!gt_delete_user(&fs, "Imp", why, sizeof why));             /* only the shipped one is left: nothing to delete */
     tm_free(&m);
 }
@@ -3219,7 +3219,7 @@ static void test_drawn_windows_take_their_screens_theme(void)
     gt_screen_draw_theme(&r, "DOPUS.1", "gruvbox", small, 5);
     CHECK((int)strlen(small) < 5);
     /* the callers: both windows ask the DOS side for their screen's theme; the drawn menu no longer reads the main theme */
-    n = read_file("amarchy/gui.c", big, (long)sizeof big - 1);
+    n = read_file("patina/gui.c", big, (long)sizeof big - 1);
     CHECK(n > 0);
     if (n > 0) {
         char *pg;
@@ -3234,7 +3234,7 @@ static void test_drawn_windows_take_their_screens_theme(void)
             CHECK(strstr(pg, "gt_dos_load_current") == 0);
         }
     }
-    n = read_file("amarchy/themewin.c", big, (long)sizeof big - 1);
+    n = read_file("patina/themewin.c", big, (long)sizeof big - 1);
     CHECK(n > 0);
     if (n > 0) {
         big[n] = 0;
@@ -3243,7 +3243,7 @@ static void test_drawn_windows_take_their_screens_theme(void)
     /* a public screen name is up to 139 characters (IP_PSN_NAME 140, as the rule pattern GT_SCR_PAT): a shorter name buffer
      * cuts the name and the screen's exact-name rule no longer matches */
     CHECK_INT(IP_PSN_NAME >= GT_SCR_PAT, 1);
-    n = read_file("amarchy/iconpen_dos.c", big, (long)sizeof big - 1);
+    n = read_file("patina/iconpen_dos.c", big, (long)sizeof big - 1);
     CHECK(n > 0);
     if (n > 0) {
         char *fn;
@@ -3255,7 +3255,7 @@ static void test_drawn_windows_take_their_screens_theme(void)
             if (end)
                 *end = 0;
             CHECK(strstr(fn, "char name[IP_PSN_NAME]") != 0);
-            /* the rules (32 x 188 bytes) stay off the stack: themewin.c calls this in the Amarchy main program (16384 bytes) */
+            /* the rules (32 x 188 bytes) stay off the stack: themewin.c calls this in the Patina main program (16384 bytes) */
             CHECK(strstr(fn, "static gt_screen_rules rules;") != 0);
         }
     }

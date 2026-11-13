@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""test_nobreak.py -- a Break during file work must not end Amarchy behind its cleanup.
+"""test_nobreak.py -- a Break during file work must not end Patina behind its cleanup.
 
-  python3 tests/test_nobreak.py build/amiga/Amarchy build/amiga/amarchy-gui build/amiga/amarchy-flat
+  python3 tests/test_nobreak.py build/amiga/Patina build/amiga/patina-gui build/amiga/patina-flat
 
 The vbcc library's _chkabort (called from every buffered stdio read/write) clears a pending Ctrl-C and calls
 exit(20), skipping the program's own exit path (patches, semaphores, ports, broker stay armed; the next start
-crashes). Programs that handle Ctrl-C themselves and hold system state link amarchy/nobreak.c (an empty
+crashes). Programs that handle Ctrl-C themselves and hold system state link patina/nobreak.c (an empty
 _chkabort). This check fails when a given binary still contains the library unit's code.
 The list of binaries is CHKABORT_PROGRAMS in the Makefile (make chkabort-check). Exit 1 on a hit.
 See thoughts/shared/research/s61-evidence/restart-crash-chkabort.md."""
@@ -47,7 +47,7 @@ def main(paths):
             m = rx.search(f.read())
         if m:
             print('[FAIL] %s holds the library _chkabort (offset 0x%X): a Break during file work ends it with exit(20) '
-                  'behind its cleanup; link amarchy/nobreak.c' % (p, m.start()))
+                  'behind its cleanup; link patina/nobreak.c' % (p, m.start()))
             bad = 1
         else:
             print('[OK] %s has no library _chkabort' % p)

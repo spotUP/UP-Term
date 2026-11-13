@@ -6,7 +6,7 @@ verdict: host-proven (TE-8.1, TE-8.2, TE-8.3 tests pass and fail when stubbed); 
 
 # TE-8 evidence
 
-Branch te8-meta. Code in amarchy/gthemes_core.[ch], gthemes_dos.[ch], gui.c, leaf.c; tests in tests/test_gthemes.c.
+Branch te8-meta. Code in patina/gthemes_core.[ch], gthemes_dos.[ch], gui.c, leaf.c; tests in tests/test_gthemes.c.
 
 ## What each item does
 - TE-8.1: `gt_preset_model` reads user file, then shipped file, then (name tokyo-night) the built-in; Duplicate Theme (`gt_duplicate`) takes its values from it. `gte_reset_to_base` gives the edit buffer the base theme's model, keeping its own name and base, going live like an edit (`gt_dos_reset_base` on `GTA_RESET_BASE`).
@@ -22,7 +22,7 @@ Stub (scratchpad te8-stub.patch: gt_contrast_warnings returns 0, gt_pen_budget r
   [FAIL] gthemes: 2184 checks, 61 failed
 Reverted:
   [OK] gthemes: 2194 checks, 0 failed
-m68k: `make build/amiga/amarchy-gui` rc=0, build/amiga/amarchy-gui 506820 bytes.
+m68k: `make build/amiga/patina-gui` rc=0, build/amiga/patina-gui 506820 bytes.
 
 ## Found
 Every shipped theme measures at least 2 contrast warnings as raw colours: Inactive title text (nord 142 under 220) and Button Face on the requester ground (100 under 150, the runtime pushes these off the surface). So a stock theme opens with "2 warnings". Not changed (behaviour beyond TE-8); owner decision whether the table should skip those pairs or measure the pushed colours.

@@ -9,7 +9,7 @@ Branch s57-locale-flat (from 88aa4274). Shots: ~/Desktop/upterm-shots/rig127-loc
 
 ## S57-LOCALE-LIST-NO-SELECT: fixed (selected row), side borders open
 
-- Root cause: desk_pens_flat (amarchy/desk_core.c) mapped DK_FILL (FILLPEN, slot 5) to the surface and FILLTEXT to text.
+- Root cause: desk_pens_flat (patina/desk_core.c) mapped DK_FILL (FILLPEN, slot 5) to the surface and FILLTEXT to text.
   GadTools listviews fill the selected row in FILLPEN, so the row fill equalled the list background: no visible selection.
 - Fix: FILL and FILLTEXT keep the stock map (accent / surface). Goldens palette-flat-pen8/pen4.prefs updated (slot 5 = 3, slot 6 = 0, both tables).
 - Test: test_desk fails 10 checks with the fix reverted, 0 after.

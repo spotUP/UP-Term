@@ -10,17 +10,17 @@ method: code reading of worktree vtcon-s58-integ (HEAD 3778082a) against origin/
 ## What actually happened on rig 147
 Every pick log (scratchpad pens47-seq/sel-*.log, sel3.log, selB.log) reads
 `[FAIL] select N: the menu closed on the pick (it must stay open and recolour) (stable-box wait 0.0 s)`.
-`open_wait = 0.0` is only returned by the `except TimeoutError` branch of `one_select` (tools/rig/amarchy_theme_save_rig.py:322-327),
+`open_wait = 0.0` is only returned by the `except TimeoutError` branch of `one_select` (tools/rig/patina_theme_save_rig.py:322-327),
 which returns BEFORE `wait_apply_done()` and `keep_requester()` (line 330). That branch is reached after `wait_stable(STEP_SECS=30, ...)`
 timed out (line 31: STEP_SECS = 30), so at least 30 s passed after the Return that picked the theme, then seq.sh slept 6 s more before
-reading pens. The FP-1 requester "Amarchy desktop theme" (amarchy/desk_confirm_dos.c:32-40) reverts after 15 s unanswered
+reading pens. The FP-1 requester "Patina desktop theme" (patina/desk_confirm_dos.c:32-40) reverts after 15 s unanswered
 (DC_REVERT_TIMEOUT -> desk_dos_revert, desk_confirm_dos.c:60-66). So every measured state is "after timeout revert", and
 `ami.py requesters` was empty because the requester had already closed (req_close before desk_dos_revert).
 The earlier rig 147 run that recorded ristretto as matching went through keep_requester (the apply was kept), which is why it matched.
 
 ## Q1. Regression of s58-pens47, or on origin/main too?
 Answer: not a regression; origin/main has the same behaviour for pens 0-3 and writes the same stock values to pens 4-7 on the revert.
-- Pick path: menu Return -> gt_dos_apply_saved (amarchy/gthemes_dos.c:231) -> desk_dos_apply(&th) (desk_dos.c:1124) -> dk_apply.
+- Pick path: menu Return -> gt_dos_apply_saved (patina/gthemes_dos.c:231) -> desk_dos_apply(&th) (desk_dos.c:1124) -> dk_apply.
 - Prefs after install are all defaults (header-only prefs file): desktop-theme on, all four parts on, flat-system-look on
   (amconf_core.h:28-33). So in dk_flat_pens (desk_dos.c:702): flat = 1, own = flat && !backdrop-part = 0, theme = flat && !palette-part = 0,
   restore = !flat && ... = 0. dk_flat_pens returns early (or only re-syncs) and does not touch dk_live_want.
@@ -40,12 +40,12 @@ pens_sync on a reopened screen may race the direct write and leave the new theme
 - ipd_role_write -> ip_role_claim sets `h->rrgb[i] = rgb` for each held role pen, then SetRGB32 (iconpen_dos.c ipd_role_write). That is the
   measured `want` = stock. Nothing re-derives it afterwards: desk_dos_revert ends with dk_flat_sync, no ipd_recolour, and ip_recolour would
   skip anyway until the theme changes.
-Confidence: high (code), consistent with all five measured states. Unverified: the sentinel AMARCHY_CONFIRM_REVERTS_TIMEOUT was not read on
+Confidence: high (code), consistent with all five measured states. Unverified: the sentinel PATINA_CONFIRM_REVERTS_TIMEOUT was not read on
 the rig (seq.sh/read.sh did not capture it); the timing argument (>= 36 s after the pick, timeout 15 s) carries this.
 
 ## Q3. Why pens 0-3 keep the install theme
 dk_snapshot (desk_dos.c:73, called in dk_apply before the palette write) copies the palette.prefs in force (tokyo-night, written by the
-Amarchy start plan after install) to T:amarchy-revert. The timeout revert feeds that copy to the Palette editor (dk_restore_targets,
+Patina start plan after install) to T:patina-revert. The timeout revert feeds that copy to the Palette editor (dk_restore_targets,
 desk_dos.c:1316-1331), IPrefs resets Workbench with it: pens 0-3 = tokyo-night again. Each later pick snapshots the reverted tokyo-night
 file, so every state reads the install theme. The prefs theme line is not in the snapshot (desk_snapshot/collect lists only the Sys/ prefs:
 desk_core.c:1145-1148 plus icontrol), so ENV/ENVARC keep the picked name.
@@ -58,7 +58,7 @@ desk_live_baseline (no theme), and the prefs theme line, consoles, menu and icon
 Level: desk_dos.c revert (FP-1 snapshot / dk_restore_targets), not iconpen and not the s58-pens47 routing. The snapshot unit (Sys/ prefs
 files) is smaller than the apply unit (theme name + files + derived live pens 4-7). Pens 4-7 on a deep screen are derived state
 (desk_live_follow of the theme in force), so they can only be restored by restoring the theme they derive from.
-Fix (one design): the FP-1 snapshot also records the theme name in force before the apply (next to the files in T:amarchy-revert and in
+Fix (one design): the FP-1 snapshot also records the theme name in force before the apply (next to the files in T:patina-revert and in
 the marker dir, so desk_dos_marker_recover gets it too). desk_dos_revert puts that name back into the prefs theme line (ENV and ENVARC),
 and dk_restore_targets for a revert sets the live role pens from that theme through the same gate as the holder
 (desk_live_follow(prev_theme, flat, mask, depth, ...)), falling back to desk_live_baseline only when the gate is off (flat off and palette
@@ -75,13 +75,13 @@ in the style of test_desk.c:1499 that dk_restore_targets' revert branch calls it
 write and restore the theme line. Reachability: the rig pick script with Keep NOT clicked, read pens 0-7 after 20 s = previous theme on all 8.
 
 ## Also found (harness)
-amarchy_theme_save_rig.py one_select returns from the TimeoutError branch without keep_requester, so any "menu closed" FAIL leaves an
+patina_theme_save_rig.py one_select returns from the TimeoutError branch without keep_requester, so any "menu closed" FAIL leaves an
 unconfirmed apply that reverts 15 s later; every measurement taken after such a FAIL measures the revert, not the pick. The pick
 sequence verdict in pens47-pick-sequence.md therefore says nothing about the pick path; the keep path (earlier ristretto run) matched.
 
 ## Not verified / where I looked
-- No rig run: AMARCHY_CONFIRM_REVERTS_TIMEOUT / AMARCHY_DESK_CONFIRM_ASKS values on rig 147 not read.
+- No rig run: PATINA_CONFIRM_REVERTS_TIMEOUT / PATINA_DESK_CONFIRM_ASKS values on rig 147 not read.
 - origin/main pens 4-7 after a timeout revert not measured (holder pens_sync race, see Q1).
 - Read: desk_dos.c 73-88, 384-496, 600-791, 1100-1160, 1298-1424, 1570-1660; desk_core.c 336-372, 841-848, 1145-1208; gthemes_dos.c
   128-246; desk_confirm_dos.c 30-70; amconf_core.h 26-40; branch diff origin/main...s58-pens47 (desk_dos.c, iconpen_core.c, iconpen_dos.c);
-  amarchy_theme_save_rig.py 30-31, 93-108, 300-345.
+  patina_theme_save_rig.py 30-31, 93-108, 300-345.

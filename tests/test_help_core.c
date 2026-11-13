@@ -1,11 +1,11 @@
-/* AMARCHY-WELCOME (amarchy/help_core.c): placeholder expansion from the live keymap, sections, the welcome-shown key
+/* PATINA-WELCOME (patina/help_core.c): placeholder expansion from the live keymap, sections, the welcome-shown key
  * and the checkbox key handling. */
 #include <stdio.h>
 #include <string.h>
-#include "../amarchy/help_core.h"
-#include "../amarchy/menu_geom.h"
-#include "../amarchy/flat_core.h"
-#include "../amarchy/menu_theme.h"
+#include "../patina/help_core.h"
+#include "../patina/menu_geom.h"
+#include "../patina/flat_core.h"
+#include "../patina/menu_theme.h"
 #include "harness.h"
 
 static const char km_text[] =
@@ -162,13 +162,13 @@ static long help_slurp(const char *path, char *buf, long cap)
     return n;
 }
 
-/* every placeholder in the shipped dist/amarchy.help names a real binding or menu row in the shipped keymap */
+/* every placeholder in the shipped dist/patina.help names a real binding or menu row in the shipped keymap */
 static void test_shipped_text_placeholders(void)
 {
     static char km_file[32768], txt[16384];
     static const char *names[2] = { "welcome", "help" };
     keymap k;
-    long tn = help_slurp("dist/amarchy.help", txt, sizeof txt), kn = help_slurp("dist/keymap", km_file, sizeof km_file);
+    long tn = help_slurp("dist/patina.help", txt, sizeof txt), kn = help_slurp("dist/keymap", km_file, sizeof km_file);
     int s, seen = 0;
     CHECK(tn > 0);
     CHECK(kn > 0);
@@ -205,7 +205,7 @@ static void test_shipped_text_placeholders(void)
     keymap_free(&k);
 }
 
-/* RL16 W8/W10: amarchy-gui draws the welcome and Help windows from the amhelp text through hc_expand, keeps the
+/* RL16 W8/W10: patina-gui draws the welcome and Help windows from the amhelp text through hc_expand, keeps the
  * checkbox key state in hc_welcome_key and saves through hc_mark_shown; the commodity starts the welcome after the
  * desktop apply. The pieces are Amiga-only, so the wiring is checked in the sources. */
 /* WELCOME-CHECK-SQUARE: on PAL hires non-interlace (Resolution 22 x 44) a pixel is twice as tall as wide, so the s-row-tall
@@ -223,14 +223,14 @@ static void test_gui_welcome_wired(void)
 {
     static char gui[400000], am[400000];
     size_t n;
-    FILE *f = fopen("amarchy/gui.c", "rb");
+    FILE *f = fopen("patina/gui.c", "rb");
     CHECK(f != 0);
     if (!f)
         return;
     n = fread(gui, 1, sizeof gui - 1, f);
     fclose(f);
     gui[n] = 0;
-    f = fopen("amarchy/amarchy.c", "rb");
+    f = fopen("patina/patina.c", "rb");
     CHECK(f != 0);
     if (!f)
         return;
@@ -244,8 +244,8 @@ static void test_gui_welcome_wired(void)
     CHECK(strstr(gui, "hc_check_w(s, side)") != 0 && strstr(gui, "flat_side_px(g->ms.rx, g->ms.ry)") != 0);
     CHECK(strstr(gui, "mg_strip_hit(&g->g, mx, my)") != 0 && strstr(gui, "mg_strip_y(q, r)") != 0);
     CHECK(strstr(gui, "amconf_save_with(amconf_dos_io(), p, 1, &failed)") != 0);
-    CHECK(strstr(gui, "\"Welcome to Amarchy\"") != 0 && strstr(gui, "\"Amarchy Help\"") != 0);
-    CHECK(strstr(am, "hc_should_welcome(") != 0 && strstr(am, "\"amarchy-gui\", \"welcome\"") != 0);
+    CHECK(strstr(gui, "\"Welcome to Patina\"") != 0 && strstr(gui, "\"Patina Help\"") != 0);
+    CHECK(strstr(am, "hc_should_welcome(") != 0 && strstr(am, "\"patina-gui\", \"welcome\"") != 0);
 }
 
 /* WELCOME-TAIL-HIDDEN: the check box and button rows are a strip pinned below the scrolling text, inside the window,

@@ -1,6 +1,6 @@
 """make worktree-ready never seeds a binary as current over sources that differ from main's (WTREADY-STALE, 2026-10-27).
 
-An agent found build/amiga/Amarchy dated 26 Oct without the packages.* index entries: the worktree's source was
+An agent found build/amiga/Patina dated 26 Oct without the packages.* index entries: the worktree's source was
 older than main's binary (checkout before the binary was built) and differed from main's source, so make saw the
 seeded binary as newer than its sources. No make runs: a temp main checkout and a temp git tree stand in, and the
 mtimes are compared the way make does (target newer than source = up to date).
@@ -43,11 +43,11 @@ with tempfile.TemporaryDirectory() as d:
         os.utime(tree / name, (1000, 1000))
         if (main / name).exists():
             os.utime(main / name, (2000, 2000))
-    (main / "build/amiga/Amarchy").write_bytes(b"bin")
-    os.utime(main / "build/amiga/Amarchy", (3000, 3000))
+    (main / "build/amiga/Patina").write_bytes(b"bin")
+    os.utime(main / "build/amiga/Patina", (3000, 3000))
     check(wr.seed(main / "build", tree / "build") >= 1, "binary seeded")
     wr.match_mtimes(main, tree)
-    binm = (tree / "build/amiga/Amarchy").stat().st_mtime
+    binm = (tree / "build/amiga/Patina").stat().st_mtime
     check(binm == 3000, "seeded binary keeps main's mtime")
     check((tree / "differs.c").stat().st_mtime > binm, "source differing from main is newer than the seeded binary")
     check((tree / "newonly.c").stat().st_mtime > binm, "source main lacks is newer than the seeded binary")

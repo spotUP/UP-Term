@@ -2,7 +2,7 @@
 
 `UPTerm state` answers only to a process whose console is an UP-Term window ("not an UP-Term window" from
 the wasabi exec shell), so the line is typed into the active tab and its output read from RAM:. Used by
-keymap_rig.py and amarchy_rig.py."""
+keymap_rig.py and patina_rig.py."""
 import sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import ami, condev_rig as c, vshwin

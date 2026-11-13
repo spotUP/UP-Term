@@ -2,7 +2,7 @@ JetBrains Mono for UP-Term
 
 FONTS:JetBrainsMono.font and FONTS:JetBrainsMono/16 are JetBrains Mono
 Regular (Omarchy's font) drawn as an Amiga bitmap strike font for the
-Amarchy drawn menu on screens with square pixels: Latin-1 (32-255), 7 x 16
+Patina drawn menu on screens with square pixels: Latin-1 (32-255), 7 x 16
 cells, 1 bit. They are made at build time by tools/gen_jbmono.py (`make
 jbmono`) from the TrueType file of the release below, and not kept in this
 drawer. On tall pixels the menu keeps topaz 8; the terminal keeps TopazPro 16.

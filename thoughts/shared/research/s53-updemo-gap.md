@@ -1,7 +1,7 @@
 ---
 date: 2026-11-03
 topic: UP-Term demo tour versus features landed since October 2026 (UPDEMO-NEW-FEATURES)
-tags: [updemo, demo, kitty, sixel, themes, amarchy, gap]
+tags: [updemo, demo, kitty, sixel, themes, patina, gap]
 status: final
 ---
 
@@ -41,9 +41,9 @@ no image or animation file. Its only picture scene is the generated sixel ball.
 | Tabs: several sessions in one window, each its own profile | 3ec0da48 (10-03) | text only (named in a row, no scene) | Scene that opens a second tab via the menu escape | no |
 | Native splits (Window menu, snap/focus/float/swap keys) | 10-19 plan, 2026-10-29 keybinds | yes (splits scene is text; swap/float/focus keys not shown) | Extend the splits scene with the new keys | no |
 | Settings menu, live Font/Theme/Profile/Scrollback; slash commands for every setting | 768a037c .. 2cd46020 (10-02/03) | no (themes scene uses OSC only) | Scene that types `/theme NAME` and `/font-fallback` at the prompt | no |
-| Themes from 112 shipped .conf files and live truecolour theme switch (Amarchy) | 2026-10-28 | partly (12 themes) | Grow the cycle toward the shipped set; show Catppuccin, Dracula, Everforest | no |
-| Amarchy desktop: flat UI, theme palette/pointer/font at start, autotile, desktop theme default on | 295ef667, e7e321e2, cf0d408e, 177b000e | no | Cannot run inside a terminal scene; belongs in a separate screenshot or video, or a caption slide | yes (screenshots) |
-| Amarchy menu with deep search; screen capture to ILBM | 2026-10-29 | no | Same as above: slide with screenshot | yes |
+| Themes from 112 shipped .conf files and live truecolour theme switch (Patina) | 2026-10-28 | partly (12 themes) | Grow the cycle toward the shipped set; show Catppuccin, Dracula, Everforest | no |
+| Patina desktop: flat UI, theme palette/pointer/font at start, autotile, desktop theme default on | 295ef667, e7e321e2, cf0d408e, 177b000e | no | Cannot run inside a terminal scene; belongs in a separate screenshot or video, or a caption slide | yes (screenshots) |
+| Patina menu with deep search; screen capture to ILBM | 2026-10-29 | no | Same as above: slide with screenshot | yes |
 | mdv, Markdown in the window; syntax highlight | 62909ee1 (10-04) | no | Scene piping a short Markdown text through mdv | no |
 | Claude Code TUI client (C:Claude) in the window | ee1d5af8 (10-05) | no | Static recorded screen or a caption; needs network | yes (recording) |
 | Reflow on resize, synchronized output, hyperlinks, notifications | earlier | yes | none | no |
@@ -58,7 +58,7 @@ no image or animation file. Its only picture scene is the generated sixel ball.
 5. Kitty placeholders and pictures inside tmux panes (K31-K33).
 6. Crisp glyphs: antialias blend over dither, grid-fit powerline/Nerd icons.
 7. Live `/theme` and the Settings menu, with more of the 112 themes.
-8. Amarchy desktop (flat UI, themes, autotile) as screenshot slides.
+8. Patina desktop (flat UI, themes, autotile) as screenshot slides.
 
 ## Notes for the implementer
 

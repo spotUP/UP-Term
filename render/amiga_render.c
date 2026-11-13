@@ -50,7 +50,7 @@ ULONG vr_cp[12]; /* off: Text, RectFill, pen, draw_rows; on: the same (4-7); cur
 ULONG vr_cp_pass;
 #endif
 
-/* vr_cgx_fill (FillPixelArray): aa_ink.h, shared with amarchy-gui's menu */
+/* vr_cgx_fill (FillPixelArray): aa_ink.h, shared with patina-gui's menu */
 
 
 #ifdef VR_CPROF

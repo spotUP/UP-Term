@@ -1,6 +1,6 @@
 # FLAT-BUTTON-FILL rig proof (rig 8, commit f14268d2 worktree)
 
-Binary: build/amiga/amarchy-flat md5 950b1aa58221ecc8b0b9357de5eaecc1, equal on rig (both OS).
+Binary: build/amiga/patina-flat md5 950b1aa58221ecc8b0b9357de5eaecc1, equal on rig (both OS).
 Setup: palette tests/data/desk/palette-flat-pen8.prefs applied first (stock palette gives stock bevel, no flat decision), flat-system-look=on, flat-window-gadgets=on, probe gwin (GadTools: 2 buttons, string, cycle, listview).
 Pens: text=2 line=3 back=0 outline=3 button=4 ptext=0.
 Screenshots: ~/Desktop/upterm-shots/s28-buttonfill-{32,31}-{open,pressed,released}.png
@@ -12,7 +12,7 @@ Screenshots: ~/Desktop/upterm-shots/s28-buttonfill-{32,31}-{open,pressed,release
 | 2 pressed label = pen_ptext | FAIL: label stays (255,255,255) | FAIL: same |
 | 3 text hits rise during press | FAIL: text hits=0 before/during/after | FAIL: hits=0 (calls 17->18->19) |
 | 4 ring/rectfill, no Guru/hang | PASS rectfill hits=12, requesters [], rig answers | PASS hits=8, requesters [], rig answers |
-| 5 test_amarchy_stack.py | not run (no amarchy-menu in worktree build) | not run |
+| 5 test_patina_stack.py | not run (no patina-menu in worktree build) | not run |
 
 Likely cause (code read, unverified by edit): flat.c:259 flat_tx_c requires `r->st.pen_ptext` truthy; this palette has ptext=0, so the label patch is skipped. Retest with a palette where pen_ptext != 0 to separate this from task/position mismatch in flat_tx_text.
 
@@ -88,7 +88,7 @@ RIG answers 0
 VERSION Kickstart 40.68, Workbench 40.42 (02/18/94)
 MD5 rig 950b1aa58221ecc8b0b9357de5eaecc1 build 950b1aa58221ecc8b0b9357de5eaecc1
 REQ after palette []
-STATUS-list Process  1: Loaded as command: BOOTX:wasabid | Process  2: Loaded as command: BOOTX:wasabid | Process  3: Loaded as command: C:upgetty | Process  4: Loaded as command: C:upgetty | Process  5: Loaded as command: UP-Term:bin/Amarchy | Process  6: Loaded as command: Status | Process  7: Loa
+STATUS-list Process  1: Loaded as command: BOOTX:wasabid | Process  2: Loaded as command: BOOTX:wasabid | Process  3: Loaded as command: C:upgetty | Process  4: Loaded as command: C:upgetty | Process  5: Loaded as command: UP-Term:bin/Patina | Process  6: Loaded as command: Status | Process  7: Loa
 flat process listed: True
 STATUS0
 flat=on calls=0 chained=0
@@ -144,8 +144,8 @@ REQUESTERS []
 RIG answers 0
 
 ## Recheck f3c8d497
-Binary build/amiga/amarchy-flat md5 08e014dc7bea4bd8b1ca491dd0558b75, equal on rig (3.2 and 3.1). Same palette/prefs/gwin method as above. Screenshots: ~/Desktop/upterm-shots/s28-buttonfill-v2-32-{open,pressed,released}.png (3.1: none, see below).
-Note: a stale ENVARC:Amarchy/flat-starting crash marker from the previous run makes the first start report flat=held why=marker; delete it before each run.
+Binary build/amiga/patina-flat md5 08e014dc7bea4bd8b1ca491dd0558b75, equal on rig (3.2 and 3.1). Same palette/prefs/gwin method as above. Screenshots: ~/Desktop/upterm-shots/s28-buttonfill-v2-32-{open,pressed,released}.png (3.1: none, see below).
+Note: a stale ENVARC:Patina/flat-starting crash marker from the previous run makes the first start report flat=held why=marker; delete it before each run.
 
 ### 3.2: label FAIL, fills PASS
 - pens text=2 line=3 back=0 outline=3 button=4 ptext=0 (new binary running: flat=on).
@@ -159,7 +159,7 @@ Note: a stale ENVARC:Amarchy/flat-starting crash marker from the previous run ma
 Rig 8 on 3.1 froze (wasabid auth failed, 30 s no answer) right after the Palette USE step in two consecutive starts (including a fresh restart); the earlier f14268d2 run on the same rig passed that step. Binary md5 matched on rig before the freeze. No 3.1 numbers for f3c8d497.
 
 ## Diag run (25049c30)
-Binary build/amiga/amarchy-flat md5 25049c30ef3867e9a5c322dc168617b5 (rig OS 3.2, Workbench 47.2, rig 8). Same method: stale flat-starting deleted, palette-flat-pen8 applied, flat prefs on, gwin probe, BUTTON1 held at 80 72. Script: /private/tmp/claude-501/-Users-spot-Code-UP-Term-vtcon/ed52d4b2-2bac-4dde-9f6b-173f9639f5f8/scratchpad/diag8.py
+Binary build/amiga/patina-flat md5 25049c30ef3867e9a5c322dc168617b5 (rig OS 3.2, Workbench 47.2, rig 8). Same method: stale flat-starting deleted, palette-flat-pen8 applied, flat prefs on, gwin probe, BUTTON1 held at 80 72. Script: /private/tmp/claude-501/-Users-spot-Code-UP-Term-vtcon/ed52d4b2-2bac-4dde-9f6b-173f9639f5f8/scratchpad/diag8.py
 
 STATUS_open
 flat=on calls=28 chained=0
@@ -191,7 +191,7 @@ frame=hooked calls=41 flat=11
 REQ []
 
 ## Recheck 4ceaaf64
-Binary build/amiga/amarchy-flat md5 9aebbeaa427e9b841ad5a99f153541d2, equal on rig (3.2; 3.1 md5 also matched before the failure). Method as above: stale flat-starting deleted, palette-flat-pen8 USE, flat prefs on, gwin probe, BUTTON1 (box 10,20,100,16, press at centre 80,48 in window coords) held. Script: scratchpad v3.py (derived from drv.py). Screenshots: ~/Desktop/upterm-shots/s28-buttonfill-v3-32-{open,pressed,released}.png (3.1: none).
+Binary build/amiga/patina-flat md5 9aebbeaa427e9b841ad5a99f153541d2, equal on rig (3.2; 3.1 md5 also matched before the failure). Method as above: stale flat-starting deleted, palette-flat-pen8 USE, flat prefs on, gwin probe, BUTTON1 (box 10,20,100,16, press at centre 80,48 in window coords) held. Script: scratchpad v3.py (derived from drv.py). Screenshots: ~/Desktop/upterm-shots/s28-buttonfill-v3-32-{open,pressed,released}.png (3.1: none).
 Pens text=2 line=3 back=0 outline=3 button=4 ptext=0. Pen 0 on screen = (19,169,7) (window background pixel).
 
 | Check | 3.2 | 3.1 |
@@ -213,7 +213,7 @@ Two attempts (second after a 60 s wait). Both: Version FULL (Kickstart 40.68, Wo
 ## Recheck 4ceaaf64 on 3.1
 Rig 8, Kickstart 40.68 / Workbench 40.42, no --os flag. VTC md5 on rig = 9aebbeaa427e9b841ad5a99f153541d2 (equal to the worktree build). Script: scratchpad v31b.py (v3.py without the palette step; palette applied beforehand by hand). Pens text=2 line=3 back=0 outline=3 button=4 ptext=0.
 
-Palette workaround: Amarchy had to be stopped with `Break <n> ALL` for amarchy-gui (7), Amarchy (5), amarchy-menu (1); plain `Break <n> C` does not stop them on a fresh boot (Status still lists them). With all three gone from Status, `Palette FROM T:flatpal.prefs USE` returned 0, no requester, no reboot. A first attempt with only `Break C` left the daemon running and Palette USE raised an IPrefs System Request (Retry/Cancel); a run in which the script itself chained Break and Palette also lost wasabid once (reboot); not hunted.
+Palette workaround: Patina had to be stopped with `Break <n> ALL` for patina-gui (7), Patina (5), patina-menu (1); plain `Break <n> C` does not stop them on a fresh boot (Status still lists them). With all three gone from Status, `Palette FROM T:flatpal.prefs USE` returned 0, no requester, no reboot. A first attempt with only `Break C` left the daemon running and Palette USE raised an IPrefs System Request (Retry/Cancel); a run in which the script itself chained Break and Palette also lost wasabid once (reboot); not hunted.
 
 | Check | 3.1 |
 |---|---|

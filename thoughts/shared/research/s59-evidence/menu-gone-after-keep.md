@@ -1,6 +1,6 @@
 ---
 date: 2026-11-06
-topic: THEME-PICK-MENU-GONE - the Amarchy menu does not come back after a kept theme pick
+topic: THEME-PICK-MENU-GONE - the Patina menu does not come back after a kept theme pick
 status: HYPOTHESIS (code reading plus the rig 149 logs; no new rig run)
 branch: s58-integ (eeed1323)
 ---
@@ -8,12 +8,12 @@ branch: s58-integ (eeed1323)
 # Menu gone after Keep
 
 ## Measured facts (rig 149, pens47-keep-check.md and the keepcheck logs)
-- While the FP-1 requester "Amarchy desktop theme" is up (09:42:29), uitree shows the screen titled
+- While the FP-1 requester "Patina desktop theme" is up (09:42:29), uitree shows the screen titled
   "Workbench Screen" (a newly opened Workbench screen) with the requester, the bar, the Workbench backdrop
-  and f1host. There is NO "Amarchy" menu window. The menu is already gone BEFORE Keep is answered.
-- After Keep, at +5 s, +30 s and +60 s, Status lists amarchy-gui (process 10) as alive. The process has no window.
+  and f1host. There is NO "Patina" menu window. The menu is already gone BEFORE Keep is answered.
+- After Keep, at +5 s, +30 s and +60 s, Status lists patina-gui (process 10) as alive. The process has no window.
 
-## Call path (all in the amarchy-gui process)
+## Call path (all in the patina-gui process)
 1. gui.c:1949-1990 main loop: a theme row calls lf_open_index (leaf.c:526), then lf_gt_select (leaf.c:513),
    then gt_dos_select (gthemes_dos.c:250), then amconf_save and gt_dos_apply_saved (:231), then desk_dos_apply.
 2. desk_dos_apply (desk_dos.c:1123-1151) runs dk_apply. dk_apply closes the windows at :425
@@ -39,13 +39,13 @@ branch: s58-integ (eeed1323)
   The caller then enters event_loop with no window (steps 5-6).
 - B: a second Workbench reset after gui_show. dk_wbborder (desk_dos.c:881-918, called at :1133) can run
   dk_put("Workbench", ...) AFTER the windows are reopened, with no close/open around it. The commodity's
-  reload (amarchy.c:435, triggered by amconf_save through the prefs notify) can also reset.
+  reload (patina.c:435, triggered by amconf_save through the prefs notify) can also reset.
   The CloseWorkBench patch then sends CTRL_F (WBR_DISMISS) to the gui, and the menu quits.
   Against B: the process would EXIT, and Status shows it alive. B holds only if the exit hangs in cleanup.
 - A2: the gui is still inside the apply. Unlikely: DESK CONFIRM is sent only after the reopen.
 
 ## Product or harness
-Product. The harness expectation (tools/rig/amarchy_theme_save_rig.py:78-85: the menu reopens on the same
+Product. The harness expectation (tools/rig/patina_theme_save_rig.py:78-85: the menu reopens on the same
 level) matches the product intent (gui.c:1694 comment, theme_live and THEME-ENTER-BACK-ONE).
 The harness comment in one_select (:330-370) that the apply "blocks on the FP-1 requester" is wrong:
 the requester is non-blocking, and the reopen comes before DESK CONFIRM. Correct that comment with the fix.
@@ -54,7 +54,7 @@ the requester is non-blocking, and the reopen comes before DESK CONFIRM. Correct
 event_loop runs only with an open window: after gui_hide, gui_show either reopens the menu or the menu ends cleanly.
 
 ## Root cause level and fix design (not written)
-Level: the amarchy-gui hide/show hooks and their caller (gui.c), not the harness.
+Level: the patina-gui hide/show hooks and their caller (gui.c), not the harness.
 - gui_show returns a result. It retries screen_bind and window_open until the public Workbench screen is
   open again (bounded, like dk_wait_reset's 6 s), using the screen that IPrefs reopened.
 - gui_show clears a stale CTRL_F before the reopen, like the first open at gui.c:1931.
@@ -66,11 +66,11 @@ Level: the amarchy-gui hide/show hooks and their caller (gui.c), not the harness
   event_loop with no window.
 
 ## Smallest deciding measurement
-On rig 150 after one kept pick with the menu gone: `Status` (note the amarchy-gui number n), then
+On rig 150 after one kept pick with the menu gone: `Status` (note the patina-gui number n), then
 `Break n C`, then `Status`.
 - The process ends: it was in event_loop's Wait on a NULL window (A1 proven).
 - The process stays: it hangs elsewhere (A2, or B with a hung cleanup).
-Optional second read: wasabi task state and the signal-wait mask of amarchy-gui (tc_SigWait includes
+Optional second read: wasabi task state and the signal-wait mask of patina-gui (tc_SigWait includes
 CTRL_C|CTRL_F plus a bogus port bit under A1).
 
 ## Rig

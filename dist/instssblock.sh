@@ -1,6 +1,6 @@
 # UP-Term: S:Startup-Sequence with a marked block inserted before the first line that runs a given
 # command, into T:Startup-Sequence.up-term (Install copies it back). The one inserter for every
-# Startup-Sequence block the kit adds (RemLib before SetPatch, Amarchy-Flat before IPrefs).
+# Startup-Sequence block the kit adds (RemLib before SetPatch, Patina-Flat before IPrefs).
 #
 # Usage: instssblock.sh <name> <before-command> <body line>...
 #   <name>            block name; the block is ";BEGIN UP-Term <name>" ... ";END UP-Term <name>", marked like

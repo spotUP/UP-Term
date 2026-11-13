@@ -1,16 +1,16 @@
 ---
-topic: DOpus 5 lister under amarchy-flat: why it does not match other flat windows
+topic: DOpus 5 lister under patina-flat: why it does not match other flat windows
 date: 2026-11-09
 status: read-only analysis; V = read in code, U = UNVERIFIED (inferred, not measured on a rig)
 ---
 
 # DOpus lister vs flat windows
 
-Paths: A = vtcon/amarchy/, D = ~/Code/Reference/dopus5/source (vendor 5.104 source; dopus5.library on the rig is the vendor binary, Makefile:2140).
+Paths: A = vtcon/patina/, D = ~/Code/Reference/dopus5/source (vendor 5.104 source; dopus5.library on the rig is the vendor binary, Makefile:2140).
 
 ## 1. Intuition window path (what "ordinary flat windows" are)
 - Pen map: desk_pens_flat (A/desk_core.c:83-93): SHINE, SHADOW = surface pen; slot 12 = BARBLOCK. FILLPEN deliberately stays the ACCENT and FILLTEXTPEN the surface (comment desk_core.c:90-92, S57-LOCALE-LIST-NO-SELECT). So Intuition's own active frame fill (FILLPEN) is accent. Rig dump of a flat Workbench: DETAIL 0, BLOCK 0, TEXT 2, SHINE 0, SHADOW 0, FILL 3, FILLTEXT 0, BACKGROUND 0 (thoughts/shared/s66-evidence/a5-gadget-fill.md:25).
-- Pens alone leave: bevels vanish, accent frame (research 2026-10-29-amarchy-flat-ui-patch.md section 7/12). amarchy-flat repaints on top by patching graphics RectFill (A/flat.c:1745 rf_install, hook flat_rf_c :1700-1730) and Text, and the sysiclass dispatcher (flat.c:82 C2, clone render :261):
+- Pens alone leave: bevels vanish, accent frame (research 2026-10-29-patina-flat-ui-patch.md section 7/12). patina-flat repaints on top by patching graphics RectFill (A/flat.c:1745 rf_install, hook flat_rf_c :1700-1730) and Text, and the sysiclass dispatcher (flat.c:82 C2, clone render :261):
   - title band stays accent, title text in pen_ptext: flat_title_decide (flat_core.h:327-340), FLAT-TITLE-ACCENT.
   - left/right/bottom border strips filled in FILLPEN are repainted in the surface pen: rf_side (flat.c:1693-1709) -> flat_side_fill_pen (flat_core.c:805-815). Condition: s->enabled, pen_outline set, fg == pen_outline, fill wholly in a side strip.
   - 1 px ring: rf_edge (flat.c:1680-1691).
@@ -38,18 +38,18 @@ Parts and who draws them:
 2. Info bar solid accent: lister_title_pens uses source_col bg = pen 3 = accent (section 2). V for code and theme string; that the screenshot lister is the SOURCE lister is U.
 3. Thick dark dividers (title gadgets about 3 px, arrows): the images draw SHINE/SHADOW border pairs (listview_border THICK 2 px, IM_ICONIFY box lines) and under the flat map both pens are the surface (dark) colour, so each pair becomes a dark line between two accent fills. DrawBox is patched to draw nothing/flat outline, but listview_border and the image box lines draw with Move/Draw directly, unhooked. Inferred from code + pen map: U for the pixel widths.
 4. Window border / title solid accent: expected for the title band (same as ordinary flat windows). The SIDES being accent too means rf_side did not run. Candidates (none measured): the lister's screen has no flat slot or pen_outline 0 (DOpus on its own cloned screen; st_scr falls back to pens 0, flat.c:317-319), or the border fill is not the ROM RectFill. U. Test: STATUS rhits and screen list while a lister is open; compare lister on Workbench screen vs `--own-screen`.
-5. Hatched dither on the horizontal scroller track: the stock prop container dither (research 2026-10-29-amarchy-flat-ui-patch.md section 12: "dither fill in a pen-0 container") from Intuition propgclass, plus lister_stipple in the toolbar tail (lister_toolbar.c:254). flat's rf_scroller (flat.c:1670-1676) handles only ROM-caller fills on windows it knows, same gate. U which one the screenshot shows.
+5. Hatched dither on the horizontal scroller track: the stock prop container dither (research 2026-10-29-patina-flat-ui-patch.md section 12: "dither fill in a pen-0 container") from Intuition propgclass, plus lister_stipple in the toolbar tail (lister_toolbar.c:254). flat's rf_scroller (flat.c:1670-1676) handles only ROM-caller fills on windows it knows, same gate. U which one the screenshot shows.
 6. Toolbar icons light grey, unframed: image bank bitmaps (DT-x work, thoughts/spot/todos.md:4783-4830); they are DOpus images drawn with RenderImage on DOpus pens (todos.md DT-11 note), no flat code path. V (todos), look U.
 
 ## 4. Root-cause level
-Not the pen map and not DrawBox. The invariant "an active frame fill in FILLPEN is repainted by flat" is implemented only for callers inside intuition ROM and for sysiclass images. DOpus draws its own gadget imagery through dopusiclass (dopus5.library, no source rebuild possible) and its own status/title areas in env pens. Layer to change: amarchy-flat hooks (same layer as FLAT-D4), by adding the dopusiclass dispatcher (IM_BORDER_BOX, IM_ARROW_UP/DOWN, IM_ICONIFY and the other title/size types, image_class.c switch) as a hooked class, drawn through the existing sysiclass flat glyph path (flat_glyph, clone/private-image), and a listview_border/Draw hook or a body hook like FLAT_EL_BEVEL for the 2 px borders. The source/dest title pens are a theme-side mapping in menu_theme.c:85-89 (change `source` to surface-on-accent text or to the lister background) and belong to the theme layer, not flat. Do NOT change image_class.c: the vendor library is a binary (Makefile:2140). Before coding, measure (U items 4 and 5) on one rig lister: which screen, STATUS rhits.
+Not the pen map and not DrawBox. The invariant "an active frame fill in FILLPEN is repainted by flat" is implemented only for callers inside intuition ROM and for sysiclass images. DOpus draws its own gadget imagery through dopusiclass (dopus5.library, no source rebuild possible) and its own status/title areas in env pens. Layer to change: patina-flat hooks (same layer as FLAT-D4), by adding the dopusiclass dispatcher (IM_BORDER_BOX, IM_ARROW_UP/DOWN, IM_ICONIFY and the other title/size types, image_class.c switch) as a hooked class, drawn through the existing sysiclass flat glyph path (flat_glyph, clone/private-image), and a listview_border/Draw hook or a body hook like FLAT_EL_BEVEL for the 2 px borders. The source/dest title pens are a theme-side mapping in menu_theme.c:85-89 (change `source` to surface-on-accent text or to the lister background) and belong to the theme layer, not flat. Do NOT change image_class.c: the vendor library is a binary (Makefile:2140). Before coding, measure (U items 4 and 5) on one rig lister: which screen, STATUS rhits.
 
 ## Fix (s66)
 
 Measured on rig 66 (OS 3.2 tree, `rig.py dopus` install of 5.104 as the Workbench, flat test palette
 tests/data/desk/palette-flat-pen8.prefs: pen 0 13a907 surface, 3 6688bb accent, 249 6cc68a knob), worktree build of
-main at the branch point (includes the FLAT_EL_BEVEL hook 1eb68dd6). Order: amarchy-flat started, then DirectoryOpus,
-then `amarchy-flat DOPUS`, then a Device List and a RAM Disk lister. STATUS: `dopus=73.8 patched=7 calls=15 flat=15`,
+main at the branch point (includes the FLAT_EL_BEVEL hook 1eb68dd6). Order: patina-flat started, then DirectoryOpus,
+then `patina-flat DOPUS`, then a Device List and a RAM Disk lister. STATUS: `dopus=73.8 patched=7 calls=15 flat=15`,
 `dopus bevel calls=2`, `rectfill calls=806 hits=33 shits=48 side=2`, `clone draws=36 fallback=0`.
 
 Per difference, at that build:

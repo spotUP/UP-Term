@@ -16,7 +16,7 @@ status: open
 ## Open, in order
 1. Rig 96 owner eye check (knobs, Locale, UPDemo 15) once vtcon-16 has rebuilt rig 96 from current main. Start the rig before asking the owner.
 2. OPEN-RIG 4072, 4073 and 4125: one fresh install of everything on 3.2 from main, with pixel reads (release-ledger-audit.md, section "Release path").
-3. KIT-AMARCHY-ALL READY from vtcon-16 (RL15, RL16, RL8), then 1088 steps 4-6: re-pin repos.lock, kit build + dist checks, upload (upload needs the owner's OK).
+3. KIT-PATINA-ALL READY from vtcon-16 (RL15, RL16, RL8), then 1088 steps 4-6: re-pin repos.lock, kit build + dist checks, upload (upload needs the owner's OK).
 4. todos.md row INSTALLER-RIG-REBOOT: the automatic reboot in installer_rig.py fails, and its restart has no --purpose.
 5. Triage the open ledger rows outside the audit (RL3, RL17-RL21, R10, R11): which of them block the release?
 

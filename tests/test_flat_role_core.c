@@ -1,9 +1,9 @@
-/* TE-10.6c brief 1: the role pens of a themed foreign screen (amarchy/flat_role_core.c). R1-R6 of
+/* TE-10.6c brief 1: the role pens of a themed foreign screen (patina/flat_role_core.c). R1-R6 of
  * thoughts/shared/research/s61-evidence/te10-6c-design.md section 7. */
 #include <stdio.h>
 #include <string.h>
-#include "../amarchy/flat_role_core.h"
-#include "../amarchy/desk_core.h"
+#include "../patina/flat_role_core.h"
+#include "../patina/desk_core.h"
 #include "harness.h"
 
 #define RGB(r, g, b) (((uc_u32)(r) << 16) | ((uc_u32)(g) << 8) | (uc_u32)(b))

@@ -6,7 +6,7 @@
 (message
     "\n\n\nD I R E C T O R Y   O P U S  5\n\n"
     "Directory Opus 5 5.104 for AmigaOS 3, the open-source\n"
-    "release, unmodified. Optional: Amarchy's DOpus menu and\n"
+    "release, unmodified. Optional: Patina's DOpus menu and\n"
     "hotkeys use it. A Directory Opus already installed\n"
     "(DOpus5: assigned) is left alone.\n"
     (all))
@@ -52,7 +52,7 @@
 (P_LEAD)
 (set #done
     (cat #lead "Directory Opus 5 is installed. Start it from\n"
-         "its drawer (DOpus5:), or from Amarchy's DOpus menu.\n\n"
+         "its drawer (DOpus5:), or from Patina's DOpus menu.\n\n"
          "Uninstall (beside Install) removes this archive's\n"
          "record; the DOpus5: drawer stays."))
 ; @include dist/common/addon-tail.installer

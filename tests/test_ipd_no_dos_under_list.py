@@ -1,7 +1,7 @@
 """The icon pen holder reads no file while it holds the public screen list (source guard, FLAT-BOOT-FREEZE).
 
 iconpen_dos.c locks the public screen list across a pen sync so the Workbench screen cannot close under its colour map.
-At boot, amarchy-flat runs that sync the first second after LoadWB opens the Workbench. The theme read (amconf_load,
+At boot, patina-flat runs that sync the first second after LoadWB opens the Workbench. The theme read (amconf_load,
 gt_load, Open/Read) then runs on a volume that is not ready yet, and DOS puts up a requester. A requester needs the
 public screen list to open its window, the sync holds it: the whole system stops (wasabid lost in 4 of 4 boots, serial
 trace stops between gt_load's start and its return with the list locked).
@@ -11,7 +11,7 @@ hands to ip_sync / ip_recolour must be the cached one (theme read before the loc
 """
 import pathlib, re, unittest
 
-SRC = pathlib.Path(__file__).resolve().parent.parent / "amarchy" / "iconpen_dos.c"
+SRC = pathlib.Path(__file__).resolve().parent.parent / "patina" / "iconpen_dos.c"
 CORE = SRC.with_name("iconpen_core.c")
 DOS = ("amconf_load(", "gt_load(", "pens_theme(", "Open(", "Read(", "Lock(", "Examine(")
 

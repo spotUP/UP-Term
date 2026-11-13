@@ -1,5 +1,5 @@
 /* flatprobe -- FLAT-M1: dump the pens of two windows (one active, one inactive) on the Workbench screen as text, so a host
- * script can look for two-tone bevels without a picture (plan 2026-10-29-amarchy-flat-ui-patch.md, FLAT-M1).
+ * script can look for two-tone bevels without a picture (plan 2026-10-29-patina-flat-ui-patch.md, FLAT-M1).
  *   flatprobe [FOREVER]   open window A (inactive) and window B (active) with close / depth / zoom / size / drag gadgets and
  *                         GadTools gadgets (button, string, checkbox, cycle, listview, bevel box), then print
  *                         PENS <dri_Pens 0..11>, DEPTH <n>, per window WIN name left top w h, GAD kind x y w h (screen

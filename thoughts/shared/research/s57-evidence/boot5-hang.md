@@ -15,7 +15,7 @@ Install: INSTALLER_KEEP=1 installer_rig.py ONLY fresh-all: PASS (step 34 STATUS 
 | Run | Emulator | Result |
 |-----|----------|--------|
 | try 1 | fs-uae-debug, --debugger | stuck at the Kickstart-entry stop (PC 00F800D2): the loop script read debugger.log from the worktree build/, but rigs live in the main checkout build/rig142. Script bug, not a product hang. |
-| try 2 | fs-uae-debug, --debugger | boot came up (AMARCHY STATUS answered, ticks=20), but `rig.py reboot` was still in its post-start steps after 420 s ("LIBS: assigned before Amarchy" was the last line). The loop counted that as a hang and sent SIGUSR1, which stopped the emulator in the debugger; `dbg g` resumed it and wasabid answered again. Not a product hang. |
+| try 2 | fs-uae-debug, --debugger | boot came up (PATINA STATUS answered, ticks=20), but `rig.py reboot` was still in its post-start steps after 420 s ("LIBS: assigned before Patina" was the last line). The loop counted that as a hang and sent SIGUSR1, which stopped the emulator in the debugger; `dbg g` resumed it and wasabid answered again. Not a product hang. |
 | Palette lead | same rig, live | `SYS:Prefs/Palette USE` once, `Palette FROM ENV:Sys/palette.prefs USE` 3 times, then `Run SYS:Prefs/Locale`: wasabid still answers, no Guru, 0 "CPU reset"/"Exception" lines in fs-uae.log.txt. |
 
 The reboot loop under the release emulator never ran: the rig kept using the debug FS-UAE after the
@@ -43,9 +43,9 @@ first debug start (start.args / reboot args carry it; dropping UPTERM_FSUAE from
 
 ## Run 3: lock-order (static, 2026-11-05, vtcon-c1 agent, main 800ea832)
 
-Verdict: **no reverse-order pair found in amarchy code.** No fix written. No rig run.
+Verdict: **no reverse-order pair found in patina code.** No fix written. No rig run.
 
-Method: every LockPubScreenList / LockIBase / LockLayerInfo / LockLayer(s) / ObtainSemaphore acquire in amarchy/*.c,
+Method: every LockPubScreenList / LockIBase / LockLayerInfo / LockLayer(s) / ObtainSemaphore acquire in patina/*.c,
 with the calls made before its release (scan script, textual, per function), plus every ipd_* caller, every
 ObtainPen / ObtainBestPen / ReleasePen. Intuition's documented rules from NDK 3.2R4 Autodocs: LockIBase (BUGS) must
 not be called while holding layer or LayerInfo locks, and no Intuition / graphics / layers / DOS call while held;
@@ -56,9 +56,9 @@ So Intuition's order is layers before IBase / pub list.
 
 | Who (task) | Holds | Then takes | Where |
 |---|---|---|---|
-| amarchy main / amarchy-flat / amarchy-icons (own process, no lock held by caller) | ipd record sem (r->ss) | DOS reads (pens_theme), then pub screen list, then PalExtra (ObtainPen, ReleasePen, is_free ObtainPen) + SetRGB32 | iconpen_dos.c:220/258 -> 170-188; amarchy.c:228-238, flat.c:1569, icons.c:493/507 |
+| patina main / patina-flat / patina-icons (own process, no lock held by caller) | ipd record sem (r->ss) | DOS reads (pens_theme), then pub screen list, then PalExtra (ObtainPen, ReleasePen, is_free ObtainPen) + SetRGB32 | iconpen_dos.c:220/258 -> 170-188; patina.c:228-238, flat.c:1569, icons.c:493/507 |
 | gthemes (theme apply) | r->ss | DOS reads, then pub list, then SetRGB32 / ReleasePen | iconpen_dos.c:274-292 via gthemes_dos.c:232 |
-| amarchy-icons | its run sem | r->ss (above); then WB visitor lock -> LockDosList(READ) / Lock() | icons.c:424-511, 352-378 |
+| patina-icons | its run sem | r->ss (above); then WB visitor lock -> LockDosList(READ) / Lock() | icons.c:424-511, 352-378 |
 | any OpenWindow caller (strut hook) | pub list | LockPubScreen (same sem, nests) | strut_patch.c:122 -> iconpen_dos.c:102-107 |
 | any drawing task (Text hook, maybe under the caller's layer / Intuition locks) | icl_ss (AttemptSemaphore, never blocks) | PalExtra (ObtainBestPen / ReleasePen) on the window's own live ColorMap | flat.c:705-724, 775-825 |
 | flat, desk, bar, wbmode, gthemes | WB visitor lock (LockPubScreen) | PalExtra (ObtainBestPen) | flat.c:1409/1718, desk_dos.c, gthemes_dos.c |
@@ -68,12 +68,12 @@ So Intuition's order is layers before IBase / pub list.
 
 ### Why no cycle closes
 
-- PalExtra is held only inside graphics pen calls, which call no Intuition and no amarchy code, so no PalExtra holder
+- PalExtra is held only inside graphics pen calls, which call no Intuition and no patina code, so no PalExtra holder
   can wait on the pub list, IBase or r->ss. The pub-list -> PalExtra edge in pens_sync is a documented-rule breach
   (graphics calls under the list lock) but has no reverse taker.
-- r->ss is taken only from amarchy's own processes at top level (amarchy.c, flat.c:1569, icons.c, gthemes_dos.c),
+- r->ss is taken only from patina's own processes at top level (patina.c, flat.c:1569, icons.c, gthemes_dos.c),
   never from a patch running in another task's context, so Intuition / input.device never waits on it.
-- No amarchy code takes the pub list or IBase while holding a layer lock (bar.c:563 LockLayerInfo is a leaf).
+- No patina code takes the pub list or IBase while holding a layer lock (bar.c:563 LockLayerInfo is a leaf).
 - The only stale-ColorMap release path (the earlier s57 root cause, dead PalExtra) is fixed: icl drains per call
   (flat.c:817-822); pen_release in pens_sync releases only on the screen the pens are held on, under the list lock.
 

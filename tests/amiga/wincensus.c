@@ -11,7 +11,7 @@
 #include <proto/dos.h>
 #include <proto/intuition.h>
 #include <stdio.h>
-#include "../../amarchy/wbreset.h"
+#include "../../patina/wbreset.h"
 
 struct IntuitionBase *IntuitionBase;
 extern struct ExecBase *SysBase;

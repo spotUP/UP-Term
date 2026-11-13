@@ -51,7 +51,7 @@ author: vtcon-05 session 49 subagent
   wake-up that never arrives (consistent with hunt 8's C:Wait 15), not a host thread block. Next probe candidates
   (not run here): timer.device/CIA timer events on 3.1 under Amiberry 8.2.0 (e.g. guest `Date` twice, or a wasabid-free
   `Wait 1` echo marker in boot.log), and whether the filesys ExNext scan seen in a (what guest process?) ends before the stall.
-- Unverified: which guest task did the ExNext scan; whether it was Workbench/Amarchy or the rig's shadow copy.
+- Unverified: which guest task did the ExNext scan; whether it was Workbench/Patina or the rig's shadow copy.
 
 ## Files
 - Samples (scratchpad, small, kept): sample-822-a.txt 0.5 MB, sample-822-b.txt 0.4 MB in
@@ -82,7 +82,7 @@ Findings:
 - So the earlier hypothesis "Assign blocks writing to wasabid's capture file while holding the DosList lock" is wrong: Assign writes nothing while the lock is held. It does send packets (NameFromLock: ACTION_EXAMINE_OBJECT / ACTION_PARENT) to each target's handler (DH0 FFS, uaehf VTCX/BOOTX, RAM) under the shared lock.
 - wasabid exec path (wasabid.c rev b9d1812d, l.816-1030): runner opens `T:wasabi-run-N` MODE_READWRITE; the daemon task (the only bsdsocket user) keeps doing Read/ExamineFH/re-Open on T: while the command runs. Any wait in DOS device lookup (GetDeviceProc on "T:") stalls the daemon and with it every socket reply, which matches "the guest goes silent".
 
-Working hypothesis (unverified): Assign holds DosList READ and waits on a NameFromLock packet to handler H (likely a uaehf volume, the Amiberry trace had the filesys thread in ExNext of a host directory). A concurrent Startup-Sequence task (Workbench/Amarchy launch: Assign/AddDosEntry/Mount) queues for DosList WRITE. If H, or the daemon's GetDeviceProc("T:"), needs DosList READ it queues behind the pending writer: three-way deadlock, timing-dependent, explains rig-to-rig variance.
+Working hypothesis (unverified): Assign holds DosList READ and waits on a NameFromLock packet to handler H (likely a uaehf volume, the Amiberry trace had the filesys thread in ExNext of a host directory). A concurrent Startup-Sequence task (Workbench/Patina launch: Assign/AddDosEntry/Mount) queues for DosList WRITE. If H, or the daemon's GetDeviceProc("T:"), needs DosList READ it queues behind the pending writer: three-way deadlock, timing-dependent, explains rig-to-rig variance.
 
 Next step to confirm (one run): `UPTERM_FSUAE=/Users/spot/Code/Emulators/fs-uae-debug/fs-uae UPTERM_RIG=<n> rig.py start --max --emu fsuae --ram 256 --debugger`, `rig.py dbg g`, at the hang `rig.py dbgbreak` then `rig.py dbg T` (debugger.log): read each waiting task's PC and tc_SigWait; dump the DosInfo di_DevLock semaphore (owner, nest count, wait queue). Also discriminate Assign vs any exec: issue `ami.req(0x02, ..., b"Echo x")` at the same boot point.
 
@@ -132,14 +132,14 @@ list timed out). Debugger stopped the frozen machine; `T` printed nothing again,
 custom-w0-2.txt, vertb-chain-w0-2.txt, bp-vbsrv-w0-2.txt, vbsrv-dis-w0-2.txt (dir /private/tmp/claude-501/-Users-spot-Code-UP-Term-vtcon/70c37d5e-2f18-48ee-94ac-8832cdfd1d3d/scratchpad).
 
 Ready list EMPTY; every task waits. Waiting on signal $10 (SIGF_SINGLE/semaphore): wasabid ($40124280, CLI 9
-BOOTX:wasabid), input.device ($4000985A), Amarchy ($402CF980, CLI 5), IPrefs ($400F6408), dopus ($407CB198), ramlib.
+BOOTX:wasabid), input.device ($4000985A), Patina ($402CF980, CLI 5), IPrefs ($400F6408), dopus ($407CB198), ramlib.
 
 Decoded from the stacks (exec ObtainSemaphore return $F82E7A, Wait return $F828DA) and the semaphores' fields:
 
 | Object | Owner (+$28) | Queue (in order) |
 |---|---|---|
 | SignalSemaphore $4000B86E = IntuitionBase($4000B04C)+$822, nest 1, QueueCount 2 | IPrefs $400F6408 | input.device, wasabid |
-| SignalSemaphore $4000B926 = IntuitionBase+$8DA (next-but-3 ISemaphore, stride $2E) | IPrefs $400F6408 | Amarchy |
+| SignalSemaphore $4000B926 = IntuitionBase+$8DA (next-but-3 ISemaphore, stride $2E) | IPrefs $400F6408 | Patina |
 | List $40004C0C = GfxBase($40004B4C)+$C0 = TOF_WaitQ (nodes ln_Name=task, pri 4) | - | dopus, IPrefs |
 
 IPrefs' Wait returns to $F87344, i.e. graphics WaitTOF (`move.l #$10,d0; jsr Wait(a6)` at $F8733E, then unlinks
@@ -166,7 +166,7 @@ $4009E054 (memory-walk the segment lists or compare with a boot without IPrefs' 
 
 ## Step 14 (vtcon-05 session 49, rig 2, boot h14a): who owns the VBlank patch, and is TOF really not woken
 
-**Patch owner.** The replacement VERTB server comes from Picasso96 `Libs:Picasso96/rtg.library` 43.787 (6.6.2026, 231356 bytes) on rig 2's sys.hdf. The server's head bytes `41F900DFF00048E728000C6900280014` sit at file offset 0xBEF8 of rtg.library. They are absent from SetPatch 40.16, LoadModule, 68060/680x0.library, Picasso96API.library, the uaegfx monitor and emulation.library. rtg.library loads at a different address each boot: $4009E054 earlier, $400A05B4 in h14a (graphics VERTB node $40004B96 is_Code). Our startup files (User-Startup: DOpus5, MUI, KingCON, AmiSSL, upgetty, UPConsole, shadows-up, Amarchy) install no VBlank or graphics patch. The patch arrives through DEVS:Monitors/uaegfx, which opens rtg.library.
+**Patch owner.** The replacement VERTB server comes from Picasso96 `Libs:Picasso96/rtg.library` 43.787 (6.6.2026, 231356 bytes) on rig 2's sys.hdf. The server's head bytes `41F900DFF00048E728000C6900280014` sit at file offset 0xBEF8 of rtg.library. They are absent from SetPatch 40.16, LoadModule, 68060/680x0.library, Picasso96API.library, the uaegfx monitor and emulation.library. rtg.library loads at a different address each boot: $4009E054 earlier, $400A05B4 in h14a (graphics VERTB node $40004B96 is_Code). Our startup files (User-Startup: DOpus5, MUI, KingCON, AmiSSL, upgetty, UPConsole, shadows-up, Patina) install no VBlank or graphics patch. The patch arrives through DEVS:Monitors/uaegfx, which opens rtg.library.
 
 **Step 13 premise was wrong: TOF_WaitQ IS woken.** Static disassembly shows the rtg.library server walks GfxBase+$C0 (TOF_WaitQ) unconditionally and Signal()s each waiter with 1<<ln_Pri. In frozen boot h14a, a breakpoint at the walk ($400A07AA) hits. The Signal call ($400A07BE) hits every frame with A1=$407CC798 (dopus) and A1=$400F56E0 (IPrefs), D0=$14. Step 13's "no hit at $4009E24A" was a stale address from a different boot. The custom chip state is normal (INTENA $682C, VERTB enabled).
 
@@ -203,11 +203,11 @@ fd1434  536b 0b3a  subqw  #1,%a3@(2874)   ; DECREMENT, function exit
 
 All three sit in one intuition 40.85 function at $FD139C(d3 = screen type), called as $FD139C(1) from $FD2884 when a public-screen lookup by name ($FD2828) matches the ROM string "Workbench" ($FE8548) and that screen is not open. The path is LockPubScreen(name) (LVO stub $FCF9FA -> $FD25F8 -> $FD2828 -> $FD2888). Between the increment and the decrement it releases the screen lock ($FCFDAA at $FD1404) and, for d3 = 1, calls $FD23C6 (the internal Workbench open) at $FD142C. Nothing else in the ROM writes the word; rtg.library is not a writer.
 
-**Who holds it (frozen boot w0-2, stack of Amarchy task $402CF980, dump at $402D5B94):**
+**Who holds it (frozen boot w0-2, stack of Patina task $402CF980, dump at $402D5B94):**
 
 ```
 402D5B94 4000 0810 00F8 28DA 00F8 2E7A 4000 B93A   ; Wait <- ObtainSemaphore
-402D5BA4 4000 B936 402C F980 ...                     ; saved: task = Amarchy
+402D5BA4 4000 B936 402C F980 ...                     ; saved: task = Patina
 402D5BB4 4000 B926 ...                               ; semaphore IntuitionBase+$8DA (IPrefs owns it, Step 13)
 402D5BD4 00FC FD9E 0000 0004 00FD 1F9C ...           ; Workbench-open internals
 402D5C20 .... 00FC FD68 00FD 23FE ...
@@ -221,14 +221,14 @@ IPrefs ($400F6408, stack $400F6E38) and dopus ($407CB198, stack $407CD12C) both 
 
 | Writer PC | Instruction | Module | Task in w0-2 | Matched? |
 |---|---|---|---|---|
-| $FD13C0 | ADDQ.W #1,$B3A(A3) | intuition 40.85 ROM, LockPubScreen("Workbench") auto-open | Amarchy (CLI 5) | NO: Amarchy blocked at $FD142C -> $FD23C6 on IntuitionBase+$8DA |
+| $FD13C0 | ADDQ.W #1,$B3A(A3) | intuition 40.85 ROM, LockPubScreen("Workbench") auto-open | Patina (CLI 5) | NO: Patina blocked at $FD142C -> $FD23C6 on IntuitionBase+$8DA |
 | $FD1434 | SUBQ.W #1,$B3A(A3) | same function | never reached | - |
 | $FD13AC | TST.W (read) | same function | IPrefs, dopus spin | - |
 
-**Verdict: ABBA deadlock inside intuition 40.85, triggered by our Amarchy.** Amarchy calls LockPubScreen("Workbench") while IPrefs has the Workbench closed for its boot-time RTG mode switch. Intuition then reopens the Workbench for Amarchy: it raises $B3A, drops its own lock, and waits for IntuitionBase+$8DA. IPrefs holds $8DA (and $822) and, through its own LockPubScreen("Workbench"), waits one frame at a time for $B3A to fall. Neither can move. The ROM bug is the lock order; the trigger is a third task calling LockPubScreen("Workbench") inside IPrefs' close/reopen window.
+**Verdict: ABBA deadlock inside intuition 40.85, triggered by our Patina.** Patina calls LockPubScreen("Workbench") while IPrefs has the Workbench closed for its boot-time RTG mode switch. Intuition then reopens the Workbench for Patina: it raises $B3A, drops its own lock, and waits for IntuitionBase+$8DA. IPrefs holds $8DA (and $822) and, through its own LockPubScreen("Workbench"), waits one frame at a time for $B3A to fall. Neither can move. The ROM bug is the lock order; the trigger is a third task calling LockPubScreen("Workbench") inside IPrefs' close/reopen window.
 
-**Our call site (inferred: Amarchy's return address into its own code is past the end of the dump).** amarchy/wbmode.c:38, `wb_mode_id()`: `LockPubScreen((STRPTR)"Workbench")`, called by `wbm_check()` (wbmode.c:51) at start (amarchy.c:577) and on every 1 s tick while the windows are held (amarchy.c:267, `wb_gate`, W43 commit d64bffe0). It is the only Amarchy Workbench lock that runs during boot by design: it polls exactly while IPrefs switches the mode. Same hazard, user-triggered only: gthemes_dos.c:49 and :157, strut_patch.c:115. amarchy/iconpen_dos.c:82-91 already avoids it (`wb_screen()` walks LockPubScreenList(), comment: "LockPubScreen("Workbench") is never used: it opens a closed Workbench").
+**Our call site (inferred: Patina's return address into its own code is past the end of the dump).** patina/wbmode.c:38, `wb_mode_id()`: `LockPubScreen((STRPTR)"Workbench")`, called by `wbm_check()` (wbmode.c:51) at start (patina.c:577) and on every 1 s tick while the windows are held (patina.c:267, `wb_gate`, W43 commit d64bffe0). It is the only Patina Workbench lock that runs during boot by design: it polls exactly while IPrefs switches the mode. Same hazard, user-triggered only: gthemes_dos.c:49 and :157, strut_patch.c:115. patina/iconpen_dos.c:82-91 already avoids it (`wb_screen()` walks LockPubScreenList(), comment: "LockPubScreen("Workbench") is never used: it opens a closed Workbench").
 
 **Fix (proposal, not made).** In wbmode.c `wb_mode_id()`, read the mode under LockPubScreenList() through the existing `wb_screen()` walk (move it from iconpen_dos.c to a shared helper, reuse from both), return WBM_INVALID_ID when the Workbench is closed so the gate keeps waiting. Then apply the same helper to gthemes_dos.c:49/157 and strut_patch.c:115. The list lock does not touch $B3A, so a closed Workbench means "wait", never "reopen". Regression proof: OS 3.1 rig boot with the RTG screenmode.prefs, repeated boots (the hang is intermittent, Step 14), plus a sentinel that wb_mode_id never calls LockPubScreen. PAL-first boot also avoids it (no IPrefs close/reopen) but is a mitigation only; any other program polling LockPubScreen("Workbench") at boot can still hit the ROM race, so keep our code off that call; the ROM 40.85 lock order itself cannot be fixed.
 
-**Next.** Implement the wbmode.c change, then a live confirmation on rig 2: break at $FD13C0 and $FD1434 (instruction breakpoints work under the JIT, Step 14), log ThisTask per hit, expect no Amarchy hit at $FD13C0 after the fix.
+**Next.** Implement the wbmode.c change, then a live confirmation on rig 2: break at $FD13C0 and $FD1434 (instruction breakpoints work under the JIT, Step 14), log ThisTask per hit, expect no Patina hit at $FD13C0 after the fix.

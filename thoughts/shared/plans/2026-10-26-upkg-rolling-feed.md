@@ -24,7 +24,7 @@ Packages/Packages.gz/upkg-index.txt on release `feed`, and `upkg update` on a ri
 ## Build dependencies (Makefile `dist`, packages.txt column 9)
 
 `make dist` = dist-base dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim dist-bitchx dist-vbcc dist-src dist-index dist-ipk.
-- vtcon itself: amiga C programs (UPConsole, amarchy-*, Claude, uptelnet, upupdate ...), terminfo, fonts (UNIFONT/SYMBOLS/EMOJI stamps).
+- vtcon itself: amiga C programs (UPConsole, patina-*, Claude, uptelnet, upupdate ...), terminfo, fonts (UNIFONT/SYMBOLS/EMOJI stamps).
 - `m68k-amigaos-gcc` (~/opt/amiga/bin, AGCC) and `m68k-amigaos-strip`.
 - Docker image `ixemul-gcc295` (IXGCC295, linux/amd64, gcc 2.95.3 for -mstackextend; built from ixemul-vtcon/docker/Dockerfile via docker/build.sh).
 - ixemul-vtcon: `build295/library/68020/68881/amigaos/ixemul.library` and the soft-float/ixnet variants (IXEMUL_LIB, `sh docker/build.sh`).

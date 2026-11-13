@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The Directory Opus 5 button bank UP-Term ships (plan 2026-10-25-amarchy-dopus-integration.md, D12): binary IFF
+"""The Directory Opus 5 button bank UP-Term ships (plan 2026-10-25-patina-dopus-integration.md, D12): binary IFF
 `FORM EPUS` (the id L_SaveButtonBank writes, source/Library/config_save.c:205; ID_EPUS dopus5.h:140), laid out as
 upstream dopus5 v5.104 writes a bank: one BTNW chunk (CFG_BTNW, 132 bytes, dopus5.h:215-226), then per button a BUTN
 chunk (CFG_BUTN 14 bytes dopus5.h:250-259, then per function a text and a label string; the label "\\1" means "same as

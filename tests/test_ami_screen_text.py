@@ -2,7 +2,7 @@
 """ami.screen_text on the host with a fake transport: it must reach typewin.screen_text, which asks the focused
 UP-Term window for its rows (`VTC:UPTerm ACTIVE screen FILE`) and presses no key, touches no clipboard and clicks
 nowhere; only when no UP-Term window answers does it use the old path (Select all, Copy, read the clipboard file
-through snipprobe, a clearing click) in the ACTIVE window (the menu's own, titled Amarchy)."""
+through snipprobe, a clearing click) in the ACTIVE window (the menu's own, titled Patina)."""
 import pathlib, sys, unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools/rig"))
@@ -33,7 +33,7 @@ class ScreenText(unittest.TestCase):
                                         clip.update(text='Filter: th\nTheme') if code == 0x33 else None)
         typewin.time.sleep = lambda s: None
         ami.window = lambda t: None
-        tree = 'S 0 640x256 depth=4 "Workbench Screen"\nW 0 0 0 640x256 active "Amarchy"\nW 1 0 0 640x256 - "UP-Term"\n'
+        tree = 'S 0 640x256 depth=4 "Workbench Screen"\nW 0 0 0 640x256 active "Patina"\nW 1 0 0 640x256 - "UP-Term"\n'
         ami.req = lambda code, payload=b'', timeout=150: tree.encode() if code == 0x0D else b''
         typewin.click_in = lambda t: self.runs.append('click ' + t)
 
@@ -65,7 +65,7 @@ class ScreenText(unittest.TestCase):
         self.assertIn('Filter: th', t)
         self.assertEqual(self.keys[:2], [(0x20, typewin.RAMIGA), (0x33, typewin.RAMIGA)])
         self.assertIn('VTC:snipprobe CLEAR', self.runs)
-        self.assertIn('click Amarchy', self.runs)
+        self.assertIn('click Patina', self.runs)
 
 
 if __name__ == '__main__':

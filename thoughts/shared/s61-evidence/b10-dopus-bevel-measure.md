@@ -1,9 +1,9 @@
 # B10: DOpus own-screen bevel measure (measure only)
 
-Rig 94, window purpose "up-term-49: B10 DOpus own-screen bevel measure". origin/main cdf3ad0e build, amarchy-flat on (`flat=on`),
+Rig 94, window purpose "up-term-49: B10 DOpus own-screen bevel measure". origin/main cdf3ad0e build, patina-flat on (`flat=on`),
 Directory Opus 5.104 (dopus5.library 73.8, STATUS `sums=780fd46b,ba2cf172`). Probe: a throwaway C program (not committed; reads
 `IntuitionBase->FirstScreen` chain, `GetScreenDrawInfo`, `dri_Pens[SHINEPEN/BACKGROUNDPEN]`, `GetRGB32` on the screen's ColorMap).
-No amarchy source changed.
+No patina source changed.
 
 ## Mode 2: explicit (non-clone) screen mode (MEASURED)
 
@@ -15,7 +15,7 @@ Theme on the rig at measure time: tokyo-night (left from the earlier run in this
 | DOpus own screen | 0 | 0 | 1A1B26 | 1A1B26 | 0 | 3 | 2 |
 | Workbench Screen (800x600 d4) | 0 | 0 | 1A1B26 | 1A1B26 | 0 | 3 | 2 |
 
-`amarchy-flat STATUS` dopus5 field (`dopus=73.8 patched=3 calls=C flat=F`), before / after lister 1 / after lister 2
+`patina-flat STATUS` dopus5 field (`dopus=73.8 patched=3 calls=C flat=F`), before / after lister 1 / after lister 2
 (`DeviceList NEW` through ARexx DOPUS.1):
 
 - calls=0 flat=0 -> calls=8 flat=8 -> calls=16 flat=16 (global `flat=on calls=21 -> 101 -> 179`).
@@ -36,7 +36,7 @@ so on this rig it would read the same pens as the Workbench row above (0/0). Unv
 ## What the numbers support
 
 - Explicit mode here: pen numbers equal (0/0), RGB equal (1A1B26). Both option (a) and (b) give SKIP; the numbers cannot separate
-  them. Caveat: the equality comes from the Amarchy theme (pen 0 for both) on the Workbench and own screen alike; a stock
+  them. Caveat: the equality comes from the Patina theme (pen 0 for both) on the Workbench and own screen alike; a stock
   Workbench (SHINE 2, BACK 0, from the B8b notes) was not read in this run, so no run here shows a screen where the pen test says
   STOCK and RGB says SKIP or the reverse.
 - The decision between (a) and (b) is still open for clone mode; a clone read is the missing datum.
@@ -81,7 +81,7 @@ Rig 94 stopped, build/rig94 removed.
 
 Rig 94, purpose "up-term-49: B10 part 2 DOpus clone-mode bevel measure", main 9882dbdd (the `rig.py dopus` fix; the install now exits 0).
 `rig.py dopus --own-screen` ran, then DOpus5/Environment/workbench bytes 20..23 (screen_mode ULONG) were set from 50F91303 to
-00000002 (MODE_WORKBENCHCLONE) in build/rig94/vtc only, rig started, tokyo-night theme active (Amarchy at boot, as in part 1).
+00000002 (MODE_WORKBENCHCLONE) in build/rig94/vtc only, rig started, tokyo-night theme active (Patina at boot, as in part 1).
 Probe: throwaway C program (IntuitionBase->FirstScreen chain, GetScreenDrawInfo, GetRGB32), not committed.
 
 | screen | SHINEPEN | BACKGROUNDPEN | SHINE rgb | BACK rgb | SHADOW | FILL | TEXT |
@@ -91,7 +91,7 @@ Probe: throwaway C program (IntuitionBase->FirstScreen chain, GetScreenDrawInfo,
 
 `dopus screen` replied `DOPUS.1 800 600 8 ...`: the screen is a clone of the Workbench mode size (depth 8 vs Workbench 4), and the
 pens are copied unchanged (display.c:155-175 confirmed by the read).
-`amarchy-flat STATUS` dopus5 field, fresh boot: calls=0 flat=0 -> (lister 1) calls=8 flat=8 -> (lister 2) calls=16 flat=16.
+`patina-flat STATUS` dopus5 field, fresh boot: calls=0 flat=0 -> (lister 1) calls=8 flat=8 -> (lister 2) calls=16 flat=16.
 Same as the explicit-mode run: every DrawBox is flat-skipped (global flat=on calls=24 -> 101 -> 175).
 A first boot of the same session reproduced 0/0 -> 8/8 (lister 1) and then the rig daemon stopped answering after lister 2
 (150 s, retry.log shows a 1344x1080 <-> 800x600 RTG switch); a stop/start (DH0 kept) and the run above passed. Unverified cause.
@@ -101,6 +101,6 @@ Do (a) RGB compare and (b) skip-on-non-Workbench give DIFFERENT results in clone
 pens 0/0 and RGB 1A1B26/1A1B26 on the clone screen, so (a) SKIP and (b) SKIP and the measured behaviour (all DrawBox flat) is the
 same for both. They could differ only on a clone of a stock-look Workbench (SHINEPEN 2, BACKGROUNDPEN 0, different RGB): the pen
 test says STOCK, (a) compares two different colours and also says STOCK, (b) says SKIP. That case was NOT measured: this rig has
-no stock Workbench pens (Amarchy applies the theme at boot, ENVARC:Sys has no palette.prefs; reaching SHINEPEN 2 needs a
-Workbench without Amarchy's pen map, not built here). Source-only expectation: (b) flattens a stock-look clone's DOpus bevels
+no stock Workbench pens (Patina applies the theme at boot, ENVARC:Sys has no palette.prefs; reaching SHINEPEN 2 needs a
+Workbench without Patina's pen map, not built here). Source-only expectation: (b) flattens a stock-look clone's DOpus bevels
 where (a) leaves them stock. Decision stays with the owner.

@@ -122,14 +122,14 @@ class Manifest(unittest.TestCase):
 
     def test_make_amiga_builds_every_program_dist_base_copies_into_the_kit(self):
         """A rig run with --no-build after `make amiga` stages what the kit ships: no program may be built only by
-        dist-base (a stale amarchy-gui failed the window-groups W3 step). amarchy-menu needs the ports toolchain
+        dist-base (a stale patina-gui failed the window-groups W3 step). patina-menu needs the ports toolchain
         and libupkgui, so `make amiga` leaves it out."""
         mk = (ROOT / "Makefile").read_text().replace("\\\n", " ")
         amiga = set(re.search(r"^amiga:(.*)$", mk, re.M).group(1).split())
         copies = [l for l in mk.splitlines() if l.startswith("\tcp ") and l.rstrip().endswith("$(KIT)/Files/")]
         shipped = {w for l in copies for w in l.split() if w.startswith("$(BUILD)/amiga/")}
-        self.assertIn("$(BUILD)/amiga/amarchy-gui", shipped)
-        self.assertEqual(shipped - amiga, {"$(BUILD)/amiga/amarchy-menu"})
+        self.assertIn("$(BUILD)/amiga/patina-gui", shipped)
+        self.assertEqual(shipped - amiga, {"$(BUILD)/amiga/patina-menu"})
 
     def test_every_program_a_keymap_run_row_starts_is_shipped(self):
         """dist/keymap rows `run:<program> ...` start a program by name: a name the kit does not ship

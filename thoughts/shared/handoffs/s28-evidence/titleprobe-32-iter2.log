@@ -6,13 +6,13 @@ rectfill installed=yes calls=14 hits=0 shits=0
 text installed=yes calls=12 hits=0
 frame=hooked calls=0 flat=0
 Process  1: Loaded as command: BOOTX:wasabid
-Process  2: Loaded as command: VTCX:Apps/bin/amarchy-gui
+Process  2: Loaded as command: VTCX:Apps/bin/patina-gui
 Process  3: Loaded as command: Workbench
-Process  4: Loaded as command: VTCX:Apps/bin/amarchy-menu
-Process  5: Loaded as command: VTCX:Apps/bin/Amarchy
+Process  4: Loaded as command: VTCX:Apps/bin/patina-menu
+Process  5: Loaded as command: VTCX:Apps/bin/Patina
 Process  6: Loaded as command: BOOTX:wasabid
 Process  7: Loaded as command: Status
-Process  8: Loaded as command: RAM:amarchy-flat
+Process  8: Loaded as command: RAM:patina-flat
 
 [INFO] theme list 23 rows, cursor on 20 (tokyo-night (current))
 [INFO] direction Down

@@ -2,10 +2,10 @@
 
 - Build: worktree ../vtcon-s58-rig96 (branch s58-rig96) at main 92b29ff8. make worktree-ready, wasabi, amiga rc 0; make dist rc 0 (needs an absolute UPTERM_PORTS=/Users/spot/Code/UP-Term/upterm-ports/.claude/worktrees/kit-main; the relative form in the brief fails with "make kit-stage first").
 - Old rig 96 (s57 build) stopped, logwatch pid 11272 killed.
-- Install: installer_rig.py ONLY fresh-all, INSTALLER_KEEP=1, UPTERM_RIG_FLAGS="--max --os 32 --idle-minutes 0 --keep": [PASS] fresh-all, 35 checks ok, Amarchy menu window after reboot True.
+- Install: installer_rig.py ONLY fresh-all, INSTALLER_KEEP=1, UPTERM_RIG_FLAGS="--max --os 32 --idle-minutes 0 --keep": [PASS] fresh-all, 35 checks ok, Patina menu window after reboot True.
 - start.args: --max --os 32 --idle-minutes 0 --keep --purpose "vtcon-ee s58: owner eye check rig 96 (start hang fix, UPDemo 15, drag)".
 
-## Boot series (rig.py reboot x10; ok = Amarchy ARexx STATUS answers within 90 s)
+## Boot series (rig.py reboot x10; ok = Patina ARexx STATUS answers within 90 s)
 
 - boot 1: workbench_up=yes (19s after reboot returned); fs-uae.log 'CPU reset PC=' lines now: 0 []; '[WARN] Guru before reset' lines: 0
 - boot 2: workbench_up=yes (4s after reboot returned); fs-uae.log 'CPU reset PC=' lines now: 0 []; '[WARN] Guru before reset' lines: 0

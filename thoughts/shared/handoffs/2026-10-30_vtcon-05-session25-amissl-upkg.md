@@ -57,7 +57,7 @@ Gotchas:
 ## Session 28 update (2026-10-30)
 
 Done, on origin/main:
-- a40249ad TEST-FAILS-NOT-MINE: dist/README.txt shows the OS 3.1 SetEnv form; amarchy_clash_rig knows the Help key.
+- a40249ad TEST-FAILS-NOT-MINE: dist/README.txt shows the OS 3.1 SetEnv form; patina_clash_rig knows the Help key.
 - ad6bdfd3 RIG-START-RACE: two `rig.py start` begun together launched two FS-UAE on one sys.hdf (disk checksum error on rig 3). start() now holds <rig dir>/start.lock for the whole boot. Test tests/test_rig_start_race.py.
 - 6d95e04f INSTALLER-ROOM-SPLIT (a): installer_rig case `space` reads the GUI room page and asserts both UPTROOM lines and the KB numbers (rig 3 PASS 12/12). The earlier "smear" was the drawer page redrawing after Make New Drawer; the drive loop now counts DrawerAsks.
 - DCTelnet MA0 handed to the DCTelnet session (dctelnet-17); its commits wait for the owner to push. upterm bc99e23 + 6914a94 (bootstrap is_checkout, repos.lock pin; the pin must be redone after the DCTelnet rebase).

@@ -15,4 +15,4 @@ Mutation (b): WBFONT font_chunk_set call replaced by r = 0.
 
 Case (c) (nothing differs, want 0) has no mutation run; it guards against an always-stale plan, shared with the existing test's "own bytes" check.
 Note: a first (a) mutation `changed |= 0 * font_chunk_set(...)` stayed green because the chunk is still written and staleness is decided on bytes, not on the return value.
-Product code restored with git checkout -- amarchy/desk_core.c.
+Product code restored with git checkout -- patina/desk_core.c.

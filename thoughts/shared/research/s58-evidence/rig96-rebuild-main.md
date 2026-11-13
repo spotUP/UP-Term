@@ -28,7 +28,7 @@ Result: fresh-all never ran, no install, steps 4-6 not run. Rig 96 left UP (stoc
 
 ## Retry 3 2026-11-05 (s59)
 - Built from main 80014d07 (merge-base check ok; HEAD moved to 511b7c36 by a peer during install; make wasabi amiga + make dist rc 0, absolute kit-main UPTERM_PORTS). No make on this checkout at start.
-- Old hung rig 96 stopped (plain stop, folder removed). fresh-all (INSTALLER_KEEP=1, --os 32 --max --idle-minutes 0): PASS, 35 ok checks, 0 failures, includes one reboot, Amarchy menu opens.
+- Old hung rig 96 stopped (plain stop, folder removed). fresh-all (INSTALLER_KEEP=1, --os 32 --max --idle-minutes 0): PASS, 35 ok checks, 0 failures, includes one reboot, Patina menu opens.
 - 5 further `rig.py reboot` boots: all rc 0, wasabi answers after each. The s58 first-boot hang did not recur. Final: `Assign UP-Term: EXISTS` rc 0. No guru/T:lastguru checked beyond clean boots.
-- Peers refreshed Amarchy files on rig 96 mid-run ([REFRESH] lines); boot warns only about missing dopus stamp and updemo earth.anim/fjord.png.
+- Peers refreshed Patina files on rig 96 mid-run ([REFRESH] lines); boot warns only about missing dopus stamp and updemo earth.anim/fjord.png.
 - Rig 96 left UP, `rig.py hold --hours 8` running.

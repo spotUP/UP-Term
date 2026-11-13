@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""The drawn Amarchy menu's icons (plan 2026-10-23-amarchy-drawn-menu.md, G3): dist/menu-icons
+"""The drawn Patina menu's icons (plan 2026-10-23-patina-drawn-menu.md, G3): dist/menu-icons
 (node id = code point) and Symbols Nerd Font Mono -> a C include with ONE colour-emoji page.
 
 Reuses the emoji converter (tools/gen_emoji.py): each glyph is rasterised here to a white
 RGBA image whose alpha is the coverage, and gen_emoji.glyph_bytes averages it to ONE ICON x ICON
-image (32x32, amarchy/menu_icon.h MI_SRC; the menu only scales it down, so a 32 px icon is the glyph
+image (32x32, patina/menu_icon.h MI_SRC; the menu only scales it down, so a 32 px icon is the glyph
 drawn at 32 px, not a 16 px one doubled) and gen_emoji.page_bytes packs them into the page file
 render/emoji.c reads (ce_page_check_px, ce_page_glyph_px). The glyph of the n-th line is code point U+E000 + n, so
 all of them are page "E0". The glyph is fitted to the square, centred, whatever its advance.
@@ -22,7 +22,7 @@ from fontTools.pens.basePen import BasePen  # noqa: E402
 from fontTools.ttLib import TTFont  # noqa: E402
 
 BASE = 0xE000
-ICON = 32             # the icon image, square: amarchy/menu_icon.h MI_SRC
+ICON = 32             # the icon image, square: patina/menu_icon.h MI_SRC
 SIZES = ((ICON, ICON),)
 RES = 64              # the glyph's raster, square; gen_emoji averages it down to ICON
 SUB = 4               # samples a raster pixel, each way

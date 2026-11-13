@@ -15,7 +15,7 @@ the PORTS_KIT_FRESH stamp check.
 ## Measurements (SYS:Prefs/Locale open, Workbench 640x256, 8 planes)
 - Main as installed: pen 4 = 3E4254 (theme selection), pen 252 = 3E4254. FF33FF pixels on the whole screen: 0.
   The 3E4254 count was 3693 pixels (the button fills).
-- `amarchy-flat STATUS`: clone draws=96 fallback=0, frame=hooked calls=96 flat=24,
+- `patina-flat STATUS`: clone draws=96 fallback=0, frame=hooked calls=96 flat=24,
   pens-held 16 refs=3 dim=251 knob=249 inbar=250.
 - Forced pen 4 = FF33FF with a scratch SetRGB32 tool, with nothing else changed: the Locale window (0,54 552x192) shows
   3693 FF33FF pixels. That is exactly the earlier 3E4254 count, so every button fill in the window is literal pen 4.
@@ -23,11 +23,11 @@ the PORTS_KIT_FRESH stamp check.
 - Shots: ~/Desktop/upterm-shots/s33-prefs-magenta-locale-main.png, s33-prefs-magenta-locale-pen4-forced.png
 
 ## Draw path
-- amarchy/desk_core.c:145 desk_flat_state: pen_button = GR_SELECTION = DK_SELECTION = 4 (a role index used as a pen number).
-- amarchy/flat_core.c:537-544 flat_button_pen returns pen_button (4) whenever 4 < 1<<depth. It never checks that pen 4
+- patina/desk_core.c:145 desk_flat_state: pen_button = GR_SELECTION = DK_SELECTION = 4 (a role index used as a pen number).
+- patina/flat_core.c:537-544 flat_button_pen returns pen_button (4) whenever 4 < 1<<depth. It never checks that pen 4
   is a pen anyone holds with the theme colour.
-- amarchy/flat.c:440 c8_skip (frameiclass hook, FLAT-C8) sets st.pen_button from it.
-- amarchy/flat_glyph.c:406 flat_frame_draw_round fills the button with s->pen_button.
+- patina/flat.c:440 c8_skip (frameiclass hook, FLAT-C8) sets st.pen_button from it.
+- patina/flat_glyph.c:406 flat_frame_draw_round fills the button with s->pen_button.
 - Knobs: flat_knob_pen falls back to flat_button_pen when pen_knob/pen_dimtext are unusable (flat_core.c:446-451).
 
 ## Mechanism

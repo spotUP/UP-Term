@@ -35,8 +35,8 @@ DIST_EXEMPT = {
 }
 DIST_COOKIE = re.compile(rb'\$STACK: *[1-9]')
 
-# "$STACK: 262144", or "$STACK: " STR(MENU_STACK) (amarchy/menu.c, amarchy/gui.c), or STK_COOKIE(16384): the
-# macro of amarchy/stkprobe.h that builds the same string from the byte count the program's __stack uses
+# "$STACK: 262144", or "$STACK: " STR(MENU_STACK) (patina/menu.c, patina/gui.c), or STK_COOKIE(16384): the
+# macro of patina/stkprobe.h that builds the same string from the byte count the program's __stack uses
 # (KIT-STACK-COOKIE: the rule read only the first two spellings and reported four programs whose binaries
 # do carry the cookie).
 COOKIE = re.compile(r'"\$STACK: *([1-9][0-9]*"|"\s*[A-Za-z_]+\()|\bSTK_COOKIE\(\s*[1-9][0-9]*\s*\)')
@@ -149,7 +149,7 @@ def launches(text):
 class Stack(unittest.TestCase):
     def test_the_kit_list_is_read_from_the_makefile(self):
         progs = kit_programs(makefile())
-        for name in ('upgetty', 'vsh', 'amarchy-menu', 'upprefs'):
+        for name in ('upgetty', 'vsh', 'patina-menu', 'upprefs'):
             self.assertIn(name, progs)
 
     def test_the_source_rule_reads_every_cookie_spelling(self):
@@ -164,8 +164,8 @@ class Stack(unittest.TestCase):
             self.assertFalse(COOKIE.search(src), src)
 
     def test_the_cookie_macro_builds_the_cookie_string(self):
-        # STK_COOKIE counts as a cookie only while amarchy/stkprobe.h makes it one
-        with open(os.path.join(ROOT, 'amarchy', 'stkprobe.h'), encoding='latin-1') as f:
+        # STK_COOKIE counts as a cookie only while patina/stkprobe.h makes it one
+        with open(os.path.join(ROOT, 'patina', 'stkprobe.h'), encoding='latin-1') as f:
             self.assertRegex(f.read(), r'#define STK_COOKIE\(n\) "\$STACK: " STK_STR\(STK_BYTES\(n\)\)')
 
     def test_every_kit_program_sets_its_own_stack(self):

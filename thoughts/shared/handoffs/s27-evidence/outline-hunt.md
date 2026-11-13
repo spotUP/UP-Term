@@ -9,7 +9,7 @@
 - Code reading only (unproven): flat.c b1b6d940 draws via RectFill on d->imp_RPort at window-relative 0,0..w-1,h-1.
   Intuition draws border gadget images with the layer clipped to the gadget box (or a clip region installed around
   the gadget refresh), so candidate (2) is the likely one; candidate (3) next. Unverified.
-- Cleanup: worktree olhunt removed, debug code not committed, RAM/VTCX debug copies removed, build/rig8/vtc/amarchy-flat untouched (never overwritten).
+- Cleanup: worktree olhunt removed, debug code not committed, RAM/VTCX debug copies removed, build/rig8/vtc/patina-flat untouched (never overwritten).
 
 ## Run 2 (rig 8, 3.2, debug build, measured)
 Window 220x90 (flatwin), after `flatwin 1 SET 1 0 1 2 0 3`, DBG from STATUS:
@@ -25,6 +25,6 @@ Window 220x90 (flatwin), after `flatwin 1 SET 1 0 1 2 0 3`, DBG from STATUS:
   remaining one; the last overpainter is NOT yet identified (needs a read after the full refresh).
 - Last attempt (STATUS scanning windows under LockIBase with ReadPixel) DEADLOCKED rig 8 (graphics call under IBase lock).
   Rig 8 is hung: ping times out, FS-UAE pid 14203 still running at ~59% CPU. Not reset by me.
-- Debug patch: scratchpad/olhunt2-debug.patch. Worktree + branch removed. build/rig8/vtc/amarchy-flat set to the clean
+- Debug patch: scratchpad/olhunt2-debug.patch. Worktree + branch removed. build/rig8/vtc/patina-flat set to the clean
   origin/main build (md5 fbd3df6276c4c4632942a85d5ccc5a76); not yet restarted on the rig (rig is hung).
 - Next probe: read the pixel after the refresh ends WITHOUT LockIBase (use the window's RPort from a task context after Delay).

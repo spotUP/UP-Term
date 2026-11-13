@@ -1,4 +1,4 @@
-; UP-Term key bindings (Amarchy). Read by the XCON: handler and by the Amarchy
+; UP-Term key bindings (Patina). Read by the XCON: handler and by the Patina
 ; commodity from ENVARC:up-term/keymap (ENV:up-term/keymap first). Without this
 ; file the compiled-in copy of it stands, so the terminal never loses its keys.
 ; Every Install replaces this file (an older different copy is saved as
@@ -6,7 +6,7 @@
 ; file instead: a row there replaces the row for the same key, and
 ;   super+t = none
 ; unbinds one. An edit of ENVARC:up-term/keymap.user applies after a copy to
-; ENV:up-term/keymap.user (Amarchy picks it up at once) or at the next boot.
+; ENV:up-term/keymap.user (Patina picks it up at once) or at the next boot.
 ;
 ; Super is the Left Amiga key. Left Amiga + M and Left Amiga + N belong to
 ; Intuition, Left Amiga + mouse to Workbench, and Ctrl + both Amigas is the
@@ -32,7 +32,7 @@
 ;   job:<command>    like run:, for a long job (upkg upgrade): the menu shows its output in a job view
                    (scroll, Esc cancels) when the menu style has one; otherwise it runs as run:
   open:uterm       a new UP-Term window (commodity only; in a window: tab:new)
-;   rexx:<script>    an ARexx script or string (Amarchy hotkeys and menu rows)
+;   rexx:<script>    an ARexx script or string (Patina hotkeys and menu rows)
 ;   win:<verb> [arg] a window verb on the active or menu-targeted window: cycle, front, back,
 ;                    zip, fullwidth, fullscreen, save, restore, move, size, focus,
 ;                    closedrawers, screen, title
@@ -40,8 +40,8 @@
 ;                    region: an IFF ILBM file in RAM:Shots and the clipboard (Left Amiga + Alt is the
 ;                    left mouse button, so the window shot uses Left Amiga + Ctrl)
 ;   bar:<on|off|toggle>  the status bar at the bottom of the Workbench screen (ARexx BAR)
-;   gui:<help|welcome>  the Amarchy Help or welcome window (amarchy-gui)
-;   amarchy:quit     shut Amarchy down (as the ARexx QUIT)
+;   gui:<help|welcome>  the Patina Help or welcome window (patina-gui)
+;   patina:quit     shut Patina down (as the ARexx QUIT)
 
 [keymap]
 version = 1
@@ -54,8 +54,8 @@ super+shift+space = menu:apps              ; Apps                  | menu
 super+k           = viewer                 ; Key bindings          | menu
 super+h           = slash:/help            ; Help                  | menu
 super+shift+h     = slash:/tutorial        ; Tutorial              | menu
-super+shift+slash = gui:help               ; Amarchy Help          | menu
-super+ctrl+shift+q = amarchy:quit          ; Quit Amarchy          | menu
+super+shift+slash = gui:help               ; Patina Help          | menu
+super+ctrl+shift+q = patina:quit          ; Quit Patina          | menu
 
 ; Tabs
 super+t           = tab:new                ; New tab               | window
@@ -196,13 +196,13 @@ settings.colors    = Colors   | settings:colors
 settings.palette   = Palette  | settings:palette
 settings.keyboard  = Keyboard | settings:keyboard
 settings.advanced  = Advanced | settings:advanced
-settings.amarchy = Amarchy | settings:amarchy
-settings.amarchy.rescan      = Rescan apps          | scan:amarchy-index
-settings.amarchy.preferences = Amarchy preferences  | detach:C:UP-Term-Prefs AMARCHY
-settings.amarchy.font        = Menu font            | detach:C:UP-Term-Prefs AMARCHY
-settings.amarchy.edit        = Edit menu            | run:nvim ENV:up-term/keymap
-settings.amarchy.agentclaude = AI Agent: Claude     | slash:/agent claude
-settings.amarchy.agentpi     = AI Agent: pi         | slash:/agent pi
+settings.patina = Patina | settings:patina
+settings.patina.rescan      = Rescan apps          | scan:patina-index
+settings.patina.preferences = Patina preferences  | detach:C:UP-Term-Prefs PATINA
+settings.patina.font        = Menu font            | detach:C:UP-Term-Prefs PATINA
+settings.patina.edit        = Edit menu            | run:nvim ENV:up-term/keymap
+settings.patina.agentclaude = AI Agent: Claude     | slash:/agent claude
+settings.patina.agentpi     = AI Agent: pi         | slash:/agent pi
 settings.theme          = Theme Editor          | settings:theme
 settings.theme.swatches = Swatches              | settings:theme-swatches
 settings.theme.groups   = Groups                | settings:theme-groups
@@ -214,7 +214,7 @@ settings.theme.desktop  = Desktop               | settings:theme-desktop
 settings.theme.files    = Presets and Files     | settings:theme-files
 settings.theme.screens  = Screens               | settings:theme-screens
 settings.flat = Flat Look | settings:flat
-# The agents panel the Amarchy bar's agents segment opens (amarchy/bar.c opens node "agents" hung from the bar).
+# The agents panel the Patina bar's agents segment opens (patina/bar.c opens node "agents" hung from the bar).
 # The limit meters and token use (OMARCHY-AI part E) get a row here when part E exists (BAR_AGENT_LIMITS_ROW).
 agents.claude      = Default agent: Claude | slash:/agent claude
 agents.pi          = Default agent: pi     | slash:/agent pi
@@ -224,9 +224,9 @@ agents.tests       = Fix the failing tests | slash:/ask Run the tests, find why 
 agents.explain   = Explain this project  | slash:/ask Explain what this project does and how it is laid out
 # The bar's network segment (left click) opens node "network": its info rows come from BAR NET (menu_tree.c net_rows),
 # then these two rows switch the shown interface through BAR NETUP / BAR NETDOWN (ConfigureNetInterface).
-network.up          = Up | rexx:address AMARCHY BAR NETUP
-network.down        = Down | rexx:address AMARCHY BAR NETDOWN
-style.theme        = Amarchy theme         | menu:style.theme
+network.up          = Up | rexx:address PATINA BAR NETUP
+network.down        = Down | rexx:address PATINA BAR NETDOWN
+style.theme        = Patina theme         | menu:style.theme
 style.terminal.theme      = Theme          | slash:/theme
 style.terminal.font       = Font           | slash:/font
 style.terminal.background = Background     | slash:/bg
@@ -333,7 +333,7 @@ learn.keys         = Key bindings          | viewer
 learn.tutorial     = Tutorial              | menuid:MENU_TUTORIAL
 learn.help         = Slash command help    | menuid:MENU_HELP_SLASH
 learn.demo         = Demo tour             | slash:/demo
-learn.amarchydemo = Amarchy demo         | rexx:address AMARCHY DEMO
+learn.patinademo = Patina demo         | rexx:address PATINA DEMO
 system.safeoff     = Safe to switch off    | detach:Execute UP-Term:S/safe-off
 system.reboot      = Reboot                | detach:Reboot
 system.workbench   = Workbench screen      | slash:/screen workbench
@@ -353,4 +353,4 @@ packages.upgrades.all = Upgrade all        | job:upkg upgrade
 packages.refresh   = Refresh               | job:upkg update
 trigger.clipboard  = Clipboard history     | menu:trigger.clipboard
 help               = Help                  | gui:help
-quit               = Quit Amarchy          | amarchy:quit
+quit               = Quit Patina          | patina:quit

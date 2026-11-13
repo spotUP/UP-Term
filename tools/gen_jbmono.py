@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""JetBrains Mono as an Amiga bitmap strike font (JetBrainsMono.font 16), for the Amarchy drawn menu on
+"""JetBrains Mono as an Amiga bitmap strike font (JetBrainsMono.font 16), for the Patina drawn menu on
 square-pixel screens (Omarchy's font). Usage: gen_jbmono.py JetBrainsMono-Regular.ttf OUTDIR
 writes OUTDIR/JetBrainsMono.font and OUTDIR/JetBrainsMono/16.
 

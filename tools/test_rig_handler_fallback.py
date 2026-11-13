@@ -30,8 +30,8 @@ with tempfile.TemporaryDirectory() as t:
         (d / "build/amiga").mkdir(parents=True)
     (main / "build/amiga/vtcon-handler").write_bytes(b"main")
     (main / "build/amiga/vsh").write_bytes(b"mainvsh")
-    (main / "build/amiga/Amarchy").write_bytes(b"mainam")
-    (tree / "build/amiga/Amarchy").write_bytes(b"ownam")
+    (main / "build/amiga/Patina").write_bytes(b"mainam")
+    (tree / "build/amiga/Patina").write_bytes(b"ownam")
     old_root, old_main = rig.ROOT, rig.paths.MAIN_CHECKOUT
     rig.ROOT, rig.paths.MAIN_CHECKOUT = tree, main
     try:
@@ -41,7 +41,7 @@ with tempfile.TemporaryDirectory() as t:
             got = rig.built_handler()
         check(got.resolve() == (main / "build/amiga/vtcon-handler").resolve() and (rig.build_amiga() / "vsh").read_bytes() == b"mainvsh",
               "no own handler or vsh: the main checkout's")
-        check((rig.build_amiga() / "Amarchy").read_bytes() == b"ownam", "a file the tree has built wins")
+        check((rig.build_amiga() / "Patina").read_bytes() == b"ownam", "a file the tree has built wins")
         check(out.getvalue().count("[WARN]") == 2 and "vsh" in out.getvalue(), "one WARN line per file taken from main")
         check("[WARN]" in out.getvalue() and str(main) in out.getvalue(), "the WARN names the source")
         (tree / "build/amiga/vtcon-handler").write_bytes(b"own")

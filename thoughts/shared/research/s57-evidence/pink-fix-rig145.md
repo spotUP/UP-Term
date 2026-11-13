@@ -3,7 +3,7 @@ date: 2026-11-05
 author: opus-brief agent vtcon-c1
 row: S57-ICL-PINK-SHADE rig proof
 build: main c990849e
-verdict: INCONCLUSIVE. Build fixed, rig up, all pixel counts 0, but the measured screen was not shown to be Workbench icon labels; amarchy-flat not on the shell path; 2 boot hangs
+verdict: INCONCLUSIVE. Build fixed, rig up, all pixel counts 0, but the measured screen was not shown to be Workbench icon labels; patina-flat not on the shell path; 2 boot hangs
 ---
 
 # Pink/red icon label proof on rig 145 (main c990849e)
@@ -26,9 +26,9 @@ Whole screen and a 140 px left strip both counted, all zero.
 
 ## Why this is weak evidence
 - Screens have only about 5 colours (dominant (14,14,20), (26,27,38)): looks like a dark console screen, not Workbench with icon labels. The PNGs were not looked at (unverified).
-- `amarchy-flat STATUS` returns "Unknown command" (rc 10) on the full-install rig, so flat state and held-pen state were not read.
+- `patina-flat STATUS` returns "Unknown command" (rc 10) on the full-install rig, so flat state and held-pen state were not read.
 - Grey shade count 0 also means no antialiased labels were on screen.
 - Two hangs (first installer boot, first reboot after install) not investigated, per brief.
 
 ## Next
-Get Workbench front screen with icon drawers visible (find where amarchy-flat is installed, or run it by full path), then repeat 3 boots. Check the reboot hang separately.
+Get Workbench front screen with icon drawers visible (find where patina-flat is installed, or run it by full path), then repeat 3 boots. Check the reboot hang separately.

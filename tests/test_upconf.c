@@ -426,14 +426,14 @@ static void rows_in_file_order(void)
     CHECK_INT(r.line[0], 3);
 }
 
-/* A tab opened after an Amarchy theme switch starts in that theme: the active theme's colours beat the up-term profile's
+/* A tab opened after an Patina theme switch starts in that theme: the active theme's colours beat the up-term profile's
  * (owner 2026-10-29); no theme file, or text that is not a theme, leaves the profile's. */
 static void theme_beats_profile(void)
 {
     static upconf prof, theme, junk;
     static const char pt[] = "[profile default]\nfg = C0C0C0\nbg = 000000\n";
-    static const char tt[] = "[profile amarchy]\nfg = AABBCC\nbg = 112233\n";
-    static const char nt[] = "[profile amarchy]\nbell = none\n";
+    static const char tt[] = "[profile patina]\nfg = AABBCC\nbg = 112233\n";
+    static const char nt[] = "[profile patina]\nbell = none\n";
     const char *sec = 0;
     int is_theme = -1;
     const upconf *src;
@@ -442,7 +442,7 @@ static void theme_beats_profile(void)
     upconf_parse(&junk, nt, (long)strlen(nt));
     src = upconf_colour_source(&prof, "default", &theme, &sec, &is_theme);
     CHECK(src == &theme && is_theme == 1);
-    CHECK_STR(sec, "amarchy");
+    CHECK_STR(sec, "patina");
     src = upconf_colour_source(&prof, "default", 0, &sec, &is_theme);
     CHECK(src == &prof && is_theme == 0);
     CHECK_STR(sec, "default");
@@ -455,8 +455,8 @@ static void theme_font_source(void)
 {
     static upconf prof, tfont, tnone, pnone;
     static const char pt[] = "[profile default]\nfont = topaz.font:8\n";
-    static const char tf[] = "[profile amarchy]\nfg = AABBCC\nfont = ruby.font:12\n";
-    static const char tn[] = "[profile amarchy]\nfg = AABBCC\n";
+    static const char tf[] = "[profile patina]\nfg = AABBCC\nfont = ruby.font:12\n";
+    static const char tn[] = "[profile patina]\nfg = AABBCC\n";
     static const char pn[] = "[profile default]\nfg = 112233\n";
     upconf_parse(&prof, pt, (long)strlen(pt));
     upconf_parse(&tfont, tf, (long)strlen(tf));

@@ -47,14 +47,14 @@ typedef struct prefs_fields {
     int backspace_bs; /* backspace = bs: the key sends ^H; 0: del, ^? (the default) */
     int clipboard;  /* PREFS_CLIP_*: program-clipboard, what OSC 52 may do */
     int rip;        /* PREFS_RIP_*: rip, RIP file transfers (off, on, auto; auto by default) */
-    /* the Amarchy menu's keys: always the [default] profile's, whichever profile is edited (amarchy/gui.c
+    /* the Patina menu's keys: always the [default] profile's, whichever profile is edited (patina/gui.c
      * reads them there); empty = key absent */
-    char am_music[UC_MAX_VALUE];    /* amarchy-music-drawers */
-    char am_demo[UC_MAX_VALUE];     /* amarchy-demo-drawers */
-    char am_hide[UC_MAX_VALUE];     /* amarchy-hide-drawers */
-    char am_font[UC_MAX_VALUE];     /* amarchy-menu-font, "name:size" as the font key */
-    char am_gtheme[UC_MAX_VALUE];   /* amarchy-gui-theme: the drawn menu's Omarchy theme name */
-    int am_icons;                   /* amarchy-app-icons: UC_ICONS_* (generic glyphs, amiga .info images, none) */
+    char am_music[UC_MAX_VALUE];    /* patina-music-drawers */
+    char am_demo[UC_MAX_VALUE];     /* patina-demo-drawers */
+    char am_hide[UC_MAX_VALUE];     /* patina-hide-drawers */
+    char am_font[UC_MAX_VALUE];     /* patina-menu-font, "name:size" as the font key */
+    char am_gtheme[UC_MAX_VALUE];   /* patina-gui-theme: the drawn menu's Omarchy theme name */
+    int am_icons;                   /* patina-app-icons: UC_ICONS_* (generic glyphs, amiga .info images, none) */
     int am_termmenu;                /* menu-in-terminal: UC_TERMMENU_* (text, graphical) */
     int am_flat;                    /* flat-system-look: index of off, on */
     int am_flatgad;                 /* flat-window-gadgets: index of off, on */
@@ -168,7 +168,7 @@ void prefs_kc_encode(const prefs_kc *k, char *out, int cap);
  * font value "topaz:8" (".font" cut, any case). 0 and out "" when the name
  * is empty, holds a colon or the result does not fit cap; a size under 1
  * gives the bare name. A blank is kept ("Vera Mono:14"): both readers split
- * at the last separator only, the Amarchy menu by prefs_font_parse, the
+ * at the last separator only, the Patina menu by prefs_font_parse, the
  * terminal handler by winspec_font. */
 int prefs_font_compose(const char *name, long size, char *out, int cap);
 /* The profile's font value back into what a requester starts from: name
@@ -302,7 +302,7 @@ int prefs_install(const prefs_fs *fs, const char *path, const char *tmp,
 enum { PREFS_T_ENV, PREFS_T_ENVARC };
 
 /* One program's settings file: where it lives in ENV: and ENVARC:, and the
- * names the ENVARC: install uses. UP-Term Prefs has one set, Amarchy its own;
+ * names the ENVARC: install uses. UP-Term Prefs has one set, Patina its own;
  * every writer goes through prefs_install_target_at with its set. */
 typedef struct prefs_paths {
     const char *dir[2];   /* the drawer of each target, made when missing */
@@ -311,13 +311,13 @@ typedef struct prefs_paths {
     const char *orig;     /* ENVARC: install: where the old file goes */
 } prefs_paths;
 extern const prefs_paths prefs_paths_upterm;  /* ENV:up-term/up-term, ENVARC:up-term/up-term */
-extern const prefs_paths prefs_paths_amarchy; /* ENV:Amarchy/prefs, ENVARC:Amarchy/prefs */
-/* What the Amarchy commodity watches for a live reload: the ENV: copies only. Every writer (prefs_save_at,
+extern const prefs_paths prefs_paths_patina; /* ENV:Patina/prefs, ENVARC:Patina/prefs */
+/* What the Patina commodity watches for a live reload: the ENV: copies only. Every writer (prefs_save_at,
  * the Installer) writes ENVARC: first and ENV: after it, so ENV: changes last. Watching ENVARC: too made the
- * reload open ENV:Amarchy/prefs for reading just before the writer opened it for writing; the RAM handler
+ * reload open ENV:Patina/prefs for reading just before the writer opened it for writing; the RAM handler
  * refused that with error 202 and the theme save failed. */
-#define PREFS_NNOTIFY_AMARCHY 3
-extern const char *const prefs_notify_amarchy[PREFS_NNOTIFY_AMARCHY];
+#define PREFS_NNOTIFY_PATINA 3
+extern const char *const prefs_notify_patina[PREFS_NNOTIFY_PATINA];
 #define prefs_conf_dir  (prefs_paths_upterm.dir)   /* ENV:up-term, ENVARC:up-term */
 #define prefs_conf_path (prefs_paths_upterm.path)  /* .../up-term */
 
@@ -337,7 +337,7 @@ int prefs_install_target_at(const prefs_fs *fs, const prefs_paths *p, int t, con
 int prefs_save_at(const prefs_fs *fs, int (*dir)(const prefs_paths *, int), const prefs_paths *p,
                   const char *buf, long len, int keep, int *failed);
 /* The variable of target t (PREFS_T_*) written in place through fs.write_file, no backup: the one write
- * prefs_dos_save and the Amarchy menu's setting rows share. PREFS_INSTALL_OK or PREFS_INSTALL_WRITE. */
+ * prefs_dos_save and the Patina menu's setting rows share. PREFS_INSTALL_OK or PREFS_INSTALL_WRITE. */
 int prefs_write_hlcat(const prefs_fs *fs, int t, int on);
 /* prefs_install_target_at with UP-Term's file. */
 int prefs_install_target(const prefs_fs *fs, int t, const char *buf, long len);

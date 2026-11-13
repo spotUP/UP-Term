@@ -3,7 +3,7 @@ date: 2026-10-22
 topic: UP-Term's own TrueType rasterizer in the handler
 status: approved 2026-10-22; R0-R5 done, R6 A1-A3/R6.6 done (b829462f, 184fdbb8, 1a87b4a4), open R6.1d, R6.2b A1200, R6.B1-B4
 research: thoughts/shared/research/2026-10-22_handler-rasterizer.md
-branch: amarchy-a (worktree .claude/worktrees/agent-a7edb2573dbabf68d)
+branch: patina-a (worktree .claude/worktrees/agent-a7edb2573dbabf68d)
 ---
 
 # Handler TrueType rasterizer
@@ -328,7 +328,7 @@ Automated:
 
 Manual (owner):
 - A1200: copy L:vtcon-handler, set the font-fallback key to SymbolsNerdFontMono, run
-  amarchy-menu; PASS = the ten root menu icons (five of them plane 15) draw, none is a box.
+  patina-menu; PASS = the ten root menu icons (five of them plane 15) draw, none is a box.
 - R4: antialiased edges look smooth on the A1200 AGA screen; text stays readable.
 
 ## Cost estimate

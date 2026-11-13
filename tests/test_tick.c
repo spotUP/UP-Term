@@ -1,5 +1,5 @@
-/* The commodity tick's hook list (amarchy/tick_core.c; the timer is tick.c, proved on the rig by ticks= in STATUS). */
-#include "../amarchy/tick_core.h"
+/* The commodity tick's hook list (patina/tick_core.c; the timer is tick.c, proved on the rig by ticks= in STATUS). */
+#include "../patina/tick_core.h"
 #include "harness.h"
 
 static long seen_a, seen_b, now_a, calls_a, calls_b;

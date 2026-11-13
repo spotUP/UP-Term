@@ -1,13 +1,13 @@
 """TE-10.8b source guard: the Screens page reads public screen names at full length.
 
 A public screen name holds up to 139 characters (MAXPUBSCREENNAME); a rule line holds the same (GT_SCR_PAT = 140 with the
-terminator). The page's loader (gt_dos_screens_load, amarchy/gthemes_dos.c) once sampled the names into 32-byte slots, so a
+terminator). The page's loader (gt_dos_screens_load, patina/gthemes_dos.c) once sampled the names into 32-byte slots, so a
 longer name showed cut on its row and the exact rule saved for it never matched the screen. The sample buffer and the stride
 given to ipd_pub_screens must both be GT_SCR_PAT.
 """
 import pathlib, re, unittest
 
-SRC = pathlib.Path(__file__).resolve().parent.parent / "amarchy" / "gthemes_dos.c"
+SRC = pathlib.Path(__file__).resolve().parent.parent / "patina" / "gthemes_dos.c"
 
 
 def loader_body():

@@ -32,4 +32,4 @@ shell/vsh_quote.h, the one escape routine vsh_command_line also uses). No new IP
 - Live check on a rig not done: `Agent "list the files"` should open a tab whose agent starts on that task.
 - amiga-pi reads a task starting with `-` as an option (args.c:187, no `--`). Claude's cli.c not checked.
 - How amiga-pi tokenizes the quoted command line (ixemul argv) is unverified.
-- Pre-existing failures on main: tests/test_dist_addons.py 3 tests, tests/test_amarchy_docs.py 2 tests.
+- Pre-existing failures on main: tests/test_dist_addons.py 3 tests, tests/test_patina_docs.py 2 tests.

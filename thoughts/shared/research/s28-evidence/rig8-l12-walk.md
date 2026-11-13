@@ -1,7 +1,7 @@
 # s28 rig 8: L12 all-volume icon walk (AmigaOS 3.2, rig 8, head 1cb2ea9c)
 
-Binary build/amiga/amarchy-icons md5 25e75ee02f85ccec1a7ad975267c3623 (Amiga side md5sum RAM:amarchy-icons identical).
-lucide.dat built with `make lucide-dat` (md5 de9875de3a319ebf77cec2c5ad0b81e9), put to VTCX:Apps/Amarchy/Icons/ (UP-Term: = VTCX:Apps) before locking.
+Binary build/amiga/patina-icons md5 25e75ee02f85ccec1a7ad975267c3623 (Amiga side md5sum RAM:patina-icons identical).
+lucide.dat built with `make lucide-dat` (md5 de9875de3a319ebf77cec2c5ad0b81e9), put to VTCX:Apps/Patina/Icons/ (UP-Term: = VTCX:Apps) before locking.
 
 ## Setup (md5 before APPLY)
 - SYS:L12/zzfallback.info (copy of Prefs.info, no table match, drawer) f506d8be426706993d7984a01ffda44c
@@ -20,7 +20,7 @@ STATUS prints only this line; the counters (incl. skipped-deep=) are printed by 
 
 ## After APPLY
 - zzfallback.info and zzuaemdir.info both 74492404690ea592357029acdcd6c675 (rewritten); zzlocked, zzuaem, DH1 files unchanged.
-- Backups: SYS:Storage/Icons/Amarchy/Empty-12MB-FFS/L12/{zzfallback,zzuaemdir}.info (md5 f506d8be... = original), also ENV, ENVARC dirs.
+- Backups: SYS:Storage/Icons/Patina/Empty-12MB-FFS/L12/{zzfallback,zzuaemdir}.info (md5 f506d8be... = original), also ENV, ENVARC dirs.
 - Manifest lines: `93 Empty-12MB-FFS:L12/zzfallback.info ; c3bc8abb ; 2edb1754` (and zzuaemdir). The crc shown by Search is the manifest line, ok.
 
 ## RESTORE (verbatim)

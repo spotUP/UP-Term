@@ -1,7 +1,7 @@
 /* keymap: see keymap.h for the file format and the contract. */
 #include <string.h>
 #include "upconf.h"
-#include "../amarchy/win_core.h"
+#include "../patina/win_core.h"
 #include "keymap.h"
 
 #if defined(VT_COUNT_ALLOC)
@@ -11,7 +11,7 @@
 #define KM_MALLOC(n) vt_count_malloc((unsigned long)(n))
 #define KM_FREE(p) vt_count_free(p)
 #elif defined(__VBCC__) || defined(AMIGA) || defined(__amigaos__)
-/* vbcc defines neither AMIGA nor __amigaos__: without __VBCC__ here Amarchy and the handler got
+/* vbcc defines neither AMIGA nor __amigaos__: without __VBCC__ here Patina and the handler got
  * vc.lib's malloc, whose 16 KB puddles stay until exit (tests/test_keymap_amiga_alloc.py) */
 #include <exec/memory.h>
 #include <proto/exec.h>
@@ -132,7 +132,7 @@ int keymap_action_scope(int kind)
     case KA_SETTINGS:
     case KA_BAR:
     case KA_GUI:
-    case KA_AMARCHY:
+    case KA_PATINA:
         return KS_COMMODITY;
     case KA_MENU:
     case KA_VIEWER:
@@ -219,7 +219,7 @@ static const prefix prefixes[] = {
     { "menu", KA_MENU }, { "menuid", KA_MENUID }, { "tab", KA_TAB },
     { "slash", KA_SLASH }, { "run", KA_RUN }, { "job", KA_JOB }, { "rexx", KA_REXX }, { "open", KA_OPEN },
     { "detach", KA_DETACH }, { "scan", KA_SCAN },
-    { "win", KA_WIN }, { "gtheme", KA_GTHEME }, { "cap", KA_CAP }, { "settings", KA_SETTINGS }, { "bar", KA_BAR }, { "gui", KA_GUI }, { "amarchy", KA_AMARCHY }
+    { "win", KA_WIN }, { "gtheme", KA_GTHEME }, { "cap", KA_CAP }, { "settings", KA_SETTINGS }, { "bar", KA_BAR }, { "gui", KA_GUI }, { "patina", KA_PATINA }
 };
 
 const char *keymap_kind_name(int kind)
@@ -249,7 +249,7 @@ static int tab_arg_ok(const char *a)
     return 0;
 }
 
-/* win:<verb [argument]>: the closed verb list of amarchy/win_core.c (win_parse is the one list); 1 when text is one of
+/* win:<verb [argument]>: the closed verb list of patina/win_core.c (win_parse is the one list); 1 when text is one of
  * its forms. */
 static int win_arg_ok(const char *a)
 {
@@ -257,14 +257,14 @@ static int win_arg_ok(const char *a)
     return win_parse(a, &c);
 }
 
-/* cap:<kind>: the closed list of the commodity's CAP verb (amarchy.c cap_run); no clip suffix, every capture also
+/* cap:<kind>: the closed list of the commodity's CAP verb (patina.c cap_run); no clip suffix, every capture also
  * goes to the clipboard (decision D3 a). */
 static int cap_arg_ok(const char *a)
 {
     return !strcmp(a, "screen") || !strcmp(a, "window") || !strcmp(a, "region");
 }
 
-/* bar:<verb>: the commodity's BAR verbs that change the bar (amarchy.c do_row). */
+/* bar:<verb>: the commodity's BAR verbs that change the bar (patina.c do_row). */
 static int gui_arg_ok(const char *a)
 {
     return !strcmp(a, "help") || !strcmp(a, "welcome");
@@ -317,7 +317,7 @@ static int action_parse(const char *text, action *a)
         return 0;
     if (a->kind == KA_GUI && !gui_arg_ok(text))
         return 0;
-    if (a->kind == KA_AMARCHY && strcmp(text, "quit"))
+    if (a->kind == KA_PATINA && strcmp(text, "quit"))
         return 0;
     if (a->kind == KA_GTHEME && (!*text || strchr(text, '/') || strchr(text, ':')))
         return 0;   /* a theme name, never a path */

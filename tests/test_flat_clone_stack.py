@@ -8,7 +8,7 @@ and freed after they are removed (under cl_ss), and it is at least CLONE_STACK_M
 import pathlib, re, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-SRC = ROOT / "amarchy" / "flat.c"
+SRC = ROOT / "patina" / "flat.c"
 CLONE_STACK_MIN = 16384
 
 
@@ -72,7 +72,7 @@ class FlatCloneStack(unittest.TestCase):
         self.assertRegex(body, r"cl_hwp\s*=\s*CLONE_STACK_SKIP\s*;\s*[^\n]*\n\s*while", "clone_stack_note resumes the scan at the old cl_hwp")
 
     def test_the_asm_helper_swaps_twice_and_is_linked(self):
-        asm = (ROOT / "amarchy" / "flat_stk.s").read_text()
+        asm = (ROOT / "patina" / "flat_stk.s").read_text()
         self.assertEqual(asm.count("-732(a6)"), 2, "StackSwap must be called once in, once out")
         self.assertIn("_flat_on_stack", asm)
         self.assertIn("flat_stk.o", (ROOT / "Makefile").read_text())

@@ -1,7 +1,7 @@
-# AMARCHY-WIN-IBASE-DOS
+# PATINA-WIN-IBASE-DOS
 
 Violated invariant: under LockIBase a program only reads IntuitionBase lists; DOS calls and lock-taking or blocking Intuition
-calls run outside it (amarchy/win.c header). Root-cause level: the verb dispatcher win_exec, which loaded the config inside the
+calls run outside it (patina/win.c header). Root-cause level: the verb dispatcher win_exec, which loaded the config inside the
 lock. Fix level: gather/load first, lock, copy, unlock, apply.
 
 ## Lock spans in win.c (7 pairs)

@@ -1,4 +1,4 @@
-"""amarchy_menu_rig dopus_quit starts Directory Opus again at its end, also when a check raises.
+"""patina_menu_rig dopus_quit starts Directory Opus again at its end, also when a check raises.
 
 The row quits DOpus through Opus > Quit... and used to leave the rig without DOPUS.1, so every later DOpus row on the same rig
 was BLOCKED (rig 5, 2026-10-31). restore_dopus runs the boot's own `C:LoadWB` and waits for the DOPUS.1 port.
@@ -9,7 +9,7 @@ from unittest import mock
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools/rig"))
 
-import amarchy_menu_rig as m
+import patina_menu_rig as m
 
 
 class DopusQuitRestores(unittest.TestCase):

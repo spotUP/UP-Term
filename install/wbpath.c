@@ -1,7 +1,7 @@
 /* WBPath ADD|REMOVE <drawer>: edit the Workbench process's command path live.
  *
  * "Path X ADD" changes only the Shell it runs in. Every Shell vsh starts from Workbench (UP-Term windows)
- * and every Amarchy launch copies the Workbench process's cli_CommandDir, so a drawer an installer adds
+ * and every Patina launch copies the Workbench process's cli_CommandDir, so a drawer an installer adds
  * with Path alone is missing there until the next boot (UHC:ExtBin after up-uhc: "Pipe" unknown). WBPath
  * puts the drawer on that path itself (dist/addons/uhc/install.dos) and takes it off again before the
  * drawer is deleted (uninstall-body.dos: the node holds a lock that blocks the delete).
@@ -12,7 +12,7 @@
  * Shells already open keep their own path (they copied it): run "Path <drawer> ADD" there once.
  * Return codes: 0 done (or nothing to do), 5 no Workbench process ("[WARN]" line; an install still
  * succeeds), 10 the drawer cannot be locked (ADD), 20 usage or no memory.
- * The node layout and the loops are config/cmdpath.h's, shared with vsh and Amarchy. */
+ * The node layout and the loops are config/cmdpath.h's, shared with vsh and Patina. */
 #include <exec/types.h>
 #include <exec/memory.h>
 #include <dos/dos.h>

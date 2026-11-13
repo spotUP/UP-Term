@@ -1,4 +1,4 @@
-; Icons of the drawn Amarchy menu: node id = Symbols Nerd Font code point ; Nerd Fonts name.
+; Icons of the drawn Patina menu: node id = Symbols Nerd Font code point ; Nerd Fonts name.
 ; An id is a [menu] row of keymap or a group (the node whose children are rows). A node without an
 ; entry here leaves its icon column empty, except an index group: `drawer` is the glyph of any index group
 ; (a scanned drawer such as apps.tools) with no entry of its own (mi_item_id). tools/gen_menu_icons.py converts each glyph at build time.
@@ -32,7 +32,7 @@ learn.keys        = U+F11C    ; fa-keyboard_o
 learn.tutorial    = U+F19D    ; fa-graduation_cap
 learn.help        = U+F059    ; fa-question_circle
 learn.demo        = U+F04B    ; fa-play
-learn.amarchydemo = U+F04B    ; fa-play
+learn.patinademo = U+F04B    ; fa-play
 system.safeoff    = U+F011    ; fa-power-off
 system.reboot     = U+F021    ; fa-refresh
 system.workbench  = U+F108    ; fa-desktop
@@ -67,13 +67,13 @@ settings.colors              = U+F1FC    ; fa-paint_brush
 settings.palette             = U+F043    ; fa-tint
 settings.keyboard            = U+F11C    ; fa-keyboard_o
 settings.advanced            = U+F0AD    ; fa-wrench
-settings.amarchy             = U+F085    ; fa-cogs
-settings.amarchy.rescan      = U+F021    ; fa-refresh
-settings.amarchy.preferences = U+F1DE    ; fa-sliders
-settings.amarchy.font        = U+F031    ; fa-font
-settings.amarchy.edit        = U+F044    ; fa-pencil_square_o
-settings.amarchy.agentclaude = U+F0E7    ; fa-flash
-settings.amarchy.agentpi     = U+F121    ; fa-code
+settings.patina             = U+F085    ; fa-cogs
+settings.patina.rescan      = U+F021    ; fa-refresh
+settings.patina.preferences = U+F1DE    ; fa-sliders
+settings.patina.font        = U+F031    ; fa-font
+settings.patina.edit        = U+F044    ; fa-pencil_square_o
+settings.patina.agentclaude = U+F0E7    ; fa-flash
+settings.patina.agentpi     = U+F121    ; fa-code
 settings.flat                = U+F0C8    ; fa-square
 settings.theme               = U+F1FC    ; fa-paint_brush
 settings.theme.swatches      = U+F043    ; fa-tint
@@ -85,7 +85,7 @@ settings.theme.states        = U+F0E7    ; fa-flash
 settings.theme.desktop       = U+F108    ; fa-desktop
 settings.theme.files         = U+F07C    ; fa-folder_open
 settings.theme.screens       = U+F24D    ; fa-clone
-; Window group rows (plan 2026-10-25-amarchy-window-groups.md, 2.1)
+; Window group rows (plan 2026-10-25-patina-window-groups.md, 2.1)
 window.next                 = U+F061    ; fa-arrow_right
 window.previous             = U+F060    ; fa-arrow_left
 window.front                = U+F2D2    ; fa-window_restore
@@ -132,7 +132,7 @@ window.layoutcolumns        = U+F009    ; fa-th_large
 window.layoutrows           = U+F009    ; fa-th_large
 window.layoutgrid           = U+F009    ; fa-th_large
 window.layoutmonocle        = U+F2D0    ; fa-window_maximize
-; Screens group and Workbench group (plan 2026-10-25-amarchy-window-groups.md, 2.2 and 2.3)
+; Screens group and Workbench group (plan 2026-10-25-patina-window-groups.md, 2.2 and 2.3)
 screens                     = U+F24D    ; fa-clone
 workbench                   = U+F108    ; fa-desktop
 screens.next                = U+F061    ; fa-arrow_right

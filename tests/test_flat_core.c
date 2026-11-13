@@ -1,14 +1,14 @@
-/* The amarchy-flat state block (amarchy/flat_core.c; plan 2026-10-29-amarchy-flat-ui-patch.md FLAT-C0). The block
- * is shared with Amarchy through the public semaphore, so its offsets are a contract: pinned here byte by byte. */
+/* The patina-flat state block (patina/flat_core.c; plan 2026-10-29-patina-flat-ui-patch.md FLAT-C0). The block
+ * is shared with Patina through the public semaphore, so its offsets are a contract: pinned here byte by byte. */
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../amarchy/flat_core.h"
-#include "../amarchy/flat_glyph.h"
-#include "../amarchy/roundaa_core.h"
-#include "../amarchy/desk_core.h"
-#include "../amarchy/iconpen_core.h"
+#include "../patina/flat_core.h"
+#include "../patina/flat_glyph.h"
+#include "../patina/roundaa_core.h"
+#include "../patina/desk_core.h"
+#include "../patina/iconpen_core.h"
 #define ROMSPAN_VEC
 #include "../device/romspan.h"
 #include "harness.h"
@@ -46,7 +46,7 @@ static void test_layout(void)
     CHECK_INT(offsetof(flat_state, hover), 42);
     CHECK_INT(offsetof(flat_state, knob_rgb), 44);
     CHECK_INT(FLAT_STATE_SIZE, 48);
-    CHECK_STR(FLAT_SEM_NAME, "Amarchy.Flat");
+    CHECK_STR(FLAT_SEM_NAME, "Patina.Flat");
     CHECK_INT(FLAT_VERSION, 5);
     {   /* a version-4 reader (the check as it was: version word 4 and a 36-byte block) refuses a v5 block before the rest */
         flat_state v5;
@@ -92,7 +92,7 @@ static void test_init_check(void)
     /* version is judged before size: a block of another version with a bad size is a version error */
     s.version = 7;
     CHECK_INT(flat_check(&s, sizeof s), FLAT_ERR_VERSION);
-    /* the bytes of a valid block as Amarchy writes them: big-endian on the Amiga, native on the host */
+    /* the bytes of a valid block as Patina writes them: big-endian on the Amiga, native on the host */
     memset(raw, 0, sizeof raw);
     flat_init((flat_state *)raw);
     ((flat_state *)raw)->calls = 5;
@@ -1918,7 +1918,7 @@ static void test_kill_switches(void)
         { "VisualPrefs", FLAT_HELD_VISUALPREFS }, { "visualprefs handler", FLAT_HELD_VISUALPREFS },
         { "Birdie", FLAT_HELD_BIRDIE }, { "BirdieD", FLAT_HELD_BIRDIE }, { "BIRDIE", FLAT_HELD_BIRDIE },
         { "Workbench", FLAT_HELD_NONE }, { "Visual", FLAT_HELD_NONE }, { "", FLAT_HELD_NONE },
-        { "Amarchy", FLAT_HELD_NONE }, { "bird", FLAT_HELD_NONE },
+        { "Patina", FLAT_HELD_NONE }, { "bird", FLAT_HELD_NONE },
     };
     size_t i;
     flat_state s;
@@ -2008,10 +2008,10 @@ static void test_kill_switches(void)
     flat_status_text(0, 0, txt, sizeof txt);
     CHECK_STR(txt, "absent");
     CHECK_INT(flat_status_text(&s, 1, txt, 39), 0);
-    CHECK_STR(FLAT_MARKER_PATH, "ENVARC:Amarchy/flat-starting");
+    CHECK_STR(FLAT_MARKER_PATH, "ENVARC:Patina/flat-starting");
 }
 
-/* FLAT-C9: the prefs -> flat_state mapping both writers (desk apply, amarchy-flat BOOT) call. The sentinel proves the function ran;
+/* FLAT-C9: the prefs -> flat_state mapping both writers (desk apply, patina-flat BOOT) call. The sentinel proves the function ran;
  * the counter rows (version, size, held, still_chained, calls) belong to the resident program and survive the write. */
 static void test_desk_flat_state(void)
 {
@@ -2672,7 +2672,7 @@ static void test_inbar_status_dump(void)
 {
     static char src[400000];
     size_t n;
-    FILE *f = fopen("amarchy/flat.c", "rb");
+    FILE *f = fopen("patina/flat.c", "rb");
     CHECK(f != 0);
     if (!f)
         return;
@@ -2770,7 +2770,7 @@ static void test_button_pen_held(void)
     flat_state s;
     int scr, i, n, live[4], d, bp, kp, sel;
     desk_flat_state(1, 1, 1, &s);
-    CHECK_INT(s.pen_button, DK_SELECTION);                          /* the role number Amarchy writes */
+    CHECK_INT(s.pen_button, DK_SELECTION);                          /* the role number Patina writes */
     s.sel_rgb[0] = 0x28; s.sel_rgb[1] = 0x2c; s.sel_rgb[2] = 0x34;
     s.pen_knob = 0; s.pen_dimtext = 0;                              /* the knob falls back to the button pen */
     flat_pens_init(&p);

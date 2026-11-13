@@ -23,7 +23,7 @@ STATE = re.compile(r'\b(SetFunction|AddPort|AddSemaphore|ObtainSemaphore|AddIntS
 # Programs that match STATE and are not in CHKABORT_PROGRAMS, each with the reason it is safe.
 EXEMPT = {
     'UPConsole': 'one-shot tool: its stdio runs before the patch and after the persistent semaphore is added; nothing is pending between',
-    'amarchy-index': 'its only state is a public record that is never freed by design; a dead scanner is told from a live one by its task (ix_scan_live)',
+    'patina-index': 'its only state is a public record that is never freed by design; a dead scanner is told from a live one by its task (ix_scan_live)',
     'addrowner': 'SetFunction appears only in a comment; the tool only reads memory under Forbid',
     'taskdump': 'ObtainSemaphore is a read lock held only while it copies task data; no stdio while held',
     'deafport': 'its binary carries no vc.lib _chkabort (test_nobreak.py [OK]); Ctrl-C is taken in its own Wait before RemPort',
@@ -33,7 +33,7 @@ EXEMPT = {
     'rexxbound': 'client only: sends ARexx commands and opens no host port; a Break leaves nothing armed',
     'AmTile': 'its binary carries no vc.lib _chkabort (test_nobreak.py [OK])',
     'amnotify': 'its binary carries no vc.lib _chkabort (test_nobreak.py [OK])',
-    'amarchy-menu': 'gcc/ixemul build: ixemul has its own abort path, the vc.lib unit is not in it (test_nobreak.py [OK])',
+    'patina-menu': 'gcc/ixemul build: ixemul has its own abort path, the vc.lib unit is not in it (test_nobreak.py [OK])',
     'UPTerm': 'gcc/ixemul or handler build: no vc.lib _chkabort in the binary (test_nobreak.py [OK])',
     'vsh': 'ixemul build: no vc.lib _chkabort in the binary (test_nobreak.py [OK])',
     'vsh_hw': 'ixemul build: no vc.lib _chkabort in the binary (test_nobreak.py [OK])',

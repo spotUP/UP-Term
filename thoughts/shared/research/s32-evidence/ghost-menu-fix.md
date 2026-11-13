@@ -24,12 +24,12 @@ ghost-dither.md (case 6).
 ## Reused (searched: flat_dim_pen, flat_dimtext_pen, flat_dimtext_ok, flat_gh_match, scroller_pen, the rsw.saved stock call)
 - flat_dimtext_ok / pen_dimtext (the button ghost's label pen) for the pen and its depth rule.
 - The irom_lo/irom_hi ROM caller gate and the fall-through to the stock RectFill already in flat_rf_c.
-- No existing planar recolour helper in amarchy/ (grep Planes[ / BytesPerRow: only clone paths that read glyph masks); the core is
+- No existing planar recolour helper in patina/ (grep Planes[ / BytesPerRow: only clone paths that read glyph masks); the core is
   new, pure, in flat_core.c.
 
 ## Code
-- amarchy/flat_core.c: flat_gm_pen (match/decision), flat_gm_recolour (planar recolour core).
-- amarchy/flat.c: ghost_menu() called first in flat_rf_c; STATUS mhits.
+- patina/flat_core.c: flat_gm_pen (match/decision), flat_gm_recolour (planar recolour core).
+- patina/flat.c: ghost_menu() called first in flat_rf_c; STATUS mhits.
 - tests/test_flat_core.c: test_ghost_menu_pen, test_ghost_menu_recolour.
 
 ## Host tests (2026-11-03)
@@ -55,13 +55,13 @@ Restored; suite green again.
 
 ## m68k build
 
-`make build/amiga/amarchy-flat` (vbcc, -warnings-as-errors): clean, 124688 bytes.
+`make build/amiga/patina-flat` (vbcc, -warnings-as-errors): clean, 124688 bytes.
 
 ## Rig proof (rig 37, OS 3.2.3, 2026-11-03)
 
-Commit 24691a61 build, put to RAM:amarchy-flat, `Run >NIL: RAM:amarchy-flat`, pointer (100,16) grab space,
+Commit 24691a61 build, put to RAM:patina-flat, `Run >NIL: RAM:patina-flat`, pointer (100,16) grab space,
 right button held, STATUS read while held, screenshot, button up. Started with
-`--allow-stale-base` (branch lacks 2 origin/main commits; only RAM:amarchy-flat is under test).
+`--allow-stale-base` (branch lacks 2 origin/main commits; only RAM:patina-flat is under test).
 Script: scratchpad gm_proof.py (same bands as round 2). Shot: ~/Desktop/upterm-shots/vtcon16-ghostmenu-fixed.png.
 
     STATUS: rectfill installed=yes calls=60 hits=0 shits=0 mhits=10 side=0 looks=0
@@ -73,7 +73,7 @@ Measured (menu bg (255,255,255)):
 - 9 disabled bands (rows 12-18 ... 111-117, separator 121-122): every band has all four x mod 4 residues in its
   label pixels (round 2: one residue empty = the 0x4444/0x1111 holes). No period-4 pattern left. PASS.
 - Disabled label pixels: one colour only, (0,0,0), 2190 pixels. pen_dimtext is pen 1 (DK_MUTED); this rig runs
-  the stock palette (no Amarchy theme applied), where pen 1 is the black text pen. So the labels are the dim pen
+  the stock palette (no Patina theme applied), where pen 1 is the black text pen. So the labels are the dim pen
   colour, but on this palette that colour equals the enabled text colour. PASS for "label = dim pen colour";
   the visible dimming needs a theme where DK_MUTED differs from text (not measured here; pen 1 RGB read from
   the enabled text, not from the colour map).

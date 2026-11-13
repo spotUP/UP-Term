@@ -46,21 +46,21 @@ Backend: `tools/rig/amiberry.py` (config spelling, launch command, title link). 
 
 ## Proof
 
-### OS 3.2 (rig 20, `--max --os 32 --emu amiberry --purpose "Amarchy s29: Amiberry port check"`)
+### OS 3.2 (rig 20, `--max --os 32 --emu amiberry --purpose "Patina s29: Amiberry port check"`)
 - `ami.py ping`: `wasabid 0.11b2`
 - `Version FULL`: `Kickstart 47.115, Workbench 47.2 (04/10/2021)` (3.2)
 - `SYS:Tools/ShowConfig`: `PROCESSOR: CPU 68060/FPU 68882/MMU n/a`, AGA PAL, 1024 MB Z3 fast + 8 MB + 0.5 MB, 2 MB chip, uaegfx boards present
 - md5 `VTC:vsh` over wasabi `get` = `22ba11bf3893aee623d5e367ecb3318d` = `build/amiga/vsh`
-- window title (System Events): `Amiberry - [vtcon rig 20 (060 max, OS 32) - Amarchy s29: Amiberry port check]`
+- window title (System Events): `Amiberry - [vtcon rig 20 (060 max, OS 32) - Patina s29: Amiberry port check]`
 - stop: `stopped`, no Amiberry process left
 (the 3.2 block above was re-read on the final code: same results, title included)
 
-### OS 3.1 (rig 20, `--max --emu amiberry --purpose "Amarchy s29: Amiberry port check 3.1"`, sys.hdf clone of images/nyhd2.hdf)
+### OS 3.1 (rig 20, `--max --emu amiberry --purpose "Patina s29: Amiberry port check 3.1"`, sys.hdf clone of images/nyhd2.hdf)
 - wasabid answers; `Version FULL`: `Kickstart 40.68, Workbench 40.42 (02/18/94)`
 - config has `cpu_model=68060`, `fpu_model=68060`; `Version 68060.library`: `47.2` (loads only on a real 060 model)
 - `ShowConfig` (3.1 tool) prints `CPU 68040/68040fpu`: that old tool names a 060 as 040; the 3.2 tool reads 68060. Not compared with an FS-UAE 3.1 rig (rigs 12/14 not touched).
 - md5 `VTC:vsh` = `22ba11bf3893aee623d5e367ecb3318d` = `build/amiga/vsh`
-- window title: `Amiberry - [vtcon rig 20 (060 max) - Amarchy s29: Amiberry port check 3.1]`
+- window title: `Amiberry - [vtcon rig 20 (060 max) - Patina s29: Amiberry port check 3.1]`
 - the `uaehf0=hdf` line for sys.hdf booted
 
 ## Decision: default stays fs-uae

@@ -4,7 +4,7 @@
   python3 tests/test_keymap_amiga_alloc.py build/amiga/keymap.o
 
 config/keymap.c picks its allocator by platform: AllocVec/FreeVec on the Amiga, malloc/free on the
-host. vbcc defines neither AMIGA nor __amigaos__, so the Amiga branch was never taken and Amarchy and
+host. vbcc defines neither AMIGA nor __amigaos__, so the Amiga branch was never taken and Patina and
 vtcon-handler got vc.lib's malloc. That malloc carves blocks out of 16 KB puddles that free() keeps
 until the program exits: a keymap whose parse outgrew the first puddle (the dist keymap) held one
 more 16 KB puddle for the life of the commodity (rig 4: 65432 B resident against 48952 B for an

@@ -26,29 +26,29 @@ class KitShadowKeymap(unittest.TestCase):
             self.assertIn("C:Copy >NIL: VTC:kit-orig/%s %s CLONE" % (bak, dest), go)   # kit-restore puts the kit's back
         self.assertNotIn("keymap.user", go)
 
-    def test_up_term_shadows_run_before_the_amarchy_block_and_go_skips_then(self):
-        # RIG-BOOT-STALE-BIN: Amarchy (User-Startup) started UP-Term:bin programs before go's shadow Copy
+    def test_up_term_shadows_run_before_the_patina_block_and_go_skips_then(self):
+        # RIG-BOOT-STALE-BIN: Patina (User-Startup) started UP-Term:bin programs before go's shadow Copy
         kit = (b"; head\n;BEGIN UP-Term assign\nAssign UP-Term: Work:UP\n;END UP-Term assign\n"
-               b";BEGIN UP-Term Amarchy\n  Run >NIL: UP-Term:bin/Amarchy\n;END UP-Term Amarchy\n")
+               b";BEGIN UP-Term Patina\n  Run >NIL: UP-Term:bin/Patina\n;END UP-Term Patina\n")
         out = rig.user_startup_with_shadows_block(kit).decode("latin-1")
         self.assertLess(out.index(";END UP-Term assign"), out.index(";BEGIN rig-upterm-shadows"))
-        self.assertLess(out.index("Execute BOOTX:shadows-up"), out.index(";BEGIN UP-Term Amarchy"))
+        self.assertLess(out.index("Execute BOOTX:shadows-up"), out.index(";BEGIN UP-Term Patina"))
         self.assertEqual(rig.user_startup_with_shadows_block(out.encode("latin-1")).decode("latin-1"), out)   # once
         self.assertEqual(rig.user_startup_with_shadows_block(b"; no kit\n"), b"; no kit\n" + rig.SHADOWS_UP_BLOCK_TEXT.encode())   # never go (RIG-GO-EARLY)
         script = rig.SHADOWS_UP_SCRIPT
-        self.assertIn("C:Copy >NIL: VTC:amarchy-flat UP-Term:bin/amarchy-flat CLONE", script)
-        self.assertNotIn("amarchy-flat", rig.GO)   # go no longer runs any shadow pass
+        self.assertIn("C:Copy >NIL: VTC:patina-flat UP-Term:bin/patina-flat CLONE", script)
+        self.assertNotIn("patina-flat", rig.GO)   # go no longer runs any shadow pass
 
-    def test_early_block_assigns_libs_ixp6_before_amarchy_and_go_skips_then(self):
-        # AMARCHY-MENU-IXEMUL-BOOT-RACE: amarchy-menu started from User-Startup with no ixemul.library in LIBS:
+    def test_early_block_assigns_libs_ixp6_before_patina_and_go_skips_then(self):
+        # PATINA-MENU-IXEMUL-BOOT-RACE: patina-menu started from User-Startup with no ixemul.library in LIBS:
         script = rig.SHADOWS_UP_SCRIPT
         self.assertIn("If EXISTS VTC:ixp6/ixemul.library", script)
         self.assertIn("C:Assign >NIL: LIBS: VTC:ixp6\n", script)
         self.assertIn("Echo >%s" % rig.RIG_LIBS_DONE, script)
         self.assertIn("If NOT EXISTS %s" % rig.RIG_LIBS_DONE, script)   # a go that assigned first leaves the marker
-        kit = b";BEGIN UP-Term Amarchy\n  Run >NIL: UP-Term:bin/Amarchy\n;END UP-Term Amarchy\n"
+        kit = b";BEGIN UP-Term Patina\n  Run >NIL: UP-Term:bin/Patina\n;END UP-Term Patina\n"
         out = rig.user_startup_with_shadows_block(kit).decode("latin-1")
-        self.assertLess(out.index("Execute BOOTX:shadows-up"), out.index(";BEGIN UP-Term Amarchy"))
+        self.assertLess(out.index("Execute BOOTX:shadows-up"), out.index(";BEGIN UP-Term Patina"))
         go = rig.GO
         self.assertIn("If EXISTS %s" % rig.RIG_LIBS_DONE, go)
         go_else = go.split("If EXISTS %s" % rig.RIG_LIBS_DONE, 1)[1]
@@ -104,29 +104,29 @@ class KitShadowKeymap(unittest.TestCase):
         self.assertEqual((vtc / "UPTerm").read_bytes(), b"upterm-new")
         self.assertFalse((vtc / paths.UPTERM_DRAWER / "bin" / "UPTerm").exists())   # only VTC: is required
 
-    def test_boot_shadows_every_amarchy_program_the_kit_installs(self):
+    def test_boot_shadows_every_patina_program_the_kit_installs(self):
         # RIG-KIT-SHADOWS: no rows for them left stale kit copies that the boot's User-Startup Run line started.
         # The set is the one dist/install.dos copies into UP-Term:bin, read from that file.
         dos = (ROOT / "dist/install.dos").read_text()
-        names = next(l.split()[1:-2] for l in dos.splitlines() if l.startswith("Copy Amarchy "))
-        self.assertEqual(sorted(names), ["AmTile", "Amarchy", "amarchy-flat", "amarchy-gui", "amarchy-icons", "amarchy-index", "amarchy-menu", "amnotify"])
+        names = next(l.split()[1:-2] for l in dos.splitlines() if l.startswith("Copy Patina "))
+        self.assertEqual(sorted(names), ["AmTile", "Patina", "patina-flat", "patina-gui", "patina-icons", "patina-index", "patina-menu", "amnotify"])
         up = rig.kit_shadow_lines(True)
         for n in names:
             self.assertIn("C:Copy >NIL: VTC:%s UP-Term:bin/%s CLONE" % (n, n), up)
             self.assertIn("C:Copy >NIL: VTC:kit-orig/UP-Term-bin-%s UP-Term:bin/%s CLONE" % (n, n), up)
             self.assertEqual(rig.kit_shadow_src(n), rig.build_amiga() / n)
 
-    def test_install_stages_amarchy_themes_and_font_and_boot_places_them(self):
+    def test_install_stages_patina_themes_and_font_and_boot_places_them(self):
         # RIG-NO-THEMES: install through rig.main stages them in VTC:, the boot script copies them to the kit places
         tmp = pathlib.Path(tempfile.mkdtemp())
         root, vtc = tmp / "root", tmp / "rig9/vtc"
         (root / "build/amiga").mkdir(parents=True)
         (root / "build/amiga/vsh").write_bytes(b"vsh")   # rig install refuses a build without vsh
         (root / "build/jbmono").mkdir(parents=True)
-        (root / "dist/amarchy-themes").mkdir(parents=True)
+        (root / "dist/patina-themes").mkdir(parents=True)
         kit_media(root)
         (root / "build/amiga/vtcon-handler").write_bytes(b"handler-new")
-        (root / "dist/amarchy-themes/nord.theme").write_text("name=nord\n")
+        (root / "dist/patina-themes/nord.theme").write_text("name=nord\n")
         (root / "build/jbmono/JetBrainsMono-Regular.ttf").write_bytes(b"ttf")
         vtc.mkdir(parents=True)
         with mock.patch.object(rig, "ROOT", root), mock.patch.object(rig, "RIG", tmp / "rig9"), \
@@ -134,18 +134,18 @@ class KitShadowKeymap(unittest.TestCase):
              mock.patch.object(rig, "KIT_SHADOWS", [x for x in rig.KIT_SHADOWS if x[0] == "vtcon-handler"]), \
              contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(rig.main(["rig.py", "install"]), 0)
-        self.assertEqual((vtc / "amarchy-themes/nord.theme").read_text(), "name=nord\n")
+        self.assertEqual((vtc / "patina-themes/nord.theme").read_text(), "name=nord\n")
         self.assertEqual((vtc / "fonts/JetBrainsMono.ttf").read_bytes(), b"ttf")
-        boot = rig.AMARCHY_ASSETS_BOOT
-        copy = "C:Copy >NIL: VTC:amarchy-themes/#? UP-Term:Amarchy/Themes CLONE"
+        boot = rig.PATINA_ASSETS_BOOT
+        copy = "C:Copy >NIL: VTC:patina-themes/#? UP-Term:Patina/Themes CLONE"
         self.assertIn(copy, boot)
         # Every boot refreshes the themes: an older drawer from an earlier kit
         # must not keep stale or partial themes, so the copy is never gated on
         # the drawer being missing.
         head = boot[:boot.index(copy)]
-        guard = head.rfind("If NOT EXISTS UP-Term:Amarchy/Themes")
+        guard = head.rfind("If NOT EXISTS UP-Term:Patina/Themes")
         self.assertTrue(guard < 0 or "EndIf" in head[guard:], "theme copy is gated on a missing drawer")
-        self.assertIn("C:Copy >NIL: VTC:fonts/JetBrainsMono.ttf FONTS: CLONE", rig.AMARCHY_ASSETS_BOOT)
+        self.assertIn("C:Copy >NIL: VTC:fonts/JetBrainsMono.ttf FONTS: CLONE", rig.PATINA_ASSETS_BOOT)
 
 
 if __name__ == "__main__":

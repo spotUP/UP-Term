@@ -11,10 +11,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../../amarchy/desk_core.h"
+#include "../../patina/desk_core.h"
 
 /* gthemes_core.c names this table in gt_save_text, which this tool never calls; the stub keeps prefs out of the link */
-char prefs_paths_amarchy[256];
+char prefs_paths_patina[256];
 
 static unsigned char buf[16384];
 

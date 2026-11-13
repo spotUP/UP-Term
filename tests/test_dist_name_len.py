@@ -6,7 +6,7 @@ which LhA 1.51 on the Amiga mangled (the 34-character file came out as a directo
 12 other names are 31 or 32 characters. A name over 30 does not fit a classic FFS volume (DOS\\0..DOS\\3, OS 3.1).
 
 The names are counted from the sources that produce them (not from a built archive, so it runs without
-`make dist`): every path under dist/ (copied into Files/, including the bebbossh patches and Amarchy themes),
+`make dist`): every path under dist/ (copied into Files/, including the bebbossh patches and Patina themes),
 themes/*.conf (copied to Files/themes), and the feed names tools/pkgs.py gives the .ipk files and .lha archives of
 dist/packages.txt. A built kit (build/dist/*/), a built feed (build/ipk) and KIT=<dir> are scanned too when present.
 """

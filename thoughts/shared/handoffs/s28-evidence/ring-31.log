@@ -1,16 +1,16 @@
 [INFO] theme list 23 rows, cursor on 20 (tokyo-night (current))
 [INFO] direction Down
 [INFO] picking row 21 (vantablack)
-Process  1: Loaded as command: VTCX:Apps/bin/amarchy-gui
-Process  2: Loaded as command: VTCX:Apps/bin/amarchy-menu
+Process  1: Loaded as command: VTCX:Apps/bin/patina-gui
+Process  2: Loaded as command: VTCX:Apps/bin/patina-menu
 Process  3: Loaded as command: C:upgetty
 Process  4: Loaded as command: C:upgetty
-Process  5: Loaded as command: VTCX:Apps/bin/Amarchy
+Process  5: Loaded as command: VTCX:Apps/bin/Patina
 Process  6: Loaded as command: BOOTX:wasabid
 Process  7: Loaded as command: Status
 Process  8: Loaded as command: DO_LAUNCHER
 Process  9: Loaded as command: BOOTX:wasabid
-Process 10: Loaded as command: RAM:amarchy-flat
+Process 10: Loaded as command: RAM:patina-flat
 
 flat=on calls=4 chained=0
 pens text=2 line=3 back=0 outline=3

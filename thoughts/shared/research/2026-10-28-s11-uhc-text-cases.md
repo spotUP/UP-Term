@@ -1,6 +1,6 @@
 # S11 UHC text-style package cases (rig 4, pg8-text2)
 
-Start drift [WARN]: 17 files in VTC: differ from the build (Apps/bin/Amarchy, Claude, UPConsole, amarchy-gui, amarchy-index, amarchy-menu, hl, mdv, pty-handler, rz, sz, upgetty, uptelnet, vsh, vtcon-handler, gg/bin/sh); `rig.py install` fixed it. The menu rig's stale guard then refused a row twice (5 files: hl, mdv, rz, sz, vsh differ after restaging) until `rig.py install` was run again right before the row.
+Start drift [WARN]: 17 files in VTC: differ from the build (Apps/bin/Patina, Claude, UPConsole, patina-gui, patina-index, patina-menu, hl, mdv, pty-handler, rz, sz, upgetty, uptelnet, vsh, vtcon-handler, gg/bin/sh); `rig.py install` fixed it. The menu rig's stale guard then refused a row twice (5 files: hl, mdv, rz, sz, vsh differ after restaging) until `rig.py install` was run again right before the row.
 
 "Real UHC" on the rig = the staged SYS:UHC/Packages catalogue (gui rig uhc_catalogue, one stub pg8uhc); the rig has no UHC add-on (no UHC: assign).
 
@@ -19,4 +19,4 @@ UHC Remove, by hand on rig 4 with the staged stub: `upkg remove uhc:pg8uhc` is p
 
 Run uhc3 (earlier): Refresh job rc 0, then "the text menu opens over the terminal" failed (3 x x9_open_menu with tx_leave_menu between, 15 s each). Run uhc4 (rig 4 fresh start, same code, HEAD 0873704a): pkg_text_uhc passed 1 of 1, 0 failed checks, including the reopen after Refresh, the UHC Install, Remove (`remove uhc:pg8uhc`), and the reopened row no longer Installed.
 
-Verdict: not reproducible; no harness or Amarchy fault shown. tx_browse reopens exactly as pkg_text_search_tags does (tx_job closes the job view, tx_leave_menu sends 5 Esc, tx_open_packages retries the toggle 3 times). The failing run had been started on a rig that was not freshly booted (the uhc3 log predates this rig start); the likely cause is a stale or still-closing menu process holding the Super+Space toggle after the job, but this was not observed, so it is unverified. No code change made. If it recurs, capture `ami.py windows` and `requesters` at the moment of failure before re-running.
+Verdict: not reproducible; no harness or Patina fault shown. tx_browse reopens exactly as pkg_text_search_tags does (tx_job closes the job view, tx_leave_menu sends 5 Esc, tx_open_packages retries the toggle 3 times). The failing run had been started on a rig that was not freshly booted (the uhc3 log predates this rig start); the likely cause is a stale or still-closing menu process holding the Super+Space toggle after the job, but this was not observed, so it is unverified. No code change made. If it recurs, capture `ami.py windows` and `requesters` at the moment of failure before re-running.

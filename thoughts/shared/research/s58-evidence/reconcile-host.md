@@ -5,7 +5,7 @@ Method: ledger rows read by ID, commit subjects (git log --all, dumped to a file
 | Q | ID | Verdict | Evidence |
 |---|----|---------|----------|
 | Q01 | DESK-CHECK-INVERTED | DONE-ON-MAIN | 9265f711 (desk_plan in desk_core); desk_dos.c now calls desk_plan |
-| Q02 | DESK-CURRENT-MARKER | OWNED-ELSEWHERE | amarchy/gthemes_core.c:343 marks "(current)" from the saved theme; menu.c:375. Amarchy (vtcon-c1) |
+| Q02 | DESK-CURRENT-MARKER | OWNED-ELSEWHERE | patina/gthemes_core.c:343 marks "(current)" from the saved theme; menu.c:375. Patina (vtcon-c1) |
 | Q03 | AMCONF-NO-PROFILE-HEADER | OWNED-ELSEWHERE (lean: by design) | amconf_core.h:58-59 documents keys live in "[profile default]"; upconf_str(c,"default",..) reads only that section. Owner/c1 to close as design |
 | Q04 | RIG-IMPORT-REFRESH | DONE-ON-MAIN | 53281064 (owner.json, gate refreshes own rigs only); s56-riggate merged |
 | Q05 | RIG-REFRESH-CTAGS | DONE-ON-MAIN | 3697b596; s56-rigrefresh merged (not in --no-merged) |
@@ -17,12 +17,12 @@ Method: ledger rows read by ID, commit subjects (git log --all, dumped to a file
 | Q11 | VSH-BANG-PID | DONE-ON-MAIN | 8f21e192 (rig PASS rig 9 in ledger); 71d3d893 is the local pre-push hash |
 | Q12 | patch 0016 short_options | NOT CHECKED | upterm-ports lane, budget; hand to ports session |
 | Q13 | TMUX-KIT-REFRESH | DONE-ON-MAIN | dc402a15 + 5c669ea9 (tools/tmuxfresh.py gate) |
-| Q14 | JOB-ENV-UNSET | OWNED-ELSEWHERE | only amarchy/job_dos.c(.h) references JOB_LINES; "Not looked at"; vtcon-c1 |
+| Q14 | JOB-ENV-UNSET | OWNED-ELSEWHERE | only patina/job_dos.c(.h) references JOB_LINES; "Not looked at"; vtcon-c1 |
 | Q15 | AMIGA-IN-VSH | OPEN (part b+survey) | (a) endcli/endshell done: sh_exec.c:4794,6876. Remaining: survey of Shell built-ins + Unix aliases, owner picks the list; needs owner pick, not a bug |
 | Q16 | VSH-BG-IGNORES-TERM | DONE-ON-MAIN | Cause was stale VTC:bin/sh (not vsh); rig.py:1688 04b827cc; $! fix is Q11 |
 | Q17 | UPDEMO-NEW-FEATURES | DONE-ON-MAIN (eye check open) | scenes a-d, themes-more, tabs-live 5e3b2e98 all ancestors of main; 8be36706 help scene. Owner eye check pending |
 | Q18 | SHELL-TUTORIAL | FIXED partly on main | dist/tutorial + 14 lessons tracked; plan items L-C1 (facts check) and L-R (rig check) still unticked. Rig-bound remainder |
-| Q19 | S56-FLAT-BUTTON-FILL-TINT | OWNED-ELSEWHERE | amarchy/flat_core.c ~560, row says Amarchy session implements |
+| Q19 | S56-FLAT-BUTTON-FILL-TINT | OWNED-ELSEWHERE | patina/flat_core.c ~560, row says Patina session implements |
 | Q20 | S57-LOCALE-LIST-NO-SELECT | OWNED-ELSEWHERE | row says sent to vtcon-c1 |
 | Q21 | S57-LOCALE-GADGET-BLACK, S57-GADGET-LINE-MISSING | OWNED-ELSEWHERE | sent to vtcon-c1; branch s57-title unmerged (not mine) |
 | Q22 | S32-SCROLLBAR-PROP | OWNED-ELSEWHERE (probably superseded) | later [x] S32-KNOB-NONE-FRESH, S32-STALE-HELD-PENS, fef96a81 knob box, 7e6f8754 prop gadget |
@@ -40,7 +40,7 @@ Counts (27 rows incl. Q22 x4): DONE-ON-MAIN 13 rows (Q01,04,05,07,08,10,11,13,16
 ## OPEN fix briefs
 
 ### Q09 test_rig_kit_shadow_keymap (S)
-Files: tests/test_rig_kit_shadow_keymap.py (lines 93, 125), tools/rig/rig.py:1786 (stage_kit_media: `shutil.copyfile(ROOT/"dist"/src, dst)`). Cause: the test builds a temp ROOT and runs rig.py install; stage_kit_media now copies dist/updemo/earth.anim (+ fjord.png, photo.png, kanim-stream.bin) which the fixture root does not contain, so FileNotFoundError. The older row text (amnotify missing from the expected Amarchy list) is already fixed in the test (line 102 lists amnotify); test_rig_kit_stamp passes. Invariant: the test fixture root must hold every file the install stage copies, or stage_kit_media must be driven by the same KIT_MEDIA table (tools/rig/a1200_drift.py:38) the fixture reads. Test: the failing test itself, after adding the media files (copied from real dist/updemo or tiny stubs) to the fixture; verify it fails again with a media path removed. Do not edit rig.py to skip missing media (that would hide a real kit gap).
+Files: tests/test_rig_kit_shadow_keymap.py (lines 93, 125), tools/rig/rig.py:1786 (stage_kit_media: `shutil.copyfile(ROOT/"dist"/src, dst)`). Cause: the test builds a temp ROOT and runs rig.py install; stage_kit_media now copies dist/updemo/earth.anim (+ fjord.png, photo.png, kanim-stream.bin) which the fixture root does not contain, so FileNotFoundError. The older row text (amnotify missing from the expected Patina list) is already fixed in the test (line 102 lists amnotify); test_rig_kit_stamp passes. Invariant: the test fixture root must hold every file the install stage copies, or stage_kit_media must be driven by the same KIT_MEDIA table (tools/rig/a1200_drift.py:38) the fixture reads. Test: the failing test itself, after adding the media files (copied from real dist/updemo or tiny stubs) to the fixture; verify it fails again with a media path removed. Do not edit rig.py to skip missing media (that would hide a real kit gap).
 
 ### Q15 AMIGA-IN-VSH remainder (M, owner input)
 Files: shell/sh_exec.c (amiga_internals at 6876, builtin table 4794), dist/vshrc, Install S:Shell-Startup block. Invariant: every AmigaDOS Shell built-in not a file in C: either works in vsh or is aliased; Unix aliases in the AmigaDOS shell never shadow a C: name. Steps: survey table (Alias, Ask, Failat, Fault, Get/Getenv/Set/Setenv, Lab/Skip, Prompt, Quit, Resident, Stack, Why...) with measured results on a rig, then owner picks. Test: one vsh script-driven test per added builtin via the shell test suite, plus a table-completeness test over the survey list.

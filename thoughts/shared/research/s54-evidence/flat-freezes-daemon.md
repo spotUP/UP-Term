@@ -1,4 +1,4 @@
-# amarchy-flat (active) vs wasabid on fresh 3.2 rig 66 (s54)
+# patina-flat (active) vs wasabid on fresh 3.2 rig 66 (s54)
 
 Date 2026-11-04 09:29-09:45. Verdict: FLAT FREEZES. The freeze only happens when flat installs at BOOT time. Once the
 Workbench is open, a live start works.
@@ -8,20 +8,20 @@ The exact statement that hangs is NOT isolated. The suspects are below.
 - 09:29: fs-uae rig67 114 %, node (another repo's vitest) 84 %, tsc 30 %; load average 62/72/74 (8 cores).
 
 ## Control: live start, WB already open (load 158 -> 92)
-- Fresh `start --max --os 32`, wasabid 0.11b2 answers, `flat=absent`, ENVARC:Amarchy missing.
-- 09:33:24 `Run >NIL: VTC:amarchy-flat BOOT` via exec, rc 0.
+- Fresh `start --max --os 32`, wasabid 0.11b2 answers, `flat=absent`, ENVARC:Patina missing.
+- 09:33:24 `Run >NIL: VTC:patina-flat BOOT` via exec, rc 0.
 - Ping every 10 s, 09:33:28-09:35:31: 13 of 13 `wasabid 0.11b2`. Host load average was 158 at the start of the window.
 - 09:35:46 STATUS: `flat=on calls=0 chained=0`, `rectfill installed=yes`, `text installed=yes`, `frame=hooked`,
-  `pens-held 16 refs=1 dim=249 knob=250 inbar=251`. Status lists `VTC:amarchy-flat`. `Directory "ENVARC:Amarchy" is empty`:
+  `pens-held 16 refs=1 dim=249 knob=250 inbar=251`. Status lists `VTC:patina-flat`. `Directory "ENVARC:Patina" is empty`:
   the 60 s marker was deleted, so flat's main loop ran.
 
 ## Boot A: same image, flat line in User-Startup (after the rig-wasabid block), load 18-40
-- 09:36:10 `stop --keep`; appended `Run >NIL: VTC:amarchy-flat BOOT`; `start --keep-sys --max --os 32`.
+- 09:36:10 `stop --keep`; appended `Run >NIL: VTC:patina-flat BOOT`; `start --keep-sys --max --os 32`.
 - The start's requester watch (ami.py:237 `_watch` -> wasabi read_ui -> drain_to_end -> `_fill`) died with
   `TimeoutError: timed out`. wasabid had accepted the connection and was in the middle of the UI walk when it stopped
   answering. Then `[WARN] S:Shell-Startup not read: auth failed: the Amiga took the connection but its daemon did not
   answer for 150 s` and `auth failed ... 150 s`. ping at 09:43:12: timeout (rc 124).
-- Decisive: host file `os-32/Prefs/Env-Archive/Amarchy/flat-starting` written 09:36:48. It still existed at 09:44:46,
+- Decisive: host file `os-32/Prefs/Env-Archive/Patina/flat-starting` written 09:36:48. It still existed at 09:44:46,
   8 min later. Flat deletes it 60 s after install_all (flat.c:1513-1515). In the control run it was gone within 2 min.
   So flat's own task never got back to its Wait loop after the boot-time install_all, and wasabid hung at the same time.
 - Load average was 40 at the failure, far below the 158 the control survived. Host starvation does not explain it.
@@ -31,8 +31,8 @@ The exact statement that hangs is NOT isolated. The suspects are below.
   flat answered.
 
 ## Rig 96 (read-only)
-- `rig.py status` = down, so no live read. Its User-Startup has the Amarchy-Flat block (line 48) after rig-wasabid
-  (line 22). The earlier eye-check (rig96-eyecheck-32.md) took wasabi reads and shots with amarchy-flat running after a
+- `rig.py status` = down, so no live read. Its User-Startup has the Patina-Flat block (line 48) after rig-wasabid
+  (line 22). The earlier eye-check (rig96-eyecheck-32.md) took wasabi reads and shots with patina-flat running after a
   reboot. That makes it a counterexample only if flat was active there, which is not known.
 
 ## Where

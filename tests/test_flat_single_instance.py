@@ -1,18 +1,18 @@
-"""amarchy-flat starts once: the single-instance check and the record's AddSemaphore are one Forbid section (KS31-BOOT-CRASH).
+"""patina-flat starts once: the single-instance check and the record's AddSemaphore are one Forbid section (KS31-BOOT-CRASH).
 
-At boot two starters launch amarchy-flat within the same second: the S:User-Startup line `amarchy-flat BOOT` and
-Amarchy's start gate (desk_dos_flat_ensure, which starts it when FindSemaphore(FLAT_SEM_NAME) finds no record). The
+At boot two starters launch patina-flat within the same second: the S:User-Startup line `patina-flat BOOT` and
+Patina's start gate (desk_dos_flat_ensure, which starts it when FindSemaphore(FLAT_SEM_NAME) finds no record). The
 program's guard was Forbid(); FindSemaphore; ...; AddSemaphore; Permit(), with the prefs read (amconf_borrow, DOS
 file I/O) in the middle. A DOS call waits, the wait breaks Forbid, and the second starter ran its own FindSemaphore
 while the first had not added its record yet: both passed the guard and both patched the system. On KS 3.1 the boot
-then reset or hung (4 of 6 boots; 5 of 5 boots OK with amarchy-flat replaced by a stub).
+then reset or hung (4 of 6 boots; 5 of 5 boots OK with patina-flat replaced by a stub).
 
 So in main(): between the Forbid() that precedes the guard's FindSemaphore and the Permit() after AddSemaphore, no
 call that can wait (prefs read, DOS, output) may run, and the prefs read happens before that Forbid().
 """
 import pathlib, re, unittest
 
-SRC = pathlib.Path(__file__).resolve().parent.parent / "amarchy" / "flat.c"
+SRC = pathlib.Path(__file__).resolve().parent.parent / "patina" / "flat.c"
 WAITS = ("amconf_borrow(", "amconf_load(", "amconf_return(", "desk_flat_state(", "desk_flat_full(", "gt_dos_load_current(", "boot_wanted(", "Open(", "Read(",
          "Lock(", "PutStr(", "Printf(", "print_status(", "Delay(", "Wait(", "OpenLibrary(")
 

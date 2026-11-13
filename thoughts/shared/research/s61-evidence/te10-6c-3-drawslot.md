@@ -2,7 +2,7 @@
 
 Commit f9c87cbb on te10-6c-3 (worktree /Users/spot/Code/UP-Term/vtcon-te6c-3). Not pushed.
 
-Files: amarchy/flat_core.h, amarchy/flat_core.c, amarchy/flat.c (one comment only), Makefile, tests/test_flat_role_core.c (new test), tests/test_flat_core.c (memset only).
+Files: patina/flat_core.h, patina/flat_core.c, patina/flat.c (one comment only), Makefile, tests/test_flat_role_core.c (new test), tests/test_flat_core.c (memset only).
 
 ## API as landed
 - flat_draw_scr { screen; epoch; const struct flat_role_pens *roles; uint8_t side; } (forward declaration in flat_core.h).
@@ -21,14 +21,14 @@ Changed existing tests: none asserted enabled/side. The four draw tests in test_
 - make test-one SUITE=flat_role_core: [OK] flat_role_core: 73 checks, 0 failed
 - make test-one SUITE=flat_core: [OK] flat_core: 2705 checks, 0 failed
 - python3 -I tests/test_flat_pens_per_screen.py: OK
-- m68k build of Amarchy amarchy-gui amarchy-menu amarchy-index amarchy-icons amarchy-flat upprefs: rc=0, no undefined symbols (flat_role_core.c needs nothing beyond gthemes_core, already linked everywhere flat_core.c is).
+- m68k build of Patina patina-gui patina-menu patina-index patina-icons patina-flat upprefs: rc=0, no undefined symbols (flat_role_core.c needs nothing beyond gthemes_core, already linked everywhere flat_core.c is).
 - make flat-budget rc=0:
   flat budget: _c2_disp_reg own frame 20, deepest chain 308, headroom 76
   flat budget: _c2_disp_stk own frame 4, deepest chain 292, headroom 92
-- Makefile: flat_role_core.c added after flat_core.c at lines 958/960 (upprefs), 966 (AMARCHY_SRC), 1032 (MENU), 1046 (GUI), 1066/1071 (amarchy-flat); .h added to the two prerequisite lists (958, 1066). Brief 2 will add the same file to iconpen_dos.c rules: expect a duplicate-name merge conflict or a doubled source in the same variable lines (AMARCHY_MENU_SRC, AMARCHY_GUI_SRC, amarchy-flat line 1071); duplicates must be removed (double definition at link).
+- Makefile: flat_role_core.c added after flat_core.c at lines 958/960 (upprefs), 966 (PATINA_SRC), 1032 (MENU), 1046 (GUI), 1066/1071 (patina-flat); .h added to the two prerequisite lists (958, 1066). Brief 2 will add the same file to iconpen_dos.c rules: expect a duplicate-name merge conflict or a doubled source in the same variable lines (PATINA_MENU_SRC, PATINA_GUI_SRC, patina-flat line 1071); duplicates must be removed (double definition at link).
 
 ## Point 5: who reads enabled in flat.c
-Every read is `r->st.enabled` (the live record): c2_draw (line 477), flat_tx_c (917 title accent, 970 icon label), flat_rf_c (1162, 1165, 1227). No hook reads `enabled` through the per-screen pointer (st_scr / st_rp results) today; grep -n enabled amarchy/flat.c shows nothing else.
+Every read is `r->st.enabled` (the live record): c2_draw (line 477), flat_tx_c (917 title accent, 970 icon label), flat_rf_c (1162, 1165, 1227). No hook reads `enabled` through the per-screen pointer (st_scr / st_rp results) today; grep -n enabled patina/flat.c shows nothing else.
 Effect until brief 4: non-Workbench screens still draw flat exactly as before whenever the live record is enabled, because no hook consults the slot's new enabled = 0. The slot data is correct but unused; behaviour on screen is unchanged by this commit.
 
 ## Unverified

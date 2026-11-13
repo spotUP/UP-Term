@@ -1,7 +1,7 @@
 ---
 date: 2026-11-03
 author: vtcon desk hunt agent (opus, read-only, no rig)
-topic: AMARCHY-31-LIVE-COLOURS - themed Workbench colours on AmigaOS 3.1 without the palette.prefs freeze
+topic: PATINA-31-LIVE-COLOURS - themed Workbench colours on AmigaOS 3.1 without the palette.prefs freeze
 status: design proposed, not implemented, not rig-proven
 ---
 
@@ -18,7 +18,7 @@ a. **The palette freeze (still the reason for the gate).** FLAT-31-PALETTE-HANG 
    freeze too), not SetPrefs, not LoadRGB32. The desk rig's own `Palette FROM stock USE` (live_pens_differ) fired it in the
    first DESK-31-CRASH run. **What IPrefs 40.7 does inside after the notify was never pinned** (no Guru, no snoop trace kept);
    whether a real A1200 3.1 does the same is unverified (todos.md:3264).
-   Gate: amarchy/desk_core.c:1187-1190 `desk_palette_editor_ok` (>= 47), used through amarchy/desk_dos.c:203-208
+   Gate: patina/desk_core.c:1187-1190 `desk_palette_editor_ok` (>= 47), used through patina/desk_dos.c:203-208
    `dk_palette_editor_ok` in dk_flat_pens (:689), desk_dos_flat_pens_refresh (:1036), desk_dos_start_apply (:1424, :1443)
    and desk_gate_mask (desk_core.c:1192-1199, palette + icontrol bits).
 
@@ -28,18 +28,18 @@ b. **The second loss (fixed, not a palette issue).** Pre-47 wbpattern.prefs writ
 
 ## 2. Path to themed colours on 3.1: live SetRGB32, never palette.prefs
 
-The freeze needs a palette.prefs write; SetRGB32 on the Workbench ViewPort does not touch ENV:. Amarchy already pokes the
+The freeze needs a palette.prefs write; SetRGB32 on the Workbench ViewPort does not touch ENV:. Patina already pokes the
 Workbench ViewPort live in four places:
 
-- amarchy/desk_dos.c:592-620 `dk_live_pens` - role pens via `desk_pen_colour` (desk_core.c:329), only the pens no palette
+- patina/desk_dos.c:592-620 `dk_live_pens` - role pens via `desk_pen_colour` (desk_core.c:329), only the pens no palette
   entry reaches (`desk_live_role_pens`, desk_core.c:307: 4-7 on depth > 3; ZERO pens at depth <= 3).
-- amarchy/iconpen_core.c:224-228 `ip_sync` -> `desk_live_follow` (desk_core.c:336) - re-pokes those pens on every new
+- patina/iconpen_core.c:224-228 `ip_sync` -> `desk_live_follow` (desk_core.c:336) - re-pokes those pens on every new
   Workbench screen (reopen after Font / WBPattern resets). Same pen set, so also zero at depth 3.
-- amarchy/gthemes_dos.c:150-175 `desk_preview_theme` -> `desk_preview` (desk_core.c:1207): pens 0..7 = desk_role(t, i),
+- patina/gthemes_dos.c:150-175 `desk_preview_theme` -> `desk_preview` (desk_core.c:1207): pens 0..7 = desk_role(t, i),
   SetRGB32 (gthemes_dos.c:142-147). Rig 7 PASS 9e04c45d (todos.md:3241). Rig 7 was the default 3.1 machine for the
   DESK-31-CRASH runs the same day, so this is probably already a 3.1 SetRGB32-on-WB-pens proof without a freeze -
   UNVERIFIED (the log does not name the OS).
-- amarchy/gthemes_dos.c:36-60 `wb_pens_apply` - pens 0-3 bg/fg/dim/accent; runs on 3.1 today after a PICK
+- patina/gthemes_dos.c:36-60 `wb_pens_apply` - pens 0-3 bg/fg/dim/accent; runs on 3.1 today after a PICK
   (gthemes_dos.c:226-230, because dk_flat_pens returns 0 on 3.1), but its order does not match the flat pen map
   (desk_dos.c:673 comment), it misses pen 4 (button) and pen 7 (backdrop), it never runs at boot (desk_dos_start_apply has
   no fallback), and a Workbench reopen wipes it (follow covers 0 pens at depth 3).
@@ -58,12 +58,12 @@ Workbench ViewPort live in four places:
    (i.e. after the Font + WBPattern resets the start plan itself causes). desk_dos_apply: same when dk_flat_pens returned 0
    because of the gate; then gt_dos_select must NOT also run wb_pens_apply (return the DT_PALETTE bit, as desk_dos.c:1053-1054
    does for 3.2), so one writer owns pens 0-7.
-3. iconpen: the `o->theme` callback (iconpen_core.h:46) also returns the writable flag (amarchy-icons links desk_dos? if not,
+3. iconpen: the `o->theme` callback (iconpen_core.h:46) also returns the writable flag (patina-icons links desk_dos? if not,
    read the SYS:Prefs/Palette version through the same desk_palette_editor_ok on the file bytes), so every Workbench reopen
    re-pokes all 8 pens on 3.1. Without this the colours are lost on the first Font / pattern reset.
 4. Restore (flat off / theme part off): `dk_live_pens(0, ...)` already uses `desk_live_baseline` from the saved
    palette.prefs; on 3.1 no file was written, so baseline = ENV/ENVARC palette.prefs entries = stock: correct.
-5. After the poke, `dk_flat_sync()` (desk_dos.c:535) so amarchy-flat recomputes its held dim/inbar pens from the new pen
+5. After the poke, `dk_flat_sync()` (desk_dos.c:535) so patina-flat recomputes its held dim/inbar pens from the new pen
    0/2 colours (stale held pens is the open S32-INACTIVE-BAR suspicion, inactive-bar-colour.md).
 
 **Gates, each:**
@@ -83,13 +83,13 @@ Workbench ViewPort live in four places:
   fresh-stock-look.md), tile pen 7 (desk_backdrop_pen_at, desk_core.c:409; FLAT-COLOUR-OVERHAUL). At depth 3 that is screen
   pen 7, stock 3.1 colour EE9900 - the orange seen. Live pen 7 = `desk_pen_colour(t, 7, flat)` = gt_darker(t) makes it
   themed. Nothing else needed. (s27: on 3.1 ROOT pen 1 landed but pixels 0,0,0 = stock pen 1 black; same cause.)
-- Flat frames: amarchy-flat draws with fixed pens text=2 line=3 back=0 outline=3 button=4 (desk_flat_glyph_pens,
+- Flat frames: patina-flat draws with fixed pens text=2 line=3 back=0 outline=3 button=4 (desk_flat_glyph_pens,
   desk_core.c; STATUS in fresh-stock-look.md). Pen 3 = DK_ACCENT, pen 4 = DK_SELECTION: live pens 3 and 4 make them themed.
 - RISK, not reachable this way: the Workbench DrawInfo pen MAP (palette.prefs PALT pen tables, desk_pens_flat:
   shine = shadow = fill = surface) also only comes from palette.prefs. On 3.1 the stock map stays: TEXTPEN/SHADOWPEN = 1
   (-> MUTED, window text grey-ish), SHINEPEN = 2 (-> FG, a bright highlight line on non-hooked 3D frames), FILLPEN = 3
   (-> ACCENT active title fill). So 3.1 gets the theme COLOURS but not the full flat SOLID-FILL look where DrawInfo drives the
-  drawing (title bars, GadTools bevels not hooked by amarchy-flat). flat.c decides via dri_Pens[SHINEPEN]/[BACKGROUNDPEN]
+  drawing (title bars, GadTools bevels not hooked by patina-flat). flat.c decides via dri_Pens[SHINEPEN]/[BACKGROUNDPEN]
   (flat.c:416, :477), which on 3.1 are 2/0, distinct: check the frame hook still draws flat with that pair. Owner decision
   whether "colours only" on 3.1 is enough; the full map needs the Workbench to reopen with new pens, which only IPrefs does.
 - RISK: whether the WB screen palette on 3.1 is reloaded by IPrefs on events other than a palette.prefs notify (e.g. its
@@ -99,9 +99,9 @@ Workbench ViewPort live in four places:
 
 1. Build with the change; `UPTERM_RIG=<free> rig.py start --max --purpose "<session>: 3.1 live colours"` (no --os: 3.1).
    Check `Version` = Kickstart 40.68 first (the RIG-START-OS-FLAGS lesson).
-2. Fresh-all install (installer_rig.py ONLY fresh-all, INSTALLER_KEEP=1), reboot, wait for Amarchy start + 10 s.
+2. Fresh-all install (installer_rig.py ONLY fresh-all, INSTALLER_KEEP=1), reboot, wait for Patina start + 10 s.
 3. Text checks: `List ENV:Sys` shows NO palette.prefs (gate held); wasabid still answers 60 s later (no freeze);
-   sentinel AMARCHY_DESK_LIVE_PENS (new, = desk_dos_live_pens) >= 1; dripens (tools/rig/tests/amiga/dripens) pens 0..7 =
+   sentinel PATINA_DESK_LIVE_PENS (new, = desk_dos_live_pens) >= 1; dripens (tools/rig/tests/amiga/dripens) pens 0..7 =
    desk_pen_colour of the theme (tokyo-night: pen0 1A1B26, pen2 A9B1D6, pen7 gt_darker).
 4. Pixels (screenshot, haiku/PIL): backdrop area pixel (e.g. 400,300 on an empty desk) == gt_darker(theme), EE9900 count 0
    (fresh-stock-look baseline 337815); a flat window outline pixel == theme accent, 6688BB count 0.

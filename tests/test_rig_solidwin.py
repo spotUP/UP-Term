@@ -19,7 +19,7 @@ import user_startup
 
 KIT = (b"; user lines\n"
        b";BEGIN UP-Term assign\nAssign UP-Term: Work:UP-Term\n;END UP-Term assign\n"
-       b";BEGIN UP-Term Amarchy\nRun >NIL: UP-Term:bin/Amarchy\n;END UP-Term Amarchy\n")
+       b";BEGIN UP-Term Patina\nRun >NIL: UP-Term:bin/Patina\n;END UP-Term Patina\n")
 INSTALLED = KIT + b";BEGIN UP-Term SolidWin\nRun >NIL: C:SolidWin\n;END UP-Term SolidWin\n"
 
 

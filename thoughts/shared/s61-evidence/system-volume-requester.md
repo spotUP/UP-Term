@@ -24,10 +24,10 @@ Status: NOT root-caused. Premise in the brief is contradicted by the boot log. N
 - Prior notes: no RIG-ENV-RACE note about a volume-name requester in thoughts/ (only the comment at rig.py:471-474).
   Closest precedents: thoughts/shared/research/s54-evidence/flat-boot-freeze-fix.md (a requester raised while a task
   holds LockPubScreenList cannot open, LoadWB + wasabid then wait on the list and the system stops; pens_theme read
-  UP-Term: in Amarchy flat) and thoughts/spot/todos.md:2661 (UHC-Startup EXISTS on UP-Term: before the assign).
+  UP-Term: in Patina flat) and thoughts/spot/todos.md:2661 (UHC-Startup EXISTS on UP-Term: before the assign).
 
 ## Most plausible reading (UNVERIFIED)
-A DOS lookup of a volume-name path raised by a boot task AFTER User-Startup (LoadWB/Workbench startup, Amarchy/flat
+A DOS lookup of a volume-name path raised by a boot task AFTER User-Startup (LoadWB/Workbench startup, Patina/flat
 started at User-Startup line ~60, or the DH0 handler not yet validated when the first lookup after xdftool's write hit
 it) cannot open its requester because the Workbench pubscreen list is locked, which stalls go too (it never reaches
 "env ok"). The uppercase name points at a caller that upper-cases (a prefs/tooltype string, an icon default tool, or a

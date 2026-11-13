@@ -201,28 +201,28 @@ const pg_item pg_items[] = {
     { PG_BLEND_DEST, PG_PAGE_ADVANCED, PGK_CHECK, NULL,
       NULL,
       3, 2, 0, PGD_NONE },
-    { PG_AM_MUSIC, PG_PAGE_AMARCHY, PGK_STRING, NULL,
+    { PG_AM_MUSIC, PG_PAGE_PATINA, PGK_STRING, NULL,
       NULL,
       0, 0, 32, PGD_NONE },
-    { PG_AM_DEMO, PG_PAGE_AMARCHY, PGK_STRING, NULL,
+    { PG_AM_DEMO, PG_PAGE_PATINA, PGK_STRING, NULL,
       NULL,
       1, 0, 32, PGD_NONE },
-    { PG_AM_HIDE, PG_PAGE_AMARCHY, PGK_STRING, NULL,
+    { PG_AM_HIDE, PG_PAGE_PATINA, PGK_STRING, NULL,
       NULL,
       2, 0, 32, PGD_NONE },
-    { PG_AM_ICONS, PG_PAGE_AMARCHY, PGK_CYCLE, NULL,
+    { PG_AM_ICONS, PG_PAGE_PATINA, PGK_CYCLE, NULL,
       NULL,
       3, 0, 7, PGD_NONE },
-    { PG_AM_MODE, PG_PAGE_AMARCHY, PGK_CYCLE, NULL,
+    { PG_AM_MODE, PG_PAGE_PATINA, PGK_CYCLE, NULL,
       NULL,
       5, 0, 7, PGD_NONE },
-    { PG_AM_TERMMENU, PG_PAGE_AMARCHY, PGK_CYCLE, NULL,
+    { PG_AM_TERMMENU, PG_PAGE_PATINA, PGK_CYCLE, NULL,
       NULL,
       6, 0, 9, PGD_NONE },
-    { PG_AM_GTHEME, PG_PAGE_AMARCHY, PGK_TEXT, NULL,
+    { PG_AM_GTHEME, PG_PAGE_PATINA, PGK_TEXT, NULL,
       NULL,
       7, 0, 14, PGD_NONE },
-    { PG_AM_GTHEME_CHOOSE, PG_PAGE_AMARCHY, PGK_BUTTON, "Choose...",
+    { PG_AM_GTHEME_CHOOSE, PG_PAGE_PATINA, PGK_BUTTON, "Choose...",
       "Choose the colours of the drawn menu from the list of themes.",
       7, 1, 0, PGD_NONE },
     { PG_AM_FLAT, PG_PAGE_FLAT, PGK_CHECK, NULL,
@@ -249,13 +249,13 @@ const pg_item pg_items[] = {
     { PG_AM_FLATSTATUS, PG_PAGE_FLAT, PGK_TEXT, NULL,
       NULL,
       7, 0, 14, PGD_NONE },
-    { PG_AM_FONT, PG_PAGE_AMARCHY, PGK_TEXT, NULL,
+    { PG_AM_FONT, PG_PAGE_PATINA, PGK_TEXT, NULL,
       NULL,
       4, 0, 14, PGD_NONE },
-    { PG_AM_FONT_CHOOSE, PG_PAGE_AMARCHY, PGK_BUTTON, "Choose...",
-      "Choose a fixed-width font for the Amarchy menu in the font requester.",
+    { PG_AM_FONT_CHOOSE, PG_PAGE_PATINA, PGK_BUTTON, "Choose...",
+      "Choose a fixed-width font for the Patina menu in the font requester.",
       4, 1, 0, PGD_NONE },
-    { PG_AM_FONT_CLEAR, PG_PAGE_AMARCHY, PGK_BUTTON, "Clear",
+    { PG_AM_FONT_CLEAR, PG_PAGE_PATINA, PGK_BUTTON, "Clear",
       "Use the built-in menu font again.",
       4, 2, 0, PGD_NONE },
     { PG_PAL + 0, PG_PAGE_PALETTE, PGK_SWATCH, NULL, NULL, 0, 0, 0, PGD_NONE },
@@ -580,7 +580,7 @@ int pl_hit(const pl_result *r, int page, int x, int y)
 
 int pg_page_for_args(const char *args)
 {
-    static const char kw[] = "AMARCHY";
+    static const char kw[] = "PATINA";
     int i = 0;
     if (!args)
         return PG_PAGE_GENERAL;
@@ -595,7 +595,7 @@ int pg_page_for_args(const char *args)
             while (args[e] == ' ' || args[e] == '\t' || args[e] == '\n' || args[e] == '\r')
                 e++;
             if (!args[e])
-                return PG_PAGE_AMARCHY;
+                return PG_PAGE_PATINA;
         }
     }
     return PG_PAGE_GENERAL;

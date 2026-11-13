@@ -18,7 +18,7 @@ status: fix landed, follow-ups open
 - Evidence: thoughts/spot/term-findings/rig9-installer-loop.md "### BREAK 1", "### Run 2", "### Run 3".
 
 ## Open
-- FRESH-ALL-AFTER-END (ledger, new): 4 fails after the end page, never reached before: Amarchy hotkey window
+- FRESH-ALL-AFTER-END (ledger, new): 4 fails after the end page, never reached before: Patina hotkey window
   after the reboot (32), Uninstall leaves VTCX:UP-Term (38), Uninstall does not restore ixemul/ixnet (39/40).
 - Local main has the session's commits as originals; origin/main has cherry-picked copies. Rebase local main
   once other sessions' dirty files are committed (do not stash them).

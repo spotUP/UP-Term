@@ -83,7 +83,7 @@ fed81049 dd1c1051 ea2000f9 d99c00f9 e23a0004 00001013 00000000 00000000
 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
   sp+12 00f80cc0 exec.library -672+1e4
   sp+24 00ff1012 intuition.library -234+137c
-task 1049f500 "amarchy-gui" cmd "Empty-12MB-FFS:UP-Term/bin/amarchy-gui" state 4 pri 0 wait 80001000 recvd 00000000 alloc 8000ffff msgs 0 port 1049f55c sp 1092b9b6 stack 108ebbc8-1092bbc8 seglist 0404b6e6
+task 1049f500 "patina-gui" cmd "Empty-12MB-FFS:UP-Term/bin/patina-gui" state 4 pri 0 wait 80001000 recvd 00000000 alloc 8000ffff msgs 0 port 1049f55c sp 1092b9b6 stack 108ebbc8-1092bbc8 seglist 0404b6e6
   hunk 0 1074406c-107b0624
   hunk 1 1013be74-1013beb8
   hunk 2 10568324-10568470
@@ -153,7 +153,7 @@ task 109e7be8 "RAWBInfo" cmd "" state 4 pri 0 wait 80001000 recvd 00000100 alloc
 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
   sp+12 00f80cc0 exec.library -672+1e4
   sp+24 00ff0000 intuition.library -234+36a
-task 105652b8 "amarchy-menu" cmd "Empty-12MB-FFS:UP-Term/bin/amarchy-menu" state 4 pri 0 wait 00801000 recvd 04000000 alloc ff80ffff msgs 0 port 10565314 sp 1056351a stack 10523810-10563810 seglist 041281be
+task 105652b8 "patina-menu" cmd "Empty-12MB-FFS:UP-Term/bin/patina-menu" state 4 pri 0 wait 00801000 recvd 04000000 alloc ff80ffff msgs 0 port 10565314 sp 1056351a stack 10523810-10563810 seglist 041281be
   hunk 0 105e8c3c-10663e9c
   hunk 1 100529c4-100530d0
   hunk 2 10663e9c-10744068
@@ -337,7 +337,7 @@ task 100180b0 "DH3" cmd "" state 4 pri 10 wait 00002100 recvd 00000000 alloc c00
 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
   sp+12 00f80cc0 exec.library -672+1e4
-task 100ffda8 "Background CLI" cmd "UP-Term:bin/Amarchy" state 4 pri 0 wait 00000100 recvd 40270004 alloc ffe0ffff msgs 0 port 100ffe04 sp 102dfbae stack 102a1258-102e1258 seglist 0403f6cc
+task 100ffda8 "Background CLI" cmd "UP-Term:bin/Patina" state 4 pri 0 wait 00000100 recvd 40270004 alloc ffe0ffff msgs 0 port 100ffe04 sp 102dfbae stack 102a1258-102e1258 seglist 0403f6cc
   hunk 0 101e567c-1022bbcc
   hunk 1 100ffa04-100ffa48
   hunk 2 1010222c-10102394
@@ -377,7 +377,7 @@ task 10013d34 "trackdisk.device" cmd "" state 4 pri 5 wait 00000300 recvd 000000
 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
   sp+12 00f80cc0 exec.library -672+1e4
-task 1012b5f0 "Background CLI" cmd "UP-Term:bin/amarchy-flat" state 4 pri 0 wait c0003000 recvd 00000000 alloc c000ffff msgs 0 port 1012b64c sp 101e43f6 stack 101a5678-101e5678 seglist 04040836
+task 1012b5f0 "Background CLI" cmd "UP-Term:bin/patina-flat" state 4 pri 0 wait c0003000 recvd 00000000 alloc c000ffff msgs 0 port 1012b64c sp 101e43f6 stack 101a5678-101e5678 seglist 04040836
   hunk 0 1041a2cc-1043d350
   hunk 1 10106324-10106368
   hunk 2 1012e3dc-1012e4f8
@@ -473,13 +473,13 @@ port 10088aec "REXX" sigtask 10098bd0 bit 31
 port 10099460 "AREXX" sigtask 10098bd0 bit 30
 port 100f9d68 "WASABI.daemon" sigtask 1013d188 bit 31
 port 10089260 "WASABI" sigtask 1013d188 bit 29
-port 101336b0 "AMARCHY" sigtask 100ffda8 bit 30
-port 101336d8 "AMARCHY.NOTIFY" sigtask 100ffda8 bit 29
-port 10133728 "AMARCHY.launch" sigtask 100ffda8 bit 27
+port 101336b0 "PATINA" sigtask 100ffda8 bit 30
+port 101336d8 "PATINA.NOTIFY" sigtask 100ffda8 bit 29
+port 10133728 "PATINA.launch" sigtask 100ffda8 bit 27
 port 1012db70 "SolidWin" sigtask 10134a28 bit 31
-port 10136210 "AMARCHY.GUISRV" sigtask 1049f500 bit 31
+port 10136210 "PATINA.GUISRV" sigtask 1049f500 bit 31
 port 1058bbc0 "AssignWedge.port" sigtask 109e66f8 bit 31
-port 109e9a18 "AMARCHY.MENUSRV" sigtask 105652b8 bit 23
+port 109e9a18 "PATINA.MENUSRV" sigtask 105652b8 bit 23
 port 10059610 "ConClip.rendezvous" sigtask 100ec790 bit 31
 port 109e77ec "deficons" sigtask 109f9b30 bit 0
 port 1010acc4 "Font_Prefs" sigtask 100fa0f8 bit 0

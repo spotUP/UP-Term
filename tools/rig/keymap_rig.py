@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""keymap_rig.py -- the keymap file's Left Amiga keys drive the handler (plan 2026-10-22-amarchy-commodity.md,
+"""keymap_rig.py -- the keymap file's Left Amiga keys drive the handler (plan 2026-10-22-patina-commodity.md,
 Phase B5, B6).
 
 Table driven and resumable. Each row presses one key chord in the active tab and checks two things:
@@ -45,7 +45,7 @@ def symbol_raw(name):
     """The raw code of the key named name ('minus', 'plus') on the rig's keymap, or None for a keymap with no table."""
     layout = active_keymap()
     if layout == 's' and 's' not in SYMBOL_RAW:
-        from amarchy_clash_rig import RAW as SWEDISH   # the Swedish table the clash rig presses
+        from patina_clash_rig import RAW as SWEDISH   # the Swedish table the clash rig presses
         SYMBOL_RAW['s'] = {k: SWEDISH[k] for k in ('minus', 'plus')}
     return SYMBOL_RAW.get(layout, {}).get(name), layout
 CONF = ('ENV:up-term/up-term', 'ENVARC:up-term/up-term')

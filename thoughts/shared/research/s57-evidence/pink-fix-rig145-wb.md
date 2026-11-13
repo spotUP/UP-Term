@@ -27,7 +27,7 @@ Boot 1: (26,27,38) 99914, (14,14,20) 31690, (90,94,117) 20199, (169,177,214) 716
 Boot 2: (26,27,38) 106846, (90,94,117) 27380, (14,14,20) 15638, (169,177,214) 7123, (122,162,247) 3559, (76,79,98) 1931, (62,66,84) 455, (83,87,108) 421.
 No rare colours (count <3000, not on the shade line) in boots 1 and 2; boot 0 had 3 theme accents ((187,154,247), (173,142,230), (68,157,171)).
 
-## amarchy-flat STATUS (UP-Term:bin/amarchy-flat STATUS exists and works with the full path)
+## patina-flat STATUS (UP-Term:bin/patina-flat STATUS exists and works with the full path)
 boot 0: `flat=on calls=773`, pens text=2 line=3 back=0 outline=3 button=4, pens-held 15 missing 47.
 boot 1: `flat=on calls=537`, pens-held 16 refs=2.
 boot 2: `flat=on calls=1014`, pens-held 16 refs=2.

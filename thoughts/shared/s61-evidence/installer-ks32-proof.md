@@ -1,16 +1,16 @@
 # Installer flat buttons on KS 3.2.3: rig 95 measure -> FAIL
 
-HEAD e5d9473d (b7377f75, c4844c4e, 05678a64 in it). build/amiga/amarchy-flat 212284 bytes, cmp IDENTICAL to
-build/rig95/vtc/amarchy-flat (the file the rig ran).
+HEAD e5d9473d (b7377f75, c4844c4e, 05678a64 in it). build/amiga/patina-flat 212284 bytes, cmp IDENTICAL to
+build/rig95/vtc/patina-flat (the file the rig ran).
 
 ## Rig
 
-Rig 95, `rig.py start --max --os 32 --purpose "Amarchy session: Installer flat buttons on KS 3.2"`. Note: `rig.py reboot
+Rig 95, `rig.py start --max --os 32 --purpose "Patina session: Installer flat buttons on KS 3.2"`. Note: `rig.py reboot
 --purpose ...` rewrote the config with kick40068 (KS 3.1) and lost --os 32 (title lost "OS 32"); the rig was stopped
 --keep and started again with --os 32. `ami.py info`: exec.library 47.13; `Version`: Kickstart 47.115, Workbench 47.2
 (KS 3.2.3). `rig.py rtg` then gave 800x600 depth 24 (the OS 32 default is 640x256). No DOpus on this rig.
-The 3.2 Workbench boots with stock pens: tokyo-night needs `Run >NIL: VTC:Amarchy` (then a relaunched Installer
-shows 1a1b26 etc). amarchy-flat started by hand: `Run >NIL: VTC:amarchy-flat`.
+The 3.2 Workbench boots with stock pens: tokyo-night needs `Run >NIL: VTC:Patina` (then a relaunched Installer
+shows 1a1b26 etc). patina-flat started by hand: `Run >NIL: VTC:patina-flat`.
 Installer: `Run >NIL: Execute VTCX:dopus_run.script` worked (the DOpus Installer, first page). STATUS:
 `flat=on calls=126`, `rectfill installed=yes calls=1037 hits=66 shits=48 mhits=0 bhits=8`, `frame=hooked calls=38 flat=0`.
 (bhits 8: two Installer windows were open, the first was still there after Break; bhits 4 on the first.)
@@ -51,19 +51,19 @@ Screenshot kept: scratchpad k32.png (FAIL shot). Rig 95 stopped after the measur
 `dopus_run.script` is `CD VTCX:dopus_install` + `Installer "Install DOpus5" NOLOG`, so the C: path picks the binary.
 The 3.2 install image (Workbench_3.2.hdf) carries `$VER: Installer 47.19 (8.3.2021)`; the 3.1 rig runs Installer 43.3
 (30.4.96). The FAIL above is Installer 47.19 on KS 3.2.3, a different program from the one the 43.3 fix targets.
-Also: Amarchy and amarchy-flat were started by hand on stock 3.2 (no tokyo-night at boot), and 00ff9f occurs 0 times on
+Also: Patina and patina-flat were started by hand on stock 3.2 (no tokyo-night at boot), and 00ff9f occurs 0 times on
 screen, so the secondary role pen may be unset rather than the draw path differing. Next: rerun on 3.2 with 43.3 pinned.
 Rig note: `rig.py reboot --purpose` dropped `--os 32` and booted KS 3.1 (same class as rig 94 losing --max).
 
 ## Run 2: Installer 43.3 pinned (rig 93, KS 3.2.3)
 
-Rig 93: `rig.py start --max --os 32`, `rig.py rtg` (800x600 depth 24; this restarts the rig), then `VTC:Amarchy` (starts
-amarchy-flat; flat=on). exec.library 47.13, Kickstart 47.115 / Workbench 47.2. Installer 43.3 = build/rig-inputs/Installer
+Rig 93: `rig.py start --max --os 32`, `rig.py rtg` (800x600 depth 24; this restarts the rig), then `VTC:Patina` (starts
+patina-flat; flat=on). exec.library 47.13, Kickstart 47.115 / Workbench 47.2. Installer 43.3 = build/rig-inputs/Installer
 (`$VER: Installer 43.3 (30.4.96)`), copied to VTC:Installer43; run as `CD VTCX:dopus_install` + `VTC:Installer43 "Install DOpus5" NOLOG`
 (VTCX:dopus_run43.script; C: untouched). Proof: `Version VTC:Installer43` = Installer 43.3; `Status` showed
 "Loaded as command: VTC:Installer43" (one Installer only).
 Theme up: T:wbpens RGB 0..5 = 1a1b26 414868 a9b1d6 7aa2f7 3e4254 0e0e14 (tokyo-night). 00ff9f is not a theme pen
-(grep of theme file and amarchy sources: no 00ff9f); HEAD flat_glyph.c:423 fills the secondary role with `face` = pen_button
+(grep of theme file and patina sources: no 00ff9f); HEAD flat_glyph.c:423 fills the secondary role with `face` = pen_button
 (3e4254) by OWNER-2026-11-08 FLAT-BUTTON-NO-RING. So the 00ff9f expectation is stale (rig 94's old binary), not a missing pen.
 
 Counters: `rectfill hits=22 shits=24 mhits=0 bhits=4`; `frame=hooked calls=16 flat=4` (run 1 on 47.19: flat=0 of 38).

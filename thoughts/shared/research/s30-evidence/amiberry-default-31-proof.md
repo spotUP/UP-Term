@@ -19,6 +19,6 @@
 
 - Result: FAIL. `rig.py start` rc=1: "auth failed: the Amiga took the connection but its daemon did not answer for 150 s - frozen, or stuck on something". S:Shell-Startup not read, same cause.
 - VTC:etc fix works: build/rig58/vtc/etc/termcap exists (the Run 2 "lacks the assigns ETC" error is gone).
-- boot.log last lines: "... XCON mounted / LIBS: assigned before Amarchy / assigns done / wasabid started". Boot script ran to the end; wasabid never answered.
+- boot.log last lines: "... XCON mounted / LIBS: assigned before Patina / assigns done / wasabid started". Boot script ran to the end; wasabid never answered.
 - Emulator Amiberry (/Applications/Amiberry.app), pid 30275, CPU 75-80% for 4+ min. `ami.py ping` also returned no answer (60 s and 80 s timeouts). Assign ETC:/SYS: checks and windows/screens not possible.
 - Host: other sessions' rigs and an installer_rig run (vtcon-16) were active on the machine during this run.

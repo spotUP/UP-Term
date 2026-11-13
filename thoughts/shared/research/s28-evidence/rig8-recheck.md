@@ -11,6 +11,6 @@ Branch s28-rig8-recheck, code head 15d5daaf.
 
 ## Rig side
 - Rig 8 started twice (host load 40-57, first start took about 6 min). First run died during a hung md5sum on the rig.
-- Second run: setup ok (Amarchy, amarchy-menu, amarchy-gui md5 match). Base step: DrawInfo stock SHINE 2 SHADOW 1 BACKGROUND 0, no Workbench.prefs in ENV or ENVARC, amarchy-flat md5 18d0667922958fbae7265ee377007c20.
+- Second run: setup ok (Patina, patina-menu, patina-gui md5 match). Base step: DrawInfo stock SHINE 2 SHADOW 1 BACKGROUND 0, no Workbench.prefs in ENV or ENVARC, patina-flat md5 18d0667922958fbae7265ee377007c20.
 - The "on" step (flat on, probe run) lost the connection; rig status then reported: crashed: Illegal instruction 7fff at 1000DDBC -> 00F80B86, 2 CPU resets. Not investigated (tool budget used up). Possible real crash in flat-on path on 3.2 or in the probe; needs a stack-first check (memory rule) on a fresh run.
 - Checks A, B, C, D, E: not measured. No screenshot taken.

@@ -7,7 +7,7 @@ Status: NOT reproduced. Cause unknown; leads below. Rig 99 (bare `--os 32 --max`
   both as "DefIcons: Cannot load preferences because" (+ Fault text, here "bad template" = ERROR_BAD_TEMPLATE 114).
 - Both read `ENV:DefIcons.prefs` (DefaultIcons also `ENVARC:DefIcons.prefs`), a 2752-byte IFF file shipped in the
   bare image's ENVARC (Prefs/Env-Archive/deficons.prefs). Not ENV:Sys/def#?.prefs: the rig 97 probe looked in the
-  wrong place (it never listed ENV:DefIcons.prefs). Repo (tools, Makefile, amarchy, installer) has no DefIcons reference.
+  wrong place (it never listed ENV:DefIcons.prefs). Repo (tools, Makefile, patina, installer) has no DefIcons reference.
 - C:DefIcons strings: `CON:////DefIcons/AUTO/CLOSE/WAIT`, `ENV:DefIcons.prefs`, `QUICKSCAN`, commands `Identify|Flush|Quit`.
 
 ## Rig 99 facts (bare boot, nothing touched)

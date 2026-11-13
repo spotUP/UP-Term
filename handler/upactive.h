@@ -1,7 +1,7 @@
 /* The public semaphore "UPTERM.active": how many UP-Term windows have keyboard
  * focus. The XCON: handler maintains it (ACTIVEWINDOW / INACTIVEWINDOW), the
- * Amarchy commodity reads it to leave a key to the terminal when a window of
- * ours is active (plan 2026-10-22-amarchy-commodity.md section 2, Coexistence). */
+ * Patina commodity reads it to leave a key to the terminal when a window of
+ * ours is active (plan 2026-10-22-patina-commodity.md section 2, Coexistence). */
 #ifndef UPACTIVE_H
 #define UPACTIVE_H
 
@@ -24,7 +24,7 @@ void upactive_forget(unsigned long self);
 /* The port name of the window the quick menu acts on into out; 1 when there is one.
  * self_in_mru: see upmru_target (keymap_act.h). */
 int upactive_target(int self_in_mru, char out[24]);
-/* 1 when that window's request port is alive: the one check both menus and the Amarchy
+/* 1 when that window's request port is alive: the one check both menus and the Patina
  * commodity use to decide whether the menu opened over a terminal. */
 int upactive_terminal_present(int self_in_mru);
 /* 1 when the DOPUS.1 port exists */

@@ -36,7 +36,7 @@ Shape-capable code to start from: AROS rom/hyperlayers (open source, AROS PL).
 - LA_ShapeHook (CreateLayerTagList) recomputes the shape on SizeLayer, so resizes are handled inside layers (https://www.freepascal.org/daily/packages/arosunits/layers/changelayershape.html, AROS status https://aros.sourceforge.io/pl/introduction/status/layers_ext.php).
 - AROS struct Layer keeps the classic public offsets: the shape fields (shape, shaperegion, visibleshape, nesting, visible) are packed into the classic reserved2[18]; parent fills reserved[4]; VisibleRegion fills reserved1 (https://raw.githubusercontent.com/aros-development-team/AROS/master/compiler/include/graphics/clip.h). So ROM graphics and Intuition, which read public Layer fields, should still find them.
 
-Amarchy side: after OpenWindow (or via an OpenWindowTagList patch, same style as flat_rf.s), call ChangeLayerShape(win->WLayer, NULL, cornerhook); the hook builds a Region = layer rect minus 4 corner staircases (radius r, ~2r-4r small rects per corner via XorRectRegion/ClearRectRegion). Intuition border drawing into the corners is then clipped away by the cliprects automatically.
+Patina side: after OpenWindow (or via an OpenWindowTagList patch, same style as flat_rf.s), call ChangeLayerShape(win->WLayer, NULL, cornerhook); the hook builds a Region = layer rect minus 4 corner staircases (radius r, ~2r-4r small rects per corner via XorRectRegion/ClearRectRegion). Intuition border drawing into the corners is then clipped away by the cliprects automatically.
 
 ## 3. Why SetFunction on the stock layers is not tractable
 
@@ -48,14 +48,14 @@ Each re-carve must: allocate ClipRects with ROM layers' private allocator/pool, 
 
 - Port AROS hyperlayers to classic 68k on Kickstart 3.1/3.2 graphics: strip composited/surface/HIDD/cybergraphics paths (basicfuncs.c alone ~1.4k lines; library total roughly 8-12k lines C, unmeasured), replace AROS_LH macros with SFD-generated stubs, keep the classic LVO table order and append ChangeLayerShape/CreateLayerTagList after -240.
 - Add the four V45 functions 3.2 Intuition may call (LayerOccluded, HideLayer, ShowLayer, SetLayerInfoBounds); AROS has ChangeLayerVisibility as a base.
-- Amarchy: ~150-250 lines (corner region builder, shape hook, install in OpenWindow path, LoadModule line in the boot script, kill switch).
+- Patina: ~150-250 lines (corner region builder, shape hook, install in OpenWindow path, LoadModule line in the boot script, kill switch).
 - Effort: weeks, not days. Risk: high. Needs its own rig soak (open/move/size/depth/close storms, smart + simple + superbitmap + GZZ windows, backdrop WB).
 
 ## 5. Top risks
 
 1. ClipRect backing-store convention. AROS stores the backing-bitmap offset in cr->_p1/_p2 (CR_BMOFFX/CR_SETBMOFF, ALIGN_OFFSET) and may share a layer "surface" bitmap (CR_SHAREDBITMAP). ROM graphics V40/V47 draws into obscured smart-refresh ClipRects using the classic implicit convention (bitmap origin = MinX & ~15) and ignores _p1/_p2. Mismatch = corrupted drawing in every obscured smart-refresh window. Must force ALIGN_OFFSET(x) = x & 15 and disable shared surfaces. UNVERIFIED which value AROS m68k uses.
 2. 3.2 Intuition V47 depends on layers V45+ behaviour (HideLayer/ShowLayer, LayerOccluded, Richter's memory-failure semantics) and possibly private Layer_Info fields; a foreign layers may break iconify/hide, screen dragging or depth gadgets. 3.1 is safer than 3.2 here.
-3. Whole-system blast radius: layers runs under every window of every program, and LoadModule makes it reset-resident. A bug means Guru at boot or corrupted windows everywhere, not just in Amarchy. Also: third-party patches that SetFunction layers (MCP, Birdie, VisualPrefs-like, PowerWindows) assume ROM internals; Intuition hit-testing (WhichLayer) must respect the shape or clicks in a corner still go to the window above; performance of region ops on 68020/030 during opaque moves.
+3. Whole-system blast radius: layers runs under every window of every program, and LoadModule makes it reset-resident. A bug means Guru at boot or corrupted windows everywhere, not just in Patina. Also: third-party patches that SetFunction layers (MCP, Birdie, VisualPrefs-like, PowerWindows) assume ROM internals; Intuition hit-testing (WhichLayer) must respect the shape or clicks in a corner still go to the window above; performance of region ops on 68020/030 during opaque moves.
 
 ## 6. Existing art
 

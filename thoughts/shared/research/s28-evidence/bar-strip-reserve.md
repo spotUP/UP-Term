@@ -12,12 +12,12 @@ clamp prevents that. Decision: no WA_Zoom injection (STRUT_INJECT_ZOOM 0); only 
 UNVERIFIED. Verified only that the Workbench root window ends at the strip top (246) while the bar is up and at 256 after BAR OFF / quit.
 Not probed: whether WB relayouts icons on NEWSIZE, and CleanUp placement (step 3, "new icon lands above the strip").
 
-## Rig rows (tools/rig/amarchy_bar_rig.py, UPTERM_RIG=24), final run, 5 of 5
+## Rig rows (tools/rig/patina_bar_rig.py, UPTERM_RIG=24), final run, 5 of 5
 ok strut_open: box [100,96,200,150] (requested top 156), CLAMPED 0 -> 1, OPENS 0 -> 1
 ok strut_zoom: WA_Zoom full screen; BOX and both ZIP boxes end <= 246 (heights 235), ZOOM 0 -> 1
-ok strut_desk: Workbench root ends 246, AMARCHY_STRUT_DESK = 1
+ok strut_desk: Workbench root ends 246, PATINA_STRUT_DESK = 1
 ok strut_off: BAR OFF -> box top 106 (reaches strip), CLAMPED unchanged 1, root ends 256; BAR ON -> box top 96, CLAMPED 1 -> 2, root ends 246
-Step 6 (quit): AMARCHY_STRUT_INSTALLED 1 -> 0, open of the same box gives 106 again, root back to 256, no crash.
+Step 6 (quit): PATINA_STRUT_INSTALLED 1 -> 0, open of the same box gives 106 again, root back to 256, no crash.
 Step 4 (Shell, Stack 4096): struttest has its own 64 KB stack cookie, so this does not test a 4 KB caller. UNVERIFIED at 4096.
 
 ## Revert check (install line commented out, rebuilt, restaged)

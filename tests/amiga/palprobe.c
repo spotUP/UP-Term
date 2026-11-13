@@ -1,4 +1,4 @@
-/* palprobe: who holds which pen of the Workbench screen (vtcon L7, the Amarchy icon pens 32..47).
+/* palprobe: who holds which pen of the Workbench screen (vtcon L7, the Patina icon pens 32..47).
  *   palprobe            the screen ColorMap's PalExtra: free / shared lists, the refcount of every pen, and per pen
  *                       F (free), S<n> (shared, n users) or X (exclusive: in neither list)
  *   palprobe WATCH <s>  for <s> seconds patch ObtainPen / ObtainBestPenA / ReleasePen and log every call that touches

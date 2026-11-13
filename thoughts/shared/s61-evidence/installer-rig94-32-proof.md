@@ -13,7 +13,7 @@ installer-rig94-32.png follows the brief; the numbers are 3.1. A 3.2 measure nee
 
 ## Steps
 
-`rig.py install` (new amarchy-flat, 212284 bytes, in build/rig94/vtc), `rig.py reboot --purpose "rig 94 - Amarchy
+`rig.py install` (new patina-flat, 212284 bytes, in build/rig94/vtc), `rig.py reboot --purpose "rig 94 - Patina
 session: Installer flat button eye check"`, then `Run >NIL: Execute VTCX:dopus_run.script` (DOpus 5.104 Installer,
 "Install DOpus5", first page). Screen 800x600 depth 24, tokyo-night. STATUS after: `rectfill ... bhits=4`.
 

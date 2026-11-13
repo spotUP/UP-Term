@@ -39,7 +39,7 @@ int ce_page_check(const vt_u8 *p, long len, int page);
 const vt_u8 *ce_page_glyph(const vt_u8 *p, int lo);
 
 /* The same for a page whose glyph records hold `pixels` pixels of images in all instead of CE_PIXELS
- * (amarchy/menu_icon.c: one 32x32 image per icon). */
+ * (patina/menu_icon.c: one 32x32 image per icon). */
 int ce_page_check_px(const vt_u8 *p, long len, int page, long pixels);
 const vt_u8 *ce_page_glyph_px(const vt_u8 *p, int lo, long pixels);
 /* iw x ih bits-bit indices at src, centred in a bw x bh box of idx (CE_BG around); the box is at least

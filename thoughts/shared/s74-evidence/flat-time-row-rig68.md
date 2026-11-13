@@ -7,8 +7,8 @@ branch: s73-flat-time-row-full-width
 
 # Time row full width: rig 68 run
 
-Binary: worktree build `build/amiga/amarchy-flat` at 861b24bc (241188 bytes, md5 60a50becba966733f9e6c3c53471f9df),
-run as `RAM:amarchy-flat` after `Break` of the resident main-checkout copy. Rig 68 (OS 3.x, Time 39.1), started by the
+Binary: worktree build `build/amiga/patina-flat` at 861b24bc (241188 bytes, md5 60a50becba966733f9e6c3c53471f9df),
+run as `RAM:patina-flat` after `Break` of the resident main-checkout copy. Rig 68 (OS 3.x, Time 39.1), started by the
 main checkout. Time opened with `Run >NIL: SYS:Prefs/Time` (CLI command name, FilePart "Time"). A Time window left open
 from the s73 measurement (started by RAM:wbrun before the patch was loaded) was closed first with Cancel.
 
@@ -53,7 +53,7 @@ Stock layout after a month click: `G 15 142 32 178x14 button - "December"`, boxe
 
 ## Q6 unload safety -- PASS (for the installed hook; no moved layout to test)
 
-With Time open: `Break` of the RAM copy -> `amarchy-flat STATUS` = `flat=absent`. Month click, Cancel, reopen:
+With Time open: `Break` of the RAM copy -> `patina-flat STATUS` = `flat=absent`. Month click, Cancel, reopen:
 `G 14 60 35 41x8`, `G 15 142 32 178x14` (stock). `ami.py ping` = wasabid 0.11b2, no requester, no guru. Reload of the
 RAM copy: `time row installed=yes`. Also unloaded and reloaded twice more during the run (diag swap), no fault.
 
@@ -65,15 +65,15 @@ means the hook passed every NewGadget through untouched.
 
 ## End state
 
-Rig 68 running, resident `UP-Term:bin/amarchy-flat` (main checkout build) started again with `Run`, Time and Input
-closed, `RAM:amarchy-flat` and `RAM:amfdiag` deleted.
+Rig 68 running, resident `UP-Term:bin/patina-flat` (main checkout build) started again with `Run`, Time and Input
+closed, `RAM:patina-flat` and `RAM:amfdiag` deleted.
 
 # Second proof (s74 step 3b)
 
 Fix: commit bac27b87, `flat_trow_feed` passes through (returns 0, touches no state) every GENERIC_KIND call and a STRING_KIND
 call of the year id while the slot holds the moved INTEGER. Host: `make test ONLY=flat_core` [OK] 4531 checks, 0 failed (new
 `test_trow_nested_trace` replays the rig trace, `test_trow_nested_inert`); `make flat-budget` PASS (`_flat_cg_c` headroom 68);
-`make amarchy-flat` built, 241224 bytes, md5 65ed61e06be4bf92a2dfd4cd85c993a2. Run on rig 68 as `RAM:amarchy-flat` (put with
+`make patina-flat` built, 241224 bytes, md5 65ed61e06be4bf92a2dfd4cd85c993a2. Run on rig 68 as `RAM:patina-flat` (put with
 `ami.py put`) after `Break 9` of the resident main-checkout copy; Time opened with `Run >NIL: SYS:Prefs/Time`. Clicks by screen
 pixel (`ami.click_px`), keys by `ami.key`, text by `ami.py type`.
 
@@ -121,7 +121,7 @@ without leftovers of the stock frames (pixels), or the flat-look gap between the
 
 ## Q5 unload with the moved layout open -- PASS
 
-`Break` of the RAM copy (process 9) with Time open: `UP-Term:bin/amarchy-flat STATUS` = `flat=absent`. Month click on the open
+`Break` of the RAM copy (process 9) with Time open: `UP-Term:bin/patina-flat STATUS` = `flat=absent`. Month click on the open
 moved window: "June" -> "July", boxes still 18/65. Cancel at (270,205): window gone. Reopen: `G 14 60 35 41x8 "2026"`,
 `G 15 142 32 178x14 "November"` (stock, the Cancel discarded 2030). `ami.py ping` = wasabid 0.11b2, `ami.py requesters` empty, no
 guru. Reload RAM copy, Cancel, reopen: STATUS `calls=18 changed=1 reason=ok`, `G 14 18 35 41x8`, `G 15 65 32 255x14` (moved again).
@@ -135,5 +135,5 @@ ScreenMode INTEGER id 14 took no slot because the program is not Time).
 
 ## End state
 
-Rig 68 running (fs-uae pid 29938), resident `UP-Term:bin/amarchy-flat` (main checkout build) started again with `Run`
-(`flat=on`), Time, Input and ScreenMode closed with Cancel, `RAM:amarchy-flat` deleted.
+Rig 68 running (fs-uae pid 29938), resident `UP-Term:bin/patina-flat` (main checkout build) started again with `Run`
+(`flat=on`), Time, Input and ScreenMode closed with Cancel, `RAM:patina-flat` deleted.

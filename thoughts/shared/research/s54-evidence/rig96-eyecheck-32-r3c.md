@@ -17,4 +17,4 @@ Numbering finding: the Amiga UPDemo argument is 1-BASED (demo/updemo_amiga.c: `f
 | Numbering | FINDING | See top: argument is 1-based on the Amiga, status N = argument N. Not a bug; the todo/brief wording "0-based" is wrong. |
 
 ## Rig state at the end
-Running: fs-uae process for build/rig96 present, wasabid 0.11b2 answers ping. Windows: "Amarchy bar" (0,246,640x10) and the WB backdrop (0,11,640x235). The UP-Term window I opened, and the extra split pane, are closed (`exit`). No Monitor/background tasks. Deleted: my scratch wrapper scripts (tiny). Screenshots kept in ~/Desktop/upterm-shots (45 r96r3c files, small).
+Running: fs-uae process for build/rig96 present, wasabid 0.11b2 answers ping. Windows: "Patina bar" (0,246,640x10) and the WB backdrop (0,11,640x235). The UP-Term window I opened, and the extra split pane, are closed (`exit`). No Monitor/background tasks. Deleted: my scratch wrapper scripts (tiny). Screenshots kept in ~/Desktop/upterm-shots (45 r96r3c files, small).

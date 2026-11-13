@@ -3,9 +3,9 @@
 
 #include "prefs_merge.h"
 #include "settings_def.h"
-#include "../amarchy/amconf_core.h"
+#include "../patina/amconf_core.h"
 
-/* the stores a row can live in: the UP-Term fields, or Amarchy's own */
+/* the stores a row can live in: the UP-Term fields, or Patina's own */
 typedef struct stores {
     void *up;
     void *am;
@@ -13,7 +13,7 @@ typedef struct stores {
 
 static void *store_of(const sd_setting *s, const stores *st)
 {
-    return s->store == SD_AMARCHY ? st->am : st->up;
+    return s->store == SD_PATINA ? st->am : st->up;
 }
 
 /* every row that holds a value in a store; the profile and theme rows hold none */

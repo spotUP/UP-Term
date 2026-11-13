@@ -12,7 +12,7 @@ status: handoff
 - Orphan branch triage (s30-evidence/orphan-branches-triage.md, 6fbbd2f6). Deleted with owner OK: rig/mute-option, vsh/archive-complete, feature/demo-perf-nas-skill, feature/amissl-bundle, spike/upkg-wb-ui-r0, feature/cc1-cc2 (also remote). Patch backups in thoughts/shared/branch-backups/2026-11-02 (5fac667b). feature/r1-rom kept (remote tip cc80e106).
 - 8aaaaecf: rig.py refuses to launch FS-UAE or Amiberry without a present, non-empty boot device (boot_device_path / boot_device_check, called in _start after setup_config_only). Test tests/test_rig_boot_device_check.py. Gap: volume label or path with ':' or ',' is not parsed.
 - 0c01f17d: wasabi MUI group buttons evidence. No PR opened: no MUI app on the rig has a clicked framed Group button; ui list identical on both daemons.
-- KIT-DIST-REFRESH: make kit-stage ran in upterm-ports worktree .claude/worktrees/kit-main (clean, ports origin/main d94a685), then make dist UPTERM_PORTS=<that worktree> rc 0. build/dist now ships Amarchy a833e2e1 and wasabid 27f53fe0 (both match the build tree).
+- KIT-DIST-REFRESH: make kit-stage ran in upterm-ports worktree .claude/worktrees/kit-main (clean, ports origin/main d94a685), then make dist UPTERM_PORTS=<that worktree> rc 0. build/dist now ships Patina a833e2e1 and wasabid 27f53fe0 (both match the build tree).
 
 ## Open
 - Plain `make dist` (default UPTERM_PORTS=../upterm-ports) still fails: that main checkout is on port/htop (93d1fb3, 157 behind) with untracked htop files; owner unknown. Do not switch it without asking the owner. Use UPTERM_PORTS=<kit-main worktree> meanwhile.

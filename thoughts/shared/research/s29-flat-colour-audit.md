@@ -1,6 +1,6 @@
 # s29 flat colour audit (FLAT-COLOUR-OVERHAUL), read-only, main efeac0e6
 
-Rig 8 LIVE READ NOT POSSIBLE: rig 8 is down (watchdog.log 2026-11-01 16:47:46 "idle 60 min: stopping rig 8"; no fs-uae process for build/rig8; ami.py exec -> connection refused). I did not restart it. Only its disk was read from the host: ENVARC:Amarchy/prefs = `amarchy-gui-theme = vantablack`, `flat-system-look = on`, `flat-window-gadgets = on`. No ENVARC:Sys/palette.prefs exists (desktop palette lives in ENV: RAM only, lost with the rig). "RGB on rig 8" below is therefore PREDICTED for vantablack (unverified live); to get live pens: restart rig 8 with theme vantablack, then `wbpens` (colours 0-3 only; a 0-15 / 32-47 probe does not exist yet, `dripens`/`penprobe` in build/amiga are candidates).
+Rig 8 LIVE READ NOT POSSIBLE: rig 8 is down (watchdog.log 2026-11-01 16:47:46 "idle 60 min: stopping rig 8"; no fs-uae process for build/rig8; ami.py exec -> connection refused). I did not restart it. Only its disk was read from the host: ENVARC:Patina/prefs = `patina-gui-theme = vantablack`, `flat-system-look = on`, `flat-window-gadgets = on`. No ENVARC:Sys/palette.prefs exists (desktop palette lives in ENV: RAM only, lost with the rig). "RGB on rig 8" below is therefore PREDICTED for vantablack (unverified live); to get live pens: restart rig 8 with theme vantablack, then `wbpens` (colours 0-3 only; a 0-15 / 32-47 probe does not exist yet, `dripens`/`penprobe` in build/amiga are candidates).
 
 ## Pen/role model (code)
 
@@ -30,8 +30,8 @@ Roles (desk_core.h:13): pen index = role: 0 BG, 1 DARKER, 2 FG, 3 ACCENT, 4 SELE
 | Disabled button label | 5 MUTED (pen_dimtext) | desk_core.c:178, flat_core.c:424 | muted -> pen 5 palette = darker | 222222 on 101010 (1.2:1) | BUG, see #1 |
 | Icon label (font.prefs WBFONT) | front 2 FG, back 1 DARKER, JAM1, outline | desk_core.c:613-616 | fg / darker | bebebe on 222222 | back pen 1 is DARKER; with backdrop pen 5 = darker and label back pen = 1 = darker: consistent only because both are desk_darker |
 | Pointer (pointer.prefs) | RGB direct | desk_core.c:~570-576 | fg, bg, accent | bebebe, 000000, 8d8d8d | OK, bypasses pens |
-| Amarchy menu window | own palette MT_* | menu_theme.c:52-58 | bg, fg, dim, MT_ACCENT = bg (!), selbox = accent, ok, fail | 000000, bebebe, 505050, 000000, 8d8d8d, b6b6b6, a4a4a4 | menu uses dim (dark_foreground) where desktop uses muted: two different "dim" colours per theme (505050 vs 7a7a7a on vantablack). MT_ACCENT = bg looks odd, check intent |
-| Amarchy bar / DOpus send | not traced (budget) | | | | UNVERIFIED |
+| Patina menu window | own palette MT_* | menu_theme.c:52-58 | bg, fg, dim, MT_ACCENT = bg (!), selbox = accent, ok, fail | 000000, bebebe, 505050, 000000, 8d8d8d, b6b6b6, a4a4a4 | menu uses dim (dark_foreground) where desktop uses muted: two different "dim" colours per theme (505050 vs 7a7a7a on vantablack). MT_ACCENT = bg looks odd, check intent |
+| Patina bar / DOpus send | not traced (budget) | | | | UNVERIFIED |
 
 ## Table 2: per theme (guard maths mirrors desk_luma/desk_contrast/desk_darker; ratios x100)
 

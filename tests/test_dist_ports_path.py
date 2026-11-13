@@ -1,11 +1,11 @@
 """Every upterm-ports path in the Makefile follows UPTERM_PORTS.
 
 2026-10-27: `UPTERM_PORTS=<worktree> make dist` stopped with "No rule to make target
-.../upterm-ports/build/sysroot/UP-Term/lib/libupkgui.a, needed by build/amiga/amarchy-menu":
-UPKGUI_SYS and the amarchy-menu compiler were spelled $(UPTERM_ROOT)/upterm-ports, so a ports
+.../upterm-ports/build/sysroot/UP-Term/lib/libupkgui.a, needed by build/amiga/patina-menu":
+UPKGUI_SYS and the patina-menu compiler were spelled $(UPTERM_ROOT)/upterm-ports, so a ports
 build in a worktree was ignored for them while the kit itself came from the worktree. Checked
 through make itself: with UPTERM_PORTS pointing at a temporary tree that has the libraries and
-the compiler, a dry run of amarchy-menu names that tree, and the main checkout never.
+the compiler, a dry run of patina-menu names that tree, and the main checkout never.
 Since the libupkgui pin (tools/upkgui.rev) the library is archived out of that tree at the
 pinned commit and linked from build/upkgui/<rev>.
 """
@@ -15,7 +15,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class PortsPath(unittest.TestCase):
-    def test_amarchy_menu_uses_upterm_ports(self):
+    def test_patina_menu_uses_upterm_ports(self):
         with tempfile.TemporaryDirectory() as tmp:
             ports = pathlib.Path(tmp) / 'ports-worktree'
             lib = ports / 'build/sysroot/UP-Term/lib'
@@ -26,7 +26,7 @@ class PortsPath(unittest.TestCase):
             (ports / 'tools/m68k-cc').write_text('#!/bin/sh\n')
             env = dict(os.environ)
             env.pop('UPKGUI_SYS', None)
-            r = subprocess.run(['make', '-n', '-B', '-C', str(ROOT), 'build/amiga/amarchy-menu',
+            r = subprocess.run(['make', '-n', '-B', '-C', str(ROOT), 'build/amiga/patina-menu',
                                 'UPTERM_PORTS=%s' % ports], capture_output=True, text=True, env=env)
             out = r.stdout + r.stderr
             self.assertNotIn('No rule to make target', out)
@@ -37,7 +37,7 @@ class PortsPath(unittest.TestCase):
             self.assertIn('/build/upkgui/', out)
             main_ports = str(ROOT.parent / 'upterm-ports') + '/'
             for line in out.splitlines():
-                if 'm68k-cc' in line and 'amarchy-menu' in line:
+                if 'm68k-cc' in line and 'patina-menu' in line:
                     self.assertNotIn(main_ports, line)
 
 

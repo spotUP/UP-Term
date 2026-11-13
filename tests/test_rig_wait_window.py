@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """tools/rig/wbrun_rig.wait_window on the host (no emulator). AmigaOS frees a closed window's memory at
-once, so a window opened right after another one closed can get its address: the Amarchy menu's window
+once, so a window opened right after another one closed can get its address: the Patina menu's window
 closes on Return and the Clock window opens at the same address. A newness test on the address alone
 missed the Clock (rig case app_index check 8 failed in about half the runs, and left a Clock open each time)."""
 import pathlib, sys, unittest

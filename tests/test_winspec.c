@@ -103,8 +103,8 @@ static void box(void)
 
 static void wa_title(void)
 {
-    const char *t = "Amarchy";
-    /* a NOBORDER window passes no title to Intuition (the Amarchy text menu showed a title bar, 2026-10-25) */
+    const char *t = "Patina";
+    /* a NOBORDER window passes no title to Intuition (the Patina text menu showed a title bar, 2026-10-25) */
     CHECK_INT(winspec_wa_title(1, t) == 0, 1);
     CHECK_INT(winspec_wa_title(0, t) == t, 1);
     CHECK_INT(winspec_wa_title(1, 0) == 0, 1);

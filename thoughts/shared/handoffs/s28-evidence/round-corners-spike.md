@@ -161,6 +161,6 @@ rom/hyperlayers/todo still lists "handling of errors: out of memory error!" open
 | Strip compositor/surface/scale/collect paths | 0.5 |
 | Replace view ClipRects with classic copy-out/copy-in; verify offset convention against ROM graphics | 1.5-3 |
 | V45 API for 3.2: Hide/Show/LayerOccluded/SetLayerInfoBounds + LVO relocation + LAYERHIDDEN | 1-2 |
-| Amarchy side (corner region, shape hook, OpenWindow install) | 0.5 |
+| Patina side (corner region, shape hook, OpenWindow install) | 0.5 |
 | Rig soak 3.1 + 3.2 (smart/simple/super/GZZ/backdrop, iconify, screen drag, low-memory) + A1200 | 1.5-2.5 |
 | Total | 6-10 (3.1 only: 4-6) |

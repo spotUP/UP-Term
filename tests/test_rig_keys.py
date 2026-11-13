@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""rig.HOST_KEYS: some Mac key is the Amiga's Left-Amiga (Amarchy's Super, "rawkey lcommand"), and it is not
+"""rig.HOST_KEYS: some Mac key is the Amiga's Left-Amiga (Patina's Super, "rawkey lcommand"), and it is not
 a Cmd key (macOS takes Cmd+Space for Spotlight). Before 2026-10-23 both Cmd keys were Right-Amiga and no key
-gave Left-Amiga, so no Amarchy binding could be pressed on a rig."""
+gave Left-Amiga, so no Patina binding could be pressed on a rig."""
 import pathlib, sys, unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools/rig"))
@@ -13,7 +13,7 @@ def mapped(action):
 
 
 class HostKeys(unittest.TestCase):
-    def test_amarchy_super_key_is_reachable_without_cmd(self):
+    def test_patina_super_key_is_reachable_without_cmd(self):
         keys = mapped("action_key_amiga_left")
         self.assertEqual(sorted(keys), ["keyboard_key_lalt"])
 

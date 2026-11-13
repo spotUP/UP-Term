@@ -1,6 +1,6 @@
 # FLAT-TITLE-ACCENT rig check (rig 11, OS 3.2) -- FAIL, not landed
 
-Build 3cc60dd0 amarchy-flat, flat on via theme pick (vantablack row), pens text=2 line=3 back=0 outline=3 ptext=0.
+Build 3cc60dd0 patina-flat, flat on via theme pick (vantablack row), pens text=2 line=3 back=0 outline=3 ptext=0.
 Palette read on the rig: pen0 aaaaaa, pen1 000000, pen2 ffffff, pen3 6688bb (the stock-like palette, not the 8d8d8d one).
 Probe: titleprobe.c, driver titleprobe-driver.py, log titleprobe-32.log. Window 240x90, BorderTop=11.
 

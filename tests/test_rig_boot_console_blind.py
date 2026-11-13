@@ -35,7 +35,7 @@ class BootConsole(unittest.TestCase):
     def test_os_image_startup_sequence_stays_the_real_file_with_iprefs_and_runs_through_bootcap(self):
         # BOOT-CONSOLE-OS + W8a: an --os rig boots the image copy's own S:Startup-Sequence; without bootcap every --os
         # start failed the marker gate (rig 96, 2026-11-05). The sequence must stay AT S:Startup-Sequence with its IPrefs
-        # line, or Install's instssblock.sh finds no anchor and adds no Amarchy-Flat block (legw 17/23, 2026-11-09).
+        # line, or Install's instssblock.sh finds no anchor and adds no Patina-Flat block (legw 17/23, 2026-11-09).
         # Idempotent; a copy of the earlier wrapper design (real sequence in Startup-Sequence.os) is folded back.
         import tempfile
         real = "SetPatch QUIET\nAddDataTypes REFRESH\nIPrefs\nLoadWB\nEndCLI >NIL:\n"

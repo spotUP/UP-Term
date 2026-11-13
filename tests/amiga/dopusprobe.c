@@ -1,7 +1,7 @@
-/* dopusprobe -- FLAT-D4 rig helper (tools/rig/amarchy_flat_rig.py d4 step).
+/* dopusprobe -- FLAT-D4 rig helper (tools/rig/patina_flat_rig.py d4 step).
  *   dopusprobe        print "JT drawbox=<hex> fieldbox=<hex>": the six bytes of the dopus5.library jump table entries
  *                     at LVO -696 / -702 (JMP opcode + target), or "JT absent" when the library is not resident.
- *   dopusprobe ON|OFF set flat_state.enabled in the Amarchy.Flat record (the switch Amarchy writes in the product).
+ *   dopusprobe ON|OFF set flat_state.enabled in the Patina.Flat record (the switch Patina writes in the product).
  *                     The state block is found by its first two words (FLAT_VERSION, FLAT_STATE_SIZE) in the record. */
 #include <stdio.h>
 #include <string.h>
@@ -9,7 +9,7 @@
 #include <exec/execbase.h>
 #include <exec/semaphores.h>
 #include <proto/exec.h>
-#include "../../amarchy/flat_core.h"
+#include "../../patina/flat_core.h"
 
 long __stack = 8192;
 const char dopusprobe_stack_cookie[] = "$STACK: 8192";

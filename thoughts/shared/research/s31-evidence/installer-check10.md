@@ -9,7 +9,7 @@ Fails together (same cause): 5, 8, 10, 11 -- passed 34 of 38.
 - FAIL 5 `ENVARC:up-term/Dir names Work:UP-Term: Empty-12MB-FFS:UP-Term`
 - FAIL 8 `S:User-Startup assigns UP-Term: to Work:UP-Term`
 - FAIL 10 before = `(20, 'LIST: Could not get information for "SYS:UP-Term"... object not found')`,
-  now = `(0, 'Directory "SYS:UP-Term" ... MANIFEST 80906, fonts, Rexx, S, UP-Term.version, VERSIONS, emoji, unifont, licenses, share, Amarchy, bin, pkg, etc ... 213 blocks')` = the whole kit
+  now = `(0, 'Directory "SYS:UP-Term" ... MANIFEST 80906, fonts, Rexx, S, UP-Term.version, VERSIONS, emoji, unifont, licenses, share, Patina, bin, pkg, etc ... 213 blocks')` = the whole kit
 - FAIL 11 `"Work:UP-Term/VERSIONS" is there`
 Check 4 (assign names Work:UP-Term) and 12-30 passed: UP-Term: reaches the kit, so files landed in SYS:UP-Term.
 

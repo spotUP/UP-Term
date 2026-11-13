@@ -1,5 +1,5 @@
 """app_icons needs icon.library V44 (icon_gfx.c ig_open). On the default KS 3.1 rig (icon.library 40) the
-drawn menu keeps the generic glyph and ENV:AMARCHY_ICON_LOADS stays 0, which showed as 3 of 10 failed checks
+drawn menu keeps the generic glyph and ENV:PATINA_ICON_LOADS stays 0, which showed as 3 of 10 failed checks
 that looked like a drawing bug (and were blamed on commit 51e0abfd). The row now names the missing library."""
 import pathlib, sys, unittest
 from unittest import mock
@@ -7,7 +7,7 @@ from unittest import mock
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools/rig"))
 
-import amarchy_menu_rig as m
+import patina_menu_rig as m
 
 
 class IconLibrary(unittest.TestCase):

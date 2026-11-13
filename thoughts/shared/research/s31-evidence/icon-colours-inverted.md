@@ -15,10 +15,10 @@ proved. This file records the measurements so the next agent starts here.
 
 ## Repro on rig 61
 
-1. `amarchy_gui_rig.py --setup`, then ENV:Amarchy/prefs with flat-system-look
+1. `patina_gui_rig.py --setup`, then ENV:Patina/prefs with flat-system-look
    and flat-window-gadgets on, theme picked as vantablack in the theme picker.
-2. Amarchy launches `UP-Term:bin/amarchy-icons APPLY`
-   (amarchy/desk_dos.c:467-484, dk_icons_sync).
+2. Patina launches `UP-Term:bin/patina-icons APPLY`
+   (patina/desk_dos.c:467-484, dk_icons_sync).
 3. Read pens with RAM:iconpens, grab the screen, measure with PIL.
 
 ## Measurements
@@ -34,7 +34,7 @@ iconpens after picking vantablack (prefs on disk say vantablack, flat on):
 Expected for vantablack: foreground ffffff, background 000000, darker 070707.
 Pen 33 bebebe is the matte-black foreground, and ground 222222 matches no
 vantablack slot. The 16 held pens carry a stale or mixed theme, not the theme
-in ENV:Amarchy/prefs.
+in ENV:Patina/prefs.
 
 Screenshot icon column, box (20,25,70,210) of iconcol-before-on.png
 (copied to ~/Desktop/upterm-shots/s31-iconcol-before-on.png):
@@ -44,18 +44,18 @@ Screenshot icon column, box (20,25,70,210) of iconcol-before-on.png
 The icons on screen are the stock 3.2 icons, remapped onto the held theme
 pens. APPLY had not yet replaced any .info file when the shot was taken.
 
-## amarchy-icons is slow, and two copies run at once
+## patina-icons is slow, and two copies run at once
 
-wasabi ps showed two amarchy-icons processes (CLI 6 and CLI 8), both alive
+wasabi ps showed two patina-icons processes (CLI 6 and CLI 8), both alive
 for many minutes (stack 16384, 6-14 KB free, so not a stack overflow). A
 snoop trace (15:40:39 to 15:42:23) shows they are not hung: they walk every
 volume and back up each .info file, and for each icon they rewrite
-SYS:Storage/Icons/Amarchy/manifest via manifest.amt and manifest.amo:
+SYS:Storage/Icons/Patina/manifest via manifest.amt and manifest.amo:
 
-    Open("SYS:Storage/Icons/Amarchy/manifest.amt", create) = ok
-    Rename("SYS:Storage/Icons/Amarchy/manifest", "...manifest.amo") = ok
-    Rename("SYS:Storage/Icons/Amarchy/manifest.amt", "...manifest") = ok
-    DeleteFile("SYS:Storage/Icons/Amarchy/manifest.amo") = ok
+    Open("SYS:Storage/Icons/Patina/manifest.amt", create) = ok
+    Rename("SYS:Storage/Icons/Patina/manifest", "...manifest.amo") = ok
+    Rename("SYS:Storage/Icons/Patina/manifest.amt", "...manifest") = ok
+    DeleteFile("SYS:Storage/Icons/Patina/manifest.amo") = ok
 
 453 .info opens in under two minutes, about one icon every 0.25 s plus a
 manifest rewrite per icon, so the walk is quadratic in the number of icons.
@@ -64,14 +64,14 @@ they race on manifest.amt and manifest.amo.
 
 ## Candidate causes (unproved)
 
-1. Stale held pens: pens_theme (amarchy/iconpen_dos.c ~107) reads the theme
+1. Stale held pens: pens_theme (patina/iconpen_dos.c ~107) reads the theme
    when the holder syncs pens. Pen 33 still holds the matte-black foreground
    after vantablack was picked, so a later theme change did not recolour the
    held pens. Stock icons remapped onto those pens look inverted.
 2. Overlap: until APPLY finishes (minutes), Workbench shows stock icons on
    flat-theme pens. The owner may see this window as "inverted".
-3. Two concurrent APPLY runs (the desk_dos.c `last` guard is per Amarchy run,
-   so a restart of Amarchy or a second sync path starts a second copy) race
+3. Two concurrent APPLY runs (the desk_dos.c `last` guard is per Patina run,
+   so a restart of Patina or a second sync path starts a second copy) race
    on the manifest and can leave mixed icon sets.
 
 ## Next steps
@@ -114,10 +114,10 @@ a. Stock planar (4-colour) icons draw with pens 1/2 directly. A dark theme
    look inverted until APPLY replaces them.
 b. The slow, doubled APPLY window (candidates 2 and 3 above).
 
-Next: rig shot of the icon column after amarchy-icons has exited, flat on
+Next: rig shot of the icon column after patina-icons has exited, flat on
 versus flat off, and check whether the remaining icons are planar ones.
 
-Code support for hypothesis a: wb_pens_plan (amarchy/menu_theme.c:202-210)
+Code support for hypothesis a: wb_pens_plan (patina/menu_theme.c:202-210)
 sets Workbench pen 1 = theme fg and pen 2 = theme dim, live on the Workbench
 ViewPort (gthemes_dos.c wb_pens_apply). For a dark theme pen 1 turns light
 and pen 2 dark, the reverse of the stock 3.x pen 1 black / pen 2 white. Any
@@ -128,7 +128,7 @@ ground), so it needs the owner.
 
 ## Session 31 rl9: pen 1/2 proof on rig 71 (FS-UAE, OS 3.2, depth 8)
 
-Setup: amarchy_gui_rig.py --setup (flat on), prefs vantablack + desktop-theme on,
+Setup: patina_gui_rig.py --setup (flat on), prefs vantablack + desktop-theme on,
 theme re-picked from white back to vantablack through the menu (the picker
 needed the first cursor row; it started on vantablack so one Up/Down pair was
 used). Shot: ~/Desktop/upterm-shots/s31-rl9-vantablack-flat-d8.png.
@@ -152,7 +152,7 @@ So the stock icons do draw with pens 0-3 directly.
 Icon pixels on the screen (first drawer icon, 1:1): outline 000000, body
 7a7a7a, highlight bebebe, ground 222222 (the lifted ground). The outline is
 the darkest value, the highlight the lightest: not swapped at this moment.
-amarchy-icons was not running and SYS:Storage/Icons/Amarchy did not exist
+patina-icons was not running and SYS:Storage/Icons/Patina did not exist
 (APPLY had not run in this rig session), so these are stock icons.
 
 NOT done (budget): the SetRGB32 pen 1/2 swap experiment and a second sample

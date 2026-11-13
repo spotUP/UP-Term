@@ -9,7 +9,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools/rig"))
 import rig
 
-KIT = b";BEGIN UP-Term Amarchy\nRun >NIL: UP-Term:bin/Amarchy\n;END UP-Term Amarchy\n"
+KIT = b";BEGIN UP-Term Patina\nRun >NIL: UP-Term:bin/Patina\n;END UP-Term Patina\n"
 
 
 class GoHasNoShadowCopy(unittest.TestCase):

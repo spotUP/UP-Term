@@ -6,7 +6,7 @@ Result: font YES already. Icontrol NO: a real bug. desk_icontrol_decide returned
 
 Invariant violated: the written icontrol.prefs must equal desk_geometry_bar(1, gt_look_bar_height(theme)); the plan is "none" only when it does.
 
-Fix (amarchy/desk_core.c): desk_icontrol_decide takes bar_height; an already-written file with another geometry gives DK_IC_WRITE with no new snapshot (the pre-thin snapshot is kept); same geometry gives NONE. desk_start_icontrol takes the theme. Callers in amarchy/desk_dos.c (dk_apply start decision, start plan) pass the theme.
+Fix (patina/desk_core.c): desk_icontrol_decide takes bar_height; an already-written file with another geometry gives DK_IC_WRITE with no new snapshot (the pre-thin snapshot is kept); same geometry gives NONE. desk_start_icontrol takes the theme. Callers in patina/desk_dos.c (dk_apply start decision, start plan) pass the theme.
 
 Test: test_model_font_or_bar_height_change_replans_font_and_icontrol (tests/test_desk.c, suite desk_start_apply). Cases: font B over A's file writes 518 bytes equal to B's file; B over B writes 0; font part off 0; bar 18 over the file for 14 plans DK_IC_WRITE with snapshot 0; 18 over its own bytes DK_IC_NONE; icontrol part off with nothing to restore DK_IC_NONE.
 

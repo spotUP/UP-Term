@@ -1,22 +1,22 @@
 # UHC:ExtBin live path, rig 7 (P8) - 2026-10-28
 
-Rig 7 (purpose "Amarchy s20: UHC-EXTBIN-LIVE-PATH check"). Fresh boot after `rig.py install`; up-uhc installed via install.dos, no reboot after.
+Rig 7 (purpose "Patina s20: UHC-EXTBIN-LIVE-PATH check"). Fresh boot after `rig.py install`; up-uhc installed via install.dos, no reboot after.
 
 Build notes: `make dist-base` fails (needs upterm-ports `make kit-stage`: no build/kit/userland/SOURCES.txt). The stale up-uhc kit (no WBPath) was rebuilt with `make dist-uhc` alone.
 
 ## Extra check RIG-NO-THEMES
-- PASS themes: 23 .theme files in UP-Term:Amarchy/Themes = 23 in dist/amarchy-themes (`ethereal.theme 593 ... Today 23:18:58`)
+- PASS themes: 23 .theme files in UP-Term:Patina/Themes = 23 in dist/patina-themes (`ethereal.theme 593 ... Today 23:18:58`)
 - PASS font: `JetBrainsMono.ttf 273900 ----rwed Today 23:18:58` in FONTS:
 - PASS C:WBPath: `WBPath 2836 ----rwed Today 23:17:53`
 
 ## Install
-`[OK] WBPath: UHC:ExtBin added to the Workbench path` / `[INFO] UHC:ExtBin is on the Workbench path: new UP-Term windows and Amarchy launches find its programs...` rc 0. UHC:ExtBin was empty after install; Pipe package installed via `Execute UHC:Packages/pipe` -> `UHC:ExtBin/Pipe 2240`.
+`[OK] WBPath: UHC:ExtBin added to the Workbench path` / `[INFO] UHC:ExtBin is on the Workbench path: new UP-Term windows and Patina launches find its programs...` rc 0. UHC:ExtBin was empty after install; Pipe package installed via `Execute UHC:Packages/pipe` -> `UHC:ExtBin/Pipe 2240`.
 
 ## 5a PASS
 `taskpath Workbench` ends `System:AmiSSL`, `System:UHC/ExtBin`. New UP-Term window `Path` lists `System:UHC/ExtBin`; typing `Pipe` printed `Pipe: Invalid pipeline` / `***Broken pipe` (Pipe's own usage error: found and run by name).
 
 ## 5b PASS
-Temp bind (ENVARC:up-term/keymap.user, `super+alt+f8 = run:Execute RAM:b5.script`), Amarchy ARexx `RELOAD` (rows 46 -> 47), `RUN 46`/`RUN 47`. RAM:b5.out contained `Pipe: Invalid pipeline` / `***Broken pipe`: Pipe ran by name from an Amarchy act_run launch. Temp keymap.user and RAM files deleted, RELOAD back to rows=46. (Script stopped after Pipe's rc 20, so Path/Echo lines did not run.)
+Temp bind (ENVARC:up-term/keymap.user, `super+alt+f8 = run:Execute RAM:b5.script`), Patina ARexx `RELOAD` (rows 46 -> 47), `RUN 46`/`RUN 47`. RAM:b5.out contained `Pipe: Invalid pipeline` / `***Broken pipe`: Pipe ran by name from an Patina act_run launch. Temp keymap.user and RAM files deleted, RELOAD back to rows=46. (Script stopped after Pipe's rc 20, so Path/Echo lines did not run.)
 
 ## 5c PASS (with notes)
 Uninstall output: `[OK] WBPath: 0 node(s) for  removed from the Workbench path` then `up-uhc removed.` rc 0. `taskpath Workbench` afterwards ends `System:Opus5/C`, `System:AmiSSL`: no UHC/ExtBin. up-uhc Uninstall by design leaves SYS:UHC and the UHC: assign (Uninstall header comment).

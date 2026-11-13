@@ -1,18 +1,18 @@
-/* The pure core of the Amarchy native desktop theme (amarchy/desk_core.c; plan 2026-10-29-amarchy-p1a-native-theme.md
- * items R1.2-R1.6, R1.16a, R1.18a-R1.22a, D-TGT). Goldens: tests/data/desk/ (probe note 2026-10-29-amarchy-p1a-prefs-probe.md).
+/* The pure core of the Patina native desktop theme (patina/desk_core.c; plan 2026-10-29-patina-p1a-native-theme.md
+ * items R1.2-R1.6, R1.16a, R1.18a-R1.22a, D-TGT). Goldens: tests/data/desk/ (probe note 2026-10-29-patina-p1a-prefs-probe.md).
  * The product entry point (desk.c, the menu rows) comes with the OS half; these tests drive the core directly. */
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../amarchy/amconf_core.h"
-#include "../amarchy/desk_core.h"
-#include "../amarchy/flat_core.h"
+#include "../patina/amconf_core.h"
+#include "../patina/desk_core.h"
+#include "../patina/flat_core.h"
 #include "../handler/be32.h"
 #include "harness.h"
 
 #define DESK_DATA "tests/data/desk/"
-#define SHIPPED_DIR "dist/amarchy-themes"
+#define SHIPPED_DIR "dist/patina-themes"
 #define SHIPPED_MAX 64
 #define BUF_MAX 8192
 
@@ -154,7 +154,7 @@ static void test_desk_palette(void)
 }
 
 /* FILENAME-PEN: Workbench draws list-view file names with the fixed DrawInfo pen 1, so pen 1 carries the theme muted colour,
- * and Amarchy's own dark uses sit on the dark pen. The users are counted from the pen-map builders, not grepped. */
+ * and Patina's own dark uses sit on the dark pen. The users are counted from the pen-map builders, not grepped. */
 static void test_desk_filename_pen(void)
 {
     static unsigned char out[BUF_MAX];
@@ -254,7 +254,7 @@ static void test_desk_palette_flat(void)
 }
 
 
-/* FLAT-P1-3: the palette.prefs the desk apply writes follows flat-system-look (the folded amarchy-flat-pens). desk_dos_apply builds it as
+/* FLAT-P1-3: the palette.prefs the desk apply writes follows flat-system-look (the folded patina-flat-pens). desk_dos_apply builds it as
  * desk_pens_for(amconf_desk_flat_pens(prefs)) -> desk_palette (the same two calls here); the flat key moves only the
  * shine slot, the pen-reset verdict follows the chosen map, and the key alone writes nothing without the palette target. */
 /* FLAT-PENS-LIVE: flat-system-look alone writes the flat pen roles and keeps the user's colours; off restores the stock roles only
@@ -510,12 +510,12 @@ static void test_desk_flat_pens_key(void)
 /* DESK-31 (3.1, rig 7 Run 10): the windows came back on the first poll whose screen title matched the idle one, which was the
  * fresh screen of IPrefs' first Font reset; its second reset then raised "System Request" (Retry|Cancel). The signal is IPrefs
  * itself: back in its idle Wait() with no notification pending. */
-/* RL15 AMARCHY-WBPREFS-INUSE: every Workbench / WBPattern editor USE is followed by the IPrefs idle wait. The decision is pure; the
+/* RL15 PATINA-WBPREFS-INUSE: every Workbench / WBPattern editor USE is followed by the IPrefs idle wait. The decision is pure; the
  * wiring is that dk_editor (the only place SYS:Prefs/<editor> is run) calls it before and after the run and waits. */
 static void test_desk_editor_waits_iprefs(void)
 {
     static unsigned char src[200000];
-    long n = slurp("amarchy/desk_dos.c", src, sizeof src - 1);
+    long n = slurp("patina/desk_dos.c", src, sizeof src - 1);
     char *e, *end, *p;
     int runs = 0;
     CHECK_INT(desk_editor_waits_iprefs("Workbench"), 1);
@@ -1446,7 +1446,7 @@ static void test_desk_palette_31safe(void)
     CHECK_INT(desk_palette_31safe(0, 0, again, sizeof again), 0);
 }
 
-/* S57-PAL31-PEN5: Amarchy's desk pens `0 5 2 2 5 3 0 0 2 2 0 5` (8-colour list) went raw into ENVARC on 3.1, where IPrefs 40.7 read pen 5 as
+/* S57-PAL31-PEN5: Patina's desk pens `0 5 2 2 5 3 0 0 2 2 0 5` (8-colour list) went raw into ENVARC on 3.1, where IPrefs 40.7 read pen 5 as
  * the literal pen 5 = ff00ff magenta at depth 8 (rig 87). Palette 40.2 stores entry 5 as 0xFEFD (measured, its own USE file). */
 static void test_desk_palette_31_pen5(void)
 {
@@ -1475,7 +1475,7 @@ static void test_desk_palette_31_pen5(void)
     CHECK_INT(badw, 0);
 }
 
-/* S56-PALETTE-31-SAFE: the Amarchy-start decision per palette.prefs: 3.1 + a 13-pen file = backup (unless one exists) and rewrite */
+/* S56-PALETTE-31-SAFE: the Patina-start decision per palette.prefs: 3.1 + a 13-pen file = backup (unless one exists) and rewrite */
 static void test_desk_palette_31_fix_plan(void)
 {
     static unsigned char gold[BUF_MAX], safe[BUF_MAX], out[BUF_MAX];
@@ -1495,12 +1495,12 @@ static void test_desk_palette_31_fix_plan(void)
     CHECK_INT(n, 0);
 }
 
-/* S56-PALETTE-31-SAFE wiring (desk_dos.c is Amiga-only; the rig reads AMARCHY_DESK_PAL31_CHECKS): the start path converts before any switch
+/* S56-PALETTE-31-SAFE wiring (desk_dos.c is Amiga-only; the rig reads PATINA_DESK_PAL31_CHECKS): the start path converts before any switch
  * returns, every palette editor write goes through dk_put_palette, and both original restores convert their source copy. */
 static void test_desk_palette_31_wired(void)
 {
     static unsigned char src[200000];
-    long n = slurp("amarchy/desk_dos.c", src, sizeof src - 1);
+    long n = slurp("patina/desk_dos.c", src, sizeof src - 1);
     char *f, *ret, *p, *put;
     int puts = 0;
     CHECK_INT(n > 0, 1);
@@ -1515,7 +1515,7 @@ static void test_desk_palette_31_wired(void)
     ret = strstr(f, "if (!mask && !flat)");
     CHECK_INT(p != 0 && ret != 0 && p < ret, 1);
     p = strstr((char *)src, "static void dk_palette_31_start(void)");
-    CHECK_INT(p != 0 && strstr(p, "dk_palette_31_fix(t->files[0]);") != 0 && strstr(p, "AMARCHY_DESK_PAL31_CHECKS") != 0, 1);
+    CHECK_INT(p != 0 && strstr(p, "dk_palette_31_fix(t->files[0]);") != 0 && strstr(p, "PATINA_DESK_PAL31_CHECKS") != 0, 1);
     for (p = (char *)src; (p = strstr(p, "dk_put(\"Palette\"")) != 0; p++)
         puts++;
     CHECK_INT(puts, 1); /* the one inside dk_put_palette */
@@ -1593,7 +1593,7 @@ static void test_desk_wb_backdrop_invoke(void)
     CHECK_INT(desk_wb_backdrop_invoke(1, 1, DESK_ROOT_FOREIGN == DESK_ROOT_WB, 0x00000100UL), 0); /* foreign root: no invoke */
 }
 
-/* S32-START-LOOK: Amarchy starts before LoadWB; the start look waits for the Workbench screen, then runs once */
+/* S32-START-LOOK: Patina starts before LoadWB; the start look waits for the Workbench screen, then runs once */
 static void test_desk_start_waits_for_workbench(void)
 {
     CHECK_INT(desk_start_due(0, 0, 1, 0, 1), 0);  /* boot: no Workbench screen yet, the tick runs: wait */
@@ -1647,8 +1647,8 @@ static void test_desk_persist(void)
     CHECK_INT(desk_env_fix(1, 1, 0), DESK_FIX_COPY);    /* editor USE rewrote the bytes: pointer.prefs */
     CHECK_INT(desk_env_fix(1, 0, 0), DESK_FIX_COPY);
     CHECK_INT(desk_env_fix(1, 1, 1), DESK_FIX_NONE);
-    CHECK_INT(desk_copy_name("ENVARC:Amarchy/desk-original", "ENV:Sys/palette.prefs", name, sizeof name), 1);
-    CHECK_STR(name, "ENVARC:Amarchy/desk-original/ENV-Sys-palette.prefs");
+    CHECK_INT(desk_copy_name("ENVARC:Patina/desk-original", "ENV:Sys/palette.prefs", name, sizeof name), 1);
+    CHECK_STR(name, "ENVARC:Patina/desk-original/ENV-Sys-palette.prefs");
     CHECK_INT(desk_copy_name("T:x", "ENV:Sys/palette.prefs", tiny, sizeof tiny), 0);
 }
 
@@ -1736,7 +1736,7 @@ static void test_a_pick_while_pending_does_not_leak_its_name_to_a_later_snapshot
 {
     static unsigned char src[200000];
     char held[96], text[160], want[160];
-    long n = slurp("amarchy/desk_dos.c", src, sizeof src - 1);
+    long n = slurp("patina/desk_dos.c", src, sizeof src - 1);
     char *e, *end;
     strcpy(held, "B");
     CHECK_INT(desk_revert_theme_take(held, 1, text, (int)sizeof text), -1);   /* pending: file left alone */
@@ -1815,7 +1815,7 @@ static void test_desk_icons_state(void)
     CHECK(desk_icons_state(1, 0) != desk_icons_state(1, 1));
 }
 
-/* S31-START-APPLY (rig 55, 2026-11-02): Amarchy started with desktop-theme, flat-system-look and flat-window-gadgets on, on a fresh 3.2 system
+/* S31-START-APPLY (rig 55, 2026-11-02): Patina started with desktop-theme, flat-system-look and flat-window-gadgets on, on a fresh 3.2 system
  * (no ENV:Sys/Workbench.prefs, no wbpattern.prefs), kept the backdrop pattern, the icon frame and the volume gauge: only a theme pick wrote them.
  * The start plan must name the Workbench.prefs (border + gauge) and the backdrop, and the files those writes make must leave nothing to do. */
 static void test_desk_start_prefs_on_writes_border_gauge_backdrop(void)

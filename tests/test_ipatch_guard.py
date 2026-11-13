@@ -1,17 +1,17 @@
-"""AMARCHY-IPATCH-GATE source guard (evidence: thoughts/shared/s61-evidence/b2-ipatch-gate-harden.md).
+"""PATINA-IPATCH-GATE source guard (evidence: thoughts/shared/s61-evidence/b2-ipatch-gate-harden.md).
 
 The gate counts a caller in its own memory before it reads the hook word; the hook leaves with ipatch_leave on the gate it was
 entered through; a gate is never freed; a remove waits for the counters for as long as it takes and only then frees g_pub.
 """
 import pathlib, re, unittest
 
-AMARCHY = pathlib.Path(__file__).resolve().parent.parent / "amarchy"
+PATINA = pathlib.Path(__file__).resolve().parent.parent / "patina"
 PATCHES = ["strut_patch.c", "wbreset_patch.c", "borderblank_patch.c"]
 COMMENT = re.compile(r'/\*.*?\*/|//[^\n]*', re.S)
 
 
 def clean(name):
-    return COMMENT.sub(lambda m: re.sub(r'[^\n]', ' ', m.group(0)), (AMARCHY / name).read_text(errors="replace"))
+    return COMMENT.sub(lambda m: re.sub(r'[^\n]', ' ', m.group(0)), (PATINA / name).read_text(errors="replace"))
 
 
 def functions(text):

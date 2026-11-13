@@ -640,7 +640,7 @@ def window(title, prefix=False):
 def screen_text(title=None, out='RAM:screen.txt'):
     # The active UP-Term window's text as the program drew it (the handler's own dump, `UPTerm ACTIVE screen FILE`;
     # Select all + Copy and VTC:snipprobe only where no UP-Term window answers): the one reader typewin.screen_text, reached from here so a script that imports only ami has it.
-    # `title` is the window to read (the menu is its own window, titled Amarchy, so no one title fits every
+    # `title` is the window to read (the menu is its own window, titled Patina, so no one title fits every
     # call): by default the front screen's active window, from the uitree.
     import shlex, typewin
     if not title:

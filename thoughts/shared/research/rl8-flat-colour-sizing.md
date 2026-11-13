@@ -1,16 +1,16 @@
 # RL8 FLAT-COLOUR-OVERHAUL: sizing (read-only, 2026-11-03)
 
-Method: grep for SetAPen/SetBPen/pen_ fields/RGB literals and DK_/MT_/IP_ role use per file under amarchy/, then ranges read. Counts are grep counts (spelling), not a proof of completeness: a second pass from the builders (desk_pens_*, ip_colours, menu_theme_roles_gui, flat_glyph_pen) is part of step 1 below.
+Method: grep for SetAPen/SetBPen/pen_ fields/RGB literals and DK_/MT_/IP_ role use per file under patina/, then ranges read. Counts are grep counts (spelling), not a proof of completeness: a second pass from the builders (desk_pens_*, ip_colours, menu_theme_roles_gui, flat_glyph_pen) is part of step 1 below.
 
 ## 1. Does a role table exist?
 
 Yes, four of them, in parallel, all fed by one struct:
 
-- gtheme (amarchy/gthemes_core.h:20): bg, fg, dim, accent, ok, fail, dark_bg, darker_bg, lighter_bg, selection, muted. 11 colours, derived with fallbacks in gt_parse. This is the source.
-- DK_* desktop roles (amarchy/desk_core.h:15): DK_BG, MUTED, FG, ACCENT, SELECTION, DARKER, GREEN, RED (8 pens, pen index = enum value). desk_role (desk_core.c:85-93) maps gtheme to colour. desk_pens/desk_pens_flat (desk_core.c:148-172) assign DrawInfo slots; flat_state pens at desk_core.c:195-204. DK_RED is reused as the backdrop pen (desk_core.c:218), a role name that does not match its use.
-- MT_* menu roles (amarchy/menu_theme.h:11-21, menu_theme.c:6-17): BG, TEXT, DIM, ACCENT, SELBOX, OK, FAIL (7). menu_theme_roles_gui (menu_theme.c:51-59) maps gtheme. MT_ACCENT is the background colour (selected row text), MT_SELBOX is the theme accent: names invert the meaning.
-- IP_* icon slots (amarchy/iconpen_core.h:16-19): 16 slots = FG/ACCENT/MUTED at 33/66/100 % blended from the ground, plus SELFG, SELBG, 3 spare. ip_colours (iconpen_core.c).
-- FLAT_ROLE_BACK/TEXT/LINE/FRAME (amarchy/flat_glyph.h:28), mapped to pens by flat_glyph_pen (flat_glyph.c:323).
+- gtheme (patina/gthemes_core.h:20): bg, fg, dim, accent, ok, fail, dark_bg, darker_bg, lighter_bg, selection, muted. 11 colours, derived with fallbacks in gt_parse. This is the source.
+- DK_* desktop roles (patina/desk_core.h:15): DK_BG, MUTED, FG, ACCENT, SELECTION, DARKER, GREEN, RED (8 pens, pen index = enum value). desk_role (desk_core.c:85-93) maps gtheme to colour. desk_pens/desk_pens_flat (desk_core.c:148-172) assign DrawInfo slots; flat_state pens at desk_core.c:195-204. DK_RED is reused as the backdrop pen (desk_core.c:218), a role name that does not match its use.
+- MT_* menu roles (patina/menu_theme.h:11-21, menu_theme.c:6-17): BG, TEXT, DIM, ACCENT, SELBOX, OK, FAIL (7). menu_theme_roles_gui (menu_theme.c:51-59) maps gtheme. MT_ACCENT is the background colour (selected row text), MT_SELBOX is the theme accent: names invert the meaning.
+- IP_* icon slots (patina/iconpen_core.h:16-19): 16 slots = FG/ACCENT/MUTED at 33/66/100 % blended from the ground, plus SELFG, SELBG, 3 spare. ip_colours (iconpen_core.c).
+- FLAT_ROLE_BACK/TEXT/LINE/FRAME (patina/flat_glyph.h:28), mapped to pens by flat_glyph_pen (flat_glyph.c:323).
 - No wb_pens_plan file exists in the tree (searched root and thoughts/shared/plans names). bar_core.c has no colour code at all (0 MT_/DK_/RGB hits); the bar draws through themewin.c tw_pen with MT_ roles.
 
 So the change is unification of 4 role vocabularies into one 5-6 role table plus derived tones, not creating a table.
@@ -24,7 +24,7 @@ So the change is unification of 4 role vocabularies into one 5-6 role table plus
 | titles | desk_core.c:172 (FILLTEXT=DK_FG), flat.c:439-451 (band_pen/text_pen/bg_pen from flat_tx), flat_core.c:584-588 | DK roles + depth fallbacks, dimtext for inactive |
 | text | flat.c:450,461,586,622,636 | fg/bg taken from the caller's RastPort pens (stock), not roles |
 | sliders / scroller | flat.c:514-529, flat_core.c:446-538 | pen_knob = g_knob_pen (flat.c:1139-1150), set 0 on fallback (flat.c:1134,1169-1170); DK_SELECTION contrast-pushed (desk_core.c:63-78, DK_FLOOR_SEL 150) |
-| buttons | desk_core.c:195-204; flat.c:334, flat_core.c:482 | pen_button=DK_SELECTION, pen_ptext=DK_BG, pen_outline=DK_ACCENT, pen_dimtext=DK_MUTED; pen_dim/pen_knob are amarchy-flat's own obtained pens (flat.c:1134-1160) |
+| buttons | desk_core.c:195-204; flat.c:334, flat_core.c:482 | pen_button=DK_SELECTION, pen_ptext=DK_BG, pen_outline=DK_ACCENT, pen_dimtext=DK_MUTED; pen_dim/pen_knob are patina-flat's own obtained pens (flat.c:1134-1160) |
 | glyphs | flat_glyph.c:23,256,276-277,323 | FLAT_ROLE_* + frame_pen override |
 | icons | iconpen_core.c:~28 IP_ refs, icons.c (3 IP_ refs) | blend ramps from ground (33/66/100) of FG, ACCENT, MUTED; fold to DK pens on shallow screens (iconpen_core.h:33) |
 | menu | gui.c: 41 MT_ refs; fallbacks gui.c:1319-1346 (is_bg ? pen 0 : pen 1, pen[fb]); gui.c:445 MT_DIM for level text; gui.c:462,471,497-563 MT_ACCENT/MT_DIM/MT_OK/MT_FAIL | all via g->pen[role], but 7 roles, border and header tied to MT_SELBOX (menu_theme.h:24-32) |
@@ -41,11 +41,11 @@ The expected conclusion: very few raw RGB literals; the colour mess is the numbe
 
 ## 3. Themes
 
-23 shipped themes in dist/amarchy-themes/*.theme (Omarchy colors.toml format, plus built-in tokyo-night in gt_builtin, gthemes_core.h GT_DEFAULT). User themes: ENVARC:Amarchy/themes. Colour data is in those files only; the derived keys come from gt_parse. (The count of 322 `.theme` files from find includes worktree copies; ignore.) A "same rule in all themes" overhaul changes derivation code, not the 23 files, unless the owner wants their keys trimmed.
+23 shipped themes in dist/patina-themes/*.theme (Omarchy colors.toml format, plus built-in tokyo-night in gt_builtin, gthemes_core.h GT_DEFAULT). User themes: ENVARC:Patina/themes. Colour data is in those files only; the derived keys come from gt_parse. (The count of 322 `.theme` files from find includes worktree copies; ignore.) A "same rule in all themes" overhaul changes derivation code, not the 23 files, unless the owner wants their keys trimmed.
 
 ## 4. Tests pinning colours
 
-tests/test_desk.c (1719 lines, 220 DK_/colour refs; backdrop-pen and selection tests at :688, :848), tests/test_iconpen.c (543 lines, 100 refs; :53 backdrop), tests/test_gthemes.c (773, 94 refs; asserts MT_HEAD_ROLE carries each theme accent), tests/test_keymap.c (4520, 54 refs; MT_BORDER_ROLE == MT_SELBOX, default palette equals xterm), tests/test_pens.c (152), tests/test_flat_core.c, tests/test_bar.c (5), plus rig tests test_rig_themes_live.py, test_dist_amarchy_themes.py, test_flat_budget.py. Python rig tests check pixels and need a rig.
+tests/test_desk.c (1719 lines, 220 DK_/colour refs; backdrop-pen and selection tests at :688, :848), tests/test_iconpen.c (543 lines, 100 refs; :53 backdrop), tests/test_gthemes.c (773, 94 refs; asserts MT_HEAD_ROLE carries each theme accent), tests/test_keymap.c (4520, 54 refs; MT_BORDER_ROLE == MT_SELBOX, default palette equals xterm), tests/test_pens.c (152), tests/test_flat_core.c, tests/test_bar.c (5), plus rig tests test_rig_themes_live.py, test_dist_patina_themes.py, test_flat_budget.py. Python rig tests check pixels and need a rig.
 
 ## 5. Estimate
 

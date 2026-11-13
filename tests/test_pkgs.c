@@ -1,9 +1,9 @@
-/* The Amarchy Packages menu rows (amarchy/pkgs_core.c; plan 2026-10-27-amarchy-packages-submenu.md P1). The input is
+/* The Patina Packages menu rows (patina/pkgs_core.c; plan 2026-10-27-patina-packages-submenu.md P1). The input is
  * `upkg --tsv` text in the field order of upterm-ports pkgs/opkg/doc/upkg-tsv.txt. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../amarchy/pkgs_core.h"
+#include "../patina/pkgs_core.h"
 #include "harness.h"
 
 static void test_pkgs_parse(void)
@@ -176,7 +176,7 @@ static void test_pl_path_has_bin(void)
     static char src[8192];
     char *a, *b;
     size_t n;
-    FILE *f = fopen("amarchy/proclaunch.c", "rb");
+    FILE *f = fopen("patina/proclaunch.c", "rb");
     CHECK(f != 0);
     if (!f)
         return;
@@ -191,7 +191,7 @@ static void test_pl_path_has_bin(void)
     *b = 0;
     CHECK(strstr(a, "Lock((STRPTR)PL_BIN_DIR") != 0);      /* the drawer is locked into the child's path list */
     CHECK(strstr(a, "cmdpath_append(&tail, l)") != 0);   /* ... and appended through config/cmdpath.h's one link step */
-    f = fopen("amarchy/proclaunch.h", "rb");
+    f = fopen("patina/proclaunch.h", "rb");
     CHECK(f != 0);
     if (f) {
         n = fread(src, 1, sizeof src - 1, f);

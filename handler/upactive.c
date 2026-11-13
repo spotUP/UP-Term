@@ -128,7 +128,7 @@ int upactive_workbench_present(void)
     return p != 0;
 }
 
-/* Directory Opus runs when its first ARexx port exists (the Amarchy DOpus group needs it). */
+/* Directory Opus runs when its first ARexx port exists (the Patina DOpus group needs it). */
 int upactive_dopus_present(void)
 {
     struct MsgPort *p;

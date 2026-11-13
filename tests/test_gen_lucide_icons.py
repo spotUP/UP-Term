@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tools/gen_lucide_icons.py (plan 2026-11-01-amarchy-filled-icon-set.md, F4): table parse, unknown name fails, quantise
+"""tools/gen_lucide_icons.py (plan 2026-11-01-patina-filled-icon-set.md, F4): table parse, unknown name fails, quantise
 levels, the selected image's plate, planar round trip through mkicon.planes, the 32x16 variant, the lucide.dat layout.
 The Phosphor Fill font is the pinned build/phosphor/ one (make phosphor); without it the font tests are skipped, REQUIRE=1 fails instead."""
 import json
