@@ -109,7 +109,7 @@ class KitShadowKeymap(unittest.TestCase):
         # The set is the one dist/install.dos copies into UP-Term:bin, read from that file.
         dos = (ROOT / "dist/install.dos").read_text()
         names = next(l.split()[1:-2] for l in dos.splitlines() if l.startswith("Copy Patina "))
-        self.assertEqual(sorted(names), ["AmTile", "Patina", "patina-flat", "patina-gui", "patina-icons", "patina-index", "patina-menu", "amnotify"])
+        self.assertEqual(sorted(names), sorted(["AmTile", "Patina", "patina-flat", "patina-gui", "patina-icons", "patina-index", "patina-menu", "amnotify"]))
         up = rig.kit_shadow_lines(True)
         for n in names:
             self.assertIn("C:Copy >NIL: VTC:%s UP-Term:bin/%s CLONE" % (n, n), up)
