@@ -204,7 +204,7 @@ static void test_draw_slot_themed(void)
     flat_role_pens ra, rb, rbad;
     int wb, sa, un;
     const flat_state *p, *p1;
-    desk_flat_state(1, 1, &look);
+    desk_flat_state(1, 1, 1, &look);
     look.enabled = 1; look.side = 4;
     flat_pens_tab_init(&t);
     hp = flat_pens_tab_for(&t, &sa, 1);
