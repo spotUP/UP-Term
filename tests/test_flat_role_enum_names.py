@@ -1,5 +1,5 @@
-"""TE-10.6c guard: the role-pen enum of amarchy/flat_role_core.h (FLAT_RP_*) shares no enumerator name with the glyph roles of
-amarchy/flat_glyph.h (FLAT_ROLE_*), so flat.c can include both; iconpen_dos.h takes FLAT_RP_COUNT, not its own copy."""
+"""TE-10.6c guard: the role-pen enum of patina/flat_role_core.h (FLAT_RP_*) shares no enumerator name with the glyph roles of
+patina/flat_glyph.h (FLAT_ROLE_*), so flat.c can include both; iconpen_dos.h takes FLAT_RP_COUNT, not its own copy."""
 import pathlib, re, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -18,7 +18,7 @@ def enumerators(path):
 
 class FlatRoleEnumNames(unittest.TestCase):
     def test_no_enumerator_in_both_headers(self):
-        both = enumerators("amarchy/flat_glyph.h") & enumerators("amarchy/flat_role_core.h")
+        both = enumerators("patina/flat_glyph.h") & enumerators("patina/flat_role_core.h")
         self.assertEqual(sorted(both), [])
 
     def test_no_ipd_role_count(self):
@@ -29,7 +29,7 @@ class FlatRoleEnumNames(unittest.TestCase):
         self.assertEqual(hits, [])
 
     def test_flat_c_includes_role_core(self):
-        self.assertIn('#include "flat_role_core.h"', (ROOT / "amarchy/flat.c").read_text())
+        self.assertIn('#include "flat_role_core.h"', (ROOT / "patina/flat.c").read_text())
 
 
 if __name__ == "__main__":

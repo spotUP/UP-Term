@@ -16,4 +16,5 @@ main refactored the flat.c hooks into helpers (c2_ring_get/c2_ring_refill(drawn)
 Open design question: thread `const flat_state *ps` as a parameter into the new rf_*/tx_*/c8_*/c2_* helpers (matches old commit's c2_get_pens(r, ps, d, ...)), or have each helper call st_rp/st_scr itself? Recommended: parameter, as the old commit did.
 
 ## Build/test (3 commits applied)
-Host tests were started (make test ONLY=flat_core, then flat_role_core, flat_pens_per_screen, flat_role_enum_names, make flat-budget) but the first one (builds every host test binary, -Werror ASAN) was still compiling when this agent ran out of budget. NO test or build result exists; make amiga not run. Logs: session scratchpad t1..t5.log.
+Results (3 ported commits + 1 test-fix commit): flat_core 4550 checks 0 failed; flat_role_core 73 checks 0 failed; flat_pens_per_screen OK; flat_role_enum_names OK; make flat-budget PASS.
+Two ported tests needed fixes for main: tests/test_flat_role_core.c called desk_flat_state with 3 args (main takes 4; added aa=1); tests/test_flat_role_enum_names.py used amarchy/ paths (now patina/). make amiga not run.
