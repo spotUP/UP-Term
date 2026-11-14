@@ -272,7 +272,8 @@ def pal_pen_counts(data):
 def desk_expect_exe():
     exe = os.path.join(tempfile.gettempdir(), 'desk_expect_rig')
     srcs = ['tools/rig/desk_expect.c', 'patina/desk_core.c', 'patina/gthemes_core.c', 'handler/be32.c',
-            'config/upconf.c', 'config/upconf_rows.c']
+            'config/upconf.c', 'config/upconf_rows.c', 'prefs/settings_def.c', 'prefs/prefs_core.c',
+            'patina/amconf_keys.c', 'handler/kcmode.c', 'handler/slash.c']
     paths = [os.path.join(ROOT, s) for s in srcs]
     if not os.path.exists(exe) or os.path.getmtime(exe) < max(os.path.getmtime(p) for p in paths):
         subprocess.check_call(['cc', '-std=c89', '-o', exe] + paths)
