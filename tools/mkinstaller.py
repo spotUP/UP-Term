@@ -85,11 +85,21 @@ def addon_find(rows):
     return '\n'.join(out)
 
 
+# DOPUS-OPT-IN (user report 2026-11-14, v1.1 over Amiga Forever): Directory Opus takes over the Workbench,
+# so its box starts unticked and says so; every other add-on starts ticked
+ADDON_OPT_IN = {'dopus': ', replaces Workbench'}
+
+
 def addon_choices(rows):
     """The choices of the add-on page: one per non-base row, saying where the archive was found."""
     return '\n'.join(
-        '(cat "%s" (if (= #ad%skind "drawer") " (drawer found)" (if (= #ad%skind "lha") " (will unpack lha)" " (not found)")))'
-        % (r['archive'], r['id'], r['id']) for r in _addons(rows))
+        '(cat "%s" (if (= #ad%skind "drawer") " (drawer found)" (if (= #ad%skind "lha") " (will unpack lha)" " (not found)")) "%s")'
+        % (r['archive'], r['id'], r['id'], ADDON_OPT_IN.get(r['id'], '')) for r in _addons(rows))
+
+
+def addon_default(rows):
+    """The add-on page's default: every choice ticked except the ADDON_OPT_IN ones."""
+    return sum(1 << n for n, r in enumerate(_addons(rows)) if r['id'] not in ADDON_OPT_IN)
 
 
 def addon_run(rows):
@@ -155,7 +165,7 @@ def read_values(pkg_id, extra=()):
         'ADDONFIND': addon_find(pkgs.rows()) if row['id'] == 'base' else '',
         'ADDONCHOICES': addon_choices(pkgs.rows()) if row['id'] == 'base' else '',
         'ADDONRUN': addon_run(pkgs.rows()) if row['id'] == 'base' else '',
-        'ADDONDEFAULT': str(2 ** len(_addons(pkgs.rows())) - 1) if row['id'] == 'base' else '',
+        'ADDONDEFAULT': str(addon_default(pkgs.rows())) if row['id'] == 'base' else '',
     }
     if pkg_id in slim.ids():
         # the slim base (P9): the Delete lines of the paths dist/slim.txt gives the package
