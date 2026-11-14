@@ -46,3 +46,25 @@ button-bank window, which the requester also wants closed. Did not close those (
 Reading: requester appears right after the splash closes (not during the hold), at the same time PLAN is set; so the hold does not prevent it.
 The apply (WRITES=3) ran 44 s later while the requester was pending. Whether the requester is caused by Patina's apply or by DOpus alone
 (--no-dopus control, or Patina absent) was NOT tested: one level deeper cause UNKNOWN.
+
+## Control run (no Patina apply)
+
+Verdict: PATINA. DOpus alone raises no IPrefs System Request; Patina's start apply does.
+
+Setup: rig 7, `rig.py dopus` (fresh install into build/rig7/vtc), `rig.py start --max`, SYS:WBStartup/Patina.info renamed to SYS:Patina.info.aside
+(no env or tooltype switch exists in patina/*.c to skip the start apply: grep of getenv/FindToolType found none for it), ENVARC:Sys/#? deleted,
+`rig.py reboot`. Poll every 3 s: windows, screen title, PLAN/WRITES, `ami.requesters`. Patina not running (no Patina window, PLAN/WRITES unset).
+- Control boot 1: wasabid up at ~1 s of poll (poll began after boot, ~55 s from reset), polled 150 s: windows only the DOpus Ram Disk lister + two backdrop/bank
+  windows; screen title 'Directory Opus ...'; requesters list always empty. No System Request.
+- Control boot 2: poll from reboot start; wasabid up at ~40 s; polled to 196 s: same, requesters empty throughout (only the 'Connection refused' lines
+  before wasabid answered). No System Request. (Try 3 had it open at 41 s and it stayed, so a window of 40-196 s would have caught it.)
+- Manual Patina after DOpus was up (`Run >NIL: <NIL: UP-Term:bin/Patina`, poll t0 = 5 s before launch): at +10 s 'Welcome to Patina' + 'Patina bar';
+  at +14 s PLAN=22 and "System Request" open (task IPrefs, Retry|Cancel, 279x101); +51 s WRITES=3. Requester stayed pending.
+  So the requester follows PLAN within the same poll step, about 4 s after the bar, not DOpus start.
+Combined with iprefs-case2.md (any USE of WBPattern/Pointer/Font/Palette prefs raises it with a window open): Patina's apply writes prefs, IPrefs resets the
+screen, DOpus's lister/backdrop windows block it. 
+Requester body text: not readable (UITREE gives only the Retry/Cancel gadgets, text is IntuiText; no rig helper reads it, no OCR tried per "text only"). UNVERIFIED wording.
+Retry clicks: rig.py start/reboot call retry_wb_reset() only when M060 (the default --max machine), at most WB_RESET_RETRIES=3 clicks, and only if the saved
+ScreenMode is not native and the screen is a PAL size; no flag turns it off (--a1200 changes the machine). In these runs the screen was RTG 800x600 at once,
+so it clicked 0 times (build/rig7/retry.log: "RTG 800x600"). Not clicked by me.
+Cleanup: Patina.info restored (rig clone removed by `rig.py stop`), rig 7 stopped, deleted build/rig-saved/7 (45 MB). Scratch logs in session scratchpad (small).
