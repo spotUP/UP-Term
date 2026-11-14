@@ -165,10 +165,21 @@ static int dk_screen_depth(void)
 /* publish one part: a work copy for the editor, then the editor (its USE writes the ENV: file). Writing the ENV: file
  * here as well made IPrefs open it on the change notice while the editor wrote it: "Error accessing file
  * ENV:Sys/Pointer.prefs, object is in use" (Program Error of SYS:Prefs/Pointer). */
+static int dk_files_equal(const char *a, const char *b);
+unsigned long desk_dos_put_skips;
 static int dk_put(const char *editor, const char *work, const unsigned char *buf, long len)
 {
+    char env[48];
     if (len <= 0 || !dk_write(work, buf, len))
         return 0;
+    /* S82-SKIP-UNCHANGED: IPrefs resets the Workbench on every USE, identical bytes too (iprefs-case2), so equal bytes are not fed */
+    strcpy(env, "ENV:Sys/");
+    strcat(env, strrchr(work, '/') + 1);
+    if (dk_files_equal(work, env)) {
+        desk_dos_put_skips++;
+        am_sentinel("PATINA_DESK_PUT_SKIPS", (long)desk_dos_put_skips);
+        return 1;
+    }
     dk_editor(editor, work);
     return 1;
 }
