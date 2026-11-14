@@ -182,6 +182,27 @@ def summary(pkg_id):
     return found
 
 
+def revision(pkg_id):
+    """The package revision: the recipe's <id>_REVISION in $UPTERM_PORTS, default 1. Bump it for a package-only change
+    (a patch, a build flag) at the same upstream version so installed users get the upgrade."""
+    ports = paths.ports()
+    if not (ports / 'pkgs' / pkg_id / 'recipe.mk').is_file():
+        return 1
+    import pkg_rows
+    v = pkg_rows.read_field(ports, pkg_id, 'REVISION')
+    if not v:
+        return 1
+    if not v.isdigit() or int(v) < 1:
+        raise SystemExit('pkgs: %s_REVISION is %r: want a whole number from 1' % (pkg_id, v))
+    return int(v)
+
+
+def pkg_version(r):
+    """The version of the .ipk feed: <upstream>-r<revision>. upkg (opkg's dpkg compare) orders upstream first, then
+    the revision, so 1.2-r2 > 1.2-r1 > 1.2 and 1.3-r1 > 1.2-r9."""
+    return '%s-r%d' % (r['version'], revision(r['id']))
+
+
 def depends(pkg_id):
     """The runtime packages one package needs, as opkg package names: the recipe's <id>_RUNTIME_DEPENDS in
     $UPTERM_PORTS (pkg_rows.read_field, the one reader, as for summary()). Not _DEPS: those are the static
@@ -337,6 +358,7 @@ def stage_dir(build, archive, variant='020'):
 
 
 def ipk_name(r, variant='020'):
+    """No revision in the file name: <archive>_<version>_<arch>.ipk is held to 30 characters (tests/test_dist_name_len.py); Packages carries the revision and the SHA256."""
     return '%s_%s_%s.ipk' % (r['archive'], r['version'], variant_arch(variant))
 
 
@@ -391,7 +413,7 @@ def build_ipk(r, build, variant='020'):
     data_ents, size = _data_entries(kit, r['archive'])
     keys = question_keys(kit)
     need, post, pre = _scripts(r, keys)
-    lines = ['Package: ' + r['archive'], 'Version: ' + r['version'], 'Architecture: ' + variant_arch(variant),
+    lines = ['Package: ' + r['archive'], 'Version: ' + pkg_version(r), 'Architecture: ' + variant_arch(variant),
              'Maintainer: ' + MAINTAINER, 'Installed-Size: %d' % ((size + 1023) // 1024),
              'Description: ' + summary(r['id'])]
     lines[2:2] = _rename_fields(r) + _depends_fields(r)
@@ -437,7 +459,7 @@ def feed(build, path=TABLE):
                     continue
                 raise SystemExit('pkgs feed: %s missing: python3 tools/pkgs.py ipk %s' % (f, build))
             data = f.read_bytes()
-            b = ['Package: ' + r['archive'], 'Version: ' + r['version']] + _rename_fields(r) + _depends_fields(r) + _interactive_fields(stage_dir(build, r['archive'], v)) + _launch_fields(r)
+            b = ['Package: ' + r['archive'], 'Version: ' + pkg_version(r)] + _rename_fields(r) + _depends_fields(r) + _interactive_fields(stage_dir(build, r['archive'], v)) + _launch_fields(r)
             b += ['Architecture: ' + arch, 'Filename: ' + f.name, 'Size: %d' % len(data),
                   'SHA256sum: ' + hashlib.sha256(data).hexdigest(),
                   'Description: ' + summary(r['id'])]

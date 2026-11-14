@@ -50,8 +50,8 @@ def check_feed(build, table):
     rows = pkgs.addons(table)
     assert [s['Package'] for s in feed] == [r['archive'] for r in rows], 'packages differ'
     for s, r in zip(feed, rows):
-        assert s['Version'] == r['version'], '%s: feed %s, packages.txt %s: rebuild with make dist-ipk' % (
-            r['archive'], s['Version'], r['version'])
+        assert s['Version'] == pkgs.pkg_version(r), '%s: feed %s, packages.txt %s: rebuild with make dist-ipk' % (
+            r['archive'], s['Version'], pkgs.pkg_version(r))
         data = (out / s['Filename']).read_bytes()
         assert int(s['Size']) == len(data), s['Filename']
         assert s['SHA256sum'] == hashlib.sha256(data).hexdigest(), s['Filename']
@@ -341,9 +341,76 @@ class FpuVariants(unittest.TestCase):
         self.assertEqual(index, pkgs.index(lhas, self.table))
 
 
+def verrevcmp(val, ref):
+    """Port of opkg's verrevcmp (libopkg/pkg.c, dpkg's algorithm), the compare upkg runs on Version fields."""
+    order = lambda c: -1 if c == '~' else 0 if c == '' or c.isdigit() else ord(c) if c.isalpha() else 256 + ord(c)
+    i = j = 0
+    while i < len(val) or j < len(ref):
+        while (i < len(val) and not val[i].isdigit()) or (j < len(ref) and not ref[j].isdigit()):
+            a, b = order(val[i:i + 1]), order(ref[j:j + 1])
+            if a != b:
+                return a - b
+            i += 1
+            j += 1
+        while val[i:i + 1] == '0':
+            i += 1
+        while ref[j:j + 1] == '0':
+            j += 1
+        diff = 0
+        while val[i:i + 1].isdigit() and ref[j:j + 1].isdigit():
+            diff = diff or ord(val[i]) - ord(ref[j])
+            i += 1
+            j += 1
+        if val[i:i + 1].isdigit():
+            return 1
+        if ref[j:j + 1].isdigit():
+            return -1
+        if diff:
+            return diff
+    return 0
+
+
+def vercmp(a, b):
+    """opkg: split at the last '-' (pkg_parse.c), compare upstream, then revision."""
+    (va, _, ra), (vb, _, rb) = (x.rpartition('-') if '-' in x else (x, '', '') for x in (a, b))
+    return verrevcmp(va, vb) or verrevcmp(ra, rb)
+
+
+class Revision(unittest.TestCase):
+    def version_with(self, field):
+        import tempfile, pkg_rows
+        with tempfile.TemporaryDirectory() as d:
+            (pathlib.Path(d) / 'pkgs/x').mkdir(parents=True)
+            (pathlib.Path(d) / 'pkgs/x/recipe.mk').write_text('')
+            real = (pkgs.paths.ports, pkg_rows.read_field)
+            pkgs.paths.ports = lambda: pathlib.Path(d)
+            pkg_rows.read_field = lambda ports, pkg, f: field if f == 'REVISION' else ''
+            try:
+                return pkgs.pkg_version({'id': 'x', 'version': '1.2'})
+            finally:
+                pkgs.paths.ports, pkg_rows.read_field = real
+
+    def test_default_is_r1(self):
+        self.assertEqual(self.version_with(''), '1.2-r1')
+
+    def test_field_sets_the_revision(self):
+        self.assertEqual(self.version_with('3'), '1.2-r3')
+
+    def test_bad_field_is_refused(self):
+        for bad in ('0', 'x', '1.5'):
+            with self.assertRaises(SystemExit):
+                self.version_with(bad)
+
+    def test_upkg_orders_upstream_then_revision(self):
+        self.assertGreater(vercmp('1.2-r2', '1.2-r1'), 0)
+        self.assertGreater(vercmp('1.2-r1', '1.2'), 0)   # an installed pre-revision feed upgrades
+        self.assertGreater(vercmp('1.3-r1', '1.2-r9'), 0)
+        self.assertGreater(vercmp('1.2-r10', '1.2-r9'), 0)
+
+
 class VariantNames(unittest.TestCase):
     def test_names_and_stage_dirs(self):
-        r = {'archive': 'up-nvim', 'version': '2.1'}
+        r = {'id': 'nvim', 'archive': 'up-nvim', 'version': '2.1'}
         self.assertEqual(pkgs.ipk_name(r), 'up-nvim_2.1_m68k-amigaos.ipk')
         self.assertEqual(pkgs.ipk_name(r, 'fpu'), 'up-nvim_2.1_m68k-amigaos-fpu.ipk')
         self.assertEqual(pkgs.stage_dir('b', 'up-nvim'), pathlib.Path('b/dist/up-nvim'))
