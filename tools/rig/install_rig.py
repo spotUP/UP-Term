@@ -1352,7 +1352,7 @@ def check_startup_after_uninstall(ck, before_text, installed_text, now_text, lea
                '%s: the %s block is still in S:User-Startup (it still boots)' % (what, name))
 
 
-def base_uninstall(ck, before, expect_user_startup_clean=True, leaves=(), installed_text='', keep_assign=(), rebooted=False):
+def base_uninstall(ck, before, expect_user_startup_clean=True, leaves=(), installed_text='', keep_assign=()):
     """Uninstall of the base (which runs the Uninstall of the add-ons that need it) gives the rig back byte for byte
     (not when a stand-alone archive's block is still there: it is not the base's to take out). The base Uninstall
     always leaves the ;BEGIN AmiSSL block (BASE_STARTUP_LEAVES), so every case compares without it; installed_text
@@ -1368,13 +1368,12 @@ def base_uninstall(ck, before, expect_user_startup_clean=True, leaves=(), instal
     left = upterm_targets(run('Assign UP-Term: EXISTS')[1])   # keep_assign: the image's own target, back after a reboot (not Install's)
     ck(all(t in keep_assign for t in left), 'after base Uninstall: no UP-Term: assign of the Install', 'left %s' % left)
     now = run('List SYS:UP-Term ALL')
-    if not rebooted:   # a reboot reloads the rig's libraries and drawers: these two compare against the image before the boot
-        stamp = lambda r: (r[0], re.sub(r'\s(Today|Yesterday|\w+day|\d\d-\w{3}-\d\d)\s+\d\d:\d\d:\d\d', '', r[1]))   # a drawer's date moves with its contents
-        ck(stamp(now) == stamp(before.sys_upterm), 'after base Uninstall: SYS:UP-Term as it was before Install',
-           'now rc %s %s, before rc %s %s' % (now[0], now[1][:300], before.sys_upterm[0], before.sys_upterm[1][:300]))
-        st = lib_state()
-        ck(st.get('ixemul.library') == before.libs.get('ixemul.library') and 'ixemul.library.orig' not in st,
-           'after base Uninstall: the original ixemul back, no .orig', 'now %s, before %s' % (st, before.libs))
+    stamp = lambda r: (r[0], re.sub(r'\s(Today|Yesterday|\w+day|\d\d-\w{3}-\d\d)\s+\d\d:\d\d:\d\d', '', r[1]))   # a drawer's date moves with its contents
+    ck(stamp(now) == stamp(before.sys_upterm), 'after base Uninstall: SYS:UP-Term as it was before Install',
+       'now rc %s %s, before rc %s %s' % (now[0], now[1][:300], before.sys_upterm[0], before.sys_upterm[1][:300]))
+    st = lib_state()
+    ck(st.get('ixemul.library') == before.libs.get('ixemul.library') and 'ixemul.library.orig' not in st,
+       'after base Uninstall: the original ixemul back, no .orig', 'now %s, before %s' % (st, before.libs))
 
 
 def addon_absent(ck, pkg, what):
@@ -2053,7 +2052,7 @@ def case_legw(ck):
        'legw (d): patina-flat is process %d, below %s started in S:User-Startup (after IPrefs); the textual order is (a)' % (flat, later))
     st = run('%s/bin/patina-flat STATUS' % dest)[1]
     ck(re.search(r'flat=(on|off) ', st) is not None, 'legw (d): the resident patch answers STATUS (stack held on this Kickstart)', st.strip()[:80])
-    base_uninstall(ck, before, rebooted=True,
+    base_uninstall(ck, before,
                    keep_assign=('VTCX:Apps',) + tuple(t for t in upterm_targets(run('Assign UP-Term: EXISTS')[1]) if 'SYS:UP-Term' not in t))
     for icon in ('Patina', 'patina-index'):
         ck(run('List >NIL: SYS:WBStartup/%s.info' % icon)[0] != 0, 'legw (e): Uninstall removed SYS:WBStartup/%s.info' % icon)

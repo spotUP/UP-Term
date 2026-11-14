@@ -171,6 +171,10 @@ If NOT EXISTS ENVARC:upkg/up-python
 EndIf
 ; Dir first: with it a window opened now would make the assign again and the
 ; drawer would be in use (config/upassign.h)
+; (kept in ENV:upflatdir first: Leg W starts patina-flat by this path, and Status knows it under exactly that name)
+If EXISTS ENVARC:up-term/Dir
+  Copy >NIL: ENVARC:up-term/Dir ENV:upflatdir CLONE
+EndIf
 Delete >NIL: ENVARC:up-term/Dir QUIET
 ; (UP-Term:VERSIONS goes with the drawer), then the assign itself
 Assign >NIL: UP-Term: EXISTS
@@ -195,6 +199,13 @@ EndIf
 ; Patina (the Super-key commodity), when it runs: stopped first with Ctrl-C (its Wait loop ends on it, the same
 ; way as its ARexx QUIT, and it needs no RexxMast), because a running program's file cannot be deleted with the
 ; drawer; its S:User-Startup block went with the other UP-Term blocks above
+; Started from its SYS:WBStartup icon (Leg W) it is no CLI process: Status does not list it and Break cannot reach it,
+; and until it ends Workbench holds UP-Term/bin, and so do patina-gui and patina-menu (they ignore Ctrl-C and end
+; only with Patina's shutdown): `Patina QUIT` sends it the ARexx QUIT through its port and waits for the port to go
+; (W8b, KS 3.1 rig, empty UP-Term/bin after a reboot). The assign is gone already, so by the drawer path.
+If EXISTS "$updest/bin/Patina"
+  "$updest/bin/Patina" >NIL: QUIT
+EndIf
 Status >ENV:upw COM UP-Term:bin/Patina
 If NOT WARN
   Break $upw C
@@ -227,6 +238,11 @@ UnSet upwait
 ; still its own), and until it is gone it holds the drawer (an empty UP-Term/bin was left behind, rig, 2026-11-08).
 Status >ENV:upw COM "$updest/bin/patina-flat"
 If WARN
+  If EXISTS ENV:upflatdir
+    Status >ENV:upw COM "$upflatdir/bin/patina-flat"
+  EndIf
+EndIf
+If WARN
   Status >ENV:upw COM UP-Term:bin/patina-flat
 EndIf
 If WARN
@@ -243,6 +259,11 @@ Status >NIL: COM "$updest/bin/patina-flat"
 If WARN
   Status >NIL: COM patina-flat
 EndIf
+If WARN
+  If EXISTS ENV:upflatdir
+    Status >NIL: COM "$upflatdir/bin/patina-flat"
+  EndIf
+EndIf
 If NOT WARN
   If NOT "$upwait" EQ ".........."
     Wait 1
@@ -251,6 +272,7 @@ If NOT WARN
   EndIf
 EndIf
 UnSet upwait
+Delete >NIL: ENV:upflatdir QUIET
 ; Your data lives in UP-Term:var (asked above): on No everything else goes
 ; and var stays where it is.
 If "$upkeepvar" EQ "YES"
