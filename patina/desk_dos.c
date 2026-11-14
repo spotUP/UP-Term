@@ -276,6 +276,28 @@ static struct Screen *dk_wb_screen(unsigned short *pens, int *npens)
     return scr;
 }
 
+/* IPREFS-FOREIGN-WINDOWS: windows of other programs on the Workbench screen (backdrop ones excluded: the Workbench and Directory Opus
+ * root windows). Ours must be closed before the call. */
+unsigned long desk_dos_deferred;
+static int dk_foreign_windows(void)
+{
+    struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
+    struct Screen *scr;
+    struct Window *w;
+    int n = 0;
+    if (IntuitionBase && (scr = ipd_lock_wb_screen()) != 0) {
+        ULONG il = LockIBase(0);
+        for (w = scr->FirstWindow; w; w = w->NextWindow)
+            if (!(w->Flags & WFLG_BACKDROP))
+                n++;
+        UnlockIBase(il);
+        UnlockPubScreen(0, scr);
+    }
+    if (IntuitionBase)
+        CloseLibrary((struct Library *)IntuitionBase);
+    return n;
+}
+
 /* Close our Workbench windows; returns 1 when the bar was open (the state to restore: the want flag is never touched).
  * Another process sends BAR STATUS / BAR OFF; the main process installs direct hooks. */
 static int dk_windows_close(void)
@@ -446,7 +468,7 @@ static int dk_apply(const gtheme *th, char *why, int cap)
     struct Screen *wb_before = 0;
     unsigned long idle = 0;
     unsigned short live[DK_SLOTS];
-    int nlive = 0, was = 0, reset = 0, ic_act, ic_snap = 0;
+    int nlive = 0, was = 0, reset = 0, ic_act, ic_snap = 0, defer = DESK_DEFER_NONE;
     static unsigned char ic_cur[DK_BUF];
     static unsigned char ic_snap_buf[DK_IC_BUF];
     long ic_len, ic_snap_len;
@@ -481,6 +503,22 @@ static int dk_apply(const gtheme *th, char *why, int cap)
     if (reset || old_ws) {
         desk_dos_wb_closes++;
         was = dk_windows_close();
+        if (reset && (defer = desk_defer_map(live, nlive, flat_pens, depth, dk_foreign_windows())) != DESK_DEFER_NONE) {
+            /* foreign windows would stall the reset behind an IPrefs requester: colours now for the pen map in force, the map and
+             * the font when they are gone (the next apply with the windows closed) */
+            reset = 0;
+            desk_dos_deferred++;
+            mask &= ~(1u << DT_FONT);
+            if (defer == DESK_DEFER_SKIP)
+                mask &= ~(1u << DT_PALETTE);
+            else
+                flat_pens = defer;
+            am_sentinel("PATINA_DEFERRED", (long)desk_dos_deferred);
+            dk_windows_open(was);
+            was = 0;
+            if (!mask)
+                return 0;
+        }
     }
     desk_dos_applies++;
     desk_dos_last_mask = mask;

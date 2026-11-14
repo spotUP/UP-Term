@@ -77,6 +77,14 @@ void desk_pens_for(int flat, unsigned char pens[DK_SLOTS]);
  * map is folded the same way before comparing; depth <= 0: unknown, no folding. */
 int desk_pens_reset(const unsigned short *cur, int ncur, int flat, int depth);
 
+/* IPREFS-FOREIGN-WINDOWS: what a pen-map reset does when other programs' windows (foreign, backdrop excluded) stand on the Workbench
+ * screen: IPrefs asks them to close ("Intuition is attempting to reset the Workbench screen"). Returns DESK_DEFER_NONE when the apply
+ * goes on as asked (no reset needed or no foreign window), else the pen map in force (0 stock, 1 flat) whose colours are written live,
+ * with the map change and the font left for later; DESK_DEFER_SKIP when the live pens match neither map (colours would land on wrong pens). */
+#define DESK_DEFER_NONE (-1)
+#define DESK_DEFER_SKIP (-2)
+int desk_defer_map(const unsigned short *live, int nlive, int flat, int depth, int foreign);
+
 /* DESK-31: 1 once the Workbench reset after a Palette USE finished. before = screen address before the write, now = the address
  * the lock gives now (0 while the screen is closed in the middle of the reset), live/nlive = its DrawInfo pens. Done = the screen
  * is open and (it is a new address, 3.1, or its pens equal the desk pens, 3.2 resets in place with the same address). */
