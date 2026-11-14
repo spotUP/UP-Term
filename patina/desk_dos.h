@@ -31,6 +31,7 @@ extern int (*desk_dos_wb_close)(void);   /* returns 1 when the bar was open */
 extern void (*desk_dos_wb_open)(int was); /* reopens it when was */
 /* how many times the apply closed the windows around a Workbench reset (the reachability sentinel of the fix) */
 extern unsigned long desk_dos_wb_closes;
+extern unsigned long desk_dos_deferred; /* IPREFS-FOREIGN-WINDOWS: applies that kept the pen map and font for later */
 /* the process's OWN windows besides the bar (the drawn menu in patina-gui): hidden before the first ENV: write, shown again after IPrefs applied; any window of ours on the Workbench screen makes IPrefs defer the palette */
 extern int (*desk_dos_own_close)(void);
 extern void (*desk_dos_own_open)(void);

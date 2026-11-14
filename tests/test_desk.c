@@ -8,6 +8,7 @@
 #include "../patina/amconf_core.h"
 #include "../patina/desk_core.h"
 #include "../patina/flat_core.h"
+#include "../patina/win_core.h"
 #include "../handler/be32.h"
 #include "harness.h"
 
@@ -607,6 +608,39 @@ static void test_desk_pens_reset(void)
 }
 
 /* FILENAME-PEN follow-up: a 4-colour (depth 2) screen holds the folded pen map, so the verdict compares against the folded map */
+static void test_desk_defer_map(void)
+{
+    unsigned char want[DK_SLOTS];
+    unsigned short cur[DK_SLOTS];
+    int i;
+    desk_pens_for(0, want);
+    for (i = 0; i < DK_SLOTS; i++)
+        cur[i] = want[i];
+    CHECK_INT(desk_defer_map(cur, DK_SLOTS, 1, 3, 1), 0);                 /* flat wanted, stock live, a foreign window: stock colours */
+    CHECK_INT(desk_defer_map(cur, DK_SLOTS, 1, 3, 0), DESK_DEFER_NONE);   /* no foreign window: the reset goes ahead */
+    CHECK_INT(desk_defer_map(cur, DK_SLOTS, 0, 3, 5), DESK_DEFER_NONE);   /* map already right: no reset, nothing to defer */
+    desk_pens_for(1, want);
+    for (i = 0; i < DK_SLOTS; i++)
+        cur[i] = want[i];
+    CHECK_INT(desk_defer_map(cur, DK_SLOTS, 0, 3, 2), 1);                 /* stock wanted, flat live: flat colours */
+    cur[0] ^= 1;
+    CHECK_INT(desk_defer_map(cur, DK_SLOTS, 0, 3, 2), DESK_DEFER_SKIP);   /* neither map: colours are not written */
+    CHECK_INT(desk_defer_map(cur, 0, 0, 3, 2), DESK_DEFER_SKIP);          /* no DrawInfo: unknown */
+}
+
+/* IPREFS rig 6 (--no-dopus, d37b8ed8): with only the Patina bar and the Workbench backdrop open every pick deferred */
+static void test_desk_window_foreign(void)
+{
+    CHECK_INT(desk_window_foreign(0, 0, "Patina bar"), 0);   /* our bar is not foreign: a theme pick on an empty desktop resets */
+    CHECK_INT(desk_window_foreign(0, 0, "Patina"), 0);
+    CHECK_INT(desk_window_foreign(1, 0, "Workbench"), 0);    /* backdrop */
+    /* rig 6 probe 4ef9dc06: the non-backdrop Workbench root window (flags 0x2220307f) deferred every pick */
+    CHECK_INT(desk_window_foreign(0, 1, "Workbench"), 0);
+    CHECK_INT(desk_window_foreign(0, 1, "Work"), 0);         /* an open drawer: Workbench closes it too */
+    CHECK_INT(desk_window_foreign(0, 0, "AmigaShell"), 1);   /* a Shell window still defers */
+    CHECK_INT(desk_window_foreign(0, 0, 0), 1);              /* an untitled window of another program */
+}
+
 static void test_desk_pens_reset_folded(void)
 {
     int flat;
@@ -2119,6 +2153,8 @@ void suite_desk(void)
     test_desk_wbgauge();
     test_desk_pens_reset();
     test_desk_pens_reset_folded();
+    test_desk_defer_map();
+    test_desk_window_foreign();
     test_desk_reset_done();
     test_desk_iprefs_idle();
     test_desk_editor_waits_iprefs();

@@ -221,6 +221,15 @@ int desk_pens_reset(const unsigned short *cur, int ncur, int flat, int depth)
     return 0;
 }
 
+int desk_defer_map(const unsigned short *live, int nlive, int flat, int depth, int foreign)
+{
+    if (foreign <= 0 || !desk_pens_reset(live, nlive, flat, depth))
+        return DESK_DEFER_NONE;
+    if (!desk_pens_reset(live, nlive, 0, depth))
+        return 0;
+    return desk_pens_reset(live, nlive, 1, depth) ? DESK_DEFER_SKIP : 1;
+}
+
 int desk_reset_done(const void *before, const void *now, const unsigned short *live, int nlive, int flat, int depth)
 {
     if (!now || nlive <= 0) /* the screen is closed for about 200 ms in the middle of the reset (rig 7, 3.2): not done, not "a new screen" */
