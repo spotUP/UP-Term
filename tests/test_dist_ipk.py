@@ -114,7 +114,7 @@ class IpkTest(unittest.TestCase):
         ctl = tarfile.open(fileobj=io.BytesIO(m['control.tar.gz']))
         self.assertEqual(sorted(ctl.getnames()), ['.', './control', './postinst', './preinst', './prerm'])
         text = ctl.extractfile('./control').read().decode()
-        for line in ('Package: up-nvim', 'Version: 2.1', 'Architecture: m68k-amigaos',
+        for line in ('Package: up-nvim', 'Version: 2.1-r1', 'Architecture: m68k-amigaos',
                      'Installed-Size: 3'):
             self.assertIn(line + '\n', text)
         self.assertNotIn('Depends', text)
