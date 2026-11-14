@@ -375,6 +375,12 @@ int desk_wbpattern_same(const unsigned char *a, long alen, const unsigned char *
  * run then makes IPrefs apply the change while Workbench still holds the screen's layer lock and icon.library's lock:
  * IPrefs and Workbench deadlock, and every later GetDiskObject (the Pointer editor, patina-index) waits for ever. */
 int desk_start_due(int done, int wb_screen_up, int tick_ok, int wb_mode_wait, int wb_ready);
+/* DOPUS-SPLASH-HOLD (user report 2026-11-14): with DOpus as the Workbench its boot splash is a foreign window on the
+ * Workbench screen when the start apply runs; the start writes made IPrefs reset the screen under it and the boot hung on
+ * the reset requester. 1: hold the start steps this tick (splash open, held for fewer than DESK_START_HOLD_MAX ticks
+ * since *since, which is set on the first held tick); 0: run them. Listers and button banks never hold (owner decision). */
+#define DESK_START_HOLD_MAX 30
+int desk_start_hold(int splash_open, long *since, long now);
 
 /* S57-START-POINTER-HANG readiness: is the LoadWB startup pass over?
  * workbench.library 45+ (OS 3.1.4, 3.2): the WORKBENCH ARexx port answered a round-trip. Workbench serves that port from

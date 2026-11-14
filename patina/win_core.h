@@ -59,6 +59,9 @@ int win_is_patina(const char *title);
  * backdrop (Workbench, Directory Opus root), not a Workbench window (wbench: WFLG_WBENCHWINDOW, the Workbench root and drawers, which
  * Workbench closes itself on CloseWorkBench) and not Patina's own (the bar closes itself through the WBRESET patch). */
 int desk_window_foreign(int backdrop, int wbench, const char *title);
+/* DOPUS-SPLASH-HOLD: the DOpus boot splash (rig 7, DOpus 5.104: the only window titled "Directory Opus"; listers carry
+ * their path, button banks no title) */
+int desk_window_splash(int backdrop, int wbench, const char *title);
 
 /* ---- BAR-STRIP-RESERVE: what the OpenWindow patch (strut_patch.c) does with a window's requested box ---------------
  * The request is read from the NewWindow / tag list by the patch; everything below is pure. */

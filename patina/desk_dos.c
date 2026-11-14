@@ -281,7 +281,7 @@ static struct Screen *dk_wb_screen(unsigned short *pens, int *npens)
 /* IPREFS-FOREIGN-WINDOWS: windows of other programs on the Workbench screen (desk_window_foreign: backdrop and Patina's own
  * windows excluded). */
 unsigned long desk_dos_deferred;
-static int dk_foreign_windows(void)
+static int dk_wb_windows(int splash_only)
 {
     struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
     struct Screen *scr;
@@ -293,7 +293,7 @@ static int dk_foreign_windows(void)
     if (IntuitionBase && (scr = ipd_lock_wb_screen()) != 0) {
         ULONG il = LockIBase(0);
         for (w = scr->FirstWindow; w; w = w->NextWindow)
-            if (desk_window_foreign((w->Flags & WFLG_BACKDROP) != 0, (w->Flags & WFLG_WBENCHWINDOW) != 0, (const char *)w->Title)) {
+            if ((splash_only ? desk_window_splash : desk_window_foreign)((w->Flags & WFLG_BACKDROP) != 0, (w->Flags & WFLG_WBENCHWINDOW) != 0, (const char *)w->Title)) {
                 const char *t = w->Title ? (const char *)w->Title : "-";
                 n++;
                 if (len < sizeof seen)
@@ -302,10 +302,17 @@ static int dk_foreign_windows(void)
         UnlockIBase(il);
         UnlockPubScreen(0, scr);
     }
-    am_sentinel_str("PATINA_FOREIGN", seen);
+    if (!splash_only)
+        am_sentinel_str("PATINA_FOREIGN", seen);
     if (IntuitionBase)
         CloseLibrary((struct Library *)IntuitionBase);
     return n;
+}
+#define dk_foreign_windows() dk_wb_windows(0)
+
+int desk_dos_splash_open(void)
+{
+    return dk_wb_windows(1) > 0;
 }
 
 /* Close our Workbench windows; returns 1 when the bar was open (the state to restore: the want flag is never touched).

@@ -641,6 +641,15 @@ static void test_desk_window_foreign(void)
     CHECK_INT(desk_window_foreign(0, 0, 0), 1);              /* an untitled window of another program */
 }
 
+/* DOPUS-SPLASH-HOLD, rig 7 (DOpus 5.104 boot): only the splash holds the start apply */
+static void test_desk_window_splash(void)
+{
+    CHECK_INT(desk_window_splash(0, 0, "Directory Opus"), 1);
+    CHECK_INT(desk_window_splash(0, 0, "RAM Disk,  1G free, 14K in use, 0% full"), 0);   /* a lister */
+    CHECK_INT(desk_window_splash(0, 0, 0), 0);                /* a button bank */
+    CHECK_INT(desk_window_splash(1, 0, "Directory Opus"), 0); /* never a backdrop */
+}
+
 static void test_desk_pens_reset_folded(void)
 {
     int flat;
@@ -1702,6 +1711,20 @@ static void test_desk_wb_backdrop_invoke(void)
 }
 
 /* S32-START-LOOK: Patina starts before LoadWB; the start look waits for the Workbench screen, then runs once */
+static void test_desk_start_holds_for_dopus_splash(void)
+{
+    long since = -1;
+    CHECK_INT(desk_start_hold(0, &since, 5), 0);   /* no splash: run */
+    CHECK_INT((int)since, -1);
+    CHECK_INT(desk_start_hold(1, &since, 6), 1);   /* splash up: hold, from tick 6 */
+    CHECK_INT((int)since, 6);
+    CHECK_INT(desk_start_hold(1, &since, 6 + DESK_START_HOLD_MAX - 1), 1);
+    CHECK_INT(desk_start_hold(1, &since, 6 + DESK_START_HOLD_MAX), 0);   /* stuck splash: run anyway */
+    since = -1;
+    CHECK_INT(desk_start_hold(1, &since, 10), 1);
+    CHECK_INT(desk_start_hold(0, &since, 11), 0);  /* splash closed: run */
+}
+
 static void test_desk_start_waits_for_workbench(void)
 {
     CHECK_INT(desk_start_due(0, 0, 1, 0, 1), 0);  /* boot: no Workbench screen yet, the tick runs: wait */
@@ -2229,6 +2252,7 @@ void suite_desk(void)
     test_desk_pens_reset_folded();
     test_desk_defer_map();
     test_desk_window_foreign();
+    test_desk_window_splash();
     test_desk_reset_done();
     test_desk_iprefs_idle();
     test_desk_editor_waits_iprefs();
@@ -2262,6 +2286,7 @@ void suite_desk(void)
     test_desk_preview();
     test_desk_confirm();
     test_desk_persist();
+    test_desk_start_holds_for_dopus_splash();
     test_desk_start_waits_for_workbench();
     test_desk_wb_backdrop_invoke();
 }

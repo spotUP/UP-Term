@@ -286,6 +286,7 @@ static void welcome_maybe(void)
  * opens it; ipd_lock_wb_screen never opens a closed Workbench (BOOT-31-WB-DEADLOCK), so these steps found no screen
  * and wrote nothing. Run once at start when the screen is up, else on the first tick that finds it (desk_start_due). */
 static int g_desk_started, g_tick_ok;
+static long g_splash_since = -1;
 static void desk_start_gate(long now)
 {
     struct Screen *scr;
@@ -300,6 +301,8 @@ static void desk_start_gate(long now)
     ready = scr && g_tick_ok && !g_wb_hold ? desk_dos_wb_ready(now) != DESK_WBR_WAIT : 1;
     if (!desk_start_due(g_desk_started, scr != 0, g_tick_ok, g_wb_hold, ready))
         return;                                 /* S32-GREEN-LINE-96: wb_gate runs first on the tick and ends the hold */
+    if (scr && g_tick_ok && desk_start_hold(desk_dos_splash_open(), &g_splash_since, now))
+        return;                                 /* DOPUS-SPLASH-HOLD: no IPrefs write while the DOpus splash is up */
     g_desk_started = 1;
     desk_dos_flat_ensure();                     /* FLAT-ABSENT-AT-BOOT: flat on means patina-flat runs before any flat pen reaches the screen here */
     desk_dos_flat_pens_refresh();               /* FLAT-PENS-STALE-FILE: after the windows (or the W43 hold) are set up, the hooks above close/reopen them around a reset */

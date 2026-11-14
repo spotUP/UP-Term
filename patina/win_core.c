@@ -199,6 +199,11 @@ int desk_window_foreign(int backdrop, int wbench, const char *title)
     return !backdrop && !wbench && !win_is_patina(title);
 }
 
+int desk_window_splash(int backdrop, int wbench, const char *title)
+{
+    return desk_window_foreign(backdrop, wbench, title) && title && !strcmp(title, "Directory Opus");
+}
+
 int win_snap(win_box *b, win_arg arg, int gap, const win_screen *s)
 {
     int x0, y0, w, h, cw, ch, x, y, nw, nh;

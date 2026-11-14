@@ -1540,6 +1540,15 @@ int desk_start_due(int done, int wb_screen_up, int tick_ok, int wb_mode_wait, in
     return !done && !wb_mode_wait && ((wb_screen_up && wb_ready) || !tick_ok);
 }
 
+int desk_start_hold(int splash_open, long *since, long now)
+{
+    if (!splash_open)
+        return 0;
+    if (*since < 0)
+        *since = now;
+    return now - *since < DESK_START_HOLD_MAX;   /* a splash that never closes does not keep the look off for ever */
+}
+
 int desk_wb_ready_state(int wb_version, int answered, int idle_ticks, long elapsed_ticks, long timeout_ticks)
 {
     if (wb_version >= DESK_WB_AREXX_VERSION ? answered : idle_ticks >= DESK_WB_IDLE_TICKS)
