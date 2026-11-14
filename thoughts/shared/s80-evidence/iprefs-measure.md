@@ -94,3 +94,19 @@ Case 1: FAIL (expected DESKMASK 15, DEFERRED 0; got 6 / +1 per pick). Case 2: de
 Observation for the next fix: dk_foreign_windows runs AFTER dk_windows_close() (desk_dos.c ~505-507), so the bar is already closed when counting; the
 title exclusion cannot be what keeps the count above 0. Some other window on the Workbench screen at that moment (not "Patina"/"Patina bar"/backdrop;
 e.g. a menu/prefs/untitled window, or a window the bar close leaves behind) is counted. Identify it by logging title+flags of each counted window.
+
+## Foreign-window probe
+Uncommitted probe in patina/desk_dos.c dk_foreign_windows publishes PATINA_FOREIGN = "title/flagshex;" per counted window. Build: `buildq ... make amiga`
+(Patina 13:49:56, newer than desk_dos.c 13:42:01). Rig 6: `UPTERM_RIG=6 tools/rig/rig.py start --os 32 --no-dopus --fresh --allow-stale-base ... --purpose "s80 vtcon session: IPREFS foreign-window probe"`,
+`patina_gui_rig.py --setup`, then scratch driver (m.py variant: prefs desktop-theme on, flat off, welcome-shown on; `pick(keep=True)`, 10 s settle; reads `GetEnv PATINA_FOREIGN` and read_ui window list). Rig stopped, status down.
+
+Pick source: the Patina drawn menu (hotkey, Style > Patina theme), a Patina-owned menu, no prefs UI window. Windows on "Amiga Workbench" screen at pick time: `Patina bar`, `Workbench`.
+
+| case | pick | PATINA_FOREIGN (verbatim) | DESKMASK | DEFERRED | windows after |
+|---|---|---|---|---|---|
+| 1 no foreign window | tokyo-night -> vantablack | `Workbench/2220307f;` | 6 | 1 | Patina bar, Workbench |
+| 2 one Shell (MeasureShell) | -> white | `MeasureShell/2820104f;Workbench/2220307f;` | 6 | 2 | Patina bar, System Request (IPrefs, Retry/Cancel), MeasureShell, Workbench |
+
+Finding: the unknown counted window is the Workbench root window, title `Workbench`, flags 0x2220307f. Its WFLG_BACKDROP (0x100) bit is NOT set
+(0x307f has bit 8 clear), so desk_window_foreign(backdrop=0, "Workbench") counts it. Fix: exclude it (title "Workbench" or the screen's root/WBENCHWINDOW flag 0x2000 ...
+unverified which bit; 0x2220307f has WFLG_WBENCHWINDOW-era bits) in desk_window_foreign, not only by BACKDROP flag. Case 2 also shows the IPrefs System Request after the pick, as before.
