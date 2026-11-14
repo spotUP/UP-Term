@@ -74,3 +74,23 @@ Answers:
 Verdict: FAILS. Option A's defer is taken even with no foreign windows, so the normal reset/palette/font path never runs on this rig, and the
 requester with a Shell open is not avoided. Next: make dk_foreign_windows ignore Patina's own windows (check by window title/owner) and re-measure.
 Not measured: the undeferred baseline (never reached).
+
+## Re-measure after 9b27ae98
+Result: FAIL for case 1 (no foreign window still defers), case 2 (one Shell defers) as expected, but the IPrefs requester still appears.
+Build: build/amiga/Patina was STALE (13:13, before win_core.c 13:23); rebuilt with `~/.claude/bin/buildq --purpose "s80 vtcon iprefs: rig build" -- make amiga`
+(Patina 13:27, patina-gui 13:28) before measuring. Rig 6: `UPTERM_RIG=6 tools/rig/rig.py start --os 32 --no-dopus --fresh --allow-stale-base "..." --purpose "s80 vtcon session: IPREFS no-dopus measure"`,
+then `patina_gui_rig.py --setup`. Same driver as before (scratch copy of the earlier one; prefs desktop-theme on, flat off, welcome-shown on; Keep click fails
+with "no window titled" as before, no Keep requester), 12 s settle per pick. Rig stopped afterwards.
+
+| case | pick | windows before | DESKS | DESKMASK | WBCLOSES | DEFERRED | pens changed | IPrefs System Request |
+|---|---|---|---|---|---|---|---|---|
+| 1 no foreign window | tokyo-night -> vantablack | `Patina bar`, backdrop | 1 | 6 | 1 | 1 | no | none |
+| 1 | -> white | same | 2 | 6 | 2 | 2 | no | none |
+| 2 one Shell | -> vantablack | `AmigaShell`, `Patina bar` | 1 | 6 | 1 | 1 | no | YES (Retry/Cancel, after the pick) |
+| 2 | -> white | same | 2 | 6 | 2 | 2 | no | YES (still/again) |
+
+Pens `0 1 2 2 253 3 0 0 2 2 0 253` and screen address unchanged throughout. Case 2 run died at pick 3 (theme list timeout, stuck requester); not needed.
+Case 1: FAIL (expected DESKMASK 15, DEFERRED 0; got 6 / +1 per pick). Case 2: defers as expected, but the requester still appears, so deferral does not avoid it.
+Observation for the next fix: dk_foreign_windows runs AFTER dk_windows_close() (desk_dos.c ~505-507), so the bar is already closed when counting; the
+title exclusion cannot be what keeps the count above 0. Some other window on the Workbench screen at that moment (not "Patina"/"Patina bar"/backdrop;
+e.g. a menu/prefs/untitled window, or a window the bar close leaves behind) is counted. Identify it by logging title+flags of each counted window.
