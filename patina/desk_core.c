@@ -1274,6 +1274,22 @@ int desk_persist_pairs(unsigned mask, int wbprefs, const char **env, const char 
     return n;
 }
 
+unsigned desk_start_persist_mask(unsigned plan, int flat, int pending)
+{
+    unsigned m = 0;
+    if (pending || !plan)
+        return 0;
+    if (plan & DESK_START_PATTERN)
+        m |= 1u << DT_WBPATTERN;
+    if ((plan & DESK_START_PALETTE) || flat)
+        m |= 1u << DT_PALETTE;
+    if (plan & DESK_START_POINTER)
+        m |= 1u << DT_POINTER;
+    if (plan & DESK_START_FONT)
+        m |= 1u << DT_FONT;
+    return m;
+}
+
 unsigned desk_off_mask(unsigned saved, unsigned desk_mask)
 {
     return saved & ~desk_mask & ~(1u << DT_ICONTROL);

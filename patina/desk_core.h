@@ -362,6 +362,11 @@ long desk_start_palette(unsigned mask, int flat, const gtheme *th, int depth, co
 long desk_start_prefs(int target, unsigned mask, const gtheme *th, int text_mode, desk_font_exists_fn exists, void *ctx,
                       const unsigned char *cur, long curlen, unsigned char *out, long cap);
 int desk_start_icontrol(unsigned mask, const gtheme *th, const unsigned char *cur, long curlen, const unsigned char *snap, long snaplen, int *snapshot);
+/* S82-START-PERSIST: the targets (bit t = target t) whose ENV: file the start apply of plan wrote and also copies to ENVARC:, so the next boot
+ * (ENV: rebuilt from ENVARC:) plans 0 and IPrefs resets no screen under Directory Opus' windows. Flat pens may rewrite palette.prefs too.
+ * Icontrol writes both copies itself; Workbench.prefs is the wbprefs flag of desk_persist_pairs (plan & DESK_START_WB). 0 while a pick
+ * waits for Keep (pending): R1.10, an unconfirmed theme never reaches ENVARC:. */
+unsigned desk_start_persist_mask(unsigned plan, int flat, int pending);
 /* 1 when two wbpattern.prefs show the same pens (the editor stores an all-pen-0 chunk with depth 1) */
 int desk_wbpattern_same(const unsigned char *a, long alen, const unsigned char *b, long blen);
 /* S32-START-LOOK: Patina starts from S:User-Startup, before LoadWB opens the Workbench screen, and every start step
