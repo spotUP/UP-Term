@@ -68,5 +68,15 @@ check are pending: buildq held 10 entries from other sessions ahead of ours.
 - Rig: PENDING. Pass = STATUS sums contain f8b63678, patched=15, arrow>0.
   Pixel read: eye check owed (no nested image agent allowed).
 
+## Remaining (in order)
+1. buildq: `make test-one SUITE=flat_core` (nice 19). Fix failures, re-run only flat_core.
+2. buildq: `make worktree-ready`, `make flat-budget`, `make -j2 amiga`; record patina-flat md5.
+3. Rig (free, not 7/81), purpose "up-term-e8: DT-11 arrow check": install, open a
+   DOpus lister, read STATUS (pass criteria above), eye check of the arrow, stop rig.
+4. Fill Results, drop "WIP:" from the commit subject (amend or follow-up commit).
+Stopped because: tool budget hit while buildq was blocked (10 entries from
+other sessions ahead; running Selecta build at 0% CPU for 35+ min). Our queue
+entries were withdrawn.
+
 ## Cleanup
 - No rig started. Scratch: scratchpad/dt11 (small, under 1 MB).
