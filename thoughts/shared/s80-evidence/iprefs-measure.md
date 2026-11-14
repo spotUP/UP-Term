@@ -47,3 +47,30 @@ Answers:
 Verdict: INCONCLUSIVE, with one defect: desk_defer_map defers whenever any non-backdrop window stands on the screen, including DOpus listers, so on a DOpus
 Workbench the full reset/palette path never runs (mask 6, pens unchanged) even with no user window open. Whether Patina's own windows ("Patina bar") are
 excluded was not isolated. Not measured: picks on a no-DOpus Workbench, the undeferred baseline, the system-request source.
+
+## Rig measurement (no DOpus)
+Rig 6, `--os 32 --no-dopus --fresh`, Patina from this branch (build/amiga, `patina_gui_rig --setup`), prefs: desktop-theme on, flat off, welcome-shown on
+(the Welcome window is a separate patina-gui window and would count as foreign), fresh Patina process (counters from 0), Keep clicked, 10 s settle.
+Driver: scratch script around `patina_desk_rig.pick()`. Earlier attempts this session were contaminated (a leftover Welcome window, leftover
+Shell and IPrefs requester, and a concurrent second driver) and are discarded; the table is the last clean run on a freshly reset rig.
+Windows on the Workbench screen before the first pick (read via read_ui): `Patina bar` and the `Workbench` backdrop only.
+
+| pick | situation | DESKS | DESKMASK | WBCLOSES | DEFERRED | pens changed | screen reset | IPrefs System Request |
+|---|---|---|---|---|---|---|---|---|
+| p1 tokyo-night -> vantablack | no Shell, no DOpus | 1 | 6 | 1 | 1 | no | no | none |
+| p2 -> white | same | 2 | 6 | 2 | 2 | no | no | none |
+| p3 -> vantablack | one Shell (MeasureShell) open | 3 | 6 | 3 | 3 | no | no | YES, Retry|Cancel, appeared after this pick |
+
+Pens `0 1 2 2 253 3 0 0 2 2 0 253` and font.prefs length (518) identical after every pick; screen address constant.
+
+Answers:
+1. No foreign user window: the pick does NOT take the undeferred path. DEFERRED +1 on every pick, DESKMASK 6 (not 15), no pen/palette/font change,
+   no reset. So the deferral trigger is not DOpus: with only `Patina bar` + the Workbench backdrop on the screen, dk_foreign_windows still reports
+   a foreign window (or the defer decision is made on another input). Suspect: Patina's own bar window (or the backdrop) is not excluded.
+2. With one Shell: DEFERRED +1 as in the no-Shell case (no difference), and an IPrefs System Request (Retry|Cancel) appeared after the pick. It was
+   absent after p1 and p2, so with a Shell open the requester is attributable to the pick (it stands on the Workbench screen, title "System Request").
+   Open question for the fix: the deferred path still wrote something that made IPrefs ask to close the Shell (palette file written for the live map?).
+
+Verdict: FAILS. Option A's defer is taken even with no foreign windows, so the normal reset/palette/font path never runs on this rig, and the
+requester with a Shell open is not avoided. Next: make dk_foreign_windows ignore Patina's own windows (check by window title/owner) and re-measure.
+Not measured: the undeferred baseline (never reached).
