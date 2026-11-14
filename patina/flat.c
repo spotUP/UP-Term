@@ -379,8 +379,9 @@ static int rp_side(flatshared *r, const struct RastPort *rp)
  * the ring belongs to flat, so refill the overlap with the edge pen through the saved RectFill. A function of its own, with the
  * rects handed to c2_ring_fill one by one, so no rect array is part of c2_draw's frame (flat budget). */
 /* The ring of the window the image draws in: 0 = none to protect (no window, outline off, RectFill patch not saved, borderless). */
-static int c2_ring_get(flatshared *r, const flat_state *ps, struct impDraw *d, flat_ring *ring)
+static int c2_ring_get(flatshared *r, struct impDraw *d, flat_ring *ring)
 {
+    const flat_state *ps = st_rp(r, d->imp_RPort);   /* here, not a parameter: off the deepest chain (flat budget) */
     struct Window *rw = d->imp_RPort->Layer ? (struct Window *)d->imp_RPort->Layer->Window : NULL;
     if (!rw || !ps->pen_outline || !r->rsw.saved || (rw->Flags & WFLG_BORDERLESS))
         return 0;
@@ -389,11 +390,11 @@ static int c2_ring_get(flatshared *r, const flat_state *ps, struct impDraw *d, f
     return 1;
 }
 
-static void c2_ring_refill(flatshared *r, const flat_state *ps, struct impDraw *d, struct Image *im, int drawn)
+static void c2_ring_refill(flatshared *r, struct impDraw *d, struct Image *im, int drawn)
 {
     flat_ring ring;
     UBYTE fg = d->imp_RPort->FgPen;
-    if (c2_ring_get(r, ps, d, &ring) &&
+    if (c2_ring_get(r, d, &ring) &&
         flat_ring_refill_after(drawn, &ring, im->LeftEdge + d->imp_Offset.X, im->TopEdge + d->imp_Offset.Y, im->Width, im->Height,
                                d->imp_RPort) > 0)
         SetAPen(d->imp_RPort, fg);
@@ -403,8 +404,9 @@ static void c2_ring_refill(flatshared *r, const flat_state *ps, struct impDraw *
  * set is 10 bytes on the draw task's stack. */
 typedef struct { short frame, knob, text, band, edge; } c2_pens;
 
-static void c2_get_pens(flatshared *r, const flat_state *ps, struct impDraw *d, struct Image *im, ULONG which, c2_pens *p)
+static void c2_get_pens(flatshared *r, struct impDraw *d, struct Image *im, ULONG which, c2_pens *p)
 {
+    const flat_state *ps = st_rp(r, d->imp_RPort);   /* here, not a parameter: keeps c2_draw's frame inside the flat budget */
     p->frame = -1; p->knob = -1; p->text = -1; p->band = 9999; p->edge = -1;
     /* FLAT-GADGET-BG: the pen of the frame the gadget sits on, so the box shows only the glyph lines. A window gadget
      * sits on the border (the background pen in both states: FLAT-SOLID-FILL); a screen bar gadget on
@@ -573,7 +575,7 @@ static void img_note_dispose(Object *obj)
 
 /* The clone draw of one gadget image: 1 when it was drawn (the caller is done), 0 to fall back to the block glyph. Its own function
  * so the clone's environment is not part of c2_draw's frame (flat budget). */
-static int c2_clone(struct Hook *hk, const flat_state *ps, Object *obj, Msg msg, int reg, ULONG which, ULONG raw_which, const c2_pens *p)
+static int c2_clone(struct Hook *hk, Object *obj, Msg msg, int reg, ULONG which, ULONG raw_which, const c2_pens *p)
 {
     flatshared *r = g_r;
     struct impDraw *d = (struct impDraw *)msg;
@@ -606,7 +608,7 @@ static int c2_clone(struct Hook *hk, const flat_state *ps, Object *obj, Msg msg,
     if (got)
         ReleaseSemaphore(&cl_ss);
     if (rc == FLAT_CLONE_OK) {
-        c2_ring_refill(r, ps, d, im, 1);
+        c2_ring_refill(r, d, im, 1);
         r->cdraws++;
         return 1;
     }
@@ -615,7 +617,7 @@ static int c2_clone(struct Hook *hk, const flat_state *ps, Object *obj, Msg msg,
     return 0;
 }
 
-static int c2_glyph(const flat_state *ps, Object *obj, Msg msg, ULONG which, const c2_pens *p)
+static int c2_glyph(Object *obj, Msg msg, ULONG which, const c2_pens *p)
 {
     flatshared *r = g_r;
     struct impDraw *d = (struct impDraw *)msg;
@@ -627,7 +629,7 @@ static int c2_glyph(const flat_state *ps, Object *obj, Msg msg, ULONG which, con
     int drawn = flat_glyph_draw(st_rp(r, d->imp_RPort), which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
                            im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, p->frame, p->knob, p->text, side,
                            c2_fill, d->imp_RPort);
-    c2_ring_refill(r, ps, d, im, drawn);    /* S71-DOPUS-BORDER-BREAK: the box fill covered the window outline; same refill as the clone path */
+    c2_ring_refill(r, d, im, drawn);    /* S71-DOPUS-BORDER-BREAK: the box fill covered the window outline; same refill as the clone path */
     return drawn;
 }
 #define NOWHICH 0xFFFFFFFFUL
@@ -651,6 +653,13 @@ static ULONG c2_which_31(Object *obj, struct impDraw *d)
 }
 
 static int c8_draw_on(Object *obj, Msg msg, int tick_pen);
+/* No rastport, or the per-screen state is off or held. A function of its own so no extra register stays saved in c2_draw's frame
+ * (flat budget). */
+static int c2_off(flatshared *r, const struct impDraw *d)
+{
+    return !d->imp_RPort || !st_rp(r, d->imp_RPort)->enabled || r->st.held;
+}
+
 static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
 {
     flatshared *r = g_r;
@@ -658,12 +667,8 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
     struct Image *im = (struct Image *)obj;
     ULONG which = 0xFFFF, raw_which;
     c2_pens pens;
-    const flat_state *ps;
     r->st.calls++;
-    if (msg->MethodID != FLAT_IM_DRAW || !d->imp_RPort)
-        return 0;
-    ps = st_rp(r, d->imp_RPort);
-    if (!ps->enabled || r->st.held)
+    if (msg->MethodID != FLAT_IM_DRAW || c2_off(r, d))
         return 0;
     if (cl_task && cl_task == FindTask(NULL))
         return 0;                   /* a nested image draw inside the clone's own system call: the system draws it */
@@ -674,12 +679,12 @@ static int c2_draw(struct Hook *hk, Object *obj, Msg msg, int reg)
         return 0;
     raw_which = which;
     which = flat_which_alias(which);
-    c2_get_pens(r, ps, d, im, which, &pens);
+    c2_get_pens(r, d, im, which, &pens);
     if (flat_check_image(which))
         return c8_draw_on(obj, msg, pens.text);   /* S74-CHECKBOX-GROUND; pen fallback in check_draw keeps this frame small */
-    if (flat_clone_route(&r->st, which, msg->MethodID) && c2_clone(hk, ps, obj, msg, reg, which, raw_which, &pens))
+    if (flat_clone_route(&r->st, which, msg->MethodID) && c2_clone(hk, obj, msg, reg, which, raw_which, &pens))
         return 1;
-    return c2_glyph(ps, obj, msg, which, &pens);
+    return c2_glyph(obj, msg, which, &pens);
 }
 
 ULONG c2_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1") Msg msg)
@@ -713,8 +718,8 @@ static int d5_draw(struct Hook *h, Object *obj, Msg msg)
     ps = st_rp(r, d->imp_RPort);
     if (!ps->enabled || r->st.held)
         return 0;
-    c2_get_pens(r, ps, d, im, (ULONG)which, &pens);
-    if (!c2_glyph(ps, obj, msg, (ULONG)which, &pens))
+    c2_get_pens(r, d, im, (ULONG)which, &pens);
+    if (!c2_glyph(obj, msg, (ULONG)which, &pens))
         return 0;
     r->d5draws++;
     return 1;
