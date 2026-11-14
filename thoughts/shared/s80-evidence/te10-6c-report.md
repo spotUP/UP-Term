@@ -18,3 +18,15 @@ Open design question: thread `const flat_state *ps` as a parameter into the new 
 ## Build/test (3 commits applied)
 Results (3 ported commits + 1 test-fix commit): flat_core 4550 checks 0 failed; flat_role_core 73 checks 0 failed; flat_pens_per_screen OK; flat_role_enum_names OK; make flat-budget PASS.
 Two ported tests needed fixes for main: tests/test_flat_role_core.c called desk_flat_state with 3 args (main takes 4; added aa=1); tests/test_flat_role_enum_names.py used amarchy/ paths (now patina/). make amiga not run.
+
+## Update (S80): stop point resolved, branch still not mergeable
+81a5db97 and its follow-ups were ported after this report: f35ed690 (hook gates read the per-screen state pointer), 8e0c2747 (screen-bar layer, ghost_menu, Directory Opus patch), 892363a1, 422e6cd2 (pubscreen helper SHAREPENS). Design choice taken: helpers compute `ps` themselves where that keeps the stack frame small; `ps` is a parameter only where the old commit already had one and the budget allows.
+
+Flat-budget regression and fix (712e36f8): after the port, c2_draw saved d4 (frame 48 instead of 44), so the _c2_disp_reg chain reached 324 of 384 (headroom 60 < 64, FAIL). Fix: new `c2_off(r, d)` holds the RPort/enabled/held guard; c2_get_pens and c2_ring_get call `st_rp(r, d->imp_RPort)` themselves instead of taking `ps`; c2_ring_refill is back to `(r, d, im, drawn)`. Result: headroom 64 (chain 320), make flat-budget PASS, make amiga rc=0, flat_core 4559/0, flat_role_core 73/0. Tried and rejected: inlining ps in c2_glyph (frame grew to 56).
+
+Judgement calls to review before merge:
+- flat_gr_match, flat_gh_match and pen_back read `ps` instead of `&r->st`.
+- d4_flat_pens keys the DrawInfo pen array via offsetof(struct DrawInfo, dri_Pens).
+- ghost_menu returns 0 when `!ps->enabled`.
+
+Blocker: rig check 2 (thoughts/shared/research/s61-evidence/te10-6c-rig-check-2.md) shows the plan is counted but no pens are written and flat frames are not drawn on a non-Workbench screen. Owner moved brief 3 behind the release. Do not merge.
