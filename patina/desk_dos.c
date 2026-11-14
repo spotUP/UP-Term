@@ -14,6 +14,7 @@
 #include "gthemes_dos.h"
 #include "rexx_host.h"
 #include "desk_core.h"
+#include "win_core.h"
 #include "bar_core.h"
 #include "menu_theme.h"
 #include "dopustb_dos.h"
@@ -276,8 +277,8 @@ static struct Screen *dk_wb_screen(unsigned short *pens, int *npens)
     return scr;
 }
 
-/* IPREFS-FOREIGN-WINDOWS: windows of other programs on the Workbench screen (backdrop ones excluded: the Workbench and Directory Opus
- * root windows). Ours must be closed before the call. */
+/* IPREFS-FOREIGN-WINDOWS: windows of other programs on the Workbench screen (desk_window_foreign: backdrop and Patina's own
+ * windows excluded). */
 unsigned long desk_dos_deferred;
 static int dk_foreign_windows(void)
 {
@@ -288,7 +289,7 @@ static int dk_foreign_windows(void)
     if (IntuitionBase && (scr = ipd_lock_wb_screen()) != 0) {
         ULONG il = LockIBase(0);
         for (w = scr->FirstWindow; w; w = w->NextWindow)
-            if (!(w->Flags & WFLG_BACKDROP))
+            if (desk_window_foreign((w->Flags & WFLG_BACKDROP) != 0, (const char *)w->Title))
                 n++;
         UnlockIBase(il);
         UnlockPubScreen(0, scr);

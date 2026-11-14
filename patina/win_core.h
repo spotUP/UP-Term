@@ -55,6 +55,10 @@ void win_usable(const win_screen *s, win_box *b);
  * target of the win verbs, never tiled. */
 int win_is_patina(const char *title);
 
+/* IPREFS-FOREIGN-WINDOWS (desk_dos.c dk_foreign_windows): 1 when a Workbench-screen window counts as another program's: not a
+ * backdrop (Workbench, Directory Opus root) and not Patina's own (the bar closes itself on CloseWorkBench through the WBRESET patch). */
+int desk_window_foreign(int backdrop, const char *title);
+
 /* ---- BAR-STRIP-RESERVE: what the OpenWindow patch (strut_patch.c) does with a window's requested box ---------------
  * The request is read from the NewWindow / tag list by the patch; everything below is pure. */
 typedef struct win_strut_req {

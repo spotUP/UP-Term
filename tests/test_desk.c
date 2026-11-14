@@ -8,6 +8,7 @@
 #include "../patina/amconf_core.h"
 #include "../patina/desk_core.h"
 #include "../patina/flat_core.h"
+#include "../patina/win_core.h"
 #include "../handler/be32.h"
 #include "harness.h"
 
@@ -625,6 +626,16 @@ static void test_desk_defer_map(void)
     cur[0] ^= 1;
     CHECK_INT(desk_defer_map(cur, DK_SLOTS, 0, 3, 2), DESK_DEFER_SKIP);   /* neither map: colours are not written */
     CHECK_INT(desk_defer_map(cur, 0, 0, 3, 2), DESK_DEFER_SKIP);          /* no DrawInfo: unknown */
+}
+
+/* IPREFS rig 6 (--no-dopus, d37b8ed8): with only the Patina bar and the Workbench backdrop open every pick deferred */
+static void test_desk_window_foreign(void)
+{
+    CHECK_INT(desk_window_foreign(0, "Patina bar"), 0);   /* our bar is not foreign: a theme pick on an empty desktop resets */
+    CHECK_INT(desk_window_foreign(0, "Patina"), 0);
+    CHECK_INT(desk_window_foreign(1, "Workbench"), 0);    /* backdrop */
+    CHECK_INT(desk_window_foreign(0, "AmigaShell"), 1);   /* a Shell window still defers */
+    CHECK_INT(desk_window_foreign(0, 0), 1);              /* an untitled window of another program */
 }
 
 static void test_desk_pens_reset_folded(void)
@@ -2140,6 +2151,7 @@ void suite_desk(void)
     test_desk_pens_reset();
     test_desk_pens_reset_folded();
     test_desk_defer_map();
+    test_desk_window_foreign();
     test_desk_reset_done();
     test_desk_iprefs_idle();
     test_desk_editor_waits_iprefs();

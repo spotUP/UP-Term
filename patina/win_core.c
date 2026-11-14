@@ -194,6 +194,11 @@ int win_is_patina(const char *title)
     return title && (!strcmp(title, "Patina") || !strcmp(title, "Patina bar"));
 }
 
+int desk_window_foreign(int backdrop, const char *title)
+{
+    return !backdrop && !win_is_patina(title);
+}
+
 int win_snap(win_box *b, win_arg arg, int gap, const win_screen *s)
 {
     int x0, y0, w, h, cw, ch, x, y, nw, nh;
