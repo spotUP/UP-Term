@@ -110,3 +110,20 @@ Pick source: the Patina drawn menu (hotkey, Style > Patina theme), a Patina-owne
 Finding: the unknown counted window is the Workbench root window, title `Workbench`, flags 0x2220307f. Its WFLG_BACKDROP (0x100) bit is NOT set
 (0x307f has bit 8 clear), so desk_window_foreign(backdrop=0, "Workbench") counts it. Fix: exclude it (title "Workbench" or the screen's root/WBENCHWINDOW flag 0x2000 ...
 unverified which bit; 0x2220307f has WFLG_WBENCHWINDOW-era bits) in desk_window_foreign, not only by BACKDROP flag. Case 2 also shows the IPrefs System Request after the pick, as before.
+
+## Wbench-window fix re-measure (84eb0418)
+Build/Patina newer than desk_dos.c and win_core.c (no rebuild). The probe in dk_foreign_windows (PATINA_FOREIGN) is the earlier uncommitted probe, still in the scratch driver output; the committed tip publishes it as before.
+Rig 6: `rig.py start --os 32 --no-dopus --fresh --allow-stale-base ... --purpose "s80 vtcon session: IPREFS wbench-window fix re-measure"`, `patina_gui_rig.py --setup`, scratch driver fp.py (same as the probe: prefs desktop-theme on, flat off, welcome-shown on; Patina menu pick, 10 s settle). Rig stopped, status down.
+
+| case | pick | PATINA_FOREIGN | DESKMASK | DEFERRED | WBCLOSES | IPrefs System Request (10 s after pick) |
+|---|---|---|---|---|---|---|
+| 1 no foreign window | p1 tokyo-night -> vantablack | empty | 15 | unset (0) | 1 | none |
+| 1 | p2 -> white | empty | 15 | unset (0) | 2 | none |
+| 2 one Shell (MeasureShell) | p3 -> vantablack | `MeasureShell/2820104f;` | 6 | 1 | 3 | YES, Retry/Cancel, task IPrefs |
+
+Windows: case 1 after every pick `Patina bar`, `Workbench`. Case 2 after the pick (10 s): `System Request`, `Patina bar`, `MeasureShell`, `Workbench`; the requester was still open when re-read minutes later and was answered with Cancel (one click; it closed).
+Requester timing: only sampled at 10 s after the pick (driver reads once); absent before the pick (Shell opened, requester list empty). Finer timing not measured.
+Pens `0 1 2 2 253 3 0 0 2 2 0 253`, font.prefs length 518 and screen address unchanged on all picks (pens did not change even on the undeferred picks; not investigated here).
+
+Case 1: PASS (PATINA_FOREIGN empty, DESKMASK 15, DEFERRED not incremented, no requester).
+Case 2: as expected, FOREIGN names only the Shell and the pick is deferred, but the IPrefs requester still appears, so deferral does not avoid it.
