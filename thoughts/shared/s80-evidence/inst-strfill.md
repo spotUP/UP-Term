@@ -61,3 +61,31 @@ Every INPUT-GROUND entry point misses it:
 3. `buildq --purpose "up-term-e8: installer string field fill" -- make test ONLY=<flat suite>`, then the
    Amiga build, rig check with the same driver, compare rows 327..346 (field fill must not be 1a1b26).
 4. Owner eye check owed after the fix: Installer, DOpus5 install, "Where to install" page, field visible.
+
+## Probe 2 (rig 183, 2026-11-15, subagent up-term-e8)
+
+- Reached the askdir page again by script (gadgets 89..100 present, 92 = string). Rows 327..346 x 158..641
+  still all 1a1b26 apart from the "SYS:" text (a9b1d6, e5e4d9) and cursor (564e29). No fill, no frame. Repro holds.
+- StringExtend on gadget 92: NOT YET MEASURED. The ARexx IMPORT peek of ActiveWindow->FirstGadget returned
+  nothing on the first try (rexxsupport.library not loaded for SHOWLIST); the second try, with ADDLIB, left the
+  rig's wasabid unresponsive ("daemon did not answer for 15 s"), so rig 183 was stopped. Probable cause: the
+  IMPORT walk read a bad address. Next try: read the gadget list from the host (UITREE gives id 92 at
+  164,331 472x12) via a wasabid memory read instead of ARexx, or peek only Gadget+12/+14 (Flags, Activation)
+  of gadget 92 itself and its SpecialInfo+24 (Extension).
+- Driver kept at the session scratchpad (askdir.py: start rig, unpack DOpus archive, run Installer, answer to
+  askdir, peek, row histogram).
+
+## Remaining steps
+
+1. Measure StringExtend on gadget 92 (GFLG_STRINGEXTEND 0x0400 in Flags or GACT_STRINGEXTEND 0x2000 in
+   Activation, StringInfo->Extension != 0). Expectation from Installer 43.3 building gadgets by hand for 1.3:
+   absent.
+2. If absent (option 2): string_gadget_at (flat.c:822) rejects the gadget because it requires flat_string_ext.
+   Add a pure predicate in flat_core.c for a plain GTYP_STRGADGET box (no StringExtend) that qualifies for the
+   input ground, plus host test in tests/test_flat_core.c (fails before, passes after). Record the box with
+   flat_gr_add when Installer erases it with a pen-0 RectFill (bb_claim pattern, flat.c ~2414) so rf_gbox and
+   flat_tx_c paint input pen fill and text background; draw the frame from the same record. No ground_box /
+   raa_* from the rf hook (stack budget, S71-C8-PRIVATE-STACK); run make flat-budget.
+3. If present (option 1): string_ground + ground_box path, but deferred through the gr record for the same
+   stack reason.
+4. Rig check: rows 327..346 x 158..641 show input fill != 1a1b26 plus frame.
