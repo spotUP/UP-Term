@@ -91,7 +91,7 @@ class FlatPensPerScreen(unittest.TestCase):
     # G4 (no ObtainPen on a non-Workbench ColorMap) cannot be a source check: icl_pen_fn takes the ColorMap as a parameter.
 
     def test_g5_no_role_table_names_in_flat_objects(self):
-        base = pathlib.Path(__file__).resolve().parent.parent / "amarchy"
+        base = pathlib.Path(__file__).resolve().parent.parent / "patina"
         for f in ("flat.c", "flat_core.c", "flat_glyph.c"):
             self.assertNotIn("GTE_", (base / f).read_text(), f)
 
