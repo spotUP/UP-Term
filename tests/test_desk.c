@@ -1769,6 +1769,13 @@ static void test_desk_persist(void)
     CHECK_STR(arc[2], "ENVARC:Sys/Workbench.prefs");
     CHECK_INT(desk_persist_pairs(0, 0, env, arc, 8), 0);
     CHECK_INT(desk_persist_pairs(0xffu, 1, env, arc, 2), 2);    /* cap respected */
+    /* S82-START-PERSIST: boot plan 22 (pattern, palette, font) persists those three; nothing while a pick waits for Keep or with plan 0 */
+    CHECK_INT((int)desk_start_persist_mask(DESK_START_PATTERN | DESK_START_PALETTE | DESK_START_FONT, 0, 0),
+              (1 << DT_WBPATTERN) | (1 << DT_PALETTE) | (1 << DT_FONT));
+    CHECK_INT((int)desk_start_persist_mask(22, 0, 1), 0);
+    CHECK_INT((int)desk_start_persist_mask(0, 1, 0), 0);
+    CHECK_INT((int)desk_start_persist_mask(DESK_START_WB | DESK_START_ICONTROL, 1, 0), 1 << DT_PALETTE); /* flat pens: palette; icontrol writes both */
+    CHECK_INT((int)desk_start_persist_mask(DESK_START_POINTER, 0, 0), 1 << DT_POINTER);
     CHECK_INT((int)desk_off_mask(0x1fu, 0x5u), 0x1a & ~(1 << DT_ICONTROL)); /* saved 0..4, applied palette+pointer: wbpattern, font off; icontrol never */
     CHECK_INT((int)desk_off_mask(0x3u, 0x3u), 0);
     CHECK_INT((int)desk_off_mask(0, 0), 0);

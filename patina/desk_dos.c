@@ -1735,6 +1735,25 @@ int desk_dos_wb_backdrop(void)
     return 1;
 }
 
+/* S82-START-PERSIST: the start apply of the kept theme copies what it wrote to ENVARC: as Keep does (R1.10 exception), else ENV: is rebuilt
+ * from the stock ENVARC: at every boot, every start replans the same writes and IPrefs' reset raises a System Request under Directory Opus'
+ * windows. Pairs whose bytes already match are left alone. The originals were saved before the first write (dk_orig_save), so "off" still
+ * restores them. */
+unsigned long desk_dos_start_persists, desk_dos_start_persist_same;
+
+static void dk_start_persist(unsigned plan, int flat)
+{
+    const char *env[8], *arc[8];
+    int i, n = desk_persist_pairs(desk_start_persist_mask(plan, flat, dk_pending_mask() != 0), (plan & DESK_START_WB) && !dk_pending_mask(), env, arc, 8);
+    for (i = 0; i < n; i++)
+        if (dk_files_equal(env[i], arc[i]))
+            desk_dos_start_persist_same++;
+        else if (dk_stream_copy(env[i], arc[i]) > 0)
+            desk_dos_start_persists++;
+    if (n)
+        am_sentinel("PATINA_DESK_START_PERSISTS", (long)desk_dos_start_persists);
+}
+
 int desk_dos_start_apply(void)
 {
     static unsigned char wb[DK_BUF], pat[DK_BUF], out[DK_BUF], pal[DK_BUF], pcur[8192], pnew[8192], fcur[DK_BUF], fnew[DK_BUF];
@@ -1872,6 +1891,7 @@ int desk_dos_start_apply(void)
         dk_wait_iprefs(idle);
         dk_windows_open(was);
     }
+    dk_start_persist(plan, flat);
     if (dk_live_want)
         dk_live_pens(dk_live_want > 0 ? &th : 0, dk_live_flat);
     am_sentinel("PATINA_DESK_START_WRITES", (long)desk_dos_start_writes);

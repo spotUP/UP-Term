@@ -77,7 +77,7 @@ Checklist:
 - R1.7 desk.c: snapshot, apply (file + LoadRGB32), IPrefs nudge
 - R1.8 confirm requester with 15 s timer, revert on timeout
 - R1.9 boot-time pending-revert restore
-- R1.10 persist to ENVARC: only after confirm
+- R1.10 persist to ENVARC: only after confirm. Exception (S82): Patina's start apply of the kept theme also copies the files it wrote to ENVARC:Sys (equal bytes skipped), so the next boot plans no write and IPrefs raises no reset under DOpus; interactive Use/Try stays ENV:-only.
 - R1.11 per-theme backdrop set plus solid fallback; user dir overrides
 - R1.12 keymap kind desk: and Super+Ctrl+Space binding; keymap.c arg check; dist/keymap line
 - R1.13 menu rows Style > Desktop theme and Backdrop
