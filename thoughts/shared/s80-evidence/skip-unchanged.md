@@ -78,3 +78,17 @@ Per-boot lines: not run. Planned check on rig 7: `rig.py dopus`, `rig.py install
 Open risk: the editor rewrites the WBPattern ENV bytes, so the ENVARC copy is the editor's rewrite. The planner compares with desk_wbpattern_same, so boot 2 should still plan 0. This is unverified until the rig check runs.
 
 Cleanup: no rig started. Scratch in the session scratchpad s82/ holds small logs only (under 1 MB). No large scratch was made.
+
+## S82 ENVARC rig check
+
+Rig 7, Patina md5 b8a700c6105ef87b337425d70a5fa0f5 (VTCON_BUILD e402aeb8), `rig.py dopus` + `rig.py install` redone after the earlier agent was stopped mid-run. Sentinels read with `ami.py exec "Type ENV:<name>"`, requester with `ami.py requesters` (text only, no screenshots).
+
+| Boot | START_PLAN | START_PERSISTS | PUT_SKIPS | System Request | Verdict |
+|------|-----------|----------------|-----------|----------------|---------|
+| 1 (fresh sys.hdf) | 22 (pattern, palette, font) | 3 files copied to ENVARC:Sys | not set (0) | yes, IPrefs Retry/Cancel open (not clicked) | EXPECTED on a fresh ENVARC; persist wrote 3 files |
+| 2 (`rig.py reboot`) | 4 (palette only) | 0 | 1 | no | PARTIAL: requester gone, but PLAN is 4, not the expected 0 |
+| 3 (`rig.py reboot`) | 4 | 0 | 1 | no | PARTIAL: same as boot 2 |
+
+Reading: the persist works (boot 1 writes, boots 2-3 persist nothing and dk_put skipped one byte-equal write) and no System Request appears on boots 2-3, which was the bug. PLAN stays 4 (DESK_START_PALETTE) every boot: the planner still sees the palette as different while the put finds the bytes equal, consistent with the BLOCKPEN / dk_flat_pens mismatch in Open risks above. Follow-up: find why desk_start_prefs(DT_PALETTE) plans a write whose bytes already match.
+
+Step 5 (manual theme pick): NOT VERIFIED. `patina_theme_save_rig.py --selects 1-1` stopped at "the Patina commodity is not running": its `Status` name check does not match, although the PATINA ARexx port is present and ENV:PATINA_THEME = tokyo-night. No pick was made.
