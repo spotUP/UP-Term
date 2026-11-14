@@ -66,7 +66,7 @@ class WindowStateWiring(unittest.TestCase):
         self.assertRegex(H, r"slash_run\(c, line, l, ans, 4096, 1\)\) \{\n\s*slash_typed_note\(c, line, l\);")
         self.assertIn('strcmp(name, "state")', H)  # /state does not count itself
         self.assertRegex(H, r"h_clipped\(void \*u, int what\)\n\{\n\s*stat_note\(\(con \*\)u, what == VTWIN_CLIP_COPY \? STATE_COPY : STATE_PASTE")
-        self.assertRegex(H, r"h_knob, h_clipped \};")
+        self.assertRegex(H, r"h_knob, h_clipped, h_rip_block \};")
         w = (ROOT / "render/vtwin.c").read_text(encoding="latin-1")
         copy = w.split("static void copy_selection(vtwin *w)")[1].split("\n}\n")[0]
         paste = w.split("static void paste(vtwin *w)")[1].split("\n}\n")[0]

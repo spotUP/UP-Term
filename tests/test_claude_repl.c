@@ -551,7 +551,7 @@ static void test_reach(void)
     static cl_repl r;
     jv m, e, c, x, b;
     jit it;
-    char s[200];
+    char s[1024];   /* holds the listing of the start directory: a long TMPDIR makes it longer than 200 */
     setup(&r, script);
     add_stream("text.sse");
     add_stream("tool_use.sse");
