@@ -840,6 +840,80 @@ static void test_desk_wbpattern(void)
     CHECK_INT(desk_wbpattern(&t, 3, 0, 0, again, 100), 0);
 }
 
+/* the first copy of n bytes of what in buf[len], or 0 (no memmem: not in C89/strict hosts) */
+static unsigned char *find_bytes(unsigned char *buf, long len, const char *what, long n)
+{
+    long i;
+    for (i = 0; i + n <= len; i++)
+        if (!memcmp(buf + i, what, (size_t)n))
+            return buf + i;
+    return 0;
+}
+
+/* one PTRN picture chunk (no WBPF_PATTERN, the data is the file name) for which at at; its whole length */
+static long picture_chunk(unsigned char *at, int which, const char *name)
+{
+    long n = (long)strlen(name) + 1, body = 24 + n;
+    memset(at, 0, (size_t)(8 + body + (body & 1)));
+    memcpy(at, "PTRN", 4);
+    at[7] = (unsigned char)body;
+    at[8 + 17] = (unsigned char)which;
+    at[8 + 23] = (unsigned char)n;
+    memcpy(at + 8 + 24, name, (size_t)n);
+    return 8 + body + (body & 1);
+}
+
+/* WALLPAPER-KEPT (user report 2026-11-14): a user's ROOT and SCREEN pictures survive the theme's wbpattern.prefs */
+static void test_desk_wbpattern_keeps_pictures(void)
+{
+    static unsigned char prev[BUF_MAX], out[BUF_MAX], again[BUF_MAX];
+    static char screen[200];
+    long n = 26, plen, m;
+    gtheme t;
+    probe_theme(&t);
+    /* a long SCREEN name puts the file past the 410-byte floor, so the cap test below is about the pictures */
+    memcpy(screen, "Work:Wallpaper/", 15);
+    memset(screen + 15, 'S', 170);
+    memcpy(screen + 185, ".iff", 5);
+    memcpy(prev, "FORM\0\0\0\0PREFPRHD\0\0\0\6", 20);
+    memset(prev + 20, 0, 6);
+    n += picture_chunk(prev + n, 0, "Work:Wallpaper/AF-Backdrop.iff");
+    n += picture_chunk(prev + n, 2, screen);
+    prev[4] = (unsigned char)((n - 8) >> 24); prev[5] = (unsigned char)((n - 8) >> 16);
+    prev[6] = (unsigned char)((n - 8) >> 8); prev[7] = (unsigned char)(n - 8);
+    plen = n;
+    m = desk_wbpattern(&t, 3, prev, plen, out, sizeof out);
+    CHECK(m > 0);
+    CHECK_INT(out[7] | (out[6] << 8), (int)(m - 8));
+    CHECK(find_bytes(out, m, "Work:Wallpaper/AF-Backdrop.iff", 31) != 0);
+    CHECK(find_bytes(out, m, screen, 190) != 0);
+    /* the DRAWER still gets the theme tone: a pattern chunk with which 1 */
+    {
+        long pos = 26;
+        int which1 = 0, chunks = 0;
+        while (pos + 8 <= m) {
+            long sz = ((long)out[pos + 6] << 8) | out[pos + 7];
+            chunks++;
+            if (out[pos + 8 + 17] == 1 && (out[pos + 8 + 19] & 1))
+                which1 = 1;
+            pos += 8 + sz + (sz & 1);
+        }
+        CHECK_INT(chunks, 3);
+        CHECK(which1);
+    }
+    /* a second pick over its own output changes nothing, and the compare says so */
+    CHECK_INT(desk_wbpattern(&t, 3, out, m, again, sizeof again), m);
+    CHECK(!memcmp(out, again, (size_t)m));
+    CHECK(desk_wbpattern_same(out, m, again, m));
+    /* another picture name is a change */
+    memcpy(again, out, (size_t)m);
+    find_bytes(again, m, "AF-Backdrop", 11)[0] = 'X';
+    CHECK(!desk_wbpattern_same(out, m, again, m));
+    /* no room for the pictures: no file, never a cut one */
+    CHECK(m > 420);
+    CHECK_INT(desk_wbpattern(&t, 3, prev, plen, again, m - 1), 0);
+}
+
 static void test_desk_wbpattern_no_dots(void)
 {
     /* the Workbench backdrop has no dots: every ROOT pattern pixel is the backdrop pen (its low bits on a shallower screen, which has no such pen) */
@@ -2165,6 +2239,7 @@ void suite_desk(void)
     test_desk_backdrop();
     test_desk_wbpattern();
     test_desk_wbpattern_no_dots();
+    test_desk_wbpattern_keeps_pictures();
     test_flat_on_keeps_backdrop_pen_distinct_from_window_background();
     test_flat_pick_leaves_pen5_magenta_on_deep_workbench();
     test_flat_backdrop_screen_pen_deep();
