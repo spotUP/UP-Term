@@ -598,13 +598,32 @@ static void test_desk_pens_reset(void)
     CHECK_INT(desk_pens_reset(cur, DK_SLOTS + 2, 0, 3), 0);
     for (i = 0; i < DK_SLOTS; i++) {                /* knob: every slot moves the verdict */
         cur[i] ^= 1;
-        CHECK_INT(desk_pens_reset(cur, DK_SLOTS, 0, 3), 1);
+        CHECK_INT(desk_pens_reset(cur, DK_SLOTS, 0, 3), i != DK_BLOCK); /* BLOCKPEN-IGNORED: the OS never adopts slot 1 */
         if (i > 0)
             CHECK_INT(desk_pens_reset(cur, i, 0, 3), 0);  /* slots beyond dri_NumPens are not compared */
         cur[i] ^= 1;
     }
     CHECK_INT(desk_pens_reset(cur, 0, 0, 3), 1);          /* no DrawInfo: unknown, assume a reset */
     CHECK_INT(desk_pens_reset(0, DK_SLOTS, 0, 3), 1);
+}
+
+/* BLOCKPEN-IGNORED (rig 8, OS 3.2, depth 8): a Workbench that holds the map reads back "0 1 2 2 253 3 0 0 2 2 0 253" (BLOCKPEN 1, pen 5
+ * on screen pen 253); the verdict was always "reset" and every pick closed the windows and waited for a reset that changes nothing */
+static void test_desk_pens_reset_deep(void)
+{
+    static const unsigned short live[DK_SLOTS] = { 0, 1, 2, 2, 253, 3, 0, 0, 2, 2, 0, 253, 2 };
+    unsigned short deep[DK_SLOTS];
+    int i;
+    CHECK_INT(desk_pens_reset(live, DK_SLOTS, 0, 8), 0);   /* the map in force: no reset */
+    CHECK_INT(desk_defer_map(live, DK_SLOTS, 0, 8, 3), DESK_DEFER_NONE);
+    CHECK_INT(desk_pens_reset(live, DK_SLOTS, 1, 8), 1);   /* the flat map is not in force */
+    for (i = 0; i < DK_SLOTS; i++)
+        deep[i] = live[i];
+    deep[DK_TEXT] = 3;                                      /* a slot the OS does apply moved: still a reset */
+    CHECK_INT(desk_pens_reset(deep, DK_SLOTS, 0, 8), 1);
+    deep[DK_TEXT] = live[DK_TEXT];
+    deep[DK_SHADOW] = 5;                                    /* pen 5 unresolved: not the 253 IPrefs gives it */
+    CHECK_INT(desk_pens_reset(deep, DK_SLOTS, 0, 8), 1);
 }
 
 /* FILENAME-PEN follow-up: a 4-colour (depth 2) screen holds the folded pen map, so the verdict compares against the folded map */
@@ -2153,6 +2172,7 @@ void suite_desk(void)
     test_desk_wbgauge();
     test_desk_pens_reset();
     test_desk_pens_reset_folded();
+    test_desk_pens_reset_deep();
     test_desk_defer_map();
     test_desk_window_foreign();
     test_desk_reset_done();

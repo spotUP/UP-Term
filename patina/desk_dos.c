@@ -287,22 +287,14 @@ static int dk_foreign_windows(void)
     struct Screen *scr;
     struct Window *w;
     int n = 0;
-    char seen[160];   /* PATINA_FOREIGN: "title/flags;" of each counted window, so a rig run names what blocks the reset */
-    size_t len = 0;
-    seen[0] = 0;
     if (IntuitionBase && (scr = ipd_lock_wb_screen()) != 0) {
         ULONG il = LockIBase(0);
         for (w = scr->FirstWindow; w; w = w->NextWindow)
-            if (desk_window_foreign((w->Flags & WFLG_BACKDROP) != 0, (w->Flags & WFLG_WBENCHWINDOW) != 0, (const char *)w->Title)) {
-                const char *t = w->Title ? (const char *)w->Title : "-";
+            if (desk_window_foreign((w->Flags & WFLG_BACKDROP) != 0, (w->Flags & WFLG_WBENCHWINDOW) != 0, (const char *)w->Title))
                 n++;
-                if (len < sizeof seen)
-                    len += (size_t)snprintf(seen + len, sizeof seen - len, "%s/%lx;", t, (unsigned long)w->Flags);
-            }
         UnlockIBase(il);
         UnlockPubScreen(0, scr);
     }
-    am_sentinel_str("PATINA_FOREIGN", seen);
     if (IntuitionBase)
         CloseLibrary((struct Library *)IntuitionBase);
     return n;

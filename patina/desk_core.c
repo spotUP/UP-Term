@@ -215,9 +215,18 @@ int desk_pens_reset(const unsigned short *cur, int ncur, int flat, int depth)
     if (!cur || ncur <= 0)
         return 1;
     desk_pens_for(flat, want);
-    for (i = 0; i < DK_SLOTS && i < ncur; i++)
-        if (cur[i] != desk_pen_fold(want[i], ncolors)) /* FILENAME-PEN: the live pens of a 4-colour screen are the folded map */
+    for (i = 0; i < DK_SLOTS && i < ncur; i++) {
+        int pen = desk_pen_fold(want[i], ncolors); /* FILENAME-PEN: the live pens of a 4-colour screen are the folded map */
+        /* BLOCKPEN-IGNORED: OS 3.2 keeps BLOCKPEN at 1 whatever palette.prefs holds (rig 8, depth 8: 5, 0, 1, 253 all read back 1), so
+         * the slot never says whether the map is in force. On a screen of 4+ planes IPrefs puts pens 4-7 on the last four screen pens
+         * (WB-TITLE-GREEN: pen 5 reads back 253, the same rule as the palette entries). */
+        if (i == DK_BLOCK)
+            continue;
+        if (depth > 3 && pen >= 4 && pen < 8)
+            pen = desk_palette_pen(pen, depth);
+        if (cur[i] != (unsigned short)pen)
             return 1;
+    }
     return 0;
 }
 
