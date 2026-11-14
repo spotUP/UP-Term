@@ -727,7 +727,13 @@ static int menu_program(const km_menu *m)
 static int open_then_request(const km_menu *m, const lf_ui *ui, const char *value)
 {
     int i, prog = value ? TAB_SHELL : menu_program(m), rc;
-    if (prog != TAB_SHELL || (!value && lf_menu_open_is_all(m->kind, 0, kact_menu_id(m->arg))))
+    km_bind b;
+    kact a;
+    memset(&b, 0, sizeof b);
+    b.kind = m->kind;
+    b.arg = m->arg;
+    kact_resolve(&b, &a);               /* tab:new and menuid:MENU_TAB_NEW both give MENU_TAB_NEW */
+    if (prog != TAB_SHELL || (!value && lf_menu_open_is_all(m->kind, 0, a.id)))
         return open_uterm(prog, 0, m->label, ui); /* the window is the row (its program, or New tab): nothing to send */
     rc = open_uterm(TAB_SHELL, 0, m->label, ui);
     if (rc)

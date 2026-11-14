@@ -1401,13 +1401,21 @@ static void cx_installs_only_the_commodity_rows(void)
     CHECK(n > 0 && keymap_parse(&km, buf, n));
     for (i = 0; i < km.nbind; i++) {
         int sc = keymap_action_scope(km.bind[i].kind);
-        CHECK(cx_row_installed(&km.bind[i]) == (sc != KS_TERMINAL));
+        CHECK(cx_row_installed(&km.bind[i]) == (sc != KS_TERMINAL || (km.bind[i].kind == KA_TAB && !strcmp(km.bind[i].arg, "new"))));
         if (sc == KS_TERMINAL)
             term++;
         else
             comm++;
     }
     CHECK(term > 0 && comm > 0);   /* the shipped file has both, so the skip is exercised */
+    {   /* s80: super+t (tab:new) with no terminal open reaches Patina, which opens one; other tab rows stay the terminal's */
+        km_bind t = km.bind[0];
+        t.kind = KA_TAB;
+        t.arg = "new";
+        CHECK(cx_row_installed(&t));
+        t.arg = "close";
+        CHECK(!cx_row_installed(&t));
+    }
 }
 
 /* UPTERM.active counts a window while it has focus, and only an INACTIVEWINDOW
@@ -1882,7 +1890,8 @@ static void terminal_rows_show_only_over_a_terminal(void)
     CHECK_INT(c, 3);                                 /* Theme, Font, Background: picking one opens a terminal first */
     CHECK(has_label(it, c, "Theme") && has_label(it, c, "Font") && has_label(it, c, "Background"));
     c = ix_level_t(&km, 0, "window", "", it, MN_MAX_ITEMS, 0);
-    CHECK_INT(c, 46);                                /* the 46 win: (P3-D2: 14 snap, float and swap rows added to the 32 before); the 32 win:/rexx:/run: rows (window.tile runs AmTile, plus the 8 window.layout* rows); window.tab and window.preferences stay hidden */
+    CHECK_INT(c, 47);                                /* the 46 win: rows (P3-D2: 14 snap, float and swap rows added to the 32 before) plus window.tab; window.preferences stays hidden */
+    CHECK(has_label(it, c, "New tab"));              /* New tab with no terminal open opens the first UP-Term window */
     c = ix_level_t(&km, 0, "apps", "", it, MN_MAX_ITEMS, 0);
     CHECK(has_label(it, c, "UP-Term") && has_label(it, c, "Editor"));
     CHECK(!has_label(it, c, "Claude") && !has_label(it, c, "pi")); /* menuid rows: the handler runs them, no index entry */
@@ -2673,6 +2682,13 @@ static void the_dopus_group_needs_a_port(void)
     /* s79: New tab with no terminal open is the one vsh window that opens, not that window plus a second tab */
     CHECK(lf_menu_open_is_all(KA_MENUID, 0, kact_menu_id("MENU_TAB_NEW")));
     CHECK(!lf_menu_open_is_all(KA_MENUID, 1, kact_menu_id("MENU_TAB_NEW")));       /* a terminal: its request */
+    /* s80: the shipped New tab row is tab:new: shown with no terminal open, it opens the one vsh window */
+    CHECK_INT(mn_row_needs(KA_TAB, "window.tab"), 0);
+    CHECK_INT(mn_row_needs(KA_TAB, "window.close"), MN_COND_TERM);
+    CHECK_INT((int)lf_plan_t(KA_TAB, 0), (int)LF_OPEN_THEN_REQUEST);
+    CHECK_INT((int)lf_plan_t(KA_TAB, 1), (int)LF_REQUEST);
+    CHECK(lf_menu_open_is_all(KA_TAB, 0, MENU_TAB_NEW));
+    CHECK(!lf_menu_open_is_all(KA_TAB, 0, MENU_TAB_CLOSE));
     CHECK(!lf_menu_open_is_all(KA_SLASH, 0, kact_menu_id("MENU_TAB_NEW")));
     CHECK(!lf_menu_open_is_all(KA_MENUID, 0, kact_menu_id("MENU_COPY")));
     {

@@ -45,7 +45,7 @@ int lf_job_view(const lf_ui *ui)
 
 lf_how lf_plan_t(int kind, int term)
 {
-    return (kind == KA_SLASH || kind == KA_MENUID) && !term ? LF_OPEN_THEN_REQUEST : lf_plan(kind);
+    return (kind == KA_SLASH || kind == KA_MENUID || kind == KA_TAB) && !term ? LF_OPEN_THEN_REQUEST : lf_plan(kind);
 }
 
 lf_how lf_plan_ta(int kind, int term, int needs_value)
@@ -60,7 +60,7 @@ int lf_menu_program(int kind, int term, long id, const char *agent)
 
 int lf_menu_open_is_all(int kind, int term, long id)
 {
-    return kind == KA_MENUID && !term && id == MENU_TAB_NEW;
+    return (kind == KA_MENUID || kind == KA_TAB) && !term && id == MENU_TAB_NEW;
 }
 
 const char *lf_rexx_notice(const char *script, long rc)

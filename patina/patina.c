@@ -422,6 +422,7 @@ static int do_row(int row)
     case KA_GTHEME: ok = gt_dos_select(b->arg, 0, 0); break;
     case KA_CAP:   ok = cap_run(b->arg) == 0; break;
     case KA_OPEN:  ok = act_open_uterm(); break;
+    case KA_TAB:   ok = act_open_uterm(); break;   /* tab:new, the one terminal row installed: no terminal is open */
     case KA_BAR: {
         char scratch[REXX_HOST_OUT];
         ok = bar_port(b->arg, scratch) == 0;

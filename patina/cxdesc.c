@@ -97,5 +97,6 @@ unsigned cx_qual_mask(unsigned q)
 
 int cx_row_installed(const km_bind *b)
 {
-    return keymap_action_scope(b->kind) != KS_TERMINAL;
+    /* tab:new too: with no terminal open the gate keeps it and Patina opens one; with one open the gate passes it on */
+    return keymap_action_scope(b->kind) != KS_TERMINAL || (b->kind == KA_TAB && !strcmp(b->arg, "new"));
 }

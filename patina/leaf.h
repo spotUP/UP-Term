@@ -76,7 +76,8 @@ int lf_menu_program(int kind, int term, long id, const char *agent);
 
 /* 1 when, with no terminal window open (term 0), opening the new UP-Term window is the whole of a menuid: row:
  * New tab (MENU_TAB_NEW). Sending the row on to the window that just opened gave a second tab beside the first
- * vsh window (s79). 0 for every other row, and whenever a terminal is open. */
+ * vsh window (s79). The [menu] row is tab:new (KA_TAB, id from kact_resolve) or menuid:MENU_TAB_NEW. 0 for every
+ * other row, and whenever a terminal is open. */
 int lf_menu_open_is_all(int kind, int term, long id);
 
 /* ---- LF_SETTING: a setting row of a settings page group (plan 2026-10-26-patina-prefs-inline.md, M3) ----
