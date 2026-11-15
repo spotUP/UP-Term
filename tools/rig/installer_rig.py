@@ -960,7 +960,7 @@ def run_bigvol():
     ir.prepare(None)
     # the case is a first install: an UP-Term: assign (rig.py install leaves one) is an earlier install, and
     # P_ASKDEST offers that drawer before the biggest volume. Fixtures.restore puts the assign back.
-    ir.run('Assign >NIL: UP-Term:')
+    ir.drop_upterm_assign()
     inst = find_installer()
     if not inst:
         return False, 'no Installer on the rig'
@@ -1441,7 +1441,7 @@ def run_addon_68000(pkg):
     ir.prepare(None, [pkg])
     before = ir.Before()
     ir.plant(pkg)
-    ir.run("Assign UP-Term:")
+    ir.drop_upterm_assign()
     ck(ir.run("Assign >NIL: UP-Term: EXISTS")[0] != 0, "%s: there is no UP-Term: assign" % case)
     ir.addon_absent(ck, pkg, "before its Install")
     inst, base = read_installer()
@@ -1695,6 +1695,7 @@ def main():
             return _main(fx, only, flags)
         finally:
             if not KEEP_INSTALLED:
+                ir.restore_upterm_assign()   # the target the first drop found
                 fx.restore()   # a killed or failing run leaves nothing planted
             ir.show_close()
 

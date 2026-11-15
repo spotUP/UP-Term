@@ -137,7 +137,7 @@ def case_install():
 
 
 def case_noassign():
-    ir.run("Assign UP-Term:")
+    ir.drop_upterm_assign()
     ir.run("Delete >NIL: ENVARC:up-term/Dir QUIET")
     req, got = window_case("noassign", CASE_SCRIPTS["noassign"])
     ok = (not req and got["done"] and got["hi"] and "hi" in got["hi"]
@@ -154,7 +154,7 @@ def case_assign():
 
 
 def lazy(case):
-    ir.run("Assign UP-Term:")
+    ir.drop_upterm_assign()
     ir.run("MakeDir >NIL: ENVARC:up-term")
     ir.run('Echo >ENVARC:up-term/Dir "%s"' % DRAWER)
     req, got = window_case(case, CASE_SCRIPTS[case])
@@ -171,6 +171,7 @@ def main():
         try:
             return _main(fx)
         finally:
+            ir.restore_upterm_assign()   # the target the first drop found, not a fixed drawer
             fx.restore()   # a killed or failing run leaves nothing planted
 
 

@@ -11,6 +11,7 @@ current handler installed (rig.py install) and VTC:vsh current; UPTERM_RIG=2 for
 import os, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ami, ixpty_rig, screen_rig, vshwin
+import install_rig as ir
 
 OLD, NEW = "ENVARC:vtcon.history", "UP-Term:var/vtcon/history"
 
@@ -34,6 +35,7 @@ def main():
     if run("Assign >NIL: UP-Term: EXISTS")[0] == 0:
         print("FAIL UP-Term: is assigned on this rig already: the run would move the real history")
         return 2
+    ir.drop_upterm_assign(run)   # absent now: recorded, so the teardown puts it back absent
     had = run("Copy %s RAM:hf-save QUIET" % OLD)[0] == 0
     try:
         run("MakeDir RAM:hfkit")
@@ -71,7 +73,7 @@ def main():
             print("FAIL the vsh window is not the active one: nothing typed")
             ok = False
     finally:
-        run("Assign UP-Term: REMOVE")
+        ir.restore_upterm_assign(run)
         run("Delete RAM:hfkit ALL QUIET")
         run("Delete %s QUIET" % OLD)
         if had:

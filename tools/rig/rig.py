@@ -2472,6 +2472,7 @@ def _start(retries):
                     print("[ERROR] rig: boot console: %s" % l)
                 sys.exit("rig: the boot printed %d error line(s) (see boot.console in the rig's boot drawer)" % len(bad))
             guard_shell_startup()
+            guard_upterm_assign()
             rigwasabi.warn_guru()
             start_watchdog()
             if M060:
@@ -2532,6 +2533,28 @@ def boot_assigns_missing():
     have = {l.split()[0].rstrip(":").upper() for l in out.splitlines() if l.strip() and not l[0].isspace()}
     need = BOOT_ASSIGNS + (["GG"] if (RIG / "vtc/gg/bin/sh").exists() else [])
     return [n for n in need if n.upper() not in have]
+
+def upterm_assign_cmds(user_startup):
+    """The Amiga commands that make UP-Term: when the boot lost it: the kit's own target from its User-Startup block,
+    else the rig's UPTERM_ASSIGN fallback (VTC:Apps)."""
+    a = upterm_assign(user_startup)
+    return ['Assign >NIL: UP-Term: "%s:%s"' % a] if a else ["Assign >NIL: UP-Term: VTC:" + paths.UPTERM_DRAWER]
+
+def guard_upterm_assign():
+    """S85: rig 84 booted with UP-Term: and lost it later, so Patina read no themes. After the boot, a missing assign is
+    made again here (WARN, not an error: the boot's own go already runs the fallback)."""
+    import struct
+    import ami
+    def run(cmd):
+        return struct.unpack(">I", ami.req(0x02, struct.pack(">H", 30) + cmd.encode("latin-1"), 60)[:4])[0]
+    if run("Assign >NIL: UP-Term: EXISTS") == 0:
+        return
+    us = ami.read_file("S:User-Startup")
+    cmds = upterm_assign_cmds(us.decode("latin-1") if us else "")
+    for cmd in cmds:
+        run(cmd)
+    ok = run("Assign >NIL: UP-Term: EXISTS") == 0
+    print("[WARN] rig: the boot left no UP-Term: assign; made again with %s (%s)" % (cmds[0], "ok" if ok else "STILL MISSING"))
 
 def upgrade_shell_path(lines):
     """lines of S:Shell-Startup with an earlier Path block (OLD_SHELL_PATH_BLOCKS) replaced by

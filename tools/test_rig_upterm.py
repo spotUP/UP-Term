@@ -189,5 +189,47 @@ check(standalone_rig.rig_upterm_assign("Volumes:\nUP-Term         VTCX:Apps\nGG 
 check(not standalone_rig.rig_upterm_assign("UP-Term         DH0:UP-Term\n"), "a kit's UP-Term: assign is not the rig's")
 check(not standalone_rig.rig_upterm_assign("GG  VTCX:\n"), "no UP-Term: assign is not the rig's")
 
+# a harness that drops UP-Term: gets back the target it found, not a fixed drawer (S85: rig 84 lost the kit's assign)
+import install_rig as ir  # noqa: E402
+
+
+def fake_amiga(assign):
+    sent = []
+
+    def run_fn(cmd):
+        sent.append(cmd)
+        if cmd == "Assign UP-Term: EXISTS":
+            return (0, "UP-Term         %s\n" % "\n                 ".join(assign)) if assign else (5, "")
+        if cmd.startswith("Assign >NIL: UP-Term: EXISTS"):
+            return (0 if state["on"] else 5, "")
+        if cmd == "Assign UP-Term:" or cmd == "Assign >NIL: UP-Term:":
+            state["on"] = False
+        elif cmd.startswith("Assign UP-Term:"):
+            state["on"] = True
+        return (0, "")
+    state = {"on": bool(assign)}
+    return run_fn, sent, state
+
+
+ir._UPTERM_WAS = None
+fn, sent, st = fake_amiga(["Rushhours:Tools/UP-Term", "Other:Add"])
+ir.drop_upterm_assign(fn)
+ir.drop_upterm_assign(fn)   # the second drop must not record the already dropped state
+ir.restore_upterm_assign(fn)
+check('Assign UP-Term: "Rushhours:Tools/UP-Term"' in sent and 'Assign UP-Term: "Other:Add" ADD' in sent, "restore re-makes the kit target and its ADDs: %s" % sent)
+check(not any("VTC:" in c for c in sent), "restore names no VTC drawer")
+check(st["on"], "UP-Term: exists after the restore")
+# it was absent before the drop: a check that re-assigned it leaves it absent again
+fn, sent, st = fake_amiga([])
+ir.drop_upterm_assign(fn)
+fn('Assign UP-Term: VTC:Apps')
+ir.restore_upterm_assign(fn)
+check(not st["on"], "an assign that was absent is absent again after the restore")
+check(ir._UPTERM_WAS is None, "restore clears the record")
+# rig.py's boot guard: the kit's target from the User-Startup block, the VTC drawer only without one
+check(rig.upterm_assign_cmds('Assign UP-Term: "Rushhours:Tools/UP-Term"\n') == ['Assign >NIL: UP-Term: "Rushhours:Tools/UP-Term"'],
+      "guard re-assigns the kit's User-Startup target")
+check(rig.upterm_assign_cmds("") == ["Assign >NIL: UP-Term: VTC:" + rig.paths.UPTERM_DRAWER], "guard falls back to the VTC drawer without a kit block")
+
 print("[%s] rig_upterm: %d failed" % ("FAIL" if fails else "OK", fails))
 sys.exit(1 if fails else 0)

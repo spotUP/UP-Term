@@ -124,7 +124,7 @@ def main():
         # 0. no kit: no UP-Term: assign. C:Claude must not ask for the volume
         # (no "Please insert volume UP-Term:" requester) and keeps everything
         # in ENVARC:Claude, as before
-        run('Assign UP-Term: REMOVE')
+        ir.drop_upterm_assign(run)
         seed()
         reqs0 = one_run(a.port, 'no UP-Term: assign')
         check('0 no volume requester without the assign', not reqs0, repr(reqs0))
@@ -155,7 +155,7 @@ def main():
         check('3 ENVARC:Claude/key kept', kind('ENVARC:Claude/key') == 1)
     finally:
         run('Delete UP-Term: ALL QUIET')        # from the Amiga's side, so its cache agrees
-        run('Assign UP-Term: REMOVE')
+        ir.drop_upterm_assign(run)
         run('Delete VTC:%s QUIET' % KIT.name)
         run('Delete ENVARC:Claude ENV:Claude RAM:dd-done VTC:dd-check.dos ALL QUIET')
         fx.terminate()

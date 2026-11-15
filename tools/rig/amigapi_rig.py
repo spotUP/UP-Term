@@ -179,6 +179,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths  # noqa: E402
 import condev_rig as c  # noqa: E402
 import ami  # noqa: E402
+import install_rig as ir  # noqa: E402
 import typewin as tw  # noqa: E402
 import piscript  # noqa: E402
 
@@ -361,7 +362,7 @@ def drop_rig_assign(had):
     to VTC:Apps for the glyph pages (UT1) when no kit is installed; take that one away for the step."""
     global RIG_ASSIGN
     if 'UP-TERM' in had and ami.read_file('ENVARC:up-term/Dir') is None:
-        c.run('Assign UP-Term: REMOVE')
+        ir.drop_upterm_assign(c.run)
         RIG_ASSIGN = True
         return had - {'UP-TERM'}
     return had
@@ -370,8 +371,7 @@ def drop_rig_assign(had):
 def restore_rig_assign():
     global RIG_ASSIGN
     if RIG_ASSIGN:
-        c.run('Assign UP-Term: REMOVE')
-        c.run('Assign UP-Term: VTC:' + paths.UPTERM_DRAWER)
+        ir.restore_upterm_assign(c.run)   # the target found before the drop, not a fixed VTC drawer
         RIG_ASSIGN = False
 
 

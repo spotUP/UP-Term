@@ -15,6 +15,7 @@ import argparse, json, os, pathlib, re, subprocess, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import paths, verdicts
 import ami, condev_rig as c
+import install_rig as ir
 import wasabi as rigwasabi
 import stage_rig, tabstate
 
@@ -430,15 +431,6 @@ def x9_wait_file(path, secs=15):
     return False
 
 
-def x9_upterm_target():
-    """where UP-Term: points now (the first directory of its `Assign LIST` line), None when unassigned"""
-    for line in c.run('Assign LIST')[1].splitlines():
-        f = line.split(None, 1)
-        if len(f) == 2 and f[0].upper() == 'UP-TERM':
-            return f[1].strip()
-    return None
-
-
 def x9_begin():
     """Saves the files a case rewrites, points UP-Term: at the staged build (Rescan apps runs patina-index from
     UP-Term:bin; on a rig with a kit installed UP-Term: points at the kit, not at the build stage_rig puts in
@@ -449,11 +441,11 @@ def x9_begin():
     m = re.search(r'^SYS\s+(\S.*:)\s*$', c.run('Assign LIST')[1], re.M)
     X9_SKIP = (m.group(1) if m else 'SYS:') + 'X9Skip'
     saved = {p: ami.read_file(p) for p in (X9_CONF, X9_AMCONF, 'ENV:up-term/keymap.user', X9_CACHE)}
-    upterm = x9_upterm_target()
+    ir.drop_upterm_assign(c.run)   # records the target found (the kit's), x9_end puts it back (RIG96-ASSIGN-LOST)
     c.run('Assign UP-Term: VTC:%s' % paths.UPTERM_DRAWER)
     c.run('Delete >NIL: RAM:x9.#? QUIET')
     c.run('MakeDir >NIL: ENV:up-term ENV:Patina')
-    return saved, upterm
+    return saved
 
 
 def am_key_names():
@@ -485,7 +477,7 @@ def x9_drawn(*lines):
     x9_conf(*lines, DRAWN)
 
 
-def x9_end(saved, upterm):
+def x9_end(saved):
     import patina_rig
     x9_leave()
     time.sleep(3)
@@ -494,7 +486,7 @@ def x9_end(saved, upterm):
     for p, b in saved.items():
         ami.restore_file(p, b)
     c.run('Delete >NIL: RAM:x9.#? QUIET')
-    c.run('Assign UP-Term: "%s"' % upterm if upterm else 'Assign UP-Term: REMOVE')
+    ir.restore_upterm_assign(c.run)
     patina_rig.arexx('RELOAD')
 
 
@@ -547,7 +539,7 @@ def r_app_icons():
     stage_rig.report(stage_rig.stage_build(('scrprobe', 'wbfake'), build=True))
     geom = g.build_geom()
     e = g.expected(geom, '-')
-    saved, upterm = x9_begin()
+    saved = x9_begin()
     try:
         x9_files([(X9_DIR, 'A0NoIcon')])
         # since a12e12f2 the drawn menu loads .info images only with the app-icons key; without it every row
@@ -589,7 +581,7 @@ def r_app_icons():
         ck('the two icon rows differ', fall is not None and icon is not None and fall != icon)
     finally:
         g.close_menu()
-        x9_end(saved, upterm)
+        x9_end(saved)
     return all(res), '%d of %d checks passed' % (sum(res), len(res))
 
 
@@ -629,7 +621,7 @@ def r_minimal():
     if not patina_rig.port_up():
         r_start()
     ensure_terminal()
-    saved, upterm = x9_begin()
+    saved = x9_begin()
     try:
         c.run('Echo >ENV:up-term/keymap.user "[menu]"')
         ck('minimal: drawn menu opened', opened('minimal'))
@@ -648,7 +640,7 @@ def r_minimal():
         ck('graphical: %d distinct colours (more than minimal)' % n2, n2 > n)
     finally:
         g.close_menu()
-        x9_end(saved, upterm)
+        x9_end(saved)
     return all(res), '%d of %d checks passed' % (sum(res), len(res))
 
 
@@ -664,7 +656,7 @@ def r_app_index():
     if not patina_rig.port_up():
         r_start()
     ensure_terminal()
-    saved, upterm = x9_begin()
+    saved = x9_begin()
     try:
         x9_files()
         x9_drawn('patina-index-skip = %s' % X9_SKIP)
@@ -856,7 +848,7 @@ def r_app_index():
                     conn.expect_ok()
             ck('8 Clock quits', bool(quit_) and wbrun_rig.wait_gone(w))
     finally:
-        x9_end(saved, upterm)
+        x9_end(saved)
     return all(res), '%d of %d checks passed' % (sum(res), len(res))
 
 
@@ -874,7 +866,7 @@ def r_app_categories():
     if not patina_rig.port_up():
         r_start()
     ensure_terminal()
-    saved, upterm = x9_begin()
+    saved = x9_begin()
     try:
         x9_files()
         x9_drawn('patina-index-skip = %s' % X9_SKIP)
@@ -908,7 +900,7 @@ def r_app_categories():
         games = screen_text()
         ck('Games level: the category holds the game', 'A0Game' in games, ' '.join(menu_rows(games))[:100])
     finally:
-        x9_end(saved, upterm)
+        x9_end(saved)
     return all(res), '%d of %d checks passed' % (sum(res), len(res))
 
 
@@ -934,7 +926,7 @@ def r_group_icons():
     ensure_terminal()
     geom = g.build_geom()
     e = g.expected(geom, '-')
-    saved, upterm = x9_begin()
+    saved = x9_begin()
     try:
         x9_drawn()
         c.run('Echo >ENV:up-term/keymap.user "[menu]"')
@@ -985,7 +977,7 @@ def r_group_icons():
         ck('sentinel: ENV:PATINA_DRAWS = %s (the drawn menu drew)' % (m.group(1) if m else 'unset'), bool(m) and int(m.group(1)) > 0)
     finally:
         g.close_menu()
-        x9_end(saved, upterm)
+        x9_end(saved)
     return all(res), '%d of %d checks passed' % (sum(res), len(res))
 
 
@@ -1408,7 +1400,7 @@ def r_gtheme():
     if not patina_rig.port_up():
         r_start()
     ensure_terminal()
-    saved, upterm = x9_begin()
+    saved = x9_begin()
     try:
         c.run('Echo >ENV:up-term/keymap.user "[menu]"')
         c.run('MakeDir >NIL: ENVARC:Patina ENVARC:Patina/themes ENV:Patina')
@@ -1474,7 +1466,7 @@ def r_gtheme():
     finally:
         g.close_menu()
         c.run('Delete >NIL: ENVARC:Patina/themes/#?.theme QUIET')
-        x9_end(saved, upterm)
+        x9_end(saved)
     return all(res), '%d of %d checks passed' % (sum(res), len(res))
 
 

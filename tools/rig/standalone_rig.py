@@ -60,6 +60,7 @@ import paths  # noqa: E402
 import ami  # noqa: E402
 import condev_rig as c  # noqa: E402
 import typewin as tw  # noqa: E402
+import install_rig as ir  # noqa: E402
 import emuwin  # noqa: E402
 
 ROOT = paths.VTCON
@@ -651,7 +652,7 @@ def cleanup():
     for cmd in GO_LIBS + GO_ENV:
         run(cmd)
     if rig_upterm_removed:
-        run('Assign >NIL: UP-Term: ' + RIG_UPTERM_DRAWER)
+        ir.restore_upterm_assign(run)   # the target the drop found
     run('Delete >NIL: RAM:sa-cal.txt RAM:t.txt RAM:p.txt RAM:q.txt QUIET')
     run('Delete >NIL: ENVARC:Claude ENVARC:amiga-pi RAM:S RAM:.claude ALL QUIET')
 
@@ -676,7 +677,7 @@ def check_stock():
     global rig_upterm_removed
     listing = run('Assign LIST')[1]
     if rig_upterm_assign(listing):
-        run('Assign >NIL: UP-Term: REMOVE')
+        ir.drop_upterm_assign(run)
         rig_upterm_removed = True
     assigns = run('Assign LIST')[1].upper()
     if 'UP-TERM' in assigns:

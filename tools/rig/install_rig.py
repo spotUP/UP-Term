@@ -207,6 +207,8 @@ def restore_upterm_assign(run_fn=None):
         for t in was[1:]:
             r('Assign UP-Term: "%s" ADD' % t)
         require_upterm_assign(r, 'after the checks that drop it')
+    elif was is not None:   # it was absent before the first drop: a check that re-assigned it leaves it absent again
+        r('Assign >NIL: UP-Term:')
 
 
 def require_upterm_assign(run_fn=None, when='at the end of the run'):
