@@ -92,3 +92,13 @@ Rig 7, Patina md5 b8a700c6105ef87b337425d70a5fa0f5 (VTCON_BUILD e402aeb8), `rig.
 Reading: the persist works (boot 1 writes, boots 2-3 persist nothing and dk_put skipped one byte-equal write) and no System Request appears on boots 2-3, which was the bug. PLAN stays 4 (DESK_START_PALETTE) every boot: the planner still sees the palette as different while the put finds the bytes equal, consistent with the BLOCKPEN / dk_flat_pens mismatch in Open risks above. Follow-up: find why desk_start_prefs(DT_PALETTE) plans a write whose bytes already match.
 
 Step 5 (manual theme pick): NOT VERIFIED. `patina_theme_save_rig.py --selects 1-1` stopped at "the Patina commodity is not running": its `Status` name check does not match, although the PATINA ARexx port is present and ENV:PATINA_THEME = tokyo-night. No pick was made.
+
+## S82 theme pick check
+
+Rig 7, build of s82-themepick (main 50471aac), 2026-11-15. Result: PASS (the manual pick applies and persists after the ENVARC start-persist fix).
+
+- Tool bug: `g.process_running('Patina')` matched the Status listing by name; the commodity's process is not listed under that name, so patina_theme_save_rig.py, patina_prefs_rig.py and five more rigs aborted with "Patina commodity is not running" while the PATINA port existed. Fix: `patina_gui_rig.patina_up()` reuses `patina_rig.port_up()` (ARexx port probe); all `process_running('Patina')` callers use it.
+- Boot 1: ENV:PATINA_THEME tokyo-night, PATINA_DESK_START_PLAN=22, PERSISTS=3, PUT_SKIPS unset.
+- Pick (patina_theme_save_rig.py --selects 2-2, Keep clicked): ENV:PATINA_THEME=starship. ENV:Sys/palette.prefs and ENVARC:Sys/palette.prefs both changed 5603c3438f -> df7b1ce4cb (identical); font, WBPattern, screenmode prefs unchanged and equal in ENV and ENVARC.
+- Reboot (rig.py reboot, DH0 kept): ENV:PATINA_THEME=starship, palette md5 df7b1ce4cb in both ENV:Sys and ENVARC:Sys, no requester open. PATINA_DESK_START_PLAN=4, PATINA_DESK_START_PERSISTS=0 (nothing left to persist), PATINA_DESK_PUT_SKIPS=1.
+- Caveats: (1) with DirectoryOpus running, the pick raises IPrefs "Intuition is attempting to reset the Workbench screen. Please close all windows, except drawers" (System Request, Retry|Cancel; a DOpus lister and the Patina bar are open); the tool reports it as a FAIL. DOpus had to be quit (its quit asks a confirm) before the pick went through. (2) The second pick's pen readback "Workbench colours 0-3 []" came back empty after DOpus quit, so the tool's own verdict was FAIL; the prefs-file and ENV evidence above is the basis of this PASS. Not investigated further.
