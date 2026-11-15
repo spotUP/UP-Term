@@ -1757,6 +1757,7 @@ static void gui_show(void)
     g->rp = g->win->RPort;
     SetDrMd(g->rp, JAM1);
     g->ticking = 0;
+    g->await = 0;   /* the new window opens at the laid-out box: the CHANGEWINDOW a hide cut off is owed no more */
     watch_idcmp(g);
     draw_full(g);
 }

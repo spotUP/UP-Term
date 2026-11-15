@@ -141,3 +141,34 @@ Rig 10 (060, `rig.py dopus` install from the unpatched os3 archive, then the sam
 - Pick tokyo-night -> white (PATINA_THEME=white): the daemon was unresponsive for >30 s during the reset, then back. No requester afterwards; screen title went "Directory Opus" -> "Workbench Screen" (screen closed and reopened), lister (memory text changed 1,019.4M -> 1,018.5M free) and button bank reopened.
 - PATINA_DEFERRED=1, PATINA_WBCLOSES=1, PATINA_FOREIGN='Ram Disk,...(lister 0x2020203f);-/200a70 (button bank)' : the requester is no longer listed as foreign.
 Verdict: PASS for requester and reopen. Theme pens on the reopened DOpus windows not measured separately (no screenshot taken).
+
+## S83 half-drawn theme window
+
+Probe of rig 21 (owner's held rig, "S83 session: eye check A theme pick"), read-only, 2026-11-15. No code changed, no clicks or keys sent.
+
+### Symptom
+DOpus 5 Workbench (IPrefs-patched DOpus md5 21e935e9, one lister, flat on). Style > Patina theme, pick "starship", confirm Keep. Theme applies, DOpus lister closes and reopens (lister text went 593K -> 652K in use), but the picker window "Patina" (220,182 360x236) stays half drawn: orange top and left edge, rows miasma/nord/retro-82 and a sliced 4th row, no right/bottom edge, no bottom bar, nothing below about y=418. Owner shot: rig21-a.png.
+
+### Evidence
+- Window list (newest first): "Patina bar", "Patina" (active), DOpus lister, DOpus buttons, backdrop. The picker window opened after the lister reopened.
+- patina-gui task is alive and idle in event_loop Wait (gui.c:1433), wait mask 0x20009000 (window port bit 29, CTRL_C, CTRL_F). It is not stuck mid-draw; it is not drawing.
+- ENV: PATINA_WBCLOSES=1, PATINA_DEFERRED=1 (foreign DOpus windows took the deferral branch), PATINA_FOREIGN = DOpus lister + button bank, PATINA_DRAWS=10, PATINA_THEME=starship, CONFIRM_SHOWN=1, CONFIRM_KEEPS=1, TEARS=0, PATINA_ROWS="Patina theme|Terminal" (possibly stale from before the pick).
+- The window uses WA_BackFill LAYERS_NOBACKFILL (gui.c:1579-1592), so any area not painted by Patina shows the stale screen pixels. That matches the picture: old picker remnants over lister background.
+
+### Root cause (leading hypothesis, unverified)
+The gui's draw guard `g->await` stays 1, so every draw_full/draw_list returns at once (gui.c:692, 715; also 522, 1303, 1310, 1374, 1420).
+- relayout (gui.c:764-773) sets `g->await = 1` and calls ChangeWindowBox; only IDCMP_CHANGEWINDOW on that window clears it (gui.c:1463-1464).
+- The theme apply closes and reopens Patina's windows (desk_dos.c dk_windows_close / dk_windows_open via desk_dos_own_close = gui_hide, own_open = gui_show, gui.c:1976-1977). If the window is closed while await=1, the owed IDCMP_CHANGEWINDOW dies with the old window.
+- gui_show (gui.c:1742-1761) opens the new window at the laid-out box, then calls draw_full, but never clears `g->await`. draw_full returns at once; no CHANGEWINDOW is ever coming for the new window. The window stays undrawn until some later event, and the NOBACKFILL layer shows the old pixels.
+- Contributing: the deferral branch in desk_dos_apply (desk_dos.c ~525-540) reopens Patina windows before the palette write, on the old assumption that DOpus blocks the IPrefs reset. With the S82 DOpus IPrefs fix the reset now happens after Patina's windows are back, so DOpus closes/reopens around an open picker.
+Not proven: the exact moment await went to 1 (preview relayout before apply, or theme_live -> list_rebuild_keep -> relayout after it). wincensus (gate counters, window owner) was not run: build queue too long; build cancelled.
+
+### Smallest fix
+In gui_show (gui.c:1742-1761) set `g->await = 0;` before `draw_full(g)`. The new window already has the laid-out box, so no CHANGEWINDOW is owed. One line, root layer (gui owns its draw guard).
+Follow-up to decide separately: in desk_dos_apply's deferral branch, now that DOpus cooperates with the reset, wait for the reset (dk_wait_reset) before dk_windows_open, or stop counting a cooperating DOpus as a blocking foreign window.
+
+### Rig verify
+Fresh rig (not 8/81/83/183, not 21 unless owner frees it), DOpus 5 Workbench with one lister, flat on. Style > Patina theme, pick a theme, Keep. PASS: picker fully drawn (all four edges, bottom bar, buttons), PATINA_DRAWS rises after the pick, gui still in event_loop. Also pick a theme from a different-height level to force a ChangeWindowBox. Append a test-register row.
+
+### Light grey WB title bar
+Not investigated (budget). Unverified whether flat mode should leave the screen title bar light grey.
