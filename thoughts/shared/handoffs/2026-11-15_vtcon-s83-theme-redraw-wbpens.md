@@ -10,7 +10,7 @@ status: release blocked on WB title bar FAIL
 ## State
 - main at 0c94dce0 (local, NOT pushed). Contains s81-blockpen merge (b3aebda9) and the patina-gui await fix (0c94dce0).
 - Owner decision: cut the vtcon release only after eye checks pass. Then push main and run the release recipe (memory vtcon-release-recipe).
-- Rigs: 22, 23 stopped. Rig 21 stop issued at session end (`UPTERM_RIG=21 python3 tools/rig/rig.py stop`); check `rig.py status`.
+- Rigs: 22, 23 stopped. Rig 21 stopped at session end (rc=0).
 
 ## Eye checks
 - B (Installer "Where to install", grey ground behind SYS:): PASS.
