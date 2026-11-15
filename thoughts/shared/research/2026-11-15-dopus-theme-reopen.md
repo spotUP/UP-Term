@@ -70,3 +70,39 @@ No Patina theme picker, console or desk window is open; no stock Workbench windo
 Also seen: the same requester appeared at boot 1 before any pick (palette apply on first boot), and a Cancel click re-raised it.
 
 Verdict: DOpus did NOT close its lister, buttons or backdrop window. The only candidate blocker for check_closescreen (task name not `<< IPrefs >>`, not DOpus) is the Patina bar, which supports the hypothesis for exactly one window. Unproven: whether check_closescreen rejects it, because it also depends on the WBENCHWINDOW flag (the bar being flagged as a WB window would let it pass). Next step is still direction 1 (Patina closes the bar before the pen-changing apply); to test, close the bar and re-pick with DOpus running: if DOpus then closes itself, the bar was the blocker.
+
+## Root cause (S82)
+
+Code reading only (no rig run, budget). Proven / unproven marked per line.
+
+Proven by code:
+1. "Bar stayed open the whole time" does NOT mean Ctrl-F never fired. The gate reopens every hidden client after each
+   FAILED CloseWorkBench: wbreset_patch.c:72-77 (wbr_close_end, then signal_all) -> wbreset_core.c:89-97 (failed:
+   phase OPEN, hidden_list) -> wbreset_core.c:117-126 (DO_SHOW) -> patina.c:216 desk_wb_open. With DOpus windows still
+   up every try fails, so the bar is down only for the gate's few-tick wait and back long before the next 5 s poll.
+2. The bar is NOT what makes DOpus refuse. tw_open opens it with WA_WBenchWindow (themewin.c:104-106, since 7d6bdb09
+   2026-11-13, so in the 11-14 rig build; s28 census Flags 0a010840 = flagged), and check_closescreen skips every
+   WFLG_WBENCHWINDOW window (dopus Program/misc.c:457). Direction 1 (close the bar first) therefore cannot change DOpus.
+3. Patch chain order is not the cause: DOpus's patch always calls the old vector (Library/wb.c:1059-1074), Patina's
+   gate always calls the saved one (wbreset_patch.c:70). Either order reaches both hooks and the original.
+4. The requester means CloseWorkBench returned FALSE; IPrefs' auto-retry only fires when no unflagged window is left
+   (2026-10-31_wbreset-external-use.md, routine 0x58e / nonwb_free 0x48a). DOpus windows are unflagged, so the reset
+   can only pass after DOpus closed itself. Cancel ends that attempt; a re-raise is a NEW reset trigger.
+5. The theme pick with a DOpus lister/button bank open goes down IPREFS-FOREIGN-WINDOWS deferral: those windows are
+   non-backdrop, non-WBENCHWINDOW -> desk_window_foreign (win_core.c:197-199) -> desk_dos.c:534-547 reopens the bar at
+   once and writes the palette for the pen map IN FORCE, i.e. by design there should be no reset at all, and no
+   dk_wait_reset before dopus_theme_send (desk_dos.c:569-570) fires synchronous ARexx at DOpus.
+
+Unproven (needs the rig):
+- Why a reset happens despite the deferral: either deferral did not trigger (check sentinels PATINA_DEFERRED,
+  PATINA_FOREIGN), or the deferred palette still changes pens IPrefs compares (desk_pens_reset checks DK_SLOTS only).
+- Why DOpus does not close: in the steady state (DOpus + IPrefs requester + flagged bar) check_closescreen should pass,
+  so either DN_CLOSE_WORKBENCH is not acted on (GUIF_CLOSE_PENDING set / DOpus main busy with the dopus_theme_send
+  ARexx at that moment, event_loop.c:614-626) or a transient unflagged non-DOpus window exists during its 1 s check.
+- Boot requester and Cancel re-raise: likely the start apply (desk_dos.c:1505-1522, no deferral check) and a second
+  trigger (Patina re-apply or a second IPrefs notify); not traced.
+
+Rig check that splits it (one run, rig != 8/81/83/183): DOpus + lister open, pick, then while the requester is up
+read the gate record with tests/amiga/wincensus (closes/failed/diag_wins/diag_vis/timeouts) and the PATINA_DEFERRED /
+PATINA_FOREIGN sentinels; then press Retry once. Retry passes -> the first try had a transient blocker (DOpus check ran
+too early / was busy). Retry also fails with failed++ and DOpus windows still there -> DOpus never acts on the notify.
