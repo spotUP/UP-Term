@@ -22,6 +22,7 @@
 #include "dopustb_dos.h"
 #include "rexx_host.h"
 #include "wbreset_core.h"
+#include "sentinel_dos.h"
 
 unsigned long gt_dos_dopus_sends;
 unsigned long gt_dos_wb_pens, gt_dos_wb_refused;
@@ -233,6 +234,14 @@ int gt_dos_select(const char *name, char *why, int cap)
     if (r == PREFS_INSTALL_OK) {
         desk_dos_prev_theme(prev);      /* FP1-REVERT-THEME-LINE: a Revert of this pick writes it back */
         gt_dos_apply_saved(name);
+        /* every select path (menu row, theme editor, gtheme: hotkey) publishes the same counters for a rig to read */
+        am_sentinel("PATINA_WBPENS", (long)gt_dos_wb_pens);
+        am_sentinel("PATINA_WBREFUSED", (long)gt_dos_wb_refused);
+        am_sentinel("PATINA_DESKS", (long)desk_dos_applies);
+        am_sentinel("PATINA_DESKMASK", (long)desk_dos_last_mask);
+        am_sentinel("PATINA_DESK_ORIG_SAVED", (long)desk_dos_originals_saved);
+        am_sentinel("PATINA_DESK_ORIG_RESTORED", (long)desk_dos_originals_restored);
+        am_sentinel("PATINA_WBCLOSES", (long)desk_dos_wb_closes);
         return 1;
     }
     if (why)
