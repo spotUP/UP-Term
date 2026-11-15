@@ -177,7 +177,7 @@ static void test_desk_filename_pen(void)
         pen1flat += flat[s] == 1;
     }
     CHECK_INT(dark, 3);     /* BLOCK, SHADOW, BARTRIM */
-    CHECK_INT(darkflat, 2); /* the flat map overrides SHADOW with the background */
+    CHECK_INT(darkflat, 1); /* the flat map overrides SHADOW with the background and BARTRIM with the bar fill */
     CHECK_INT(pen1, 0);     /* no DrawInfo slot is pen 1: it belongs to Workbench file names */
     CHECK_INT(pen1flat, 0);
     CHECK_INT(pens[DK_BLOCK], 5);
@@ -204,6 +204,9 @@ static void test_desk_palette_flat(void)
             CHECK_INT(flat[s], stock[s]);
         } else if (s == DK_SHINE || s == DK_SHADOW) {  /* FLAT-SOLID-FILL: one surface pen for highlight and shadow */
             CHECK_INT(flat[s], DK_BG);
+            CHECK(stock[s] != flat[s]);
+        } else if (s == DK_BARTRIM) {  /* S84-WB-TITLE-PENS: no light line under the screen bar, it takes the bar fill like the footer bar */
+            CHECK_INT(flat[s], flat[DK_BARBLOCK]);
             CHECK(stock[s] != flat[s]);
         } else if (s == DK_EXTRA) {  /* FLAT-BAR-CONTOUR: slot 12 is BARCONTOURPEN (OS 3.2), the 1 px line along the top of the screen bar: bar background */
             CHECK_INT(flat[s], flat[DK_BARBLOCK]);
@@ -1588,7 +1591,7 @@ static void test_desk_palette_31_pen5(void)
 {
     static unsigned char in[BUF_MAX], out[BUF_MAX], again[BUF_MAX];
     static const unsigned raw[12] = {0, 5, 2, 2, 5, 3, 4, 6, 2, 7, 0, 5};
-    static const unsigned wide_[12] = {0, 0xfefd, 2, 2, 0xfefd, 3, 0xfefc, 0xfefe, 2, 0xfeff, 0, 2};
+    static const unsigned wide_[12] = {0, 0xfefd, 2, 2, 0xfefd, 3, 0xfefc, 0xfefe, 2, 0xfeff, 0, 0};
     long n = slurp(DESK_DATA "palette-gui-save.prefs", in, sizeof in), r;
     int i, bad = 0, bad4 = 0, badw = 0;
     CHECK_INT(n, DK_PALETTE_SIZE);
@@ -1604,7 +1607,9 @@ static void test_desk_palette_31_pen5(void)
     }
     CHECK_INT(bad, 0);
     CHECK_INT(bad4, 0); /* the 4-colour list is untouched except slot 11 */
-    CHECK_INT(out[0x72 + 23] == 2 && out[0x32 + 23] == 2, 1); /* slot 11 = 2 in both lists, as Palette 40.2 writes it */
+    /* S84-WB-TITLE-PENS: slot 11 (BARTRIM) = slot 10 (BARBLOCK) in both lists, so 3.1 draws no light line under the dark screen bar */
+    CHECK_INT(out[0x72 + 22] == out[0x72 + 20] && out[0x73 + 22] == out[0x73 + 20], 1);
+    CHECK_INT(out[0x32 + 22] == out[0x32 + 20] && out[0x33 + 22] == out[0x33 + 20], 1);
     /* idempotent: a safe file stays byte for byte */
     CHECK_INT(desk_palette_31safe(out, n, again, sizeof again), n);
     badw = memcmp(again, out, (size_t)n);

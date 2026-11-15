@@ -86,6 +86,7 @@ void desk_pens_flat(unsigned char pens[DK_SLOTS])
     desk_pens(pens);
     pens[DK_SHINE] = (unsigned char)surface;    /* FLAT-SOLID-FILL: highlight, shadow and the active frame fill all take the surface pen, */
     pens[DK_SHADOW] = (unsigned char)surface;   /* so every window is one solid rectangle and only title and glyph colour show focus */
+    pens[DK_BARTRIM] = pens[DK_BARBLOCK]; /* S84-WB-TITLE-PENS: the 1 px line under the screen bar takes the bar fill, flat like the footer bar (owner) */
     pens[DK_EXTRA] = pens[DK_BARBLOCK];  /* FLAT-BAR-CONTOUR: slot 12 is BARCONTOURPEN (OS 3.2): the 1 px line along the top of the screen bar, stock FG = a bright "shine" line; the bar background hides it */
     /* S57-LOCALE-LIST-NO-SELECT: FILLPEN stays the accent and FILLTEXTPEN the surface (desk_pens). ListBrowser and GadTools listviews
      * draw the selected row in them; a surface FILLPEN left the Locale Country list with no selected row. Intuition's active border
@@ -449,9 +450,9 @@ int desk_palette_pens_stale(const unsigned char *cur, long curlen, const unsigne
 /* S57-PAL31-PEN5: the 8-colour list names entries 4-7 the way Palette 40.2 stores them, 0xFEFC + (entry - 4) (entry 5 = 0xFEFD, measured
  * on the editor's own file). IPrefs 40.7 reads a literal 4-7 as that pen number, so a raw pen 5 painted ff00ff magenta at depth 8; the
  * 0xFExx form resolves to the last four pens, where desk_palette puts the entries. Already-stored 0xFExx words pass unchanged. Slot 11
- * (BARTRIM, unknown to 3.1) is written 2 in both lists, as Palette 40.2 writes it (rig 87, editor USE of the same pens). */
+ * (BARTRIM) takes the list's own slot 10 (BARBLOCK) word: Palette 40.2 writes 2 there (rig 87), but IPrefs 40.7 draws the line under the
+ * screen bar in it, a light underline on a dark bar (S84-WB-TITLE-PENS, rig 84). Only a 13th word crashes 3.1, not the value of the 12th. */
 #define PAL_PEN_C3 0xfefcu /* NDK PEN_C3: entry 4; C2 fefd = entry 5 ... C0 feff = entry 7 */
-#define PAL_PEN_BARTRIM_31 2u
 static void pal_entries_far(unsigned char *body, long off, int n)
 {
     int i;
@@ -472,7 +473,7 @@ static int pal_list_31(unsigned char *body, long off)
     if (off == PAL_8PENS)
         pal_entries_far(body, off, n < DK_PENS_31 ? n : DK_PENS_31);
     if (n >= DK_PENS_31)
-        put16(body + off + 2 * (DK_PENS_31 - 1), PAL_PEN_BARTRIM_31); /* slot 11 is 2 in both lists of Palette 40.2's own file */
+        put16(body + off + 2 * (DK_PENS_31 - 1), get16(body + off + 2 * (DK_PENS_31 - 2))); /* BARTRIM = BARBLOCK: no line under the bar */
     if (n > DK_PENS_31) {
         memset(body + off + 2 * DK_PENS_31, 0, (size_t)(2 * (PAL_LIST_WORDS - DK_PENS_31)));
         put16(body + off + 2 * DK_PENS_31, 0xffff);

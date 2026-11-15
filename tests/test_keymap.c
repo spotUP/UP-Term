@@ -4311,8 +4311,11 @@ static void wb_pens_contrast_guard(void)
     gt_builtin(&th);
     CHECK_INT((long)wb_pens_plan(&th, rgb), 1L);
     CHECK_INT((long)rgb[0], (long)th.bg);
-    CHECK_INT((long)rgb[1], (long)th.fg);
-    CHECK_INT((long)rgb[2], (long)th.muted);
+    /* S84-WB-TITLE-PENS: Workbench title text in the theme text colour, not muted grey: pen i is role pen i (text on pen 2,
+     * muted on pen 1), the order desk_palette writes and the Patina pen maps read */
+    CHECK_INT((long)rgb[DK_FG], (long)th.fg);
+    CHECK_INT((long)rgb[DK_MUTED], (long)th.muted);
+    CHECK_INT((long)rgb[2], (long)desk_role(&th, 2));
     CHECK_INT((long)rgb[3], (long)th.accent);
     /* synthetic weak theme: grey on slightly different grey is refused, rgb still filled */
     th.bg = 0x808080;

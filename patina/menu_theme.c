@@ -383,15 +383,13 @@ int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char
 
 int wb_pens_plan(const gtheme *th, uc_u32 rgb[WB_PENS])
 {
-    gt_roles r;
+    int i;
     if (!th)
         return 0;
-    gt_roles_of(th, &r);    /* RL8: Workbench pens 0-3 are the surface, text, muted and accent roles */
-    rgb[0] = r.c[GR_SURFACE];
-    rgb[1] = r.c[GR_TEXT];
-    rgb[2] = r.c[GR_MUTED];
-    rgb[3] = r.c[GR_ACCENT];
-    if (rgb[0] > 0xFFFFFFUL || rgb[1] > 0xFFFFFFUL || rgb[2] > 0xFFFFFFUL || rgb[3] > 0xFFFFFFUL)
-        return 0;
-    return gt_contrast(rgb[0], rgb[1]) >= GT_FLOOR_TEXT;
+    /* S84-WB-TITLE-PENS: pen i gets the colour of role pen i, the order desk_palette writes and every Patina pen map reads (text on
+     * pen 2, muted on pen 1). The old surface/text/muted/accent order put the muted grey under TEXTPEN and BARDETAILPEN. */
+    for (i = 0; i < WB_PENS; i++)
+        if ((rgb[i] = desk_role(th, i)) > 0xFFFFFFUL)
+            return 0;
+    return gt_contrast(rgb[DK_BG], rgb[DK_FG]) >= GT_FLOOR_TEXT;
 }
