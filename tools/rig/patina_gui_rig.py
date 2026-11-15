@@ -235,6 +235,12 @@ def process_running(name):
     return any(name in l for l in c.run('Status')[1].splitlines())
 
 
+def patina_up():
+    # The commodity's process name in Status is not 'Patina' on every boot: probe its ARexx port (the same probe patina_rig uses)
+    import patina_rig
+    return patina_rig.port_up()
+
+
 def env_count(name):
     rc, out = c.run('GetEnv ' + name)
     m = re.match(r'\s*(\d+)\s*$', out) if rc == 0 else None
@@ -356,7 +362,7 @@ def case_default(geom):
     check(not w, 'Esc at the top level closed the window')
     time.sleep(2)
     check(not process_running('patina-gui'), 'patina-gui exited after Esc')
-    check(process_running('Patina'), 'the Patina commodity is still running')
+    check(patina_up(), 'the Patina commodity is still running')
 
 
 def case_groups(geom):

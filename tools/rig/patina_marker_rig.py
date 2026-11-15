@@ -63,7 +63,7 @@ def main():
         print('[INFO] now (within the 15 s) wait 5 s quiet, then rig.py reboot; failed', d.failed)
     else:
         for _ in range(15):
-            if g.process_running('Patina'):
+            if g.patina_up():
                 break
             time.sleep(2)
         else:

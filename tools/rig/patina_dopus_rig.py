@@ -45,10 +45,10 @@ def main():
     for m in re.finditer(r'Process\s+(\d+):.*RAM:Patina\b', c.run('Status')[1]):
         c.run('Break %s C' % m.group(1))     # a leftover RAM: copy has no sibling menu programs
         time.sleep(3)
-    if not g.process_running('Patina'):
+    if not g.patina_up():
         c.run('Run >NIL: VTC:Patina')        # the kit drawer: Patina starts its menu/gui siblings from there
         time.sleep(8)
-    print('process Patina running:', g.process_running('Patina'))
+    print('process Patina running:', g.patina_up())
     d.flat_stop()
     d.put_flat_prefs(True)
     c.run('Run >NIL: RAM:patina-flat')
