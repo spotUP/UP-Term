@@ -93,3 +93,17 @@ Screenshot (deleted): listers show a single "<" and a down arrow in the title ro
 Open: no trigger found that makes DOpus call RenderImage with ToolbarArrow.image on this screen; either the default toolbar
 never draws the arrow here (maybe only for an overflowing/multi-page toolbar) or the name match (ln_Name offset 10) does not
 hit. Next: log RenderImage names seen by d4_renderimage (counter of all calls, last name) to tell which.
+
+## S82 rig recheck (narrow lister)
+Verdict: PASS (arrow>0, no guru). Rig 83, purpose "up-term-e8: DT-11 arrow recheck narrow lister", DOpus 5.104,
+patina-flat md5 9076dbb6 (rig.py setup/dopus/start/install; binary put to RAM: as patina_dopus_rig does), Patina running.
+Narrowed: one DeviceList NEW lister (was 444 wide, arrow=0 after open), then ARexx
+`lister set <handle> position 0 14 160 300` and `lister refresh <handle> full`; toolbar PROGDIR:Buttons/Toolbar overflows.
+STATUS after open (444 wide):
+  dopus=73.8 patched=15 calls=20 flat=0 sums=780fd46b,ba2cf172,bdaa116a,f8b63678
+  dopus bevel calls=0 face=0 nopix=0 d5=4 arrow=0 ground=8 gs=1 gslot=0x1000c458 gcode=0x10030d64 selrgb=3e4254 pensel=12
+STATUS after narrowing (160 wide):
+  dopus=73.8 patched=15 calls=27 flat=0 sums=780fd46b,ba2cf172,bdaa116a,f8b63678
+  dopus bevel calls=0 face=0 nopix=0 d5=6 arrow=1 ground=10 gs=1 gslot=0x1000c458 gcode=0x10030d64 selrgb=3e4254 pensel=12
+Cause of the earlier arrow=0: the lister was wide enough for the whole toolbar; DOpus only draws the arrow on overflow.
+Not done: the screenshot glyph check (no image reading allowed in this run, no nested agent); eye check of the flat "<<" still owed.
