@@ -439,7 +439,7 @@ def r_theme_name():
             return False, 'fewer than %d shipped themes: rebuild the rig kit' % NEED_THEMES
         set_graphical()
         time.sleep(3)                      # Patina reloads on the prefs notify
-        if not g.process_running('Patina'):
+        if not g.patina_up():
             return False, 'the Patina commodity is not running'
         g.close_menu()
         allowed = {w['title'] or '' for s in g.screens() for w in s['windows']}
@@ -632,7 +632,7 @@ def main():
     a.only = verdicts.parse_only(a.only, [n for n, _ in ROWS])
     OUT.mkdir(parents=True, exist_ok=True)
     stage_rig.report(stage_rig.stage_build(build=not a.no_build))
-    if not g.process_running('Patina'):      # the hotkey commodity; the rig boots without it (patina_gui_rig starts it the same way)
+    if not g.patina_up():      # the hotkey commodity; the rig boots without it (patina_gui_rig starts it the same way)
         c.run('Run >NIL: %s/Patina' % paths.UPTERM_BIN)
         time.sleep(3)
     passed = total = 0

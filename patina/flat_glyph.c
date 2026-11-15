@@ -482,6 +482,27 @@ int flat_glyph_tick(int ox, int oy, int w, int h, int pen, flat_fill_fn fill, vo
     return g.n;
 }
 
+int flat_glyph_dleft(int ox, int oy, int w, int h, int side, int pen, flat_fill_fn fill, void *ctx)
+{
+    int hw = (w - 2) / 2, rows, tw, x0, y0, i, k;
+    if (!fill || side < 1)
+        return 0;
+    rows = imin(h - 2, 2 * (hw / side) - 1);    /* a triangle rows high is side * (rows + 1) / 2 wide: both fit the box */
+    if (!(rows & 1))
+        rows--;
+    if (rows < 3)
+        return 0;
+    tw = side * ((rows + 1) / 2);
+    x0 = ox + (w - 2 * tw) / 2;
+    y0 = oy + (h - rows) / 2;
+    for (i = 0; i < 2; i++)
+        for (k = 0; k < rows; k++) {
+            int len = side * (imin(k, rows - 1 - k) + 1), xe = x0 + i * tw + tw - 1;
+            fill(ctx, xe - len + 1, y0 + k, xe, y0 + k, pen);
+        }
+    return 2 * rows;
+}
+
 int flat_glyph_plan(unsigned long which, int w, int h, int state, flat_prim *out, int cap)
 {
     plan g;

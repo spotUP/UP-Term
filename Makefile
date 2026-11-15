@@ -98,6 +98,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=screenreq a zeroed screen move request asks for no move, so a new XCON: process does not flash the screen (tests/test_screenreq.c)
 # ONLY=wbpark   a closing Workbench parks a plain Workbench window once and its reopen brings it back; a failed reopen retries (tests/test_wbpark.c)
 # ONLY=cmdline vsh's argv as an AmigaDOS command line: KEY=value keeps KEY= unquoted so ReadArgs sees the keyword (tests/test_cmdline.c)
+# ONLY=dopus_iprefs_patch the kit's in-place Latin-1 fix of DirectoryOpus's IPrefs task-name literal (tests/test_dopus_iprefs_patch.py)
 # ONLY=dopus_filetype the Directory Opus filetype file's golden bytes; upstream filetype_tool check/lint when $(DOPUS5_SRC) is set (tests/test_dopus_filetype.py)
 # ONLY=menu_rig_dopus_absent the patina_menu_rig dopus_absent row starts the commodity before the root menu (tests/test_menu_rig_dopus_absent_commodity.py)
 # ONLY=menu_rig_dopus_quit the dopus_quit row starts DOpus again with C:LoadWB at its end, also on a raise (tests/test_menu_rig_dopus_quit_restore.py)
@@ -129,6 +130,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=rig_install_no_vsh rig.py install without build/amiga/vsh exits with one message naming the file and the make target (tests/test_rig_install_no_vsh.py)
 # ONLY=rig_themes_live rig.py install/start stage the Patina themes into the live drawer UP-Term: points at, no boot needed (tests/test_rig_themes_live.py)
 # ONLY=editor_stack dk_editor gives the prefs editors a pl_stack stack, floor 32768 (tests/test_patina_editor_stack.py)
+# ONLY=put_skips dk_put feeds no editor when the bytes equal ENV:Sys, IPrefs resets on any USE (tests/test_patina_put_skips_unchanged.py)
 # ONLY=palette_closes every palette.prefs write in desk_dos.c (dk_flat_pens too) closes Patina's windows around a pen reset, so IPrefs raises no System Request (tests/test_palette_write_closes_windows.py)
 # ONLY=revert_live_pens the timeout Revert sets the live pens 4-7 after Patina's windows are back, the way apply does, and dk_live_pens holds no Workbench lock across ipd_role_write (KS 3.2 freeze, tests/test_revert_live_pens_deferred.py)
 # ONLY=wb_absent flat off / revert to no Workbench.prefs USEs the stock file and keeps it in ENV: for IPrefs, so the icon border returns (tests/test_wb_absent_restore.py)
@@ -231,7 +233,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 TEST_ONLY_NAMES := $(shell grep -o '"$$(ONLY)" = [a-z_0-9]*' $(firstword $(MAKEFILE_LIST)) | sed 's/.* //' | sort -u)
 # ONLY= rows that run python3 on files alone: no C binary below is built or run for them (a worktree without the vendor NDK
 # cannot build render_host, and pkg_rows needs none). Add a name only after checking its script starts no $(BUILD) binary.
-TEST_PY_ONLY := lha_prestart dist_name_len win_refresh gui_chip_pens gen_lucide_icons icon_grid_fit pkg_rows worktree_ready rig_handler_fallback rig_patina_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq rig_boot_console gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free dopus_toolbar flat_on_hang icat_stderr help_man_sync ipd_no_dos_under_list patina_rows_buffer flat_single_instance flat_clone_stack flat_hook_locks flat_unload_inflight uterm_wiring
+TEST_PY_ONLY := put_skips lha_prestart dist_name_len win_refresh gui_chip_pens gen_lucide_icons icon_grid_fit pkg_rows worktree_ready rig_handler_fallback rig_patina_conf rig_booted_ixemul rig_libs_rig_only rig_iprefs_sysreq rig_boot_console gui_rig_open_menu desk_rig_pick_waits one_select_level rig_install_no_vsh rig_themes_live rig_installer_free dopus_toolbar flat_on_hang icat_stderr help_man_sync ipd_no_dos_under_list patina_rows_buffer flat_single_instance flat_clone_stack flat_hook_locks flat_unload_inflight uterm_wiring
 TEST_BINS := $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host $(BUILD)/upgetty_host
 # the icon rows import fontTools: they run in the repo .venv like the icon generators (VENV_PY, below)
 test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS)) | $(VENV_FONTTOOLS)
@@ -283,6 +285,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS)) | $(VENV_FONTTOOLS)
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = flat_icl_pens ]; then python3 -I tests/test_flat_icl_pens_persist.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gui_rebind ]; then python3 -I tests/test_patina_gui_rebind.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = editor_stack ]; then python3 -I tests/test_patina_editor_stack.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = put_skips ]; then python3 -I tests/test_patina_put_skips_unchanged.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = wb_absent ]; then python3 -I tests/test_wb_absent_restore.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = palette_closes ]; then python3 -I tests/test_palette_write_closes_windows.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = revert_live_pens ]; then python3 -I tests/test_revert_live_pens_deferred.py; fi
@@ -319,6 +322,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS)) | $(VENV_FONTTOOLS)
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = upgetty ]; then ./$(BUILD)/upgetty_host; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = fonts ]; then $(MAKE) --no-print-directory jbmono && python3 tests/test_dist_fonts.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = dopus_filetype ]; then python3 tests/test_dopus_filetype.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = dopus_iprefs_patch ]; then python3 tests/test_dopus_iprefs_patch.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_rig_dopus_absent ]; then python3 tests/test_menu_rig_dopus_absent_commodity.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_rig_dopus_quit ]; then python3 tests/test_menu_rig_dopus_quit_restore.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_only_list ]; then python3 tests/test_rig_only_list.py; fi
@@ -2218,7 +2222,7 @@ $(DOPUS_TOOLBAR_DIR)/Buttons/Patina-toolbar-filled-24: $(wildcard $(DOPUS_TOOLBA
 dopus-toolbar: $(DOPUS_TOOLBAR_DIR)/Buttons/Patina-toolbar-filled-24
 # up-dopus: the unmodified upstream Directory Opus 5 68k archives (dist/addons/dopus/archives.txt), each checked
 # against its md5 in vendor/dopus5-5.104/ (download URLs: dist/addons/dopus/SOURCE.txt) and unpacked into its
-# drawer of Files; Install runs upstream's own "Install DOpus5" from the drawer that fits the CPU
+# drawer of Files (one literal of DirectoryOpus is then fixed in place, tools/dopus_iprefs_patch.py); Install runs upstream's own "Install DOpus5" from the drawer that fits the CPU
 dist-dopus: $(BUILD)/amiga/upupdate $(LHA)
 	$(call ADDON_STAGE,dopus)
 	cp dist/addons/dopus/COPYING dist/addons/dopus/SOURCE.txt dist/addons/dopus/archives.txt $(KIT_dopus)/Files/
@@ -2226,6 +2230,7 @@ dist-dopus: $(BUILD)/amiga/upupdate $(LHA)
 	  [ "$$(md5 -q $(VENDOR)/dopus5-5.104/$$a 2>/dev/null || md5sum < $(VENDOR)/dopus5-5.104/$$a | cut -d' ' -f1)" = "$$md5" ] || { echo "[ERROR] $$a: md5 is not $$md5"; exit 1; }; \
 	  mkdir -p $(KIT_dopus)/Files/$$drawer && lha -xqw=$(KIT_dopus)/Files/$$drawer $(VENDOR)/dopus5-5.104/$$a || exit 1; \
 	done
+	python3 tools/dopus_iprefs_patch.py $(KIT_dopus)/Files/os3/DOpus5/DirectoryOpus $(KIT_dopus)/Files/os3-68000/DOpus5/DirectoryOpus
 	$(MAKE) $(DOPUS_TOOLBAR_DIR)/Buttons/Patina-toolbar-filled-24
 	mkdir -p $(KIT_dopus)/Files/toolbar && cp -R $(DOPUS_TOOLBAR_DIR)/Images $(DOPUS_TOOLBAR_DIR)/Buttons $(KIT_dopus)/Files/toolbar/
 	python3 tools/mkkit.py dopus

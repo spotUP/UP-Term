@@ -331,7 +331,7 @@ static void test_dopus_bevel_hook(void)
     CHECK_INT(flat_body_remove(&w, b2, orig, 8, 0), FLAT_REMOVED);
     CHECK(memcmp(b2, bevel, 64) == 0);
     flat_dopus_status_line(1, 73, 8, FLAT_GATE_OK, 7, 1, 4, 4, sums, line, sizeof line);
-    CHECK_STR(line, "dopus=73.8 patched=7 calls=4 flat=4 sums=780fd46b,ba2cf172,bdaa116a");
+    CHECK_STR(line, "dopus=73.8 patched=7 calls=4 flat=4 sums=780fd46b,ba2cf172,bdaa116a,00000000");
 }
 
 /* 0c: the body hook's pure parts, on the real dopus5.library 73.8 (DOpus 5.104 OS3) bytes: .text 0x245c4 (the -702 stub),
@@ -456,7 +456,7 @@ static void test_dopus_decide(void)
     flat_dopus_status_line(1, 73, 8, FLAT_GATE_UNKNOWN, 0, 0, 0, 0, 0, line, sizeof line);
     CHECK_STR(line, "dopus=73.8 inert=unknown");
     flat_dopus_status_line(1, 73, 8, FLAT_GATE_UNMEASURED, 0, 0, 0, 0, sm, line, sizeof line);
-    CHECK_STR(line, "dopus=73.8 inert=unmeasured sums=0001abcd,deadbeef,00000000");
+    CHECK_STR(line, "dopus=73.8 inert=unmeasured sums=0001abcd,deadbeef,00000000,00000000");
     flat_dopus_status_line(1, 73, 8, FLAT_GATE_OK, 3, 1, 12, 9, 0, line, sizeof line);
     CHECK_STR(line, "dopus=73.8 patched=3 calls=12 flat=9");
 }
@@ -534,6 +534,54 @@ static void cv_fill(void *ctx, int x0, int y0, int x1, int y1, int pen)
 /* 0c DOPUS-ENV-UNSTYLED (owner, rig 63, DOpus Environment "buttons are text only"): under flat pens DrawBox / DrawFieldBox
  * drew nothing. They now draw the flat outline in pen_line on the inclusive rectangle, side columns wide, and never touch
  * the inside (the caller's label). Fails on the old code: no flat_dopus_box_draw, and the d4 SKIP branch drew no pixel. */
+/* DT-11: the lister toolbar "<<" arrow. dopus5's RenderImage (LVO -654) is the fourth D4 element; the arrow is told
+ * from every other image by the basename of its path (Image_Data node.ln_Name, opened from DOpus5:Images/ToolbarArrow.image)
+ * and redrawn as two flat left triangles in one pen. Fails on the old code: no element, no matcher, no glyph. */
+static void test_dopus_arrow(void)
+{
+    static const char *const want[] = {
+        "?????????????",
+        "?????#???#???",
+        "????##??##???",
+        "???###?###???",
+        "??########???",
+        "???###?###???",
+        "????##??##???",
+        "?????#???#???",
+        "?????????????",
+    };
+    uint32_t sums[FLAT_EL_COUNT] = { 0x780fd46bu, 0xba2cf172u, 0xbdaa116au, 0xf8b63678u };
+    int y, n, why = -1;
+    CHECK_INT(FLAT_EL_RENDERIMAGE, 3);
+    CHECK_INT(FLAT_LVO_RENDERIMAGE, -654);
+    CHECK_INT(flat_dopus_gate(flat_dopus_table(&n), n, 73, 8, sums, &why), 15);   /* 5.104: RenderImage measured from the vendor hunk */
+    sums[FLAT_EL_RENDERIMAGE] ^= 1;
+    CHECK_INT(flat_dopus_gate(flat_dopus_table(&n), n, 73, 8, sums, &why), 7);    /* other RenderImage bytes: that element stays stock */
+    CHECK_INT(flat_body_prologue(FLAT_EL_RENDERIMAGE, (const unsigned char *)"\x4f\xef\xff\x64\x48\xe7\x3f\x3e"), 0);  /* LVO swap only */
+    CHECK_INT(flat_dopus_arrow_name("DOpus5:Images/ToolbarArrow.image"), 1);
+    CHECK_INT(flat_dopus_arrow_name("dopus5:images/toolbararrow.image"), 1);
+    CHECK_INT(flat_dopus_arrow_name("ToolbarArrow.image"), 1);
+    CHECK_INT(flat_dopus_arrow_name("Work:ToolbarArrow.image"), 1);
+    CHECK_INT(flat_dopus_arrow_name("DOpus5:Images/ToolbarArrow.image.bak"), 0);
+    CHECK_INT(flat_dopus_arrow_name("DOpus5:Images/MyToolbarArrow.image"), 0);
+    CHECK_INT(flat_dopus_arrow_name("DOpus5:Buttons/Arrow.image"), 0);
+    CHECK_INT(flat_dopus_arrow_name(""), 0);
+    CHECK_INT(flat_dopus_arrow_name(0), 0);
+    cv_clear();
+    CHECK_INT(flat_glyph_dleft(0, 0, 13, 9, 1, '#', cv_fill, 0), 14);
+    for (y = 0; y < 9; y++)
+        CHECK(memcmp(cv[y], want[y], 13) == 0);
+    cv_clear();
+    CHECK_INT(flat_glyph_dleft(0, 0, 13, 9, 2, '#', cv_fill, 0), 6);              /* hires: half the rows, same columns */
+    CHECK(memcmp(cv[3], "????##??##???", 13) == 0);
+    CHECK(memcmp(cv[4], "??########???", 13) == 0);
+    CHECK(memcmp(cv[5], "????##??##???", 13) == 0);
+    CHECK(memcmp(cv[2], "?????????????", 13) == 0);
+    CHECK_INT(flat_glyph_dleft(0, 0, 4, 9, 1, '#', cv_fill, 0), 0);               /* too narrow: stock image */
+    CHECK_INT(flat_glyph_dleft(0, 0, 13, 4, 1, '#', cv_fill, 0), 0);              /* too low */
+    CHECK_INT(flat_glyph_dleft(0, 0, 13, 9, 1, '#', 0, 0), 0);
+}
+
 static void test_dopus_box_outline(void)
 {
     flat_state s;
@@ -611,6 +659,18 @@ static void test_input_ground(void)
     CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0x0400, 0, 1, 5), 1);
     CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0, 0x2000, 1, 5), 1);
     CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0, 0x0800, 1, 5), 0);
+    /* INSTALLER-STRING-FILL: the Installer's hand-built GTYP_STRGADGET (no gadtools, no frameiclass frame, StringExtend unknown) is
+     * grounded when a fill lies inside its box (gadget 92 at 164,331 472x12): with or without StringExtend, never a custom gadget */
+    CHECK_INT(flat_plain_string_fill(4, 1, 164, 331, 472, 12, 164, 331, 635, 342), 1);   /* whole box erase */
+    CHECK_INT(flat_plain_string_fill(4, 1, 164, 331, 472, 12, 200, 331, 635, 342), 1);   /* erase after the text */
+    CHECK_INT(flat_plain_string_fill(4 | 0x10, 1, 164, 331, 472, 12, 164, 331, 635, 342), 1);   /* type bits above the mask */
+    CHECK_INT(flat_plain_string_fill(4, 1, 164, 331, 472, 12, 160, 331, 635, 342), 0);   /* rect leaves the box (window erase) */
+    CHECK_INT(flat_plain_string_fill(4, 1, 164, 331, 472, 12, 164, 331, 635, 343), 0);
+    CHECK_INT(flat_plain_string_fill(4, 0, 164, 331, 472, 12, 164, 331, 635, 342), 0);   /* no StringInfo */
+    CHECK_INT(flat_plain_string_fill(1, 1, 164, 331, 472, 12, 164, 331, 635, 342), 0);   /* boolean gadget */
+    CHECK_INT(flat_plain_string_fill(5, 1, 164, 331, 472, 12, 164, 331, 635, 342), 0);   /* boopsi: strgclass path (g9_ground) */
+    CHECK_INT(flat_plain_string_fill(4, 1, 164, 331, 0, 12, 164, 331, 164, 342), 0);     /* empty box */
+    CHECK_INT(flat_plain_string_fill(4, 1, 164, 331, 472, 12, 300, 331, 299, 342), 0);   /* empty rect */
     CHECK_INT(flat_string_frame(10, 10, 104, 18, 12, 12, 100, 14), 1);    /* bevel 2 px out */
     CHECK_INT(flat_string_frame(12, 12, 100, 14, 12, 12, 100, 14), 1);
     CHECK_INT(flat_string_frame(54, 32, 53, 14, 60, 35, 41, 8), 1);      /* GadTools bevel: 6 px out horizontally, 3 vertically (Prefs/Time year) */
@@ -4208,6 +4268,7 @@ void suite_flat_core(void)
     test_band_glyphs_take_text_pen();
     test_glyph_keeps_window_ring();
     test_dopus_image_which();
+    test_dopus_arrow();
     test_glyph_goldens();
     test_glyph_solid_and_state_equal();
     test_glyph_states();

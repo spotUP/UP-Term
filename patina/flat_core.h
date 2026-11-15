@@ -141,12 +141,15 @@ int flat_conv(unsigned intuition_version);
 /* FLAT_EL_BEVEL (s66): dopus5's internal static bevel routine (5.104: 0x166d8), no LVO. dopusbuttongclass (Use / Save /
  * Cancel), dopusiclass frame images (types 0 and 1, which checkbox imagery draws through) and the palette class call it
  * with an absolute jsr; it is found at a fixed distance before the DrawBox body (flat_bevel_body) and only body-hooked. */
-enum { FLAT_EL_DRAWBOX = 0, FLAT_EL_FIELDBOX = 1, FLAT_EL_BEVEL = 2, FLAT_EL_COUNT = 3 };
+/* FLAT_EL_RENDERIMAGE (DT-11): RenderImage (LVO -654), LVO swap only. Only the lister toolbar "<<" arrow
+ * (flat_dopus_arrow_name) is drawn flat; every other image goes to the saved routine. */
+enum { FLAT_EL_DRAWBOX = 0, FLAT_EL_FIELDBOX = 1, FLAT_EL_BEVEL = 2, FLAT_EL_RENDERIMAGE = 3, FLAT_EL_COUNT = 4 };
 #define FLAT_LVO_TEXT (-60)         /* graphics.library Text (the pressed-button label patch, FLAT-BUTTON-FILL) */
 #define FLAT_LVO_RECTFILL (-306)    /* graphics.library RectFill (the outer-edge patch) */
 #define FLAT_LVO_CREATEGADGETA (-30) /* gadtools.library CreateGadgetA (S74-TIME-ROW: the Time preferences top row) */
 #define FLAT_LVO_DRAWBOX (-696)
 #define FLAT_LVO_FIELDBOX (-702)
+#define FLAT_LVO_RENDERIMAGE (-654) /* dopus5.library RenderImage(rp a0, image a1, left d0, top d1, tags a2) */
 #define FLAT_FUNC_BYTES 64
 
 typedef struct flat_dopus_build {
@@ -189,6 +192,10 @@ uint32_t flat_fieldbox_body(const unsigned char *stub, uint32_t stub_addr);
 /* Bytes to relocate from the body of element el: 6 for DrawBox (48e7 3012 2408: movem.l, move.l a0,d2), 8 for FieldBox
  * (48e7 2032 41ef 0014: movem.l, lea 20(sp),a0; the trampoline is jumped to, so sp is the same); 0 = unknown body. */
 int flat_body_prologue(int el, const unsigned char *body);
+
+/* DT-11: 1 when an Image_Data path (node.ln_Name) names the lister toolbar arrow: its basename (after the last ':' or '/')
+ * is "ToolbarArrow.image", any case. NULL or any other name: 0 (the image draws stock). */
+int flat_dopus_arrow_name(const char *name);
 
 /* s66: the address of the internal bevel body (FLAT_EL_BEVEL) for this build: drawbox_body - the table's bevel_off.
  * 0 for a build without a measured offset or no DrawBox body. The caller still gates the result by sum and prologue
@@ -284,6 +291,10 @@ int flat_input_pen(const flat_state *s, int depth);
 int flat_input_text_pen(int dri_text_pen, int depth);
 int flat_string_has_extend(unsigned flags, unsigned activation);   /* 1 when the StringInfo.Extension is valid */
 int flat_string_ext(unsigned gadget_type, unsigned flags, unsigned activation, int has_info, int has_ext, int strg_chain);   /* strg_chain: boopsi gadget (type 5) whose class chain holds strgclass; also accepted */
+/* INSTALLER-STRING-FILL: 1 when a fill rect x0,y0..x1,y1 lies inside the box gx,gy,gw,gh of a plain GTYP_STRGADGET with StringInfo
+ * (Installer 43.3 builds it by hand: no gadtools, no frameiclass frame). StringExtend is not asked: present or absent, Intuition
+ * erases the box in pen 0 and flat_rf_c records it as an input ground box. Boopsi string gadgets keep the strgclass path. */
+int flat_plain_string_fill(unsigned gadget_type, int has_info, int gx, int gy, int gw, int gh, int x0, int y0, int x1, int y1);
 /* INPUT-GROUND (strgclass dispatcher): 1 when a dispatch of method (FLAT_GM_RENDER only) on a gadget with SpecialInfo, GFLG/GACT_STRINGEXTEND
  * and an Extension may get its ground pens written: pen >= 0 (flat_input_pen said so). The text pens stay untouched. */
 #define FLAT_GM_RENDER 1UL

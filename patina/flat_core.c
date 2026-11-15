@@ -136,7 +136,7 @@ int flat_conv(unsigned intuition_version)
 
 /* ---- FLAT-D4 ---- */
 static const flat_dopus_build dopus_table[] = {
-    { 73, 8, { 0x780fd46bu, 0xba2cf172u, 0xbdaa116au }, 0xde34u },   /* DOpus 5.104 (LIB_VERSION 73, LIB_REVISION 8), measured on rig 5 (OS 3.2) by STATUS "sums=" (flat_sum_reloc, same at two load addresses); s66 bevel 0x166d8: sum and offset from the 5.104 code hunk (0x2450c - 0x166d8) */
+    { 73, 8, { 0x780fd46bu, 0xba2cf172u, 0xbdaa116au, 0xf8b63678u }, 0xde34u },   /* DOpus 5.104 (LIB_VERSION 73, LIB_REVISION 8), measured on rig 5 (OS 3.2) by STATUS "sums=" (flat_sum_reloc, same at two load addresses); s66 bevel 0x166d8: sum and offset from the 5.104 code hunk (0x2450c - 0x166d8); DT-11 RenderImage 0x10d88 (LVO -654 jump target): sum from the same hunk, same tool that reproduces the DrawBox and FieldBox sums */
     { 68, 16, { 0x05a329c5u, 0xaa2c535eu, 0 }, 0 },  /* DOpus 5.82 (Magellan II; LIB_VERSION 68, LIB_REVISION 16), measured on rig 95 (OS 3.1 master) by STATUS "sums=" (flat_sum_reloc, same after a second boot, see thoughts/shared/s61-evidence/b8-dopus-582-flat.md) */
 };
 
@@ -206,6 +206,26 @@ int flat_body_prologue(int el, const unsigned char *body)
     if (el == FLAT_EL_BEVEL)
         return memcmp(body, bevel, sizeof bevel) ? 0 : (int)sizeof bevel;
     return 0;
+}
+
+int flat_dopus_arrow_name(const char *name)
+{
+    static const char want[] = "toolbararrow.image";
+    const char *b = name, *p;
+    size_t i;
+    if (!name)
+        return 0;
+    for (p = name; *p; p++)
+        if (*p == ':' || *p == '/')
+            b = p + 1;
+    for (i = 0; i < sizeof want - 1; i++) {
+        char c = b[i];
+        if (c >= 'A' && c <= 'Z')
+            c = (char)(c - 'A' + 'a');
+        if (c != want[i])
+            return 0;
+    }
+    return b[i] == 0;
 }
 
 uint32_t flat_bevel_body(const flat_dopus_build *tab, int n, unsigned version, unsigned revision, uint32_t drawbox_body)
@@ -357,6 +377,12 @@ int flat_string_ext(unsigned gadget_type, unsigned flags, unsigned activation, i
     return (t == 4 || (t == 5 && strg_chain)) && flat_string_has_extend(flags, activation) && has_info && has_ext;
 }
 
+int flat_plain_string_fill(unsigned gadget_type, int has_info, int gx, int gy, int gw, int gh, int x0, int y0, int x1, int y1)
+{
+    return (gadget_type & 0x7) == 4 && has_info && gw > 0 && gh > 0 && x0 <= x1 && y0 <= y1
+           && x0 >= gx && y0 >= gy && x1 < gx + gw && y1 < gy + gh;
+}
+
 int flat_string_render_write(unsigned long method, int has_info, unsigned flags, unsigned activation, int has_ext, int pen)
 {
     return method == FLAT_GM_RENDER && has_info && flat_string_has_extend(flags, activation) && has_ext && pen >= 0;
@@ -395,8 +421,8 @@ int flat_dopus_status_line(int found, unsigned version, unsigned revision, int r
     else
         n = snprintf(out, cap, "dopus=%u.%u patched=%d calls=%lu flat=%lu", version, revision, mask, calls, flat);
     if (found && sums && n > 0 && (size_t)n < cap) {        /* the measured routine sums: how the table is filled */
-        k = snprintf(out + n, cap - (size_t)n, " sums=%08lx,%08lx,%08lx", (unsigned long)sums[0], (unsigned long)sums[1],
-                     (unsigned long)sums[2]);
+        k = snprintf(out + n, cap - (size_t)n, " sums=%08lx,%08lx,%08lx,%08lx", (unsigned long)sums[0], (unsigned long)sums[1],
+                     (unsigned long)sums[2], (unsigned long)sums[3]);
         n = k > 0 ? n + k : -1;
     }
     return n > 0 && (size_t)n < cap ? n : 0;

@@ -165,10 +165,21 @@ static int dk_screen_depth(void)
 /* publish one part: a work copy for the editor, then the editor (its USE writes the ENV: file). Writing the ENV: file
  * here as well made IPrefs open it on the change notice while the editor wrote it: "Error accessing file
  * ENV:Sys/Pointer.prefs, object is in use" (Program Error of SYS:Prefs/Pointer). */
+static int dk_files_equal(const char *a, const char *b);
+unsigned long desk_dos_put_skips;
 static int dk_put(const char *editor, const char *work, const unsigned char *buf, long len)
 {
+    char env[48];
     if (len <= 0 || !dk_write(work, buf, len))
         return 0;
+    /* S82-SKIP-UNCHANGED: IPrefs resets the Workbench on every USE, identical bytes too (iprefs-case2), so equal bytes are not fed */
+    strcpy(env, "ENV:Sys/");
+    strcat(env, strrchr(work, '/') + 1);
+    if (dk_files_equal(work, env)) {
+        desk_dos_put_skips++;
+        am_sentinel("PATINA_DESK_PUT_SKIPS", (long)desk_dos_put_skips);
+        return 1;
+    }
     dk_editor(editor, work);
     return 1;
 }
@@ -281,7 +292,7 @@ static struct Screen *dk_wb_screen(unsigned short *pens, int *npens)
 /* IPREFS-FOREIGN-WINDOWS: windows of other programs on the Workbench screen (desk_window_foreign: backdrop and Patina's own
  * windows excluded). */
 unsigned long desk_dos_deferred;
-static int dk_foreign_windows(void)
+static int dk_wb_windows(int splash_only)
 {
     struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
     struct Screen *scr;
@@ -290,7 +301,7 @@ static int dk_foreign_windows(void)
     if (IntuitionBase && (scr = ipd_lock_wb_screen()) != 0) {
         ULONG il = LockIBase(0);
         for (w = scr->FirstWindow; w; w = w->NextWindow)
-            if (desk_window_foreign((w->Flags & WFLG_BACKDROP) != 0, (w->Flags & WFLG_WBENCHWINDOW) != 0, (const char *)w->Title))
+            if ((splash_only ? desk_window_splash : desk_window_foreign)((w->Flags & WFLG_BACKDROP) != 0, (w->Flags & WFLG_WBENCHWINDOW) != 0, (const char *)w->Title))
                 n++;
         UnlockIBase(il);
         UnlockPubScreen(0, scr);
@@ -298,6 +309,12 @@ static int dk_foreign_windows(void)
     if (IntuitionBase)
         CloseLibrary((struct Library *)IntuitionBase);
     return n;
+}
+#define dk_foreign_windows() dk_wb_windows(0)
+
+int desk_dos_splash_open(void)
+{
+    return dk_wb_windows(1) > 0;
 }
 
 /* Close our Workbench windows; returns 1 when the bar was open (the state to restore: the want flag is never touched).
@@ -1709,6 +1726,25 @@ int desk_dos_wb_backdrop(void)
     return 1;
 }
 
+/* S82-START-PERSIST: the start apply of the kept theme copies what it wrote to ENVARC: as Keep does (R1.10 exception), else ENV: is rebuilt
+ * from the stock ENVARC: at every boot, every start replans the same writes and IPrefs' reset raises a System Request under Directory Opus'
+ * windows. Pairs whose bytes already match are left alone. The originals were saved before the first write (dk_orig_save), so "off" still
+ * restores them. */
+unsigned long desk_dos_start_persists, desk_dos_start_persist_same;
+
+static void dk_start_persist(unsigned plan, int flat)
+{
+    const char *env[8], *arc[8];
+    int i, n = desk_persist_pairs(desk_start_persist_mask(plan, flat, dk_pending_mask() != 0), (plan & DESK_START_WB) && !dk_pending_mask(), env, arc, 8);
+    for (i = 0; i < n; i++)
+        if (dk_files_equal(env[i], arc[i]))
+            desk_dos_start_persist_same++;
+        else if (dk_stream_copy(env[i], arc[i]) > 0)
+            desk_dos_start_persists++;
+    if (n)
+        am_sentinel("PATINA_DESK_START_PERSISTS", (long)desk_dos_start_persists);
+}
+
 int desk_dos_start_apply(void)
 {
     static unsigned char wb[DK_BUF], pat[DK_BUF], out[DK_BUF], pal[DK_BUF], pcur[8192], pnew[8192], fcur[DK_BUF], fnew[DK_BUF];
@@ -1846,6 +1882,7 @@ int desk_dos_start_apply(void)
         dk_wait_iprefs(idle);
         dk_windows_open(was);
     }
+    dk_start_persist(plan, flat);
     if (dk_live_want)
         dk_live_pens(dk_live_want > 0 ? &th : 0, dk_live_flat);
     am_sentinel("PATINA_DESK_START_WRITES", (long)desk_dos_start_writes);

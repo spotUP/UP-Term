@@ -272,7 +272,8 @@ def pal_pen_counts(data):
 def desk_expect_exe():
     exe = os.path.join(tempfile.gettempdir(), 'desk_expect_rig')
     srcs = ['tools/rig/desk_expect.c', 'patina/desk_core.c', 'patina/gthemes_core.c', 'handler/be32.c',
-            'config/upconf.c', 'config/upconf_rows.c']
+            'config/upconf.c', 'config/upconf_rows.c', 'prefs/settings_def.c', 'prefs/prefs_core.c',
+            'patina/amconf_keys.c', 'handler/kcmode.c', 'handler/slash.c']
     paths = [os.path.join(ROOT, s) for s in srcs]
     if not os.path.exists(exe) or os.path.getmtime(exe) < max(os.path.getmtime(p) for p in paths):
         subprocess.check_call(['cc', '-std=c89', '-o', exe] + paths)
@@ -351,7 +352,7 @@ def flat_case():
     """FLAT-C9 reachability: the theme pick (menu Style > Patina theme, desk_dos_apply) writes the flat_state block of the
     running patina-flat from the prefs (desk_flat_state) and redraws the window frames (win_refresh_frames).
     DK_FG=2, DK_ACCENT=3, DK_BG=0 are the pens desk_flat_glyph_pens / desk_flat_state define (patina/desk_core.h)."""
-    if not g.process_running('Patina'):
+    if not g.patina_up():
         print('[FAIL] the Patina commodity is not running')
         return 1
     g.close_menu()
@@ -417,7 +418,7 @@ def flat_ensure_case():
       2. prefs on, patina-flat already resident, Patina restarted: PATINA_FLAT_START stays 0, still one process.
       3. prefs off, patina-flat gone, Patina restarted: nothing resident, PATINA_FLAT_START 0 (the switch moves the output).
     Before the fix step 1 failed: STATUS flat=absent after the Patina start (rig 93, installer-borders-rig-measure.md)."""
-    if not g.process_running('Patina'):
+    if not g.patina_up():
         print('[FAIL] the Patina commodity is not running')
         return 1
     g.close_menu()
@@ -460,7 +461,7 @@ def main():
         return flat_case()
     if '--flat-ensure' in sys.argv:
         return flat_ensure_case()
-    if not g.process_running('Patina'):
+    if not g.patina_up():
         print('[FAIL] the Patina commodity is not running')
         return 1
     g.close_menu()

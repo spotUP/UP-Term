@@ -660,6 +660,15 @@ static void test_desk_window_foreign(void)
     CHECK_INT(desk_window_foreign(0, 0, 0), 1);              /* an untitled window of another program */
 }
 
+/* DOPUS-SPLASH-HOLD, rig 7 (DOpus 5.104 boot): only the splash holds the start apply */
+static void test_desk_window_splash(void)
+{
+    CHECK_INT(desk_window_splash(0, 0, "Directory Opus"), 1);
+    CHECK_INT(desk_window_splash(0, 0, "RAM Disk,  1G free, 14K in use, 0% full"), 0);   /* a lister */
+    CHECK_INT(desk_window_splash(0, 0, 0), 0);                /* a button bank */
+    CHECK_INT(desk_window_splash(1, 0, "Directory Opus"), 0); /* never a backdrop */
+}
+
 static void test_desk_pens_reset_folded(void)
 {
     int flat;
@@ -857,6 +866,80 @@ static void test_desk_wbpattern(void)
     CHECK_INT(ptrn(again, 2)[8 + 24 + 5], 0xa5);
     CHECK_INT(ptrn(again, 2)[8 + 21], 3);
     CHECK_INT(desk_wbpattern(&t, 3, 0, 0, again, 100), 0);
+}
+
+/* the first copy of n bytes of what in buf[len], or 0 (no memmem: not in C89/strict hosts) */
+static unsigned char *find_bytes(unsigned char *buf, long len, const char *what, long n)
+{
+    long i;
+    for (i = 0; i + n <= len; i++)
+        if (!memcmp(buf + i, what, (size_t)n))
+            return buf + i;
+    return 0;
+}
+
+/* one PTRN picture chunk (no WBPF_PATTERN, the data is the file name) for which at at; its whole length */
+static long picture_chunk(unsigned char *at, int which, const char *name)
+{
+    long n = (long)strlen(name) + 1, body = 24 + n;
+    memset(at, 0, (size_t)(8 + body + (body & 1)));
+    memcpy(at, "PTRN", 4);
+    at[7] = (unsigned char)body;
+    at[8 + 17] = (unsigned char)which;
+    at[8 + 23] = (unsigned char)n;
+    memcpy(at + 8 + 24, name, (size_t)n);
+    return 8 + body + (body & 1);
+}
+
+/* WALLPAPER-KEPT (user report 2026-11-14): a user's ROOT and SCREEN pictures survive the theme's wbpattern.prefs */
+static void test_desk_wbpattern_keeps_pictures(void)
+{
+    static unsigned char prev[BUF_MAX], out[BUF_MAX], again[BUF_MAX];
+    static char screen[200];
+    long n = 26, plen, m;
+    gtheme t;
+    probe_theme(&t);
+    /* a long SCREEN name puts the file past the 410-byte floor, so the cap test below is about the pictures */
+    memcpy(screen, "Work:Wallpaper/", 15);
+    memset(screen + 15, 'S', 170);
+    memcpy(screen + 185, ".iff", 5);
+    memcpy(prev, "FORM\0\0\0\0PREFPRHD\0\0\0\6", 20);
+    memset(prev + 20, 0, 6);
+    n += picture_chunk(prev + n, 0, "Work:Wallpaper/AF-Backdrop.iff");
+    n += picture_chunk(prev + n, 2, screen);
+    prev[4] = (unsigned char)((n - 8) >> 24); prev[5] = (unsigned char)((n - 8) >> 16);
+    prev[6] = (unsigned char)((n - 8) >> 8); prev[7] = (unsigned char)(n - 8);
+    plen = n;
+    m = desk_wbpattern(&t, 3, prev, plen, out, sizeof out);
+    CHECK(m > 0);
+    CHECK_INT(out[7] | (out[6] << 8), (int)(m - 8));
+    CHECK(find_bytes(out, m, "Work:Wallpaper/AF-Backdrop.iff", 31) != 0);
+    CHECK(find_bytes(out, m, screen, 190) != 0);
+    /* the DRAWER still gets the theme tone: a pattern chunk with which 1 */
+    {
+        long pos = 26;
+        int which1 = 0, chunks = 0;
+        while (pos + 8 <= m) {
+            long sz = ((long)out[pos + 6] << 8) | out[pos + 7];
+            chunks++;
+            if (out[pos + 8 + 17] == 1 && (out[pos + 8 + 19] & 1))
+                which1 = 1;
+            pos += 8 + sz + (sz & 1);
+        }
+        CHECK_INT(chunks, 3);
+        CHECK(which1);
+    }
+    /* a second pick over its own output changes nothing, and the compare says so */
+    CHECK_INT(desk_wbpattern(&t, 3, out, m, again, sizeof again), m);
+    CHECK(!memcmp(out, again, (size_t)m));
+    CHECK(desk_wbpattern_same(out, m, again, m));
+    /* another picture name is a change */
+    memcpy(again, out, (size_t)m);
+    find_bytes(again, m, "AF-Backdrop", 11)[0] = 'X';
+    CHECK(!desk_wbpattern_same(out, m, again, m));
+    /* no room for the pictures: no file, never a cut one */
+    CHECK(m > 420);
+    CHECK_INT(desk_wbpattern(&t, 3, prev, plen, again, m - 1), 0);
 }
 
 static void test_desk_wbpattern_no_dots(void)
@@ -1647,6 +1730,20 @@ static void test_desk_wb_backdrop_invoke(void)
 }
 
 /* S32-START-LOOK: Patina starts before LoadWB; the start look waits for the Workbench screen, then runs once */
+static void test_desk_start_holds_for_dopus_splash(void)
+{
+    long since = -1;
+    CHECK_INT(desk_start_hold(0, &since, 5), 0);   /* no splash: run */
+    CHECK_INT((int)since, -1);
+    CHECK_INT(desk_start_hold(1, &since, 6), 1);   /* splash up: hold, from tick 6 */
+    CHECK_INT((int)since, 6);
+    CHECK_INT(desk_start_hold(1, &since, 6 + DESK_START_HOLD_MAX - 1), 1);
+    CHECK_INT(desk_start_hold(1, &since, 6 + DESK_START_HOLD_MAX), 0);   /* stuck splash: run anyway */
+    since = -1;
+    CHECK_INT(desk_start_hold(1, &since, 10), 1);
+    CHECK_INT(desk_start_hold(0, &since, 11), 0);  /* splash closed: run */
+}
+
 static void test_desk_start_waits_for_workbench(void)
 {
     CHECK_INT(desk_start_due(0, 0, 1, 0, 1), 0);  /* boot: no Workbench screen yet, the tick runs: wait */
@@ -1691,6 +1788,13 @@ static void test_desk_persist(void)
     CHECK_STR(arc[2], "ENVARC:Sys/Workbench.prefs");
     CHECK_INT(desk_persist_pairs(0, 0, env, arc, 8), 0);
     CHECK_INT(desk_persist_pairs(0xffu, 1, env, arc, 2), 2);    /* cap respected */
+    /* S82-START-PERSIST: boot plan 22 (pattern, palette, font) persists those three; nothing while a pick waits for Keep or with plan 0 */
+    CHECK_INT((int)desk_start_persist_mask(DESK_START_PATTERN | DESK_START_PALETTE | DESK_START_FONT, 0, 0),
+              (1 << DT_WBPATTERN) | (1 << DT_PALETTE) | (1 << DT_FONT));
+    CHECK_INT((int)desk_start_persist_mask(22, 0, 1), 0);
+    CHECK_INT((int)desk_start_persist_mask(0, 1, 0), 0);
+    CHECK_INT((int)desk_start_persist_mask(DESK_START_WB | DESK_START_ICONTROL, 1, 0), 1 << DT_PALETTE); /* flat pens: palette; icontrol writes both */
+    CHECK_INT((int)desk_start_persist_mask(DESK_START_POINTER, 0, 0), 1 << DT_POINTER);
     CHECK_INT((int)desk_off_mask(0x1fu, 0x5u), 0x1a & ~(1 << DT_ICONTROL)); /* saved 0..4, applied palette+pointer: wbpattern, font off; icontrol never */
     CHECK_INT((int)desk_off_mask(0x3u, 0x3u), 0);
     CHECK_INT((int)desk_off_mask(0, 0), 0);
@@ -2175,6 +2279,7 @@ void suite_desk(void)
     test_desk_pens_reset_deep();
     test_desk_defer_map();
     test_desk_window_foreign();
+    test_desk_window_splash();
     test_desk_reset_done();
     test_desk_iprefs_idle();
     test_desk_editor_waits_iprefs();
@@ -2185,6 +2290,7 @@ void suite_desk(void)
     test_desk_backdrop();
     test_desk_wbpattern();
     test_desk_wbpattern_no_dots();
+    test_desk_wbpattern_keeps_pictures();
     test_flat_on_keeps_backdrop_pen_distinct_from_window_background();
     test_flat_pick_leaves_pen5_magenta_on_deep_workbench();
     test_flat_backdrop_screen_pen_deep();
@@ -2207,6 +2313,7 @@ void suite_desk(void)
     test_desk_preview();
     test_desk_confirm();
     test_desk_persist();
+    test_desk_start_holds_for_dopus_splash();
     test_desk_start_waits_for_workbench();
     test_desk_wb_backdrop_invoke();
 }

@@ -15,6 +15,7 @@ int desk_dos_apply(const gtheme *th, char *why, int cap);
 int desk_dos_flat_pens_refresh(void);
 int desk_dos_start_apply(void);   /* S31-START-APPLY: ENV: desk files match the prefs at start */
 int desk_dos_wb_ready(long now);  /* S57-START-POINTER-HANG: a DESK_WBR_* verdict (desk_wb_ready_state); now = elapsed 1 s ticks */
+int desk_dos_splash_open(void);  /* DOPUS-SPLASH-HOLD: 1 while the DOpus boot splash is on the Workbench screen */
 int desk_dos_wb_backdrop(void);   /* S32-WB-BACKDROP: Workbench root window frameless (Backdrop ticked) when the desktop theme is on */
 extern unsigned long desk_dos_wb_backdrop_invokes;
 extern unsigned long desk_dos_start_plans, desk_dos_start_writes;

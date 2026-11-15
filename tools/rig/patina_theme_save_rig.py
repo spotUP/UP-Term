@@ -502,7 +502,7 @@ def main():
               'dist/patina-themes at install, the boot copies them)' % (SHIPPED, len(have), NEED_THEMES))
         return 1
     print('[INFO] %s holds %d themes' % (SHIPPED, len(have)))
-    if not g.process_running('Patina'):
+    if not g.patina_up():
         print('[FAIL] the Patina commodity is not running')
         return 1
     g.close_menu()

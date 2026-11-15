@@ -841,6 +841,46 @@ static struct Gadget *string_gadget_at(struct RastPort *rp, int x0, int y0, int 
     return NULL;
 }
 
+/* INSTALLER-STRING-FILL: Installer 43.3 builds its askdir field by hand (plain GTYP_STRGADGET, Border frame in pen 0, no frameiclass,
+ * StringExtend unknown), so no INPUT-GROUND entry sees it. A window-ground erase inside such a gadget's box (flat_plain_string_fill)
+ * records the gadget box with the input pen; rf_gbox then paints this and later erases, flat_tx_c the JAM2 text ground. Only the
+ * record is written here: no ground_box / raa_* on the RectFill caller's stack (S71-C8-PRIVATE-STACK). */
+static int plain_string_at(struct Window *win, const LONG *b, int o[4])     /* 1 and the gadget box (x0,y0,x1,y1) in o */
+{
+    struct Gadget *g;
+    int n;
+    for (g = win->FirstGadget, n = 0; g && n < 64; g = g->NextGadget, n++) {
+        o[0] = g->LeftEdge + ((g->Flags & GFLG_RELRIGHT) ? win->Width - 1 : 0);
+        o[1] = g->TopEdge + ((g->Flags & GFLG_RELBOTTOM) ? win->Height - 1 : 0);
+        o[2] = g->Width + ((g->Flags & GFLG_RELWIDTH) ? win->Width : 0);
+        o[3] = g->Height + ((g->Flags & GFLG_RELHEIGHT) ? win->Height : 0);
+        if (flat_plain_string_fill(g->GadgetType, g->SpecialInfo != NULL, o[0], o[1], o[2], o[3], (int)b[0], (int)b[1], (int)b[2], (int)b[3])) {
+            o[2] += o[0] - 1;
+            o[3] += o[1] - 1;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void rf_strfill(flatshared *r, struct RastPort *rp, const LONG *b)
+{
+    struct Window *win = (struct Window *)rp->Layer->Window;
+    const void *surf;
+    int o[4], pen;
+    if (rp->AreaPtSz || rp->FgPen != r->st.pen_back || !win || (win->Flags & WFLG_GIMMEZEROZERO))
+        return;
+    surf = flat_tx_surface(rp->Layer, rp->BitMap);
+    if (flat_gr_match(&r->st, &r->gr, surf, (int)b[0], (int)b[1], (int)b[2], (int)b[3]) || !plain_string_at(win, b, o))
+        return;
+    pen = flat_input_pen(st_scr(r, win->WScreen), rp->BitMap ? rp->BitMap->Depth : 0);
+    if (pen < 0)
+        return;
+    flat_gr_drop(&r->gr, surf, o[0], o[1], o[2], o[3]);
+    flat_gr_add(&r->gr, surf, side_px(r, win->WScreen), o[0], o[1], o[2], o[3], pen);
+    r->sground++;
+}
+
 /* OWNER-2026-11-10 INPUT-GROUND: when the box x0,y0..x1,y1 is a string input's border, give the gadget the selection pen as its ground
  * (strgclass repaints its interior from StringExtend Pens[1] / ActivePens[1], so a fill here would be overpainted) and return that
  * pen; -1 when the box is no string input or the screen holds no such pen. Only two pen NUMBERS are written, no pointer: after the
@@ -1347,7 +1387,79 @@ static void d4_bevelbody(void *caller_return, ULONG a, struct RastPort *rp, UWOR
         ((bevelbodyfn)g_r->dsw[FLAT_EL_BEVEL].saved)(a, rp, pens, rect, recessed, thin);
 }
 
-static const LONG d4_lvo[FLAT_EL_COUNT] = { FLAT_LVO_DRAWBOX, FLAT_LVO_FIELDBOX, 0 };   /* the bevel has no LVO */
+/* DT-11: dopus5 RenderImage (LVO -654, a0 rp, a1 Image_Data, d0 left, d1 top, a2 tags). The lister toolbar "<<" arrow
+ * (lister_toolbar.c: IM_Rectangle, IM_ClipBoundary, IM_NoIconRemap, on release IM_State 0 and IM_Erase 0) is told by the
+ * basename of its path, Image_Data node.ln_Name (flat_dopus_arrow_name), and drawn as the flat glyph in the screen's
+ * text pen, read on every call, so a theme switch shows at the next toolbar redraw. Every other call: the saved routine. */
+typedef short (*renderfn)(__reg("a0") struct RastPort *, __reg("a1") APTR, __reg("d0") LONG, __reg("d1") LONG,
+                          __reg("a2") struct TagItem *, __reg("a6") struct Library *);
+
+#define D4_IM_RECTANGLE (TAG_USER + 3)
+#define D4_IM_CLIP (TAG_USER + 6)
+#define D4_IM_ERASE (TAG_USER + 7)
+
+/* the data of tag in the list, def when absent; the TAG_IGNORE / MORE / SKIP walk of utility's FindTagItem */
+static ULONG d4_tag(struct TagItem *t, ULONG tag, ULONG def, int *found)
+{
+    int guard = 64;
+    while (t && guard-- > 0) {
+        if (t->ti_Tag == TAG_DONE)
+            break;
+        if (t->ti_Tag == TAG_MORE) {
+            t = (struct TagItem *)t->ti_Data;
+            continue;
+        }
+        if (t->ti_Tag == TAG_SKIP) {
+            t += t->ti_Data + 1;
+            continue;
+        }
+        if (t->ti_Tag == tag) {
+            if (found)
+                *found = 1;
+            return t->ti_Data;
+        }
+        t++;
+    }
+    return def;
+}
+
+static int d4_arrow(struct RastPort *rp, APTR image, struct TagItem *tags)
+{
+    flatshared *r = g_r;
+    const flat_state *st;
+    struct Rectangle *rc;
+    int cb, erased = 0, erase, drawn, x0, y0, x1, y1;
+    UBYTE fg;
+    if (!rp || !image || !r->st.enabled || r->st.held || !flat_dopus_arrow_name((const char *)((struct Node *)image)->ln_Name))
+        return 0;
+    rc = (struct Rectangle *)d4_tag(tags, D4_IM_RECTANGLE, 0, 0);
+    st = st_rp(r, rp);
+    if (!rc || !st->enabled)
+        return 0;
+    cb = (int)d4_tag(tags, D4_IM_CLIP, 2, 0) >> 1;
+    erase = (int)d4_tag(tags, D4_IM_ERASE, 0, &erased);
+    x0 = rc->MinX + cb; y0 = rc->MinY + cb; x1 = rc->MaxX - cb; y1 = rc->MaxY - cb;
+    if (x1 < x0 || y1 < y0)
+        return 0;
+    /* the stock image is opaque with colour 0 behind its arrow (IM_NoIconRemap: pen 0); IM_Erase names the pen itself */
+    fg = rp->FgPen;
+    c2_fill(rp, x0, y0, x1, y1, erased ? erase : 0);
+    drawn = flat_glyph_dleft(x0, y0, x1 - x0 + 1, y1 - y0 + 1, rp_side(r, rp), st->pen_text, c2_fill, rp) > 0;
+    SetAPen(rp, fg);                    /* the caller's pen as the stock routine leaves it for its own text */
+    if (drawn)
+        r->darrow++;
+    return drawn;
+}
+
+static short d4_renderimage(__reg("a0") struct RastPort *rp, __reg("a1") APTR image, __reg("d0") LONG left, __reg("d1") LONG top,
+                            __reg("a2") struct TagItem *tags)
+{
+    if (d4_arrow(rp, image, tags))
+        return 1;
+    return ((renderfn)g_r->dsw[FLAT_EL_RENDERIMAGE].saved)(rp, image, left, top, tags, g_r->dlib);
+}
+
+static const LONG d4_lvo[FLAT_EL_COUNT] = { FLAT_LVO_DRAWBOX, FLAT_LVO_FIELDBOX, 0, FLAT_LVO_RENDERIMAGE };   /* the bevel has no LVO */
 
 static int d4_installed(const flatshared *r)
 {
@@ -2440,6 +2552,8 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
             return;
         }
     }
+    if (on && rp->Layer)
+        rf_strfill(r, rp, b);
     if (on && rf_gbox(r, rp, b))
         return;
     if (on && w && rom && (rf_disabled(r, rp, w, b) || rf_scroller(r, rp, w, b)))
@@ -2822,8 +2936,8 @@ static void print_status(void)
     char sctask[16] = "";
     unsigned long cdraws = 0, cfall = 0, alooks = 0, cfb = 0, cfd = 0, cfm = 0, cfe = 0, cfk = 0, cfi = 0, clw = 0, cls = 0, cln = 0, clm = 0;
     int apx = 0, sring[16][9], sn = 0;
-    uint32_t dsum[FLAT_EL_COUNT] = { 0, 0, 0 };
-    unsigned long dbevel = 0, dface = 0, dnopix = 0, d5draws = 0;
+    uint32_t dsum[FLAT_EL_COUNT] = { 0, 0, 0, 0 };
+    unsigned long dbevel = 0, dface = 0, dnopix = 0, d5draws = 0, darrow = 0;
     unsigned long lbeat = 0, lnref = 0;
     struct Task *ltask = 0;
     unsigned lstage = 0, lref = 0;
@@ -2835,7 +2949,7 @@ static void print_status(void)
         found = 1;
         copy = r->st;
         dfound = r->dfound; dver = r->dver; drev = r->drev; dreason = r->dreason; dmask = r->dmask;
-        dinst = d4_installed(r); dcalls = r->dcalls; dflat = r->dflat; dbevel = r->dbevel; dface = r->dface; dnopix = r->dnopix; d5draws = r->d5draws;
+        dinst = d4_installed(r); dcalls = r->dcalls; dflat = r->dflat; dbevel = r->dbevel; dface = r->dface; dnopix = r->dnopix; d5draws = r->d5draws; darrow = r->darrow;
         memcpy(dsum, r->dsum, sizeof dsum);
         finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat; fbusy = r->fbusy; fnostk = r->fnostk;
         cginst = r->cgsw.installed; cgcalls = r->cgcalls; trows = r->trow.rows; twhy = r->trow.why;
@@ -2886,6 +3000,7 @@ static void print_status(void)
         put_word(line, &n, " face=");               put_num(line, &n, dface);
         put_word(line, &n, " nopix=");              put_num(line, &n, dnopix);
         put_word(line, &n, " d5=");                 put_num(line, &n, d5draws);
+        put_word(line, &n, " arrow=");              put_num(line, &n, darrow);
         put_word(line, &n, " ground=");             put_num(line, &n, vground);
         put_word(line, &n, " gs=");                 put_num(line, &n, vgs ? 1 : 0);
         {   /* s71: slot address and gate code address, hex, to compare with tests/amiga/gadprobe */
@@ -3313,7 +3428,7 @@ static void dopus_scan(flatshared *r)
         {
             unsigned char *body = (unsigned char *)(el == FLAT_EL_FIELDBOX ? flat_fieldbox_body((const unsigned char *)t, t) : t);
             int plen = body ? flat_body_prologue(el, body) : 0;
-            void *ours = el == FLAT_EL_DRAWBOX ? (void *)d4_drawbox : el == FLAT_EL_FIELDBOX ? (void *)d4_fieldbody : (void *)d4_bevelbody;
+            void *ours = el == FLAT_EL_DRAWBOX ? (void *)d4_drawbox : el == FLAT_EL_FIELDBOX ? (void *)d4_fieldbody : (void *)d4_bevelbody;   /* RenderImage: no body prologue (flat_body_prologue 0) */
             if (plen) {
                 flat_gate *g = dgate_get(r, el, (uintptr_t)ours);
                 if (!g || flat_body_install(&r->dsw[el], body, plen, (unsigned char *)r->dtramp[el], r->dorig[el],
@@ -3332,7 +3447,8 @@ static void dopus_scan(flatshared *r)
             continue;
         }
         {
-            uintptr_t ours = el == FLAT_EL_DRAWBOX ? (uintptr_t)d4_drawbox : (uintptr_t)d4_fieldbox;
+            uintptr_t ours = el == FLAT_EL_DRAWBOX ? (uintptr_t)d4_drawbox : el == FLAT_EL_FIELDBOX ? (uintptr_t)d4_fieldbox
+                                                                                                   : (uintptr_t)d4_renderimage;
             flat_gate *g = dgate_get(r, el, ours);
             if (!g || flat_swap_install(&r->dsw[el], r->dslot[el], (uintptr_t)g->code) != FLAT_OK)
                 mask &= ~(1 << el);

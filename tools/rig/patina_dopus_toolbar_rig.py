@@ -132,10 +132,10 @@ def main():
     for m in re.finditer(r'Process\s+(\d+):.*RAM:Patina\b', c.run('Status')[1]):
         c.run('Break %s C' % m.group(1))
         time.sleep(3)
-    if not g.process_running('Patina'):
+    if not g.patina_up():
         c.run('Run >NIL: VTC:Patina')
         time.sleep(8)
-    print('process Patina running:', g.process_running('Patina'))
+    print('process Patina running:', g.patina_up())
     font_h, prx, pry, geom = screen_facts()
     print('dopus screen:', rx('dopus screen'), '| font height', font_h, '| pixel', '%d:%d' % (prx, pry))
     before = set(handles())

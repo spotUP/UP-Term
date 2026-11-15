@@ -652,22 +652,28 @@ static void pattern_chunk(unsigned char *at, int which, int depth, const unsigne
     memcpy(at + 8 + 24, data, PT_DATA);
 }
 
-/* the SCREEN chunk of the file now on disk, or 0 */
-static const unsigned char *prev_screen(const unsigned char *prev, long prevlen)
+/* the PTRN chunk (from its id) of the file now on disk for which (0 ROOT, 1 DRAWER, 2 SCREEN), its whole length in *clen,
+ * or 0. pattern 1: a 16x16 pattern of the size desk_wbpattern writes; pattern 0: a picture (no WBPF_PATTERN, the data is
+ * its file name) */
+static const unsigned char *prev_chunk(const unsigned char *prev, long prevlen, int which, int pattern, long *clen)
 {
     long pos = DK_HDR, body, size;
     char id[4];
     if (!prev || !is_prefs(prev, prevlen))
         return 0;
     while (next_chunk(prev, prevlen, &pos, id, &body, &size))
-        if (!memcmp(id, "PTRN", 4) && size == PT_BODY && get16(prev + body + 16) == 2)
+        if (!memcmp(id, "PTRN", 4) && size >= 24 && get16(prev + body + 16) == (unsigned)which &&
+            ((get16(prev + body + 18) & 1) != 0) == pattern && (!pattern || size == PT_BODY)) {
+            *clen = 8 + size + (size & 1);
             return prev + body - 8;
+        }
     return 0;
 }
 
 /* S31-START-APPLY rig 56: the WBPattern editor stores an all-pen-0 chunk with depth 1 where desk_wbpattern writes depth 3 (and 1 for
  * the "none" chunk written with depth 0), so a byte compare planned a backdrop write (and a Workbench reset) on every start. Two files
- * match when the header bytes match and every chunk has the same which/flags and the same pen at every pixel. */
+ * match when the headers match and chunk by chunk: a pattern chunk has the same which/flags and the same pen at every pixel, any
+ * other chunk (a picture) the same bytes. */
 static int pattern_pen_at(const unsigned char *data, int depth, int x, int y)
 {
     int p, pen = 0;
@@ -679,12 +685,21 @@ static int pattern_pen_at(const unsigned char *data, int depth, int x, int y)
 
 int desk_wbpattern_same(const unsigned char *a, long alen, const unsigned char *b, long blen)
 {
-    long head = alen - 3 * PT_CHUNK, k;
+    long pa = DK_HDR, pb = DK_HDR, ba, bb, sa, sb;
+    char ia[4], ib[4];
     int x, y;
-    if (alen != blen || head < 0 || memcmp(a, b, (size_t)head))
+    if (alen != blen || !is_prefs(a, alen) || !is_prefs(b, blen) || memcmp(a, b, (size_t)DK_HDR))
         return 0;
-    for (k = 0; k < 3; k++) {
-        const unsigned char *ca = a + head + k * PT_CHUNK, *cb = b + head + k * PT_CHUNK;
+    while (next_chunk(a, alen, &pa, ia, &ba, &sa)) {
+        const unsigned char *ca = a + ba - 8, *cb;
+        if (!next_chunk(b, blen, &pb, ib, &bb, &sb) || memcmp(ia, ib, 4) || sa != sb)
+            return 0;
+        cb = b + bb - 8;
+        if (memcmp(ia, "PTRN", 4) || sa != PT_BODY || !(get16(ca + 8 + 18) & 1)) {
+            if (memcmp(ca, cb, (size_t)(8 + sa)))
+                return 0;
+            continue;
+        }
         if (memcmp(ca, cb, 8 + 20) || memcmp(ca + 8 + 22, cb + 8 + 22, 2))
             return 0;
         for (y = 0; y < 16; y++)
@@ -692,37 +707,54 @@ int desk_wbpattern_same(const unsigned char *a, long alen, const unsigned char *
                 if (pattern_pen_at(ca + 8 + 24, ca[8 + 21], x, y) != pattern_pen_at(cb + 8 + 24, cb[8 + 21], x, y))
                     return 0;
     }
-    return 1;
+    return !next_chunk(b, blen, &pb, ib, &bb, &sb);
 }
 
+/* WALLPAPER-KEPT (user report 2026-11-14, Amiga Forever): a picture the user set (ROOT, DRAWER or SCREEN) is kept byte for
+ * byte; the theme's flat tone goes only where the file had a pattern or nothing */
 long desk_wbpattern(const gtheme *t, int depth, const unsigned char *prev, long prevlen,
                     unsigned char *out, long cap)
 {
     unsigned char data[PT_DATA], *at;
-    const unsigned char *keep;
+    const unsigned char *pic[3], *keep;
+    long piclen[3], total = DK_HDR, klen;
+    int w;
     (void)t;
-    if (cap < DK_WBPATTERN_SIZE)
+    for (w = 0; w < 3; w++) {
+        pic[w] = prev_chunk(prev, prevlen, w, 0, &piclen[w]);
+        total += pic[w] ? piclen[w] : PT_CHUNK;
+    }
+    if (cap < total || cap < DK_WBPATTERN_SIZE)
         return 0;
     if (depth > PT_DEPTH_MAX)
         depth = PT_DEPTH_MAX;
     if (depth < 1)
         depth = 1;
-    at = iff_header(out, DK_WBPATTERN_SIZE);
-    /* ROOT: one solid darker tone, no dots (dark_background is no pen under OD13) */
-    pattern_fill(data, depth, desk_backdrop_pen_at(depth));
-    pattern_chunk(at, 0, depth, data);
-    /* DRAWER: the panel tone MT_BG, which is pen 0 (OD7) */
-    pattern_fill(data, depth, DK_BG);
-    pattern_chunk(at + PT_CHUNK, 1, depth, data);
-    /* SCREEN: the chunk Wbpattern writes for "none" (flags 1, depth 0, 96 zero bytes), or the user's own */
-    keep = prev_screen(prev, prevlen);
-    if (keep) {
-        memcpy(at + 2 * PT_CHUNK, keep, PT_CHUNK);
-    } else {
-        memset(data, 0, PT_DATA);
-        pattern_chunk(at + 2 * PT_CHUNK, 2, 0, data);
+    at = iff_header(out, total);
+    for (w = 0; w < 3; w++) {
+        if (pic[w]) {
+            memcpy(at, pic[w], (size_t)piclen[w]);
+            at += piclen[w];
+            continue;
+        }
+        if (w == 0) {
+            /* ROOT: one solid darker tone, no dots (dark_background is no pen under OD13) */
+            pattern_fill(data, depth, desk_backdrop_pen_at(depth));
+            pattern_chunk(at, 0, depth, data);
+        } else if (w == 1) {
+            /* DRAWER: the panel tone MT_BG, which is pen 0 (OD7) */
+            pattern_fill(data, depth, DK_BG);
+            pattern_chunk(at, 1, depth, data);
+        } else if ((keep = prev_chunk(prev, prevlen, 2, 1, &klen)) != 0) {
+            /* SCREEN: the user's own pattern, or the chunk Wbpattern writes for "none" (flags 1, depth 0, 96 zero bytes) */
+            memcpy(at, keep, PT_CHUNK);
+        } else {
+            memset(data, 0, PT_DATA);
+            pattern_chunk(at, 2, 0, data);
+        }
+        at += PT_CHUNK;
     }
-    return DK_WBPATTERN_SIZE;
+    return total;
 }
 
 /* ---- R1.21a: pointer.prefs ---- */
@@ -1251,6 +1283,22 @@ int desk_persist_pairs(unsigned mask, int wbprefs, const char **env, const char 
     return n;
 }
 
+unsigned desk_start_persist_mask(unsigned plan, int flat, int pending)
+{
+    unsigned m = 0;
+    if (pending || !plan)
+        return 0;
+    if (plan & DESK_START_PATTERN)
+        m |= 1u << DT_WBPATTERN;
+    if ((plan & DESK_START_PALETTE) || flat)
+        m |= 1u << DT_PALETTE;
+    if (plan & DESK_START_POINTER)
+        m |= 1u << DT_POINTER;
+    if (plan & DESK_START_FONT)
+        m |= 1u << DT_FONT;
+    return m;
+}
+
 unsigned desk_off_mask(unsigned saved, unsigned desk_mask)
 {
     return saved & ~desk_mask & ~(1u << DT_ICONTROL);
@@ -1515,6 +1563,15 @@ long desk_confirm_left(const desk_confirm *c, long now)
 int desk_start_due(int done, int wb_screen_up, int tick_ok, int wb_mode_wait, int wb_ready)
 {
     return !done && !wb_mode_wait && ((wb_screen_up && wb_ready) || !tick_ok);
+}
+
+int desk_start_hold(int splash_open, long *since, long now)
+{
+    if (!splash_open)
+        return 0;
+    if (*since < 0)
+        *since = now;
+    return now - *since < DESK_START_HOLD_MAX;   /* a splash that never closes does not keep the look off for ever */
 }
 
 int desk_wb_ready_state(int wb_version, int answered, int idle_ticks, long elapsed_ticks, long timeout_ticks)

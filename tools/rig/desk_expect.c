@@ -13,9 +13,6 @@
 #include <string.h>
 #include "../../patina/desk_core.h"
 
-/* gthemes_core.c names this table in gt_save_text, which this tool never calls; the stub keeps prefs out of the link */
-char prefs_paths_patina[256];
-
 static unsigned char buf[16384];
 
 static long slurp(const char *p, unsigned char *b, long cap)

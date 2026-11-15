@@ -337,7 +337,12 @@ class FindsTheAddOns(unittest.TestCase):
             self.assertIn('(cat "%s" (if (= #ad%skind "drawer")' % (r['archive'], r['id']), INSTALLER, r['id'])
             self.assertIn('(if (and (in #adpick %d) (<> #ad%skind ""))' % (n, r['id']), INSTALLER, r['id'])
         self.assertEqual(INSTALLER.count('(P_ADFIND)'), len(self.ADDONS))
-        self.assertIn('(default %d)' % (2 ** len(self.ADDONS) - 1), INSTALLER)
+        # DOPUS-OPT-IN: all ticked except Directory Opus, whose choice says it replaces the Workbench
+        self.assertIn('(default %d)' % sum(1 << n for n, r in enumerate(self.ADDONS) if r['id'] != 'dopus'), INSTALLER)
+        d = [n for n, r in enumerate(self.ADDONS) if r['id'] == 'dopus']
+        self.assertEqual(len(d), 1)
+        self.assertIn('" (not found)")) ", replaces Workbench")', INSTALLER)
+        self.assertEqual(INSTALLER.count('replaces Workbench")'), 1)
         self.assertNotIn('@ADDON', INSTALLER)
         # no archive name of a row is typed into the search/page/run code of the template
         template = (ROOT / "dist/Install.installer").read_text(encoding="latin-1")
@@ -803,7 +808,7 @@ class EveryOptionTicked(unittest.TestCase):
             value = int(d) if d.isdigit() else sum(int(x) for x in d.lstrip('(+ ').split())
             self.assertEqual(value, 2 ** n - 1, var)
         # AmiSSL's, the AmiNetXDuo page (AmiNetXDuoPart: ticked only with no stack found) and the add-on
-        # page (FindsTheAddOns: all add-ons) are the three more, the DOpus5: page (DopusFiletypeOption: ticked)
+        # page (FindsTheAddOns: all add-ons but Directory Opus) are the three more, the DOpus5: page (DopusFiletypeOption: ticked)
         # the fourth, the icon library page (IconLib: ticked on 3.0/3.1, unticked on 3.2; tests/test_dist_iconlib.py) the fifth,
         # the SolidWin page (tests/test_dist_solidwin.py: ticked) the sixth
         self.assertEqual(INSTALLER.count('(askoptions'), len(self.PAGES) + 6, 'a page this test misses')
