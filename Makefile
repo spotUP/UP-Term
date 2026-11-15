@@ -98,6 +98,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=screenreq a zeroed screen move request asks for no move, so a new XCON: process does not flash the screen (tests/test_screenreq.c)
 # ONLY=wbpark   a closing Workbench parks a plain Workbench window once and its reopen brings it back; a failed reopen retries (tests/test_wbpark.c)
 # ONLY=cmdline vsh's argv as an AmigaDOS command line: KEY=value keeps KEY= unquoted so ReadArgs sees the keyword (tests/test_cmdline.c)
+# ONLY=dopus_iprefs_patch the kit's in-place Latin-1 fix of DirectoryOpus's IPrefs task-name literal (tests/test_dopus_iprefs_patch.py)
 # ONLY=dopus_filetype the Directory Opus filetype file's golden bytes; upstream filetype_tool check/lint when $(DOPUS5_SRC) is set (tests/test_dopus_filetype.py)
 # ONLY=menu_rig_dopus_absent the patina_menu_rig dopus_absent row starts the commodity before the root menu (tests/test_menu_rig_dopus_absent_commodity.py)
 # ONLY=menu_rig_dopus_quit the dopus_quit row starts DOpus again with C:LoadWB at its end, also on a raise (tests/test_menu_rig_dopus_quit_restore.py)
@@ -321,6 +322,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS)) | $(VENV_FONTTOOLS)
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = upgetty ]; then ./$(BUILD)/upgetty_host; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = fonts ]; then $(MAKE) --no-print-directory jbmono && python3 tests/test_dist_fonts.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = dopus_filetype ]; then python3 tests/test_dopus_filetype.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = dopus_iprefs_patch ]; then python3 tests/test_dopus_iprefs_patch.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_rig_dopus_absent ]; then python3 tests/test_menu_rig_dopus_absent_commodity.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_rig_dopus_quit ]; then python3 tests/test_menu_rig_dopus_quit_restore.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_only_list ]; then python3 tests/test_rig_only_list.py; fi
@@ -2220,7 +2222,7 @@ $(DOPUS_TOOLBAR_DIR)/Buttons/Patina-toolbar-filled-24: $(wildcard $(DOPUS_TOOLBA
 dopus-toolbar: $(DOPUS_TOOLBAR_DIR)/Buttons/Patina-toolbar-filled-24
 # up-dopus: the unmodified upstream Directory Opus 5 68k archives (dist/addons/dopus/archives.txt), each checked
 # against its md5 in vendor/dopus5-5.104/ (download URLs: dist/addons/dopus/SOURCE.txt) and unpacked into its
-# drawer of Files; Install runs upstream's own "Install DOpus5" from the drawer that fits the CPU
+# drawer of Files (one literal of DirectoryOpus is then fixed in place, tools/dopus_iprefs_patch.py); Install runs upstream's own "Install DOpus5" from the drawer that fits the CPU
 dist-dopus: $(BUILD)/amiga/upupdate $(LHA)
 	$(call ADDON_STAGE,dopus)
 	cp dist/addons/dopus/COPYING dist/addons/dopus/SOURCE.txt dist/addons/dopus/archives.txt $(KIT_dopus)/Files/
@@ -2228,6 +2230,7 @@ dist-dopus: $(BUILD)/amiga/upupdate $(LHA)
 	  [ "$$(md5 -q $(VENDOR)/dopus5-5.104/$$a 2>/dev/null || md5sum < $(VENDOR)/dopus5-5.104/$$a | cut -d' ' -f1)" = "$$md5" ] || { echo "[ERROR] $$a: md5 is not $$md5"; exit 1; }; \
 	  mkdir -p $(KIT_dopus)/Files/$$drawer && lha -xqw=$(KIT_dopus)/Files/$$drawer $(VENDOR)/dopus5-5.104/$$a || exit 1; \
 	done
+	python3 tools/dopus_iprefs_patch.py $(KIT_dopus)/Files/os3/DOpus5/DirectoryOpus $(KIT_dopus)/Files/os3-68000/DOpus5/DirectoryOpus
 	$(MAKE) $(DOPUS_TOOLBAR_DIR)/Buttons/Patina-toolbar-filled-24
 	mkdir -p $(KIT_dopus)/Files/toolbar && cp -R $(DOPUS_TOOLBAR_DIR)/Images $(DOPUS_TOOLBAR_DIR)/Buttons $(KIT_dopus)/Files/toolbar/
 	python3 tools/mkkit.py dopus
