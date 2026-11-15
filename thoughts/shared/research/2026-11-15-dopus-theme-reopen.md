@@ -106,3 +106,29 @@ Rig check that splits it (one run, rig != 8/81/83/183): DOpus + lister open, pic
 read the gate record with tests/amiga/wincensus (closes/failed/diag_wins/diag_vis/timeouts) and the PATINA_DEFERRED /
 PATINA_FOREIGN sentinels; then press Retry once. Retry passes -> the first try had a transient blocker (DOpus check ran
 too early / was busy). Retry also fails with failed++ and DOpus windows still there -> DOpus never acts on the notify.
+
+## Deciding run (S82)
+
+Rig 9 (060, DOpus 5.104 installed fresh by `rig.py dopus`, lister + button bank open, binaries of 2026-11-15 02:46-02:48). Script: scratchpad run.py (boot snapshot, Cancel, pick tokyo-night -> 2 down via the Patina menu, poll, Retry, 2 snapshots).
+Gate counters (tests/amiga/wincensus): NOT COLLECTED. build/amiga/wincensus did not exist; its buildq job was position 6 behind other sessions' builds for the whole run. Still open.
+
+Raw values:
+- Boot: IPrefs "System Request" (Retry|Cancel) already up at boot; PATINA_DEFERRED, PATINA_FOREIGN, PATINA_WBCLOSES all empty (no apply yet). Cancel on it: the requester was still listed 5 s later (re-raised or never closed).
+- After pick (requester up, 'Patina desktop theme' Keep window also up): PATINA_DEFERRED=1, PATINA_WBCLOSES=1,
+  PATINA_FOREIGN='System Request/8031046;Ram Disk, 1,020.8M free, 591K in use, 0% full/2020203f;-/200a70;'
+  (flags: IPrefs requester 0x8031046, DOpus lister 0x2020203f, untitled 0x200a70 = the DOpus button bank; none has WFLG_WBENCHWINDOW 0x02000000.)
+- Retry clicked once. +20 s and +40 s: requester still up, DOpus lister, buttons, backdrop windows all still there (same titles/tasks), PATINA_* unchanged.
+
+Verdict: deferral path WAS taken (PATINA_DEFERRED=1) yet the IPrefs reset requester is up anyway; Retry fails, DOpus windows unchanged -> DOpus ignores the close notice (not a transient first-try blocker). Caveat: failed++ in the gate record unverified (wincensus missing); and FOREIGN counts the System Request itself as a foreign window, so the deferral may have been triggered by the requester, not by DOpus alone.
+
+## Cause found (S82, lead)
+
+DOpus `check_closescreen` (Program/misc.c:474 in BlitterStudio dopus5) excuses the IPrefs requester window by comparing the window's task name with `"« IPrefs »"`. In the source the literal is the bytes `EF BF BD 20 "IPrefs" 20 EF BF BD`: UTF-8 replacement characters left by a lossy re-encode of the Latin-1 file. The real task name is Latin-1 `AB 20 "IPrefs" 20 BB` (both build/rig/os-31 and os-32 C/IPrefs contain it). The compare never matches.
+
+Effect: IPrefs calls CloseWorkBench, which fails while DOpus windows are open, so IPrefs raises its "reset the Workbench screen" requester. DOpus gets the close notice, runs check_closescreen, sees the requester as a foreign window and refuses. Retry repeats the same loop, so the reset deadlocks. This explains the boot requester, the theme-pick requester and why Retry never helps. The Patina bar and patch order are not involved (see Root cause (S82)).
+
+Evidence: the shipped binary build/dist/up-dopus/Files/os3/DOpus5/DirectoryOpus (from vendor/dopus5-5.104/DOpus5_104_os3.lha, md5-pinned) contains `EF BF BD " IPrefs"` once and `AB " IPrefs " BB` zero times; the os3-68000 binary is the same. The local reference clone is shallow (one commit, 96ede09), so the upstream commit that broke the bytes is not known here. The same corruption hits `FindTask("« sysihack »")` and several comment and doc strings.
+
+Fix:
+1. Upstream: write the literal as `"\xab IPrefs \xbb"` (and `"\xab sysihack \xbb"`), so the source no longer depends on file encoding. Send a PR to BlitterStudio/dopus5 (owner OK given).
+2. Kit, until a release carries it: patch the 14-byte literal in place to `AB " IPrefs " BB 00` (10 bytes plus NUL, fits) at kit build, after the md5 check. This is unproven on the rig.
