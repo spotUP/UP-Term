@@ -259,13 +259,14 @@ def dopus_pens_reset():
 
 def wb_pens_check(name):
     """The pen apply after the pick (D14 + Workbench pens, owner 2026-10-29): the sentinel counted it, Workbench
-    colours 0-3 are the theme's bg/fg/dim/accent, and the Directory Opus listers read back the theme pens.
+    colours 0-3 are the theme's bg/dim/fg/accent, and the Directory Opus listers read back the theme pens.
     Returns a failure text or None."""
     got, refused = env('PATINA_WBPENS'), env('PATINA_WBREFUSED')
     print('  [INFO] %s: PATINA_WBPENS=%s PATINA_WBREFUSED=%s' % (name, got or '-', refused or '-'))
     if not got or int(got) < 1:
         return 'PATINA_WBPENS did not rise after picking %s (refused=%s)' % (name, refused or '-')
-    want = [theme_hex(name, k) for k in ('bg', 'fg', 'dim', 'accent')]
+    # S84-WB-TITLE-PENS: role order (gthemes_core.h DK_BG, DK_MUTED, DK_FG, DK_ACCENT), the order desk_palette writes
+    want = [theme_hex(name, k) for k in ('bg', 'dim', 'fg', 'accent')]
     cols = workbench_cols()
     print('  [INFO] %s: Workbench colours 0-3 %s, theme %s' % (name, cols, want))
     if cols != want:

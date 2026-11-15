@@ -664,6 +664,16 @@ static void test_desk_window_foreign(void)
 }
 
 /* DOPUS-SPLASH-HOLD, rig 7 (DOpus 5.104 boot): only the splash holds the start apply */
+/* S85 rig 84 (DOpus 5.104): listers and the start menu close themselves on CloseWorkBench, the hidden clock does not */
+static void test_desk_task_dopus(void)
+{
+    CHECK_INT(desk_task_dopus("dopus_lister"), 1);
+    CHECK_INT(desk_task_dopus("dopus_start_menu"), 1);
+    CHECK_INT(desk_task_dopus("dopus_hidden_clock"), 0);
+    CHECK_INT(desk_task_dopus("Shell Process"), 0);
+    CHECK_INT(desk_task_dopus(0), 0);
+}
+
 static void test_desk_window_splash(void)
 {
     CHECK_INT(desk_window_splash(0, 0, "Directory Opus"), 1);
@@ -2284,6 +2294,7 @@ void suite_desk(void)
     test_desk_pens_reset_deep();
     test_desk_defer_map();
     test_desk_window_foreign();
+    test_desk_task_dopus();
     test_desk_window_splash();
     test_desk_reset_done();
     test_desk_iprefs_idle();

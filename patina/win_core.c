@@ -199,6 +199,11 @@ int desk_window_foreign(int backdrop, int wbench, const char *title)
     return !backdrop && !wbench && !win_is_patina(title);
 }
 
+int desk_task_dopus(const char *task)
+{
+    return task && !strncmp(task, "dopus_", 6) && strcmp(task, "dopus_hidden_clock");
+}
+
 int desk_window_splash(int backdrop, int wbench, const char *title)
 {
     return desk_window_foreign(backdrop, wbench, title) && title && !strcmp(title, "Directory Opus");

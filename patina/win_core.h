@@ -59,6 +59,10 @@ int win_is_patina(const char *title);
  * backdrop (Workbench, Directory Opus root), not a Workbench window (wbench: WFLG_WBENCHWINDOW, the Workbench root and drawers, which
  * Workbench closes itself on CloseWorkBench) and not Patina's own (the bar closes itself through the WBRESET patch). */
 int desk_window_foreign(int backdrop, int wbench, const char *title);
+/* S85-DOPUS-CLOSEWB: 1 when the window's task is Directory Opus's (process name "dopus_..."). DOpus patches CloseWorkBench: on the
+ * IPrefs reset it closes its own windows, retries the close and reopens them (DOpus source misc.c check_closescreen, event_loop.c
+ * MAIN_CLOSEWB), so they do not stall the reset. Not the hidden clock: Hide clears DOpus's main window and skips that path. */
+int desk_task_dopus(const char *task);
 /* DOPUS-SPLASH-HOLD: the DOpus boot splash (rig 7, DOpus 5.104: the only window titled "Directory Opus"; listers carry
  * their path, button banks no title) */
 int desk_window_splash(int backdrop, int wbench, const char *title);

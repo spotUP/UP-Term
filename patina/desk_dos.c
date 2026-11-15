@@ -301,7 +301,8 @@ static int dk_wb_windows(int splash_only)
     if (IntuitionBase && (scr = ipd_lock_wb_screen()) != 0) {
         ULONG il = LockIBase(0);
         for (w = scr->FirstWindow; w; w = w->NextWindow)
-            if ((splash_only ? desk_window_splash : desk_window_foreign)((w->Flags & WFLG_BACKDROP) != 0, (w->Flags & WFLG_WBENCHWINDOW) != 0, (const char *)w->Title))
+            if ((splash_only ? desk_window_splash : desk_window_foreign)((w->Flags & WFLG_BACKDROP) != 0, (w->Flags & WFLG_WBENCHWINDOW) != 0, (const char *)w->Title)
+                && (splash_only || !w->UserPort || !desk_task_dopus(((struct Task *)w->UserPort->mp_SigTask)->tc_Node.ln_Name)))
                 n++;
         UnlockIBase(il);
         UnlockPubScreen(0, scr);
