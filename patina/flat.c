@@ -558,6 +558,27 @@ static void img_note_new(Object *obj, struct opSet *ops)
     Permit();
 }
 
+/* DOPUS-PROPKNOB: OM_NEW of frameiclass: record a FRAME_PROPKNOB image (an app's propgclass PGA_KnobImage) so smart_knob_of knows it. */
+static void knob_note_new(Object *obj, struct opSet *ops)
+{
+    const struct TagItem *t = ops->ops_AttrList;
+    ULONG guard = 0;
+    for (; t && guard < 64; guard++) {
+        if (t->ti_Tag == TAG_DONE) break;
+        if (t->ti_Tag == TAG_MORE) { t = (const struct TagItem *)t->ti_Data; continue; }
+        if (t->ti_Tag == TAG_SKIP) { t += t->ti_Data + 1; continue; }
+        if (t->ti_Tag == IA_FrameType) {
+            if (t->ti_Data == FRAME_PROPKNOB) {
+                Forbid();
+                flat_img_record(img_tab, FLAT_IMG_RECS, obj, FLAT_W_PROPKNOB, 0);
+                Permit();
+            }
+            return;
+        }
+        t++;
+    }
+}
+
 static void img_note_dispose(Object *obj)
 {
     Forbid();
@@ -765,6 +786,8 @@ static int smart_knob_of(struct RastPort *rp, Object *obj)
     struct Window *win = lay ? (struct Window *)lay->Window : NULL;
     struct Gadget *g;
     int i;
+    if (win && img_lookup(obj, NULL) == FLAT_W_PROPKNOB)      /* DOPUS-PROPKNOB: a propgclass PGA_KnobImage frame */
+        return 1;
     for (g = win ? win->FirstGadget : NULL, i = 0; g && i < 64; g = g->NextGadget, i++) {
         struct Image *im = (struct Image *)g->GadgetRender;
         int prop = gadget_has_propinfo(g) && (g->GadgetType & GTYP_GTYPEMASK) == GTYP_PROPGADGET && (g->Flags & GFLG_GADGIMAGE) && im;
@@ -1214,16 +1237,28 @@ static int c8_skip(Object *obj, Msg msg)
 
 ULONG c8_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1") Msg msg)
 {
+    ULONG rc;
     if (c8_skip(obj, msg))
         return TRUE;
-    return ((oldfn_reg)g_r->fsw.saved)(h, obj, msg);
+    if (msg->MethodID == OM_DISPOSE)
+        img_note_dispose(obj);
+    rc = ((oldfn_reg)g_r->fsw.saved)(h, obj, msg);
+    if (msg->MethodID == OM_NEW && rc)
+        knob_note_new((Object *)rc, (struct opSet *)msg);
+    return rc;
 }
 
 ULONG c8_disp_stk(void *caller_return, struct Hook *h, Object *obj, Msg msg)
 {
+    ULONG rc;
     if (c8_skip(obj, msg))
         return TRUE;
-    return ((oldfn_stk)g_r->fsw.saved)(h, obj, msg);
+    if (msg->MethodID == OM_DISPOSE)
+        img_note_dispose(obj);
+    rc = ((oldfn_stk)g_r->fsw.saved)(h, obj, msg);
+    if (msg->MethodID == OM_NEW && rc)
+        knob_note_new((Object *)rc, (struct opSet *)msg);
+    return rc;
 }
 
 /* INPUT-GROUND: strgclass GM_RENDER. Before the stock render the gadget's StringExtend ground pens become the input pen (two pen

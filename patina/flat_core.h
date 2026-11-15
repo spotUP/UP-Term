@@ -529,6 +529,9 @@ int flat_display_gadget(unsigned flags, unsigned activation);
  * (the string input's look) plus, when ticked, the menu check mark; flat_check_image says which, flat_check_ticked says whether ids
  * (impDraw imp_State) is a selected state (IDS_SELECTED, IDS_INACTIVESELECTED, IDS_SELECTEDDISABLED). */
 #define FLAT_W_CHECKIMAGE 0x0E
+/* DOPUS-PROPKNOB: flat's own id (no SYSIA_Which of that value) for a frameiclass FRAME_PROPKNOB image an app passes as a propgclass
+ * PGA_KnobImage (DOpus 5 lister, Intuition 47.44+). Recorded in the same table at its OM_NEW so the knob frame draw finds it. */
+#define FLAT_W_PROPKNOB 0x3D
 int flat_check_image(unsigned long which);
 int flat_check_ticked(unsigned long ids);
 /* S74-CHECKBOX-SQUARE (owner 2026-11-11): the stock image is 26x11; the flat box is visually square: h rows by h * side columns
