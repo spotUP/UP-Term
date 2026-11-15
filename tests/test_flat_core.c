@@ -659,6 +659,18 @@ static void test_input_ground(void)
     CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0x0400, 0, 1, 5), 1);
     CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0, 0x2000, 1, 5), 1);
     CHECK_INT(flat_string_render_write(FLAT_GM_RENDER, 1, 0, 0x0800, 1, 5), 0);
+    /* INSTALLER-STRING-FILL: the Installer's hand-built GTYP_STRGADGET (no gadtools, no frameiclass frame, StringExtend unknown) is
+     * grounded when a fill lies inside its box (gadget 92 at 164,331 472x12): with or without StringExtend, never a custom gadget */
+    CHECK_INT(flat_plain_string_fill(4, 1, 164, 331, 472, 12, 164, 331, 635, 342), 1);   /* whole box erase */
+    CHECK_INT(flat_plain_string_fill(4, 1, 164, 331, 472, 12, 200, 331, 635, 342), 1);   /* erase after the text */
+    CHECK_INT(flat_plain_string_fill(4 | 0x10, 1, 164, 331, 472, 12, 164, 331, 635, 342), 1);   /* type bits above the mask */
+    CHECK_INT(flat_plain_string_fill(4, 1, 164, 331, 472, 12, 160, 331, 635, 342), 0);   /* rect leaves the box (window erase) */
+    CHECK_INT(flat_plain_string_fill(4, 1, 164, 331, 472, 12, 164, 331, 635, 343), 0);
+    CHECK_INT(flat_plain_string_fill(4, 0, 164, 331, 472, 12, 164, 331, 635, 342), 0);   /* no StringInfo */
+    CHECK_INT(flat_plain_string_fill(1, 1, 164, 331, 472, 12, 164, 331, 635, 342), 0);   /* boolean gadget */
+    CHECK_INT(flat_plain_string_fill(5, 1, 164, 331, 472, 12, 164, 331, 635, 342), 0);   /* boopsi: strgclass path (g9_ground) */
+    CHECK_INT(flat_plain_string_fill(4, 1, 164, 331, 0, 12, 164, 331, 164, 342), 0);     /* empty box */
+    CHECK_INT(flat_plain_string_fill(4, 1, 164, 331, 472, 12, 300, 331, 299, 342), 0);   /* empty rect */
     CHECK_INT(flat_string_frame(10, 10, 104, 18, 12, 12, 100, 14), 1);    /* bevel 2 px out */
     CHECK_INT(flat_string_frame(12, 12, 100, 14, 12, 12, 100, 14), 1);
     CHECK_INT(flat_string_frame(54, 32, 53, 14, 60, 35, 41, 8), 1);      /* GadTools bevel: 6 px out horizontally, 3 vertically (Prefs/Time year) */

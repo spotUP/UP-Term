@@ -841,6 +841,46 @@ static struct Gadget *string_gadget_at(struct RastPort *rp, int x0, int y0, int 
     return NULL;
 }
 
+/* INSTALLER-STRING-FILL: Installer 43.3 builds its askdir field by hand (plain GTYP_STRGADGET, Border frame in pen 0, no frameiclass,
+ * StringExtend unknown), so no INPUT-GROUND entry sees it. A window-ground erase inside such a gadget's box (flat_plain_string_fill)
+ * records the gadget box with the input pen; rf_gbox then paints this and later erases, flat_tx_c the JAM2 text ground. Only the
+ * record is written here: no ground_box / raa_* on the RectFill caller's stack (S71-C8-PRIVATE-STACK). */
+static int plain_string_at(struct Window *win, const LONG *b, int o[4])     /* 1 and the gadget box (x0,y0,x1,y1) in o */
+{
+    struct Gadget *g;
+    int n;
+    for (g = win->FirstGadget, n = 0; g && n < 64; g = g->NextGadget, n++) {
+        o[0] = g->LeftEdge + ((g->Flags & GFLG_RELRIGHT) ? win->Width - 1 : 0);
+        o[1] = g->TopEdge + ((g->Flags & GFLG_RELBOTTOM) ? win->Height - 1 : 0);
+        o[2] = g->Width + ((g->Flags & GFLG_RELWIDTH) ? win->Width : 0);
+        o[3] = g->Height + ((g->Flags & GFLG_RELHEIGHT) ? win->Height : 0);
+        if (flat_plain_string_fill(g->GadgetType, g->SpecialInfo != NULL, o[0], o[1], o[2], o[3], (int)b[0], (int)b[1], (int)b[2], (int)b[3])) {
+            o[2] += o[0] - 1;
+            o[3] += o[1] - 1;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void rf_strfill(flatshared *r, struct RastPort *rp, const LONG *b)
+{
+    struct Window *win = (struct Window *)rp->Layer->Window;
+    const void *surf;
+    int o[4], pen;
+    if (rp->AreaPtSz || rp->FgPen != r->st.pen_back || !win || (win->Flags & WFLG_GIMMEZEROZERO))
+        return;
+    surf = flat_tx_surface(rp->Layer, rp->BitMap);
+    if (flat_gr_match(&r->st, &r->gr, surf, (int)b[0], (int)b[1], (int)b[2], (int)b[3]) || !plain_string_at(win, b, o))
+        return;
+    pen = flat_input_pen(st_scr(r, win->WScreen), rp->BitMap ? rp->BitMap->Depth : 0);
+    if (pen < 0)
+        return;
+    flat_gr_drop(&r->gr, surf, o[0], o[1], o[2], o[3]);
+    flat_gr_add(&r->gr, surf, side_px(r, win->WScreen), o[0], o[1], o[2], o[3], pen);
+    r->sground++;
+}
+
 /* OWNER-2026-11-10 INPUT-GROUND: when the box x0,y0..x1,y1 is a string input's border, give the gadget the selection pen as its ground
  * (strgclass repaints its interior from StringExtend Pens[1] / ActivePens[1], so a fill here would be overpainted) and return that
  * pen; -1 when the box is no string input or the screen holds no such pen. Only two pen NUMBERS are written, no pointer: after the
@@ -2512,6 +2552,8 @@ void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG re
             return;
         }
     }
+    if (on && rp->Layer)
+        rf_strfill(r, rp, b);
     if (on && rf_gbox(r, rp, b))
         return;
     if (on && w && rom && (rf_disabled(r, rp, w, b) || rf_scroller(r, rp, w, b)))
