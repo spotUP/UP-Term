@@ -80,3 +80,16 @@ entries were withdrawn.
 
 ## Cleanup
 - No rig started. Scratch: scratchpad/dt11 (small, under 1 MB).
+
+## S82 rig check
+Verdict: FAIL (arrow counter stayed 0). Rig 83, purpose "up-term-e8: DT-11 arrow rig check", DOpus 5.104 booted as Workbench,
+build md5 of patina-flat 9076dbb6fdb61d57ab0805472f8f05c4 installed (rig.py install, kit shadow copy at boot), Patina running.
+Gate half PASSES: sums contain f8b63678 and patched=15. Three listers open (DeviceList NEW, lister new; default toolbar
+PROGDIR:Buttons/Toolbar), one resized and fully refreshed: arrow stayed 0, no crash, no guru.
+STATUS line (final):
+  dopus=73.8 patched=15 calls=122 flat=108 sums=780fd46b,ba2cf172,bdaa116a,f8b63678
+  dopus bevel calls=0 face=108 nopix=0 d5=24 arrow=0 ground=50 gs=1 gslot=0x1000c458 gcode=0x10828dbc selrgb=3e4254 pensel=12
+Screenshot (deleted): listers show a single "<" and a down arrow in the title row (SRCE/DEST), no "<<" glyph at the toolbar.
+Open: no trigger found that makes DOpus call RenderImage with ToolbarArrow.image on this screen; either the default toolbar
+never draws the arrow here (maybe only for an overflowing/multi-page toolbar) or the name match (ln_Name offset 10) does not
+hit. Next: log RenderImage names seen by d4_renderimage (counter of all calls, last name) to tell which.
