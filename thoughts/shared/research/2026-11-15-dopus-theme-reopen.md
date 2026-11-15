@@ -132,3 +132,12 @@ Evidence: the shipped binary build/dist/up-dopus/Files/os3/DOpus5/DirectoryOpus 
 Fix:
 1. Upstream: write the literal as `"\xab IPrefs \xbb"` (and `"\xab sysihack \xbb"`), so the source no longer depends on file encoding. Send a PR to BlitterStudio/dopus5 (owner OK given).
 2. Kit, until a release carries it: patch the 14-byte literal in place to `AB " IPrefs " BB 00` (10 bytes plus NUL, fits) at kit build, after the md5 check. This is unproven on the rig.
+
+## Kit patch rig check (S82)
+
+Patch: tools/dopus_iprefs_patch.py, called by Makefile dist-dopus after the md5-checked unpack, on Files/os3 and Files/os3-68000 DOpus5/DirectoryOpus. Test: tests/test_dopus_iprefs_patch.py (ONLY=dopus_iprefs_patch): on both real binaries one damaged literal before, `AB " IPrefs " BB` after, same size; idempotent; other counts give [ERROR]. The "sysihack" FindTask literal is damaged the same way and left alone.
+Rig 10 (060, `rig.py dopus` install from the unpatched os3 archive, then the same tool run on the installed VTC:DOpus5/DirectoryOpus; md5 e91d6f13... -> 21e935e9322e4128f2e8fa9c1f4a2cc8, equal to the lha-unpacked + patched kit binary; the full kit build itself was not run).
+- Boot: no IPrefs requester; PATINA_DEFERRED/FOREIGN/WBCLOSES empty; Cancel not needed.
+- Pick tokyo-night -> white (PATINA_THEME=white): the daemon was unresponsive for >30 s during the reset, then back. No requester afterwards; screen title went "Directory Opus" -> "Workbench Screen" (screen closed and reopened), lister (memory text changed 1,019.4M -> 1,018.5M free) and button bank reopened.
+- PATINA_DEFERRED=1, PATINA_WBCLOSES=1, PATINA_FOREIGN='Ram Disk,...(lister 0x2020203f);-/200a70 (button bank)' : the requester is no longer listed as foreign.
+Verdict: PASS for requester and reopen. Theme pens on the reopened DOpus windows not measured separately (no screenshot taken).
