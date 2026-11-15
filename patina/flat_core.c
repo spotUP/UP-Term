@@ -357,6 +357,12 @@ int flat_string_ext(unsigned gadget_type, unsigned flags, unsigned activation, i
     return (t == 4 || (t == 5 && strg_chain)) && flat_string_has_extend(flags, activation) && has_info && has_ext;
 }
 
+int flat_plain_string_fill(unsigned gadget_type, int has_info, int gx, int gy, int gw, int gh, int x0, int y0, int x1, int y1)
+{
+    return (gadget_type & 0x7) == 4 && has_info && gw > 0 && gh > 0 && x0 <= x1 && y0 <= y1
+           && x0 >= gx && y0 >= gy && x1 < gx + gw && y1 < gy + gh;
+}
+
 int flat_string_render_write(unsigned long method, int has_info, unsigned flags, unsigned activation, int has_ext, int pen)
 {
     return method == FLAT_GM_RENDER && has_info && flat_string_has_extend(flags, activation) && has_ext && pen >= 0;

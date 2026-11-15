@@ -89,3 +89,20 @@ Every INPUT-GROUND entry point misses it:
 3. If present (option 1): string_ground + ground_box path, but deferred through the gr record for the same
    stack reason.
 4. Rig check: rows 327..346 x 158..641 show input fill != 1a1b26 plus frame.
+
+## Fix (s82, up-term-e8): option 2 shape, StringExtend not measured (lead decision)
+
+- Owner decision: INPUT FILL look (rounded input-pen ground, as DOpus / Prefs string fields), not outline only.
+- Lead decision: no StringExtend probe. The mechanism works with StringExtend present or absent.
+- Pure predicate `flat_plain_string_fill` (patina/flat_core.c, decl flat_core.h): plain GTYP_STRGADGET (type & 7 == 4) with
+  StringInfo, fill rect inside the gadget box. Boopsi (type 5) keeps the strgclass path; `flat_string_ext` / `string_gadget_at`
+  unchanged.
+- `rf_strfill` (patina/flat.c, called from flat_rf_c just before rf_gbox): a pen_back, non-pattern fill inside such a gadget's
+  box on a non-GZZ window records the gadget box with `flat_input_pen` (flat_gr_drop + flat_gr_add, as noline_frame). The same
+  fill then goes through rf_gbox (input-pen rounded fill), and flat_tx_c gives JAM2 text with BgPen pen_back the record pen.
+  No ground_box / raa_* on the RectFill caller's stack.
+- Host test: tests/test_flat_core.c, INSTALLER-STRING-FILL block (gadget 92 box 164,331 472x12).
+- Known limit: text Intuition draws before the first erase keeps the pen-0 background until the next refresh of the field.
+- Results: flat_core host suite fails before (flat_plain_string_fill missing, link error), passes after (4560 checks, 0 failed).
+  flat-budget passes: first cut (walk inside rf_strfill) had a frame of 88 > HELPER_MAX 80, so the gadget walk is its own helper
+  plain_string_at; flat_rf_c deepest chain 320, headroom 64. make amiga ok, build/amiga/patina-flat md5 22db069e97193fb53fc319a2ef061929.

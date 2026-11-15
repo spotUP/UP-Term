@@ -284,6 +284,10 @@ int flat_input_pen(const flat_state *s, int depth);
 int flat_input_text_pen(int dri_text_pen, int depth);
 int flat_string_has_extend(unsigned flags, unsigned activation);   /* 1 when the StringInfo.Extension is valid */
 int flat_string_ext(unsigned gadget_type, unsigned flags, unsigned activation, int has_info, int has_ext, int strg_chain);   /* strg_chain: boopsi gadget (type 5) whose class chain holds strgclass; also accepted */
+/* INSTALLER-STRING-FILL: 1 when a fill rect x0,y0..x1,y1 lies inside the box gx,gy,gw,gh of a plain GTYP_STRGADGET with StringInfo
+ * (Installer 43.3 builds it by hand: no gadtools, no frameiclass frame). StringExtend is not asked: present or absent, Intuition
+ * erases the box in pen 0 and flat_rf_c records it as an input ground box. Boopsi string gadgets keep the strgclass path. */
+int flat_plain_string_fill(unsigned gadget_type, int has_info, int gx, int gy, int gw, int gh, int x0, int y0, int x1, int y1);
 /* INPUT-GROUND (strgclass dispatcher): 1 when a dispatch of method (FLAT_GM_RENDER only) on a gadget with SpecialInfo, GFLG/GACT_STRINGEXTEND
  * and an Extension may get its ground pens written: pen >= 0 (flat_input_pen said so). The text pens stay untouched. */
 #define FLAT_GM_RENDER 1UL
