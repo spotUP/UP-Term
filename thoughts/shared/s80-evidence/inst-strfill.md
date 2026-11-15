@@ -106,3 +106,17 @@ Every INPUT-GROUND entry point misses it:
 - Results: flat_core host suite fails before (flat_plain_string_fill missing, link error), passes after (4560 checks, 0 failed).
   flat-budget passes: first cut (walk inside rf_strfill) had a frame of 88 > HELPER_MAX 80, so the gadget walk is its own helper
   plain_string_at; flat_rf_c deepest chain 320, headroom 64. make amiga ok, build/amiga/patina-flat md5 22db069e97193fb53fc319a2ef061929.
+
+## Rig check (rig 183, commit c4fb4a6d, 060 max, --no-dopus, flat=on)
+
+Same askdir driver (no PEEK part), started with `--allow-stale-base` because the
+branch is pinned to base 74fdae30 (13 origin/main commits behind at check time).
+Askdir page reached ("Install DOpus5", gadgets 89..100). Row histograms x 158..641:
+
+- rows 327..330, 342..346: 1a1b26:484 (window background, outside the field)
+- row 331: 1a1b26:460 3e4254:17 c1bdab:7 (top edge of the rounded ground)
+- rows 332..341: 3e4254 ~455..460 (input pen fill), 1a1b26 14..18 (rounded corners
+  and the gap outside the box), a9b1d6 / c1bdab / 564e29 (the "SYS:" text and cursor)
+
+Before the fix the same rows were 1a1b26 across the field. PASS: the field now has
+the input-pen ground. No outline is drawn (INPUT-GROUND look, as DOpus/Prefs fields).
